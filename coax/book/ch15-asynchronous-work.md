@@ -64,7 +64,7 @@ The implementations are short. Completion is the important one:
 
 <!-- checked-source: examples/lib/ch15_request_policy.coax -->
 ```jai
-request_complete :: (s: Request, epoch: u32, now: u64, ok: bool, value: int) -> Request #export_c {
+request_complete :: (s: Request, epoch: u32, now: u64, ok: bool, value: int) -> Request #export_c #effects(all) {
     if s.phase != RequestPhase.running || epoch != s.epoch { return s; }
     r := request_tick(s, now);
     if r.phase != RequestPhase.running { return r; }

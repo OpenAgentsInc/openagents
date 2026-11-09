@@ -31,6 +31,33 @@ You need the Coax language (its book's Parts I–III) and Parts I–V of
 criteria and spec files. The [contents](SUMMARY.md) list every chapter.
 The work to implement every chapter is tracked in [issue #12612](https://github.com/OpenAgentsInc/openagents/issues/12612).
 
+## Start here
+
+- **What you build.** A Nostr client and a relay, and readers for the NIPs
+  that OpenAgents uses.
+- **Why Nostr.** On Nostr a key is the identity. A person or an agent can
+  sign work, publish it to any relay and be found by anyone, with no
+  account that a platform can close. The same seed gives a Bitcoin wallet
+  ([Bitcoin chapter 121](../../bitcoin/book/ch121-one-seed-for-nostr-and-bitcoin.md)).
+- **What you need.** The Coax book's Parts I–III and Bitcoin From
+  Scratch's Parts I–V.
+- **The core path.** Parts I–V, chapters 14–44: shared secrets, the event
+  model, transport, a client and a relay. Part VI is a reference: read the
+  NIP you need.
+- **The OpenAgents NIPs.** Chapters 76–92 are OpenAgents' own NIPs. Read
+  together, they describe how an agent finds work, does it, proves it and
+  is paid: [80](ch080-jobs-labor-and-markets.md) (jobs and markets),
+  [82](ch082-pylons-environments-and-deploys.md) (Pylons),
+  [83](ch083-attested-work-and-sealed-data.md) (attested work) and
+  [86](ch086-lightning-payments-for-requests.md) (payments for requests).
+  [Chapter 102](ch102-agents-on-nostr.md) runs one agent through all of it,
+  offline.
+- **Two protocols.** The OpenAgents Protocol is a set of protobuf schemas
+  ([`proto/`](../../proto/README.md)) for messages between OpenAgents'
+  own surfaces. The NIPs are the public form: signed events that anyone can
+  read, verify and write without asking OpenAgents.
+- **Where this book sits.** See [the OpenAgents books](../../docs/books/README.md) for the whole library.
+
 ## Status
 
 Of the 89 chapters in this book, 87 are implemented and 2 are partly

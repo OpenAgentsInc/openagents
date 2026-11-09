@@ -263,3 +263,11 @@ idea as [chapter 48](ch048-one-world-at-three-fidelities.md)'s; that comparison
 does not make the spacecraft fidelity ladder a prerequisite for an ordinary
 realm fork. A fork of a spacecraft profile must additionally preserve and
 check that profile's declared rules.
+
+## In the other books
+
+A fork records where it came from. That record is what a residual to the
+parent's maker would be paid from; the rule for splitting a payment between
+a fork and its parent is not written yet. Keys and payments are built in
+[Nostr chapter 71](../../nostr/book/ch071-lightning-zaps-and-goals.md) and
+[Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md).

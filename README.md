@@ -25,14 +25,17 @@ The repository was reset on 2026-10-27 to a small, checked core that every
 release builds on:
 
 - **Coax**, the language;
-- **Verse**, the real-time engine, written in it;
+- **Aethyr**, the real-time engine, written in it, and the **Verse**, the
+  world it runs;
 - **one protocol** that every OpenAgents surface speaks;
 - **openagents.com**, drawn in Coax in the browser;
 - **native desktop and iOS apps**.
 
 ## Books
 
-Read our six books on GitBook:
+[The OpenAgents books](docs/books/README.md) introduces the whole library:
+the argument the books share, the order to read them in and a
+[glossary](docs/books/glossary.md). Read our six published books on GitBook:
 
 - [**The Coax Programming Language**](https://openagents.gitbook.io/the-coax-programming-language):
   the language.
@@ -52,10 +55,11 @@ Read our six books on GitBook:
 
 In progress: [**Building Everglade**](everglade/book/README.md), an MMORPG
 on the D&D 5E SRD with action combat, built from scratch on Aethyr in Coax.
-Its structure is proposed; no chapter is complete yet.
+Chapters 1 to 18 are drafted; none is complete yet.
 
-To choose a route through them (write current Coax, build a playable realm,
-run an original model, train a small model or sign and verify a Nostr event), see
+For a short core path in each book, and routes you can run from a terminal
+(write current Coax, replay the engine core, run an original model, train a
+small model or sign and verify a Nostr event), see
 [Paths through the books](docs/books/paths.md).
 
 ## What we're building
@@ -75,7 +79,7 @@ run an original model, train a small model or sign and verify a Nostr event), se
   - The [selected library contracts](coax/LIBRARIES.md) and
     [offline recipes](coax/book/ch26-library-recipes.md) show how to reuse
     bounded Coax, Verse and Psionic APIs.
-- **Verse** ([`verse/`](verse/)) is the engine. The home scene, its
+- **Verse** ([`verse/`](verse/)) holds the first engine and realm code. The home scene, its
   graph, its HUD and its resource admission are Coax (`home.coax`), and so is
   its shader math (`light.coax`). Start opens the Grid (`grid.coax`), where
   you walk (`player.coax`) as an animated character among patrolling robots

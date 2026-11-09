@@ -68,10 +68,7 @@ vertical speed to `JUMP`:
 <!-- source: aethyr/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
-  if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
-    return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
-  }
+step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;
@@ -186,7 +183,11 @@ The rest of the step runs in this order:
   // Turn toward where you are going.
   if dir.on {
     want := atan2(dir.x, dir.z);
-    next.face = wrap_angle(next.face + wrap_angle(want - next.face) * lo(1, w.locomotion.turn_rate * dt));
+    turn := wrap_angle(want - next.face);
+    // Half a circle either way is a tie, broken one way: anticlockwise. Otherwise a page and the room
+    // it plays in, a hair apart, turn opposite ways, and the room's correction spins you round.
+    if abs(turn) > f32(PI) - 0.05 { turn = abs(turn); }
+    next.face = wrap_angle(next.face + turn * lo(1, w.locomotion.turn_rate * dt));
   }
 
   if !next.on_ground { next.act = Act.airborne; }

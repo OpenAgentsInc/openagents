@@ -119,9 +119,16 @@ QUERY_FLOOR_PAD :: 0.15;         // how far past a floor's edge your middle may 
 QUERY_BOX :: 6;                  // numbers a box: min x, y, z, max x, y, z
 QUERY_CAPSULE :: 7;              // numbers a capsule: one end, the other, the radius
 QUERY_TOO_BIG :: 1000000.0;      // a coordinate this large is not one
+// A hull: QUERY_HULL_HEAD numbers (its face count F, its lowest and highest y), then F faces of
+// QUERY_HULL_FACE numbers (an outward normal nx, ny, nz and d: the solid is where
+// nx x + ny y + nz z <= d for every face). Hulls follow one another in one array.
+QUERY_HULL_HEAD :: 3;
+QUERY_HULL_FACE :: 4;
+QUERY_HULL_FACES_MAX :: 128;
+QUERY_HULL_FLAT :: 0.00006103515625;   // 2^-14: a face whose normal is this near level is a side, not a top or a bottom
 QUERY_HEIGHTFIELDS_MAX :: 16;
 
-QueryShape :: enum u8 { none; ground; box; capsule; floor; heightfield; }
+QueryShape :: enum u8 { none; ground; box; capsule; floor; heightfield; hull; }
 QueryStatus :: enum u8 { ok; invalid; terrain; exhausted; capacity; }
 
 // A borrowed, read-only mesh. Its ground queries use the same drawn triangles as terrain.
@@ -134,6 +141,7 @@ Colliders :: struct {
   capsules: [] f32;
   floors: [] f32;      // STAND_FLOATS numbers each (aethyr/stand.coax)
   heightfields: [] QueryHeightfield;
+  hulls: [] f32;       // convex solids, QUERY_HULL_HEAD + F * QUERY_HULL_FACE numbers each
   heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
   // Semantic selections can contain no base surface. The compatibility
   // default still supplies the realm's flat ground when it has no mesh.
@@ -192,6 +200,12 @@ query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryG
   h := stand_top(c.floors, c.floors.count / STAND_FLOATS, x, z, below, f32(QUERY_FLOOR_PAD));
   if h.y > out.y && query_finite(h.y) {
     out = QueryGround.{y = h.y, gx = h.gx, gz = h.gz, shape = QueryShape.floor, index = h.id};
+  }
+  k := query_hull(c.hulls, 0); n := 0;
+  while k.ok {
+    t := query_hull_top(c.hulls, k, x, z);
+    if t.over && t.y <= below && t.y > out.y { out = QueryGround.{y = t.y, gx = t.gx, gz = t.gz, shape = QueryShape.hull, index = n}; }
+    k = query_hull(c.hulls, k.next); n += 1;
   }
   out.steep = stand_steep(StandHit.{gx = out.gx, gz = out.gz});
   return out;

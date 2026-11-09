@@ -20,6 +20,30 @@ source-linked listings or examples. Sketches in it are illustrative only.
 The physics engine and the spacecraft chapters, first drafted here this way,
 are now Parts IV and V of [the Aethyr book](../../aethyr/book/README.md).
 
+## Start here
+
+- **What you build.** A machine-learning library: tensors, running
+  published models from their original weights, a decision service,
+  training and serving.
+- **What you need.** Basic programming and arithmetic. For the language,
+  the Coax book's Parts I–III.
+- **The order.** This book runs original published models (Part II) before
+  it trains anything (Part X). You see real results early, and training
+  then reuses operations you already trust.
+- **The core path.** Chapters 1–6 (tensors), 7, 9 and 12–17 (a decision
+  model from original weights, and whether its probabilities are any good),
+  18–20 (a live decision API), 24 (a Pylon), 28 and 29 (a game asks for a
+  decision), 103, 104, 112 and 115 (learning, gradients and a tiny decoder)
+  and 238 (pay for verified work). The model families in Parts VII–IX and
+  the modalities in Parts XIII–XVIII are branches. Read the ones you need.
+- **Decisions, not text.** A decision model returns one choice from a typed
+  set, with a probability. Code can branch on it, check it and price it.
+  Parts II–IV and XXII build this, [Coder](../../coder/book/README.md)
+  uses it to choose an engine, and
+  [Everglade](../../everglade/book/README.md)'s guard uses it in a game.
+- **Where this book sits.** See [the OpenAgents books](../../docs/books/README.md) for the whole library. The
+  [contents](SUMMARY.md) name all 25 parts.
+
 ## Chapter status
 
 The [chapter registry](chapters.json) records every chapter's number, title,

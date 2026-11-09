@@ -1,5 +1,12 @@
 # Completing the four books
 
+> **Scope.** This plan was written on 2026-11-01 for four books: Coax,
+> Psionic, Aethyr and Nostr. Bitcoin, Coder and Everglade have their own
+> plans in their book folders and are not covered here. For all seven
+> books, start at [the OpenAgents books](README.md). As of 2026-11-09 the
+> priority is the books the releases depend on: Aethyr Parts I–III, VI, XII
+> and XIII, and Everglade.
+
 Reconciled against `main` on 2026-11-01, starting at `6f4c722640`. This is the
 shared delivery sequence for [Coax](../../coax/book/README.md),
 [Psionic](../../psionic/book/README.md), [Aethyr](../../aethyr/book/README.md) and

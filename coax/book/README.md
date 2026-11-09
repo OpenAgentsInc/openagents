@@ -12,6 +12,9 @@ lets you write checks that the compiler runs for you.
 The [Introduction](introduction.md) explains why Coax exists. If you'd
 rather start typing, go straight to [Chapter 1](ch01-getting-started.md).
 
+Every other OpenAgents book is written in Coax and assumes Parts I–III of
+this one. See [the OpenAgents books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/README.md) for the whole library and the order to read it in.
+
 ## Who this book is for
 
 We assume you've programmed before, in any language. You don't need to

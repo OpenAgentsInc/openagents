@@ -35,6 +35,22 @@ then read chapters 1, 2, 9–11, 14 and 23. For the full architecture, follow
 the numbered chapters and use chapter 21 to distinguish implementation
 checks from measurements of real coding outcomes.
 
+## Start here
+
+- **What you build.** A coding agent's harness: the loop, the log, typed
+  tools, a sandbox, engines, many tasks and an agent that stays online.
+- **What you need.** The Coax book's Parts I–III. Psionic helps for the
+  chapters that serve a model.
+- **The core path.** Chapters 1, 2, 4 and 5 (the loop, the log, tools and
+  the sandbox), 9–11 (engines), 14 (forks and jobs), 17 (many tasks), 20
+  (staying online), 21 (measurement) and 23 (the command line).
+- **Two books in one.** Parts I–VI and VIII build Coder. Part VII is a
+  field guide: it reads other coding agents' source at a pinned revision
+  and records what Coder takes from each. Those chapters describe the other
+  tool as it was at that revision.
+- **Where this book sits.** Coder is the agent that reads the other books.
+  See [the OpenAgents books](../../docs/books/README.md) for the whole library.
+
 ## Status
 
 Written 2026-11-01; counts as of 2026-11-05. Of the 38 chapters, 8 are

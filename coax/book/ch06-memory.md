@@ -920,7 +920,7 @@ lifetime: handles do not yet supply region checking.
 
 Long-lived in-memory references use handles. Saved state and messages use stable
 IDs, which are resolved again on load; `#persisted` refuses process-local handles.
-[Checked state changes](../checked-state.md) specifies the library, effect bounds,
+[Checked state changes](https://github.com/OpenAgentsInc/openagents/blob/main/coax/checked-state.md) specifies the library, effect bounds,
 rollback and persisted-value checks, including their remaining limits.
 
 ### Who owns what

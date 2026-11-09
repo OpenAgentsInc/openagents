@@ -133,8 +133,9 @@ pack_read :: (p: string, r: [] PackRead) -> bool #effects(all) {
     pk_off := pack_u32(p, pk_e + 4);
     pk_n := pack_u32(p, pk_e + 8);
     pk_name := pack_name(p[pk_e + 16..<pk_e + PACK_ENTRY]);
-    pk_first := ifx pk_k < 3 then pk_kind == pk_k + 1 else pk_kind == PACK_LAYER || pk_kind == PACK_SOUND;
-    if !pk_first || (pk_kind == PACK_LAYER && got[0].entries[pk_k - 1].kind == PACK_SOUND) { return pack_why(r, "an entry out of order", pk_k); }
+    pk_first := ifx pk_k < 3 then pk_kind == pk_k + 1 else pk_kind == PACK_LAYER || pk_kind == PACK_SOUND || pk_kind == PACK_DATA;
+    pk_prev := ifx pk_k > 0 then got[0].entries[pk_k - 1].kind else 0;
+    if !pk_first || (pk_kind == PACK_LAYER && (pk_prev == PACK_SOUND || pk_prev == PACK_DATA)) || (pk_kind == PACK_DATA && pk_prev == PACK_SOUND) { return pack_why(r, "an entry out of order", pk_k); }
     if p[pk_e + 2] != 0 || p[pk_e + 3] != 0 || pack_u32(p, pk_e + 12) != 0 || pk_name.count == 0 { return pack_why(r, "a malformed entry", pk_k); }
     if pk_off != pk_at || pk_off + pack_pad(pk_n) > p.count { return pack_why(r, "an entry out of place", pk_k); }
     for pk_z: pk_off + pk_n..<pk_off + pack_pad(pk_n) { if p[pk_z] != 0 { return pack_why(r, "an entry out of place", pk_k); } }
@@ -163,8 +164,8 @@ licence its own table entry carries:
 pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
   if t.count == 0 || t[t.count - 1] != '\n' { return pack_why(r, "a catalog that doesn't end its last line", 0); }
   pk_stated := 0; pk_layer := 0; pk_sound := 0; pk_at := 0;
-  pk_layers := 0; pk_sounds := 0;
-  for pk_k: 3..<r[0].count { if r[0].entries[pk_k].kind == PACK_LAYER { pk_layers += 1; } else { pk_sounds += 1; } }
+  pk_layers := 0; pk_sounds := 0; pk_datas := 0; pk_data := 0;
+  for pk_k: 3..<r[0].count { pk_t := r[0].entries[pk_k].kind; if pk_t == PACK_LAYER { pk_layers += 1; } else if pk_t == PACK_DATA { pk_datas += 1; } else { pk_sounds += 1; } }
   for pk_i: 0..<t.count {
     if t[pk_i] != '\n' { continue; }
     pk_line := t[pk_at..<pk_i]; pk_at = pk_i + 1;
@@ -192,9 +193,17 @@ pack_catalog :: (t: string, r: [] PackRead) -> bool #effects(all) {
       if !pk_ok || pk_lic < 0 || pk_lic >= r[0].sources || pk_lic != r[0].entries[pk_e].licence { return pack_why(r, "an asset without a declared licence", pk_e); }
       if pk_what == "T" { pk_layer += 1; } else { pk_sound += 1; }
     }
+    if pk_what == "D" {
+      pk_e := pack_nth(r, PACK_DATA, pk_data);
+      if pk_e == -1 { return pack_why(r, "a catalog line for an entry the pack doesn't have", 0); }
+      pk_lic := pack_number(pack_field(pk_line, 3));
+      if pack_number(pack_field(pk_line, 1)) != pk_data || pk_lic < 0 || pk_lic >= r[0].sources || pk_lic != r[0].entries[pk_e].licence { return pack_why(r, "an asset without a declared licence", pk_e); }
+      pk_data += 1;
+    }
   }
   if pk_stated != 2 { return pack_why(r, "a catalog that misstates the pack", 0); }
   if pk_layer != pk_layers { return pack_why(r, "an asset without a declared licence", pack_nth(r, PACK_LAYER, pk_layer)); }
+  if pk_data != pk_datas { return pack_why(r, "an asset without a declared licence", pack_nth(r, PACK_DATA, pk_data)); }
   if pk_sound != pk_sounds { return pack_why(r, "an asset without a declared licence", pack_nth(r, PACK_SOUND, pk_sound)); }
   return true;
 }

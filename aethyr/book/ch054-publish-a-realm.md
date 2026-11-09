@@ -477,3 +477,16 @@ published" and a visitor's spec has the published revision; after PUBLISH,
 [chapter 37](ch037-measure-the-engine-honestly.md) (measurement),
 [chapter 51](ch051-a-realm-is-a-document.md) and
 [chapter 53](ch053-bring-in-assets.md).
+
+## In the other books
+
+A published realm has an owner and, when claimed, a maker who is paid.
+
+- Signing in and proving who published: [Nostr chapter 49](../../nostr/book/ch049-http-auth.md)
+  builds the signed HTTP requests that the API checks.
+- A world definition as a signed event anyone can read:
+  [Nostr chapter 85](../../nostr/book/ch085-live-media-worlds-and-experience.md).
+- Tips to a maker's Lightning address:
+  [Nostr chapter 71](../../nostr/book/ch071-lightning-zaps-and-goals.md) and
+  [Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md). The product
+  flow is in [Realm makers](../../docs/verse/makers.md).

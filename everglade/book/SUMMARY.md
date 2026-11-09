@@ -22,6 +22,11 @@
 - [10. Hold 60 frames per second](ch010-hold-60-frames-per-second.md) (partly implemented)
 - [11. One address](ch011-one-address.md) (partly implemented)
 
+## Part IV: Other players
+
+- [12. The room](ch012-the-room.md) (partly implemented)
+- [13. Coming back](ch013-coming-back.md) (partly implemented)
+
 ## Part V: The SRD as code
 
 - [14. Ability scores, proficiency and the d20](ch014-ability-scores-proficiency-and-the-d20.md) (partly implemented)

@@ -403,3 +403,18 @@ references.
 - DeepSeek Harness team, "Exploring Super-agent Design: Towards a More
   Autonomous Agent System" (Yujia Qiao et al.), and its
   `dsh-superagent-prototype` plugin.
+
+## In the other books
+
+The Router's sources today are local triggers and GitHub. The same shape
+fits work published on Nostr and paid in Bitcoin:
+
+- A project's queue as signed events:
+  [Nostr chapter 98](../../nostr/book/ch098-projects-on-nostr.md).
+- One agent that logs in, claims a job once, answers and is paid, offline:
+  [Nostr chapter 102](../../nostr/book/ch102-agents-on-nostr.md).
+- An agent's treasury and its spending limit:
+  [Bitcoin chapter 122](../../bitcoin/book/ch122-agent-treasuries.md).
+
+A Nostr source for the Router, and a Worker that is paid for a checked
+result, are not built.

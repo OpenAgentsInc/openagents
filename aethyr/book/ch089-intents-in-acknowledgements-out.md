@@ -50,9 +50,10 @@ send a stick of 500.
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
 eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat_id, text); return; }   // (room-oldwire.coax)
-  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  r: [1] WireRd; link:=wire_is(text,"J1");
+  r[0] = wire_rd(text,ifx link then 2 else 1);
   w := wire_read_in(text, r[..]);
-  if !r[0].ok || eg_fields(text) != 9 { return; }
+  if !r[0].ok || eg_fields(text) != 9 || (link && !wire_link_input_ok(w.b)) { return; }
   eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   st := v[0].eg[k].seat[seat..<seat + 1];
@@ -65,7 +66,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   }
   st[0].q[n] = EgIn.{seq = seq, kx = eg_clamp(w.kx, -100, 100), ky = eg_clamp(w.ky, -100, 100),
                      px = eg_clamp(w.px, -100, 100), py = eg_clamp(w.py, -100, 100),
-                     theta = eg_clamp(eg_round(w.theta * f32(WIRE_FINE)), -40000, 40000), b = eg_clamp(w.b, 0, 31), at = v[0].mono_ms};
+                     theta = eg_clamp(eg_round(w.theta * f32(WIRE_FINE)), -40000, 40000), b = eg_clamp(w.b, 0, ifx link then 511 else 31), at = v[0].mono_ms};
   st[0].q_n = n + 1;
 }
 ```

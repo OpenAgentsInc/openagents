@@ -349,10 +349,7 @@ jump:
 <!-- source: aethyr/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
-step :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
-  if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
-    return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
-  }
+step_body :: (w: World, given: Player, dt: f32) -> Player #effects(all) {
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;

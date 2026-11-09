@@ -139,4 +139,5 @@ What checks it today, and what doesn't yet:
 
 ## What comes next
 
-Part IV adds other players: one room that every player sees the same way.
+Part IV adds other players. [Chapter 12](ch012-the-room.md) builds the room:
+one simulation that every player sees the same way.

@@ -57,6 +57,7 @@ Ticket :: struct {
   owner: int;             // the character's owner generation the API issued with it (#12834; 0 none): its vitals lines carry it
   schema: int = TICKET_SCHEMA;   // the format of what it brings back (HP, XP, WANTED): the room admits it only up to RV_SCHEMA (#12839)
   capture: CharacterCapture;     // ticket v4's signed durable resume profile (schema 2)
+  rest: CharacterRest;           // and a profile 3 capture's rest (#13046)
 }
 ```
 
@@ -98,3 +99,14 @@ through `rm_join` with a ticket and with a forged one.
 ## Dependencies
 
 Chapter 86 (the server).
+
+## In the other books
+
+- The player key behind a ticket is a Nostr key. Signatures over events are
+  built in [Nostr chapter 21](../../nostr/book/ch021-events-ids-and-signatures.md),
+  on the Schnorr signatures of
+  [Bitcoin chapters 23 and 24](../../bitcoin/book/ch023-verify-a-schnorr-signature.md).
+- [Everglade chapter 12](../../everglade/book/ch012-the-room.md) joins a
+  room with this ticket, and
+  [chapter 13](../../everglade/book/ch013-coming-back.md) uses it to return
+  a player to where they stood.

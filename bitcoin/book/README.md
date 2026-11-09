@@ -27,6 +27,30 @@ You need the Coax language (its book's Parts I–III). The [plan](PLAN.md)
 gives the order and each chapter's dependencies, done criteria and
 specifications. The [contents](SUMMARY.md) list the written chapters.
 
+## Start here
+
+- **What you build.** Bitcoin and Lightning from bytes up, checked against
+  published vectors and Bitcoin Core.
+- **Why Bitcoin.** An agent that earns needs money that no account holder
+  can withhold or reverse, that a program can verify by itself, and that
+  works in amounts as small as one decision. OpenAgents uses only Bitcoin
+  rails for that reason.
+- **What you need.** The Coax book's Parts I–III.
+- **A short path: from a signature to a payment.** Chapters 1–4 (bytes,
+  big integers, constant time, SHA-256), 13–16 (the curve), 23 and 24
+  (Schnorr), 27–29 (addresses), 34–36 (transactions and script), 41 and 43
+  (Taproot), then 104–106, 108 and 109 (a channel) and 113 and 114 (pay an
+  invoice). The node, Parts IX–XIV, is a second path.
+- **The book and the product wallet.** The first OpenAgents wallet uses
+  Breez's Spark SDK ([docs/lightning](../../docs/lightning/README.md)). This
+  book's code teaches and checks, and other OpenAgents code reuses parts of
+  it, such as the signature hashes. The wallet's payments go through the
+  SDK. The node decides no money for OpenAgents until the chapters named in
+  the rules below are done.
+- **Where this book sits.** [Nostr From Scratch](../../nostr/book/README.md)
+  builds identity and markets on this book's cryptography. See [the OpenAgents books](../../docs/books/README.md) for
+  the whole library.
+
 ## Rules
 
 - No outside cryptography, Bitcoin or Lightning library. libsecp256k1,

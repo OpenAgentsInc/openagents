@@ -24,6 +24,7 @@ reading order and the [introduction](README.md) the result of each chapter.
 | X. Aethyrforge: generating worlds | 79–80 | A set piece chosen from a typed catalogue by a semantic selector, and terrain and scatter laid out from a seed. |
 | XI. Shipping realms | 81–85 | Saves that survive schema changes, code changed while a realm runs, inspection and profiling of a running realm, one realm on every host, and accessibility and languages. |
 | XII. Many players | 86–101 | One headless server that owns the scene; shared step, rules and world; signed seats; intents and acknowledgements; prediction; one replication model with a budget and one interpolation buffer; effects as state; offline as a local server; combat rules under latency; interest without leaks; versions, deploys and reconnect; measurement; the drift proof; the Everglade room. |
+| XIII. Actions and conditions | 102 | One pipeline for every action (ask, act, present), one bearing that drives the pose, the input lock and the hotbar from a body's conditions, and a feel contract that a check enforces. |
 
 ## Engine-core tasks
 

@@ -172,6 +172,47 @@ defaults to 75 percent. Set `--near-limit P` or `COAX_NEAR_LIMIT=P` to a
 whole percent from 1 to 100. Notes do not enlarge limits. Structured
 `--diagnostics json` includes the capacity and proposed fixes.
 
+## Bring a unit back under its limits
+
+A large unit can sit near several limits at once. When it does, every new
+feature fails with E0400 until something is removed. Raising a limit with
+`#traversal` or `#steps` only postpones the next failure. Fix the cause.
+
+The near-limit note names the top users. In practice they are these, most
+costly first:
+
+1. **A large struct passed by value.** Every call copies every field, and
+   each field is one traversal visit. Pass a view of a one-element array,
+   an index, or only the fields the procedure reads.
+2. **A check that holds two large values at once.** Value slots count live
+   storage. A check that needs two worlds can usually build one, assert,
+   and then build the other.
+3. **A copy taken to read one field.** `x := s[0].big;` copies all of
+   `big`. Read the field through the view.
+4. **One check that covers many cases.** Split it. Each check has its own
+   budget, and unchanged checks are reused from the cache.
+5. **A scratch value built in a loop.** Build it once outside the loop and
+   reuse it.
+
+The example above shows the first cause. Change `step` to take a view, and
+the 2,054,000 visits for copying arguments go away:
+
+```jai
+step :: (g: [] Game) -> int { return g[0].tick + 1; }
+```
+
+This sketch is illustrative; it is not a checked example.
+
+One Everglade unit shows the scale of the effect. It stood at 97% of its
+traversal limit, 97% of its value slots and 84% of its steps, and each new
+feature took several rounds of fixes to fit. Passing the character and
+world records as views, holding one world per check and splitting the
+largest checks brought value slots to 65% and every check's traversal
+under 75%. Two raised `#traversal` limits were then removed (#13094).
+
+Run with `--near-limit 60` while you work on a large unit, so a note
+appears before a refusal does.
+
 ## What remains planned
 
 An unchanged authority compile replays its near-limit notes from the cached

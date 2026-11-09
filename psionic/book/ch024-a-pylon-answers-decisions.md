@@ -638,3 +638,15 @@ coverage and the unchanged decision-mode regression.
 
 See the [verification record](../../docs/verification/psionic-ch19-2026-10-29.md)
 for what ran and the exact swaps.
+
+## In the other books
+
+- The beacon and the service receipt as Nostr events, verified and read:
+  [Nostr chapter 82](../../nostr/book/ch082-pylons-environments-and-deploys.md).
+- A Pylon's relay login and sealed requests:
+  [Nostr chapter 100](../../nostr/book/ch100-pylons-and-the-mesh.md).
+- The Pylon's key and its owner's wallet from one seed:
+  [Bitcoin chapter 121](../../bitcoin/book/ch121-one-seed-for-nostr-and-bitcoin.md).
+- One decision followed from a game to a payment:
+  [A guard's decision is paid for](../../docs/books/capstones/a-guard-decision-is-paid-for.md),
+  a design draft.

@@ -545,3 +545,19 @@ psionic/check.sh --only peer/pay
   [chapter 180](ch180-observe-meter-and-price.md).
 - [The Breez Spark wallet plan](../../docs/lightning/README.md).
 - [Exact computation notes](../docs/exact-computation.md).
+
+## In the other books
+
+This chapter stops at a payment intent. The payment itself is built
+elsewhere:
+
+- A Lightning invoice and its checks:
+  [Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md).
+- Finding a route and paying:
+  [Bitcoin chapter 113](../../bitcoin/book/ch113-find-a-route-and-pay.md).
+- Paying for an HTTP request over Lightning:
+  [Nostr chapter 86](../../nostr/book/ch086-lightning-payments-for-requests.md).
+- A fixed-price order settled against a payment preimage:
+  [Nostr chapter 80](../../nostr/book/ch080-jobs-labor-and-markets.md).
+- The step from this chapter's intent to a settled payment is open. See
+  [A guard's decision is paid for](../../docs/books/capstones/a-guard-decision-is-paid-for.md).

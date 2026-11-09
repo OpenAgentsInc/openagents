@@ -352,3 +352,26 @@ hand first, then the runnable version, then the broken case.
   core paths and to new chapters.
 - **Don't loosen the promotion rule to raise the implemented counts.** The
   rule is why the books can be trusted.
+
+## Follow-up, 2026-11-09
+
+The same day, these steps from the list above were done:
+
+| Step | Done | Left |
+| --- | --- | --- |
+| 1. Series front page | [The OpenAgents books](../README.md) and the [glossary](../glossary.md) | — |
+| 2. Reader introductions | A "Start here" section at the top of each book's README | The status tables stay in each README, because the book checks read them there. Moving them needs a checker change. |
+| 3. Core paths | [Paths](../paths.md) covers all seven books | Runnable routes for Bitcoin, Coder and Everglade |
+| 4. Capstone 1 | [Design draft](../capstones/a-guard-decision-is-paid-for.md) | Five owner decisions listed in the draft; capstones 2 and 3 |
+| 5. Aethyr and Everglade | Everglade chapters 12 and 13; Aethyr chapter 102 on the action pipeline; 11 drifted Aethyr listings copied again from source; the SRD license statement | Listings and runnable examples for the Everglade chapters; Everglade Parts VI–IX |
+| 6. Psionic parts | The contents name all 25 parts | A decision on volumes |
+| 7. Reverse links | Aethyr 54, 55 and 88, Psionic 24 and 238, Coder 17, and the Everglade README link to Nostr and Bitcoin | A full pass over each book |
+
+The book checks had been failing on `main` before these changes, which hid
+the drift: a missing registry source for Aethyr 93, the 11 Aethyr listings,
+three Coax excerpts and one Coax link. Those are fixed. One failure
+remains and needs a person or agent to review compiler changes: the
+capability claims `coax.wgsl.current` and `psionic.language.current` in
+`coax/book/capability-claims.json` report changed evidence
+(`coax/lib/compiler/wgsl.coax`, `coax/src/shader.cpp` and
+`verse/everglade/gpu.bindings`).

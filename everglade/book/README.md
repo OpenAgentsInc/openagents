@@ -1,10 +1,24 @@
 # Building Everglade
 
-**Status: drafting.** This page sets out the book's structure and flow.
-Chapters 1 to 11 and 14 to 18 are drafted, each marked partly implemented.
-They copy listings only from source that already has `// book:begin` markers;
-the rest wait until the code moves into `everglade/`. The
-[contents](SUMMARY.md) list them. The other chapters are planned.
+**Status: drafting.** Chapters 1 to 18 are drafted, each marked partly
+implemented. They copy listings only from source that already has
+`// book:begin` markers; the rest wait until the code moves into
+`everglade/`. The [contents](SUMMARY.md) list them. Chapters 19 to 32 are
+planned.
+
+## Start here
+
+- **What you build.** An MMORPG you play in a browser: a forest glade, a
+  path, other players, SRD rules and action combat.
+- **What you need.** The [Coax book](../../coax/book/README.md)'s Parts
+  I–III. The [Aethyr book](../../aethyr/book/README.md)'s Parts I–III help,
+  and each chapter links to the engine chapter it uses.
+- **A short path.** Chapters 1, 3, 4, 8, 12, 14 and 18 take you from one
+  reference picture to a shared world with rules, in about two hours of
+  reading.
+- **Where this book sits.** Everglade is where the other books meet. See
+  [the OpenAgents books](../../docs/books/README.md) for the whole library
+  and [Where the other books come in](#where-the-other-books-come-in) below.
 
 Everglade is an MMORPG built on the
 [D&D 5E System Reference Document](https://www.dndbeyond.com/srd) (SRD 5.2.1).
@@ -187,6 +201,36 @@ something you can walk around in and test.
 Parts I through V exist today. Parts VI and VII are in progress: an armoured
 guard on the path to test NPC pathing and aggro, and the Ranger's longbow to
 attack him with. Parts VIII and IX are planned.
+
+## Where the other books come in
+
+Everglade uses every other book. Each chapter links to the chapter that
+builds what it uses.
+
+| Everglade | Uses | From |
+| --- | --- | --- |
+| Parts I–III: the land, the light, movement | The frame loop, terrain, collision, the renderer and budgets | [Aethyr](../../aethyr/book/README.md) Parts I–III |
+| Part IV: other players | The room server, the shared step, signed seats, prediction and interest | Aethyr Part XII, chapters [86](../../aethyr/book/ch086-one-server-owns-the-scene.md) to [98](../../aethyr/book/ch098-versions-deploys-and-reconnect.md) |
+| Parts V and VII: rules and action combat | One pipeline for every action, and one bearing from a body's conditions | [Aethyr chapter 102](../../aethyr/book/ch102-ask-act-present.md) |
+| Part VI: the guard | A decision that arrives while play continues, and a guard that asks a Pylon | [Psionic chapters 28](../../psionic/book/ch028-a-decision-arrives-while-play-continues.md) to [32](../../psionic/book/ch032-a-guard-gives-directions.md) |
+| Signing in and your player key | Keys, signed events and HTTP auth | [Nostr chapters 21](../../nostr/book/ch021-events-ids-and-signatures.md) and [49](../../nostr/book/ch049-http-auth.md) |
+| Tips to a realm's maker | Lightning zaps and invoices | [Nostr chapter 71](../../nostr/book/ch071-lightning-zaps-and-goals.md), [Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md) |
+
+The capstone
+[A guard's decision is paid for](../../docs/books/capstones/a-guard-decision-is-paid-for.md)
+follows one guard decision from the room to a Pylon and to a payment. It is
+a design draft.
+
+## The SRD license
+
+This work includes material from the System Reference Document 5.2.1 ("SRD
+5.2.1") by Wizards of the Coast LLC, available at
+<https://www.dndbeyond.com/srd>. The SRD 5.2.1 is licensed under the Creative
+Commons Attribution 4.0 International License, available at
+<https://creativecommons.org/licenses/by/4.0/legalcode>.
+
+The same statement is in the rules' source as `SRD_ATTRIBUTION`. Everglade is
+not affiliated with or endorsed by Wizards of the Coast.
 
 [Appendix A](appendix-a-a-fantasy-hud.md) covers Everglade's fantasy HUD.
 

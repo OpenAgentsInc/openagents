@@ -280,6 +280,39 @@ colliders.
 // What a camera shows: the eye, and the point it looks at.
 CameraShot :: struct { eye: WorldPoint; at: WorldPoint; }
 
+// A camera's optics, with the names and units of Blender's physical camera (bpy.types.Camera and
+// its CameraDOFSettings), so Blender and Unreal cameras map one to one (GitHub #13004). Lengths on
+// the sensor are millimetres; distances in the world are metres. Only a film render (aethyr/film.coax)
+// reads the depth of field; a live frame draws a pinhole with the same lens.
+LENS_FIT_AUTO :: 0;          // the image's larger side spans sensor_width
+LENS_FIT_HORIZONTAL :: 1;    // its width spans sensor_width
+LENS_FIT_VERTICAL :: 2;      // its height spans sensor_height
+CameraLens :: struct {
+  lens: f32 = 50;                 // focal length, mm
+  sensor_width: f32 = 36;         // mm
+  sensor_height: f32 = 24;        // mm
+  sensor_fit: int = LENS_FIT_AUTO;
+  shift_x: f32; shift_y: f32;     // the principal point's shift, a share of the sensor's larger side
+  clip_start: f32 = 0.1;          // m
+  clip_end: f32 = 1000;           // m
+  use_dof: bool;
+  focus_distance: f32 = 10;       // m, unless focus_entity names what to focus on
+  focus_entity: int = -1;         // the realm's id of what the lens follows (Blender's focus_object)
+  aperture_fstop: f32 = 2.8;
+  aperture_blades: int;           // 0: a round aperture
+  aperture_rotation: f32;         // radians
+  aperture_ratio: f32 = 1;        // anamorphic squeeze
+}
+// The lens of a vertical field of view (radians) on the default sensor, for a camera that kept
+// only an angle: the height spans the sensor's width when the image is taller than wide (AUTO).
+lens_of_fov :: (fov_y: f32, aspect: f32) -> CameraLens {
+  c: CameraLens;
+  if !(fov_y > 0) || !(fov_y < 3.14) || !(aspect > 0) { return c; }
+  height := ifx aspect >= 1 then c.sensor_width / aspect else c.sensor_width;
+  c.lens = height / (2 * tan(fov_y / 2));
+  return c;
+}
+
 SHOT_TOP_UP :: 22.0;       // top down: the eye, above the feet
 SHOT_TOP_BACK :: 0.01;     // and this far toward -Z, so the view has a forward direction
 

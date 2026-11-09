@@ -1,15 +1,50 @@
 # Paths through the books
 
-The four books with routes here are [The Coax Programming Language](../../coax/book/README.md),
+There are seven books. [The OpenAgents books](README.md) introduces them,
+the argument they share and the order to read them in. This page gives a
+short core path in each book, and then the routes you can run from a
+terminal today.
+
+## A core path in each book
+
+Each book has more chapters than you need on a first read. These are the
+chapters to read first. Chapter numbers are each book's own.
+
+| Book | Core path | What you can do at the end |
+| --- | --- | --- |
+| [Coax](../../coax/book/README.md) | Parts I–II (chapters 1–12), then 16, 18, 20, 24 and 41 | Write checked Coax, cross a C boundary and keep a unit inside its compile limits. |
+| [Aethyr](../../aethyr/book/README.md) | Parts I–III (1–17), then 51–55, 86–101 and 102 | Build a playable realm, publish it and run it for many players. |
+| [Everglade](../../everglade/book/README.md) | 1, 3, 4, 8, 12, 14 and 18 | Follow one game from a reference picture to a shared world with rules. |
+| [Psionic](../../psionic/book/README.md) | 1–7, 9, 12–20, 24, 28, 29, 103, 104, 112, 115 and 238 | Run a decision model from original weights, serve it, and train a tiny decoder. |
+| [Coder](../../coder/book/README.md) | 1, 2, 4, 5, 9–11, 14, 17, 20, 21 and 23 | Build a harness and drive a coding agent from the command line. |
+| [Bitcoin](../../bitcoin/book/README.md) | 1–4, 13–16, 23, 24, 27–29, 34–36, 41, 43, 104–106, 108, 109, 113 and 114 | Go from a signature to a Lightning payment. |
+| [Nostr](../../nostr/book/README.md) | Parts I–V (14–44), then 80, 82, 86 and 102 | Sign and verify events, run a client and a relay, and follow one agent's job. |
+
+Paths by what you want to do:
+
+| You want to | Read |
+| --- | --- |
+| Make a realm | Coax Parts I–II, then Aethyr's core path. Everglade shows each piece in use. |
+| Build or drive an agent | Coax Parts I–II, then Coder's core path, then Psionic 12–20 for decisions. |
+| Run a Pylon | Psionic 7, 12–20 and 24–27, then Nostr 82 and 100. |
+| Understand how agents are paid | Bitcoin's core path, Nostr 80, 86 and 102, Psionic 238, and the capstone [A guard's decision is paid for](capstones/a-guard-decision-is-paid-for.md). |
+| Read as an agent | Start with the [glossary](glossary.md) and each book's `chapters.json`, which names every chapter's source files and status. |
+
+## Runnable routes
+
+Four books have routes you can run here:
+[The Coax Programming Language](../../coax/book/README.md),
 [Psionic: ML From Scratch](../../psionic/book/README.md),
 [Building Aethyr, World Engine](../../aethyr/book/README.md) and
 [Nostr From Scratch](../../nostr/book/README.md). Chapter numbers below are
-each book's own. Two more books have no runnable route yet:
+each book's own. Three more books have no runnable route yet:
 [Coder: Coding Agents From Scratch](../../coder/book/README.md), whose harness
-chapters moved from Part XXI of the Psionic book, and
+chapters moved from Part XXI of the Psionic book;
 [Bitcoin From Scratch](../../bitcoin/book/README.md), Nostr's companion, which
 took over the cryptography chapters Nostr used (Nostr chapters 1–13, 15 and
-18).
+18); and [Building Everglade](../../everglade/book/README.md). No route yet
+ends in a realm you can play or a payment you can see. The
+[capstones](README.md#capstones) are the plan for those.
 
 The [supported-route catalog](routes.json) declares four bounded CPU routes.
 The [delivery process](DELIVERY.md) explains clean-checkout execution, selective

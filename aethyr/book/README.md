@@ -15,13 +15,32 @@ rebuilds every realm from them. Part VIII adds sound; it needs only Part I
 and can be read at any point after it. Parts IX–XI plan the rest of a game engine:
 water, weather, effects, creatures and other world systems; Aethyrforge's
 generation tools; and what a realm needs to ship. Part XII builds a multiplayer
-engine, from one headless server to the full Everglade room. You need the Coax language (its book's
+engine, from one headless server to the full Everglade room. Part XIII builds
+the action pipeline that every class and monster uses: ask, act, present. You need the Coax language (its book's
 Parts I–III) and, for Part IV onward, Psionic's tensor programs
 ([Psionic chapters 3–6 and 37–38](../../psionic/book/ch037-a-coax-compute-subset.md)).
 
 The [plan](PLAN.md) gives the order, the prerequisites of each branch and the
 Coax features each part waits for. The [contents](SUMMARY.md) list every
 chapter.
+
+## Start here
+
+- **What you build.** A real-time engine, one checked piece per chapter,
+  and then the realms that run on it.
+- **What you need.** The Coax book's Parts I–III. Part IV onward also needs
+  Psionic chapters 3–6, 37 and 38.
+- **The core path.** To make a playable, shared realm, read Parts I–III
+  (chapters 1–17), then chapters 51–55 (a realm as a document, published
+  and forked), then Part XII (chapters 86–101, many players) and
+  [chapter 102](ch102-ask-act-present.md) (actions). Parts IV and V, physics
+  and spacecraft, are an advanced branch. You don't need them to make a
+  game.
+- **See it used.** [Building Everglade](../../everglade/book/README.md)
+  builds one game on this engine, and links back to the chapter each piece
+  comes from.
+- **Where this book sits.** See [the OpenAgents books](../../docs/books/README.md) for the whole library, the shared
+  method and the [glossary](../../docs/books/glossary.md).
 
 ## Status
 
@@ -52,8 +71,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-The registry records 14 implemented chapters, 53 partly implemented chapters
-and 34 design drafts. An implemented chapter is
+The registry records 14 implemented chapters, 55 partly implemented chapters
+and 33 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -306,5 +325,11 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [99. Watch the whole action path](ch099-watch-the-whole-action-path.md) | Partly implemented: native C (the action path's vitals every 10 s: tick by workload, queues, bytes, relevance, acks and refusals) | The action path measured stage by stage: tick percentiles by workload, queue depth and age, bytes by message type, entities per seat, join bursts and input-to-acknowledgement time. |
 | [100. Prove the room plays like the game](ch100-prove-the-room-plays-like-the-game.md) | Partly implemented: native C and headless Chrome (the drift check under shaped networks; bots that walk, cast and fight) | The drift check plays one session offline and in a local room at local, 100 and 250 ms with 2% loss and compares what is drawn; bots that fight; the counterexample that motivated this part. |
 | [101. The Everglade room](ch101-the-everglade-room.md) | Partly implemented: native C on 6 Cloud Run shards (16 rooms of 16 seats a process; the 60-raider raid) | Everglade's rooms: 16 seats, 16 rooms a process, 6 Cloud Run shards placed by the API's directory, and the Cultist Raid of up to 60 raiders on the server. |
+
+### XIII. Actions and conditions
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| [102. Ask, act, present](ch102-ask-act-present.md) | Partly implemented: native C and browser Wasm (ask, answer and show; one bearing from SRD conditions; a feel contract) | Every action of every class and monster asks, waits for the authority's answer and only then presents; one bearing drives the pose, the input lock and the hotbar from a body's conditions; and a check fails when an action lacks an animation, an effect, a sound or a movement. Zones wire the pipeline in and hold no copy of it. Not built: a runnable example and the remaining shared modules (#13079 to #13088). |
 
 [Appendix A](appendix-mmo-gap-analysis.md) compares these chapters with an MMO-capable engine, capability by capability, and links the issues for each gap.
