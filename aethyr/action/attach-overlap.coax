@@ -169,6 +169,14 @@ overlap_test_oracle :: (v: [12] f32) -> f32 #effects(all) {
   #assert overlap_distance(o, o, overlap_test_p(1, 0, 0), overlap_test_p(1 - 2 * m, 0, 0)) < 1;
 }
 
+#test "short crossing segments whose lines nearly meet find their crossing, not the floor's guess" {
+  // 2^-15 long, crossing at 45 degrees: a e - b b is 2^-60, far above the floor (OVERLAP_FLAT squared)
+  // and far below 2 OVERLAP_FLAT, so a floor any larger would start s near 0 and miss the crossing
+  m: f32 = 0.000030517578125;
+  h: f32 = 0.0000152587890625;
+  #assert overlap_distance(overlap_test_p(0, h, 0), overlap_test_p(m, h, 0), overlap_test_p(0, 0, 0), overlap_test_p(m, m, 0)) == 0;
+}
+
 overlap_test_arm :: () -> [2] OverlapCapsule #effects(all) {
   return [2] OverlapCapsule.[
     OverlapCapsule.{id = 9, a = overlap_test_p(0, 1.4, 0), b = overlap_test_p(0, 1.15, 0), radius = 0.04},   // a forearm, hanging
