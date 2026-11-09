@@ -19,6 +19,26 @@ cgr_image :: (image:string)->string {
   end:=colon+1;while end<image.count && image[end]!='-' {end+=1;}
   value:=image[colon+1..<end];return ifx cg_revision(value) then value else "";
 }
+// A revision made before deploy.sh labelled coax-commit, whose spec has only the image's digest
+// (REPOSITORY@sha256:...): where its '@' is (the repository before it, the digest after), -1 none.
+// Artifact Registry's tag of that digest names the commit (deploy.sh's COMMIT-STAMP).
+#test "a digest-only image splits into its repository and digest; its registry tag names the commit (#13070)" {
+  image:="us-central1-docker.pkg.dev/p/r/oa-room@sha256:f99dc1e2";at:=cgr_digest(image);
+  #assert at>0 && image[0..<at]=="us-central1-docker.pkg.dev/p/r/oa-room" && image[at+1..<image.count]=="sha256:f99dc1e2";
+  #assert cgr_digest("room:abcdef1-stamp")== -1 && cgr_digest("room@md5:12")== -1 && cgr_digest("@sha256:12")== -1;
+  #assert cgr_tag_commit("projects/p/locations/l/repositories/r/packages/oa-room/tags/6414ba56c4-20261105-174422")=="6414ba56c4";
+  #assert cgr_tag_commit("projects/p/packages/oa-room/tags/latest")=="";
+}
+cgr_digest :: (image:string)->int {
+  at:= -1;for ch,i:image {if ch=='@' {at=i;}}
+  if at<=0 || image.count-at-1<8 || image[at+1..<at+8]!="sha256:" {return -1;}
+  return at;
+}
+cgr_tag_commit :: (tag:string)->string {
+  slash:= -1;for ch,i:tag {if ch=='/' {slash=i;}}
+  word:=tag[slash+1..<tag.count];end:=0;while end<word.count && word[end]!='-' {end+=1;}
+  value:=word[0..<end];return ifx end<word.count && cg_revision(value) then value else "";
+}
 cgr_decimal :: (n:int,out:[]u8)->string {
   out[0]=cast(u8)('0'+n/10);out[1]=cast(u8)('0'+n%10);return cast(string)out[(ifx n<10 then 1 else 0)..<2];
 }
@@ -50,6 +70,28 @@ tool_main :: ()->int #export_c #effects(all) {
       // annotation retains the user-supplied tag on older gcloud revisions.
       annotationbuf:[4096]u8;
       if !cg_revision(commit) {length:=jv_str(r[0],jv_get(r[0],jv_path(r[0],0,"metadata.annotations"),"client.knative.dev/user-image"),annotationbuf[..]);if length>0 {commit=cgr_image(cast(string)annotationbuf[0..<length]);}}
+      // Older still (oa-room-00039, 2026-11-05): no label and no annotation, the spec only the image's
+      // digest. Artifact Registry keeps deploy.sh's tag (COMMIT-STAMP) on that digest.
+      tagbuf:[65536]u8;
+      if !cg_revision(commit) {
+        length:=jv_str(r[0],jv_path(r[0],0,"spec.containers[0].image"),imagebuf[..]);
+        image:=cast(string)imagebuf[0..<(ifx length>0 then length else 0)];at:=cgr_digest(image);
+        if at>0 {
+          pre:="--filter=version~";fb:[512]u8;digest:=image[at+1..<image.count];
+          if pre.count+digest.count<=fb.count {
+            for ch,q:pre {fb[q]=ch;}for ch,q:digest {fb[pre.count+q]=ch;}
+            tags:=[10]string.["gcloud","artifacts","docker","tags","list",image[0..<at],"--project",project,cast(string)fb[0..<pre.count+digest.count],"--format=json"];
+            tn:=cg_run(tags[..],tagbuf[..]);
+            tnodes:[1024]JvNode;t:[1]Jv;
+            if tn>0 && jv_parse(t[..],cast(string)tagbuf[0..<tn],tnodes[..]) && jv_kind(t[0],0)==JV_ARRAY {
+              for q:0..<jv_len(t[0],0) {
+                one:[1024]u8;on:=jv_str(t[0],jv_get(t[0],jv_at(t[0],0,q),"tag"),one[..]);
+                if on>0 && !cg_revision(commit) {c:=cgr_tag_commit(cast(string)one[0..<on]);if cg_revision(c) {for ch,w:c {annotationbuf[w]=ch;}commit=cast(string)annotationbuf[0..<c.count];}}
+              }
+            }
+          }
+        }
+      }
       if !cg_revision(commit) {tool_errln("compat room: serving revision has no retained source commit");return 1;}
       known:=false;for j:0..<count {if cast(string)seen[j].word[0..<seen[j].n]==commit {known=true;}}
       if known {continue;}if count>=seen.count {return 1;}
