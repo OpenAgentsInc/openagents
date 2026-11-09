@@ -3056,6 +3056,8 @@ lab_biome_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 lab_label_split :: (t:string)->int {for i:0..<t.count-1 {if t[i]==',' && t[i+1]==' ' {return i;}}return t.count;}
 lab_showcase_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  n:=at;x:=s[0].xc[..];px:=s[0].creator[0].player_x;pz:=s[0].creator[0].player_z;
+ // ?stage=build-cottage films its own house: the yards' labels would print over it
+ if s[0].creator[0].build_review {return n;}
  near:=false;for i:0..<xterrain.EXP_SHOWCASE_SITES {site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE+i);if xterrain.exp_distance(site,px,pz)<16 {near=true;}}
  if !near {return n;}
  // Nearest first; a label that would overlap a nearer one is left out, so a row across the walk
