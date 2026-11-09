@@ -214,14 +214,19 @@ emit() {   # unit header-base: its C and header into $work, from the cache or th
   local key="" began; began="$(now)"
   [[ -z "$cache" ]] || key="$(unit_key "$1" "$2")"
   printf '%s' "$key" > "$work/$2.key"
-  if [[ -n "$key" && -f "$cache/$key.h" ]] && from_cache "$cache/$key.c" "$work/$2.c" && from_cache "$cache/$key.h" "$work/$2.h"; then
+  # A unit with a headroom line needs its compile's notes, so its cached C
+  # counts only with them (entries made before the notes were kept compile again).
+  if [[ -n "$key" && -f "$cache/$key.h" ]] && { [[ -z "$(headroom_of "$2")" ]] || from_cache "$cache/$key.notes" "$work/$2.notes"; } &&
+     from_cache "$cache/$key.c" "$work/$2.c" && from_cache "$cache/$key.h" "$work/$2.h"; then
+    [[ ! -s "$work/$2.notes" ]] || grep '^coax: note\[' "$work/$2.notes" | sed 's/^/(cached) /' >&2 || true
     step "$2" coax_to_c hit "$began"; return 0
   fi
   local parts=(); [[ "$(unit_split "$1")" == 0 ]] || parts=(--split "$(unit_split "$1")" ${split_unit[@]+"${split_unit[@]}"})
   local source="$1"
   [[ -z "${COAX_FAST_EDIT:-}" ]] || source="$COAX_FAST_EDIT/source/$1"
-  (cd "$repo" && "$coax_driver" c "$source" --library "${profile[@]}" --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
-  [[ -z "$key" ]] || { keep "$work/$2.h" "$cache/$key.h"; keep "$work/$2.c" "$cache/$key.c"; }
+  # Its stderr goes on to ours and into $work/$2.notes, for the headroom check.
+  { (cd "$repo" && "$coax_driver" c "$source" --library "${profile[@]}" --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") 2>&1 > "$work/$2.c" | tee "$work/$2.notes" >&2; }
+  [[ -z "$key" ]] || { keep "$work/$2.notes" "$cache/$key.notes"; keep "$work/$2.h" "$cache/$key.h"; keep "$work/$2.c" "$cache/$key.c"; }
   step "$2" coax_to_c "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
 }
 object_key() {   # source [flags...]: the SHA-256 of clang, its flags and every file compiling source reads
@@ -240,6 +245,34 @@ compile() {   # name source [flags...]: $work/name.o from the cache or clang, an
   [[ -z "$key" ]] || keep "$work/$name.o" "$cache/$key.o"
   step "$name" clang "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
 }
+# Compile headroom (#13115): apps/openagents-web/wasm-headroom.txt (beside
+# the app's Coax) gives a unit, by its header base (fivelab, Sticks), the most
+# percent of any compile-time limit it may use. coax notes each limit used above
+# 75% (note[E0400] and the rest: "NAME: USED of LIMIT used (P%)", then its top
+# users); a unit past its line stops the build with those notes, so a creep
+# toward E0400 shows in the commit that makes it, not in a later one that fails.
+headroom_file="$repo/$(dirname "$coax_file")/wasm-headroom.txt"
+headroom_of() {   # header-base: its most percent, or nothing
+  [[ -f "$headroom_file" ]] || return 0
+  awk -v u="$1" '$1 == u && $2 ~ /^[0-9]+$/ { print $2; exit }' "$headroom_file"
+}
+headroom_check() {   # every unit with a line, against its notes
+  local unit base most over status=0
+  for unit in "${units[@]}"; do
+    base="${unit##*:}"; most="$(headroom_of "$base")"
+    [[ -n "$most" && -f "$work/$base.notes" ]] || continue
+    over="$(awk -v most="$most" '
+      /^coax: note\[/ { keep = 0; if (match($0, /\(([0-9]+)%\)/)) { p = substr($0, RSTART + 1, RLENGTH - 3) + 0; if (p > most) keep = 1 } }
+      !/^coax: note\[/ && !/^ / { keep = 0 }
+      keep { print }' "$work/$base.notes")"
+    [[ -n "$over" ]] || continue
+    echo "wasm.sh: $base uses more than $most% of a compile-time limit (${headroom_file#"$repo"/}):" >&2
+    printf '%s\n' "$over" | sed 's/^/  /' >&2
+    echo "wasm.sh: pass big values by view or slice, hold one at a time, or split the check; never raise the limit to fit." >&2
+    status=1
+  done
+  return "$status"
+}
 : > "$work/steps"
 started=$SECONDS; started_us="$(now)"
 if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then units+=("coax/web/fast-edit-offer.coax:fast-edit-policy"); fi
@@ -247,6 +280,7 @@ for unit in "${units[@]}"; do
   emit "${unit%%:*}" "${unit##*:}" & gen+=($!)
 done
 for pid in "${gen[@]}"; do wait "$pid"; done
+[[ "$mode" == dev ]] || headroom_check || exit 1
 if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then
   [[ "$mode" == dev ]] || { echo 'COAX_FAST_EDIT requires COAXIAL_MODE=dev' >&2; exit 2; }
   # Cache entries remain ordinary checked C; object keys hash the private

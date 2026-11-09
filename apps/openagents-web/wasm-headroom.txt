@@ -1,0 +1,12 @@
+# Compile headroom (coax/web/wasm.sh): a unit, by its header base, and the most
+# percent of any compile-time limit its Coax to C may use (E0400's steps,
+# traversal and value slots, and every other limit coax notes above 75%). A unit
+# past its line stops a release build and names the limit's top users. Cut the
+# use back (views or slices instead of copies, one big value at a time, split
+# checks); don't raise a limit with #steps or #traversal to fit.
+# fivelab reached 97% before #13094 cut it back; this line stops the next creep (#13115).
+# coax notes only uses above 75% (COAX_NEAR_LIMIT), so a line under 75 needs that set lower.
+#   UNIT PERCENT
+fivelab 85
+Everglade-step 85
+Sticks 85
