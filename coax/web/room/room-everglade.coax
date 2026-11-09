@@ -153,7 +153,7 @@ EgSeat :: struct {
   aid: E2Aid;
   familiar:E2Familiar;
   familiar_incense_used:bool;
-  familiar_hash:int; familiar_sent:int;
+  familiar_hash:int; familiar_sent:int; familiar_sense_sent:int;
   // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)
@@ -443,6 +443,7 @@ eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   if v[0].eg[k].seat[s].familiar.active>0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s].rite==SP_FIND_FAMILIAR { rs_rite_fail(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s," (disconnected)"); }
   v[0].eg[k].seat[s].familiar=E2Familiar.{};
   v[0].eg[k].seat[s].familiar_hash=0;
+  v[0].eg[k].seat[s].familiar_sense_sent=0;
   rv_note_seat(v, k, s_id); v[0].vit.flush = true;
   for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
   v[0].st.held += 1;
@@ -518,7 +519,7 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
 // A seat's frame (past the relay's rate limits and pings).
 eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4") || wire_is(text,"M5") || wire_is(text,"M6"))) { return; }
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4") || wire_is(text,"M5") || wire_is(text,"M6") || wire_is(text,"M7"))) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
@@ -1061,7 +1062,7 @@ rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   for s:0..<EG_SEATS {
     if !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed || v[0].eg[k].seat[s].conn<0 { continue; }
     eg_send(v,k,SeatId.{value=s});
-    if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); }
+    if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); }
   }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }

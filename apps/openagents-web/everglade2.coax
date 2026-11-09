@@ -499,6 +499,15 @@ e2_cam_ground :: (s: [] E2, p: figs.Point) {
 }
 // What to draw: the mode's shot of the orbit.
 e2_shot :: (s: [] E2) -> figs.Shot { return figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press); }
+e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
+  f:=e2n_familiar_view(s[0].net[..]);
+  if !f.live { return shot; }
+  eye:=figs.v3(f.x,e2_height(f.x,f.z)+0.45,f.z);
+  seen:=shot;
+  seen.eye=eye;
+  seen.at=figs.v3(eye.x+shot.at.x-shot.eye.x,eye.y+shot.at.y-shot.eye.y,eye.z+shot.at.z-shot.eye.z);
+  return seen;
+}
 #test "a drag looks up past the horizon, centred on you; on the land the eye holds and the view tilts on up" #steps 400000000 {
   s: [1] E2; s[0].k = 1; s[0].plant_done = true;
   e2_you(s[..], 0, 0, 0, 3.14159265); s[0].orbit = figs.verse_orbit_start(figs.v3(0, s[0].you_y, 0), 3.14159265);
@@ -628,7 +637,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].clock += step;
   e2_follow(s, step);
   e2c_arrive_step(s, step);
-  shot := e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_shot(s), step);
+  shot := e2_familiar_shot(s,e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_shot(s), step));
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
@@ -1798,7 +1807,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
   box:=e2k_familiar_orders_box(s[..]);
-  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.375,(box[1]+box[3])/2,0,0,1);
+  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.3,(box[1]+box[3])/2,0,0,1);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M4 4000001 2";
   e2n_record(n,"m4 4000000 2");
@@ -1809,7 +1818,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2n_familiar_order(n,3);
   e2n_record(n,"r 4000002 familiar");
   #assert e2n_familiar_message(n)=="FAMILIAR COMMAND REFUSED";
-  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.875,(box[1]+box[3])/2,0,0,1);
+  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.7,(box[1]+box[3])/2,0,0,1);
   q:=n[0].pipe[0]; step:=q.n-1;
   #assert cast(string)q.buf[q.from[step]..<q.from[step]+q.len[step]]=="M5 4000003";
   e2n_record(n,"m4 4000003 4"); #assert e2n_familiar_message(n)=="";
@@ -1827,10 +1836,37 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   e2n_record(n,cast(string)frame[0..<count]);
   n[0].familiar_rows[1]=E2nFamiliar.{live=true,x=s[0].you_x,z=s[0].you_z};
   box:=e2k_familiar_orders_box(s[..]);
-  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.9,(box[1]+box[3])/2,0,0,1);
+  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.75,(box[1]+box[3])/2,0,0,1);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M6 4000001 1";
   #assert !n[0].familiar_heal_cue;
   e2n_record(n,"m6 4000001");
   #assert n[0].familiar_heal_cue && e2n_familiar_message(n)=="FAMILIAR DELIVERED CURE WOUNDS";
+}
+
+#test "Everglade II familiar Sense follows the room viewpoint until it ends" #steps 1000000000 {
+  s:[1]E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
+  n:=s[0].net[..]; n[0].mono=100;
+  frame:[1024]u8; row:[WIRE_SF]s32; zero:[WIRE_SF]s32;
+  wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=5,max=12},row[..]);
+  count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
+  count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
+  e2n_record(n,cast(string)frame[0..<count]);
+  e2n_record(n,"m2 1 1 1 8 4000 -6000 1 1");
+  box:=e2k_familiar_orders_box(s[..]);
+  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.9,(box[1]+box[3])/2,0,0,1);
+  p:=n[0].pipe[0]; last:=p.n-1;
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M7 4000001";
+  base:=e2_shot(s[..]);
+  e2n_record(n,"m7 4000001");
+  #assert !e2n_familiar_view(n).live && e2n_familiar_message(n)=="BORROWED FAMILIAR SENSES";
+  e2n_record(n,"m8 2");
+  view:=e2_familiar_shot(s[..],base);
+  #assert view.eye.x==4 && view.eye.z== -6 && n[0].familiar_sense==2;
+  e2n_record(n,"m8 9");
+  #assert n[0].familiar_sense==2;
+  e2n_record(n,"m8 1");
+  #assert e2_familiar_shot(s[..],base).eye.x==4 && n[0].familiar_sense==1;
+  e2n_record(n,"m8 0");
+  #assert e2_familiar_shot(s[..],base).eye.x==base.eye.x && !e2n_familiar_view(n).live;
 }

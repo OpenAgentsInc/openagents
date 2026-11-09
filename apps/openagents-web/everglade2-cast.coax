@@ -48,7 +48,11 @@ e2k_on :: (s: [] E2) -> bool { return s[0].placed && !e2c_creating(s) && s[0].ca
 // One sound where it happens: softer the farther from you, panned the way the camera faces.
 e2k_cue :: (s: [] E2, name: string, gain: f32, x: f32, z: f32, rate: f32) {
   if name.count == 0 { return; }
-  dx := x - s[0].you_x; dz := z - s[0].you_z; d := sqrt(dx * dx + dz * dz);
+  f:=e2n_familiar_view(s[0].net[..]);
+  borrowed:=f.live && s[0].net[0].familiar_sense==2;
+  dx:=x-(ifx borrowed then f.x else s[0].you_x);
+  dz:=z-(ifx borrowed then f.z else s[0].you_z);
+  d:=sqrt(dx*dx+dz*dz);
   pan := ifx d > 0.5 then (dx * s[0].right[0] + dz * s[0].right[2]) / d * 0.7 else 0.0f32;
   exsound.experimental_sound_play(s[0].casts[0].audio[..], name, gain / (1 + d / 10), pan, rate);
 }
@@ -288,13 +292,14 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     n=e2k_line(out,n,r[0],r[3],r[2],r[3],1.2*kk,0.55,0.9,1);
     ink:=cc.ink(kk,0.55,0.9,1);
     orders:=e2k_familiar_orders_box(s);
-    labels:=[5]string.["POCKET","RECALL","RELEASE","STEP","CURE"];
+    labels:=[6]string.["POCKET","RECALL","RELEASE","STEP","CURE","SENSE"];
     order_count:=e2k_familiar_orders(s);
     wide:=(orders[2]-orders[0])/f32(order_count);
     for j:0..<order_count {
       order_x:=orders[0]+f32(j)*wide;
       n=e2k_line(out,n,order_x,orders[3],order_x+wide-2*kk,orders[3],1.2*kk,0.55,0.9,1);
-      n=cc.text(out,n,labels[j],order_x+(wide-f32(labels[j].count)*6*kk)/2,orders[1]+14*kk,8*kk,ink);
+      label:=labels[ifx j==order_count-1 then 5 else j];
+      n=cc.text(out,n,label,order_x+(wide-f32(label.count)*6*kk)/2,orders[1]+14*kk,8*kk,ink);
     }
     wizard:=net[0].klass==FB_CL_WIZARD;
     n=cc.text(out,n,ifx wizard then "FIND FAMILIAR" else "COMPANION",r[0]+4*kk,r[1]+14*kk,8*kk,ink);
@@ -337,7 +342,8 @@ e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
     if x>=orders[0] && x<orders[2] && y>=orders[1] && y<=orders[3] {
       if phase==0 {
         order:=1+int(f32(e2k_familiar_orders(s))*(x-orders[0])/(orders[2]-orders[0]));
-        if order==5 { _:=e2n_familiar_heal(s[0].net[..],e2k_familiar_heal_target(s)); }
+        if order==e2k_familiar_orders(s) { _:=e2n_familiar_order(s[0].net[..],6); }
+        else if order==5 { _:=e2n_familiar_heal(s[0].net[..],e2k_familiar_heal_target(s)); }
         else { _:=e2n_familiar_order(s[0].net[..],order); }
       }
       return true;
@@ -462,7 +468,7 @@ e2k_familiar_box :: (s:[]E2)->[4]f32 {
   return [4]f32.[r[0]-extra,r[1]-24*k,r[2]+extra,r[3]-24*k];
 }
 
-e2k_familiar_orders :: (s:[]E2)->int { return ifx s[0].net[0].klass==FB_CL_DRUID then 5 else 4; }
+e2k_familiar_orders :: (s:[]E2)->int { return ifx s[0].net[0].klass==FB_CL_DRUID then 6 else 5; }
 e2k_familiar_heal_target :: (s:[]E2)->int {
   n:=s[0].net[..]; own:=n[0].seat;
   if own<0 || own>=E2N_FAMILIARS || !n[0].familiar_rows[own].live { return -1; }

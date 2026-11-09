@@ -1,0 +1,10 @@
+{
+  "identity": "everglade-familiar-senses-v1",
+  "base_session": "everglade-session-v5",
+  "scope": "Everglade II only",
+  "request": "M7 SEQ",
+  "success": "m7 SEQ",
+  "refusal": "r SEQ familiar",
+  "state": "m8 MODE",
+  "modes": {"owner": 0, "sight": 1, "sight_and_hearing": 2}
+}

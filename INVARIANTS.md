@@ -7602,3 +7602,9 @@ Everglade II Druids can deliver Cure Wounds through their familiar. The
 room checks the target seat, mutual block state and contact from the
 familiar. The shared executor uses the Druid's saved Magic action and
 spell slot and spends the familiar's Reaction on admission.
+
+Everglade II borrowed familiar senses spend the owner's saved Bonus
+Action. The room publishes viewpoint state only to the owner. The
+shared link and start of the owner's next turn determine when it ends.
+The client also requires a current familiar row to move its camera or
+spatial spell listener.

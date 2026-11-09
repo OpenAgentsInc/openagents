@@ -955,7 +955,7 @@ familiar through the room snapshot. The preset provides one incense
 supply per seat visit. The room fixtures cover the ritual, the paid cast,
 and blocked completion preserving both incense and the spell slot. The
 page fixture verifies the mode and spirit request and the room's status
-messages. Borrowed senses still need Everglade II integration.
+messages.
 
 Everglade II now exposes Pocket, Recall and Release to Druids and Wizards.
 The room checks ownership and the saved Magic action. Pocket and recall
@@ -983,3 +983,11 @@ The Druid's Magic action and first-level slot and the familiar's Reaction
 are spent on success. The owner hears the existing Cure Wounds cue at
 the familiar after the room confirms the cast. Everglade II's social
 profile still treats offensive casts as untargeted.
+
+Everglade II's Sense control spends the owner's saved Bonus Action and
+uses the shared familiar link. The room reports the borrowed viewpoint
+and hearing state to the owner. The camera uses the familiar's position,
+and spatial spell cues use it when the familiar can hear. The camera
+returns when the link ends or the owner's next turn starts. The outdoor
+view uses its existing lighting. Special-sense lighting and animal
+presentation remain separate work.

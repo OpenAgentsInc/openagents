@@ -121,17 +121,18 @@ e2_familiar_ask :: (v:[]RmServer,k:int,id:SeatId,text:string) {
   wizard:=wire_is(text,"M3");
   step:=wire_is(text,"M5");
   touch:=wire_is(text,"M6");
-  lifecycle:=wire_is(text,"M4") || step || touch;
+  sense:=wire_is(text,"M7");
+  lifecycle:=wire_is(text,"M4") || step || touch || sense;
   if !wizard && !lifecycle && !wire_is(text,"M1") { return; }
   rd:=[1]WireRd.[wire_rd(text,2)];
-  seq:=wire_num(text,rd[..]); choice:=ifx step then 4 else wire_num(text,rd[..]);
+  seq:=wire_num(text,rd[..]); choice:=ifx sense then 6 else ifx step then 4 else wire_num(text,rd[..]);
   slot:=ifx lifecycle then 0 else wire_num(text,rd[..]);
   spirit:=ifx wizard then wire_num(text,rd[..]) else RS_FAMILIAR_FEY;
   if !rd[0].ok || wire_more(text,rd[..]) || seq<=0 { return; }
   req:=v[0].eg[k].seat[id.value].familiar;
   if seq<=req.last { return; }
   req.last=seq;
-  valid:=ifx touch then choice>=0 && choice<EG_SEATS else ifx lifecycle then step || (choice>=1 && choice<=3) else choice>=0 && choice<RS_FAMILIAR_FORMS.count && slot>=0 && slot<=9 &&
+  valid:=ifx touch then choice>=0 && choice<EG_SEATS else ifx lifecycle then step || sense || (choice>=1 && choice<=3) else choice>=0 && choice<RS_FAMILIAR_FORMS.count && slot>=0 && slot<=9 &&
     spirit>=RS_FAMILIAR_FEY && spirit<=RS_FAMILIAR_FIEND;
   if req.pending>0 || req.active>0 || !valid {
     eg_refuse(v,k,id,seq,"familiar");
@@ -343,6 +344,27 @@ e2_familiar_heal :: (v:[]RmServer,k:int,s:int,req:E2Familiar)->bool {
   return ok;
 }
 
+e2_familiar_sense :: (r:[]E5rRoom,s:int)->bool {
+  if !r[0].familiar_ready || !r[0].live[s] { return false; }
+  b:=r[0].b[..]; seat:=r[0].seat[s..<s+1];
+  if !seat[0].open { return false; }
+  fb_seat_in(b,seat);
+  ok:=rs_familiar_borrow_senses(b,seat[0].me);
+  fb_seat_out(b,seat);
+  return ok;
+}
+e2_familiar_sense_state :: (v:[]RmServer,k:int,s:int) {
+  room:=v[0].eg[k..<k+1]; st:=room[0].seat[s..<s+1]; b:=room[0].rules[0].b[..];
+  owner:=E5RR_SEAT+s;
+  f:=rs_familiar_observer(b,owner);
+  mode:=ifx f==owner then 0 else ifx rs_has(b[0].c[f],RS_DEAFENED) then 1 else 2;
+  if mode==st[0].familiar_sense_sent && room[0].tick%EG_HZ!=0 { return; }
+  st[0].familiar_sense_sent=mode;
+  out:[32]u8;
+  n:=wire_int(out[..],wire_put(out[..],0,"m8"),mode);
+  rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
+}
+
 e2_familiar_commit :: (v:[]RmServer,k:int) {
   room:=v[0].eg[k..<k+1];
   for s:0..<EG_SEATS {
@@ -353,7 +375,9 @@ e2_familiar_commit :: (v:[]RmServer,k:int) {
     if req.wizard { e2_wizard_cast(v,k,s,admitted); continue; }
     st[0].familiar=E2Familiar.{last=req.last};
     ok:=false;
-    if admitted && st[0].placed && req.order==5 {
+    if admitted && st[0].placed && req.order==6 {
+      ok=e2_familiar_sense(room[0].rules[..],s);
+    } else if admitted && st[0].placed && req.order==5 {
       ok=e2_familiar_heal(v,k,s,req);
     } else if admitted && st[0].placed && req.order==4 {
       ok=e2_familiar_step(room[0].rules[..],s,req,room[0].familiar_reactions[s..<s+1]);
@@ -364,7 +388,7 @@ e2_familiar_commit :: (v:[]RmServer,k:int) {
     }
     if !ok { eg_refuse(v,k,id,req.pending,"familiar"); continue; }
     out:[64]u8;
-    kind:=ifx req.order==5 then "m6" else ifx req.order==4 then "m5" else ifx req.order>0 then "m4" else "m1";
+    kind:=ifx req.order==6 then "m7" else ifx req.order==5 then "m6" else ifx req.order==4 then "m5" else ifx req.order>0 then "m4" else "m1";
     n:=wire_int(out[..],wire_put(out[..],0,kind),req.pending);
     if req.order<4 { n=wire_int(out[..],n,ifx req.order>0 then req.order else req.form); }
     rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
@@ -546,4 +570,25 @@ e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
   #assert b[0].c[1].hp>1 && b[0].c[0].slots[1]==slots-1 && b[0].c[f].reacted && r[0].seat[0].turn.action;
   out:[16384]u8;
   #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"m6 3");
+}
+
+#test "e2 familiar: borrowed senses spend the owner's Bonus Action and expire" #steps 4000000000 {
+  v:[1]RmServer;
+  k:=e2rt_room(v[..],"srd-druid-2");
+  #assert k>=0;
+  r:=v[0].eg[k].rules[..]; b:=r[0].b[..]; f:=rs_familiar_of(b,0);
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+  rm_heard(v[..],0,"M1 1 8 0"); rc_test_tick(v[..],k,true);
+  #assert !b[0].c[f].dead;
+  rm_heard(v[..],0,"M7 2"); rc_test_tick(v[..],k,true);
+  #assert r[0].seat[0].turn.bonus && rs_familiar_observer(b,0)==f;
+  out:[16384]u8;
+  got:=e2rt_heard(v[..],0,out[..]);
+  #assert eg_test_has(got,"m7 2") && eg_test_has(got,"m8 2");
+  b[0].c[f].cond|=RS_DEAFENED;
+  rc_test_tick(v[..],k,true);
+  #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"m8 1");
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+  rc_test_tick(v[..],k,true);
+  #assert rs_familiar_observer(b,0)==0 && eg_test_has(e2rt_heard(v[..],0,out[..]),"m8 0");
 }
