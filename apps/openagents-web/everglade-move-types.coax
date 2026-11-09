@@ -25,3 +25,11 @@ EgBody :: struct {
   vx: f32; vy: f32; vz: f32; ground: bool; air: bool;  // air: the controller shows you airborne
   show_vx: f32; show_vz: f32; rooted: bool;            // the velocity your body's clip goes by
 }
+
+
+// Optional SRD jump envelope. A zero mode keeps the ordinary world controller.
+EG_JUMP_DENIED :: 1;
+EG_JUMP_HIGH :: 2;
+EG_JUMP_LONG :: 3;
+EgJump :: struct { mode:int; feet:int; height:f32; span:f32; }
+EgMotionIntent :: struct { walk:bool; jump:bool; }

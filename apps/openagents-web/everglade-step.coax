@@ -289,17 +289,41 @@ eg_test_step :: (p0: walk.Player, key_y: f32, jump: bool) -> walk.Player #effect
 // Experimental combat's proportional walking rate. This is an opt-in native
 // surface; the ordinary shared/replayed controller export remains unchanged.
 eg_step_advance_scaled :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32)->walk.Player #export_c #effects(reads,writes,traps) {
-  if scale==1 { return eg_step_advance(p0,w,bodies,walls,floors,frame); }
+  return eg_step_advance_jump(p0,w,bodies,walls,floors,frame,scale,EgJump.{});
+}
+eg_step_advance_jump :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32,floors:[]f32,frame:f32,scale:f32,jump:EgJump)->walk.Player #export_c #effects(reads,writes,traps) {
+  p:=p0;
+  if jump.mode==EG_JUMP_DENIED { p.jumps.waiting=0; }
+  shaped:=jump.mode==EG_JUMP_HIGH || jump.mode==EG_JUMP_LONG;
+  if scale==1 && !shaped { return eg_step_advance(p,w,bodies,walls,floors,frame); }
   if !walk.finite(scale) || scale<0 || w.aboard || (w.link_flags&32)!=0 {
     return walk.collision_report(p0,scaled_collision.CollideResult.{status=scaled_collision.CollideStatus.bad_profile});
   }
-  p:=p0;
   if scale==0 { p.vel.x=0; p.vel.z=0; }
   profile:=link_collision.collision_profile_lookup("everglade");
   world:=walk.World.{bodies=bodies,walls=walls,floors=floors,collision=profile.profile};
   if !w.deck && bodies.count>=7 && p.pos.y>0.6 { bodies[4]=1.9; bodies[6]=0.62; }
   if (w.link_flags&512)!=0 { world.locomotion.run_speed=9.2; }
   world.locomotion.walk_speed*=scale; world.locomotion.run_speed*=scale;
+  if shaped && walk.walk_counts(p,frame)>0 {
+    launch:=p.on_ground && p.jumps.waiting>0;
+    if jump.mode==EG_JUMP_HIGH {
+      world.locomotion.jump_speed=sqrt(2*world.locomotion.gravity*jump.height);
+      world.locomotion.walk_speed=0;
+      world.locomotion.run_speed=0;
+      p.vel.x=0; p.vel.z=0;
+    } else if scale>0 {
+      // Match the horizontal allowance to the ordinary jump's flight time.
+      speed:=jump.span*world.locomotion.gravity/(2*world.locomotion.jump_speed);
+      world.locomotion.walk_speed=speed;
+      world.locomotion.run_speed=speed;
+      if launch {
+        direction:=walk.wish(p);
+        p.vel.x=direction.x*speed;
+        p.vel.z=direction.z*speed;
+      }
+    }
+  }
   return walk.advance_scaled_in(world,p,frame);
 }
 #test "combat walking rate speeds and slows actual motion while keeping the same controller clock" {
@@ -331,7 +355,6 @@ eg_step_advance_scaled :: (p0:walk.Player,w:EgMoveWorld,bodies:[]f32,walls:[]f32
 
 // Same dead zone and world input gates as the actual controller. Consumers
 // pair this intent with admitted body displacement; it is not movement itself.
-EgMotionIntent :: struct { walk:bool; jump:bool; }
 eg_step_motion_intent :: (input:EgMoveIn,w:EgMoveWorld)->EgMotionIntent #export_c #effects(reads,writes,traps) {
   if w.busy || w.still || w.aboard { return EgMotionIntent.{}; }
   pad:=sqrt(input.pad_x*input.pad_x+input.pad_y*input.pad_y);
@@ -372,4 +395,24 @@ eg_contact_clear :: (bodies:[] f32,fx:f32,fy:f32,fz:f32,tx:f32,ty:f32,tz:f32)->b
   rock:=[7]f32.[-0.5,0.9,0,0.5,0.9,0,0.35];
   #assert !eg_contact_clear(rock[..],0,0,-0.6,0,0,0.6);
   #assert eg_contact_clear(rock[..],0,1,-0.6,0,1,0.6);
+}
+
+#test "SRD jump envelopes reach their physical height and length through the fixed controller" {
+  w:=EgMoveWorld.{deck=true}; empty:[1]f32;
+  for mode:EG_JUMP_DENIED..<EG_JUMP_LONG+1 {
+    p:=walk.walk_place(0,0,0,0);
+    jump:=EgJump.{mode=mode,height=0.9144,span=2.4384};
+    peak:=0.0f32;
+    for tick:0..<64 {
+      input:=EgMoveIn.{jump=tick==0,key_y=1};
+      p=eg_step_begin(p,input,w,f32(walk.STEP));
+      p=eg_step_advance_jump(p,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),1,jump);
+      peak=walk.hi(peak,p.pos.y);
+      if p.on_ground { break; }
+    }
+    if mode==EG_JUMP_DENIED { #assert peak==0; }
+    if mode==EG_JUMP_HIGH { #assert peak>0.84 && peak<0.92 && p.pos.z==0 && p.on_ground; }
+    if mode==EG_JUMP_LONG { #assert peak>1 && abs(p.pos.z)>2.25 && abs(p.pos.z)<2.55 && p.on_ground; }
+    #assert p.collision_refusals==0;
+  }
 }

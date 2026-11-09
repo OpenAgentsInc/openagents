@@ -72,6 +72,7 @@ XcCombat :: struct {
   objects:[XC_OBJECTS]XcObject;
   started: bool; klass: int = 11; level: int = 1;
   rest_seen:bool; rest_settled:bool; rest_refused:bool;
+  jump:EgJump; jump_run:f32; jump_x:f32; jump_z:f32;
   dash_until: f32 = -1; dash_face: f32;
   wave: XcWave; wave_until: f32 = -1;
   bar: [XC_SLOTS] FbAb; bar_n: int;
@@ -219,6 +220,7 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   b[0].c[0].turn_at = t; b[0].c[0].round_at = ro;
   rs_place(b, 0, XC_MID, XC_MID);
   x[0].seat[0] = FbSeat.{me = 0};
+  x[0].jump_run=0;
   x[0].klass = c;
   x[0].bar_n = xc_actions(x[0].bar[..], xc_bar_level(c, x[0].level, x[0].bar[..]), b[0].c[0]);
   xc_order_bar(x); x[0].arranging = false;
@@ -1493,6 +1495,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   if f == 934 { return x[0].shown; }
   if f == 935 { return x[0].suppressed; }
   if f == 936 { return x[0].stops.n; }
+  if f == 937 { return cast(int)(s[0].creator[0].player_y*1000); }
   if f >= 990 && f < 996 { return ifx hs[0].enemies[f - 990].stopped then 1 else 0; }
   if f == 907 { return x[0].last_dmg; }
   if f == 908 { return hs[0].hp; }
@@ -2598,4 +2601,30 @@ xc_check_ai_rate :: (speed:int)->bool {
   #assert xdungeon.dg_sight(-40.5,-40,-37.5,-42.5) && !xdungeon.dg_sight(-40.5,origin_z,-37.5,-42.5);
   #assert xc_use_on(s[..],slot,-2);
   #assert b[0].c[1].hp<100 && b[0].c[2].hp==100;
+}
+
+#test "Experimental jump uses Strength and an admitted run-up, then pays on takeoff" #steps 2000000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  x:=s[0].xc[..]; b:=x[0].b[..];
+  ground:=EgBody.{ground=true}; intent:=EgMotionIntent.{walk=true,jump=true};
+  b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
+  b[0].c[0].score[RS_STR]=8;
+  standing:=lab_jump_plan(s[..],ground,intent,true);
+  #assert standing.mode==EG_JUMP_LONG && standing.feet==4;
+  lab_rest_motion(s[..],ground,EgBody.{x=3.1,ground=true,vx=1},true,false);
+  running:=lab_jump_plan(s[..],EgBody.{x=3.1,ground=true},intent,true);
+  #assert running.feet==8;
+  long_body:=lab_keep_body(s[..],EgBody.{x=3.1,ground=true},EgBody.{x=8,y=0.1,vy=6});
+  #assert abs(long_body.x-3.1-running.span)<0.0001 && x[0].seat[0].turn.move_left==0 && x[0].seat[0].turn.move_feet==2;
+  b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
+  lab_rest_motion(s[..],ground,EgBody.{x=3.1,ground=true,vx=1},true,false);
+  b[0].c[0].score[RS_STR]=16;
+  #assert lab_jump_plan(s[..],EgBody.{x=3.1,ground=true},intent,true).feet==10;
+  lab_rest_motion(s[..],ground,ground,false,false);
+  high:=lab_jump_plan(s[..],ground,EgMotionIntent.{jump=true},true);
+  #assert high.mode==EG_JUMP_HIGH && high.feet==3 && !x[0].seat[0].turn.moved;
+  body:=lab_keep_body(s[..],ground,EgBody.{x=1,y=0.1,vy=6});
+  #assert body.y>0 && body.x==0 && x[0].seat[0].turn.moved && x[0].jump_run==0;
+  b[0].c[0].cond|=RS_PRONE;
+  #assert lab_jump_plan(s[..],ground,intent,true).mode==EG_JUMP_DENIED;
 }

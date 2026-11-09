@@ -1987,7 +1987,7 @@ LabWalk :: struct { on: bool; put: bool; x: f32; y: f32; z: f32; face: f32; }
 // token moved by what the rules did (a shove, a new battle).
 lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
   w: LabWalk;
-  if s[0].creator[0].experimental {if s[0].creator[0].hostiles[0].ready && s[0].creator[0].hostiles[0].hp<=0 {return w;}w.on=true;if s[0].put_on {w.put=true;w.x=s[0].put_x;w.y=s[0].put_y;w.z=s[0].put_z;w.face=s[0].put_face;s[0].put_on=false;s[0].you_on=true;}else if !s[0].you_on {w.put=true;s[0].you_on=true;}if w.put {s[0].you_x=w.x;s[0].you_y=w.y;s[0].you_z=w.z;s[0].you_face=w.face;s[0].creator[0].player_x=w.x;s[0].creator[0].player_y=w.y;s[0].creator[0].player_z=w.z;}return w;}
+  if s[0].creator[0].experimental {if s[0].creator[0].hostiles[0].ready && s[0].creator[0].hostiles[0].hp<=0 {return w;}w.on=true;if s[0].put_on {w.put=true;w.x=s[0].put_x;w.y=s[0].put_y;w.z=s[0].put_z;w.face=s[0].put_face;s[0].put_on=false;s[0].you_on=true;}else if !s[0].you_on {w.put=true;s[0].you_on=true;}if w.put {s[0].xc[0].jump=EgJump.{};s[0].xc[0].jump_run=0;s[0].you_x=w.x;s[0].you_y=w.y;s[0].you_z=w.z;s[0].you_face=w.face;s[0].creator[0].player_x=w.x;s[0].creator[0].player_y=w.y;s[0].creator[0].player_z=w.z;}return w;}
   if !s[0].started || !s[0].player || s[0].me < 0 || s[0].golden { s[0].you_on = false; return w; }
   b := bt(s);
   me := s[0].me;
@@ -2092,13 +2092,73 @@ lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
   r := you_box(s);
   return P3.{x = lo(r.x1, hi(r.x0, x)), z = lo(r.y1, hi(r.y0, z))};
 }
+// Translate the saved SRD turn to a physical jump envelope. Only an admitted
+// rise commits its cost. A running start measures accepted ground motion.
+lab_jump_plan :: (s:[] Lab,origin:EgBody,intent:EgMotionIntent,pending:bool)->EgJump #export_c #effects(all) {
+  x:=s[0].xc[..];
+  if !s[0].creator[0].experimental || !x[0].started { return EgJump.{}; }
+  if !origin.ground { return x[0].jump; }
+  x[0].jump=EgJump.{};
+  if !pending { return x[0].jump; }
+  plan:=EgJump.{mode=EG_JUMP_DENIED};
+  b:=x[0].b[..]; seat:=x[0].seat[..];
+  saved:=seat[0].turn;
+  fb_seat_in(b,seat);
+  if rs_jump_ready(b,0) {
+    b[0].turn.run_ft=ifx x[0].jump_run>=3.048 then 10 else 0;
+    score:=rs_jump_score(b[0].c[0]);
+    full:=ifx intent.walk then score else rs_max(3+rs_mod(score),0);
+    feet:=rs_jump_reach(b,full);
+    left:=rs_movement_left(b,0);
+    if intent.walk { feet=rs_min(feet,left); }
+    if feet>0 && feet<=left {
+      plan.mode=ifx intent.walk then EG_JUMP_LONG else EG_JUMP_HIGH;
+      plan.feet=feet;
+      if intent.walk { plan.span=f32(feet)*f32(XC_FT); }
+      else { plan.height=f32(feet)*f32(XC_FT); }
+    }
+  }
+  fb_seat_out(b,seat); seat[0].turn=saved;
+  x[0].jump=plan; x[0].jump_x=origin.x; x[0].jump_z=origin.z;
+  return plan;
+}
+lab_jump_limit :: (s:[] Lab,origin:EgBody,body0:EgBody)->EgBody {
+  body:=body0; x:=s[0].xc[..]; plan:=x[0].jump;
+  if plan.mode<EG_JUMP_HIGH || origin.ground && body.ground { return body; }
+  dx:=body.x-x[0].jump_x; dz:=body.z-x[0].jump_z;
+  span:=sqrt(dx*dx+dz*dz);
+  if span>plan.span {
+    body.x=x[0].jump_x+dx*plan.span/span;
+    body.z=x[0].jump_z+dz*plan.span/span;
+    body.px=body.x; body.pz=body.z; body.vx=0; body.vz=0;
+  }
+  return body;
+}
+lab_jump_pay :: (s:[] Lab)->bool {
+  x:=s[0].xc[..]; b:=x[0].b[..]; seat:=x[0].seat[..];
+  plan:=x[0].jump; saved:=seat[0].turn;
+  fb_seat_in(b,seat);
+  b[0].turn.run_ft=ifx x[0].jump_run>=3.048 then 10 else 0;
+  paid:=false;
+  if plan.mode==EG_JUMP_HIGH { paid=rs_high_jump(b,0)==plan.feet; }
+  else if rs_jump_ready(b,0) { paid=rs_jump_pay(b,0,plan.feet); }
+  fb_seat_out(b,seat);
+  if paid { x[0].jump_run=0; }
+  else { seat[0].turn=saved; x[0].jump=EgJump.{}; }
+  return paid;
+}
 // Admission between controller advance and body publication. The host only
 // transports this result back into the shared controller.
 lab_keep_body :: (s:[] Lab,origin:EgBody,proposed:EgBody)->EgBody #export_c #effects(all) {
-  body:=proposed; kept:=lab_keep(s,body.x,body.z); body.x=kept.x; body.z=kept.z;
+  body:=ifx s[0].creator[0].experimental then lab_jump_limit(s,origin,proposed) else proposed;
+  kept:=lab_keep(s,body.x,body.z); body.x=kept.x; body.z=kept.z;
   if body.x!=proposed.x { body.px=body.x; body.vx=0; }
   if body.z!=proposed.z { body.pz=body.z; body.vz=0; }
-  if s[0].creator[0].experimental && !xc_depart(s,origin,body) {
+  if s[0].creator[0].experimental {
+    takes_off:=s[0].xc[0].jump.mode>=EG_JUMP_HIGH && origin.ground && !body.ground && body.y>origin.y;
+    allowed:=xc_depart(s,origin,body);
+    if takes_off && (!allowed || !lab_jump_pay(s)) { return origin; }
+    if allowed { return body; }
     body.x=origin.x; body.z=origin.z;
     body.px=body.x; body.pz=body.z; body.vx=0; body.vz=0;
   }
@@ -2111,6 +2171,13 @@ lab_rest_motion :: (s:[]Lab,origin:EgBody,body:EgBody,walking:bool,jumping:bool)
   jumped:=jumping && origin.ground && !body.ground && body.y>origin.y;
   if s[0].creator[0].experimental {
     if s[0].xc[0].started {
+      if walked && origin.ground && body.ground {
+        dx:=body.x-origin.x; dz:=body.z-origin.z;
+        s[0].xc[0].jump_run=lo(3.048,s[0].xc[0].jump_run+sqrt(dx*dx+dz*dz));
+      } else if !walking || jumped || !body.ground || abs(body.vx)+abs(body.vz)<0.01 {
+        s[0].xc[0].jump_run=0;
+      }
+      if body.ground && !origin.ground { s[0].xc[0].jump=EgJump.{}; }
       settled:=body.ground && abs(body.vx)<0.01 && abs(body.vz)<0.01;
       s[0].xc[0].rest_seen=true; s[0].xc[0].rest_settled=settled && !walking && !jumping;
       observed:=rs_rest_observe_motion(s[0].xc[0].b[..],0,walked,jumped,settled);

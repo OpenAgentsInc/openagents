@@ -7470,3 +7470,12 @@ the forest's trunk and rock capsules. The room's saved turn and the shared
 `rs_healers_kit` executor decide the Action, charge and stabilization. The
 page presents the room's acknowledgment. See
 [Healer's Kit v1](docs/protocol/everglade-healers-kit-v1.md).
+
+## Experimental launches jumps from its saved SRD turn
+
+Experimental measures the running start from accepted grounded motion.
+Directional input chooses a Long Jump and a stationary press chooses a High
+Jump. The saved turn supplies the jump score, doubling and remaining movement.
+A refused controller step spends no movement. An admitted rise pays through
+the shared rules, and the body remains within the admitted horizontal reach.
+The ordinary controller keeps its own jump profile for other worlds.

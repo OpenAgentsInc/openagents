@@ -71,7 +71,7 @@ named below are selected evidence only, not exhaustive qualification.
 | CORE-DICE | Playing the Game pp.5-8 | Partial | `engine` SplitMix64, checks, `dice are fair and repeatable` | Rule inventory and independent deterministic vectors, M3 |
 | CORE-CHECKS | D20 Tests, proficiency pp.6-9 | Partial | Shared saving throws across combat executors; ability checks from explicit skill/tool training, expertise and Passive Perception (`ability-checks`, `check-training`); Help assistance ([checks](../verification/srd-ability-checks-2026-11-08/README.md), [saves](../verification/srd-saving-throws-2026-11-08/README.md), [Help](../verification/srd-help-2026-11-08/README.md)) | Geometry, full grant/build legality and remaining class/order bonuses, #13039/#13044 |
 | CORE-ACTIONS | Actions/combat pp.9-18 | Partial | `RsTurn` budgets; shared Dash, Disengage, Dodge, Help; opportunity triggers/attacks with reach and departure order; typed stat-block melee attacks; reaction slots and frames on the true turn; Ready (one attack, a move or a held spell, answered in the turn owner's order), Search, Study, Influence and Utilize, Hide by concealment, and Grapple and Shove as Unarmed Strike options with escape and dragging ([actions and movement](../verification/srd-actions-movement-2026-11-08/README.md), [Dash](../verification/srd-dash-2026-11-08/README.md), [Disengage](../verification/srd-disengage-2026-11-08/README.md), [opportunity](../verification/srd-opportunity-attack-2026-11-08/README.md), [strike reactions](../verification/srd-strike-reactions-2026-11-08/README.md)) | Experimental slots for Search, Study, Influence, Utilize and readied moves or spells; world triggers beyond a creature's deed, #13046 |
-| CORE-MOVEMENT | Movement and Position pp.14-15 | Partial | Grid movement with current-Speed walking credit, difficult terrain, crawling/Prone standing, pushes; physical controller uses the same rates ([movement credit](../verification/srd-movement-credit-2026-11-08/README.md), [physical scale](../verification/srd-physical-scale-2026-11-08/README.md)); strict continuous walking pays the turn's feet with Difficult Terrain, crawling and Dash, and the walker can't overspend ([world-profile evidence](../verification/srd-world-profile-2026-11-08/README.md)); climbing and swimming surfaces cost 5 extra feet without that Speed on the grid and in continuous walking, Long and High Jumps with run-ups, Step of the Wind and Jumper, and a grappler drags at 5 extra feet ([actions and movement](../verification/srd-actions-movement-2026-11-08/README.md)) | Sizes and geometry contracts; Experimental places no climbing or swimming surface and keeps its own jump; Shove's push is grid-only |
+| CORE-MOVEMENT | Movement and Position pp.14-15 | Partial | Grid movement with current-Speed walking credit, difficult terrain, crawling/Prone standing, pushes; physical controller uses the same rates ([movement credit](../verification/srd-movement-credit-2026-11-08/README.md), [physical scale](../verification/srd-physical-scale-2026-11-08/README.md)); strict continuous walking pays the turn's feet with Difficult Terrain, crawling and Dash, and the walker can't overspend ([world-profile evidence](../verification/srd-world-profile-2026-11-08/README.md)); climbing and swimming surfaces cost 5 extra feet without that Speed on the grid and in continuous walking, Long and High Jumps with run-ups, Step of the Wind and Jumper, and a grappler drags at 5 extra feet ([actions and movement](../verification/srd-actions-movement-2026-11-08/README.md)) | Sizes and geometry contracts; Experimental places no climbing or swimming surface; Shove's push is grid-only |
 | CORE-VISIBILITY | Playing the Game and Rules Glossary | Partial | Selected condition-based attack modifiers; you-can-see spell choices refuse unseen creatures and points before costs ([evidence](../verification/srd-casting-workflows-2026-11-08/README.md)); Half, Three-Quarters and Total Cover as world facts and from creatures between, Lightly and Heavily Obscured squares, unseen attackers and targets, Hide by concealment and Search by Perception ([actions and movement](../verification/srd-actions-movement-2026-11-08/README.md)) | Worlds don't yet place light or obscurement; monsters don't hide; an area's cover is read from the caster |
 | CORE-CONDITIONS | Rules Glossary pp.176-191 | Partial | All 15 named bits; shared condition permissions (movement/action/initiative), attack/save/critical/damage outcomes, cumulative Exhaustion levels, incapacitation interrupting sustained effects ([permissions](../verification/srd-condition-permissions-2026-11-08/README.md), [rolls](../verification/srd-condition-rolls-2026-11-08/README.md), [Exhaustion](../verification/srd-exhaustion-2026-11-08/README.md)) | Charmed's spell/stat-attack refusal, Frightened line of sight/approach and held items remain; owners and slice clauses are checked ([knockout and owners](../verification/srd-knockout-conditions-2026-11-08/README.md)) |
 | CORE-HP | Damage/healing/death pp.15-18 | Partial | Shared hit points, simultaneous save damage, death saves with bonuses, first aid stabilization and timed stable recovery ([HP](../verification/srd-hit-points-2026-11-08/README.md), [death saves](../verification/srd-death-saves-2026-11-08/README.md), [stabilization](../verification/srd-stabilization-2026-11-08/README.md)) | Knockout, Healer's Kit and source-example interaction fixtures done ([evidence](../verification/srd-knockout-conditions-2026-11-08/README.md)); HP-maximum-0 death has no slice producer |
@@ -763,3 +763,27 @@ Experimental hotbar adapter. An enemy visible from the blast's origin loses
 HP even though the caster cannot see it. A second enemy within the blast's
 radius keeps its HP because the wall is between it and the origin. The test
 fails when the adapter publishes caster cover in place of origin cover.
+
+### Experimental Strength-based jumps (#13030)
+
+Space makes a High Jump with no directional input and a Long Jump with
+directional input. Experimental uses the saved turn's shared jump score,
+running-start and Step of the Wind rules. A running start requires 10 feet of
+accepted grounded movement. The controller uses the shared reach and available
+movement to shape the jump. The shared engine charges the planned distance on
+an admitted takeoff. The ordinary walker resolves physical contact and landing.
+The jump adapter keeps the action world's existing movement budget. Its
+standing and running distances can therefore differ from a strict six-second
+turn.
+
+Checks cover a standing and running start, Strength, the current budget cap,
+movement payment on takeoff, Prone refusal and actual fixed-step trajectories.
+All nine selected Experimental checks and 51 existing combat checks passed.
+In muted headless WebGPU at 1280×900, Space raised the level 1 Wizard by
+275 mm and the Barbarian by 862 mm. Space with W moved them 1,219 mm and
+2,438 mm respectively from a standing start. The Lab Wasm built at
+2,644,940 bytes against the 2,645,000-byte cap. The earlier core movement
+mutation receipts still apply.
+
+The shipped Experimental terrain supplies no climb or swim surfaces. The
+shared engine covers those modes for worlds that supply the terrain facts.
