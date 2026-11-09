@@ -285,14 +285,50 @@ Render review cuts at 1080p, and capture headless.
 | 3:46 | "Pantone, you can be the cat" |
 | 3:48 | "Stay tuned" |
 
-## Open questions
+## Decisions (owner, 2026-11-09)
 
-1. **When does the video go out?** That decides between the real
-   time-lapses and the fallback.
-2. **Is the dragon flyable today?** If not, is the dragonback line shown
-   with a labeled planned shot, or with a horse?
-3. **How many plots does the clearing hold?** The town shot needs a number.
-   The spec leaves it open.
-4. **Voice.** Is this cut his camera audio only, or does it also use a
-   narrator line for the title and the end card?
-5. **Music.** Generated, as in the trailer, or licensed?
+1. **Release:** shot tonight, with the real time-lapses, not the fallback.
+2. **Mounts:** show both the dragon and the horse.
+3. **Plots:** 16, in a 4 by 4 grid.
+4. **Voice:** the owner's own voice only, with no narrator.
+5. **Music:** a generated bed, as for Episode 290.
+
+## Production
+
+The video follows Episode 292's format:
+
+- the world footage fills a 1920×1080 frame;
+- the owner's vertical take is a card at the top right;
+- captions sit at the bottom;
+- the music bed is ducked under his voice.
+
+**Source files** (on the Mac, not in git):
+
+| File | What it is |
+| --- | --- |
+| `~/Desktop/293.mp4` | The final talk: 1080×1920, 3:49 |
+| `~/work/film-out/audio/score-episode-293-v2.wav` | The bed retimed to the take: title at 0:36, houses at 2:16, town from 2:33 to 2:45, end at 3:42. The generator and stems are beside it. |
+| The scratch cut folder (`ep293/cut/`) | Captions (whisper, word-timed), `cut.json` (the cut list, a segment for each beat) and `assemble.py` (draws the captions and cards and composes the draft) |
+
+**What to collect:**
+
+| Beat (take time) | Shot | Status |
+| --- | --- | --- |
+| 0:00 Create Game button | The Grid turns into the glade | #13111. The draft uses Grid footage. |
+| 0:18 Engine, metaverse, tools | Everglade II, the Grid's gates, creation tools | Existing footage |
+| 0:30 Everglade title | The camera rises from the Character Create glade, then EVERGLADE | The draft uses the walk to the glade with the title overlaid. #13114 adds the keyed rise. |
+| 0:45 SRD | A cast with the roll on screen | #13114. The draft uses the raid promo. |
+| 0:57 Housing | The hut rising | #13106 and #13107 |
+| 1:03 Dragonback | The rider on the dragon | #13113. The horse is on staging now. |
+| 1:06 Destructible | The meteor on a house | Existing footage (Episode 290) |
+| 1:08 PvP | WANTED and the guards | Existing footage |
+| 1:10 Difficult | Death and retry | #13114 |
+| 1:32 The empty glade | The city clearing by the brook | #13093, then #13109 `city-empty` |
+| 1:45 Founder | Plots draw on | #13109 `founder` |
+| 2:16 Housewright | Gathering, then the time-lapses; lower-third "Housewright" at 2:22 | #13110 (gathering), #13106, #13107, #13108 |
+| 2:29 "You want to play?" | The cat | #13112 |
+| 2:33 The city grows | The town time-lapse | #13109 `city-grows` |
+| 2:49 AI with taste | A realm changing; reference against the glade; art credits | #13114 |
+| 3:08 Open source | The repository, a file, FORK | #13114 |
+| 3:25 The Verse, the link | The gate run; `everglade.world` | Existing footage, plus the link overlay |
+| 3:46 The cat | A cat in the glade | #13112 |
