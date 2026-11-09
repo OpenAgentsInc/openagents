@@ -18,7 +18,7 @@
 # Settings (environment):
 #   OA_REMOTE=0                  never use a host: run on this computer's slots
 #   OA_REMOTE_DAILY_USD          the most the hosts may cost over 24 hours (default 15)
-#   OA_REMOTE_MAX_HOSTS          hosts at once (default 2)
+#   OA_REMOTE_MAX_HOSTS          hosts at once (default 4)
 #   OA_REMOTE_MACHINE            machine type (default c3d-highcpu-30, spot)
 #   OA_REMOTE_IDLE_MINUTES       a host stops itself after this long idle (default 15)
 #   OA_REMOTE_SLOTS              jobs at once on one host (default 3)
@@ -30,7 +30,7 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 project="${OA_REMOTE_PROJECT:-openagentsgemini}"
 state="${OA_REMOTE_STATE:-$HOME/.openagents/remote}"
 daily="${OA_REMOTE_DAILY_USD:-15}"
-max_hosts="${OA_REMOTE_MAX_HOSTS:-2}"
+max_hosts="${OA_REMOTE_MAX_HOSTS:-4}"
 machine="${OA_REMOTE_MACHINE:-c3d-highcpu-30}"
 idle="${OA_REMOTE_IDLE_MINUTES:-15}"
 slots="${OA_REMOTE_SLOTS:-3}"
