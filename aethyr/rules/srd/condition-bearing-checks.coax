@@ -1,0 +1,43 @@
+// SRD 5.2.1 pp.177-191: the conditions as a bearing (condition-bearing.coax) agree with the rules.
+#load "battle.coax";
+#load "condition-bearing.coax";
+
+#test "a bearing's locks agree with rs_can_act and rs_can_move for every condition, alive or not" {
+  for hp: 0..<2 { for dead: 0..<2 {
+    for condition: [16] int.[0,RS_BLINDED,RS_CHARMED,RS_DEAFENED,RS_EXHAUSTION,RS_FRIGHTENED,RS_GRAPPLED,RS_INCAPACITATED,RS_INVISIBLE,RS_PARALYZED,RS_PETRIFIED,RS_POISONED,RS_PRONE,RS_RESTRAINED,RS_STUNNED,RS_UNCONSCIOUS] {
+      c: RsCreature; c.hp = hp; c.dead = dead == 1; c.cond = condition;
+      b := rs_bearing(c);
+      #assert deed_can_act(b) == rs_can_act(c);
+      #assert deed_can_move(b) == rs_can_move(c);
+      // the page's view, from the hit points and bits alone, says the same
+      v := rs_bearing_of(c.hp, c.dead, c.cond, false, false);
+      #assert deed_can_act(v) == rs_can_act(c) && deed_can_move(v) == rs_can_move(c);
+    }
+  } }
+}
+
+#test "a bearing's pose: down at 0 Hit Points, still when Paralyzed, held when Grappled, prone and crawling" {
+  c: RsCreature; c.hp = 7;
+  #assert rs_bearing(c).pose == DeedPose.stand && rs_bearing(c).lock == 0;
+  c.hp = 0; b := rs_bearing(c);
+  #assert b.pose == DeedPose.down && deed_lying(b) && !deed_can_act(b) && !deed_can_move(b) && !deed_can_react(b);
+  c.hp = 7; c.cond = RS_UNCONSCIOUS; #assert rs_bearing(c).pose == DeedPose.down;   // asleep: down too
+  c.cond = RS_PARALYZED; #assert rs_bearing(c).pose == DeedPose.still && rs_bearing(c).lock == DEED_LOCK_ALL;
+  c.cond = RS_STUNNED; b = rs_bearing(c);
+  #assert b.pose == DeedPose.reel && !deed_can_act(b) && deed_can_move(b) && (b.lock & DEED_LOCK_SPEAK) != 0;
+  c.cond = RS_GRAPPLED; b = rs_bearing(c); #assert b.pose == DeedPose.held && deed_can_act(b) && !deed_can_move(b);
+  c.cond = RS_PRONE; b = rs_bearing(c); #assert b.pose == DeedPose.prone && b.crawl && deed_can_act(b) && deed_can_move(b);
+  c.cond = RS_FRIGHTENED; #assert rs_bearing(c).pose == DeedPose.cower && rs_bearing(c).lock == 0;
+  // the strongest pose wins: prone and unconscious lies down
+  c.cond = RS_PRONE | RS_UNCONSCIOUS; #assert rs_bearing(c).pose == DeedPose.down;
+  c.cond = RS_PRONE | RS_GRAPPLED; #assert rs_bearing(c).pose == DeedPose.held && rs_bearing(c).crawl;
+}
+
+#test "Command's Halt and Hypnotic Pattern's stupor lock as the rules do" {
+  c: RsCreature; c.hp = 9;
+  c.eff[0].kind = EF_HALT; b := rs_bearing(c);
+  #assert !deed_can_act(b) && !deed_can_move(b) && deed_can_react(b) && b.pose == DeedPose.stand;
+  c.eff[0].kind = EF_DAZED; b = rs_bearing(c);
+  #assert !deed_can_move(b) && b.pose == DeedPose.reel;
+  #assert deed_can_act(b) == rs_can_act(c) && deed_can_move(b) == rs_can_move(c);
+}
