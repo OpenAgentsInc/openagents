@@ -1,0 +1,18 @@
+// Interactable spots (engine): a thing in the world you use by standing at its spot, such as a
+// workbench, a door or a chest. A spot has a stable id the game keys its action on, the place to
+// stand, the way you face there and how near counts. The game's interact key asks interact_pick
+// which spot you stand at and opens that thing's action; the engine only answers which one.
+#module "aethyr.interact";
+
+InteractSpot :: struct {id:string;x:f32;z:f32;face:f32;reach:f32=0.8;}
+
+#test "the nearest spot in reach is the one you use" {
+ spots:=[2]InteractSpot.[InteractSpot.{id="a",x=0,z=0},InteractSpot.{id="b",x=1.2,z=0}];
+ #assert interact_pick(spots[..],0.1,0)==0 && interact_pick(spots[..],0.9,0)==1 && interact_pick(spots[..],5,5)== -1;
+ #assert interact_near(spots[1],1.2,0.79) && !interact_near(spots[1],1.2,0.81);
+}
+interact_near :: (s:InteractSpot,x:f32,z:f32)->bool {dx:=x-s.x;dz:=z-s.z;return dx*dx+dz*dz<s.reach*s.reach;}
+// Which of `spots` you use standing at (x, z): the nearest in reach, or -1.
+interact_pick :: (spots:[]InteractSpot,x:f32,z:f32)->int {
+ best:= -1;bd:f32=0;for i:0..<spots.count {s:=spots[i];if !interact_near(s,x,z) {continue;}dx:=x-s.x;dz:=z-s.z;d:=dx*dx+dz*dz;if best<0 || d<bd {best=i;bd=d;}}return best;
+}

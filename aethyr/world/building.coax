@@ -1,0 +1,84 @@
+// Buildings placed in a realm (engine): a building is authored in its own frame, front +z, and
+// placed at a world spot turned a whole number of quarters. Its kit pieces, its wall boxes and the
+// way into it all turn with it, so the packer, the walker, the camera and the monsters agree.
+//
+// The one-room house of 2 m kit modules (the Medieval Village MegaKit's walls, as the Everglade
+// Experimental neighbourhood and the Everglade player home use them) is a 4 m square with walls
+// 0.4 m thick on the 2 m grid lines, a doorway in its left front module and a roof slab at 3.1 m.
+#module "aethyr.building";
+
+// x, z the building's centre in the world; turn the quarters it is turned, its front (+z) facing
+// +z, +x, -z or -x for 0, 1, 2 or 3.
+BuildingFrame :: struct {x:f32;z:f32;turn:int;}
+
+#test "a quarter turn faces the front east, and points, boxes and kit transforms agree" {
+ f:=BuildingFrame.{x= -20,z= -5,turn=1};p:=building_point(f,1,2);#assert p[0]== -18 && p[1]== -6;
+ b:=building_box(f,[6]f32.[-1,0,1.5,1,2,2]);#assert b[0]== -18.5 && b[3]== -18 && b[2]== -6 && b[5]== -4 && b[4]==2;
+ m:=building_turn_matrix(1,[12]f32.[1,0,0,0,1,0,0,0,1,1,0,2]);#assert m[9]==2 && m[11]== -1 && m[0]==0 && m[2]== -1 && m[6]==1;
+ back:=building_local(f,p[0],p[1]);#assert back[0]==1 && back[1]==2;
+ for t:0..<4 {g:=BuildingFrame.{x=3,z=4,turn=t};q:=building_point(g,0.5,-1.5);l:=building_local(g,q[0],q[1]);#assert abs(l[0]-0.5)<0.0001 && abs(l[1]+1.5)<0.0001;}
+}
+// A point in the building's frame, in the world.
+building_point :: (f:BuildingFrame,x:f32,z:f32)->[2]f32 {
+ a:=x;b:=z;for k:0..<((f.turn%4)+4)%4 {t:=a;a=b;b= -t;}   // a quarter: (x, z) to (z, -x)
+ return [2]f32.[f.x+a,f.z+b];
+}
+// A world point in the building's frame.
+building_local :: (f:BuildingFrame,x:f32,z:f32)->[2]f32 {
+ a:=x-f.x;b:=z-f.z;for k:0..<((f.turn%4)+4)%4 {t:=a;a= -b;b=t;}
+ return [2]f32.[a,b];
+}
+// A box in the building's frame (x0, y0, z0, x1, y1, z1), as a world box.
+building_box :: (f:BuildingFrame,b:[6]f32)->[6]f32 {
+ a:=building_point(f,b[0],b[2]);c:=building_point(f,b[3],b[5]);
+ return [6]f32.[ifx a[0]<c[0] then a[0] else c[0],b[1],ifx a[1]<c[1] then a[1] else c[1],ifx a[0]>c[0] then a[0] else c[0],b[4],ifx a[1]>c[1] then a[1] else c[1]];
+}
+// A kit piece's transform in the building's frame (columns x, y, z, then the offset) turned with
+// the building; the offset stays relative to the building's centre.
+building_turn_matrix :: (turn:int,m:[12]f32)->[12]f32 {
+ r:=m;for k:0..<((turn%4)+4)%4 {n:[12]f32;for c:0..<4 {n[c*3]=r[c*3+2];n[c*3+1]=r[c*3+1];n[c*3+2]= -r[c*3];}r=n;}return r;
+}
+// A kit piece's transform in the building's frame: a wall module standing across x, or with `side`
+// along z.
+building_piece :: (x:f32,y:f32,z:f32,side:bool)->[12]f32 {
+ return ifx side then [12]f32.[0,0,-1,0,1,0,1,0,0,x,y,z] else [12]f32.[1,0,0,0,1,0,0,0,1,x,y,z];
+}
+
+// ---- the 4 m one-room house
+ROOM4_BOXES :: 6;
+ROOM4_INNER :: 1.8;   // the inside's half-width, to the walls' inner faces
+#test "the 4 m room's doorway is open and its walls close every other side" {
+ f:=BuildingFrame.{turn=0};d:=room4_door_out(f);
+ for i:0..<ROOM4_BOXES {b:=room4_box(f,i);#assert b[1]>1.8 || !(d[0]>b[0]-0.3 && d[0]<b[3]+0.3 && d[1]-0.6>b[2]-0.3 && d[1]-0.6<b[5]+0.3);}
+ for s:[4][2]f32.[[2]f32.[1,2],[2]f32.[0,-2],[2]f32.[-2,0],[2]f32.[2,0]] {hit:=false;for i:0..<ROOM4_BOXES {b:=room4_box(f,i);if b[1]<1 && s[0]>=b[0] && s[0]<=b[3] && s[1]>=b[2] && s[1]<=b[5] {hit=true;}}#assert hit;}
+}
+// Its walls and roof slab in the world: the two front pieces either side of the doorway, the back,
+// the two sides and the slab.
+room4_box :: (f:BuildingFrame,i:int)->[6]f32 {
+ local:=[6][6]f32.[[6]f32.[-2.2,0,1.8,-1.78,3.1,2.2],[6]f32.[-0.22,0,1.8,2.2,3.1,2.2],[6]f32.[-2.2,0,-2.2,2.2,3.1,-1.8],[6]f32.[-2.2,0,-2.2,-1.8,3.1,2.2],[6]f32.[1.8,0,-2.2,2.2,3.1,2.2],[6]f32.[-2.2,3.05,-2.2,2.2,3.25,2.2]];
+ return building_box(f,local[i]);
+}
+room4_inside :: (f:BuildingFrame,x:f32,z:f32)->bool {l:=building_local(f,x,z);return abs(l[0])<ROOM4_INNER && abs(l[1])<ROOM4_INNER;}
+// The middle of the doorway just outside, and just inside.
+room4_door_out :: (f:BuildingFrame)->[2]f32 {return building_point(f,-1,2.6);}
+room4_door_in :: (f:BuildingFrame)->[2]f32 {return building_point(f,-1,1.2);}
+// Where one at (x, z) heads to reach (tx, tz) when only one of them is inside the room: round the
+// house to its front, lined up with the doorway, then through (the third value 1). Otherwise
+// straight there (0). A monster's or a follower's walker calls this before its own pathing.
+room4_goal :: (f:BuildingFrame,x:f32,z:f32,tx:f32,tz:f32)->[3]f32 {
+ a:=room4_inside(f,x,z);b:=room4_inside(f,tx,tz);if a==b {return [3]f32.[tx,tz,0];}
+ l:=building_local(f,x,z);g:[2]f32;
+ if a {g=ifx abs(l[0]+1)>0.25 then [2]f32.[-1,1.2] else [2]f32.[-1,2.6];}
+ else if abs(l[0]+1)<=0.25 && l[1]>1 {g=[2]f32.[-1,1.2];}             // lined up: through the doorway
+ else if l[1]>=2.5 {g=[2]f32.[-1,2.6];}                                // in front: to the doorway
+ else if abs(l[0])<2.6 && l[1]<0 {g=[2]f32.[ifx l[0]<0 then -2.9f32 else 2.9f32,-2.9];}   // behind: to a back corner
+ else {g=[2]f32.[l[0],2.9];}                                           // along the side to the front
+ p:=building_point(f,g[0],g[1]);return [3]f32.[p[0],p[1],1];
+}
+#test "one outside walks round the 4 m room to its doorway and in, never through a wall" {
+ for t:0..<4 {f:=BuildingFrame.{x=10,z= -3,turn=t};
+  for start:[3][2]f32.[[2]f32.[0,-4],[2]f32.[3.5,0.5],[2]f32.[-4,3]] {s:=building_point(f,start[0],start[1]);x:=s[0];z:=s[1];goal:=building_point(f,0.6,-0.3);
+   for k:0..<400 {g:=room4_goal(f,x,z,goal[0],goal[1]);dx:=g[0]-x;dz:=g[1]-z;l:=sqrt(dx*dx+dz*dz);if l<0.05 {break;}st:=ifx l<0.1 then l else 0.1f32;nx:=x+dx/l*st;nz:=z+dz/l*st;
+    for i:0..<ROOM4_BOXES {b:=room4_box(f,i);#assert b[1]>1.5 || !(nx>b[0]-0.3 && nx<b[3]+0.3 && nz>b[2]-0.3 && nz<b[5]+0.3);}x=nx;z=nz;}
+   #assert abs(x-goal[0])<0.06 && abs(z-goal[1])<0.06;}}
+}

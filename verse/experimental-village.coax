@@ -5,6 +5,9 @@
 #load "experimental-castle.coax" as castle;
 #load "experimental-dungeon.coax" as dungeon;
 #load "experimental-props.coax" as props;
+#load "../everglade/world/home.coax" as home;
+#load "../aethyr/world/interact.coax" as interact;
+#load "../aethyr/world/building.coax" as building;
 #load "experimental-village-data.coax";
 #load "experimental-scene-colliders.coax";
 #load "../aethyr/stand.coax" as stand;
@@ -45,6 +48,36 @@ EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floo
  ev_near(a[..],x,z);found:=false;for i:0..<a[0].wall_n {o:=i*6;if a[0].walls[o]<x && a[0].walls[o+3]>x && a[0].walls[o+2]<z && a[0].walls[o+5]>z && a[0].walls[o+4]>0.8 {found=true;}}#assert found;
  #assert ev_prop_size("Chair_1")[1]>1 && ev_prop_size("Workbench")[0]>1 && ev_prop_size("Bed_Twin1")[2]>1;
 }
+// Walks the player's capsule from (x, z) toward (tx, tz) through the colliders the walker gathers,
+// 0.1 m a step, and returns where it stops.
+ev_walk_to :: (x:f32,z:f32,tx:f32,tz:f32,steps:int)->[2]f32 {
+ a:[1]EvNear;p:=[2]f32.[x,z];
+ for k:0..<steps {dx:=tx-p[0];dz:=tz-p[1];l:=sqrt(dx*dx+dz*dz);if l<0.01 {break;}st:=ifx l<0.1 then l else 0.1f32;
+  ev_near(a[..],p[0],p[1]);c:=query.Colliders.{boxes=a[0].walls[0..<a[0].wall_n*6],floors=a[0].floors[0..<a[0].floor_n*10]};
+  r:=collision.collide_move(c,collision.CollideProfile.{},collision.CollideState.{feet=space.world_point(p[0],0,p[1])},dx/l*st,dz/l*st);
+  if r.status!=collision.CollideStatus.ok {break;}p=[2]f32.[r.state.feet.x,r.state.feet.z];}
+ return p;
+}
+#test "you walk from spawn in through the home's doorway to the workbench, and through no wall" #steps 4000000000 {
+ f:=terrain.exp_home();door:=building.room4_door_out(f);spot:=home.home_bench_spot(f);
+ p:=ev_walk_to(0,0,door[0]+1.5,door[1],400);#assert abs(p[0]-door[0]-1.5)<0.02 && abs(p[1]-door[1])<0.02;
+ p=ev_walk_to(p[0],p[1],door[0]-1.6,door[1],60);#assert building.room4_inside(f,p[0],p[1]) && abs(p[0]-door[0]+1.6)<0.02;
+ p=ev_walk_to(p[0],p[1],spot.x,spot.z,60);#assert abs(p[0]-spot.x)<0.02 && abs(p[1]-spot.z)<0.02;
+ spots:=[1]interact.InteractSpot.[spot];#assert interact.interact_pick(spots[..],p[0],p[1])==0 && spot.id==home.HOME_BENCH_ID;
+ // the workbench stops you short of its front
+ bench:=props.exp_prop_at(terrain.EXP_HOME_SITE,0);bx:=f.x+bench.x;q:=ev_walk_to(spot.x,spot.z,bx,spot.z,40);#assert q[0]>bx+0.5+0.25;
+ // from outside, no wall lets you in: behind, both sides and the front beside the doorway
+ cx:=f.x;cz:=f.z;
+ q=ev_walk_to(cx-4,cz,cx,cz,60);#assert q[0]<cx-2.45;
+ q=ev_walk_to(cx,cz+4,cx,cz,60);#assert q[1]>cz+2.45;
+ q=ev_walk_to(cx,cz-4,cx,cz,60);#assert q[1]<cz-2.45;
+ q=ev_walk_to(cx+4,cz-1.2,cx,cz-1.2,60);#assert q[0]>cx+2.45;
+ // and from inside, none lets you out
+ q=ev_walk_to(cx+0.6,cz-0.3,cx+4,cz-0.3,60);#assert building.room4_inside(f,q[0],q[1]);
+ q=ev_walk_to(cx+0.5,cz+0.5,cx+0.5,cz+4,60);#assert building.room4_inside(f,q[0],q[1]);
+ q=ev_walk_to(cx+0.2,cz+0.2,cx+0.2,cz-4,60);#assert building.room4_inside(f,q[0],q[1]);
+ q=ev_walk_to(cx+0.5,cz+0.755,cx-4,cz+0.755,60);#assert building.room4_inside(f,q[0],q[1]);
+}
 ev_prop_size :: (name:string)->[3]f32 {
  if name=="Table_Large" {return [3]f32.[1.425,0.815,0.555];}
  if name=="Chair_1" {return [3]f32.[0.291,1.121,0.292];}
@@ -68,7 +101,7 @@ ev_prop_size :: (name:string)->[3]f32 {
  return [3]f32.[0,0,0];
 }
 ev_prop_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
- for si:0..<9 {site:=terrain.exp_site(si);for i:0..<props.exp_prop_count(si) {p:=props.exp_prop_at(si,i);sz:=ev_prop_size(p.name);if sz[1]<=0 {continue;}
+ for furnished:0..<props.EXP_FURNISHED {si:=props.exp_furnished(furnished);site:=terrain.exp_site(si);for i:0..<props.exp_prop_count(si) {p:=props.exp_prop_at(si,i);sz:=ev_prop_size(p.name);if sz[1]<=0 {continue;}
   px:=site.x+p.x;pz:=site.z+p.z;c:=abs(cos(p.yaw));s:=abs(sin(p.yaw));hx:=sz[0]*c+sz[2]*s;hz:=sz[0]*s+sz[2]*c;
   if abs(x-px)>reach+hx || abs(z-pz)>reach+hz {continue;}
   y:=terrain.exp_height(px,pz)-ground+p.y;ev_house_box(out,site,0,[6]f32.[p.x-hx,y,p.z-hz,p.x+hx,y+sz[1],p.z+hz]);
@@ -166,9 +199,11 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
    b:[3000]f32;n:=dungeon.dg_boxes(x,z,reach,b[..],0,false);
    for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}continue;
   }
-  if si>=9 && si<18 {
-   // 4 m square house: front opening is centered in the left front module.
-   for box:[6][6]f32.[[6]f32.[-2.2,0,1.8,-1.78,3.1,2.2],[6]f32.[-0.22,0,1.8,2.2,3.1,2.2],[6]f32.[-2.2,0,-2.2,2.2,3.1,-1.8],[6]f32.[-2.2,0,-2.2,-1.8,3.1,2.2],[6]f32.[1.8,0,-2.2,2.2,3.1,2.2],[6]f32.[-2.2,3.05,-2.2,2.2,3.25,2.2]] {ev_house_box(out,site,dy,box);}
+  if si==terrain.EXP_HOME_SITE || (si>=9 && si<18) {
+   // the engine's 4 m room (aethyr/world/building.coax): the neighbourhood's houses face +z, the
+   // player's home (everglade/world/home.coax) faces spawn; the doorway is open
+   f:=ifx si==terrain.EXP_HOME_SITE then terrain.exp_home() else building.BuildingFrame.{x=site.x,z=site.z};
+   for i:0..<building.ROOM4_BOXES {ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,building.room4_box(f,i));}
    continue;
   }
   for b:VC_BOXES {if b[0]!=kind {continue;}x0:=site.x+f32(b[1])*0.001;z0:=site.z+f32(b[3])*0.001;x1:=site.x+f32(b[4])*0.001;z1:=site.z+f32(b[6])*0.001;

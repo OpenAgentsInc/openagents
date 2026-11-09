@@ -21,6 +21,8 @@
 #load "../../experimental-castle.coax" as castle;
 #load "../../experimental-dungeon.coax" as dungeon;
 #load "../../experimental-props.coax" as props;
+#load "../../../everglade/world/home.coax" as home;
+#load "../../../aethyr/world/building.coax" as building;
 #load "../../everglade/glade-zone.coax";
 
 #test "glade static vertices retain positions beyond the people quantization box" {
@@ -460,6 +462,16 @@ gp_new_houses :: (w:[]Gp,g:[]Gltf,root:string) {
   if i%4==0 {gp_house_part(w,g,root,w[0].village_layer,site,"Roof_Spike",0,6.5,0,false);}
  }
 }
+// The player's home (game: everglade/world/home.coax) where Experimental places it
+// (experimental-terrain.coax exp_home): its kit pieces turned with the house (aethyr/world/building.coax).
+gp_home :: (w:[]Gp,g:[]Gltf,root:string) {
+ turn:=meadow.exp_home().turn;p:VillagePart;p.ok=true;
+ for i:0..<home.HOME_PARTS {part:=home.home_part(i);p.name=part.name;
+  p.m=building.building_turn_matrix(turn,building.building_piece(part.x,part.y,part.z,part.side));
+  gp_village_mesh(w,g,root,p,w[0].village_layer,meadow.EXP_HOME_SITE,0.25);
+ }
+ p.name="Roof_Front_Wood4";p.m=building.building_turn_matrix(turn,home.home_back_gable());gp_village_mesh(w,g,root,p,w[0].village_layer,meadow.EXP_HOME_SITE,0.25);
+}
 // A broad stone curtain joins the original tower to its three matching copies.
 // Each two-metre segment follows the meadow and shares the village brick atlas.
 gp_castle :: (w:[]Gp,g:[]Gltf,root:string,objects:string,dungeon:string) {
@@ -525,7 +537,7 @@ gp_workshop_clock :: (w:[]Gp) {
  gp_clock_bar(w,x,y,z+0.03,0.0,0.58,0.035,ink);gp_clock_bar(w,x,y,z+0.035,0.38,0.22,0.045,ink);
 }
 gp_props :: (w:[]Gp,g:[]Gltf,root:string) {
- for site_id:0..<9 {site:=meadow.exp_site(site_id);group:=meadow.exp_site_group(site_id);
+ for furnished:0..<props.EXP_FURNISHED {site_id:=props.exp_furnished(furnished);site:=meadow.exp_site(site_id);group:=meadow.exp_site_group(site_id);
   for i:0..<props.exp_prop_count(site_id) {p:=props.exp_prop_at(site_id,i);capture_first:=w[0].nv;path:=txt_cat3(w[0].txt[..],root,"/Exports/glTF/",txt_cat(w[0].txt[..],p.name,".gltf"));gl_load(g,path);sc:[16]f64;has_scale:=gl_nums(g,gl_at(g,GA_NODE,0),"scale",sc[..]);sx:=ifx has_scale==3 then f32(sc[0]) else 1.0f32;sy:=ifx has_scale==3 then f32(sc[1]) else 1.0f32;sz:=ifx has_scale==3 then f32(sc[2]) else 1.0f32;
    x:=site.x+p.x;z:=site.z+p.z;y:=meadow.exp_height(x,z)+p.y;cs:=cos(p.yaw);sn:=sin(p.yaw);
    for mi:0..<g[0].nx[GA_MESH] {mesh:=gl_at(g,GA_MESH,mi);prims:=gl_get(g,mesh,"primitives");for pi:0..<jv_len(g[0].d[0],prims) {pr:=jv_at(g[0].d[0],prims,pi);attr:=gl_get(g,pr,"attributes");pos:[196608]f64;nor:[196608]f64;uv:[131072]f64;colors:[262144]f64;idx:[262144]f64;
@@ -786,7 +798,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=17 {gp_extra_props(w[..],g[..],args_at(args[..],6),args_at(args[..],16));}
  if args_count(args[..])>=16 {atlas:=gp_bestiary_atlas(w[..],iw[..],args_at(args[..],14));}
  if args_count(args[..])>=18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
- if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),-1);gp_castle(w[..],g[..],args_at(args[..],4),args_at(args[..],8),args_at(args[..],11));}
+ if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));gp_home(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),-1);gp_castle(w[..],g[..],args_at(args[..],4),args_at(args[..],8),args_at(args[..],11));}
  w[0].envni=w[0].ni;if args_count(args[..])>=14 {for part:0..<dungeon.DG_CHUNKS {w[0].dungeonfirst[part]=w[0].ni;gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),part);w[0].dungeoncount[part]=w[0].ni-w[0].dungeonfirst[part];}}if args_count(args[..])>=20 {w[0].zero_first=w[0].ni;w[0].zero_tex_first=w[0].nt;gp_0ad(w[..],g[..],iw[..],args_at(args[..],19));w[0].zero_count=w[0].ni-w[0].zero_first;w[0].zero_tex_end=w[0].nt;}if args_count(args[..])>=16 {gp_bestiary_frames(w[..],args_at(args[..],15));}if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));gp_weapons(w[..],g[..],args_at(args[..],7),args_at(args[..],8),args_at(args[..],10));}
  famfirst:[FAM_FORMS]int; famcount:[FAM_FORMS]int;
  if experimental && !zone { gp_familiar_meshes(w[..],famfirst[..],famcount[..]); }

@@ -1,0 +1,69 @@
+// The player's home (game): your first house, a one-room wooden house of the Medieval Village
+// MegaKit with a workbench against its back wall. The workbench becomes the Binding Table, where
+// you make pacts, write orders and read reports (everglade/docs/agentics-profession-spec.md);
+// crafting is not built yet. Any Everglade zone places the same home at a building frame of its
+// own: Everglade Experimental at verse/experimental-terrain.coax exp_home, and Everglade II can
+// do the same. The house is the engine's 4 m room (aethyr/world/building.coax), so its walls,
+// doorway and the way monsters come in are the engine's; this file says what it is built of and
+// how it is furnished. Both kits are CC0 (assets/registry/packages/village.json, fantasy-props.json).
+#module "everglade.home";
+#load "../../aethyr/world/building.coax" as building;
+#load "../../aethyr/world/interact.coax" as interact;
+
+HOME_BENCH_ID :: "home/workbench";   // the workbench's stable id: the future Binding Table
+
+HomePart :: struct {name:string;x:f32;y:f32;z:f32;side:bool;}
+HomeProp :: struct {name:string;x:f32;y:f32;z:f32;yaw:f32;}
+
+#test "the home is a worn-wood room with a door, two windows and a gabled roof" {
+ doors:=0;windows:=0;for i:0..<HOME_PARTS {p:=home_part(i);if p.name=="Wall_WoodWear_Door_Flat" {doors+=1;}if p.name=="Window_Wide_Flat1" || p.name=="Window_Wide_Flat2" {windows+=1;}}
+ #assert doors==1 && windows==2 && home_part(HOME_PARTS-1).name=="Roof_Front_Wood4";
+}
+#test "the workbench stands against the back wall with room to use it" {
+ b:=home_prop(0);#assert b.name=="Workbench" && b.z< -1;
+ f:=building.BuildingFrame.{x= -20,z= -5,turn=1};spot:=home_bench_spot(f);bench:=building.building_point(f,b.x,b.z);
+ #assert spot.id==HOME_BENCH_ID && building.room4_inside(f,spot.x,spot.z) && interact.interact_near(spot,spot.x,spot.z);
+ #assert abs(spot.x-bench[0])>0.9 && !interact.interact_near(spot,bench[0],bench[1]);
+ for i:0..<HOME_PROPS {p:=home_prop(i);#assert abs(p.x)<building.ROOM4_INNER && abs(p.z)<building.ROOM4_INNER;}
+}
+// Its kit pieces in the house's frame, as building_piece places them (`side`: a wall module along z).
+HOME_PARTS :: 18;
+home_part :: (i:int)->HomePart {
+ if i<4 {return HomePart.{name="Floor_WoodDark",x=f32((i/2)*2-1),y=0.02,z=f32((i%2)*2-1)};}
+ if i==4 {return HomePart.{name="Wall_WoodWear_Door_Flat",x= -1,z=2};}
+ if i==5 {return HomePart.{name="DoorFrame_Flat_WoodDark",x= -1,z=2};}
+ if i==6 {return HomePart.{name="Door_1_Flat",x= -1.78,z=2,side=true};}   // the leaf stands open, inside
+ if i==7 {return HomePart.{name="Wall_WoodWear_Window_Wide_Flat",x=1,z=2};}
+ if i==8 {return HomePart.{name="Window_Wide_Flat1",x=1,z=2};}
+ if i==9 {return HomePart.{name="Wall_WoodWear_Straight",x= -1,z= -2};}
+ if i==10 {return HomePart.{name="Wall_WoodWear_Straight",x=1,z= -2};}
+ if i==11 {return HomePart.{name="Wall_WoodWear_Straight",x= -2,z= -1,side=true};}
+ if i==12 {return HomePart.{name="Wall_WoodWear_Straight",x= -2,z=1,side=true};}
+ if i==13 {return HomePart.{name="Wall_WoodWear_Window_Wide_Flat",x=2,z= -1,side=true};}   // beside the workbench
+ if i==14 {return HomePart.{name="Window_Wide_Flat2",x=2,z= -1,side=true};}
+ if i==15 {return HomePart.{name="Wall_WoodWear_Straight",x=2,z=1,side=true};}
+ if i==16 {return HomePart.{name="Roof_RoundTiles_4x4",y=3.1};}
+ return HomePart.{name="Roof_Front_Wood4",y=3.1,z=2};
+}
+// The front gable's transform turned to face out behind: the back gable.
+home_back_gable :: ()->[12]f32 {return [12]f32.[-1,0,0,0,1,0,0,0,-1,0,3.1,-2];}
+// The furniture (Fantasy Props), in the house's frame (yaw 0 faces the front); the workbench is
+// first. The rest of the floor is left clear.
+HOME_PROPS :: 5;
+home_prop :: (i:int)->HomeProp {
+ if i==0 {return HomeProp.{name="Workbench",x=0.6,z= -1.27};}
+ if i==1 {return HomeProp.{name="CandleStick",x=1.3,y=0.9,z= -1.45};}
+ if i==2 {return HomeProp.{name="Lantern_Wall",x= -1.0,y=1.75,z= -1.78};}
+ if i==3 {return HomeProp.{name="Barrel_Apples",x= -1.45,z= -1.45};}
+ return HomeProp.{name="Crate_Wooden",x=1.35,z=1.3,yaw=0.2};
+}
+// A prop placed in a zone: its offset from the house's centre in the world and its world yaw.
+home_prop_placed :: (turn:int,i:int)->HomeProp {
+ p:=home_prop(i);f:=building.BuildingFrame.{turn=turn};w:=building.building_point(f,p.x,p.z);
+ return HomeProp.{name=p.name,x=w[0],y=p.y,z=w[1],yaw=p.yaw+f32(((turn%4)+4)%4)*1.5707963};
+}
+// The workbench's spot: in front of it, facing it. "Use the workbench" (the future Binding Table)
+// is the interact key at this spot (aethyr/world/interact.coax interact_pick); crafting opens there.
+home_bench_spot :: (f:building.BuildingFrame)->interact.InteractSpot {
+ p:=building.building_point(f,0.6,-0.25);return interact.InteractSpot.{id=HOME_BENCH_ID,x=p[0],z=p[1],face=f32(((f.turn%4)+4)%4)*1.5707963+3.1415927};
+}

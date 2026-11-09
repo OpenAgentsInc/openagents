@@ -152,6 +152,32 @@ building has a clock on the front gable, workbenches and storage on two floors,
 and a walkable stair between them. The clock is decorative and does not tell
 time.
 
+Your home is a one-room wooden house about 20 metres west of spawn, centred
+at (-20, -5). Its open doorway faces spawn at (-18, -4): walk west from spawn
+and go straight in. Inside, a workbench stands against the back wall, with a
+candlestick on it, a wall lantern, a barrel of apples and a crate. The rest of
+the floor is left clear. The workbench has the stable id `home/workbench` and
+a place to stand in front of it at (-20.25, -5.6). It will become the crafting
+table (the Binding Table in
+[Agentics](../../everglade/docs/agentics-profession-spec.md)); crafting is not
+built yet. The parts live where they belong:
+
+- Engine: `aethyr/world/building.coax` places a building at a frame turned in
+  quarters and holds the 4 m one-room house's wall boxes, its doorway and the
+  way a monster walks round to the doorway. The neighbourhood's houses use the
+  same boxes. `aethyr/world/interact.coax` holds interactable spots: a stable
+  id, a place to stand, a facing and a reach.
+- Game: `everglade/world/home.coax` is the home itself: its kit pieces, its
+  furniture and the workbench's spot. Any Everglade zone can place it.
+- Zone wiring: `verse/experimental-terrain.coax` places it (`exp_home`), and
+  the village, props, hostiles and the scene packer read that frame.
+
+The walls and the workbench stop you and the monsters, the doorway is open,
+and a monster following you inside walks round to the doorway. The house uses
+Medieval Village MegaKit pieces (worn-wood walls, a door wall with an open
+door, two glazed windows, a dark wood floor, a round-tile roof with wooden
+gables), and its furniture comes from Fantasy Props. Both kits are CC0.
+
 The [scene declaration](../../assets/registry/scenes/everglade-experimental.json)
 pins the Nature and Village asset revisions, the archived source scene, extracted
 layout, wardrobe pack, generators, shader and runtime bytes. Rebuild from the

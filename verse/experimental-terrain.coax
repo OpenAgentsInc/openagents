@@ -3,9 +3,10 @@
 #module "verse.experimentalterrain";
 #load "character-glade.coax" as glade;
 #load "experimental-dungeon.coax" as dungeon;
+#load "../aethyr/world/building.coax" as building;
 
 ExpSite :: struct {x:f32;z:f32;left:f32;right:f32;back:f32;front:f32;}
-EXP_SITES :: 28;
+EXP_SITES :: 29;
 #test "experimental building sites are distinct, walkable and inside the meadow" {
  // the dungeon (site 18) alone runs on south past the meadow, walled and roofed (experimental-dungeon.coax)
  for i:0..<EXP_SITES {a:=exp_site(i);#assert a.x-a.left> -82 && a.x+a.right<82 && (i==18 || a.z-a.back> -82) && a.z+a.front<82;
@@ -19,6 +20,7 @@ EXP_SITES :: 28;
  #assert abs(exp_site(7).x-exp_site(0).x)<16 && !exp_clear(0,0);
  #assert exp_site_group(8)==3 && exp_site(8).x==15 && exp_site(8).z== -5;
  #assert exp_site_group(9)== -1 && exp_site(9).x==48 && exp_site(17).z==63;
+ h:=exp_site(EXP_HOME_SITE);#assert exp_site_group(EXP_HOME_SITE)== -3 && h.x==exp_home().x && h.x*h.x+h.z*h.z>16*16 && h.x*h.x+h.z*h.z<24*24;
 }
 #test "experimental foundations are level and fade continuously into the glade" {
  for i:0..<EXP_SITES {a:=exp_site(i);y:=exp_height(a.x,a.z);
@@ -48,9 +50,15 @@ exp_site :: (i:int)->ExpSite {
  if i==25 {return ExpSite.{x=50,z= -74,left=4.2,right=3.8,back=4.1,front=3.9};}
  if i==26 {return ExpSite.{x=74,z= -74,left=4.2,right=3.8,back=4.1,front=3.9};}
  if i==27 {return ExpSite.{x=36,z= -34,left=10,right=4,back=10.8,front=4.1};}
+ // the player's home (everglade/world/home.coax), west of spawn
+ if i==EXP_HOME_SITE {h:=exp_home();return ExpSite.{x=h.x,z=h.z,left=2.5,right=2.5,back=2.5,front=2.5};}
  j:=i-9;return ExpSite.{x=48+f32(j%4)*10,z=43+f32(j/4)*10,left=2.5,right=2.5,back=2.5,front=2.5};
 }
-exp_site_group :: (i:int)->int {if i==18 {return -2;}if i==27 {return 0;}if i>=19 {return 1;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}
+// The player's home (game: everglade/world/home.coax, the engine's 4 m room) stands here, about
+// 20 m west of spawn, turned a quarter so its doorway faces spawn; its levelled site is EXP_HOME_SITE.
+EXP_HOME_SITE :: 28;
+exp_home :: ()->building.BuildingFrame {return building.BuildingFrame.{x= -20,z= -5,turn=1};}
+exp_site_group :: (i:int)->int {if i==EXP_HOME_SITE {return -3;}if i==18 {return -2;}if i==27 {return 0;}if i>=19 {return 1;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}
 exp_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
 exp_distance :: (s:ExpSite,x:f32,z:f32)->f32 {
  dx:=exp_max(s.x-s.left-x,x-s.x-s.right);dz:=exp_max(s.z-s.back-z,z-s.z-s.front);return exp_max(dx,dz);

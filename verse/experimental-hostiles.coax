@@ -3,6 +3,8 @@
 #load "experimental-village.coax" as village;
 #load "experimental-terrain.coax" as terrain;
 #load "experimental-dungeon.coax" as dungeon;
+#load "../everglade/world/home.coax" as home;
+#load "../aethyr/world/building.coax" as building;
 #load "rules/srd5-combat.coax";
 #load "hostile-contact.coax";
 #load "../aethyr/ai/steer.coax";   // the engine's NPC navigation and steering (#13074, docs/verse/navigation.md)
@@ -63,6 +65,13 @@ hostile_calm :: (s:[]Hostiles) {s[0].calm_until=s[0].time+HS_CALM;for i:0..<HS_S
   #assert !hostile_blocked_pad(e[0].x,e[0].z,0.29);
   if was>45 && e[0].z<=45 {crossed=e[0].x;}}
  #assert s[0].enemies[0].z>45 || (crossed>46.22 && crossed<47.78);
+}
+#test "a monster reaches you at the home's workbench by its doorway, never through a wall" #steps 4000000000 {
+ s:[1]Hostiles;hostile_test_start(s[..]);for i:1..<HS_N {s[0].enemies[i].dead=true;}
+ f:=terrain.exp_home();x:=f.x-4;z:=f.z+0.5;s[0].enemies[0].x=x;s[0].enemies[0].z=z;s[0].enemies[0].home_x=x;s[0].enemies[0].home_z=z;
+ spot:=home.home_bench_spot(f);inside:=false;
+ for i:0..<900 {hostile_tick(s[..],spot.x,0,spot.z,0.016);e:=s[0].enemies[0];#assert !hostile_blocked_pad(e.x,e.z,0.29);if building.room4_inside(f,e.x,e.z) {inside=true;}}
+ #assert inside;
 }
 #test "a stopped enemy holds its place and its swing while the others go on" #steps 200000000 {
  s:[1]Hostiles;hostile_test_start(s[..]);s[0].enemies[0].x=0;s[0].enemies[0].z=-1;s[0].enemies[0].swing=0.1;s[0].enemies[1].x=4;s[0].enemies[1].z=0;
@@ -315,8 +324,9 @@ hostile_through :: (d:[4]f32,x:f32,z:f32)->[2]f32 {
 }
 // Where one at (x, z) heads to reach (tx, tz): straight there in the same cell, room or meadow
 // with nothing between; otherwise for the doorway out of its room when it sees it (else the edge
-// to its next cell), lined up before it, then through.
+// to its next cell), lined up before it, then through. Into or out of the home, by its doorway.
 hostile_goal :: (x:f32,z:f32,tx:f32,tz:f32)->[2]f32 {
+ h:=building.room4_goal(terrain.exp_home(),x,z,tx,tz);if h[2]>0 {return [2]f32.[h[0],h[1]];}
  a:=hostile_node(x,z);b:=hostile_node(tx,tz);there:=[2]f32.[tx,tz];if a==b {return there;}
  if a!=HS_OUT && b!=HS_OUT && dungeon.DG_MAP[a]==dungeon.DG_MAP[b] && dungeon.dg_sight(x,z,tx,tz) {return there;}
  prev:[243]int;if !hostile_paths(prev[..],a,b) {return there;}

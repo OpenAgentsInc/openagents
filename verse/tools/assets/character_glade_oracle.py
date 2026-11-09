@@ -119,8 +119,8 @@ if village:
     assert actual==expected and [sum(r[0]==i for r in actual) for i in range(4)]==[167,77,308,151]
     assert 'L 251 Quaternius Medieval Village MegaKit Source|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
     assert sum(1 for kind,license,_,offset,size,_,name in (struct.unpack_from('<BBHIII32s',raw,32+i*48) for i in range(struct.unpack_from('<I',raw,4)[0])) if kind==4 and license==251)==1
-    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23),(15,-5)]+[(0,0)]*10+[(50,-20),(18,-52),(50,-52),(74,-20),(74,-52),(18,-74),(50,-74),(74,-74),(36,-34)]
-    site_groups=[0,1,2,3,3,0,1,3,3]+[-1]*10+[1,1,1,1,1,1,1,1,0]
+    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23),(15,-5)]+[(0,0)]*10+[(50,-20),(18,-52),(50,-52),(74,-20),(74,-52),(18,-74),(50,-74),(74,-74),(36,-34),(-20,-5)]
+    site_groups=[0,1,2,3,3,0,1,3,3]+[-1]*10+[1,1,1,1,1,1,1,1,0]+[-3]
     tiles={'MI_Brick':0,'MI_FlatTiles':1,'MI_MetalOrnaments':2,'MI_Plaster':3,'MI_RockTrim':4,
            'MI_RoundRocks':5,'MI_RoundTiles':6,'MI_UnevenBrick':7,'MI_Vine':8,'MI_WoodTrim':9,
            'MI_WoodTrim_Wear':9,'MI_WindowGlass':10}
@@ -165,9 +165,11 @@ if village:
         workshop=[('Workbench_Drawers',3.7,0,-3.8,0),('Stool',3.6,0,-2.8,0),('CandleStick',3.2,.9,-3.8,0),('Key_Metal',3.8,.9,-3.8,0),('Coin_Pile',4.3,.9,-3.8,0),('Bookcase_2',4.3,0,-.6,math.pi/2),('SmallBottles_1',3.3,.9,-3.8,0),('Crate_Wooden',4.4,0,1.8,0),('Workbench',3.8,3,-3.7,0),('Stool',3.5,3,-2.7,0),('Bookcase_2',4.5,3,0,math.pi/2),('BookStand',2,3,1.7,math.pi),('Book_Stack_1',3.3,3.89,-3.7,0),('CandleStick',4.2,3.89,-3.7,0),('Whetstone',2.8,3,1.7,0),('Bench',1.5,0,6,0)]
         prop_tiles={'MI_Trim_Furniture':11,'MI_Trim_Metal':12,'MI_Trim_Metal_Vertex':12,'MI_Trim_Props':13,'MI_Trim_Props_Vertex':13,'MI_Trim_Cloth':14,'MI_Banner':14}
         prop_cache={}
-        for site,(sx,sz) in enumerate(starts[:9]):
+        # the player's home (verse/experimental-home.coax), its furniture turned with the house
+        home_specs=[('Workbench',-1.27,0,-.6,math.pi/2),('CandleStick',-1.45,.9,-1.3,math.pi/2),('Lantern_Wall',-1.78,1.75,1,math.pi/2),('Barrel_Apples',-1.45,0,1.45,math.pi/2),('Crate_Wooden',1.3,0,-1.35,.2+math.pi/2)]
+        for site,(sx,sz) in list(enumerate(starts[:9]))+[(28,starts[28])]:
             kind=site_groups[site];shift=-4 if kind==0 else -1 if kind==1 else 0
-            for name,px,py,pz,yaw in (workshop if site==8 else specs):
+            for name,px,py,pz,yaw in (workshop if site==8 else home_specs if site==28 else specs):
                 if name not in prop_cache:
                     d=json.loads((props_root/f'{name}.gltf').read_text());blob=(props_root/d['buffers'][0]['uri']).read_bytes();scale=d['nodes'][0].get('scale',[1,1,1]);parts=[]
                     for mesh in d['meshes']:
