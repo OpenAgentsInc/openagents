@@ -56,7 +56,8 @@ fairy 695000
 # about 1% headroom.
 # Known Wild Shape swaps and its form controls (#13030): 2,647,552 bytes.
 
-fivelab 2650000
+# Familiar hotbar, independent seat, and world marker (#13030).
+fivelab 2655000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.

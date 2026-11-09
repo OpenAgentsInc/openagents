@@ -68,7 +68,11 @@ XC_HEAD :: 32.0; XC_ROW :: 24.0; XC_ROWS_TOP :: 40.0; XC_GAP :: 8.0;
 
 XcWave :: struct { x: f32; z: f32; y: f32; fx: f32; fz: f32; left: f32; right: f32; near: f32; far: f32; }
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
+XC_FAMILIAR :: 29;
+XC_FAMILIAR_FORMS :: [3]int.[MON_CAT,MON_RAT,MON_SPIDER];
 XcCombat :: struct {
+  familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
+  familiar_incense:int=1; // one Lab supply, carried across preset changes
   objects:[XC_OBJECTS]XcObject;
   started: bool; klass: int = 11; level: int = 1;
   rest_seen:bool; rest_settled:bool; rest_refused:bool;
@@ -182,7 +186,7 @@ xc_order_load :: (x: [] XcCombat, text: string) -> bool {
       if digits >= 6 { return false; }
       id = id * 10 + cast(int) text[at] - '0'; digits += 1; at += 1;
     }
-    if digits == 0 || at >= text.count || text[at] != ' ' || id >= (FB_RITUAL + 1) * 10000 || counts[c] >= XC_SLOTS { return false; }
+    if digits == 0 || at >= text.count || text[at] != ' ' || id >= (XC_FAMILIAR + 1) * 10000 || counts[c] >= XC_SLOTS { return false; }
     for i: 0..<counts[c] { if order[c][i] == id { return false; } }
     order[c][counts[c]] = id; counts[c] += 1; at += 1;
   }
@@ -219,7 +223,14 @@ xc_set_class :: (x: [] XcCombat, c: int) {
   known:=b[0].c[0].wild_known; swap:=b[0].c[0].wild_swap;
   rs_end_concentration(b,0," (class preset changed)");
   rs_release_turned(b,0);
+  f:=rs_familiar_of(b,0);
+  if f>=0 && (c!=x[0].klass || b[0].c[0].level!=x[0].level) { rs_familiar_retire(b,f); }
   b[0].c[0] = fb_cl_hero(c, "You", 0, x[0].level);
+  if c==FB_CL_WIZARD {
+    key:=rs_component_key(SP_FIND_FAMILIAR);
+    _:=rs_spellbook_add(b[0].c[0..<1],key); // the Lab preset includes a copied ritual
+    b[0].c[0].materials[0]=RsMaterialStock.{key=key,count=x[0].familiar_incense};
+  }
   if same_druid { b[0].c[0].wild_known=known; b[0].c[0].wild_swap=swap; }
   b[0].c[0].turn_at = t; b[0].c[0].round_at = ro;
   rs_place(b, 0, XC_MID, XC_MID);
@@ -243,6 +254,10 @@ xc_actions :: (bar: [] FbAb, n: int, hero: RsCreature) -> int {
   for q: 0..<5 { if m < bar.count { bar[m] = fb_feature(XC_ACTIONS[q], XC_ACTION_NAME[q], XC_ACTION_ART[q]); if q == 0 || q == 3 { bar[m].tg = FB_SELF; } if q == 3 { bar[m].sp = held; bar[m].lvl = held_lvl; } m += 1; } }
   rite := fb_ritual_spell(hero);
   if rite >= 0 && m < bar.count { bar[m] = fb_feature(FB_RITUAL, "Ritual", "ritual"); bar[m].sp = rite; bar[m].tg = FB_SELF; m += 1; }
+  if (hero.companion || hero.klass==RS_WIZARD) && m<bar.count {
+    bar[m]=fb_feature(XC_FAMILIAR,ifx hero.companion then "Wild Companion" else "Find Familiar","ritual");
+    bar[m].tg=FB_SELF; bar[m].opt=0; m+=1;
+  }
   return m;
 }
 // A monster's kind's Area of Knowledge (p.188) for Study: the Imp and Quasit are Fiends (Religion),
@@ -416,6 +431,17 @@ xc_sync_world :: (s: [] Lab) {
     if e.dead || qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
     rs_place(b, i+1, qx, qz);
   }
+  xc_familiar_project(s,0,1);
+}
+xc_familiar_project :: (s:[]Lab,fx:f32,fz:f32) {
+  x:=s[0].xc[..]; b:=x[0].b[..];
+  f:=rs_familiar_of(b,0);
+  if f<0 || !rs_up(b[0].c[f]) { return; }
+  dx:=x[0].familiar_x-s[0].creator[0].player_x;
+  dz:=x[0].familiar_z-s[0].creator[0].player_z;
+  gx:=xc_square(dx*fz-dz*fx); gz:=xc_square(dx*fx+dz*fz);
+  if gx==XC_AWAY || gz==XC_AWAY { rs_place(b,f,XC_AWAY,XC_AWAY); }
+  else { rs_place(b,f,gx,gz); }
 }
 // The AI produces candidate bodies locally. Publish each only after a selected
 // player opportunity has resolved; the real mover's seat is the active turn.
@@ -660,6 +686,7 @@ xc_hostile_contacts :: (s: [] Lab) {
   x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   xc_sync_world(s);
   // Quiet actors take turns too: repeat saves do not depend on reaching you.
+  if x[0].familiar_seat[0].me>0 { fb_seat_step(b,x[0].familiar_seat[..]); }
   for i: 0..<XC_FOES { fb_seat_step(b,x[0].npc_seat[i..<i+1]); }
   while h[0].contacts[0].count>0 {
     foe := hostile.hc_take(h[0].contacts[..]);
@@ -707,12 +734,55 @@ xc_grapple_step :: (s: [] Lab) {
   }
   xc_sync_world(s); rs_grapple_lapse(b, 0); xc_sync_permission(s, g - 1);
 }
+// Place the familiar in an open neighboring square, preferring the facing
+// direction. The same world coordinates are projected back into the grid.
+xc_familiar_summon :: (s:[]Lab,a:FbAb,ritual:bool)->bool {
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[0];
+  xc_sync_world(s);
+  form:=XC_FAMILIAR_FORMS[a.opt];
+  f:=rs_familiar_of(b,0);
+  existing:=f>=0 && b[0].c[f].hp>0;
+  for step:0..<8 {
+    theta:=cr.player_face+f32(step)*0.7853982;
+    dx:=cast(int) floor(sin(theta)+0.5); dz:=cast(int) floor(cos(theta)+0.5);
+    px:=cr.player_x+f32(dx)*f32(XC_SQ); pz:=cr.player_z+f32(dz)*f32(XC_SQ);
+    gx:=XC_MID+dx; gz:=XC_MID+dz;
+    if !existing && (xc_blocked(s,px,pz) || !xdungeon.dg_sight(cr.player_x,cr.player_z,px,pz) || !rs_familiar_destination(b,0,gx,gz,2)) { continue; }
+    ok:=ifx ritual then rs_familiar_finish(b,0,form,RS_FAMILIAR_FEY,gx,gz) else rs_wild_companion(b,0,a.lvl,form,gx,gz);
+    if !ok { return false; }
+    if !existing {
+      x[0].familiar_x=px; x[0].familiar_z=pz;
+      x[0].familiar_seat[0]=FbSeat.{me=rs_familiar_of(b,0)};
+    }
+    if ritual { x[0].familiar_incense=b[0].c[0].materials[0].count; }
+    return true;
+  }
+  return false;
+}
+xc_familiar_press :: (s:[]Lab,k:int,a:FbAb)->bool {
+  x:=s[0].xc[..]; b:=x[0].b[..];
+  if !x[0].seat[0].open { return false; }
+  fb_seat_in(b,x[0].seat[..]);
+  ok:=ifx b[0].c[0].companion then xc_familiar_summon(s,a,false) else rs_ritual_begin(b,0,SP_FIND_FAMILIAR);
+  fb_seat_out(b,x[0].seat[..]);
+  if ok { x[0].used=k; x[0].casts+=1; x[0].cool_at=s[0].creator[0].clock; }
+  else { x[0].refused+=1; }
+  return ok;
+}
+
 // A Ritual under way keeps going: each turn that owes its Magic action takes it (p.104), so the rite
 // fails only when you can't act; the turn its ten minutes are up, that action casts the spell.
 xc_rite_step :: (s: [] Lab) {
   x := s[0].xc[..]; b := x[0].b[..];
   if !x[0].started || b[0].c[0].rite < 0 || !b[0].c[0].rite_owed || !x[0].seat[0].open { return; }
-  fb_seat_in(b, x[0].seat[..]); _ := fb_ritual(b, 0, b[0].c[0].rite); fb_seat_out(b, x[0].seat[..]);
+  fb_seat_in(b, x[0].seat[..]);
+  if b[0].c[0].rite==SP_FIND_FAMILIAR {
+    if rs_rite_due_now(b,0,SP_FIND_FAMILIAR) {
+      k:=xc_slot_of(x,XC_FAMILIAR);
+      if k>=0 { _:=xc_familiar_summon(s,x[0].bar[k],true); }
+    } else { _:=rs_ritual_continue(b,0); }
+  } else { _:=fb_ritual(b,0,b[0].c[0].rite); }
+  fb_seat_out(b, x[0].seat[..]);
 }
 // A readied move carries you where the engine stepped you, over 0.6 s, stopping at a wall.
 xc_glide_step :: (s: [] Lab) {
@@ -928,6 +998,13 @@ xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
   x := s[0].xc[..]; k := x[0].k;
   if i < 0 || i >= x[0].bar_n { return false; }
   r := xc_slot_box(x, i); a := x[0].bar[i..<i + 1];
+  if a[0].kind==XC_FAMILIAR {
+    if py>=r.y1-f32(XC_BADGE)*k { a[0].opt=(a[0].opt+1)%XC_FAMILIAR_FORMS.count; return true; }
+    if x[0].b[0].c[0].companion && px>=r.x1-f32(XC_BADGE)*k && py<=r.y0+f32(XC_BADGE)*k {
+      a[0].lvl=1-a[0].lvl; return true;
+    }
+    return false;
+  }
   if a[0].kind==FB_WILD && py>=r.y1-f32(XC_BADGE)*k {
     c:=x[0].b[0].c[0];
     a[0].opt=xc_wild_next(rs_wild_mask(c),fb_wild_form(c,a[0].opt));
@@ -965,6 +1042,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   now := cr[0].clock;
   a := x[0].bar[k];
   b := x[0].b[..];
+  if a.kind==XC_FAMILIAR { return xc_familiar_press(s,k,a); }
   b[0].c[0].knockout = x[0].knockout;
   px := cr[0].player_x; pz := cr[0].player_z;
   // what it aims at: ahead of you, by its kind (xc_aim); nothing is picked for you behind or beside you
@@ -1005,6 +1083,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     if qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
     rs_place(b, j, qx, qz);
   }
+  xc_familiar_project(s,ifx facing_cube then aim.fx else 0,ifx facing_cube then aim.fz else 1);
   // Explicit world cost profile, not a new turn or component/access waiver.
   me := b[0].c[0..<1];
   saved_budget:=rs_press_budget(me[0],x[0].seat[0].turn);
@@ -1346,6 +1425,17 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     n = xc_line(out, n, p.x - half, p.y, p.x + half, p.y, 3 * k, 0.18, 0.06, 0.05);
     if share > 0 { n = xc_line(out, n, p.x - half, p.y, p.x - half + 2 * half * share, p.y, 3 * k, 0.86, 0.16, 0.12); }
   }
+  // A world-anchored familiar marker is drawn at the actor's position.
+  familiar:=rs_familiar_of(x[0].b[..],0);
+  fx:=x[0].familiar_x; fz:=x[0].familiar_z;
+  if familiar>=0 && rs_up(x[0].b[0].c[familiar]) && xdungeon.dg_sight(cr[0].player_x,cr[0].player_z,fx,fz) {
+    p:=xc_proj(x,fx,meadow_y(fx,fz)+0.5,fz);
+    if p.ok && p.x>=0 && p.x<=w && p.y>=0 && p.y<=h {
+      label:=rs_monster_block(x[0].b[0].c[familiar].familiar_form).name;
+      n=cc.text(out,n,label,p.x-xc_text_w(label,9*k)/2,p.y-8*k,9*k,ink_col(k,0.55,0.9,1));
+      n=xc_line(out,n,p.x-10*k,p.y,p.x+10*k,p.y,2*k,0.35,0.75,0.9);
+    }
+  }
   // the numbers rising off whoever took them
   for q: 0..<XC_FLOATS {
     f := x[0].fl[q];
@@ -1384,6 +1474,12 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       lv: [2] u8; lv[0] = cast(u8) (48 + a.lvl);
       n = cc.text(out, n, cast(string) lv[0..<1], r.x1 - 10 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 1, 0.82, 0.35));
     }
+    if a.kind==XC_FAMILIAR {
+      label:=rs_monster_block(XC_FAMILIAR_FORMS[a.opt]).name;
+      n=cc.text(out,n,label,r.x0+4*k,r.y1-4*k,7*k,head);
+      cost:=ifx x[0].b[0].c[0].companion then (ifx a.lvl==0 then "WS" else "1") else "R";
+      n=cc.text(out,n,cost,r.x1-16*k,r.y0+12*k,7*k,head);
+    }
     if a.kind==FB_WILD {
       form:=fb_wild_form(x[0].b[0].c[0],a.opt);
       label:=ifx form==MON_RIDING_HORSE then "Horse" else ifx form==MON_BLACK_BEAR then "Bear" else rs_monster_block(form).name;
@@ -1394,8 +1490,9 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     }
     // a Ritual under way: a gold frame, its ten minutes filling along the bottom edge (pp.104-105)
     me := x[0].b[0].c[0];
-    if a.kind == FB_RITUAL && me.rite == a.sp {
-      done := 1 - (me.rite_until - x[0].b[0].clock) / f32(RS_RITE_SECONDS); if done > 1 { done = 1; }
+    if (a.kind==FB_RITUAL && me.rite==a.sp) || (a.kind==XC_FAMILIAR && me.rite==SP_FIND_FAMILIAR) {
+      seconds:=ifx a.kind==XC_FAMILIAR then RS_RITE_SECONDS+RS_FIND_FAMILIAR_SECONDS else RS_RITE_SECONDS;
+      done:=1-(me.rite_until-x[0].b[0].clock)/f32(seconds); if done>1 { done=1; }
       n = xc_frame_box(out, n, r, 2 * k, 1, 0.8, 0.35);
       n = xc_line(out, n, r.x0, r.y1 - 2 * k, r.x0 + (r.x1 - r.x0) * done, r.y1 - 2 * k, 3 * k, 1, 0.8, 0.35);
     }
@@ -1637,7 +1734,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   bar: [XC_SLOTS] FbAb;
   for c: 0..<FB_CL_N { for level: 1..<7 {
     hero := fb_cl_hero(c, "You", 0, level); n := xc_bar_level(c, level, bar[..]);
-    #assert xc_actions(bar[..], n, hero) == n + 5 + (ifx fb_ritual_spell(hero) >= 0 then 1 else 0) && n + 6 <= XC_SLOTS;
+    #assert xc_actions(bar[..], n, hero) == n + 5 + (ifx fb_ritual_spell(hero) >= 0 then 1 else 0) + (ifx hero.companion || hero.klass==RS_WIZARD then 1 else 0) && n + 7 <= XC_SLOTS;
   } }
   for pass: 0..<3 {
     s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
@@ -2704,4 +2801,42 @@ xc_check_ai_rate :: (speed:int)->bool {
   #assert slot>=0 && xc_use_on(s[..],slot,-2) && c[0].wild_form==MON_CAT;
   xc_set_class(x,FB_CL_DRUID);
   #assert rs_wild_knows(c[0],MON_CAT) && !rs_wild_knows(c[0],MON_RAT) && !c[0].wild_swap;
+}
+
+#test "Experimental familiar hotbar summons a Druid companion and completes a Wizard ritual" #steps 100000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
+  x[0].level=2; xc_set_class(x,FB_CL_DRUID);
+  k:=xc_slot_of(x,XC_FAMILIAR); #assert k>=0;
+  cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
+  wild:=b[0].c[0].uses[RS_USE_WILD];
+  #assert xc_press(s[..],k);
+  f:=rs_familiar_of(b,0);
+  #assert f>=0 && rs_up(b[0].c[f]) && b[0].c[f].familiar_form==MON_CAT;
+  #assert b[0].c[0].uses[RS_USE_WILD]==wild-1;
+  b[0].c[f].reacted=true;
+  b[0].clock=b[0].c[f].turn_at;
+  xc_hostile_contacts(s[..]);
+  #assert x[0].familiar_seat[0].open && !b[0].c[f].reacted;
+  wx:=x[0].familiar_x; wz:=x[0].familiar_z;
+  cr[0].player_x+=f32(XC_SQ);
+  xc_sync_world(s[..]);
+  #assert b[0].c[f].x==xc_square(wx-cr[0].player_x) && b[0].c[f].y==xc_square(wz-cr[0].player_z);
+
+  xc_set_class(x,FB_CL_WIZARD);
+  #assert b[0].c[f].dead;
+  spell:=xc_slot_of(x,XC_FAMILIAR); #assert spell>=0;
+  cr[0].clock=4; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
+  slots:=b[0].c[0].slots[1];
+  #assert xc_press(s[..],spell) && b[0].c[0].rite==SP_FIND_FAMILIAR;
+  #assert b[0].c[0].rite_until-b[0].clock==4200 && x[0].familiar_incense==1;
+  b[0].clock=b[0].c[0].turn_at;
+  fb_seat_step(b,x[0].seat[..]); xc_rite_step(s[..]);
+  #assert b[0].c[0].rite==SP_FIND_FAMILIAR && !b[0].c[0].rite_owed && x[0].seat[0].turn.action;
+  b[0].clock=b[0].c[0].rite_until;
+  fb_seat_step(b,x[0].seat[..]); xc_rite_step(s[..]);
+  #assert rs_up(b[0].c[f]) && b[0].c[0].rite==-1 && b[0].c[0].slots[1]==slots;
+  #assert x[0].familiar_incense==0;
+  xc_set_class(x,FB_CL_DRUID); xc_set_class(x,FB_CL_WIZARD);
+  #assert b[0].c[0].materials[0].count==0;
 }

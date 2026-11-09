@@ -862,3 +862,17 @@ survivors. Experimental Wasm built at 2,647,369 bytes.
 The shared familiar command and senses changes passed 434 casting workflow
 checks and a native witness. The three changed authority units killed 146
 mutants with zero survivors. Experimental Wasm built at 2,647,739 bytes.
+
+Experimental now exposes Wild Companion at Druid level 2 and Find Familiar
+as a Wizard spellbook ritual. The hotbar cycles Cat, Rat and Spider. The
+Druid can spend a Wild Shape use or a level 1 spell slot. The Wizard has one
+incense supply per visit, tracked across class changes. The familiar has a
+world position, a projected marker and an independent turn seat. The hotbar
+fixture covers summoning, turn refresh, projection, ritual continuation and
+payment. All 51 existing Experimental combat checks passed. Lab Wasm is
+2,653,366 bytes against the revised 2,655,000-byte cap.
+
+The Wizard's prepared cast is available in the shared rules. Experimental
+currently exposes the ritual. Familiar commands, lifecycle and sense
+controls, touch delivery in the worlds, model presentation, and Everglade
+II integration still need work.

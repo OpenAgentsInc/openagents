@@ -7530,3 +7530,9 @@ special-sense range. Commands can reach a familiar by telepathy within 100
 feet or through audible speech supplied by the world. An admitted command
 uses the familiar's own turn and shared movement, Opportunity Attack and
 action rules.
+
+Experimental's familiar hotbar uses the real turn seat and shared summoning
+rules. The Wizard has a copied spellbook ritual and one incense supply per
+visit. Preset changes preserve the supply count. A level 2 or higher Druid
+can choose a Wild Shape use or level 1 slot. Each summoned familiar retains
+a world position, an independent turn seat, and a marker at its position.
