@@ -91,6 +91,14 @@ MS_BAD_EXPRS :: [15]MsBadExpr.[
     valid:=ver==3&&((g==18&&t==0)||(g!=18&&t==2));#assert st[0].ok==valid;if !valid{#assert st[0].reason==1;}
   }}}
 }
+#test "Metal graphics writes no WGSL atomic (GPU procedures 19 to 21), even given its three arguments" {
+  for g:19..<22{
+    tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;out:[8192]u8;
+    #assert ms_prepare(st[..],tree[0..<n],w[..])==1;st[0].tree_version=3;st[0].at=n;
+    words:=[12]u32.[cast(u32)g,2,3,16,2,0,16,2,0,16,2,0];for i:0..<12{tree[n+i]=words[i];}
+    ms_gpu(st[..],tree[0..<n+12],MS_NAMES_EMPTY,w[..],out[..]);#assert !st[0].ok&&st[0].reason==1;
+  }
+}
 #test "Metal scratch interfaces start empty before current entries mark them" {
   tree:[8192]u32;n:=wg_parse(MS_TREE_EMPTY,tree[..]);w:[MS_WORDS]u32;st:[1]WgState;
   for i:0..<MS_WORDS{w[i]=7;}#assert ms_prepare(st[..],tree[0..<n],w[..])==1;
