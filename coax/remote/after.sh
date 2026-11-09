@@ -17,7 +17,9 @@
 # everglade-parity, the committed shaders, the room build) and, when
 # compiler sources changed since main-green, coax/tests/run.sh in 8 parts.
 #
-# Green: main-green moves to H, and the red-list entries H fixes close.
+# Green: main-green moves to H, and the red-list entries H fixes close. Then,
+# in the background, coax/remote/pages.sh builds H's pages once into the shared
+# store (#13119), so the release of H and every agent's pages.sh fetch them.
 # Red: each failing check is bisected between main-green and H (several
 # commits at once, OA_BISECT_WIDTH, running only that check). For the culprit
 # it files an issue naming the commit, the check, its output and the agent in
@@ -172,6 +174,11 @@ Fixing this comes before new work for \`$agent\`. If no fix lands within 30 minu
   echo "${url##*/}"
 }
 
+pages_of() {   # head: its pages into the shared store, once, in the background (OA_AFTER_PAGES=0: not)
+  [[ "${OA_AFTER_PAGES:-1}" != 0 && -z "${OA_AFTER_CHECK:-}" ]] || return 0
+  ( "$here/pages.sh" build "$1" > "$results/$1/pages.log" 2>&1 && pl_say "after: ${1:0:10}'s pages are in the shared store" ) &
+}
+
 full_run() {
   fetch || { pl_say "after: could not fetch $pl_remote"; return 1; }
   local head green
@@ -244,6 +251,7 @@ full_run() {
   if (( ${#failed[@]} == 0 && infra == 0 )); then
     if git push -q "$pl_remote" "$head:refs/heads/$pl_green" 2> /dev/null; then
       pl_say "after: green; $pl_green is ${head:0:10} (${secs} s, ${slot_secs} slot-seconds)"
+      pages_of "$head"
     else
       pl_say "after: green, but $pl_green could not move to ${head:0:10}"
     fi
@@ -327,7 +335,7 @@ Fixing it comes before new work. If no fix lands within 30 minutes, the integrat
   done
   # Every failure passed when run again on H: H is green.
   if (( owned == 0 && ${#rest[@]} == 0 && flaky_n == ${#failed[@]} )); then
-    git push -q "$pl_remote" "$head:refs/heads/$pl_green" 2> /dev/null && pl_say "after: green on a second run; $pl_green is ${head:0:10}"
+    git push -q "$pl_remote" "$head:refs/heads/$pl_green" 2> /dev/null && pl_say "after: green on a second run; $pl_green is ${head:0:10}" && pages_of "$head"
     echo green > "$dir/status"
     return 0
   fi

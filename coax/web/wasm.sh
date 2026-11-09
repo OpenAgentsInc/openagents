@@ -174,6 +174,19 @@ if [[ -n "$cache" ]]; then
   flags_sum="$({ tool_id "$clang"; printf '%s\n' "${cflags[@]}"; } | shasum -a 256 | cut -c1-16)"
   find "$cache" -maxdepth 1 -type f -mtime +14 -delete 2> /dev/null || true
 fi
+# The shared tier (#13119, docs/verse/remote-builds.md): a Cloud Storage bucket
+# behind this disk cache, under the same keys (wasm/KEY.c, .h, .notes, .o,
+# .wasm). A lookup reads this disk first, then the bucket (and keeps what it
+# fetched here); a compile writes through to both. It is on when the job has a
+# token for the bucket (remote.sh sends one to each host job,
+# COAX_SHARED_CACHE_TOKEN) and COAX_SHARED_CACHE isn't 0. The Mac's builds
+# leave it off: no key can match across machines of two kinds (the key names
+# the compiler's bytes and each tool's install path), so the Mac shares through
+# built pages instead (coax/remote/pages.sh, COAXIAL_PREBUILT).
+shared_tool="${COAX_SHARED_CACHE_TOOL:-$repo/coax/remote/shared-cache.sh}"
+shared=0
+[[ -z "$cache" || -z "${COAX_SHARED_CACHE_TOKEN:-}" || "${COAX_SHARED_CACHE:-}" == 0 || ! -x "$shared_tool" || -n "${COAX_FAST_EDIT:-}" ]] || shared=1
+check_cache="${COAX_CHECK_CACHE:-$HOME/.cache/coax-check}"
 # COAXIAL_SPLIT=N (#12938): the first unit's C (the app, or its renderer
 # carrier) as up to N translation units and a shared one (coax c --split), so
 # an edit compiles again only the parts whose C changed: Everglade 5e's carrier
@@ -202,24 +215,55 @@ keep() {   # file entry: into the cache whole (a rename), never half-written
   local into; into="$(mktemp "$cache/.keep.XXXXXXXX")"
   cp "$1" "$into" && mv -f "$into" "$2" || rm -f "$into"
 }
+have() {   # entry: there on this disk, or fetched from the shared store (then fetched=1 in the caller)
+  [[ -f "$1" ]] && return 0
+  [[ "$shared" == 1 ]] && "$shared_tool" get "wasm/$(basename "$1")" "$1" && fetched=1
+}
 from_cache() {   # entry file: copied out (and marked used) when it's there
-  [[ -f "$1" ]] && cp "$1" "$2" && touch "$1"
+  have "$1" && cp "$1" "$2" && touch "$1"
+}
+share() {   # entry: into the shared store after a compile: 0 written, 2 another host had written it (a duplicate compile)
+  [[ "$shared" == 1 && -f "$1" ]] || return 0
+  "$shared_tool" put "wasm/$(basename "$1")" "$1"
+}
+compiled() {   # entry...: each into the shared store, logged as one compile; prints miss, or dup when the first was there
+  local status=0 e
+  for e in "$@"; do share "$e" || { (( $? != 2 )) || status=2; }; done
+  [[ "$shared" != 1 ]] || "$shared_tool" log "$(basename "$1")" > /dev/null 2>&1 &
+  [[ "$status" == 2 ]] && echo dup || echo miss
 }
 # The build report (#12925): each step's wall time in microseconds, and whether
 # the cache supplied it, as "base step cache start end" lines in $work/steps;
 # each compiler run's own phase report (coax --timings) in $work/BASE.coax.json.
 now() { [[ -n "${EPOCHREALTIME:-}" ]] && echo "${EPOCHREALTIME//[.,]/}" || echo $(( $(date +%s) * 1000000 )); }   # microseconds
-step() { printf '%s %s %s %s %s\n' "$1" "$2" "$3" "$4" "$(now)" >> "$work/steps"; }
+step() {
+  local end; end="$(now)"
+  printf '%s %s %s %s %s\n' "$1" "$2" "$3" "$4" "$end" >> "$work/steps"
+  # The job's stats (host-job.sh sums them in remote.sh's report line).
+  [[ -z "${COAX_SHARED_CACHE_STATS:-}" ]] || printf '%s %s %s\n' "$2" "$3" "$(( end - $4 ))" >> "$COAX_SHARED_CACHE_STATS"
+}
 emit() {   # unit header-base: its C and header into $work, from the cache or the compiler
-  local key="" began; began="$(now)"
+  local key="" began fetched=0; began="$(now)"
   [[ -z "$cache" ]] || key="$(unit_key "$1" "$2")"
   printf '%s' "$key" > "$work/$2.key"
   # A unit with a headroom line needs its compile's notes, so its cached C
   # counts only with them (entries made before the notes were kept compile again).
-  if [[ -n "$key" && -f "$cache/$key.h" ]] && { [[ -z "$(headroom_of "$2")" ]] || from_cache "$cache/$key.notes" "$work/$2.notes"; } &&
+  if [[ -n "$key" ]] && have "$cache/$key.h" && { [[ -z "$(headroom_of "$2")" ]] || from_cache "$cache/$key.notes" "$work/$2.notes"; } &&
      from_cache "$cache/$key.c" "$work/$2.c" && from_cache "$cache/$key.h" "$work/$2.h"; then
     [[ ! -s "$work/$2.notes" ]] || grep '^coax: note\[' "$work/$2.notes" | sed 's/^/(cached) /' >&2 || true
-    step "$2" coax_to_c hit "$began"; return 0
+    step "$2" coax_to_c "$( (( fetched )) && echo shared || echo hit)" "$began"; return 0
+  fi
+  # The check records the last compile of this unit on any host used (the
+  # compiler's check cache, keyed as always): so a compile after an edit reuses
+  # the checks the edit didn't touch, whichever host ran them before.
+  local pack=""
+  if [[ -n "$key" && "$shared" == 1 ]]; then
+    pack="checks/$compiler_sum/$(printf '%s' "$1" | shasum -a 256 | cut -c1-32).tar.gz"
+    mkdir -p "$check_cache"
+    if "$shared_tool" get "$pack" "$work/$2.checks-in.tgz" && tar -xzmf "$work/$2.checks-in.tgz" -C "$check_cache" 2> /dev/null; then
+      [[ -z "${COAX_SHARED_CACHE_STATS:-}" ]] || echo "checks shared 0" >> "$COAX_SHARED_CACHE_STATS"
+    fi
+    touch "$work/$2.mark"
   fi
   local parts=(); [[ "$(unit_split "$1")" == 0 ]] || parts=(--split "$(unit_split "$1")" ${split_unit[@]+"${split_unit[@]}"})
   local source="$1"
@@ -227,7 +271,16 @@ emit() {   # unit header-base: its C and header into $work, from the cache or th
   # Its stderr goes on to ours and into $work/$2.notes, for the headroom check.
   { (cd "$repo" && "$coax_driver" c "$source" --library "${profile[@]}" --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") 2>&1 > "$work/$2.c" | tee "$work/$2.notes" >&2; }
   [[ -z "$key" ]] || { keep "$work/$2.notes" "$cache/$key.notes"; keep "$work/$2.h" "$cache/$key.h"; keep "$work/$2.c" "$cache/$key.c"; }
-  step "$2" coax_to_c "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
+  local result=off
+  # The C before its header: a host that finds the header finds the C.
+  [[ -z "$key" ]] || result="$(compiled "$cache/$key.c" "$cache/$key.notes" "$cache/$key.h")"
+  if [[ -n "$pack" ]]; then   # the check records this compile used (a record read is touched), for the next compile of the unit anywhere
+    (cd "$check_cache" && find . -maxdepth 1 -type f ! -name '.*' -newer "$work/$2.mark" > "$work/$2.checks-out.list") || true
+    [[ ! -s "$work/$2.checks-out.list" ]] ||
+      { (cd "$check_cache" && tar -czf "$work/$2.checks-out.tgz" -T "$work/$2.checks-out.list" 2> /dev/null) &&
+        "$shared_tool" replace "$pack" "$work/$2.checks-out.tgz"; } || true
+  fi
+  step "$2" coax_to_c "$result" "$began"
 }
 object_key() {   # source [flags...]: the SHA-256 of clang, its flags and every file compiling source reads
   local deps
@@ -237,13 +290,14 @@ object_key() {   # source [flags...]: the SHA-256 of clang, its flags and every 
   { printf '%s\n' coax-wasm-object-1 "$flags_sum"; shasum -a 256 $deps | sed "s|  $work/|  |"; } | shasum -a 256 | cut -c1-64
 }
 compile() {   # name source [flags...]: $work/name.o from the cache or clang, and its key in $work/name.okey
-  local name="$1" key="" began; shift; began="$(now)"
+  local name="$1" key="" began fetched=0; shift; began="$(now)"
   [[ -z "$cache" ]] || key="$(object_key "$@")"
   printf '%s' "$key" > "$work/$name.okey"
-  [[ -n "$key" ]] && from_cache "$cache/$key.o" "$work/$name.o" && { step "$name" clang hit "$began"; return 0; }
+  [[ -n "$key" ]] && from_cache "$cache/$key.o" "$work/$name.o" && { step "$name" clang "$( (( fetched )) && echo shared || echo hit)" "$began"; return 0; }
   "$clang" "${cflags[@]}" "$@" -c -o "$work/$name.o"
-  [[ -z "$key" ]] || keep "$work/$name.o" "$cache/$key.o"
-  step "$name" clang "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
+  local result=off
+  [[ -z "$key" ]] || { keep "$work/$name.o" "$cache/$key.o"; result="$(compiled "$cache/$key.o")"; }
+  step "$name" clang "$result" "$began"
 }
 # Compile headroom (#13115): apps/openagents-web/wasm-headroom.txt (beside
 # the app's Coax) gives a unit, by its header base (fivelab, Sticks), the most
@@ -273,8 +327,69 @@ headroom_check() {   # every unit with a line, against its notes
   done
   return "$status"
 }
+# The size budget: apps/openagents-web/wasm-budgets.txt (beside the app's Coax)
+# gives each module its most bytes (coax/web/tool.sh wasm-size budget). A
+# release module over it, or written to the app's build/ with no line, stops the build; over it, wasm.sh
+# names the module's sections and biggest functions (wasm-size report). build.sh
+# checks first that every module it writes has a line (wasm-size budgets).
+budgets="$repo/$(dirname "$coax_file")/wasm-budgets.txt"
+module="$(basename "$out" .wasm)"
+budget_check() {   # [named]: $work/output.wasm against its budget; named: name the biggest parts when over
+  [[ "$mode" != dev && -f "$budgets" ]] || return 0
+  local status=0
+  (cd "$repo" && coax/web/tool.sh wasm-size budget "${budgets#"$repo"/}" "$module" "$work/output.wasm") || status=$?
+  if [[ "$status" == 1 && "${1:-}" == named ]]; then
+    echo "wasm.sh: $module's biggest parts:" >&2
+    "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor -o "$work/named.wasm" "${object_files[@]}" \
+      -Wl,--import-memory,--max-memory="$max_memory",-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections || true
+    (cd "$repo" && coax/web/tool.sh wasm-size report "$work/named.wasm" 25) >&2 || true
+    echo "wasm.sh: (sizes before wasm-opt, by name.) Make it smaller, or raise its budget in the same commit and say why." >&2
+  fi
+  # A module written anywhere but the app's build/ (a check's or a bench's copy,
+  # under its own name) may have no line: that only warns.
+  if [[ "$status" == 4 && "$out" != "$(cd "$(dirname "$budgets")" && pwd)/build/$module.wasm" ]]; then status=0; fi
+  [[ "$status" == 0 ]] || return 1
+}
+# What this module is built from, whatever compiler and tools build it: the
+# options, its units, each unit's #load closure (every file's SHA-256), and the
+# C the face compiles with (its directory's C and headers, coax/platform's, the
+# renderer face). Two builds with the same sum read the same sources.
+inputs_sum() {
+  local text
+  text="$( printf '%s\n' coax-wasm-inputs-1 "$mode" "$render" "${profile[1]}" "$split" "${COAXIAL_SPLIT_UNIT:-}" ${run_steps[@]+"${run_steps[@]}"}
+    printf 'unit %s\n' "${units[@]}"; printf 'folded %s\n' ${folded[@]+"${folded[@]}"}
+    for unit in "${units[@]}"; do
+      list="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "${unit%%:*}")" && [[ -n "$list" ]] || exit 1
+      (cd "$repo" && shasum -a 256 $list)
+    done
+    (cd "$(dirname "$face")" && shasum -a 256 "$(basename "$face")" *.h *.c 2> /dev/null)
+    (cd "$repo" && shasum -a 256 coax/platform/*.c coax/platform/*.h coax/web/render-face.c 2> /dev/null)
+  )" || return 1   # a closure the size tool can't list: no sum, so no record
+  printf '%s\n' "$text" | shasum -a 256 | cut -c1-64
+}
+inputs_job=""
+if [[ "$mode" != dev && -z "${COAX_FAST_EDIT:-}" ]]; then inputs_sum > "$work/inputs" & inputs_job=$!; fi
 : > "$work/steps"
 started=$SECONDS; started_us="$(now)"
+# COAXIAL_PREBUILT=1 (release.sh, after pages.sh fetched the hosts' build of
+# the same commit): the module already at OUT is taken when its .c/MODULE.built
+# record names these inputs and its bytes. Its compile-headroom lines and its
+# size budget are checked against those bytes as for a build here.
+built="$work_root/$module.built"
+if [[ "${COAXIAL_PREBUILT:-0}" == 1 && "$mode" != dev && -z "${COAX_FAST_EDIT:-}" && -f "$built" && -f "$out" ]]; then
+  wait "$inputs_job" 2> /dev/null || true
+  if [[ -s "$work/inputs" && "$(sed -n 2p "$built")" == "inputs $(< "$work/inputs")" &&
+        "$(sed -n 3p "$built")" == "sha256 $(shasum -a 256 < "$out" | cut -c1-64)" ]]; then
+    for unit in "${units[@]}"; do b="${unit##*:}"; sed -n "s/^note $b //p" "$built" > "$work/$b.notes"; done
+    headroom_check || exit 1
+    cp "$out" "$work/output.wasm"
+    budget_check || exit 1
+    step module link prebuilt "$started_us"
+    [[ "${COAXIAL_WASM_TIMES:-}" == 0 ]] || echo "wasm.sh: $(basename "$out"): prebuilt (the hosts' build of these sources, sha256 $(sed -n 3p "$built" | cut -c8-19)); $(wc -c < "$out" | tr -d ' ') bytes" >&2
+    exit 0
+  fi
+  echo "wasm.sh: $(basename "$out"): the prebuilt module doesn't match these sources; building it" >&2
+fi
 if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then units+=("coax/web/fast-edit-offer.coax:fast-edit-policy"); fi
 for unit in "${units[@]}"; do
   emit "${unit%%:*}" "${unit##*:}" & gen+=($!)
@@ -362,9 +477,9 @@ if [[ -n "$cache" ]]; then
     for d in "$sysroot" "$resources"; do realpath "$d"; find "$(realpath "$d")" -type l -exec realpath {} + 2> /dev/null || true; done | sort
   } | shasum -a 256 | cut -c1-64)" || module_key=""
 fi
-began="$(now)"
+began="$(now)"; fetched=0
 if [[ -n "$module_key" ]] && from_cache "$cache/$module_key.wasm" "$work/output.wasm"; then
-  step module link hit "$began"
+  step module link "$( (( fetched )) && echo shared || echo hit)" "$began"
 else
   # Linked without -O, so clang doesn't run a wasm-opt of its own choosing (a
   # release's objects are bitcode: the link optimizes them together).
@@ -379,7 +494,7 @@ else
       echo "wasm.sh: no wasm-opt (brew install binaryen, or set COAXIAL_WASM_OPT): $(basename "$out") is about 6% larger" >&2
     fi
   fi
-  [[ -z "$module_key" ]] || keep "$work/output.wasm" "$cache/$module_key.wasm"
+  [[ -z "$module_key" ]] || { keep "$work/output.wasm" "$cache/$module_key.wasm"; compiled "$cache/$module_key.wasm" > /dev/null; }
 fi
 # Every module says where its time went in one line, and writes the whole
 # report as JSON: COAXIAL_WASM_REPORT, else .c/MODULE.timings.json beside the
@@ -408,31 +523,22 @@ seconds() { printf '%d.%06d' $(( $1 / 1000000 )) $(( $1 % 1000000 )); }
 } > "$report.tmp.$$" && mv -f "$report.tmp.$$" "$report"
 if [[ "${COAXIAL_WASM_TIMES:-}" != 0 ]]; then
   summary="$(awk -v total="$(( $(now) - started_us ))" '
-    { s = ($5 - $4) / 1e6; if (s > most[$2]) most[$2] = s; if ($3 == "hit") hits[$2]++; n[$2]++ }
+    { s = ($5 - $4) / 1e6; if (s > most[$2]) most[$2] = s; if ($3 == "hit" || $3 == "shared") hits[$2]++; n[$2]++ }
     END { printf "%.1f s: Coax to C %.1f s (%d/%d cached), clang %.1f s (%d/%d cached), link %.1f s, wasm-opt %.1f s", total / 1e6,
           most["coax_to_c"], hits["coax_to_c"], n["coax_to_c"], most["clang"], hits["clang"], n["clang"], most["link"], most["wasm_opt"] }' "$work/steps")"
   echo "wasm.sh: $(basename "$out"): $summary; $(wc -c < "$work/output.wasm" | tr -d ' ') bytes; report $report" >&2
 fi
-# The size budget: apps/openagents-web/wasm-budgets.txt (beside the app's Coax)
-# gives each module its most bytes (coax/web/tool.sh wasm-size budget). A
-# release module over it, or written to the app's build/ with no line, stops the build; over it, wasm.sh
-# names the module's sections and biggest functions (wasm-size report). build.sh
-# checks first that every module it writes has a line (wasm-size budgets).
-budgets="$repo/$(dirname "$coax_file")/wasm-budgets.txt"
-module="$(basename "$out" .wasm)"
-if [[ "$mode" != dev && -f "$budgets" ]]; then
-  status=0
-  (cd "$repo" && coax/web/tool.sh wasm-size budget "${budgets#"$repo"/}" "$module" "$work/output.wasm") || status=$?
-  if [[ "$status" == 1 ]]; then
-    echo "wasm.sh: $module's biggest parts:" >&2
-    "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor -o "$work/named.wasm" "${object_files[@]}" \
-      -Wl,--import-memory,--max-memory="$max_memory",-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections || true
-    (cd "$repo" && coax/web/tool.sh wasm-size report "$work/named.wasm" 25) >&2 || true
-    echo "wasm.sh: (sizes before wasm-opt, by name.) Make it smaller, or raise its budget in the same commit and say why." >&2
+budget_check named || exit 1
+# The built-module record (#13119): beside the report, .c/MODULE.built names
+# what the module was built from (inputs_sum), its bytes' SHA-256 and each
+# unit's compile notes. pages.sh carries it with the module; COAXIAL_PREBUILT=1
+# (release.sh) takes a module whose record matches instead of building it.
+if [[ "$mode" != dev && -z "${COAX_FAST_EDIT:-}" ]]; then
+  wait "$inputs_job" 2> /dev/null || true
+  if [[ -s "$work/inputs" ]]; then
+    { echo coax-wasm-built-1; echo "inputs $(< "$work/inputs")"; echo "sha256 $(shasum -a 256 < "$work/output.wasm" | cut -c1-64)"
+      for unit in "${units[@]}"; do b="${unit##*:}"; [[ ! -s "$work/$b.notes" ]] || sed "s/^/note $b /" "$work/$b.notes"; done
+    } > "$work_root/$module.built.$$" && mv -f "$work_root/$module.built.$$" "$work_root/$module.built"
   fi
-  # A module written anywhere but the app's build/ (a check's or a bench's copy,
-  # under its own name) may have no line: that only warns.
-  if [[ "$status" == 4 && "$out" != "$(cd "$(dirname "$budgets")" && pwd)/build/$module.wasm" ]]; then status=0; fi
-  [[ "$status" == 0 ]] || exit 1
 fi
 mv "$work/output.wasm" "$out"   # the server never serves a half-written module

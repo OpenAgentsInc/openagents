@@ -49,10 +49,10 @@ has :: (text: string, part: string) -> bool #effects(all) {
   #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
 }
 
-// Runs body in sh with C the compiler, D a scratch directory and the shell
+// Runs body in bash (dash, a Linux host's sh, prints \" literally) with C the compiler, D a scratch directory and the shell
 // functions (FUNCTIONS); out gets stdout and stderr.
 run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun #effects(all) {
-  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  argv := [8] string.["bash", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "bash", compiler, dir, FUNCTIONS, body];
   err: [4096] u8;
   return proc_run(argv[..], 900000, out, err[..]);
 }
@@ -136,6 +136,26 @@ tool_main :: () -> int #export_c #effects(all) {
   bad += check(has(t, "split3 status=0 parts=2 miss=0 hit=2 clang:split.face=hit coax_to_c:split=hit link:module=hit \nsame split0 split3"), "putting it back reuses every part, with the same bytes");
   bad += check(has(t, "\"unit\":\"split\",\"step\":\"clang\""), "COAXIAL_SPLIT=0 compiles the unit whole");
   bad += check(has(t, "small status=0 parts=0 miss=0 hit=0 clang:split.face=hit clang:split=hit coax_to_c:split=miss link:module=hit \nsame whole small"), "a unit under four parts' worth of C is emitted whole, as without a split");
+  if bad > before { print("%", t); }
+
+  // The shared tier (#13119): a second host's disk misses and the bucket (a
+  // folder here, through a stand-in for shared-cache.sh) supplies every step,
+  // with the same bytes; the same build there again uses its own disk.
+  r = run(compiler, dir, "printf '#!/bin/sh\\nB=\"%s/bucket\"; mkdir -p \"$B/$(dirname \"$2\")\"\\ncase \"$1\" in get) [ -f \"$B/$2\" ] && cp \"$B/$2\" \"$3\";; put) [ -f \"$B/$2\" ] && exit 2; cp \"$3\" \"$B/$2\";; replace) cp \"$3\" \"$B/$2\";; log) :;; esac\\n' \"$D\" > \"$D/shared\" && chmod +x \"$D/shared\" && T=\"COAX_SHARED_CACHE_TOOL=$D/shared COAX_SHARED_CACHE_TOKEN=x\" && b hostA COAXIAL_WASM_CACHE=\"$D/hostA\" $T && b hostB COAXIAL_WASM_CACHE=\"$D/hostB\" $T && same hostA hostB; b hostB2 COAXIAL_WASM_CACHE=\"$D/hostB\" $T", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  before = bad;
+  bad += check(has(t, "hostA status=0 clang:tiny.face=miss clang:tiny=miss coax_to_c:tiny=miss link:module=miss \n"), "a host with an empty disk and an empty bucket compiles every step");
+  bad += check(has(t, "hostB status=0 clang:tiny.face=shared clang:tiny=shared coax_to_c:tiny=shared link:module=shared \nsame hostA hostB"), "another host takes every step from the bucket, with the same bytes");
+  bad += check(has(t, "hostB2 status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=hit link:module=hit "), "what a host fetched from the bucket stays on its disk");
+  if bad > before { print("%", t); }
+
+  // COAXIAL_PREBUILT=1 (#13119): a release module whose record names these
+  // sources and its bytes is taken as it is; after an edit it is built.
+  r = run(compiler, dir, "b pre COAXIAL_MODE=release && cp \"$D/out/pre.wasm\" \"$D/pre.keep\" && b pre COAXIAL_MODE=release COAXIAL_PREBUILT=1 COAXIAL_WASM_TIMES=1 > /dev/null; grep -q 'prebuilt (the hosts' \"$D/pre.log\" && echo took-prebuilt; cmp -s \"$D/out/pre.wasm\" \"$D/pre.keep\" && echo same-bytes; sed 's/^SCALE :: 3;$/SCALE :: 5;/' \"$D/app/tiny.coax\" > \"$D/t\" && mv \"$D/t\" \"$D/app/tiny.coax\" && b pre COAXIAL_MODE=release COAXIAL_PREBUILT=1 COAXIAL_WASM_TIMES=1 > /dev/null; grep -q 'match these sources; building it' \"$D/pre.log\" && echo built-after-edit; cmp -s \"$D/out/pre.wasm\" \"$D/pre.keep\" || echo new-bytes; sed 's/^SCALE :: 5;$/SCALE :: 3;/' \"$D/app/tiny.coax\" > \"$D/t\" && mv \"$D/t\" \"$D/app/tiny.coax\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  before = bad;
+  bad += check(has(t, "took-prebuilt\nsame-bytes\n"), "COAXIAL_PREBUILT takes a module whose record names its sources and bytes");
+  bad += check(has(t, "built-after-edit\nnew-bytes"), "after an edit the prebuilt module doesn't match, and wasm.sh builds it");
   if bad > before { print("%", t); }
 
   r = run(compiler, dir, "b off COAXIAL_WASM_CACHE= && same header off", out[..]);

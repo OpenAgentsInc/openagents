@@ -19,12 +19,15 @@ infra() { echo "remote: $*" >&2; rm -rf "$in"; exit 97; }
 # shellcheck disable=SC1091
 source ~/.nix-profile/etc/profile.d/nix.sh 2> /dev/null || true
 export PATH="$HOME/.bun/bin:$PATH"
-# spec sets: key commit relcwd argv=(...) env_vars=(...)
+# spec sets: key commit relcwd argv=(...) env_vars=(...), and shared_token: a
+# token for the shared build cache's bucket alone (shared-cache.sh), never part
+# of the key
 # shellcheck disable=SC1090
 source "$in/spec"
 # The caller's COAX_* and COAXIAL_* settings hold for the compiler build too
 # (COAX_MUTATION=0 skips its mutation gates, as release.sh does).
 for v in ${env_vars[@]+"${env_vars[@]}"}; do export "${v?}"; done
+[[ -z "${shared_token:-}" ]] || export COAX_SHARED_CACHE_TOKEN="$shared_token"
 touch ~/busy
 # Results of a passing job are kept under its key (the source tree's hash,
 # the command, its directory and the forwarded environment): the same job
@@ -55,6 +58,12 @@ while [[ -z "$slot" ]]; do
 done
 tree=~/slots/$slot/tree
 began=$(date +%s)
+# The caller's shared-cache.sh, for wasm.sh and pages.sh in this job (the
+# tree's own copy may be older, or missing at an old commit).
+if [[ -f "$in/shared-cache.sh" ]]; then
+  cp "$in/shared-cache.sh" ~/slots/$slot/shared-cache.sh && chmod +x ~/slots/$slot/shared-cache.sh &&
+    export COAX_SHARED_CACHE_TOOL=~/slots/$slot/shared-cache.sh
+fi
 # The shared clone: fetch main and the job's bundle, and check the job's
 # commit out in this slot's worktree, one slot at a time.
 (
@@ -90,7 +99,20 @@ ready=$(date +%s)
 args=()
 for a in "${argv[@]}"; do args+=("${a//@ROOT@/$tree}"); done
 tmp="$res.$$"; rm -rf "$tmp"; mkdir -p "$tmp"
+# The shared cache's part: wasm.sh appends each step's result to the stats
+# file. The check records this command used on any host last time (keyed by
+# the command, not the tree) come first, so a check whose inputs didn't change
+# since is reused here too.
+stats=~/slots/$slot/cache-stats; : > "$stats"; export COAX_SHARED_CACHE_STATS="$stats"
+check_cache="${COAX_CHECK_CACHE:-$HOME/.cache/coax-check}"
+check_pack="checks-job/$(printf '%s\n' "$relcwd" "${argv[@]}" | sha256sum | cut -c1-32).tar.gz"
+tool="${COAX_SHARED_CACHE_TOOL:-}"
+if [[ -n "$tool" && -n "${COAX_SHARED_CACHE_TOKEN:-}" ]] && mkdir -p "$check_cache" &&
+   "$tool" get "$check_pack" ~/slots/$slot/checks-in.tgz; then
+  tar -xzmf ~/slots/$slot/checks-in.tgz -C "$check_cache" 2> /dev/null
+fi
 marker=~/slots/$slot/marker; touch "$marker"
+export COAX_JOB_MARKER="$marker"
 cd "$tree/$relcwd" || infra "no directory $relcwd"
 # OA_REMOTE_TIMEOUT (seconds): the command stops there even if its caller is
 # gone (a killed caller's job would otherwise hold its slot to the end).
@@ -100,13 +122,22 @@ ${deadline[@]+"${deadline[@]}"} "${args[@]}" > >(tee "$tmp/out") 2> >(tee "$tmp/
 status=$?
 wait
 ended=$(date +%s)
+if [[ -n "$tool" && -n "${COAX_SHARED_CACHE_TOKEN:-}" ]]; then
+  # Only when the command used check records: a job that compiled nothing keeps the last pack.
+  (cd "$check_cache" && find . -maxdepth 1 -type f ! -name '.*' -newer "$marker" > ~/slots/$slot/checks-out.list)
+  [[ ! -s ~/slots/$slot/checks-out.list ]] ||
+    { (cd "$check_cache" && tar -czf ~/slots/$slot/checks-out.tgz -T ~/slots/$slot/checks-out.list 2> /dev/null) &&
+      "$tool" replace "$check_pack" ~/slots/$slot/checks-out.tgz; }
+fi
+cache_line=""
+[[ -z "$tool" ]] || cache_line="; $("$tool" summary "$stats")"
 # The files the command wrote or changed come back: everything newer than the
 # marker, except Git's, the compiler's and node_modules.
 cd "$tree" || infra "no tree"
 find . \( -path ./.git -o -path ./coax/bin -o -name node_modules \) -prune -o -type f -newer "$marker" -print0 > "$tmp/files"
 tar --null -cf "$tmp/files.tar" -T "$tmp/files" 2> /dev/null
 echo "$status" > "$tmp/status"
-printf 'slot=%s setup=%s run=%s files=%s\n' "$slot" "$((ready - began))" "$((ended - ready))" "$(tr -cd '\0' < "$tmp/files" | wc -c)" > "$tmp/times"
+printf 'slot=%s setup=%s run=%s files=%s%s\n' "$slot" "$((ready - began))" "$((ended - ready))" "$(tr -cd '\0' < "$tmp/files" | wc -c)" "$cache_line" > "$tmp/times"
 rm -rf "$res"; mv "$tmp" "$res"
 echo "remote: $(hostname) slot $slot: checkout and compiler $((ready - began)) s, command $((ended - ready)) s, status $status" >&2
 exit "$status"

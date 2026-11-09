@@ -30,6 +30,8 @@
 #   OA_REMOTE_TIMEOUT            seconds the command may run on the host (default no limit)
 #   OA_REMOTE_WAIT               seconds to look for a free slot on any host before
 #                                waiting on one (default 1800)
+#   OA_REMOTE_HOST               run on this host only (a running one), waiting for its
+#                                slot: for measuring one host against another
 #   CLOUDSDK_CONFIG              gcloud's configuration (default the automation account's)
 set -uo pipefail
 export LC_ALL=C
@@ -158,10 +160,15 @@ acquire() {
   [[ -n "$best" ]] && { echo "$best"; return 0; }
   return 1
 }
+named_host() {   # name: "name ip" of that running host
+  local ip
+  ip="$(gcloud compute instances list --project "$project" --filter="name=$1 AND status=RUNNING" --format='value(networkInterfaces[0].accessConfigs[0].natIP)' 2> /dev/null)"
+  [[ -n "$ip" ]] && ready "$1" "$ip" && echo "$1 $ip"
+}
 # The last host used, if it still answers: no gcloud call for most jobs.
 cached_host() {
   local name ip free
-  read -r name ip < "$state/host" 2> /dev/null || return 1
+  [[ -f "$state/host" ]] && read -r name ip < "$state/host" || return 1
   [[ -n "$ip" ]] && ready "$name" "$ip" || return 1
   free="$(free_slots "$name" "$ip")"
   (( free > 0 )) || return 1
@@ -242,29 +249,35 @@ run() {
   while IFS= read -r v; do
     case "${v%%=*}" in
       COAX|COAXIAL_CLANG|COAXIAL_SYSROOT|COAXIAL_RESOURCES|COAXIAL_WASM_OPT|COAXIAL_WASM_CACHE|COAXIAL_TOOLCHAIN|COAX_CHECK_CACHE|COAX_RELEASE_CACHE) ;;
+      COAX_SHARED_CACHE_TOKEN|COAX_SHARED_CACHE_STATS|COAX_SHARED_CACHE_TOOL|COAX_SHARED_CACHE_KEY|COAX_JOB_MARKER) ;;
       COAX_*|COAXIAL_*) env_vars+=("$v") ;;
     esac
   done < <(env | grep -E '^COAX(IAL)?_' | sort)
   local job
   job="$( { echo coax-remote-job-1; echo "$tree"; echo "$rel"; printf '%s\n' "${argv[@]}"; echo --; printf '%s\n' ${env_vars[@]+"${env_vars[@]}"}; } | shasum -a 256 | cut -c1-32)"
-  { printf 'key=%q\ncommit=%q\nrelcwd=%q\n' "$job" "$commit" "$rel"
+  # A token for the shared build cache's bucket alone (shared-cache.sh, #13119):
+  # the host's wasm.sh reads and writes the bucket with it. Not in the key.
+  local shared_token=""
+  [[ "${COAX_SHARED_CACHE:-}" == 0 ]] || shared_token="$("$here/shared-cache.sh" token 2> /dev/null)" || shared_token=""
+  { printf 'key=%q\ncommit=%q\nrelcwd=%q\nshared_token=%q\n' "$job" "$commit" "$rel" "$shared_token"
     printf 'argv=('; printf '%q ' "${argv[@]}"; printf ')\n'
     printf 'env_vars=('; [[ ${#env_vars[@]} -eq 0 ]] || printf '%q ' "${env_vars[@]}"; printf ')\n'; } > "$tmp/spec"
   under_budget || fail "the hosts cost about \$$(spent 86400) over 24 hours (OA_REMOTE_DAILY_USD is \$$daily)" "$@"
   local host name ip inbox="$job.$$" sent attempt=1 nowait status
-  cp "$here/host-job.sh" "$tmp/host-job.sh"
+  cp "$here/host-job.sh" "$here/shared-cache.sh" "$tmp/"
   # A host whose slots filled since it was picked sends the job back (96), and
   # the hosts are asked again until one has a free slot.
   while true; do
-    if (( attempt == 1 )); then host="$(cached_host || lock "$state/acquire.lock" "$0" _acquire)"
+    if [[ -n "${OA_REMOTE_HOST:-}" ]]; then host="$(named_host "$OA_REMOTE_HOST")" || fail "$OA_REMOTE_HOST isn't running" "$@"
+    elif (( attempt == 1 )); then host="$(cached_host || lock "$state/acquire.lock" "$0" _acquire)"
     else host="$(lock "$state/acquire.lock" "$0" _acquire)"; fi || fail "no build host could take the job" "$@"
-    read -r name ip <<< "$host"; echo "$name $ip" > "$state/host"
-    (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
+    read -r name ip <<< "$host"; [[ -n "${OA_REMOTE_HOST:-}" ]] || echo "$name $ip" > "$state/host"
+    (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh shared-cache.sh) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
       || fail "could not send the job to $name" "$@"
     sent=$(now)
     # Every host full: look again every 10 s for the first slot any host frees,
     # for up to OA_REMOTE_WAIT seconds (default 1800), then wait on this host.
-    nowait=1; (( $(now) - started < ${OA_REMOTE_WAIT:-1800} )) || nowait=0
+    nowait=1; (( $(now) - started < ${OA_REMOTE_WAIT:-1800} )) && [[ -z "${OA_REMOTE_HOST:-}" ]] || nowait=0
     ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
     status=$?
     [[ $status == 96 && $nowait == 1 ]] || break

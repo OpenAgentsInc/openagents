@@ -29,7 +29,12 @@ coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000
 coax/web/tool.sh suites                              # every suite here, in verse/, coax/web/ and coax/lib/, each at its header's budget
 coax/web/serve.sh apps/openagents-web                # http://127.0.0.1:8800/, hot reload
 apps/openagents-web/build.sh                         # release build: all page modules
+coax/remote/pages.sh origin/main                     # main's built pages from the shared store, built once per commit
 ```
+
+To drive pages headless, take main's pages with `coax/remote/pages.sh` and
+rebuild only the modules you changed (`remote.sh run -- coax/web/wasm.sh ...`)
+instead of a full `build.sh` ([remote-builds.md](../../docs/verse/remote-builds.md#one-page-build-per-commit)).
 
 A suite's header names how it runs: `coax test FILE --steps N` (and
 `--library`) in its first lines. A suite whose checks need more than the

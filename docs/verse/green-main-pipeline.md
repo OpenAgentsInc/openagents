@@ -162,6 +162,12 @@ When a run passes, it moves `main-green`:
 git push origin <commit>:refs/heads/main-green
 ```
 
+Then, in the background, it builds that commit's pages once into the shared
+store (`coax/remote/pages.sh build`, #13119), so the release of the commit
+takes its modules instead of building them again, and agents fetch them with
+`coax/remote/pages.sh` ([remote-builds.md](remote-builds.md#the-shared-cache)).
+`OA_AFTER_PAGES=0` turns this off.
+
 Results go under `releases/after/<commit>/`. The per-commit history of
 compile-time totals and wasm sizes shows which commit made a unit grow.
 

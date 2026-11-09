@@ -5,6 +5,16 @@
 #   release.sh                  # origin/main-green → staging → production
 #   release.sh --ref COMMIT     # a specific commit (--ref origin/main: main's head)
 #   release.sh --staging-only   # stop after staging's checks
+#   release.sh --build-only     # build and stage the release in a scratch folder, then stop:
+#                               # no lock, no upload, no checks against a site (a dry run of the build)
+#
+# The build reuses the hosts' build of the same commit (#13119): pages.sh
+# fetches it from the shared store, checked against the commit's tree and its
+# archive's SHA-256, and wasm.sh takes each module whose record names the same
+# inputs and bytes (COAXIAL_PREBUILT=1). Every module's compile headroom and
+# size budget is still checked against those bytes; a module the hosts didn't
+# build, or whose sources differ here (the project tables come from Nostr at
+# build time), is built here.
 #
 # One rule decides everything (owner, 2026-11-02): a release stops only for a
 # check that FAILS ON STAGING AND PASSES ON PRODUCTION, confirmed by a retry.
@@ -33,12 +43,13 @@
 # remote, the default is origin/main.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
-ref="" prod=true
+ref="" prod=true build_only=false
 while (($#)); do
   case "$1" in
     --ref) ref="$2"; shift 2 ;;
     --staging-only) prod=false; shift ;;
-    *) echo "release: unknown option $1 (release.sh [--ref COMMIT] [--staging-only])" >&2; exit 2 ;;
+    --build-only) build_only=true; prod=false; shift ;;
+    *) echo "release: unknown option $1 (release.sh [--ref COMMIT] [--staging-only] [--build-only])" >&2; exit 2 ;;
   esac
 done
 source "$here/release-lib.sh"
@@ -94,7 +105,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-take_lock "release ${ref:-origin/main-green}"
+$build_only || take_lock "release ${ref:-origin/main-green}"
 git -C "$repo" fetch -q origin main
 if [[ -z "$ref" ]]; then
   if git -C "$repo" fetch -q origin +refs/heads/main-green:refs/remotes/origin/main-green 2>/dev/null; then
@@ -118,6 +129,23 @@ git -C "$repo" worktree add -q --detach "$tree" "$full"
 echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 
 t=$(now); compiler "$tree" || exit 1; lap compiler "$t"
+
+# The hosts' build of this commit, if the shared store has it: wasm.sh then
+# builds only the modules it lacks (COAXIAL_PREBUILT).
+t=$(now)
+if pages_out="$(cd "$tree" && "$repo/coax/remote/pages.sh" fetch "$full" "$tree" 2>&1)"; then
+  export COAXIAL_PREBUILT=1
+  echo "  prebuilt   $(tail -1 <<< "$pages_out" | sed 's/^pages: //')"
+else
+  echo "  prebuilt   none: every module builds here ($(tail -1 <<< "$pages_out" | sed 's/^pages: //'))"
+fi
+lap pages "$t"
+if $build_only; then
+  staged="$(mktemp -d)"
+  t=$(now); COAX_VISUALS=report COAXIAL_STAGE_TO="$staged" "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap build "$t"
+  echo "release $commit: built and staged in $staged (build only) in $(secs $(( $(now) - start ))) s"
+  exit 0
+fi
 
 # Reports: they never stop a release.
 reports="$(mktemp -d)"

@@ -73,6 +73,111 @@ verdicts and per-check reuse records), and `~/.cache/coax-release`
 files that differ from the slot's last job, and build outputs (ignored files)
 stay for the next job.
 
+## The shared cache
+
+Issue: [#13119](https://github.com/OpenAgentsInc/openagents/issues/13119).
+Code: `coax/remote/shared-cache.sh`, `coax/remote/pages.sh`, and the shared
+tier in `coax/web/wasm.sh`.
+
+Each unit compiles once for every host. A Cloud Storage bucket,
+`gs://openagentsgemini-coax-build-cache` (us-central1), sits behind each
+host's disk caches, under the same keys:
+
+- **wasm.sh's unit cache.** `wasm/KEY.c`, `.h`, `.notes`, `.o` and `.wasm`,
+  keyed as `~/.cache/coax-wasm` is: a unit's `#load` closure and the compiler's
+  hash for its C, what clang reads for an object, the objects and tools for a
+  module. A lookup reads the host's disk first, then the bucket, and keeps what
+  it fetched on the disk. A compile writes its result to the disk and then to
+  the bucket, the C before its header, so a host that finds the header finds
+  the C.
+- **The check cache.** The compiler's records stay keyed as they are. After
+  wasm.sh compiles a unit, the records that compile read or wrote go to the
+  bucket as one archive for the unit (`checks/COMPILER/UNIT.tar.gz`), and the
+  next compile of that unit on any host unpacks it into its check cache first.
+  A compile after an edit so reuses every check the edit didn't touch, wherever
+  those checks ran before. A remote job does the same for its whole command
+  (`checks-job/COMMAND.tar.gz`), so `coax test` on a second host reuses the
+  first host's checks.
+
+`remote.sh` mints a token for each job that can read and write this bucket and
+nothing else (the automation account's token, exchanged at Google's STS for
+one with a credential access boundary on the bucket; it lasts an hour), and
+the host's job passes it to the command. The hosts have no service account,
+so this needs no change to them.
+
+The Mac's own builds leave the tier off. No key can match between the Mac and
+a host: the keys name the compiler's bytes and each tool's install path. The
+Mac shares the hosts' work through built pages instead (below).
+
+Every remote job's report line says what the caches did:
+
+```
+remote: oa-build-2: 31 s in all (...; cache 4/4 hit (100%: disk 0, shared 4), 0 compiled (0 Coax to C, 0 s), 0 duplicates); about $0.002
+```
+
+`disk` is the host's own cache, `shared` the bucket, `compiled` the steps that
+ran, and `duplicates` the compiles whose result another host wrote first (two
+hosts compiling the same unit at once). Each compile also leaves an empty
+object under `log/DAY/KEY/`; `coax/remote/shared-cache.sh report [DAY]` counts
+the keys compiled more than once that day across every host.
+
+### One page build per commit
+
+`coax/remote/pages.sh COMMIT` puts COMMIT's built pages into this checkout:
+`apps/openagents-web/build/` (every module, the render packages) and the
+build's other untracked files (`nip-guide.wgsl`, `pylon/join.sh`). It never
+changes a tracked file. When the bucket has them
+(`pages/COMMIT/pages.tar.gz` and its `MANIFEST`), it fetches them and checks
+the MANIFEST's tree against the commit's and the archive's SHA-256. When it
+doesn't, it builds them once on a host (`apps/openagents-web/build.sh` in
+release mode, from the commit's own files), stores them, and fetches them.
+While one caller builds a commit, every other caller waits for it instead of
+building it again.
+
+To drive pages headless, fetch main's pages and rebuild only what you changed:
+
+```sh
+coax/remote/pages.sh origin/main
+coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
+  apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
+  apps/openagents-web/everglade-step.coax aethyr/sticks.coax
+```
+
+Don't run a full `apps/openagents-web/build.sh` for this.
+
+`after.sh` (the green-main pipeline) runs `pages.sh build` on each new
+main-green in the background, so the release finds its commit's pages built.
+
+### The release reuses them
+
+`release.sh` fetches the pages of the commit it ships (`pages.sh fetch`) and
+sets `COAXIAL_PREBUILT=1`. Each wasm.sh module the hosts built has a record
+beside its report, `build/.c/MODULE.built`: the SHA-256 of what it was built
+from (its options, its units, every file in each unit's `#load` closure, and
+the face's C), its bytes' SHA-256 and each unit's compile notes. wasm.sh takes
+a module whose record names the same inputs and bytes, then checks its compile
+headroom and its size budget against those bytes as it would after a build. A
+module with no record, or whose inputs differ here (the project pages' tables
+come from Nostr at build time), builds on the Mac as before. A release of a
+commit without stored pages builds everything, as before.
+
+The release then ships the hosts' bytes (Linux, clang 23.1.3), not the Mac's
+(Homebrew clang 23); they differ by a few hundred bytes a module, so the first
+such release renames each module's content-named URL once.
+
+`release.sh --build-only` builds and stages a release in a scratch folder and
+stops: no lock, no upload, no checks against a site. It is a dry run of the
+build step.
+
+### Cost
+
+List prices, us-central1 Standard storage: $0.020 a GB-month, $0.005 per
+1,000 writes, $0.0004 per 1,000 reads, and no charge for traffic between the
+hosts and the bucket in the same region. Objects go 14 days after they are
+written (the bucket's lifecycle rule; no soft delete). A host's cache holds
+about 1 GB, so the bucket holds a few GB, and a busy day of builds makes tens
+of thousands of reads and writes: under $2 a month in all.
+
 ## Hosts
 
 | Setting | Value |
@@ -212,8 +317,8 @@ clang major is linked again on first use.
   A GPU host (`g2-standard-8` spot, about $0.30 an hour) could take them; that
   is not built.
 - **release.sh**. It deploys with the Mac's credentials and compares against
-  production. Its builds can use the same caches once the hosts warm them, but
-  the release itself stays where it is.
+  production. Its build takes the hosts' modules for its commit (see "The
+  release reuses them"), but the release itself stays where it is.
 - **room/deploy.sh's drift check** needs the room's credentials; its build
   step can run remotely as any other command.
 
