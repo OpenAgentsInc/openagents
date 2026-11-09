@@ -22,7 +22,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "BowDraw =Arrows arrow_pos arrow_aim_velocity arrow_timed_velocity bow_strength _bow_layer bow_basis bow_matrix bow_string held_weapon",
     files = "bow"},
   EfFeature.{name = "damage-numbers", title = "damage numbers", required = true, issue = 13080,
-    owners = "everglade/hud/",
+    owners = "aethyr/action/floats.coax everglade/hud/",
     marks = "WatchPop watch_pop pops_ POP_ DamagePop E2mnMark E2gdMark E2MN_MARK E2GD_MARK e2mn_mark xc_hit_mark XcFloat xc_float XC_FLOAT HitGroup hit_group HIT_GROUP HIT_FOLD HIT_SHOW hit_shown damage_number float_text",
     files = ""},
   EfFeature.{name = "area-targeting", title = "area targeting", required = true, issue = 13081,
@@ -73,7 +73,7 @@ EF_ZONES :: [3] EfZone.[
   EfZone.{name = "everglade-ii",
     paths = "apps/openagents-web/everglade2 coax/web/room/room-e2- coax/web/room/room-everglade.coax",
     entries = "apps/openagents-web/everglade2.coax coax/web/room/room-everglade.coax",
-    uses = "bow area-targeting conditions hud class-bars dash spell-effects camera"},
+    uses = "bow damage-numbers area-targeting conditions hud class-bars dash spell-effects camera"},
   EfZone.{name = "experimental",
     paths = "apps/openagents-web/fivelab apps/openagents-web/charactercreator apps/openagents-web/experimental- verse/experimental-",
     entries = "apps/openagents-web/fivelab.coax",
@@ -88,7 +88,7 @@ EF_ZONES :: [3] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [219] string.[
+EF_KNOWN :: [212] string.[
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
   "conditions apps/openagents-web/everglade2-cast.coax e2k_health_text",
   "conditions apps/openagents-web/everglade2-cast.coax E2K_CONDITION",
@@ -98,14 +98,7 @@ EF_KNOWN :: [219] string.[
   "hud apps/openagents-web/everglade2-create.coax e2c_hud",
   "camera apps/openagents-web/everglade2-create.coax e2c_shot",
   "camera apps/openagents-web/everglade2-create.coax e2c_lens",
-  "damage-numbers apps/openagents-web/everglade2-guard.coax E2GD_MARKS",
-  "damage-numbers apps/openagents-web/everglade2-guard.coax E2GD_MARK_S",
-  "damage-numbers apps/openagents-web/everglade2-guard.coax E2gdMark",
   "hud apps/openagents-web/everglade2-guard.coax e2gd_hud",
-  "damage-numbers apps/openagents-web/everglade2-monsters.coax E2MN_MARKS",
-  "damage-numbers apps/openagents-web/everglade2-monsters.coax E2MN_MARK_S",
-  "damage-numbers apps/openagents-web/everglade2-monsters.coax E2mnMark",
-  "damage-numbers apps/openagents-web/everglade2-monsters.coax e2mn_mark",
   "hud apps/openagents-web/everglade2-monsters.coax e2mn_hud",
   "class-bars apps/openagents-web/everglade2-net.coax E2nKit",
   "class-bars apps/openagents-web/everglade2-net.coax e2n_kit",
@@ -312,8 +305,7 @@ EF_KNOWN :: [219] string.[
 
 // Required features a zone doesn't wire yet, as "zone feature": each is a warning that names the
 // feature's issue. Take a row off when the zone wires the feature (and add it to the zone's uses).
-EF_GAPS :: [9] string.[
-  "everglade-ii damage-numbers",
+EF_GAPS :: [8] string.[
   "everglade-ii name-plates",
   "experimental damage-numbers",
   "experimental name-plates",
