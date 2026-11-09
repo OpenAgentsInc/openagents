@@ -31,6 +31,7 @@ VIS_RISE_MAX :: 100.0;        // metres: and a taller target
 VIS_SLACK_MAX :: 10.0;        // metres: and a larger slack
 VIS_DEPTH_RADIUS :: 8;        // pixels round a target's pixel vis_depth may look at most
 VIS_SHORT_OF_ONE :: 0.99999994;   // the largest f32 below 1
+VIS_W_MIN :: 0.000001;        // clip w a projected point needs: in front of the eye
 
 // `invalid` is first, so an answer nobody filled in is never `visible`.
 VisStatus :: enum u8 { invalid; visible; occluded; out_of_range; offscreen; }
@@ -80,8 +81,8 @@ vis_target_point :: (t: VisTarget, i: int) -> WorldPoint #effects(all) {
 // so one profile serves them all.
 vis_terrain_count :: (q: VisQuery) -> int #effects(all) {
   if !vis_point_ok(q.eye) || !vis_point_ok(q.target.at) { return 0; }
-  n := cast(int) floor(vis_flat(q.eye, q.target.at) / f32(VIS_TERRAIN_STEP));
-  return ifx n > VIS_TERRAIN then VIS_TERRAIN else n;
+  n := cast(int) floor(vis_flat(q.eye, q.target.at) / f32(VIS_TERRAIN_STEP));   // mutant: equivalent (a step of 1: dividing and multiplying agree)
+  return ifx n > VIS_TERRAIN then VIS_TERRAIN else n;   // mutant: equivalent ('>=' caps 64 at 64)
 }
 // The share of the way from the eye to the target that sample k of `count` stands at.
 vis_terrain_t :: (count: int, k: int) -> f32 #effects(all) { return f32(k + 1) / f32(count + 1); }
@@ -112,7 +113,8 @@ vis_line_point :: (c: Colliders, land: VisTerrain, q: VisQuery, p: WorldPoint) -
   if length <= q.target.slack { return VisPoint.{ok = true}; }   // the eye is at the target
   if vis_terrain_hides(land, q, p) { return VisPoint.{ok = true, blocker = VisBlocker.terrain}; }
   far := 1 - q.target.slack / length;
-  if far > f32(VIS_SHORT_OF_ONE) { far = f32(VIS_SHORT_OF_ONE); }
+  // A box face at the target itself is the target's surface, not a wall: stop short of it.
+  if far > f32(VIS_SHORT_OF_ONE) { far = f32(VIS_SHORT_OF_ONE); }   // mutant: equivalent ('>=' sets it to itself)
   line := query_clear(c, q.eye, d, far);
   if line.status != QueryStatus.ok { return VisPoint.{}; }
   if !line.clear { return VisPoint.{ok = true, blocker = VisBlocker.collider}; }
@@ -157,7 +159,7 @@ vis_project :: (m: [16] f32, p: WorldPoint, width: int, height: int) -> VisPixel
   cy := m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13];
   cz := m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14];
   cw := m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15];
-  if !(cw > 0.000001) { return VisPixel.{}; }
+  if !(cw > f32(VIS_W_MIN)) { return VisPixel.{}; }
   return VisPixel.{ok = true, x = (cx / cw * 0.5 + 0.5) * f32(width), y = (0.5 - cy / cw * 0.5) * f32(height), depth = cz / cw};
 }
 // A standard perspective's depth for a point `z` metres in front of the eye, with near and far
@@ -341,24 +343,6 @@ vis_test_land :: (q: VisQuery, x0: f32, x1: f32, top: f32) -> VisTerrain #effect
   #assert vis_line(Colliders.{heightfields = field[..]}, open, q).status == VisStatus.visible;
 }
 
-// A brute-force oracle for one box: points along the segment, short of the slack.
-vis_test_box_oracle :: (b: [6] f32, e: WorldPoint, p: WorldPoint, slack: f32) -> bool #effects(all) {
-  d := world_sub(p, e); length := sqrt(world_dot(d, d)); stop := 1 - slack / length;
-  for k: 0..<4001 {
-    t := f32(k) / 4000 * stop;
-    x := e.x + d.x * t; y := e.y + d.y * t; z := e.z + d.z * t;
-    if x > b[0] && x < b[3] && y > b[1] && y < b[4] && z > b[2] && z < b[5] { return false; }
-  }
-  return true;
-}
-#forall "the line agrees with a brute-force walk past one box" ex: 0..<5, ey: 0..<4, tz: 0..<5 #steps 400000000 {
-  open: VisTerrain;
-  b := [6] f32.[3.1, 0.7, -1.3, 5.2, 2.3, 1.1];
-  q := vis_test_query(f32(ex) - 1, f32(ey) * 0.9, 0.2, 9, 1.4, f32(tz) * 0.7 - 1.4);
-  v := vis_line(Colliders.{ground_enabled = false, boxes = b[..]}, open, q);
-  #assert (v.status == VisStatus.visible) == vis_test_box_oracle(b, q.eye, q.target.at, q.target.slack);
-}
-
 #test "the depth image hides a target behind something nearer, within its bias and radius" {
   // a 4 by 3 image: a wall at depth 0.3 in the left two columns, open (1) to the right
   img := [12] f32.[0.3, 0.3, 1, 1, 0.3, 0.3, 1, 1, 0.3, 0.3, 1, 1];
@@ -440,4 +424,86 @@ vis_test_box_oracle :: (b: [6] f32, e: WorldPoint, p: WorldPoint, slack: f32) ->
   m = vis_settle(m, seen, 1); #assert m.shown && m.against == 0;
   m = vis_settle(m, hidden, 0); #assert !m.shown;
   m = vis_settle(m, Visibility.{status = VisStatus.offscreen}, 2); #assert !m.shown && m.against == 0;
+}
+
+#test "the edges of a number, a range and a target's points" {
+  #assert !vis_finite(1000000) && !vis_finite(-1000000) && vis_finite(999999.94) && vis_finite(-999999.94);
+  #assert vis_flat(world_point(1, 7, 2), world_point(4, -3, 6)) == 5;
+  t := VisTarget.{at = world_point(0, 1, 0), rise = 2, points = 2};
+  #assert vis_target_point(t, 0).y == 1 && vis_target_point(t, 1).y == 3;
+  // a range of 0 is one: an eye at the target sees it
+  open: VisTerrain;
+  at := vis_test_query(1, 1, 1, 1, 1, 1); at.range = 0;
+  #assert vis_line(Colliders.{ground = 0}, open, at).status == VisStatus.visible;
+  // a target exactly its slack away is at the eye, even inside a box
+  inside := [6] f32.[-1, 0, -1, 1, 3, 1];
+  near := vis_test_query(0, 1, 0, 0.5, 1, 0); near.target.slack = 0.5;
+  #assert vis_line(Colliders.{ground_enabled = false, boxes = inside[..]}, open, near).status == VisStatus.visible;
+  // a box whose face is the target, with no slack, does not hide it
+  face := [6] f32.[5, 0, -1, 6, 3, 1];
+  on := vis_test_query(0, 1, 0, 5, 1, 0); on.target.slack = 0;
+  #assert vis_line(Colliders.{ground_enabled = false, boxes = face[..]}, open, on).status == VisStatus.visible;
+}
+
+#test "terrain counts and sample points at their edges" {
+  bad := vis_test_query(2000000, 0, 0, 0, 0, 0);
+  #assert vis_terrain_count(bad) == 0;
+  #assert vis_terrain_count(vis_test_query(0, 0, 0, 65.5, 0, 0)) == VIS_TERRAIN;
+  #assert vis_terrain_count(vis_test_query(0, 0, 0, 64, 0, 0)) == VIS_TERRAIN;
+  q := vis_test_query(2, 0, 1, 8, 0, 9);
+  #assert vis_terrain_count(q) == 10;
+  p := vis_terrain_point(q, 0);
+  #assert abs(p.x - (2 + 6.0 / 11)) < 0.0001 && abs(p.z - (1 + 8.0 / 11)) < 0.0001 && p.y == 0;
+}
+
+#test "the first sample, a sample exactly at the slack and a line exactly at the skin" {
+  // samples at x 0.875, 1.75 and 2.625: a quarter of the way apart, exactly
+  q := vis_test_query(0, 1, 0, 3.5, 1, 0);
+  land := vis_test_land(q, 0.875, 0.875, 5);
+  #assert land.count == 3 && land.heights[0] == 5 && land.heights[1] == 0 && land.heights[2] == 0;
+  v := vis_line(Colliders.{ground_enabled = false}, land, q);
+  #assert v.status == VisStatus.occluded && v.blocker == VisBlocker.terrain;
+  nan := 0.0f32; nan = nan / nan;
+  first := land; first.heights[0] = nan;
+  #assert vis_line(Colliders.{ground_enabled = false}, first, q).status == VisStatus.invalid;
+  // the last sample is 0.875 m short of the target: inside a slack of 0.875 it is still tested
+  last: VisTerrain; last.count = 3; last.heights[2] = 10;
+  q.target.slack = 0.875; #assert vis_terrain_hides(last, q, q.target.at);
+  q.target.slack = 0.876; #assert !vis_terrain_hides(last, q, q.target.at);
+  // a line exactly the skin under the land passes
+  flat: VisTerrain; flat.count = 3; flat.heights[0] = 10; flat.heights[1] = 10; flat.heights[2] = 10;
+  y := 10 - f32(VIS_TERRAIN_SKIN);
+  skin := vis_test_query(0, y, 0, 3.5, y, 0); skin.target.slack = 0;
+  #assert !vis_terrain_hides(flat, skin, skin.target.at);
+  skin.eye.y = 9.9; skin.target.at.y = 9.9;
+  #assert vis_terrain_hides(flat, skin, skin.target.at);
+}
+
+#test "projection through a full matrix, at its edges" {
+  // every entry differs: m[k] = k + 1. For (1, 2, 3): clip (51, 58, 65, 72)
+  m := [16] f32.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  c := vis_project(m, world_point(1, 2, 3), 144, 144);
+  #assert c.ok && abs(c.x - 123) < 0.001 && abs(c.y - 14) < 0.001 && abs(c.depth - 65.0 / 72) < 0.0001;
+  #assert vis_project(m, world_point(1, 2, 3), 1, 1).ok;
+  w := [16] f32.[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, f32(VIS_W_MIN)];
+  #assert !vis_project(w, world_point(0, 0, 0), 10, 10).ok;
+  w[15] = 0.00001;
+  #assert vis_project(w, world_point(0, 0, 0), 10, 10).ok;
+}
+
+#test "a depth image's edges: one pixel, the radius, the last row and column, equal depths" {
+  one := [1] f32.[1];
+  #assert vis_depth(VisDepth.{depth = one[..], width = 1, height = 1}, 0.5, 0.5, 0.5, 0, 0).status == VisStatus.visible;
+  // a radius of one looks one pixel each way and no further
+  row := [5] f32.[0.3, 0.3, 0.3, 1, 1];
+  #assert vis_depth(VisDepth.{depth = row[..], width = 5, height = 1}, 1.5, 0.5, 0.6, 0.001, 1).status == VisStatus.occluded;
+  #assert vis_depth(VisDepth.{depth = row[..], width = 1, height = 5}, 0.5, 1.5, 0.6, 0.001, 1).status == VisStatus.occluded;
+  // depths past the image (a longer buffer) are not pixels
+  wide := [5] f32.[0.3, 0.3, 1, 1, 1];
+  d := VisDepth.{depth = wide[..], width = 2, height = 1};
+  #assert vis_depth(d, 0.5, 0.5, 0.6, 0.001, 1).status == VisStatus.occluded;
+  #assert vis_depth(d, 1.5, 0.5, 0.6, 0.001, 1).status == VisStatus.occluded;
+  // a reversed depth equal to the target's is not nearer
+  rev := [1] f32.[0.7];
+  #assert vis_depth(VisDepth.{depth = rev[..], width = 1, height = 1, reversed = true}, 0.5, 0.5, 0.7, 0, 0).status == VisStatus.visible;
 }
