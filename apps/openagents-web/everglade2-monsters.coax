@@ -195,7 +195,7 @@ e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     alpha := sight * g.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    v = cc.eg_plate(out, v, E2MN_NAME[g.kind], sx, sy, k, f32(rw.hp) / f32(rw.max), true, false, alpha);
+    v = cc.eg_plate(out, v, E2MN_NAME[g.kind], sx, sy, k, f32(rw.hp) / f32(rw.max), true, e2k_area_holds(s, g.x, g.z), alpha);   // lit inside the area you aim
   }
   // the wedge: only when the one that struck you is off the screen
   age := now - ml.wedge_at;

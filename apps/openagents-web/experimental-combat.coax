@@ -75,7 +75,6 @@ XC_FLOATS :: 8;
 // the CLASSES column, CSS px: its header, its rows, the gap above it
 XC_HEAD :: CM_HEAD; XC_ROW :: CM_ROW; XC_ROWS_TOP :: CM_ROWS_TOP; XC_GAP :: CM_GAP;   // class-menu.coax
 
-XcWave :: struct { x: f32; z: f32; y: f32; fx: f32; fz: f32; left: f32; right: f32; near: f32; far: f32; }
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XC_FAMILIAR :: 29;
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
@@ -94,7 +93,7 @@ XcCombat :: struct {
   jump:EgJump; jump_run:f32; jump_x:f32; jump_z:f32;
   wild_old:int; wild_new:int;
   dash: [1] sprint.Sprint;   // a Dash's sprint (aethyr/action/sprint.coax), begun from the pipeline's yes (xc_use_ab)
-  wave: XcWave; wave_until: f32 = -1;
+  wave: aa.AreaAim; wave_y: f32; wave_until: f32 = -1;   // Thunderwave's cube where it opened (aethyr/action/area-aim.coax), at your height then
   bar: [XC_SLOTS] FbAb; bar_n: int;
   order: [12] [XC_SLOTS] int; order_n: [12] int;
   arranging: bool; order_dirty: bool; drag_x: f32; drag_y: f32;
@@ -428,19 +427,6 @@ xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
   return m;
 }
 
-// Derive the visible footprint from the same grid bounds used by the spell.
-// Half a square at each edge accounts for the world's nearest-square mapping.
-xc_wave_make :: (x: [] XcCombat, px: f32, pz: f32, face: f32) -> XcWave {
-  z := rs_area(x[0].b[..], 0, rs_spell(SP_THUNDERWAVE), XC_MID, XC_MID+3);
-  sq := f32(XC_SQ);
-  return XcWave.{x=px, z=pz, fx=sin(face), fz=cos(face),
-    left=(f32(z.x0-XC_MID)-0.5)*sq, right=(f32(z.x1-XC_MID)+0.5)*sq,
-    near=(f32(z.y0-XC_MID)-0.5)*sq, far=(f32(z.y1-XC_MID)+0.5)*sq};
-}
-xc_wave_contains :: (w: XcWave, x: f32, z: f32) -> bool {
-  dx := x-w.x; dz := z-w.z; side := dx*w.fz-dz*w.fx; forward := dx*w.fx+dz*w.fz;
-  return side >= w.left && side < w.right && forward >= w.near && forward < w.far;
-}
 // Keep the sphere at its original world point while the grid follows the hero.
 xc_truth_project :: (s:[]Lab,new_zones:int) {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
@@ -1563,7 +1549,7 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
     return false;
   }
   if a.kind == FB_SPELL && a.sp == SP_THUNDERWAVE {
-    x[0].wave = xc_wave_make(x, px, pz, cr[0].player_face); x[0].wave.y = cr[0].player_y; x[0].wave_until = now + 1.4;
+    x[0].wave = aa.area_face(xk_spell_area(SP_THUNDERWAVE), px, pz, cr[0].player_face); x[0].wave_y = cr[0].player_y; x[0].wave_until = now + 1.4;
   }
   // presented from the yes (aethyr/action/deed.coax deed_show): an action whose feel moves `dash` sprints
   if deed_show(xf_feel(x[0].klass, a), DeedResult.effect).move == DeedMove.dash {
@@ -1773,31 +1759,16 @@ xc_caption :: (out: [] f32, at: int, t: string, r: cc.Box, top: bool, cap: f32, 
   return cc.text(out, at, t, (r.x0 + r.x1 - w) * 0.5, ifx top then r.y0 + 4 * k + c else r.y1 - 4 * k, c, ink);
 }
 
-// A segment of the footprint, split so it follows the meadow's changing height
-// and stays visible when only part of an edge is in front of the camera.
-xc_wave_segment :: (x: [] XcCombat, w: XcWave, out: [] f32, at: int, sa: f32, fa: f32, sb: f32, fb: f32, width: f32, glow: f32) -> int {
+// An area's outline and guides on the meadow (aethyr/action/area-aim.coax area_aim_point), lifted by
+// y, each piece drawn while both its ends are before the camera.
+xc_area_draw :: (x: [] XcCombat, a: aa.AreaAim, y: f32, out: [] f32, at: int, k: f32, glow: f32) -> int {
   n := at; last: XcAt;
-  for i: 0..<9 {
-    t := f32(i)/8; side := sa+(sb-sa)*t; front := fa+(fb-fa)*t;
-    wx := w.x + side*w.fz + front*w.fx; wz := w.z - side*w.fx + front*w.fz;
-    p := xc_proj(x, wx, meadow_y(wx,wz)+w.y+0.08, wz);
-    if i>0 && p.ok && last.ok { n = xc_line(out,n,last.x,last.y,p.x,p.y,width,0.35*glow,0.80*glow,glow); }
-    last = p;
-  }
-  return n;
-}
-xc_wave_draw :: (x: [] XcCombat, w: XcWave, out: [] f32, at: int, k: f32, glow: f32) -> int {
-  n := at;
-  n=xc_wave_segment(x,w,out,n,w.left,w.near,w.right,w.near,3*k,glow);
-  n=xc_wave_segment(x,w,out,n,w.right,w.near,w.right,w.far,3*k,glow);
-  n=xc_wave_segment(x,w,out,n,w.right,w.far,w.left,w.far,3*k,glow);
-  n=xc_wave_segment(x,w,out,n,w.left,w.far,w.left,w.near,3*k,glow);
-  // Parallel guides fill the footprint, making the full hit area readable.
-  for i: 1..<4 {
-    q := f32(i)/4;
-    side := w.left+(w.right-w.left)*q; front := w.near+(w.far-w.near)*q;
-    n=xc_wave_segment(x,w,out,n,side,w.near,side,w.far,1.1*k,glow*0.55);
-    n=xc_wave_segment(x,w,out,n,w.left,front,w.right,front,1.1*k,glow*0.55);
+  for p: 0..<aa.area_aim_points(a) {
+    w := aa.area_aim_point(a, p);
+    q := xc_proj(x, w[0], meadow_y(w[0], w[1]) + y + 0.08, w[1]);
+    g := ifx aa.area_aim_guide(p) then 0.55f32 else 1.0f32;
+    if aa.area_aim_joined(a, p) && q.ok && last.ok { n = xc_line(out, n, last.x, last.y, q.x, q.y, (ifx aa.area_aim_guide(p) then 1.1f32 else 3.0f32) * k, 0.35 * glow * g, 0.80 * glow * g, glow * g); }
+    last = q;
   }
   return n;
 }
@@ -1881,9 +1852,9 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
   wave_on := wave_preview || now < x[0].wave_until;
-  wave := x[0].wave;
-  if wave_preview { wave=xc_wave_make(x,cr[0].player_x,cr[0].player_z,cr[0].player_face); wave.y=cr[0].player_y; }
-  if wave_on { n=xc_wave_draw(x,wave,out,n,k,ifx wave_preview then 0.8 else 1.0); }
+  wave := x[0].wave; wave_y := x[0].wave_y;
+  if wave_preview { wave=aa.area_face(xk_spell_area(SP_THUNDERWAVE),cr[0].player_x,cr[0].player_z,cr[0].player_face); wave_y=cr[0].player_y; }
+  if wave_on { n=xc_area_draw(x,wave,wave_y,out,n,k,ifx wave_preview then 0.8 else 1.0); }
   if xc_objects_ready(s) {
     for i:0..<XC_OBJECTS {
       o:=x[0].objects[i].rules[0];if o.destroyed {continue;}
@@ -1914,7 +1885,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if !p.ok || p.x < 0 || p.x > w || p.y < 0 || p.y > h { continue; }
     if p.x < 400 * k && p.y > x[0].top - 20 * k && p.y < bottom + 20 * k { continue; }   // not over the CLASSES column
     name := XC_FOE_NAMES[e.kind];
-    on := i == x[0].target || (wave_on && xc_wave_contains(wave,e.x,e.z));
+    on := i == x[0].target || (wave_on && aa.area_aim_contains(wave,e.x,e.z));
     nb: [32] u8;
     n = cc.eg_plate(out, n, cc.eg_title(nb[..], name), p.x, p.y, k, f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i].share);
   }
@@ -2707,12 +2678,12 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
 #test "experimental Thunderwave area outline matches every grid square it can hit" {
   s: [1] Lab; xc_start(s[0].xc[..], FB_CL_WIZARD);
   for turn: 0..<4 {
-    face := f32(turn)*0.78539816; wave := xc_wave_make(s[0].xc[..], 4, -6, face);
+    face := f32(turn)*0.78539816; wave := aa.area_face(xk_spell_area(SP_THUNDERWAVE), 4, -6, face);
     b := s[0].xc[0].b[..]; z := rs_area(b, 0, rs_spell(SP_THUNDERWAVE), XC_MID, XC_MID+3);
     for side: -4..<5 { for forward: -3..<6 {
       wx := wave.x + f32(side)*f32(XC_SQ)*wave.fz + f32(forward)*f32(XC_SQ)*wave.fx;
       wz := wave.z - f32(side)*f32(XC_SQ)*wave.fx + f32(forward)*f32(XC_SQ)*wave.fz;
-      #assert xc_wave_contains(wave, wx, wz) == rs_inside(z, XC_MID+side, XC_MID+forward);
+      #assert aa.area_aim_contains(wave, wx, wz) == rs_inside(z, XC_MID+side, XC_MID+forward);
     } }
   }
 }

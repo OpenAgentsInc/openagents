@@ -66,14 +66,18 @@ presentation queue (`aethyr/action/react.coax`, #13072).
 
 ### Area targeting
 
-The shared modules are `class-kit.coax` (`XC_AIM_AREA` :143, `xc_aim_for`
-:151, `xc_aim_point` :176) and `aethyr/rules/srd/area-origin.coax` (who an
-area includes). No shared module draws an area marker.
+The shared modules are `aethyr/action/area-aim.coax` (the SRD's areas as
+shapes on the ground: a Sphere's circle, a Cube's square or box, a Cone and a
+Line; placing one within range; its outline and guides; which creatures it
+holds), `class-kit.coax` (`XC_AIM_AREA`, `xc_aim_for`, `xc_aim_point`, and
+`xk_spell_area`, `xk_area`, `xk_zone_area`: the area each ability or battle
+zone opens) and `aethyr/rules/srd/area-origin.coax` (whether an area includes
+its caster).
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared aim (`e2k_press` everglade2-cast.coax:123 through `class-kit.coax`); the marker is absent: Entangle lands on the monster you face or 6 m ahead. |
-| Experimental | Shared aim; local markers: `XcWave` experimental-combat.coax:75, `xc_wave_draw` :1710 (Thunderwave's cube), and the 5E Lab's `draw_zones` fivelab.coax:2511. |
+| Everglade II | Shared: Entangle's square is armed and placed through `area-aim.coax`; Thunderwave's cube shows ahead of you over its slot and where it opened after a cast; monsters inside the area light their plates (`e2k_area_marks`, `e2k_area_holds` everglade2-cast.coax). |
+| Experimental | Shared: Thunderwave's cube is `xk_spell_area` drawn by `xc_area_draw` and resolved by `area_aim_contains`; the 5E Lab's `board_areas` outlines each battle zone through `xk_zone_area`. |
 | Everglade v1 | Local: `sp_aim` everglade-spells.coax:627, `sp_ring` :1989, `ab_aim_ring` everglade-abilities.coax:1175, and one ring a spell family (`gv_aim_ring` everglade-grove.coax:819, `ci_aim_ring` everglade-circle.coax:1064, `po_aim_ring` everglade-polar.coax:337, `st_aim_ring` everglade-storm.coax:529, `wd_aim_ring` everglade-wild.coax:828). |
 
 ### Conditions
@@ -238,7 +242,7 @@ when v1 wires the shared module or retires.
 | --- | --- | --- | --- |
 | Bow carry and draw | #13079 | 0 / 4 / 0 | Everglade v1 |
 | Damage numbers | #13080 | 7 / 14 / 24 | Everglade II, Experimental, Everglade v1 |
-| Area targeting | #13081 | 0 / 6 / 10 | Everglade v1 |
+| Area targeting | #13081 | 0 / 0 / 10 | |
 | Conditions | #13082 | 7 / 1 / 15 | none |
 | HUD parts | #13083 | 6 / 10 / 24 | none |
 | Class bars | #13084 | 2 / 1 / 5 | Everglade v1 |
@@ -265,9 +269,8 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### Area targeting (#13081)
 
-16 zone-local copies.
+10 zone-local copies, all in the frozen Everglade v1.
 
-- Experimental: `XcWave` experimental-combat.coax:75, `xc_wave_make` experimental-combat.coax:429, `xc_wave_contains` experimental-combat.coax:436, `xc_wave_segment` experimental-combat.coax:1699, `xc_wave_draw` experimental-combat.coax:1710, `draw_zones` fivelab.coax:2511.
 - Everglade v1: `ab_aimed` everglade-abilities.coax:82, `ab_aim_ring` everglade-abilities.coax:1175, `ci_aim_ring` everglade-circle.coax:1064, `gv_aim_ring` everglade-grove.coax:819, `po_aim_ring` everglade-polar.coax:337, `sp_ring_r` everglade-spells.coax:620, `sp_aim` everglade-spells.coax:627, `sp_ring` everglade-spells.coax:1989, `st_aim_ring` everglade-storm.coax:529, `wd_aim_ring` everglade-wild.coax:828.
 
 ### Conditions (#13082)

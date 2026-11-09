@@ -14,6 +14,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "../../aethyr/rules/srd/battle.coax";
+#load "../../aethyr/action/area-aim.coax" as aa;   // the areas abilities open, placed, outlined and resolved (#13081)
 #load "fivebar.coax";
 #load "../../aethyr/rules/srd/death-save-line.coax";   // at 0 Hit Points: the Death Saving Throws on a row and the plain line, every realm
 
@@ -182,6 +183,55 @@ xc_aim_point :: (a: FbAb, m: XcAim, px: f32, pz: f32, fx: f32, fz: f32) -> [2] f
     d = ifx a.kind == FB_SPELL && sp.area == RS_A_CUBE_SELF then f32(sp.area_ft) * f32(XC_FT) else ifx m.reach < 6 then m.reach else 6.0f32;
   }
   return [2] f32.[px + fx * d, pz + fz * d];
+}
+// The area spell sp opens, in metres on the ground at (0, 0) facing +z, from its SRD area of effect
+// (aethyr/action/area-aim.coax; not on when it has none): a Sphere is a circle of its radius, a Square
+// or a Cube on a point a square of its side, a Line from you a line of its length and width, and a Cube
+// from you the box of the squares rs_area gives it ahead of you, half a square past each edge for the
+// world's nearest-square mapping (Thunderwave's 15-foot cube: 3 squares across, from your own square on).
+xk_spell_area :: (sp: int) -> aa.AreaAim {
+  s := rs_spell(sp); ft := f32(XC_FT); sq := f32(RS_SQUARE) * ft;
+  if s.area == RS_A_SPHERE { return aa.area_circle(0, 0, f32(s.area_ft) * ft); }
+  if s.area == RS_A_SQUARE || s.area == RS_A_CUBE { return aa.area_square(0, 0, f32(s.area_ft) * ft * 0.5); }
+  if s.area == RS_A_LINE { return aa.area_line(0, 0, 0, 1, f32(s.area_ft) * ft, f32(rs_max(s.wide_ft, RS_SQUARE)) * ft * 0.5); }
+  if s.area == RS_A_CUBE_SELF {
+    // rs_area facing +y: x0 = -k/2, x1 = x0 + k - 1 across; 0 to k ahead
+    k := rs_max(s.area_ft / RS_SQUARE, 1); x0 := -(k / 2); x1 := x0 + k - 1;
+    return aa.area_box(0, 0, 0, 1, (f32(x0) - 0.5) * sq, (f32(x1) + 0.5) * sq, -0.5 * sq, (f32(k) + 0.5) * sq);
+  }
+  return aa.AreaAim.{};
+}
+// The area ability a opens (Land's Aid: a 10-foot circle), as xk_spell_area.
+xk_area :: (a: FbAb) -> aa.AreaAim {
+  if a.kind == FB_LANDS { return aa.area_circle(0, 0, 10 * f32(XC_FT)); }
+  if a.kind != FB_SPELL { return aa.AreaAim.{}; }
+  return xk_spell_area(a.sp);
+}
+// Whether ability a's area is placed on the ground (armed, then cast where it lies) rather than opened
+// from you the way you face.
+xk_area_placed :: (a: FbAb) -> bool { r := xk_area(a); return r.on && !aa.area_from_caster(r); }
+// Ability a's placed area armed for `slot`, held to `range` metres (aethyr/action/area-aim.coax).
+xk_area_arm :: (a: FbAb, slot: int, range: f32, t: f32) -> aa.AreaAim {
+  r := xk_area(a); r.slot = slot; r.range = range; r.armed_at = t;
+  return r;
+}
+// A battle's lasting area (rs_area's RsZone) on its grid, in squares (x across, y as z), for a board
+// that draws it from above: a Line as its line, a round one as a circle round the squares it holds, any
+// other the rectangle of its squares.
+xk_zone_area :: (z: RsZone) -> aa.AreaAim {
+  if z.line { return aa.area_line(f32(z.cx) + 0.5, f32(z.cy) + 0.5, z.dx, z.dy, f32(z.r_ft) / f32(RS_SQUARE), ifx z.half > 0 then z.half else 0.5f32); }
+  if z.round { return aa.area_circle(f32(z.cx) + 0.5, f32(z.cy) + 0.5, f32(z.r_ft) / f32(RS_SQUARE) + 0.5); }
+  return aa.area_box(f32(z.x0), f32(z.y0), 0, 1, 0, f32(z.x1 + 1 - z.x0), 0, f32(z.y1 + 1 - z.y0));
+}
+#test "abilities open the SRD's areas: Entangle a 20-foot square, Thunderwave a 15-foot cube from you" {
+  en := xk_spell_area(SP_ENTANGLE); #assert en.on && en.shape == aa.AREA_SQUARE && abs(en.half - 10 * f32(XC_FT)) < 0.001;
+  tw := xk_spell_area(SP_THUNDERWAVE); #assert tw.on && tw.shape == aa.AREA_BOX && aa.area_from_caster(tw);
+  #assert abs(tw.side0 + 1.5 * 1.524) < 0.001 && abs(tw.side1 - 1.5 * 1.524) < 0.001 && abs(tw.fore0 + 0.5 * 1.524) < 0.001 && abs(tw.fore1 - 3.5 * 1.524) < 0.001;
+  #assert !xk_spell_area(SP_CURE_WOUNDS).on;
+  // a battle's square on its grid: the squares it holds, and only those
+  zb: RsZone; zb.on = true; zb.x0 = 2; zb.y0 = 3; zb.x1 = 5; zb.y1 = 6;
+  za := xk_zone_area(zb);
+  for y: 0..<10 { for x: 0..<10 { #assert aa.area_aim_contains(za, f32(x) + 0.5, f32(y) + 0.5) == rs_inside(zb, x, y); } }
 }
 // The weapon a class holds (charactercreator.coax CC_KITS), as close to its SRD starting weapon as the
 // Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's greatsword, the Paladin's longsword, the Rogue's

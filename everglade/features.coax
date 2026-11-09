@@ -26,7 +26,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "WatchPop watch_pop pops_ POP_ DamagePop E2mnMark E2gdMark E2MN_MARK E2GD_MARK e2mn_mark xc_hit_mark XcFloat xc_float XC_FLOAT HitGroup hit_group HIT_GROUP HIT_FOLD HIT_SHOW hit_shown damage_number float_text",
     files = ""},
   EfFeature.{name = "area-targeting", title = "area targeting", required = true, issue = 13081,
-    owners = "apps/openagents-web/class-kit.coax aethyr/rules/srd/area-origin.coax",
+    owners = "aethyr/action/area-aim.coax apps/openagents-web/class-kit.coax aethyr/rules/srd/area-origin.coax",
     marks = "aim_ring sp_ring =sp_aim ab_aimed XcWave xc_wave draw_zones area_ring target_ring aim_circle ground_target",
     files = ""},
   EfFeature.{name = "conditions", title = "conditions", required = true, issue = 13082,
@@ -81,14 +81,14 @@ EF_ZONES :: [3] EfZone.[
   EfZone.{name = "everglade-v1",
     paths = "apps/openagents-web/everglade- apps/openagents-web/everglade.coax",
     entries = "apps/openagents-web/everglade.coax",
-    uses = "conditions hud dash spell-effects camera"}
+    uses = "area-targeting conditions hud dash spell-effects camera"}
 ];
 
 // The burn-down: the zone-local copies that were there when the check landed, one row each as
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [211] string.[
+EF_KNOWN :: [205] string.[
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
   "conditions apps/openagents-web/everglade2-cast.coax e2k_health_text",
   "conditions apps/openagents-web/everglade2-cast.coax E2K_CONDITION",
@@ -128,17 +128,12 @@ EF_KNOWN :: [211] string.[
   "camera apps/openagents-web/charactercreator.coax cc_camera_terrain_room",
   "camera apps/openagents-web/charactercreator.coax camera",
   "damage-numbers apps/openagents-web/experimental-combat.coax XC_FLOATS",
-  "area-targeting apps/openagents-web/experimental-combat.coax XcWave",
   "damage-numbers apps/openagents-web/experimental-combat.coax XcFloat",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_from",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_int",
-  "area-targeting apps/openagents-web/experimental-combat.coax xc_wave_make",
-  "area-targeting apps/openagents-web/experimental-combat.coax xc_wave_contains",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_hit_mark",
   "hud apps/openagents-web/experimental-combat.coax xc_slot_box",
-  "area-targeting apps/openagents-web/experimental-combat.coax xc_wave_segment",
-  "area-targeting apps/openagents-web/experimental-combat.coax xc_wave_draw",
   "hud apps/openagents-web/experimental-combat.coax xc_frame_box",
   "spell-effects apps/openagents-web/fivelab-warlock.coax lw_spell_col",
   "spell-effects apps/openagents-web/fivelab-warlock.coax lw_fx",
@@ -167,7 +162,6 @@ EF_KNOWN :: [211] string.[
   "camera apps/openagents-web/fivelab.coax LOOK_DRAG",
   "camera apps/openagents-web/fivelab.coax follow_cam",
   "hud apps/openagents-web/fivelab.coax layout",
-  "area-targeting apps/openagents-web/fivelab.coax draw_zones",
   "spell-effects apps/openagents-web/fivelab.coax draw_fx",
   "name-plates apps/openagents-web/fivelab.coax draw_labels3",
   "name-plates apps/openagents-web/fivelab.coax np_named",
@@ -304,13 +298,12 @@ EF_KNOWN :: [211] string.[
 
 // Required features a zone doesn't wire yet, as "zone feature": each is a warning that names the
 // feature's issue. Take a row off when the zone wires the feature (and add it to the zone's uses).
-EF_GAPS :: [8] string.[
+EF_GAPS :: [7] string.[
   "everglade-ii name-plates",
   "experimental damage-numbers",
   "experimental name-plates",
   "everglade-v1 bow",
   "everglade-v1 damage-numbers",
-  "everglade-v1 area-targeting",
   "everglade-v1 class-bars",
   "everglade-v1 name-plates"
 ];

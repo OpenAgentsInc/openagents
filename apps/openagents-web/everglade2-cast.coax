@@ -46,6 +46,7 @@ E2Cast :: struct {
   mine_heard: int;                         // your casts the room took that this page has played
   locked: bool; stopped: int;              // your bearing stops your actions: what you had going was stopped (e2k_lock_step)
   area: [1] aa.AreaAim;                    // a placed area armed: its square or circle on the ground at the crosshair (aethyr/action/area-aim.coax)
+  opened: aa.AreaAim; opened_sp: int = -1; // your last area where it opened (Thunderwave's cube, Entangle's square), shown until its until
   aimed_x: f32; aimed_z: f32;              // where your last cast was aimed
 }
 
@@ -159,16 +160,14 @@ e2k_press :: (s: [] E2, i: int) -> bool {
   c := k[0].klass; a := k[0].bar[i];
   m := xc_aim_for(a, xk_weapon(c));
   face := e2_show_face(s); fx := sin(face); fz := cos(face);   // mouselook: the camera's way
-  // a placed area: the first press arms its preview on the ground, the second (or a click) casts it there
-  shape := e2k_area_shape(a);
-  if shape < 0 { _ := aa.area_aim_cancel(k[0].area[..]); }   // another slot lets an armed area go
-  if shape >= 0 {
+  // a placed area (class-kit.coax xk_area_placed): the first press arms its preview on the ground, the
+  // second (or a click) casts it there
+  if !xk_area_placed(a) { _ := aa.area_aim_cancel(k[0].area[..]); }   // another slot lets an armed area go
+  else {
     ar := k[0].area[..];
     if ar[0].on && ar[0].slot == i { shot := aa.area_aim_confirm(ar); return e2k_cast(s, i, face, shot.x, shot.z); }
     if !e2k_ready(s, i) { return false; }   // arming asks nothing of the room, but your bearing must let you act
-    sp := rs_spell(a.sp);
-    half := ifx a.kind == FB_SPELL then f32(sp.area_ft) * f32(XC_FT) * (ifx sp.area == RS_A_SPHERE then 1.0f32 else 0.5f32) else 3.0f32;
-    ar[0] = aa.area_aim_arm(i, shape, half, m.reach, s[0].clock);
+    ar[0] = xk_area_arm(a, i, m.reach, s[0].clock);
     e2k_area_step(s);
     return true;
   }
@@ -176,16 +175,6 @@ e2k_press :: (s: [] E2, i: int) -> bool {
   p := e2gd_aim(s, m, p0, fx, fz);   // at the path's guard when he is before you (everglade2-guard.coax)
   if p[0] == p0[0] && p[1] == p0[1] { p = e2mn_aim(s, m, p0, fx, fz); }   // else at a monster before you (everglade2-monsters.coax)
   return e2k_cast(s, i, face, p[0], p[1]);
-}
-// The shape a placed area shows while you aim it (aethyr/action/area-aim.coax), -1 when the ability is
-// not one: a square for a square or a cube, a circle for a sphere (and Land's Aid's 10-foot circle).
-e2k_area_shape :: (a: FbAb) -> int {
-  if a.kind == FB_LANDS { return aa.AREA_CIRCLE; }
-  if a.kind != FB_SPELL { return -1; }
-  sp := rs_spell(a.sp);
-  if sp.area == RS_A_SQUARE || sp.area == RS_A_CUBE { return aa.AREA_SQUARE; }
-  if sp.area == RS_A_SPHERE { return aa.AREA_CIRCLE; }
-  return -1;
 }
 // Where the crosshair meets the ground: along the camera's line from the eye, the first step under the
 // land, 80 m at most (looking up: the furthest point straight on along it).
@@ -208,26 +197,53 @@ e2k_area_step :: (s: [] E2) {
 }
 e2k_area_confirm :: (s: [] E2) -> bool { k := s[0].casts[..]; if !k[0].area[0].on { return false; } return e2k_press(s, k[0].area[0].slot); }
 e2k_area_cancel :: (s: [] E2) -> bool { return aa.area_aim_cancel(s[0].casts[0].area[..]); }
-// The armed area's outline on the ground: gold, red where the crosshair is past its range.
-e2k_area_hud :: (s: [] E2, out: [] f32, at: int) -> int {
-  a := s[0].casts[0].area[0];
-  if !a.on { return at; }
-  v := at; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up; k := s[0].k;
-  cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
-  pulse := 0.75 + 0.25 * sin(s[0].clock * 6);
-  cr := ifx a.far then 1.0f32 else 0.86f32; cg := ifx a.far then 0.32f32 else 0.78f32; cb := ifx a.far then 0.28f32 else 0.42f32;
-  px: f32 = 0; py: f32 = 0; was := false;
-  for i: 0..<aa.AREA_EDGE + 1 {
-    p := aa.area_aim_edge(a, i);
-    dx := p[0] - e[0]; dy := e2_height(p[0], p[1]) + 0.06 - e[1]; dz := p[1] - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    if ahead < 0.3 { was = false; continue; }
-    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-    sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    if was { v = cc.line(out, v, px, py, sx, sy, k * 1.4, cr * pulse, cg * pulse, cb * pulse); }
-    px = sx; py = sy; was = true;
+E2K_OPENED :: 1.4;   // s an area shows where it opened, as Experimental's Thunderwave
+// The area to show now beside an armed one: the slot under the pointer's, ahead of you, when it opens
+// from you (Thunderwave's cube before you press it); else your last area while it shows.
+e2k_area_seen :: (s: [] E2) -> aa.AreaAim {
+  k := s[0].casts[..];
+  if e2k_on(s) && k[0].hover >= 0 && k[0].hover < k[0].bar_n {
+    r := xk_area(k[0].bar[k[0].hover]);
+    if r.on && aa.area_from_caster(r) { return aa.area_face(r, s[0].you_x, s[0].you_z, e2_show_face(s)); }
+  }
+  if s[0].clock < k[0].opened.until { return k[0].opened; }
+  return aa.AreaAim.{};
+}
+// Whether a creature at (x, z) is inside the area you aim or the one shown (its plate lights).
+e2k_area_holds :: (s: [] E2, x: f32, z: f32) -> bool {
+  return aa.area_aim_contains(s[0].casts[0].area[0], x, z) || aa.area_aim_contains(e2k_area_seen(s), x, z);
+}
+// One area on the ground through this camera (aethyr/action/area-aim.coax area_aim_point), its guides finer.
+e2k_area_draw :: (s: [] E2, a: aa.AreaAim, out: [] f32, at: int, cr: f32, cg: f32, cb: f32) -> int {
+  v := at; k := s[0].k;
+  view := aa.AreaView.{eye = s[0].eye, fwd = s[0].fwd, right = s[0].right, up = s[0].up, focal = s[0].focal,
+    cx = s[0].width * 0.5, cy = ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5, near = 0.3};
+  last: aa.AreaAt;
+  for p: 0..<aa.area_aim_points(a) {
+    w := aa.area_aim_point(a, p);
+    q := aa.area_view_at(view, w[0], e2_height(w[0], w[1]) + 0.06, w[1]);
+    g := ifx aa.area_aim_guide(p) then 0.55f32 else 1.0f32;
+    if aa.area_aim_joined(a, p) && q.ok && last.ok { v = cc.line(out, v, last.x, last.y, q.x, q.y, k * (ifx aa.area_aim_guide(p) then 0.8f32 else 1.4f32), cr * g, cg * g, cb * g); }
+    last = q;
   }
   return v;
+}
+// The armed area's outline on the ground, gold (red where the crosshair is past its range), and the
+// area shown beside it in its spell's colour.
+e2k_area_marks :: (s: [] E2, out: [] f32, at: int) -> int {
+  v := at;
+  seen := e2k_area_seen(s);
+  if seen.on {
+    k := s[0].casts[..]; sp := ifx s[0].clock < k[0].opened.until then k[0].opened_sp else -1;
+    if k[0].hover >= 0 && k[0].hover < k[0].bar_n && k[0].bar[k[0].hover].kind == FB_SPELL { sp = k[0].bar[k[0].hover].sp; }
+    c := ifx sp >= 0 then xc_spell_rgb(sp) else xc_rgb(0.55, 0.75, 1.0);
+    v = e2k_area_draw(s, seen, out, v, c.x, c.y, c.z);
+  }
+  a := s[0].casts[0].area[0];
+  if !a.on { return v; }
+  pulse := 0.75 + 0.25 * sin(s[0].clock * 6);
+  cr := ifx a.far then 1.0f32 else 0.86f32; cg := ifx a.far then 0.32f32 else 0.78f32; cb := ifx a.far then 0.28f32 else 0.42f32;
+  return e2k_area_draw(s, a, out, v, cr * pulse, cg * pulse, cb * pulse);
 }
 // Slot i cast at (px, pz) on the ground: asked (aethyr/action/deed.coax), then sent; it plays once the
 // room takes it (e2k_taken). False when the ask is refused or nothing could be sent.
@@ -254,6 +270,13 @@ e2k_taken :: (s: [] E2, e: E2nCast) {
   if deed_answer(k[0].deeds[..], k[0].ask.seq, true, deed_tick(s[0].clock), 0) < 0 { return; }
   c := xk_slot_class(e.slot);
   if c < 0 { c = k[0].klass; }
+  // its area where it opened: from you the way you faced, or on the point it was cast at
+  ab: FbAb; if k[0].ask.slot >= 0 && k[0].ask.slot < k[0].bar_n { ab = k[0].bar[k[0].ask.slot]; }
+  r := xk_area(ab);
+  if r.on {
+    k[0].opened = ifx aa.area_from_caster(r) then aa.area_face(r, s[0].you_x, s[0].you_z, k[0].ask.face) else aa.area_face(r, e.ax, e.az, 0);
+    k[0].opened.until = s[0].clock + f32(E2K_OPENED); k[0].opened_sp = ifx ab.kind == FB_SPELL then ab.sp else -1;
+  }
   _ := e2k_play(s, c, e.slot, s[0].you_x, s[0].you_y, s[0].you_z, k[0].ask.face, e.ax, e.ay, e.az, e.seed, k[0].me[..], true);
 }
 

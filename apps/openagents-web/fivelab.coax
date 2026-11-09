@@ -2521,16 +2521,22 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   }
 }
 
-draw_zones :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
+// The battle's lasting areas on the board: each one's outline (aethyr/action/area-aim.coax, class-kit.coax
+// xk_zone_area: a Line, a circle or its squares), held to the board, and what grows in its squares.
+board_areas :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   n := at; c := s[0].cell;
+  bx1 := s[0].gx + c * f32(s[0].cols); by1 := s[0].gy + c * f32(s[0].rows);
   for z: 0..<RS_ZONES {
     zo := s[0].battle[0].zone[z];
     if !zo.on { continue; }
     col := spell_col(zo.spell);
-    r := Rect.{x0 = s[0].gx + f32(zo.x0) * c, y0 = s[0].gy + f32(zo.y0) * c, x1 = s[0].gx + f32(zo.x1 + 1) * c, y1 = s[0].gy + f32(zo.y1 + 1) * c};
-    r.x0 = hi(r.x0, s[0].gx); r.y0 = hi(r.y0, s[0].gy);
-    r.x1 = lo(r.x1, s[0].gx + c * f32(s[0].cols)); r.y1 = lo(r.y1, s[0].gy + c * f32(s[0].rows));
-    n = box_lines(out, n, r, 1.2 * k, 0.55, col);
+    area := xk_zone_area(zo); lx: f32 = 0; ly: f32 = 0;
+    for p: 0..<aa.AREA_EDGE + 1 {
+      w := aa.area_aim_point(area, p);
+      px := lo(hi(s[0].gx + w[0] * c, s[0].gx), bx1); py := lo(hi(s[0].gy + w[1] * c, s[0].gy), by1);
+      if aa.area_aim_joined(area, p) { n = seg(out, n, lx, ly, px, py, 1.2 * k, 0.55, col); }
+      lx = px; ly = py;
+    }
     for y: zo.y0..<(zo.y1 + 1) {
       for x: zo.x0..<(zo.x1 + 1) {
         if x < 0 || y < 0 || x >= s[0].cols || y >= s[0].rows { continue; }
@@ -3306,7 +3312,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     n = draw_names3(s, out, n, k);
     n = draw_fx3(s, out, n, k);
   } else {
-    n = draw_zones(s, out, n, k, t);
+    n = board_areas(s, out, n, k, t);
     n = draw_fx(s, out, n, k);
     n = draw_tokens(s, out, n, k, t);
   }

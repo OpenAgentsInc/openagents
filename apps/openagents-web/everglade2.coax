@@ -1132,7 +1132,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   // the frame's step for the plates' fades (the first frame snaps them)
   s[0].sight_dt = ifx s[0].sight_at < 0 then 1.0f32 else ifx s[0].clock - s[0].sight_at > 0.1 then 0.1f32 else ifx s[0].clock < s[0].sight_at then 0.0f32 else s[0].clock - s[0].sight_at;
   s[0].sight_at = s[0].clock;
-  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2gd_hud(s, out, e2k_area_hud(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out)))))))))), dt));
+  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2gd_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out)))))))))), dt));
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
   return hud;
@@ -2241,7 +2241,7 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
   #assert a.far && a.shape == aa.AREA_SQUARE;
   #assert abs(sqrt(dx * dx + dz * dz) - 90 * f32(XC_FT)) < 0.01;   // held at 90 feet
   #assert abs(a.half - 10 * f32(XC_FT)) < 0.01;                     // a 20-foot square
-  s[0].focal = 800; out: [16384] f32; #assert e2k_area_hud(s[..], out[..], 0) > 0;   // its outline drawn
+  s[0].focal = 800; out: [16384] f32; #assert e2k_area_marks(s[..], out[..], 0) > 0;   // its outline drawn
   // nearer: it follows the crosshair onto the ground in range
   l = sqrt(1.09f32); s[0].fwd = [3] f32.[0, -0.3f32 / l, -1.0f32 / l]; e2k_area_step(s[..]);
   // looking down onto the ground within range: the square sits where the crosshair meets the ground,
@@ -2257,6 +2257,25 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
   #assert abs(wc.ax - a.x) < 0.01 && abs(wc.az - a.z) < 0.01 && k[0].aimed_x == a.x && k[0].aimed_z == a.z;
   // armed again, Esc lets it go: nothing cast
   s[0].clock += 2; #assert e2_key(s[..], '1' + en, 0) && k[0].area[0].on && e2_key(s[..], -1, 0) && !k[0].area[0].on && k[0].pressed == 1 && !s[0].cz[0].menu;
+}
+#test "Thunderwave shows its cube ahead of you before and after you cast it, and lights who stands in it (#13081)" #steps 1000000000 {
+  s: [1] E2; e2_test_cast_state(s[..], FB_CL_DRUID);
+  k := s[0].casts[..];
+  tw := -1; for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_SPELL && k[0].bar[i].sp == SP_THUNDERWAVE { tw = i; } }
+  #assert tw >= 0 && !xk_area_placed(k[0].bar[tw]);
+  #assert !e2k_area_seen(s[..]).on;
+  // the pointer over its slot: its 15-foot cube from you, the way you face
+  k[0].hover = tw; a := e2k_area_seen(s[..]);
+  #assert a.on && a.shape == aa.AREA_BOX && a.x == s[0].you_x && a.z == s[0].you_z;
+  fx := sin(e2_show_face(s[..])); fz := cos(e2_show_face(s[..]));
+  #assert e2k_area_holds(s[..], s[0].you_x + fx * 3, s[0].you_z + fz * 3) && !e2k_area_holds(s[..], s[0].you_x - fx * 3, s[0].you_z - fz * 3);
+  s[0].eye = [3] f32.[s[0].you_x - fx * 6, s[0].you_y + 4, s[0].you_z - fz * 6]; s[0].fwd = [3] f32.[fx * 0.8f32, -0.6, fz * 0.8f32];
+  s[0].right = [3] f32.[fz, 0, -fx]; s[0].up = [3] f32.[0, 1, 0]; s[0].focal = 800;
+  out: [32768] f32; #assert e2k_area_marks(s[..], out[..], 0) > 0;
+  // cast: it stays where it opened for a moment, then goes
+  k[0].hover = -1; k[0].opened = aa.area_face(xk_spell_area(SP_THUNDERWAVE), 0, 0, 0); k[0].opened.until = s[0].clock + 1.4; k[0].opened_sp = SP_THUNDERWAVE;
+  #assert e2k_area_seen(s[..]).on && e2k_area_holds(s[..], 0, 3);
+  s[0].clock += 2; #assert !e2k_area_seen(s[..]).on && !e2k_area_holds(s[..], 0, 3);
 }
 #test "another's e cast plays when the picture reaches its tick, at it as drawn: a blow swings and sounds there (#13058)" #steps 1000000000 {
   s: [1] E2; e2_test_cast_state(s[..], FB_CL_WIZARD);
