@@ -33,7 +33,7 @@ rs_grapple_at :: (c: RsCreature, by: int) -> int #effects(all) {
 rs_unarmed_fits :: (b: [] RsBattle, i: int, j: int, opt: int) -> bool #effects(all) {
   if i < 0 || j < 0 || i >= b[0].n || j >= b[0].n || i == j || opt < UO_GRAPPLE || opt > UO_PRONE { return false; }
   me := b[0].c[i]; t := b[0].c[j];
-  if t.dead || me.wild_form != 0 || rs_feet_to(b, i, j) / RS_SQUARE > 1 || rs_size(t) > rs_size(me) + 1 || rs_charmed_by(me, j) || !rs_cover_targetable(b, i, j) { return false; }
+  if t.dead || me.familiar_owner>0 || me.wild_form != 0 || rs_feet_to(b, i, j) / RS_SQUARE > 1 || rs_size(t) > rs_size(me) + 1 || rs_charmed_by(me, j) || !rs_cover_targetable(b, i, j) { return false; }
   if opt != UO_GRAPPLE { return true; }
   return (me.gesture_hand || me.material_hand) && me.grappling < 0 && rs_effect_condition_mask(t, RS_GRAPPLED) != 0 && rs_effect_free(t) > 0;
 }

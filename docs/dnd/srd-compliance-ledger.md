@@ -616,7 +616,7 @@ Each feature then resolves against its text with fixed dice in
 | Wizard (Evoker) | Spellcasting (a book of six level 1 spells and two a level), Ritual Adept, Arcane Recovery, Scholar (Arcana Expertise), Evocation Savant (two free Evocation spells at 3, one more at 5), Potent Cantrip, ASI, Memorize Spell (in `wizard-features.coax`), Sculpt Spells | Done; Ritual Adept casts a spellbook Ritual through `ritual-cast.coax` (#13038) |
 | Warlock (Fiend) | Eldritch Invocations (Armor of Shadows; Agonizing and Repelling Blast at 2; Fiendish Vigor and Eldritch Mind at 5), Pact Magic, Magical Cunning (in `warlock-features.coax`), Dark One's Blessing, Fiend Spells, ASI, Dark One's Own Luck | Done |
 | Sorcerer (Draconic) | Spellcasting, Innate Sorcery, Font of Magic (both conversions, in `sorcerer-features.coax`; a created slot vanishes on a Long Rest), Metamagic (Quickened, Seeking), Draconic Resilience, Draconic Spells (Command), ASI, Sorcerous Restoration, Elemental Affinity (Fire) | Done |
-| Druid (Land, polar) | Spellcasting (a third cantrip at 4), Druidic (Speak with Animals always prepared), Primal Order (Warden), Wild Shape (in `wild-shape.coax`: a Bonus Action into a known Beast, Temporary Hit Points of its level, the Beast's Strength, Dexterity, Constitution, AC, Speed, size, traits and attacks, no spellcasting, half its level in hours, ending on Incapacitated, death, re-use or a Bonus Action; four forms at 2 and six at 4: Rat, Riding Horse, Spider, Wolf, Black Bear, Warhorse, with Cat available as a Long Rest replacement), Wild Companion (its flag), Circle of the Land Spells, Land's Aid, ASI, Wild Resurgence, Natural Recovery; the kit's Wild Shape and Attack slots from level 2 | Done; Find Familiar isn't a spell record, so Wild Companion can't be cast; the Warden's Martial weapon and Medium armor training has no model; a form's Opportunity Attacks use an Unarmed Strike; the Warhorse's charge and the Beasts' Swim and the Rat's Agile aren't run |
+| Druid (Land, polar) | Spellcasting (a third cantrip at 4), Druidic (Speak with Animals always prepared), Primal Order (Warden), Wild Shape (in `wild-shape.coax`: a Bonus Action into a known Beast, Temporary Hit Points of its level, the Beast's Strength, Dexterity, Constitution, AC, Speed, size, traits and attacks, no spellcasting, half its level in hours, ending on Incapacitated, death, re-use or a Bonus Action; four forms at 2 and six at 4: Rat, Riding Horse, Spider, Wolf, Black Bear, Warhorse, with Cat available as a Long Rest replacement), Wild Companion (shared Fey familiar executor), Circle of the Land Spells, Land's Aid, ASI, Wild Resurgence, Natural Recovery; the kit's Wild Shape and Attack slots from level 2 | Done; Wild Companion has shared execution, with the player control and Wizard Find Familiar casting workflow pending; the Warden's Martial weapon and Medium armor training has no model; a form's Opportunity Attacks use an Unarmed Strike; the Warhorse's charge and the Beasts' Swim and the Rat's Agile aren't run |
 
 ### Used-monster stat blocks (2026-11-08)
 
@@ -811,3 +811,24 @@ Experimental page. Everglade II shares the rules state and Long Rest hook.
 In muted headless WebGPU, the level 2 Druid cycled the badge from Wolf to
 Rat and used the slot. The page recorded one use, zero refusals, and showed
 the selected Rat and two Temporary Hit Points.
+
+### Shared familiar actors and Wild Companion (#13030)
+
+The shared Wild Companion entry spends the Druid's Magic action and the
+chosen spell slot or Wild Shape use. It retains Verbal and Somatic checks
+and omits Material components. A legal unoccupied square within two grid
+steps admits one Fey familiar per owner. The currently represented choices
+are Rat, Spider and Cat. Recasting with a different form changes the ally in
+place, retaining its current HP up to the new maximum and its initiative.
+The actor leaves the grid at 0 HP or when its owner completes a Long Rest.
+A familiar can take non-attack actions. Shared weapon, stat-block, Unarmed
+Strike, Ready Attack and Opportunity Attack paths refuse its attacks.
+
+This lands the actor and Druid resource path. Wizard casting time and
+incense, the regular spell's broader form and spirit choices, familiar
+commands and player-facing world integration still need qualification.
+
+The native witness passed the spell-slot path, attack refusal and Long Rest
+retirement. Scoped mutation runs killed 1,221 mutants with zero survivors
+across familiar, Long Rest completion and the five changed attack admission
+units. The Lab Wasm built at 2,648,233 bytes within its 2,650,000-byte cap.

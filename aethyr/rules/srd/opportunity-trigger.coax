@@ -11,7 +11,7 @@ RsOpportunityMove :: struct {
 }
 rs_opportunity_trigger :: (b:[] RsBattle,reactor:int,mover:int,q:RsOpportunityMove)->bool #effects(all) {
   if reactor<0 || reactor>=b[0].n || mover<0 || mover>=b[0].n || reactor==mover { return false; }
-  if !rs_capable(b[0].c[reactor]) || b[0].c[reactor].reacted || b[0].c[reactor].opportunity_blocked || b[0].c[mover].dead { return false; }
+  if b[0].c[reactor].familiar_owner>0 || !rs_capable(b[0].c[reactor]) || b[0].c[reactor].reacted || b[0].c[reactor].opportunity_blocked || b[0].c[mover].dead { return false; }
   if !q.melee || !q.seen || q.teleport || !(q.movement || q.action || q.bonus || q.reaction) { return false; }
   if b[0].who==mover && b[0].turn.disengaged { return false; }
   rx:=b[0].c[reactor].x; ry:=b[0].c[reactor].y;

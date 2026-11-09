@@ -21,6 +21,7 @@ rs_ready_slot :: (e: RsEffect) -> int #effects(all) { return e.cond / 16; }
 // is spent, a Ready is already held, there's no room, or the spell couldn't be cast now.
 rs_ready :: (b: [] RsBattle, i: int, response: int, trigger: int, sp: int, slot: int) -> bool #effects(all) {
   if !rs_action_free(b, i) || response < RD_ATTACK || response > RD_SPELL || trigger < -1 || trigger >= b[0].n || trigger == i { return false; }
+  if response==RD_ATTACK && b[0].c[i].familiar_owner>0 { return false; }
   if rs_ready_at(b[0].c[i]) >= 0 || rs_effect_free(b[0].c[i]) == 0 { return false; }
   e := RsEffect.{kind = EF_READY, cond = response, by = i, spell = -1, until = rs_before_next_turn(b, i), save = -1, dc = trigger};
   if response == RD_SPELL {

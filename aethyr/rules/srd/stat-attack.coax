@@ -23,7 +23,7 @@ rs_stat_attack_valid :: (a: RsStatAttack) -> bool #effects(all) {
 // reach counts from i's space (monster-traits.coax rs_space_feet); a ranged form reaches its long range.
 rs_stat_mode :: (b: [] RsBattle, i: int, j: int, a: RsStatAttack) -> int #effects(all) {
   feet := rs_feet_to(b,i,j);
-  if !rs_cover_targetable(b,i,j) { return 0; }   // Total Cover (p.15)
+  if b[0].c[i].familiar_owner>0 || !rs_cover_targetable(b,i,j) { return 0; }   // Total Cover (p.15)
   if rs_charmed_by(b[0].c[i],j) { return 0; }   // Charmed: can't attack the charmer (p.177)
   if a.reach>0 && feet<=a.reach+rs_space_feet(b[0].c[i]) { return 1; }
   return ifx a.long_ft>0 && feet<=a.long_ft then 2 else 0;

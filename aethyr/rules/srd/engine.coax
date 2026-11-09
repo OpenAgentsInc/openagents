@@ -299,7 +299,11 @@ RsCreature :: struct {
   sculpt: bool;                    // Sculpt Spells (Evoker)
   cunning_rite: bool; own_luck: bool;   // Magical Cunning (a 1-minute rite, not in a battle), Dark One's Own Luck
   jack: bool; font: bool; discoveries: [2] int;   // Jack of All Trades (checks only), Font of Inspiration, Magical Discoveries
-  companion: bool; resurgence: bool; resurged_slot: bool;   // Wild Companion (a familiar, not modeled), Wild Resurgence and its once-a-rest slot
+  companion: bool; resurgence: bool; resurged_slot: bool;
+  familiar_owner:int;       // owner actor + 1, zero for other creatures
+  familiar_form:int;
+  familiar_spirit:int;
+  familiar_until_rest:bool;
   sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
   guard_slot: int; guard_turn: int = -1;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one (-1 none yet)

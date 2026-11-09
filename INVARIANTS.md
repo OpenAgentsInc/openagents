@@ -7500,3 +7500,14 @@ Rejection preserves the mask and choice. The Cat is a CR 0 option from the
 pinned SRD. Wild Shape borrows and restores Jumper along with the rest of its
 physical form. Experimental shows the outgoing and incoming choices in its
 rest panel, and the Wild Shape slot selects among the forms still known.
+
+## A familiar owns one non-attacking actor in its owner's battle
+
+The familiar stores its owner as an actor index plus one. Recasting replaces
+the living actor's form in place or reuses its retired slot. A familiar
+receives its own initiative and turn. A rejected Wild Companion request
+changes neither the owner's turn and resources nor the roster. An accepted
+request spends the Magic action and the selected resource. The familiar
+leaves the grid at 0 HP, and the Druid's Fey familiar also leaves when its
+owner completes a Long Rest. Attack admission rejects familiars across
+weapon, natural attack, Unarmed Strike, Ready Attack and Opportunity Attack.

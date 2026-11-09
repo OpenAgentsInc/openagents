@@ -4,7 +4,7 @@
 
 rs_strikes_fit :: (b: [] RsBattle, i: int, j: int, w: int, attacks: int, retarget: bool) -> bool #effects(all) {
   me := b[0].c[i];
-  if !rs_cover_targetable(b,i,j) { return false; }   // Total Cover (p.15)
+  if me.familiar_owner>0 || !rs_cover_targetable(b,i,j) { return false; }   // Total Cover (p.15)
   own := ifx rs_mastery(b,i,w,M_VEX) then attacks else 0;
   if rs_effect_free(me) < own { return false; }
   for t: 0..<b[0].n {

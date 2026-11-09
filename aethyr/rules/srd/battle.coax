@@ -27,6 +27,7 @@
 #load "warlock-features.coax";
 #load "sorcerer-features.coax";
 #load "wild-shape.coax";
+#load "familiar.coax";
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -446,6 +447,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
     rs_tell(b, ifx r.killed then RS_EV_DEATH else RS_EV_DOWN, spell, by, j, 0, 0, l[..]);
     rs_interrupt_incapacitated(b,j);
     if r.dropped { rs_dropped(b, by, j); }
+    if b[0].c[j].familiar_owner>0 { rs_familiar_retire(b,j); }
     return;
   }
   if r.conc_dc > 0 && b[0].c[j].conc >= 0 {

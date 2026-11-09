@@ -45,7 +45,7 @@
   }
 }
 
-#test "Wild Companion p.43: from level 2 (Find Familiar isn't a spell record yet)" {
+#test "Wild Companion p.43: the feature is granted from level 2" {
   #assert !rs_druid("D", 0, 1).companion && rs_druid("D", 0, 2).companion;
 }
 
