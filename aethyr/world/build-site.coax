@@ -1,0 +1,149 @@
+// Staged construction (engine): a structure is built in stages, and each stage adds parts. A part
+// is a form (a pole, a wall along a line or an arc, a roof slope, a slab...) made of a material
+// (bark poles, woven withies, clay daub, fieldstone, dressed stone, reed thatch, leafy boughs...).
+// Drawing a structure at stage k draws every part of stages 1 to k, so a half-built hut looks
+// half-built. Parts are authored in the building's own frame (front +z, the ground at y 0) and
+// placed with aethyr/world/building.coax's BuildingFrame, turned in quarters.
+//
+// This file is what the room and the walker need: the parts and their colliders. A collider
+// matches what you see: a woven or daubed wall blocks you, the posts of a bare frame block only
+// where each post stands, so you walk between them, and a low roof slope blocks where it comes
+// down below your head. Nothing above head height is a collider. The meshes (the withies, the
+// thatch courses, the stones) are aethyr/world/build-site-mesh.coax, which the scene packer runs.
+// The game owns the structures (Everglade: everglade/world/housewright.coax).
+#module "aethyr.buildsite";
+#load "building.coax" as building;
+
+// The forms.
+BS_POLE :: 0;        // a round pole from (x0, y0, z0) to (x1, y1, z1), radius t
+BS_BEAM :: 1;        // a squared, pegged timber between the same points, half its width t
+BS_WALL :: 2;        // a wall along (x0, z0) to (x1, z1), from y0 up to y1, t thick
+BS_RING :: 3;        // a wall along an arc: centre (x0, z0), radius x1, angles z1 to a (0 is +z), y0 to y1, t thick
+BS_SHED :: 4;        // one roof slope over x0..x1: its high edge at z0 (height y1), its low edge at z1 (height y0), t thick
+BS_GABLE :: 5;       // two slopes over x0..x1, z0..z1: eaves at y0, the ridge at y1 along x (along z when a is 1)
+BS_CONE :: 6;        // a round roof: centre (x0, z0), eave radius x1 at y0, apex y1
+BS_SLAB :: 7;        // a block from (x0, y0, z0) to (x1, y1, z1)
+BS_TRENCH :: 8;      // a drainage ditch along (x0, z0) to (x1, z1), t wide, its spoil banked outside
+BS_STONES :: 9;      // loose stones in a ring: centre (x0, z0), radius x1, each stone t across
+BS_GABLE_END :: 10;  // a triangular wall along (x0, z0) to (x1, z1): base y0, apex y1 over its middle
+BS_KIT :: 11;        // a kit piece the game names (mat is its index): at (x0, y0, z0), turned x1 quarters; t its collider (0 none, 1 a 2 m wall module, 2 a door module)
+
+// The materials. On a wall form: BARK is a row of posts (t their radius), WITHY woven wattle, DAUB
+// clay over it, FIELDSTONE dry-stacked stones, ASHLAR dressed stone, PLANK boards. On a roof form:
+// BARK is rafter poles, TIMBER sawn rafters, REED thatch, LEAF boughs.
+BS_BARK :: 0;
+BS_TIMBER :: 1;
+BS_WITHY :: 2;
+BS_DAUB :: 3;
+BS_FIELDSTONE :: 4;
+BS_ASHLAR :: 5;
+BS_REED :: 6;
+BS_LEAF :: 7;
+BS_EARTH :: 8;
+BS_FLAG :: 9;        // flagstones: a hearth, a stone floor
+BS_PLANK :: 10;
+BS_HIDE :: 11;       // a hide door flap
+BS_MATERIALS :: 12;
+
+BS_HEAD :: 1.9;      // nothing wholly above this height is a collider: you pass under it
+BS_PART_BOXES :: 32; // the most boxes one part gives
+
+BuildPart :: struct {stage:int;form:int;mat:int;x0:f32;y0:f32;z0:f32;x1:f32;y1:f32;z1:f32;t:f32;a:f32;}
+
+// A part from a table row: stage, form, mat, x0, y0, z0, x1, y1, z1, t, a.
+bs_row :: (r:[11]f32)->BuildPart {
+ return BuildPart.{stage=int(r[0]),form=int(r[1]),mat=int(r[2]),x0=r[3],y0=r[4],z0=r[5],x1=r[6],y1=r[7],z1=r[8],t=r[9],a=r[10]};
+}
+bs_solid :: (mat:int)->bool {return mat==BS_WITHY || mat==BS_DAUB || mat==BS_FIELDSTONE || mat==BS_ASHLAR || mat==BS_PLANK || mat==BS_TIMBER;}
+
+// A point along a wall's line or arc, s from 0 to 1, and the line's length.
+bs_path :: (p:BuildPart,s:f32)->[2]f32 {
+ if p.form==BS_RING {a:=p.z1+(p.a-p.z1)*s;return [2]f32.[p.x0+p.x1*sin(a),p.z0+p.x1*cos(a)];}
+ return [2]f32.[p.x0+(p.x1-p.x0)*s,p.z0+(p.z1-p.z0)*s];
+}
+bs_path_len :: (p:BuildPart)->f32 {
+ if p.form==BS_RING {return abs(p.a-p.z1)*p.x1;}
+ dx:=p.x1-p.x0;dz:=p.z1-p.z0;return sqrt(dx*dx+dz*dz);
+}
+// How many posts a BARK wall stands, ends included, about a metre apart.
+bs_posts :: (p:BuildPart)->int {n:=int(bs_path_len(p)/1.05+0.999);return ifx n<1 then 2 else n+1;}
+
+bs_box_put :: (out:[]f32,n:int,b:[6]f32)->int {
+ if b[1]>=BS_HEAD || n>=out.count/6 {return n;}
+ for k:0..<6 {out[n*6+k]=b[k];}return n+1;
+}
+bs_lo :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+bs_hi :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+
+#test "a woven wall blocks along its line, a row of posts only at each post" {
+ w:=BuildPart.{stage=1,form=BS_WALL,mat=BS_WITHY,x0= -2,z0=1,x1=2,z1=1,y0=0,y1=2,t=0.12};
+ b:[BS_PART_BOXES*6]f32;n:=bs_boxes(w,b[..],0);#assert n==1 && b[0]== -2 && b[3]==2 && b[2]<1 && b[5]>1 && b[4]==2;
+ p:=w;p.mat=BS_BARK;p.t=0.08;n=bs_boxes(p,b[..],0);#assert n==bs_posts(p) && n==5;
+ for i:0..<n-1 {#assert b[(i+1)*6]-b[i*6+3]>0.6;}   // room for you between two posts
+ // a gable end above your head is no collider
+ g:=w;g.form=BS_GABLE_END;g.y0=2.4;g.y1=4;#assert bs_boxes(g,b[..],0)==0;
+}
+#test "a ring wall closes its arc and leaves its doorway open" {
+ r:=BuildPart.{stage=1,form=BS_RING,mat=BS_WITHY,x0=0,z0=0,x1=1.5,z1=0.4,a=6.2831853-0.4,y0=0,y1=1.8,t=0.1};
+ b:[BS_PART_BOXES*6]f32;n:=bs_boxes(r,b[..],0);#assert n>12;
+ for k:0..<40 {a:=0.5+f32(k)*0.13;x:=1.5*sin(a);z:=1.5*cos(a);hit:=false;for i:0..<n {if x>=b[i*6] && x<=b[i*6+3] && z>=b[i*6+2] && z<=b[i*6+5] {hit=true;}}#assert hit;}
+ for i:0..<n {#assert !(0>b[i*6]-0.3 && 0<b[i*6+3]+0.3 && 1.5>b[i*6+2]-0.3 && 1.5<b[i*6+5]+0.3);}
+}
+#test "a lean-to's slope blocks only where it comes below your head" {
+ s:=BuildPart.{stage=1,form=BS_SHED,mat=BS_LEAF,x0= -1.5,x1=1.5,z0=0.9,y1=2.3,z1= -1.1,y0=0,t=0.1};
+ b:[BS_PART_BOXES*6]f32;n:=bs_boxes(s,b[..],0);#assert n>2;
+ front:=false;back:=false;for i:0..<n {if b[i*6+5]>0.85 {front=true;}if b[i*6+2]< -1.05 {back=true;}}#assert !front && back;
+}
+// The colliders of one part, as boxes (x0, y0, z0, x1, y1, z1) in the building's frame, written
+// from box n of `out`; returns the count after them.
+bs_boxes :: (p:BuildPart,out:[]f32,n:int)->int {
+ c:=n;
+ if p.form==BS_WALL || p.form==BS_RING || p.form==BS_GABLE_END {
+  if p.mat==BS_BARK {k:=bs_posts(p);for i:0..<k {q:=bs_path(p,f32(i)/f32(k-1));c=bs_box_put(out,c,[6]f32.[q[0]-p.t,p.y0,q[1]-p.t,q[0]+p.t,p.y1,q[1]+p.t]);}return c;}
+  if !bs_solid(p.mat) {return c;}
+  // a straight wall grows only across its line, so it ends where its line ends and an opening
+  // between two walls is as wide as the gap between their lines; an arc's chords grow both ways
+  top:=ifx p.form==BS_GABLE_END then p.y0+(p.y1-p.y0)*0.5 else p.y1;h:=p.t*0.5;
+  k:=ifx p.form==BS_RING then int(bs_path_len(p)/0.4)+1 else 1;
+  for i:0..<k {a:=bs_path(p,f32(i)/f32(k));b:=bs_path(p,f32(i+1)/f32(k));
+   dx:=b[0]-a[0];dz:=b[1]-a[1];l:=sqrt(dx*dx+dz*dz);hx:=h;hz:=h;if p.form!=BS_RING && l>0.0001 {hx=h*abs(dz)/l;hz=h*abs(dx)/l;}
+   c=bs_box_put(out,c,[6]f32.[bs_lo(a[0],b[0])-hx,p.y0,bs_lo(a[1],b[1])-hz,bs_hi(a[0],b[0])+hx,top,bs_hi(a[1],b[1])+hz]);}
+  return c;
+ }
+ if p.form==BS_POLE || p.form==BS_BEAM {
+  if (p.y0>=BS_HEAD && p.y1>=BS_HEAD) || p.mat==BS_HIDE || p.mat==BS_LEAF {return c;}   // a door flap or a spray gives way
+  // the stretch of it below your head
+  s0:f32=0;s1:f32=1;dy:=p.y1-p.y0;
+  if abs(dy)>0.0001 {s:=(BS_HEAD-p.y0)/dy;if dy>0 {s1=bs_lo(1,s);}else {s0=bs_hi(0,s);}}
+  ax:=p.x0+(p.x1-p.x0)*s0;az:=p.z0+(p.z1-p.z0)*s0;ay:=p.y0+dy*s0;bx:=p.x0+(p.x1-p.x0)*s1;bz:=p.z0+(p.z1-p.z0)*s1;by:=p.y0+dy*s1;
+  return bs_box_put(out,c,[6]f32.[bs_lo(ax,bx)-p.t,bs_lo(ay,by)-p.t,bs_lo(az,bz)-p.t,bs_hi(ax,bx)+p.t,bs_hi(ay,by)+p.t,bs_hi(az,bz)+p.t]);
+ }
+ if p.form==BS_SHED {
+  // strips down the slope; one blocks where its low side is below your head
+  for i:0..<6 {sa:=f32(i)/6;sb:=f32(i+1)/6;za:=p.z0+(p.z1-p.z0)*sa;zb:=p.z0+(p.z1-p.z0)*sb;ha:=p.y1+(p.y0-p.y1)*sa;hb:=p.y1+(p.y0-p.y1)*sb;
+   if bs_lo(ha,hb)>=BS_HEAD-0.2 {continue;}
+   c=bs_box_put(out,c,[6]f32.[bs_lo(p.x0,p.x1),0,bs_lo(za,zb),bs_hi(p.x0,p.x1),bs_hi(ha,hb)+p.t,bs_hi(za,zb)]);}
+  return c;
+ }
+ if p.form==BS_SLAB {return bs_box_put(out,c,[6]f32.[bs_lo(p.x0,p.x1),p.y0,bs_lo(p.z0,p.z1),bs_hi(p.x0,p.x1),p.y1,bs_hi(p.z0,p.z1)]);}
+ if p.form==BS_KIT && p.t>0 {
+  // a 2 m kit wall module 0.4 m thick and 3.1 m tall, turned x1 quarters about its place; a door
+  // module keeps only its two jambs
+  f:=building.BuildingFrame.{x=p.x0,z=p.z0,turn=int(p.x1)};
+  if p.t<1.5 {return bs_box_put(out,c,building.building_box(f,[6]f32.[-1,p.y0,-0.2,1,p.y0+3.1,0.2]));}
+  c=bs_box_put(out,c,building.building_box(f,[6]f32.[-1,p.y0,-0.2,-0.78,p.y0+3.1,0.2]));
+  return bs_box_put(out,c,building.building_box(f,[6]f32.[0.78,p.y0,-0.2,1,p.y0+3.1,0.2]));
+ }
+ return c;
+}
+// The same boxes placed in the world at the frame (y still from the frame's ground).
+bs_world_boxes :: (f:building.BuildingFrame,p:BuildPart,out:[]f32,n:int)->int {
+ c:=bs_boxes(p,out,n);
+ for i:n..<c {b:=building.building_box(f,[6]f32.[out[i*6],out[i*6+1],out[i*6+2],out[i*6+3],out[i*6+4],out[i*6+5]]);for k:0..<6 {out[i*6+k]=b[k];}}
+ return c;
+}
+#test "boxes turn with the building" {
+ p:=BuildPart.{stage=1,form=BS_SLAB,mat=BS_EARTH,x0=0,x1=1,y0=0,y1=0.1,z0=0,z1=2};
+ b:[6]f32;n:=bs_world_boxes(building.BuildingFrame.{x=10,z=5,turn=1},p,b[..],0);
+ #assert n==1 && b[0]==10 && b[3]==12 && b[2]==4 && b[5]==5;
+}

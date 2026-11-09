@@ -2289,7 +2289,7 @@
   },
   "packer": {
     "path": "verse/tools/assets/character_glade_pack.coax",
-    "sha256": "341f60e6f761bf93847a119b89759c4e149cd69bc14f8acf6a30cb67dfaddd6e",
+    "sha256": "05ed9492018e5106fabb6dea963bf8f0368d81af3a7aba32fef22de249b14209",
     "profile": "--experimental"
   },
   "wardrobe_base": {
@@ -2298,10 +2298,10 @@
   },
   "runtime": {
     "path": "apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz",
-    "sha256": "f749a0eb903b6fa2ea11d23e6cc145a2a1f071f0a9886edcb2f285e129c8e8fa",
+    "sha256": "fd43427fea26990c78d1ac654791d2a235cc1faaf64c125c72b4374886c226f7",
     "budget_bytes": 536870912,
-    "decoded_sha256": "a33e9f4efd7df75413e5f95dd0b3a4df613d1ac29823b1f76722b05f860e6e3a",
-    "decoded_bytes": 247517652,
+    "decoded_sha256": "d7797cca2c1e9a89114900cb1626a67bf75520de39a2eb3d87e4b9e2433d0121",
+    "decoded_bytes": 263878172,
     "encoding": "gzip"
   },
   "terrain": {

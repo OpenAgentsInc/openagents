@@ -4,9 +4,10 @@
 #load "character-glade.coax" as glade;
 #load "experimental-dungeon.coax" as dungeon;
 #load "../aethyr/world/building.coax" as building;
+#load "../everglade/world/housewright.coax" as hw;
 
 ExpSite :: struct {x:f32;z:f32;left:f32;right:f32;back:f32;front:f32;}
-EXP_SITES :: 29;
+EXP_SITES :: 30;
 #test "experimental building sites are distinct, walkable and inside the meadow" {
  // the dungeon (site 18) alone runs on south past the meadow, walled and roofed (experimental-dungeon.coax)
  for i:0..<EXP_SITES {a:=exp_site(i);#assert a.x-a.left> -82 && a.x+a.right<82 && (i==18 || a.z-a.back> -82) && a.z+a.front<82;
@@ -20,6 +21,7 @@ EXP_SITES :: 29;
  #assert abs(exp_site(7).x-exp_site(0).x)<16 && !exp_clear(0,0);
  #assert exp_site_group(8)==3 && exp_site(8).x==15 && exp_site(8).z== -5;
  #assert exp_site_group(9)== -1 && exp_site(9).x==48 && exp_site(17).z==63;
+ #assert exp_site_group(EXP_SHOWCASE_SITE)== -4 && exp_site(EXP_SHOWCASE_SITE).x>0 && exp_site(EXP_SHOWCASE_SITE).z>0;
  h:=exp_site(EXP_HOME_SITE);#assert exp_site_group(EXP_HOME_SITE)== -3 && h.x==exp_home().x && h.x*h.x+h.z*h.z>16*16 && h.x*h.x+h.z*h.z<24*24;
 }
 #test "experimental foundations are level and fade continuously into the glade" {
@@ -52,13 +54,34 @@ exp_site :: (i:int)->ExpSite {
  if i==27 {return ExpSite.{x=36,z= -34,left=10,right=4,back=10.8,front=4.1};}
  // the player's home (everglade/world/home.coax), west of spawn
  if i==EXP_HOME_SITE {h:=exp_home();return ExpSite.{x=h.x,z=h.z,left=2.5,right=2.5,back=2.5,front=2.5};}
+ // the housewright showcase's level yard, south-east of spawn (exp_showcase)
+ if i==EXP_SHOWCASE_SITE {return ExpSite.{x=26.3,z=60.35,left=15.1,right=15.1,back=21.05,front=21.05};}
  j:=i-9;return ExpSite.{x=48+f32(j%4)*10,z=43+f32(j/4)*10,left=2.5,right=2.5,back=2.5,front=2.5};
 }
 // The player's home (game: everglade/world/home.coax, the engine's 4 m room) stands here, about
 // 20 m west of spawn, turned a quarter so its doorway faces spawn; its levelled site is EXP_HOME_SITE.
 EXP_HOME_SITE :: 28;
 exp_home :: ()->building.BuildingFrame {return building.BuildingFrame.{x= -20,z= -5,turn=1};}
-exp_site_group :: (i:int)->int {if i==EXP_HOME_SITE {return -3;}if i==18 {return -2;}if i==27 {return 0;}if i>=19 {return 1;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}
+// The housewright showcase (game: everglade/world/housewright.coax): one row a tier, running south
+// from the end nearest spawn, each house frozen at one of its stages, the bare site first and the
+// finished house last. Every house faces west, its doorway on the row's walk; its levelled yard is
+// EXP_SHOWCASE_SITE.
+EXP_SHOWCASE_SITE :: 29;
+EXP_SHOWCASE_ROW :: [5]f32.[12.5,17.0,23.1,30.82,38.19];   // each tier's row: the houses' middles, east of spawn
+EXP_SHOWCASE_PITCH :: [5]f32.[7,7,6,7,8];                  // and how far apart along it
+exp_showcase :: (tier:int,stage:int)->building.BuildingFrame {
+ n:=hw.hw_stages(tier);z:=60.35+(f32(stage-1)-f32(n-1)*0.5)*EXP_SHOWCASE_PITCH[tier];
+ return building.BuildingFrame.{x=EXP_SHOWCASE_ROW[tier],z=z,turn=3};
+}
+#test "the showcase's houses stand apart on its level yard, every row in order from the bare site" {
+ y:=exp_site(EXP_SHOWCASE_SITE);
+ for t:0..<hw.HW_TIERS {r:=hw.HW_REACH[t];for s:1..<hw.hw_stages(t)+1 {f:=exp_showcase(t,s);
+   // the house's reach, turned to face west: its front toward -x, its sides along z
+   #assert f.x-r[1]>=y.x-y.left-0.01 && f.x+r[2]<=y.x+y.right && f.z-r[0]>=y.z-y.back && f.z+r[0]<=y.z+y.front;
+   if s>1 {g:=exp_showcase(t,s-1);#assert g.z+r[0]<f.z-r[0]+0.2;}
+   if t>0 {g:=exp_showcase(t-1,1);q:=hw.HW_REACH[t-1];#assert g.x+q[2]+1.2<f.x-r[1];}}}
+}
+exp_site_group :: (i:int)->int {if i==EXP_SHOWCASE_SITE {return -4;}if i==EXP_HOME_SITE {return -3;}if i==18 {return -2;}if i==27 {return 0;}if i>=19 {return 1;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}
 exp_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
 exp_distance :: (s:ExpSite,x:f32,z:f32)->f32 {
  dx:=exp_max(s.x-s.left-x,x-s.x-s.right);dz:=exp_max(s.z-s.back-z,z-s.z-s.front);return exp_max(dx,dz);

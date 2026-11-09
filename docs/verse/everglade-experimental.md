@@ -37,6 +37,24 @@ pack stand near spawn. Their source pack contains no animations, so they cycle
 through six compatible Universal Animation Library 1 motions every three seconds. Three additional imps and three gremlins wait at their places until the player comes near and in sight, then pursue and attack using the SRD combat rules. Nothing wakes, attacks or lands a hit while the player stands within 12 metres of spawn, or for 3 seconds after spawning or respawning. A Goblin Warrior's Shortbow, an Ogre's Javelin and a Hill Giant's Trash Lob fly as a visible arrow or rock after a draw or wind-up on the attacker's attack clip, with a release sound at the attacker; the attack resolves when it arrives, so stepping out of its path makes it miss and fly on past. A hit from off-screen shows a red wedge at the screen's edge toward the attacker, fading over about a second. Player health is shown on a bar, hits raise damage numbers, and after the death animation the enemies return toward their starting places. Press R or click the respawn prompt to return to spawn at full health; defeated monsters stay defeated. Their original
 Quaternius Asset License v1.0 is retained in the registry and scene catalog.
 
+## Housewright showcase
+
+South-east of spawn, a levelled yard centred at (26.3, 60.35) shows each
+basic house from the [Housewright spec](../../everglade/docs/housewright-profession-spec.md)
+frozen at every stage of its build. Each of the five rows holds one tier,
+with the bare site nearest spawn and the finished house farthest away:
+the branch lean-to (3 stages), the woven hut (4), the wattle-and-daub
+cottage (7), the timber house (5) and the stone cottage (5). The houses face
+west, and a label at each one names its tier and stage, for example
+"Woven hut, 2 of 4: walls woven", when you are within 18 m.
+
+The parts are data in `everglade/world/housewright.coax`; the staged-build
+piece is `aethyr/world/build-site.coax`, and the packer meshes the parts
+with `aethyr/world/build-site-mesh.coax`. The timber house uses the
+Medieval Village kit's wall, door, window and roof modules. Colliders match
+what each stage shows: you can walk between bare frame posts, and finished
+walls block you everywhere except through the doorway.
+
 ## Fight back
 
 You fight the monsters with your class's level 1 kit
@@ -213,7 +231,12 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   "$food_root" "$rpg_root" "$dungeon_root" "$animal_root" "$animal_frames" \
   "$monster_root" "$monster_frames" assets/registry/scenes/everglade-experimental-extra-props.layout \
   assets/registry/scenes/everglade-experimental-extra-nature.layout \
-  verse/experimental-scene-colliders.coax
+  verse/experimental-scene-colliders.coax "$HOME/.openagents/assets/cache/0ad-gltf"
+coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
+  assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
+python3 verse/tools/assets/character_glade_oracle.py \
+  apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
+  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase --animal-run --bestiary --extra-props --extra-nature
 horse_frames="$HOME/.openagents/assets/cache/horse-white-mount"
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
   --python-exit-code 1 --python verse/tools/assets/horse_bake.py -- "$animal_original" "$horse_frames"
@@ -222,12 +245,9 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-horse \
 mv /tmp/glade-horse.pack apps/openagents-web/realms/everglade-experimental/assets/glade.pack
 gzip -n -6 -c apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
   > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
-coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
-  assets/registry/scenes/everglade-experimental-village.layout > verse/experimental-village-data.coax
-python3 verse/tools/assets/character_glade_oracle.py \
-  apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
-  apps/openagents-web/realms/character-creator/assets/fantasy.pack --experimental --village --props --showcase --animal-run --bestiary --extra-props --extra-nature
 ```
+
+Run the oracle before you append the horse: it checks the scene pack's own vertex and index layout, which the appended horse meshes extend.
 
 The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
 

@@ -195,6 +195,35 @@ half-built hut looks half-built.
 
 Material counts are starting values for playtests, not final numbers.
 
+Each tier's stages follow the same logic: mark and prepare the site, lift
+the structure off the wet ground, raise the frame that carries the load,
+close the walls, cover the roof, then fit out the inside. A lighter tier
+skips the steps it doesn't need. Everglade Experimental shows every tier
+frozen at every stage in its housewright showcase
+([docs/verse/everglade-experimental.md](../../docs/verse/everglade-experimental.md)).
+
+### The stages of the branch lean-to
+
+1. **Uprights and ridge pole.** Push two forked branches into the ground
+   and lay a ridge pole in their forks.
+2. **Branches laid.** Lean branches from the ridge pole to the ground
+   behind, side by side.
+3. **Covered with boughs.** Lay leafy boughs over the branches in two
+   layers, the upper over the lower, and lay a bed of boughs underneath.
+   A ring of fieldstones beside it holds a fire.
+
+### The stages of the woven hut
+
+1. **Posts set.** Mark a 3 m ring and set poles round it about a metre
+   apart, leaving a doorway. Lay a stone fire ring outside.
+2. **Walls woven.** Weave withies in and out between the posts, each row
+   the other way round, up to head height.
+3. **Roof poles lashed.** Lash poles from the wall top to a point above
+   the middle.
+4. **Thatched.** Lay reed bundles round the roof poles in overlapping
+   courses, from the eaves to a knot at the top, and hang a hide flap over
+   the doorway.
+
 ### The stages of the wattle-and-daub cottage
 
 1. **Site.** Pick high ground in your plot and dig a drainage ditch
@@ -208,6 +237,31 @@ Material counts are starting values for playtests, not final numbers.
 6. **Thatch.** Lay reed bundles on the roof frame, overlapping, with a ridge.
 7. **Hearth and floor.** Lay a stone hearth away from the walls, and
    compact an earth floor.
+
+### The stages of the timber house
+
+1. **Stone sill laid.** Lay a low wall of fieldstones where the walls will
+   stand, so no timber touches the ground.
+2. **Frame raised and pegged.** Lay sole plates on the sill, stand posts on
+   them, and join posts, wall plates and corner braces with oak pegs.
+3. **Roof framed.** Set sawn rafters from the wall plates to a ridge board.
+4. **Walls boarded.** Fill the frame with boarded walls, a door frame and
+   windows, and lay a plank floor.
+5. **Roofed and fitted.** Cover the roof, close its gables, and hang the
+   lockable door and the glazing.
+
+### The stages of the stone cottage
+
+1. **Footings laid.** Lay a wide course of fieldstones under the line of
+   every wall.
+2. **Walls to the sills.** Build the dressed stone walls up to the window
+   sills, leaving the doorway open.
+3. **Walls and gables raised.** Build up to the eaves round the door and
+   the windows, then the two gable ends.
+4. **Roof timbers and chimney.** Set the rafters and the ridge, and build a
+   stone chimney against the gable by the hearth.
+5. **Thatched and the door hung.** Thatch the roof, lay a flagstone floor
+   and hearth, and hang the door.
 
 ### Biomes
 

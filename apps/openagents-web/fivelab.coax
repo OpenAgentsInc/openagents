@@ -45,6 +45,9 @@
 #load "../../verse/experimental-comparison.coax" as compare;
 #load "../../verse/experimental-biomes.coax" as biomes;
 #load "../../verse/experimental-aribeth.coax" as nwna;
+#load "../../verse/experimental-terrain.coax" as xterrain;
+#load "../../aethyr/world/building.coax" as building;
+#load "../../everglade/world/housewright.coax" as hw;   // the housewright showcase's labels (lab_showcase_labels)
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
 #load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (experimental-combat.coax xc_dash_frame)
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
@@ -3184,6 +3187,33 @@ lab_biome_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  }
  return n;
 }
+// The housewright showcase (verse/experimental-terrain.coax exp_showcase): each house's tier and
+// stage on a line in front of it, as "Woven hut, 2 of 4: walls woven", for the houses within 18 m.
+#test "the showcase labels the houses near you and none far away" {
+ s:[1]Lab;s[0].creator[0].experimental=true;b:[16]f32;s[0].creator[0].player_x= -60;s[0].creator[0].player_z= -60;#assert lab_showcase_labels(s[..],b[..],0,1600,1000,1)==0;
+}
+lab_showcase_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
+ n:=at;x:=s[0].xc[..];px:=s[0].creator[0].player_x;pz:=s[0].creator[0].player_z;
+ site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE);if abs(px-site.x)>site.left+18 || abs(pz-site.z)>site.back+18 {return n;}
+ ground:=xterrain.exp_height(site.x,site.z);
+ // Nearest first; a label that would overlap a nearer one is left out, so rows behind don't
+ // print over the row in front. Face 0 is the body face cc.text sets labels in.
+ d:[24]f32;id:[24]int;ax:[24]f32;ay:[24]f32;c:=0;
+ for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=xterrain.exp_showcase(t,st);
+   q:=building.building_point(f,0,hw.HW_REACH[t][1]+0.25);dx:=q[0]-px;dz:=q[1]-pz;if dx*dx+dz*dz>18*18 || c>=24 {continue;}
+   a:=xc_proj(x,q[0],ground+1.15,q[1]);if !a.ok || a.x<40*k || a.x>w-40*k || a.y<45*k || a.y>h-90*k {continue;}
+   d[c]=dx*dx+dz*dz;id[c]=t*8+st;ax[c]=a.x;ay[c]=a.y;c+=1;}}
+ rx:[24]f32;ry:[24]f32;rw:[24]f32;m:=0;
+ for i:0..<c {b:=i;for j:i+1..<c {if d[j]<d[b] {b=j;}}
+   td:=d[i];d[i]=d[b];d[b]=td;ti:=id[i];id[i]=id[b];id[b]=ti;tx:=ax[i];ax[i]=ax[b];ax[b]=tx;ty:=ay[i];ay[i]=ay[b];ay[b]=ty;
+   label:=hw.hw_label(id[i]/8,id[i]%8);lw:=cc.face_width(label,9*k,0);lx:=ax[i]-lw*0.5;
+   clear:=true;for j:0..<m {if lx<rx[j]+rw[j]+6*k && rx[j]<lx+lw+6*k && abs(ay[i]-ry[j])<13*k {clear=false;}}
+   if !clear {continue;}
+   if n+6000>MAX_VERTICES {return n;}
+   rx[m]=lx;ry[m]=ay[i];rw[m]=lw;m+=1;
+   n=cc.text(out,n,label,lx,ay[i],9*k,ink_col(k,1,0.95,0.8));}
+ return n;
+}
 lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  if !s[0].creator[0].comparison_present {return at;}n:=at;x:=s[0].xc[..];
  for i:0..<compare.CMP_N {p:=compare.cmp_site(i);a:=xc_proj(x,p.x,0.35+p.span,p.z);
@@ -3239,6 +3269,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
       n = lab_comparison_labels(s,out,n,width,height,hi(dpr,0.5));
       n = lab_biome_labels(s,out,n,width,height,hi(dpr,0.5));
       n = lab_aribeth_label(s,out,n,width,height,hi(dpr,0.5));
+      n = lab_showcase_labels(s,out,n,width,height,hi(dpr,0.5));
     }
     if s[0].creator[0].experimental { cc.hud_seal(out,0,n); }
     cr := s[0].creator[..];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr[0].experimental && !cr[0].walk.on,cr[0].player_x,cr[0].player_z,cr[0].airborne,cr[0].hostiles[0].hp,cr[0].hostiles[0].hits,ifx still then 0.0f32 else dt);

@@ -119,8 +119,8 @@ if village:
     assert actual==expected and [sum(r[0]==i for r in actual) for i in range(4)]==[167,77,308,151]
     assert 'L 251 Quaternius Medieval Village MegaKit Source|CC0 1.0 Universal|https://quaternius.com/' in cat.splitlines()
     assert sum(1 for kind,license,_,offset,size,_,name in (struct.unpack_from('<BBHIII32s',raw,32+i*48) for i in range(struct.unpack_from('<I',raw,4)[0])) if kind==4 and license==251)==1
-    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23),(15,-5)]+[(0,0)]*10+[(50,-20),(18,-52),(50,-52),(74,-20),(74,-52),(18,-74),(50,-74),(74,-74),(36,-34),(-20,-5)]
-    site_groups=[0,1,2,3,3,0,1,3,3]+[-1]*10+[1,1,1,1,1,1,1,1,0]+[-3]
+    starts=[(-18,-23),(18,-20),(-50,25),(35,30),(-20,25),(-45,44),(-19,45),(-5,-23),(15,-5)]+[(0,0)]*10+[(50,-20),(18,-52),(50,-52),(74,-20),(74,-52),(18,-74),(50,-74),(74,-74),(36,-34),(-20,-5),(26.3,60.35)]
+    site_groups=[0,1,2,3,3,0,1,3,3]+[-1]*10+[1,1,1,1,1,1,1,1,0]+[-3,-4]
     tiles={'MI_Brick':0,'MI_FlatTiles':1,'MI_MetalOrnaments':2,'MI_Plaster':3,'MI_RockTrim':4,
            'MI_RoundRocks':5,'MI_RoundTiles':6,'MI_UnevenBrick':7,'MI_Vine':8,'MI_WoodTrim':9,
            'MI_WoodTrim_Wear':9,'MI_WindowGlass':10}

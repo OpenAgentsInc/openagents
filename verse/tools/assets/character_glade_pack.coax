@@ -24,6 +24,9 @@
 #load "../../experimental-props.coax" as props;
 #load "../../../everglade/world/home.coax" as home;
 #load "../../../aethyr/world/building.coax" as building;
+#load "../../../aethyr/world/build-site.coax" as bsite;
+#load "../../../aethyr/world/build-site-mesh.coax" as bsm;
+#load "../../../everglade/world/housewright.coax" as hw;
 #load "../../everglade/glade-zone.coax";
 
 #test "glade static vertices retain positions beyond the people quantization box" {
@@ -473,6 +476,44 @@ gp_home :: (w:[]Gp,g:[]Gltf,root:string) {
  }
  p.name="Roof_Front_Wood4";p.m=building.building_turn_matrix(turn,home.home_back_gable());gp_village_mesh(w,g,root,p,w[0].village_layer,meadow.EXP_HOME_SITE,0.25);
 }
+// The housewright showcase (game: everglade/world/housewright.coax) where Experimental places it
+// (experimental-terrain.coax exp_showcase): every tier at every stage. The staged-build parts are
+// made in Coax (aethyr/world/build-site-mesh.coax) and drawn with the village atlas: each material
+// is an atlas tile, a colour and a uv scale (gp_hw_look); the timber house's kit pieces are the
+// home's MegaKit pieces.
+GP_HW_TILE :: [12]int.[9,9,9,3,5,0,9,8,3,7,9,3];
+GP_HW_TINT :: [12][3]f32.[[3]f32.[0.62,0.55,0.47],[3]f32.[0.8,0.68,0.54],[3]f32.[0.66,0.54,0.41],[3]f32.[0.8,0.66,0.49],[3]f32.[1,0.95,0.84],[3]f32.[0.96,0.93,0.86],
+ [3]f32.[0.93,0.78,0.5],[3]f32.[0.42,0.6,0.22],[3]f32.[0.5,0.4,0.3],[3]f32.[0.92,0.9,0.84],[3]f32.[0.74,0.6,0.44],[3]f32.[0.64,0.47,0.32]];
+GP_HW_SCALE :: [12]f32.[0.35,0.4,0.5,0.45,0.55,0.42,0.6,1,0.4,0.5,0.45,0.4];
+// Whether a material's uv runs along a long thing (v 0 to 1 across it), so it reads the wood
+// grain band at the top of the WoodTrim tile.
+gp_hw_long :: (mat:int)->bool {return GP_HW_TILE[mat]==9;}
+gp_hw_wrap :: (x:f32)->f32 {return x-8*floor((x+4)/8);}
+#test "showcase materials keep their uv inside the atlas's wrap and read the wood band" {
+ #assert gp_hw_wrap(5.5)== -2.5 && gp_hw_wrap(-1)== -1 && gp_hw_long(bsite.BS_REED) && !gp_hw_long(bsite.BS_DAUB);
+ #assert GP_HW_TILE[bsite.BS_LEAF]==8 && GP_HW_TILE[bsite.BS_FIELDSTONE]==5;
+}
+gp_housewright :: (w:[]Gp,g:[]Gltf,root:string) {
+ site:=meadow.exp_site(meadow.EXP_SHOWCASE_SITE);base:=meadow.exp_height(site.x,site.z);m:[1]bsm.BsMesh;total:=0;
+ for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=meadow.exp_showcase(t,st);m[0].nv=0;m[0].ni=0;m[0].over=false;m[0].f=f;m[0].y=base;
+   for i:hw.HW_FIRST[t]..<hw.HW_FIRST[t+1] {p:=hw.hw_part(i);if p.stage>st {break;}
+    hidden:=false;for j:hw.HW_FIRST[t]..<hw.HW_FIRST[t+1] {if bsm.bm_hidden(p,hw.hw_part(j),st) {hidden=true;}}if hidden {continue;}
+    if p.form==bsite.BS_KIT {
+     // the piece turned its own quarters about its place, then with the house; placed from the yard's middle
+     r:=building.building_turn_matrix(int(p.x1),[12]f32.[1,0,0,0,1,0,0,0,1,0,0,0]);r[9]=p.x0;r[10]=p.y0;r[11]=p.z0;r=building.building_turn_matrix(f.turn,r);
+     r[9]+=f.x-site.x;r[11]+=f.z-site.z;part:VillagePart;part.ok=true;part.name=hw.HW_KIT[p.mat];part.m=r;gp_village_mesh(w,g,root,part,w[0].village_layer,meadow.EXP_SHOWCASE_SITE,0.25);continue;}
+    bsm.bm_part(m[..],p);
+   }
+   if m[0].over {ph_die("housewright showcase mesh exceeds its vertex budget");}
+   first:=w[0].nv;
+   for k:0..<m[0].nv {v:=m[0].v[k];sc:=GP_HW_SCALE[v.mat];u:=v.uv[0]*sc;vv:=ifx gp_hw_long(v.mat) then 0.03+0.24*v.uv[1] else v.uv[1]*sc;if v.mat==bsite.BS_LEAF {u=v.uv[0];vv=v.uv[1];}
+    tint:=GP_HW_TINT[v.mat];c:=[3]f32.[tint[0]*v.c[0],tint[1]*v.c[1],tint[2]*v.c[2]];
+    id:=gp_v(w,v.p,v.n,[2]f32.[(gp_hw_wrap(u)+4)/8,(gp_hw_wrap(vv)+4)/8],c,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.0+f32(GP_HW_TILE[v.mat])+0.25));}
+   for k:0..<m[0].ni/3 {gp_tri(w,first+m[0].i[k*3],first+m[0].i[k*3+1],first+m[0].i[k*3+2]);}
+   total+=m[0].nv;
+ }}
+ print("Housewright showcase: % vertices\n",total);
+}
 // A broad stone curtain joins the original tower to its three matching copies.
 // Each two-metre segment follows the meadow and shares the village brick atlas.
 gp_castle :: (w:[]Gp,g:[]Gltf,root:string,objects:string,dungeon:string) {
@@ -803,7 +844,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])>=17 {gp_extra_props(w[..],g[..],args_at(args[..],6),args_at(args[..],16));}
  if args_count(args[..])>=16 {atlas:=gp_bestiary_atlas(w[..],iw[..],args_at(args[..],14));}
  if args_count(args[..])>=18 {gp_extra_nature(w[..],g[..],iw[..],root,args_at(args[..],17));}
- if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));gp_home(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),-1);gp_castle(w[..],g[..],args_at(args[..],4),args_at(args[..],8),args_at(args[..],11));}
+ if buildings {gp_new_houses(w[..],g[..],args_at(args[..],4));gp_home(w[..],g[..],args_at(args[..],4));gp_housewright(w[..],g[..],args_at(args[..],4));}if args_count(args[..])>=14 {gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),-1);gp_castle(w[..],g[..],args_at(args[..],4),args_at(args[..],8),args_at(args[..],11));}
  w[0].envni=w[0].ni;if args_count(args[..])>=14 {for part:0..<dungeon.DG_CHUNKS {w[0].dungeonfirst[part]=w[0].ni;gp_dungeon(w[..],g[..],args_at(args[..],8),args_at(args[..],11),part);w[0].dungeoncount[part]=w[0].ni-w[0].dungeonfirst[part];}}if args_count(args[..])>=20 {w[0].zero_first=w[0].ni;w[0].zero_tex_first=w[0].nt;gp_0ad(w[..],g[..],iw[..],args_at(args[..],19));w[0].zero_count=w[0].ni-w[0].zero_first;w[0].zero_tex_end=w[0].nt;}if args_count(args[..])>=16 {gp_bestiary_frames(w[..],args_at(args[..],15));}if args_count(args[..])>=14 {gp_animal_frames(w[..],args_at(args[..],13));gp_weapons(w[..],g[..],args_at(args[..],7),args_at(args[..],8),args_at(args[..],10));}
  famfirst:[FAM_FORMS]int; famcount:[FAM_FORMS]int;
  if experimental && !zone { gp_familiar_meshes(w[..],famfirst[..],famcount[..]); }
