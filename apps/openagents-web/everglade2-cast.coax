@@ -264,6 +264,10 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   size := ifx kk > 1.4 then "-128.jpg" else "-72.jpg";
   left := f32(XC_COOL) - (now - k[0].cool_at);
   tick := deed_tick(now); bar_dim := deed_bar_dim(e2k_bearing(s));
+  // the bar's iron (everglade-hud.coax eg_bar_frame), round the slots' pictures, the class's emblem over it
+  boxes: [XC_SLOTS * 4] f32;
+  for i: 0..<k[0].bar_n { b := e2k_box(k, i, w, h, kk); for q: 0..<4 { boxes[i * 4 + q] = b[q]; } }
+  n = cc.eg_bar_frame(out, n, boxes[..], k[0].bar_n, kk, E2C_CLASS_TITLES[e2c_class_of(s)][0], 1);
   for i: 0..<k[0].bar_n {
     b := e2k_box(k, i, w, h, kk);
     a := k[0].bar[i]; art := xc_art(a, i);
@@ -305,10 +309,8 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     if cx + cw / 2 > w - 12 * kk { cx = w - 12 * kk - cw / 2; }
     e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", [4] f32.[cx - cw / 2, b[1] - 30 * kk - ch, cx + cw / 2, b[1] - 30 * kk], "");
   }
-  // your class over the bar
+  // your health and what holds you are on the portrait plate (everglade2.coax e2_world_hud)
   b0 := e2k_box(k, 0, w, h, kk);
-  health:[E2K_HEALTH] u8; hn:=e2k_health_text(s,health[..]);
-  if hn>0 { n=cc.text(out,n,cast(string)health[0..<hn],(w-f32(hn)*8*kk*0.78)/2,b0[1]-48*kk,8*kk,cc.ink(kk,0.95,0.9,0.75)); }
   reqs: [4] int; rn := e2k_rest_choices(s, reqs[..]);
   for j: 0..<rn {
     r := e2k_rest_box(s, j, rn); lab := e2k_rest_label(s, reqs[j]); ink := cc.ink(kk, 0.95, 0.9, 0.75);
@@ -353,11 +355,8 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   refused:=e2n_rest_message(s[0].net[..]);   // a refused cast greys its slot instead (#13072)
   if refused.count == 0 { refused = e2n_aid_message(s[0].net[..]); }
   if refused.count == 0 { refused = e2n_familiar_message(s[0].net[..]); }
-  if refused.count>0 {
-    n=cc.text(out,n,refused,(w-f32(refused.count)*8*kk*0.78)/2,b0[1]-30*kk,8*kk,cc.ink(kk,1,0.55,0.4));
-  }
-  name := XC_CL_UP[k[0].klass]; cap := 10 * kk;
-  n = cc.text(out, n, name, (w - f32(name.count) * cap * 0.78) / 2, b0[1] - 12 * kk, cap, cc.ink(kk, 0.95, 0.9, 0.7));
+  // over the bar's emblem (the class's initial: its name is on the portrait plate)
+  if refused.count>0 { n=cc.eg_say(out,n,refused,w*0.5,b0[1]-40*kk,8*kk,cc.HUD_TEXT_WARN,1,kk,true); }
   return n;
 }
 

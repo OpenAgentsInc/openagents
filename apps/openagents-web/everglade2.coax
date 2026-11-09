@@ -39,7 +39,7 @@
 #load "everglade2-track.coax";  // what players do, as analytics.coax events (the face keeps the Track)
 
 E2_VERTEX_FLOATS :: 16;
-E2_MAX_VERTICES :: 16384;     // strokes: the frame rate in the bottom right corner
+E2_MAX_VERTICES :: 32768;     // strokes: the frame rate in the bottom right corner
 E2_UNIFORM_FLOATS :: 316;     // 79 vec4s (gpu/everglade2.bindings)
 E2_U_ENV :: 208;              // the camera's resolved environment, 27 vec4s (aethyr/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
 E2_U_LIGHT_VIEW :: 51;        // the developer's light view (?light=, aethyr/render/environment-debug.coax env_view_word): 0 the ordinary frame
@@ -123,6 +123,9 @@ E2 :: struct {
   mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade2-mouse.coax)
   adm: [1] E2Admin;                              // admin mode (everglade2-admin.coax): set and read in dev builds only
   monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade2-monsters.coax)
+  hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
+  zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
+  hero_class: int = -1; hero_level: int; hero_ac: int; hero_slots: [10] int;   // your class's AC and spell slots by level, as the rules build it (fb_cl_hero)
 }
 E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; fade: f32 = 1; sy: f32; name: [NET_NAME] u8; name_n: int; }
 
@@ -975,15 +978,91 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
 e2_fps_count :: (s: [] E2, dt: f32) {cc.fps_count(s[0].fps_counter[..],dt);}
 e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  e2_fps_count(s,dt);h:=s[0].height;k:=s[0].k;s[0].q_box=cc.Box.{};
- // on a phone's studio it sits over the bottom buttons (RESET, SURPRISE ME), not on them
- if s[0].cz[0].mobile && e2c_shown(s)>0.003 {h=s[0].cz[0].boxes[13].y0+10*k;}
+ // on a phone's studio held upright it sits over the sheet, clear of its tabs (e2c_layout)
+ if s[0].cz[0].mobile && !s[0].cz[0].wide && e2c_shown(s)>0.003 {h=s[0].cz[0].sheet.y0-2*k;}
  if s[0].cz[0].arriving && e2c_shown(s)<0.5 {return at;}   // through the portal: with the wardrobe
  // the GFX control to its left, on its line (cc.fps_draw's: "NN FPS" at 13 px, 16 px in from the corner)
  v:=cast(int)(s[0].fps_counter[0].fps+0.5);if v>999 {v=999;}buf:[8]u8;m:=0;
  if v>=100 {buf[m]=cast(u8)(48+v/100);m+=1;}if v>=10 {buf[m]=cast(u8)(48+v/10%10);m+=1;}buf[m]=cast(u8)(48+v%10);m+=1;
  m=quality_put(buf[..],m," FPS");
- n:=e2_quality_hud(s,out,at,s[0].width-16*k-e2c_text_w(cast(string)buf[0..<m],13*k)-14*k,h-16*k);
+ // both on a dark plaque, so they read over the bright glade
+ fw:=e2c_text_w(cast(string)buf[0..<m],13*k);gl:[32]u8;gw:=ifx s[0].golden || !s[0].q_ready then 0.0f32 else e2c_text_w(quality_label(s[0].q[..],gl[..]),13*k)+24*k;
+ p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,h-16*k-13*k-9*k,s[0].width-8*k,h-16*k+9*k,k);
+ n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,h-16*k);
  return cc.fps_draw(s[0].fps_counter[0],out,n,s[0].width,h,k);
+}
+// ---- the world's HUD (Everglade's FANTASY style, everglade-hud.coax): your portrait plate top left,
+// the map ring top right with the place and the time of day, and a place's banner as you come to it.
+// All from what the page knows: the room's word on your health (e2n_vitals), the rules' AC and slots
+// for your class and level (fb_cl_hero), the room's counts on your bar (e2n_kit).
+E2_ZONES :: [5] string.["The Glade", "The Sunlit Path", "The Deep Canopy", "The Clearing", "Goblin Camp"];
+e2_zone :: (x: f32, z: f32) -> int {
+  cx := e2_camp_x() - x; cz := f32(E2_CAMP_Z) - z;
+  if cx * cx + cz * cz < 24 * 24 { return 4; }
+  if z > -24 { return 0; }
+  if z < f32(E2_CLEAR_Z) + 40 { return 3; }
+  if z < -250 { return 2; }
+  return 1;
+}
+#test "the places: the glade, the path, the canopy, the clearing and the camp" {
+  #assert e2_zone(0, 0) == 0 && e2_zone(e2_road_x(-100), -100) == 1 && e2_zone(e2_road_x(-320), -320) == 2;
+  #assert e2_zone(e2_clear_x(), f32(E2_CLEAR_Z)) == 3 && e2_zone(e2_camp_x(), f32(E2_CAMP_Z)) == 4;
+}
+e2_hero :: (s: [] E2) {
+  c := e2c_class_of(s); l := e2c_level_of(s);
+  if s[0].hero_class == c && s[0].hero_level == l { return; }
+  h := fb_cl_hero(c, "You", 0, l);
+  s[0].hero_class = c; s[0].hero_level = l; s[0].hero_ac = h.ac;
+  for i: 0..<10 { s[0].hero_slots[i] = h.slots_max[i]; }
+}
+// Your portrait's facts: the class, its level, the room's health, the rules' AC, the slots the room
+// has counted on your bar (a level the bar does not count is left out), and what holds you.
+e2_portrait :: (s: [] E2, conds: [] u8) -> cc.EgPortrait {
+  e2_hero(s);
+  p: cc.EgPortrait; cl := e2c_class_of(s);
+  nm := e2c_name_shown(s); p.name = ifx nm.count > 0 then nm else E2C_CLASS_TITLES[cl];
+  p.klass = E2C_CLASS_TITLES[cl]; p.level = e2c_level_of(s); p.ac = s[0].hero_ac;
+  row := e2n_vitals(s[0].net[..]);
+  if row.id >= 0 { p.hp = row.hp; p.max = row.max; p.temp = row.temp; }
+  k := s[0].casts[..];
+  for lv: 0..<10 { p.slot_max[lv] = s[0].hero_slots[lv]; p.slot_left[lv] = -1; }
+  for i: 0..<k[0].bar_n {
+    a := k[0].bar[i]; if a.kind != FB_SPELL || a.lvl < 1 || a.lvl > 9 { continue; }
+    kit := e2n_kit(s[0].net[..], i, k[0].bar_n); if kit.ok && kit.left >= 0 { p.slot_left[a.lvl] = ifx kit.left > p.slot_max[a.lvl] then p.slot_max[a.lvl] else kit.left; }
+  }
+  // what holds you: the health line's words after its numbers (e2k_health_text)
+  h: [E2K_HEALTH] u8; hn := e2k_health_text(s, h[..]); from := 0; i := 0;
+  while i + 2 < hn { if h[i] == ' ' && h[i + 1] == 0xC2 { j := i + 4; if j + 4 <= hn && h[j] == 'T' && h[j + 1] == 'E' && h[j + 2] == 'M' && h[j + 3] == 'P' { i = j; continue; } from = j; break; } i += 1; }
+  m := 0; if from > 0 { for q: from..<hn { if m < conds.count { conds[m] = h[q]; m += 1; } } }
+  p.conds = cast(string) conds[0..<m];
+  return p;
+}
+e2_world_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+  if !e2k_on(s) { s[0].zone = -1; return at; }
+  w := s[0].width; h := s[0].height; k := s[0].k; W := w / k; phone := W < 700 || h / k < 500;
+  // the place, and its banner as you come to it
+  z := e2_zone(s[0].you_x, s[0].you_z);
+  if z != s[0].zone { s[0].zone = z; s[0].zone_at = s[0].clock; }
+  // the map ring
+  mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
+  mcx := w - (mr + 22) * k; mcy := (top + mr + 10) * k;
+  dots: [64] cc.EgDot; nd := 0;
+  dots[nd] = cc.EgDot.{x = 0, z = 0, kind = cc.EG_DOT_OPEN, r = 17}; nd += 1;
+  dots[nd] = cc.EgDot.{x = e2_clear_x(), z = f32(E2_CLEAR_Z), kind = cc.EG_DOT_OPEN, r = f32(E2_CLEAR_R)}; nd += 1;
+  reach := 60.0f32; z0 := s[0].you_z - reach * 1.5;
+  pz := floor(z0 / 6) * 6;
+  while pz < s[0].you_z + reach * 1.5 && nd < 40 { if pz < -6 && pz > f32(E2_CLEAR_Z) + f32(E2_CLEAR_R) * 0.5 { dots[nd] = cc.EgDot.{x = e2_road_x(pz), z = pz, kind = cc.EG_DOT_PATH}; nd += 1; } pz += 6; }
+  for i: 0..<s[0].plate_n { if nd < 64 { dots[nd] = cc.EgDot.{x = s[0].plates[i].x, z = s[0].plates[i].z, kind = cc.EG_DOT_FRIEND}; nd += 1; } }
+  ml := s[0].monsters[0];
+  for m: 0..<E2MN_N { g := ml.mon[m]; if g.up && g.fade > 0.05 && nd < 64 { dots[nd] = cc.EgDot.{x = g.x, z = g.z, kind = cc.EG_DOT_FOE}; nd += 1; } }
+  gl := s[0].guard[0]; if gl.up && gl.fade > 0.05 && nd < 64 { dots[nd] = cc.EgDot.{x = gl.x, z = gl.z, kind = cc.EG_DOT_GUARD}; nd += 1; }
+  cb: [8] u8; cn := cc.eg_clock(s[0].hud_day, cb[..]);
+  v := cc.eg_map(out, at, mcx, mcy, mr * k, k, s[0].you_x, s[0].you_z, s[0].fwd[0], s[0].fwd[2], reach, dots[..], nd, E2_ZONES[z], cast(string) cb[0..<cn], 1);
+  // the portrait plate, as wide as the map leaves it
+  conds: [E2K_HEALTH] u8; p := e2_portrait(s, conds[..]);
+  wide := W - (2 * mr + 44) - 20; if wide > f32(cc.EG_PORTRAIT_W) { wide = f32(cc.EG_PORTRAIT_W); }
+  v = cc.eg_portrait(out, v, (ifx phone then 8.0f32 else 14.0f32) * k, top * k, wide, k, p, 1);
+  return cc.eg_banner(out, v, w, h * 0.22, k, E2_ZONES[z], s[0].clock - s[0].zone_at);
 }
 #test "the frame rate is the frames over the last half second" {
   s: [1] E2;
@@ -1012,27 +1091,27 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
   up := [3]f32.[r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
   fy := (w / h) * 1.25; fy = ifx fy < 0.95 then 0.95f32 else ifx fy > 1.9 then 1.9f32 else fy;
-  lens := e2c_lens(s, fy * h / 2, h * 0.5);
-  s[0].focal = lens[0]; s[0].cy = lens[1];
+  lens := e2c_lens(s, fy * h / 2, w * 0.5, h * 0.5);
+  s[0].focal = lens[0]; s[0].cy = lens[2];
   s[0].eye = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z]; s[0].fwd = f; s[0].right = r; s[0].up = up;
   // the shadow casters' centre: the eye (e2_shadows draws the tiles round it)
   s[0].shade = [3]f32.[shot.eye.x, shot.eye.y, shot.eye.z];
   for i: 0..<u.count { u[i] = 0; }
   u[0] = w; u[1] = h; u[2] = s[0].clock; u[3] = 1; u[4] = s[0].k; u[10] = 2; u[11] = 1;
   for q: 0..<3 { u[16 + q] = s[0].eye[q]; u[20 + q] = f[q]; u[24 + q] = r[q]; u[28 + q] = up[q]; u[44 + q] = s[0].shade[q]; }
-  u[19] = s[0].focal; u[23] = w * 0.5; u[27] = lens[1];
+  u[19] = s[0].focal; u[23] = lens[1]; u[27] = lens[2];
   e2_light(s, u);
   u[48] = f32(s[0].creator[0].glade_word);
   u[35] = s[0].kn.grass; u[36] = s[0].kn.fine; u[37] = s[0].kn.post;   // the knobs the shaders read (e2_knobs_frame)
-  e2c_uniforms(s, u);
   e2c_arrive_uniforms(s, u);
   e2_material_uniforms(s, u);
   u[E2_U_LIGHT_VIEW] = envd.env_view_word(s[0].light_view);
   e2_shadows(s, u);
   e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s));
   e2k_step(s); e2m_step(s, dt); e2gd_hits(s); e2mn_hits(s);
-  hud := e2_light_hud(s, out, e2_fps(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2gd_hud(s, out, e2k_hud(s, out, e2c_hud(s, out)))))), dt));
+  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_hud(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2gd_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))), dt));
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
+  cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
   return hud;
 }
 
@@ -1054,6 +1133,7 @@ e2_light :: (s: [] E2, u: [] f32) {
   }
   #if BUILD_DEBUG { tick = e2a_light(s, e, tick); }
   _ := envf.env_frame_write_eye(e, tick, s[0].eye[0], s[0].eye[1], s[0].eye[2], u, E2_U_ENV);
+  s[0].hud_day = envf.env_frame_day(e, tick);
   envf.env_frame_sky_halo(u, 32);
   if s[0].light_view != envd.ENV_VIEW_OFF { read := envd.env_debug_read(e, tick, EnvDir.{x = s[0].eye[0], y = s[0].eye[1], z = s[0].eye[2]}, s[0].light_text[..]); }
 }
@@ -1525,6 +1605,8 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // px: x, y, x, y), 104 its level, 105 your bar's slots, 106 the room's word on it known (1), 107
   // refused casts undone, 108 their fades still going, 110 + i what slot i has left (-1 unknown) and
   // 120 + i whether it holds (1)
+  // 130, 131: on a phone, the CLASS tab's centre (canvas px), which shows NAME, CLASS and LEVEL; 0 with no tabs
+  if field == 130 || field == 131 { b := s[0].cz[0].boxes[E2C_TAB_BOX + E2C_TAB_CLASS]; if e2c_empty(b) { return 0; } return cast(int)(ifx field == 130 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
   if field >= 100 && field < 130 { k := s[0].casts[..];
     if field < 104 { b := s[0].cz[0].boxes[ifx field < 102 then E2C_LEVEL_BOX else E2C_CLASS_BOX];
       return cast(int)(ifx field % 2 == 0 then b.x0 + (b.x1 - b.x0) * 0.8 else (b.y0 + b.y1) / 2); }
@@ -1629,7 +1711,10 @@ e2_net_probe :: (s: [] E2, f: int) -> int {
 e2_name_hash :: (t: string) -> int { h := 2166136261; for ch: t { h = ((h ^ cast(int) ch) * 16777619) & 0xffffffff; } return h & 0x7fffffff; }
 #test "the crowd check's probes: SURPRISE ME's and NAME's boxes, the name with the API, and the others' names" {
   s: [1] E2; e2c_layout(s[..], 1280, 720, 1);
-  #assert e2_probe(s[..], 60) > 0 && e2_probe(s[..], 61) > 0 && e2_probe(s[..], 62) > 0 && e2_probe(s[..], 63) > 0;
+  // held sideways, NAME is on the CLASS tab: the check presses the tab first (e2_probe 130, 131)
+  #assert e2_probe(s[..], 60) > 0 && e2_probe(s[..], 61) > 0 && e2_probe(s[..], 62) == 0 && e2_probe(s[..], 130) > 0 && e2_probe(s[..], 131) > 0;
+  s[0].cz[0].tab = E2C_TAB_CLASS; e2c_layout(s[..], 1280, 720, 1);
+  #assert e2_probe(s[..], 62) > 0 && e2_probe(s[..], 63) > 0 && e2_probe(s[..], 102) > 0 && e2_probe(s[..], 100) > 0;
   #assert e2_probe(s[..], 64) == 0 && e2_probe(s[..], 65) == 0 && e2_probe(s[..], 66) == 0 && e2_probe(s[..], 66 + E2_REMOTES) == 0;   // 82 on: the casts' (none sent)
 }
 #test "a name's probe hash is FNV-1a's, 31 bits" { #assert e2_name_hash("") == 2166136261 & 0x7fffffff && e2_name_hash("a") == 0x640c292c && e2_name_hash("Crowd Alpha") != e2_name_hash("Crowd Bravo"); }
@@ -1799,9 +1884,9 @@ e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
     alpha := ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR);
     sx := w * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := (ifx s[0].cy > 0 then s[0].cy else h * 0.5) - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    cap := 13 * k; em := cc.sans_em(cap); wide: f32 = 0;
+    cap := 12 * k;
     name := cast(string) p.name[0..<p.name_n];
-    for ch: name { if ch >= 32 && ch <= 126 { wide += f32(cc.CC_FONT_WIDTH[cast(int) ch - 32]) / f32(cc.CC_FONT_UPM) * em; } }
+    wide := cc.face_width(name, cap, cc.HUD_FACE_TITLE);
     // over a nearer name: up a line at a time, at most four
     for lift: 0..<4 {
       over := false;
@@ -1810,8 +1895,7 @@ e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
       sy -= cap * 1.4;
     }
     if sx + wide * 0.5 < 0 || sx - wide * 0.5 > w || sy < 0 || sy > h { continue; }
-    ink := cc.ink(k, 0.95 * alpha, 0.93 * alpha, 0.82 * alpha); ink.light = alpha; ink.glow *= alpha; ink.core *= alpha;
-    v = cc.text(out, v, name, sx - wide * 0.5, sy - cap, cap, ink);
+    v = cc.eg_say(out, v, name, sx, sy - cap, cap, cc.HUD_TEXT_NAME, alpha, k, true);
     taken[tn * 4] = sx - wide * 0.5; taken[tn * 4 + 1] = sy - cap * 1.3; taken[tn * 4 + 2] = sx + wide * 0.5; taken[tn * 4 + 3] = sy; tn += 1;
     s[0].plates[i].alpha = alpha * p.fade; s[0].plates_drawn += 1; s[0].plates[i].sy = sy;
   }

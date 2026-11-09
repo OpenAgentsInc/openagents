@@ -196,11 +196,7 @@ e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     alpha := g.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
     sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    ink := cc.ink(k, 0.95 * alpha, 0.55 * alpha, 0.45 * alpha); ink.light = alpha; ink.glow *= alpha; ink.core *= alpha;
-    name := E2MN_NAME[g.kind];
-    v = cc.text(out, v, name, sx - f32(name.count) * 3.4 * k, sy - 13 * k, 12 * k, ink);
-    v = e2k_line(out, v, sx - 18 * k, sy, sx + 18 * k, sy, 2.5 * k, 0.22 * alpha, 0.12 * alpha, 0.08 * alpha);
-    v = e2k_line(out, v, sx - 18 * k, sy, sx - 18 * k + 36 * k * f32(rw.hp) / f32(rw.max), sy, 2.5 * k, 0.86 * alpha, 0.24 * alpha, 0.16 * alpha);
+    v = cc.eg_plate(out, v, E2MN_NAME[g.kind], sx, sy, k, f32(rw.hp) / f32(rw.max), true, false, alpha);
   }
   for mk: ml.marks {
     if !mk.on { continue; }
@@ -213,10 +209,7 @@ e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
     alpha := 1 - t * t;
     b: [8] u8; bn := ifx mk.amount > 0 then e2k_int(b[..], e2k_put(b[..], 0, "-"), mk.amount) else e2k_put(b[..], 0, "MISS");
-    cap := (ifx mk.amount > 0 then 17.0f32 else 12.0f32) * k;
-    ink := ifx mk.harm then cc.ink(k, 1 * alpha, 0.35 * alpha, 0.3 * alpha) else cc.ink(k, 1 * alpha, 0.9 * alpha, 0.45 * alpha);
-    ink.light = alpha; ink.glow *= alpha; ink.core *= alpha;
-    v = cc.text(out, v, cast(string) b[0..<bn], sx - f32(bn) * cap * 0.3, sy, cap, ink);
+    v = cc.eg_float(out, v, cast(string) b[0..<bn], sx, sy, k, ifx mk.amount <= 0 then cc.EG_FLOAT_MISS else ifx mk.harm then cc.EG_FLOAT_HARM else cc.EG_FLOAT_DEALT, alpha);
   }
   // the wedge: only when the one that struck you is off the screen
   age := now - ml.wedge_at;

@@ -11,9 +11,9 @@
 // Loaded into everglade2.coax, so it shares its E2, its glade, its path and figs.
 
 E2C_FIELDS :: 13;        // the wardrobe's fields (charactercreator.coax change and value, 0 to 12)
-E2C_BOXES :: 21;
+E2C_BOXES :: 26;
 E2C_CLASS :: 13;         // the CLASS row's field number
-E2C_CLASS_BOX :: 18;     // and its box (0 to 12 the fields, 13 RESET, 14 SURPRISE ME, 15 a phone's drag mode, 16 SAVE, 17 USE)
+E2C_CLASS_BOX :: 18;     // and its box (0 to 12 the fields, 13 RESET, 14 SURPRISE ME, 15 a phone's drag mode, 16 SAVE, 17 USE, 21 to 25 a phone's tabs)
 E2C_NAME_BOX :: 19;      // NAME: your name over your head, for everyone (player-name.coax, the API's player/name)
 E2C_LEVEL :: 14;         // the LEVEL row's field number: your class's level, 1 to E2C_LEVELS (#13046)
 E2C_LEVEL_BOX :: 20;     // and its box
@@ -58,6 +58,7 @@ E2Create :: struct {
   cut: [1] figs.CamCut;   // the run as an Aethyr cinematic (aethyr/cam/handback.coax): its hand-back retains the run's look
   address: bool;   // the address bar still to say /worlds/everglade2
   boxes: [E2C_BOXES] cc.Box; mobile: bool;
+  wide: bool; tab: int; card: cc.Box; sheet: cc.Box;   // a phone held sideways; its chosen tab; the panels (e2c_layout)
   down: int = -1; dragging: bool; drag_pan: bool; drag_id: int; dx: f32; dy: f32;
   pending: bool; request: bool; ok: bool; failed: bool; want_go: bool; saved_rev: int = -1; at_rev: int;
   bytes: [E2C_RECORD] u8; n: int;
@@ -347,64 +348,130 @@ e2c_action :: (s: [] E2) {
 
 // ---- the layout and the panel
 // The title's cap: 22 on a desktop; on a phone 18, or less so it ends 8 px before DRAG: ROTATE.
+// ---- the wardrobe's layout. A desktop keeps one framed column at the left and the class pane at
+// the right. A phone keeps you in view: held upright, a card at the top (the title, DRAG, SAVE and
+// USE IN EVERGLADE) and a sheet at the foot with tabs, the chosen tab's rows and RESET and SURPRISE
+// ME; held sideways, the card at the left and the sheet at the right. Every control a finger takes
+// is E2C_BUTTON CSS px tall at least, and the edges an iPhone keeps (the status bar, the home
+// indicator, the notch held sideways) stay clear. The panels are the realm's HUD style
+// (charactercreator.coax eg_tokens, aethyr/ui/hud-style.coax).
+E2C_TABS :: 5;
+E2C_TAB_BOX :: 21;            // a phone's tabs' boxes, 21 to 25
+E2C_TAB_NAMES :: [5] string.["BODY", "FACE", "GEAR", "PARTS", "CLASS"];
+E2C_TAB_CLASS :: 4;
+// each tab's rows, by box (-1 none): BODY, FACE, GEAR, PARTS, CLASS (the CLASS row, LEVEL, NAME)
+E2C_TAB_ROWS :: [20] int.[0, 5, 12, 9, 6, 7, 8, -1, 1, 2, 3, 4, 10, 11, -1, -1, 18, 20, 19, -1];
+E2C_SAFE_TOP :: 14.0;         // CSS px: under the status bar
+E2C_SAFE_BOTTOM :: 26.0;      // over the home indicator
+E2C_SAFE_SIDE :: 44.0;        // held sideways, clear of the notch
+E2C_BUTTON :: 44.0;           // a finger's size
+E2C_ROW :: 50.0; E2C_ROW_GAP :: 6.0; E2C_PADDING :: 12.0;
+// The type, one size a role (CSS px of cap height): the title, a tab's or a button's word, a row's
+// caption, a row's value, the arrows.
+E2C_TITLE_CAP :: 17.0; E2C_WORD_CAP :: 9.5; E2C_CAPTION_CAP :: 7.5; E2C_VALUE_CAP :: 11.0; E2C_ARROW_CAP :: 15.0;
+
 e2c_title_cap :: (s: [] E2, k: f32) -> f32 {
   c := s[0].cz[0];
   if !c.mobile { return 22 * k; }
-  fit := (c.boxes[15].x0 - 32 * k) / e2c_text_w("Character Create", 1);
-  return ifx fit < 18 * k then fit else 18 * k;
+  room := c.boxes[15].x0 - 10 * k - (c.card.x0 + f32(E2C_PADDING) * k);
+  fit := room / cc.face_width("Character Create", 1, cc.HUD_FACE_TITLE);
+  return ifx fit < f32(E2C_TITLE_CAP) * k then fit else f32(E2C_TITLE_CAP) * k;
 }
 // How wide cc.text sets t at cap (its advances: charactercreator.coax text).
 e2c_text_w :: (t: string, cap: f32) -> f32 {
   em := cc.sans_em(cap); w := 0.0f32;
-  for ch: t { code := int(ch); a := ifx code >= 32 && code <= 126 then int(cc.CC_FONT_WIDTH[code - 32]) else int(cc.CC_FONT_WIDTH[31]); w += f32(a) / f32(cc.CC_FONT_UPM) * em; }
+  for ch: t { code := int(ch); a := ifx code >= 32 && code <= 126 then int(cc.EG_BODY_WIDTH[code - 32]) else int(cc.EG_BODY_WIDTH[31]); w += f32(a) / f32(cc.EG_FONT_UPM) * em; }
   return w;
 }
+e2c_box :: (x0: f32, y0: f32, x1: f32, y1: f32) -> cc.Box { return cc.Box.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}; }
+e2c_tab_of :: (s: [] E2) -> int { t := s[0].cz[0].tab; return ifx t < 0 then 0 else ifx t >= E2C_TABS then E2C_TABS - 1 else t; }
 e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   c := s[0].cz[..];
-  c[0].mobile = w < 840 * k || h < 760 * k;   // as the glass panel's (gpu/character-glade.coax cg_ui_cover)
+  c[0].mobile = w < 840 * k || h < 760 * k;
+  for i: 0..<E2C_BOXES { c[0].boxes[i] = cc.Box.{}; }
+  c[0].card = cc.Box.{}; c[0].sheet = cc.Box.{};
   if c[0].mobile {
-    bw := (w - 36 * k) / 2;
-    // NAME across the bottom band's top, then the fields two to a row
-    c[0].boxes[E2C_NAME_BOX] = cc.Box.{x0 = 12 * k, y0 = h - 484 * k, x1 = w - 116 * k, y1 = h - 442 * k};
-    c[0].boxes[E2C_LEVEL_BOX] = cc.Box.{x0 = w - 104 * k, y0 = h - 484 * k, x1 = w - 12 * k, y1 = h - 442 * k};   // LEVEL beside it
-    for i: 0..<E2C_FIELDS + 1 {
-      col := i % 2; row := i / 2; x := 12 * k + f32(col) * (bw + 12 * k); y := h - 430 * k + f32(row) * 54 * k;
-      c[0].boxes[ifx i == E2C_FIELDS then E2C_CLASS_BOX else i] = cc.Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + 42 * k};
+    c[0].wide = w > h;
+    bt := f32(E2C_BUTTON) * k; pad := f32(E2C_PADDING) * k; g := 6 * k; step := f32(E2C_ROW + E2C_ROW_GAP) * k;
+    drag_w := cc.face_width("ROTATE", f32(E2C_WORD_CAP) * k, cc.HUD_FACE_TITLE) + 32 * k;
+    sheet_h := pad + bt + 10 * k + 4 * step - f32(E2C_ROW_GAP) * k + (ifx c[0].wide then 0.0f32 else g + bt) + pad;
+    if !c[0].wide {
+      top := f32(E2C_SAFE_TOP) * k; x0 := 10 * k; x1 := w - 10 * k;
+      c[0].card = e2c_box(x0, top, x1, top + pad + bt + g + bt + pad);
+      c[0].boxes[15] = e2c_box(x1 - pad - drag_w, top + pad, x1 - pad, top + pad + bt);
+      by := top + pad + bt + g;
+      c[0].boxes[16] = e2c_box(x0 + pad, by, w * 0.5 - 3 * k, by + bt);
+      c[0].boxes[17] = e2c_box(w * 0.5 + 3 * k, by, x1 - pad, by + bt);
+      y1 := h - f32(E2C_SAFE_BOTTOM) * k;
+      c[0].sheet = e2c_box(x0, y1 - sheet_h, x1, y1);
+    } else {
+      side := f32(E2C_SAFE_SIDE) * k; top := 10 * k; cw := 270 * k; sw := 330 * k;
+      c[0].card = e2c_box(side, top, side + cw, top + pad + 4 * bt + 3 * g + pad);
+      cx0 := side + pad; cx1 := side + cw - pad; y := top + pad;
+      c[0].boxes[15] = e2c_box(cx1 - drag_w, y, cx1, y + bt); y += bt + g;
+      c[0].boxes[16] = e2c_box(cx0, y, cx1, y + bt); y += bt + g;
+      c[0].boxes[17] = e2c_box(cx0, y, cx1, y + bt); y += bt + g;
+      c[0].boxes[13] = e2c_box(cx0, y, (cx0 + cx1) * 0.5 - 3 * k, y + bt);
+      c[0].boxes[14] = e2c_box((cx0 + cx1) * 0.5 + 3 * k, y, cx1, y + bt);
+      c[0].sheet = e2c_box(w - side - sw, top, w - side, top + sheet_h);
     }
-    by := h - 56 * k;
-    c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = by, x1 = 172 * k, y1 = by + 36 * k};
-    c[0].boxes[14] = cc.Box.{x0 = w - 174 * k, y0 = by, x1 = w - 24 * k, y1 = by + 36 * k};
-    // DRAG: ROTATE at the right of the title's row, only as wide as its words (e2c_title_cap sets
-    // the title to end before it: from the middle it covered "Character Create" at phone width)
-    c[0].boxes[15] = cc.Box.{x0 = w - 32 * k - e2c_text_w("DRAG: ROTATE", 10 * k), y0 = 34 * k, x1 = w - 12 * k, y1 = 72 * k};
-    c[0].boxes[16] = cc.Box.{x0 = 12 * k, y0 = 82 * k, x1 = w / 2 - 6 * k, y1 = 124 * k};
-    c[0].boxes[17] = cc.Box.{x0 = w / 2 + 6 * k, y0 = 82 * k, x1 = w - 12 * k, y1 = 124 * k};
+    sh := c[0].sheet; ix0 := sh.x0 + pad; ix1 := sh.x1 - pad;
+    tw := (ix1 - ix0 + 4 * k) / f32(E2C_TABS);
+    for t: 0..<E2C_TABS { c[0].boxes[E2C_TAB_BOX + t] = e2c_box(ix0 + f32(t) * tw, sh.y0 + pad, ix0 + f32(t + 1) * tw - 4 * k, sh.y0 + pad + bt); }
+    ry := sh.y0 + pad + bt + 10 * k; tab := e2c_tab_of(s);
+    for r: 0..<4 { b := E2C_TAB_ROWS[tab * 4 + r]; if b >= 0 { y := ry + f32(r) * step; c[0].boxes[b] = e2c_box(ix0, y, ix1, y + f32(E2C_ROW) * k); } }
+    if !c[0].wide {
+      fy := sh.y1 - pad - bt;
+      c[0].boxes[13] = e2c_box(ix0, fy, (ix0 + ix1) * 0.5 - 3 * k, fy + bt);
+      c[0].boxes[14] = e2c_box((ix0 + ix1) * 0.5 + 3 * k, fy, ix1, fy + bt);
+    }
     return;
   }
-  // a desktop: NAME and CLASS first in the sidebar, then the wardrobe's fields, then the buttons, all on the glass
-  c[0].boxes[E2C_NAME_BOX] = cc.Box.{x0 = 28 * k, y0 = 90 * k, x1 = 332 * k, y1 = 124 * k};
-  c[0].boxes[E2C_CLASS_BOX] = cc.Box.{x0 = 28 * k, y0 = 128 * k, x1 = 332 * k, y1 = 158 * k};
-  c[0].boxes[E2C_LEVEL_BOX] = cc.Box.{x0 = 28 * k, y0 = 162 * k, x1 = 332 * k, y1 = 192 * k};
-  for i: 0..<E2C_FIELDS { y := (196 + f32(i) * 34) * k; c[0].boxes[i] = cc.Box.{x0 = 28 * k, y0 = y, x1 = 332 * k, y1 = y + 30 * k}; }
-  c[0].boxes[13] = cc.Box.{x0 = 28 * k, y0 = 640 * k, x1 = 172 * k, y1 = 674 * k};
-  c[0].boxes[14] = cc.Box.{x0 = 188 * k, y0 = 640 * k, x1 = 332 * k, y1 = 674 * k};
-  c[0].boxes[15] = cc.Box.{};
-  c[0].boxes[16] = cc.Box.{x0 = 28 * k, y0 = 680 * k, x1 = 172 * k, y1 = 714 * k};
-  c[0].boxes[17] = cc.Box.{x0 = 188 * k, y0 = 680 * k, x1 = 332 * k, y1 = 714 * k};
+  // a desktop: NAME and CLASS first in the column, then the wardrobe's fields, then the buttons
+  c[0].wide = false;
+  c[0].card = e2c_box(16 * k, 20 * k, 348 * k, f32(E2C_PANEL_BOTTOM) * k);
+  c[0].boxes[E2C_NAME_BOX] = e2c_box(28 * k, 90 * k, 332 * k, 124 * k);
+  c[0].boxes[E2C_CLASS_BOX] = e2c_box(28 * k, 128 * k, 332 * k, 158 * k);
+  c[0].boxes[E2C_LEVEL_BOX] = e2c_box(28 * k, 162 * k, 332 * k, 192 * k);
+  for i: 0..<E2C_FIELDS { y := (196 + f32(i) * 34) * k; c[0].boxes[i] = e2c_box(28 * k, y, 332 * k, y + 30 * k); }
+  c[0].boxes[13] = e2c_box(28 * k, 640 * k, 176 * k, 674 * k);
+  c[0].boxes[14] = e2c_box(184 * k, 640 * k, 332 * k, 674 * k);
+  c[0].boxes[16] = e2c_box(28 * k, 680 * k, 176 * k, 714 * k);
+  c[0].boxes[17] = e2c_box(184 * k, 680 * k, 332 * k, 714 * k);
 }
-#test "create: the wardrobe fits a phone and a desktop, on the glass" {
+e2c_empty :: (b: cc.Box) -> bool { return !(b.x1 > b.x0); }
+#test "create: the wardrobe fits a phone held either way and a desktop, a finger's size, clear of you" {
   s: [1] E2;
-  e2c_layout(s[..], 390, 844, 1);
-  for i: 0..<E2C_BOXES { b := s[0].cz[0].boxes[i]; #assert b.x0 >= 0 && b.x1 <= 390 && b.y1 <= 844 && b.y1 - b.y0 >= 34;
-    // each control sits on one of the phone's two glass bands (top 26 to 124, bottom from h - 504)
-    #assert (b.y0 >= 26 && b.y1 <= 124) || b.y0 >= 844 - 504; }
-  // DRAG: ROTATE holds its words and the title ("Character Create" from x 24) stays clear of it
-  {d := s[0].cz[0].boxes[15]; #assert 24 + e2c_text_w("Character Create", e2c_title_cap(s[..], 1)) + 8 <= d.x0 && d.x0 + 10 + e2c_text_w("DRAG: ROTATE", 10) <= d.x1 && e2c_title_cap(s[..], 1) >= 14; }
+  for tab: 0..<E2C_TABS {
+    s[0].cz[0].tab = tab;
+    e2c_layout(s[..], 390, 844, 1);
+    c := s[0].cz[0];
+    for i: 0..<E2C_BOXES { b := c.boxes[i]; if e2c_empty(b) { continue; }
+      #assert b.x0 >= 10 && b.x1 <= 380 && b.y0 >= f32(E2C_SAFE_TOP) && b.y1 <= 844 - f32(E2C_SAFE_BOTTOM) && b.y1 - b.y0 >= 44;
+      // every control is on the card or the sheet
+      #assert (b.y0 >= c.card.y0 && b.y1 <= c.card.y1) || (b.y0 >= c.sheet.y0 && b.y1 <= c.sheet.y1); }
+    // you stay in view: more than a third of the screen between the card and the sheet
+    #assert c.sheet.y0 - c.card.y1 > 844.0 / 3;
+    // the tab's rows, and only them
+    for r: 0..<4 { b := E2C_TAB_ROWS[tab * 4 + r]; if b >= 0 { #assert !e2c_empty(c.boxes[b]) && c.boxes[b].y1 - c.boxes[b].y0 >= 50; } }
+    for i: 0..<E2C_FIELDS { mine := false; for r: 0..<4 { if E2C_TAB_ROWS[tab * 4 + r] == i { mine = true; } } #assert mine == !e2c_empty(c.boxes[i]); }
+    for i: 13..<18 { #assert !e2c_empty(c.boxes[i]); }
+    // the title stays clear of DRAG and is the title's size
+    #assert c.card.x0 + 12 + cc.face_width("Character Create", e2c_title_cap(s[..], 1), cc.HUD_FACE_TITLE) + 8 <= c.boxes[15].x0 && e2c_title_cap(s[..], 1) >= 12;
+    // every field is on one tab
+    seen: [E2C_FIELDS] int; for q: 0..<20 { b := E2C_TAB_ROWS[q]; if b >= 0 && b < E2C_FIELDS { seen[b] += 1; } } for i: 0..<E2C_FIELDS { #assert seen[i] == 1; }
+  }
+  // held sideways: the card left, the sheet right, you between, clear of the notch
+  s[0].cz[0].tab = 2; e2c_layout(s[..], 844, 390, 1);
+  {c := s[0].cz[0];
+   for i: 0..<E2C_BOXES { b := c.boxes[i]; if e2c_empty(b) { continue; } #assert b.x0 >= 44 && b.x1 <= 800 && b.y0 >= 8 && b.y1 <= 370 && b.y1 - b.y0 >= 44; }
+   #assert c.sheet.x0 - c.card.x1 >= 120 && c.sheet.y1 <= 370 && c.card.y1 <= 370; }
   e2c_layout(s[..], 1440, 900, 1);
-  for i: 0..<E2C_BOXES { if i == 15 { continue; } b := s[0].cz[0].boxes[i]; #assert b.x0 >= 16 && b.x1 <= 350 && b.y0 >= 82 && b.y1 <= f32(E2C_PANEL_BOTTOM); }
+  for i: 0..<E2C_BOXES { b := s[0].cz[0].boxes[i]; if e2c_empty(b) { continue; } #assert b.x0 >= 16 && b.x1 <= 350 && b.y0 >= 82 && b.y1 <= f32(E2C_PANEL_BOTTOM); }
   #assert s[0].cz[0].boxes[E2C_CLASS_BOX].y1 + 4 <= s[0].cz[0].boxes[E2C_LEVEL_BOX].y0 && s[0].cz[0].boxes[E2C_LEVEL_BOX].y1 + 4 <= s[0].cz[0].boxes[0].y0;
   for i: 1..<E2C_FIELDS { #assert s[0].cz[0].boxes[i].y0 >= s[0].cz[0].boxes[i - 1].y1 + 4; }
   #assert s[0].cz[0].boxes[12].y1 + 4 <= s[0].cz[0].boxes[13].y0 && s[0].cz[0].boxes[13].y1 + 4 <= s[0].cz[0].boxes[16].y0;
+  #assert e2c_empty(s[0].cz[0].boxes[15]) && e2c_empty(s[0].cz[0].boxes[E2C_TAB_BOX]);
 }
 e2c_ink :: (k: f32, r: f32, g: f32, b: f32, f: f32) -> cc.Ink { i := cc.ink(k, r, g, b); i.sans = true; i.light = i.light * f; i.glow = i.glow * f; return i; }
 // The controls' share shown: whole in the studio, fading over the run's first E2C_FADE s.
@@ -414,65 +481,142 @@ e2c_shown :: (s: [] E2) -> f32 {
   if !c.walking { return e2c_arrive_ui(s); }
   return 1 - e2c_ease(c.run_t / f32(E2C_FADE));
 }
+e2c_hb :: (b: cc.Box) -> cc.HudPrim { return cc.hud_box(b.x0, b.y0, b.x1, b.y1); }
+// The arrows' boxes in a row: a finger's size at each end on a phone, small plates either side
+// of the value on a desktop.
+e2c_arrow :: (s: [] E2, b: cc.Box, right: bool) -> cc.Box {
+  k := s[0].k;
+  if s[0].cz[0].mobile { m := 3 * k; a := b.y1 - b.y0 - 2 * m; return ifx right then e2c_box(b.x1 - m - a, b.y0 + m, b.x1 - m, b.y1 - m) else e2c_box(b.x0 + m, b.y0 + m, b.x0 + m + a, b.y1 - m); }
+  return ifx right then e2c_box(b.x1 - 26 * k, b.y0 + 3 * k, b.x1 - 3 * k, b.y1 - 3 * k) else e2c_box(b.x0 + 109 * k, b.y0 + 3 * k, b.x0 + 132 * k, b.y1 - 3 * k);
+}
+e2c_say :: (out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, f: f32, k: f32, centre: bool) -> int {
+  return cc.hud_say(out, n, t, x, y, cap, cc.hud_text(cc.eg_tokens(), role), f, k, centre);
+}
+e2c_say_ink :: (out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, ink: cc.HudRgba, f: f32, k: f32, centre: bool) -> int {
+  r := cc.hud_text(cc.eg_tokens(), role); r.ink = ink;
+  return cc.hud_say(out, n, t, x, y, cap, r, f, k, centre);
+}
+// A word centred in a box, on its middle.
+e2c_word :: (out: [] f32, n: int, t: string, b: cc.Box, cap: f32, role: int, f: f32, k: f32) -> int {
+  return e2c_say(out, n, t, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, role, f, k, true);
+}
+e2c_word_ink :: (out: [] f32, n: int, t: string, b: cc.Box, cap: f32, ink: cc.HudRgba, f: f32, k: f32) -> int {
+  return e2c_say_ink(out, n, t, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, ink, f, k, true);
+}
+e2c_swatch :: (s: [] E2, i: int) -> [3] f32 {
+  cr := s[0].creator[0];
+  return ifx i == 4 then cc.DYES[cr.dye] else ifx i == 5 then cc.SKINS[cr.skin] else ifx i == 12 then cc.EYES[cr.eye_color] else cc.HAIRS[cr.hair_color];
+}
+e2c_has_swatch :: (i: int) -> bool { return i == 4 || i == 5 || i == 7 || i == 12; }
+e2c_save_word :: (s: [] E2) -> string {
+  c := s[0].cz[0]; cr := s[0].creator[0];
+  return ifx c.pending then "SAVING..." else ifx c.failed then "RETRY SAVE" else ifx c.ok && c.saved_rev == cr.revision then "PLAYER SAVED" else "SAVE PLAYER";
+}
+// A row's field (0 to 14: the wardrobe's, CLASS, LEVEL) for its box, or -1 (NAME and the rest).
+e2c_row_field :: (i: int) -> int { return ifx i < E2C_FIELDS then i else ifx i == E2C_CLASS_BOX then E2C_CLASS else ifx i == E2C_LEVEL_BOX then E2C_LEVEL else -1; }
+e2c_row_name :: (f: int, wide: bool) -> string {
+  return ifx f == E2C_CLASS then "CLASS" else ifx f == E2C_LEVEL then "LEVEL" else ifx f == 11 && wide then "WEAR PART" else cc.FIELD_NAMES[f];
+}
+e2c_name_word :: (s: [] E2, buf: [] u8) -> int {
+  c := s[0].cz[0]; t := e2c_name_shown(s); m := 0;
+  for ch: t { if m < buf.count - 1 { buf[m] = ch; m += 1; } }
+  if c.editing && (cast(int)(s[0].clock * 2) % 2 == 0) { buf[m] = '_'; m += 1; }
+  return m;
+}
 e2c_hud :: (s: [] E2, out: [] f32) -> int {
   w := s[0].width; h := s[0].height; k := s[0].k;
   e2c_layout(s, w, h, k);
   f := e2c_shown(s);
   if f <= 0.003 { return 0; }
-  c := s[0].cz[0]; cr := s[0].creator[0];
-  white := e2c_ink(k, 0.91, 0.92, 0.9, f); dim := e2c_ink(k, 0.70, 0.76, 0.74, f); gold := e2c_ink(k, 0.83, 0.69, 0.43, f); label := e2c_ink(k, 0.93, 0.88, 0.72, f);
-  n := cc.text(out, 0, "Character Create", (ifx c.mobile then 24.0f32 else 30.0f32) * k, (ifx c.mobile then 58.0f32 else 60.0f32) * k, e2c_title_cap(s, k), white);
-  if !c.mobile { n = cc.line(out, n, 30 * k, 78 * k, 334 * k, 78 * k, k, gold.red * f, gold.green * f, gold.blue * f); }
-  {
-    b := c.boxes[E2C_NAME_BOX]; cap := 10.0f32;
-    if c.mobile { n = cc.text(out, n, "NAME", b.x0, b.y0 - 7 * k, 8 * k, dim); }
-    else { n = cc.text(out, n, "NAME", b.x0, b.y0 + 21 * k, 7.4 * k, label); }
-    col := ifx c.editing then gold else dim;
-    n = cc.line(out, n, b.x0, b.y1, b.x1, b.y1, k, col.red * f, col.green * f, col.blue * f);
-    vx := b.x0 + (ifx c.mobile then 8.0f32 else 138.0f32) * k; vy := b.y0 + cap * k + 9 * k;
-    if c.said_n > 0 && !c.editing { n = cc.text(out, n, cast(string) c.said[0..<c.said_n], vx, vy, 8 * k, e2c_ink(k, 0.95, 0.52, 0.42, f)); }
-    else {
-      t := e2c_name_shown(s); ink := ifx t.count == 0 then dim else ifx c.naming then dim else white;
-      v: [NET_NAME + 1] u8; m := 0; for ch: t { v[m] = ch; m += 1; }
-      if c.editing && (cast(int)(s[0].clock * 2) % 2 == 0) { v[m] = '_'; m += 1; }
-      n = cc.text(out, n, ifx m == 0 && !c.editing then "TYPE A NAME" else cast(string) v[0..<m], vx, vy, cap * k, ifx m == 0 then dim else ink);
+  c := s[0].cz[0]; cr := s[0].creator[0]; t := cc.eg_tokens(); phone := c.mobile;
+  l: [1] cc.HudList;
+  // ---- the frames: panels, wells for the rows, the buttons
+  cc.hud_panel(l[..], t, e2c_hb(c.card), k);
+  if phone { cc.hud_panel(l[..], t, e2c_hb(c.sheet), k); }
+  else { p := e2c_pane(s, w, h, k); if !e2c_empty(p.a) { cc.hud_panel(l[..], t, e2c_hb(p.a), k); } }
+  for i: 0..<E2C_BOXES {
+    b := c.boxes[i]; if e2c_empty(b) { continue; }
+    fi := e2c_row_field(i);
+    if fi >= 0 {
+      lit := cr.focused == fi && !phone;
+      if phone { cc.hud_well(l[..], t, e2c_hb(b), k, false); }
+      else { cc.hud_well(l[..], t, cc.hud_box(b.x0 + 106 * k, b.y0, b.x1, b.y1), k, lit); }
+      cc.hud_button(l[..], t, e2c_hb(e2c_arrow(s, b, false)), k, false); cc.hud_button(l[..], t, e2c_hb(e2c_arrow(s, b, true)), k, false);
+      if e2c_has_swatch(fi) {
+        rgb := e2c_swatch(s, fi); r := e2c_arrow(s, b, true); z := (ifx phone then 9.0f32 else 6.0f32) * k; cx := r.x0 - z - 8 * k; cy := (b.y0 + b.y1) * 0.5;
+        cc.hud_fill(l[..], cc.hud_box(cx - z, cy - z, cx + z, cy + z), 3 * k, cc.hud_rgba(rgb[0], rgb[1], rgb[2], 1), cc.hud_rgba(rgb[0] * 0.8, rgb[1] * 0.8, rgb[2] * 0.8, 1));
+        cc.hud_ring(l[..], cc.hud_box(cx - z, cy - z, cx + z, cy + z), 3 * k, 1.2 * k, t.trim, cc.hud_mix(t.trim, t.frame_mid, 0.5));
+      }
+    } else if i == E2C_NAME_BOX {
+      cc.hud_well(l[..], t, ifx phone then e2c_hb(b) else cc.hud_box(b.x0 + 106 * k, b.y0, b.x1, b.y1), k, c.editing);
+    } else if i >= E2C_TAB_BOX {
+      cc.hud_button(l[..], t, e2c_hb(b), k, i - E2C_TAB_BOX == e2c_tab_of(s));
+    } else {
+      cc.hud_button(l[..], t, e2c_hb(b), k, (i == 15 && cr.pan_mode) || i == 17);
     }
   }
-  for row: 0..<E2C_FIELDS + 2 {
-    i := ifx row == 0 then E2C_CLASS else ifx row == 1 then E2C_LEVEL else row - 2;
-    b := c.boxes[ifx row == 0 then E2C_CLASS_BOX else ifx row == 1 then E2C_LEVEL_BOX else i]; cap := 10.0f32;
-    name := ifx row == 0 then "CLASS" else ifx row == 1 then "LEVEL" else cc.FIELD_NAMES[i];
-    if c.mobile { n = cc.text(out, n, name, b.x0, b.y0 - 7 * k, 8 * k, dim); }
-    else { n = cc.text(out, n, ifx i == 11 then "WEAR PART" else name, b.x0, b.y0 + 21 * k, 7.4 * k, label); }
-    col := ifx cr.focused == i then gold else dim;
-    n = cc.line(out, n, b.x0, b.y1, b.x1, b.y1, k, col.red * f, col.green * f, col.blue * f);
-    n = cc.text(out, n, "<", b.x0 + (ifx c.mobile then 4.0f32 else 116.0f32) * k, b.y0 + cap * k + 9 * k, cap * k, col);
-    value_cap := ifx i == 10 then (ifx c.mobile then 6.5f32 else 8.5f32) else cap;
-    n = cc.text(out, n, e2c_value(s, i), b.x0 + (ifx c.mobile then 25.0f32 else 138.0f32) * k, b.y0 + cap * k + 9 * k, value_cap * k, white);
-    n = cc.text(out, n, ">", b.x1 - 14 * k, b.y0 + cap * k + 9 * k, cap * k, col);
-    if i == 4 || i == 5 || i == 7 || i == 12 {
-      rgb := ifx i == 4 then cc.DYES[cr.dye] else ifx i == 5 then cc.SKINS[cr.skin] else ifx i == 12 then cc.EYES[cr.eye_color] else cc.HAIRS[cr.hair_color];
-      if cc.lit(out, n, b.x0 + (ifx c.mobile then 26.0f32 else 138.0f32) * k, b.y1 - 5 * k, b.x1 - 26 * k, b.y1 - 5 * k, 2 * k, f, 0, rgb[0], rgb[1], rgb[2], 0) { n += 6; }
+  if !phone { cc.hud_line(l[..], 30 * k, 76 * k, 334 * k, 76 * k, 1 * k, cc.hud_fade(t.trim, 0.8)); }
+  if phone && e2c_tab_of(s) == E2C_TAB_CLASS { _ := e2c_class_card(s, l[..], out, 0, f, false); }
+  for i: 0..<l[0].n { l[0].p[i].top.a *= f; l[0].p[i].bottom.a *= f; }
+  n := cc.hud_emit(out, 0, l[..]);
+  // ---- the words
+  title_cap := e2c_title_cap(s, k);
+  tx := ifx phone then c.card.x0 + f32(E2C_PADDING) * k + 2 * k else 30 * k;
+  ty := ifx phone then (c.boxes[15].y0 + c.boxes[15].y1) * 0.5 + title_cap * 0.5 else 60 * k;
+  n = e2c_say(out, n, "Character Create", tx, ty, title_cap, cc.HUD_TEXT_TITLE, f, k, false);
+  word := f32(E2C_WORD_CAP) * k; caption := f32(E2C_CAPTION_CAP) * k; vcap := f32(E2C_VALUE_CAP) * k;
+  for i: 0..<E2C_BOXES {
+    b := c.boxes[i]; if e2c_empty(b) { continue; }
+    fi := e2c_row_field(i);
+    if fi >= 0 || i == E2C_NAME_BOX {
+      label := ifx i == E2C_NAME_BOX then "NAME" else e2c_row_name(fi, !phone);
+      v: [NET_NAME + 2] u8; vt := ifx fi >= 0 then e2c_value(s, fi) else "";
+      said := i == E2C_NAME_BOX && c.said_n > 0 && !c.editing;
+      if i == E2C_NAME_BOX { m := e2c_name_word(s, v[..]); vt = ifx said then cast(string) c.said[0..<c.said_n] else ifx m == 0 then "TAP TO TYPE A NAME" else cast(string) v[0..<m]; }
+      ink := ifx said then t.bad else ifx i == E2C_NAME_BOX && (e2c_name_shown(s).count == 0 || c.naming) && !c.editing then t.text_dim else t.text;
+      if phone {
+        mx := (b.x0 + b.x1) * 0.5;
+        n = e2c_say(out, n, label, mx, b.y0 + 6 * k + caption, caption, cc.HUD_TEXT_LABEL, f, k, true);
+        // the value, as wide as the row leaves it between the arrows (and the swatch)
+        room := b.x1 - b.x0 - 2 * (b.y1 - b.y0) - (ifx fi >= 0 && e2c_has_swatch(fi) then 44.0f32 * k else 0.0f32);
+        cap := vcap; vw := cc.face_width(vt, cap, cc.HUD_FACE_BODY); if vw > room && vw > 0 { cap = cap * room / vw; }
+        n = e2c_say_ink(out, n, vt, mx, b.y1 - 9 * k, cap, cc.HUD_TEXT_NUMBER, ink, f, k, true);
+      } else {
+        n = e2c_say(out, n, label, b.x0, (b.y0 + b.y1) * 0.5 + caption * 0.5, caption, cc.HUD_TEXT_LABEL, f, k, false);
+        x0 := ifx fi >= 0 then b.x0 + 140 * k else b.x0 + 116 * k; room := b.x1 - 30 * k - x0 - (ifx fi >= 0 && e2c_has_swatch(fi) then 24.0f32 * k else 0.0f32);
+        cap := 9.5 * k; vw := cc.face_width(vt, cap, cc.HUD_FACE_BODY); if vw > room && vw > 0 { cap = cap * room / vw; }
+        n = e2c_say_ink(out, n, vt, x0, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_NUMBER, ink, f, k, false);
+      }
+      if fi >= 0 {
+        acap := ifx phone then f32(E2C_ARROW_CAP) * k else 10.0f32 * k;
+        n = e2c_word(out, n, "<", e2c_arrow(s, b, false), acap, cc.HUD_TEXT_TITLE, f, k);
+        n = e2c_word(out, n, ">", e2c_arrow(s, b, true), acap, cc.HUD_TEXT_TITLE, f, k);
+      }
+      continue;
     }
+    if i >= E2C_TAB_BOX { on := i - E2C_TAB_BOX == e2c_tab_of(s); n = e2c_word_ink(out, n, E2C_TAB_NAMES[i - E2C_TAB_BOX], b, word, ifx on then t.title else t.text_dim, f, k); continue; }
+    lab := ifx i == 13 then "RESET" else ifx i == 14 then "SURPRISE ME" else ifx i == 15 then (ifx cr.pan_mode then (ifx phone then "PAN" else "DRAG: PAN") else (ifx phone then "ROTATE" else "DRAG: ROTATE")) else ifx i == 16 then e2c_save_word(s) else "USE IN EVERGLADE";
+    n = e2c_word_ink(out, n, lab, b, word, ifx i == 17 || (i == 15 && cr.pan_mode) then t.title else t.text, f, k);
   }
-  for i: 13..<15 { b := c.boxes[i]; n = cc.text(out, n, ifx i == 13 then "RESET" else "SURPRISE ME", b.x0 + 10 * k, b.y0 + 22 * k, 10 * k, gold); }
-  if c.mobile { b := c.boxes[15]; n = cc.text(out, n, ifx cr.pan_mode then "DRAG: PAN" else "DRAG: ROTATE", b.x0 + 10 * k, b.y0 + 24 * k, 10 * k, gold); }
-  for i: 16..<18 {
-    b := c.boxes[i];
-    t := ifx i == 17 then "USE IN EVERGLADE" else ifx c.pending then "SAVING..." else ifx c.failed then "RETRY SAVE" else ifx c.ok && c.saved_rev == cr.revision then "PLAYER SAVED" else "SAVE PLAYER";
-    n = cc.text(out, n, t, b.x0 + 8 * k, b.y0 + 22 * k, 9 * k, gold);
-  }
-  if !c.mobile { n = cc.text(out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5 - 170 * k, h - 77 * k, 9 * k, label); }
-  n = e2c_pane_draw(s, out, n, f);
+  if phone && e2c_tab_of(s) == E2C_TAB_CLASS { n = e2c_class_card(s, l[..], out, n, f, true); }
+  if !phone { n = e2c_say(out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5, h - 77 * k, 8 * k, cc.HUD_TEXT_LABEL, f, k, true); }
+  if !phone { n = e2c_pane_draw(s, out, n, f); }
   return n;
 }
-// The glass panel under the controls (gpu/everglade2.coax's post pass, Character Create's
-// cg_panel_opacity): on while they show, fading with them.
-e2c_uniforms :: (s: [] E2, u: [] f32) {
-  f := e2c_shown(s);
-  if f <= 0 { return; }
-  u[11] = 0; u[40] = 1 - f;
-  e2c_pane_uniforms(s, u);
+// A phone's CLASS tab, under its rows: slot 1's picture, its name, the class's hit die and primary
+// ability (the desktop's pane says it all). frames false adds its well to l; true draws its words.
+e2c_class_card :: (s: [] E2, l: [] cc.HudList, out: [] f32, at: int, f: f32, words: bool) -> int {
+  c := s[0].cz[0]; k := s[0].k; cl := e2c_class_of(s); t := cc.eg_tokens();
+  last := c.boxes[E2C_NAME_BOX]; if e2c_empty(last) { return at; }
+  b := e2c_box(last.x0, last.y1 + f32(E2C_ROW_GAP) * k, last.x1, last.y1 + f32(E2C_ROW_GAP + E2C_ROW) * k);
+  icon := b.y1 - b.y0 - 8 * k;
+  if !words { cc.hud_well(l[..], t, e2c_hb(b), k, false); cc.hud_slot(l[..], t, cc.hud_box(b.x0 + 4 * k, b.y0 + 4 * k, b.x0 + 4 * k + icon, b.y1 - 4 * k), k, true); return at; }
+  if f > 0.5 { e2c_media(s, "over", E2C_ICON[cl], ifx icon > 48 then "-72.jpg" else "-48.jpg", b.x0 + 4 * k, b.y0 + 4 * k, b.x0 + 4 * k + icon, b.y1 - 4 * k); }
+  x := b.x0 + icon + 16 * k; n := at;
+  n = e2c_say(out, n, E2C_ABILITY[cl], x, b.y0 + 21 * k, f32(E2C_VALUE_CAP) * k, cc.HUD_TEXT_NAME, f, k, false);
+  line: [96] u8; m := e2c_put(line[..], 0, "HIT DIE "); m = e2c_put(line[..], m, E2C_DIE[cl]); m = e2c_put(line[..], m, "  ·  "); m = e2c_put(line[..], m, E2C_PRIMARY[cl]);
+  cap := f32(E2C_CAPTION_CAP) * k; room := b.x1 - 8 * k - x; lw := cc.face_width(cast(string) line[0..<m], cap, cc.HUD_FACE_BODY); if lw > room && lw > 0 { cap = cap * room / lw; }
+  return e2c_say(out, n, cast(string) line[0..<m], x, b.y1 - 12 * k, cap, cc.HUD_TEXT_LABEL, f, k, false);
 }
 
 // ---- NAME: typed into the host's keyboard field over its box (a phone's keyboard comes up), checked
@@ -586,8 +730,10 @@ e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
   if phase == 2 || phase == 3 {
     i := c[0].down; c[0].down = -1; c[0].dragging = false;
     if phase == 2 && i >= 0 && e2c_inside(c[0].boxes[i], x, y) {
-      left := x < c[0].boxes[i].x0 + (ifx c[0].mobile then 22.0f32 else 136.0f32) * k;
-      if i == E2C_NAME_BOX { e2c_name_edit(s); }
+      bx := c[0].boxes[i];
+      left := ifx c[0].mobile then x < (bx.x0 + bx.x1) * 0.5 else x < bx.x0 + 136 * k;
+      if i >= E2C_TAB_BOX { c[0].tab = i - E2C_TAB_BOX; }
+      else if i == E2C_NAME_BOX { e2c_name_edit(s); }
       else if i < E2C_FIELDS { e2c_change(s, i, ifx left then -1 else 1); }
       else if i == E2C_CLASS_BOX { e2c_change(s, E2C_CLASS, ifx left then -1 else 1); }
       else if i == E2C_LEVEL_BOX { e2c_change(s, E2C_LEVEL, ifx left then -1 else 1); }
@@ -694,16 +840,20 @@ e2c_shot :: (s: [] E2, feet: figs.Point, chase: figs.Shot, dt: f32) -> figs.Shot
   if !figs.cam_cut_live(cut[0]) { c[0].handed = true; }   // the follow camera and the keys are yours
   return shown;
 }
-// The studio's lens: on a phone you stand in the gap over the wardrobe (Character Create's own
-// focal and centre), easing to the follow camera's as the camera swings behind you.
-e2c_lens :: (s: [] E2, focal: f32, cy: f32) -> [2] f32 {
+// The studio's lens: on a phone you stand in the gap the wardrobe leaves (held upright, between
+// the card and the sheet; held sideways, between the card and the sheet either side), easing to
+// the follow camera's focal length and centre (cx, cy) as the camera swings behind you.
+e2c_lens :: (s: [] E2, focal: f32, cx: f32, cy: f32) -> [3] f32 {
+  if !s[0].cz[0].on || s[0].cz[0].handed { return [3] f32.[focal, cx, cy]; }
+  e2c_layout(s, s[0].width, s[0].height, s[0].k);
   c := s[0].cz[0];
-  if !c.on || c.handed || !c.mobile { return [2] f32.[focal, cy]; }
-  h := s[0].height; k := s[0].k;
-  f0 := (h - 624 * k) * 1.3; y0 := (h - 384 * k) * 0.5;
+  if !c.mobile { return [3] f32.[focal, cx, cy]; }
+  f0 := focal * 0.5; x0 := cx; y0 := cy;
+  if c.wide { x0 = (c.card.x1 + c.sheet.x0) * 0.5; f0 = (c.sheet.x0 - c.card.x1) * 2.4; }
+  else { gap := c.sheet.y0 - c.card.y1; f0 = gap * 1.3; y0 = (c.card.y1 + c.sheet.y0) * 0.5; }
   if f0 < focal * 0.5 { f0 = focal * 0.5; }
   e := ifx c.walking then e2c_ease(c.run_t / f32(E2C_SWING)) else 0.0f32;
-  return [2] f32.[e2c_mix(f0, focal, e), e2c_mix(y0, cy, e)];
+  return [3] f32.[e2c_mix(f0, focal, e), e2c_mix(x0, cx, e), e2c_mix(y0, cy, e)];
 }
 // Your figure in the studio: the ANIMATION field's clip, turned by the drag (0 faces the camera).
 e2c_figure :: (s: [] E2) -> figs.BdAnim {
@@ -831,7 +981,7 @@ e2c_class_of :: (s: [] E2) -> int { k := s[0].creator[0].klass; return ifx k < 0
 // The width of t at cap, as cc.text sets it.
 e2c_width :: (t: string, cap: f32) -> f32 {
   em := cc.sans_em(cap); w := 0.0f32;
-  for i: 0..<t.count { c := cast(int) t[i]; w += f32(cc.CC_FONT_WIDTH[ifx c >= 32 && c <= 126 then c - 32 else 31]) / f32(cc.CC_FONT_UPM) * em; }
+  for i: 0..<t.count { c := cast(int) t[i]; w += f32(cc.EG_BODY_WIDTH[ifx c >= 32 && c <= 126 then c - 32 else 31]) / f32(cc.EG_FONT_UPM) * em; }
   return w;
 }
 // t in lines no wider than `wide`, `lh` apart, the first's baseline at y (draw false: only counted).
@@ -890,7 +1040,7 @@ e2c_words :: (s: [] E2, out: [] f32, at: int, cl: int, x: f32, y0: f32, wide: f3
     if draw { n = cc.text(out, n, "ON YOUR BAR", x, y, tag, label); }
     y += (ifx phone then 5.0f32 else 8.0f32) * k;
     icon := (ifx phone then 28.0f32 else 52.0f32) * k;
-    if draw && f > 0.5 { e2c_media(s, E2C_ICON[cl], ifx icon > 72 then "-128.jpg" else ifx icon > 48 then "-72.jpg" else "-48.jpg", x, y, x + icon, y + icon); }
+    if draw && f > 0.5 { e2c_media(s, "over", E2C_ICON[cl], ifx icon > 72 then "-128.jpg" else ifx icon > 48 then "-72.jpg" else "-48.jpg", x, y, x + icon, y + icon); }
     if draw { n = cc.text(out, n, E2C_ABILITY[cl], x + icon + 8 * k, y + icon * 0.5 + 4 * k, (ifx phone then 8.4f32 else 10.5f32) * k, gold); }
     y += icon + 12 * k;
     if !phone { w = e2c_set_lines(out, n, E2C_SLOT[cl], x, y, body, wide, lh, dim, draw); n = w.n; y += f32(w.lines) * lh; }
@@ -901,12 +1051,7 @@ e2c_words :: (s: [] E2, out: [] f32, at: int, cl: int, x: f32, y0: f32, wide: f3
 // either side of you in the sky, from under the top band to over the wardrobe's.
 e2c_pane :: (s: [] E2, w: f32, h: f32, k: f32) -> E2cPane {
   cl := e2c_class_of(s); out: [1] f32;
-  if w < 840 * k || h < 760 * k {
-    top := 130 * k; bottom := h - 510 * k;
-    side := w * 0.5 - 46 * k - 8 * k;
-    if bottom - top < 150 * k || side < 120 * k { return E2cPane.{}; }
-    return E2cPane.{a = cc.Box.{x0 = 8 * k, y0 = top, x1 = 8 * k + side, y1 = bottom}, b = cc.Box.{x0 = w - 8 * k - side, y0 = top, x1 = w - 8 * k, y1 = bottom}};
-  }
+  if w < 840 * k || h < 760 * k { return E2cPane.{}; }   // a phone: its CLASS tab says the class (e2c_class_card)
   pw := f32(E2C_PANE_W) * k; pad := f32(E2C_PAD) * k;
   tall := e2c_words(s, out[..], 0, cl, 0, 0, pw - 2 * pad, k, 0, 1, false).h + 2 * pad;
   return E2cPane.{a = cc.Box.{x0 = w - 16 * k - pw, y0 = 20 * k, x1 = w - 16 * k, y1 = 20 * k + e2c_clamp(tall, 200 * k, h - 40 * k)}};
@@ -922,11 +1067,11 @@ e2c_pane_draw :: (s: [] E2, out: [] f32, at: int, f: f32) -> int {
 }
 // A picture for the host to draw (coax/web/host.js coaxial_media): "image URL X0 Y0 X1 Y1".
 e2c_put :: (m: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < m.count { m[n] = t[i]; n += 1; } } return n; }
-e2c_media :: (s: [] E2, name: string, tail: string, x0: f32, y0: f32, x1: f32, y1: f32) {
+e2c_media :: (s: [] E2, kind: string, name: string, tail: string, x0: f32, y0: f32, x1: f32, y1: f32) {
   m := s[0].media[..]; n := s[0].media_n;
   if n + 120 > m.count { return; }
   if n > 0 { m[n] = 10; n += 1; }
-  n = e2c_put(m, n, "image "); n = e2c_put(m, n, E2C_ICON_URL); n = e2c_put(m, n, name); n = e2c_put(m, n, tail);
+  n = e2c_put(m, n, kind); n = e2c_put(m, n, " "); n = e2c_put(m, n, E2C_ICON_URL); n = e2c_put(m, n, name); n = e2c_put(m, n, tail);
   e := [4] f32.[x0, y0, x1, y1];
   for i: 0..<4 {
     n = e2c_put(m, n, " "); v := cast(int) floor(e[i] + 0.5); if v < 0 { n = e2c_put(m, n, "-"); v = -v; }
@@ -934,13 +1079,6 @@ e2c_media :: (s: [] E2, name: string, tail: string, x0: f32, y0: f32, x1: f32, y
     while c > 0 { c -= 1; if n < m.count { m[n] = d[c]; n += 1; } }
   }
   s[0].media_n = n;
-}
-// The pane's glass (gpu/everglade2.coax post pass): u[52..55] the desktop panel or a phone's left
-// column, u[56..59] a phone's right one, device px; all 0 when there is none.
-e2c_pane_uniforms :: (s: [] E2, u: [] f32) {
-  p := e2c_pane(s, s[0].width, s[0].height, s[0].k);
-  e := [8] f32.[p.a.x0, p.a.y0, p.a.x1, p.a.y1, p.b.x0, p.b.y0, p.b.x1, p.b.y1];
-  for i: 0..<8 { u[52 + i] = e[i]; }
 }
 #test "create: the class pane says every class in full, and stays clear of you and the wardrobe" #steps 400000000 {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\n");
@@ -954,17 +1092,16 @@ e2c_pane_uniforms :: (s: [] E2, u: [] f32) {
       p := e2c_pane(s[..], w, h, 1);
       #assert p.a.x0 > w * 0.5 + 60 && p.a.x0 > 350 && p.a.x1 <= w - 16 && p.a.y0 >= 20 && p.a.y1 <= h - 20 && p.b.x1 == 0;
     }
-    // a phone: two columns between the top band (to 124) and the wardrobe's (from h - 504), clear of
-    // your figure in the middle (about 30 px either side of centre)
-    p := e2c_pane(s[..], 390, 844, 1);
-    #assert p.a.x0 >= 0 && p.a.x1 <= 195 - 40 && p.b.x0 >= 195 + 40 && p.b.x1 <= 390 && p.a.y0 >= 124 && p.a.y1 <= 844 - 504 && p.b.y1 == p.a.y1;
-    // and each column's words fit in it
-    cw := p.a.x1 - p.a.x0 - 16;
-    #assert e2c_words(s[..], out[..], 0, cl, 0, 0, cw, 1, 1, 1, false).h <= p.a.y1 - p.a.y0;
-    #assert e2c_words(s[..], out[..], 0, cl, 0, 0, cw, 1, 2, 1, false).h <= p.b.y1 - p.b.y0;
-    // drawn, slot 1's picture is named
+    // a phone has no pane over you: its CLASS tab shows slot 1, its name, the hit die and primary
+    // ability, under the CLASS, LEVEL and NAME rows and inside the sheet
+    #assert e2c_empty(e2c_pane(s[..], 390, 844, 1).a) && e2c_empty(e2c_pane(s[..], 844, 390, 1).a);
+    s[0].width = 390; s[0].height = 844; s[0].k = 1; s[0].media_n = 0; s[0].cz[0].tab = E2C_TAB_CLASS;
+    e2c_layout(s[..], 390, 844, 1); l: [1] cc.HudList;
+    #assert e2c_class_card(s[..], l[..], out[..], 0, 1, true) > 0 && s[0].media_n > 20 && s[0].media[5] == '/';
+    #assert s[0].cz[0].boxes[E2C_NAME_BOX].y1 + f32(E2C_ROW_GAP + E2C_ROW) <= s[0].cz[0].sheet.y1 - f32(E2C_PADDING) - f32(E2C_BUTTON);
+    // drawn on a desktop, slot 1's picture is named, over the pane's frame
     s[0].width = 1440; s[0].height = 900; s[0].k = 1; s[0].media_n = 0;
     _ := e2c_pane_draw(s[..], out[..], 0, 1);
-    #assert s[0].media_n > 20 && s[0].media[6] == '/';
+    #assert s[0].media_n > 20 && cast(string) s[0].media[0..<5] == "over ";
   }
 }

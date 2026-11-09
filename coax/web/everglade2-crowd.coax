@@ -98,6 +98,7 @@ EC_NAMES :: [3] string.["Crowd Alpha", "Crowd Bravo", "Crowd Charlie"];
 ec_hash :: (t: string) -> int { h := 2166136261; for ch: t { h = ((h ^ cast(int) ch) * 16777619) & 0xffffffff; } return h & 0x7fffffff; }
 // NAME: pressed, the old text cleared, t typed and Enter; then its answer waited for (e2_probe 65).
 ec_name :: (p: [] Cdp, t: string) -> bool {
+  ec_class_tab(p);
   nx := ec_probe(p, 62); ny := ec_probe(p, 63);
   if nx <= 0 || ny <= 0 || !ec_click(p, nx, ny) { return false; }
   proc_sleep(200);
@@ -406,8 +407,15 @@ ec_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
 
 // --levels (#13046): the classes and levels pages 0 and 1 pick (E2C_CLASS_NAMES: BARBARIAN 0, FIGHTER 4)
 EC_LV_CLASS :: [2] int.[4, 0]; EC_LV_LEVEL :: [2] int.[5, 3];
+// On a phone's studio, NAME, CLASS and LEVEL are on the CLASS tab (e2_probe 130, 131): pressed when it is not showing.
+ec_class_tab :: (p: [] Cdp) {
+  if ec_probe(p, 62) > 0 { return; }
+  tx := ec_probe(p, 130); ty := ec_probe(p, 131);
+  if tx > 0 && ty > 0 { _ := ec_click(p, tx, ty); proc_sleep(200); }
+}
 // CLASS, then LEVEL, pressed on their right halves until they say klass and level.
 ec_pick :: (p: [] Cdp, klass: int, level: int) -> bool {
+  ec_class_tab(p);
   for q: 0..<12 { if ec_probe(p, 28) == klass { break; } _ := ec_click(p, ec_probe(p, 102), ec_probe(p, 103)); proc_sleep(200); }
   for q: 0..<6 { if ec_probe(p, 104) == level { break; } _ := ec_click(p, ec_probe(p, 100), ec_probe(p, 101)); proc_sleep(200); }
   print("  page: class % level % picked\n", ec_probe(p, 28), ec_probe(p, 104));
