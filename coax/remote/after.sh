@@ -31,7 +31,7 @@
 # report, run.tsv with each job's status and seconds), history.tsv (commit,
 # time, kind, name, value, limit) and red.json.
 #
-# Settings: OA_AFTER_PARTS (6), OA_AFTER_MODULE_PARTS (3), OA_AFTER_GAP (900), OA_AFTER_COMPILER
+# Settings: OA_AFTER_PARTS (6), OA_AFTER_MODULE_PARTS (3), OA_AFTER_GAP (3600), OA_AFTER_COMPILER
 # (auto, always or never), OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing
 # checks bisected one by one; the rest share one bisect), OA_AFTER_TIMEOUT
 # (3000 s a job), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS...
@@ -43,7 +43,7 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 source "$here/pipeline-lib.sh"
 parts="${OA_AFTER_PARTS:-6}"
 module_parts="${OA_AFTER_MODULE_PARTS:-3}"
-gap="${OA_AFTER_GAP:-900}"
+gap="${OA_AFTER_GAP:-3600}"   # a full run costs about $0.30 of host time (2026-11-09)
 compiler_mode="${OA_AFTER_COMPILER:-auto}"
 width="${OA_BISECT_WIDTH:-4}"
 bisect_checks="${OA_BISECT_CHECKS:-4}"

@@ -234,10 +234,19 @@ The coordinator runs the integrator and the after-landing check on the Mac:
 
 ```sh
 coax/remote/integrate.sh            # a round whenever a branch is queued
-coax/remote/after.sh --watch        # a full run on main's newest head, at most every 15 minutes
+coax/remote/after.sh --watch        # a full run on main's newest head, at most once an hour
 ```
 
-The integrator starts `after.sh --once` after each landing as well. Logs, each
+The integrator starts `after.sh --once` after each landing as well; a run
+starts only when the last one started an hour ago or more (`OA_AFTER_GAP`).
+
+Measured on 2026-11-09 on today's tree: a branch check takes 8 to 42 s of
+host time when it touches a few suites or modules, about $0.001 to $0.003 of
+host time (remote.sh's ledger bills each job at a whole host's price, three
+times that). A full run is 11 jobs and 11,712 slot-seconds, about $0.30 of
+host time ($0.90 on the ledger); with the hosts shared with agents' own
+builds it took 31 minutes. Hourly runs cost at most about $7 a day of host
+time ($22 a day on the ledger, against its daily cap). Logs, each
 job's output and the red list are under `~/.openagents/pipeline/`
 (`releases/after/COMMIT/`, `releases/after/red.json`,
 `releases/after/history.tsv`). A message to an agent goes to
