@@ -236,7 +236,7 @@ e2k_area_marks :: (s: [] E2, out: [] f32, at: int) -> int {
   if seen.on {
     k := s[0].casts[..]; sp := ifx s[0].clock < k[0].opened.until then k[0].opened_sp else -1;
     if k[0].hover >= 0 && k[0].hover < k[0].bar_n && k[0].bar[k[0].hover].kind == FB_SPELL { sp = k[0].bar[k[0].hover].sp; }
-    c := ifx sp >= 0 then xc_spell_rgb(sp) else xc_rgb(0.55, 0.75, 1.0);
+    c := ifx sp >= 0 then fxl_spell_rgb(sp) else fxp_v(0.55, 0.75, 1.0);
     v = e2k_area_draw(s, seen, out, v, c.x, c.y, c.z);
   }
   a := s[0].casts[0].area[0];
