@@ -230,10 +230,10 @@ eg_classes :: (s: [] HbSlot) -> int {
     body = "You unleash a string of insults at a creature you can see within 60 feet. It makes a Wisdom saving throw; on a failure it takes 1d6 Psychic damage and has Disadvantage on its next attack roll before the end of its next turn.",
     n = 3, dt = [6] string.["Key 1", "Cantrip · 60 ft", "Bard level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
   s[2] = HbSlot.{name = "cl-sacred-flame", svg = "lorc/sun-radiations.svg", tint = [3] f64.[1.0, 0.9, 0.55], key = "1", title = "Sacred Flame",
-    body = "Flame-like radiance descends on a creature you can see within 60 feet. It makes a Dexterity saving throw; on a failure it takes 1d8 Radiant damage. It gains no benefit from Half Cover or Three-Quarters Cover.",
+    body = "Flame-like radiance descends on a creature you can see within 60 feet. It makes a Dexterity saving throw; on a failure it takes 1d8 Radiant damage. Cover doesn't protect it.",
     n = 3, dt = [6] string.["Key 1", "Cantrip · 60 ft", "Cleric level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
   s[3] = HbSlot.{name = "cl-starry-wisp", svg = "lorc/star-swirl.svg", tint = [3] f64.[0.7, 0.82, 1.0], key = "1", title = "Starry Wisp",
-    body = "You launch a mote of light at a creature or object within 60 feet: a ranged spell attack, 1d8 Radiant damage on a hit. Until the end of your next turn it sheds Dim Light in a 10-foot radius and can't benefit from the Invisible condition.",
+    body = "You launch a mote of light at a creature or object within 60 feet: a ranged spell attack, 1d8 Radiant damage on a hit. Until the end of your next turn it glows with Dim Light in a 10-foot radius and can't go Invisible.",
     n = 3, dt = [6] string.["Key 1", "Cantrip · 60 ft", "Druid level 1", "", "", ""], dc = [6] int.[0, 3, 1, 0, 0, 0]};
   s[4] = HbSlot.{name = "cl-second-wind", svg = "lorc/heart-bottle.svg", tint = [3] f64.[0.6, 0.88, 1.0], key = "1", title = "Second Wind",
     body = "A Bonus Action: you draw on a limited well of physical and mental stamina and regain Hit Points equal to 1d10 plus your Fighter level.",
