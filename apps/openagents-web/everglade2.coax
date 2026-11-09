@@ -39,6 +39,8 @@
 #load "class-menu.coax";        // Experimental's CLASSES column, for admin mode
 #load "everglade2-admin.coax";  // admin mode: dev builds on this machine only, every call below in #if BUILD_DEBUG
 #load "everglade2-track.coax";  // what players do, as analytics.coax events (the face keeps the Track)
+#load "../../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, as Experimental's
+#load "../../aethyr/action/area-aim.coax" as aa;   // ground targeting for a placed area (Entangle's square)
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 32768;     // strokes: the frame rate in the bottom right corner
@@ -543,7 +545,9 @@ e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
 // (everglade2-mouse.coax), then the rest as e2_pointer.
 e2_pointer_buttons :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
-  if e2m_buttons(s, phase, kind, button) { return true; }
+  // an armed area: a left click casts it where it shows, a right click lets it go
+  if phase == 0 && !s[0].cz[0].menu && s[0].casts[0].area[0].on { if button == 2 { _ := e2k_area_cancel(s); } else { _ := e2k_area_confirm(s); } return true; }
+  if !s[0].cz[0].menu && e2m_buttons(s, phase, kind, button) { return true; }   // the Esc menu's clicks are its own
   return e2_pointer(s, x, y, phase, kind, id);
 }
 e2_wheel :: (s: [] E2, dy: f32) -> bool #export_c #effects(all) {

@@ -44,6 +44,9 @@ E2Cast :: struct {
   deeds: [1] DeedBar;                      // the bar's asks and the room's answers (aethyr/action/deed.coax, #13072)
   ask: E2kAsk;                             // your press the room hasn't answered
   mine_heard: int;                         // your casts the room took that this page has played
+  locked: bool; stopped: int;              // your bearing stops your actions: what you had going was stopped (e2k_lock_step)
+  area: [1] aa.AreaAim;                    // a placed area armed: its square or circle on the ground at the crosshair (aethyr/action/area-aim.coax)
+  aimed_x: f32; aimed_z: f32;              // where your last cast was aimed
 }
 
 // Your class's bar at its level: once either changes (the druid at 1 until Character Create says).
@@ -152,20 +155,96 @@ e2k_ready :: (s: [] E2, i: int) -> bool {
 e2k_press :: (s: [] E2, i: int) -> bool {
   k := s[0].casts[..];
   if !e2k_on(s) || i < 0 || i >= k[0].bar_n { return false; }
-  now := s[0].clock; tick := deed_tick(now);
-  if now - k[0].cool_at < f32(XC_COOL) { return false; }
+  if s[0].clock - k[0].cool_at < f32(XC_COOL) { return false; }
   c := k[0].klass; a := k[0].bar[i];
-  seq := deed_ask(k[0].deeds[..], i, tick, e2k_bearing(s), xf_feel(c, a));
-  if seq == 0 { return false; }
   m := xc_aim_for(a, xk_weapon(c));
   face := e2_show_face(s); fx := sin(face); fz := cos(face);   // mouselook: the camera's way
+  // a placed area: the first press arms its preview on the ground, the second (or a click) casts it there
+  shape := e2k_area_shape(a);
+  if shape < 0 { _ := aa.area_aim_cancel(k[0].area[..]); }   // another slot lets an armed area go
+  if shape >= 0 {
+    ar := k[0].area[..];
+    if ar[0].on && ar[0].slot == i { shot := aa.area_aim_confirm(ar); return e2k_cast(s, i, face, shot.x, shot.z); }
+    if !e2k_ready(s, i) { return false; }   // arming asks nothing of the room, but your bearing must let you act
+    sp := rs_spell(a.sp);
+    half := ifx a.kind == FB_SPELL then f32(sp.area_ft) * f32(XC_FT) * (ifx sp.area == RS_A_SPHERE then 1.0f32 else 0.5f32) else 3.0f32;
+    ar[0] = aa.area_aim_arm(i, shape, half, m.reach, s[0].clock);
+    e2k_area_step(s);
+    return true;
+  }
   p0 := xc_aim_point(a, m, s[0].you_x, s[0].you_z, fx, fz);
   p := e2gd_aim(s, m, p0, fx, fz);   // at the path's guard when he is before you (everglade2-guard.coax)
   if p[0] == p0[0] && p[1] == p0[1] { p = e2mn_aim(s, m, p0, fx, fz); }   // else at a monster before you (everglade2-monsters.coax)
+  return e2k_cast(s, i, face, p[0], p[1]);
+}
+// The shape a placed area shows while you aim it (aethyr/action/area-aim.coax), -1 when the ability is
+// not one: a square for a square or a cube, a circle for a sphere (and Land's Aid's 10-foot circle).
+e2k_area_shape :: (a: FbAb) -> int {
+  if a.kind == FB_LANDS { return aa.AREA_CIRCLE; }
+  if a.kind != FB_SPELL { return -1; }
+  sp := rs_spell(a.sp);
+  if sp.area == RS_A_SQUARE || sp.area == RS_A_CUBE { return aa.AREA_SQUARE; }
+  if sp.area == RS_A_SPHERE { return aa.AREA_CIRCLE; }
+  return -1;
+}
+// Where the crosshair meets the ground: along the camera's line from the eye, the first step under the
+// land, 80 m at most (looking up: the furthest point straight on along it).
+e2k_crosshair_ground :: (s: [] E2) -> [2] f32 {
+  e := s[0].eye; f := s[0].fwd; t: f32 = 0.5;
+  while t < 80 {
+    x := e[0] + f[0] * t; y := e[1] + f[1] * t; z := e[2] + f[2] * t;
+    if y <= e2_height(x, z) { return [2] f32.[x, z]; }
+    t += 0.25;
+  }
+  return [2] f32.[e[0] + f[0] * 80, e[2] + f[2] * 80];
+}
+// Each frame: the armed area follows the crosshair, held to its range; dropped once the slot can't be used.
+e2k_area_step :: (s: [] E2) {
+  k := s[0].casts[..]; ar := k[0].area[..];
+  if !ar[0].on { return; }
+  if !e2k_on(s) || !deed_can_act(e2k_bearing(s)) || ar[0].slot >= k[0].bar_n { _ := aa.area_aim_cancel(ar); return; }
+  h := e2k_crosshair_ground(s);
+  ar[0] = aa.area_aim_follow(ar[0], s[0].you_x, s[0].you_z, h[0], h[1]);
+}
+e2k_area_confirm :: (s: [] E2) -> bool { k := s[0].casts[..]; if !k[0].area[0].on { return false; } return e2k_press(s, k[0].area[0].slot); }
+e2k_area_cancel :: (s: [] E2) -> bool { return aa.area_aim_cancel(s[0].casts[0].area[..]); }
+// The armed area's outline on the ground: gold, red where the crosshair is past its range.
+e2k_area_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+  a := s[0].casts[0].area[0];
+  if !a.on { return at; }
+  v := at; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up; k := s[0].k;
+  cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
+  pulse := 0.75 + 0.25 * sin(s[0].clock * 6);
+  cr := ifx a.far then 1.0f32 else 0.86f32; cg := ifx a.far then 0.32f32 else 0.78f32; cb := ifx a.far then 0.28f32 else 0.42f32;
+  px: f32 = 0; py: f32 = 0; was := false;
+  for i: 0..<aa.AREA_EDGE + 1 {
+    p := aa.area_aim_edge(a, i);
+    dx := p[0] - e[0]; dy := e2_height(p[0], p[1]) + 0.06 - e[1]; dz := p[1] - e[2];
+    ahead := dx * f[0] + dy * f[1] + dz * f[2];
+    if ahead < 0.3 { was = false; continue; }
+    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
+    sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
+    if was { v = cc.line(out, v, px, py, sx, sy, k * 1.4, cr * pulse, cg * pulse, cb * pulse); }
+    px = sx; py = sy; was = true;
+  }
+  return v;
+}
+// Slot i cast at (px, pz) on the ground: asked (aethyr/action/deed.coax), then sent; it plays once the
+// room takes it (e2k_taken). False when the ask is refused or nothing could be sent.
+e2k_cast :: (s: [] E2, i: int, face: f32, px: f32, pz: f32) -> bool {
+  k := s[0].casts[..];
+  now := s[0].clock; tick := deed_tick(now);
+  seq := deed_ask(k[0].deeds[..], i, tick, e2k_bearing(s), xf_feel(k[0].klass, k[0].bar[i]));
+  if seq == 0 { return false; }
+  // another slot while the bow is drawn lets the draw down first: the press is this one, and the
+  // loose it would have been never comes (the draw's loose is this same Attack: e2m_loose)
+  mo := s[0].mouse[..];
+  if mo[0].draw[0].on && i != e2m_attack(k) { bow.bow_cancel(mo[0].draw[..]); mo[0].cancels += 1; }
+  k[0].aimed_x = px; k[0].aimed_z = pz;
   ay := s[0].you_y + 1.0;
   k[0].ask = E2kAsk.{seq = seq, slot = i, wire = k[0].wire[i], face = face};
   k[0].cool_at = now; k[0].used = i; k[0].pressed += 1;
-  if !e2n_cast(s[0].net[..], k[0].wire[i], p[0], ay, p[1]) { _ := deed_answer(k[0].deeds[..], seq, false, tick, 0); k[0].cool_at = -100; return false; }
+  if !e2n_cast(s[0].net[..], k[0].wire[i], px, ay, pz) { _ := deed_answer(k[0].deeds[..], seq, false, tick, 0); k[0].cool_at = -100; return false; }
   return true;
 }
 // The room took your cast (its e cast for your seat): it plays now, from where you stand, at the

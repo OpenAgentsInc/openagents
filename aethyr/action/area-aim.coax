@@ -1,0 +1,77 @@
+// Ground targeting for an area (book chapter 96): the one path every realm aims a placed area through,
+// Everglade's Entangle, a Fog Cloud or a Moonbeam alike. Pressing such an ability arms it instead of
+// casting: a square or a circle the area's size lies on the ground where the crosshair meets it,
+// follows it each frame, and is held to the ability's range (beyond it, it stops at the range's edge
+// along the same line, marked far so a realm may tint it). A confirm casts it there, at exactly the
+// point the preview showed; a cancel (Esc, a right click, the slot again) drops it, nothing spent.
+// The realm finds where its crosshair meets its own ground and draws the outline from area_aim_edge;
+// the ruleset still decides what the cast does where it lands.
+//   coax/bin/coax test aethyr/action/area-aim.coax --library
+
+#module "aethyr.action.area_aim";
+
+AREA_CIRCLE :: 0; AREA_SQUARE :: 1;
+AREA_EDGE :: 48;           // outline points a realm draws (a multiple of 4: a square's corners land on them)
+
+AreaAim :: struct {
+  on: bool;
+  slot: int = -1;          // the realm's ability slot it is for
+  shape: int; half: f32;   // a circle's radius, a square's half side (metres)
+  range: f32;              // metres from the caster its middle may be
+  x: f32; z: f32;          // its middle now: where a confirm casts it
+  far: bool;               // the crosshair was past the range: the middle stopped at its edge
+  armed_at: f32;
+}
+AreaShot :: struct { ok: bool; slot: int = -1; x: f32; z: f32; }
+
+// Armed for `slot` at time t: nothing cast yet.
+area_aim_arm :: (slot: int, shape: int, half: f32, range: f32, t: f32) -> AreaAim {
+  return AreaAim.{on = true, slot = slot, shape = shape, half = half, range = range, armed_at = t};
+}
+// Each frame: the caster at (cx, cz), the crosshair meeting the ground at (hx, hz).
+area_aim_follow :: (a: AreaAim, cx: f32, cz: f32, hx: f32, hz: f32) -> AreaAim {
+  if !a.on { return a; }
+  b := a; dx := hx - cx; dz := hz - cz; d := sqrt(dx * dx + dz * dz);
+  b.far = d > a.range;
+  if b.far && d > 0.0001 { b.x = cx + dx / d * a.range; b.z = cz + dz / d * a.range; } else { b.x = hx; b.z = hz; }
+  return b;
+}
+// Confirm: the cast's point, the preview's middle, and the aim put away.
+area_aim_confirm :: (a: [] AreaAim) -> AreaShot {
+  if !a[0].on { return AreaShot.{}; }
+  r := AreaShot.{ok = true, slot = a[0].slot, x = a[0].x, z = a[0].z};
+  a[0] = AreaAim.{};
+  return r;
+}
+area_aim_cancel :: (a: [] AreaAim) -> bool { was := a[0].on; a[0] = AreaAim.{}; return was; }
+// Point i of AREA_EDGE round its outline (x, z on the ground): a circle's rim, a square's sides.
+area_aim_edge :: (a: AreaAim, i: int) -> [2] f32 {
+  if a.shape == AREA_CIRCLE {
+    t := f32(i % AREA_EDGE) * 6.2831853 / f32(AREA_EDGE);
+    return [2] f32.[a.x + cos(t) * a.half, a.z + sin(t) * a.half];
+  }
+  side := AREA_EDGE / 4; e := (i % AREA_EDGE) / side; u := -1 + 2 * f32(i % side) / f32(side);
+  ox := ifx e == 0 then u else ifx e == 1 then 1.0f32 else ifx e == 2 then -u else -1.0f32;
+  oz := ifx e == 0 then -1.0f32 else ifx e == 1 then u else ifx e == 2 then 1.0f32 else -u;
+  return [2] f32.[a.x + ox * a.half, a.z + oz * a.half];
+}
+
+#test "area aim: follows the crosshair, held to its range; confirm casts at the preview; cancel spends nothing" {
+  a := area_aim_arm(3, AREA_SQUARE, 3.048, 27.432, 1);
+  #assert a.on && a.slot == 3;
+  a = area_aim_follow(a, 0, 0, 5, 10);
+  #assert a.x == 5 && a.z == 10 && !a.far;
+  // 50 m off: held at 90 feet along the same line
+  a = area_aim_follow(a, 0, 0, 0, -50);
+  #assert a.far && abs(a.x) < 0.001 && abs(a.z + 27.432) < 0.001;
+  // its outline: a square's corners on it, every point on its sides
+  for i: 0..<AREA_EDGE { p := area_aim_edge(a, i); #assert abs(abs(p[0] - a.x) - 3.048) < 0.001 || abs(abs(p[1] - a.z) - 3.048) < 0.001; }
+  c := area_aim_edge(a, 0); #assert abs(c[0] - (a.x - 3.048)) < 0.001 && abs(c[1] - (a.z - 3.048)) < 0.001;
+  h: [1] AreaAim; h[0] = a;
+  shot := area_aim_confirm(h[..]);
+  #assert shot.ok && shot.slot == 3 && shot.x == a.x && shot.z == a.z && !h[0].on;
+  #assert !area_aim_confirm(h[..]).ok;
+  h[0] = area_aim_arm(1, AREA_CIRCLE, 6.096, 36.576, 2); #assert area_aim_cancel(h[..]) && !h[0].on && !area_aim_cancel(h[..]);
+  r := area_aim_follow(area_aim_arm(1, AREA_CIRCLE, 2, 30, 0), 0, 0, 3, 4); p := area_aim_edge(r, 12);
+  #assert abs((p[0] - 3) * (p[0] - 3) + (p[1] - 4) * (p[1] - 4) - 4) < 0.001;
+}

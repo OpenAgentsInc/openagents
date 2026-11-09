@@ -67,7 +67,7 @@ e2m_buttons :: (s: [] E2, phase: int, kind: int, button: int) -> bool {
 
 // The frame: the aim eases, a left click's draw looses at full, the pose's strength.
 e2m_step :: (s: [] E2, dt: f32) {
-  m := s[0].mouse[..]; now := s[0].clock;
+  m := s[0].mouse[..]; k := s[0].casts[..]; now := s[0].clock;
   if m[0].draw[0].on && !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); }
   bow.bow_step(m[0].draw[..], dt);
   if bow.bow_due(m[0].draw[0], now) { _ := e2m_loose(s); }

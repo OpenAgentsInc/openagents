@@ -57,6 +57,7 @@
 
 #load "font.coax";
 #load "../../aethyr/character-appearance.coax" as cc;
+#load "../../aethyr/action/area-aim.coax" as aa;   // a placed area's ground targeting (Entangle), shared with Everglade II
 #load "everglade-link.coax";
 #load "analytics.coax";
 #load "../../aethyr/camera.coax";

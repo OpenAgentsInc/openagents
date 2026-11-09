@@ -510,12 +510,17 @@ gv_el_at :: (s: [] Everglade, mode: int, at: Point) {
 
 // ---- Entangle
 
+// Its square on the ground where the pointer points, held to 90 feet (aethyr/action/area-aim.coax, as
+// Everglade II's): past that it stops at the range's edge, and casts there.
+gv_en_aim :: (s: [] Everglade) -> aa.AreaAim {
+  you := ab_you(s);
+  return aa.area_aim_follow(aa.area_aim_arm(SP_SLOTS + AB_ENTANGLE, aa.AREA_SQUARE, f32(GV_EN_SIDE) * 0.5, f32(GV_EN_RANGE), 0), you.x, you.z, s[0].sp.aim.x, s[0].sp.aim.z);
+}
 gv_en_cast :: (s: [] Everglade) {
   if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
-  at := s[0].sp.aim;
-  if flat_gap(at, ab_you(s)) > f32(GV_EN_RANGE) { sp_say(s, "TOO FAR · 90 FEET AT MOST", -1, ""); return; }
+  a := gv_en_aim(s);
   s[0].sp.armed = -1;
-  gv_en_at(s, at);
+  gv_en_at(s, v3(a.x, ground_at(s, a.x, a.z), a.z));
 }
 gv_en_at :: (s: [] Everglade, at: Point) {
   v := gv_of(s);
@@ -702,8 +707,8 @@ gv_draw :: (s: [] Everglade) {
   // picked: Entangle's square where the pointer points
   if s[0].sp.armed == SP_SLOTS + AB_ENTANGLE && s[0].sp.aim_ok {
     pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
-    far := flat_gap(s[0].sp.aim, ab_you(s)) > f32(GV_EN_RANGE);
-    ab_square(s, s[0].sp.aim, f32(GV_EN_SIDE) * 0.5, times(ifx far then v3(0.6, 0.25, 0.2) else GV_GROWTH_RGB, 0.7 * pulse));
+    a := gv_en_aim(s);
+    ab_square(s, v3(a.x, 0, a.z), a.half, times(ifx a.far then v3(0.6, 0.25, 0.2) else GV_GROWTH_RGB, 0.7 * pulse));
   }
   if s[0].sp.armed == SP_SLOTS + AB_ELEMENTS && s[0].sp.aim_ok {
     pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
@@ -811,7 +816,7 @@ gv_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
     return ifx m == GV_EL_AIR then "CLICK TO BECKON AIR · CTRL+5 FOR EARTH" else ifx m == GV_EL_EARTH then "CLICK TO BECKON EARTH · CTRL+5 FOR FIRE" else ifx m == GV_EL_FIRE then "CLICK TO BECKON FIRE · CTRL+5 FOR WATER" else "CLICK TO BECKON WATER · CTRL+5 PUTS IT AWAY";
   }
   if k == AB_ENTANGLE {
-    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(GV_EN_RANGE) { return "TOO FAR · 90 FEET AT MOST"; }
+    if far && gv_en_aim(s).far { return "90 FEET AT MOST · IT GROWS AT THE EDGE"; }
     return ifx phone_ then "TAP THE GROUND FOR ENTANGLE · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR ENTANGLE · ESC CANCELS";
   }
   return "";
