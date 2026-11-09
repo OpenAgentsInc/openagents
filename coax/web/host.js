@@ -15,6 +15,8 @@
 //                             -> vertex count
 //   coaxial_page(state, page) optional: which page to draw (data-page, e.g. a 404)
 //   coaxial_golden(on)        optional: golden mode, its animated effects held at one moment
+//   coaxial_bloom_passes_v1(state) optional: how many of the five bloom passes to draw this frame (the rest
+//                             are left as they were; the app's post pass reads only those drawn)
 //   coaxial_pixel_budget()    optional: the most pixels a frame draws (a page that traces every pixel);
 //                             the canvas draws fewer and is scaled up, never past verse.quality's cap
 // and, optionally, input and output, all drawn and decided by the app:
@@ -3066,7 +3068,8 @@ function draw(now) {
   }
   if (post) {
     pass.end();
-    for (const [into, group] of gpu.blooms) {
+    const blooms = x.coaxial_bloom_passes_v1 ? gpu.blooms.slice(0, Math.max(0, Math.min(gpu.blooms.length, x.coaxial_bloom_passes_v1(arena.state)))) : gpu.blooms;
+    for (const [into, group] of blooms) {
       const b = timedPass(encoder, passTimer, { colorAttachments: [target(into.createView())] });
       b.setBindGroup(0, gpu.bindGroup); b.setBindGroup(1, group); b.setPipeline(gpu.bloom); b.draw(3); b.end();
     }

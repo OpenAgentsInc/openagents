@@ -81,6 +81,8 @@ EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 
 /* golden mode (host.js coaxial_golden): the governor holds the screen's rung (e2_quality_frame) */
 static bool golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+/* the bloom passes the post pass reads this frame (host.js; e2_bloom_passes: the graphics quality's post knob) */
+EXPORT("coaxial_bloom_passes_v1") uint32_t coaxial_bloom_passes_v1(uint32_t state) { return (uint32_t)e2_bloom_passes(at(state)); }
 EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   if (!quality_state) return 6400000u;
   int64_t px = e2_pixel_budget(at(quality_state), width, height, dpr);

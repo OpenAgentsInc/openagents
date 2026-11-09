@@ -73,10 +73,14 @@ e2_field_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->FivelabS {
  x:=E2_WEST+(cast(f32)fx+e2_unit(e2_field_hash(fx,fz,cast(u32)1)))*0.5f32;z:=E2_BACK-(cast(f32)fz+e2_unit(e2_field_hash(fx,fz,cast(u32)2)))*0.5f32;
  dx:=x-u[16];dz:=z-u[18];d:=sqrt(dx*dx+dz*dz);
  // this tier draws it only over its own stretch: the same tuft is the next tier's past it
- if (d<e2_field_start(t) || d>=e2_field_out(t)) {return o;}
+ // (at the graphics quality's grass reach u[35] and finest share u[36], e2_field_start_r; whole, the original)
+ whole:=u[35]>=0.9999f32 && u[36]>=0.9999f32;
+ if (whole) {if (d<e2_field_start(t) || d>=e2_field_out(t)) {return o;}}
+ else {if (d<e2_field_start_r(t,u[35],u[36]) || d>=e2_field_out_r(t,u[35],u[36])) {return o;}}
  if (e2_unit(e2_field_hash(fx,fz,cast(u32)6))>=e2_field_cover(x,z)) {return o;}
  // distance only fades a tuft (a dither share, e2_dither_keep); its place and size are its cell's
- shown:=e2_field_shown(e2_field_rel(t,d),e2_field_rank(t,gx,gz,fx,fz));
+ rel:=ifx whole then e2_field_rel(t,d) else e2_field_rel_r(t,d,u[35],u[36]);
+ shown:=e2_field_shown(rel,e2_field_rank(t,gx,gz,fx,fz));
  if (shown<=0.0f32) {return o;}
  woods:=e2_forest(x,z);edge:=e2_smooth(0.03,0.30,e2_path(x,z));
  hgt:=(0.22f32+0.26f32*e2_unit(e2_field_hash(fx,fz,cast(u32)4)))*(1.0f32-0.40f32*edge)*(1.0f32-0.25f32*woods);
@@ -107,7 +111,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
 #test "a grass tuft stands in one place at one size wherever the eye is, and only fades" #steps 4000000000 {
  // one template vertex (a grass blade's, kind 2) at the pack's start
  vtx:[8]u32;vtx[0]=f32_bits(0.3f32);vtx[1]=f32_bits(1.0f32);vtx[2]=f32_bits(0.2f32);vtx[3]=cast(u32)2<<24;
- u:[208]f32;u[0]=1280;u[1]=720;u[19]=900;u[20]=0;u[21]=0;u[22]= -1;u[24]=1;u[29]=1;
+ u:[208]f32;u[0]=1280;u[1]=720;u[19]=900;u[20]=0;u[21]=0;u[22]= -1;u[24]=1;u[29]=1;u[35]=1;u[36]=1;
  seen:=0;faded:=0;
  for t:0..<4 {for i:0..<300 {
   // blocks round the walk, near and far from it
@@ -189,6 +193,12 @@ e2_casc_try :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare,k:int)->f32 {
  if (!(abs(q.x)<edge && abs(q.y)<edge && q.z>0 && q.z<1)) {return -1;}
  r:=e2_casc(u,k,0);uv:=v2(r.x+(0.5f32+0.5f32*q.x)*r.z,r.y+(0.5f32-0.5f32*q.y)*r.w);
  lit:f32=0;
+ // six taps at the graphics quality's lower shadow (row 5's w, e2_shadows)
+ if (x.w>0.5f32) {
+  for i:0..<6 {a:=cast(f32)i*2.399963f32;d:=sqrt((cast(f32)i+0.5f32)/6.0f32);
+   lit=lit+gpu_compare(map,cmp,v2(uv.x+cos(a)*d*f.x,uv.y+sin(a)*d*f.y),q.z-f.z);}
+  return lit/6.0f32;
+ }
  for i:0..<12 {a:=cast(f32)i*2.399963f32;d:=sqrt((cast(f32)i+0.5f32)/12.0f32);
   lit=lit+gpu_compare(map,cmp,v2(uv.x+cos(a)*d*f.x,uv.y+sin(a)*d*f.y),q.z-f.z);}
  return lit/12.0f32;
@@ -492,6 +502,17 @@ everglade2_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_e
  pixel:=v2(pos.x,pos.y);uv:=e2_arrival_uv(v2(pos.x/u[0],pos.y/u[1]),u);raw:=gpu_sample_level(post_light,post_lin,uv,0);
  if (u[10]<1.5f32) {encoded:=e2_arrival(cg_encode(v3(raw.x,raw.y,raw.z)),pixel,u);return v4(encoded.x,encoded.y,encoded.z,1);}
  a:=wg_load_2d(post_aux,cg_post_pixel(pixel,wg_dims_2d(post_aux)),0);
+ // the graphics quality's post knob u[37] (e2_knobs_frame): 1 all of it; under 1 no foliage filter and
+ // the glow from the quarter chain alone (the host drew only it); under 0.45 also no contact shade,
+ // no edge smoothing, no glow and plain glass
+ if (u[37]<0.99f32) {
+  low:=u[37]<0.45f32;
+  m:=v3(raw.x,raw.y,raw.z);
+  if (!low) {m=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);m=scale3(m,1.0f32-(1.0f32-cg_contact_ao(pixel,u,post_aux))*saturate(a.z));m=add3(m,scale3(cg_post_sample(post_quarter,post_lin,uv),0.40f32));}
+  res:=ifx abs(a.w)<0.001f32 then cg_encode(m) else ifx u[51]>2.5f32 then cg_encode(add3(m,cg_sun_veil(uv))) else cg_output(u,add3(m,cg_sun_veil(uv)));
+  if (u[11]<0.5f32) {glass:=fmax(cg_panel_opacity(pixel,u[0],u[1],u[4]),e2_pane_cover(pixel,u));fade:=1.0f32-u[40];if (glass*fade>0) {behind:=ifx low then cg_output(u,m) else cg_output(u,cg_glass(uv,u,post_light,post_lin));panel:=mix3(behind,v3(0.09f32,0.12f32,0.11f32),glass);res=mix3(res,panel,fade);res=mix3(res,v3(0.93f32,0.86f32,0.66f32),fmax(cg_panel_edge(pixel,u[0],u[1],u[4]),e2_pane_edge(pixel,u))*0.55f32*fade);}}
+  res=cg_walk_veil(res,u);res=e2_arrival(res,pixel,u);return v4(res.x,res.y,res.z,1);
+ }
  c:=cg_fxaa(uv,v2(1.0f32/u[0],1.0f32/u[1]),post_light,post_lin);c=scale3(c,1.0f32-(1.0f32-cg_contact_ao(pixel,u,post_aux))*saturate(a.z));
  glow:=add3(scale3(cg_post_sample(post_quarter,post_lin,uv),0.20f32),scale3(cg_post_sample(post_eighth,post_lin,uv),0.20f32));
  // A small foliage-only reconstruction filter integrates subpixel leaves and blades.

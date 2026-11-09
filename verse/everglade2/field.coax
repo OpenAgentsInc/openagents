@@ -42,6 +42,28 @@ e2_field_cover :: (x:f32,z:f32)->f32 {
  bare:=e2_smooth(0.10,0.42,e2_path(x,z));
  return (1-bare)*(1-0.55*e2_forest(x,z));
 }
+// The same at the graphics quality's grass reach (aethyr/quality.coax `grass`, as the page eases it):
+// g scales every distance (E2_FIELD_NEAR, E2_FIELD_STEP, E2_FIELD_FAR), and c caps the finest
+// tier's share. At c = 0.25 the finest tier keeps only the tufts the 1 m tier keeps too; then it is
+// left out (e2_field_fine_off) and the 1 m tier draws from the eye: the same tufts in the same places,
+// so nothing moves. At g = c = 1 these are the functions above, number for number.
+e2_field_fine_off :: (c:f32)->bool {return c<=0.2501f32;}
+e2_field_start_r :: (t:int,g:f32,c:f32)->f32 {
+ if t==0 || (t==1 && e2_field_fine_off(c)) {return 0.0f32;}
+ return (f32(E2_FIELD_NEAR)+f32(t)*f32(E2_FIELD_STEP))*g;
+}
+e2_field_out_r :: (t:int,g:f32,c:f32)->f32 {
+ if t==3 {return f32(E2_FIELD_FAR)*g;}
+ if t==0 && e2_field_fine_off(c) {return 0.0f32;}
+ return (f32(E2_FIELD_NEAR)+f32(t+1)*f32(E2_FIELD_STEP))*g;
+}
+e2_field_rel_r :: (t:int,d:f32,g:f32,c:f32)->f32 {
+ k:=ifx g>0.05f32 then g else 0.05f32;
+ if t==3 {s:=(f32(E2_FIELD_NEAR)+3.0f32*f32(E2_FIELD_STEP))*k;v:=1-(d-s)/(f32(E2_FIELD_FAR)*k-s);return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
+ v:=pow(0.25f32,(d-(f32(E2_FIELD_NEAR)+f32(t)*f32(E2_FIELD_STEP))*k)/(f32(E2_FIELD_STEP)*k));v=ifx v>1 then 1.0f32 else v;
+ if t==0 && v>c {v=c;}
+ return v;
+}
 // The hashes: a cell's (x, z) at level k (0 the fine cells), and a unit share of one.
 e2_ihash :: (v:u32)->u32 {
  x:=v^(v>>16);x=mul_wrap(x,cast(u32)2146121005);x=x^(x>>15);x=mul_wrap(x,cast(u32)1663597195);return x^(x>>16);
@@ -102,6 +124,23 @@ e2_field_shown :: (rel:f32,rank:f32)->f32 {v:=(rel-rank)/f32(E2_FIELD_FADE);retu
  for t:0..<4 {a:=e2_field_start(t);b:=e2_field_out(t);for i:0..<100 {d:=a+(b-a)*f32(i)/100;q:=d+(b-a)/100;
   #assert abs(e2_field_rel(t,q)-e2_field_rel(t,d))<0.05;}}
  #assert e2_field_rel(3,f32(E2_FIELD_FAR))==0;
+}
+#test "the grass's reach: every distance shrinks with it, and the finest tier hands over to the next with nothing moving" {
+ // whole, the same as the plain functions
+ for t:0..<4 {#assert e2_field_start_r(t,1,1)==e2_field_start(t) && e2_field_out_r(t,1,1)==e2_field_out(t);
+  for i:0..<60 {d:=f32(i)*2.5;#assert abs(e2_field_rel_r(t,d,1,1)-e2_field_rel(t,d))<0.0001;}}
+ // at a smaller reach the tiers still nest end to end, the shares still hand over whole, and the last fades out sooner
+ for gi:0..<4 {g:=0.35f32+0.2f32*f32(gi);
+  for t:0..<3 {e:=e2_field_out_r(t,g,1);#assert abs(e2_field_start_r(t+1,g,1)-e)<0.0001 && abs(e2_field_rel_r(t,e,g,1)-0.25)<0.001 && e2_field_rel_r(t+1,e,g,1)==1;}
+  #assert e2_field_out_r(3,g,1)<f32(E2_FIELD_FAR) && e2_field_rel_r(3,e2_field_out_r(3,g,1),g,1)==0;
+  for t:0..<4 {a:=e2_field_start_r(t,g,1);b:=e2_field_out_r(t,g,1);for i:0..<100 {d:=a+(b-a)*f32(i)/100;q:=d+(b-a)/100;
+   #assert abs(e2_field_rel_r(t,q,g,1)-e2_field_rel_r(t,d,g,1))<0.05;}}}
+ // the finest tier's cap: as it falls to a quarter, only its tufts the next tier keeps (rank 0) stay
+ for i:0..<20 {d:=f32(i)*0.5;#assert e2_field_shown(e2_field_rel_r(0,d,1,0.25),0)==1 && e2_field_shown(e2_field_rel_r(0,d,1,0.25),0.26)==0;}
+ #assert e2_field_shown(e2_field_rel_r(0,2,1,0.6),0.5)>0 && e2_field_shown(e2_field_rel_r(0,2,1,0.6),0.7)==0;
+ // then it is left out and the next tier stands from the eye, every tuft of it whole
+ #assert !e2_field_fine_off(0.26) && e2_field_fine_off(0.25) && e2_field_out_r(0,0.45,0.25)==0 && e2_field_start_r(1,0.45,0.25)==0;
+ for i:0..<20 {#assert e2_field_shown(e2_field_rel_r(1,f32(i)*0.4,0.45,0.25),0.9)==1;}
 }
 #test "a cell's hash spreads over the unit and differs cell to cell" {
  lo:f32=1;hi:f32=0;same:=0;last:f32= -1;

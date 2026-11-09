@@ -53,18 +53,27 @@ reads its knobs. Worlds never make their own ad hoc quality checks.
 
 ### The ladder
 
-The quality is a rung on a ladder of seven. Each rung down turns down one
-kind of cost, costliest first:
+The quality is a rung on a ladder of twelve. Each rung down costs no more than
+the rung above it and turns down at least one thing Everglade II draws. Rungs
+11, 8 and 2 are the HIGH, MED and LOW a player picks; they draw what
+Everglade's own seven-rung ladder drew at those tiers.
 
-| Rung | Tier shown | Pixels a CSS pixel | Debris | Splinters, dust | Puffs | Far trees |
-| ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 6 | HIGH | 3.0 | 100 % | 100 % | 100 % | 100 % |
-| 5 | HIGH | 2.0 | 100 % | 100 % | 100 % | 100 % |
-| 4 | MED | 1.5 | 100 % | 100 % | 100 % | 100 % |
-| 3 | MED | 1.5 | 50 % | 50 % | 40 % | 100 % |
-| 2 | MED | 1.0 | 40 % | 40 % | 30 % | 100 % |
-| 1 | LOW | 1.0 | 30 % | 25 % | 20 % | 80 % |
-| 0 | LOW | 0.75 | 30 % | 25 % | 15 % | 70 % |
+| Rung | Tier shown | Pixels a CSS pixel | Debris | Splinters, dust | Puffs | Scenery | Grass | Shadows | Post | Crowd |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 11 | HIGH | 3.0 | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % |
+| 10 | HIGH | 2.0 | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % |
+| 9 | MED | 1.5 | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % | 100 % |
+| 8 | MED | 1.5 | 50 % | 50 % | 40 % | 100 % | 100 % | 100 % | 60 % | 100 % |
+| 7 | MED | 1.5 | 50 % | 50 % | 40 % | 100 % | 100 % | 60 % | 60 % | 100 % |
+| 6 | MED | 1.5 | 40 % | 40 % | 30 % | 100 % | 70 % | 60 % | 60 % | 75 % |
+| 5 | MED | 1.5 | 40 % | 40 % | 30 % | 80 % | 70 % | 60 % | 60 % | 50 % |
+| 4 | LOW | 1.5 | 30 % | 25 % | 20 % | 80 % | 45 % | 60 % | 60 % | 50 % |
+| 3 | LOW | 1.5 | 30 % | 25 % | 20 % | 80 % | 45 % | 30 % | 60 % | 50 % |
+| 2 | LOW | 1.0 | 30 % | 25 % | 20 % | 80 % | 45 % | 30 % | 20 % | 25 % |
+| 1 | LOW | 0.85 | 30 % | 25 % | 15 % | 70 % | 45 % | 30 % | 20 % | 25 % |
+| 0 | LOW | 0.75 | 30 % | 25 % | 15 % | 70 % | 35 % | 0 % | 20 % | 25 % |
+
+What each column turns down:
 
 - **Pixels.** The world tells the host how many pixels to draw at most
   (`coaxial_pixel_budget`); the host draws fewer and the browser scales the
@@ -80,7 +89,20 @@ kind of cost, costliest first:
   frame, with at least 160 kept. Past that, the frame drops evenly spaced
   puffs and makes the ones it keeps denser, up to 1.6 times
   (`sp_fx_thin` in `everglade-spells.coax`). A blast still looks like a blast.
-- **Far trees.** The share of the kit trees' reach and count.
+- **Scenery.** The share of the kit pieces' reach (Everglade's far trees;
+  Everglade II's trees, bushes and rocks). Past it, pieces thin out through
+  their own dither.
+- **Grass.** Everglade II's grass field: the share of its reach, and at 45 %
+  and below the finest tier is left out and the next tier draws from your
+  feet, the same tufts in the same places.
+- **Shadows.** 100 % is every shadow tile. 60 % keeps the tiles, redraws the
+  nearest for moving things every other frame and filters with 6 taps
+  instead of 12. 30 % keeps only the nearest tile. 0 % draws no shadow tiles.
+- **Post.** 100 % is the whole post pass. 60 % drops the foliage filter and
+  the eighth-size bloom (3 of the 5 bloom passes run). 20 % also drops the
+  contact shade, the edge smoothing, the bloom and the panes' blur.
+- **Crowd.** The share of the other players drawn. The rest fade out as if
+  they had walked out of view.
 
 Spells and gameplay never change. Damage, physics, what breaks and what the
 other players see stay the same; only how much of it is drawn changes.
@@ -92,12 +114,12 @@ At load the world picks a rung from the page's facts (`host.js` `pageFacts`:
 world reads them with one parser, `quality_device_from_facts`, and reads the
 player's pick with `quality_mode_from_facts`:
 
-- A handheld device starts at MED (rung 3), or LOW (rung 1) with 4 cores or
+- A handheld device starts at MED (rung 8), or LOW (rung 2) with 4 cores or
   fewer or 3 GB or less. A device is handheld when it is touched, its pointer
   is coarse, its screen's short side is under 700 CSS pixels, or the page is
   under 700 CSS pixels across (`quality_handheld`). A phone held sideways and
   a tablet are handheld, so neither starts at HIGH.
-- A computer starts at HIGH (rung 6), or MED with 2 cores or fewer or 2 GB or
+- A computer starts at HIGH (rung 11), or MED with 2 cores or fewer or 2 GB or
   less.
 - A number the browser doesn't give (Safari has no `deviceMemory`) counts for
   nothing.
@@ -175,6 +197,20 @@ sits left of the FPS counter on the same line, at least 44 CSS pixels tall so
 a finger can hit it. A tap picks the next tier and the host keeps it (action
 6). Golden frames hold the rung the screen's size alone gives and don't show
 the control.
+
+Each frame Everglade II reads the rung's knobs and eases the reaches (grass,
+finest grass share, scenery) toward them at 0.34 a second, so a change thins
+or fills in through the pieces' own dither over about 3 s and nothing pops
+(`e2_knobs_frame`). The shadow, post and crowd knobs step. The shaders read
+the grass reach in `u[35]`, the finest share in `u[36]` and the post knob in
+`u[37]`; at 1 each runs its original code, so HIGH draws the same pixels as
+before. The host draws only the bloom passes `coaxial_bloom_passes_v1` asks
+for.
+
+While you make your character below HIGH, the studio trims what stands behind
+its panes: the grass to 45 %, the scenery to 70 %, the shadows to the nearest
+tile and the post pass to 60 %. When you walk out, the run-out eases them back
+to the rung's own over its 3 s.
 
 ## Measuring
 

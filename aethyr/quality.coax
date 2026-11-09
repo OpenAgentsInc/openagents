@@ -28,21 +28,35 @@ QUALITY_NAMES :: [4] string.["HIGH", "MED", "LOW", "AUTO"];
 QUALITY_HOST :: [4] string.["high", "medium", "low", "auto"];   // the names host.js keeps
 
 // book:begin ladder
-// The ladder, rung 0 the cheapest. Each rung up raises one knob over the rung below it.
+// The ladder, rung 0 the cheapest. Each rung up raises at least one knob over the rung below it,
+// and none falls. Every knob is a share, 0 to 1, of what the realm draws at its best, except scale.
 //   scale:   CSS pixels drawn per CSS pixel at most (the host draws fewer and scales up)
 //   debris:  the share of the realm's debris budget: pieces alive at once, pieces per break
 //   fine:    the share of its splinters and dust, and how long a splinter lies
 //   fx:      the share of its fire, smoke and glow puffs a frame
 //   scenery: the share of its far scenery's reach and count (trees)
-QUALITY_RUNGS :: 7;
-QUALITY_SCALE :: [7] f32.[0.75, 1.0, 1.0, 1.5, 1.5, 2.0, 3.0];
-QUALITY_DEBRIS :: [7] f32.[0.3, 0.3, 0.4, 0.5, 1.0, 1.0, 1.0];
-QUALITY_FINE :: [7] f32.[0.25, 0.25, 0.4, 0.5, 1.0, 1.0, 1.0];
-QUALITY_FX :: [7] f32.[0.15, 0.2, 0.3, 0.4, 1.0, 1.0, 1.0];
-QUALITY_SCENERY :: [7] f32.[0.7, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0];
+//   grass:   the share of its grass's reach; under a half, its finest tier is left out too
+//   shadow:  its key light's shadow tiles: 1 all, redrawn as needed; past a half fewer redraws and
+//            filter taps; under a half the nearest tile only; 0 none (the baked shade alone)
+//   post:    its post passes: 1 all; past a half less bloom, contact shade and frosted glass; under
+//            a half only the edge smoothing and the glass the panels need
+//   crowd:   the share of the others (players, monsters) it draws whole
+// Down from the top: pixels 3.0, 2.0, 1.5; then the post; the shadows' redraws; the grass's reach;
+// the far scenery's; the grass's finest tier; the shadow tiles past the nearest; the post off at
+// 1.0 px; then 0.85 px; and 0.75 px with no shadow tiles.
+QUALITY_RUNGS :: 12;
+QUALITY_SCALE :: [12] f32.[0.75, 0.85, 1.0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 2.0, 3.0];
+QUALITY_DEBRIS :: [12] f32.[0.3, 0.3, 0.3, 0.3, 0.3, 0.4, 0.4, 0.5, 0.5, 1.0, 1.0, 1.0];
+QUALITY_FINE :: [12] f32.[0.25, 0.25, 0.25, 0.25, 0.25, 0.4, 0.4, 0.5, 0.5, 1.0, 1.0, 1.0];
+QUALITY_FX :: [12] f32.[0.15, 0.15, 0.2, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4, 1.0, 1.0, 1.0];
+QUALITY_SCENERY :: [12] f32.[0.7, 0.7, 0.8, 0.8, 0.8, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+QUALITY_GRASS :: [12] f32.[0.35, 0.45, 0.45, 0.45, 0.45, 0.7, 0.7, 1.0, 1.0, 1.0, 1.0, 1.0];
+QUALITY_SHADOW :: [12] f32.[0.0, 0.3, 0.3, 0.3, 0.6, 0.6, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0];
+QUALITY_POST :: [12] f32.[0.2, 0.2, 0.2, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 1.0, 1.0, 1.0];
+QUALITY_CROWD :: [12] f32.[0.25, 0.25, 0.25, 0.5, 0.5, 0.5, 0.75, 1.0, 1.0, 1.0, 1.0, 1.0];
 // the rung each tier holds, and the tier each rung is shown as
-QUALITY_TIER_RUNG :: [3] int.[6, 3, 1];
-QUALITY_RUNG_TIER :: [7] int.[2, 2, 1, 1, 1, 0, 0];
+QUALITY_TIER_RUNG :: [3] int.[11, 8, 2];
+QUALITY_RUNG_TIER :: [12] int.[2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0];
 // book:end ladder
 
 QUALITY_WARM_S :: 3.0;       // s at the start (shaders, the pack streaming in) the governor only watches
@@ -69,7 +83,7 @@ QUALITY_30 :: 33.3333;
 // doesn't say.
 QualityDevice :: struct { css_w: f32; css_h: f32; dpr: f32 = 1; touch: bool; coarse: bool; screen_w: f32; screen_h: f32; cores: int; memory: f32; frame_hz:int;minimum_hz:int; }
 
-QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; }
+QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; grass: f32 = 1; shadow: f32 = 1; post: f32 = 1; crowd: f32 = 1; }
 
 Quality :: struct {
   mode: int = QUALITY_AUTO;   // AUTO, or the tier the player picked
@@ -231,7 +245,12 @@ quality_auto :: (q: [] Quality) -> bool { return q[0].mode == QUALITY_AUTO; }
 
 quality_knobs :: (q: [] Quality) -> QualityKnobs {
   r := q[0].rung;
-  return QualityKnobs.{scale = QUALITY_SCALE[r], debris = QUALITY_DEBRIS[r], fine = QUALITY_FINE[r], fx = QUALITY_FX[r], scenery = QUALITY_SCENERY[r]};
+  return quality_rung_knobs(r);
+}
+// A rung's knobs.
+quality_rung_knobs :: (r: int) -> QualityKnobs {
+  return QualityKnobs.{scale = QUALITY_SCALE[r], debris = QUALITY_DEBRIS[r], fine = QUALITY_FINE[r], fx = QUALITY_FX[r], scenery = QUALITY_SCENERY[r],
+    grass = QUALITY_GRASS[r], shadow = QUALITY_SHADOW[r], post = QUALITY_POST[r], crowd = QUALITY_CROWD[r]};
 }
 
 // A share of a budget, at least `least`.
@@ -400,15 +419,28 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
 }
 
 #test "quality: each rung down costs no more than the one above it" {
+  #assert QUALITY_SCALE[QUALITY_RUNGS - 1] == 3 && QUALITY_SCALE[0] == 0.75;
   for r: 1..<QUALITY_RUNGS {
-    #assert QUALITY_SCALE[r - 1] <= QUALITY_SCALE[r] && QUALITY_DEBRIS[r - 1] <= QUALITY_DEBRIS[r] && QUALITY_FINE[r - 1] <= QUALITY_FINE[r];
-    #assert QUALITY_FX[r - 1] <= QUALITY_FX[r] && QUALITY_SCENERY[r - 1] <= QUALITY_SCENERY[r];
-    changed := 0;
-    if QUALITY_SCALE[r - 1] != QUALITY_SCALE[r] { changed += 1; }
-    if QUALITY_DEBRIS[r - 1] != QUALITY_DEBRIS[r] || QUALITY_FINE[r - 1] != QUALITY_FINE[r] || QUALITY_FX[r - 1] != QUALITY_FX[r] { changed += 1; }
-    if QUALITY_SCENERY[r - 1] != QUALITY_SCENERY[r] { changed += 1; }
-    #assert changed >= 1;   // a rung that changes nothing would be a step that buys nothing
+    a := quality_rung_knobs(r - 1); b := quality_rung_knobs(r);
+    #assert a.scale <= b.scale && a.debris <= b.debris && a.fine <= b.fine && a.fx <= b.fx && a.scenery <= b.scenery;
+    #assert a.grass <= b.grass && a.shadow <= b.shadow && a.post <= b.post && a.crowd <= b.crowd;
+    // every rung changes at least one knob, rungs 0 and 1 too: a rung that changes nothing would be
+    // a step that buys nothing
+    #assert a.scale != b.scale || a.debris != b.debris || a.fine != b.fine || a.fx != b.fx || a.scenery != b.scenery
+      || a.grass != b.grass || a.shadow != b.shadow || a.post != b.post || a.crowd != b.crowd;
+    // and Everglade II, which reads only scale, scenery, grass, shadow, post and crowd, sees it
+    #assert a.scale != b.scale || a.scenery != b.scenery || a.grass != b.grass || a.shadow != b.shadow || a.post != b.post || a.crowd != b.crowd;
+    #assert QUALITY_RUNG_TIER[r - 1] >= QUALITY_RUNG_TIER[r];
   }
+  // the top rung draws everything; every knob of the bottom one is a share
+  t := quality_rung_knobs(QUALITY_RUNGS - 1);
+  #assert t.debris == 1 && t.fine == 1 && t.fx == 1 && t.scenery == 1 && t.grass == 1 && t.shadow == 1 && t.post == 1 && t.crowd == 1;
+  z := quality_rung_knobs(0);
+  #assert z.shadow == 0 && z.grass > 0 && z.post > 0 && z.crowd > 0 && z.scenery > 0;
+  // the tiers' rungs keep the knobs Everglade's tiers always had
+  m := quality_rung_knobs(QUALITY_TIER_RUNG[QUALITY_MEDIUM]); lo := quality_rung_knobs(QUALITY_TIER_RUNG[QUALITY_LOW]);
+  #assert m.scale == 1.5 && m.debris == 0.5 && m.fine == 0.5 && m.fx == 0.4 && m.scenery == 1;
+  #assert lo.scale == 1 && lo.debris == 0.3 && lo.fine == 0.25 && lo.fx == 0.2 && lo.scenery == 0.8;
   q: [1] Quality;
   quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
   #assert quality_auto(q[..]) && quality_tier(q[..]) == QUALITY_MEDIUM && quality_pixels(q[..], 390, 844) == cast(int) (390.0 * 844.0 * 2.25);
@@ -422,57 +454,60 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
 #test "quality: sustained slow frames step it down, a rung at a time, after a second" {
   q: [1] Quality;
   quality_start(q[..], QualityDevice.{css_w = 1440, css_h = 900, dpr = 2, cores = 10}, -1);
-  #assert q[0].rung == 6;
+  top := QUALITY_RUNGS - 1;
+  #assert q[0].rung == top;
   _ := quality_run(q[..], 16.7, 4);    // past the warm-up, on time
-  #assert q[0].rung == 6;
+  #assert q[0].rung == top;
   _ = quality_run(q[..], 25, 0.5);     // half a second over: not yet
-  #assert q[0].rung == 6;
+  #assert q[0].rung == top;
   _ = quality_run(q[..], 25, 1.7);
-  #assert q[0].rung == 5;
+  #assert q[0].rung == top - 1;
   _ = quality_run(q[..], 25, 3);
-  #assert q[0].rung <= 3 && q[0].rung >= 1;   // a step about every second it stays over
-  _ = quality_run(q[..], 25, 10);
+  #assert q[0].rung <= top - 2 && q[0].rung >= top - 4;   // a step about every second it stays over
+  _ = quality_run(q[..], 25, 20);
   #assert q[0].rung == 0;
 }
 
 #test "quality: a destroy's burst steps it down at once; frames lost to a hidden tab don't count" {
   q: [1] Quality;
   quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
+  med := QUALITY_TIER_RUNG[QUALITY_MEDIUM];
   _ := quality_run(q[..], 16.7, 4);
-  #assert q[0].rung == 3;
+  #assert q[0].rung == med;
   _ = quality_run(q[..], 50, 0.6);     // 20 FPS for well under the second the long average needs
-  #assert q[0].rung == 2;
+  #assert q[0].rung == med - 1;
   q2: [1] Quality;
   quality_start(q2[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
   _ = quality_run(q2[..], 16.7, 4);
   for i: 0..<20 { #assert !quality_frame(q2[..], 2.0); }   // the tab hidden: 2 s frames
-  #assert q2[0].rung == 3;
+  #assert q2[0].rung == med;
   #assert !quality_frame(q2[..], -1) && !quality_frame(q2[..], 0);
 }
 
 #test "quality: on-time frames step it up after 5 s; a rung that fails waits twice as long, so it settles" {
   q: [1] Quality;
   quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
+  med := QUALITY_TIER_RUNG[QUALITY_MEDIUM];
   _ := quality_run(q[..], 16.7, 3);
-  #assert q[0].rung == 3;
+  #assert q[0].rung == med;
   _ = quality_run(q[..], 16.7, 4.5);
-  #assert q[0].rung == 3;
+  #assert q[0].rung == med;
   _ = quality_run(q[..], 16.7, 1);
-  #assert q[0].rung == 4;
-  // A device that holds 60 FPS up to rung 4 and not above: the governor tries rung 5, is pushed
-  // back, and tries it less and less often. Over ten minutes it changes a handful of times.
+  #assert q[0].rung == med + 1;
+  // A device that holds 60 FPS up to rung med + 1 and not above: the governor tries the next, is
+  // pushed back, and tries it less and less often. Over ten minutes it changes a handful of times.
   changes := 0; t := 0.0f32;
   while t < 600 {
-    ms := ifx q[0].rung >= 5 then 24.0f32 else 16.7f32;
+    ms := ifx q[0].rung >= med + 2 then 24.0f32 else 16.7f32;
     if quality_frame(q[..], ms / 1000) { changes += 1; }
     t += ms / 1000;
   }
-  #assert q[0].rung == 4 || q[0].rung == 5;
-  #assert changes <= 30 && q[0].wait[5] >= f32(QUALITY_UP_MAX_S) - 0.01;
-  // and at rung 4 it stays: the last minute has at most one try of rung 5
+  #assert q[0].rung == med + 1 || q[0].rung == med + 2;
+  #assert changes <= 30 && q[0].wait[med + 2] >= f32(QUALITY_UP_MAX_S) - 0.01;
+  // and at rung med + 1 it stays: the last minute has at most one try of the next
   changes = 0; t = 0;
   while t < 60 {
-    ms := ifx q[0].rung >= 5 then 24.0f32 else 16.7f32;
+    ms := ifx q[0].rung >= med + 2 then 24.0f32 else 16.7f32;
     if quality_frame(q[..], ms / 1000) { changes += 1; }
     t += ms / 1000;
   }
@@ -498,7 +533,7 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
 #test "quality: a page that can't hold 60 FPS on the lowest rung is held to 30, and goes back to 60" {
   q: [1] Quality;
   quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
-  _ := quality_run(q[..], 33.3, 10);
+  _ := quality_run(q[..], 33.3, 14);
   #assert q[0].rung == 0 && q[0].budget > 30;
   // at 30 FPS, on time: it climbs again
   _ = quality_run(q[..], 33.3, 12);

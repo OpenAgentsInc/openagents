@@ -46,8 +46,13 @@ It does this without any piece moving, growing or popping in front of you.
   draws every piece it picked.
 - **The governor.** `e2_quality_frame` feeds each frame's time to the
   governor, and `e2_pixel_budget` tells the host how many pixels to draw. It
-  lowers the resolution when frames run slow and raises it when there's room.
-  A phone starts no higher than MED.
+  steps down a ladder of twelve rungs when frames run slow and back up when
+  there's room. A phone starts no higher than MED.
+- **The knobs.** Each rung sets how much the frame draws: the pixels, the
+  grass's reach, the scenery's reach, the shadow tiles, the post pass and the
+  other players drawn (`quality_rung_knobs`, `e2_knobs_frame`).
+- **The GFX control.** Left of the counter, `GFX AUTO` (or the tier you
+  picked) shows the graphics. Tap it to pick the next: HIGH, MED, LOW, AUTO.
 - **The counter.** A frame-rate counter in the bottom-right corner shows frames
   a second, averaged over 0.5 s.
 
@@ -71,10 +76,22 @@ A piece is left out only when depth that this frame really drew is nearer than
 all of its box. So culling never makes a piece pop. The image with the cull on
 is the image with it off, pixel for pixel.
 
-### Spend pixels last
+### Spend the cheapest loss first
 
-The governor changes resolution, not content. Pieces, grass and light stay the
-same at every rung. You see a softer image under load, not a different world.
+A rung down never costs more than the one above, and each changes at least one
+thing drawn. Resolution goes first, from 3 pixels a CSS pixel to 1.5. Then the
+post pass's extras, the far shadow tiles, the grass's reach, the other players
+and the scenery's reach, and last the resolution again, down to 0.75.
+
+Reaches never jump. When a rung changes the grass's or the scenery's reach,
+the frame eases toward it at 0.34 a second, and each tuft and piece fades
+through its own dither as the edge passes it. The same is true when you walk
+out of the studio, which trims the grass, scenery, shadows and post below HIGH
+while you make your character: the run-out takes about 3 s, and the world fills
+back in over it.
+
+At HIGH every knob is 1, and each shader runs its original code. The desktop
+picture is the same, pixel for pixel.
 
 ## A worked example: how many trees you see at 128 m
 
@@ -114,12 +131,22 @@ In `apps/openagents-web/everglade2.coax`:
   the same"`.
 - `#test "the catalog's kit rows fill their (kit, level) buckets"`.
 - `#test "the frame rate is the frames over the last half second"`.
+- `#test "e2 quality: each rung down draws no more: the grass's and scenery's
+  reach, the shadow tiles, the post pass and the crowd"`.
+- `#test "e2 quality: the studio trims what stands behind its panes below
+  HIGH, and the run-out eases it back with nothing popping"`.
+- `#test "e2 quality: the shadow knob: no tiles, the nearest only, or the full
+  set"`.
+- `#test "e2 quality: the GFX control beside the frame rate, a finger's size; a
+  tap picks the next and the host keeps it"`.
 
 In `verse/everglade2/field.coax`:
 
 - `#test "a tier's tuft is one of the nearer tier's, in the same spot"`.
 - `#test "the grass thins smoothly past the near ground, and tiers hand over
   with nothing changing"`.
+- `#test "the grass's reach: every distance shrinks with it, and the finest
+  tier hands over to the next with nothing moving"`.
 
 In `apps/openagents-web/everglade2-cull.coax`:
 
@@ -133,6 +160,8 @@ In `aethyr/quality.coax`:
 - `#test "quality: a phone starts no higher than MED, a weak one LOW, a computer
   HIGH"`.
 - `#test "quality: each rung down costs no more than the one above it"`.
+- `#test "quality: the page's facts give the device; a phone held sideways or a
+  tablet never starts at HIGH"`.
 
 [Aethyr chapter 16](../../aethyr/book/ch016-budgets-that-refuse.md) builds the
 budgets that refuse work a frame can't pay for.

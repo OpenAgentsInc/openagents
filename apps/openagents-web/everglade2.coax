@@ -91,6 +91,7 @@ E2 :: struct {
   view: figs.CamMode;                                 // Everglade II's follow mode (e2_mode)
   q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/quality.coax): the pixels drawn
   q_dev: QualityDevice; q_facts: bool; q_mode: int = QUALITY_AUTO; q_tell: bool;   // the page's device and the player's pick (e2_quality_facts)
+  kn: QualityKnobs; kn_ready: bool; casc_n: int;     // the rung's knobs as the frame uses them, eased in (e2_knobs_frame); the host's shadow tiles
   q_box: cc.Box; q_finger: int = -1; golden: bool;   // the GFX control beside the frame rate, the finger on it; a golden frame
   fps_counter:[1]cc.FpsCounter;          // the frame rate shown, and the frames since it was last worked out
   clock: f32; width: f32; height: f32; k: f32 = 1;
@@ -730,6 +731,9 @@ e2_quality_device :: (s: [] E2, w: f32, h: f32, dpr: f32) -> QualityDevice {
   return d;
 }
 e2_quality_frame :: (s: [] E2, dt: f32, w: f32, h: f32, dpr: f32, golden: bool) #export_c #effects(all) {
+  e2_quality_govern(s, dt, w, h, dpr, golden); e2_knobs_frame(s, dt);
+}
+e2_quality_govern :: (s: [] E2, dt: f32, w: f32, h: f32, dpr: f32, golden: bool) {
   s[0].golden = golden;
   if !s[0].q_ready || golden {
     if w < 1 || h < 1 { return; }
@@ -784,6 +788,49 @@ e2_quality_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
 e2_quality_pick :: (s: [] E2, mode: int) {
   quality_choose(s[0].q[..], mode); s[0].q_mode = s[0].q[0].mode; s[0].q_tell = true;
 }
+// ---- the rung's knobs, as the frame uses them (aethyr/quality.coax quality_rung_knobs)
+// grass: the grass field's reach (e2_field, the shader's u[35]); fine: the finest grass tier's share
+// (u[36]); scenery: the kit pieces' reach (e2_pieces); shadow: 0 no tiles, under 0.5 the nearest tile
+// only, under 1 the full set with the nearest redrawn every other frame and six filter taps
+// (e2_shadows); post: 1 the full post pass, under 1 no foliage filter and the glow from the quarter
+// chain alone, under 0.45 no contact shade, no edge smoothing and plain glass (u[37],
+// e2_bloom_passes); crowd: the share of other players drawn (e2_remotes_draw).
+// The studio, while you make your character below HIGH, trims what stands behind its panes. The
+// reaches ease at E2_KNOB_EASE a second, so a change thins or fills in through the pieces' own
+// dither over about 3 s (the run-out's length) and nothing pops; the others step.
+E2_KNOB_EASE :: 0.34;
+E2_STUDIO_GRASS :: 0.45;
+E2_STUDIO_SCENERY :: 0.7;
+E2_STUDIO_SHADOW :: 0.3;
+E2_STUDIO_POST :: 0.6;
+e2_knob_target :: (s: [] E2) -> QualityKnobs {
+  if !s[0].q_ready { return QualityKnobs.{}; }
+  k := quality_rung_knobs(s[0].q[0].rung);
+  if e2c_creating(s) && quality_tier(s[0].q[..]) != QUALITY_HIGH {
+    k.grass = ifx k.grass < E2_STUDIO_GRASS then k.grass else E2_STUDIO_GRASS;
+    k.scenery = ifx k.scenery < E2_STUDIO_SCENERY then k.scenery else E2_STUDIO_SCENERY;
+    k.shadow = ifx k.shadow < E2_STUDIO_SHADOW then k.shadow else E2_STUDIO_SHADOW;
+    k.post = ifx k.post < E2_STUDIO_POST then k.post else E2_STUDIO_POST;
+  }
+  return k;
+}
+e2_knob_ease :: (at: f32, to: f32, dt: f32) -> f32 {
+  step := f32(E2_KNOB_EASE) * (ifx dt > 0.25 then 0.25f32 else dt);
+  return ifx to > at + step then at + step else ifx to < at - step then at - step else to;
+}
+e2_knobs_frame :: (s: [] E2, dt: f32) {
+  t := e2_knob_target(s);
+  if s[0].golden || !s[0].kn_ready { s[0].kn = t; s[0].kn_ready = s[0].q_ready; return; }
+  k := s[0].kn;
+  k.grass = e2_knob_ease(k.grass, t.grass, dt); k.fine = e2_knob_ease(k.fine, t.fine, dt); k.scenery = e2_knob_ease(k.scenery, t.scenery, dt);
+  k.scale = t.scale; k.debris = t.debris; k.fx = t.fx; k.shadow = t.shadow; k.post = t.post; k.crowd = t.crowd;
+  s[0].kn = k;
+}
+// The host's bloom passes this frame (coaxial_bloom_passes_v1, coax/web/host.js): all five, the
+// quarter chain's three, or none (the post pass then reads no glow).
+e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
+  p := s[0].kn.post; return ifx p >= 0.99 then 5 else ifx p >= 0.45 then 3 else 0;
+}
 #test "e2 quality: graphics start from the page's facts: a phone held sideways starts at MED or lower; ?quality=low holds LOW" #steps 60000000 {
   s: [1] E2;
   e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_IPHONE_SIDE);
@@ -805,6 +852,50 @@ e2_quality_pick :: (s: [] E2, mode: int) {
   c: [1] E2; e2_quality_frame(c[..], 0, 2880, 1800, 2, false); #assert quality_tier(c[0].q[..]) == QUALITY_HIGH;
   e2_message(c[..], E2_HOST_PAGE, QUALITY_FACTS_IPAD); e2_quality_frame(c[..], 0, 2732, 2048, 2, false);
   #assert quality_tier(c[0].q[..]) == QUALITY_MEDIUM;
+}
+#test "e2 quality: each rung down draws no more: the grass's and scenery's reach, the shadow tiles, the post pass and the crowd" {
+  s: [1] E2; s[0].q_ready = true; quality_start(s[0].q[..], QualityDevice.{}, QUALITY_AUTO);
+  last := QualityKnobs.{}; last_bloom := 5;
+  for i: 0..<QUALITY_RUNGS { r := QUALITY_RUNGS - 1 - i; s[0].q[0].rung = r; s[0].kn_ready = false; e2_knobs_frame(s[..], 0);
+    k := s[0].kn;
+    #assert k.grass <= last.grass && k.fine <= last.fine && k.scenery <= last.scenery && k.shadow <= last.shadow && k.post <= last.post && k.crowd <= last.crowd;
+    #assert e2_bloom_passes(s[..]) <= last_bloom && quality_share(E2_REMOTES, k.crowd, 1) >= 1;
+    for t: 0..<E2_FIELD_TIERS { #assert e2_field_out_r(t, k.grass, k.fine) <= e2_field_out_r(t, last.grass, last.fine) + 0.0001; }
+    last = k; last_bloom = e2_bloom_passes(s[..]); }
+  // the top rung is the whole picture: every knob 1, all five bloom passes
+  s[0].q[0].rung = QUALITY_RUNGS - 1; s[0].kn_ready = false; e2_knobs_frame(s[..], 0);
+  #assert s[0].kn.grass == 1 && s[0].kn.fine == 1 && s[0].kn.scenery == 1 && s[0].kn.shadow == 1 && s[0].kn.post == 1 && e2_bloom_passes(s[..]) == 5;
+  // the lowest: no shadow tiles, no bloom
+  s[0].q[0].rung = 0; s[0].kn_ready = false; e2_knobs_frame(s[..], 0); #assert s[0].kn.shadow == 0 && e2_bloom_passes(s[..]) == 0;
+}
+#test "e2 quality: the studio trims what stands behind its panes below HIGH, and the run-out eases it back with nothing popping" {
+  s: [1] E2; s[0].q_ready = true; quality_start(s[0].q[..], QualityDevice.{}, QUALITY_AUTO);
+  s[0].cz[0].on = true; s[0].cz[0].walking = false;
+  // at HIGH the studio is whole
+  s[0].q[0].rung = QUALITY_RUNGS - 1; s[0].kn_ready = false; e2_knobs_frame(s[..], 0);
+  #assert s[0].kn.grass == 1 && s[0].kn.scenery == 1 && s[0].kn.shadow == 1 && s[0].kn.post == 1;
+  // at MED: trimmed to the studio's
+  med := QUALITY_TIER_RUNG[QUALITY_MEDIUM]; s[0].q[0].rung = med; s[0].kn_ready = false; e2_knobs_frame(s[..], 0);
+  #assert s[0].kn.grass <= f32(E2_STUDIO_GRASS) && s[0].kn.scenery <= f32(E2_STUDIO_SCENERY) && s[0].kn.shadow <= f32(E2_STUDIO_SHADOW) && s[0].kn.post <= f32(E2_STUDIO_POST);
+  // the run-out: the reaches climb back at most E2_KNOB_EASE a second, and are whole within 3.5 s
+  s[0].cz[0].walking = true; want := quality_rung_knobs(med);
+  g := s[0].kn.grass; sc := s[0].kn.scenery;
+  for i: 0..<210 { e2_knobs_frame(s[..], 1.0 / 60.0);
+    #assert s[0].kn.grass >= g && s[0].kn.grass - g <= f32(E2_KNOB_EASE) / 60 + 0.0001 && s[0].kn.scenery - sc <= f32(E2_KNOB_EASE) / 60 + 0.0001;
+    g = s[0].kn.grass; sc = s[0].kn.scenery; }
+  #assert s[0].kn.grass == want.grass && s[0].kn.scenery == want.scenery && s[0].kn.shadow == want.shadow && s[0].kn.post == want.post;
+  // golden frames hold the top rung's knobs whatever the studio
+  s[0].cz[0].walking = false; s[0].golden = true; s[0].q[0].rung = QUALITY_RUNGS - 1; e2_knobs_frame(s[..], 0.016);
+  #assert s[0].kn.grass == 1 && s[0].kn.post == 1 && e2_bloom_passes(s[..]) == 5;
+}
+#test "e2 quality: the shadow knob: no tiles, the nearest only, or the full set" #steps 100000000 {
+  s: [1] E2; u: [E2_UNIFORM_FLOATS] f32;
+  e2_shadow_event(s[..], 0, 0); s[0].eye = [3]f32.[3, 2, -150]; e2_light(s[..], u[..]);
+  s[0].kn.shadow = 1; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == s[0].casc_n && u[E2_U_CASCADE + CASCADE_HEADER + 23] == 0;
+  s[0].kn.shadow = 0.3; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == 1 && u[E2_U_CASCADE] == 1 && u[E2_U_CASCADE + CASCADE_HEADER + 23] == 1;
+  s[0].kn.shadow = 0; e2_shadows(s[..], u[..]); #assert u[E2_U_CASCADE] == 0 && s[0].casc[0].draw == -1;
+  // back to the full set: the tiles left out are drawn again before they are used
+  s[0].kn.shadow = 1; e2_shadows(s[..], u[..]); #assert s[0].casc[0].tier.count == s[0].casc_n && !s[0].casc[0].slot[s[0].casc_n - 1].drawn;
 }
 #test "e2 quality: golden frames hold the screen's rung; the GFX control is hidden there" {
   s: [1] E2; e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_INTEL);
@@ -883,6 +974,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   u[19] = s[0].focal; u[23] = w * 0.5; u[27] = lens[1];
   e2_light(s, u);
   u[48] = f32(s[0].creator[0].glade_word);
+  u[35] = s[0].kn.grass; u[36] = s[0].kn.fine; u[37] = s[0].kn.post;   // the knobs the shaders read (e2_knobs_frame)
   e2c_uniforms(s, u);
   e2c_arrive_uniforms(s, u);
   e2_material_uniforms(s, u);
@@ -971,10 +1063,19 @@ e2_shadows :: (s: [] E2, u: [] f32) {
   c := s[0].casc[..];
   for i: 0..<CASCADE_BLOCK { u[E2_U_CASCADE + i] = 0; }
   if !c[0].on { return; }
+  // the graphics quality's shadow knob (e2_knobs_frame): no tiles (all lit), the nearest only, or
+  // the full set; under 1 the nearest is redrawn for movers every other frame and filtered with six taps
+  sh := s[0].kn.shadow;
+  if s[0].casc_n == 0 { s[0].casc_n = c[0].tier.count; }
+  if sh <= 0.001 { c[0].draw = -1; return; }
+  want := ifx sh < 0.5 then 1 else s[0].casc_n;
+  for k: c[0].tier.count..<want { c[0].slot[k].drawn = false; }
+  c[0].tier.count = want;
   l := s[0].env[0].held.dir;
-  _ := cascade_frame(c, s[0].eye[0], s[0].eye[2], l.x, l.y, l.z, true);
+  _ := cascade_frame(c, s[0].eye[0], s[0].eye[2], l.x, l.y, l.z, sh >= 0.99 || c[0].frame % 2 == 0);
   // the filter: 2.5 texels of a 2048 map over 68 m, the same metres of penumbra in every tile
   cascade_rows(c[0], u[E2_U_CASCADE..<E2_U_CASCADE + CASCADE_BLOCK], 2.5, 68.0f32 / 2048, 34);
+  if sh < 0.99 { for k: 0..<want { u[E2_U_CASCADE + CASCADE_HEADER + k * CASCADE_FLOATS + 23] = 1; } }
 }
 // How far round the eye a tile's casters reach: its own reach across its diagonal and its leash,
 // and the tallest tree's shadow beside it.
@@ -1017,7 +1118,7 @@ e2_shadow_field :: (s: [] E2, field: int) -> int #export_c #effects(all) {
 }
 e2_shadow_event :: (s: [] E2, kind: int, arg: int) #export_c #effects(all) {
   c := s[0].casc[..];
-  if kind == 0 { cascade_open(c, arg != 0); } else if kind == 1 { cascade_stale(c); } else if kind == 2 { cascade_dropped(c); }
+  if kind == 0 { cascade_open(c, arg != 0); s[0].casc_n = c[0].tier.count; } else if kind == 1 { cascade_stale(c); } else if kind == 2 { cascade_dropped(c); }
 }
 #test "Everglade II's shadow tiles: snapped to the light's texels, redrawn only past a step, the near one every frame" #steps 400000000 {
   s: [1] E2; u: [E2_UNIFORM_FLOATS] f32;
@@ -1062,8 +1163,10 @@ e2_field :: (s: [] E2, d: [] u32, n0: int) -> int {
   n := n0; if !s[0].kits { return n; }
   ex := s[0].eye[0]; ez := s[0].eye[2];
   for t: 0..<E2_FIELD_TIERS {
-    bs := e2_field_block(t); out := e2_field_out(t);
-    inner := e2_field_start(t);
+    g := s[0].kn.grass; cap := s[0].kn.fine;
+    bs := e2_field_block(t); out := e2_field_out_r(t, g, cap);
+    inner := e2_field_start_r(t, g, cap);
+    if out <= inner { continue; }
     x0 := cast(int) floor((ex - out - E2_WEST) / bs); x1 := cast(int) floor((ex + out - E2_WEST) / bs);
     z0 := cast(int) floor((E2_BACK - ez - out) / bs); z1 := cast(int) floor((E2_BACK - ez + out) / bs);
     for bz: z0..<z1 + 1 { for bx: x0..<x1 + 1 {
@@ -1100,6 +1203,7 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
   ex := s[0].eye[0]; ez := s[0].eye[2];
   cast_far := ifx casting then e2_cast_reach(s) else 0.0f32;
   if casting && cast_far <= 0 { return n; }
+  sc := s[0].kn.scenery; reach0 := E2_KIT_FAR[0] * sc;
   for pass: 0..<2 {
     if pass == 1 {
       at := s[0].inst_n;
@@ -1109,7 +1213,7 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
     for c: 0..<E2_CELLS_X * E2_CELLS_Z {
       i := c % E2_CELLS_X; j := c / E2_CELLS_X;
       mx := e2_cell_x(i) + f32(E2_CELL) * 0.5; mz := e2_cell_z(j) - f32(E2_CELL) * 0.5;
-      far := ifx casting then (ifx cast_far < E2_KIT_FAR[0] then cast_far else E2_KIT_FAR[0]) else E2_KIT_FAR[0];
+      far := ifx casting then (ifx cast_far < reach0 then cast_far else reach0) else reach0;
       dx := mx - ex; dz := mz - ez;
       if dx * dx + dz * dz > (far + 12) * (far + 12) { continue; }
       if !casting && !e2_in_view(s, mx, e2_height(mx, mz) + 6, mz, 20) { continue; }
@@ -1123,19 +1227,19 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
           // you too); a piece more than half faded out casts nothing. The near tile, drawn every
           // frame, takes every tree at level 1 (the same cards, two in three) so it never changes
           // level as you walk and stays cheap.
-          if kit >= 25 || dd > cast_far || dd >= E2_KIT_FAR[kit] { continue; }
+          if kit >= 25 || dd > cast_far || dd >= E2_KIT_FAR[kit] * sc { continue; }
           if !e2_casts_into(s, px, py, pz, ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 3.0f32) { continue; }
-          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz));
+          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz), sc);
           if looks.n == 1 && looks.code[0] >= 32 { continue; }
           if s[0].casc[0].draw == 0 && kit < E2_TREES { looks.n = 1; looks.lod[0] = 1; looks.code[0] = 0; }
           // the far tiles (past 60 m) take the trees at their sparsest level, as the view draws
           // them out there, and the big rocks; a bush's shadow that far is under a texel
           if s[0].casc[0].draw >= 2 { if kit >= 15 && kit < 23 { continue; } if kit < E2_TREES { looks.n = 1; looks.lod[0] = 2; looks.code[0] = 0; } }
         } else {
-          if dd >= E2_KIT_FAR[kit] { continue; }
+          if dd >= E2_KIT_FAR[kit] * sc { continue; }
           reach := ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 2.5f32;
           if !e2_in_view(s, px, py + reach * 0.5, pz, reach) { continue; }
-          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz));
+          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz), sc);
         }
         for e: 0..<looks.n {
           b := kit * E2_LODS + looks.lod[e];
@@ -1164,16 +1268,16 @@ e2_piece_rank :: (x: f32, z: f32) -> f32 { return e2_unit(e2_field_hash(cast(u32
 // How much of a piece shows at dd (its rank `rank`): all near; past E2_FAR_START of its kit's
 // reach the share left falls smoothly to none at the reach, and each piece dithers out over
 // E2_FAR_BAND as the share passes its rank, so the edge is ragged and nothing pops or shrinks.
-e2_piece_shown :: (kit: int, dd: f32, rank: f32) -> f32 {
-  far := E2_KIT_FAR[kit]; t := (dd - far * f32(E2_FAR_START)) / (far * (1 - f32(E2_FAR_START)));
+e2_piece_shown :: (kit: int, dd: f32, rank: f32, sc: f32) -> f32 {
+  far := E2_KIT_FAR[kit] * sc; t := (dd - far * f32(E2_FAR_START)) / (far * (1 - f32(E2_FAR_START)));
   t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
   share := 1 - t * t * (3 - 2 * t);
   v := (share - rank * (1 - f32(E2_FAR_BAND))) / f32(E2_FAR_BAND);
   return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
 }
-e2_piece_looks :: (kit: int, dd: f32, rank: f32) -> E2Looks {
+e2_piece_looks :: (kit: int, dd: f32, rank: f32, sc: f32) -> E2Looks {
   l: E2Looks;
-  l.n = 1; l.lod[0] = 0; l.code[0] = e2_fade_code(1 - e2_piece_shown(kit, dd, rank));
+  l.n = 1; l.lod[0] = 0; l.code[0] = e2_fade_code(1 - e2_piece_shown(kit, dd, rank, sc));
   if kit >= E2_TREES { return l; }
   // the level this far, and how far into the cross-fade to the next one
   lod := 0; at := f32(E2_LOD1);
@@ -1188,11 +1292,11 @@ e2_piece_looks :: (kit: int, dd: f32, rank: f32) -> E2Looks {
   l.n = 2; l.code[0] = k; l.lod[1] = lod + 1; l.code[1] = 64 + k;
   return l;
 }
-#test "a piece keeps its place and size at every distance and only fades" {
+#test "a piece keeps its place and size at every distance and only fades" #steps 40000000 {
   // a tree: whole near, cross-faded round E2_LOD1 and E2_LOD2 (the two halves cover each pixel
   // once), then its sparsest level out to its reach
   last := 0;
-  for i: 0..<3000 { dd := f32(i) * 0.1; l := e2_piece_looks(3, dd, 0.5);
+  for i: 0..<3000 { dd := f32(i) * 0.1; l := e2_piece_looks(3, dd, 0.5, 1);
     #assert l.n >= 1 && l.n <= 2;
     if l.n == 2 { #assert l.lod[1] == l.lod[0] + 1 && l.code[1] == 64 + l.code[0] && l.code[0] > 0 && l.code[0] < 63; }
     if dd < f32(E2_LOD1) - f32(E2_LOD_BAND) { #assert l.n == 1 && l.lod[0] == 0 && l.code[0] == 0; }
@@ -1203,17 +1307,17 @@ e2_piece_looks :: (kit: int, dd: f32, rank: f32) -> E2Looks {
   }
   // through each band the farther level's share rises smoothly from none to all
   for band: 0..<2 { c := ifx band == 0 then f32(E2_LOD1) else f32(E2_LOD2); prev := 0;
-    for i: 0..<201 { dd := c - f32(E2_LOD_BAND) * 0.5 - 0.5 + f32(i) * 0.045; l := e2_piece_looks(0, dd, 0.5);
+    for i: 0..<201 { dd := c - f32(E2_LOD_BAND) * 0.5 - 0.5 + f32(i) * 0.045; l := e2_piece_looks(0, dd, 0.5, 1);
       k := ifx l.n == 2 then l.code[0] else ifx l.lod[0] == band + 1 then 64 else 0;
       #assert k >= prev && k - prev <= 3; prev = k; } #assert prev == 64; }
   // small pieces thin out over the far part of their reach, each at its own rank: near all show,
   // at the reach none; a piece's share only falls with distance and never jumps
   for kit: 15..<E2_KITS { far := E2_KIT_FAR[kit];
     for r: 0..<20 { rank := f32(r) / 20 + 0.02; was := 1.0f32;
-      #assert e2_piece_shown(kit, far * 0.5, rank) == 1 && e2_piece_shown(kit, far, rank) == 0;
-      for i: 0..<400 { v := e2_piece_shown(kit, far * f32(i) / 400, rank); #assert v <= was && was - v < 0.2; was = v; } } }
+      #assert e2_piece_shown(kit, far * 0.5, rank, 1) == 1 && e2_piece_shown(kit, far, rank, 1) == 0;
+      for i: 0..<400 { v := e2_piece_shown(kit, far * f32(i) / 400, rank, 1); #assert v <= was && was - v < 0.2; was = v; } } }
   // ranks spread, so the edge is ragged: halfway through the thinning about half the pieces show
-  shown := 0; for i: 0..<1000 { if e2_piece_shown(18, E2_KIT_FAR[18] * 0.78, e2_piece_rank(f32(i) * 1.37, f32(i) * 0.71)) > 0.5 { shown += 1; } }
+  shown := 0; for i: 0..<1000 { if e2_piece_shown(18, E2_KIT_FAR[18] * 0.78, e2_piece_rank(f32(i) * 1.37, f32(i) * 0.71), 1) > 0.5 { shown += 1; } }
   #assert shown > 300 && shown < 700;
 }
 // The draws of the woods with the eye at path metre m (3 m behind and 2 up, looking down the path).
@@ -1313,6 +1417,13 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   #if BUILD_DEBUG { if field >= 980 && field < 1000 { return e2a_probe(s, field); } }
   if field == 0 { return s[0].draw_n; } if field == 1 { return s[0].shadow_n; } if field == 2 { return s[0].inst_n; }
   if field == 3 { return s[0].planted; }
+  // 160 to 168 the graphics quality (e2_knobs_frame): the rung, its tier, the mode, the knobs as the
+  // frame uses them (in hundredths: grass, scenery, shadow, post, crowd), the bloom passes
+  if field == 160 { return ifx s[0].q_ready then s[0].q[0].rung else -1; } if field == 161 { return ifx s[0].q_ready then quality_tier(s[0].q[..]) else -1; }
+  if field == 162 { return s[0].q[0].mode; }
+  if field == 163 { return cast(int) (s[0].kn.grass * 100 + 0.5); } if field == 164 { return cast(int) (s[0].kn.scenery * 100 + 0.5); }
+  if field == 165 { return cast(int) (s[0].kn.shadow * 100 + 0.5); } if field == 166 { return cast(int) (s[0].kn.post * 100 + 0.5); }
+  if field == 167 { return cast(int) (s[0].kn.crowd * 100 + 0.5); } if field == 168 { return e2_bloom_passes(s); }
   if field == 4 { n := 0; for b: 0..<E2_BUCKETS { if s[0].kit_count[b] > 0 { n += 1; } } return n; }
   if field == 5 { return cast(int)(s[0].you_z * 100); }
   // 6 the camera's room along its ray, 7 the eye's height over your feet, 8 your feet over the land (cm)
@@ -1536,7 +1647,9 @@ e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   d := at; s[0].plate_n = 0; s[0].ghosts = 0;
   step := ifx bdt > 0 then bdt / f32(E2_FADE_S) else 0.0f32;
   seen: [E2N_ENTS] bool;
-  for k: 0..<E2_REMOTES {
+  // the graphics quality's crowd knob: past its share, the others thin out as if gone from view
+  most := quality_share(E2_REMOTES, s[0].kn.crowd, 1);
+  for k: 0..<most {
     r := e2n_remote(s[0].net[..], k);
     if !r.ok { break; }
     en := s[0].net[0].ents[r.slot]; slot := r.slot; seen[slot] = true;
