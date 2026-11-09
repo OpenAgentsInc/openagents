@@ -123,6 +123,30 @@ collide_bodies :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32
   }
   return CollideBodyPass.{state = next, pushed = pushed};
 }
+// A hull's sides (aethyr/query.coax): its slices at your step height, your middle and your head, the
+// part of it you can't step onto and that would cut your body. You are pushed out of each slice in
+// turn, from the lowest, by what your radius reaches into it, along its side; a hull's top under your step
+// is ground (query_ground), not a side. What is left over is not a residual: a hull is pushed out of
+// on later steps, never refused.
+COLLIDE_HULL_SLICES :: 3;
+collide_hulls :: (c: Colliders, p: CollideProfile, given: CollideState) -> CollideBodyPass #effects(all) {
+  next := given; pushed := false;
+  k := query_hull(c.hulls, 0);
+  while k.ok {
+    low := next.feet.y + p.step_up; high := next.feet.y + p.height;
+    for i: 0..<COLLIDE_HULL_SLICES {
+      g := query_hull_gap(c.hulls, k, next.feet.x, low + (high - low) * f32(i) / f32(COLLIDE_HULL_SLICES - 1), next.feet.z);
+      push := p.radius - g.gap;
+      if push <= 0 { continue; }
+      next.feet.x += g.ux * push; next.feet.z += g.uz * push;
+      into := stand_lo(next.velocity.x * g.ux + next.velocity.z * g.uz, 0);
+      next.velocity.x -= g.ux * into; next.velocity.z -= g.uz * into;
+      pushed = true;
+    }
+    k = query_hull(c.hulls, k.next);
+  }
+  return CollideBodyPass.{state = next, pushed = pushed};
+}
 collide_floor_cuts :: (c: Colliders, p: CollideProfile, feet: WorldPoint) -> bool #effects(all) {
   count := c.floors.count / STAND_FLOATS;
   whole := c.floors[0..<count * STAND_FLOATS];
@@ -175,9 +199,10 @@ collide_move :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, 
   if dx * dx + dz * dz > p.max_travel * p.max_travel { out.status = CollideStatus.travel_limit; return out; }
   for pass: 0..<p.max_passes {
     bodies := collide_bodies(c, p, next, dx, dz);
-    next = collide_walls(c, p, bodies.state);
+    hulls := collide_hulls(c, p, bodies.state);
+    next = collide_walls(c, p, hulls.state);
     out.passes = pass + 1;
-    if !bodies.pushed { break; }
+    if !bodies.pushed && !hulls.pushed { break; }
   }
   next = collide_floor_sides(c, p, given, next);
   if !collide_state_ok(p, next) { out.status = CollideStatus.bad_state; return out; }
@@ -551,4 +576,56 @@ collide_test_same :: (a: CollideState, b: CollideState) -> bool #effects(all) {
   s.feet = world_point(0.25, 0, 1); s.velocity.z = zero;
   r = collide_move(c, p, s, 0, 0);
   #assert r.status == CollideStatus.ok && 1.0f32 / r.state.velocity.x == -inf;
+}
+
+#test "a hull's side stops you at your radius; its low top you step onto; over a tall one you pass" {
+  h: [2 * (QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE)] f32;
+  e := query_test_wedge(h[..], 0, 0);   // x and z in [-1, 1], its top 0.5 + 0.25 x: 0.25 to 0.75 high
+  c := Colliders.{hulls = h[0..<e]}; p: CollideProfile;
+  // walking at its high end along -x from x 1.4: stopped with your middle a radius from its side
+  r := collide_move(c, p, collide_test_state(1.4, 0, 0.2, -2, 0, 1), -0.15, 0);
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.x - 1.3) < 0.0001 && r.state.velocity.x == 0 && r.state.velocity.z == 1 && r.passes >= 2;
+  // at its low end the top is under your step: no side
+  l := collide_move(c, p, collide_test_state(-1.2, 0, 0, 2, 0, 0), 0.1, 0);
+  #assert l.status == CollideStatus.ok && abs(l.state.feet.x + 1.1) < 0.0001 && l.state.velocity.x == 2 && l.passes == 1;
+  // standing on it, or up over it, nothing pushes you
+  #assert collide_move(c, p, collide_test_state(0.9, 0.73, 0, 1, 0, 0), 0.1, 0).state.feet.x == 1;
+  // from the side across z, out along +z
+  z := collide_move(c, p, collide_test_state(0.8, 0, 1.2, 0, 0, -1), 0, -0.1);
+  #assert abs(z.state.feet.z - 1.3) < 0.0001 && z.state.velocity.z == 0;
+  // deep inside (a throw put you there): out by its nearest side, never refused
+  d := collide_move(c, p, collide_test_state(0.9, 0, 0.1, 0, 0, 0), 0, 0);
+  #assert d.status == CollideStatus.ok && abs(d.state.feet.x - 1.3) < 0.0001;
+  // far from it, a second hull after it, and a broken tail ignored
+  e2 := query_test_wedge(h[..], e, 5); #assert e2 == 2 * e;
+  c.hulls = h[0..<e2 - 1];
+  #assert collide_move(c, p, collide_test_state(3, 0, 0, 0, 0, 0), 0.1, 0).state.feet.x == 3.1;
+  c.hulls = h[..];
+  f := collide_move(c, p, collide_test_state(3.6, 0, 0, -1, 0, 0), 0.1, 0);
+  #assert abs(f.state.feet.x - 3.7) < 0.0001;
+  #assert collide_hulls(Colliders.{hulls = h[..]}, p, collide_test_state(2.5, 0, 0, 0, 0, 0)).pushed == false;
+}
+
+#test "a hull's sides are felt at your step height, your middle and your head, and nowhere else" {
+  // a box x and z in [-1, 1] as a hull, from y0 up to y1
+  b: [QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE] f32; p: CollideProfile; s := collide_test_state(1.2, 0, 0, -1, 0, 0);
+  faces := [24] f32.[1, 0, 0, 1, -1, 0, 0, 1, 0, 0, 1, 1, 0, 0, -1, 1, 0, 1, 0, 0, 0, -1, 0, 0];
+  for j: 0..<24 { b[QUERY_HULL_HEAD + j] = faces[j]; }
+  b[0] = 6;
+  // a bar at each slice's height pushes you out of it; one between them, over your head, or where a
+  // fourth slice would be, doesn't
+  for bar: 0..<6 {
+    y0 := [6] f32.[0.5, 1.1, 1.75, 0.7, 1.9, 2.38][bar];
+    b[1] = y0; b[2] = y0 + 0.1; b[QUERY_HULL_HEAD + 19] = y0 + 0.1; b[QUERY_HULL_HEAD + 23] = -y0;
+    r := collide_hulls(Colliders.{hulls = b[..]}, p, s);
+    if bar < 3 { #assert r.pushed && abs(r.state.feet.x - 1.3) < 0.0001 && r.state.velocity.x == 0; }
+    else { #assert !r.pushed && r.state.feet.x == 1.2 && r.state.velocity.x == -1; }
+  }
+  // touching it exactly is no push; moving away from it as you are pushed keeps your way
+  b[1] = 0; b[2] = 2; b[QUERY_HULL_HEAD + 19] = 2; b[QUERY_HULL_HEAD + 23] = 0;
+  q := p; q.radius = 0.25; q.max_travel = 0.125;
+  t := collide_hulls(Colliders.{hulls = b[..]}, q, collide_test_state(1.25, 0, 0, -1, 0, 0.5));
+  #assert !t.pushed && t.state.feet.x == 1.25 && t.state.velocity.x == -1 && t.state.velocity.z == 0.5;
+  a := collide_hulls(Colliders.{hulls = b[..]}, p, collide_test_state(1.1, 0, 0, 0.5, 0, 0));
+  #assert a.pushed && abs(a.state.feet.x - 1.3) < 0.0001 && a.state.velocity.x == 0.5;
 }

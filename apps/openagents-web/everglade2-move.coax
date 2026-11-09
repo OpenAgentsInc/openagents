@@ -6,8 +6,9 @@
 //   coax/bin/coax test --library apps/openagents-web/everglade2-move.coax
 #load "everglade-move-types.coax";
 #load "../../verse/everglade2/plant.coax";
+#load "../../verse/everglade2/rock-hulls.coax";
 
-E2_NEAR_BODIES :: 48;         // trunks and rocks the controller walks round
+E2_NEAR_BODIES :: 48;         // trunks the controller walks round
 // Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/locomotion.coax:
 // run 7.5, walk 3.5 m/s, Everglade's) are scaled by the step's pace, so v1 keeps its own.
 E2_RUN_SPEED :: 4.25; E2_WALK_SPEED :: 1.5;   // m/s
@@ -34,25 +35,65 @@ e2m_keep :: (x: f32, z: f32, fx: f32, fz: f32) -> E2Spot #export_c #effects(all)
   return E2Spot.{x = fx, z = fz};
 }
 
-// ---- the trunks and rocks round you, as capsules on the controller's level ground. A rock's capsule
-// lies along its long axis at waist height, fitted to its model's footprint (E2_ROCK_FIT: the
-// footprint's middle x and z, the long axis's angle, half its length and half its width, from the
-// Stylized Nature models), and is scaled and turned with the placed rock. Pebbles stay walk-through.
-E2_ROCK_FIT :: [6][5] f32.[
-  [5] f32.[-0.167, 0.252, 0.784, 1.578, 1.484],   // Rock_Medium_1
-  [5] f32.[-0.110, 0.075, -0.133, 1.537, 1.253],  // Rock_Medium_2
-  [5] f32.[-0.071, 0.611, 0.619, 1.669, 1.350],   // Rock_Medium_3
-  [5] f32.[0.492, -0.173, -0.335, 1.795, 1.774],  // Rock_Medium_4
-  [5] f32.[0.070, 0.259, -0.604, 2.707, 1.977],   // Rock_Big_1
-  [5] f32.[-0.023, -0.146, -0.713, 3.389, 2.799]];// Rock_Big_2
-E2_ROCK_SNUG :: 0.85;         // the capsule's radius against the footprint's half width (rocks are rounded)
-// A rock's capsule (fit row, placed at x z, turned by yaw, sh across): the two ends and the radius.
-e2_rock_capsule :: (fit: int, x: f32, z: f32, yaw: f32, sh: f32) -> [5] f32 {
-  f := E2_ROCK_FIT[fit]; c := cos(yaw); sn := sin(yaw);
-  r := f[4] * f32(E2_ROCK_SNUG); half := f[3] - r; if half < 0 { half = 0; }
-  ax := cos(f[2]); az := sin(f[2]);
-  p0x := f[0] - ax * half; p0z := f[1] - az * half; p1x := f[0] + ax * half; p1z := f[1] + az * half;
-  return [5] f32.[x + sh * (p0x * c + p0z * sn), z + sh * (-p0x * sn + p0z * c), x + sh * (p1x * c + p1z * sn), z + sh * (-p1x * sn + p1z * c), r * sh];
+// ---- the rocks round you, each its own mesh's convex hull (verse/everglade2/rock-hulls.coax, baked by
+// verse/tools/assets/everglade2_rock_hulls.coax): aethyr/query.coax's hulls, so you stand on a rock's
+// real top, step onto a low one, slide off a steep face and stop at its side where you see it. The
+// controller walks a level plane over the land (the land lifts you onto the ground), so a placed rock's
+// hull is put on that plane: scaled and turned with the rock, and lowered by the land's own slope under
+// it (the land's height at its middle and the slope there). Pebbles stay walk-through: they are a few
+// centimetres high.
+E2_NEAR_HULLS :: 16;          // rocks the controller walks among
+E2_HULL_HEAD :: 3; E2_HULL_FACE :: 4; E2_HULL_FACES :: 128;   // aethyr/query.coax QUERY_HULL_HEAD, _FACE, _FACES_MAX
+E2_HULL_ROOM :: E2_NEAR_HULLS * (E2_HULL_HEAD + E2_HULL_FACES * E2_HULL_FACE);
+E2_HULL_CAPPED :: 6;          // the glade's Rock_Medium_4s west of x -10, drawn with their tops capped
+E2_HULL_REACH :: 1.5;         // m: a rock this far past where you stand is out of a step's reach
+// A placed rock: its hull's model (rock-hulls.coax's order), where it stands, its turn and its scales.
+E2Rock :: struct { model: int; x: f32; y: f32; z: f32; yaw: f32; sh: f32; sv: f32; }
+// Rock r's hull into `out` at number `at`, on the controller's plane; where the next one starts, or
+// `at` when it is out of reach of (x, z) or doesn't fit.
+e2_rock_hull :: (out: [] f32, at: int, r: E2Rock, x: f32, z: f32) -> int {
+  m := r.model; if m < 0 || m >= E2_HULL_MODELS || r.sh <= 0 || r.sv <= 0 { return at; }
+  v0 := E2_HULL_FIRST_V[m]; v1 := E2_HULL_FIRST_V[m + 1]; f0 := E2_HULL_FIRST_F[m]; f1 := E2_HULL_FIRST_F[m + 1];
+  end := at + E2_HULL_HEAD + (f1 - f0) * E2_HULL_FACE;
+  if at < 0 || end > out.count || f1 - f0 > E2_HULL_FACES { return at; }
+  c := cos(r.yaw); sn := sin(r.yaw);
+  h0 := e2_height(r.x, r.z); lift := r.y - h0;
+  gx := e2_height(r.x + 0.5, r.z) - e2_height(r.x - 0.5, r.z); gz := e2_height(r.x, r.z + 0.5) - e2_height(r.x, r.z - 0.5);
+  lo := [3] f32.[1000000, 1000000, 1000000]; hi := [3] f32.[-1000000, -1000000, -1000000];
+  for v: v0..<v1 {
+    a := f32(E2_HULL_V[v * 3]) / 10000; b := f32(E2_HULL_V[v * 3 + 1]) / 10000; cz := f32(E2_HULL_V[v * 3 + 2]) / 10000;
+    dx := r.sh * (a * c + cz * sn); dz := r.sh * (-a * sn + cz * c);
+    p := [3] f32.[r.x + dx, lift + r.sv * b - gx * dx - gz * dz, r.z + dz];
+    for k: 0..<3 { if p[k] < lo[k] { lo[k] = p[k]; } if p[k] > hi[k] { hi[k] = p[k]; } }
+  }
+  if x < lo[0] - f32(E2_HULL_REACH) || x > hi[0] + f32(E2_HULL_REACH) || z < lo[2] - f32(E2_HULL_REACH) || z > hi[2] + f32(E2_HULL_REACH) { return at; }
+  out[at] = f32(f1 - f0); out[at + 1] = lo[1]; out[at + 2] = hi[1];
+  // the face n . (a, b, c) = d through the same map: (x - X) = sh R (a, c), y = lift + sv b - g . (x - X)
+  for f: f0..<f1 {
+    na := f32(E2_HULL_F[f * 4]) / 1000000; nb := f32(E2_HULL_F[f * 4 + 1]) / 1000000; nc := f32(E2_HULL_F[f * 4 + 2]) / 1000000; d := f32(E2_HULL_F[f * 4 + 3]) / 1000000;
+    kx := (na * c + nc * sn) / r.sh + nb * gx / r.sv; ky := nb / r.sv; kz := (-na * sn + nc * c) / r.sh + nb * gz / r.sv;
+    l := sqrt(kx * kx + ky * ky + kz * kz);
+    o := at + E2_HULL_HEAD + (f - f0) * E2_HULL_FACE;
+    out[o] = kx / l; out[o + 1] = ky / l; out[o + 2] = kz / l; out[o + 3] = (d + kx * r.x + ky * lift + kz * r.z) / l;
+  }
+  return end;
+}
+// The kit piece's hull model, or -1 when it isn't a rock that stops you.
+e2_kit_rock :: (kit: int) -> int { return ifx kit >= 20 && kit <= 22 then kit - 20 else ifx kit == 23 || kit == 24 then kit - 19 else -1; }
+// The glade's own rocks (its pack's composition, verse/character-glade.coax cg_item), as the pack draws
+// them (verse/tools/assets/everglade2_pack.coax gp_mesh_scaled): on the land's height plus the item's
+// lift, scale across and scale times its vertical share up.
+e2_glade_rock :: (gt: CgItem) -> E2Rock {
+  if gt.kind != 2 && gt.kind != 3 { return E2Rock.{model = -1}; }
+  m := ifx gt.kind == 3 then (ifx gt.variant == 3 && gt.x < -10 then E2_HULL_CAPPED else gt.variant) else 4 + gt.variant;
+  if gt.kind == 3 && (gt.variant < 0 || gt.variant > 3) || gt.kind == 2 && (gt.variant < 0 || gt.variant > 1) { m = -1; }
+  return E2Rock.{model = m, x = gt.x, y = e2_height(gt.x, gt.z) + gt.lift, z = gt.z, yaw = gt.yaw, sh = gt.scale, sv = gt.scale * gt.vertical};
+}
+// And the two the pack adds after them: a Rock_Medium_3 at the cliff's foot and a flat stone by the path.
+E2_GLADE_STONES :: 2;
+e2_glade_stone :: (i: int) -> E2Rock {
+  if i == 0 { return E2Rock.{model = 2, x = -14, y = e2_height(-14, -24), z = -24, yaw = 0.3, sh = 2.0, sv = 2.0}; }
+  return E2Rock.{model = 3, x = -0.18, y = e2_height(-0.18, -2.4), z = -2.4, yaw = 1.1, sh = 0.16, sv = 0.05};
 }
 // Each tree kind's trunk at waist height (kits 0 to 14: CommonTree, Birch and Pine 1 to 5): its middle's
 // x and z and its radius, from the Stylized Nature models. You brush past a trunk but not through it.
@@ -65,18 +106,17 @@ e2_trunk :: (kind: int, x: f32, z: f32, yaw: f32, sh: f32) -> [3] f32 {
   f := E2_TRUNK_FIT[kind]; c := cos(yaw); sn := sin(yaw);
   return [3] f32.[x + sh * (f[0] * c + f[1] * sn), z + sh * (-f[0] * sn + f[1] * c), f[2] * sh];
 }
-// The kit piece's rock fit row, or -1 when it isn't a rock that stops you.
-e2_kit_rock :: (kit: int) -> int { return ifx kit >= 20 && kit <= 22 then kit - 20 else ifx kit == 23 || kit == 24 then kit - 19 else -1; }
 e2m_body :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32, r: f32) -> int {
   if n >= E2_NEAR_BODIES || (n + 1) * 7 > out.count { return n; }
   m := n * 7;
   out[m] = x0; out[m + 1] = y0; out[m + 2] = z0; out[m + 3] = x1; out[m + 4] = y1; out[m + 5] = z1; out[m + 6] = r;
   return n + 1;
 }
-// The world for a step at (x, z): every trunk and rock round you into `out` (7 floats each), from the
-// planting (items, kinds and first, plant.coax e2_plant) and the glade's own composition.
-e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: [] f32, x: f32, z: f32) -> EgMoveWorld {
-  w: EgMoveWorld; w.deck = true; n := 0;
+// The world for a step at (x, z): every trunk round you into `out` (7 floats each) and every rock's hull
+// into `hulls` (w.hulls numbers), from the planting (items, kinds and first, plant.coax e2_plant) and the
+// glade's own composition.
+e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: [] f32, hulls: [] f32, x: f32, z: f32) -> EgMoveWorld {
+  w: EgMoveWorld; w.deck = true; n := 0; at := 0; rocks := 0;
   ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
   for dj: -1..<2 { for di: -1..<2 {
     i := ci + di; j := cj + dj;
@@ -86,29 +126,30 @@ e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: []
       kit := cast(int) kinds[q]; rock := e2_kit_rock(kit);
       if kit >= E2_TREES && rock < 0 { continue; }
       o := q * E2_ITEM_FLOATS; px := items[o]; pz := items[o + 2]; sh := items[o + 5];
-      reach := ifx rock >= 0 then 5 + 4 * sh else 5.0f32;
+      reach := ifx rock >= 0 then 2 + 4.2 * sh else 5.0f32;
       if abs(px - x) > reach || abs(pz - z) > reach { continue; }
-      if rock >= 0 { k := e2_rock_capsule(rock, px, pz, items[o + 3], sh); n = e2m_body(out, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]); }
+      if rock >= 0 {
+        if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, E2Rock.{model = rock, x = px, y = items[o + 1], z = pz, yaw = items[o + 3], sh = sh, sv = items[o + 4]}, x, z); if next > at { rocks += 1; } at = next; }
+      }
       else { t := e2_trunk(kit, px, pz, items[o + 3], sh); n = e2m_body(out, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); }
     }
   }}
   // the glade's own trees and rocks (its pack's composition, verse/character-glade.coax cg_item)
   for i: 0..<CG_ITEMS {
     gt := cg_item(i); if !e2_glade_kept(gt) { continue; }
-    if abs(gt.x - x) > 5 + 4 * gt.scale || abs(gt.z - z) > 5 + 4 * gt.scale { continue; }
+    if abs(gt.x - x) > 5 + 4.2 * gt.scale || abs(gt.z - z) > 5 + 4.2 * gt.scale { continue; }
     if gt.kind <= 1 { tv := ifx gt.variant < 0 then 0 else ifx gt.variant > 4 then 4 else gt.variant; t := e2_trunk(tv + 5 * gt.kind, gt.x, gt.z, gt.yaw, gt.scale); n = e2m_body(out, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); continue; }
-    fit := ifx gt.kind == 3 then gt.variant else 4 + gt.variant;
-    if fit < 0 || fit > 5 { continue; }
-    k := e2_rock_capsule(fit, gt.x, gt.z, gt.yaw, gt.scale); n = e2m_body(out, n, k[0], k[1], k[2], k[3], 0.9, 0.9, k[4]);
+    if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, e2_glade_rock(gt), x, z); if next > at { rocks += 1; } at = next; }
   }
-  w.bodies = n; return w;
+  for i: 0..<E2_GLADE_STONES { if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, e2_glade_stone(i), x, z); if next > at { rocks += 1; } at = next; } }
+  w.bodies = n; w.hulls = at; return w;
 }
 
 // ---- the room server's copy (coax/web/room/room-world.c): one planting for every Everglade II room,
 // for it is a pure function of the land, and the bodies round the seat being stepped.
 E2MoveGround :: struct {
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; done: bool;
-  bodies: [E2_NEAR_BODIES * 7] f32;
+  bodies: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32;
 }
 e2mg_plant :: (g: [] E2MoveGround) #export_c #effects(all) {
   if g[0].done { return; }
@@ -116,11 +157,12 @@ e2mg_plant :: (g: [] E2MoveGround) #export_c #effects(all) {
 }
 // The step's world at (x, z) when running (or not): its bodies are e2mg_bodies' until the next call.
 e2mg_move_world :: (g: [] E2MoveGround, x: f32, z: f32, running: bool) -> EgMoveWorld #export_c #effects(all) {
-  w := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], g[0].done, g[0].bodies[..], x, z);
+  w := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], g[0].done, g[0].bodies[..], g[0].hulls[..], x, z);
   w.pace = e2_pace(running);
   return w;
 }
 e2mg_bodies :: (g: [] E2MoveGround) -> [] f32 #export_c #effects(all) { return g[0].bodies[..]; }
+e2mg_hulls :: (g: [] E2MoveGround) -> [] f32 #export_c #effects(all) { return g[0].hulls[..]; }
 e2mg_spawn_x :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_X); }
 e2mg_spawn_z :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_Z); }
 e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE); }
@@ -136,12 +178,43 @@ e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE)
   b := e2m_keep(out, z - 0.5, x, z); #assert b.x == x && b.z == z - 0.5;
   c := e2m_keep(0, 40, 0, 20); #assert c.x == 0 && c.z == 20;
 }
-#test "a rock's capsule fits its footprint, scaled and turned with it" {
-  a := e2_rock_capsule(4, 10, -20, 0, 1); mx := (a[0] + a[2]) / 2; mz := (a[1] + a[3]) / 2;
-  #assert abs(mx - 10.070) < 0.01 && abs(mz + 19.741) < 0.01 && abs(a[4] - 1.977 * 0.85) < 0.001;
-  l := sqrt((a[2] - a[0]) * (a[2] - a[0]) + (a[3] - a[1]) * (a[3] - a[1])); #assert abs(l / 2 + a[4] - 2.707) < 0.01;
-  b := e2_rock_capsule(4, 10, -20, 1.2, 2); lb := sqrt((b[2] - b[0]) * (b[2] - b[0]) + (b[3] - b[1]) * (b[3] - b[1]));
-  #assert abs(lb - 2 * l) < 0.01 && abs(b[4] - 2 * a[4]) < 0.001;
+#test "each rock's hull is its mesh's: its bounds are the mesh's, every vertex inside every face" {
+  for m: 0..<E2_HULL_MODELS {
+    v0 := E2_HULL_FIRST_V[m]; v1 := E2_HULL_FIRST_V[m + 1]; f0 := E2_HULL_FIRST_F[m]; f1 := E2_HULL_FIRST_F[m + 1];
+    #assert v1 - v0 >= 8 && f1 - f0 >= 8 && f1 - f0 <= E2_HULL_FACES;
+    lo := [3] int.[1000000, 1000000, 1000000]; hi := [3] int.[-1000000, -1000000, -1000000];
+    for v: v0..<v1 { for k: 0..<3 { q := E2_HULL_V[v * 3 + k]; if q < lo[k] { lo[k] = q; } if q > hi[k] { hi[k] = q; } } }
+    // within 2% of the mesh's extent on each side, never past it
+    for k: 0..<3 {
+      size := E2_HULL_MESH_BOUNDS[m * 6 + k + 3] - E2_HULL_MESH_BOUNDS[m * 6 + k];
+      #assert lo[k] >= E2_HULL_MESH_BOUNDS[m * 6 + k] && lo[k] - E2_HULL_MESH_BOUNDS[m * 6 + k] <= size / 50;
+      #assert hi[k] <= E2_HULL_MESH_BOUNDS[m * 6 + k + 3] && E2_HULL_MESH_BOUNDS[m * 6 + k + 3] - hi[k] <= size / 50;
+    }
+    for f: f0..<f1 {
+      n := [4] f64.[f64(E2_HULL_F[f * 4]) / 1000000, f64(E2_HULL_F[f * 4 + 1]) / 1000000, f64(E2_HULL_F[f * 4 + 2]) / 1000000, f64(E2_HULL_F[f * 4 + 3]) / 1000000];
+      #assert abs(n[0] * n[0] + n[1] * n[1] + n[2] * n[2] - 1) < 0.00001;
+      touching := 0;
+      for v: v0..<v1 {
+        s := n[0] * f64(E2_HULL_V[v * 3]) / 10000 + n[1] * f64(E2_HULL_V[v * 3 + 1]) / 10000 + n[2] * f64(E2_HULL_V[v * 3 + 2]) / 10000 - n[3];
+        #assert s < 0.0005; if s > -0.0005 { touching += 1; }
+      }
+      #assert touching >= 3;
+    }
+  }
+}
+#test "a placed rock's hull is scaled and turned with it and set on the land's plane" {
+  out: [E2_HULL_HEAD + E2_HULL_FACES * E2_HULL_FACE] f32;
+  x := 30.0f32; z := -120.0f32; h := e2_height(x, z);
+  r := E2Rock.{model = 4, x = x, y = h - 0.1, z = z, yaw = 0.7, sh = 0.8, sv = 0.8};
+  e := e2_rock_hull(out[..], 0, r, x, z); f := E2_HULL_FIRST_F[5] - E2_HULL_FIRST_F[4];
+  #assert e == E2_HULL_HEAD + f * E2_HULL_FACE && out[0] == f32(f);
+  // its height is the mesh's, scaled, from 0.1 under the land; it reaches as far as the mesh does
+  #assert abs(out[2] - out[1] - 0.8 * f32(E2_HULL_MESH_BOUNDS[4 * 6 + 4] - E2_HULL_MESH_BOUNDS[4 * 6 + 1]) / 10000) < 0.6;
+  // every face is a unit normal, and the rock's middle is inside every one
+  for i: 0..<f { o := E2_HULL_HEAD + i * E2_HULL_FACE; #assert abs(out[o] * out[o] + out[o + 1] * out[o + 1] + out[o + 2] * out[o + 2] - 1) < 0.0001;
+    #assert out[o] * x + out[o + 1] * 0.5 + out[o + 2] * z - out[o + 3] < 0; }
+  // out of reach, or no room: nothing
+  #assert e2_rock_hull(out[..], 0, r, x + 20, z) == 0 && e2_rock_hull(out[0..<e - 1], 0, r, x, z) == 0 && e2_rock_hull(out[..], 0, E2Rock.{model = 9}, x, z) == 0;
 }
 #test "every tree kind has a trunk sized to it" {
   for k: 0..<15 { t := e2_trunk(k, 5, -9, 0.7, 0.8); #assert t[2] > 0.1 && t[2] < 0.5 && abs(t[0] - 5) < 0.6 && abs(t[1] + 9) < 0.6; }
@@ -155,9 +228,12 @@ e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE)
   w := e2mg_move_world(g[..], x, z, true);
   #assert w.bodies > 0 && w.bodies <= E2_NEAR_BODIES && w.deck && abs(w.pace * f32(E2_BASE_RUN) - 4.25) < 0.001;
   // the same as the page's own call on its own planting
-  out: [E2_NEAR_BODIES * 7] f32;
-  v := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], true, out[..], x, z);
-  #assert v.bodies == w.bodies;
+  out: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32;
+  v := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], true, out[..], hulls[..], x, z);
+  #assert v.bodies == w.bodies && v.hulls == w.hulls;
   for i: 0..<w.bodies * 7 { #assert out[i] == g[0].bodies[i]; }
+  for i: 0..<w.hulls { #assert hulls[i] == g[0].hulls[i]; }
+  // the glade's rocks are hulls round them
+  gw := e2mg_move_world(g[..], 1.1, -1.4, false); #assert gw.hulls > 0;
   e2mg_plant(g[..]); #assert g[0].done;   // once
 }

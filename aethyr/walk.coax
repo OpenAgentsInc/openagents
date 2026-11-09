@@ -82,6 +82,7 @@ World :: struct {
   walls: [] f32;
   floors: [] f32;       // STAND_FLOATS numbers each (aethyr/stand.coax), on the same floor as the walls
   heightfields: [] QueryHeightfield;
+  hulls: [] f32;        // convex solids (aethyr/query.coax): their tops are floors, their sides stop you
   collision: CollideProfile;
   locomotion: LocomotionProfile;
   flight: FlightProfile;   // off unless the realm flies (aethyr/flight.coax)
@@ -179,7 +180,7 @@ atan2 :: (y: f32, x: f32) -> f32 #effects(all) {
 // The world as Aethyr's colliders: the ground, the walls as boxes, the bodies as capsules and
 // the floors (aethyr/query.coax).
 colliders :: (w: World) -> Colliders #effects(all) {
-  return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors, heightfields = w.heightfields};
+  return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors, heightfields = w.heightfields, hulls = w.hulls};
 }
 // The floor under feet at (x, z): what they stand on (query_stand), the ground or the highest
 // wall top your capsule is over or floor you are over that is no more than STEP_UP above them.
@@ -243,8 +244,9 @@ move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player #effects(all) {
   next := collision_state(p); next.feet.x += dx; next.feet.z += dz;
   for pass: 0..<w.collision.max_passes {
     bodies := collide_bodies(colliders(w), w.collision, next, dx, dz);
-    next = collide_walls(colliders(w), w.collision, bodies.state);
-    if !bodies.pushed { break; }
+    hulls := collide_hulls(colliders(w), w.collision, bodies.state);
+    next = collide_walls(colliders(w), w.collision, hulls.state);
+    if !bodies.pushed && !hulls.pushed { break; }
   }
   return collision_apply(p, next);
 }
@@ -613,11 +615,18 @@ walk_advance_in_realm :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, 
   return walk_advance_in_realm_traced(p, frame, bodies, walls, floors, realm).player;
 }
 walk_advance_in_realm_traced :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> AdvanceTrace #effects(all) {
+  return walk_advance_among_hulls_traced(p, frame, bodies, walls, floors, floors[0..<0], realm);
+}
+// And among hulls (aethyr/query.coax), a realm's rocks shaped from their meshes.
+walk_advance_among_hulls :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, hulls: [] f32, realm: string) -> Player #effects(all) {
+  return walk_advance_among_hulls_traced(p, frame, bodies, walls, floors, hulls, realm).player;
+}
+walk_advance_among_hulls_traced :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, hulls: [] f32, realm: string) -> AdvanceTrace #effects(all) {
   declaration := realm_collision.collision_profile_lookup(realm);
   if declaration.status != realm_collision.CollisionProfileStatus.ok {
     return AdvanceTrace.{player = collision_report(p, CollideResult.{state = collision_state(p), status = CollideStatus.bad_profile})};
   }
-  w := World.{bodies = bodies, walls = walls, floors = floors, collision = declaration.profile, flight = flight_profile_lookup(realm)};
+  w := World.{bodies = bodies, walls = walls, floors = floors, hulls = hulls, collision = declaration.profile, flight = flight_profile_lookup(realm)};
   return advance_traced(w, p, frame);
 }
 
@@ -1899,4 +1908,30 @@ fly_uneven :: (f: int) -> f32 #effects(all) {
     if i < 40 { #assert walker_same(a, b) && b.beats == 0 && !b.diving; }
   }
   #assert a.jumps.taken == 2 && b.jumps.taken == 3 && b.beats == 0 && !b.diving;
+}
+
+// A level-topped hull for the checks: x in [-1, 1] moved dx along, z in [-1, 1], from -0.25 to `top`.
+walk_test_block :: (h: [] f32, dx: f32, top: f32) #effects(all) {
+  e := query_test_wedge(h, 0, dx); if e != h.count { return; }
+  o := QUERY_HULL_HEAD + 5 * QUERY_HULL_FACE; h[o] = 0; h[o + 1] = 1; h[o + 3] = top; h[2] = top;
+}
+#test "walk among hulls: you step onto a low one, a tall one stops you, and you jump onto it and stand on its top" {
+  h: [QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE] f32; walk_test_block(h[..], 3, 0.4);
+  w: World; w.hulls = h[..];
+  p := place_in(w, 0, 0, 0, 0);
+  for k: 0..<120 { p = walk_input(p, 0, ifx k < 50 then 1.0f32 else 0.0f32, 0, 0, false, false, 0, 0); p.theta = -f32(PI) / 2; p = advance_in(w, p, f32(STEP)); }
+  // walked across +x onto it: stood on its top
+  #assert p.pos.x > 2.4 && p.pos.x < 4 && near(p.pos.y, 0.4, 0.02) && p.on_ground && p.collision_refusals == 0;
+  walk_test_block(h[..], 3, 1.2);
+  q := place_in(w, 0, 0, 0, 0);
+  for k: 0..<120 { q = walk_input(q, 0, 1, 0, 0, false, false, 0, 0); q.theta = -f32(PI) / 2; q = walk_advance_among_hulls(q, f32(STEP), h[0..<0], h[0..<0], h[0..<0], h[..], "everglade"); }
+  // stopped a radius short of its side, on the ground
+  #assert near(q.pos.x, 2 - 0.3, 0.01) && q.pos.y == 0;
+  // a jump with the key held: up, over its edge and down on its top, feet on it
+  for k: 0..<120 { q = walk_input(q, 0, ifx k < 36 then 1.0f32 else 0.0f32, 0, 0, false, k < 3, 0, 0); q.theta = -f32(PI) / 2; q = advance_in(w, q, f32(STEP)); }
+  #assert q.pos.x > 2.2 && near(q.pos.y, 1.2, 0.02) && q.on_ground;
+  // the trusted direct move stops at its side too
+  m := move_across(w, place_in(w, 1.5, 0, 0, 0), 0.4, 0); #assert near(m.pos.x, 1.7, 0.0001);
+  #assert move_across(w, place_in(w, 1.5, 1.3, 0, 0), 0.4, 0).pos.x == 1.9;
+  #assert near(move_across(w, place_in(w, 1.5, 0.6, 0, 0), 0.4, 0).pos.x, 1.7, 0.0001);   // its side is felt up to its top
 }

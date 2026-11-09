@@ -65,6 +65,7 @@ E2 :: struct {
   shadow: [E2_DRAWS * 4] u32; shadow_n: int;
   frame: [16] f32;
   move_bodies: [E2_NEAR_BODIES * 7] f32;
+  move_hulls: [E2_HULL_ROOM] f32;   // the rocks' hulls round you this step (everglade2-move.coax e2m_world)
   bake: [figs.BD_BAKE_FLOATS] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
   held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
@@ -281,8 +282,9 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
 }
 // The trunks and rocks round you (everglade2-move.coax e2m_world, which the room steps by too).
 e2_move_world :: (s: [] E2, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
-  return e2m_world(s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_done, s[0].move_bodies[..], x, z);
+  return e2m_world(s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_done, s[0].move_bodies[..], s[0].move_hulls[..], x, z);
 }
+e2_move_hulls :: (s: [] E2) -> [] f32 #export_c #effects(all) { return s[0].move_hulls[..]; }
 #test "the body's gait reads Everglade II's jog and stroll as a run and a walk" {
   #assert f32(E2_RUN_SPEED) > f32(figs.BD_RUN_FROM) + 0.5 && f32(E2_WALK_SPEED) < f32(figs.BD_RUN_FROM) && f32(E2_WALK_SPEED) > f32(figs.BD_WALK_FROM);
 }

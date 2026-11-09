@@ -10,8 +10,10 @@
 //   query_sweep    the first touch of a sphere moving along a vector, in [0, 1]
 //
 // Colliders are in world space (aethyr/space.coax): a flat ground at a height, boxes (min and
-// max corners), capsules (two ends and a radius) and floors (aethyr/stand.coax: quads, cones,
-// domes, rings). Floors answer query_ground; rays, overlaps and sweeps cover the ground, the
+// max corners), capsules (two ends and a radius), floors (aethyr/stand.coax: quads, cones,
+// domes, rings) and hulls (convex solids as their face planes: a rock's shape from its mesh).
+// Floors and hulls' tops answer query_ground, and aethyr/collide.coax keeps a walker out of a
+// hull's sides; rays, overlaps and sweeps cover the ground, the
 // boxes and the capsules. Every shape is solid: a ray or sweep that starts inside one hits it at
 // t = 0. Ties go to the earlier collider (the ground, then boxes, then capsules, each by index),
 // so an answer depends on the scene, not on float noise in the search. Nothing here changes
@@ -37,9 +39,16 @@ QUERY_FLOOR_PAD :: 0.15;         // how far past a floor's edge your middle may 
 QUERY_BOX :: 6;                  // numbers a box: min x, y, z, max x, y, z
 QUERY_CAPSULE :: 7;              // numbers a capsule: one end, the other, the radius
 QUERY_TOO_BIG :: 1000000.0;      // a coordinate this large is not one
+// A hull: QUERY_HULL_HEAD numbers (its face count F, its lowest and highest y), then F faces of
+// QUERY_HULL_FACE numbers (an outward normal nx, ny, nz and d: the solid is where
+// nx x + ny y + nz z <= d for every face). Hulls follow one another in one array.
+QUERY_HULL_HEAD :: 3;
+QUERY_HULL_FACE :: 4;
+QUERY_HULL_FACES_MAX :: 128;
+QUERY_HULL_FLAT :: 0.00006103515625;   // 2^-14: a face whose normal is this near level is a side, not a top or a bottom
 QUERY_HEIGHTFIELDS_MAX :: 16;
 
-QueryShape :: enum u8 { none; ground; box; capsule; floor; heightfield; }
+QueryShape :: enum u8 { none; ground; box; capsule; floor; heightfield; hull; }
 QueryStatus :: enum u8 { ok; invalid; terrain; exhausted; capacity; }
 
 // A borrowed, read-only mesh. Its ground queries use the same drawn triangles as terrain.
@@ -52,6 +61,7 @@ Colliders :: struct {
   capsules: [] f32;
   floors: [] f32;      // STAND_FLOATS numbers each (aethyr/stand.coax)
   heightfields: [] QueryHeightfield;
+  hulls: [] f32;       // convex solids, QUERY_HULL_HEAD + F * QUERY_HULL_FACE numbers each
   heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
   // Semantic selections can contain no base surface. The compatibility
   // default still supplies the realm's flat ground when it has no mesh.
@@ -112,6 +122,143 @@ query_footprint :: (b: QueryBox, x: f32, z: f32) -> f32 #effects(all) {
   dx := x - stand_clamp(x, b.low.x, b.high.x); dz := z - stand_clamp(z, b.low.z, b.high.z);
   return sqrt(dx * dx + dz * dz);
 }
+// The hull starting at number `at` of `h`: its face count and where the next one starts. A hull
+// that isn't whole and finite ends the list (a partial last entry is ignored).
+QueryHull :: struct { at: int; faces: int; next: int; ok: bool; }
+query_hull :: (h: [] f32, at: int) -> QueryHull #effects(all) {
+  out := QueryHull.{at = at, next = h.count};
+  if at < 0 || at >= h.count { return out; }
+  f := h[at];
+  if !(f >= 1 && f <= f32(QUERY_HULL_FACES_MAX)) || f != floor(f) { return out; }
+  n := cast(int) f; end := at + QUERY_HULL_HEAD + n * QUERY_HULL_FACE;
+  if end > h.count { return out; }
+  for j: at + 1..<end { if !query_finite(h[j]) { return out; } }
+  if h[at + 1] > h[at + 2] { return out; }
+  return QueryHull.{at = at, faces = n, next = end, ok = true};
+}
+// The hull's top over (x, z): the lowest of its upward faces there, and that face's slope, when
+// (x, z) is over the solid (its top no lower than its bottom there, inside its sides).
+QueryHullTop :: struct { y: f32 = -QUERY_TOO_BIG; gx: f32; gz: f32; over: bool; }
+query_hull_top :: (h: [] f32, k: QueryHull, x: f32, z: f32) -> QueryHullTop #effects(all) {
+  out: QueryHullTop;
+  if !k.ok { return out; }
+  top := f32(QUERY_TOO_BIG); bottom := -f32(QUERY_TOO_BIG); best := -1;
+  for i: 0..<k.faces {
+    o := k.at + QUERY_HULL_HEAD + i * QUERY_HULL_FACE;
+    ny := h[o + 1];
+    rest := h[o + 3] - h[o] * x - h[o + 2] * z;
+    if ny > QUERY_HULL_FLAT { y := rest / ny; if y < top { top = y; best = i; } }
+    else if ny < -QUERY_HULL_FLAT { bottom = stand_hi(bottom, rest / ny); }
+    else if rest < 0 { return out; }
+  }
+  if best < 0 || top < bottom { return out; }
+  o := k.at + QUERY_HULL_HEAD + best * QUERY_HULL_FACE;
+  return QueryHullTop.{y = top, gx = -h[o] / h[o + 1], gz = -h[o + 2] / h[o + 1], over = true};
+}
+// How far (x, z) is outside the hull's slice at height y, along the ground, and the way out (ux, uz):
+// the farthest of the slice's sides (each face's line at y; the first of equals). Inside the slice it
+// is negative. Past its heights, or past a level face, the slice is empty and the answer QUERY_TOO_BIG.
+QueryHullGap :: struct { gap: f32 = QUERY_TOO_BIG; ux: f32; uz: f32; }
+query_hull_gap :: (h: [] f32, k: QueryHull, x: f32, y: f32, z: f32) -> QueryHullGap #effects(all) {
+  out: QueryHullGap;
+  if !k.ok || y < h[k.at + 1] || y > h[k.at + 2] { return out; }
+  worst := -f32(QUERY_TOO_BIG); ux := 0.0f32; uz := 0.0f32;
+  for i: 0..<k.faces {
+    o := k.at + QUERY_HULL_HEAD + i * QUERY_HULL_FACE;
+    nx := h[o]; nz := h[o + 2];
+    beyond := nx * x + h[o + 1] * y + nz * z - h[o + 3];
+    across := sqrt(nx * nx + nz * nz);
+    if across < QUERY_HULL_FLAT { if beyond > 0 { return out; } continue; }
+    g := beyond / across;
+    if g > worst { worst = g; ux = nx / across; uz = nz / across; }
+  }
+  return QueryHullGap.{gap = worst, ux = ux, uz = uz};
+}
+
+// A wedge for the checks: x in [-1, 1] moved dx along, z in [-1, 1], from y = -0.25 up to its top
+// y = 0.5 + 0.25 (x - dx).
+QUERY_TEST_WEDGE :: [24] f32.[1, 0, 0, 1, -1, 0, 0, 1, 0, 0, 1, 1, 0, 0, -1, 1, 0, -1, 0, 0.25, -0.24253563, 0.97014250, 0, 0.48507125];
+query_test_wedge :: (out: [] f32, at: int, dx: f32) -> int #effects(all) {
+  out[at] = 6; out[at + 1] = -0.25; out[at + 2] = 0.75;
+  for j: 0..<24 { out[at + QUERY_HULL_HEAD + j] = QUERY_TEST_WEDGE[j] + ifx j % 4 == 3 then QUERY_TEST_WEDGE[j - 3] * dx else 0.0f32; }
+  return at + QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE;
+}
+#test "a hull's top is its lowest upward face over the solid, with that face's slope" {
+  h: [2 * (QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE)] f32;
+  e := query_test_wedge(h[..], 0, 0); #assert e == QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE;
+  k := query_hull(h[..], 0); #assert k.ok && k.faces == 6 && k.next == e && k.at == 0;
+  t := query_hull_top(h[..], k, 0.4, 0.2);
+  #assert t.over && abs(t.y - 0.6) < 0.0001 && abs(t.gx - 0.25) < 0.0001 && abs(t.gz) < 0.0001;
+  #assert !query_hull_top(h[..], k, 1.2, 0).over && !query_hull_top(h[..], k, 0, -1.01).over && !query_hull_top(h[..], k, 0, 1.01).over;
+  #assert !query_hull_top(h[..], QueryHull.{}, 0, 0).over && query_hull_top(h[..], k, 1, 0).over;   // on its side exactly: over it
+  // a broken face count, a short tail, a number out of range or heights inside out end the list
+  h[0] = 2.5; #assert !query_hull(h[..], 0).ok; h[0] = 0; #assert !query_hull(h[..], 0).ok; h[0] = 6;
+  #assert !query_hull(h[0..<e - 1], 0).ok && !query_hull(h[..], -1).ok && !query_hull(h[0..<e], e).ok && query_hull(h[0..<e], 0).next == e;
+  h[9] = f32(QUERY_TOO_BIG) * 2; #assert !query_hull(h[..], 0).ok; h[9] = 0;
+  h[1] = -f32(QUERY_TOO_BIG) * 2; #assert !query_hull(h[..], 0).ok;
+  h[1] = 1; #assert !query_hull(h[..], 0).ok; h[1] = 0.75; #assert query_hull(h[..], 0).ok; h[1] = -0.25;
+  big: [QUERY_HULL_HEAD + (QUERY_HULL_FACES_MAX + 1) * QUERY_HULL_FACE] f32; big[0] = f32(QUERY_HULL_FACES_MAX);
+  #assert query_hull(big[0..<big.count - QUERY_HULL_FACE], 0).ok;
+  big[0] = f32(QUERY_HULL_FACES_MAX + 1); #assert !query_hull(big[..], 0).ok;
+  one := [7] f32.[1, 0, 1, 0, 1, 0, 2]; #assert query_hull(one[..], 0).ok;   // one face: the space under y = 2
+  // the ground: the top when you can step onto it, the second hull's by its order
+  e2 := query_test_wedge(h[..], e, 3); #assert e2 == 2 * e;
+  c := Colliders.{hulls = h[..]};
+  g := query_ground(c, 0.4, 0.2, 1, 0.3); #assert g.shape == QueryShape.hull && g.index == 0 && abs(g.y - 0.6) < 0.0001 && !g.steep;
+  #assert query_ground(c, 0.4, 0.2, 0.55, 0.3).shape == QueryShape.ground;
+  g2 := query_ground(c, 3, 0, 2, 0.3); #assert g2.shape == QueryShape.hull && g2.index == 1 && abs(g2.y - 0.5) < 0.0001;
+  #assert query_ground(c, 1.6, 0, 2, 0.3).shape == QueryShape.ground;
+  #assert query_ground(c, 0, 0, 0.5, 0.3).shape == QueryShape.hull;   // a top right at the step: you step onto it
+  // two tops the same height: the first one's
+  s: [2 * (QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE)] f32; #assert query_test_wedge(s[..], query_test_wedge(s[..], 0, 0), 0) == s.count;
+  #assert query_ground(Colliders.{hulls = s[..]}, 0.4, 0.2, 1, 0.3).index == 0;
+}
+#test "a hull's top: its tilted faces, its bottom and its sides decide it exactly" {
+  // a top tilted both ways (y = 1 + x / 2 + z / 4, its normal not a unit), a level top at 2, a bottom
+  // rising with x (y >= x - 1) and one rising with -x (y >= -x - 3), a side at z = 2 and one leaning
+  // in barely (ny 2^-14)
+  h := [27] f32.[6, -5, 5,  -1, 2, -0.5, 2,  0, 1, 0, 2,  2, -2, 0, 2,  -1, -1, 0, 3,  0, 0, 1, 2,  0, -0.00006103515625, -1, 2];
+  k := query_hull(h[..], 0); #assert k.ok;
+  t := query_hull_top(h[..], k, 1.5, 1.5); #assert t.over && t.y == 2 && t.gx == 0 && t.gz == 0;   // the level top is lower here
+  q := query_hull_top(h[..], k, 1.5, 1); #assert q.y == 2 && q.gx == 0.5 && q.gz == 0.25;           // where they meet the first face wins
+  #assert query_hull_top(h[..], k, 0, 2).over;                                                  // on the side exactly: over
+  u := query_hull_top(h[..], k, -1, 0.5); #assert u.over && u.y == 0.625 && u.gx == 0.5 && u.gz == 0.25;
+  #assert query_hull_top(h[..], k, 2.5, 0).over && !query_hull_top(h[..], k, 3.5, 0).over;   // the bottom passes its top at x 3
+  #assert query_hull_top(h[..], k, 3, 0).over && query_hull_top(h[..], k, 2.9, 0).y == 2;      // they meet exactly: still over
+  #assert !query_hull_top(h[..], k, -3, 0).over && query_hull_top(h[..], k, -2.5, 0).over;    // and the other bottom at x -2.75
+  #assert !query_hull_top(h[..], k, 0, 2.5).over;
+  // the barely leaning face is a side: with nothing left of it there it isn't a bottom
+  #assert query_hull_top(h[..], k, 0, -2).over && !query_hull_top(h[..], k, 0, -2.00001).over;
+  // one leaning barely the other way is a side too, not a top
+  h[24] = 0.00006103515625;
+  w := query_hull_top(h[..], k, 0, -1.99999); #assert w.over && abs(w.y - (1 - 1.99999 / 4.0)) < 0.00001;
+  // no upward face: never over
+  d := [11] f32.[2, -1, 1, 0, -1, 0, 0, 1, 0, 0, 1]; #assert query_hull(d[..], 0).ok && !query_hull_top(d[..], query_hull(d[..], 0), 0, 0).over;
+}
+#test "a hull's slice: how far outside it you are, and the way out" {
+  h: [QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE] f32; e := query_test_wedge(h[..], 0, 0); #assert e == h.count; k := query_hull(h[..], 0);
+  a := query_hull_gap(h[..], k, 1.5, 0.3, 0.2); #assert abs(a.gap - 0.5) < 0.0001 && abs(a.ux - 1) < 0.0001 && abs(a.uz) < 0.0001;
+  b := query_hull_gap(h[..], k, 0, 0.3, -1.25); #assert abs(b.gap - 0.25) < 0.0001 && abs(b.uz + 1) < 0.0001;
+  i := query_hull_gap(h[..], k, 0.8, 0.3, 0); #assert abs(i.gap + 0.2) < 0.0001 && abs(i.ux - 1) < 0.0001;
+  // the sloped top cuts the slice: at y 0.6 the solid starts at x = 0.4
+  s := query_hull_gap(h[..], k, 0, 0.6, 0); #assert abs(s.gap - 0.4) < 0.001 && s.ux < -0.99;
+  #assert query_hull_gap(h[..], k, 0, 0.8, 0).gap == f32(QUERY_TOO_BIG) && query_hull_gap(h[..], k, 0, -0.3, 0).gap == f32(QUERY_TOO_BIG);
+  #assert query_hull_gap(h[..], k, 0, -0.2, 0).gap < 0 && query_hull_gap(h[..], QueryHull.{}, 0, 0.4, 0).gap == f32(QUERY_TOO_BIG);
+  // a level face: past it the slice is empty, on it the slice is whole
+  box := [27] f32.[6, 0, 1,  1, 0, 0, 1,  -1, 0, 0, 1,  0, 0, 2, 2,  0, 0, -1, 1,  0, 1, 0, 1,  0, -1, 0, 0];
+  q := query_hull(box[..], 0);
+  #assert query_hull_gap(box[..], q, 0, 1, 0).gap == -1 && query_hull_gap(box[..], q, 0, 0, 0).gap == -1;
+  box[22] = 0.5; #assert query_hull_gap(box[..], q, 0, 0.75, 0).gap == f32(QUERY_TOO_BIG) && query_hull_gap(box[..], q, 0, 0.5, 0).gap == -1;
+  // a corner: two sides as far, the first wins; a side whose normal isn't a unit
+  c := query_hull_gap(box[..], q, 1.5, 0.25, 1.5); #assert c.gap == 0.5 && c.ux == 1 && c.uz == 0;
+  z := query_hull_gap(box[..], q, 0, 0.25, 1.75); #assert z.gap == 0.75 && z.uz == 1 && z.ux == 0;
+  // a side leaning barely (across exactly 2^-14) is still a side
+  box[3] = 0.00006103515625; box[6] = 0.00006103515625;
+  #assert query_hull_gap(box[..], q, 0.5, 0.25, 0).gap == -0.5;
+  // only level faces: the slice is all of the ground
+  slab := [11] f32.[2, 0, 1, 0, 1, 0, 1, 0, -1, 0, 0]; #assert query_hull_gap(slab[..], query_hull(slab[..], 0), 5, 0.5, 5).gap == -f32(QUERY_TOO_BIG);
+}
+
 // The point of segment a-b nearest p.
 query_nearest :: (a: WorldPoint, b: WorldPoint, p: WorldPoint) -> WorldPoint #effects(all) {
   ab := world_sub(b, a);
@@ -157,6 +304,12 @@ query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryG
   h := stand_top(c.floors, c.floors.count / STAND_FLOATS, x, z, below, f32(QUERY_FLOOR_PAD));
   if h.y > out.y && query_finite(h.y) {
     out = QueryGround.{y = h.y, gx = h.gx, gz = h.gz, shape = QueryShape.floor, index = h.id};
+  }
+  k := query_hull(c.hulls, 0); n := 0;
+  while k.ok {
+    t := query_hull_top(c.hulls, k, x, z);
+    if t.over && t.y <= below && t.y > out.y { out = QueryGround.{y = t.y, gx = t.gx, gz = t.gz, shape = QueryShape.hull, index = n}; }
+    k = query_hull(c.hulls, k.next); n += 1;
   }
   out.steep = stand_steep(StandHit.{gx = out.gx, gz = out.gz});
   return out;

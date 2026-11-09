@@ -179,11 +179,17 @@ sheen and hair highlights.
   the land, and keeps you in the glade's 26 m circle, on the path's corridor, or in the
   clearing. Thick woods stand wherever you may not go, so no edge of the world shows open ground.
 - Every tree trunk and rock stops you. A trunk is a capsule sized to its tree kind's trunk. A
-  rock is a capsule along its long axis, fitted to its model's footprint. Both are scaled and
-  turned with the placed piece, the glade's own trees and rocks included. Pebbles don't stop
-  you. `everglade2-walk-test.coax` walks into a boulder and a trunk through the real controller,
-  and runs the whole path from the glade to the clearing down its middle and a metre to each
-  side without being held up.
+  rock is its own mesh's convex hull (Aethyr's hulls, `aethyr/query.coax`): its top is ground you
+  stand on, its sides stop you where you see them. You step onto a rock lower than 0.55 m, jump
+  onto a taller one and stand on its top, walk up a gentle face and slide off a steep one. The
+  hulls are baked from the Stylized Nature meshes by
+  `verse/tools/assets/everglade2_rock_hulls.coax` into `verse/everglade2/rock-hulls.coax`, whose
+  check compares each hull to its mesh's bounds. Both are scaled and turned with the placed
+  piece, the glade's own trees and rocks included; the page and the room step you on the same
+  hulls. Pebbles, a few centimetres high, don't stop you. `everglade2-walk-test.coax` walks into
+  the glade's mossy rock from three sides, steps onto a low rock, jumps onto the mossy rock and
+  stands on its top, walks into a trunk, and runs the whole path from the glade to the clearing
+  down its middle and a metre to each side without being held up.
 - Every collider comes from the same item list and transform as the drawn piece. The glade's
   pieces that stand on the path out (`e2_glade_kept`) are left out of both the pack and the
   colliders, so nothing unseen stands in your way.

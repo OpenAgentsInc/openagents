@@ -76,14 +76,14 @@ static float cull_u[100];
 static uint32_t cull_buckets[2 * 36 * 3], cull_runs[4 * 384], cull_draws[384];
 static int64_t cull_n;
 /* One step of the controller: the world round you, Everglade II's pace, its two halves over the trunks
-   and rocks, then kept where you may stand. The room's world2_step (coax/web/room/room-world.c) is the same. */
+   and the rocks' hulls, then kept where you may stand. The room's world2_step (coax/web/room/room-world.c) is the same. */
 static coax_t_Player step_frame(uint32_t state, coax_t_Player p, coax_t_EgMoveIn input, float step, float frame) {
   float fx = p.pos.x, fz = p.pos.z;
   coax_t_EgMoveWorld mw = e2_move_world(at(state), p.pos.x, p.pos.z);
   mw.pace = e2_pace(input.run);
   p = eg_step_begin(p, input, mw, step);
-  coax_v_f32 near = e2_move_bodies(at(state));
-  p = eg_step_advance(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, frame);
+  coax_v_f32 near = e2_move_bodies(at(state)), hulls = e2_move_hulls(at(state));
+  p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, frame);
   coax_t_Point kept = e2_keep_from(at(state), p.pos.x, p.pos.z, fx, fz);
   if (kept.x != p.pos.x || kept.z != p.pos.z) p = verse_player_constrain(p, kept.x, kept.z);
   return p;

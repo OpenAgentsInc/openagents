@@ -1,23 +1,29 @@
-// Everglade II's colliders through the real controller step (everglade-step.coax): you walk straight
-// at a boulder and at a trunk and stop at their surface, at Everglade II's own pace.
+// Everglade II's colliders through the real controller step (everglade-step.coax): you walk into a rock
+// from three sides and stop at its side, step onto a low one, jump onto the glade's mossy one and stand
+// on its top, stop at a trunk, and run the path, at Everglade II's own pace.
 //   coax/bin/coax test --library apps/openagents-web/everglade2-walk-test.coax
 #load "everglade2.coax";
 #load "everglade-step.coax" as step;
 #load "../../aethyr/walk.coax" as walk;
+#load "../../aethyr/query.coax" as scaled;
 
-// Walks you from (x, z) toward (tx, tz) for `seconds` among `bodies`, running or walking; where you end.
-e2t_walk :: (x: f32, z: f32, tx: f32, tz: f32, bodies: [] f32, running: bool, seconds: f32) -> walk.Vec3 {
+// Walks you from (x, z) toward (tx, tz) for `seconds` among `bodies` and `hulls`, running or walking;
+// where you end, and how you stand.
+e2t_walk_among :: (x: f32, z: f32, tx: f32, tz: f32, bodies: [] f32, hulls: [] f32, running: bool, seconds: f32) -> walk.Player {
   p := walk.walk_place(x, 0, z, 0);
   // theta is the camera's: forward goes along -(sin theta, cos theta)
   theta := e2_walk_theta(walk.atan2(tx - x, tz - z));
   // running: no Shift (the keys run by default); walking: Shift held
   i := EgMoveIn.{key_y = 1, run = !running, theta = theta};
   i.run = walk.walk_runs(i.run, false, 0, 0);
-  w: EgMoveWorld; w.deck = true; w.bodies = bodies.count / 7; w.pace = e2_pace(i.run);
+  w: EgMoveWorld; w.deck = true; w.bodies = bodies.count / 7; w.hulls = hulls.count; w.pace = e2_pace(i.run);
   none: [1] f32;
   steps := cast(int) (seconds * 64);
-  for k: 0..<steps { p = step.eg_step_begin(p, i, w, 1.0f32 / 64); p = step.eg_step_advance(p, w, bodies, none[0..<0], none[0..<0], 1.0f32 / 64); }
-  return p.pos;
+  for k: 0..<steps { p = step.eg_step_begin(p, i, w, 1.0f32 / 64); p = step.eg_step_advance_among(p, w, bodies, none[0..<0], none[0..<0], hulls, 1.0f32 / 64); }
+  return p;
+}
+e2t_walk :: (x: f32, z: f32, tx: f32, tz: f32, bodies: [] f32, running: bool, seconds: f32) -> walk.Vec3 {
+  none: [1] f32; return e2t_walk_among(x, z, tx, tz, bodies, none[0..<0], running, seconds).pos;
 }
 e2t_segment_distance :: (px: f32, pz: f32, ax: f32, az: f32, bx: f32, bz: f32) -> f32 {
   dx := bx - ax; dz := bz - az; l := dx * dx + dz * dz;
@@ -25,19 +31,66 @@ e2t_segment_distance :: (px: f32, pz: f32, ax: f32, az: f32, bx: f32, bz: f32) -
   qx := ax + dx * t - px; qz := az + dz * t - pz; return sqrt(qx * qx + qz * qz);
 }
 
-#test "walking straight into a boulder stops you at its surface" {
-  k := e2_rock_capsule(5, 0, -50, 0.4, 1.0);   // a Rock_Big_2
-  b := [7] f32.[k[0], 0.9, k[1], k[2], 0.9, k[3], k[4]];
-  mx := (k[0] + k[2]) / 2; mz := (k[1] + k[3]) / 2;
-  for side: 0..<4 {
-    a := f32(side) * 1.5708; sx := mx + cos(a) * 10; sz := mz + sin(a) * 10;
-    e := e2t_walk(sx, sz, mx, mz, b[..], true, 4);
-    d := e2t_segment_distance(e.x, e.z, k[0], k[1], k[2], k[3]);
-    // you went most of the way, and stopped at the rock's surface (its radius and yours)
-    #assert sqrt((e.x - sx) * (e.x - sx) + (e.z - sz) * (e.z - sz)) > 4;
-    #assert d >= k[4] + 0.3 - 0.05;
-    #assert d < k[4] + 0.3 + 0.5;
+// The glade's mossy rock by the path, right of the spawn (verse/character-glade.coax cg_item 20: a
+// Rock_Big_1 about a metre high), as the page and the room step you among it.
+e2t_rock :: (out: [] f32, rock: E2Rock) -> int { return e2_rock_hull(out, 0, rock, rock.x, rock.z); }
+// How far you are from a hull's side at your step height, middle and head: the nearest of the three.
+e2t_side :: (h: [] f32, p: walk.Player) -> f32 {
+  k := scaled.query_hull(h, 0); near := 1000.0f32;
+  for i: 0..<3 { g := scaled.query_hull_gap(h, k, p.pos.x, p.pos.y + 0.55 + 1.25 * f32(i) / 2, p.pos.z); if g.gap < near { near = g.gap; } }
+  return near;
+}
+#test "walking into the glade's mossy rock from three sides stops you at its side, where you see it" #steps 400000000 {
+  h: [E2_HULL_HEAD + E2_HULL_FACES * E2_HULL_FACE] f32; r := e2_glade_rock(cg_item(20)); n := e2t_rock(h[..], r); #assert n > 0 && r.model == 4;
+  for side: 0..<3 {
+    a := f32(side) * 1.5708 + 0.3; sx := r.x + cos(a) * 5; sz := r.z + sin(a) * 5;
+    p := e2t_walk_among(sx, sz, r.x, r.z, h[0..<0], h[0..<n], false, 3);
+    d := e2t_side(h[0..<n], p);
+    // you went most of the way, up its low skirt if it has one, and stopped your radius from the part
+    // too high to step onto, short of its middle, your feet on what is under you
+    w: walk.World; w.hulls = h[0..<n];
+    #assert sqrt((p.pos.x - sx) * (p.pos.x - sx) + (p.pos.z - sz) * (p.pos.z - sz)) > 2.5;
+    #assert sqrt((p.pos.x - r.x) * (p.pos.x - r.x) + (p.pos.z - r.z) * (p.pos.z - r.z)) > 0.4;
+    #assert d >= 0.3 - 0.02;
+    #assert d < 0.3 + 0.05;
+    #assert p.collision_refusals == 0;
+    #assert abs(p.pos.y - walk.floor_at(w, p.pos.x, p.pos.z, p.pos.y)) < 0.03 && p.pos.y < 0.55;
   }
+}
+#test "you step up onto a low rock, walk across its top with your feet on it, and down off it" #steps 400000000 {
+  h: [E2_HULL_HEAD + E2_HULL_FACES * E2_HULL_FACE] f32; r := e2_glade_rock(cg_item(21)); n := e2t_rock(h[..], r);
+  #assert n > 0 && h[2] > 0.2 && h[2] < f32(walk.STEP_UP);
+  k := scaled.query_hull(h[0..<n], 0);
+  p := walk.walk_place(r.x - 3, 0, r.z, 0);
+  w: EgMoveWorld; w.deck = true; w.hulls = n; w.pace = e2_pace(false); none: [1] f32; up := 0.0f32; stood := false;
+  // walk at it and stop over its middle; stand a moment; walk on off it
+  for t: 0..<448 {
+    go := t < 64 * 7 && (p.pos.x < r.x || t > 64 * 4);
+    i := EgMoveIn.{key_y = ifx go then 1.0f32 else 0.0f32, run = false, theta = e2_walk_theta(1.5708)};
+    p = step.eg_step_begin(p, i, w, 1.0f32 / 64); p = step.eg_step_advance_among(p, w, none[0..<0], none[0..<0], none[0..<0], h[0..<n], 1.0f32 / 64);
+    if p.pos.y > up { up = p.pos.y; }
+    if t == 64 * 4 - 1 {
+      // standing on its top: your feet on it, not floating, not sunk
+      top := scaled.query_hull_top(h[0..<n], k, p.pos.x, p.pos.z);
+      #assert top.over && top.y > 0.2 && abs(p.pos.y - top.y) < 0.02 && p.on_ground; stood = true;
+    }
+  }
+  #assert stood && up > 0.2 && p.pos.x > r.x + 1 && p.pos.y < 0.05 && p.collision_refusals == 0;
+}
+#test "you jump onto the glade's mossy rock and stand on its top, feet on it" #steps 400000000 {
+  h: [E2_HULL_HEAD + E2_HULL_FACES * E2_HULL_FACE] f32; r := e2_glade_rock(cg_item(20)); n := e2t_rock(h[..], r);
+  k := scaled.query_hull(h[0..<n], 0); #assert h[2] > 0.8 && h[2] < 1.6;
+  mid := scaled.query_hull_top(h[0..<n], k, r.x, r.z); #assert mid.over && mid.y > 0.7;
+  p := walk.walk_place(r.x - 3, 0, r.z, 0); theta := e2_walk_theta(1.5708);
+  w: EgMoveWorld; w.deck = true; w.hulls = n; w.pace = e2_pace(false); none: [1] f32;
+  // up to it at a jog, a jump a stride from its side, the key held until over it, then still
+  for t: 0..<320 {
+    side := e2t_side(h[0..<n], p);
+    i := EgMoveIn.{key_y = ifx p.pos.x < r.x - 0.2 then 1.0f32 else 0.0f32, run = false, theta = theta, jump = side < 0.9 && p.on_ground && p.pos.y < 0.1};
+    p = step.eg_step_begin(p, i, w, 1.0f32 / 64); p = step.eg_step_advance_among(p, w, none[0..<0], none[0..<0], none[0..<0], h[0..<n], 1.0f32 / 64);
+  }
+  top := scaled.query_hull_top(h[0..<n], k, p.pos.x, p.pos.z);
+  #assert top.over && p.on_ground && p.pos.y > 0.7 && abs(p.pos.y - top.y) < 0.03 && p.collision_refusals == 0;
 }
 #test "walking straight into a trunk stops you, and you pass close beside it" {
   t := e2_trunk(2, 3, -80, 1.1, 0.8);   // a CommonTree_3
@@ -71,7 +124,7 @@ e2t_path_walk :: (s: [] E2, off: f32) -> f32 {
     i.run = walk.walk_runs(i.run, false, 0, 0);
     w := e2_move_world(s, x, z); w.pace = e2_pace(i.run);
     none: [1] f32;
-    p = step.eg_step_begin(p, i, w, dt); p = step.eg_step_advance(p, w, s[0].move_bodies[0..<w.bodies * 7], none[0..<0], none[0..<0], dt);
+    p = step.eg_step_begin(p, i, w, dt); p = step.eg_step_advance_among(p, w, s[0].move_bodies[0..<w.bodies * 7], none[0..<0], none[0..<0], s[0].move_hulls[0..<w.hulls], dt);
     kept := e2_keep(s, p.pos.x, p.pos.z);
     if kept.x != p.pos.x || kept.z != p.pos.z { return 1000; }   // an edge you can't see, on the path
     s[0].you_x = p.pos.x; s[0].you_z = p.pos.z;

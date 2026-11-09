@@ -373,7 +373,7 @@ bool world_ready(void) {
 /* ---- Everglade II's rooms (#13053; apps/openagents-web/everglade2-move.coax): its land, path and woods,
    one planting for every room (a pure function of the land), and each seat a controller stepped as the
    page steps it (everglade2-face.c e2_step_once): the world round it, Everglade II's pace, the
-   controller's two halves over the trunks and rocks, then kept where it may stand. No town, river,
+   controller's two halves over the trunks and the rocks' hulls, then kept where it may stand. No town, river,
    watch or pieces: room-tick.c's Everglade II tick asks none of them. */
 static coax_t_E2MoveGround *e2_ground;
 static coax_v_t_E2MoveGround e2mg(void) { return (coax_v_t_E2MoveGround){e2_ground, 1}; }
@@ -389,8 +389,8 @@ bool world2_prepare(void) {
 bool world2_contact(const float from[3], const float to[3]) {
   if (!world2_prepare()) return false;
   coax_t_EgMoveWorld w = e2mg_move_world(e2mg(), from[0], from[2], false);
-  coax_v_f32 bodies = e2mg_bodies(e2mg());
-  return eg_contact_clear((coax_v_f32){bodies.data, w.bodies * 7}, from[0], from[1], from[2], to[0], to[1], to[2]);
+  coax_v_f32 bodies = e2mg_bodies(e2mg()), hulls = e2mg_hulls(e2mg());
+  return eg_contact_clear_among((coax_v_f32){bodies.data, w.bodies * 7}, (coax_v_f32){hulls.data, w.hulls}, from[0], from[1], from[2], to[0], to[1], to[2]);
 }
 /* at (x, z, facing): where the room puts the seat back (room-everglade.coax rm_e2_place, #13057); NULL the spawn */
 bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]) {
@@ -410,8 +410,8 @@ bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]
   float fx = p.pos.x, fz = p.pos.z;
   coax_t_EgMoveWorld mw = e2mg_move_world(e2mg(), p.pos.x, p.pos.z, input.run);
   p = eg_step_begin(p, input, mw, dt);
-  coax_v_f32 near = e2mg_bodies(e2mg());
-  p = eg_step_advance(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, dt);
+  coax_v_f32 near = e2mg_bodies(e2mg()), hulls = e2mg_hulls(e2mg());
+  p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, dt);
   coax_t_E2Spot kept = e2m_keep(p.pos.x, p.pos.z, fx, fz);
   if (kept.x != p.pos.x || kept.z != p.pos.z) p = verse_player_constrain(p, kept.x, kept.z);
   seat_p[k][s] = p;

@@ -14,6 +14,7 @@
 #load "../../aethyr/player.coax";
 #load "../../aethyr/walk.coax" as walk;
 #load "../../aethyr/collide.coax" as scaled_collision;
+#load "../../aethyr/query.coax" as hull_query;
 #load "everglade-move-types.coax";
 #load "../../aethyr/math.coax" as link_math;
 #load "../../aethyr/collision-profiles.coax" as link_collision;
@@ -64,6 +65,10 @@ eg_step_begin :: (p0: walk.Player, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> 
 // (the city's and the rowboats' hulls), walls and floors. Over the fountain's lip only its column
 // stands in your way, so you stand on the lip.
 eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, frame: f32) -> walk.Player #export_c #effects(reads, writes, traps) {
+  return eg_step_advance_among(p0, w, bodies, walls, floors, floors[0..<0], frame);
+}
+// The same among hulls too (aethyr/query.coax): Everglade II's rocks, each its mesh's own shape.
+eg_step_advance_among :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, hulls: [] f32, frame: f32) -> walk.Player #export_c #effects(reads, writes, traps) {
   p := p0;
   if w.aboard {
     p.pos.x = w.seat_x; p.pos.z = w.seat_z; p.prev_pos = p.pos;
@@ -74,7 +79,7 @@ eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f
   if !w.deck && bodies.count >= 7 && p.pos.y > 0.6 { bodies[4] = 1.9; bodies[6] = 0.62; }
   if (w.link_flags&32)!=0 {
     profile:=link_collision.collision_profile_lookup("ocarina-lab");
-    world:=walk.World.{bodies=bodies,walls=walls,floors=floors,collision=profile.profile,locomotion=link_motion.ocl_locomotion(link_motion.OCL_WALK_SPEED,link_motion.OCL_RUN_SPEED,(w.link_flags&128)!=0,(w.link_flags&256)!=0,(w.link_flags&64)!=0)};
+    world:=walk.World.{bodies=bodies,walls=walls,floors=floors,hulls=hulls,collision=profile.profile,locomotion=link_motion.ocl_locomotion(link_motion.OCL_WALK_SPEED,link_motion.OCL_RUN_SPEED,(w.link_flags&128)!=0,(w.link_flags&256)!=0,(w.link_flags&64)!=0)};
     p=walk.advance_in(world,p,frame);
     if (w.link_flags&128)!=0 {p.face=w.link_yaw;if p.on_ground {p.vel.x=0;p.vel.z=0;}}
     if (w.link_flags&64)!=0 {p.face=w.link_yaw-walk.PI;}
@@ -82,12 +87,12 @@ eg_step_advance :: (p0: walk.Player, w: EgMoveWorld, bodies: [] f32, walls: [] f
   }
   if (w.link_flags & 512) != 0 {
     profile := link_collision.collision_profile_lookup("everglade");
-    world := walk.World.{bodies = bodies, walls = walls, floors = floors, collision = profile.profile};
+    world := walk.World.{bodies = bodies, walls = walls, floors = floors, hulls = hulls, collision = profile.profile};
     // Stay within the realm's admitted maximum travel per fixed collision step.
     world.locomotion.run_speed = 9.2;
     return walk.advance_in(world, p, frame);
   }
-  return walk.walk_advance_in_realm(p, frame, bodies, walls, floors, "everglade");
+  return walk.walk_advance_among_hulls(p, frame, bodies, walls, floors, hulls, "everglade");
 }
 // The wire's CARRY (seconds, a tenth of a millisecond: the server's leftover cut down to its tenth) as
 // the controller's leftover, nanoseconds. The room's 1/30 s step leaves the 1/64 s controller one of
@@ -373,7 +378,24 @@ eg_step_motion_intent :: (input:EgMoveIn,w:EgMoveWorld)->EgMotionIntent #export_
 }
 
 
-// First aid must reach past the same capsule bodies that stop the player.
+// First aid must reach past the same capsule bodies and hulls that stop the player: a hull stops the
+// line when some part of it is inside every one of the hull's faces.
+eg_contact_clear_among :: (bodies:[] f32,hulls:[] f32,fx:f32,fy:f32,fz:f32,tx:f32,ty:f32,tz:f32)->bool #export_c #effects(all) {
+  if !eg_contact_clear(bodies,fx,fy,fz,tx,ty,tz) { return false; }
+  from:=walk.v3(fx,fy+0.8,fz); along:=walk.v3(tx-fx,ty-fy,tz-fz); at:=0;
+  while at<hulls.count {
+    k:=hull_query.query_hull(hulls,at); if !k.ok { break; } at=k.next;
+    t0:=0.0f32; t1:=1.0f32;
+    for i:0..<k.faces {
+      o:=k.at+hull_query.QUERY_HULL_HEAD+i*hull_query.QUERY_HULL_FACE;
+      a:=hulls[o]*from.x+hulls[o+1]*from.y+hulls[o+2]*from.z-hulls[o+3]; b:=hulls[o]*along.x+hulls[o+1]*along.y+hulls[o+2]*along.z;
+      if abs(b)<0.000001 { if a>0 { t0=2; } continue; }
+      t:= -a/b; if b<0 { if t>t0 { t0=t; } } else { if t<t1 { t1=t; } }
+    }
+    if t0<=t1 { return false; }
+  }
+  return true;
+}
 eg_contact_clear :: (bodies:[] f32,fx:f32,fy:f32,fz:f32,tx:f32,ty:f32,tz:f32)->bool #export_c #effects(all) {
   from:=walk.v3(fx,fy+0.8,fz);
   to:=walk.v3(tx,ty+0.8,tz);
@@ -388,6 +410,16 @@ eg_contact_clear :: (bodies:[] f32,fx:f32,fy:f32,fz:f32,tx:f32,ty:f32,tz:f32)->b
   return true;
 }
 
+#test "Everglade II first aid contact stops at a rock's hull, and goes over a low one" {
+  h:[hull_query.QUERY_HULL_HEAD+6*hull_query.QUERY_HULL_FACE] f32; e:=hull_query.query_test_wedge(h[..],0,0); #assert e==h.count;
+  none:[1] f32;
+  #assert !eg_contact_clear_among(none[0..<0],h[..],-2,-0.5,0,2,-0.5,0);     // through it at 0.3 m
+  #assert eg_contact_clear_among(none[0..<0],h[..],-2,-0.5,1.5,2,-0.5,1.5);  // past it
+  #assert eg_contact_clear_among(none[0..<0],h[..],-2,0.2,0,2,0.2,0);        // over it, 1 m up
+  #assert !eg_contact_clear_among(none[0..<0],h[..],-2,-0.5,0,0,-0.5,0);     // to its middle
+  trunk:=[7]f32.[0,0.3,0,0,1.6,0,0.25];
+  #assert !eg_contact_clear_among(trunk[..],h[0..<0],-0.6,0,0,0.6,0,0);
+}
 #test "Everglade II first aid contact stops at trunks and rocks" {
   trunk:=[7]f32.[0,0.3,0,0,1.6,0,0.25];
   #assert !eg_contact_clear(trunk[..],-0.6,0,0,0.6,0,0);

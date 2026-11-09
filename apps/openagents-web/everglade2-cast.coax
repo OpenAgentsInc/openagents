@@ -500,6 +500,6 @@ e2k_familiar_heal_target :: (s:[]E2)->int {
 }
 e2k_familiar_orders_box :: (s:[]E2)->[4]f32 {
   r:=e2k_familiar_box(s); gap:=24*s[0].k;
-  half:=hi((r[2]-r[0])/2,24*f32(e2k_familiar_orders(s))*s[0].k); mid:=(r[0]+r[2])/2;
+  wide:=(r[2]-r[0])/2; orders:=24*f32(e2k_familiar_orders(s))*s[0].k; half:=ifx wide>orders then wide else orders; mid:=(r[0]+r[2])/2;
   return [4]f32.[mid-half,r[1]-gap,mid+half,r[3]-gap];
 }
