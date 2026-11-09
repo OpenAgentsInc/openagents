@@ -1,0 +1,99 @@
+// Everglade's feel table (docs/verse/action-pipeline.md, GitHub #13072): every class ability on every
+// bar at every level, and every monster action Everglade fields, declares its animation, its effect,
+// its sound and how the body moves (aethyr/action/deed.coax DeedFeel). A realm plays an action only
+// once its rules accept it (deed_answer), and only what its feel declares (deed_show); the check below
+// fails when any usable action lacks any of the four.
+//
+// The animation is a role (XF_ANIM_*): each realm turns it into its own clip (cast-pose.coax
+// cp_feel_clip for Everglade II and Experimental). The effect and the sound are class-look.coax's and
+// class-kit.coax's, so what a feel declares is what plays.
+//
+// Game-wide: Everglade II (everglade2-cast.coax) and Everglade Experimental (experimental-combat.coax)
+// load it; zones only wire it in.
+//   coax/bin/coax test apps/openagents-web/class-feel.coax
+#load "class-look.coax";
+#load "../../aethyr/rules/srd/condition-bearing.coax";
+
+// The animation roles.
+XF_ANIM_BLOW :: 0;     // a weapon blow, a fist, a touch spell
+XF_ANIM_CAST :: 1;     // a spell or feature at someone or somewhere
+XF_ANIM_SHOOT :: 2;    // a bow's loose
+XF_ANIM_SELF :: 3;     // a spell or feature on yourself
+XF_ANIM_RUN :: 4;      // a burst of movement: Dash, Cunning Action, Step of the Wind
+XF_ANIM_BITE :: 5;     // a beast's bite
+XF_ANIMS :: 6;
+
+// Whether ability a of class klass is a burst of movement.
+xf_moves :: (a: FbAb) -> bool { return a.kind == FB_DASH || a.kind == FB_CDASH || a.kind == FB_WIND; }
+
+// Ability a's feel for class klass.
+xf_feel :: (klass: int, a: FbAb) -> DeedFeel {
+  f: DeedFeel;
+  m := xc_aim_for(a, xk_weapon(klass));
+  // a Ranger's Attack is the Longbow (docs/verse/bow-combat.md): the kit says so, not its melee weapon
+  shoot := a.kind == FB_SHOOT || (a.kind == FB_ATTACK && (m.kind == XC_AIM_BOLT || xc_kit(klass) == XC_KIT_BOW));
+  if xf_moves(a) { f.anim = XF_ANIM_RUN; f.move = DeedMove.dash; }
+  else if shoot { f.anim = XF_ANIM_SHOOT; f.move = DeedMove.plant; }
+  else if m.kind == XC_AIM_MELEE { f.anim = XF_ANIM_BLOW; f.move = DeedMove.lunge; }
+  else if a.kind == FB_GRAPPLE || a.kind == FB_SHOVE { f.anim = XF_ANIM_BLOW; f.move = DeedMove.step; }
+  else if m.kind == XC_AIM_SELF { f.anim = XF_ANIM_SELF; f.move = DeedMove.still; }
+  else { f.anim = XF_ANIM_CAST; f.move = DeedMove.plant; }
+  f.fx = ifx shoot then FXR_ARROW else xc_look_of(a, 0, 0, 0, 0, fxp_v(0, 1, 5)).recipe;
+  snd := xc_sound(a, klass);
+  f.sound = ifx shoot then "bow-release" else ifx snd.start.count > 0 then snd.start else snd.layer;
+  return f;
+}
+
+// The monster actions Everglade fields: Everglade II's wolves, goblins and path guard
+// (everglade2-monsters.coax, everglade2-guard.coax) and Experimental's dungeon (verse/experimental-hostiles.coax).
+XF_MON_WOLF_BITE :: 0; XF_MON_GOBLIN_BLADE :: 1; XF_MON_GOBLIN_SHOT :: 2; XF_MON_GUARD_BLOW :: 3;
+XF_MON_IMP :: 4; XF_MON_GREMLIN :: 5; XF_MON_BRUTE :: 6; XF_MON_FIEND :: 7; XF_MON_BOSS :: 8;
+XF_MONS :: 9;
+xf_monster_feel :: (m: int) -> DeedFeel {
+  if m == XF_MON_WOLF_BITE { return DeedFeel.{anim = XF_ANIM_BITE, fx = FXR_HIT, sound = "swing-heavy", move = DeedMove.lunge}; }
+  if m == XF_MON_GOBLIN_SHOT { return DeedFeel.{anim = XF_ANIM_SHOOT, fx = FXR_SHAFT, sound = "bow-release", move = DeedMove.plant}; }
+  if m == XF_MON_GUARD_BLOW || m == XF_MON_BRUTE || m == XF_MON_BOSS { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_HIT, sound = "swing-heavy", move = DeedMove.lunge}; }
+  if m == XF_MON_FIEND { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_FIEND, sound = "swing-heavy", move = DeedMove.lunge}; }
+  if m >= 0 && m < XF_MONS { return DeedFeel.{anim = XF_ANIM_BLOW, fx = FXR_HIT, sound = "swing", move = DeedMove.lunge}; }
+  return DeedFeel.{};
+}
+
+#test "every class ability on every bar at every level declares its animation, effect, sound and movement" #steps 2000000000 {
+  bad := 0; seen := 0;
+  for c: 0..<FB_CL_N {
+    for level: 1..<XK_LEVELS + 1 {
+      bar: [XC_SLOTS] FbAb; n := xk_bar_at(c, level, bar[..]);
+      #assert n > 0;
+      for i: 0..<n {
+        seen += 1;
+        if deed_feel_missing(xf_feel(c, bar[i])) != 0 { bad += 1; }
+      }
+    }
+    // the catalog too: what a page plays for another's cast
+    cat: [XC_SLOTS] FbAb; m := xk_catalog(c, cat[..]);
+    for i: 0..<m { if deed_feel_missing(xf_feel(c, cat[i])) != 0 { bad += 1; } }
+  }
+  #assert seen > 0 && bad == 0;
+}
+
+#test "every monster action Everglade fields declares its feel" {
+  for m: 0..<XF_MONS { #assert deed_feel_ok(xf_monster_feel(m)); }
+  #assert !deed_feel_ok(xf_monster_feel(XF_MONS));
+}
+
+#test "feel: a blow lunges, a bow plants and looses, Dash runs, a heal stands still" {
+  // the Fighter's Attack: a greatsword blow
+  f := xf_feel(FB_CL_FIGHTER, xc_attack());
+  #assert f.anim == XF_ANIM_BLOW && f.move == DeedMove.lunge && f.sound == "swing-heavy";
+  // the Ranger's Attack: the Longbow
+  r := xf_feel(FB_CL_RANGER, xc_attack());
+  #assert r.anim == XF_ANIM_SHOOT && r.move == DeedMove.plant && r.fx == FXR_ARROW && r.sound == "bow-release";
+  d := xf_feel(FB_CL_ROGUE, fb_feature(FB_DASH, "Dash", "dash"));
+  #assert d.anim == XF_ANIM_RUN && d.move == DeedMove.dash && d.fx == FXR_DUST && d.sound == "dash";
+  c := xf_feel(FB_CL_ROGUE, fb_feature(FB_CDASH, "Cunning Action", "cunning-action"));
+  #assert c.move == DeedMove.dash && c.fx == FXR_AFTERIMAGE;
+  h := xf_feel(FB_CL_CLERIC, fb_spell(SP_HEALING_WORD, 1, FB_ALLY));
+  #assert h.anim == XF_ANIM_SELF && h.move == DeedMove.still && h.fx == FXR_HEAL && h.sound == "heal";
+  b := xf_feel(FB_CL_WIZARD, fb_spell(SP_FIRE_BOLT, 0, FB_FOE));
+  #assert b.anim == XF_ANIM_CAST && b.move == DeedMove.plant && b.fx == FXR_FIREBOLT && b.sound == "fire-cast";
+}

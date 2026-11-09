@@ -93,6 +93,11 @@ xc_look_of :: (a: FbAb, px: f32, py: f32, pz: f32, face: f32, at: FxV) -> XcLook
   else if a.kind == FB_LAY { r = FXR_LAY; to = me; }
   else if a.kind == FB_INNATE { r = FXR_ARCANE; to = me; }
   else if a.name == "Sneak Attack" { r = FXR_SHADOW_SLASH; }
+  // a burst of movement shows where it starts (#13072: Dash plays its feel, never nothing)
+  else if a.kind == FB_DASH { r = FXR_DUST; to = fxp_v(px, py + 0.2, pz); }
+  else if a.kind == FB_CDASH { r = FXR_AFTERIMAGE; to = me; }
+  else if a.kind == FB_WIND || a.kind == FB_PATIENT { r = FXR_WIND; to = me; reach = ifx a.kind == FB_WIND then 2.0f32 else 1.0f32; }
+  else if a.kind == FB_AIM { r = FXR_RETICLE; }
   return XcLook.{recipe = r, from = hand, to = to, col = col, reach = reach, glimmer = a.kind == FB_SPELL && a.sp == SP_GUIDING_BOLT};
 }
 // Look l started at `now` into p, from `seed` (the wire's for another's cast, so every page draws it

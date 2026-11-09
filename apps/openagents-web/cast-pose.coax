@@ -14,6 +14,14 @@ cp_blow_clip :: (kit: int, held: bool) -> int {
 }
 // A cast's clip: a blow's (cp_blow_clip) or a spell's.
 cp_cast_clip :: (kit: int, melee: bool, held: bool) -> int { return ifx melee then cp_blow_clip(kit, held) else figs.BD_SPELL; }
+// A feel's animation role (class-feel.coax XF_ANIM_*) as this body's clip (#13072): a blow's, a cast's
+// for a cast, a shot or a spell on yourself, the run for a burst of movement. -1 for no role.
+cp_feel_clip :: (role: int, kit: int, held: bool) -> int {
+  if role == XF_ANIM_BLOW || role == XF_ANIM_BITE { return cp_blow_clip(kit, held); }
+  if role == XF_ANIM_CAST || role == XF_ANIM_SHOOT || role == XF_ANIM_SELF { return figs.BD_SPELL; }
+  if role == XF_ANIM_RUN { return figs.BD_RUN; }
+  return -1;
+}
 // The bow's aim pose over a0: `aim` how far the aim has come in (bow.bow_aim), `draw` how far the
 // string is back, `nocked` an arrow still on it, `loose_age` seconds since the last loose.
 cp_bow_layer :: (a0: figs.BdAnim, aim: f32, draw: f32, nocked: bool, loose_age: f32, clock: f32) -> figs.BdAnim {
@@ -29,4 +37,8 @@ cp_bow_layer :: (a0: figs.BdAnim, aim: f32, draw: f32, nocked: bool, loose_age: 
   idle: figs.BdAnim; idle.clip = figs.BD_IDLE;
   #assert cp_bow_layer(idle, 0, 0, true, 5, 1).clip == figs.BD_IDLE;
   a := cp_bow_layer(idle, 1, 0.5, true, 5, 1); #assert a.clip == figs.BD_BOW && a.prev == figs.BD_IDLE;
+}
+#test "cast pose: every feel role has a clip on every kit" {
+  for role: 0..<XF_ANIMS { for kit: -1..<cc.CC_KITS { #assert cp_feel_clip(role, kit, true) >= 0 && cp_feel_clip(role, kit, false) >= 0; } }
+  #assert cp_feel_clip(XF_ANIM_CAST, -1, false) == figs.BD_SPELL && cp_feel_clip(XF_ANIM_RUN, -1, false) == figs.BD_RUN && cp_feel_clip(XF_ANIMS, -1, false) == -1;
 }
