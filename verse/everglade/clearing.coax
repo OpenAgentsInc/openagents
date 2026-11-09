@@ -1,0 +1,134 @@
+// Everglade's clearings and streams (GitHub #13093): where open meadow and running water lie in a
+// zone's land, as pure functions of position. A zone places a Clearing (a city's site, a druid's open
+// field) or a Stream and asks these in its height, its woods and its walk; the CPU and the shaders
+// read the same functions, so the drawn ground, the planting and the walk agree. Nothing here knows a
+// zone's own land: a zone passes its ground's height and the level it wants.
+//
+// - A clearing is a round meadow, its edge ragged (the radius wanders with the bearing), open inside
+//   and closing over its edge band. clearing_floor pulls the ground level inside it and back to the
+//   zone's own over `slope` metres past its radius, so it is buildable: wide and level, no trees.
+//   clearing_ring is the band just outside its edge, where a zone stands a ring of trees.
+// - A stream is a winding channel along z, from z_north to z_south: stream_x its middle,
+//   stream_dist the metres across to it (round at its two ends), stream_bed the ground with its
+//   channel and banks cut in, and stream_keep where trees and rocks may stand (0 on the water and its
+//   banks). The water's own body, its look and its swimmers are verse/everglade/river.coax's.
+//   coax/bin/coax test --library verse/everglade/clearing.coax
+
+Clearing :: struct {
+  cx: f32; cz: f32;   // its middle
+  radius: f32;        // its mean open radius (m)
+  edge: f32;          // the edge band: open to edge * 0.75 inside the ragged radius, closed edge * 0.25 past it
+  rag: f32;           // how far the radius wanders with the bearing, a share of it (0 a true circle)
+  slope: f32;         // metres past the radius over which clearing_floor gives the ground back
+  ring: f32;          // the tree ring's depth past the edge (clearing_ring)
+}
+Stream :: struct {
+  x: f32;             // its middle's mean x
+  z_north: f32; z_south: f32;   // where it runs (z_north > z_south)
+  amp: f32; wave: f32; phase: f32;   // its winding: x + amp sin(z wave + phase)
+  half: f32;          // the water's half width (m)
+  bank: f32;          // the bank's width past the water, open ground
+  vale: f32;          // and the slope past the bank back to the zone's ground
+  depth: f32;         // the bed's depth under the level at the middle
+}
+
+#test "a clearing is open inside, closed outside, its edge ragged and continuous" {
+  c := Clearing.{cx = 10, cz = -40, radius = 30, edge = 8, rag = 0.3, slope = 20, ring = 12};
+  #assert clearing_open(c, 10, -40) == 1 && clearing_open(c, 10 + 15, -40 + 10) == 1;
+  for i: 0..<64 {
+    a := f32(i) * 0.0982;
+    #assert clearing_open(c, 10 + cos(a) * 19, -40 + sin(a) * 19) == 1;   // inside the smallest ragged radius, less the band
+    #assert clearing_open(c, 10 + cos(a) * 42, -40 + sin(a) * 42) == 0;   // past the largest, plus the band
+    // continuous: a step of 5 cm never changes it by more than a few hundredths
+    for k: 0..<40 { r := 18 + f32(k) * 0.6; d := clearing_open(c, 10 + cos(a) * r, -40 + sin(a) * r) - clearing_open(c, 10 + cos(a) * (r + 0.05), -40 + sin(a) * (r + 0.05)); #assert abs(d) < 0.03; }
+  }
+  round := Clearing.{cx = 0, cz = 0, radius = 20, edge = 4, rag = 0, slope = 10, ring = 6};
+  #assert clearing_open(round, 16.5, 0) == 1 && clearing_open(round, 0, -21.5) == 0;
+}
+#test "the floor is level inside the clearing and gives the ground back past its slope" {
+  c := Clearing.{cx = 0, cz = 0, radius = 30, edge = 8, rag = 0.3, slope = 20, ring = 12};
+  for i: 0..<32 {
+    a := f32(i) * 0.196;
+    #assert clearing_floor(c, cos(a) * 18, sin(a) * 18, 7.5, -2) == -2;
+    #assert clearing_floor(c, cos(a) * 51, sin(a) * 51, 7.5, -2) == 7.5;
+    // never steeper than one in two between
+    for k: 0..<60 { r := 18 + f32(k) * 0.55; a0 := clearing_floor(c, cos(a) * r, sin(a) * r, 7.5, -2); a1 := clearing_floor(c, cos(a) * (r + 0.5), sin(a) * (r + 0.5), 7.5, -2); #assert abs(a1 - a0) < 0.25; }
+  }
+}
+#test "the ring stands just outside the edge and nowhere inside" {
+  c := Clearing.{cx = 0, cz = 0, radius = 30, edge = 8, rag = 0.3, slope = 20, ring = 12};
+  for i: 0..<32 { a := f32(i) * 0.196;
+    #assert clearing_ring(c, cos(a) * 18, sin(a) * 18) == 0 && clearing_ring(c, cos(a) * 70, sin(a) * 70) == 0;
+    #assert clearing_ring(c, cos(a) * 18, sin(a) * 18) <= 1 - clearing_open(c, cos(a) * 18, sin(a) * 18); }
+  e := clearing_edge(c, 40, 0); #assert clearing_ring(c, e + 4, 0) > 0.9;
+}
+#test "a stream runs its course, cuts a channel under the level and keeps its banks open" {
+  s := Stream.{x = 80, z_north = -40, z_south = -220, amp = 6, wave = 0.025, phase = 0.4, half = 2.5, bank = 4, vale = 14, depth = 1.1};
+  for i: 0..<36 {
+    z := -45 - f32(i) * 5; x := stream_x(s, z);
+    #assert stream_dist(s, x, z) < 0.001 && stream_keep(s, x, z) == 0 && stream_keep(s, x + 2.5 + 4, z) == 0 && stream_keep(s, x + 30, z) == 1;
+    #assert abs(stream_bed(s, x, z, 9, 1) - (1 - 1.1)) < 0.0001;               // the bed under the middle
+    #assert stream_bed(s, x + 2.4, z, 9, 1) < 1;                               // under water to the brink
+    #assert stream_bed(s, x + 4, z, 9, 1) > 1 && stream_bed(s, x + 4, z, 9, 1) < 1.5;   // the bank, a little above it
+    #assert stream_bed(s, x + 30, z, 9, 1) == 9;                               // the zone's own ground past the vale
+  }
+  // round at its ends: nothing past them
+  #assert stream_dist(s, stream_x(s, -40), -10) > 29 && stream_bed(s, stream_x(s, -220), -260, 9, 1) == 9;
+}
+
+clr_ramp :: (a: f32, b: f32, x: f32) -> f32 { t := (x - a) / (b - a); t = ifx t < 0 then 0 else ifx t > 1 then 1 else t; return t * t * (3 - 2 * t); }
+// The glade's hash (verse/character-glade.coax cg_hash) and value noise over whole-number cells, so a
+// zone that already ragged its clearing with them keeps the same edge.
+clr_hash :: (a: f32, b: f32) -> f32 { v := sin(a * 127.1 + b * 311.7) * 43758.5453; return v - floor(v); }
+clr_noise :: (x: f32, z: f32) -> f32 {
+  i := floor(x); j := floor(z); fx := x - i; fz := z - j; fx = fx * fx * (3 - 2 * fx); fz = fz * fz * (3 - 2 * fz);
+  a := clr_hash(i, j); b := clr_hash(i + 1, j); c := clr_hash(i, j + 1); d := clr_hash(i + 1, j + 1);
+  return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
+}
+
+// ---- the clearing
+clearing_r :: (c: Clearing, x: f32, z: f32) -> f32 { dx := x - c.cx; dz := z - c.cz; return sqrt(dx * dx + dz * dz); }
+// The ragged radius along the bearing to (x, z).
+clearing_edge :: (c: Clearing, x: f32, z: f32) -> f32 {
+  dx := x - c.cx; dz := z - c.cz; k := 1 / (sqrt(dx * dx + dz * dz) + 0.001);
+  return c.radius * (1 - c.rag * 0.5 + c.rag * clr_noise(dx * k * 2.5 + 9, dz * k * 2.5 + 3));
+}
+// 1 on the clearing's open meadow, 0 past its edge.
+clearing_open :: (c: Clearing, x: f32, z: f32) -> f32 {
+  e := clearing_edge(c, x, z);
+  return 1 - clr_ramp(e - c.edge * 0.75, e + c.edge * 0.25, clearing_r(c, x, z));
+}
+// The ground at (x, z) with the clearing levelled into it: `level` everywhere it may be open (inside
+// its smallest ragged radius, less the band), the zone's `ground` again `slope` metres past its radius.
+clearing_floor :: (c: Clearing, x: f32, z: f32, ground: f32, level: f32) -> f32 {
+  inner := c.radius * (1 - c.rag * 0.5) - c.edge * 0.75;
+  w := clr_ramp(inner, c.radius + c.slope, clearing_r(c, x, z));
+  return level + (ground - level) * w;
+}
+// The tree ring: 1 in the band just past the ragged edge, falling to 0 `ring` metres out.
+clearing_ring :: (c: Clearing, x: f32, z: f32) -> f32 {
+  e := clearing_edge(c, x, z); r := clearing_r(c, x, z);
+  return clr_ramp(e - c.edge * 0.25, e + c.edge * 0.25, r) * (1 - clr_ramp(e + c.ring * 0.6, e + c.ring, r));
+}
+
+// ---- the stream
+stream_x :: (s: Stream, z: f32) -> f32 { return s.x + s.amp * sin(z * s.wave + s.phase); }
+// Metres from the stream's middle line: across it (as its winding slants), and round past its ends.
+stream_dist :: (s: Stream, x: f32, z: f32) -> f32 {
+  zc := ifx z > s.z_north then s.z_north else ifx z < s.z_south then s.z_south else z;
+  slope := s.amp * s.wave * cos(zc * s.wave + s.phase);
+  across := abs(x - stream_x(s, zc)) / sqrt(1 + slope * slope); along := z - zc;
+  return sqrt(across * across + along * along);
+}
+// The ground with the channel cut in: the bed `depth` under `level` at the middle, rising to `level`
+// at the water's edge, a low bank 0.35 m over it, then the zone's `ground` across the vale.
+stream_bed :: (s: Stream, x: f32, z: f32, ground: f32, level: f32) -> f32 {
+  d := stream_dist(s, x, z);
+  if d >= s.half + s.bank + s.vale { return ground; }
+  bank := level + 0.35;
+  if d < s.half { t := d / s.half; return level - s.depth * (1 - t * t); }
+  near := level + (bank - level) * clr_ramp(s.half, s.half + s.bank * 0.5, d);
+  return near + (ground - near) * clr_ramp(s.half + s.bank, s.half + s.bank + s.vale, d);
+}
+// Where trees and rocks may stand: 0 on the water and its banks, 1 from 3 m past them.
+stream_keep :: (s: Stream, x: f32, z: f32) -> f32 { return clr_ramp(s.half + s.bank, s.half + s.bank + 3, stream_dist(s, x, z)); }

@@ -5,7 +5,9 @@ rebuilt from scratch, one piece at a time, apart from Everglade v1 (`/worlds/eve
 stays as it is.
 
 This piece is Character Create's glade, one winding path out of it through dense woods, and a
-clearing at the path's end. It has no town, gate, walls, people, raid, or HUD. You walk the
+clearing at the path's end. Beside the path, a short walk from the glade, the woods open onto the
+city's clearing, where the city will be built, with a brook along its east edge (#13093). It has
+no town, gate, walls, people, raid, or HUD yet. You walk the
 character you saved in Character Create, on Everglade's controller and follow camera.
 
 ## Walk it
@@ -42,9 +44,22 @@ share:
   (`e2_road_x`). Its grade never climbs steeper than one in five.
 - The valley walls rise into wooded ridges away from the path.
 - `e2_forest` is how thick the woods stand: thick on both sides of the path and crowding it, none
-  in the glade or the clearing. The woods close round the glade on every side, from 17 m out of
-  its middle (`e2_wooded`), so the only open ground is the glade and the clearing.
-- The clearing is a wide bowl, about 68 m across, at the path's end (`e2_clearing`).
+  in the glade or the clearings. The woods close round the glade on every side, from 17 m out of
+  its middle (`e2_wooded`), so the only open ground is the glade and the two clearings.
+- The clearing at the path's end is a wide bowl, about 68 m across (`e2_end`).
+- The city's clearing (`e2_city`, #13093) is where the city will be built: a level meadow about
+  108 m across, east of the path from about z = -60 to z = -170. Its floor is the path's level
+  beside it, so the path runs onto it with no step, and no tree stands on it. Walking south from
+  the glade, the woods on your left open onto it after about 70 m.
+- A brook (`e2_brook`) runs along the city clearing's east edge, out of the woods to the north and
+  back into them to the south. It is 4.4 m wide and 0.55 m deep, shallow enough to wade, with open
+  banks you may walk along (`e2_by_brook`).
+- Both clearings and the brook are placed with Everglade's shared clearing module
+  (`verse/everglade/clearing.coax`): `clearing_open` (the ragged open ground), `clearing_floor`
+  (the ground levelled in), `clearing_ring` (the band of trees past the edge), and `stream_x`,
+  `stream_dist`, `stream_bed` and `stream_keep` (the channel, its banks, and where trees may
+  stand). `forest.coax` only says where they lie. `e2_clearing` is the larger of the two
+  clearings' open ground, so the planting, the grass, the walk and the camp follow both.
 - `e2_autumn` colours the tree crowns. `e2_gold` colours the ground and grass: the glade's own
   gold inside it, and a gentle share outside it, so the woods' floor and the clearing stay
   green.
@@ -61,8 +76,9 @@ for bit.
 - The glade: tile 0, the pack's old grid exactly (100 cells of 0.65 m from (-32.5, -60) to
   (32.5, 5), each split on the same diagonal as the pack's triangles).
 - The path: 65 m tiles in rows south of the glade. Rows 0 to 4 are 100 cells of 0.65 m; rows 5
-  to 7, round the clearing, are 50 cells of 1.3 m. A cell is solid where the old ribbon ran, a
-  hole elsewhere, and a tile with no solid cell is left out: 21 tiles in all.
+  to 7, round the clearing, are 50 cells of 1.3 m. A cell is solid where the old ribbon ran, on
+  the city's clearing and on the brook's banks beside it, a
+  hole elsewhere, and a tile with no solid cell is left out: 24 tiles in all.
 - Seams: neighbours of one spacing repeat their shared edge exactly. Where a 0.65 m row meets a
   1.3 m row (z -385), the finer edge is stitched onto the coarser one (LOD profile v1), so no
   edge cracks. Every tile draws at its stored level: nothing swaps as you walk.

@@ -296,6 +296,10 @@ e2_query_at :: (t: string) -> int {
   for i: 0..<64 { a := f32(i) * 0.0982; r := f32(E2_CLEAR_R) * 1.2; x := e2_clear_x() + cos(a) * r; z := E2_CLEAR_Z + sin(a) * r;
     if e2_may_stand(x, z) || e2_road_dist(x, z) < f32(E2_WALK) + 1 { continue; }
     #assert e2_forest(x, z) > 0.7; }
+  // and round the city's clearing, past its brook's banks (#13093)
+  for i: 0..<64 { a := f32(i) * 0.0982; r := f32(E2_CITY_R) * 1.25; x := f32(E2_CITY_X) + cos(a) * r; z := f32(E2_CITY_Z) + sin(a) * r;
+    if e2_may_stand(x, z) || e2_road_dist(x, z) < f32(E2_WALK) + 1 || stream_dist(e2_brook(), x, z) < 10 { continue; }
+    #assert e2_forest(x, z) > 0.7; }
 }
 // Where the step leaves you, from where you stood (everglade2-move.coax e2m_keep).
 e2_keep :: (s: [] E2, x: f32, z: f32) -> figs.Point #export_c #effects(all) { k := e2m_keep(x, z, s[0].you_x, s[0].you_z); return figs.v3(k.x, 0, k.z); }

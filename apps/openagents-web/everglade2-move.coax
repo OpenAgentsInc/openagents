@@ -20,12 +20,13 @@ e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running t
 // Where a new seat stands: the glade's middle, facing the studio's camera (everglade2.coax e2_start):
 // E2_SPAWN_X, E2_SPAWN_Z and E2_SPAWN_FACE are the map's named spawn (verse/everglade2/points.coax, #13078).
 
-// ---- where you may stand: the glade, the path's corridor, the clearing
+// ---- where you may stand: the glade, the path's corridor, the clearings and the brook's banks
 e2_may_stand :: (x: f32, z: f32) -> bool #export_c #effects(all) {
   // the glade, out to the thick woods round it (forest.coax e2_wooded: thick from 24 m)
   if x * x + z * z < f32(E2_GLADE_WALK) * f32(E2_GLADE_WALK) { return true; }
   if z <= -20 && z > E2_CLEAR_Z - E2_CLEAR_R && e2_road_dist(x, z) < f32(E2_WALK) { return true; }
-  return e2_clearing(x, z) > 0.15;
+  // the clearings, and the brook's banks by the city's (forest.coax e2_by_brook)
+  return e2_clearing(x, z) > 0.15 || e2_by_brook(x, z);
 }
 // Where a step that ended at (x, z) from (fx, fz) may leave you: there, or slid along the edge it
 // crossed, or back where it started.
@@ -240,6 +241,8 @@ e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE)
 #test "you may stand in the glade, along the path and in the clearing, not deep in the woods" {
   #assert e2_may_stand(0, 0) && e2_may_stand(-10, -20) && e2_may_stand(e2_road_x(-200), -200) && e2_may_stand(e2_clear_x(), E2_CLEAR_Z);
   #assert !e2_may_stand(e2_road_x(-200) + 40, -200) && !e2_may_stand(0, 40) && !e2_may_stand(150, -300);
+  // the city's clearing and the brook beside it (#13093), not the woods past it
+  #assert e2_may_stand(f32(E2_CITY_X), f32(E2_CITY_Z)) && e2_may_stand(stream_x(e2_brook(), -110), -110) && !e2_may_stand(f32(E2_CITY_X) + 110, f32(E2_CITY_Z));
 }
 #test "a step past the edge slides along it, or stays where it started" {
   z := -200.0f32; x := e2_road_x(z);

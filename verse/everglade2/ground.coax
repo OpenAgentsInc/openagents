@@ -76,7 +76,7 @@ E2G_WEST :: -32.5;
 E2G_SOUTH :: -60.0;
 E2G_POINTS :: 10201;          // (E2G_CELLS + 1)^2: a tile's samples at most
 E2G_HOLES :: 10000;           // E2G_CELLS^2: its cells at most
-E2G_TILES :: 24;              // the glade's and the path's
+E2G_TILES :: 28;              // the glade's, the path's and the city clearing's
 E2G_ROWS :: 8;                // path rows south of the glade
 E2G_COL_LO :: -4; E2G_COL_HI :: 4; E2G_COLS :: 9;
 E2G_COARSE_ROW :: 5;          // rows from here (z below -385, round the clearing) are 1.3 m tiles
@@ -205,12 +205,17 @@ e2g_header :: (g: [] E2Ground, m: int, k: int) -> e2tt.TerrainTile {
 // The path's ground: the old ribbon's middle and half width (wider round the clearing).
 e2g_ribbon_x :: (z: f32) -> f32 { return e2_road_x(ifx z < E2_CLEAR_Z then E2_CLEAR_Z else z); }
 e2g_ribbon_half :: (z: f32) -> f32 { return ifx z < -410 then 48.0f32 else 26.0f32; }
-// Whether cell (i, j) of tile (m, k) has ground: all the glade's; the path's where the ribbon ran.
+// Whether cell (i, j) of tile (m, k) has ground: all the glade's; the path's where the ribbon ran;
+// the city's clearing and its brook's banks beside it (#13093).
 e2g_solid :: (m: int, k: int, i: int, j: int) -> bool {
   if k < 0 { return true; }
   s := e2g_step(k);
   cx := e2g_mid(f32(E2G_WEST), e2g_x0(m) + i * s, s); cz := e2g_mid(f32(E2G_SOUTH), e2g_z0(k) + j * s, s);
-  return cz <= f32(E2G_RIBBON_TOP) && cz >= f32(E2G_RIBBON_END) && abs(cx - e2g_ribbon_x(cz)) <= e2g_ribbon_half(cz);
+  if cz > f32(E2G_RIBBON_TOP) { return false; }
+  // the walkable ground only: the clearing to 4 m past its ragged edge, the brook's water and banks
+  if e2_near_city(cx, cz, 4) && clearing_r(e2_city(), cx, cz) < clearing_edge(e2_city(), cx, cz) + 4 { return true; }
+  if e2_near_brook(cx, cz) && abs(cz - f32(E2_CITY_Z)) < f32(E2_CITY_R) + 16 && stream_dist(e2_brook(), cx, cz) < 9 { return true; }
+  return cz >= f32(E2G_RIBBON_END) && abs(cx - e2g_ribbon_x(cz)) <= e2g_ribbon_half(cz);
 }
 // Whether sample (i, j) of an n-cell tile is live: on the tile's boundary, or a corner of a solid cell.
 e2g_live :: (holes: [] u8, n: int, i: int, j: int) -> bool {
