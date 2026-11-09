@@ -247,3 +247,8 @@ hw_stock_row :: (tier:int,name:string)->int {for i:0..<HW_STOCKS {if int(HW_STOC
  c:=hw_stock_row(HW_COTTAGE,"clay");s:=hw_stock_row(HW_COTTAGE,"straw");#assert hw_pile_left(c,4)==30 && hw_pile_left(s,4.5)<20 && hw_pile_left(c,5)==0;
  d:=hw_stock_row(HW_STONE,"dressed stones");#assert hw_pile_left(d,1)==300 && hw_pile_left(d,2)<300 && hw_pile_left(d,2)>0 && hw_pile_left(d,3)>0 && hw_pile_left(d,4)==0;   // the chimney takes the last
 }
+// The work each tier takes, in SRD workdays (spec section 6), and one workday in seconds of world
+// time (spec section 3, Time: 8 hours of work is 20 real minutes).
+HW_WORKDAY_S :: 1200.0f32;
+HW_WORK_DAYS :: [5]f32.[0.25,1,3,5,10];
+hw_work_s :: (tier:int)->f32 {return HW_WORK_DAYS[tier]*HW_WORKDAY_S;}

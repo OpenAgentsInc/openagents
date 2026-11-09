@@ -299,9 +299,17 @@ What the measures do, without adding warnings to the screen:
 
 ## 8. Building in a shared world
 
-- **Plots.** Everglade II's city clearing is divided into plots. You claim
-  one plot to start. Only you and the people you invite can build on it.
-  Monsters don't spawn inside claimed plots.
+- **Plots.** Everglade II's city clearing is divided into 16 plots in a 4
+  by 4 grid. Each plot is 10 m square, on a 12 m pitch, so a 2 m lane runs
+  between each pair of plots, and the whole grid is 46 m across. A 10 m
+  plot holds any tier, the stone cottage included, with room round it. The
+  grid sits in the middle of the clearing's open meadow, its corners within
+  34 m of the centre, clear of the edge, the path on the west and the brook
+  on the east. Plots are numbered 1 to 16, row by row from the north-west
+  corner. You claim one plot to start, and each plot holds one house at
+  first. Only you and the people you invite can build on it. Monsters don't
+  spawn inside claimed plots. The engine keeps the plots and their owners
+  (`aethyr/world/plots.coax`); the zone says where the grid is.
 - **Placing.** You choose a tier and see its outline on the ground, snapped
   to the plot and turned in quarter steps. The outline turns red over a
   stump, a rock, water or a slope too steep for the foundation.
@@ -422,8 +430,10 @@ Each phase lands on `main` with its checks, on the remote build hosts.
 2. **The workday.** Is 20 real minutes per SRD workday right for houses? A
    cottage then takes an hour, and a stone cottage three hours and twenty
    minutes.
-3. **Plots.** How many plots does the city clearing hold, and how big is
-   each one? One house per player at first?
+3. **Plots.** Decided on 2026-11-09: 16 plots in a 4 by 4 grid, each 10 m
+   square on a 12 m pitch, and one house per player at first (section 8).
+   The count reads well from the town shot's high camera and leaves room to
+   add rings of plots later.
 4. **Gathering.** Are sources shared, as written here, or instanced per
    player?
 5. **Fire.** Can other players set fire to your house, or only your own

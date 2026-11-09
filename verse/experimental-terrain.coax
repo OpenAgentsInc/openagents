@@ -5,6 +5,8 @@
 #load "experimental-dungeon.coax" as dungeon;
 #load "../aethyr/world/building.coax" as building;
 #load "../everglade/world/housewright.coax" as hw;
+#load "../everglade/world/town.coax" as town;
+#load "../aethyr/world/plots.coax" as plots;
 
 ExpSite :: struct {x:f32;z:f32;left:f32;right:f32;back:f32;front:f32;}
 EXP_SITES :: 30;
@@ -72,6 +74,19 @@ EXP_SHOWCASE_PITCH :: [5]f32.[7,7,6,7,8];                  // and how far apart 
 exp_showcase :: (tier:int,stage:int)->building.BuildingFrame {
  n:=hw.hw_stages(tier);z:=60.35+(f32(stage-1)-f32(n-1)*0.5)*EXP_SHOWCASE_PITCH[tier];
  return building.BuildingFrame.{x=EXP_SHOWCASE_ROW[tier],z=z,turn=3};
+}
+// The town's stand-in meadow (game: everglade/world/town.coax), until Everglade II's city clearing
+// draws build sites: the north-west corner of the meadow, west of the path, on flat ground. The
+// meadow has no 46 m square free, so the stand-in's plots are 7.6 m on an 8.6 m pitch (the spec's are
+// 10 on 12). To move the town into Everglade II, its zone calls town.town_grid(E2_CITY_X,
+// E2_CITY_Z), the clearing's centre (34, -114), and passes that grid to the town stages instead.
+exp_town :: ()->plots.PlotGrid {return town.town_grid_sized(-70,69.2,7.6,8.6);}
+#test "the town's stand-in plots lie on flat open meadow, clear of every site, the path and the ground's edge" {
+ g:=exp_town();o:[16]f32;
+ for i:0..<plots.pl_count(g) {c:=plots.pl_centre(g,i);h:=g.size*0.5;
+  for k:0..<9 {x:=c[0]+f32(k%3-1)*h;z:=c[1]+f32(k/3-1)*h;
+   #assert abs(exp_height(x,z)-exp_height(c[0],c[1]))<0.05 && abs(x)<88 && abs(z)<88 && abs(x-glade.cg_path_x(z))>4;
+   for j:0..<EXP_SITES {#assert exp_distance(exp_site(j),x,z)>4;}}}
 }
 #test "the showcase's houses stand apart on its level yard, every row in order from the bare site" {
  y:=exp_site(EXP_SHOWCASE_SITE);

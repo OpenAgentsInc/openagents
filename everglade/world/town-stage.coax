@@ -1,0 +1,128 @@
+// The town's stages (game), for Episode 293's town shots (docs/transcripts/293-show-notes.md):
+//   ?stage=city-empty  the empty plots at dawn, nobody there, from one fixed high camera
+//   ?stage=city-grows  the same camera while days pass and houses rise until the plots are a town;
+//                      its first and last frames are city-empty's framing and light
+//   ?stage=founder     a top-down view: the plot outlines draw on, one plot fills with its owner's
+//                      name, and the camera comes down to a player standing on it (plots are planned,
+//                      so the stage says so on screen)
+// A stage is a function of its clock, seconds from cam_track_clock (whole game steps), so a recorded
+// clip is the same every time. It takes the zone's plot grid: Everglade Experimental's stand-in
+// meadow now (verse/experimental-terrain.coax exp_town), Everglade II's city clearing later. The
+// page draws what it hands back: each plot's house at its progress, the camera and the day, the
+// outlines, the name and the label.
+#module "everglade.townstage";
+#load "../../aethyr/world/plots.coax" as plots;
+#load "../../aethyr/world/building.coax" as building;
+#load "../../aethyr/cam/track.coax" as trk;
+#load "housewright.coax" as hw;
+#load "town.coax" as town;
+
+TS_NONE :: 0;
+TS_EMPTY :: 1;
+TS_GROWS :: 2;
+TS_FOUNDER :: 3;
+ts_named :: (name:string)->int {
+ if name=="city-empty" {return TS_EMPTY;}if name=="city-grows" {return TS_GROWS;}if name=="founder" {return TS_FOUNDER;}return TS_NONE;
+}
+
+TS_DAWN :: 0.27f32;        // the day the city shots open and close on (0.5 is noon)
+TS_DUSK :: 0.73f32;        // each day of the time-lapse sweeps the sun from dawn to here
+TS_GROWS_S :: 12.0f32;     // city-grows' length
+TS_HOLD_IN :: 1.0f32;      // it holds the empty plots this long
+TS_HOLD_OUT :: 1.5f32;     // and the finished town this long
+TS_DAYS :: 15.0f32;        // the workdays that pass between: every house is finished by then
+TS_FOUNDER_S :: 14.0f32;
+
+TownStage :: struct {kind:int;g:plots.PlotGrid;book:plots.PlotBook;track:trk.CamTrack;}
+
+// The fixed high camera over a grid: from past its north-west corner, looking south-east across it,
+// so the town stands in front of the meadow. Every distance scales with the grid.
+ts_city_rows :: (g:plots.PlotGrid)->[16]f32 {
+ e:=f32(g.n)*g.pitch;ex:=g.x-e*0.62;ey:=e*0.72;ez:=g.z+e*0.62;lx:=g.x+e*0.08;lz:=g.z-e*0.08;
+ return [16]f32.[0,ex,ey,ez,lx,0,lz,0, TS_GROWS_S,ex,ey,ez,lx,0,lz,0];
+}
+// The founder's camera: straight down over the grid (tilted a little, so up is north), holding while
+// the outlines draw on, then down onto the founder's plot.
+ts_founder_rows :: (g:plots.PlotGrid)->[32]f32 {
+ e:=f32(g.n)*g.pitch;p:=plots.pl_centre(g,town.TOWN_FOUNDER);h:=e*1.12;
+ return [32]f32.[0,g.x,h,g.z+e*0.1,g.x,0,g.z,0, 5.5,g.x,h,g.z+e*0.1,g.x,0,g.z,1, 10,p[0],g.size*1.5,p[1]+g.size*0.45,p[0],0.6,p[1],1, TS_FOUNDER_S,p[0],g.size*1.5,p[1]+g.size*0.45,p[0],0.6,p[1],1];
+}
+ts_load :: (kind:int,g:plots.PlotGrid)->TownStage {
+ s:TownStage;s.kind=kind;s.g=g;
+ if kind==TS_GROWS {s.book=town.town_book(g,0);}else {s.book=plots.pl_book(g);}
+ if kind==TS_FOUNDER {r:=ts_founder_rows(g);s.track=trk.cam_track_load(r[..],0.42,0);}
+ else {r:=ts_city_rows(g);s.track=trk.cam_track_load(r[..],TS_DAWN,0);}
+ return s;
+}
+ts_view :: (s:TownStage,t:f32)->trk.CamView {return trk.cam_track_at(s.track,t);}
+
+// city-grows' workdays at clip time t: held, then evenly to TS_DAYS, then held.
+ts_days :: (s:TownStage,t:f32)->f32 {
+ if s.kind!=TS_GROWS || t<=TS_HOLD_IN {return 0;}
+ run:=TS_GROWS_S-TS_HOLD_IN-TS_HOLD_OUT;if t>=TS_HOLD_IN+run {return TS_DAYS;}
+ return TS_DAYS*(t-TS_HOLD_IN)/run;
+}
+// The day the sky shows: city-empty's dawn, and in city-grows each workday sweeps the sun from dawn
+// to dusk (the nights are left out, so the light doesn't flicker), back at dawn on the last frame.
+ts_day :: (s:TownStage,t:f32)->f32 {
+ if s.kind==TS_FOUNDER {return trk.cam_track_day(s.track,t);}
+ d:=ts_days(s,t);f:=d-floor(d);
+ if d>=TS_DAYS {return TS_DAWN;}
+ return TS_DAWN+(TS_DUSK-TS_DAWN)*f;
+}
+// A plot's house at clip time t: its tier and progress (0 to its stages), or -1 for none.
+ts_progress :: (s:TownStage,id:int,t:f32)->f32 {
+ if s.kind!=TS_GROWS || !s.book.site[id].on {return -1;}
+ return plots.pl_progress(s.book.site[id],ts_days(s,t)*hw.HW_WORKDAY_S);
+}
+ts_frame :: (s:TownStage,id:int)->building.BuildingFrame {return town.town_frame(s.g,id);}
+ts_tier :: (s:TownStage,id:int)->int {return s.book.site[id].tier;}
+
+// The founder's outlines: plot id drawn this far round its edge at t (each starts a little after
+// the one before, row by row, and takes a second).
+ts_outline :: (s:TownStage,id:int,t:f32)->f32 {
+ if s.kind!=TS_FOUNDER {return 0;}
+ f:=t-0.4-f32(id)*0.15;return ifx f<0 then 0.0f32 else ifx f>1 then 1.0f32 else f;
+}
+// The founder's plot fills at 4 s: its fill's strength, and how many of its owner's letters show.
+TS_FILL_AT :: 4.0f32;
+ts_fill :: (s:TownStage,t:f32)->f32 {if s.kind!=TS_FOUNDER {return 0;}f:=(t-TS_FILL_AT)/0.6;return ifx f<0 then 0.0f32 else ifx f>1 then 1.0f32 else f;}
+ts_founder_plot :: ()->int {return town.TOWN_FOUNDER;}
+ts_founder_name :: ()->string {return town.TOWN_NAMES[town.TOWN_FOUNDER];}
+ts_name_letters :: (s:TownStage,t:f32)->int {
+ if s.kind!=TS_FOUNDER || t<TS_FILL_AT+0.2 {return 0;}n:=int((t-TS_FILL_AT-0.2)*24);m:=ts_founder_name().count;return ifx n>m then m else n;
+}
+// What the stage says on screen: plots aren't playable yet.
+ts_label :: (s:TownStage)->string {return ifx s.kind==TS_FOUNDER then "PLANNED" else "";}
+// Where the player stands (x, z, facing): on the founder's plot facing the camera; in the city shots,
+// nowhere in view (the zone picks a spot out of sight, such as inside the home).
+ts_player_on_plot :: (s:TownStage)->bool {return s.kind==TS_FOUNDER;}
+ts_player :: (s:TownStage)->[3]f32 {p:=plots.pl_centre(s.g,town.TOWN_FOUNDER);return [3]f32.[p[0],p[1]+1.2,0];}
+
+#test "the city stages share one fixed camera, and city-grows opens and closes on city-empty's framing and light" {
+ g:=town.town_grid(34,-114);e:=ts_load(TS_EMPTY,g);w:=ts_load(TS_GROWS,g);
+ #assert ts_named("city-empty")==TS_EMPTY && ts_named("city-grows")==TS_GROWS && ts_named("founder")==TS_FOUNDER && ts_named("house-hut")==TS_NONE;
+ a:=ts_view(e,0);for t:[4]f32.[0,3,6,TS_GROWS_S] {b:=ts_view(w,t);#assert b.ex==a.ex && b.ey==a.ey && b.ez==a.ez && b.lx==a.lx && b.ly==a.ly && b.lz==a.lz;}
+ #assert ts_day(w,0)==ts_day(e,0) && ts_day(w,TS_GROWS_S)==ts_day(e,5) && ts_day(e,0)==TS_DAWN;
+ // the camera is high and sees the whole grid in front of it
+ #assert a.ey>20 && a.ex<g.x && a.ez>g.z && a.lx>g.x && a.lz<g.z;
+ for i:0..<16 {#assert ts_progress(e,i,6)== -1 && ts_progress(w,i,0)==0 && ts_progress(w,i,TS_GROWS_S)==f32(hw.hw_stages(ts_tier(w,i)));}
+}
+#test "in city-grows houses rise one after another, small ones first, and the sun sweeps each day" {
+ g:=town.town_grid(0,0);w:=ts_load(TS_GROWS,g);
+ // the first house to start is a lean-to, the last to finish a stone cottage
+ first:= -1;for k:0..<1200 {t:=f32(k)*0.01;for i:0..<16 {if first<0 && ts_progress(w,i,t)>0 {first=i;}}}
+ #assert first>=0 && ts_tier(w,first)==hw.HW_LEANTO;
+ #assert ts_tier(w,12)==hw.HW_STONE && ts_progress(w,12,9.9)<5 && ts_progress(w,12,10.6)==5;
+ // progress never goes back, and the sun stays between dawn and dusk
+ for i:0..<16 {last:f32=0;for k:0..<241 {t:=f32(k)*0.05;p:=ts_progress(w,i,t);#assert p>=last;last=p;d:=ts_day(w,t);#assert d>=TS_DAWN && d<=TS_DUSK;}}
+ #assert ts_day(w,TS_HOLD_IN+0.3)>TS_DAWN;
+}
+#test "founder draws the outlines on, fills one plot with its owner's name, and says it's planned" {
+ g:=town.town_grid(0,0);f:=ts_load(TS_FOUNDER,g);
+ #assert ts_outline(f,0,0)==0 && ts_outline(f,15,3.0)<1 && ts_outline(f,15,3.7)==1 && ts_fill(f,3.9)==0 && ts_fill(f,5)==1;
+ #assert ts_name_letters(f,4)==0 && ts_name_letters(f,TS_FOUNDER_S)==ts_founder_name().count && ts_label(f)=="PLANNED" && ts_label(ts_load(TS_EMPTY,g))=="";
+ a:=ts_view(f,0);b:=ts_view(f,TS_FOUNDER_S);p:=plots.pl_centre(g,town.TOWN_FOUNDER);
+ #assert a.ey>40 && abs(a.lx-g.x)<0.01 && b.ey<a.ey*0.5 && abs(b.lx-p[0])<0.01 && abs(b.lz-p[1])<0.01;
+ q:=ts_player(f);#assert plots.pl_at(g,q[0],q[1])==town.TOWN_FOUNDER && ts_player_on_plot(f) && ts_progress(f,town.TOWN_FOUNDER,8)== -1;
+}
