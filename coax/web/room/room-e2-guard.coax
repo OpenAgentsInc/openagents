@@ -22,7 +22,9 @@ E2G_NEAR :: 24;             // trunks round him, for his steering (room-tick.c E
 E2G_TURN :: 1.6;            // rad/s he turns at the path's ends: half round in two seconds
 E2G_STEER :: 2.6;           // rad/s he turns as the path bends
 E2G_REST_S :: 1.5;          // s he stands at an end before he turns
-E2G_Z0 :: -18.0;            // the path's glade end (z)
+E2G_Z0 :: -18.0;            // the path's glade end (z): Everglade II's named guard post
+#load "../../../verse/everglade2/points.coax";
+#test "the guard's beat starts at Everglade II's named guard post (#13078)" { p := e2_point("guard-post"); #assert p.found && p.z == f32(E2G_Z0) && p.x == 0; }
 E2G_Z1 :: -455.0;           // its clearing end (E2_CLEAR_Z -470 + 15)
 E2G_AHEAD :: 1.5;           // m he looks ahead along the path
 E2G_BODY :: 0.35;           // m: his capsule's radius (everglade2-move.coax e2m_guard_body)

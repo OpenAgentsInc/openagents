@@ -21,6 +21,7 @@
 // camp (RF_STAND_Z), where the camp's ward stones can break.
 //   coax test --library apps/openagents-web/everglade5e-rules.coax --only "raid front"
 
+#load "../../verse/everglade/points.coax";   // the front's places, by name, for the scripted checks (#13078)
 RF_CAMP_Z :: -106.0;     // m: the cult's camp on the south road
 RF_GATE_Z :: -56.0;      // m: the palisade's South Gate
 RF_HOLD_Z :: -61.0;      // m: the nearest the line comes to the gate: the watch holds there
@@ -35,6 +36,10 @@ RF_RUBBER :: 0.6;        // the share of RF_EVERY_S a side pushed RF_OVER_M towa
 RF_WAVE_PART :: 1;       // a reinforcement wave is a side's cap over this, at least 2: 1 fills what it lacks
 RF_ARMY :: 0.85;         // the share of a side's strength that is its whole army's (rf_step_caps), the rest its standing's
 RF_CULT :: 0; RF_TOWN :: 1;
+#test "raid front: its places are Everglade's named points, the ones the scripted checks stand at" {
+  #assert eg_point("gate-south").z == f32(RF_GATE_Z) && eg_point("raid-front").z == f32(RF_HOLD_Z);
+  #assert eg_point("raid-field").z == f32(RF_MID_Z) && eg_point("cult-camp").z == f32(RF_CAMP_Z);
+}
 // the line's front rank, and the ranged ranks behind it, m from the line
 RF_MELEE_M :: 1.2; RF_RANGED_M :: 12.0; RF_LEAD_M :: 22.0;
 RF_HALF_W :: 26.0;       // m either side of the road the ranks spread

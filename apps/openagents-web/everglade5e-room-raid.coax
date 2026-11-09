@@ -59,6 +59,7 @@
 
 #load "everglade-cast-rules.coax";   // Everglade's four's cast bars, for a hero's (CR_BAR)
 #load "everglade-raid-spawn-policy.coax";
+#load "../../verse/everglade/points.coax";   // the players' spawn (#13078)
 // a raider's form is E5RR_FORM_RAID (everglade5e-beasts.coax) + its stat block (npcs.coax RS_NPC_*)
 E5RR_FORM_WARD :: 40;                        // a ward stone
 E5RD_HERO_NPC :: 15;                         // a hero's place past the stat blocks (npcs.coax RS_NPCS)
@@ -77,8 +78,8 @@ E5RD_SEAT_FIRST :: 6.0;                      // m: a player this much farther th
 E5RD_HOME :: 2.0;                            // m: a raider that fled this near where it came from is gone
 // the stages of its march
 E5RD_IN :: 0; E5RD_FLEE :: 2;
-// the players' spawn (verse/everglade/plan.coax EG_SPAWN_X, EG_SPAWN_Z): kept clear (RT_SPAWN_R)
-E5RD_SPAWN_X :: 0.0; E5RD_SPAWN_Z :: -16.0;
+// the players' spawn (verse/everglade/points.coax EG_SPAWN_X, EG_SPAWN_Z, the map's one spawn: #13078): kept clear (RT_SPAWN_R)
+E5RD_SPAWN_X :: EG_SPAWN_X; E5RD_SPAWN_Z :: EG_SPAWN_Z;
 // what a page plays for a cast (everglade-warlock.coax WL_*, everglade-raid-spells.coax RT_K_*)
 E5RD_K_BLAST :: RT_K_BLAST; E5RD_K_FIREBALL :: RT_K_FIREBALL; E5RD_K_BLIGHT :: RT_K_BLIGHT; E5RD_K_CIRCLE :: RT_K_CIRCLE;
 E5RD_K_FINGER :: RT_K_FINGER; E5RD_K_DOOR :: RT_K_DOOR;

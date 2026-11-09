@@ -351,6 +351,12 @@ door_spot :: (s: [] Everglade, i: int) -> DoorSpot {
   }
 }
 
+#test "doors: the inn's door spot is Everglade's named inn-door, the one the room's door check stands at (#13078)" #steps 900000000 {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  sp := door_spot(g[..], 0); p := eg_point("inn-door");
+  #assert p.found && abs(sp.at.x - p.x) < 0.005 && abs(sp.at.z - p.z) < 0.005 && abs(sp.face - p.face) < 0.001;
+}
 #test "doors: a person near goes before a door; a door before the quest board and a rowboat" #steps 600000000 {
   g: [1] Everglade;
   everglade_start(g[..]);

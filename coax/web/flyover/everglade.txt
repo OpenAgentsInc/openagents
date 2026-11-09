@@ -1,17 +1,22 @@
 # Everglade's flyover (coax/web/flyover.coax, GitHub #13017): one line a key,
 #   seconds   eye x y z   looked-at x y z   (metres, world space; +z is north)
+# Each point is metres from a named point of Everglade's map (@NAME,
+# verse/everglade/points.coax, #13078), so a gate or place that moves takes the
+# flight with it. On 11-09 the gate-south is (0, -56), the commons (0, 0), the
+# market (34, 0), the river (93, -12), the guilds (-37, 0) and the deep-wood
+# (-150, 25): the flight is the one #13017 keyed in world numbers.
 # It comes in over the road from the south, low through the South Gate and the
 # Commons, along the Market to the River Crossing, then turns and looks back
 # over the Great Lawn across the whole town (its heaviest view: every quarter,
 # the forest and the grass in one frustum, the camera low), out to the Deep Wood
 # and up to a view of the whole city.
- 0     0  40 -160      0  2  -60
- 6     0  12 -100      0  3  -40
-12    -6   6  -52     10  3   20
-18    10   5  -10     40  3   10
-24    40   6  -15     95  2  -10
-30    90  10  -30     40  2   40
-36    40  25   60    -40  2    0
-42   -60  12   20   -150  4   25
-48  -120   8   30   -170  3   40
-54   -60  60  -60      0  0    0
+ 0   @gate-south    0  40 -104   @gate-south   0  2  -4
+ 6   @gate-south    0  12  -44   @gate-south   0  3  16
+12   @gate-south   -6   6    4   @commons     10  3  20
+18   @commons      10   5  -10   @market       6  3  10
+24   @market        6   6  -15   @river        2  2   2
+30   @river        -3  10  -18   @commons     40  2  40
+36   @commons      40  25   60   @guilds      -3  2   0
+42   @guilds      -23  12   20   @deep-wood    0  4   0
+48   @deep-wood    30   8    5   @deep-wood  -20  3  15
+54   @commons     -60  60  -60   @commons      0  0   0

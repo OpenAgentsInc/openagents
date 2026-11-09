@@ -1,0 +1,30 @@
+// Everglade Experimental's named points (GitHub #13078), by name (aethyr/world/points.coax): where you
+// arrive (the spawn at the village's middle, inside the monsters' safe radius: experimental-hostiles.coax)
+// and the dungeon's door (experimental-dungeon.coax: the middle of the north wall's open cell, DG_ENTRY,
+// facing in). Its check holds the door to the dungeon's own numbers. A check reads them through
+// exp_point; a tool refuses a name that isn't here (coax/web/map-points.coax).
+// Metres, z north, face 0 north.
+//   coax/bin/coax test --library verse/experimental-points.coax
+#load "../aethyr/world/points.coax";
+#load "experimental-dungeon.coax" as dungeon;
+
+EXP_POINTS :: 2;
+EXP_POINT_NAME :: [EXP_POINTS] string.["spawn", "dungeon-door"];
+EXP_POINT_AT :: [EXP_POINTS * MAP_POINT_FLOATS] f32.[
+  0, 0, 0, 0,
+  -30.5, 0, -44, 3.14159265
+];
+EXP_POINTS_ZONE :: "Everglade Experimental (verse/experimental-points.coax)";
+
+// The point called name, or one not found.
+exp_point :: (name: string) -> MapPoint {
+  names := EXP_POINT_NAME; at := EXP_POINT_AT;
+  return map_point(EXP_POINTS_ZONE, names[..], at[..], name);
+}
+#test "Everglade Experimental's named points are whole, the door on the dungeon's open north cell" {
+  names := EXP_POINT_NAME; at := EXP_POINT_AT;
+  #assert map_points_whole(names[..], at[..]);
+  d := exp_point("dungeon-door");
+  #assert d.found && d.x == dungeon.dg_x(dungeon.DG_ENTRY) + f32(dungeon.DG_CELL) * 0.5 && d.z == f32(dungeon.DG_Z0);
+  #assert exp_point("spawn").found && !exp_point("goblin-camp").found;
+}

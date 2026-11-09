@@ -54,7 +54,8 @@
 #load "../../aethyr/session/lifecycle.coax";   // each host's room tick budget (#12856)
 #load "../../aethyr/net/record.coax";
 #load "drift-hold.coax";
-#load "drift-placement.coax";
+#load "drift-placement.coax";   // with Everglade's named points (verse/everglade/points.coax, #13078)
+#load "map-points.coax";
 #load "../../aethyr/render/tests/qualification-files.coax";
 getpriority :: (which:s32,who:u32)->s32 #foreign #effects(all);
 
@@ -490,7 +491,7 @@ dr_rg_patrols :: (x: int, z: int) -> bool {
   return true;
 }
 #test "gravity rehearsal clears the lintel and contains both loose stable props with margin" {
-  #assert drp_road(1500,-58800) && dr_rg_patrols(1500,-58800);
+  #assert drp_road_at(drp_test_map(),1500,-58800) && dr_rg_patrols(1500,-58800);
   // A convex circle contains the whole admitted rectangle when all four
   // corners fit. Raw observed stable props: meshes 31/32 at these cm.
   for x:[2]int.[500,2500] {for z:[2]int.[-58000,-59500] {
@@ -505,19 +506,22 @@ dr_rg_patrols :: (x: int, z: int) -> bool {
 }
 // The route's holds are wall-clock: on a loaded machine (the 100 ms profile of a room deploy, #13070)
 // it can end a metre off the admitted rectangle. Short strafes, the same on both pages at the same
-// steps (dr_both), bring both into its middle (x 0.8 to 2.2 m, z -58.3 to -59.2 m) by their places.
-dr_rg_nudge :: (x: int, z: int) -> int {
-  if x < 800 { return 3; } if x > 2200 { return 2; }
-  if z > -58300 { return 0; } if z < -59200 { return 1; }
+// steps (dr_both), bring both into its middle (x 0.8 to 2.2 m from the South Gate's gap, z 2.3 to
+// 3.2 m past it: -58.3 to -59.2 m on 11-09) by their places.
+dr_rg_nudge :: (g: DrMap, x: int, z: int) -> int {
+  if x < g.gx + 800 { return 3; } if x > g.gx + 2200 { return 2; }
+  if z > g.gz - 2300 { return 0; } if z < g.gz - 3200 { return 1; }
   return -1;
 }
 #test "the gravity rehearsal's settle strafes into the rectangle's middle and stops there (#13070)" {
-  #assert dr_rg_nudge(-80, -58800) == 3 && dr_rg_nudge(2600, -58800) == 2;
-  #assert dr_rg_nudge(1500, -57900) == 0 && dr_rg_nudge(1500, -59400) == 1;
-  #assert dr_rg_nudge(1140, -58680) == -1;
-  for x: [2]int.[800, 2200] { for z: [2]int.[-58300, -59200] { #assert drp_road(x, z); } }
+  g := drp_test_map();
+  #assert dr_rg_nudge(g, -80, -58800) == 3 && dr_rg_nudge(g, 2600, -58800) == 2;
+  #assert dr_rg_nudge(g, 1500, -57900) == 0 && dr_rg_nudge(g, 1500, -59400) == 1;
+  #assert dr_rg_nudge(g, 1140, -58680) == -1;
+  for x: [2]int.[800, 2200] { for z: [2]int.[-58300, -59200] { #assert drp_road_at(g, x, z); } }
 }
 dr_rg_settle :: (p: DrPair) {
+  g := dr_map();
   keys := [4] string.["w", "s", "a", "d"]; codes := [4] string.["KeyW", "KeyS", "KeyA", "KeyD"]; vks := [4] int.[87, 83, 65, 68];
   for attempt: 0..<16 {
     proc_sleep(300);
@@ -527,7 +531,7 @@ dr_rg_settle :: (p: DrPair) {
       x := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
       z := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
       if x == -999999 || z == -999999 { return; }
-      if k < 0 { k = dr_rg_nudge(x, z); }
+      if k < 0 { k = dr_rg_nudge(g, x, z); }
     }
     if k < 0 { return; }
     dr_both_key(p, true, keys[k], codes[k], vks[k]); proc_sleep(120); dr_both_key(p, false, keys[k], codes[k], vks[k]);
@@ -1340,30 +1344,36 @@ dr_raid_kit_ready :: (c: [] Cdp, whole: int) -> bool {
   }
   tool_errln("everglade-drift: the raid never established a LEVEL 1 kit before combat"); return false;
 }
-// The room page's walk from its arrival on the commons (0, -16) to the open road outside the South
-// Gate. Until e0631669b3 you arrived on the road south of the gate (0, -84), inside the front's band;
+// The room page's walk from its arrival on the commons (the map's spawn, 0, -16 on 11-09) to the open
+// road outside the South Gate (the map's gate-south, verse/everglade/points.coax, #13078). Until e0631669b3 you arrived on the road south of the gate (0, -84), inside the front's band;
 // since then the commons is 40 m and more from the line, out of Starry Wisp's 18 m, so a page that
 // holds at the spawn never hurts a raider (#13070). Round the fountain to the left as the paired
 // session's route (dr_script) does, then down the road, steered into the gate's opening by the page's
-// own position (its x within 0.8 to 2.2 m, the session's lane through the arch), to 58.3 m south.
+// own position (its x within 0.8 to 2.2 m of the gap's middle, the session's lane through the arch),
+// to 2.3 m past the gap.
 dr_walk_key :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) { _ := dr_press(c, down, key, code, vk, false); }
-// The keys from (x, z) mm into the South Gate's lane (x 0.8 to 2.2 m) and through it (bit 0 W, 1 S,
-// 2 A, 3 D): south only in the lane, or while still 7 m and more short of the palisade (z -56 m). Off
-// the lane nearer than 5 m it backs off north as it strafes, clear of the gate towers' fronts, as the
-// paired session's route does (dr_script), rather than strafe into a tower.
-dr_gate_keys :: (x: int, z: int) -> int {
-  k := ifx x < 800 then 8 else (ifx x > 2200 then 4 else 0);
-  if k == 0 || z > -49000 { k |= 1; } else if z < -51000 { k |= 2; }
+// The keys from (x, z) mm into the South Gate's lane (x 0.8 to 2.2 m from the gap's middle, g) and
+// through it (bit 0 W, 1 S, 2 A, 3 D): south only in the lane, or while still 7 m and more short of
+// the palisade (the gap's z). Off the lane nearer than 5 m it backs off north as it strafes, clear of
+// the gate towers' fronts, as the paired session's route does (dr_script), rather than strafe into a tower.
+dr_gate_keys :: (g: DrMap, x: int, z: int) -> int {
+  k := ifx x < g.gx + 800 then 8 else (ifx x > g.gx + 2200 then 4 else 0);
+  if k == 0 || z > g.gz + 7000 { k |= 1; } else if z < g.gz + 5000 { k |= 2; }
   return k;
 }
 #test "the raid page's walk strafes into the gate's lane before the palisade, never into a tower (#13070)" {
-  #assert dr_gate_keys(-5680, -40420) == (1 | 8);   // far from the wall: south and east
-  #assert dr_gate_keys(-6300, -55050) == (2 | 8);   // at the west tower: back off north, east
-  #assert dr_gate_keys(-3000, -50000) == 8;         // clear of the towers: east only
-  #assert dr_gate_keys(1500, -55300) == 1;          // in the lane: south
-  #assert dr_gate_keys(4000, -52000) == (2 | 4);
+  g := drp_test_map();
+  #assert dr_gate_keys(g, -5680, -40420) == (1 | 8);   // far from the wall: south and east
+  #assert dr_gate_keys(g, -6300, -55050) == (2 | 8);   // at the west tower: back off north, east
+  #assert dr_gate_keys(g, -3000, -50000) == 8;         // clear of the towers: east only
+  #assert dr_gate_keys(g, 1500, -55300) == 1;          // in the lane: south
+  #assert dr_gate_keys(g, 4000, -52000) == (2 | 4);
+  // a gate the map moves takes the lane with it
+  m := DrMap.{gx = 10000, gz = -40000, front_z = -45000};
+  #assert dr_gate_keys(m, 11500, -39300) == 1 && dr_gate_keys(m, 1500, -34000) == 8;
 }
 dr_raid_walk :: (c: [] Cdp) -> bool {
+  g := dr_map();
   if !dr_face_north(c) { tool_errln("everglade-drift: the raid page's camera didn't face the road"); return false; }
   st: [1] DrSteer;
   dr_steer_key(c, st[..], 0, true); proc_sleep(2500);
@@ -1373,8 +1383,8 @@ dr_raid_walk :: (c: [] Cdp) -> bool {
   while proc_now_ms() < deadline {
     x = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
     z = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
-    if z <= -58300 { break; }
-    keys := dr_gate_keys(x, z);
+    if z <= g.gz - 2300 { break; }
+    keys := dr_gate_keys(g, x, z);
     for k: 0..<4 { dr_steer_key(c, st[..], k, (keys & (1 << k)) != 0); }
     proc_sleep(80);
   }
@@ -1383,7 +1393,7 @@ dr_raid_walk :: (c: [] Cdp) -> bool {
   x = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
   z = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
   print("  raid: the room page stands at %,% mm\n", x, z);
-  if !dr_raid_road(z) { tool_errln("everglade-drift: the raid page didn't reach the road outside the South Gate"); return false; }
+  if !dr_raid_road(g, z) { tool_errln("everglade-drift: the raid page didn't reach the road outside the South Gate"); return false; }
   return true;
 }
 // In the fight the room page plays as a new player who fights does (raid-check.coax fight mode, the
@@ -1428,12 +1438,14 @@ dr_raid_close :: (c: [] Cdp, st: [] DrSteer, ms: int) {
     proc_sleep(100);
   }
 }
-// Whether z (mm) is out past the South Gate (RF_GATE_Z -56 m), within Starry Wisp's 18 m of the
-// line's nearest hold (RF_HOLD_Z -61 m).
-dr_raid_road :: (z: int) -> bool { return z <= -56500 && z >= -79000; }
+// Whether z (mm) is out past the South Gate (the map's gate-south, RF_GATE_Z -56 m), within Starry
+// Wisp's 18 m of the line's nearest hold (its raid-front, RF_HOLD_Z -61 m).
+dr_raid_road :: (g: DrMap, z: int) -> bool { return z <= g.gz - 500 && z >= g.front_z - 18000; }
 #test "the raid page's stand: past the gate and in Starry Wisp's reach of the line, never the commons (#13070)" {
-  #assert dr_raid_road(-58670) && dr_raid_road(-59030);
-  #assert !dr_raid_road(-16000) && !dr_raid_road(-56000) && !dr_raid_road(-84000);
+  g := drp_test_map();
+  #assert dr_raid_road(g, -58670) && dr_raid_road(g, -59030);
+  #assert !dr_raid_road(g, -16000) && !dr_raid_road(g, -56000) && !dr_raid_road(g, -84000);
+  #assert dr_raid_road(g, -79000) && !dr_raid_road(g, -79001) && dr_raid_road(g, -56500) && !dr_raid_road(g, -56499);
 }
 // whole: the whole bar's hash, as the paired session's room page drew it at its end (levels off there);
 // the raid's offline page can't say it, as on the local host (?offline=worker) its room has levels on (#12897).
@@ -1572,6 +1584,9 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   if args_has(a[..], "--input-only") { return ifx dr_input_check() then 0 else 1; }
+  // every place the walks aim at, from Everglade's map: a point it lacks stops the run here (#13078)
+  mp_names := EG_POINT_NAME; mp_at := EG_POINT_AT; mp_want := DR_MAP_POINTS;
+  if !map_need_all(EG_POINTS_ZONE, mp_names[..], mp_at[..], mp_want[..]) { return 2; }
   profiles := args_value(a[..], "--profiles", "local,100,250");
   bots := args_whole(args_value(a[..], "--bots", "3"));
   port := args_whole(args_value(a[..], "--port", "8960"));
@@ -1602,7 +1617,7 @@ tool_main :: () -> int #export_c #effects(all) {
   dir := args_value(a[..], "--out", btext(db[..]));
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
   inputs:[1]RtqInputs;
-  for file:[14]string.["coax/web/drift-placement.coax","coax/web/room/worker.coax","coax/web/room/worker-profile.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
+  for file:[17]string.["coax/web/drift-placement.coax","verse/everglade/points.coax","aethyr/world/points.coax","coax/web/map-points.coax","coax/web/room/worker.coax","coax/web/room/worker-profile.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
     if !rtq_input_add(inputs[..],file) {tool_errln("Cannot fence the actual drift inputs.");return 1;}
   }
   self:[4096]u8;self_n:=cxproc_self_path(self[..]);

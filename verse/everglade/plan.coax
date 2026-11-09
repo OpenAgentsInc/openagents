@@ -17,6 +17,7 @@
 
 #load "../../aethyr/terrain.coax";
 #load "glade-zone.coax";   // the glade south of the South Gate, Character Create's (#13018)
+#load "points.coax";       // the spawn and the named points the scripted checks read (#13078)
 
 // Wave 1 of the map's expansion (docs/verse/2026-11-03-everglade-map-gap-analysis.md): the world
 // grew from 208 m to 352 m a side, as the previous engine's first expansion grew its glade into a
@@ -199,8 +200,31 @@ EG_SPOT_CAT :: [28] bool.[
   false, false, false, false, false, false
 ];
 
-// You arrive on the commons, inside the South Gate, facing toward it.
-EG_SPAWN_X :: 0.0; EG_SPAWN_Z :: -16.0;
+// You arrive on the commons, inside the South Gate, facing toward it: EG_SPAWN_X, EG_SPAWN_Z and
+// EG_SPAWN_FACE are points.coax's, with the other named points the scripted checks read (#13078).
+#test "the named points sit on the map's own spawn, gates and places" {
+  s := eg_point("spawn"); #assert s.found && s.x == f32(EG_SPAWN_X) && s.z == f32(EG_SPAWN_Z);
+  gates := [EG_GATES] string.["gate-south", "gate-north", "gate-east", "gate-west"];
+  for g: 0..<EG_GATES {
+    p := eg_point(gates[g]);
+    #assert p.found && p.x == EG_GATE[g * 4] && p.z == EG_GATE[g * 4 + 1] && p.y == 0;
+  }
+  #assert EG_GATE_NAME[0] == "SOUTH GATE" && EG_GATE_NAME[1] == "NORTH GATE" && EG_GATE_NAME[2] == "EAST GATE" && EG_GATE_NAME[3] == "WEST GATE";
+  // the guard post halfway between the South Gate's two guards
+  post := eg_point("guard-post");
+  #assert post.found && post.x == (EG_SPOT[0] + EG_SPOT[3]) / 2 && post.z == EG_SPOT[1] && post.z == EG_SPOT[4];
+  for name: [5] string.["commons", "market", "guilds", "river", "deep-wood"] {
+    p := eg_point(name); k := -1;
+    for i: 0..<EG_PLACES { if EG_PLACE_ID[i] == name { k = i; } }
+    #assert p.found && k >= 0 && p.x == EG_PLACE[k * 2] && p.z == EG_PLACE[k * 2 + 1];
+  }
+  // the bridge's deck: the middle of EG_BRIDGE's span
+  br := eg_point("bridge");
+  #assert br.found && br.x == (EG_BRIDGE[0] + EG_BRIDGE[2]) / 2 && br.z == (EG_BRIDGE[1] + EG_BRIDGE[3]) / 2;
+  // the raid's places stand on the road out of the South Gate, south of it
+  south := eg_point("gate-south");
+  for name: [5] string.["guard-post", "raid-front", "raid-field", "cult-camp", "south-road"] { p := eg_point(name); #assert p.found && p.x == south.x && p.z < south.z; }
+}
 
 // ---- the ground
 

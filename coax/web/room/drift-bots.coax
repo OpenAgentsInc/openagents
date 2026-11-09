@@ -16,6 +16,8 @@
 #load "room-socket.coax";
 #load "../drift-snapshot.coax";
 #load "../../lib/sys/fs.coax";
+#load "../../../verse/everglade/points.coax";   // the empty south road, by name (#13078)
+#load "../map-points.coax";
 
 DB_MAX :: 8;
 // m round the page's player the bots walk: twice your Reverse Gravity's reach (everglade-abilities.coax
@@ -24,10 +26,12 @@ DB_OUT :: 32;
 DbBot :: struct { seat: int = -1; x: f32; z: f32; seen: bool; d: int; refused: int; wall_delta: int; m: [1] WireMirror; }   // m: the rows its D's left, as a page's (its I's HEARD)
 DbWorld :: struct { seats: [64] bool; px: [64] f32; pz: [64] f32; }
 DbAim :: struct { x: f32; z: f32; }
-db_goal :: (tick: int, i: int, cx: f32, cz: f32, hold: bool) -> DbAim {
+// Bot i's goal at tick: on the empty south road (road: the map's south-road, (0, -128) on 11-09), each
+// bot 8 m further down it, or with hold bot 0 6 m round (cx, cz).
+db_goal :: (tick: int, i: int, cx: f32, cz: f32, hold: bool, road: MapPoint) -> DbAim {
   ang := f32(tick) * 0.01 + f32(i) * 1.3;
   if i == 0 && hold { return DbAim.{x = cx + 6 * cos(ang), z = cz + 6 * sin(ang)}; }
-  return DbAim.{x = 2 * sin(ang), z = -128 - f32(i) * 8 + 4 * cos(ang)};
+  return DbAim.{x = road.x + 2 * sin(ang), z = road.z - f32(i) * 8 + 4 * cos(ang)};
 }
 db_clear :: (b: [] DbBot, n: int, w: [] DbWorld, page: int) -> bool {
   if n < 1 || n > b.count || page < 0 || page >= 64 || !w[0].seats[page] { return false; }
@@ -49,10 +53,14 @@ db_clear :: (b: [] DbBot, n: int, w: [] DbWorld, page: int) -> bool {
   #assert !db_clear(b[..], 3, w[..], 3);
 }
 #test "background players keep moving on the empty south road, away from the town" {
+  road := eg_point("south-road"); #assert road.found;
+  fixture := MapPoint.{found = true, x = 0, z = -128};   // the road as the bounds below were taken (11-09)
   for tick: 0..<1800 {
     for i: 0..<3 {
-      goal := db_goal(tick, i, -15.53, -56.7, false);
+      goal := db_goal(tick, i, -15.53, -56.7, false, fixture);
       #assert abs(goal.x) <= 2 && goal.z <= -124 - f32(i) * 8;
+      on := db_goal(tick, i, -15.53, -56.7, false, road);
+      #assert abs(on.x - road.x) <= 2 && on.z <= road.z + 4 - f32(i) * 8;
     }
   }
 }
@@ -138,6 +146,8 @@ db_page_seat :: (b: [] DbBot, n: int, w: [] DbWorld) -> int {
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 5 { tool_errln("usage: coax/web/tool.sh coax/web/room/drift-bots.coax ws://127.0.0.1:PORT N SECONDS ROOM DIR"); return 2; }
+  road := eg_point("south-road");
+  if !map_need(road) { return 2; }
   bb: [512] u8;
   base := rs_base(args_at(a[..], 0), bb[..]);
   n := rs_num(args_at(a[..], 1)); if n < 1 { n = 1; } if n > DB_MAX { n = DB_MAX; }
@@ -195,7 +205,7 @@ tool_main :: () -> int #export_c #effects(all) {
       // The old orbit crossed walls and left actual players inside spell range. Stay on open road;
       // the separate legacy hold request still brings bot 0 in to 6 m.
       cx := ifx page >= 0 then w[0].px[page] else b[i].x; cz := ifx page >= 0 then w[0].pz[page] else b[i].z;
-      goal := db_goal(tick, i, cx, cz, fs_exists(hold));
+      goal := db_goal(tick, i, cx, cz, fs_exists(hold), road);
       wx := goal.x - b[i].x; wz := goal.z - b[i].z;
       ahead := ifx wx * wx + wz * wz > 1 then 100 else 0;
       run := ifx wx * wx + wz * wz > 16 then 1 else 0;   // running to keep up

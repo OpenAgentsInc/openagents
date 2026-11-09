@@ -18,10 +18,26 @@
 #import "Basic";
 #load "../lib/media/media.coax";      // MEDIA_READY_JS; it loads cdp.coax
 #load "../lib/sys/fs.coax";
+#load "../../verse/everglade2/points.coax";   // where each walk starts down the path, by name (#13078)
+#load "map-points.coax";
 
 ET_WALKS :: 3;
 ET_NAMES :: [3] string.["glade", "path", "seam"];
-ET_QUERY :: [3] string.["walk", "at=120&walk", "at=360&walk"];
+// Where each walk starts: the glade (the spawn: no ?at=), and down the path the map's tiles-path and
+// ground-seam (verse/everglade2/points.coax: ?at=120 and ?at=360 on 11-09).
+ET_AT :: [3] string.["spawn", "tiles-path", "ground-seam"];
+// Walk v's query: ?at= the metres down the path of its point (none for the spawn), then walk.
+et_query :: (o: [] EtBuf, v: int) -> bool {
+  p := e2_point(ET_AT[v]);
+  if !p.found { return false; }
+  if ET_AT[v] != "spawn" { et_put(o, "at="); et_int(o, e2_point_at(p)); et_put(o, "&"); }
+  et_put(o, "walk");
+  return true;
+}
+#test "the terrain check's walks start at Everglade II's spawn, tiles-path and ground-seam, the queries it always walked" {
+  want := [3] string.["walk", "at=120&walk", "at=360&walk"];
+  for v: 0..<ET_WALKS { o: [1] EtBuf; #assert et_query(o[..], v) && cast(string) o[0].b[0..<o[0].n] == want[v]; }
+}
 // Before the page loads: count the Wasm memories it makes, and time the passes.
 ET_INIT_JS :: "globalThis.coaxialPassTimer=true;(()=>{const mems=globalThis.__etMems=[];const keep=r=>{try{const i=r.instance||r;for(const v of Object.values(i.exports||{}))if(v instanceof WebAssembly.Memory&&!mems.includes(v))mems.push(v);}catch(e){}return r;};const I=WebAssembly.instantiate,S=WebAssembly.instantiateStreaming,N=WebAssembly.Instance;WebAssembly.instantiate=function(...a){return I.apply(this,a).then(keep);};if(S)WebAssembly.instantiateStreaming=function(...a){return S.apply(this,a).then(keep);};const M=WebAssembly.Memory;WebAssembly.Memory=function(d){const m=new M(d);mems.push(m);return m;};WebAssembly.Memory.prototype=M.prototype;})();";
 ET_MEM_JS :: "(globalThis.__etMems||[]).reduce((n,m)=>n+m.buffer.byteLength,0)";
@@ -68,6 +84,8 @@ et_load :: (c: [] Cdp, t0: int) -> int {
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: everglade2-terrain-check BASE_URL [OUT.tsv] [--size WxH] [--dpr N] [--seconds S]\n"); return 2; }
+  mp_names := E2_POINT_NAME; mp_at := E2_POINT_AT; mp_want := ET_AT;
+  if !map_need_all(E2_POINTS_ZONE, mp_names[..], mp_at[..], mp_want[..]) { return 2; }
   base := args_at(a[..], 0); out := ifx args_count(a[..]) >= 2 && args_at(a[..], 1)[0] != '-' then args_at(a[..], 1) else "";
   size := args_value(a[..], "--size", "2400x1400"); dpr := et_whole(args_value(a[..], "--dpr", "2")); secs := et_whole(args_value(a[..], "--seconds", "15"));
   w := 0; h := 0; at := 0;
@@ -85,7 +103,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   report: [1] EtBuf; ok := true;
   for v: 0..<ET_WALKS {
-    u: [1] EtBuf; et_put(u[..], base); et_put(u[..], "/worlds/everglade2?"); et_put(u[..], ET_QUERY[v]);
+    u: [1] EtBuf; et_put(u[..], base); et_put(u[..], "/worlds/everglade2?"); if !et_query(u[..], v) { return 2; }
     nav: [4096] u8; jo: [1] Jo; jo_start(jo[..], nav[..]); jo_obj(jo[..]); jo_key(jo[..], "url"); jo_str(jo[..], et_text(u[..])); jo_end(jo[..]);
     t0 := proc_now_ms();
     if !et_call(c[..], "Page.navigate", jo_text(jo[..])) { print("FAIL %: navigation\n", ET_NAMES[v]); ok = false; continue; }

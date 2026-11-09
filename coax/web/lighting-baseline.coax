@@ -40,6 +40,8 @@
 #load "../lib/image/jpeg_enc.coax";
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the glade's noon, as a page writes it (#13066)
 #load "../../verse/style-preset.coax";   // painterly's compatibility night, for e2-night (#13067)
+#load "../../verse/everglade2/points.coax";   // where down Everglade II's path each capture stands, by name (#13078)
+#load "map-points.coax";
 
 // ---- the bounds of the identity check (declared before any later step runs it) --------------
 // An image differs when more than LB_BLOCKS_PPM parts per million of its 8 px blocks moved (a
@@ -84,10 +86,17 @@ LB_LOADS :: 13;
 LB_FRESH :: 7;   // loads from here on are new captures
 LB_NAMES :: [13] string.["cc", "cc-phone", "handover", "e2-arrival", "e2-sunlit-path", "e2-deep-canopy", "exp-combat", "made-glade",
   "e2-night", "e2-view-ambient", "e2-view-direct", "e2-view-pregrade", "e2-view-regions"];
+// A load's address: LB_PATHS, then for an Everglade II load ?at= the metres down the path of its
+// named point (LB_AT, verse/everglade2/points.coax, #13078) and LB_AT_PAST more, then LB_AFTER:
+// at=1 (a metre past the spawn), 60 (sunlit-path) and 300 (deep-canopy) on 11-09 (lb_path).
 LB_PATHS :: [13] string.["/worlds/character-creator", "/worlds/character-creator", "/worlds/character-creator",
-  "/worlds/everglade2?at=1", "/worlds/everglade2?at=60", "/worlds/everglade2?at=300", "/worlds/everglade-experimental", "/worlds/built#quiet-glade",
-  "/worlds/everglade2?at=1", "/worlds/everglade2?at=60&light=ambient", "/worlds/everglade2?at=60&light=direct", "/worlds/everglade2?at=60&light=pregrade",
-  "/worlds/everglade2?at=300&light=regions"];
+  "/worlds/everglade2", "/worlds/everglade2", "/worlds/everglade2", "/worlds/everglade-experimental", "/worlds/built#quiet-glade",
+  "/worlds/everglade2", "/worlds/everglade2", "/worlds/everglade2", "/worlds/everglade2",
+  "/worlds/everglade2"];
+LB_AT :: [13] string.["", "", "", "spawn", "sunlit-path", "deep-canopy", "", "",
+  "spawn", "sunlit-path", "sunlit-path", "sunlit-path", "deep-canopy"];
+LB_AT_PAST :: [13] int.[0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0];
+LB_AFTER :: [13] string.["", "", "", "", "", "", "", "", "", "&light=ambient", "&light=direct", "&light=pregrade", "&light=regions"];
 LB_WIDE :: [13] int.[1920, 390, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920, 1920];
 LB_TALL :: [13] int.[1080, 844, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080, 1080];
 // The made realm's spec: painterly, a meadow, a few trees and rocks, no time of day and no mist.
@@ -177,6 +186,25 @@ LB_FACTS :: "JSON.stringify({chrome:navigator.userAgent.match(/Chrome\\/[0-9.]+/
 LbBuf :: struct { b: [65536] u8; n: int; }
 lb_put :: (o: [] LbBuf, s: string) { for c: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = c; o[0].n += 1; } } }
 lb_text :: (o: [] LbBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+// Load l's address into o (LB_PATHS, LB_AT, LB_AT_PAST, LB_AFTER); a load whose point the map lacks
+// gets none (tool_main has refused the run by then, map_need_all).
+lb_path :: (o: [] LbBuf, l: int) -> string {
+  o[0].n = 0; lb_put(o, LB_PATHS[l]);
+  if LB_AT[l].count > 0 {
+    p := e2_point(LB_AT[l]); if !p.found { o[0].n = 0; return lb_text(o); }
+    lb_put(o, "?at="); lb_int(o, e2_point_at(p) + LB_AT_PAST[l]);
+  }
+  lb_put(o, LB_AFTER[l]);
+  return lb_text(o);
+}
+#test "each capture's address stands where Everglade II's map names, the same addresses as the baseline's" {
+  o: [1] LbBuf;
+  want := [13] string.["/worlds/character-creator", "/worlds/character-creator", "/worlds/character-creator",
+    "/worlds/everglade2?at=1", "/worlds/everglade2?at=60", "/worlds/everglade2?at=300", "/worlds/everglade-experimental", "/worlds/built#quiet-glade",
+    "/worlds/everglade2?at=1", "/worlds/everglade2?at=60&light=ambient", "/worlds/everglade2?at=60&light=direct", "/worlds/everglade2?at=60&light=pregrade",
+    "/worlds/everglade2?at=300&light=regions"];
+  for l: 0..<LB_LOADS { #assert lb_path(o[..], l) == want[l]; }
+}
 lb_int :: (o: [] LbBuf, value: int) {
   v := value; if v < 0 { lb_put(o, "-"); v = -v; }
   d: [24] u8; k := 0;
@@ -511,7 +539,8 @@ lb_made_glade :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
 // One page load: a new Chrome, the page pinned, ready and settled, then its plan.
 lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
   w := LB_WIDE[l]; h := LB_TALL[l]; name := LB_NAMES[l]; s[0].load = l;
-  print("% (% %x%)\n", name, LB_PATHS[l], w, h);
+  where: [1] LbBuf; path := lb_path(where[..], l);
+  print("% (% %x%)\n", name, path, w, h);
   c: [1] Cdp;
   if !cdp_launch(c[..], w, h, "lighting-baseline-") { print("FAIL %: Chrome: %\n", name, cdp_error(c[..])); return false; }
   defer cdp_close(c[..]);
@@ -531,7 +560,7 @@ lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
     lb_put(st[..], "]);");
     if !lb_script(c[..], lb_text(st[..])) { print("FAIL %: the night record's page script\n", name); return false; }
   }
-  url: [1] LbBuf; lb_put(url[..], base); lb_put(url[..], LB_PATHS[l]);
+  url: [1] LbBuf; lb_put(url[..], base); lb_put(url[..], path);
   p: [4096] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], lb_text(url[..])); jo_end(j[..]);
   if cdp_call(c[..], "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { print("FAIL %: navigate: %\n", name, cdp_error(c[..])); return false; }
   // ready: the host's scene, the realm's own, then the same frame three times running
@@ -554,7 +583,7 @@ lb_load :: (s: [] Lb, base: string, l: int, px: [] u8, jpg: [] u8) -> bool {
   }
   facts := lb_eval_text(c[..], LB_FACTS, word[..]);
   gpu: [256] u8; adapter := cdp_adapter(c[..], gpu[..]);
-  r := s[0].run[..]; lb_put(r, name); lb_put(r, "\tload\t"); lb_put(r, LB_PATHS[l]); lb_put(r, "\t"); lb_int(r, w); lb_put(r, "x"); lb_int(r, h);
+  r := s[0].run[..]; lb_put(r, name); lb_put(r, "\tload\t"); lb_put(r, path); lb_put(r, "\t"); lb_int(r, w); lb_put(r, "x"); lb_int(r, h);
   lb_put(r, "\tready_ms="); lb_int(r, loaded); lb_put(r, "\tstill_frames="); lb_int(r, stills); lb_put(r, "\tsettled="); lb_put(r, ifx same >= 3 then "yes" else "no"); lb_put(r, "\twebgpu="); lb_put(r, adapter); lb_put(r, "\t"); lb_put(r, facts); lb_put(r, "\n");
   print("  ready in % ms; % still frames, %; WebGPU %; %\n", loaded, stills, ifx same >= 3 then "settled" else "NOT SETTLED", adapter, facts);
   if same < 3 { print("FAIL %: the frame never stopped changing at a still clock\n", name); return false; }
@@ -700,6 +729,9 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_errln("usage: coax/web/tool.sh coax/web/lighting-baseline.coax OUTDIR [--compare BASELINE] [--build] [--base URL | --serve PORT] [--only NAME,...]");
     return 2;
   }
+  // every capture's place down Everglade II's path, from its map: a point it lacks stops the run here (#13078)
+  mp_want := LB_AT;
+  for w: mp_want { if w.count > 0 && !map_need(e2_point(w)) { return 2; } }
   out := args_at(a[..], 0); compare := args_value(a[..], "--compare", ""); only := args_value(a[..], "--only", "");
   base := args_value(a[..], "--base", ""); port := args_value(a[..], "--serve", "8977");
   if !fs_exists(out) && !fs_mkdir(out) { tool_err("lighting-baseline: cannot make "); tool_errln(out); return 1; }

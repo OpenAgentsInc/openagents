@@ -1,0 +1,60 @@
+// Everglade's named points (GitHub #13078): where you arrive, its gates and the places the
+// scripted checks stand at or look from, by name (aethyr/world/points.coax). plan.coax loads this
+// file: the spawn is defined here alone, and its check "the named points sit on the map's own
+// spawn, gates and places" holds every other point to the plan's numbers (EG_GATE, EG_PLACE,
+// EG_SPOT) and to the raid's front (apps/openagents-web/everglade-raid-front.coax checks RF_*).
+// A check reads them through eg_point; a tool refuses a name that isn't here (coax/web/map-points.coax).
+// Metres, the plan's axes: z north, +x west, the fountain at the origin; face 0 north, a quarter
+// turn +x (west).
+#load "../../aethyr/world/points.coax";
+
+// You arrive on the commons, inside the South Gate, facing toward it.
+EG_SPAWN_X :: 0.0; EG_SPAWN_Z :: -16.0;
+EG_SPAWN_FACE :: 3.14159265;
+
+EG_POINTS :: 18;
+EG_POINT_NAME :: [EG_POINTS] string.[
+  "spawn",
+  // the palisade's gates (plan.coax EG_GATE: the middle of each gap), facing out of the town
+  "gate-south", "gate-north", "gate-east", "gate-west",
+  // the South Gate's guard post, between its two guards' spots (plan.coax EG_SPOT 0 and 1)
+  "guard-post",
+  // the Cultist Raid's front on the south road (everglade-raid-front.coax): where the watch holds
+  // the line nearest the gate (RF_HOLD_Z), the band's middle (RF_MID_Z) and the cult's camp (RF_CAMP_Z)
+  "raid-front", "raid-field", "cult-camp",
+  // the empty road south of the cult's camp, where the drift's background players walk
+  "south-road",
+  // the commons' north side, where the raid check's defenders muster before the siege
+  "raid-muster",
+  // where to stand at the inn's door (apps/openagents-web/everglade-doors.coax door_spot 0), facing it
+  "inn-door",
+  // the middle of the wooden bridge's deck over the river (plan.coax EG_BRIDGE), running east-west
+  "bridge",
+  // places the flyover keys from (plan.coax EG_PLACE, by its EG_PLACE_ID)
+  "commons", "market", "guilds", "river", "deep-wood"
+];
+EG_POINT_AT :: [EG_POINTS * MAP_POINT_FLOATS] f32.[
+  EG_SPAWN_X, 0, EG_SPAWN_Z, EG_SPAWN_FACE,
+  0, 0, -56, 3.14159265,     44, 0, 60, 0,     -64, 0, 0, -1.57079633,     64, 0, 0, 1.57079633,
+  0, 0, -59.5, 3.14159265,
+  0, 0, -61, 3.14159265,     0, 0, -72, 3.14159265,     0, 0, -106, 0,
+  0, 0, -128, 0,
+  0, 0, 16, 0,
+  -4.59, 0, -37, -1.57079633,
+  88, 0, -11.5, 1.57079633,
+  0, 0, 0, 0,     34, 0, 0, 0,     -37, 0, 0, 0,     93, 0, -12, 0,     -150, 0, 25, 0
+];
+EG_POINTS_ZONE :: "Everglade (verse/everglade/points.coax)";
+
+// The point called name, or one not found.
+eg_point :: (name: string) -> MapPoint {
+  names := EG_POINT_NAME; at := EG_POINT_AT;
+  return map_point(EG_POINTS_ZONE, names[..], at[..], name);
+}
+#test "Everglade's named points are whole: each listed once, with its numbers" {
+  names := EG_POINT_NAME; at := EG_POINT_AT;
+  #assert map_points_whole(names[..], at[..]);
+  s := eg_point("spawn");
+  #assert s.found && s.x == f32(EG_SPAWN_X) && s.z == f32(EG_SPAWN_Z) && s.face == f32(EG_SPAWN_FACE);
+  #assert !eg_point("the-old-spawn").found;
+}

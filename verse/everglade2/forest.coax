@@ -5,8 +5,8 @@
 // (apps/openagents-web/gpu/everglade2.coax) all read the same land. Inside the glade it is the
 // glade's own (verse/character-glade.coax): the same hills, path and autumn.
 #load "../character-glade.coax";
+#load "points.coax";   // E2_CLEAR_Z, the spawn and the named points the scripted checks read (#13078)
 
-E2_CLEAR_Z :: -470.0;  // the clearing at the path's end: its middle's z (x on the path)
 E2_CLEAR_R :: 34.0;    // its radius: open meadow inside, the woods' edge round it
 E2_FAR :: -640.0;      // where the land stops (behind the wooded rise past the clearing)
 E2_BACK :: 80.0;       // and behind the glade

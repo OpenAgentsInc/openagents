@@ -111,14 +111,20 @@ e2t_side :: (h: [] f32, p: walk.Player) -> f32 {
   #assert -w.z > 1.5 * 4 - 0.3 && -w.z < 1.5 * 4 + 0.01;
 }
 // Walks the path from the glade to the clearing, `off` metres to the side of its middle, among every
-// collider the page builds (planted trees and rocks, the glade's own) and inside where you may stand.
-// The longest you were held up (seconds), and whether you reached the clearing.
+// collider the page builds (planted trees and rocks, the glade's own) and inside where you may stand:
+// from 2 m down the path past the spawn to the clearing, both Everglade II's named points
+// (verse/everglade2/points.coax, #13078: z -2 and -470 on 11-09). The longest you were held up
+// (seconds), and whether you reached the clearing (1000 when not, or when the map lacks either).
+E2T_PATH_FROM :: 2.0;   // m down the path past the spawn the walk starts
 e2t_path_walk :: (s: [] E2, off: f32) -> f32 {
-  p := walk.walk_place(e2_road_x(-2) + off, 0, -2, 0);
+  spawn := e2_point("spawn"); clearing := e2_point("clearing");
+  if !spawn.found || !clearing.found { return 1000; }
+  z0 := spawn.z - f32(E2T_PATH_FROM);
+  p := walk.walk_place(e2_road_x(z0) + off, 0, z0, 0);
   dt := 1.0f32 / 20; held := 0.0f32; worst := 0.0f32;
   for k: 0..<3000 {
     x := p.pos.x; z := p.pos.z;
-    if z < E2_CLEAR_Z { return worst; }
+    if z < clearing.z { return worst; }
     tz := z - 3; tx := e2_road_x(tz) + off;
     i := EgMoveIn.{key_y = 1, run = false, theta = e2_walk_theta(walk.atan2(tx - x, tz - z))};
     i.run = walk.walk_runs(i.run, false, 0, 0);
@@ -133,6 +139,9 @@ e2t_path_walk :: (s: [] E2, off: f32) -> f32 {
   return 1000;
 }
 // A moment's slowing where the path bends is fine; being held up is not.
+#test "the path walk runs between Everglade II's named spawn and clearing" {
+  #assert e2_point("spawn").found && e2_point("clearing").found && e2_point("clearing").z == f32(E2_CLEAR_Z);
+}
 #test "you run the whole path, glade to clearing, down its middle, and nothing stops you" #steps 6000000000 {
   s: [1] E2; s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
   #assert e2t_path_walk(s[..], 0) < 0.3;

@@ -8,6 +8,7 @@
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/rock-hulls.coax";
 #load "../../verse/everglade2/camp.coax";   // the goblin camp's props (coax/web/room/room-e2-monsters.coax)
+#load "../../verse/everglade2/points.coax";   // the spawn (#13078)
 
 E2_NEAR_BODIES :: 48;         // trunks the controller walks round
 // Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/locomotion.coax:
@@ -16,8 +17,8 @@ E2_RUN_SPEED :: 4.25; E2_WALK_SPEED :: 1.5;   // m/s
 E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // aethyr/locomotion.coax LocomotionProfile's defaults
 e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running then f32(E2_RUN_SPEED) / f32(E2_BASE_RUN) else f32(E2_WALK_SPEED) / f32(E2_BASE_WALK); }
 
-// Where a new seat stands: the glade's middle, facing the studio's camera (everglade2.coax e2_start).
-E2_SPAWN_X :: 0.0; E2_SPAWN_Z :: 0.0; E2_SPAWN_FACE :: 3.14159265;
+// Where a new seat stands: the glade's middle, facing the studio's camera (everglade2.coax e2_start):
+// E2_SPAWN_X, E2_SPAWN_Z and E2_SPAWN_FACE are the map's named spawn (verse/everglade2/points.coax, #13078).
 
 // ---- where you may stand: the glade, the path's corridor, the clearing
 e2_may_stand :: (x: f32, z: f32) -> bool #export_c #effects(all) {

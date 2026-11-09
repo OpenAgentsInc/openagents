@@ -1,0 +1,54 @@
+// Everglade II's named points (GitHub #13078): where a new seat stands, and the places down the path
+// the scripted checks stand at or shoot from (the walk test, the cull check's views, the lighting
+// baseline's), by name (aethyr/world/points.coax). forest.coax loads this file: the clearing's z is
+// defined here alone (E2_CLEAR_Z), and apps/openagents-web/everglade2-move.coax's spawn (E2_SPAWN_*)
+// too. A check reads them through e2_point; a tool refuses a name that isn't here
+// (coax/web/map-points.coax).
+// Metres, z north (the path runs south, to lower z), face 0 north. The spawn is a world place (the
+// glade's middle). Every other point stands on the path: its x is metres across from the path's
+// middle at its z (0 on it; forest.coax e2_road_x(z) is where the middle is), and its z is the path's
+// own: a page's ?at=METRES starts you METRES down it, at z -METRES (everglade2.coax e2_query_at).
+#load "../../aethyr/world/points.coax";
+
+// Where a new seat stands: the glade's middle, facing the studio's camera (everglade2.coax e2_start).
+E2_SPAWN_X :: 0.0; E2_SPAWN_Z :: 0.0; E2_SPAWN_FACE :: 3.14159265;
+E2_CLEAR_Z :: -470.0;  // the clearing at the path's end: its middle's z (x on the path)
+
+E2_POINTS :: 9;
+E2_POINT_NAME :: [E2_POINTS] string.[
+  "spawn",
+  // the guard's post: his beat's glade end (coax/web/room/room-e2-guard.coax E2G_Z0)
+  "guard-post",
+  // the views down the path: in the sun past the glade, deep in the woods, under the deepest canopy
+  "sunlit-path", "woods", "deep-canopy",
+  // the terrain check's walks: across the ground's tiles down the path, and across its fine/coarse seam
+  "tiles-path", "ground-seam",
+  // the goblin camp, 14 m across from the path at the clearing's near edge (camp.coax), and the clearing
+  "goblin-camp", "clearing"
+];
+E2_POINT_AT :: [E2_POINTS * MAP_POINT_FLOATS] f32.[
+  E2_SPAWN_X, 0, E2_SPAWN_Z, E2_SPAWN_FACE,
+  0, 0, -18, 3.14159265,
+  0, 0, -60, 3.14159265,     0, 0, -200, 3.14159265,     0, 0, -300, 3.14159265,
+  0, 0, -120, 3.14159265,    0, 0, -360, 3.14159265,
+  14, 0, -450, 0,            0, 0, E2_CLEAR_Z, 3.14159265
+];
+E2_POINTS_ZONE :: "Everglade II (verse/everglade2/points.coax)";
+
+// The point called name, or one not found.
+e2_point :: (name: string) -> MapPoint {
+  names := E2_POINT_NAME; at := E2_POINT_AT;
+  return map_point(E2_POINTS_ZONE, names[..], at[..], name);
+}
+// How far down the path a path point stands, whole metres: its ?at= (everglade2.coax e2_query_at).
+e2_point_at :: (p: MapPoint) -> int { return cast(int) (-p.z + 0.5); }
+#test "Everglade II's named points are whole, each listed once, and down the path from the glade" {
+  names := E2_POINT_NAME; at := E2_POINT_AT;
+  #assert map_points_whole(names[..], at[..]);
+  s := e2_point("spawn"); #assert s.found && s.x == f32(E2_SPAWN_X) && s.z == f32(E2_SPAWN_Z);
+  c := e2_point("clearing"); #assert c.found && c.z == f32(E2_CLEAR_Z) && e2_point_at(c) == 470;
+  #assert e2_point_at(e2_point("tiles-path")) == 120 && e2_point_at(e2_point("ground-seam")) == 360;
+  #assert e2_point_at(e2_point("woods")) == 200 && e2_point_at(e2_point("sunlit-path")) == 60 && e2_point_at(e2_point("deep-canopy")) == 300;
+  for i: 1..<E2_POINTS { #assert e2_point(names[i]).z < s.z && e2_point(names[i]).z >= c.z; }
+  #assert !e2_point("raid-front").found;
+}

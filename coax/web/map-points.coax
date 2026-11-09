@@ -1,0 +1,34 @@
+// A scripted check's named places, refused loudly when the map lacks one (GitHub #13078): the tool
+// side of aethyr/world/points.coax. A check asks for every point it stands at before it starts
+// (map_need_all), so a renamed or dropped point stops the run at once with its name, its zone and the
+// file to name it in, instead of a run that walks to a stale spot and fails for some other reason.
+#load "../../aethyr/world/points.coax";
+#load "../lib/sys/tool.coax";
+
+// The line a missing point is refused with.
+map_missing_line :: (p: MapPoint, out: [] u8) -> string {
+  n := 0;
+  for part: [5] string.["map point \"", p.name, "\" is missing from ", p.zone, "'s map data: name it in that file, never in the check"] {
+    for c: part { if n < out.count { out[n] = c; n += 1; } }
+  }
+  return cast(string) out[0..<n];
+}
+// True when p was found; otherwise says so on stderr and false.
+map_need :: (p: MapPoint) -> bool {
+  if p.found { return true; }
+  b: [1024] u8; tool_errln(map_missing_line(p, b[..]));
+  return false;
+}
+// Every name in want from one zone's table, each missing one said on stderr: false when any is.
+map_need_all :: (zone: string, names: [] string, at: [] f32, want: [] string) -> bool {
+  ok := true;
+  for w: want { if !map_need(map_point(zone, names, at, w)) { ok = false; } }
+  return ok;
+}
+
+#test "a missing point's refusal names the point, its zone and where to add it" {
+  b: [1024] u8;
+  names := [1] string.["spawn"]; at := [4] f32.[0, 0, -16, 0];
+  p := map_point("Everglade (verse/everglade/points.coax)", names[..], at[..], "raid-front");
+  #assert map_missing_line(p, b[..]) == "map point \"raid-front\" is missing from Everglade (verse/everglade/points.coax)'s map data: name it in that file, never in the check";
+}

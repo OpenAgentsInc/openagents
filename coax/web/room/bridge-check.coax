@@ -8,15 +8,18 @@
 //   (deploy.sh runs it through wss://openagents.com)
 // Prints one JSON line, then "holds" and exits 0, or "falls" and 1.
 #load "room-socket.coax";
+#load "../../../verse/everglade/points.coax";   // the streets' gates, the commons and the bridge, by name (#13078)
+#load "../map-points.coax";
 
 BC_SEATS :: 2;
-BC_DECK_X0 :: 84.0; BC_DECK_X1 :: 92.0;   // plan.coax EG_BRIDGE's span over the river
+BC_DECK_HALF :: 4.0;   // m either side of the bridge's middle its deck spans the river (plan.coax EG_BRIDGE: x 84 to 92)
 // What one socket heard.
 BcHeard :: struct {
   d: int;
   ax: f32; az: f32; ag: int; a_seen: bool;   // seat 0 (A), as this socket heard it
   bx: f32; bz: f32; b_seen: bool;             // seat 1 (B)
   wet_in_span: int;                           // D frames with A swimming (G 2) on the deck's span
+  deck_x0: f32; deck_x1: f32;                 // the span: the map's bridge, less and more BC_DECK_HALF
   breaks: int; break_sum: int; rebuilt: bool;
   casts: int; burns: int;
   refused: int;                               // r SEQ WHY: a cast or an R refused
@@ -33,7 +36,7 @@ bc_hear :: (h: [] BcHeard, t: string) {
   a := wire_mirror_of(h[0].m[..], 0);
   if a.id == 0 {
     h[0].ax = a.x; h[0].az = a.z; h[0].ag = a.g; h[0].a_seen = true;
-    if (h[0].ag & 2) != 0 && h[0].ax > BC_DECK_X0 && h[0].ax < BC_DECK_X1 { h[0].wet_in_span += 1; }
+    if (h[0].ag & 2) != 0 && h[0].ax > h[0].deck_x0 && h[0].ax < h[0].deck_x1 { h[0].wet_in_span += 1; }
   }
   b := wire_mirror_of(h[0].m[..], 1);
   if b.id == 1 { h[0].bx = b.x; h[0].bz = b.z; h[0].b_seen = true; }
@@ -113,10 +116,14 @@ bc_idle :: (c: [] RelayConn, h: [] BcHeard, seq: [] int, ms: int, sent: [] bool)
     while rs_now() - t0 < n * 1000 / 30 { bc_drain(c, h); proc_sleep(2); }
   }
 }
-// A's way from the spawn to the East Gate road: a step east, clear of the crate the realm's published
-// world puts on the road about 1.5 m north of the spawn (the room server lays it since 29a442405b),
-// then the streets (plan.coax EG_NODE_XZ 9, 8, 2, 5, 1, 13, 14).
-BC_WAY :: [16] f32.[2.5, -56,   2.5, -50,   0, -34,   0, -12,   8, -8,   12, 0,   44, 0,   64, 0];
+// A's way to the East Gate road: a step east at the South Gate, clear of the crate the realm's published
+// world puts on the road about 1.5 m north of the old spawn there (the room server lays it since
+// 29a442405b), then the streets (plan.coax EG_NODE_XZ 9, 8, 2, 5, 1, 13, 14). Each waypoint is a named
+// point of Everglade's map (BC_WAY_AT, verse/everglade/points.coax, #13078) and metres from it
+// (BC_WAY_D): (2.5, -56), (2.5, -50), (0, -34), (0, -12), (8, -8), (12, 0), (44, 0), (64, 0) on 11-09.
+BC_WAY_AT :: [8] string.["gate-south", "gate-south", "gate-south", "commons", "commons", "commons", "gate-west", "gate-west"];
+BC_WAY_D :: [16] f32.[2.5, 0,   2.5, 6,   0, 22,   0, -12,   8, -8,   12, 0,   -20, 0,   0, 0];
+BC_MAP_POINTS :: [4] string.["gate-south", "commons", "gate-west", "bridge"];
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
@@ -129,30 +136,39 @@ tool_main :: () -> int #export_c #effects(all) {
   ua: [1024] u8; ub: [1024] u8;
   url_a := rs_ticketed(ua[..], url, "p-bridgecheck-a", "Bridge A"); url_b := rs_ticketed(ub[..], url, "p-bridgecheck-b", "Bridge B");
   if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("bridge-check: can't open "); tool_errln(url); print("falls\n"); return 1; }
+  mp_names := EG_POINT_NAME; mp_at := EG_POINT_AT; mp_want := BC_MAP_POINTS;
+  if !map_need_all(EG_POINTS_ZONE, mp_names[..], mp_at[..], mp_want[..]) { print("falls\n"); return 2; }
+  bridge := eg_point("bridge");
+  for i: 0..<BC_SEATS { h[i].deck_x0 = bridge.x - f32(BC_DECK_HALF); h[i].deck_x1 = bridge.x + f32(BC_DECK_HALF); }
   sent := [1] bool.[relay_conn_send(c[0..<1], "H 5 ranger.2.1.0 druid 64 Bridge A") && relay_conn_send(c[1..<2], "H 5 ranger.0.0.0 druid 64 Bridge B")];
   t0 := rs_now();
   // both to the East Gate road, 24 m from the deck: out of the meteors' way
   at_road := true;
-  for q: 0..<8 { at_road = bc_walk(c[..], h[..], seq[..], BC_WAY[q * 2], BC_WAY[q * 2 + 1], 12000, true, sent[..]) && at_road; }
+  for q: 0..<8 {
+    w := eg_point(BC_WAY_AT[q]);
+    at_road = bc_walk(c[..], h[..], seq[..], w.x + BC_WAY_D[q * 2], w.z + BC_WAY_D[q * 2 + 1], 12000, true, sent[..]) && at_road;
+  }
   // B calls Meteor Swarm (slot 0) down on the middle of the deck from there
   m: [128] u8;
   k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[1] + 1);
   seq[1] += 1;
-  aim_x := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 1)) else 8800;
-  aim_z := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else -1150;
+  aim_x := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 1)) else map_mm(bridge.x) / 10;   // cm: the deck's middle
+  aim_z := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else map_mm(bridge.z) / 10;
   k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, aim_x); k = rs_put(m[..], k, " 50 "); k = rs_int(m[..], k, aim_z); k = rs_put(m[..], k, " -1");
   sent[0] = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent[0];
   cast_at := rs_now();
   bc_idle(c[..], h[..], seq[..], 5000, sent[..]);
   breaks_a := h[0].breaks; breaks_b := h[1].breaks;
   // A walks onto the deck and over: in the river where the planks were
-  _ := bc_walk(c[..], h[..], seq[..], 80, -4, 6000, false, sent[..]);
-  _ = bc_walk(c[..], h[..], seq[..], 82, -11.5, 4000, false, sent[..]);
-  _ = bc_walk(c[..], h[..], seq[..], 96, -11.5, 10000, false, sent[..]);
+  // (from the deck's middle: 8 m west of it and 7.5 m north, 6 m west, then 8 m on east)
+  bx := bridge.x; bz := bridge.z;
+  _ := bc_walk(c[..], h[..], seq[..], bx - 8, bz + 7.5, 6000, false, sent[..]);
+  _ = bc_walk(c[..], h[..], seq[..], bx - 6, bz, 4000, false, sent[..]);
+  _ = bc_walk(c[..], h[..], seq[..], bx + 8, bz, 10000, false, sent[..]);
   wet_a := h[0].wet_in_span; wet_b := h[1].wet_in_span;
   // back to the west bank, then R once the spell is 10 s old
-  _ = bc_walk(c[..], h[..], seq[..], 80, -11.5, 12000, false, sent[..]);
-  west := h[0].ax < BC_DECK_X0 - 0.5;
+  _ = bc_walk(c[..], h[..], seq[..], bx - 8, bz, 12000, false, sent[..]);
+  west := h[0].ax < h[0].deck_x0 - 0.5;
   bc_idle(c[..], h[..], seq[..], 10500 - (rs_now() - cast_at), sent[..]);
   k = rs_int(m[..], rs_put(m[..], 0, "R "), seq[1] + 1);
   seq[1] += 1;
@@ -160,8 +176,8 @@ tool_main :: () -> int #export_c #effects(all) {
   bc_idle(c[..], h[..], seq[..], 800, sent[..]);
   // over the deck again, stood up: dry the whole way
   h[0].wet_in_span = 0; h[1].wet_in_span = 0;
-  _ = bc_walk(c[..], h[..], seq[..], 82, -11.5, 3000, false, sent[..]);
-  over := bc_walk(c[..], h[..], seq[..], 96, -11.5, 8000, false, sent[..]);
+  _ = bc_walk(c[..], h[..], seq[..], bx - 6, bz, 3000, false, sent[..]);
+  over := bc_walk(c[..], h[..], seq[..], bx + 8, bz, 8000, false, sent[..]);
   dry := h[0].wet_in_span == 0 && h[1].wet_in_span == 0;
   ms := rs_now() - t0;
   ok := sent[0] && at_road && breaks_a > 0 && breaks_a == breaks_b && h[0].break_sum == h[1].break_sum &&

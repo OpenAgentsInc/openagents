@@ -19,11 +19,27 @@
 #load "../lib/media/media.coax";      // MEDIA_READY_JS, media_ready_step; it loads cdp.coax
 #load "../lib/image/png.coax";
 #load "../lib/sys/fs.coax";
+#load "../../verse/everglade2/points.coax";   // the views' places down the path, by name (#13078)
+#load "map-points.coax";
 
 EC_VIEWS :: 3;
 EC_ROUNDS :: 6;
 EC_NAMES :: [3] string.["glade", "woods", "clearing"];
-EC_QUERY :: [3] string.["golden", "golden&at=200", "golden&at=470"];
+// Each view's place: the glade where you arrive (the spawn: no ?at=), and down the path the map's
+// woods and clearing (verse/everglade2/points.coax: ?at=200 and ?at=470 on 11-09).
+EC_AT :: [3] string.["spawn", "woods", "clearing"];
+// View v's query: ?golden, and &at= the metres down the path of its point (none for the spawn).
+ec_query :: (o: [] EcBuf, v: int) -> bool {
+  ec_put(o, "golden");
+  p := e2_point(EC_AT[v]);
+  if !p.found { return false; }
+  if EC_AT[v] != "spawn" { ec_put(o, "&at="); ec_int(o, e2_point_at(p)); }
+  return true;
+}
+#test "the cull check's views stand at Everglade II's spawn, woods and clearing, the queries it always shot" {
+  want := [3] string.["golden", "golden&at=200", "golden&at=470"];
+  for v: 0..<EC_VIEWS { o: [1] EcBuf; #assert ec_query(o[..], v) && cast(string) o[0].b[0..<o[0].n] == want[v]; }
+}
 EC_PNG :: 16777216;          // a screenshot's PNG bytes at most
 EC_PIXELS :: 2400 * 1400 * 4;
 EC_WORK :: 2400 * 1400 * 4 + 1400 + 16777216;
@@ -82,6 +98,8 @@ ec_differ :: (a: [] u8, an: int, b: [] u8, bn: int, work: [] u8, pa: [] u8, pb: 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: everglade2-cull-check BASE_URL [OUT.tsv] [--size WxH]\n"); return 2; }
+  mp_names := E2_POINT_NAME; mp_at := E2_POINT_AT; mp_want := EC_AT;
+  if !map_need_all(E2_POINTS_ZONE, mp_names[..], mp_at[..], mp_want[..]) { return 2; }
   base := args_at(a[..], 0); out := ifx args_count(a[..]) >= 2 && args_at(a[..], 1)[0] != '-' then args_at(a[..], 1) else "";
   size := args_value(a[..], "--size", "2400x1400");
   w := 0; h := 0; at := 0;
@@ -100,7 +118,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   report: [1] EcBuf; ok := true; hardware := false;
   for v: 0..<EC_VIEWS {
-    u: [1] EcBuf; ec_put(u[..], base); ec_put(u[..], "/worlds/everglade2?"); ec_put(u[..], EC_QUERY[v]);
+    u: [1] EcBuf; ec_put(u[..], base); ec_put(u[..], "/worlds/everglade2?"); if !ec_query(u[..], v) { return 2; }
     nav: [4096] u8; jo: [1] Jo; jo_start(jo[..], nav[..]); jo_obj(jo[..]); jo_key(jo[..], "url"); jo_str(jo[..], ec_text(u[..])); jo_end(jo[..]);
     if !ec_call(c[..], "Page.navigate", jo_text(jo[..])) || !ec_ready(c[..]) { print("FAIL %: the scene didn't draw\n", EC_NAMES[v]); ok = false; continue; }
     if v == 0 {

@@ -5,11 +5,17 @@
 // Run it against a local room (room --dev DIR). Prints one JSON line, then "opens" and exits 0, or
 // "fails" and 1.
 #load "room-socket.coax";
+#load "../../../verse/everglade/points.coax";   // the inn's door and the South Gate, by name (#13078)
+#load "../map-points.coax";
 
-DC_AT_X :: -4.59; DC_AT_Z :: -37.0;     // where to stand at the inn's door (everglade-doors.coax door_spot)
-DC_IN_X :: -9.09; DC_IN_Z :: -37.0;     // 3 m past its doorway, inside
-DC_DOOR :: 0;
-DC_GATE_X :: 0.0; DC_GATE_Z :: -44.0;   // the road just past the south gate (the way in from the spawn at (0, -84))                           // the inn's door (EG_INN)
+// Where it stands, from Everglade's map (verse/everglade/points.coax, #13078): the inn's door spot
+// (inn-door: everglade-doors.coax door_spot, (-4.59, -37) on 11-09), 4.5 m on from it along its
+// facing, 3 m past its doorway, inside, and the road 12 m in from the South Gate's gap (gate-south),
+// the way the walk came in from the old spawn on the road (0, -84) and still goes.
+DC_MAP_POINTS :: [2] string.["inn-door", "gate-south"];
+DC_IN_PAST :: 4.5;      // m from the door's spot to inside
+DC_GATE_IN :: 12.0;     // m in from the gate's gap
+DC_DOOR :: 0;   // the inn's door (EG_INN)
 
 DcSeat :: struct {
   c: [1] RelayConn; m: [1] WireMirror; seq: int; me: int = -1;
@@ -106,6 +112,12 @@ dc_open :: (s: [] DcSeat, url: string, pid: string, name: string) -> bool {
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("door-check: bad arguments"); return 2; }
+  mp_names := EG_POINT_NAME; mp_at := EG_POINT_AT; mp_want := DC_MAP_POINTS;
+  if !map_need_all(EG_POINTS_ZONE, mp_names[..], mp_at[..], mp_want[..]) { print("fails\n"); return 2; }
+  door := eg_point("inn-door"); g := eg_point("gate-south");
+  at_x := door.x; at_z := door.z;
+  in_x := door.x + sin(door.face) * f32(DC_IN_PAST); in_z := door.z + cos(door.face) * f32(DC_IN_PAST);
+  gate_x := g.x; gate_z := g.z + f32(DC_GATE_IN);
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8841", b[..]);
   u: [1024] u8;
@@ -118,11 +130,11 @@ tool_main :: () -> int #export_c #effects(all) {
   ok[0] = dc_steps(sa[..], sb[..], false, false, 0, 0, 2000) && ok[0];
   ok[0] = dc_learn(sa[..], sb[..]) && ok[0];
   // up the road through the south gate, then both to the door, B a metre to A's side
-  gate := dc_walk(sa[..], sb[..], DC_GATE_X, DC_GATE_Z, DC_GATE_X + 1.0, DC_GATE_Z - 1.0, 0.8, 30000, ok[..]);
-  at := dc_walk(sa[..], sb[..], DC_AT_X, DC_AT_Z, DC_AT_X + 0.4, DC_AT_Z - 1.2, 0.5, 40000, ok[..]);
+  gate := dc_walk(sa[..], sb[..], gate_x, gate_z, gate_x + 1.0, gate_z - 1.0, 0.8, 30000, ok[..]);
+  at := dc_walk(sa[..], sb[..], at_x, at_z, at_x + 0.4, at_z - 1.2, 0.5, 40000, ok[..]);
   shut0 := sa[0].doors; shut0_b := sb[0].doors;
   // shut, it stops A at the doorway
-  shut := dc_walk(sa[..], sb[..], DC_IN_X, DC_IN_Z, sb[0].x, sb[0].z, 0.5, 2500, ok[..]);
+  shut := dc_walk(sa[..], sb[..], in_x, in_z, sb[0].x, sb[0].z, 0.5, 2500, ok[..]);
   // A uses it: E SEQ WE_DOOR DOOR
   sa[0].seq += 1;
   m: [96] u8;
@@ -131,7 +143,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ok[0] = dc_steps(sa[..], sb[..], false, false, 0, 0, 1500) && ok[0];
   open_a := sa[0].doors; open_b := sb[0].doors;
   // open: both walk in
-  inside := dc_walk(sa[..], sb[..], DC_IN_X, DC_IN_Z, DC_IN_X, DC_IN_Z + 1.0, 0.6, 8000, ok[..]);
+  inside := dc_walk(sa[..], sb[..], in_x, in_z, in_x, in_z + 1.0, 0.6, 8000, ok[..]);
   pass := ok[0] && sa[0].seen && sb[0].seen && at.a < 1.0 && at.b < 1.5 && !dc_bit(shut0) && !dc_bit(shut0_b) && shut.a > 1.5 && dc_bit(open_a) && dc_bit(open_b) && inside.a < 1.0 && inside.b < 1.2;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);

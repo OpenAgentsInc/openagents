@@ -9,6 +9,10 @@
 // The camp's middle (the fire): 14 m across from the path, 20 m short of the clearing's middle.
 e2_camp_x :: () -> f32 { return e2_clear_x() + 14; }
 E2_CAMP_Z :: -450.0;
+#test "the camp stands where Everglade II's named goblin camp is (#13078)" {
+  p := e2_point("goblin-camp");
+  #assert p.found && p.z == f32(E2_CAMP_Z) && e2_camp_x() == e2_clear_x() + p.x;
+}
 // A prop: its kit (E2_CAMP_KIT), where it stands from the fire (m), its turn and scale.
 E2CampProp :: struct { kit: int; dx: f32; dz: f32; yaw: f32; scale: f32; }
 // The kits: the Dungeon kit's Woodfire, and the Fantasy Props kit's stall (the camp's tent), wooden and

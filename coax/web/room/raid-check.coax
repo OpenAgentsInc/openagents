@@ -32,6 +32,8 @@
 #load "raid-identity.coax";
 #load "../../lib/sys/fs.coax";
 #load "capacity-client.coax";
+#load "../../../verse/everglade/points.coax";   // the South Gate and the muster, by name (#13078)
+#load "../map-points.coax";
 
 RC_MAX :: 16;
 #test "raid skew injection is explicit and sends only one extra step per ten ticks" {
@@ -59,8 +61,10 @@ rc_proxy_port::(base:int,seat:int)->int{if seat<0||seat>=RC_MAX||base<0||base>65
 rc_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 rc_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 RC_SEEN :: 128;
-RC_SQUARE_X :: 0.0; RC_SQUARE_Z :: 16.0;
-RC_GATE_X :: 0.0; RC_GATE_Z :: -56.0;   // the palisade's South Gate (verse/everglade/plan.coax EG_GATE), 6 m wide
+// Where the seats go, from Everglade's map (verse/everglade/points.coax, #13078): the commons' north
+// side they muster on (raid-muster) and the palisade's South Gate they walk out through (gate-south,
+// plan.coax EG_GATE, 6 m wide). The tool asks for both before it opens a seat.
+RC_MAP_POINTS :: [2] string.["raid-muster", "gate-south"];
 RcHeard :: struct {
   w: bool; d: int; me_x: f32; me_z: f32; me_seen: bool;
   phase_seen: int;                 // bit p: phase p was heard in a g entry
@@ -223,6 +227,9 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("raid-check: bad arguments"); return 2; }
   if args_has(a[..], "--help") { print("usage: coax/web/tool.sh coax/web/room/raid-check.coax RELAY N SECONDS ROOM CLASS [fight]\n"); return 0; }
+  mp_names := EG_POINT_NAME; mp_at := EG_POINT_AT; mp_want := RC_MAP_POINTS;
+  if !map_need_all(EG_POINTS_ZONE, mp_names[..], mp_at[..], mp_want[..]) { print("fails\n"); return 2; }
+  muster := eg_point("raid-muster"); gate := eg_point("gate-south");
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://127.0.0.1:8871", b[..]);
   n := ifx args_count(a[..]) > 1 then rc_max(rc_min(rs_num(args_at(a[..], 1)), RC_MAX), 1) else 8;
@@ -272,9 +279,10 @@ tool_main :: () -> int #export_c #effects(all) {
     for i: 0..<n {
       seq[i] += 1;
       m: [128] u8;
-      // to the square, to hold it (EG_SQUARE 0, about (0, 16)): ahead at the yaw that faces it, and
-      // the other way if a second of that went away from it (the camera's yaw convention)
-      sx := RC_SQUARE_X + f32(i % 4) * 2 - 3; sz := RC_SQUARE_Z + f32(i / 4) * 2 - 3;
+      // to the muster on the commons' north side, to hold it (the map's raid-muster, (0, 16) on 11-09):
+      // ahead at the yaw that faces it, and the other way if a second of that went away from it (the
+      // camera's yaw convention)
+      sx := muster.x + f32(i % 4) * 2 - 3; sz := muster.z + f32(i / 4) * 2 - 3;
       // fight: to the nearest raider it sees (a ward stone or Darian too), until it is in reach
       nq := -1; nd: f32 = 1000000;
       for q: 0..<h[i].n {
@@ -285,8 +293,8 @@ tool_main :: () -> int #export_c #effects(all) {
       if fight && nq >= 0 { sx = h[i].xs[nq]; sz = h[i].zs[nq]; stop = rc_reach(h[i..<i + 1]) - 2; }
       // the siege stands outside the palisade (#12860): a seat inside it with its raider outside walks
       // out through the South Gate's gap, not into the wall beside it
-      if fight && nq >= 0 && h[i].me_z > RC_GATE_Z - 2 && sz < RC_GATE_Z {
-        sx = RC_GATE_X; sz = ifx abs(h[i].me_x - RC_GATE_X) > 1.5 then RC_GATE_Z + 5 else RC_GATE_Z - 4; stop = 0.5;
+      if fight && nq >= 0 && h[i].me_z > gate.z - 2 && sz < gate.z {
+        sx = gate.x; sz = ifx abs(h[i].me_x - gate.x) > 1.5 then gate.z + 5 else gate.z - 4; stop = 0.5;
       }
       wx := sx - h[i].me_x; wz := sz - h[i].me_z; gap := sqrt(wx * wx + wz * wz);
       ahead := ifx h[i].me_seen && gap > stop then 100 else 0;
