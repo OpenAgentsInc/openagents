@@ -11,8 +11,8 @@
 
 const zones = new Map();   // pathname: { frame, to, state, pct, paused, report, timer }
 const FADE_MS = 900;       // the cross-fade (charactercreator-walk.coax CC_WALK_FADE)
-// A page whose script says data-zone-fade="MS" hands over faster: the unlisted lander's portal,
-// whose light Character Create draws at the same clock, so the two need only a short blend.
+// A page whose script says data-zone-fade="MS" hands over faster: one whose last frame the next
+// page draws again at the same clock needs only a short blend.
 const fadeMs = () => { const v = Number(document.querySelector("script[data-app]")?.dataset.zoneFade); return v >= 0 && v <= 5000 ? v : FADE_MS; };
 
 // A frame is up when its world drew and its loading screen has gone, and, for a page with a room

@@ -17,25 +17,32 @@ loaded into `everglade2.coax`. The wardrobe's choices and record are
 added to the record (`CC3`). The glade is Everglade II's own
 (`docs/verse/everglade2.md`).
 
-## Through the portal from an unlisted lander
+## Through the portal from the lander at /newlander
 
-An unlisted lander, the homepage's module with `data-page="3"` (`newland.coax`,
-`newland-portal.coax`), has one Everglade portal in the Grid and one button,
-CREATE YOUR CHARACTER. The homepage itself has neither. Once the lander has drawn itself for 45 frames, it opens Character Create in place under its own
-canvas (host action 18, `coax/web/zone-host.js`): the engine, shaders, pack, textures and the
-glade's first frame all load while you look at the lander, and the world then waits, paused. A
-press fades the lander's panels and flies the camera into the portal until its light fills the
-view. Then the lander hands over in place (a 200 ms blend, `data-zone-fade`), with no page load:
-the address becomes `/worlds/character-creator?via=portal`, and Character Create hears it is
-shown (message 602) and starts its arrival at once. If the in-place load failed, the press warms
-the HTTP cache instead (action 21) and the lander opens the page as usual.
+The lander at `https://openagents.com/newlander`, the homepage's module with `data-page="3"`
+(`newland.coax`, `newland-portal.coax`, `apps/openagents-web/newlander/index.html`), has one
+Everglade portal in the Grid and one button, CREATE YOUR CHARACTER. The homepage itself has
+neither. A press fades the lander's panels and flies the camera into the portal. As soon as the
+portal's light covers the view (about 1.4 s in, `PORTAL_COVER`), the tab goes on to
+`https://everglade.world/play?via=portal`: the address bar changes to everglade.world there, and
+Everglade's own arrival continues on the same light, with its loading bar, while the engine,
+shaders, pack and textures download. The lander loads nothing of Everglade before that. The
+browser keeps each site's downloads apart (its HTTP cache is split by the site in the address bar),
+so what openagents.com fetched would be fetched again under everglade.world; a headless check of
+`rel=prefetch` (plain, `as=document` and `as=fetch`) across two sites confirmed nothing carries over.
+Instead the lander's head opens the connection to everglade.world (`preconnect`, `dns-prefetch`) and
+fetches the `/play` page ahead with speculation rules, so the tab's navigation starts at once. Back to
+a lander the browser kept in memory shows it as it was before the press (message 602).
+
+The old unlisted address of the lander answers 301 to `/newlander` (the Coaxial load balancer's URL
+map, `production` path matcher).
 
 The light is one function, `portal_field` in `apps/openagents-web/gpu/portal.coax`,
 drawn by both pages at the same scale (`PORTAL_HANDOFF`) and on the same clock
 (the wall clock's seconds, from each page's `now=` fact). Until Character
 Create's engine draws, its loading screen is the light, moving: a CSS swirl and
 rings in the light's colours, run by the compositor while the engine compiles,
-with the bar hidden (`"arrival": "portal"` in `realms.json`). A failure still shows the loading screen's message. The engine
+with the loading bar low on a dark strip (`"arrival": "portal"` in `realms.json`). A failure still shows the loading screen's message. The engine
 then draws the light (`e2_arrival` in `gpu/everglade2.coax`) and holds it until
 the glade has drawn 2 frames and the page is in sight (not hidden, message 601). Over the next 2.9 s the glade opens through the
 light from the middle, the camera comes round and in to the studio's framing,

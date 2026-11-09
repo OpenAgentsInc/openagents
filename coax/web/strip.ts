@@ -3,7 +3,7 @@
 //   bun strip.ts STAGE_DIR
 // HTML comments, CSS comments in <style>, JS comments in inline scripts and
 // .js files (Bun's transpiler, whitespace only: no renaming), WGSL comments.
-// Markdown, JSON-LD and images pass through untouched.
+// Markdown, JSON-LD, speculation rules (JSON) and images pass through untouched.
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join, relative, sep } from "node:path"
 
@@ -16,7 +16,7 @@ export function html(text: string): string {
   return text
     .replace(/<!--[\s\S]*?-->\n?/g, "")
     .replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/g, (_, a, body, b) => a + css(body) + b)
-    .replace(/(<script(?![^>]*\bsrc=)(?![^>]*application\/(?:ld\+)?json)[^>]*>)([\s\S]*?)(<\/script>)/g,
+    .replace(/(<script(?![^>]*\bsrc=)(?![^>]*application\/(?:ld\+)?json)(?![^>]*speculationrules)[^>]*>)([\s\S]*?)(<\/script>)/g,
       (_, a, body, b) => a + (body.trim() ? script(body) : body) + b)
 }
 

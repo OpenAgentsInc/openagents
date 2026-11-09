@@ -8,6 +8,11 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<!-- Create your character goes on to Everglade on its own domain: its connection is open before the press,
+and its page is fetched ahead (speculation rules: kept for that tab's navigation there). -->
+<link rel="preconnect" href="https://everglade.world">
+<link rel="dns-prefetch" href="https://everglade.world">
+<script type="speculationrules">{"prefetch":[{"source":"list","urls":["https://everglade.world/play?via=portal"],"eagerness":"immediate"}]}</script>
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
 :root{--white:#f0f0f0;--light:#c7c7c7;--mid:#999;--dim:#6b6b6b;--accent:hsl(180,68.07%,53.33%);--bitcoin:#ff8c1f}  /* grayscale; Arwes's electric blue for a few accents only; Bitcoin orange is for payments only */
@@ -36,6 +41,6 @@ a:hover{color:var(--accent)}
 <p>Join with the command below, or read the <a href="/docs/connect-a-pylon">Pylon guide</a>. The board's COPY COMMAND control copies this exact command.</p>
 <p><code>curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh &amp;&amp; bash /tmp/join-pylon.sh --model elephant-1 --self-test</code></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="newland" data-page="3" data-zone-fade="200"></script>
+<script type="module" src="/coaxial/host.js" data-app="newland" data-page="3"></script>
 </body>
 </html>
