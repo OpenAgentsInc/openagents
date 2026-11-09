@@ -1,0 +1,104 @@
+// Everglade Experimental's horse (everglade/docs/mounts-spec.md): zone wiring only. It places one
+// white horse near spawn and hands Everglade's mounts (everglade/mounts.coax, the game layer, on
+// Aethyr's aethyr/action/mount.coax) this zone's ground and the boxes its walker collides with. Part
+// of charactercreator.coax's module (the Creator holds the horses); fivelab.coax wires the keys.
+
+// The white horse: just ahead and right of where you appear (you face +Z), clear of every box (the
+// spawn's safe radius only calms monsters), facing the open meadow past spawn (67 m clear at a gallop).
+XH_HORSE_X :: 4.0;
+XH_HORSE_Z :: 6.0;
+XH_HORSE_FACE :: -2.16;
+
+// Places the zone's horse once the pack has its frames.
+xh_place :: (s: []Creator) {
+  if s[0].mounts[0].n > 0 || !egm.eg_mounts_ready(s[0].mounts[0]) { return; }
+  _ := egm.eg_mount_add(s[0].mounts[..], f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE));
+}
+// The boxes the walker collides with round (x, z), for the horse (verse/experimental-village.coax
+// ev_near: the castle, the village, the props, the dungeon); the count.
+xh_walls :: (x: f32, z: f32, near: []village.EvNear) -> int { village.ev_near(near, x, z); return near[0].wall_n; }
+// Your pelvis's height standing, for the body you wear (fivelab-bodies.coax BD_RIDE_HIP).
+xh_hip :: (s: Creator) -> f32 { return figs.BD_RIDE_HIP[ifx s.female then 1 else 0]; }
+// E from where you stand, your conditions as bearing b: what happened (egm.EG_PRESS_*).
+xh_press :: (s: []Creator, now: f32, b: DeedBearing) -> int {
+  if !s[0].experimental { return egm.EG_PRESS_NONE; }
+  hx := s[0].player_x; hz := s[0].player_z;
+  if s[0].mounts[0].riding >= 0 { h := s[0].mounts[0].mounts[s[0].mounts[0].riding]; hx = h.x; hz = h.z; }
+  near: [1]village.EvNear; n := xh_walls(hx, hz, near[..]);
+  return egm.eg_mount_press(s[0].mounts[..], 0, s[0].player_x, s[0].player_z, now, b, near[0].walls[..], n);
+}
+// A frame of riding (dt seconds): the horse steps among the zone's boxes, and never into the dungeon (a
+// horse doesn't go underground); where you are. Off the horse, it only finishes a mount or dismount.
+xh_ride :: (s: []Creator, i: mount.MountIn, dt: f32, now: f32) -> egm.EgRider {
+  m := s[0].mounts[..];
+  if m[0].n == 0 { return egm.EgRider.{}; }
+  k := ifx m[0].riding >= 0 then m[0].riding else 0;
+  h := m[0].mounts[k]; near: [1]village.EvNear; n := xh_walls(h.x, h.z, near[..]);
+  _ := egm.eg_mounts_tick(m, i, dt, now, near[0].walls[..], n);
+  if dungeon.dg_inside(m[0].mounts[k].x, m[0].mounts[k].z, 1.5) { m[0].mounts[k].x = h.x; m[0].mounts[k].z = h.z; m[0].mounts[k].speed = 0; }
+  return xh_rider(s[0], now);
+}
+xh_rider :: (s: Creator, now: f32) -> egm.EgRider {
+  if s.mounts[0].riding < 0 { return egm.EgRider.{}; }
+  h := s.mounts[0].mounts[s.mounts[0].riding];
+  return egm.eg_rider(s.mounts[0], now, meadow.exp_height(h.x, h.z), meadow.exp_height(h.from_x, h.from_z), xh_hip(s));
+}
+// How far above the ground under you your feet are lifted to put your pelvis in the saddle.
+xh_lift :: (s: Creator, now: f32) -> f32 {
+  r := xh_rider(s, now); if !r.on { return 0; }
+  return r.y - xh_hip(s) - meadow.exp_height(r.x, r.z);
+}
+// Your figure while you ride: in the saddle, the horse's way, the legs astride under what the upper
+// body plays (the bow's draw included) once you're more than half way up.
+xh_figure :: (s: Creator, a0: figs.BdAnim) -> figs.BdAnim {
+  r := xh_rider(s, s.clock); if !r.on { return a0; }
+  a := a0; a.yaw = r.face;
+  // seated, the upper body sits still (no run's arms) unless an action is layered on it
+  if r.seated > 0.5 { if !a.lay { a.clip = figs.BD_IDLE; a.t0 = 0; a.phase = s.clock / figs.bd_seconds(figs.BD_IDLE); } a = figs.bd_ride(a); }
+  return a;
+}
+// The zone's horses as moved meshes, into the scene's records from n; the next free record.
+xh_records :: (s: Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -> int {
+  n := n0;
+  if !s.experimental || !egm.eg_mounts_ready(s.mounts[0]) { return n; }
+  for k: 0..<s.mounts[0].n {
+    if n >= limit { break; }
+    h := s.mounts[0].mounts[k];
+    d := egm.eg_horse_record(s.mounts[0], k, meadow.exp_height(h.x, h.z), out, n); if d.count <= 0 { continue; }
+    b[0].draws[n * 4] = cast(u32) d.first; b[0].draws[n * 4 + 1] = cast(u32) d.count; b[0].draws[n * 4 + 2] = cast(u32) n; b[0].draws[n * 4 + 3] = 1; n += 1;
+  }
+  return n;
+}
+
+#test "the white horse stands clear of every box, its rider room to step down, outside the spawn (mounts)" {
+  near: [1]village.EvNear; n := xh_walls(f32(XH_HORSE_X), f32(XH_HORSE_Z), near[..]);
+  t := egm.EG_RIDING_HORSE;
+  #assert mount.mount_body_clear(t, f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE), near[0].walls[..], n);
+  h := mount.mount_place(f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE));
+  #assert mount.mount_step_off(h, t, near[0].walls[..], n).ok;
+  #assert !mount.mount_near(h, t, 0, 0) && !dungeon.dg_inside(f32(XH_HORSE_X), f32(XH_HORSE_Z), 1.5);
+}
+#test "a zone horse: placed once its frames arrive, mounted only in reach, left where you get off (mounts)" #steps 200000000 {
+  s: [1]Creator; s[0].experimental = true; xh_place(s[..]); #assert s[0].mounts[0].n == 0;
+  for i: 0..<egm.EG_HORSE_FRAMES { s[0].mounts[0].count[i] = 3; } s[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  xh_place(s[..]); xh_place(s[..]); #assert s[0].mounts[0].n == 1;
+  s[0].player_x = 0; s[0].player_z = 0; #assert xh_press(s[..], 0, DeedBearing.{}) == egm.EG_PRESS_NONE;
+  s[0].player_x = f32(XH_HORSE_X) + 1.6; s[0].player_z = f32(XH_HORSE_Z); #assert xh_press(s[..], 0, DeedBearing.{}) == egm.EG_PRESS_MOUNTED;
+  r := xh_ride(s[..], mount.MountIn.{}, 0.016, 1); #assert r.on && r.seated == 1 && xh_lift(s[0], 1) > 0.4;
+  for k: 0..<120 { r = xh_ride(s[..], mount.MountIn.{forward = 1}, 1.0f32 / 60, 1 + f32(k) / 60); }
+  s[0].player_x = r.x; s[0].player_z = r.z;
+  #assert xh_press(s[..], 4, DeedBearing.{}) == egm.EG_PRESS_DISMOUNTED;
+  for k: 0..<60 { r = xh_ride(s[..], mount.MountIn.{forward = 1}, 1.0f32 / 60, 4 + f32(k) / 60); }
+  #assert !r.on && s[0].mounts[0].riding < 0;
+  h := s[0].mounts[0].mounts[0]; for k: 0..<60 { r = xh_ride(s[..], mount.MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, 6 + f32(k) / 60); }
+  #assert s[0].mounts[0].mounts[0].x == h.x && s[0].mounts[0].mounts[0].z == h.z;
+}
+#test "the horse can't gallop through a village wall (mounts)" #steps 200000000 {
+  s: [1]Creator; s[0].experimental = true; for i: 0..<egm.EG_HORSE_FRAMES { s[0].mounts[0].count[i] = 3; } s[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  // the wall the hostiles' check uses (experimental-hostiles.coax: a monster at (49, 46) stays north of 45)
+  _ := egm.eg_mount_add(s[0].mounts[..], 49, 48, 3.14159265);
+  s[0].mounts[0].riding = 0; s[0].mounts[0].mounts[0].state = mount.MOUNT_RIDDEN; s[0].mounts[0].mounts[0].rider = 0;
+  r := xh_rider(s[0], 0); for k: 0..<300 { r = xh_ride(s[..], mount.MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, f32(k) / 60); }
+  #assert r.on;
+  #assert s[0].mounts[0].mounts[0].blocked && s[0].mounts[0].mounts[0].z > 44;
+}

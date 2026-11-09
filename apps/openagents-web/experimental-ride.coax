@@ -1,0 +1,142 @@
+// Everglade Experimental's riding (everglade/docs/mounts-spec.md): zone wiring only, in fivelab.coax's
+// module. E (or the phone's button) mounts and dismounts through Everglade's mounts
+// (everglade/mounts.coax); while you ride, your body is the rider's seat on the horse the game layer
+// steps (charactercreator.coax experimental-horse.coax), not the walker's; the prompt and the button.
+// Your bow, your monsters' blows and the camera follow your body, so they need nothing here.
+
+// E: mount the horse in reach or get off the one you ride. False (the key goes on) when neither.
+// It asks with your SRD conditions (rs_bearing: knocked out, held or paralyzed, you stay put), and
+// only a yes presents: its footfall and the dust at the stirrup (everglade/mounts.coax eg_mount_feel).
+lab_mount_key :: (s: [] Lab) -> bool {
+  cr := s[0].creator[..];
+  if !cr[0].experimental || cr[0].hostiles[0].hp <= 0 { return false; }
+  shown := cr[0].mounts[0].shows;
+  r := cc.xh_press(cr, cr[0].clock, lab_bearing(s));
+  if r == egm.EG_PRESS_MOUNTED || r == egm.EG_PRESS_DISMOUNTED { _ := xc_bow_cancel(s); }
+  if cr[0].mounts[0].shows != shown {
+    w := cr[0].mounts[0].show; x := cr[0].player_x; z := cr[0].player_z;
+    xc_cue(s, w.sound, 0.5, x, z, 1);
+    fx_start_at(s, w.fx, cr[0].clock, fxp_v(x, meadow_y(x, z), z), fxp_v(x, meadow_y(x, z), z), fxp_v(0.6, 0.55, 0.45), 0.6, 0.6);
+  }
+  return r != egm.EG_PRESS_NONE;
+}
+// Your bearing from your SRD conditions (aethyr/rules/srd/condition-bearing.coax); none before the
+// rules have you.
+lab_bearing :: (s: [] Lab) -> DeedBearing {
+  b := s[0].xc[0].b[..];
+  if b[0].n <= 0 || b[0].c.count == 0 { return DeedBearing.{}; }
+  return rs_bearing(b[0].c[0]);
+}
+lab_riding :: (s: [] Lab) -> bool { return s[0].creator[0].experimental && s[0].creator[0].mounts[0].riding >= 0; }
+// While you ride, the step the walker proposed is set aside: the horse steps on your keys or stick
+// (W and S, D and A turn, Shift gallops), and your body goes where the saddle carries it, on the ground.
+lab_ride_body :: (s: [] Lab, origin: EgBody, proposed: EgBody) -> EgBody {
+  cr := s[0].creator[..]; now := cr[0].clock; h := s[0].held;
+  i := egm.eg_mount_input(axis(h, HOLD_W, HOLD_S), axis(h, HOLD_D, HOLD_A), s[0].shift, s[0].stick_on, s[0].stick_px, s[0].stick_py);
+  on := cr[0].mounts[0].riding;
+  r := cc.xh_ride(cr, i, egm.eg_mounts_dt(cr[0].mounts[..], now), now);
+  b := origin;
+  if r.on { b.x = r.x; b.z = r.z; }
+  else { k := cr[0].mounts[0].mounts[on]; b.x = k.from_x; b.z = k.from_z; }   // just stepped down
+  b.px = b.x; b.pz = b.z; b.py = 0; b.vx = 0; b.vz = 0; b.y = 0; b.vy = 0; b.ground = true; b.air = false; b.show_vx = 0; b.show_vz = 0;
+  return b;
+}
+// Your feet's height over the ground while you ride (the figure, the bow's launch and the camera all
+// read it from your body): the saddle less your pelvis.
+lab_ride_lift :: (s: [] Lab) -> f32 { if !lab_riding(s) { return 0; } return cc.xh_lift(s[0].creator[0], s[0].creator[0].clock); }
+// A local page's ?ride= (lab_dev_cell), for looking at riding headless: 1 puts you in the saddle, 2
+// gallops (W and Shift held), 3 draws the bow in the saddle (a Ranger: add ?class=). Once.
+lab_ride_dev :: (s: [] Lab) {
+  d := s[0].ride_dev; cr := s[0].creator[..];
+  if d <= 0 || !cr[0].experimental || cr[0].mounts[0].n == 0 { return; }
+  if cr[0].mounts[0].riding < 0 {
+    h := cr[0].mounts[0].mounts[0];
+    cr[0].player_x = h.x + cos(h.face) * 1.2; cr[0].player_z = h.z - sin(h.face) * 1.2;
+    _ := lab_mount_key(s); cr[0].yaw = h.face + 3.1415927; return;
+  }
+  if cc.xh_rider(cr[0], cr[0].clock).seated < 1 { return; }
+  if d == 2 { s[0].held = HOLD_W; s[0].shift = true; }
+  if d == 3 { _ := xc_bow_begin(s, false); }
+  s[0].ride_dev = 0;
+}
+// The phone's button: right of centre, above the bar.
+lab_ride_box :: (s: [] Lab) -> cc.Box {
+  c := s[0].creator[0]; k := c.scale;
+  return cc.Box.{x0 = c.width - 170 * k, y0 = c.height * 0.52, x1 = c.width - 30 * k, y1 = c.height * 0.52 + 48 * k};
+}
+lab_ride_pointer :: (s: [] Lab, x: f32, y: f32, phase: int) -> bool {
+  c := s[0].creator[0];
+  if phase != 0 || !c.experimental || !s[0].touch { return false; }
+  if egm.eg_mount_prompt(c.mounts[0], c.player_x, c.player_z, c.clock, true).count == 0 { return false; }
+  b := lab_ride_box(s); if x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1 { return false; }
+  return lab_mount_key(s);
+}
+// The prompt: "E  Mount" by a free horse, "E  Dismount" riding; on a phone, the button.
+lab_ride_hud :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
+  c := s[0].creator[0]; n := at;
+  if !c.experimental || c.hostiles[0].hp <= 0 { return n; }
+  t := egm.eg_mount_prompt(c.mounts[0], c.player_x, c.player_z, c.clock, s[0].touch);
+  if t.count == 0 { return n; }
+  ink := ink_col(k, 0.98, 0.94, 0.82);
+  if s[0].touch && t[0] != 'N' {
+    b := lab_ride_box(s); n = xc_frame_box(out, n, b, 1.4 * k, 0.98, 0.86, 0.5);
+    return cc.text(out, n, t, (b.x0 + b.x1) * 0.5 - xc_text_w(t, 12 * k) * 0.5, b.y0 + 31 * k, 12 * k, ink);
+  }
+  return cc.text(out, n, t, w * 0.5 - xc_text_w(t, 12 * k) * 0.5, h * 0.64, 12 * k, ink);
+}
+
+#test "E mounts the white horse only in reach and E gets you off; you ride on the ground, lifted to the saddle (mounts)" #steps 400000000 {
+  s: [1]Lab; s[0].creator[0].experimental = true; s[0].creator[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { s[0].creator[0].mounts[0].count[i] = 3; } s[0].creator[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  cc.xh_place(s[0].creator[..]); h := s[0].creator[0].mounts[0].mounts[0];
+  s[0].creator[0].player_x = 0; s[0].creator[0].player_z = 0; #assert !lab_mount_key(s[..]) && !lab_riding(s[..]);
+  s[0].creator[0].player_x = h.x + 1.8; s[0].creator[0].player_z = h.z; #assert lab_mount_key(s[..]) && lab_riding(s[..]);
+  #assert s[0].creator[0].mounts[0].shows == 1 && fxp_live(s[0].puffs[..]) > 0;
+  b := EgBody.{x = h.x + 1.8, z = h.z, ground = true};
+  for k: 0..<60 { s[0].creator[0].clock = f32(k) / 60; b = lab_keep_body(s[..], b, b); }
+  #assert b.ground && b.y == 0 && abs(b.x - h.x) < 0.5 && lab_ride_lift(s[..]) > 0.4;
+  // W and Shift: a gallop, far quicker than your 7.5 m/s run on foot
+  s[0].held = HOLD_W; s[0].shift = true;
+  for k: 60..<300 { s[0].creator[0].clock = f32(k) / 60; b = lab_keep_body(s[..], b, b); }
+  x0 := b.x; z0 := b.z;
+  for k: 300..<360 { s[0].creator[0].clock = f32(k) / 60; b = lab_keep_body(s[..], b, b); }
+  #assert sqrt((b.x - x0) * (b.x - x0) + (b.z - z0) * (b.z - z0)) > 12;
+  s[0].held = 0; s[0].shift = false;
+  for k: 360..<480 { s[0].creator[0].clock = f32(k) / 60; b = lab_keep_body(s[..], b, b); }
+  s[0].creator[0].player_x = b.x; s[0].creator[0].player_z = b.z;
+  #assert lab_mount_key(s[..]);
+  for k: 480..<540 { s[0].creator[0].clock = f32(k) / 60; b = lab_keep_body(s[..], b, b); }
+  #assert !lab_riding(s[..]) && lab_ride_lift(s[..]) == 0;
+  left := s[0].creator[0].mounts[0].mounts[0]; dx := b.x - left.x; dz := b.z - left.z; #assert dx * dx + dz * dz > 0.8 && dx * dx + dz * dz < 1.3;
+}
+#test "a Longbow shot from the saddle leaves from the rider's hand and the SRD attack lands (mounts)" #steps 900000000 {
+  s: [1]Lab; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; b := x[0].b[..];
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  _ := egm.eg_mount_add(cr[0].mounts[..], cr[0].player_x + 1.6, cr[0].player_z, 0);
+  #assert lab_mount_key(s[..]);
+  body := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for k: 0..<60 { cr[0].clock += 1.0 / 60; body = lab_keep_body(s[..], body, body); }
+  lab_you(s[..], body.x, 0, body.z, 0, false, false, false, 0, 0, 0, 0);
+  r := cc.xh_rider(cr[0], cr[0].clock); #assert r.on && r.seated == 1;
+  g := 3; h[0].enemies[g].x = body.x; h[0].enemies[g].z = body.z + 20; b[0].c[1 + g].ac = 1; b[0].c[1 + g].hp = 40; b[0].c[1 + g].hp_max = 40;
+  // the camera behind and over the rider, as the riding camera sits
+  x[0].u[16] = body.x; x[0].u[17] = r.y + 0.6; x[0].u[18] = body.z - 4; x[0].u[21] = -0.05;
+  #assert xc_bow_begin(s[..], false); xc_test_fly(s[..], 1.0); #assert xc_bow_point(s[..]).foe == g;
+  #assert xc_bow_loose(s[..]) && x[0].bow_shots == 1;
+  a := x[0].arrows[0].a[0];
+  // the hand: chest high over the saddle (your pelvis in it), beside the rider, not at a walker's height
+  hand := r.y + f32(XC_BOW_HAND) - cc.xh_hip(cr[0]);
+  #assert abs(a.from[1] - hand) < 0.05 && a.from[1] > meadow_y(body.x, body.z) + 1.45 + 0.4;
+  #assert abs(a.from[0] - r.x) < 0.6 && abs(a.from[2] - r.z) < 0.6;
+  xc_test_fly(s[..], 1.0);
+  #assert x[0].bow_hits == 1 && b[0].c[1 + g].hp < 40;
+}
+#test "riding, a monster's blow still lands on you (mounts)" #steps 400000000 {
+  s: [1]Lab; s[0].creator[0].experimental = true; hs := s[0].creator[0].hostiles[..]; hostile.hostile_test_start(hs);
+  for i: 0..<egm.EG_HORSE_FRAMES { s[0].creator[0].mounts[0].count[i] = 3; } s[0].creator[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  _ := egm.eg_mount_add(s[0].creator[0].mounts[..], 1.6, 0, 0);
+  s[0].creator[0].player_x = 0; s[0].creator[0].player_z = 0; #assert lab_mount_key(s[..]);
+  hp := hs[0].hp; for i: 0..<600 { hostile.hostile_tick(hs, 1.6, 0.6, -0.27, 0.016); }
+  #assert hs[0].hp < hp;
+}

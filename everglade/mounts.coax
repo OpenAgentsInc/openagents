@@ -1,0 +1,243 @@
+// Everglade's mounts (everglade/docs/mounts-spec.md): the game layer every Everglade zone shares, on
+// Aethyr's mounts (aethyr/action/mount.coax, the mount, its gaits, steering, mounting and riding
+// collision; aethyr/action/ride-pose.coax, the rider's seat). This module owns what makes them
+// Everglade's: the SRD's Riding Horse handling, the white horse's baked frames in a zone's pack
+// (glade/horse0..35: Idle, Walk, Gallop, twelve frames each; verse/tools/assets/horse_pack.coax) and
+// its saddle points, E to mount and dismount, the prompts, the phone's button, the stick's steering,
+// and where the rider sits. A zone places its horses (eg_mount_add), hands this the boxes its walker
+// collides with, and draws what it returns. Nothing here knows a zone.
+//
+// Mounting and getting off are deeds (aethyr/action/deed.coax, docs/verse/action-pipeline.md): each
+// declares its feel (eg_mount_feel), a press asks with your bearing (your SRD conditions: nobody
+// mounts unconscious, paralyzed or grappled), the mount rules act, and only a yes presents (show).
+//   coax/bin/coax test everglade/mounts.coax --library
+#module "everglade.mounts";
+#load "../aethyr/action/mount.coax";
+#load "../aethyr/action/deed.coax";
+#load "../aethyr/fx/puff.coax";
+
+EG_MOUNTS :: 4;            // horses a zone places at most
+EG_HORSE_FRAMES :: 36;
+EG_HORSE_CLIP :: 12;       // frames a clip
+// SRD 5.2.1 p. 360, Riding Horse: Large Beast, Speed 60 feet, twice a walker's 30. On foot you run
+// 7.5 m/s; the horse walks 4 m/s and gallops 14 (the spec's "Speeds in action combat").
+EG_RIDING_HORSE :: MountTune.{walk = 4.0, gallop = 14.0};
+// The saddle: the horse rig's Torso2 bone (horse_bake.py saddle.txt) in the packed model's space, a
+// frame each in glade/horse order, and EG_SEAT_UP from the bone up through the back to the saddle.
+EG_SADDLE :: [108] f32.[
+  0.0, 1.4284, -0.2718, 0.0, 1.4277, -0.272, 0.0, 1.4257, -0.2725, 0.0, 1.423, -0.2731, 0.0, 1.4207, -0.2737, 0.0, 1.4196, -0.2739,
+  0.0, 1.4198, -0.2739, 0.0, 1.4208, -0.2736, 0.0, 1.4226, -0.2732, 0.0, 1.4247, -0.2727, 0.0, 1.4267, -0.2722, 0.0, 1.428, -0.2719,
+  0.0284, 1.3263, -0.2978, 0.0248, 1.3473, -0.2943, 0.0142, 1.3426, -0.2866, -0.0009, 1.3261, -0.2809, -0.0165, 1.3117, -0.2783, -0.028, 1.3077, -0.2785,
+  -0.0328, 1.3232, -0.2796, -0.0301, 1.3433, -0.2803, -0.0197, 1.3464, -0.2798, -0.0038, 1.3414, -0.2807, 0.0126, 1.3252, -0.2853, 0.0243, 1.307, -0.2935,
+  0.0284, 1.4929, -0.2881, 0.0284, 1.477, -0.293, 0.0284, 1.4397, -0.3039, 0.0284, 1.3979, -0.3094, 0.0284, 1.3717, -0.3019, 0.0191, 1.3636, -0.2813,
+  0.0031, 1.3639, -0.2562, 0.0026, 1.3807, -0.2314, 0.0213, 1.4293, -0.1685, 0.0284, 1.4557, -0.1481, 0.0284, 1.4729, -0.1887, 0.0284, 1.4869, -0.2551];
+EG_SEAT_UP :: 0.16;
+EG_RIDE_CAM_BACK :: 1.5;   // metres the follow camera pulls back while you ride, and up
+EG_RIDE_CAM_UP :: 0.5;
+EG_GALLOP_STICK :: 0.92;   // a phone's stick pushed this far gallops
+EG_REFUSED_S :: 2.0;       // seconds "No room to step down" shows
+
+EG_PRESS_NONE :: 0; EG_PRESS_MOUNTED :: 1; EG_PRESS_DISMOUNTED :: 2; EG_PRESS_NO_ROOM :: 3; EG_PRESS_REFUSED :: 4;
+// The two deeds, slots of the mounts' own bar, and their animations (Everglade's IDs, past class-feel.coax's).
+EG_DEED_MOUNT :: 0; EG_DEED_DISMOUNT :: 1;
+EG_ANIM_MOUNT :: 16; EG_ANIM_DISMOUNT :: 17;
+// Mounting: the swing up (the seat's blend), dust at the stirrup, a footfall; getting off the same down.
+eg_mount_feel :: (slot: int) -> DeedFeel {
+  up := slot == EG_DEED_MOUNT;
+  return DeedFeel.{anim = ifx up then EG_ANIM_MOUNT else EG_ANIM_DISMOUNT, fx = FXR_DUST, sound = ifx up then "step-2" else "step-1", move = DeedMove.step};
+}
+
+EgMounts :: struct {
+  mounts: [EG_MOUNTS] Mount; n: int;
+  first: [EG_HORSE_FRAMES] int; count: [EG_HORSE_FRAMES] int; word: [EG_HORSE_FRAMES] int; frames: int;   // the pack's glade/horse frames
+  riding: int = -1;          // the mount you are on (or mounting, or getting off), -1 none
+  refused_at: f32 = -100;    // when a dismount found no room
+  ticked: f32 = -1;          // the clock at the last eg_mounts_dt
+  deeds: [1] DeedBar;        // mounting's and getting off's asks and answers
+  show: DeedShow; shows: int;   // the last accepted deed's presentation, and how many there have been
+}
+// Seconds since the last call (the first, none), at most a tenth: a zone that steps its horses where it
+// has no frame time of its own.
+eg_mounts_dt :: (m: [] EgMounts, now: f32) -> f32 {
+  last := m[0].ticked; m[0].ticked = now;
+  if last < 0 || !(now > last) { return 0; }
+  return ifx now - last > 0.1 then 0.1f32 else now - last;
+}
+// Where the rider is: on (in the saddle or on the way), at (x, z), y the pelvis's height in the
+// world, facing `face`, `seated` 0 standing to 1 in the saddle.
+EgRider :: struct { on: bool; x: f32; y: f32; z: f32; face: f32; seated: f32; }
+
+eg_word_end :: (t: string, from: int) -> int { e := from; while e < t.count && t[e] != ' ' { e += 1; } return e; }
+eg_whole_at :: (t: string, from: int) -> int {
+  i := from; while i < t.count && t[i] == ' ' { i += 1; }
+  v := 0; any := false;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' && v < 100000000 { v = v * 10 + cast(int) (t[i] - '0'); i += 1; any = true; }
+  return ifx any then v else -1;
+}
+// The pack's catalog: "C glade/horseN FIRST COUNT SOURCE WORD 0 0" a frame.
+eg_mounts_catalog :: (m: [] EgMounts, text: string) {
+  m[0].frames = 0; for i: 0..<EG_HORSE_FRAMES { m[0].count[i] = 0; }
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    row := text[at..<e]; at = e + 1;
+    if row.count < 16 || row[0..<13] != "C glade/horse" { continue; }
+    ne := eg_word_end(row, 2); i := eg_whole_at(row[0..<ne], 13);
+    if i < 0 || i >= EG_HORSE_FRAMES { continue; }
+    p := ne; first := eg_whole_at(row, p); p = eg_word_end(row, p + 1); count := eg_whole_at(row, p);
+    p = eg_word_end(row, p + 1); p = eg_word_end(row, p + 1); word := eg_whole_at(row, p);
+    if first < 0 || count <= 0 || count % 3 != 0 || word < 0 { continue; }
+    if m[0].count[i] == 0 { m[0].frames += 1; }
+    m[0].first[i] = first; m[0].count[i] = count; m[0].word[i] = word;
+  }
+}
+eg_mounts_ready :: (m: EgMounts) -> bool { return m.frames == EG_HORSE_FRAMES; }
+// A zone places a horse at (x, z) facing `face`; its index, or -1 when the zone has its EG_MOUNTS.
+eg_mount_add :: (m: [] EgMounts, x: f32, z: f32, face: f32) -> int {
+  if m[0].n >= EG_MOUNTS { return -1; }
+  i := m[0].n; m[0].mounts[i] = mount_place(x, z, face); m[0].n += 1; return i;
+}
+// The free horse you could mount from (x, z): the nearest in reach, or -1.
+eg_mount_nearest :: (m: EgMounts, x: f32, z: f32) -> int {
+  best := -1; far: f32 = 1000000;
+  for i: 0..<m.n { if !mount_near(m.mounts[i], EG_RIDING_HORSE, x, z) { continue; } d := mount_distance(m.mounts[i], EG_RIDING_HORSE, x, z); if d < far { far = d; best = i; } }
+  return best;
+}
+eg_riding :: (m: EgMounts) -> bool { return m.riding >= 0; }
+// E (or the phone's button) from you, `who`, standing at (x, z) with bearing b: mount the nearest free
+// horse, or get off the one you ride where there's room. Ask, act, present: the bearing must let you
+// act and move; then the mount's rules decide; a yes leaves its show. What happened (EG_PRESS_*).
+eg_mount_press :: (m: [] EgMounts, who: int, x: f32, z: f32, now: f32, b: DeedBearing, walls: [] f32, n: int) -> int {
+  slot := EG_DEED_MOUNT; i := -1;
+  if m[0].riding >= 0 {
+    if m[0].mounts[m[0].riding].state != MOUNT_RIDDEN { return EG_PRESS_NONE; }
+    slot = EG_DEED_DISMOUNT;
+  } else { i = eg_mount_nearest(m[0], x, z); if i < 0 { return EG_PRESS_NONE; } }
+  tick := deed_tick(now); feel := eg_mount_feel(slot);
+  seq := deed_ask(m[0].deeds[..], slot, tick, b, feel);
+  if seq == 0 { return EG_PRESS_REFUSED; }
+  r := EG_PRESS_REFUSED;
+  if deed_can_move(b) {
+    if slot == EG_DEED_DISMOUNT {
+      k := m[0].riding;
+      if mount_dismount(m[0].mounts[k..<k + 1], EG_RIDING_HORSE, now, walls, n) { r = EG_PRESS_DISMOUNTED; }
+      else { m[0].refused_at = now; r = EG_PRESS_NO_ROOM; }
+    } else if mount_begin(m[0].mounts[i..<i + 1], EG_RIDING_HORSE, who, x, z, now) { m[0].riding = i; r = EG_PRESS_MOUNTED; }
+  }
+  ok := r == EG_PRESS_MOUNTED || r == EG_PRESS_DISMOUNTED;
+  _ := deed_answer(m[0].deeds[..], seq, ok, tick, 0);
+  if ok { m[0].show = deed_show(feel, DeedResult.effect); m[0].shows += 1; }
+  return r;
+}
+// The rider's steering from the keys (W and S forward and back, D and A turn right and left, Shift
+// gallops) and a phone's stick (up forward, sideways turns, pushed all the way gallops).
+eg_mount_input :: (forward: f32, turn: f32, gallop: bool, stick_on: bool, stick_x: f32, stick_y: f32) -> MountIn {
+  if stick_on && stick_x * stick_x + stick_y * stick_y > 0.0004 {
+    far := sqrt(stick_x * stick_x + stick_y * stick_y);
+    return MountIn.{forward = stick_y, turn = stick_x, gallop = gallop || (far >= EG_GALLOP_STICK && stick_y > 0)};
+  }
+  return MountIn.{forward = forward, turn = turn, gallop = gallop};
+}
+// A frame: the horse you ride steps (dt seconds, among the walker's boxes), every horse finishes its
+// mount or dismount, and the free ones stand where they were left. False when you've just got off.
+eg_mounts_tick :: (m: [] EgMounts, i: MountIn, dt: f32, now: f32, walls: [] f32, n: int) -> bool {
+  for k: 0..<m[0].n {
+    one := m[0].mounts[k..<k + 1];
+    mount_settle(one, EG_RIDING_HORSE, now);
+    mount_step(one, EG_RIDING_HORSE, ifx k == m[0].riding then i else MountIn.{}, dt, walls, n);
+  }
+  if m[0].riding >= 0 && m[0].mounts[m[0].riding].state == MOUNT_FREE { m[0].riding = -1; return false; }
+  return true;
+}
+// Horse k's saddle in the world, its hooves on `ground`.
+eg_saddle :: (m: EgMounts, k: int, ground: f32) -> [3] f32 {
+  h := m.mounts[k]; f := mount_frame(h, EG_HORSE_CLIP);
+  return mount_seat(h, ground, [3] f32.[EG_SADDLE[f * 3], EG_SADDLE[f * 3 + 1] + f32(EG_SEAT_UP), EG_SADDLE[f * 3 + 2]]);
+}
+// Where you are while you ride (ground: under the horse) and your pelvis's height standing (hip): from
+// where you stood to the saddle and back as you mount and get off.
+eg_rider :: (m: EgMounts, now: f32, ground: f32, standing_ground: f32, hip: f32) -> EgRider {
+  if m.riding < 0 { return EgRider.{}; }
+  h := m.mounts[m.riding]; s := mount_seated(h, EG_RIDING_HORSE, now); seat := eg_saddle(m, m.riding, ground);
+  stand := [3] f32.[h.from_x, standing_ground + hip, h.from_z];
+  return EgRider.{on = true, seated = s, face = h.face,
+    x = stand[0] + (seat[0] - stand[0]) * s, y = stand[1] + (seat[1] - stand[1]) * s, z = stand[2] + (seat[2] - stand[2]) * s};
+}
+// What the prompt says (keyboard) and the phone's button (touch); "" for nothing.
+eg_mount_prompt :: (m: EgMounts, x: f32, z: f32, now: f32, touch: bool) -> string {
+  if now - m.refused_at < EG_REFUSED_S { return "No room to step down"; }
+  if m.riding >= 0 { if m.mounts[m.riding].state != MOUNT_RIDDEN { return ""; } return ifx touch then "DISMOUNT" else "E  Dismount"; }
+  if eg_mount_nearest(m, x, z) >= 0 { return ifx touch then "MOUNT" else "E  Mount"; }
+  return "";
+}
+// How far the riding camera is in, 0 to 1 (it eases with your seat).
+eg_ride_cam :: (m: EgMounts, now: f32) -> f32 { if m.riding < 0 { return 0; } return mount_seated(m.mounts[m.riding], EG_RIDING_HORSE, now); }
+// Horse k as a moved mesh record (24 floats at out[rec * 24]: its feet, its facing's sine and cosine, its
+// vertex word; the shared mode 18 of gpu/character-glade.coax) and its frame's draw: the index range.
+EgHorseDraw :: struct { first: int; count: int; }
+eg_horse_record :: (m: EgMounts, k: int, ground: f32, out: [] f32, rec: int) -> EgHorseDraw {
+  h := m.mounts[k]; f := mount_frame(h, EG_HORSE_CLIP); at := rec * 24;
+  if at + 24 > out.count || !eg_mounts_ready(m) { return EgHorseDraw.{}; }
+  for i: 0..<24 { out[at + i] = 0; }
+  out[at] = h.x; out[at + 1] = ground; out[at + 2] = h.z; out[at + 7] = f32(m.word[f]);
+  out[at + 8] = sin(h.face); out[at + 9] = cos(h.face); out[at + 15] = 18;
+  return EgHorseDraw.{first = m.first[f], count = m.count[f]};
+}
+
+// ---- checks
+
+EG_TEST_CATALOG :: "C glade/environment 9 12 250 100 8 0\nC glade/horse0 300 60 247 100 0 0\nC glade/horse35 900 63 247 100 0 0\n";
+#test "the catalog finds the horse's frames; a zone is ready only with all 36" {
+  m: [1] EgMounts; eg_mounts_catalog(m[..], EG_TEST_CATALOG);
+  #assert m[0].frames == 2 && m[0].first[0] == 300 && m[0].count[35] == 63 && m[0].word[35] == 100 && !eg_mounts_ready(m[0]);
+}
+#test "E mounts only near a free horse, E again gets off, and the horse stays where you left it" {
+  m: [1] EgMounts; _ := eg_mount_add(m[..], 10, 0, 0); none: [6] f32;
+  #assert eg_mount_press(m[..], 0, 13.5, 0, 0, DeedBearing.{}, none[..], 0) == EG_PRESS_NONE && !eg_riding(m[0]);
+  #assert eg_mount_prompt(m[0], 13.5, 0, 0, false) == "" && eg_mount_prompt(m[0], 12, 0, 0, false) == "E  Mount" && eg_mount_prompt(m[0], 12, 0, 0, true) == "MOUNT";
+  #assert eg_mount_press(m[..], 0, 12, 0, 0, DeedBearing.{}, none[..], 0) == EG_PRESS_MOUNTED && eg_riding(m[0]);
+  // the mount's moment: the horse stands, you rise from where you stood to the saddle
+  r0 := eg_rider(m[0], 0, 0, 0, 0.91); #assert r0.on && r0.x == 12 && r0.y == 0.91;
+  for k: 1..<60 { go := eg_mounts_tick(m[..], MountIn.{forward = 1}, 1.0f32 / 60, f32(k) / 60, none[..], 0); }
+  r1 := eg_rider(m[0], 1, 0, 0, 0.91); #assert r1.seated == 1 && r1.y > 1.45 && abs(r1.x - 10) < 0.1;
+  #assert eg_mount_prompt(m[0], 0, 0, 1, false) == "E  Dismount";
+  for k: 60..<240 { go := eg_mounts_tick(m[..], MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, f32(k) / 60, none[..], 0); }
+  #assert eg_mount_press(m[..], 0, 0, 0, 4, DeedBearing.{}, none[..], 0) == EG_PRESS_DISMOUNTED;
+  left := true; for k: 240..<300 { if !eg_mounts_tick(m[..], MountIn.{}, 1.0f32 / 60, f32(k) / 60, none[..], 0) { left = false; } }
+  #assert !left && !eg_riding(m[0]);
+  x := m[0].mounts[0].x; z := m[0].mounts[0].z; #assert z > 15;
+  for k: 300..<600 { go := eg_mounts_tick(m[..], MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, f32(k) / 60, none[..], 0); }
+  #assert m[0].mounts[0].x == x && m[0].mounts[0].z == z;
+  // walk back to it and mount again
+  #assert eg_mount_press(m[..], 0, x + 1.5, z, 10, DeedBearing.{}, none[..], 0) == EG_PRESS_MOUNTED;
+}
+#test "no room to step down keeps you on, and says so" {
+  m: [1] EgMounts; _ := eg_mount_add(m[..], 0, 0, 0); none: [6] f32;
+  _ = eg_mount_press(m[..], 0, 1, 0, 0, DeedBearing.{}, none[..], 0); go := eg_mounts_tick(m[..], MountIn.{}, 0.05, 1, none[..], 0); #assert go;
+  both := [12] f32.[0.8, 0, -2, 3, 2, 2,   -3, 0, -2, -0.8, 2, 2];
+  #assert eg_mount_press(m[..], 0, 0, 0, 2, DeedBearing.{}, both[..], 2) == EG_PRESS_NO_ROOM && eg_riding(m[0]) && eg_mount_prompt(m[0], 0, 0, 2.5, false) == "No room to step down";
+}
+#test "a phone's stick steers, and pushed all the way it gallops" {
+  a := eg_mount_input(0, 0, false, true, 0.2, 0.5); #assert a.forward == 0.5 && a.turn == 0.2 && !a.gallop;
+  b := eg_mount_input(0, 0, false, true, 0, 1); #assert b.gallop;
+  c := eg_mount_input(1, -1, true, false, 0, 0); #assert c.forward == 1 && c.turn == -1 && c.gallop;
+}
+#test "the horse's record: its feet, its facing and its frame's mesh" {
+  m: [1] EgMounts; _ := eg_mount_add(m[..], 3, 4, 1.5707964);
+  for i: 0..<EG_HORSE_FRAMES { m[0].first[i] = 1000 + i * 100; m[0].count[i] = 99; m[0].word[i] = 7; } m[0].frames = EG_HORSE_FRAMES;
+  out: [48] f32; d := eg_horse_record(m[0], 0, 2, out[..], 1);
+  #assert d.first == 1000 && d.count == 99 && out[24] == 3 && out[25] == 2 && out[26] == 4 && abs(out[32] - 1) < 0.0001 && out[39] == 18 && out[31] == 7;
+}
+#test "mounting is a deed: it asks with your bearing, and only a yes plays its feel" {
+  m: [1] EgMounts; _ := eg_mount_add(m[..], 0, 0, 0); none: [6] f32;
+  #assert deed_feel_ok(eg_mount_feel(EG_DEED_MOUNT)) && deed_feel_ok(eg_mount_feel(EG_DEED_DISMOUNT));
+  down := deed_bear(DeedBearing.{}, DeedPose.down, DEED_LOCK_ALL);     // unconscious
+  #assert eg_mount_press(m[..], 0, 1.5, 0, 0, down, none[..], 0) == EG_PRESS_REFUSED && !eg_riding(m[0]) && m[0].shows == 0;
+  held := deed_bear(DeedBearing.{}, DeedPose.held, DEED_LOCK_MOVE);    // grappled: it can act but not move
+  #assert eg_mount_press(m[..], 0, 1.5, 0, 1, held, none[..], 0) == EG_PRESS_REFUSED && !eg_riding(m[0]) && m[0].shows == 0;
+  #assert m[0].deeds[0].refused == 2;
+  #assert eg_mount_press(m[..], 0, 1.5, 0, 2, DeedBearing.{}, none[..], 0) == EG_PRESS_MOUNTED && m[0].shows == 1;
+  #assert m[0].show.play && m[0].show.anim == EG_ANIM_MOUNT && m[0].show.sound == "step-2" && m[0].show.fx == FXR_DUST;
+  go := eg_mounts_tick(m[..], MountIn.{}, 0.05, 3, none[..], 0); #assert go;
+  #assert eg_mount_press(m[..], 0, 0, 0, 4, DeedBearing.{}, none[..], 0) == EG_PRESS_DISMOUNTED && m[0].shows == 2 && m[0].show.anim == EG_ANIM_DISMOUNT;
+}

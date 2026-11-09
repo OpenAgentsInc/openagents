@@ -40,6 +40,7 @@ BD_FPS :: 30.0;
 #load "preview-clips.coax";
 #load "../../verse/everglade/two-hand-rig.coax";   // the owned two-handed weapon clips (verse/tools/assets/two_hand_clips.py)
 #load "../../aethyr/action/bow-pose.coax";   // the archer's keyed draw (docs/verse/bow-combat.md), baked as clip BD_BOW
+#load "../../aethyr/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
 BD_CLIPS :: 10;
 BD_IDLE :: 0; BD_WALK :: 1; BD_RUN :: 2; BD_SLASH :: 3; BD_SPELL :: 4; BD_KNOCK :: 5; BD_DIE :: 6; BD_JUMP_START :: 7; BD_JUMP_LOOP :: 8; BD_JUMP_LAND :: 9;
 BD_CLIP :: [10] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_SPELL, PEOPLE_KNOCK, PEOPLE_DIE, PEOPLE_JUMP_START, PEOPLE_JUMP_LOOP, PEOPLE_JUMP_LAND];
@@ -51,17 +52,19 @@ BD_BASE_TOTAL :: 502;
 BD_GAP_SLACK :: 0.10;      // metres the gap between a two-hander's fists may stray from its authored spacing on the game's bodies
 BD_OWN_IMPACT :: 0.46;    // the share of an owned cleave at its impact (two_hand_clips.py IMPACT: 0.55 s of 1.2)
 BD_OWN :: 96;             // BD_CLIPS + PREVIEW_BAKED
-BD_OWN_FRAMES :: [7] int.[75, 28, 36, 75, 28, 36, 13];
-BD_OWN_FIRST :: [7] int.[3844, 3919, 3947, 3983, 4058, 4086, 4122];
+BD_OWN_FRAMES :: [8] int.[75, 28, 36, 75, 28, 36, 13, 1];
+BD_OWN_FIRST :: [8] int.[3844, 3919, 3947, 3983, 4058, 4086, 4122, 4135];
 // After the two-handed clips, the bow's draw (aethyr/action/bow-pose.coax): BOW_POSE_FRAMES keyed
 // poses, not a clip in time: frame f is the draw at its strength, then the release (bow_pose_frame).
 BD_BOW :: BD_OWN + TWOHAND_CLIPS;
-BD_TOTAL :: 4135;         // frames a body: PREVIEW_TOTAL and the owned clips'
+// Then the rider's seat (aethyr/action/ride-pose.coax): one keyed pose, the idle's stance with the legs astride.
+BD_RIDE :: BD_BOW + 1;
+BD_TOTAL :: 4136;         // frames a body: PREVIEW_TOTAL and the owned clips'
 BD_ROWS :: 195;           // rows a frame: 65 joints, three each
-BD_BAKE_FLOATS :: 6450600; // 2 bodies * BD_TOTAL frames * 195 rows * 4
+BD_BAKE_FLOATS :: 6452160; // 2 bodies * BD_TOTAL frames * 195 rows * 4
 BD_HAND :: 34;            // the right hand's joint (the weapon's bone)
 BD_HAND_L :: 10;          // the left hand's (a two-handed weapon's upper hand)
-BD_HAND_FLOATS :: 198480; // 2 bodies * BD_TOTAL frames * 24: both hands' three rows a frame
+BD_HAND_FLOATS :: 198528; // 2 bodies * BD_TOTAL frames * 24: both hands' three rows a frame
 BD_FADE :: 0.18;          // seconds a change of clip blends
 BD_WALK_FROM :: 0.35;     // m/s: slower stands
 BD_RUN_FROM :: 2.2;       // and faster runs
@@ -305,9 +308,44 @@ bd_bow_pose :: (d: [] People, body: int, f: int, out: [] f32) {
   _ := bow_pose(rig, sk[..], BD_BOW_JOINTS, f);
   skin_palette(rig, sk[..], out);
 }
+// The keyed poses: the bow's draw and the rider's seat.
 bd_bake_bow :: (d: [] People, out: [] f32) {
   if out.count < BD_BAKE_FLOATS { return; }
   for body: 0..<2 { for f: 0..<BOW_POSE_FRAMES { at := bd_row(body == 1, BD_BOW, f) * 4; bd_bow_pose(d, body, f, out[at..<at + BD_ROWS * 4]); } }
+  for body: 0..<2 { at := bd_row(body == 1, BD_RIDE, 0) * 4; _ := bd_ride_pose(d, body, out[at..<at + BD_ROWS * 4]); }
+}
+// The people rig's legs (people-rig.coax PEOPLE_PARENT: 55 to 59 one leg, 60 to 64 the other).
+// The pelvis's height astride, male then female (checked below): a realm lifts the figure by the saddle's height less this.
+BD_RIDE_HIP :: [2] f32.[0.91, 0.89];
+BD_RIDE_JOINTS :: RideJoints.{leg_a = [4] int.[55, 56, 57, 58], leg_b = [4] int.[60, 61, 62, 63]};
+// Body `body` astride: its idle's first pose, its legs posed (ride_pose), as palette rows; where its
+// pelvis is in the character's space (a realm lifts the figure so the pelvis meets the saddle).
+bd_ride_pose :: (d: [] People, body: int, out: [] f32) -> Point {
+  rig := people_rig(d, body == 1);
+  sk: [1] Skin; sk[0] = Skin.{};
+  for j: 0..<PEOPLE_JOINTS { sk[0].now[j] = skin_sample(rig, PEOPLE_IDLE, j, 0); }
+  p := ride_pose(rig, sk[..], BD_RIDE_JOINTS);
+  skin_palette(rig, sk[..], out);
+  return p.pelvis;
+}
+// A rider: the seat's legs under whatever the upper body plays (a0: the idle, or an action layered on
+// it by bd_layer), through the action layer (bd_layer_code): the hips and legs all the seat's; the upper
+// body a0's clip, or for a layered action as far as it has come in (the seat's upper body is the idle's).
+bd_ride :: (a0: BdAnim) -> BdAnim {
+  a := a0;
+  a.lay_up = ifx a0.lay then a0.lay_up else 0.0f32;
+  a.prev = BD_RIDE; a.pt0 = 0; a.pphase = 0.5;
+  a.lay = true; a.lay_low = 1; a.fade_at = -100;
+  return a;
+}
+#test "a rider's legs are the seat's and the upper body its action's (mounts)" {
+  a0: BdAnim; a0.clip = BD_IDLE;
+  r := bd_ride(a0); m := bd_layer_code(r.lay_up, r.lay_low);
+  #assert r.prev == BD_RIDE && bd_gait_share(m, 60) == 1 && bd_gait_share(m, 1) == 1 && bd_gait_share(m, BD_HAND) == 0 && bd_gait_share(m, 6) == 0;
+  // a bow half drawn: the arms half the draw's, the legs still the seat's
+  d := bd_ride(bd_layer(a0, BD_BOW, 0, 0.5, 0.5, 10));
+  md := bd_layer_code(d.lay_up, d.lay_low);
+  #assert d.clip == BD_BOW && abs(bd_gait_share(md, BD_HAND) - 0.5) < 0.01 && bd_gait_share(md, 57) == 1;
 }
 
 // ---- playback
@@ -318,7 +356,7 @@ bd_wrap :: (a: f32) -> f32 {
   while x < -f32(PI) { x += 2 * f32(PI); }
   return x;
 }
-bd_seconds :: (c: int) -> f32 { if c==BD_BOW {return 1;}if c>=BD_OWN {return TWOHAND_DURATION[c-BD_OWN];}if c>=BD_CLIPS {return PREVIEW_DURATION[c-BD_CLIPS];}return f32(BD_FRAMES[c]) / f32(BD_FPS); }
+bd_seconds :: (c: int) -> f32 { if c==BD_BOW || c==BD_RIDE {return 1;}if c>=BD_OWN {return TWOHAND_DURATION[c-BD_OWN];}if c>=BD_CLIPS {return PREVIEW_DURATION[c-BD_CLIPS];}return f32(BD_FRAMES[c]) / f32(BD_FPS); }
 bd_frames :: (c: int) -> int { if c >= BD_OWN { return BD_OWN_FRAMES[c - BD_OWN]; } if c >= BD_CLIPS { return PREVIEW_FRAMES[c - BD_CLIPS]; } return BD_FRAMES[c]; }
 bd_gait :: (c: int) -> bool { return c == BD_WALK || c == BD_RUN; }
 bd_once :: (c: int) -> bool { return c == BD_SLASH || c == BD_KNOCK || c == BD_DIE || c == BD_JUMP_START || c == BD_JUMP_LAND; }
@@ -659,8 +697,9 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
  for c:0..<TWOHAND_CLIPS {#assert BD_OWN_FRAMES[c]==cast(int)(TWOHAND_DURATION[c]*f32(BD_FPS)+0.5);if c>0 {#assert BD_OWN_FIRST[c]==BD_OWN_FIRST[c-1]+BD_OWN_FRAMES[c-1];}}
  // then the bow's keyed draw, last
  #assert BD_OWN_FIRST[TWOHAND_CLIPS]==BD_OWN_FIRST[TWOHAND_CLIPS-1]+BD_OWN_FRAMES[TWOHAND_CLIPS-1] && BD_OWN_FRAMES[TWOHAND_CLIPS]==BOW_POSE_FRAMES && BD_BOW==BD_OWN+TWOHAND_CLIPS;
- #assert BD_OWN_FIRST[TWOHAND_CLIPS]+BD_OWN_FRAMES[TWOHAND_CLIPS]==BD_TOTAL && BD_HAND_FLOATS==2*BD_TOTAL*24;
- #assert bd_row(true,BD_BOW,BOW_POSE_FRAMES-1)*4+BD_ROWS*4==BD_BAKE_FLOATS;
+ #assert BD_OWN_FIRST[TWOHAND_CLIPS+1]==BD_OWN_FIRST[TWOHAND_CLIPS]+BD_OWN_FRAMES[TWOHAND_CLIPS] && BD_RIDE==BD_BOW+1;
+ #assert BD_OWN_FIRST[TWOHAND_CLIPS+1]+BD_OWN_FRAMES[TWOHAND_CLIPS+1]==BD_TOTAL && BD_HAND_FLOATS==2*BD_TOTAL*24;
+ #assert bd_row(true,BD_RIDE,0)*4+BD_ROWS*4==BD_BAKE_FLOATS;
 }
 #test "the baked clips' frames are their seconds at 30 a second, and the bake holds both bodies" {
   for c: 0..<BD_CLIPS {
@@ -669,7 +708,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   }
   #assert BD_FIRST[BD_CLIPS - 1] + BD_FRAMES[BD_CLIPS - 1] == BD_BASE_TOTAL;
   #assert BD_ROWS == PEOPLE_JOINTS * 3 && BD_BAKE_FLOATS == 2 * BD_TOTAL * BD_ROWS * 4;
-  #assert bd_row(true, BD_BOW, BOW_POSE_FRAMES - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS;
+  #assert bd_row(true, BD_RIDE, 0) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS;
 }
 
 #test "a baked frame is the clip's pose as aethyr/skin.coax plays it" #steps 400000000 {
@@ -882,4 +921,8 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   #assert (b[0].draws[last + 2] & 0x80000000) != 0 && (b[0].draws[last + 2] & 0x7fffffff) == cast(u32) nr;
   // its record says blocks (4) and bones (1)
   #assert cast(int) out[nr * BD_REC_FLOATS + 15] == 7;
+}
+#test "astride, each body's pelvis sits where a realm seats it, its feet well below (mounts)" #steps 400000000 {
+  d: [1] People; people_load(d[..]); out: [BD_ROWS * 4] f32;
+  for body: 0..<2 { p := bd_ride_pose(d[..], body, out[..]); #assert abs(p.y - BD_RIDE_HIP[body]) < 0.012 && abs(p.x) < 0.02 && abs(p.z) < 0.1; }
 }

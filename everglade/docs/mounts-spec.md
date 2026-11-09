@@ -179,6 +179,51 @@ needs no feed and is never left behind.
 - **One at a time.** You can have one summoned mount at a time. Calling a new
   one dismisses the old one.
 
+## Flying mounts and the red dragon
+
+A flying mount is a mount with wings. It uses the same mount system as the
+horse: you walk up, press E, ride, and get off where you want, and it stays
+there. Only how it moves is different.
+
+- **One flight module.** Flying mounts don't have flight code of their own.
+  The engine's mount (`aethyr/action/mount.coax`, `mount_step_wings`) steps
+  Aethyr's shared winged flight (`aethyr/action/flight.coax`, `wing_step`),
+  the same module the druid's dragon form uses. Takeoff, climbing, gliding,
+  diving, banking and landing behave the same whether you are the dragon or
+  ride one.
+- **The red dragon.** Everglade Experimental places one red dragon near
+  spawn. It uses the Adult Red Dragon's speeds (SRD 5.2.1, Adult Red Dragon:
+  Speed 40 ft., Fly 80 ft.) against the 30-foot pace of 7.5 m/s, so it walks
+  at 10 m/s and flies at 20 m/s, about 2.7 times your run on foot and faster
+  than a horse's 14 m/s gallop.
+- **The saddle.** You sit at the base of its neck, on the model's `saddle`
+  bone.
+- **Taking off and landing.** On the ground it walks. Space takes off. In the
+  air, Space beats the wings, holding Space climbs, letting go glides, and
+  holding Ctrl dives and speeds it up. A and D steer and bank it into the
+  turn; W flies on, and letting go of W slows it to a hover. **X** lands. It
+  also lands when it glides down to the ground.
+- **No getting off in the air.** E works only on the ground. In the air the
+  prompt says "Land first" instead of "E  Dismount".
+- **Collision.** Low over the ground its body meets walls as the horse's does.
+  High enough, it flies over them. It stays under the zone's ceiling (60
+  metres).
+- **Camera.** While you ride the dragon the camera pulls back further than on
+  the horse, enough to fit its wings.
+- **Fighting from its back.** Your bow works as on the horse, through the
+  shared bow system. **F** asks the dragon for its Fire Breath, aimed where
+  you look (your yaw and pitch), through the SRD's dragon actions
+  (`aethyr/rules/srd/dragon-actions.coax`: `rs_breath_ready`,
+  `rs_in_cone3`, `rs_fire_breath_on`). The breath recharges on the SRD's
+  Recharge 5-6, rolled at the start of the dragon's turn.
+- **One pipeline.** Mounting, getting off, the breath and shots from the
+  saddle are all deeds (`aethyr/action/deed.coax`): each declares its look
+  and sound, asks with your bearing (`rs_bearing`: you can't mount while
+  unconscious, paralyzed or grappled), the rules act, and only a yes plays.
+
+Everglade's summoned dragon (Dragon's Call, above) uses this same mount once
+summoning lands.
+
 ## Controls
 
 | Action | Keyboard and mouse | Phone |
@@ -190,6 +235,10 @@ needs no feed and is never left behind.
 | Look | the mouse (mouselook) or a drag | a drag on the right side |
 | Whistle | **H** | the WHISTLE button |
 | Shoot | hold and release the right mouse button, or the bow's hotbar key | hold and release the bow's slot |
+| Take off, beat, climb (flying mount) | **Space**: press to take off or beat, hold to climb | the JUMP button |
+| Dive (flying mount) | hold **Ctrl** | the DIVE button |
+| Land (flying mount) | **X** | the LAND button |
+| Fire Breath (dragon) | **F**, aimed where you look | the BREATH button |
 
 - **Mounting.** Mounting takes 0.6 seconds. You step to the horse's left side
   and swing up into the saddle. The horse stands still while you mount.
@@ -292,6 +341,8 @@ Mount (aethyr/action/mount.coax)
   kind                  riding horse, warhorse, phantom steed, otherworldly steed, dragon
   until                 when a summoned mount leaves; 0 for owned
   hp, max_hp            from its stat block
+  flies, wing           a flying mount: its WingState (aethyr/action/flight.coax)
+                        holds its height, vertical speed, bank and flight phase
 MountTune
   walk, gallop          top speeds per gait (m/s)
   accel, brake          (m/s²)
@@ -316,8 +367,9 @@ multiplayer realm.
 3. **Room server.** The horse as server state, mount requests, ownership and
    correction. Everglade II places its first horse.
 4. **Summoned mounts.** Find Steed, Phantom Steed and the fade.
-5. **Flying.** The Exotic Saddle, Fly Speed, ceilings and landing, and
-   Dragon's Call.
+5. **Flying.** The red dragon in Everglade Experimental lands first (see
+   "Flying mounts and the red dragon"). Then the Exotic Saddle, flying Find
+   Steed, and Dragon's Call.
 6. **Mounted combat in full.** Two-handed stowing, the Warhorse's charge,
    Opportunity Attacks on the horse and monsters that target mounts.
 
@@ -331,14 +383,20 @@ behavior.
   gallop is faster than running on foot by a large margin. The horse's speed
   ramps with its acceleration, and its turn rate falls with speed. A wall in
   the horse's path stops it, and a step that would put its body into a box is
-  refused. The dismount picks a clear side or refuses.
+  refused. The dismount picks a clear side or refuses. A flying mount takes
+  off on the jump, flies faster than the horse's gallop, banks into turns,
+  can't be left in the air, lands, and stays where you got off. Low, a wall
+  stops it; high, it flies over the wall.
 - **Riding pose (`aethyr/action/ride-pose.coax`).** The thighs spread to
   either side of the saddle, the knees bend, and the feet hang below the
   seat.
 - **Game and zone (`everglade/mounts.coax`, Experimental).** The horse is placed clear of the spawn's safe
   area and of every collider. A bow shot from horseback leaves from the
   rider's hand and resolves through the SRD attack. A monster's hit while you
-  ride lands on you.
+  ride lands on you. Mounting asks with your bearing: unconscious or grappled,
+  you can't mount, and only a yes plays the mount's sound and dust. In
+  Experimental you mount the dragon in reach, take off, fly faster than the
+  horse gallops, land, dismount, and it stays put.
 - **Room server (phase 3).** Two simultaneous mount requests produce one
   rider. A non-owner's request on an owned horse is refused. A client's
   impossible horse position is corrected.

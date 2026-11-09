@@ -1,0 +1,357 @@
+// Mounts (everglade/docs/mounts-spec.md): a creature you walk up to, mount, steer and leave where
+// you got off. Nothing here rolls or draws: a game decides who may ride and what a mount's stat
+// block is (Everglade: everglade/mounts.coax); this module owns
+//
+//   the mount (Mount): where it stands and faces, its speed along its heading, its gait's clock, and
+//   who rides it; free, being mounted, ridden, or being dismounted (MOUNT_*), since `since`;
+//   mounting and dismounting (mount_near, mount_begin, mount_dismount): within `reach` of its
+//   body, a short transition each way; off on its left, else its right, else not here;
+//   steering (mount_step): forward walks, Shift gallops, A and D turn, S slows and backs; it speeds
+//   up and slows with its own acceleration and turns slower the faster it goes, so it carves arcs;
+//   riding collision: its body is a capsule along its heading (radius, half_length) and never
+//   enters a box of the world's (the same boxes the walker collides with, six floats each: x0 y0 z0
+//   x1 y1 z1, y from the ground); blocked, it slides along a wall, else stops;
+//   its gait (mount_clip, mount_frame): idle, walk or gallop by speed, played by the ground covered
+//   so the hooves keep pace; the trot is the walk played faster, the canter the gallop slower;
+//   the seat (mount_seat): a model-space saddle point (a game's per-frame table) placed in the world;
+//   flying mounts (mount_place_wings, mount_step_wings): a mount with wings steps Aethyr's shared
+//   winged flight (aethyr/action/flight.coax, wing_step) instead of the gaits: the rider's jump takes
+//   off and beats, a held jump climbs, the dive folds the wings, land comes down; A and D steer it round
+//   and it banks; aloft it clears the boxes it flies over; nobody gets off in the air.
+//
+// A free mount stays exactly where it was left: nothing here moves it.
+//   coax/bin/coax test aethyr/action/mount.coax --library
+#module "aethyr.action.mount";
+#load "flight.coax";
+
+MOUNT_FREE :: 0; MOUNT_MOUNTING :: 1; MOUNT_RIDDEN :: 2; MOUNT_DISMOUNTING :: 3;
+MOUNT_IDLE :: 0; MOUNT_WALK :: 1; MOUNT_GALLOP :: 2;   // its clips
+
+// A kind of mount's handling. Speeds m/s, rates per second, lengths metres.
+MountTune :: struct {
+  walk: f32 = 4.0; gallop: f32 = 14.0; back: f32 = 1.5;
+  accel: f32 = 6.0; brake: f32 = 10.0;
+  turn_walk: f32 = 2.4; turn_gallop: f32 = 1.4; turn_still: f32 = 1.5;
+  radius: f32 = 0.42; half_length: f32 = 0.95; low: f32 = 0.3; high: f32 = 1.8;   // its body, and the heights a box must reach into to stop it
+  reach: f32 = 2.5; side: f32 = 1.0; rider_radius: f32 = 0.3;                       // to mount from; where you step off
+  mount_s: f32 = 0.6; dismount_s: f32 = 0.5;
+  stride_walk: f32 = 2.6; stride_gallop: f32 = 7.0; idle_s: f32 = 3.3;             // metres a walk's and a gallop's cycle covers; an idle cycle's seconds
+  gallop_from: f32 = 8.0;                                                           // the speed the gallop clip takes over from the walk
+}
+Mount :: struct {
+  on: bool;                     // placed in the world
+  x: f32; z: f32; face: f32;    // its middle on the ground, and its heading (forward is sin face, cos face)
+  speed: f32; phase: f32;       // along its heading (negative backing), its gait's cycles
+  clip: int;                    // MOUNT_IDLE, MOUNT_WALK or MOUNT_GALLOP
+  state: int; since: f32;
+  rider: int = -1;              // who rides (or mounts or dismounts) it, -1 none
+  from_x: f32; from_z: f32;     // where the rider stood as they began to mount, or steps down to
+  blocked: bool;                // the last step met a wall
+  flies: bool;                  // it has wings: wing is its flight (its feet's height in wing.y)
+  wing: WingState;
+}
+// The rider's steering this frame: forward -1 to 1, turn -1 (left) to 1 (right), the gallop held.
+// A flier's too: the jump pressed this frame and held, the dive held, land pressed.
+MountIn :: struct { forward: f32; turn: f32; gallop: bool; jump: bool; climb: bool; dive: bool; land: bool; }
+
+mt_clamp :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b { return b; } return v; }
+mt_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
+
+mount_place :: (x: f32, z: f32, face: f32) -> Mount { return Mount.{on = true, x = x, z = z, face = face}; }
+mount_ridden :: (m: Mount) -> bool { return m.state == MOUNT_RIDDEN; }
+mount_busy :: (m: Mount) -> bool { return m.state == MOUNT_MOUNTING || m.state == MOUNT_DISMOUNTING; }
+// The rider in the saddle or on the way to or from it.
+mount_carries :: (m: Mount, who: int) -> bool { return m.on && m.state != MOUNT_FREE && m.rider == who; }
+
+// How far (x, z) is from the mount's body: its capsule's centre line, less nothing (the reach is
+// measured from the line, so you can mount from its flank, nose or tail alike).
+mount_distance :: (m: Mount, t: MountTune, x: f32, z: f32) -> f32 {
+  fx := sin(m.face); fz := cos(m.face);
+  along := mt_clamp((x - m.x) * fx + (z - m.z) * fz, -t.half_length, t.half_length);
+  dx := x - (m.x + fx * along); dz := z - (m.z + fz * along);
+  return sqrt(dx * dx + dz * dz);
+}
+// Whether someone standing at (x, z) can mount it now: it is placed, free, and within reach.
+mount_near :: (m: Mount, t: MountTune, x: f32, z: f32) -> bool {
+  return m.on && m.state == MOUNT_FREE && mount_distance(m, t, x, z) <= t.reach;
+}
+// Who at (x, z) begins to mount it at `now`; false if they can't. It stands still while they do.
+mount_begin :: (m: [] Mount, t: MountTune, who: int, x: f32, z: f32, now: f32) -> bool {
+  if !mount_near(m[0], t, x, z) { return false; }
+  m[0].state = MOUNT_MOUNTING; m[0].since = now; m[0].rider = who; m[0].from_x = x; m[0].from_z = z; m[0].speed = 0;
+  return true;
+}
+// Whether a circle of radius r at (x, z) is clear of the boxes.
+mount_clear :: (t: MountTune, x: f32, z: f32, r: f32, walls: [] f32, n: int) -> bool {
+  for i: 0..<n {
+    o := i * 6; if o + 6 > walls.count { break; }
+    if walls[o + 4] < t.low || walls[o + 1] > t.high { continue; }
+    cx := mt_clamp(x, walls[o], walls[o + 3]); cz := mt_clamp(z, walls[o + 2], walls[o + 5]);
+    dx := x - cx; dz := z - cz;
+    if dx * dx + dz * dz < r * r { return false; }
+  }
+  return true;
+}
+// Whether the mount's body at (x, z) facing `face` is clear: its capsule, sampled along its length.
+mount_body_clear :: (t: MountTune, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool {
+  fx := sin(face); fz := cos(face);
+  for k: 0..<5 {
+    a := (f32(k) / 4 * 2 - 1) * t.half_length;
+    if !mount_clear(t, x + fx * a, z + fz * a, t.radius, walls, n) { return false; }
+  }
+  return true;
+}
+// Where the rider steps down: the mount's left side (facing +Z, its left is +X), else its right.
+// ok false: neither side is clear, and they stay on.
+MountStep :: struct { ok: bool; x: f32; z: f32; }
+mount_step_off :: (m: Mount, t: MountTune, walls: [] f32, n: int) -> MountStep {
+  lx := cos(m.face); lz := -sin(m.face);   // the left, a quarter turn from forward
+  for side: 0..<2 {
+    k := ifx side == 0 then 1.0f32 else -1.0f32;
+    x := m.x + lx * t.side * k; z := m.z + lz * t.side * k;
+    if mount_clear(t, x, z, t.rider_radius, walls, n) { return MountStep.{ok = true, x = x, z = z}; }
+  }
+  return MountStep.{};
+}
+// The rider begins to get down at `now`; false (still riding) where there's no room to step off.
+mount_dismount :: (m: [] Mount, t: MountTune, now: f32, walls: [] f32, n: int) -> bool {
+  if m[0].state != MOUNT_RIDDEN || mount_aloft(m[0]) { return false; }
+  at := mount_step_off(m[0], t, walls, n); if !at.ok { return false; }
+  m[0].state = MOUNT_DISMOUNTING; m[0].since = now; m[0].from_x = at.x; m[0].from_z = at.z; m[0].speed = 0;
+  return true;
+}
+// How far the rider is into the saddle, 0 standing beside it to 1 seated: through a mount, a ride and
+// a dismount.
+mount_seated :: (m: Mount, t: MountTune, now: f32) -> f32 {
+  if m.state == MOUNT_RIDDEN { return 1; }
+  if m.state == MOUNT_MOUNTING { u := mt_clamp((now - m.since) / t.mount_s, 0, 1); return u * u * (3 - 2 * u); }
+  if m.state == MOUNT_DISMOUNTING { u := mt_clamp((now - m.since) / t.dismount_s, 0, 1); return 1 - u * u * (3 - 2 * u); }
+  return 0;
+}
+// The transitions' ends: seated after mount_s, off (free, the rider at from) after dismount_s.
+mount_settle :: (m: [] Mount, t: MountTune, now: f32) {
+  if m[0].state == MOUNT_MOUNTING && now - m[0].since >= t.mount_s { m[0].state = MOUNT_RIDDEN; m[0].since = now; }
+  if m[0].state == MOUNT_DISMOUNTING && now - m[0].since >= t.dismount_s { m[0].state = MOUNT_FREE; m[0].since = now; m[0].rider = -1; }
+}
+// The top speed the input asks for.
+mount_want :: (t: MountTune, i: MountIn) -> f32 {
+  f := mt_clamp(i.forward, -1, 1);
+  if f > 0 { return f * (ifx i.gallop then t.gallop else t.walk); }
+  return f * t.back;
+}
+// How fast it turns at `speed`: turn_walk at a walk, easing to turn_gallop at a gallop, turn_still standing.
+mount_turn_rate :: (t: MountTune, speed: f32) -> f32 {
+  s := mt_abs(speed);
+  if s < 0.5 { return t.turn_still + (t.turn_walk - t.turn_still) * s / 0.5; }
+  return t.turn_walk + (t.turn_gallop - t.turn_walk) * mt_clamp((s - t.walk) / (t.gallop - t.walk), 0, 1);
+}
+// One step of riding, dt seconds, among the world's boxes: it speeds toward what's asked, turns, and
+// moves as far as its body stays clear (sliding along a wall it meets). A mount not ridden stands.
+mount_step :: (m: [] Mount, t: MountTune, i: MountIn, dt: f32, walls: [] f32, n: int) {
+  if !(dt > 0) { return; }
+  d := ifx dt > 0.1 then 0.1f32 else dt;
+  if m[0].state != MOUNT_RIDDEN { m[0].speed = 0; mount_gait(m, t, d); return; }
+  want := mount_want(t, i);
+  rate := ifx mt_abs(want) > mt_abs(m[0].speed) && want * m[0].speed >= 0 then t.accel else t.brake;
+  dv := want - m[0].speed; lim := rate * d;
+  m[0].speed += mt_clamp(dv, -lim, lim);
+  turn := mt_clamp(i.turn, -1, 1) * mount_turn_rate(t, m[0].speed) * d;
+  if m[0].speed < 0 { turn = -turn; }   // backing up, the hindquarters swing the other way
+  face := m[0].face - turn;   // a right turn (facing +Z, toward -X) lowers the heading
+  if mount_body_clear(t, m[0].x, m[0].z, face, walls, n) || !mount_body_clear(t, m[0].x, m[0].z, m[0].face, walls, n) { m[0].face = face; }
+  dx := sin(m[0].face) * m[0].speed * d; dz := cos(m[0].face) * m[0].speed * d;
+  m[0].blocked = false;
+  if mount_body_clear(t, m[0].x + dx, m[0].z + dz, m[0].face, walls, n) { m[0].x += dx; m[0].z += dz; }
+  else {
+    m[0].blocked = true;
+    if mount_body_clear(t, m[0].x + dx, m[0].z, m[0].face, walls, n) { m[0].x += dx; }
+    else if mount_body_clear(t, m[0].x, m[0].z + dz, m[0].face, walls, n) { m[0].z += dz; }
+    // a wall it meets head on stops it: what's left of the step is lost, and its speed with it
+    m[0].speed *= 0.5;
+  }
+  mount_gait(m, t, d);
+}
+// Which clip a speed plays.
+mount_clip_at :: (t: MountTune, speed: f32) -> int {
+  s := mt_abs(speed);
+  if s < 0.25 { return MOUNT_IDLE; }
+  return ifx s < t.gallop_from then MOUNT_WALK else MOUNT_GALLOP;
+}
+// The gait's clock: by the ground covered (a cycle a stride), or the idle's own seconds standing.
+mount_gait :: (m: [] Mount, t: MountTune, dt: f32) {
+  c := mount_clip_at(t, m[0].speed);
+  if c != m[0].clip { m[0].clip = c; m[0].phase = 0; }
+  if c == MOUNT_IDLE { m[0].phase += dt / t.idle_s; }
+  else { m[0].phase += m[0].speed * dt / (ifx c == MOUNT_WALK then t.stride_walk else t.stride_gallop); }
+  m[0].phase -= floor(m[0].phase);
+}
+// The frame it shows, of `per` a clip, clips in MOUNT_* order.
+mount_frame :: (m: Mount, per: int) -> int {
+  f := cast(int) floor(m.phase * f32(per)); if f >= per { f = per - 1; } if f < 0 { f = 0; }
+  return m.clip * per + f;
+}
+// A model-space point (x across, y up, z ahead) on the mount, in the world: its saddle, from a
+// game's per-frame seat table.
+mount_seat :: (m: Mount, ground: f32, local: [3] f32) -> [3] f32 {
+  s := sin(m.face); c := cos(m.face);
+  return [3] f32.[m.x + local[0] * c + local[2] * s, ground + local[1], m.z - local[0] * s + local[2] * c];
+}
+
+// ---- flying mounts
+
+// How far round its heading a full A or D steers a flier (it turns there at its profile's rate).
+MOUNT_STEER_AHEAD :: 0.9;
+// A mount with wings, standing on `ground`.
+mount_place_wings :: (x: f32, z: f32, face: f32, ground: f32) -> Mount {
+  m := mount_place(x, z, face); m.flies = true; m.wing = wing_at(x, ground, z, face); return m;
+}
+// Off the ground: taking off, flying or still settling from a landing.
+mount_aloft :: (m: Mount) -> bool { return m.flies && m.wing.phase != WING_GROUND; }
+// Its feet's height: a flier's own, anything else the ground under it.
+mount_feet :: (m: Mount, ground: f32) -> f32 { return ifx m.flies then m.wing.y else ground; }
+// One step of a flier, dt seconds over `ground` (the floor's height under it), among the world's
+// boxes. The rider steers as on a horse (forward, A and D) and flies with the jump, dive and land;
+// wing_step does the flying, this keeps its body out of the boxes it is low enough to meet.
+mount_step_wings :: (m: [] Mount, t: MountTune, p: WingProfile, i: MountIn, ground: f32, dt: f32, walls: [] f32, n: int) {
+  if !(dt > 0) { return; }
+  d := ifx dt > 0.1 then 0.1f32 else dt;
+  w := m[0].wing; w.x = m[0].x; w.z = m[0].z; w.yaw = m[0].face;
+  if m[0].state != MOUNT_RIDDEN && w.phase == WING_GROUND { m[0].speed = 0; m[0].wing = w; mount_wing_gait(m, t, p, d); return; }
+  in: WingInput;
+  if m[0].state == MOUNT_RIDDEN {
+    f := mt_clamp(i.forward, 0, 1); tr := mt_clamp(i.turn, -1, 1);
+    want := ifx f > mt_abs(tr) * 0.25 then f else mt_abs(tr) * 0.25;   // turning alone eases it round slowly
+    goal := m[0].face - tr * f32(MOUNT_STEER_AHEAD);                     // a right turn lowers the heading
+    in = WingInput.{mx = sin(goal) * want, mz = cos(goal) * want, jump = i.jump, climb = i.climb, dive = i.dive, land = i.land};
+  }
+  o := wing_step(p, w, in, ground, d);
+  // the boxes reach from the ground: aloft, its body is that much higher up them
+  up := t; alt := o.y - ground; up.low = t.low + alt; up.high = t.high + alt;
+  if !mount_body_clear(up, m[0].x, m[0].z, o.yaw, walls, n) && mount_body_clear(up, m[0].x, m[0].z, m[0].face, walls, n) { o.yaw = m[0].face; }
+  m[0].blocked = false;
+  if !mount_body_clear(up, o.x, o.z, o.yaw, walls, n) {
+    m[0].blocked = true;
+    if mount_body_clear(up, o.x, m[0].z, o.yaw, walls, n) { o.z = m[0].z; }
+    else if mount_body_clear(up, m[0].x, o.z, o.yaw, walls, n) { o.x = m[0].x; }
+    else { o.x = m[0].x; o.z = m[0].z; }
+    o.speed *= 0.5;
+  }
+  m[0].x = o.x; m[0].z = o.z; m[0].face = o.yaw; m[0].speed = o.speed; m[0].wing = o;
+  mount_wing_gait(m, t, p, d);
+}
+// A flier's clip is wing_clip's (WING_CLIP_*; idle and walk are MOUNT_IDLE and MOUNT_WALK): the walk
+// plays by the ground covered, the rest by idle_s a cycle.
+mount_wing_gait :: (m: [] Mount, t: MountTune, p: WingProfile, dt: f32) {
+  c := wing_clip(p, m[0].wing);
+  if c != m[0].clip { m[0].clip = c; m[0].phase = 0; }
+  m[0].phase += ifx c == WING_CLIP_WALK then m[0].speed * dt / t.stride_walk else dt / t.idle_s;
+  m[0].phase -= floor(m[0].phase);
+}
+
+// ---- checks
+
+MT_WALL :: [6] f32.[-5, 0, 6, 5, 3, 7];   // a wall across +Z, 6 m ahead
+#test "mounting only within reach, and E toggles mount then dismount" {
+  t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0);
+  #assert !mount_begin(m[..], t, 7, 3.2, 0, 0) && m[0].state == MOUNT_FREE;      // 3.2 m off its flank
+  #assert mount_near(m[0], t, 0.5, 3.2);                                         // its nose is 0.95 m out: 2.25 from it
+  #assert mount_begin(m[..], t, 7, 2.2, 0.3, 1) && m[0].state == MOUNT_MOUNTING && m[0].rider == 7;
+  #assert !mount_near(m[0], t, 2.2, 0.3);                                        // taken
+  mount_settle(m[..], t, 1.4); #assert m[0].state == MOUNT_MOUNTING && mount_seated(m[0], t, 1.4) > 0.5;
+  mount_settle(m[..], t, 1.6); #assert mount_ridden(m[0]) && mount_seated(m[0], t, 1.6) == 1;
+  none: [6] f32;
+  #assert mount_dismount(m[..], t, 2, none[..], 0) && m[0].state == MOUNT_DISMOUNTING;
+  mount_settle(m[..], t, 2.6); #assert m[0].state == MOUNT_FREE && m[0].rider == -1;
+  // off on its left: facing +Z, the left is +X
+  #assert m[0].from_x > 0.9 && abs(m[0].from_z) < 0.01;
+}
+#test "a dismounted mount stays exactly where it was left" {
+  t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0); none: [6] f32;
+  on := mount_begin(m[..], t, 1, 1, 0, 0); #assert on; mount_settle(m[..], t, 1);
+  for k: 0..<120 { mount_step(m[..], t, MountIn.{forward = 1, turn = 0.3, gallop = true}, 1.0f32 / 60, none[..], 0); }
+  off := mount_dismount(m[..], t, 3, none[..], 0); #assert off; mount_settle(m[..], t, 4);
+  x := m[0].x; z := m[0].z; f := m[0].face; #assert x * x + z * z > 25;
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1, turn = 1, gallop = true}, 1.0f32 / 60, none[..], 0); mount_settle(m[..], t, 4 + f32(k) / 60); }
+  #assert m[0].x == x && m[0].z == z && m[0].face == f && m[0].speed == 0 && m[0].clip == MOUNT_IDLE;
+}
+#test "the gallop is far faster than running on foot (7.5 m/s), and it ramps up" {
+  t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN; none: [6] f32;
+  mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 0.1, none[..], 0); #assert m[0].speed > 0.5 && m[0].speed < 0.7;
+  for k: 0..<300 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, none[..], 0); }
+  #assert m[0].speed == t.gallop && t.gallop > 1.8 * 7.5 && m[0].clip == MOUNT_GALLOP;
+  z := m[0].z; for k: 0..<60 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, none[..], 0); }
+  #assert m[0].z - z > 13.9;
+  for k: 0..<120 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, none[..], 0); }
+  #assert m[0].speed == t.walk && m[0].clip == MOUNT_WALK;
+}
+#test "it turns slower the faster it goes" {
+  t := MountTune.{};
+  #assert mount_turn_rate(t, t.walk) > mount_turn_rate(t, t.gallop) && mount_turn_rate(t, t.gallop) == t.turn_gallop;
+  m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN; m[0].speed = t.gallop; none: [6] f32;
+  mount_step(m[..], t, MountIn.{forward = 1, turn = 1, gallop = true}, 0.1, none[..], 0); #assert abs(m[0].face + 0.14) < 0.001;
+}
+#test "a wall stops it: its body never enters a box" {
+  t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN; w := MT_WALL;
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, w[..], 1); #assert m[0].z + t.half_length + t.radius <= 6.001; }
+  #assert m[0].blocked && m[0].z > 4.5;
+  // a box too low to matter (a kerb) or overhead (a sign) doesn't stop it
+  low := [12] f32.[-5, 0, 6, 5, 0.2, 7,   -5, 2.0, 6, 5, 3, 7];
+  m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  for k: 0..<120 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, low[..], 2); }
+  #assert m[0].z > 8;
+}
+#test "stepping off picks a clear side or refuses" {
+  t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  left := [6] f32.[0.8, 0, -2, 3, 2, 2];   // a wall on its left
+  #assert mount_dismount(m[..], t, 0, left[..], 1) && m[0].from_x < -0.9;
+  m[0].state = MOUNT_RIDDEN;
+  both := [12] f32.[0.8, 0, -2, 3, 2, 2,   -3, 0, -2, -0.8, 2, 2];
+  #assert !mount_dismount(m[..], t, 0, both[..], 2) && mount_ridden(m[0]);
+}
+#test "the gait's frames: by ground covered, wrapping within the clip" {
+  t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN; m[0].speed = t.walk; none: [6] f32;
+  mount_step(m[..], t, MountIn.{forward = 1}, 0.05, none[..], 0); #assert m[0].clip == MOUNT_WALK && mount_frame(m[0], 12) >= 12 && mount_frame(m[0], 12) < 24;
+  p := m[0].phase; mount_step(m[..], t, MountIn.{forward = 1}, 0.05, none[..], 0); #assert abs(m[0].phase - p - 0.2 / t.stride_walk) < 0.001;
+  s := mount_seat(Mount.{x = 1, z = 2, face = 1.5707964}, 3, [3] f32.[0, 1.4, 0.5]);
+  #assert abs(s[0] - 1.5) < 0.001 && abs(s[1] - 4.4) < 0.001 && abs(s[2] - 2) < 0.001;
+}
+
+MT_DT :: 1.0 / 64.0;
+mt_fly :: (m: [] Mount, t: MountTune, p: WingProfile, i: MountIn, steps: int, walls: [] f32, n: int) {
+  for k: 0..<steps { mount_step_wings(m, t, p, i, 0, f32(MT_DT), walls, n); }
+}
+#test "a flying mount: the jump takes off, it flies faster than a gallop, lands, and only then lets you down where it stays" {
+  t := MountTune.{}; p := wing_profile_srd(40, 80, 7.5); none: [6] f32;
+  m: [1] Mount; m[0] = mount_place_wings(0, 0, 0, 0);
+  on := mount_begin(m[..], t, 1, 1.5, 0, 0); #assert on; mount_settle(m[..], t, 1); #assert mount_ridden(m[0]) && !mount_aloft(m[0]);
+  mount_step_wings(m[..], t, p, MountIn.{forward = 1, jump = true}, 0, f32(MT_DT), none[..], 0);
+  #assert mount_aloft(m[0]) && m[0].clip == WING_CLIP_TAKEOFF;
+  mt_fly(m[..], t, p, MountIn.{forward = 1, climb = true}, 64 * 4, none[..], 0);
+  #assert m[0].wing.phase == WING_AIR && m[0].wing.y > 10 && mount_feet(m[0], 0) == m[0].wing.y;
+  z := m[0].z; mt_fly(m[..], t, p, MountIn.{forward = 1, climb = true}, 64, none[..], 0);
+  #assert m[0].z - z > t.gallop + 4;                       // a horse gallops 14 m a second
+  #assert !mount_dismount(m[..], t, 2, none[..], 0);        // nobody gets off in the air
+  k := 0; while m[0].wing.phase == WING_AIR && k < 64 * 60 { mount_step_wings(m[..], t, p, MountIn.{land = true}, 0, f32(MT_DT), none[..], 0); k += 1; }
+  #assert m[0].wing.phase == WING_LANDING && m[0].wing.y == 0 && m[0].clip == WING_CLIP_LAND;
+  mt_fly(m[..], t, p, MountIn.{}, 64, none[..], 0); #assert !mount_aloft(m[0]);
+  off := mount_dismount(m[..], t, 10, none[..], 0); #assert off; mount_settle(m[..], t, 11); #assert m[0].state == MOUNT_FREE;
+  x := m[0].x; zz := m[0].z; f := m[0].face;
+  mt_fly(m[..], t, p, MountIn.{forward = 1, jump = true}, 64 * 5, none[..], 0);
+  #assert m[0].x == x && m[0].z == zz && m[0].face == f && !mount_aloft(m[0]) && m[0].clip == WING_CLIP_IDLE;
+}
+#test "a flier steers like a horse and banks into the turn; a wall stops it low, and it flies over it high" {
+  t := MountTune.{}; p := wing_profile_srd(40, 80, 7.5); none: [6] f32;
+  m: [1] Mount; m[0] = mount_place_wings(0, 0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  mount_step_wings(m[..], t, p, MountIn.{jump = true}, 0, f32(MT_DT), none[..], 0);
+  mt_fly(m[..], t, p, MountIn.{forward = 1, climb = true}, 64 * 2, none[..], 0);
+  mt_fly(m[..], t, p, MountIn.{forward = 1, turn = 1, climb = true}, 32, none[..], 0);
+  #assert m[0].face < -0.3 && m[0].wing.bank < -p.max_bank * 0.5 && m[0].clip == WING_CLIP_BANK_RIGHT;
+  w := MT_WALL;
+  low: [1] Mount; low[0] = mount_place_wings(0, 0, 0, 0); low[0].state = MOUNT_RIDDEN;
+  mt_fly(low[..], t, p, MountIn.{forward = 1}, 64 * 4, w[..], 1);
+  #assert low[0].blocked && low[0].z + t.half_length + t.radius <= 6.001;
+  high: [1] Mount; high[0] = mount_place_wings(0, -30, 0, 0); high[0].state = MOUNT_RIDDEN;
+  mount_step_wings(high[..], t, p, MountIn.{jump = true}, 0, f32(MT_DT), none[..], 0);
+  mt_fly(high[..], t, p, MountIn.{forward = 1, climb = true}, 64 * 4, w[..], 1);
+  #assert high[0].z > 10 && high[0].wing.y > 3;
+}

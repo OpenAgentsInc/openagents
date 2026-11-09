@@ -214,6 +214,12 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax "$nature_root" \
   "$monster_root" "$monster_frames" assets/registry/scenes/everglade-experimental-extra-props.layout \
   assets/registry/scenes/everglade-experimental-extra-nature.layout \
   verse/experimental-scene-colliders.coax
+horse_frames="$HOME/.openagents/assets/cache/horse-white-mount"
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --disable-autoexec \
+  --python-exit-code 1 --python verse/tools/assets/horse_bake.py -- "$animal_original" "$horse_frames"
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-horse \
+  apps/openagents-web/realms/everglade-experimental/assets/glade.pack /tmp/glade-horse.pack "$horse_frames"
+mv /tmp/glade-horse.pack apps/openagents-web/realms/everglade-experimental/assets/glade.pack
 gzip -n -6 -c apps/openagents-web/realms/everglade-experimental/assets/glade.pack \
   > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 coax/web/tool.sh verse/tools/assets/village_collision.coax "$village_root" \
@@ -224,6 +230,22 @@ python3 verse/tools/assets/character_glade_oracle.py \
 ```
 
 The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
+
+A white horse stands just ahead of the spawn at (4, 6). Walk up to it and press
+**E** (or tap MOUNT on a phone) to ride: W and S go and slow, A and D turn, Shift
+gallops at 14 m/s against 7.5 m/s running on foot, and E gets you off. It stays
+where you leave it. You can draw and loose the Longbow from the saddle. The
+horse is Quaternius's CC0 Horse_White, lightened to white and baked by
+`verse/tools/assets/horse_bake.py` (Idle, Walk and Gallop, appended to the pack
+as `glade/horse0` to `glade/horse35`). See the
+[mounts spec](../../everglade/docs/mounts-spec.md) for the engine
+(`aethyr/action/mount.coax`, `aethyr/action/ride-pose.coax`), game
+(`everglade/mounts.coax`) and zone (`apps/openagents-web/experimental-horse.coax`,
+`experimental-ride.coax`) layers. Mounting and getting off go through the action
+pipeline (`aethyr/action/deed.coax`): a press asks with your conditions, so you
+can't mount while unconscious, paralyzed or grappled. To look at riding without
+playing, add `?ride=1` (in the saddle), `?ride=2` (galloping) or `?ride=3&class=7`
+(a Ranger drawing the bow in the saddle) to a local page.
 
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
 

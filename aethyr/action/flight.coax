@@ -58,7 +58,7 @@ WingState :: struct {
   vy: f32;                  // vertical speed
   speed: f32;               // forward speed along yaw
   yaw: f32;                 // heading: 0 faces +Z, turning toward +X
-  bank: f32;                // lean, + into a right turn
+  bank: f32;                // lean into the turn: + as the heading grows (toward +X, the body's left), - to its right
   turning: f32;             // this step's turn, rad/s
   beat: bool; diving: bool; // this step's wing beat and dive (aethyr/flight.coax)
 }
@@ -154,8 +154,9 @@ wing_clip :: (p: WingProfile, s: WingState) -> int #effects(all) {
   if s.phase == WING_LANDING { return WING_CLIP_LAND; }
   if s.diving { return WING_CLIP_DIVE; }
   if s.speed < p.hover_speed { return WING_CLIP_HOVER; }
-  if s.bank > p.max_bank * 0.5 { return WING_CLIP_BANK_RIGHT; }
-  if s.bank < -p.max_bank * 0.5 { return WING_CLIP_BANK_LEFT; }
+  // facing +Z the body's left is +X: a growing heading turns, and leans, left
+  if s.bank > p.max_bank * 0.5 { return WING_CLIP_BANK_LEFT; }
+  if s.bank < -p.max_bank * 0.5 { return WING_CLIP_BANK_RIGHT; }
   if s.beat || s.vy > 0.5 { return WING_CLIP_FLY; }
   return WING_CLIP_GLIDE;
 }
@@ -216,10 +217,11 @@ wf_take_off :: (p: WingProfile) -> WingState #effects(all) {
 #test "turns bank: right leans right, left leans left, and the lean levels again flying straight" {
   p := wing_profile_srd(40, 80, 3.0);
   a := wf_take_off(p);
-  r := wf_run(p, a, WingInput.{mx = 1, climb = true}, 32);
-  #assert r.bank > p.max_bank * 0.5 && r.yaw > 0 && wing_clip(p, r) == WING_CLIP_BANK_RIGHT;
-  l := wf_run(p, a, WingInput.{mx = -1, climb = true}, 32);
-  #assert l.bank < -p.max_bank * 0.5 && l.yaw < 0 && wing_clip(p, l) == WING_CLIP_BANK_LEFT;
+  // facing +Z the body's right is -X: steering there turns and banks right
+  r := wf_run(p, a, WingInput.{mx = -1, climb = true}, 32);
+  #assert r.bank < -p.max_bank * 0.5 && r.yaw < 0 && r.x < 0 && wing_clip(p, r) == WING_CLIP_BANK_RIGHT;
+  l := wf_run(p, a, WingInput.{mx = 1, climb = true}, 32);
+  #assert l.bank > p.max_bank * 0.5 && l.yaw > 0 && l.x > 0 && wing_clip(p, l) == WING_CLIP_BANK_LEFT;
   #assert abs(r.yaw) <= p.turn * 32 * f32(WF_DT) + 0.001;
   s := wf_run(p, r, WingInput.{mx = sin(r.yaw), mz = cos(r.yaw), climb = true}, 64 * 2);
   #assert abs(s.bank) < 0.05;

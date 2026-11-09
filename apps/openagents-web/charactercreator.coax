@@ -21,6 +21,10 @@ VERTEX_FLOATS :: 16;
 #load "fivelab-bodies.coax" as figs;
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's world: the mouse looks round with no button held
 #load "../../aethyr/cam/firstperson.coax" as fpcam;   // zoomed all the way in, the camera is your eyes
+#load "../../aethyr/action/mount.coax" as mount;
+#load "../../aethyr/action/deed.coax";       // your bearing, as the mounts ask with it
+#load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
+#load "experimental-horse.coax";             // Experimental's white horse: placed and wired
 
 // Shared with Everglade II: sampled frames over the last half second.
 FpsCounter :: struct {fps:f32;frames:int;time:f32;}
@@ -45,6 +49,7 @@ fps_draw :: (f:FpsCounter,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
+  mounts:[1]egm.EgMounts;   // the zone's horses (experimental-horse.coax)
   hostile_external:bool; // owner stages AI through shared combat before publication
   aribeth:[]aribeth.Aribeth;
   experimental:bool; fps:[1]FpsCounter; dev_animations:bool; preview_collapsed:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
@@ -388,7 +393,7 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
   if experimental_hold(s)>=0 {g.clip=experimental_stance(s);g.t0=0;g.phase=s.clock/figs.bd_seconds(g.clip);g.prev= -1;}
   a=figs.bd_layer(g,s.swing_clip,s.swing_at,(s.clock-s.swing_at)/figs.bd_seconds(s.swing_clip),experimental_swing_weight(s),s.clock);
  }
- return a;
+ return xh_figure(s,a);
 }
 // A blow eases in and out over BD_LAYER_FADE.
 experimental_swing_weight :: (s:Creator)->f32 {
@@ -911,6 +916,7 @@ scene_reserved :: (s:Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
     b[0].draws[n*4]=cast(u32)s.animal_first[take];b[0].draws[n*4+1]=cast(u32)s.animal_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
+  if s.experimental && n<43 {n=xh_records(s,b,out,n,43);}
   if s.experimental && s.monster_n==48 && n<43 {
     take:=monster_frame(s.clock);for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s.glade_word);out[n*24+15]=16;
@@ -1224,7 +1230,8 @@ camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
     // offset and tightens in, as far as the aim has come in (s.aim). Nothing jumps between them.
     // Zoomed in to first person (fp) they all give way to the eye.
     mlv:=s.ml[0].shown;off:=ifx mlv>s.aim then mlv else s.aim;
-    dist:=(s.dist+(2.1-s.dist)*s.aim)*far;shoulder:=(cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off)*far;ox:=cz*shoulder-sx*ahead;oz:= -sx*shoulder-cz*ahead;
+    ride:=egm.eg_ride_cam(s.mounts[0],s.clock);target+=f32(egm.EG_RIDE_CAM_UP)*ride;   // riding, the camera pulls back and up to see the horse
+    base:=s.dist+f32(egm.EG_RIDE_CAM_BACK)*ride;dist:=(base+(2.1-base)*s.aim)*far;shoulder:=(cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off)*far;ox:=cz*shoulder-sx*ahead;oz:= -sx*shoulder-cz*ahead;
     lift:=f32(CC_LIFT)*mlv;if 0.38*s.aim>lift {lift=0.38*s.aim;}target+=lift*far+fpcam.fp_lift(fp,1.2);
     // drawn, the boom comes level behind the shoulder, whatever the pitch: the view still looks along
     // the pitch (the aim), so you see the arrow's line and not the top of your head
@@ -1340,6 +1347,7 @@ preset :: (s:[]Creator,family:int) {
 ensure :: (s:[]Creator) {if !s[0].configured {preset(s,s[0].outfit);}}
 reset :: (s:[]Creator) { s[0].pan_x=0;s[0].pan_y=0;s[0].pan_mode=false;s[0].piece=18;s[0].female=false;s[0].outfit=2;s[0].hood=false;s[0].hair=0;s[0].beard=false;s[0].dye=8;s[0].skin=1;s[0].hair_color=0;s[0].eye_color=0;s[0].variant=0;s[0].pose=0;s[0].pose_at=s[0].clock;s[0].yaw=-0.22;s[0].pitch=0.1;s[0].dist=3.1;preset(s,2);s[0].revision+=1; }
 catalog :: (s:[]Creator,t:string) {
+  egm.eg_mounts_catalog(s[0].mounts[..],t);xh_place(s);
   if s[0].aribeth.count>0 {aribeth.arb_catalog(s[0].aribeth,t);}
   s[0].comparison_present=false;s[0].biomes_present=false;s[0].source_n=0;s[0].glade_count=0;s[0].zero_ad_count=0;s[0].grass_groups=0;s[0].animal_n=0;s[0].monster_n=0;s[0].dungeon_n=0;for i:0..<8 {s[0].dungeon_count[i]=0;}s[0].npc_n=[2]int.[0,0];for k:0..<2 {for i:0..<48 {s[0].npc_count[k][i]=0;}}for i:0..<48 {s[0].monster_count[i]=0;}for i:0..<10 {s[0].animal_count[i]=0;}for i:0..<7 {s[0].weapon_count[i]=0;}
   for i:0..<11 {s[0].familiar_count[i]=0;}

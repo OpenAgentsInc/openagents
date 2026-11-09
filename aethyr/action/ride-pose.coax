@@ -1,0 +1,54 @@
+// The rider's pose (everglade/docs/mounts-spec.md): astride a mount's back, keyed on a skinned rig
+// (aethyr/skin.coax) as the bow's draw is (bow-pose.coax), so any realm can bake it once. No
+// library has a riding clip for the Universal Animation Library's rig. From whatever stance the rig
+// stands in, each leg's hip stays put while two-bone IK swings the thigh out and forward round the
+// mount's barrel, bends the knee forward and hangs the lower leg down its side, the foot level in
+// the stirrup. The upper body is untouched: a realm layers its idle or an action (the bow, a cast)
+// over it through its upper-body layer, the legs staying in the saddle.
+//   coax/bin/coax test aethyr/action/ride-pose.coax --library
+#load "bow-pose.coax";   // the IK it reaches with (bp_global, bp_reach, bp_point)
+
+RIDE_SPREAD :: 0.27;   // metres each ankle sits out from its hip: round a riding horse's barrel
+RIDE_DROP :: 0.60;     // metres the ankle hangs below the hip
+RIDE_AHEAD :: 0.16;    // metres the ankle sits ahead of the hip (the stirrup under the knee)
+
+// A rig's leg joints: each leg's thigh, calf, foot and ball.
+RideJoints :: struct { leg_a: [4] int; leg_b: [4] int; }
+// What the pose placed, in the character's space: the pelvis (where the saddle meets the rider) and
+// the two ankles.
+RidePosed :: struct { pelvis: Point; ankle_a: Point; ankle_b: Point; }
+
+ride_leg :: (r: SkinRig, s: [] Skin, leg: [4] int) -> Point {
+  hip := bp_global(r, s, leg[0]).t;
+  side := ifx hip.x >= 0 then 1.0f32 else -1.0f32;   // facing +Z, a leg on +X is the left
+  ankle := add(hip, v3(side * f32(RIDE_SPREAD), -f32(RIDE_DROP), f32(RIDE_AHEAD)));
+  at := bp_reach(r, s, leg[0], leg[1], leg[2], ankle, v3(side * 0.4, 0, 1));
+  // the foot ahead and level, its ball forward of the ankle
+  bp_point(r, s, leg[2], leg[3], add(at, v3(side * 0.03, -0.06, 0.14)));
+  return at;
+}
+// Poses s's legs astride. Joint 1 is taken for the pelvis (the people rig's and most humanoid rigs').
+ride_pose :: (r: SkinRig, s: [] Skin, j: RideJoints) -> RidePosed {
+  a := ride_leg(r, s, j.leg_a); b := ride_leg(r, s, j.leg_b);
+  return RidePosed.{pelvis = bp_global(r, s, 1).t, ankle_a = a, ankle_b = b};
+}
+
+#test "astride: both ankles go out to their own sides, below and ahead of the hips, legs unstretched" {
+  // a pelvis and two three-joint legs (thigh 0.45, calf 0.43, foot 0.12 to the ball) hanging straight
+  par := [10] int.[-1, 0, 1, 2, 3, 4, 1, 6, 7, 8];
+  rest := [70] f32.[0, 0, 0, 0, 0, 0, 1,   0, 0.95, 0, 0, 0, 0, 1,
+    0.1, 0, 0, 0, 0, 0, 1,   0, -0.45, 0, 0, 0, 0, 1,   0, -0.43, 0, 0, 0, 0, 1,   0, -0.05, 0.12, 0, 0, 0, 1,
+    -0.1, 0, 0, 0, 0, 0, 1,  0, -0.45, 0, 0, 0, 0, 1,   0, -0.43, 0, 0, 0, 0, 1,   0, -0.05, 0.12, 0, 0, 0, 1];
+  bind: [120] f32;
+  r := SkinRig.{joints = 10, parent = par[..], rest = rest[..], bind = bind[..]};
+  s: [1] Skin;
+  for k: 0..<10 { s[0].now[k] = SkinLocal.{t = v3(rest[k * 7], rest[k * 7 + 1], rest[k * 7 + 2])}; }
+  p := ride_pose(r, s[..], RideJoints.{leg_a = [4] int.[2, 3, 4, 5], leg_b = [4] int.[6, 7, 8, 9]});
+  #assert p.ankle_a.x > 0.3 && p.ankle_b.x < -0.3;
+  #assert p.ankle_a.y < 0.95 - 0.5 && p.ankle_a.z > 0.1 && abs(p.ankle_a.y - p.ankle_b.y) < 0.001;
+  knee := bp_global(r, s[..], 3).t; hip := bp_global(r, s[..], 2).t; ankle := bp_global(r, s[..], 4).t;
+  #assert abs(length(sub(knee, hip)) - 0.45) < 0.001 && abs(length(sub(ankle, knee)) - 0.43) < 0.001;
+  // the knee bends forward, out past the hip: astride, not knock-kneed
+  #assert knee.z > hip.z + 0.05 && knee.x > hip.x;
+  #assert abs(p.pelvis.y - 0.95) < 0.001;
+}

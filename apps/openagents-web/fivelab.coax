@@ -49,6 +49,8 @@
 #load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (experimental-combat.coax xc_dash_frame)
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 #load "experimental-objects.coax";
+#load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
+#load "experimental-ride.coax";               // Experimental's riding: E, the saddle, the prompt
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 
 VERTEX_FLOATS :: 16;
@@ -143,6 +145,7 @@ Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32
 Lab :: struct {
   experimental_audio: [1] exsound.ExperimentalSound;
   respawn_id:int = -1;
+  ride_dev: int;   // a local page's ?ride= (experimental-ride.coax lab_ride_dev): mounted, galloping or drawing on the horse
   xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
   creator: [1] cc.Creator;
   aribeth_state:[1]nwna.Aribeth;
@@ -2160,6 +2163,8 @@ lab_jump_pay :: (s:[] Lab)->bool {
 // Admission between controller advance and body publication. The host only
 // transports this result back into the shared controller.
 lab_keep_body :: (s:[] Lab,origin:EgBody,proposed:EgBody)->EgBody #export_c #effects(all) {
+  lab_ride_dev(s);
+  if lab_riding(s) { return lab_ride_body(s,origin,proposed); }   // the horse carries you (experimental-ride.coax)
   body:=ifx s[0].creator[0].experimental then lab_jump_limit(s,origin,proposed) else proposed;
   kept:=lab_keep(s,body.x,body.z); body.x=kept.x; body.z=kept.z;
   if body.x!=proposed.x { body.px=body.x; body.vx=0; }
@@ -2207,7 +2212,7 @@ lab_aim_face :: (s:[]Lab,face:f32)->f32 {
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
-  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].backpedal=s[0].creator[0].ml[0].shown>0.5 && axis(s[0].held,HOLD_W,HOLD_S)<0;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || xc_dashing(s);xc_dash_frame(s);}
+  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y+lab_ride_lift(s);s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].backpedal=s[0].creator[0].ml[0].shown>0.5 && axis(s[0].held,HOLD_W,HOLD_S)<0;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || xc_dashing(s);xc_dash_frame(s);}
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -3230,6 +3235,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
       if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
       n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
+      n = lab_ride_hud(s,out,n,width,height,hi(dpr,0.5));
       n = lab_comparison_labels(s,out,n,width,height,hi(dpr,0.5));
       n = lab_biome_labels(s,out,n,width,height,hi(dpr,0.5));
       n = lab_aribeth_label(s,out,n,width,height,hi(dpr,0.5));
@@ -3484,6 +3490,7 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
    p:=compare.cmp_site(ifx cmp==0 then 2 else cmp-1);s[0].put_on=true;s[0].put_x=ifx cmp==0 then 31 else p.x;s[0].put_y=0.2;s[0].put_z=ifx cmp==0 then 12 else p.z+1;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx cmp==0 then 1.2 else 0.4;s[0].creator[0].dist=ifx cmp==0 then 28 else 5;s[0].xc[0].open=false;
   }
   cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].xc[..],cl);}
+  rd:=url_number(q,"ride");if rd>0 && rd<=3 {s[0].ride_dev=rd;}
   // px, pz: any spot, metres plus 1000 (px=970&pz=1010 is (-30, 10)); yaw the way you face in degrees
   // (0 is +z), the camera behind you; dist the camera's metres; class a class's row (fivebar.coax FB_CL_*)
   px:=url_number(q,"px");pz:=url_number(q,"pz");if px>=0 && pz>=0 {
@@ -3600,7 +3607,7 @@ lab_respawn_pointer :: (s:[]Lab,x:f32,y:f32,phase:int,id:int)->bool {
  if s[0].respawn_id!=id {return false;}if phase==2 {s[0].respawn_id= -1;if inside {_:=lab_respawn(s);}return true;}if phase==3 {s[0].respawn_id= -1;return true;}return true;
 }
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
-  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
+  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if (key=='e' || key=='E') && lab_mount_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
   if s[0].creator[0].on {return cc.key(s[0].creator[..],key);}
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)
@@ -3741,7 +3748,7 @@ lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
 }
 lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
-  if s[0].creator[0].on {if s[0].creator[0].experimental && lab_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
+  if s[0].creator[0].on {if s[0].creator[0].experimental && lab_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && lab_ride_pointer(s,x,y,phase) {return true;}if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
   lab_start(s);
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
