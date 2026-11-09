@@ -7,7 +7,7 @@ good), then the pages (checked on every visit), then stale objects go.
         the pages go under PREFIX/ and only PREFIX/'s stale objects go; the
         content-named assets go to the bucket's root, as always (pin.sh)
 """
-import base64, concurrent.futures as cf, gzip, hashlib, json, mimetypes, os, sys, urllib.parse, urllib.request
+import base64, concurrent.futures as cf, gzip, hashlib, json, mimetypes, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 stage, bucket, token = sys.argv[1:4]
 prefix = sys.argv[4].strip("/") + "/" if len(sys.argv) > 4 else ""
@@ -20,9 +20,19 @@ types = {".wasm": "application/wasm", ".wgsl": "text/plain; charset=utf-8", ".md
          ".sh": "text/plain; charset=utf-8", ".ps1": "text/plain; charset=utf-8"}
 
 def call(url, method="GET", body=None, headers={}):
-    req = urllib.request.Request(url, data=body, method=method, headers={**auth, **headers})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read() or b"{}")
+    # A large body gets longer (30 s plus 1 s per 256 KB), and a timeout, a dropped connection or a
+    # 429/5xx is retried up to 4 times with backoff: one slow write once stopped a whole release.
+    timeout = 30 + (len(body) // 262144 if body else 0)
+    for attempt in range(5):
+        req = urllib.request.Request(url, data=body, method=method, headers={**auth, **headers})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            if attempt == 4 or not (e.code == 429 or e.code >= 500): raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == 4: raise
+        time.sleep(2 ** attempt)
 
 def listing():
     have, page = {}, None
