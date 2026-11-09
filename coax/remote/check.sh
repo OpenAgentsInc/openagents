@@ -27,7 +27,7 @@ export LC_ALL=C
 mode="${1:-}"; arg="${2:-}"
 root="$(git rev-parse --show-toplevel)" || exit 2
 cd "$root" || exit 2
-out="$root/build/pipeline"; rm -rf "$out"; mkdir -p "$out"
+out="$root/build/pipeline"; rm -rf "$out"; mkdir -p "$out"; : > "$out/started"   # sizes() reads modules newer than this
 log="$out/$mode.log"; : > "$out/failed"
 step() {   # name cmd...: run one step into the log; a failure is listed
   local name="$1"; shift
@@ -80,7 +80,7 @@ sizes() {
   [[ -f "$budgets" ]] || return 0
   awk '!/^#/ && NF == 2 { print $1, $2 }' "$budgets" | while read -r name budget; do
     local f="apps/openagents-web/build/$name.wasm"
-    [[ -f "$f" && "$f" -nt "$out" ]] || continue
+    [[ -f "$f" && "$f" -nt "$out/started" ]] || continue
     local bytes; bytes=$(wc -c < "$f" | tr -d ' ')
     echo "$name $bytes $budget $(( bytes * 100 / budget ))"
   done > "$out/sizes.txt"
