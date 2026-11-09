@@ -1,0 +1,537 @@
+// coax vocab: what a name means in Coax, for an agent that is about to guess.
+//   coax/web/tool.sh vocab NAME...      (coax vocab NAME... runs this)
+// For each NAME it prints every entry it finds:
+//   - an error code (E0225): its title and explanation, from the compiler's
+//     table in coax/src/errors.cpp (what `coax explain` prints);
+//   - a spelling from another language (let, printf, i32, ++): what Coax
+//     does instead and the Coax spelling, from the IDIOMS rows in
+//     coax/src/errors.cpp (the rows the compiler's E0225 repairs use);
+//   - a keyword, directive, literal or built-in type: its row in
+//     coax/book/appendix-a-keywords.md;
+//   - a library procedure, struct, enum or constant declared at the top level
+//     of coax/lib, aethyr or psionic/lib: its file and line, the comment
+//     above it and its signature, and the coax/LIBRARIES.md lines that name it.
+// For a name with no entry it says so and suggests the nearest names (edit
+// distance) among all of the above. Exit 0 when every name has an entry, 1
+// when one doesn't, 2 for usage or a missing checkout.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+VC_FILE :: 16777216;      // the largest source file read
+VC_NAMES :: 8388608;      // every declaration name, one per line
+VC_SHOWN :: 8;            // declarations printed for one name
+VC_SUGGEST :: 5;          // nearest names printed for an unknown one
+VC_ERRORS :: "coax/src/errors.cpp";
+VC_KEYWORDS :: "coax/book/appendix-a-keywords.md";
+VC_LIBRARIES :: "coax/LIBRARIES.md";
+VC_ROOTS :: [3] string.["coax/lib/*.coax", "aethyr/*.coax", "psionic/lib/*.coax"];
+
+// ---- names and lines ----------------------------------------------------
+
+#test "which names are words and which are error codes" {
+  #assert vc_word("bounded_push") && vc_word("_x1") && vc_word("E0225");
+  #assert !vc_word("") && !vc_word("1x") && !vc_word("a-b") && !vc_word("a b") && !vc_word("++");
+  #assert vc_code("E0225") && vc_code("E0101") && !vc_code("E022") && !vc_code("E02251") && !vc_code("e0225") && !vc_code("EX225");
+}
+vc_word :: (s: string) -> bool {
+  if s.count == 0 || (s[0] >= '0' && s[0] <= '9') { return false; }
+  for c: s { if !vc_word_byte(c) { return false; } }
+  return true;
+}
+vc_word_byte :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+vc_code :: (s: string) -> bool {
+  if s.count != 5 || s[0] != 'E' { return false; }
+  for i: 1..<5 { if s[i] < '0' || s[i] > '9' { return false; } }
+  return true;
+}
+
+#test "lines, trimming and prefixes" {
+  t := "ab\n  cd \n\nlast";
+  #assert vc_line_end(t, 0) == 2 && vc_line_end(t, 3) == 8 && vc_line_end(t, 9) == 9 && vc_line_end(t, 10) == 14;
+  #assert vc_trim("  cd \t") == "cd" && vc_trim("") == "" && vc_trim("   ") == "";
+  #assert vc_starts("// x", "//") && !vc_starts("/", "//") && vc_starts("abc", "");
+  #assert vc_find("a `b` c", "`b`") == 2 && vc_find("abc", "x") == -1 && vc_find("ab", "abc") == -1;
+}
+vc_line_end :: (t: string, at: int) -> int {
+  i := at;
+  while i < t.count && t[i] != '\n' { i += 1; }
+  return i;
+}
+vc_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return s[a..<b];
+}
+vc_starts :: (s: string, head: string) -> bool { return s.count >= head.count && s[0..<head.count] == head; }
+// The first index of part in s, or -1.
+vc_find :: (s: string, part: string) -> int {
+  if part.count == 0 || part.count > s.count { return -1; }
+  for i: 0..<s.count - part.count + 1 { if s[i] == part[0] && s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+
+// ---- the compiler's tables: ERRORS and IDIOMS rows in errors.cpp --------
+
+VcRow :: struct { ok: bool; a: string; b: string; c: string; }
+#test "a row of three C strings, unescaped" {
+  buf: [256] u8;
+  r := vc_row("    {\"E0216\", \"ranges are half-open\", \"write lo..<hi, not \\\"..\\\"\"},", buf[..]);
+  #assert r.ok && r.a == "E0216" && r.b == "ranges are half-open" && r.c == "write lo..<hi, not \"..\"";
+  s := vc_row("{\"printf\", \"print formats\", \"print(\\\"x = %\\\\n\\\", x);\"},", buf[..]);
+  #assert s.ok && s.a == "printf" && s.c == "print(\"x = %\\n\", x);";
+  #assert !vc_row("{\"a\", \"b\"},", buf[..]).ok && !vc_row("const x = 1;", buf[..]).ok && !vc_row("{\"a\", \"b\", \"c", buf[..]).ok;
+  small: [4] u8;
+  #assert !vc_row("{\"abc\", \"def\", \"g\"},", small[..]).ok;
+}
+// `{"A", "B", "C"},` (after spaces): the three strings with \" \\ \n \t
+// unescaped into buf. ok false when the line is not such a row or buf is too small.
+vc_row :: (line: string, buf: [] u8) -> VcRow {
+  r: VcRow;
+  t := vc_trim(line);
+  if !vc_starts(t, "{\"") { return r; }
+  i := 1; n := 0;
+  starts: [3] int; ends: [3] int;
+  for f: 0..<3 {
+    if f > 0 {
+      if i + 1 >= t.count || t[i] != ',' || t[i + 1] != ' ' { return r; }
+      i += 2;
+    }
+    if i >= t.count || t[i] != '"' { return r; }
+    i += 1; starts[f] = n;
+    closed := false;
+    while i < t.count && !closed {
+      c := t[i];
+      if c == '"' { closed = true; i += 1; continue; }
+      if c == '\\' {
+        if i + 1 >= t.count { return r; }
+        e := t[i + 1];
+        c = ifx e == 'n' then '\n' else ifx e == 't' then '\t' else e;
+        i += 1;
+      }
+      if n >= buf.count { return r; }
+      buf[n] = c; n += 1; i += 1;
+    }
+    if !closed { return r; }
+    ends[f] = n;
+  }
+  r.ok = true;
+  r.a = cast(string) buf[starts[0]..<ends[0]];
+  r.b = cast(string) buf[starts[1]..<ends[1]];
+  r.c = cast(string) buf[starts[2]..<ends[2]];
+  return r;
+}
+
+#test "a table row is found by its first string, after a marker" {
+  t := "x\nconst Idiom IDIOMS[] = {\n    {\"let\", \"n1\", \"f1\"},\n    {\"var\", \"n2\", \"f2\"},\n};\n{\"late\", \"a\", \"b\"},\n";
+  buf: [128] u8;
+  #assert vc_table(t, "IDIOMS[]", "var", buf[..]).c == "f2" && vc_table(t, "IDIOMS[]", "let", buf[..]).b == "n1";
+  #assert !vc_table(t, "IDIOMS[]", "late", buf[..]).ok && !vc_table(t, "IDIOMS[]", "le", buf[..]).ok && !vc_table(t, "NOPE[]", "let", buf[..]).ok;
+}
+// The row whose first string is key, in the table that starts after the
+// line containing marker and ends at its "};" line.
+vc_table :: (t: string, marker: string, key: string, buf: [] u8) -> VcRow {
+  none: VcRow;
+  i := 0; inside := false;
+  while i < t.count {
+    e := vc_line_end(t, i);
+    line := t[i..<e]; i = e + 1;
+    if !inside { if vc_find(line, marker) >= 0 { inside = true; } continue; }
+    if vc_trim(line) == "};" { return none; }
+    r := vc_row(line, buf);
+    if r.ok && r.a == key { return r; }
+  }
+  return none;
+}
+
+// ---- keywords, directives, literals and types --------------------------
+
+#test "a keyword row names its words in backticks" {
+  #assert vc_cell_has("`for` `break` `continue`", "break") && vc_cell_has("`int` (the same type as `s64`), `s8 s16 s32 u8`", "s16");
+  #assert vc_cell_has("`#load` / `coax deps`", "#load") && !vc_cell_has("`for` `break`", "fo") && !vc_cell_has("for break", "for");
+  #assert !vc_cell_has("`cast(T) x`", "cast") && vc_cell_has("`if` `else`", "else");
+  #assert vc_cells("| `ifx` `then` | Conditional | works | — |").first == "`ifx` `then`";
+  #assert vc_cells("| `ifx` `then` | Conditional | works | — |").second == "Conditional";
+  #assert vc_cells("| a |").first == "" && vc_cells("no table").first == "";
+}
+// Whether word is one of the space-separated words inside a `...` span of cell.
+vc_cell_has :: (cell: string, word: string) -> bool {
+  i := 0;
+  while i < cell.count {
+    if cell[i] != '`' { i += 1; continue; }
+    j := i + 1;
+    while j < cell.count && cell[j] != '`' { j += 1; }
+    k := i + 1;
+    while k < j {
+      m := k;
+      while m < j && cell[m] != ' ' { m += 1; }
+      if cell[k..<m] == word { return true; }
+      k = m + 1;
+    }
+    i = j + 1;
+  }
+  return false;
+}
+VcCells :: struct { first: string; second: string; rest: string; }
+// The first two cells of a Markdown table row "| a | b | ... |", and the rest.
+vc_cells :: (line: string) -> VcCells {
+  r: VcCells;
+  if !vc_starts(line, "| ") { return r; }
+  a := vc_find(line[2..<line.count], " | ");
+  if a < 0 { return r; }
+  first := line[2..<2 + a];
+  tail := line[2 + a + 3..<line.count];
+  b := vc_find(tail, " | ");
+  if b < 0 { return r; }
+  r.first = first; r.second = tail[0..<b]; r.rest = tail[b + 3..<tail.count];
+  return r;
+}
+
+// ---- declarations -------------------------------------------------------
+
+#test "what a declaration line declares, and its signature" {
+  #assert vc_kind("bounded_push :: (b: [] Bounded($T, $N), v: $T) -> bool {") == "procedure";
+  #assert vc_kind("Bounded :: struct($T, $N) {") == "struct" && vc_kind("Kind :: enum u8 { a; }") == "enum";
+  #assert vc_kind("Shape :: union {") == "union" && vc_kind("N :: 3;") == "constant" && vc_kind("f :: () #foreign;") == "procedure";
+  #assert vc_signature("add :: (a: int) -> int #effects(all) { return a; }") == "add :: (a: int) -> int #effects(all)";
+  #assert vc_signature("N :: 3;") == "N :: 3;" && vc_signature("P :: struct { x: int; }") == "P :: struct { x: int; }";
+  #assert vc_signature("f :: () #foreign;") == "f :: () #foreign;";
+}
+vc_kind :: (line: string) -> string {
+  at := vc_find(line, "::");
+  if at < 0 { return "declaration"; }
+  rest := vc_trim(line[at + 2..<line.count]);
+  if vc_starts(rest, "(") { return "procedure"; }
+  if vc_starts(rest, "struct") { return "struct"; }
+  if vc_starts(rest, "enum") { return "enum"; }
+  if vc_starts(rest, "union") { return "union"; }
+  return "constant";
+}
+// A procedure's line up to its body; any other line whole (at most 200 bytes).
+vc_signature :: (line: string) -> string {
+  t := vc_trim(line);
+  if vc_kind(t) == "procedure" {
+    b := vc_find(t, "{");
+    if b > 0 { return vc_trim(t[0..<b]); }
+  }
+  return ifx t.count > 200 then t[0..<200] else t;
+}
+
+#test "the comment block right above a line" {
+  t := "x :: 1;\n// one\n  // two\nf :: () {}\n\n// gap\n\ng :: () {}\n";
+  f := vc_find(t, "f ::"); g := vc_find(t, "g ::");
+  d := vc_doc(t, f);
+  #assert cast(string) t[d.start..<d.end] == "// one\n  // two\n" && vc_doc(t, g).start == vc_doc(t, g).end && vc_doc(t, 0).start == 0;
+}
+VcSpan :: struct { start: int; end: int; }
+// The lines starting with // (after spaces) directly above the line at `at`.
+vc_doc :: (t: string, at: int) -> VcSpan {
+  r := VcSpan.{start = at, end = at};
+  i := at;
+  while i > 0 {
+    s := i - 1;
+    while s > 0 && t[s - 1] != '\n' { s -= 1; }
+    if !vc_starts(vc_trim(t[s..<i - 1]), "//") { break; }
+    i = s; r.start = s;
+  }
+  return r;
+}
+// The byte offset where line number `line` (1-based) starts, or -1.
+#test "a line's offset" {
+  #assert vc_line_offset("a\nbc\nd", 1) == 0 && vc_line_offset("a\nbc\nd", 3) == 5 && vc_line_offset("a\n", 3) == -1;
+}
+vc_line_offset :: (t: string, line: int) -> int {
+  if line == 1 { return 0; }
+  n := 1;
+  for c, i: t { if c == '\n' { n += 1; if n == line { return i + 1; } } }
+  return -1;
+}
+VcHit :: struct { ok: bool; path: string; line: int; text: string; }
+#test "a git grep -n line" {
+  h := vc_hit("coax/lib/bounded.coax:57:bounded_push :: (b) -> bool {");
+  #assert h.ok && h.path == "coax/lib/bounded.coax" && h.line == 57 && h.text == "bounded_push :: (b) -> bool {";
+  #assert !vc_hit("no colon").ok && !vc_hit("a:x:y").ok && !vc_hit("a:12").ok;
+}
+// PATH:LINE:TEXT, as git grep -n prints it.
+vc_hit :: (s: string) -> VcHit {
+  r: VcHit;
+  a := vc_find(s, ":");
+  if a <= 0 { return r; }
+  n := 0; i := a + 1; digits := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' && digits < 9 { n = n * 10 + cast(int) (s[i] - '0'); i += 1; digits += 1; }
+  if digits == 0 || i >= s.count || s[i] != ':' { return r; }
+  r.ok = true; r.path = s[0..<a]; r.line = n; r.text = s[i + 1..<s.count];
+  return r;
+}
+
+// ---- nearest names ------------------------------------------------------
+
+#test "edit distance, bounded" {
+  #assert vc_distance("bounded_psh", "bounded_push", 3) == 1 && vc_distance("kitten", "sitting", 5) == 3;
+  #assert vc_distance("abc", "abc", 2) == 0 && vc_distance("", "ab", 3) == 2 && vc_distance("abcdef", "a", 2) == 3;
+  #assert vc_distance("Print", "print", 2) == 1;
+}
+// Levenshtein distance between a and b, or limit + 1 when it is larger than
+// limit (or a name is longer than 63 bytes).
+vc_distance :: (a: string, b: string, limit: int) -> int {
+  if a.count > 63 || b.count > 63 { return limit + 1; }
+  gap := ifx a.count > b.count then a.count - b.count else b.count - a.count;
+  if gap > limit { return limit + 1; }
+  prev: [64] int; row: [64] int;
+  for j: 0..<b.count + 1 { prev[j] = j; }
+  for i: 1..<a.count + 1 {
+    row[0] = i; least := i;
+    for j: 1..<b.count + 1 {
+      cost := ifx a[i - 1] == b[j - 1] then 0 else 1;
+      v := prev[j - 1] + cost;
+      if prev[j] + 1 < v { v = prev[j] + 1; }
+      if row[j - 1] + 1 < v { v = row[j - 1] + 1; }
+      row[j] = v;
+      if v < least { least = v; }
+    }
+    if least > limit { return limit + 1; }
+    for j: 0..<b.count + 1 { prev[j] = row[j]; }
+  }
+  return ifx prev[b.count] > limit then limit + 1 else prev[b.count];
+}
+VC_NEAR_MAX :: 16;
+VcNear :: struct { names: [VC_NEAR_MAX] string; scores: [VC_NEAR_MAX] int; n: int; limit: int; }
+#test "the nearest names, best first, each once" {
+  near: [1] VcNear; near[0].limit = 1;
+  vc_offer(near[..], "bounded_psh", "bounded_push"); vc_offer(near[..], "bounded_psh", "bounded_pop");
+  vc_offer(near[..], "bounded_psh", "bounded_push"); vc_offer(near[..], "bounded_psh", "far_away_name"); vc_offer(near[..], "bounded_psh", "bounded_psh");
+  #assert near[0].n == 1 && near[0].names[0] == "bounded_push";
+  near[0].limit = 2;
+  vc_offer(near[..], "bounded_psh", "bounded_pop"); vc_offer(near[..], "bounded_psh", "bounded_ps");
+  #assert near[0].n == 3 && near[0].names[0] == "bounded_push" && near[0].names[1] == "bounded_ps" && near[0].names[2] == "bounded_pop";
+  vc_offer(near[..], "bounded_psh", "bounded_pah"); vc_offer(near[..], "bounded_psh", "bounded_pxh"); vc_offer(near[..], "bounded_psh", "bounded_pyh");
+  #assert near[0].n == VC_SUGGEST && near[0].names[0] == "bounded_push" && near[0].names[3] == "bounded_pxh" && near[0].names[4] == "bounded_pyh" && near[0].scores[4] == 1;
+}
+// Keeps candidate when it is within limit of name and not yet kept, sorted
+// by distance (ties keep the order they came in), at most VC_SUGGEST.
+vc_offer :: (near: [] VcNear, name: string, candidate: string) {
+  if candidate == name || candidate.count == 0 { return; }
+  d := vc_distance(name, candidate, near[0].limit);
+  if d > near[0].limit { return; }
+  for i: 0..<near[0].n { if near[0].names[i] == candidate { return; } }
+  at := near[0].n;
+  while at > 0 && near[0].scores[at - 1] > d { at -= 1; }
+  if at >= VC_SUGGEST { return; }
+  last := ifx near[0].n < VC_SUGGEST then near[0].n else VC_SUGGEST - 1;
+  k := last;
+  while k > at { near[0].names[k] = near[0].names[k - 1]; near[0].scores[k] = near[0].scores[k - 1]; k -= 1; }
+  near[0].names[at] = candidate; near[0].scores[at] = d;
+  if near[0].n < VC_SUGGEST { near[0].n += 1; }
+}
+#test "how far a suggestion may be" {
+  #assert vc_limit("ab") == 2 && vc_limit("bounded_psh") == 3 && vc_limit("x") == 1;
+}
+vc_limit :: (name: string) -> int {
+  if name.count <= 1 { return 1; }
+  third := name.count / 3;
+  return ifx third > 2 then third else 2;
+}
+
+// ---- the tool -----------------------------------------------------------
+
+// The repository root, from git; "" outside a checkout.
+vc_root :: (out: [] u8) -> string {
+  argv := [3] string.["git", "rev-parse", "--show-toplevel"];
+  err: [4096] u8;
+  r := proc_run(argv[..], 30000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.cut || r.out_n == 0 { return ""; }
+  return vc_trim(cast(string) out[0..<r.out_n]);
+}
+vc_path :: (root: string, rel: string, out: [] u8) -> string {
+  n := 0;
+  for c: root { out[n] = c; n += 1; }
+  out[n] = '/'; n += 1;
+  for c: rel { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+vc_read :: (root: string, rel: string, out: [] u8) -> string {
+  p: [4096] u8;
+  n := fs_read(vc_path(root, rel, p[..]), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// git -C ROOT grep ARGS... -- VC_ROOTS, stdout into out. -1 when git failed
+// to run (a grep that finds nothing is 0 bytes).
+vc_grep :: (root: string, a: string, b: string, c: string, d: string, out: [] u8) -> int {
+  argv := [12] string.["git", "-C", root, "grep", a, b, c, d, "--", VC_ROOTS[0], VC_ROOTS[1], VC_ROOTS[2]];
+  err: [4096] u8;
+  r := proc_run(argv[..], 60000, out, err[..]);
+  if r.started != 0 || r.timed_out || r.cut { return -1; }
+  // status 1: no match
+  if r.status != 0 && r.status != 1 { return -1; }
+  return r.out_n;
+}
+
+// Prints every entry for name; true when there was one.
+vc_lookup :: (root: string, name: string, errors: string, keywords: string, libraries: string, file: [] u8, hits: [] u8) -> bool {
+  found := false;
+  buf: [65536] u8;
+  if vc_code(name) {
+    r := vc_table(errors, "const ErrorInfo ERRORS[]", name, buf[..]);
+    if r.ok {
+      print("%: diagnostic (coax explain %)\n  %\n  %\n", name, name, r.b, r.c);
+      found = true;
+    }
+  }
+  idiom := vc_table(errors, "const Idiom IDIOMS[]", name, buf[..]);
+  if idiom.ok {
+    print("%: not Coax; % (the compiler's E0225 repair)\n  write: %\n", name, idiom.b, idiom.c);
+    found = true;
+  }
+  // keywords, directives, literals and types
+  section := "";
+  i := 0;
+  while i < keywords.count {
+    e := vc_line_end(keywords, i);
+    line := keywords[i..<e]; i = e + 1;
+    if vc_starts(line, "## ") { section = line[3..<line.count]; continue; }
+    cells := vc_cells(line);
+    if cells.first.count > 0 && vc_cell_has(cells.first, name) {
+      status := cells.rest;
+      bar := vc_find(status, " |");
+      if bar >= 0 { status = status[0..<bar]; }
+      print("%: %, %\n  %\n", name, section, VC_KEYWORDS, cells.first);
+      if cells.second.count > 0 { print("  %\n", cells.second); }
+      print("  status: %\n", vc_trim(status));
+      found = true;
+    }
+  }
+  // top-level declarations
+  if vc_word(name) {
+    pattern: [256] u8; pn := 0;
+    for c: "^" { pattern[pn] = c; pn += 1; }
+    for c: name { pattern[pn] = c; pn += 1; }
+    for c: "[[:space:]]*::" { pattern[pn] = c; pn += 1; }
+    n := vc_grep(root, "-n", "-E", "-e", cast(string) pattern[0..<pn], hits);
+    if n < 0 { tool_errln("vocab: git grep failed"); return found; }
+    text := cast(string) hits[0..<n];
+    shown := 0; total := 0;
+    j := 0;
+    while j < text.count {
+      e := vc_line_end(text, j);
+      h := vc_hit(text[j..<e]); j = e + 1;
+      if !h.ok { continue; }
+      total += 1;
+      if shown >= VC_SHOWN { continue; }
+      shown += 1; found = true;
+      print("%: %, %:%\n", name, vc_kind(h.text), h.path, h.line);
+      body := vc_read(root, h.path, file);
+      at := vc_line_offset(body, h.line);
+      if at >= 0 {
+        d := vc_doc(body, at);
+        k := d.start;
+        while k < d.end {
+          le := vc_line_end(body, k);
+          print("  %\n", vc_trim(body[k..<le]));
+          k = le + 1;
+        }
+      }
+      print("  %\n", vc_signature(h.text));
+    }
+    if total > shown { print("%: and % more declarations (git grep -n '^% *::')\n", name, total - shown, name); }
+  }
+  // what coax/LIBRARIES.md says about it
+  if found {
+    quoted: [256] u8; qn := 0;
+    quoted[qn] = '`'; qn += 1;
+    for c: name { if qn < 254 { quoted[qn] = c; qn += 1; } }
+    quoted[qn] = '`'; qn += 1;
+    q := cast(string) quoted[0..<qn];
+    m := 0; said := 0;
+    while m < libraries.count && said < 2 {
+      e := vc_line_end(libraries, m);
+      line := libraries[m..<e]; m = e + 1;
+      if vc_find(line, q) >= 0 {
+        t := vc_trim(line);
+        print("  %: %\n", VC_LIBRARIES, ifx t.count > 300 then t[0..<300] else t);
+        said += 1;
+      }
+    }
+  }
+  return found;
+}
+
+// Offers every name the lookup knows to near: error codes, idiom spellings,
+// keyword words and top-level declarations.
+vc_suggest :: (root: string, name: string, errors: string, keywords: string, hits: [] u8, near: [] VcNear) {
+  i := 0;
+  while i < errors.count {
+    e := vc_line_end(errors, i);
+    line := vc_trim(errors[i..<e]); i = e + 1;
+    if vc_starts(line, "{\"") {
+      q := vc_find(line[2..<line.count], "\"");
+      if q > 0 { vc_offer(near, name, line[2..<2 + q]); }
+    }
+  }
+  k := 0;
+  while k < keywords.count {
+    e := vc_line_end(keywords, k);
+    cells := vc_cells(keywords[k..<e]); k = e + 1;
+    c := cells.first;
+    a := 0;
+    while a < c.count {
+      if c[a] != '`' { a += 1; continue; }
+      b := a + 1;
+      while b < c.count && c[b] != '`' { b += 1; }
+      w := a + 1;
+      while w < b {
+        m := w;
+        while m < b && c[m] != ' ' { m += 1; }
+        vc_offer(near, name, c[w..<m]);
+        w = m + 1;
+      }
+      a = b + 1;
+    }
+  }
+  n := vc_grep(root, "-h", "-o", "-E", "^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*::", hits);
+  if n < 0 { return; }
+  text := cast(string) hits[0..<n];
+  j := 0;
+  while j < text.count {
+    e := vc_line_end(text, j);
+    line := text[j..<e]; j = e + 1;
+    w := 0;
+    while w < line.count && vc_word_byte(line[w]) { w += 1; }
+    vc_offer(near, name, line[0..<w]);
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) == 0 {
+    tool_errln("usage: coax vocab NAME...   (or coax/web/tool.sh vocab NAME...)");
+    tool_errln("  prints what NAME is: a library procedure or type, a keyword, an error code, or a spelling from another language");
+    return 2;
+  }
+  rootb: [4096] u8;
+  root := vc_root(rootb[..]);
+  if root.count == 0 { tool_errln("vocab: run inside the openagents checkout (git rev-parse found none)"); return 2; }
+  eb: [1048576] u8; kb: [1048576] u8; lb: [1048576] u8;
+  errors := vc_read(root, VC_ERRORS, eb[..]);
+  keywords := vc_read(root, VC_KEYWORDS, kb[..]);
+  libraries := vc_read(root, VC_LIBRARIES, lb[..]);
+  if errors.count == 0 || keywords.count == 0 { tool_errln("vocab: coax/src/errors.cpp or coax/book/appendix-a-keywords.md is missing; run inside the openagents checkout"); return 2; }
+  file: [VC_FILE] u8; hits: [VC_NAMES] u8;
+  missing := 0;
+  for i: 0..<args_count(a[..]) {
+    name := args_at(a[..], i);
+    if i > 0 { print("\n"); }
+    if vc_lookup(root, name, errors, keywords, libraries, file[..], hits[..]) { continue; }
+    missing += 1;
+    print("%: no library procedure, type, keyword, error code or foreign spelling has this name\n", name);
+    near: [1] VcNear; near[0].limit = vc_limit(name);
+    vc_suggest(root, name, errors, keywords, hits[..], near[..]);
+    if near[0].n > 0 {
+      print("  nearest:");
+      for k: 0..<near[0].n { print("% %", ifx k == 0 then "" else ",", near[0].names[k]); }
+      print("\n");
+    }
+  }
+  return ifx missing == 0 then 0 else 1;
+}

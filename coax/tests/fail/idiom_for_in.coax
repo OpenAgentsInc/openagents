@@ -1,0 +1,3 @@
+// expect: E0225
+// says: 'for i in' is not Coax
+main :: () { for i in 0..<3 { } }

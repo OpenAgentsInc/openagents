@@ -1,0 +1,4 @@
+// expect: E0225
+// says: fix: Point :: struct { x: int; y: int; }
+struct Point { x: int; y: int; }
+main :: () { }

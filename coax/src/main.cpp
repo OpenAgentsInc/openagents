@@ -17,6 +17,7 @@
 //   coax mutate  file.coax [--jobs N] [--shard I/N] [--merge RECORD]...
 //                                                    mutate the code; every mutant must fail a check
 //   coax explain CODE | --all [--markdown]           what an error code means
+//   coax vocab   NAME...                             a library name, keyword, error code or foreign spelling
 //   coax version
 //
 // --json prints diagnostics as one JSON object per line on stderr.
@@ -425,9 +426,24 @@ void error_at(const Source *src, Loc loc, const char *code, const std::string &m
   std::string fix = given_fix;
   if (capacity && !capacity->detail.fix.empty()) fix = fix.empty() ? capacity->detail.fix : fix + "; or " + capacity->detail.fix;
   std::string reported = message;
+  bool generated = false;
   for (const GeneratedRegion &region : src->generated)
-    if (loc.offset >= region.start && loc.offset < region.end)
+    if (loc.offset >= region.start && loc.offset < region.end) {
+      generated = true;
       reported += " (generated proto import " + region.prefix + ")";
+    }
+  // A spelling from another language: name the Coax spelling (errors.cpp, E0225).
+  if (!capacity && !generated) {
+    const FileSpan at = file_span(src, loc);
+    IdiomRepair repair;
+    if (at.text && idiom_repair(*at.text, (size_t)at.offset, code, message, &repair)) {
+      if (repair.recode) {
+        code = "E0225";
+        reported = repair.message;
+        fix = repair.fix;
+      } else if (fix.empty()) fix = repair.fix;
+    }
+  }
   if (g_diagnostics_json) {
     FileSpan span = file_span(src, loc);
     std::string notes;
@@ -1969,6 +1985,7 @@ static int usage() {
           "                    --shard I/N runs mutants I-1, I-1+N, ... and prints a record on stdout\n"
           "                    --merge RECORD (repeated) combines all N records into the full report\n"
           "       coax explain CODE | --all [--markdown]\n"
+          "       coax vocab NAME...               (a library procedure, type, keyword, error code or foreign spelling)\n"
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
           "       coax status [--json] | --jobs [--json]   (the build-worker budget: on stderr, or alone with --jobs)\n"
@@ -2064,6 +2081,29 @@ static std::string executable_path() {
   std::error_code ec;
   auto path = std::filesystem::weakly_canonical(self, ec);
   return ec ? std::string(self) : path.string();
+}
+
+// coax vocab NAME...: what a library procedure, type, keyword, diagnostic or
+// foreign spelling is. The lookup is a Coax tool (coax/web/vocab.coax); this
+// runs it through coax/web/tool.sh of the checkout whose coax/bin holds this
+// compiler.
+static int vocab_command(int argc, char **argv) {
+  if (argc < 3) return usage();
+  const std::string self = executable_path();
+  const std::filesystem::path tool = std::filesystem::path(self).parent_path().parent_path() / "web" / "tool.sh";
+  std::error_code ec;
+  if (self.empty() || !std::filesystem::exists(tool, ec)) {
+    fprintf(stderr, "coax vocab: no coax/web/tool.sh beside this compiler; in a checkout run coax/web/tool.sh vocab NAME\n");
+    return 2;
+  }
+  std::vector<std::string> args = {tool.string(), "vocab"};
+  for (int i = 2; i < argc; i++) args.push_back(argv[i]);
+  std::vector<char *> av;
+  for (std::string &a : args) av.push_back(a.data());
+  av.push_back(nullptr);
+  execv(av[0], av.data());
+  fprintf(stderr, "coax vocab: cannot run %s: %s\n", av[0], strerror(errno));
+  return 2;
 }
 
 #include "query.cpp"
@@ -2184,6 +2224,7 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "compat") return compat_command(argc,argv);
   if (cmd == "explain") return explain(argc, argv);
+  if (cmd == "vocab") return vocab_command(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "checks-c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
       cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto" && cmd != "query")
     return usage();

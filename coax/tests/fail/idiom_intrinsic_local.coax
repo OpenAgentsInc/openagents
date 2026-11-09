@@ -1,0 +1,3 @@
+// expect: E0306
+// says: is the intrinsic len(...), so it can't name a local
+main :: () { len := 3; m := len + 1; }

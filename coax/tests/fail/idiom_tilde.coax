@@ -1,0 +1,3 @@
+// expect: E0225
+// says: '~' is not Coax
+main :: () { x: u32 = 5; y := x & ~3; }

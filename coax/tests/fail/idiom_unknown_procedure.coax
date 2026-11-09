@@ -1,0 +1,3 @@
+// expect: E0315
+// says: fix: find where it is declared: coax vocab bounded_psh
+main :: () { bounded_psh(); }

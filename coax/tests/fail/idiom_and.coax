@@ -1,0 +1,3 @@
+// expect: E0225
+// says: write '&&'
+main :: () { b := true; if b and b { } }

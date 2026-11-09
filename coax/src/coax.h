@@ -212,6 +212,27 @@ struct ErrorInfo {
 extern const ErrorInfo ERRORS[];
 extern const int32_t ERROR_COUNT;
 
+// Idiom repairs (errors.cpp): a spelling an agent brings from C, C++, Rust,
+// Go, JavaScript, Python or Jai, what Coax does instead, and the Coax
+// spelling. coax/web/vocab.coax reads the same rows.
+struct Idiom {
+  const char *spelling;
+  const char *note;
+  const char *fix;
+};
+extern const Idiom IDIOMS[];
+extern const int32_t IDIOM_COUNT;
+// What error_at reports in place of a diagnostic that a foreign spelling
+// caused. recode: report E0225 (a spelling from another language) with
+// message and fix; otherwise keep the code and message and add fix.
+struct IdiomRepair {
+  bool recode = false;
+  std::string message, fix;
+};
+// Looks at the source text around offset and the diagnostic's code and
+// message. False when no repair applies.
+bool idiom_repair(const std::string &text, size_t offset, const char *code, const std::string &message, IdiomRepair *out);
+
 // ---- Lexer ----
 
 enum class Tok : uint8_t {

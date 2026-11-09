@@ -1,0 +1,4 @@
+// expect: E0225
+// says: '#include' is not Coax
+#include <stdio.h>
+main :: () { }

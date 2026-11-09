@@ -86,8 +86,16 @@ Character Create's frozen save keys. Do not add new app-private source copies.
   keep their identity: change one only with a new version, never in place.
 - **Downloaded and cloned code is untrusted.** Read it; don't run its
   scripts on this Mac.
+- **Three rounds per problem.** After three failed rounds on one problem
+  (a bug, a failing check, a build), change approach or ask a person. Don't
+  run a fourth round of the same idea with small changes.
 
 ## Build and test
+
+Before you build a Coaxial page or a realm, read
+[coax/start-here.md](coax/start-here.md): the workflow, the drive commands
+and the five costliest pitfalls. `coax vocab NAME` prints what a library
+name, keyword, error code or foreign spelling is.
 
 Heavy commands (wasm.sh, build.sh, `coax test` of a big unit, test suites)
 run on a remote build host, not the Mac: prefix them with

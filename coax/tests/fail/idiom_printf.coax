@@ -1,0 +1,4 @@
+// expect: E0225
+// says: 'printf' is not Coax
+#import "Basic";
+main :: () { printf("%d\n", 1); }

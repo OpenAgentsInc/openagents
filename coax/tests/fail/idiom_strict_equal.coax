@@ -1,0 +1,3 @@
+// expect: E0225
+// says: compare with '=='
+main :: () { x := 1; if x === 1 { } }

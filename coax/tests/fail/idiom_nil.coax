@@ -1,0 +1,3 @@
+// expect: E0225
+// says: fix: x: int? = null;
+main :: () { x: int? = nil; }

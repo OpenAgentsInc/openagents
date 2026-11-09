@@ -4,9 +4,11 @@
 Current compiler: **coax0 0.52.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Everything Coax lives in this folder, at the root of the openagents repo.
+Building a Coaxial page or a realm? Read [start-here.md](start-here.md) first.
 
 | Path | What |
 | --- | --- |
+| [`start-here.md`](start-here.md) | The one page to read before building a Coaxial page or realm: workflow, drive commands, costliest pitfalls |
 | [`spec.md`](spec.md) | The language specification and implementation plan |
 | [`ROADMAP.md`](ROADMAP.md) | What to build next, dependencies, real consumers and completion gates for the full language |
 | [`STATUS.md`](STATUS.md), [`RELEASE.md`](RELEASE.md) | Generated current status and the single-source release/drift workflow |
@@ -55,6 +57,7 @@ coax/bin/coax run coax/examples/life.coax
 coax/examples/pulse/run.sh                          # a Coax kernel inside a C host
 coax/bin/coax layout coax/examples/pulse/pulse.coax
 coax/bin/coax explain E0350
+coax/bin/coax vocab bounded_push                    # a library name, keyword, error code or foreign spelling
 coax/bin/coax test coax/examples/money.coax         # checks written before the code
 coax/bin/coax mutate coax/examples/money.coax       # every mutant must fail a check
 coax/build.sh test
@@ -74,6 +77,7 @@ coax/build.sh test
 | `coax spirv FILE [--kernel NAME \| --fill A[,B,C,D] \| --stroke NAME] [-o out.spv]` | Write the file's f32/bool procedures as SPIR-V for Vulkan |
 | `coax wgsl FILE (--functions A,B \| --vertices A,B --fragments C,D --bindings F [--strip P]) [--tree] [-o out.wgsl]` | Emit selected functions or a bounded WGSL graphics module from checked Coax; unsupported entries, resources and layouts refuse |
 | `coax check FILE` | Typecheck and run compile-time code, without a C compiler |
+| `coax vocab NAME...` | Print what a name is: a library procedure or type (file, comment, signature), a keyword or built-in type, an error code, or a spelling from another language with its Coax spelling; suggest the nearest names for an unknown one. Runs `coax/web/vocab.coax` through `coax/web/tool.sh` |
 | `coax proto PROFILE.pb --prefix Name [-o FILE]` | Generate inspectable Coax types/codecs directly from a descriptor |
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
 | `coax deps FILE --effects [--proc NAME]` | Inspect conservative transitive may-effects and source witness paths; [scope and unknown obligations](EFFECTS.md) |

@@ -1,0 +1,3 @@
+// expect: E0225
+// says: fix: x += 1;
+main :: () { x := 1; x++; }

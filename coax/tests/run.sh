@@ -48,7 +48,7 @@ unit_pass() {
 }
 
 unit_fail() {
-  local src name expect want got rc
+  local src name expect want says got rc
   for src in tests/fail/*.coax; do
     name=$(basename "$src" .coax)
     expect=$(head -1 "$src" | sed -n 's#^// expect: ##p')
@@ -57,8 +57,10 @@ unit_fail() {
       got=$(python3 tests/quiet_crash.py -- "$COAX" run "$src" 2>&1); rc=$?
       if [[ $rc -ne 0 && "$got" == *"$want"* ]]; then pass=$((pass + 1)); else note "$name" "expected a trap with '$want', got exit $rc: $got"; fi
     else
+      # An optional second line, "// says: TEXT", is text the diagnostic must contain.
+      says=$(sed -n '2s#^// says: ##p' "$src")
       got=$("$COAX" c "$src" 2>&1 >/dev/null); rc=$?
-      if [[ $rc -ne 0 && "$got" == *"error[$expect]"* ]]; then pass=$((pass + 1)); else note "$name" "expected error[$expect], got exit $rc: $got"; fi
+      if [[ $rc -ne 0 && "$got" == *"error[$expect]"* && "$got" == *"$says"* ]]; then pass=$((pass + 1)); else note "$name" "expected error[$expect]${says:+ saying \"$says\"}, got exit $rc: $got"; fi
     fi
   done
   fixtures_done

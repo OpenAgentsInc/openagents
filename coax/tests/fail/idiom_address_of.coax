@@ -1,0 +1,3 @@
+// expect: E0225
+// says: no pointers or address-of
+main :: () { x := 1; p := &x; }

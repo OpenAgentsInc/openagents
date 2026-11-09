@@ -46,6 +46,7 @@ const ErrorInfo ERRORS[] = {
     {"E0223", "malformed struct parameter list", "A generic struct lists its parameters as $NAME, each once, separated by ',': Pair :: struct($T) { a: $T; b: $T; } or Box :: struct($T, $N) { items: [$N] $T; }."},
     {"E0222", "qualified name reaches through an alias", "A qualified name is one module alias and one declaration: hud.Slot, hud.frame(x). Aliases are not reexported, so a.b.Name is refused; load that module with its own alias."},
     {"E0224", "malformed #run_steps", "#run_steps N; declares the compile-time step budget of the whole compilation, N a whole number from 1 through 250000000: #run_steps 250000000;. A file declares it at most once, and only the entry file's applies: a loaded file's is ignored, so a library declares what it needs when checked alone and never raises the budget of a program that loads it. --run-steps N on the command line overrides it."},
+    {"E0225", "a spelling from another language", "The code uses a spelling from C, C++, Rust, Go, JavaScript, Python or Jai that Coax writes another way, and the message names the Coax spelling. Locals are declared with x := 1; or x: int = 1; (no let, var or const), procedures with add :: (a: int) -> int { }, types with Point :: struct { x: int; }, constants with N :: 3;. Casts are cast(T) x, the conditional expression is ifx c then a else b, loops are for i: 0..<n { } and while c { }, and x += 1 replaces x++. There are no pointers: pass an array as a view with name[..]. Integers are s8..s64 and u8..u64 (int is s64), floats f32 and f64, booleans true and false, an empty optional null. print(\"%\\n\", x) prints with #import \"Basic\";, and #assert c; asserts. coax vocab WORD prints the Coax spelling of a word from another language."},
 
     // ---- E03xx: checker ----
     {"E0301", "type not supported yet", "The type is in the plan (spec 6.2) but coax0 does not implement it, for example dynamic arrays '[..] T' or vectors."},
@@ -259,5 +260,299 @@ const ErrorInfo ERRORS[] = {
 };
 
 const int32_t ERROR_COUNT = (int32_t)(sizeof ERRORS / sizeof ERRORS[0]);
+
+// One row per line: coax/web/vocab.coax reads these rows as data, so a
+// spelling here is also what `coax vocab SPELLING` explains.
+const Idiom IDIOMS[] = {
+    {"let", "declare a local with ':=', or with its type", "x := 1;  or  x: int = 1;"},
+    {"var", "declare a local with ':=', or with its type", "x := 1;  or  x: int = 1;"},
+    {"const", "declare a local with ':='; a constant is 'N :: value;' at the top level", "x := 1;  or, at the top level,  N :: 1;"},
+    {"auto", "declare a local with ':=', which infers its type", "x := 1;"},
+    {"mut", "every local can be assigned; declare it with ':='", "x := 1;"},
+    {"val", "declare a local with ':=', or with its type", "x := 1;  or  x: int = 1;"},
+    {"TYPE NAME", "the type follows the name", "x: int = 1;"},
+    {"elif", "write 'else if'", "if a { } else if b { }"},
+    {"elsif", "write 'else if'", "if a { } else if b { }"},
+    {"elseif", "write 'else if'", "if a { } else if b { }"},
+    {"match", "select with switch, one case per alternative", "switch k { case Kind.a { } case Kind.b { } }"},
+    {"loop", "write 'while true'", "while true { ... }"},
+    {"do", "there is no do-while loop", "while true { ...; if !c { break; } }"},
+    {"and", "write '&&'", "a && b"},
+    {"or", "write '||'", "a || b"},
+    {"not", "write '!'", "!b"},
+    {"as", "convert with cast(T) x", "cast(int) x  (cast,trunc(u8) x keeps the low bits)"},
+    {"(T) x", "convert with cast(T) x", "cast(int) x  (cast,trunc(u8) x keeps the low bits)"},
+    {"?:", "the conditional expression is ifx", "ifx c then a else b"},
+    {"->", "there are no pointers, so a field is always 'x.f'", "x.f"},
+    {"++", "there is no '++'", "x += 1;"},
+    {"--", "there is no '--'", "x -= 1;"},
+    {"&&=", "write the assignment out", "b = b && c;"},
+    {"||=", "write the assignment out", "b = b || c;"},
+    {"===", "compare with '=='; values of different types never compare", "a == b"},
+    {"!==", "compare with '!='; values of different types never compare", "a != b"},
+    {"&x", "there are no pointers or address-of", "pass an array as a view, name[..]; to write a struct through a call, keep it in a one-element array x: [1] T and pass x[..]"},
+    {"*p", "there are no pointers or dereference", "pass an array as a view, name[..], and index it"},
+    {"~", "there is no '~'; flip bits with '^' and an all-ones mask of the width", "x ^ 0xFFFFFFFF  (a u32);  x & ~3 is  x & 0xFFFFFFFC"},
+    {"for (;;)", "a loop runs over a half-open range or a collection", "for i: 0..<n { }  or  for x, i: items { }  or  while c { }"},
+    {"for in", "a loop names its variable, then ':'", "for i: 0..<n { }  or  for x, i: items { }"},
+    {"for 0..n", "a loop names its counter, and ranges are half-open", "for i: 0..<n { }"},
+    {"it", "a loop names its element and index", "for x, i: items { }"},
+    {"it_index", "a loop names its element and index", "for x, i: items { }"},
+    {"xx", "convert with cast(T) x", "cast(int) x"},
+    {"fn", "a procedure is 'name :: (parameters) -> result { }'", "add :: (a: int, b: int) -> int { return a + b; }"},
+    {"func", "a procedure is 'name :: (parameters) -> result { }'", "add :: (a: int, b: int) -> int { return a + b; }"},
+    {"function", "a procedure is 'name :: (parameters) -> result { }'", "add :: (a: int, b: int) -> int { return a + b; }"},
+    {"def", "a procedure is 'name :: (parameters) -> result { }'", "add :: (a: int, b: int) -> int { return a + b; }"},
+    {"fun", "a procedure is 'name :: (parameters) -> result { }'", "add :: (a: int, b: int) -> int { return a + b; }"},
+    {"TYPE NAME(", "a procedure is 'name :: (parameters) -> result { }'", "add :: (a: int, b: int) -> int { return a + b; }"},
+    {"struct", "a type is 'Name :: struct { }'", "Point :: struct { x: int; y: int; }"},
+    {"class", "a type is 'Name :: struct { }'; procedures take the struct as a parameter", "Point :: struct { x: int; y: int; }"},
+    {"type", "a type is 'Name :: struct { }'", "Point :: struct { x: int; y: int; }"},
+    {"interface", "there are no interfaces; a generic procedure takes $T", "largest :: (xs: [] $T) -> $T { }"},
+    {"enum", "an enum is 'Name :: enum WIDTH { }'", "Color :: enum u8 { red; green; }"},
+    {"static", "a constant is 'N :: value;'; there are no global variables", "N :: 3;"},
+    {"#define", "a constant is 'N :: value;'", "N :: 3;"},
+    {"import", "load code with #import or #load", "#import \"Basic\";  or  #load \"FILE.coax\" as name;"},
+    {"use", "load code with #import or #load", "#import \"Basic\";  or  #load \"FILE.coax\" as name;"},
+    {"package", "a file needs no package line; load code with #import or #load", "#import \"Basic\";  or  #load \"FILE.coax\" as name;"},
+    {"from", "load code with #import or #load", "#import \"Basic\";  or  #load \"FILE.coax\" as name;"},
+    {"#include", "load code with #import or #load", "#import \"Basic\";  or  #load \"FILE.coax\" as name;"},
+    {"pub", "every top-level name is visible to the files that load it; '#export NAME;' limits a module, '#export_c' exports to C", "add :: (a: int) -> int #export_c { return a; }"},
+    {"export", "every top-level name is visible to the files that load it; '#export NAME;' limits a module, '#export_c' exports to C", "add :: (a: int) -> int #export_c { return a; }"},
+    {"assert", "an assertion is the #assert statement", "#assert x == 1;"},
+    {"printf", "print formats each % with the next value, from #import \"Basic\";", "print(\"x = %\\n\", x);"},
+    {"println", "print formats each % with the next value, from #import \"Basic\";", "print(\"x = %\\n\", x);"},
+    {"puts", "print formats each % with the next value, from #import \"Basic\";", "print(\"x = %\\n\", x);"},
+    {"console", "print formats each % with the next value, from #import \"Basic\";", "print(\"x = %\\n\", x);"},
+    {"strlen", "a string's length is its .count", "s.count"},
+    {".len()", "there are no methods; a length is .count", "s.count"},
+    {".length()", "there are no methods; a length is .count", "s.count"},
+    {".size()", "there are no methods; a length is .count", "s.count"},
+    {".push()", "fixed arrays do not grow; coax/lib/bounded.coax keeps a count in caller-owned storage", "bounded_push(b[..], v)"},
+    {".append()", "fixed arrays do not grow; coax/lib/bounded.coax keeps a count in caller-owned storage", "bounded_push(b[..], v)"},
+    {"malloc", "there is no heap; storage is a fixed array the caller owns", "buf: [4096] u8;  and pass buf[..]"},
+    {"free", "there is no heap; storage is a fixed array the caller owns", "buf: [4096] u8;  and pass buf[..]"},
+    {"new", "there is no heap; storage is a fixed array the caller owns", "buf: [4096] u8;  and pass buf[..]"},
+    {"True", "booleans are lower case", "true"},
+    {"False", "booleans are lower case", "false"},
+    {"nil", "an empty optional is null, for a T? value", "x: int? = null;"},
+    {"None", "an empty optional is null, for a T? value", "x: int? = null;"},
+    {"NULL", "an empty optional is null, for a T? value", "x: int? = null;"},
+    {"nullptr", "an empty optional is null, for a T? value", "x: int? = null;"},
+    {"undefined", "an empty optional is null, for a T? value; an uninitialized local is '= ---'", "x: int? = null;  or  buf: [64] u8 = ---;"},
+    {"self", "there are no methods; pass the struct as a parameter", "area :: (r: Rect) -> int { return r.w * r.h; }"},
+    {"this", "there are no methods; pass the struct as a parameter", "area :: (r: Rect) -> int { return r.w * r.h; }"},
+    {"i8", "signed integers are s8, s16, s32 and s64; int is s64", "s8"},
+    {"i16", "signed integers are s8, s16, s32 and s64; int is s64", "s16"},
+    {"i32", "signed integers are s8, s16, s32 and s64; int is s64", "s32"},
+    {"i64", "signed integers are s8, s16, s32 and s64; int is s64", "s64"},
+    {"usize", "counts and indices are int (s64); uint is u64", "int"},
+    {"isize", "counts and indices are int (s64)", "int"},
+    {"size_t", "counts and indices are int (s64); uint is u64", "int"},
+    {"long", "int is s64", "int"},
+    {"uint8_t", "unsigned integers are u8, u16, u32 and u64", "u8"},
+    {"uint32_t", "unsigned integers are u8, u16, u32 and u64", "u32"},
+    {"int32_t", "signed integers are s8, s16, s32 and s64", "s32"},
+    {"float", "floats are f32 and f64", "f32"},
+    {"double", "floats are f32 and f64", "f64"},
+    {"boolean", "the boolean type is bool", "bool"},
+    {"String", "the string type is string, an immutable view of bytes", "string"},
+    {"str", "the string type is string, an immutable view of bytes", "string"},
+    {"char", "a character literal 'a' is a u8", "u8"},
+    {"void", "a procedure without a result has no '->'", "reset :: (x: [] int) { }"},
+};
+
+const int32_t IDIOM_COUNT = (int32_t)(sizeof IDIOMS / sizeof IDIOMS[0]);
+
+namespace {
+bool idiom_word_char(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+bool idiom_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+// The identifier that ends at or before `at`, skipping spaces back; its start in *start.
+std::string idiom_word_before(const std::string &t, size_t at, size_t *start) {
+  size_t e = at < t.size() ? at : t.size();
+  while (e > 0 && idiom_space(t[e - 1])) e--;
+  size_t b = e;
+  while (b > 0 && idiom_word_char(t[b - 1])) b--;
+  if (start) *start = b;
+  return t.substr(b, e - b);
+}
+// The identifier that starts at or after `at`, skipping spaces; its end in *end.
+std::string idiom_word_after(const std::string &t, size_t at, size_t *end) {
+  size_t b = at;
+  while (b < t.size() && idiom_space(t[b])) b++;
+  size_t e = b;
+  while (e < t.size() && idiom_word_char(t[e])) e++;
+  if (end) *end = e;
+  return t.substr(b, e - b);
+}
+char idiom_char_after(const std::string &t, size_t at) {
+  while (at < t.size() && idiom_space(t[at])) at++;
+  return at < t.size() ? t[at] : 0;
+}
+// The last non-space byte before `at`, or 0; its offset in *where.
+char idiom_char_before(const std::string &t, size_t at, size_t *where) {
+  size_t e = at < t.size() ? at : t.size();
+  while (e > 0 && idiom_space(t[e - 1])) e--;
+  if (where) *where = e ? e - 1 : 0;
+  return e ? t[e - 1] : 0;
+}
+// Whether the word starting at `b` begins a statement: only spaces before it
+// on its line, or a ; { } before it.
+bool idiom_statement_start(const std::string &t, size_t b) {
+  size_t i = b;
+  while (i > 0 && (t[i - 1] == ' ' || t[i - 1] == '\t')) i--;
+  if (i == 0 || t[i - 1] == '\n') return true;
+  char c = idiom_char_before(t, b, nullptr);
+  return c == ';' || c == '{' || c == '}';
+}
+bool idiom_in(const std::string &w, std::initializer_list<const char *> words) {
+  for (const char *x : words) if (w == x) return true;
+  return false;
+}
+bool idiom_type_word(const std::string &w) {
+  return idiom_in(w, {"int", "uint", "float", "double", "char", "long", "short", "unsigned", "signed", "void", "bool", "boolean",
+                      "string", "String", "s8", "s16", "s32", "s64", "u8", "u16", "u32", "u64", "f32", "f64", "i8", "i16",
+                      "i32", "i64", "usize", "isize", "size_t", "uint8_t", "uint32_t", "int32_t"});
+}
+// The first 'quoted' name in a message.
+std::string idiom_quoted(const std::string &m) {
+  size_t a = m.find('\'');
+  if (a == std::string::npos) return "";
+  size_t b = m.find('\'', a + 1);
+  return b == std::string::npos ? "" : m.substr(a + 1, b - a - 1);
+}
+const Idiom *idiom_row(const std::string &spelling) {
+  for (int32_t i = 0; i < IDIOM_COUNT; i++) if (spelling == IDIOMS[i].spelling) return &IDIOMS[i];
+  return nullptr;
+}
+bool idiom_use(const std::string &spelling, const std::string &shown, IdiomRepair *out) {
+  const Idiom *row = idiom_row(spelling);
+  if (!row) return false;
+  out->recode = true;
+  out->message = "'" + shown + "' is not Coax: " + row->note;
+  out->fix = row->fix;
+  return true;
+}
+}  // namespace
+
+bool idiom_repair(const std::string &t, size_t o, const char *code_c, const std::string &message, IdiomRepair *out) {
+  const std::string code = code_c;
+  if (o > t.size()) return false;
+  const char at = o < t.size() ? t[o] : 0;
+  size_t wb = 0, we = 0;
+  const std::string before = idiom_word_before(t, o, &wb);
+  const std::string after = idiom_word_after(t, o, &we);
+  const std::string name = idiom_quoted(message);
+  if (code == "E0201") {
+    if (message.find("loop variable") != std::string::npos) {
+      if (after == "in") return idiom_use("for in", "for " + before + " in", out);
+      if (idiom_char_after(t, o) == ':' && o + 1 < t.size() && idiom_char_after(t, o + 1) == '=') return idiom_use("for (;;)", "for " + before + " := ...;", out);
+      return false;
+    }
+    const bool stmt = !before.empty() && idiom_statement_start(t, wb);
+    if (stmt && !after.empty() && idiom_in(before, {"let", "var", "const", "auto", "mut", "val"})) return idiom_use(before, before, out);
+    if (stmt && !after.empty() && idiom_type_word(before) && idiom_char_after(t, we) != '(') return idiom_use("TYPE NAME", before + " " + after, out);
+    if (stmt && idiom_in(before, {"elif", "elsif", "elseif", "match"}) && !after.empty()) return idiom_use(before, before, out);
+    if (stmt && idiom_in(before, {"loop", "do"}) && idiom_char_after(t, o) == '{') return idiom_use(before, before, out);
+    if (before == "not" && !after.empty()) return idiom_use("not", "not", out);
+    if (idiom_in(after, {"and", "or"})) return idiom_use(after, after, out);
+    if (after == "as") return idiom_use("as", "as", out);
+    char next = idiom_char_after(t, o);
+    if (next == '?') return idiom_use("?:", "c ? a : b", out);
+    size_t n = o;
+    while (n < t.size() && idiom_space(t[n])) n++;
+    if (n + 1 < t.size() && t[n] == '-' && t[n + 1] == '>') return idiom_use("->", "->", out);
+    // (T) x: a parenthesized single name, then an operand.
+    size_t close = 0;
+    if (idiom_char_before(t, o, &close) == ')' && (idiom_word_char(next) || next == '(')) {
+      size_t ws = 0;
+      const std::string inner = idiom_word_before(t, close, &ws);
+      size_t open = 0;
+      if (!inner.empty() && idiom_char_before(t, ws, &open) == '(') {
+        size_t lead = 0;
+        char c = idiom_char_before(t, open, &lead);
+        if (c == '=' || c == '(' || c == ',' || idiom_word_before(t, open, nullptr) == "return")
+          return idiom_use("(T) x", "(" + inner + ") " + after, out);
+      }
+    }
+    // if c x(); from C: a block always has braces.
+    size_t ls = o < t.size() ? o : t.size();
+    while (ls > 0 && t[ls - 1] != '\n') ls--;
+    const std::string head = t.substr(ls, o - ls);
+    if (message.find("to start a block, found '") != std::string::npos && !after.empty() &&
+        (head.find("if ") != std::string::npos || head.find("while ") != std::string::npos)) {
+      out->fix = "a block always has braces: if c { ... }";
+      return true;
+    }
+    return false;
+  }
+  if (code == "E0205") {
+    if (at == '+' && ((o > 0 && t[o - 1] == '+') || (o + 1 < t.size() && t[o + 1] == '+'))) return idiom_use("++", "++", out);
+    size_t p = 0;
+    if (idiom_char_before(t, o, &p) == '-' && p > 0 && t[p - 1] == '-') return idiom_use("--", "--", out);
+    if (at == '=' && o >= 2 && (t[o - 1] == '&' || t[o - 1] == '|') && t[o - 2] == t[o - 1]) return idiom_use(t[o - 1] == '&' ? "&&=" : "||=", t[o - 1] == '&' ? "&&=" : "||=", out);
+    if (at == '=' && o >= 2 && t[o - 1] == '=' && (t[o - 2] == '=' || t[o - 2] == '!')) return idiom_use(t[o - 2] == '=' ? "===" : "!==", t[o - 2] == '=' ? "===" : "!==", out);
+    if ((at == '&' || at == '*') && o + 1 < t.size() && idiom_word_char(t[o + 1]) && !(o > 0 && t[o - 1] == at)) return idiom_use(at == '&' ? "&x" : "*p", std::string(1, at) + idiom_word_after(t, o + 1, nullptr), out);
+    return false;
+  }
+  if (code == "E0108") return at == '~' && idiom_use("~", "~", out);
+  if (code == "E0208" && before == "for") {
+    if (at == '(') return idiom_use("for (;;)", "for (", out);
+    if (at >= '0' && at <= '9') return idiom_use("for 0..n", "for 0..n", out);
+    return false;
+  }
+  if (code == "E0213") {
+    if (idiom_in(after, {"fn", "func", "function", "def", "fun", "struct", "class", "type", "interface", "enum", "import", "use",
+                         "package", "from", "pub", "export", "static"}))
+      return idiom_use(after, after, out);
+    if (idiom_in(after, {"const", "let", "var", "val"})) return idiom_use("static", after, out);
+    if (idiom_type_word(after)) {
+      size_t e2 = 0;
+      const std::string second = idiom_word_after(t, we, &e2);
+      if (!second.empty() && idiom_char_after(t, e2) == '(') return idiom_use("TYPE NAME(", after + " " + second + "(", out);
+    }
+    return false;
+  }
+  if (code == "E0210") {
+    const std::string directive = at == '#' ? idiom_word_after(t, o + 1, nullptr) : "";
+    if (directive == "include" || directive == "define") return idiom_use("#" + directive, "#" + directive, out);
+    return false;
+  }
+  if (code == "E0204") {
+    if (name == "for") return idiom_use("for 0..n", "for 0..n", out);
+    if (idiom_in(name, {"it", "it_index", "xx"})) return idiom_use(name, name, out);
+    return false;
+  }
+  if (code == "E0315") {
+    if (idiom_in(name, {"assert", "printf", "println", "puts", "strlen", "malloc", "free", "new"})) return idiom_use(name, name, out);
+    out->fix = "find where it is declared: coax vocab " + name;
+    return !name.empty();
+  }
+  if (code == "E0302") {
+    if (idiom_row(name) && (idiom_type_word(name) || name == "str")) return idiom_use(name, name, out);
+    out->fix = "find where it is declared: coax vocab " + name;
+    return !name.empty();
+  }
+  if (code == "E0306") {
+    if (idiom_in(name, {"True", "False", "nil", "None", "NULL", "nullptr", "undefined", "self", "this"})) return idiom_use(name, name, out);
+    // A name the compiler keeps for an intrinsic can't name a local, so its
+    // declaration failed (E0342) and every use lands here.
+    if (idiom_in(name, {"len", "log", "floor", "sin", "cos", "tan", "exp", "sqrt", "abs", "pow", "byte_at", "size_of", "type_name"}) &&
+        idiom_char_after(t, o + name.size()) != '(') {
+      out->fix = "'" + name + "' is the intrinsic " + name + "(...), so it can't name a local: rename the local";
+      return true;
+    }
+    return false;
+  }
+  if (code == "E0384") {
+    if (name == "console") return idiom_use("console", "console.log", out);
+    for (const char *m : {".len(", ".length(", ".size(", ".push(", ".append("}) {
+      const std::string s = m;
+      if (t.compare(o + name.size(), s.size(), s) == 0) return idiom_use(s + ")", name + s + ")", out);
+    }
+    return false;
+  }
+  return false;
+}
 
 }  // namespace coax

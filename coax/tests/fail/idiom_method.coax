@@ -1,0 +1,3 @@
+// expect: E0225
+// says: a length is .count
+main :: () { s := "abc"; n := s.len(); }

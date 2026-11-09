@@ -1,0 +1,4 @@
+// expect: E0225
+// says: 'fn' is not Coax
+fn add(a: int, b: int) -> int { return a + b; }
+main :: () { }

@@ -1,0 +1,3 @@
+// expect: E0225
+// says: fix: #assert x == 1;
+main :: () { assert(1 == 1); }

@@ -1,0 +1,4 @@
+// expect: E0225
+// says: 'int add(' is not Coax
+int add(int a, int b) { return a + b; }
+main :: () { }

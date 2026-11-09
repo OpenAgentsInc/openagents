@@ -1,5 +1,24 @@
 # Native source debugging and compiler timings
 
+## Pitfalls
+
+The rule for this list: keep only pitfalls reproduced on `main`, each as
+symptom, cause and fix. When a diagnostic starts to catch one, delete its
+entry and name the diagnostic in the commit. Spellings from other languages
+(`let`, `x++`, `(int) x`, `printf`, `i32`) are caught by E0225, and a local
+named like an intrinsic (`len`, `log`, `floor`) by E0306's fix, so neither is
+listed. The workflow pitfalls are in [start-here.md](start-here.md).
+
+- **Every command warns "this compiler is out of date".** `coax/bin/coax` was
+  built from other compiler sources than the checkout's (you edited
+  `coax/src` or `coax/lib/compiler`, or moved to another worktree), so its
+  errors may come from the old compiler. Run `coax/build.sh`; for a compiler
+  change that is not published yet, build it on a remote host
+  (`coax/remote/remote.sh run -- coax/build.sh`).
+- **A breakpoint on a Coax line never hits in a `--release` build.** Release
+  builds carry no line map (`coax c --release` emits no `#line`). Add
+  `--debug-info` or `--source-map FILE`, as below.
+
 `coax0` 0.13.0 emits original Coax line locations through C11. The native
 compiler, linker and debugger still supply machine code and debug information.
 This does not introduce an interpreter into the target program.

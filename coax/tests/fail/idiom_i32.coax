@@ -1,0 +1,4 @@
+// expect: E0225
+// says: fix: s32
+f :: (x: i32) { }
+main :: () { }
