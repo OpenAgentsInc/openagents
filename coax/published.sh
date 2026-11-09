@@ -12,6 +12,7 @@
 #   coax/published.sh upload ROOT OUT.tar.gz   # put a packed build in the bucket and its GitHub mirror (never over one)
 #   coax/published.sh publish ROOT             # pack coax/bin and upload it, if not there yet
 #   coax/published.sh mirror ROOT              # copy this tree's bucket build to the GitHub mirror if it lacks it
+#   coax/published.sh failed ROOT NOTE         # a release host's note of why this platform's build failed
 #
 # A build is named by its source fingerprint (provenance.sh source-fingerprint:
 # the compiler's sources and the platform, not the local toolchain) and its
@@ -126,14 +127,18 @@ get() {
   curl -fsSL --retry 2 --max-time 600 "$base" -o "$tmp/build.tar.gz" 2> /dev/null || { echo unreachable; return 1; }
 }
 fetch() {
-  local root="$1" dir="$2" path tmp want got bucket_why mirror_why=off
+  local root="$1" dir="$2" path tmp want got bucket_why mirror_why=off why
   path="$(name "$root")"
   command -v curl > /dev/null 2>&1 || fail 'curl unavailable'
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/coax-fetch.XXXXXXXX")"
   trap 'rm -rf "$tmp"' RETURN
   if ! bucket_why="$(get "$url_base/$path.tar.gz" "$tmp")"; then
     [[ "$github" == none ]] || mirror_why="$(get "$mirror_url/$(mirror_tag "$path")/$(mirror_asset "$path").tar.gz" "$tmp")" || true
-    [[ "$mirror_why" == "" ]] || fail "no published build $path (bucket: $bucket_why; GitHub mirror: $mirror_why)"
+    if [[ "$mirror_why" != "" ]]; then
+      # the release host's note when its last try failed (failed, below), so the failure is seen
+      why="$(curl -fsSL --max-time 20 "$url_base/$path.failed" 2> /dev/null | head -n 1 || true)"
+      fail "no published build $path (bucket: $bucket_why; GitHub mirror: $mirror_why)${why:+; its release host failed it: $why}"
+    fi
   fi
   want="$(awk '{print $1; exit}' "$tmp/sum")"; got="$(sha < "$tmp/build.tar.gz")"
   [[ -n "$want" && "$want" == "$got" ]] || fail "$path: the download differs from its checksum"
@@ -178,9 +183,18 @@ upload() {
     gcloud storage cp "$sum" "$bucket/$path.tar.gz.sha256" --quiet > /dev/null
     echo "coax published: uploaded $path"
   fi
+  gcloud storage rm "$bucket/$path.failed" --quiet > /dev/null 2>&1 || true
   commit="$(tar -xzOf "$file" manifest | awk '$1 == "commit" { print $2; exit }')"
   mirror_upload "$path" "$file" "$sum" "$commit" || echo "coax published: the bucket has $path; the GitHub mirror does not yet" >&2
   rm -f "$sum"
+}
+# Why this tree's build failed on this platform's release host (one line first:
+# fetch names it to everyone who falls back to a bootstrap), beside where the
+# build would be; each failed round replaces it and upload removes it.
+failed() {
+  local root="$1" note="$2"
+  command -v gcloud > /dev/null 2>&1 || fail 'gcloud unavailable'
+  gcloud storage cp "$note" "$bucket/$(name "$root").failed" --cache-control=no-store --content-type=text/plain --quiet > /dev/null
 }
 # The bucket's builds of this tree (every platform: the source fingerprint does
 # not depend on the platform), copied to the GitHub mirror where it lacks them.
@@ -217,9 +231,10 @@ case "$cmd" in
   fetch) [[ $# == 2 ]] || fail 'usage: published.sh fetch ROOT DIR'; fetch "$1" "$2" ;;
   upload) [[ $# == 2 ]] || fail 'usage: published.sh upload ROOT OUT.tar.gz'; upload "$1" "$2" ;;
   mirror) [[ $# == 1 ]] || fail 'usage: published.sh mirror ROOT'; mirror "$1" ;;
+  failed) [[ $# == 2 ]] || fail 'usage: published.sh failed ROOT NOTE'; failed "$1" "$2" ;;
   publish)
     [[ $# == 1 ]] || fail 'usage: published.sh publish ROOT'
     out="$(mktemp "${TMPDIR:-/tmp}/coax-build.XXXXXXXX").tar.gz"
     pack "$1" "$out"; upload "$1" "$out"; rm -f "$out" ;;
-  *) fail 'usage: published.sh platform | name ROOT | pack ROOT OUT | check DIR ROOT | fetch ROOT DIR | upload ROOT OUT | publish ROOT | mirror ROOT' ;;
+  *) fail 'usage: published.sh platform | name ROOT | pack ROOT OUT | check DIR ROOT | fetch ROOT DIR | upload ROOT OUT | publish ROOT | mirror ROOT | failed ROOT NOTE' ;;
 esac

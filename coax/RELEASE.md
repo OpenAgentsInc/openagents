@@ -275,7 +275,13 @@ machine downloads it.
   `COAX_LDFLAGS=-static`, so one build runs on any Linux of its architecture,
   then powers off. It runs as the automation service account, so no key is
   copied to it. Its log is `/var/log/coax-publish.log` on the VM. No GitHub
-  Actions.
+  Actions. When a release host's build fails (a gate, most often the full
+  mutation check, which only it runs strict), it leaves a note beside the
+  missing build (`<source>/<platform>.failed`, `published.sh failed`): the
+  gate and its survivors first, then the log's tail. `coax/build.sh` prints
+  that reason when it falls back to a bootstrap, so a broken publisher is seen
+  by every agent, not only in the Mac's log. A failed source fingerprint does
+  not start the Linux VM again, since its gates would fail there too.
 - **Who installs.** `coax/build.sh`, when its cache has no build for this
   tree, tries the published one before bootstrapping: it checks the download
   against its checksum, the manifest's source fingerprint and platform against
