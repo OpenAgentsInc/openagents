@@ -1025,3 +1025,10 @@ The shipped Everglade II VPK3 loaded in muted headless Chrome on hardware
 WebGPU. The terrain probe reported a ready world and all 21 terrain tiles.
 This pack check did not spawn a familiar. The familiar model still needs a
 browser draw receipt through the room path.
+
+Experimental passed a muted headless WebGPU playthrough with the
+`3e5c87518d` Wasm and the shipped Experimental pack. The player selected
+Druid level 2, chose Owl on the familiar badge, and summoned it from the
+hotbar. The probe observed an active familiar and the Owl's indexed draw
+(first index 13,987,690, 240 indices, packed vertex word 44,594,800).
+The corresponding Everglade II room-to-browser receipt is pending.
