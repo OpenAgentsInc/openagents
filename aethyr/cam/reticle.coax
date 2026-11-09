@@ -1,0 +1,46 @@
+// The reticle: one centred mark for the camera's centre ray, shared by every realm and mode. A
+// mouselook camera shows it always (idle); a drawn bow (aethyr/action/bow.coax) brings in its four
+// arms, which close in as the draw builds and turn gold at full draw. Aim always uses the camera's
+// centre ray, so what the reticle covers is what an arrow, a bolt or a pick goes toward.
+//
+// It only says where the strokes go: a realm draws each ReticleStroke with its own line primitive
+// (Experimental: charactercreator.coax lit, through experimental-combat.coax xc_crosshair).
+//   coax/bin/coax test aethyr/cam/reticle.coax --library
+#module "aethyr.cam.reticle";
+
+RETICLE_MAX :: 5;
+// A stroke from (ax, ay) to (bx, by), screen pixels, `width` wide, `alpha` visible, coloured r g b.
+ReticleStroke :: struct { ax: f32; ay: f32; bx: f32; by: f32; width: f32; alpha: f32; r: f32; g: f32; b: f32; }
+
+// The strokes at the centre (cx, cy), k pixels a point: the dot, `idle` visible (0 hides it when
+// nothing aims), and the arms as far as `aim` (0 to 1) has come in, at draw `strength` (0 to 1).
+// Returns how many it wrote into out (at most RETICLE_MAX).
+reticle_strokes :: (out: [] ReticleStroke, cx: f32, cy: f32, k: f32, idle: f32, aim: f32, strength: f32) -> int {
+  n := 0;
+  full := strength >= 0.999;
+  r := 0.95f32; g := 0.95f32; b := ifx full then 0.6f32 else 0.95f32;
+  if full { r = 1; }
+  dot := ifx idle > aim then idle else aim;
+  if dot > 0.01 && n < out.count {
+    out[n] = ReticleStroke.{ax = cx - 1.2 * k, ay = cy, bx = cx + 1.2 * k, by = cy, width = 2.2 * k, alpha = dot, r = r, g = g, b = b}; n += 1;
+  }
+  if aim <= 0.01 { return n; }
+  gap := (14 - 8 * strength) * k; arm := 7 * k; a := aim * 0.9;
+  dx := [4] f32.[-1, 1, 0, 0]; dy := [4] f32.[0, 0, -1, 1];
+  for i: 0..<4 {
+    if n >= out.count { break; }
+    out[n] = ReticleStroke.{ax = cx + dx[i] * gap, ay = cy + dy[i] * gap, bx = cx + dx[i] * (gap + arm), by = cy + dy[i] * (gap + arm), width = 1.6 * k, alpha = a, r = r, g = g, b = b};
+    n += 1;
+  }
+  return n;
+}
+
+#test "idle shows only the dot; a drawn bow adds four arms that close in and turn gold at full draw" {
+  s: [RETICLE_MAX] ReticleStroke;
+  #assert reticle_strokes(s[..], 100, 50, 1, 0, 0, 0) == 0;
+  #assert reticle_strokes(s[..], 100, 50, 1, 0.8, 0, 0) == 1 && s[0].alpha == 0.8 && s[0].ay == 50;
+  #assert reticle_strokes(s[..], 100, 50, 1, 0, 1, 0) == 5;
+  loose := s[1].ax;
+  #assert reticle_strokes(s[..], 100, 50, 1, 0, 1, 1) == 5 && s[1].ax > loose && s[1].b < 0.9 && s[1].r == 1;
+  #assert abs(s[1].ay - 50) < 0.001 && s[3].ax == 100 && s[3].ay < 50 && s[4].ay > 50;
+}
