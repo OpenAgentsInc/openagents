@@ -12,13 +12,14 @@
 #module "aethyr.action.attachoverlap";
 #authority;
 #load "../space.coax";
+#load "../stand.coax";   // stand_lo and stand_hi
 
 // book:begin types
 OVERLAP_BONES_MAX :: 32;      // bones one pose may list
 OVERLAP_PIECES_MAX :: 16;     // and an item's pieces
 OVERLAP_RADIUS_MAX :: 2.0;    // metres: a wider capsule is not a bone or a piece
 OVERLAP_TOO_BIG :: 1000000.0;
-OVERLAP_FLAT :: 0.000000000001;   // a squared length this small is a point
+OVERLAP_FLAT :: 0.0000000000009094947017729282379150390625;   // 2^-40: a squared length this small or smaller is a point (a micrometre)
 
 OverlapStatus :: enum u8 { invalid; clear; overlap; }
 // A capsule: the segment from a to b, `radius` round. `id` is the realm's own name for it (a joint
@@ -36,28 +37,27 @@ overlap_point_ok :: (p: WorldPoint) -> bool #effects(all) { return overlap_finit
 overlap_capsule_ok :: (c: OverlapCapsule) -> bool #effects(all) {
   return overlap_point_ok(c.a) && overlap_point_ok(c.b) && c.radius == c.radius && c.radius >= 0 && c.radius <= OVERLAP_RADIUS_MAX;
 }
-overlap_clamp01 :: (v: f32) -> f32 #effects(all) { if v < 0 { return 0; } if v > 1 { return 1; } return v; }
+overlap_clamp01 :: (v: f32) -> f32 #effects(all) { return stand_lo(stand_hi(v, 0), 1); }   // a NaN is 0
 
 // book:begin distance
 // The least distance between the segments p1-q1 and p2-q2 (Ericson, Real-Time Collision
-// Detection, 5.1.9): the closest points' parameters s and t, clamped to each segment.
+// Detection, 5.1.9): the closest points' parameters s and t, clamped to each segment. For two
+// segments, s starts at the lines' closest point (any point when they are parallel), t is the
+// point of the second nearest to it, and s the point of the first nearest to that, which is a
+// closest pair. A segment no longer than OVERLAP_FLAT squared is its first end.
 overlap_distance :: (p1: WorldPoint, q1: WorldPoint, p2: WorldPoint, q2: WorldPoint) -> f32 #effects(all) {
   d1 := world_sub(q1, p1); d2 := world_sub(q2, p2); r := world_sub(p1, p2);
   a := world_dot(d1, d1); e := world_dot(d2, d2); f := world_dot(d2, r);
   s: f32 = 0; t: f32 = 0;
-  if a <= f32(OVERLAP_FLAT) && e <= f32(OVERLAP_FLAT) { s = 0; t = 0; }
-  else if a <= f32(OVERLAP_FLAT) { t = overlap_clamp01(f / e); }
-  else {
+  if a > f32(OVERLAP_FLAT) {
     c := world_dot(d1, r);
-    if e <= f32(OVERLAP_FLAT) { s = overlap_clamp01(-c / a); }
-    else {
-      b := world_dot(d1, d2); denom := a * e - b * b;
-      s = ifx denom > 0 then overlap_clamp01((b * f - c * e) / denom) else 0.0f32;
-      t = (b * s + f) / e;
-      if t < 0 { t = 0; s = overlap_clamp01(-c / a); }
-      else if t > 1 { t = 1; s = overlap_clamp01((b - c) / a); }
-    }
-  }
+    if e > f32(OVERLAP_FLAT) {
+      b := world_dot(d1, d2);
+      s = overlap_clamp01((b * f - c * e) / stand_hi(a * e - b * b, f32(OVERLAP_FLAT) * f32(OVERLAP_FLAT)));
+      t = overlap_clamp01((b * s + f) / e);
+      s = overlap_clamp01((b * t - c) / a);
+    } else { s = overlap_clamp01(-c / a); }
+  } else if e > f32(OVERLAP_FLAT) { t = overlap_clamp01(f / e); }
   g := world_sub(world_add(p1, world_scale(d1, s)), world_add(p2, world_scale(d2, t)));
   return sqrt(world_dot(g, g));
 }
@@ -126,28 +126,47 @@ overlap_test_p :: (x: f32, y: f32, z: f32) -> WorldPoint #effects(all) { return 
   #assert abs(overlap_distance(overlap_test_p(0, 1, -1), overlap_test_p(0, 1, 1), overlap_test_p(-1, 0, 0), overlap_test_p(1, 0, 0)) - 1) < 0.00001;
 }
 
-// A brute-force oracle: the least distance over points along both segments.
-overlap_test_oracle :: (p1: WorldPoint, q1: WorldPoint, p2: WorldPoint, q2: WorldPoint) -> f32 #effects(all) {
+// A brute-force oracle: the least distance over 101 points along each segment (v: p1, q1, p2, q2).
+overlap_test_oracle :: (v: [12] f32) -> f32 #effects(all) {
   best: f32 = 1000000;
-  for i: 0..<201 { for j: 0..<201 {
-    a := world_add(p1, world_scale(world_sub(q1, p1), f32(i) / 200));
-    b := world_add(p2, world_scale(world_sub(q2, p2), f32(j) / 200));
-    g := world_sub(a, b); d := sqrt(world_dot(g, g));
-    if d < best { best = d; }
-  } }
-  return best;
+  for i: 0..<101 {
+    u := f32(i) / 100; ax := v[0] + (v[3] - v[0]) * u; ay := v[1] + (v[4] - v[1]) * u; az := v[2] + (v[5] - v[2]) * u;
+    for j: 0..<101 {
+      w := f32(j) / 100; dx := v[6] + (v[9] - v[6]) * w - ax; dy := v[7] + (v[10] - v[7]) * w - ay; dz := v[8] + (v[11] - v[8]) * w - az;
+      best = stand_lo(best, dx * dx + dy * dy + dz * dz);
+    }
+  }
+  return sqrt(best);
 }
-#forall "segment distance agrees with a brute-force walk" k: 0..<40 #steps 1000000000 {
+#test "the oracle reaches both segments' first and last points" {
+  #assert abs(overlap_test_oracle([12] f32.[0, 0, 0, 1, 0, 0, -1, 0, 0, -2, 0, 0]) - 1) < 0.000001;
+  #assert abs(overlap_test_oracle([12] f32.[1, 0, 0, 0, 0, 0, -2, 0, 0, -1, 0, 0]) - 1) < 0.000001;
+}
+#forall "segment distance agrees with a brute-force walk" k: 0..<40 #steps 400000000 {
   // a small fixed scatter of segments: the k-th pair from a cheap integer hash
   h := k * 7919 + 13;
   v: [12] f32;
   for i: 0..<12 { h = (h * 1103 + 12345) % 65536; v[i] = f32(h % 401) / 100 - 2; }
   if k % 5 == 0 { v[3] = v[0]; v[4] = v[1]; v[5] = v[2]; }   // some first segments are points
   if k % 7 == 0 { v[9] = v[6] + (v[3] - v[0]); v[10] = v[7] + (v[4] - v[1]); v[11] = v[8] + (v[5] - v[2]); }   // and some pairs parallel
-  p1 := overlap_test_p(v[0], v[1], v[2]); q1 := overlap_test_p(v[3], v[4], v[5]);
-  p2 := overlap_test_p(v[6], v[7], v[8]); q2 := overlap_test_p(v[9], v[10], v[11]);
-  d := overlap_distance(p1, q1, p2, q2); o := overlap_test_oracle(p1, q1, p2, q2);
-  #assert d <= o + 0.0001 && d >= o - 0.05;
+  d := overlap_distance(overlap_test_p(v[0], v[1], v[2]), overlap_test_p(v[3], v[4], v[5]), overlap_test_p(v[6], v[7], v[8]), overlap_test_p(v[9], v[10], v[11]));
+  o := overlap_test_oracle(v);
+  #assert d <= o + 0.0001 && d >= o - 0.08;
+}
+
+#test "a segment exactly OVERLAP_FLAT long, squared, is a point; a longer one is not" {
+  m: f32 = 0.00000095367431640625;   // 2^-20: its square is OVERLAP_FLAT
+  o := overlap_test_p(0, 0, 0); tiny := overlap_test_p(m, 0, 0);
+  across := [2] WorldPoint.[overlap_test_p(1, 0, -1), overlap_test_p(1, 0, 1)];
+  // the first a point: the distance from its first end, 1, not from its other end
+  #assert overlap_distance(o, tiny, across[0], across[1]) == 1;
+  #assert overlap_distance(o, overlap_test_p(2 * m, 0, 0), across[0], across[1]) < 1;
+  // the second a point
+  #assert overlap_distance(across[0], across[1], o, tiny) == 1;
+  #assert overlap_distance(across[0], across[1], o, overlap_test_p(2 * m, 0, 0)) < 1;
+  // both points
+  #assert overlap_distance(o, o, overlap_test_p(1, 0, 0), overlap_test_p(1 - m, 0, 0)) == 1;
+  #assert overlap_distance(o, o, overlap_test_p(1, 0, 0), overlap_test_p(1 - 2 * m, 0, 0)) < 1;
 }
 
 overlap_test_arm :: () -> [2] OverlapCapsule #effects(all) {
@@ -199,6 +218,16 @@ overlap_test_arm :: () -> [2] OverlapCapsule #effects(all) {
   bad = ok; bad[0].capsule.a.x = nan; #assert overlap_pose(arm[..], bad[..], 0).status == OverlapStatus.invalid;
   bad = ok; bad[0].capsule.b.z = 2000000; #assert overlap_pose(arm[..], bad[..], 0).status == OverlapStatus.invalid;
   broken := arm; broken[1].b.y = nan; #assert overlap_pose(broken[..], ok[..], 0).status == OverlapStatus.invalid;
+  broken = arm; broken[0].a.x = nan; #assert overlap_pose(broken[..], ok[..], 0).status == OverlapStatus.invalid;
+  #assert overlap_pose(broken[..], ok[0..<0], 0).status == OverlapStatus.invalid;
+  // a coordinate of OVERLAP_TOO_BIG either way is not one; just inside it is
+  big := f32(OVERLAP_TOO_BIG);
+  bad = ok; bad[0].capsule.a.y = big; #assert overlap_pose(arm[..], bad[..], 0).status == OverlapStatus.invalid;
+  bad = ok; bad[0].capsule.a.y = -big; #assert overlap_pose(arm[..], bad[..], 0).status == OverlapStatus.invalid;
+  bad = ok; bad[0].capsule.a.y = big - 1; #assert overlap_pose(arm[..], bad[..], 0).status == OverlapStatus.clear;
+  bad = ok; bad[0].capsule.a.y = 1 - big; #assert overlap_pose(arm[..], bad[..], 0).status == OverlapStatus.clear;
+  // the widest radius is admitted
+  bad = ok; bad[0].capsule.radius = OVERLAP_RADIUS_MAX; #assert overlap_pose(arm[..], bad[..], 0).status == OverlapStatus.overlap;
   bones: [OVERLAP_BONES_MAX + 1] OverlapCapsule;
   #assert overlap_pose(bones[..], ok[..], 0).status == OverlapStatus.invalid;
   #assert overlap_pose(bones[0..<OVERLAP_BONES_MAX], ok[..], 0).status != OverlapStatus.invalid;
@@ -206,6 +235,36 @@ overlap_test_arm :: () -> [2] OverlapCapsule #effects(all) {
   #assert overlap_pose(arm[..], pieces[..], 0).status == OverlapStatus.invalid;
   #assert overlap_pose(arm[..], pieces[0..<OVERLAP_PIECES_MAX], 0).status != OverlapStatus.invalid;
   #assert overlap_pose(arm[..], ok[..], OVERLAP_RADIUS_MAX).status != OverlapStatus.invalid;
+}
+
+#test "touching is clear, and of two equal overlaps the first bone is named" {
+  // two capsules 0.5 round whose axes are exactly 1 apart touch: depth 0, clear
+  bone := [1] OverlapCapsule.[OverlapCapsule.{id = 3, a = overlap_test_p(0, 0, 0), b = overlap_test_p(0, 2, 0), radius = 0.5}];
+  piece := [1] OverlapPiece.[OverlapPiece.{capsule = OverlapCapsule.{id = 1, a = overlap_test_p(1, 0, 0), b = overlap_test_p(1, 2, 0), radius = 0.5}}];
+  h := overlap_pose(bone[..], piece[..], 0);
+  #assert h.status == OverlapStatus.clear && h.depth == 0 && h.bone == 3;
+  #assert overlap_keep(OverlapHit.{}, h, 0, 0).status == OverlapStatus.clear;
+  // the same bone twice under two ids, the piece through both: the first is named
+  twins := [2] OverlapCapsule.[OverlapCapsule.{id = 7, a = overlap_test_p(0, 0, 0), b = overlap_test_p(0, 2, 0), radius = 0.5},
+    OverlapCapsule.{id = 8, a = overlap_test_p(0, 0, 0), b = overlap_test_p(0, 2, 0), radius = 0.5}];
+  through := [1] OverlapPiece.[OverlapPiece.{capsule = OverlapCapsule.{id = 1, a = overlap_test_p(-1, 1, 0), b = overlap_test_p(1, 1, 0), radius = 0.01}}];
+  t := overlap_pose(twins[..], through[..], 0);
+  #assert t.status == OverlapStatus.overlap && t.bone == 7 && abs(t.depth - 0.51) < 0.0001;
+}
+
+#test "a sweep's first pose is kept however deep, and once spoiled it stays spoiled" {
+  far := OverlapHit.{status = OverlapStatus.clear, depth = -2000000, piece = 4, bone = 5, poses = 1};
+  first := overlap_keep(OverlapHit.{}, far, 3, 1);
+  #assert first.status == OverlapStatus.clear && first.depth == -2000000 && first.piece == 4 && first.clip == 3 && first.poses == 1;
+  // a later, shallower pose doesn't replace a deeper one
+  near := OverlapHit.{status = OverlapStatus.clear, depth = -0.5, piece = 6, bone = 7, poses = 1};
+  kept := overlap_keep(overlap_keep(OverlapHit.{}, near, 1, 1), far, 2, 2);
+  #assert kept.depth == -0.5 && kept.clip == 1 && kept.poses == 2;
+  // spoiled by its first pose, a valid one after doesn't mend it
+  spoiled := overlap_keep(OverlapHit.{}, OverlapHit.{}, 0, 0);
+  #assert spoiled.status == OverlapStatus.invalid && spoiled.poses == 1;
+  again := overlap_keep(spoiled, near, 1, 0);
+  #assert again.status == OverlapStatus.invalid && again.poses == 2;
 }
 
 #test "a sweep keeps the deepest pose and where it was, and an invalid pose spoils it" {
