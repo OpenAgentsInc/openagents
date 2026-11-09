@@ -81,7 +81,7 @@ xk_enabled :: (c: int, level: int, seen: [] bool) {
   for i: 0..<XK_MANIFEST.count {
     a := xc_spell_sound(XK_MANIFEST[i]);
     #assert a.start.count > 0 && exsound_known(a.start);
-    c := xc_spell_rgb(XK_MANIFEST[i]); grey := xc_spell_rgb(1000);
+    c := fxl_spell_rgb(XK_MANIFEST[i]); grey := fxl_spell_rgb(1000);
     #assert !(c.x == grey.x && c.y == grey.y && c.z == grey.z);
     for j: i + 1..<XK_MANIFEST.count {
       b := xc_spell_sound(XK_MANIFEST[j]);

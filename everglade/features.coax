@@ -88,7 +88,7 @@ EF_ZONES :: [3] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [205] string.[
+EF_KNOWN :: [190] string.[
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
   "conditions apps/openagents-web/everglade2-cast.coax e2k_health_text",
   "conditions apps/openagents-web/everglade2-cast.coax E2K_CONDITION",
@@ -135,12 +135,6 @@ EF_KNOWN :: [205] string.[
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_hit_mark",
   "hud apps/openagents-web/experimental-combat.coax xc_slot_box",
   "hud apps/openagents-web/experimental-combat.coax xc_frame_box",
-  "spell-effects apps/openagents-web/fivelab-warlock.coax lw_spell_col",
-  "spell-effects apps/openagents-web/fivelab-warlock.coax lw_fx",
-  "spell-effects apps/openagents-web/fivelab.coax FX_BOLT",
-  "spell-effects apps/openagents-web/fivelab.coax Fx",
-  "spell-effects apps/openagents-web/fivelab.coax spell_col",
-  "spell-effects apps/openagents-web/fivelab.coax add_fx",
   "damage-numbers apps/openagents-web/fivelab.coax HIT_GROUPS",
   "damage-numbers apps/openagents-web/fivelab.coax HIT_FOLD",
   "damage-numbers apps/openagents-web/fivelab.coax HIT_SHOW",
@@ -148,13 +142,6 @@ EF_KNOWN :: [205] string.[
   "damage-numbers apps/openagents-web/fivelab.coax hit_group_of",
   "damage-numbers apps/openagents-web/fivelab.coax hit_groups",
   "damage-numbers apps/openagents-web/fivelab.coax hit_shown",
-  "spell-effects apps/openagents-web/fivelab.coax fx_spot",
-  "spell-effects apps/openagents-web/fivelab.coax fx_col",
-  "spell-effects apps/openagents-web/fivelab.coax fx_attacks",
-  "spell-effects apps/openagents-web/fivelab.coax fx_cause",
-  "spell-effects apps/openagents-web/fivelab.coax fx_event",
-  "spell-effects apps/openagents-web/fivelab.coax MOCK_FX",
-  "spell-effects apps/openagents-web/fivelab.coax fx_feat",
   "conditions apps/openagents-web/fivelab.coax fx_lasting",
   "dash apps/openagents-web/fivelab.coax AB_DASH",
   "dash apps/openagents-web/fivelab.coax AB_CDASH",
@@ -162,11 +149,9 @@ EF_KNOWN :: [205] string.[
   "camera apps/openagents-web/fivelab.coax LOOK_DRAG",
   "camera apps/openagents-web/fivelab.coax follow_cam",
   "hud apps/openagents-web/fivelab.coax layout",
-  "spell-effects apps/openagents-web/fivelab.coax draw_fx",
   "name-plates apps/openagents-web/fivelab.coax draw_labels3",
   "name-plates apps/openagents-web/fivelab.coax np_named",
   "name-plates apps/openagents-web/fivelab.coax draw_names3",
-  "spell-effects apps/openagents-web/fivelab.coax draw_fx3",
   "hud apps/openagents-web/fivelab.coax draw_panel",
   "hud apps/openagents-web/fivelab.coax draw_player",
   "hud apps/openagents-web/fivelab.coax draw_top",

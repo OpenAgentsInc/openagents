@@ -149,14 +149,16 @@ No shared module exists yet. Its home is `everglade/hud/`.
 
 ### Spell effects
 
-The shared modules are `aethyr/fx/` (`puff.coax` recipes, `abilities.coax`),
-`class-look.coax` (`xc_look_of`, `xc_look_start`: which recipe and colour a
-spell starts) and `verse/everglade/gpu-fx.coax`.
+The shared modules are `aethyr/fx/` (`puff.coax` recipes, `abilities.coax`;
+`spell-light.coax`, each spell's colour; `battle.coax`, which effect each SRD
+battle event starts; `flat.coax`, a cause drawn from above),
+`class-look.coax` (`xc_look_of`, `xc_look_start`: which recipe a kit cast
+starts) and `verse/everglade/gpu-fx.coax`.
 
 | Zone | Where |
 | --- | --- |
 | Everglade II | Shared: `e2k_play` everglade2-cast.coax:84 and `e2k_step` :154 start and emit puffs through `class-look.coax` and `puff.coax`. |
-| Experimental | The combat is shared (`xc_look` experimental-combat.coax:1610). The 5E Lab and its Warlock map spells to recipes and colours themselves: `Fx` fivelab.coax:140, `fx_event` :510, `spell_col` :262, `draw_fx` :2610, `lw_fx` fivelab-warlock.coax:51. |
+| Experimental | Shared: the combat (`xc_look` experimental-combat.coax) through `class-look.coax`; the 5E Lab, its Siege and its Warlock hand each battle event to `fxe_event` (aethyr/fx/battle.coax) through `lab_effect` fivelab.coax, and the flat view draws the same causes with `fxf_of` (aethyr/fx/flat.coax). |
 | Everglade v1 | Local: its own puff system in everglade-spells.coax (`SpPuff` :156, `sp_fx` :1097, `sp_glow` :1199) and net-drawn effects (`net_draw_*` everglade-net.coax:1766-1863). The Warlock uses `puff.coax` (everglade-warlock.coax:27). |
 
 ### Camera
@@ -248,7 +250,7 @@ when v1 wires the shared module or retires.
 | Class bars | #13084 | 2 / 1 / 5 | Everglade v1 |
 | Dash | #13085 | 0 / 2 / 0 | none |
 | Name plates | #13088 | 5 / 5 / 14 | Everglade II, Experimental, Everglade v1 |
-| Spell effects | #13086 | 0 / 15 / 20 | none |
+| Spell effects | #13086 | 0 / 0 / 20 | none |
 | Camera | #13087 | 8 / 9 / 5 | none |
 
 The rows, by feature (`EF_KNOWN` holds the same list):
@@ -313,9 +315,8 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### Spell effects (#13086)
 
-35 zone-local copies.
+20 zone-local copies, all in the frozen Everglade v1.
 
-- Experimental: `lw_spell_col` fivelab-warlock.coax:24, `lw_fx` fivelab-warlock.coax:51, `FX_BOLT` fivelab.coax:123, `Fx` fivelab.coax:140, `spell_col` fivelab.coax:262, `add_fx` fivelab.coax:280, `fx_spot` fivelab.coax:495, `fx_col` fivelab.coax:497, `fx_attacks` fivelab.coax:499, `fx_cause` fivelab.coax:505, `fx_event` fivelab.coax:510, `MOCK_FX` fivelab.coax:589, `fx_feat` fivelab.coax:593, `draw_fx` fivelab.coax:2610, `draw_fx3` fivelab.coax:2739.
 - Everglade v1: `net_draw_pack` everglade-net.coax:1767, `net_draw_stone` everglade-net.coax:1788, `net_draw_tentacles` everglade-net.coax:1808, `net_draw_thorns` everglade-net.coax:1833, `net_draw_zone` everglade-net.coax:1846, `net_draw_line` everglade-net.coax:1864, `FX_FIRE` everglade-spells.coax:151, `SpMeteor` everglade-spells.coax:154, `SpPuff` everglade-spells.coax:157, `sp_bolt_jag` everglade-spells.coax:810, `sp_fx` everglade-spells.coax:1143, `sp_fx_key` everglade-spells.coax:1153, `sp_fx_keyed` everglade-spells.coax:1157, `sp_fx_id` everglade-spells.coax:1171, `sp_fx_close` everglade-spells.coax:1173, `sp_fx_thin` everglade-spells.coax:1201, `sp_fx_bucket` everglade-spells.coax:1241, `sp_glow` everglade-spells.coax:1245, `sp_shards` everglade-spells.coax:1616, `wl_draw` everglade-warlock.coax:409.
 
 ### Camera (#13087)

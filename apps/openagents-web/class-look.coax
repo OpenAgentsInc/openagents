@@ -1,57 +1,13 @@
 // How a class kit's ability looks and where its bar's slots sit (#13025, #13058): the effect a cast
-// starts (aethyr/fx/puff.coax recipes, Everglade's looks: everglade-classes.coax cl_look), each spell's
-// colour, and the bar's boxes along the bottom of the screen. Everglade Experimental
-// (experimental-combat.coax) and Everglade II (everglade2-cast.coax) draw the same; what each ability
-// is, how it aims and sounds is class-kit.coax's.
+// starts (aethyr/fx/puff.coax recipes, Everglade's looks: everglade-classes.coax cl_look) in its
+// spell's colour (aethyr/fx/spell-light.coax), and the bar's boxes along the bottom of the screen.
+// Everglade Experimental (experimental-combat.coax) and Everglade II (everglade2-cast.coax) draw the
+// same; what each ability is, how it aims and sounds is class-kit.coax's.
 //   coax/bin/coax test apps/openagents-web/class-look.coax
 #load "class-kit.coax";
 #load "../../aethyr/fx/puff.coax";
+#load "../../aethyr/fx/spell-light.coax";   // each spell's colour
 
-xc_rgb :: (r: f32, g: f32, b: f32) -> FxV { return fxp_v(r, g, b); }
-// A spell's colour, linear light (the Warlock's level 17 spells have their own: fivelab-warlock.coax).
-xc_spell_rgb :: (sp: int) -> FxV {
-  if sp == SP_HELLISH_REBUKE { return xc_rgb(0.35, 1.0, 0.3); }   // its green flames
-  if sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL { return xc_rgb(1.0, 0.55, 0.15); }
-  if sp == SP_STARRY_WISP { return xc_rgb(1.0, 0.95, 0.6); }
-  if sp == SP_POISON_SPRAY { return xc_rgb(0.6, 1.0, 0.3); }
-  if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD { return xc_rgb(0.4, 1.0, 0.5); }
-  if sp == SP_LESSER_RESTORATION { return xc_rgb(0.45, 0.9, 0.75); }
-  if sp == SP_AID { return xc_rgb(0.9, 0.85, 0.4); }
-  if sp == SP_GUIDANCE { return xc_rgb(0.62, 0.78, 0.95); }
-  if sp == SP_PROTECTION_GOOD_EVIL { return xc_rgb(0.72, 0.85, 1); }
-  if sp == SP_REVIVIFY { return xc_rgb(1, 0.95, 0.7); }
-  if sp == SP_ZONE_OF_TRUTH { return xc_rgb(0.74, 0.93, 0.88); }
-  if sp == SP_THUNDERWAVE { return xc_rgb(0.55, 0.75, 1.0); }
-  if sp == SP_ENTANGLE { return xc_rgb(0.35, 0.85, 0.3); }
-  if sp == SP_FAERIE_FIRE { return xc_rgb(0.75, 0.48, 1.0); }
-  if sp == SP_CHILL_TOUCH { return xc_rgb(0.6, 0.92, 1.0); }
-  if sp == SP_RAY_OF_SICKNESS { return xc_rgb(0.75, 0.95, 0.2); }
-  if sp == SP_FALSE_LIFE { return xc_rgb(0.95, 0.25, 0.35); }
-  if sp == SP_RAY_OF_ENFEEBLEMENT { return xc_rgb(0.6, 0.55, 0.85); }
-  if sp == SP_BLINDNESS { return xc_rgb(0.4, 0.45, 1.0); }
-  if sp == SP_ELDRITCH_BLAST { return xc_rgb(0.85, 0.35, 1.0); }
-  if sp == SP_HEX { return xc_rgb(0.55, 0.2, 0.75); }
-  if sp == SP_HOLD_PERSON { return xc_rgb(1.0, 0.8, 0.35); }
-  if sp == SP_SCORCHING_RAY { return xc_rgb(1.0, 0.4, 0.12); }
-  if sp == SP_VICIOUS_MOCKERY { return xc_rgb(1.0, 0.5, 0.8); }
-  if sp == SP_SACRED_FLAME { return xc_rgb(1.0, 0.92, 0.6); }
-  if sp == SP_GUIDING_BOLT { return xc_rgb(0.95, 0.95, 1.0); }
-  if sp == SP_DIVINE_SMITE { return xc_rgb(1.0, 0.85, 0.4); }
-  if sp == SP_HUNTERS_MARK { return xc_rgb(0.55, 0.95, 0.35); }
-  if sp == SP_FIRE_BOLT { return xc_rgb(1.0, 0.48, 0.1); }
-  if sp == SP_SHIELD { return xc_rgb(0.35, 0.9, 1.0); }
-  if sp == SP_FIREBALL { return xc_rgb(1.0, 0.5, 0.12); }
-  if sp == SP_ACID_SPLASH { return xc_rgb(0.55, 1.0, 0.25); }
-  if sp == SP_MAGIC_MISSILE { return xc_rgb(0.8, 0.7, 1.0); }
-  if sp == SP_INFLICT_WOUNDS { return xc_rgb(0.45, 0.2, 0.4); }
-  if sp == SP_SHATTER { return xc_rgb(0.75, 0.85, 1.0); }
-  if sp == SP_MASS_HEALING_WORD { return xc_rgb(0.4, 1.0, 0.5); }
-  if sp == SP_SPIRIT_GUARDIANS { return xc_rgb(1.0, 0.95, 0.7); }
-  if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { return xc_rgb(0.7, 0.85, 1.0); }
-  if sp == SP_HYPNOTIC_PATTERN { return xc_rgb(0.95, 0.5, 1.0); }
-  if sp < 0 { return xc_rgb(0.5, 0.9, 0.4); }
-  return xc_rgb(0.9, 0.92, 0.96);
-}
 // A cast's look: the recipe, from the hand to where it lands (or round you), its colour and its reach;
 // glimmer, a second cause on it (Guiding Bolt's glow).
 XcLook :: struct { recipe: int; from: FxV; to: FxV; col: FxV; reach: f32 = 1; glimmer: bool; }
@@ -61,7 +17,7 @@ xc_look_of :: (a: FbAb, px: f32, py: f32, pz: f32, face: f32, at: FxV) -> XcLook
   hand := fxp_v(px + cos(face) * 0.3, py + 1.3, pz - sin(face) * 0.3);
   me := fxp_v(px, py + 1.0, pz);
   gold := fxp_v(1.0, 0.78, 0.4);
-  col := ifx a.kind == FB_SPELL then xc_spell_rgb(a.sp) else gold;
+  col := ifx a.kind == FB_SPELL then fxl_spell_rgb(a.sp) else gold;
   r := FXR_HIT; to := at; reach := 1.0f32;
   if a.kind == FB_SPELL {
     sp := a.sp;

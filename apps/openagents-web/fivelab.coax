@@ -37,6 +37,8 @@
 #load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
 #load "../../aethyr/space.coax" as asp;
 #load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
+#load "../../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
+#load "../../aethyr/fx/flat.coax";     // the flat view draws the same effects from above
 #load "fivelab-bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "everglade-move-types.coax";   // what fivelab-face.c hands Everglade's movement step (everglade-step.coax)
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
@@ -127,7 +129,7 @@ NAMES :: [48] string.["Rowan", "Briar", "Fern", "Hazel", "Alder", "Willow", "Sor
 LOG_LINES :: 40;
 LINE_CAP :: 96;
 FXS :: 32;
-FX_BOLT :: 1; FX_FLASH :: 2; FX_TEXT :: 3; FX_RING :: 4;
+FX_TEXT :: 3;   // a number floating off a figure (Num.kind; 0 none)
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 P3 :: struct { x: f32; y: f32; z: f32; }
@@ -139,12 +141,11 @@ RED :: Col.{r = 1.0, g = 0.25, b = 0.22};
 GREEN :: Col.{r = 0.4, g = 1.0, b = 0.5};
 VIOLET :: Col.{r = 0.75, g = 0.48, b = 1.0};
 GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
-GREEN_FX :: FxV.{x = 0.4, y = 1.0, z = 0.45};
 CYAN :: Col.{r = 0.35, g = 0.9, b = 1.0};
 TEAM_COL :: [3] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}, Col.{r = 0.9, g = 0.86, b = 0.74}];
 
 Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
-Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [24] u8; n: int; }
+Num :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [24] u8; n: int; }
 
 Lab :: struct {
   experimental_audio: [1] exsound.ExperimentalSound;
@@ -169,7 +170,7 @@ Lab :: struct {
   fell: [LAB_MAX] f32;             // in the Horde, when each of the dead fell (0: standing)
   pool: int; raised: int;          // the Horde: the dead still to come, and how many have come
   lines: [LOG_LINES] Line; line_n: int; line_head: int;   // a ring: the oldest of line_n lines is at line_head
-  fx: [FXS] Fx; fx_at: int;
+  fx: [FXS] Num; fx_at: int;   // the numbers floating off the figures
   puffs: [1] FxPuffs; fx_last: f32;   // the glade's effects as puffs (aethyr/fx/puff.coax), and the clock they last saw
   clock: f32;                      // the drawn clock
   pace: FrameClock;
@@ -267,11 +268,9 @@ look_of :: (klass: int) -> int {
   if klass == RS_SORCERER { return 12; }
   return 0;
 }
-spell_col :: (sp: int) -> Col {
-  if lw_col(sp) { return lw_spell_col(sp); }   // the Warlock's necrotic green and violet (fivelab-warlock.coax)
-  c := xc_spell_rgb(sp);   // every other spell's (class-look.coax), which Everglade II's casts share
-  return Col.{r = c.x, g = c.y, b = c.z};
-}
+rgb_col :: (c: FxV) -> Col { return Col.{r = c.x, g = c.y, b = c.z}; }
+// A spell's light (aethyr/fx/spell-light.coax), which Everglade II's casts share.
+spell_rgb :: (sp: int) -> Col { return rgb_col(fxl_spell_rgb(sp)); }
 
 // ---- the log
 
@@ -284,7 +283,7 @@ add_line :: (s: [] Lab, t: string, c: Col) {
   s[0].lines[k].n = put(s[0].lines[k].text[..], 0, t); s[0].lines[k].col = c;
   s[0].line_n += 1;
 }
-add_fx :: (s: [] Lab, f: Fx) {
+add_num :: (s: [] Lab, f: Num) {
   g := f; g.t0 = s[0].battle[0].clock;
   s[0].fx[s[0].fx_at] = g;
   s[0].fx_at = (s[0].fx_at + 1) % FXS;
@@ -311,30 +310,14 @@ take_events :: (s: [] Lab) {
     if e.kind == RS_EV_DOWN || e.kind == RS_EV_DEATH { c = RED; }
     if e.kind == RS_EV_END || e.kind == RS_EV_STABLE { c = FAINT; }
     if e.text_n > 0 { add_line(s, t, c); }
-    f: Fx;
-    if e.kind == RS_EV_CAST && e.to >= 0 && e.to != e.by {
-      f.kind = FX_BOLT; f.life = 0.55; f.col = spell_col(e.spell);
-      f.ax = f32(s[0].battle[0].c[e.by].x); f.ay = f32(s[0].battle[0].c[e.by].y);
-      f.bx = f32(s[0].battle[0].c[e.to].x); f.by = f32(s[0].battle[0].c[e.to].y);
-      add_fx(s, f);
-    }
-    if e.kind == RS_EV_ZONE {
-      f.kind = FX_FLASH; f.life = 0.7; f.col = spell_col(e.spell);
-      f.ax = f32(e.x); f.ay = f32(e.y); f.bx = f32(e.x + e.amount); f.by = f32(e.y + e.amount);
-      add_fx(s, f);
-    }
+    f: Num;
     if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && hit_shown(s, e, g[0..<ng]) {
       f.kind = FX_TEXT; f.life = 1.2;
       f.col = ifx e.kind == RS_EV_HEAL then GREEN else ifx e.kind == RS_EV_MISS then DIM else RED;
       f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
       if e.kind == RS_EV_MISS { f.n = put(f.text[..], 0, "MISS"); }
       else { f.n = put(f.text[..], 0, ifx e.kind == RS_EV_HEAL then "+" else "-"); f.n = put_int(f.text[..], f.n, e.amount); }
-      add_fx(s, f);
-    }
-    if e.kind == RS_EV_CONDITION && e.to >= 0 {
-      f.kind = FX_RING; f.life = 0.8; f.col = VIOLET;
-      f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
-      add_fx(s, f);
+      add_num(s, f);
     }
     // the glade's effects: rays and bolts of one cast leave one after another
     if e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS {
@@ -343,16 +326,16 @@ take_events :: (s: [] Lab) {
     }
     cue_event(s, e);
     lw_heard(s, e);
-    fx_event(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, e.at + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
+    lab_effect(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, e.at + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
   }
   // each fold's total, gold, over the middle of those it hit: "-412 · 14 HIT"
   for q: 0..<ng {
     if g[q].count < HIT_FOLD { continue; }
-    f: Fx; f.kind = FX_TEXT; f.life = 1.8; f.col = GOLD;
+    f: Num; f.kind = FX_TEXT; f.life = 1.8; f.col = GOLD;
     f.ax = g[q].sx / f32(g[q].count); f.ay = g[q].sy / f32(g[q].count) - 1.2;
     f.n = put(f.text[..], 0, "-"); f.n = put_int(f.text[..], f.n, g[q].total); f.n = put(f.text[..], f.n, " · ");
     f.n = put_int(f.text[..], f.n, g[q].count); f.n = put(f.text[..], f.n, " HIT");
-    add_fx(s, f);
+    add_num(s, f);
   }
 }
 // A spell's damage to many in one go: HIT_FOLD or more of one caster's spell at one moment. Its
@@ -501,162 +484,16 @@ lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
   lab_shadow_select(s);
   return s[0].bodies[0].draw_n;
 }
-// Where a figure stands in the glade (its square's middle), `lift` metres up.
-fx_spot :: (s: [] Lab, i: int, lift: f32) -> FxV { return fxp_v(wx(s, f32(s[0].battle[0].c[i].x)), lift, wz(s, f32(s[0].battle[0].c[i].y))); }
-// A spell's light for its effect, linear and bright.
-fx_col :: (sp: int) -> FxV { c := spell_col(sp); return fxp_v(c.r, c.g, c.b); }
-// True for a spell that makes an attack roll: its effect flies with each attack, not with the cast.
-fx_attacks :: (sp: int) -> bool {
-  if sp < 0 { return false; }
-  sd := rs_spell(sp);
-  for q: 0..<sd.step_n { if sd.steps[q].kind == RS_S_ATTACK { return true; } }
-  return false;
-}
-fx_cause :: (s: [] Lab, recipe: int, seed: f32, t0: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
-  c := FxCause.{recipe = recipe, seed = seed, t0 = t0, from = from, to = to, col = col, big = big, reach = reach};
-  slot := fxp_start(s[0].puffs[..], c, s[0].battle[0].clock);
-}
-// One battle event as the glade's effect (aethyr/fx/puff.coax's recipes).
-fx_event :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
+// Where the battle's grid lies in the glade (wx, wz), for the shared effects (aethyr/fx/battle.coax).
+lab_grid :: (s: [] Lab) -> FxeGrid { return FxeGrid.{x0 = -f32(s[0].cols) * f32(SQ) / 2, z0 = -f32(s[0].rows) * f32(SQ) / 2, sq = f32(SQ)}; }
+// One battle event as the glade's effect (aethyr/fx/battle.coax), with what only the Lab knows: the
+// foe a Cunning Action's Dash runs from or a Flurry of Blows strikes, and where the figure is drawn.
+lab_effect :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   b := bt(s);
   if e.by < 0 || e.by >= b[0].n { return; }
-  hand := fx_spot(s, e.by, 1.5); hand.x += 0.3;
-  aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
-  if e.feat != RS_FT_NONE && fx_feat(s, e, seed, t0) { return; }
-  if lw_fx(s, e, seed, t0) { return; }
-  if s[0].siege && siege_fx(s, e, seed, t0) { return; }
-  if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
-    at := fx_spot(s, e.to, 1.1);
-    if e.kind == RS_EV_MISS { at.x += fxp_sym(seed, 0, 0) * 0.9; at.z += fxp_sym(seed, 0, 1) * 0.9; at.y = 0.6; }
-    if e.spell >= 0 {
-      sp := e.spell; col := fx_col(sp);
-      fiery := sp == SP_FIRE_BOLT || sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL || sp == SP_SCORCHING_RAY;
-      if fiery { fx_cause(s, FXR_FIREBOLT, seed, t0, hand, at, col, ifx e.damage == 1 then 1.5 else 1, 1); }
-      else if sp == SP_STARRY_WISP { fx_cause(s, FXR_STAR, seed, t0, hand, at, col, 1, 1); }
-      else { fx_cause(s, FXR_STREAK, seed, t0, hand, at, col, ifx sp == SP_ELDRITCH_BLAST || sp == SP_GUIDING_BOLT then 1.25 else 0.9, 1); }
-      return;
-    }
-    if rs_feet_to(b, e.by, e.to) > 5 { fx_cause(s, FXR_ARROW, seed, t0, hand, at, fxp_v(0.9, 0.8, 0.6), 1, 1); return; }
-    if e.kind == RS_EV_ATTACK {
-      crit := e.damage == 1;
-      fx_cause(s, FXR_HIT, seed, t0, fx_spot(s, e.by, 1.1), at, ifx crit then fxp_v(1.0, 0.75, 0.35) else fxp_v(1.0, 0.85, 0.6), ifx crit then 1.8 else 1, 1);
-    }
-    return;
-  }
-  if e.kind == RS_EV_CAST && e.spell >= 0 && !fx_attacks(e.spell) {
-    sp := e.spell; col := fx_col(sp);
-    if e.to >= 0 && e.to < b[0].n {
-      at := fx_spot(s, e.to, 1.1);
-      if sp == SP_SACRED_FLAME { fx_cause(s, FXR_COLUMN, seed, t0, hand, at, col, 1, 1); return; }
-      feet := fx_spot(s, e.to, 0);
-      if sp == SP_HEX || sp == SP_HUNTERS_MARK { fx_cause(s, FXR_MARK, seed, t0, hand, at, col, 1, 1); return; }
-      if sp == SP_SHIELD { fx_cause(s, FXR_BARRIER, seed, t0, hand, feet, col, 1, 1); return; }
-      // Divine Smite: bigger for each slot level over the first
-      if sp == SP_DIVINE_SMITE { fx_cause(s, FXR_SMITE, seed, t0, fx_spot(s, e.by, 1.1), at, col, 1 + 0.3 * f32(rs_max(e.amount, 1) - 1), 1); return; }
-      if sp == SP_HOLD_PERSON { fx_cause(s, FXR_BIND, seed, t0, hand, feet, col, 1, 1); return; }
-      if sp == SP_BLINDNESS { fx_cause(s, FXR_VEIL, seed, t0, hand, feet, col, 1, 1); return; }
-      if sp == SP_VICIOUS_MOCKERY { fx_cause(s, FXR_MOCKERY, seed, t0, hand, fx_spot(s, e.to, 1.7), MOCK_FX, 1, 1); return; }
-      if sp == SP_FALSE_LIFE && e.to == e.by { fx_cause(s, FXR_DRAIN, seed, t0, hand, feet, col, 1, 1); return; }
-      if sp == SP_PRODUCE_FLAME && e.to == e.by { fx_cause(s, FXR_KINDLE, seed, t0, hand, hand, col, 1, 1); return; }
-      if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD || sp == SP_MASS_HEALING_WORD || e.to == e.by { return; }   // the healing shows on its HEAL
-      fx_cause(s, FXR_STREAK, seed, t0, hand, at, col, 0.8, 1);
-    }
-    return;
-  }
-  if e.kind == RS_EV_CAST && e.spell < 0 && e.to < 0 {
-    // a Channel Divinity (Turn Undead, Preserve Life) or Land's Aid: a ring out over the ground
-    k := b[0].c[e.by].klass;
-    if k == RS_CLERIC { fx_cause(s, FXR_HALO, seed, t0, hand, fx_spot(s, e.by, 0), fxp_v(1.0, 0.9, 0.55), 1, 9.1); }
-    if k == RS_DRUID { fx_cause(s, FXR_BLOOM, seed, t0, hand, fx_spot(s, e.by, 0), fxp_v(0.45, 0.95, 0.4), 1, 4.6); }
-    return;
-  }
-  if e.kind == RS_EV_ZONE {
-    sp := e.spell; col := fx_col(sp);
-    mid := f32(e.amount - 1) / 2;
-    centre := fxp_v(wx(s, f32(e.x) + mid), 0.9, wz(s, f32(e.y) + mid));
-    reach := f32(e.amount) * f32(SQ) / 2;
-    if sp == SP_FIREBALL { fx_cause(s, FXR_FIREBALL, seed, t0, hand, centre, col, 1, reach); return; }
-    if sp == SP_THUNDERWAVE { fx_cause(s, FXR_SHOCK, seed, t0, hand, centre, col, 1, reach); return; }
-    if sp == SP_HYPNOTIC_PATTERN { fx_cause(s, FXR_SHIMMER, seed, t0, hand, centre, col, 1, reach); return; }
-    if sp == SP_ENTANGLE || sp == SP_FAERIE_FIRE { fx_cause(s, FXR_BLOOM, seed, t0, hand, centre, col, 1, reach); return; }
-    if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { fx_cause(s, FXR_LIGHTNING, seed, t0, hand, centre, col, 1.2, reach); return; }
-    if sp == SP_SPIRIT_GUARDIANS { fx_cause(s, FXR_ORBIT, seed, t0, hand, fx_spot(s, e.by, 0), col, 1, reach); return; }
-    fx_cause(s, FXR_SHOCK, seed, t0, hand, centre, col, 1, reach);
-    return;
-  }
-  if !(e.to >= 0 && e.to < b[0].n) { return; }
-  if e.kind == RS_EV_HEAL { fx_cause(s, FXR_HEAL, seed, t0, hand, fx_spot(s, e.to, 0), GREEN_FX, 1, 1); return; }
-  // Guiding Bolt's light left on its target: the next attack roll against it has Advantage
-  if e.kind == RS_EV_CONDITION && e.spell == SP_GUIDING_BOLT { fx_cause(s, FXR_GLIMMER, seed, t0, hand, fx_spot(s, e.to, 0), fx_col(SP_GUIDING_BOLT), 1, 1); return; }
-  if e.kind == RS_EV_DAMAGE && e.spell == SP_SPIRIT_GUARDIANS { fx_cause(s, FXR_COLUMN, seed, t0, hand, fx_spot(s, e.to, 1.1), fx_col(SP_SPIRIT_GUARDIANS), 0.6, 1); return; }
-  if e.kind == RS_EV_DEATH && b[0].c[e.to].klass == RS_MONSTER { fx_cause(s, FXR_BONES, seed, t0, hand, fx_spot(s, e.to, 0), fxp_v(0.86, 0.83, 0.74), 1, 1); return; }
-  if e.kind == RS_EV_DOWN || e.kind == RS_EV_DEATH { fx_cause(s, FXR_DUST, seed, t0, hand, fx_spot(s, e.to, 0), fxp_v(0.5, 0.45, 0.36), 1, 1); return; }
-  if e.kind == RS_EV_CONDITION && e.to == e.by && b[0].c[e.by].klass == RS_BARBARIAN && b[0].c[e.by].raging {
-    fx_cause(s, FXR_EMBERS, seed, t0, hand, fx_spot(s, e.by, 0), fxp_v(1.0, 0.18, 0.08), 1, 1);
-  }
-}
-
-MOCK_FX :: FxV.{x = 0.8, y = 0.35, z = 1.0};   // a psychic burst's purple
-// A class feature's event as its effect (aethyr/fx/abilities.coax), from the feature the engine
-// says it is (RsEvent.feat). True when it drew one, or the feature's look is drawn by another of
-// its events (the healing a feature's own cast already shows).
-fx_feat :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
-  b := bt(s);
-  f := e.feat; i := e.by;
-  hand := fx_spot(s, i, 1.5); hand.x += 0.3;
-  feet := fx_spot(s, i, 0);
-  on := e.to >= 0 && e.to < b[0].n;
-  if f == RS_FT_ACTION_SURGE { fx_cause(s, FXR_SURGE, seed, t0, hand, feet, fxp_v(1.0, 0.78, 0.3), 1, 1); return true; }
-  if f == RS_FT_SECOND_WIND || f == RS_FT_WHOLENESS || f == RS_FT_LAY_ON_HANDS {
-    if e.kind == RS_EV_HEAL { return true; }   // its cast shows it
-    if f == RS_FT_SECOND_WIND { fx_cause(s, FXR_BREATH, seed, t0, hand, feet, fxp_v(0.7, 1.0, 0.78), 1, 1); }
-    if f == RS_FT_WHOLENESS { fx_cause(s, FXR_WHOLENESS, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.65), 1, 1); }
-    if f == RS_FT_LAY_ON_HANDS && on { fx_cause(s, FXR_LAY, seed, t0, hand, fx_spot(s, e.to, 1.1), fxp_v(1.0, 0.85, 0.45), 1, 1); }
-    return true;
-  }
-  if f == RS_FT_SNEAK_ATTACK && on { fx_cause(s, FXR_SHADOW_SLASH, seed, t0, fx_spot(s, i, 1.1), fx_spot(s, e.to, 1.1), fxp_v(0.7, 0.3, 1.0), 1, 1); return true; }
-  if f == RS_FT_STEADY_AIM { fx_cause(s, FXR_RETICLE, seed, t0, hand, feet, fxp_v(1.0, 0.55, 0.3), 1, 1); return true; }
-  if f == RS_FT_CUNNING_DASH {
-    // the shadows trail away from the foe it runs for
-    foe := nearest_foe(s, i);
-    fx_cause(s, FXR_AFTERIMAGE, seed, t0, ifx foe >= 0 then fx_spot(s, foe, 0) else feet, feet, fxp_v(0.1, 0.1, 0.14), 1, 1);
-    return true;
-  }
-  if f == RS_FT_FLURRY {
-    foe := foe_at_hand(s, i, -1);
-    if foe >= 0 { fx_cause(s, FXR_FLURRY, seed, t0, fx_spot(s, i, 1.2), fx_spot(s, foe, 1.15), fxp_v(0.8, 0.9, 1.0), 1, 1); }
-    return true;
-  }
-  if f == RS_FT_STUNNING_STRIKE && on {
-    fx_cause(s, FXR_STUN, seed, t0, hand, fx_spot(s, e.to, 0), fxp_v(1.0, 0.82, 0.35), ifx e.kind == RS_EV_CONDITION then 1.0f32 else 0.6f32, 1);
-    return true;
-  }
-  if f == RS_FT_PATIENT_DEFENSE { fx_cause(s, FXR_WIND, seed, t0, hand, feet, fxp_v(0.72, 0.88, 1.0), 1, 0.8); return true; }
-  if f == RS_FT_STEP_OF_THE_WIND { fx_cause(s, FXR_WIND, seed, t0, hand, feet, fxp_v(0.72, 0.88, 1.0), 1, 2); return true; }
-  if f == RS_FT_SACRED_WEAPON { fx_cause(s, FXR_SACRED, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.6), 1, 1); return true; }
-  if f == RS_FT_TURN_UNDEAD {
-    if e.kind == RS_EV_CAST { fx_cause(s, FXR_HALO, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.55), 1, 9.1); return true; }
-    return false;
-  }
-  if f == RS_FT_PRESERVE_LIFE {
-    if e.kind == RS_EV_CAST { fx_cause(s, FXR_WAVE, seed, t0, hand, feet, fxp_v(0.85, 1.0, 0.6), 1, 9.1); return true; }
-    return false;   // each one it heals: the healing motes
-  }
-  if f == RS_FT_LANDS_AID {
-    if e.kind == RS_EV_ZONE {
-      mid := f32(e.amount - 1) / 2;
-      fx_cause(s, FXR_THORNS, seed, t0, hand, fxp_v(wx(s, f32(e.x) + mid), 0, wz(s, f32(e.y) + mid)), fxp_v(0.35, 0.9, 0.4), 1, f32(e.amount) * f32(SQ) / 2);
-      return true;
-    }
-    return e.kind == RS_EV_CAST;   // the sphere shows it; its healing shows on its HEAL
-  }
-  if f == RS_FT_INSPIRATION && on { fx_cause(s, FXR_NOTES, seed, t0, hand, fx_spot(s, e.to, 1.9), fxp_v(1.0, 0.8, 0.35), 1, 1); return true; }
-  if f == RS_FT_FONT { fx_cause(s, FXR_NOTES, seed, t0, feet, feet, fxp_v(1.0, 0.8, 0.35), 1, 1); return true; }
-  if f == RS_FT_CUTTING_WORDS && on { fx_cause(s, FXR_MOCKERY, seed, t0, hand, fx_spot(s, e.to, 1.7), MOCK_FX, 0.6, 1); return true; }
-  if f == RS_FT_INNATE_SORCERY { fx_cause(s, FXR_ARCANE, seed, t0, hand, feet, fxp_v(0.75, 0.4, 1.0), 1, 1); return true; }
-  if f == RS_FT_DARK_BLESSING { fx_cause(s, FXR_FIEND, seed, t0, hand, feet, fxp_v(1.0, 0.25, 0.1), 1, 1); return true; }
-  if f == RS_FT_WILD_RESURGENCE { fx_cause(s, FXR_BLOOM, seed, t0, hand, feet, fxp_v(0.45, 0.95, 0.4), 0.6, 1); return true; }
-  return false;
+  foe := ifx e.feat == RS_FT_CUNNING_DASH then nearest_foe(s, e.by) else ifx e.feat == RS_FT_FLURRY then foe_at_hand(s, e.by, -1) else -1;
+  g := lab_grid(s);
+  fxe_event(s[0].puffs[..], b, g, e, seed, t0, FxeSeen.{foe = foe, was = fxe_point(g, s[0].dx[e.by], s[0].dy[e.by], 0)});
 }
 // What lasts on a creature, as the glade draws it (aethyr/fx/abilities.coax fxp_status): its
 // conditions, concentration, Rage, Sacred Weapon, Innate Sorcery, a flame in hand and a Fiend's
@@ -2530,7 +2367,7 @@ board_areas :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   for z: 0..<RS_ZONES {
     zo := s[0].battle[0].zone[z];
     if !zo.on { continue; }
-    col := spell_col(zo.spell);
+    col := spell_rgb(zo.spell);
     area := xk_zone_area(zo); lx: f32 = 0; ly: f32 = 0;
     for p: 0..<aa.AREA_EDGE + 1 {
       w := aa.area_aim_point(area, p);
@@ -2598,18 +2435,18 @@ draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
       }
     }
     if rs_has(cr[0], RS_RESTRAINED) {
-      g := spell_col(SP_ENTANGLE);
+      g := spell_rgb(SP_ENTANGLE);
       for v: 0..<4 {
         a := f32(v) * 1.5708 + t * 0.4;
         n = seg(out, n, x + cos(a) * r * 1.05, y + sin(a) * r * 1.05, x + cos(a + 0.9) * r * 0.75, y + sin(a + 0.9) * r * 0.75, 1.6 * k, 0.8, g);
       }
     }
     if cr[0].flame_until > b[0].clock {
-      fl := spell_col(SP_PRODUCE_FLAME);
+      fl := spell_rgb(SP_PRODUCE_FLAME);
       fx := x + r * 0.95; fy := y - r * 0.85;
       n = seg(out, n, fx, fy + 3 * k, fx + sin(t * 9) * 1.5 * k, fy - 5 * k, 3 * k, 0.9, fl);
     }
-    if cr[0].wisp_until > b[0].clock { n = ring(out, n, x, y, r * 0.2, 2 * k, 0.9, spell_col(SP_STARRY_WISP)); }
+    if cr[0].wisp_until > b[0].clock { n = ring(out, n, x, y, r * 0.2, 2 * k, 0.9, spell_rgb(SP_STARRY_WISP)); }
     // the name, and the hit points
     cap := lo(hi(c * 0.15, 8 * k), 14 * k);
     nm := cast(string) b[0].c[i].name[0..<b[0].c[i].name_n];
@@ -2620,39 +2457,44 @@ draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     hc := ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED;
     if share > 0 { n = seg(out, n, x - bw / 2, by, x - bw / 2 + bw * share, by, 2.4 * k, 0.85, hc); }
     if cr[0].conc >= 0 {
-      cc := spell_col(cr[0].conc);
+      cc := spell_rgb(cr[0].conc);
       n = seg(out, n, x - bw / 2, by + 5 * k, x + bw / 2, by + 5 * k, 1.0 * k, 0.6, cc);
     }
   }
   return n;
 }
 
-draw_fx :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+// The flat view's effects: the glade's own causes seen from above (aethyr/fx/flat.coax), as strokes.
+draw_casts :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; c := s[0].cell;
-  s[0].puffs[0].out_n = 0;   // the flat view's effects are strokes
+  pf := s[0].puffs[..];
+  pf[0].out_n = 0;   // the flat view writes no puffs
+  now := s[0].battle[0].clock;
+  if now < s[0].fx_last { fxp_clear(pf); }   // a new battle: its clock starts again
+  s[0].fx_last = now;
+  g := lab_grid(s);
+  for q: 0..<FX_LIVE {
+    if !pf[0].on[q] { continue; }
+    f := fxf_of(pf[0].live[q], now);
+    if f.kind == FXF_NONE { continue; }
+    ax := s[0].gx + (f.ax - g.x0) / g.sq * c; ay := s[0].gy + (f.az - g.z0) / g.sq * c;
+    if f.kind == FXF_LINE { n = seg(out, n, ax, ay, s[0].gx + (f.bx - g.x0) / g.sq * c, s[0].gy + (f.bz - g.z0) / g.sq * c, 3 * k, f.alpha, rgb_col(f.col)); }
+    else { n = ring(out, n, ax, ay, f.r / g.sq * c, 2 * k, f.alpha, rgb_col(f.col)); }
+  }
+  return n;
+}
+// The flat view's numbers floating off the figures.
+draw_nums :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at; c := s[0].cell;
   now := s[0].battle[0].clock;
   for i: 0..<FXS {
     f := s[0].fx[i];
-    if f.kind == 0 { continue; }
+    if f.kind != FX_TEXT { continue; }
     a := (now - f.t0) / f.life;
     if a < 0 || a > 1 { continue; }
-    if f.kind == FX_BOLT {
-      ax := scr_x(s, f.ax); ay := scr_y(s, f.ay); bx := scr_x(s, f.bx); by := scr_y(s, f.by);
-      head := lo(1, a * 2.2); tail := lo(1, hi(0, a * 2.2 - 0.5));
-      n = seg(out, n, ax + (bx - ax) * tail, ay + (by - ay) * tail, ax + (bx - ax) * head, ay + (by - ay) * head, 3 * k, 1.0 - a * 0.5, f.col);
-    }
-    if f.kind == FX_FLASH {
-      r := Rect.{x0 = s[0].gx + f.ax * c, y0 = s[0].gy + f.ay * c, x1 = s[0].gx + f.bx * c, y1 = s[0].gy + f.by * c};
-      grow := a * c * 0.3;
-      r.x0 -= grow; r.y0 -= grow; r.x1 += grow; r.y1 += grow;
-      n = box_lines(out, n, r, 3 * k * (1 - a) + 0.5 * k, 1 - a, f.col);
-    }
     if n + LABEL_VERTS > SCENE_VERTS { s[0].unlabelled += 1; continue; }
-    if f.kind == FX_TEXT {
-      x := scr_x(s, f.ax) + c * 0.3; y := scr_y(s, f.ay) - c * 0.3 - a * c * 0.5;
-      n = say_mid(out, n, cast(string) f.text[0..<f.n], x, y, lo(hi(c * 0.22, 11 * k), 20 * k), ink(k, 1 - a * 0.7, f.col));
-    }
-    if f.kind == FX_RING { n = ring(out, n, scr_x(s, f.ax), scr_y(s, f.ay), c * (0.35 + a * 0.4), 2 * k, 1 - a, f.col); }
+    x := scr_x(s, f.ax) + c * 0.3; y := scr_y(s, f.ay) - c * 0.3 - a * c * 0.5;
+    n = say_mid(out, n, cast(string) f.text[0..<f.n], x, y, lo(hi(c * 0.22, 11 * k), 20 * k), ink(k, 1 - a * 0.7, f.col));
   }
   return n;
 }
@@ -2679,7 +2521,7 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     n = seg(out, n, p.x - bw / 2, by, p.x + bw / 2, by, 2.6 * k, 0.25, FAINT);
     hc := ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED;
     if share > 0 { n = seg(out, n, p.x - bw / 2, by, p.x - bw / 2 + bw * share, by, 2.6 * k, 0.95, hc); }
-    if cr[0].conc >= 0 { n = seg(out, n, p.x - bw / 2, by + 5 * k, p.x + bw / 2, by + 5 * k, 1.1 * k, 0.8, spell_col(cr[0].conc)); }
+    if cr[0].conc >= 0 { n = seg(out, n, p.x - bw / 2, by + 5 * k, p.x + bw / 2, by + 5 * k, 1.1 * k, 0.8, spell_rgb(cr[0].conc)); }
     if cr[0].hp == 0 {
       for d: 0..<3 {
         ok := d < cr[0].death_ok; bad := d < cr[0].death_fail;
@@ -2688,7 +2530,7 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
       }
     }
     if cr[0].flame_until > b[0].clock {
-      fl := spell_col(SP_PRODUCE_FLAME);
+      fl := spell_rgb(SP_PRODUCE_FLAME);
       q := proj(s, x + 0.42, 2.0, z + 0.08);
       if q.z > 0 { n = seg(out, n, q.x, q.y + 3 * k, q.x + sin(t * 9) * 1.5 * k, q.y - 7 * k, 4 * k, 1.0, fl); }
     }
@@ -2754,22 +2596,15 @@ draw_names3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 // The glade's effects: the frame's puffs (aethyr/fx/puff.coax) for the host to draw over bg_fs
-// (fivelab-fx.wgsl, host.js particles), the lasting zones' motes with them; only the numbers that
-// float off a figure are strokes.
-draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
-  n := at;
+// (fivelab-fx.wgsl, host.js particles), the lasting zones' motes with them (aethyr/fx/battle.coax).
+glade_puffs :: (s: [] Lab) {
   now := s[0].battle[0].clock;
   pf := s[0].puffs[..];
   if now < s[0].fx_last { fxp_clear(pf); }   // a new battle: its clock starts again
   s[0].fx_last = now;
   fxp_begin(pf, now, fxp_v(s[0].eye.x, s[0].eye.y, s[0].eye.z));
   fxp_emit_all(pf, now);
-  for z: 0..<RS_ZONES {
-    zo := s[0].battle[0].zone[z];
-    if !zo.on { continue; }
-    zc := fx_col(zo.spell);
-    fxp_zone(pf, wx(s, f32(zo.x0)) - f32(SQ) / 2, wz(s, f32(zo.y0)) - f32(SQ) / 2, wx(s, f32(zo.x1)) + f32(SQ) / 2, wz(s, f32(zo.y1)) + f32(SQ) / 2, zc, s[0].clock, f32(z) * 3.1 + 0.7);
-  }
+  fxe_zones(pf, bt(s), lab_grid(s), s[0].clock);
   // what lasts on each creature: a few puffs each, capped (FX_STATUS_CAP), after the effects
   for i: 0..<s[0].battle[0].n {
     lf := fx_lasting(s, i);
@@ -2778,8 +2613,13 @@ draw_fx3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     fxp_status(pf, feet, fxp_v(feet.x + 0.3, 1.1, feet.z), lf, now, f32(i) * 1.37 + 0.4);
   }
   rep := fxp_close(pf);
-  // the numbers, placed as the nameplates are (draw_names3): the folds' totals first, then the
-  // rest, each lifted until it clears those placed before it
+}
+// The glade's numbers floating off the figures, as strokes, placed as the nameplates are
+// (draw_names3): the folds' totals first, then the rest, each lifted until it clears those placed
+// before it.
+draw_nums3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at;
+  now := s[0].battle[0].clock;
   px: [FXS] f32; py: [FXS] f32; pw: [FXS] f32; ph: [FXS] f32; np := 0;
   for pass: 0..<2 {
     for i: 0..<FXS {
@@ -2972,7 +2812,7 @@ ab_icon :: (out: [] f32, at: int, r: Rect, a: Ab, k: f32, c: Col) -> int {
     n = seg(out, n, cx, cy - e, cx, cy + e, w * 1.4, 0.95, GREEN);
     n = seg(out, n, cx - e, cy, cx + e, cy, w * 1.4, 0.95, GREEN);
   } else if a.kind == AB_SPELL {
-    sc := spell_col(a.sp);
+    sc := spell_rgb(a.sp);
     for q: 0..<8 { an := f32(q) * 0.7853982; n = seg(out, n, cx + cos(an) * e * 0.3, cy + sin(an) * e * 0.3, cx + cos(an) * e, cy + sin(an) * e, w, 0.95, sc); }
   } else if a.kind == AB_ATTACK || a.kind == AB_RECKLESS || a.kind == AB_FLURRY {
     n = seg(out, n, cx - e, cy + e, cx + e, cy - e, w, 0.95, c);
@@ -3311,10 +3151,12 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
   if s[0].view == VIEW_GLADE {
     n = draw_labels3(s, out, n, k, t);
     n = draw_names3(s, out, n, k);
-    n = draw_fx3(s, out, n, k);
+    glade_puffs(s);
+    n = draw_nums3(s, out, n, k);
   } else {
     n = board_areas(s, out, n, k, t);
-    n = draw_fx(s, out, n, k);
+    n = draw_casts(s, out, n, k);
+    n = draw_nums(s, out, n, k);
     n = draw_tokens(s, out, n, k, t);
   }
   n = draw_panel(s, out, n, k);
@@ -4173,7 +4015,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     b[0].c[e.to].x = 2 + q; b[0].c[e.to].y = 4;   // apart from the caster, but within reach of a blow
     b[0].c[0].x = 1 + q; b[0].c[0].y = 4;
     e.damage = ifx q == 9 then 1 else 0;
-    fx_event(s[..], e, 1.5 + f32(q), e.at);
+    lab_effect(s[..], e, 1.5 + f32(q), e.at);
     #assert fxp_live(s[0].puffs[..]) == 1;
     found := -1; big: f32 = 0;
     for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { found = s[0].puffs[0].live[k].recipe; big = s[0].puffs[0].live[k].big; } }
@@ -4184,7 +4026,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   b[0].c[0].x = 1; b[0].c[1].x = 20;
   fxp_clear(s[0].puffs[..]);
   e.kind = RS_EV_ATTACK; e.spell = -1; e.to = 1; e.damage = 0;
-  fx_event(s[..], e, 3.5, e.at);
+  lab_effect(s[..], e, 3.5, e.at);
   for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { #assert s[0].puffs[0].live[k].recipe == FXR_ARROW; } }
 }
 
@@ -4207,7 +4049,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for q: 0..<16 {
     fxp_clear(s[0].puffs[..]);
     e.kind = kinds[q]; e.feat = feats[q]; e.spell = -1; e.to = ifx q == 2 || q == 6 || q == 10 || q == 13 then 1 else 0;
-    fx_event(s[..], e, 2.5 + f32(q), e.at);
+    lab_effect(s[..], e, 2.5 + f32(q), e.at);
     found := -1;
     for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { found = s[0].puffs[0].live[k].recipe; } }
     #assert found == want[q] && fxp_live(s[0].puffs[..]) == 1;
@@ -4215,7 +4057,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   // a feature's own healing draws nothing more: its cast showed it
   fxp_clear(s[0].puffs[..]);
   e.kind = RS_EV_HEAL; e.feat = RS_FT_SECOND_WIND; e.to = 0;
-  fx_event(s[..], e, 1.5, e.at);
+  lab_effect(s[..], e, 1.5, e.at);
   #assert fxp_live(s[0].puffs[..]) == 0;
   // the spells that had no look of their own
   e.feat = RS_FT_NONE; e.kind = RS_EV_CAST; e.to = 1;
@@ -4224,7 +4066,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for q: 0..<5 {
     fxp_clear(s[0].puffs[..]);
     e.spell = spells[q]; e.amount = 3;
-    fx_event(s[..], e, 4.5 + f32(q), e.at);
+    lab_effect(s[..], e, 4.5 + f32(q), e.at);
     for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { #assert s[0].puffs[0].live[k].recipe == looks[q]; if q == 4 { #assert s[0].puffs[0].live[k].big > 1.5; } } }
   }
   // a creature poisoned and concentrating carries its lasting looks
@@ -4241,14 +4083,14 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for i: 0..<600 {
     step(s[..], f32(STEP));
     if i % 20 == 0 {
-      n := draw_fx3(s[..], out[..], 0, 1);
+      glade_puffs(s[..]); n := draw_nums3(s[..], out[..], 0, 1);
       #assert s[0].puffs[0].out_n <= FX_PUFF_CAP && fxp_live(s[0].puffs[..]) <= FX_LIVE;
       if s[0].puffs[0].out_n > most { most = s[0].puffs[0].out_n; }
     }
   }
   #assert most > 0 && s[0].puffs[0].started > 0;
   // the flat view writes none
-  n := draw_fx(s[..], out[..], 0, 1);
+  n := draw_casts(s[..], out[..], 0, 1);
   #assert s[0].puffs[0].out_n == 0;
 }
 

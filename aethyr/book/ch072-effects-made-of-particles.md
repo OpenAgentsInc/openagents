@@ -27,8 +27,11 @@
 > ground it traces, no depth buffer) with Everglade's own shading, loaded
 > from [`verse/everglade/gpu-fx.coax`](../../verse/everglade/gpu-fx.coax),
 > which is unchanged. 5E Lab's glade is the first user: every spell, blow
-> and death in its battles is a recipe (`apps/openagents-web/fivelab.coax`
-> `fx_event`). The stateless emitters (`aethyr/fx/emitter.coax`,
+> and death in its battles is a recipe, picked by
+> [`aethyr/fx/battle.coax`](../../aethyr/fx/battle.coax) `fxe_event` in each
+> spell's light ([`spell-light.coax`](../../aethyr/fx/spell-light.coax)),
+> and its flat view draws the same causes from above
+> ([`flat.coax`](../../aethyr/fx/flat.coax)). The stateless emitters (`aethyr/fx/emitter.coax`,
 > `motion.coax`) are not built yet: the Haunted House and Hecate's
 > Cemetery still use [`aethyr/particles.coax`](../../aethyr/particles.coax)
 > and [`aethyr/particle-motion.coax`](../../aethyr/particle-motion.coax),

@@ -1,8 +1,8 @@
 // The level 17 Warlock in the 5E Lab's Player mode (fivelab.coax loads this file): the same SRD 5.2.1
 // Warlock that Everglade plays (aethyr/rules/srd/engine.coax rs_warlock at level 17, the Fiend
-// Patron), its spells on the hotbar, their looks from aethyr/fx/warlock.coax (the same causes
-// Everglade starts), and Finger of Death's dead rising as Zombies. The rolls are the engine's and
-// go to the log like every other cast.
+// Patron), its spells on the hotbar, their looks from aethyr/fx/warlock.coax (started by
+// aethyr/fx/battle.coax fxe_warlock, the same causes Everglade starts), and Finger of Death's dead
+// rising as Zombies. The rolls are the engine's and go to the log like every other cast.
 //
 // The bar: Eldritch Blast (four beams, Agonizing Blast), Hex, Fireball, Blight and Dimension Door
 // with the four 5th-level Pact slots, Circle of Death (the 6th-level Mystic Arcanum) and Finger of
@@ -18,12 +18,6 @@ lw_abilities :: (out: [] Ab) -> int {
   out[4] = spell_ab(SP_CIRCLE_OF_DEATH, 6, TG_POINT); out[5] = spell_ab(SP_FINGER_OF_DEATH, 7, TG_FOE);
   out[6] = spell_ab(SP_DIMENSION_DOOR, 5, TG_BESIDE); out[7] = mk_ab(AB_DASH, "DASH");
   return 8;
-}
-// The Warlock's spells' light in the Lab (its slots, flashes and bolts): Everglade's colours.
-lw_col :: (sp: int) -> bool { return sp == SP_BLIGHT || sp == SP_CIRCLE_OF_DEATH || sp == SP_FINGER_OF_DEATH || sp == SP_DIMENSION_DOOR; }
-lw_spell_col :: (sp: int) -> Col {
-  if sp == SP_DIMENSION_DOOR { return Col.{r = FXW_VIOLET.x, g = FXW_VIOLET.y, b = FXW_VIOLET.z}; }
-  return Col.{r = FXW_NECRO.x, g = FXW_NECRO.y, b = FXW_NECRO.z};
 }
 // A Mystic Arcanum slot (6th level and up) casts only its own spell, at its own level.
 lw_arcanum_only :: (s: [] Lab, i: int, k: int, level: int) -> bool {
@@ -46,36 +40,6 @@ lw_raise :: (s: [] Lab) {
   n[0].x = o.x; n[0].y = o.y; n[0].turn_at = o.turn_at; n[0].round_at = o.round_at;
   n[0].hp = rs_max(1, n[0].hp_max - (o.hp_max - o.hp));
   b[0].c[i] = n[0];
-}
-// A battle event the Warlock's spells look like (aethyr/fx/warlock.coax); true when it drew one.
-lw_fx :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
-  b := bt(s);
-  sp := e.spell;
-  if sp != SP_ELDRITCH_BLAST && sp != SP_BLIGHT && sp != SP_CIRCLE_OF_DEATH && sp != SP_FINGER_OF_DEATH && sp != SP_DIMENSION_DOOR { return false; }
-  hand := fx_spot(s, e.by, 1.5); hand.x += 0.3;
-  aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
-  // a beam a roll: each of the four leaves its own way, so they don't run together
-  if sp == SP_ELDRITCH_BLAST && (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
-    at := fx_spot(s, e.to, 1.1);
-    if e.kind == RS_EV_MISS { at.x += fxp_sym(seed, 0, 0) * 0.9; at.z += fxp_sym(seed, 0, 1) * 0.9; at.y = 0.6; }
-    fx_cause(s, FXR_ELDRITCH, seed, t0, hand, at, FXW_VIOLET, ifx e.damage == 1 then 1.6 else 1.2, 1);
-    return true;
-  }
-  if e.kind == RS_EV_CAST && aimed && sp == SP_BLIGHT { fx_cause(s, FXR_BLIGHT, seed, t0, hand, fx_spot(s, e.to, 1.1), FXW_NECRO, 1, 1); return true; }
-  if e.kind == RS_EV_CAST && aimed && sp == SP_FINGER_OF_DEATH { fx_cause(s, FXR_SOULFIRE, seed, t0, hand, fx_spot(s, e.to, 1.1), FXW_NECRO, 1, 1); return true; }
-  if e.kind == RS_EV_ZONE && sp == SP_CIRCLE_OF_DEATH {
-    mid := f32(e.amount - 1) / 2;
-    centre := fxp_v(wx(s, f32(e.x) + mid), 0.2, wz(s, f32(e.y) + mid));
-    fx_cause(s, FXR_NECRO_RING, seed, t0, centre, centre, FXW_NECRO, 1, f32(e.amount) * f32(SQ) / 2);
-    return true;
-  }
-  // Dimension Door: the tear where you stood (the figure's square on screen) to where you land
-  if e.kind == RS_EV_PUSH && sp == SP_DIMENSION_DOOR && e.to == e.by {
-    from := fxp_v(wx(s, s[0].dx[e.by]), 0, wz(s, s[0].dy[e.by]));
-    fx_cause(s, FXR_PORTAL, seed, t0, from, fx_spot(s, e.by, 0), FXW_VIOLET, 1, 1);
-    return true;
-  }
-  return false;
 }
 // Finger of Death's word that a Humanoid will rise: the dead waits in the rising list.
 lw_heard :: (s: [] Lab, e: RsEvent) {
@@ -113,7 +77,8 @@ lw_rise :: (s: [] Lab) {
     n = put(l[..], n, " rises (Finger of Death) and follows ");
     for q: 0..<b[0].c[by].name_n { if n < LINE_CAP { l[n] = b[0].c[by].name[q]; n += 1; } }
     add_line(s, cast(string) l[0..<n], VIOLET);
-    fx_cause(s, FXR_RISE, f32(j) * 0.37 + 0.19, b[0].clock, fx_spot(s, j, 0), fx_spot(s, j, 0), FXW_NECRO, 1, 1);
+    risen := fxe_spot(b, lab_grid(s), j, 0);
+    fxe_cause(s[0].puffs[..], b, FXR_RISE, f32(j) * 0.37 + 0.19, b[0].clock, risen, risen, FXW_NECRO, 1, 1);
     s[0].lw_q[k] = s[0].lw_q[s[0].lw_n - 1]; s[0].lw_n -= 1;
   }
 }

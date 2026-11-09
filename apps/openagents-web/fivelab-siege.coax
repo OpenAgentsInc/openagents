@@ -423,24 +423,6 @@ siege_look :: (npc: int) -> int {
 siege_named :: (c: RsCreature) -> bool {
   return c.npc == RS_NPC_ARCH || c.npc == RS_NPC_KNIGHT || c.npc == RS_NPC_PRIEST || c.npc == RS_NPC_MAGE;
 }
-// A siege event's effect, when it has its own (fivelab.coax fx_event): Hellish Rebuke's green
-// flames, a Mage's Arcane Burst and a Priest's Radiant Flame as bolts of their light. True when
-// it drew one.
-siege_fx :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) -> bool {
-  b := bt(s);
-  if e.by < 0 || e.by >= b[0].n || e.to < 0 || e.to >= b[0].n || e.to == e.by { return false; }
-  hand := fx_spot(s, e.by, 1.5); hand.x += 0.3;
-  if e.kind == RS_EV_CAST && e.spell == SP_HELLISH_REBUKE { fx_cause(s, FXR_COLUMN, seed, t0, hand, fx_spot(s, e.to, 1.1), fxp_v(0.35, 1.0, 0.3), 1, 1); return true; }
-  if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && e.spell < 0 && rs_feet_to(b, e.by, e.to) > 5 {
-    npc := b[0].c[e.by].npc;
-    at := fx_spot(s, e.to, 1.1);
-    if e.kind == RS_EV_MISS { at.x += fxp_sym(seed, 0, 0) * 0.9; at.z += fxp_sym(seed, 0, 1) * 0.9; at.y = 0.6; }
-    if npc == RS_NPC_MAGE { fx_cause(s, FXR_STREAK, seed, t0, hand, at, fxp_v(0.55, 0.7, 1.0), 1.1, 1); return true; }
-    if npc == RS_NPC_PRIEST { fx_cause(s, FXR_STREAK, seed, t0, hand, at, fxp_v(1.0, 0.9, 0.55), 1, 1); return true; }
-  }
-  return false;
-}
-
 #test "a Siege Cultist spends its walking and Dash movement to reach the watch" #steps 400000000 {
   s: [1] Lab; s[0].siege=true; s[0].horde=false; s[0].town=20; s[0].cult=14;
   lab_start(s[..]); b:=bt(s[..]);
