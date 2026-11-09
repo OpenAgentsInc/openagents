@@ -292,9 +292,10 @@ Render review cuts at 1080p, and capture headless.
 3. **Plots:** 16, in a 4 by 4 grid.
 4. **Voice:** the owner's own voice only, with no narrator.
 5. **Music:** a generated bed, as for Episode 290.
-6. **No Grid:** no Grid scenes anywhere in the video. Show original footage of
-   the game instead: above all Everglade II's forest path and its empty
-   clearing.
+6. **Grid only for the portal:** the opening walks up to the EVERGLADE portal
+   on the Grid and through it. There are no other Grid scenes. Everything
+   else is original footage of the game, above all Everglade II's forest
+   path and its empty clearing.
 7. **Riders:** a rider sits astride the mount, with no leg through its body.
 
 ## Production
@@ -318,7 +319,7 @@ The video follows Episode 292's format:
 
 | Beat (take time) | Shot | Status |
 | --- | --- | --- |
-| 0:00 Create Game button | Everglade II: a slow glide down the forest path, then the empty clearing | Everglade II stages `path-fly`, `clearing-empty` (#13093) |
+| 0:00 Create Game button | The walk to the EVERGLADE portal on the Grid and through it, then a slow glide down Everglade II's forest path | `film-out/verse/portal-walk.mp4`, then the `path-fly` stage (#13093) |
 | 0:18 Engine, metaverse, tools | Everglade II: the walk along the path | `zone-in`, then the `path-walk` stage (#13093) |
 | 0:30 Everglade title | The path walk, then EVERGLADE | `path-walk` (#13093); #13114 adds the keyed rise. The old walk recording's frame rate is too low to use. |
 | 0:45 SRD | A cast with the roll on screen | #13114. The draft uses the raid promo. |
