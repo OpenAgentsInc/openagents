@@ -33,32 +33,49 @@ EXP_SITES :: 30;
   x:=a.x+a.right+4;unaffected:=true;for j:0..<EXP_SITES {if exp_distance(exp_site(j),x,a.z)<4 {unaffected=false;}}
   if unaffected && exp_castle_distance(x,a.z)>=4 {#assert abs(exp_height(x,a.z)-glade.cg_height(x,a.z))<0.001;}}
 }
+// Each site's centre and how far its level ground runs each way. A constant table, not a chain of
+// tests: exp_height reads every site for every height (23,000 reads in one Lab frame), and the
+// chain cost about 70 steps a read (#13115).
+EXP_SITE_AT :: [EXP_SITES]ExpSite.[
+ ExpSite.{x= -18,z= -23,left=10,right=4,back=10.8,front=4.1},
+ ExpSite.{x=18,z= -20,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x= -50,z=25,left=2.9,right=22,back=7,front=6.2},
+ ExpSite.{x=35,z=30,left=2.9,right=6.2,back=7,front=5.2},
+ ExpSite.{x= -20,z=25,left=2.9,right=6.2,back=7,front=5.2},
+ ExpSite.{x= -45,z=44,left=10,right=4,back=7.5,front=4.2},
+ ExpSite.{x= -19,z=45,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x= -5,z= -23,left=2.9,right=6.2,back=7,front=5.2},
+ ExpSite.{x=15,z= -5,left=2.9,right=6.2,back=7,front=5.2},
+ ExpSite.{x=48,z=43,left=2.5,right=2.5,back=2.5,front=2.5},   // 9 to 17: the cottages east of the meadow, a 4-wide grid 10 m apart
+ ExpSite.{x=58,z=43,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x=68,z=43,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x=78,z=43,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x=48,z=53,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x=58,z=53,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x=68,z=53,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x=78,z=53,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x=48,z=63,left=2.5,right=2.5,back=2.5,front=2.5},
+ ExpSite.{x= -38,z= -54,left=0,right=0,back=0,front=0},   // computed in exp_site, from the dungeon's plan
+ ExpSite.{x=50,z= -20,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=18,z= -52,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=50,z= -52,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=74,z= -20,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=74,z= -52,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=18,z= -74,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=50,z= -74,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=74,z= -74,left=4.2,right=3.8,back=4.1,front=3.9},
+ ExpSite.{x=36,z= -34,left=10,right=4,back=10.8,front=4.1},
+ ExpSite.{x= -20,z= -5,left=2.5,right=2.5,back=2.5,front=2.5},   // EXP_HOME_SITE: exp_home(), 2.5 m each way
+ ExpSite.{x=26.3,z=60.35,left=15.1,right=15.1,back=21.05,front=21.05}   // EXP_SHOWCASE_SITE: the housewright showcase's level yard (exp_showcase)
+];
 exp_site :: (i:int)->ExpSite {
- if i==0 {return ExpSite.{x= -18,z= -23,left=10,right=4,back=10.8,front=4.1};}
- if i==1 {return ExpSite.{x=18,z= -20,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==2 {return ExpSite.{x= -50,z=25,left=2.9,right=22,back=7,front=6.2};}
- if i==3 {return ExpSite.{x=35,z=30,left=2.9,right=6.2,back=7,front=5.2};}
- if i==4 {return ExpSite.{x= -20,z=25,left=2.9,right=6.2,back=7,front=5.2};}
- if i==5 {return ExpSite.{x= -45,z=44,left=10,right=4,back=7.5,front=4.2};}
- if i==6 {return ExpSite.{x= -19,z=45,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==7 {return ExpSite.{x= -5,z= -23,left=2.9,right=6.2,back=7,front=5.2};}
- if i==8 {return ExpSite.{x=15,z= -5,left=2.9,right=6.2,back=7,front=5.2};}
  // the dungeon's block and its outer walls' thickness, levelled at the old dungeon's height (-38, -54)
  if i==18 {h:=f32(dungeon.DG_HALF);return ExpSite.{x= -38,z= -54,left= -38-f32(dungeon.DG_X0)+h,right=dungeon.dg_east()+38+h,back= -54-dungeon.dg_south()+h,front=f32(dungeon.DG_Z0)+54+h};}
- if i==19 {return ExpSite.{x=50,z= -20,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==20 {return ExpSite.{x=18,z= -52,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==21 {return ExpSite.{x=50,z= -52,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==22 {return ExpSite.{x=74,z= -20,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==23 {return ExpSite.{x=74,z= -52,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==24 {return ExpSite.{x=18,z= -74,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==25 {return ExpSite.{x=50,z= -74,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==26 {return ExpSite.{x=74,z= -74,left=4.2,right=3.8,back=4.1,front=3.9};}
- if i==27 {return ExpSite.{x=36,z= -34,left=10,right=4,back=10.8,front=4.1};}
- // the player's home (everglade/world/home.coax), west of spawn
- if i==EXP_HOME_SITE {h:=exp_home();return ExpSite.{x=h.x,z=h.z,left=2.5,right=2.5,back=2.5,front=2.5};}
- // the housewright showcase's level yard, south-east of spawn (exp_showcase)
- if i==EXP_SHOWCASE_SITE {return ExpSite.{x=26.3,z=60.35,left=15.1,right=15.1,back=21.05,front=21.05};}
- j:=i-9;return ExpSite.{x=48+f32(j%4)*10,z=43+f32(j/4)*10,left=2.5,right=2.5,back=2.5,front=2.5};
+ return EXP_SITE_AT[i];
+}
+#test "the site table keeps the home on exp_home and the cottages on their grid" {
+ h:=exp_home();a:=EXP_SITE_AT[EXP_HOME_SITE];#assert a.x==h.x && a.z==h.z;
+ for j:0..<9 {b:=EXP_SITE_AT[9+j];#assert b.x==48+f32(j%4)*10 && b.z==43+f32(j/4)*10 && b.left==2.5 && b.front==2.5;}
 }
 // The player's home (game: everglade/world/home.coax, the engine's 4 m room) stands here, about
 // 20 m west of spawn, turned a quarter so its doorway faces spawn; its levelled site is EXP_HOME_SITE.
