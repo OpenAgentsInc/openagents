@@ -20,6 +20,24 @@ block in `realms.json`. Not built yet: host-aware login, the host field in analy
 the release smoke and golden for the domain, and `staging.everglade.world`. The URL map's
 `everglade` matcher was set by hand (below); `lb.sh everglade-domain` is still to write.
 
+## The live `everglade` matcher
+
+Set by hand on URL map `coaxial-openagents-web-staging` (export, edit, `validate`, `import`;
+openagents.com's matchers untouched). By priority:
+
+| Priority | Match | Does |
+| --- | --- | --- |
+| 10, 30 | `/`, `/index.html` | rewrite to `/realms/everglade2/domain/index.html` (the front door) |
+| 20 | `/play`, `/play/` | rewrite to `/realms/everglade2/domain/play/index.html` |
+| 40-110 | `/api/room/s1/` to `/s6/`, `/api/room/`, `/api/` | the room shards and `oa-api`, as on openagents.com |
+| 115 | `/worlds/character-creator`, `/worlds/everglade2` (with or without `/`) | 301 to `/play`, query dropped |
+| 120 | `/realms/` | 301 to `/worlds/`, query kept |
+| 130, 140, 150, 155 | `/worlds/character-creator`, `/worlds/everglade2`, `/worlds/everglade/`, `/worlds/5e-mmo/` | rewrite to `/realms/...` (assets: the Create font, the pack and domain pictures, sounds and hotbar art, the class bar's spell pictures from `class-kit.coax` `XC_MMO_URL`) |
+| 160 | `/build/`, `/coaxial/`, `/og/`, `/login`, `/favicon.svg`, `/robots.txt`, `/character.wgsl` | the bucket as it is |
+| 170 | anything else | rewrite to `/realms/everglade2/domain/missing/` (Everglade's 404) |
+
+A new `/worlds/<x>/` path that `/play` loads needs its own rewrite here.
+
 ## Goal
 
 Everglade gets a domain of its own, written `EVERGLADE_DOMAIN` below until the
