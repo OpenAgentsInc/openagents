@@ -1264,8 +1264,8 @@ dr_forest :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport) -> bool {
   return ok;
 }
 // The raid, on one profile: the offline page's preview raid (a) and the room's own (b), with
-// raid-check.coax's bots fighting at the front; the room page holds at the spawn, on the front's road,
-// and casts Starry Wisp at the nearest raider. Its verdicts into rep.
+// raid-check.coax's bots fighting at the front; the room page walks from the commons out of the South
+// Gate, keeps within Starry Wisp's reach of the nearest raider and casts it at that one. Its verdicts into rep.
 DR_RAID_DIALS :: "event 1 0 1 8 3 1 3 1 1 1 3 1 300 5";   // the siege at size 8 (Cultists, a Fanatic, Warlocks), Darian at his camp, harm on, reward 300% (the waves, gates and minutes: the siege's no more)
 DR_RAID_S :: 360;   // the announce and the siege, the cult's casters at the stables before the gate
 // The bar's slots (its hash) page pg drew at wall ms t.
@@ -1309,6 +1309,99 @@ dr_raid_kit_ready :: (c: [] Cdp, whole: int) -> bool {
   }
   tool_errln("everglade-drift: the raid never established a LEVEL 1 kit before combat"); return false;
 }
+// The room page's walk from its arrival on the commons (0, -16) to the open road outside the South
+// Gate. Until e0631669b3 you arrived on the road south of the gate (0, -84), inside the front's band;
+// since then the commons is 40 m and more from the line, out of Starry Wisp's 18 m, so a page that
+// holds at the spawn never hurts a raider (#13070). Round the fountain to the left as the paired
+// session's route (dr_script) does, then down the road, steered into the gate's opening by the page's
+// own position (its x within 0.8 to 2.2 m, the session's lane through the arch), to 58.3 m south.
+dr_walk_key :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) { _ := dr_press(c, down, key, code, vk, false); }
+// The keys from (x, z) mm into the South Gate's lane (x 0.8 to 2.2 m) and through it (bit 0 W, 2 A,
+// 3 D): south only in the lane, or while still 7 m and more short of the palisade (z -56 m), so a
+// page off the lane strafes into it rather than walk into a gate post.
+dr_gate_keys :: (x: int, z: int) -> int {
+  k := ifx x < 800 then 8 else (ifx x > 2200 then 4 else 0);
+  if k == 0 || z > -49000 { k |= 1; }
+  return k;
+}
+#test "the raid page's walk strafes into the gate's lane before the palisade, never into a post (#13070)" {
+  #assert dr_gate_keys(-5680, -40420) == (1 | 8);   // far from the wall: south and east
+  #assert dr_gate_keys(-6300, -55300) == 8;         // at the post: east only
+  #assert dr_gate_keys(1500, -55300) == 1;          // in the lane: south
+  #assert dr_gate_keys(4000, -52000) == 4;
+}
+dr_raid_walk :: (c: [] Cdp) -> bool {
+  if !dr_face_north(c) { tool_errln("everglade-drift: the raid page's camera didn't face the road"); return false; }
+  st: [1] DrSteer;
+  dr_steer_key(c, st[..], 0, true); proc_sleep(2500);
+  dr_steer_key(c, st[..], 2, true); proc_sleep(3000); dr_steer_key(c, st[..], 2, false); proc_sleep(1000);
+  deadline := proc_now_ms() + 30000;
+  x := 0; z := 0;
+  while proc_now_ms() < deadline {
+    x = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
+    z = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
+    if z <= -58300 { break; }
+    keys := dr_gate_keys(x, z);
+    for k: 0..<4 { dr_steer_key(c, st[..], k, (keys & (1 << k)) != 0); }
+    proc_sleep(80);
+  }
+  dr_steer_stop(c, st[..]);
+  proc_sleep(600);
+  x = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
+  z = dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
+  print("  raid: the room page stands at %,% mm\n", x, z);
+  if !dr_raid_road(z) { tool_errln("everglade-drift: the raid page didn't reach the road outside the South Gate"); return false; }
+  return true;
+}
+// In the fight the room page plays as a new player who fights does (raid-check.coax fight mode, the
+// rule room-events.coax tunes the raid's XP to): it keeps within Starry Wisp's reach of the nearest foe
+// (net_probe 930 to 932), DR_RAID_STANDOFF m from it, steering with W/S/A/D on the camera that faces
+// north (W is -z, D is +x), for ms. The town's watch fights the line between; the page casts past it.
+DR_RAID_STANDOFF :: 14000;   // mm
+DrSteer :: struct { held: [4] bool; }   // W, S, A, D
+dr_steer_key :: (c: [] Cdp, st: [] DrSteer, k: int, on: bool) {
+  if st[0].held[k] == on { return; }
+  st[0].held[k] = on;
+  if k == 0 { dr_walk_key(c, on, "w", "KeyW", 87); } else if k == 1 { dr_walk_key(c, on, "s", "KeyS", 83); }
+  else if k == 2 { dr_walk_key(c, on, "a", "KeyA", 65); } else { dr_walk_key(c, on, "d", "KeyD", 68); }
+}
+dr_steer_stop :: (c: [] Cdp, st: [] DrSteer) { for k: 0..<4 { dr_steer_key(c, st, k, false); } }
+// The keys toward a stand DR_RAID_STANDOFF short of the foe at (fx, fz) from (x, z), all mm: bit 0 W,
+// 1 S, 2 A, 3 D; none within 1.5 m of it.
+dr_steer_keys :: (x: int, z: int, fx: int, fz: int) -> int {
+  dx := x - fx; dz := z - fz;
+  d := sqrt(f32(dx) * f32(dx) + f32(dz) * f32(dz));
+  if d < 1.0 { return 0; }
+  tx := fx + cast(int) (f32(dx) / d * f32(DR_RAID_STANDOFF)); tz := fz + cast(int) (f32(dz) / d * f32(DR_RAID_STANDOFF));
+  k := 0;
+  if tz < z - 1500 { k |= 1; } else if tz > z + 1500 { k |= 2; }
+  if tx < x - 1500 { k |= 4; } else if tx > x + 1500 { k |= 8; }
+  return k;
+}
+#test "the raid page closes to Starry Wisp's reach of its foe and backs off one too near (#13070)" {
+  #assert dr_steer_keys(0, -59000, 0, -90000) == 1;             // 31 m south: W
+  #assert dr_steer_keys(0, -59000, 0, -66000) == 2;             // 7 m: back, S
+  #assert dr_steer_keys(0, -59000, 0, -73000) == 0;             // 14 m: hold
+  #assert dr_steer_keys(0, -59000, 20000, -90000) == (1 | 8);   // south-east: W and D
+}
+dr_raid_close :: (c: [] Cdp, st: [] DrSteer, ms: int) {
+  until := proc_now_ms() + ms;
+  while proc_now_ms() < until {
+    x := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
+    z := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
+    fx := dr_int(c, "__dr.probe(930)", -999999); fz := dr_int(c, "__dr.probe(931)", -999999);
+    keys := ifx x == -999999 || fx == -999999 then 0 else dr_steer_keys(x, z, fx * 10, fz * 10);
+    for k: 0..<4 { dr_steer_key(c, st, k, (keys & (1 << k)) != 0); }
+    proc_sleep(100);
+  }
+}
+// Whether z (mm) is out past the South Gate (RF_GATE_Z -56 m), within Starry Wisp's 18 m of the
+// line's nearest hold (RF_HOLD_Z -61 m).
+dr_raid_road :: (z: int) -> bool { return z <= -56500 && z >= -79000; }
+#test "the raid page's stand: past the gate and in Starry Wisp's reach of the line, never the commons (#13070)" {
+  #assert dr_raid_road(-58670) && dr_raid_road(-59030);
+  #assert !dr_raid_road(-16000) && !dr_raid_road(-56000) && !dr_raid_road(-84000);
+}
 // whole: the whole bar's hash, as the paired session's room page drew it at its end (levels off there);
 // the raid's offline page can't say it, as on the local host (?offline=worker) its room has levels on (#12897).
 dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage, whole: int) -> bool {
@@ -1340,7 +1433,7 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
       ready_a := open_b && dr_ready(ca[..], false); ready_b := ready_a && dr_ready(cc[..], true);
       native_ready := ready_b && dr_native_ready(run,ca[..]);
       print("  raid: opened %/%, ready %/%, native %\n", open_a, open_b, ready_a, ready_b, native_ready);
-      if native_ready && dr_raid_kit_ready(cc[..], whole) {
+      if native_ready && dr_raid_kit_ready(cc[..], whole) && dr_raid_walk(cc[..]) {
         dr_dice(ca[..], run.worker && !run.native);
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-raid-"); bput(sh[..], profile);
         p := DrPair.{a = ca[..], b = cc[..], shots = btext(sh[..])};
@@ -1349,19 +1442,21 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
         bput(cb_[..], ""); cb_[0].n = 0; bput(cb_[..], "pvp 0\nedit 1\nlevels 1 2\n"); bput(cb_[..], DR_RAID_DIALS); bput(cb_[..], " 1 0\n");
         _ = fs_write(run.ctl, btext(cb_[..]));
         _ = dr_press(cc[..], true, "Escape", "Escape", 27, false); _ = dr_press(cc[..], false, "Escape", "Escape", 27, false);
-        // the siege comes to the spawn's road (the front's band is about it): the page holds there
+        // the siege comes to the road (the front's band is past the gate): the page holds there
         proc_sleep(14000);
         dr_mark(p, "fight");
         t_end := proc_now_ms() + (DR_RAID_S - 20) * 1000;
+        steer: [1] DrSteer;
         while proc_now_ms() < t_end {
           cast_ok := dr_int(cc[..], "__dr.probe(222)", 0);
-          proc_sleep(1200);
+          dr_raid_close(cc[..], steer[..], 1200);
           // done once both pages' stables fell and the room page is level 2
           fa := dr_int(ca[..], "(() => { const f = __dr.fr[__dr.fr.length - 1]; return f && f[21] > 0 && f[20] * 2 >= f[21] ? 1 : 0; })()", 0);
           fb := dr_int(cc[..], "(() => { const f = __dr.fr[__dr.fr.length - 1]; return f && f[21] > 0 && f[20] * 2 >= f[21] ? 1 : 0; })()", 0);
           l2 := dr_int(cc[..], "__dr.texts.some((x) => x[1] === 0 && x[2].startsWith('LEVEL 2')) ? 1 : 0", 0);
           if fa == 1 && fb == 1 && l2 == 1 { break; }
         }
+        dr_steer_stop(cc[..], steer[..]);
         dr_mark(p, "end"); marked := dr_wait_end(p);
         ok = marked && dr_pull(ca[..], a, false) && dr_pull(cc[..], b, false);
       } else { tool_errln("everglade-drift: the raid's pages didn't come up"); }

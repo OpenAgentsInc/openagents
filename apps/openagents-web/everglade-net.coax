@@ -2022,8 +2022,9 @@ net_forest_probe :: (s: [] Everglade, field: int) -> int {
 // nameplates, BLOCK and its pane (everglade-moderate.coax md_probe); 41 the townsfolk's frames drawn with
 // their walk clip, 42 of those the ones drawn where the frame before drew them, 43 the frames' bytes heard;
 // 44 the byte budget a tick (W), 50 rows the mirror could not read, 51 the newest tick heard whole.
+// 930 to 932 the nearest foe (net_nearest_foe): its x and z and its distance, cm.
 // 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
-// summoned creature, else 3 m ahead of you (an ability you don't point with: 2 m ahead, as its press
+// foe among the summoned creatures (never the town's watch), else 3 m ahead of you (an ability you don't point with: 2 m ahead, as its press
 // does): 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
   if field==920 {return int(s[0].guide.raid_target_x);}if field==921 {return int(s[0].guide.raid_target_y);}
@@ -2245,22 +2246,50 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
   if field == 44 { return n[0].budget; }
   if field == 50 { return n[0].mir[0].bad; }
   if field == 51 { return n[0].mir[0].heard; }
+  // 930 and 931 the nearest foe's x and z (cm), 932 how far it is from you (cm); -999999 none (#13070)
+  if field >= 930 && field <= 932 {
+    e := net_nearest_foe(n, ab_you(s));
+    if e < 0 { return -999999; }
+    en := n[0].ents[e];
+    if field == 930 { return wire_cm(en.shown.x); }
+    if field == 931 { return wire_cm(en.shown.z); }
+    return wire_cm(flat_gap(v3(en.shown.x, 0, en.shown.z), ab_you(s)));
+  }
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
     you := ab_you(s);
     at := add(you, times(ab_forward(s), 3));
     // an ability you don't point with goes where you stand, as its press sends it (net_press)
     k := field - 200 - SP_SLOTS;
     if k >= 0 && !ab_aimed(k) { return ifx net_cast(s, field - 200, add(you, times(ab_forward(s), 2)), -1) then 1 else 0; }
-    bd := 1000000.0f32;
-    for e: 0..<NET_ENTS {
-      en := n[0].ents[e];
-      if !en.live || en.kind != WK_BEAST || en.hp <= 0 { continue; }
-      d := flat_gap(v3(en.shown.x, 0, en.shown.z), you);
-      if d < bd { bd = d; at = v3(en.shown.x, en.shown.y, en.shown.z); }
-    }
+    e := net_nearest_foe(n, you);
+    if e >= 0 { at = v3(n[0].ents[e].shown.x, n[0].ents[e].shown.y, n[0].ents[e].shown.z); }
     return ifx net_cast(s, field - 200, at, -1) then 1 else 0;
   }
   return -1;
+}
+// The live summoned creature nearest you that is a foe (never the town's watch or its hero, who walk
+// through the commons spawn since e25377c906, #13070), -1 none: the 200 + SLOT probe's target.
+net_nearest_foe :: (n: [] EgNet, you: Point) -> int {
+  best := -1; bd := 1000000.0f32;
+  for e: 0..<NET_ENTS {
+    en := n[0].ents[e];
+    if !en.live || en.kind != WK_BEAST || en.hp <= 0 || net_watch_form(en.p1) { continue; }
+    d := flat_gap(v3(en.shown.x, 0, en.shown.z), you);
+    if d < bd { bd = d; best = e; }
+  }
+  return best;
+}
+#test "net: the cast probe aims at the nearest raider, never a nearer Guard of the watch (#13070)" {
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
+  net_test_tick(room[..], 1, 0);
+  // a Guard of the watch (form 21) 2 m off, a Cultist (27) 9 m off and Echo 1 m off
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + 7, kind = WK_BEAST, owner = -1, x = 2, z = 0, hp = 11, p1 = EGE_FORM_RAID + 1, max = 11});
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + 8, kind = WK_BEAST, owner = -1, x = 9, z = 0, hp = 9, p1 = EGE_FORM_RAID + 7, max = 9});
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + 9, kind = WK_BEAST, owner = -1, x = 0, z = 1, hp = 40, p1 = EGE_FORM_HERO, max = 40});
+  #assert net_test_hear(b[..], 1, net_test_frame(room[..]));
+  e := net_nearest_foe(nb[..], v3(0, 0, 0));
+  #assert e >= 0 && nb[0].ents[e].eid == NET_MADE_ID + 8;
 }
 // The pipe's commands, for the face to carry out.
 net_pipe_n :: (s: [] Everglade) -> int #export_c #effects(all) { if !net_on(s) { return 0; } return net_of(s)[0].pipe[0].n; }
