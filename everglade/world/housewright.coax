@@ -174,3 +174,14 @@ hw_inside :: (tier:int,x:f32,z:f32)->bool {
  n:=hw_boxes(HW_TIMBER,2,f,b[..],0);
  for k:0..<21 {x:= -3+f32(k)*0.15;z:=0.95f32;for j:0..<n {q:=j*6;#assert b[q+4]<0.56 || !(x>b[q]-0.3 && x<b[q+3]+0.3 && z>b[q+2]-0.3 && z<b[q+5]+0.3);}}
 }
+// A tier's parts in build order, for the engine's build progress (aethyr/world/build-site.coax
+// bs_fractions, bs_arrival, bs_used): written into out, the count returned. Each stage's rows are
+// listed in the order they go up.
+HW_MOST_PARTS :: 64;
+hw_tier_parts :: (tier:int,out:[]bs.BuildPart)->int {n:=0;for i:HW_FIRST[tier]..<HW_FIRST[tier+1] {if n<out.count {out[n]=hw_part(i);n+=1;}}return n;}
+#test "a tier's parts at a whole progress are its stage's parts, and its bill is whole at the last stage" {
+ p:[HW_MOST_PARTS]bs.BuildPart;fr:[HW_MOST_PARTS]f32;
+ for t:0..<HW_TIERS {n:=hw_tier_parts(t,p[..]);#assert n==HW_FIRST[t+1]-HW_FIRST[t] && n<=HW_MOST_PARTS;
+  for k:0..<hw_stages(t)+1 {bs.bs_fractions(p[0..<n],f32(k),fr[..]);for i:0..<n {#assert fr[i]==(ifx p[i].stage<=k then 1.0f32 else 0.0f32);}}
+  #assert bs.bs_arrival(p[0..<n],f32(hw_stages(t))).part== -1;}
+}
