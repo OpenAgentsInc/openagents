@@ -267,6 +267,16 @@ can't mount while unconscious, paralyzed or grappled. To look at riding without
 playing, add `?ride=1` (in the saddle), `?ride=2` (galloping) or `?ride=3&class=7`
 (a Ranger drawing the bow in the saddle) to a local page.
 
+A red dragon stands in the open ahead and to the left of spawn, facing back over
+the village. E mounts it from its flank; you sit at the base of its neck. Space
+takes off, beats the wings and (held) climbs, Shift dives, A and D bank it round,
+and X lands. E in the air says "Land first". It walks at 10 m/s and flies at 20 m/s
+(the SRD Adult Red Dragon's Speed 40 ft and Fly 80 ft), on the shared winged flight
+(`aethyr/action/flight.coax`). Two staged shots ride on their own and hide the HUD:
+`?stage=dragonback` (up off the meadow and over the village and castle) and
+`?stage=horseback` (a gallop down the meadow past the autumn trees), recorded with
+`coax/web/tool.sh clip`.
+
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
 
 Every ability has its own sounds (`xc_sound` in `apps/openagents-web/experimental-combat.coax`): a cast or launch sound as you use it (a blow's whoosh as its swing starts), often with a second layer under it, an impact where it lands on a monster, and a fizzle where a spell meets no one or misses. A spell without its own entry sounds like its damage type, or else its school. No two abilities a class has at once, at any level from 1 to 6, share a cast sound. The greataxe and greatsword swing slower and lower than the one-handed swords and land a heavier hit. Imps and gremlins have their own hurt and death sounds. Most sounds are the Everglade bank's picks; the ones it has no file for (Vicious Mockery's warble, Sacred Flame's choir, Rage's roar, the heavy swing, the fizzle, the monsters' voices and a few more) are synthesized from recipes in `aethyr/audio/experimental-sfx.coax` (see `aethyr/audio/SOURCES.md`). Each play takes one of the sound's picks at random and varies its pitch by up to 7% and its level by up to 15%, so a repeat never sounds identical.

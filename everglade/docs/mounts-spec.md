@@ -200,7 +200,8 @@ there. Only how it moves is different.
   bone.
 - **Taking off and landing.** On the ground it walks. Space takes off. In the
   air, Space beats the wings, holding Space climbs, letting go glides, and
-  holding Ctrl dives and speeds it up. A and D steer and bank it into the
+  holding Shift dives and speeds it up (Shift gallops a horse, so it means
+  "faster" on both). A and D steer and bank it into the
   turn; W flies on, and letting go of W slows it to a hover. **X** lands. It
   also lands when it glides down to the ground.
 - **No getting off in the air.** E works only on the ground. In the air the
@@ -236,7 +237,7 @@ summoning lands.
 | Whistle | **H** | the WHISTLE button |
 | Shoot | hold and release the right mouse button, or the bow's hotbar key | hold and release the bow's slot |
 | Take off, beat, climb (flying mount) | **Space**: press to take off or beat, hold to climb | the JUMP button |
-| Dive (flying mount) | hold **Ctrl** | the DIVE button |
+| Dive (flying mount) | hold **Shift** in the air | the DIVE button |
 | Land (flying mount) | **X** | the LAND button |
 | Fire Breath (dragon) | **F**, aimed where you look | the BREATH button |
 

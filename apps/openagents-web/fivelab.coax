@@ -154,7 +154,9 @@ Lab :: struct {
   stage_steps: int;  // its clock: the game steps (1/60 s) it has run
   experimental_audio: [1] exsound.ExperimentalSound;
   respawn_id:int = -1;
-  ride_dev: int;   // a local page's ?ride= (experimental-ride.coax lab_ride_dev): mounted, galloping or drawing on the horse
+  ride_dev: int;   // a local page's ?ride= or ?stage= (experimental-ride.coax lab_ride_dev): mounted, galloping, drawing on the horse, or a stage
+  stage_at: f32;   // when a riding stage's rider sat down
+  ride_land: bool; // X pressed on the dragon in the air: it comes down to land
   xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
   creator: [1] cc.Creator;
   aribeth_state:[1]nwna.Aribeth;
@@ -3195,6 +3197,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
       n = lab_biome_labels(s,out,n,width,height,hi(dpr,0.5));
       n = lab_aribeth_label(s,out,n,width,height,hi(dpr,0.5));
       n = lab_showcase_labels(s,out,n,width,height,hi(dpr,0.5));
+      if s[0].ride_dev >= LAB_STAGE_DRAGONBACK { n = 0; s[0].xc[0].media_n = 0; if u.count > 11 { u[11] = 1; } }   // a riding stage is a shot: the world alone, no HUD or bar
     }
     if s[0].creator[0].experimental { cc.hud_seal(out,0,n); }
     cr := s[0].creator[..];exsound.experimental_sound_tick(s[0].experimental_audio[..],cr[0].experimental && !cr[0].walk.on,cr[0].player_x,cr[0].player_z,cr[0].airborne,cr[0].hostiles[0].hp,cr[0].hostiles[0].hits,ifx still then 0.0f32 else dt);
@@ -3424,6 +3427,15 @@ draw_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
 }
 // The page's address asks for sizes: ?heroes=N&skeletons=M&stream=K (dead= too), so a test reruns.
 // Bounded numeric fields only, read from the page facts' url line (coax/web/host.js pageFacts).
+// Whether the query holds `pair` (a key=value) whole.
+url_has :: (q: string, pair: string) -> bool {
+  i := 0;
+  while i + pair.count <= q.count {
+    if (i == 0 || q[i - 1] == '&' || q[i - 1] == '?') && q[i..<i + pair.count] == pair && (i + pair.count == q.count || q[i + pair.count] == '&') { return true; }
+    i += 1;
+  }
+  return false;
+}
 url_number :: (q: string, key: string) -> int {
   i := 0;
   while i + key.count < q.count {
@@ -3451,6 +3463,7 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
   }
   cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].xc[..],cl);}
   rd:=url_number(q,"ride");if rd>0 && rd<=3 {s[0].ride_dev=rd;}
+  if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].xc[0].open=false;}
   // px, pz: any spot, metres plus 1000 (px=970&pz=1010 is (-30, 10)); yaw the way you face in degrees
   // (0 is +z), the camera behind you; dist the camera's metres; class a class's row (fivebar.coax FB_CL_*)
   px:=url_number(q,"px");pz:=url_number(q,"pz");if px>=0 && pz>=0 {
@@ -3568,7 +3581,7 @@ lab_respawn_pointer :: (s:[]Lab,x:f32,y:f32,phase:int,id:int)->bool {
  if s[0].respawn_id!=id {return false;}if phase==2 {s[0].respawn_id= -1;if inside {_:=lab_respawn(s);}return true;}if phase==3 {s[0].respawn_id= -1;return true;}return true;
 }
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
-  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if (key=='e' || key=='E') && lab_mount_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
+  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if (key=='e' || key=='E') && lab_mount_key(s) {return true;}if (key=='x' || key=='X') && lab_land_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
   if s[0].creator[0].on {return cc.key(s[0].creator[..],key);}
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)

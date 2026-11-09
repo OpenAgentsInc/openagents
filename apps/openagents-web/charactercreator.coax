@@ -1264,8 +1264,8 @@ camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
     // offset and tightens in, as far as the aim has come in (s.aim). Nothing jumps between them.
     // Zoomed in to first person (fp) they all give way to the eye.
     mlv:=s.ml[0].shown;off:=ifx mlv>s.aim then mlv else s.aim;
-    ride:=egm.eg_ride_cam(s.mounts[0],s.clock);target+=f32(egm.EG_RIDE_CAM_UP)*ride;   // riding, the camera pulls back and up to see the horse
-    base:=s.dist+f32(egm.EG_RIDE_CAM_BACK)*ride;dist:=(base+(2.1-base)*s.aim)*far;shoulder:=(cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off)*far;ox:=cz*shoulder-sx*ahead;oz:= -sx*shoulder-cz*ahead;
+    ride:=egm.eg_ride_cam(s.mounts[0],s.clock);target+=egm.eg_ride_cam_up(s.mounts[0])*ride;   // riding, the camera pulls back and up to see the horse
+    base:=s.dist+egm.eg_ride_cam_back(s.mounts[0])*ride;dist:=(base+(2.1-base)*s.aim)*far;shoulder:=(cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off)*far;ox:=cz*shoulder-sx*ahead;oz:= -sx*shoulder-cz*ahead;
     lift:=f32(CC_LIFT)*mlv;if 0.38*s.aim>lift {lift=0.38*s.aim;}target+=lift*far+fpcam.fp_lift(fp,1.2);
     // drawn, the boom comes level behind the shoulder, whatever the pitch: the view still looks along
     // the pitch (the aim), so you see the arrow's line and not the top of your head
