@@ -12,7 +12,12 @@
 <script>
 // On a realm's own domain (docs/verse/everglade-domain.md) an unknown address shows that domain's
 // 404 page, still with status 404 and the same address: this page stops and writes it in its place.
-if (/(^|\.)everglade\.world$/.test(location.hostname)) { stop(); fetch("/worlds/everglade2/domain/404.html").then((r) => r.text()).then((t) => { document.open(); document.write(t); document.close(); }); }
+if (/(^|\.)everglade\.world$/.test(location.hostname)) {
+  document.currentScript.insertAdjacentHTML("afterend", "<style>html,body{background:#0d1a10}body>*{display:none}</style>");
+  for (const s of document.querySelectorAll("script[type=module]")) s.remove();
+  new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.tagName === "SCRIPT" && n.type === "module") n.remove(); }).observe(document.documentElement, { childList: true, subtree: true });
+  fetch("/worlds/everglade2/domain/404.html").then((r) => r.text()).then((t) => { const d = new DOMParser().parseFromString(t, "text/html"); document.head.replaceWith(document.adoptNode(d.head)); document.body.replaceWith(document.adoptNode(d.body)); });
+}
 </script>
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
