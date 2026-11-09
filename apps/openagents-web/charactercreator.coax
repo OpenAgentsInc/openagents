@@ -1653,9 +1653,14 @@ build_review_page :: (facts:string)->bool {
 BUILD_REVIEW_AT :: [2]f32.[62,74];
 build_review_frame :: (s:[]Creator) {
  if !s[0].build_review {return;}
- if s[0].build_t0<0 {s[0].build_t0=s[0].clock;s[0].player_x=BUILD_REVIEW_AT[0]+3.5;s[0].player_z=BUILD_REVIEW_AT[1]-6.5;}
- f:=building.BuildingFrame.{x=BUILD_REVIEW_AT[0],z=BUILD_REVIEW_AT[1],turn=2};
- build_site_set(s,0,hw.HW_COTTAGE,f,meadow.exp_height(f.x,f.z),(s[0].clock-s[0].build_t0-1)/2);
+ if s[0].build_t0<0 {s[0].build_t0=s[0].clock;}
+ f:=building.BuildingFrame.{x=BUILD_REVIEW_AT[0],z=BUILD_REVIEW_AT[1],turn=2};g:=meadow.exp_height(f.x,f.z);
+ // the player stands off the front-left corner; the camera looks on from the front right, drifting a little
+ p:=building.building_point(f,-3.2,4.6);s[0].player_x=p[0];s[0].player_z=p[1];
+ t:=s[0].clock-s[0].build_t0;ex:=4.6+0.06*t;ez:=8.6-0.1*t;
+ e:=building.building_point(f,ex,ez);l:=building.building_point(f,0,0.2);
+ stage_set(s,trk.CamView.{ex=e[0],ey=g+3.3,ez=e[1],lx=l[0],ly=g+1.2,lz=l[1]},0.42);
+ build_site_set(s,0,hw.HW_COTTAGE,f,g,(t-1)/2);
 }
 #test "the build review page is asked for by its stage and nothing else" {
  #assert build_review_page("url=http://127.0.0.1:8800/worlds/everglade-experimental?stage=build-cottage\n") && !build_review_page("url=http://x/worlds/everglade-experimental?stage=build-cottages\n");
