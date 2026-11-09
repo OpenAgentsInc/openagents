@@ -795,10 +795,7 @@ e2_quality_hud :: (s: [] E2, out: [] f32, at: int, right: f32, base: f32) -> int
   k := s[0].k; cap := 13 * k;
   l: [32] u8; t := quality_label(s[0].q[..], l[..]);
   tw := e2c_text_w(t, cap); x0 := right - tw;
-  // over the class bar's slots it moves up, clear of them
-  y := base;
-  for i: 0..<s[0].casts[0].bar_n { b := e2k_box(s[0].casts[..], i, s[0].width, s[0].height, k);
-    if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < right + 8 * k && b[3] > y - cap - 8 * k && b[1] < y + 8 * k { y = ifx b[1] - 10 * k < y then b[1] - 10 * k else y; } }
+  y := base;   // e2_fps keeps its line clear of the bar (e2_fps_clear)
   // a finger's size round it (44 CSS px tall at least)
   pad := ifx (44 * k - cap) * 0.5 > 8 * k then (44 * k - cap) * 0.5 else 8 * k;
   s[0].q_box = cc.Box.{x0 = x0 - 10 * k, y0 = y - cap - pad, x1 = right + 6 * k, y1 = y + pad};
@@ -991,9 +988,25 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  m=quality_put(buf[..],m," FPS");
  // both on a dark plaque, so they read over the bright glade
  fw:=e2c_text_w(cast(string)buf[0..<m],13*k);gl:[32]u8;gw:=ifx s[0].golden || !s[0].q_ready then 0.0f32 else e2c_text_w(quality_label(s[0].q[..],gl[..]),13*k)+24*k;
- p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,h-16*k-13*k-9*k,s[0].width-8*k,h-16*k+9*k,k);
- n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,h-16*k);
- return cc.fps_draw(s[0].fps_counter[0],out,n,s[0].width,h,k);
+ base:=e2_fps_clear(s,s[0].width-16*k-fw-14*k-gw,s[0].width-8*k,h-16*k);
+ p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k,k);
+ n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,base);
+ return cc.fps_draw(s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
+}
+// The plaque's baseline, from y up: clear of the class bar's slots, its emblem over the middle and the
+// side bar over it, wherever they share its width (x0..x1). On a phone the bar spans the page, so the
+// plaque sits over all of it.
+e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
+  k := s[0].k; base := y; if !e2k_on(s) { return base; }
+  w := s[0].width; h := s[0].height; top := y + 1000;
+  for i: 0..<s[0].casts[0].bar_n { b := e2k_box(s[0].casts[..], i, w, h, k);
+    if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k {
+      t := b[1] - 8 * k; mid := w * 0.5; if x0 < mid + 30 * k && x1 > mid - 30 * k { t = b[1] - 32 * k; }   // the emblem's medallion
+      if t < top { top = t; } } }
+  ids: [3] int; sn := e2k_side(s, ids[..]);
+  for j: 0..<sn { b := e2k_side_box(s, j); if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k && b[1] - 8 * k < top { top = b[1] - 8 * k; } }
+  if top < y + 1000 && base + 9 * k > top { base = top - 9 * k; }
+  return base;
 }
 // ---- the world's HUD (Everglade's FANTASY style, everglade/hud/parts.coax): your portrait plate top left,
 // the map ring top right with the place and the time of day, and a place's banner as you come to it.
@@ -2265,6 +2278,10 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
       #assert a[0]>=8 && a[2]<=s[0].width-8 && a[3]<b0[1]-30 && a[3]-a[1]>=e2k_side_h(s[..])-0.01;
       for j:0..<i { z:=e2k_side_box(s[..],j); #assert a[2]<=z[0] || z[2]<=a[0] || a[3]<=z[1] || z[3]<=a[1]; } }
     #assert q==0 || e2k_side_h(s[..])>=44;
+    // the frame rate's and the GFX control's plaque keeps clear of the bar and the side bar
+    px0:=s[0].width-240; px1:=s[0].width-8; base:=e2_fps_clear(s[..],px0,px1,s[0].height-16);
+    for i:0..<s[0].casts[0].bar_n { b:=e2k_box(s[0].casts[..],i,s[0].width,s[0].height,s[0].k); #assert b[2]<=px0 || b[0]>=px1 || base+9<=b[1]; }
+    for i:0..<c { a:=e2k_side_box(s[..],i); #assert a[2]<=px0 || a[0]>=px1 || base+9<=a[1]; }
     for id:1..<3 { rows:[EG_MENU_ROWS]int; m:=e2k_menu_rows(s[..],id,rows[..]); p:=e2k_menu_panel(s[..],id);
       #assert p[0]>=8 && p[2]<=s[0].width-8 && p[1]>=0 && p[3]<=e2k_side_top(s[..]);
       for r:0..<m { a:=e2k_menu_box(s[..],id,r); #assert a[0]>=p[0] && a[2]<=p[2] && a[1]>=p[1] && a[3]<=p[3];

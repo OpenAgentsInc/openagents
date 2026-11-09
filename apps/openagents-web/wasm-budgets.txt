@@ -113,8 +113,8 @@ fivelab 2830000
 # #13071's GFX control: 818,675 bytes measured on macOS.
 # The fantasy HUD (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax; everglade/hud/): the portrait plate,
 # map ring, bar tray, side bar and menus, the phone studio, and plates that show only while their body
-# does: 891,386 bytes measured on top of that; about 3.2% headroom.
-everglade2 920000
+# does: 903,139 bytes measured on top of that (with the GFX plaque kept clear of the bar); about 3% headroom.
+everglade2 930000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1750000
