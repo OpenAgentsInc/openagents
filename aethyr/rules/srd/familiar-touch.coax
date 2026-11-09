@@ -30,7 +30,7 @@ rs_familiar_touch_ready :: (b:[]RsBattle,i:int,sp:int,origin:int)->bool #effects
   key:=rs_component_key(sp);
   if key == -1 || RS_SPELL_KEYS[key].range_kind!=SRD_RANGE_TOUCH { return false; }
   f:=b[0].c[origin];
-  return f.familiar_owner==i+1 && rs_capable(f) && !f.reacted && rs_feet_to(b,i,origin)/RS_SQUARE<=20;
+  return f.familiar_owner==i+1 && rs_capable(f) && !f.reacted && rs_familiar_in_link(b,i,origin);
 }
 
 #test "Touch delivery rejects unavailable familiars and preserves the caster's attack and spell DC" {

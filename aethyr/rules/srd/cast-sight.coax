@@ -61,11 +61,18 @@ rs_spell_sight :: (sp: int) -> int #effects(all) {
 // Whether caster i can choose creature j for spell sp.
 rs_cast_sees :: (b: [] RsBattle, i: int, j: int, sp: int) -> bool #effects(all) {
   if i < 0 || i >= b[0].n || j < 0 || j >= b[0].n { return false; }
+  form:=rs_spell_sight(sp);
+  if rs_creature_sight_from(b,i,j,form) { return true; }
+  return rs_creature_sight_from(b,rs_familiar_observer(b,i),j,form);
+}
+rs_creature_sight_from :: (b:[]RsBattle,i:int,j:int,form:int)->bool #effects(all) {
   hidden := j != i && rs_has(b[0].c[j], RS_INVISIBLE);
-  return rs_sight_admits(rs_spell_sight(sp), rs_has(b[0].c[i], RS_BLINDED), rs_has(b[0].c[i], RS_DEAFENED), hidden);
+  return rs_sight_admits(form, rs_has(b[0].c[i], RS_BLINDED), rs_has(b[0].c[i], RS_DEAFENED), hidden);
 }
 // Whether caster i can choose a point for spell sp ("a point you can see").
 rs_point_sees :: (b: [] RsBattle, i: int, sp: int) -> bool #effects(all) {
   if i < 0 || i >= b[0].n { return false; }
-  return rs_sight_admits(rs_spell_sight(sp), rs_has(b[0].c[i], RS_BLINDED), true, false);
+  form:=rs_spell_sight(sp);
+  observer:=rs_familiar_observer(b,i);
+  return rs_sight_admits(form, rs_has(b[0].c[i], RS_BLINDED) && rs_has(b[0].c[observer],RS_BLINDED), true, false);
 }

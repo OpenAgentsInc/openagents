@@ -834,8 +834,13 @@ Magic action returns a temporarily dismissed familiar within 30 feet.
 The shared casting path lets a familiar within 100 feet deliver Cure Wounds,
 Chill Touch and Inflict Wounds with its Reaction. Touch reach and cover use
 the familiar's position. The spell's resource costs and statistics come from
-the owner. Other eligible forms, commands, shared senses and world controls
-remain open. Familiar gear is not yet modeled.
+the owner. The shared command path admits telepathic orders within 100 feet
+or audible orders through a world fact. It routes steps through ordinary
+movement and Opportunity Attack resolution. A Bonus Action borrows sight
+and hearing until the owner's next turn. Casting sight checks can use either
+viewpoint. The represented forms expose their source darkvision range for
+world adapters. More eligible forms, familiar gear, and world controls,
+camera and audio integration remain open.
 
 The native witness passed the spell-slot path, attack refusal and Long Rest
 retirement. Scoped mutation runs killed 1,221 mutants with zero survivors
@@ -853,3 +858,7 @@ mutants with zero survivors. Experimental Wasm remained at 2,648,987 bytes.
 Touch delivery passed the casting target, workflow and class-kit suites and
 a native witness. The touch admission unit killed 25 mutants with zero
 survivors. Experimental Wasm built at 2,647,369 bytes.
+
+The shared familiar command and senses changes passed 434 casting workflow
+checks and a native witness. The three changed authority units killed 146
+mutants with zero survivors. Experimental Wasm built at 2,647,739 bytes.

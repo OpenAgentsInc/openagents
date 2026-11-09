@@ -1,0 +1,150 @@
+// Find Familiar, SRD 5.2.1 p.130. The familiar keeps its own turn.
+#authority;
+
+#test "Borrowed familiar senses spend one Bonus Action and end at the owner's next turn" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=26; b[0].h=26; b[0].dice[0].fixed=true;
+  i:=rs_add(b[..],rs_druid("Owner",0,2),1,1);
+  j:=rs_add(b[..],rs_fighter("Ally",0,1),2,2);
+  rs_fresh(b[..],i);
+  #assert rs_wild_companion(b[..],i,0,MON_CAT,2,1);
+  f:=rs_familiar_of(b[..],i);
+  c[i].cond=RS_BLINDED|RS_DEAFENED;
+  rs_place(b[..],f,21,21);
+  #assert rs_familiar_observer(b[..],i)==i && !rs_cast_sees(b[..],i,j,SP_HEALING_WORD);
+  #assert rs_familiar_borrow_senses(b[..],i) && b[0].turn.bonus && !c[i].reacted;
+  #assert rs_familiar_observer(b[..],i)==f && rs_familiar_darkvision(c[f])==60;
+  #assert rs_cast_sees(b[..],i,j,SP_HEALING_WORD) && rs_point_sees(b[..],i,SP_CALL_LIGHTNING);
+  c[f].cond=RS_BLINDED;
+  #assert !rs_cast_sees(b[..],i,j,SP_HEALING_WORD) && rs_cast_sees(b[..],i,j,SP_VICIOUS_MOCKERY);
+  c[f].cond|=RS_DEAFENED;
+  #assert !rs_cast_sees(b[..],i,j,SP_VICIOUS_MOCKERY);
+  c[f].cond=0;
+  #assert !rs_familiar_borrow_senses(b[..],i);
+  rs_start_turn(b[..],f);
+  #assert rs_familiar_observer(b[..],i)==f && !rs_familiar_borrow_senses(b[..],i);
+  rs_place(b[..],f,22,21);
+  #assert rs_familiar_observer(b[..],i)==i;
+  rs_place(b[..],f,21,22);
+  #assert rs_familiar_observer(b[..],i)==i;
+  rs_place(b[..],f,21,21);
+  rs_start_turn(b[..],i);
+  #assert rs_familiar_observer(b[..],i)==i && !b[0].turn.bonus;
+}
+
+#test "A command uses the familiar's turn and reaches it by telepathy or audible speech" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=26; b[0].h=26; b[0].dice[0].fixed=true;
+  f:=rs_add(b[..],rs_monster(MON_RAT,"Familiar",0),22,1);
+  i:=rs_add(b[..],rs_druid("Owner",0,2),1,1);
+  j:=rs_add(b[..],rs_fighter("Other",1,1),24,1);
+  c[f].familiar_owner=i+1;
+  rs_start_turn(b[..],i);
+  #assert rs_familiar_command_actor(b[..],i,true)==-1;
+  rs_start_turn(b[..],f);
+  #assert rs_familiar_command_actor(b[..],j,true)==-1 && rs_familiar_command_actor(b[..],i,false)==-1;
+  #assert rs_familiar_command_actor(b[..],i,true)==f;
+  c[f].cond=RS_BLINDED;
+  #assert rs_familiar_command_actor(b[..],i,true)==f;
+  c[f].cond=0;
+  c[i].speech_blocked=true;
+  #assert rs_familiar_command_actor(b[..],i,true)==-1;
+  c[i].speech_blocked=false; c[i].cond=RS_INCAPACITATED;
+  #assert rs_familiar_command_actor(b[..],i,true)==-1;
+  c[i].cond=0; c[i].speech_blocked=true;
+  choices:[1]RsOpportunityChoice;
+  rs_place(b[..],f,21,1);
+  #assert rs_familiar_command_actor(b[..],i,false)==f;
+  #assert rs_familiar_command_step(b[..],i,false,22,1,choices[0..<0]);
+  #assert rs_at(b[..],22,1)==f && rs_movement_left(b[..],f)==15;
+  c[i].speech_blocked=false; c[f].cond=RS_DEAFENED;
+  #assert rs_familiar_command_actor(b[..],i,true)==-1;
+  c[f].cond=0;
+  #assert rs_familiar_command_step(b[..],i,true,23,1,choices[0..<0]) && !rs_familiar_command_step(b[..],i,true,24,1,choices[0..<0]);
+  #assert rs_help_attack(b[..],rs_familiar_command_actor(b[..],i,true),j,true) && b[0].turn.action;
+}
+
+// Link distance is measured in whole five-foot squares, including diagonals.
+rs_familiar_in_link :: (b:[]RsBattle,owner:int,f:int)->bool #effects(all) {
+  return rs_up(b[0].c[f]) && rs_feet_to(b,owner,f)/RS_SQUARE<=20;
+}
+rs_familiar_borrow_senses :: (b:[]RsBattle,owner:int)->bool #effects(all) {
+  f:=rs_familiar_of(b,owner);
+  if f<0 || b[0].reaction_frame.on || !rs_bonus_free(b,owner) || !rs_familiar_in_link(b,owner,f) { return false; }
+  b[0].turn.bonus=true;
+  b[0].c[owner].familiar_sensing=true;
+  return true;
+}
+// Returns the owner when no shared viewpoint is available.
+rs_familiar_observer :: (b:[]RsBattle,owner:int)->int #effects(all) {
+  if owner<0 || owner>=b[0].n || !b[0].c[owner].familiar_sensing { return owner; }
+  f:=rs_familiar_of(b,owner);
+  return ifx f>=0 && rs_familiar_in_link(b,owner,f) then f else owner;
+}
+// Special sense distances for the currently represented forms, in feet.
+rs_familiar_darkvision :: (f:RsCreature)->int #effects(all) {
+  if f.familiar_form==MON_CAT { return 60; }
+  if f.familiar_form==MON_RAT || f.familiar_form==MON_SPIDER { return 30; }
+  return 0;
+}
+
+// A world may supply audible speech beyond the telepathic link. The actor
+// answers only on its own turn, using its own movement and actions.
+rs_familiar_command_actor :: (b:[]RsBattle,owner:int,heard:bool)->int #effects(all) {
+  f:=rs_familiar_of(b,owner);
+  if f<0 || b[0].reaction_frame.on || b[0].who!=f || !rs_can_act(b[0].c[f]) || !rs_up(b[0].c[owner]) { return -1; }
+  if rs_familiar_in_link(b,owner,f) || (heard && rs_capable(b[0].c[owner]) && !b[0].c[owner].speech_blocked && !rs_has(b[0].c[f],RS_DEAFENED)) { return f; }
+  return -1;
+}
+rs_familiar_command_step :: (b:[]RsBattle,owner:int,heard:bool,x:int,y:int,choices:[]RsOpportunityChoice)->bool #effects(all) {
+  f:=rs_familiar_command_actor(b,owner,heard);
+  return f>=0 && rs_step_reactions(b,f,x,y,choices);
+}
+
+#test "A restored familiar at actor zero can lend its senses while live and linked" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=24; b[0].h=24; b[0].dice[0].fixed=true;
+  f:=rs_add(b[..],rs_monster(MON_SPIDER,"Familiar",0),1,1);
+  i:=rs_add(b[..],rs_druid("Owner",0,2),2,1);
+  #assert f==0 && i==1;
+  c[f].familiar_owner=i+1; c[f].familiar_form=MON_SPIDER;
+  c[2]=c[i]; c[2].familiar_sensing=true;
+  #assert rs_familiar_darkvision(c[f])==30 && rs_familiar_darkvision(c[i])==0;
+  c[f].familiar_form=MON_RAT;
+  #assert rs_familiar_darkvision(c[f])==30;
+  b[0].c=c[0..<2];
+  #assert rs_familiar_observer(b[..],-1)==-1 && rs_familiar_observer(b[..],2)==2;
+  #assert !rs_familiar_borrow_senses(b[..],f);
+  rs_fresh(b[..],i);
+  b[0].reaction_frame.on=true;
+  #assert !rs_familiar_borrow_senses(b[..],i) && !b[0].turn.bonus;
+  b[0].reaction_frame.on=false;
+  rs_place(b[..],f,23,1);
+  #assert !rs_familiar_borrow_senses(b[..],i);
+  rs_place(b[..],f,1,1);
+  #assert rs_familiar_borrow_senses(b[..],i) && rs_familiar_observer(b[..],i)==f;
+  c[f].dead=true;
+  #assert rs_familiar_observer(b[..],i)==i;
+  c[f].dead=false; c[f].familiar_owner=0;
+  #assert rs_familiar_observer(b[..],i)==i;
+
+  c[f].familiar_owner=i+1;
+  rs_fresh(b[..],f);
+  b[0].reaction_frame.on=true;
+  #assert rs_familiar_command_actor(b[..],i,true)==-1;
+  b[0].reaction_frame.on=false;
+  c[f].cond=RS_INCAPACITATED;
+  #assert rs_familiar_command_actor(b[..],i,true)==-1;
+  c[f].cond=0; c[i].hp=0;
+  #assert rs_familiar_command_actor(b[..],i,true)==-1;
+}
+
+#test "A familiar's commanded departure resolves the selected Opportunity Attack" #steps 40000000 {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  i:=rs_add(b[..],rs_druid("Owner",0,2),3,4);
+  g:=rs_add(b[..],rs_guard("Guard",1),2,3);
+  rs_fresh(b[..],i);
+  #assert rs_wild_companion(b[..],i,0,MON_CAT,3,3);
+  f:=rs_familiar_of(b[..],i);
+  rs_start_turn(b[..],f);
+  choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=g,weapon=W_SPEAR,seen=true}];
+  #assert !rs_familiar_command_step(b[..],i,false,4,3,choices[..]);
+  #assert c[g].reacted && c[f].dead && c[f].x==-1 && !b[0].turn.moved;
+}

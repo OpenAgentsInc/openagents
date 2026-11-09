@@ -29,6 +29,8 @@
 #load "wild-shape.coax";
 #load "familiar.coax";
 #load "familiar-touch.coax";
+#load "familiar-senses.coax";
+
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
 #load "cast-self.coax";
@@ -1323,6 +1325,7 @@ rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
 // The start of i's turn: what has run out ends and a creature at 0 makes its
 // death saving throw. A Prone creature chooses later whether to stand or crawl.
 rs_start_turn :: (b: [] RsBattle, i: int) {
+  b[0].c[i].familiar_sensing = false;
   rs_seal_timing(b);
   rs_help_start_turn(b,i);
   rs_ready_start_turn(b,i);

@@ -7522,3 +7522,11 @@ A living, capable familiar within 100 feet can use its Reaction to deliver
 an executable Touch spell. The casting path checks reach and cover at the
 familiar. The owner supplies the spell, action, components, slot, attack
 modifier and save DC. A refused cast spends neither actor's resources.
+
+The owner can borrow a linked familiar's sight and hearing for one Bonus
+Action until the start of the owner's next turn. The shared casting sight
+checks can use either viewpoint, and world adapters can read the familiar's
+special-sense range. Commands can reach a familiar by telepathy within 100
+feet or through audible speech supplied by the world. An admitted command
+uses the familiar's own turn and shared movement, Opportunity Attack and
+action rules.

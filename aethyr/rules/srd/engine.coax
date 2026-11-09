@@ -300,6 +300,7 @@ RsCreature :: struct {
   cunning_rite: bool; own_luck: bool;   // Magical Cunning (a 1-minute rite, not in a battle), Dark One's Own Luck
   jack: bool; font: bool; discoveries: [2] int;   // Jack of All Trades (checks only), Font of Inspiration, Magical Discoveries
   companion: bool; resurgence: bool; resurged_slot: bool;
+  familiar_sensing:bool;     // owner borrows senses until the start of its next turn
   familiar_slot:int;        // reserved choice for the ongoing timed cast, paid on success
   familiar_owner:int;       // owner actor + 1, zero for other creatures
   familiar_form:int;
