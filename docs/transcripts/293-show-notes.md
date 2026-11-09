@@ -292,6 +292,10 @@ Render review cuts at 1080p, and capture headless.
 3. **Plots:** 16, in a 4 by 4 grid.
 4. **Voice:** the owner's own voice only, with no narrator.
 5. **Music:** a generated bed, as for Episode 290.
+6. **No Grid:** no Grid scenes anywhere in the video. Show original footage of
+   the game instead: above all Everglade II's forest path and its empty
+   clearing.
+7. **Riders:** a rider sits astride the mount, with no leg through its body.
 
 ## Production
 
@@ -314,21 +318,21 @@ The video follows Episode 292's format:
 
 | Beat (take time) | Shot | Status |
 | --- | --- | --- |
-| 0:00 Create Game button | The Grid turns into the glade | #13111. The draft uses Grid footage. |
-| 0:18 Engine, metaverse, tools | Everglade II, the Grid's gates, creation tools | Existing footage |
-| 0:30 Everglade title | The camera rises from the Character Create glade, then EVERGLADE | The draft uses the walk to the glade with the title overlaid. #13114 adds the keyed rise. |
+| 0:00 Create Game button | Everglade II: a slow glide down the forest path, then the empty clearing | Everglade II stages `path-fly`, `clearing-empty` (#13093) |
+| 0:18 Engine, metaverse, tools | Everglade II: the walk along the path | `zone-in`, then the `path-walk` stage (#13093) |
+| 0:30 Everglade title | The path walk, then EVERGLADE | `path-walk` (#13093); #13114 adds the keyed rise. The old walk recording's frame rate is too low to use. |
 | 0:45 SRD | A cast with the roll on screen | #13114. The draft uses the raid promo. |
 | 0:57 Housing | The hut rising | #13106 and #13107 |
-| 1:03 Dragonback | The rider on the dragon | #13113. The horse is on staging now. |
+| 1:03 Dragonback | The rider on the dragon | #13113. The horse comes back once the rider sits astride (#13113). |
 | 1:06 Destructible | The meteor on a house | Existing footage (Episode 290) |
 | 1:08 PvP | WANTED and the guards | Existing footage |
 | 1:10 Difficult | Death and retry | #13114 |
-| 1:32 The empty glade | The city clearing by the brook | #13093, then #13109 `city-empty` |
-| 1:45 Founder | Plots draw on | #13109 `founder` |
+| 1:32 The empty glade | The dragon over the town, then a walk out of the path into the empty clearing | `clearing-walk-in` (#13093) |
+| 1:45 Founder | The empty clearing, then plots draw on | `clearing-empty` (#13093), then #13109 `founder` |
 | 2:16 Housewright | Gathering, then the time-lapses; lower-third "Housewright" at 2:22 | #13110 (gathering), #13106, #13107, #13108 |
 | 2:29 "You want to play?" | The cat | #13112 |
 | 2:33 The city grows | The town time-lapse | #13109 `city-grows` |
-| 2:49 AI with taste | A realm changing; reference against the glade; art credits | #13114 |
+| 2:49 AI with taste | The path from the air, then the raid | `path-fly` (#13093) and the raid promo; #13114 adds the rest |
 | 3:08 Open source | The repository, a file, FORK | #13114 |
-| 3:25 The Verse, the link | The gate run; `everglade.world` | Existing footage, plus the link overlay |
+| 3:25 The Verse, the link | A walk into the clearing, then the clearing wide; `everglade.world` | `clearing-walk-in`, `clearing-empty` (#13093), plus the link overlay |
 | 3:46 The cat | A cat in the glade | #13112 |
