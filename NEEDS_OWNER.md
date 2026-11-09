@@ -345,11 +345,11 @@ one of yours with build on, with a real GPU and a page that draws.
 
 ## Verse OS V7: build and boot the image on a second machine (2026-11-02)
 
-Update: the image now builds and boots in QEMU to the running session in
-10.5 s from the kernel (docs/os/2026-11-02-verse-os.md, "Status"). What's
-left is a machine with a GPU, which a VM here does not have, to see the Grid
-on its screen. Building the image needs about 10 GB free on the build
-machine.
+Update (2026-11-09): the image boots in QEMU and draws the boot sequence and
+the Grid on the VM's screen (software Vulkan copied to the display), 16 s
+from power-on to the Grid (docs/os/2026-11-02-verse-os.md, "Status"). What's
+left is a real AMD or Intel machine, and your two choices below. Build with
+a `path:` flake reference (os/nix/README.md); it needs about 10 GB free.
 
 The image evaluates (`nix flake check ./os/nix`) and its realms package
 builds, but the disk itself was not built here, to keep the machine free for

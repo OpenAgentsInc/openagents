@@ -95,8 +95,8 @@ if [[ -x "$coax" ]]; then
     cp "$owner_header" "$out/RenderHost.h"
     (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/host/prepare-native-network.coax "$out" "$coax")
     mkdir -p "$out/render-native"
-    (cd "$root" && "$coax" c aethyr/render/native-texture.coax --library --header "$out/render-native/RenderTexture.h") > "$out/render-native/RenderTexture.c"
-    cp "$here/render-host.c" "$here/render-host.h" "$here/render-realm.c" "$here/render-realm.h" "$here/render-textures.c" "$here/render-textures.h" "$here/render-media.c" "$here/render-media.h" "$root/aethyr/render/tests/frame-input.h" "$out/render-native/"
+    (cd "$root" && "$coax" c aethyr/render/native-images.coax --library --header "$out/render-native/RenderTexture.h") > "$out/render-native/RenderTexture.c"
+    cp "$here/render-host.c" "$here/render-host.h" "$here/render-realm.c" "$here/render-realm.h" "$here/render-textures.c" "$here/render-textures.h" "$here/render-media.c" "$here/render-media.h" "$here/render-images.c" "$here/render-images.h" "$here/render-live-media.c" "$here/render-live-media.h" "$root/aethyr/render/tests/frame-input.h" "$out/render-native/"
     (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax "$render_profile" "$out/render" --coax "$coax")
     (cd "$root" && COAX="$coax" coax/web/tool.sh verse/native/render-package.coax --package "$out/render/render.json" --app "$realm" --profile "$render_profile" --output "$out/RenderIdentity.h")
     (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax --asset-table "$render_profile") > "$out/render-assets.pending.json"

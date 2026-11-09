@@ -52,10 +52,12 @@ vb_vendor :: (id: string) -> string {
   if w == "0x10de" { return "NVIDIA"; }
   if w == "0x1002" { return "AMD"; }
   if w == "0x8086" { return "Intel"; }
+  if w == "0x1af4" { return "Virtual GPU (virtio)"; }   // a VM's: the realm draws on a software Vulkan
   return "";
 }
 vb_trim :: (s: string) -> string { e := s.count; while e > 0 && (s[e - 1] == '\n' || s[e - 1] == ' ') { e -= 1; } return s[0..<e]; }
-#test "vendors" { #assert vb_vendor("0x10de\n") == "NVIDIA" && vb_vendor("0x1002") == "AMD" && vb_vendor("0x8086") == "Intel" && vb_vendor("0x1234") == ""; }
+#test "vendors" { #assert vb_vendor("0x10de\n") == "NVIDIA" && vb_vendor("0x1002") == "AMD" && vb_vendor("0x8086") == "Intel" && vb_vendor("0x1234") == "";
+  #assert vb_vendor("0x1af4\n") == "Virtual GPU (virtio)"; }
 // Links that are not the machine's own way out: loopback, containers' bridges, VPN tunnels.
 vb_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
 vb_virtual :: (e: string) -> bool {

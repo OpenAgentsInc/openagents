@@ -145,6 +145,8 @@ for realm in "${realms[@]}"; do
   # your hand as the pointer (os/verse-hands.coax), linked into vk-realm too
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-hands.coax --library --header "$ship/verse-hands.h") > "$ship/verse-hands.c"
   cp "$here"/vkhands.h "$ship/"
+  # the typed renderer's window session, as aethyr/host/emit-linux-world-shell.coax emits it
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/host/linux-window-session.coax --library --header "$ship/linux-window-session.h") > "$ship/linux-window-session.c"
   # the film profile (aethyr/film.coax, #13004): vk-realm's samples, jitter and lens
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/film.coax --library --header "$ship/film.h") > "$ship/film.c"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
@@ -222,14 +224,18 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
      read -r -a sources < sources
      renderer_units=(); link_flags=()
      if [ -f RenderIdentity.h ]; then
-       renderer_units=(render-host.c render-realm.c render-media.c render-textures.c RenderTexture.c)
+       renderer_units=(render-host.c render-realm.c render-media.c render-images.c render-live-media.c render-textures.c RenderTexture.c)
        flags=\"\$flags -ffunction-sections -fdata-sections\"; link_flags=(-Wl,--gc-sections)
      fi
      pids=()
-     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c wayland-input.c wayland-text.c film.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
+     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c wayland-input.c wayland-text.c film.c linux-window-session.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
      for pid in \"\${pids[@]}\"; do wait \$pid; done
      gcc \$flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o && gcc \$flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
      gcc \$flags -c ../wl/text-input-unstable-v3-protocol.c -o wl-text-input.o
+     # wayland-text and the realm both emit coax/lib/net/ws.coax: its copy in wayland-text.o is local
+     for o in *.o; do [ \$o = wayland-text.o ] || nm -g --defined-only --format=just-symbols \$o; done | sort -u > shared.syms
+     nm -g --defined-only --format=just-symbols wayland-text.o | sort -u | comm -12 - shared.syms > local.syms
+     objcopy --localize-symbols=local.syms wayland-text.o
      gcc \$flags \"\${link_flags[@]}\" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client xkbcommon) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client openssl xkbcommon) -lpthread -lvulkan -lm -o vk-realm
      cp ../net .) & realm_pids+=(\$!)
   done

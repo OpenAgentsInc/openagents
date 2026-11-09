@@ -29,9 +29,16 @@ typedef struct {
   // drawn over the frame after its blit, into the swapchain image (in TRANSFER_DST): the desk panel
   void (*overlay)(VkCommandBuffer cmd, VkImage dst, uint32_t w, uint32_t h, void *user);
   void *overlay_user;
+  // No surface (vkp_open with VK_NULL_HANDLE): the copy presenter. Each frame goes into one image of
+  // vkp's own, then into `shot`, and once the GPU is done `scanout` gets its pixels (B8G8R8A8, w*4 a
+  // row) to put on the screen itself: vkd.c's dumb buffers, on a card Vulkan cannot present to.
+  int (*scanout)(const void *px, uint32_t w, uint32_t h, void *user);
+  void *scanout_user;
+  VkDeviceMemory copy_memory;
 } Vkp;
 
-// A swapchain on the surface, sized by the surface or else w by h.
+// A swapchain on the surface, sized by the surface or else w by h; with no surface, the copy
+// presenter at w by h (set scanout before the first frame).
 void vkp_open(Vkc *v, Vkp *p, VkSurfaceKHR surface, uint32_t w, uint32_t h);
 void vkp_resize(Vkc *v, Vkp *p, uint32_t w, uint32_t h);
 // Waits for the last frame, so its vertices and push constants can change.

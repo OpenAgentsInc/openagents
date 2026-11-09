@@ -49,8 +49,14 @@ module runs is Coax (`os/`, `verse/`).
 ## The image (V7)
 
     REALM="newland verse everglade" verse/gpu/realm.sh local ship os/nix/ship
-    nix build ./os/nix#verse-realms                     # the realms, from os/nix/ship
-    nix build ./os/nix#nixosConfigurations.verse-os-image.config.system.build.image
+    nix build path:$PWD/os/nix#verse-realms             # the realms, from os/nix/ship
+    nix build path:$PWD/os/nix#nixosConfigurations.verse-os-image.config.system.build.image
+
+`path:` matters: a git flake leaves out the git-ignored `ship/` and builds the stand-in.
+The image needs no particular GPU: with no Vulkan driver that can take the
+screen (a VM, or a card whose driver lacks `VK_EXT_acquire_drm_display`), the
+realm draws on any Vulkan device, llvmpipe included, and copies each frame to
+the screen through DRM dumb buffers.
 
 The last builds the whole disk (several GB, a long build); run it on a
 machine that isn't doing anything else. Publishing versions for

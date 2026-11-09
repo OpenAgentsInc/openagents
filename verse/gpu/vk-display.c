@@ -77,6 +77,7 @@ int main(int argc, char **argv) {
   int plane = screen.plane;
   static Vkp p;
   vkp_open(&v, &p, screen.surface, extent.width, extent.height);
+  vkd_attach(&screen, &p);
   double period = screen.period;
 
   static Vkr r;

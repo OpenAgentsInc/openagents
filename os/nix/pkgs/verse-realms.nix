@@ -51,15 +51,19 @@ stdenv.mkDerivation {
        read -r -a sources < sources
        units=(); link=()
        if [ -f RenderIdentity.h ]; then
-         units=(render-host.c render-realm.c render-media.c render-textures.c RenderTexture.c)
+         units=(render-host.c render-realm.c render-media.c render-images.c render-live-media.c render-textures.c RenderTexture.c)
          flags="$flags -ffunction-sections -fdata-sections"; link=(-Wl,--gc-sections)
        fi
-       for s in "''${sources[@]}" "''${units[@]}" realm-host.c verse-panel.c verse-hands.c wayland-input.c wayland-text.c; do gcc $flags -c $s -o ''${s%.c}.o; done
+       for s in "''${sources[@]}" "''${units[@]}" realm-host.c verse-panel.c verse-hands.c wayland-input.c wayland-text.c film.c linux-window-session.c; do gcc $flags -c $s -o ''${s%.c}.o; done
        gcc $flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o
        gcc $flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
        gcc $flags -c ../wl/text-input-unstable-v3-protocol.c -o wl-text-input.o
+       # wayland-text and the realm both emit coax/lib/net/ws.coax: its copy in wayland-text.o is local
+       for o in *.o; do [ $o = wayland-text.o ] || nm -g --defined-only --format=just-symbols $o; done | sort -u > shared.syms
+       nm -g --defined-only --format=just-symbols wayland-text.o | sort -u | comm -12 - shared.syms > local.syms
+       objcopy --localize-symbols=local.syms wayland-text.o
        gcc $flags "''${link[@]}" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 -Ikms -I../wl $(pkg-config --cflags libdrm wayland-client xkbcommon) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o $math \
-         $(pkg-config --libs libdrm wayland-client xkbcommon) -lvulkan -lm -o vk-realm
+         $(pkg-config --libs libdrm wayland-client openssl xkbcommon) -lpthread -lvulkan -lm -o vk-realm
        cp ../net .)
     done
     runHook postBuild

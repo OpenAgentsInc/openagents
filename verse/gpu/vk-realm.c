@@ -692,6 +692,7 @@ int main(int argc, char **argv) {
     if (leave_to) vt_hold();
     vkd_open(&v, &screen, "vk-realm");
     vkp_open(&v, &p, screen.surface, screen.extent.width, screen.extent.height);
+    vkd_attach(&screen, &p);
     if (!w) { w = p.w; h = p.h; }
   }
   double t_open = now_s();

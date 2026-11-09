@@ -14,7 +14,28 @@ static double now_s(void) {
   return t.tv_sec + t.tv_nsec / 1e9;
 }
 
+// The copy presenter's one image, w by h, drawn into and read back each frame.
+static void make_copy_image(Vkc *v, Vkp *p, uint32_t w, uint32_t h) {
+  if (p->images[0]) { vkDestroyImage(v->dev, p->images[0], NULL); vkFreeMemory(v->dev, p->copy_memory, NULL); }
+  p->format = (VkSurfaceFormatKHR){VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+  VkImageCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = p->format.format,
+    .extent = {w, h, 1}, .mipLevels = 1, .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+    .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+  CHECK(vkCreateImage(v->dev, &ici, NULL, &p->images[0]));
+  VkMemoryRequirements req;
+  vkGetImageMemoryRequirements(v->dev, p->images[0], &req);
+  p->copy_memory = vkc_memory(v, req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  CHECK(vkBindImageMemory(v->dev, p->images[0], p->copy_memory, 0));
+  p->count = 1;
+  if (p->shot.buf) vkc_free(v, &p->shot);
+  p->shot = vkc_buffer(v, (VkDeviceSize)w * h * 4);
+  p->shot_ready = 0;
+  p->w = w;
+  p->h = h;
+}
+
 static void make_chain(Vkc *v, Vkp *p, uint32_t w, uint32_t h) {
+  if (!p->surface) { make_copy_image(v, p, w, h); return; }
   VkSurfaceCapabilitiesKHR caps;
   CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(v->gpu, p->surface, &caps));
   uint32_t nf = 0;
@@ -94,6 +115,7 @@ void vkp_wait(Vkc *v, Vkp *p) {
 
 int vkp_reserve(Vkc *v,Vkp *p){
   if(p->reserved)return 1;
+  if(!p->surface)return 1;  // the copy presenter waited for its last frame already
   VkResult ready=vkGetFenceStatus(v->dev,p->fence);
   if(ready==VK_NOT_READY)return 0;
   if(ready!=VK_SUCCESS)CHECK(ready);
@@ -120,8 +142,10 @@ static void barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout from, VkIm
 static int frame(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *user, VkImage src, uint32_t w, uint32_t h,
                  VkImageLayout layout, VkPipelineStageFlags stage, VkAccessFlags access, VkFilter filter, void (*before)(void *), void *arg) {
   double t0 = now_s();
-  uint32_t image;
-  if(p->reserved){image=p->reserved_image;p->reserved=0;}
+  uint32_t image = 0;
+  int copy = !p->surface;
+  if (copy) {}
+  else if(p->reserved){image=p->reserved_image;p->reserved=0;}
   else {
     VkResult got = vkAcquireNextImageKHR(v->dev, p->chain, UINT64_MAX, p->acquired, VK_NULL_HANDLE, &image);
     p->acquiring = now_s() - t0;
@@ -148,7 +172,8 @@ static int frame(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *
   if (p->overlay) p->overlay(cmd, dst, p->w, p->h, p->overlay_user);
   VkImageLayout last = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   VkAccessFlags last_access = VK_ACCESS_TRANSFER_WRITE_BIT;
-  if (p->shoot == 1 && p->shot.buf) {
+  int shooting = p->shoot == 1;
+  if ((shooting || copy) && p->shot.buf) {
     // The image about to be presented, into the shot buffer.
     barrier(cmd, dst, last, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, last_access, VK_ACCESS_TRANSFER_READ_BIT,
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -158,7 +183,19 @@ static int frame(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, &host, 0, NULL, 0, NULL);
     last = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     last_access = VK_ACCESS_TRANSFER_READ_BIT;
-    p->shoot = 2;
+    if (shooting) p->shoot = 2;
+  }
+  if (copy) {
+    // no swapchain: wait for the frame, then the pixels go to the screen through scanout
+    CHECK(vkEndCommandBuffer(cmd));
+    VkSubmitInfo si = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .commandBufferCount = 1, .pCommandBuffers = &cmd};
+    CHECK(vkQueueSubmit(v->queue, 1, &si, p->fence));
+    if (before) before(arg);
+    double t = now_s();
+    CHECK(vkWaitForFences(v->dev, 1, &p->fence, VK_TRUE, UINT64_MAX));
+    p->waited = now_s() - t;
+    if (p->scanout) p->scanout(p->shot.map, p->w, p->h, p->scanout_user);
+    return 0;
   }
   barrier(cmd, dst, last, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, last_access, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
   CHECK(vkEndCommandBuffer(cmd));
@@ -201,5 +238,6 @@ void vkp_close(Vkc *v, Vkp *p) {
   vkDestroyCommandPool(v->dev, p->pool, NULL);
   for (uint32_t i = 0; i < p->count; i++) vkDestroySemaphore(v->dev, p->done[i], NULL);
   if (p->shot.buf) vkc_free(v, &p->shot);
-  vkDestroySwapchainKHR(v->dev, p->chain, NULL);
+  if (p->chain) vkDestroySwapchainKHR(v->dev, p->chain, NULL);
+  if (!p->surface && p->images[0]) { vkDestroyImage(v->dev, p->images[0], NULL); vkFreeMemory(v->dev, p->copy_memory, NULL); }
 }
