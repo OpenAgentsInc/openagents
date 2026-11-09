@@ -1347,19 +1347,21 @@ dr_raid_kit_ready :: (c: [] Cdp, whole: int) -> bool {
 // session's route (dr_script) does, then down the road, steered into the gate's opening by the page's
 // own position (its x within 0.8 to 2.2 m, the session's lane through the arch), to 58.3 m south.
 dr_walk_key :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) { _ := dr_press(c, down, key, code, vk, false); }
-// The keys from (x, z) mm into the South Gate's lane (x 0.8 to 2.2 m) and through it (bit 0 W, 2 A,
-// 3 D): south only in the lane, or while still 7 m and more short of the palisade (z -56 m), so a
-// page off the lane strafes into it rather than walk into a gate post.
+// The keys from (x, z) mm into the South Gate's lane (x 0.8 to 2.2 m) and through it (bit 0 W, 1 S,
+// 2 A, 3 D): south only in the lane, or while still 7 m and more short of the palisade (z -56 m). Off
+// the lane nearer than 5 m it backs off north as it strafes, clear of the gate towers' fronts, as the
+// paired session's route does (dr_script), rather than strafe into a tower.
 dr_gate_keys :: (x: int, z: int) -> int {
   k := ifx x < 800 then 8 else (ifx x > 2200 then 4 else 0);
-  if k == 0 || z > -49000 { k |= 1; }
+  if k == 0 || z > -49000 { k |= 1; } else if z < -51000 { k |= 2; }
   return k;
 }
-#test "the raid page's walk strafes into the gate's lane before the palisade, never into a post (#13070)" {
+#test "the raid page's walk strafes into the gate's lane before the palisade, never into a tower (#13070)" {
   #assert dr_gate_keys(-5680, -40420) == (1 | 8);   // far from the wall: south and east
-  #assert dr_gate_keys(-6300, -55300) == 8;         // at the post: east only
+  #assert dr_gate_keys(-6300, -55050) == (2 | 8);   // at the west tower: back off north, east
+  #assert dr_gate_keys(-3000, -50000) == 8;         // clear of the towers: east only
   #assert dr_gate_keys(1500, -55300) == 1;          // in the lane: south
-  #assert dr_gate_keys(4000, -52000) == 4;
+  #assert dr_gate_keys(4000, -52000) == (2 | 4);
 }
 dr_raid_walk :: (c: [] Cdp) -> bool {
   if !dr_face_north(c) { tool_errln("everglade-drift: the raid page's camera didn't face the road"); return false; }
