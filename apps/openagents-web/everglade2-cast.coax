@@ -108,7 +108,34 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
 e2k_bearing :: (s: [] E2) -> DeedBearing {
   row := e2n_vitals(s[0].net[..]);
   if row.id < 0 { return DeedBearing.{}; }
+  return e2k_bearing_row(row);
+}
+// Any player's bearing from the room's row of them (yours, or another's body as the room has it).
+e2k_bearing_row :: (row: WireS) -> DeedBearing {
   return rs_bearing_of(row.hp, (row.g & WG_DEAD) != 0, row.cond & 32767, (row.cond & WC_HALTED) != 0, false);
+}
+// Each frame: once your bearing stops your actions (Unconscious at 0 Hit Points, Stunned...), what you
+// had going stops with it: your cast's clip on your body ends, a drawn bow is let down, an armed area
+// is dropped. Nothing new starts (deed_ask refuses while locked).
+e2k_lock_step :: (s: [] E2) {
+  k := s[0].casts[..];
+  locked := !deed_can_act(e2k_bearing(s));
+  if locked && !k[0].locked {
+    k[0].me[0] = E2kAct.{}; k[0].stopped += 1; _ := aa.area_aim_cancel(k[0].area[..]);
+    m := s[0].mouse[..]; if m[0].draw[0].on { bow.bow_cancel(m[0].draw[..]); m[0].cancels += 1; }
+  }
+  k[0].locked = locked;
+}
+// The plain line while you are down: centred over the bar, the Death Saving Throws as the room rolls
+// them (aethyr/rules/srd/death-save-line.coax).
+e2k_down_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+  if !e2k_on(s) { return at; }
+  row := e2n_vitals(s[0].net[..]);
+  if row.id < 0 { return at; }
+  line: [64] u8; ln := rs_death_line(rs_death_saves(row.hp, (row.g & WG_DEAD) != 0, row.p2), line[..]);
+  if ln == 0 { return at; }
+  kk := s[0].k; cap := 14 * kk; w := s[0].width;
+  return cc.text(out, at, cast(string) line[0..<ln], (w - f32(ln) * cap * 0.55) / 2, s[0].height * 0.38, cap, cc.ink(kk, 1, 0.5, 0.42));
 }
 // Whether slot i can go now (a held action, such as the bow's draw, asks before it starts): a no from
 // your bearing greys the slot.
@@ -175,6 +202,7 @@ e2k_step :: (s: [] E2) {
   // the room took it: it plays now
   if n[0].cast_mine != k[0].mine_heard { k[0].mine_heard = n[0].cast_mine; e2k_taken(s, n[0].mine_cast); }
   deed_expire(k[0].deeds[..], tick);
+  e2k_lock_step(s);
   while true {
     e := e2n_cast_due(n, n[0].rt);
     if !e.live { break; }

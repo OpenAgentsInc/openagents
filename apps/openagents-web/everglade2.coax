@@ -332,6 +332,8 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   if h != 0 { s[0].autowalk = false; }
   // asleep, as the room's rules hold you: your keys move nothing until you wake (WATCH, END)
   if e2n_asleep(s[0].net[..]) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
+  // down, or held by a condition (your bearing, aethyr/rules/srd/condition-bearing.coax): your keys move nothing, as the room steps you
+  if !deed_can_move(e2k_bearing(s)) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
   return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift, jump = h & HOLD_JUMP != 0,
                    theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
 }
@@ -1528,6 +1530,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   // your character: the look Character Create saved, walking as the controller moves you
   a := s[0].anim[..];
   a[0].on = true; a[0].x = s[0].you_x; a[0].z = s[0].you_z; a[0].y = s[0].you_y; a[0].yaw = e2_show_face(s); a[0].own = true;
+  if !e2c_creating(s) { e2_fall(a, e2k_bearing(s), s[0].clock); }   // down at 0 Hit Points: you fall and lie Prone
   bdt := ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32;
   figs.bd_step(a, s[0].clock, bdt);
   b[0].now = s[0].clock;
@@ -1929,6 +1932,8 @@ e2_remote_body :: (s: [] E2, r: E2Remote, slot: int, at: E2Drawn, bdt: f32) -> E
   a := s[0].ranim[slot..<slot + 1];
   ground := e2_height(r.x, r.z);
   a[0].x = r.x; a[0].z = r.z; a[0].y = ground + r.y; a[0].yaw = r.yaw; a[0].own = false;
+  row := wire_mirror_of(s[0].net[0].mir[..], r.seat);
+  if row.id == r.seat && row.kind == WK_PLAYER { e2_fall(a, e2k_bearing_row(row), s[0].clock); }   // theirs as the room has them
   figs.bd_step(a, s[0].clock, bdt);
   air := r.y > f32(E2_AIRBORNE);
   if air && !s[0].rair[slot] { s[0].rair_at[slot] = s[0].clock; }

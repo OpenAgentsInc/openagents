@@ -15,6 +15,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "../../aethyr/rules/srd/battle.coax";
 #load "fivebar.coax";
+#load "../../aethyr/rules/srd/death-save-line.coax";   // at 0 Hit Points: the Death Saving Throws on a row and the plain line, every realm
 
 XC_SLOTS :: 24;
 XC_COOL :: 1.0;                // seconds between presses

@@ -1,0 +1,52 @@
+// The Death Saving Throws a creature at 0 Hit Points has rolled, as a realm says them (Everglade II, and
+// any later one): the word a room puts on a player's row, and the plain line the page shows.
+// At 0 Hit Points a creature is Unconscious (SRD 5.2.1 p.17 "Dropping to 0 Hit Points"; Unconscious,
+// p.191), rolls Death Saving Throws until three successes (Stable, still Unconscious) or three failures
+// (dead), and gets up only once it regains Hit Points. The body's pose and the locks on its input come
+// from its bearing (condition-bearing.coax rs_bearing, aethyr/action/deed.coax); this is only the saves.
+// Its loader has the rules (battle.coax): class-kit.coax loads it for Everglade's zones and room.
+//   coax/bin/coax test apps/openagents-web/everglade2.coax --only "death save line"
+
+// The saves as a page holds them: from a creature's Hit Points, death and its row's word.
+RsDeathSaves :: struct {
+  down: bool;     // at 0 Hit Points and alive: dying or Stable
+  dead: bool;
+  stable: bool;   // three successes: no more saves, still down
+  ok: int; fail: int;   // the Death Saving Throws so far (0 to 3 each)
+}
+// The saves on a wire row's word (a room's player row, everglade-wire.coax WireS P2): 0 none said.
+RS_DEATH_SAID :: 32;
+rs_death_word :: (c: RsCreature) -> int {
+  return RS_DEATH_SAID + rs_clamp_save(c.death_ok) + rs_clamp_save(c.death_fail) * 4 + (ifx c.stable then 16 else 0);
+}
+rs_clamp_save :: (v: int) -> int { return ifx v < 0 then 0 else ifx v > 3 then 3 else v; }
+rs_death_saves :: (hp: int, dead: bool, word: int) -> RsDeathSaves {
+  v: RsDeathSaves; v.dead = dead; v.down = !dead && hp <= 0;
+  if v.down && (word & RS_DEATH_SAID) != 0 { v.ok = word & 3; v.fail = (word >> 2) & 3; v.stable = (word & 16) != 0; }
+  return v;
+}
+// The plain line a realm shows while you are down or dead (empty when you are neither).
+rs_death_line :: (v: RsDeathSaves, out: [] u8) -> int {
+  if v.dead { return rs_death_put(out, 0, "You are dead"); }
+  if !v.down { return 0; }
+  n := rs_death_put(out, 0, "You are down");
+  if v.stable { return rs_death_put(out, n, " · stable until healed"); }
+  n = rs_death_put(out, n, " · death saves: ");
+  n = rs_death_digit(out, n, v.ok); n = rs_death_put(out, n, " saved, ");
+  n = rs_death_digit(out, n, v.fail); n = rs_death_put(out, n, " failed");
+  return n;
+}
+rs_death_put :: (out: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < out.count { out[n] = ch; n += 1; } } return n; }
+rs_death_digit :: (out: [] u8, at: int, d: int) -> int { if at >= out.count { return at; } out[at] = cast(u8)(48 + rs_clamp_save(d)); return at + 1; }
+
+#test "death save line: the saves go on a row's word and come back; the line is plain; up or dead has no saves" {
+  c: RsCreature; c.hp = 0; c.death_ok = 2; c.death_fail = 1;
+  w := rs_death_word(c); d := rs_death_saves(0, false, w);
+  #assert d.down && d.ok == 2 && d.fail == 1 && !d.stable;
+  #assert rs_death_saves(0, false, 0).ok == 0 && rs_death_saves(5, false, w).ok == 0;
+  out: [64] u8; n := rs_death_line(d, out[..]);
+  #assert cast(string) out[0..<n] == "You are down · death saves: 2 saved, 1 failed";
+  c.stable = true; n = rs_death_line(rs_death_saves(0, false, rs_death_word(c)), out[..]); #assert cast(string) out[0..<n] == "You are down · stable until healed";
+  n = rs_death_line(rs_death_saves(0, true, 0), out[..]); #assert cast(string) out[0..<n] == "You are dead";
+  #assert rs_death_line(rs_death_saves(3, false, 0), out[..]) == 0;
+}

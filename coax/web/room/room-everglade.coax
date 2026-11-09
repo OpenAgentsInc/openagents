@@ -1454,7 +1454,8 @@ eg_table :: (v: [] RmServer, k: int) {
     if other[0].cut { wire_hist_cut(h, q); rm[0].seat[q].cut = false; }
     wire_hist_put(h, q, WireS.{id = q, kind = WK_PLAYER, x = p.x, y = p.y, z = p.z, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, g = g, clip = p.clip,
                                hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other[0].wcond,
-                               owner = q, carry = f32(p.carry) / 10000.0}, wire_rel(WK_PLAYER), true, false);
+                               owner = q, carry = f32(p.carry) / 10000.0,
+                               p2 = ifx rm[0].e2 then rs_death_word(rm[0].rules[0].b[0].c[E5RR_SEAT + q]) else 0}, wire_rel(WK_PLAYER), true, false);   // Everglade II: the Death Saving Throws (aethyr/rules/srd/down-view.coax)
     a := q * EG_ENT;
     tq := eg_ticket(v, k, SeatId.{value = q});
     n := wire_put_n(rm[0].cn[a..<a + EG_ENT], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other[0].look_n > 0 then cast(string) other[0].look[0..<other[0].look_n] else "ranger.0.0.0",
