@@ -65,3 +65,131 @@ cm_draw :: (out: [] f32, at: int, top: f32, open: bool, k: f32, klass: int, leve
   n = cc.text(out, n, ifx knockout then "KNOCK OUT: ON" else "KNOCK OUT", ko.x0, ko.y0 + 16 * k, 8 * k, ifx knockout then gold else body);
   return n;
 }
+
+// ---- the compact picker (Everglade Experimental, #13092): touch-sized buttons in the realm's HUD
+// style, the twelve classes as a grid and LEVEL beside its header when it fits, rest and knock-out on
+// the side bar (everglade/hud/class-bar.coax). A world places it in the room it has (x0, y0, wide:
+// device px) and gives the lowest it may reach (foot); the grid takes as many columns as it needs to
+// stay over that foot. The wild-shape row (a Druid's form swap) sits under it while one is due.
+CM_WILD :: 6;                       // a wild-shape box (0 the known form, 1 the new, 2 REPLACE)
+CM_TOGGLE_W :: 112.0; CM_LABEL_W :: 66.0; CM_CLASS_MIN :: 66.0; CM_PAD :: 8.0; CM_SAY :: 18.0;
+CmPick :: struct { x0: f32; y0: f32; wide: f32; t: f32; lw: f32; lab: f32; gap: f32; cols: int; cw: f32; beside: bool; open: bool; wild: bool; k: f32; }
+// A button's height: a finger's (44 CSS px) on a phone or a tablet, 28 on a desktop's page.
+cm_pick_t :: (w: f32, h: f32, k: f32) -> f32 { return ifx w >= 1280 * k && h >= 700 * k then 28 * k else 44 * k; }
+cm_pick_head :: (p: CmPick) -> f32 { return ifx p.beside then p.t else 2 * p.t + p.gap; }
+cm_pick_rows :: (p: CmPick) -> int { return ifx p.open then (CM_CLASSES + p.cols - 1) / p.cols else 0; }
+// Its height, device px, panel padding included.
+cm_pick_height :: (p: CmPick) -> f32 {
+  r := cm_pick_rows(p); hh := 2 * CM_PAD * p.k + cm_pick_head(p);
+  if r > 0 { hh += p.gap + f32(r) * p.t + f32(r - 1) * p.gap; }
+  if p.wild { hh += p.gap + CM_SAY * p.k + p.t; }
+  return hh;
+}
+cm_pick :: (x0: f32, y0: f32, wide: f32, foot: f32, open: bool, wild: bool, w: f32, h: f32, k: f32) -> CmPick {
+  p := CmPick.{x0 = x0, y0 = y0, wide = wide, t = cm_pick_t(w, h, k), gap = 6 * k, open = open, wild = wild, k = k};
+  p.lw = ifx p.t > 34 * k then p.t else 34 * k;
+  inner := wide - 2 * CM_PAD * k; levels := 6 * p.lw + 5 * p.gap;
+  // LEVEL beside CLASSES with its word; where only the buttons fit, they read "LV 1" and it goes;
+  // else on a line of its own
+  p.lab = CM_LABEL_W * k;
+  p.beside = CM_TOGGLE_W * k + p.gap + p.lab + levels <= inner;
+  if !p.beside && CM_TOGGLE_W * k + p.gap + levels <= inner { p.beside = true; p.lab = 0; }
+  if !p.beside && p.lab + levels > inner { p.lab = 0; }
+  // the fewest columns that keep the grid over the foot, each at least CM_CLASS_MIN wide
+  most := cast(int) floor((inner + p.gap) / (CM_CLASS_MIN * k + p.gap)); if most < 1 { most = 1; } if most > 6 { most = 6; }
+  p.cols = ifx most < 3 then most else 3;
+  while p.cols < most && y0 + cm_pick_height(p) > foot { p.cols += 1; }
+  p.cw = (inner - f32(p.cols - 1) * p.gap) / f32(p.cols);
+  return p;
+}
+cm_pick_panel :: (p: CmPick) -> cc.Box { return cc.Box.{x0 = p.x0, y0 = p.y0, x1 = p.x0 + p.wide, y1 = p.y0 + cm_pick_height(p)}; }
+cm_pick_box :: (p: CmPick, kind: int, i: int) -> cc.Box {
+  k := p.k; x := p.x0 + CM_PAD * k; y := p.y0 + CM_PAD * k;
+  if kind == CM_TOGGLE { return cc.Box.{x0 = x, y0 = y, x1 = x + CM_TOGGLE_W * k, y1 = y + p.t}; }
+  if kind == CM_LEVEL {
+    lx := ifx p.beside then x + CM_TOGGLE_W * k + p.gap + p.lab else x + p.lab;
+    ly := ifx p.beside then y else y + p.t + p.gap;
+    bx := lx + f32(i - 1) * (p.lw + p.gap); return cc.Box.{x0 = bx, y0 = ly, x1 = bx + p.lw, y1 = ly + p.t};
+  }
+  gy := y + cm_pick_head(p) + p.gap;
+  if kind == CM_CLASS {
+    if !p.open || i < 0 || i >= CM_CLASSES { return cc.Box.{}; }
+    c := i % p.cols; r := i / p.cols; bx := x + f32(c) * (p.cw + p.gap); by := gy + f32(r) * (p.t + p.gap);
+    return cc.Box.{x0 = bx, y0 = by, x1 = bx + p.cw, y1 = by + p.t};
+  }
+  if kind == CM_WILD {
+    if !p.wild { return cc.Box.{}; }
+    r := cm_pick_rows(p); wy := gy + (ifx r > 0 then f32(r) * (p.t + p.gap) else 0) + CM_SAY * k;
+    ww := ((p.wide - 2 * CM_PAD * k) - 2 * p.gap) / 3; bx := x + f32(i) * (ww + p.gap);
+    return cc.Box.{x0 = bx, y0 = wy, x1 = bx + ww, y1 = wy + p.t};
+  }
+  return cc.Box.{};
+}
+cm_pick_hit :: (p: CmPick, px: f32, py: f32) -> CmHit {
+  if !cm_in(cm_pick_panel(p), px, py) { return CmHit.{}; }
+  if cm_in(cm_pick_box(p, CM_TOGGLE, 0), px, py) { return CmHit.{kind = CM_TOGGLE}; }
+  for l: 1..<CM_LEVELS + 1 { if cm_in(cm_pick_box(p, CM_LEVEL, l), px, py) { return CmHit.{kind = CM_LEVEL, index = l}; } }
+  for c: 0..<CM_CLASSES { if cm_in(cm_pick_box(p, CM_CLASS, c), px, py) { return CmHit.{kind = CM_CLASS, index = c}; } }
+  for i: 0..<3 { if cm_in(cm_pick_box(p, CM_WILD, i), px, py) { return CmHit.{kind = CM_WILD, index = i}; } }
+  return CmHit.{kind = CM_NONE, index = -1};   // inside its panel: taken, nothing chosen
+}
+cm_prim :: (b: cc.Box) -> cc.HudPrim { return cc.hud_box(b.x0, b.y0, b.x1, b.y1); }
+// A label sized to its box: the cap, smaller while it is wider than the box.
+cm_fit :: (t: string, cap: f32, room: f32) -> f32 { w := cc.face_width(t, cap, cc.HUD_FACE_TITLE); return ifx w > room && w > 0 then cap * room / w else cap; }
+// Draw it in the realm's HUD style (charactercreator.coax hud_draw): a panel, a button each, yours lit.
+// wild_say heads the wild-shape row and wild holds its three buttons' words.
+cm_pick_draw :: (out: [] f32, at: int, p: CmPick, klass: int, level: int, hover: CmHit, wild_say: string, wild: [3] string) -> int {
+  k := p.k; t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; cap := 9 * k;
+  cc.hud_panel(l[..], t, cm_prim(cm_pick_panel(p)), k);
+  tb := cm_pick_box(p, CM_TOGGLE, 0);
+  cc.hud_button(l[..], t, cm_prim(tb), k, hover.kind == CM_TOGGLE);
+  cc.hud_word(ws[..], ifx p.open then "CLASSES  -" else "CLASSES  +", (tb.x0 + tb.x1) * 0.5, (tb.y0 + tb.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, true);
+  l1 := cm_pick_box(p, CM_LEVEL, 1);
+  if p.lab > 0 { cc.hud_word(ws[..], "LEVEL", l1.x0 - p.lab * 0.5, (l1.y0 + l1.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, true); }
+  for lv: 1..<CM_LEVELS + 1 {
+    b := cm_pick_box(p, CM_LEVEL, lv); digit: [4] u8; digit[0] = 'L'; digit[1] = 'V'; digit[2] = ' '; digit[3] = cast(u8) (48 + lv);
+    word := ifx p.lab > 0 then cast(string) digit[3..<4] else cast(string) digit[..];
+    fc := cm_fit(word, cap, b.x1 - b.x0 - 6 * k);
+    cc.hud_button(l[..], t, cm_prim(b), k, lv == level || (hover.kind == CM_LEVEL && hover.index == lv));
+    cc.hud_word(ws[..], word, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fc * 0.5, fc, cc.HUD_TEXT_TITLE, true);
+  }
+  if p.open {
+    nb: [24] u8;
+    for c: 0..<CM_CLASSES {
+      b := cm_pick_box(p, CM_CLASS, c); name := cc.eg_title(nb[..], XC_CL_UP[c]);
+      cc.hud_button(l[..], t, cm_prim(b), k, c == klass || (hover.kind == CM_CLASS && hover.index == c));
+      fc := cm_fit(name, cap, b.x1 - b.x0 - 10 * k);
+      cc.hud_word(ws[..], name, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fc * 0.5, fc, cc.HUD_TEXT_TITLE, true);
+    }
+  }
+  if p.wild {
+    w0 := cm_pick_box(p, CM_WILD, 0);
+    cc.hud_word(ws[..], wild_say, w0.x0, w0.y0 - 6 * k, 8 * k, cc.HUD_TEXT_TITLE, false);
+    for i: 0..<3 {
+      b := cm_pick_box(p, CM_WILD, i);
+      cc.hud_button(l[..], t, cm_prim(b), k, hover.kind == CM_WILD && hover.index == i);
+      fc := cm_fit(wild[i], cap, b.x1 - b.x0 - 10 * k);
+      cc.hud_word(ws[..], wild[i], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fc * 0.5, fc, cc.HUD_TEXT_TITLE, true);
+    }
+  }
+  return cc.hud_draw(out, at, l[..], ws[..], 1, k);
+}
+#test "class menu: the compact picker's buttons are a finger tall on a phone and stay inside its panel and over its foot" {
+  for v: 0..<3 {
+    w := ifx v == 0 then 1170.0f32 else ifx v == 1 then 2532.0f32 else 1920.0f32;
+    h := ifx v == 0 then 2532.0f32 else ifx v == 1 then 1170.0f32 else 1080.0f32;
+    k := ifx v == 2 then 1.0f32 else 3.0f32;
+    wide := ifx v == 1 then 470 * k else ifx v == 0 then w - 24 * k else 346 * k;
+    foot := ifx v == 1 then 250 * k else h - 200 * k;
+    p := cm_pick(12 * k, 20 * k, wide, foot, true, v != 1, w, h, k);
+    #assert p.t >= (ifx v == 2 then 28 * k else 44 * k) - 0.01;
+    #assert p.y0 + cm_pick_height(p) <= foot;
+    pb := cm_pick_panel(p);
+    for c: 0..<CM_CLASSES {
+      b := cm_pick_box(p, CM_CLASS, c); #assert b.x0 >= pb.x0 && b.x1 <= pb.x1 + 0.01 && b.y1 <= pb.y1 + 0.01;
+      #assert cm_pick_hit(p, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5).kind == CM_CLASS && cm_pick_hit(p, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5).index == c;
+    }
+    for lv: 1..<CM_LEVELS + 1 { b := cm_pick_box(p, CM_LEVEL, lv); #assert b.x1 <= pb.x1 + 0.01 && b.x1 - b.x0 >= 34 * k - 0.01; }
+    if p.wild { for i: 0..<3 { b := cm_pick_box(p, CM_WILD, i); #assert b.y1 <= pb.y1 + 0.01 && cm_pick_hit(p, b.x0 + 2, b.y0 + 2).kind == CM_WILD; } }
+  }
+}

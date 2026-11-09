@@ -12,8 +12,10 @@ EgBarFacts :: struct {
   pet: bool; wizard: bool; druid: bool;          // a companion or familiar to call, and whose
   form: string; spirit: int; paid_slot: bool;    // its form's name, the familiar's spirit (0 fey, 1 celestial, 2 fiend), paid with a slot
   rest: [4] int; rest_n: int; resting: bool;     // the rest choices, and whether a rest is under way
+  rest_say: string;                              // how the rest stands, on its button ("" just REST)
+  knock: int = -1;                               // knocking out with melee blows (SRD p.17): -1 not offered, 0 off, 1 on
 }
-EG_SIDE_KIT :: 0; EG_SIDE_PET :: 1; EG_SIDE_REST :: 2;
+EG_SIDE_KIT :: 0; EG_SIDE_PET :: 1; EG_SIDE_REST :: 2; EG_SIDE_KNOCK :: 3; EG_SIDE_N :: 4;
 // A menu row's action: the companion's (summon, form, spirit, how it is paid, the orders 1 to 4 and
 // 6, Cure Wounds through it) and rest's (choice j)
 EG_DO_SUMMON :: 1; EG_DO_FORM :: 2; EG_DO_SPIRIT :: 3; EG_DO_PAY :: 4; EG_DO_ORDER :: 10; EG_DO_CURE :: 15; EG_DO_REST :: 20;
@@ -32,17 +34,21 @@ eg_side_items :: (f: EgBarFacts, ids: [] int) -> int {
   n := 0;
   if f.kit { ids[n] = EG_SIDE_KIT; n += 1; }
   if f.pet { ids[n] = EG_SIDE_PET; n += 1; }
-  if f.rest_n > 0 { ids[n] = EG_SIDE_REST; n += 1; }
+  if f.rest_n > 0 || f.rest_say.count > 0 { ids[n] = EG_SIDE_REST; n += 1; }
+  if f.knock >= 0 { ids[n] = EG_SIDE_KNOCK; n += 1; }
   return n;
 }
 eg_side_label :: (f: EgBarFacts, id: int, b: [] u8) -> int {
   if id == EG_SIDE_KIT { n := eg_put_s(b, 0, "HEALER'S KIT"); if f.aid_left >= 0 { n = eg_put_s(b, n, " · "); n = eg_int_s(b, n, f.aid_left); } return n; }
   if id == EG_SIDE_PET { return eg_caps_s(b, eg_put_s(b, 0, ifx f.wizard then "FAMILIAR · " else "WILD COMPANION · "), f.form); }
-  return eg_put_s(b, 0, "REST");
+  if id == EG_SIDE_KNOCK { return eg_put_s(b, 0, ifx f.knock > 0 then "KNOCK OUT · ON" else "KNOCK OUT"); }
+  return eg_put_s(b, 0, ifx f.rest_say.count > 0 then f.rest_say else "REST");
 }
 eg_side_tip :: (f: EgBarFacts, id: int) -> string {
   if id == EG_SIDE_KIT { return "Stabilize a dying ally beside you"; }
   if id == EG_SIDE_PET { return ifx f.wizard then "Find Familiar: cast it, pick its form, give it orders" else "Wild Companion: summon it, pick its form, give it orders"; }
+  if id == EG_SIDE_KNOCK { return ifx f.knock > 0 then "Your melee blows leave a foe at 1 HP, unconscious" else "Knock foes out with melee blows instead of killing"; }
+  if f.rest_n == 0 { return "You can't rest now"; }
   return ifx f.resting then "Choose how your rest goes on" else "Take a short or a long rest";
 }
 eg_menu_title :: (f: EgBarFacts, id: int) -> string { if id == EG_SIDE_REST { return "REST"; } return ifx f.wizard then "FAMILIAR" else "WILD COMPANION"; }
@@ -111,10 +117,10 @@ eg_menu_tip :: (f: EgBarFacts, a: int) -> string {
 // bar's state (EgSideState); a press answers EgPress, and the zone sends the action to its room.
 EG_SIDE_CAP :: 9.0; EG_TIP_CAP :: 8.5;     // the buttons' words (TITLE), a tip's line (LABEL), CSS px cap height
 EG_SIDE_PAD :: 14; EG_SIDE_GAP :: 8; EG_SIDE_UP :: 34; EG_MENU_W :: 210; EG_MENU_HEAD :: 26; EG_MENU_TOP :: 120;
-EG_DO_KIT :: 30;   // the Healer's Kit button: it has no menu
+EG_DO_KIT :: 30; EG_DO_KNOCK :: 31;   // the Healer's Kit and knock-out buttons: they have no menu
 // Which menu is open (-1 none), and which button and row the pointer is over (-1 none).
 EgSideState :: struct { menu: int = -1; side_hover: int = -1; menu_hover: int = -1; }
-EgSideGeo :: struct { ids: [3] int; n: int; wd: [3] f32; x0: f32; x1: f32; y1: f32; h: f32; gap: f32; w: f32; k: f32; }
+EgSideGeo :: struct { ids: [EG_SIDE_N] int; n: int; wd: [EG_SIDE_N] f32; x0: f32; x1: f32; y1: f32; h: f32; gap: f32; w: f32; k: f32; }
 // A finger's size on a phone or a tablet, smaller with a mouse on a desktop.
 eg_side_h :: (w: f32, h: f32, k: f32) -> f32 { tall := w < 840 * k || h < 560 * k; return ifx tall then 44 * k else 30 * k; }
 eg_side_geo :: (f: EgBarFacts, w: f32, h: f32, k: f32, bar_top: f32) -> EgSideGeo {
@@ -152,7 +158,8 @@ eg_side_press :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, x: f32, y: f32, 
     if !cc.hud_in(eg_side_box(g, j), x, y) { continue; }
     p.st.side_hover = j; if phase != 0 { return p; }
     p.taken = true;
-    if g.ids[j] == EG_SIDE_KIT { p.st.menu = -1; p.act = EG_DO_KIT; } else { p.st.menu = ifx p.st.menu == g.ids[j] then -1 else g.ids[j]; }
+    if g.ids[j] == EG_SIDE_KIT { p.st.menu = -1; p.act = EG_DO_KIT; }
+    else if g.ids[j] == EG_SIDE_KNOCK { p.st.menu = -1; p.act = EG_DO_KNOCK; } else { p.st.menu = ifx p.st.menu == g.ids[j] then -1 else g.ids[j]; }
     return p;
   }
   if phase == 0 && p.st.menu >= 0 { p.st.menu = -1; p.taken = true; }
@@ -164,7 +171,7 @@ eg_side_draw :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: 
   if g.n == 0 { return at; }
   k := g.k; t := cc.eg_tokens(); cap := EG_SIDE_CAP * k;
   l: [1] cc.HudList; ws: [1] cc.HudWords;
-  bufs: [3 * 48] u8; labels: [3] string; lit: [3] bool;
+  bufs: [EG_SIDE_N * 48] u8; labels: [EG_SIDE_N] string; lit: [EG_SIDE_N] bool;
   for i: 0..<g.n { c := eg_side_label(f, g.ids[i], bufs[i * 48..<i * 48 + 48]); labels[i] = cast(string) bufs[i * 48..<i * 48 + c]; lit[i] = st.menu == g.ids[i] || st.side_hover == i; }
   wd := g.wd; cc.hud_side_draw(l[..], ws[..], t, wd[..], labels[..], lit[..], g.n, g.x0, g.x1, g.y1, g.h, g.gap, cap, k);
   tip := ""; anchor := cc.HudPrim.{};

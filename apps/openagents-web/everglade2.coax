@@ -1011,7 +1011,7 @@ e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
     if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k {
       t := b[1] - 8 * k; mid := w * 0.5; if x0 < mid + 30 * k && x1 > mid - 30 * k { t = b[1] - 32 * k; }   // the emblem's medallion
       if t < top { top = t; } } }
-  ids: [3] int; sn := e2k_side(s, ids[..]);
+  ids: [EG_SIDE_N] int; sn := e2k_side(s, ids[..]);
   for j: 0..<sn { b := e2k_side_box(s, j); if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k && b[1] - 8 * k < top { top = b[1] - 8 * k; } }
   if top < y + 1000 && base + 9 * k > top { base = top - 9 * k; }
   return base;

@@ -105,6 +105,8 @@ XcCombat :: struct {
   u: [36] f32; w: f32; h: f32; k: f32; seen: bool;   // the last frame's camera and screen
   open: bool = true;                // the CLASSES column is open
   top: f32;                         // its top, device px
+  pick_hover: CmHit;                // the picker's button under the pointer (class-menu.coax cm_pick_hit)
+  side: EgSideState;                // the side bar's open menu and hover (everglade/hud/class-bar.coax)
   hover: int = -1;                  // the bar's slot under the pointer
   down: int = -100; down_x: f32; down_y: f32; down_id: int;
   media: [16384] u8; media_n: int;   // the bar's pictures for the host (coaxial_media)
@@ -1687,10 +1689,6 @@ xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
   return XcAt.{x = u[23] + u[19] * r / z, y = u[27] - u[19] * up / z, ok = true};
 }
 // The column's height, CSS px: its header, and when open its twelve rows.
-xc_class_height :: (x:[]XcCombat) -> f32 { return cm_class_height(x[0].open); }
-xc_column :: (x:[]XcCombat) -> f32 {
-  return xc_class_height(x) + ifx x[0].b[0].c[0].wild_swap then 154 else 110;
-}
 xc_wild_next :: (mask:int,after:int)->int {
   for k:1..<MON_N { form:=(after+k)%MON_N; if (mask&(1<<form))!=0 { return form; } }
   return after;
@@ -1704,14 +1702,15 @@ xc_wild_options :: (x:[]XcCombat)->[2]int {
   eligible:=rs_wild_default(c)|RS_WILD_CAT;
   return [2]int.[xc_wild_choice(known,x[0].wild_old),xc_wild_choice(eligible-known,x[0].wild_new)];
 }
-xc_wild_click :: (x:[]XcCombat,px:f32,py:f32)->bool {
+// The wild-shape row's button i (class-menu.coax CM_WILD): 0 the next known form, 1 the next new one, 2 REPLACE.
+xc_wild_pick :: (x:[]XcCombat,i:int)->bool {
   c:=x[0].b[0].c[0..<1];
   if !c[0].wild_swap { return false; }
   choice:=xc_wild_options(x);
   known:=rs_wild_mask(c[0]); eligible:=rs_wild_default(c[0])|RS_WILD_CAT;
-  if xc_in(xc_rest_box(x,9),px,py) { x[0].wild_old=xc_wild_next(known,choice[0]); return true; }
-  if xc_in(xc_rest_box(x,10),px,py) { x[0].wild_new=xc_wild_next(eligible-known,choice[1]); return true; }
-  if !xc_in(xc_rest_box(x,11),px,py) { return false; }
+  if i==0 { x[0].wild_old=xc_wild_next(known,choice[0]); return true; }
+  if i==1 { x[0].wild_new=xc_wild_next(eligible-known,choice[1]); return true; }
+  if i!=2 { return false; }
   if rs_wild_swap(c,choice[0],choice[1]) {
     slot:=xc_slot_of(x,FB_WILD);
     if slot>=0 { x[0].bar[slot].opt=choice[1]; }
@@ -1720,7 +1719,6 @@ xc_wild_click :: (x:[]XcCombat,px:f32,py:f32)->bool {
   return true;
 }
 
-xc_rest_box :: (x:[]XcCombat,i:int)->cc.Box { return cm_box(x[0].top,x[0].open,x[0].k,i); }
 xc_rest_request :: (s:[]Lab,request:int)->bool {
   x:=s[0].xc[..]; cr:=s[0].creator[..];
   if !cr[0].experimental || !x[0].started { return false; }
@@ -1741,6 +1739,63 @@ xc_rest_label :: (c:RsCreature)->string {
   return "REST";
 }
 XC_REST_REQUESTS :: [5]int.[RS_REST_SHORT,RS_REST_SLEEP,RS_REST_WATCH,RS_REST_DIE,RS_REST_END];
+// ---- Experimental on Everglade's side bar (everglade/hud/class-bar.coax, #13092): REST's choices and
+// KNOCK OUT over the bar, as every Everglade zone has them; the picker (class-menu.coax cm_pick) keeps
+// CLASSES and LEVEL. The rest choices follow how your rest stands, as Everglade II's room offers them.
+xc_rest_choices :: (c:RsCreature,out:[]int)->int {
+  if c.long_rest.phase==2 { out[0]=RS_REST_SLEEP; out[1]=RS_REST_WATCH; out[2]=RS_REST_END; return 3; }
+  if c.long_rest.phase==1 { out[0]=ifx c.long_rest.mode==1 then RS_REST_WATCH else RS_REST_SLEEP; out[1]=RS_REST_END; return 2; }
+  if c.rest.phase==2 { out[0]=RS_REST_DIE; out[1]=RS_REST_END; return 2; }
+  if c.rest.phase==1 { out[0]=RS_REST_END; return 1; }
+  out[0]=RS_REST_SHORT; out[1]=RS_REST_SLEEP; return 2;
+}
+xc_facts :: (s:[]Lab)->EgBarFacts {
+  x:=s[0].xc[..]; cr:=s[0].creator[..]; f:EgBarFacts;
+  if !cr[0].experimental || !x[0].started { return f; }
+  c:=x[0].b[0].c[0];
+  f.knock=ifx x[0].knockout then 1 else 0;
+  if c.hp>0 { f.rest_n=xc_rest_choices(c,f.rest[..]); }
+  f.resting=c.long_rest.phase==1 || c.long_rest.phase==2 || c.rest.phase>0;
+  f.rest_say=ifx x[0].rest_refused then "REST UNAVAILABLE" else ifx f.resting then xc_rest_label(c) else "";
+  return f;
+}
+// The bar's top (its highest slot's), device px.
+xc_bar_top :: (x:[]XcCombat)->f32 { top:=x[0].h; for i:0..<x[0].bar_n { r:=xc_slot_box(x,i); if r.y0<top { top=r.y0; } } return top; }
+xc_side_geo :: (s:[]Lab)->EgSideGeo { return xc_layout(s).side; }
+// What a side-bar press asks: knock-out flips, a rest choice goes to the rules (xc_rest_request).
+xc_side_act :: (s:[]Lab,f:EgBarFacts,act:int) {
+  x:=s[0].xc[..];
+  if act==EG_DO_KNOCK { x[0].knockout=!x[0].knockout; return; }
+  j:=act-EG_DO_REST; if j>=0 && j<f.rest_n { _:=xc_rest_request(s,f.rest[j]); }
+}
+XC_PORTRAIT_FOOT :: 124.0;   // CSS px: the portrait plate's foot, its slot gems and conditions under it (xc_portrait)
+// Where the picker and the side bar sit. The picker: top left beside your portrait where the page is
+// wide enough, under it on a phone held upright; it keeps over the side bar, and where the page is too
+// short for that (a phone on its side) the side bar moves right of it and the picker keeps over the bar.
+XcLayout :: struct { pick: CmPick; side: EgSideGeo; }
+xc_layout :: (s:[]Lab)->XcLayout {
+  x:=s[0].xc[..]; cr:=s[0].creator[..]; w:=x[0].w; h:=x[0].h; k:=x[0].k;
+  lay:XcLayout; bar:=xc_bar_top(x);
+  lay.side=eg_side_geo(xc_facts(s),w,h,k,bar);
+  beside:=w-(f32(cc.EG_PORTRAIT_W)+16)*k-24*k; room:=beside>=320*k;
+  wide:=ifx room then beside else w-24*k; if wide>460*k { wide=460*k; }
+  y0:=ifx room then 20*k else (XC_PORTRAIT_FOOT+8)*k;
+  wild:=x[0].b[0].c[0].wild_swap; open:=x[0].open;
+  if cr[0].dev_animations && !cr[0].preview_collapsed {
+    // the developer's ANIMATIONS list has the top: the picker at the foot of the page
+    p:=cm_pick(12*k,0,wide,h-20*k,open,wild,w,h,k); lay.pick=cm_pick(12*k,h-20*k-cm_pick_height(p),wide,h-20*k,open,wild,w,h,k);
+    return lay;
+  }
+  if cr[0].dev_animations && y0<(52+f32(XC_GAP))*k { y0=(52+f32(XC_GAP))*k; }   // under its header
+  foot:=(ifx lay.side.n>0 then eg_side_top(lay.side) else bar)-8*k;
+  lay.pick=cm_pick(12*k,y0,wide,foot,open,wild,w,h,k);
+  if lay.side.n>0 && y0+cm_pick_height(lay.pick)>foot {
+    lay.side.x0=12*k+wide+8*k;
+    lay.pick=cm_pick(12*k,y0,wide,bar-14*k,open,wild,w,h,k);
+  }
+  return lay;
+}
+xc_pick :: (s:[]Lab)->CmPick { return xc_layout(s).pick; }
 // The bar's slot i, device px.
 xc_slot_box :: (x:[]XcCombat, i: int) -> cc.Box {
   r := xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k);
@@ -1825,29 +1880,20 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // Refresh both permissions after shared expiry, independently of body hit stop.
   xc_sync_permissions(s);
   xc_grapple_step(s);
-  // the column: under ANIMATIONS (its rows give it room: cc dev_visible), at the top without it
-  col := xc_column(x);
-  cr[0].dev_below = col + f32(XC_GAP);
-  x[0].top = ifx !cr[0].dev_animations then 20 * k else ifx cr[0].preview_collapsed then (52 + f32(XC_GAP)) * k else h - (20 + col) * k;
-  bottom := x[0].top + col * k;
+  // the picker (CLASSES, LEVEL, a wild-shape swap): top left, or under your portrait on a phone (xc_pick);
+  // under ANIMATIONS for a developer (its rows give it room: cc dev_visible)
+  lay := xc_layout(s); pick := lay.pick; pick_box := cm_pick_panel(pick);
+  x[0].top = pick.y0;
+  cr[0].dev_below = cm_pick_height(pick) / k + f32(XC_GAP);
   if u.count > 54 {
-    // gpu/character-glade.coax: the ANIMATIONS panel ends over the column (u[52]); the column's own dark panel (u[53], u[54])
+    // gpu/character-glade.coax: the ANIMATIONS panel ends over the picker (u[52]); the picker draws its own panel (u[53], u[54] off)
     u[52] = ifx cr[0].dev_animations && !cr[0].preview_collapsed then cr[0].dev_below * k else 0;
-    u[53] = x[0].top; u[54] = bottom;
+    u[53] = 0; u[54] = 0;
   }
   head := ink_col(k, 0.95, 0.9, 0.7);
-  n = cm_draw(out, n, x[0].top, x[0].open, k, x[0].klass, x[0].level,
-    ifx x[0].rest_refused then "REST UNAVAILABLE" else xc_rest_label(x[0].b[0].c[0]), x[0].knockout);   // class-menu.coax
-  if x[0].b[0].c[0].wild_swap {
-    choice:=xc_wild_options(x);
-    r:=xc_rest_box(x,6);
-    n=cc.text(out,n,"REPLACE ONE KNOWN FORM",r.x0,r.y0+16*k,8*k,head);
-    labels:=[3]string.[rs_monster_block(choice[0]).name,rs_monster_block(choice[1]).name,"REPLACE"];
-    for i:0..<3 {
-      box:=xc_rest_box(x,9+i);
-      n=cc.text(out,n,labels[i],box.x0,box.y0+16*k,8*k,head);
-    }
-  }
+  wild_words := [3]string.["", "", "REPLACE"];
+  if pick.wild { choice:=xc_wild_options(x); wild_words[0]=rs_monster_block(choice[0]).name; wild_words[1]=rs_monster_block(choice[1]).name; }
+  n = cm_pick_draw(out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words);   // class-menu.coax
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
@@ -1883,7 +1929,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if x[0].sight[i].share <= 0 { continue; }
     p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 1.55, e.z);
     if !p.ok || p.x < 0 || p.x > w || p.y < 0 || p.y > h { continue; }
-    if p.x < 400 * k && p.y > x[0].top - 20 * k && p.y < bottom + 20 * k { continue; }   // not over the CLASSES column
+    if p.x > pick_box.x0 - 40 * k && p.x < pick_box.x1 + 40 * k && p.y > pick_box.y0 - 20 * k && p.y < pick_box.y1 + 20 * k { continue; }   // not over the picker
     name := XC_FOE_NAMES[e.kind];
     on := i == x[0].target || (wave_on && aa.area_aim_contains(wave,e.x,e.z));
     nb: [32] u8;
@@ -2034,8 +2080,20 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       if x[0].studied[t] { ln = put(line[..], ln, "  ·  AC "); ln = put_int(line[..], ln, c.ac); }
     }
     tl := cast(string) line[0..<ln];
-    n = cc.text(out, n, tl, (w - xc_text_w(tl, 10 * k)) / 2, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7));
+    // beside the bar's emblem (everglade/hud/parts.coax eg_bar_frame), not under it
+    lx := ifx x[0].bar_n > 0 then xc_slot_box(x, 0).x0 else 0.0f32; rx := lx;
+    for i: 0..<x[0].bar_n { sb := xc_slot_box(x, i); if sb.x0 < lx { lx = sb.x0; } if sb.x1 > rx { rx = sb.x1; } }
+    n = cc.text(out, n, tl, (lx + rx) / 2 + 24 * k, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7));
   }
+  // the side bar over the bar: REST and KNOCK OUT, their menu and tips (everglade/hud/class-bar.coax)
+  sf := xc_facts(s); sg := lay.side;
+  n = eg_side_draw(sf, sg, x[0].side, out, n);
+  // the coordinates and the FPS plaque (charactercreator.coax coord_draw, eg_fps) rise over the bar's
+  // and the side bar's right end when a narrow page brings them under it
+  corner := h + 1000; cx0 := w - 240 * k;
+  for i: 0..<x[0].bar_n { sr := xc_slot_box(x, i); if sr.x1 > cx0 && sr.y0 - 14 * k < corner { corner = sr.y0 - 14 * k; } }
+  for j: 0..<sg.n { sb := eg_side_box(sg, j); if sb.x1 > cx0 && sb.y0 - 8 * k < corner { corner = sb.y0 - 8 * k; } }
+  cr[0].hud_floor = ifx corner < h - 7 * k then corner else 0;
   // the effects: the frame's puffs for the host to draw (fivelab-fx.wgsl)
   pf := s[0].puffs[..];
   fxp_begin(pf, now, fxp_v(u[16], u[17], u[18]));
@@ -2076,7 +2134,19 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   over := -1;
   for i: 0..<x[0].bar_n { if xc_in(xc_slot_box(x, i), px, py) { over = i; } }
   x[0].hover = over;
-  in_col := px >= 12 * k && px <= 370 * k && py >= x[0].top && py <= x[0].top + xc_column(x) * k;
+  lay := xc_layout(s); pick := lay.pick;
+  in_col := cm_in(cm_pick_panel(pick), px, py);
+  x[0].pick_hover = ifx in_col then cm_pick_hit(pick, px, py) else CmHit.{};
+  // the side bar first: its buttons and menu act on the press (everglade/hud/class-bar.coax)
+  if x[0].bow_touch != id {
+    sf := xc_facts(s); sp := eg_side_press(sf, lay.side, x[0].side, px, py, ifx phase == 0 then 0 else 1);
+    x[0].side = sp.st;
+    if sp.taken {
+      if sp.act != 0 { xc_side_act(s, sf, sp.act); } else if sp.st.menu == EG_SIDE_REST { x[0].rest_refused = false; }
+      x[0].down = -4; x[0].down_id = id; return true;
+    }
+    if phase != 0 && x[0].down == -4 && id == x[0].down_id { if phase >= 2 { x[0].down = -100; } return true; }
+  }
   // a finger (or a click) held on the bow's slot draws; dragging aims (the camera turns), lifting looses
   if x[0].bow_touch == id && phase == 1 {
     x[0].bow_dragged += abs(px - x[0].bow_touch_x) + abs(py - x[0].bow_touch_y);
@@ -2111,10 +2181,8 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     if d == -3 && abs(px - x[0].down_x) + abs(py - x[0].down_y) < 6 * k { return xc_pick_at(s, px, py); }
     if d == -2 {
       if in_col {
-        if xc_wild_click(x,px,py) { return true; }
-        h := cm_hit(x[0].top, x[0].open, k, px, py);   // class-menu.coax
-        if h.kind == CM_REST { accepted:=xc_rest_request(s,XC_REST_REQUESTS[h.index]); }
-        else if h.kind == CM_KNOCKOUT { x[0].knockout = !x[0].knockout; }
+        h := cm_pick_hit(pick, px, py);   // class-menu.coax
+        if h.kind == CM_WILD { _ := xc_wild_pick(x, h.index); }
         else if h.kind == CM_LEVEL { xc_set_level(x, h.index); }
         else if h.kind == CM_TOGGLE { x[0].open = !x[0].open; }
         else if h.kind == CM_CLASS { xc_set_class(x, h.index); }
@@ -2168,7 +2236,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
     return cast(int) (ifx (f - 920) % 2 == 0 then p.x else p.y);
   }
   if f >= 940 && f < 946 { return ifx hs[0].enemies[f - 940].dead then 1 else 0; }
-  if f >= 950 && f < 962 { return cast(int) (x[0].top + (f32(XC_ROWS_TOP) + f32(f - 950) * f32(XC_ROW) + 12) * x[0].k); }
+  if f >= 950 && f < 962 { b := cm_pick_box(xc_pick(s), CM_CLASS, f - 950); return cast(int) ((b.y0 + b.y1) / 2); }
   if f >= 970 && f < 976 { r := xc_slot_box(x, f - 970); return cast(int) ((r.x0 + r.x1) / 2); }
   if f == 976 { r := xc_slot_box(x, 0); return cast(int) ((r.y0 + r.y1) / 2); }
   if f >= 980 && f < 986 { return cast(int) (x[0].bar[f - 980].sp); }
@@ -2502,17 +2570,17 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 
 #test "experimental combat level selector and multirow hotbar" {
   s: [1] Lab; xc_start(s[0].xc[..], FB_CL_WIZARD);
-  x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800; x[0].top = 60;
-  y := x[0].top + xc_class_height(x) + 15;
-  #assert xc_pointer(s[..], 174, y, 0, 1);
-  #assert xc_pointer(s[..], 174, y, 2, 1);
+  x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
+  l := cm_pick_box(xc_pick(s[..]), CM_LEVEL, 3);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 0, 1);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 2, 1);
   #assert x[0].level == 3 && x[0].b[0].c[0].level == 3;
   x[0].bar_n = 12;
   a := xc_slot_box(x, 0); b := xc_slot_box(x, 9);
   #assert a.y0 < b.y0 && a.x0 >= 0 && b.x1 <= x[0].w;
-  x[0].open = false; y = x[0].top + xc_class_height(x) + 15;
-  #assert xc_pointer(s[..], 276, y, 0, 1);
-  #assert xc_pointer(s[..], 276, y, 2, 1);
+  x[0].open = false; l = cm_pick_box(xc_pick(s[..]), CM_LEVEL, 6);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 0, 1);
+  #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 2, 1);
   #assert x[0].level == 6;
 }
 
@@ -3343,24 +3411,51 @@ xc_check_ai_rate :: (speed:int)->bool {
   s[0].held=HOLD_W;
   #assert xc_rest_request(s[..],RS_REST_END) && b[0].c[0].long_rest.phase==0;
 }
-#test "Experimental rest pointer controls preserve class selection and let Short Rest choices spend one Hit Die" #steps 2000000000 {
-  for collapsed:0..<2 {
+// A finger on the side bar (everglade/hud/class-bar.coax): the button id, then (req >= 0) its menu's
+// row for that rest request. True when every press was taken.
+xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
+  g:=xc_side_geo(s); j:=eg_side_find(g,id); if j<0 { return false; }
+  b:=eg_side_box(g,j); bx:=(b.x0+b.x1)/2; by:=(b.y0+b.y1)/2;
+  if !xc_pointer(s,bx,by,0,1) || !xc_pointer(s,bx,by,2,1) { return false; }
+  if req<0 { return true; }
+  f:=xc_facts(s); rows:[EG_MENU_ROWS]int; m:=eg_menu_rows(f,id,rows[..]); menu:=eg_menu_of(f,xc_side_geo(s),id);
+  for r:0..<m { if rows[r]>=EG_DO_REST && f.rest[rows[r]-EG_DO_REST]==req {
+    rb:=cc.hud_menu_row(menu,r); rx:=(rb.x0+rb.x1)/2; ry:=(rb.y0+rb.y1)/2;
+    return xc_pointer(s,rx,ry,0,1) && xc_pointer(s,rx,ry,2,1); } }
+  return false;
+}
+#test "Experimental's picker, side bar and bar keep apart on a phone either way up and on a desktop" #steps 2000000000 {
+  for v:0..<3 {
+    s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0); x:=s[0].xc[..];
+    x[0].seen=true; x[0].open=true; x[0].k=ifx v==2 then 1.0f32 else 3.0f32;
+    x[0].w=ifx v==0 then 1170.0f32 else ifx v==1 then 2532.0f32 else 1920.0f32;
+    x[0].h=ifx v==0 then 2532.0f32 else ifx v==1 then 1170.0f32 else 1080.0f32;
+    lay:=xc_layout(s[..]); pb:=cm_pick_panel(lay.pick); top:=xc_bar_top(x);
+    #assert x[0].bar_n>0 && lay.side.n==2 && pb.x1<=x[0].w && pb.y1<=top;
+    #assert v!=0 || pb.y0>=XC_PORTRAIT_FOOT*x[0].k;   // under the portrait on a phone held upright
+    for i:0..<x[0].bar_n { r:=xc_slot_box(x,i); #assert r.x0>=0 && r.x1<=x[0].w && (r.y0>=pb.y1 || r.x0>=pb.x1); }
+    for j:0..<lay.side.n { b:=eg_side_box(lay.side,j); #assert b.x1>b.x0 && b.y1<=top && (b.y0>=pb.y1 || b.x0>=pb.x1); }
+    if v<2 { c:=cm_pick_box(lay.pick,CM_CLASS,0); l:=cm_pick_box(lay.pick,CM_LEVEL,1); #assert c.y1-c.y0>=44*x[0].k-0.01 && l.x1-l.x0>=44*x[0].k-0.01; }
+  }
+}
+#test "Experimental rest on the side bar preserves class selection and lets Short Rest choices spend one Hit Die" #steps 2000000000 {
+  for v:0..<2 {
     s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); x:=s[0].xc[..]; b:=x[0].b[..];
-    x[0].seen=true; x[0].k=1; x[0].top=20; x[0].open=collapsed==0;
+    x[0].seen=true; x[0].k=ifx v==0 then 1.0f32 else 3.0f32; x[0].w=ifx v==0 then 1200.0f32 else 1170.0f32; x[0].h=ifx v==0 then 800.0f32 else 2532.0f32; x[0].open=v==0;
     body:=EgBody.{ground=true}; lab_rest_motion(s[..],body,body,false,false);
     b[0].c[0].hp=1; b[0].dice[0].fixed=true;
-    short:=xc_rest_box(x,0);
-    #assert xc_pointer(s[..],short.x0+10,short.y0+10,0,1) && xc_pointer(s[..],short.x0+10,short.y0+10,2,1);
+    #assert xc_side_tap(s[..],EG_SIDE_REST,RS_REST_SHORT);
     #assert b[0].c[0].rest.phase==1 && x[0].klass==FB_CL_FIGHTER && x[0].level==1;
     rs_tick(b,3600); #assert b[0].c[0].rest.phase==2;
-    die:=xc_rest_box(x,3);
-    #assert xc_pointer(s[..],die.x0+10,die.y0+10,0,1) && xc_pointer(s[..],die.x0+10,die.y0+10,2,1);
+    #assert xc_side_tap(s[..],EG_SIDE_REST,RS_REST_DIE);
     #assert b[0].c[0].hp>1 && b[0].c[0].rest.dice==0 && !x[0].rest_refused;
-    #assert xc_rest_request(s[..],RS_REST_END);
-    sleep:=xc_rest_box(x,1);
-    #assert xc_pointer(s[..],sleep.x0+10,sleep.y0+10,0,1) && xc_pointer(s[..],sleep.x0+10,sleep.y0+10,2,1);
+    #assert xc_side_tap(s[..],EG_SIDE_REST,RS_REST_END) && b[0].c[0].rest.phase==0;
+    #assert xc_side_tap(s[..],EG_SIDE_REST,RS_REST_SLEEP);
     #assert rs_sleeping(b[0].c[0]) && x[0].klass==FB_CL_FIGHTER && x[0].level==1;
-    #assert xc_rest_label(b[0].c[0])=="REST: SLEEPING";
+    #assert xc_rest_label(b[0].c[0])=="REST: SLEEPING" && xc_facts(s[..]).rest_say=="REST: SLEEPING";
+    // KNOCK OUT flips on its button, and the menu's gone
+    #assert !x[0].knockout && xc_side_tap(s[..],EG_SIDE_KNOCK,-1) && x[0].knockout && x[0].side.menu<0;
+    #assert xc_side_tap(s[..],EG_SIDE_KNOCK,-1) && !x[0].knockout;
   }
 }
 
@@ -3465,14 +3560,14 @@ xc_check_ai_rate :: (speed:int)->bool {
 #test "Experimental replaces a known Wild Shape with the Cat through the Long Rest controls" #steps 2000000000 {
   s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
   x:=s[0].xc[..]; xc_set_level(x,4);
-  x[0].seen=true; x[0].open=true; x[0].top=60; x[0].k=1; x[0].w=1200; x[0].h=800;
+  x[0].seen=true; x[0].open=true; x[0].k=1; x[0].w=1200; x[0].h=800;
   b:=x[0].b[..]; c:=b[0].c[0..<1];
   c[0].long_rest.phase=3;
   #assert rs_long_rest_apply(b,0);
-  outgoing:=xc_rest_box(x,9);
+  outgoing:=cm_pick_box(xc_pick(s[..]),CM_WILD,0);
   #assert xc_pointer(s[..],outgoing.x0+5,outgoing.y0+5,0,1);
   #assert xc_pointer(s[..],outgoing.x0+5,outgoing.y0+5,2,1);
-  replace:=xc_rest_box(x,11);
+  replace:=cm_pick_box(xc_pick(s[..]),CM_WILD,2);
   #assert xc_pointer(s[..],replace.x0+5,replace.y0+5,0,1);
   #assert xc_pointer(s[..],replace.x0+5,replace.y0+5,2,1);
   #assert !c[0].wild_swap && !rs_wild_knows(c[0],MON_RAT) && rs_wild_knows(c[0],MON_CAT);

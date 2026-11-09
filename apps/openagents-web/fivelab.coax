@@ -50,6 +50,7 @@
 #load "../../everglade/world/housewright.coax" as hw;   // the housewright showcase's labels (lab_showcase_labels)
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
 #load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (experimental-combat.coax xc_dash_frame)
+#load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: rest and knock-out over Experimental's bar (#13092)
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 #load "experimental-objects.coax";
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)

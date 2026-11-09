@@ -108,7 +108,7 @@ eg_bar_frame :: (out: [] f32, at: int, b: [] f32, n: int, k: f32, initial: u8, a
   for i: 0..<c { sx[2 * i] = b[i * 4] - 1; sx[2 * i + 1] = b[i * 4 + 2] + 1; }
   hud_tray_round(l[..], t, tray, y0 - 1, y1 + 1, sx[..], c, k);
   for i: 0..<c { hud_slot(l[..], t, hud_box(b[i * 4], b[i * 4 + 1], b[i * 4 + 2], b[i * 4 + 3]), k, true); }
-  cx := (x0 + x1) * 0.5; ey := tray.y0 - 2 * k; er := 15 * k;
+  cx := (x0 + x1) * 0.5; er := 15 * k; ey := y0 - er - 2 * k;   // clear of the slots: its foot 2 px over them
   hud_medallion(l[..], t, cx, ey, er, hud_rgba(0.20, 0.30, 0.22, 1), hud_rgba(0.06, 0.10, 0.07, 1), k);
   eg_fade_list(l[..], a);
   v := hud_emit(out, at, l[..]);

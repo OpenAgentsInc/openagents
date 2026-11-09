@@ -69,6 +69,7 @@ Creator :: struct {
   orbit:f32;         // a check's camera turn round you (radians), apart from your aim: side and back frames
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
   ml:[1]mlook.Mouselook;   // Experimental's mouselook (aethyr/cam/mouselook.coax); the studio never asks for it
+  hud_floor:f32;   // device px: Experimental's bar and side bar reach up to here at the bottom right, 0 clear (experimental-combat.coax); the coordinates and FPS sit over it
   dev_below:f32;   // CSS px under the ANIMATIONS browser kept for Experimental's CLASSES column (experimental-combat.coax)   // the SRD 5.2.1 class the record keeps (CC3, aethyr/character-appearance.coax), -1 none (CC2)
   walk:CcWalk;   // the walk into Everglade after USE IN EVERGLADE (charactercreator-walk.coax)
   shadow:[1]CcShadow;   // the key light's two shadow tiles (shadow_frame)
@@ -1109,7 +1110,7 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
     ensure(s);layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
     for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=ifx s[0].experimental then 0.0f32 else 1.0f32;u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
     if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
-    camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);n=coord_draw(s[0],out,n,w,h,k);return ifx s[0].experimental then eg_fps(s[0].fps[0],out,n,w,h,k) else fps_draw(s[0].fps[0],out,n,w,h,k);
+    camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);fh:=ifx s[0].experimental && s[0].hud_floor>0 && s[0].hud_floor+7*k<h then s[0].hud_floor+7*k else h;n=coord_draw(s[0],out,n,w,fh,k);return ifx s[0].experimental then eg_fps(s[0].fps[0],out,n,w,fh,k) else fps_draw(s[0].fps[0],out,n,w,h,k);
   }
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.70,0.76,0.74); gold:=ink(k,0.83,0.69,0.43);
