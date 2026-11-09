@@ -60,3 +60,15 @@ e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) {
   #assert e2r_use(b[..],seats[..],FB_CL_BARBARIAN,xk_slot(FB_CL_BARBARIAN,0));
   #assert b[0].c[0].raging && seats[0].turn.bonus;
 }
+
+#test "Everglade II Aid's self control spends one slot and affects only the selected seat" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
+  i:=rs_add(b[..],fb_cl_hero(FB_CL_CLERIC,"Cleric",0,3),2,2);
+  j:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Bystander",0,3),3,2);
+  seats:[1]FbSeat; seats[0].me=i;
+  spell:=fb_spell(SP_AID,2,FB_ALLY);
+  hp:=c[i].hp_max; other:=c[j].hp_max; slots:=c[i].slots[2];
+  #assert e2r_use(b[..],seats[..],FB_CL_CLERIC,xk_wire(FB_CL_CLERIC,spell));
+  #assert c[i].hp==hp+5 && c[i].hp_max==hp+5 && c[i].slots[2]==slots-1;
+  #assert seats[0].turn.action && seats[0].turn.slot_spent && c[j].hp_max==other;
+}

@@ -16,6 +16,7 @@ xc_spell_rgb :: (sp: int) -> FxV {
   if sp == SP_POISON_SPRAY { return xc_rgb(0.6, 1.0, 0.3); }
   if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD { return xc_rgb(0.4, 1.0, 0.5); }
   if sp == SP_LESSER_RESTORATION { return xc_rgb(0.45, 0.9, 0.75); }
+  if sp == SP_AID { return xc_rgb(0.9, 0.85, 0.4); }
   if sp == SP_THUNDERWAVE { return xc_rgb(0.55, 0.75, 1.0); }
   if sp == SP_ENTANGLE { return xc_rgb(0.35, 0.85, 0.3); }
   if sp == SP_FAERIE_FIRE { return xc_rgb(0.75, 0.48, 1.0); }
@@ -67,7 +68,7 @@ xc_look_of :: (a: FbAb, px: f32, py: f32, pz: f32, face: f32, at: FxV) -> XcLook
     else if sp == SP_VICIOUS_MOCKERY { r = FXR_MOCKERY; }
     else if sp == SP_HEX || sp == SP_HUNTERS_MARK { r = FXR_MARK; }
     else if sp == SP_DIVINE_SMITE { r = FXR_SMITE; }
-    else if sp == SP_HEALING_WORD || sp == SP_LESSER_RESTORATION { r = FXR_HEAL; to = me; }
+    else if sp == SP_HEALING_WORD || sp == SP_LESSER_RESTORATION || sp == SP_AID { r = FXR_HEAL; to = me; }
     else if sp == SP_FALSE_LIFE { r = FXR_DRAIN; to = me; }
     else if sp == SP_THUNDERWAVE { r = FXR_SHOCK; to = fxp_v(px + sin(face) * 2.286, py + 1.0, pz + cos(face) * 2.286); reach = 2.286; }
     else if sp == SP_ENTANGLE { r = FXR_BLOOM; reach = 3; }

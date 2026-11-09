@@ -7629,3 +7629,12 @@ can remove only Blinded, Deafened, Paralyzed or Poisoned. Removing a
 condition clears it from every imposing record and preserves the other
 riders, source and deadline of compound effects. An explicit unsupported
 choice refuses before payment.
+
+## Aid tracks its Hit Point increase in an owned effect
+
+The caster chooses up to three targets within 30 feet. The shared cast
+preflights their effect slots and HP ceilings before spending. Each Aid
+record keeps its own deadline. Only the strongest active record raises
+current and maximum Hit Points, and its expiry reveals any weaker record
+still active. Applying or ending the increase preserves Temporary Hit
+Points. The self hotbar control submits a single explicit target.

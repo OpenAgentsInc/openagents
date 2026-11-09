@@ -39,7 +39,8 @@ SP_INFLICT_WOUNDS :: 78; SP_ACID_SPLASH :: 79; SP_MAGIC_MISSILE :: 80; SP_MASS_H
 SP_SHATTER :: 82;
 SP_FIND_FAMILIAR :: 83;
 SP_LESSER_RESTORATION :: 84;
-RS_MORE_END :: 85;
+SP_AID :: 85;
+RS_MORE_END :: 86;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -271,6 +272,10 @@ rs_more_spell :: (i: int) -> RsSpell {
     s = rs_more("lesser-restoration", "Lesser Restoration", 2, "Abjuration", "Bard, Cleric, Druid, Paladin, Ranger", RS_T_BONUS, 5, "Instantaneous", 0, false, RS_A_NONE, 0);
     s.components = "V, S"; s.page = 144;
     s.steps[0] = rs_step(RS_S_RESTORE, 0, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_AID {
+    s = rs_more("aid", "Aid", 2, "Abjuration", "Bard, Cleric, Druid, Paladin, Ranger", RS_T_ACTION, 30, "8 hours", 28800, false, RS_A_NONE, 0);
+    s.components = "V, S, M (a strip of white cloth)"; s.page = 107; s.targets = 3; s.targets_optional = true;
+    s.steps[0] = rs_step(RS_S_AID, 5, 0, 0, 0); s.step_n = 1;
   }
   return s;
 }

@@ -95,6 +95,7 @@ rs_spell_variant :: (base: RsSpell, sp: int, slot: int, option: RsCastOptions) -
     if sp == SP_BLINDNESS && s.steps[k].kind == RS_S_TIMED { s.steps[k].a = option.blindness; }
     if sp == SP_HEX && s.steps[k].kind == RS_S_HEX { s.steps[k].a = option.hex_ability; }
     if sp == SP_LESSER_RESTORATION && s.steps[k].kind == RS_S_RESTORE { s.steps[k].a = option.restoration; }
+    if s.steps[k].kind==RS_S_AID { s.steps[k].b=s.steps[k].a*(slot-1); }
   }
   if sp == SP_HEX {
     s.duration_s = ifx slot >= 5 then 86400 else ifx slot >= 3 then 28800 else ifx slot >= 2 then 14400 else 3600;

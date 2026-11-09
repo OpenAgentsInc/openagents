@@ -5,7 +5,7 @@
 
 #test "casting IDs admit only the implemented record ranges including explicit house spells" {
   for id: -2..<107 {
-    expected := (id >= 0 && id <= 84) || (id >= 100 && id <= 103);   // an independent pin: move it with RS_MORE_END
+    expected := (id >= 0 && id <= 85) || (id >= 100 && id <= 103);   // an independent pin: move it with RS_MORE_END
     #assert rs_executable_spell(id) == expected;
   }
 }

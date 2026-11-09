@@ -49,10 +49,14 @@ rs_hurt_protected :: (c:[]RsCreature,dealt:int,crit:bool,floor_hp:int)->RsHurt #
   if c[0].hp == 0 {
     r.dropped = true;
     if left >= c[0].hp_max || c[0].klass == RS_MONSTER { c[0].dead = true; r.killed = true; }
-    c[0].cond |= RS_UNCONSCIOUS|RS_PRONE;
-    c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
+    rs_zero_hp(c);
   }
   return r;
+}
+
+rs_zero_hp :: (c:[]RsCreature) #effects(all) {
+  c[0].cond |= RS_UNCONSCIOUS|RS_PRONE;
+  c[0].death_ok=0; c[0].death_fail=0; c[0].stable=false;
 }
 
 // Healing ends the Unconscious source imposed by zero HP. It cannot retire
@@ -61,6 +65,12 @@ rs_heal :: (c: [] RsCreature, amount: int) -> int #effects(all) {
   if c[0].dead || rs_effect(c[0],EF_NOHEAL) { return 0; }
   gain := rs_min(rs_max(amount,0),rs_max(c[0].hp_max-c[0].hp,0));
   if gain == 0 { return 0; }
+  rs_increase_hp(c,gain);
+  return gain;
+}
+
+// Apply an admitted increase, including the current HP granted by Aid.
+rs_increase_hp :: (c:[]RsCreature,gain:int) #effects(all) {
   before := c[0].hp;
   c[0].hp += gain;
   rs_knockout_end(c);   // a knocked-out creature wakes when it regains any Hit Points
@@ -70,7 +80,6 @@ rs_heal :: (c: [] RsCreature, amount: int) -> int #effects(all) {
     if !held { c[0].cond = rs_clear(c[0].cond,RS_UNCONSCIOUS); }
     c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
   }
-  return gain;
 }
 
 #load "death-saves.coax";

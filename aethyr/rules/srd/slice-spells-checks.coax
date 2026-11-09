@@ -7,6 +7,71 @@
 #load "catalog.coax";
 #load "executable-source-ids.coax";
 
+#test "Aid increases current and maximum Hit Points for up to three creatures for eight hours" {
+  sp:=-1;
+  for k:0..<RS_MORE_END { if rs_spell(k).id=="aid" { sp=k; } }
+  #assert sp>=0 && rs_executable_spell(sp);
+  #assert !rs_class_spell_granted(rs_cleric("Cleric",0,2),sp) && rs_class_spell_granted(rs_cleric("Cleric",0,3),sp);
+  #assert !rs_class_spell_granted(rs_paladin("Paladin",0,4),sp) && rs_class_spell_granted(rs_paladin("Paladin",0,5),sp);
+  b:[1]RsBattle; c:[4]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=4;
+  a:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
+  for k:1..<4 {
+    _:=rs_add(b[..],rs_fighter("Ally",0,3),k+1,1);
+    c[k].hp=10; c[k].hp_max=20;
+  }
+  rs_start_turn(b[..],a);
+  picks:=[3]int.[1,2,3];
+  #assert rs_cast_creatures(b[..],a,sp,3,picks[..],false);
+  for k:1..<4 { #assert c[k].hp==20 && c[k].hp_max==30 && c[k].temp==0; }
+  #assert c[a].hp==c[a].hp_max && b[0].turn.action && b[0].turn.slot_spent;
+  c[1].hp-=3;
+  b[0].clock=28799;
+  rs_tick_raw(b[..],0.5);
+  #assert c[1].hp==17 && c[1].hp_max==30;
+  rs_tick_raw(b[..],0.5);
+  #assert c[1].hp==7 && c[1].hp_max==20;
+  for k:2..<4 { #assert c[k].hp==10 && c[k].hp_max==20; }
+}
+
+#test "Aid prepays all targets and upcasting cannot add a fourth target" {
+  b:[1]RsBattle; c:[5]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=4;
+  a:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
+  for k:1..<5 { _:=rs_add(b[..],rs_fighter("Ally",0,3),k+1,1); }
+  base:=c[1].hp_max;
+  picks:=[4]int.[1,2,3,4];
+  rs_start_turn(b[..],a);
+  slots:=c[a].slots[3];
+  #assert !rs_cast_creatures(b[..],a,SP_AID,3,picks[..],false);
+  for k:0..<RS_EFFECTS { #assert rs_effect_add(c[3..<4],RsEffect.{kind=EF_HEX,by=k}); }
+  #assert !rs_cast_creatures(b[..],a,SP_AID,3,picks[0..<3],false);
+  #assert c[a].slots[3]==slots && !b[0].turn.action && c[1].hp_max==base;
+  rs_effect_end(c[3..<4],0);
+  c[3].hp_max=9223372036854775802;
+  #assert !rs_cast_creatures(b[..],a,SP_AID,3,picks[0..<3],false);
+  #assert c[a].slots[3]==slots && c[1].hp_max==base;
+  c[3].hp_max=base;
+  #assert rs_cast(b[..],a,SP_AID,3,0,0,1);
+  for k:1..<4 { #assert c[k].hp_max==base+10; }
+  #assert c[4].hp_max==base;
+}
+
+#test "Aid preflight uses the exact increase at the Hit Point ceiling" {
+  s:=rs_spell(SP_AID);
+  c:RsCreature;
+  for slot:2..<10 {
+    variant:=rs_spell_variant(s,SP_AID,slot,RsCastOptions.{});
+    increase:=5*(slot-1);
+    c.hp_max=9223372036854775807-increase;
+    #assert rs_effect_demand(c,variant,-1,0,SP_AID)==1;
+    c.hp_max+=1;
+    #assert rs_effect_demand(c,variant,-1,0,SP_AID)==RS_EFFECTS+1;
+  }
+  c.hp_max=9223372036854775807;
+  c.eff[0]=RsEffect.{kind=EF_AID,cond=10,until=10};
+  variant:=rs_spell_variant(s,SP_AID,2,RsCastOptions.{});
+  #assert rs_effect_demand(c,variant,-1,0,SP_AID)==1;
+}
+
 #test "Life Cleric always prepares Lesser Restoration at level 3 and spends a Bonus Action at Touch range" {
   sp:=-1;
   for k:0..<RS_MORE_END { if rs_spell(k).id=="lesser-restoration" { sp=k; } }

@@ -24,6 +24,80 @@
   #assert c[0].cond == RS_RESTRAINED && c[0].restrained_by == 0;
 }
 
+#test "overlapping Aid records apply only the strongest increase and resume the weaker one on expiry" {
+  c:[1]RsCreature;
+  c[0].hp=6; c[0].hp_max=12; c[0].temp=4;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_AID,cond=5,until=20});
+  #assert c[0].hp==11 && c[0].hp_max==17 && c[0].temp==4;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_AID,cond=10,until=10});
+  #assert c[0].hp==16 && c[0].hp_max==22 && c[0].temp==4;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_AID,cond=5,until=30});
+  #assert c[0].hp==16 && c[0].hp_max==22;
+  rs_effect_end(c[..],1);
+  #assert c[0].hp==11 && c[0].hp_max==17;
+  rs_effect_end(c[..],0);
+  #assert c[0].hp==11 && c[0].hp_max==17;
+  rs_effect_end(c[..],2);
+  #assert c[0].hp==6 && c[0].hp_max==12 && c[0].temp==4;
+}
+
+#test "Aid can raise a dying creature and its expiry can drop it without damage" {
+  c:[1]RsCreature;
+  c[0]=rs_fighter("Ally",0,1);
+  base:=c[0].hp_max;
+  c[0].hp=0; c[0].cond=RS_UNCONSCIOUS|RS_PRONE;
+  c[0].death_fail=2; c[0].stable=true; c[0].temp=3;
+  #assert rs_effect_add(c[..],RsEffect.{kind=EF_AID,cond=5,until=20});
+  #assert c[0].hp==5 && c[0].hp_max==base+5 && c[0].cond==RS_PRONE && c[0].death_fail==0 && !c[0].stable;
+  c[0].hp=2;
+  rs_effect_end(c[..],0);
+  #assert c[0].hp==0 && c[0].hp_max==base && c[0].temp==3 && !c[0].dead && c[0].cond==(RS_UNCONSCIOUS|RS_PRONE);
+}
+
+#test "Aid wakes a knocked-out creature and preserves an independent Unconscious condition" {
+  for raw:[2]int.[0,RS_UNCONSCIOUS] {
+    c:[1]RsCreature;
+    c[0]=rs_fighter("Ally",0,1);
+    c[0].hp=1; c[0].cond=RS_PRONE|raw;
+    #assert rs_effect_add(c[..],RsEffect.{kind=EF_KNOCKOUT,cond=raw});
+    #assert rs_knocked_out(c[0]) && rs_has(c[0],RS_UNCONSCIOUS);
+    #assert rs_effect_add(c[..],RsEffect.{kind=EF_AID,cond=5,until=20});
+    #assert c[0].hp==6 && !rs_knocked_out(c[0]) && c[0].cond==(RS_PRONE|raw);
+  }
+}
+
+#test "Aid storage respects the HP ceiling, death and zero or one HP when leases end" {
+  c:[1]RsCreature;
+  c[0]=rs_fighter("Ally",0,1);
+  aid:=RsEffect.{kind=EF_AID,cond=5,until=20};
+  c[0].hp_max=9223372036854775803;
+  #assert !rs_effect_add(c[..],aid) && c[0].eff[0].kind==EF_NONE;
+  c[0].hp_max-=1;
+  #assert rs_effect_add(c[..],aid) && c[0].hp_max==9223372036854775807;
+  c[0].hp=0; c[0].death_fail=2;
+  #assert rs_effect_add(c[..],aid) && c[0].death_fail==2 && c[0].hp==0;
+  rs_effect_end(c[..],0);
+  #assert c[0].hp==0 && c[0].death_fail==2 && c[0].hp_max==9223372036854775807;
+  rs_effect_end(c[..],1);
+  #assert c[0].hp==0 && c[0].death_fail==2 && !c[0].dead;
+  c[0].dead=true;
+  #assert !rs_effect_add(c[..],aid);
+  for monster:0..<2 { for hp:[3]int.[1,5,6] {
+    c[0]=rs_fighter("Ally",0,1);
+    if monster==1 { c[0].klass=RS_MONSTER; }
+    #assert rs_effect_add(c[..],aid);
+    c[0].hp=hp;
+    rs_effect_end(c[..],0);
+    #assert c[0].hp==rs_max(0,hp-5) && c[0].dead==(monster==1 && hp<=5);
+    #assert rs_has(c[0],RS_UNCONSCIOUS)==(hp<=5);
+  } }
+  c[0]=rs_fighter("Ally",0,1);
+  #assert rs_effect_add(c[..],aid);
+  c[0].hp_max=5; c[0].hp=5;
+  rs_effect_end(c[..],0);
+  #assert c[0].hp_max==0 && c[0].dead;
+}
+
 #test "full effect storage refuses explicitly and retains every record and condition" {
   c: [1] RsCreature;
   for k: 0..<RS_EFFECTS { #assert rs_effect_add(c[..],RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=f32(10+k)}); }
@@ -91,6 +165,13 @@ rs_effect_add :: (c: [] RsCreature, e: RsEffect) -> bool #effects(all) {
   }
   for k: 0..<RS_EFFECTS {
     if c[0].eff[k].kind != EF_NONE { continue; }
+    if e.kind==EF_AID {
+      if c[0].dead { return false; }
+      delta:=rs_max(0,e.cond-rs_aid_amount(c[0]));
+      if delta>9223372036854775807-c[0].hp_max { return false; }
+      c[0].hp_max+=delta;
+      if delta!=0 { rs_increase_hp(c,delta); }
+    }
     c[0].eff[k] = e; c[0].cond |= rs_effect_conditions(e);
     if e.kind == EF_ZONE_RESTRAIN { c[0].restrained_by = e.cond; }
     return true;
@@ -100,6 +181,14 @@ rs_effect_add :: (c: [] RsCreature, e: RsEffect) -> bool #effects(all) {
 rs_effect_end :: (c: [] RsCreature, k: int) #effects(all) {
   if k < 0 || k >= RS_EFFECTS { return; }
   e := c[0].eff[k]; c[0].eff[k].kind = EF_NONE;
+  if e.kind==EF_AID {
+    delta:=rs_max(0,e.cond-rs_aid_amount(c[0]));
+    c[0].hp_max=rs_max(0,c[0].hp_max-delta);
+    before:=c[0].hp;
+    c[0].hp=rs_max(0,before-delta);
+    if before>0 && c[0].hp==0 { rs_zero_hp(c); }
+    if c[0].hp_max==0 || (c[0].klass==RS_MONSTER && c[0].hp==0) { c[0].dead=true; }
+  }
   if e.kind == EF_ZONE_RESTRAIN && c[0].restrained_by == e.cond {
     c[0].restrained_by = -1;
     for other: c[0].eff { if other.kind == EF_ZONE_RESTRAIN { c[0].restrained_by = other.cond; break; } }
@@ -110,4 +199,10 @@ rs_effect_end :: (c: [] RsCreature, k: int) #effects(all) {
   if c[0].restrained_by >= 0 { held |= RS_RESTRAINED; }
   if c[0].hp == 0 && !c[0].dead { held |= RS_UNCONSCIOUS; }
   c[0].cond = rs_clear(c[0].cond,mask & (32767-held));
+}
+
+rs_aid_amount :: (c:RsCreature)->int #effects(all) {
+  amount:=0;
+  for e:c.eff { if e.kind==EF_AID { amount=rs_max(amount,e.cond); } }
+  return amount;
 }

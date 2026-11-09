@@ -685,7 +685,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     sculpted := 0;
     // more than one target (Bless, Bane, Command): the target, then the nearest to it of its side within range
     more: [RS_TARGETS_MAX] int; more_n := 0;
-    if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b, i, target, rs_min(s.targets + rs_max(slot - s.level, 0), RS_TARGETS_MAX) - 1, s.range_ft, more[..]); }
+    if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,sp,slot)-1,s.range_ft,more[..]); }
     for j: 0..<b[0].n {
       if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
       if s.area == RS_A_NONE {
@@ -711,6 +711,11 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     if heals { got := rs_feature_heal(b, i, i, 2 + slot, "Blessed Healer", RS_FT_BLESSED_HEALER); }
   }
   return true;
+}
+
+// Aid's upcast changes its amount and keeps its base target limit.
+rs_legacy_target_limit :: (s:RsSpell,sp:int,slot:int)->int #effects(all) {
+  return ifx sp==SP_AID then s.targets else rs_min(s.targets+rs_max(slot-s.level,0),RS_TARGETS_MAX);
 }
 
 // The other targets of a spell with more than one (RsSpell.targets): up to n of the first target's
@@ -1044,6 +1049,10 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       rs_tell(b, RS_EV_HEAL, sp, i, j, got, 0, l[..]);
     } else if st.kind == RS_S_RESTORE {
       if rs_lesser_restore(b[0].c[j..<j+1],st.a) { rs_say(b,RS_EV_CONDITION,i,j,sp," ends a condition"); }
+    } else if st.kind == RS_S_AID {
+      if rs_put_effect(b,j,RsEffect.{kind=EF_AID,cond=st.a*(slot-1),by=i,spell=sp,until=b[0].clock+s.duration_s,save=-1}) {
+        rs_say(b,RS_EV_CONDITION,i,j,sp," increases current and maximum Hit Points");
+      }
     } else if st.kind == RS_S_CONDITION {
       if ran_save && saved { continue; }
       if (b[0].c[j].immune_cond & st.a) != 0 { continue; }

@@ -234,6 +234,9 @@ rs_effect_demand :: (c: RsCreature, s: RsSpell, zone: int, by: int, spell: int) 
         for e: c.eff { if e.kind == EF_ZONE_RESTRAIN && e.cond == zone && e.by == by && e.spell == spell { retained = true; } }
       }
       if !retained { n += 1; }
+    } else if st.kind==RS_S_AID {
+      if rs_max(0,st.b-rs_aid_amount(c))>9223372036854775807-c.hp_max { return RS_EFFECTS+1; }
+      n+=1;
     } else if st.kind == RS_S_NOHEAL || st.kind == RS_S_ENFEEBLE || st.kind == RS_S_HEX || st.kind == RS_S_EXPOSE || st.kind == RS_S_MOCK || st.kind == RS_S_BOON || st.kind == RS_S_HALT || st.kind == RS_S_MARK { n += 1; }
   }
   return n;
@@ -242,7 +245,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
   me := b[0].c[i];
   if s.area == RS_A_NONE && s.humanoid_only && !b[0].c[target].humanoid { return true; }
   more: [RS_TARGETS_MAX] int; more_n: int;
-  if s.area == RS_A_NONE && s.targets >= 2 { more_n = rs_more_targets(b,i,target,rs_min(s.targets+rs_max(slot-s.level,0),RS_TARGETS_MAX)-1,s.range_ft,more[..]); }
+  if s.area == RS_A_NONE && s.targets >= 2 { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,sp,slot)-1,s.range_ft,more[..]); }
   area := rs_area(b,i,s,tx,ty);
   reps := 1;
   for k: 0..<s.step_n { st := s.steps[k]; if st.kind == RS_S_REPEAT { reps = st.a+st.b*rs_max(slot-s.level,0); if st.c == 1 { reps = st.a*rs_cantrip_tier(me.level); } } }

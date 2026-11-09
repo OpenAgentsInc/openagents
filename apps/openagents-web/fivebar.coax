@@ -508,7 +508,10 @@ fb_cast :: (b: [] RsBattle, i: int, a: FbAb, foe: int, tx: int, ty: int, ally: i
   }
   if !fb_conjure(b, i, a) { return false; }
   ok := false;
-  if a.tg == FB_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
+  if a.sp==SP_AID && a.tg==FB_ALLY {
+    picks:=[1]int.[ifx ally>=0 then ally else i];
+    ok=rs_cast_creatures(b,i,a.sp,sl,picks[..],false);
+  } else if a.tg == FB_SELF { ok = rs_cast(b, i, a.sp, sl, 0, 0, i); }
   else if a.tg == FB_ALLY { ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx ally >= 0 then ally else i); }
   else if a.tg == FB_ALLIES {
     // the first is you, then up to five friends round the point, the most hurt first

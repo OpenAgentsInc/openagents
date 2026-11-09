@@ -89,6 +89,9 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
   if klass == FB_CL_DRUID && hero.uses_max[RS_USE_WILD] > 0 && n + 2 <= out.count {
     out[n] = fb_feature(FB_WILD, "Wild Shape", "wild-shape"); out[n].tg = FB_SELF; out[n + 1] = xc_attack(); n += 2;
   }
+  if n<out.count && rs_class_spell_granted(hero,SP_AID) {
+    out[n]=fb_art_spell(SP_AID,FB_ALLY,"healing-word"); n+=1;
+  }
   // The preset's selected spells, not slot availability alone, determine the
   // playable bar. Stable ability identities preserve saved ordering/sounds.
   selected := 0;
@@ -217,6 +220,7 @@ xc_spell_sound :: (sp: int) -> XcSnd {
   if sp == SP_STARRY_WISP { return xs("arcane-cast", "missile", "arcane-hit", "fizzle", 1); }
   if sp == SP_HEALING_WORD || sp == SP_CURE_WOUNDS { return xs("heal", "", "", "", 1); }
   if sp == SP_LESSER_RESTORATION { return xs("shield", "heal", "", "", 1.05); }
+  if sp == SP_AID { return xs("arcane-cast", "heal", "", "", 0.95); }
   if sp == SP_THUNDERWAVE { return xs("thunderwave", "thunder", "hit-heavy", "", 1); }
   if sp == SP_ENTANGLE { return xs("entangle", "", "", "", 1); }
   if sp == SP_CALL_LIGHTNING { return xs("bolt-cast", "thunder", "bolt-travel", "fizzle", 1); }
@@ -320,6 +324,16 @@ xk_wire :: (c: int, a: FbAb) -> int {
   #assert entry.ok && entry.ab.sp==SP_LESSER_RESTORATION && entry.ab.lvl==2;
   sound:=xc_sound(entry.ab,FB_CL_CLERIC);
   #assert entry.ab.tg==FB_ALLY && sound.start=="shield";
+}
+
+#test "Aid is on the Life Cleric bar from level 3 and the Devotion Paladin bar from level 5" {
+  for klass:[2]int.[FB_CL_CLERIC,FB_CL_PALADIN] {
+    min_level:=ifx klass==FB_CL_CLERIC then 3 else 5;
+    wire:=xk_wire(klass,fb_spell(SP_AID,2,FB_ALLY));
+    #assert wire>=0 && !xk_entry_at(klass,min_level-1,wire).ok;
+    entry:=xk_entry_at(klass,min_level,wire);
+    #assert entry.ok && entry.ab.sp==SP_AID && entry.ab.lvl==2 && entry.ab.tg==FB_ALLY;
+  }
 }
 // The weapon class c's hero holds (its Attack's reach).
 xk_weapon :: (c: int) -> int { return ifx c >= 0 && c < FB_CL_N then fb_cl_hero(c, "", 0, XK_LEVEL).weapon else 0; }
