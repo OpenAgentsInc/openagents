@@ -1,0 +1,67 @@
+// Everglade Experimental's CLASSES column (experimental-combat.coax), shared with Everglade II's
+// local admin mode (everglade2-admin.coax): the twelve SRD 5.2.1 classes, LEVEL 1 to 6, and REST
+// (SHORT, SLEEP, WATCH, HIT DIE, END REST) with KNOCK OUT. This unit lays the column out, draws it
+// and says what a point in it is; each world applies the choice its own way (Experimental to its
+// offline battle, Everglade II through its room). Its loader loads charactercreator.coax as cc and
+// class-kit.coax (XC_CL_UP).
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "class menu"
+
+CM_HEAD :: 32.0; CM_ROW :: 24.0; CM_ROWS_TOP :: 40.0; CM_GAP :: 8.0;   // CSS px: its header, its rows, the gap above it
+CM_CLASSES :: 12; CM_LEVELS :: 6;
+CM_REST_LABELS :: [5]string.["SHORT","SLEEP","WATCH","HIT DIE","END REST"];
+// What a point in the column is (cm_hit): nothing, the header, a class row, a level, a rest
+// request (0 to 4, CM_REST_LABELS's order) or KNOCK OUT.
+CM_NONE :: 0; CM_TOGGLE :: 1; CM_CLASS :: 2; CM_LEVEL :: 3; CM_REST :: 4; CM_KNOCKOUT :: 5;
+CmHit :: struct { kind: int; index: int; }
+
+// The class part's height, CSS px: its header, and when open its twelve rows.
+cm_class_height :: (open: bool) -> f32 { return ifx open then f32(CM_ROWS_TOP) + f32(CM_CLASSES) * f32(CM_ROW) + 8 else f32(CM_HEAD); }
+// The whole column's height, CSS px, with `extra` px of rows of its world's own below REST.
+cm_height :: (open: bool, extra: f32) -> f32 { return cm_class_height(open) + 110 + extra; }
+// REST's box i (0 to 4 its requests, 5 KNOCK OUT, then a world's own boxes in the same grid), device px.
+cm_box :: (top: f32, open: bool, k: f32, i: int) -> cc.Box {
+  left := (32 + f32(i % 3) * 106) * k; y := top + (cm_class_height(open) + 58 + f32(i / 3) * 23) * k;
+  return cc.Box.{x0 = left, y0 = y, x1 = left + 96 * k, y1 = y + 21 * k};
+}
+cm_in :: (r: cc.Box, px: f32, py: f32) -> bool { return px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1; }
+// What (px, py) is in the column whose top is `top` (device px).
+cm_hit :: (top: f32, open: bool, k: f32, px: f32, py: f32) -> CmHit {
+  if px < 12 * k || px > 370 * k || py < top { return CmHit.{}; }
+  if py >= top + (cm_class_height(open) + 34) * k {
+    for i: 0..<6 { if cm_in(cm_box(top, open, k, i), px, py) { return CmHit.{kind = ifx i < 5 then CM_REST else CM_KNOCKOUT, index = i}; } }
+    return CmHit.{};
+  }
+  if py >= top + cm_class_height(open) * k {
+    level := cast(int) floor((px / k - 94) / 34) + 1;
+    return ifx level >= 1 && level <= CM_LEVELS then CmHit.{kind = CM_LEVEL, index = level} else CmHit.{};
+  }
+  if py < top + f32(CM_HEAD) * k { return CmHit.{kind = CM_TOGGLE}; }
+  if open {
+    row := cast(int) floor((py - top - f32(CM_ROWS_TOP) * k) / (f32(CM_ROW) * k));
+    if py >= top + f32(CM_ROWS_TOP) * k && row >= 0 && row < CM_CLASSES { return CmHit.{kind = CM_CLASS, index = row}; }
+  }
+  return CmHit.{};
+}
+// The column's words: CLASSES (yours marked), LEVEL (yours gold), the rest line and its requests, KNOCK OUT.
+cm_draw :: (out: [] f32, at: int, top: f32, open: bool, k: f32, klass: int, level: int, rest: string, knockout: bool) -> int {
+  n := at; head := cc.ink(k, 0.95, 0.9, 0.7); body := cc.ink(k, 0.91, 0.93, 0.88); gold := cc.ink(k, 1, 0.75, 0.3);
+  n = cc.text(out, n, ifx open then "- CLASSES" else "+ CLASSES", 32 * k, top + 25 * k, 10 * k, head);
+  if open {
+    for c: 0..<CM_CLASSES {
+      y := top + (f32(CM_ROWS_TOP) + f32(c) * f32(CM_ROW) + 17) * k;
+      n = cc.text(out, n, ifx c == klass then ">" else " ", 24 * k, y, 10 * k, cc.ink(k, 0.95, 0.8, 0.4));
+      n = cc.text(out, n, XC_CL_UP[c], 40 * k, y, 10 * k, body);
+    }
+  }
+  level_y := top + (cm_class_height(open) + 23) * k;
+  n = cc.text(out, n, "LEVEL", 32 * k, level_y, 10 * k, head);
+  for l: 1..<CM_LEVELS + 1 {
+    digit: [1] u8; digit[0] = cast(u8) (48 + l);
+    n = cc.text(out, n, cast(string) digit[..], (100 + f32(l - 1) * 34) * k, level_y, 10 * k, ifx l == level then gold else body);
+  }
+  n = cc.text(out, n, rest, 32 * k, top + (cm_class_height(open) + 49) * k, 8 * k, head);
+  for i: 0..<5 { r := cm_box(top, open, k, i); n = cc.text(out, n, CM_REST_LABELS[i], r.x0, r.y0 + 16 * k, 8 * k, body); }
+  ko := cm_box(top, open, k, 5);
+  n = cc.text(out, n, ifx knockout then "KNOCK OUT: ON" else "KNOCK OUT", ko.x0, ko.y0 + 16 * k, 8 * k, ifx knockout then gold else body);
+  return n;
+}

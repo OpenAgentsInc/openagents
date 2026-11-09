@@ -529,6 +529,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
   if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (room-e2-admin.coax)
   if c=='M' { if v[0].eg[k].e2 { e2_familiar_ask(v,k,seat_id,text); } return; }
   if c == 'U' { if v[0].eg[k].e2 { e2_aid_ask(v,k,seat_id,text); } return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
@@ -1081,8 +1082,9 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_ends_due(v, k);
   rc_tick_first(v, k);
   fg_sync(v,k);
-  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_guard_tick(v,k); }
+  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
+  if v[0].eg[k].e2 { e2_admin_after(v,k); }
   e2_guard_after(v,k);
   if v[0].eg[k].e2 { e2_rest_tell_all(v, k); e2_kit_tell_all(v, k); }
   fg_hits(v,k);

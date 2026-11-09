@@ -1,0 +1,334 @@
+// Everglade II's admin mode: the owner's local panel to do anything in the world. It is never in a
+// release build and never on a public page:
+//   - everglade2.coax calls into this unit only inside `#if BUILD_DEBUG` blocks, and coax/web/wasm.sh
+//     compiles a release (COAXIAL_MODE unset or release) with --build-profile release, so a release
+//     everglade2.wasm has none of it (apps/openagents-web/build.sh checks the bytes for E2A_MARK);
+//   - in a dev build it turns on only on a page served from 127.0.0.1 or localhost whose address
+//     has ?admin (e2a_facts);
+//   - what changes the room (heal, god, teleport, noclip, the guard, knock out) goes as X lines that
+//     only a local room takes: --dev and bound to 127.0.0.1 (coax/web/room/room-e2-admin.coax).
+// Open it: coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static --no-build, a
+// dev build of everglade2.wasm, then http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950
+// (docs/verse/everglade2.md "Admin mode"). Backquote (`) shows and hides the panel; it starts shown.
+//
+// The panel is Everglade Experimental's left column: ANIMATIONS (charactercreator.coax dev_hud, any
+// clip on your character), CLASSES, LEVEL 1 to 6 and REST with KNOCK OUT (class-menu.coax); then the
+// admin rows: HEAL, GOD, NOCLIP, CLICK TP (the next click on the ground takes you there), GO TO
+// (type X Z, Enter), the time of day, the guard (kill, reset, off and on), the path 50 m either way,
+// and where you stand. The frame rate is the corner's (e2_fps).
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "admin"
+
+E2A_MARK :: "ADMIN MODE · LOCAL ONLY";   // the panel's title: build.sh fails a release whose wasm holds it
+E2A_FIRST :: 9;      // the first admin box in class-menu.coax's grid (0-5 REST and KNOCK OUT, 6-8 the title row)
+E2A_BOXES :: 12;
+E2A_EXTRA :: 155.0;  // CSS px the admin rows add under REST (cm_height)
+E2A_FLY :: 14.0; E2A_FLY_SLOW :: 4.0;   // m/s through anything (Shift the slow one)
+E2A_SEND_S :: 0.05;  // s between noclip's places
+E2A_REQUESTS :: [5] int.[RS_REST_SHORT, RS_REST_SLEEP, RS_REST_WATCH, RS_REST_DIE, RS_REST_END];   // CM_REST_LABELS's order
+
+E2Admin :: struct {
+  on: bool;                 // a dev build's page on this machine, asked with ?admin
+  shown: bool = true;       // the panel (backquote)
+  open: bool = true;        // its CLASSES rows
+  top: f32;                 // the column's top, device px
+  god: bool; noclip: bool; ko: bool; click_tp: bool;
+  hour: int = -1;           // the time of day, 0 to 23, -1 the room's
+  typing: bool; typed: [32] u8; typed_n: int;
+  fly_x: f32; fly_z: f32; fly_sent: f32;
+  down: bool;               // a press began on the panel
+  said: [48] u8; said_n: int; said_at: f32 = -100;   // what the last action did
+  sent: int; warps: int;    // X lines sent, teleports asked (e2_probe 996, 997)
+}
+
+// ---- turning it on: the page facts' url (message 600)
+e2a_local :: (url: string) -> bool {
+  for host: [4] string.["http://127.0.0.1:", "http://127.0.0.1/", "http://localhost:", "http://localhost/"] {
+    if url.count >= host.count && url[0..<host.count] == host { return true; }
+  }
+  return false;
+}
+e2a_asked :: (url: string) -> bool {
+  w := "admin";
+  for i: 0..<url.count {
+    if (url[i] != '?' && url[i] != '&') || i + 1 + w.count > url.count || url[i + 1..<i + 1 + w.count] != w { continue; }
+    e := i + 1 + w.count;
+    if e == url.count || url[e] == '&' || url[e] == '=' || url[e] == '#' { return true; }
+  }
+  return false;
+}
+e2a_facts :: (s: [] E2, facts: string) {
+  url := fact_of(facts, "url");
+  s[0].adm[0].on = e2a_local(url) && e2a_asked(url);
+}
+#test "admin mode: only this machine's page, and only asked" {
+  #assert e2a_local("http://127.0.0.1:8949/worlds/everglade2?admin") && e2a_local("http://localhost:8949/x");
+  #assert !e2a_local("https://openagents.com/worlds/everglade2?admin") && !e2a_local("https://everglade.world/play?admin");
+  #assert !e2a_local("http://127.0.0.1.example.com/worlds/everglade2?admin") && !e2a_local("http://localhost.evil.com/?admin");
+  #assert e2a_asked("http://127.0.0.1:8949/worlds/everglade2?admin") && e2a_asked("http://x/?relay=ws://localhost:1&admin");
+  #assert !e2a_asked("http://x/worlds/everglade2?administrator") && !e2a_asked("http://x/?notadmin") && !e2a_asked("http://x/");
+  a: [1] E2;
+  e2a_facts(a[..], "url=https://openagents.com/worlds/everglade2?admin\n"); #assert !a[0].adm[0].on;
+  e2a_facts(a[..], "url=http://127.0.0.1:8949/worlds/everglade2\n"); #assert !a[0].adm[0].on;
+  e2a_facts(a[..], "tab=1\nurl=http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950\n"); #assert a[0].adm[0].on;
+}
+
+e2a_on :: (s: [] E2) -> bool { return s[0].adm[0].on && s[0].placed && !e2c_creating(s); }
+e2a_say :: (s: [] E2, t: string) {
+  a := s[0].adm[..]; a[0].said_n = 0;
+  for c: t { if a[0].said_n < a[0].said.count { a[0].said[a[0].said_n] = c; a[0].said_n += 1; } }
+  a[0].said_at = s[0].clock;
+}
+// An X line to the room (room-e2-admin.coax): false with no room.
+e2a_send :: (s: [] E2, m: int) -> bool {
+  n := s[0].net[..];
+  if !e2n_open(n) { e2a_say(s, "NO ROOM: START THE LOCAL ROOM"); return false; }
+  e2n_send(n, m); s[0].adm[0].sent += 1; return true;
+}
+e2a_word :: (s: [] E2, what: string) -> bool { return e2a_send(s, wire_put(s[0].net[0].out[..], 0, what)); }
+e2a_flag :: (s: [] E2, what: string, on: bool) -> bool { o := s[0].net[0].out[..]; return e2a_send(s, wire_int(o, wire_put(o, 0, what), ifx on then 1 else 0)); }
+// Teleport to (x, z): the room puts your seat there and its word on you moves you (e2n_row's fix).
+e2a_warp :: (s: [] E2, x: f32, z: f32) -> bool {
+  if x != x || z != z { return false; }
+  cx := ifx x < -400 then -400.0f32 else ifx x > 400 then 400.0f32 else x;
+  cz := ifx z < -600 then -600.0f32 else ifx z > 100 then 100.0f32 else z;
+  o := s[0].net[0].out[..];
+  m := wire_int(o, wire_int(o, wire_int(o, wire_put(o, 0, "X at"), cast(int)(cx * 1000)), cast(int)(cz * 1000)), cast(int)(s[0].you_face * 1000));
+  if !e2a_send(s, m) { return false; }
+  s[0].adm[0].warps += 1; s[0].adm[0].fly_x = cx; s[0].adm[0].fly_z = cz;
+  return true;
+}
+e2a_path :: (s: [] E2, step: int) {
+  m := cast(int) floor(-s[0].you_z / 50 + 0.5) * 50 + step;
+  m = ifx m < 0 then 0 else ifx m > 520 then 520 else m;
+  z := -f32(m);
+  if e2a_warp(s, ifx z < 0 then e2_road_x(z) else 0.0f32, z) { b: [24] u8; e2a_say(s, cast(string) b[0..<wire_put(b[..], wire_int(b[..], wire_put(b[..], 0, "PATH"), m), " M")]); }
+}
+// The ground under screen point (px, py), marched along the view's ray; ok false when it meets none in 400 m.
+E2aGround :: struct { ok: bool; x: f32; z: f32; }
+e2a_ground_at :: (s: [] E2, px: f32, py: f32) -> E2aGround {
+  e := s[0].eye; f := s[0].fwd; r := s[0].right; u := s[0].up; fl := ifx s[0].focal > 1 then s[0].focal else 1.0f32;
+  a := (px - s[0].width * 0.5) / fl; b := (s[0].cy - py) / fl;
+  d := [3] f32.[f[0] + r[0] * a + u[0] * b, f[1] + r[1] * a + u[1] * b, f[2] + r[2] * a + u[2] * b];
+  l := sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]); if l < 0.0001 { return E2aGround.{}; }
+  t := 0.0f32;
+  while t < 400 {
+    x := e[0] + d[0] / l * t; y := e[1] + d[1] / l * t; z := e[2] + d[2] / l * t;
+    if y <= e2_height(x, z) { return E2aGround.{ok = true, x = x, z = z}; }
+    t += ifx t < 40 then 0.25f32 else 1.0f32;
+  }
+  return E2aGround.{};
+}
+// GO TO's typed "X Z", metres.
+e2a_number :: (t: string, at: int) -> [2] f32 {   // the value and where it ended (-1 none)
+  i := at; while i < t.count && (t[i] == ' ' || t[i] == ',') { i += 1; }
+  neg := false; if i < t.count && t[i] == '-' { neg = true; i += 1; }
+  v := 0.0f32; d := 0; frac := 0.0f32; place := 1.0f32; dot := false;
+  while i < t.count && ((t[i] >= '0' && t[i] <= '9') || (t[i] == '.' && !dot)) {
+    if t[i] == '.' { dot = true; } else if dot { place /= 10; frac += f32(t[i] - '0') * place; d += 1; } else { v = v * 10 + f32(t[i] - '0'); d += 1; }
+    i += 1;
+  }
+  if d == 0 { return [2] f32.[0, -1]; }
+  w := v + frac; return [2] f32.[ifx neg then -w else w, f32(i)];
+}
+e2a_go :: (s: [] E2) {
+  a := s[0].adm[..]; t := cast(string) a[0].typed[0..<a[0].typed_n];
+  x := e2a_number(t, 0); z := ifx x[1] >= 0 then e2a_number(t, cast(int) x[1]) else [2] f32.[0, -1];
+  a[0].typing = false;
+  if x[1] < 0 || z[1] < 0 { e2a_say(s, "GO TO: TYPE X Z, THEN ENTER"); return; }
+  if e2a_warp(s, x[0], z[0]) { e2a_say(s, "TELEPORTED"); }
+}
+#test "admin GO TO reads two numbers" {
+  a := e2a_number("12.5 -40", 0); #assert a[0] == 12.5 && a[1] == 4;
+  b := e2a_number("12.5 -40", 4); #assert b[0] == -40 && b[1] == 8;
+  #assert e2a_number("x", 0)[1] < 0 && e2a_number("", 0)[1] < 0;
+}
+
+// ---- the panel: where it is, what is pressed
+e2a_box :: (s: [] E2, i: int) -> cc.Box { return cm_box(s[0].adm[0].top, s[0].adm[0].open, s[0].k, i); }
+e2a_height :: (s: [] E2) -> f32 { return cm_height(s[0].adm[0].open, f32(E2A_EXTRA)); }
+e2a_inside :: (s: [] E2, x: f32, y: f32) -> bool {
+  k := s[0].k; a := s[0].adm[0];
+  if x < 12 * k || x > 370 * k { return false; }
+  if y >= 20 * k && y <= 52 * k { return true; }   // ANIMATIONS' header
+  if !s[0].creator[0].preview_collapsed && y >= 20 * k && y <= a.top { return true; }
+  return y >= a.top && y <= a.top + e2a_height(s) * k;
+}
+e2a_press :: (s: [] E2, i: int) {
+  a := s[0].adm[..];
+  if i == 0 { if e2a_word(s, "X heal") { e2a_say(s, "HEALED"); } }
+  if i == 1 { if e2a_flag(s, "X god", !a[0].god) { a[0].god = !a[0].god; e2a_say(s, ifx a[0].god then "GOD MODE: NOTHING HARMS YOU" else "GOD MODE OFF"); } }
+  if i == 2 { a[0].noclip = !a[0].noclip; a[0].fly_x = s[0].you_x; a[0].fly_z = s[0].you_z; e2a_say(s, ifx a[0].noclip then "NOCLIP: WASD FLY THROUGH ANYTHING" else "NOCLIP OFF"); }
+  if i == 3 { a[0].click_tp = !a[0].click_tp; e2a_say(s, ifx a[0].click_tp then "CLICK THE GROUND TO GO THERE" else "CLICK TP OFF"); }
+  if i == 4 { a[0].typing = true; a[0].typed_n = 0; e2a_say(s, "TYPE X Z, THEN ENTER"); }
+  if i == 5 { a[0].hour = ifx a[0].hour < 0 then 14 else (a[0].hour + 2) % 24; }
+  if i == 6 { if e2a_word(s, "X guard kill") { e2a_say(s, "THE GUARD FALLS"); } }
+  if i == 7 { if e2a_word(s, "X guard reset") { e2a_say(s, "A NEW GUARD"); } }
+  if i == 8 { if e2a_word(s, "X guard off") { e2a_say(s, "THE GUARD IS GONE"); } }
+  if i == 9 { if e2a_word(s, "X guard on") { e2a_say(s, "THE GUARD WALKS AGAIN"); } }
+  if i == 10 { e2a_path(s, -50); }
+  if i == 11 { e2a_path(s, 50); }
+}
+// The admin row's labels, box i (0 to E2A_BOXES - 1).
+e2a_label :: (s: [] E2, i: int, b: [] u8) -> string {
+  a := s[0].adm[0];
+  if i == 0 { return "FULL HEAL"; }
+  if i == 1 { return ifx a.god then "GOD: ON" else "GOD: OFF"; }
+  if i == 2 { return ifx a.noclip then "NOCLIP: ON" else "NOCLIP: OFF"; }
+  if i == 3 { return ifx a.click_tp then "CLICK TP: ON" else "CLICK TP"; }
+  if i == 4 {
+    if !a.typing { return "GO TO X Z"; }
+    n := wire_put(b, 0, "> "); n = wire_put(b, n, cast(string) a.typed[0..<a.typed_n]); n = wire_put(b, n, "_"); return cast(string) b[0..<n];
+  }
+  if i == 5 {
+    if a.hour < 0 { return "TIME: ROOM"; }
+    n := wire_put(b, 0, ifx a.hour < 10 then "TIME 0" else "TIME "); n = e2a_digits(b, n, a.hour); return cast(string) b[0..<wire_put(b, n, ":00")];
+  }
+  if i == 6 { return "GUARD KILL"; } if i == 7 { return "GUARD RESET"; } if i == 8 { return "GUARD OFF"; } if i == 9 { return "GUARD ON"; }
+  if i == 10 { return "PATH -50 M"; }
+  return "PATH +50 M";
+}
+
+// ---- input: everglade2.coax's e2_key, e2_pointer and e2_wheel ask here first (dev builds only)
+e2a_key :: (s: [] E2, key: int) -> bool {
+  a := s[0].adm[..];
+  if !a[0].on { return false; }
+  if a[0].typing {
+    if key == -2 { e2a_go(s); return true; }
+    if key == -1 { a[0].typing = false; return true; }
+    if key == -3 { if a[0].typed_n > 0 { a[0].typed_n -= 1; } return true; }
+    if ((key >= '0' && key <= '9') || key == '-' || key == '.' || key == ' ' || key == ',') && a[0].typed_n < a[0].typed.count { a[0].typed[a[0].typed_n] = cast(u8) key; a[0].typed_n += 1; }
+    return true;
+  }
+  if key == '`' { a[0].shown = !a[0].shown; s[0].ml[0].free = a[0].shown; return true; }
+  return false;
+}
+e2a_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
+  a := s[0].adm[..];
+  if !e2a_on(s) || !a[0].shown { return false; }
+  cr := s[0].creator[..];
+  if phase == 0 && !e2a_inside(s, x, y) {
+    if a[0].click_tp {
+      g := e2a_ground_at(s, x, y);
+      if g.ok && e2a_warp(s, g.x, g.z) { e2a_say(s, "TELEPORTED"); }
+      return true;
+    }
+    return false;
+  }
+  // ANIMATIONS: Experimental's browser, on your character (charactercreator.coax dev_pointer)
+  if y < a[0].top && cc.dev_pointer(cr, x, y, phase) { return true; }
+  if phase == 0 { a[0].down = true; return true; }
+  if !a[0].down { return false; }
+  if phase == 2 {
+    a[0].down = false;
+    h := cm_hit(a[0].top, a[0].open, s[0].k, x, y);
+    if h.kind == CM_TOGGLE { a[0].open = !a[0].open; }
+    else if h.kind == CM_CLASS { cr[0].klass = h.index; cr[0].revision += 1; e2a_say(s, XC_CL_UP[h.index]); }
+    else if h.kind == CM_LEVEL { cr[0].level = h.index; cr[0].revision += 1; }
+    else if h.kind == CM_REST { ok := e2n_rest(s[0].net[..], E2A_REQUESTS[h.index]); if !ok { e2a_say(s, "NO ROOM: START THE LOCAL ROOM"); } }
+    else if h.kind == CM_KNOCKOUT { if e2a_flag(s, "X ko", !a[0].ko) { a[0].ko = !a[0].ko; } }
+    else { for i: 0..<E2A_BOXES { if cm_in(e2a_box(s, E2A_FIRST + i), x, y) { e2a_press(s, i); } } }
+  }
+  if phase == 3 { a[0].down = false; }
+  return true;
+}
+e2a_wheel :: (s: [] E2, dy: f32) -> bool {
+  if !e2a_on(s) || !s[0].adm[0].shown || s[0].creator[0].preview_collapsed { return false; }
+  // the pointer's place isn't kept here: the wheel scrolls the clips while the list is open
+  cc.dev_scroll(s[0].creator[..], dy); return true;
+}
+// Noclip moves you itself (e2a_frame): your keys move nothing through the controller.
+e2a_noclip :: (s: [] E2) -> bool { return e2a_on(s) && s[0].adm[0].noclip; }
+
+// ---- the frame: the day's hour, your character's clip, the panel
+// The time of day the panel set, for e2_light: the tick its clock is read at.
+e2a_light :: (s: [] E2, e: [] envf.EnvFrame, tick: s64) -> s64 {
+  h := s[0].adm[0].hour;
+  if !e2a_on(s) || h < 0 { return tick; }
+  _ := envf.env_frame_room(e, 0, 30, cast(s64)(h * WIRE_DAY_MS / 24), WIRE_DAY_MS);
+  return 0;
+}
+// A clip chosen in ANIMATIONS plays on you in place of the gait (as Experimental's experimental_figure).
+e2a_figure :: (s: [] E2, a0: figs.BdAnim) -> figs.BdAnim {
+  cr := s[0].creator[..];
+  if !e2a_on(s) || !cr[0].dev_animations || cr[0].preview_clip < 0 { return a0; }
+  a := a0; a.clip = figs.BD_CLIPS + cr[0].preview_clip; a.t0 = 0; a.prev = -1; a.lay = false;
+  a.phase = (s[0].clock - cr[0].preview_at) / figs.bd_seconds(a.clip);
+  return a;
+}
+e2a_fly :: (s: [] E2, dt: f32) {
+  a := s[0].adm[..]; h := s[0].held;
+  if !a[0].noclip || dt <= 0 { return; }
+  fx := s[0].fwd[0]; fz := s[0].fwd[2]; l := sqrt(fx * fx + fz * fz); if l < 0.001 { return; } fx /= l; fz /= l;
+  ax := axis(h, HOLD_D, HOLD_A); ay := axis(h, HOLD_W, HOLD_S);
+  if ax == 0 && ay == 0 { return; }
+  v := ifx s[0].shift then f32(E2A_FLY_SLOW) else f32(E2A_FLY);
+  a[0].fly_x += (fx * ay - fz * ax) * v * dt; a[0].fly_z += (fz * ay + fx * ax) * v * dt;
+  if s[0].clock - a[0].fly_sent >= f32(E2A_SEND_S) { a[0].fly_sent = s[0].clock; o := a[0].warps; _ := e2a_warp(s, a[0].fly_x, a[0].fly_z); a[0].warps = o; }
+}
+e2a_digits :: (b: [] u8, at: int, v: int) -> int { d: [24] u8; dn := wire_int(d[..], 0, v); return wire_put(b, at, cast(string) d[1..<dn]); }
+e2a_fixed :: (b: [] u8, at: int, v: f32) -> int {   // " 12.34", " -0.50"
+  c := cast(int) floor(abs(v) * 100 + 0.5);
+  n := e2a_digits(b, wire_put(b, at, ifx v < 0 then " -" else " "), c / 100);
+  return e2a_digits(b, wire_put(b, n, ifx c % 100 < 10 then ".0" else "."), c % 100);
+}
+e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
+  a := s[0].adm[..]; cr := s[0].creator[..];
+  if !e2a_on(s) { cr[0].dev_animations = false; return at; }
+  e2a_fly(s, dt);
+  if !a[0].shown { cr[0].dev_animations = false; return at; }
+  w := s[0].width; h := s[0].height; k := s[0].k;
+  s[0].ml[0].free = true;   // the cursor stays free while the panel shows
+  cr[0].dev_animations = true; cr[0].width = w; cr[0].height = h; cr[0].scale = k;
+  col := e2a_height(s);
+  cr[0].dev_below = col + f32(CM_GAP);
+  a[0].top = ifx cr[0].preview_collapsed then (52 + f32(CM_GAP)) * k else h - (20 + col) * k;
+  n := at;
+  // ANIMATIONS (it writes from its slice's start: the HUD's strokes so far kept)
+  n += cc.dev_hud(cr[0], out[n * E2_VERTEX_FLOATS..<out.count], w, h, k);
+  rest := "REST";
+  nt := s[0].net[..];
+  if e2n_rest_message(nt).count > 0 { rest = "REST UNAVAILABLE"; }
+  else if nt[0].rest_known {
+    c := nt[0].rest_code;
+    rest = ifx c == WIRE_REST_SHORT then "SHORT REST" else ifx c == WIRE_REST_CHOOSE then "SHORT REST: CHOOSE HIT DICE" else ifx c == WIRE_REST_SLEEP then "REST: SLEEPING"
+      else ifx c == WIRE_REST_WATCH then "REST: WATCHING" else ifx c == WIRE_REST_EXERT then "REST: EXERTION" else ifx c == WIRE_REST_BROKEN then "REST INTERRUPTED" else "REST";
+  }
+  n = cm_draw(out, n, a[0].top, a[0].open, k, e2c_class_of(s), e2c_level_of(s), rest, a[0].ko);
+  head := cc.ink(k, 1, 0.62, 0.25); body := cc.ink(k, 0.91, 0.93, 0.88); gold := cc.ink(k, 1, 0.75, 0.3);
+  t0 := e2a_box(s, 6);
+  n = cc.text(out, n, E2A_MARK, t0.x0, t0.y0 + 16 * k, 9 * k, head);
+  lb: [48] u8;
+  for i: 0..<E2A_BOXES {
+    r := e2a_box(s, E2A_FIRST + i);
+    lit := (i == 1 && a[0].god) || (i == 2 && a[0].noclip) || (i == 3 && a[0].click_tp) || (i == 4 && a[0].typing) || (i == 5 && a[0].hour >= 0);
+    n = cc.text(out, n, e2a_label(s, i, lb[..]), r.x0, r.y0 + 16 * k, 8 * k, ifx lit then gold else body);
+  }
+  // where you stand, and what the last action did
+  last := e2a_box(s, E2A_FIRST + E2A_BOXES - 1);
+  p: [96] u8; pn := wire_put(p[..], 0, "X"); pn = e2a_fixed(p[..], pn, s[0].you_x);
+  pn = wire_put(p[..], pn, "   Y"); pn = e2a_fixed(p[..], pn, s[0].you_y);
+  pn = wire_put(p[..], pn, "   Z"); pn = e2a_fixed(p[..], pn, s[0].you_z);
+  pn = wire_put(p[..], pn, "   PATH"); pn = wire_int(p[..], pn, ifx s[0].you_z < 0 then cast(int)(-s[0].you_z) else 0); pn = wire_put(p[..], pn, " M");
+  n = cc.text(out, n, cast(string) p[0..<pn], 32 * k, last.y1 + 18 * k, 8 * k, body);
+  say := ifx s[0].clock - a[0].said_at < 5 then cast(string) a[0].said[0..<a[0].said_n] else ifx e2n_open(s[0].net[..]) then "` HIDES THIS PANEL" else "NO ROOM: START THE LOCAL ROOM";
+  n = cc.text(out, n, say, 32 * k, last.y1 + 36 * k, 8 * k, cc.ink(k, 0.75, 0.85, 0.95));
+  return n;
+}
+// What the checks read (e2_probe 980 on).
+e2a_probe :: (s: [] E2, field: int) -> int {
+  a := s[0].adm[0];
+  if field == 980 { return cast(int) a.top; }
+  if field == 981 { return ifx e2a_on(s) then 1 else 0; }
+  if field == 982 { return ifx a.shown then 1 else 0; }
+  if field == 983 { return e2c_class_of(s); }
+  if field == 984 { return e2c_level_of(s); }
+  if field == 985 { return ifx a.god then 1 else 0; }
+  if field == 986 { return ifx a.noclip then 1 else 0; }
+  if field == 987 { return a.sent; }
+  if field == 988 { return a.warps; }
+  if field == 989 { return cast(int)(s[0].you_x * 100); }
+  if field == 990 { return ifx a.open then 1 else 0; }
+  if field == 991 { return s[0].guard[0].life; }
+  if field == 992 { return ifx s[0].guard[0].up then 1 else 0; }
+  return -1;
+}

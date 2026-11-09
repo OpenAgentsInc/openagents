@@ -49,6 +49,7 @@
 #load "../../aethyr/rules/srd/press-budget.coax";
 #load "class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
+#load "class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "../../verse/experimental-terrain.coax" as xmeadow;
 #load "../../aethyr/action/action.coax" as act;
 #load "../../aethyr/action/sensor.coax" as sense;
@@ -67,7 +68,7 @@ XC_SINK :: 2.4;                // seconds a fallen monster takes to sink away
 XC_PLAYER_MAX :: 44;           // legacy body-only fixture HP; live HP is the selected class's shared state
 XC_FLOATS :: 8;
 // the CLASSES column, CSS px: its header, its rows, the gap above it
-XC_HEAD :: 32.0; XC_ROW :: 24.0; XC_ROWS_TOP :: 40.0; XC_GAP :: 8.0;
+XC_HEAD :: CM_HEAD; XC_ROW :: CM_ROW; XC_ROWS_TOP :: CM_ROWS_TOP; XC_GAP :: CM_GAP;   // class-menu.coax
 
 XcWave :: struct { x: f32; z: f32; y: f32; fx: f32; fz: f32; left: f32; right: f32; near: f32; far: f32; }
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
@@ -1608,7 +1609,7 @@ xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
   return XcAt.{x = u[23] + u[19] * r / z, y = u[27] - u[19] * up / z, ok = true};
 }
 // The column's height, CSS px: its header, and when open its twelve rows.
-xc_class_height :: (x:[]XcCombat) -> f32 { return ifx x[0].open then f32(XC_ROWS_TOP) + 12 * f32(XC_ROW) + 8 else f32(XC_HEAD); }
+xc_class_height :: (x:[]XcCombat) -> f32 { return cm_class_height(x[0].open); }
 xc_column :: (x:[]XcCombat) -> f32 {
   return xc_class_height(x) + ifx x[0].b[0].c[0].wild_swap then 154 else 110;
 }
@@ -1641,10 +1642,7 @@ xc_wild_click :: (x:[]XcCombat,px:f32,py:f32)->bool {
   return true;
 }
 
-xc_rest_box :: (x:[]XcCombat,i:int)->cc.Box {
-  left:=(32+f32(i%3)*106)*x[0].k; top:=x[0].top+(xc_class_height(x)+58+f32(i/3)*23)*x[0].k;
-  return cc.Box.{x0=left,y0=top,x1=left+96*x[0].k,y1=top+21*x[0].k};
-}
+xc_rest_box :: (x:[]XcCombat,i:int)->cc.Box { return cm_box(x[0].top,x[0].open,x[0].k,i); }
 xc_rest_request :: (s:[]Lab,request:int)->bool {
   x:=s[0].xc[..]; cr:=s[0].creator[..];
   if !cr[0].experimental || !x[0].started { return false; }
@@ -1664,7 +1662,6 @@ xc_rest_label :: (c:RsCreature)->string {
   if c.rest.phase==2 { return "SHORT REST: CHOOSE HIT DICE"; }
   return "REST";
 }
-XC_REST_LABELS :: [5]string.["SHORT","SLEEP","WATCH","HIT DIE","END REST"];
 XC_REST_REQUESTS :: [5]int.[RS_REST_SHORT,RS_REST_SLEEP,RS_REST_WATCH,RS_REST_DIE,RS_REST_END];
 // The bar's slot i, device px.
 xc_slot_box :: (x:[]XcCombat, i: int) -> cc.Box {
@@ -1759,30 +1756,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     u[53] = x[0].top; u[54] = bottom;
   }
   head := ink_col(k, 0.95, 0.9, 0.7);
-  n = cc.text(out, n, ifx x[0].open then "- CLASSES" else "+ CLASSES", 32 * k, x[0].top + 25 * k, 10 * k, head);
-  if x[0].open {
-    for c: 0..<FB_CL_N {
-      y := x[0].top + (f32(XC_ROWS_TOP) + f32(c) * f32(XC_ROW) + 17) * k;
-      n = cc.text(out, n, ifx c == x[0].klass then ">" else " ", 24 * k, y, 10 * k, ink_col(k, 0.95, 0.8, 0.4));
-      n = cc.text(out, n, XC_CL_UP[c], 40 * k, y, 10 * k, ink_col(k, 0.91, 0.93, 0.88));
-    }
-  }
-  level_y := x[0].top + (xc_class_height(x) + 23) * k;
-  n = cc.text(out, n, "LEVEL", 32 * k, level_y, 10 * k, head);
-  for level: 1..<7 {
-    digit: [1] u8; digit[0] = cast(u8) (48 + level);
-    n = cc.text(out, n, cast(string) digit[..], (100 + f32(level - 1) * 34) * k, level_y, 10 * k,
-      ifx level == x[0].level then ink_col(k, 1, 0.75, 0.3) else ink_col(k, 0.91, 0.93, 0.88));
-  }
-  n=cc.text(out,n,ifx x[0].rest_refused then "REST UNAVAILABLE" else xc_rest_label(x[0].b[0].c[0]),32*k,
-    x[0].top+(xc_class_height(x)+49)*k,8*k,head);
-  for i:0..<5 {
-    r:=xc_rest_box(x,i);
-    n=cc.text(out,n,XC_REST_LABELS[i],r.x0,r.y0+16*k,8*k,ink_col(k,0.91,0.93,0.88));
-  }
-  ko:=xc_rest_box(x,5);
-  n=cc.text(out,n,ifx x[0].knockout then "KNOCK OUT: ON" else "KNOCK OUT",ko.x0,ko.y0+16*k,8*k,
-    ifx x[0].knockout then ink_col(k,1,0.75,0.3) else ink_col(k,0.91,0.93,0.88));
+  n = cm_draw(out, n, x[0].top, x[0].open, k, x[0].klass, x[0].level,
+    ifx x[0].rest_refused then "REST UNAVAILABLE" else xc_rest_label(x[0].b[0].c[0]), x[0].knockout);   // class-menu.coax
   if x[0].b[0].c[0].wild_swap {
     choice:=xc_wild_options(x);
     r:=xc_rest_box(x,6);
@@ -2050,19 +2025,12 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     if d == -2 {
       if in_col {
         if xc_wild_click(x,px,py) { return true; }
-        if py >= x[0].top + (xc_class_height(x)+34) * k {
-          for i:0..<5 { if xc_in(xc_rest_box(x,i),px,py) { accepted:=xc_rest_request(s,XC_REST_REQUESTS[i]); } }
-          if xc_in(xc_rest_box(x,5),px,py) { x[0].knockout = !x[0].knockout; }
-        }
-        else if py >= x[0].top + xc_class_height(x) * k {
-          level := cast(int) floor((px / k - 94) / 34) + 1;
-          if level >= 1 && level <= 6 { xc_set_level(x, level); }
-        }
-        else if py < x[0].top + f32(XC_HEAD) * k { x[0].open = !x[0].open; }
-        else if x[0].open {
-          row := cast(int) floor((py - x[0].top - f32(XC_ROWS_TOP) * k) / (f32(XC_ROW) * k));
-          if py >= x[0].top + f32(XC_ROWS_TOP) * k && row >= 0 && row < FB_CL_N { xc_set_class(x, row); }
-        }
+        h := cm_hit(x[0].top, x[0].open, k, px, py);   // class-menu.coax
+        if h.kind == CM_REST { accepted:=xc_rest_request(s,XC_REST_REQUESTS[h.index]); }
+        else if h.kind == CM_KNOCKOUT { x[0].knockout = !x[0].knockout; }
+        else if h.kind == CM_LEVEL { xc_set_level(x, h.index); }
+        else if h.kind == CM_TOGGLE { x[0].open = !x[0].open; }
+        else if h.kind == CM_CLASS { xc_set_class(x, h.index); }
       }
       return true;
     }

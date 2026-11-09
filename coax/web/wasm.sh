@@ -120,6 +120,11 @@ fi
 mode="${COAXIAL_MODE:-release}"
 opt=-Os; lto=(-flto)
 if [[ "$mode" == dev ]]; then opt=-O1; lto=(); fi
+# The Coax build profile follows the mode: `#if BUILD_DEBUG { ... }` (coax/spec.md 10.5) is in a dev
+# build and never in a release (Everglade II's admin mode, apps/openagents-web/everglade2-admin.coax).
+# A unit whose closure has no BUILD_DEBUG emits the same C either way, so only such a unit's cache
+# key names the profile.
+profile=(--build-profile release); [[ "$mode" == dev ]] && profile=(--build-profile development)
 cflags=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -std=c11 "$opt" ${lto[@]+"${lto[@]}"}
         -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable
         -Wno-unused-but-set-variable)
@@ -190,6 +195,7 @@ unit_key() {   # unit header-base: the cache key, or nothing (not cacheable)
   list="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "$1")" && [[ -n "$list" ]] || return 0
   { printf '%s\n' coax-wasm-c-1 "$compiler_sum" "$1" "$2" ${run_steps[@]+"${run_steps[@]}"}
     [[ "$(unit_split "$1")" == 0 ]] || printf 'split %s %s\n' "$(unit_split "$1")" "${COAXIAL_SPLIT_UNIT:-}"
+    ! (cd "$repo" && grep -q 'BUILD_DEBUG' $list) || printf 'profile %s\n' "${profile[1]}"
     (cd "$repo" && shasum -a 256 $list); } | shasum -a 256 | cut -c1-64
 }
 keep() {   # file entry: into the cache whole (a rename), never half-written
@@ -214,7 +220,7 @@ emit() {   # unit header-base: its C and header into $work, from the cache or th
   local parts=(); [[ "$(unit_split "$1")" == 0 ]] || parts=(--split "$(unit_split "$1")" ${split_unit[@]+"${split_unit[@]}"})
   local source="$1"
   [[ -z "${COAX_FAST_EDIT:-}" ]] || source="$COAX_FAST_EDIT/source/$1"
-  (cd "$repo" && "$coax_driver" c "$source" --library --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
+  (cd "$repo" && "$coax_driver" c "$source" --library "${profile[@]}" --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
   [[ -z "$key" ]] || { keep "$work/$2.h" "$cache/$key.h"; keep "$work/$2.c" "$cache/$key.c"; }
   step "$2" coax_to_c "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
 }

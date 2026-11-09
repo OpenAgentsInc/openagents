@@ -173,6 +173,10 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
   world2_guard(k, rm_e2_guard_body(view(), k, (coax_v_f32){guard, 2}), guard[0], guard[1]);
   for (int s = 0; s < WORLD_SEATS; s++) {
     everglade2_place(k, s, pose);
+    /* admin mode's teleport (room-e2-admin.coax): asked of a local room only */
+    float warp[3];
+    if (rm_e2_admin_warp(view(), k, (coax_t_SeatId){ s}, (coax_v_f32){warp, 3}) && world2_place(k, s, warp, pose))
+      rm_eg_moved(view(), k, (coax_t_SeatId){ s}, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
     while (rm_eg_input(view(), k, (coax_t_SeatId){ s}, inv)) {
       int64_t input_began = ROOM_LATENCY_ACTIVE(k,s) ? now_us() : 0;
       if (!world2_step(k, s, in, pose)) break;

@@ -347,6 +347,11 @@ wait "$stair"
 wait "$watchtower"
 wait "$fivelab"
 wait "$everglade2"
+# Everglade II's admin mode is a dev build's only (everglade2-admin.coax, wasm.sh's --build-profile):
+# a release everglade2.wasm holding its panel's words or its room lines is refused.
+if [[ "${COAXIAL_MODE:-release}" != dev ]] && LC_ALL=C grep -a -q -e 'ADMIN MODE' -e 'CLICK TP' -e 'X guard' "$here/build/everglade2.wasm"; then
+  echo "build.sh: build/everglade2.wasm is a release build with admin mode in it" >&2; exit 1
+fi
 wait "$cullstream"
 wait "$cullfixture"
 wait "$metahumanlab"

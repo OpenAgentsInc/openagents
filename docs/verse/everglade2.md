@@ -294,3 +294,45 @@ The page needs the shared host modules in `apps/openagents-web/build/` too
 (`host-services`, `host-sockets`, `host-packs`, `latency-client`, and the others from
 `build.sh`). A plain `coax serve` without `--static` runs the whole of `build.sh` before it
 answers.
+
+## Admin mode (this machine only)
+
+Admin mode is a panel for doing anything in the world while you build it. It is Everglade
+Experimental's left column: ANIMATIONS plays any clip on your character, CLASSES switches among
+the twelve classes, LEVEL sets 1 to 6, and REST sends SHORT, SLEEP, WATCH, HIT DIE, and END REST to
+the room. KNOCK OUT makes the guard you drop stay at 1 HP, Unconscious. Under them are the admin
+rows:
+
+- FULL HEAL, and GOD, which keeps your Hit Points full.
+- NOCLIP, which flies you through trees and rocks with W, A, S, and D (Shift is slower).
+- CLICK TP, after which a click on the ground takes you there. GO TO takes typed `X Z`
+  metres and Enter. PATH -50 M and PATH +50 M move you along the path, as `?at=` does.
+- TIME steps the time of day by two hours. Reload the page to go back to the room's day.
+- GUARD KILL, GUARD RESET (a new guard now), GUARD OFF, and GUARD ON.
+- Your position and distance down the path. The frame rate is in the bottom-right corner.
+
+Backquote (`` ` ``) shows and hides the panel. It starts shown.
+
+To open it, build a dev `everglade2.wasm` and run a local room and page server:
+
+```sh
+cd apps/openagents-web
+COAXIAL_MODE=dev ../../coax/web/wasm.sh everglade2.coax everglade2-face.c build/everglade2.wasm \
+  everglade-step.coax ../../aethyr/sticks.coax
+cd ../..
+coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static
+```
+
+Then open `http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950`.
+
+Admin mode works only on this machine. Three checks guard it:
+
+- It exists only in dev builds. `everglade2.coax` calls `everglade2-admin.coax` only inside
+  `#if BUILD_DEBUG` blocks. `coax/web/wasm.sh` compiles with `--build-profile release` unless
+  `COAXIAL_MODE=dev`, so the release linker drops the unit's code. `build.sh` fails a release
+  `everglade2.wasm` that contains the panel's words or its room lines.
+- In a dev build, it turns on only for a page from `127.0.0.1` or `localhost` whose address has
+  `?admin`.
+- The room acts on the panel's `X` lines only when it runs with `--dev` and listens on
+  `127.0.0.1` (`coax/web/room/room-e2-admin.coax`). Production's room drops them. The room checks
+  `e2 admin:` test this.
