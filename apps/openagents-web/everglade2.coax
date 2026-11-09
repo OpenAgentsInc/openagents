@@ -781,7 +781,9 @@ e2_quality_hud :: (s: [] E2, out: [] f32, at: int, right: f32, base: f32) -> int
   pad := ifx (44 * k - cap) * 0.5 > 8 * k then (44 * k - cap) * 0.5 else 8 * k;
   s[0].q_box = cc.Box.{x0 = x0 - 10 * k, y0 = y - cap - pad, x1 = right + 6 * k, y1 = y + pad};
   f := ifx s[0].q_finger >= 0 then 1.0f32 else 0.8f32;
-  return cc.text(out, at, t, x0, y, cap, cc.ink(k, 0.95 * f, 0.93 * f, 0.82 * f));
+  ui := s[0].creator[0].ui; cc.uit_part(ui, "gfx");   // the layout trace, when the overlap check attaches one (#13076)
+  b := s[0].q_box; gfx := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, "GFX");
+  return cc.ttext(ui, gfx, out, at, t, x0, y, cap, cc.ink(k, 0.95 * f, 0.93 * f, 0.82 * f), "GFX");
 }
 e2_quality_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
   if phase == 0 {
@@ -974,7 +976,7 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  if e2k_on(s) && cc.eg_meets(eg_menu_cover(e2k_facts(s),e2k_side_geo(s),e2k_side_st(s)),cc.hud_box(s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k)) {return at;}
  p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k,k);
  n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,base);
- return cc.fps_draw(s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
+ return cc.fps_draw(s[0].creator[0].ui,s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
 }
 // The plaque's baseline, from y up: clear of the class bar's slots, its emblem over the middle and the
 // side bar over it, wherever they share its width (x0..x1). On a phone the bar spans the page, so the
@@ -1056,7 +1058,7 @@ e2_world_view :: (s: [] E2, out: [] f32, at: int) -> int {
   cb: [8] u8; cn := cc.eg_clock(s[0].hud_day, cb[..]);
   conds: [E2K_HEALTH] u8; p := e2_portrait(s, conds[..]);
   wd := cc.EgWorld.{you_x = s[0].you_x, you_z = s[0].you_z, fx = s[0].fwd[0], fz = s[0].fwd[2], reach = reach, place = E2_ZONES[z], clock = cast(string) cb[0..<cn], since = s[0].clock - s[0].zone_at, cover = eg_menu_cover(e2k_facts(s), e2k_side_geo(s), e2k_side_st(s))};
-  return cc.eg_world(out, at, s[0].width, s[0].height, s[0].k, wd, dots[..], nd, p);
+  return cc.eg_world(s[0].creator[0].ui, out, at, s[0].width, s[0].height, s[0].k, wd, dots[..], nd, p);
 }
 #test "the frame rate is the frames over the last half second" {
   s: [1] E2;
@@ -1109,11 +1111,15 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   // the frame's step for the plates' fades (the first frame snaps them)
   s[0].sight_dt = ifx s[0].sight_at < 0 then 1.0f32 else ifx s[0].clock - s[0].sight_at > 0.1 then 0.1f32 else ifx s[0].clock < s[0].sight_at then 0.0f32 else s[0].clock - s[0].sight_at;
   s[0].sight_at = s[0].clock;
-  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))))), dt));
+  hud := e2_hud(s, out, dt);
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   if s[0].wild[0].stage || s[0].stage != E2ST_NONE { hud = 0; s[0].media_n = 0; }   // a staged shot (?stage=cat, everglade2-stage.coax) draws no HUD: no strokes, no bar pictures
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
   return hud;
+}
+// The HUD's strokes, in the order they are drawn over the world (the overlap check, apps/openagents-web/hud-overlap-everglade2.coax, draws the same).
+e2_hud :: (s: [] E2, out: [] f32, dt: f32) -> int {
+  return e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))))), dt));
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
@@ -1144,9 +1150,10 @@ e2_light :: (s: [] E2, u: [] f32) {
 e2_light_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   if s[0].light_view == envd.ENV_VIEW_OFF { return at; }
   t := s[0].light_text[..]; k := s[0].k; cap := 11 * k; v := at; ink := cc.ink(k, 0.95, 0.93, 0.82);
-  v = cc.text(out, v, "LIGHT", 16 * k, 16 * k, cap, ink);
-  v = cc.text(out, v, envd.ENV_VIEW_NAMES[s[0].light_view], 70 * k, 16 * k, cap, ink);
-  for l: 0..<t[0].count { v = cc.text(out, v, envd.envd_line(t, l), 16 * k, (36 + 18 * f32(l)) * k, cap, ink); }
+  ui := s[0].creator[0].ui; cc.uit_part(ui, "light");
+  v = cc.ttext(ui, cc.UIT_NONE, out, v, "LIGHT", 16 * k, 16 * k, cap, ink, "");
+  v = cc.ttext(ui, cc.UIT_NONE, out, v, envd.ENV_VIEW_NAMES[s[0].light_view], 70 * k, 16 * k, cap, ink, "VIEW");
+  for l: 0..<t[0].count { v = cc.ttext(ui, cc.UIT_NONE, out, v, envd.envd_line(t, l), 16 * k, (36 + 18 * f32(l)) * k, cap, ink, ""); }
   return v;
 }
 #test "?light=VIEW turns on one light view and its readout; without it nothing changes" {

@@ -399,10 +399,12 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   // the bar's iron (everglade/hud/parts.coax eg_bar_frame), round the slots' pictures, the class's emblem over it
   boxes: [XC_SLOTS * 4] f32;
   for i: 0..<k[0].bar_n { b := e2k_box(k, i, w, h, kk); for q: 0..<4 { boxes[i * 4 + q] = b[q]; } }
-  n = cc.eg_bar_frame(out, n, boxes[..], k[0].bar_n, kk, E2C_CLASS_TITLES[e2c_class_of(s)][0], 1);
+  ui := s[0].creator[0].ui; tray := cc.uit_next(ui);   // the layout trace (#13076): the tray, its slots after it (eg_bar_slot_at)
+  n = cc.eg_bar_frame(ui, out, n, boxes[..], k[0].bar_n, kk, E2C_CLASS_TITLES[e2c_class_of(s)][0], 1);
   for i: 0..<k[0].bar_n {
     b := e2k_box(k, i, w, h, kk);
     a := k[0].bar[i]; art := xc_art(a, i);
+    slot := cc.eg_bar_slot_at(ui, tray, i);
     e2k_media(s, "image", xc_url(art), art, size, b, "");
     // refused, or held by your conditions: the slot greys (#13072), no words
     grey := deed_look(k[0].deeds[0], i, tick, 0).grey; if bar_dim > grey { grey = bar_dim; }
@@ -418,7 +420,7 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     }
     if i < 9 && xc_draw_slot_key(i, art) {
       key: [1] u8; key[0] = cast(u8)(49 + i);
-      n = cc.text(out, n, cast(string) key[..], b[0] + 4 * kk, b[1] + 13 * kk, 9 * kk, cc.ink(kk, 0.98, 0.95, 0.85));
+      n = cc.ttext(ui, slot, out, n, cast(string) key[..], b[0] + 4 * kk, b[1] + 13 * kk, 9 * kk, cc.ink(kk, 0.98, 0.95, 0.85), "key");
     }
     if i == k[0].used && left > 0 { n = e2k_line(out, n, b[0], b[3] + 4 * kk, b[2], b[3] + 4 * kk, 1.5 * kk, 1, 0.8, 0.4); }
     // the room's count for it (slots at its level, uses, Rages, Focus) in its corner, and a gold
@@ -426,8 +428,8 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     kit := e2n_kit(s[0].net[..], i, k[0].bar_n);
     if kit.ok && kit.left >= 0 {
       d: [4] u8; dn := e2k_int(d[..], 0, kit.left); cap := 9 * kk;
-      n = cc.text(out, n, cast(string) d[0..<dn], b[2] - f32(dn) * cap * 0.78 - 5 * kk, b[3] - 5 * kk, cap,
-                  ifx kit.left == 0 then cc.ink(kk, 1, 0.55, 0.4) else cc.ink(kk, 1, 0.82, 0.35));
+      n = cc.ttext(ui, slot, out, n, cast(string) d[0..<dn], b[2] - f32(dn) * cap * 0.78 - 5 * kk, b[3] - 5 * kk, cap,
+                  ifx kit.left == 0 then cc.ink(kk, 1, 0.55, 0.4) else cc.ink(kk, 1, 0.82, 0.35), "count");
     }
     if kit.ok && kit.on {
       n = e2k_line(out, n, b[0], b[1], b[2], b[1], 1.5 * kk, 1, 0.75, 0.3); n = e2k_line(out, n, b[0], b[3], b[2], b[3], 1.5 * kk, 1, 0.75, 0.3);
@@ -440,6 +442,7 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     if cx - cw / 2 < 12 * kk { cx = 12 * kk + cw / 2; }
     if cx + cw / 2 > w - 12 * kk { cx = w - 12 * kk - cw / 2; }
     e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", [4] f32.[cx - cw / 2, b[1] - 30 * kk - ch, cx + cw / 2, b[1] - 30 * kk], "");
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, cx - cw / 2, b[1] - 30 * kk - ch, cx + cw / 2, b[1] - 30 * kk, "card");
   }
   // your health and what holds you are on the portrait plate (everglade2.coax e2_world_view, everglade/hud/parts.coax eg_world)
   b0 := e2k_box(k, 0, w, h, kk);
@@ -449,7 +452,7 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   if refused.count == 0 { refused = e2n_aid_message(s[0].net[..]); }
   if refused.count == 0 { refused = e2n_familiar_message(s[0].net[..]); }
   // over the bar's emblem (the class's initial: its name is on the portrait plate)
-  if refused.count>0 { n=cc.eg_say(out,n,refused,w*0.5,e2k_side_top(s)-12*kk,8*kk,cc.HUD_TEXT_WARN,1,kk,true); }
+  if refused.count>0 { cc.uit_part(ui, "bar"); n=cc.hud_say_ui(ui,cc.UIT_NONE,"REFUSED",out,n,refused,w*0.5,e2k_side_top(s)-12*kk,8*kk,cc.hud_text(cc.eg_tokens(),cc.HUD_TEXT_WARN),1,kk,true); }
   return n;
 }
 
@@ -599,5 +602,5 @@ e2k_side_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
 }
 e2k_side_bar :: (s: [] E2, out: [] f32, at: int) -> int {
   g := e2k_side_geo(s); k := s[0].casts[..]; if k[0].menu >= 0 && eg_side_find(g, k[0].menu) < 0 { k[0].menu = -1; }
-  return eg_side_draw(e2k_facts(s), g, e2k_side_st(s), out, at);
+  return eg_side_draw(s[0].creator[0].ui, e2k_facts(s), g, e2k_side_st(s), out, at);
 }

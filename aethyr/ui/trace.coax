@@ -38,6 +38,7 @@ UitRect :: struct {
   part: [UIT_NAME] u8; part_n: int;  // the HUD part that drew it (uit_part)
   name: [UIT_NAME] u8; name_n: int;  // what it is: a run's own words, or a button's label
   debug: bool;                       // drawn by a developer's tool, not the player's HUD
+  over: bool;                        // sits over its parent's edge on purpose (uit_over): never an overflow
 }
 UitTrace :: struct {
   n: int;
@@ -75,6 +76,11 @@ uit_put :: (t: [] UitTrace, parent: int, kind: int, x0: f32, y0: f32, x1: f32, y
   t[0].rects[i] = r;
   return i;
 }
+// The index the next widget put will have; UIT_NONE with no trace attached, or when it is full.
+uit_next :: (t: [] UitTrace) -> int { if t.count == 0 || t[0].n >= UIT_MAX { return UIT_NONE; } return t[0].n; }
+// Marks widget i as set over its parent's edge on purpose (an emblem on a tray's rim): it is held
+// by the parent, and coming out of it is not a finding.
+uit_over :: (t: [] UitTrace, i: int) { if t.count == 0 || i < 0 || i >= t[0].n { return; } t[0].rects[i].over = true; }
 // uit_put, where the index isn't wanted.
 uit_add :: (t: [] UitTrace, parent: int, kind: int, x0: f32, y0: f32, x1: f32, y1: f32, name: string) {
   if t.count == 0 { return; }
@@ -125,6 +131,7 @@ uit_holds :: (t: [] UitTrace, a: int, b: int) -> bool {
 // a's own parent is not empty and a comes out of it
 uit_spills :: (t: [] UitTrace, a: int, slack: f32) -> bool {
   p := t[0].rects[a].parent;
+  if t[0].rects[a].over { return false; }
   return p != UIT_NONE && !uit_empty(t[0].rects[p]) && !uit_within(t[0].rects[a], t[0].rects[p], slack);
 }
 // a and b share area and neither holds the other
@@ -316,4 +323,14 @@ uit_line :: (t: [] UitTrace, g: UitFinding, v: UitView, out: [] u8, at: int) -> 
   op := uit_put(o[..], UIT_NONE, UIT_PANEL, 0, -50, 100, 100, "column");
   uit_add(o[..], op, UIT_BUTTON, 0, -40, 100, -10, "row");
   #assert uit_check(o[..], v, f[..]) == 1 && f[0].what == UIT_OFFSCREEN && f[0].a == op && !uit_debug_finding(o[..], f[0]);
+}
+#test "a widget set over its parent's edge on purpose is held, and not an overflow" {
+  t: [1] UitTrace; v := UitView.{w = 400, h = 400};
+  tray := uit_put(t[..], UIT_NONE, UIT_PANEL, 0, 100, 300, 160, "tray");
+  badge := uit_put(t[..], tray, UIT_PANEL, 130, 80, 170, 120, "emblem");
+  f: [8] UitFinding; #assert uit_check(t[..], v, f[..]) == 1 && f[0].what == UIT_OVERFLOW;
+  uit_over(t[..], badge); #assert uit_check(t[..], v, f[..]) == 0;
+  // what else it meets is still found
+  uit_add(t[..], UIT_NONE, UIT_TEXT, 120, 70, 200, 90, "words");
+  #assert uit_check(t[..], v, f[..]) == 1 && f[0].what == UIT_OVERLAP && f[0].a == badge;
 }

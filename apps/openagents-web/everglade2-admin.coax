@@ -298,15 +298,18 @@ e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
     rest = ifx c == WIRE_REST_SHORT then "SHORT REST" else ifx c == WIRE_REST_CHOOSE then "SHORT REST: CHOOSE HIT DICE" else ifx c == WIRE_REST_SLEEP then "REST: SLEEPING"
       else ifx c == WIRE_REST_WATCH then "REST: WATCHING" else ifx c == WIRE_REST_EXERT then "REST: EXERTION" else ifx c == WIRE_REST_BROKEN then "REST INTERRUPTED" else "REST";
   }
-  n = cm_draw(out, n, a[0].top, a[0].open, k, e2c_class_of(s), e2c_level_of(s), rest, a[0].ko);
+  ui := cr[0].ui; cc.uit_part(ui, "class-menu"); cc.uit_debug(ui);   // the layout trace, when the overlap check attaches one (#13076)
+  column := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, 12 * k, a[0].top, 370 * k, a[0].top + col * k, "CLASSES");
+  n = cm_draw(ui, column, out, n, a[0].top, a[0].open, k, e2c_class_of(s), e2c_level_of(s), rest, a[0].ko);
   head := cc.ink(k, 1, 0.62, 0.25); body := cc.ink(k, 0.91, 0.93, 0.88); gold := cc.ink(k, 1, 0.75, 0.3);
-  t0 := e2a_box(s, 6);
-  n = cc.text(out, n, E2A_MARK, t0.x0, t0.y0 + 16 * k, 9 * k, head);
+  t0 := e2a_box(s, 6); cc.uit_part(ui, "admin"); cc.uit_debug(ui);
+  n = cc.ttext(ui, column, out, n, E2A_MARK, t0.x0, t0.y0 + 16 * k, 9 * k, head, "");
   lb: [48] u8;
   for i: 0..<E2A_BOXES {
     r := e2a_box(s, E2A_FIRST + i);
     lit := (i == 1 && a[0].god) || (i == 2 && a[0].noclip) || (i == 3 && a[0].click_tp) || (i == 4 && a[0].typing) || (i == 5 && a[0].hour >= 0);
-    n = cc.text(out, n, e2a_label(s, i, lb[..]), r.x0, r.y0 + 16 * k, 8 * k, ifx lit then gold else body);
+    adm_b := cc.uit_put_i(ui, column, cc.UIT_BUTTON, r.x0, r.y0, r.x1, r.y1, "admin", i);
+    n = cc.ttext(ui, adm_b, out, n, e2a_label(s, i, lb[..]), r.x0, r.y0 + 16 * k, 8 * k, ifx lit then gold else body, "");
   }
   // where you stand, and what the last action did
   last := e2a_box(s, E2A_FIRST + E2A_BOXES - 1);
@@ -314,9 +317,9 @@ e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
   pn = wire_put(p[..], pn, "   Y"); pn = e2a_fixed(p[..], pn, s[0].you_y);
   pn = wire_put(p[..], pn, "   Z"); pn = e2a_fixed(p[..], pn, s[0].you_z);
   pn = wire_put(p[..], pn, "   PATH"); pn = wire_int(p[..], pn, ifx s[0].you_z < 0 then cast(int)(-s[0].you_z) else 0); pn = wire_put(p[..], pn, " M");
-  n = cc.text(out, n, cast(string) p[0..<pn], 32 * k, last.y1 + 18 * k, 8 * k, body);
+  n = cc.ttext(ui, column, out, n, cast(string) p[0..<pn], 32 * k, last.y1 + 18 * k, 8 * k, body, "WHERE");
   say := ifx s[0].clock - a[0].said_at < 5 then cast(string) a[0].said[0..<a[0].said_n] else ifx e2n_open(s[0].net[..]) then "` HIDES THIS PANEL" else "NO ROOM: START THE LOCAL ROOM";
-  n = cc.text(out, n, say, 32 * k, last.y1 + 36 * k, 8 * k, cc.ink(k, 0.75, 0.85, 0.95));
+  n = cc.ttext(ui, column, out, n, say, 32 * k, last.y1 + 36 * k, 8 * k, cc.ink(k, 0.75, 0.85, 0.95), "SAID");
   return n;
 }
 // What the checks read (e2_probe 980 on).

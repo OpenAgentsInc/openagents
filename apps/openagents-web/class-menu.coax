@@ -42,27 +42,37 @@ cm_hit :: (top: f32, open: bool, k: f32, px: f32, py: f32) -> CmHit {
   }
   return CmHit.{};
 }
-// The column's words: CLASSES (yours marked), LEVEL (yours gold), the rest line and its requests, KNOCK OUT.
-cm_draw :: (out: [] f32, at: int, top: f32, open: bool, k: f32, klass: int, level: int, rest: string, knockout: bool) -> int {
+// The column's words: CLASSES (yours marked), LEVEL (yours gold), the rest line and its requests, KNOCK
+// OUT. With a layout trace attached (aethyr/ui/trace.coax) it also puts what cm_hit presses there, in
+// the column's panel `pane` (the caller's, as tall as its own rows: UIT_NONE for none), under the
+// part the caller names (cc.uit_part), so a developer's panel can mark it (cc.uit_debug).
+cm_draw :: (ui: [] cc.UitTrace, pane: int, out: [] f32, at: int, top: f32, open: bool, k: f32, klass: int, level: int, rest: string, knockout: bool) -> int {
   n := at; head := cc.ink(k, 0.95, 0.9, 0.7); body := cc.ink(k, 0.91, 0.93, 0.88); gold := cc.ink(k, 1, 0.75, 0.3);
-  n = cc.text(out, n, ifx open then "- CLASSES" else "+ CLASSES", 32 * k, top + 25 * k, 10 * k, head);
+  toggle := cc.uit_put(ui, pane, cc.UIT_BUTTON, 12 * k, top, 370 * k, top + f32(CM_HEAD) * k, "CLASSES");
+  n = cc.ttext(ui, toggle, out, n, ifx open then "- CLASSES" else "+ CLASSES", 32 * k, top + 25 * k, 10 * k, head, "");
   if open {
     for c: 0..<CM_CLASSES {
       y := top + (f32(CM_ROWS_TOP) + f32(c) * f32(CM_ROW) + 17) * k;
-      n = cc.text(out, n, ifx c == klass then ">" else " ", 24 * k, y, 10 * k, cc.ink(k, 0.95, 0.8, 0.4));
-      n = cc.text(out, n, XC_CL_UP[c], 40 * k, y, 10 * k, body);
+      row_b := cc.uit_put(ui, pane, cc.UIT_BUTTON, 12 * k, top + (f32(CM_ROWS_TOP) + f32(c) * f32(CM_ROW)) * k, 370 * k, top + (f32(CM_ROWS_TOP) + f32(c + 1) * f32(CM_ROW)) * k, XC_CL_UP[c]);
+      n = cc.ttext(ui, row_b, out, n, ifx c == klass then ">" else " ", 24 * k, y, 10 * k, cc.ink(k, 0.95, 0.8, 0.4), "");
+      n = cc.ttext(ui, row_b, out, n, XC_CL_UP[c], 40 * k, y, 10 * k, body, "");
     }
   }
   level_y := top + (cm_class_height(open) + 23) * k;
-  n = cc.text(out, n, "LEVEL", 32 * k, level_y, 10 * k, head);
+  n = cc.ttext(ui, pane, out, n, "LEVEL", 32 * k, level_y, 10 * k, head, "");
   for l: 1..<CM_LEVELS + 1 {
     digit: [1] u8; digit[0] = cast(u8) (48 + l);
-    n = cc.text(out, n, cast(string) digit[..], (100 + f32(l - 1) * 34) * k, level_y, 10 * k, ifx l == level then gold else body);
+    lx := (94 + f32(l - 1) * 34) * k;
+    lvl_b := cc.uit_put_i(ui, pane, cc.UIT_BUTTON, lx, top + cm_class_height(open) * k, lx + 34 * k, top + (cm_class_height(open) + 34) * k, "LEVEL", l);
+    n = cc.ttext(ui, lvl_b, out, n, cast(string) digit[..], (100 + f32(l - 1) * 34) * k, level_y, 10 * k, ifx l == level then gold else body, "");
   }
-  n = cc.text(out, n, rest, 32 * k, top + (cm_class_height(open) + 49) * k, 8 * k, head);
-  for i: 0..<5 { r := cm_box(top, open, k, i); n = cc.text(out, n, CM_REST_LABELS[i], r.x0, r.y0 + 16 * k, 8 * k, body); }
-  ko := cm_box(top, open, k, 5);
-  n = cc.text(out, n, ifx knockout then "KNOCK OUT: ON" else "KNOCK OUT", ko.x0, ko.y0 + 16 * k, 8 * k, ifx knockout then gold else body);
+  n = cc.ttext(ui, pane, out, n, rest, 32 * k, top + (cm_class_height(open) + 49) * k, 8 * k, head, "REST LINE");
+  for i: 0..<5 {
+    r := cm_box(top, open, k, i); rest_b := cc.uit_put(ui, pane, cc.UIT_BUTTON, r.x0, r.y0, r.x1, r.y1, CM_REST_LABELS[i]);
+    n = cc.ttext(ui, rest_b, out, n, CM_REST_LABELS[i], r.x0, r.y0 + 16 * k, 8 * k, body, "");
+  }
+  ko := cm_box(top, open, k, 5); kb := cc.uit_put(ui, pane, cc.UIT_BUTTON, ko.x0, ko.y0, ko.x1, ko.y1, "KNOCK OUT");
+  n = cc.ttext(ui, kb, out, n, ifx knockout then "KNOCK OUT: ON" else "KNOCK OUT", ko.x0, ko.y0 + 16 * k, 8 * k, ifx knockout then gold else body, "");
   return n;
 }
 
@@ -138,19 +148,24 @@ cm_prim :: (b: cc.Box) -> cc.HudPrim { return cc.hud_box(b.x0, b.y0, b.x1, b.y1)
 cm_fit :: (t: string, cap: f32, room: f32) -> f32 { w := cc.face_width(t, cap, cc.HUD_FACE_TITLE); return ifx w > room && w > 0 then cap * room / w else cap; }
 // Draw it in the realm's HUD style (charactercreator.coax hud_draw): a panel, a button each, yours lit.
 // wild_say heads the wild-shape row and wild holds its three buttons' words.
-cm_pick_draw :: (out: [] f32, at: int, p: CmPick, klass: int, level: int, hover: CmHit, wild_say: string, wild: [3] string) -> int {
+cm_pick_draw :: (ui: [] cc.UitTrace, out: [] f32, at: int, p: CmPick, klass: int, level: int, hover: CmHit, wild_say: string, wild: [3] string) -> int {
   k := p.k; t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; cap := 9 * k;
   cc.hud_panel(l[..], t, cm_prim(cm_pick_panel(p)), k);
+  // the layout trace (#13076): the panel, each button in it, each word in its button
+  ws[0].ui = ui; pp := cm_pick_panel(p); pane := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, pp.x0, pp.y0, pp.x1, pp.y1, "CLASSES");
   tb := cm_pick_box(p, CM_TOGGLE, 0);
+  ws[0].parent = cc.uit_put(ui, pane, cc.UIT_BUTTON, tb.x0, tb.y0, tb.x1, tb.y1, "CLASSES");
   cc.hud_button(l[..], t, cm_prim(tb), k, hover.kind == CM_TOGGLE);
   cc.hud_word(ws[..], ifx p.open then "CLASSES  -" else "CLASSES  +", (tb.x0 + tb.x1) * 0.5, (tb.y0 + tb.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, true);
   l1 := cm_pick_box(p, CM_LEVEL, 1);
+  ws[0].parent = pane;
   if p.lab > 0 { cc.hud_word(ws[..], "LEVEL", l1.x0 - p.lab * 0.5, (l1.y0 + l1.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, true); }
   for lv: 1..<CM_LEVELS + 1 {
     b := cm_pick_box(p, CM_LEVEL, lv); digit: [4] u8; digit[0] = 'L'; digit[1] = 'V'; digit[2] = ' '; digit[3] = cast(u8) (48 + lv);
     word := ifx p.lab > 0 then cast(string) digit[3..<4] else cast(string) digit[..];
     fc := cm_fit(word, cap, b.x1 - b.x0 - 6 * k);
     cc.hud_button(l[..], t, cm_prim(b), k, lv == level || (hover.kind == CM_LEVEL && hover.index == lv));
+    ws[0].parent = cc.uit_put_i(ui, pane, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, "LEVEL", lv);
     cc.hud_word(ws[..], word, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fc * 0.5, fc, cc.HUD_TEXT_TITLE, true);
   }
   if p.open {
@@ -158,16 +173,18 @@ cm_pick_draw :: (out: [] f32, at: int, p: CmPick, klass: int, level: int, hover:
     for c: 0..<CM_CLASSES {
       b := cm_pick_box(p, CM_CLASS, c); name := cc.eg_title(nb[..], XC_CL_UP[c]);
       cc.hud_button(l[..], t, cm_prim(b), k, c == klass || (hover.kind == CM_CLASS && hover.index == c));
+      ws[0].parent = cc.uit_put(ui, pane, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, XC_CL_UP[c]);
       fc := cm_fit(name, cap, b.x1 - b.x0 - 10 * k);
       cc.hud_word(ws[..], name, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fc * 0.5, fc, cc.HUD_TEXT_TITLE, true);
     }
   }
   if p.wild {
-    w0 := cm_pick_box(p, CM_WILD, 0);
+    w0 := cm_pick_box(p, CM_WILD, 0); ws[0].parent = pane;
     cc.hud_word(ws[..], wild_say, w0.x0, w0.y0 - 6 * k, 8 * k, cc.HUD_TEXT_TITLE, false);
     for i: 0..<3 {
       b := cm_pick_box(p, CM_WILD, i);
       cc.hud_button(l[..], t, cm_prim(b), k, hover.kind == CM_WILD && hover.index == i);
+      ws[0].parent = cc.uit_put_i(ui, pane, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, "WILD", i);
       fc := cm_fit(wild[i], cap, b.x1 - b.x0 - 10 * k);
       cc.hud_word(ws[..], wild[i], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + fc * 0.5, fc, cc.HUD_TEXT_TITLE, true);
     }

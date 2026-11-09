@@ -36,11 +36,13 @@ eg_upper :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { c := ch
 // The portrait plate: a medallion with the class's initial and a level badge, then a plate with
 // the name, the class and level, the health bar with its numbers and the AC shield; spell slots as
 // gems and the conditions under it. (x, y) its top left, wide its width (CSS px). Returns the end.
-eg_portrait :: (out: [] f32, at: int, x: f32, y: f32, wide: f32, k: f32, p: EgPortrait, a: f32) -> int {
+// With a layout trace attached (ui, aethyr/ui/trace.coax) it puts the plate there.
+eg_portrait :: (ui: [] UitTrace, out: [] f32, at: int, x: f32, y: f32, wide: f32, k: f32, p: EgPortrait, a: f32) -> int {
   t := eg_tokens(); l: [1] HudList;
   r := 30 * k; mx := x + r + 6 * k; my := y + r + 6 * k;
   px0 := mx + r * 0.5; px1 := x + wide * k; py0 := y + 12 * k; py1 := y + 70 * k;
   hud_panel(l[..], t, hud_box(px0, py0, px1, py1), k);
+  uit_part(ui, "portrait"); uit_add(ui, UIT_NONE, UIT_PANEL, x, y, px1, py1, "portrait");
   hud_medallion(l[..], t, mx, my, r, hud_rgba(0.20, 0.30, 0.22, 1), hud_rgba(0.06, 0.10, 0.07, 1), k);
   bx := mx + r * 0.72; by := my + r * 0.72;
   hud_badge(l[..], t, bx, by, 11 * k, k);
@@ -81,11 +83,11 @@ eg_portrait :: (out: [] f32, at: int, x: f32, y: f32, wide: f32, k: f32, p: EgPo
   return n;
 }
 #test "eg portrait: a plate with the name, the class, health and AC; nothing it does not know" #steps 200000000 {
-  out: [60000] f32; p: EgPortrait; p.name = "Ash"; p.klass = "Druid"; p.level = 2;
+  out: [60000] f32; nt: [] UitTrace; p: EgPortrait; p.name = "Ash"; p.klass = "Druid"; p.level = 2;
   for i: 0..<10 { p.slot_left[i] = -1; }
-  bare := eg_portrait(out[..], 0, 12, 12, EG_PORTRAIT_W, 1, p, 1);
+  bare := eg_portrait(nt, out[..], 0, 12, 12, EG_PORTRAIT_W, 1, p, 1);
   p.hp = 9; p.max = 18; p.ac = 13; p.slot_max[1] = 3; p.slot_left[1] = 2;
-  full := eg_portrait(out[..], 0, 12, 12, EG_PORTRAIT_W, 1, p, 1);
+  full := eg_portrait(nt, out[..], 0, 12, 12, EG_PORTRAIT_W, 1, p, 1);
   #assert bare > 0 && full > bare + 60;
   // every vertex sits in the plate's corner of the screen
   for q: 0..<full { #assert out[q * VERTEX_FLOATS] >= 0 && out[q * VERTEX_FLOATS] <= 12 + EG_PORTRAIT_W + 20 && out[q * VERTEX_FLOATS + 1] <= 160; }
@@ -97,8 +99,10 @@ eg_portrait :: (out: [] f32, at: int, x: f32, y: f32, wide: f32, k: f32, p: EgPo
 
 // The action bar's tray round its slots: iron strips that leave each slot's picture clear, a sunk
 // frame round each, and the class's emblem over the middle. b holds each slot's box (x0, y0, x1,
-// y1, 4 a slot). Returns the end; the realm then draws the pictures, the keys and the counts.
-eg_bar_frame :: (out: [] f32, at: int, b: [] f32, n: int, k: f32, initial: u8, a: f32) -> int {
+// y1, 4 a slot). Returns the end; the realm then draws the pictures, the keys and the counts. With a
+// layout trace attached it puts the tray there and each slot in it as a button, "slot 1" on, then the
+// emblem: the tray's index is uit_next before the call, and slot i's that plus 1 + i (eg_bar_slot_at).
+eg_bar_frame :: (ui: [] UitTrace, out: [] f32, at: int, b: [] f32, n: int, k: f32, initial: u8, a: f32) -> int {
   if n <= 0 { return at; }
   t := eg_tokens(); l: [1] HudList;
   x0 := b[0]; x1 := b[2]; y0 := b[1]; y1 := b[3];
@@ -109,6 +113,9 @@ eg_bar_frame :: (out: [] f32, at: int, b: [] f32, n: int, k: f32, initial: u8, a
   hud_tray_round(l[..], t, tray, y0 - 1, y1 + 1, sx[..], c, k);
   for i: 0..<c { hud_slot(l[..], t, hud_box(b[i * 4], b[i * 4 + 1], b[i * 4 + 2], b[i * 4 + 3]), k, true); }
   cx := (x0 + x1) * 0.5; er := 15 * k; ey := y0 - er - 2 * k;   // clear of the slots: its foot 2 px over them
+  uit_part(ui, "bar"); bar := uit_put(ui, UIT_NONE, UIT_PANEL, tray.x0, tray.y0, tray.x1, tray.y1, "bar tray");
+  for i: 0..<n { _ := uit_put_i(ui, bar, UIT_BUTTON, b[i * 4], b[i * 4 + 1], b[i * 4 + 2], b[i * 4 + 3], "slot", i + 1); }
+  uit_over(ui, uit_put(ui, bar, UIT_PANEL, cx - er, ey - er, cx + er, ey + er, "emblem"));   // on the tray's rim, on purpose
   hud_medallion(l[..], t, cx, ey, er, hud_rgba(0.20, 0.30, 0.22, 1), hud_rgba(0.06, 0.10, 0.07, 1), k);
   eg_fade_list(l[..], a);
   v := hud_emit(out, at, l[..]);
@@ -116,11 +123,19 @@ eg_bar_frame :: (out: [] f32, at: int, b: [] f32, n: int, k: f32, initial: u8, a
   return eg_say(out, v, cast(string) ini[..], cx, ey + 6 * k, 12 * k, HUD_TEXT_TITLE, a, k, true);
 }
 #test "eg bar: a tray, a sunk frame a slot and the emblem, then the emblem's letter (hud-style.coax checks the tray leaves the pictures clear)" #steps 100000000 {
-  out: [40000] f32; b: [12] f32;
+  out: [40000] f32; b: [12] f32; nt: [] UitTrace;
   for i: 0..<3 { b[i * 4] = 100 + f32(i) * 60; b[i * 4 + 1] = 500; b[i * 4 + 2] = 152 + f32(i) * 60; b[i * 4 + 3] = 552; }
-  n := eg_bar_frame(out[..], 0, b[..], 3, 1, 'D', 1);
+  n := eg_bar_frame(nt, out[..], 0, b[..], 3, 1, 'D', 1);
   #assert n > 6 * 20 && out[(n - 1) * VERTEX_FLOATS + 11] < 10 && out[11] >= 10;
-  #assert eg_bar_frame(out[..], 0, b[..], 0, 1, 'D', 1) == 0;
+  #assert eg_bar_frame(nt, out[..], 0, b[..], 0, 1, 'D', 1) == 0;
+  // traced: the tray, then each slot in it
+  tr: [1] UitTrace; at := uit_next(tr[..]);
+  #assert eg_bar_frame(tr[..], out[..], 0, b[..], 3, 1, 'D', 1) == n && tr[0].n == 5 && eg_bar_slot_at(tr[..], at, 2) == 3 && tr[0].rects[3].parent == at;
+}
+// Slot i's index in the trace, from the tray's (uit_next before eg_bar_frame); UIT_NONE when it isn't there.
+eg_bar_slot_at :: (ui: [] UitTrace, tray: int, i: int) -> int {
+  if tray == UIT_NONE || ui.count == 0 || tray + 1 + i >= ui[0].n { return UIT_NONE; }
+  return tray + 1 + i;
 }
 
 // The map ring top right: the land round you within reach metres, turned with your view, ahead up.
@@ -128,12 +143,13 @@ eg_bar_frame :: (out: [] f32, at: int, b: [] f32, n: int, k: f32, initial: u8, a
 // metres). zone and clock under it. Returns the end.
 EgDot :: struct { x: f32; z: f32; kind: int; r: f32; }
 EG_DOT_FRIEND :: 0; EG_DOT_FOE :: 1; EG_DOT_GUARD :: 2; EG_DOT_PATH :: 3; EG_DOT_OPEN :: 4;
-eg_map :: (out: [] f32, at: int, cx: f32, cy: f32, r: f32, k: f32, you_x: f32, you_z: f32, fx: f32, fz: f32,
+eg_map :: (ui: [] UitTrace, out: [] f32, at: int, cx: f32, cy: f32, r: f32, k: f32, you_x: f32, you_z: f32, fx: f32, fz: f32,
            reach: f32, dots: [] EgDot, nd: int, zone: string, clock: string, a: f32) -> int {
   t := eg_tokens(); l: [1] HudList;
   fl := sqrt(fx * fx + fz * fz); ffx := ifx fl > 0.0001 then fx / fl else 0.0f32; ffz := ifx fl > 0.0001 then fz / fl else -1.0f32;
   rx := -ffz; rz := ffx;   // your right on the ground, y up
   hud_map_ring(l[..], t, cx, cy, r, k);
+  uit_part(ui, "map"); uit_add(ui, UIT_NONE, UIT_PANEL, cx - r, cy - r, cx + r, cy + r, "map");   // the layout trace, when attached
   ground := hud_rgba(0.82, 0.74, 0.55, 0.9); path := hud_rgba(0.50, 0.36, 0.20, 0.85);
   for pass: 0..<2 {
     for i: 0..<nd {
@@ -179,7 +195,7 @@ eg_clock :: (day: f32, b: [] u8) -> int {
   b: [8] u8; #assert cast(string) b[0..<eg_clock(0.5, b[..])] == "12:00" && cast(string) b[0..<eg_clock(0.75 + 1.0 / 1440 * 7, b[..])] == "18:07";
   #assert cast(string) b[0..<eg_clock(0, b[..])] == "00:00" && cast(string) b[0..<eg_clock(0.99999, b[..])] == "23:59";
   out: [60000] f32; d: [2] EgDot; d[0] = EgDot.{x = 0, z = -20, kind = EG_DOT_FOE}; d[1] = EgDot.{x = 0, z = 0, kind = EG_DOT_OPEN, r = 17};
-  n := eg_map(out[..], 0, 300, 100, 70, 1, 0, 0, 0, -1, 60, d[..], 2, "The Glade", "12:00", 1);
+  nt: [] UitTrace; n := eg_map(nt, out[..], 0, 300, 100, 70, 1, 0, 0, 0, -1, 60, d[..], 2, "The Glade", "12:00", 1);
   #assert n > 0;
   for q: 0..<n { #assert out[q * VERTEX_FLOATS] > 300 - 120 && out[q * VERTEX_FLOATS] < 300 + 120 && out[q * VERTEX_FLOATS + 1] < 100 + 70 + 60; }
 }
@@ -230,12 +246,12 @@ eg_float :: (out: [] f32, at: int, t: string, sx: f32, sy: f32, k: f32, kind: in
   return eg_say_ink(out, at, t, sx, sy, (ifx miss then 9.0f32 else 13.0f32) * k, HUD_TEXT_DAMAGE, ink, alpha, k, true);
 }
 // The frame rate on its plaque, bottom right (fps_draw's place and size).
-eg_fps :: (f: FpsCounter, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
+eg_fps :: (ui: [] UitTrace, f: FpsCounter, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   buf: [16] u8; n := 0; v := cast(int)(f.fps + 0.5); if v > 999 { v = 999; }
   n = eg_int(buf[..], 0, v); n = eg_put(buf[..], n, " FPS");
   wide := face_width(cast(string) buf[0..<n], 13 * k, HUD_FACE_BODY);
   p := eg_plaque(out, at, w - 16 * k - wide - 10 * k, h - 16 * k - 22 * k, w - 8 * k, h - 16 * k + 9 * k, k);
-  return fps_draw(f, out, p, w, h, k);
+  return fps_draw(ui, f, out, p, w, h, k);
 }
 // "DRUID" as a name: "Druid".
 eg_title :: (b: [] u8, t: string) -> string {
@@ -279,16 +295,17 @@ eg_plaque :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, k: f32) 
 EgWorld :: struct { you_x: f32; you_z: f32; fx: f32; fz: f32; reach: f32 = 60; place: string; clock: string; since: f32; cover: HudPrim; }
 // Whether boxes a and b share area (an empty box meets nothing).
 eg_meets :: (a: HudPrim, b: HudPrim) -> bool { return a.x1 > a.x0 && b.x1 > b.x0 && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
-eg_world :: (out: [] f32, at: int, w: f32, h: f32, k: f32, wd: EgWorld, dots: [] EgDot, nd: int, p: EgPortrait) -> int {
+// ui: the layout trace (aethyr/ui/trace.coax), when the overlap check attaches one; empty for none.
+eg_world :: (ui: [] UitTrace, out: [] f32, at: int, w: f32, h: f32, k: f32, wd: EgWorld, dots: [] EgDot, nd: int, p: EgPortrait) -> int {
   W := w / k; phone := W < 700 || h / k < 500;
   mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
   mcx := w - (mr + 22) * k; mcy := (top + mr + 10) * k; v := at;
   if !eg_meets(wd.cover, hud_box(mcx - (mr + 8) * k, top * k, mcx + (mr + 8) * k, mcy + (mr + 30) * k)) {
-    v = eg_map(out, v, mcx, mcy, mr * k, k, wd.you_x, wd.you_z, wd.fx, wd.fz, wd.reach, dots, nd, wd.place, wd.clock, 1);
+    v = eg_map(ui, out, v, mcx, mcy, mr * k, k, wd.you_x, wd.you_z, wd.fx, wd.fz, wd.reach, dots, nd, wd.place, wd.clock, 1);
   }
   wide := W - (2 * mr + 44) - 20; if wide > f32(EG_PORTRAIT_W) { wide = f32(EG_PORTRAIT_W); }
   px := ifx phone then 8.0f32 else 14.0f32;
-  if !eg_meets(wd.cover, hud_box(px * k, top * k, (px + wide) * k, (top + 100) * k)) { v = eg_portrait(out, v, px * k, top * k, wide, k, p, 1); }
+  if !eg_meets(wd.cover, hud_box(px * k, top * k, (px + wide) * k, (top + 100) * k)) { v = eg_portrait(ui, out, v, px * k, top * k, wide, k, p, 1); }
   return eg_banner(out, v, w, h * 0.22, k, wd.place, wd.since);
 }
 #test "eg plates: the frame's plates placed and drawn, a covered name counted on the one over it, none past most" #steps 400000000 {

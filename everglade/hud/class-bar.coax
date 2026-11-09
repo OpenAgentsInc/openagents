@@ -197,10 +197,11 @@ eg_side_press :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, x: f32, y: f32, 
 }
 // Draw the side bar, its open menu and the tip for what the pointer is over, through the realm's
 // renderer (charactercreator.coax hud_draw).
-eg_side_draw :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: int) -> int {
+// ui: the layout trace (aethyr/ui/trace.coax), when the overlap check attaches one; empty for none.
+eg_side_draw :: (ui: [] cc.UitTrace, f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: int) -> int {
   if g.n == 0 { return at; }
   k := g.k; t := cc.eg_tokens(); cap := EG_SIDE_CAP * k;
-  l: [1] cc.HudList; ws: [1] cc.HudWords;
+  l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui; cc.uit_part(ui, "side bar");
   bufs: [EG_SIDE_N * 48] u8; labels: [EG_SIDE_N] string; lit: [EG_SIDE_N] bool;
   for i: 0..<g.n { c := eg_side_label(f, g.ids[i], bufs[i * 48..<i * 48 + 48]); labels[i] = cast(string) bufs[i * 48..<i * 48 + c]; lit[i] = st.menu == g.ids[i] || st.side_hover == i; }
   wd := g.wd; cc.hud_side_draw(l[..], ws[..], t, wd[..], labels[..], lit[..], g.n, g.x0, g.x1, g.y1, g.h, g.gap, cap, k);

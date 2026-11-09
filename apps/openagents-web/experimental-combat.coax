@@ -1834,9 +1834,10 @@ xc_text_w :: (t: string, cap: f32) -> f32 {
 }
 // A slot's words along its top or its bottom edge, centred, made smaller until they fit inside it.
 xc_fit_cap :: (t: string, cap: f32, room: f32) -> f32 { w := xc_text_w(t, cap); return ifx w > room && w > 0 then cap * room / w else cap; }
-xc_caption :: (out: [] f32, at: int, t: string, r: cc.Box, top: bool, cap: f32, ink: Ink, k: f32) -> int {
+// ui and parent: the layout trace and the slot's place in it (#13076), or empty and cc.UIT_NONE.
+xc_caption :: (ui: [] cc.UitTrace, parent: int, out: [] f32, at: int, t: string, r: cc.Box, top: bool, cap: f32, ink: Ink, k: f32) -> int {
   room := r.x1 - r.x0 - 6 * k; c := xc_fit_cap(t, cap, room); w := xc_text_w(t, c);
-  return cc.text(out, at, t, (r.x0 + r.x1 - w) * 0.5, ifx top then r.y0 + 4 * k + c else r.y1 - 4 * k, c, ink);
+  return cc.ttext(ui, parent, out, at, t, (r.x0 + r.x1 - w) * 0.5, ifx top then r.y0 + 4 * k + c else r.y1 - 4 * k, c, ink, "");
 }
 
 // An area's outline and guides on the meadow (aethyr/action/area-aim.coax area_aim_point), lifted by
@@ -1876,7 +1877,7 @@ xc_portrait :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32) -> int {
   p.max = hs.max_hp; p.hp = ifx hs.hp < 0 then 0 else hs.hp; p.temp = hs.temp; p.ac = me.ac;
   for lv: 0..<10 { p.slot_max[lv] = me.slots_max[lv]; p.slot_left[lv] = me.slots[lv]; }
   wide := f32(cc.EG_PORTRAIT_W);
-  return cc.eg_portrait(out, at, w - (wide + 16) * k, 14 * k, wide, k, p, 1);
+  return cc.eg_portrait(s[0].creator[0].ui, out, at, w - (wide + 16) * k, 14 * k, wide, k, p, 1);
 }
 xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32, dt: f32) -> int {
   x := s[0].xc[..]; cr := s[0].creator[..]; hs := cr[0].hostiles[..];
@@ -1897,7 +1898,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   xc_bow_step(s, dt);
   n = xc_crosshair(s, out, n, w, h, k);
   n = xd_hud(s, out, n, k);
-  if observing { n=cc.text(out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1)); }
+  if observing { n=cc.ttext(cr[0].ui,cc.UIT_NONE,out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1),""); }
   n=xc_portrait(s,out,n,w,k);
   n=cc.combat_hud(cr[0],out,u,n,w,k);
   n=xc_hit_mark(x,cr[0],out,n,w,h,k,now);
@@ -1920,7 +1921,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   head := ink_col(k, 0.95, 0.9, 0.7);
   wild_words := [3]string.["", "", "REPLACE"];
   if pick.wild { choice:=xc_wild_options(x); wild_words[0]=rs_monster_block(choice[0]).name; wild_words[1]=rs_monster_block(choice[1]).name; }
-  if !x[0].dr.on { n = cm_pick_draw(out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
+  ui := cr[0].ui; cc.uit_part(ui, "class-menu");   // the layout trace, when the overlap check attaches one (#13076)
+  if !x[0].dr.on { n = cm_pick_draw(ui, out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
@@ -1981,11 +1983,13 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // the bar: its iron round the pictures (everglade/hud/parts.coax), each slot's key over its picture; your class and your target over it
   slots: [XC_SLOTS * 4] f32;
   for i: 0..<x[0].bar_n { r := xc_slot_box(x, i); slots[i * 4] = r.x0; slots[i * 4 + 1] = r.y0; slots[i * 4 + 2] = r.x1; slots[i * 4 + 3] = r.y1; }
-  n = cc.eg_bar_frame(out, n, slots[..], x[0].bar_n, k, XC_CL_UP[x[0].klass][0], 1);
+  tray := cc.uit_next(ui);   // the tray's place in the layout trace: its slots follow it (eg_bar_slot_at)
+  n = cc.eg_bar_frame(ui, out, n, slots[..], x[0].bar_n, k, XC_CL_UP[x[0].klass][0], 1);
   m := 0;
   for i: 0..<x[0].bar_n {
     r := xc_slot_box(x, i);
     a := x[0].bar[i]; art := xc_art(a, i);
+    slot := cc.eg_bar_slot_at(ui, tray, i);
     m = put(x[0].media[..], m, "image "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
     m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
     m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, "\n");
@@ -2006,25 +2010,25 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
       m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, " "); m = put_int(x[0].media[..], m, cast(int) (100 - 65 * grey)); m = put(x[0].media[..], m, " 0 1000\n");
     }
-    if a.kind == XC_BREATH { n = cc.text(out, n, "F", r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85)); }
+    if a.kind == XC_BREATH { n = cc.ttext(ui, slot, out, n, "F", r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85), "key"); }
     else if i < 9 && xc_draw_slot_key(i,art) {key: [2] u8; key[0] = cast(u8) (49 + i);
-     n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));}
+     n = cc.ttext(ui, slot, out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85), "key");}
     if i == x[0].used && left > 0 { n = xc_line(out, n, r.x0, r.y1 + 4 * k, r.x1, r.y1 + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
     // its choices: the slot level it casts at (when it has more than one) and its option
     levels: [9] int;
     if a.kind == FB_SPELL && fb_cast_levels(x[0].b[0].c[0], a, levels[..]) > 1 {
       lv: [2] u8; lv[0] = cast(u8) (48 + a.lvl);
-      n = cc.text(out, n, cast(string) lv[0..<1], r.x1 - 10 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 1, 0.82, 0.35));
+      n = cc.ttext(ui, slot, out, n, cast(string) lv[0..<1], r.x1 - 10 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 1, 0.82, 0.35), "slot level");
     }
     // its words, one line along its top and one along its bottom, each fitted inside the slot
     if xc_touch_spell(a) && (x[0].familiar_touch || (familiar>=0 && rs_up(x[0].b[0].c[familiar]))) {
-      n=xc_caption(out,n,ifx x[0].familiar_touch then "Familiar" else "Hand",r,false,7*k,head,k);
+      n=xc_caption(ui,slot,out,n,ifx x[0].familiar_touch then "Familiar" else "Hand",r,false,7*k,head,k);
     }
     if a.kind==XC_FAMILIAR {
       count:=RS_FAMILIAR_FORMS.count; druid:=x[0].b[0].c[0].companion;
       cb:[48]u8; cn:=0; for ch: rs_monster_block(RS_FAMILIAR_FORMS[a.opt%count]).name { if cn < 32 { cb[cn]=ch; cn+=1; } }
       if !druid { spirit:=[3]string.["Fey","Celestial","Fiend"]; for ch: " · " { cb[cn]=ch; cn+=1; } for ch: spirit[a.opt/count] { cb[cn]=ch; cn+=1; } }
-      n=xc_caption(out,n,cast(string)cb[0..<cn],r,false,7*k,head,k);
+      n=xc_caption(ui,slot,out,n,cast(string)cb[0..<cn],r,false,7*k,head,k);
       top:=ifx a.lvl>0 then "Spell slot" else ifx druid then "Wild Shape" else "Ritual";
       if familiar>=0 && x[0].b[0].c[familiar].hp>0 {
         top=ifx x[0].familiar_order==XC_FAMILIAR_SENSE then "Sense"
@@ -2033,15 +2037,15 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
           else ifx x[0].familiar_order==XC_FAMILIAR_CAST then "Cast"
           else ifx x[0].b[0].c[familiar].dead then "Recall" else "Pocket";
       }
-      n=xc_caption(out,n,top,r,true,7*k,head,k);
+      n=xc_caption(ui,slot,out,n,top,r,true,7*k,head,k);
     }
     if a.kind==FB_WILD {
       form:=fb_wild_form(x[0].b[0].c[0],a.opt);
       label:=ifx form==MON_RIDING_HORSE then "Horse" else ifx form==MON_BLACK_BEAR then "Bear" else rs_monster_block(form).name;
-      n=xc_caption(out,n,label,r,false,7*k,head,k);
+      n=xc_caption(ui,slot,out,n,label,r,false,7*k,head,k);
     }
     if fb_ab_option_n(a) > 0 {
-      n = xc_caption(out, n, fb_ab_option_label(a, rs_max(a.opt, 0)), r, false, 8 * k, ink_col(k, 1, 0.82, 0.35), k);
+      n = xc_caption(ui, slot, out, n, fb_ab_option_label(a, rs_max(a.opt, 0)), r, false, 8 * k, ink_col(k, 1, 0.82, 0.35), k);
     }
     // a Ritual under way: a gold frame, its ten minutes filling along the bottom edge (pp.104-105)
     me := x[0].b[0].c[0];
@@ -2087,6 +2091,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if cx - cw / 2 < 12 * k { cx = 12 * k + cw / 2; }
     if cx + cw / 2 > w - 12 * k { cx = w - 12 * k - cw / 2; }
     card := cc.Box.{x0 = cx - cw / 2, y0 = r.y0 - 30 * k - ch, x1 = cx + cw / 2, y1 = r.y0 - 30 * k};
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, card.x0, card.y0, card.x1, card.y1, "card");
     m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(a.art)); m = put(x[0].media[..], m, a.art);
     m = put(x[0].media[..], m, "-card-2x.jpg "); m = xc_box_text(x[0].media[..], m, card); m = put(x[0].media[..], m, "\n");
   }
@@ -2106,11 +2111,11 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     // beside the bar's emblem (everglade/hud/parts.coax eg_bar_frame), not under it
     lx := ifx x[0].bar_n > 0 then xc_slot_box(x, 0).x0 else 0.0f32; rx := lx;
     for i: 0..<x[0].bar_n { sb := xc_slot_box(x, i); if sb.x0 < lx { lx = sb.x0; } if sb.x1 > rx { rx = sb.x1; } }
-    n = cc.text(out, n, tl, (lx + rx) / 2 + 24 * k, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7));
+    n = cc.ttext(ui, cc.UIT_NONE, out, n, tl, (lx + rx) / 2 + 24 * k, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7), "class and target");
   }
   // the side bar over the bar: REST and KNOCK OUT, their menu and tips (everglade/hud/class-bar.coax)
   sf := xc_facts(s); sg := lay.side;
-  n = eg_side_draw(sf, sg, x[0].side, out, n);
+  n = eg_side_draw(ui, sf, sg, x[0].side, out, n);
   // the coordinates and the FPS plaque (charactercreator.coax coord_draw, eg_fps) rise over the bar's
   // and the side bar's right end when a narrow page brings them under it
   corner := h + 1000; cx0 := w - 240 * k;
