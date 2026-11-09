@@ -1044,7 +1044,7 @@ fn coax_p_fivelab_glade(p_p: vec2f) -> vec4f {
                 {
                   l_tc = coax_p_v3(0x1.ccccccp-1f, 0x1.b851ecp-1f, 0x1.7ae148p-1f);
                 }
-                if ((l_state < 0x1.000000p-1f))
+                if (((l_state < 0x1.000000p-1f) && (coax_at_u(i32(35i)) < 0x1.000000p-1f)))
                 {
                   l_glow = coax_p_add3(l_glow, coax_p_scale3(l_tc, (l_ring * (0x1.000000p-2f + (l_tk.w * 0x1.99999ap0f)))));
                 }
@@ -2091,7 +2091,7 @@ fn coax_p_fivelab_grass(p_x: f32, p_z: f32, p_t: f32, p_fp: f32) -> vec3f {
   l_lw = coax_p_fmax(0x1.eb851ep-6f, l_fp);
   l_line = (0x1.000000p0f - coax_p_smoothstep((l_lw * 0x1.99999ap-2f), (l_lw * 0x1.800000p0f), coax_p_fmin(l_lx, l_lz)));
   l_line = ((l_line * coax_p_fmin(0x1.000000p0f, sqrt((0x1.eb851ep-6f / coax_p_fmax(l_fp, 0x1.a36e2ep-14f))))) * (0x1.000000p0f - coax_p_smoothstep((l_sq * 0x1.eb851ep-4f), (l_sq * 0x1.333334p-2f), l_fp)));
-  l_c = coax_p_mix3(l_c, coax_p_v3(0x1.19999ap-1f, 0x1.333334p-1f, 0x1.70a3d8p-2f), ((l_line * l_inside) * 0x1.000000p-1f));
+  l_c = coax_p_mix3(l_c, coax_p_v3(0x1.19999ap-1f, 0x1.333334p-1f, 0x1.70a3d8p-2f), (((l_line * l_inside) * 0x1.000000p-1f) * (0x1.000000p0f - coax_at_u(i32(35i)))));
   return l_c;
 }
 fn coax_p_wg_at4(p_at: i32) -> vec4f {

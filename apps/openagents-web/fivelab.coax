@@ -43,6 +43,7 @@
 #load "everglade-move-types.coax";   // what fivelab-face.c hands Everglade's movement step (everglade-step.coax)
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
 #load "fivelab-siege.coax";
+#load "fivelab-film.coax";   // ?stage=armies, siege, horde: film stages for clips (docs/verse/clips.md)
 #load "experimental-sound.coax" as exsound;
 #load "../../verse/experimental-comparison.coax" as compare;
 #load "../../verse/experimental-biomes.coax" as biomes;
@@ -154,6 +155,7 @@ Lab :: struct {
   stage: int = -1;   // a ?stage= setup (lab_stage): a housewright time-lapse (hws), -1 none
   stage_steps: int;  // its clock: the game steps (1/60 s) it has run
   stage_x: f32 = LAB_STAGE_X; stage_z: f32 = LAB_STAGE_Z; stage_turn: int = LAB_STAGE_TURN;   // where it stands: LAB_STAGE_*, or on a local page &sx=, &sz= (metres + 1000) and &turn=
+  film: int; film_steps: int; film_x: f32;   // a film stage (fivelab-film.coax): which, its clock in steps, its front line's x in metres
   experimental_audio: [1] exsound.ExperimentalSound;
   respawn_id:int = -1;
   ride_dev: int;   // a local page's ?ride= or ?stage= (experimental-ride.coax lab_ride_dev): mounted, galloping, drawing on the horse, or a stage
@@ -690,11 +692,12 @@ new_battle :: (s: [] Lab) {
   // the heroes: a block mid-glade in the Horde, else each side in files on its own edge
   cells: [HEROES_MAX] int;
   nb := ifx s[0].horde then hold_block(s, cells[..]) else 0;
-  casters: [2] int; for i: 0..<hs { if hero_caster(i) { casters[hero_team(i)] += 1; } }
+  casters: [2] int; for i: 0..<hs { if hero_caster(i) { casters[film_hero_team(s, i)] += 1; } }
   seen_c: [2] int; seen_m: [2] int; inner := 0; outer := 0;
   nm: [24] u8;
+  west := 0;   // the armies film's heroes' front file
   for i: 0..<hs {
-    team := hero_team(i); caster := hero_caster(i);
+    team := film_hero_team(s, i); caster := hero_caster(i);
     nn := hero_name(i, nm[..]);
     who := hero_for(hero_class(i), cast(string) nm[0..<nn], team, LEVEL);
     e := 0;
@@ -708,13 +711,22 @@ new_battle :: (s: [] Lab) {
       if caster { seen_c[team] += 1; } else { seen_m[team] += 1; }
     }
     j := place_on(s, who, e % s[0].cols, e / s[0].cols);
+    west = rs_max(west, e % s[0].cols);
   }
   // the dead: in the Horde on the outer rings, else a block mid-glade (16 wide, ten deep for 160)
   aw := 16; while 5 * aw * aw < 8 * sk { aw += 1; }
   ah := (sk + aw - 1) / aw;
   ax := s[0].cols / 2 - aw / 2; ay := s[0].rows / 2 - ah / 2;
+  // the armies film: the dead a block as tall as the heroes' files, close across from them, every
+  // other square staggered so the ranks behind can get past the fallen to the front
+  film := s[0].film == FILM_ARMIES && sk > 0;
+  if film {
+    ah = s[0].rows - 2; aw = 2 * ((sk + ah - 1) / ah) + 1; ay = 1; ax = rs_min(west + FILM_ARMIES_GAP, s[0].cols - aw);
+    s[0].film_x = wx(s, f32(west + ax) / 2);
+  }
   for q: 0..<sk {
     x := ax + q % aw; y := ay + q / aw;
+    if film { x = ax + 2 * (q / ah) + (q % ah) % 2; y = ay + q % ah; }
     if s[0].horde { e := spawn_cell(s, q); x = e % s[0].cols; y = e / s[0].cols; }
     nn := put(nm[..], 0, "Skeleton "); nn = put_int(nm[..], nn, q + 1);
     j := place_on(s, rs_skeleton(cast(string) nm[0..<nn], 2), x, y);
@@ -1136,8 +1148,9 @@ skeleton_turn :: (s: [] Lab, i: int) {
   if foe < 0 { return; }
   j := foe_at_hand(s, i, -1);
   if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
-  if s[0].horde {
-    // the Horde runs: Dash when the living are out of reach, and cut at whoever it reaches
+  if s[0].horde || s[0].film == FILM_ARMIES {
+    // the Horde (and the armies film's block of the dead) runs: Dash when the living are out of
+    // reach, and cut at whoever it reaches
     close_in(s, i, foe);
     j = foe_at_hand(s, i, -1);
     if j >= 0 && !b[0].turn.action { ok := rs_attack(b, i, j, false, -1); }
@@ -2346,6 +2359,7 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   // the glade's camera, fitted to the space left of the log (above it on a phone)
   rx0 := pad; rx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   ry0 := top; ry1 := ifx s[0].portrait then s[0].panel.y0 - pad else h - pad;
+  if s[0].film != FILM_NONE { rx0 = 0; rx1 = w; ry0 = 0; ry1 = h; s[0].panel = Rect.{}; }   // a film: the whole frame, no log's glass
   s[0].cx = (rx0 + rx1) / 2; s[0].cy = (ry0 + ry1) / 2;
   // Aethyr's orbit (yaw 0 faces +Z there; here yaw 0 looks toward -Z, so it turns half round)
   turn := s[0].yaw + 3.14159265;
@@ -3251,6 +3265,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
   step_dt := ifx s[0].golden || still || s[0].paused then 0.0f32 else dt;
   lab_run(s, step_dt);
   if !s[0].golden { fly(s, dt); }
+  if s[0].film != FILM_NONE { film_step(s, dt, still); }
   put_bodies(s);
   // Player mode's follow camera, and the swing to it from the spectator's camera and back
   if s[0].player && s[0].you_me >= 0 && s[0].me == s[0].you_me { follow_cam(s, lo(dt, 0.1)); }
@@ -3265,7 +3280,8 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
   t := s[0].clock;
   layout(s, width, height, k);
   n := 0; s[0].unlabelled = 0;
-  if s[0].view == VIEW_GLADE {
+  if s[0].film != FILM_NONE { glade_puffs(s); }   // a film draws the field alone
+  else if s[0].view == VIEW_GLADE {
     n = lab_heads3(s, out, n, k, t);
     glade_puffs(s);
     n = draw_nums3(s, out, n, k);
@@ -3275,10 +3291,12 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     n = draw_nums(s, out, n, k);
     n = draw_tokens(s, out, n, k, t);
   }
-  n = draw_panel(s, out, n, k);
-  n = draw_top(s, out, n, width, k, t);
-  n = draw_player(s, out, n, k);
-  n = draw_sliders(s, out, n, k);
+  if s[0].film == FILM_NONE {
+    n = draw_panel(s, out, n, k);
+    n = draw_top(s, out, n, width, k, t);
+    n = draw_player(s, out, n, k);
+    n = draw_sliders(s, out, n, k);
+  }
   for i: 0..<u.count { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = t; u[3] = 1;
   u[U_GRID] = s[0].gx; u[U_GRID + 1] = s[0].gy; u[U_GRID + 2] = s[0].cell;
@@ -3292,6 +3310,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
   u[U_RIGHT] = s[0].right.x; u[U_RIGHT + 1] = s[0].right.y; u[U_RIGHT + 2] = s[0].right.z; u[U_RIGHT + 3] = s[0].cy;
   u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
   u[U_SUN] = 0.45; u[U_SUN + 1] = 0.62; u[U_SUN + 2] = 0.38;
+  if s[0].film != FILM_NONE { u[U_SUN] = FILM_SUN[0]; u[U_SUN + 1] = FILM_SUN[1]; u[U_SUN + 2] = FILM_SUN[2]; u[U_SUN + 3] = 1; u[U_CELLS + 3] = 0; }
   b := bt(s);
   // the tokens (the frame store), for the ground's rings and contact shadows and the flat view's
   // tokens: where each stands, its side and state, and the square it is nearest
@@ -3534,6 +3553,7 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
     i = e + 1;
     if line.count < 4 || line[0..<4] != "url=" { continue; }
     q := line[4..<line.count];
+    fm := film_find(q); if fm != FILM_NONE { film_setup(s, fm); return true; }
     // ?siege=1 plays the Siege, its sizes ?town=N&cult=M
     sg := url_number(q, "siege"); tw := url_number(q, "town"); cu := url_number(q, "cult");
     if sg > 0 || tw >= 0 || cu >= 0 {

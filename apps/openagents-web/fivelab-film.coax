@@ -1,0 +1,144 @@
+// 5E Lab's film stages (fivelab.coax loads this file; docs/verse/clips.md, #13118): ?stage=NAME sets up a
+// big battle for a clip, owns the camera and the light, and draws no panel, log, slider, label or
+// key line, only the painterly field. Each runs on whole game steps (FILM_HZ a second), so
+// coax/web/clip.coax records the same shot every run.
+//   armies  the Lab's 1024 heroes in files on the west edge against FILM_ARMIES_DEAD Skeletons in a
+//           staggered block close across from them, charging: a low camera on the front as they
+//           meet, following it as it moves, then a slow pull up and round over the whole field
+//   siege   the Siege at 1024 of the watch and FILM_SIEGE_CULT of the cult: a low shot behind the
+//           watch's line as the swarm comes on, then the wide field
+//   horde   the Horde at FILM_HORDE_HEROES heroes and FILM_HORDE_DEAD of the dead, more streaming in:
+//           a high, wide view from behind the dead pouring in at the living
+
+FILM_NONE :: 0; FILM_ARMIES :: 1; FILM_SIEGE :: 2; FILM_HORDE :: 3;
+FILM_PAIR :: [4] string.["", "stage=armies", "stage=siege", "stage=horde"];
+FILM_HZ :: 60;
+FILM_ARMIES_DEAD :: 5000;
+FILM_ARMIES_GAP :: 8;        // squares between the heroes' front file and the dead's block
+FILM_SIEGE_CULT :: 6000;
+FILM_HORDE_HEROES :: 600; FILM_HORDE_DEAD :: 6000;
+FILM_SUN :: [3] f32.[0.62, 0.34, 0.44];   // toward a low morning sun: long shadows across the field
+
+// The film a page's query asks for, FILM_NONE if none.
+film_find :: (q: string) -> int {
+  for f: 1..<4 { if url_has(q, FILM_PAIR[f]) { return f; } }
+  return FILM_NONE;
+}
+// Sets up film f's battle and starts its clock.
+film_setup :: (s: [] Lab, f: int) {
+  film_sizes(s, f);
+  new_battle(s);
+  if f == FILM_SIEGE { s[0].film_x = film_siege_line(s); }
+}
+// The Siege's line of the watch, in metres (siege_battle's `line`).
+film_siege_line :: (s: [] Lab) -> f32 { return wx(s, f32(rs_max(4, s[0].cols / 5))); }
+// Film f's scenario and sizes, its clock at the start.
+film_sizes :: (s: [] Lab, f: int) {
+  s[0].film = f; s[0].film_steps = 0;
+  s[0].player = false; s[0].view = VIEW_GLADE; s[0].paused = false;
+  s[0].siege = f == FILM_SIEGE; s[0].horde = f == FILM_HORDE;
+  if f == FILM_ARMIES { s[0].heroes = HEROES_MAX; s[0].skeletons = FILM_ARMIES_DEAD; }
+  if f == FILM_SIEGE { s[0].town = HEROES_MAX; s[0].cult = FILM_SIEGE_CULT; }
+  if f == FILM_HORDE { s[0].heroes = FILM_HORDE_HEROES; s[0].skeletons = FILM_HORDE_DEAD; s[0].stream = HORDE_MAX; }
+}
+// Hero i's side: in the armies film every hero stands on the west side against the dead.
+film_hero_team :: (s: [] Lab, i: int) -> int { return ifx s[0].film == FILM_ARMIES then 0 else hero_team(i); }
+// The film's clock in seconds.
+film_t :: (s: [] Lab) -> f32 { return f32(s[0].film_steps) / f32(FILM_HZ); }
+film_ease :: (a: f32, b: f32, t: f32) -> f32 { u := clamp01((t - a) / (b - a)); return u * u * (3 - 2 * u); }
+film_mix :: (a: f32, b: f32, u: f32) -> f32 { return a + (b - a) * u; }
+
+// The camera at the film's time: the orbit's pivot, turn, tilt and distance.
+film_cam :: (s: [] Lab) {
+  t := film_t(s); f := s[0].film;
+  hz := f32(s[0].rows) * f32(SQ) / 2;
+  if f == FILM_ARMIES {
+    // low at the front line looking along it, the heroes on the left and the dead on the right;
+    // from 9 s up and round over the whole field
+    u := film_ease(9, 24, t);
+    s[0].px = film_mix(s[0].film_x, s[0].film_x * 0.5, u); s[0].pz = film_mix(hz * 0.55 - t * 0.6, 0, u);
+    s[0].yaw = film_mix(0, 1.05, u); s[0].pitch = film_mix(0.13, 0.64, u);
+    s[0].dist = film_mix(11, 0.2 * DIST * grid_scale(s), u);
+  } else if f == FILM_SIEGE {
+    // behind the watch's line, low, looking out at the cult's swarm; from 10 s the field wide
+    u := film_ease(10, 22, t);
+    s[0].px = film_mix(s[0].film_x + 4 + t * 0.3, s[0].film_x + 25, u); s[0].pz = film_mix(-4, 0, u);
+    s[0].yaw = film_mix(SIEGE_YAW + 0.25, SIEGE_YAW - 0.35, u); s[0].pitch = film_mix(0.16, 0.72, u);
+    s[0].dist = film_mix(10, 0.32 * DIST * grid_scale(s), u);
+  } else {
+    // high and wide over the dead pouring in from the south edge at the living, drifting round
+    s[0].px = 0; s[0].pz = hz * 0.42;
+    s[0].yaw = 0.35 - t * 0.025; s[0].pitch = 0.78 - t * 0.006;
+    s[0].dist = 0.3 * DIST * grid_scale(s) - t * 0.4;
+  }
+}
+// The armies' front: the square between the living heroes' furthest east and the standing dead's
+// furthest west, -1 when a side is down.
+film_front :: (s: [] Lab) -> int {
+  b := bt(s);
+  hx := -1; dx := s[0].cols;
+  for i: 0..<b[0].n {
+    if b[0].c[i].dead || b[0].c[i].hp <= 0 { continue; }   // rs_up, on the fields
+    if b[0].c[i].team == 2 { dx = rs_min(dx, b[0].c[i].x); } else { hx = rs_max(hx, b[0].c[i].x); }
+  }
+  if hx < 0 || dx >= s[0].cols { return -1; }
+  return (hx + dx) / 2;
+}
+// One frame: the clock in whole steps of the frame's time (a clip's 1/30 s is exactly 2), the armies
+// film's line easing after the front as it moves, then the camera.
+film_step :: (s: [] Lab, dt: f32, still: bool) {
+  if dt > 0 && dt < 1 && !still {
+    q := int(dt * f32(FILM_HZ) + 0.5); q = ifx q < 1 then 1 else q;
+    s[0].film_steps += q;
+    if s[0].film == FILM_ARMIES {
+      fr := film_front(s);
+      if fr >= 0 { s[0].film_x += (wx(s, f32(fr)) - s[0].film_x) * clamp01(f32(q) / f32(FILM_HZ)); }
+    }
+  }
+  film_cam(s);
+}
+
+// A film's battle is thousands of creatures, each built and placed on the engine's rules: the checks
+// below give that their own budgets, one Lab each.
+#test "?stage=armies fields every hero on the west against the dead close across, and its camera runs on whole steps" #steps 400000000 {
+  s: [1] Lab; s[0].started = true; film_setup(s[..], FILM_ARMIES);
+  b := bt(s[..]);
+  #assert s[0].film == FILM_ARMIES && !s[0].horde && !s[0].siege && b[0].n == HEROES_MAX + FILM_ARMIES_DEAD;
+  west := 0; east := s[0].cols;
+  for i: 0..<b[0].n {
+    if b[0].c[i].team == 0 { west = rs_max(west, b[0].c[i].x); }
+    else { #assert b[0].c[i].team == 2; east = rs_min(east, b[0].c[i].x); }
+  }
+  #assert east - west == FILM_ARMIES_GAP && s[0].film_x == wx(s[..], f32(west + east) / 2);
+  for i: 0..<45 { film_step(s[..], 1.0 / 30.0, false); }
+  #assert s[0].film_steps == 90 && film_t(s[..]) == 1.5 && s[0].pitch < 0.2 && s[0].dist < 12;
+  film_step(s[..], 0, true); #assert s[0].film_steps == 90;
+  s[0].film_steps = 24 * FILM_HZ; film_cam(s[..]); #assert s[0].px == s[0].film_x * 0.5 && s[0].pitch > 0.6;
+}
+#test "?stage=siege asks for the Siege at film size, and its camera starts low over the watch's line" #steps 400000000 {
+  // the sizes the film asks for; the battle itself fielded smaller (7,025 of the Siege's creatures
+  // are more than one check's traversal budget to build)
+  s: [1] Lab; s[0].started = true; film_sizes(s[..], FILM_SIEGE);
+  #assert s[0].siege && !s[0].horde && s[0].town == HEROES_MAX && s[0].cult == FILM_SIEGE_CULT;
+  s[0].town = 60; s[0].cult = 120; new_battle(s[..]); s[0].film_x = film_siege_line(s[..]);
+  #assert bt(s[..])[0].n == 181 && s[0].film_x < 0;
+  film_step(s[..], 1.0 / 30.0, false); #assert s[0].pitch < 0.2 && s[0].px > s[0].film_x && s[0].px < s[0].film_x + 5;
+}
+#test "?stage=horde fields the Horde at film size, the rest of the dead to stream in" #steps 400000000 {
+  s: [1] Lab; s[0].started = true; film_setup(s[..], FILM_HORDE);
+  #assert s[0].horde && bt(s[..])[0].n == FILM_HORDE_HEROES + FILM_HORDE_DEAD && s[0].pool == HORDE_MAX;
+  film_step(s[..], 1.0 / 30.0, false); #assert s[0].pitch > 0.7 && s[0].pz > 0;
+}
+#test "a page asks for a film by its whole ?stage= pair" {
+  #assert film_find("?stage=armies&x=1") == FILM_ARMIES && film_find("?a=1&stage=horde") == FILM_HORDE;
+  #assert film_find("?stage=armiesx") == FILM_NONE && film_find("?heroes=6") == FILM_NONE && film_find("?xstage=siege") == FILM_NONE;
+}
+#test "the armies film's two sides meet, and its camera follows the front" #steps 400000000 {
+  s: [1] Lab; s[0].started = true; film_sizes(s[..], FILM_ARMIES); s[0].heroes = 40; s[0].skeletons = 300; new_battle(s[..]);
+  x := s[0].film_x;
+  for k: 0..<30 { lab_run(s[..], 1.0 / 30.0); film_step(s[..], 1.0 / 30.0, false); }
+  b := bt(s[..]);
+  hx := -1; dx := s[0].cols;
+  for i: 0..<b[0].n { if !b[0].c[i].dead && b[0].c[i].hp > 0 { if b[0].c[i].team == 2 { dx = rs_min(dx, b[0].c[i].x); } else { hx = rs_max(hx, b[0].c[i].x); } } }
+  #assert hx >= 0 && dx - hx <= 1 && film_front(s[..]) == (hx + dx) / 2 && s[0].film_x > x;
+}

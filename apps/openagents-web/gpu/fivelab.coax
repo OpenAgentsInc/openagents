@@ -27,7 +27,7 @@
 //   fwd 20: forward xyz, the image centre's x (px)
 //   right 24: right xyz, the image centre's y (px)
 //   up 28: up xyz, 0
-//   sun 32: toward the sun xyz, 0
+//   sun 32: toward the sun xyz, and 1 for a film (fivelab-film.coax): no grid on the grass, no rings
 //   zones 36: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
 //   bounds 100: the grid's half width and half depth (m), the square (m), how much bigger than 40
 //              by 20 the grid is (the haze thins by as much, so a big field still reads)
@@ -267,7 +267,7 @@ fivelab_grass :: (x:f32,z:f32,u:[]f32,t:f32,fp:f32)->V3 {
   lw:f32=fmax(0.03f32,fp);
   line:f32=1.0f32-smoothstep(lw*0.4f32,lw*1.5f32,fmin(lx,lz));
   line=line*fmin(1.0f32,sqrt(0.03f32/fmax(fp,0.0001f32)))*(1.0f32-smoothstep(sq*0.12f32,sq*0.3f32,fp));
-  c=mix3(c,v3(0.55f32,0.6f32,0.36f32),line*inside*0.5f32);
+  c=mix3(c,v3(0.55f32,0.6f32,0.36f32),line*inside*0.5f32*(1.0f32-u[35]));
   return c;
 }
 
@@ -338,7 +338,7 @@ fivelab_glade :: (p:V2,u:[]f32,frame:[]f32)->V4 {
                 tc:V3=v3(0.35f32,0.95f32,0.45f32);
                 if (tm>0.5f32) { tc=v3(0.55f32,0.85f32,1.0f32); }
                 if (tm>1.5f32) { tc=v3(0.9f32,0.86f32,0.74f32); }
-                if (state<0.5f32) { glow=add3(glow,scale3(tc,ring*(0.25f32+(tk.w*1.6f32)))); }
+                if ((state<0.5f32)&&(u[35]<0.5f32)) { glow=add3(glow,scale3(tc,ring*(0.25f32+(tk.w*1.6f32)))); }
               }
             }
           }
