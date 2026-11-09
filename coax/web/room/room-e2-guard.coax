@@ -1,0 +1,366 @@
+// Everglade II's path guard: one guard of the room's battle (SRD 5.2.1 Guard, aethyr/rules/srd/npcs.coax
+// rs_guard: AC 16, HP 11, a Spear) who walks the forest path from the glade to the clearing and back.
+// The room walks him on its own tick, so every page sees him where the room has him; the rules' turn
+// strikes (everglade5e-room-rules.coax e5rp_turn) once the room has brought him within reach of the
+// player who harmed him. He never harms first. A player in his way stops him; one who keeps standing
+// there is stepped round, and no step of his ever ends inside a player's body.
+//   g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE   his state, to every placed seat (mm, mrad, SWING the
+//                                                   tick of his last blow or -1, FOE a seat or -1)
+//   g3 TICK KIND SEAT AMOUNT                        a blow: KIND 1 a seat's at him, 2 his at a seat (AMOUNT 0 a miss)
+// The pages draw him a jitter buffer behind, as they draw each other (everglade2-guard.coax).
+
+E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, fivelab-bodies.coax BD_RUN_FROM)
+E2G_CHASE :: 3.6;           // m/s: after the one who struck him, a run
+E2G_TURN :: 1.6;            // rad/s he turns at the path's ends: half round in two seconds
+E2G_STEER :: 2.6;           // rad/s he turns as the path bends
+E2G_REST_S :: 1.5;          // s he stands at an end before he turns
+E2G_Z0 :: -18.0;            // the path's glade end (z)
+E2G_Z1 :: -455.0;           // its clearing end (E2_CLEAR_Z -470 + 15)
+E2G_AHEAD :: 1.5;           // m he looks ahead along the path
+E2G_BODY :: 0.35;           // m: his capsule's radius (everglade2-move.coax e2m_guard_body)
+E2G_CLEAR :: 0.8;           // m: no step of his ends nearer a player's middle than this
+E2G_BLOCK :: 1.7;           // m: a player this near ahead of him stops him
+E2G_SIDE_S :: 1.6;          // s stopped before he steps round
+E2G_SIDE :: 1.3;            // m to the side he steps round
+E2G_SIDE_V :: 0.7;          // m/s he moves across
+E2G_REACH :: 1.1;           // m from the one he fights: within the Spear's 5 feet
+E2G_LEASH :: 28.0;          // m from where he was struck past which he lets them go
+E2G_CALM_S :: 15.0;         // s without a blow either way after which he goes back to his walk
+E2G_RESPAWN_S :: 20.0;      // s from his fall to the next guard
+E2G_AIM :: 1.6;             // m: a cast aimed this near him is aimed at him
+E2G_FORM :: 21;             // E5RR_FORM_RAID + RS_NPC_GUARD: the guard's look
+E2G_WALKING :: 0; E2G_STANDING :: 1; E2G_FIGHTING :: 2; E2G_DOWN :: 3; E2G_NONE :: 4;
+
+E2Guard :: struct {
+  q: int = -1; id: int;      // his beast slot in the rules (-1 none) and its id
+  life: int;                 // each guard a new life: the pages fade a new one in
+  state: int = E2G_NONE;
+  x: f32; z: f32; yaw: f32;
+  dir: f32 = -1;             // -1 toward the clearing, 1 toward the glade
+  off: f32; off_to: f32;     // his step to the side of the path, and where it is going
+  rest: f32;                 // s left standing at an end
+  turning: bool;             // at an end, turning round
+  stopped: f32;              // s stopped by a player in his way
+  clear_s: f32;              // s since a player last stood in his way
+  foe: int = -1; struck_x: f32; struck_z: f32; calm: f32;
+  down_at: int = -1;         // the tick he fell (-1 standing)
+  hp: int; foe_hp: int;      // his Hit Points last tick, and his foe's before the rules' step
+  swing: f32 = -100; swing_tick: int = -1;
+}
+
+e2g_wrap :: (a: f32) -> f32 { r := a; while r > 3.14159265 { r -= 6.2831853; } while r < -3.14159265 { r += 6.2831853; } return r; }
+e2g_turn :: (yaw: f32, goal: f32, rate: f32, dt: f32) -> f32 {
+  d := e2g_wrap(goal - yaw); m := rate * dt;
+  return e2g_wrap(yaw + (ifx d > m then m else ifx d < -m then -m else d));
+}
+e2g_seat_near :: (v: [] RmServer, k: int, x: f32, z: f32, r: f32) -> bool {
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    if !st[0].live || !st[0].placed { continue; }
+    dx := st[0].pose.x - x; dz := st[0].pose.z - z;
+    if dx * dx + dz * dz < r * r { return true; }
+  }
+  return false;
+}
+// The nearest player in his way along `yaw`: ahead within E2G_BLOCK m and within E2G_LANE m of his
+// line. The side it stands on (-1 left, 1 right), 0 none.
+E2G_LANE :: 0.9;
+e2g_blocker :: (v: [] RmServer, k: int, g: E2Guard, yaw: f32) -> f32 {
+  fx := sin(yaw); fz := cos(yaw); best := f32(E2G_BLOCK); side: f32 = 0;
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    if !st[0].live || !st[0].placed { continue; }
+    dx := st[0].pose.x - g.x; dz := st[0].pose.z - g.z;
+    a := dx * fx + dz * fz; l := dx * fz - dz * fx;
+    if a <= 0.1 || a >= best || abs(l) >= f32(E2G_LANE) { continue; }
+    best = a; side = ifx l > 0 then 1.0f32 else -1.0f32;
+  }
+  return side;
+}
+// A new guard at the glade's end of the path (or the clearing's when someone stands at the glade's),
+// walking toward the other: his creature the rules' first free beast.
+e2g_spawn :: (v: [] RmServer, k: int) -> bool {
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; g := v[0].eg[k].guard[..];
+  z := f32(E2G_Z0); dir: f32 = -1;
+  if e2g_seat_near(v, k, e2_road_x(z), z, 2.5) { z = f32(E2G_Z1); dir = 1; }
+  x := e2_road_x(z);
+  if e2g_seat_near(v, k, x, z, 2.5) { return false; }
+  q := -1; for o: 0..<E5RR_BEASTS { if q < 0 && r[0].beasts[o].id == 0 && r[0].beasts[o].forge_id == 0 { q = o; } }
+  if q < 0 { return false; }
+  i := E5RR_BEAST0 + q;
+  c := rs_guard("Guard", 1);
+  c.x = e5r_sq(x); c.y = e5rr_z_cell(r, z); c.turn_at = b[0].clock + 0.1; c.round_at = b[0].clock;
+  b[0].c[i] = c;
+  id := r[0].next_id; r[0].next_id += 1;
+  yaw := e5rr_heading(e2_road_x(z + dir * f32(E2G_AHEAD)) - x, dir * f32(E2G_AHEAD));
+  r[0].beasts[q] = E5rBeast.{id = id, tag = id, by = -1, spell = -1, form = E2G_FORM, patrol = true, x = x, z = z, yaw = yaw, goal_x = x, goal_z = z};
+  life := g[0].life + 1;
+  g[0] = E2Guard.{q = q, id = id, life = life, state = E2G_WALKING, x = x, z = z, yaw = yaw, dir = dir, hp = c.hp};
+  return true;
+}
+
+// One step of dt toward (tx, tz) at speed, never ending nearer a player than E2G_CLEAR or where no one
+// may stand. The distance moved.
+e2g_move :: (v: [] RmServer, k: int, g: [] E2Guard, tx: f32, tz: f32, speed: f32, dt: f32, stop: f32) -> f32 {
+  dx := tx - g[0].x; dz := tz - g[0].z; d := sqrt(dx * dx + dz * dz);
+  if d <= stop + 0.001 { return 0; }
+  st := speed * dt; if st > d - stop { st = d - stop; }
+  nx := g[0].x + dx / d * st; nz := g[0].z + dz / d * st;
+  if !e2_may_stand(nx, nz) || e2g_seat_near(v, k, nx, nz, f32(E2G_CLEAR)) { return 0; }
+  g[0].x = nx; g[0].z = nz;
+  return st;
+}
+
+// His walk along the path: on toward the end he walks to, round any player in his way, then a rest and
+// a slow turn at the end.
+e2g_walk :: (v: [] RmServer, k: int, dt: f32) {
+  g := v[0].eg[k].guard[..];
+  if g[0].rest > 0 || g[0].turning {
+    g[0].state = E2G_STANDING;
+    if g[0].rest > 0 { g[0].rest -= dt; if g[0].rest <= 0 { g[0].turning = true; g[0].dir = -g[0].dir; } return; }
+    goal := e5rr_heading(e2_road_x(g[0].z + g[0].dir * f32(E2G_AHEAD)) - g[0].x, g[0].dir * f32(E2G_AHEAD));
+    g[0].yaw = e2g_turn(g[0].yaw, goal, f32(E2G_TURN), dt);
+    if abs(e2g_wrap(goal - g[0].yaw)) < 0.02 { g[0].turning = false; }
+    return;
+  }
+  end := ifx g[0].dir < 0 then f32(E2G_Z1) else f32(E2G_Z0);
+  if (g[0].dir < 0 && g[0].z <= end) || (g[0].dir > 0 && g[0].z >= end) { g[0].rest = f32(E2G_REST_S); g[0].off_to = 0; g[0].state = E2G_STANDING; return; }
+  // the side step: out while a player keeps him stopped, back once the way has been clear a while
+  path := e5rr_heading(e2_road_x(g[0].z + g[0].dir * f32(E2G_AHEAD)) - e2_road_x(g[0].z), g[0].dir * f32(E2G_AHEAD));
+  side := e2g_blocker(v, k, g[0], path);
+  if side != 0 { g[0].stopped += dt; g[0].clear_s = 0; } else { g[0].stopped = 0; g[0].clear_s += dt; }
+  if side != 0 && g[0].stopped > f32(E2G_SIDE_S) && abs(g[0].off_to) < 0.01 {
+    want := side * -f32(E2G_SIDE) + g[0].off;
+    if !e2_may_stand(e2_road_x(g[0].z) + want, g[0].z) { want = g[0].off + side * f32(E2G_SIDE); }
+    g[0].off_to = want;
+  }
+  if g[0].clear_s > 2.5 { g[0].off_to = 0; }
+  if side != 0 {
+    // stopped: he waits, then steps to the side, across only, facing on along the path
+    g[0].state = E2G_STANDING;
+    if g[0].stopped <= f32(E2G_SIDE_S) { return; }
+    if e2g_move(v, k, g, e2_road_x(g[0].z) + g[0].off_to, g[0].z, f32(E2G_SIDE_V), dt, 0) > 0 { g[0].off = g[0].x - e2_road_x(g[0].z); }
+    g[0].yaw = e2g_turn(g[0].yaw, path, f32(E2G_STEER), dt);
+    return;
+  }
+  across := g[0].off_to - g[0].off; m := f32(E2G_SIDE_V) * dt;
+  g[0].off += ifx across > m then m else ifx across < -m then -m else across;
+  tz := g[0].z + g[0].dir * f32(E2G_AHEAD); tx := e2_road_x(tz) + g[0].off;
+  moved := e2g_move(v, k, g, tx, tz, f32(E2G_WALK), dt, 0);
+  g[0].state = ifx moved > 0 then E2G_WALKING else E2G_STANDING;
+  if moved > 0 { g[0].yaw = e2g_turn(g[0].yaw, e5rr_heading(tx - g[0].x, tz - g[0].z), f32(E2G_STEER), dt); }
+}
+
+// The room's tick, before the rules step: a new guard when due, his walk or his chase, and his body's
+// square in the battle. The foe's Hit Points are kept to tell his blows.
+e2_guard_tick :: (v: [] RmServer, k: int) {
+  if !v[0].eg[k].e2 { return; }
+  g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
+  dt := 1.0f32 / f32(EG_HZ); t := v[0].eg[k].tick;
+  if g[0].q < 0 {
+    if g[0].down_at >= 0 && t - g[0].down_at < cast(int)(f32(E2G_RESPAWN_S) * f32(EG_HZ)) { return; }
+    if !e2g_spawn(v, k) { return; }
+  }
+  q := g[0].q; i := E5RR_BEAST0 + q; bt := r[0].beasts[q..<q + 1];
+  // his slot taken by another creature (a check or the rules' own placing): he is gone, back in time
+  if !bt[0].patrol || bt[0].id != g[0].id {
+    g[0].q = -1; g[0].state = E2G_NONE; g[0].foe = -1; g[0].down_at = t; return;
+  }
+  foe := g[0].foe;
+  // whom he fights: a placed seat still in reach of his leash, above the Hit Points his blow could take
+  if foe >= 0 {
+    st := v[0].eg[k].seat[foe..<foe + 1]; c := b[0].c[E5RR_SEAT + foe..<E5RR_SEAT + foe + 1];
+    w := rs_weapon(b[0].c[i].weapon); most := w.dice * w.sides + rs_mod(b[0].c[i].score[RS_STR]);
+    dx := st[0].pose.x - g[0].struck_x; dz := st[0].pose.z - g[0].struck_z;
+    g[0].calm += dt;
+    if !st[0].live || !st[0].placed || c[0].dead || c[0].hp <= most || dx * dx + dz * dz > f32(E2G_LEASH * E2G_LEASH) || g[0].calm > f32(E2G_CALM_S) { foe = -1; }
+  }
+  g[0].foe = foe;
+  bt[0].foe = ifx foe >= 0 then E5RR_SEAT + foe else -1;
+  g[0].foe_hp = ifx foe >= 0 then b[0].c[E5RR_SEAT + foe].hp else 0;
+  if foe >= 0 {
+    fx := v[0].eg[k].seat[foe].pose.x; fz := v[0].eg[k].seat[foe].pose.z;
+    _ := e2g_move(v, k, g, fx, fz, f32(E2G_CHASE), dt, f32(E2G_REACH));
+    g[0].yaw = e2g_turn(g[0].yaw, e5rr_heading(fx - g[0].x, fz - g[0].z), f32(E2G_STEER) * 2, dt);
+    g[0].state = E2G_FIGHTING; g[0].rest = 0; g[0].turning = false;
+    // back on his walk he takes up the path from the nearest point on it
+    g[0].off = g[0].x - e2_road_x(g[0].z); g[0].off_to = 0;
+  } else {
+    e2g_walk(v, k, dt);
+  }
+  bt[0].x = g[0].x; bt[0].z = g[0].z; bt[0].yaw = g[0].yaw; bt[0].moving = g[0].state != E2G_STANDING;
+  b[0].c[i].x = e5r_sq(g[0].x); b[0].c[i].y = e5rr_z_cell(r, g[0].z);
+}
+// After the rules' step: his blows told, his hurts told, his fall.
+e2_guard_after :: (v: [] RmServer, k: int) {
+  if !v[0].eg[k].e2 { return; }
+  g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
+  if g[0].q < 0 { return; }
+  q := g[0].q; i := E5RR_BEAST0 + q; bt := r[0].beasts[q..<q + 1][0];
+  if bt.patrol && bt.id == g[0].id && bt.forge_swing != g[0].swing {
+    g[0].swing = bt.forge_swing; g[0].swing_tick = v[0].eg[k].tick; g[0].calm = 0;
+    if g[0].foe >= 0 { e2g_tell(v, k, 2, g[0].foe, rs_max(g[0].foe_hp - b[0].c[E5RR_SEAT + g[0].foe].hp, 0)); }
+  }
+  hp := ifx bt.id == g[0].id then b[0].c[i].hp else 0;
+  if hp < g[0].hp { e2g_tell(v, k, 1, g[0].foe, g[0].hp - hp); }
+  g[0].hp = hp;
+  if bt.id != g[0].id || b[0].c[i].dead || hp <= 0 {
+    if bt.id == g[0].id { e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, q); }
+    g[0].q = -1; g[0].state = E2G_DOWN; g[0].down_at = v[0].eg[k].tick; g[0].foe = -1; g[0].hp = 0;
+  }
+}
+// A seat's cast at the guard: the creature it harms, when it is aimed within E2G_AIM m of him (-1 none).
+e2_guard_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int {
+  g := v[0].eg[k].guard[0];
+  if !v[0].eg[k].e2 || g.q < 0 || g.state == E2G_DOWN { return -1; }
+  dx := ax - g.x; dz := az - g.z;
+  return ifx dx * dx + dz * dz <= f32(E2G_AIM * E2G_AIM) then E5RR_BEAST0 + g.q else -1;
+}
+// Seat s harmed him (or tried): he turns on them; a cast that took no Hit Points is told as a miss.
+e2_guard_struck :: (v: [] RmServer, k: int, s: int, hp_before: int) {
+  g := v[0].eg[k].guard[..];
+  if g[0].q < 0 { return; }
+  if g[0].foe != s { g[0].struck_x = g[0].x; g[0].struck_z = g[0].z; }
+  g[0].foe = s; g[0].calm = 0;
+  if v[0].eg[k].rules[0].b[0].c[E5RR_BEAST0 + g[0].q].hp >= hp_before { e2g_tell(v, k, 1, s, 0); }
+}
+e2g_tell :: (v: [] RmServer, k: int, kind: int, s: int, amount: int) {
+  room := v[0].eg[k..<k + 1];
+  out: [64] u8;
+  n := wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_int(out[..], wire_put(out[..], 0, "g3"), room[0].tick), kind), s), amount);
+  for o: 0..<EG_SEATS {
+    st := room[0].seat[o..<o + 1];
+    if !st[0].live || !st[0].placed || st[0].conn < 0 { continue; }
+    rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<n], "");
+  }
+}
+// His state to seat s: each tick he changes, and once a second when he doesn't.
+e2_guard_snapshot :: (v: [] RmServer, k: int, s: int) {
+  room := v[0].eg[k..<k + 1]; g := room[0].guard[0]; st := room[0].seat[s..<s + 1];
+  hp := 0; max := 0;
+  if g.q >= 0 { hp = room[0].rules[0].b[0].c[E5RR_BEAST0 + g.q].hp; max = room[0].rules[0].b[0].c[E5RR_BEAST0 + g.q].hp_max; }
+  row: [128] u8;
+  n := wire_int(row[..], wire_int(row[..], 0, g.life), g.state);
+  n = wire_int(row[..], wire_int(row[..], n, cast(int) floor(g.x * 1000 + 0.5)), cast(int) floor(g.z * 1000 + 0.5));
+  n = wire_int(row[..], wire_int(row[..], n, cast(int) floor(g.yaw * 1000 + 0.5)), hp);
+  n = wire_int(row[..], wire_int(row[..], wire_int(row[..], n, max), g.swing_tick), g.foe);
+  hash := eg_hash(cast(string) row[0..<n]);
+  if st[0].guard_hash == hash && room[0].tick - st[0].guard_sent < EG_HZ { return; }
+  st[0].guard_hash = hash; st[0].guard_sent = room[0].tick;
+  out: [192] u8;
+  m := wire_int(out[..], wire_put(out[..], 0, "g2"), room[0].tick);
+  m = wire_put(out[..], m, cast(string) row[0..<n]);
+  rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<m], "");
+}
+// Where his body stands for the movement step (room-world.c world2_step): false when there is none.
+rm_e2_guard_body :: (v: [] RmServer, k: int, out: [] f32) -> bool #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || !v[0].eg[k].e2 || out.count < 2 { return false; }
+  g := v[0].eg[k].guard[0];
+  if g.q < 0 { return false; }
+  out[0] = g.x; out[1] = g.z;
+  return true;
+}
+
+// ---- checks
+// A check's seat 0 at (x, z): where the room has it, and its square in the battle.
+e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x = x; v[0].eg[k].seat[0].pose.z = z; e5rr_place(v[0].eg[k].rules[..], 0, x, z); }
+#test "e2 guard: he walks the path at a walk, turns slowly at its end and walks back" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  eg_test_tick(v[..], k);
+  g := v[0].eg[k].guard[..];
+
+  #assert g[0].q >= 0;
+  #assert g[0].state == E2G_WALKING;
+  #assert abs(g[0].z - f32(E2G_Z0)) < 0.1;
+  #assert g[0].dir < 0;
+  #assert v[0].eg[k].rules[0].beasts[g[0].q].patrol && v[0].eg[k].rules[0].b[0].c[E5RR_BEAST0 + g[0].q].hp == 11;
+  z0 := g[0].z;
+  for q: 0..<EG_HZ * 10 { eg_test_tick(v[..], k); }
+  went := z0 - g[0].z;
+  #assert went > 13.0;
+  #assert went < 14.1;
+  #assert abs(g[0].x - e2_road_x(g[0].z)) < 0.2 && e2_may_stand(g[0].x, g[0].z);
+  // at the clearing's end: he stands, turns no faster than E2G_TURN, then walks back up
+  v[0].eg[k].guard[0].z = f32(E2G_Z1) + 0.5; v[0].eg[k].guard[0].x = e2_road_x(f32(E2G_Z1) + 0.5);
+  yaw := g[0].yaw; most: f32 = 0; turned := false;
+  for q: 0..<EG_HZ * 6 {
+    eg_test_tick(v[..], k);
+    d := abs(e2g_wrap(g[0].yaw - yaw)); if d > most { most = d; } yaw = g[0].yaw;
+    if g[0].dir > 0 && g[0].state == E2G_WALKING { turned = true; }
+  }
+  #assert turned && most <= f32(E2G_STEER) / f32(EG_HZ) + 0.001 && g[0].z > f32(E2G_Z1);
+}
+#test "e2 guard: a player in his way stops him, and one who stays is stepped round, never walked into" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-way HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  eg_test_tick(v[..], k);
+  g := v[0].eg[k].guard[..];
+  for q: 0..<EG_HZ * 4 { eg_test_tick(v[..], k); }
+  // you stand on the path 1.2 m ahead of him
+  pz := g[0].z - 1.2; px := e2_road_x(pz);
+  near: f32 = 100; stood := 0;
+  for q: 0..<EG_HZ * 12 {
+    e2gt_at(v[..], k, px, pz);
+    eg_test_tick(v[..], k);
+    dx := g[0].x - px; dz := g[0].z - pz; d := sqrt(dx * dx + dz * dz); if d < near { near = d; }
+    if g[0].state == E2G_STANDING { stood += 1; }
+  }
+
+  #assert stood > EG_HZ;
+  #assert near >= f32(E2G_CLEAR) - 0.001;
+  #assert g[0].z < pz - 1;
+}
+#test "e2 guard: struck, he fights back with his Spear; he yields before he could drop you, falls and comes back" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-fight HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  eg_test_tick(v[..], k);
+  g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
+  me := E5RR_SEAT; b[0].c[me].hp = 60; b[0].c[me].hp_max = 60;
+  // he doesn't strike first: you beside him, untouched
+  for q: 0..<EG_HZ * 3 { e2gt_at(v[..], k, g[0].x + 0.9, g[0].z); eg_test_tick(v[..], k); }
+  #assert b[0].c[me].hp == 60 && g[0].foe < 0 && g[0].swing_tick < 0;
+  #assert e2_guard_target(v[..], k, g[0].x + 0.5, g[0].z) == E5RR_BEAST0 + g[0].q && e2_guard_target(v[..], k, g[0].x + 3, g[0].z) == -1;
+  e2_guard_struck(v[..], k, 0, b[0].c[E5RR_BEAST0 + g[0].q].hp + 1);
+  out: [262144] u8; _ := e2rt_heard(v[..], 0, out[..]);
+  swung := false; told := false; state := false;
+  for q: 0..<EG_HZ * 8 {
+    e2gt_at(v[..], k, g[0].x + 0.9, g[0].z); eg_test_tick(v[..], k); if g[0].swing_tick >= 0 { swung = true; }
+    heard := e2rt_heard(v[..], 0, out[..]); if eg_test_has(heard, "g3 ") { told = true; } if eg_test_has(heard, "g2 ") { state = true; }
+  }
+  #assert swung && g[0].state == E2G_FIGHTING && told && state;
+  // you at the Hit Points one blow could take: he lets you be
+  b[0].c[me].hp = 7; for q: 0..<3 { eg_test_tick(v[..], k); }
+  #assert g[0].foe < 0 && g[0].state != E2G_FIGHTING;
+  // he falls: down, gone from the battle, and a new life after E2G_RESPAWN_S
+  life := g[0].life; b[0].c[E5RR_BEAST0 + g[0].q].hp = 0; eg_test_tick(v[..], k);
+  #assert g[0].q < 0 && g[0].state == E2G_DOWN;
+  e2gt_at(v[..], k, 0, 0);
+  for q: 0..<cast(int)(f32(E2G_RESPAWN_S) * f32(EG_HZ)) + 2 { eg_test_tick(v[..], k); }
+  #assert g[0].q >= 0 && g[0].life == life + 1 && g[0].state == E2G_WALKING;
+}
+#test "e2 guard: a cast aimed at him from the bar is the shared rules' strike at him, and he turns on its caster" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-cast HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-druid 0 -");
+  eg_test_tick(v[..], k);
+  g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
+  for q: 0..<EG_HZ { e2gt_at(v[..], k, g[0].x - 3, g[0].z + 8); eg_test_tick(v[..], k); }
+  b[0].c[E5RR_BEAST0 + g[0].q].ac = 1;
+  out: [262144] u8; _ := e2rt_heard(v[..], 0, out[..]);
+  eg_e2_cast(v[..], k, SeatId.{value = 0}, WireCast.{seq = 1, slot = xk_slot(FB_CL_DRUID, 1), ax = g[0].x, az = g[0].z});
+  heard := e2rt_heard(v[..], 0, out[..]);
+  #assert !eg_test_has(heard, "r 1 slot");
+  #assert !eg_test_has(heard, cr_word(CR_RANGE));
+  #assert !eg_test_has(heard, cr_word(CR_COOLDOWN));
+  #assert !eg_test_has(heard, cr_word(CR_AIM));
+  #assert !eg_test_has(heard, "r 1 ");
+  #assert g[0].foe == 0;
+}

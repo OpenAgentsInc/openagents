@@ -1,6 +1,8 @@
 // Everglade II's declared social combat profile: shared self effects and paid
-// empty offensive casts, at the seat's own class level (1 to 6, #13046). No creature is selected for harm and no area damages
-// bystanders. The room owns the class/slot and real creature/turn state.
+// empty offensive casts, at the seat's own class level (1 to 6, #13046). No player is selected for harm and no area damages
+// bystanders. The one creature a cast may harm is the one the room names (e2r_use_on): the path's guard
+// (coax/web/room/room-e2-guard.coax), never another seat or the caster's own team. The room owns the
+// class/slot and real creature/turn state.
 #load "class-kit.coax";
 #load "../../aethyr/rules/srd/press-budget.coax";
 #authority;
@@ -12,9 +14,13 @@ e2r_use :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int)->bool #effects(all) 
 e2r_use_at :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,x:int,y:int)->bool #effects(all) {
   return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),-1);
 }
-// A creature the room chose for a Touch spell such as Revivify; the shared rules judge it.
+// A creature the room chose (target, -1 none): a Touch spell such as Revivify takes it, and a harmful
+// ability strikes it when it is alive and not the caster's team (the path's guard); the shared rules judge it.
 e2r_use_on :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,target:int)->bool #effects(all) {
   return e2r_request(b,seats,klass,slot,null,target);
+}
+e2r_use_at_on :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,x:int,y:int,target:int)->bool #effects(all) {
+  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}),target);
 }
 e2r_request :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool #effects(all) {
   switch e2r_atomic(b,seats,klass,slot,point,target) { case none { return false; } case some(ok) { return ok; } }
@@ -24,6 +30,12 @@ e2r_atomic :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,ta
     if !e2r_apply(b,seats,klass,slot,point,target) { return null; }
   }
   return some(true);
+}
+// Creature foe as caster i's harm's target: itself when it stands and is another team's, else -1.
+e2r_foe :: (b:[] RsBattle,i:int,foe:int)->int #effects(reads,traps) {
+  if foe<0 || foe>=b[0].n { return -1; }
+  if b[0].c[foe].dead || b[0].c[foe].hp<=0 || b[0].c[foe].team==b[0].c[i].team { return -1; }
+  return foe;
 }
 e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,target:int)->bool #effects(all) {
   i:=seats[0].me;
@@ -46,13 +58,20 @@ e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,tar
     }
   } else if e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY {
     ok=target>=0 && target<b[0].n && fb_cast(b,i,e.ab,-1,b[0].c[i].x,b[0].c[i].y,target);
-  } else { ok=e2r_dispatch(b,i,e.ab); }
+  } else { ok=e2r_dispatch_at(b,i,e.ab,e2r_foe(b,i,target)); }
   fb_seat_out(b,seats);
   return ok;
 }
-e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) {
+e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) { return e2r_dispatch_at(b,i,a,-1); }
+// The same with the room's named creature foe (-1 none) as a harmful ability's target.
+e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int)->bool #effects(all) {
   if a.tg==FB_SELF || a.tg==FB_ALLY {
     return fb_use(b,i,a,i,b[0].c[i].x,b[0].c[i].y,i);
+  }
+  // the room's named creature: the shared rules' own strike or spell at it (Produce Flame to hand first)
+  if foe>=0 {
+    if !fb_conjure(b,i,a) { return false; }
+    return fb_use(b,i,a,foe,b[0].c[foe].x,b[0].c[foe].y,i);
   }
   if a.kind==FB_SPELL {
     // the Druid's one Produce Flame slot: the flame to hand first (a Bonus Action), as fivebar.coax fb_cast
@@ -122,4 +141,71 @@ e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) {
   slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
   #assert e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,0,0);
   #assert b[0].zone[0].cx==0 && b[0].zone[0].cy==0;
+}
+#test "Everglade II harms only the creature the room names, alive and of another team" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
+  g:=rs_add(b[..],rs_guard("Guard",1),3,2);
+  m:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Mate",0,1),2,3);
+  #assert e2r_foe(b[..],0,g)==g && e2r_foe(b[..],0,m)== -1 && e2r_foe(b[..],0,0)== -1 && e2r_foe(b[..],0,-1)== -1;
+  // past the battle's creatures, even a slot that looks alive is no one
+  b[0].c[b[0].n].hp=5; b[0].c[b[0].n].team=1; #assert e2r_foe(b[..],0,b[0].n)== -1;
+  b[0].c[g].hp=0; #assert e2r_foe(b[..],0,g)== -1;
+  b[0].c[g].hp=11; b[0].c[g].dead=true; #assert e2r_foe(b[..],0,g)== -1;
+  b[0].c[g].dead=false; b[0].c[g].hp=1; #assert e2r_foe(b[..],0,g)==g;
+}
+#test "Everglade II's blow at the named guard is the shared rules' attack; at no one it is an empty swing" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=12345;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
+  g:=rs_add(b[..],rs_guard("Guard",1),3,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
+  seats:[1] FbSeat; seats[0].me=0;
+  #assert e2r_use_on(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1),g) && seats[0].turn.action && b[0].c[g].hp<40;
+  seats[0].turn=RsTurn.{}; hp:=b[0].c[g].hp;
+  #assert e2r_use(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1)) && seats[0].turn.action && b[0].c[g].hp==hp;
+}
+#test "Everglade II's Produce Flame at the named guard takes the flame to hand, then hurls it" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=777;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,1),2,2);
+  g:=rs_add(b[..],rs_guard("Guard",1),4,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
+  seats:[1] FbSeat; seats[0].me=0;
+  #assert b[0].c[0].flame_until<=b[0].clock;
+  #assert e2r_use_on(b[..],seats[..],FB_CL_DRUID,xk_slot(FB_CL_DRUID,1),g) && b[0].c[0].flame_until>b[0].clock && b[0].c[g].hp<40;
+}
+
+#test "a dispatch that names no creature is the same as one at none" {
+  b:[1] RsBattle; b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD);
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3); rs_start_turn(b[..],0);
+  #assert e2r_dispatch(b[..],0,fb_feature(FB_ATTACK,"Attack","attack")) && b[0].turn.action;
+  #assert !e2r_dispatch(b[..],0,fb_feature(FB_ATTACK,"Attack","attack"));
+}
+#test "the guard first in the battle is still the one named, and only when named" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=4242;
+  g:=rs_add(b[..],rs_guard("Guard",1),3,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
+  me:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
+  seats:[1] FbSeat; seats[0].me=me; #assert g==0;
+  #assert e2r_use(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1)) && b[0].c[g].hp==40;
+  seats[0].turn=RsTurn.{};
+  #assert e2r_use_at(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1),3,2) && b[0].c[g].hp==40;
+  seats[0].turn=RsTurn.{};
+  #assert e2r_use_on(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1),g) && b[0].c[g].hp<40;
+}
+#test "with no Bonus Action left for the flame, Produce Flame at the guard is refused" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=777;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,1),2,2);
+  g:=rs_add(b[..],rs_guard("Guard",1),4,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
+  seats:[1] FbSeat; seats[0].me=0; seats[0].turn.bonus=true;
+  #assert !e2r_use_on(b[..],seats[..],FB_CL_DRUID,xk_slot(FB_CL_DRUID,1),g) && b[0].c[g].hp==40 && b[0].c[0].flame_until<=b[0].clock;
+}
+#test "the room's cast at a point and a named guard strikes him; at the point alone it harms no one" {
+  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=4242;
+  me:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
+  g:=rs_add(b[..],rs_guard("Guard",1),3,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
+  seats:[1] FbSeat; seats[0].me=me;
+  #assert e2r_use_at_on(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1),3,2,-1) && b[0].c[g].hp==40;
+  seats[0].turn=RsTurn.{};
+  #assert e2r_use_at_on(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1),3,2,g) && b[0].c[g].hp<40;
+  // a point Zone of Truth takes comes through with the guard named too
+  p:=rs_add(b[..],fb_cl_hero(FB_CL_PALADIN,"Paladin",0,5),5,5); seats[0]=FbSeat.{me=p};
+  slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
+  #assert e2r_use_at_on(b[..],seats[..],FB_CL_PALADIN,slot,6,5,g) && b[0].zone[0].cx==6 && b[0].zone[0].cy==5;
 }

@@ -98,7 +98,10 @@ fivelab 2705000
 # Rock hulls in aethyr walk/collide/query (7afe501d33) and Revivify's room target (#13030): 755,675 bytes measured.
 # Mouselook (aethyr/cam/mouselook.coax: the mouse turns the camera with no button held, Tab and Alt
 # free the cursor) and its shared reticle (aethyr/cam/reticle.coax), on main with its rock colliders at 755,675: 758,899 bytes measured.
-everglade2 762000
+# The path's guard (everglade2-guard.coax: his armoured body, his walk and fall between the room's words,
+# the plate, the hit marks and his cues; everglade2-net.coax's g2/g3 words), on main at 758,899:
+# 765,129 bytes measured; about 2.6% headroom.
+everglade2 785000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 fivemmo 1740000

@@ -36,6 +36,7 @@ E5rBeast :: struct {
   bite_at: f32;
   forge_id: int; forge_action: int; forge_building: bool;
   forge_hit: int; forge_swing: f32 = -100;
+  patrol: bool;                              // a room's patrolling guard (coax/web/room/room-e2-guard.coax): its room walks it, e5rp_turn strikes
 }
 
 // Whether slot a heals or helps (and so reaches other players), else it only harms.

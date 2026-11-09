@@ -169,6 +169,8 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
   coax_v_s64 inv = {in, WORLD_IN};
   if (!world2_prepare()) { rm_work_done(view(), k, now_us() - room_work_start); return false; }
   int64_t tm = now_us();
+  float guard[2] = {0, 0};
+  world2_guard(k, rm_e2_guard_body(view(), k, (coax_v_f32){guard, 2}), guard[0], guard[1]);
   for (int s = 0; s < WORLD_SEATS; s++) {
     everglade2_place(k, s, pose);
     while (rm_eg_input(view(), k, (coax_t_SeatId){ s}, inv)) {

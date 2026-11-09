@@ -399,6 +399,9 @@ bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]) {
   pose_of(seat_p[k][s], false, out);
   return true;
 }
+/* The path guard's body this tick (room-e2-guard.coax rm_e2_guard_body), which every seat's step walks round. */
+static bool guard_on[WORLD_ROOMS]; static float guard_xz[WORLD_ROOMS][2];
+void world2_guard(int k, bool on, float x, float z) { if (k >= 0 && k < WORLD_ROOMS) { guard_on[k] = on; guard_xz[k][0] = x; guard_xz[k][1] = z; } }
 bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]) {
   if (k < 0 || k >= WORLD_ROOMS || s < 0 || s >= WORLD_SEATS || !world2_prepare()) return false;
   const float dt = 1.0f / WORLD_HZ;
@@ -409,6 +412,7 @@ bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]
   /* the same order as the page's step (everglade2-face.c e2_step_once) */
   float fx = p.pos.x, fz = p.pos.z;
   coax_t_EgMoveWorld mw = e2mg_move_world(e2mg(), p.pos.x, p.pos.z, input.run);
+  if (guard_on[k]) mw.bodies = e2mg_guard(e2mg(), mw.bodies, p.pos.x, p.pos.z, guard_xz[k][0], guard_xz[k][1]);
   p = eg_step_begin(p, input, mw, dt);
   coax_v_f32 near = e2mg_bodies(e2mg()), hulls = e2mg_hulls(e2mg());
   p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, dt);

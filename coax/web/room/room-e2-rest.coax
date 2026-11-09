@@ -270,7 +270,7 @@ e2rt_land :: (v: [] RmServer, k: int) { for q: 0..<90 { eg_test_tick(v, k); } }
   v: [1] RmServer; ck_test_init(v[..]); k := e2rt_ck_join(v[..], 0, 7, CharacterCapture.{}, CharacterRest.{});
   #assert k >= 0 && v[0].eg[k].e2 && v[0].eg[k].rules[0].b[0].rest_clock.ticks >= RS_CARRY_EPOCH;
   #assert rm_checkpoint_due(v[..]) > 0; e2rt_ack(v[..]); #assert !rm_checkpoint_paused(v[..], k); e2rt_land(v[..], k);
-  b := v[0].eg[k].rules[0].b[..]; c := b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; box: [16384] u8;
+  b := v[0].eg[k].rules[0].b[..]; c := b[0].c[E5RR_SEAT..<E5RR_SEAT + 1]; box: [262144] u8;   // the guard's words ride along too
   e2rt_step(v[..], k, 0, 1, 0); e2rt_ask(v[..], 0, 2, RS_REST_SLEEP); #assert rs_sleeping(c[0]);
   e2rt_wait(v[..], k, 3 * 3600); slept := c[0].long_rest.sleep; #assert slept >= 10800000000;
   ck_capture(v[..], k, SeatId.{value = 0}); #assert rm_checkpoint_due(v[..]) > 0;

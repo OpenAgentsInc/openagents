@@ -105,4 +105,5 @@ bool world2_contact(const float from[3], const float to[3]);
 bool world2_prepare(void);
 bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]);
 bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
+void world2_guard(int k, bool on, float x, float z);
 #endif

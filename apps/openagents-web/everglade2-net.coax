@@ -30,6 +30,11 @@ E2N_CASTS :: 16;                // the others' casts heard and not yet played (e
 // drawn picture reaches the tick it came with (t, the room's clock), at that player as drawn.
 E2nCast :: struct { live: bool; ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; t: int; }
 
+// The path's guard as the room says him (g2, coax/web/room/room-e2-guard.coax): each word with the
+// room's time it is for (ms), drawn a jitter buffer behind as the others are; his blows (g3) likewise.
+E2N_GUARD_ROWS :: 8; E2N_GUARD_HITS :: 8;
+E2nGuard :: struct { t: int; life: int; state: int = 4; x: f32; z: f32; yaw: f32; hp: int; max: int; swing: int = -1; foe: int = -1; }
+E2nGuardHit :: struct { live: bool; t: int; kind: int; seat: int; amount: int; }
 E2N_FAMILIARS :: 16;
 E2nFamiliar :: struct { live:bool; form:int; x:f32; z:f32; hp:int; max:int; }
 E2Net :: struct {
@@ -75,6 +80,7 @@ E2Net :: struct {
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
   familiar_rows:[E2N_FAMILIARS]E2nFamiliar; familiar_tick:int=-1;
+  guard_rows: [E2N_GUARD_ROWS] E2nGuard; guard_n: int; guard_tick: int = -1; guard_hits: [E2N_GUARD_HITS] E2nGuardHit;
   familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int; familiar_heal_cue:bool; familiar_sense:int;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
   // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
@@ -306,6 +312,8 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
+  if wire_is(t,"g2") { e2n_guard_row(n,t); return; }
+  if wire_is(t,"g3") { e2n_guard_hit(n,t); return; }
   if wire_is(t,"m8") {
     rd:=[1]WireRd.[wire_rd(t,2)];
     mode:=wire_num(t,rd[..]);
@@ -639,6 +647,7 @@ e2n_aid_message :: (n:[] E2Net)->string {
 }
 
 e2n_clear_familiars :: (n:[]E2Net) {
+  n[0].guard_n=0; n[0].guard_tick=-1; for h:0..<E2N_GUARD_HITS { n[0].guard_hits[h].live=false; }
   n[0].familiar_tick=-1; n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_heal_cue=false; n[0].familiar_sense=0;
   for s:0..<E2N_FAMILIARS { n[0].familiar_rows[s].live=false; }
 }
@@ -659,6 +668,64 @@ e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
   }
   if wire_more(t,rd[..]) { return; }
   n[0].familiar_rows=rows; n[0].familiar_tick=tick;
+}
+// g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE: kept in time order, the oldest let go.
+e2n_guard_row :: (n:[]E2Net,t:string) {
+  if !e2n_open(n) { return; }
+  rd:=[1]WireRd.[wire_rd(t,2)];
+  tick:=wire_num(t,rd[..]); life:=wire_num(t,rd[..]); state:=wire_num(t,rd[..]);
+  x:=wire_num(t,rd[..]); z:=wire_num(t,rd[..]); yaw:=wire_num(t,rd[..]);
+  hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]); swing:=wire_num(t,rd[..]); foe:=wire_num(t,rd[..]);
+  if !rd[0].ok || wire_more(t,rd[..]) || tick<=n[0].guard_tick || life<0 || state<0 || state>4 || hp<0 || max<hp ||
+    x < -200000 || x > 200000 || z < -650000 || z > 200000 || yaw < -7000 || yaw > 7000 || foe < -1 || foe >= 64 { return; }
+  row:=E2nGuard.{t=e2n_tick_t(n,tick),life=life,state=state,x=f32(x)/1000,z=f32(z)/1000,yaw=f32(yaw)/1000,hp=hp,max=max,swing=ifx swing>=0 then e2n_tick_t(n,swing) else -1,foe=foe};
+  if n[0].guard_n==E2N_GUARD_ROWS { for q:1..<E2N_GUARD_ROWS { n[0].guard_rows[q-1]=n[0].guard_rows[q]; } n[0].guard_n-=1; }
+  n[0].guard_rows[n[0].guard_n]=row; n[0].guard_n+=1; n[0].guard_tick=tick;
+}
+// g3 TICK KIND SEAT AMOUNT
+e2n_guard_hit :: (n:[]E2Net,t:string) {
+  if !e2n_open(n) { return; }
+  rd:=[1]WireRd.[wire_rd(t,2)];
+  tick:=wire_num(t,rd[..]); kind:=wire_num(t,rd[..]); seat:=wire_num(t,rd[..]); amount:=wire_num(t,rd[..]);
+  if !rd[0].ok || wire_more(t,rd[..]) || kind<1 || kind>2 || seat< -1 || seat>=64 || amount<0 || amount>999 { return; }
+  for h:0..<E2N_GUARD_HITS { if !n[0].guard_hits[h].live { n[0].guard_hits[h]=E2nGuardHit.{live=true,t=e2n_tick_t(n,tick),kind=kind,seat=seat,amount=amount}; return; } }
+}
+// Where the guard is at the room's time rt (ms): between the two words round it, else the nearest.
+// state 4 (none) before any word.
+e2n_guard_at :: (n:[]E2Net,rt:int)->E2nGuard {
+  c:=n[0].guard_n;
+  if c==0 { return E2nGuard.{}; }
+  if rt<=n[0].guard_rows[0].t { return n[0].guard_rows[0]; }
+  for q:1..<c {
+    a:=n[0].guard_rows[q-1]; b:=n[0].guard_rows[q];
+    if rt>b.t { continue; }
+    if a.life!=b.life || b.t<=a.t { return b; }
+    f:=f32(rt-a.t)/f32(b.t-a.t);
+    o:=a; o.t=rt; o.x=a.x+(b.x-a.x)*f; o.z=a.z+(b.z-a.z)*f;
+    dy:=b.yaw-a.yaw; while dy>3.14159265 { dy-=6.2831853; } while dy< -3.14159265 { dy+=6.2831853; }
+    o.yaw=a.yaw+dy*f;
+    return o;
+  }
+  return n[0].guard_rows[c-1];
+}
+#test "the guard is drawn between the room's words on him, and a new life is never blended with the last" {
+  n:[1]E2Net; n[0].state=E2N_OPEN; n[0].seat=0; n[0].hz=30; n[0].worlds=1; n[0].w_tick=0; n[0].w_t=0;
+  #assert e2n_guard_at(n[..],0).state==4;
+  e2n_record(n[..],"g2 30 1 0 0 -20000 3140 11 11 -1 -1");
+  e2n_record(n[..],"g2 60 1 0 0 -21400 3140 11 11 -1 -1");
+  e2n_record(n[..],"g2 45 1 0 0 -99000 3140 11 11 -1 -1");   // older than the last: not taken
+  g:=e2n_guard_at(n[..],1500); #assert abs(g.z+20.7)<0.001 && g.life==1 && g.hp==11;
+  #assert abs(e2n_guard_at(n[..],5000).z+21.4)<0.001 && abs(e2n_guard_at(n[..],0).z+20)<0.001;
+  e2n_record(n[..],"g2 90 2 0 0 -18000 0 11 11 -1 -1");
+  #assert abs(e2n_guard_at(n[..],2500).z+18)<0.001;
+  e2n_record(n[..],"g3 90 1 2 5");
+  #assert n[0].guard_hits[0].live && n[0].guard_hits[0].t==3000 && n[0].guard_hits[0].amount==5 && n[0].guard_hits[0].seat==2;
+  e2n_record(n[..],"g3 90 3 2 5"); #assert !n[0].guard_hits[1].live;
+  for q:0..<12 { e2n_record(n[..],"g2 1 1 0 0 0 0 1 1 -1 -1"); }   // all older than the last: none taken
+  #assert n[0].guard_n==3;
+  later:=[6]string.["g2 100 2 0 0 0 0 1 1 -1 -1","g2 101 2 0 0 0 0 1 1 -1 -1","g2 102 2 0 0 0 0 1 1 -1 -1","g2 103 2 0 0 0 0 1 1 -1 -1","g2 104 2 0 0 0 0 1 1 -1 -1","g2 105 2 0 0 0 0 1 1 -1 -1"];
+  for t:later { e2n_record(n[..],t); }   // nine words: the oldest falls off, eight are kept
+  #assert n[0].guard_n==E2N_GUARD_ROWS && n[0].guard_tick==105 && n[0].guard_rows[0].t==2000;
 }
 e2n_familiar :: (n:[]E2Net)->bool {
   wizard:=n[0].klass==FB_CL_WIZARD;

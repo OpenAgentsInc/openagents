@@ -116,7 +116,7 @@ e2k_press :: (s: [] E2, i: int) -> bool {
   c := k[0].klass; a := k[0].bar[i];
   m := xc_aim_for(a, xk_weapon(c));
   face := s[0].you_face; fx := sin(face); fz := cos(face);
-  p := xc_aim_point(a, m, s[0].you_x, s[0].you_z, fx, fz);
+  p := e2gd_aim(s, m, xc_aim_point(a, m, s[0].you_x, s[0].you_z, fx, fz), fx, fz);   // at the path's guard when he is before you (everglade2-guard.coax)
   ay := s[0].you_y + 1.0;
   k[0].seed ^= k[0].seed << 13; k[0].seed ^= k[0].seed >> 7; k[0].seed ^= k[0].seed << 17;
   // what this press starts, so a refusal can fade it (e2k_undo): the effect slots started now, its voices

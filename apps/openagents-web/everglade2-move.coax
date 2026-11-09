@@ -145,6 +145,21 @@ e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: []
   w.bodies = n; w.hulls = at; return w;
 }
 
+// The path's guard (coax/web/room/room-e2-guard.coax), a body like yours: upright from his shins to his
+// shoulders, E2_GUARD_R round. Within E2_GUARD_NEAR m of the step he joins its bodies, so no one walks
+// through him; the page puts him where it draws him, the room where it has him.
+E2_GUARD_R :: 0.35; E2_GUARD_NEAR :: 6.0;
+e2m_guard_body :: (out: [] f32, n: int, x: f32, z: f32, gx: f32, gz: f32) -> int #export_c #effects(all) {
+  if abs(gx - x) > f32(E2_GUARD_NEAR) || abs(gz - z) > f32(E2_GUARD_NEAR) { return n; }
+  return e2m_body(out, n, gx, gz, gx, gz, 0.3, 1.6, f32(E2_GUARD_R));
+}
+#test "the guard stands among the bodies a step near him walks round, and not one far off" {
+  out: [E2_NEAR_BODIES * 7] f32;
+  #assert e2m_guard_body(out[..], 3, 0, -20, 1, -21) == 4 && out[21] == 1 && out[23] == -21 && out[22] == 0.3 && out[25] == 1.6 && out[27] == f32(E2_GUARD_R);
+  #assert e2m_guard_body(out[..], 3, 0, -20, 7, -20) == 3 && e2m_guard_body(out[..], 3, 0, -20, 0, -27) == 3;
+  #assert e2m_guard_body(out[..], E2_NEAR_BODIES, 0, -20, 0, -20) == E2_NEAR_BODIES;
+}
+
 // ---- the room server's copy (coax/web/room/room-world.c): one planting for every Everglade II room,
 // for it is a pure function of the land, and the bodies round the seat being stepped.
 E2MoveGround :: struct {
@@ -163,6 +178,8 @@ e2mg_move_world :: (g: [] E2MoveGround, x: f32, z: f32, running: bool) -> EgMove
 }
 e2mg_bodies :: (g: [] E2MoveGround) -> [] f32 #export_c #effects(all) { return g[0].bodies[..]; }
 e2mg_hulls :: (g: [] E2MoveGround) -> [] f32 #export_c #effects(all) { return g[0].hulls[..]; }
+// The guard among the step's n bodies at (x, z): the count after (room-world.c world2_step).
+e2mg_guard :: (g: [] E2MoveGround, n: int, x: f32, z: f32, gx: f32, gz: f32) -> int #export_c #effects(all) { return e2m_guard_body(g[0].bodies[..], n, x, z, gx, gz); }
 e2mg_spawn_x :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_X); }
 e2mg_spawn_z :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_Z); }
 e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE); }

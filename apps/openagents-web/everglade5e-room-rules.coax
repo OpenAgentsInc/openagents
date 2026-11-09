@@ -293,7 +293,8 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c #effects(reads,writes,traps) 
     i := E5RR_BEAST0 + q;
     if r[0].beasts[q].id == 0 || b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
     b[0].who = i; rs_start_turn(b, i);
-    if r[0].beasts[q].forge_id>0 {e5rf_turn(r,q);}
+    if r[0].beasts[q].patrol {e5rp_turn(r,q);}
+    else if r[0].beasts[q].forge_id>0 {e5rf_turn(r,q);}
     else if r[0].beasts[q].form >= E5RR_FORM_RAID { e5rd_turn(r, q); }   // a raider's (everglade5e-room-raid.coax)
     rs_end_turn(b, i); b[0].who = -1;
   }
@@ -303,6 +304,19 @@ e5rr_step :: (r: [] E5rRoom, clock: f32) #export_c #effects(reads,writes,traps) 
   for k: 0..<E5RR_ZONES / FB_ZONES { _ := fb_zones_round(r[0].zones[k * FB_ZONES..<(k + 1) * FB_ZONES], b); }
   e5rr_zones_check(r);
   e5rr_beasts_check(r);
+}
+// A patrolling guard's turn (coax/web/room/room-e2-guard.coax walks it): a melee blow at the creature it is
+// set on, its own stat block's weapon through the shared attack, once the room has brought it within
+// reach. It never chooses a foe: the room sets one only on a creature that harmed it. forge_swing keeps
+// the battle's clock of its last blow, which the room tells the pages.
+e5rp_turn :: (r: [] E5rRoom, q: int) {
+  bt := r[0].beasts[q..<q + 1]; b := r[0].b[..]; i := E5RR_BEAST0 + q;
+  foe := bt[0].foe;
+  if foe < 0 { return; }
+  if foe >= b[0].n || b[0].c[foe].dead || b[0].c[foe].hp <= 0 || b[0].c[foe].x == E5R_AWAY { bt[0].foe = -1; return; }
+  was := b[0].turn.action;
+  _ := rs_attack(b, i, foe, false, -1);
+  if b[0].turn.action && !was { bt[0].forge_swing = b[0].clock; }
 }
 // A zone whose caster's concentration ended is off: its id goes.
 e5rr_zones_check :: (r: [] E5rRoom) {
@@ -576,7 +590,7 @@ e5rr_beasts_check :: (r: [] E5rRoom) {
     held := raid || b[0].c[me].conc == bt.spell || (bt.form == E5RR_FORM_ZOMBIE && r[0].live[bt.by]);
     if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held {
       // Retain a dead source if its authoritative result cannot be reserved.
-      if raid && bt.forge_id==0 && !e5rd_down(r, q) { continue; }
+      if raid && bt.forge_id==0 && !bt.patrol && !e5rd_down(r, q) { continue; }
       e5b_gone(b, r[0].beasts[..], E5RR_BEAST0, q);
     }
   }

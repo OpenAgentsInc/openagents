@@ -170,9 +170,9 @@ e5rd_house_falls :: (r: [] E5rRoom) -> bool {
 E5RD_WATCH_THROW :: 20;   // feet: a Guard's Spear thrown (its normal range, SRD 5.2.1 Weapons)
 E5RD_WATCH_LOOK :: 120;   // feet: how far the watch looks for a raider to shoot at
 
-e5rd_is :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form >= E5RR_FORM_RAID && bt.forge_id==0; }
+e5rd_is :: (bt: E5rBeast) -> bool { return bt.id != 0 && bt.form >= E5RR_FORM_RAID && bt.forge_id==0 && !bt.patrol; }
 // One of the watch in the standing siege (e5rd_defender): a raid creature of the town's side.
-e5rd_town :: (bt: E5rBeast) -> bool { return bt.id != 0 && e5rd_town_form(bt.form) && bt.forge_id==0; }
+e5rd_town :: (bt: E5rBeast) -> bool { return bt.id != 0 && e5rd_town_form(bt.form) && bt.forge_id==0 && !bt.patrol; }
 // A form of the watch's side: a Guard to a Scout, or the hero (#12996).
 e5rd_town_form :: (form: int) -> bool { return (form > E5RR_FORM_RAID && form <= E5RR_FORM_RAID + RS_NPC_SCOUT) || form == E5RR_FORM_HERO; }
 // One of the cult's: a raider, a ward stone or Darian.
