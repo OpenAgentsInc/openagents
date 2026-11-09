@@ -26,7 +26,9 @@ while IFS= read -r page; do
   # Links and text live only inside <main>, which the GPU page clips away.
   outside="$(printf '%s\n' "$body" | sed '/<main>/,/<\/main>/d' | grep -E '<a |<h1|<p>|<table|<caption|<thead|<tbody|<tr>|<th>|<td>' || true)"
   [[ -z "$outside" ]] || bad "${page#$app/}: text or links outside the hidden <main>"
-done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_modules/*' | sort)
+# (A realm's own domain's front door and 404, realms/<slug>/domain/, are plain HTML: an owner
+# decision, 2026-11-08, INVARIANTS.md. Its /play page is a realm page and is checked.)
+done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_modules/*' -not -path '*/realms/*/domain/index.html' -not -path '*/realms/*/domain/404.html' | sort)
 # The host and the crypto glue build no UI: no styled or created elements
 # except the keyboard field, the dev note (host.js, localhost), the clipped
 # accessible layer (host.js a11yMirror), the

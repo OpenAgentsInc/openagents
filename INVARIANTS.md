@@ -5515,6 +5515,17 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   only on realm pages, written by `realms.ts` (a made realm's by the host),
   and holds nothing else.
 
+One exception, an owner decision (2026-11-08: "standard mmorpg landing page
+then right into the game world"): a realm's own domain
+(docs/verse/everglade-domain.md) has a front door and a 404 page in plain HTML
+and CSS, `realms/<slug>/domain/index.html` and `404.html`, written by
+`realms.ts` from the realm's `domain` block. They hold the domain's wordmark,
+tagline, PLAY NOW, features, screenshots and a footer, and draw no part of a
+world: PLAY NOW opens the realm's own Coax page (its `entry`), which draws
+everything as above. The domain's `/play` is a realm page and is checked like
+one. Check: `coax/web/realms.test.ts` (no openagents.com on the domain's
+pages), `check-visuals.sh` skips only those two files.
+
 Places that are one world, such as Character Create and Everglade II (#13018,
 #13023), are one page, one engine and one renderer, and say a new address with
 action 19 (`history.replaceState`, same origin only) rather than load it or open

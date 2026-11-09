@@ -1,6 +1,17 @@
 # Everglade on its own domain
 
-Status: spec, 2026-11-08. Nothing here is built yet.
+Status, 2026-11-08: live at `everglade.world` (DNS done; the owner chose the name).
+`/` is a standard MMORPG front door (owner: "standard mmorpg landing page then right
+into the game world"): a hero capture, the EVERGLADE wordmark in CharacterCreateARKaiC
+(`coax/web/everglade-wordmark.coax` draws it as SVG outlines), PLAY NOW, four features,
+three screenshots and a footer. It opens Character Create (`?via=portal`) out of sight
+under itself as soon as it has painted, so PLAY NOW fades into the glade in about half a
+second with no page load. `/play` is Everglade II under the domain's name. Any other path
+shows Everglade's 404 (status 404; the bucket's 404 page writes it in on this host).
+The pages are `realms/everglade2/domain/`, written by `realms.ts` from the `domain`
+block in `realms.json`. Not built yet: host-aware login, the host field in analytics,
+the release smoke and golden for the domain, and `staging.everglade.world`. The URL map's
+`everglade` matcher was set by hand (below); `lb.sh everglade-domain` is still to write.
 
 ## Goal
 

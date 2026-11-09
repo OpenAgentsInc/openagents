@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Everglade: A painted forest MMO. Make your hero and walk in.</title>
+<meta name="description" content="Make your hero in the glade and walk into a painted forest with other players. Twelve classes on D&amp;D 5E SRD rules, free in your browser.">
+<link rel="canonical" href="https://everglade.world/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Everglade">
+<meta property="og:title" content="Everglade: A painted forest MMO. Make your hero and walk in.">
+<meta property="og:description" content="A painted forest MMO. Make your hero and walk in.">
+<meta property="og:url" content="https://everglade.world/">
+<meta property="og:image" content="https://everglade.world/worlds/everglade2/domain/card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Everglade: A painted forest MMO. Make your hero and walk in.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Everglade: A painted forest MMO. Make your hero and walk in.">
+<meta name="twitter:description" content="A painted forest MMO. Make your hero and walk in.">
+<meta name="twitter:image" content="https://everglade.world/worlds/everglade2/domain/card.jpg">
+<meta name="theme-color" content="#0d1a10">
+<link rel="icon" type="image/svg+xml" href="/worlds/everglade2/domain/icon.svg">
+<link rel="alternate" type="text/markdown" href="/worlds/everglade2/domain/index.md">
+<link rel="preload" as="image" href="/worlds/everglade2/domain/hero.jpg" media="(min-width: 701px)">
+<link rel="preload" as="image" href="/worlds/everglade2/domain/hero-phone.jpg" media="(max-width: 700px)">
+<style>
+:root{--ink:#f6efd9;--dim:#c9c1a8;--gold:#f1d38a;--deep:#0d1a10;--line:rgba(246,239,217,.14)}
+*{box-sizing:border-box}
+html{background:var(--deep);color:var(--ink);-webkit-text-size-adjust:100%}
+body{margin:0;font:400 16px/1.5 ui-serif,Georgia,"Times New Roman",serif}
+#door{position:relative;z-index:1;background:var(--deep)}
+.hero{position:relative;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:0 16px max(9vh,56px);text-align:center;overflow:hidden;background:#3c5a2a url(/worlds/everglade2/domain/hero.jpg) center 40%/cover no-repeat}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,26,16,.05) 0,rgba(13,26,16,.1) 45%,rgba(13,26,16,.78) 82%,var(--deep) 100%);pointer-events:none}
+.hero>*{position:relative;z-index:1}
+.mark{width:min(88vw,760px);height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
+.tag{margin:6px 0 26px;font-size:clamp(17px,2.4vw,22px);color:var(--ink);text-shadow:0 2px 10px rgba(0,0,0,.7)}
+.play{display:inline-block;min-width:min(78vw,300px);padding:18px 40px;border:1px solid #fff3c9;border-radius:6px;background:linear-gradient(180deg,#f6dc93,#c9913f);color:#25170a;font:700 20px/1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.16em;text-decoration:none;box-shadow:0 8px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.6);transition:transform .2s ease,box-shadow .2s ease,filter .2s ease}
+.play:hover,.play:focus-visible{transform:translateY(-2px);filter:brightness(1.06);box-shadow:0 12px 36px rgba(0,0,0,.5),0 0 0 3px rgba(246,220,147,.35);outline:none}
+.free{margin:14px 0 0;font:500 13px/1.4 ui-sans-serif,system-ui,sans-serif;letter-spacing:.08em;color:var(--dim);text-shadow:0 1px 6px rgba(0,0,0,.8)}
+section{max-width:1120px;margin:0 auto;padding:56px 16px}
+h2{margin:0 0 22px;font-weight:400;font-size:clamp(24px,3.2vw,32px);text-align:center;color:var(--gold)}
+ul{list-style:none;margin:0;padding:0}
+.feat{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.feat li{padding:22px 18px;border:1px solid var(--line);border-radius:8px;background:rgba(246,239,217,.03)}
+.feat b{display:block;margin-bottom:6px;font-size:20px;font-weight:400;color:var(--gold)}
+.feat span{color:var(--dim);font-size:15px}
+.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.shots img{display:block;width:100%;height:auto;border-radius:8px;border:1px solid var(--line)}
+.strip{padding-top:0}.again{text-align:center;padding-top:8px}
+footer{padding:28px 16px 36px;text-align:center;color:#8f8a78;font:400 12px/1.6 ui-sans-serif,system-ui,sans-serif;letter-spacing:.04em;border-top:1px solid var(--line)}
+@media (max-width:700px){.hero{background-image:url(/worlds/everglade2/domain/hero-phone.jpg)}.feat{grid-template-columns:1fr 1fr;gap:10px}.feat li{padding:16px 14px}.feat b{font-size:18px}
+.shots{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:0 16px 6px}.shots li{flex:0 0 84%;scroll-snap-align:center}section{padding:40px 16px}}
+/* Nothing pops: everything fades in, the hero at once, the rest as it scrolls into view. */
+.hero>*{animation:up .9s ease-out both}.hero>:nth-child(2){animation-delay:.25s}.hero>:nth-child(3){animation-delay:.5s}.hero>:nth-child(4){animation-delay:.7s}
+@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.js .in{opacity:0;transform:translateY(12px);transition:opacity .8s ease-out,transform .8s ease-out}
+.js .in.seen{opacity:1;transform:none}
+#door.out{opacity:0;transition:opacity .5s ease-in}
+@media (prefers-reduced-motion:reduce){.hero>*{animation:none}.js .in{opacity:1;transform:none;transition:none}}
+</style>
+</head>
+<body>
+<div id="door">
+<header class="hero">
+<h1 style="margin:0"><img class="mark" src="/worlds/everglade2/domain/wordmark.svg" alt="Everglade" width="760" height="100"></h1>
+<p class="tag">A painted forest MMO. Make your hero and walk in.</p>
+<a class="play" href="/worlds/character-creator?via=portal" data-play>PLAY NOW</a>
+<p class="free">Free in your browser. No download.</p>
+</header>
+<section>
+<h2 class="in">Your adventure starts in the glade</h2>
+<ul class="feat">
+<li class="in"><b>12 classes</b><span>Barbarian to Wizard, each with its own spells and moves.</span></li>
+<li class="in"><b>Real 5E rules</b><span>Levels 1 to 6 on the D&amp;D 5E SRD.</span></li>
+<li class="in"><b>One shared world</b><span>Everyone plays together in the same forest.</span></li>
+<li class="in"><b>A painted forest</b><span>Autumn woods drawn like a storybook.</span></li>
+</ul>
+</section>
+<section class="strip">
+<ul class="shots">
+<li class="in"><img src="/worlds/everglade2/domain/shot-create.jpg" alt="Character Create: a druid in the glade, with the class and wardrobe panels" width="960" height="510" loading="lazy" decoding="async"></li>
+<li class="in"><img src="/worlds/everglade2/domain/shot-path.jpg" alt="A hero on the dirt path into the autumn woods" width="960" height="510" loading="lazy" decoding="async"></li>
+<li class="in"><img src="/worlds/everglade2/domain/shot-run.jpg" alt="Running down the forest path toward the trees" width="960" height="510" loading="lazy" decoding="async"></li>
+</ul>
+</section>
+<section class="again"><a class="play in" href="/worlds/character-creator?via=portal" data-play>PLAY NOW</a></section>
+<footer>Everglade · Hosted by OpenAgents</footer>
+</div>
+<script>
+// Firm reason: 1 (browser glue: the entry page opened in place under the front door, as zone-host.js does)
+(() => {
+  const ENTRY = "/worlds/character-creator?via=portal", TITLE = "Everglade";
+  const door = document.getElementById("door"), root = document.documentElement;
+  root.classList.add("js");
+  const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } }, { rootMargin: "0px 0px -8% 0px" }) : null;
+  for (const el of document.querySelectorAll(".in")) io ? io.observe(el) : el.classList.add("seen");
+  let z = null;
+  const ev = globalThis.everglade = { state: () => (z ? z.state : -1) };
+  const look = () => {
+    let win = null, doc = null;
+    try { win = z.frame.contentWindow; doc = z.frame.contentDocument; } catch { return 2; }
+    if (!win || !doc || !doc.documentElement) return 0;
+    const load = doc.getElementById("coaxial-load");
+    if (load && load.dataset.state === "fail") return 2;
+    if (z.loaded && !doc.querySelector("script[data-app]")) return 2;
+    const up = !load || load.classList.contains("gone") || Number(load.getAttribute("aria-valuenow")) >= 100;
+    return win.coaxial && win.coaxial.sceneReady && up ? 1 : 0;
+  };
+  const poll = () => {
+    if (!z || z.state !== 0) return;
+    z.state = look();
+    if (z.state === 1) { try { z.frame.contentWindow.coaxial.setWorldPaused(true); z.paused = true; } catch {} }
+    if (z.state !== 0) clearInterval(z.timer);
+  };
+  // The entry, loading out of sight under the front door (which is opaque over it).
+  const warm = () => {
+    if (z || !("gpu" in navigator)) return;
+    const frame = document.createElement("iframe");
+    frame.dataset.zone = "1"; frame.title = TITLE; frame.tabIndex = -1; frame.inert = true;
+    frame.setAttribute("aria-hidden", "true");
+    frame.allow = "fullscreen; autoplay; microphone; camera; clipboard-read; clipboard-write; gamepad; screen-wake-lock";
+    frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;margin:0;padding:0;background:#000;pointer-events:none;opacity:0";
+    z = { frame, state: 0, loaded: false, paused: false, timer: 0, t0: performance.now() };
+    frame.addEventListener("load", () => { z.loaded = true; poll(); });
+    frame.src = ENTRY;
+    document.body.prepend(frame);
+    z.timer = setInterval(poll, 150);
+  };
+  // PLAY NOW: the entry fades in where it is (its own loading screen, if it is not up yet), takes
+  // the address, the title and the input; the front door goes. Otherwise it is a plain link.
+  const play = (e) => {
+    if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    warm();
+    if (!z || z.state === 2) return;
+    let win = null; try { win = z.frame.contentWindow; } catch {}
+    if (!win) return;
+    e.preventDefault();
+    clearInterval(z.timer);
+    ev.pressed = performance.now();
+    try { if (z.paused) win.coaxial.setWorldPaused(false); } catch {}
+    try { win.coaxial.shown && win.coaxial.shown(); } catch {}
+    const frame = z.frame;
+    frame.inert = false; frame.removeAttribute("aria-hidden"); frame.tabIndex = 0;
+    frame.style.zIndex = "3"; frame.style.pointerEvents = "auto";
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let done = false;
+    const over = () => {
+      if (done) return; done = true;
+      door.remove(); document.body.style.overflow = "hidden";
+      try { history.pushState(null, "", win.location.href); } catch {}
+      document.title = TITLE;
+      addEventListener("popstate", () => location.reload());
+      frame.focus(); try { win.focus(); } catch {}
+      ev.shown = performance.now();
+    };
+    door.classList.add("out");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (still) { frame.style.opacity = "1"; over(); return; }
+      frame.style.transition = "opacity 500ms ease-in-out"; frame.style.opacity = "1";
+      frame.addEventListener("transitionend", over, { once: true });
+      setTimeout(over, 700);
+    }));
+  };
+  for (const a of document.querySelectorAll("[data-play]")) { a.addEventListener("click", play); a.addEventListener("pointerenter", warm, { once: true }); a.addEventListener("focus", warm, { once: true }); }
+  // as soon as the front door has painted
+  const soon = () => setTimeout(warm, 300);
+  if (document.readyState === "complete") soon(); else addEventListener("load", soon, { once: true });
+})();
+</script>
+</body>
+</html>

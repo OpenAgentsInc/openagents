@@ -1,0 +1,155 @@
+// The EVERGLADE wordmark on everglade.world (docs/verse/everglade-domain.md): the word drawn in
+// Character Create's own font, CharacterCreateARKaiC (realms/character-creator/assets/arkai_c.ttf,
+// 15 MB), as one small SVG of its outlines, so the front door shows it at the first paint without
+// loading the font. The glyphs' quadratic arcs are kept as SVG Q commands, in font units.
+//
+//   coax/web/tool.sh coax/web/everglade-wordmark.coax OUT.svg [WORD]   (one letter: the site icon, square)
+//
+// Checks: coax test coax/web/everglade-wordmark.coax.
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/text/ttf.coax";
+
+WM_FONT :: "apps/openagents-web/realms/character-creator/assets/arkai_c.ttf";
+WM_TRACK :: 60;   // font units between letters, on top of each advance
+
+Wm :: struct { b: [1048576] u8; n: int; minx: int; miny: int; maxx: int; maxy: int; }
+wm_put :: (w: []Wm, s: string) { for c: s { if w[0].n < w[0].b.count { w[0].b[w[0].n] = c; w[0].n += 1; } } }
+wm_int :: (w: []Wm, n: int) {
+  v := n;
+  if v < 0 { wm_put(w, "-"); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast(u8) ('0' + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  while k > 0 { k -= 1; wm_put(w, cast(string) d[k..<k + 1]); }
+}
+wm_pt :: (w: []Wm, x: int, y: int) {
+  wm_int(w, x); wm_put(w, " "); wm_int(w, -y); wm_put(w, " ");
+  if x < w[0].minx { w[0].minx = x; } if x > w[0].maxx { w[0].maxx = x; }
+  if -y < w[0].miny { w[0].miny = -y; } if -y > w[0].maxy { w[0].maxy = -y; }
+}
+
+// Glyph g's outline at pen x (font units) as path commands: as ttf_outline walks it, with the arcs kept.
+wm_glyph :: (w: []Wm, f: TtfFont, g: int, dx: int, dy: int, depth: int) -> bool {
+  if g < 0 || g >= f.glyphs || depth > TTF_STACK { return false; }
+  a := ifx f.loc_long then ttf_u32(f, f.loca + 4 * g) else 2 * ttf_u16(f, f.loca + 2 * g);
+  b := ifx f.loc_long then ttf_u32(f, f.loca + 4 * g + 4) else 2 * ttf_u16(f, f.loca + 2 * g + 2);
+  if b <= a { return true; }
+  if b > f.glyf_n { return false; }
+  at := f.glyf + a;
+  contours := ttf_s16(f, at);
+  if contours < 0 {
+    p := at + 10;
+    while true {
+      flags := ttf_u16(f, p); cg := ttf_u16(f, p + 2); p += 4;
+      ox := 0; oy := 0;
+      if (flags & 1) != 0 { ox = ttf_s16(f, p); oy = ttf_s16(f, p + 2); p += 4; }
+      else { ox = ttf_u8(f, p); oy = ttf_u8(f, p + 1); if ox >= 128 { ox -= 256; } if oy >= 128 { oy -= 256; } p += 2; }
+      if (flags & 8) != 0 { p += 2; } else if (flags & 64) != 0 { p += 4; } else if (flags & 128) != 0 { p += 8; }
+      if (flags & 2) == 0 { return false; }
+      if !wm_glyph(w, f, cg, dx + ox, dy + oy, depth + 1) { return false; }
+      if (flags & 32) == 0 { break; }
+    }
+    return true;
+  }
+  ends := at + 10;
+  npts := ttf_u16(f, ends + 2 * (contours - 1)) + 1;
+  ins := ttf_u16(f, ends + 2 * contours);
+  p := ends + 2 * contours + 2 + ins;
+  if npts > 4096 { return false; }
+  fl: [4096] int; xs: [4096] int; ys: [4096] int;
+  i := 0;
+  while i < npts {
+    c := ttf_u8(f, p); p += 1; rep := 0;
+    if (c & 8) != 0 { rep = ttf_u8(f, p); p += 1; }
+    for k: 0..<rep + 1 { if i < npts { fl[i] = c; i += 1; } }
+  }
+  v := 0;
+  for j: 0..<npts {
+    c := fl[j];
+    if (c & 2) != 0 { d := ttf_u8(f, p); p += 1; v += ifx (c & 16) != 0 then d else -d; }
+    else if (c & 16) == 0 { v += ttf_s16(f, p); p += 2; }
+    xs[j] = v + dx;
+  }
+  v = 0;
+  for j: 0..<npts {
+    c := fl[j];
+    if (c & 4) != 0 { d := ttf_u8(f, p); p += 1; v += ifx (c & 32) != 0 then d else -d; }
+    else if (c & 32) == 0 { v += ttf_s16(f, p); p += 2; }
+    ys[j] = v + dy;
+  }
+  first := 0;
+  for c: 0..<contours {
+    last := ttf_u16(f, ends + 2 * c);
+    n := last - first + 1;
+    if n >= 2 {
+      sx := 0; sy := 0; s0 := -1;
+      for k: 0..<n { if (fl[first + k] & 1) != 0 { s0 = k; break; } }
+      if s0 < 0 { sx = (xs[first] + xs[last]) / 2; sy = (ys[first] + ys[last]) / 2; s0 = 0; }
+      else { sx = xs[first + s0]; sy = ys[first + s0]; s0 += 1; }
+      wm_put(w, "M"); wm_pt(w, sx, sy);
+      ctrl := false; qx := 0; qy := 0;
+      for k: 0..<n {
+        j := first + (s0 + k) % n;
+        px := xs[j]; py := ys[j];
+        if (fl[j] & 1) != 0 {
+          if ctrl { wm_put(w, "Q"); wm_pt(w, qx, qy); wm_pt(w, px, py); ctrl = false; } else { wm_put(w, "L"); wm_pt(w, px, py); }
+        } else {
+          if ctrl { wm_put(w, "Q"); wm_pt(w, qx, qy); wm_pt(w, (qx + px) / 2, (qy + py) / 2); }
+          qx = px; qy = py; ctrl = true;
+        }
+      }
+      if ctrl { wm_put(w, "Q"); wm_pt(w, qx, qy); wm_pt(w, sx, sy); }
+      wm_put(w, "Z");
+    }
+    first = last + 1;
+  }
+  return true;
+}
+
+// The word's path data, the pen moving by each advance and WM_TRACK; false when a letter is missing.
+wm_word :: (w: []Wm, f: TtfFont, word: string) -> bool {
+  w[0].minx = 1 << 30; w[0].miny = 1 << 30; w[0].maxx = -(1 << 30); w[0].maxy = -(1 << 30);
+  pen := 0;
+  for c: word {
+    g := ttf_glyph(f, cast(int) c);
+    if g == 0 || !wm_glyph(w, f, g, pen, 0, 0) { return false; }
+    pen += ttf_advance(f, g) + WM_TRACK;
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) < 1 { tool_errln("usage: everglade-wordmark OUT.svg [WORD]"); return 2; }
+  out := args_at(args[..], 0); word := ifx args_count(args[..]) > 1 then args_at(args[..], 1) else "EVERGLADE";
+  font: [16777216] u8; cwd: [4096] u8; p: [4096] u8;
+  n := fs_read(fs_join(fs_cwd(cwd[..]), WM_FONT, p[..]), font[..]);
+  if n <= 0 { tool_errln("everglade-wordmark: run it from the repository's root (can't read the font)"); return 1; }
+  f := ttf_open(font[0..<n]);
+  if !f.ok { tool_errln("everglade-wordmark: the font isn't TrueType"); return 1; }
+  d: [1] Wm;
+  if !wm_word(d[..], f, word) { tool_errln("everglade-wordmark: a letter isn't in the font"); return 1; }
+  s: [1] Wm;
+  pad := 40;
+  x0 := d[0].minx - pad; y0 := d[0].miny - pad; w := d[0].maxx - d[0].minx + 2 * pad; h := d[0].maxy - d[0].miny + 2 * pad;
+  // one letter: the site icon, a square on the forest's dark green
+  icon := word.count == 1;
+  if icon { side := ifx w > h then w else h; side = side + side / 4; x0 -= (side - w) / 2; y0 -= (side - h) / 2; w = side; h = side; }
+  wm_put(s[..], "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"");
+  wm_int(s[..], x0); wm_put(s[..], " "); wm_int(s[..], y0); wm_put(s[..], " "); wm_int(s[..], w); wm_put(s[..], " "); wm_int(s[..], h);
+  wm_put(s[..], "\">");
+  if icon { wm_put(s[..], "<rect x=\""); wm_int(s[..], x0); wm_put(s[..], "\" y=\""); wm_int(s[..], y0); wm_put(s[..], "\" width=\""); wm_int(s[..], w); wm_put(s[..], "\" height=\""); wm_int(s[..], h); wm_put(s[..], "\" rx=\""); wm_int(s[..], w / 5); wm_put(s[..], "\" fill=\"#16301c\"/>"); }
+  wm_put(s[..], "<defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff6d8\"/><stop offset=\".55\" stop-color=\"#f1d38a\"/><stop offset=\"1\" stop-color=\"#c08a3e\"/></linearGradient></defs><path fill=\"url(#g)\" stroke=\"#2a1a08\" stroke-opacity=\".55\" stroke-width=\"14\" paint-order=\"stroke\" d=\"");
+  wm_put(s[..], cast(string) d[0].b[0..<d[0].n]);
+  wm_put(s[..], "\"/></svg>\n");
+  if !fs_write(out, cast(string) s[0].b[0..<s[0].n]) { tool_errln("everglade-wordmark: can't write the picture"); return 1; }
+  return 0;
+}
+
+#test "wordmark: numbers and points, y up in the font and down in the picture" {
+  w: [1] Wm; w[0].minx = 1 << 30; w[0].miny = 1 << 30; w[0].maxx = -(1 << 30); w[0].maxy = -(1 << 30);
+  wm_int(w[..], -305); wm_put(w[..], ","); wm_int(w[..], 0);
+  #assert cast(string) w[0].b[0..<w[0].n] == "-305,0";
+  w[0].n = 0; wm_pt(w[..], 12, 700);
+  #assert cast(string) w[0].b[0..<w[0].n] == "12 -700 " && w[0].miny == -700 && w[0].maxx == 12;
+}

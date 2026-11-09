@@ -5,7 +5,7 @@ import { expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { hasMaker, listCoax, listMarkdown, listPage, listed, page, renderProfile, renderAttributes, worlds, zoneFact, ANIME_VARIANTS, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
+import { domainPages, hasMaker, listCoax, listMarkdown, listPage, listed, page, renderProfile, renderAttributes, worlds, zoneFact, ANIME_VARIANTS, STYLE_BLOCK, STYLE_MODULE, styled } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -234,4 +234,19 @@ test("only a realm with a tip page asks who made it (data-maker): the rest log n
   const by = Object.fromEntries(worlds().filter((w) => w.realm).map((w) => [w.realm!.slug, w.realm!]))
   for (const slug of ["orbit-league", "belt-2200", "hold-the-stair"]) { expect(hasMaker(slug)).toBe(true); expect(page(by[slug])).toContain('data-maker="1"') }
   for (const slug of ["everglade", "haunted-house", "the-grid", "dead-gears"]) { expect(hasMaker(slug)).toBe(false); expect(page(by[slug])).not.toContain("data-maker") }
+})
+
+test("a realm's own domain: a plain host, no openagents.com, and pages under the domain's name", () => {
+  expect(check((r) => { r.domain.host = "openagents.com" }, { styleBlock: false }, "everglade2")).toThrow(/plain domain name/)
+  expect(check((r) => { r.domain.host = "https://x.world/" }, { styleBlock: false }, "everglade2")).toThrow(/plain domain name/)
+  expect(check((r) => { r.domain.tagline = "Play at openagents.com today" }, { styleBlock: false }, "everglade2")).toThrow(/names openagents.com/)
+  expect(check((r) => { r.domain.entry = "https://openagents.com/worlds/x" }, { styleBlock: false }, "everglade2")).toThrow(/entry/)
+  const r = worlds().find((w) => w.realm?.domain)!.realm!
+  for (const [file, html] of domainPages(r)) {
+    expect(html.replace("Hosted by OpenAgents</footer>", "")).not.toMatch(/openagents\.com|OpenAgents/)
+    expect(html).toContain(`<link rel="icon" type="image/svg+xml" href="/worlds/${r.slug}/domain/icon.svg">`)
+    expect(html).toContain(`content="https://${r.domain!.host}/worlds/${r.slug}/domain/card.jpg"`)
+    if (file === "index.html") { expect(html).toContain(`href="${r.domain!.entry}" data-play>PLAY NOW</a>`); expect(html).toContain("Hosted by OpenAgents</footer>") }
+    if (file === "play/index.html") { expect(html).toContain(`data-app="${r.module}"`); expect(html).toContain(`<title>${r.domain!.title}</title>`) }
+  }
 })

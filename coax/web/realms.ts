@@ -70,7 +70,14 @@ export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // before the host starts (Animation Lab's project bundles).
 // place_of: the realm this page opens a place in (Character Create, at Everglade's glade, #13018): one
 // world, so the page is that realm's, its module, slot and room; only its address and its first place differ.
-export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; arrival?: "portal"; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; arrival?: "portal"; domain?: Domain; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+// domain: the realm on a domain of its own (docs/verse/everglade-domain.md): a front door at the
+// domain's / (realms/<slug>/domain/index.html, an MMORPG landing page in plain HTML, an owner
+// decision 2026-11-08), /play (the realm's page under the domain's name) and a 404. Its pictures,
+// icon and wordmark (coax/web/everglade-wordmark.coax) and index.md sit beside them, made by hand.
+export type Feature = { title: string; line: string }
+export type Shot = { src: string; alt: string }
+export type Domain = { host: string; title: string; description: string; tagline: string; entry: string; features: Feature[]; shots: Shot[] }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -152,6 +159,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     const g = r.golden
     if (!g || !(g.lit > 0 && g.lit < 1) || !(g.settle >= 0 && g.settle <= 20000) || !(Number.isInteger(g.blocks) && g.blocks >= 0)) throw new Error(`realms.json: ${r.slug}: golden needs lit (0 to 1), settle (ms) and blocks`)
   }
+  for (const w of list) if (w.realm?.domain) domainChecked(w.realm)
   // a place in another realm is that realm's page: its module and its slot
   for (const w of list) {
     const r = w.realm
@@ -360,6 +368,252 @@ ${r.project_asset ? projectScript(r.module, r.project_asset) : ""}</body>
 `
 }
 
+// ---- A realm's own domain (docs/verse/everglade-domain.md) ----
+// What sits beside the generated pages, made by hand: the Markdown twin, the icon, the wordmark,
+// the hero (wide and phone) and the link-preview card.
+export const DOMAIN_HAND = ["index.md", "icon.svg", "wordmark.svg", "hero.jpg", "hero-phone.jpg", "card.jpg"]
+const HOST = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
+function domainChecked(r: Realm) {
+  const d = r.domain!, at = `realms.json: ${r.slug}: domain`
+  if (typeof d.host !== "string" || !HOST.test(d.host) || /openagents/.test(d.host)) throw new Error(`${at}: host is a plain domain name, not ${JSON.stringify(d.host)}`)
+  if (!/^[^<>"|\n]{1,40}$/.test(d.title ?? "")) throw new Error(`${at}: title, at most 40`)
+  if (!/^[^<>"\n]{50,200}$/.test(d.description ?? "")) throw new Error(`${at}: description, 50 to 200 characters`)
+  if (!/^[^<>"\n]{10,80}$/.test(d.tagline ?? "")) throw new Error(`${at}: tagline, one line of 10 to 80`)
+  if (!/^\/worlds\/[a-z0-9-]+(\?[a-z0-9=&-]*)?$/.test(d.entry ?? "")) throw new Error(`${at}: entry is a /worlds/ page on the same site`)
+  if (!Array.isArray(d.features) || d.features.length < 3 || d.features.length > 4 || d.features.some((f) => !/^[^<>"\n]{3,32}$/.test(f?.title ?? "") || !/^[^<>"\n]{10,90}$/.test(f?.line ?? "")))
+    throw new Error(`${at}: features, 3 or 4 of a title (at most 32) and a line (at most 90)`)
+  if (!Array.isArray(d.shots) || d.shots.length < 2 || d.shots.some((p) => !/^[a-z0-9-]+\.jpg$/.test(p?.src ?? "") || !/^[^<>"\n]{10,120}$/.test(p?.alt ?? "")))
+    throw new Error(`${at}: shots, at least 2 JPEGs beside the pages, each with its alt`)
+  // nothing on the domain's pages leads to openagents.com
+  for (const v of [d.title, d.description, d.tagline, ...d.features.flatMap((f) => [f.title, f.line]), ...d.shots.map((p) => p.alt)])
+    if (/openagents\.com/i.test(v)) throw new Error(`${at}: names openagents.com`)
+}
+
+// The domain's head: its own name, description, preview, icon and colour; nothing of OpenAgents.
+function domainHead(r: Realm, title: string, path: string, robots: string): string {
+  const d = r.domain!, base = `https://${d.host}`, dir = `/worlds/${r.slug}/domain`
+  return `<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(d.description)}">${robots ? `\n<meta name="robots" content="${robots}">` : ""}
+<link rel="canonical" href="${base}${path}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${esc(d.title)}">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(d.tagline)}">
+<meta property="og:url" content="${base}${path}">
+<meta property="og:image" content="${base}${dir}/card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${esc(d.title)}: ${esc(d.tagline)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(d.tagline)}">
+<meta name="twitter:image" content="${base}${dir}/card.jpg">
+<meta name="theme-color" content="#0d1a10">
+<link rel="icon" type="image/svg+xml" href="${dir}/icon.svg">
+<link rel="alternate" type="text/markdown" href="${dir}/index.md">`
+}
+
+// The front door: a full-bleed hero (a capture of the world) with the wordmark, the tagline and
+// PLAY NOW; the features; the screenshots; a footer. The entry page (d.entry) opens out of sight
+// under it as soon as it is up, as zone-host.js opens a page in place: its engine, pack and first
+// frame, then its world waits paused. PLAY NOW fades it in over the page, with no page load.
+// Without WebGPU, or when the entry failed, PLAY NOW is a link to it.
+function frontDoor(r: Realm): string {
+  const d = r.domain!, dir = `/worlds/${r.slug}/domain`
+  const features = d.features.map((f) => `<li class="in"><b>${esc(f.title)}</b><span>${esc(f.line)}</span></li>`).join("\n")
+  const shots = d.shots.map((p) => `<li class="in"><img src="${dir}/${p.src}" alt="${esc(p.alt)}" width="960" height="510" loading="lazy" decoding="async"></li>`).join("\n")
+  return `<!doctype html>
+<html lang="en">
+<head>
+${domainHead(r, `${d.title}: ${d.tagline}`, "/", "")}
+<link rel="preload" as="image" href="${dir}/hero.jpg" media="(min-width: 701px)">
+<link rel="preload" as="image" href="${dir}/hero-phone.jpg" media="(max-width: 700px)">
+<style>
+:root{--ink:#f6efd9;--dim:#c9c1a8;--gold:#f1d38a;--deep:#0d1a10;--line:rgba(246,239,217,.14)}
+*{box-sizing:border-box}
+html{background:var(--deep);color:var(--ink);-webkit-text-size-adjust:100%}
+body{margin:0;font:400 16px/1.5 ui-serif,Georgia,"Times New Roman",serif}
+#door{position:relative;z-index:1;background:var(--deep)}
+.hero{position:relative;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:0 16px max(9vh,56px);text-align:center;overflow:hidden;background:#3c5a2a url(${dir}/hero.jpg) center 40%/cover no-repeat}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,26,16,.05) 0,rgba(13,26,16,.1) 45%,rgba(13,26,16,.78) 82%,var(--deep) 100%);pointer-events:none}
+.hero>*{position:relative;z-index:1}
+.mark{width:min(88vw,760px);height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.55))}
+.tag{margin:6px 0 26px;font-size:clamp(17px,2.4vw,22px);color:var(--ink);text-shadow:0 2px 10px rgba(0,0,0,.7)}
+.play{display:inline-block;min-width:min(78vw,300px);padding:18px 40px;border:1px solid #fff3c9;border-radius:6px;background:linear-gradient(180deg,#f6dc93,#c9913f);color:#25170a;font:700 20px/1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.16em;text-decoration:none;box-shadow:0 8px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.6);transition:transform .2s ease,box-shadow .2s ease,filter .2s ease}
+.play:hover,.play:focus-visible{transform:translateY(-2px);filter:brightness(1.06);box-shadow:0 12px 36px rgba(0,0,0,.5),0 0 0 3px rgba(246,220,147,.35);outline:none}
+.free{margin:14px 0 0;font:500 13px/1.4 ui-sans-serif,system-ui,sans-serif;letter-spacing:.08em;color:var(--dim);text-shadow:0 1px 6px rgba(0,0,0,.8)}
+section{max-width:1120px;margin:0 auto;padding:56px 16px}
+h2{margin:0 0 22px;font-weight:400;font-size:clamp(24px,3.2vw,32px);text-align:center;color:var(--gold)}
+ul{list-style:none;margin:0;padding:0}
+.feat{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.feat li{padding:22px 18px;border:1px solid var(--line);border-radius:8px;background:rgba(246,239,217,.03)}
+.feat b{display:block;margin-bottom:6px;font-size:20px;font-weight:400;color:var(--gold)}
+.feat span{color:var(--dim);font-size:15px}
+.shots{display:grid;grid-template-columns:repeat(${d.shots.length},1fr);gap:14px}
+.shots img{display:block;width:100%;height:auto;border-radius:8px;border:1px solid var(--line)}
+.strip{padding-top:0}.again{text-align:center;padding-top:8px}
+footer{padding:28px 16px 36px;text-align:center;color:#8f8a78;font:400 12px/1.6 ui-sans-serif,system-ui,sans-serif;letter-spacing:.04em;border-top:1px solid var(--line)}
+@media (max-width:700px){.hero{background-image:url(${dir}/hero-phone.jpg)}.feat{grid-template-columns:1fr 1fr;gap:10px}.feat li{padding:16px 14px}.feat b{font-size:18px}
+.shots{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:0 16px 6px}.shots li{flex:0 0 84%;scroll-snap-align:center}section{padding:40px 16px}}
+/* Nothing pops: everything fades in, the hero at once, the rest as it scrolls into view. */
+.hero>*{animation:up .9s ease-out both}.hero>:nth-child(2){animation-delay:.25s}.hero>:nth-child(3){animation-delay:.5s}.hero>:nth-child(4){animation-delay:.7s}
+@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.js .in{opacity:0;transform:translateY(12px);transition:opacity .8s ease-out,transform .8s ease-out}
+.js .in.seen{opacity:1;transform:none}
+#door.out{opacity:0;transition:opacity .5s ease-in}
+@media (prefers-reduced-motion:reduce){.hero>*{animation:none}.js .in{opacity:1;transform:none;transition:none}}
+</style>
+</head>
+<body>
+<div id="door">
+<header class="hero">
+<h1 style="margin:0"><img class="mark" src="${dir}/wordmark.svg" alt="${esc(d.title)}" width="760" height="100"></h1>
+<p class="tag">${esc(d.tagline)}</p>
+<a class="play" href="${d.entry}" data-play>PLAY NOW</a>
+<p class="free">Free in your browser. No download.</p>
+</header>
+<section>
+<h2 class="in">Your adventure starts in the glade</h2>
+<ul class="feat">
+${features}
+</ul>
+</section>
+<section class="strip">
+<ul class="shots">
+${shots}
+</ul>
+</section>
+<section class="again"><a class="play in" href="${d.entry}" data-play>PLAY NOW</a></section>
+<footer>${esc(d.title)} · Hosted by OpenAgents</footer>
+</div>
+<script>
+// Firm reason: 1 (browser glue: the entry page opened in place under the front door, as zone-host.js does)
+(() => {
+  const ENTRY = ${JSON.stringify(d.entry)}, TITLE = ${JSON.stringify(d.title)};
+  const door = document.getElementById("door"), root = document.documentElement;
+  root.classList.add("js");
+  const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } }, { rootMargin: "0px 0px -8% 0px" }) : null;
+  for (const el of document.querySelectorAll(".in")) io ? io.observe(el) : el.classList.add("seen");
+  let z = null;
+  const ev = globalThis.everglade = { state: () => (z ? z.state : -1) };
+  const look = () => {
+    let win = null, doc = null;
+    try { win = z.frame.contentWindow; doc = z.frame.contentDocument; } catch { return 2; }
+    if (!win || !doc || !doc.documentElement) return 0;
+    const load = doc.getElementById("coaxial-load");
+    if (load && load.dataset.state === "fail") return 2;
+    if (z.loaded && !doc.querySelector("script[data-app]")) return 2;
+    const up = !load || load.classList.contains("gone") || Number(load.getAttribute("aria-valuenow")) >= 100;
+    return win.coaxial && win.coaxial.sceneReady && up ? 1 : 0;
+  };
+  const poll = () => {
+    if (!z || z.state !== 0) return;
+    z.state = look();
+    if (z.state === 1) { try { z.frame.contentWindow.coaxial.setWorldPaused(true); z.paused = true; } catch {} }
+    if (z.state !== 0) clearInterval(z.timer);
+  };
+  // The entry, loading out of sight under the front door (which is opaque over it).
+  const warm = () => {
+    if (z || !("gpu" in navigator)) return;
+    const frame = document.createElement("iframe");
+    frame.dataset.zone = "1"; frame.title = TITLE; frame.tabIndex = -1; frame.inert = true;
+    frame.setAttribute("aria-hidden", "true");
+    frame.allow = "fullscreen; autoplay; microphone; camera; clipboard-read; clipboard-write; gamepad; screen-wake-lock";
+    frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;margin:0;padding:0;background:#000;pointer-events:none;opacity:0";
+    z = { frame, state: 0, loaded: false, paused: false, timer: 0, t0: performance.now() };
+    frame.addEventListener("load", () => { z.loaded = true; poll(); });
+    frame.src = ENTRY;
+    document.body.prepend(frame);
+    z.timer = setInterval(poll, 150);
+  };
+  // PLAY NOW: the entry fades in where it is (its own loading screen, if it is not up yet), takes
+  // the address, the title and the input; the front door goes. Otherwise it is a plain link.
+  const play = (e) => {
+    if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    warm();
+    if (!z || z.state === 2) return;
+    let win = null; try { win = z.frame.contentWindow; } catch {}
+    if (!win) return;
+    e.preventDefault();
+    clearInterval(z.timer);
+    ev.pressed = performance.now();
+    try { if (z.paused) win.coaxial.setWorldPaused(false); } catch {}
+    try { win.coaxial.shown && win.coaxial.shown(); } catch {}
+    const frame = z.frame;
+    frame.inert = false; frame.removeAttribute("aria-hidden"); frame.tabIndex = 0;
+    frame.style.zIndex = "3"; frame.style.pointerEvents = "auto";
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let done = false;
+    const over = () => {
+      if (done) return; done = true;
+      door.remove(); document.body.style.overflow = "hidden";
+      try { history.pushState(null, "", win.location.href); } catch {}
+      document.title = TITLE;
+      addEventListener("popstate", () => location.reload());
+      frame.focus(); try { win.focus(); } catch {}
+      ev.shown = performance.now();
+    };
+    door.classList.add("out");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (still) { frame.style.opacity = "1"; over(); return; }
+      frame.style.transition = "opacity 500ms ease-in-out"; frame.style.opacity = "1";
+      frame.addEventListener("transitionend", over, { once: true });
+      setTimeout(over, 700);
+    }));
+  };
+  for (const a of document.querySelectorAll("[data-play]")) { a.addEventListener("click", play); a.addEventListener("pointerenter", warm, { once: true }); a.addEventListener("focus", warm, { once: true }); }
+  // as soon as the front door has painted
+  const soon = () => setTimeout(warm, 300);
+  if (document.readyState === "complete") soon(); else addEventListener("load", soon, { once: true });
+})();
+</script>
+</body>
+</html>
+`
+}
+
+// /play: the realm's own page, straight in, under the domain's name, icon and preview.
+function domainPlay(r: Realm): string {
+  const d = r.domain!, html = page(r, false)
+  const head = html.slice(html.indexOf("<head>") + 7, html.indexOf("<script>"))
+  return html.replace(head, domainHead(r, d.title, "/play", "noindex, nofollow") + "\n")
+    .replaceAll(`/worlds/${r.slug}/index.md`, `/worlds/${r.slug}/domain/index.md`)
+    .replace(/(<b class="ln">)[^<]*(<\/b>)/, `$1${esc(d.title)}$2`).replace(/aria-label="Loading [^"]*"/, `aria-label="Loading ${esc(d.title)}"`)
+    .replace(/READ ABOUT [^<]*/, `READ ABOUT ${esc(d.title)}`).replace(/<h1>[^]*?<\/h1><p><a href="([^"]+)">[^<]*<\/a>/, `<h1>${esc(d.title)}</h1><p><a href="$1">${esc(d.title)}</a>`)
+}
+
+// The domain's 404: any other address there (the bucket's own 404 page hands over to it on this host).
+function domainNotFound(r: Realm): string {
+  const d = r.domain!, dir = `/worlds/${r.slug}/domain`
+  return `<!doctype html>
+<html lang="en">
+<head>
+${domainHead(r, `Not found · ${d.title}`, "/", "noindex")}
+<style>
+html{background:#0d1a10;color:#f6efd9}
+body{margin:0;min-height:100vh;min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 16px;text-align:center;font:400 17px/1.5 ui-serif,Georgia,serif;background:linear-gradient(180deg,rgba(13,26,16,.55),#0d1a10 85%),url(${dir}/hero-phone.jpg) center/cover}
+img{width:min(80vw,520px);height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.55));animation:in .8s ease-out both}
+p{margin:10px 0 26px;color:#c9c1a8;animation:in .8s .2s ease-out both}
+a{display:inline-block;padding:14px 30px;border:1px solid #fff3c9;border-radius:6px;background:linear-gradient(180deg,#f6dc93,#c9913f);color:#25170a;font:700 16px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.14em;text-decoration:none;animation:in .8s .4s ease-out both}
+@keyframes in{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){img,p,a{animation:none}}
+</style>
+</head>
+<body>
+<h1 style="margin:0"><img src="${dir}/wordmark.svg" alt="${esc(d.title)}" width="520" height="68"></h1>
+<p>404: this path leads nowhere in the forest.</p>
+<a href="/">BACK TO ${esc(d.title.toUpperCase())}</a>
+</body>
+</html>
+`
+}
+
+export function domainPages(r: Realm): [string, string][] {
+  return [["index.html", frontDoor(r)], ["play/index.html", domainPlay(r)], ["404.html", domainNotFound(r)]]
+}
+
 // The ?project= swap for a realm's project_asset: an inline script after the host's module script runs
 // before it (module scripts wait for the document), so the host reads the swapped address.
 function projectScript(module: string, asset: string): string {
@@ -383,6 +637,7 @@ if (import.meta.main) {
   const out: [string, string][] = [[join(SITE, "realms.coax"), coax(list)], [join(SITE, "realms", "list.coax"), listCoax(list)],
     [join(SITE, "realms", "index.md"), listMarkdown(list)], [join(SITE, "realms", "index.html"), listPage(list)]]
   for (const w of list) if (w.realm) out.push([join(SITE, "realms", w.realm.slug, "index.html"), page(w.realm, w.listed !== false)])
+  for (const w of list) if (w.realm?.domain) out.push(...domainPages(w.realm).map(([f, t]) => [join(SITE, "realms", w.realm!.slug, "domain", f), t] as [string, string]))
   const behind: string[] = []
   for (const [file, text] of out) {
     if (existsSync(file) && readFileSync(file, "utf8") === text) continue
@@ -391,5 +646,6 @@ if (import.meta.main) {
     writeFileSync(file, text)
   }
   for (const w of list) if (w.realm && !existsSync(join(SITE, "realms", w.realm.slug, "index.md"))) behind.push(`realms/${w.realm.slug}/index.md (write it by hand)`)
+  for (const w of list) for (const f of w.realm?.domain ? [...DOMAIN_HAND, ...w.realm.domain.shots.map((p) => p.src)] : []) if (!existsSync(join(SITE, "realms", w.realm!.slug, "domain", f))) behind.push(`realms/${w.realm!.slug}/domain/${f} (made by hand)`)
   if (behind.length) { console.error(`realms.ts: behind realms.json:\n  ${behind.join("\n  ")}${check ? "\n  run: bun coax/web/realms.ts" : ""}`); process.exit(1) }
 }
