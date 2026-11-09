@@ -774,6 +774,31 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
  s:[1]Creator;catalog(s[..],"C glade/imp0 80 6 254 20 0 0\nC glade/gremlin0 86 9 254 20 0 0\n");
  #assert s[0].npc_n[0]==1 && s[0].npc_n[1]==1 && s[0].npc_first[0][0]==80 && s[0].npc_first[1][0]==86;
 }
+#test "every hostile kind draws a body with geometry where it stands, asleep or awake" {
+ s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);
+ for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}
+ s[0].scene_only=true;s[0].experimental=true;s[0].glade_word=7;b[0].ready=true;
+ for k:0..<2 {s[0].npc_n[k]=48;for f:0..<48 {s[0].npc_first[k][f]=1000+k*100000+f*1000;s[0].npc_count[k][f]=900+k*30;}}
+ hostile.hostile_start(s[0].hostiles[..]);
+ seen:[5]bool;
+ for i:0..<hostile.HS_N {e:=s[0].hostiles[0].enemies[i];if seen[e.kind] {continue;}seen[e.kind]=true;
+  #assert e.sleeper && !e.awake;   // asleep: never yet turned toward anyone
+  // you a step off it: in the part of the dungeon you see, or beside it in the meadow
+  s[0].player_x=e.x+0.5;s[0].player_z=e.z;
+  for pass:0..<2 {
+   if pass==1 {s[0].hostiles[0].enemies[i].face_x=0;s[0].hostiles[0].enemies[i].face_z=0;}   // even a zero facing draws
+   n:=scene(s[0],b[..],out[..]);found:=false;
+   for d:0..<n {r:=d*24;if out[r+15]!=18 || out[r]!=e.x || out[r+2]!=e.z {continue;}found=true;
+    mesh:=dungeon.dg_kind_mesh(e.kind);w:=b[0].draws[d*4+2];
+    #assert b[0].draws[d*4+1]>0 && b[0].draws[d*4+3]==1 && cast(int)w==d;
+    #assert cast(int)b[0].draws[d*4]>=s[0].npc_first[mesh][0] && cast(int)b[0].draws[d*4+1]==s[0].npc_count[mesh][0];
+    #assert abs(out[r+8]*out[r+8]+out[r+9]*out[r+9]-1)<0.001 && out[r+10]>0.5;   // a real turn and size: not folded flat
+    #assert out[r+4]==ifx mesh==0 then 6.0f32 else 9.0f32;}
+   #assert found;
+  }
+ }
+ for k:0..<5 {#assert seen[k];}
+}
 #test "monsters cycle animations every three seconds" {
  #assert monster_frame(0)==0 && monster_frame(0.5)==4 && monster_frame(3)==8 && monster_frame(18)==0;
  s:[1]Creator;catalog(s[..],"C glade/monster0 80 6 254 20 0 0\nC glade/monster47 200 9 254 20 0 0\n");
@@ -851,12 +876,20 @@ scene_reserved :: (s:Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     b[0].draws[n*4]=cast(u32)s.monster_first[take];b[0].draws[n*4+1]=cast(u32)s.monster_count[take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }
   if s.experimental && s.npc_n[0]==48 && s.npc_n[1]==48 {seen:=dungeon.dg_seen(s.player_x,s.player_z);in_dungeon:=dungeon.dg_inside(s.player_x,s.player_z,0);
-   for i:0..<hostile.HS_N {if n>=41 {break;}e:=s.hostiles[0].enemies[i];sink:=ifx e.dead then (s.clock-e.died)*0.9*e.scale else 0.0f32;if e.dead && s.clock-e.died>2.4 {continue;}
-    // the monsters you could see: near, and in the dungeon only in a part you see into
+   // the monsters you could see: near, and in the dungeon only in a part you see into; nearest first,
+   // so the slots left always hold the ones by you (their names show within 30 m)
+   near:[hostile.HS_N]int;far:[hostile.HS_N]f32;nn:=0;
+   for i:0..<hostile.HS_N {e:=s.hostiles[0].enemies[i];if e.dead && s.clock-e.died>2.4 {continue;}
     dx:=e.x-s.player_x;dz:=e.z-s.player_z;if dx*dx+dz*dz>48*48 {continue;}
     if dungeon.dg_inside(e.x,e.z,0) {part:=dungeon.dg_cell_chunk(dungeon.dg_col(e.x),dungeon.dg_row(e.z));if part>=0 && (seen&(1<<part))==0 {continue;}}else if in_dungeon {continue;}
+    near[nn]=i;far[nn]=dx*dx+dz*dz;nn+=1;}
+   for pick:0..<nn {if n>=41 {break;}best:=pick;for j:pick+1..<nn {if far[j]<far[best] {best=j;}}
+    ti:=near[pick];tf:=far[pick];near[pick]=near[best];far[pick]=far[best];near[best]=ti;far[best]=tf;
+    e:=s.hostiles[0].enemies[near[pick]];sink:=ifx e.dead then (s.clock-e.died)*0.9*e.scale else 0.0f32;
     kind:=dungeon.dg_kind_mesh(e.kind);take:=(ifx e.swing>=0 then 32 else ifx e.moving then 16 else 0)+int(floor(s.clock*8))%8;
-    for k:0..<24 {out[n*24+k]=0;}out[n*24]=e.x;out[n*24+1]=meadow.exp_height(e.x,e.z)-sink;out[n*24+2]=e.z;out[n*24+8]=e.face_x;out[n*24+9]=e.face_z;out[n*24+10]=e.scale;
+    // its turn (sin, cos): a unit facing, never zero (a zero one folds the body flat to an unseen line)
+    fl:=sqrt(e.face_x*e.face_x+e.face_z*e.face_z);fx:=ifx fl>0.001 then e.face_x/fl else 0.0f32;fz:=ifx fl>0.001 then e.face_z/fl else 1.0f32;
+    for k:0..<24 {out[n*24+k]=0;}out[n*24]=e.x;out[n*24+1]=meadow.exp_height(e.x,e.z)-sink;out[n*24+2]=e.z;out[n*24+8]=fx;out[n*24+9]=fz;out[n*24+10]=ifx e.scale>0 then e.scale else 1.0f32;
     out[n*24+4]=ifx kind==0 then 6 else 9;out[n*24+5]=meadow.exp_height(out[n*24+4],-7);out[n*24+6]= -7;out[n*24+7]=f32(s.glade_word);out[n*24+15]=18;
     b[0].draws[n*4]=cast(u32)s.npc_first[kind][take];b[0].draws[n*4+1]=cast(u32)s.npc_count[kind][take];b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
   }}

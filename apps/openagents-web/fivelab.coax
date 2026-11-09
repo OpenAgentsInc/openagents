@@ -3474,6 +3474,13 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
   cmp:=url_number(q,"compare");if cmp>=0 && cmp<=compare.CMP_N {
    p:=compare.cmp_site(ifx cmp==0 then 2 else cmp-1);s[0].put_on=true;s[0].put_x=ifx cmp==0 then 31 else p.x;s[0].put_y=0.2;s[0].put_z=ifx cmp==0 then 12 else p.z+1;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx cmp==0 then 1.2 else 0.4;s[0].creator[0].dist=ifx cmp==0 then 28 else 5;s[0].xc[0].open=false;
   }
+  cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].xc[..],cl);}
+  // px, pz: any spot, metres plus 1000 (px=970&pz=1010 is (-30, 10)); yaw the way you face in degrees
+  // (0 is +z), the camera behind you; dist the camera's metres; class a class's row (fivebar.coax FB_CL_*)
+  px:=url_number(q,"px");pz:=url_number(q,"pz");if px>=0 && pz>=0 {
+   yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;dist:=url_number(q,"dist");
+   s[0].put_on=true;s[0].put_x=f32(px)-1000;s[0].put_y=0;s[0].put_z=f32(pz)-1000;s[0].put_face=a;s[0].creator[0].yaw=a+3.1415927;if dist>0 {s[0].creator[0].dist=f32(dist);}s[0].xc[0].open=false;continue;
+  }
   n:=url_number(q,"cell");if n<0 || n>=xdungeon.DG_COLS*xdungeon.DG_ROWS {continue;}
   yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;
   s[0].put_on=true;s[0].put_x=xdungeon.dg_x(n%xdungeon.DG_COLS)+f32(xdungeon.DG_CELL)*0.5;s[0].put_y=0;s[0].put_z=xdungeon.dg_z(n/xdungeon.DG_COLS)-f32(xdungeon.DG_CELL)*0.5;s[0].put_face=a;s[0].creator[0].yaw=a;
@@ -3573,7 +3580,7 @@ lab_respawn :: (s:[]Lab)->bool {
  h[0].contacts[0]=hostile.HcContacts.{};hostile.hostile_calm(h);   // nothing engages you for a moment, and no shot is in the air
  xc_sync_vitals(s);xc_sync_permissions(s);
  h[0].died_at=0;h[0].pop_next=0;for i:0..<8 {h[0].pops[i].amount=0;}
- for i:0..<hostile.HS_N {e:=h[0].enemies[i..<i+1];if !e[0].dead {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].swing= -1;e[0].moving=false;e[0].cool=1;if e[0].sleeper {e[0].awake=false;}}}
+ for i:0..<hostile.HS_N {e:=h[0].enemies[i..<i+1];if !e[0].dead {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].swing= -1;e[0].moving=false;e[0].cool=1;e[0].returning=false;if e[0].sleeper {e[0].awake=false;}}}
  c[0].player_x=0;c[0].player_y=0;c[0].player_z=0;c[0].airborne=false;c[0].land_at= -100;c[0].camera_room= -1;
  s[0].you_on=false;s[0].safe_on=false;s[0].put_on=false;s[0].held=0;s[0].shift=false;s[0].xc[0].target= -1;s[0].xc[0].dash_until= -1;return true;
 }

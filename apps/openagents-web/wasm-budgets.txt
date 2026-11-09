@@ -69,7 +69,8 @@ fairy 695000
 # Zone of Truth world anchoring and shared saves, measured at 2,679,040 bytes (#13030).
 # Revivify: recorded combat deaths, corpse targeting and the diamond supply, measured at 2,685,797 bytes (#13030).
 # Experimental's mouselook (aethyr/cam/mouselook.coax) and the shared reticle drawn while it looks, on main with bow combat (b9ef099b71, about 2,694,800): 2,701,385 bytes measured.
-fivelab 2705000
+# Monsters leave the dungeon after you by its doorways and walk home on a leash; drawn nearest first, never folded flat: 2,720,155 bytes measured on main with the keyed Longbow draw (8faf847c27).
+fivelab 2725000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.

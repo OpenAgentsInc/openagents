@@ -1564,7 +1564,7 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
       }
     }
     lost := before[i] - rs_max(c.hp, 0);
-    if lost > 0 { x[0].calm[i] = false; }   // harmed, it fights again
+    if lost > 0 { x[0].calm[i] = false; hostile.hostile_provoke(h, i); }   // harmed, it fights again, and comes after you
     if lost > 0 { struck = true; x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
       if !c.dead && c.hp > 0 { xc_stop_hit(s, i, ifx swung then react.DMG_SLASH else ifx a.kind == FB_SHOOT then react.DMG_PIERCE else cast(u32) 0); }
       xc_cue(s, snd.hit, 0.55, e[0].x, e[0].z, snd.rate);
@@ -1579,6 +1579,8 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
   }
   xc_sync_permissions(s);
   if facing_cube { xc_sync_world(s); }
+  // attacked from wherever you stand, hit or missed, the one aimed at wakes and comes after you
+  if foe >= 0 && foe < XC_FOES && aim.kind != XC_AIM_AREA && aim.kind != XC_AIM_SELF { hostile.hostile_provoke(h, foe); }
   if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
   return true;
 }
@@ -2044,6 +2046,15 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
 xc_probe :: (s: [] Lab, f: int) -> int {
   x := s[0].xc[..]; hs := s[0].creator[0].hostiles[..];
   if f == 900 { return x[0].klass; }
+  // 999 the Attack slot; 1000 + 4i + k monster i's x and z (centimetres), awake (1) and returning (2), and
+  // how far it stands from home (centimetres)
+  if f == 999 { return xc_slot_of(x, FB_ATTACK); }
+  if f >= 1000 && f < 1000 + 4 * XC_FOES {
+    e := hs[0].enemies[(f - 1000) / 4]; k := (f - 1000) % 4;
+    if k == 0 { return cast(int) (e.x * 100); } if k == 1 { return cast(int) (e.z * 100); }
+    if k == 2 { return (ifx e.awake then 1 else 0) + (ifx e.returning then 2 else 0); }
+    hx := e.x - e.home_x; hz := e.z - e.home_z; return cast(int) (sqrt(hx * hx + hz * hz) * 100);
+  }
   if f == 901 { return x[0].bar_n; }
   if f == 902 { return x[0].casts; }
   if f == 903 { return x[0].landed; }
