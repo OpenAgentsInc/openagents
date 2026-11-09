@@ -89,7 +89,15 @@ Character Create's frozen save keys. Do not add new app-private source copies.
 
 ## Build and test
 
+Heavy commands (wasm.sh, build.sh, `coax test` of a big unit, test suites)
+run on a remote build host, not the Mac: prefix them with
+`coax/remote/remote.sh run --` (or set `OA_HEAVY_REMOTE=1` for heavy.sh). It
+sends the checkout's commit and uncommitted changes, streams the output, and
+brings the written files back; with no host it runs on the Mac's slots
+(docs/verse/remote-builds.md).
+
 ```sh
+coax/remote/remote.sh run -- coax/bin/coax test FILE   # any command below, on a build host
 coax/build.sh test                          # compiler (from ~/.cache/coax-release, else the published build for this platform, else a bootstrap) + every Coax suite (over 15 minutes: use parts)
 coax/tests/run.sh --part I/8                # after coax/build.sh: one eighth of the Coax suites (1/8 ... 8/8, each under 15 minutes)
 coax/tests/run.sh --only UNIT...            # just those suites (--list names them)

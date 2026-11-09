@@ -3,8 +3,10 @@
 # PATH, unless they are already set.
 #   macOS: Homebrew's llvm, lld, wasi-libc and wasi-runtimes
 #          (brew install llvm lld wasi-libc wasi-runtimes)
-#   Linux: clang 21, lld, wasi-libc, compiler-rt and wasm-opt from nixpkgs, linked into
-#          ${COAXIAL_TOOLCHAIN:-~/.cache/coax-wasm-toolchain} on first use
+#   Linux: clang 23, lld, wasi-libc, compiler-rt and wasm-opt from nixpkgs, linked into
+#          ${COAXIAL_TOOLCHAIN:-~/.cache/coax-wasm-toolchain} on first use. Clang 23, as
+#          Homebrew's on the Mac: with clang 21 fivelab was 2,732,416 bytes, over the
+#          2,725,000 budget measured on the Mac; with 23.1.3, 2,719,737 (#13077).
 case "$(uname -s)" in
   Darwin)
     COAXIAL_CLANG="${COAXIAL_CLANG:-/opt/homebrew/opt/llvm/bin/clang}"
@@ -15,16 +17,17 @@ case "$(uname -s)" in
   Linux)
     coaxial_tc="${COAXIAL_TOOLCHAIN:-$HOME/.cache/coax-wasm-toolchain}"
     builtins="$coaxial_tc/resource/lib/wasm32-unknown-wasip1/libclang_rt.builtins.a"
+    # A toolchain linked for another clang major is linked again.
     # Relink when the builtins link is broken too: a toolchain linked by an
     # earlier version of this script can hold clang but a dangling builtins link.
-    if [[ -z "${COAXIAL_CLANG:-}" && ( ! -x "$coaxial_tc/bin/clang" || ! -e "$builtins" ) ]]; then
+    if [[ -z "${COAXIAL_CLANG:-}" && ( ! -x "$coaxial_tc/bin/clang" || ! -e "$builtins" || "$("$coaxial_tc/bin/clang" -dumpversion 2> /dev/null)" != 23.* ) ]]; then
       echo "toolchain.sh: linking the Wasm toolchain from nixpkgs into $coaxial_tc" >&2
       out() { nix build --no-link --print-out-paths "$@"; }
-      clang="$(out nixpkgs#llvmPackages_21.clang-unwrapped)"
-      lld="$(out nixpkgs#llvmPackages_21.lld)"
+      clang="$(out nixpkgs#llvmPackages_23.clang-unwrapped)"
+      lld="$(out nixpkgs#llvmPackages_23.lld)"
       libc="$(out nixpkgs#pkgsCross.wasi32.wasilibc)"
       libc_dev="$(out nixpkgs#pkgsCross.wasi32.wasilibc.dev)"
-      rt="$(out nixpkgs#pkgsCross.wasi32.llvmPackages_21.compiler-rt)"
+      rt="$(out nixpkgs#pkgsCross.wasi32.llvmPackages_23.compiler-rt)"
       mkdir -p "$coaxial_tc/bin" "$coaxial_tc/sysroot/lib" "$coaxial_tc/resource/lib/wasm32-unknown-wasip1"
       ln -sfn "$clang/bin/clang" "$coaxial_tc/bin/clang"
       ln -sfn "$lld/bin/wasm-ld" "$coaxial_tc/bin/wasm-ld"
