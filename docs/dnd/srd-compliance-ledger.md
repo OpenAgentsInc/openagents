@@ -998,5 +998,11 @@ order. The geometry check verifies distinct bounded meshes for every form.
 Both scene renderers now draw the admitted catalog model at the familiar's
 world position and hide it in its owner's borrowed viewpoint. The draw
 fixtures cover Experimental's Owl, room replication at the distant
-clearing, viewpoint hiding and removal. Updating the shipped packs and
-checking the actual rendered models in both worlds remain open.
+clearing, viewpoint hiding and removal. The shipped packs now include all eleven
+models. Visual verification in both worlds remains open.
+
+The two shipped familiar packs were updated using the Coax pack builder's
+`--append-familiars INPUT.pack OUTPUT.pack` mode. Existing mesh and index
+prefixes and all other asset payloads match byte for byte. The catalog has
+one index range per form and records the new vertex base. Everglade II's
+range-addressable pack also round-tripped to the updated image.
