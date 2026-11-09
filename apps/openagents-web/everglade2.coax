@@ -1815,3 +1815,22 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   e2n_record(n,"m4 4000003 4"); #assert e2n_familiar_message(n)=="";
   e2n_record(n,"m5 4000003"); #assert e2n_familiar_message(n)=="FAMILIAR MOVED";
 }
+
+#test "Everglade II familiar Cure requests a wounded nearby seat and waits for the room" #steps 1000000000 {
+  s:[1]E2; e2_test_cast_state(s[..],FB_CL_DRUID);
+  n:=s[0].net[..]; n[0].mono=100;
+  e2k_set_class(s[0].casts[..],FB_CL_DRUID,2); e2n_set_class(n,FB_CL_DRUID,2);
+  frame:[1024]u8; row:[WIRE_SF]s32; zero:[WIRE_SF]s32;
+  wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=5,max=12},row[..]);
+  count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
+  count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
+  e2n_record(n,cast(string)frame[0..<count]);
+  n[0].familiar_rows[1]=E2nFamiliar.{live=true,x=s[0].you_x,z=s[0].you_z};
+  box:=e2k_familiar_orders_box(s[..]);
+  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.9,(box[1]+box[3])/2,0,0,1);
+  p:=n[0].pipe[0]; last:=p.n-1;
+  #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M6 4000001 1";
+  #assert !n[0].familiar_heal_cue;
+  e2n_record(n,"m6 4000001");
+  #assert n[0].familiar_heal_cue && e2n_familiar_message(n)=="FAMILIAR DELIVERED CURE WOUNDS";
+}

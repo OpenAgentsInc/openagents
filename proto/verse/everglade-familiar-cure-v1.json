@@ -1,0 +1,8 @@
+{
+  "identity": "everglade-familiar-cure-v1",
+  "base_session": "everglade-session-v5",
+  "scope": "Everglade II only",
+  "request": "M6 SEQ SEAT",
+  "success": "m6 SEQ",
+  "refusal": "r SEQ familiar"
+}

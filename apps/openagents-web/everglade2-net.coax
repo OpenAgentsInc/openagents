@@ -75,7 +75,7 @@ E2Net :: struct {
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
   familiar_rows:[E2N_FAMILIARS]E2nFamiliar; familiar_tick:int=-1;
-  familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int;
+  familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int; familiar_heal_cue:bool;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
   // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
   // only once this socket's room has said it; your last rest request's number and when it was refused
@@ -306,12 +306,13 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
-  step:=wire_is(t,"m5");
-  if step || wire_is(t,"m4") {
+  step:=wire_is(t,"m5"); heal:=wire_is(t,"m6");
+  if step || heal || wire_is(t,"m4") {
     rd:=[1]WireRd.[wire_rd(t,2)];
-    seq:=wire_num(t,rd[..]); order:=ifx step then 4 else wire_num(t,rd[..]);
-    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && order>0 && (step || order<=3) && order==n[0].familiar_order {
+    seq:=wire_num(t,rd[..]); order:=ifx heal then 5 else ifx step then 4 else wire_num(t,rd[..]);
+    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && order>0 && (step || heal || order<=3) && order==n[0].familiar_order {
       n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
+      if heal { n[0].familiar_heal_cue=true; }
     }
     return;
   }
@@ -632,7 +633,7 @@ e2n_aid_message :: (n:[] E2Net)->string {
 }
 
 e2n_clear_familiars :: (n:[]E2Net) {
-  n[0].familiar_tick=-1; n[0].familiar_cast=0; n[0].familiar_order=0;
+  n[0].familiar_tick=-1; n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_heal_cue=false;
   for s:0..<E2N_FAMILIARS { n[0].familiar_rows[s].live=false; }
 }
 e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
@@ -680,6 +681,15 @@ e2n_familiar_order :: (n:[]E2Net,order:int)->bool {
   e2n_send(n,count);
   return true;
 }
+e2n_familiar_heal :: (n:[]E2Net,target:int)->bool {
+  if !e2n_open(n) || n[0].klass!=FB_CL_DRUID || n[0].level<2 || target<0 || target>=E2N_FAMILIARS { return false; }
+  n[0].familiar_seq=add_sat(n[0].familiar_seq,1);
+  n[0].familiar_order=5; n[0].familiar_at=-100000; n[0].familiar_cast=0;
+  out:=n[0].out[..];
+  count:=wire_int(out,wire_put(out,0,"M6"),n[0].familiar_seq);
+  e2n_send(n,wire_int(out,count,target));
+  return true;
+}
 e2n_familiar_message :: (n:[]E2Net)->string {
   if !e2n_open(n) { return ""; }
   wizard:=n[0].klass==FB_CL_WIZARD;
@@ -687,7 +697,7 @@ e2n_familiar_message :: (n:[]E2Net)->string {
   age:=n[0].mono-n[0].familiar_at;
   if age<0 || age>=4000 { return ""; }
   if n[0].familiar_order>0 {
-    messages:=[4]string.["FAMILIAR POCKETED","FAMILIAR RECALLED","FAMILIAR RELEASED","FAMILIAR MOVED"];
+    messages:=[5]string.["FAMILIAR POCKETED","FAMILIAR RECALLED","FAMILIAR RELEASED","FAMILIAR MOVED","FAMILIAR DELIVERED CURE WOUNDS"];
     return ifx n[0].familiar_ok then messages[n[0].familiar_order-1] else "FAMILIAR COMMAND REFUSED";
   }
   if wizard {

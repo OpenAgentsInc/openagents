@@ -955,8 +955,7 @@ familiar through the room snapshot. The preset provides one incense
 supply per seat visit. The room fixtures cover the ritual, the paid cast,
 and blocked completion preserving both incense and the spell slot. The
 page fixture verifies the mode and spirit request and the room's status
-messages. Familiar touch delivery and borrowed senses still need Everglade II
-integration.
+messages. Borrowed senses still need Everglade II integration.
 
 Everglade II now exposes Pocket, Recall and Release to Druids and Wizards.
 The room checks ownership and the saved Magic action. Pocket and recall
@@ -976,3 +975,11 @@ The room converts placement, casts, NPCs, effects, collision queries and
 familiar snapshots at the world boundary. The distant-clearing regression
 checks summoning, Step, collision endpoints and replicated coordinates
 near −470 m. The original Everglade grid keeps its existing origin.
+
+Everglade II now offers Druids familiar-delivered Cure Wounds. The
+control selects a nearby wounded player, and the room checks contact,
+visibility permissions and reach before using the shared touch executor.
+The Druid's Magic action and first-level slot and the familiar's Reaction
+are spent on success. The owner hears the existing Cure Wounds cue at
+the familiar after the room confirms the cast. Everglade II's social
+profile still treats offensive casts as untargeted.

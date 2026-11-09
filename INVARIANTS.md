@@ -7597,3 +7597,8 @@ The room samples sight from each eligible attacker to the departure square
 and checks the route independently. The shared Reaction resolves before the
 step. A blocked route never provokes, and a lethal Reaction persists while
 the step spends no movement.
+
+Everglade II Druids can deliver Cure Wounds through their familiar. The
+room checks the target seat, mutual block state and contact from the
+familiar. The shared executor uses the Druid's saved Magic action and
+spell slot and spends the familiar's Reaction on admission.

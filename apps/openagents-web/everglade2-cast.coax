@@ -134,6 +134,15 @@ e2k_press :: (s: [] E2, i: int) -> bool {
 e2k_step :: (s: [] E2) {
   k := s[0].casts[..]; n := s[0].net[..];
   now := s[0].clock;
+  if n[0].familiar_heal_cue {
+    n[0].familiar_heal_cue=false;
+    own:=n[0].seat;
+    if own>=0 && own<E2N_FAMILIARS && n[0].familiar_rows[own].live {
+      f:=n[0].familiar_rows[own];
+      cue:=xc_sound(fb_spell(SP_CURE_WOUNDS,1,FB_ALLY),FB_CL_DRUID);
+      e2k_cue(s,cue.start,f32(E2K_GAIN_START),f.x,f.z,cue.rate);
+    }
+  }
   // the room turned your last cast down before it spent anything (eg_e2_cast is all or nothing): the
   // cooldown this page predicted for it is lifted, so the bar is yours again at once
   if n[0].cast_refused != k[0].refused_seen { k[0].refused_seen = n[0].cast_refused; k[0].cool_at = -100; e2k_undo(s); }
@@ -279,9 +288,10 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     n=e2k_line(out,n,r[0],r[3],r[2],r[3],1.2*kk,0.55,0.9,1);
     ink:=cc.ink(kk,0.55,0.9,1);
     orders:=e2k_familiar_orders_box(s);
-    labels:=[4]string.["POCKET","RECALL","RELEASE","STEP"];
-    wide:=(orders[2]-orders[0])/4;
-    for j:0..<labels.count {
+    labels:=[5]string.["POCKET","RECALL","RELEASE","STEP","CURE"];
+    order_count:=e2k_familiar_orders(s);
+    wide:=(orders[2]-orders[0])/f32(order_count);
+    for j:0..<order_count {
       order_x:=orders[0]+f32(j)*wide;
       n=e2k_line(out,n,order_x,orders[3],order_x+wide-2*kk,orders[3],1.2*kk,0.55,0.9,1);
       n=cc.text(out,n,labels[j],order_x+(wide-f32(labels[j].count)*6*kk)/2,orders[1]+14*kk,8*kk,ink);
@@ -325,7 +335,11 @@ e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
   if e2k_familiar_on(s) {
     orders:=e2k_familiar_orders_box(s);
     if x>=orders[0] && x<orders[2] && y>=orders[1] && y<=orders[3] {
-      if phase==0 { _:=e2n_familiar_order(s[0].net[..],1+int(4*(x-orders[0])/(orders[2]-orders[0]))); }
+      if phase==0 {
+        order:=1+int(f32(e2k_familiar_orders(s))*(x-orders[0])/(orders[2]-orders[0]));
+        if order==5 { _:=e2n_familiar_heal(s[0].net[..],e2k_familiar_heal_target(s)); }
+        else { _:=e2n_familiar_order(s[0].net[..],order); }
+      }
       return true;
     }
     r:=e2k_familiar_box(s); kk:=s[0].k;
@@ -448,8 +462,28 @@ e2k_familiar_box :: (s:[]E2)->[4]f32 {
   return [4]f32.[r[0]-extra,r[1]-24*k,r[2]+extra,r[3]-24*k];
 }
 
+e2k_familiar_orders :: (s:[]E2)->int { return ifx s[0].net[0].klass==FB_CL_DRUID then 5 else 4; }
+e2k_familiar_heal_target :: (s:[]E2)->int {
+  n:=s[0].net[..]; own:=n[0].seat;
+  if own<0 || own>=E2N_FAMILIARS || !n[0].familiar_rows[own].live { return -1; }
+  f:=n[0].familiar_rows[own];
+  best:=-1; nearest:=12.0f32;
+  for target:0..<E2N_FAMILIARS {
+    row:=wire_mirror_of(n[0].mir[..],target);
+    if row.id!=target || row.kind!=WK_PLAYER || (row.g&WG_DEAD)!=0 || row.hp<0 || row.hp>=row.max { continue; }
+    x:=s[0].you_x; z:=s[0].you_z;
+    if target!=own {
+      remote:=e2n_remote_seat(n,target);
+      if !remote.ok { continue; }
+      x=remote.x; z=remote.z;
+    }
+    dx:=x-f.x; dz:=z-f.z; d:=dx*dx+dz*dz;
+    if d<nearest { nearest=d; best=target; }
+  }
+  return best;
+}
 e2k_familiar_orders_box :: (s:[]E2)->[4]f32 {
   r:=e2k_familiar_box(s); gap:=24*s[0].k;
-  half:=hi((r[2]-r[0])/2,96*s[0].k); mid:=(r[0]+r[2])/2;
+  half:=hi((r[2]-r[0])/2,24*f32(e2k_familiar_orders(s))*s[0].k); mid:=(r[0]+r[2])/2;
   return [4]f32.[mid-half,r[1]-gap,mid+half,r[3]-gap];
 }
