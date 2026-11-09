@@ -230,14 +230,15 @@ wg_uniform :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->bool #effects
   id:=wg_bound(s,tree,w,i);
   return id<WG_PTR && wg_word(wg_binding(s,names,id),3)=="uniform"; // mutant: equivalent (no pointer is to type 0, void)
 }
-// How local i's storage buffer may be used: 0 it is not one (a uniform block, a local array, a
-// value), 1 read, 2 read and written (bound `rw`), 3 only through atomics (bound `atomic`).
+// How local i's storage buffer may be used: 0 it is not one (a local array, a pointer to one,
+// a value), 1 read (a uniform block too, which wg_place reads by its helper before it asks),
+// 2 read and written (bound `rw`), 3 only through atomics (bound `atomic`).
 wg_access :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,i:int)->int #effects(all) {
   if !s[0].whole || !wg_has_local(s,tree,w,i) || wg_tk(tree,w,wg_local_type(tree,w,s[0].proc,i))!=9 || w[WG_W_ALIAS+i]!=0 {return 0;}
   id:=wg_bound(s,tree,w,i);
-  if id>=WG_PTR {return 0;}
+  // a pointer to the caller's array, or WG_NONE: bit 31 set
+  if (id&WG_PTR)!=0 {return 0;}
   word:=wg_word(wg_binding(s,names,id),3);
-  if word=="uniform" {return 0;}
   return ifx word=="rw" then 2 else (ifx word=="atomic" then 3 else 1);
 }
 // A local as an expression or a place: in a module a resource is its binding's variable,
@@ -1353,6 +1354,40 @@ WG_WGSL_COMPUTE :: "@group(0) @binding(0) var<storage, read> a: array<u32>;\n@gr
 #test "a compute entry: atomic, read and read-write buffers, as Chrome's WebGPU compiles it" {
   out:[8192] u8;
   #assert wg_mtext(WG_SAMPLE_COMPUTE,WG_NAMES_COMPUTE,out[..])==WG_WGSL_COMPUTE;
+}
+#test "a buffer bound `atomic` is stored by atomicStore and changed by atomicMin, whichever local it is and whatever views follow it" {
+  out:[8192] u8;
+  // its entry's procedure not the first, its buffer local 1 and local 2 a view of local array 3
+  #assert wg_mtext("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 2 0 0 0 2 1 0 0 2 4 7 4 4 7 7 8 30 1 3 11 2 3 3 42 40 1 16 5 0 0 16 4 7 2 33 21 4 3 18 1 16 5 1 0 16 4 2 1 3 1 0 1","z\ngo i c v arr\nx\nc 0 0 atomic\n",out[..])=="struct coax_t10 {\n  x: f32,\n}\n@group(0) @binding(0) var<storage, read_write> c: array<atomic<u32>>;\nfn coax_p_go(p_i: u32) {\n  var l_i: u32 = p_i;\n  var l_arr: array<u32, 4>;\n  atomicStore(&c[0i], 7u);\n  _ = atomicMin(&c[1i], 2u);\n}\n@compute @workgroup_size(64)\nfn go(@builtin(global_invocation_id) coax_gid: vec3u) {\n  coax_p_go(coax_gid.x);\n}\n";
+}
+#test "a compute entry refuses what its buffers are not bound for and what is not a compute's" {
+  out:[8192] u8;
+  // a store to a buffer bound read
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 7 2 4 7 13 1 1 3 42 40 1 16 5 0 0 16 4 7 1 3 0 0 1","go i b\nx\nb 0 0\n",out[..])==-4;
+  // a store to a field of an element of a buffer bound `atomic`
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 7 2 4 7 15 1 1 3 41 42 40 1 16 5 0 0 0 16 4 7 1 3 0 0 1","go i b\nx\nb 0 0 atomic\n",out[..])==-4;
+  // a store to a field of a buffer bound `atomic`, which is no element of it for atomicStore
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 7 2 4 7 13 1 1 3 41 40 1 16 5 0 0 16 4 7 1 3 0 0 1","go i b\nx\nb 0 0 atomic\n",out[..])==-4;
+  // an atomic of a buffer bound read
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 7 2 4 7 16 1 1 2 33 19 4 3 18 1 16 5 0 0 16 4 1 1 3 0 0 1","go i b\nx\nb 0 0\n",out[..])==-4;
+  // an atomic of i32s
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 7 2 4 7 16 1 1 2 33 19 3 3 18 1 16 5 0 0 16 4 1 1 3 0 0 1","go i b\nx\nb 0 0 atomic\n",out[..])==-4;
+  // a GPU procedure 0 of no arguments
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 7 2 4 7 7 1 1 2 33 0 0 0 1 3 0 0 1","go i b\nx\nb 0 0 atomic\n",out[..])==-1;
+  // a GPU procedure past the atomics
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 7 2 4 7 16 1 1 2 33 22 4 3 18 1 16 5 0 0 16 4 1 1 3 0 0 1","go i b\nx\nb 0 0 atomic\n",out[..])==-1;
+  // a buffer bound `atomic` of f32s
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 9 2 4 9 2 1 0 1 3 0 0 1","go i b\nx\nb 0 0 atomic\n",out[..])==-9;
+  // a compute entry of two values, of a value that is not its index, and with a result
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 2 4 4 2 4 4 2 1 0 1 3 0 0 1","go i j\nx\ny\n",out[..])==-8;
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 1 2 1 2 2 1 0 1 3 0 0","go x\nx\n",out[..])==-8;
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 4 1 4 1 4 2 1 0 1 3 0 0","go i\nx\n",out[..])==-8;
+  // an entry of stage 4
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 1 0 1 4 1 4 2 1 0 1 4 0 0","go i\nx\n",out[..])==-5;
+  // a body that runs on into the entries, a store to a buffer bound `atomic` their last words:
+  // read to the tree's end and refused, never past it, its index missing or its local too
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 5 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 6 3 4 4 10 3 4 4 10 5 1 1 4 17 6 0 2 4 7 2 4 7 4 1 3 2 16 2 3 4 16 4 0 3 42 40 1","z0\nz1\nz2\nvs vid iid a\ngo i c\na\nb\nc2\nd\nc 0 0 atomic\n",out[..])==-1;
+  #assert wg_mtry("2 11 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 9 4 8 4 4 4 9 2 7 1 2 0 4 5 0 0 0 2 1 0 0 0 0 2 1 0 0 0 0 2 1 0 6 2 4 4 2 4 4 5 1 1 4 17 6 0 2 4 7 2 4 7 4 1 3 2 16 2 3 4 16 4 0 3 42 40","z0\nz1\nz2\nvs vid iid a\ngo i c\na\nb\nc2\nd\nc 0 0 atomic\n",out[..])==-1;
 }
 #test "a module: interface structs, bindings, variants and entries, as Chrome's WebGPU compiles it" {
   out:[65536] u8;
