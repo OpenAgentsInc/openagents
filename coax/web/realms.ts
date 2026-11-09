@@ -294,7 +294,8 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").repl
 // A page opened through Everglade's portal on the homepage (?via=portal, newland-portal.coax): until
 // the engine draws, the loading screen is the portal's light (gpu/portal.coax's colours at the
 // hand-over's scale), still moving: a slow swirl and rings running out, on the compositor, so it
-// moves while the engine compiles. No black and no bar; the engine then
+// moves while the engine compiles. No black panel, but the bar stays, low on a dark strip, so a
+// slow first load shows real progress (owner, 2026-11-09); the engine then
 // draws the same light and opens the world through it (everglade2-create.coax). A failure still
 // says what failed.
 const PORTAL_ARRIVAL_CSS = `html.portal.gpu,html.portal.gpu body{background:#86c39d}
@@ -302,7 +303,9 @@ html.portal.gpu #coaxial-load{overflow:hidden;background:radial-gradient(ellipse
 html.portal.gpu #coaxial-load::before,html.portal.gpu #coaxial-load::after{content:"";position:absolute;left:50%;top:50%;width:250vmax;height:250vmax;margin:-125vmax 0 0 -125vmax;pointer-events:none;will-change:transform,opacity}
 html.portal.gpu #coaxial-load::before{background:conic-gradient(from 0deg,rgba(60,160,140,.42),rgba(205,245,220,.30),rgba(55,140,130,.42),rgba(240,215,150,.26),rgba(60,160,140,.42),rgba(190,240,225,.30),rgba(60,160,140,.42));filter:blur(28px);animation:portal-swirl 4s linear infinite}
 html.portal.gpu #coaxial-load::after{background:radial-gradient(circle at 50% 50%,rgba(240,225,170,.35) 0,rgba(240,225,170,0) 9vmax),repeating-radial-gradient(circle at 50% 50%,rgba(205,248,228,0) 0,rgba(205,248,228,0) 2.4vmax,rgba(205,248,228,.22) 3.4vmax,rgba(205,248,228,0) 4.4vmax),conic-gradient(from 90deg,rgba(40,120,115,.22),rgba(40,120,115,0),rgba(40,120,115,.22),rgba(40,120,115,0),rgba(40,120,115,.22));animation:portal-rings 2.4s linear infinite}
-html.portal.gpu #coaxial-load:not([data-state=fail]) .lf{visibility:hidden}
+html.portal.gpu #coaxial-load:not([data-state=fail]) .lf{position:absolute;z-index:1;left:50%;bottom:max(40px,8vh);transform:translateX(-50%);width:min(360px,calc(100% - 32px));padding:12px 16px 4px;background:rgba(8,28,24,.55);clip-path:none;border-radius:2px}
+html.portal.gpu #coaxial-load:not([data-state=fail]) .lf::before,html.portal.gpu #coaxial-load:not([data-state=fail]) :is(.c1,.c2,.ln){display:none}
+html.portal.gpu #coaxial-load .lt{color:#e6f4ec}
 @keyframes portal-swirl{from{transform:rotate(0deg) scale(1)}50%{transform:rotate(180deg) scale(1.12)}to{transform:rotate(360deg) scale(1)}}
 @keyframes portal-rings{0%{transform:rotate(0deg) scale(1)}50%{transform:rotate(-90deg) scale(1.16)}100%{transform:rotate(-180deg) scale(1)}}
 @media (prefers-reduced-motion:reduce){html.portal.gpu #coaxial-load::before,html.portal.gpu #coaxial-load::after{animation:none}}`
