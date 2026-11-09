@@ -164,7 +164,7 @@ Lab :: struct {
   acted: [LAB_MAX] f32;            // when each last took its turn
   fell: [LAB_MAX] f32;             // in the Horde, when each of the dead fell (0: standing)
   pool: int; raised: int;          // the Horde: the dead still to come, and how many have come
-  lines: [LOG_LINES] Line; line_n: int;
+  lines: [LOG_LINES] Line; line_n: int; line_head: int;   // a ring: the oldest of line_n lines is at line_head
   fx: [FXS] Fx; fx_at: int;
   puffs: [1] FxPuffs; fx_last: f32;   // the glade's effects as puffs (aethyr/fx/puff.coax), and the clock they last saw
   clock: f32;                      // the drawn clock
@@ -273,12 +273,11 @@ spell_col :: (sp: int) -> Col {
 
 add_line :: (s: [] Lab, t: string, c: Col) {
   if s[0].line_n == LOG_LINES {
-    for i: 1..<LOG_LINES { s[0].lines[i - 1] = s[0].lines[i]; }
+    s[0].line_head = (s[0].line_head + 1) % LOG_LINES;
     s[0].line_n -= 1;
   }
-  l: Line;
-  l.n = put(l.text[..], 0, t); l.col = c;
-  s[0].lines[s[0].line_n] = l;
+  k := (s[0].line_head + s[0].line_n) % LOG_LINES;
+  s[0].lines[k].n = put(s[0].lines[k].text[..], 0, t); s[0].lines[k].col = c;
   s[0].line_n += 1;
 }
 add_fx :: (s: [] Lab, f: Fx) {
@@ -1030,7 +1029,7 @@ nearest_foe :: (s: [] Lab, i: int) -> int {
   best := -1; bd := 100000;
   team := b[0].c[i].team; mon := b[0].c[i].klass == RS_MONSTER;
   for j: 0..<b[0].n {
-    if b[0].c[j].team == team || !rs_up(b[0].c[j]) { continue; }
+    if b[0].c[j].team == team || b[0].c[j].dead || b[0].c[j].hp <= 0 { continue; }
     d := rs_feet_to(b, i, j);
     if b[0].c[j].klass == RS_MONSTER && b[0].c[j].npc == RS_NPC_NONE && !mon && d > 5 { d += 40; }
     if d < bd { bd = d; best = j; }
@@ -1092,8 +1091,8 @@ foes_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   n := 0;
   ids: [NEAR_20] int; m := near_ids(s, x, y, feet, ids[..]);
   for q: 0..<m {
-    j := ids[q]; c := s[0].battle[0].c[j];
-    if c.team != s[0].battle[0].c[i].team && rs_up(c) && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
+    j := ids[q]; c := s[0].battle[0].c[j..<j + 1];
+    if c[0].team != s[0].battle[0].c[i].team && !c[0].dead && c[0].hp > 0 && rs_feet(x, y, c[0].x, c[0].y) <= feet { n += 1; }
   }
   return n;
 }
@@ -1101,8 +1100,8 @@ friends_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
   n := 0;
   ids: [NEAR_20] int; m := near_ids(s, x, y, feet, ids[..]);
   for q: 0..<m {
-    j := ids[q]; c := s[0].battle[0].c[j];
-    if c.team == s[0].battle[0].c[i].team && !c.dead && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
+    j := ids[q]; c := s[0].battle[0].c[j..<j + 1];
+    if c[0].team == s[0].battle[0].c[i].team && !c[0].dead && rs_feet(x, y, c[0].x, c[0].y) <= feet { n += 1; }
   }
   return n;
 }
@@ -1366,20 +1365,20 @@ hold_one :: (s: [] Lab, i: int, foe: int, chance: f32) {
 burst_at :: (s: [] Lab, i: int, range: int, radius: int, spare: bool, least: int) -> int {
   b := bt(s);
   best := -1; bv := least - 1; looked := 0;
-  me := b[0].c[i];
-  ids: [NEAR_MAX] int; m := near_ids(s, me.x, me.y, range, ids[..]);
+  me := b[0].c[i..<i + 1];
+  ids: [NEAR_MAX] int; m := near_ids(s, me[0].x, me[0].y, range, ids[..]);
   for q: 0..<m {
     j := ids[q];
-    c := b[0].c[j];
-    if c.team == me.team || !rs_up(c) || rs_feet_to(b, i, j) > range || looked >= 40 { continue; }
+    c := b[0].c[j..<j + 1];
+    if c[0].team == me[0].team || !(!c[0].dead && c[0].hp > 0) || rs_feet_to(b, i, j) > range || looked >= 40 { continue; }
     looked += 1;
     v := 0;
-    inn: [NEAR_MAX] int; mi := near_ids(s, c.x, c.y, radius, inn[..]);
+    inn: [NEAR_MAX] int; mi := near_ids(s, c[0].x, c[0].y, radius, inn[..]);
     for qi: 0..<mi {
       k := inn[qi];
-      o := b[0].c[k];
-      if o.dead || rs_feet(c.x, c.y, o.x, o.y) > radius { continue; }
-      if o.team != me.team { if rs_up(o) { v += 1; } } else if !spare || k == i { v -= 3; }
+      o := b[0].c[k..<k + 1];
+      if o[0].dead || rs_feet(c[0].x, c[0].y, o[0].x, o[0].y) > radius { continue; }
+      if o[0].team != me[0].team { if !o[0].dead && o[0].hp > 0 { v += 1; } } else if !spare || k == i { v -= 3; }
     }
     if v > bv { bv = v; best = j; }
   }
@@ -2930,10 +2929,11 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   lines = rs_max(rs_min(lines, s[0].line_n), 0);
   ly := foot - f32(lines - 1) * row;
   for j: 0..<lines {
-    ln := s[0].lines[s[0].line_n - lines + j];
-    t := cast(string) ln.text[0..<ln.n];
+    q := (s[0].line_head + s[0].line_n - lines + j) % LOG_LINES;
+    ln := s[0].lines[q..<q + 1];
+    t := cast(string) ln[0].text[0..<ln[0].n];
     cp := lo(cap, cap * (p.x1 - p.x0 - pad * 2) / hi(text_width(t, cap), 1));
-    n = say_at(out, n, t, x, ly + f32(j) * row, cp, ink(k, 0.8, ln.col));
+    n = say_at(out, n, t, x, ly + f32(j) * row, cp, ink(k, 0.8, ln[0].col));
   }
   // the attribution the SRD's licence asks for
   n = say_at(out, n, "SRD 5.2.1 BY WIZARDS OF THE COAST LLC, CC BY 4.0", x, p.y1 - pad, 7.5 * k, ink(k, 0.4, FAINT));
@@ -3503,20 +3503,21 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
  }
 }
 #test "local biome views frame the three native terrain sections" {
- s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?biome=0\n");#assert s[0].put_on && s[0].put_x==35 && s[0].put_z==73 && s[0].creator[0].dist==75;
- t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?biome=1\n");p:=biomes.bio_site(0);#assert t[0].put_x==p.x && t[0].put_z==p.z+3 && t[0].creator[0].dist==24 && !t[0].xc[0].open;
+ {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?biome=0\n");#assert s[0].put_on && s[0].put_x==35 && s[0].put_z==73 && s[0].creator[0].dist==75;}
+ {t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?biome=1\n");p:=biomes.bio_site(0);#assert t[0].put_x==p.x && t[0].put_z==p.z+3 && t[0].creator[0].dist==24 && !t[0].xc[0].open;}
 }
 #test "a local comparison view can frame all ten pairs or one station" {
- s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?compare=0\n");
- #assert s[0].put_on && s[0].put_z==12 && s[0].creator[0].dist==28 && s[0].put_x==31 && !s[0].xc[0].open;
- t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?compare=10\n");p:=compare.cmp_site(9);
+ {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?compare=0\n");
+ #assert s[0].put_on && s[0].put_z==12 && s[0].creator[0].dist==28 && s[0].put_x==31 && !s[0].xc[0].open;}
+ {t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?compare=10\n");p:=compare.cmp_site(9);
  #assert t[0].put_on && t[0].put_x==p.x && t[0].put_z==p.z+1 && t[0].creator[0].dist==5;
- b:[16]f32;#assert lab_comparison_labels(t[..],b[..],0,1600,1000,1)==0;
+ b:[16]f32;#assert lab_comparison_labels(t[..],b[..],0,1600,1000,1)==0;}
 }
 #test "a local page can start you in a dungeon cell" {
- s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1:1/worlds/everglade-experimental?cell=200&yaw=90\n");
- #assert s[0].put_on && s[0].put_x==xdungeon.dg_x(2)+2.5 && s[0].put_z==xdungeon.dg_z(18)-2.5 && abs(s[0].creator[0].yaw-1.5708)<0.001;
- t:[1]Lab;lab_dev_cell(t[..],"url=http://127.0.0.1:1/worlds/everglade-experimental\n");#assert !t[0].put_on;
+ // one Lab at a time: each block's Lab is gone before the next is made (two at once is most of the check's value slots)
+ {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1:1/worlds/everglade-experimental?cell=200&yaw=90\n");
+ #assert s[0].put_on && s[0].put_x==xdungeon.dg_x(2)+2.5 && s[0].put_z==xdungeon.dg_z(18)-2.5 && abs(s[0].creator[0].yaw-1.5708)<0.001;}
+ {t:[1]Lab;lab_dev_cell(t[..],"url=http://127.0.0.1:1/worlds/everglade-experimental\n");#assert !t[0].put_on;}
 }
 url_sizes :: (s: [] Lab, facts: string) -> bool {
   i := 0;
@@ -3918,11 +3919,11 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     step(s[..], f32(STEP));
     if i % 30 == 0 {
       for h: 0..<s[0].heroes {
-        c := s[0].battle[0].c[h];
-        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.slots[3] < c.slots_max[3] || c.rages < c.rages_max || c.focus < c.focus_max;
-        for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
-        if c.klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
-        if any { spent = spent | (1 << c.klass); }
+        c := s[0].battle[0].c[h..<h + 1];
+        any := c[0].slots[1] < c[0].slots_max[1] || c[0].slots[2] < c[0].slots_max[2] || c[0].slots[3] < c[0].slots_max[3] || c[0].rages < c[0].rages_max || c[0].focus < c[0].focus_max;
+        for u: 0..<RS_USES { if c[0].uses[u] < c[0].uses_max[u] { any = true; } }
+        if c[0].klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
+        if any { spent = spent | (1 << c[0].klass); }
       }
       // every class has spent something: enough seen (and under the interpreter's budget)
       all := true; for r: 0..<12 { if (spent & (1 << ROSTER[r])) == 0 { all = false; } }
@@ -3944,11 +3945,11 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     step(s[..], f32(STEP));
     if i % 30 == 0 {
       for h: 0..<s[0].heroes {
-        c := s[0].battle[0].c[h];
-        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.slots[3] < c.slots_max[3] || c.rages < c.rages_max || c.focus < c.focus_max;
-        for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
-        if c.klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
-        if any { spent = spent | (1 << c.klass); }
+        c := s[0].battle[0].c[h..<h + 1];
+        any := c[0].slots[1] < c[0].slots_max[1] || c[0].slots[2] < c[0].slots_max[2] || c[0].slots[3] < c[0].slots_max[3] || c[0].rages < c[0].rages_max || c[0].focus < c[0].focus_max;
+        for u: 0..<RS_USES { if c[0].uses[u] < c[0].uses_max[u] { any = true; } }
+        if c[0].klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
+        if any { spent = spent | (1 << c[0].klass); }
       }
     }
     if s[0].over { break; }
@@ -3977,13 +3978,17 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 }
 
 #test "a frame draws the grid, the tokens and the log on a desktop and on a 390 px phone" #steps 2000000000 {
-  s: [2] Lab; s[0].skeletons = 24; s[0].horde = false; s[1].skeletons = 24; s[1].horde = false;
-  for i: 0..<200 { lab_start(s[0..<1]); step(s[0..<1], f32(STEP)); }
-  a := frame_at(s[0..<1], 1600, 1000, 1, 0.016);
-  #assert a > 300 && a < MAX_VERTICES - 600;
-  b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
-  #assert b > 100 && b < MAX_VERTICES - 600 && s[1].portrait;
-  #assert s[1].gx >= 0 && s[1].gx + s[1].cell * f32(s[0].cols) <= 390 * 3;
+  // one Lab at a time (two at once is most of the check's value slots)
+  cols := 0;
+  { s: [1] Lab; s[0].skeletons = 24; s[0].horde = false;
+    for i: 0..<200 { lab_start(s[..]); step(s[..], f32(STEP)); }
+    a := frame_at(s[..], 1600, 1000, 1, 0.016);
+    #assert a > 300 && a < MAX_VERTICES - 600;
+    cols = s[0].cols; }
+  { s: [1] Lab; s[0].skeletons = 24; s[0].horde = false;
+    b := frame_at(s[..], 390 * 3, 844 * 3, 3, 0.016);
+    #assert b > 100 && b < MAX_VERTICES - 600 && s[0].portrait;
+    #assert s[0].gx >= 0 && s[0].gx + s[0].cell * f32(cols) <= 390 * 3; }
 }
 
 #test "the glade's camera sees the whole grid from its default orbit" #steps 2000000000 {
@@ -4527,34 +4532,42 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
 // Each spell the engine newly executes is playable from Player mode's hotbar in round mode: the
 // Lab picks your hero, prepares its bar, and a press of the slot (use_ab) casts it, spending a
 // slot for a leveled spell. Touch spells land on a foe within reach; heals find the hurt friend.
-#test "Player mode casts Inflict Wounds, Acid Splash, Magic Missile, Mass Healing Word and Shatter from the hotbar" #steps 4000000000 {
+// Player mode for one class: each of its spells from Inflict Wounds to Shatter cast from the hotbar,
+// counted. One Lab per call; the checks below take a class or two each, as a Lab is most of a
+// check's traversal budget.
+player_mode_casts :: (kl: int) -> int {
   played := 0;
-  for kl: [4] int.[RS_WIZARD, RS_SORCERER, RS_BARD, RS_CLERIC] {
-    s: [1] Lab; s[0].skeletons = 0; s[0].horde = false;
-    lab_start(s[..]);
-    b := bt(s[..]);
-    for p: 0..<12 { if ROSTER[p] == kl { s[0].pick = p; } }
-    s[0].player = true; pick_hero(s[..]);
-    me := s[0].me; #assert me >= 0 && b[0].c[me].klass == kl;
-    list: [SLOTS] Ab; n := abilities(kl, list[..]);
-    for k: 0..<n {
-      a := list[k];
-      if a.kind != AB_SPELL || a.sp < SP_INFLICT_WOUNDS || a.sp > SP_SHATTER { continue; }
-      foe := nearest_foe(s[..], me); #assert foe >= 0;
-      e := free_near(s[..], b[0].c[me].x + (ifx rs_spell(a.sp).range_ft == 5 then 1 else 3), b[0].c[me].y);
-      rs_place(b, foe, e % s[0].cols, e / s[0].cols);
-      b[0].c[foe].hp = b[0].c[foe].hp_max; b[0].c[me].hp = b[0].c[me].hp_max;
-      if a.tg == TG_ALLY { w := nearest_friend(s[..], me); #assert w >= 0; b[0].c[w].hp = 1; }
-      rs_start_turn(b, me);
-      seq := b[0].book[0].seq; slots := ifx a.lvl > 0 then b[0].c[me].slots[a.lvl] else 0;
-      use_ab(s[..], me, a, foe);
-      was_cast := false;
-      for q: 0..<rs_min(b[0].book[0].count, b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], q); if ev.kind == RS_EV_CAST && ev.spell == a.sp && ev.by == me { was_cast = true; } }
-      #assert was_cast;
-      if a.lvl > 0 { #assert b[0].c[me].slots[a.lvl] == slots - 1; }
-      rs_end_turn(b, me);
-      played += 1;
-    }
+  s: [1] Lab; s[0].skeletons = 0; s[0].horde = false;
+  lab_start(s[..]);
+  b := bt(s[..]);
+  for p: 0..<12 { if ROSTER[p] == kl { s[0].pick = p; } }
+  s[0].player = true; pick_hero(s[..]);
+  me := s[0].me; #assert me >= 0 && b[0].c[me].klass == kl;
+  list: [SLOTS] Ab; n := abilities(kl, list[..]);
+  for k: 0..<n {
+    a := list[k];
+    if a.kind != AB_SPELL || a.sp < SP_INFLICT_WOUNDS || a.sp > SP_SHATTER { continue; }
+    foe := nearest_foe(s[..], me); #assert foe >= 0;
+    e := free_near(s[..], b[0].c[me].x + (ifx rs_spell(a.sp).range_ft == 5 then 1 else 3), b[0].c[me].y);
+    rs_place(b, foe, e % s[0].cols, e / s[0].cols);
+    b[0].c[foe].hp = b[0].c[foe].hp_max; b[0].c[me].hp = b[0].c[me].hp_max;
+    if a.tg == TG_ALLY { w := nearest_friend(s[..], me); #assert w >= 0; b[0].c[w].hp = 1; }
+    rs_start_turn(b, me);
+    seq := b[0].book[0].seq; slots := ifx a.lvl > 0 then b[0].c[me].slots[a.lvl] else 0;
+    use_ab(s[..], me, a, foe);
+    was_cast := false;
+    for q: 0..<rs_min(b[0].book[0].count, b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], q); if ev.kind == RS_EV_CAST && ev.spell == a.sp && ev.by == me { was_cast = true; } }
+    #assert was_cast;
+    if a.lvl > 0 { #assert b[0].c[me].slots[a.lvl] == slots - 1; }
+    rs_end_turn(b, me);
+    played += 1;
   }
-  #assert played == 7;   // Magic Missile twice (Wizard, Sorcerer), Shatter twice (Sorcerer, Bard), and one each of the rest
+  return played;
+}
+#test "Player mode casts Inflict Wounds, Acid Splash, Magic Missile, Mass Healing Word and Shatter from the hotbar: Wizard and Sorcerer" #steps 2000000000 {
+  w := player_mode_casts(RS_WIZARD); #assert w == 1;
+  so := player_mode_casts(RS_SORCERER); #assert so == 3;   // Magic Missile each, and the Sorcerer's Acid Splash and Shatter
+}
+#test "Player mode casts Inflict Wounds, Acid Splash, Magic Missile, Mass Healing Word and Shatter from the hotbar: Bard and Cleric" #steps 2000000000 {
+  #assert player_mode_casts(RS_BARD) == 2 && player_mode_casts(RS_CLERIC) == 1;   // Shatter, Mass Healing Word, Inflict Wounds
 }

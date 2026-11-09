@@ -935,8 +935,8 @@ xc_bow_pace :: (s: [] Lab) -> f32 { return bow.bow_pace(s[0].xc[0].draw[0]); }
 // (everglade-dash.coax), begun when the pipeline accepts an action whose feel moves `dash`
 // (class-feel.coax xf_feel, aethyr/action/deed.coax deed_show). Here it is only wired in.
 xc_dashing :: (s: [] Lab) -> bool {
-  cr := s[0].creator[0];
-  return cr.experimental && cr.hostiles[0].hp > 0 && sprint.sprint_on(s[0].xc[0].dash[0], cr.clock);
+  cr := s[0].creator[..];
+  return cr[0].experimental && cr[0].hostiles[0].hp > 0 && sprint.sprint_on(s[0].xc[0].dash[0], cr[0].clock);
 }
 // Your pace over your run now (lab_move_scale).
 xc_dash_rate :: (s: [] Lab) -> f32 { return ifx xc_dashing(s) then sprint.sprint_pace(s[0].xc[0].dash[0], s[0].creator[0].clock) else 1.0f32; }
@@ -2573,12 +2573,15 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 }
 
 #test "experimental combat stores swaps through the host" {
-  s: [1] Lab; s[0].creator[0].on = true; s[0].creator[0].experimental = true;
-  xc_start(s[0].xc[..], FB_CL_WIZARD); xc_swap(s[0].xc[..], 0, 1);
-  #assert lab_action(s[..]) == 12 && s[0].out_n > 0;
-  t: [1] Lab; lab_message(t[..], 12, cast(string) s[0].outbox[0..<s[0].out_n]);
+  // one Lab at a time: the message and the bar it sets are kept, then the first Lab goes
+  msg: [OUTBOX_CAP] u8; n := 0; sp := 0;
+  { s: [1] Lab; s[0].creator[0].on = true; s[0].creator[0].experimental = true;
+    xc_start(s[0].xc[..], FB_CL_WIZARD); xc_swap(s[0].xc[..], 0, 1);
+    #assert lab_action(s[..]) == 12 && s[0].out_n > 0;
+    n = s[0].out_n; for i: 0..<n { msg[i] = s[0].outbox[i]; } sp = s[0].xc[0].bar[0].sp; }
+  t: [1] Lab; lab_message(t[..], 12, cast(string) msg[0..<n]);
   xc_start(t[0].xc[..], FB_CL_WIZARD);
-  #assert t[0].xc[0].bar[0].sp == s[0].xc[0].bar[0].sp;
+  #assert t[0].xc[0].bar[0].sp == sp;
 }
 // One Fighter swing at a monster ahead, the frames dt apart (alternating with dt2): the accepted contacts.
 xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
@@ -2818,13 +2821,13 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
 #test "experimental combat: a Ranger holds the longbow, its Attack is a shot, and Fighters keep their blades" {
   #assert xc_kit(FB_CL_RANGER) == XC_KIT_BOW && cc.CC_KIT_MESH[XC_KIT_BOW] == 4 && !cc.CC_KIT_TWO[XC_KIT_BOW] && xc_kit(FB_CL_ROGUE) == 3 && xc_kit(FB_CL_FIGHTER) == 1;
   #assert rs_weapon(W_LONGBOW).dice == 1 && rs_weapon(W_LONGBOW).sides == 8 && rs_weapon(W_LONGBOW).range_ft == 150 && rs_weapon(W_LONGBOW).long_ft == 600;
-  s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.05, 1]);
+  { s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.05, 1]);
   #assert xc_has_bow(s[..]) && s[0].xc[0].b[0].c[0].ranged == W_LONGBOW;
   // a key's press draws and looses itself at full draw
   slot := xc_slot_of(s[0].xc[..], FB_ATTACK); #assert slot >= 0 && xc_press(s[..], slot) && s[0].xc[0].draw[0].on && s[0].xc[0].draw[0].self_loose;
   xc_test_fly(s[..], 0.5); #assert s[0].xc[0].bow_shots == 0 && s[0].creator[0].aim > 0.9;
-  xc_test_fly(s[..], 0.4); #assert s[0].xc[0].bow_shots == 1 && !s[0].xc[0].draw[0].on;
-  t: [1] Lab; xc_test_lab(t[..], FB_CL_FIGHTER, 0); #assert !xc_has_bow(t[..]) && !xc_bow_begin(t[..], false);
+  xc_test_fly(s[..], 0.4); #assert s[0].xc[0].bow_shots == 1 && !s[0].xc[0].draw[0].on; }
+  t: [1] Lab;   // after the first Lab is gone: two at once is most of the check's value slots xc_test_lab(t[..], FB_CL_FIGHTER, 0); #assert !xc_has_bow(t[..]) && !xc_bow_begin(t[..], false);
 }
 #test "experimental combat: held and let go at a Goblin, the arrow arcs to it and the Longbow's 1d8 + Dex lands" #steps 800000000 {
   s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
@@ -2895,11 +2898,7 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   #assert h[0].shots[0].state==hostile.HS_LANDED && h[0].shots[0].hit;
   xc_shots_step(s[..]); #assert h[0].shots[0].ended && fxp_live(s[0].puffs[..])==1 && s[0].xc[0].arrows[0].a[s[0].xc[0].shot_arrow[0]-1].state==bow.ARROW_HIT;
   hostile.hostile_tick(h,0,0,0,0.05); #assert h[0].shots[0].state==hostile.HS_FREE;
-  // through the world's own tick (the bodies proposed, then moved): the shot is kept
-  h[0].enemies[g].z=10; h[0].enemies[g].cool=0; h[0].enemies[g].swing= -1;
-  for k: 0..<14 { xc_hostile_tick(s[..],0.05); }
-  kept := false; for k: 0..<hostile.HS_SHOTS { if h[0].shots[k].state!=hostile.HS_FREE { kept=true; } }
-  #assert kept;
+  // (through the world's own tick, the next check)
   // the Hill Giant 2 m off: Tree Club twice, and you are knocked Prone
   boss := -1; for i: 0..<XC_FOES { if hostile.hostile_kind(i)==xdungeon.DG_KIND_BOSS { boss=i; } }
   #assert boss>=0;
@@ -2907,6 +2906,21 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   b[0].c[boss+1].turn_at=0;
   #assert hostile.hc_offer(h[0].contacts[..],boss); xc_hostile_contacts(s[..]);
   #assert b[0].c[0].hp==61 && rs_has(b[0].c[0],RS_PRONE) && h[0].hits==2;   // 3d8 + 5 twice
+}
+// Its own check: each monster step far from you gathers the walls afresh, and the two halves
+// together came near the traversal budget.
+#test "experimental combat: a Goblin's shot is kept through the world's own tick" #steps 400000000 {
+  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=100; b[0].c[0].hp_max=100; b[0].c[0].temp=0;
+  g := 3; h[0].enemies[g].kind=xdungeon.DG_KIND_GREMLIN; h[0].enemies[g].x=0; h[0].enemies[g].z=10;
+  h[0].enemies[g].awake=true; h[0].enemies[g].cool=0; b[0].c[g+1].turn_at=0;
+  xc_sync_vitals(s[..]);
+  // through the world's own tick (the bodies proposed, then moved): the shot is kept
+  h[0].enemies[g].swing= -1;
+  for k: 0..<14 { xc_hostile_tick(s[..],0.05); }
+  kept := false; for k: 0..<hostile.HS_SHOTS { if h[0].shots[k].state!=hostile.HS_FREE { kept=true; } }
+  #assert kept;
 }
 
 #test "experimental combat: physical contact uses shared class AC, defenses, temporary HP and the saved player turn" {

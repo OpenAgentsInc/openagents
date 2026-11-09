@@ -1,7 +1,7 @@
 // SRD 5.2.1 p.181: levels, D20 Test penalty, Speed reduction and recovery.
 #authority;
 rs_exhaustion_penalty :: (c: RsCreature) -> int #effects(all) { return 2*c.exhaustion; }
-rs_exhaustion_speed :: (c: RsCreature, speed: int) -> int #effects(all) { return rs_max(speed-5*c.exhaustion,0); }
+rs_exhaustion_speed :: (exhaustion: int, speed: int) -> int #effects(all) { return rs_max(speed-5*exhaustion,0); }   // the creature's exhaustion level, not the whole creature
 
 // One completed source-authorized recovery removes one level. This does not
 // itself admit/complete a Long Rest or revive a dead creature.
@@ -21,7 +21,7 @@ rs_remove_exhaustion :: (c: [] RsCreature) -> bool #effects(all) {
   for level: 0..<7 { for speed: 0..<43 {
     c: RsCreature; c.exhaustion=level;
     #assert rs_exhaustion_penalty(c)==level*2;
-    #assert rs_exhaustion_speed(c,speed)==(ifx speed>5*level then speed-5*level else 0);
+    #assert rs_exhaustion_speed(c.exhaustion,speed)==(ifx speed>5*level then speed-5*level else 0);
   } }
 }
 

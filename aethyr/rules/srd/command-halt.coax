@@ -48,7 +48,7 @@
   rs_halt_finish(c[..]); #assert c[0].eff[3].kind == EF_NONE;
 }
 rs_capable :: (c: RsCreature) -> bool #effects(all) {
-  return rs_up(c) && (c.cond & (RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS)) == 0;
+  return !c.dead && c.hp > 0 && (c.cond & (RS_INCAPACITATED|RS_PARALYZED|RS_PETRIFIED|RS_STUNNED|RS_UNCONSCIOUS)) == 0;
 }
 rs_effect_uses_clock :: (kind: int) -> bool #effects(all) {
   return kind != EF_NONE && kind != EF_HALT && kind != EF_HALT_PENDING && kind != EF_HELP_CHECK && kind != EF_HELP_ATTACK && kind != EF_REST_SLEEP && kind != EF_KNOCKOUT && kind != EF_READY;
