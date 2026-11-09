@@ -102,7 +102,10 @@ rc_ranged :: (a: FbAb) -> bool { return a.kind == FB_SPELL && a.tg != FB_SELF; }
 // released now asks whether its caster sees where it lands. How many.
 rm_eg_sights :: (v: [] RmServer, k: int) -> int #export_c #effects(all) {
   if !rm_eg_live(v, k) { return 0; }
-  if v[0].eg[k].e2 { return e2_familiar_sights(v,k,e2_aid_sights(v,k)); }
+  if v[0].eg[k].e2 {
+    fg_sync(v,k);   // resolve changed NPC orders before sampling reaction sight
+    return e2_familiar_sights(v,k,e2_aid_sights(v,k));
+  }
   n := 0;
   for q: 0..<EG_CASTS {
     c := v[0].eg[k].casts[q..<q + 1];

@@ -7591,3 +7591,9 @@ Everglade II extends the room grid south through its distant clearing.
 Room Z conversions use the room's grid offset in both directions. The
 original Everglade grid and the world coordinates on the wire retain their
 existing origins and units.
+
+A familiar Step can provoke a hostile room NPC's Opportunity Attack.
+The room samples sight from each eligible attacker to the departure square
+and checks the route independently. The shared Reaction resolves before the
+step. A blocked route never provokes, and a lethal Reaction persists while
+the step spends no movement.

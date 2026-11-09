@@ -226,6 +226,7 @@ EgRoom :: struct {
   ev_dropped: int;               // events a tick had no room for (EG_EVENTS, EG_EV_BYTES), since the host last asked
   sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
   seat: [EG_SEATS] EgSeat;
+  familiar_reactions: [EG_SEATS] E2StepReactions;
   tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   casts: [EG_CASTS] EgCast; cast_order: int;
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals

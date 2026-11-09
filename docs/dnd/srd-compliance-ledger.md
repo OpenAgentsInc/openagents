@@ -967,8 +967,9 @@ and the page fixture verifies request encoding and matching acknowledgments.
 Everglade II's Step button now asks the room to move the familiar one
 square in the direction the owner faces. The room checks clearance from
 the familiar's position and uses its saved turn and movement budget.
-The room's hostile Opportunity Attack selection for familiar movement
-still needs integration.
+The room checks hostile NPC sight separately from path clearance and
+resolves an available Opportunity Attack before departure. An attack that
+destroys the familiar stops the step before it spends movement.
 
 Everglade II extends its combat grid south through the distant clearing.
 The room converts placement, casts, NPCs, effects, collision queries and

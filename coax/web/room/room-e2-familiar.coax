@@ -140,6 +140,30 @@ e2_familiar_ask :: (v:[]RmServer,k:int,id:SeatId,text:string) {
   }
   v[0].eg[k].seat[id.value].familiar=req;
 }
+// At most one Reaction per room creature. Each candidate gets its own
+// sight query from the attacker to the familiar's departure square.
+E2StepReactions :: struct { n:int; choice:[E5RR_BEASTS]RsOpportunityChoice; }
+e2_familiar_step_sights :: (r:[]E5rRoom,s:int,req:E2Familiar,out:[]E2StepReactions) {
+  b:=r[0].b[..]; f:=r[0].familiar[s].me; owner:=E5RR_SEAT+s;
+  out[0].n=0;
+  if rs_has(b[0].c[f],RS_INVISIBLE) { return; }
+  for q:0..<E5RR_BEASTS {
+    bt:=r[0].beasts[q..<q+1];
+    hostile:=e5rd_cult(bt[0]) && bt[0].form!=E5RR_FORM_WARD && r[0].raid[0].slot[q].stage!=E5RD_FLEE;
+    ordered:=bt[0].forge_id>0 && bt[0].forge_action==FNP_ATTACK && !bt[0].forge_building && (bt[0].foe==owner || bt[0].foe==f);
+    if !hostile && !ordered { continue; }
+    i:=E5RR_BEAST0+q;
+    if rs_has(b[0].c[i],RS_BLINDED) { continue; }
+    weapon:=b[0].c[i].weapon;
+    w:=rs_weapon(weapon);
+    if weapon<0 || weapon>=W_ARCANE_BURST || (w.range_ft>w.reach_ft && !w.both) { weapon=W_UNARMED; w=rs_weapon(weapon); }
+    move:=RsOpportunityMove.{x=req.x,y=req.y,reach=w.reach_ft,melee=true,seen=true,movement=true};
+    if !rs_opportunity_trigger(b,i,f,move) { continue; }
+    out[0].choice[out[0].n]=RsOpportunityChoice.{actor=i,weapon=weapon};
+    out[0].n+=1;
+  }
+}
+
 e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
   room:=v[0].eg[k..<k+1]; b:=room[0].rules[0].b[..]; next:=first;
   for s:0..<EG_SEATS {
@@ -149,11 +173,14 @@ e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
     actor:=E5RR_SEAT+s;
     if req.order==4 {
       f:=room[0].rules[0].familiar[s].me;
+      reactions:=room[0].familiar_reactions[s..<s+1]; reactions[0].n=0;
       if st[0].placed && room[0].rules[0].live[s] && room[0].rules[0].familiar[s].open && !b[0].c[f].dead {
         angle:=st[0].pose.yaw;
         req.x=b[0].c[f].x+int(floor(sin(angle)+0.5));
         req.y=b[0].c[f].y+int(floor(cos(angle)+0.5));
-        req.ray=next; next+=1;
+        req.ray=next;
+        e2_familiar_step_sights(room[0].rules[..],s,req,reactions);
+        next+=1+reactions[0].n;
       }
       st[0].familiar=req; continue;
     }
@@ -177,7 +204,18 @@ e2_familiar_ray :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool {
   seats:=v[0].eg[k].seat[..]; rules:=v[0].eg[k].rules[..];
   for s:0..<EG_SEATS {
     req:=seats[s].familiar;
-    if req.ray!=q || (req.pending<=0 && req.active<=0) { continue; }
+    if req.ray<0 || (req.pending<=0 && req.active<=0) { continue; }
+    if req.order==4 && q>req.ray {
+      reactions:=v[0].eg[k].familiar_reactions[s..<s+1];
+      index:=q-req.ray-1;
+      if index>=reactions[0].n { continue; }
+      b:=rules[0].b[..]; f:=rules[0].familiar[s].me;
+      i:=reactions[0].choice[index].actor;
+      out[0]=e5rr_cell_m(b[0].c[i].x); out[1]=0; out[2]=e5rr_cell_z(rules,b[0].c[i].y);
+      out[3]=e5rr_cell_m(b[0].c[f].x); out[4]=0; out[5]=e5rr_cell_z(rules,b[0].c[f].y);
+      return true;
+    }
+    if req.ray!=q { continue; }
     p:=seats[s].pose;
     out[0]=p.x; out[1]=p.y; out[2]=p.z;
     if req.order==4 {
@@ -195,7 +233,14 @@ e2_familiar_ray :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool {
 e2_familiar_seen :: (v:[]RmServer,k:int,q:int,clear:bool) {
   for s:0..<EG_SEATS {
     st:=v[0].eg[k].seat[s..<s+1];
-    if (st[0].familiar.pending>0 || st[0].familiar.active>0) && st[0].familiar.ray==q { st[0].familiar.clear=clear; return; }
+    req:=st[0].familiar;
+    if req.ray<0 || (req.pending<=0 && req.active<=0) { continue; }
+    if req.ray==q { st[0].familiar.clear=clear; return; }
+    if req.order==4 && q>req.ray {
+      reactions:=v[0].eg[k].familiar_reactions[s..<s+1];
+      index:=q-req.ray-1;
+      if index<reactions[0].n { reactions[0].choice[index].seen=clear; return; }
+    }
   }
 }
 // Status one begins the cast, two completes it, and three ends it without payment.
@@ -250,13 +295,12 @@ e2_familiar_lifecycle :: (r:[]E5rRoom,s:int,req:E2Familiar)->bool {
   return ok;
 }
 
-e2_familiar_step :: (r:[]E5rRoom,s:int,req:E2Familiar)->bool {
+e2_familiar_step :: (r:[]E5rRoom,s:int,req:E2Familiar,reactions:[]E2StepReactions)->bool {
   if !req.clear || !r[0].familiar_ready || !r[0].live[s] { return false; }
   b:=r[0].b[..]; seat:=r[0].familiar[s..<s+1];
   if !seat[0].open { return false; }
   fb_seat_in(b,seat);
-  choices:[1]RsOpportunityChoice;
-  ok:=rs_familiar_command_step(b,E5RR_SEAT+s,false,req.x,req.y,choices[0..<0]);
+  ok:=rs_familiar_command_step(b,E5RR_SEAT+s,false,req.x,req.y,reactions[0].choice[0..<reactions[0].n]);
   fb_seat_out(b,seat);
   return ok;
 }
@@ -272,7 +316,7 @@ e2_familiar_commit :: (v:[]RmServer,k:int) {
     st[0].familiar=E2Familiar.{last=req.last};
     ok:=false;
     if admitted && st[0].placed && req.order==4 {
-      ok=e2_familiar_step(room[0].rules[..],s,req);
+      ok=e2_familiar_step(room[0].rules[..],s,req,room[0].familiar_reactions[s..<s+1]);
     } else if admitted && st[0].placed && req.order>0 {
       ok=e2_familiar_lifecycle(room[0].rules[..],s,req);
     } else if admitted && req.clear && req.order==0 {
@@ -386,4 +430,55 @@ e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
     visible=rd[0].ok && z< -466000 && z> -474000;
   }
   #assert moved && visible;
+}
+
+#test "e2 familiar: a visible cultist can stop Step with an Opportunity Attack" #steps 4000000000 {
+  v:[1]RmServer; rm_init(v[..]); rm_clock(v[..],0,1762190000000);
+  #assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-e2-fam-reaction HTTP/1.1\r\n\r\n")==0;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-druid-2 0 -");
+  for q:0..<3 { eg_test_tick(v[..],k); }
+  r:=v[0].eg[k].rules[..]; b:=r[0].b[..]; f:=rs_familiar_of(b,0);
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+  rm_heard(v[..],0,"M1 1 8 0"); rc_test_tick(v[..],k,true);
+  e5rr_step(r,b[0].c[f].turn_at+0.1);
+  enemy:=E5RR_BEAST0;
+  r[0].beasts[0]=E5rBeast.{id=1,form=E5RR_FORM_RAID+RS_NPC_CULTIST};
+  b[0].c[enemy]=rs_cultist("Cultist",3);
+  b[0].c[enemy].turn_at=b[0].clock+100;
+  fx:=b[0].c[f].x; fy:=b[0].c[f].y;
+  b[0].c[enemy].x=fx+1; b[0].c[enemy].y=fy-1;
+  r[0].beasts[0].x=e5rr_cell_m(fx+1);
+  r[0].beasts[0].z=e5rr_cell_z(r,fy-1);
+  r[0].beasts[0].goal_x=r[0].beasts[0].x;
+  r[0].beasts[0].goal_z=r[0].beasts[0].z;
+  b[0].dice[0].fixed=true;
+  rm_heard(v[..],0,"M5 2");
+  #assert rm_eg_sights(v[..],k)==2;
+  rm_eg_sight_is(v[..],k,0,false);
+  rm_eg_sight_is(v[..],k,1,true);
+  rm_eg_end(v[..],k);
+  #assert !b[0].c[enemy].reacted && b[0].c[f].y==fy;
+  rm_heard(v[..],0,"M5 3");
+  rays:=rm_eg_sights(v[..],k);
+  #assert rays==2;
+  ray:[6]f32; #assert rm_eg_sight(v[..],k,1,ray[..]);
+  #assert ray[3]==e5rr_cell_m(fx) && ray[5]==e5rr_cell_z(r,fy);
+  rm_eg_sight_is(v[..],k,0,true);
+  rm_eg_sight_is(v[..],k,1,false);
+  rm_eg_end(v[..],k);
+  #assert !b[0].c[enemy].reacted && b[0].c[f].y==fy+1;
+  rs_place(b,f,fx,fy);
+  b[0].clock=b[0].c[f].turn_at+0.1;
+  fb_seat_step(b,r[0].familiar[0..<1]);
+  rm_heard(v[..],0,"M5 4");
+  #assert !b[0].c[enemy].dead && b[0].c[enemy].x==fx+1 && b[0].c[enemy].y==fy-1;
+  #assert rm_eg_sights(v[..],k)==2;
+  rm_eg_sight_is(v[..],k,0,true);
+  rm_eg_sight_is(v[..],k,1,true);
+  #assert v[0].eg[k].familiar_reactions[0].choice[0].seen;
+  rm_eg_end(v[..],k);
+  #assert b[0].c[enemy].reacted;
+  #assert b[0].c[f].dead;
+  #assert b[0].c[f].y== -1 && !r[0].familiar[0].turn.moved;
 }
