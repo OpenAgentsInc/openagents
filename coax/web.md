@@ -323,7 +323,7 @@ the same voice host the phone uses.
 One command ships openagents.com, and it always goes through staging:
 
 ```sh
-coax/web/release.sh                  # origin/main → staging → production
+coax/web/release.sh                  # origin/main-green → staging → production
 coax/web/release.sh --ref COMMIT     # a specific commit
 coax/web/release.sh --staging-only   # stop after staging's checks
 coax/web/rollback.sh [<time>]        # list kept releases, or put one back
@@ -331,7 +331,7 @@ coax/web/rollback.sh [<time>]        # list kept releases, or put one back
 
 **One rule stops a release:** a check that fails on staging and passes on production, confirmed by a retry. Nothing else does (owner, 2026-11-02).
 
-1. **Lock.** One release at a time across every machine and agent: `gs://openagentsgemini-openagents-web/release.lock`, created only if absent (`coax/web/release-lib.sh`). It names its holder. A waiting release ships `origin/main` as it is when it gets the lock, or exits when production already has it. A lock whose process is gone on its host, or older than 90 minutes, is taken over. `pin.sh` takes the same lock.
+1. **Lock.** One release at a time across every machine and agent: `gs://openagentsgemini-openagents-web/release.lock`, created only if absent (`coax/web/release-lib.sh`). It names its holder. A waiting release ships `origin/main-green` as it is when it gets the lock (`origin/main` when the remote has no `main-green`; see [docs/verse/green-main-pipeline.md](../docs/verse/green-main-pipeline.md)), or exits when production already has it. A lock whose process is gone on its host, or older than 90 minutes, is taken over. `pin.sh` takes the same lock.
 2. **Build once, from committed code.** A clean worktree of the commit. The compiler matches the tree's compiler inputs (`coax/provenance.sh`); checked builds are cached in `~/.cache/coax-release-fast/<fingerprint>/`, and a missing one is bootstrapped once without mutation gates.
 3. **Reports, never a stop:** the release metadata check (`scripts/coax-release.sh --check`), `tools-check` and `check-visuals`. A failure is printed and kept under `releases/<time>/`.
 4. **Staging.** `deploy.sh` uploads to the staging bucket. Meanwhile the two checks run on production to record what it fails today: `smoke.sh` (the page, every file it names, the hidden text, HTTP to HTTPS, the 404) and `goldens.ts --starts` (every page answers, its engine starts, no errors). Then both run on staging. A failure production also has never stops the release; a new one, page by page, does.

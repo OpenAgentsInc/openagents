@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Release openagents.com: build origin/main once, put it on staging, check it,
-# promote the same bytes to production, check that.
+# Release openagents.com: build origin/main-green once, put it on staging,
+# check it, promote the same bytes to production, check that.
 #
-#   release.sh                  # origin/main → staging → production
-#   release.sh --ref COMMIT     # a specific commit
+#   release.sh                  # origin/main-green → staging → production
+#   release.sh --ref COMMIT     # a specific commit (--ref origin/main: main's head)
 #   release.sh --staging-only   # stop after staging's checks
 #
 # One rule decides everything (owner, 2026-11-02): a release stops only for a
@@ -24,11 +24,16 @@
 # in the background, written to releases/<time>/).
 #
 # One release at a time across every machine: the lock is an object in the
-# production bucket (release-lib.sh). A release waiting for it ships origin/main
+# production bucket (release-lib.sh). A release waiting for it ships origin/main-green
 # as it is when it gets the lock, and does nothing if production already has it.
+#
+# main-green is the newest commit of main that passed the green-main
+# pipeline's full check (coax/remote/after.sh, docs/verse/green-main-pipeline.md),
+# so a fresh failure on main never blocks a release. With no main-green on the
+# remote, the default is origin/main.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
-ref=origin/main prod=true
+ref="" prod=true
 while (($#)); do
   case "$1" in
     --ref) ref="$2"; shift 2 ;;
@@ -87,8 +92,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-take_lock "release $ref"
+take_lock "release ${ref:-origin/main-green}"
 git -C "$repo" fetch -q origin main
+if [[ -z "$ref" ]]; then
+  if git -C "$repo" fetch -q origin +refs/heads/main-green:refs/remotes/origin/main-green 2>/dev/null; then
+    ref=origin/main-green
+    behind="$(git -C "$repo" rev-list --count origin/main-green..origin/main)"
+    echo "release: main-green is $(git -C "$repo" rev-parse --short=10 origin/main-green), $behind commit(s) behind main; those ship once a full check passes on them"
+  else
+    ref=origin/main
+    echo "release: no main-green on origin; releasing origin/main"
+  fi
+fi
 full="$(git -C "$repo" rev-parse "$ref^{commit}")"; commit="${full:0:10}"
 passed="$(live)"
 passed_commit="${passed%% *}"

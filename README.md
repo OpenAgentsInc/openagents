@@ -144,9 +144,10 @@ small model or sign and verify a Nostr event), see
     [`/projects/verse`](https://openagents.com/projects/verse/index.md) tracks the
     Verse engine and realms.
   - Each page has an `index.md` beside it for agents.
-  - Releases go through `coax/web/release.sh`: a clean build of `origin/main`
-    goes to staging, is smoked and walked, promoted to production and
-    checked again (briefly by default, the full walk with `--thorough`),
+  - Releases go through `coax/web/release.sh`: a clean build of
+    `origin/main-green` (the newest commit that passed the full check) goes
+    to staging, is smoked and walked, promoted to production and checked
+    again (briefly by default, the full walk with `--thorough`),
     with automatic rollback.
 - **The iOS app** ([`apps/openagents-ios/`](apps/openagents-ios/README.md))
   is a minimal native home: the animated graph and HUD, running in Coax.
