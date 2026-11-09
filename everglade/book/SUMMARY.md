@@ -29,3 +29,7 @@
 - [16. Spells and slots](ch016-spells-and-slots.md) (partly implemented)
 - [17. Conditions](ch017-conditions.md) (partly implemented)
 - [18. Turns become time](ch018-turns-become-time.md) (partly implemented)
+
+## Appendices
+
+- [A. A fantasy HUD](appendix-a-a-fantasy-hud.md) (partly implemented)

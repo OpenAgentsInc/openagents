@@ -188,6 +188,8 @@ Parts I through V exist today. Parts VI and VII are in progress: an armoured
 guard on the path to test NPC pathing and aggro, and the Ranger's longbow to
 attack him with. Parts VIII and IX are planned.
 
+[Appendix A](appendix-a-a-fantasy-hud.md) covers Everglade's fantasy HUD.
+
 ## How a chapter works
 
 Chapters follow the Aethyr book's rules:
