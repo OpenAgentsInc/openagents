@@ -1037,4 +1037,11 @@ Experimental passed a muted headless WebGPU playthrough with the
 Druid level 2, chose Owl on the familiar badge, and summoned it from the
 hotbar. The probe observed an active familiar and the Owl's indexed draw
 (first index 13,987,690, 240 indices, packed vertex word 44,594,800).
-The corresponding Everglade II room-to-browser receipt is pending.
+Everglade II also drew the Owl with the refreshed Wasm and shipped VPK3
+on hardware WebGPU. A browser fixture supplied a version 1 familiar
+snapshot through the socket receive callback. The client submitted the
+Owl's indexed draw (first index 2,512,927, 240 indices, packed vertex word
+6,180,144). This proves the snapshot-to-draw path. A local native build
+from before the familiar snapshot change also accepted an Owl summon
+from a level 2 Druid and spent one Wild Shape use. The current native
+room-to-browser playthrough is still pending.
