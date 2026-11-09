@@ -329,7 +329,7 @@ tool_main :: () -> int #export_c #effects(all) {
         m := ep_mark(ep_base(path), f.files);
         if m.count > 0 { fails += ep_copy(z, f, path, 0, "-", m, seen[..], warns[..]); }
       }
-      n := fs_read(path, text);
+      n := fs_read(path, text[..]);
       if n < 0 { continue; }
       s := cast(string) text[0..<n];
       a := 0; line := 1;
@@ -355,10 +355,10 @@ tool_main :: () -> int #export_c #effects(all) {
       if warns[q] > 0 { burn += warns[q]; print("warn %: % zone-local cop% of % (burn-down #%)\n", z.name, warns[q], ifx warns[q] == 1 then "y" else "ies", f.title, f.issue); }
     }
     // 2. what the zone declares, it loads; 3. what the game requires, the zone wires
-    if !ep_closure(z, closure, text) { print("everglade-parity: %'s load closure is past % files\n", z.name, EP_PATHS); return 2; }
+    if !ep_closure(z, closure[..], text[..]) { print("everglade-parity: %'s load closure is past % files\n", z.name, EP_PATHS); return 2; }
     for f: EF_FEATURES {
       loads := false;
-      for c: 0..<closure[0].n { if ep_owner(f, ep_files_at(closure, c)) { loads = true; } }
+      for c: 0..<closure[0].n { if ep_owner(f, ep_files_at(closure[..], c)) { loads = true; } }
       declared := ep_has_word(z.uses, f.name);
       if declared && !loads { fails += 1; print("FAIL %: declares % but loads none of %\n", z.name, f.title, f.owners); }
       if !declared && loads { print("note %: loads % (%) but doesn't declare it in its uses\n", z.name, f.title, f.owners); }
