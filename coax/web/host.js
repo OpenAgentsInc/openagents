@@ -944,11 +944,11 @@ async function startGpu() {
 // lost device's replacement both take theirs here.
 async function openDevice(made = () => {}) {
   if (!navigator.gpu) return null;
-  const adapter = await navigator.gpu.requestAdapter();
+  let adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return null;
   if(roomTraceEnabled)globalThis.coaxial.gpuAdapterInfo={vendor:adapter.info?.vendor,architecture:adapter.info?.architecture,device:adapter.info?.device,description:adapter.info?.description,fallback:adapter.info?.isFallbackAdapter??adapter.isFallbackAdapter??null};
   // a page with data-timing asks for the GPU's timestamps (message 610), when the adapter has them
-  const timing = !!script?.dataset.timing && adapter.features.has("timestamp-query");
+  let timing = !!script?.dataset.timing && adapter.features.has("timestamp-query");
   // a world that may place a detailed character (the character pass) asks for her vertex words'
   // binding, as far as the adapter has it; she stays off on one that has less
   const character = Math.min(engine?.exports.coaxial_character_storage_v1?.() ?? 0, adapter.limits.maxStorageBufferBindingSize);
@@ -961,10 +961,34 @@ async function openDevice(made = () => {}) {
   const culling = assets.some((a) => a.kind === "cull") && adapter.features.has("indirect-first-instance");
   const features = [...(timing || passTiming ? ["timestamp-query"] : []), ...(culling ? ["indirect-first-instance"] : []),
     ...["texture-compression-bc", "texture-compression-astc", "texture-compression-etc2"].filter((f) => adapter.features.has(f))];
-  const options = features.length ? { requiredFeatures: features } : {};
-  if (storage) options.requiredLimits = { maxStorageBufferBindingSize: storage };
   warmLayerPolicy();
-  const device = await adapter.requestDevice(options);
+  // Some drivers (Linux Vulkan) list a feature but refuse a device that asks for it, with
+  // VK_ERROR_INITIALIZATION_FAILED. Ask again with less: first without the block-compression
+  // formats (the layers read device.features, so they fall back to plain textures), then without
+  // GPU timing too, then the same on the system's other adapters. Only the last refusal stops the page.
+  const compression = (f) => f.startsWith("texture-compression-");
+  const ladder = [features, features.filter((f) => !compression(f)), features.filter((f) => !compression(f) && f !== "timestamp-query")]
+    .filter((f, i, all) => i === 0 || f.length !== all[i - 1].length);
+  let device = null, refused = null;
+  const tryAdapter = async (a) => {
+    for (const asked of ladder) {
+      if (!asked.every((f) => a.features.has(f))) continue;
+      const options = asked.length ? { requiredFeatures: asked } : {};
+      if (storage) options.requiredLimits = { maxStorageBufferBindingSize: Math.min(storage, a.limits.maxStorageBufferBindingSize) };
+      try { const d = await a.requestDevice(options); return { d, asked }; } catch (e) { refused = e; console.warn(`coaxial: the GPU refused a device (${asked.join(", ") || "no features"}): ${e.message}`); }
+    }
+    return null;
+  };
+  let got = await tryAdapter(adapter);
+  for (const powerPreference of ["low-power", "high-performance"]) {
+    if (got) break;
+    const other = await navigator.gpu.requestAdapter({ powerPreference }).catch(() => null);
+    if (other && other !== adapter) { got = await tryAdapter(other); if (got) adapter = other; }
+  }
+  if (!got) throw refused ?? new Error("the GPU refused every device request");
+  device = got.d;
+  const granted = got.asked;
+  if (!granted.includes("timestamp-query")) { timing = false; }
   device.lost.then((info) => deviceLost(device, info));
   made(device);
   if (dev) device.addEventListener("uncapturederror", (event) => { console.error("RENDER DEVICE",event.error?.message); });
