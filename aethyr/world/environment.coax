@@ -643,6 +643,67 @@ env_glade_profile :: () -> EnvironmentProfile #effects(all) {
   return p;
 }
 env_rgb :: (r: f32, g: f32, b: f32) -> EnvRgb #effects(all) { return EnvRgb.{r = r, g = g, b = b}; }
+// The glade's day (#13065, moved here from verse/style-preset.coax for #13107 so any realm can sweep
+// a day under the glade): four knots, night (the moon), dawn, noon (the glade, every field) and dusk,
+// each a bounded delta on the glade that keeps its film, saturation, exposure and shapes.
+ENV_GLADE_DAY_ID :: 2;     // the painterly day's profile id (verse/style-preset.coax STYLE_ENV_PAINTERLY)
+ENV_GLADE_DAY_KEYS :: 4;
+ENV_GLADE_DAY_TIMES :: [ENV_GLADE_DAY_KEYS] f32.[0, 0.25, 0.5, 0.75];
+// Toward a body at `elevation` (rad) whose bearing is the glade sun's turned by `turn` (rad about +y).
+env_glade_body_dir :: (turn: f32, elevation: f32) -> EnvDir #effects(all) {
+  hx := ENV_GLADE_SUN_X; hz := ENV_GLADE_SUN_Z; n := sqrt(hx * hx + hz * hz); hx = hx / n; hz = hz / n;
+  c := cos(turn); s := sin(turn);
+  return EnvDir.{x = (hx * c - hz * s) * cos(elevation), y = sin(elevation), z = (hx * s + hz * c) * cos(elevation)};
+}
+env_glade_day_knot :: (i: int) -> EnvironmentKnot #effects(all) {
+  deg: f32 = 0.017453292;
+  k := env_glade_profile().track.knots[0];
+  k.time = ENV_GLADE_DAY_TIMES[i];
+  if i == 2 { return k; }   // noon: the glade, every field
+  c := k.channels;
+  if i == 0 {
+    // night: the moon is the key, a blue 10000 K light at 0.16 of the glade's strength (painterly's
+    // night key); the ambient and sky a deep blue-black (the owner, October 29: night truly dark)
+    k.body = EnvBody.moon; k.dir = env_glade_body_dir(3.14159265, 40 * deg);
+    k.kelvin = 10000; k.intensity = ENV_GLADE_INTENSITY * 0.16;
+    c.ambient.upper = env_rgb(0.065, 0.084, 0.16); c.ambient.lower = env_rgb(0.026, 0.031, 0.029);
+    c.sky.zenith = env_rgb(0.006, 0.010, 0.030); c.sky.horizon = env_rgb(0.030, 0.050, 0.100);
+    c.sky.cloud_shade = env_rgb(0.050, 0.060, 0.090); c.sky.cloud_light = env_rgb(0.14, 0.16, 0.24);
+    c.sky.halo = env_rgb(0.55, 0.62, 0.80); c.sky.wisp = env_rgb(0.10, 0.12, 0.18); c.sky.halo_strength = 0.08;
+    c.fog.air = env_rgb(0.025, 0.040, 0.090); c.fog.sun_tint = env_rgb(0.30, 0.36, 0.55); c.fog.sun_strength = 0.25;
+    c.fog.density = 0.0065;
+  } else {
+    // dawn and dusk: a low sun a sixth of a turn east (dawn) or west (dusk) of the glade's, warm at
+    // 0.85 of its strength (painterly's dawn/dusk key); teal-cool shade under a warmer ground
+    // bounce, a teal zenith over a rose-peach horizon, deep orange round the sun; the haze a
+    // blue-violet with an orange forward glow (the warm light on near faces, the distance cool)
+    dawn := i == 1;
+    k.dir = env_glade_body_dir(ifx dawn then -1.0471976 else 1.0471976, 10 * deg);
+    k.kelvin = ifx dawn then 2800 else 2600; k.intensity = ENV_GLADE_INTENSITY * 0.85;
+    c.ambient.upper = env_rgb(0.40, 0.46, 0.54); c.ambient.lower = env_rgb(0.32, 0.27, 0.14);
+    c.sky.zenith = env_rgb(0.10, 0.36, 0.50); c.sky.horizon = env_rgb(0.98, 0.72, 0.52);
+    c.sky.cloud_shade = env_rgb(0.62, 0.52, 0.58); c.sky.cloud_light = env_rgb(1.0, 0.80, 0.62);
+    c.sky.halo = env_rgb(1.0, 0.62, 0.32); c.sky.wisp = env_rgb(1.0, 0.82, 0.70);
+    c.fog.air = env_rgb(0.56, 0.56, 0.84); c.fog.sun_tint = env_rgb(0.95, 0.42, 0.12); c.fog.sun_strength = 0.55;
+    c.fog.density = ifx dawn then 0.0065 else 0.0055;   // dawn's morning mist
+  }
+  // the horizon ambient stays the hemisphere's midpoint, as the glade's
+  c.ambient.horizon = env_rgb((c.ambient.upper.r + c.ambient.lower.r) * 0.5, (c.ambient.upper.g + c.ambient.lower.g) * 0.5, (c.ambient.upper.b + c.ambient.lower.b) * 0.5);
+  k.channels = c;
+  return k;
+}
+env_glade_day_profile :: () -> EnvironmentProfile #effects(all) {
+  p := EnvironmentProfile.{version = ENV_VERSION, id = ENV_GLADE_DAY_ID}; p.track.count = ENV_GLADE_DAY_KEYS;
+  for i: 0..<ENV_GLADE_DAY_KEYS { p.track.knots[i] = env_glade_day_knot(i); }
+  return p;
+}
+#test "the glade's day: noon is the glade, the sun low at dawn and dusk, the moon at night" {
+  p := env_glade_day_profile();
+  #assert env_profile_check(p).refusal == EnvRefusal.none && p.track.count == 4;
+  noon := env_profile_sample(p, 0.5); noon.profile = ENV_GLADE_ID;
+  #assert env_resolved_same(noon, env_profile_sample(env_glade_profile(), 0.5), false);
+  #assert env_profile_sample(p, 0.0).body == EnvBody.moon && env_profile_sample(p, 0.25).dir.y < env_profile_sample(p, 0.5).dir.y;
+}
 // Three irregular knots (0.1, 0.3, 0.75) off the glade, each changing values, identifiers and flags.
 env_test_profile3 :: () -> EnvironmentProfile #effects(all) {
   p := env_glade_profile(); p.id = 7; p.track.count = 3;

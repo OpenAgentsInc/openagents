@@ -676,48 +676,9 @@ STYLE_ENV_LOWPOLY :: 3;
 STYLE_ENV_TIMES :: [STYLE_KEYS] f32.[0, 0.25, 0.5, 0.75];
 
 // Toward a body at `elevation` (rad) whose bearing is the glade sun's turned by `turn` (rad about +y).
-style_env_dir :: (turn: f32, elevation: f32) -> EnvDir {
-  hx := ENV_GLADE_SUN_X; hz := ENV_GLADE_SUN_Z; n := sqrt(hx * hx + hz * hz); hx = hx / n; hz = hz / n;
-  c := cos(turn); s := sin(turn);
-  return EnvDir.{x = (hx * c - hz * s) * cos(elevation), y = sin(elevation), z = (hx * s + hz * c) * cos(elevation)};
-}
+style_env_dir :: (turn: f32, elevation: f32) -> EnvDir { return env_glade_body_dir(turn, elevation); }
 // Painterly's knot at key i: the glade's knot, with the deltas below.
-painterly_env_knot :: (i: int) -> EnvironmentKnot {
-  k := env_glade_profile().track.knots[0];
-  k.time = STYLE_ENV_TIMES[i];
-  if i == 2 { return k; }   // noon: the glade, every field
-  c := k.channels;
-  if i == 0 {
-    // night: the moon is the key, a blue 10000 K light at 0.16 of the glade's strength (painterly's
-    // night key); the ambient and sky a deep blue-black (the owner, October 29: night truly dark)
-    k.body = EnvBody.moon; k.dir = style_env_dir(3.14159265, 40 * DEG);
-    k.kelvin = 10000; k.intensity = ENV_GLADE_INTENSITY * 0.16;
-    c.ambient.upper = env_rgb(0.065, 0.084, 0.16); c.ambient.lower = env_rgb(0.026, 0.031, 0.029);
-    c.sky.zenith = env_rgb(0.006, 0.010, 0.030); c.sky.horizon = env_rgb(0.030, 0.050, 0.100);
-    c.sky.cloud_shade = env_rgb(0.050, 0.060, 0.090); c.sky.cloud_light = env_rgb(0.14, 0.16, 0.24);
-    c.sky.halo = env_rgb(0.55, 0.62, 0.80); c.sky.wisp = env_rgb(0.10, 0.12, 0.18); c.sky.halo_strength = 0.08;
-    c.fog.air = env_rgb(0.025, 0.040, 0.090); c.fog.sun_tint = env_rgb(0.30, 0.36, 0.55); c.fog.sun_strength = 0.25;
-    c.fog.density = 0.0065;
-  } else {
-    // dawn and dusk: a low sun a sixth of a turn east (dawn) or west (dusk) of the glade's, warm at
-    // 0.85 of its strength (painterly's dawn/dusk key); teal-cool shade under a warmer ground
-    // bounce, a teal zenith over a rose-peach horizon, deep orange round the sun; the haze a
-    // blue-violet with an orange forward glow (the warm light on near faces, the distance cool)
-    dawn := i == 1;
-    k.dir = style_env_dir(ifx dawn then -1.0471976 else 1.0471976, 10 * DEG);
-    k.kelvin = ifx dawn then 2800 else 2600; k.intensity = ENV_GLADE_INTENSITY * 0.85;
-    c.ambient.upper = env_rgb(0.40, 0.46, 0.54); c.ambient.lower = env_rgb(0.32, 0.27, 0.14);
-    c.sky.zenith = env_rgb(0.10, 0.36, 0.50); c.sky.horizon = env_rgb(0.98, 0.72, 0.52);
-    c.sky.cloud_shade = env_rgb(0.62, 0.52, 0.58); c.sky.cloud_light = env_rgb(1.0, 0.80, 0.62);
-    c.sky.halo = env_rgb(1.0, 0.62, 0.32); c.sky.wisp = env_rgb(1.0, 0.82, 0.70);
-    c.fog.air = env_rgb(0.56, 0.56, 0.84); c.fog.sun_tint = env_rgb(0.95, 0.42, 0.12); c.fog.sun_strength = 0.55;
-    c.fog.density = ifx dawn then 0.0065 else 0.0055;   // dawn's morning mist
-  }
-  // the horizon ambient stays the hemisphere's midpoint, as the glade's
-  c.ambient.horizon = env_rgb((c.ambient.upper.r + c.ambient.lower.r) * 0.5, (c.ambient.upper.g + c.ambient.lower.g) * 0.5, (c.ambient.upper.b + c.ambient.lower.b) * 0.5);
-  k.channels = c;
-  return k;
-}
+painterly_env_knot :: (i: int) -> EnvironmentKnot { return env_glade_day_knot(i); }   // aethyr/world/environment.coax
 // The key light's direction at `clock` as verse_style_at puts it (SU_KEY_DIR), and whether it is the moon.
 style_key_dir :: (p: StylePreset, clock: f32) -> EnvDir {
   e := verse_style_sun_elevation(p, clock);
