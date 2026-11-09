@@ -1006,3 +1006,17 @@ The two shipped familiar packs were updated using the Coax pack builder's
 prefixes and all other asset payloads match byte for byte. The catalog has
 one index range per form and records the new vertex base. Everglade II's
 range-addressable pack also round-tripped to the updated image.
+
+### Epic #13030 acceptance audit in progress
+
+Reviewed against main at `03bda2786f`. All nine active child issues are
+closed as completed. The epic's five acceptance items need their own
+evidence at the levels 1–6 scope.
+
+| Acceptance | Evidence retained | Outstanding verification or implementation |
+| --- | --- | --- |
+| Legal presets, features, and supported spells for all 12 classes | [Kit admission](../verification/srd-kit-admission-2026-11-08/README.md) covers all 72 class and level combinations. [Kit spell manifest](../verification/srd-kit-spells-2026-11-08/README.md) binds displayed spells to the pinned source and checks their effects and sound identities. | The class feature table above still lists missing preset mechanics and features, including Faithful Steed's spell, several always-prepared spells, and some equipment and beast traits. Verify these against current code and the slice before marking the item complete. |
+| Core casting, conditions, damage, death, actions and reactions | [Casting targets](../verification/srd-casting-target-2026-11-08/README.md), [effect capacity](../verification/srd-effect-storage-2026-11-08/README.md), [zone capacity](../verification/srd-zone-storage-2026-11-08/README.md), [conditions and knockout](../verification/srd-knockout-conditions-2026-11-08/README.md), and [actions and movement](../verification/srd-actions-movement-2026-11-08/README.md). | Confirm the combined world paths exercise the applicable core outcomes and retain the latest authority receipts for changed rules. |
+| Named used monsters, bestiary and dungeon | [Used-monster evidence](../verification/srd-used-monsters-2026-11-08/README.md) lists the consumers, source stat blocks, focused checks and mutation counts. The eleven familiar model ranges are admitted by both shipped packs. | Verify actual familiar draws through both player-facing worlds. The familiar catalog section above records remaining traits and movement modes. |
+| Shared execution and declared world profiles | [World profile](../verification/srd-world-profile-2026-11-08/README.md), [Everglade II cast adapter](../verification/srd-e2-shared-cast-2026-11-08/README.md), and [Everglade II level selector](../verification/srd-e2-levels-2026-11-08/README.md). | Complete current browser and room verification, including model delivery and the remaining sense presentation. Scope the evidence to Experimental combat and Everglade II's declared social profile. |
+| Retained focused evidence and zero-survivor core receipts | The verification directory contains the policy, native and mutation evidence grouped by rule. | Tie final receipts to the accepted source revisions and list the slice limitations that remain. |
