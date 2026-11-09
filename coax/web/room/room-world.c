@@ -386,6 +386,12 @@ bool world2_prepare(void) {
   e2mg_plant(e2mg());
   return e2_ground->done;
 }
+bool world2_contact(const float from[3], const float to[3]) {
+  if (!world2_prepare()) return false;
+  coax_t_EgMoveWorld w = e2mg_move_world(e2mg(), from[0], from[2], false);
+  coax_v_f32 bodies = e2mg_bodies(e2mg());
+  return eg_contact_clear((coax_v_f32){bodies.data, w.bodies * 7}, from[0], from[1], from[2], to[0], to[1], to[2]);
+}
 /* at (x, z, facing): where the room puts the seat back (room-everglade.coax rm_e2_place, #13057); NULL the spawn */
 bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]) {
   if (k < 0 || k >= WORLD_ROOMS || s < 0 || s >= WORLD_SEATS || !world2_prepare()) return false;

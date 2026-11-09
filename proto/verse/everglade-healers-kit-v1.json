@@ -1,0 +1,9 @@
+{
+  "identity": "everglade-healers-kit-v1",
+  "base_session": "everglade-session-v5",
+  "scope": "Everglade II only",
+  "request": "U1 SEQ",
+  "accepted": "u1 SEQ LEFT",
+  "refused": "r SEQ kit",
+  "admission": "Positive increasing request sequence per connection. The room selects the nearest dying ally in contact, checks world line of sight, and spends the shared Action and one use."
+}

@@ -150,6 +150,7 @@ EgSeat :: struct {
   claim: bool; claim_x: f32; claim_z: f32; claim_yaw: f32; hello: bool; joined_ms: int;
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
+  aid: E2Aid;
   // Everglade II rest (room-e2-rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)
@@ -377,6 +378,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_i
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
+  if v[0].eg[k].e2 { v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].healer_kit = 10; }
   rv_join(v, k, seat_id);   // the HP its player left with (room-vitals.coax, #12715)
   rv_back(v, k, seat_id);   // and where they stood in this room, if lately
   ev_join(v, k, seat_id);   // its XP and its character's level (room-events.coax, #12739)
@@ -504,11 +506,12 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
 // A seat's frame (past the relay's rate limits and pings).
 eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(text[0..<2]=="J1" && text[2]==' ')) { return; }
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1"))) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if c == 'U' { if v[0].eg[k].e2 { e2_aid_ask(v,k,seat_id,text); } return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
   if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
   if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
@@ -742,7 +745,13 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   // SRD class at level 1, srd-*-L at level L (fb_cl_hero, #13046); else the druid
   wl := e5rr_klass_of(cast(string) st[0].klass[0..<st[0].klass_n]);
   lv := fb_cl_level_of_kind(cast(string) st[0].klass[0..<st[0].klass_n]);
-  if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= E5R_CL0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level != lv) { e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv); ev_class(v, k, seat_id); }
+  if v[0].eg[k].rules[0].klass[seat] != wl || (wl >= E5R_CL0 && v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat].level != lv) {
+    c:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat..<E5RR_SEAT + seat + 1];
+    kit:=c[0].healer_kit;
+    e5rr_join_level(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl, lv);
+    if v[0].eg[k].e2 { c[0].healer_kit=kit; }
+    ev_class(v, k, seat_id);
+  }
   st[0].flags = eg_clamp(h.flags, 0, 255);
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
@@ -1021,6 +1030,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_ends_due(v, k);
   rc_tick_first(v, k);
   fg_sync(v,k);
+  if v[0].eg[k].e2 { e2_aid_commit(v,k); }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   if v[0].eg[k].e2 { e2_rest_tell_all(v, k); e2_kit_tell_all(v, k); }
   fg_hits(v,k);

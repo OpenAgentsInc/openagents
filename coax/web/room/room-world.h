@@ -101,6 +101,7 @@ void world_fresh(int k);
 bool world_use(int k, int kind, int s, int i);   /* seat s uses i (WE_DOOR: opens or shuts door i; WE_TALK: talks to spot i, -1 lets go): false when it can't */
 int world_doors(int k, int w);          /* the doors open, word w of them (WK_DOORS) */
 /* Everglade II's rooms (#13053): one planting for all, each seat placed at the glade and stepped on its land */
+bool world2_contact(const float from[3], const float to[3]);
 bool world2_prepare(void);
 bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]);
 bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);

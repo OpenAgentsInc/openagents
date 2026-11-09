@@ -744,3 +744,14 @@ remain scenery. The current registered crate mesh is reused without a pack
 change, with a Coax verifier binding its captured geometry range. See
 [the receipt](../verification/srd-placed-objects-2026-11-08/README.md) for
 provenance, focused verification and remaining world limitations.
+
+### Everglade II Healer's Kit (#13030)
+
+The room gives each new seat one kit and preserves its charges through class
+changes and grace rejoins. The hotbar's Healer's Kit control requests first
+aid for the closest dying ally within 5 feet. The room checks the forest's
+movement colliders and calls the shared Utilize action in the rescuer's saved
+turn. A successful use leaves the ally Stable at 0 HP and reports the remaining
+charges. The room regression puts a second player at 0 HP through shared damage
+and exercises range, obstructed contact, replay refusal and success. Page
+checks exercise the normal click, reply matching and disconnect handling.

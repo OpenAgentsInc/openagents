@@ -43,6 +43,7 @@
 #load "room-ticket.coax";
 #load "room-vitals.coax";
 #load "room-checkpoint.coax";
+#load "room-e2-aid.coax";
 #load "room-e2-rest.coax";   // Everglade II rests, room-authoritative on the shared rules (#13046)
 #load "room-control.coax";
 #load "background-budget.coax";

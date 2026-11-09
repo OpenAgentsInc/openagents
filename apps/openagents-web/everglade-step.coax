@@ -348,3 +348,28 @@ eg_step_motion_intent :: (input:EgMoveIn,w:EgMoveWorld)->EgMotionIntent #export_
   w.busy=false; w.still=true; #assert !eg_step_motion_intent(input,w).walk;
   w.still=false; w.aboard=true; #assert !eg_step_motion_intent(input,w).walk;
 }
+
+
+// First aid must reach past the same capsule bodies that stop the player.
+eg_contact_clear :: (bodies:[] f32,fx:f32,fy:f32,fz:f32,tx:f32,ty:f32,tz:f32)->bool #export_c #effects(all) {
+  from:=walk.v3(fx,fy+0.8,fz);
+  to:=walk.v3(tx,ty+0.8,tz);
+  for i:0..<bodies.count/7 {
+    j:=i*7;
+    a:=walk.v3(bodies[j],bodies[j+1],bodies[j+2]);
+    b:=walk.v3(bodies[j+3],bodies[j+4],bodies[j+5]);
+    pair:=walk.closest(from,to,a,b);
+    d:=walk.sub(pair.p,pair.q);
+    if walk.dot(d,d)<bodies[j+6]*bodies[j+6] { return false; }
+  }
+  return true;
+}
+
+#test "Everglade II first aid contact stops at trunks and rocks" {
+  trunk:=[7]f32.[0,0.3,0,0,1.6,0,0.25];
+  #assert !eg_contact_clear(trunk[..],-0.6,0,0,0.6,0,0);
+  #assert eg_contact_clear(trunk[..],-0.6,0,0.4,0.6,0,0.4);
+  rock:=[7]f32.[-0.5,0.9,0,0.5,0.9,0,0.35];
+  #assert !eg_contact_clear(rock[..],0,0,-0.6,0,0,0.6);
+  #assert eg_contact_clear(rock[..],0,1,-0.6,0,1,0.6);
+}

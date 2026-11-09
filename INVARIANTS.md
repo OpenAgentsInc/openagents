@@ -7460,3 +7460,13 @@ plate's tint is 1 under the glade"), `coax test aethyr/render/environment-debug.
 check in `apps/openagents-web/everglade2.coax`, and the Phase 1 receipt
 `docs/verification/aethyr-lighting-p1-2026-11-08/`.
 
+
+## Everglade II first aid uses room contact and the shared Action
+
+Everglade II grants one ten-use Healer's Kit to a new room seat. Class changes
+and grace rejoins preserve its charges. The page asks with the versioned
+`U1 SEQ` extension. The room chooses a dying ally using stepped positions and
+the forest's trunk and rock capsules. The room's saved turn and the shared
+`rs_healers_kit` executor decide the Action, charge and stabilization. The
+page presents the room's acknowledgment. See
+[Healer's Kit v1](docs/protocol/everglade-healers-kit-v1.md).

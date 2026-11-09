@@ -1,0 +1,94 @@
+// Everglade II supplies one kit per room seat. The client asks to help the
+// nearest dying ally. Positions and the host's sight result are room facts.
+E2Aid :: struct {
+  last: int;
+  pending: int;
+  target: int = -1;
+  ray: int = -1;
+  clear: bool;
+}
+
+e2_aid_ask :: (v:[] RmServer,k:int,id:SeatId,text:string) {
+  rd:=[1]WireRd.[wire_rd(text,2)];
+  seq:=wire_num(text,rd[..]);
+  if !wire_is(text,"U1") || !rd[0].ok || eg_fields(text)!=2 || seq<=0 { return; }
+  aid:=v[0].eg[k].seat[id.value].aid;
+  if seq<=aid.last { return; }
+  aid.last=seq;
+  if aid.pending>0 { eg_refuse(v,k,id,seq,"kit"); }
+  else { aid.pending=seq; }
+  v[0].eg[k].seat[id.value].aid=aid;
+}
+
+e2_aid_distance :: (a:EgPose,b:EgPose)->f32 {
+  x:=a.x-b.x; y:=a.y-b.y; z:=a.z-b.z;
+  return x*x+y*y+z*z;
+}
+
+e2_aid_sights :: (v:[] RmServer,k:int)->int {
+  room:=v[0].eg[k..<k+1];
+  rules:=room[0].rules[..]; b:=rules[0].b[..];
+  next:=0;
+  for s:0..<EG_SEATS {
+    st:=room[0].seat[s..<s+1];
+    if st[0].aid.pending<=0 { continue; }
+    st[0].aid.target=-1; st[0].aid.ray=-1; st[0].aid.clear=false;
+    if !st[0].live || !st[0].placed || !rules[0].live[s] { continue; }
+    best:=1.524f32*1.524f32;
+    target:=-1;
+    for j:0..<EG_SEATS {
+      if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
+      if (room[0].im[0].blocks[s] & (1 << j))!=0 || (room[0].im[0].blocks[j] & (1 << s))!=0 { continue; }
+      c:=b[0].c[E5RR_SEAT+j];
+      if !rs_death_eligible(c) || !rs_has(c,RS_UNCONSCIOUS) { continue; }
+      d:=e2_aid_distance(st[0].pose,room[0].seat[j].pose);
+      if d<=best && (target<0 || d<best) { best=d; target=j; }
+    }
+    if target<0 { continue; }
+    st[0].aid.target=target; st[0].aid.ray=next; next+=1;
+  }
+  return next;
+}
+
+e2_aid_ray :: (v:[] RmServer,k:int,q:int,out:[] f32)->bool {
+  seats:=v[0].eg[k].seat[..];
+  for s:0..<EG_SEATS {
+    aid:=seats[s].aid;
+    if aid.pending<=0 || aid.ray!=q || aid.target<0 { continue; }
+    a:=seats[s].pose; b:=seats[aid.target].pose;
+    out[0]=a.x; out[1]=a.y; out[2]=a.z;
+    out[3]=b.x; out[4]=b.y; out[5]=b.z;
+    return true;
+  }
+  return false;
+}
+
+e2_aid_seen :: (v:[] RmServer,k:int,q:int,clear:bool) {
+  for s:0..<EG_SEATS {
+    st:=v[0].eg[k].seat[s..<s+1];
+    if st[0].aid.pending>0 && st[0].aid.ray==q { st[0].aid.clear=clear; return; }
+  }
+}
+
+e2_aid_commit :: (v:[] RmServer,k:int) {
+  room:=v[0].eg[k..<k+1];
+  rules:=room[0].rules[..]; b:=rules[0].b[..];
+  for s:0..<EG_SEATS {
+    st:=room[0].seat[s..<s+1]; aid:=st[0].aid;
+    if aid.pending<=0 { continue; }
+    st[0].aid=E2Aid.{last=aid.last};
+    if !st[0].live || st[0].conn<0 { continue; }
+    id:=SeatId.{value=s};
+    ok:=false;
+    if aid.clear && !eg_travel_drops(v,k,id) && !rm_checkpoint_paused(v,k) && ck_can_play(v,k,id) {
+      turn:=rules[0].seat[s..<s+1];
+      fb_seat_in(b,turn);
+      ok=rs_healers_kit(b,E5RR_SEAT+s,E5RR_SEAT+aid.target,true);
+      fb_seat_out(b,turn);
+    }
+    if !ok { eg_refuse(v,k,id,aid.pending,"kit"); continue; }
+    out:[64]u8;
+    n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"u1"),aid.pending),b[0].c[E5RR_SEAT+s].healer_kit);
+    rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
+  }
+}

@@ -180,6 +180,13 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
   }
   part_us[PART_MOVE] += now_us() - tm;
   int64_t te = now_us();
+  /* The kit asks about contact in the same collision world that stepped these bodies. */
+  float ray[6];
+  coax_v_f32 query = {ray, 6};
+  int64_t count = rm_eg_sights(view(), k);
+  for (int64_t q = 0; q < count; q++)
+    if (rm_eg_sight(view(), k, q, query))
+      rm_eg_sight_is(view(), k, q, world2_contact(ray, ray + 3));
   rm_eg_rules(view(), k);
   for (int s = 0; s < WORLD_SEATS; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, (coax_t_SeatId){ s});
   int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
