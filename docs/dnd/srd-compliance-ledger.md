@@ -873,6 +873,14 @@ payment. All 51 existing Experimental combat checks passed. Lab Wasm is
 2,653,366 bytes against the revised 2,655,000-byte cap.
 
 The Wizard's prepared cast is available in the shared rules. Experimental
-currently exposes the ritual. Familiar commands, lifecycle and sense
-controls, touch delivery in the worlds, model presentation, and Everglade
-II integration still need work.
+currently exposes the ritual. The hotbar's top-left badge cycles Cast,
+Pocket or Recall, Free, and Step. Pocketing and recall preserve HP and
+initiative. Step uses the familiar's movement, and a hostile Opportunity
+Attack can stop its departure. The owner chooses the direction by facing
+it. Sensory presentation, additional command choices, touch delivery in
+the worlds, animal models, and Everglade II integration still need work.
+
+Three familiar world fixtures and all 51 existing Experimental combat
+checks passed. A muted headless WebGPU playthrough ran Summon, Pocket,
+Recall, Step and Free from the hotbar. Lab Wasm is 2,655,903 bytes against
+a revised 2,657,500-byte cap.

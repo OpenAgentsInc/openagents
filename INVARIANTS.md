@@ -7536,3 +7536,7 @@ rules. The Wizard has a copied spellbook ritual and one incense supply per
 visit. Preset changes preserve the supply count. A level 2 or higher Druid
 can choose a Wild Shape use or level 1 slot. Each summoned familiar retains
 a world position, an independent turn seat, and a marker at its position.
+Its top-left badge selects the lifecycle action or a Step command. Pocket,
+Recall and Free use the owner's Magic action. Step uses the familiar's own
+movement in the direction the owner faces. A blocked step spends no
+movement, and a hostile Opportunity Attack resolves before departure.
