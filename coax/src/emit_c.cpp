@@ -1183,6 +1183,11 @@ struct Emitter {
   const File *file;
   EmitOptions opts;
   bool verification = false;
+  // A native check binary (native-check-run.cpp): output and host effects
+  // stop the check (coax_nc_refuse) so the evaluator runs it instead, a
+  // foreign procedure is such a stub, and each procedure marks itself run.
+  bool check_binary = false;
+  std::map<const ProcDecl *, size_t> coverage_ids;
   bool versioned = false;               // a loop was versioned: the output needs IV_RUNTIME
   bool erasure = false;                // observable numeric-view stores are used
   int version_depth = 0;                // inside either copy of a versioned loop: no nested versioning
@@ -1613,6 +1618,7 @@ struct Emitter {
             std::string v=new_temp(c_type(e->args[0]->type));
             return "("+v+" = "+ex(e->args[0])+", coax_secure_zero("+v+".data, "+v+".count, sizeof(*"+v+".data), "+std::to_string(e->loc.line)+"))";
           }
+          if (e->byte_intrinsic == ByteIntrinsic::bytes_overlap && check_binary) return "(coax_nc_refuse(\"storage overlap\"), (_Bool)0)";
           if (e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {
             std::string a=new_temp(c_type(e->args[0]->type)),b=new_temp(c_type(e->args[1]->type));
             std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);  // in source order (operands of + are unsequenced)
@@ -2077,7 +2083,8 @@ struct Emitter {
       }
       case StmtKind::block: block_body(s); break;
       case StmtKind::expr:
-        if (s->expr->kind == ExprKind::call && s->expr->builtin_print) print(s->expr);
+        if (s->expr->kind == ExprKind::call && s->expr->builtin_print && check_binary) line("coax_nc_refuse(\"output\");");
+        else if (s->expr->kind == ExprKind::call && s->expr->builtin_print) print(s->expr);
         else line(ex(s->expr) + ";");
         break;
       case StmtKind::var: {
@@ -2458,7 +2465,7 @@ struct Emitter {
   // ---- declarations ----
 
   std::string prototype(const ProcDecl *p, bool header = false) {
-    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign ? "extern " : split ? "" : "static ") + c_type(p->ret) + " " +
+    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign && !check_binary ? "extern " : split ? "" : "static ") + c_type(p->ret) + " " +
                     proc_name(p) + (n32 && n32->proc == p ? "_n32" : "") + "(";
     if (p->params.count == 0 && !opts.metal_compute) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
@@ -2476,6 +2483,7 @@ struct Emitter {
   }
 
   std::string function(const ProcDecl *p) {
+    if (p->foreign && check_binary) return "\n" + prototype(p) + " {\n  coax_nc_refuse(\"a host procedure\");\n}\n";
     if (p->foreign) return "";
     current = p;
     transaction_locals.clear();
@@ -2498,6 +2506,10 @@ struct Emitter {
     for (size_t i = mine.size(); i-- > 0;) stmt(mine[i]);
     std::string body = out;mapping_active=false;
     std::string s = "\n" + (opts.debug_info ? debug_line(file,p->loc) : "") + prototype(p) + " {\n";
+    if (check_binary) {
+      auto id = coverage_ids.find(p);
+      if (id != coverage_ids.end()) s += "  coax_nc_cov[" + std::to_string(id->second) + "] = 1;\n";
+    }
     if (ret_temp) s += "  " + c_type(p->ret) + " coax_ret;\n";
     for (const std::string &t : temps) s += "  " + t + "\n";
     s += body + "}\n";
@@ -4067,6 +4079,117 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
   s += "};\nconst Coax_VerificationCheck_v1 *coax_verification_checks_v1(int64_t *count) {\n"
        "  if (count) *count = " + std::to_string(plan.checks.size()) + ";\n"
        "  return coax_verification_table_v1;\n}\n";
+  return s;
+}
+
+// A native check binary (#13122, coax/docs/native-checks.md): the program's
+// procedures, its checks' bodies and a driver main. The driver runs the
+// checks from argv[1] on, each #forall over its cases in the evaluator's
+// order, on a thread with a large stack, and writes one line per event to
+// file descriptor 3: "B i" before check i, "E i cases procs..." after it
+// passes (procs: the coverage ids it ran), "T case\tline\tpath\twhat" when
+// it traps (the runtime then aborts) and "R what" when it refuses (output or
+// a host effect: the evaluator decides that check). The parent restarts the
+// driver after the check that stopped it.
+std::string emit_check_binary_c(const File *file, const EmitOptions &opts, const NativeCheckCPlan &plan) {
+  Emitter em{file, opts};
+  em.verification = true;
+  em.check_binary = true;
+  for (size_t i = 0; i < plan.procedures.size(); ++i) {
+    em.verification_names.emplace(plan.procedures[i], "coax_verification_body_" + std::to_string(i));
+    em.coverage_ids.emplace(plan.procedures[i], i);
+  }
+  std::string functions;
+  g_instance_c_bytes = 0;
+  for (const ProcDecl *p : plan.procedures) functions += em.function(p);
+  std::string inits = init_functions(file, em);
+  std::string shows = show_functions(file, em);
+  TypeWriter types;
+  types.forward_structs(file);
+  std::vector<Type> all;
+  collect_types(file, &all);
+  for (Type type : all) types.need(type);
+  types.layout_asserts(file);
+
+  std::string s = "/* A native check binary (coax native checks). Not product emission. */\n"
+                  "#include <errno.h>\n#include <pthread.h>\n#include <unistd.h>\n";
+  s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
+  s += source_runtime(file, true);
+  s += "static unsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
+       "static void coax_nc_write(const char *at, size_t n) {\n"
+       "  while (n) { ssize_t w = write(3, at, n); if (w < 0 && errno == EINTR) continue; if (w <= 0) _exit(97); at += w; n -= (size_t)w; }\n"
+       "}\n"
+       "static _Noreturn void coax_nc_refuse(const char *what) {\n"
+       "  char line[256]; int n = snprintf(line, sizeof line, \"R %s\\n\", what);\n"
+       "  coax_nc_write(line, (size_t)n); _exit(98);\n"
+       "}\n";
+  if (em.strict_math) s += strict_math_runtime();
+  if (em.transactions) s += transaction_runtime();
+  if (em.erasure) s += ZERO_RUNTIME;
+  if (em.barrier) s += BARRIER_RUNTIME;
+  if (em.wrapping) s += WRAP_RUNTIME;
+  if (em.intops) s += INTOPS_RUNTIME;
+  if (em.versioned) s += IV_RUNTIME;
+  s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
+  s += "\n/* Types */\n" + types.out;
+  if (em.wide) s += WIDE_RUNTIME;
+  s += view_helpers();
+  if (em.transactions) s += transaction_captures(types.done);
+  if (!em.ct_values.empty()) {
+    s += "\n/* Values computed at compile time */\n";
+    for (size_t i = 0; i < em.ct_values.size(); ++i) {
+      const Expr *e = em.ct_values[i];
+      s += "static const " + c_type(e->type) + " coax_k" + std::to_string(i) + " = " + em.init_list(*e->ct) + ";\n";
+    }
+  }
+  s += "\n" + inits + shows + "\n";
+  for (const ProcDecl *p : plan.procedures) s += em.prototype(p) + ";\n";
+  s += functions;
+  s += native_check_table_v2(file, em, plan);
+  s += "\n/* The driver. */\n"
+       "static uint64_t coax_nc_case;\n"
+       "static void coax_nc_trap(const char *what, int64_t what_count, const char *path, int64_t path_count, int64_t line) {\n"
+       "  char text[8192]; int n = snprintf(text, sizeof text, \"T %llu\\t%lld\\t%.*s\\t%.*s\\n\", (unsigned long long)coax_nc_case, (long long)line,\n"
+       "                                    (int)(path_count < 4000 ? path_count : 4000), path, (int)(what_count < 2000 ? what_count : 2000), what);\n"
+       "  if (n > 0) coax_nc_write(text, (size_t)(n < (int)sizeof text ? n : (int)sizeof text - 1));\n"
+       "}\n"
+       "static int64_t coax_nc_start;\n"
+       "static void *coax_nc_main(void *unused) {\n"
+       "  (void)unused;\n"
+       "  int64_t count = 0;\n"
+       "  const Coax_VerificationCheck_v2 *table = coax_verification_checks_v2(&count);\n"
+       "  uint64_t words[64];\n"
+       "  char text[64];\n"
+       "  for (int64_t i = coax_nc_start; i < count; i++) {\n"
+       "    const Coax_VerificationCheck_v2 *c = &table[i];\n"
+       "    int n = snprintf(text, sizeof text, \"B %lld\\n\", (long long)i); coax_nc_write(text, (size_t)n);\n"
+       "    memset(coax_nc_cov, 0, sizeof coax_nc_cov);\n"
+       "    for (uint64_t k = 0; k < c->case_count; k++) {\n"
+       "      coax_nc_case = k;\n"
+       "      uint64_t rest = k;\n"
+       "      for (int64_t b = c->binding_count; b-- > 0;) {\n"
+       "        const Coax_VerificationBinding_v2 *d = &c->bindings[b];\n"
+       "        uint64_t at = rest % d->count; rest /= d->count;\n"
+       "        words[b] = d->values ? d->values[at].bits : (uint64_t)d->first + at;\n"
+       "      }\n"
+       "      if (c->run_values(words, c->binding_count) != 0) coax_nc_refuse(\"a binding mismatch\");\n"
+       "    }\n"
+       "    n = snprintf(text, sizeof text, \"E %lld %llu\", (long long)i, (unsigned long long)c->case_count); coax_nc_write(text, (size_t)n);\n"
+       "    for (size_t p = 0; p < sizeof coax_nc_cov; p++) if (coax_nc_cov[p]) { n = snprintf(text, sizeof text, \" %zu\", p); coax_nc_write(text, (size_t)n); }\n"
+       "    coax_nc_write(\"\\n\", 1);\n"
+       "  }\n"
+       "  return 0;\n"
+       "}\n"
+       "int main(int argc, char **argv) {\n"
+       "  coax_nc_start = argc > 1 ? atoll(argv[1]) : 0;\n"
+       "  coax_verification_set_trap_v1(coax_nc_trap);\n"
+       "  pthread_attr_t attr; pthread_attr_init(&attr);\n"
+       "  pthread_attr_setstacksize(&attr, (size_t)1 << 30);\n"
+       "  pthread_t thread;\n"
+       "  if (pthread_create(&thread, &attr, coax_nc_main, 0) != 0) coax_nc_main(0);\n"
+       "  else pthread_join(thread, 0);\n"
+       "  return 0;\n"
+       "}\n";
   return s;
 }
 

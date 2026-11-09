@@ -2131,6 +2131,33 @@ bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t s
   return true;
 }
 
+bool native_check_domains_quiet(File *file, NativeCheckCEntry *entry, uint64_t steps) {
+  CheckDecl *check = const_cast<CheckDecl *>(entry->check);
+  Evaluator evaluator{file};
+  evaluator.max_steps = check->steps ? check->steps : steps;
+  if (check->traversal) evaluator.traversal_limit = check->traversal;
+  evaluator.quiet = true;
+  std::vector<Evaluator::Domain> domains;
+  uint64_t total = 1;
+  bool admitted = false;
+  try { admitted = evaluator.domains(check, &domains, &total); } catch (...) { return false; }
+  if (!admitted || evaluator.failed) return false;
+  entry->domains.clear();
+  entry->case_count = total;
+  for (auto &domain : domains) {
+    NativeCheckDomain observed;
+    observed.kind = domain.fact.kind;
+    observed.type = domain.type;
+    observed.first = domain.fact.first;
+    observed.count = domain.fact.count;
+    observed.values = std::move(domain.enum_values);
+    if (domain.type->kind == TypeKind::enum_)
+      for (const EnumMember &member : domain.type->enum_decl->members) observed.labels.push_back(member.name);
+    entry->domains.push_back(std::move(observed));
+  }
+  return true;
+}
+
 bool evaluate(File *file, uint64_t max_steps, uint64_t *used, uint64_t *traversed) {
   Evaluator evaluator{file};
   evaluator.max_steps = max_steps;

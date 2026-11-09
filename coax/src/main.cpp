@@ -120,6 +120,7 @@ struct DeclClock {  // adds the seconds since it started to *into, when timings 
 #include "lex.cpp"
 #include "parse.cpp"
 #include "jobs.cpp"
+#include "native_run.cpp"
 #include "verify.cpp"
 #include "proto.cpp"
 #include "sources.cpp"
@@ -1376,7 +1377,7 @@ static std::string library_key(const Source *src, int32_t at, const EmitOptions 
   text += "run_steps=" + std::to_string(opts.run_steps) + " development=" + std::to_string(opts.development) +
           " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
           " metal=" + std::to_string(opts.metal) + " cuda=" + std::to_string(opts.cuda) + " metal_compute=" +
-          std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) +
+          std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) + native_key() +
           (g_check_slots ? " check_slots=" + std::to_string(g_check_slots) : std::string()) +
           (g_traversal_limit ? " traversal=" + std::to_string(g_traversal_limit) : std::string()) + "\n";
   for (int32_t u : library_closure(src, at)) {
@@ -1419,6 +1420,24 @@ static bool run_compilation_checks(File *file) {
     }
   std::vector<PassedCheck> passed;
   const bool parallel = parallel_checks(file, TEST_STEPS, &passed, &times);
+  // Native checks for a sequential run (native_run.cpp): those parallel_checks
+  // ran, or all of them when it ran none.
+  if (!parallel && native_mode() != NativeMode::off && g_evidence.path.empty()) {
+    if (g_native.file != file) native_run(file, std::vector<bool>((size_t)file->checks.count, true), TEST_STEPS);
+    if (native_mode() == NativeMode::on) {
+      passed.assign((size_t)file->checks.count, PassedCheck{});
+      for (size_t i = 0; i < passed.size(); i++) {
+        if (!native_passed(file, i)) continue;
+        const NativeResult &nr = g_native.results[i];
+        passed[i].passed = passed[i].native = true;
+        passed[i].cases = nr.cases;
+        passed[i].seconds = nr.seconds;
+        for (const ProcDecl *p : nr.executed)
+          if (std::find(file->procs.begin(), file->procs.end(), p) != file->procs.end()) passed[i].executed.push_back(p);
+      }
+    }
+  }
+  const bool native_prefilled = !parallel && native_mode() == NativeMode::on && !passed.empty();
   if (!path.empty() && !times.empty()) {
     std::string record;
     char seconds[64];
@@ -1427,7 +1446,7 @@ static bool run_compilation_checks(File *file) {
     cache_record(dir, sha, record);
   }
   TimedLaps laps;  // --timings: authority.verdicts, the checks' results in order (and any check run here)
-  const bool ok = parallel ? run_all_checks(file, TEST_STEPS, false, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, &passed)
+  const bool ok = parallel || native_prefilled ? run_all_checks(file, TEST_STEPS, false, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, &passed)
                            : run_all_checks(file, TEST_STEPS, false);
   laps.lap(parallel ? "authority.verdicts" : "authority.sequential");
   return ok;
@@ -1497,7 +1516,7 @@ static std::string authority_options(const File *file, const EmitOptions &opts) 
          " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
          " near=" + std::to_string(capacity_near_percent()) + " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
          std::to_string(opts.cuda) + " metal_compute=" + std::to_string(opts.metal_compute) +
-         " quantity_device=" + std::to_string(opts.quantity_device) + " check_slots=" +
+         " quantity_device=" + std::to_string(opts.quantity_device) + native_key() + " check_slots=" +
          std::to_string(g_check_slots ? g_check_slots : CB_test_slot_limit()) +
          (g_traversal_limit ? " traversal=" + std::to_string(g_traversal_limit) : std::string()) + "\n";
 }
@@ -1539,7 +1558,9 @@ static bool authority_checks(const Source *src, File *file, const EmitOptions &o
     g_check_reuse.src = src;
     g_check_reuse.tokens = &tokens;
   }
+  g_native_blocked = mutation_lowering;
   const bool ok = run_compilation_checks(file);
+  g_native_blocked = false;
   g_check_reuse.on = false;
   g_check_reuse.tokens = nullptr;
   g_authority_checked++;
@@ -1821,6 +1842,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
                       bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks, bool mutation_lowering, QueryParsed *parsed) {
+  g_native_opts = opts;
   std::vector<Token> tokens;  // load_sources makes them from each unit's lex; else the composed text is lexed
   {TimedPhase phase{"load"};if (!load_sources(arena, src, path, &tokens)) return false;}
   for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;

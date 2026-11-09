@@ -106,6 +106,7 @@ struct PassedCheck {
   uint64_t steps = 0, cases = 0, budget = 0;
   double seconds = 0;
   bool reused = false;  // taken from the check cache (ax-check-reuse), not run
+  bool native = false;  // passed as native code (native_run.cpp), not in the evaluator
   std::vector<const ProcDecl *> executed;
   // Its steps and traversal near their limits, with their consumers, as it
   // ran them (#13123): the notes a run of it here would print.
@@ -143,6 +144,7 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       r.executed = child->executed;
       r.near = child->near;
     } else r = run_check(file, c, c->steps ? c->steps : max_steps, profile);
+    native_compare(file, (size_t)index, c, r);
     const double seconds = child ? child->seconds : seconds_since(began);
     const long long ms = (long long)(seconds * 1000);
     if (g_timings.on())
@@ -177,8 +179,11 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
                     EV_check(true, r.passed, !r.passed && r.code == "E0400"), r.cases, r.steps, r.passed ? c->loc : r.loc});
     if (r.passed) {
       if (verbose) {
-        printf("ok   %s %s (%llu case%s, %llu steps, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.cases,
-               r.cases == 1 ? "" : "s", (unsigned long long)r.steps, ms);
+        if (child && child->native)
+          printf("ok   %s %s (%llu case%s, native, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.cases, r.cases == 1 ? "" : "s", ms);
+        else
+          printf("ok   %s %s (%llu case%s, %llu steps, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.cases,
+                 r.cases == 1 ? "" : "s", (unsigned long long)r.steps, ms);
         fflush(stdout);
         if (profile) print_step_profile(file, r);
       }
@@ -258,7 +263,27 @@ static int test_command(File *file, uint64_t max_steps, const char *only, bool l
     return 0;
   }
   int32_t failed = 0, ran = 0;
-  bool ok = run_all_checks(file, max_steps, true, nullptr, &failed, nullptr, nullptr, only ? &filter : nullptr, &ran, profile);
+  // Native checks first (native_run.cpp); the evaluator runs the rest.
+  std::vector<PassedCheck> native;
+  if (native_mode() != NativeMode::off && g_evidence.path.empty() && !profile) {
+    std::vector<bool> want((size_t)file->checks.count);
+    for (int32_t i = 0; i < file->checks.count; i++) want[(size_t)i] = !only || to_std(file->checks[i]->name).find(filter) != std::string::npos;
+    native_run(file, want, max_steps);
+    if (native_mode() == NativeMode::on) {
+      native.assign(want.size(), PassedCheck{});
+      std::set<const ProcDecl *> procedures(file->procs.begin(), file->procs.end());
+      for (size_t i = 0; i < native.size(); i++) {
+        if (!native_passed(file, i)) continue;
+        const NativeResult &nr = g_native.results[i];
+        native[i].passed = native[i].native = true;
+        native[i].cases = nr.cases;
+        native[i].seconds = nr.seconds;
+        for (const ProcDecl *p : nr.executed) if (procedures.count(p)) native[i].executed.push_back(p);
+      }
+    }
+    if (!g_native.why.empty()) fprintf(stderr, "coax: native checks: %s; the evaluator runs every check\n", g_native.why.c_str());
+  }
+  bool ok = run_all_checks(file, max_steps, true, nullptr, &failed, nullptr, nullptr, only ? &filter : nullptr, &ran, profile, native.empty() ? nullptr : &native);
   int32_t total = file->checks.count;
   if (only) {
     if (!ran) {
@@ -1332,8 +1357,33 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       g_check_reuse.reused++;
     }
   }
-  if (g_check_reuse.on) g_check_reuse.ran += n - (size_t)std::count(prefilled.begin(), prefilled.end(), true);
   laps.lap("authority.reuse");
+  // Native checks (native_run.cpp): each check not reused that passes as
+  // native code stands in for a child's report, with no steps or storage.
+  std::vector<bool> native(n, false);
+  if (native_mode() != NativeMode::off) {
+    std::vector<bool> want(n);
+    for (size_t i = 0; i < n; i++) want[i] = !prefilled[i];
+    native_run(file, want, max_steps);
+    for (size_t i = 0; native_mode() == NativeMode::on && i < n; i++) {
+      if (!native_passed(file, i)) continue;
+      const NativeResult &nr = g_native.results[i];
+      std::vector<uint64_t> report(FIELDS + nr.executed.size(), 0);
+      report[MAGIC] = REPORT;
+      report[PASSED] = 1;
+      report[CASES] = nr.cases;
+      memcpy(&report[SECONDS], &nr.seconds, sizeof nr.seconds);
+      report[PEAK_SLOTS] = report[END_SLOTS] = slots;
+      report[PEAK_CONTAINERS] = report[END_CONTAINERS] = containers;
+      report[PEAK_STRINGS] = report[END_STRINGS] = strings;
+      report[EXECUTED] = nr.executed.size();
+      for (size_t k = 0; k < nr.executed.size(); k++) report[FIELDS + k] = (uint64_t)(uintptr_t)nr.executed[k];
+      reports[i] = std::move(report);
+      prefilled[i] = native[i] = true;
+    }
+    laps.lap("authority.native");
+  }
+  if (g_check_reuse.on) g_check_reuse.ran += n - (size_t)std::count(prefilled.begin(), prefilled.end(), true);
   size_t next = 0;
   fflush(stdout);
   fflush(stderr);
@@ -1524,7 +1574,8 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     passed.cases = report[CASES];
     passed.budget = report[BUDGET];
     memcpy(&passed.seconds, &report[SECONDS], sizeof passed.seconds);
-    passed.reused = prefilled[i];
+    passed.reused = prefilled[i] && !native[i];
+    passed.native = native[i];
     for (size_t k = FIELDS; k < report.size(); k++) {
       const ProcDecl *p = (const ProcDecl *)(uintptr_t)report[k];
       if (procedures.count(p)) passed.executed.push_back(p);
