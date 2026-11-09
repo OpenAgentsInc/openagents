@@ -883,8 +883,10 @@ Attack can stop its departure. The owner chooses the direction by facing
 it. Experimental's Touch badge switches between Hand and Fam. Fam
 delivers Chill Touch to the clicked foe using the familiar's reach, cover,
 and Reaction. It uses the owner's saved action and spell resources.
-Sensory presentation, additional command choices, animal models, and
-Everglade II integration still need work.
+Sense spends the owner's Bonus Action to move the camera to the familiar's
+eye and spatial combat audio to its position. In the dungeon, the form's
+darkvision lights nearby darkness in gray. Additional command choices,
+animal models, and Everglade II integration still need work.
 
 Three familiar world fixtures and all 51 existing Experimental combat
 checks passed. A muted headless WebGPU playthrough ran Summon, Pocket,
@@ -903,3 +905,11 @@ also checks that changing the badge during the cast preserves the pending
 cost. The 51 existing Experimental combat checks passed, and muted
 headless WebGPU verified starting a prepared Celestial cast. Lab Wasm is
 2,660,451 bytes against the unchanged 2,661,000-byte cap.
+
+The familiar view fixture covers camera origin, darkvision range, combat
+cue panning, Blinded and Deafened fallback, and turn expiry. Five familiar
+fixtures, 51 combat checks and 179 shader checks passed. Both affected WGSL
+modules match their Coax sources. The site-wide checker found no stale
+modules and could not lower two unchanged compute modules with the local
+compiler. Muted headless WebGPU showed the familiar's low viewpoint.
+Lab Wasm built at 2,660,961 bytes against the 2,661,000-byte cap.

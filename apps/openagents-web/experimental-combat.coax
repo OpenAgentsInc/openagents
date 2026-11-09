@@ -69,7 +69,7 @@ XC_HEAD :: 32.0; XC_ROW :: 24.0; XC_ROWS_TOP :: 40.0; XC_GAP :: 8.0;
 XcWave :: struct { x: f32; z: f32; y: f32; fx: f32; fz: f32; left: f32; right: f32; near: f32; far: f32; }
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XC_FAMILIAR :: 29;
-XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3;
+XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
 XC_FAMILIAR_FORMS :: [3]int.[MON_CAT,MON_RAT,MON_SPIDER];
 XcCombat :: struct {
   familiar_order:int; familiar_touch:bool;
@@ -811,6 +811,7 @@ xc_familiar_press :: (s:[]Lab,k:int,a:FbAb)->bool {
   f:=rs_familiar_of(b,0);
   ok:=false;
   if order==XC_FAMILIAR_STEP { ok=xc_familiar_step(s); }
+  else if order==XC_FAMILIAR_SENSE { ok=rs_familiar_borrow_senses(b,0); }
   else if order==XC_FAMILIAR_RELEASE { ok=rs_familiar_dismiss(b,0,true); }
   else if order==XC_FAMILIAR_POCKET {
     if f>=0 && b[0].c[f].dead { ok=xc_familiar_arrive(s,a,false,true); }
@@ -1021,7 +1022,13 @@ xc_whiff :: (s: [] Lab, k: int) {
 xc_cue :: (s: [] Lab, name: string, gain: f32, x: f32, z: f32, rate: f32) {
   if name.count == 0 { return; }
   cr := s[0].creator[0];
-  dx := x - cr.player_x; dz := z - cr.player_z; d := sqrt(dx * dx + dz * dz);
+  xc:=s[0].xc[..]; b:=xc[0].b[..];
+  f:=rs_familiar_observer(b,0);
+  borrowed:=f>0 && !rs_has(b[0].c[f],RS_DEAFENED);
+  if !borrowed && b[0].n>0 && rs_has(b[0].c[0],RS_DEAFENED) { return; }
+  dx := x - (ifx borrowed then xc[0].familiar_x else cr.player_x);
+  dz := z - (ifx borrowed then xc[0].familiar_z else cr.player_z);
+  d := sqrt(dx * dx + dz * dz);
   pan := 0.0f32;
   if d > 0.5 { pan = (dx * cos(cr.yaw) - dz * sin(cr.yaw)) / d * 0.7; }
   exsound.experimental_sound_play(s[0].experimental_audio[..], name, gain / (1 + d / 10), pan, rate);
@@ -1062,7 +1069,7 @@ xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
     if px<=r.x0+f32(XC_BADGE)*k && py<=r.y0+f32(XC_BADGE)*k {
       f:=rs_familiar_of(x[0].b[..],0);
       if f>=0 && x[0].b[0].c[f].hp>0 {
-        n:=ifx x[0].b[0].c[f].dead then 3 else 4;
+        n:=ifx x[0].b[0].c[f].dead then 3 else 5;
         x[0].familiar_order=(x[0].familiar_order+1)%n;
       }
       return true;
@@ -1419,12 +1426,26 @@ xc_wave_draw :: (x: [] XcCombat, w: XcWave, out: [] f32, at: int, k: f32, glow: 
   }
   return n;
 }
+// The same look angles apply at the familiar's eye. Only view and lighting
+// uniforms change; the player and familiar keep their own world positions.
+xc_familiar_view :: (s:[]Lab,u:[]f32)->bool {
+  x:=s[0].xc[..]; b:=x[0].b[..]; f:=rs_familiar_observer(b,0);
+  if u.count>65 { u[65]=0; }
+  if f==0 || rs_has(b[0].c[f],RS_BLINDED) { return false; }
+  px:=x[0].familiar_x; pz:=x[0].familiar_z;
+  u[16]=px; u[17]=meadow_y(px,pz)+0.28; u[18]=pz;
+  if u.count>65 { u[65]=f32(rs_familiar_darkvision(b[0].c[f]))*f32(XC_SQ)/5; }
+  if u.count>=104 {
+    for i:68..<104 { u[i]=0; }
+    cc.dungeon_light(s[0].creator[..],u,px,pz);
+  }
+  return true;
+}
 // ---- the frame: after Character Create's (cc.frame), in Experimental
 xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32, dt: f32) -> int {
   x := s[0].xc[..]; cr := s[0].creator[..]; hs := cr[0].hostiles[..];
   n := at;
   xc_start(x, x[0].klass);
-  for i: 0..<36 { x[0].u[i] = ifx i < u.count then u[i] else 0; }
   x[0].w = w; x[0].h = h; x[0].k = k; x[0].seen = true;
   now := cr[0].clock;
   cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
@@ -1434,6 +1455,9 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   xc_rite_step(s); xc_glide_step(s);
   xc_hostile_contacts(s);
   xc_shots_step(s);
+  observing:=xc_familiar_view(s,u);
+  for i: 0..<36 { x[0].u[i] = ifx i < u.count then u[i] else 0; }
+  if observing { n=cc.text(out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1)); }
   n=cc.combat_hud(cr[0],out,u,n,w,k);
   n=xc_hit_mark(x,cr[0],out,n,w,h,k,now);
   xc_strike_due(s);
@@ -1507,12 +1531,14 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     }
   }
   // the monsters' names and Hit Points over them, your target's in gold
+  view_x:=ifx observing then x[0].familiar_x else cr[0].player_x;
+  view_z:=ifx observing then x[0].familiar_z else cr[0].player_z;
   for i: 0..<XC_FOES {
     e := hs[0].enemies[i];
     c := x[0].b[0].c[1 + i];
     if e.dead { continue; }
-    dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
-    if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, cr[0].player_x, cr[0].player_z) { continue; }
+    dx := e.x - view_x; dz := e.z - view_z;
+    if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, view_x, view_z) { continue; }
     p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 1.55, e.z);
     if !p.ok || p.x < 0 || p.x > w || p.y < 0 || p.y > h { continue; }
     if p.x < 400 * k && p.y > x[0].top - 20 * k && p.y < bottom + 20 * k { continue; }   // not over the CLASSES column
@@ -1527,7 +1553,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // A world-anchored familiar marker is drawn at the actor's position.
   familiar:=rs_familiar_of(x[0].b[..],0);
   fx:=x[0].familiar_x; fz:=x[0].familiar_z;
-  if familiar>=0 && rs_up(x[0].b[0].c[familiar]) && xdungeon.dg_sight(cr[0].player_x,cr[0].player_z,fx,fz) {
+  if !observing && familiar>=0 && rs_up(x[0].b[0].c[familiar]) && xdungeon.dg_sight(cr[0].player_x,cr[0].player_z,fx,fz) {
     p:=xc_proj(x,fx,meadow_y(fx,fz)+0.5,fz);
     if p.ok && p.x>=0 && p.x<=w && p.y>=0 && p.y<=h {
       label:=rs_monster_block(x[0].b[0].c[familiar].familiar_form).name;
@@ -1588,7 +1614,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       cost:=ifx a.lvl>0 then "1" else ifx druid then "WS" else "R";
       n=cc.text(out,n,cost,r.x1-16*k,r.y0+12*k,7*k,head);
       if familiar>=0 && x[0].b[0].c[familiar].hp>0 {
-        command:=ifx x[0].familiar_order==XC_FAMILIAR_STEP then "Step"
+        command:=ifx x[0].familiar_order==XC_FAMILIAR_SENSE then "Sense"
+          else ifx x[0].familiar_order==XC_FAMILIAR_STEP then "Step"
           else ifx x[0].familiar_order==XC_FAMILIAR_RELEASE then "Free"
           else ifx x[0].familiar_order==XC_FAMILIAR_CAST then "Cast"
           else ifx x[0].b[0].c[familiar].dead then "Recall" else "Pocket";
@@ -3068,4 +3095,30 @@ xc_check_ai_rate :: (speed:int)->bool {
   #assert b[0].c[0].slots[1]==slots-1 && x[0].familiar_incense==0;
   f:=rs_familiar_of(b,0);
   #assert f>=0 && b[0].c[f].celestial && b[0].c[0].rite==-1;
+}
+
+#test "Experimental familiar senses use its camera and spatial audio until the owner turn" #steps 100000000 {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
+  x[0].level=2; xc_set_class(x,FB_CL_DRUID);
+  k:=xc_slot_of(x,XC_FAMILIAR);
+  cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
+  #assert xc_press(s[..],k);
+  f:=rs_familiar_of(b,0); x[0].familiar_x=5; xc_sync_world(s[..]);
+  x[0].familiar_order=XC_FAMILIAR_SENSE;
+  cr[0].clock=4;
+  #assert xc_press(s[..],k) && x[0].seat[0].turn.bonus;
+  u:[104]f32; u[16]=99;
+  #assert xc_familiar_view(s[..],u[..]) && u[16]==5 && cr[0].player_x==0;
+  #assert u[18]==x[0].familiar_z && abs(u[65]-60*f32(XC_SQ)/5)<0.001;
+  audio:=s[0].experimental_audio[..]; audio[0].n=0;
+  xc_cue(s[..],"hit",1,5,x[0].familiar_z,1);
+  #assert exsound.xs_word(exsound.xs_text(audio),2)=="0.000";
+  b[0].c[f].cond=RS_BLINDED|RS_DEAFENED;
+  u[16]=99; #assert !xc_familiar_view(s[..],u[..]) && u[16]==99 && u[65]==0;
+  audio[0].n=0; xc_cue(s[..],"hit",1,5,x[0].familiar_z,1);
+  #assert exsound.xs_word(exsound.xs_text(audio),2)!="0.000";
+  b[0].c[f].cond=0;
+  b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
+  #assert !xc_familiar_view(s[..],u[..]) && u[16]==99 && u[65]==0;
 }

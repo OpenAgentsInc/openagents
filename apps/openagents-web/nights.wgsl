@@ -1400,6 +1400,10 @@ fn coax_p_cg_dungeon_light(p_albedo: vec3f, p_n: vec3f, p_p: vec3f) -> vec3f {
   var l_d: f32;
   var l_fall: f32;
   var l_facing: f32;
+  var l_colour: vec3f;
+  var l_eye: vec3f;
+  var l_range: f32;
+  var l_grey: f32;
   l_light = coax_p_v3(0x1.eb851ep-6f, 0x1.16872cp-5f, 0x1.78d4fep-5f);
   {
     let coax_from: i32 = 0i;
@@ -1418,7 +1422,15 @@ fn coax_p_cg_dungeon_light(p_albedo: vec3f, p_n: vec3f, p_p: vec3f) -> vec3f {
       }
     }
   }
-  return coax_p_mul3(l_albedo, l_light);
+  l_colour = coax_p_mul3(l_albedo, l_light);
+  l_eye = coax_p_sub3(l_p, coax_p_v3(coax_at_u(i32(16i)), coax_at_u(i32(17i)), coax_at_u(i32(18i))));
+  l_range = coax_at_u(i32(65i));
+  if (((l_range > 0.0f) && (dot(l_eye, l_eye) <= (l_range * l_range))))
+  {
+    l_grey = (coax_p_verse_style_luma(l_albedo.x, l_albedo.y, l_albedo.z) * 0x1.47ae14p-2f);
+    l_colour = coax_p_mix3(coax_p_v3(l_grey, l_grey, l_grey), l_colour, coax_p_saturate(((l_light.x - 0x1.eb851ep-6f) / 0x1.333334p-3f)));
+  }
+  return l_colour;
 }
 fn coax_p_fivelab_dye(p_t: vec3f, p_dye: vec4f) -> vec3f {
   var l_t: vec3f = p_t;

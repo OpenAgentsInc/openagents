@@ -7547,3 +7547,10 @@ Experimental's Touch spell badge switches between Hand and Fam. Fam
 targets the clicked creature for offensive spells and uses the familiar's
 position for reach and cover. The owner's saved turn and actual slot
 balance are authoritative, and the familiar's Reaction must be available.
+
+Experimental's Sense command spends the owner's Bonus Action. While the
+shared sight link is active, the camera uses the familiar's eye and the
+dungeon selects torches around that eye. Unlit surfaces within the form's
+darkvision range render in gray. Spatial combat cues use the familiar's
+position when it can hear. The owner and familiar keep their world
+positions, and the view and listener return when the shared link ends.

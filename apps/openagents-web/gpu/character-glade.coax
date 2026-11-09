@@ -185,7 +185,7 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
 }
 // Everglade Experimental's dungeon (verse/experimental-dungeon.coax), lit by its torches alone:
 // u[60..63] its block (west, south, east, north), u[64] its ceiling's height (0 when there is none
-// in the scene), u[68..103] the nine torches nearest you, each x, y, z and brightness
+// in the scene), u[65] borrowed darkvision range in metres, u[68..103] the nine torches nearest you, each x, y, z and brightness
 // (charactercreator.coax dungeon_light). Its outer walls' faces and its roof stand outside.
 #test "inside the dungeon only its torches light a face, warmest at the flame" {
  u:[104]f32;u[60]= -48;u[61]= -154;u[62]=7;u[63]= -44;u[64]=5.1;u[68]= -40;u[69]=3;u[70]= -50;u[71]=1;
@@ -205,7 +205,13 @@ cg_dungeon_light :: (albedo:V3,n:V3,p:V3,u:[]f32)->V3 {
    light=add3(light,scale3(v3(1.0f32,0.56f32,0.24f32),bright*fall*fall*facing*2.2f32/(1.0f32+0.05f32*d*d)));
   }
  }
- return mul3(albedo,light);
+ colour:V3=mul3(albedo,light);
+ eye:V3=sub3(p,v3(u[16],u[17],u[18]));range:f32=u[65];
+ if (range>0.0f32 && dot3(eye,eye)<=range*range) {
+  grey:f32=verse_style_luma(albedo.x,albedo.y,albedo.z)*0.32f32;
+  colour=mix3(v3(grey,grey,grey),colour,saturate((light.x-0.03f32)/0.15f32));
+ }
+ return colour;
 }
 
 #test "glade controls use one light frosted left panel that also holds the title" {
@@ -393,3 +399,12 @@ cg_sky_uv :: (ray:V3)->V2 {
  u[41]=1;b:=cg_walk_veil(c,u[..]);#assert b.x==0 && b.y==0 && b.z==0;
 }
 cg_walk_veil :: (c:V3,u:[]f32)->V3 {return scale3(c,1.0f32-saturate(u[41]));}
+
+#test "Familiar darkvision lights nearby darkness in gray within its supplied range" {
+ u:[104]f32;u[16]= -40;u[17]=1;u[18]= -50;u[65]=9;
+ a:=v3(1,0.3,0.1); normal:=v3(0,1,0);
+ near:=cg_dungeon_light(a,normal,v3(-40,0,-55),u[..]);
+ far:=cg_dungeon_light(a,normal,v3(-40,0,-60),u[..]);
+ #assert near.x>0.08 && near.x==near.y && near.y==near.z;
+ #assert far.x<0.06 && far.x>far.y && far.y>far.z;
+}
