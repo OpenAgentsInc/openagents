@@ -3877,8 +3877,14 @@ coaxial_lab_frame_floats :: (s: [] Lab) -> int #export_c #effects(all) { return 
 // ---- checks
 
 frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  return lab_frame(s, out[..], u[..], w, h, dpr, dt, false);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  return frame_into(s, out[..], w, h, dpr, dt);
+}
+// A frame into a check's own vertex buffer: a check that draws many frames makes the 4,000,000-float
+// buffer once, not once a frame (#13115: 13 frames were 52,004,108 traversal visits).
+frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int {
+  u: [UNIFORM_FLOATS] f32;
+  return lab_frame(s, out, u[..], w, h, dpr, dt, false);
 }
 
 #test "the battle runs on the SRD's rules: spells are cast, blows land, people drop" #steps 2000000000 {
@@ -4047,7 +4053,8 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
 
 #test "Player mode: P plays the picked class, the hotbar keys pick the action, your token walks to your body and the follow camera swings in" #steps 2000000000 {
   s: [1] Lab; s[0].skeletons = 0; s[0].horde = false; ok: bool; n: int;
-  n = frame_at(s[..], 1600, 1000, 1, 0.016);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  n = frame_into(s[..], out[..], 1600, 1000, 1, 0.016);
   ok = lab_key(s[..], 'p', 0);
   #assert s[0].player && s[0].me >= 0 && s[0].battle[0].c[s[0].me].klass == RS_FIGHTER;
   ok = lab_key(s[..], ']', 0);
@@ -4077,7 +4084,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   kept := lab_keep(s[..], w.x + 100, w.z);
   #assert kept.x < w.x + 3 * f32(SQ) + (f32(you_reach(s[..])) + 0.6) * f32(SQ);
   // the follow camera swings in behind you; the play keys show under the hotbar
-  for i: 0..<12 { n = frame_at(s[..], 1600, 1000, 1, 0.1); }
+  for i: 0..<12 { n = frame_into(s[..], out[..], 1600, 1000, 1, 0.1); }
   #assert s[0].blend == 1 && s[0].eye.y < 4 && abs(s[0].eye.x - s[0].you_x) < 8;
   // a key that would start the battle again does nothing while you play
   r := s[0].round; #assert !lab_key(s[..], 'r', 0) && s[0].round == r;
