@@ -124,6 +124,27 @@ realm uses with its own data:
 
 Pass a 44 px row on a phone so each button fits a finger.
 
+## Plates follow what you can see
+
+A name plate, its health bar, a player's name and a damage number show only
+while their body shows from the camera. One engine path decides it:
+
+1. The zone gives the eye, the body (its feet, its height) and its own
+   colliders and land: boxes, capsules and convex hulls in world heights,
+   and the heights of its land under the line.
+2. `hud_sight_look` in `aethyr/ui/hud-sight.coax` asks the visibility
+   service, `vis_line` in `aethyr/visibility.coax`, about three points on
+   the body: its knees, chest and head. The body shows when any of them
+   does. The service doesn't cross hulls yet, so `hud_sight_hull_cut` tests
+   them on the same lines.
+3. `hud_sight_step` settles the answer with `vis_settle`, so a plate at a
+   wall's edge doesn't flicker, and fades the plate in or out over 0.15 s.
+   The health bar uses the same answer as its plate.
+
+Everglade II gathers its trunks, rocks and the camp's props
+(`everglade2-sight.coax`), and Everglade Experimental its village, castle and
+dungeon walls (`xc_sight_in`). Everglade v1 doesn't use it yet.
+
 ## The HUD system map
 
 Each part is engine (any realm), game (every Everglade zone) or zone wiring
@@ -133,14 +154,15 @@ Each part is engine (any realm), game (every Everglade zone) or zone wiring
 | --- | --- | --- |
 | Engine | Style tokens, text roles and part drawers, SCIFI and FANTASY | `aethyr/ui/hud-style.coax` |
 | Engine | Side bar, menu, tip and words | `aethyr/ui/hud-menu.coax` |
+| Engine | Sight for plates, health bars, names and damage numbers: a body as the visibility service's target, the settled answer faded over 0.15 s | `aethyr/ui/hud-sight.coax` on `aethyr/visibility.coax` |
 | Engine | The straight-alpha HUD blend and the two-face glyph atlas | `coax/web/host.js` (`coaxial_fx_alpha_v1`, `sansAtlas`) |
 | Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `apps/openagents-web/charactercreator.coax` |
-| Game | Portrait plate, bar tray, map ring, name plates, place banner, plaque | `everglade/hud/parts.coax` |
-| Game | The side bar's class features (Healer's Kit, Wild Companion, Find Familiar) and the rest menu | `everglade/hud/class-bar.coax` |
+| Game | Portrait plate, bar tray, map ring, name plates, place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
+| Game | The side bar: its class features (Healer's Kit, Wild Companion, Find Familiar), the rest menu, where they sit, what a press does and their drawing (`eg_side_geo`, `eg_side_press`, `eg_side_draw`) | `everglade/hud/class-bar.coax` |
 | Game | The faces' widths | `everglade/hud/fonts.coax`; the faces in `realms.json` |
-| Zone wiring | Everglade II: its facts, presses and layout | `e2_world_hud` in `everglade2.coax`; `e2k_facts`, `e2k_side_hud` in `everglade2-cast.coax`; plates in `everglade2-monsters.coax`, `everglade2-guard.coax` |
+| Zone wiring | Everglade II: its facts and its room's requests | `e2_world_view` in `everglade2.coax`; `e2k_facts`, `e2k_menu_do`, `e2k_side_bar` in `everglade2-cast.coax`; its colliders and land for sight in `everglade2-sight.coax`; plates in `everglade2-monsters.coax`, `everglade2-guard.coax` |
 | Zone wiring | Character Create's wardrobe | `everglade2-create.coax` |
-| Zone wiring | Everglade Experimental | `experimental-combat.coax` |
+| Zone wiring | Everglade Experimental, and its walls and meadow for sight (`xc_sight_in`) | `experimental-combat.coax` |
 
 Everglade v1 (`/worlds/everglade` and `/worlds/everglade-classic`) draws its HUD
 with the Filament stroke font and its own shaders, and doesn't use these parts

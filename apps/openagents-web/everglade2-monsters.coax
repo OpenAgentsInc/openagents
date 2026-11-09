@@ -187,9 +187,10 @@ e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     y := g.y + E2MN_TALL[g.kind] + 0.15; dx := g.x - e[0]; dy := y - e[1]; dz := g.z - e[2];
     ahead := dx * f[0] + dy * f[1] + dz * f[2]; dist := sqrt(dx * dx + dy * dy + dz * dz);
     rw := e2n_mon_at(s[0].net[..], m, s[0].net[0].rt);
-    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) || rw.max <= 0 { s[0].sight_mon[m] = 0; continue; }
-    // shown while the body shows (everglade2-sight.coax): fading over 0.15 s
-    sight := e2_sight_share(s, s[0].sight_mon[m], g.x, g.y, g.z, E2MN_TALL[g.kind]); s[0].sight_mon[m] = sight;
+    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) || rw.max <= 0 { s[0].sight_mon[m] = cc.hud_sight_gone(); continue; }
+    // the plate and its health bar, shown while the body shows (aethyr/visibility.coax through
+    // everglade2-sight.coax): one settled answer for both, fading over 0.15 s
+    s[0].sight_mon[m] = e2_sight_step(s, s[0].sight_mon[m], g.x, g.y, g.z, E2MN_TALL[g.kind]); sight := s[0].sight_mon[m].share;
     if sight <= 0 { continue; }
     alpha := sight * g.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
     sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;

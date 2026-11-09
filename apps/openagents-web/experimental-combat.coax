@@ -80,7 +80,7 @@ XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n:
 XC_FAMILIAR :: 29;
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
 XcCombat :: struct {
-  sight: [XC_FOES] f32; sight_at: f32 = -1;   // each foe's plate's share shown while its body shows (xc_sight_shows), fading
+  sight: [XC_FOES] cc.HudSight; sight_at: f32 = -1;   // each foe's plate's share shown while its body shows (xc_sight_shows), fading
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
   familiar_incense:int=1; // one Lab supply, carried across preset changes
@@ -1648,26 +1648,27 @@ xc_look :: (s: [] Lab, a: FbAb, foe: int, ax: f32, az: f32) {
 
 // ---- the screen: where a point in the world falls (charactercreator.coax camera's uniforms)
 XcAt :: struct { x: f32; y: f32; ok: bool; }
-// Whether a body standing at (bx, foot, bz), tall m, shows from the camera: a line to its head, chest
-// or knees clear of the land and the village's, castle's and dungeon's walls (aethyr/ui/hud-sight.coax).
-xc_sight_shows :: (x: [] XcCombat, bx: f32, foot: f32, bz: f32, tall: f32) -> bool {
-  u := x[0].u[..]; e := [3] f32.[u[16], u[17], u[18]];
-  dx := bx - e[0]; dz := bz - e[2]; mx := (e[0] + bx) * 0.5; mz := (e[2] + bz) * 0.5;
-  near: [1] xvillage.EvNear; xvillage.ev_near_radius(near[..], mx, mz, 0.5 * sqrt(dx * dx + dz * dz) + 1, true);
+// Whether a body standing at (bx, foot, bz), tall m, shows from the camera: the engine's visibility
+// service (aethyr/visibility.coax, through aethyr/ui/hud-sight.coax) with the meadow's heights under the
+// line and the village's, castle's and dungeon's walls near it as boxes.
+// The walls near the line from the eye to (bx, bz), lifted to world heights, and the meadow under it.
+XcSightIn :: struct { eye: [3] f32; near: [1] xvillage.EvNear; land: [cc.HUD_SIGHT_LAND] f32; nl: int; }
+xc_sight_in :: (x: [] XcCombat, bx: f32, foot: f32, bz: f32, tall: f32, o: [] XcSightIn) {
+  u := x[0].u[..]; o[0].eye = [3] f32.[u[16], u[17], u[18]];
+  dx := bx - u[16]; dz := bz - u[18]; mx := (u[16] + bx) * 0.5; mz := (u[18] + bz) * 0.5;
+  xvillage.ev_near_radius(o[0].near[..], mx, mz, 0.5 * sqrt(dx * dx + dz * dz) + 1, true);
   g := xmeadow.exp_height(mx, mz);
-  for i: 0..<cc.HUD_SIGHT_POINTS {
-    b := cc.hud_sight_point(bx, foot, bz, tall, i);
-    ground: [cc.HUD_SIGHT_SAMPLES] f32;
-    for q: 0..<cc.HUD_SIGHT_SAMPLES { p := cc.hud_sight_at(e, b, f32(q + 1) / f32(cc.HUD_SIGHT_SAMPLES + 1)); ground[q] = meadow_y(p[0], p[2]); }
-    if !cc.hud_sight_ground_clear(e, b, ground[..], cc.HUD_SIGHT_SAMPLES) { continue; }
-    blocked := false;
-    for w: 0..<near[0].wall_n {
-      o := w * 6; box := [6] f32.[near[0].walls[o], near[0].walls[o + 1] + g, near[0].walls[o + 2], near[0].walls[o + 3], near[0].walls[o + 4] + g, near[0].walls[o + 5]];
-      if cc.hud_sight_box_blocks(e, b, box[..]) { blocked = true; break; }
-    }
-    if !blocked { return true; }
-  }
-  return false;
+  for w: 0..<o[0].near[0].wall_n { q := w * 6; o[0].near[0].walls[q + 1] += g; o[0].near[0].walls[q + 4] += g; }
+  o[0].nl = cc.hud_sight_land_n(o[0].eye, bx, foot, bz, tall); if o[0].nl > cc.HUD_SIGHT_LAND { o[0].nl = cc.HUD_SIGHT_LAND; }
+  for k: 0..<o[0].nl { p := cc.hud_sight_land_at(o[0].eye, bx, foot, bz, tall, k); o[0].land[k] = meadow_y(p[0], p[1]); }
+}
+xc_sight_shows :: (x: [] XcCombat, bx: f32, foot: f32, bz: f32, tall: f32) -> bool {
+  i: [1] XcSightIn; xc_sight_in(x, bx, foot, bz, tall, i[..]);
+  return cc.hud_sight_shows(i[0].eye, bx, foot, bz, tall, i[0].land[..], i[0].nl, i[0].near[0].walls[0..<i[0].near[0].wall_n * 6], i[0].land[0..<0], i[0].land[0..<0]);
+}
+xc_sight_step :: (x: [] XcCombat, h: cc.HudSight, bx: f32, foot: f32, bz: f32, tall: f32, dt: f32) -> cc.HudSight {
+  i: [1] XcSightIn; xc_sight_in(x, bx, foot, bz, tall, i[..]);
+  return cc.hud_sight_after(h, i[0].eye, bx, foot, bz, tall, i[0].land[..], i[0].nl, i[0].near[0].walls[0..<i[0].near[0].wall_n * 6], i[0].land[0..<0], i[0].land[0..<0], dt);
 }
 #test "experimental: a foe behind a village wall has no plate's sight; one in the open has" #steps 400000000 {
   x: [1] XcCombat;
@@ -1764,6 +1765,12 @@ xc_text_w :: (t: string, cap: f32) -> f32 {
   em := cc.sans_em(cap); w := 0.0f32;
   for i: 0..<t.count { c := cast(int) t[i]; if c >= 32 && c <= 126 { w += f32(cc.EG_BODY_WIDTH[c - 32]) / f32(cc.EG_FONT_UPM) * em; } }
   return w;
+}
+// A slot's words along its top or its bottom edge, centred, made smaller until they fit inside it.
+xc_fit_cap :: (t: string, cap: f32, room: f32) -> f32 { w := xc_text_w(t, cap); return ifx w > room && w > 0 then cap * room / w else cap; }
+xc_caption :: (out: [] f32, at: int, t: string, r: cc.Box, top: bool, cap: f32, ink: Ink, k: f32) -> int {
+  room := r.x1 - r.x0 - 6 * k; c := xc_fit_cap(t, cap, room); w := xc_text_w(t, c);
+  return cc.text(out, at, t, (r.x0 + r.x1 - w) * 0.5, ifx top then r.y0 + 4 * k + c else r.y1 - 4 * k, c, ink);
 }
 
 // A segment of the footprint, split so it follows the meadow's changing height
@@ -1899,16 +1906,17 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     c := x[0].b[0].c[1 + i];
     if e.dead { continue; }
     dx := e.x - view_x; dz := e.z - view_z;
-    if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, view_x, view_z) { x[0].sight[i] = 0; continue; }
-    x[0].sight[i] = cc.hud_sight_fade(x[0].sight[i], xc_sight_shows(x, e.x, meadow_y(e.x, e.z), e.z, 1.7), sight_dt);
-    if x[0].sight[i] <= 0 { continue; }
+    if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, view_x, view_z) { x[0].sight[i] = cc.hud_sight_gone(); continue; }
+    // the name and its health bar ride one settled answer, fading over 0.15 s
+    x[0].sight[i] = xc_sight_step(x, x[0].sight[i], e.x, meadow_y(e.x, e.z), e.z, 1.7, sight_dt);
+    if x[0].sight[i].share <= 0 { continue; }
     p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 1.55, e.z);
     if !p.ok || p.x < 0 || p.x > w || p.y < 0 || p.y > h { continue; }
     if p.x < 400 * k && p.y > x[0].top - 20 * k && p.y < bottom + 20 * k { continue; }   // not over the CLASSES column
     name := XC_FOE_NAMES[e.kind];
     on := i == x[0].target || (wave_on && xc_wave_contains(wave,e.x,e.z));
     nb: [32] u8;
-    n = cc.eg_plate(out, n, cc.eg_title(nb[..], name), p.x, p.y, k, f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i]);
+    n = cc.eg_plate(out, n, cc.eg_title(nb[..], name), p.x, p.y, k, f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i].share);
   }
   // A world-anchored familiar marker is drawn at the actor's position.
   familiar:=rs_familiar_of(x[0].b[..],0);
@@ -1968,36 +1976,32 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       lv: [2] u8; lv[0] = cast(u8) (48 + a.lvl);
       n = cc.text(out, n, cast(string) lv[0..<1], r.x1 - 10 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 1, 0.82, 0.35));
     }
+    // its words, one line along its top and one along its bottom, each fitted inside the slot
     if xc_touch_spell(a) && (x[0].familiar_touch || (familiar>=0 && rs_up(x[0].b[0].c[familiar]))) {
-      n=cc.text(out,n,ifx x[0].familiar_touch then "Fam" else "Hand",r.x0+3*k,r.y1-4*k,7*k,head);
+      n=xc_caption(out,n,ifx x[0].familiar_touch then "Familiar" else "Hand",r,false,7*k,head,k);
     }
     if a.kind==XC_FAMILIAR {
-      count:=RS_FAMILIAR_FORMS.count;
-      label:=rs_monster_block(RS_FAMILIAR_FORMS[a.opt%count]).name;
-      n=cc.text(out,n,label,r.x0+4*k,r.y1-4*k,7*k,head);
-      druid:=x[0].b[0].c[0].companion;
-      if !druid {
-        spirit:=[3]string.["Fey","Cel","Fiend"];
-        n=cc.text(out,n,spirit[a.opt/count],r.x1-24*k,r.y1-4*k,7*k,head);
-      }
-      cost:=ifx a.lvl>0 then "1" else ifx druid then "WS" else "R";
-      n=cc.text(out,n,cost,r.x1-16*k,r.y0+12*k,7*k,head);
+      count:=RS_FAMILIAR_FORMS.count; druid:=x[0].b[0].c[0].companion;
+      cb:[48]u8; cn:=0; for ch: rs_monster_block(RS_FAMILIAR_FORMS[a.opt%count]).name { if cn < 32 { cb[cn]=ch; cn+=1; } }
+      if !druid { spirit:=[3]string.["Fey","Celestial","Fiend"]; for ch: " · " { cb[cn]=ch; cn+=1; } for ch: spirit[a.opt/count] { cb[cn]=ch; cn+=1; } }
+      n=xc_caption(out,n,cast(string)cb[0..<cn],r,false,7*k,head,k);
+      top:=ifx a.lvl>0 then "Spell slot" else ifx druid then "Wild Shape" else "Ritual";
       if familiar>=0 && x[0].b[0].c[familiar].hp>0 {
-        command:=ifx x[0].familiar_order==XC_FAMILIAR_SENSE then "Sense"
+        top=ifx x[0].familiar_order==XC_FAMILIAR_SENSE then "Sense"
           else ifx x[0].familiar_order==XC_FAMILIAR_STEP then "Step"
-          else ifx x[0].familiar_order==XC_FAMILIAR_RELEASE then "Free"
+          else ifx x[0].familiar_order==XC_FAMILIAR_RELEASE then "Release"
           else ifx x[0].familiar_order==XC_FAMILIAR_CAST then "Cast"
           else ifx x[0].b[0].c[familiar].dead then "Recall" else "Pocket";
-        n=cc.text(out,n,command,r.x0+3*k,r.y0+12*k,7*k,head);
       }
+      n=xc_caption(out,n,top,r,true,7*k,head,k);
     }
     if a.kind==FB_WILD {
       form:=fb_wild_form(x[0].b[0].c[0],a.opt);
       label:=ifx form==MON_RIDING_HORSE then "Horse" else ifx form==MON_BLACK_BEAR then "Bear" else rs_monster_block(form).name;
-      n=cc.text(out,n,label,r.x0+4*k,r.y1-4*k,6*k,head);
+      n=xc_caption(out,n,label,r,false,7*k,head,k);
     }
     if fb_ab_option_n(a) > 0 {
-      n = cc.text(out, n, fb_ab_option_label(a, rs_max(a.opt, 0)), r.x0 + 4 * k, r.y1 - 4 * k, 8 * k, ink_col(k, 1, 0.82, 0.35));
+      n = xc_caption(out, n, fb_ab_option_label(a, rs_max(a.opt, 0)), r, false, 8 * k, ink_col(k, 1, 0.82, 0.35), k);
     }
     // a Ritual under way: a gold frame, its ten minutes filling along the bottom edge (pp.104-105)
     me := x[0].b[0].c[0];

@@ -104,3 +104,80 @@ eg_menu_tip :: (f: EgBarFacts, a: int) -> string {
   if r == RS_REST_DIE { return "Spend one Hit Die to heal"; }
   return "Stop resting";
 }
+
+// ---- the side bar itself, every Everglade zone's: where its buttons sit over the zone's action bar,
+// its menus over them, what a press does to it, and its drawing on the engine's widgets. A zone passes
+// its facts, its page (w, h, k: device px per CSS px), the top of its action bar (bar_top) and the
+// bar's state (EgSideState); a press answers EgPress, and the zone sends the action to its room.
+EG_SIDE_CAP :: 9.0; EG_TIP_CAP :: 8.5;     // the buttons' words (TITLE), a tip's line (LABEL), CSS px cap height
+EG_SIDE_PAD :: 14; EG_SIDE_GAP :: 8; EG_SIDE_UP :: 34; EG_MENU_W :: 210; EG_MENU_HEAD :: 26; EG_MENU_TOP :: 120;
+EG_DO_KIT :: 30;   // the Healer's Kit button: it has no menu
+// Which menu is open (-1 none), and which button and row the pointer is over (-1 none).
+EgSideState :: struct { menu: int = -1; side_hover: int = -1; menu_hover: int = -1; }
+EgSideGeo :: struct { ids: [3] int; n: int; wd: [3] f32; x0: f32; x1: f32; y1: f32; h: f32; gap: f32; w: f32; k: f32; }
+// A finger's size on a phone or a tablet, smaller with a mouse on a desktop.
+eg_side_h :: (w: f32, h: f32, k: f32) -> f32 { tall := w < 840 * k || h < 560 * k; return ifx tall then 44 * k else 30 * k; }
+eg_side_geo :: (f: EgBarFacts, w: f32, h: f32, k: f32, bar_top: f32) -> EgSideGeo {
+  g: EgSideGeo; g.n = eg_side_items(f, g.ids[..]); g.w = w; g.k = k; b: [48] u8;
+  for i: 0..<g.n { c := eg_side_label(f, g.ids[i], b[..]); g.wd[i] = cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; }
+  g.x0 = 12 * k; g.x1 = w - 12 * k; g.y1 = bar_top - EG_SIDE_UP * k; g.h = eg_side_h(w, h, k); g.gap = EG_SIDE_GAP * k;
+  return g;
+}
+eg_side_box :: (g: EgSideGeo, j: int) -> cc.HudPrim { wd := g.wd; return cc.hud_side_box(wd[..], g.n, j, g.x0, g.x1, g.y1, g.h, g.gap); }
+eg_side_top :: (g: EgSideGeo) -> f32 { wd := g.wd; return cc.hud_side_top(wd[..], g.n, g.x0, g.x1, g.y1, g.h, g.gap); }
+eg_side_find :: (g: EgSideGeo, id: int) -> int { for j: 0..<g.n { if g.ids[j] == id { return j; } } return -1; }
+eg_menu_of :: (f: EgBarFacts, g: EgSideGeo, id: int) -> cc.HudMenu {
+  k := g.k; rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, id, rows[..]); j := eg_side_find(g, id);
+  if j < 0 || m == 0 { return cc.HudMenu.{}; }
+  cw := EG_MENU_W * k; b: [48] u8;
+  for r: 0..<m { c := eg_menu_label(f, rows[r], b[..]); x := cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; if x > cw { cw = x; } }
+  return cc.hud_menu(eg_side_box(g, j), m, cw, g.h, EG_MENU_HEAD * k, g.gap, EG_MENU_TOP * k, eg_side_top(g) - 12 * k, 8 * k, g.w - 8 * k);
+}
+// What a press did: taken (the side bar had it), the action for the room (0 none), and the bar's state.
+EgPress :: struct { taken: bool; act: int; st: EgSideState; }
+// A pointer at (x, y), phase 0 down: the buttons open and close their menus (the Healer's Kit acts at
+// once), a row acts (the form, the spirit and how it is paid keep the menu open), and a press
+// elsewhere closes the menu.
+eg_side_press :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, x: f32, y: f32, phase: int) -> EgPress {
+  p := EgPress.{st = st}; p.st.side_hover = -1; p.st.menu_hover = -1;
+  if p.st.menu >= 0 && eg_side_find(g, p.st.menu) < 0 { p.st.menu = -1; }   // its button went away
+  if p.st.menu >= 0 {
+    id := p.st.menu; rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, id, rows[..]); menu := eg_menu_of(f, g, id);
+    for r: 0..<m { if cc.hud_in(cc.hud_menu_row(menu, r), x, y) { p.st.menu_hover = r;
+      if phase == 0 { p.taken = true; p.act = rows[r]; if rows[r] != EG_DO_FORM && rows[r] != EG_DO_SPIRIT && rows[r] != EG_DO_PAY { p.st.menu = -1; } }
+      return p; } }
+    if cc.hud_in(menu.panel, x, y) { p.taken = phase == 0; return p; }
+  }
+  for j: 0..<g.n {
+    if !cc.hud_in(eg_side_box(g, j), x, y) { continue; }
+    p.st.side_hover = j; if phase != 0 { return p; }
+    p.taken = true;
+    if g.ids[j] == EG_SIDE_KIT { p.st.menu = -1; p.act = EG_DO_KIT; } else { p.st.menu = ifx p.st.menu == g.ids[j] then -1 else g.ids[j]; }
+    return p;
+  }
+  if phase == 0 && p.st.menu >= 0 { p.st.menu = -1; p.taken = true; }
+  return p;
+}
+// Draw the side bar, its open menu and the tip for what the pointer is over, through the realm's
+// renderer (charactercreator.coax hud_draw).
+eg_side_draw :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: int) -> int {
+  if g.n == 0 { return at; }
+  k := g.k; t := cc.eg_tokens(); cap := EG_SIDE_CAP * k;
+  l: [1] cc.HudList; ws: [1] cc.HudWords;
+  bufs: [3 * 48] u8; labels: [3] string; lit: [3] bool;
+  for i: 0..<g.n { c := eg_side_label(f, g.ids[i], bufs[i * 48..<i * 48 + 48]); labels[i] = cast(string) bufs[i * 48..<i * 48 + c]; lit[i] = st.menu == g.ids[i] || st.side_hover == i; }
+  wd := g.wd; cc.hud_side_draw(l[..], ws[..], t, wd[..], labels[..], lit[..], g.n, g.x0, g.x1, g.y1, g.h, g.gap, cap, k);
+  tip := ""; anchor := cc.HudPrim.{};
+  if st.menu >= 0 && eg_side_find(g, st.menu) >= 0 {
+    rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, st.menu, rows[..]); mb: [EG_MENU_ROWS * 32] u8; ml: [EG_MENU_ROWS] string;
+    for r: 0..<m { c := eg_menu_label(f, rows[r], mb[r * 32..<r * 32 + 32]); ml[r] = cast(string) mb[r * 32..<r * 32 + c]; }
+    menu := eg_menu_of(f, g, st.menu);
+    cc.hud_menu_draw(l[..], ws[..], t, menu, eg_menu_title(f, st.menu), ml[..], m, st.menu_hover, cap, k);
+    if st.menu_hover >= 0 && st.menu_hover < m { tip = eg_menu_tip(f, rows[st.menu_hover]); anchor = menu.panel; }
+  } else if st.side_hover >= 0 && st.side_hover < g.n {
+    tip = eg_side_tip(f, g.ids[st.side_hover]); anchor = eg_side_box(g, st.side_hover);
+  }
+  tc := EG_TIP_CAP * k;
+  cc.hud_tip(l[..], ws[..], t, tip, cc.face_width(tip, tc * 0.9, cc.HUD_FACE_BODY), anchor, tc, 8 * k, g.w - 8 * k, k);
+  return cc.hud_draw(out, at, l[..], ws[..], 1, k);
+}

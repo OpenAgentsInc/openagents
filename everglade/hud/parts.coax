@@ -241,3 +241,17 @@ eg_plaque :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, k: f32) 
   #assert eg_banner(out[..], 0, 1920, 200, 1, "The Glade", 1) > 0 && eg_banner(out[..], 0, 1920, 200, 1, "The Glade", 9) == 0;
   #assert eg_plaque(out[..], 0, 10, 10, 100, 40, 1) == 12;
 }
+
+// ---- the world's HUD, every Everglade zone's: the map ring at the top right with the place and the
+// time of day, the portrait plate top left as wide as the map leaves it, and a place's banner. A zone
+// passes what it knows (EgWorld, its map's dots, your portrait); this lays them out for the page
+// (w, h device px, k device px per CSS px), a phone's narrower and closer to the corners.
+EgWorld :: struct { you_x: f32; you_z: f32; fx: f32; fz: f32; reach: f32 = 60; place: string; clock: string; since: f32; }
+eg_world :: (out: [] f32, at: int, w: f32, h: f32, k: f32, wd: EgWorld, dots: [] EgDot, nd: int, p: EgPortrait) -> int {
+  W := w / k; phone := W < 700 || h / k < 500;
+  mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
+  v := eg_map(out, at, w - (mr + 22) * k, (top + mr + 10) * k, mr * k, k, wd.you_x, wd.you_z, wd.fx, wd.fz, wd.reach, dots, nd, wd.place, wd.clock, 1);
+  wide := W - (2 * mr + 44) - 20; if wide > f32(EG_PORTRAIT_W) { wide = f32(EG_PORTRAIT_W); }
+  v = eg_portrait(out, v, (ifx phone then 8.0f32 else 14.0f32) * k, top * k, wide, k, p, 1);
+  return eg_banner(out, v, w, h * 0.22, k, wd.place, wd.since);
+}

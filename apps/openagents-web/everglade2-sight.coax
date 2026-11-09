@@ -1,13 +1,14 @@
 // Whether a body shows from Everglade II's camera, for what floats over it (zone wiring for the
-// engine's aethyr/ui/hud-sight.coax): the land under each line from the eye to the body's head,
-// chest and knees, and the trunks, rocks and the camp's props across it. A plate, a name or a damage
-// number over a body shows only while one of those lines is clear, and fades over 0.15 s.
+// engine's visibility service, aethyr/visibility.coax, through aethyr/ui/hud-sight.coax): this zone's
+// colliders across the line from the eye to the body (its trunks as upright capsules, its rocks' and
+// the camp's hulls) and its land's heights under the line (e2_height). A plate, its health bar, a name
+// or a damage number over a body shows only while the service sees the body, and fades over 0.15 s.
 
 E2_SIGHT_TRUNK :: 6.0;   // m: a trunk stands this tall over its foot before its crown
 // What may stand across the lines to a body at (x, z) from the eye: upright cylinders into cyl, and
 // rocks' and boxes' hulls into hulls (e2_rock_hull's numbers), from the planting and the glade and camp.
 E2_SIGHT_CYLS :: 96;
-E2Sight :: struct { cyl: [E2_SIGHT_CYLS] cc.HudSightCyl; nc: int; hulls: [E2_HULL_ROOM] f32; nh: int; }
+E2Sight :: struct { caps: [E2_SIGHT_CYLS * 7] f32; nc: int; hulls: [E2_HULL_ROOM] f32; nh: int; }
 // The nearest point's share along the eye's line to (x, z) and its distance off it, in the ground plane.
 e2_sight_off :: (e: [3] f32, x: f32, z: f32, px: f32, pz: f32) -> [2] f32 {
   dx := x - e[0]; dz := z - e[2]; ll := dx * dx + dz * dz; if ll < 0.0001 { return [2] f32.[0, 1000]; }
@@ -15,7 +16,22 @@ e2_sight_off :: (e: [3] f32, x: f32, z: f32, px: f32, pz: f32) -> [2] f32 {
   qx := e[0] + dx * t - px; qz := e[2] + dz * t - pz;
   return [2] f32.[t, sqrt(qx * qx + qz * qz)];
 }
-e2_sight_add :: (o: [] E2Sight, c: cc.HudSightCyl) { if o[0].nc < E2_SIGHT_CYLS { o[0].cyl[o[0].nc] = c; o[0].nc += 1; } }
+// An upright trunk or post: a capsule from y0 to y1 (world heights) at (x, z), r round.
+e2_sight_add :: (o: [] E2Sight, x: f32, z: f32, r: f32, y0: f32, y1: f32) {
+  if o[0].nc >= E2_SIGHT_CYLS { return; }
+  q := o[0].nc * 7; v := [7] f32.[x, y0 + r, z, x, y1 - r, z, r]; if v[4] < v[1] { v[4] = v[1]; }
+  for i: 0..<7 { o[0].caps[q + i] = v[i]; } o[0].nc += 1;
+}
+// The hulls gathered from `from` on: lifted off the ground's plane onto the land's height at (x, z),
+// the world heights the service reads.
+e2_sight_lift :: (o: [] E2Sight, from: int, x: f32, z: f32) {
+  g := e2_height(x, z); at := from;
+  while at < o[0].nh {
+    faces := cast(int) o[0].hulls[at]; o[0].hulls[at + 1] += g; o[0].hulls[at + 2] += g; first := at + E2_HULL_HEAD;
+    for f: 0..<faces { q := first + f * E2_HULL_FACE; o[0].hulls[q + 3] += o[0].hulls[q + 1] * g; }
+    at = first + faces * E2_HULL_FACE;
+  }
+}
 e2_sight_gather :: (s: [] E2, x: f32, z: f32, out: [] E2Sight) {
   out[0].nc = 0; out[0].nh = 0; e := s[0].eye;
   // the planting's cells the line crosses, and their neighbours
@@ -40,63 +56,44 @@ e2_sight_gather :: (s: [] E2, x: f32, z: f32, out: [] E2Sight) {
       off := e2_sight_off(e, x, z, px, pz);
       if rock >= 0 {
         if off[1] > 4.2 * sh + 0.5 { continue; }
-        at := e2_rock_hull(out[0].hulls[..], out[0].nh, E2Rock.{model = rock, x = px, y = s[0].items[o + 1], z = pz, yaw = s[0].items[o + 3], sh = sh, sv = s[0].items[o + 4]}, px, pz);
-        out[0].nh = at; continue;
+        was := out[0].nh;
+        out[0].nh = e2_rock_hull(out[0].hulls[..], out[0].nh, E2Rock.{model = rock, x = px, y = s[0].items[o + 1], z = pz, yaw = s[0].items[o + 3], sh = sh, sv = s[0].items[o + 4]}, px, pz);
+        e2_sight_lift(out, was, px, pz); continue;
       }
       t := e2_trunk(kit, px, pz, s[0].items[o + 3], sh); if off[1] > t[2] + 0.5 { continue; }
-      g := e2_height(t[0], t[1]); e2_sight_add(out, cc.HudSightCyl.{x = t[0], z = t[1], r = t[2], y0 = g - 1, y1 = g + E2_SIGHT_TRUNK * sh});
+      g := e2_height(t[0], t[1]); e2_sight_add(out, t[0], t[1], t[2], g - 1, g + E2_SIGHT_TRUNK * sh);
     }
   }
   for i: 0..<CG_ITEMS {
     gt := cg_item(i); if !e2_glade_kept(gt) { continue; }
     off := e2_sight_off(e, x, z, gt.x, gt.z); if off[1] > 1 + 4.2 * gt.scale { continue; }
     if gt.kind <= 1 { tv := ifx gt.variant < 0 then 0 else ifx gt.variant > 4 then 4 else gt.variant; t := e2_trunk(tv + 5 * gt.kind, gt.x, gt.z, gt.yaw, gt.scale);
-      g := e2_height(t[0], t[1]); e2_sight_add(out, cc.HudSightCyl.{x = t[0], z = t[1], r = t[2], y0 = g - 1, y1 = g + E2_SIGHT_TRUNK * gt.scale}); continue; }
-    out[0].nh = e2_rock_hull(out[0].hulls[..], out[0].nh, e2_glade_rock(gt), gt.x, gt.z);
+      g := e2_height(t[0], t[1]); e2_sight_add(out, t[0], t[1], t[2], g - 1, g + E2_SIGHT_TRUNK * gt.scale); continue; }
+    was := out[0].nh; out[0].nh = e2_rock_hull(out[0].hulls[..], out[0].nh, e2_glade_rock(gt), gt.x, gt.z); e2_sight_lift(out, was, gt.x, gt.z);
   }
-  for i: 0..<E2_GLADE_STONES { st := e2_glade_stone(i); if e2_sight_off(e, x, z, st.x, st.z)[1] < 1 + 4.2 * st.sh { out[0].nh = e2_rock_hull(out[0].hulls[..], out[0].nh, st, st.x, st.z); } }
+  for i: 0..<E2_GLADE_STONES { st := e2_glade_stone(i); if e2_sight_off(e, x, z, st.x, st.z)[1] < 1 + 4.2 * st.sh { was := out[0].nh; out[0].nh = e2_rock_hull(out[0].hulls[..], out[0].nh, st, st.x, st.z); e2_sight_lift(out, was, st.x, st.z); } }
   for i: 0..<E2_CAMP_PROPS {
     p := E2_CAMP[i]; h := E2_CAMP_HALF[p.kit]; px := e2_camp_px(p); pz := e2_camp_pz(p);
     if e2_sight_off(e, x, z, px, pz)[1] > 1 + (h[0] + h[1]) * p.scale { continue; }
     g := e2_height(px, pz);
-    if E2_CAMP_ROUND[p.kit] { e2_sight_add(out, cc.HudSightCyl.{x = px, z = pz, r = h[0] * p.scale, y0 = g - 1, y1 = g + h[2] * p.scale}); continue; }
-    out[0].nh = e2_box_hull(out[0].hulls[..], out[0].nh, px, pz, p.yaw, h[0] * p.scale, h[1] * p.scale, h[2] * p.scale);
+    if E2_CAMP_ROUND[p.kit] { e2_sight_add(out, px, pz, h[0] * p.scale, g - 1, g + h[2] * p.scale); continue; }
+    was := out[0].nh; out[0].nh = e2_box_hull(out[0].hulls[..], out[0].nh, px, pz, p.yaw, h[0] * p.scale, h[1] * p.scale, h[2] * p.scale); e2_sight_lift(out, was, px, pz);
   }
 }
-// Whether a hull (on the ground's plane: its heights over the land under it) holds a point of the
-// line from a to b, tested every 0.25 m short of b's own body.
-e2_sight_hull_cuts :: (h: [] E2Sight, a: [3] f32, b: [3] f32) -> bool {
-  span := sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[2] - a[2]) * (b[2] - a[2])); n := cast(int)(span / 0.25);
-  at := 0;
-  while at < h[0].nh {
-    faces := cast(int) h[0].hulls[at]; lo := h[0].hulls[at + 1]; hi := h[0].hulls[at + 2]; first := at + E2_HULL_HEAD;
-    for q: 1..<n - 1 {
-      p := cc.hud_sight_at(a, b, f32(q) / f32(n)); rel := p[1] - e2_height(p[0], p[2]);
-      if rel < lo || rel > hi { continue; }
-      inside := true;
-      for f: 0..<faces { o := first + f * E2_HULL_FACE; if h[0].hulls[o] * p[0] + h[0].hulls[o + 1] * rel + h[0].hulls[o + 2] * p[2] > h[0].hulls[o + 3] + 0.0001 { inside = false; break; } }
-      if inside { return true; }
-    }
-    at = first + faces * E2_HULL_FACE;
-  }
-  return false;
+// This zone's land under the line from the eye to a body standing at (x, foot, z), tall m.
+e2_sight_land :: (s: [] E2, x: f32, foot: f32, z: f32, tall: f32, heights: [] f32) -> int {
+  n := cc.hud_sight_land_n(s[0].eye, x, foot, z, tall); if n > heights.count { n = heights.count; }
+  for k: 0..<n { p := cc.hud_sight_land_at(s[0].eye, x, foot, z, tall, k); heights[k] = e2_height(p[0], p[1]); }
+  return n;
 }
-// Whether a body standing at (x, foot, z), tall m, shows from the eye: any of its head, chest and knees.
+// Whether the body shows now, unsettled (a damage number's moment): the engine's answer with this
+// zone's land and colliders.
 e2_sight_shows :: (s: [] E2, x: f32, foot: f32, z: f32, tall: f32) -> bool {
-  g: [1] E2Sight; e2_sight_gather(s, x, z, g[..]); e := s[0].eye;
-  for i: 0..<cc.HUD_SIGHT_POINTS {
-    b := cc.hud_sight_point(x, foot, z, tall, i);
-    ground: [cc.HUD_SIGHT_SAMPLES] f32;
-    for q: 0..<cc.HUD_SIGHT_SAMPLES { p := cc.hud_sight_at(e, b, f32(q + 1) / f32(cc.HUD_SIGHT_SAMPLES + 1)); ground[q] = e2_height(p[0], p[2]); }
-    if !cc.hud_sight_ground_clear(e, b, ground[..], cc.HUD_SIGHT_SAMPLES) { continue; }
-    blocked := false;
-    for c: 0..<g[0].nc { if cc.hud_sight_cyl_blocks(e, b, g[0].cyl[c]) { blocked = true; break; } }
-    if !blocked && e2_sight_hull_cuts(g[..], e, b) { blocked = true; }
-    if !blocked { return true; }
-  }
-  return false;
+  g: [1] E2Sight; e2_sight_gather(s, x, z, g[..]); land: [cc.HUD_SIGHT_LAND] f32; n := e2_sight_land(s, x, foot, z, tall, land[..]);
+  return cc.hud_sight_shows(s[0].eye, x, foot, z, tall, land[..], n, g[0].caps[0..<0], g[0].caps[0..<g[0].nc * 7], g[0].hulls[0..<g[0].nh]);
 }
-// The plate's share now, from its share before: fades toward shown or hidden over cc.HUD_SIGHT_FADE s.
-e2_sight_share :: (s: [] E2, share: f32, x: f32, foot: f32, z: f32, tall: f32) -> f32 {
-  return cc.hud_sight_fade(share, e2_sight_shows(s, x, foot, z, tall), s[0].sight_dt);
+// A plate's sight after this frame: the answer, settled and faded (aethyr/ui/hud-sight.coax).
+e2_sight_step :: (s: [] E2, h: cc.HudSight, x: f32, foot: f32, z: f32, tall: f32) -> cc.HudSight {
+  g: [1] E2Sight; e2_sight_gather(s, x, z, g[..]); land: [cc.HUD_SIGHT_LAND] f32; n := e2_sight_land(s, x, foot, z, tall, land[..]);
+  return cc.hud_sight_after(h, s[0].eye, x, foot, z, tall, land[..], n, g[0].caps[0..<0], g[0].caps[0..<g[0].nc * 7], g[0].hulls[0..<g[0].nh], s[0].sight_dt);
 }

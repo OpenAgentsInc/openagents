@@ -3222,7 +3222,7 @@ lab_light :: (s: [] Lab, u: [] f32) {
   #assert s[0].env_n == U_ENV_WORDS && U_ENV_WORDS == envf.ENV_FRAME_FLOATS;
 }
 // Everglade Experimental's strokes blend straight alpha (its HUD is the FANTASY style, cc.hud_seal).
-lab_hud_alpha :: (s: [] Lab) -> bool #export_c #effects(all) { return s[0].creator[0].experimental; }
+lab_straight_alpha :: (s: [] Lab) -> bool #export_c #effects(all) { return s[0].creator[0].experimental; }
 lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int {
   if s[0].creator[0].on {
     s[0].creator[0].hostile_external=s[0].creator[0].experimental && !s[0].creator[0].walk.on;

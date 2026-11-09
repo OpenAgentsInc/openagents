@@ -109,13 +109,20 @@ xc_look_start :: (p: [] FxPuffs, l: XcLook, now: f32, seed: f32) -> int {
   return n;
 }
 
-// ---- the bar, CSS px: slots of XC_SLOT, XC_STEP apart, nine a row, XC_BOTTOM up from the bottom
-XC_SLOT :: 52.0; XC_STEP :: 60.0; XC_BOTTOM :: 30.0;
+// ---- the bar, CSS px: slots of XC_SLOT, XC_STEP apart, nine a row (fewer when the page is narrower:
+// a phone's six), XC_BOTTOM up from the bottom
+XC_SLOT :: 52.0; XC_STEP :: 60.0; XC_BOTTOM :: 30.0; XC_EDGE :: 8.0;
+// Slots a row holds on a page w device px wide at scale k, XC_EDGE clear of each side.
+xc_slot_row :: (w: f32, k: f32) -> int {
+  fit := cast(int) floor((w / k - 2 * f32(XC_EDGE) + (f32(XC_STEP) - f32(XC_SLOT))) / f32(XC_STEP));
+  return ifx fit > 9 then 9 else ifx fit < 1 then 1 else fit;
+}
 // Slot i of a bar of bar_n on a w by h screen at scale k: x0, y0, x1, y1 in device px.
 xc_slot_at :: (bar_n: int, i: int, w: f32, h: f32, k: f32) -> [4] f32 {
-  rows := (bar_n + 8) / 9; row := i / 9; count := rs_min(9, bar_n - row * 9);
+  per := xc_slot_row(w, k);
+  rows := (bar_n + per - 1) / per; row := i / per; count := rs_min(per, bar_n - row * per);
   wide := f32(count) * f32(XC_STEP) - (f32(XC_STEP) - f32(XC_SLOT));
-  x0 := (w - wide * k) / 2 + f32(i % 9) * f32(XC_STEP) * k;
+  x0 := (w - wide * k) / 2 + f32(i % per) * f32(XC_STEP) * k;
   y0 := h - (f32(XC_SLOT) + f32(XC_BOTTOM) + f32(rows - row - 1) * f32(XC_STEP)) * k;
   return [4] f32.[x0, y0, x0 + f32(XC_SLOT) * k, y0 + f32(XC_SLOT) * k];
 }
@@ -137,4 +144,7 @@ xc_slot_at :: (bar_n: int, i: int, w: f32, h: f32, k: f32) -> [4] f32 {
   #assert xc_look_of(fb_spell(SP_SHIELD, 1, FB_SELF), 0, 0, 0, 0, at).recipe == FXR_BARRIER;
   p: [1] FxPuffs; #assert xc_look_start(p[..], g, 1, 7) == 2 && p[0].started == 2;
   s := xc_slot_at(5, 0, 1280, 720, 1); #assert s[2] - s[0] == 52 && s[3] == 720 - 30 && s[0] == (1280 - 292) / 2;
+  // a phone's page: six a row, every slot on it
+  #assert xc_slot_row(390 * 3, 3) == 6 && xc_slot_row(1920, 1) == 9;
+  for i: 0..<12 { sb := xc_slot_at(12, i, 390 * 3, 844 * 3, 3); #assert sb[0] >= 8 * 3 && sb[2] <= (390 - 8) * 3 && sb[1] >= 0; }
 }

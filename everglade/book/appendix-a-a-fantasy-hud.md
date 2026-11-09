@@ -48,15 +48,21 @@ exactly as before.
   the top right (you, the path, open ground, creatures, a north mark, the place
   and the time of day), a framed action bar with the class's emblem, name
   plates over creatures, outlined damage numbers and a banner when you enter a
-  new place (`e2_world_hud`). Everglade Experimental shows the same parts.
+  new place (`eg_world`, which Everglade II wires in `e2_world_view`). Everglade Experimental shows the same parts.
 - **Character Create on a phone.** Held upright, the studio is a short card
   at the top (the title, ROTATE, SAVE and USE IN EVERGLADE) and a sheet at the
   bottom. The sheet has five tabs: BODY, FACE, GEAR, PARTS and CLASS. You stay
   in view between them. Held sideways, the card is on the left and the sheet on
   the right. Every control is at least 44 px tall, and the layout keeps clear of
   the notch and the home bar (`e2c_layout`).
+- **Plates you can see.** A plate, its health bar and a damage number show
+  only while the body under them shows from the camera, not through a trunk,
+  a rock, a wall or a hill. The engine asks its visibility service
+  (`hud_sight_look`) and fades the plate over 0.15 s (`hud_sight_step`).
 - **The frame rate.** The frame rate and the GFX control sit on a small plaque
-  in the top-right corner, clear of the studio's controls (`eg_fps`, `e2_fps`).
+  in the bottom-right corner. On a phone it sits above the action bar and the
+  side bar, and in the studio it sits clear of the sheet (`e2_fps`,
+  `e2_fps_clear`).
 
 ## The checks
 

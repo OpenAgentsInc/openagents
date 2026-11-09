@@ -165,9 +165,9 @@ EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 // Everglade Experimental draws its HUD in the FANTASY style (aethyr/ui/hud-style.coax): its strokes then
-// blend straight alpha, sealed with their coverage (lab_hud_alpha). The 5E Lab keeps max blending.
+// blend straight alpha, sealed with their coverage (lab_straight_alpha). The 5E Lab keeps max blending.
 static uint32_t page_state;
-EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return page_state && lab_hud_alpha(at(page_state)) ? 1u : 0u; }
+EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return page_state && lab_straight_alpha(at(page_state)) ? 1u : 0u; }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   page_state = state;
   if (length > sizeof inbox) return;
