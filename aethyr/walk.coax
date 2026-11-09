@@ -964,7 +964,9 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
   #assert q.on_ground && q.pos.y == 0 && q.vel.y == 0;
 }
 
-#forall "the camera stays in its orbit" iy: -5..<6, ip: -5..<6 {
+// One look, turned and tilted by iy and ip, then 20 frames walking. Split by the turn's sign into
+// two checks (#13115): the 121 cases together came to 15,679,129 steps, 78% of the default 20,000,000.
+camera_orbit_holds :: (iy: int, ip: int) -> bool #effects(all) {
   p := walk_place(0, 0, 0, 0);
   p = walk_input(p, 0, 1, 0, 0, true, false, f32(iy) * 0.9, f32(ip) * 0.9);
   #assert p.phi >= f32(PHI_MIN) && p.phi <= f32(PHI_MAX);
@@ -977,7 +979,10 @@ walk_speed_holds :: (run: bool, ix: int, iy: int) -> bool #effects(all) {
     d := sqrt(ex * ex + ey * ey + ez * ez);
     #assert d >= f32(CAM_WALL_MIN) - 0.001 && d <= p.max_dist + 0.001;
   }
+  return true;
 }
+#forall "the camera stays in its orbit (1 of 2)" iy: -5..<0, ip: -5..<6 { #assert camera_orbit_holds(iy, ip); }
+#forall "the camera stays in its orbit (2 of 2)" iy: 0..<6, ip: -5..<6 { #assert camera_orbit_holds(iy, ip); }
 
 #test "looking turns the camera by the deltas" {
   p := walk_place(0, 0, 0, 0);
