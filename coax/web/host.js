@@ -3495,7 +3495,7 @@ function after(gesture, tap = false) {
   }
   syncLook();
   const cursor = ["", "pointer", "crosshair", "text", "none"][call("coaxial_cursor")] || "";
-  if ((canvas.dataset.cursor || "") !== cursor) { canvas.dataset.cursor = cursor; canvas.style.cursor = cursor === "none" ? "none" : ""; }
+  if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;   // the page's CSS turns data-cursor into the cursor (realms.ts)
 }
 
 // Puts the field over the box the app draws it in, so a paste or a right

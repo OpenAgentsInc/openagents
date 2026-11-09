@@ -266,6 +266,8 @@ html,body{margin:0;height:100%;background:#000;color:#ededed}
 body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
 canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=crosshair]{cursor:crosshair}
+canvas[data-cursor=none]{cursor:none}
 main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
 html:not(.gpu) body{overflow:auto}
 a{color:#ededed}
@@ -357,6 +359,8 @@ html,body{margin:0;height:100%;background:#000;color:#ededed}
 body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
 canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=crosshair]{cursor:crosshair}
+canvas[data-cursor=none]{cursor:none}
 main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
 html:not(.gpu) body{overflow:auto}
 a{color:#ff8c1f}
