@@ -98,15 +98,11 @@ says otherwise. Paths are relative to the repository root.
 
 ## What remains
 
-- **The front door on everglade.world (`/`) has no page view of its own.**
-  `realms.ts` writes it as static HTML. A click on PLAY NOW is recorded as
-  `portal-shown` with `id` door, but only when the hidden game frame opened.
-  A browser without WebGPU never opens that frame, so those visitors aren't
-  counted. The fix belongs in `realms.ts`, which another agent is changing
-  now.
-- **The create-character click on openagents.com has no named event.**
-  `portal_go` (`newland-portal.coax:69`) should send `portal-go`. That file
-  is also being moved to `/newlander` by another agent.
+- **Done since: the front door and the lander click.** The front door (`/`, realms.ts) now sends its
+  own session-start, page-view and `play-now-click`, with or without WebGPU. The lander at
+  `openagents.com/newlander` sends `create-character-click` at the press, then the tab goes on to
+  `everglade.world/play?via=portal`; WAYS IN names those arrivals `openagents.com/newlander portal`
+  (a `/play?via=portal` page view that came from openagents.com).
 - **A visitor isn't linked across the two domains.** The ids are per origin, so
   the report can't follow a visitor from the openagents.com click to
   everglade.world. WAYS IN shows the `?via=portal` arrivals instead.

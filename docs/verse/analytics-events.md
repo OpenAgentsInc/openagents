@@ -24,9 +24,11 @@ session.
 ## By page
 
 - **home** (newland-face.c): load-engine, click, key, `card` (1-5), `open` (where PLAYTEST or OPEN PROJECT went).
+  The lander at /newlander (the same module, data-page 3) also sends `create-character-click` (`id` newlander) at the press of CREATE YOUR CHARACTER, before the tab goes on to everglade.world/play?via=portal.
 - **galaxy** (verse.coax; the native host only since 2026-10-31, when the web's page became a redirect to /realms): planet-click, voice-on, start, join, planet-create; tally `nav_<slug>` for arrow steps.
 - **haunt** and **sandbox** (realm.coax, realm-face.c): area, objective, quest, npc, place, edit, survey, voice; `walk`; `fail piece`.
 - **everglade** (everglade-track.coax): visit (place, building), walk, wanted, talk, quest, edit, voice, chat-sent, fail (pack, npc); tally cast_/use_<spell>, kill_guard, kill_folk, death, fire, destroy.
+- **everglade2, the front door** (everglade.world `/`, realms.ts `frontDoor`, a beacon from the page itself, with or without WebGPU): session-start (a new tab), page-view (`path` /), `play-now-click` (`id` door, `at` hero or foot, `gpu`).
 - **everglade2** (everglade2-track.coax, Everglade II on everglade.world): load-world, portal-shown, create-open, create-pick, create-class, create-level, create-name, create-done, run-end, spawn, room-join, level-up, death, fail (create-save, room, version, elsewhere); tally cast_<spell>, refused, bow, hit_/hurt_/kill_<wolf|goblin|guard>, xp. The host also sends load-fail, gpu-lost and crash. Admin: EVERGLADE chip (docs/analytics/2026-11-09-everglade-analytics-audit.md).
 - **the-grid** (thegrid-track.coax): visit (station), station, answer, suggest, galaxy, walk, others, setting first-person, fail (pack, suggest).
 - **dead-gears** (deadgears.coax): wave, end, setting paused, walk; tally shot, hit, kill, hurt, repair, lift, throw, stun, reload, cover, mode.

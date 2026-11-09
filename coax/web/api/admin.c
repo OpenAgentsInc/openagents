@@ -438,11 +438,14 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
 #define EG_STEPS "ARRAY['Opened the game', 'The game loaded', 'The world showed', 'Past the front door or the portal', " \
   "'Character Create showed', 'Changed their look or class', 'Named their character', 'Pressed USE IN EVERGLADE', " \
   "'Ran out of the glade', 'In Everglade', 'Joined the other players', 'Fought', 'Felled a wolf, goblin or the guard']"
-// Where a visit came in: its first page view.
+// Where a visit came in: its first page view (the front door's own, realms.ts; /play?via=portal from
+// openagents.com is the lander's portal, newland-portal.coax).
 #define EG_WAY \
   ", way AS (SELECT DISTINCT ON (sid) sid, CASE " \
+  "  WHEN p->>'path' IN ('/', '/index.html') OR p->>'path' LIKE '%/everglade2/domain/' OR p->>'path' LIKE '%/everglade2/domain/index.html' THEN 'everglade.world front door' " \
   "  WHEN p->>'path' IN ('/play', '/play/') OR p->>'path' LIKE '%/domain/play%' THEN " \
-  "    CASE WHEN coalesce(p->>'q', '') LIKE '%via=portal%' THEN 'everglade.world front door' ELSE 'everglade.world/play' END " \
+  "    CASE WHEN coalesce(p->>'q', '') NOT LIKE '%via=portal%' THEN 'everglade.world/play' " \
+  "      WHEN p->>'from' = 'openagents.com' THEN 'openagents.com/newlander portal' ELSE 'everglade.world front door' END " \
   "  WHEN p->>'path' LIKE '%character-creator%' THEN " \
   "    CASE WHEN coalesce(p->>'q', '') LIKE '%via=portal%' THEN 'openagents.com homepage portal' ELSE 'openagents.com Character Create' END " \
   "  WHEN p->>'path' LIKE '%everglade2%' THEN 'openagents.com/worlds/everglade2' ELSE 'other' END AS way, host " \

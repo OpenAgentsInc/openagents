@@ -48,6 +48,12 @@ eg_post(nogpu, [eg("page-view", 1, {"pid": "egv2", "path": "/play"}), eg("load-f
 back = "c0e9000000000000c3"
 eg_post(back, [eg("page-view", 1, {"pid": "egv1", "path": "/play"}), eg("load-engine", 2, {"ms": 900}), eg("load-world", 3, {"ms": 2000}),
                eg("spawn", 4, {"id": "kept", "class": "ranger", "n": 1})])
+# through the portal on openagents.com/newlander: /play?via=portal, come from openagents.com
+lander = "c0e9000000000000e5"
+eg_post(lander, [eg("page-view", 1, {"pid": "egv3", "from": "openagents.com", "path": "/play", "q": "via=portal"}), eg("load-engine", 2, {"ms": 1500})])
+# the front door on a browser without WebGPU: its own page view and PLAY NOW (realms.ts), no game
+door = "c0e9000000000000f6"
+eg_post(door, [eg("page-view", 1, {"pid": "egv4", "from": "news.ycombinator.com", "path": "/"}), eg("play-now-click", 2, {"id": "door", "at": "hero", "gpu": False})])
 # the team's own play on everglade.world: a team-link browser
 cookie = eg_admin()
 status, _, headers = call("GET", "/api/admin/team-link?host=everglade.world", headers={"Cookie": cookie})
@@ -71,8 +77,9 @@ status, body, _ = call("GET", "/api/admin/analytics?view=everglade&days=0&space=
 text = body.decode()
 check("EVERGLADE: the admin sees how far visits got, step by step",
       status == 200 and "#EVERGLADE: HOW FAR VISITS GOT|w|STEP|GOT THIS FAR|OF ALL WHO OPENED IT|STOPPED HERE" in text
-      and "\nOpened the game|3|100%|" in text and "\nFelled a wolf, goblin or the guard|1|33%|1" in text and "\nIn Everglade|2|67%|" in text, text[:1500])
-check("EVERGLADE: the ways in", "\neverglade.world front door|1|1|0" in text and "\neverglade.world/play|2|1|1" in text, text[:2500])
+      and "\nOpened the game|5|100%|" in text and "\nFelled a wolf, goblin or the guard|1|20%|1" in text and "\nIn Everglade|2|40%|" in text, text[:1500])
+check("EVERGLADE: the ways in", "\neverglade.world front door|2|1|0" in text and "\neverglade.world/play|2|1|1" in text
+      and "\nopenagents.com/newlander portal|1|0|0" in text, text[:2500])
 check("EVERGLADE: loading and what went wrong",
       "\nFailed to load|1" in text and "\nBrowser without WebGPU|1" in text and "\nFailed to load|no WebGPU|1|1|" in text, text)
 check("EVERGLADE: what they did, from the tallies and the acts",

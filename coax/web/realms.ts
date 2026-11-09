@@ -508,6 +508,24 @@ ${shots}
   const ENTRY = ${JSON.stringify(d.entry)}, TITLE = ${JSON.stringify(d.title)};   // the address bar says ENTRY all the way in
   const door = document.getElementById("door"), root = document.documentElement;
   root.classList.add("js");
+  // What the front door records (analytics.coax's batch shape, beaconed to the same ingest, in this
+  // tab's session as the game's host.js names it, page everglade2): its page view, a session start for
+  // a new tab, and each PLAY NOW, with or without WebGPU. No words, nothing personal: the anonymous
+  // ids, the screen, where the visit came from (a site and path, no query).
+  const id = (store, key) => { const make = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    try { const v = store.getItem(key); if (v) return [v, false]; const n = make(); store.setItem(key, n); return [n, true]; } catch { return [make(), true]; } };
+  const [tab, fresh] = id(sessionStorage, "coaxial.tab"), [pid] = id(localStorage, "coaxial.visitor");
+  const gpu = "gpu" in navigator, mobile = matchMedia("(pointer: coarse)").matches;
+  const track = (ev, p) => {
+    if (!/^[0-9a-f]{8,64}$/.test(tab) || !navigator.sendBeacon) return;
+    const body = { sid: "c" + tab, events: [{ ev, page: "everglade2", ct: Date.now(), p }] };
+    if (navigator.webdriver) body.auto = "webdriver";
+    try { navigator.sendBeacon("/api/analytics/events", new Blob([JSON.stringify(body)], { type: "text/plain" })); } catch {}
+  };
+  let ref = ""; try { if (document.referrer) { const r = new URL(document.referrer); ref = r.host === location.host ? r.pathname : r.host; } } catch {}
+  if (fresh) { let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch {}
+    track("session-start", { pid, rev: "door", mobile, gpu, sw: screen.width, sh: screen.height, vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, lang: navigator.language || "", tz, ref, entry: "everglade2", landing: true }); }
+  track("page-view", { pid, from: ref, path: location.pathname, ...(location.search.length > 1 ? { q: location.search.slice(1, 81) } : {}) });
   const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } }, { rootMargin: "0px 0px -8% 0px" }) : null;
   for (const el of document.querySelectorAll(".in")) io ? io.observe(el) : el.classList.add("seen");
   let z = null;
@@ -545,6 +563,7 @@ ${shots}
   // PLAY NOW: the entry fades in where it is (its own loading screen, if it is not up yet), takes
   // the address, the title and the input; the front door goes. Otherwise it is a plain link.
   const play = (e) => {
+    track("play-now-click", { id: "door", at: e.currentTarget.closest(".again") ? "foot" : "hero", gpu });
     if (e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
     warm();
     if (!z || z.state === 2) return;

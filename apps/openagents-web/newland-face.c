@@ -204,6 +204,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   static int64_t card_seen;
   if(n>0)track_loaded(tr(),track_cstr("load-engine"));
   if(state_at(state)->card!=card_seen){card_seen=state_at(state)->card;if(card_seen>0)track_act_n(tr(),track_cstr("card"),track_cstr(""),card_seen);}
+  // CREATE YOUR CHARACTER on the lander (newland-portal.coax portal_go), sent at once: the tab goes on
+  // to everglade.world about 1.3 s later. Again after Back to the lander kept in memory.
+  static _Bool portal_seen;
+  _Bool going=state_at(state)->portal.e[0].going;
+  if(going&&!portal_seen){track_act(tr(),track_cstr("create-character-click"),track_cstr("newlander"));track_flush(tr(),0);}
+  portal_seen=going;
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }
