@@ -1,0 +1,106 @@
+// Everglade's side bar over the action bar, for every Everglade zone: the SRD class features and
+// rest that are not slots on the bar. HEALER'S KIT, the Druid's Wild Companion or the Wizard's
+// Find Familiar, and REST, with what each menu offers and a tip for each. Plain facts in, words
+// out: a zone fills EgBarFacts from what its room said, draws them with the engine's widgets
+// (aethyr/ui/hud-menu.coax hud_side_draw, hud_menu_draw, hud_tip) and sends what a press asks.
+// The room decides every request. docs/verse/hud-styles.md.
+
+// What the side bar shows: only what the room has said. rest holds the rest requests (RS_REST_*,
+// aethyr/rules/srd/rest-control.coax) the room allows now.
+EgBarFacts :: struct {
+  kit: bool; aid_left: int = -1;                 // Healer's Kit, and its uses left (-1 not said)
+  pet: bool; wizard: bool; druid: bool;          // a companion or familiar to call, and whose
+  form: string; spirit: int; paid_slot: bool;    // its form's name, the familiar's spirit (0 fey, 1 celestial, 2 fiend), paid with a slot
+  rest: [4] int; rest_n: int; resting: bool;     // the rest choices, and whether a rest is under way
+}
+EG_SIDE_KIT :: 0; EG_SIDE_PET :: 1; EG_SIDE_REST :: 2;
+// A menu row's action: the companion's (summon, form, spirit, how it is paid, the orders 1 to 4 and
+// 6, Cure Wounds through it) and rest's (choice j)
+EG_DO_SUMMON :: 1; EG_DO_FORM :: 2; EG_DO_SPIRIT :: 3; EG_DO_PAY :: 4; EG_DO_ORDER :: 10; EG_DO_CURE :: 15; EG_DO_REST :: 20;
+EG_MENU_ROWS :: 12;
+
+eg_put_s :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }
+eg_caps_s :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { c := ch; if c >= 'a' && c <= 'z' { c -= 32; } if n < b.count { b[n] = c; n += 1; } } return n; }
+eg_int_s :: (b: [] u8, at: int, v: int) -> int {
+  n := at; x := v; if x < 0 { n = eg_put_s(b, n, "-"); x = -x; }
+  d: [12] u8; c := 0; while true { d[c] = cast(u8)('0' + x % 10); c += 1; x /= 10; if x == 0 || c >= 12 { break; } }
+  while c > 0 { c -= 1; if n < b.count { b[n] = d[c]; n += 1; } }
+  return n;
+}
+
+eg_side_items :: (f: EgBarFacts, ids: [] int) -> int {
+  n := 0;
+  if f.kit { ids[n] = EG_SIDE_KIT; n += 1; }
+  if f.pet { ids[n] = EG_SIDE_PET; n += 1; }
+  if f.rest_n > 0 { ids[n] = EG_SIDE_REST; n += 1; }
+  return n;
+}
+eg_side_label :: (f: EgBarFacts, id: int, b: [] u8) -> int {
+  if id == EG_SIDE_KIT { n := eg_put_s(b, 0, "HEALER'S KIT"); if f.aid_left >= 0 { n = eg_put_s(b, n, " · "); n = eg_int_s(b, n, f.aid_left); } return n; }
+  if id == EG_SIDE_PET { return eg_caps_s(b, eg_put_s(b, 0, ifx f.wizard then "FAMILIAR · " else "WILD COMPANION · "), f.form); }
+  return eg_put_s(b, 0, "REST");
+}
+eg_side_tip :: (f: EgBarFacts, id: int) -> string {
+  if id == EG_SIDE_KIT { return "Stabilize a dying ally beside you"; }
+  if id == EG_SIDE_PET { return ifx f.wizard then "Find Familiar: cast it, pick its form, give it orders" else "Wild Companion: summon it, pick its form, give it orders"; }
+  return ifx f.resting then "Choose how your rest goes on" else "Take a short or a long rest";
+}
+eg_menu_title :: (f: EgBarFacts, id: int) -> string { if id == EG_SIDE_REST { return "REST"; } return ifx f.wizard then "FAMILIAR" else "WILD COMPANION"; }
+eg_menu_rows :: (f: EgBarFacts, id: int, rows: [] int) -> int {
+  n := 0;
+  if id == EG_SIDE_PET {
+    rows[n] = EG_DO_SUMMON; n += 1; rows[n] = EG_DO_FORM; n += 1;
+    if f.wizard { rows[n] = EG_DO_SPIRIT; n += 1; }
+    rows[n] = EG_DO_PAY; n += 1;
+    for o: 1..<5 { rows[n] = EG_DO_ORDER + o; n += 1; }
+    if f.druid { rows[n] = EG_DO_CURE; n += 1; }
+    rows[n] = EG_DO_ORDER + 6; n += 1;
+  }
+  if id == EG_SIDE_REST { for j: 0..<f.rest_n { rows[n] = EG_DO_REST + j; n += 1; } }
+  return n;
+}
+// A rest request's words.
+eg_rest_label :: (req: int, resting: bool) -> string {
+  if req == RS_REST_SHORT { return "SHORT REST"; }
+  if req == RS_REST_SLEEP { return ifx resting then "SLEEP" else "LONG REST"; }
+  if req == RS_REST_WATCH { return "WATCH"; }
+  if req == RS_REST_DIE { return "HIT DIE"; }
+  return "END REST";
+}
+EG_SPIRITS :: [3] string.["FEY", "CELESTIAL", "FIEND"];
+eg_menu_label :: (f: EgBarFacts, a: int, b: [] u8) -> int {
+  if a == EG_DO_SUMMON { return eg_put_s(b, 0, ifx f.wizard then "CAST FIND FAMILIAR" else "SUMMON"); }
+  if a == EG_DO_FORM { return eg_caps_s(b, eg_put_s(b, 0, "FORM: "), f.form); }
+  if a == EG_DO_SPIRIT { return eg_put_s(b, eg_put_s(b, 0, "SPIRIT: "), EG_SPIRITS[ifx f.spirit < 0 || f.spirit > 2 then 0 else f.spirit]); }
+  if a == EG_DO_PAY {
+    if f.wizard { return eg_put_s(b, 0, ifx f.paid_slot then "CAST: SPELL SLOT" else "CAST: AS A RITUAL"); }
+    return eg_put_s(b, 0, ifx f.paid_slot then "PAY: SPELL SLOT" else "PAY: WILD SHAPE");
+  }
+  if a == EG_DO_ORDER + 1 { return eg_put_s(b, 0, "SEND TO POCKET"); }
+  if a == EG_DO_ORDER + 2 { return eg_put_s(b, 0, "RECALL"); }
+  if a == EG_DO_ORDER + 3 { return eg_put_s(b, 0, "RELEASE"); }
+  if a == EG_DO_ORDER + 4 { return eg_put_s(b, 0, "STEP FORWARD"); }
+  if a == EG_DO_ORDER + 6 { return eg_put_s(b, 0, "BORROW ITS SENSES"); }
+  if a == EG_DO_CURE { return eg_put_s(b, 0, "CURE WOUNDS"); }
+  j := a - EG_DO_REST; if j >= 0 && j < f.rest_n { return eg_put_s(b, 0, eg_rest_label(f.rest[j], f.resting)); }
+  return 0;
+}
+eg_menu_tip :: (f: EgBarFacts, a: int) -> string {
+  if a == EG_DO_SUMMON { return ifx f.wizard then "Cast Find Familiar with the form and spirit below" else "Summon a beast spirit in the form below"; }
+  if a == EG_DO_FORM { return "Pick the beast's form"; }
+  if a == EG_DO_SPIRIT { return "Fey, celestial or fiend"; }
+  if a == EG_DO_PAY { return ifx f.wizard then "As a ritual takes longer and spends no slot" else "Spend a use of Wild Shape or a level 1 spell slot"; }
+  if a == EG_DO_ORDER + 1 { return "Send it into a pocket dimension; it keeps its HP"; }
+  if a == EG_DO_ORDER + 2 { return "Bring it back from the pocket, within 30 feet"; }
+  if a == EG_DO_ORDER + 3 { return "Dismiss it for good"; }
+  if a == EG_DO_ORDER + 4 { return "It moves one square the way you face"; }
+  if a == EG_DO_ORDER + 6 { return "See and hear through it"; }
+  if a == EG_DO_CURE { return "It touches the nearest wounded ally with your Cure Wounds"; }
+  j := a - EG_DO_REST; if j < 0 || j >= f.rest_n { return ""; }
+  r := f.rest[j];
+  if r == RS_REST_SHORT { return "One hour: spend Hit Dice to heal"; }
+  if r == RS_REST_SLEEP { return ifx f.resting then "Sleep through the rest" else "Eight hours: regain HP and spell slots"; }
+  if r == RS_REST_WATCH { return "Keep watch while you rest"; }
+  if r == RS_REST_DIE { return "Spend one Hit Die to heal"; }
+  return "Stop resting";
+}

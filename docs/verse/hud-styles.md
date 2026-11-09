@@ -81,7 +81,7 @@ Everglade's renderer is in
 - `hud_say` draws text in a role: a drop shadow or an outline, then the text.
 
 Everglade's HUD parts are in
-[`apps/openagents-web/everglade-hud.coax`](../../apps/openagents-web/everglade-hud.coax):
+[`everglade/hud/parts.coax`](../../everglade/hud/parts.coax):
 the portrait plate, the action bar's tray, the map ring, name plates, damage
 numbers, the place banner and the frame rate's plaque. Each part draws its
 frames before its words.
@@ -105,29 +105,43 @@ reading face, and `ui_title_font_src`, `ui_title_font_family` and
 `ui_title_font_weight` for the title face. `coax/web/host.js` draws both into
 one glyph atlas. The reading face goes in the red channel and the title face in
 the green channel. Coax lays text out with the advance widths in
-[`apps/openagents-web/everglade-fonts.coax`](../../apps/openagents-web/everglade-fonts.coax),
+[`everglade/hud/fonts.coax`](../../everglade/hud/fonts.coax),
 which were measured from the same font files.
+
+## Engine widgets
+
+[`aethyr/ui/hud-menu.coax`](../../aethyr/ui/hud-menu.coax) holds widgets any
+realm uses with its own data:
+
+- `hud_side_box`, `hud_side_top` and `hud_side_draw`: a side bar of framed
+  buttons over an action bar. Rows wrap to the page's width, so no button
+  overlaps another at any width.
+- `hud_menu`, `hud_menu_row` and `hud_menu_draw`: a framed menu that opens
+  above a button, in as many columns as fit.
+- `hud_tip`: a plaque with one line over what the pointer is on.
+- `HudWords`: the words a widget sets. The realm's renderer draws them after
+  the primitives (Everglade's `hud_draw`).
+
+Pass a 44 px row on a phone so each button fits a finger.
 
 ## The HUD system map
 
-What is shared and what each realm owns:
+Each part is engine (any realm), game (every Everglade zone) or zone wiring
+(one page's state).
 
-| Shared | Where |
-| --- | --- |
-| Style tokens, text roles and part drawers | `aethyr/ui/hud-style.coax` |
-| HUD primitives such as `HudCoord` | `aethyr/ui/hud.coax` |
-| The SCIFI instrument frames | `verse/hud/frame.coax`, `aethyr/ui/draw.coax`, `aethyr/ui/arwes-*.coax` |
-| The straight-alpha HUD blend | `coax/web/host.js` (`coaxial_fx_alpha_v1`) |
-| The two-face glyph atlas | `coax/web/host.js` (`sansAtlas`, `data-ui-title-font-*`) |
-
-| Per realm | Everglade's |
-| --- | --- |
-| Which style | `EG_HUD` in `charactercreator.coax` |
-| The renderer from primitives to vertices | `hud_emit`, `hud_seal`, `hud_say` in `charactercreator.coax` |
-| The HUD parts and their data | `everglade-hud.coax`; Everglade II's world HUD in `everglade2.coax` (`e2_world_hud`), its bar in `everglade2-cast.coax`, its plates in `everglade2-monsters.coax` and `everglade2-guard.coax`; Experimental's in `experimental-combat.coax` |
-| Character Create's wardrobe | `everglade2-create.coax` |
-| The faces | `realms.json` and `everglade-fonts.coax` |
+| Layer | Part | Where |
+| --- | --- | --- |
+| Engine | Style tokens, text roles and part drawers, SCIFI and FANTASY | `aethyr/ui/hud-style.coax` |
+| Engine | Side bar, menu, tip and words | `aethyr/ui/hud-menu.coax` |
+| Engine | The straight-alpha HUD blend and the two-face glyph atlas | `coax/web/host.js` (`coaxial_fx_alpha_v1`, `sansAtlas`) |
+| Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `apps/openagents-web/charactercreator.coax` |
+| Game | Portrait plate, bar tray, map ring, name plates, place banner, plaque | `everglade/hud/parts.coax` |
+| Game | The side bar's class features (Healer's Kit, Wild Companion, Find Familiar) and the rest menu | `everglade/hud/class-bar.coax` |
+| Game | The faces' widths | `everglade/hud/fonts.coax`; the faces in `realms.json` |
+| Zone wiring | Everglade II: its facts, presses and layout | `e2_world_hud` in `everglade2.coax`; `e2k_facts`, `e2k_side_hud` in `everglade2-cast.coax`; plates in `everglade2-monsters.coax`, `everglade2-guard.coax` |
+| Zone wiring | Character Create's wardrobe | `everglade2-create.coax` |
+| Zone wiring | Everglade Experimental | `experimental-combat.coax` |
 
 Everglade v1 (`/worlds/everglade` and `/worlds/everglade-classic`) draws its HUD
-with the Filament stroke font and its own shaders. It doesn't use this
-renderer and keeps its look.
+with the Filament stroke font and its own shaders, and doesn't use these parts
+yet.

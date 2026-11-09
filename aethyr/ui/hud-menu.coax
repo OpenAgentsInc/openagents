@@ -1,0 +1,134 @@
+// HUD widgets on the HUD style (aethyr/ui/hud-style.coax): a side bar of framed buttons over an
+// action bar, a framed menu that opens above one of them, and a tip that says what the pointer is
+// over. Any realm uses them with its own data: the labels, their widths in its faces, and what each
+// press does. They return boxes and add primitives and words (HudList, HudWords); the realm's
+// renderer draws both. Rows wrap to the page's width, so nothing overlaps at any width; on a phone
+// the realm passes a 44 px row for a finger. docs/verse/hud-styles.md.
+//   coax/bin/coax test aethyr/ui/hud-menu.coax --library
+#load "hud-style.coax";
+
+// Words for the realm's renderer to set: each a run of text in a role at a baseline, its left end or
+// its centre, optionally in its own ink. The text lives in one buffer.
+HUD_WORDS :: 64; HUD_WORD_TEXT :: 2048;
+HudWord :: struct { x: f32; y: f32; cap: f32; role: int; centre: bool; inked: bool; ink: HudRgba; at: int; len: int; }
+HudWords :: struct { w: [HUD_WORDS] HudWord; n: int; text: [HUD_WORD_TEXT] u8; tn: int; }
+hud_word_ink :: (ws: [] HudWords, t: string, x: f32, y: f32, cap: f32, role: int, centre: bool, inked: bool, ink: HudRgba) {
+  if ws[0].n >= HUD_WORDS || ws[0].tn + t.count > HUD_WORD_TEXT || t.count == 0 { return; }
+  at := ws[0].tn; for ch: t { ws[0].text[ws[0].tn] = ch; ws[0].tn += 1; }
+  ws[0].w[ws[0].n] = HudWord.{x = x, y = y, cap = cap, role = role, centre = centre, inked = inked, ink = ink, at = at, len = t.count};
+  ws[0].n += 1;
+}
+hud_word :: (ws: [] HudWords, t: string, x: f32, y: f32, cap: f32, role: int, centre: bool) { hud_word_ink(ws, t, x, y, cap, role, centre, false, HudRgba.{}); }
+hud_word_text :: (ws: [] HudWords, i: int) -> string { w := ws[0].w[i]; return cast(string) ws[0].text[w.at..<w.at + w.len]; }
+
+hud_in :: (b: HudPrim, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+hud_apart :: (a: HudPrim, b: HudPrim) -> bool { return a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0; }
+
+// The side bar's button j of n, whose widths are wd: rows fill left to right inside x0..x1, centred,
+// and stack upward from y1 (the lowest row's foot), each h tall, gap apart.
+hud_side_box :: (wd: [] f32, n: int, j: int, x0: f32, x1: f32, y1: f32, h: f32, gap: f32) -> HudPrim {
+  if j < 0 || j >= n { return HudPrim.{}; }
+  room := x1 - x0; first := 0; row := 0;
+  while first < n {
+    last := first; total := wd[first];
+    while last + 1 < n && total + gap + wd[last + 1] <= room { last += 1; total += gap + wd[last]; }
+    if j <= last {
+      x := x0 + (room - total) * 0.5; for i: first..<j { x += wd[i] + gap; }
+      yb := y1 - f32(row) * (h + gap);
+      return hud_box(x, yb - h, x + wd[j], yb);
+    }
+    first = last + 1; row += 1;
+  }
+  return HudPrim.{};
+}
+// The highest top of the side bar's buttons; y1 - h when it has none.
+hud_side_top :: (wd: [] f32, n: int, x0: f32, x1: f32, y1: f32, h: f32, gap: f32) -> f32 {
+  top := y1 - h; for j: 0..<n { b := hud_side_box(wd, n, j, x0, x1, y1, h, gap); if b.y0 < top { top = b.y0; } }
+  return top;
+}
+
+// A menu over an anchor (its button): a title head tall, then rows rows h tall, in as many columns
+// as fit between top (the highest it may reach) and y1 (its foot), each col_w wide, inside x0..x1.
+HudMenu :: struct { panel: HudPrim; cols: int; per: int; col_w: f32; h: f32; head: f32; gap: f32; }
+hud_menu :: (anchor: HudPrim, rows: int, col_w: f32, h: f32, head: f32, gap: f32, top: f32, y1: f32, x0: f32, x1: f32) -> HudMenu {
+  m: HudMenu; if rows <= 0 { return m; }
+  step := h + gap * 0.5; room := y1 - top - head - 2 * gap;
+  per := ifx room > step then int(room / step) else 1; if per > rows { per = rows; }
+  cols := (rows + per - 1) / per; per = (rows + cols - 1) / cols;
+  w := f32(cols) * col_w + f32(cols + 1) * gap; if w > x1 - x0 { w = x1 - x0; }
+  hh := 2 * gap + head + f32(per) * step - gap * 0.5;
+  px := (anchor.x0 + anchor.x1 - w) * 0.5; if px < x0 { px = x0; } if px + w > x1 { px = x1 - w; }
+  m.panel = hud_box(px, y1 - hh, px + w, y1); m.cols = cols; m.per = per; m.h = h; m.head = head; m.gap = gap;
+  m.col_w = (w - f32(cols + 1) * gap) / f32(cols);
+  return m;
+}
+hud_menu_row :: (m: HudMenu, r: int) -> HudPrim {
+  if m.per <= 0 || r < 0 || r >= m.cols * m.per { return HudPrim.{}; }
+  c := r / m.per; q := r % m.per; step := m.h + m.gap * 0.5;
+  x := m.panel.x0 + m.gap + f32(c) * (m.col_w + m.gap); y := m.panel.y0 + m.gap + m.head + f32(q) * step;
+  return hud_box(x, y, x + m.col_w, y + m.h);
+}
+
+// Draw the side bar: a dark tray behind each row and a raised button each, lit when chosen or under
+// the pointer; the labels centred in the title face's role at cap.
+hud_side_draw :: (l: [] HudList, ws: [] HudWords, t: HudTokens, wd: [] f32, labels: [] string, lit: [] bool, n: int,
+                  x0: f32, x1: f32, y1: f32, h: f32, gap: f32, cap: f32, k: f32) {
+  j := 0;
+  while j < n {
+    a := hud_side_box(wd, n, j, x0, x1, y1, h, gap); last := j;
+    while last + 1 < n && hud_side_box(wd, n, last + 1, x0, x1, y1, h, gap).y0 == a.y0 { last += 1; }
+    z := hud_side_box(wd, n, last, x0, x1, y1, h, gap); m := 5 * k; tray := hud_box(a.x0 - m, a.y0 - m, z.x1 + m, a.y1 + m);
+    hud_fill(l, tray, 8 * k, hud_fade(t.frame_dark, 0.9), hud_fade(t.frame_dark, 1));
+    hud_ring(l, tray, 8 * k, 1.2 * k, t.frame_light, t.frame_mid);
+    j = last + 1;
+  }
+  for i: 0..<n {
+    b := hud_side_box(wd, n, i, x0, x1, y1, h, gap); hud_button(l, t, b, k, lit[i]);
+    hud_word(ws, labels[i], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, HUD_TEXT_TITLE, true);
+  }
+}
+// Draw a menu: its framed panel, its title, and a button per row (lit: the row under the pointer, -1 none).
+hud_menu_draw :: (l: [] HudList, ws: [] HudWords, t: HudTokens, m: HudMenu, title: string, labels: [] string, n: int, lit: int, cap: f32, k: f32) {
+  if m.per <= 0 { return; }
+  hud_panel(l, t, m.panel, k);
+  hud_word(ws, title, (m.panel.x0 + m.panel.x1) * 0.5, m.panel.y0 + m.gap + m.head * 0.5 + cap * 0.6, cap * 1.15, HUD_TEXT_TITLE, true);
+  for r: 0..<n {
+    b := hud_menu_row(m, r); hud_button(l, t, b, k, r == lit);
+    hud_word(ws, labels[r], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, HUD_TEXT_TITLE, true);
+  }
+}
+// A tip over anchor: a dark plaque with one line, tw wide in its face at cap, inside x0..x1.
+hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, tw: f32, anchor: HudPrim, cap: f32, x0: f32, x1: f32, k: f32) {
+  if line.count == 0 { return; }
+  pad := 10 * k; w := tw + 2 * pad; px := (anchor.x0 + anchor.x1 - w) * 0.5;
+  if px < x0 { px = x0; } if px + w > x1 { px = x1 - w; }
+  y1 := anchor.y0 - 6 * k; b := hud_box(px, y1 - cap * 2.6, px + w, y1);
+  hud_fill(l, b, 6 * k, hud_fade(t.frame_dark, 0.9), hud_fade(t.frame_dark, 1));
+  hud_ring(l, b, 6 * k, 1 * k, hud_fade(t.frame_light, 0.7), hud_fade(t.frame_mid, 0.7));
+  hud_word_ink(ws, line, px + pad, (b.y0 + b.y1) * 0.5 + cap * 0.45, cap, HUD_TEXT_LABEL, false, true, t.text);
+}
+
+#test "hud side bar: rows wrap inside the page and never overlap; a menu fits over its button" {
+  wd := [3] f32.[205, 250, 80];
+  for q: 0..<2 {
+    x1 := ifx q == 0 then 1900.0f32 else 378.0f32;
+    for i: 0..<3 { a := hud_side_box(wd[..], 3, i, 12, x1, 700, 44, 8); #assert a.x0 >= 12 && a.x1 <= x1 && a.y1 <= 700 && a.y1 - a.y0 == 44;
+      for j: 0..<i { #assert hud_apart(a, hud_side_box(wd[..], 3, j, 12, x1, 700, 44, 8)); } }
+  }
+  // a phone's width: two rows, the top higher than one row
+  #assert hud_side_top(wd[..], 3, 12, 378, 700, 44, 8) < 700 - 44 - 8;
+  anchor := hud_side_box(wd[..], 3, 1, 12, 378, 700, 44, 8);
+  m := hud_menu(anchor, 10, 200, 44, 26, 8, 100, 600, 8, 382);
+  #assert m.panel.x0 >= 8 && m.panel.x1 <= 382 && m.panel.y0 >= 100 && m.panel.y1 == 600 && m.cols * m.per >= 10;
+  for r: 0..<10 { b := hud_menu_row(m, r); #assert b.x0 >= m.panel.x0 && b.x1 <= m.panel.x1 && b.y0 >= m.panel.y0 && b.y1 <= m.panel.y1;
+    for r2: 0..<r { #assert hud_apart(b, hud_menu_row(m, r2)); } }
+  // a short page: more columns, still on it
+  w := hud_menu(anchor, 10, 150, 44, 26, 8, 20, 280, 8, 836);
+  #assert w.cols >= 2 && w.panel.y0 >= 20;
+}
+#test "hud words keep their text, and stop when full" {
+  ws: [1] HudWords; hud_word(ws[..], "REST", 10, 20, 9, HUD_TEXT_TITLE, true); hud_word(ws[..], "", 0, 0, 9, HUD_TEXT_TITLE, true);
+  #assert ws[0].n == 1 && hud_word_text(ws[..], 0) == "REST" && ws[0].w[0].centre;
+  for i: 0..<HUD_WORDS + 4 { hud_word(ws[..], "x", 0, 0, 9, HUD_TEXT_LABEL, false); }
+  #assert ws[0].n == HUD_WORDS;
+}

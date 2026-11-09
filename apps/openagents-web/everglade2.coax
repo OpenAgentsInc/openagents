@@ -14,6 +14,7 @@
 #load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
 #load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)
 #load "experimental-sound.coax" as exsound;
+#load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: class features and rest, every zone's (the game)
 #load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "everglade2-guard.coax";  // the path's guard, as the room walks him
 #load "everglade2-monsters.coax";   // the wolves and the goblins, as the room moves them
@@ -991,7 +992,7 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,h-16*k);
  return cc.fps_draw(s[0].fps_counter[0],out,n,s[0].width,h,k);
 }
-// ---- the world's HUD (Everglade's FANTASY style, everglade-hud.coax): your portrait plate top left,
+// ---- the world's HUD (Everglade's FANTASY style, everglade/hud/parts.coax): your portrait plate top left,
 // the map ring top right with the place and the time of day, and a place's banner as you come to it.
 // All from what the page knows: the room's word on your health (e2n_vitals), the rules' AC and slots
 // for your class and level (fb_cl_hero), the room's counts on your bar (e2n_kit).
@@ -1589,13 +1590,13 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field >= 20 && field < 30 { return e2c_probe(s, field); }   // Character Create's (everglade2-create.coax)
   // rest (#13046), for a check that presses its controls: 30 the room's rest code (WIRE_REST_*, -1 not
   // said yet), 31 the controls shown, 32 and 33 the first's and the last's requests (RS_REST_*), 34 to
-  // 37 their centres (canvas px: x, y, x, y), 38 your x (cm), 39 a rest refusal shown (1)
+  // 37 their centres in the REST menu (canvas px: x, y, x, y; 132 to 134 open it), 38 your x (cm), 39 a rest refusal shown (1)
   if field >= 30 && field < 40 { n := s[0].net[..]; reqs: [4] int; rn := e2k_rest_choices(s, reqs[..]);
     if field == 30 { return ifx n[0].rest_known then n[0].rest_code else -1; } if field == 31 { return rn; }
     if field == 38 { return cast(int)(s[0].you_x * 100); } if field == 39 { return ifx e2n_rest_message(n).count > 0 then 1 else 0; }
     if rn == 0 { return -1; }
     j := ifx field == 32 || field == 34 || field == 35 then 0 else rn - 1; if field < 34 { return reqs[j]; }
-    r := e2k_rest_box(s, j, rn); return cast(int)(ifx (field - 34) % 2 == 0 then (r[0] + r[2]) / 2 else (r[1] + r[3]) / 2); }
+    r := e2k_menu_centre(s, EG_SIDE_REST, EG_DO_REST + j); return cast(int)(ifx (field - 34) % 2 == 0 then r[0] else r[1]); }
   // the casts (#13058): 82 yours sent to the room, 83 others' played here, 88 yours the room said
   // back, 89 cast sounds played (everglade2-cast.coax)
   if field == 82 { return s[0].net[0].cast_sent; } if field == 83 { return s[0].casts[0].others; }
@@ -1605,6 +1606,9 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // px: x, y, x, y), 104 its level, 105 your bar's slots, 106 the room's word on it known (1), 107
   // refused casts undone, 108 their fades still going, 110 + i what slot i has left (-1 unknown) and
   // 120 + i whether it holds (1)
+  // 132, 133: the side bar's REST button's centre (canvas px, -1 none); 134 the menu open (E2K_SIDE_*, -1 none)
+  if field == 132 || field == 133 { c := e2k_side_centre(s, EG_SIDE_REST); return cast(int)(ifx field == 132 then c[0] else c[1]); }
+  if field == 134 { return s[0].casts[0].menu; }
   // 130, 131: on a phone, the CLASS tab's centre (canvas px), which shows NAME, CLASS and LEVEL; 0 with no tabs
   if field == 130 || field == 131 { b := s[0].cz[0].boxes[E2C_TAB_BOX + E2C_TAB_CLASS]; if e2c_empty(b) { return 0; } return cast(int)(ifx field == 130 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
   if field >= 100 && field < 130 { k := s[0].casts[..];
@@ -2211,6 +2215,42 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   }
 }
 
+// For the checks: open the companion's menu if it is shut, then press action a's row in it.
+e2k_tap_pet :: (s: [] E2, a: int) -> bool {
+  if s[0].casts[0].menu != EG_SIDE_PET { c := e2k_side_centre(s, EG_SIDE_PET); if !(c[0] > 0) || !e2_pointer(s, c[0], c[1], 0, 0, 1) { return false; } }
+  r := e2k_menu_centre(s, EG_SIDE_PET, a); return r[0] > 0 && e2_pointer(s, r[0], r[1], 0, 0, 1);
+}
+#test "Everglade II side bar: kit, companion and rest are framed buttons that never overlap, at any width; menus stay on the page" #steps 2000000000 {
+  s:[1]E2; e2_test_cast_state(s[..],FB_CL_DRUID);
+  n:=s[0].net[..]; n[0].mono=100;
+  e2k_set_class(s[0].casts[..],FB_CL_DRUID,2); e2n_set_class(n,FB_CL_DRUID,2);
+  frame:[1024]u8; row:[WIRE_SF]s32; zero:[WIRE_SF]s32;
+  wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=21,max=21},row[..]);
+  count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1}); count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
+  e2n_record(n,cast(string)frame[0..<count]); e2n_record(n,"z 0 0 1"); n[0].aid_left=9;
+  sizes:=[6]f32.[1920,1080, 390,844, 844,390];
+  for q:0..<3 {
+    s[0].width=sizes[q*2]; s[0].height=sizes[q*2+1];
+    ids:[3]int; c:=e2k_side(s[..],ids[..]); #assert c==3;
+    b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k);
+    for i:0..<c { a:=e2k_side_box(s[..],i);
+      #assert a[0]>=8 && a[2]<=s[0].width-8 && a[3]<b0[1]-30 && a[3]-a[1]>=e2k_side_h(s[..])-0.01;
+      for j:0..<i { z:=e2k_side_box(s[..],j); #assert a[2]<=z[0] || z[2]<=a[0] || a[3]<=z[1] || z[3]<=a[1]; } }
+    #assert q==0 || e2k_side_h(s[..])>=44;
+    for id:1..<3 { rows:[EG_MENU_ROWS]int; m:=e2k_menu_rows(s[..],id,rows[..]); p:=e2k_menu_panel(s[..],id);
+      #assert p[0]>=8 && p[2]<=s[0].width-8 && p[1]>=0 && p[3]<=e2k_side_top(s[..]);
+      for r:0..<m { a:=e2k_menu_box(s[..],id,r); #assert a[0]>=p[0] && a[2]<=p[2] && a[1]>=p[1] && a[3]<=p[3];
+        for r2:0..<r { z:=e2k_menu_box(s[..],id,r2); #assert a[2]<=z[0] || z[2]<=a[0] || a[3]<=z[1] || z[3]<=a[1]; } } }
+  }
+  // the companion's button says its form in words, not a code
+  b:[48]u8; c:=e2k_side_label(s[..],EG_SIDE_PET,b[..]); #assert cast(string)b[0..<c]=="WILD COMPANION · CAT";
+  c=e2k_menu_label(s[..],EG_DO_PAY,b[..]); #assert cast(string)b[0..<c]=="PAY: WILD SHAPE";
+  // a press elsewhere shuts an open menu, and draws the menu while open
+  out:[32768*16]f32; shut:=e2k_hud(s[..],out[..],0);
+  pc:=e2k_side_centre(s[..],EG_SIDE_PET); #assert e2_pointer(s[..],pc[0],pc[1],0,0,1) && s[0].casts[0].menu==EG_SIDE_PET;
+  #assert e2k_hud(s[..],out[..],0)>shut;
+  #assert e2_pointer(s[..],s[0].width*0.5,40,0,0,1) && s[0].casts[0].menu== -1;
+}
 #test "Everglade II rest controls follow the room's rest: a click asks it, sleep holds the keys, and the label says it (#13046)" #steps 1000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_FIGHTER); n:=s[0].net[..]; n[0].mono=100;
   label:[80] u8; frame:[1024] u8; row:[WIRE_SF] s32; zero:[WIRE_SF] s32; reqs:[4] int;
@@ -2223,16 +2263,19 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   e2n_record(n,"z 0 0 1");
   #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_SHORT && reqs[1]==RS_REST_SLEEP && e2k_rest_label(s[..],reqs[1])=="LONG REST";
   #assert e2k_hud(s[..],geometry[..],0)>plain;
-  // the controls sit over the bar, inside the page, apart from the slots
-  b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k); a:=e2k_rest_box(s[..],0,2); z:=e2k_rest_box(s[..],1,2);
-  #assert a[3]<b0[1]-40 && a[0]>=0 && z[2]<=s[0].width && a[2]<z[0];
-  #assert e2k_slot_at(s[..],(a[0]+a[2])/2,(a[1]+a[3])/2)<0;
+  // REST sits in the side bar over the bar, apart from the slots; its menu opens above it
+  b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k); rb:=e2k_side_centre(s[..],EG_SIDE_REST);
+  #assert rb[1]<b0[1]-40 && rb[0]>0 && rb[0]<s[0].width && e2k_slot_at(s[..],rb[0],rb[1])<0;
+  #assert e2_probe(s[..],132)==cast(int)rb[0] && e2_probe(s[..],133)==cast(int)rb[1] && e2_probe(s[..],134)== -1;
+  #assert e2_pointer(s[..],rb[0],rb[1],0,0,1) && s[0].casts[0].menu==EG_SIDE_REST && e2_probe(s[..],134)==EG_SIDE_REST;
+  a:=e2k_menu_centre(s[..],EG_SIDE_REST,EG_DO_REST); z:=e2k_menu_centre(s[..],EG_SIDE_REST,EG_DO_REST+1);
+  #assert a[1]<rb[1] && a[1]<z[1] && a[0]>=0 && e2k_slot_at(s[..],a[0],a[1])<0;
   // the probes a browser check presses them by
   #assert e2_probe(s[..],30)==WIRE_REST_NONE && e2_probe(s[..],31)==2 && e2_probe(s[..],32)==RS_REST_SHORT && e2_probe(s[..],33)==RS_REST_SLEEP;
-  #assert e2_probe(s[..],34)==cast(int)((a[0]+a[2])/2) && e2_probe(s[..],35)==cast(int)((a[1]+a[3])/2) && e2_probe(s[..],36)==cast(int)((z[0]+z[2])/2) && e2_probe(s[..],37)==cast(int)((z[1]+z[3])/2);
+  #assert e2_probe(s[..],34)==cast(int)a[0] && e2_probe(s[..],35)==cast(int)a[1] && e2_probe(s[..],36)==cast(int)z[0] && e2_probe(s[..],37)==cast(int)z[1];
   #assert e2_probe(s[..],38)==cast(int)(s[0].you_x*100) && e2_probe(s[..],39)==0;
   sent:=n[0].pipe[0].n;
-  #assert e2_pointer(s[..],(z[0]+z[2])/2,(z[1]+z[3])/2,0,0,1) && n[0].pipe[0].n==sent+1 && s[0].casts[0].pressed==0;
+  #assert e2_pointer(s[..],z[0],z[1],0,0,1) && n[0].pipe[0].n==sent+1 && s[0].casts[0].pressed==0 && s[0].casts[0].menu== -1;
   p:=n[0].pipe[0]; last:=p.n-1; ask:=cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]];
   r:[1] WireRd; r[0]=wire_rd(ask,1); w:=wire_read_rest_ask(ask,r[..]); #assert ask[0]=='Z' && w.req==RS_REST_SLEEP && w.seq==n[0].rest_seq;
   // the room's answer: asleep; your keys move nothing, and the label says so
@@ -2256,8 +2299,8 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  box:=e2k_aid_box(s[..]); sent:=n[0].pipe[0].n;
-  #assert e2_pointer(s[..],(box[0]+box[2])/2,(box[1]+box[3])/2,0,0,1);
+  box:=e2k_side_centre(s[..],EG_SIDE_KIT); sent:=n[0].pipe[0].n;
+  #assert e2_pointer(s[..],box[0],box[1],0,0,1);
   #assert n[0].pipe[0].n==sent+1 && n[0].aid_left==-1;
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="U1 3000001";
@@ -2277,10 +2320,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  box:=e2k_familiar_box(s[..]); y:=(box[1]+box[3])/2;
-  #assert e2_pointer(s[..],box[2]-45,y,0,0,1);
-  #assert e2_pointer(s[..],box[2]-8,y,0,0,1);
-  #assert e2_pointer(s[..],box[0]+10,y,0,0,1);
+  #assert e2k_tap_pet(s[..],EG_DO_FORM); #assert e2k_tap_pet(s[..],EG_DO_PAY); #assert e2k_tap_pet(s[..],EG_DO_SUMMON);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M1 4000001 1 1";
   e2n_record(n,"m1 4000000 1"); #assert e2n_familiar_message(n)=="";
@@ -2317,11 +2357,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  box:=e2k_familiar_box(s[..]); y:=(box[1]+box[3])/2;
-  #assert e2_pointer(s[..],box[2]-104,y,0,0,1);
-  #assert e2_pointer(s[..],box[2]-8,y,0,0,1);
-  #assert e2_pointer(s[..],box[2]-45,y,0,0,1);
-  #assert e2_pointer(s[..],box[0]+10,y,0,0,1);
+  #assert e2k_tap_pet(s[..],EG_DO_SPIRIT); #assert e2k_tap_pet(s[..],EG_DO_PAY); #assert e2k_tap_pet(s[..],EG_DO_FORM); #assert e2k_tap_pet(s[..],EG_DO_SUMMON);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M3 4000001 1 1 2";
   e2n_record(n,"m3 4000001 1"); #assert e2n_familiar_message(n)=="CASTING FIND FAMILIAR";
@@ -2338,8 +2374,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  box:=e2k_familiar_orders_box(s[..]);
-  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.3,(box[1]+box[3])/2,0,0,1);
+  #assert e2k_tap_pet(s[..],EG_DO_ORDER+2);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M4 4000001 2";
   e2n_record(n,"m4 4000000 2");
@@ -2350,7 +2385,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2n_familiar_order(n,3);
   e2n_record(n,"r 4000002 familiar");
   #assert e2n_familiar_message(n)=="FAMILIAR COMMAND REFUSED";
-  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.7,(box[1]+box[3])/2,0,0,1);
+  #assert e2k_tap_pet(s[..],EG_DO_ORDER+4);
   q:=n[0].pipe[0]; step:=q.n-1;
   #assert cast(string)q.buf[q.from[step]..<q.from[step]+q.len[step]]=="M5 4000003";
   e2n_record(n,"m4 4000003 4"); #assert e2n_familiar_message(n)=="";
@@ -2367,8 +2402,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
   n[0].familiar_rows[1]=E2nFamiliar.{live=true,x=s[0].you_x,z=s[0].you_z};
-  box:=e2k_familiar_orders_box(s[..]);
-  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.75,(box[1]+box[3])/2,0,0,1);
+  #assert e2k_tap_pet(s[..],EG_DO_CURE);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M6 4000001 1";
   #assert !n[0].familiar_heal_cue;
@@ -2385,8 +2419,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
   e2n_record(n,"m2 1 1 1 8 4000 -6000 1 1");
-  box:=e2k_familiar_orders_box(s[..]);
-  #assert e2_pointer(s[..],box[0]+(box[2]-box[0])*0.9,(box[1]+box[3])/2,0,0,1);
+  #assert e2k_tap_pet(s[..],EG_DO_ORDER+6);
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="M7 4000001";
   base:=e2_shot(s[..]);

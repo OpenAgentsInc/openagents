@@ -1857,7 +1857,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     t := cast(string) f.text[0..<f.n];
     n = cc.eg_float(out, n, t, p.x, p.y, k, ifx f.heal then cc.EG_FLOAT_HEAL else cc.EG_FLOAT_DEALT, ifx a < 0.7 then 1.0f32 else (1 - a) / 0.3);
   }
-  // the bar: its iron round the pictures (everglade-hud.coax), each slot's key over its picture; your class and your target over it
+  // the bar: its iron round the pictures (everglade/hud/parts.coax), each slot's key over its picture; your class and your target over it
   slots: [XC_SLOTS * 4] f32;
   for i: 0..<x[0].bar_n { r := xc_slot_box(x, i); slots[i * 4] = r.x0; slots[i * 4 + 1] = r.y0; slots[i * 4 + 2] = r.x1; slots[i * 4 + 3] = r.y1; }
   n = cc.eg_bar_frame(out, n, slots[..], x[0].bar_n, k, XC_CL_UP[x[0].klass][0], 1);

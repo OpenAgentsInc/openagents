@@ -209,13 +209,15 @@ ec_rest_wait :: (p: [] Cdp, want: int, other: int, ms: int) -> int {
 // Presses the first (last false) or the last rest control when it asks req; false when it doesn't.
 ec_rest_press :: (p: [] Cdp, req: int, last: bool) -> bool {
   if ec_probe(p, ifx last then 33 else 32) != req { return false; }
+  // the choices are in the side bar's REST menu (e2_probe 132, 133 its button; 134 the menu open, 2 REST)
+  if ec_probe(p, 134) != 2 { bx := ec_probe(p, 132); by := ec_probe(p, 133); if bx <= 0 || by <= 0 || !ec_click(p, bx, by) { return false; } proc_sleep(150); }
   x := ec_probe(p, ifx last then 36 else 34); y := ec_probe(p, ifx last then 37 else 35);
   return x > 0 && y > 0 && ec_click(p, x, y);
 }
 ec_rest_page :: (p: [] Cdp, i: int, shot: string) -> bool {
   ready := ec_rest_wait(p, EC_NONE, EC_NONE, 10000) == EC_NONE && ec_probe(p, 31) == 2;
   print("  page %: rest code %, controls % (% and %)\n", i, ec_probe(p, 30), ec_probe(p, 31), ec_probe(p, 32), ec_probe(p, 33));
-  ok := ec_check(ready, "the room said this page's rest, and SHORT REST and LONG REST show over the bar");
+  ok := ec_check(ready, "the room said this page's rest, and REST offers SHORT REST and LONG REST over the bar");
   if !ready { return false; }
   slept := ec_rest_press(p, EC_R_SLEEP, true) && ec_rest_wait(p, EC_SLEEP, EC_SLEEP, 4000) == EC_SLEEP;
   ok = ec_check(slept, "LONG REST: the room puts you asleep (z 3)") && ok;

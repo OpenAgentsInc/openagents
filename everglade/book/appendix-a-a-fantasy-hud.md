@@ -3,7 +3,7 @@
 > **Status: partly implemented.** The style is in
 > [`aethyr/ui/hud-style.coax`](../../aethyr/ui/hud-style.coax). Everglade's HUD
 > parts are in
-> [`apps/openagents-web/everglade-hud.coax`](../../apps/openagents-web/everglade-hud.coax),
+> [`everglade/hud/parts.coax`](../../everglade/hud/parts.coax),
 > and its renderer is in
 > [`apps/openagents-web/charactercreator.coax`](../../apps/openagents-web/charactercreator.coax).
 > [HUD styles](../../docs/verse/hud-styles.md) is the reference.

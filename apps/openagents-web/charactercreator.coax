@@ -9,9 +9,9 @@
 #load "../../aethyr/query.coax" as query;
 #load "../../aethyr/space.coax" as world;
 #load "charactercreator-font.coax";
-#load "everglade-fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
-#load "../../aethyr/ui/hud-style.coax";   // the HUD style Everglade draws in: FANTASY (docs/verse/hud-styles.md)
-#load "everglade-hud.coax";   // Everglade's HUD parts in that style
+#load "../../everglade/hud/fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
+#load "../../aethyr/ui/hud-menu.coax";   // the engine's HUD style layer (hud-style.coax) and widgets; Everglade draws in FANTASY (docs/verse/hud-styles.md)
+#load "../../everglade/hud/parts.coax";   // Everglade's HUD parts in that style (the game's, every zone's)
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as dungeon;
 #load "../../verse/experimental-aribeth.coax" as aribeth;
@@ -954,7 +954,7 @@ value :: (s:Creator,f:int)->string {
   return [4]string.["IDLE","WALK","RUN","CAST"][s.pose];
 }
 ink :: (k:f32,r:f32,g:f32,b:f32)->Ink { return Ink.{core=0.55*k,light=1,glow=0.5*k,red=r,green=g,blue=b,scale=k,sans=false}; }
-// Every Everglade label is set in its reading face (Spectral, everglade-fonts.coax), a soft dark copy
+// Every Everglade label is set in its reading face (Spectral, everglade/hud/fonts.coax), a soft dark copy
 // under it so it reads over the bright glade; other realms retain their own font.
 text :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,k:Ink)->int {
   d:=cc_text_drop(cap);under:=k;under.red=0;under.green=0;under.blue=0;under.light=k.light*0.55;
@@ -1008,6 +1008,14 @@ hud_say :: (out:[]f32,n:int,t:string,x:f32,y:f32,cap:f32,r:HudText,a:f32,k:f32,c
 // realm's vertices (gpu/fivelab.coax fivelab_hud_fs), and the mark that has the shader blend them.
 EG_HUD :: HUD_FANTASY;
 eg_tokens :: ()->HudTokens {return hud_tokens(EG_HUD);}
+// The engine's widgets (aethyr/ui/hud-menu.coax) as this renderer's vertices: their frames, then
+// their words, each in its role (or its own ink), at alpha a.
+hud_draw :: (out:[]f32,at:int,l:[]HudList,ws:[]HudWords,a:f32,k:f32)->int {
+  v:=hud_emit(out,at,l);
+  for i:0..<ws[0].n {w:=ws[0].w[i];r:=hud_text(eg_tokens(),w.role);if w.inked {r.ink=w.ink;}
+    v=hud_say(out,v,hud_word_text(ws,i),w.x,w.y,w.cap,r,a,k,w.centre);}
+  return v;
+}
 hud_emit :: (out:[]f32,at:int,l:[]HudList)->int {
   v:=at;
   for i:0..<l[0].n {
