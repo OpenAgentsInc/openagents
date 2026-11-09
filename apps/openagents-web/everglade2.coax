@@ -509,6 +509,7 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
 // ---- input
 e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   #if BUILD_DEBUG { if e2a_key(s, key) { return true; } }
+  if key == -1 && e2k_area_cancel(s) { return true; }   // Esc lets an armed area go before it opens the menu
   if e2c_key(s, key) { return true; }
   if mlook.ml_key(s[0].ml[..], key) { return true; }
   if e2k_key(s, key) { return true; }
@@ -680,7 +681,7 @@ e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
   #assert hy / hl < vy / vl;
 }
 e2_follow :: (s: [] E2, dt: f32) {
-  s[0].ml[0].able = s[0].placed && !e2c_creating(s) && !e2c_running(s) && !e2_wants_text(s);
+  s[0].ml[0].able = s[0].placed && !e2c_creating(s) && !e2c_running(s) && !e2_wants_text(s) && !s[0].cz[0].menu;
   mlook.ml_step(s[0].ml[..], dt);
   if s[0].autowalk || e2c_running(s) {
     // the camera eases round behind the walk (and Character Create's run)
@@ -1131,12 +1132,13 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2_material_uniforms(s, u);
   u[E2_U_LIGHT_VIEW] = envd.env_view_word(s[0].light_view);
   e2_shadows(s, u);
-  e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s));
-  e2k_step(s); e2m_step(s, dt); e2gd_hits(s); e2mn_hits(s);
+  // the studio's class is your character's once you are back in the world (Change character's too)
+  e2k_set_class(s[0].casts[..], e2c_class_of(s), e2c_level_of(s)); if !e2c_creating(s) { e2n_set_class(s[0].net[..], e2c_class_of(s), e2c_level_of(s)); }
+  e2k_step(s); e2k_area_step(s); e2m_step(s, dt); e2gd_hits(s); e2mn_hits(s);
   // the frame's step for the plates' fades (the first frame snaps them)
   s[0].sight_dt = ifx s[0].sight_at < 0 then 1.0f32 else ifx s[0].clock - s[0].sight_at > 0.1 then 0.1f32 else ifx s[0].clock < s[0].sight_at then 0.0f32 else s[0].clock - s[0].sight_at;
   s[0].sight_at = s[0].clock;
-  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_hud(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2gd_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))), dt));
+  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_hud(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2gd_hud(s, out, e2k_area_hud(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out)))))))))), dt));
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
   return hud;

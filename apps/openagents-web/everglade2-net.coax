@@ -69,6 +69,7 @@ E2Net :: struct {
   fix: NetFix; fix_due: bool;
   off_x: f32; off_y: f32; off_z: f32;
   hello_due: bool;
+  change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
   // where you stand (the face's, each frame), and whether this page sat before: sitting again after a
   // lost or restarted room, the hello says it first (A), so the room puts you back here (#13057)
   at_x: f32; at_z: f32; at_yaw: f32; at_known: bool; sat_before: bool; again: bool; agains: int;
@@ -81,6 +82,7 @@ E2Net :: struct {
   said: [E2N_SAY] u8; said_n: int; said_at: int;
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
+  ent_class: [E2N_ENTS] int;    // each other player's class (FB_CL_*, -1 none) from its n row's CLASS: the kit their body carries
   casts: [E2N_CASTS] E2nCast;   // the others' casts, waiting for their tick to be drawn
   mine_cast: E2nCast;           // your last cast the room took, as it said it (everglade2-cast.coax e2k_taken plays it)
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
@@ -382,7 +384,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     for e: 0..<E2N_ENTS { n[0].ents[e].live = false; }
     if n[0].lost { n[0].lost = false; e2n_tell(n, "BACK IN THE ROOM"); }
     if r[0].ok && clock > 0 && n[0].synced < 2 { n[0].offset = clock - n[0].mono; n[0].synced = 1; }
-    n[0].hello_due = true; n[0].acked = n[0].seq; n[0].fix_due = false;
+    n[0].hello_due = true; n[0].change_due = false; n[0].acked = n[0].seq; n[0].fix_due = false;
     return;
   }
   if c == 't' {
@@ -478,6 +480,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     en[0].seat = w.ss; en[0].seen = d.tick;
     en[0].id_n = net_copy(en[0].id[..], w.id);
     en[0].look_n = net_copy(en[0].look[..], w.look);
+    n[0].ent_class[k] = fb_cl_of_kind(w.kind);
     nm := 0;
     for ch: w.name { if nm >= NET_NAME { break; } if ch < 32 { continue; } en[0].name[nm] = ch; nm += 1; }
     en[0].name_n = nm;
@@ -637,6 +640,19 @@ e2n_hello :: (n: [] E2Net) {
   n[0].again = false;
   kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
   e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = cast(string) kind[0..<kn], flags = ifx n[0].account then 2 else 0, name = ""})));
+  if n[0].change_due { _ := e2n_change(n); }
+}
+// V LOOK KIND: Change character (the Esc menu's, through Character Create, and the admin CLASSES and
+// LEVEL menus): your seat sits again as this look and class (room-everglade.coax eg_heard_change).
+// False with no seat.
+e2n_change :: (n: [] E2Net) -> bool {
+  if !e2n_open(n) { return false; }
+  n[0].change_due = false;
+  look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
+  kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
+  m := wire_put(n[0].out[..], wire_put(n[0].out[..], wire_put(n[0].out[..], 0, "V "), look), " ");
+  e2n_send(n, wire_put(n[0].out[..], m, cast(string) kind[0..<kn]));
+  return true;
 }
 // Your class for the hello (srd-*: the room's kit for your casts), said again if seated and changed.
 e2n_class :: (n: [] E2Net) -> int { return ifx n[0].klass >= 0 && n[0].klass < FB_CL_N then n[0].klass else 3; }
@@ -644,7 +660,7 @@ e2n_set_class :: (n: [] E2Net, c: int, level: int) {
   l := xk_level(level);
   if c < 0 || c >= FB_CL_N || (c == n[0].klass && l == n[0].level) { return; }
   n[0].klass = c; n[0].level = l; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000; n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_sense=0;   // the room says the new bar's
-  if e2n_open(n) { n[0].hello_due = true; }
+  if e2n_open(n) { n[0].hello_due = true; n[0].change_due = true; }
 }
 // A cast (C SEQ SLOT AX AY AZ -1): the slot (class-kit.coax xk_slot) at the point it aims at. False
 // with no seat; the room then says e cast to everyone near, you too, or r SEQ WHY.
@@ -979,7 +995,7 @@ e2n_set_look :: (n: [] E2Net, record: string) {
   changed := m != n[0].look_n;
   for i: 0..<m { if n[0].look[i] != b[i] { changed = true; } n[0].look[i] = b[i]; }
   n[0].look_n = m;
-  if e2n_open(n) && changed { n[0].hello_due = true; }
+  if e2n_open(n) && changed { n[0].hello_due = true; n[0].change_due = true; }
 }
 
 // ---- the others, for the scene

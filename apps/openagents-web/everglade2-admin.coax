@@ -38,7 +38,7 @@ E2Admin :: struct {
   down: bool;               // a press began on the panel
   said: [48] u8; said_n: int; said_at: f32 = -100;   // what the last action did
   sent: int; warps: int;    // X lines sent, teleports asked (e2_probe 996, 997)
-  class_due: bool;          // CLASSES or LEVEL chosen: the room is told (X class) once the bar has it
+  class_due: bool;          // CLASSES or LEVEL chosen: the room is told (V, everglade2-net.coax e2n_change) once the bar has it
 }
 
 // ---- turning it on: the page facts' url (message 600)
@@ -278,8 +278,8 @@ e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
   e2a_fly(s, dt);
   // the room sits your seat as the class and level chosen (its hellos can be held by its ticket's checkpoint)
   if a[0].class_due && e2n_open(s[0].net[..]) {
-    n := s[0].net[..]; kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
-    o := n[0].out[..]; if e2a_send(s, wire_put(o, wire_put(o, 0, "X class "), cast(string) kind[0..<kn])) { a[0].class_due = false; }
+    // the same line as Change character (everglade2-net.coax e2n_change)
+    if e2n_change(s[0].net[..]) { a[0].class_due = false; s[0].adm[0].sent += 1; }
   }
   if !a[0].shown { cr[0].dev_animations = false; return at; }
   w := s[0].width; h := s[0].height; k := s[0].k;

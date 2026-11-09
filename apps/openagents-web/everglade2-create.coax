@@ -73,6 +73,10 @@ E2Create :: struct {
   draft: [NET_NAME] u8; draft_n: int;    // what you have typed
   naming: bool;                          // the name is with the API; its answer says it or refuses it
   said: [64] u8; said_n: int;            // a refused name's reason, said where the name is until you next press
+  menu: bool;                            // Esc in the world: Change character and Back to the game
+  menu_box: [2] cc.Box;
+  changing: bool;                        // back in the studio from the world: USE IN EVERGLADE returns you where you stood
+  back_face: f32;
 }
 
 e2c_creating :: (s: [] E2) -> bool { return s[0].cz[0].on && !s[0].cz[0].walking; }
@@ -272,7 +276,67 @@ e2c_reply :: (s: [] E2, t: string) {
   if same { for i: 0..<c[0].n { if t[i] != c[0].bytes[i] { same = false; } } }
   c[0].failed = !same; c[0].ok = same;
   if same { c[0].saved_rev = c[0].at_rev; }
-  if same && c[0].want_go { e2c_walk(s); }
+  if same && c[0].want_go { if c[0].changing { e2c_back(s); } else { e2c_walk(s); } }
+}
+// Change character (the Esc menu): the studio again, here where you stand, with your character as it
+// is (its class and level the bar's). USE IN EVERGLADE takes you back to the world where you were, and
+// the room sits you as the new character (everglade2-net.coax e2n_change). Not while you are down.
+e2c_change_character :: (s: [] E2) -> bool {
+  c := s[0].cz[..]; cr := s[0].creator[..];
+  c[0].menu = false;
+  if !s[0].placed || e2c_creating(s) || e2c_running(s) || e2k_bearing(s).pose == DeedPose.down { return false; }
+  cr[0].klass = s[0].casts[0].klass; cr[0].level = s[0].casts[0].level; cr[0].revision += 1;
+  c[0].on = true; c[0].walking = false; c[0].handed = false; c[0].run_t = 0; c[0].arriving = false; c[0].changing = true;
+  c[0].down = -1; c[0].dragging = false; c[0].ok = false; c[0].failed = false;
+  c[0].back_face = s[0].you_face;
+  s[0].held = 0;
+  return true;
+}
+// From the studio back to the world where you stood: no run, the follow camera at once.
+e2c_back :: (s: [] E2) {
+  c := s[0].cz[..];
+  c[0].walking = true; c[0].handed = true; c[0].changing = false; c[0].run_t = f32(E2C_SWING + E2C_RUN + E2C_EASE);
+  s[0].you_face = c[0].back_face; s[0].reseat = true;
+  s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), c[0].back_face);
+}
+// Esc in the world opens the menu, Esc again (or Back to the game) shuts it; Enter takes Change character.
+e2c_menu_key :: (s: [] E2, key: int) -> bool {
+  c := s[0].cz[..];
+  if !s[0].placed || e2c_creating(s) || e2c_running(s) { c[0].menu = false; return false; }
+  if key == E2C_ESCAPE { c[0].menu = !c[0].menu; s[0].held = 0; return true; }
+  if !c[0].menu { return false; }
+  if key == E2C_ENTER { _ := e2c_change_character(s); }
+  return true;   // the menu takes every key while it shows
+}
+E2C_MENU_W :: 260.0; E2C_MENU_H :: 38.0;
+e2c_menu_layout :: (s: [] E2) {
+  c := s[0].cz[..]; k := s[0].k; w := s[0].width; h := s[0].height;
+  x0 := w * 0.5 - f32(E2C_MENU_W) * 0.5 * k; y0 := h * 0.42;
+  for i: 0..<2 { y := y0 + f32(i) * (f32(E2C_MENU_H) + 10) * k; c[0].menu_box[i] = cc.Box.{x0 = x0, y0 = y, x1 = x0 + f32(E2C_MENU_W) * k, y1 = y + f32(E2C_MENU_H) * k}; }
+}
+e2c_menu_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+  c := s[0].cz[0];
+  if !c.menu { return at; }
+  e2c_menu_layout(s);
+  k := s[0].k; gold := e2c_ink(k, 0.83, 0.69, 0.43, 1); dim := e2c_ink(k, 0.6, 0.6, 0.58, 1);
+  able := e2k_bearing(s).pose != DeedPose.down;
+  n := at;
+  for i: 0..<2 {
+    b := s[0].cz[0].menu_box[i]; ink := ifx i == 0 && !able then dim else gold;
+    n = cc.line(out, n, b.x0, b.y1, b.x1, b.y1, k, ink.red, ink.green, ink.blue);
+    n = cc.text(out, n, ifx i == 0 then "Change character" else "Back to the game", b.x0 + 12 * k, b.y0 + 24 * k, 12 * k, ink);
+  }
+  return n;
+}
+e2c_menu_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
+  c := s[0].cz[..];
+  if !c[0].menu { return false; }
+  e2c_menu_layout(s);
+  if phase == 2 {
+    if e2c_inside(c[0].menu_box[0], x, y) { _ := e2c_change_character(s); }
+    else if e2c_inside(c[0].menu_box[1], x, y) { c[0].menu = false; }
+  }
+  return true;
 }
 // Out of the studio: you turn from facing the camera to the path as the run starts.
 e2c_walk :: (s: [] E2) {
@@ -346,6 +410,27 @@ e2c_action :: (s: [] E2) {
   #assert !v[0].cz[0].on && !e2c_creating(v[..]);
 }
 
+#test "create: Change character: Esc's menu opens the studio here with your character, and USE IN EVERGLADE brings you back where you stood" #steps 2000000000 {
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, "url=/worlds/everglade2\n");
+  #assert e2_start(s[..]) && !e2c_creating(s[..]);
+  s[0].creator[0].klass = FB_CL_FIGHTER; s[0].creator[0].level = 3; e2k_set_class(s[0].casts[..], FB_CL_FIGHTER, 3);
+  x0 := s[0].you_x; z0 := s[0].you_z;
+  #assert e2_key(s[..], E2C_ESCAPE, 0) && s[0].cz[0].menu;
+  #assert e2_key(s[..], 'w', 0) && s[0].held == 0;          // the menu takes the keys while it shows
+  #assert e2_key(s[..], E2C_ESCAPE, 0) && !s[0].cz[0].menu;  // Esc again shuts it
+  #assert e2_key(s[..], E2C_ESCAPE, 0) && e2_key(s[..], E2C_ENTER, 0);
+  #assert e2c_creating(s[..]) && s[0].cz[0].changing && e2c_class_of(s[..]) == FB_CL_FIGHTER && e2c_level_of(s[..]) == 3;
+  e2c_change(s[..], E2C_CLASS, 3);
+  #assert e2c_class_of(s[..]) == FB_CL_RANGER;
+  e2c_request(s[..], true); e2c_action(s[..]);
+  #assert s[0].action == E2C_SAVE;
+  b: [E2C_RECORD] u8; m := s[0].out_n; for i: 0..<m { b[i] = s[0].outbox[i]; }
+  s[0].action = 0;
+  e2_message(s[..], E2C_KEPT, cast(string) b[0..<m]);
+  #assert !e2c_creating(s[..]) && !e2c_running(s[..]) && s[0].you_x == x0 && s[0].you_z == z0 && e2c_class_of(s[..]) == FB_CL_RANGER;
+  // with no room the change waits; the room is told once seated (everglade2-net.coax e2n_change)
+  #assert !e2n_change(s[0].net[..]);
+}
 // ---- the layout and the panel
 // The title's cap: 22 on a desktop; on a phone 18, or less so it ends 8 px before DRAG: ROTATE.
 // ---- the wardrobe's layout. A desktop keeps one framed column at the left and the class pane at
@@ -527,7 +612,7 @@ e2c_hud :: (s: [] E2, out: [] f32) -> int {
   w := s[0].width; h := s[0].height; k := s[0].k;
   e2c_layout(s, w, h, k);
   f := e2c_shown(s);
-  if f <= 0.003 { return 0; }
+  if f <= 0.003 { return e2c_menu_hud(s, out, 0); }
   c := s[0].cz[0]; cr := s[0].creator[0]; t := cc.eg_tokens(); phone := c.mobile;
   l: [1] cc.HudList;
   // ---- the frames: panels, wells for the rows, the buttons
@@ -705,6 +790,7 @@ e2c_inside :: (b: cc.Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b
 e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
   if s[0].cz[0].arriving { if phase == 0 { e2c_arrive_skip(s); } return true; }   // a click skips the arrival
   if e2c_running(s) { if phase == 0 { e2c_skip(s); } return true; }   // a click skips the run
+  if e2c_menu_pointer(s, x, y, phase) { return true; }
   if !e2c_creating(s) { return false; }
   c := s[0].cz[..]; cr := s[0].creator[..]; k := s[0].k;
   if phase == 0 {
@@ -749,7 +835,7 @@ e2c_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
 e2c_key :: (s: [] E2, key: int) -> bool {
   if s[0].cz[0].arriving { e2c_arrive_skip(s); return true; }
   if e2c_running(s) { e2c_skip(s); return true; }   // any key skips the run, and is spent on it
-  if !e2c_creating(s) { return false; }
+  if !e2c_creating(s) { return e2c_menu_key(s, key); }
   if s[0].cz[0].editing { e2c_name_key(s, key); return true; }
   cr := s[0].creator[..];
   if key == 'p' || key == 'P' { cr[0].pan_mode = !cr[0].pan_mode; return true; }

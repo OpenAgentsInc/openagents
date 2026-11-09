@@ -531,7 +531,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
   if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (room-e2-admin.coax)
   if c=='M' { if v[0].eg[k].e2 { e2_familiar_ask(v,k,seat_id,text); } return; }
   if c == 'U' { if v[0].eg[k].e2 { e2_aid_ask(v,k,seat_id,text); } return; }
@@ -545,6 +545,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     return;
   }
   if c == 'H' { eg_heard_hello(v, k, seat_id, text); v[0].eg[k].seat[seat].hello = true; return; }
+  if c == 'V' { eg_heard_change(v, k, seat_id, text); return; }   // Change character (Everglade II)
   if c == 'A' {   // where an Everglade II page stands as it sits again (#13057): heard before its first place only
     ra: [1] WireRd; ra[0] = wire_rd(text, 1);
     at := wire_read_at(text, ra[..]);
@@ -813,6 +814,24 @@ eg_ticket :: (v: [] RmServer, k: int, seat_id: SeatId) -> Ticket { seat := seat_
   if !v[0].eg[k].seat[seat].live { return Ticket.{}; }
   if c < 0 || c >= CONNS || !v[0].conns[c].live { return v[0].eg[k].tk[seat]; }   // held, or its socket closing (eg_left): the one it sat with
   return v[0].conns[c].ticket;
+}
+// V LOOK KIND: Everglade II's Change character (everglade2-net.coax e2n_change: the Esc menu's, through
+// Character Create, and the admin CLASSES and LEVEL menus): a seated player's look and SRD class, as a
+// hello says them, which a ticket's checkpoint would otherwise hold to its first hello. Not while they
+// are down or dead or the guard fights them, and the new character comes in no less hurt than the
+// old: its Hit Points the same share of its most.
+eg_heard_change :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  if !v[0].eg[k].e2 || eg_fields(text) != 3 { return; }
+  r: [1] WireRd; r[0] = wire_rd(text, 1);
+  look := wire_word(text, r[..]); kind := wire_word(text, r[..]);
+  st := v[0].eg[k].seat[seat..<seat + 1];
+  if !r[0].ok || !st[0].hello || look.count == 0 || look.count > EG_LOOK || e5rr_klass_of(kind) < E5R_CL0 { return; }
+  me := E5RR_SEAT + seat; b := v[0].eg[k].rules[0].b[..];
+  if b[0].c[me].dead || b[0].c[me].hp <= 0 || v[0].eg[k].guard[0].foe == seat { return; }
+  hp := b[0].c[me].hp; most := rs_max(b[0].c[me].hp_max, 1);
+  st[0].look_n = eg_word(look, st[0].look[..]);
+  eg_seat_kind(v, k, seat_id, kind);
+  b[0].c[me].hp = rs_max(1, rs_min(b[0].c[me].hp_max, (hp * b[0].c[me].hp_max + most - 1) / most));
 }
 // Seat seat_id's class (a hello's CLASS, or a local admin's "X class", room-e2-admin.coax): its rules
 // seat sits again as that class at its level when either changed.
@@ -2635,6 +2654,42 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-2 0 -");
   eg_test_tick(v[..], k);
   #assert r[0].b[0].c[E5RR_SEAT].level == 2;
+}
+#test "everglade II room: Change character round-trips: V sits the seat as the new class and look, the others hear it; not while down or fought" #steps 4000000000 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-e2-change HTTP/1.1\r\n\r\n";
+  box: [1] EgInbox;
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-5 0 -");
+  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-druid 0 -");
+  for q: 0..<3 { eg_test_tick(v[..], k); }
+  r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := E5RR_SEAT;
+  // hurt to half: the Ranger comes in hurt to half too
+  b[0].c[me].hp = b[0].c[me].hp_max / 2;
+  eg_test_drain(v[..], box[..]);
+  rm_heard(v[..], 0, "V ranger.1.2.3 srd-ranger-5");
+  for q: 0..<2 { eg_test_tick(v[..], k); }
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_RANGER && b[0].c[me].level == 5 && b[0].c[me].klass == RS_RANGER;
+  #assert cast(string) v[0].eg[k].seat[0].look[0..<v[0].eg[k].seat[0].look_n] == "ranger.1.2.3";
+  #assert b[0].c[me].hp * 2 >= b[0].c[me].hp_max - 1 && b[0].c[me].hp * 2 <= b[0].c[me].hp_max + 2;
+  eg_test_drain(v[..], box[..]);
+  #assert eg_test_has(eg_test_of(box[..], 1), "srd-ranger-5") && eg_test_has(eg_test_of(box[..], 1), "ranger.1.2.3");
+  // a class it hasn't, or a line that isn't one: nothing
+  rm_heard(v[..], 0, "V ranger.0.0.0 dragon-9"); rm_heard(v[..], 0, "V ranger.0.0.0");
+  eg_test_tick(v[..], k);
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_RANGER;
+  // down: it stays as it is until healed
+  b[0].c[me].hp = 0;
+  rm_heard(v[..], 0, "V ranger.0.0.0 srd-wizard-5"); eg_test_tick(v[..], k);
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_RANGER;
+  // the guard fighting it: the same
+  b[0].c[me].hp = 20; v[0].eg[k].guard[0].foe = 0;
+  rm_heard(v[..], 0, "V ranger.0.0.0 srd-wizard-5");
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_RANGER;
+  v[0].eg[k].guard[0].foe = -1;
+  rm_heard(v[..], 0, "V ranger.0.0.0 srd-wizard-5"); eg_test_tick(v[..], k);
+  #assert r[0].klass[0] == E5R_CL0 + FB_CL_WIZARD;
 }
 #test "everglade room: the wolves one seat conjures are in both seats' state and the other can kill one; a heal reaches the other; a joiner's snapshot has the pack; it outlasts its caster's leaving" #steps 4000000000 {
   v: [1] RmServer;

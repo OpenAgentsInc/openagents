@@ -114,6 +114,10 @@ fivelab 2830000
 # The fantasy HUD (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax; everglade/hud/): the portrait plate,
 # map ring, bar tray, side bar and menus, the phone studio, and plates that show only while their body
 # does: 903,139 bytes measured on top of that (with the GFX plaque kept clear of the bar); about 3% headroom.
+# The E2 fixes (the shared numbers aethyr/action/floats.coax and area aim aethyr/action/area-aim.coax with its
+# ground outline, the death-save line, the Esc menu's Change character and its V line, the Ranger's held bow
+# through charactercreator held_pieces, the guard's arrows; the guard's and monsters' own hit marks went to
+# floats): 916,653 bytes measured with the fantasy HUD, inside the same budget.
 everglade2 930000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
