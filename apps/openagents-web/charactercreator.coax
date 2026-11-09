@@ -53,6 +53,7 @@ Creator :: struct {
   klass:int = -1; level:int = 1;   // and its level (CC4, #13046)
   weapon_first:[5]int; weapon_count:[5]int;   // the pack's held weapons (glade/weapon0..4)
   weapon:int = -1;   // the kit in your hand (CC_KITS), -1 none: Experimental's class sets it (experimental-combat.coax)
+  backpedal:bool;    // mouselook with S held: the run plays backwards while you face the camera (no backpedal clip in the rig)
   aim:f32;           // a drawn bow's aim, 0 to 1 (aethyr/action/bow.coax bow_aim): the camera over your shoulder and the aiming pose
   swing_at:f32 = -100; swing_clip:int = -1;   // your last blow and the clip it plays
   ml:[1]mlook.Mouselook;   // Experimental's mouselook (aethyr/cam/mouselook.coax); the studio never asks for it
@@ -357,6 +358,7 @@ experimental_figure :: (s:Creator,a0:figs.BdAnim)->figs.BdAnim {
  a.clip=ifx s.dev_animations && s.preview_clip>=0 then figs.BD_CLIPS+s.preview_clip else experimental_clip(s);
  a.t0=ifx a.clip==figs.BD_JUMP_START then s.clock-(s.clock-s.air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s.clock-(s.clock-s.land_at)*figs.bd_seconds(a.clip)/0.35 else 0;
  a.phase=(s.clock-(ifx s.dev_animations && s.preview_clip>=0 then s.preview_at else 0))/figs.bd_seconds(a.clip);
+ if s.backpedal && s.moving && !s.airborne && !(s.dev_animations && s.preview_clip>=0) {a.phase= -a.phase;}
  if !(s.dev_animations && s.preview_clip>=0) && (s.airborne || s.clock-s.land_at<0.35) {
   a.prev=experimental_stance(s);a.pt0=0;a.pphase=s.clock/figs.bd_seconds(a.prev);
   a.fade_at=s.clock-f32(figs.BD_FADE)*experimental_jump_weight(s);
@@ -392,7 +394,9 @@ CC_KIT_TWO :: [5]bool.[true,true,false,false,false];  // held in both hands: the
 CC_KIT_HOLD :: [5]int.[0,3,0,0,0];               // a two-hander's first owned clip (verse/everglade/two-hand-rig.coax): the axe's, the sword's
 CC_KIT_BOW :: 4;
 CC_BOW_GRIP_X :: -0.127;   // source units from the bow's middle (as packed) to its grip, across the limbs
-CC_AIM_CLIP :: 19;         // the drawn bow's pose: ual1_pistol_aim_neutral (the library has no bow clips; docs/verse/bow-combat.md)
+CC_AIM_CLIP :: 19;
+CC_SHOULDER :: 0.7;        // metres the over-the-shoulder camera sits right of you (mouselook and the bow)
+CC_LIFT :: 0.55;           // and above, in mouselook, so you stand below the reticle         // the drawn bow's pose: ual1_pistol_aim_neutral (the library has no bow clips; docs/verse/bow-combat.md)
 // The left fist's middle from its joint, in the bind pose (the mirror of CC_FIST).
 CC_FIST_L :: [3]f32.[0.075,-0.03,0.0];
 // The fist's middle from the hand's joint, in the bind pose (metres: toward the fingers, then under the palm).
@@ -934,8 +938,12 @@ camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.experimental {
     target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw); cz:=cos(s.yaw);
-    // a drawn bow tightens it over your right shoulder, as far as the aim has come in (s.aim)
-    dist:=s.dist+(2.1-s.dist)*s.aim;shoulder:=cc_clamp(-sy*3.0,0,2.5)+0.6*s.aim;ox:=cz*shoulder;oz:= -sx*shoulder;target+=0.22*s.aim;
+    // over your right shoulder, one offset family: mouselook (aethyr/cam/mouselook.coax) frames you
+    // below and left of the reticle, as far as its fade has come (ml shown); a drawn bow keeps that
+    // offset and tightens in, as far as the aim has come in (s.aim). Nothing jumps between them.
+    mlv:=s.ml[0].shown;off:=ifx mlv>s.aim then mlv else s.aim;
+    dist:=s.dist+(2.1-s.dist)*s.aim;shoulder:=cc_clamp(-sy*3.0,0,2.5)+f32(CC_SHOULDER)*off;ox:=cz*shoulder;oz:= -sx*shoulder;
+    lift:=f32(CC_LIFT)*mlv;if 0.22*s.aim>lift {lift=0.22*s.aim;}target+=lift;
     boom:=[3]f32.[ox+sx*cy*dist,sy*dist,oz+cz*cy*dist];length:=sqrt(boom[0]*boom[0]+boom[1]*boom[1]+boom[2]*boom[2]);near:[1]village.EvNear;village.ev_camera_near(near[..],s.player_x,s.player_z);room:=cc_camera_boom(near[0].walls[0..<near[0].wall_n*6],s.player_x,s.player_y+1.2,s.player_z,boom);
     ground_room:=cc_camera_terrain_room(s.player_x,target,s.player_z,boom);if ground_room<room {room=ground_room;}if s.camera_room>=0 && s.camera_room<room {room=s.camera_room;}share:=ifx length>0 then cc_clamp(room/length,0,1) else 0;
     u[16]=s.player_x+boom[0]*share;u[17]=target+boom[1]*share;u[18]=s.player_z+boom[2]*share;u[19]=h*0.89*(1+0.18*s.aim);

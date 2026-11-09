@@ -491,6 +491,8 @@ e2_wheel :: (s: [] E2, dy: f32) -> bool #export_c #effects(all) {
 }
 // Mouselook, the host's face: whether the pointer is wanted, the mouse's travel while held, and what
 // the browser did (aethyr/cam/mouselook.coax). The turn goes the way a drag's does.
+// No OS cursor while the reticle is up (host.js cursor 4): the reticle is the pointer.
+e2_cursor :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].ml[0].shown > 0.01 then 4 else 0; }
 e2_mouselook :: (s: [] E2) -> int #export_c #effects(all) { return mlook.ml_host(s[0].ml[0]); }
 e2_look_delta :: (s: [] E2, dx: f32, dy: f32) #export_c #effects(all) {
   t := mlook.ml_turn(s[0].ml[0], dx, dy); s[0].look_yaw -= t[0]; s[0].look_pitch -= t[1];
@@ -516,6 +518,32 @@ e2_reticle :: (s: [] E2, out: [] f32, at: int) -> int {
   for i: 0..<sn { q := st[i]; if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width + 1.6 * k, q.alpha * 0.45, 0.5, 0.05, 0.05, 0.06, 0) { n += 6; } }
   for i: 0..<sn { q := mlook.ml_tint(st[i], over); if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width, q.alpha, 0.5, q.r, q.g, q.b, 0) { n += 6; } }
   return n;
+}
+// The way you face as drawn and as you cast: in mouselook the camera's way, as far as its fade has
+// come (A and D strafe, S backpedals); otherwise where the walk turned you.
+e2_show_face :: (s: [] E2) -> f32 {
+  m := s[0].ml[0].shown; if m <= 0 { return s[0].you_face; }
+  return figs.wrap_angle(s[0].you_face + figs.wrap_angle(s[0].orbit.yaw - s[0].you_face) * m);
+}
+E2_SHOULDER :: 0.7;   // metres the mouselook camera sits right of you
+E2_LIFT :: 0.55;      // and above, so you stand below and left of the reticle
+// Mouselook's framing: the eye and its aim both move right and up, as far as the fade has come.
+e2_ml_shot :: (s: [] E2, shot: figs.Shot) -> figs.Shot {
+  m := s[0].ml[0].shown; if m <= 0 { return shot; }
+  fx := shot.at.x - shot.eye.x; fz := shot.at.z - shot.eye.z; l := sqrt(fx * fx + fz * fz); if l < 0.0001 { return shot; }
+  rx := -fz / l * f32(E2_SHOULDER) * m; rz := fx / l * f32(E2_SHOULDER) * m; up := f32(E2_LIFT) * m;
+  t := shot;
+  t.eye = figs.v3(shot.eye.x + rx, shot.eye.y + up, shot.eye.z + rz); t.at = figs.v3(shot.at.x + rx, shot.at.y + up, shot.at.z + rz);
+  return t;
+}
+#test "mouselook faces you the camera's way and frames you below and left of the reticle" {
+  s: [1] E2; s[0].you_face = 0; s[0].orbit.yaw = 1.0;
+  #assert e2_show_face(s[..]) == 0;
+  s[0].ml[0].shown = 1; #assert abs(e2_show_face(s[..]) - 1.0) < 0.001;
+  shot := figs.Shot.{}; shot.eye = figs.v3(0, 2, 4); shot.at = figs.v3(0, 1.5, 0);   // looking down -z
+  t := e2_ml_shot(s[..], shot);
+  #assert t.eye.x > 0.6 && t.at.x > 0.6 && t.eye.y > 2.5 && abs(t.eye.z - 4) < 0.001;   // right and up: you below and left
+  s[0].ml[0].shown = 0; t = e2_ml_shot(s[..], shot); #assert t.eye.x == 0;
 }
 e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
   s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
@@ -682,7 +710,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].clock += step;
   e2_follow(s, step);
   e2c_arrive_step(s, step);
-  shot := e2_familiar_shot(s,e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_shot(s), step));
+  shot := e2_familiar_shot(s,e2c_shot(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), e2_ml_shot(s, e2_shot(s)), step));
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
   l := sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]); if l < 0.0001 { l = 1; } for q: 0..<3 { f[q] /= l; }
   r := [3]f32.[-f[2], 0, f[0]]; rl := sqrt(r[0] * r[0] + r[2] * r[2]); if rl < 0.0001 { rl = 1; } r[0] /= rl; r[2] /= rl;
@@ -1086,11 +1114,13 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   }
   // your character: the look Character Create saved, walking as the controller moves you
   a := s[0].anim[..];
-  a[0].on = true; a[0].x = s[0].you_x; a[0].z = s[0].you_z; a[0].y = s[0].you_y; a[0].yaw = s[0].you_face; a[0].own = true;
+  a[0].on = true; a[0].x = s[0].you_x; a[0].z = s[0].you_z; a[0].y = s[0].you_y; a[0].yaw = e2_show_face(s); a[0].own = true;
   bdt := ifx s[0].clock > b[0].now then s[0].clock - b[0].now else 0.0f32;
   figs.bd_step(a, s[0].clock, bdt);
   b[0].now = s[0].clock;
   fig := ifx e2c_creating(s) then e2c_figure(s) else e2k_figure(e2_jump_figure(a[0], s[0].airborne, s[0].clock, s[0].air_at, s[0].land_at), s[0].casts[0].me[0], s[0].clock);
+  // mouselook backpedal: the rig has no backpedal clip, so the gait plays backwards while you face the camera
+  if mlook.ml_on(s[0].ml[0]) && axis(s[0].held, HOLD_W, HOLD_S) < 0 && !s[0].airborne && (fig.clip == figs.BD_RUN || fig.clip == figs.BD_WALK) { fig.phase = -fig.phase; }
   s[0].cz[0].fig0 = rec;
   d := e2_body(s, c, fig, E2Drawn.{rec = rec, n = n, sn = sn});
   s[0].cz[0].fig1 = d.rec;

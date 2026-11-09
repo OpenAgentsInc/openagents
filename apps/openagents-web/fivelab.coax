@@ -2193,14 +2193,15 @@ lab_rest_motion :: (s:[]Lab,origin:EgBody,body:EgBody,walking:bool,jumping:bool)
   rs_rest_motion(b[0].c[i..<i+1],walked,jumped);
 }
 // A drawn bow turns you to face where the camera looks, as far as its aim has come in (docs/verse/bow-combat.md).
+// Mouselook faces you the same way, as far as its fade has come: A and D strafe, S backpedals.
 lab_aim_face :: (s:[]Lab,face:f32)->f32 {
-  a:=s[0].creator[0].aim; if a<=0 { return face; }
+  a:=s[0].creator[0].aim; look:=s[0].creator[0].ml[0].shown; if look>a { a=look; } if a<=0 { return face; }
   d:=figs.wrap_angle(s[0].creator[0].yaw+3.14159265-face);
   return figs.wrap_angle(face+d*a);
 }
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
-  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || (s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until);}
+  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y;s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].backpedal=s[0].creator[0].ml[0].shown>0.5 && axis(s[0].held,HOLD_W,HOLD_S)<0;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || (s[0].creator[0].hostiles[0].hp>0 && s[0].creator[0].clock<s[0].xc[0].dash_until);}
   s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
   if touch { s[0].touch = true; }
   s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
@@ -3815,7 +3816,12 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   }
   return false;
 }
-lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) { return 0; }
+// No OS cursor while Experimental's crosshair is up (a drawn bow, mouselook's reticle): the crosshair is the pointer.
+lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) {
+  c := s[0].creator[0];
+  if c.on && c.experimental && !c.walk.on && (s[0].xc[0].draw[0].on || c.aim > 0.01 || c.ml[0].shown > 0.01) { return 4; }
+  return 0;
+}
 // Experimental's mouselook, the host's face (aethyr/cam/mouselook.coax): in the world while you stand
 // (dead, the cursor is free for the respawn), never in Character Create's studio or the walk out of it.
 // The mouse turns the camera as a drag does, its tilt held to the drag's.
@@ -3832,6 +3838,8 @@ lab_pointer_lock :: (s: [] Lab, status: int) #export_c #effects(all) { mlook.ml_
   lab_look_delta(s[..], 100, 40); #assert s[0].creator[0].yaw < yaw && s[0].creator[0].pitch > pitch;
   #assert lab_key(s[..], KEY_TAB, 0) && lab_mouselook(s[..]) == mlook.ML_FREE;
   #assert lab_key(s[..], KEY_TAB, 0) && lab_mouselook(s[..]) == mlook.ML_LOOK;
+  for i: 0..<5 { lab_mouselook_step(s[..], 0.1); }
+  #assert abs(figs.wrap_angle(lab_aim_face(s[..], 0) - (s[0].creator[0].yaw + 3.14159265))) < 0.001;   // you face the camera's way
   s[0].creator[0].hostiles[0].hp = 0; lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == 0;
   s[0].creator[0].experimental = false; lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == 0;
 }

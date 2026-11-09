@@ -310,7 +310,7 @@ EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { retur
 EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(uint32_t state) { return (int32_t)e2_mouselook(at(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(uint32_t state, float dx, float dy) { e2_look_delta(at(state), dx, dy); }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t status) { e2_pointer_lock(at(state), status); }
-EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { (void)state; return 0; }
+EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)e2_cursor(at(state)); }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }

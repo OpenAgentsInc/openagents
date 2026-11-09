@@ -37,7 +37,7 @@
 //                             others the page's own
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
 //   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
-//   coaxial_cursor(state)     0 the default, 1 a link, 2 a crosshair, 3 text
+//   coaxial_cursor(state)     0 the default, 1 a link, 2 a crosshair, 3 text, 4 none (the app draws its own crosshair)
 //   coaxial_a11y(state) -> bytes, coaxial_a11y_buf(), coaxial_a11y_do(state, id)
 //                             the app's controls, a line each ("ID ROLE STATE LABEL"), mirrored as DOM
 //                             buttons and checkboxes beside the canvas, and the one pressed there (a11yMirror)
@@ -3468,8 +3468,8 @@ function after(gesture, tap = false) {
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
   syncLook();
-  const cursor = ["", "pointer", "crosshair", "text"][call("coaxial_cursor")] || "";
-  if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;
+  const cursor = ["", "pointer", "crosshair", "text", "none"][call("coaxial_cursor")] || "";
+  if ((canvas.dataset.cursor || "") !== cursor) { canvas.dataset.cursor = cursor; canvas.style.cursor = cursor === "none" ? "none" : ""; }
 }
 
 // Puts the field over the box the app draws it in, so a paste or a right
