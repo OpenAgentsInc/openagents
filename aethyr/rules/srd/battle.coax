@@ -139,6 +139,7 @@ RsBattle :: struct {
   turn: RsTurn;
   ko_by: int;                 // 1 + the attacker whose melee attack may knock out (knockout.coax), 0 none
   reaction_frame: RsReactionFrame; // true turn while a Reaction strike borrows acting state
+  shape_keeps: [RS_SHAPE_KEEPS] RsShapeKeep; // Shapechange: each changed creature's own numbers, shapechange.coax
   // Strict timing is the default: six-second turns and no automatic recovery.
   // The declared action profile gives 1.5-second turns, proportional rounded
   // movement, slot/Rage/ordinary-use recharge at 9 seconds, Focus and the

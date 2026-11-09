@@ -46,12 +46,23 @@ rs_shapechange_ready :: (c: [] RsCreature) -> bool #effects(all) {
   return rs_material_slot(c[0], key) >= 0;
 }
 
+// The side-table entry holding i's own numbers while it is in a form, or a free one (-1 none).
+rs_shape_keep_at :: (b: [] RsBattle, i: int) -> int #effects(all) {
+  free := -1;
+  for e: 0..<RS_SHAPE_KEEPS {
+    if b[0].shape_keeps[e].who == i + 1 { return e; }
+    if free < 0 && b[0].shape_keeps[e].who == 0 { free = e; }
+  }
+  return free;
+}
+
 // i takes block m's numbers; its own come back with rs_shape_end.
 rs_shape_take :: (b: [] RsBattle, i: int, m: int) #effects(all) {
+  e := rs_shape_keep_at(b, i); if e < 0 { return; }
   k := rs_monster_block(m); c := b[0].c[i];
   saves := 0;
   for ab: 0..<6 { if c.save_prof[ab] { saves |= 1 << ab; } }
-  b[0].c[i].shape_keep = RsShapeKeep.{
+  b[0].shape_keeps[e] = RsShapeKeep.{who = i + 1,
     wild = RsWildKeep.{str = c.score[RS_STR], dex = c.score[RS_DEX], con = c.score[RS_CON], ac = c.ac, speed = c.speed, climb = c.climb,
                        form = c.form, weapon = c.weapon, ranged = c.ranged, jumper = c.jumper},
     swim = c.swim, fly = c.fly, resist = c.resist, immune = c.immune, immune_cond = c.immune_cond, saves = saves};
@@ -69,7 +80,9 @@ rs_shape_take :: (b: [] RsBattle, i: int, m: int) #effects(all) {
 // The spell ends for i: its own numbers come back, and the form's Temporary Hit Points go.
 rs_shape_end :: (b: [] RsBattle, i: int, why: string) #effects(all) {
   if i < 0 || i >= b[0].n || b[0].c[i].shape_form == 0 { return; }
-  k := b[0].c[i].shape_keep; w := k.wild;
+  e := rs_shape_keep_at(b, i);
+  if e < 0 || b[0].shape_keeps[e].who != i + 1 { b[0].c[i].shape_form = 0; return; }
+  k := b[0].shape_keeps[e]; w := k.wild; b[0].shape_keeps[e].who = 0;
   b[0].c[i].score[RS_STR] = w.str; b[0].c[i].score[RS_DEX] = w.dex; b[0].c[i].score[RS_CON] = w.con;
   b[0].c[i].ac = w.ac; b[0].c[i].speed = w.speed; b[0].c[i].climb = w.climb; b[0].c[i].form = w.form;
   b[0].c[i].jumper = w.jumper; b[0].c[i].weapon = w.weapon; b[0].c[i].ranged = w.ranged;
@@ -80,10 +93,11 @@ rs_shape_end :: (b: [] RsBattle, i: int, why: string) #effects(all) {
   rs_say(b, RS_EV_END, i, i, 0, why);
 }
 
+// book:begin shapechange
 // The acting i casts Shapechange with a 9th-level slot and takes block m's form (its Action, the slot,
 // Concentration). A Wild Shape form ends first.
 rs_shapechange :: (b: [] RsBattle, i: int, m: int) -> bool #effects(all) {
-  if i < 0 || i >= b[0].n || !rs_shape_eligible(b[0].c[i], m) { return false; }
+  if i < 0 || i >= b[0].n || !rs_shape_eligible(b[0].c[i], m) || rs_shape_keep_at(b, i) < 0 { return false; }
   if b[0].c[i].wild_form != 0 { rs_wild_shape_end(b, i, " leaves its Beast form"); }
   if !rs_cast(b, i, SP_SHAPECHANGE, 9, b[0].c[i].x, b[0].c[i].y, i) { return false; }
   rs_shape_take(b, i, m);
@@ -91,6 +105,7 @@ rs_shapechange :: (b: [] RsBattle, i: int, m: int) -> bool #effects(all) {
   rs_say(b, RS_EV_CONDITION, i, i, m, " takes a new shape with Shapechange");
   return true;
 }
+// book:end shapechange
 // A Magic action while the spell lasts: another eligible form, with no new Temporary Hit Points.
 rs_shapechange_switch :: (b: [] RsBattle, i: int, m: int) -> bool #effects(all) {
   if !rs_action_free(b, i) || b[0].c[i].shape_form == 0 || b[0].c[i].conc != SP_SHAPECHANGE || !rs_shape_eligible(b[0].c[i], m) { return false; }
@@ -149,6 +164,15 @@ shape_battle :: (b: [] RsBattle, level: int) #effects(all) {
   #assert rs_shapechange(k[..], 0, MON_ADULT_RED_DRAGON);
   rs_end_concentration(k[..], 0, ""); #assert k[0].c[0].shape_form == 0 && k[0].c[0].temp == 0;
 }
+#test "Shapechange keeps the caster's own numbers in the battle's side table, and refuses when the table is full" {
+  b: [1] RsBattle; shape_battle(b[..], 17);
+  #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON) && b[0].shape_keeps[rs_shape_keep_at(b[..], 0)].who == 1;
+  #assert rs_shapechange_leave(b[..], 0);
+  for e: 0..<RS_SHAPE_KEEPS { #assert b[0].shape_keeps[e].who == 0; }
+  c: [1] RsBattle; shape_battle(c[..], 17);
+  for e: 0..<RS_SHAPE_KEEPS { c[0].shape_keeps[e].who = 100 + e; }
+  #assert !rs_shapechange(c[..], 0, MON_ADULT_RED_DRAGON) && c[0].c[0].shape_form == 0 && c[0].c[0].slots[9] == 1;
+}
 #test "Shapechange needs level 17's slot, a form of CR no more than its level, and not an Undead" {
   for level: [3] int.[16, 17, 20] {
     b: [1] RsBattle; shape_battle(b[..], level);
@@ -174,7 +198,7 @@ shape_battle :: (b: [] RsBattle, level: int) #effects(all) {
   #assert b[0].c[1].hp == 300 - 3 * ((5 + 8) + 2 * 2);
   rs_fresh(b[..], 0); b[0].c[0].temp = 100;
   #assert rs_shapechange_switch(b[..], 0, MON_WOLF) && b[0].c[0].shape_form == MON_WOLF && b[0].c[0].temp == 100 && b[0].c[0].fly == 0;
-  #assert b[0].c[0].shape_keep.wild.ac == rs_druid("D", 0, 17).ac;
+  #assert b[0].shape_keeps[rs_shape_keep_at(b[..], 0)].wild.ac == rs_druid("D", 0, 17).ac;
   rs_fresh(b[..], 0); #assert rs_shapechange_switch(b[..], 0, MON_ADULT_RED_DRAGON) && b[0].c[0].temp == 100;
   #assert rs_shapechange_leave(b[..], 0) && b[0].c[0].ac == rs_druid("D", 0, 17).ac;
 }

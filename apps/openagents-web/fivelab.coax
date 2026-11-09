@@ -4470,7 +4470,9 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
   s[0].creator[0].on = false; lab_shadow_select(s[..]); #assert s[0].shadow_n == 4;
 }
 
-#test "experimental combat opportunity attacks precede the player's grid departure" {
+// The reaction's #transaction snapshots the whole battle, so this check's cost grows with RsCreature;
+// the default budget ran out after Shapechange's fields (aethyr/rules/srd/shapechange.coax).
+#test "experimental combat opportunity attacks precede the player's grid departure" #steps 40000000 {
   s:[1]Lab; b:=bt(s[..]); b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
   _:=rs_add(b,rs_fighter("Reactor",1,3),3,3); _=rs_add(b,rs_guard("Mover",0),4,3); rs_start_turn(b,1);
   b[0].c[1].hp=1; b[0].c[1].ac=10;

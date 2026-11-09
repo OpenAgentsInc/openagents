@@ -673,11 +673,13 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
  room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,false,0);two_hand_rooms(room[..],1,false,0);
  for r:0..<6 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
-#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greataxe's blends" #steps 2000000000 {
+// The blend checks copy the whole Creator into experimental_hold at each pose sample, and cc_pose's v3 points
+// add millions more visits: each check needs twice the default traversal.
+#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greataxe's blends" #steps 2000000000 #traversal 268435456 {
  room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,0);two_hand_rooms(room[..],1,true,0);
  for r:6..<12 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
-#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends" #steps 2000000000 {
+#test "a two-hander keeps 8 cm off the head and neck and out of the torso through the greatsword's blends" #steps 2000000000 #traversal 268435456 {
  room:[CC_ROOM_ROWS*3]f32;for i:0..<CC_ROOM_ROWS*3 {room[i]=9;}two_hand_rooms(room[..],0,true,1);two_hand_rooms(room[..],1,true,1);
  for r:12..<18 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
