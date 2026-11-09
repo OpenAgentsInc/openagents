@@ -5,13 +5,14 @@
 #load "experimental-dungeon.coax" as dungeon;
 #load "rules/srd5-combat.coax";
 #load "hostile-contact.coax";
+#load "../aethyr/ai/steer.coax";   // the engine's NPC navigation and steering (#13074, docs/verse/navigation.md)
 
 // dead: felled (apps/openagents-web/experimental-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move;
 // inactive: cannot begin or continue an attack, independently of movement
 // stopped: a scoped hit stop holds this one for the frame (its owner's react_held, aethyr/action/react.coax); the rest of the world goes on
 // kind: experimental-dungeon.coax's DG_KIND_*, scale its size; a sleeper waits where it stands until it sees you near
 // (every monster is one since #13066: the village's six wait at home too, so none hunts you from your spawn)
-Enemy :: struct {walk_scale:f32=1;x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32=1;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;shot:bool;returning:bool;provoked:bool;}   // shot: its swing is a ranged attack; returning: leashed, it walks home; provoked: you attacked it, so your spawn's safe radius no longer turns it back
+Enemy :: struct {walk_scale:f32=1;x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32=1;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;shot:bool;returning:bool;provoked:bool;nav:[1]NavAgent;}   // shot: its swing is a ranged attack; returning: leashed, it walks home; provoked: you attacked it, so your spawn's safe radius no longer turns it back
 // face: the way it looks, a unit vector (+z, its model's own front, until it first turns)
 // the village's six (two of them, 2 and 5, in the dungeon's entrance hall) and the dungeon's own
 HS_N :: HC_MAX;
@@ -53,10 +54,15 @@ hostile_calm :: (s:[]Hostiles) {s[0].calm_until=s[0].time+HS_CALM;for i:0..<HS_S
  for i:0..<300 {hostile_tick(s[..],0,0,0,0.016);}
  #assert s[0].enemies[1].x== -10 && s[0].enemies[1].z== -15;
 }
-#test "enemies cannot pass through village walls" #steps 200000000 {
+#test "enemies cannot pass through village walls: one after you inside a house comes in by its door" #steps 200000000 {
+ // you inside the house at (48, 43) (exp_site 9), whose front wall runs along z 44.8 to 45.2 with its
+ // doorway from x 46.22 to 47.78; the monster outside that wall at (49, 46)
  s:[1]Hostiles;hostile_test_start(s[..]);s[0].enemies[0].x=49;s[0].enemies[0].z=46;s[0].enemies[0].home_x=49;s[0].enemies[0].home_z=46;
- for i:0..<120 {hostile_tick(s[..],49,0,43,0.016);}
- #assert s[0].enemies[0].z>45;
+ crossed:f32= -100;
+ for i:0..<120 {was:=s[0].enemies[0].z;hostile_tick(s[..],49,0,43,0.016);e:=s[0].enemies[0..<1];
+  #assert !hostile_blocked_pad(e[0].x,e[0].z,0.29);
+  if was>45 && e[0].z<=45 {crossed=e[0].x;}}
+ #assert s[0].enemies[0].z>45 || (crossed>46.22 && crossed<47.78);
 }
 #test "a stopped enemy holds its place and its swing while the others go on" #steps 200000000 {
  s:[1]Hostiles;hostile_test_start(s[..]);s[0].enemies[0].x=0;s[0].enemies[0].z=-1;s[0].enemies[0].swing=0.1;s[0].enemies[1].x=4;s[0].enemies[1].z=0;
@@ -136,7 +142,7 @@ hostile_start :: (s:[]Hostiles) {
  for i:0..<HS_N {x:f32;z:f32;
   if i<6 {x=ifx i==2 then -42.0f32 else ifx i==5 then -36.0f32 else ifx i%2==0 then -10.0f32 else 10.0f32;z=ifx i==2 then -54.0f32 else ifx i==5 then -61.0f32 else -15+f32(i/2)*12;}
   else {x=dungeon.DG_SPAWN[i-6][0];z=dungeon.DG_SPAWN[i-6][1];}
-  k:=hostile_kind(i);s[0].enemies[i]=Enemy.{x=x,z=z,home_x=x,home_z=z,swing= -1,cool=f32(i%6)*0.15,kind=k,scale=dungeon.dg_kind_scale(k),sleeper=true};}
+  k:=hostile_kind(i);s[0].enemies[i]=Enemy.{x=x,z=z,home_x=x,home_z=z,swing= -1,cool=f32(i%6)*0.15,kind=k,scale=dungeon.dg_kind_scale(k),sleeper=true};s[0].enemies[i].nav[0]=nav_agent(x,z,i);}
 }
 // The checks' start: no safe spawn (they place you and the monsters themselves), and the village's
 // four outside the dungeon awake, as they were before every monster slept (#13066).
@@ -187,7 +193,78 @@ hostile_shot_result :: (s:[]Hostiles,foe:int,hit:bool) {
 HS_LEASH :: 35.0;
 // Hit, shot at or spelled by you from wherever you stand (experimental-combat.coax xc_use_ab): it
 // wakes and comes after you, out through the doorways if it must.
-hostile_provoke :: (s:[]Hostiles,i:int) {if i<0 || i>=HS_N || s[0].enemies[i].dead {return;}s[0].enemies[i].awake=true;s[0].enemies[i].returning=false;s[0].enemies[i].provoked=true;}
+hostile_provoke :: (s:[]Hostiles,i:int) {if i<0 || i>=HS_N || s[0].enemies[i].dead {return;}s[0].enemies[i].awake=true;s[0].enemies[i].returning=false;s[0].enemies[i].provoked=true;nav_engage(s[0].enemies[i].nav[..]);}
+// How a monster goes after you on the engine's steering service (aethyr/ai/steer.coax): its walk's
+// pace, its body and its reach by its size, round you in melee, and HS_LEASH from home.
+hostile_tune :: (e:Enemy)->NavTune {
+ reach:=1.45+0.45*(e.scale-1);
+ return NavTune.{speed=2.4*e.walk_scale,home_speed=2.4*e.walk_scale,body=0.35*e.scale,reach=reach,ring=0.8,circle=1.2*e.walk_scale,turn_s=3,lead=0.8,leash=f32(HS_LEASH),replan=0.5,span=12,cell=0.5};
+}
+// Its steering's own record of where it stands and its home: the monster's, as the zone (and the checks) set them.
+hostile_nav_sync :: (e:[]Enemy) {a:=e[0].nav[..];a[0].x=e[0].x;a[0].z=e[0].z;a[0].home_x=e[0].home_x;a[0].home_z=e[0].home_z;}
+// One step of monster i after you at (px, pz): the dungeon's doorways (hostile_goal) as its waypoints
+// when a wall stands between, its window filled from the walls (hostile_blocked_pad) when a wall holds
+// it back, the others and you as bodies, and its walk's slide (hostile_walk) the last word.
+hostile_steer :: (s:[]Hostiles,i:int,px:f32,pz:f32,dt:f32,c:[]HsNear) {
+ e:=s[0].enemies[i..<i+1];a:=e[0].nav[..];t:=hostile_tune(e[0]);
+ g:=hostile_goal(e[0].x,e[0].z,px,pz);if g[0]!=px || g[1]!=pz {nav_via(a,g[0],g[1]);}
+ if a[0].plan_s<=0 {
+  // its planning window, only while it plans: the page copies Hostiles each frame (experimental-combat.coax xc_hostile_tick)
+  if nav_wants_window(a[0]) {win:[1]NavWindow;w:=win[..];nav_window_place(w,t,a[0]);hostile_window_fill(w,0.3*e[0].scale);nav_plan(a,t,w);}
+  else {nav_direct(a,t);}
+ }
+ bodies:[(HS_N+1)*3]f32;n:=0;bodies[0]=px;bodies[1]=pz;bodies[2]=0.35;n=1;
+ for j:0..<HS_N {o:=s[0].enemies[j..<j+1];if j==i || o[0].dead || abs(o[0].x-e[0].x)>4 || abs(o[0].z-e[0].z)>4 {continue;}bodies[n*3]=o[0].x;bodies[n*3+1]=o[0].z;bodies[n*3+2]=0.35*o[0].scale;n+=1;}
+ st:=nav_move(a,t,false,dt,bodies[0..<n*3],-1);
+ hostile_walk_c(e,st.x,st.z,1000000.0,c);
+ nav_moved(a,st,e[0].x,e[0].z);
+ if st.mode!=NavMode.stand {e[0].face_x=st.face_x;e[0].face_z=st.face_z;}
+}
+// Fills a placed window with hostile_blocked_pad's answer for each cell, the walls gathered once for
+// the whole window (the village's near walls and the dungeon's boxes round its middle) rather than once a cell.
+hostile_window_fill :: (w:[]NavWindow,pad:f32) {
+ g:=w[0].grid;h:=f32(g.nx)*g.cell*0.5;cx:=g.x0+h;cz:=g.z0+h;reach:=h*1.4143+0.5;
+ near:[1]village.EvNear;village.ev_near_radius(near[..],cx,cz,reach,false);
+ db:[3000]f32;dn:=dungeon.dg_boxes(cx,cz,reach+pad+0.1,db[..],0,false);
+ if near[0].overflow || dn*6>=3000 {for c:0..<nav_window_cells(w) {p:=nav_window_spot(w,c);w[0].walk[c]= !hostile_blocked_pad(p[0],p[1],pad);}return;}
+ base:=terrain.exp_height(cx,cz);   // the gathered walls' heights are over this ground
+ for c:0..<nav_window_cells(w) {p:=nav_window_spot(w,c);x:=p[0];z:=p[1];open:=true;
+  if dungeon.dg_inside(x,z,1.5) {
+   for i:0..<dn {o:=i*6;if db[o+1]>1.5 || db[o+4]<0.2 {continue;}if x>db[o]-pad && x<db[o+3]+pad && z>db[o+2]-pad && z<db[o+5]+pad {open=false;break;}}
+  } else {
+   open= !hostile_near_blocked(near[..],base,x,z);
+  }
+  w[0].walk[c]=open;}
+}
+// hostile_blocked_pad's village test against walls gathered once (ev_near_radius over ground `base`):
+// the cell's own ground, which shifts their heights, is only looked up under a wall's footprint.
+hostile_near_blocked :: (near:[]village.EvNear,base:f32,x:f32,z:f32)->bool {
+ dy:f32=0;dy_known:=false;
+ for i:0..<near[0].wall_n {o:=i*6;
+  if !(x>near[0].walls[o]-0.3 && x<near[0].walls[o+3]+0.3 && z>near[0].walls[o+2]-0.3 && z<near[0].walls[o+5]+0.3) {continue;}
+  if !dy_known {dy=terrain.exp_height(x,z)-base;dy_known=true;}
+  if near[0].walls[o+1]-dy>1.5 || near[0].walls[o+4]-dy<0.2 {continue;}
+  return true;}
+ return false;
+}
+// The village's walls round you, gathered once a tick for every monster's step near you (hostile_steer):
+// HS_NEAR_R metres round where you stand, so a step within HS_NEAR_R - 4 m of you (ev_hostile_near's
+// reach is 4 m) is tested against them; one further off, or a gathering that overflowed, asks afresh.
+HS_NEAR_R :: 12.0;
+HsNear :: struct {near:[1]village.EvNear;x:f32;z:f32;base:f32;gathered:bool;}
+hostile_blocked_c :: (c:[]HsNear,x:f32,z:f32,pad:f32)->bool {
+ if dungeon.dg_inside(x,z,1.5) {return dungeon.dg_blocked(x,z,pad);}
+ if !c[0].gathered {village.ev_near_radius(c[0].near[..],c[0].x,c[0].z,f32(HS_NEAR_R),false);c[0].base=terrain.exp_height(c[0].x,c[0].z);c[0].gathered=true;}
+ dx:=x-c[0].x;dz:=z-c[0].z;
+ if c[0].near[0].overflow || dx*dx+dz*dz>(f32(HS_NEAR_R)-4.5)*(f32(HS_NEAR_R)-4.5) {return hostile_blocked_pad(x,z,pad);}
+ return hostile_near_blocked(c[0].near[..],c[0].base,x,z);
+}
+// hostile_walk against the gathered walls.
+hostile_walk_c :: (e:[]Enemy,gx:f32,gz:f32,pace:f32,c:[]HsNear) {
+ dx:=gx-e[0].x;dz:=gz-e[0].z;distance:=sqrt(dx*dx+dz*dz);if distance<0.01 {return;}
+ step:=ifx distance<pace then distance else pace;nx:=e[0].x+dx/distance*step;nz:=e[0].z+dz/distance*step;
+ pad:=0.3*e[0].scale;if !hostile_blocked_c(c,nx,e[0].z,pad) {e[0].x=nx;e[0].moving=true;}if !hostile_blocked_c(c,e[0].x,nz,pad) {e[0].z=nz;e[0].moving=true;}
+}
 // One step of at most `pace` metres toward (gx, gz), sliding along what blocks it; faces the way it goes.
 hostile_walk :: (e:[]Enemy,gx:f32,gz:f32,pace:f32) {
  dx:=gx-e[0].x;dz:=gz-e[0].z;distance:=sqrt(dx*dx+dz*dz);if distance<0.01 {return;}
@@ -248,18 +325,20 @@ hostile_goal :: (x:f32,z:f32,tx:f32,tz:f32)->[2]f32 {
 hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
  hostile_start(s);if dt<=0 || dt>0.25 {return;}s[0].time+=dt;
  if s[0].hp<=0 {for i:0..<HS_N {e:=s[0].enemies[i..<i+1];e[0].swing= -1;e[0].moving=false;if e[0].dead || e[0].held || e[0].stopped {continue;}dx:=e[0].home_x-e[0].x;dz:=e[0].home_z-e[0].z;if dx*dx+dz*dz<0.01 {continue;}g:=hostile_goal(e[0].x,e[0].z,e[0].home_x,e[0].home_z);hostile_walk(e,g[0],g[1],dt*1.5*e[0].walk_scale);if e[0].moving {gx:=g[0]-e[0].x;gz:=g[1]-e[0].z;gl:=sqrt(gx*gx+gz*gz);if gl>0.001 {e[0].face_x=gx/gl;e[0].face_z=gz/gl;}}}return;}
- ox:=[6]f32.[0,1.1,1.1,0,-1.1,-1.1];oz:=[6]f32.[-1.2,-0.6,0.6,1.2,0.6,-0.6];
  safe_all:=hostile_safe(s,px,pz);hostile_fly(s,px,py,pz,safe_all);
+ near:[1]HsNear;near[0].x=px;near[0].z=pz;   // the walls round you, gathered at the first step that needs them
  for i:0..<HS_N {if s[0].hp<=0 {break;}e:=s[0].enemies[i..<i+1];if e[0].dead {e[0].moving=false;e[0].swing= -1;continue;}safe:=safe_all && !e[0].provoked;dx:=px-e[0].x;dz:=pz-e[0].z;gap:=sqrt(dx*dx+dz*dz);e[0].moving=false;
   if e[0].inactive {e[0].swing= -1;e[0].struck=false;}
   if e[0].stopped {continue;}
   if e[0].sleeper && !e[0].awake {if safe || gap>dungeon.dg_kind_wake(e[0].kind) || !hostile_sees(e[0],px,pz) {continue;}e[0].awake=true;}e[0].cool-=dt;
-  // the leash: too far from home, or you safe, and it turns back (never mid-swing)
-  if e[0].awake && !e[0].returning && e[0].swing<0 {hx:=e[0].x-e[0].home_x;hz:=e[0].z-e[0].home_z;if safe || hx*hx+hz*hz>HS_LEASH*HS_LEASH {e[0].returning=true;}}
+  // the leash, the steering service's (aethyr/ai/steer.coax nav_think): too far from home and not in
+  // the middle of a fight with someone still within it, or you safe, and it turns back (never mid-swing)
+  if e[0].awake && !e[0].returning {hostile_nav_sync(e);_:=nav_think(e[0].nav[..],hostile_tune(e[0]),px,pz,dt);if safe {nav_return(e[0].nav[..]);}
+   if e[0].swing<0 && e[0].nav[0].returning {e[0].returning=true;}}
   if e[0].returning {
    if e[0].held {continue;}
    hx:=e[0].home_x-e[0].x;hz:=e[0].home_z-e[0].z;
-   if hx*hx+hz*hz<0.04 {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].returning=false;e[0].provoked=false;e[0].awake=!e[0].sleeper;continue;}
+   if hx*hx+hz*hz<0.04 {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].returning=false;e[0].provoked=false;e[0].awake=!e[0].sleeper;e[0].nav[0]=nav_agent(e[0].x,e[0].z,i);continue;}
    g:=hostile_goal(e[0].x,e[0].z,e[0].home_x,e[0].home_z);hostile_walk(e,g[0],g[1],dt*2.4*e[0].walk_scale);
    gx:=g[0]-e[0].x;gz:=g[1]-e[0].z;gl:=sqrt(gx*gx+gz*gz);if gl>0.001 {e[0].face_x=gx/gl;e[0].face_z=gz/gl;}
    continue;
@@ -276,16 +355,14 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
       if lands && abs(py)<2 {if s[0].shared {accepted:=hc_offer(s[0].contacts[..],i);} else {hit:=srd_attack(s[0].dice[..],hostile_blow(e[0].kind),15);if hit.hit {s[0].last=i;hostile_damage(s,hit.damage,px,terrain.exp_height(px,pz)+py+2.1,pz);}}}}
     if e[0].swing>=(ifx e[0].shot then f32(HS_SHOT_END) else 0.8f32) {e[0].swing= -1;e[0].cool=1.1;}continue;}
   if safe {continue;}
-  if gap<reach {if !e[0].inactive && e[0].cool<=0 {e[0].swing=0;e[0].struck=false;e[0].shot=false;}continue;}
+  // in reach: it swings when it can, and between swings circles you (hostile_steer)
+  if gap<reach && !e[0].inactive && e[0].cool<=0 {e[0].swing=0;e[0].struck=false;e[0].shot=false;continue;}
   // with the shared battle, a kind with a ranged attack shoots while you stand well past its reach
   // and within its range, then closes while it readies the next
   if s[0].shared && !e[0].inactive && e[0].cool<=0 && gap>reach+3 && gap<=hostile_shot(e[0].kind) && abs(py)<2 && hostile_sees(e[0],px,pz) {e[0].swing=0;e[0].struck=false;e[0].shot=true;continue;}
   if e[0].held {continue;}
-  // straight at its place round you, or by the doorways when a wall stands between
-  g:=hostile_goal(e[0].x,e[0].z,px,pz);direct:=g[0]==px && g[1]==pz;
-  gx:=ifx direct then px+ox[i%6]*e[0].scale else g[0];gz:=ifx direct then pz+oz[i%6]*e[0].scale else g[1];
-  hostile_walk(e,gx,gz,dt*2.4*e[0].walk_scale);
-  if !direct {fx:=gx-e[0].x;fz:=gz-e[0].z;fl:=sqrt(fx*fx+fz*fz);if fl>0.001 {e[0].face_x=fx/fl;e[0].face_z=fz/fl;}}
+  // after you: by the doorways when a wall stands between, round what holds it back, round you in reach
+  hostile_steer(s,i,px,pz,dt,near[..]);
  }
 }
 
@@ -413,4 +490,25 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
   #assert (f.x-px)*(f.x-px)+(f.z-pz)*(f.z-pz) < d0;
   // a respawn calms it again
   hostile_calm(s[..]); #assert !s[0].enemies[i].provoked;
+}
+
+#test "between its swings a monster in reach circles you on the steering service, and two never stand in each other" #steps 400000000 {
+  s: [1] Hostiles; hostile_test_start(s[..]);
+  for i: 0..<HS_N { s[0].enemies[i].dead=true; }
+  e := s[0].enemies[0..<1]; e[0].dead=false; e[0].awake=true; e[0].x=0; e[0].z= -1.2; e[0].cool=100;
+  reach := 1.45+0.45*(e[0].scale-1); ux: f32 = 0; uz: f32 = 0; round_most: f32 = 1;
+  for k: 0..<200 {
+    hostile_tick(s[..],0,0,0,0.016);
+    d := sqrt(e[0].x*e[0].x+e[0].z*e[0].z);
+    if k == 20 { ux = e[0].x/d; uz = e[0].z/d; }
+    if k > 20 { #assert d < reach && e[0].swing < 0; if ux*e[0].x/d+uz*e[0].z/d < round_most { round_most = ux*e[0].x/d+uz*e[0].z/d; } }
+  }
+  #assert round_most < 0.8;   // round you by over 35 degrees in under three seconds
+  // a second one after you: their bodies never overlap
+  f := s[0].enemies[1..<2]; f[0].dead=false; f[0].awake=true; f[0].x=3; f[0].z=3; f[0].cool=100;
+  for k: 0..<400 {
+    hostile_tick(s[..],0,0,0,0.016);
+    dx := e[0].x-f[0].x; dz := e[0].z-f[0].z;
+    #assert sqrt(dx*dx+dz*dz) >= 0.35*e[0].scale+0.35*f[0].scale-0.01;
+  }
 }

@@ -45,6 +45,7 @@
 #load "room-checkpoint.coax";
 #load "room-e2-aid.coax";
 #load "room-e2-familiar.coax";
+#load "../../../aethyr/ai/steer.coax";   // the engine's NPC navigation and steering (#13074)
 #load "room-e2-guard.coax";   // Everglade II's path guard
 #load "room-e2-admin.coax";   // Everglade II's admin mode: a local room's only (--dev on 127.0.0.1)
 #load "room-e2-monsters.coax";   // Everglade II's wolves and goblins

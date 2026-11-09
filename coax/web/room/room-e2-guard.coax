@@ -34,6 +34,12 @@ E2G_AIM :: 1.6;
 E2G_DEFEND :: 12.0;         // m: a monster that strikes a player this near him is his foe             // m: a cast aimed this near him is aimed at him
 E2G_BLOW_S :: 0.7;          // s between his turn's attacks as the pages see and hear them
 E2G_FORM :: 21;             // E5RR_FORM_RAID + RS_NPC_GUARD: the guard's look
+// How he fights, on the engine's steering service (aethyr/ai/steer.coax, docs/verse/navigation.md):
+// after his foe at a run, aimed where they will be; round them within his reach once there, changing
+// his side every few seconds; never deeper into a player than E2G_CLEAR; round what he can't stand on.
+// His leash is his own (E2G_LEASH from where he was struck, then his walk), so the service's is off.
+E2G_NAV :: NavTune.{speed = 3.6, home_speed = 1.4, body = 0.35, reach = 1.1, ring = 0.85, circle = 1.2, turn_s = 3.5, lead = 0.8, leash = 100000, replan = 0.5, span = 16, cell = 0.5};
+E2G_SEAT_BODY :: 0.45;      // m: a player as a body to him, so his middle stays E2G_CLEAR (0.35 + 0.45) from theirs
 E2G_WALKING :: 0; E2G_STANDING :: 1; E2G_FIGHTING :: 2; E2G_DOWN :: 3; E2G_NONE :: 4;
 
 E2Guard :: struct {
@@ -55,7 +61,11 @@ E2Guard :: struct {
   seq: int;                  // the battle's log read to (its seq): his attacks are told from it
   blows: int;                // the attacks of his last turn that struck at someone
   dealt: [4] int;            // and the damage of each (0 a miss)
+  nav: [1] NavAgent;         // his steering in a fight (aethyr/ai/steer.coax)
+  nav_on: int = -1;          // whom it steers after: a seat, E2G_NAV_BEAST + a monster's creature, -1 none
+  win: [1] NavWindow;        // his planning window
 }
+E2G_NAV_BEAST :: 1000;
 
 e2g_wrap :: (a: f32) -> f32 { r := a; while r > 3.14159265 { r -= 6.2831853; } while r < -3.14159265 { r += 6.2831853; } return r; }
 e2g_turn :: (yaw: f32, goal: f32, rate: f32, dt: f32) -> f32 {
@@ -160,6 +170,43 @@ e2g_walk :: (v: [] RmServer, k: int, dt: f32) {
   if moved > 0 { g[0].yaw = e2g_turn(g[0].yaw, e5rr_heading(tx - g[0].x, tz - g[0].z), f32(E2G_STEER), dt); }
 }
 
+// One tick of his fight with `on` (a seat, or E2G_NAV_BEAST + a monster's creature) standing at
+// (tx, tz), on the steering service: his window filled from where one may stand (everglade2-move.coax
+// e2_may_stand), the players as bodies, and the room's slide (e2m_keep) the last word on his step.
+e2g_fight :: (v: [] RmServer, k: int, g: [] E2Guard, on: int, tx: f32, tz: f32, dt: f32) {
+  a := g[0].nav[..]; t := E2G_NAV;
+  if g[0].nav_on != on {
+    a[0] = nav_agent(g[0].x, g[0].z, g[0].life * 31 + on);
+    a[0].face_x = sin(g[0].yaw); a[0].face_z = cos(g[0].yaw);
+    g[0].nav_on = on;
+  }
+  a[0].x = g[0].x; a[0].z = g[0].z; a[0].home_x = g[0].x; a[0].home_z = g[0].z;   // no service leash: his is E2G_LEASH
+  if nav_think(a, t, tx, tz, dt) {
+    if nav_wants_window(a[0]) {
+      w := g[0].win[..];
+      nav_window_place(w, t, a[0]);
+      for c: 0..<nav_window_cells(w) { p := nav_window_spot(w, c); w[0].walk[c] = e2_may_stand(p[0], p[1]); }
+      nav_plan(a, t, w);
+    } else { nav_direct(a, t); }
+  }
+  bodies: [EG_SEATS * 3] f32; n := 0;
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    if !st[0].live || !st[0].placed { continue; }
+    bodies[n * 3] = st[0].pose.x; bodies[n * 3 + 1] = st[0].pose.z; bodies[n * 3 + 2] = f32(E2G_SEAT_BODY); n += 1;
+  }
+  // his swing under way (the rules' turn, its blows told E2G_BLOW_S apart): he stands to it
+  busy := g[0].swing_tick >= 0 && v[0].eg[k].tick - g[0].swing_tick < cast(int)(f32(E2G_BLOW_S) * f32(EG_HZ));
+  step := nav_move(a, t, busy, dt, bodies[0..<n * 3], -1);
+  spot := e2m_keep(step.x, step.z, g[0].x, g[0].z);
+  nav_moved(a, step, spot.x, spot.z);
+  g[0].x = spot.x; g[0].z = spot.z;
+  g[0].yaw = e2g_turn(g[0].yaw, e5rr_heading(step.face_x, step.face_z), f32(E2G_STEER) * 2, dt);
+  g[0].state = E2G_FIGHTING; g[0].rest = 0; g[0].turning = false;
+  // back on his walk he takes up the path from the nearest point on it
+  g[0].off = g[0].x - e2_road_x(g[0].z); g[0].off_to = 0;
+}
+
 // The room's tick, before the rules step: a new guard when due, his walk or his chase, and his body's
 // square in the battle. The foe's Hit Points are kept to tell his blows.
 e2_guard_tick :: (v: [] RmServer, k: int) {
@@ -203,18 +250,11 @@ e2_guard_tick :: (v: [] RmServer, k: int) {
   g[0].foe_hp = ifx foe >= 0 then b[0].c[E5RR_SEAT + foe].hp else ifx beast >= 0 then b[0].c[beast].hp else 0;
   if foe < 0 && beast >= 0 {
     at := e2_monster_at(v, k, beast);
-    _ := e2g_move(v, k, g, at[0], at[1], f32(E2G_CHASE), dt, f32(E2G_REACH));
-    g[0].yaw = e2g_turn(g[0].yaw, e5rr_heading(at[0] - g[0].x, at[1] - g[0].z), f32(E2G_STEER) * 2, dt);
-    g[0].state = E2G_FIGHTING; g[0].rest = 0; g[0].turning = false;
-    g[0].off = g[0].x - e2_road_x(g[0].z); g[0].off_to = 0;
+    e2g_fight(v, k, g, E2G_NAV_BEAST + beast, at[0], at[1], dt);
   } else if foe >= 0 {
-    fx := v[0].eg[k].seat[foe].pose.x; fz := v[0].eg[k].seat[foe].pose.z;
-    _ := e2g_move(v, k, g, fx, fz, f32(E2G_CHASE), dt, f32(E2G_REACH));
-    g[0].yaw = e2g_turn(g[0].yaw, e5rr_heading(fx - g[0].x, fz - g[0].z), f32(E2G_STEER) * 2, dt);
-    g[0].state = E2G_FIGHTING; g[0].rest = 0; g[0].turning = false;
-    // back on his walk he takes up the path from the nearest point on it
-    g[0].off = g[0].x - e2_road_x(g[0].z); g[0].off_to = 0;
+    e2g_fight(v, k, g, foe, v[0].eg[k].seat[foe].pose.x, v[0].eg[k].seat[foe].pose.z, dt);
   } else {
+    g[0].nav_on = -1;
     e2g_walk(v, k, dt);
   }
   bt[0].x = g[0].x; bt[0].z = g[0].z; bt[0].yaw = g[0].yaw; bt[0].moving = g[0].state != E2G_STANDING;
@@ -402,6 +442,30 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   e2gt_at(v[..], k, 0, 0);
   for q: 0..<cast(int)(f32(E2G_RESPAWN_S) * f32(EG_HZ)) + 2 { eg_test_tick(v[..], k); }
   #assert g[0].q >= 0 && g[0].life == life + 1 && g[0].state == E2G_WALKING;
+}
+#test "e2 guard: in a fight he circles you within his reach on the steering service, never inside you" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-circle HTTP/1.1\r\n\r\n") == 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  eg_test_tick(v[..], k);
+  g := v[0].eg[k].guard[..]; b := v[0].eg[k].rules[0].b[..];
+  me := E5RR_SEAT; b[0].c[me].hp = 900; b[0].c[me].hp_max = 900;
+  px := g[0].x + 1.0; pz := g[0].z;
+  e2gt_at(v[..], k, px, pz); eg_test_tick(v[..], k);
+  e2_guard_struck(v[..], k, 0, b[0].c[E5RR_BEAST0 + g[0].q].hp + 1);
+  out: [262144] u8;
+  ux: f32 = 0; uz: f32 = 0; round_most: f32 = 1; least: f32 = 100; most: f32 = 0;
+  for q: 0..<EG_HZ * 6 {
+    e2gt_at(v[..], k, px, pz); eg_test_tick(v[..], k); _ := e2rt_heard(v[..], 0, out[..]);
+    dx := g[0].x - px; dz := g[0].z - pz; d := sqrt(dx * dx + dz * dz);
+    if d < least { least = d; }
+    if q == EG_HZ { ux = dx / d; uz = dz / d; }
+    if q > EG_HZ { if d > most { most = d; } if ux * dx / d + uz * dz / d < round_most { round_most = ux * dx / d + uz * dz / d; } }
+  }
+  #assert g[0].state == E2G_FIGHTING && g[0].foe == 0;
+  #assert least >= f32(E2G_CLEAR) - 0.001 && most <= f32(E2G_REACH) + 0.05;
+  #assert round_most < 0.7;   // he went over 45 degrees round you in those five seconds
 }
 #test "e2 guard: a cast aimed at him from the bar is the shared rules' strike at him, and he turns on its caster" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);

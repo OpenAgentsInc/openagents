@@ -1,0 +1,606 @@
+// How a creature goes after someone (docs/verse/navigation.md, #13074): the engine's navigation
+// and steering service for every NPC (a guard, a monster, a companion), in the room on its tick
+// and in a page on its frame alike. One NavAgent a creature, one NavTune a kind, and one
+// NavWindow any number of creatures share, one plan at a time.
+//
+//   path      around what stands in the way: a walking grid (aethyr/nav/grid.coax) laid over the
+//             few metres between the creature and its goal, filled by the zone's own test of
+//             where a body may stand (or, aethyr/ai/steer-colliders.coax, the world's colliders
+//             and terrain), searched, and pulled taut to the furthest corner it can see
+//   pursue    at where the target will be: its speed, seen over the last ticks, times the
+//             time to get there (at most `lead` seconds)
+//   circle    in melee, round the target at a ring within reach, changing its side every few
+//             seconds (each creature on its own seed), drawn off a facing target's front toward its
+//             flank (nav_facing), and standing still through its own swing
+//   apart     no step of it ends inside another body (other creatures, the players) deeper
+//             than it began
+//   leash     past `leash` metres from home it gives up and walks home, unless it is in the
+//             middle of a fight with someone who still stands within the leash; home again, it
+//             doesn't go after the same target until they come back within it
+//
+// The zone keeps what is its own: where a body may stand (a closure-free language: it fills the
+// window when the agent asks), the bodies near it, and the final word on a step (its slide).
+// Each tick: nav_think; when it is due and nav_wants_window, nav_window_place, fill, nav_plan
+// (or nav_direct when the zone knows the way is clear); nav_move; the zone's slide; nav_moved.
+//   coax/bin/coax test aethyr/ai/steer.coax --library
+#module "aethyr.ai.steer";
+#authority;
+#load "../nav/grid.coax";
+
+// book:begin steer
+NAV_STEER_SIDE :: 40;          // cells along a window's side at most
+NAV_STEER_CELLS :: 1600;       // NAV_STEER_SIDE squared
+NAV_STEER_NEAR :: 0.0001;      // m: nearer than this is the same spot
+NAV_STEER_ARRIVE :: 0.2;       // m from home that is home
+NAV_STEER_CORNER :: 0.3;       // m from a path's corner at which it plans again
+NAV_STEER_FASTEST :: 15.0;     // m/s: a target seen to move faster than this jumped (a respawn)
+NAV_STEER_SMOOTH :: 8.0;       // 1/s: how quickly its estimate of the target's velocity follows
+NAV_STEER_CLOSE :: 1.6;        // times its reach: nearer than this it starts circling
+NAV_STEER_OPEN :: 2.2;         // and further than this it stops and runs again
+NAV_STEER_FLANK :: 0.7;        // rad/s it is drawn off the front of a target that faces it, toward its flank
+NAV_STEER_SMALL :: 0.01;       // m: a step shorter than this is not one a zone's slide held back
+
+// How a kind goes after someone. Speeds in m/s, lengths in metres.
+NavTune :: struct {
+  speed: f32 = 4.5;        // it runs after a target
+  home_speed: f32 = 3;     // it walks home
+  body: f32 = 0.35;        // its radius
+  reach: f32 = 1.5;        // middle to middle, it strikes from
+  ring: f32 = 0.8;         // the share of its reach it circles at
+  circle: f32 = 1.5;       // it moves round the target in melee
+  turn_s: f32 = 3;         // s, on average, before it circles the other way
+  lead: f32 = 1;           // s ahead of a moving target it aims, at most
+  leash: f32 = 30;         // from home past which it gives up
+  replan: f32 = 0.5;       // s between its plans
+  span: f32 = 20;          // a window's side (at most NAV_STEER_SIDE cells)
+  cell: f32 = 0.5;         // a window's cell
+}
+
+NavRoute :: enum u8 { direct; path; stuck; }
+NavMode :: enum u8 { stand; chase; circle; homeward; home; }
+
+// One creature's navigation: where it stands and faces, its home, what it knows of its target,
+// its route, and its circling.
+NavAgent :: struct {
+  x: f32; z: f32;
+  face_x: f32; face_z: f32 = 1;   // a unit vector: +z until it first turns
+  home_x: f32; home_z: f32;
+  returning: bool;                 // leashed: on its way home
+  spurned: bool;                   // home from a leash: it waits until the target comes back within it
+  seed: int;                       // varies its circling from its fellows'
+  tx: f32; tz: f32; tvx: f32; tvz: f32; seen: bool;   // the target as last seen, and its velocity
+  via: bool; via_x: f32; via_z: f32;                 // this tick's waypoint from the zone's own map
+  faced: bool; tfx: f32; tfz: f32;                   // the way the target faces this tick, when the zone says (nav_facing)
+  plan_s: f32;                     // s until the next plan (<= 0: due)
+  route: NavRoute;
+  aim_x: f32; aim_z: f32;          // the path's next corner
+  pressed: bool;                   // the zone's slide held back its last step: it plans
+  circling: bool; ox: f32; oz: f32 = 1; spin: f32 = 1; spin_s: f32; turns: int;
+}
+// One tick's step: where it wants to be (before the zone's slide), the way it faces, and why.
+NavStep :: struct { x: f32; z: f32; face_x: f32; face_z: f32 = 1; mode: NavMode; }
+
+// The planning grid: NavGrid's shape over NAV_STEER_CELLS of storage, shared by many agents.
+NavWindow :: struct {
+  grid: NavGrid;
+  walk: [NAV_STEER_CELLS] bool;
+  cost: [NAV_STEER_CELLS] f32;
+  heap: [NAV_STEER_CELLS] s32;
+  slot: [NAV_STEER_CELLS] s32;
+  chain: [NAV_STEER_CELLS] s32;
+}
+// book:end steer
+
+nav_len :: (dx: f32, dz: f32) -> f32 #effects(all) { return sqrt(dx * dx + dz * dz); }
+nav_len2 :: (dx: f32, dz: f32) -> f32 #effects(all) { return dx * dx + dz * dz; }
+// A number in [0, 1) from a seed and a count: the same on every host.
+nav_hash :: (seed: int, n: int) -> f32 #effects(all) {
+  s := seed % 9973; if s < 0 { s = -s; }
+  m := n % 9973; if m < 0 { m = -m; }
+  return f32((s * 7919 + m * 104729 + 17) % 1009) / 1009.0;
+}
+
+// A creature standing at (x, z), home there.
+nav_agent :: (x: f32, z: f32, seed: int) -> NavAgent #effects(all) {
+  return NavAgent.{x = x, z = z, home_x = x, home_z = z, seed = seed};
+}
+
+// Where it heads: the zone's waypoint this tick, home when leashed, else the target.
+nav_goal :: (a: NavAgent) -> [2] f32 #effects(all) {
+  if a.via { return [2] f32.[a.via_x, a.via_z]; }
+  if a.returning { return [2] f32.[a.home_x, a.home_z]; }
+  return [2] f32.[a.tx, a.tz];
+}
+
+// book:begin think
+// The tick begins: the target is at (tx, tz). It updates what it knows of the target's
+// velocity and its leash, and says whether a plan is due.
+nav_think :: (a: [] NavAgent, t: NavTune, tx: f32, tz: f32, dt: f32) -> bool #effects(all) {
+  if a[0].seen && dt > 0 {
+    vx := (tx - a[0].tx) / dt; vz := (tz - a[0].tz) / dt;
+    if nav_len2(vx, vz) > f32(NAV_STEER_FASTEST * NAV_STEER_FASTEST) { vx = 0; vz = 0; a[0].tvx = 0; a[0].tvz = 0; }
+    k := dt * f32(NAV_STEER_SMOOTH); if k > 1 { k = 1; }
+    a[0].tvx += (vx - a[0].tvx) * k; a[0].tvz += (vz - a[0].tvz) * k;
+  } else { a[0].tvx = 0; a[0].tvz = 0; }
+  a[0].tx = tx; a[0].tz = tz; a[0].seen = true; a[0].via = false; a[0].faced = false;
+  a[0].plan_s -= dt;
+  if a[0].spurned && nav_len2(tx - a[0].home_x, tz - a[0].home_z) <= t.leash * t.leash { a[0].spurned = false; }
+  if !a[0].returning && nav_len2(a[0].x - a[0].home_x, a[0].z - a[0].home_z) > t.leash * t.leash {
+    // the fight in hand goes on while its foe still stands within the leash
+    fighting := nav_len2(tx - a[0].x, tz - a[0].z) <= (t.reach + 0.5) * (t.reach + 0.5)
+             && nav_len2(tx - a[0].home_x, tz - a[0].home_z) <= (t.leash + t.reach) * (t.leash + t.reach);
+    if !fighting { nav_return(a); }
+  }
+  return a[0].plan_s <= 0;
+}
+// book:end think
+
+// The zone sends it home (a safe spot, its target gone).
+nav_return :: (a: [] NavAgent) #effects(all) {
+  if a[0].returning { return; }
+  a[0].returning = true; a[0].circling = false; a[0].plan_s = 0; a[0].route = NavRoute.direct;
+}
+// It is roused (struck, provoked): no longer on its way home or waiting there.
+nav_engage :: (a: [] NavAgent) #effects(all) {
+  if a[0].returning { a[0].plan_s = 0; a[0].route = NavRoute.direct; }
+  a[0].returning = false; a[0].spurned = false;
+}
+// It lost its target (a new one, or none): its velocity starts again from the next sighting.
+nav_lost :: (a: [] NavAgent) #effects(all) { a[0].seen = false; a[0].tvx = 0; a[0].tvz = 0; a[0].circling = false; }
+// The way the target faces this tick (a unit vector or any length): in melee it works round to its flank.
+nav_facing :: (a: [] NavAgent, fx: f32, fz: f32) #effects(all) {
+  d := nav_len(fx, fz); if d < f32(NAV_STEER_NEAR) { return; }
+  a[0].faced = true; a[0].tfx = fx / d; a[0].tfz = fz / d;
+}
+// This tick's waypoint from the zone's own map (a dungeon's doorways): it heads there instead.
+nav_via :: (a: [] NavAgent, x: f32, z: f32) #effects(all) { a[0].via = true; a[0].via_x = x; a[0].via_z = z; }
+// The zone knows the way to the goal is clear: no window this time.
+nav_direct :: (a: [] NavAgent, t: NavTune) #effects(all) { a[0].route = NavRoute.direct; a[0].plan_s = t.replan; }
+// Whether a due plan needs the window: a path already under way, or a step the zone held back.
+nav_wants_window :: (a: NavAgent) -> bool #effects(all) { return a.route != NavRoute.direct || a.pressed; }
+
+// book:begin window
+// Lays the window over the creature and its goal: both inside it when they are near enough,
+// otherwise the creature a metre inside its edge with the goal ahead. Every cell starts open;
+// the zone then closes those a body can't stand in.
+nav_window_place :: (w: [] NavWindow, t: NavTune, a: NavAgent) #effects(all) {
+  cell := t.cell; if !(cell > 0.05) { cell = 0.5; }
+  n := NAV_STEER_SIDE;
+  if t.span > 0 && t.span < f32(NAV_STEER_SIDE) * cell { n = int(t.span / cell); }
+  if n < 4 { n = 4; }
+  h := f32(n) * cell * 0.5;
+  gl := nav_goal(a);
+  dx := gl[0] - a.x; dz := gl[1] - a.z; d := nav_len(dx, dz);
+  cx := a.x + dx * 0.5; cz := a.z + dz * 0.5;
+  if d > h * 2 - 2 { cx = a.x + dx / d * (h - 1); cz = a.z + dz / d * (h - 1); }
+  w[0].grid = NavGrid.{nx = n, nz = n, cell = cell, x0 = cx - h, z0 = cz - h};
+  for c: 0..<n * n { w[0].walk[c] = true; }
+}
+nav_window_cells :: (w: [] NavWindow) -> int #effects(all) { return w[0].grid.nx * w[0].grid.nz; }
+// Cell c's middle: where the zone asks whether a body may stand.
+nav_window_spot :: (w: [] NavWindow, c: int) -> [2] f32 #effects(all) {
+  return [2] f32.[nav_grid_centre_x(w[0].grid, c), nav_grid_centre_z(w[0].grid, c)];
+}
+// Whether a straight walk from a to b stays on open cells (sampled every quarter cell).
+nav_window_line :: (w: [] NavWindow, ax: f32, az: f32, bx: f32, bz: f32) -> bool #effects(all) {
+  g := w[0].grid; dx := bx - ax; dz := bz - az;
+  n := int(nav_len(dx, dz) / (g.cell * 0.25)) + 1;
+  for i: 0..<n + 1 {
+    f := f32(i) / f32(n);
+    c := nav_grid_cell_at(g, ax + dx * f, az + dz * f);
+    if c < 0 || !w[0].walk[c] { return false; }
+  }
+  return true;
+}
+// book:end window
+
+// book:begin plan
+// Plans on a filled window: direct when the goal is in it and the straight walk is open;
+// otherwise the open cell nearest the goal that it can reach, the way there walked back from it
+// down the flow field, and the furthest corner of that way it can see: its aim until the next
+// plan. Stuck when no open cell nearer the goal can be reached (it then walks straight and
+// slides).
+nav_plan :: (a: [] NavAgent, t: NavTune, w: [] NavWindow) #effects(all) {
+  a[0].plan_s = t.replan; a[0].pressed = false;
+  g := w[0].grid;
+  if !nav_grid_ok(g) { a[0].route = NavRoute.stuck; return; }
+  cells := nav_grid_cells(g);
+  ac := nav_grid_cell_at(g, a[0].x, a[0].z);
+  if ac < 0 || cells > NAV_STEER_CELLS { a[0].route = NavRoute.stuck; return; }
+  w[0].walk[ac] = true;   // it stands where it stands
+  gl := nav_goal(a[0]); gx := gl[0]; gz := gl[1];
+  gc := nav_grid_cell_at(g, gx, gz);
+  if gc >= 0 && nav_window_line(w, a[0].x, a[0].z, gx, gz) { a[0].route = NavRoute.direct; return; }
+  f := nav_grid_flow(g, w[0].walk[0..<cells], w[0].cost[0..<cells], w[0].heap[0..<cells], w[0].slot[0..<cells], w[0].heap[0..<0], ac, f32(NAV_GRID_FAR), cells);
+  if f.status != NavFlowStatus.ok { a[0].route = NavRoute.stuck; return; }
+  best := -1; bd: f32 = 0;
+  for c: 0..<cells {
+    if !(w[0].cost[c] < f32(NAV_GRID_FAR)) { continue; }
+    d := nav_len2(nav_grid_centre_x(g, c) - gx, nav_grid_centre_z(g, c) - gz);
+    if best < 0 || d < bd || (d == bd && w[0].cost[c] < w[0].cost[best]) { best = c; bd = d; }
+  }
+  if best < 0 || best == ac { a[0].route = NavRoute.stuck; return; }
+  // the way, from the best cell back down to the creature's: chain[n - 1] is next to it
+  n := 0; c := best;
+  while c >= 0 && c != ac && n < cells {
+    w[0].chain[n] = s32(c); n += 1;
+    c = nav_grid_downhill(g, w[0].walk[0..<cells], w[0].cost[0..<cells], c);
+  }
+  if c != ac || n == 0 { a[0].route = NavRoute.stuck; return; }
+  pick := n - 1; i := n - 2;
+  while i >= 0 {
+    corner := int(w[0].chain[i]);
+    if !nav_window_line(w, a[0].x, a[0].z, nav_grid_centre_x(g, corner), nav_grid_centre_z(g, corner)) { break; }
+    pick = i; i -= 1;
+  }
+  aim := int(w[0].chain[pick]);
+  a[0].aim_x = nav_grid_centre_x(g, aim); a[0].aim_z = nav_grid_centre_z(g, aim);
+  if pick == 0 && best == gc { a[0].aim_x = gx; a[0].aim_z = gz; }
+  a[0].route = NavRoute.path;
+}
+// book:end plan
+
+// A step of at most `pace` from (x, z) toward (gx, gz).
+nav_toward :: (x: f32, z: f32, gx: f32, gz: f32, pace: f32) -> [2] f32 #effects(all) {
+  dx := gx - x; dz := gz - z; d := nav_len(dx, dz);
+  if d <= pace || d < f32(NAV_STEER_NEAR) { return [2] f32.[gx, gz]; }
+  return [2] f32.[x + dx / d * pace, z + dz / d * pace];
+}
+
+// book:begin apart
+// Where a step to (x, z) ends among `bodies` (x, z, radius each; `skip` is its own, -1 none):
+// pushed out of each it would overlap, twice round, and back where it stood if that still
+// leaves it deeper in one than it began.
+nav_apart :: (a: NavAgent, t: NavTune, x: f32, z: f32, bodies: [] f32, skip: int) -> [2] f32 #effects(all) {
+  nx := x; nz := z; n := bodies.count / 3;
+  for pass_n: 0..<2 {
+    for j: 0..<n {
+      if j == skip { continue; }
+      bx := bodies[j * 3]; bz := bodies[j * 3 + 1]; need := t.body + bodies[j * 3 + 2];
+      dx := nx - bx; dz := nz - bz; d := nav_len(dx, dz);
+      if d >= need { continue; }
+      if d < f32(NAV_STEER_NEAR) {
+        dx = a.x - bx; dz = a.z - bz; d = nav_len(dx, dz);
+        if d < f32(NAV_STEER_NEAR) { dx = 1; dz = 0; d = 1; }
+      }
+      nx = bx + dx / d * need; nz = bz + dz / d * need;
+    }
+  }
+  for j: 0..<n {
+    if j == skip { continue; }
+    bx := bodies[j * 3]; bz := bodies[j * 3 + 1]; need := t.body + bodies[j * 3 + 2];
+    now := nav_len(nx - bx, nz - bz);
+    if now < need - 0.001 && now < nav_len(a.x - bx, a.z - bz) { return [2] f32.[a.x, a.z]; }
+  }
+  return [2] f32.[nx, nz];
+}
+// book:end apart
+
+// The step's facing: toward (dx, dz) when that is a way, else as it faced.
+nav_face :: (out: NavStep, a: NavAgent, dx: f32, dz: f32) -> NavStep #effects(all) {
+  s := out; d := nav_len(dx, dz);
+  if d > 0.001 { s.face_x = dx / d; s.face_z = dz / d; } else { s.face_x = a.face_x; s.face_z = a.face_z; }
+  return s;
+}
+// Its circling turns the other way: after turn_s seconds, give or take half.
+nav_spin :: (a: [] NavAgent, t: NavTune) #effects(all) {
+  a[0].spin_s = t.turn_s * (0.5 + nav_hash(a[0].seed, a[0].turns + 7));
+}
+
+// book:begin move
+// One tick's step, `dt` seconds, among `bodies`. `busy`: it is swinging, so it stands to it.
+nav_move :: (a: [] NavAgent, t: NavTune, busy: bool, dt: f32, bodies: [] f32, skip: int) -> NavStep #effects(all) {
+  out := NavStep.{x = a[0].x, z = a[0].z, face_x = a[0].face_x, face_z = a[0].face_z, mode = NavMode.stand};
+  gl := nav_goal(a[0]);
+  if a[0].route == NavRoute.path && nav_len(a[0].aim_x - a[0].x, a[0].aim_z - a[0].z) < f32(NAV_STEER_CORNER) { a[0].plan_s = 0; }
+  aim := gl;
+  if a[0].route == NavRoute.path { aim[0] = a[0].aim_x; aim[1] = a[0].aim_z; }
+  if a[0].returning {
+    pace := t.home_speed * dt;
+    if !a[0].via && nav_len(a[0].home_x - a[0].x, a[0].home_z - a[0].z) <= (ifx pace > f32(NAV_STEER_ARRIVE) then pace else f32(NAV_STEER_ARRIVE)) {
+      out.x = a[0].home_x; out.z = a[0].home_z; out.mode = NavMode.home; return out;
+    }
+    q := nav_toward(a[0].x, a[0].z, aim[0], aim[1], pace);
+    p := nav_apart(a[0], t, q[0], q[1], bodies, skip);
+    out.x = p[0]; out.z = p[1]; out.mode = NavMode.homeward;
+    return nav_face(out, a[0], aim[0] - a[0].x, aim[1] - a[0].z);
+  }
+  dx := a[0].tx - a[0].x; dz := a[0].tz - a[0].z; gap := nav_len(dx, dz);
+  if a[0].spurned { return nav_face(out, a[0], dx, dz); }
+  pace := t.speed * dt;
+  if a[0].route == NavRoute.path || a[0].via {
+    // on the way round: to the corner (or the zone's waypoint), facing where it goes
+    a[0].circling = false;
+    q := nav_toward(a[0].x, a[0].z, aim[0], aim[1], pace);
+    p := nav_apart(a[0], t, q[0], q[1], bodies, skip);
+    out.x = p[0]; out.z = p[1]; out.mode = NavMode.chase;
+    return nav_face(out, a[0], aim[0] - a[0].x, aim[1] - a[0].z);
+  }
+  ring := t.reach * t.ring;
+  if a[0].circling && gap > t.reach * f32(NAV_STEER_OPEN) { a[0].circling = false; }
+  if !a[0].circling && gap < t.reach * f32(NAV_STEER_CLOSE) {
+    // into melee: round from the side it came, turning one way or the other by its seed
+    a[0].circling = true;
+    if gap > f32(NAV_STEER_NEAR) { a[0].ox = -dx / gap; a[0].oz = -dz / gap; }
+    a[0].spin = ifx nav_hash(a[0].seed, a[0].turns) < 0.5 then 1.0f32 else -1.0f32;
+    nav_spin(a, t);
+  }
+  wx := a[0].x; wz := a[0].z;
+  if a[0].circling {
+    if !busy {
+      // in front of a target facing it, 1; at its back, -1 (0 when the zone doesn't say)
+      front: f32 = 0; if a[0].faced { front = a[0].ox * a[0].tfx + a[0].oz * a[0].tfz; }
+      a[0].spin_s -= dt;
+      if a[0].spin_s <= 0 && front < 0.2 { a[0].turns += 1; a[0].spin = -a[0].spin; nav_spin(a, t); }   // never turns back across its front
+      th := a[0].spin * t.circle / (ifx ring > 0.1 then ring else 0.1f32) * dt;
+      if front > 0.3 { th += a[0].spin * f32(NAV_STEER_FLANK) * front * dt; }
+      c := cos(th); s := sin(th);
+      ox := a[0].ox * c + a[0].oz * s; oz := a[0].oz * c - a[0].ox * s; l := nav_len(ox, oz);
+      if l > f32(NAV_STEER_NEAR) { a[0].ox = ox / l; a[0].oz = oz / l; }
+      wx = a[0].tx + a[0].ox * ring; wz = a[0].tz + a[0].oz * ring;
+    }
+    out.mode = NavMode.circle;
+  } else {
+    // pursuit: where the target will be by the time it gets there, `lead` seconds at most
+    ahead := ifx t.speed > 0 then gap / t.speed else 0.0f32;
+    if ahead > t.lead { ahead = t.lead; }
+    wx = a[0].tx + a[0].tvx * ahead; wz = a[0].tz + a[0].tvz * ahead;
+    out.mode = NavMode.chase;
+  }
+  q := nav_toward(a[0].x, a[0].z, wx, wz, pace);
+  p := nav_apart(a[0], t, q[0], q[1], bodies, skip);
+  out.x = p[0]; out.z = p[1];
+  return nav_face(out, a[0], dx, dz);
+}
+// book:end move
+
+// The zone's word on the step: it stands at (x, z). A step it held back to less than half makes
+// the next plan due (a step under NAV_STEER_SMALL, which a zone's walk may skip, doesn't count),
+// so a creature pressed against a wall finds the way round.
+nav_moved :: (a: [] NavAgent, s: NavStep, x: f32, z: f32) #effects(all) {
+  asked := nav_len(s.x - a[0].x, s.z - a[0].z); got := nav_len(x - a[0].x, z - a[0].z);
+  if asked > f32(NAV_STEER_SMALL) && got < asked * 0.5 && s.mode != NavMode.home { a[0].pressed = true; a[0].plan_s = 0; }
+  a[0].x = x; a[0].z = z; a[0].face_x = s.face_x; a[0].face_z = s.face_z;
+  if s.mode == NavMode.home {
+    a[0].returning = false; a[0].circling = false; a[0].route = NavRoute.direct; a[0].spurned = true; a[0].pressed = false;
+  }
+}
+
+// ---- checks
+NAV_T_DT :: 0.015625;   // 1/64 s: the realm's fixed step
+
+// The checks' wall: z 4.8 to 5.2 from x -10 to 10, with a doorway from x 2.5 to 4.5.
+nav_t_blocked :: (x: f32, z: f32, pad: f32) -> bool #effects(all) {
+  if z <= 4.8 - pad || z >= 5.2 + pad || x <= -10 - pad || x >= 10 + pad { return false; }
+  return !(x > 2.5 + pad && x < 4.5 - pad);
+}
+// One tick of a pursuer `a` after (tx, tz) in the checks' world: its plan, its step, the slide.
+nav_t_tick :: (a: [] NavAgent, t: NavTune, w: [] NavWindow, tx: f32, tz: f32, bodies: [] f32, skip: int, walls: bool) -> NavStep #effects(all) {
+  if nav_think(a, t, tx, tz, f32(NAV_T_DT)) {
+    if walls && nav_wants_window(a[0]) {
+      nav_window_place(w, t, a[0]);
+      for c: 0..<nav_window_cells(w) { p := nav_window_spot(w, c); w[0].walk[c] = !nav_t_blocked(p[0], p[1], t.body); }
+      nav_plan(a, t, w);
+    } else if walls {
+      // the zone's own look ahead: a metre toward the goal
+      gl := nav_goal(a[0]); dx := gl[0] - a[0].x; dz := gl[1] - a[0].z; d := nav_len(dx, dz);
+      if d > 0.01 && nav_t_blocked(a[0].x + dx / d, a[0].z + dz / d, t.body) { a[0].pressed = true; }
+      else { nav_direct(a, t); }
+    } else { nav_direct(a, t); }
+  }
+  s := nav_move(a, t, false, f32(NAV_T_DT), bodies, skip);
+  x := s.x; z := s.z;
+  if walls && nav_t_blocked(x, z, t.body) {
+    if !nav_t_blocked(x, a[0].z, t.body) { z = a[0].z; }
+    else if !nav_t_blocked(a[0].x, z, t.body) { x = a[0].x; }
+    else { x = a[0].x; z = a[0].z; }
+  }
+  nav_moved(a, s, x, z);
+  return s;
+}
+
+#test "a pursuer closes on a target crossing at full run speed; plain seeking at the same speed never does" #steps 400000000 {
+  t := NavTune.{speed = 4.25, leash = 1000};
+  w: [1] NavWindow;
+  lead_at := -1; seek_at := -1;
+  for which: 0..<2 {
+    a: [1] NavAgent; a[0] = nav_agent(-10, 0, 1);
+    tt := t; if which == 1 { tt.lead = 0; }
+    for k: 0..<640 {
+      tx: f32 = 0; tz := -10 + f32(k) * f32(NAV_T_DT) * 4.25;   // north at Everglade II's run
+      body := [3] f32.[tx, tz, 0.35];
+      _ := nav_t_tick(a[..], tt, w[..], tx, tz, body[..], -1, false);
+      if nav_len(a[0].x - tx, a[0].z - tz) <= tt.reach {
+        if which == 0 && lead_at < 0 { lead_at = k; }
+        if which == 1 && seek_at < 0 { seek_at = k; }
+      }
+    }
+  }
+  #assert lead_at > 0 && lead_at < 64 * 3;   // within 3 s
+  #assert seek_at < 0;                        // ten seconds of seeking, never within reach
+}
+
+#test "a little faster than a kiting target running circles at full speed, it is in reach within 4 s" #steps 400000000 {
+  t := NavTune.{speed = 4.5, leash = 1000};
+  w: [1] NavWindow; a: [1] NavAgent; a[0] = nav_agent(0, -14, 2);
+  at := -1;
+  for k: 0..<64 * 8 {
+    turn := f32(k) * f32(NAV_T_DT) * 4.25 / 8;   // an 8 m circle at 4.25 m/s
+    tx := sin(turn) * 8; tz := cos(turn) * 8;
+    body := [3] f32.[tx, tz, 0.35];
+    _ := nav_t_tick(a[..], t, w[..], tx, tz, body[..], -1, false);
+    if at < 0 && nav_len(a[0].x - tx, a[0].z - tz) <= t.reach { at = k; }
+  }
+  #assert at > 0 && at < 64 * 4;
+}
+
+#test "a pursuer paths round a wall and through its doorway, never into the wall" #steps 4000000000 {
+  t := NavTune.{span = 12};
+  w: [1] NavWindow; a: [1] NavAgent; a[0] = nav_agent(0, 0, 3);
+  tx: f32 = 0; tz: f32 = 10;   // straight behind the wall
+  at := -1; through: f32 = -100; pathed := false;
+  for k: 0..<64 * 6 {
+    before := a[0].z;
+    body := [3] f32.[tx, tz, 0.35];
+    _ := nav_t_tick(a[..], t, w[..], tx, tz, body[..], -1, true);
+    if a[0].route == NavRoute.path { pathed = true; }
+    #assert !nav_t_blocked(a[0].x, a[0].z, t.body - 0.01);
+    if before < 5 && a[0].z >= 5 { through = a[0].x; }
+    if at < 0 && nav_len(a[0].x - tx, a[0].z - tz) <= t.reach { at = k; }
+  }
+  #assert pathed && through > 2.5 && through < 4.5;
+  #assert at > 0 && at < 64 * 4;
+  // a goal further off than the window: it still finds the doorway, its window laid toward it
+  a[0] = nav_agent(0, 0, 3); tz = 25; at = -1; through = -100;
+  for k: 0..<64 * 9 {
+    before := a[0].z;
+    body := [3] f32.[tx, tz, 0.35];
+    _ := nav_t_tick(a[..], t, w[..], tx, tz, body[..], -1, true);
+    #assert !nav_t_blocked(a[0].x, a[0].z, t.body - 0.01);
+    if before < 5 && a[0].z >= 5 { through = a[0].x; }
+    if at < 0 && nav_len(a[0].x - tx, a[0].z - tz) <= t.reach { at = k; }
+  }
+  #assert through > 2.5 && through < 4.5 && at > 0 && at < 64 * 8;
+}
+
+#test "in melee it circles within reach, its angle round the target changing over a few seconds" #steps 400000000 {
+  t: NavTune;
+  w: [1] NavWindow; a: [1] NavAgent; a[0] = nav_agent(0, -1.3, 3);
+  body := [3] f32.[0, 0, 0.35];
+  ux: f32 = 0; uz: f32 = 0; round_most: f32 = 1; most: f32 = 0; least: f32 = 100;
+  spin := a[0].spin; flips := 0;
+  for k: 0..<64 * 8 {
+    s := nav_t_tick(a[..], t, w[..], 0, 0, body[..], -1, false);
+    d := nav_len(a[0].x, a[0].z);
+    if k == 32 { ux = a[0].x / d; uz = a[0].z / d; }
+    if k > 32 {
+      #assert s.mode == NavMode.circle;
+      if d > most { most = d; } if d < least { least = d; }
+      // facing the target all the while
+      #assert s.face_x * -a[0].x / d + s.face_z * -a[0].z / d > 0.99;
+    }
+    if k > 32 && k <= 32 + 64 * 3 && ux * a[0].x / d + uz * a[0].z / d < round_most { round_most = ux * a[0].x / d + uz * a[0].z / d; }
+    if a[0].spin != spin { flips += 1; spin = a[0].spin; }
+  }
+  #assert round_most < 0.5 && least >= t.reach * t.ring - 0.05 && most <= t.reach;   // over 60 degrees round within 3 s
+  #assert flips >= 1;   // and it went the other way at least once in 8 s
+  // swinging, it stands
+  x := a[0].x; z := a[0].z;
+  s := nav_move(a[..], t, true, f32(NAV_T_DT), body[..], -1);
+  #assert s.x == x && s.z == z && s.mode == NavMode.circle;
+}
+
+#test "two pursuers after one target never overlap, and both reach it" #steps 400000000 {
+  t: NavTune;
+  w: [1] NavWindow; a: [2] NavAgent;
+  a[0] = nav_agent(-3, -10, 0); a[1] = nav_agent(-2.5, -10.2, 1);
+  least: f32 = 100;
+  for k: 0..<64 * 6 {
+    for i: 0..<2 {
+      bodies := [9] f32.[a[0].x, a[0].z, 0.35, a[1].x, a[1].z, 0.35, 0, 0, 0.35];
+      _ := nav_t_tick(a[i..<i + 1], t, w[..], 0, 0, bodies[..], i, false);
+    }
+    d := nav_len(a[0].x - a[1].x, a[0].z - a[1].z); if d < least { least = d; }
+    #assert nav_len(a[0].x, a[0].z) >= 0.7 - 0.001 && nav_len(a[1].x, a[1].z) >= 0.7 - 0.001;
+  }
+  #assert least >= 0.7 - 0.001;
+  #assert nav_len(a[0].x, a[0].z) <= t.reach && nav_len(a[1].x, a[1].z) <= t.reach;
+  // one set down inside the other is pushed out, never through
+  t2: NavTune; b := nav_agent(0, 0, 0);
+  bodies := [3] f32.[0.2, 0, 0.35];
+  p := nav_apart(b, t2, 0.1, 0, bodies[..], -1);
+  #assert p[0] < -0.49 && p[0] > -0.51 && p[1] == 0;
+}
+
+#test "the leash: past it, it walks home and waits; it comes again when the target is back within it" #steps 400000000 {
+  t := NavTune.{leash = 20};
+  w: [1] NavWindow; a: [1] NavAgent; a[0] = nav_agent(0, 0, 4);
+  far: f32 = 0; home := -1; went_home := false;
+  for k: 0..<64 * 30 {
+    tz := 5 + f32(k) * f32(NAV_T_DT) * 4.25; if tz > 60 { tz = 60; }   // you run off north and stand
+    body := [3] f32.[0, tz, 0.35];
+    s := nav_t_tick(a[..], t, w[..], 0, tz, body[..], -1, false);
+    d := nav_len(a[0].x, a[0].z); if d > far { far = d; }
+    if s.mode == NavMode.homeward { went_home = true; }
+    if home < 0 && s.mode == NavMode.home { home = k; }
+    if home >= 0 && k > home { #assert s.mode == NavMode.stand && a[0].x == 0 && a[0].z == 0; }
+  }
+  #assert went_home && home > 0 && far <= t.leash + 0.2 && far > t.leash - 0.5;
+  #assert a[0].x == 0 && a[0].z == 0 && !a[0].returning && a[0].spurned;
+  // you come back within its leash: it comes for you
+  for k: 0..<64 {
+    body := [3] f32.[0, 12, 0.35];
+    s := nav_t_tick(a[..], t, w[..], 0, 12, body[..], -1, false);
+    if k > 2 { #assert s.mode == NavMode.chase; }
+  }
+  #assert a[0].z > 3;
+  // in a fight at the leash's edge with a foe still inside it, it fights on
+  b: [1] NavAgent; b[0] = nav_agent(0, 0, 5); b[0].x = 20.3; b[0].tx = 19.5; b[0].seen = true;
+  _ := nav_think(b[..], t, 19.5, 0, f32(NAV_T_DT));
+  #assert !b[0].returning;
+  _ = nav_think(b[..], t, 26, 0, f32(NAV_T_DT));
+  #assert b[0].returning;
+}
+
+#test "a window laid round a near goal holds both; round a far one, the creature a metre in" {
+  t := NavTune.{span = 12};
+  w: [1] NavWindow; a := nav_agent(0, 0, 0); a.tx = 0; a.tz = 8;
+  nav_window_place(w[..], t, a);
+  #assert w[0].grid.nx == 24 && w[0].grid.nz == 24 && w[0].grid.cell == 0.5;
+  #assert w[0].grid.x0 == -6 && w[0].grid.z0 == -2 && nav_window_cells(w[..]) == 576;
+  #assert nav_grid_cell_at(w[0].grid, 0, 0) >= 0 && nav_grid_cell_at(w[0].grid, 0, 8) >= 0;
+  a.tz = 30; nav_window_place(w[..], t, a);
+  #assert w[0].grid.z0 == -1 && w[0].grid.x0 == -6;
+  a.returning = true; a.home_x = 3; a.home_z = 0;
+  #assert nav_goal(a)[0] == 3;
+  a.via = true; a.via_x = 7;
+  #assert nav_goal(a)[0] == 7;
+  big := NavTune.{span = 500};
+  nav_window_place(w[..], big, a);
+  #assert w[0].grid.nx == NAV_STEER_SIDE;
+  #assert nav_hash(3, 9) == nav_hash(3, 9) && nav_hash(-3, 9) == nav_hash(3, 9) && nav_hash(1, 2) >= 0 && nav_hash(1, 2) < 1;
+}
+
+#test "a zone's waypoint leads it; a lost target starts its velocity again; roused, it stops going home" {
+  t: NavTune; a: [1] NavAgent; a[0] = nav_agent(0, 0, 6);
+  _ := nav_think(a[..], t, 0, 10, f32(NAV_T_DT));
+  _ = nav_think(a[..], t, 0.1, 10, f32(NAV_T_DT));
+  #assert a[0].tvx > 0;
+  nav_via(a[..], 5, 0);
+  #assert nav_goal(a[0])[0] == 5 && nav_goal(a[0])[1] == 0;
+  none: [3] f32;
+  s := nav_move(a[..], t, false, f32(NAV_T_DT), none[0..<0], -1);
+  #assert s.mode == NavMode.chase && s.x > 0 && s.z == 0 && s.face_x == 1;
+  _ = nav_think(a[..], t, 0.1, 10, f32(NAV_T_DT));
+  #assert !a[0].via;   // a waypoint lasts one tick
+  nav_lost(a[..]);
+  #assert !a[0].seen && a[0].tvx == 0 && a[0].tvz == 0 && !a[0].circling;
+  nav_return(a[..]);
+  #assert a[0].returning && nav_goal(a[0])[0] == 0 && nav_goal(a[0])[1] == 0;
+  a[0].spurned = true;
+  nav_engage(a[..]);
+  #assert !a[0].returning && !a[0].spurned && nav_goal(a[0])[1] == 10;
+}
+
+#test "in melee before a target that faces it, it works round to the target's flank and stays off its front" #steps 400000000 {
+  t: NavTune; w: [1] NavWindow; a: [1] NavAgent; a[0] = nav_agent(0, 1.3, 8);
+  body := [3] f32.[0, 0, 0.35];
+  front_most: f32 = 1; fast: f32 = 0; slow: f32 = 0;
+  for k: 0..<64 * 2 {
+    // you stand at the middle facing +z, where it starts
+    if nav_think(a[..], t, 0, 0, f32(NAV_T_DT)) { nav_direct(a[..], t); }
+    nav_facing(a[..], 0, 1);
+    ox := a[0].ox; oz := a[0].oz;
+    s := nav_move(a[..], t, false, f32(NAV_T_DT), body[..], -1);
+    nav_moved(a[..], s, s.x, s.z);
+    f := a[0].ox * a[0].tfx + a[0].oz * a[0].tfz; if f < front_most { front_most = f; }
+    // how far round it went this tick, in front of you and off it
+    turn := 1 - (ox * a[0].ox + oz * a[0].oz);
+    if k > 4 && f > 0.8 && turn > fast { fast = turn; }
+    if f < 0 && turn > slow { slow = turn; }
+  }
+  #assert a[0].faced && front_most < 0.5;   // off your front within two seconds
+  #assert fast > slow;                       // and quicker across your front than round your back
+  nav_facing(a[..], 0, 0);   // no facing given: nothing changes
+  #assert a[0].tfx == a[0].tfx;
+}
