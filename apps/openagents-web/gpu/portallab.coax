@@ -1,0 +1,117 @@
+// Portal Lab's shaders: the source of apps/openagents-web/portallab.wgsl, written by
+// coax/web/wgsl-module.coax (portallab.module, portallab.bindings beside it).
+// One scene pass draws every vertex portallab.coax lays out in its mesh store, two
+// V4s each: (x, y, z, kind) and (u, v, scale, 0). Kind 0 is the baked scene (its
+// texture, unlit), 1 a pole lamp (flat #ffffe5), 2 the portal (3D Perlin noise) and
+// 3 a firefly's quad corner (u, v the corner, -1 or 1), drawn added with no depth write.
+// The canvas is not sRGB, so linear colour is encoded here as three.js's output is.
+#load "../../../verse/gpu/wgsl.coax";
+
+// Uniforms (portallab.coax PL_U_*): 0 width, 1 height (device px), 2 seconds, 3 device px
+// per CSS px; 4-6 the portal's start colour, 7 the fireflies' size; 8-10 its end colour;
+// 12-14 the clear colour (sRGB); 16 the view matrix, 32 the projection (columns).
+portal_bg_vs :: (i:u32,j:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+portal_bg_fs :: (pos:V4,u:[]f32)->V4 {return v4(u[12],u[13],u[14],1.0f32);}
+// No strokes: the page is the scene alone.
+PortalHud :: struct {a:V4;}
+portal_fx_vs :: (i:u32,j:u32,a:PortalHud,u:[]f32)->V4 {return v4(2.0f32,2.0f32,0.0f32,1.0f32);}
+portal_fx_fs :: (pos:V4,u:[]f32)->V4 {return v4(0.0f32,0.0f32,0.0f32,0.0f32);}
+
+PortalSurface :: struct {pos:V4;uv:V2;kind:f32;}
+portal_scene_vs :: (i:u32,j:u32,u:[]f32,mesh:[]V4)->PortalSurface {
+  a:=mesh[cast(int)i*2];b:=mesh[cast(int)i*2+1];
+  y:=a.y;fly:=a.w>2.5f32;
+  if fly {y=y+sin(u[2]+a.x*100.0f32)*b.z*0.2f32;}
+  view:=m4_apply(m4_at(u,16),v4(a.x,y,a.z,1.0f32));
+  clip:=m4_apply(m4_at(u,32),view);
+  uv:=v2(b.x,b.y);
+  // gl_PointSize = size * scale * ratio / -viewZ device px; clip.w is -viewZ, so the
+  // corner's clip offset needs no division by depth.
+  if fly {px:=u[7]*b.z*u[3];clip=v4(clip.x+b.x*px/u[0],clip.y+b.y*px/u[1],clip.z,clip.w);uv=v2(b.x*0.5f32+0.5f32,b.y*0.5f32+0.5f32);}
+  return PortalSurface.{pos=clip,uv=uv,kind=a.w};
+}
+
+// three.js's sRGB output transfer, clamped as an 8-bit target stores it.
+portal_oetf :: (x:f32)->f32 {
+  if x<=0.0031308f32 {return saturate(x*12.92f32);}
+  return saturate(1.055f32*pow(x,0.41666f32)-0.055f32);
+}
+
+// Classic Perlin 3D noise (Stefan Gustavson's cnoise), corner by corner: each of
+// GLSL's vec4 lanes is one cell corner, so a corner's gradient is a scalar recipe.
+portal_mod :: (x:f32,y:f32)->f32 {return x-y*floor(x/y);}
+portal_permute :: (x:f32)->f32 {return portal_mod((x*34.0f32+1.0f32)*x,289.0f32);}
+portal_hash :: (x:f32,y:f32,z:f32)->f32 {return portal_permute(portal_permute(portal_permute(x)+y)+z);}
+portal_fade :: (t:f32)->f32 {return t*t*t*(t*(t*6.0f32-15.0f32)+10.0f32);}
+portal_grad :: (h:f32)->V3 {
+  gx:=h/7.0f32;gy:=fract(floor(gx)/7.0f32)-0.5f32;gx=fract(gx);gz:=0.5f32-abs(gx)-abs(gy);
+  sz:=stepf(gz,0.0f32);gx=gx-sz*(stepf(0.0f32,gx)-0.5f32);gy=gy-sz*(stepf(0.0f32,gy)-0.5f32);
+  g:=v3(gx,gy,gz);
+  return scale3(g,1.79284291400159f32-0.85373472095314f32*dot3(g,g));
+}
+portal_corner :: (x:f32,y:f32,z:f32,f:V3)->f32 {return dot3(portal_grad(portal_hash(x,y,z)),f);}
+portal_cnoise :: (p:V3)->f32 {
+  x0:=portal_mod(floor(p.x),289.0f32);y0:=portal_mod(floor(p.y),289.0f32);z0:=portal_mod(floor(p.z),289.0f32);
+  x1:=portal_mod(floor(p.x)+1.0f32,289.0f32);y1:=portal_mod(floor(p.y)+1.0f32,289.0f32);z1:=portal_mod(floor(p.z)+1.0f32,289.0f32);
+  a:=v3(fract(p.x),fract(p.y),fract(p.z));b:=v3(a.x-1.0f32,a.y-1.0f32,a.z-1.0f32);
+  n000:=portal_corner(x0,y0,z0,a);
+  n100:=portal_corner(x1,y0,z0,v3(b.x,a.y,a.z));
+  n010:=portal_corner(x0,y1,z0,v3(a.x,b.y,a.z));
+  n110:=portal_corner(x1,y1,z0,v3(b.x,b.y,a.z));
+  n001:=portal_corner(x0,y0,z1,v3(a.x,a.y,b.z));
+  n101:=portal_corner(x1,y0,z1,v3(b.x,a.y,b.z));
+  n011:=portal_corner(x0,y1,z1,v3(a.x,b.y,b.z));
+  n111:=portal_corner(x1,y1,z1,b);
+  fx:=portal_fade(a.x);fy:=portal_fade(a.y);fz:=portal_fade(a.z);
+  z00:=mix(n000,n001,fz);z10:=mix(n100,n101,fz);z01:=mix(n010,n011,fz);z11:=mix(n110,n111,fz);
+  return 2.2f32*mix(mix(z00,z01,fy),mix(z10,z11,fy),fx);
+}
+// The portal's strength at uv and t seconds: displaced noise, an outer glow and a step.
+portal_strength :: (uv:V2,t:f32)->f32 {
+  shift:=portal_cnoise(v3(uv.x*5.0f32,uv.y*5.0f32,t*0.1f32));
+  strength:=portal_cnoise(v3((uv.x+shift)*5.0f32,(uv.y+shift)*5.0f32,t*0.2f32));
+  dx:=uv.x-0.5f32;dy:=uv.y-0.5f32;
+  strength=strength+sqrt(dx*dx+dy*dy)*5.0f32-1.4f32;
+  return strength+stepf(-0.2f32,strength)*0.8f32;
+}
+// A firefly's disc: 0.05 / distance - 0.1, the alpha the additive blend weighs by.
+portal_glow :: (uv:V2)->f32 {
+  dx:=uv.x-0.5f32;dy:=uv.y-0.5f32;
+  return saturate(0.05f32/fmax(sqrt(dx*dx+dy*dy),0.0001f32)-0.1f32);
+}
+
+portal_scene_fs :: (s:PortalSurface,u:[]f32,baked:Tex2DArray,bake:Sampler)->V4 {
+  // sampled in uniform control flow, before the kinds part ways
+  texel:=gpu_sample_layer(baked,bake,s.uv,0);
+  if s.kind<0.5f32 {return v4(portal_oetf(texel.x),portal_oetf(texel.y),portal_oetf(texel.z),1.0f32);}
+  if s.kind<1.5f32 {return v4(1.0f32,1.0f32,229.0f32/255.0f32,1.0f32);}
+  if s.kind<2.5f32 {
+    k:=portal_strength(s.uv,u[2]);
+    return v4(portal_oetf(mix(u[4],u[8],k)),portal_oetf(mix(u[5],u[9],k)),portal_oetf(mix(u[6],u[10],k)),1.0f32);
+  }
+  return v4(1.0f32,1.0f32,1.0f32,portal_glow(s.uv));
+}
+
+#test "the portal's noise is Gustavson's cnoise: zero at lattice points, bounded, and smooth" {
+  #assert portal_cnoise(v3(0,0,0))==0 && portal_cnoise(v3(3,7,11))==0;
+  lo:f32=10;hi:f32=-10;
+  for k:0..<200 {t:=cast(f32)k*0.0731f32;n:=portal_cnoise(v3(t*1.7f32,t*0.9f32+0.3f32,t*0.4f32));lo=fmin(lo,n);hi=fmax(hi,n);}
+  #assert lo< -0.3 && hi>0.3 && lo> -2.5 && hi<2.5;
+  a:=portal_cnoise(v3(1.25,2.5,0.75));b:=portal_cnoise(v3(1.2501,2.5,0.75));
+  #assert abs(a-b)<0.01;
+}
+#test "permute and grad match the GLSL recipe at known lanes" {
+  #assert portal_permute(0)==0 && portal_permute(1)==35 && portal_permute(10)==portal_mod(3410,289);
+  g:=portal_grad(35);
+  // 35/7 = 5: gx fract 0, gy fract(5/7)-0.5, gz 0.5-|gy|; normalised by taylorInvSqrt
+  gy:=fract(5.0f32/7.0f32)-0.5f32;r:=1.79284291400159f32-0.85373472095314f32*(gy*gy+(0.5f32-abs(gy))*(0.5f32-abs(gy)));
+  #assert abs(g.x)<0.000001 && abs(g.y-gy*r)<0.000001 && abs(g.z-(0.5f32-abs(gy))*r)<0.000001;
+}
+#test "the portal is red inside the step, blue at its rim, and fireflies fade to nothing" {
+  #assert portal_oetf(1)>0.999 && portal_oetf(0)==0 && portal_oetf(-1)==0 && portal_oetf(2)==1;
+  #assert abs(portal_oetf(0.5)-0.7353569)<0.001;
+  #assert portal_strength(v2(0.98,0.5),0)>0.7 && portal_glow(v2(0.5,0.5))==1 && portal_glow(v2(1,1))==0 && portal_glow(v2(0.5,0.75))>0.09;
+}

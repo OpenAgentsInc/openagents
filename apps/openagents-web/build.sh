@@ -147,6 +147,8 @@ waterlab=$!
 bitcoin_lab=$!
 "$here/../../coax/web/wasm.sh" "$here/valleylab.coax" "$here/valleylab-face.c" "$here/build/valleylab.wasm" &
 valleylab=$!
+"$here/../../coax/web/wasm.sh" "$here/portallab.coax" "$here/portallab-face.c" "$here/build/portallab.wasm" &
+portallab=$!
 "$here/../../coax/web/wasm.sh" "$here/valleycanyon.coax" "$here/valleycanyon-face.c" "$here/build/valleycanyon.wasm" &
 valleycanyon=$!
 # The character pass's runtime, loaded beside a world that places a character (coax/web/character-host.js).
@@ -328,6 +330,7 @@ wait "$fixture"
 wait "$waterlab"
 wait "$bitcoin_lab"
 wait "$valleylab"
+wait "$portallab"
 wait "$valleycanyon"
 wait "$characterhost"
 wait "$animationlab"

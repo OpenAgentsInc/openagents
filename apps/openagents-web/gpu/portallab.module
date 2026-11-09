@@ -1,0 +1,3 @@
+--vertices portal_bg_vs,portal_scene_vs,portal_fx_vs
+--fragments portal_bg_fs,portal_scene_fs,portal_fx_fs
+--bindings apps/openagents-web/gpu/portallab.bindings --strip portal_

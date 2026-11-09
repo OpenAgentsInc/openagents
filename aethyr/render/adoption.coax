@@ -153,6 +153,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "valley-lab" && app == "valleylab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "portal-lab" && app == "portallab" { return RenderAdoption.{tracked_legacy = true}; }
   index := render_catalog_find(slug);
   if index >= 0 {
     p := render_catalog(index);
@@ -174,6 +175,10 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   return RenderAdoption.{};
 }
 
+#test "Portal Lab owner-local page binds only its own producer" {
+  r:=render_adoption("portal-lab","portallab");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("portal-lab","valleylab").tracked_legacy && !render_adoption("portal-la","portallab").tracked_legacy;
+}
 #test "Nights private source page admits only its independent producer" {
  #assert render_adoption("everglade-nights-experimental","nights").tracked_legacy;
  #assert !render_adoption("everglade-nights-experimental","fivelab").tracked_legacy;

@@ -517,6 +517,16 @@
         "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
         "golden": { "lit": 0.05, "settle": 1000, "blocks": 6 }, "assets": []
       } },
+    { "id": "portal-lab", "name": "PORTAL LAB", "kind": "open", "listed": false,
+      "orbit": { "r": 0.41, "a": 3.3, "size": 0.02 },
+      "realm": {
+        "slug": "portal-lab", "title": "Portal Lab", "module": "portallab", "slot": "portal-lab", "card": "/og/default.jpg",
+        "description": "An unlisted owner-local Coax/Aethyr recreation of a baked portal scene: orbit the glade, the swirling portal, its pole lamps and fireflies.",
+        "alt": "A baked night glade with a red and blue portal, two lamps and fireflies",
+        "style": "lowpoly", "clock": "fixed:0.5",
+        "golden": { "lit": 0.05, "settle": 2000, "blocks": 6 },
+        "assets": ["local:/private/portal-lab/portal.glb", "layers:/private/portal-lab/baked.jpg"]
+      } },
     { "id": "valleyworld", "name": "VALLEY LAB ANCIENT WORLD", "kind": "open", "listed": false,
       "orbit": { "r": 0.4, "a": 3.4, "size": 0.02 },
       "realm": {
