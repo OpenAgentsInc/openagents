@@ -82,6 +82,7 @@ E2Net :: struct {
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
   casts: [E2N_CASTS] E2nCast;   // the others' casts, waiting for their tick to be drawn
+  mine_cast: E2nCast;           // your last cast the room took, as it said it (everglade2-cast.coax e2k_taken plays it)
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
@@ -494,7 +495,10 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);
     if !r[0].ok || ce.ss < 0 || !xk_entry(xk_slot_class(ce.slot), ce.slot).ok { return; }
-    if ce.ss == n[0].seat { n[0].cast_mine += 1; return; }   // yours: played as you pressed it
+    if ce.ss == n[0].seat {   // yours, taken: it plays now (aethyr/action/deed.coax: nothing plays before the room says yes)
+      n[0].mine_cast = E2nCast.{live = true, ss = ce.ss, slot = ce.slot, ax = ce.ax, ay = ce.ay, az = ce.az, seed = ce.seed, t = n[0].tick_t};
+      n[0].cast_mine += 1; return;
+    }
     n[0].cast_heard += 1;
     q := 0; old := 0;
     for i: 0..<E2N_CASTS { if !n[0].casts[i].live { q = i; old = -1; break; } if n[0].casts[i].t < n[0].casts[old].t { old = i; } }
@@ -1037,7 +1041,7 @@ e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1
   e2n_entry(n[..], cast(string) b[0..<m], d);
   m = wire_put_cast_e(b[..], 0, WireCastE.{ss = 4, slot = 7, ax = 3, ay = 1, az = 2, seed = 9});   // not a kit's: nothing
   e2n_entry(n[..], cast(string) b[0..<m], d);
-  #assert n[0].cast_mine == 1 && n[0].cast_heard == 1;
+  #assert n[0].cast_mine == 1 && n[0].cast_heard == 1 && n[0].mine_cast.seed == 7 && n[0].mine_cast.slot == slot;
   #assert !e2n_cast_due(n[..], 1999).live;
   e := e2n_cast_due(n[..], 2000); #assert e.live && e.ss == 4 && e.slot == xk_slot(FB_CL_FIGHTER, 0) && abs(e.ax - 3) < 0.01;
   #assert !e2n_cast_due(n[..], 3000).live;   // once

@@ -28,6 +28,7 @@ e2m_draw :: (s: [] E2, self_loose: bool) -> bool {
   if !e2m_archer(s) { return false; }
   if m[0].draw[0].on { bow.bow_begin(m[0].draw[..], now, self_loose); return true; }
   if now - k[0].cool_at < f32(XC_COOL) { return false; }
+  if !e2k_ready(s, e2m_attack(k)) { return false; }   // the draw is the Attack's wind-up: it asks first (#13072)
   bow.bow_begin(m[0].draw[..], now, self_loose); m[0].draws += 1;
   e2k_cue(s, "bow-draw", 0.4, s[0].you_x, s[0].you_z, 1);   // the limbs creak as the string comes back
   return true;

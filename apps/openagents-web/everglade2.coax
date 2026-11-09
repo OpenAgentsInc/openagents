@@ -31,6 +31,7 @@
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held, as Neverwinter's
 #load "../../aethyr/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
 #load "../../aethyr/action/bow.coax" as bow;   // the Ranger's Longbow, drawn with the right button
+#load "class-feel.coax";        // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";        // a cast's body clip and the bow's aim pose: Experimental's
 #load "everglade2-mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws
 #load "class-menu.coax";        // Experimental's CLASSES column, for admin mode
@@ -1883,6 +1884,13 @@ e2_keep_player :: (s: [] E2, record: string) #export_c #effects(all) {
 }
 
 // ---- the class bar (#13058)
+// The room takes your last cast: its e cast for your seat, at (ax, az), and the frame that plays it.
+e2_test_taken :: (s: [] E2, slot: int, ax: f32, az: f32) {
+  n := s[0].net[..];
+  b: [128] u8; m := wire_put_cast_e(b[..], 0, WireCastE.{ss = n[0].seat, slot = slot, ax = ax, ay = 1, az = az, seed = 41});
+  e2n_entry(n, cast(string) b[0..<m], WireD.{tick = 9});
+  e2k_step(s);
+}
 e2_test_cast_state :: (s: [] E2, c: int) {
   s[0].placed = true; s[0].width = 1440; s[0].height = 900; s[0].k = 1; s[0].clock = 10;
   s[0].you_x = 0; s[0].you_z = -10; s[0].you_y = e2_height(0, -10); s[0].you_face = 3.14159265;   // facing -z
@@ -1906,11 +1914,14 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   fb := -1; for i: 0..<k[0].bar_n { if k[0].bar[i].kind == FB_SPELL && k[0].bar[i].sp == SP_FIRE_BOLT { fb = i; } }
   #assert fb >= 0 && fb < 9;
   #assert e2_key(s[..], '1' + fb, 0) && k[0].pressed == 1 && s[0].net[0].cast_sent == 1;
-  #assert fxp_live(k[0].puffs[..]) >= 1 && k[0].audio[0].played >= 1 && k[0].me[0].clip == figs.BD_SPELL;
+  // asked, sent, and nothing plays until the room takes it (#13072)
+  #assert fxp_live(k[0].puffs[..]) == 0 && k[0].audio[0].played == 0 && k[0].me[0].clip < 0 && k[0].deeds[0].asked == fb;
   last := s[0].net[0].pipe[0].n - 1; p := s[0].net[0].pipe[0];
   cw := cast(string) p.buf[p.from[last]..<p.from[last] + p.len[last]];
   r: [1] WireRd; r[0] = wire_rd(cw, 1); wc := wire_read_cast(cw, r[..]);
   #assert cw[0] == 'C' && wc.slot == xk_slot(FB_CL_WIZARD, fb) && abs(wc.ax) < 0.05 && abs(wc.az - (-10 - 36.576)) < 0.05;
+  e2_test_taken(s[..], wc.slot, wc.ax, wc.az);
+  #assert fxp_live(k[0].puffs[..]) >= 1 && k[0].audio[0].played >= 1 && k[0].me[0].clip == figs.BD_SPELL && k[0].deeds[0].accepted == 1;
   // too soon: nothing; a second on, the next
   #assert e2_key(s[..], '1', 0) && k[0].pressed == 1;
   s[0].clock += 1.01; #assert e2_key(s[..], '1', 0) && k[0].pressed == 2;
@@ -1951,25 +1962,40 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert e2k_figure(g, k[0].them[r.slot], s[0].clock + 5).clip == figs.BD_IDLE;
 }
 
-#test "Everglade II shows a matching cast refusal over the hotbar and retires it after four seconds" #steps 1000000000 {
+#test "Everglade II greys a refused cast's slot, with no words over the bar, and the grey fades (#13072)" #steps 1000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
-  n:=s[0].net[..]; n[0].mono=100;
+  n:=s[0].net[..]; n[0].mono=100; k:=s[0].casts[..];
   #assert e2k_press(s[..],0);
-  out:[8192] f32; plain:=e2k_hud(s[..],out[..],0);
+  out:[8192] f32;
   message:[64] u8; count:=wire_put(message[..],0,"r "); count=wire_int(message[..],count,n[0].cast_seq); count=wire_put(message[..],count," no");
-  e2n_record(n,cast(string)message[0..<count]);
-  #assert e2n_cast_message(n)=="CAST NOT ALLOWED";
-  #assert e2k_hud(s[..],out[..],0)>plain;
-  n[0].mono=4100; #assert e2n_cast_message(n).count==0;
-  #assert e2k_hud(s[..],out[..],0)==plain;
+  e2n_record(n,cast(string)message[0..<count]); e2k_step(s[..]);
+  #assert k[0].deeds[0].refused==1 && deed_look(k[0].deeds[0],0,deed_tick(s[0].clock),0).grey==1 && fxp_live(k[0].puffs[..])==0;
+  // the slot's picture again, dimmed over it: a grey veil, and no words
+  s[0].media_n=0; _:=e2k_hud(s[..],out[..],0);
+  media:=cast(string)s[0].media[0..<s[0].media_n]; veil:=false;
+  for i:0..<media.count-9 { if media[i..<i+10]==" 35 0 1000" { veil=true; } }
+  #assert veil;
+  s[0].clock+=1; #assert deed_look(k[0].deeds[0],0,deed_tick(s[0].clock),0).grey==0;
+}
+
+#test "Everglade II at 0 Hit Points: the bar greys, a press sends nothing, the bow doesn't draw (#13072)" #steps 1000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_RANGER); n:=s[0].net[..]; k:=s[0].casts[..];
+  row:[WIRE_SF] s32; zero:[WIRE_SF] s32; frame:[1024] u8;
+  wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=0,max=12},row[..]); count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
+  count=wire_put_s(frame[..],count,1,0,zero[..],row[..]); e2n_record(n,cast(string)frame[0..<count]);
+  b:=e2k_bearing(s[..]); #assert b.pose==DeedPose.down && !deed_can_act(b) && !deed_can_move(b);
+  sent:=n[0].cast_sent;
+  #assert !e2k_press(s[..],0) && n[0].cast_sent==sent && k[0].deeds[0].last==DeedVerdict.locked;
+  #assert !e2m_draw(s[..],false) && !s[0].mouse[0].draw[0].on && k[0].audio[0].played==0;
+  #assert deed_bar_dim(b)==1;
 }
 
 #test "Everglade II lifts the cooldown it predicted for a cast the room refused; an older cast's refusal changes nothing (#13046)" #steps 1000000000 {
-  s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD); n:=s[0].net[..]; n[0].mono=100;
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD); n:=s[0].net[..]; n[0].mono=100; k:=s[0].casts[..];
   #assert e2k_press(s[..],0); first:=n[0].cast_seq; sent:=n[0].cast_sent;
   #assert !e2k_press(s[..],0) && n[0].cast_sent==sent;   // predicted: cooling down
   message:[64] u8; count:=wire_put(message[..],0,"r "); count=wire_int(message[..],count,first-1); count=wire_put(message[..],count," no");
-  e2n_record(n,cast(string)message[0..<count]); e2k_step(s[..]); #assert !e2k_press(s[..],0);   // not your last cast's number
+  e2n_record(n,cast(string)message[0..<count]); e2k_step(s[..]); #assert !e2k_press(s[..],0) && k[0].deeds[0].asked==0;   // not your last cast's number
   count=wire_put(message[..],0,"r "); count=wire_int(message[..],count,first); count=wire_put(message[..],count," range");
   e2n_record(n,cast(string)message[0..<count]); e2k_step(s[..]);
   #assert e2k_press(s[..],0) && n[0].cast_sent==sent+1 && n[0].cast_seq!=first;
@@ -1977,33 +2003,26 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   e2k_step(s[..]); #assert !e2k_press(s[..],0) && s[0].casts[0].refused_seen==n[0].cast_refused;
 }
 
-#test "Everglade II's refused cast fades its look and sound and drops its fizzle; nothing is cut (#13046)" #steps 2000000000 {
+#test "Everglade II's refused cast plays nothing at all: no look, no sound, no fizzle (#13072)" #steps 2000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD); n:=s[0].net[..]; n[0].mono=100;
   k:=s[0].casts[..];
   fb:=-1; for i:0..<k[0].bar_n { if k[0].bar[i].kind==FB_SPELL && k[0].bar[i].sp==SP_FIRE_BOLT { fb=i; } }
-  #assert fb>=0 && e2k_press(s[..],fb) && k[0].mine_n>=1 && k[0].voice1>k[0].voice0;
-  first:=k[0].voice0+1; slot:=k[0].mine[0]; t0:=k[0].mine_t0[0];
-  waiting:=0; for i:0..<E2K_LATER { if k[0].later[i].on && k[0].later[i].mine { waiting+=1; } } #assert waiting==1;
-  k[0].audio[0].n=0;
-  // the room refuses it: the cooldown lifts, the voices it started fade, the fizzle is dropped
+  #assert fb>=0 && e2k_press(s[..],fb);
   message:[64] u8; count:=wire_put(message[..],0,"r "); count=wire_int(message[..],count,n[0].cast_seq); count=wire_put(message[..],count," no");
   e2n_record(n,cast(string)message[0..<count]);
-  s[0].clock+=0.02; e2k_step(s[..]);
-  heard:=cast(string)k[0].audio[0].lines[0..<k[0].audio[0].n];
-  want:[16] u8; wn:=e2k_put(want[..],0,"-x"); wn=e2k_int(want[..],wn,first);
-  has:=false; for i:0..<heard.count-wn+1 { if heard[i..<i+wn]==cast(string)want[0..<wn] { has=true; } }
-  #assert has && k[0].undone==1 && k[0].mine_n==0;
-  for i:0..<E2K_LATER { #assert !(k[0].later[i].on && k[0].later[i].mine); }
-  // its effect dims a little each frame, never jumps, and is gone once faded
-  last:=1.0f32;
-  for f:0..<20 {
-    if !k[0].puffs[0].on[slot] { break; }
-    shown:=e2k_shown(k,slot,t0,s[0].clock); #assert shown<=last && shown>=0 && last-shown<0.25; last=shown;
-    s[0].clock+=1.0f32/60; e2k_step(s[..]);
-  }
-  #assert !k[0].puffs[0].on[slot] || k[0].puffs[0].live[slot].t0!=t0;
-  // another's cast is never faded by your refusal
-  #assert e2k_shown(k,slot,t0+5,s[0].clock)==1;
+  for f:0..<60 { s[0].clock+=1.0f32/60; e2k_step(s[..]); }
+  #assert fxp_live(k[0].puffs[..])==0 && k[0].audio[0].played==0 && k[0].me[0].clip<0;
+  for i:0..<E2K_LATER { #assert !k[0].later[i].on; }
+  // the room's word for it, if it came late, plays nothing either
+  e2_test_taken(s[..],k[0].wire[fb],0,-40); #assert fxp_live(k[0].puffs[..])==0 && k[0].deeds[0].stale==1;
+}
+
+#test "Everglade II's unanswered cast greys after 1.5 s and its late word plays nothing (#13072)" #steps 1000000000 {
+  s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD); k:=s[0].casts[..];
+  #assert e2k_press(s[..],0);
+  s[0].clock+=1.6; e2k_step(s[..]);
+  #assert k[0].deeds[0].expired==1 && deed_look(k[0].deeds[0],0,deed_tick(s[0].clock),0).grey==1;
+  e2_test_taken(s[..],k[0].wire[0],0,-12); #assert k[0].me[0].clip<0 && k[0].deeds[0].accepted==0;
 }
 
 #test "Everglade II's bar is your class's at your level: a level 5 Fighter's Action Surge goes by its own wire slot (#13046)" #steps 2000000000 {
