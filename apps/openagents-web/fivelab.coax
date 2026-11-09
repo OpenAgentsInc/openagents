@@ -58,6 +58,8 @@
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "experimental-ride.coax";               // Experimental's riding: E, the saddle, the prompt
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../../aethyr/cam/track.coax" as trk;   // ?stage= setups' camera tracks (lab_stage)
+#load "../../everglade/world/housewright-stage.coax" as hws;   // ?stage=house-*: the housewright time-lapses (#13107)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD, the log, labels near the camera (the tokens are bg_fs's)
@@ -148,6 +150,8 @@ Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
 Num :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [24] u8; n: int; }
 
 Lab :: struct {
+  stage: int = -1;   // a ?stage= setup (lab_stage): a housewright time-lapse (hws), -1 none
+  stage_steps: int;  // its clock: the game steps (1/60 s) it has run
   experimental_audio: [1] exsound.ExperimentalSound;
   respawn_id:int = -1;
   ride_dev: int;   // a local page's ?ride= (experimental-ride.coax lab_ride_dev): mounted, galloping or drawing on the horse
@@ -3074,6 +3078,69 @@ lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  return n;
 }
 
+// ?stage=NAME (#13107): a named setup owns the camera, the sun and the clock, with no HUD, and runs
+// on whole game steps so coax/web/clip.coax records the same frames every run. The housewright
+// time-lapses (everglade/world/housewright-stage.coax, ?stage=house-*) stand their house in the
+// glade; until build sites draw at any progress (#13106) the house is the showcase's at each whole
+// stage (verse/experimental-terrain.coax exp_showcase), the camera keeping the same place about it.
+lab_stage :: (s: [] Lab, facts: string) {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    line := facts[i..<e]; i = e + 1;
+    if line.count < 4 || line[0..<4] != "url=" { continue; }
+    st := hws.hws_find(line[4..<line.count]);
+    if st >= 0 && st < hws.HWS_ROW { s[0].stage = st; s[0].stage_steps = 0; s[0].xc[0].open = false; }
+  }
+}
+lab_stage_t :: (s: [] Lab) -> f32 { return trk.cam_track_clock(s[0].stage_steps, hws.HWS_HZ); }
+// The showcase's house standing for the stage's whole stage at `t`, and its middle's ground.
+lab_stage_frame :: (s: [] Lab, t: f32) -> building.BuildingFrame {
+  tier := hws.hws_tier(s[0].stage); last := hw.hw_stages(tier);
+  k := int(floor(hws.hws_progress(s[0].stage, t))); if k < 1 { k = 1; } if k > last { k = last; }
+  return xterrain.exp_showcase(tier, k);
+}
+lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
+  t := lab_stage_t(s);
+  f := lab_stage_frame(s, t); g := xterrain.exp_height(f.x, f.z);
+  v := hws.hws_view(s[0].stage, t, 0, 0, 0);
+  e := building.building_point(f, v.ex, v.ez); l := building.building_point(f, v.lx, v.lz);
+  cc.stage_set(s[0].creator[..], trk.CamView.{ex = e[0], ey = v.ey + g, ez = e[1], lx = l[0], ly = v.ly + g, lz = l[1]}, hws.hws_day(s[0].stage, t));
+  // whole game steps of the frame's time (a clip's fixed 1/30 s is exactly 2), so any frame rate keeps time
+  if dt > 0 && dt < 1 && !still { q := int(dt * f32(hws.HWS_HZ) + 0.5); s[0].stage_steps += ifx q < 1 then 1 else q; }
+}
+// The corner (the speed and the workday) and, under the house, what it takes.
+lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32) -> int {
+  n := at; st := s[0].stage; t := lab_stage_t(s); tier := hws.hws_tier(st);
+  if tier < 0 { return n; }
+  b: [64] u8; col := ink_col(k, 1, 0.95, 0.8); cap := 15 * k;
+  m := hws.hws_speed_text(st, b[..]); line := cast(string) b[0..<m];
+  n = cc.text(out, n, line, w - 28 * k - cc.face_width(line, cap, 0), 40 * k, cap, col);
+  m = hws.hws_workday_text(st, t, b[..]); line = cast(string) b[0..<m];
+  n = cc.text(out, n, line, w - 28 * k - cc.face_width(line, cap, 0), 64 * k, cap, col);
+  bill := hws.HWS_BILL[tier]; work := hws.HWS_WORK[tier]; c2 := 13 * k;
+  y := h - 70 * k;
+  n = cc.text(out, n, bill, (w - cc.face_width(bill, c2, 0)) * 0.5, y, c2, col);
+  n = cc.text(out, n, work, (w - cc.face_width(work, c2, 0)) * 0.5, y + 24 * k, c2, ink_col(k, 0.85, 0.9, 0.8));
+  return n;
+}
+#test "a ?stage=house-* page stages its house: the clock is whole steps and the camera and day are the stage's" {
+  s: [1] Lab; lab_stage(s[..], "tab=1\nurl=http://127.0.0.1:8800/worlds/everglade-experimental?stage=house-cottage\n");
+  #assert s[0].stage == 2 && s[0].stage_steps == 0 && !s[0].xc[0].open;
+  for i: 0..<45 { lab_stage_step(s[..], 1.0 / 30.0, false); }
+  #assert s[0].stage_steps == 90 && lab_stage_t(s[..]) == 1.5 && s[0].creator[0].stage_on;
+  lab_stage_step(s[..], 0, true); #assert s[0].stage_steps == 90;
+  a := s[0].creator[0].stage_view; d := s[0].creator[0].stage_day;
+  // another frame rate, the same clock: the same shot and day
+  lab_stage(s[..], "url=http://x/worlds/everglade-experimental?stage=house-cottage");
+  #assert s[0].stage_steps == 0;
+  for i: 0..<90 { lab_stage_step(s[..], 0.02, false); }
+  lab_stage_step(s[..], 0, true);
+  b := s[0].creator[0].stage_view;
+  #assert a.ex == b.ex && a.ey == b.ey && a.lz == b.lz && d == s[0].creator[0].stage_day && abs(d - 0.3675) < 0.0001;
+  s[0].stage = -1; lab_stage(s[..], "url=http://x/worlds/everglade-experimental?stage=nothing"); #assert s[0].stage == -1;
+}
+
 // The light (lighting plan Phase 1, #13066): the glade's passes (gpu/charactercreator.coax,
 // gpu/fivelab.coax through the cg_* names) read the camera's resolved environment at U_ENV, written
 // after the frame has placed the eye (u[16..18]). Experimental and 5E Lab author no environment, so
@@ -3085,6 +3152,10 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   return n;
 }
 lab_light :: (s: [] Lab, u: [] f32) {
+  if s[0].stage >= 0 && s[0].creator[0].stage_on {
+    w := envf.env_frame_glade_day_words(s[0].creator[0].stage_day); for i: 0..<U_ENV_WORDS { u[U_ENV + i] = w[i]; }
+    envf.env_frame_day_halo(s[0].creator[0].stage_day, u, 32); return;
+  }
   if s[0].env_n == 0 { g := envf.env_frame_glade_words(); for i: 0..<U_ENV_WORDS { s[0].env[i] = g[i]; } s[0].env_n = U_ENV_WORDS; }
   for i: 0..<U_ENV_WORDS { u[U_ENV + i] = s[0].env[i]; }
 }
@@ -3106,6 +3177,13 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
       hostile.hostile_start(s[0].creator[0].hostiles[..]);
       xc_start(s[0].xc[..],s[0].xc[0].klass); xc_sync_vitals(s); xc_sync_permissions(s);
+    }
+    if s[0].stage >= 0 {
+      lab_stage_step(s, dt, still);
+      n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
+      n = lab_stage_text(s,out,n,u,width,height,hi(dpr,0.5));
+      cc.hud_seal(out,0,n);
+      return n;
     }
     lab_mouselook_step(s, ifx still then 0.0f32 else dt);
     n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
@@ -3758,7 +3836,7 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
-  if kind==HOST_PAGE && cc.experimental_page(t) {if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
+  if kind==HOST_PAGE && cc.experimental_page(t) {if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }

@@ -25,6 +25,7 @@ VERTEX_FLOATS :: 16;
 #load "../../aethyr/action/deed.coax";       // your bearing, as the mounts ask with it
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "experimental-horse.coax";             // Experimental's white horse: placed and wired
+#load "../../aethyr/cam/track.coax" as trk;   // a ?stage= setup's camera track (fivelab.coax lab_stage)
 
 // Shared with Everglade II: sampled frames over the last half second.
 FpsCounter :: struct {fps:f32;frames:int;time:f32;}
@@ -50,6 +51,7 @@ Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
 GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
   mounts:[1]egm.EgMounts;   // the zone's horses (experimental-horse.coax)
+  stage_on:bool; stage_view:trk.CamView; stage_day:f32 = 0.5;   // a ?stage= setup owns the camera and the sun (stage_set)
   hostile_external:bool; // owner stages AI through shared combat before publication
   aribeth:[]aribeth.Aribeth;
   experimental:bool; fps:[1]FpsCounter; dev_animations:bool; preview_collapsed:bool; preview_hover:bool; preview_clip:int = -1; preview_scroll:int; preview_down:int = -1; preview_at:f32; airborne:bool; air_at:f32; land_at:f32 = -100; player_x:f32; player_y:f32; player_z:f32; player_face:f32; moving:bool;
@@ -1110,9 +1112,9 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
   if s[0].walk.on || s[0].profile_go {ensure(s);layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
   if s[0].experimental {
     ensure(s);layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
-    for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=ifx s[0].experimental then 0.0f32 else 1.0f32;u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
+    for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=ifx s[0].experimental then 0.0f32 else 1.0f32;if s[0].stage_on && s[0].shadow[0].on {s[0].shadow[0].glade=true;}u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
     if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
-    camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);fh:=ifx s[0].experimental && s[0].hud_floor>0 && s[0].hud_floor+7*k<h then s[0].hud_floor+7*k else h;n=coord_draw(s[0],out,n,w,fh,k);return ifx s[0].experimental then eg_fps(s[0].fps[0],out,n,w,fh,k) else fps_draw(s[0].fps[0],out,n,w,h,k);
+    camera(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);if s[0].stage_on {u[11]=1;fps_count(s[0].fps[..],dt);return 0;}n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);fh:=ifx s[0].experimental && s[0].hud_floor>0 && s[0].hud_floor+7*k<h then s[0].hud_floor+7*k else h;n=coord_draw(s[0],out,n,w,fh,k);return ifx s[0].experimental then eg_fps(s[0].fps[0],out,n,w,fh,k) else fps_draw(s[0].fps[0],out,n,w,h,k);
   }
   ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.70,0.76,0.74); gold:=ink(k,0.83,0.69,0.43);
@@ -1221,7 +1223,28 @@ cc_camera_terrain_room :: (x:f32,y:f32,z:f32,boom:[3]f32)->f32 {
 cc_first_person :: (s:Creator)->f32 { if !s.experimental || s.walk.on {return 0;} return fpcam.fp_share(s.dist); }
 // Whether your own body is left undrawn: the camera is in your head.
 cc_self_hidden :: (s:Creator)->bool { return fpcam.fp_hidden(cc_first_person(s)); }
+// A ?stage= setup (apps/openagents-web/fivelab.coax lab_stage, #13107) sets the shot and the day each
+// frame: the camera is its eye and look, the frame draws no HUD, and the glade's shadow is redrawn
+// every frame so it follows the sun (fivelab.coax lab_light writes that day's light).
+stage_set :: (s:[]Creator,v:trk.CamView,day:f32) {s[0].stage_on=true;s[0].stage_view=v;s[0].stage_day=day;}
+stage_camera :: (s:Creator,u:[]f32,w:f32,h:f32) {
+  v:=s.stage_view;fx:=v.lx-v.ex;fy:=v.ly-v.ey;fz:=v.lz-v.ez;l:=sqrt(fx*fx+fy*fy+fz*fz);
+  if !(l>0.0001) {fx=0;fy=0;fz= -1;l=1;}fx/=l;fy/=l;fz/=l;
+  rx:= -fz;rz:=fx;rl:=sqrt(rx*rx+rz*rz);if !(rl>0.0001) {rx=1;rz=0;rl=1;}rx/=rl;rz/=rl;
+  u[16]=v.ex;u[17]=v.ey;u[18]=v.ez;u[19]=h*0.89;
+  u[20]=fx;u[21]=fy;u[22]=fz;u[23]=w*0.5;
+  u[24]=rx;u[25]=0;u[26]=rz;u[27]=h*0.5;
+  u[28]= -rz*fy;u[29]=rz*fx-rx*fz;u[30]=rx*fy;
+  u[32]= -0.45;u[33]=0.78;u[34]= -0.42;
+}
+#test "a stage's camera looks from its eye at its look, level and upright" {
+  s:Creator;s.stage_on=true;s.stage_view=trk.CamView.{ex=0,ey=2,ez=10,lx=0,ly=2,lz=0};u:[40]f32;camera(s,u[..],1920,1080,1);
+  #assert u[16]==0 && u[17]==2 && u[18]==10 && u[22]== -1 && u[21]==0 && u[29]==1 && abs(u[24])==1 && u[19]==1080*0.89f32;
+  s.stage_view=trk.CamView.{ex=3,ey=12,ez=1,lx=0,ly=0,lz=0};camera(s,u[..],1920,1080,1);
+  #assert u[21]< -0.9 && u[25]==0 && u[29]>0 && abs(u[20]*u[24]+u[21]*u[25]+u[22]*u[26])<0.0001 && abs(u[20]*u[28]+u[21]*u[29]+u[22]*u[30])<0.0001;
+}
 camera :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
+  if s.stage_on {stage_camera(s,u,w,h);return;}
   if s.experimental {
     target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw+s.orbit); cz:=cos(s.yaw+s.orbit);

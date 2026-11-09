@@ -273,3 +273,30 @@ env_frame_write_eye :: (f: [] EnvFrame, tick: s64, x: f32, y: f32, z: f32, u: []
   return env_frame_write(f, tick, EnvDir.{x = x, y = y, z = z}, u, at);
 }
 env_frame_glade_words :: () -> [ENV_GPU_FLOATS] f32 #effects(all) { return env_gpu_pack(env_profile_sample(env_glade_profile(), 0.5)); }
+// A stage that sweeps a day (#13107, aethyr/cam/track.coax cam_track_day): the glade's day
+// (env_glade_day_profile) at `day` as words, and the sky's halo moved with its key, so the sun's glow
+// in the sky follows the light. At noon both are the glade's.
+env_frame_glade_day_words :: (day: f32) -> [ENV_GPU_FLOATS] f32 #effects(all) {
+  d := ifx day == day && day - day == 0 then day else 0.5f32;
+  return env_gpu_pack(env_profile_sample(env_glade_day_profile(), cast(f64) d));
+}
+env_frame_day_halo :: (day: f32, u: [] f32, at: int) #effects(all) {
+  if at < 0 || at + 3 > u.count { return; }
+  w := env_frame_glade_day_words(day);
+  g := env_dir_unit(EnvDir.{x = ENV_GLADE_SUN_X, y = ENV_GLADE_SUN_Y, z = ENV_GLADE_SUN_Z});
+  h := EnvDir.{x = w[ENV_GPU_DIR] + ENV_FRAME_HALO[0] - g.x, y = w[ENV_GPU_DIR + 1] + ENV_FRAME_HALO[1] - g.y, z = w[ENV_GPU_DIR + 2] + ENV_FRAME_HALO[2] - g.z};
+  n := sqrt(env_dot(h, h));
+  if !(n > 0.0001) { env_frame_sky_halo(u, at); return; }
+  u[at] = h.x / n; u[at + 1] = h.y / n; u[at + 2] = h.z / n;
+}
+#test "a stage's day: noon is the glade's words, the sun sinks toward dusk, and the halo follows it" {
+  noon := env_frame_glade_day_words(0.5); g := env_frame_glade_words();
+  for i: 0..<ENV_GPU_FLOATS { if i != 2 && (i < 16 || i > 19) { #assert abs(noon[i] - g[i]) < 0.00001; } }
+  dusk := env_frame_glade_day_words(0.72);
+  #assert dusk[ENV_GPU_DIR + 1] < noon[ENV_GPU_DIR + 1];
+  u: [8] f32; env_frame_day_halo(0.72, u[..], 2);
+  #assert u[0] == 0 && u[5] == 0 && abs(u[2] * u[2] + u[3] * u[3] + u[4] * u[4] - 1) < 0.0001 && u[3] < ENV_FRAME_HALO[1];
+  env_frame_day_halo(0.72, u[..], 6);   // no room: nothing written
+  #assert u[6] == 0;
+  #assert env_frame_glade_day_words(0.0 / 0.0)[ENV_GPU_DIR] == noon[ENV_GPU_DIR];
+}
