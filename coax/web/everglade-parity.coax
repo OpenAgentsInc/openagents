@@ -1,0 +1,377 @@
+// Everglade's feature parity across its zones (#13075, docs/verse/everglade-feature-parity.md).
+// The owner's rule (2026-11-09): a feature is engine-wide (aethyr/) or game-wide (the Everglade
+// layer), and a zone only wires it in. everglade/features.coax is the manifest: each feature, the
+// shared modules that own it, the definitions and file names that mark an implementation of it, and
+// each zone's files, entry units and the features it declares. This tool fails when
+//   a zone defines its own implementation of a feature the manifest marks shared: a top-level
+//     definition whose name carries one of the feature's marks, or a zone file whose name carries
+//     one of its file marks, outside the feature's owners;
+//   a zone declares a feature and its entry units do not #load any of the feature's owners;
+//   a zone lacks a feature the game marks required.
+// The duplicates and gaps that were there when the check landed are the burn-down (EF_KNOWN,
+// EF_GAPS): each is reported as a warning with its issue, and the check passes. A new one fails.
+// A burn-down entry that no longer matches is reported so the entry can go.
+//   coax/web/tool.sh everglade-parity            (from the repository root)
+//   coax/bin/coax test coax/web/everglade-parity.coax --library
+// Exits 0 when every zone keeps the rule (warnings allowed), 1 on a new duplicate or gap, 2 when
+// the tree can't be read.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../../everglade/features.coax";
+
+EP_TEXT :: 4194304;     // the largest source file read
+EP_PATHS :: 4096;       // files in a load closure
+EP_PATH_BYTES :: 524288;
+
+// ---- words and names
+
+// Word k of a list of words split by single spaces, or "" past the last.
+ep_word :: (s: string, k: int) -> string {
+  n := 0; from := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == ' ' {
+      if n == k { return s[from..<i]; }
+      n += 1; from = i + 1;
+    }
+  }
+  return "";
+}
+// Whether the space-separated list holds the word.
+ep_has_word :: (list: string, w: string) -> bool {
+  k := 0;
+  while true {
+    x := ep_word(list, k);
+    if x.count == 0 { return false; }
+    if x == w { return true; }
+    k += 1;
+  }
+  return false;
+}
+ep_starts :: (s: string, p: string) -> bool { return p.count <= s.count && s[0..<p.count] == p; }
+ep_ends :: (s: string, p: string) -> bool { return p.count <= s.count && s[s.count - p.count..<s.count] == p; }
+ep_contains :: (s: string, p: string) -> bool {
+  if p.count == 0 || p.count > s.count { return false; }
+  for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return true; } }
+  return false;
+}
+// The first word of the list that s contains, or "". A word "=name" matches only the whole of s.
+ep_mark :: (s: string, marks: string) -> string {
+  k := 0;
+  while true {
+    m := ep_word(marks, k);
+    if m.count == 0 { return ""; }
+    if m[0] == '=' { if m.count > 1 && s == m[1..<m.count] { return m; } }
+    else if ep_contains(s, m) { return m; }
+    k += 1;
+  }
+  return "";
+}
+ep_base :: (path: string) -> string {
+  i := path.count;
+  while i > 0 && path[i - 1] != '/' { i -= 1; }
+  return path[i..<path.count];
+}
+ep_dir :: (path: string) -> string {
+  i := path.count;
+  while i > 0 && path[i - 1] != '/' { i -= 1; }
+  return ifx i == 0 then "" else path[0..<i - 1];
+}
+
+#test "words, marks and names" {
+  #assert ep_word("a bc d", 1) == "bc" && ep_word("a bc d", 3) == "" && ep_word("", 0) == "" && ep_word("abc", 0) == "abc";
+  #assert ep_has_word("bow dash", "dash") && !ep_has_word("bow dash", "das") && !ep_has_word("", "bow");
+  #assert ep_mark("xc_dmg_pop", "float_ dmg_pop") == "dmg_pop" && ep_mark("xc_walk", "bow_ dmg_") == "" && ep_mark("x", "") == "";
+  #assert ep_mark("camera", "=camera") == "=camera" && ep_mark("cc_camera", "=camera") == "" && ep_mark("x", "=") == "" && ep_mark("hud", "_hud =hud") == "=hud";
+  #assert ep_contains("abc", "bc") && !ep_contains("abc", "") && !ep_contains("ab", "abc");
+  #assert ep_base("a/b/c.coax") == "c.coax" && ep_base("c.coax") == "c.coax" && ep_dir("a/b/c.coax") == "a/b" && ep_dir("c.coax") == "";
+  #assert ep_starts("apps/x", "apps/") && !ep_starts("ap", "apps") && ep_ends("x.coax", ".coax") && !ep_ends("coax", ".coax");
+}
+
+// ---- definitions
+
+// The name a line defines at the top level ("name :: ..." from its first column), or "".
+ep_defines :: (line: string) -> string {
+  i := 0;
+  while i < line.count && (line[i] == '_' || (line[i] >= 'a' && line[i] <= 'z') || (line[i] >= 'A' && line[i] <= 'Z') || (i > 0 && line[i] >= '0' && line[i] <= '9')) { i += 1; }
+  if i == 0 { return ""; }
+  j := i;
+  while j < line.count && line[j] == ' ' { j += 1; }
+  if j + 1 < line.count && line[j] == ':' && line[j + 1] == ':' { return line[0..<i]; }
+  return "";
+}
+// The k-th name a top-level line defines: the first from its first column, then each after a "; "
+// ("A :: 0; B :: 1;"); "" past the last, and for every k when the line defines nothing from its
+// first column.
+ep_define_at :: (line: string, k: int) -> string {
+  if ep_defines(line).count == 0 { return ""; }
+  if k == 0 { return ep_defines(line); }
+  n := 0;
+  for i: 2..<line.count + 1 {
+    if i < line.count && line[i - 1] == ' ' && line[i - 2] == ';' {
+      name := ep_defines(line[i..<line.count]);
+      if name.count > 0 { n += 1; if n == k { return name; } }
+    }
+  }
+  return "";
+}
+#test "a top-level definition's name" {
+  #assert ep_defines("xc_bow_draw :: (a: int) {") == "xc_bow_draw" && ep_defines("Plate :: struct {") == "Plate" && ep_defines("N2 :: 3;") == "N2";
+  #assert ep_defines("  inner :: (x) {") == "" && ep_defines("x := 3;") == "" && ep_defines("// a :: b") == "" && ep_defines("2x :: 1") == "";
+  #assert ep_defines("a::b") == "a" && ep_defines("a :") == "" && ep_defines("") == "";
+  l := "AB_ATTACK :: 0; AB_DASH :: 1; x := 2; AB_CDASH :: 3;";
+  #assert ep_define_at(l, 0) == "AB_ATTACK" && ep_define_at(l, 1) == "AB_DASH" && ep_define_at(l, 2) == "AB_CDASH" && ep_define_at(l, 3) == "";
+  #assert ep_define_at("  a :: 1; b :: 2;", 0) == "" && ep_define_at("  a :: 1; b :: 2;", 1) == "" && ep_define_at("f :: () { g(); }", 1) == "";
+}
+
+// The path a "#load" line names, or "".
+ep_load :: (line: string) -> string {
+  p := "#load \"";
+  if !ep_starts(line, p) { return ""; }
+  e := p.count;
+  while e < line.count && line[e] != '"' { e += 1; }
+  return ifx e < line.count then line[p.count..<e] else "";
+}
+#test "a load line's path" {
+  #assert ep_load("#load \"../../aethyr/action/bow.coax\" as bow;") == "../../aethyr/action/bow.coax" && ep_load("#load \"x.coax\";") == "x.coax";
+  #assert ep_load("// #load \"x.coax\";") == "" && ep_load("#load \"x.coax") == "" && ep_load("#import \"Basic\";") == "";
+}
+
+// dir joined with rel, with "." and ".." resolved, into out; "" when it climbs past the root.
+ep_resolve :: (dir: string, rel: string, out: [] u8) -> string {
+  n := 0;
+  starts: [256] int; depth := 0;
+  for pass: 0..<2 {
+    s := ifx pass == 0 then dir else rel;
+    i := 0;
+    while i < s.count {
+      e := i;
+      while e < s.count && s[e] != '/' { e += 1; }
+      seg := s[i..<e]; i = e + 1;
+      if seg.count == 0 || seg == "." { continue; }
+      if seg == ".." {
+        if depth == 0 { return ""; }
+        depth -= 1; n = starts[depth]; if n > 0 { n -= 1; }
+        continue;
+      }
+      if depth >= starts.count || n + seg.count + 1 > out.count { return ""; }
+      if n > 0 { out[n] = '/'; n += 1; }
+      starts[depth] = n; depth += 1;
+      for c: seg { out[n] = c; n += 1; }
+    }
+  }
+  return cast(string) out[0..<n];
+}
+#test "load paths resolve against the loading file's directory" {
+  o: [256] u8;
+  #assert ep_resolve("apps/openagents-web", "../../aethyr/action/bow.coax", o[..]) == "aethyr/action/bow.coax";
+  #assert ep_resolve("apps/openagents-web", "fivebar.coax", o[..]) == "apps/openagents-web/fivebar.coax";
+  #assert ep_resolve("verse", "./a/../b.coax", o[..]) == "verse/b.coax" && ep_resolve("", "a.coax", o[..]) == "a.coax";
+  #assert ep_resolve("a", "../../b.coax", o[..]) == "" && ep_resolve("a/b", "../c/../d.coax", o[..]) == "a/d.coax";
+}
+
+// ---- the manifest itself
+
+// The feature named, or -1.
+ep_feature :: (name: string) -> int {
+  for f, i: EF_FEATURES { if f.name == name { return i; } }
+  return -1;
+}
+// Whether a path belongs to a zone: it starts with one of the zone's prefixes and is a .coax file.
+ep_in_zone :: (z: EfZone, path: string) -> bool {
+  if !ep_ends(path, ".coax") { return false; }
+  k := 0;
+  while true {
+    p := ep_word(z.paths, k);
+    if p.count == 0 { return false; }
+    if ep_starts(path, p) { return true; }
+    k += 1;
+  }
+  return false;
+}
+// Whether a path is one of the feature's shared owners: a listed file, or under a listed directory
+// (a word ending "/").
+ep_owner :: (f: EfFeature, path: string) -> bool {
+  k := 0;
+  while true {
+    o := ep_word(f.owners, k);
+    if o.count == 0 { return false; }
+    if o == path || (ep_ends(o, "/") && ep_starts(path, o)) { return true; }
+    k += 1;
+  }
+  return false;
+}
+// Whether a row's words are exactly a, b and c (c "" for a two-word row).
+ep_row :: (row: string, a: string, b: string, c: string) -> bool {
+  n := ifx c.count == 0 then 2 else 3;
+  return ep_word(row, 0) == a && ep_word(row, 1) == b && ep_word(row, 2) == c && ep_word(row, n).count == 0;
+}
+// The burn-down row for a zone-local copy (feature, file, symbol; "-" for a file's name), or -1.
+ep_known :: (feature: string, file: string, symbol: string) -> int {
+  for d, i: EF_KNOWN { if ep_row(d, feature, file, symbol) { return i; } }
+  return -1;
+}
+// The gap row for a zone lacking a required feature, or -1.
+ep_gap :: (zone: string, feature: string) -> int {
+  for g, i: EF_GAPS { if ep_row(g, zone, feature, "") { return i; } }
+  return -1;
+}
+EP_KNOWN_MAX :: 1024;   // burn-down rows the run keeps track of
+
+#test "the manifest names only features it has, and its rows are well formed" {
+  for z: EF_ZONES {
+    #assert ep_word(z.paths, 0).count > 0 && ep_word(z.entries, 0).count > 0;
+    k := 0;
+    while ep_word(z.uses, k).count > 0 { #assert ep_feature(ep_word(z.uses, k)) >= 0; k += 1; }
+  }
+  #assert EF_KNOWN.count <= EP_KNOWN_MAX;
+  for d: EF_KNOWN { #assert ep_feature(ep_word(d, 0)) >= 0 && EF_FEATURES[ep_feature(ep_word(d, 0))].issue > 0 && ep_word(d, 2).count > 0 && ep_word(d, 3).count == 0; }
+  for g: EF_GAPS {
+    f := ep_feature(ep_word(g, 1));
+    #assert f >= 0 && EF_FEATURES[f].required && EF_FEATURES[f].issue > 0;
+    zone_ok := false; for z: EF_ZONES { if z.name == ep_word(g, 0) { zone_ok = true; #assert !ep_has_word(z.uses, ep_word(g, 1)); } }
+    #assert zone_ok;
+  }
+  for f, i: EF_FEATURES {
+    #assert f.name.count > 0 && f.title.count > 0 && ep_feature(f.name) == i;
+    #assert !f.required || f.owners.count > 0;
+  }
+}
+#test "burn-down and gap rows match by every word" {
+  #assert ep_row("dash a/b.coax AB_DASH", "dash", "a/b.coax", "AB_DASH") && !ep_row("dash a/b.coax AB_DASH", "dash", "a/b.coax", "AB_DAS");
+  #assert !ep_row("dash a/b.coax AB_DASH x", "dash", "a/b.coax", "AB_DASH") && !ep_row("dash a/b.coax", "dash", "a/b.coax", "-");
+  #assert ep_row("everglade-v1 bow", "everglade-v1", "bow", "") && !ep_row("everglade-v1 bow x", "everglade-v1", "bow", "") && !ep_row("everglade-v1 bo", "everglade-v1", "bow", "");
+  // every row is found as itself: no row twice
+  for d, i: EF_KNOWN { #assert ep_known(ep_word(d, 0), ep_word(d, 1), ep_word(d, 2)) == i; }
+  for g, i: EF_GAPS { #assert ep_gap(ep_word(g, 0), ep_word(g, 1)) == i; }
+}
+#test "zones and owners by path" {
+  z := EfZone.{name = "t", paths = "apps/openagents-web/everglade2 coax/web/room/room-e2-", entries = "apps/openagents-web/everglade2.coax", uses = ""};
+  #assert ep_in_zone(z, "apps/openagents-web/everglade2-cast.coax") && ep_in_zone(z, "coax/web/room/room-e2-aid.coax");
+  #assert !ep_in_zone(z, "apps/openagents-web/everglade2.wgsl") && !ep_in_zone(z, "apps/openagents-web/everglade-hotbar.coax");
+  f := EfFeature.{name = "bow", title = "Bow", required = true, issue = 1, owners = "aethyr/action/bow.coax everglade/hud/", marks = "", files = ""};
+  #assert ep_owner(f, "aethyr/action/bow.coax") && ep_owner(f, "everglade/hud/bar.coax") && !ep_owner(f, "aethyr/action/bow-pose.coax") && !ep_owner(f, "everglade/hudx.coax");
+}
+
+// ---- running it
+
+EpFiles :: struct { bytes: [EP_PATH_BYTES] u8; used: int; from: [EP_PATHS] int; to: [EP_PATHS] int; n: int; }
+ep_files_has :: (l: [] EpFiles, p: string) -> bool {
+  for i: 0..<l[0].n { if cast(string) l[0].bytes[l[0].from[i]..<l[0].to[i]] == p { return true; } }
+  return false;
+}
+ep_files_add :: (l: [] EpFiles, p: string) -> bool {
+  if l[0].n >= EP_PATHS || l[0].used + p.count > EP_PATH_BYTES { return false; }
+  l[0].from[l[0].n] = l[0].used;
+  for c: p { l[0].bytes[l[0].used] = c; l[0].used += 1; }
+  l[0].to[l[0].n] = l[0].used; l[0].n += 1;
+  return true;
+}
+ep_files_at :: (l: [] EpFiles, i: int) -> string { return cast(string) l[0].bytes[l[0].from[i]..<l[0].to[i]]; }
+
+// The #load closure of a zone's entry units, by reading each file's "#load" lines.
+ep_closure :: (z: EfZone, l: [] EpFiles, text: [] u8) -> bool {
+  l[0].n = 0; l[0].used = 0;
+  k := 0;
+  while ep_word(z.entries, k).count > 0 { if !ep_files_add(l, ep_word(z.entries, k)) { return false; } k += 1; }
+  at := 0;
+  while at < l[0].n {
+    path := ep_files_at(l, at); at += 1;
+    n := fs_read(path, text);
+    if n < 0 { continue; }   // a load of a file that isn't there is the compiler's to refuse
+    s := cast(string) text[0..<n];
+    i := 0;
+    while i < s.count {
+      e := i;
+      while e < s.count && s[e] != '\n' { e += 1; }
+      rel := ep_load(s[i..<e]); i = e + 1;
+      if rel.count == 0 { continue; }
+      o: [1024] u8;
+      full := ep_resolve(ep_dir(path), rel, o[..]);
+      if full.count > 0 && !ep_files_has(l, full) { if !ep_files_add(l, full) { return false; } }
+    }
+  }
+  return true;
+}
+
+// One zone-local copy found: a burn-down warning when EF_KNOWN has its row, else a failure.
+// Returns 1 for a failure.
+ep_copy :: (z: EfZone, f: EfFeature, path: string, line: int, symbol: string, m: string, seen: [] bool, warns: [] int) -> int {
+  d := ep_known(f.name, path, symbol);
+  if d >= 0 { seen[d] = true; warns[ep_feature(f.name)] += 1; return 0; }
+  if symbol == "-" { print("FAIL %: % is its own % (its name has \"%\"); wire the shared one: %\n", z.name, path, f.title, m, f.owners); }
+  else { print("FAIL %: %:% % is its own % (\"%\"); wire the shared one: %\n", z.name, path, line, symbol, f.title, m, f.owners); }
+  return 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  argv := [6] string.["git", "ls-files", "apps/openagents-web", "verse", "coax/web/room", "everglade"];
+  listing: [4194304] u8; err: [4096] u8;
+  r := proc_run(argv[..], 60000, listing[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { tool_errln("everglade-parity: git ls-files failed (run from the repository root)"); return 2; }
+  all := cast(string) listing[0..<r.out_n];
+  text: [EP_TEXT] u8;
+  closure: [1] EpFiles;
+  seen: [EP_KNOWN_MAX] bool;   // burn-down rows still found
+  fails := 0; burn := 0; gaps := 0;
+  for z: EF_ZONES {
+    warns: [64] int;           // burn-down copies in this zone, by feature
+    // 1. a zone's own copy of a shared feature: by its file's name, then by what it defines
+    i := 0;
+    while i < all.count {
+      j := i;
+      while j < all.count && all[j] != '\n' { j += 1; }
+      path := all[i..<j]; i = j + 1;
+      if !ep_in_zone(z, path) { continue; }
+      for f: EF_FEATURES {
+        if ep_owner(f, path) { continue; }
+        m := ep_mark(ep_base(path), f.files);
+        if m.count > 0 { fails += ep_copy(z, f, path, 0, "-", m, seen[..], warns[..]); }
+      }
+      n := fs_read(path, text);
+      if n < 0 { continue; }
+      s := cast(string) text[0..<n];
+      a := 0; line := 1;
+      while a < s.count {
+        e := a;
+        while e < s.count && s[e] != '\n' { e += 1; }
+        ln := s[a..<e]; a = e + 1;
+        k := 0;
+        while true {
+          name := ep_define_at(ln, k);
+          if name.count == 0 { break; }
+          for f: EF_FEATURES {
+            if ep_owner(f, path) { continue; }
+            m := ep_mark(name, f.marks);
+            if m.count > 0 { fails += ep_copy(z, f, path, line, name, m, seen[..], warns[..]); }
+          }
+          k += 1;
+        }
+        line += 1;
+      }
+    }
+    for f, q: EF_FEATURES {
+      if warns[q] > 0 { burn += warns[q]; print("warn %: % zone-local cop% of % (burn-down #%)\n", z.name, warns[q], ifx warns[q] == 1 then "y" else "ies", f.title, f.issue); }
+    }
+    // 2. what the zone declares, it loads; 3. what the game requires, the zone wires
+    if !ep_closure(z, closure, text) { print("everglade-parity: %'s load closure is past % files\n", z.name, EP_PATHS); return 2; }
+    for f: EF_FEATURES {
+      loads := false;
+      for c: 0..<closure[0].n { if ep_owner(f, ep_files_at(closure, c)) { loads = true; } }
+      declared := ep_has_word(z.uses, f.name);
+      if declared && !loads { fails += 1; print("FAIL %: declares % but loads none of %\n", z.name, f.title, f.owners); }
+      if !declared && loads { print("note %: loads % (%) but doesn't declare it in its uses\n", z.name, f.title, f.owners); }
+      if f.required && !declared {
+        if ep_gap(z.name, f.name) >= 0 { gaps += 1; print("warn %: lacks shared % (burn-down #%)\n", z.name, f.title, f.issue); }
+        else { fails += 1; print("FAIL %: lacks %, which every zone wires: %\n", z.name, f.title, f.owners); }
+      }
+    }
+  }
+  for d, k: EF_KNOWN {
+    if !seen[k] { print("burned down: \"%\" is no longer found; take it off EF_KNOWN (everglade/features.coax)\n", d); }
+  }
+  print("everglade-parity: % zones, % features: % new problem%; burn-down % zone-local cop%, % gap%\n", EF_ZONES.count, EF_FEATURES.count,
+    fails, ifx fails == 1 then "" else "s", burn, ifx burn == 1 then "y" else "ies", gaps, ifx gaps == 1 then "" else "s");
+  return ifx fails == 0 then 0 else 1;
+}

@@ -14,3 +14,8 @@ the Verse.
 Everglade's code is moving into this folder from `verse/everglade2/` and
 `apps/openagents-web/`. For what moves and when, see
 [Where Everglade's code lives](book/README.md#where-everglades-code-lives).
+
+Zones only wire shared features. [features.coax](features.coax) lists each
+feature, the shared modules that own it and the features each zone uses;
+`coax/web/tool.sh everglade-parity` fails on a new zone-local copy. See
+[Everglade feature parity](../docs/verse/everglade-feature-parity.md).

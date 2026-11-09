@@ -121,6 +121,7 @@ coax/tests/net/tls.sh [--public [URL]]   # wss://: tls-native.c under ASan/UBSan
 apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
 coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
+coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
 ```
 
 **Getting the compiler.** Never wait on a bootstrap you don't need.
