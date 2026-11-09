@@ -89,6 +89,8 @@ E2 :: struct {
   ground: [1] figs.CamGround;                         // the land round you for the camera (figs.cam_ground_next, filled from e2_height)
   view: figs.CamMode;                                 // Everglade II's follow mode (e2_mode)
   q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/quality.coax): the pixels drawn
+  q_dev: QualityDevice; q_facts: bool; q_mode: int = QUALITY_AUTO; q_tell: bool;   // the page's device and the player's pick (e2_quality_facts)
+  q_box: cc.Box; q_finger: int = -1; golden: bool;   // the GFX control beside the frame rate, the finger on it; a golden frame
   fps_counter:[1]cc.FpsCounter;          // the frame rate shown, and the frames since it was last worked out
   clock: f32; width: f32; height: f32; k: f32 = 1;
   eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32;
@@ -197,7 +199,7 @@ e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   if kind == E2_HOST_HIDDEN || kind == E2_HOST_SHOWN { e2c_seen(s, kind == E2_HOST_SHOWN, t); return; }
   if kind == E2_HOST_PAGE {
     s[0].play = e2c_play_page(t);
-    e2_material_facts(s, t); e2c_facts(s, t); s[0].light_view = envd.env_view_query(t);
+    e2_material_facts(s, t); e2c_facts(s, t); s[0].light_view = envd.env_view_query(t); e2_quality_facts(s, t);
     if !s[0].cz[0].on { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); }
     // a staged shot (?at=, ?walk) and a film stand where they are put: no room; but ?at= with a local
     // room (?relay=ws://localhost:PORT, a check's or a capture's) starts you there in that room, told to
@@ -507,6 +509,7 @@ e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = fals
 // A mouse drag looks round (a finger is the face's: aethyr/sticks.coax).
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
+  if e2_quality_pointer(s, x, y, phase, id) { return true; }   // the GFX control
   #if BUILD_DEBUG { if e2a_pointer(s, x, y, phase) { return true; } }
   if e2c_pointer(s, x, y, phase, id) { return true; }
   if e2k_pointer(s, x, y, phase) { return true; }
@@ -709,29 +712,137 @@ e2_follow :: (s: [] E2, dt: f32) {
 }
 // ---- the graphics governor (aethyr/quality.coax, as Everglade's everglade-quality.coax): in AUTO
 // it draws fewer pixels when frames run long and more again when they keep on time, so the page
-// holds 60 frames a second. The face asks it for the host's pixel budget.
-e2_quality_frame :: (s: [] E2, dt: f32, w: f32, h: f32, dpr: f32) #export_c #effects(all) {
-  if !s[0].q_ready {
+// holds 60 frames a second. It starts from the page's facts (the device, ?quality= and the tier this
+// browser kept, e2_quality_facts) on the first frame with a size; the face asks it for the host's
+// pixel budget. A golden frame holds the rung its screen's size alone gives, so a golden is the
+// same on every machine.
+ACT_QUALITY :: 6;   // host.js: the tier to keep in verse.quality
+e2_quality_facts :: (s: [] E2, t: string) {
+  s[0].q_dev = quality_device_from_facts(t); s[0].q_mode = quality_mode_from_facts(t);
+  s[0].q_tell = quality_url_new(t); s[0].q_facts = true;
+  s[0].q_ready = false;   // started again from these facts on the next frame
+}
+e2_quality_device :: (s: [] E2, w: f32, h: f32, dpr: f32) -> QualityDevice {
+  d: QualityDevice; if s[0].q_facts && !s[0].golden { d = s[0].q_dev; }
+  k := ifx dpr > 0.01 then dpr else 1.0f32;
+  if w >= 1 && h >= 1 { d.css_w = w / k; d.css_h = h / k; d.dpr = k; }
+  return d;
+}
+e2_quality_frame :: (s: [] E2, dt: f32, w: f32, h: f32, dpr: f32, golden: bool) #export_c #effects(all) {
+  s[0].golden = golden;
+  if !s[0].q_ready || golden {
     if w < 1 || h < 1 { return; }
-    d: QualityDevice; k := ifx dpr > 0.01 then dpr else 1.0f32;
-    d.css_w = w / k; d.css_h = h / k; d.dpr = k;
-    quality_start(s[0].q[..], d, QUALITY_AUTO); s[0].q_ready = true; return;
+    d := e2_quality_device(s, w, h, dpr);
+    if golden { quality_start(s[0].q[..], d, QUALITY_AUTO); s[0].q_ready = true; return; }
+    quality_start(s[0].q[..], d, s[0].q_mode); s[0].q_ready = true; return;
   }
   _ := quality_frame(s[0].q[..], dt);
+  if s[0].q_tell && s[0].action == 0 {
+    s[0].out_n = quality_put(s[0].outbox[..], 0, QUALITY_HOST[s[0].q[0].mode]);
+    s[0].action = ACT_QUALITY; s[0].q_tell = false;
+  }
 }
+// The pixels a frame draws at most: the governor's; before it starts, the start rung's for the
+// device the facts (or the canvas) give; 0 when there is neither yet.
 e2_pixel_budget :: (s: [] E2, w: f32, h: f32, dpr: f32) -> int #export_c #effects(all) {
-  if !s[0].q_ready { return 6400000; }
   k := ifx dpr > 0.01 then dpr else 1.0f32;
-  return quality_pixels(s[0].q[..], w / k, h / k);
+  if s[0].q_ready { return quality_pixels(s[0].q[..], w / k, h / k); }
+  d := e2_quality_device(s, w, h, dpr);
+  return quality_start_pixels(d, s[0].q_mode);
+}
+// The control, left of the frame rate on its line: "GFX AUTO · MED", or the tier the player picked.
+// A tap or a click on it picks the next (quality_next), and the host keeps it (action 6).
+e2_quality_hud :: (s: [] E2, out: [] f32, at: int, right: f32, base: f32) -> int {
+  s[0].q_box = cc.Box.{};
+  if s[0].golden || !s[0].q_ready { return at; }
+  k := s[0].k; cap := 13 * k;
+  l: [32] u8; t := quality_label(s[0].q[..], l[..]);
+  tw := e2c_text_w(t, cap); x0 := right - tw;
+  // over the class bar's slots it moves up, clear of them
+  y := base;
+  for i: 0..<s[0].casts[0].bar_n { b := e2k_box(s[0].casts[..], i, s[0].width, s[0].height, k);
+    if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < right + 8 * k && b[3] > y - cap - 8 * k && b[1] < y + 8 * k { y = ifx b[1] - 10 * k < y then b[1] - 10 * k else y; } }
+  // a finger's size round it (44 CSS px tall at least)
+  pad := ifx (44 * k - cap) * 0.5 > 8 * k then (44 * k - cap) * 0.5 else 8 * k;
+  s[0].q_box = cc.Box.{x0 = x0 - 10 * k, y0 = y - cap - pad, x1 = right + 6 * k, y1 = y + pad};
+  f := ifx s[0].q_finger >= 0 then 1.0f32 else 0.8f32;
+  return cc.text(out, at, t, x0, y, cap, cc.ink(k, 0.95 * f, 0.93 * f, 0.82 * f));
+}
+e2_quality_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 {
+    if !e2c_inside(s[0].q_box, x, y) { return false; }
+    s[0].q_finger = id; return true;
+  }
+  if s[0].q_finger < 0 || id != s[0].q_finger { return false; }
+  if phase >= 2 {
+    s[0].q_finger = -1;
+    if phase == 2 && e2c_inside(s[0].q_box, x, y) { e2_quality_pick(s, quality_next(s[0].q[0].mode)); }
+  }
+  return true;
+}
+e2_quality_pick :: (s: [] E2, mode: int) {
+  quality_choose(s[0].q[..], mode); s[0].q_mode = s[0].q[0].mode; s[0].q_tell = true;
+}
+#test "e2 quality: graphics start from the page's facts: a phone held sideways starts at MED or lower; ?quality=low holds LOW" #steps 60000000 {
+  s: [1] E2;
+  e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_IPHONE_SIDE);
+  #assert e2_pixel_budget(s[..], 0, 0, 0) == cast(int) (844.0 * 390.0 * 2.25);   // before the first frame: the start rung's
+  e2_quality_frame(s[..], 0, 844 * 3, 390 * 3, 3, false);
+  #assert s[0].q_ready && quality_auto(s[0].q[..]) && s[0].q[0].rung <= QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  #assert e2_pixel_budget(s[..], 844 * 3, 390 * 3, 3) <= cast(int) (844.0 * 390.0 * 2.25);
+  l: [1] E2;
+  e2_message(l[..], E2_HOST_PAGE, "url=https://everglade.world/play?quality=low\nvw=1440\nvh=900\ndpr=2\ncores=10\nquality=high");
+  e2_quality_frame(l[..], 0, 2880, 1800, 2, false);
+  #assert !quality_auto(l[0].q[..]) && quality_tier(l[0].q[..]) == QUALITY_LOW;
+  for i: 0..<600 { e2_quality_frame(l[..], 0.05, 2880, 1800, 2, false); }
+  #assert quality_tier(l[0].q[..]) == QUALITY_LOW;
+  // the URL's pick is told to the host to keep, once
+  #assert l[0].action == ACT_QUALITY && cast(string) l[0].outbox[0..<l[0].out_n] == "low";
+  e2_action_done(l[..]); e2_quality_frame(l[..], 0.016, 2880, 1800, 2, false); #assert l[0].action == 0;
+}
+#test "e2 quality: a computer with no pick starts at HIGH; the facts coming later start it again from them" {
+  c: [1] E2; e2_quality_frame(c[..], 0, 2880, 1800, 2, false); #assert quality_tier(c[0].q[..]) == QUALITY_HIGH;
+  e2_message(c[..], E2_HOST_PAGE, QUALITY_FACTS_IPAD); e2_quality_frame(c[..], 0, 2732, 2048, 2, false);
+  #assert quality_tier(c[0].q[..]) == QUALITY_MEDIUM;
+}
+#test "e2 quality: golden frames hold the screen's rung; the GFX control is hidden there" {
+  s: [1] E2; e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_INTEL);
+  e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\nvw=1280\nvh=800\ndpr=1\ncoarse=1\ntouch=5\ncores=2\nsw=800\nsh=600\nquality=low");
+  for i: 0..<600 { e2_quality_frame(s[..], 0.05, 1280, 800, 1, true); }
+  #assert s[0].q[0].rung == QUALITY_RUNGS - 1;
+  out: [4096] f32; #assert e2_quality_hud(s[..], out[..], 0, 1200, 780) == 0 && s[0].q_box.x1 <= s[0].q_box.x0;
+}
+#test "e2 quality: the GFX control beside the frame rate, a finger's size; a tap picks the next and the host keeps it" {
+  s: [1] E2; s[0].width = 1170; s[0].height = 2532; s[0].k = 3;
+  e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_IPHONE); e2_quality_frame(s[..], 0, 1170, 2532, 3, false);
+  out: [4096] f32;
+  n := e2_quality_hud(s[..], out[..], 0, 1000, 2480);
+  b := s[0].q_box;
+  #assert n > 0 && b.x1 > b.x0 && b.x1 <= 1020 && b.y1 - b.y0 >= 44 * 3 - 0.01;
+  cx := (b.x0 + b.x1) / 2; cy := (b.y0 + b.y1) / 2;
+  #assert e2_pointer(s[..], cx, cy, 0, 1, 4) && e2_pointer(s[..], cx, cy, 2, 1, 4);
+  #assert !quality_auto(s[0].q[..]) && quality_tier(s[0].q[..]) == QUALITY_HIGH && s[0].q_finger == -1;
+  e2_quality_frame(s[..], 0.016, 1170, 2532, 3, false);
+  #assert s[0].action == ACT_QUALITY && cast(string) s[0].outbox[0..<s[0].out_n] == "high";
+  e2_action_done(s[..]);
+  // HIGH, MED, LOW, then AUTO again
+  for m: 0..<3 { #assert e2_pointer(s[..], cx, cy, 0, 1, 5) && e2_pointer(s[..], cx, cy, 2, 1, 5); }
+  #assert quality_auto(s[0].q[..]) && s[0].q[0].rung == s[0].q[0].start;
+  #assert !e2_quality_pointer(s[..], 5, 5, 0, 9);   // elsewhere: not the control's
 }
 // ---- the frame rate, bottom right, always shown: frames over the last half second or so
 e2_fps_count :: (s: [] E2, dt: f32) {cc.fps_count(s[0].fps_counter[..],dt);}
 e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
- e2_fps_count(s,dt);h:=s[0].height;k:=s[0].k;
+ e2_fps_count(s,dt);h:=s[0].height;k:=s[0].k;s[0].q_box=cc.Box.{};
  // on a phone's studio it sits over the bottom buttons (RESET, SURPRISE ME), not on them
  if s[0].cz[0].mobile && e2c_shown(s)>0.003 {h=s[0].cz[0].boxes[13].y0+10*k;}
  if s[0].cz[0].arriving && e2c_shown(s)<0.5 {return at;}   // through the portal: with the wardrobe
- return cc.fps_draw(s[0].fps_counter[0],out,at,s[0].width,h,k);
+ // the GFX control to its left, on its line (cc.fps_draw's: "NN FPS" at 13 px, 16 px in from the corner)
+ v:=cast(int)(s[0].fps_counter[0].fps+0.5);if v>999 {v=999;}buf:[8]u8;m:=0;
+ if v>=100 {buf[m]=cast(u8)(48+v/100);m+=1;}if v>=10 {buf[m]=cast(u8)(48+v/10%10);m+=1;}buf[m]=cast(u8)(48+v%10);m+=1;
+ m=quality_put(buf[..],m," FPS");
+ n:=e2_quality_hud(s,out,at,s[0].width-16*k-e2c_text_w(cast(string)buf[0..<m],13*k)-14*k,h-16*k);
+ return cc.fps_draw(s[0].fps_counter[0],out,n,s[0].width,h,k);
 }
 #test "the frame rate is the frames over the last half second" {
   s: [1] E2;

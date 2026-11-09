@@ -51,6 +51,7 @@ static bool name_due;
 #define PLAYER_URL "/api/playtest/player"
 #define NAME_URL "/api/playtest/player/name"
 
+static uint32_t quality_state;   /* the state the pixel budget reads (coaxial_pixel_budget) */
 static coax_t_E2 *e2_at(uint32_t state) { return (coax_t_E2 *)(uintptr_t)state; }
 static coax_v_t_E2 at(uint32_t state) { return (coax_v_t_E2){e2_at(state), 1}; }
 
@@ -58,12 +59,14 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_E2) * 1000003u + offsetof(coax_t_E2, inst) * 13u + 0x45324532u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_E2); }
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_E2((coax_t_E2 *)(uintptr_t)state); e2_ground_store(at(state), (coax_v_t_E2Tiles){ground_tiles, 2}); }
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_E2((coax_t_E2 *)(uintptr_t)state); e2_ground_store(at(state), (coax_v_t_E2Tiles){ground_tiles, 2}); quality_state = state; }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_e2_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_e2_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_e2_uniform_floats(); }
 // The pixels the host draws at most (host.js drawn): the graphics governor's (everglade2.coax e2_pixel_budget).
-static uint32_t quality_state;
+/* golden mode (host.js coaxial_golden): the governor holds the screen's rung (e2_quality_frame) */
+static bool golden;
+EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   if (!quality_state) return 6400000u;
   int64_t px = e2_pixel_budget(at(quality_state), width, height, dpr);
@@ -160,7 +163,7 @@ static bool has_line(uint32_t length, const char *prefix) {
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   width = w; height = h; dpr = scale; now += dt;
-  quality_state = state; e2_quality_frame(at(state), dt, w, h, scale);
+  quality_state = state; e2_quality_frame(at(state), dt, w, h, scale, golden);
   if (e2_start(at(state))) player = verse_player_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
   /* Character Create's run starts from you as the studio drew you (everglade2-create.coax e2c_walk) */
   if (e2_reseat(at(state))) player = verse_player_place(player.pos.x, 0, player.pos.z, e2_at(state)->you_face);

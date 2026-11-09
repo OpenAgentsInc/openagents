@@ -35,7 +35,7 @@ QUALITY_HOST :: [4] string.["high", "medium", "low", "auto"];   // the names hos
 //   fx:      the share of its fire, smoke and glow puffs a frame
 //   scenery: the share of its far scenery's reach and count (trees)
 QUALITY_RUNGS :: 7;
-QUALITY_SCALE :: [7] f32.[1.0, 1.0, 1.0, 1.5, 1.5, 2.0, 3.0];
+QUALITY_SCALE :: [7] f32.[0.75, 1.0, 1.0, 1.5, 1.5, 2.0, 3.0];
 QUALITY_DEBRIS :: [7] f32.[0.3, 0.3, 0.4, 0.5, 1.0, 1.0, 1.0];
 QUALITY_FINE :: [7] f32.[0.25, 0.25, 0.4, 0.5, 1.0, 1.0, 1.0];
 QUALITY_FX :: [7] f32.[0.15, 0.2, 0.3, 0.4, 1.0, 1.0, 1.0];
@@ -64,9 +64,10 @@ QUALITY_60 :: 16.6667;       // ms a frame at 60 FPS
 QUALITY_30 :: 33.3333;
 
 // What the page says about its device (host.js pageFacts): its CSS size and pixel ratio, whether
-// it is touched, its cores (navigator.hardwareConcurrency) and memory in GB
-// (navigator.deviceMemory), 0 for one it doesn't say.
-QualityDevice :: struct { css_w: f32; css_h: f32; dpr: f32 = 1; touch: bool; cores: int; memory: f32; frame_hz:int;minimum_hz:int; }
+// it is touched (navigator.maxTouchPoints) and its pointer coarse, its screen's CSS size, its
+// cores (navigator.hardwareConcurrency) and memory in GB (navigator.deviceMemory), 0 for one it
+// doesn't say.
+QualityDevice :: struct { css_w: f32; css_h: f32; dpr: f32 = 1; touch: bool; coarse: bool; screen_w: f32; screen_h: f32; cores: int; memory: f32; frame_hz:int;minimum_hz:int; }
 
 QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; }
 
@@ -90,11 +91,19 @@ Quality :: struct {
 quality_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 quality_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 
-// The rung a device starts at. A phone (touched, or under 700 CSS pixels across) starts no higher
-// than MED, and at LOW with 4 cores or fewer or 3 GB or less; a computer starts at HIGH, and at MED
-// with 2 cores or fewer or 2 GB or less. A number the page doesn't give counts for nothing.
+// Whether a device is held in the hand: touched, a coarse pointer, a screen whose short side is
+// under 700 CSS pixels, or a page under 700 across. A phone held sideways is still a phone, and a
+// tablet is one too.
+quality_handheld :: (d: QualityDevice) -> bool {
+  if d.touch || d.coarse { return true; }
+  if d.screen_w > 0 && d.screen_h > 0 && quality_lo(d.screen_w, d.screen_h) < 700 { return true; }
+  return d.css_w > 0 && d.css_w < 700;
+}
+// The rung a device starts at. A handheld one (quality_handheld) starts no higher than MED, and at
+// LOW with 4 cores or fewer or 3 GB or less; a computer starts at HIGH, and at MED with 2 cores or
+// fewer or 2 GB or less. A number the page doesn't give counts for nothing.
 quality_device_rung :: (d: QualityDevice) -> int {
-  handheld := d.touch || (d.css_w > 0 && d.css_w < 700);
+  handheld := quality_handheld(d);
   if handheld {
     weak := (d.cores > 0 && d.cores <= 4) || (d.memory > 0 && d.memory <= 3);
     return ifx weak then QUALITY_TIER_RUNG[QUALITY_LOW] else QUALITY_TIER_RUNG[QUALITY_MEDIUM];
@@ -113,6 +122,71 @@ quality_parse :: (text: string) -> int {
   return -1;
 }
 
+// ---- the page's facts (host.js pageFacts: one KEY=VALUE a line), read the same way by every realm
+// A fact's value, "" when the page doesn't give it.
+quality_fact :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+// A number fact (digits, a point and more digits), 0 when it is missing or not a number.
+quality_fact_num :: (facts: string, key: string) -> f32 {
+  t := quality_fact(facts, key);
+  v := 0.0f32; frac := 0.0f32; i := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { if v < 1000000 { v = v * 10 + f32(cast(int)(t[i] - '0')); } i += 1; }
+  if i < t.count && t[i] == '.' {
+    i += 1; div := 1.0f32;
+    while i < t.count && t[i] >= '0' && t[i] <= '9' { if div < 100000 { div *= 10; frac = frac * 10 + f32(cast(int)(t[i] - '0')); } i += 1; }
+    v += frac / div;
+  }
+  return v;
+}
+// The value of `key` in the url fact's query (?key=VALUE or &key=VALUE), "" without it.
+quality_query :: (facts: string, key: string) -> string {
+  url := quality_fact(facts, "url");
+  at := 0;
+  while at < url.count && url[at] != '?' && url[at] != '#' { at += 1; }
+  while at < url.count {
+    if (url[at] == '?' || url[at] == '&') && at + 1 + key.count < url.count && url[at + 1..<at + 1 + key.count] == key && url[at + 1 + key.count] == '=' {
+      i := at + key.count + 2; e := i;
+      while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+      return url[i..<e];
+    }
+    if url[at] == '#' { return ""; }
+    at += 1;
+  }
+  return "";
+}
+// The device the facts describe (vw, vh, dpr, touch, coarse, sw, sh, cores, memory, frame_hz,
+// minimum_hz).
+quality_device_from_facts :: (facts: string) -> QualityDevice {
+  d: QualityDevice;
+  d.css_w = quality_fact_num(facts, "vw"); d.css_h = quality_fact_num(facts, "vh");
+  k := quality_fact_num(facts, "dpr"); d.dpr = ifx k > 0.01 then k else 1.0f32;
+  d.touch = quality_fact_num(facts, "touch") > 0; d.coarse = quality_fact(facts, "coarse") == "1";
+  d.screen_w = quality_fact_num(facts, "sw"); d.screen_h = quality_fact_num(facts, "sh");
+  d.cores = cast(int) quality_fact_num(facts, "cores"); d.memory = quality_fact_num(facts, "memory");
+  d.frame_hz = cast(int) quality_fact_num(facts, "frame_hz"); d.minimum_hz = cast(int) quality_fact_num(facts, "minimum_hz");
+  return d;
+}
+// The mode the player picked: ?quality= in the URL first, then the tier this browser kept
+// (quality=), AUTO when neither names one.
+quality_mode_from_facts :: (facts: string) -> int {
+  m := quality_parse(quality_query(facts, "quality"));
+  if m < 0 { m = quality_parse(quality_fact(facts, "quality")); }
+  return ifx m < 0 then QUALITY_AUTO else m;
+}
+// Whether the URL names a tier the browser doesn't keep yet: the realm tells the host (action 6),
+// so the pick stays for the next visit.
+quality_url_new :: (facts: string) -> bool {
+  m := quality_parse(quality_query(facts, "quality"));
+  return m >= 0 && quality_parse(quality_fact(facts, "quality")) != m;
+}
+
 // The start: the device's rung, and the mode the player picked (from the URL, else the one this
 // browser kept), AUTO when neither names one.
 quality_start :: (q: [] Quality, d: QualityDevice, mode: int) {
@@ -123,6 +197,18 @@ quality_start :: (q: [] Quality, d: QualityDevice, mode: int) {
   quality_choose(q, ifx mode >= 0 && mode <= QUALITY_AUTO then mode else QUALITY_AUTO);
 }
 
+// The rung a start takes: the tier the player picked, else the device's.
+quality_start_rung :: (d: QualityDevice, mode: int) -> int {
+  if mode >= 0 && mode < QUALITY_AUTO { return QUALITY_TIER_RUNG[mode]; }
+  return quality_device_rung(d);
+}
+// The pixels a frame draws at the start rung (quality_pixels before a Quality is started): 0
+// when the device has no size yet.
+quality_start_pixels :: (d: QualityDevice, mode: int) -> int {
+  if !(d.css_w > 0) || !(d.css_h > 0) { return 0; }
+  s := QUALITY_SCALE[quality_start_rung(d, mode)];
+  return cast(int) (d.css_w * d.css_h * s * s);
+}
 // The player picks a tier (held there) or AUTO (the governor starts again at the device's rung).
 quality_choose :: (q: [] Quality, mode: int) {
   if mode < 0 || mode > QUALITY_AUTO { return; }
@@ -262,6 +348,55 @@ quality_run :: (q: [] Quality, ms: f32, seconds: f32) -> int {
   #assert QUALITY_RUNG_TIER[QUALITY_TIER_RUNG[QUALITY_LOW]] == QUALITY_LOW;
   #assert quality_parse("med") == QUALITY_MEDIUM && quality_parse("medium") == QUALITY_MEDIUM && quality_parse("auto") == QUALITY_AUTO && quality_parse("ultra") == -1;
   #assert quality_next(QUALITY_AUTO) == QUALITY_HIGH && quality_next(QUALITY_HIGH) == QUALITY_MEDIUM && quality_next(QUALITY_MEDIUM) == QUALITY_LOW && quality_next(QUALITY_LOW) == QUALITY_AUTO;
+}
+
+// Pages as host.js pageFacts gives them, for the checks: an iPhone held upright and sideways, an
+// iPad, a low Android phone, an M-series Mac and an Intel laptop.
+QUALITY_FACTS_IPHONE :: "url=https://everglade.world/play\nua=Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)\nsw=390\nsh=844\nvw=390\nvh=844\ndpr=3\ncoarse=1\ntouch=5\ncores=0\nmemory=0\nquality=";
+QUALITY_FACTS_IPHONE_SIDE :: "url=https://everglade.world/play\nua=Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)\nsw=390\nsh=844\nvw=844\nvh=390\ndpr=3\ncoarse=1\ntouch=5\ncores=0\nmemory=0\nquality=";
+QUALITY_FACTS_IPAD :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)\nsw=1024\nsh=1366\nvw=1366\nvh=1024\ndpr=2\ncoarse=1\ntouch=5\ncores=0\nmemory=0\nquality=";
+QUALITY_FACTS_ANDROID_LOW :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Linux; Android 13; SM-A135F)\nsw=412\nsh=915\nvw=412\nvh=915\ndpr=2.625\ncoarse=1\ntouch=5\ncores=4\nmemory=3\nquality=";
+QUALITY_FACTS_MAC :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)\nsw=1512\nsh=982\nvw=1512\nvh=860\ndpr=2\ncoarse=0\ntouch=0\ncores=10\nmemory=8\nframe_hz=120\nminimum_hz=60\nquality=";
+QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Windows NT 10.0; Win64; x64)\nsw=1366\nsh=768\nvw=1366\nvh=657\ndpr=1\ncoarse=0\ntouch=0\ncores=8\nmemory=8\nquality=";
+
+#test "quality: the page's facts give the device; a phone held sideways or a tablet never starts at HIGH" {
+  p := quality_device_from_facts(QUALITY_FACTS_IPHONE);
+  #assert p.css_w == 390 && p.css_h == 844 && p.dpr == 3 && p.touch && p.coarse && p.screen_w == 390 && p.screen_h == 844 && p.cores == 0;
+  #assert quality_device_rung(p) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  l := quality_device_from_facts(QUALITY_FACTS_IPHONE_SIDE);
+  #assert l.css_w == 844 && quality_handheld(l) && quality_device_rung(l) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  // sideways, with no touch facts at all: the screen's short side still says phone
+  #assert quality_handheld(QualityDevice.{css_w = 844, css_h = 390, screen_w = 390, screen_h = 844});
+  #assert quality_device_rung(quality_device_from_facts(QUALITY_FACTS_IPAD)) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  a := quality_device_from_facts(QUALITY_FACTS_ANDROID_LOW);
+  #assert abs(a.dpr - 2.625) < 0.0001 && a.cores == 4 && a.memory == 3 && quality_device_rung(a) == QUALITY_TIER_RUNG[QUALITY_LOW];
+  m := quality_device_from_facts(QUALITY_FACTS_MAC);
+  #assert !quality_handheld(m) && m.frame_hz == 120 && m.minimum_hz == 60 && quality_device_rung(m) == QUALITY_TIER_RUNG[QUALITY_HIGH];
+  // a laptop's short page (657 high) on a 768 screen is a computer
+  #assert !quality_handheld(quality_device_from_facts(QUALITY_FACTS_INTEL)) && quality_device_rung(quality_device_from_facts(QUALITY_FACTS_INTEL)) == QUALITY_TIER_RUNG[QUALITY_HIGH];
+  #assert quality_handheld(QualityDevice.{touch = true}) && quality_handheld(QualityDevice.{coarse = true}) && !quality_handheld(QualityDevice.{css_w = 700, css_h = 500});
+  #assert quality_handheld(QualityDevice.{css_w = 699, css_h = 900}) && !quality_handheld(QualityDevice.{screen_w = 700, screen_h = 1200, css_w = 900});
+  #assert quality_handheld(QualityDevice.{screen_w = 1200, screen_h = 699, css_w = 900}) && !quality_handheld(QualityDevice.{screen_w = 1200, css_w = 900});
+  // facts it doesn't have are 0, never a guess
+  e := quality_device_from_facts("vw=abc\ndpr=0\n");
+  #assert e.css_w == 0 && e.dpr == 1 && !e.touch && !e.coarse && quality_fact_num("vw=12.5", "vw") == 12.5 && quality_fact("vw=1\nvwx=2", "vwx") == "2";
+}
+
+#test "quality: ?quality= in the URL wins over the kept tier, and is told to the host to keep" {
+  #assert quality_mode_from_facts(QUALITY_FACTS_IPHONE) == QUALITY_AUTO;
+  #assert quality_mode_from_facts("url=https://everglade.world/play?quality=low#x\nquality=high") == QUALITY_LOW;
+  #assert quality_mode_from_facts("url=https://everglade.world/play?a=1&quality=med\nquality=") == QUALITY_MEDIUM;
+  #assert quality_mode_from_facts("url=https://everglade.world/play?quality=ultra\nquality=low") == QUALITY_LOW;
+  #assert quality_mode_from_facts("url=https://everglade.world/play?xquality=low\nquality=medium") == QUALITY_MEDIUM;
+  #assert quality_mode_from_facts("url=https://everglade.world/play#?quality=low\nquality=") == QUALITY_AUTO;
+  #assert quality_url_new("url=https://everglade.world/play?quality=low\nquality=high") && !quality_url_new("url=https://everglade.world/play?quality=low\nquality=low");
+  #assert !quality_url_new("url=https://everglade.world/play\nquality=low") && quality_query("url=/play?quality=", "quality") == "";
+  q: [1] Quality;
+  #assert quality_start_pixels(quality_device_from_facts(QUALITY_FACTS_IPHONE_SIDE), QUALITY_AUTO) == cast(int) (844.0 * 390.0 * 2.25);
+  #assert quality_start_pixels(quality_device_from_facts(QUALITY_FACTS_MAC), QUALITY_LOW) == 1512 * 860 && quality_start_pixels(QualityDevice.{}, QUALITY_AUTO) == 0;
+  #assert quality_start_rung(quality_device_from_facts(QUALITY_FACTS_MAC), QUALITY_MEDIUM) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  quality_start(q[..], quality_device_from_facts(QUALITY_FACTS_IPHONE_SIDE), quality_mode_from_facts("url=/play?quality=low"));
+  #assert !quality_auto(q[..]) && quality_tier(q[..]) == QUALITY_LOW && quality_run(q[..], 50, 20) == 0;
 }
 
 #test "quality: each rung down costs no more than the one above it" {

@@ -88,10 +88,15 @@ other players see stay the same; only how much of it is drawn changes.
 ### The start
 
 At load the world picks a rung from the page's facts (`host.js` `pageFacts`:
-`vw`, `vh`, `dpr`, `coarse`, `touch`, `cores`, `memory`):
+`vw`, `vh`, `dpr`, `coarse`, `touch`, `sw`, `sh`, `cores`, `memory`). Every
+world reads them with one parser, `quality_device_from_facts`, and reads the
+player's pick with `quality_mode_from_facts`:
 
-- A phone (touched, or under 700 CSS pixels across) starts at MED (rung 3),
-  or LOW (rung 1) with 4 cores or fewer or 3 GB or less.
+- A handheld device starts at MED (rung 3), or LOW (rung 1) with 4 cores or
+  fewer or 3 GB or less. A device is handheld when it is touched, its pointer
+  is coarse, its screen's short side is under 700 CSS pixels, or the page is
+  under 700 CSS pixels across (`quality_handheld`). A phone held sideways and
+  a tablet are handheld, so neither starts at HIGH.
 - A computer starts at HIGH (rung 6), or MED with 2 cores or fewer or 2 GB or
   less.
 - A number the browser doesn't give (Safari has no `deviceMemory`) counts for
@@ -157,8 +162,19 @@ before (`coaxial_pixel_budget` returns 0) and don't show the tier.
 | `coax/web/destroy-fps.coax` | The measuring tool. |
 
 A new world uses it the same way: `#load "../../aethyr/quality.coax"`, start
-it from the facts, call `quality_frame` each frame, and read
-`quality_knobs`.
+it from the facts (`quality_device_from_facts`, `quality_mode_from_facts`),
+call `quality_frame` each frame, and read `quality_knobs`. Before the governor
+starts, `quality_start_pixels` gives the start rung's pixel budget.
+
+### Everglade II
+
+Everglade II (`apps/openagents-web/everglade2.coax`, Character Create at
+`/play`) keeps the page's facts and starts the governor from them on the first
+frame with a size (`e2_quality_facts`, `e2_quality_frame`). Its GFX control
+sits left of the FPS counter on the same line, at least 44 CSS pixels tall so
+a finger can hit it. A tap picks the next tier and the host keeps it (action
+6). Golden frames hold the rung the screen's size alone gives and don't show
+the control.
 
 ## Measuring
 
