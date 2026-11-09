@@ -7657,3 +7657,11 @@ New Charmed and Frightened conditions from those sources are removed
 from the attempted effect mask. Existing conditions remain and grant
 Advantage on subsequent saves against that effect. A preset change
 preserves the used flask in both world adapters.
+
+## Zone of Truth binds saves to the leased sphere
+
+A creature saves on a turn start inside or its first entry on a turn.
+Failure belongs to that sphere and prevents deliberate lies while inside.
+Releasing the zone clears only its own save state. Experimental keeps the
+center in world coordinates while projecting the rules grid around the
+player. The Everglade II room tests entry after applying a seat's pose.

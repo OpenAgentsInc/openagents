@@ -1,0 +1,135 @@
+// Zone of Truth, SRD 5.2.1 p. 175. A producer supplies deliberate-lie intent.
+#authority;
+
+rs_truth_contains :: (b:[]RsBattle,i:int,z:RsZone)->bool #effects(all) {
+  return z.spell==SP_ZONE_OF_TRUTH && z.until>b[0].clock && rs_inside(z,b[0].c[i].x,b[0].c[i].y);
+}
+rs_truth_inside :: (b:[]RsBattle,i:int,k:int)->bool #effects(all) {
+  return rs_truth_contains(b,i,b[0].zone[k]);
+}
+
+rs_truth_save :: (b:[]RsBattle,i:int,k:int) #effects(all) {
+  z:=b[0].zone[k];
+  save:=rs_saving_throw_magic(b,i,RS_CHA,z.truth_dc,0);
+  if !save.passed { b[0].c[i].truth_failed|=1<<k; }
+  l:[1]RsLine;
+  rs_add_name(l[..],b,i);
+  rs_add_text(l[..],ifx save.passed then " succeeds against Zone of Truth" else " fails against Zone of Truth");
+  rs_tell(b,RS_EV_SAVE,SP_ZONE_OF_TRUTH,z.by,i,save.total,ifx save.passed then 1 else 0,l[..]);
+}
+
+rs_truth_start :: (b:[]RsBattle,i:int) #effects(all) {
+  if b[0].truth_zones==0 || b[0].c[i].dead { return; }
+  for k:0..<RS_ZONES { if rs_truth_inside(b,i,k) { rs_truth_save(b,i,k); } }
+}
+
+// Committed rules movement, separate from raw placement and world projection.
+rs_truth_move :: (b:[]RsBattle,i:int,x:int,y:int) #effects(all) {
+  ox:=b[0].c[i].x; oy:=b[0].c[i].y;
+  rs_place(b,i,x,y);
+  rs_truth_enter(b,i,ox,oy);
+}
+
+rs_truth_enter :: (b:[]RsBattle,i:int,ox:int,oy:int) #effects(all) {
+  if b[0].truth_zones==0 { return; }
+  for k:0..<RS_ZONES {
+    if !rs_inside(b[0].zone[k],ox,oy) { rs_truth_cross(b,i,k); }
+  }
+}
+
+// A world with a moving grid supplies the same transition after reprojection.
+rs_truth_cross :: (b:[]RsBattle,i:int,k:int) #effects(all) {
+  c:=b[0].c[i..<i+1];
+  if c[0].dead || !rs_truth_inside(b,i,k) { return; }
+  if c[0].truth_enter_turn!=b[0].turn_no {
+    c[0].truth_enter_turn=b[0].turn_no;
+    c[0].truth_entered=0;
+  }
+  bit:=1<<k;
+  if (c[0].truth_entered&bit)!=0 { return; }
+  c[0].truth_entered|=bit;
+  rs_truth_save(b,i,k);
+}
+
+rs_truth_speech :: (b:[]RsBattle,i:int,deliberate_lie:bool)->bool #effects(all) {
+  if i<0 || i>=b[0].n || b[0].c[i].dead { return false; }
+  if !deliberate_lie { return true; }
+  for z,k:b[0].zone {
+    if (b[0].c[i].truth_failed&(1<<k))!=0 && rs_truth_contains(b,i,z) { return false; }
+  }
+  return true;
+}
+
+#test "Zone of Truth saves once on entry per turn, keeps truth scoped to the sphere, and clears its lease" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  a:=rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
+  j:=rs_add(b[..],rs_fighter("Speaker",0,1),4,1);
+  rs_start_turn(b[..],a);
+  #assert rs_cast(b[..],a,SP_ZONE_OF_TRUTH,2,8,1,-1);
+  rs_start_turn(b[..],j);
+  rolls:=b[0].dice[0].rolled;
+  #assert rs_truth_speech(b[..],j,true) && !rs_truth_speech(b[..],-1,true) && !rs_truth_speech(b[..],2,false);
+  #assert rs_step_to(b[..],j,5,1);
+  #assert b[0].dice[0].rolled==rolls+1 && !rs_truth_speech(b[..],j,true) && rs_truth_speech(b[..],j,false);
+  event:=rs_recent(b[0].book[0],0);
+  #assert event.kind==RS_EV_SAVE && event.spell==SP_ZONE_OF_TRUTH && event.by==a && event.to==j && event.damage==0;
+  #assert cast(string)event.text[0..<event.text_n]=="Speaker fails against Zone of Truth";
+  #assert rs_step_to(b[..],j,4,1) && rs_truth_speech(b[..],j,true);
+  #assert rs_step_to(b[..],j,5,1) && b[0].dice[0].rolled==rolls+1;
+  rs_start_turn(b[..],j);
+  #assert b[0].dice[0].rolled==rolls+2 && !rs_truth_speech(b[..],j,true);
+  #assert rs_release_zone(b[..],0);
+  #assert c[j].truth_failed==0 && c[j].truth_entered==0 && rs_truth_speech(b[..],j,true);
+}
+
+rs_truth_clear :: (b:[]RsBattle,k:int) #effects(all) {
+  b[0].truth_zones=rs_clear(b[0].truth_zones,1<<k);
+  for i:0..<b[0].n {
+    b[0].c[i].truth_failed=rs_clear(b[0].c[i].truth_failed,1<<k);
+    b[0].c[i].truth_entered=rs_clear(b[0].c[i].truth_entered,1<<k);
+  }
+}
+
+#test "Zone of Truth handles independent spheres, later turns, dead actors, and successful saves" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
+  a:=rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
+  j:=rs_add(b[..],rs_fighter("Speaker",0,1),4,1);
+  dead:=rs_add(b[..],rs_fighter("Dead",0,1),4,2);
+  c[dead].dead=true;
+  b[0].zone[0]=RsZone.{on=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=5,x1=11,y0=0,y1=4,until=8,truth_dc=20};
+  b[0].zone[1]=RsZone.{on=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=6,x1=12,y0=0,y1=4,until=16,truth_dc=1};
+  b[0].zone[2]=RsZone.{on=true,spell=SP_ENTANGLE,by=a,x0=5,x1=11,y0=0,y1=4,until=10};
+  b[0].truth_zones=3;
+  rs_start_turn(b[..],j);
+  rs_truth_move(b[..],j,6,1);
+  #assert c[j].truth_failed==1 && c[j].truth_entered==3;
+  saved:=rs_recent(b[0].book[0],0);
+  #assert saved.kind==RS_EV_SAVE && saved.amount==10 && saved.damage==1;
+  #assert !rs_truth_speech(b[..],j,true);
+  rolls:=b[0].dice[0].rolled;
+  rs_truth_move(b[..],dead,6,2); rs_truth_start(b[..],dead);
+  #assert !rs_truth_speech(b[..],dead,false) && b[0].dice[0].rolled==rolls;
+  rs_truth_move(b[..],j,4,1);
+  rs_start_turn(b[..],j);
+  rs_truth_move(b[..],j,6,1);
+  #assert b[0].dice[0].rolled==rolls+2;
+  b[0].clock=8;
+  #assert rs_truth_speech(b[..],j,true);
+  #assert rs_release_zone(b[..],0);
+  #assert b[0].truth_zones==2 && c[j].truth_failed==0 && c[j].truth_entered==2;
+}
+
+
+#test "Zone of Truth keeps the first actor's failure in the final slot and releases that slot alone" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  a:=rs_add(b[..],rs_fighter("Speaker",0,1),2,1);
+  k:=RS_ZONES-1; bit:=1<<k;
+  b[0].zone[k]=RsZone.{on=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=5,x1=11,y0=0,y1=4,until=8,truth_dc=20};
+  b[0].truth_zones=bit;
+  #assert rs_truth_speech(b[..],a,true);
+  rs_truth_move(b[..],a,6,1);
+  #assert c[a].truth_failed==bit && c[a].truth_entered==bit;
+  #assert !rs_truth_speech(b[..],a,true) && rs_truth_speech(b[..],a,false);
+  #assert rs_release_zone(b[..],k);
+  #assert b[0].truth_zones==0 && c[a].truth_failed==0 && c[a].truth_entered==0;
+}

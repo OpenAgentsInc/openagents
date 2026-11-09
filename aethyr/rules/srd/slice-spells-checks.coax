@@ -7,6 +7,32 @@
 #load "catalog.coax";
 #load "executable-source-ids.coax";
 
+#test "Devotion Zone of Truth creates a ten-minute sphere and saves on a turn starting inside" {
+  sp:=-1;
+  for k:0..<RS_MORE_END { if rs_spell(k).id=="zone-of-truth" { sp=k; } }
+  #assert sp>=0 && rs_executable_spell(sp);
+  #assert !rs_class_spell_granted(rs_paladin("Paladin",0,4),sp);
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  a:=rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
+  j:=rs_add(b[..],rs_fighter("Inside",0,1),8,1);
+  far:=rs_add(b[..],rs_fighter("Outside",0,1),12,1);
+  #assert rs_class_spell_granted(c[a],sp);
+  rs_start_turn(b[..],a);
+  rolls:=b[0].dice[0].rolled;
+  slots:=c[a].slots[2];
+  #assert rs_cast(b[..],a,sp,2,8,1,-1);
+  #assert c[a].slots[2]==slots-1 && c[a].conc<0 && b[0].turn.action;
+  z:=b[0].zone[0];
+  #assert z.on && z.spell==sp && z.until==600 && z.r_ft==15;
+  #assert b[0].dice[0].rolled==rolls;
+  rs_start_turn(b[..],far);
+  #assert b[0].dice[0].rolled==rolls;
+  rs_start_turn(b[..],j);
+  #assert b[0].dice[0].rolled==rolls+1;
+  b[0].clock=599; rs_tick_raw(b[..],1);
+  #assert !b[0].zone[0].on;
+}
+
 #test "Devotion Protection from Evil and Good needs holy water and hinders attacks from a Fiend" {
   sp:=-1;
   for k:0..<RS_MORE_END { if rs_spell(k).id=="protection-from-evil-and-good" { sp=k; } }

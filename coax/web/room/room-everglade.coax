@@ -862,7 +862,8 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   me := st[0].pose; dx := wc.ax - me.x; dz := wc.az - me.z;
   reach := ifx e.aim.kind == XC_AIM_SELF then 0.0f32 else e.aim.reach;
   if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
-  if !e2r_use(v[0].eg[k].rules[0].b[..],v[0].eg[k].rules[0].seat[seat..<seat+1],v[0].eg[k].rules[0].klass[seat]-E5R_CL0,wc.slot) {
+  r:=v[0].eg[k].rules[..];
+  if !e2r_use_at(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-E5R_CL0,wc.slot,e5r_sq(wc.ax),e5rr_z_cell(r,wc.az)) {
     eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return;
   }
   if e.ab.kind==FB_SPELL && e.ab.sp==SP_PROTECTION_GOOD_EVIL { st[0].protection_water_used=true; }
@@ -947,7 +948,11 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
   if accepted.advanced { st[0].ack=accepted.seq;st[0].ack_at=st[0].step_at; }
   if !st[0].placed && st[0].checkpoint_hello { v[0].ck.force=true; }
   st[0].placed = true;
-  e5rr_place(v[0].eg[k].rules[..], s, x, z);
+  r:=v[0].eg[k].rules[..];
+  e5rr_place(r,s,x,z);
+  if v[0].eg[k].e2 && was_placed && r[0].b[0].truth_zones!=0 {
+    rs_truth_enter(r[0].b[..],E5RR_SEAT+s,e5r_sq(was.x),e5rr_z_cell(r,was.z));
+  }
 }
 // Whether seat s sits and is still to be put in the world. An Everglade II seat waits for its hello
 // (EG_E2_HELLO_MS at most), which its page's A comes just before (#13057).
@@ -2486,6 +2491,33 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert c[0].materials[1].count==0 && c[0].conc==SP_PROTECTION_GOOD_EVIL;
   rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-paladin-4 0 -");
   #assert c[0].level==4 && c[0].materials[1].count==0;
+}
+
+#test "Everglade II room movement triggers Zone of Truth at the cast point" #steps 4000000000 {
+  v:[1]RmServer;
+  rm_init(v[..]); rm_clock(v[..],0,1762190000000);
+  request:="GET /api/room/relay/everglade/pair-e2-truth HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..],0,request)==0 && rm_join(v[..],1,request)==1;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-paladin-5 0 -");
+  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-fighter 0 -");
+  for q:0..<3 { eg_test_tick(v[..],k); }
+  r:=v[0].eg[k].rules[..]; b:=r[0].b[..]; target:=E5RR_SEAT+1;
+  p:=v[0].eg[k].seat[0].pose;
+  ax:=p.x+12; az:=p.z;
+  rm_eg_moved(v[..],k,SeatId.{value=1},0,p.x,p.y,p.z,0,0,0,0,1,0,0);
+  slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
+  msg:[128]u8;
+  n:=wire_put_cast(msg[..],0,WireCast.{seq=1,slot=slot,ax=ax,ay=p.y,az=az});
+  rm_heard(v[..],0,cast(string)msg[0..<n]);
+  #assert v[0].eg[k].e2_casts==1 && b[0].truth_zones==1;
+  #assert !rs_truth_inside(b,target,0);
+  b[0].dice[0].fixed=true;
+  events:=b[0].book[0].seq;
+  rm_eg_moved(v[..],k,SeatId.{value=1},1,ax,p.y,az,0,0,0,0,1,0,0);
+  #assert b[0].book[0].seq==events+1 && b[0].c[target].truth_entered==1;
+  rm_eg_moved(v[..],k,SeatId.{value=1},2,ax,p.y,az,0,0,0,0,1,0,0);
+  #assert b[0].book[0].seq==events+1;
 }
 
 #test "everglade II room: a seat sits at the level its hello says, casts that level's kit, and hears its bar's counts (#13046)" #steps 4000000000 {

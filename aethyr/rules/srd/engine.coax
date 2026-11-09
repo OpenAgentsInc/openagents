@@ -309,6 +309,7 @@ RsCreature :: struct {
   familiar_owner:int;       // owner actor + 1, zero for other creatures
   familiar_form:int;
   familiar_spirit:int;
+  truth_failed:int; truth_entered:int; truth_enter_turn:int;
   familiar_until_rest:bool;
   sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)

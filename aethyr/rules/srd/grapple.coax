@@ -56,7 +56,7 @@ rs_unarmed_resolve :: (b: [] RsBattle, i: int, j: int, opt: int) #effects(all) {
     if rs_effect_condition_mask(b[0].c[j], RS_PRONE) != 0 { b[0].c[j].cond |= RS_PRONE; }
   } else {
     x := b[0].c[j].x + rs_sign(b[0].c[j].x - b[0].c[i].x); y := b[0].c[j].y + rs_sign(b[0].c[j].y - b[0].c[i].y);
-    if x >= 0 && y >= 0 && x < b[0].w && y < b[0].h && rs_at(b, x, y) < 0 { rs_place(b, j, x, y); rs_grapple_lapse(b, j); }
+    if x >= 0 && y >= 0 && x < b[0].w && y < b[0].h && rs_at(b, x, y) < 0 { rs_truth_move(b,j,x,y); rs_grapple_lapse(b, j); }
   }
 }
 // The Attack action with its first attack an Unarmed Strike's Grapple or Shove; Extra Attack's
@@ -126,7 +126,7 @@ rs_drag_feet :: (b: [] RsBattle, i: int, x: int, y: int) -> int #effects(all) {
 // square it left.
 rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   g := b[0].c[i].grappling;
-  if g >= 0 && g < b[0].n && rs_feet_to(b, i, g) / RS_SQUARE > 1 && rs_at(b, ox, oy) < 0 { rs_place(b, g, ox, oy); }
+  if g >= 0 && g < b[0].n && rs_feet_to(b, i, g) / RS_SQUARE > 1 && rs_at(b, ox, oy) < 0 { rs_truth_move(b,g,ox,oy); }
   rs_grapple_lapse(b, i);
 }
 

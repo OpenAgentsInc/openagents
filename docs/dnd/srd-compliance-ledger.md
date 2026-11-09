@@ -609,7 +609,7 @@ Each feature then resolves against its text with fixed dice in
 | Fighter (Champion) | Fighting Style (Defense), Second Wind (2, 3 at 4), Weapon Mastery (3, 4 at 4), Action Surge, Tactical Mind, Improved Critical, Remarkable Athlete, ASI at 4 and 6, Extra Attack, Tactical Shift | Done |
 | Rogue (Thief) | Expertise, Sneak Attack, Thieves' Cant, Weapon Mastery (Vex, Nick), Cunning Action (Dash, Disengage, Hide), Steady Aim, Fast Hands, Second-Story Work (climb Speed), ASI, Cunning Strike (Trip, Withdraw), Uncanny Dodge; the Hide action and Fast Hands in `hide.coax` | Second-Story Work uses the shared jump model in Experimental. Hide lacks a player control where the world supplies concealment |
 | Monk (Open Hand) | Martial Arts, Unarmored Defense, Monk's Focus (Flurry, Patient Defense, Step of the Wind), Unarmored Movement, Uncanny Metabolism, Deflect Attacks, Open Hand Technique, ASI, Slow Fall, Extra Attack, Stunning Strike, Empowered Strikes, Wholeness of Body; `monk-features.coax` | Step of the Wind doubles the shared jump envelope in Experimental |
-| Paladin (Devotion) | Lay On Hands, Spellcasting, Weapon Mastery (Sap, Slow), Fighting Style (Blessed Warrior: Sacred Flame and Guidance at 2), Paladin's Smite, Channel Divinity (Divine Sense, in `paladin-features.coax`), Oath of Devotion Spells (Protection from Evil and Good, Shield of Faith, Aid), Sacred Weapon, ASI, Extra Attack, Faithful Steed (its use), Aura of Protection | Zone of Truth and Find Steed still need execution. Experimental offers Guidance's skill choices. Everglade II currently uses Perception for its self control. Both worlds provide one Protection flask per visit. The used creature subset has no possession executor. |
+| Paladin (Devotion) | Lay On Hands, Spellcasting, Weapon Mastery (Sap, Slow), Fighting Style (Blessed Warrior: Sacred Flame and Guidance at 2), Paladin's Smite, Channel Divinity (Divine Sense, in `paladin-features.coax`), Oath of Devotion Spells (Protection from Evil and Good, Shield of Faith, Aid, Zone of Truth), Sacred Weapon, ASI, Extra Attack, Faithful Steed (its use), Aura of Protection | Find Steed still needs execution. Zone of Truth records saves in both worlds. World chat has no declared-lie action. Experimental offers Guidance's skill choices. Everglade II currently uses Perception for its self control. Both worlds provide one Protection flask per visit. The used creature subset has no possession executor. |
 | Ranger (Hunter) | Spellcasting, Favored Enemy, Weapon Mastery (Vex, Slow), Deft Explorer (Survival Expertise), Fighting Style (Archery), Hunter's Lore (in `ranger-features.coax`), Hunter's Prey (Colossus Slayer), ASI, Extra Attack, Roving | Done; Deft Explorer's languages are the world's |
 | Cleric (Life) | Spellcasting, Divine Order (Protector), Channel Divinity (Divine Spark, in `cleric-features.coax`, and Turn Undead), Life Domain Spells (Aid, Bless, Cure Wounds and Lesser Restoration at 3, Mass Healing Word at 5), Disciple of Life, Preserve Life, ASI, Sear Undead, Blessed Healer (now told as its own feature) | Revivify still needs execution. Protector's equipment training still needs a model. Aid and Lesser Restoration have self hotbar controls. The shared cast requests support up to three Aid targets and an explicit Lesser Restoration target and condition. |
 | Bard (Lore) | Bardic Inspiration (d6, d8 at 5), Spellcasting, Expertise, Jack of All Trades, Bonus Proficiencies, Cutting Words, ASI, Font of Inspiration, Magical Discoveries (Fireball, Spirit Guardians) | Done |
@@ -1012,6 +1012,30 @@ The two shipped familiar packs were updated using the Coax pack builder's
 prefixes and all other asset payloads match byte for byte. The catalog has
 one index range per form and records the new vertex base. Everglade II's
 range-addressable pack also round-tripped to the updated image.
+
+### Devotion Zone of Truth (#13030)
+
+Devotion Paladins always prepare Zone of Truth from level 5 (SRD pp. 60, 175).
+The shared executor uses a 60-foot cast range and places a 15-foot sphere
+for ten minutes. Entry and turn start roll Charisma saves. Each sphere keeps
+its own failures, suppresses repeated entry saves within a turn, and releases
+those records on expiry. The cast snapshots its save DC, and the combat log
+records success or failure. The Experimental grid follows the player while
+the sphere stays at the original cast point. The Everglade II room takes
+the cast's admitted aim point and tests entry after an accepted pose change.
+
+The shared suite passed all 460 checks. Focused fixtures cover Experimental
+reprojection and a real room cast packet followed by a seat crossing.
+The Zone of Truth, zone lifetime, cast request, spell access, movement
+modes and grapple scopes killed 112, 63, 23, 205, 132 and 336 mutants
+respectively, with zero survivors. The Everglade II adapter killed all 111
+mutants in its own scope. Checked release Wasm measured 2,679,040 bytes for
+Experimental and 721,014 bytes for Everglade II.
+
+The shared speech check takes explicit intent. World chat currently has no
+declared-lie input or affected-creature prompt. The world fixtures verify
+sphere placement and saves on the shared grid. They do not establish
+occlusion for the persistent sphere in world geometry.
 
 ### Epic #13030 acceptance audit in progress
 

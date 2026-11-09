@@ -66,6 +66,7 @@ e5r_start :: (r: [] E5r, seed: int) #export_c #effects(reads, writes, traps) {
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = E5R_SIDE; b[0].h = E5R_SIDE;
   world_selected := rs_set_world(b,RS_ACTION_WORLD);   // every declared deviation: world-profile.coax
   for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
+  b[0].truth_zones=0;
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   _ := rs_add(b, fb_everglade_hero("Your druid", 0), 72, 72);
   rs_begin(b);

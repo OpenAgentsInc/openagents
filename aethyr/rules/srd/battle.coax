@@ -32,6 +32,7 @@
 #load "familiar-senses.coax";
 #load "lesser-restoration.coax";
 #load "protection-good-evil.coax";
+#load "zone-of-truth.coax";
 
 #load "cast-request.coax";
 #load "cast-target-outcome.coax";
@@ -109,7 +110,7 @@ RS_MAX :: 216;
 // grid larger than the room scans its creatures.
 RS_SQUARES :: 8192;
 RS_ZONES :: 8;
-RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int;
+RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; truth_dc: int;
                   line: bool; dx: f32; dy: f32; half: f32; }   // a Line: from (cx, cy) along (dx, dy), a unit, r_ft long, half (squares) each side
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
 // Advantage waiting) and anchored (its Speed 0 after), last_hit (1 + whom its last melee weapon
@@ -123,6 +124,7 @@ RsReactionFrame :: struct { on:bool; who:int = -1; turn:RsTurn; }
 RsBattle :: struct {
   c: [] RsCreature; n: int;   // the creatures: own's room (rs_room), or a world's (rs_use)
   zone: [RS_ZONES] RsZone;
+  truth_zones:int;
   dice: [1] RsDice;
   book: [1] RsLog;
   clock: f32; rest_clock:RsRestClock; rest_auto:bool;
@@ -220,7 +222,7 @@ rs_reset :: (b: [] RsBattle) {
   rs_room(b);
   blank: RsCreature;
   for i: 0..<b[0].n { b[0].c[i] = blank; }
-  b[0].n = 0;
+  b[0].n = 0; b[0].truth_zones=0;
   for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
   for t: 0..<RS_TERRAINS { b[0].terrain[t] = RsTerrain.{}; }
   rs_cover_clear(b);
@@ -652,11 +654,16 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     area = rs_area(b, i, s, tx, ty);
     area.spell = sp;
     area.until = b[0].clock + s.duration_s;
+    if sp==SP_ZONE_OF_TRUTH { area.truth_dc=rs_dc(b,i); }
     for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TERRAIN { area.difficult = true; } }
-    if zone_required { b[0].zone[zone_at] = area; }
+    if zone_required {
+      b[0].zone[zone_at] = area;
+      if sp==SP_ZONE_OF_TRUTH { b[0].truth_zones|=1<<zone_at; }
+    }
     e: RsEvent; e.kind = RS_EV_ZONE; e.spell = sp; e.by = i; e.to = -1; e.x = area.x0; e.y = area.y0; e.amount = area.x1 - area.x0 + 1; e.at = b[0].clock;
     k := rs_emit(b[0].book[..], e);
   }
+  if sp==SP_ZONE_OF_TRUTH { return true; }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + s.duration_s; } }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
   if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
@@ -760,7 +767,7 @@ rs_teleport :: (b: [] RsBattle, i: int, sp: int, tx: int, ty: int) {
     rs_damage(b, i, i, amount, RS_FORCE, false, sp);
     return;
   }
-  rs_place(b, i, tx, ty);
+  rs_truth_move(b,i,tx,ty);
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, i); rs_add_text(l[..], " teleports");
   rs_tell(b, RS_EV_PUSH, sp, i, i, 0, 0, l[..]);
 }
@@ -1079,7 +1086,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       for n: 0..<(st.a / RS_SQUARE) {
         nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
         if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
-        rs_place(b, j, nx, ny); moved += 1;
+        rs_truth_move(b,j,nx,ny); moved += 1;
       }
       if moved > 0 {
         l: [1] RsLine;
@@ -1193,7 +1200,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     for n: 0..<2 {
       nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
       if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
-      rs_place(b, j, nx, ny); moved += 1;
+      rs_truth_move(b,j,nx,ny); moved += 1;
     }
     if moved > 0 {
       l: [1] RsLine;
@@ -1283,7 +1290,7 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   b[0].turn.moved = true;
   rs_rest_motion(b[0].c[i..<i+1],true,false);
   rs_run_up(b,i,RS_SQUARE);
-  rs_place(b, i, x, y);
+  rs_truth_move(b,i,x,y);
   rs_drag_follow(b,i,ox,oy);
   if b[0].guards > 0 {
     // into someone's Spirit Guardians, or its own Emanation onto someone
@@ -1367,6 +1374,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].turn.new_round = b[0].c[i].turn_at >= b[0].c[i].round_at - 0.01;
   if b[0].turn.new_round { b[0].c[i].round_at += f32(RS_ROUND); }
   b[0].c[i].reacted = false;
+  rs_truth_start(b,i);
   rs_rite_turn(b,i);
   if b[0].c[i].raging && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
@@ -1923,7 +1931,7 @@ rs_open_hand :: (b: [] RsBattle, i: int, j: int, how: int) {
   for n: 0..<3 {
     nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
     if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
-    rs_place(b, j, nx, ny); moved += 1;
+    rs_truth_move(b,j,nx,ny); moved += 1;
   }
   rs_add_text(l[..], ": pushed "); rs_add_int(l[..], moved * RS_SQUARE); rs_add_text(l[..], " feet");
   rs_tell(b, RS_EV_PUSH, -1, i, j, moved * RS_SQUARE, 0, l[..]);

@@ -143,7 +143,7 @@ rs_preset_spell_grants :: (c: [] RsCreature) #effects(all) {
       _ := rs_grant_class_spell(c, SP_SHIELD_OF_FAITH);
       _ = rs_grant_class_spell(c, SP_PROTECTION_GOOD_EVIL);
     }
-    if level >= 5 { _ := rs_grant_class_spell(c, SP_AID); }
+    if level >= 5 { _ := rs_grant_class_spell(c, SP_AID); _ = rs_grant_class_spell(c, SP_ZONE_OF_TRUTH); }
   } else if c[0].klass == RS_SORCERER {
     // Draconic Spells, p.70.
     if level >= 3 { _ := rs_grant_class_spell(c, SP_COMMAND); }

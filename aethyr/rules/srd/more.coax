@@ -42,7 +42,8 @@ SP_LESSER_RESTORATION :: 84;
 SP_AID :: 85;
 SP_GUIDANCE :: 86;
 SP_PROTECTION_GOOD_EVIL :: 87;
-RS_MORE_END :: 88;
+SP_ZONE_OF_TRUTH :: 88;
+RS_MORE_END :: 89;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -286,6 +287,10 @@ rs_more_spell :: (i: int) -> RsSpell {
     s = rs_more("protection-from-evil-and-good", "Protection from Evil and Good", 1, "Abjuration", "Cleric, Druid, Paladin, Warlock, Wizard", RS_T_ACTION, 5, "Concentration up to 10 minutes", 600, true, RS_A_NONE, 0);
     s.components = "V, S, M (a flask of Holy Water worth 25+ GP, which the spell consumes)"; s.page = 157;
     s.steps[0] = rs_step(RS_S_BOON, EF_PROTECTION, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_ZONE_OF_TRUTH {
+    s = rs_more("zone-of-truth", "Zone of Truth", 2, "Enchantment", "Bard, Cleric, Paladin", RS_T_ACTION, 60, "10 minutes", 600, false, RS_A_SPHERE, 15);
+    s.components = "V, S"; s.page = 175;
+    s.steps[0] = rs_step(RS_S_TRUTH, 0, 0, 0, 0); s.step_n = 1;
   }
   return s;
 }

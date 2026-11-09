@@ -75,6 +75,8 @@ XcCombat :: struct {
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
   familiar_incense:int=1; // one Lab supply, carried across preset changes
   protection_water_used:bool;
+  truth_x:[RS_ZONES]f32; truth_z:[RS_ZONES]f32;
+  truth_inside:[XC_FOES+2]int;
   objects:[XC_OBJECTS]XcObject;
   started: bool; klass: int = 11; level: int = 1;
   rest_seen:bool; rest_settled:bool; rest_refused:bool;
@@ -419,6 +421,32 @@ xc_wave_contains :: (w: XcWave, x: f32, z: f32) -> bool {
   dx := x-w.x; dz := z-w.z; side := dx*w.fz-dz*w.fx; forward := dx*w.fx+dz*w.fz;
   return side >= w.left && side < w.right && forward >= w.near && forward < w.far;
 }
+// Keep the sphere at its original world point while the grid follows the hero.
+xc_truth_project :: (s:[]Lab,new_zones:int) {
+  x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
+  if b[0].truth_zones==0 { return; }
+  sq:=f32(XC_SQ);
+  for k:0..<RS_ZONES {
+    bit:=1<<k;
+    if (b[0].truth_zones&bit)==0 { continue; }
+    z:=b[0].zone[k..<k+1];
+    fresh:=(new_zones&bit)!=0;
+    if fresh {
+      x[0].truth_x[k]=cr[0].player_x+f32(z[0].cx-XC_MID)*sq;
+      x[0].truth_z[k]=cr[0].player_z+f32(z[0].cy-XC_MID)*sq;
+    }
+    dx:=XC_MID+cast(int)floor((x[0].truth_x[k]-cr[0].player_x)/sq+0.5)-z[0].cx;
+    dz:=XC_MID+cast(int)floor((x[0].truth_z[k]-cr[0].player_z)/sq+0.5)-z[0].cy;
+    z[0].cx+=dx; z[0].x0+=dx; z[0].x1+=dx;
+    z[0].cy+=dz; z[0].y0+=dz; z[0].y1+=dz;
+    for i:0..<b[0].n {
+      if b[0].c[i].x!=XC_AWAY && rs_truth_inside(b,i,k) {
+        if !fresh && (x[0].truth_inside[i]&bit)==0 { rs_truth_cross(b,i,k); }
+        x[0].truth_inside[i]|=bit;
+      } else { x[0].truth_inside[i]=rs_clear(x[0].truth_inside[i],bit); }
+    }
+  }
+}
 // Restore the world's coordinate frame after a facing-relative cube, so other
 // ongoing areas and later combat steps continue to use world-aligned squares.
 xc_sync_world :: (s: [] Lab) {
@@ -431,6 +459,7 @@ xc_sync_world :: (s: [] Lab) {
     rs_place(b, i+1, qx, qz);
   }
   xc_familiar_project(s,0,1);
+  xc_truth_project(s,0);
 }
 xc_familiar_project :: (s:[]Lab,fx:f32,fz:f32) {
   x:=s[0].xc[..]; b:=x[0].b[..];
@@ -1152,6 +1181,7 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
   // Self-originating cubes use a grid aligned with your facing, so diagonal
   // casts cover the same width on both sides as casts along a world axis.
   facing_cube := a.kind == FB_SPELL && rs_spell(a.sp).area == RS_A_CUBE_SELF;
+  if b[0].truth_zones!=0 { xc_sync_world(s); }
   // the monsters on the engine's squares round you
   rs_place(b, 0, XC_MID, XC_MID);
   for i: 0..<XC_FOES {
@@ -1198,6 +1228,8 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
       _:=rs_cover_put(b,f,1+foe,RS_COVER_TOTAL);
     }
   }
+  old_truth:=b[0].truth_zones;
+  if facing_cube { b[0].truth_zones=0; }
   ok := false;
   if via {
     f:=rs_familiar_of(b,0);
@@ -1217,6 +1249,8 @@ xc_use_on :: (s: [] Lab, k: int, on: int) -> bool {
     if ok { x[0].told = k; x[0].told_at = now; x[0].told_ok = r.passed; }
     if ok && r.passed && foe >= 0 { if rs_max(a.opt, 0) == 1 { x[0].studied[foe] = true; } else { x[0].calm[foe] = true; } }
   } else { ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, 0); }
+  if facing_cube { b[0].truth_zones=old_truth; }
+  if ok && a.kind==FB_SPELL && a.sp==SP_ZONE_OF_TRUTH { xc_truth_project(s,rs_clear(b[0].truth_zones,old_truth)); }
   if ok && a.kind==FB_SPELL && a.sp==SP_PROTECTION_GOOD_EVIL { x[0].protection_water_used=true; }
   rs_cover_clear(b);
   gain := rs_max(b[0].c[0].hp-hp_before,0);
@@ -3191,4 +3225,29 @@ xc_familiar_draw :: (s:[]Lab,out:[]f32,n:int)->int {
     return n+1;
   }
   return n;
+}
+
+#test "Experimental Zone of Truth stays at the cast point after player travel" {
+  s:[1]Lab; xc_test_lab(s[..],FB_CL_PALADIN,0);
+  x:=s[0].xc[..]; xc_set_level(x,5);
+  cr:=s[0].creator[..]; b:=x[0].b[..];
+  slot:=-1;
+  for i:0..<x[0].bar_n { if x[0].bar[i].sp==SP_ZONE_OF_TRUTH { slot=i; } }
+  #assert slot>=0;
+  cr[0].clock=5;
+  #assert xc_use(s[..],slot);
+  zone:=b[0].zone[0];
+  #assert zone.on && zone.spell==SP_ZONE_OF_TRUTH;
+  cr[0].player_x=f32(XC_SQ)*5;
+  xc_sync_world(s[..]);
+  #assert b[0].zone[0].cx==zone.cx-5 && b[0].zone[0].cy==zone.cy;
+  events:=b[0].book[0].seq;
+  cr[0].hostiles[0].enemies[0].x=f32(zone.cx-XC_MID)*f32(XC_SQ);
+  cr[0].hostiles[0].enemies[0].z=f32(zone.cy-XC_MID)*f32(XC_SQ);
+  xc_sync_world(s[..]);
+  #assert b[0].book[0].seq==events+1;
+  save:=rs_recent(b[0].book[0],0);
+  #assert save.kind==RS_EV_SAVE && save.spell==SP_ZONE_OF_TRUTH && save.to==1;
+  xc_sync_world(s[..]);
+  #assert b[0].book[0].seq==events+1;
 }

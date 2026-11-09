@@ -47,7 +47,7 @@ rs_long_jump :: (b: [] RsBattle, i: int, x: int, y: int) -> bool #effects(all) {
   ox := b[0].c[i].x; oy := b[0].c[i].y;
   feet := rs_feet(ox, oy, x, y);
   if feet > rs_jump_reach(b, rs_jump_score(b[0].c[i])) || !rs_jump_pay(b, i, feet) { return false; }
-  rs_place(b, i, x, y);
+  rs_truth_move(b,i,x,y);
   rs_drag_follow(b, i, ox, oy);
   rs_say(b, RS_EV_CONDITION, i, i, feet, " makes a Long Jump");
   if rs_difficult(b, x, y) && !rs_ability_check(b, i, RsAbilityRequest.{ability = RS_DEX, skill = SK_ACROBATICS, dc = 10}).passed {
@@ -78,6 +78,14 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
   b[0].c[0].swim = 30; #assert rs_step_cost(b[..], 0, 3, 1) == 5 && rs_step_cost(b[..], 0, 5, 1) == 5;
   b[0].c[0].climb = 0; b[0].c[0].cond |= RS_PRONE; #assert rs_step_cost(b[..], 0, 4, 1) == 20 && rs_step_cost(b[..], 0, 1, 2) == 10;
 }
+#test "a step that drags an equal-sized creature adds five feet to its movement cost" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  a:=rs_add(b[..],rs_fighter("Grappler",0,1),2,1);
+  j:=rs_add(b[..],rs_fighter("Held",1,1),1,1);
+  c[a].grappling=j;
+  #assert rs_step_cost(b[..],a,3,1)==10;
+}
+
 #test "a climbing step pays its extra cost through the shared step, and the run-up starts over crawling" {
   b: [1] RsBattle; jump_field(b[..]);
   _ := rs_terrain_put(b[..], TR_CLIMB, 2, 1, 2, 1);

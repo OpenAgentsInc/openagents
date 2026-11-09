@@ -19,6 +19,7 @@ xc_spell_rgb :: (sp: int) -> FxV {
   if sp == SP_AID { return xc_rgb(0.9, 0.85, 0.4); }
   if sp == SP_GUIDANCE { return xc_rgb(0.62, 0.78, 0.95); }
   if sp == SP_PROTECTION_GOOD_EVIL { return xc_rgb(0.72, 0.85, 1); }
+  if sp == SP_ZONE_OF_TRUTH { return xc_rgb(0.74, 0.93, 0.88); }
   if sp == SP_THUNDERWAVE { return xc_rgb(0.55, 0.75, 1.0); }
   if sp == SP_ENTANGLE { return xc_rgb(0.35, 0.85, 0.3); }
   if sp == SP_FAERIE_FIRE { return xc_rgb(0.75, 0.48, 1.0); }
@@ -77,6 +78,7 @@ xc_look_of :: (a: FbAb, px: f32, py: f32, pz: f32, face: f32, at: FxV) -> XcLook
     // the 5E Lab's own looks (fivelab.coax fx_event), sized to the SRD areas
     else if sp == SP_FIREBALL { r = FXR_FIREBALL; reach = 6.096; }                // a 20-foot radius
     else if sp == SP_HYPNOTIC_PATTERN { r = FXR_SHIMMER; reach = 4.572; }         // a 30-foot Cube
+    else if sp==SP_ZONE_OF_TRUTH { r=FXR_SHIMMER; reach=4.572; }
     else if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { r = FXR_LIGHTNING; reach = 1.524; }   // within 5 feet of the point
     else if sp == SP_SPIRIT_GUARDIANS { r = FXR_ORBIT; to = fxp_v(px, py, pz); reach = 4.572; }   // a 15-foot Emanation
     else if sp == SP_HOLD_PERSON { r = FXR_BIND; }

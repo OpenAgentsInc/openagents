@@ -98,6 +98,9 @@ xc_bar_level :: (klass: int, level: int, out: [] FbAb) -> int {
   if n<out.count && rs_class_spell_granted(hero,SP_PROTECTION_GOOD_EVIL) {
     out[n]=fb_art_spell(SP_PROTECTION_GOOD_EVIL,FB_SELF,"shield"); n+=1;
   }
+  if n<out.count && rs_class_spell_granted(hero,SP_ZONE_OF_TRUTH) {
+    out[n]=fb_art_spell(SP_ZONE_OF_TRUTH,FB_POINT,"hypnotic-pattern"); n+=1;
+  }
   // The preset's selected spells, not slot availability alone, determine the
   // playable bar. Stable ability identities preserve saved ordering/sounds.
   selected := 0;
@@ -229,6 +232,7 @@ xc_spell_sound :: (sp: int) -> XcSnd {
   if sp == SP_AID { return xs("arcane-cast", "heal", "", "", 0.95); }
   if sp == SP_GUIDANCE { return xs("levitate", "choir", "", "", 1.05); }
   if sp == SP_PROTECTION_GOOD_EVIL { return xs("hold", "choir", "", "", 1); }
+  if sp == SP_ZONE_OF_TRUTH { return xs("entangle", "choir", "", "", 0.92); }
   if sp == SP_THUNDERWAVE { return xs("thunderwave", "thunder", "hit-heavy", "", 1); }
   if sp == SP_ENTANGLE { return xs("entangle", "", "", "", 1); }
   if sp == SP_CALL_LIGHTNING { return xs("bolt-cast", "thunder", "bolt-travel", "fizzle", 1); }

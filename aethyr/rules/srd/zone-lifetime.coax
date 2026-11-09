@@ -21,6 +21,18 @@
   b[0].c[0].eff[0] = RsEffect.{kind=EF_COND,cond=RS_BLINDED,until=100};
   #assert rs_release_zone(b[..],0) && b[0].c[0].cond == RS_BLINDED;
 }
+#test "zone release drops the first matching restraint record and retains other leases" {
+  b:[1]RsBattle; _:=rs_add(b[..],rs_druid("Actor",0,1),1,1);
+  b[0].zone[0]=RsZone.{on=true,spell=SP_ENTANGLE,until=10};
+  b[0].zone[1]=RsZone.{on=true,spell=SP_ENTANGLE,until=15};
+  c:=b[0].c[0..<1];
+  c[0].eff[0]=RsEffect.{kind=EF_ZONE_RESTRAIN,cond=0,until=10};
+  c[0].eff[1]=RsEffect.{kind=EF_ZONE_RESTRAIN,cond=1,until=15};
+  c[0].eff[2]=RsEffect.{kind=EF_GUIDANCE,cond=0,until=20};
+  #assert rs_release_zone(b[..],0);
+  #assert c[0].eff[0].kind==EF_NONE && c[0].eff[1].kind==EF_ZONE_RESTRAIN && c[0].eff[1].cond==1;
+  #assert c[0].eff[2].kind==EF_GUIDANCE && b[0].zone[1].on;
+}
 #test "tick expires a non-concentration zone at its deadline and makes its slot reusable once" {
   b: [1] RsBattle; _ := rs_add(b[..],rs_druid("Actor",0,1),1,1);
   for k: 0..<RS_ZONES { b[0].zone[k] = RsZone.{on=true,by=0,spell=SP_ICE_STORM,until=100}; }
@@ -40,6 +52,7 @@
 rs_release_zone :: (b: [] RsBattle, k: int) -> bool #effects(all) {
   if k < 0 || k >= RS_ZONES || !b[0].zone[k].on { return false; }
   b[0].zone[k].on = false;
+  if b[0].zone[k].spell==SP_ZONE_OF_TRUTH { rs_truth_clear(b,k); }
   for j: 0..<b[0].n {
     for e: 0..<RS_EFFECTS {
       if b[0].c[j].eff[e].kind == EF_ZONE_RESTRAIN && b[0].c[j].eff[e].cond == k { rs_drop_effect(b,j,e); }

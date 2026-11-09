@@ -5,16 +5,23 @@
 #load "../../aethyr/rules/srd/press-budget.coax";
 #authority;
 
-e2r_use :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool #effects(all) {
-  switch e2r_atomic(b,seats,klass,slot) { case none { return false; } case some(ok) { return ok; } }
+E2rPoint :: struct { x:int; y:int; }
+e2r_use :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int)->bool #effects(all) {
+  return e2r_request(b,seats,klass,slot,null);
 }
-e2r_atomic :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool? #effects(all) {
+e2r_use_at :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,x:int,y:int)->bool #effects(all) {
+  return e2r_request(b,seats,klass,slot,some(E2rPoint.{x=x,y=y}));
+}
+e2r_request :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?)->bool #effects(all) {
+  switch e2r_atomic(b,seats,klass,slot,point) { case none { return false; } case some(ok) { return ok; } }
+}
+e2r_atomic :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?)->bool? #effects(all) {
   #transaction {
-    if !e2r_apply(b,seats,klass,slot) { return null; }
+    if !e2r_apply(b,seats,klass,slot,point) { return null; }
   }
   return some(true);
 }
-e2r_apply :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool #effects(all) {
+e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?)->bool #effects(all) {
   i:=seats[0].me;
   if i<0 || i>=b[0].n { return false; }
   e:=xk_entry_at(klass,b[0].c[i].level,slot);   // the seat's own level's bar (#13046)
@@ -23,7 +30,17 @@ e2r_apply :: (b:[] RsBattle,seats:[] FbSeat,klass:int,slot:int)->bool #effects(a
   _:=rs_press_prepare(b[0].c[i..<b[0].n],turn[..],b[0].press);
   seats[0].turn=turn[0]; seats[0].open=true;
   fb_seat_in(b,seats);
-  ok:=e2r_dispatch(b,i,e.ab);
+  ok:=false;
+  if e.ab.kind==FB_SPELL && e.ab.sp==SP_ZONE_OF_TRUTH {
+    switch point {
+      case none {}
+      case some(p) {
+        if p.x>=0 && p.x<b[0].w && p.y>=0 && p.y<b[0].h {
+          ok=fb_cast(b,i,e.ab,i,p.x,p.y,i);
+        }
+      }
+    }
+  } else { ok=e2r_dispatch(b,i,e.ab); }
   fb_seat_out(b,seats);
   return ok;
 }
@@ -71,4 +88,32 @@ e2r_dispatch :: (b:[] RsBattle,i:int,a:FbAb)->bool #effects(all) {
   #assert e2r_use(b[..],seats[..],FB_CL_CLERIC,xk_wire(FB_CL_CLERIC,spell));
   #assert c[i].hp==hp+5 && c[i].hp_max==hp+5 && c[i].slots[2]==slots-1;
   #assert seats[0].turn.action && seats[0].turn.slot_spent && c[j].hp_max==other;
+}
+
+#test "Everglade II commits Zone of Truth at the admitted point and rejects a point outside the grid" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  i:=rs_add(b[..],fb_cl_hero(FB_CL_PALADIN,"Paladin",0,5),1,1);
+  j:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Speaker",0,1),3,1);
+  seats:[1]FbSeat; seats[0].me=i;
+  slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
+  slots:=c[i].slots[2];
+  #assert !e2r_use(b[..],seats[..],FB_CL_PALADIN,slot);
+  #assert !e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,-1,1);
+  #assert !e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,12,1);
+  #assert !e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,7,-1);
+  #assert !e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,7,8);
+  #assert c[i].slots[2]==slots && b[0].truth_zones==0 && !seats[0].open;
+  #assert e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,7,1);
+  #assert c[i].slots[2]==slots-1 && b[0].zone[0].cx==7 && b[0].zone[0].cy==1;
+  #assert c[j].truth_failed==0;
+}
+
+
+#test "Everglade II accepts the grid origin for a placed Zone of Truth" {
+  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  i:=rs_add(b[..],fb_cl_hero(FB_CL_PALADIN,"Paladin",0,5),1,2);
+  seats:[1]FbSeat; seats[0].me=i;
+  slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
+  #assert e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,0,0);
+  #assert b[0].zone[0].cx==0 && b[0].zone[0].cy==0;
 }
