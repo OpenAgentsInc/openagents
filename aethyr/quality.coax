@@ -191,7 +191,7 @@ quality_parse :: (text: string) -> int {
 // A fact's value, "" when the page doesn't give it.
 quality_fact :: (facts: string, key: string) -> string {
   i := 0;
-  while i < facts.count {
+  while i < facts.count {   // mutant: equivalent (at i == facts.count the empty line matches no key)
     e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
     if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
     i = e + 1;
@@ -216,8 +216,9 @@ quality_query :: (facts: string, key: string) -> string {
   at := 0;
   while at < url.count && url[at] != '?' && url[at] != '#' { at += 1; }
   while at < url.count {
-    if (url[at] == '?' || url[at] == '&') && at + 1 + key.count < url.count && url[at + 1..<at + 1 + key.count] == key && url[at + 1 + key.count] == '=' {
-      i := at + key.count + 2; e := i;
+    eq := at + 1 + key.count;   // where the key's '=' is
+    if (url[at] == '?' || url[at] == '&') && eq < url.count && url[at + 1..<eq] == key && url[eq] == '=' {
+      i := eq + 1; e := i;
       while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
       return url[i..<e];
     }
@@ -292,7 +293,7 @@ quality_start :: (q: [] Quality, d: QualityDevice, mode: int) {
   q[0].kind = quality_device_class(d);
   q[0].start = quality_device_rung(d);
   q[0].probe = -1; q[0].probed = false; q[0].probe_n = 0; q[0].probe_from = -1; q[0].probe_to = -1; q[0].told = -1;
-  quality_choose(q, ifx mode >= 0 && mode <= QUALITY_AUTO then mode else QUALITY_AUTO);
+  quality_choose(q, QUALITY_AUTO); quality_choose(q, mode);   // a mode that isn't one stays AUTO
 }
 // The start with the rung this class settled at on an earlier visit (quality_settled_from_facts;
 // -1 none): AUTO starts there instead of at the class's rung, and the measured start may still step
@@ -316,11 +317,7 @@ quality_probe_end :: (q: [] Quality) {
   q[0].probe = -1; q[0].probed = true;
   n := q[0].probe_n;
   if n < 8 || q[0].mode != QUALITY_AUTO { return; }
-  // the median, by counting (n is small)
-  med := 0.0f32;
-  for i: 0..<n { below := 0; same := 0; v := q[0].probe_ms[i];
-    for j: 0..<n { if q[0].probe_ms[j] < v { below += 1; } else if q[0].probe_ms[j] == v { same += 1; } }
-    if below <= n / 2 && below + same > n / 2 { med = v; } }
+  med := quality_median(q[0].probe_ms[0..<n]);
   if med <= q[0].budget * f32(QUALITY_OVER) { return; }
   need := q[0].target_ms / med;
   from := q[0].rung; r := from;
@@ -329,6 +326,14 @@ quality_probe_end :: (q: [] Quality) {
   q[0].rung = r; q[0].steps += 1; q[0].since = 0; q[0].over = 0; q[0].burst = 0; q[0].on_time = 0;
   q[0].slow_avg = q[0].budget; q[0].fast_avg = q[0].budget;
   q[0].probe_from = from; q[0].probe_to = r;
+}
+// The median of some frames' lengths (the upper one of an even count), by counting (they are few).
+quality_median :: (ms: [] f32) -> f32 {
+  n := ms.count; med := 0.0f32;
+  for i: 0..<n { below := 0; same := 0; v := ms[i];
+    for j: 0..<n { if ms[j] < v { below += 1; } else if ms[j] == v { same += 1; } }
+    if below <= n / 2 && below + same > n / 2 { med = v; } }
+  return med;
 }
 // Whether AUTO has held its rung QUALITY_SETTLED_S since the last step, at a rung not yet kept:
 // the realm tells the host (quality_settled_text) and calls quality_settled_kept.
@@ -394,8 +399,8 @@ quality_rung_knobs :: (r: int) -> QualityKnobs {
 // A share of a budget, at least `least`.
 quality_share :: (whole: int, share: f32, least: int) -> int {
   n := cast(int) (f32(whole) * share + 0.5);
-  if n < least { return least; }
-  if n > whole { return whole; }
+  if n < least { return least; }   // mutant: equivalent (n == least returns least either way)
+  if n > whole { return whole; }   // mutant: equivalent (n == whole returns whole either way)
   return n;
 }
 
@@ -450,7 +455,7 @@ quality_frame :: (q: [] Quality, dt: f32) -> bool {
     if q[0].slow_avg <= q[0].target_ms * f32(QUALITY_ON_TIME) { q[0].fast += dt; } else { q[0].fast = 0; }
     if q[0].fast >= f32(QUALITY_FAST_S) { q[0].budget = q[0].target_ms; q[0].fast = 0; q[0].on_time = 0; return false; }
   }
-  b = q[0].budget;
+  // (the budget only changes above with a return, so b is still it)
   if q[0].fast_avg > b * f32(QUALITY_BURST) { q[0].burst += dt; } else { q[0].burst = 0; }
   if q[0].slow_avg > b * f32(QUALITY_OVER) { q[0].over += dt; q[0].on_time = 0; }
   else {
@@ -780,4 +785,227 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   // and frames on time at 60 bring the 60 FPS budget back
   _ = quality_run(q[..], 16.7, 20);
   #assert q[0].budget < 17;
+}
+
+#test "quality: the device's rules at their edges" {
+  // a screen or page size the page doesn't give (0) says nothing
+  #assert !quality_handheld(QualityDevice.{}) && !quality_handheld(QualityDevice.{screen_w = 0, screen_h = 1200, css_w = 900});
+  #assert !quality_handheld(QualityDevice.{screen_w = 1200, screen_h = 0, css_w = 900});
+  // handheld and weak: 4 cores or fewer, 3 GB or less
+  #assert quality_device_class(QualityDevice.{touch = true, css_w = 390, css_h = 844, cores = 1}) == QUALITY_PHONE_WEAK;
+  #assert quality_device_class(QualityDevice.{touch = true, css_w = 390, css_h = 844, cores = 5}) == QUALITY_PHONE;
+  #assert quality_device_class(QualityDevice.{touch = true, css_w = 390, css_h = 844, cores = 8, memory = 3}) == QUALITY_PHONE_WEAK;
+  // a tablet's short side: the screen's when it gives both, else the page's; 700 is a tablet
+  #assert quality_device_class(QualityDevice.{touch = true, screen_w = 0, screen_h = 1000, css_w = 800, css_h = 900}) == QUALITY_TABLET;
+  #assert quality_device_class(QualityDevice.{touch = true, screen_w = 1000, screen_h = 0, css_w = 800, css_h = 900}) == QUALITY_TABLET;
+  #assert quality_device_class(QualityDevice.{touch = true, screen_w = 700, screen_h = 1000, css_w = 390, css_h = 900}) == QUALITY_TABLET;
+  // a computer: a laptop with 2 cores or fewer or 2 GB or less
+  #assert quality_device_class(QualityDevice.{css_w = 1440, css_h = 900}) == QUALITY_DESKTOP;
+  #assert quality_device_class(QualityDevice.{css_w = 1440, css_h = 900, cores = 1}) == QUALITY_LAPTOP;
+  #assert quality_device_class(QualityDevice.{css_w = 1440, css_h = 900, cores = 3}) == QUALITY_DESKTOP;
+  #assert quality_device_class(QualityDevice.{css_w = 1440, css_h = 900, cores = 8, memory = 2}) == QUALITY_LAPTOP;
+  #assert quality_device_class(QualityDevice.{css_w = 1440, css_h = 900, cores = 8, memory = 3}) == QUALITY_DESKTOP;
+  #assert quality_start_rung(QualityDevice.{touch = true, css_w = 390, css_h = 844}, QUALITY_HIGH) == QUALITY_TIER_RUNG[QUALITY_HIGH];
+  // every name of every tier
+  #assert quality_parse("high") == QUALITY_HIGH && quality_parse("HIGH") == QUALITY_HIGH && quality_parse("MED") == QUALITY_MEDIUM && quality_parse("MEDIUM") == QUALITY_MEDIUM;
+  #assert quality_parse("low") == QUALITY_LOW && quality_parse("LOW") == QUALITY_LOW && quality_parse("AUTO") == QUALITY_AUTO && quality_parse("") == -1;
+  // the helpers: on a tie (0 and -0) each gives its second
+  z := 0.0f32; nz := -z;
+  #assert 1.0 / quality_lo(nz, z) > 0 && 1.0 / quality_hi(z, nz) < 0 && quality_lo(1, 2) == 1 && quality_hi(1, 2) == 2;
+  #assert quality_share(10, 2.0, 0) == 10;
+}
+
+#test "quality: the page's facts at their edges" {
+  // numbers: digits only, at most 1000000 before the point and five places after it
+  #assert quality_fact_num("x=1:", "x") == 1 && quality_fact_num("x=10000000", "x") == 1000000;
+  #assert abs(quality_fact_num("x=1.05", "x") - 1.05) < 0.0001 && abs(quality_fact_num("x=1.9", "x") - 1.9) < 0.0001;
+  #assert abs(quality_fact_num("x=1.5:", "x") - 1.5) < 0.0001 && quality_fact_num("x=0.000009", "x") == 0;
+  #assert quality_device_from_facts("dpr=0.01").dpr == 1 && abs(quality_device_from_facts("dpr=0.02").dpr - 0.02) < 0.0001;
+  // the query: from the first ? on, up to the next & or #
+  #assert quality_query("url=?quality=low", "quality") == "low" && quality_query("url=/a&quality=low?b=1", "quality") == "";
+  #assert quality_query("url=/p?quality", "quality") == "" && quality_query("url=/p?quality=low&x=1", "quality") == "low";
+  #assert quality_query("url=?ab&quality=low", "quality") == "low" && quality_query("url=/p?q=x", "q") == "x";
+  #assert quality_mode_from_facts("url=/p?quality=high\nquality=low") == QUALITY_HIGH && quality_mode_from_facts("url=/p?quality=high") == QUALITY_HIGH;
+  #assert quality_url_new("url=/p?quality=high\nquality=low");
+  // the settled fact: three numbers of up to three digits, digits only
+  #assert quality_settled_from_facts("settled=002/1/4", QUALITY_PHONE) == 4 && quality_settled_from_facts("settled=0002/1/4", QUALITY_PHONE) == -1;
+  #assert quality_settled_from_facts("settled=2//4", QUALITY_PHONE_WEAK) == -1 && quality_settled_from_facts("settled=2/1/10", QUALITY_PHONE) == 10;
+  #assert quality_settled_from_facts("settled=2/1/010", QUALITY_PHONE) == 10 && quality_settled_from_facts("settled=2/1/:", QUALITY_PHONE) == -1;
+  #assert quality_settled_from_facts("settled=2/1/0", QUALITY_PHONE) == 0 && quality_settled_from_facts("settled=2/1/9", QUALITY_PHONE) == 9;
+  #assert quality_settled_from_facts("settled=2/1/.", QUALITY_PHONE) == -1;
+  out: [16] u8; n := quality_settled_text(out[..], QUALITY_DESKTOP, 10); #assert cast(string) out[0..<n] == "2/4/10";
+  short: [2] u8; #assert quality_settled_text(short[..], QUALITY_DESKTOP, 11) == 2 && cast(string) short[0..<2] == "2/";
+  // pixels: none for a side that isn't over 0, even against an endless other side
+  big := 1.0e38f32; inf := big * 10;
+  #assert quality_start_pixels(QualityDevice.{css_w = 0, css_h = inf}, QUALITY_LOW) == 0 && quality_start_pixels(QualityDevice.{css_w = inf, css_h = 0}, QUALITY_LOW) == 0;
+  #assert quality_start_pixels(QualityDevice.{css_w = -0.5, css_h = 100}, QUALITY_LOW) == 0 && quality_start_pixels(QualityDevice.{css_w = 100, css_h = -0.5}, QUALITY_LOW) == 0;
+  #assert quality_start_pixels(QualityDevice.{css_w = 0.5, css_h = 100}, QUALITY_LOW) == 50 && quality_start_pixels(QualityDevice.{css_w = 100, css_h = 0.5}, QUALITY_LOW) == 50;
+  q: [1] Quality; quality_choose(q[..], QUALITY_LOW);
+  #assert quality_pixels(q[..], 0, inf) == 0 && quality_pixels(q[..], inf, 0) == 0 && quality_pixels(q[..], -0.5, 100) == 0 && quality_pixels(q[..], 100, -0.5) == 0;
+  #assert quality_pixels(q[..], 0.5, 100) == 50 && quality_pixels(q[..], 100, 0.5) == 50;
+  k := quality_knobs(q[..]); #assert k.scale == 1 && k.grass == QUALITY_GRASS[2] && k.post == QUALITY_POST[2] && k.crowd == QUALITY_CROWD[2];
+}
+
+#test "quality: a start, a pick and a step set what they say" {
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{frame_hz = 60}, QUALITY_AUTO);
+  #assert q[0].target_ms < f32(QUALITY_60) && q[0].budget == q[0].target_ms;   // 1000/60, a hair under QUALITY_60
+  quality_start(q[..], QualityDevice.{frame_hz = 120}, QUALITY_AUTO); #assert q[0].fast_avg == q[0].target_ms && q[0].slow_avg == q[0].target_ms;
+  // a start forgets the measured start and the kept rung
+  q[0].probe = 0.5; q[0].probed = true; q[0].probe_n = 9; q[0].probe_from = 11; q[0].probe_to = 6; q[0].told = 6;
+  quality_start(q[..], QualityDevice.{}, QUALITY_AUTO);
+  #assert q[0].probe == -1 && !q[0].probed && q[0].probe_n == 0 && q[0].probe_from == -1 && q[0].probe_to == -1 && q[0].told == -1;
+  // a mode that isn't one is AUTO at the device's rung
+  phone := QualityDevice.{css_w = 390, css_h = 844, touch = true};
+  quality_choose(q[..], QUALITY_LOW); quality_start(q[..], phone, 4);
+  #assert quality_auto(q[..]) && q[0].rung == QUALITY_CLASS_RUNG[QUALITY_PHONE];
+  // a kept rung: only one on the ladder
+  quality_start_settled(q[..], phone, QUALITY_AUTO, -1); #assert q[0].rung == QUALITY_CLASS_RUNG[QUALITY_PHONE] && q[0].start == q[0].rung && q[0].told == -1;
+  quality_start_settled(q[..], phone, QUALITY_AUTO, 12); #assert q[0].rung == QUALITY_CLASS_RUNG[QUALITY_PHONE] && q[0].start == q[0].rung && q[0].told == -1;
+  quality_start_settled(q[..], phone, QUALITY_AUTO, 0); #assert q[0].rung == 0 && q[0].start == 0 && q[0].told == 0;
+  quality_start_settled(q[..], phone, QUALITY_AUTO, 11); #assert q[0].rung == 11 && q[0].start == 11;
+  // a pick clears the governor's counters and waits and the 30 FPS budget; a mode that isn't one changes nothing
+  q[0].over = 1; q[0].burst = 1; q[0].on_time = 1; q[0].since = 1; q[0].slow = 1; q[0].fast = 1; q[0].wait[0] = 9; q[0].wait[11] = 9; q[0].budget = 33;
+  quality_choose(q[..], QUALITY_MEDIUM);
+  #assert q[0].over == 0 && q[0].burst == 0 && q[0].on_time == 0 && q[0].since == 0 && q[0].slow == 0 && q[0].fast == 0;
+  #assert q[0].wait[0] == 0 && q[0].wait[11] == 0 && q[0].budget == q[0].target_ms && q[0].rung == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  quality_choose(q[..], 4); #assert q[0].mode == QUALITY_MEDIUM && q[0].rung == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  // a step: never off the ladder; counted once; the counters cleared
+  q[0] = Quality.{rung = 11}; quality_step(q[..], 1); #assert q[0].rung == 11 && q[0].steps == 0;
+  q[0] = Quality.{rung = 0}; quality_step(q[..], -1); #assert q[0].rung == 0 && q[0].steps == 0;
+  q[0] = Quality.{rung = 5, steps = 2, since = 3, over = 1, burst = 1, on_time = 1}; quality_step(q[..], -1);
+  #assert q[0].rung == 4 && q[0].steps == 3 && q[0].since == 0 && q[0].over == 0 && q[0].burst == 0 && q[0].on_time == 0;
+  // a step up soon after a step up marks nothing failed, nor does a step of 0
+  q[0] = Quality.{rung = 5, time = 100, up_at = 95}; quality_step(q[..], 1); #assert q[0].rung == 6 && q[0].wait[5] == 0 && q[0].up_at == 100;
+  q[0] = Quality.{rung = 5, time = 100, up_at = 95}; quality_step(q[..], 0); #assert q[0].rung == 5 && q[0].wait[5] == 0 && q[0].up_at == 95;
+  // a step down QUALITY_FAILED_S after the step up, to the second, marks nothing failed; sooner does
+  q[0] = Quality.{rung = 6, time = 110, up_at = 100}; quality_step(q[..], -1); #assert q[0].rung == 5 && q[0].wait[6] == 0;
+  q[0] = Quality.{rung = 6, time = 109, up_at = 100}; quality_step(q[..], -1); #assert q[0].wait[6] == 2 * f32(QUALITY_UP_S);
+}
+
+#test "quality: the median of some frames" {
+  a := [3] f32.[3, 1, 5]; #assert quality_median(a[..]) == 3 && quality_median(a[0..<0]) == 0;
+  b := [3] f32.[2, 1, 3]; #assert quality_median(b[..]) == 2;
+  c := [3] f32.[1, 2, 3]; #assert quality_median(c[..]) == 2;
+  d := [4] f32.[4, 3, 2, 1]; #assert quality_median(d[..]) == 3;
+  e := [4] f32.[1, 2, 3, 4]; #assert quality_median(e[..]) == 3;
+  f := [5] f32.[2, 2, 1, 2, 3]; #assert quality_median(f[..]) == 2;
+}
+
+#test "quality: the measured start at its edges" {
+  phone := QualityDevice.{css_w = 390, css_h = 844, touch = true};
+  top := QUALITY_CLASS_RUNG[QUALITY_PHONE];
+  q: [1] Quality; quality_start(q[..], phone, QUALITY_AUTO);
+  // begun, then a tier picked before a frame: a second begin leaves it alone
+  quality_probe_begin(q[..]); quality_choose(q[..], QUALITY_LOW); quality_probe_begin(q[..]); #assert q[0].probe == 0 && !q[0].probed;
+  // a begin counts from none
+  quality_start(q[..], phone, QUALITY_AUTO); q[0].probe_n = 5; quality_probe_begin(q[..]); #assert q[0].probe == 0 && q[0].probe_n == 0;
+  // the first QUALITY_PROBE_SKIP_S, to the frame, isn't counted; past QUALITY_PROBE_N frames aren't either
+  quality_start(q[..], phone, QUALITY_AUTO); quality_probe_begin(q[..]);
+  _ := quality_frame(q[..], 0.15); _ = quality_frame(q[..], 0.15);
+  #assert q[0].probe == f32(QUALITY_PROBE_SKIP_S) && q[0].probe_n == 0;
+  _ = quality_frame(q[..], 0.0078125); #assert q[0].probe_n == 1;
+  for i: 0..<200 { _ = quality_frame(q[..], 0.0078125); }
+  #assert q[0].probed && q[0].probe_n == QUALITY_PROBE_N;
+  // it ends at QUALITY_PROBE_S to the frame; 8 frames are enough; a step says the rung changed
+  quality_start(q[..], phone, QUALITY_AUTO); quality_probe_begin(q[..]);
+  q[0].probe = 1.484375; q[0].probe_n = 7; for i: 0..<7 { q[0].probe_ms[i] = 40; }
+  #assert quality_frame(q[..], 0.015625) && q[0].probed && q[0].probe_n == 8 && q[0].rung < top && q[0].probe_from == top;
+  // no step: the frame goes on to the governor (still warming up)
+  quality_start(q[..], phone, QUALITY_AUTO); quality_probe_begin(q[..]);
+  q[0].probe = 1.484375; q[0].probe_n = 8; for i: 0..<8 { q[0].probe_ms[i] = 10; }
+  #assert !quality_frame(q[..], 0.015625) && q[0].probed && q[0].rung == top;
+  // a tier picked during it: no step at its end
+  quality_start(q[..], phone, QUALITY_AUTO); quality_probe_begin(q[..]); quality_choose(q[..], QUALITY_LOW);
+  q[0].probe_n = 8; for i: 0..<8 { q[0].probe_ms[i] = 40; } quality_probe_end(q[..]);
+  #assert q[0].rung == QUALITY_TIER_RUNG[QUALITY_LOW] && q[0].probe_from == -1;
+  // over by QUALITY_OVER exactly is not over
+  b16 := 16.0f32;
+  q[0] = Quality.{rung = 9, budget = 16, target_ms = 16, probe_n = 8};
+  for i: 0..<8 { q[0].probe_ms[i] = b16 * f32(QUALITY_OVER); } quality_probe_end(q[..]); #assert q[0].rung == 9 && q[0].steps == 0;
+  q[0] = Quality.{rung = 9, budget = 16, target_ms = 16, probe_n = 8};
+  for i: 0..<8 { q[0].probe_ms[i] = 17.5; } quality_probe_end(q[..]); #assert q[0].rung == 9;
+  // the first frame counts: four slow then four fast is a median of slow
+  q[0] = Quality.{rung = 11, budget = 16, target_ms = 16, probe_n = 8};
+  for i: 0..<4 { q[0].probe_ms[i] = 40; } for i: 4..<8 { q[0].probe_ms[i] = 10; }
+  quality_probe_end(q[..]); #assert q[0].rung < 11;
+  // a rung whose cost is just the need is low enough; the step clears the governor
+  q[0] = Quality.{rung = 11, budget = 16, target_ms = 16, probe_n = 8, steps = 3, since = 5, over = 1, burst = 1, on_time = 1, slow_avg = 99, fast_avg = 99};
+  for i: 0..<8 { q[0].probe_ms[i] = 40; } quality_probe_end(q[..]);
+  #assert q[0].rung == 6 && q[0].steps == 4 && q[0].since == 0 && q[0].over == 0 && q[0].burst == 0 && q[0].on_time == 0;
+  #assert q[0].slow_avg == 16 && q[0].fast_avg == 16 && q[0].probe_from == 11 && q[0].probe_to == 6;
+  // kept and reported at 20 s to the frame
+  q[0] = Quality.{probed = true, since = 20, rung = 4, told = 3}; #assert quality_settled_due(q[..]);
+  q[0] = Quality.{time = 20}; #assert quality_report_due(q[..]);
+}
+
+#test "quality: the report's frames and median at their edges" {
+  q: [1] Quality;
+  q[0] = Quality.{hist_n = 1}; q[0].hist[16] = 1; #assert quality_median_fps(q[..]) == 61;
+  q[0] = Quality.{hist_n = 1}; q[0].hist[0] = 1; #assert quality_median_fps(q[..]) == 2000;
+  q[0] = Quality.{hist_n = 2}; q[0].hist[10] = 1; q[0].hist[20] = 1; #assert quality_median_fps(q[..]) == 95;
+  q[0] = Quality.{hist_n = 3}; q[0].hist[10] = 1; q[0].hist[20] = 2; #assert quality_median_fps(q[..]) == 49;
+  q[0] = Quality.{hist_n = 5}; #assert quality_median_fps(q[..]) == 0;
+  // the frames from 10 s to 20 s, to the frame; a frame of 128 ms counts in the last bin
+  q[0] = Quality.{mode = QUALITY_LOW};
+  for i: 0..<100 { _ := quality_frame(q[..], 0.25); }
+  #assert q[0].time == 25 && q[0].hist_n == 40 && q[0].hist[QUALITY_HIST - 1] == 40;
+  q[0] = Quality.{mode = QUALITY_LOW};
+  for i: 0..<40 { _ := quality_frame(q[..], 0.25); }
+  _ := quality_frame(q[..], 0.128); #assert q[0].hist_n == 2 && q[0].hist[QUALITY_HIST - 1] == 2;
+}
+
+#test "quality: the governor at its edges" {
+  q: [1] Quality;
+  // a frame of 0, or longer than QUALITY_GAP_S, isn't counted and clears the over and burst time; one of QUALITY_GAP_S counts
+  q[0] = Quality.{over = 0.5, burst = 0.5}; #assert !quality_frame(q[..], 0) && q[0].over == 0 && q[0].burst == 0 && q[0].time == 0;
+  q[0] = Quality.{over = 0.5, burst = 0.5}; #assert !quality_frame(q[..], 0.5) && q[0].over == 0 && q[0].burst == 0;
+  q[0] = Quality.{}; _ := quality_frame(q[..], 0.25);
+  #assert q[0].time == 0.25 && abs(q[0].slow_avg - (f32(QUALITY_60) + (250 - f32(QUALITY_60)) * 0.25 / 2.25)) < 0.001;
+  // the warm-up ends at QUALITY_WARM_S to the frame
+  q[0] = Quality.{time = 2.984375, slow_avg = 15.625, fast_avg = 15.625}; _ = quality_frame(q[..], 0.015625);
+  #assert q[0].time == 3 && q[0].on_time > 0;
+  base := Quality.{time = 100, rung = 5, target_ms = 16, budget = 16, fallback_ms = 32, slow_avg = 15.625, fast_avg = 15.625};
+  b16 := 16.0f32;
+  // only the lowest rung counts toward the 30 FPS budget
+  q[0] = base; q[0].slow_avg = 30; q[0].slow = 2.99; _ = quality_frame(q[..], 0.015625); #assert q[0].budget == 16 && q[0].slow == 0;
+  // at the lowest rung, QUALITY_SLOW_S over to the frame: the 30 FPS budget, the counters cleared
+  q[0] = base; q[0].rung = 0; q[0].slow_avg = 30; q[0].slow = 2.984375; q[0].fast = 1; q[0].over = 0.5; q[0].on_time = 1;
+  #assert !quality_frame(q[..], 0.015625) && q[0].budget == 32 && q[0].slow == 0 && q[0].fast == 0 && q[0].over == 0 && q[0].on_time == 0;
+  // a budget not 1 ms under the 30 FPS one isn't moved to it
+  q[0] = base; q[0].rung = 0; q[0].budget = 31; q[0].slow_avg = 50; q[0].slow = 2.99; _ = quality_frame(q[..], 0.015625);
+  #assert q[0].budget == 31 && q[0].slow == 0;
+  q[0] = base; q[0].rung = 0; q[0].budget = 31.5; q[0].slow_avg = 50; q[0].slow = 2.99; _ = quality_frame(q[..], 0.015625);
+  #assert q[0].budget == 31.5 && q[0].slow == 0;
+  // the long average over by QUALITY_OVER exactly is neither over nor on time
+  q[0] = base; q[0].rung = 0; q[0].slow_avg = b16 * f32(QUALITY_OVER); q[0].on_time = 1; _ = quality_frame(q[..], 0.000000001);
+  #assert q[0].slow_avg == b16 * f32(QUALITY_OVER) && q[0].slow == 0 && q[0].over == 0 && q[0].on_time == 0;
+  q[0] = base; q[0].slow_avg = 30; q[0].on_time = 3; _ = quality_frame(q[..], 0.015625); #assert q[0].over > 0 && q[0].on_time == 0;
+  q[0] = base; q[0].over = 0.5; _ = quality_frame(q[..], 0.015625); #assert q[0].over == 0 && q[0].on_time > 0;
+  // on time by QUALITY_ON_TIME exactly is on time; a little more isn't
+  q[0] = base; q[0].slow_avg = b16 * f32(QUALITY_ON_TIME); _ = quality_frame(q[..], 0.000000001);
+  #assert q[0].slow_avg == b16 * f32(QUALITY_ON_TIME) && q[0].on_time > 0;
+  q[0] = base; q[0].slow_avg = 17; q[0].on_time = 1; _ = quality_frame(q[..], 0.000000001); #assert q[0].on_time == 0;
+  // the short average over by QUALITY_BURST exactly isn't a burst
+  q[0] = base; q[0].fast_avg = b16 * f32(QUALITY_BURST); _ = quality_frame(q[..], 0.000000001);
+  #assert q[0].fast_avg == b16 * f32(QUALITY_BURST) && q[0].burst == 0;
+  // at the 30 FPS budget: QUALITY_FAST_S on time at 60, to the frame, gives 60 back
+  q[0] = base; q[0].budget = 32; q[0].fast = 9.984375; q[0].on_time = 1;
+  #assert !quality_frame(q[..], 0.015625) && q[0].budget == 16 && q[0].fast == 0 && q[0].on_time == 0;
+  q[0] = base; q[0].budget = 17; q[0].fast = 9.984375; _ = quality_frame(q[..], 0.015625); #assert q[0].budget == 17 && q[0].fast == 9.984375;
+  q[0] = base; q[0].budget = 32; q[0].fast = 1; q[0].slow_avg = b16 * f32(QUALITY_ON_TIME); _ = quality_frame(q[..], 0.000000001);
+  #assert q[0].fast > 0 && q[0].budget == 32;
+  q[0] = base; q[0].budget = 32; q[0].fast = 1; q[0].slow_avg = 17; _ = quality_frame(q[..], 0.000000001); #assert q[0].fast == 0;
+  // a step down at QUALITY_SETTLE_S after the last, at QUALITY_BURST_S of burst, at QUALITY_DOWN_S over, each to the frame
+  q[0] = base; q[0].since = 0.484375; q[0].burst = 1; q[0].fast_avg = 50; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
+  q[0] = base; q[0].burst = 0.234375; q[0].fast_avg = 50; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
+  q[0] = base; q[0].over = 0.984375; q[0].slow_avg = 30; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
+  // a step up at QUALITY_UP_S on time, to the frame, to the top rung too
+  q[0] = base; q[0].rung = 10; q[0].on_time = 4.984375; #assert quality_frame(q[..], 0.015625) && q[0].rung == 11;
+  // quality_run counts each change, and runs to the time and no further
+  r1: [1] Quality; r1[0] = base; r2: [1] Quality; r2[0] = base;
+  n := quality_run(r1[..], 62.5, 2); m := 0; t := 0.0f32;
+  while t < 2 { if quality_frame(r2[..], 0.0625) { m += 1; } t += 0.0625; }
+  #assert n == m && n > 0 && r1[0].rung == r2[0].rung && r1[0].time == 102;
+  q[0] = Quality.{mode = QUALITY_LOW}; #assert quality_run(q[..], 250, 1) == 0 && q[0].time == 1;
 }
