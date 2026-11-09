@@ -3841,8 +3841,8 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
 }
 // No OS cursor while Experimental's crosshair is up (a drawn bow, mouselook's reticle): the crosshair is the pointer.
 lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) {
-  c := s[0].creator[0];
-  if c.on && c.experimental && !c.walk.on && (s[0].xc[0].draw[0].on || c.aim > 0.01 || c.ml[0].shown > 0.01) { return 4; }
+  c := s[0].creator[..];
+  if c[0].on && c[0].experimental && !c[0].walk.on && (s[0].xc[0].draw[0].on || c[0].aim > 0.01 || c[0].ml[0].shown > 0.01) { return 4; }
   return 0;
 }
 // Experimental's mouselook, the host's face (aethyr/cam/mouselook.coax): in the world while you stand

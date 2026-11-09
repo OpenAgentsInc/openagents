@@ -318,18 +318,18 @@ xc_aim_kind :: (s: [] Lab, a: FbAb) -> XcAim { return xc_aim_for(a, s[0].xc[0].b
 // target within reach in a 30 degree cone ahead, the nearest first (angle-weighted), ties by id. The
 // SRD still decides what the spell does; this only says at whom. -1 when none.
 xc_attend :: (s: [] Lab, fx: f32, fz: f32, reach: f32) -> int {
-  cr := s[0].creator[0]; h := cr.hostiles[0];
-  y := xmeadow.exp_height(cr.player_x, cr.player_z) + 1.2;
+  cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  y := xmeadow.exp_height(cr[0].player_x, cr[0].player_z) + 1.2;
   // the living monsters in reach you can see (not through a dungeon wall), within the shared
   // answer's ATTN_CANDIDATES
   ts: [attn.ATTN_CANDIDATES] attn.AttnTarget; tn := 0;
   for i: 0..<XC_FOES {
-    e := h.enemies[i];
-    dx := e.x - cr.player_x; dz := e.z - cr.player_z;
-    if e.dead || dx * dx + dz * dz > (reach + 1) * (reach + 1) || tn >= ts.count || !hostile.hostile_sees(e, cr.player_x, cr.player_z) { continue; }
+    e := h[0].enemies[i];
+    dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
+    if e.dead || dx * dx + dz * dz > (reach + 1) * (reach + 1) || tn >= ts.count || !hostile.hostile_sees(e, cr[0].player_x, cr[0].player_z) { continue; }
     ts[tn] = attn.AttnTarget.{id = i, gen = 1, caps = attn.ATTN_ACTION, at = asp.world_point(e.x, y, e.z), radius = 0, valid = true}; tn += 1;
   }
-  q := attn.AttnQuery.{origin = asp.world_point(cr.player_x, y, cr.player_z), forward = asp.world_point(fx, 0, fz), need = attn.ATTN_ACTION, acquire = reach, acquire_cos = 0.9659};
+  q := attn.AttnQuery.{origin = asp.world_point(cr[0].player_x, y, cr[0].player_z), forward = asp.world_point(fx, 0, fz), need = attn.ATTN_ACTION, acquire = reach, acquire_cos = 0.9659};
   c: aq.Colliders; c.ground = -1000;   // the meadow fight has no walls between you and a monster
   return attn.attn_step(attn.AttnState.{}, q, ts[0..<tn], c, 0, false, false).target;
 }
@@ -338,18 +338,18 @@ xc_attend :: (s: [] Lab, fx: f32, fz: f32, reach: f32) -> int {
 // the hold, kept through a second of being out of reach (the grace), and released at once when it falls.
 XC_LOCK_HOLD :: 16; XC_LOCK_GRACE :: 64;
 xc_lock_query :: (s: [] Lab) -> attn.AttnQuery {
-  cr := s[0].creator[0]; y := xmeadow.exp_height(cr.player_x, cr.player_z) + 1.2;
-  return attn.AttnQuery.{origin = asp.world_point(cr.player_x, y, cr.player_z), forward = asp.world_point(sin(cr.player_face), 0, cos(cr.player_face)),
+  cr := s[0].creator[..]; y := xmeadow.exp_height(cr[0].player_x, cr[0].player_z) + 1.2;
+  return attn.AttnQuery.{origin = asp.world_point(cr[0].player_x, y, cr[0].player_z), forward = asp.world_point(sin(cr[0].player_face), 0, cos(cr[0].player_face)),
     need = attn.ATTN_LOCK, acquire = 0, retain = 24, acquire_cos = 1, retain_cos = -1, rise = 6, hold = XC_LOCK_HOLD, grace = XC_LOCK_GRACE};
 }
 // The living monsters within the hold's reach, the held one first, up to the shared answer's
 // ATTN_CANDIDATES; how many.
 xc_lock_targets :: (s: [] Lab, out: [] attn.AttnTarget) -> int {
-  cr := s[0].creator[0]; h := cr.hostiles[0]; held := s[0].xc[0].lock.target; n := 0;
+  cr := s[0].creator[..]; h := cr[0].hostiles[..]; held := s[0].xc[0].lock.target; n := 0;
   for pass: 0..<2 { for i: 0..<XC_FOES {
     if (pass == 0) != (i == held) { continue; }
-    e := h.enemies[i];
-    dx := e.x - cr.player_x; dz := e.z - cr.player_z;
+    e := h[0].enemies[i];
+    dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
     if n >= out.count || (pass == 1 && (e.dead || dx * dx + dz * dz > 25 * 25)) { continue; }   // the held one always, so its range and fall are judged
     out[n] = attn.AttnTarget.{id = i, gen = 1, caps = attn.ATTN_LOCK | attn.ATTN_ACTION, at = asp.world_point(e.x, xmeadow.exp_height(e.x, e.z) + 1.2, e.z), radius = 0.35, valid = !e.dead}; n += 1;
   } }
@@ -377,18 +377,18 @@ xc_lock_step :: (s: [] Lab) {
 // other monsters and you go on. Actor 0 is you, 1 to 6 the monsters.
 XC_STOP_STRUCK :: 5; XC_STOP_STRIKER :: 4;
 xc_stop_hit :: (s: [] Lab, foe: int, kinds: u32) {
-  x := s[0].xc[..]; cr := s[0].creator[0]; e := cr.hostiles[0].enemies[foe];
-  dx := cr.player_x - e.x; dz := cr.player_z - e.z; l := sqrt(dx * dx + dz * dz);
+  x := s[0].xc[..]; cr := s[0].creator[..]; e := cr[0].hostiles[0].enemies[foe];
+  dx := cr[0].player_x - e.x; dz := cr[0].player_z - e.z; l := sqrt(dx * dx + dz * dz);
   toward := ifx l > 0.0001 then asp.world_point(dx / l, 0, dz / l) else asp.world_point(0, 0, 1);
   a := react.AttackAttrs.{kinds = kinds, stop = react.HitStop.{ticks = XC_STOP_STRUCK, scope = react.StopScope.target}};
   r := react.react_decide(a, react.TargetResponse.{}, asp.world_point(e.face_x, 0, e.face_z), toward, 1);
-  x[0].stops = react.react_stop_add(x[0].stops, r, 0, 1 + foe, xc_tick(cr.clock));
+  x[0].stops = react.react_stop_add(x[0].stops, r, 0, 1 + foe, xc_tick(cr[0].clock));
 }
 xc_stop_striker :: (s: [] Lab, foe: int) {
-  x := s[0].xc[..]; cr := s[0].creator[0];
+  x := s[0].xc[..]; cr := s[0].creator[..];
   claw := react.AttackAttrs.{kinds = react.DMG_SLASH, stop = react.HitStop.{ticks = XC_STOP_STRIKER, scope = react.StopScope.source}};
-  r := react.react_decide(claw, react.TargetResponse.{}, asp.world_point(sin(cr.player_face),0,cos(cr.player_face)),asp.world_point(0,0,1),1);
-  x[0].stops = react.react_stop_add(x[0].stops,r,1+foe,0,xc_tick(cr.clock));
+  r := react.react_decide(claw, react.TargetResponse.{}, asp.world_point(sin(cr[0].player_face),0,cos(cr[0].player_face)),asp.world_point(0,0,1),1);
+  x[0].stops = react.react_stop_add(x[0].stops,r,1+foe,0,xc_tick(cr[0].clock));
 }
 xc_stops_step :: (s: [] Lab) {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; now := xc_tick(cr[0].clock);
@@ -401,22 +401,22 @@ xc_stops_step :: (s: [] Lab) {
 }
 // Ability a's aim from where you stand and face: its kind, its reach, your forward and its monster.
 xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
-  cr := s[0].creator[0]; h := cr.hostiles[0];
+  cr := s[0].creator[..]; h := cr[0].hostiles[..];
   m := xc_aim_kind(s, a);
-  m.fx = sin(cr.player_face); m.fz = cos(cr.player_face);   // aethyr/walk.coax: you face atan2(x, z)
+  m.fx = sin(cr[0].player_face); m.fz = cos(cr[0].player_face);   // aethyr/walk.coax: you face atan2(x, z)
   if m.kind == XC_AIM_SELF { return m; }
   best := 1e9f32;
   for i: 0..<XC_FOES {
-    e := h.enemies[i];
+    e := h[0].enemies[i];
     if e.dead { continue; }
-    dx := e.x - cr.player_x; dz := e.z - cr.player_z;
+    dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
     along := dx * m.fx + dz * m.fz; side := abs(dx * m.fz - dz * m.fx); d := sqrt(dx * dx + dz * dz);
     hit := false;
     if m.kind == XC_AIM_BOLT { hit = along > 0 && along <= m.reach + f32(XC_BODY) && (side <= f32(XC_BODY) || side <= along * f32(XC_ASSIST)); }
     else if m.kind == XC_AIM_MELEE { hit = d <= m.reach && along >= d * 0.7071; }
     else if m.kind == XC_AIM_AREA { hit = d <= hi(m.reach, 1) && along >= d * 0.9659; }   // an area's point: 30 degrees
     key := ifx m.kind == XC_AIM_BOLT then along else d;
-    if hit && key < best && hostile.hostile_sees(e, cr.player_x, cr.player_z) { best = key; m.foe = i; }   // not through a wall
+    if hit && key < best && hostile.hostile_sees(e, cr[0].player_x, cr[0].player_z) { best = key; m.foe = i; }   // not through a wall
   }
   if m.kind == XC_AIM_CONE { m.foe = xc_attend(s, m.fx, m.fz, hi(m.reach, 1)); }
   if m.kind == XC_AIM_AREA {
@@ -470,11 +470,11 @@ xc_truth_project :: (s:[]Lab,new_zones:int) {
 // Restore the world's coordinate frame after a facing-relative cube, so other
 // ongoing areas and later combat steps continue to use world-aligned squares.
 xc_sync_world :: (s: [] Lab) {
-  b := s[0].xc[0].b[..]; cr := s[0].creator[0];
+  b := s[0].xc[0].b[..]; cr := s[0].creator[..];
   rs_place(b,0,XC_MID,XC_MID);
   for i: 0..<XC_FOES {
-    e := cr.hostiles[0].enemies[i];
-    qx := xc_square(e.x-cr.player_x); qz := xc_square(e.z-cr.player_z);
+    e := cr[0].hostiles[0].enemies[i];
+    qx := xc_square(e.x-cr[0].player_x); qz := xc_square(e.z-cr[0].player_z);
     if e.dead || qx == XC_AWAY || qz == XC_AWAY { qx = XC_AWAY; qz = XC_AWAY; }
     rs_place(b, i+1, qx, qz);
   }
@@ -926,8 +926,8 @@ XC_BOW_LOOK :: 150.0;    // m the crosshair's ray looks for what it points at
 XC_BOW_PAST :: 60.0;     // and where it points when it meets nothing
 XC_BOW_BODY :: 0.42;     // m round a monster's middle an arrow meets it (times its scale)
 xc_has_bow :: (s: [] Lab) -> bool {
-  x := s[0].xc[0]; cr := s[0].creator[0];
-  return cr.experimental && x.started && xc_kit(x.klass) == XC_KIT_BOW && !cr.walk.on && cr.hostiles[0].hp > 0;
+  x := s[0].xc[..]; cr := s[0].creator[..];
+  return cr[0].experimental && x[0].started && xc_kit(x[0].klass) == XC_KIT_BOW && !cr[0].walk.on && cr[0].hostiles[0].hp > 0;
 }
 // Your pace while drawn (fivelab.coax lab_move_world): down to a walk as the aim comes in.
 xc_bow_pace :: (s: [] Lab) -> f32 { return bow.bow_pace(s[0].xc[0].draw[0]); }
@@ -958,8 +958,8 @@ xc_dash_frame :: (s: [] Lab) {
 }
 // The squares between you and monster foe, along a line: its true distance in 5-foot squares.
 xc_bow_squares :: (s: [] Lab, foe: int) -> int {
-  cr := s[0].creator[0]; e := cr.hostiles[0].enemies[foe];
-  dx := e.x - cr.player_x; dz := e.z - cr.player_z;
+  cr := s[0].creator[..]; e := cr[0].hostiles[0].enemies[foe];
+  dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
   q := cast(int) floor(sqrt(dx * dx + dz * dz) / f32(XC_SQ) + 0.5);
   return ifx q < 1 then 1 else q;
 }
@@ -995,10 +995,10 @@ xc_bow_cancel :: (s: [] Lab) -> bool {
 // XC_BOW_LOOK, else XC_BOW_PAST along it; and that monster, -1 none.
 XcBowAim :: struct { at: [3] f32; foe: int = -1; }
 xc_bow_point :: (s: [] Lab) -> XcBowAim {
-  x := s[0].xc[0]; cr := s[0].creator[0]; h := cr.hostiles[0]; u := x.u;
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; u := x[0].u;
   eye := [3] f32.[u[16], u[17], u[18]]; f := [3] f32.[u[20], u[21], u[22]];
   // past you: from where the ray comes level with you
-  t0 := (cr.player_x - eye[0]) * f[0] + (cr.player_z - eye[2]) * f[2]; if t0 < 0.5 { t0 = 0.5; }
+  t0 := (cr[0].player_x - eye[0]) * f[0] + (cr[0].player_z - eye[2]) * f[2]; if t0 < 0.5 { t0 = 0.5; }
   r := XcBowAim.{at = [3] f32.[eye[0] + f[0] * f32(XC_BOW_PAST), eye[1] + f[1] * f32(XC_BOW_PAST), eye[2] + f[2] * f32(XC_BOW_PAST)]};
   best := f32(XC_BOW_LOOK);
   // the ground: in half-metre steps, then halved down to a centimetre
@@ -1016,7 +1016,7 @@ xc_bow_point :: (s: [] Lab) -> XcBowAim {
   if best >= f32(XC_BOW_LOOK) { r.at = [3] f32.[eye[0] + f[0] * f32(XC_BOW_PAST), eye[1] + f[1] * f32(XC_BOW_PAST), eye[2] + f[2] * f32(XC_BOW_PAST)]; }
   // a monster nearer than that
   for i: 0..<XC_FOES {
-    e := h.enemies[i]; if e.dead { continue; }
+    e := h[0].enemies[i]; if e.dead { continue; }
     dx := e.x - eye[0]; dz := e.z - eye[2]; along := dx * f[0] + dz * f[2];
     if along < t0 || along > best + 2 { continue; }
     g := meadow_y(e.x, e.z); sc := e.scale;
@@ -1112,9 +1112,9 @@ xc_bow_step :: (s: [] Lab, dt: f32) {
 }
 // The arrows in the air and stuck, as puffs (aethyr/fx/puff.coax fxp_arrow_at).
 xc_bow_puffs :: (s: [] Lab, pf: [] FxPuffs) {
-  x := s[0].xc[0]; now := s[0].creator[0].clock; u := x.u;
+  x := s[0].xc[..]; now := s[0].creator[0].clock; u := x[0].u;
   for i: 0..<bow.ARROWS {
-    a := x.arrows[0].a[i];
+    a := x[0].arrows[0].a[i];
     if a.state != bow.ARROW_FLYING && a.state != bow.ARROW_STUCK { continue; }
     at := a.at; dir := a.dir;
     if a.state == bow.ARROW_FLYING { at = bow.arrow_pos(a, now - a.t0); dir = bow.arrow_dir(a, now - a.t0); }
@@ -1126,11 +1126,11 @@ xc_bow_puffs :: (s: [] Lab, pf: [] FxPuffs) {
 // crosshair while the mouse looks (aethyr/cam/mouselook.coax), a little warmer over a monster, and the
 // bow's arms in with the aim, closing as the draw builds. One crosshair for both.
 xc_crosshair :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
-  x := s[0].xc[0]; n := at; ml := s[0].creator[0].ml[0];
-  if !x.seen { return n; }
-  cx := x.u[23]; cy := x.u[27]; hs := s[0].creator[0].hostiles[..];
+  x := s[0].xc[..]; n := at; ml := s[0].creator[0].ml[0];
+  if !x[0].seen { return n; }
+  cx := x[0].u[23]; cy := x[0].u[27]; hs := s[0].creator[0].hostiles[..];
   st: [reticle.RETICLE_MAX] reticle.ReticleStroke;
-  m := reticle.reticle_strokes(st[..], cx, cy, k, ml.shown * 0.9, bow.bow_aim(x.draw[0]), bow.bow_strength(x.draw[0], s[0].creator[0].clock));
+  m := reticle.reticle_strokes(st[..], cx, cy, k, ml.shown * 0.9, bow.bow_aim(x[0].draw[0]), bow.bow_strength(x[0].draw[0], s[0].creator[0].clock));
   if m == 0 { return n; }
   over := false;
   for i: 0..<XC_FOES {
@@ -1227,10 +1227,10 @@ xc_swing_step :: (s: [] Lab, now: int) {
 // the weapon matrix that draws it. Not ready (no bake): the fallback arc, flagged.
 XcBlade :: struct { pose: sense.SensorPose; fallback: bool; }
 xc_blade :: (s: [] Lab, t: f32) -> XcBlade {
-  cr := s[0].creator[0]; b := s[0].bodies[..];
-  k := cr.weapon; clip := cr.swing_clip;
+  cr := s[0].creator[..]; b := s[0].bodies[..];
+  k := cr[0].weapon; clip := cr[0].swing_clip;
   if k < 0 || k >= cc.CC_KITS { k = 0; }
-  y := xmeadow.exp_height(cr.player_x, cr.player_z) + cr.player_y;
+  y := xmeadow.exp_height(cr[0].player_x, cr[0].player_z) + cr[0].player_y;
   dur := figs.bd_seconds(clip);
   if !b[0].ready || clip < 0 || dur <= 0 {
     // the fallback: a blade from the shoulder sweeping 2 radians right to left ahead of you across the window
@@ -1239,22 +1239,22 @@ xc_blade :: (s: [] Lab, t: f32) -> XcBlade {
       ft = (t * f32(XC_TICK) - f32(s[0].xc[0].swing.start) - f32(d.events[0].tick)) / f32(d.events[2].tick - d.events[0].tick);
       ft = ifx ft < 0 then 0 else ifx ft > 1 then 1 else ft;
     }
-    ang := cr.player_face + 1.0 - 2.0 * ft;
+    ang := cr[0].player_face + 1.0 - 2.0 * ft;
     reach := XC_BLADE_TIP[k] + 0.45;
-    base := asp.world_point(cr.player_x + sin(ang) * 0.3, y + 1.2, cr.player_z + cos(ang) * 0.3);
-    tip := asp.world_point(cr.player_x + sin(ang) * reach, y + 1.2, cr.player_z + cos(ang) * reach);
+    base := asp.world_point(cr[0].player_x + sin(ang) * 0.3, y + 1.2, cr[0].player_z + cos(ang) * 0.3);
+    tip := asp.world_point(cr[0].player_x + sin(ang) * reach, y + 1.2, cr[0].player_z + cos(ang) * reach);
     return XcBlade.{pose = sense.SensorPose.{a = base, b = tip}, fallback = true};
   }
   n := figs.bd_frames(clip);
-  u := (t - cr.swing_at) / dur * f32(n) - 0.5;
+  u := (t - cr[0].swing_at) / dur * f32(n) - 0.5;
   if u < 0 { u = 0; } if u > f32(n - 1) { u = f32(n - 1); }
   f0 := cast(int) floor(u); f1 := ifx f0 + 1 < n then f0 + 1 else f0; mix := u - f32(f0);
-  r0 := f32(figs.bd_row(cr.female, clip, f0)); r1 := f32(figs.bd_row(cr.female, clip, f1));
-  o := ifx cr.female then 3 else 0;
+  r0 := f32(figs.bd_row(cr[0].female, clip, f0)); r1 := f32(figs.bd_row(cr[0].female, clip, f1));
+  o := ifx cr[0].female then 3 else 0;
   hr := figs.bd_hand(b, r0, r1, mix, false); hand := [3]f32.[b[0].hand_at[o], b[0].hand_at[o + 1], b[0].hand_at[o + 2]];
-  at := [3]f32.[cr.player_x, y, cr.player_z];
-  w := ifx cc.CC_KIT_TWO[k] then cc.two_hand_matrix(hr, figs.bd_hand(b, r0, r1, mix, true), hand, [3]f32.[b[0].hand_at[6 + o], b[0].hand_at[7 + o], b[0].hand_at[8 + o]], k, cr.player_face, at)
-    else cc.weapon_matrix(hr, hand, k, cr.player_face, at);
+  at := [3]f32.[cr[0].player_x, y, cr[0].player_z];
+  w := ifx cc.CC_KIT_TWO[k] then cc.two_hand_matrix(hr, figs.bd_hand(b, r0, r1, mix, true), hand, [3]f32.[b[0].hand_at[6 + o], b[0].hand_at[7 + o], b[0].hand_at[8 + o]], k, cr[0].player_face, at)
+    else cc.weapon_matrix(hr, hand, k, cr[0].player_face, at);
   l := XC_BLADE_TIP[k] / cc.CC_KIT_SCALE[k];
   base := asp.world_point(w[0], w[1], w[2]);
   tip := asp.world_point(w[0] + w[6] * l, w[1] + w[7] * l, w[2] + w[8] * l);
@@ -1314,16 +1314,16 @@ xc_whiff :: (s: [] Lab, k: int) {
 // One cue heard where it happens: softer the farther it is, panned the way the camera faces.
 xc_cue :: (s: [] Lab, name: string, gain: f32, x: f32, z: f32, rate: f32) {
   if name.count == 0 { return; }
-  cr := s[0].creator[0];
+  cr := s[0].creator[..];
   xc:=s[0].xc[..]; b:=xc[0].b[..];
   f:=rs_familiar_observer(b,0);
   borrowed:=f>0 && !rs_has(b[0].c[f],RS_DEAFENED);
   if !borrowed && b[0].n>0 && rs_has(b[0].c[0],RS_DEAFENED) { return; }
-  dx := x - (ifx borrowed then xc[0].familiar_x else cr.player_x);
-  dz := z - (ifx borrowed then xc[0].familiar_z else cr.player_z);
+  dx := x - (ifx borrowed then xc[0].familiar_x else cr[0].player_x);
+  dz := z - (ifx borrowed then xc[0].familiar_z else cr[0].player_z);
   d := sqrt(dx * dx + dz * dz);
   pan := 0.0f32;
-  if d > 0.5 { pan = (dx * cos(cr.yaw) - dz * sin(cr.yaw)) / d * 0.7; }
+  if d > 0.5 { pan = (dx * cos(cr[0].yaw) - dz * sin(cr[0].yaw)) / d * 0.7; }
   exsound.experimental_sound_play(s[0].experimental_audio[..], name, gain / (1 + d / 10), pan, rate);
 }
 // A monster's voice when it is hurt or dies: the imp shrieks, the gremlin snarls; the bigger
@@ -1335,20 +1335,20 @@ xc_voice :: (s: [] Lab, i: int, died: bool) {
   xc_cue(s, name, (ifx died then 0.6f32 else 0.5f32) * (ifx e.scale > 2 then 1.3f32 else 1.0f32), e.x, e.z, 1 / sqrt(e.scale));
 }
 xc_cast_sound :: (s: [] Lab, a: FbAb) {
-  cr := s[0].creator[0]; d := xc_sound(a, s[0].xc[0].klass);
-  xc_cue(s, d.start, 0.55, cr.player_x, cr.player_z, d.rate);
-  xc_cue(s, d.layer, 0.32, cr.player_x, cr.player_z, d.rate);
+  cr := s[0].creator[..]; d := xc_sound(a, s[0].xc[0].klass);
+  xc_cue(s, d.start, 0.55, cr[0].player_x, cr[0].player_z, d.rate);
+  xc_cue(s, d.layer, 0.32, cr[0].player_x, cr[0].player_z, d.rate);
 }
 // Slot k used now: the engine resolves it at what it aims at (xc_aim). True when it was used.
 xc_use :: (s: [] Lab, k: int) -> bool { return xc_use_on(s, k, -2); }
 // Whether the monster you clicked still stands within reach metres and in sight; a fallen one is let go.
 xc_pick_live :: (s: [] Lab, reach: f32) -> bool {
-  x := s[0].xc[..]; cr := s[0].creator[0]; p := x[0].picked;
+  x := s[0].xc[..]; cr := s[0].creator[..]; p := x[0].picked;
   if p < 0 || p >= XC_FOES { return false; }
-  e := cr.hostiles[0].enemies[p];
+  e := cr[0].hostiles[0].enemies[p];
   if e.dead { x[0].picked = -1; return false; }
-  dx := e.x - cr.player_x; dz := e.z - cr.player_z;
-  return dx * dx + dz * dz <= (reach + 1) * (reach + 1) && hostile.hostile_sees(e, cr.player_x, cr.player_z);
+  dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
+  return dx * dx + dz * dz <= (reach + 1) * (reach + 1) && hostile.hostile_sees(e, cr[0].player_x, cr[0].player_z);
 }
 // A spell slot's choices (#13038), in the bar's own style: its slot level in the top right corner and
 // its option along the bottom edge. A tap there steps to the next choice instead of casting; the
