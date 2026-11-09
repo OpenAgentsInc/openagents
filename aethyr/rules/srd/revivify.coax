@@ -1,0 +1,66 @@
+// Revivify, SRD 5.2.1 p. 159. A recorded combat death is distinct from an
+// actor that is absent, was removed, or arrived with an unknown cause of death.
+#authority;
+
+rs_record_combat_death :: (b:[]RsBattle,j:int) #effects(all) {
+  b[0].c[j].combat_death_at=b[0].clock;
+}
+
+rs_revivify_ready :: (b:[]RsBattle,i:int,j:int)->bool #effects(all) {
+  if j<0 || j>=b[0].n { return false; }
+  c:=b[0].c[j];
+  return c.dead && c.hp==0 && c.hp_max>0 && c.combat_death_at>=0 &&
+    c.combat_death_at<=b[0].clock && b[0].clock-c.combat_death_at<=60 &&
+    c.x>=0 && c.y>=0 && rs_feet_to(b,i,j)/RS_SQUARE<=1 && rs_cover_targetable(b,i,j);
+}
+
+rs_revivify_apply :: (b:[]RsBattle,i:int,j:int) #effects(all) {
+  c:=b[0].c[j..<j+1];
+  c[0].dead=false; c[0].combat_death_at=-1; c[0].stable_due=0;
+  rs_increase_hp(c,1);
+  l:[1]RsLine;
+  rs_add_name(l[..],b,j); rs_add_text(l[..]," returns to life with 1 Hit Point");
+  rs_tell(b,RS_EV_UP,SP_REVIVIFY,i,j,1,0,l[..]);
+}
+
+#test "Revivify accepts the last second of a combat death and preserves Prone" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  i:=rs_add(b[..],rs_cleric("Healer",0,5),1,1);
+  j:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
+  b[0].clock=12;
+  rs_damage(b[..],-1,j,c[j].hp+c[j].hp_max,RS_SLASHING,false,-1);
+  #assert c[j].combat_death_at==12;
+  b[0].clock=72;
+  #assert rs_revivify_ready(b[..],i,j);
+  rs_start_turn(b[..],i);
+  c[i].materials[0]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_REVIVIFY],count=1};
+  picks:=[1]int.[j];
+  c[j].stable_due=9;
+  #assert rs_cast_creatures(b[..],i,SP_REVIVIFY,3,picks[..],false);
+  #assert c[j].hp==1 && !c[j].dead && c[j].combat_death_at==-1 && c[j].stable_due==0;
+  #assert rs_has(c[j],RS_PRONE) && !rs_has(c[j],RS_UNCONSCIOUS);
+  e:=rs_recent(b[0].book[0],0);
+  #assert e.kind==RS_EV_UP && e.spell==SP_REVIVIFY && e.by==i && e.to==j && e.amount==1 && e.damage==0;
+  #assert cast(string)e.text[0..<e.text_n]=="Ally returns to life with 1 Hit Point";
+}
+
+#test "Revivify excludes absent, future, unknown, blocked and out-of-touch corpses" {
+  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  j:=rs_add(b[..],rs_fighter("Ally",0,1),0,0);
+  i:=rs_add(b[..],rs_cleric("Healer",0,5),1,1);
+  #assert !rs_revivify_ready(b[..],i,-1) && !rs_revivify_ready(b[..],i,2);
+  c[j].dead=true; c[j].hp=0;
+  #assert !rs_revivify_ready(b[..],i,j);
+  for mode:0..<9 {
+    c[j].combat_death_at=ifx mode==1 then 11 else 0;
+    c[j].hp=ifx mode==2 then 1 else 0;
+    c[j].hp_max=ifx mode==3 then 0 else 1;
+    c[j].dead=mode!=4;
+    x:=ifx mode==5 then -1 else ifx mode==7 then 3 else 0;
+    y:=ifx mode==6 then -1 else 0;
+    rs_place(b[..],j,x,y);
+    rs_cover_clear(b[..]);
+    if mode==8 { _:=rs_cover_put(b[..],i,j,RS_COVER_TOTAL); }
+    #assert rs_revivify_ready(b[..],i,j)==(mode==0);
+  }
+}

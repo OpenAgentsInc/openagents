@@ -43,7 +43,8 @@ SP_AID :: 85;
 SP_GUIDANCE :: 86;
 SP_PROTECTION_GOOD_EVIL :: 87;
 SP_ZONE_OF_TRUTH :: 88;
-RS_MORE_END :: 89;
+SP_REVIVIFY :: 89;
+RS_MORE_END :: 90;
 
 // A record's fields, the steps after.
 rs_more :: (id: string, name: string, level: int, school: string, classes: string, time: int, range_ft: int,
@@ -291,6 +292,10 @@ rs_more_spell :: (i: int) -> RsSpell {
     s = rs_more("zone-of-truth", "Zone of Truth", 2, "Enchantment", "Bard, Cleric, Paladin", RS_T_ACTION, 60, "10 minutes", 600, false, RS_A_SPHERE, 15);
     s.components = "V, S"; s.page = 175;
     s.steps[0] = rs_step(RS_S_TRUTH, 0, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_REVIVIFY {
+    s = rs_more("revivify", "Revivify", 3, "Necromancy", "Cleric, Druid, Paladin, Ranger", RS_T_ACTION, 5, "Instantaneous", 0, false, RS_A_NONE, 0);
+    s.components = "V, S, M (a diamond worth 300+ GP, which the spell consumes)"; s.page = 159;
+    s.steps[0] = rs_step(RS_S_REVIVE, 0, 0, 0, 0); s.step_n = 1;
   }
   return s;
 }

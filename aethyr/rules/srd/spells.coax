@@ -64,6 +64,7 @@ RS_S_HALT :: 29;      // Command's Halt: on a failed save, until the end of the 
                       // no action or Bonus Action
 RS_S_RESTORE :: 30;   // end one eligible condition, chosen by the request
 RS_S_AID :: 31;       // a more current and maximum HP for the duration, per slot above first
+RS_S_REVIVE :: 33;    // return an admitted corpse to life
 RS_S_TRUTH :: 32;     // Zone of Truth rolls on entry and at turn start
 RS_ON_SAVE_HALF :: 1; RS_ON_SAVE_NONE :: 0;
 

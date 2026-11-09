@@ -454,3 +454,54 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   #assert rs_cast(c[..],a,SP_SHATTER,2,8,5,-1);
   #assert c[0].dice[0].rolled - before == 2 + 3;   // two d20s at Disadvantage, then 3d8
 }
+
+#test "Revivify returns a recently dead creature at one Hit Point and spends one diamond" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  healer:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
+  ally:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
+  foe:=rs_add(b[..],rs_fighter("Foe",1,1),3,1);
+  b[0].clock=20;
+  rs_damage(b[..],foe,ally,c[ally].hp+c[ally].hp_max,RS_SLASHING,false,-1);
+  #assert c[ally].dead && c[ally].hp==0;
+  b[0].clock=79;
+  rs_start_turn(b[..],healer);
+  slots:=c[healer].slots[3];
+  #assert !rs_cast(b[..],healer,SP_REVIVIFY,3,0,0,ally);
+  #assert c[ally].dead && c[healer].slots[3]==slots && !b[0].turn.action;
+  c[healer].materials[0]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_REVIVIFY],count=1};
+  #assert rs_cast(b[..],healer,SP_REVIVIFY,3,0,0,ally);
+  #assert !c[ally].dead && c[ally].hp==1 && c[ally].death_ok==0 && c[ally].death_fail==0;
+  #assert c[healer].materials[0].count==0 && c[healer].slots[3]==slots-1;
+}
+
+#test "Revivify refuses an older death and a living target before spending" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  healer:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
+  ally:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
+  living:=rs_add(b[..],rs_fighter("Living",0,1),1,2);
+  rs_damage(b[..],-1,ally,c[ally].hp+c[ally].hp_max,RS_SLASHING,false,-1);
+  b[0].clock=61;
+  rs_start_turn(b[..],healer);
+  c[healer].materials[0]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_REVIVIFY],count=1};
+  slots:=c[healer].slots[3];
+  #assert !rs_cast(b[..],healer,SP_REVIVIFY,3,0,0,ally);
+  #assert !rs_cast(b[..],healer,SP_REVIVIFY,3,0,0,living);
+  #assert c[ally].dead && c[living].hp==c[living].hp_max;
+  #assert c[healer].materials[0].count==1 && c[healer].slots[3]==slots && !b[0].turn.action;
+}
+
+#test "Revivify can be delivered by a capable familiar touching the corpse" {
+  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8;
+  i:=rs_add(b[..],rs_druid("Druid",0,5),1,1);
+  j:=rs_add(b[..],rs_fighter("Ally",0,1),7,1);
+  f:=rs_add(b[..],rs_monster(MON_CAT,"Familiar",0),6,1);
+  c[f].familiar_owner=i+1;
+  spells:=[1]int.[RS_EXEC_SOURCE[SP_REVIVIFY]];
+  #assert rs_set_spells(c[0..<1],spells[..]);
+  c[i].materials[0]=RsMaterialStock.{key=RS_EXEC_SOURCE[SP_REVIVIFY],count=1};
+  rs_damage(b[..],-1,j,c[j].hp+c[j].hp_max,RS_SLASHING,false,-1);
+  rs_start_turn(b[..],i);
+  #assert !rs_cast(b[..],i,SP_REVIVIFY,3,0,0,j);
+  #assert rs_familiar_touch(b[..],i,SP_REVIVIFY,3,j);
+  #assert !c[j].dead && c[j].hp==1 && c[f].reacted && c[i].materials[0].count==0;
+}

@@ -331,6 +331,7 @@ RsCreature :: struct {
   round_at: f32;
   // dropping to 0
   death_ok: int; death_fail: int; stable: bool; dead: bool;
+  combat_death_at:f32=-1;
   stable_due: f32; // active only while living, Stable and at zero HP; logical seconds
   // where and when: grid squares, and its next turn on the clock
   x: int; y: int;

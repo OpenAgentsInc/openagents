@@ -11,6 +11,14 @@
   #assert b[0].dice[0].rolled == 1;
 }
 
+#test "the final failed death save records its actual battle time" {
+  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=27;
+  c[0].hp_max=12; c[0].death_fail=2; c[0].exhaustion=1;
+  b[0].dice[0].fixed=true;
+  #assert rs_battle_death_save(b[..],0)==RS_DS_DEAD;
+  #assert c[0].dead && c[0].combat_death_at==27;
+}
+
 rs_battle_death_save :: (b: [] RsBattle, j: int) -> int #effects(all) {
   if !rs_death_eligible(b[0].c[j]) { return RS_DS_NONE; }
   face := rs_roll(b[0].dice[..],20);
@@ -25,6 +33,7 @@ rs_battle_death_save :: (b: [] RsBattle, j: int) -> int #effects(all) {
   c: [1] RsCreature; c[0] = b[0].c[j];
   r := rs_death_apply(c[..],face,total);
   b[0].c[j] = c[0];
+  if r==RS_DS_DEAD { rs_record_combat_death(b,j); }
   rs_rest_retire_dead(b,j);
   if r == RS_DS_STABLE {
     b[0].c[j].stable_due=0;
