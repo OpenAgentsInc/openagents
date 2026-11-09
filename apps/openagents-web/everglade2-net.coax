@@ -75,7 +75,7 @@ E2Net :: struct {
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
   familiar_rows:[E2N_FAMILIARS]E2nFamiliar; familiar_tick:int=-1;
-  familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int;
+  familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
   // your rest as the room's rules hold it (z SEQ CODE DICE, coax/web/room/room-e2-rest.coax): known
   // only once this socket's room has said it; your last rest request's number and when it was refused
@@ -306,11 +306,19 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
+  if wire_is(t,"m4") {
+    rd:=[1]WireRd.[wire_rd(t,2)];
+    seq:=wire_num(t,rd[..]); order:=wire_num(t,rd[..]);
+    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && order>0 && order==n[0].familiar_order {
+      n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
+    }
+    return;
+  }
   if wire_is(t,"m3") {
     rd:=[1]WireRd.[wire_rd(t,2)];
     seq:=wire_num(t,rd[..]); status:=wire_num(t,rd[..]);
     if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && n[0].klass==FB_CL_WIZARD &&
-      seq==n[0].familiar_seq && seq>4000000 && status>=1 && status<=3 {
+      n[0].familiar_order==0 && seq==n[0].familiar_seq && seq>4000000 && status>=1 && status<=3 {
       n[0].familiar_cast=status; n[0].familiar_at=n[0].mono;
     }
     return;
@@ -318,7 +326,7 @@ e2n_record :: (n: [] E2Net, t: string) {
   if wire_is(t,"m1") {
     rd:=[1]WireRd.[wire_rd(t,2)];
     seq:=wire_num(t,rd[..]); form:=wire_num(t,rd[..]);
-    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && seq==n[0].familiar_seq && seq>4000000 && form>=0 && form<RS_FAMILIAR_FORMS.count {
+    if rd[0].ok && !wire_more(t,rd[..]) && e2n_open(n) && n[0].familiar_order==0 && seq==n[0].familiar_seq && seq>4000000 && form>=0 && form<RS_FAMILIAR_FORMS.count {
       n[0].familiar_ok=true; n[0].familiar_at=n[0].mono;
     }
     return;
@@ -594,7 +602,7 @@ e2n_class :: (n: [] E2Net) -> int { return ifx n[0].klass >= 0 && n[0].klass < F
 e2n_set_class :: (n: [] E2Net, c: int, level: int) {
   l := xk_level(level);
   if c < 0 || c >= FB_CL_N || (c == n[0].klass && l == n[0].level) { return; }
-  n[0].klass = c; n[0].level = l; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000; n[0].familiar_cast=0;   // the room says the new bar's
+  n[0].klass = c; n[0].level = l; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000; n[0].familiar_cast=0; n[0].familiar_order=0;   // the room says the new bar's
   if e2n_open(n) { n[0].hello_due = true; }
 }
 // A cast (C SEQ SLOT AX AY AZ -1): the slot (class-kit.coax xk_slot) at the point it aims at. False
@@ -623,7 +631,7 @@ e2n_aid_message :: (n:[] E2Net)->string {
 }
 
 e2n_clear_familiars :: (n:[]E2Net) {
-  n[0].familiar_tick=-1; n[0].familiar_cast=0;
+  n[0].familiar_tick=-1; n[0].familiar_cast=0; n[0].familiar_order=0;
   for s:0..<E2N_FAMILIARS { n[0].familiar_rows[s].live=false; }
 }
 e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
@@ -649,6 +657,7 @@ e2n_familiar :: (n:[]E2Net)->bool {
   if !e2n_open(n) || (!wizard && (n[0].klass!=FB_CL_DRUID || n[0].level<2)) { return false; }
   if wizard && (n[0].familiar_cast==1 || (n[0].familiar_cast==4 && n[0].mono-n[0].familiar_at<4000)) { return false; }
   n[0].familiar_seq=add_sat(n[0].familiar_seq,1);
+  n[0].familiar_order=0;
   n[0].familiar_cast=ifx wizard then 4 else 0;
   n[0].familiar_at=ifx wizard then n[0].mono else -100000;
   out:=n[0].out[..];
@@ -659,12 +668,26 @@ e2n_familiar :: (n:[]E2Net)->bool {
   e2n_send(n,count);
   return true;
 }
+e2n_familiar_order :: (n:[]E2Net,order:int)->bool {
+  if !e2n_open(n) || order<1 || order>3 || n[0].familiar_cast==1 ||
+    (n[0].familiar_cast==4 && n[0].mono-n[0].familiar_at<4000) { return false; }
+  n[0].familiar_seq=add_sat(n[0].familiar_seq,1);
+  n[0].familiar_order=order; n[0].familiar_at=-100000; n[0].familiar_cast=0;
+  out:=n[0].out[..];
+  count:=wire_int(out,wire_put(out,0,"M4"),n[0].familiar_seq);
+  e2n_send(n,wire_int(out,count,order));
+  return true;
+}
 e2n_familiar_message :: (n:[]E2Net)->string {
   if !e2n_open(n) { return ""; }
   wizard:=n[0].klass==FB_CL_WIZARD;
   if wizard && n[0].familiar_cast==1 { return "CASTING FIND FAMILIAR"; }
   age:=n[0].mono-n[0].familiar_at;
   if age<0 || age>=4000 { return ""; }
+  if n[0].familiar_order>0 {
+    messages:=[3]string.["FAMILIAR POCKETED","FAMILIAR RECALLED","FAMILIAR RELEASED"];
+    return ifx n[0].familiar_ok then messages[n[0].familiar_order-1] else "FAMILIAR COMMAND REFUSED";
+  }
   if wizard {
     if n[0].familiar_cast==4 { return "ASKING TO CAST"; }
     return ifx n[0].familiar_cast==2 then "FAMILIAR SUMMONED" else "FIND FAMILIAR FAILED";

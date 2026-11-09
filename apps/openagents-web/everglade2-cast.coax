@@ -278,6 +278,14 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     form:=rs_monster_block(RS_FAMILIAR_FORMS[net[0].familiar_form]).name;
     n=e2k_line(out,n,r[0],r[3],r[2],r[3],1.2*kk,0.55,0.9,1);
     ink:=cc.ink(kk,0.55,0.9,1);
+    orders:=e2k_familiar_orders_box(s);
+    labels:=[3]string.["POCKET","RECALL","RELEASE"];
+    wide:=(orders[2]-orders[0])/3;
+    for j:0..<labels.count {
+      order_x:=orders[0]+f32(j)*wide;
+      n=e2k_line(out,n,order_x,orders[3],order_x+wide-2*kk,orders[3],1.2*kk,0.55,0.9,1);
+      n=cc.text(out,n,labels[j],order_x+4*kk,orders[1]+14*kk,8*kk,ink);
+    }
     wizard:=net[0].klass==FB_CL_WIZARD;
     n=cc.text(out,n,ifx wizard then "FIND FAMILIAR" else "COMPANION",r[0]+4*kk,r[1]+14*kk,8*kk,ink);
     if wizard {
@@ -315,6 +323,11 @@ e2k_slot_at :: (s: [] E2, x: f32, y: f32) -> int {
 e2k_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
   if !e2k_on(s) { return false; }
   if e2k_familiar_on(s) {
+    orders:=e2k_familiar_orders_box(s);
+    if x>=orders[0] && x<orders[2] && y>=orders[1] && y<=orders[3] {
+      if phase==0 { _:=e2n_familiar_order(s[0].net[..],1+int(3*(x-orders[0])/(orders[2]-orders[0]))); }
+      return true;
+    }
     r:=e2k_familiar_box(s); kk:=s[0].k;
     if x>=r[0] && x<=r[2] && y>=r[1] && y<=r[3] {
       net:=s[0].net[..];
@@ -433,4 +446,9 @@ e2k_familiar_box :: (s:[]E2)->[4]f32 {
   r:=e2k_aid_box(s); k:=s[0].k;
   extra:=ifx s[0].net[0].klass==FB_CL_WIZARD then 48*k else 20*k;
   return [4]f32.[r[0]-extra,r[1]-24*k,r[2]+extra,r[3]-24*k];
+}
+
+e2k_familiar_orders_box :: (s:[]E2)->[4]f32 {
+  r:=e2k_familiar_box(s); gap:=24*s[0].k;
+  return [4]f32.[r[0],r[1]-gap,r[2],r[3]-gap];
 }

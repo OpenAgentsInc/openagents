@@ -7576,3 +7576,8 @@ seventy-minute ritual path. The room keeps the owner's saved turn and
 Concentration, and only a completed cast consumes incense and any slot.
 Placement uses the room collision query. A seat's one preset incense
 supply is tracked across class or level changes during that seat's visit.
+
+Everglade II familiar lifecycle requests resolve through the owner's saved
+Magic action. A pocketed familiar retains Hit Points while absent. Recall
+requires room collision clearance, and refusal does not spend the action.
+Release retires the familiar. The room rejects replayed familiar requests.

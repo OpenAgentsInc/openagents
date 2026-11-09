@@ -114,24 +114,28 @@
 }
 
 E2Familiar :: struct {
-  last:int; pending:int; active:int; wizard:bool; spirit:int;
+  last:int; pending:int; active:int; wizard:bool; spirit:int; order:int;
   form:int; slot:int; ray:int=-1; x:int; y:int; clear:bool;
 }
 e2_familiar_ask :: (v:[]RmServer,k:int,id:SeatId,text:string) {
   wizard:=wire_is(text,"M3");
-  if !wizard && !wire_is(text,"M1") { return; }
+  lifecycle:=wire_is(text,"M4");
+  if !wizard && !lifecycle && !wire_is(text,"M1") { return; }
   rd:=[1]WireRd.[wire_rd(text,2)];
-  seq:=wire_num(text,rd[..]); form:=wire_num(text,rd[..]); slot:=wire_num(text,rd[..]);
+  seq:=wire_num(text,rd[..]); choice:=wire_num(text,rd[..]);
+  slot:=ifx lifecycle then 0 else wire_num(text,rd[..]);
   spirit:=ifx wizard then wire_num(text,rd[..]) else RS_FAMILIAR_FEY;
   if !rd[0].ok || wire_more(text,rd[..]) || seq<=0 { return; }
   req:=v[0].eg[k].seat[id.value].familiar;
   if seq<=req.last { return; }
   req.last=seq;
-  if req.pending>0 || req.active>0 || form<0 || form>=RS_FAMILIAR_FORMS.count || slot<0 || slot>9 ||
-    spirit<RS_FAMILIAR_FEY || spirit>RS_FAMILIAR_FIEND {
+  valid:=ifx lifecycle then choice>=1 && choice<=3 else choice>=0 && choice<RS_FAMILIAR_FORMS.count && slot>=0 && slot<=9 &&
+    spirit>=RS_FAMILIAR_FEY && spirit<=RS_FAMILIAR_FIEND;
+  if req.pending>0 || req.active>0 || !valid {
     eg_refuse(v,k,id,seq,"familiar");
   } else {
-    req.pending=seq; req.wizard=wizard; req.form=form; req.slot=slot; req.spirit=spirit;
+    req.pending=seq; req.wizard=wizard; req.order=ifx lifecycle then choice else 0;
+    req.form=choice; req.slot=slot; req.spirit=spirit;
   }
   v[0].eg[k].seat[id.value].familiar=req;
 }
@@ -142,15 +146,15 @@ e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
     if req.pending<=0 && req.active<=0 { continue; }
     req.ray=-1; req.clear=false;
     actor:=E5RR_SEAT+s;
-    place:=ifx req.wizard then req.active>0 && rs_rite_due_now(b,actor,SP_FIND_FAMILIAR) else req.pending>0 && b[0].c[actor].companion;
+    place:=ifx req.order>0 then req.order==2 else ifx req.wizard then req.active>0 && rs_rite_due_now(b,actor,SP_FIND_FAMILIAR) else b[0].c[actor].companion;
     if st[0].live && st[0].placed && room[0].rules[0].live[s] && place {
       familiar:=room[0].rules[0].familiar[s].me;
       if req.wizard && b[0].c[familiar].hp>0 { req.clear=true; st[0].familiar=req; continue; }
       for step:0..<8 {
         angle:=st[0].pose.yaw+f32(step)*0.7853982;
-        x:=b[0].c[s].x+int(floor(sin(angle)+0.5));
-        y:=b[0].c[s].y+int(floor(cos(angle)+0.5));
-        if !rs_familiar_destination(b,s,x,y,2) { continue; }
+        x:=b[0].c[actor].x+int(floor(sin(angle)+0.5));
+        y:=b[0].c[actor].y+int(floor(cos(angle)+0.5));
+        if !rs_familiar_destination(b,actor,x,y,2) { continue; }
         req.x=x; req.y=y; req.ray=next; next+=1; break;
       }
     }
@@ -217,6 +221,18 @@ e2_wizard_cast :: (v:[]RmServer,k:int,s:int,admitted:bool) {
   fb_seat_out(b,seat);
 }
 
+e2_familiar_lifecycle :: (r:[]E5rRoom,s:int,req:E2Familiar)->bool {
+  if !r[0].familiar_ready || !r[0].live[s] { return false; }
+  seat:=r[0].seat[s..<s+1];
+  if !seat[0].open { return false; }
+  b:=r[0].b[..]; actor:=seat[0].me;
+  fb_seat_in(b,seat);
+  ok:=ifx req.order==2 then req.clear && rs_familiar_return(b,actor,req.x,req.y)
+    else rs_familiar_dismiss(b,actor,req.order==3);
+  fb_seat_out(b,seat);
+  return ok;
+}
+
 e2_familiar_commit :: (v:[]RmServer,k:int) {
   room:=v[0].eg[k..<k+1];
   for s:0..<EG_SEATS {
@@ -227,12 +243,16 @@ e2_familiar_commit :: (v:[]RmServer,k:int) {
     if req.wizard { e2_wizard_cast(v,k,s,admitted); continue; }
     st[0].familiar=E2Familiar.{last=req.last};
     ok:=false;
-    if req.clear && admitted {
+    if admitted && st[0].placed && req.order>0 {
+      ok=e2_familiar_lifecycle(room[0].rules[..],s,req);
+    } else if admitted && req.clear && req.order==0 {
       ok=e5rr_wild_companion(room[0].rules[..],s,req.slot,RS_FAMILIAR_FORMS[req.form],req.x,req.y);
     }
     if !ok { eg_refuse(v,k,id,req.pending,"familiar"); continue; }
     out:[64]u8;
-    n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"m1"),req.pending),req.form);
+    kind:=ifx req.order>0 then "m4" else "m1";
+    value:=ifx req.order>0 then req.order else req.form;
+    n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,kind),req.pending),value);
     rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
   }
 }
@@ -265,4 +285,34 @@ e2_familiar_snapshot :: (v:[]RmServer,k:int,s:int) {
   n:=wire_int(out[..],wire_int(out[..],wire_put(out[..],0,"m2"),room[0].tick),count);
   n=wire_put(out[..],n,cast(string)rows[0..<size]);
   rl_queue(v,room[0].relay,st[0].conn,-1,cast(string)out[0..<n],"");
+}
+
+#test "e2 familiar: pocket recall and release use the owner's saved action" #steps 4000000000 {
+  v:[1]RmServer; rm_init(v[..]); rm_clock(v[..],0,1762190000000);
+  #assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-e2-lifecycle HTTP/1.1\r\n\r\n")==0;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-druid-2 0 -");
+  for q:0..<3 { eg_test_tick(v[..],k); }
+  r:=v[0].eg[k].rules[..]; b:=r[0].b[..]; f:=rs_familiar_of(b,0);
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+  rm_heard(v[..],0,"M1 1 8 0"); rc_test_tick(v[..],k,true);
+  hp:=b[0].c[f].hp;
+  #assert hp>0 && !b[0].c[f].dead;
+  rm_heard(v[..],0,"M4 2 1"); rc_test_tick(v[..],k,true);
+  #assert !b[0].c[f].dead;
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+  rm_heard(v[..],0,"M4 3 1"); rc_test_tick(v[..],k,true);
+  #assert b[0].c[f].dead && b[0].c[f].hp==hp && r[0].seat[0].turn.action;
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+  rm_heard(v[..],0,"M4 4 2"); rc_test_tick(v[..],k,false);
+  #assert b[0].c[f].dead && !r[0].seat[0].turn.action;
+  rm_heard(v[..],0,"M4 5 2"); rc_test_tick(v[..],k,true);
+  #assert !b[0].c[f].dead && b[0].c[f].hp==hp && r[0].seat[0].turn.action;
+  e5rr_step(r,b[0].c[0].turn_at+0.1);
+  rm_heard(v[..],0,"M4 5 3"); rc_test_tick(v[..],k,true);
+  #assert !b[0].c[f].dead && !r[0].seat[0].turn.action;
+  rm_heard(v[..],0,"M4 6 3"); rc_test_tick(v[..],k,true);
+  #assert b[0].c[f].dead && b[0].c[f].hp==0 && r[0].seat[0].turn.action;
+  out:[16384]u8;
+  #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"m4 6 3");
 }

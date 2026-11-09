@@ -616,7 +616,7 @@ Each feature then resolves against its text with fixed dice in
 | Wizard (Evoker) | Spellcasting (a book of six level 1 spells and two a level), Ritual Adept, Arcane Recovery, Scholar (Arcana Expertise), Evocation Savant (two free Evocation spells at 3, one more at 5), Potent Cantrip, ASI, Memorize Spell (in `wizard-features.coax`), Sculpt Spells | Done; Ritual Adept casts a spellbook Ritual through `ritual-cast.coax` (#13038) |
 | Warlock (Fiend) | Eldritch Invocations (Armor of Shadows; Agonizing and Repelling Blast at 2; Fiendish Vigor and Eldritch Mind at 5), Pact Magic, Magical Cunning (in `warlock-features.coax`), Dark One's Blessing, Fiend Spells, ASI, Dark One's Own Luck | Done |
 | Sorcerer (Draconic) | Spellcasting, Innate Sorcery, Font of Magic (both conversions, in `sorcerer-features.coax`; a created slot vanishes on a Long Rest), Metamagic (Quickened, Seeking), Draconic Resilience, Draconic Spells (Command), ASI, Sorcerous Restoration, Elemental Affinity (Fire) | Done |
-| Druid (Land, polar) | Spellcasting (a third cantrip at 4), Druidic (Speak with Animals always prepared), Primal Order (Warden), Wild Shape (in `wild-shape.coax`: a Bonus Action into a known Beast, Temporary Hit Points of its level, the Beast's Strength, Dexterity, Constitution, AC, Speed, size, traits and attacks, no spellcasting, half its level in hours, ending on Incapacitated, death, re-use or a Bonus Action; four forms at 2 and six at 4: Rat, Riding Horse, Spider, Wolf, Black Bear, Warhorse, with Cat available as a Long Rest replacement), Wild Companion (shared Fey familiar executor), Circle of the Land Spells, Land's Aid, ASI, Wild Resurgence, Natural Recovery; the kit's Wild Shape and Attack slots from level 2 | Done; Wild Companion has shared execution, with the player control pending; the Warden's Martial weapon and Medium armor training has no model; a form's Opportunity Attacks use an Unarmed Strike; the Warhorse's charge and the Beasts' Swim and the Rat's Agile aren't run |
+| Druid (Land, polar) | Spellcasting (a third cantrip at 4), Druidic (Speak with Animals always prepared), Primal Order (Warden), Wild Shape (in `wild-shape.coax`: a Bonus Action into a known Beast, Temporary Hit Points of its level, the Beast's Strength, Dexterity, Constitution, AC, Speed, size, traits and attacks, no spellcasting, half its level in hours, ending on Incapacitated, death, re-use or a Bonus Action; four forms at 2 and six at 4: Rat, Riding Horse, Spider, Wolf, Black Bear, Warhorse, with Cat available as a Long Rest replacement), Wild Companion (shared Fey familiar executor), Circle of the Land Spells, Land's Aid, ASI, Wild Resurgence, Natural Recovery; the kit's Wild Shape and Attack slots from level 2 | Done; Wild Companion has shared execution and player controls in both Everglade worlds; the Warden's Martial weapon and Medium armor training has no model; a form's Opportunity Attacks use an Unarmed Strike; the Warhorse's charge and the Beasts' Swim and the Rat's Agile aren't run |
 
 ### Used-monster stat blocks (2026-11-08)
 
@@ -936,8 +936,7 @@ expires with the owner's Long Rest. The first room control reports
 success or refusal to the owner. The room now replicates visible familiar
 positions and Hit Points, and the page shows the form name and health at
 that position. A block or the end of the familiar removes its marker.
-Animal models, Wizard casting and the remaining room actions still need
-integration.
+Animal models and the remaining room actions are tracked below.
 
 Nine focused room checks and 21 Everglade II page checks passed. The
 protocol fixture covers obstruction, replay, the saved action, and Long
@@ -956,5 +955,11 @@ familiar through the room snapshot. The preset provides one incense
 supply per seat visit. The room fixtures cover the ritual, the paid cast,
 and blocked completion preserving both incense and the spell slot. The
 page fixture verifies the mode and spirit request and the room's status
-messages. Wizard familiar lifecycle commands, touch delivery and borrowed
-senses still need Everglade II integration.
+messages. Familiar touch delivery and borrowed senses still need Everglade II
+integration.
+
+Everglade II now exposes Pocket, Recall and Release to Druids and Wizards.
+The room checks ownership and the saved Magic action. Pocket and recall
+preserve Hit Points, and an obstructed recall or replay spends no action.
+Release retires the familiar. The room fixture exercises the full sequence
+and the page fixture verifies request encoding and matching acknowledgments.

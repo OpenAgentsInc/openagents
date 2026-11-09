@@ -1,0 +1,9 @@
+{
+  "identity": "everglade-familiar-lifecycle-v1",
+  "base_session": "everglade-session-v5",
+  "scope": "Everglade II only",
+  "request": "M4 SEQ ORDER",
+  "success": "m4 SEQ ORDER",
+  "refusal": "r SEQ familiar",
+  "orders": {"pocket": 1, "recall": 2, "release": 3}
+}

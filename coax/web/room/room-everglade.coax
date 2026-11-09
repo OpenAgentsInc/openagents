@@ -512,7 +512,7 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
 // A seat's frame (past the relay's rate limits and pings).
 eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3"))) { return; }
+  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4"))) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
