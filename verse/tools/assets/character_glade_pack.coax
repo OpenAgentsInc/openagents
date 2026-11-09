@@ -496,14 +496,16 @@ gp_hw_wrap :: (x:f32)->f32 {return x-8*floor((x+4)/8);}
  #assert GP_HW_TILE[bsite.BS_LEAF]==8 && GP_HW_TILE[bsite.BS_FIELDSTONE]==5;
 }
 gp_housewright :: (w:[]Gp,g:[]Gltf,root:string) {
- site:=meadow.exp_site(meadow.EXP_SHOWCASE_SITE);base:=meadow.exp_height(site.x,site.z);m:[1]bsm.BsMesh;total:=0;
- for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=meadow.exp_showcase(t,st);m[0].nv=0;m[0].ni=0;m[0].over=false;m[0].f=f;m[0].y=base;
+ m:[1]bsm.BsMesh;total:=0;
+ for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=meadow.exp_showcase(t,st);si:=meadow.exp_showcase_site(t,st);site:=meadow.exp_site(si);
+   m[0].nv=0;m[0].ni=0;m[0].over=false;m[0].f=f;m[0].y=meadow.exp_height(site.x,site.z);
+   for k:0..<meadow.EXP_SIGN_PARTS {bsm.bm_part(m[..],meadow.exp_sign_part(t,k));}
    for i:hw.HW_FIRST[t]..<hw.HW_FIRST[t+1] {p:=hw.hw_part(i);if p.stage>st {break;}
     hidden:=false;for j:hw.HW_FIRST[t]..<hw.HW_FIRST[t+1] {if bsm.bm_hidden(p,hw.hw_part(j),st) {hidden=true;}}if hidden {continue;}
     if p.form==bsite.BS_KIT {
-     // the piece turned its own quarters about its place, then with the house; placed from the yard's middle
+     // the piece turned its own quarters about its place, then with the house; placed from its yard's middle
      r:=building.building_turn_matrix(int(p.x1),[12]f32.[1,0,0,0,1,0,0,0,1,0,0,0]);r[9]=p.x0;r[10]=p.y0;r[11]=p.z0;r=building.building_turn_matrix(f.turn,r);
-     r[9]+=f.x-site.x;r[11]+=f.z-site.z;part:VillagePart;part.ok=true;part.name=hw.HW_KIT[p.mat];part.m=r;gp_village_mesh(w,g,root,part,w[0].village_layer,meadow.EXP_SHOWCASE_SITE,0.25);continue;}
+     r[9]+=f.x-site.x;r[11]+=f.z-site.z;part:VillagePart;part.ok=true;part.name=hw.HW_KIT[p.mat];part.m=r;gp_village_mesh(w,g,root,part,w[0].village_layer,si,0.25);continue;}
     bsm.bm_part(m[..],p);
    }
    if m[0].over {ph_die("housewright showcase mesh exceeds its vertex budget");}

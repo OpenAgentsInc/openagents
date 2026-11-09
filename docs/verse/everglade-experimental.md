@@ -39,21 +39,37 @@ Quaternius Asset License v1.0 is retained in the registry and scene catalog.
 
 ## Housewright showcase
 
-South-east of spawn, a levelled yard centred at (26.3, 60.35) shows each
-basic house from the [Housewright spec](../../everglade/docs/housewright-profession-spec.md)
-frozen at every stage of its build. Each of the five rows holds one tier,
-with the bare site nearest spawn and the finished house farthest away:
-the branch lean-to (3 stages), the woven hut (4), the wattle-and-daub
-cottage (7), the timber house (5) and the stone cottage (5). The houses face
-west, and a label at each one names its tier and stage, for example
-"Woven hut, 2 of 4: walls woven", when you are within 18 m.
+Three levelled yards east and north-east of the food rows show each basic house
+from the [Housewright spec](../../everglade/docs/housewright-profession-spec.md)
+frozen at every stage of its build. Each tier is one row running west to east,
+from the bare site to the finished house: the branch lean-to (3 stages), the
+woven hut (4), the wattle-and-daub cottage (7), the timber house (5) and the
+stone cottage (5). Rows face each other in pairs across 6.8 m walks:
+
+- The hut and the lean-to, on the yard centred at (26.3, 46). Their walk runs
+  along z 47.
+- The cottage, facing north, and the timber house and stone cottage, facing
+  south, on the yards centred at (10.8, 72.2) and (60, 78.5). Their walk runs
+  along z 72, from x -20 to x 75.
+
+Houses in a row stand at least 3 m apart. Each house has a sign on a post in
+front of it, right of its doorway. Its board shows the tier and the stage, for
+example "Woven hut" over "2 of 4: walls woven", when you are within 16 m. The
+nearest labels are drawn first, and a label that would overlap a nearer one is
+left out.
 
 The parts are data in `everglade/world/housewright.coax`; the staged-build
 piece is `aethyr/world/build-site.coax`, and the packer meshes the parts
-with `aethyr/world/build-site-mesh.coax`. The timber house uses the
-Medieval Village kit's wall, door, window and roof modules. Colliders match
-what each stage shows: you can walk between bare frame posts, and finished
-walls block you everywhere except through the doorway.
+with `aethyr/world/build-site-mesh.coax`. The layout and the signs are in
+`verse/experimental-terrain.coax`. The timber house uses the Medieval Village
+kit's wall, door, window and roof modules. Colliders match what each stage
+shows: you can walk between bare frame posts, and finished walls block you
+everywhere except through the doorway.
+
+To look at the showcase without playing, add `?px=1009&pz=1047&yaw=90&dist=6`
+(the hut and lean-to walk) or `?px=978&pz=1072&yaw=90&dist=6` (the long walk)
+to a local page. `&pitch=DEGREES` tilts the camera down; for example
+`?px=1020&pz=1060&yaw=0&dist=45&pitch=50` looks over the whole showcase.
 
 A build site can also show any progress between stages (#13106). The packer
 stores each part once, with a reveal key from 0 to 1 on every vertex, and the

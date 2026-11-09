@@ -20,7 +20,7 @@ EXP_PROPS :: 12;
  h:=terrain.exp_home();#assert exp_prop_count(terrain.EXP_HOME_SITE)==5 && exp_prop_at(terrain.EXP_HOME_SITE,0).name=="Workbench" && exp_furnished(9)==terrain.EXP_HOME_SITE;
  for i:0..<exp_prop_count(terrain.EXP_HOME_SITE) {p:=exp_prop_at(terrain.EXP_HOME_SITE,i);#assert building.room4_inside(h,h.x+p.x,h.z+p.z);}
 }
-exp_prop_clear :: (x:f32,z:f32)->bool {for site_id:0..<terrain.EXP_SITES {site:=terrain.exp_site(site_id);if abs(x-site.x)>16 || abs(z-site.z)>16 {continue;}if site_id==8 || site_id==terrain.EXP_HOME_SITE || site_id==terrain.EXP_SHOWCASE_SITE {continue;}for i:7..<EXP_PROPS {p:=exp_prop(terrain.exp_site_group(site_id),i);radius:=ifx i==10 || i==11 then 1.7f32 else 0.9f32;dx:=x-site.x-p.x;dz:=z-site.z-p.z;if dx*dx+dz*dz<radius*radius {return true;}}}return false;}
+exp_prop_clear :: (x:f32,z:f32)->bool {for site_id:0..<terrain.EXP_SITES {site:=terrain.exp_site(site_id);if abs(x-site.x)>16 || abs(z-site.z)>16 {continue;}if site_id==8 || site_id==terrain.EXP_HOME_SITE || terrain.exp_site_group(site_id)== -4 {continue;}for i:7..<EXP_PROPS {p:=exp_prop(terrain.exp_site_group(site_id),i);radius:=ifx i==10 || i==11 then 1.7f32 else 0.9f32;dx:=x-site.x-p.x;dz:=z-site.z-p.z;if dx*dx+dz*dz<radius*radius {return true;}}}return false;}
 exp_prop_count :: (site:int)->int {return ifx site==terrain.EXP_HOME_SITE then home.HOME_PROPS else ifx site==8 then 16 else EXP_PROPS;}
 // The furnished sites: the first nine and the home (the gp_props order, character_glade_pack.coax).
 EXP_FURNISHED :: 10;

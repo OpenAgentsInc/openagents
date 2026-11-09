@@ -7,9 +7,10 @@
 #load "../everglade/world/housewright.coax" as hw;
 #load "../everglade/world/town.coax" as town;
 #load "../aethyr/world/plots.coax" as plots;
+#load "../aethyr/world/build-site.coax" as bs;
 
 ExpSite :: struct {x:f32;z:f32;left:f32;right:f32;back:f32;front:f32;}
-EXP_SITES :: 30;
+EXP_SITES :: 32;
 #test "experimental building sites are distinct, walkable and inside the meadow" {
  // the dungeon (site 18) alone runs on south past the meadow, walled and roofed (experimental-dungeon.coax)
  for i:0..<EXP_SITES {a:=exp_site(i);#assert a.x-a.left> -82 && a.x+a.right<82 && (i==18 || a.z-a.back> -82) && a.z+a.front<82;
@@ -66,7 +67,12 @@ EXP_SITE_AT :: [EXP_SITES]ExpSite.[
  ExpSite.{x=74,z= -74,left=4.2,right=3.8,back=4.1,front=3.9},
  ExpSite.{x=36,z= -34,left=10,right=4,back=10.8,front=4.1},
  ExpSite.{x= -20,z= -5,left=2.5,right=2.5,back=2.5,front=2.5},   // EXP_HOME_SITE: exp_home(), 2.5 m each way
- ExpSite.{x=26.3,z=60.35,left=15.1,right=15.1,back=21.05,front=21.05}   // EXP_SHOWCASE_SITE: the housewright showcase's level yard (exp_showcase)
+ // EXP_SHOWCASE_SITE to +2: the housewright showcase's three level yards (exp_showcase): the lean-to
+ // and the hut, east of the food rows; the cottage, the timber house and two stone cottages, north of
+ // them; and the last three stone cottages, east of those
+ ExpSite.{x=26.27,z=46.0,left=15.17,right=15.17,back=6.6,front=6.6},
+ ExpSite.{x=10.79,z=72.15,left=30.69,right=30.69,back=9.6,front=9.6},
+ ExpSite.{x=59.95,z=78.5,left=14.3,right=14.3,back=3.7,front=3.25}
 ];
 exp_site :: (i:int)->ExpSite {
  // the dungeon's block and its outer walls' thickness, levelled at the old dungeon's height (-38, -54)
@@ -81,16 +87,23 @@ exp_site :: (i:int)->ExpSite {
 // 20 m west of spawn, turned a quarter so its doorway faces spawn; its levelled site is EXP_HOME_SITE.
 EXP_HOME_SITE :: 28;
 exp_home :: ()->building.BuildingFrame {return building.BuildingFrame.{x= -20,z= -5,turn=1};}
-// The housewright showcase (game: everglade/world/housewright.coax): one row a tier, running south
-// from the end nearest spawn, each house frozen at one of its stages, the bare site first and the
-// finished house last. Every house faces west, its doorway on the row's walk; its levelled yard is
-// EXP_SHOWCASE_SITE.
-EXP_SHOWCASE_SITE :: 29;
-EXP_SHOWCASE_ROW :: [5]f32.[12.5,17.0,23.1,30.82,38.19];   // each tier's row: the houses' middles, east of spawn
-EXP_SHOWCASE_PITCH :: [5]f32.[7,7,6,7,8];                  // and how far apart along it
+// The housewright showcase (game: everglade/world/housewright.coax): one row a tier, each house
+// frozen at one of its stages, from the bare site at the row's west end to the finished house at
+// its east end. Two rows face each other across each 6.8 m walk: the hut (facing north, +z) and the
+// lean-to (facing south) on the first yard; the cottage (north) and the timber house and stone
+// cottage (south) on the second and third. Houses stand at least 3 m apart along a row, and each
+// house's sign stands 0.45 m into the walk.
+EXP_SHOWCASE_SITE :: 29;      // the first of its three yards
+EXP_SHOWCASE_SITES :: 3;
+EXP_SHOWCASE_WALK :: 6.8;     // from one row's house fronts to the other's
+// Each tier's row: the houses' middles along z, which way they face (BuildingFrame turn) and each
+// house's x, stage 1 first.
+EXP_SHOWCASE_Z :: [5]f32.[51.3,41.45,65.85,78.25,78.5];
+EXP_SHOWCASE_TURN :: [5]int.[2,0,0,2,2];
+EXP_SHOWCASE_X :: [24]f32.[18.25,27.35,36.45, 13.8,22.1,30.4,38.7, -8.4,-0.5,7.4,15.3,23.2,31.1,39.0,
+ -16.8,-8.2,0.4,9.0,17.6, 27.2,37.7,49.45,59.95,70.45];
 exp_showcase :: (tier:int,stage:int)->building.BuildingFrame {
- n:=hw.hw_stages(tier);z:=60.35+(f32(stage-1)-f32(n-1)*0.5)*EXP_SHOWCASE_PITCH[tier];
- return building.BuildingFrame.{x=EXP_SHOWCASE_ROW[tier],z=z,turn=3};
+ return building.BuildingFrame.{x=EXP_SHOWCASE_X[hw.hw_stage_base(tier)+stage-1],z=EXP_SHOWCASE_Z[tier],turn=EXP_SHOWCASE_TURN[tier]};
 }
 // The town's stand-in meadow (game: everglade/world/town.coax), until Everglade II's city clearing
 // draws build sites: the north-west corner of the meadow, west of the path, on flat ground. The
@@ -105,15 +118,55 @@ exp_town :: ()->plots.PlotGrid {return town.town_grid_sized(-70,69.2,7.6,8.6);}
    #assert abs(exp_height(x,z)-exp_height(c[0],c[1]))<0.05 && abs(x)<88 && abs(z)<88 && abs(x-glade.cg_path_x(z))>4;
    for j:0..<EXP_SITES {#assert exp_distance(exp_site(j),x,z)>4;}}}
 }
-#test "the showcase's houses stand apart on its level yard, every row in order from the bare site" {
- y:=exp_site(EXP_SHOWCASE_SITE);
- for t:0..<hw.HW_TIERS {r:=hw.HW_REACH[t];for s:1..<hw.hw_stages(t)+1 {f:=exp_showcase(t,s);
-   // the house's reach, turned to face west: its front toward -x, its sides along z
-   #assert f.x-r[1]>=y.x-y.left-0.01 && f.x+r[2]<=y.x+y.right && f.z-r[0]>=y.z-y.back && f.z+r[0]<=y.z+y.front;
-   if s>1 {g:=exp_showcase(t,s-1);#assert g.z+r[0]<f.z-r[0]+0.2;}
-   if t>0 {g:=exp_showcase(t-1,1);q:=hw.HW_REACH[t-1];#assert g.x+q[2]+1.2<f.x-r[1];}}}
+#test "the showcase's yards keep 6 m clear round the red dragon mount at (17, 18)" {
+ for i:0..<EXP_SHOWCASE_SITES {#assert exp_distance(exp_site(EXP_SHOWCASE_SITE+i),17,18)>6;}
 }
-exp_site_group :: (i:int)->int {if i==EXP_SHOWCASE_SITE {return -4;}if i==EXP_HOME_SITE {return -3;}if i==18 {return -2;}if i==27 {return 0;}if i>=19 {return 1;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}
+// The yard a house stands on.
+exp_showcase_site :: (tier:int,stage:int)->int {
+ if tier<=hw.HW_HUT {return EXP_SHOWCASE_SITE;}
+ if tier==hw.HW_STONE && stage>=3 {return EXP_SHOWCASE_SITE+2;}
+ return EXP_SHOWCASE_SITE+1;
+}
+// Every house has a sign in front of it, right of its doorway and reaching 0.4 m past its side: a squared post and a board that the
+// showcase sets the house's label on (apps/openagents-web/fivelab.coax lab_showcase_labels).
+// exp_sign is the board's middle in the house's frame (x, height, z); exp_sign_part is the post
+// (k 0) and the board (k 1), engine build-site parts that every stage shows.
+EXP_SIGN_W :: 2.0;     // the board's width
+EXP_SIGN_Y0 :: 0.75;   // its bottom and top edges
+EXP_SIGN_Y1 :: 1.5;
+EXP_SIGN_PARTS :: 2;
+exp_sign :: (tier:int)->[3]f32 {r:=hw.HW_REACH[tier];return [3]f32.[r[0]-0.6,(EXP_SIGN_Y0+EXP_SIGN_Y1)*0.5,r[1]+0.45];}
+exp_sign_part :: (tier:int,k:int)->bs.BuildPart {
+ c:=exp_sign(tier);
+ if k==0 {return bs.BuildPart.{stage=1,form=bs.BS_BEAM,mat=bs.BS_TIMBER,x0=c[0],y0=0,z0=c[2]-0.09,x1=c[0],y1=EXP_SIGN_Y1+0.08,z1=c[2]-0.09,t=0.05};}
+ return bs.BuildPart.{stage=1,form=bs.BS_SLAB,mat=bs.BS_TIMBER,x0=c[0]-EXP_SIGN_W*0.5,y0=EXP_SIGN_Y0,z0=c[2]-0.03,x1=c[0]+EXP_SIGN_W*0.5,y1=EXP_SIGN_Y1,z1=c[2]+0.03};
+}
+// A house's colliders at its stage, with its sign's.
+exp_showcase_boxes :: (tier:int,stage:int,out:[]f32,n:int)->int {
+ f:=exp_showcase(tier,stage);c:=hw.hw_boxes(tier,stage,f,out,n);for k:0..<EXP_SIGN_PARTS {c=bs.bs_world_boxes(f,exp_sign_part(tier,k),out,c);}return c;
+}
+#test "each sign stands in front of its house, clear of the doorway and of the next house" {
+ for t:0..<hw.HW_TIERS {c:=exp_sign(t);r:=hw.HW_REACH[t];o:=hw.hw_door_out(t);
+  #assert c[0]+EXP_SIGN_W*0.5<=r[0]+0.401 && c[2]>r[1] && c[2]<r[1]+0.6 && c[0]-EXP_SIGN_W*0.5>o[0]+0.4;
+  p:=exp_sign_part(t,0);b:=exp_sign_part(t,1);#assert p.form==bs.BS_BEAM && b.form==bs.BS_SLAB && p.y1>b.y1 && abs(p.x0-c[0])<0.001;}
+ b:[1200]f32;#assert exp_showcase_boxes(hw.HW_LEANTO,1,b[..],0)>hw.hw_boxes(hw.HW_LEANTO,1,exp_showcase(hw.HW_LEANTO,1),b[..],0);
+}
+#test "the showcase's houses stand apart on their level yards, rows facing across 6.8 m walks" {
+ for t:0..<hw.HW_TIERS {r:=hw.HW_REACH[t];for s:1..<hw.hw_stages(t)+1 {f:=exp_showcase(t,s);y:=exp_site(exp_showcase_site(t,s));
+   // the house's reach, turned to face north or south: its sides along x
+   front:=ifx f.turn==0 then f.z+r[1] else f.z-r[1];back:=ifx f.turn==0 then f.z-r[2] else f.z+r[2];
+   #assert f.x-r[0]>=y.x-y.left-0.01 && f.x+r[0]<=y.x+y.right+0.01 && exp_max(-front,-back)<= -(y.z-y.back-0.01) && exp_max(front,back)<=y.z+y.front+0.01;
+   if s>1 {g:=exp_showcase(t,s-1);#assert g.x+r[0]+3<=f.x-r[0]+0.01;}}}
+ // the walks: the hut's and the lean-to's fronts, the cottage's and the timber house's and stone cottage's
+ for p:[3][2]int.[[2]int.[hw.HW_HUT,hw.HW_LEANTO],[2]int.[hw.HW_COTTAGE,hw.HW_TIMBER],[2]int.[hw.HW_COTTAGE,hw.HW_STONE]] {
+  a:=exp_showcase(p[0],1);b:=exp_showcase(p[1],1);#assert abs((b.z-hw.HW_REACH[p[1]][1])-(a.z+hw.HW_REACH[p[0]][1])-EXP_SHOWCASE_WALK)<0.01;}
+ // the timber house's last house and the stone cottage's first stand 3 m apart, and nothing crosses
+ // the gap between the second and third yards
+ #assert exp_showcase(hw.HW_TIMBER,5).x+2.8+3<=exp_showcase(hw.HW_STONE,1).x-3.75+0.01;
+ // 6 m of open ground behind the lean-to before the cottage's backs
+ #assert exp_showcase(hw.HW_COTTAGE,1).z-hw.HW_REACH[hw.HW_COTTAGE][2]-(exp_showcase(hw.HW_LEANTO,1).z+hw.HW_REACH[hw.HW_LEANTO][2])>=6;
+}
+exp_site_group :: (i:int)->int {if i>=EXP_SHOWCASE_SITE && i<EXP_SHOWCASE_SITE+EXP_SHOWCASE_SITES {return -4;}if i==EXP_HOME_SITE {return -3;}if i==18 {return -2;}if i==27 {return 0;}if i>=19 {return 1;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}
 exp_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
 exp_distance :: (s:ExpSite,x:f32,z:f32)->f32 {
  dx:=exp_max(s.x-s.left-x,x-s.x-s.right);dz:=exp_max(s.z-s.back-z,z-s.z-s.front);return exp_max(dx,dz);

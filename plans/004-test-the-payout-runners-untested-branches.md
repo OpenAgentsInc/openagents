@@ -17,7 +17,7 @@
 
 ## Status
 
-- **Priority**: P3 (maker tips and upgrades are not a live feature and are not part of Everglade; do this before that feature launches)
+- **Priority**: P2
 - **Effort**: M
 - **Risk**: LOW (tests only)
 - **Depends on**: plans/002-serialize-credit-purchases-and-the-first-tip-bonus.md, plans/003-accept-only-tips-the-wallet-can-pay-out.md (they append to the same test files; land them first to avoid conflicts)

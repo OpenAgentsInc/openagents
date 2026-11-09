@@ -16,7 +16,7 @@
 
 ## Status
 
-- **Priority**: P3 (maker tips and upgrades are not a live feature and are not part of Everglade; do this before that feature launches)
+- **Priority**: P1
 - **Effort**: S
 - **Risk**: LOW
 - **Depends on**: none

@@ -49,8 +49,8 @@ EvNear :: struct {walls:[EV_WALLS*6]f32;floors:[EV_FLOORS*10]f32;wall_n:int;floo
  found:=false;for i:0..<a[0].floor_n {if abs(a[0].floors[i*10+8])+abs(a[0].floors[i*10+9])>2 {found=true;}}#assert found;
 }
 #test "village collider gathering fits around every building" #steps 100000000 {
- // (the housewright showcase's yard has open ground between its rows: its own walk test covers it)
- a:[1]EvNear;for si:0..<terrain.EXP_SITES {s:=terrain.exp_site(si);if si==terrain.EXP_SHOWCASE_SITE {continue;}
+ // (the housewright showcase's yards have open walks between their rows: its own walk tests cover them)
+ a:[1]EvNear;for si:0..<terrain.EXP_SITES {s:=terrain.exp_site(si);if terrain.exp_site_group(si)== -4 {continue;}
   for ix:0..<5 {for iz:0..<5 {x:=s.x-s.left+(s.left+s.right)*f32(ix)/4;z:=s.z-s.back+(s.back+s.front)*f32(iz)/4;
    ev_near(a[..],x,z);#assert !a[0].overflow && a[0].wall_n>0;}}}
 }
@@ -94,19 +94,21 @@ ev_walk_to :: (x:f32,z:f32,tx:f32,tz:f32,steps:int)->[2]f32 {
 ev_hw_at :: (f:building.BuildingFrame,p:[2]f32)->[2]f32 {return building.building_point(f,p[0],p[1]);}
 ev_hw_walk :: (t:int) {
  {n:=hw.hw_stages(t);r:=hw.HW_REACH[t];
-  // along the row's walk, past every stage, from the bare site to the finished house
-  a:=terrain.exp_showcase(t,1);b:=terrain.exp_showcase(t,n);wx:=a.x-r[1]-0.6;
-  p:=ev_walk_to(wx,a.z-3,wx,b.z+3,600);#assert abs(p[0]-wx)<0.02 && abs(p[1]-b.z-3)<0.02;
+  // along the row's walk, 1.6 m out from the house fronts and clear of their signs, past every
+  // stage from the bare site to the finished house
+  a:=terrain.exp_showcase(t,1);b:=terrain.exp_showcase(t,n);w0:=ev_hw_at(a,[2]f32.[r[0]+2,r[1]+1.6]);w1:=ev_hw_at(b,[2]f32.[-r[0]-2,r[1]+1.6]);
+  if w0[0]>w1[0] {w0=ev_hw_at(a,[2]f32.[-r[0]-2,r[1]+1.6]);w1=ev_hw_at(b,[2]f32.[r[0]+2,r[1]+1.6]);}
+  p:=ev_walk_to(w0[0],w0[1],w1[0],w1[1],900);#assert abs(p[0]-w1[0])<0.02 && abs(p[1]-w1[1])<0.02;
   f:=b;
   // the finished house: in through its doorway
-  if t!=hw.HW_LEANTO {o:=ev_hw_at(f,hw.hw_door_out(t));i:=ev_hw_at(f,hw.hw_door_in(t));
-   p=ev_walk_to(wx,o[1],o[0],o[1],80);#assert abs(p[0]-o[0])<0.02 && abs(p[1]-o[1])<0.02;
+  if t!=hw.HW_LEANTO {o:=ev_hw_at(f,hw.hw_door_out(t));i:=ev_hw_at(f,hw.hw_door_in(t));w:=ev_hw_at(f,[2]f32.[hw.hw_door_out(t)[0],r[1]+1.6]);
+   p=ev_walk_to(p[0],p[1],w[0],w[1],200);p=ev_walk_to(p[0],p[1],o[0],o[1],80);#assert abs(p[0]-o[0])<0.02 && abs(p[1]-o[1])<0.02;
    p=ev_walk_to(p[0],p[1],i[0],i[1],80);l:=building.building_local(f,p[0],p[1]);#assert hw.hw_inside(t,l[0],l[1]) && abs(p[0]-i[0])<0.02 && abs(p[1]-i[1])<0.02;
    // and from inside, no wall lets you out: the back and both sides
    for d:[3][2]f32.[[2]f32.[0,-6],[2]f32.[-6,0],[2]f32.[6,0]] {g:=ev_hw_at(f,[2]f32.[i[0]*0.3+d[0],d[1]]);q:=ev_walk_to(i[0],i[1],g[0],g[1],90);l=building.building_local(f,q[0],q[1]);#assert hw.hw_inside(t,l[0],l[1]);}
   }
   // from outside, no wall lets you in: behind and both sides, aimed at the middle
-  for d:[3][2]f32.[[2]f32.[0,-5],[2]f32.[-5,-0.3],[2]f32.[5,-0.3]] {s0:=ev_hw_at(f,d);c:=ev_hw_at(f,[2]f32.[d[0]*0.05,d[1]*0.05]);
+  for d:[3][2]f32.[[2]f32.[0,-r[2]-1.2],[2]f32.[-5,-0.3],[2]f32.[5,-0.3]] {s0:=ev_hw_at(f,d);c:=ev_hw_at(f,[2]f32.[d[0]*0.05,d[1]*0.05]);
    q:=ev_walk_to(s0[0],s0[1],c[0],c[1],80);l:=building.building_local(f,q[0],q[1]);#assert !hw.hw_inside(t,l[0],l[1]);}
  }
 }
@@ -246,12 +248,12 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
    b:[3000]f32;n:=dungeon.dg_boxes(x,z,reach,b[..],0,false);
    for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}continue;
   }
-  if si==terrain.EXP_SHOWCASE_SITE {
-   // the housewright showcase (everglade/world/housewright.coax): every house's walls, posts and
-   // low roofs at its stage (aethyr/world/build-site.coax)
+  if kind== -4 {
+   // the housewright showcase (everglade/world/housewright.coax): every house's walls, posts, low
+   // roofs and sign at its stage (aethyr/world/build-site.coax), on this yard
    b:[1200]f32;
-   for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=terrain.exp_showcase(t,st);if abs(f.x-x)>reach+4 || abs(f.z-z)>reach+4 {continue;}
-     n:=hw.hw_boxes(t,st,f,b[..],0);for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}}}
+   for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=terrain.exp_showcase(t,st);if terrain.exp_showcase_site(t,st)!=si || abs(f.x-x)>reach+4 || abs(f.z-z)>reach+4 {continue;}
+     n:=terrain.exp_showcase_boxes(t,st,b[..],0);for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}}}
    continue;
   }
   if si==terrain.EXP_HOME_SITE || (si>=9 && si<18) {

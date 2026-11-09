@@ -2713,27 +2713,22 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
   #assert xc_sound(rage, FB_CL_BARBARIAN).start == "rage-roar" && xc_sound(second, FB_CL_FIGHTER).start == "second-wind";
 }
 
-// One diagonal facing of Thunderwave's forward cube. A check each (#13115): one check made all four
-// Labs, 92,437,704 traversal visits, 69% of the limit on its own.
-xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
-  s: [1] Lab; face := 0.78539816 + f32(turn)*1.5707963; xc_test_lab(s[..], FB_CL_WIZARD, face);
-  h := s[0].creator[0].hostiles[..]; fx := sin(face); fz := cos(face); rx := fz; rz := -fx;
-  // Three creatures in a broad fan ahead, one at the shoulder, and one safely behind.
-  h[0].enemies[0].x = fx*2; h[0].enemies[0].z = fz*2;
-  h[0].enemies[1].x = fx*2+rx*1.2; h[0].enemies[1].z = fz*2+rz*1.2;
-  h[0].enemies[2].x = fx*2-rx*1.2; h[0].enemies[2].z = fz*2-rz*1.2;
-  h[0].enemies[3].x = rx*1.2; h[0].enemies[3].z = rz*1.2;
-  h[0].enemies[4].x = -fx*2; h[0].enemies[4].z = -fz*2;
-  s[0].creator[0].clock = 10; #assert xc_press(s[..], 4);
-  for i: 0..<4 { #assert s[0].xc[0].b[0].c[i+1].hp < s[0].xc[0].b[0].c[i+1].hp_max; }
-  #assert s[0].xc[0].b[0].c[5].hp == s[0].xc[0].b[0].c[5].hp_max;
-  #assert s[0].xc[0].b[0].c[5].x == xc_square(h[0].enemies[4].x) && s[0].xc[0].b[0].c[5].y == xc_square(h[0].enemies[4].z);
-  return true;
+#test "experimental Thunderwave hits the whole forward cube at diagonal facings" #steps 2000000000 {
+  for turn: 0..<4 {
+    s: [1] Lab; face := 0.78539816 + f32(turn)*1.5707963; xc_test_lab(s[..], FB_CL_WIZARD, face);
+    h := s[0].creator[0].hostiles[..]; fx := sin(face); fz := cos(face); rx := fz; rz := -fx;
+    // Three creatures in a broad fan ahead, one at the shoulder, and one safely behind.
+    h[0].enemies[0].x = fx*2; h[0].enemies[0].z = fz*2;
+    h[0].enemies[1].x = fx*2+rx*1.2; h[0].enemies[1].z = fz*2+rz*1.2;
+    h[0].enemies[2].x = fx*2-rx*1.2; h[0].enemies[2].z = fz*2-rz*1.2;
+    h[0].enemies[3].x = rx*1.2; h[0].enemies[3].z = rz*1.2;
+    h[0].enemies[4].x = -fx*2; h[0].enemies[4].z = -fz*2;
+    s[0].creator[0].clock = 10; #assert xc_press(s[..], 4);
+    for i: 0..<4 { #assert s[0].xc[0].b[0].c[i+1].hp < s[0].xc[0].b[0].c[i+1].hp_max; }
+    #assert s[0].xc[0].b[0].c[5].hp == s[0].xc[0].b[0].c[5].hp_max;
+    #assert s[0].xc[0].b[0].c[5].x == xc_square(h[0].enemies[4].x) && s[0].xc[0].b[0].c[5].y == xc_square(h[0].enemies[4].z);
+  }
 }
-#test "experimental Thunderwave hits the whole forward cube at diagonal facings (1 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(0); }
-#test "experimental Thunderwave hits the whole forward cube at diagonal facings (2 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(1); }
-#test "experimental Thunderwave hits the whole forward cube at diagonal facings (3 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(2); }
-#test "experimental Thunderwave hits the whole forward cube at diagonal facings (4 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(3); }
 
 #test "experimental Thunderwave pushes a creature that fails its save in the scene" #steps 2000000000 {
   s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);

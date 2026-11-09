@@ -3042,31 +3042,41 @@ lab_biome_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  }
  return n;
 }
-// The housewright showcase (verse/experimental-terrain.coax exp_showcase): each house's tier and
-// stage on a line in front of it, as "Woven hut, 2 of 4: walls woven", for the houses within 18 m.
+// The housewright showcase (verse/experimental-terrain.coax exp_showcase): each house's label on
+// the board of its sign, the tier on one line and the stage under it ("Woven hut" over "2 of 4:
+// walls woven"), sized to the board as you see it, for the houses within 16 m.
 #test "the showcase labels the houses near you and none far away" {
  s:[1]Lab;s[0].creator[0].experimental=true;b:[16]f32;s[0].creator[0].player_x= -60;s[0].creator[0].player_z= -60;#assert lab_showcase_labels(s[..],b[..],0,1600,1000,1)==0;
+ #assert lab_label_split("Woven hut, 2 of 4: walls woven")==9 && lab_label_split("none")==4;
 }
+// Where a label's tier ends: its first ", ".
+lab_label_split :: (t:string)->int {for i:0..<t.count-1 {if t[i]==',' && t[i+1]==' ' {return i;}}return t.count;}
 lab_showcase_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  n:=at;x:=s[0].xc[..];px:=s[0].creator[0].player_x;pz:=s[0].creator[0].player_z;
- site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE);if abs(px-site.x)>site.left+18 || abs(pz-site.z)>site.back+18 {return n;}
- ground:=xterrain.exp_height(site.x,site.z);
- // Nearest first; a label that would overlap a nearer one is left out, so rows behind don't
- // print over the row in front. Face 0 is the body face cc.text sets labels in.
- d:[24]f32;id:[24]int;ax:[24]f32;ay:[24]f32;c:=0;
- for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=xterrain.exp_showcase(t,st);
-   q:=building.building_point(f,0,hw.HW_REACH[t][1]+0.25);dx:=q[0]-px;dz:=q[1]-pz;if dx*dx+dz*dz>18*18 || c>=24 {continue;}
-   a:=xc_proj(x,q[0],ground+1.15,q[1]);if !a.ok || a.x<40*k || a.x>w-40*k || a.y<45*k || a.y>h-90*k {continue;}
-   d[c]=dx*dx+dz*dz;id[c]=t*8+st;ax[c]=a.x;ay[c]=a.y;c+=1;}}
- rx:[24]f32;ry:[24]f32;rw:[24]f32;m:=0;
+ near:=false;for i:0..<xterrain.EXP_SHOWCASE_SITES {site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE+i);if xterrain.exp_distance(site,px,pz)<16 {near=true;}}
+ if !near {return n;}
+ // Nearest first; a label that would overlap a nearer one is left out, so a row across the walk
+ // doesn't print over the row in front. Face 0 is the body face cc.text sets labels in.
+ d:[24]f32;id:[24]int;ax:[24]f32;ay:[24]f32;cap:[24]f32;c:=0;
+ for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=xterrain.exp_showcase(t,st);site:=xterrain.exp_site(xterrain.exp_showcase_site(t,st));
+   g:=xterrain.exp_sign(t);q:=building.building_point(f,g[0],g[2]+0.04);dx:=q[0]-px;dz:=q[1]-pz;if dx*dx+dz*dz>16*16 || c>=24 {continue;}
+   ground:=xterrain.exp_height(site.x,site.z);
+   top:=xc_proj(x,q[0],ground+xterrain.EXP_SIGN_Y1,q[1]);bot:=xc_proj(x,q[0],ground+xterrain.EXP_SIGN_Y0,q[1]);
+   if !top.ok || !bot.ok || top.x<60*k || top.x>w-60*k || top.y<45*k || bot.y>h-90*k {continue;}
+   // the board's height on screen: two lines fill about half of it
+   size:=(bot.y-top.y)*0.24;if size<11*k {size=11*k;}if size>26*k {size=26*k;}
+   d[c]=dx*dx+dz*dz;id[c]=t*8+st;ax[c]=top.x;ay[c]=(top.y+bot.y)*0.5-size*0.95;cap[c]=size;c+=1;}}
+ rx:[24]f32;ry:[24]f32;rw:[24]f32;rh:[24]f32;m:=0;
  for i:0..<c {b:=i;for j:i+1..<c {if d[j]<d[b] {b=j;}}
-   td:=d[i];d[i]=d[b];d[b]=td;ti:=id[i];id[i]=id[b];id[b]=ti;tx:=ax[i];ax[i]=ax[b];ax[b]=tx;ty:=ay[i];ay[i]=ay[b];ay[b]=ty;
-   label:=hw.hw_label(id[i]/8,id[i]%8);lw:=cc.face_width(label,9*k,0);lx:=ax[i]-lw*0.5;
-   clear:=true;for j:0..<m {if lx<rx[j]+rw[j]+6*k && rx[j]<lx+lw+6*k && abs(ay[i]-ry[j])<13*k {clear=false;}}
+   td:=d[i];d[i]=d[b];d[b]=td;ti:=id[i];id[i]=id[b];id[b]=ti;tx:=ax[i];ax[i]=ax[b];ax[b]=tx;ty:=ay[i];ay[i]=ay[b];ay[b]=ty;tc:=cap[i];cap[i]=cap[b];cap[b]=tc;
+   label:=hw.hw_label(id[i]/8,id[i]%8);sp:=lab_label_split(label);tier:=label[0..<sp];stage:=ifx sp+2<label.count then label[sp+2..<label.count] else "";
+   z:=cap[i];w0:=cc.face_width(tier,z,0);w1:=cc.face_width(stage,z*0.82,0);lw:=ifx w0>w1 then w0 else w1;lx:=ax[i]-lw*0.5;lh:=z*2.2;
+   clear:=true;for j:0..<m {if lx<rx[j]+rw[j]+6*k && rx[j]<lx+lw+6*k && ay[i]<ry[j]+rh[j]+4*k && ry[j]<ay[i]+lh+4*k {clear=false;}}
    if !clear {continue;}
-   if n+6000>MAX_VERTICES {return n;}
-   rx[m]=lx;ry[m]=ay[i];rw[m]=lw;m+=1;
-   n=cc.text(out,n,label,lx,ay[i],9*k,ink_col(k,1,0.95,0.8));}
+   if n+12000>MAX_VERTICES {return n;}
+   rx[m]=lx;ry[m]=ay[i];rw[m]=lw;rh[m]=lh;m+=1;
+   n=cc.text(out,n,tier,ax[i]-w0*0.5,ay[i],z,ink_col(k,1,0.95,0.8));
+   n=cc.text(out,n,stage,ax[i]-w1*0.5,ay[i]+z*1.25,z*0.82,ink_col(k,1,0.9,0.7));}
  return n;
 }
 lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
@@ -3085,7 +3095,8 @@ lab_comparison_labels :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 // ?stage=NAME (#13107): a named setup owns the camera, the sun and the clock, with no HUD, and runs
 // on whole game steps so coax/web/clip.coax records the same frames every run. The housewright
 // time-lapses (everglade/world/housewright-stage.coax, ?stage=house-*) stand their house in the
-// glade as build sites drawn at their progress (#13106; ?stage=house-row stands the five finished).
+// glade; until build sites draw at any progress (#13106) the house is the showcase's at each whole
+// stage (verse/experimental-terrain.coax exp_showcase), the camera keeping the same place about it.
 lab_stage :: (s: [] Lab, facts: string) {
   i := 0;
   while i < facts.count {
@@ -3093,56 +3104,28 @@ lab_stage :: (s: [] Lab, facts: string) {
     line := facts[i..<e]; i = e + 1;
     if line.count < 4 || line[0..<4] != "url=" { continue; }
     st := hws.hws_find(line[4..<line.count]);
-    if st >= 0 { s[0].stage = st; s[0].stage_steps = 0; s[0].xc[0].open = false; }
+    if st >= 0 && st < hws.HWS_ROW { s[0].stage = st; s[0].stage_steps = 0; s[0].xc[0].open = false; }
   }
 }
 lab_stage_t :: (s: [] Lab) -> f32 { return trk.cam_track_clock(s[0].stage_steps, hws.HWS_HZ); }
-// Where the time-lapses stand: the clear, level meadow east of the showcase yard, south of the
-// village's last houses. Every house fronts +z, so the camera looks back over the village and the
-// castle, and the glade's sun stands behind the house.
-LAB_STAGE_X :: 62.0;
-LAB_STAGE_Z :: 74.0;
-LAB_STAGE_TURN :: 0;
-LAB_STAGE_SLOTS :: 5;
-lab_stage_site :: () -> building.BuildingFrame { return building.BuildingFrame.{x = LAB_STAGE_X, z = LAB_STAGE_Z, turn = LAB_STAGE_TURN}; }
+// The showcase's house standing for the stage's whole stage at `t`, and its middle's ground.
+lab_stage_frame :: (s: [] Lab, t: f32) -> building.BuildingFrame {
+  tier := hws.hws_tier(s[0].stage); last := hw.hw_stages(tier);
+  k := int(floor(hws.hws_progress(s[0].stage, t))); if k < 1 { k = 1; } if k > last { k = last; }
+  return xterrain.exp_showcase(tier, k);
+}
 lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
-  t := lab_stage_t(s); site := lab_stage_site(); g := xterrain.exp_height(site.x, site.z);
-  // the houses: each a build site at its progress (aethyr/world/build-site.coax, #13106)
-  h: [LAB_STAGE_SLOTS] hws.HwsHouse; n := hws.hws_houses(s[0].stage, t, 0, 0, h[..]);
-  for i: 0..<LAB_STAGE_SLOTS {
-    if i >= n { cc.build_site_clear(s[0].creator[..], i); continue; }
-    p := building.building_point(site, h[i].frame.x, h[i].frame.z);
-    f := building.BuildingFrame.{x = p[0], z = p[1], turn = LAB_STAGE_TURN};
-    cc.build_site_set(s[0].creator[..], i, h[i].tier, f, xterrain.exp_height(p[0], p[1]), h[i].progress);
-  }
+  t := lab_stage_t(s);
+  f := lab_stage_frame(s, t); g := xterrain.exp_height(f.x, f.z);
   v := hws.hws_view(s[0].stage, t, 0, 0, 0);
-  e := building.building_point(site, v.ex, v.ez); l := building.building_point(site, v.lx, v.lz);
+  e := building.building_point(f, v.ex, v.ez); l := building.building_point(f, v.lx, v.lz);
   cc.stage_set(s[0].creator[..], trk.CamView.{ex = e[0], ey = v.ey + g, ez = e[1], lx = l[0], ly = v.ly + g, lz = l[1]}, hws.hws_day(s[0].stage, t));
   // whole game steps of the frame's time (a clip's fixed 1/30 s is exactly 2), so any frame rate keeps time
   if dt > 0 && dt < 1 && !still { q := int(dt * f32(hws.HWS_HZ) + 0.5); s[0].stage_steps += ifx q < 1 then 1 else q; }
 }
-lab_stage_at :: (u: [] f32, px: f32, py: f32, pz: f32) -> [3] f32 {
-  dx := px - u[16]; dy := py - u[17]; dz := pz - u[18];
-  z := dx * u[20] + dy * u[21] + dz * u[22];
-  if z < 0.2 { return [3] f32.[0, 0, 0]; }
-  r := dx * u[24] + dy * u[25] + dz * u[26]; up := dx * u[28] + dy * u[29] + dz * u[30];
-  return [3] f32.[u[23] + u[19] * r / z, u[27] - u[19] * up / z, 1];
-}
 // The corner (the speed and the workday) and, under the house, what it takes.
 lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32) -> int {
   n := at; st := s[0].stage; t := lab_stage_t(s); tier := hws.hws_tier(st);
-  if st == hws.HWS_ROW {
-    // the row: under each finished house, the tool that unlocks it
-    site := lab_stage_site(); rh: [LAB_STAGE_SLOTS] hws.HwsHouse; m := hws.hws_houses(st, t, 0, 0, rh[..]);
-    for i: 0..<m {
-      p := building.building_point(site, rh[i].frame.x, rh[i].frame.z + hw.HW_REACH[rh[i].tier][1] + 0.6);
-      q := lab_stage_at(u, p[0], xterrain.exp_height(p[0], p[1]), p[1]);
-      if q[2] < 1 { continue; }
-      tool := hws.HWS_TOOL[rh[i].tier]; c3 := 15 * k;
-      n = cc.text(out, n, tool, q[0] - cc.face_width(tool, c3, 0) * 0.5, q[1] + 18 * k, c3, ink_col(k, 1, 0.95, 0.8));
-    }
-    return n;
-  }
   if tier < 0 { return n; }
   b: [64] u8; col := ink_col(k, 1, 0.95, 0.8); cap := 15 * k;
   m := hws.hws_speed_text(st, b[..]); line := cast(string) b[0..<m];
@@ -3494,10 +3477,11 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
   rd:=url_number(q,"ride");if rd>0 && rd<=3 {s[0].ride_dev=rd;}
   if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].xc[0].open=false;}
   // px, pz: any spot, metres plus 1000 (px=970&pz=1010 is (-30, 10)); yaw the way you face in degrees
-  // (0 is +z), the camera behind you; dist the camera's metres; class a class's row (fivebar.coax FB_CL_*)
+  // (0 is +z), the camera behind you; dist the camera's metres; pitch its tilt down in degrees; class a
+  // class's row (fivebar.coax FB_CL_*)
   px:=url_number(q,"px");pz:=url_number(q,"pz");if px>=0 && pz>=0 {
    yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;dist:=url_number(q,"dist");
-   s[0].put_on=true;s[0].put_x=f32(px)-1000;s[0].put_y=0;s[0].put_z=f32(pz)-1000;s[0].put_face=a;s[0].creator[0].yaw=a+3.1415927;if dist>0 {s[0].creator[0].dist=f32(dist);}s[0].xc[0].open=false;continue;
+   s[0].put_on=true;s[0].put_x=f32(px)-1000;s[0].put_y=0;s[0].put_z=f32(pz)-1000;s[0].put_face=a;s[0].creator[0].yaw=a+3.1415927;if dist>0 {s[0].creator[0].dist=f32(dist);}pt:=url_number(q,"pitch");if pt>=0 {s[0].creator[0].pitch=f32(pt)*0.0174533;}s[0].xc[0].open=false;continue;
   }
   n:=url_number(q,"cell");if n<0 || n>=xdungeon.DG_COLS*xdungeon.DG_ROWS {continue;}
   yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;
