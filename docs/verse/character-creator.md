@@ -23,7 +23,7 @@ The lander at `https://openagents.com/newlander`, the homepage's module with `da
 (`newland.coax`, `newland-portal.coax`, `apps/openagents-web/newlander/index.html`), has one
 Everglade portal in the Grid and one button, CREATE YOUR CHARACTER. The homepage itself has
 neither. A press fades the lander's panels and flies the camera into the portal. As soon as the
-portal's light covers the view (about 1.4 s in, `PORTAL_COVER`), the tab goes on to
+portal's light covers the view (about 1.3 s in, `PORTAL_COVER`), the tab goes on to
 `https://everglade.world/play?via=portal`: the address bar changes to everglade.world there, and
 Everglade's own arrival continues on the same light, with its loading bar, while the engine,
 shaders, pack and textures download. The lander loads nothing of Everglade before that. The
