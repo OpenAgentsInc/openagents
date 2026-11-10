@@ -5,7 +5,7 @@
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
 # Everglade II's pack, and the AppKit and Metal host in Swift.
-#   apps/everglade-desktop/build.sh [--open]
+#   apps/everglade-desktop/build.sh [--open [APP ARGS...]]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
@@ -110,12 +110,14 @@ dirname "$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" > 
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 codesign --force --sign - "$app" >/dev/null
 echo "built $app"
-# --open runs a copy outside the checkout, so the app outlives a worktree.
+# --open runs a copy outside the checkout, so the app outlives a worktree. What follows --open
+# goes to the app: `build.sh --open --scene 1` opens it in Everglade.
 if [[ "${1:-}" == --open ]]; then
+  shift
   home="$HOME/.openagents/everglade"
   mkdir -p "$home"
   rm -rf "$home/Everglade.app"
   ditto "$app" "$home/Everglade.app"
-  open "$home/Everglade.app"
+  if [[ $# -gt 0 ]]; then open "$home/Everglade.app" --args "$@"; else open "$home/Everglade.app"; fi
 fi
 exit 0

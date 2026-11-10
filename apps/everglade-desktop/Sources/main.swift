@@ -44,7 +44,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // Everglade itself: the realm, once its row is first opened. `pageOffline` is a shot's: no
   // socket and no request leaves this Mac.
   var page: AEPageHost?
-  var pageTried = false, pageOffline = false
+  var pageTried = false, pageOffline = false, pageShot = false
   var wasInRealm = false, lookHeld = false, worldsPress = false
   var shotStore = NSTemporaryDirectory() + "everglade-shot-\(getpid())"
   var inRealm: Bool { eg_scene(state) == 1 && page != nil }
@@ -123,7 +123,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     c.fonts = res.appendingPathComponent("fonts").path; c.reading = "Spectral-Medium"; c.title = "Cinzel"; c.titleWeight = 600
     c.web = res.appendingPathComponent("web").path
     // A shot keeps nothing of yours: its storage is a folder of its own, gone when it ends.
-    c.store = pageOffline ? shotStore : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/everglade/realm").path
+    c.store = pageShot ? shotStore : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/everglade/realm").path
     // The page the web opens Character Create on; the room is the site's (wss://openagents.com/api/room/).
     c.origin = "https://openagents.com"; c.path = "/worlds/character-creator"
     c.realm = "everglade2"; c.slot = "everglade2"; c.style = "painterly"; c.clock = "fixed:0.5"
@@ -532,7 +532,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   if let w = args.firstIndex(of: "--next"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 86400 { view.nextWait = v }
   if let r = args.firstIndex(of: "--reply"), r + 1 < args.count { view.nextReply = args[r + 1] }
   if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { view.nextRuns = v }
-  view.pageOffline = !args.contains("--online")
+  view.pageShot = true; view.pageOffline = !args.contains("--online")
   if let d = args.firstIndex(of: "--do"), d + 1 < args.count { view.doSteps = args[d + 1] }
   if let w = args.firstIndex(of: "--scene"), w + 1 < args.count, let v = Int32(args[w + 1]) { eg_go(view.state, v) }
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
