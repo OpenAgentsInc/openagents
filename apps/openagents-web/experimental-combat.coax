@@ -114,6 +114,7 @@ XcCombat :: struct {
   fl: [XC_FLOATS] XcFloat;
   casts: int; landed: int; kills: int; refused: int; last_dmg: int;   // for the checks (lab_creator_probe 900+)
   whiffs: int;                      // bolts that flew to their range and blows that met no one
+  releasing: bool;                  // an arrow or a swung blow landing: it resolves though you fell first (#13120)
   fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
   deeds: [1] DeedBar;   // the bar's asks and the rules' answers (aethyr/action/deed.coax, docs/verse/action-pipeline.md, #13072)
   seeded: bool;                     // the dice mixed with the clock at the first press, so each visit rolls its own
@@ -1039,7 +1040,7 @@ xc_bow_strike :: (s: [] Lab, foe: int) -> bool {
   hostile.hostile_provoke(s[0].creator[0].hostiles[..], foe);
   landed := x[0].landed; kills := x[0].kills;
   slot := xc_slot_of(x, FB_ATTACK);
-  ok := xc_use_ab(s, ifx slot >= 0 then slot else 0, shot, foe);
+  x[0].releasing = true; ok := xc_use_ab(s, ifx slot >= 0 then slot else 0, shot, foe); x[0].releasing = false;   // loosed, it lands though you fell since
   hit := ok && (x[0].landed > landed || x[0].kills > kills);
   if hit { x[0].bow_hits += 1; fx_start_at(s, FXR_HIT, s[0].creator[0].clock, fxp_v(s[0].creator[0].player_x, 1.4, s[0].creator[0].player_z), fxp_v(e.x, meadow_y(e.x, e.z) + 0.9 * e.scale, e.z), fxp_v(0.8, 0.7, 0.55), 0.8, 1); }
   else { x[0].bow_misses += 1; }
@@ -1189,13 +1190,13 @@ xc_swing_step :: (s: [] Lab, now: int) {
   for t: x[0].swing_tick + 1..<top + 1 {
     st := act.action_advance(d, x[0].swing, t);
     x[0].swing = st.inst; x[0].swing_tick = t;
-    if st.sensing && !x[0].swing_struck && s[0].creator[0].hostiles[0].hp > 0 { xc_sense(s, t); }
+    if st.sensing && !x[0].swing_struck { xc_sense(s, t); }   // a blow already swung lands though you fell (#13120)
     closed := false;
     for e: 0..<st.n { if st.events[e].kind == act.ActionEventKind.window_close { closed = true; } }
     if (closed || st.finished) && !x[0].swing_struck {
       // the window closed on no one: the blow swings at the air (no roll, no damage)
       x[0].swing_struck = true;
-      if s[0].creator[0].hostiles[0].hp > 0 { xc_whiff(s, x[0].pend); }
+      xc_whiff(s, x[0].pend);
     }
     if st.finished || x[0].swing.phase != act.ActionPhase.running {
       x[0].ledger = sense.sensor_ledger_retire(x[0].ledger, x[0].swing.id);
@@ -1280,7 +1281,7 @@ xc_sense :: (s: [] Lab, t: int) {
     if r.contacts[c].status != sense.ContactStatus.hit || x[0].swing_struck { continue; }
     // the SRD Attack is one creature's: the first accepted contact is it
     x[0].swing_struck = true; x[0].contacts += 1;
-    _ := xc_use_on(s, x[0].pend, r.contacts[c].target - 1);
+    x[0].releasing = true; _ := xc_use_on(s, x[0].pend, r.contacts[c].target - 1); x[0].releasing = false;   // swung, it lands though you fell since
   }
 }
 // A blow that met no one: the turn is spent swinging at the air.
@@ -1523,7 +1524,11 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
     if ok { x[0].told = k; x[0].told_at = now; x[0].told_ok = r.passed; }
     if ok && r.passed && foe >= 0 { if rs_max(a.opt, 0) == 1 { x[0].studied[foe] = true; } else { x[0].calm[foe] = true; } }
   } else if a.kind == FB_BREATH && x[0].dr.on { ok = xd_breathe(s); }
-  else { ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, ifx corpse>=0 then 1+corpse else 0); }
+  else {
+    up := ifx x[0].releasing then rs_release_stand(b, 0) else RsReleased.{};   // released before you fell, it lands (aethyr/rules/srd/released.coax)
+    ok = fb_seat_use(b, x[0].seat[..], a, ifx foe >= 0 then 1 + foe else -1, tx, ty, ifx corpse>=0 then 1+corpse else 0);
+    rs_release_fall(b, 0, up);
+  }
   if facing_cube { b[0].truth_zones=old_truth; }
   if ok && a.kind==FB_SPELL && a.sp==SP_ZONE_OF_TRUTH { xc_truth_project(s,rs_clear(b[0].truth_zones,old_truth)); }
   if ok && a.kind==FB_SPELL && a.sp==SP_PROTECTION_GOOD_EVIL { x[0].protection_water_used=true; }
@@ -2968,6 +2973,47 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   for k: 0..<14 { xc_hostile_tick(s[..],0.05); }
   kept := false; for k: 0..<hostile.HS_SHOTS { if h[0].shots[k].state!=hostile.HS_FREE { kept=true; } }
   #assert kept;
+}
+// The Hill Giant beside you kills you now (its Tree Club through the shared contact, fixed dice).
+xc_test_killed :: (s: [] Lab) {
+  b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
+  boss := -1; for i: 0..<XC_FOES { if hostile.hostile_kind(i)==xdungeon.DG_KIND_BOSS { boss=i; } }
+  b[0].dice[0].fixed=true; b[0].c[0].ac=1; b[0].c[0].hp=3; b[0].c[0].temp=0; xc_sync_vitals(s);
+  h[0].enemies[boss].kind=xdungeon.DG_KIND_BOSS; h[0].enemies[boss].x=0; h[0].enemies[boss].z= -2; b[0].c[boss+1].turn_at=0;
+  if hostile.hc_offer(h[0].contacts[..],boss) { xc_hostile_contacts(s); }
+}
+#test "experimental combat: an arrow loosed before a monster kills you still lands, harms and kills (#13120)" #steps 800000000 {
+  s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
+  x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; b := x[0].b[..];
+  g := 3; h[0].enemies[g].x = 0; h[0].enemies[g].z = 20; b[0].c[1 + g].ac = 1; b[0].c[1 + g].hp = 1;
+  #assert xc_bow_begin(s[..], false); xc_test_fly(s[..], 1.0);
+  #assert xc_bow_point(s[..]).foe == g && xc_bow_loose(s[..]);
+  xc_test_fly(s[..], 0.1); #assert x[0].arrows[0].a[0].state == bow.ARROW_FLYING;
+  // while it flies, you die
+  xc_test_killed(s[..]);
+  #assert b[0].c[0].hp == 0 && h[0].hp <= 0 && !rs_can_act(b[0].c[0]);
+  kills := x[0].kills;
+  xc_test_fly(s[..], 1.0);
+  // it reached the Goblin: the Longbow's roll, its damage and the kill, the same as if you stood
+  #assert x[0].bow_hits == 1 && x[0].bow_misses == 0 && x[0].arrows[0].hits == 1;
+  #assert b[0].c[1 + g].hp <= 0 && h[0].enemies[g].dead && x[0].kills == kills + 1;
+  // and you are still down: no new draw
+  #assert b[0].c[0].hp == 0 && !rs_can_act(b[0].c[0]) && h[0].hp <= 0;
+  x[0].cool_at = -100; #assert !xc_press(s[..], xc_slot_of(x, FB_ATTACK)) && !x[0].draw[0].on;
+}
+#test "experimental combat: a blow already swung lands though a monster kills you first; down, nothing new swings (#13120)" #steps 2000000000 {
+  s: [1] Lab; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; b := x[0].b[..];
+  h[0].enemies[0].x = 0.2; h[0].enemies[0].z = 1.2; b[0].c[1].ac = 1; b[0].c[1].hp = 30; b[0].c[1].hp_max = 30;
+  s[0].creator[0].clock = 3;
+  #assert xc_press(s[..], 1) && x[0].pend == 1 && x[0].contacts == 0;
+  xc_test_killed(s[..]);
+  #assert b[0].c[0].hp == 0 && h[0].hp <= 0;
+  i := 0; while x[0].pend >= 0 && i < 2000 { s[0].creator[0].clock += 1.0 / 60; xc_strike_due(s[..]); i += 1; }
+  #assert x[0].contacts == 1 && b[0].c[1].hp < 30 && x[0].landed >= 1;
+  #assert b[0].c[0].hp == 0 && !rs_can_act(b[0].c[0]);
+  s[0].creator[0].clock += 5; refused := x[0].refused;
+  #assert !xc_press(s[..], 1) && x[0].refused == refused + 1 && x[0].pend == -1;
 }
 
 #test "experimental combat: physical contact uses shared class AC, defenses, temporary HP and the saved player turn" {

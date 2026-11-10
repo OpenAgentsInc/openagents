@@ -7676,3 +7676,16 @@ death. Revivify admits only a dead creature with that record from the last
 60 seconds, within Touch and not behind Total Cover. It consumes the
 diamond and slot only on admission, then restores 1 Hit Point. Each world
 supplies one diamond a visit, and a preset change does not refill it.
+
+## A released attack lands after its maker falls
+
+Anything already released resolves; anything not yet released is cancelled
+by the fall. `released.coax` stands the maker for that one resolution (up,
+at 1 Hit Point when it had none, without its fall's conditions and halts)
+and puts it back down after, keeping what the resolution spent. Experimental
+uses it for an arrow that reaches a monster and a blow already swung; the
+Everglade II room uses it for a cast in flight (RC_FLIGHT). A draw, a cast
+bar or a new press is still refused once the maker is down. Checks:
+`released:` in the SRD engine, the two `(#13120)` checks in
+`experimental-combat.coax`, and `casts: a cast released before its caster
+falls` in `room-casts.coax` (GitHub #13120).

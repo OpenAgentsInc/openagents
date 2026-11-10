@@ -363,6 +363,15 @@ e5rr_apart :: (r: [] E5rRoom, s: int, o: int) -> bool {
 e5rr_use :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool #export_c #effects(reads,writes,traps) {
   switch e5rr_use_atomic(r, s, k, x, z, tgt) { case none { return false; } case some(ok) { return ok; } }
 }
+// A cast seat s released that lands now (room-casts.coax RC_FLIGHT): it resolves though the seat fell
+// or was held while it flew (aethyr/rules/srd/released.coax, #13120). The seat is down again after.
+e5rr_use_released :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool {
+  if !r[0].started || s < 0 || s >= E5RR_SEATS { return false; }
+  up := rs_release_stand(r[0].b[..], E5RR_SEAT + s);
+  ok := e5rr_use(r, s, k, x, z, tgt);
+  rs_release_fall(r[0].b[..], E5RR_SEAT + s, up);
+  return ok;
+}
 // The shared battle, every affected creature and its lasting areas commit together.
 // The bool C boundary stays the same; refusal leaves the battle exactly as it was.
 e5rr_use_atomic :: (r: [] E5rRoom, s: int, k: int, x: f32, z: f32, tgt: int) -> bool? {

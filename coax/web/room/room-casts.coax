@@ -11,7 +11,7 @@
 //   release    the checks again (range with CR_SLACK_END, line of sight, its target alive); failed:
 //              e stop SS SLOT WHY to everyone near;
 //   RC_FLIGHT  released, its strike rolled at its due tick, at its target if it still stands, else
-//              where the target was.
+//              where the target was; it lands though its caster fell or was held in flight (#13120).
 // A tick's order (rm_eg_end): starts, heals due, the world's harm, the rules' step (the creatures'
 // turns), stops, releases, harm due. So a heal and a killing blow in one tick: the heal first; an
 // interrupt and a release in one tick: the interrupt; two strikes at one raider: the earlier start,
@@ -281,7 +281,7 @@ rc_strike :: (v: [] RmServer, k: int, q: int) {
   tt := rc_target(v, k, cs.tgt);
   tgt := ifx tt.named && !tt.up then -1 else cs.tgt;
   at := rc_landing(v, k, EgCast.{x = cs.x, y = cs.y, z = cs.z, tgt = tgt});
-  ok := e5rr_use(v[0].eg[k].rules[..], cs.seat, cs.slot, at.x, at.z, tgt);
+  ok := e5rr_use_released(v[0].eg[k].rules[..], cs.seat, cs.slot, at.x, at.z, tgt);   // released: it lands though its caster fell in flight (#13120)
   // Dimension Door: the world puts the seat where the engine teleported it (a rooftop: the aim's height)
   at2: [2] f32;
   if ok && cs.slot == EG_WL_DOOR && v[0].eg[k].strike_n < EG_WORLD_STRIKES && e5rr_seat_at(v[0].eg[k].rules[..], cs.seat, at2[..]) {
@@ -554,6 +554,33 @@ rc_test_at :: (t: string, part: string) -> int {
   for q: 0..<6 { rc_test_tick(v[..], k, true); }
   eg_test_drain(v[..], box[..]);
   #assert !eg_test_has(eg_test_of(box[..], 0), "e stop") && !v[0].eg[k].casts[q0].on && abs(spot.x - 20) < 3;
+}
+
+#test "casts: a cast released before its caster falls still lands, and its caster stays dead (#13120)" #steps 4000000000 {
+  v: [1] RmServer; box: [1] EgInbox;
+  k := rc_test_room(v[..], "pair-cast-fall", 2, false);
+  w := rc_test_wolf(v[..], k, SeatId.{value = 1}, 20, 0, true);
+  #assert w > 0;
+  v[0].eg[k].rules[0].b[0].dice[0].fixed = true;
+  wi := e5rr_beast_of_tgt(v[0].eg[k].rules[..], E5RR_TGT_BEAST + w);
+  #assert wi >= 0;
+  hp := v[0].eg[k].rules[0].b[0].c[wi].hp;
+  // seat 0's cast at the wolf is released, then seat 0 falls while it flies
+  t: [64] u8; n := put(t[..], 0, "C 1 1 2000 0 0 "); n = put_int(t[..], n, E5RR_TGT_BEAST + w);
+  rm_heard(v[..], 0, cast(string) t[0..<n]);
+  for q: 0..<cr_bar_ticks(1, EG_HZ) + 1 { rc_test_tick(v[..], k, true); }
+  q0 := -1;
+  for q: 0..<EG_CASTS { if v[0].eg[k].casts[q].on && v[0].eg[k].casts[q].seat == 0 { q0 = q; } }
+  #assert q0 >= 0 && v[0].eg[k].casts[q0].phase == RC_FLIGHT;
+  e5rr_hurt(v[0].eg[k].rules[..], E5RR_TGT_SEAT + 0, 999, -1);
+  o: [E5RR_OUT_FLOATS] f32; e5rr_seat_out(v[0].eg[k].rules[..], 0, o[..]); #assert o[4] > 0.5;
+  for q: 0..<6 { rc_test_tick(v[..], k, true); }
+  eg_test_drain(v[..], box[..]);
+  // it landed: the wolf took its harm (or fell to it); its caster is still dead
+  wj := e5rr_beast_of_tgt(v[0].eg[k].rules[..], E5RR_TGT_BEAST + w);
+  #assert !v[0].eg[k].casts[q0].on && !eg_test_has(eg_test_of(box[..], 1), "e stop");
+  #assert wj < 0 || v[0].eg[k].rules[0].b[0].c[wj].hp < hp || v[0].eg[k].rules[0].b[0].c[wj].dead;
+  e5rr_seat_out(v[0].eg[k].rules[..], 0, o[..]); #assert o[4] > 0.5;
 }
 
 #test "casts: a caster held during the bar is interrupted; held on the tick its bar is done, the hold wins; one that leaves stops its cast" #steps 3000000000 {

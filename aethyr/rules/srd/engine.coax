@@ -26,6 +26,7 @@
 #load "hit-points.coax";
 #load "exhaustion.coax";
 #load "command-halt.coax";
+#load "released.coax";   // a released attack lands after its maker falls (#13120)
 #load "cast-components.coax";
 #load "check-training.coax";
 
