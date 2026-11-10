@@ -590,19 +590,19 @@ rc_test_at :: (t: string, part: string) -> int {
   for q: 0..<cr_bar_ticks(1, EG_HZ) { rc_test_tick(v[..], k, true); }
   eg_test_drain(v[..], box[..]);
   #assert !eg_test_has(eg_test_of(box[..], 1), "e stop");
-  rm_eg_cond(v[..], k, SeatId.{value = 0}, WC_PARALYZED);   // Hold Person lands on the tick the bar is done
+  rm_eg_held(v[..], k, SeatId.{value = 0}, WC_PARALYZED);   // Hold Person lands on the tick the bar is done
   rc_test_tick(v[..], k, true);
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "e stop 0 1 held");
   // restrained isn't held: the bar goes on
-  rm_eg_cond(v[..], k, SeatId.{value = 0}, WC_RESTRAINED);
+  rm_eg_held(v[..], k, SeatId.{value = 0}, WC_RESTRAINED);
   for q: 0..<10 { rc_test_tick(v[..], k, true); }
   rm_heard(v[..], 0, "C 2 1 3000 0 0 -1");
   for q: 0..<cr_bar_ticks(1, EG_HZ) + 1 { rc_test_tick(v[..], k, true); }
   eg_test_drain(v[..], box[..]);
   #assert !eg_test_has(eg_test_of(box[..], 1), "e stop");
   // seat 0 leaves mid-bar: seat 1 hears it stop
-  rm_eg_cond(v[..], k, SeatId.{value = 0}, 0);
+  rm_eg_held(v[..], k, SeatId.{value = 0}, 0);
   for q: 0..<10 { rc_test_tick(v[..], k, true); }
   rm_heard(v[..], 0, "C 3 0 3000 0 0 -1");   // Meteor Swarm's 2.5 s
   for q: 0..<20 { rc_test_tick(v[..], k, true); }

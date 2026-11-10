@@ -77,8 +77,8 @@ static void everglade_town(int k) {
     int seed = (int)rm_eg_want_take(view(), k, (coax_t_SeatId){ s});   /* back WANTED at the level the room saved (#12794) */
     if (seed > 0) world_seed_wanted(k, s, seed);
     rm_eg_wanted(view(), k, (coax_t_SeatId){ s}, world_wanted(k, s));
-    rm_eg_cond(view(), k, (coax_t_SeatId){ s}, world_cond(k, s));
-    for (int c = 0; c < 3; c++) rm_eg_cond_left(view(), k, (coax_t_SeatId){ s}, c, world_cond_left(k, s, c));
+    rm_eg_held(view(), k, (coax_t_SeatId){ s}, world_cond(k, s));
+    for (int c = 0; c < 3; c++) rm_eg_held_left(view(), k, (coax_t_SeatId){ s}, c, world_cond_left(k, s, c));
   }
   rm_eg_gates(view(), k, world_gates(k));   /* the gates shut at WANTED 4 (#12794): the doors row's FORM */
   /* the town's pieces: the rebuild, the strikes cast since, then what broke and caught for every page */

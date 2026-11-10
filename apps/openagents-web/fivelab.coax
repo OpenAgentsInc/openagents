@@ -34,6 +34,7 @@
 #load "../../verse/experimental-dungeon.coax" as xdungeon;
 #load "../../aethyr/loop.coax";
 #load "../../aethyr/rules/srd/battle.coax";
+#load "../../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
 #load "../../aethyr/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
 #load "../../aethyr/space.coax" as asp;
 #load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
@@ -513,15 +514,12 @@ lab_effect :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
 // What lasts on a creature, as the glade draws it (aethyr/fx/abilities.coax fxp_status): its
 // conditions, concentration, Rage, Sacred Weapon, Innate Sorcery, a flame in hand and a Fiend's
 // Temporary Hit Points from Dark One's Blessing.
-fx_lasting :: (s: [] Lab, i: int) -> int {
+// Its conditions' marks are the shared condition display's (aethyr/rules/srd/condition-display.coax).
+fx_marks :: (s: [] Lab, i: int) -> int {
   b := bt(s);
   if b[0].c[i].dead || b[0].c[i].hp == 0 { return 0; }
-  cond := b[0].c[i].cond; now := b[0].clock;
-  f := 0;
-  if (cond & RS_POISONED) != 0 { f = f | FXS_POISONED; }
-  if (cond & (RS_STUNNED | RS_PARALYZED)) != 0 { f = f | FXS_STUNNED; }
-  if (cond & RS_FRIGHTENED) != 0 { f = f | FXS_FRIGHTENED; }
-  if (cond & RS_CHARMED) != 0 { f = f | FXS_CHARMED; }
+  now := b[0].clock;
+  f := cd_icons(b[0].c[i].cond);
   if b[0].c[i].conc >= 0 { f = f | FXS_CONCENTRATING; }
   if b[0].c[i].raging { f = f | FXS_RAGING; }
   if b[0].c[i].sacred_until > now { f = f | FXS_SACRED; }
@@ -2613,7 +2611,7 @@ glade_puffs :: (s: [] Lab) {
   fxe_zones(pf, bt(s), lab_grid(s), s[0].clock);
   // what lasts on each creature: a few puffs each, capped (FX_STATUS_CAP), after the effects
   for i: 0..<s[0].battle[0].n {
-    lf := fx_lasting(s, i);
+    lf := fx_marks(s, i);
     if lf == 0 { continue; }
     feet := fxp_v(wx(s, s[0].dx[i]), 0, wz(s, s[0].dy[i]));
     fxp_status(pf, feet, fxp_v(feet.x + 0.3, 1.1, feet.z), lf, now, f32(i) * 1.37 + 0.4);
@@ -4226,7 +4224,8 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   }
   // a creature poisoned and concentrating carries its lasting looks
   b[0].c[1].cond = RS_POISONED; b[0].c[0].conc = SP_HOLD_PERSON;
-  #assert fx_lasting(s[..], 1) == FXS_POISONED && (fx_lasting(s[..], 0) & FXS_CONCENTRATING) != 0;
+  #assert fx_marks(s[..], 1) == FXS_POISONED && (fx_marks(s[..], 0) & FXS_CONCENTRATING) != 0;
+  #assert CD_ICON_POISONED == FXS_POISONED && CD_ICON_STUNNED == FXS_STUNNED && CD_ICON_FRIGHTENED == FXS_FRIGHTENED && CD_ICON_CHARMED == FXS_CHARMED;   // the shared icons are the puffs' marks
 }
 
 #test "a battle in the glade draws its effects as puffs, never past the budget" #steps 2000000000 {

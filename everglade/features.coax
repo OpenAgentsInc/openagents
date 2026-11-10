@@ -88,13 +88,8 @@ EF_ZONES :: [3] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [178] string.[
+EF_KNOWN :: [170] string.[
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
-  "conditions apps/openagents-web/everglade2-cast.coax e2k_health_text",
-  "conditions apps/openagents-web/everglade2-cast.coax E2K_CONDITION",
-  "conditions apps/openagents-web/everglade2-cast.coax E2K_EFFECTS",
-  "conditions apps/openagents-web/everglade2-cast.coax E2K_EFFECT_BIT",
-  "conditions apps/openagents-web/everglade2-cast.coax E2K_EFFECT",
   "hud apps/openagents-web/everglade2-create.coax e2c_hud",
   "camera apps/openagents-web/everglade2-create.coax e2c_shot",
   "camera apps/openagents-web/everglade2-create.coax e2c_lens",
@@ -109,8 +104,6 @@ EF_KNOWN :: [178] string.[
   "camera apps/openagents-web/everglade2.coax e2_follow",
   "hud apps/openagents-web/everglade2.coax e2_quality_hud",
   "hud apps/openagents-web/everglade2.coax e2_light_hud",
-  "conditions coax/web/room/room-everglade.coax rm_eg_cond",
-  "conditions coax/web/room/room-everglade.coax rm_eg_cond_left",
   "camera apps/openagents-web/charactercreator-walk.coax walk_camera",
   "hud apps/openagents-web/charactercreator.coax dev_hud",
   "hud apps/openagents-web/charactercreator.coax combat_hud",
@@ -137,7 +130,6 @@ EF_KNOWN :: [178] string.[
   "damage-numbers apps/openagents-web/fivelab.coax hit_group_of",
   "damage-numbers apps/openagents-web/fivelab.coax hit_groups",
   "damage-numbers apps/openagents-web/fivelab.coax hit_shown",
-  "conditions apps/openagents-web/fivelab.coax fx_lasting",
   "class-bars apps/openagents-web/fivelab.coax abilities",
   "camera apps/openagents-web/fivelab.coax LOOK_DRAG",
   "camera apps/openagents-web/fivelab.coax follow_cam",

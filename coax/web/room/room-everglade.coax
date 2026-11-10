@@ -2,6 +2,7 @@
 #load "../../../aethyr/ids.coax";
 #load "../../../apps/openagents-web/everglade2-move.coax";   // Everglade II's rooms' world (#13053, room-world.c world2_*)
 #load "../../../apps/openagents-web/class-kit.coax";
+#load "../../../aethyr/rules/srd/condition-display.coax";   // the conditions' words, icons and clocks, every zone's (#13082)
 #load "../../../apps/openagents-web/everglade2-rules.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
 // The room server's Everglade rooms: the server is the authority (spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
@@ -196,7 +197,7 @@ EgSeat :: struct {
   place_due: int;                                     // a place line (room-control.coax "place"): beside rowboat place_due - 1 on the next tick (0 none)
   back_hp: int = -1; back_dead: bool;                 // the Hit Points it came back with until its hello built it (rv_join; -1 none)
   wcond: int;                                         // the world's conditions on it (WC_*), with the rules' in p's COND
-  fx_left: [WE_WATCH] f32; fx_t0: [WE_WATCH] int; fx_dur: [WE_WATCH] int;   // its watch effects (WE_*): seconds left, start tick, ticks
+  fx: [WE_WATCH] CdClock;                             // its watch effects (WE_*): the shared display's clocks (aethyr/rules/srd/condition-display.coax)
   step_at: int; ack_at: int; ack_told: int;           // when the input stepped last and the one ACK names were heard (room-stats.coax rm_st_ack)
   ack_sent_told:int; // exact final-D queue observation, independent of the legacy estimate
   ends: [EG_ENDS] EgEnd; ends_n: int;                 // ends (E) waiting for the inputs sent before them (eg_ends_due)
@@ -431,7 +432,7 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat
   n.last_cast = o.last_cast; n.repaired = o.repaired;
   n.checkpoint_hello = o.checkpoint_hello;
   n.want_seed = o.want_seed; n.hold_due = o.hold_due; n.back_hp = o.back_hp; n.back_dead = o.back_dead;
-  n.wcond = o.wcond; n.fx_left = o.fx_left; n.fx_t0 = o.fx_t0; n.fx_dur = o.fx_dur;
+  n.wcond = o.wcond; n.fx = o.fx;
   n.heard_ms = v[0].mono_ms;
   v[0].eg[k].seat[seat] = n;
   v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;
@@ -1384,15 +1385,12 @@ rm_eg_missile :: (v: [] RmServer, k: int, m: [] f32) #export_c #effects(all) {
   foe := cast(int) m[2];
   eg_event_who(v, k, cast(string) b[0..<n], m[3], m[5], false, ifx foe >= 0 && foe < EG_SEATS then 1 << foe else 0);
 }
-rm_eg_cond :: (v: [] RmServer, k: int, s_id: SeatId, bits: int) #export_c #effects(all) { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].wcond = bits; } }
+rm_eg_held :: (v: [] RmServer, k: int, s_id: SeatId, bits: int) #export_c #effects(all) { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].wcond = bits; } }
 // Seat s's watch effect by cause (WE_*): its seconds left, 0 none. A new one, or one cast again (more
 // left than last tick's), starts now (T0) and lasts what is left (DUR, ticks).
-rm_eg_cond_left :: (v: [] RmServer, k: int, s_id: SeatId, cause: int, left: f32) #export_c #effects(all) { s := s_id.value;
+rm_eg_held_left :: (v: [] RmServer, k: int, s_id: SeatId, cause: int, left: f32) #export_c #effects(all) { s := s_id.value;
   if !rm_eg_seat_live(v, k, s_id) || cause < 0 || cause >= WE_WATCH { return; }
-  st := v[0].eg[k].seat[s..<s + 1];
-  was := st[0].fx_left[cause];
-  if left > 0 && (was <= 0 || left > was + 0.1) { st[0].fx_t0[cause] = v[0].eg[k].tick; st[0].fx_dur[cause] = cast(int) floor(left * f32(WIRE_HZ) + 0.5); }
-  st[0].fx_left[cause] = ifx left > 0 then left else 0;
+  cd_clock_note(v[0].eg[k].seat[s].fx[cause..<cause + 1], left, v[0].eg[k].tick, WIRE_HZ);
 }
 // Whether seat s is to be held by a scripted Hold Person (room-control.coax "hold"), once: the host
 // lays the watch's hold on it in the world (room-tick.c everglade_town, room-world.c world_hold).
@@ -1532,7 +1530,7 @@ eg_table :: (v: [] RmServer, k: int) {
     st := rm[0].seat[q..<q + 1];   // a view: no copy of the seat (its rep is large)
     for c: 0..<WE_WATCH {
       f := q * WE_WATCH + c;
-      if !st[0].live || !st[0].placed || st[0].fx_left[c] <= 0 { rm[0].fx_slot[f] = 0; continue; }
+      if !st[0].live || !st[0].placed || st[0].fx[c].left <= 0 { rm[0].fx_slot[f] = 0; continue; }
       if rm[0].fx_slot[f] > 0 { used[rm[0].fx_slot[f] - 1] = true; }
     }
   }
@@ -1541,11 +1539,11 @@ eg_table :: (v: [] RmServer, k: int) {
     if !st[0].live || !st[0].placed { continue; }
     for c: 0..<WE_WATCH {
       f := q * WE_WATCH + c;
-      if st[0].fx_left[c] <= 0 { continue; }
+      if st[0].fx[c].left <= 0 { continue; }
       if rm[0].fx_slot[f] == 0 { for j: 0..<EG_SLOT_ABS { if !used[j] { used[j] = true; rm[0].fx_slot[f] = j + 1; break; } } }
       if rm[0].fx_slot[f] == 0 { continue; }   // the pool full: it waits
       wire_hist_put(h, EG_SLOT_AB + rm[0].fx_slot[f] - 1, WireS.{id = WIRE_ID_MADE + EG_FX_ID + q * WE_WATCH + c, kind = WK_EFFECT,
-                                                           owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st[0].fx_t0[c], dur = st[0].fx_dur[c]}, wire_rel(WK_EFFECT), true, false);
+                                                           owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st[0].fx[c].t0, dur = st[0].fx[c].dur}, wire_rel(WK_EFFECT), true, false);
     }
   }
   ra_table(v, k);   // what the world's abilities hold up (room-abilities.coax)
@@ -2241,7 +2239,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   id := WIRE_ID_MADE + EG_FX_ID + 1 * WE_WATCH + WE_HOLD_PERSON;
   // the world holds seat 1 for 3 s: a row on both pages
-  rm_eg_cond_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 3.0);
+  rm_eg_held_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 3.0);
   t0 := v[0].eg[k].tick;
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   for c: 0..<2 {
@@ -2249,10 +2247,10 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
     #assert e.kind == WK_EFFECT && e.owner == WIRE_TGT_SEAT + 1 && e.p1 == WE_HOLD_PERSON && e.p2 == WC_PARALYZED && e.t0 == t0 && e.dur == 3 * WIRE_HZ;
   }
   // a tick on, less left: the same row (no bytes); then it ends: gone on both
-  rm_eg_cond_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 2.96);
+  rm_eg_held_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 2.96);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 0, id).t0 == t0 && !eg_test_has(eg_test_of(box[..], 0), "s 1150003 ");
-  rm_eg_cond_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 0);
+  rm_eg_held_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 0);
   for t: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_test_ent(box[..], 0, id).id < 0 && eg_test_ent(box[..], 1, id).id < 0;
 }

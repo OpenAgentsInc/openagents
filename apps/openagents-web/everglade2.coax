@@ -16,6 +16,7 @@
 #load "experimental-sound.coax" as exsound;
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: class features and rest, every zone's (the game)
 #load "everglade2-sight.coax";   // ... from this zone's land, trunks, rocks and camp
+#load "../../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
 #load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
 #load "everglade2-guard.coax";  // the path's guard, as the room walks him
 #load "everglade2-monsters.coax";   // the wolves and the goblins, as the room moves them
@@ -1066,8 +1067,8 @@ e2_portrait :: (s: [] E2, conds: [] u8) -> cc.EgPortrait {
     a := k[0].bar[i]; if a.kind != FB_SPELL || a.lvl < 1 || a.lvl > 9 { continue; }
     kit := e2n_kit(s[0].net[..], i, k[0].bar_n); if kit.ok && kit.left >= 0 { p.slot_left[a.lvl] = ifx kit.left > p.slot_max[a.lvl] then p.slot_max[a.lvl] else kit.left; }
   }
-  // what holds you: the health line's words after its numbers (e2k_health_text)
-  h: [E2K_HEALTH] u8; hn := e2k_health_text(s, h[..]); from := 0; i := 0;
+  // what holds you: the health line's words after its numbers (e2k_vitals_text)
+  h: [E2K_HEALTH] u8; hn := e2k_vitals_text(s, h[..]); from := 0; i := 0;
   while i + 2 < hn { if h[i] == ' ' && h[i + 1] == 0xC2 { j := i + 4; if j + 4 <= hn && h[j] == 'T' && h[j + 1] == 'E' && h[j + 2] == 'M' && h[j + 3] == 'P' { i = j; continue; } from = j; break; } i += 1; }
   m := 0; if from > 0 { for q: from..<hn { if m < conds.count { conds[m] = h[q]; m += 1; } } }
   p.conds = cast(string) conds[0..<m];
@@ -2388,21 +2389,21 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
 #test "Everglade II health label uses its server row including temporary HP and snapshot removal" #steps 1000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
   n:=s[0].net[..]; label:[80] u8;
-  #assert e2k_health_text(s[..],label[..])==0;
+  #assert e2k_vitals_text(s[..],label[..])==0;
   geometry:[8192] f32; plain:=e2k_hud(s[..],geometry[..],0);
   frame:[1024] u8; row:[WIRE_SF] s32; zero:[WIRE_SF] s32;
   wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=3,max=8,temp=7},row[..]);
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 3/8 · TEMP 7";
+  count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 3/8 · TEMP 7";
   #assert e2k_hud(s[..],geometry[..],0)>plain;
   newer:[WIRE_SF] s32; wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=6,max=8},newer[..]);
   count=wire_put_d(frame[..],0,WireD.{tick=2}); count=wire_put_s(frame[..],count,1,1,row[..],newer[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 6/8";
+  count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 6/8";
   count=wire_put_d(frame[..],0,WireD.{tick=3,f=1}); e2n_record(n,cast(string)frame[0..<count]);
-  #assert e2k_health_text(s[..],label[..])==0;
+  #assert e2k_vitals_text(s[..],label[..])==0;
   #assert e2k_hud(s[..],geometry[..],0)==plain;
 }
 
@@ -2420,12 +2421,12 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
     if pass==7 { w.kind=WK_BEAST; }
     wire_s_pack(w,row[..]); count:=wire_put_d(frame[..],0,WireD.{tick=pass+1,f=1});
     count=wire_put_s(frame[..],count,w.id,0,zero[..],row[..]); e2n_record(n,cast(string)frame[0..<count]);
-    count=e2k_health_text(s[..],label[..]);
+    count=e2k_vitals_text(s[..],label[..]);
     if pass==0 { #assert cast(string)label[0..<count]=="HP 0/8 · UNCONSCIOUS"; }
     else if pass==1 { #assert cast(string)label[0..<count]=="HP 0/8 · DEAD"; }
     else { #assert count==0; }
   }
-  e2n_down(n); #assert e2k_health_text(s[..],label[..])==0;
+  e2n_down(n); #assert e2k_vitals_text(s[..],label[..])==0;
 }
 
 #test "Everglade II health names the conditions and spell effects the room's row holds, once each (#13046)" #steps 1000000000 {
@@ -2439,17 +2440,17 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
     if pass==4 { w.cond=RS_BLINDED|RS_CHARMED|RS_DEAFENED|RS_EXHAUSTION|RS_FRIGHTENED|RS_GRAPPLED|RS_INCAPACITATED|RS_INVISIBLE|RS_PARALYZED|RS_PETRIFIED|RS_POISONED|RS_PRONE|RS_RESTRAINED|RS_STUNNED|WC_HALTED|WC_SLOWED|WC_BOUND|WC_BANED|WC_ENFEEBLED|WC_HEXED|WC_BLESSED|WC_FAITH; }
     wire_s_pack(w,row[..]); count:=wire_put_d(frame[..],0,WireD.{tick=tick,f=1}); tick+=1;
     count=wire_put_s(frame[..],count,1,0,zero[..],row[..]); e2n_record(n,cast(string)frame[0..<count]);
-    count=e2k_health_text(s[..],label[..]); t:=cast(string)label[0..<count];
+    count=e2k_vitals_text(s[..],label[..]); t:=cast(string)label[0..<count];
     if pass==0 { #assert t=="HP 5/12"; }
     if pass==1 { #assert t=="HP 5/12 · POISONED · PRONE · BLESSED"; }
-    if pass==2 { #assert t=="HP 0/12 · UNCONSCIOUS · EXHAUSTED"; }
+    if pass==2 { #assert t=="HP 0/12 · UNCONSCIOUS · EXHAUSTION"; }
     if pass==3 {
       #assert t=="HP 5/12 · UNCONSCIOUS";
       // asleep, as the room's rest says: Unconscious once, as ASLEEP
-      e2n_record(n,"z 0 3 1"); count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · ASLEEP";
+      e2n_record(n,"z 0 3 1"); count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · ASLEEP";
       e2n_record(n,"z 0 0 1");
     }
-    if pass==4 { #assert t=="HP 5/12 · BLINDED · CHARMED · DEAFENED · EXHAUSTED · FRIGHTENED · GRAPPLED · INCAPACITATED · INVISIBLE · PARALYZED · PETRIFIED · POISONED · PRONE · RESTRAINED · STUNNED · HALTED · SLOWED · EARTHBOUND · BANED · ENFEEBLED · HEXED · BLESSED · SHIELD OF FAITH" && count<E2K_HEALTH; }
+    if pass==4 { #assert t=="HP 5/12 · BLINDED · CHARMED · DEAFENED · EXHAUSTION · FRIGHTENED · GRAPPLED · INCAPACITATED · INVISIBLE · PARALYZED · PETRIFIED · POISONED · PRONE · RESTRAINED · STUNNED · HALTED · SLOWED · EARTHBOUND · BANED · ENFEEBLED · HEXED · BLESSED · SHIELD OF FAITH" && count<E2K_HEALTH; }
   }
 }
 
@@ -2524,13 +2525,13 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   // the room's answer: asleep; your keys move nothing, and the label says so
   m:[64] u8; c:=wire_put_rest_state(m[..],0,WireRestState.{seq=w.seq,code=WIRE_REST_SLEEP,dice=1}); e2n_record(n,cast(string)m[0..<c]);
   s[0].held=HOLD_W; mv:=e2_move_in(s[..]); #assert mv.key_y==0 && mv.key_x==0 && !mv.jump; s[0].held=0;
-  count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · ASLEEP";
+  count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · ASLEEP";
   #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_WATCH && reqs[1]==RS_REST_END;
   // a refusal shows briefly over the bar in the cast feedback's place
   #assert e2n_rest(n,RS_REST_WATCH); c=wire_put_refused(m[..],0,n[0].rest_seq,"rest"); e2n_record(n,cast(string)m[0..<c]);
   #assert e2n_rest_message(n).count>0 && e2_probe(s[..],39)==1;
   e2n_record(n,"z 0 2 1"); #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_DIE;
-  count=e2k_health_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · HIT DICE 1";
+  count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 5/12 · HIT DICE 1";
   e2n_down(n); #assert e2k_rest_choices(s[..],reqs[..])==0 && e2_probe(s[..],30)== -1 && e2_probe(s[..],31)==0 && e2_probe(s[..],32)== -1 && e2_probe(s[..],34)== -1;
 }
 

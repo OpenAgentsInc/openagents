@@ -83,12 +83,14 @@ its caster).
 ### Conditions
 
 The SRD conditions are shared: `aethyr/rules/srd/` (`RS_CONDITIONS`
-engine.coax:124, `rs_has`). How a zone shows them is not.
+engine.coax:124, `rs_has`), and so is showing them: `aethyr/rules/srd/condition-display.coax`
+(#13082) has their words (`cd_held_text`), their icons over a creature (`cd_icons`) and the
+clock of an effect a page counts down (`CdClock`).
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared rules (through `class-kit.coax` and `battle.coax`); local display: condition names as text in `e2k_health_text` everglade2-cast.coax:423, `E2K_CONDITION` :450, `E2K_EFFECT` :455. The room mirrors them for v1 in `rm_eg_cond` room-everglade.coax:1367. |
-| Experimental | Shared rules; local display: `fx_lasting` fivelab.coax:654 maps conditions to its effect flags. |
+| Everglade II | Shared rules and display: `e2k_vitals_text` everglade2-cast.coax says them with `cd_held_text`; the room keeps its effects' clocks as `CdClock` (`rm_eg_held_left` room-everglade.coax). |
+| Experimental | Shared rules and display: `fx_marks` fivelab.coax takes its conditions' marks from `cd_icons`. |
 | Everglade v1 | Local: its own status table (`StEffect` everglade-status.coax:22, `st_cond` :79, `st_tags_draw` :209) and wire bits (`WC_SLOWED`, `WC_BOUND`, `WC_HALTED` everglade-wire.coax:139-142) that mirror `RS_*` without loading the engine. |
 
 ### HUD parts
@@ -253,7 +255,7 @@ when v1 wires the shared module or retires.
 | Bow carry and draw | #13079 | 0 / 4 / 0 | Everglade v1 |
 | Damage numbers | #13080 | 7 / 14 / 24 | Everglade II, Experimental, Everglade v1 |
 | Area targeting | #13081 | 0 / 0 / 10 | |
-| Conditions | #13082 | 7 / 1 / 15 | none |
+| Conditions | #13082 | 0 / 0 / 15 | none |
 | HUD parts | #13083 | 6 / 10 / 24 | none |
 | Class bars | #13084 | 2 / 1 / 5 | Everglade v1 |
 | Dash | #13085 | 0 / 2 / 0 | none |
@@ -285,10 +287,9 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### Conditions (#13082)
 
-23 zone-local copies.
+15 zone-local copies, all in the frozen Everglade v1. Everglade II and Experimental wire
+`aethyr/rules/srd/condition-display.coax`.
 
-- Everglade II: `e2k_health_text` everglade2-cast.coax:423, `E2K_CONDITION` everglade2-cast.coax:450, `E2K_EFFECTS` everglade2-cast.coax:453, `E2K_EFFECT_BIT` everglade2-cast.coax:454, `E2K_EFFECT` everglade2-cast.coax:455, `rm_eg_cond` coax/web/room/room-everglade.coax:1367, `rm_eg_cond_left` coax/web/room/room-everglade.coax:1370.
-- Experimental: `fx_lasting` fivelab.coax:654.
 - Everglade v1: `ab_rules_cond` everglade-abilities.coax:745, `net_cond` everglade-net.coax:1043, `StEffect` everglade-status.coax:22, `st_add` everglade-status.coax:26, `st_cond` everglade-status.coax:79, `st_word` everglade-status.coax:102, `st_tags_draw` everglade-status.coax:209, `st_bodies_draw` everglade-status.coax:248, `st_draw_on` everglade-status.coax:261, `everglade_room_folk_cond` everglade-watch.coax:1000, `everglade_room_cond_left` everglade-watch.coax:1457, `everglade_room_cond` everglade-watch.coax:1463, `WC_SLOWED` everglade-wire.coax:139, `WC_BOUND` everglade-wire.coax:140, `WC_HALTED` everglade-wire.coax:142.
 
 ### HUD parts (#13083)
