@@ -11,3 +11,7 @@ Specifications for Everglade systems that aren't yet chapters of
   gather branches, withies, reeds, clay and stone, make primitive tools, and
   build from a branch lean-to to a stone cottage on a plot in the city
   clearing, with a four-branch talent tree.
+- [Everglade for desktop: Mac, Linux and Windows](desktop-app-spec.md): a
+  proposal for the native app that plays Everglade and holds the Golemancers'
+  Workshop, a standalone local world where each golem is a Claude agent on
+  your own Claude Code login.
