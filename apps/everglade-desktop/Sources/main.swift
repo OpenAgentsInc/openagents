@@ -2,7 +2,8 @@
 // Everglade for desktop, the Mac host (everglade/docs/desktop-app-spec.md): a window,
 // a Metal view and input. Everything drawn comes from workshop.coax through face.h.
 //   Everglade                      opens the window
-//   Everglade --shot OUT.png [--size WxH] [--at SECONDS]   draws one frame offscreen and exits
+//   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS]
+//       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits
 import AppKit
 import Metal
 import MetalKit
@@ -93,6 +94,19 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   override func mouseDown(with e: NSEvent) { let p = point(e); eg_pointer(state, p.0, p.1, 0) }
   override func mouseDragged(with e: NSEvent) { let p = point(e); eg_pointer(state, p.0, p.1, 1) }
   override func mouseUp(with e: NSEvent) { let p = point(e); eg_pointer(state, p.0, p.1, 2) }
+  // Keys go to Coax in the web realms' codes; Cmd chords stay with the menu.
+  func code(_ e: NSEvent) -> Int32? {
+    switch e.keyCode { case 123: return -4; case 124: return -5; case 126: return -6; case 125: return -7; case 49: return 32; default: break }
+    guard let c = e.charactersIgnoringModifiers?.lowercased().unicodeScalars.first, c.isASCII else { return nil }
+    return Int32(c.value)
+  }
+  override func keyDown(with e: NSEvent) {
+    if e.modifierFlags.contains(.command) { super.keyDown(with: e); return }
+    if let k = code(e) { _ = eg_key(state, k, 1) }
+  }
+  override func keyUp(with e: NSEvent) { if let k = code(e) { _ = eg_key(state, k, 0) } }
+  override func flagsChanged(with e: NSEvent) { _ = eg_key(state, -13, e.modifierFlags.contains(.shift) ? 1 : 0) }
+  override func resignFirstResponder() -> Bool { _ = eg_key(state, -1, 1); return super.resignFirstResponder() }
   override func scrollWheel(with e: NSEvent) { eg_wheel(state, Float(e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 10)) }
 }
 
@@ -109,6 +123,7 @@ final class App: NSObject, NSApplicationDelegate {
     window.makeFirstResponder(window.contentView)
     NSApp.activate(ignoringOtherApps: true)
   }
+  func applicationDidResignActive(_ note: Notification) { if let v = window.contentView as? WorkshopView { _ = eg_key(v.state, -1, 1) } }
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 }
 
@@ -127,6 +142,9 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   }
   if let t = args.firstIndex(of: "--at"), t + 1 < args.count, let v = Float(args[t + 1]), v >= 0, v <= 600 { seconds = v }
   let view = WorkshopView(frame: NSRect(x: 0, y: 0, width: width / 2, height: height / 2))
+  if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
+    for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
+  }
   exit(view.shot(to: args[i + 1], width: width, height: height, seconds: seconds) ? 0 : 1)
 }
 let app = NSApplication.shared
