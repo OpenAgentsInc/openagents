@@ -1797,7 +1797,9 @@ XC_PORTRAIT_FOOT :: 124.0;   // CSS px: the portrait plate's foot, its slot gems
 // Where the picker and the side bar sit. The picker: top left beside your portrait where the page is
 // wide enough, under it on a phone held upright; it keeps over the side bar, and where the page is too
 // short for that (a phone on its side) the side bar moves right of it and the picker keeps over the bar.
-XcLayout :: struct { pick: CmPick; side: EgSideGeo; }
+// cramped: the side bar moved right of the picker, or a short page; its menus and tips then keep
+// left of your portrait, and the picker steps aside while one is up (xc_pick_hidden)
+XcLayout :: struct { pick: CmPick; side: EgSideGeo; cramped: bool; }
 xc_layout :: (s:[]Lab)->XcLayout {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; w:=x[0].w; h:=x[0].h; k:=x[0].k;
   lay:XcLayout; bar:=xc_bar_top(x);
@@ -1812,15 +1814,56 @@ xc_layout :: (s:[]Lab)->XcLayout {
     return lay;
   }
   if cr[0].dev_animations && y0<(52+f32(XC_GAP))*k { y0=(52+f32(XC_GAP))*k; }   // under its header
-  foot:=(ifx lay.side.n>0 then eg_side_top(lay.side) else bar)-8*k;
+  // over the bar: clear of its emblem and class line where the picker reaches the bar's middle
+  lx:=w; rx:=0.0f32; for i:0..<x[0].bar_n { sb:=xc_slot_box(x,i); if sb.x0<lx { lx=sb.x0; } if sb.x1>rx { rx=sb.x1; } }
+  bfoot:=ifx 12*k+wide>(lx+rx)*0.5-40*k then bar-38*k else bar-14*k;
+  foot:=(ifx lay.side.n>0 then eg_side_top(lay.side) else bar)-8*k; if bfoot<foot { foot=bfoot; }
   lay.pick=cm_pick(12*k,y0,wide,foot,open,wild,w,h,k);
   if lay.side.n>0 && y0+cm_pick_height(lay.pick)>foot {
-    lay.side.x0=12*k+wide+8*k;
-    lay.pick=cm_pick(12*k,y0,wide,bar-14*k,open,wild,w,h,k);
+    lay.side.x0=12*k+wide+8*k; lay.cramped=true;
+    lay.pick=cm_pick(12*k,y0,wide,bfoot,open,wild,w,h,k);
   }
+  // a short page (a phone on its side): the side bar's menus and tips take the room left of your
+  // portrait, under a tip's line, the picker stepping aside while one is up
+  if h<560*k { lay.cramped=true; }
+  if lay.cramped { lay.side.mtop=36*k; lay.side.mx1=w-(f32(cc.EG_PORTRAIT_W)+16)*k-8*k; }
   return lay;
 }
+// A slot's card, device px (empty with none): over the slot under the pointer, clear of the bar's
+// emblem and of the side bar over it.
+xc_card_box :: (x:[]XcCombat,lay:XcLayout)->cc.Box {
+  if x[0].arranging || x[0].hover<0 || x[0].hover>=x[0].bar_n || x[0].bar[x[0].hover].kind==XC_BREATH { return cc.Box.{}; }
+  k:=x[0].k; w:=x[0].w; r:=xc_slot_box(x,x[0].hover);
+  cw:=358*k; ch:=171*k; cx:=(r.x0+r.x1)/2;
+  if cx-cw/2<12*k { cx=12*k+cw/2; }
+  if cx+cw/2>w-12*k { cx=w-12*k-cw/2; }
+  y1:=r.y0-30*k; et:=xc_bar_top(x)-38*k; if et<y1 { y1=et; }
+  if lay.side.n>0 { st:=eg_side_top(lay.side)-8*k; a:=eg_side_box(lay.side,0); z:=eg_side_box(lay.side,lay.side.n-1);
+    if st<y1 && cx+cw/2>a.x0 && cx-cw/2<z.x1 { y1=st; } }
+  return cc.Box.{x0=cx-cw/2,y0=y1-ch,x1=cx+cw/2,y1=y1};
+}
+// The picker steps aside while a slot's card covers it, and on a cramped page while the side bar's
+// menu or a tip is up.
+xc_pick_hidden :: (x:[]XcCombat,lay:XcLayout)->bool {
+  c:=xc_card_box(x,lay); pb:=cm_pick_panel(lay.pick);
+  if c.x1>c.x0 && c.x0<pb.x1 && c.x1>pb.x0 && c.y0<pb.y1 && c.y1>pb.y0 { return true; }
+  return lay.cramped && (x[0].side.menu>=0 || x[0].side.side_hover>=0);
+}
 xc_pick :: (s:[]Lab)->CmPick { return xc_layout(s).pick; }
+// The coordinates and the FPS plaque (charactercreator.coax coord_draw, everglade/hud/parts.coax eg_fps),
+// bottom right: over the bar's tray and the side bar where a narrow page brings them under it, and
+// left out while the side bar's menu or a tip is up.
+xc_corner :: (s:[]Lab,lay:XcLayout,out:[]f32,at:int)->int {
+  x:=s[0].xc[..]; cr:=s[0].creator[..]; k:=x[0].k; w:=x[0].w; h:=x[0].h;
+  if x[0].side.menu>=0 || x[0].side.side_hover>=0 { return at; }
+  top:=h+1000; cx0:=w-240*k;
+  for i:0..<x[0].bar_n { sr:=xc_slot_box(x,i); if sr.x1+19*k>cx0 && sr.y0-14*k<top { top=sr.y0-14*k; } }
+  for j:0..<lay.side.n { sb:=eg_side_box(lay.side,j); if sb.x1+5*k>cx0 && sb.y0-11*k<top { top=sb.y0-11*k; } }
+  fh:=ifx top+7*k<h then top+7*k else h;
+  c:=xc_card_box(x,lay); if c.x1>c.x0 && c.x1>cx0 && c.y1>fh-52*k && c.y0<fh { return at; }   // a slot's card is up over the corner
+  n:=cc.coord_draw(cr[0],out,at,w,fh,k);
+  return cc.eg_fps(cr[0].ui,cr[0].fps[0],out,n,w,fh,k);
+}
 // The bar's slot i, device px.
 xc_slot_box :: (x:[]XcCombat, i: int) -> cc.Box {
   r := xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k);
@@ -1833,10 +1876,10 @@ xc_text_w :: (t: string, cap: f32) -> f32 {
   return w;
 }
 // A slot's words along its top or its bottom edge, centred, made smaller until they fit inside it.
-xc_fit_cap :: (t: string, cap: f32, room: f32) -> f32 { w := xc_text_w(t, cap); return ifx w > room && w > 0 then cap * room / w else cap; }
+xc_fit_cap :: (t: string, cap: f32, room: f32) -> f32 { w := cc.face_width(t, cap, cc.HUD_FACE_BODY); return ifx w > room && w > 0 then cap * room / w else cap; }
 // ui and parent: the layout trace and the slot's place in it (#13076), or empty and cc.UIT_NONE.
 xc_caption :: (ui: [] cc.UitTrace, parent: int, out: [] f32, at: int, t: string, r: cc.Box, top: bool, cap: f32, ink: Ink, k: f32) -> int {
-  room := r.x1 - r.x0 - 6 * k; c := xc_fit_cap(t, cap, room); w := xc_text_w(t, c);
+  room := r.x1 - r.x0 - 6 * k; c := xc_fit_cap(t, cap, room); w := cc.face_width(t, c, cc.HUD_FACE_BODY);
   return cc.ttext(ui, parent, out, at, t, (r.x0 + r.x1 - w) * 0.5, ifx top then r.y0 + 4 * k + c else r.y1 - 4 * k, c, ink, "");
 }
 
@@ -1922,7 +1965,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   wild_words := [3]string.["", "", "REPLACE"];
   if pick.wild { choice:=xc_wild_options(x); wild_words[0]=rs_monster_block(choice[0]).name; wild_words[1]=rs_monster_block(choice[1]).name; }
   ui := cr[0].ui; cc.uit_part(ui, "class-menu");   // the layout trace, when the overlap check attaches one (#13076)
-  if !x[0].dr.on { n = cm_pick_draw(ui, out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
+  if !x[0].dr.on && !xc_pick_hidden(x, lay) { n = cm_pick_draw(ui, out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
@@ -2086,11 +2129,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   }
   if !x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n && x[0].bar[x[0].hover].kind != XC_BREATH {
     a := x[0].bar[x[0].hover];
-    r := xc_slot_box(x, x[0].hover);
-    cw := 358 * k; ch := 171 * k; cx := (r.x0 + r.x1) / 2;
-    if cx - cw / 2 < 12 * k { cx = 12 * k + cw / 2; }
-    if cx + cw / 2 > w - 12 * k { cx = w - 12 * k - cw / 2; }
-    card := cc.Box.{x0 = cx - cw / 2, y0 = r.y0 - 30 * k - ch, x1 = cx + cw / 2, y1 = r.y0 - 30 * k};
+    card := xc_card_box(x, lay);
     cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, card.x0, card.y0, card.x1, card.y1, "card");
     m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(a.art)); m = put(x[0].media[..], m, a.art);
     m = put(x[0].media[..], m, "-card-2x.jpg "); m = xc_box_text(x[0].media[..], m, card); m = put(x[0].media[..], m, "\n");
@@ -2116,12 +2155,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // the side bar over the bar: REST and KNOCK OUT, their menu and tips (everglade/hud/class-bar.coax)
   sf := xc_facts(s); sg := lay.side;
   n = eg_side_draw(ui, sf, sg, x[0].side, out, n);
-  // the coordinates and the FPS plaque (charactercreator.coax coord_draw, eg_fps) rise over the bar's
-  // and the side bar's right end when a narrow page brings them under it
-  corner := h + 1000; cx0 := w - 240 * k;
-  for i: 0..<x[0].bar_n { sr := xc_slot_box(x, i); if sr.x1 > cx0 && sr.y0 - 14 * k < corner { corner = sr.y0 - 14 * k; } }
-  for j: 0..<sg.n { sb := eg_side_box(sg, j); if sb.x1 > cx0 && sb.y0 - 8 * k < corner { corner = sb.y0 - 8 * k; } }
-  cr[0].hud_floor = ifx corner < h - 7 * k then corner else 0;
+  n = xc_corner(s, lay, out, n);
   // the effects: the frame's puffs for the host to draw (fivelab-fx.wgsl)
   pf := s[0].puffs[..];
   fxp_begin(pf, now, fxp_v(u[16], u[17], u[18]));
@@ -2163,7 +2197,7 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   for i: 0..<x[0].bar_n { if xc_in(xc_slot_box(x, i), px, py) { over = i; } }
   x[0].hover = over;
   lay := xc_layout(s); pick := lay.pick;
-  in_col := !x[0].dr.on && cm_in(cm_pick_panel(pick), px, py);
+  in_col := !x[0].dr.on && !xc_pick_hidden(x, lay) && cm_in(cm_pick_panel(pick), px, py);
   x[0].pick_hover = ifx in_col then cm_pick_hit(pick, px, py) else CmHit.{};
   // the side bar first: its buttons and menu act on the press (everglade/hud/class-bar.coax)
   if x[0].bow_touch != id {

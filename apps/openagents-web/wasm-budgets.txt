@@ -132,7 +132,9 @@ fivelab 2960000
 # The staged shots for film (everglade2-stage.coax, #13093: ?stage= path-fly, path-walk, clearing-empty,
 # clearing-walk-in and bow-fight on the engine's camera track) and the released-attack rules (#13120):
 # 965,799 bytes measured on the remote hosts at 8efb639b8d; about 0.5% headroom.
-everglade2 970000
+# The HUD layout trace (#13076) on main, and the side bar's menu room and emblem clearance (#13092):
+# 974,207 bytes measured on the remote hosts; about 2.6% headroom.
+everglade2 1000000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 # 1,757,350 bytes measured 2026-11-09 at 1f648c6a67 after the day's shared rules, visibility, sprint and HUD work; about 4% headroom.

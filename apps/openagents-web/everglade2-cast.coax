@@ -441,8 +441,10 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
     cw := 358 * kk; ch := 171 * kk; cx := (b[0] + b[2]) / 2;
     if cx - cw / 2 < 12 * kk { cx = 12 * kk + cw / 2; }
     if cx + cw / 2 > w - 12 * kk { cx = w - 12 * kk - cw / 2; }
-    e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", [4] f32.[cx - cw / 2, b[1] - 30 * kk - ch, cx + cw / 2, b[1] - 30 * kk], "");
-    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, cx - cw / 2, b[1] - 30 * kk - ch, cx + cw / 2, b[1] - 30 * kk, "card");
+    // its foot over the slot, and over the bar's emblem (everglade/hud/parts.coax eg_bar_frame: 32 px over the top row)
+    cy := b[1] - 30 * kk; for i: 0..<k[0].bar_n { t := e2k_box(k, i, w, h, kk)[1] - 38 * kk; if t < cy { cy = t; } }
+    e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", [4] f32.[cx - cw / 2, cy - ch, cx + cw / 2, cy], "");
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, cx - cw / 2, cy - ch, cx + cw / 2, cy, "card");
   }
   // your health and what holds you are on the portrait plate (everglade2.coax e2_world_view, everglade/hud/parts.coax eg_world)
   b0 := e2k_box(k, 0, w, h, kk);

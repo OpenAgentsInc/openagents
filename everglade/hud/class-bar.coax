@@ -116,11 +116,12 @@ eg_menu_tip :: (f: EgBarFacts, a: int) -> string {
 // its facts, its page (w, h, k: device px per CSS px), the top of its action bar (bar_top) and the
 // bar's state (EgSideState); a press answers EgPress, and the zone sends the action to its room.
 EG_SIDE_CAP :: 9.0; EG_TIP_CAP :: 8.5;     // the buttons' words (TITLE), a tip's line (LABEL), CSS px cap height
-EG_SIDE_PAD :: 14; EG_SIDE_GAP :: 8; EG_SIDE_UP :: 34; EG_MENU_W :: 210; EG_MENU_HEAD :: 26; EG_MENU_TOP :: 120;
+EG_SIDE_PAD :: 14; EG_SIDE_GAP :: 8; EG_SIDE_UP :: 40; EG_MENU_W :: 210; EG_MENU_HEAD :: 26; EG_MENU_TOP :: 120;
 EG_DO_KIT :: 30; EG_DO_KNOCK :: 31;   // the Healer's Kit and knock-out buttons: they have no menu
 // Which menu is open (-1 none), and which button and row the pointer is over (-1 none).
 EgSideState :: struct { menu: int = -1; side_hover: int = -1; menu_hover: int = -1; }
-EgSideGeo :: struct { ids: [EG_SIDE_N] int; n: int; wd: [EG_SIDE_N] f32; x0: f32; x1: f32; y1: f32; h: f32; gap: f32; w: f32; k: f32; }
+// mx0, mx1, mtop: the room its menus and tips may take (a zone narrows it to keep them off its other parts)
+EgSideGeo :: struct { ids: [EG_SIDE_N] int; n: int; wd: [EG_SIDE_N] f32; x0: f32; x1: f32; y1: f32; h: f32; gap: f32; w: f32; k: f32; mx0: f32; mx1: f32; mtop: f32; }
 // A finger's size on a phone or a tablet, smaller with a mouse on a desktop (aethyr/ui/hud-menu.coax
 // hud_touch_size, hud_row_h).
 eg_side_h :: (w: f32, h: f32, k: f32) -> f32 { return cc.hud_row_h(cc.hud_touch_size(w, h, k, false), k); }
@@ -128,6 +129,7 @@ eg_side_geo :: (f: EgBarFacts, w: f32, h: f32, k: f32, bar_top: f32) -> EgSideGe
   g: EgSideGeo; g.n = eg_side_items(f, g.ids[..]); g.w = w; g.k = k; b: [48] u8;
   for i: 0..<g.n { c := eg_side_label(f, g.ids[i], b[..]); g.wd[i] = cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; }
   g.x0 = 12 * k; g.x1 = w - 12 * k; g.y1 = bar_top - EG_SIDE_UP * k; g.h = eg_side_h(w, h, k); g.gap = EG_SIDE_GAP * k;
+  g.mx0 = 8 * k; g.mx1 = w - 8 * k; g.mtop = EG_MENU_TOP * k;
   return g;
 }
 eg_side_box :: (g: EgSideGeo, j: int) -> cc.HudPrim { wd := g.wd; return cc.hud_side_box(wd[..], g.n, j, g.x0, g.x1, g.y1, g.h, g.gap); }
@@ -138,7 +140,7 @@ eg_menu_of :: (f: EgBarFacts, g: EgSideGeo, id: int) -> cc.HudMenu {
   if j < 0 || m == 0 { return cc.HudMenu.{}; }
   cw := EG_MENU_W * k; b: [48] u8;
   for r: 0..<m { c := eg_menu_label(f, rows[r], b[..]); x := cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; if x > cw { cw = x; } }
-  return cc.hud_menu(eg_side_box(g, j), m, cw, g.h, EG_MENU_HEAD * k, g.gap, EG_MENU_TOP * k, eg_side_top(g) - 12 * k, 8 * k, g.w - 8 * k);
+  return cc.hud_menu(eg_side_box(g, j), m, cw, g.h, EG_MENU_HEAD * k, g.gap, g.mtop, eg_side_top(g) - 12 * k, g.mx0, g.mx1);
 }
 // The tip the side bar shows for what the pointer is over: its line and what it sits over.
 EgTip :: struct { line: string; anchor: cc.HudPrim; }
@@ -155,7 +157,7 @@ eg_side_tip_now :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState) -> EgTip {
 // A tip's plaque, its line measured as it is set: the LABEL role's face, at its scale.
 eg_tip_box :: (g: EgSideGeo, tp: EgTip, adv: [] f32) -> cc.HudPrim {
   k := g.k; tc := EG_TIP_CAP * k; role := cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_LABEL);
-  return cc.hud_tip_box(tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv), tp.anchor, tc, 8 * k, g.w - 8 * k, k);
+  return cc.hud_tip_box(tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv), tp.anchor, tc, g.mx0, g.mx1, k);
 }
 // What the side bar's open menu and its tip cover above the bar; nothing when both are shut. A short
 // page's menu may reach the top, and what the zone draws there steps aside under it (eg_world).
@@ -212,6 +214,6 @@ eg_side_draw :: (ui: [] cc.UitTrace, f: EgBarFacts, g: EgSideGeo, st: EgSideStat
   }
   // the tip's line measured as it is set: the LABEL role's face, at its scale
   tp := eg_side_tip_now(f, g, st); tc := EG_TIP_CAP * k; role := cc.hud_text(t, cc.HUD_TEXT_LABEL); adv: [256] f32;
-  cc.hud_tip(l[..], ws[..], t, tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv[..]), tp.anchor, tc, 8 * k, g.w - 8 * k, k);
+  cc.hud_tip(l[..], ws[..], t, tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv[..]), tp.anchor, tc, g.mx0, g.mx1, k);
   return cc.hud_draw(out, at, l[..], ws[..], 1, k);
 }

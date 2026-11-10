@@ -83,14 +83,14 @@ cm_draw :: (ui: [] cc.UitTrace, pane: int, out: [] f32, at: int, top: f32, open:
 // stay over that foot. The wild-shape row (a Druid's form swap) sits under it while one is due.
 CM_WILD :: 6;                       // a wild-shape box (0 the known form, 1 the new, 2 REPLACE)
 CM_TOGGLE_W :: 112.0; CM_LABEL_W :: 66.0; CM_CLASS_MIN :: 66.0; CM_PAD :: 8.0; CM_SAY :: 18.0;
-CmPick :: struct { x0: f32; y0: f32; wide: f32; t: f32; lw: f32; lab: f32; gap: f32; cols: int; cw: f32; beside: bool; open: bool; wild: bool; k: f32; }
+CmPick :: struct { pad: f32; x0: f32; y0: f32; wide: f32; t: f32; lw: f32; lab: f32; gap: f32; cols: int; cw: f32; beside: bool; open: bool; wild: bool; k: f32; }
 // A button's height: a finger's (44 CSS px) on a phone or a tablet, 28 on a desktop's page.
 cm_pick_t :: (w: f32, h: f32, k: f32) -> f32 { return ifx w >= 1280 * k && h >= 700 * k then 28 * k else 44 * k; }
 cm_pick_head :: (p: CmPick) -> f32 { return ifx p.beside then p.t else 2 * p.t + p.gap; }
 cm_pick_rows :: (p: CmPick) -> int { return ifx p.open then (CM_CLASSES + p.cols - 1) / p.cols else 0; }
 // Its height, device px, panel padding included.
 cm_pick_height :: (p: CmPick) -> f32 {
-  r := cm_pick_rows(p); hh := 2 * CM_PAD * p.k + cm_pick_head(p);
+  r := cm_pick_rows(p); hh := 2 * p.pad + cm_pick_head(p);
   if r > 0 { hh += p.gap + f32(r) * p.t + f32(r - 1) * p.gap; }
   if p.wild { hh += p.gap + CM_SAY * p.k + p.t; }
   return hh;
@@ -98,7 +98,7 @@ cm_pick_height :: (p: CmPick) -> f32 {
 cm_pick :: (x0: f32, y0: f32, wide: f32, foot: f32, open: bool, wild: bool, w: f32, h: f32, k: f32) -> CmPick {
   p := CmPick.{x0 = x0, y0 = y0, wide = wide, t = cm_pick_t(w, h, k), gap = 6 * k, open = open, wild = wild, k = k};
   p.lw = ifx p.t > 34 * k then p.t else 34 * k;
-  inner := wide - 2 * CM_PAD * k; levels := 6 * p.lw + 5 * p.gap;
+  p.pad = CM_PAD * k; inner := wide - 2 * p.pad; levels := 6 * p.lw + 5 * p.gap;
   // LEVEL beside CLASSES with its word; where only the buttons fit, they read "LV 1" and it goes;
   // else on a line of its own
   p.lab = CM_LABEL_W * k;
@@ -109,12 +109,16 @@ cm_pick :: (x0: f32, y0: f32, wide: f32, foot: f32, open: bool, wild: bool, w: f
   most := cast(int) floor((inner + p.gap) / (CM_CLASS_MIN * k + p.gap)); if most < 1 { most = 1; } if most > 6 { most = 6; }
   p.cols = ifx most < 3 then most else 3;
   while p.cols < most && y0 + cm_pick_height(p) > foot { p.cols += 1; }
-  p.cw = (inner - f32(p.cols - 1) * p.gap) / f32(p.cols);
+  // still too tall: the wild-shape row waits while the classes are open (CLASSES - shuts them and shows it)
+  if p.wild && p.open && y0 + cm_pick_height(p) > foot { p.wild = false; }
+  // and on the tightest pages its buttons close up (the gaps, not the buttons, give way)
+  if y0 + cm_pick_height(p) > foot { p.pad = 3 * k; p.gap = 4 * k; }
+  p.cw = ((wide - 2 * p.pad) - f32(p.cols - 1) * p.gap) / f32(p.cols);
   return p;
 }
 cm_pick_panel :: (p: CmPick) -> cc.Box { return cc.Box.{x0 = p.x0, y0 = p.y0, x1 = p.x0 + p.wide, y1 = p.y0 + cm_pick_height(p)}; }
 cm_pick_box :: (p: CmPick, kind: int, i: int) -> cc.Box {
-  k := p.k; x := p.x0 + CM_PAD * k; y := p.y0 + CM_PAD * k;
+  k := p.k; x := p.x0 + p.pad; y := p.y0 + p.pad;
   if kind == CM_TOGGLE { return cc.Box.{x0 = x, y0 = y, x1 = x + CM_TOGGLE_W * k, y1 = y + p.t}; }
   if kind == CM_LEVEL {
     lx := ifx p.beside then x + CM_TOGGLE_W * k + p.gap + p.lab else x + p.lab;
@@ -130,7 +134,7 @@ cm_pick_box :: (p: CmPick, kind: int, i: int) -> cc.Box {
   if kind == CM_WILD {
     if !p.wild { return cc.Box.{}; }
     r := cm_pick_rows(p); wy := gy + (ifx r > 0 then f32(r) * (p.t + p.gap) else 0) + CM_SAY * k;
-    ww := ((p.wide - 2 * CM_PAD * k) - 2 * p.gap) / 3; bx := x + f32(i) * (ww + p.gap);
+    ww := ((p.wide - 2 * p.pad) - 2 * p.gap) / 3; bx := x + f32(i) * (ww + p.gap);
     return cc.Box.{x0 = bx, y0 = wy, x1 = bx + ww, y1 = wy + p.t};
   }
   return cc.Box.{};

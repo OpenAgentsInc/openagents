@@ -12,27 +12,8 @@ HUD_GATE :: true;   // a NEW finding in the player's HUD fails the run
 // The findings already reported (docs/verification/hud-overlap-2026-11-09.md), each under the issue
 // that fixes it: their keys, as printed, with the screen and state each first shows on. When a fix
 // lands, the run says "gone" for its keys; take them out here.
-HX_KNOWN :: [17] string.[
-  // #13092, the bar, its emblem, the CLASSES picker and the side bar's place on the page
-  "overlap coords/text \"COORDS\" | bar/panel \"bar tray\"",   // 390x844 world
-  "overlap fps/text \"FPS\" | bar/panel \"bar tray\"",   // 390x844 world
-  "overlap bar/panel \"emblem\" | side bar/panel \"side tray\"",   // 390x844 world
-  "overlap coords/text \"COORDS\" | side bar/panel \"REST\"",   // 390x844 side menu
-  "overlap fps/text \"FPS\" | side bar/panel \"tip\"",   // 390x844 side tip
-  "overlap coords/text \"COORDS\" | side bar/panel \"tip\"",   // 390x844 side tip
-  "overflow bar/text \"Cat · Fey\" | bar/button \"slot 12\"",   // 390x844 world
-  "overlap bar/panel \"emblem\" | bar/panel \"card\"",   // 390x844 card
-  "overlap bar/panel \"card\" | side bar/panel \"side tray\"",   // 390x844 card
-  "overlap class-menu/panel \"CLASSES\" | bar/panel \"emblem\"",   // 844x390 world
-  "overlap class-menu/panel \"CLASSES\" | bar/text \"class and target\"",   // 844x390 world
-  "overlap portrait/panel \"portrait\" | side bar/panel \"REST\"",   // 844x390 side menu
-  "overlap class-menu/panel \"CLASSES\" | side bar/panel \"REST\"",   // 844x390 side menu
-  "overlap class-menu/panel \"CLASSES\" | side bar/panel \"tip\"",   // 844x390 side menu
-  "overlap class-menu/panel \"CLASSES\" | bar/panel \"card\"",   // 844x390 card
-  "overlap class-menu/panel \"CLASSES\" | bar/panel \"bar tray\"",   // 844x390 wild shape swap
-  "overlap coords/text \"COORDS\" | side bar/panel \"side tray\"",   // 844x390 animations shut
-];
-hud_known :: (key: string) -> bool { for i: 0..<HX_KNOWN.count { if HX_KNOWN[i] == key { return true; } } return false; }
+// None is open now: #13092 fixed the last of them. A new finding fails the run.
+hud_known :: (key: string) -> bool { return key.count < 0; }
 
 HX_OUT :: 1048576;   // floats: 65536 stroke vertices
 // The HUD of lab s on screen v: its trace in t.
@@ -84,6 +65,5 @@ tool_main :: () -> int #export_c #effects(all) {
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "animations shut", false);
     }
   }
-  for i: 0..<HX_KNOWN.count { if !hud_seen(r[..], HX_KNOWN[i]) { continue; } }
   return hud_done(r[..], "everglade-experimental", HUD_GATE);
 }
