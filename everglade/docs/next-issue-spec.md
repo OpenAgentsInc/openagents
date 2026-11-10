@@ -200,6 +200,40 @@ the chat; the wheel scrolls it.
 **Stop** ends the agent's process group. The worktree stays, so a new start
 on the same issue picks it up.
 
+### Autopilot
+
+The **Autopilot** button sits beside Next issue and is on by default. With it
+on, pressing Next issue starts a loop with no one in it:
+
+1. The picker is told nobody will answer. It picks an issue and calls
+   `choose` with `start` at once. If it asks anyway, Autopilot answers it
+   once.
+2. The coding agent works the issue.
+3. When the coding agent's turn ends, the caches are fetched again (the issue
+   may now be closed), and the picker picks the next. It is told which issues
+   this run has already worked, and leaves them out.
+
+The chat keeps the whole run, with a `> next` line between laps.
+
+The loop stops when:
+
+- you press **Stop** (it ends the agent and does not go round);
+- an agent fails;
+- the picker calls `choose` with `none`, because nothing is worth starting;
+- the run has worked 32 issues.
+
+Turning Autopilot off during a run lets the agent in hand finish and then
+waits for you. Nothing starts when the app opens: the loop begins when you
+press Next issue.
+
+Two laps rehearsed on Haiku (read-only) took 54 seconds: it picked #13134,
+then #13135, noting the first was already worked.
+
+**One worktree, one agent.** The app records itself as the owner of an
+issue's worktree, and `next-context work` refuses a worktree whose owner is
+another process still running. Two windows, or a rehearsal beside a live run,
+can't put two agents in one worktree.
+
 **Rehearsal.** `EVERGLADE_CODER_MODE=rehearsal` gives the agent Read, Grep
 and Glob only and tells it to say what it would change and stop. Use it with
 `EVERGLADE_CODER_MODEL=claude-haiku-5-5` to try the flow without changing
@@ -207,15 +241,20 @@ anything:
 
 ```sh
 EVERGLADE_CODER_MODE=rehearsal EVERGLADE_CODER_MODEL=claude-haiku-5-5 \
-  build/Everglade.app/Contents/MacOS/Everglade --shot out.png --next 240 --reply "yes, do it"
+  build/Everglade.app/Contents/MacOS/Everglade --shot out.png --next 240 --autopilot-off --reply "yes, do it"
+
+# Autopilot, two laps:
+EVERGLADE_CODER_MODE=rehearsal EVERGLADE_CODER_MODEL=claude-haiku-5-5 \
+  build/Everglade.app/Contents/MacOS/Everglade --shot out.png --next 400 --runs 2
 ```
 
 A rehearsal of #13134 on Haiku took 31 seconds in all and cost $0.0116 for
 the agent's turn (six tool calls, 178,841 tokens read from cache).
 
 Not built: a worktree is not removed when the issue closes; two issues can't
-run at once in one window; there is no cap on what a run may spend (you can
-stop it, and section 11 asks whether you want a limit you set).
+run at once in one window; there is no cap on what a run may spend, which
+matters more now that Autopilot goes round by itself (you can stop it, and
+section 11 asks whether you want a limit you set).
 
 ## 7. The ledger
 

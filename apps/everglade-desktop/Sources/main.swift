@@ -8,7 +8,8 @@
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
 //       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
 //       that starts an issue starts the coding agent: set EVERGLADE_CODER_MODE=rehearsal (read-only)
-//       and EVERGLADE_CODER_MODEL=claude-haiku-5-5 to try the flow without changing anything
+//       and EVERGLADE_CODER_MODEL=claude-haiku-5-5 to try the flow without changing anything.
+//       Autopilot is on, so the loop goes round by itself: --runs N stops waiting after N coding turns
 import AppKit
 import Metal
 import MetalKit
@@ -327,7 +328,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       // The checkout the app was built from is where a worktree for an issue branches off.
       let checkout = (Bundle.main.url(forResource: "repo", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       let working = request == 3
-      process.arguments = working ? ["work", String(nxp_chosen(next)), "--repo-dir", checkout] : request == 2 ? ["context", "--refresh"] : ["context"]
+      process.arguments = working ? ["work", String(nxp_chosen(next)), "--repo-dir", checkout, "--owner", String(getpid())] : request == 2 ? ["context", "--refresh"] : ["context"]
       process.standardOutput = out; process.standardError = err
       DispatchQueue.global().async { [weak self] in
         var text = Data(), report = Data(), ok = false
@@ -370,6 +371,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // One frame offscreen, after `seconds` of the scene's own time, as a PNG.
   var nextWait: Float = 0
   var nextReply = ""
+  var nextRuns: Int32 = 0
   func shot(to path: String, width: Int, height: Int, seconds: Float) -> Bool {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
     d.usage = [.renderTarget, .shaderRead]; d.storageMode = .shared
@@ -385,12 +387,14 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     // context program's answer, which arrives on the main queue, is delivered.
     if nextWait > 0 {
       let w = Float(width) / 2, h = Float(height) / 2, bx = w - 24 - 66, by: Float = 24 + 17
+      // --autopilot-off presses the Autopilot button first, for the flow where you answer.
+      if CommandLine.arguments.contains("--autopilot-off") { _ = nxp_pointer(next, bx - 150, by, 0, w, h); _ = nxp_pointer(next, bx - 150, by, 2, w, h) }
       func wait() {
         let until = CACurrentMediaTime() + Double(nextWait)
         repeat {
           render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }
           RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        } while CACurrentMediaTime() < until && (nxp_state(next) == 1 || nxp_state(next) == 2)
+        } while CACurrentMediaTime() < until && (nxp_state(next) == 1 || nxp_state(next) == 2) && (nextRuns == 0 || nxp_runs(next) < nextRuns)
       }
       render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0) { _ in }
       _ = nxp_pointer(next, bx, by, 0, w, h); _ = nxp_pointer(next, bx, by, 2, w, h)
@@ -496,6 +500,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   let view = WorkshopView(frame: NSRect(x: 0, y: 0, width: width / 2, height: height / 2))
   if let w = args.firstIndex(of: "--next"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 600 { view.nextWait = v }
   if let r = args.firstIndex(of: "--reply"), r + 1 < args.count { view.nextReply = args[r + 1] }
+  if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { view.nextRuns = v }
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
   }

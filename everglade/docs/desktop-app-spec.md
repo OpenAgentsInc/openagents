@@ -72,6 +72,9 @@ to work on next, and you answer in your own words. It is specified in
   a fresh worktree off `origin/main`, in the same chat, told to do that issue
   and nothing else, push it and close it. Its tool calls show as one line
   each.
+- **Autopilot.** A button beside it, on by default: the picker starts an
+  issue without asking, and when the coding agent's turn ends it picks the
+  next, until you press Stop, an agent fails, or nothing is worth starting.
 - **Measured.** Every turn's model, tokens and cost go to
   `~/.openagents/usage/ai-calls.jsonl`.
 

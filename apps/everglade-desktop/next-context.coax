@@ -7,10 +7,12 @@
 //
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO]
 //       prints the message on stdout; stderr says what came from cache and how old it is
-//   coax/web/tool.sh apps/everglade-desktop/next-context.coax work NUMBER --repo-dir CHECKOUT
+//   coax/web/tool.sh apps/everglade-desktop/next-context.coax work NUMBER --repo-dir CHECKOUT [--owner PID]
 //       makes a fresh worktree for the issue off origin/main beside CHECKOUT (CHECKOUT-issue-NUMBER;
 //       an existing one is reused) and prints its path on the first line, then the issue whole
-//       from the cache, for the coding agent
+//       from the cache, for the coding agent. --owner writes PID beside the worktree's git data,
+//       and a worktree whose owner is another process still running is refused, so two agents
+//       never work one issue's worktree
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax status     the caches and their ages, as JSON
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax usage      the AI call ledger, summed by purpose and model
 //
@@ -385,6 +387,24 @@ nc_work :: (a: [] Args, repo: string) -> int {
   path_b: [2048] u8; w: [1] Out; w[0].buf = path_b[..];
   nc_put(w[..], dir); nc_put(w[..], "-issue-"); nc_put_int(w[..], number);
   path := nc_text(w[..]);
+  // Whose worktree it is: the process named in everglade-owner under the checkout's own record of
+  // the worktree. One still running, and not the one asking, keeps it.
+  owner := args_value(a, "--owner", "");
+  for c: owner { if c < '0' || c > '9' { tool_errln("next-context: --owner is a process id"); return 2; } }
+  lock_b: [2048] u8; lk: [1] Out; lk[0].buf = lock_b[..];
+  nc_put(lk[..], dir); nc_put(lk[..], "/.git/worktrees/"); nc_put(lk[..], fs_base(path)); nc_put(lk[..], "/everglade-owner");
+  lock := nc_text(lk[..]);
+  held: [32] u8; hn := fs_read(lock, held[..]);
+  if hn > 0 {
+    while hn > 0 && held[hn - 1] <= 32 { hn -= 1; }
+    other := cast(string) held[0..<hn];
+    alive := [3] string.["kill", "-0", other];
+    out: [256] u8; err: [256] u8;
+    if other != owner && hn > 0 {
+      r := proc_run(alive[..], 5000, out[..], err[..]);
+      if r.started == 0 && r.status == 0 { tool_err("next-context: issue "); tool_err(args_at(a, 1)); tool_err(" is being worked by another process ("); tool_err(other); tool_errln("); its worktree is left alone"); return 1; }
+    }
+  }
   if fs_kind(path) <= 0 {
     fetch := [3] string.["fetch", "origin", "main"];
     if !nc_git(dir, fetch[..], 120000) { return 1; }
@@ -392,6 +412,7 @@ nc_work :: (a: [] Args, repo: string) -> int {
     if !nc_git(dir, add[..], 300000) { return 1; }
     tool_err("worktree: made "); tool_errln(path);
   } else { tool_err("worktree: reused "); tool_errln(path); }
+  if owner.count > 0 { ok := fs_write(lock, owner); }
   // The issue, whole, from the cache.
   p: [1] Paths;
   if !nc_paths(p[..], repo) { return 1; }

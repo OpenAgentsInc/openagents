@@ -25,6 +25,7 @@ void nxp_context(void *panel, const uint8_t *text, int32_t length, const uint8_t
   if (length < 0 || report_length < 0) return;
   np_context(nat(panel), (coax_string){(const char *)text, length}, (coax_string){(const char *)report, report_length}, ok != 0);
 }
+int32_t nxp_runs(void *panel) { return (int32_t)np_runs(nat(panel)); }
 int32_t nxp_chosen(void *panel) { return (int32_t)np_chosen(nat(panel)); }
 void nxp_work(void *panel, const uint8_t *text, int32_t length, const uint8_t *report, int32_t report_length, int32_t ok) {
   if (length < 0 || report_length < 0) return;

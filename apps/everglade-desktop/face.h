@@ -49,6 +49,8 @@ void nxp_key(void *panel, int32_t key);
 // --refresh, 3 run `next-context work N --repo-dir CHECKOUT` for nxp_chosen's issue.
 int32_t nxp_take_request(void *panel);
 int32_t nxp_chosen(void *panel);
+// Coding turns that have ended since the app opened.
+int32_t nxp_runs(void *panel);
 // `next-context work`'s answer: its stdout (the worktree's path, then the issue), its stderr, and whether it exited 0.
 void nxp_work(void *panel, const uint8_t *text, int32_t length, const uint8_t *report, int32_t report_length, int32_t ok);
 // next-context's answer: its stdout, what it said on stderr, and whether it exited 0.

@@ -17,6 +17,11 @@
 //      short line. Your replies go to it. EVERGLADE_CODER_MODE=rehearsal makes it read-only: it
 //      says what it would change and stops, for trying the flow without changing anything.
 //
+// Autopilot (a button beside Next issue, on by default) makes it a loop with no one in it: the
+// picker is told not to ask, picks and starts; when the coding agent's turn ends the caches are
+// fetched again and the picker picks the next, leaving out what this run already worked. It stops
+// when an agent fails, when the picker finds nothing worth starting, or when you press Stop.
+//
 // Every turn's model, tokens and cost go to the ledger (np_take_usage, one JSON line a turn).
 // The agent is polled from the frame without waiting (cl_poll), so the world keeps running.
 // Drawn over the scene; workshop.coax loads this file, so the two are one unit.
@@ -30,6 +35,9 @@ NP_MODEL :: "claude-haiku-5-5";
 NP_TOOL :: "mcp__next__choose";
 NP_SYSTEM :: "You help one developer pick the next GitHub issue to work on in their repository. You are given the open issues, recent commits, what they asked for recently, and sometimes what they say now. What they say now outweighs what they asked recently, which outweighs the commits. Prefer an issue that unblocks others, then one that continues the work in hand.\n\nSuggest exactly one issue. Write: line 1, the issue as `#NUMBER title`; then at most three short lines on why it is next, naming the signal you used; then the line `Do it?`. Plain ASCII, no Markdown, lines under 60 characters.\n\nWhen the developer answers, work out what they mean. If it is a decision, call the tool `choose` first, before you write anything: action `start` when they agree to work on an issue (the one you suggested or one they name), `another` when they turn it down or want a different one, `none` when they want to stop. Every decision is recorded through the tool, so never skip it. After `another`, suggest the next best issue in the same form, using what they said. After `start` or `none`, say in one line what the tool told you. Only if their answer is purely a question, answer it briefly without the tool.";
 NP_ASK :: "\nSuggest the one issue to work on next.";
+NP_ASK_AUTO :: "\nAutopilot is on: nobody will answer you. Pick the one issue to work on next and call `choose` with action `start` now, before any text; then say in two short lines which issue and why. If no open issue is worth starting, call `choose` with action `none`.";
+NP_GO :: "Yes. Start it.";      // what Autopilot answers when the picker asks anyway
+NP_WORKED :: 32;                // issues one run remembers it worked
 NP_CHOOSE_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"start\",\"another\",\"none\"]},\"issue\":{\"type\":\"integer\",\"description\":\"The issue number the action is about; 0 for none.\"},\"reason\":{\"type\":\"string\",\"description\":\"One line: what the developer said that decided it.\"}},\"required\":[\"action\",\"issue\",\"reason\"],\"additionalProperties\":false}";
 NP_CHOOSE_ABOUT :: "Record what the developer decided about the suggested issue: start it, ask for another, or none.";
 NP_STARTING :: "Recorded. A coding agent now starts on it in a fresh worktree, in this chat. Tell the developer that in one line.";
@@ -67,6 +75,10 @@ NextPanel :: struct {
   usage: [2048] u8; usage_n: int;         // a ledger line waiting for the host
   decision: [1024] u8; decision_n: int;   // a decision waiting for the host
   chosen: int;                            // the issue you said to start, 0 none
+  autopilot: bool = true;                 // pick, work, pick again, with no one answering
+  worked: [NP_WORKED] int; worked_n: int; // the issues this run has worked, which the picker is told to leave
+  runs: int;                              // coding turns that have ended
+  nudged: bool;                           // Autopilot has answered this picker once
   pending_work: bool;                     // you said start: when the picker's turn ends, the coding flow begins
   coding: bool;                           // the open session is the coding agent's, not the picker's
   rehearsal: bool;
@@ -145,6 +157,7 @@ np_line :: (text: string, from: int, width: f32) -> NpLine {
 
 // ---- the boxes
 
+np_auto_box :: (width: f32) -> HudBox { return HudBox.{x = width - f32(NP_MARGIN) - f32(NP_BUTTON_W) - 12 - 156, y = f32(NP_MARGIN), width = 156, height = f32(NP_BUTTON_H)}; }
 np_button :: (width: f32) -> HudBox { return HudBox.{x = width - f32(NP_MARGIN) - f32(NP_BUTTON_W), y = f32(NP_MARGIN), width = f32(NP_BUTTON_W), height = f32(NP_BUTTON_H)}; }
 np_panel :: (width: f32, height: f32) -> HudBox {
   w := f32(NP_PANEL_W); if w > width - 2 * f32(NP_MARGIN) { w = width - 2 * f32(NP_MARGIN); }
@@ -162,10 +175,12 @@ np_end :: (s: []NextPanel, state: int) {
   if s[0].started { cl_close(s[0].p[..]); s[0].started = false; }
   s[0].state = state;
 }
-// A fresh asking: the old session ends and the host is asked for the context.
-np_ask :: (s: []NextPanel, refetch: bool) {
+// A fresh asking: the old session ends and the host is asked for the context. `again` is
+// Autopilot going round: the chat so far stays, and so does what this run has worked.
+np_ask :: (s: []NextPanel, refetch: bool, again: bool) {
   np_end(s, NP_CONTEXT_WAIT);
-  s[0].text_n = 0; s[0].cut = false; s[0].scroll = 0; s[0].open = true; s[0].focus = true;
+  if again { np_gap(s); np_append(s, "> next\n\n"); } else { s[0].text_n = 0; s[0].cut = false; s[0].worked_n = 0; s[0].focus = true; }
+  s[0].scroll = 0; s[0].open = true; s[0].nudged = false;
   s[0].turn = 0; s[0].seconds = 0; s[0].cost_e6 = -1; s[0].session_cost_e6 = 0; s[0].chosen = 0; s[0].report_n = 0;
   s[0].pending_work = false; s[0].coding = false; s[0].after_tool = false;
   s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL);
@@ -178,11 +193,17 @@ np_context :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c
   s[0].report_n = np_put(s[0].report[..], 0, report);
   while s[0].report_n > 0 && s[0].report[s[0].report_n - 1] <= 32 { s[0].report_n -= 1; }
   for i: 0..<s[0].report_n { if s[0].report[i] < 32 { s[0].report[i] = ' '; } }
-  if !ok || text.count == 0 || text.count + NP_ASK.count > NP_CONTEXT {
-    np_append(s, ifx text.count + NP_ASK.count > NP_CONTEXT then "The issues are more than the first message holds." else "The issues could not be read.");
+  if !ok || text.count == 0 || text.count + 1200 > NP_CONTEXT {
+    np_append(s, ifx text.count + 1200 > NP_CONTEXT then "The issues are more than the first message holds." else "The issues could not be read.");
     np_break(s); np_append(s, report); s[0].state = NP_FAILED; return;
   }
-  n := np_put(s[0].context[..], 0, text); n = np_put(s[0].context[..], n, NP_ASK); s[0].context_n = n;
+  n := np_put(s[0].context[..], 0, text);
+  if s[0].worked_n > 0 {
+    n = np_put(s[0].context[..], n, "\nALREADY WORKED IN THIS RUN (do not pick these):");
+    for i: 0..<s[0].worked_n { n = np_put(s[0].context[..], n, " #"); n = np_put_int(s[0].context[..], n, s[0].worked[i]); }
+    n = np_put(s[0].context[..], n, "\n");
+  }
+  n = np_put(s[0].context[..], n, ifx s[0].autopilot then NP_ASK_AUTO else NP_ASK); s[0].context_n = n;
   cl_init(s[0].q[..], s[0].line[..], s[0].arena[..], s[0].out[..]);
   o: [1] ClOptions;
   o[0].model = NP_MODEL;
@@ -394,6 +415,17 @@ np_message :: (s: []NextPanel, m: ClMessage) {
       np_break(s); np_append(s, ifx why.count > 0 then why else "The turn failed."); np_end(s, NP_FAILED); return;
     }
     np_break(s); s[0].state = NP_YOURS; s[0].after_tool = false;
+    // The coding agent's turn is over: the issue is one this run has worked, and Autopilot goes
+    // round: the caches are fetched again (the issue may be closed now) and the picker picks.
+    if s[0].coding {
+      s[0].runs += 1;
+      if s[0].worked_n < NP_WORKED { s[0].worked[s[0].worked_n] = s[0].chosen; s[0].worked_n += 1; }
+      if s[0].autopilot && s[0].worked_n < NP_WORKED { np_ask(s, true, true); return; }
+    }
+    // The picker asked instead of starting: Autopilot answers it once.
+    if s[0].autopilot && !s[0].coding && !s[0].pending_work && s[0].chosen == 0 && !s[0].nudged {
+      s[0].nudged = true; s[0].draft_n = np_put(s[0].draft[..], 0, NP_GO); np_send(s); return;
+    }
     // You said start: the picker's turn is over and written down, so its session ends and the
     // host is asked for the worktree.
     if s[0].pending_work && !s[0].coding {
@@ -446,14 +478,18 @@ np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, 
   step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
   s[0].now = now;
   if s[0].want_stop { s[0].want_stop = false; if s[0].state == NP_RUNNING { np_break(s); np_end(s, NP_STOPPED); } }
-  if s[0].want_refresh { s[0].want_refresh = false; np_ask(s, true); }
-  if s[0].want_start { s[0].want_start = false; if s[0].started || s[0].state == NP_CONTEXT_WAIT { s[0].open = !s[0].open; s[0].focus = s[0].open; } else { np_ask(s, false); } }
+  if s[0].want_refresh { s[0].want_refresh = false; np_ask(s, true, false); }
+  if s[0].want_start { s[0].want_start = false; if s[0].started || s[0].state == NP_CONTEXT_WAIT { s[0].open = !s[0].open; s[0].focus = s[0].open; } else { np_ask(s, false, false); } }
   if s[0].state == NP_RUNNING { s[0].seconds += step; }
   np_poll(s);
   for i: 0..<4 { if i < panel.count { panel[i] = 0; } }
   if !(width > 0) || !(height > 0) || !(d > 0) { return 0; }
   pen := HdPen.{d = d, cyan = true, top = 0, bottom = height, sans = false};
   n := 0;
+  auto_box := np_auto_box(width);
+  n = hd_rect(out, n, auto_box, pen, ifx s[0].autopilot then 2 else 1, ifx s[0].autopilot then 1.0f32 else 0.6f32);
+  auto_label := ifx s[0].autopilot then "Autopilot on" else "Autopilot off";
+  n = eg_text(out, n, auto_label, auto_box.x + (auto_box.width - eg_width(auto_label, 16, EG_TITLE)) * 0.5, auto_box.y + 23, 16, d, EG_TITLE, ifx s[0].autopilot then EG_WHITE else EG_MID);
   b := np_button(width);
   n = hd_rect(out, n, b, pen, 2, 1);
   label := ifx s[0].state == NP_RUNNING && s[0].open then "Stop" else "Next issue";
@@ -523,6 +559,7 @@ np_pointer :: (s: []NextPanel, x: f32, y: f32, phase: int, width: f32, height: f
   if phase == 0 {
     s[0].down_in = 0;
     if np_in(b, x, y) { s[0].down_in = 1; }
+    else if np_in(np_auto_box(width), x, y) { s[0].down_in = 4; }
     else if over_panel && np_in(np_close_box(box), x, y) { s[0].down_in = 2; }
     else if over_panel && s[0].state != NP_RUNNING && s[0].state != NP_CONTEXT_WAIT && np_in(np_refresh_box(box), x, y) { s[0].down_in = 3; }
     s[0].down = s[0].down_in != 0 || over_panel;
@@ -534,6 +571,7 @@ np_pointer :: (s: []NextPanel, x: f32, y: f32, phase: int, width: f32, height: f
   if s[0].down_in == 1 && np_in(b, x, y) { if s[0].state == NP_RUNNING && s[0].open { s[0].want_stop = true; } else { s[0].want_start = true; } }
   if s[0].down_in == 2 && np_in(np_close_box(box), x, y) { s[0].open = false; s[0].focus = false; }
   if s[0].down_in == 3 && np_in(np_refresh_box(box), x, y) { s[0].want_refresh = true; }
+  if s[0].down_in == 4 && np_in(np_auto_box(width), x, y) { s[0].autopilot = !s[0].autopilot; }
   s[0].down_in = 0;
   return took;
 }
@@ -553,6 +591,8 @@ np_key :: (s: []NextPanel, key: int) #export_c #effects(all) {
   if key == 13 { np_send(s); return; }
   if key >= 32 && key <= 126 && s[0].draft_n < NP_DRAFT && s[0].state != NP_RUNNING { s[0].draft[s[0].draft_n] = cast(u8) key; s[0].draft_n += 1; }
 }
+// Coding turns that have ended, for a host that waits on the loop.
+np_runs :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].runs; }
 // The issue you said to start, for the host's `next-context work`.
 np_chosen :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].chosen; }
 // What the host is asked for, once: 0 nothing, 1 the context, 2 the context refetched, 3 the
@@ -572,7 +612,7 @@ np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { cl_clos
 // 0 idle, 1 reading the cache, 2 the agent's turn, 3 your turn, 4 failed, 5 stopped.
 np_state :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].state; }
 np_size :: () -> int #export_c #effects(all) { return size_of(NextPanel); }
-np_init :: (s: []NextPanel) #export_c #effects(all) { s[0].state = NP_IDLE; s[0].cost_e6 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL); }
+np_init :: (s: []NextPanel) #export_c #effects(all) { s[0].autopilot = true; s[0].state = NP_IDLE; s[0].cost_e6 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL); }
 np_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
 
@@ -624,4 +664,17 @@ np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
   s: [1] NextPanel;
   np_say(s[..], "**Bold** and `code`, 2 * 3, a *"); np_say(s[..], "* split pair.");
   #assert cast(string) s[0].text[0..<s[0].text_n] == "Bold and code, 2 * 3, a  split pair.";
+}
+#test "next issue: Autopilot is on by default, its button toggles it, and it sits beside Next issue" {
+  s: [1] NextPanel; np_init(s[..]);
+  #assert s[0].autopilot;
+  a := np_auto_box(1320); b := np_button(1320);
+  #assert a.x + a.width < b.x && a.y == b.y && a.height == b.height && a.x > 0;
+  #assert np_pointer(s[..], a.x + 5, a.y + 5, 0, 1320, 880) && np_pointer(s[..], a.x + 5, a.y + 5, 2, 1320, 880) && !s[0].autopilot;
+  #assert np_pointer(s[..], a.x + 5, a.y + 5, 0, 1320, 880);
+  #assert np_pointer(s[..], a.x - 50, a.y + 5, 2, 1320, 880) && !s[0].autopilot;   // let go off the button: no change
+  #assert np_pointer(s[..], a.x + 5, a.y + 5, 0, 1320, 880) && np_pointer(s[..], a.x + 5, a.y + 5, 2, 1320, 880) && s[0].autopilot;
+  found := false;
+  for i: 0..<NP_ASK_AUTO.count - 5 { if NP_ASK_AUTO[i..<i + 5] == "start" { found = true; } }
+  #assert found;
 }
