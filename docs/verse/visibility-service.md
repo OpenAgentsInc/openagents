@@ -109,12 +109,20 @@ which piece and bone; a piece names up to two bones it may touch, such as the
 hand that grips it. `overlap_keep` keeps the deepest pose over a sweep, with
 its clip and frame, so a failing check says where to look.
 
+An item can also face the wrong way without touching anything: a carried
+bow with its string away from the leg. `overlap_side(mid, across, inner,
+outer)` returns how much nearer the body's midline (the plane through `mid`,
+square to `across`, the way from your right to your left) the inner point lies than
+the outer one. Above 0, the inner side faces the body.
+
 The realm owns the posing. Experimental's check (`cc_bow_sweep` in
 `apps/openagents-web/charactercreator.coax`) samples every frame of every
 base clip and of the bow's draw and release, on both bodies, and places the
 bow with the same `bow_matrix` and `bow_string_points` that draw it. The
 body's capsules run joint to joint: upper arms and forearms, thighs and
 shins, the torso, the neck and the skull. A check fails on any overlap.
+Standing, walking and running, a second check (`cc_bow_side_sweep`) needs the
+string's middle at least 3 cm nearer the midline than the bow's grip.
 
 ## Rules
 

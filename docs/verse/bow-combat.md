@@ -20,9 +20,18 @@ The bow sits on one attach basis in the left fist, the same in every pose
 (`charactercreator.coax` `bow_basis`). The rig binds in a T-pose, so in the hand's
 bind frame the arm runs +X and the fist's hole, the thumb's side, runs +Z. The
 bow's limbs run through the fist along that hole, and its string side runs back
-along the forearm, canted 10 degrees out from the body. Carried, the arm hangs
-and the bow lies along the leg with the string square to the arm. Drawn, the arm
-points at the aim with the thumb up, so the bow stands upright.
+along the forearm, canted 10 degrees out from the body. Drawn, the arm points at
+the aim with the thumb up, so the bow stands upright, and it turns about its
+limbs until the string faces your chin.
+
+Carried (standing, walking and running), the bow hangs from the relaxed bow
+hand as an archer carries one (`bow_carry_basis`): the limbs run up and down
+the arm, the top tilted a little forward and leaned in, and the string is on
+your side of the bow, inside the bow arm, turned toward ahead so it passes in
+front of the thigh. The bow's back faces out. As you draw, the bow turns from
+this carry to the drawn hold. A check (`cc_bow_side_sweep`) keeps the string
+nearer your midline than the bow's back in every standing, walking and running
+frame, and the overlap sweep keeps the limbs and string out of the legs.
 
 Character Create's own preview shows no held gear, so the bow appears only in
 Experimental.
