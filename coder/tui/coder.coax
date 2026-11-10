@@ -1,7 +1,8 @@
 // Coder in the terminal: an inline TUI (Coder book, chapter 36). Finished
 // turns go into the terminal's own scrollback; a live region at the bottom
 // holds the working status, the reply as it streams, and the composer.
-// Engines: claude (the installed Claude Code CLI on its own login, driven
+// Engines: claude (the installed Claude Code CLI on its own login, or on
+// ANTHROPIC_API_KEY when that is set, driven
 // over stream-json by coax/lib/agent/claude, one session for the whole
 // conversation), codex (the installed Codex CLI on its own login, driven as
 // `codex app-server` by coax/lib/agent/codex, one thread; codex.coax),
@@ -127,6 +128,7 @@ App :: struct {
   pl: [] PlRegistry;             // plugins: their commands and hooks (chapter 15)
   vt_out: [131072] u8;
   engine: int;
+  api_key: bool;                 // ANTHROPIC_API_KEY is set: the claude engine uses it, not the Claude Code login
   model: string;
   route_model: [128]u8;          // owned automatic model alias; never borrow a finished route's buffers
   model_engine: int;             // --model is for the engine it came with
@@ -395,7 +397,7 @@ cd_draw :: (a: [] App) {
   tui_rows_editor(r, a[0].ed[..], "› ", "  ", cols, max, TUI_BRIGHT);
   k = tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
   // the agent first, so a narrow row still names it
-  hb: [256] u8; hn := cd_cat(hb[..], 0, ifx a[0].engine == ENGINE_ECHO then "echo (offline)" else cd_engine_name(a[0].engine));
+  hb: [256] u8; hn := cd_cat(hb[..], 0, ifx a[0].engine == ENGINE_ECHO then "echo (offline)" else ifx a[0].engine == ENGINE_CLAUDE && a[0].api_key then cd_claude_title(true) else cd_engine_name(a[0].engine));
   if a[0].engine == ENGINE_CODEX { hn = cd_cat(hb[..], hn, " · /model · /effort"); }
   if a[0].jobs > 0 { jb: [16] u8; hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cd_itoa(a[0].jobs, jb[..])); hn = cd_cat(hb[..], hn, ifx a[0].jobs == 1 then " job running" else " jobs running"); }
   if a[0].dct_consent { hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cdd_gesture_label(a[0].dct_key)); hn = cd_cat(hb[..], hn, " dictate"); }
@@ -433,7 +435,11 @@ cd_now :: (a: [] App) -> int { return cxproc_now_ms(); }
 // ---------------------------------------------------------------- plan usage (chapter 36)
 
 // Which login's usage an engine shows: 0 Claude Code, 1 Codex, -1 none.
-cd_usage_of :: (a: [] App, e: int) -> int { return ifx e == ENGINE_CLAUDE then 0 else ifx e == ENGINE_CODEX then 1 else -1; }
+// An API-key Claude session has no plan meter.
+cd_usage_of :: (a: [] App, e: int) -> int {
+  if e == ENGINE_CLAUDE && a[0].api_key { return -1; }
+  return ifx e == ENGINE_CLAUDE then 0 else ifx e == ENGINE_CODEX then 1 else -1;
+}
 
 // The last answers from disk at once; the agent's own login is read now, then every 5 minutes.
 cd_usage_open :: (a: [] App) {
@@ -469,10 +475,12 @@ cd_usage_lines :: (u: [] UsAcct, name: string, now_s: int, out: [] u8) -> int {
 
 // /usage: both logins' meters; asks for fresh reads (no more often than every 30 seconds).
 cd_usage_show :: (a: [] App) {
-  for i: 0..<2 { us_force(a[0].use[i..<i + 1]); }
+  if a[0].api_key { cd_commit(a, TUI_DIM, "  Claude API · ANTHROPIC_API_KEY, which has no plan limits"); }
+  for i: 0..<2 { if !(a[0].api_key && i == 0) { us_force(a[0].use[i..<i + 1]); } }
   now_s := cxproc_wall_us() / 1000000;
   names := [2] string.["Claude Code", "Codex"];
   for i: 0..<2 {
+    if a[0].api_key && i == 0 { continue; }
     ob: [2048] u8; n := cd_usage_lines(a[0].use[i..<i + 1], names[i], now_s, ob[..]);
     b := us_binding(a[0].use[i..<i + 1]);
     lv := ifx b >= 0 then us_level(a[0].use[i].w[b].used) else US_LEVEL_NORMAL;
@@ -878,9 +886,30 @@ cd_command_stop :: (a: [] App) {
 
 cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
 
-// Partial messages so the reply streams; the person's Claude Code login,
-// never an API key from the environment.
-cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool, tool_hooks: bool) {
+// A non-empty ANTHROPIC_API_KEY, ignoring surrounding space. The value is
+// never stored: the child inherits the variable, and Coder only remembers
+// that it was set.
+cd_claude_api_key :: (key: string) -> bool {
+  for c: key { if c != ' ' && c != 9 && c != 10 && c != 13 { return true; } }
+  return false;
+}
+
+// What the opening line and Shift-Tab call the claude engine.
+cd_claude_title :: (api_key: bool) -> string { return ifx api_key then "Claude API" else "Claude Code"; }
+
+// Whether this process was started with ANTHROPIC_API_KEY. The copy is wiped.
+cd_claude_api_key_set :: () -> bool {
+  kb: [4096] u8;
+  key := cl_getenv("ANTHROPIC_API_KEY", kb[..]);
+  set := cd_claude_api_key(key);
+  for i: 0..<kb.count { kb[i] = 0; }
+  return set;
+}
+
+// Partial messages so the reply streams. The person's Claude Code login,
+// unless ANTHROPIC_API_KEY is set: then that key authenticates the child
+// and the login is not used.
+cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool, tool_hooks: bool, api_key: bool) {
   o: [1] ClOptions;
   o[0].include_partial_messages = true;
   if tool_hooks { cl_add_hook(o[..], "PreToolUse", "", 60.0); }    // every tool call first passes the policy and the plugins' tool_call hooks
@@ -892,7 +921,7 @@ cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effo
   else { o[0].permission_mode = ClPermissionMode.bypass_permissions; o[0].allow_dangerously_skip_permissions = true; }
   o[0].cwd = cwd;
   if model.count > 0 { o[0].model = model; }
-  cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+  if !api_key { cl_remove_env(o[..], "ANTHROPIC_API_KEY"); }
   q[0].options = o[0];
 }
 
@@ -904,7 +933,7 @@ cd_claude_send :: (a: [] App, msg: string) {
   }
   cd_claude_reset(a[0].q);
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
-  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, a[0].pol[0].on || cd_has_hook(a, "tool_call"));
+  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, a[0].pol[0].on || cd_has_hook(a, "tool_call"), a[0].api_key);
   if a[0].nresume > 0 { a[0].q[0].options.resume = cast(string) a[0].resume[0..<a[0].nresume]; a[0].q[0].options.fork_session = true; }
   a[0].q[0].options.mcp_servers = cd_claude_realm_tools(a);
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
@@ -1194,7 +1223,7 @@ cd_poll :: (a: [] App) -> bool {
 
 // ---------------------------------------------------------------- input
 
-HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), cursor (Cursor on its own login),\n           microcoder (OpenAgents' own loop), psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/usage     how much of Claude Code's and Codex's plan limits is used, and when each resets\n/resume    this folder's sessions; /resume ID continues one, /resume claude this folder's newest Claude Code session\n/theme T   dark, light (for a light background) or none (no colors)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\n/dictation on|off  local dictation: Ctrl+Space (or --dictation-key) starts and stops listening, Esc cancels;\n           the words go into the draft at the cursor and are never sent; Ctrl+Z takes them back\nShift-Tab  switch agent: claude, codex, cursor, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login, or ANTHROPIC_API_KEY instead of that login), codex (Codex on its own login), cursor (Cursor on its own login),\n           microcoder (OpenAgents' own loop), psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/usage     how much of Claude Code's and Codex's plan limits is used, and when each resets\n/resume    this folder's sessions; /resume ID continues one, /resume claude this folder's newest Claude Code session\n/theme T   dark, light (for a light background) or none (no colors)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\n/dictation on|off  local dictation: Ctrl+Space (or --dictation-key) starts and stops listening, Esc cancels;\n           the words go into the draft at the cursor and are never sent; Ctrl+Z takes them back\nShift-Tab  switch agent: claude, codex, cursor, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
 // Only registered command names reserve a leading slash. Absolute paths,
 // including paths that do not exist yet, remain ordinary message text.
@@ -1556,7 +1585,9 @@ cd_switch :: (a: [] App, e: int) {
   a[0].engine = e;
   ua := cd_usage_of(a, e); if ua >= 0 && !a[0].plain { us_force(a[0].use[ua..<ua + 1]); }
   if a[0].log[0].nid > 0 { cs_agent(a, e); }
-  cd_commit(a, TUI_DIM, ifx e == ENGINE_CODEX then "  Agent: Codex" else ifx e == ENGINE_CURSOR then "  Agent: Cursor" else ifx e == ENGINE_MICRO then "  Agent: Microcoder" else ifx e == ENGINE_PSIONIC then "  Agent: Microcoder on Psionic (this machine)" else "  Agent: Claude Code");
+  ab: [80] u8; an := cd_cat(ab[..], 0, "  Agent: ");
+  an = cd_cat(ab[..], an, ifx e == ENGINE_CODEX then "Codex" else ifx e == ENGINE_CURSOR then "Cursor" else ifx e == ENGINE_MICRO then "Microcoder" else ifx e == ENGINE_PSIONIC then "Microcoder on Psionic (this machine)" else cd_claude_title(a[0].api_key));
+  cd_commit(a, TUI_DIM, cast(string) ab[0..<an]);
   if e == ENGINE_CODEX { cd_codex_open(a); }
   if e == ENGINE_CURSOR { cd_cursor_open(a); }
 }
@@ -2566,6 +2597,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if rpath.count == 0 || !fs_exists(rpath) { tool_err("coder: no session "); tool_errln(rto); return 6; }
   }
   a[0].engine = ENGINE_CLAUDE;
+  a[0].api_key = cd_claude_api_key_set();
   want := args_value(args, "--engine", "");
   if want == "echo" { a[0].engine = ENGINE_ECHO; }
   else if want == "codex" { a[0].engine = ENGINE_CODEX; }
@@ -2729,9 +2761,10 @@ tool_main :: () -> int #export_c #effects(all) {
   tui_csi(a[0].o[..], TUI_KEYS_ON);                     // Shift-Enter distinct from Enter
   hb: [512] u8; hn := cd_cat(hb[..], 0, "Coder ");
   hn = cd_cat(hb[..], hn, CODER_VERSION); hn = cd_cat(hb[..], hn, " · ");
-  hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then "Claude Code" else ifx a[0].engine == ENGINE_CODEX then "Codex" else ifx a[0].engine == ENGINE_CURSOR then "Cursor" else ifx a[0].engine == ENGINE_MICRO then "Microcoder" else ifx a[0].engine == ENGINE_PSIONIC then "Microcoder on Psionic" else "echo engine (offline)");
+  hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then cd_claude_title(a[0].api_key) else ifx a[0].engine == ENGINE_CODEX then "Codex" else ifx a[0].engine == ENGINE_CURSOR then "Cursor" else ifx a[0].engine == ENGINE_MICRO then "Microcoder" else ifx a[0].engine == ENGINE_PSIONIC then "Microcoder on Psionic" else "echo engine (offline)");
   hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, a[0].cwd);
   cd_commit(a, TUI_BRIGHT, cast(string) hb[0..<hn]);
+  if a[0].api_key && a[0].engine == ENGINE_CLAUDE && !a[0].auto_engine { cd_commit(a, TUI_FAINT, "  Authenticated with ANTHROPIC_API_KEY. The Claude Code login is not used."); }
   cd_commit(a, TUI_FAINT, "/help for commands.");
   if past.count > 0 { cd_show_past(a, past); cd_resumed_note(a, past_turns); }
   cd_recap_open(a);
@@ -2776,6 +2809,24 @@ tool_main :: () -> int #export_c #effects(all) {
   cd_flush(a);
   x = cxterm_keys(0);
   return 0;
+}
+
+#test "an API key authenticates Claude and an empty key stays on the Claude Code login" {
+  #assert cd_claude_api_key("present");
+  #assert !cd_claude_api_key("");
+  #assert !cd_claude_api_key("  \t");
+  #assert cd_claude_title(false) == "Claude Code" && cd_claude_title(true) == "Claude API";
+  q: [1] ClQuery;
+  cd_claude_options(q[..], "/tmp", "", false, "", false, false, false);
+  #assert q[0].options.env_remove_count == 1 && q[0].options.env_remove[0] == "ANTHROPIC_API_KEY";
+  #assert q[0].options.include_partial_messages;
+  cd_claude_reset(q[..]);
+  cd_claude_options(q[..], "/tmp", "", false, "", false, false, true);
+  #assert q[0].options.env_remove_count == 0 && q[0].options.include_partial_messages;
+  a: [1] App;
+  #assert cd_usage_of(a[..], ENGINE_CLAUDE) == 0 && cd_usage_of(a[..], ENGINE_CODEX) == 1;
+  a[0].api_key = true;
+  #assert cd_usage_of(a[..], ENGINE_CLAUDE) == -1 && cd_usage_of(a[..], ENGINE_CODEX) == 1;
 }
 
 #test "recaps: a model's line cleaned to one short status" {

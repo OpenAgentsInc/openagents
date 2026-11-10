@@ -31,9 +31,11 @@ the official SDK and where it is, or isn't, in Coax.
 message and sends later messages to the same session, so the conversation
 carries over. It asks for partial messages, so `content_block_delta` text
 streams into the reply as it arrives. It removes `ANTHROPIC_API_KEY` from
-the child's environment, so the run always uses the person's Claude Code
-login. A subagent's own traffic (a message with a `parent_tool_use_id`)
-stays out of the transcript.
+the child's environment, so the run uses the person's Claude Code login.
+Started as `ANTHROPIC_API_KEY=… coder`, the key stays in the child's
+environment and authenticates the session; the Claude Code login is not
+used, and the opening line says Claude API. A subagent's own traffic
+(a message with a `parent_tool_use_id`) stays out of the transcript.
 
 Tools run without asking, as with `claude --dangerously-skip-permissions`.
 With `--ask`, each permission request goes to the composer's y/a/n prompt

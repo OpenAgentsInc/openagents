@@ -2,7 +2,8 @@
 # Firm reason: 5 (a thin wrapper: names the working directory, then runs the Coax tool)
 # Coder in the terminal: builds coder/tui/coder.coax when stale and runs it.
 # The claude, codex and cursor engines use the installed CLIs on their own
-# logins; microcoder (coder/tui/mcworker.coax, a process of its own) reads
+# logins. ANTHROPIC_API_KEY, when set, authenticates the claude engine with
+# that key instead of the Claude Code login. microcoder (coder/tui/mcworker.coax, a process of its own) reads
 # its gateway keys from ~/work/.secrets into curl's environment only. No
 # credential is exported from here. Shift-Tab switches agent.
 #   coder/tui/coder.sh [--engine claude|codex|cursor|microcoder|echo] [--model M] [--ask] [--cwd DIR]
