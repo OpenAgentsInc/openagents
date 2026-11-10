@@ -61,6 +61,7 @@
 #load "../../aethyr/query.coax" as aq;
 #load "../../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
 #load "../../aethyr/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
+#load "../../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, shared with Everglade II (#13104)
 #load "../../aethyr/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
 #load "../../aethyr/action/bow.coax" as bow;
 #load "../../aethyr/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
@@ -71,11 +72,9 @@ XC_AWAY :: -1000;
 XC_SQ :: 1.524;
 XC_SINK :: 2.4;                // seconds a fallen monster takes to sink away
 XC_PLAYER_MAX :: 44;           // legacy body-only fixture HP; live HP is the selected class's shared state
-XC_FLOATS :: 8;
 // the CLASSES column, CSS px: its header, its rows, the gap above it
 XC_HEAD :: CM_HEAD; XC_ROW :: CM_ROW; XC_ROWS_TOP :: CM_ROWS_TOP; XC_GAP :: CM_GAP;   // class-menu.coax
 
-XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XC_FAMILIAR :: 29;
 XC_BREATH :: 31;   // the dragon's Fire Breath while you ride it (experimental-ride.coax lab_breath_slot): the dragon's, not your class's, so never in the bar's saved order
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
@@ -113,7 +112,7 @@ XcCombat :: struct {
   hover: int = -1;                  // the bar's slot under the pointer
   down: int = -100; down_x: f32; down_y: f32; down_id: int;
   media: [16384] u8; media_n: int;   // the bar's pictures for the host (coaxial_media)
-  fl: [XC_FLOATS] XcFloat;
+  floats: [1] fl.Floats;   // the shared numbers (aethyr/action/floats.coax): the queue and the count shown and suppressed live inside
   casts: int; landed: int; kills: int; refused: int; last_dmg: int;   // for the checks (lab_creator_probe 900+)
   whiffs: int;                      // bolts that flew to their range and blows that met no one
   releasing: bool;                  // an arrow or a swung blow landing: it resolves though you fell first (#13120)
@@ -128,10 +127,8 @@ XcCombat :: struct {
   blade_step: f32;                  // the largest blade-end move in one tick so far, metres (lab_creator_probe 933, mm)
   lock: attn.AttnState;             // your target, held through attention (xc_lock_step): target is its answer
   stops: react.Stops;               // hit stops in force: a struck monster pauses, and a monster that strikes you
-  present: react.PresentQueue;      // this frame's numbers, through react_present's caps
   npc_seat: [XC_FOES] FbSeat;
   seen_hits: int;                   // the monsters' landed blows already given their hit stop
-  shown: int; suppressed: int;      // numbers shown and suppressed (lab_creator_probe 934, 935)
   shields: int;                     // Shield Reactions cast for you (their sound and barrier played)
   guard_in: [XC_FOES] bool;         // each monster inside your Spirit Guardians' Emanation last frame
   hit_at: f32 = -100; hit_x: f32; hit_z: f32;   // when a monster's blow or shot last struck you, and where it stood (xc_hit_mark)
@@ -298,27 +295,17 @@ xc_square :: (d: f32) -> int {
   q := cast(int) floor(d / f32(XC_SQ) + 0.5);
   return ifx q <= -XC_MID || q >= XC_MID then XC_AWAY else XC_MID + q;
 }
-xc_float :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) { xc_float_from(x, 0, wx, wy, wz, t0, text, heal); }
 // A number rising off whoever took it, from source (0 you, 1 to 6 a monster): presentation of an accepted
-// result, queued through react_present (at most XC_FLOATS a source a frame, the rest suppressed and
-// counted). Nothing here changes what the ruleset applied.
+// result through the shared floats (aethyr/action/floats.coax), capped a source a frame and counted. A height
+// is above the meadow unless it is a heal's, which is the world's. Nothing here changes what the ruleset applied.
+xc_float :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) { xc_float_from(x, 0, wx, wy, wz, t0, text, heal); }
 xc_float_from :: (x: [] XcCombat, source: int, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) {
-  x[0].present.per_source = XC_FLOATS;
-  before := x[0].present.suppressed;
-  x[0].present = react.react_present(x[0].present, react.PresentEvent.{kind = react.PresentKind.number, source = source, at = asp.world_point(wx, wy, wz), priority = ifx heal then 2 else 1});
-  if x[0].present.suppressed > before { x[0].suppressed += 1; return; }
-  x[0].shown += 1;
-  q := 0; oldest := 1e9f32;
-  for i: 0..<XC_FLOATS { if !x[0].fl[i].on { q = i; break; } if x[0].fl[i].t0 < oldest { oldest = x[0].fl[i].t0; q = i; } }
-  f := x[0].fl[q..<q + 1];
-  f[0] = XcFloat.{on = true, x = wx, y = wy, z = wz, t0 = t0, heal = heal};
-  f[0].n = put(f[0].text[..], 0, text);
+  y := ifx heal then wy else meadow_y(wx, wz) + wy;
+  kind := ifx heal then fl.FLOAT_HEAL else ifx text == "MISS" then fl.FLOAT_MISS else fl.FLOAT_WORD;
+  _ := fl.floats_add(x[0].floats[..], source, wx, y, wz, t0, kind, false, ifx kind == fl.FLOAT_MISS then "miss" else text);
 }
 xc_float_int :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, v: int, heal: bool) {
-  buf: [12] u8; n := 0;
-  if heal { buf[0] = '+'; n = 1; }
-  n = put_int(buf[..], n, v);
-  xc_float(x, wx, wy, wz, t0, cast(string) buf[0..<n], heal);
+  _ := fl.floats_amount(x[0].floats[..], 0, wx, meadow_y(wx, wz) + wy, wz, t0, ifx heal then fl.FLOAT_HEAL else fl.FLOAT_DEALT, false, v);
 }
 
 // What kind of aim ability a takes, and its reach in metres (class-kit.coax xc_aim_for), for the weapon you hold.
@@ -1929,7 +1916,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   x[0].w = w; x[0].h = h; x[0].k = k; x[0].seen = true;
   now := cr[0].clock;
   cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
-  x[0].present = react.react_present_drain(x[0].present);
+  fl.floats_frame(x[0].floats[..]);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   xd_frame(s, dt);
   xc_objects_tick(s);
@@ -2012,16 +1999,14 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   }
   n = cc.eg_plates(out, n, pl, view, k, 0);
   // the numbers rising off whoever took them
-  for q: 0..<XC_FLOATS {
-    f := x[0].fl[q];
-    if !f.on { continue; }
-    a := (now - f.t0) / 1.2;
-    if a < 0 || a > 1 { x[0].fl[q].on = false; continue; }
-    base := ifx f.heal then f.y else meadow_y(f.x, f.z) + f.y;
-    p := xc_proj(x, f.x, base + a * 0.9, f.z);
+  for q: 0..<fl.FLOATS {
+    l := fl.floats_look(x[0].floats[0].items[q], now);
+    if !l.ok { x[0].floats[0].items[q].on = false; continue; }
+    f := x[0].floats[0].items[q];
+    p := xc_proj(x, l.x, l.y, l.z);
     if !p.ok || !xc_sight_shows(x, f.x, meadow_y(f.x, f.z), f.z, 1.6) { continue; }
-    t := cast(string) f.text[0..<f.n];
-    n = cc.eg_float(out, n, t, p.x, p.y, k, ifx f.heal then cc.EG_FLOAT_HEAL else cc.EG_FLOAT_DEALT, ifx a < 0.7 then 1.0f32 else (1 - a) / 0.3);
+    kind := ifx f.kind == fl.FLOAT_HEAL then cc.EG_FLOAT_HEAL else ifx f.kind == fl.FLOAT_MISS then cc.EG_FLOAT_MISS else ifx f.kind == fl.FLOAT_TAKEN then cc.EG_FLOAT_HARM else cc.EG_FLOAT_DEALT;
+    n = cc.eg_float(out, n, fl.floats_text(x[0].floats[..], q), p.x, p.y, k * l.size, kind, l.alpha);
   }
   // the bar: its iron round the pictures (everglade/hud/parts.coax), each slot's key over its picture; your class and your target over it
   slots: [XC_SLOTS * 4] f32;
@@ -2287,8 +2272,8 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   if f == 919 { return x[0].fallbacks; }
   if f == 932 { return x[0].exhausted; }
   if f == 933 { return cast(int) (x[0].blade_step * 1000); }
-  if f == 934 { return x[0].shown; }
-  if f == 935 { return x[0].suppressed; }
+  if f == 934 { return x[0].floats[0].shown; }
+  if f == 935 { return x[0].floats[0].suppressed; }
   if f == 936 { return x[0].stops.n; }
   if f == 937 { return cast(int)(s[0].creator[0].player_y*1000); }
   if f >= 990 && f < 996 { return ifx hs[0].enemies[f - 990].stopped then 1 else 0; }
@@ -2881,11 +2866,13 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 #test "experimental combat: numbers go through the presentation queue, capped a source a frame and counted" {
   s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0); x := s[0].xc[..];
   for i: 0..<10 { xc_float_int(x, f32(i), 1.9, 0, 1, 3 + i, false); }
-  #assert x[0].shown == XC_FLOATS && x[0].suppressed == 2;
+  fs := x[0].floats[0];
+  #assert fs.shown == fs.per_source && fs.suppressed == 10 - fs.per_source;
   // another source has its own share; the next frame starts empty
-  xc_float_from(x, 4, 0, 1.9, 0, 1, "MISS", false); #assert x[0].shown == XC_FLOATS + 1;
-  x[0].present = react.react_present_drain(x[0].present);
-  xc_float_int(x, 0, 1.9, 0, 2, 7, false); #assert x[0].shown == XC_FLOATS + 2 && x[0].suppressed == 2;
+  was := fs.suppressed;
+  xc_float_from(x, 4, 0, 1.9, 0, 1, "MISS", false); #assert x[0].floats[0].shown == fs.per_source + 1;
+  fl.floats_frame(x[0].floats[..]);
+  xc_float_int(x, 0, 1.9, 0, 2, 7, false); #assert x[0].floats[0].shown == fs.per_source + 2 && x[0].floats[0].suppressed == was;
 }
 
 #test "experimental combat: Stunned hostiles can move but cannot attack and restraint preserves separate action permission" {
@@ -2966,7 +2953,7 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   #assert xc_bow_begin(s[..], false); xc_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
   xc_test_fly(s[..], 1.0);
   #assert x[0].bow_misses == 1 && x[0].bow_hits == 0 && x[0].arrows[0].a[0].passed == g && x[0].refused == 0;
-  shown := false; for i: 0..<XC_FLOATS { f := x[0].fl[i]; if f.on && cast(string) f.text[0..<f.n] == "MISS" { shown = true; } } #assert shown;
+  shown := false; for i: 0..<fl.FLOATS { if x[0].floats[0].items[i].on && fl.floats_text(x[0].floats[..], i) == "miss" { shown = true; } } #assert shown;
   // 60 m off (197 feet): past the normal range, so the roll is at Disadvantage (battle.coax rs_strike)
   h[0].enemies[g].z = 60; b[0].c[1 + g].ac = 1; x[0].cool_at = -100;
   #assert xc_bow_squares(s[..], g) == 39;
