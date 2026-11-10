@@ -1,0 +1,411 @@
+// next-context: what an agent needs to pick the next issue to work on, from caches
+// (everglade/docs/next-issue-spec.md). It keeps a local copy of a repository's open issues and
+// recent commits under ~/.openagents/cache/github/OWNER/REPO/ with the time of each fetch, reads
+// the owner's most recent Claude Code prompts, and prints one message for the model: the stable
+// part first (the issues, oldest first, so a new issue appends and the prompt cache's prefix
+// holds), then what changes (commits, recent prompts, the prompt in hand).
+//
+//   coax/web/tool.sh apps/everglade-desktop/next-context.coax context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO]
+//       prints the message on stdout; stderr says what came from cache and how old it is
+//   coax/web/tool.sh apps/everglade-desktop/next-context.coax status     the caches and their ages, as JSON
+//   coax/web/tool.sh apps/everglade-desktop/next-context.coax usage      the AI call ledger, summed by purpose and model
+//
+// A fetch is `gh` (your own login) through /bin/sh, written to a temporary file and renamed, so a
+// failed fetch leaves the old cache. The wall clock is a file's modification time: the tool
+// touches `.now` in the cache folder and reads it back.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+NC_REPO :: "OpenAgentsInc/openagents";
+NC_TTL :: 600;             // seconds a fetch is good for, unless --ttl says otherwise
+NC_BODY :: 500;            // bytes of an issue's body the message carries; the cache holds all of it
+NC_PROMPTS :: 6;           // recent Claude Code prompts carried
+NC_PROMPT_BYTES :: 320;    // bytes of each
+NC_COMMITS :: 25;          // recent commits fetched
+NC_TAIL :: 8000000;        // bytes read from the end of a transcript; a long session writes megabytes between prompts
+NC_ISSUES_MAX :: 400;
+
+// ---- small pieces
+
+Out :: struct { buf: [] u8; n: int; }
+nc_put :: (o: [] Out, s: string) { for c: s { if o[0].n < o[0].buf.count { o[0].buf[o[0].n] = c; o[0].n += 1; } } }
+nc_put_int :: (o: [] Out, v: int) {
+  d: [24] u8; n := 0; x := v; neg := x < 0; if neg { x = -x; }
+  while x > 0 || n == 0 { d[n] = cast,trunc(u8) ('0' + x % 10); x = x / 10; n += 1; if n >= 22 { break; } }
+  if neg { nc_put(o, "-"); }
+  for i: 0..<n { one: [1] u8; one[0] = d[n - 1 - i]; nc_put(o, cast(string) one[..]); }
+}
+// Text on one line: runs of whitespace and control bytes become one space, cut at `most` bytes.
+nc_put_line :: (o: [] Out, s: string, most: int) {
+  n := 0; gap := false; any := false;
+  for c: s {
+    if n >= most { nc_put(o, "..."); return; }
+    if c <= 32 { gap = any; continue; }
+    if gap { nc_put(o, " "); n += 1; gap = false; }
+    one: [1] u8; one[0] = c; nc_put(o, cast(string) one[..]); n += 1; any = true;
+  }
+}
+nc_text :: (o: [] Out) -> string { return cast(string) o[0].buf[0..<o[0].n]; }
+
+// OWNER/REPO, each a GitHub name: letters, digits, '-', '_' and '.', so it is safe in a shell word.
+nc_repo_ok :: (repo: string) -> bool {
+  slash := -1;
+  for c, i: repo {
+    if c == '/' { if slash >= 0 || i == 0 { return false; } slash = i; continue; }
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
+    if !ok { return false; }
+  }
+  return slash > 0 && slash < repo.count - 1 && repo.count <= 100;
+}
+nc_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+nc_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+#test "a repository name is OWNER/REPO in GitHub's letters, nothing a shell would read" {
+  #assert nc_repo_ok("OpenAgentsInc/openagents") && nc_repo_ok("a/b.c_d-e");
+  #assert !nc_repo_ok("openagents") && !nc_repo_ok("/x") && !nc_repo_ok("x/") && !nc_repo_ok("a/b/c");
+  #assert !nc_repo_ok("a/b;rm") && !nc_repo_ok("a/$(x)") && !nc_repo_ok("a/b c") && !nc_repo_ok("a/'b'");
+}
+#test "a line of text is one line, its spaces single, cut where it must be" {
+  b: [64] u8; o: [1] Out; o[0].buf = b[..];
+  nc_put_line(o[..], "  one\n\n two\tthree ", 100); #assert nc_text(o[..]) == "one two three";
+  o[0].n = 0; nc_put_line(o[..], "abcdefgh", 4); #assert nc_text(o[..]) == "abcd...";
+  o[0].n = 0; nc_put_int(o[..], 0); nc_put(o[..], " "); nc_put_int(o[..], 13135); nc_put(o[..], " "); nc_put_int(o[..], -7);
+  #assert nc_text(o[..]) == "0 13135 -7";
+  #assert nc_ends("x-openagents", "-openagents") && !nc_ends("ab", "abc") && nc_has("say \"type\":\"user\" now", "\"type\":\"user\"") && !nc_has("ab", "abc");
+}
+
+// ---- paths and the clock
+
+Paths :: struct {
+  home: [1024] u8; home_n: int;
+  dir: [2048] u8; dir_n: int;       // ~/.openagents/cache/github/OWNER/REPO
+  a: [2048] u8; b: [2048] u8; c: [2048] u8;
+}
+nc_home :: (p: [] Paths) -> string { return cast(string) p[0].home[0..<p[0].home_n]; }
+nc_dir :: (p: [] Paths) -> string { return cast(string) p[0].dir[0..<p[0].dir_n]; }
+// Makes each folder down to the cache folder; true when it is there.
+nc_paths :: (p: [] Paths, repo: string) -> bool {
+  h := proc_getenv("HOME", p[0].home[..]); p[0].home_n = h.count;
+  if h.count == 0 { return false; }
+  o: [1] Out; o[0].buf = p[0].dir[..];
+  nc_put(o[..], h);
+  for part: [3] string.["/.openagents", "/cache", "/github"] { nc_put(o[..], part); ok := fs_mkdir(nc_text(o[..])); }
+  nc_put(o[..], "/");
+  start := 0;
+  for c, i: repo { if c == '/' { nc_put(o[..], repo[start..<i]); ok := fs_mkdir(nc_text(o[..])); nc_put(o[..], "/"); start = i + 1; } }
+  nc_put(o[..], repo[start..<repo.count]); ok := fs_mkdir(nc_text(o[..]));
+  p[0].dir_n = o[0].n;
+  return fs_kind(nc_dir(p)) > 0;
+}
+// Now, in seconds since the epoch: the time the file system stamps a file this writes.
+nc_now :: (p: [] Paths) -> int {
+  path := fs_join(nc_dir(p), ".now", p[0].c[..]);
+  if !fs_write(path, "") { return -1; }
+  ns := fs_mtime_ns(path);
+  return ifx ns < 0 then -1 else ns / 1000000000;
+}
+nc_mtime :: (path: string) -> int { ns := fs_mtime_ns(path); return ifx ns < 0 then -1 else ns / 1000000000; }
+
+// ---- fetching into the cache
+
+// Runs one fixed `gh` command through the shell into `name`, by way of a temporary file. The old
+// file stays when the command fails or prints nothing.
+nc_fetch :: (p: [] Paths, name: string, command: string) -> bool {
+  tmp_b: [2048] u8; tmp := fs_join(nc_dir(p), ".fetch.tmp", tmp_b[..]);
+  line: [4096] u8; o: [1] Out; o[0].buf = line[..];
+  nc_put(o[..], command); nc_put(o[..], " > '"); nc_put(o[..], tmp); nc_put(o[..], "'");
+  argv := [3] string.["/bin/sh", "-c", nc_text(o[..])];
+  out: [4096] u8; err: [4096] u8;
+  r := proc_run(argv[..], 60000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out || fs_size(tmp) < 3 {
+    tool_err("next-context: fetching "); tool_err(name); tool_err(" failed: "); tool_errln(cast(string) err[0..<r.err_n]);
+    gone := fs_remove(tmp);
+    return false;
+  }
+  return fs_rename(tmp, fs_join(nc_dir(p), name, p[0].a[..]));
+}
+nc_fetch_issues :: (p: [] Paths, repo: string) -> bool {
+  b: [512] u8; o: [1] Out; o[0].buf = b[..];
+  nc_put(o[..], "gh issue list --repo "); nc_put(o[..], repo);
+  nc_put(o[..], " --state open --limit "); nc_put_int(o[..], NC_ISSUES_MAX); nc_put(o[..], " --json number,title,labels,updatedAt,body");
+  return nc_fetch(p, "issues.json", nc_text(o[..]));
+}
+nc_fetch_commits :: (p: [] Paths, repo: string) -> bool {
+  b: [512] u8; o: [1] Out; o[0].buf = b[..];
+  nc_put(o[..], "gh api 'repos/"); nc_put(o[..], repo); nc_put(o[..], "/commits?per_page="); nc_put_int(o[..], NC_COMMITS);
+  nc_put(o[..], "' --jq '.[].commit.message | split(\"\\n\")[0]'");
+  return nc_fetch(p, "commits.txt", nc_text(o[..]));
+}
+
+// One cached file: fetched when it is missing, older than ttl, or a refresh is asked. `age` is how
+// old the copy now in place is; `fetched` whether this run fetched it.
+Cached :: struct { ok: bool; fetched: bool; age: int; at: int; }
+nc_ensure :: (p: [] Paths, repo: string, name: string, ttl: int, refresh: bool, now: int) -> Cached {
+  c: Cached;
+  path_b: [2048] u8; path := fs_join(nc_dir(p), name, path_b[..]);
+  at := nc_mtime(path);
+  stale := at < 0 || refresh || now - at > ttl;
+  if stale {
+    got := ifx name == "issues.json" then nc_fetch_issues(p, repo) else nc_fetch_commits(p, repo);
+    if got { c.fetched = true; at = nc_mtime(path); }
+  }
+  c.ok = at >= 0; c.at = at; c.age = ifx at >= 0 then nc_now(p) - at else -1;
+  if c.age < 0 { c.age = 0; }
+  return c;
+}
+
+// meta.json: when each part was last fetched, for a person or another program to read.
+nc_meta :: (p: [] Paths, repo: string, issues: Cached, count: int, commits: Cached) {
+  b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.cache.github.v1");
+  jo_key(o[..], "repo"); jo_str(o[..], repo);
+  jo_key(o[..], "issues"); jo_obj(o[..]); jo_key(o[..], "fetched_at"); jo_int(o[..], issues.at); jo_key(o[..], "count"); jo_int(o[..], count); jo_key(o[..], "file"); jo_str(o[..], "issues.json"); jo_end(o[..]);
+  jo_key(o[..], "commits"); jo_obj(o[..]); jo_key(o[..], "fetched_at"); jo_int(o[..], commits.at); jo_key(o[..], "file"); jo_str(o[..], "commits.txt"); jo_end(o[..]);
+  jo_end(o[..]);
+  if !o[0].bad { ok := fs_write(fs_join(nc_dir(p), "meta.json", p[0].a[..]), jo_text(o[..])); }
+}
+
+// ---- the message
+
+// The open issues, oldest first: number, labels, the day it last changed, title, and the start of
+// its body. Returns how many, or -1 when the cache can't be read.
+nc_issues :: (p: [] Paths, o: [] Out, raw: [] u8, nodes: [] JvNode) -> int {
+  n := fs_read(fs_join(nc_dir(p), "issues.json", p[0].a[..]), raw);
+  d: [1] Jv;
+  if n < 2 || !jv_parse(d[..], cast(string) raw[0..<n], nodes) { return -1; }
+  count := jv_len(d[0], 0); if count > NC_ISSUES_MAX { count = NC_ISSUES_MAX; }
+  number: [NC_ISSUES_MAX] int; node: [NC_ISSUES_MAX] int;
+  for i: 0..<count { node[i] = jv_at(d[0], 0, i); number[i] = jv_int(d[0], jv_get(d[0], node[i], "number"), 0); }
+  // Oldest first: an insertion sort by number.
+  for i: 1..<count {
+    k := i;
+    while k > 0 && number[k - 1] > number[k] {
+      t := number[k]; number[k] = number[k - 1]; number[k - 1] = t;
+      u := node[k]; node[k] = node[k - 1]; node[k - 1] = u; k -= 1;
+    }
+  }
+  text: [65536] u8;
+  for i: 0..<count {
+    at := node[i];
+    nc_put(o, "#"); nc_put_int(o, number[i]);
+    labels := jv_get(d[0], at, "labels");
+    for k: 0..<jv_len(d[0], labels) {
+      m := jv_str(d[0], jv_get(d[0], jv_at(d[0], labels, k), "name"), text[..]);
+      if m > 0 { nc_put(o, ifx k == 0 then " [" else ", "); nc_put(o, cast(string) text[0..<m]); if k == jv_len(d[0], labels) - 1 { nc_put(o, "]"); } }
+    }
+    m := jv_str(d[0], jv_get(d[0], at, "updatedAt"), text[..]);
+    if m >= 10 { nc_put(o, " updated "); nc_put(o, cast(string) text[0..<10]); }
+    nc_put(o, "\n");
+    m = jv_str(d[0], jv_get(d[0], at, "title"), text[..]);
+    if m > 0 { nc_put_line(o, cast(string) text[0..<m], 200); nc_put(o, "\n"); }
+    m = jv_str(d[0], jv_get(d[0], at, "body"), text[..]);
+    if m > 0 { nc_put_line(o, cast(string) text[0..<m], NC_BODY); nc_put(o, "\n"); }
+    nc_put(o, "\n");
+  }
+  return count;
+}
+
+// What the owner typed in one transcript line, or "": a `user` line whose content is their own
+// text, not a tool's result, a command's output or a reminder the harness added.
+nc_prompt_of :: (line: string, nodes: [] JvNode, out: [] u8) -> string {
+  if line.count > 60000 || !nc_has(line, "\"type\":\"user\"") { return ""; }
+  d: [1] Jv;
+  if !jv_parse(d[..], line, nodes) { return ""; }
+  kind: [16] u8; k := jv_str(d[0], jv_get(d[0], 0, "type"), kind[..]);
+  if k != 4 || cast(string) kind[0..<4] != "user" { return ""; }
+  if jv_bool(d[0], jv_get(d[0], 0, "isMeta")) || jv_get(d[0], 0, "toolUseResult") >= 0 || jv_bool(d[0], jv_get(d[0], 0, "isSidechain")) { return ""; }
+  content := jv_path(d[0], 0, "message.content");
+  m := jv_str(d[0], content, out);
+  if m < 0 {
+    for i: 0..<jv_len(d[0], content) {
+      item := jv_at(d[0], content, i);
+      t: [16] u8; tn := jv_str(d[0], jv_get(d[0], item, "type"), t[..]);
+      if tn == 4 && cast(string) t[0..<4] == "text" { m = jv_str(d[0], jv_get(d[0], item, "text"), out); break; }
+    }
+  }
+  if m <= 0 { return ""; }
+  i := 0; while i < m && out[i] <= 32 { i += 1; }
+  if i >= m || out[i] == '<' { return ""; }     // a tag: a reminder, a command, pasted output
+  return cast(string) out[i..<m];
+}
+#test "a transcript line is the owner's prompt only when they typed it" {
+  nodes: [256] JvNode; out: [1024] u8;
+  #assert nc_prompt_of("{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"add a real font\"}}", nodes[..], out[..]) == "add a real font";
+  #assert nc_prompt_of("{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"  AND THE MODEL\"}]}}", nodes[..], out[..]) == "AND THE MODEL";
+  #assert nc_prompt_of("{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"x\"}]}}", nodes[..], out[..]) == "";
+  #assert nc_prompt_of("{\"type\":\"user\",\"toolUseResult\":{},\"message\":{\"content\":\"x\"}}", nodes[..], out[..]) == "";
+  #assert nc_prompt_of("{\"type\":\"user\",\"isMeta\":true,\"message\":{\"content\":\"x\"}}", nodes[..], out[..]) == "";
+  #assert nc_prompt_of("{\"type\":\"user\",\"message\":{\"content\":\"<system-reminder>x</system-reminder>\"}}", nodes[..], out[..]) == "";
+  #assert nc_prompt_of("{\"type\":\"assistant\",\"message\":{\"content\":\"the \\\"type\\\":\\\"user\\\" text\"}}", nodes[..], out[..]) == "";
+  #assert nc_prompt_of("not json \"type\":\"user\"", nodes[..], out[..]) == "";
+}
+
+// The owner's most recent prompts in Claude Code for this repository, newest last: the tail of
+// the newest transcript under ~/.claude/projects/*-REPO. Returns how many were written.
+nc_prompts :: (p: [] Paths, repo: string, o: [] Out, raw: [] u8, nodes: [] JvNode) -> int {
+  name := repo; for c, i: repo { if c == '/' { name = repo[i + 1..<repo.count]; } }
+  tail_b: [128] u8; t: [1] Out; t[0].buf = tail_b[..]; nc_put(t[..], "-"); nc_put(t[..], name);
+  root_b: [2048] u8; root := fs_join(nc_home(p), ".claude/projects", root_b[..]);
+  dirs: [1] FsList; files: [1] FsList;
+  best: [2048] u8; best_n := 0; best_at := -1;
+  for i: 0..<fs_list(root, dirs[..]) {
+    d := fs_entry(dirs[..], i);
+    if !nc_ends(d, nc_text(t[..])) { continue; }
+    dir := fs_join(root, d, p[0].a[..]);
+    for k: 0..<fs_list(dir, files[..]) {
+      f := fs_entry(files[..], k);
+      if !nc_ends(f, ".jsonl") { continue; }
+      path := fs_join(dir, f, p[0].b[..]);
+      at := fs_mtime_ns(path);
+      if at > best_at { best_at = at; best_n = path.count; for q: 0..<path.count { best[q] = path[q]; } }
+    }
+  }
+  if best_at < 0 { return 0; }
+  path := cast(string) best[0..<best_n];
+  size := fs_size(path); from := ifx size > NC_TAIL then size - NC_TAIL else 0;
+  n := fs_read_at(path, from, raw[0..<NC_TAIL]);
+  if n <= 0 { return 0; }
+  // The last NC_PROMPTS prompts: a ring of where each starts and ends in `kept`.
+  kept: [NC_PROMPTS * 512] u8; sizes: [NC_PROMPTS] int; seen := 0;
+  text: [60000] u8;
+  i := 0; if from > 0 { while i < n && raw[i] != '\n' { i += 1; } i += 1; }   // the first line may be cut
+  while i < n {
+    e := i; while e < n && raw[e] != '\n' { e += 1; }
+    s := nc_prompt_of(cast(string) raw[i..<e], nodes, text[..]);
+    if s.count > 0 {
+      slot := seen % NC_PROMPTS; m := ifx s.count > 500 then 500 else s.count;
+      for q: 0..<m { kept[slot * 512 + q] = s[q]; }
+      sizes[slot] = m; seen += 1;
+    }
+    i = e + 1;
+  }
+  shown := ifx seen < NC_PROMPTS then seen else NC_PROMPTS;
+  for k: 0..<shown {
+    slot := (seen - shown + k) % NC_PROMPTS;
+    nc_put(o, "- "); nc_put_line(o, cast(string) kept[slot * 512..<slot * 512 + sizes[slot]], NC_PROMPT_BYTES); nc_put(o, "\n");
+  }
+  return shown;
+}
+
+nc_age_text :: (c: Cached, what: string, count: int) {
+  b: [256] u8; o: [1] Out; o[0].buf = b[..];
+  nc_put(o[..], what); nc_put(o[..], ": ");
+  if !c.ok { nc_put(o[..], "none (the fetch failed and there is no cache)"); }
+  else if c.fetched { nc_put(o[..], "fetched now"); }
+  else { nc_put(o[..], "cached "); nc_put_int(o[..], c.age); nc_put(o[..], " s ago"); }
+  if count >= 0 { nc_put(o[..], ", "); nc_put_int(o[..], count); nc_put(o[..], " open"); }
+  tool_errln(nc_text(o[..]));
+}
+
+nc_context :: (a: [] Args, repo: string) -> int {
+  p: [1] Paths;
+  if !nc_paths(p[..], repo) { tool_errln("next-context: no HOME, or ~/.openagents/cache can't be made"); return 1; }
+  ttl := NC_TTL; t := args_whole(args_value(a, "--ttl", "")); if t >= 0 { ttl = t; }
+  refresh := args_has(a, "--refresh");
+  now := nc_now(p[..]);
+  issues := nc_ensure(p[..], repo, "issues.json", ttl, refresh, now);
+  commits := nc_ensure(p[..], repo, "commits.txt", ttl, refresh, now);
+  buf: [1048576] u8; o: [1] Out; o[0].buf = buf[..];
+  raw: [16777216] u8; nodes: [400000] JvNode;   // the issues file whole, then a transcript's tail
+  nc_put(o[..], "OPEN ISSUES of "); nc_put(o[..], repo); nc_put(o[..], ", oldest first\n\n");
+  count := -1;
+  if issues.ok { count = nc_issues(p[..], o[..], raw[..], nodes[..]); }
+  if count < 0 { tool_errln("next-context: there are no issues to read: gh must be installed and logged in (gh auth login)"); return 1; }
+  nc_meta(p[..], repo, issues, count, commits);
+  // What changes from one asking to the next goes after the issues.
+  nc_put(o[..], "RECENT COMMITS on main, newest first\n");
+  if commits.ok {
+    n := fs_read(fs_join(nc_dir(p[..]), "commits.txt", p[0].a[..]), raw[..]);
+    i := 0;
+    while i < n { e := i; while e < n && raw[e] != '\n' { e += 1; } if e > i { nc_put(o[..], "- "); nc_put_line(o[..], cast(string) raw[i..<e], 120); nc_put(o[..], "\n"); } i = e + 1; }
+  }
+  nc_put(o[..], "\nWHAT THE OWNER ASKED FOR RECENTLY in Claude Code, oldest first\n");
+  prompts := nc_prompts(p[..], repo, o[..], raw[..], nodes[..]);
+  if prompts == 0 { nc_put(o[..], "(none found)\n"); }
+  said := args_value(a, "--prompt", "");
+  if said.count > 0 { nc_put(o[..], "\nWHAT THE OWNER SAYS NOW (this outweighs everything above)\n"); nc_put_line(o[..], said, 2000); nc_put(o[..], "\n"); }
+  nc_age_text(issues, "issues", count);
+  nc_age_text(commits, "commits", -1);
+  print("%", nc_text(o[..]));
+  return 0;
+}
+
+nc_status :: (repo: string) -> int {
+  p: [1] Paths;
+  if !nc_paths(p[..], repo) { return 1; }
+  now := nc_now(p[..]);
+  b: [2048] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "repo"); jo_str(o[..], repo); jo_key(o[..], "folder"); jo_str(o[..], nc_dir(p[..]));
+  for name: [2] string.["issues.json", "commits.txt"] {
+    path := fs_join(nc_dir(p[..]), name, p[0].a[..]); at := nc_mtime(path);
+    jo_key(o[..], name); jo_obj(o[..]);
+    jo_key(o[..], "fetched_at"); jo_int(o[..], at);
+    jo_key(o[..], "age_s"); jo_int(o[..], ifx at < 0 then -1 else now - at);
+    jo_key(o[..], "bytes"); jo_int(o[..], fs_size(path));
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  return 0;
+}
+
+// ---- the ledger (~/.openagents/usage/ai-calls.jsonl), summed
+
+Group :: struct { purpose: [48] u8; pn: int; model: [48] u8; mn: int; calls: int; input: int; output: int; cache_read: int; cache_write: int; cost_e6: int; ms: int; }
+nc_usage :: () -> int {
+  home_b: [1024] u8; home := proc_getenv("HOME", home_b[..]);
+  path_b: [2048] u8; path := fs_join(home, ".openagents/usage/ai-calls.jsonl", path_b[..]);
+  raw: [8388608] u8; n := fs_read(path, raw[..]);
+  if n <= 0 { print("no AI calls recorded yet (%)\n", path); return 0; }
+  g: [64] Group; gn := 0; nodes: [512] JvNode; text: [64] u8;
+  i := 0;
+  while i < n {
+    e := i; while e < n && raw[e] != '\n' { e += 1; }
+    d: [1] Jv;
+    if e > i && jv_parse(d[..], cast(string) raw[i..<e], nodes[..]) {
+      pn := jv_str(d[0], jv_get(d[0], 0, "purpose"), text[0..<48]); purpose: [48] u8; if pn < 0 { pn = 0; } for q: 0..<pn { purpose[q] = text[q]; }
+      mn := jv_str(d[0], jv_get(d[0], 0, "model"), text[0..<48]); if mn < 0 { mn = 0; }
+      at := -1;
+      for k: 0..<gn { if cast(string) g[k].purpose[0..<g[k].pn] == cast(string) purpose[0..<pn] && cast(string) g[k].model[0..<g[k].mn] == cast(string) text[0..<mn] { at = k; } }
+      if at < 0 && gn < 64 { at = gn; gn += 1; g[at].pn = pn; g[at].mn = mn; for q: 0..<pn { g[at].purpose[q] = purpose[q]; } for q: 0..<mn { g[at].model[q] = text[q]; } }
+      if at >= 0 {
+        g[at].calls += 1;
+        g[at].input += jv_int(d[0], jv_get(d[0], 0, "input_tokens"), 0);
+        g[at].output += jv_int(d[0], jv_get(d[0], 0, "output_tokens"), 0);
+        g[at].cache_read += jv_int(d[0], jv_get(d[0], 0, "cache_read_input_tokens"), 0);
+        g[at].cache_write += jv_int(d[0], jv_get(d[0], 0, "cache_creation_input_tokens"), 0);
+        g[at].cost_e6 += jv_int(d[0], jv_get(d[0], 0, "cost_usd_e6"), 0);
+        g[at].ms += jv_int(d[0], jv_get(d[0], 0, "duration_ms"), 0);
+      }
+    }
+    i = e + 1;
+  }
+  print("purpose\tmodel\tcalls\tinput\tcache_read\tcache_write\toutput\tcost_usd\tavg_ms\n");
+  for k: 0..<gn {
+    c := g[k]; dollars := c.cost_e6 / 1000000; frac := c.cost_e6 % 1000000;
+    fb: [8] u8; x := frac; for q: 0..<6 { fb[5 - q] = cast,trunc(u8) ('0' + x % 10); x = x / 10; }
+    print("%\t%\t%\t%\t%\t%\t%\t%.%\t%\n", cast(string) c.purpose[0..<c.pn], cast(string) c.model[0..<c.mn], c.calls, c.input, c.cache_read, c.cache_write, c.output, dollars, cast(string) fb[0..<6], c.ms / c.calls);
+  }
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: next-context context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO] | status | usage"); return 2; }
+  repo := args_value(a[..], "--repo", NC_REPO);
+  if !nc_repo_ok(repo) { tool_errln("next-context: --repo is OWNER/REPO"); return 2; }
+  verb := args_at(a[..], 0);
+  if verb == "context" { return nc_context(a[..], repo); }
+  if verb == "status" { return nc_status(repo); }
+  if verb == "usage" { return nc_usage(); }
+  tool_errln("next-context: the verbs are context, status and usage");
+  return 2;
+}

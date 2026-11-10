@@ -1,0 +1,469 @@
+// Everglade for desktop: Next issue (everglade/docs/next-issue-spec.md). The button at the top
+// right asks one Claude agent which issue to work on next, and you answer it in your own words.
+//
+//   1. The host runs next-context (next-context.coax): the open issues and recent commits from the
+//      cache under ~/.openagents, your recent Claude Code prompts, in one message.
+//   2. One session starts through the Coax Claude Agent SDK (coax/lib/agent/claude) on your own
+//      Claude Code login: NP_MODEL, no built-in tools, one in-process tool, `choose`. The session
+//      stays open, so a reply is one short message more: the issues are not sent again.
+//   3. The agent names one issue and why. You type a reply. The agent reads it and calls `choose`
+//      with what you meant: start that issue, another one, or none. Your words are never matched
+//      against keywords here; the model's typed tool call is the decision.
+//   4. `start` is where the coding flow begins. It is not built: the panel says so, and the
+//      decision is written down for the flow that will read it.
+//
+// Every turn's model, tokens and cost go to the ledger (np_take_usage, one JSON line a turn).
+// The agent is polled from the frame without waiting (cl_poll), so the world keeps running.
+// Drawn over the scene; workshop.coax loads this file, so the two are one unit.
+//   coax/bin/coax test --library apps/everglade-desktop/next.coax --only "next issue"
+#load "../../aethyr/ui/draw.coax";
+#load "text.coax";
+#load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/json/json.coax";
+
+NP_MODEL :: "claude-haiku-5-5";
+NP_TOOL :: "mcp__next__choose";
+NP_SYSTEM :: "You help one developer pick the next GitHub issue to work on in their repository. You are given the open issues, recent commits, what they asked for recently, and sometimes what they say now. What they say now outweighs what they asked recently, which outweighs the commits. Prefer an issue that unblocks others, then one that continues the work in hand.\n\nSuggest exactly one issue. Write: line 1, the issue as `#NUMBER title`; then at most three short lines on why it is next, naming the signal you used; then the line `Do it?`. Plain ASCII, no Markdown, lines under 60 characters.\n\nWhen the developer answers, work out what they mean. If it is a decision, call the tool `choose` first, before you write anything: action `start` when they agree to work on an issue (the one you suggested or one they name), `another` when they turn it down or want a different one, `none` when they want to stop. Every decision is recorded through the tool, so never skip it. After `another`, suggest the next best issue in the same form, using what they said. After `start` or `none`, say in one line what the tool told you. Only if their answer is purely a question, answer it briefly without the tool.";
+NP_ASK :: "\nSuggest the one issue to work on next.";
+NP_CHOOSE_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"start\",\"another\",\"none\"]},\"issue\":{\"type\":\"integer\",\"description\":\"The issue number the action is about; 0 for none.\"},\"reason\":{\"type\":\"string\",\"description\":\"One line: what the developer said that decided it.\"}},\"required\":[\"action\",\"issue\",\"reason\"],\"additionalProperties\":false}";
+NP_CHOOSE_ABOUT :: "Record what the developer decided about the suggested issue: start it, ask for another, or none.";
+NP_STUB :: "Recorded. Nothing was started: the coding flow is not built yet. Tell the developer that in one line.";
+NP_INSTALL :: "Claude Code is not installed. Install it with:\ncurl -fsSL https://claude.ai/install.sh | bash";
+NP_LOGIN :: "Claude Code is logged out. Log in with:\nclaude /login";
+
+NP_TEXT :: 24000;         // bytes of the conversation kept on screen; more is cut and the panel says so
+NP_CONTEXT :: 400000;     // bytes of context the model's first message may carry
+NP_DRAFT :: 400;          // bytes of a reply
+NP_MAX_VERTICES :: 120000;
+NP_BUTTON_W :: 132.0; NP_BUTTON_H :: 34.0; NP_MARGIN :: 24.0;
+NP_PANEL_W :: 500.0;      // points; narrower windows give it the width they have
+NP_SIZE :: 15.0;          // the text's size (its em), points
+NP_LINE :: 21.0;          // a line's height, points
+NP_PAD :: 18.0;
+
+// idle; asking the host for context; the agent's turn; your turn; the agent failed; you stopped it.
+NP_IDLE :: 0; NP_CONTEXT_WAIT :: 1; NP_RUNNING :: 2; NP_YOURS :: 3; NP_FAILED :: 4; NP_STOPPED :: 5;
+
+NextPanel :: struct {
+  state: int; open: bool; focus: bool;
+  want_start: bool; want_refresh: bool; want_stop: bool;   // a press asked; the next frame does it
+  request: int;                           // what the host is asked for: 1 the context, 2 the context refetched
+  text: [NP_TEXT] u8; text_n: int; cut: bool;
+  draft: [NP_DRAFT] u8; draft_n: int;
+  scroll: int;
+  report: [256] u8; report_n: int;        // what next-context said about its caches
+  context_n: int;
+  // This session, and the turn in hand.
+  turn: int; seconds: f32; now: int;      // now: the host's clock, seconds since the epoch
+  input: int; output: int; cache_read: int; cache_write: int; cost_e6: int = -1; session_cost_e6: int;
+  usage: [2048] u8; usage_n: int;         // a ledger line waiting for the host
+  decision: [1024] u8; decision_n: int;   // a decision waiting for the host
+  chosen: int;                            // the issue you said to start, 0 none
+  down: bool; down_in: int;               // which box the press began in: 1 the button, 2 Close, 3 Refresh
+  q: [1] ClQuery; p: [1] ClProcess; started: bool;
+  line: [1048576] u8; arena: [262144] u8; out: [1048576] u8; scratch: [131072] u8;
+  context: [NP_CONTEXT] u8;
+}
+
+// ---- the text
+
+np_append :: (s: []NextPanel, t: string) {
+  for c: t {
+    if s[0].text_n >= NP_TEXT { s[0].cut = true; return; }
+    // The faces' atlas is ASCII; anything else reads as a space.
+    b := c; if (b < 32 && b != '\n') || b > 126 { b = ' '; }
+    s[0].text[s[0].text_n] = b; s[0].text_n += 1;
+  }
+}
+// The text ends its line, so what comes next starts a new one.
+np_break :: (s: []NextPanel) { if s[0].text_n > 0 && s[0].text[s[0].text_n - 1] != '\n' { np_append(s, "\n"); } }
+np_gap :: (s: []NextPanel) { np_break(s); if s[0].text_n > 1 && s[0].text[s[0].text_n - 2] != '\n' { np_append(s, "\n"); } }
+np_put :: (out: []u8, n: int, text: string) -> int { m := n; for c: text { if m < out.count { out[m] = c; m += 1; } } return m; }
+np_put_int :: (out: []u8, n: int, v: int) -> int {
+  d: [24] u8; k := 0; x := v; if x < 0 { x = 0; }
+  while x > 0 || k == 0 { d[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; if k >= 22 { break; } }
+  m := n; for i: 0..<k { if m < out.count { out[m] = d[k - 1 - i]; m += 1; } }
+  return m;
+}
+// Dollars from millionths, to four places.
+np_put_cost :: (out: []u8, n: int, e6: int) -> int {
+  e4 := (e6 + 50) / 100; m := np_put(out, n, "$"); m = np_put_int(out, m, e4 / 10000); m = np_put(out, m, ".");
+  frac := e4 % 10000; div := 1000;
+  for i: 0..<4 { one: [1] u8; one[0] = cast(u8) ('0' + (frac / div) % 10); m = np_put(out, m, cast(string) one[..]); div = div / 10; }
+  return m;
+}
+
+// Where the line starting at `from` ends when it must fit `width` points: at its newline, or at
+// the last space that fits, or mid-word when one word is wider than the panel. `next` is where the
+// line after it starts.
+NpLine :: struct { end: int; next: int; }
+np_line :: (text: string, from: int, width: f32) -> NpLine {
+  i := from; space := -1;
+  while i < text.count {
+    if text[i] == '\n' { return NpLine.{end = i, next = i + 1}; }
+    if text[i] == ' ' { space = i; }
+    if eg_width(text[from..<i + 1], NP_SIZE, EG_BODY) > width {
+      if space > from { return NpLine.{end = space, next = space + 1}; }
+      if i == from { return NpLine.{end = i + 1, next = i + 1}; }
+      return NpLine.{end = i, next = i};
+    }
+    i += 1;
+  }
+  return NpLine.{end = text.count, next = text.count};
+}
+
+// ---- the boxes
+
+np_button :: (width: f32) -> HudBox { return HudBox.{x = width - f32(NP_MARGIN) - f32(NP_BUTTON_W), y = f32(NP_MARGIN), width = f32(NP_BUTTON_W), height = f32(NP_BUTTON_H)}; }
+np_panel :: (width: f32, height: f32) -> HudBox {
+  w := f32(NP_PANEL_W); if w > width - 2 * f32(NP_MARGIN) { w = width - 2 * f32(NP_MARGIN); }
+  top := f32(NP_MARGIN) + f32(NP_BUTTON_H) + 12;
+  return HudBox.{x = width - f32(NP_MARGIN) - w, y = top, width = w, height = height - top - f32(NP_MARGIN)};
+}
+np_close_box :: (b: HudBox) -> HudBox { return HudBox.{x = b.x + b.width - 76, y = b.y + 10, width = 64, height = 26}; }
+np_refresh_box :: (b: HudBox) -> HudBox { return HudBox.{x = b.x + b.width - 164, y = b.y + 10, width = 80, height = 26}; }
+np_reply_box :: (b: HudBox) -> HudBox { return HudBox.{x = b.x + f32(NP_PAD), y = b.y + b.height - 104, width = b.width - 2 * f32(NP_PAD), height = 34}; }
+np_in :: (b: HudBox, x: f32, y: f32) -> bool { return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height; }
+
+// ---- the agent
+
+np_end :: (s: []NextPanel, state: int) {
+  if s[0].started { cl_close(s[0].p[..]); s[0].started = false; }
+  s[0].state = state;
+}
+// A fresh asking: the old session ends and the host is asked for the context.
+np_ask :: (s: []NextPanel, refetch: bool) {
+  np_end(s, NP_CONTEXT_WAIT);
+  s[0].text_n = 0; s[0].cut = false; s[0].scroll = 0; s[0].open = true; s[0].focus = true;
+  s[0].turn = 0; s[0].seconds = 0; s[0].cost_e6 = -1; s[0].session_cost_e6 = 0; s[0].chosen = 0; s[0].report_n = 0;
+  s[0].request = ifx refetch then 2 else 1;
+}
+// The host's answer: next-context's message and what it said about its caches. The session starts
+// and the message goes to it.
+np_context :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #effects(all) {
+  if s[0].state != NP_CONTEXT_WAIT { return; }
+  s[0].report_n = np_put(s[0].report[..], 0, report);
+  while s[0].report_n > 0 && s[0].report[s[0].report_n - 1] <= 32 { s[0].report_n -= 1; }
+  for i: 0..<s[0].report_n { if s[0].report[i] < 32 { s[0].report[i] = ' '; } }
+  if !ok || text.count == 0 || text.count + NP_ASK.count > NP_CONTEXT {
+    np_append(s, ifx text.count + NP_ASK.count > NP_CONTEXT then "The issues are more than the first message holds." else "The issues could not be read.");
+    np_break(s); np_append(s, report); s[0].state = NP_FAILED; return;
+  }
+  n := np_put(s[0].context[..], 0, text); n = np_put(s[0].context[..], n, NP_ASK); s[0].context_n = n;
+  cl_init(s[0].q[..], s[0].line[..], s[0].arena[..], s[0].out[..]);
+  o: [1] ClOptions;
+  o[0].model = NP_MODEL;
+  o[0].system_prompt = NP_SYSTEM;
+  o[0].persist_session = false;
+  o[0].setting_sources_set = true;          // no settings files: no project rules, hooks or other servers
+  o[0].include_partial_messages = true;     // the text streams
+  o[0].tools_set = true;                    // the base set is empty: no Bash, no files, no web
+  server := cl_add_server(o[..], "next", "1");
+  tool := cl_add_server_tool(o[..], server, "choose", NP_CHOOSE_ABOUT, NP_CHOOSE_SCHEMA);
+  cl_add_allowed(o[..], NP_TOOL);
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY"); // your login, never a key
+  s[0].q[0].options = o[0];
+  problem := cl_start(s[0].q[..], s[0].p[..], "", true, s[0].scratch[..]);
+  if problem.count > 0 { np_append(s, NP_INSTALL); np_break(s); np_append(s, problem); s[0].state = NP_FAILED; s[0].started = false; return; }
+  s[0].started = true; s[0].state = NP_RUNNING; s[0].seconds = 0;
+  cl_send_user(s[0].q[..], cast(string) s[0].context[0..<s[0].context_n]);
+}
+
+// One turn's line for the ledger: who asked, which model, what it cost.
+np_record :: (s: []NextPanel, l: string, duration_ms: int, api_ms: int, turns: int) {
+  o: [1] Jo; jo_start(o[..], s[0].usage[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.ai-call.v1");
+  jo_key(o[..], "at"); jo_int(o[..], s[0].now);
+  jo_key(o[..], "app"); jo_str(o[..], "everglade-desktop");
+  jo_key(o[..], "purpose"); jo_str(o[..], ifx s[0].turn == 0 then "next-issue.suggest" else "next-issue.reply");
+  jo_key(o[..], "harness"); jo_str(o[..], "claude-code");
+  jo_key(o[..], "model"); jo_str(o[..], NP_MODEL);
+  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].q[..]));
+  jo_key(o[..], "turn"); jo_int(o[..], s[0].turn);
+  jo_key(o[..], "input_tokens"); jo_int(o[..], s[0].input);
+  jo_key(o[..], "cache_read_input_tokens"); jo_int(o[..], s[0].cache_read);
+  jo_key(o[..], "cache_creation_input_tokens"); jo_int(o[..], s[0].cache_write);
+  jo_key(o[..], "output_tokens"); jo_int(o[..], s[0].output);
+  jo_key(o[..], "cost_usd_e6"); jo_int(o[..], ifx s[0].cost_e6 < 0 then 0 else s[0].cost_e6);
+  jo_key(o[..], "session_cost_usd_e6"); jo_int(o[..], s[0].session_cost_e6);
+  jo_key(o[..], "duration_ms"); jo_int(o[..], duration_ms);
+  jo_key(o[..], "duration_api_ms"); jo_int(o[..], api_ms);
+  jo_key(o[..], "model_turns"); jo_int(o[..], turns);
+  jo_key(o[..], "prompt_bytes"); jo_int(o[..], ifx s[0].turn == 0 then s[0].context_n else s[0].draft_n);
+  jo_key(o[..], "caches"); jo_str(o[..], cast(string) s[0].report[0..<s[0].report_n]);
+  per := cl_raw(l, "modelUsage"); if per.count > 1 && per.count < 900 { jo_key(o[..], "model_usage"); jo_raw(o[..], per); }
+  jo_end(o[..]);
+  s[0].usage_n = ifx o[0].bad then 0 else o[0].n;
+}
+// The decision, written down for the coding flow that will read it.
+np_decide :: (s: []NextPanel, action: string, issue: int, reason: string) {
+  o: [1] Jo; jo_start(o[..], s[0].decision[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.next-issue.decision.v1");
+  jo_key(o[..], "at"); jo_int(o[..], s[0].now);
+  jo_key(o[..], "action"); jo_str(o[..], action);
+  jo_key(o[..], "issue"); jo_int(o[..], issue);
+  jo_key(o[..], "reason"); jo_str(o[..], ifx reason.count > 400 then reason[0..<400] else reason);
+  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].q[..]));
+  jo_key(o[..], "coding_flow"); jo_str(o[..], "not built");
+  jo_end(o[..]);
+  s[0].decision_n = ifx o[0].bad then 0 else o[0].n;
+}
+
+// The agent called `choose`: what you meant, as it read it.
+np_choose :: (s: []NextPanel, arguments: string) {
+  ar := s[0].q[0].ar[..];
+  action := cl_str(ar, arguments, "action"); issue := cl_int(arguments, "issue"); number := ifx issue.ok then issue.value else 0;
+  held: [16] u8; an := np_put(held[..], 0, action); act := cast(string) held[0..<an];   // the arena is reused by the next read
+  reason := cl_str(ar, arguments, "reason");
+  np_decide(s, act, number, reason);
+  np_gap(s);
+  if act == "start" && number > 0 {
+    s[0].chosen = number;
+    np_append(s, "> start #"); b: [24] u8; n := np_put_int(b[..], 0, number); np_append(s, cast(string) b[0..<n]); np_append(s, "\n");
+    np_append(s, "The coding flow is not built yet. Nothing was started.\n\n");
+    cl_tool_text(s[0].q[..], NP_STUB, false);
+    return;
+  }
+  if act == "another" { np_append(s, "> another\n\n"); cl_tool_text(s[0].q[..], "Recorded. Suggest the next best issue.", false); return; }
+  if act == "none" { np_append(s, "> none\n\n"); cl_tool_text(s[0].q[..], "Recorded. Nothing will be started.", false); return; }
+  cl_tool_text(s[0].q[..], "The action must be start (with an issue number), another or none.", true);
+}
+
+np_message :: (s: []NextPanel, m: ClMessage) {
+  if m.parent_tool_use_id.count > 0 { return; }
+  l := m.line; ar := s[0].q[0].ar[..];
+  if m.kind == ClKind.stream_event {
+    if !cl_eq(l, cl_at(l, "event.type"), "content_block_delta") { return; }
+    if cl_eq(l, cl_at(l, "event.delta.type"), "text_delta") { np_append(s, cl_str(ar, l, "event.delta.text")); }
+    return;
+  }
+  if m.kind == ClKind.assistant {
+    e := cl_assistant_error(l, cl_at(l, "error"));
+    if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed { np_break(s); np_append(s, NP_LOGIN); np_end(s, NP_FAILED); }
+    return;
+  }
+  if m.kind == ClKind.result {
+    a := cl_int(l, "usage.input_tokens"); s[0].input = ifx a.ok then a.value else 0;
+    b := cl_int(l, "usage.output_tokens"); s[0].output = ifx b.ok then b.value else 0;
+    c := cl_int(l, "usage.cache_read_input_tokens"); s[0].cache_read = ifx c.ok then c.value else 0;
+    d := cl_int(l, "usage.cache_creation_input_tokens"); s[0].cache_write = ifx d.ok then d.value else 0;
+    // The CLI reports the session's cost so far; this turn's is what it grew by.
+    total := cl_num(l, "total_cost_usd"); total_e6 := ifx total.ok then cast(int) (total.value * 1000000 + 0.5) else s[0].session_cost_e6;
+    s[0].cost_e6 = total_e6 - s[0].session_cost_e6; if s[0].cost_e6 < 0 { s[0].cost_e6 = total_e6; }
+    s[0].session_cost_e6 = total_e6;
+    ms := cl_int(l, "duration_ms"); api := cl_int(l, "duration_api_ms"); turns := cl_int(l, "num_turns");
+    np_record(s, l, ifx ms.ok then ms.value else 0, ifx api.ok then api.value else 0, ifx turns.ok then turns.value else 0);
+    s[0].turn += 1; s[0].draft_n = 0;
+    failed := cl_bool(l, "is_error").value || m.result != ClResultKind.success;
+    if failed {
+      why := cl_str(ar, l, "result"); if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
+      np_break(s); np_append(s, ifx why.count > 0 then why else "The turn failed."); np_end(s, NP_FAILED); return;
+    }
+    np_break(s); s[0].state = NP_YOURS;
+  }
+}
+// What has arrived since the last frame, without waiting for more.
+np_poll :: (s: []NextPanel) {
+  for i: 0..<256 {
+    if s[0].state != NP_RUNNING || !s[0].started { return; }
+    ev := cl_poll(s[0].q[..], s[0].p[..], 0);
+    if ev.kind == ClEventKind.idle { return; }
+    if ev.kind == ClEventKind.message { np_message(s, ev.message); continue; }
+    if ev.kind == ClEventKind.tool_call { np_choose(s, ev.arguments); continue; }
+    if ev.kind == ClEventKind.failed { np_break(s); np_append(s, cl_error(s[0].q[..])); np_end(s, NP_FAILED); return; }
+    if ev.kind == ClEventKind.end { np_break(s); np_append(s, "Claude Code closed before it answered."); np_end(s, NP_FAILED); return; }
+  }
+}
+// Your reply goes to the open session as its next message.
+np_send :: (s: []NextPanel) {
+  if s[0].state != NP_YOURS || !s[0].started || s[0].draft_n == 0 { return; }
+  said := cast(string) s[0].draft[0..<s[0].draft_n];
+  np_gap(s); np_append(s, "You: "); np_append(s, said); np_append(s, "\n\n");
+  cl_send_user(s[0].q[..], said);
+  s[0].state = NP_RUNNING; s[0].seconds = 0; s[0].scroll = 0;
+}
+
+// ---- the frame
+
+np_status :: (s: []NextPanel, out: []u8) -> string {
+  n := 0;
+  if s[0].state == NP_CONTEXT_WAIT { return "Reading the issue cache"; }
+  if s[0].state == NP_FAILED { n = np_put(out, n, "Failed   "); }
+  if s[0].state == NP_STOPPED { n = np_put(out, n, "Stopped   "); }
+  if s[0].cost_e6 < 0 { n = np_put(out, n, NP_MODEL); return cast(string) out[0..<n]; }
+  n = np_put(out, n, "in "); n = np_put_int(out, n, s[0].input);
+  n = np_put(out, n, "  cached "); n = np_put_int(out, n, s[0].cache_read);
+  n = np_put(out, n, "  out "); n = np_put_int(out, n, s[0].output);
+  n = np_put(out, n, "   "); n = np_put_cost(out, n, s[0].cost_e6);
+  n = np_put(out, n, "  session "); n = np_put_cost(out, n, s[0].session_cost_e6);
+  if s[0].cut { n = np_put(out, n, "  (text cut)"); }
+  return cast(string) out[0..<n];
+}
+
+// One frame: what a press asked for, what the agent sent, then the button and the panel.
+// `now` is the host's clock, seconds since the epoch. Returns the vertex count; `panel` gets the
+// panel's box in points (x, y, width, height; all 0 when it is shut) for the host to darken.
+np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, d: f32, dt: f32, now: int) -> int #export_c #effects(all) {
+  step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
+  s[0].now = now;
+  if s[0].want_stop { s[0].want_stop = false; if s[0].state == NP_RUNNING { np_break(s); np_end(s, NP_STOPPED); } }
+  if s[0].want_refresh { s[0].want_refresh = false; np_ask(s, true); }
+  if s[0].want_start { s[0].want_start = false; if s[0].started || s[0].state == NP_CONTEXT_WAIT { s[0].open = !s[0].open; s[0].focus = s[0].open; } else { np_ask(s, false); } }
+  if s[0].state == NP_RUNNING { s[0].seconds += step; }
+  np_poll(s);
+  for i: 0..<4 { if i < panel.count { panel[i] = 0; } }
+  if !(width > 0) || !(height > 0) || !(d > 0) { return 0; }
+  pen := HdPen.{d = d, cyan = true, top = 0, bottom = height, sans = false};
+  n := 0;
+  b := np_button(width);
+  n = hd_rect(out, n, b, pen, 2, 1);
+  label := ifx s[0].state == NP_RUNNING && s[0].open then "Stop" else "Next issue";
+  n = eg_text(out, n, label, b.x + (b.width - eg_width(label, 16, EG_TITLE)) * 0.5, b.y + 23, 16, d, EG_TITLE, EG_WHITE);
+  if !s[0].open { return n; }
+  box := np_panel(width, height);
+  if box.height < 220 { return n; }
+  if panel.count >= 4 { panel[0] = box.x; panel[1] = box.y; panel[2] = box.width; panel[3] = box.height; }
+  n = hd_rect(out, n, box, pen, 1, 0.8);
+  n = eg_text(out, n, "Next issue", box.x + f32(NP_PAD), box.y + 30, 19, d, EG_TITLE, EG_WHITE);
+  n = eg_text(out, n, NP_MODEL, box.x + f32(NP_PAD) + eg_width("Next issue", 19, EG_TITLE) + 14, box.y + 30, 13, d, EG_BODY, EG_DIM);
+  c := np_close_box(box);
+  n = hd_rect(out, n, c, pen, 1, 0.7);
+  n = eg_text(out, n, "Close", c.x + (c.width - eg_width("Close", 14, EG_BODY)) * 0.5, c.y + 18, 14, d, EG_BODY, EG_WHITE);
+  if s[0].state != NP_RUNNING && s[0].state != NP_CONTEXT_WAIT {
+    r := np_refresh_box(box);
+    n = hd_rect(out, n, r, pen, 1, 0.7);
+    n = eg_text(out, n, "Refresh", r.x + (r.width - eg_width("Refresh", 14, EG_BODY)) * 0.5, r.y + 18, 14, d, EG_BODY, EG_WHITE);
+  }
+  n = hd_line(out, n, box.x, box.y + 46, box.x + box.width, box.y + 46, pen, 1, 0.5);
+  // The conversation: every line laid out, then the ones in view drawn, the newest at the bottom.
+  reply := np_reply_box(box);
+  top := box.y + 46 + f32(NP_PAD); bottom := reply.y - 12;
+  fits := cast(int) ((bottom - top) / f32(NP_LINE)); if fits < 1 { fits = 1; }
+  text := cast(string) s[0].text[0..<s[0].text_n];
+  inner := box.width - 2 * f32(NP_PAD);
+  total := 0; at := 0;
+  while at < text.count { l := np_line(text, at, inner); total += 1; at = l.next; }
+  most := total - fits; if most < 0 { most = 0; }
+  if s[0].scroll > most { s[0].scroll = most; } if s[0].scroll < 0 { s[0].scroll = 0; }
+  first := most - s[0].scroll;
+  row := 0; at = 0;
+  while at < text.count {
+    l := np_line(text, at, inner);
+    if row >= first && row < first + fits && l.end > at {
+      kind := EG_WHITE;
+      if text[at] == '>' { kind = EG_ACCENT; }
+      if l.end - at > 4 && text[at..<at + 4] == "You:" { kind = EG_MID; }
+      n = eg_text(out, n, text[at..<l.end], box.x + f32(NP_PAD), top + f32(NP_LINE) * f32(row - first) + 13, f32(NP_SIZE), d, EG_BODY, kind);
+    }
+    row += 1; at = l.next;
+  }
+  // Your reply: the box is lit when the keys go to it, and it takes a reply on your turn.
+  n = hd_rect(out, n, reply, pen, ifx s[0].focus then 2 else 1, ifx s[0].focus then 1.0f32 else 0.6f32);
+  if s[0].draft_n > 0 {
+    // The end of a long reply stays in view.
+    from := 0; while from < s[0].draft_n && eg_width(cast(string) s[0].draft[from..<s[0].draft_n], NP_SIZE, EG_BODY) > reply.width - 24 { from += 1; }
+    shown := cast(string) s[0].draft[from..<s[0].draft_n];
+    n = eg_text(out, n, shown, reply.x + 10, reply.y + 22, f32(NP_SIZE), d, EG_BODY, EG_WHITE);
+    if s[0].focus { cx := reply.x + 12 + eg_width(shown, NP_SIZE, EG_BODY); n = hd_line(out, n, cx, reply.y + 8, cx, reply.y + 26, pen, 0, 1); }
+  } else if s[0].state == NP_YOURS {
+    n = eg_text(out, n, "Reply in your own words, then Enter", reply.x + 10, reply.y + 22, f32(NP_SIZE), d, EG_BODY, EG_DIM);
+  }
+  n = hd_line(out, n, box.x, reply.y + reply.height + 12, box.x + box.width, reply.y + reply.height + 12, pen, 1, 0.5);
+  words: [160] u8;
+  n = eg_text(out, n, np_status(s, words[..]), box.x + f32(NP_PAD), box.y + box.height - 34, 13, d, EG_BODY, EG_MID);
+  n = eg_text(out, n, cast(string) s[0].report[0..<s[0].report_n], box.x + f32(NP_PAD), box.y + box.height - 14, 13, d, EG_BODY, EG_DIM);
+  return n;
+}
+
+// A press: phase 0 down, 1 moved, 2 up; points from the top left. True when the panel took it, so
+// the host leaves the world's look-drag alone. A button acts when the press began and ended on it.
+// A press on the panel gives it the keys; a press on the world takes them back.
+np_pointer :: (s: []NextPanel, x: f32, y: f32, phase: int, width: f32, height: f32) -> bool #export_c #effects(all) {
+  b := np_button(width); box := np_panel(width, height);
+  over_panel := s[0].open && np_in(box, x, y);
+  if phase == 0 {
+    s[0].down_in = 0;
+    if np_in(b, x, y) { s[0].down_in = 1; }
+    else if over_panel && np_in(np_close_box(box), x, y) { s[0].down_in = 2; }
+    else if over_panel && s[0].state != NP_RUNNING && s[0].state != NP_CONTEXT_WAIT && np_in(np_refresh_box(box), x, y) { s[0].down_in = 3; }
+    s[0].down = s[0].down_in != 0 || over_panel;
+    s[0].focus = over_panel;
+    return s[0].down;
+  }
+  if phase == 1 { return s[0].down; }
+  took := s[0].down; s[0].down = false;
+  if s[0].down_in == 1 && np_in(b, x, y) { if s[0].state == NP_RUNNING && s[0].open { s[0].want_stop = true; } else { s[0].want_start = true; } }
+  if s[0].down_in == 2 && np_in(np_close_box(box), x, y) { s[0].open = false; s[0].focus = false; }
+  if s[0].down_in == 3 && np_in(np_refresh_box(box), x, y) { s[0].want_refresh = true; }
+  s[0].down_in = 0;
+  return took;
+}
+// The wheel over the panel scrolls it. True when the panel took it.
+np_wheel :: (s: []NextPanel, x: f32, y: f32, dy: f32, width: f32, height: f32) -> bool #export_c #effects(all) {
+  if !s[0].open || !np_in(np_panel(width, height), x, y) { return false; }
+  s[0].scroll += cast(int) (dy / 12);
+  if s[0].scroll < 0 { s[0].scroll = 0; }
+  return true;
+}
+// Whether the keys go to the reply, not to the world.
+np_wants_keys :: (s: []NextPanel) -> bool #export_c #effects(all) { return s[0].open && s[0].focus; }
+// A key for the reply: a printable ASCII byte, 13 Enter, 8 Backspace, 27 Escape (the keys go back to the world).
+np_key :: (s: []NextPanel, key: int) #export_c #effects(all) {
+  if key == 27 { s[0].focus = false; return; }
+  if key == 8 { if s[0].draft_n > 0 { s[0].draft_n -= 1; } return; }
+  if key == 13 { np_send(s); return; }
+  if key >= 32 && key <= 126 && s[0].draft_n < NP_DRAFT && s[0].state != NP_RUNNING { s[0].draft[s[0].draft_n] = cast(u8) key; s[0].draft_n += 1; }
+}
+// What the host is asked for, once: 0 nothing, 1 the context, 2 the context refetched.
+np_take_request :: (s: []NextPanel) -> int #export_c #effects(all) { r := s[0].request; s[0].request = 0; return r; }
+// A ledger line or a decision waiting to be appended to its file, once; 0 when there is none.
+np_take_usage :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) {
+  n := s[0].usage_n; if n == 0 || n > out.count { return 0; }
+  for i: 0..<n { out[i] = s[0].usage[i]; } s[0].usage_n = 0; return n;
+}
+np_take_decision :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) {
+  n := s[0].decision_n; if n == 0 || n > out.count { return 0; }
+  for i: 0..<n { out[i] = s[0].decision[i]; } s[0].decision_n = 0; return n;
+}
+// The app is quitting: the agent's process group goes with it.
+np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { cl_close(s[0].p[..]); s[0].started = false; } }
+// 0 idle, 1 reading the cache, 2 the agent's turn, 3 your turn, 4 failed, 5 stopped.
+np_state :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].state; }
+np_size :: () -> int #export_c #effects(all) { return size_of(NextPanel); }
+np_init :: (s: []NextPanel) #export_c #effects(all) { s[0].state = NP_IDLE; s[0].cost_e6 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; }
+np_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
+
+#test "next issue: the agent has no built-in tools, and one tool with three actions" {
+  #assert NP_MODEL == "claude-haiku-5-5" && NP_TOOL == "mcp__next__choose";
+  for word: [3] string.["\"start\"", "\"another\"", "\"none\""] {
+    found := false;
+    for i: 0..<NP_CHOOSE_SCHEMA.count - word.count + 1 { if NP_CHOOSE_SCHEMA[i..<i + word.count] == word { found = true; } }
+    #assert found;
+  }
+}
+#test "next issue text wraps at a newline, at the last space that fits, or inside a word too wide" {
+  a := np_line("one two three", 0, 10000); #assert a.end == 13 && a.next == 13;
+  b := np_line("one\ntwo", 0, 10000); #assert b.end == 3 && b.next == 4;
+  wide := eg_width("one two", NP_SIZE, EG_BODY);
+  c := np_line("one two three", 0, wide + 1); #assert c.end == 7 && c.next == 8;
+  d := np_line("onetwothree", 0, eg_width("onetw", NP_SIZE, EG_BODY) + 0.5); #assert d.end == 5 && d.next == 5;
+  e := np_line("x", 0, 0); #assert e.end == 1 && e.next == 1;
+}
+#test "next issue boxes: the button at the top right, the panel under it, its buttons and reply inside" {
+  b := np_button(1320); p := np_panel(1320, 880);
+  #assert b.x + b.width == 1320 - NP_MARGIN && b.y == NP_MARGIN;
+  #assert p.y > b.y + b.height && p.x + p.width == 1320 - NP_MARGIN && p.y + p.height == 880 - NP_MARGIN && p.width == NP_PANEL_W;
+  for box: [3] HudBox.[np_close_box(p), np_refresh_box(p), np_reply_box(p)] { #assert np_in(p, box.x, box.y) && np_in(p, box.x + box.width, box.y + box.height); }
+  c := np_close_box(p); r := np_refresh_box(p); #assert r.x + r.width < c.x;
+  #assert np_panel(400, 600).width == 400 - 2 * NP_MARGIN;
+}
+#test "next issue numbers: a cost to four places, a count in digits" {
+  b: [32] u8;
+  #assert cast(string) b[0..<np_put_cost(b[..], 0, 3200)] == "$0.0032";
+  #assert cast(string) b[0..<np_put_cost(b[..], 0, 1234567)] == "$1.2346";
+  #assert cast(string) b[0..<np_put_cost(b[..], 0, 0)] == "$0.0000";
+  #assert cast(string) b[0..<np_put_int(b[..], 0, 13135)] == "13135" && cast(string) b[0..<np_put_int(b[..], 0, 0)] == "0";
+}

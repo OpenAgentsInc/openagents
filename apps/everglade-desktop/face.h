@@ -32,16 +32,27 @@ int32_t egm_record_floats(void);
 // record, instances: egm_records * 4 words) from eg_you's five floats. The count of draws.
 int32_t egm_frame(void *model, const float *you5, float dt, float *records, uint32_t *draws);
 
-// Triage (triage.coax, triage-face.c): the button, its panel, and one Claude agent on your login.
-void *trg_new(void);
-int32_t trg_vertex_floats(void);
-int32_t trg_max_vertices(void);
-// One frame: polls the agent and draws the button and panel. panel4 gets the panel's box in points (all 0 when shut).
-int32_t trg_frame(void *triage, float *vertices, float *panel4, float width, float height, float scale, float dt);
-// 1 when Triage took the press or the wheel, so the world doesn't.
-int32_t trg_pointer(void *triage, float x, float y, int32_t phase, float width, float height);
-int32_t trg_wheel(void *triage, float x, float y, float dy, float width, float height);
-// 0 idle, 1 running, 2 done, 3 failed, 4 stopped.
-int32_t trg_state(void *triage);
+// Next issue (next.coax, next-face.c): the button, its panel, and one Claude agent on your login.
+void *nxp_new(void);
+int32_t nxp_vertex_floats(void);
+int32_t nxp_max_vertices(void);
+// One frame: polls the agent and draws the button and panel. panel4 gets the panel's box in points
+// (all 0 when shut). now is the clock, seconds since the epoch.
+int32_t nxp_frame(void *panel, float *vertices, float *panel4, float width, float height, float scale, float dt, int64_t now);
+// 1 when the panel took the press or the wheel, so the world doesn't.
+int32_t nxp_pointer(void *panel, float x, float y, int32_t phase, float width, float height);
+int32_t nxp_wheel(void *panel, float x, float y, float dy, float width, float height);
+// 1 while the keys go to the reply; then a key: printable ASCII, 13 Enter, 8 Backspace, 27 Escape.
+int32_t nxp_wants_keys(void *panel);
+void nxp_key(void *panel, int32_t key);
+// What the host is asked to do, once: 0 nothing, 1 run next-context, 2 run it with --refresh.
+int32_t nxp_take_request(void *panel);
+// next-context's answer: its stdout, what it said on stderr, and whether it exited 0.
+void nxp_context(void *panel, const uint8_t *text, int32_t length, const uint8_t *report, int32_t report_length, int32_t ok);
+// A line waiting to be appended to the AI call ledger, or to the decisions file: its length, 0 when none.
+int32_t nxp_take_usage(void *panel, uint8_t *out, int32_t cap);
+int32_t nxp_take_decision(void *panel, uint8_t *out, int32_t cap);
+// 0 idle, 1 reading the cache, 2 the agent's turn, 3 your turn, 4 failed, 5 stopped.
+int32_t nxp_state(void *panel);
 // Ends the agent's process group; call when the app quits.
-void trg_close(void *triage);
+void nxp_close(void *panel);

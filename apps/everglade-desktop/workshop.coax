@@ -12,7 +12,7 @@
 #load "../../aethyr/math.coax";
 #load "../../aethyr/walk.coax" as pc;
 #load "text.coax";     // Everglade's faces, Spectral and Cinzel
-#load "triage.coax";   // the Triage button and its panel, in this unit (both draw with draw.coax, whose exports can't be linked twice)
+#load "next.coax";     // the Next issue button and its panel, in this unit (both draw with draw.coax, whose exports can't be linked twice)
 
 WS_MAX_VERTICES :: 36000;
 WS_PYLONS :: 6;

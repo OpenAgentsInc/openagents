@@ -35,27 +35,26 @@ the app).
 - **Light.** The chamber's own: the pylons' blue, the sphere's ember and a
   fill from the camera. It is not the glade's sky and it casts no shadows.
 
-**Triage.** A button at the top right starts one Claude agent through the
-Coax Claude Agent SDK (`coax/lib/agent/claude`) on your own Claude Code
-login. It is the app's first use of the SDK.
+**Next issue.** A button at the top right asks one Claude agent which issue
+to work on next, and you answer in your own words. It is specified in
+[next-issue-spec.md](next-issue-spec.md). In short:
 
-- **Model:** Claude Haiku 5.5 (`claude-haiku-5-5`).
-- **Tools:** one. The base set is Bash alone, and Bash is allowed one
-  command, `gh issue list`. Anything else is denied. No settings files load,
-  and `ANTHROPIC_API_KEY` is removed from the agent's environment.
-- **What it does:** reads the open issues of `OpenAgentsInc/openagents` and
-  writes a short triage: groups, one line an issue, and three to start with.
-- **Where it shows:** a panel on the right. The text streams in as it
-  arrives, the command the agent runs shows on its own line, and the foot
-  shows the state, the seconds and the cost. The wheel scrolls it.
-- **Stop:** while the agent runs the button says Stop, which ends the agent's
-  process group. Quitting the app does the same.
-- **Not blocked:** the agent is polled from the frame without waiting, so you
-  keep walking while it works.
+- **Facts from caches.** A small program, `next-context.coax` (bundled as
+  `everglade-next`), keeps the open issues and recent commits under
+  `~/.openagents/cache/github/` with the time of each fetch, and reads your
+  recent Claude Code prompts.
+- **One agent.** Claude Haiku 5.5 through the Coax Claude Agent SDK on your
+  own login, with no built-in tools and one in-process tool, `choose`.
+- **A conversation.** The session stays open. You type a reply, and the model
+  calls `choose` with what you meant: start, another, or none.
+- **The coding flow is a stub.** `start` records the decision and says
+  nothing was started.
+- **Measured.** Every turn's model, tokens and cost go to
+  `~/.openagents/usage/ai-calls.jsonl`.
 
 It needs `claude` and `gh` installed and logged in. Without `claude` the
-panel shows the install line; logged out, it shows `claude /login`. The code
-is `triage.coax`, loaded into the scene's unit.
+panel shows the install line; logged out, it shows `claude /login`. The
+panel's code is `next.coax`, loaded into the scene's unit.
 
 **Text.** Everything you read is set in Everglade's own faces, the ones the
 web realm uses (`everglade/hud/fonts.coax`): Cinzel at weight 600 for titles
@@ -67,8 +66,8 @@ font files and their licences are copied into the app from
   textured quad a glyph.
 - The host draws ASCII 32 to 126 of both faces into one atlas, each mip at
   its own size, in the layout of the web's sans atlas.
-- A character outside ASCII draws as a question mark, and Triage's text
-  replaces it with a space.
+- A character outside ASCII draws as a question mark, and the Next issue
+  panel replaces it with a space.
 
 What it isn't yet:
 
@@ -92,7 +91,7 @@ apps/everglade-desktop/build.sh --open        # builds, copies to ~/.openagents/
 coax/bin/coax test --library apps/everglade-desktop/workshop.coax
 coax/bin/coax test --library apps/everglade-desktop/model.coax --only "your model"
 build/Everglade.app/Contents/MacOS/Everglade --shot out.png --at 0.9 --hold wd   # from apps/everglade-desktop/: one frame offscreen after 0.9 s with W and D held
-build/Everglade.app/Contents/MacOS/Everglade --shot out.png --triage 150   # presses Triage and waits for the agent: a real Haiku turn on your login
+build/Everglade.app/Contents/MacOS/Everglade --shot out.png --next 120 --reply "yes, do it"   # presses Next issue, waits, replies: real Haiku turns on your login
 ```
 
 Everglade for desktop is a native app that plays Everglade and holds the
