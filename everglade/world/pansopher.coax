@@ -1,0 +1,62 @@
+// Pansopher (game): the Golemancy trainer, an old wizard who stands in the glade where you start
+// (everglade/docs/golemancy-profession-spec.md). This file is who he is and what he says: his name,
+// his robes, where he stands and his talk as a tree (aethyr/talk/tree.coax). A zone places and draws
+// him: Everglade II at apps/openagents-web/everglade2-npc.coax. The craft itself isn't built yet, and
+// he says so.
+//   coax/bin/coax test --library everglade/world/pansopher.coax
+#module "everglade.pansopher";
+#load "../../aethyr/talk/tree.coax";
+
+PANSOPHER_NAME :: "Pansopher";
+PANSOPHER_TITLE :: "Golemancy Trainer";
+// His robes: Character Create's wizard sleeves, coat, shoes, legs, belt and belt ornament
+// (charactercreator-parts.coax PART_LABELS), with a long beard.
+PANSOPHER_WORN :: [6] int.[28, 29, 30, 31, 37, 38];
+PANSOPHER_DYE :: 2; PANSOPHER_SKIN :: 1; PANSOPHER_HAIR_COLOR :: 5;
+
+PANSOPHER_LINES :: 6;
+PANSOPHER_SAYS :: [PANSOPHER_LINES] string.[
+  // 0: met
+  "Well met, traveller. I am Pansopher, golemancer of the Glade. Clay listens to me, and wood, and on good days even stone.",
+  // 1: how to make a golem
+  "Three things make a golem: a body, a command and a quickening. Shape a body from clay or wood. Write what it must do on a slip of vellum and seal it inside. Then quicken it with ink and incense at a workbench. Start small, with a hearth golem that sweeps and fetches. And never write a golem a command to fight.",
+  // 2: what Golemancy is
+  "Golemancy is the craft of making workers that never tire. A golemancer shapes them, writes their orders and reads what they report. They carry, gather, mend and keep watch. They do not fight.",
+  // 3: who he is
+  "A scholar of all things, as my name says, and a master of only this one. I came to the Glade for the quiet, and for the good clay under its roots.",
+  // 4: where the clay is
+  "Under the roots, where the ground turns grey and cool. Dig past the dark soil and you will find it. Keep it damp, or it cracks before it ever walks.",
+  // 5: whether he will teach you
+  "In time. The craft is not yet open to you. When it is, come back to me, and I will teach you your first command."
+];
+PANSOPHER_CHOICES :: [15] TalkTreeChoice.[
+  TalkTreeChoice.{from = 0, text = "How do I make a golem?", to = 1},
+  TalkTreeChoice.{from = 0, text = "What is Golemancy?", to = 2},
+  TalkTreeChoice.{from = 0, text = "Who are you?", to = 3},
+  TalkTreeChoice.{from = 0, text = "Farewell.", to = TALK_TREE_END},
+  TalkTreeChoice.{from = 1, text = "Where do I find clay?", to = 4},
+  TalkTreeChoice.{from = 1, text = "Will you teach me?", to = 5},
+  TalkTreeChoice.{from = 1, text = "I have another question.", to = 0},
+  TalkTreeChoice.{from = 1, text = "Farewell.", to = TALK_TREE_END},
+  TalkTreeChoice.{from = 2, text = "How do I make a golem?", to = 1},
+  TalkTreeChoice.{from = 2, text = "I have another question.", to = 0},
+  TalkTreeChoice.{from = 3, text = "I have another question.", to = 0},
+  TalkTreeChoice.{from = 4, text = "I have another question.", to = 0},
+  TalkTreeChoice.{from = 4, text = "Farewell.", to = TALK_TREE_END},
+  TalkTreeChoice.{from = 5, text = "I have another question.", to = 0},
+  TalkTreeChoice.{from = 5, text = "Farewell.", to = TALK_TREE_END}
+];
+
+pansopher_says :: (line: int) -> string { says := PANSOPHER_SAYS; return ifx line >= 0 && line < PANSOPHER_LINES then says[line] else ""; }
+
+#test "Pansopher's talk is a whole tree, and asking how to make a golem gets the answer" {
+  t := PANSOPHER_CHOICES;
+  #assert talk_tree_whole(PANSOPHER_LINES, t[..]);
+  o: [TALK_TREE_CHOICES] int; n := talk_tree_offered(t[..], 0, o[..]);
+  #assert n == 4 && t[o[0]].text == "How do I make a golem?";
+  a := talk_tree_pick(t[..], 0, 0);
+  #assert a == 1 && pansopher_says(a).count > 100 && pansopher_says(-1) == "" && pansopher_says(PANSOPHER_LINES) == "";
+  // every line he says can be left, and every answer comes back to the first questions or ends
+  for at: 1..<PANSOPHER_LINES { m := talk_tree_offered(t[..], at, o[..]); back := false; for q: 0..<m { if t[o[q]].to == 0 || t[o[q]].to == TALK_TREE_END { back = true; } } #assert back; }
+  for w: PANSOPHER_WORN { #assert w >= 0 && w < 40; }
+}

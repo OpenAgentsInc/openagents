@@ -1,0 +1,355 @@
+// Everglade II's Golemancer's Workbench on the page (everglade/world/golem-bench.coax says what it
+// holds): a long table beside Pansopher with a clay pot, a scroll, books, a candle and bottles on it
+// and a cauldron at its end, all Fantasy Props meshes the pack already carries (its M rows: Everglade's
+// kit, one record each, which gpu/everglade2.coax e2_prop_vs reads). Within E2B_USE m of the table a
+// prompt says to press E (or tap it); the bench's window opens over most of the screen: the kinds of
+// golem to shape, how the one picked is made, your golems, orders and reports, the materials and the
+// ranks. The craft isn't built, so its counts are nought and Shape says so. Esc, E, Close or walking
+// E2B_LEAVE m off shuts it. The page's own, like Pansopher: the room doesn't know it, so it stops no one.
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only bench
+#load "../../everglade/world/golem-bench.coax";
+
+E2B_Z :: -12.4;           // m: where the table's middle stands, down from the glade's middle
+E2B_ACROSS :: -3.6;       // m: across from the path's middle (west of it, as Pansopher)
+E2B_USE :: 1.4;           // m from the table's edge: near enough to use it
+E2B_LEAVE :: 3.5;         // m from its edge: walking this far off shuts the window
+E2B_FAR :: 90.0;          // m: past this it isn't drawn
+E2B_TOP :: 0.813;         // m: the table's top (Table_Large's height)
+E2B_HALF_X :: 1.424; E2B_HALF_Z :: 0.548;   // the table's half length and half depth
+E2B_SAID :: 2.5;          // s: Shape's refusal stands out this long
+
+// The meshes, by their M rows, and where each stands in the table's frame (x along it, z toward you).
+E2B_MESHES :: 8;
+E2B_MESH :: [E2B_MESHES] string.["Table_Large", "Cauldron", "Pot_1", "Scroll_1", "Book_Stack_1", "Candle_1", "Potion_2", "SmallBottles_1"];
+E2bProp :: struct { x: f32; y: f32; z: f32; yaw: f32; }
+E2B_PROP :: [E2B_MESHES] E2bProp.[
+  E2bProp.{x = 0, y = 0, z = 0, yaw = 0},
+  E2bProp.{x = -2.05, y = 0, z = 0.1, yaw = 0.4},
+  E2bProp.{x = 0.05, y = E2B_TOP, z = -0.05, yaw = 0},
+  E2bProp.{x = -0.55, y = E2B_TOP, z = 0.18, yaw = 0.25},
+  E2bProp.{x = 0.9, y = E2B_TOP, z = -0.22, yaw = 0.5},
+  E2bProp.{x = 1.2, y = E2B_TOP, z = 0.05, yaw = 0},
+  E2bProp.{x = 0.55, y = E2B_TOP, z = -0.3, yaw = 0},
+  E2bProp.{x = -1.0, y = E2B_TOP, z = -0.32, yaw = 0}
+];
+
+// What the window answers to: the kinds' rows, Close and Shape.
+E2B_HIT_CLOSE :: 10; E2B_HIT_SHAPE :: 11;
+
+E2Bench :: struct {
+  placed: bool; x: f32; y: f32; z: f32; yaw: f32;
+  first: [E2B_MESHES] int; count: [E2B_MESHES] int;
+  near: bool; open: bool; freed: bool;   // freed: opening it freed the mouse, so shutting it takes it back
+  kind: int; hover: int = -1; said_at: f32 = -100;
+  drawn: int; opened: int; shaped: int;
+}
+E2bLayout :: struct {
+  win: cc.HudPrim; pad: f32; three: bool; foot: bool;
+  close: cc.HudPrim; kinds: cc.HudPrim; kind: [GOLEM_KINDS] cc.HudPrim; detail: cc.HudPrim; shape: cc.HudPrim;
+  side: [3] cc.HudPrim; stock: cc.HudPrim; ranks: cc.HudPrim; prompt: cc.HudPrim;
+}
+
+// The pack's M rows for the bench's meshes (Everglade's kit at the front of the pack, at the origin).
+e2b_catalog :: (s: [] E2, text: string) {
+  b := s[0].bench[..]; names := E2B_MESH;
+  for m: 0..<E2B_MESHES { b[0].first[m] = 0; b[0].count[m] = 0; }
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    row := text[at..<e]; at = e + 1;
+    if row.count < 6 || row[0] != 'M' || row[1] != ' ' { continue; }
+    ne := figs.bd_word_end(row, 2); name := row[2..<ne];
+    for m: 0..<E2B_MESHES {
+      if name != names[m] { continue; }
+      first := figs.bd_whole_at(row, ne); count := figs.bd_whole_at(row, figs.bd_word_end(row, ne + 1));
+      if first >= 0 && count > 0 { b[0].first[m] = first; b[0].count[m] = count; }
+    }
+  }
+}
+
+// Where it stands: its long side along the path, its front toward it.
+e2b_place :: (s: [] E2) {
+  b := s[0].bench[..]; z := f32(E2B_Z); x := e2_road_x(z) + f32(E2B_ACROSS);
+  k := e2m_keep(x, z, x, z);
+  b[0].x = k.x; b[0].z = k.z; b[0].y = e2_height(k.x, k.z);
+  b[0].yaw = figs.atan2(e2_road_x(k.z) - k.x, 0); b[0].placed = true;
+}
+// How far a point is from the table's edge (0 on it or under it).
+e2b_edge :: (s: [] E2, x: f32, z: f32) -> f32 {
+  b := s[0].bench[0]; dx := x - b.x; dz := z - b.z; c := cos(b.yaw); sn := sin(b.yaw);
+  lx := abs(dx * c - dz * sn) - f32(E2B_HALF_X); lz := abs(dx * sn + dz * c) - f32(E2B_HALF_Z);
+  if lx < 0 { lx = 0; } if lz < 0 { lz = 0; }
+  return sqrt(lx * lx + lz * lz);
+}
+
+// Each frame: placed once; near or not (the nearer of it and Pansopher takes E); shut if you walked off.
+e2b_step :: (s: [] E2) {
+  b := s[0].bench[..];
+  if !b[0].placed { e2b_place(s); }
+  d := e2b_edge(s, s[0].you_x, s[0].you_z);
+  b[0].near = e2p_in_world(s) && !s[0].npc[0].talking && d < f32(E2B_USE) && d < e2p_dist(s);
+  if b[0].near || b[0].open { s[0].npc[0].near = false; }
+  if b[0].open && (!e2p_in_world(s) || d > f32(E2B_LEAVE)) { e2b_close(s); }
+}
+e2b_open :: (s: [] E2) {
+  b := s[0].bench[..]; if b[0].open { return; }
+  b[0].open = true; b[0].hover = -1; b[0].opened += 1; s[0].held = 0;
+  if mlook.ml_wants(s[0].ml[0]) { s[0].ml[0].free = true; b[0].freed = true; }
+}
+e2b_close :: (s: [] E2) {
+  b := s[0].bench[..]; if !b[0].open { return; }
+  b[0].open = false; b[0].hover = -1;
+  if b[0].freed { s[0].ml[0].free = false; b[0].freed = false; }
+}
+e2b_press :: (s: [] E2, hit: int) {
+  b := s[0].bench[..];
+  if hit == E2B_HIT_CLOSE { e2b_close(s); return; }
+  if hit == E2B_HIT_SHAPE { b[0].said_at = s[0].clock; b[0].shaped += 1; return; }
+  if hit >= 0 && hit < GOLEM_KINDS { b[0].kind = hit; }
+}
+
+// ---- input: before Pansopher's and the bar's, so 1 to 4 pick a kind while the window is open
+e2b_key :: (s: [] E2, key: int) -> bool {
+  b := s[0].bench[..];
+  if b[0].open {
+    if key == E2P_KEY_ESC || key == 'e' || key == 'E' { e2b_close(s); return true; }
+    if key >= '1' && key <= '9' { e2b_press(s, key - '1'); return true; }
+    return false;
+  }
+  if b[0].near && (key == 'e' || key == 'E') { e2b_open(s); return true; }
+  return false;
+}
+e2b_hit :: (g: E2bLayout, x: f32, y: f32) -> int {
+  if e2p_inside(g.close, x, y) { return E2B_HIT_CLOSE; }
+  if e2p_inside(g.shape, x, y) { return E2B_HIT_SHAPE; }
+  for i: 0..<GOLEM_KINDS { if e2p_inside(g.kind[i], x, y) { return i; } }
+  return -1;
+}
+e2b_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
+  b := s[0].bench[..];
+  if !b[0].open && !b[0].near { return false; }
+  g := e2b_layout(s);
+  if !b[0].open {
+    if phase == 0 && e2p_inside(g.prompt, x, y) { e2b_open(s); return true; }
+    return false;
+  }
+  b[0].hover = e2b_hit(g, x, y);
+  if phase == 0 && b[0].hover >= 0 { e2b_press(s, b[0].hover); return true; }
+  return phase == 0 && e2p_inside(g.win, x, y);   // a press in the window is its own; off it, the world's
+}
+
+// ---- the window
+e2b_prompt_text :: (s: [] E2, t: [] u8) -> string {
+  n := e2p_put(t, 0, ifx s[0].ml[0].touch then "TAP  " else "E  "); n = e2p_put(t, n, "Use the "); n = e2p_put(t, n, GOLEM_BENCH_NAME);
+  return cast(string) t[0..<n];
+}
+e2b_layout :: (s: [] E2) -> E2bLayout {
+  w := s[0].width; h := s[0].height; k := s[0].k; g: E2bLayout;
+  mx := w * 0.04; if mx < 14 * k { mx = 14 * k; } my := h * 0.05; if my < 12 * k { my = 12 * k; }
+  g.win = cc.hud_box(mx, my, w - mx, h - my); g.pad = 22 * k; p := g.pad;
+  x0 := g.win.x0 + p; x1 := g.win.x1 - p;
+  g.close = cc.hud_box(x1 - 116 * k, g.win.y0 + p, x1, g.win.y0 + p + 36 * k);
+  top := g.win.y0 + p + 70 * k;
+  // the materials and the ranks along the foot, when there is height for them
+  foot := 84 * k; g.foot = g.win.y1 - p - top > 300 * k;
+  bottom := ifx g.foot then g.win.y1 - p - foot - 14 * k else g.win.y1 - p;
+  gap := 16 * k; iw := x1 - x0; g.three = iw >= 860 * k;
+  lw := ifx g.three then (iw - 2 * gap) * 0.28 else (iw - gap) * 0.42;
+  mw := ifx g.three then (iw - 2 * gap) * 0.42 else iw - gap - lw;
+  g.kinds = cc.hud_box(x0, top, x0 + lw, bottom);
+  g.detail = cc.hud_box(x0 + lw + gap, top, x0 + lw + gap + mw, bottom);
+  // the kinds, one row each under SHAPING
+  kh := (bottom - top - 50 * k - f32(GOLEM_KINDS - 1) * 8 * k) / f32(GOLEM_KINDS); if kh > 64 * k { kh = 64 * k; }
+  ky := top + 42 * k;
+  for i: 0..<GOLEM_KINDS { g.kind[i] = cc.hud_box(x0 + 12 * k, ky, x0 + lw - 12 * k, ky + kh); ky += kh + 8 * k; }
+  g.shape = cc.hud_box(g.detail.x0 + 16 * k, bottom - 16 * k - 40 * k, g.detail.x0 + 16 * k + 190 * k, bottom - 16 * k);
+  if g.three {
+    rx := g.detail.x1 + gap; sh := (bottom - top - 2 * gap) / 3;
+    for i: 0..<3 { y := top + f32(i) * (sh + gap); g.side[i] = cc.hud_box(rx, y, x1, y + sh); }
+  }
+  if g.foot {
+    fy := g.win.y1 - p - foot;
+    g.stock = cc.hud_box(x0, fy, x0 + (iw - gap) * 0.44, g.win.y1 - p);
+    g.ranks = cc.hud_box(x0 + (iw - gap) * 0.44 + gap, fy, x1, g.win.y1 - p);
+  }
+  pb: [96] u8; pt := e2b_prompt_text(s, pb[..]); pw := cc.face_width(pt, 14 * k, cc.HUD_FACE_BODY) + 28 * k; py := h * 0.64;
+  g.prompt = cc.hud_box(w * 0.5 - pw * 0.5, py - 17 * k, w * 0.5 + pw * 0.5, py + 17 * k);
+  return g;
+}
+// Words wrapped to room, a row every 1.5 caps from the baseline y; rows[0] the rows written.
+e2b_para :: (out: [] f32, at: int, t: string, x: f32, y: f32, room: f32, cap: f32, r: cc.HudText, k: f32, rows: [] int) -> int {
+  adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
+  ra: [10] int; rn: [10] int; rw: [10] f32; n := cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
+  v := at; for i: 0..<n { v = cc.hud_say(out, v, t[ra[i]..<ra[i] + rn[i]], x, y + f32(i) * cap * 1.5, cap, r, 1, k, false); }
+  rows[0] = n; return v;
+}
+// The rows e2b_para would write.
+e2b_rows :: (t: string, room: f32, cap: f32, r: cc.HudText) -> int {
+  adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
+  ra: [10] int; rn: [10] int; rw: [10] f32; return cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
+}
+// Words along a well's foot, a gap between each, smaller when they wouldn't fit across it.
+e2b_row :: (out: [] f32, at: int, words: [] string, b: cc.HudPrim, cap: f32, r: cc.HudText, k: f32) -> int {
+  room := b.x1 - b.x0 - 32 * k; gap := 22 * k; c := cap; whole := gap * f32(words.count - 1);
+  for w: words { whole += cc.face_width(w, cap * r.scale, r.face); }
+  if whole > room { c = cap * (room - gap * f32(words.count - 1)) / (whole - gap * f32(words.count - 1)); }
+  x := b.x0 + 16 * k; v := at;
+  for w: words { v = cc.hud_say(out, v, w, x, b.y1 - 18 * k, c, r, 1, k, false); x += cc.face_width(w, c * r.scale, r.face) + gap; }
+  return v;
+}
+e2b_head :: (out: [] f32, at: int, t: string, b: cc.HudPrim, k: f32) -> int {
+  return cc.hud_say(out, at, t, b.x0 + 16 * k, b.y0 + 16 * k + 13 * k, 13 * k, cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_TITLE), 1, k, false);
+}
+e2b_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+  b := s[0].bench[0];
+  if !b.open && !b.near { return at; }
+  k := s[0].k; g := e2b_layout(s); t := cc.eg_tokens(); ui := drv_trace(s[0].drive[..]);
+  l: [1] cc.HudList;
+  body := cc.hud_text(t, cc.HUD_TEXT_NUMBER); dim := cc.hud_text(t, cc.HUD_TEXT_LABEL); title := cc.hud_text(t, cc.HUD_TEXT_TITLE);
+  cc.uit_part(ui, "bench");
+  if !b.open {
+    cc.hud_button(l[..], t, g.prompt, k, true);
+    v := cc.hud_emit(out, at, l[..]);
+    pb: [96] u8; pt := e2b_prompt_text(s, pb[..]);
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.prompt.x0, g.prompt.y0, g.prompt.x1, g.prompt.y1, "use-workbench");
+    return cc.hud_say(out, v, pt, (g.prompt.x0 + g.prompt.x1) * 0.5, (g.prompt.y0 + g.prompt.y1) * 0.5 + 7 * k, 14 * k, body, 1, k, true);
+  }
+  // the frames: the window, Close, the kinds' rows, the wells and Shape
+  cc.hud_panel(l[..], t, g.win, k);
+  cc.hud_button(l[..], t, g.close, k, b.hover == E2B_HIT_CLOSE);
+  cc.hud_well(l[..], t, g.kinds, k, false); cc.hud_well(l[..], t, g.detail, k, false);
+  for i: 0..<GOLEM_KINDS { cc.hud_button(l[..], t, g.kind[i], k, i == b.kind || i == b.hover); }
+  cc.hud_button(l[..], t, g.shape, k, b.hover == E2B_HIT_SHAPE);
+  if g.three { for i: 0..<3 { cc.hud_well(l[..], t, g.side[i], k, false); } }
+  if g.foot { cc.hud_well(l[..], t, g.stock, k, false); cc.hud_well(l[..], t, g.ranks, k, false); }
+  x := g.win.x0 + g.pad; ty := g.win.y0 + g.pad + 26 * k;
+  cc.hud_line(l[..], x, g.win.y0 + g.pad + 54 * k, g.win.x1 - g.pad, g.win.y0 + g.pad + 54 * k, 1 * k, cc.hud_fade(t.trim, 0.45));
+  v := cc.hud_emit(out, at, l[..]);
+  // the heading and where you stand in the craft
+  v = cc.hud_say(out, v, GOLEM_BENCH_NAME, x, ty, 26 * k, title, 1, k, false);
+  v = cc.hud_say(out, v, "Not yet a golemancer     Golems 0 of 0     Golem salt 0", x, ty + 22 * k, 12 * k, dim, 1, k, false);
+  v = cc.hud_say(out, v, ifx s[0].ml[0].touch then "CLOSE" else "CLOSE   Esc", (g.close.x0 + g.close.x1) * 0.5, (g.close.y0 + g.close.y1) * 0.5 + 6 * k, 13 * k, body, 1, k, true);
+  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.close.x0, g.close.y0, g.close.x1, g.close.y1, "close");
+  // SHAPING: the kinds, each with the rank it needs
+  v = e2b_head(out, v, "SHAPING", g.kinds, k);
+  for i: 0..<GOLEM_KINDS {
+    r := g.kind[i]; gk := golem_kind(i); my := (r.y0 + r.y1) * 0.5;
+    lb: [48] u8; n := 0; lb[0] = cast(u8)('1' + i); n = 1; n = e2p_put(lb[..], n, "  "); n = e2p_put(lb[..], n, gk.name);
+    v = cc.hud_say(out, v, cast(string) lb[0..<n], r.x0 + 14 * k, my + 5 * k, 14 * k, body, 1, k, false);
+    rb: [16] u8; m := e2p_put(rb[..], 0, "Rank "); rb[m] = cast(u8)('0' + gk.rank); m += 1;
+    v = cc.hud_say(out, v, cast(string) rb[0..<m], r.x1 - 14 * k - cc.face_width(cast(string) rb[0..<m], 12 * k * dim.scale, dim.face), my + 5 * k, 12 * k, dim, 1, k, false);
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, r.x0, r.y0, r.x1, r.y1, gk.name);
+  }
+  // the kind picked: its body, its work, and the three steps that make it
+  gk := golem_kind(b.kind); d := g.detail; dx := d.x0 + 16 * k; room := d.x1 - d.x0 - 32 * k; rows: [1] int;
+  y := d.y0 + 16 * k + 20 * k;
+  v = cc.hud_say(out, v, gk.name, dx, y, 20 * k, title, 1, k, false); y += 26 * k;
+  rk: [40] u8; m := e2p_put(rk[..], 0, "Rank "); rk[m] = cast(u8)('0' + gk.rank); m += 1; m = e2p_put(rk[..], m, ", "); m = e2p_put(rk[..], m, golem_rank(gk.rank));
+  v = cc.hud_say(out, v, cast(string) rk[0..<m], dx, y, 12 * k, dim, 1, k, false); y += 24 * k;
+  v = e2b_para(out, v, gk.body, dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 2 * k;
+  v = e2b_para(out, v, gk.does, dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 16 * k;
+  if y + 3 * 22 * k < g.shape.y0 - 80 * k {
+    v = cc.hud_say(out, v, "THE MAKING", dx, y, 13 * k, title, 1, k, false); y += 24 * k;
+    for i: 0..<GOLEM_STEPS {
+      steps := GOLEM_STEP; st := steps[i]; sb: [96] u8; n := 0; sb[0] = cast(u8)('1' + i); n = 1; n = e2p_put(sb[..], n, "  "); n = e2p_put(sb[..], n, st.name); n = e2p_put(sb[..], n, ":  "); n = e2p_put(sb[..], n, st.how);
+      v = e2b_para(out, v, cast(string) sb[0..<n], dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 4 * k;
+    }
+  }
+  v = cc.hud_say(out, v, "SHAPE", (g.shape.x0 + g.shape.x1) * 0.5, (g.shape.y0 + g.shape.y1) * 0.5 + 6 * k, 14 * k, body, 1, k, true);
+  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.shape.x0, g.shape.y0, g.shape.x1, g.shape.y1, "shape");
+  warn := s[0].clock - b.said_at < f32(E2B_SAID);
+  note := ifx warn then cc.hud_text(t, cc.HUD_TEXT_WARN) else dim;
+  nr := e2b_rows(GOLEM_BENCH_LOCKED, room, 12 * k, note);
+  v = e2b_para(out, v, GOLEM_BENCH_LOCKED, dx, g.shape.y0 - 14 * k - f32(nr - 1) * 18 * k, room, 12 * k, note, k, rows[..]);
+  // your golems, their orders and what they reported
+  if g.three {
+    heads := [3] string.["GOLEMS", "ORDERS", "REPORTS"];
+    says := [3] string.["No golems yet. Shape one here, then give it a name.", "No orders. A golem works one task at a time.", "Nothing to report. Finished tasks come back here and by letter."];
+    for i: 0..<3 {
+      r := g.side[i]; v = e2b_head(out, v, heads[i], r, k);
+      v = e2b_para(out, v, says[i], r.x0 + 16 * k, r.y0 + 16 * k + 40 * k, r.x1 - r.x0 - 32 * k, 13 * k, dim, k, rows[..]);
+    }
+  }
+  // the materials, none held yet, and the five ranks
+  if g.foot {
+    mats := GOLEM_MATERIAL; mt: [GOLEM_MATERIALS] string; mb: [GOLEM_MATERIALS][32] u8;
+    for i: 0..<GOLEM_MATERIALS { n := e2p_put(mb[i][..], 0, mats[i]); n = e2p_put(mb[i][..], n, "  0"); mt[i] = cast(string) mb[i][0..<n]; }
+    v = e2b_head(out, v, "MATERIALS", g.stock, k);
+    v = e2b_row(out, v, mt[..], g.stock, 13 * k, body, k);
+    rt: [GOLEM_RANKS] string; rb: [GOLEM_RANKS][32] u8;
+    for i: 0..<GOLEM_RANKS { rb[i][0] = cast(u8)('1' + i); n := e2p_put(rb[i][..], 1, " "); n = e2p_put(rb[i][..], n, golem_rank(i + 1)); rt[i] = cast(string) rb[i][0..<n]; }
+    v = e2b_head(out, v, "RANKS", g.ranks, k);
+    v = e2b_row(out, v, rt[..], g.ranks, 12 * k, dim, k);
+  }
+  return v;
+}
+
+// ---- the world: the table and what stands on it, each mesh a static record
+// A kit prop's record (gpu/everglade2.coax e2_prop_vs, kind 21): where it stands and its turn. Its
+// vertices are the pack's first, so its word is 0.
+E2B_RECORD_KIND :: 21;
+e2b_record :: (out: [] f32, rec: int, x: f32, y: f32, z: f32, yaw: f32) {
+  at := rec * 24; for i: 0..<24 { out[at + i] = 0; }
+  out[at] = x; out[at + 1] = y; out[at + 2] = z; out[at + 8] = sin(yaw); out[at + 9] = cos(yaw); out[at + 15] = f32(E2B_RECORD_KIND);
+}
+e2b_draw :: (s: [] E2, at: E2Drawn) -> E2Drawn {
+  b := s[0].bench[..]; if !b[0].placed { return at; }
+  dx := b[0].x - s[0].eye[0]; dz := b[0].z - s[0].eye[2];
+  if dx * dx + dz * dz > f32(E2B_FAR) * f32(E2B_FAR) { return at; }
+  y := e2g_y(s[0].eg[..], b[0].x, b[0].z); b[0].y = y;
+  c := cos(b[0].yaw); sn := sin(b[0].yaw); d := at; props := E2B_PROP; any := false;
+  for m: 0..<E2B_MESHES {
+    if b[0].count[m] <= 0 || d.rec >= E2_RECORDS || d.n >= E2_DRAWS { continue; }
+    p := props[m];
+    e2b_record(s[0].records[..], d.rec, b[0].x + p.x * c + p.z * sn, y + p.y, b[0].z - p.x * sn + p.z * c, b[0].yaw + p.yaw);
+    d.n = e2_draw(s[0].draws[..], d.n, b[0].first[m], b[0].count[m], d.rec, 1);
+    d.sn = e2_draw(s[0].shadow[..], d.sn, b[0].first[m], b[0].count[m], d.rec, 1);
+    d.rec += 1; any = true;
+  }
+  if any { b[0].drawn += 1; }
+  return d;
+}
+e2b_drive :: (s: [] E2, d: [] Drive) {
+  b := s[0].bench[0]; if !b.placed { return; }
+  drv_add(d, DRV_OBJECT, "workbench", -1, GOLEM_BENCH_NAME, b.x, b.y, b.z, -1, -1, false);
+}
+
+#test "bench: the workbench stands beside Pansopher on ground you may stand on, long side along the path" #steps 200000000 {
+  s: [1] E2; e2p_step(s[..], 0.016); e2b_step(s[..]);
+  b := s[0].bench[0]; p := s[0].npc[0];
+  #assert b.placed && e2_may_stand(b.x, b.z) && e2_zone(b.x, b.z) == 0;
+  gap := sqrt((b.x - p.x) * (b.x - p.x) + (b.z - p.z) * (b.z - p.z)); #assert gap > 2.5 && gap < 5;
+  #assert abs(sin(b.yaw)) > 0.99;   // its front faces across, toward the path
+  #assert e2b_edge(s[..], b.x, b.z) == 0 && abs(e2b_edge(s[..], b.x + 2 * sin(b.yaw), b.z + 2 * cos(b.yaw)) - (2 - f32(E2B_HALF_Z))) < 0.01;
+}
+#test "bench: the catalog's M rows give its meshes; a row it doesn't name or a broken one is skipped" {
+  s: [1] E2;
+  e2b_catalog(s[..], "M Table_Large 100032 2958 2 -1.4 0 -0.5 1.4 0.8 0.5\nM Pine_5 0 1464 0\nM Cauldron 130260 6060 2\nC glade/x 1 2 3 4 0 0\nM Pot_1 -4 9 2\n");
+  b := s[0].bench[0];
+  #assert b.first[0] == 100032 && b.count[0] == 2958 && b.first[1] == 130260 && b.count[1] == 6060 && b.count[2] == 0 && b.count[3] == 0;
+}
+#test "bench: near it E opens the window, 1 to 4 pick a kind, Shape refuses, and Esc or walking off shuts it" #steps 400000000 {
+  s: [1] E2; s[0].placed = true; s[0].width = 1280; s[0].height = 720; s[0].k = 1; s[0].ml[0].able = true;
+  e2p_step(s[..], 0.016); e2b_step(s[..]); b := s[0].bench[0];
+  front := [2] f32.[b.x + 1.2 * sin(b.yaw), b.z + 1.2 * cos(b.yaw)];
+  s[0].you_x = front[0]; s[0].you_z = front[1]; e2p_step(s[..], 0.016); e2b_step(s[..]);
+  #assert s[0].bench[0].near && !s[0].npc[0].near;   // the nearer of the two takes E
+  #assert e2b_key(s[..], 'e') && s[0].bench[0].open && !mlook.ml_wants(s[0].ml[0]);
+  #assert e2b_key(s[..], '3') && s[0].bench[0].kind == 2 && e2b_key(s[..], '9') && s[0].bench[0].kind == 2;
+  g := e2b_layout(s[..]);
+  #assert g.three && g.foot && g.win.x0 < 1280 * 0.06 && g.win.x1 > 1280 * 0.94 && g.win.y1 - g.win.y0 > 720 * 0.85;
+  for i: 0..<GOLEM_KINDS { #assert g.kind[i].y1 <= g.kinds.y1 && g.kind[i].y0 >= g.kinds.y0; }
+  #assert g.shape.y1 <= g.detail.y1 && g.side[2].y1 <= g.stock.y0 && g.close.x1 <= g.win.x1;
+  r := g.kind[0]; #assert e2b_pointer(s[..], (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5, 0) && s[0].bench[0].kind == 0;
+  r = g.shape; s[0].clock = 5; #assert e2b_pointer(s[..], (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5, 0) && s[0].bench[0].shaped == 1 && s[0].bench[0].said_at == 5;
+  #assert e2b_pointer(s[..], 640, 360, 0) && !e2b_pointer(s[..], 2, 2, 0);   // in the window it is the window's; off it, the world's
+  out: [32768 * E2_VERTEX_FLOATS] f32; v := e2b_hud(s[..], out[..], 0); #assert v > 0 && v < 32768;
+  _ := e2b_key(s[..], E2P_KEY_ESC); #assert !s[0].bench[0].open && mlook.ml_wants(s[0].ml[0]);
+  _ = e2b_key(s[..], 'E'); #assert s[0].bench[0].open;
+  r = g.close; #assert e2b_pointer(s[..], (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5, 0) && !s[0].bench[0].open;
+  _ = e2b_key(s[..], 'e');
+  s[0].you_x = b.x + (f32(E2B_HALF_Z) + f32(E2B_LEAVE) + 0.3) * sin(b.yaw); s[0].you_z = b.z + (f32(E2B_HALF_Z) + f32(E2B_LEAVE) + 0.3) * cos(b.yaw);
+  e2p_step(s[..], 0.016); e2b_step(s[..]); #assert !s[0].bench[0].open && !s[0].bench[0].near;
+  // a phone held sideways: two columns, the window still most of the screen
+  s[0].width = 760; s[0].height = 400; g = e2b_layout(s[..]); #assert !g.three && g.kinds.x1 < g.detail.x0 && g.detail.x1 <= g.win.x1;
+}

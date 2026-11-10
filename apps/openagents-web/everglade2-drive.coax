@@ -19,6 +19,7 @@ e2d_frame :: (s: [] E2) {
   }
   g := e2n_guard_at(n, n[0].rt);
   if g.state != E2GD_NONE && g.life > 0 { drv_add(d, DRV_NPC, "guard", -1, "Guard", g.x, s[0].you_y, g.z, g.hp, g.max, g.state == E2GD_DOWN); }
+  e2p_drive(s, d); e2b_drive(s, d);
   for m: 0..<E2N_MONS {
     r := e2n_mon_at(n, m, n[0].rt);
     if r.state == E2MN_GONE || r.life <= 0 { continue; }

@@ -1,0 +1,51 @@
+// The Golemancer's Workbench (game): what its window says (everglade/docs/golemancy-profession-spec.md
+// sections 4 to 6, all of it still a proposal). The kinds of golem and the rank each needs, the three
+// steps that make one, the materials, and the five ranks. The craft isn't built, so nothing here is
+// held or spent: a zone shows it as the bench's window and says the craft isn't open yet. Everglade II
+// stands the bench beside Pansopher (apps/openagents-web/everglade2-bench.coax).
+//   coax/bin/coax test --library everglade/world/golem-bench.coax
+#module "everglade.golembench";
+
+GOLEM_BENCH_NAME :: "Golemancer's Workbench";
+GOLEM_BENCH_LOCKED :: "The craft is not yet open to you. Ask Pansopher to teach you your first command.";
+
+GolemKind :: struct { name: string; rank: int; body: string; does: string; }
+GOLEM_KINDS :: 4;
+GOLEM_KIND :: [GOLEM_KINDS] GolemKind.[
+  GolemKind.{name = "Hearth golem", rank = 1, body = "A small figure of clay or wood.",
+             does = "Household work: tidies, mends, sorts and stocks. The first golem every golemancer makes."},
+  GolemKind.{name = "Homunculus", rank = 1, body = "A carved construct bonded to your mind.",
+             does = "Gathers, runs errands, carries and shops. Its bite is taken out: it does not fight."},
+  GolemKind.{name = "Beast golem", rank = 4, body = "A brass or wooden owl, hawk or cat.",
+             does = "Scouts, keeps guard and goes on longer errands between towns."},
+  GolemKind.{name = "Envoy", rank = 5, body = "A command sealed in the bench's Veilstone. No body.",
+             does = "Acts in the world outside Everglade, inside the limits you set and confirm."}
+];
+
+GolemStep :: struct { name: string; how: string; }
+GOLEM_STEPS :: 3;
+GOLEM_STEP :: [GOLEM_STEPS] GolemStep.[
+  GolemStep.{name = "Body", how = "Shape it from clay or wood."},
+  GolemStep.{name = "Command", how = "Write its orders on vellum and seal them inside."},
+  GolemStep.{name = "Quickening", how = "Ink and incense at this bench, 10 GP."}
+];
+
+GOLEM_MATERIALS :: 5;
+GOLEM_MATERIAL :: [GOLEM_MATERIALS] string.["Clay", "Vellum", "Ink", "Incense", "Golem salt"];
+
+GOLEM_RANKS :: 5;
+GOLEM_RANK :: [GOLEM_RANKS] string.["Apprentice", "Journeyman", "Adept", "Master", "Grand Golemancer"];
+GOLEM_RANK_GOLEMS :: [GOLEM_RANKS] int.[1, 2, 3, 4, 5];   // golems at once
+
+golem_kind :: (k: int) -> GolemKind { all := GOLEM_KIND; return ifx k >= 0 && k < GOLEM_KINDS then all[k] else GolemKind.{}; }
+golem_rank :: (r: int) -> string { all := GOLEM_RANK; return ifx r >= 1 && r <= GOLEM_RANKS then all[r - 1] else ""; }
+
+#test "the bench's golems: four kinds by rank, the first a hearth golem any apprentice may make" {
+  #assert golem_kind(0).name == "Hearth golem" && golem_kind(0).rank == 1;
+  for k: 1..<GOLEM_KINDS { #assert golem_kind(k).rank >= golem_kind(k - 1).rank; }
+  for k: 0..<GOLEM_KINDS { g := golem_kind(k); #assert g.rank >= 1 && g.rank <= GOLEM_RANKS && g.body.count > 0 && g.does.count > 0; }
+  #assert golem_kind(-1).name == "" && golem_kind(GOLEM_KINDS).name == "";
+  #assert golem_rank(1) == "Apprentice" && golem_rank(5) == "Grand Golemancer" && golem_rank(0) == "" && golem_rank(6) == "";
+  n := GOLEM_RANK_GOLEMS; for r: 1..<GOLEM_RANKS { #assert n[r] == n[r - 1] + 1; }
+  m := GOLEM_MATERIAL; #assert m[GOLEM_MATERIALS - 1] == "Golem salt";
+}

@@ -21,6 +21,8 @@
 #load "everglade2-guard.coax";  // the path's guard, as the room walks him
 #load "everglade2-monsters.coax";   // the wolves and the goblins, as the room moves them
 #load "everglade2-wild.coax";   // the glade's cat (everglade/creatures/cat.coax), and ?stage=cat
+#load "everglade2-npc.coax";    // Pansopher, the Golemancy trainer, and his talk (everglade/world/pansopher.coax)
+#load "everglade2-bench.coax";  // the Golemancer's Workbench beside him and its window (everglade/world/golem-bench.coax)
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
@@ -132,6 +134,8 @@ E2 :: struct {
   adm: [1] E2Admin;                              // admin mode (everglade2-admin.coax): set and read in dev builds only
   monsters: [1] E2MonLooks;                      // the wolves and goblins as drawn (everglade2-monsters.coax)
   wild: [1] E2Wild;                              // the glade's cat (everglade2-wild.coax)
+  npc: [1] E2Npc;                                // Pansopher and his talk (everglade2-npc.coax)
+  bench: [1] E2Bench;                            // the Golemancer's Workbench (everglade2-bench.coax)
   hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
   zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
   drive: [1] Drive;                              // the agent driver (aethyr/agent/drive.coax): off until a driver speaks
@@ -149,7 +153,7 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   n := e2g_record_from_catalog(whole, rec);
   s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1; s[0].catalog_in = true;
   text := e2_catalog_rest(whole, rest);
-  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text);
+  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text); e2b_catalog(s, text);
   s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]); s[0].mats_v += 1;
   for b: 0..<E2_BUCKETS { s[0].kit_first[b] = 0; s[0].kit_count[b] = 0; }
   at := 0; any := false;
@@ -524,6 +528,8 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
 e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   #if BUILD_DEBUG { if e2a_key(s, key) { return true; } }
   if key == -1 && e2k_area_cancel(s) { return true; }   // Esc lets an armed area go before it opens the menu
+  if e2b_key(s, key) { return true; }   // the workbench's window: E opens it near the bench; 1 to 4 pick a kind, Esc shuts it
+  if e2p_key(s, key) { return true; }   // Pansopher's talk: E opens it near him; 1 to 9 answer, Esc ends it
   if e2c_key(s, key) { return true; }
   if mlook.ml_key(s[0].ml[..], key) { return true; }
   if e2k_key(s, key) { return true; }
@@ -543,6 +549,8 @@ e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = fals
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
   if e2_quality_pointer(s, x, y, phase, id) { return true; }   // the GFX control
+  if !s[0].cz[0].menu && e2b_pointer(s, x, y, phase) { return true; }   // the workbench's prompt and window
+  if !s[0].cz[0].menu && e2p_pointer(s, x, y, phase) { return true; }   // Pansopher's prompt and answers
   #if BUILD_DEBUG { if e2a_pointer(s, x, y, phase) { return true; } }
   if e2c_pointer(s, x, y, phase, id) { return true; }
   if e2k_pointer(s, x, y, phase) { return true; }
@@ -560,6 +568,8 @@ e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
 // (everglade2-mouse.coax), then the rest as e2_pointer.
 e2_pointer_buttons :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
+  if !s[0].cz[0].menu && e2b_pointer(s, x, y, phase) { return true; }   // the workbench's window before a click casts
+  if !s[0].cz[0].menu && e2p_pointer(s, x, y, phase) { return true; }   // his answers before a click casts
   // an armed area: a left click casts it where it shows, a right click lets it go
   if phase == 0 && !s[0].cz[0].menu && s[0].casts[0].area[0].on { if button == 2 { _ := e2k_area_cancel(s); } else { _ := e2k_area_confirm(s); } return true; }
   if !s[0].cz[0].menu && e2m_buttons(s, phase, kind, button) { return true; }   // the Esc menu's clicks are its own
@@ -1088,6 +1098,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2_chase_step(s, step);
   e2c_arrive_step(s, step);
   e2w_step(s, step);
+  e2p_step(s, step); e2b_step(s);
   chase := figs.cam_shoulder_shot(figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press), s[0].ml[0].shown);
   shot := e2st_shot(s, e2w_shot(s, e2_familiar_shot(s,e2c_view(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), chase, step))));
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
@@ -1127,7 +1138,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
 }
 // The HUD's strokes, in the order they are drawn over the world (the overlap check, apps/openagents-web/hud-overlap-everglade2.coax, draws the same).
 e2_hud :: (s: [] E2, out: [] f32, dt: f32) -> int {
-  return e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))))), dt));
+  return e2b_hud(s, out, e2p_hud(s, out, e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))))), dt))));
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
@@ -1540,6 +1551,8 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   if d.n > 0 { s[0].cz[0].drawn += 1; }
   d = e2_familiars_draw(s,d);
   d = e2w_draw(s, d);               // the glade's cat (everglade2-wild.coax)
+  d = e2p_draw(s, d, bdt);          // Pansopher (everglade2-npc.coax)
+  d = e2b_draw(s, d);               // his workbench (everglade2-bench.coax)
   d = e2_remotes_draw(s, d, bdt);   // the others in the room (everglade2-net.coax)
   d = e2gd_draw(s, d, bdt);          // the path's guard (everglade2-guard.coax)
   d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade2-monsters.coax)
@@ -1991,7 +2004,7 @@ e2_heads :: (s: [] E2, out: [] f32, at: int) -> int {
     if !cc.hud_plate_in_reach(view, row.x, foot + 0.65, row.z, cc.HUD_PLATE_FAR) || !e2_sight_shows(s, row.x, foot, row.z, 0.6) { continue; }
     cc.hud_plates_push(p, row.x, foot + 0.65, row.z, rs_monster_block(RS_FAMILIAR_FORMS[row.form]).name, f32(row.hp) / f32(row.max), false, false, 1);
   }
-  e2mn_plate_add(s, p, view); e2gd_plate_add(s, p, view);
+  e2mn_plate_add(s, p, view); e2gd_plate_add(s, p, view); e2p_plate_add(s, p, view);
   return cc.eg_plates(out, at, p, view, s[0].k, 0);
 }
 #test "two names in the same place in the picture: the farther one moves up clear of the nearer" {

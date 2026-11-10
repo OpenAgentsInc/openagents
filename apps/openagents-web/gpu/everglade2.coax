@@ -91,9 +91,32 @@ e2_field_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->FivelabS {
  o=e2_kit_place(id,v4(x,e2_height(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),c,u,vertices);
  o.dye.x=1.0f32-shown;return o;
 }
+// An Everglade kit prop (21: the pack's M rows, everglade2-bench.coax): its 12-word vertex (position,
+// normal and uv as floats, then the tint's bytes under its layer), turned by the record's c.x, c.y
+// (sine, cosine) and set at a; shaded as a textured model (10).
+e2_prop_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->FivelabS {
+ b:u32=add_wrap(wg_u32_f(m.b.w),mul_wrap(id,12));
+ p:V3=v3(f32_from_bits(vertices[cast(int)b]),f32_from_bits(vertices[cast(int)add_wrap(b,1)]),f32_from_bits(vertices[cast(int)add_wrap(b,2)]));
+ n:V3=v3(f32_from_bits(vertices[cast(int)add_wrap(b,3)]),f32_from_bits(vertices[cast(int)add_wrap(b,4)]),f32_from_bits(vertices[cast(int)add_wrap(b,5)]));
+ w8:u32=vertices[cast(int)add_wrap(b,8)];t:V4=wg_unpack4x8unorm(w8);cs:=m.c.y;sn:=m.c.x;
+ w:V3=add3(v3(m.a.x,m.a.y,m.a.z),v3(p.x*cs+p.z*sn,p.y,-p.x*sn+p.z*cs));
+ o:FivelabS;o.pos=fivelab_project(w,u);o.world=w;o.normal=v3(n.x*cs+n.z*sn,n.y,-n.x*sn+n.z*cs);
+ o.uv=v2(f32_from_bits(vertices[cast(int)add_wrap(b,6)]),f32_from_bits(vertices[cast(int)add_wrap(b,7)]));o.slice=(w8>>24)&255;
+ o.tint=v3(t.x,t.y,t.z);o.dye=v4(0.0f32,0.0f32,0.0f32,12.0f32);o.local=v3(10.0f32,0.0f32,0.0f32);o.who=instance;
+ return o;
+}
+#test "a kit prop's vertex: its float position turned a quarter by its record and set at a, its layer and tint from word 8" {
+ vtx:[12]u32;vtx[0]=f32_bits(1.0f32);vtx[1]=f32_bits(0.5f32);vtx[2]=f32_bits(0.0f32);vtx[3]=f32_bits(1.0f32);
+ vtx[6]=f32_bits(0.25f32);vtx[7]=f32_bits(0.75f32);vtx[8]=0x0e80ff40;
+ m:FivelabObj;m.a=v4(10,2,-5,0);m.c=v4(1,0,0,0);m.d=v4(0,0,0,21);u:[208]f32;u[0]=1280;u[1]=720;
+ o:=e2_prop_vs(0,3,m,u[..],vtx[..]);
+ #assert abs(o.world.x-10)<0.0001 && abs(o.world.y-2.5)<0.0001 && abs(o.world.z+6)<0.0001 && abs(o.normal.z+1)<0.0001;
+ #assert o.slice==14 && o.uv.x==0.25 && o.uv.y==0.75 && abs(o.tint.x-0.25f32)<0.01 && o.tint.y==1 && o.local.x==10 && o.who==3;
+}
 everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->FivelabS {
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst);}
+ if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}}
  o:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);
  // a monster's frame (18) or a held weapon (19, coax/web/room/room-e2-monsters.coax, everglade2-guard.coax):
  // its record's f.w is the share of its pixels the dither drops as it thins in or out
