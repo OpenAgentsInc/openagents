@@ -363,6 +363,8 @@ do {
 }
 let args = CommandLine.arguments
 if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
+  // A headless run (a shot, an Autopilot run) never shows in the Dock or the menu bar.
+  NSApplication.shared.setActivationPolicy(.prohibited)
   var width = 2640, height = 1760, seconds: Float = 2
   if let s = args.firstIndex(of: "--size"), s + 1 < args.count {
     let parts = args[s + 1].split(separator: "x").compactMap { Int($0) }

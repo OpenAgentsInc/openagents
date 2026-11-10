@@ -132,6 +132,12 @@ coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/open
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
 ```
 
+Wait for a long command without polling. Run it in the foreground with a long
+timeout (up to 10 minutes). If it runs longer, start it in the background and wait
+with the Monitor tool on an until-loop over its log. Never loop on `sleep N`: in
+the 36 hours to 2026-11-10, agents spent 32 hours in sleep polls, more than half
+their tool time.
+
 **Getting the compiler.** Never wait on a bootstrap you don't need.
 `coax/build.sh` installs the published build of your tree's compiler in
 seconds: it reads the release bucket, then the GitHub mirror (release tags
