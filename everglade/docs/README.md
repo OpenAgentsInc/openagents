@@ -15,6 +15,12 @@ Specifications for Everglade systems that aren't yet chapters of
   proposal for the native app that plays Everglade and holds the Golemancers'
   Workshop, a standalone local world where each golem is a Claude agent on
   your own Claude Code login.
+- [Worlds in the Everglade apps](app-scenes-spec.md): the list the apps open
+  on, the two worlds that run in them today, and the work that brings the
+  web's main flow and Experimental into them.
+- [The Archery Range](archery-range-spec.md): five butts from 10 to 70 m and
+  two sky faces, shot on foot, from horseback and from dragonback, with ring
+  scoring and accuracy by distance. Built, version 1.
 - [Next issue: pick what to work on, from caches, and measure every call](next-issue-spec.md):
   the desktop app's Next issue button: the GitHub cache under `~/.openagents`,
   how your priorities are read, the reply in your own words, the coding-flow

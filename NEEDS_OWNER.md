@@ -1,5 +1,11 @@
 # Owner actions
 
+## Everglade apps: worlds list and Archery Range, first build (2026-11-10)
+
+- These were written on Linux with no Mac or Android SDK, so no host build has run. Build each and look: `apps/everglade-desktop/build.sh --open`, `apps/everglade-mobile/build.sh --open`, `apps/everglade-mobile/android/build.sh --open`. A Swift or C compile error in `Sources/Engine.swift`, either `main.swift` or `android/host.c` is from this change.
+- The app should open on a list of four worlds. Open the Archery Range (3), hold F and let go to shoot, press 2 for the horse and 3 for the dragon. Nobody has seen a frame of the range: its light, the aim's spread and the camera are first guesses to tune ([spec](everglade/docs/archery-range-spec.md) section 9).
+- Next issue now reads only issues filed by `AtlantisPleb`. Autopilot is still on by default.
+
 ## Everglade Experimental local preview (2026-11-07)
 
 - Open http://127.0.0.1:8891/worlds/everglade-experimental and reload the page to play the Character Create glade preview.

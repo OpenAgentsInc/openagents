@@ -46,7 +46,8 @@ void main() {
   vec3 w = vec3(sp.x * c + sp.z * s + m.a.x, sp.y + m.a.y, -sp.x * s + sp.z * c + m.a.z);
   vec3 e = w - u.eye.xyz;
   float x = dot(e, u.right.xyz), y = dot(e, u.up.xyz), z = dot(e, u.forward.xyz);
-  const float near = 0.1, far = 200.0;
+  // The same depth as the place you stand in writes; pad.y is the place: 1 the temple, 2 the range.
+  const float near = 0.1; float far = u.pad.y > 1.5 ? 600.0 : 200.0;
   gl_Position = vec4(x * u.forward.w * 2.0 / u.size.x, y * u.forward.w * 2.0 / u.size.y, far * (z - near) / (far - near), z);
   world = w;
   normal = vec3(sn.x * c + sn.z * s, sn.y, -sn.x * s + sn.z * c);

@@ -22,20 +22,24 @@ fi
 app="$work/Everglade.app"
 rm -rf "$app"; mkdir -p "$work/c" "$app"
 cc=(xcrun -sdk "$sdk" clang -target "$target" -std=c11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$desk")
-# The scene alone (no Next issue panel: a phone has no agent), your model, and the temple's parts.
-"$coax" c "$desk/workshop.coax" --library --header "$work/c/workshop.h" > "$work/c/workshop.c"
+# The worlds alone (scenes.coax: the list, the Workshop, the Archery Range; no Next issue panel: a
+# phone has no agent), your model, and the two places' parts.
+"$coax" c "$desk/scenes.coax" --library --header "$work/c/workshop.h" > "$work/c/workshop.c"
 "$coax" c "$desk/model.coax" --library --header "$work/c/model.h" > "$work/c/model.c"
 "$coax" c "$repo/everglade/workshop/temple.coax" --library --header "$work/c/temple.h" > "$work/c/temple.c"
-for unit in workshop model temple; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; done
-for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; done
+"$coax" c "$repo/everglade/range/place.coax" --library --header "$work/c/range-place.h" > "$work/c/range-place.c"
+for unit in workshop model temple range-place; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; done
+for face in face model-face place-face range-place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; done
 # The shaders: the strokes and your model's, and Aethyr's for the temple, emitted from Coax.
 xcrun -sdk "$sdk" metal -w $min "$desk/Workshop.metal" "$desk/Model.metal" -o "$app/default.metallib"
 for pair in sky scene light; do
   "$coax" metal "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/c/temple-$pair.metal" 2> "$work/c/temple-$pair.bind"
   xcrun -sdk "$sdk" metal -w $min "$work/c/temple-$pair.metal" -o "$app/temple-$pair.metallib"
+  "$coax" metal "$repo/everglade/range/gpu/range.coax" --vertex "range_${pair}_vs" --fragment "range_${pair}_fs" -o "$work/c/range-$pair.metal" 2> "$work/c/range-$pair.bind"
+  xcrun -sdk "$sdk" metal -w $min "$work/c/range-$pair.metal" -o "$app/range-$pair.metallib"
 done
 xcrun -sdk "$sdk" swiftc -target "$target" -O -import-objc-header "$desk/face.h" "$here/ios/Sources/main.swift" "$here/ios/Sources/PhoneTurn.swift" "$desk/Sources/Engine.swift" "$desk/Sources/Faces.swift" \
-  "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" \
+  "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/range-place.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" "$work/c/range-place-face.o" \
   -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework ImageIO -framework CoreGraphics -framework CoreMotion -lm -o "$app/Everglade"
 cp "$here/ios/Info.plist" "$app/Info.plist"
 # The icon: actool makes the sizes iOS asks for from the one picture, and says what Info.plist needs.

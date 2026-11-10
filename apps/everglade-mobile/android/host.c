@@ -64,7 +64,8 @@ static struct {
   // The scene, your model, and what they draw into.
   void *state, *model;
   int model_draws; uint32_t *draws_model; uint32_t index_count;
-  uint32_t *draws_place; int group_first[3], group_count[3];
+  // The two places (0 the temple, 1 the range): each its draws and groups.
+  uint32_t *draws_place[2]; int group_first[2][3], group_count[2][3];
   float time, safe[3];
   double last, jump_up, look_down, inset_at;
   // Fingers: the one that is the stick and where it went down, the one that looks, the one that pinches.
@@ -81,9 +82,9 @@ static struct {
   VkSampler smooth, mipped;
   VkDescriptorPool sets; VkDescriptorSetLayout place_layout, model_layout, stroke_layout;
   VkPipelineLayout place_pipes, model_pipes, stroke_pipes;
-  VkDescriptorSet place_set, mirror_set, model_set, stroke_set;
-  VkPipeline sky, sky_mirror, scene, scene_mirror, light, model_pipe, strokes;
-  Buf u_place, u_mirror, u_model, mesh, records, model_vertices, model_indices, model_bake, model_records, stroke_vertices;
+  VkDescriptorSet place_set, mirror_set, range_set, model_set, stroke_set;
+  VkPipeline sky, sky_mirror, scene, scene_mirror, light, range_sky, range_scene, range_light, model_pipe, strokes;
+  Buf u_place, u_mirror, u_model, mesh, records, range_mesh, range_records, model_vertices, model_indices, model_bake, model_records, stroke_vertices;
   int ready, resized, focused;
 } g;
 
@@ -315,7 +316,8 @@ static void faces_open(void) {
   drop_buffer(&staging);
 }
 
-// The place: the temple's parts as one mesh, the records that stand them, and the draws.
+// The places: the temple's parts as one mesh, the records that stand them, and the draws; then
+// the Archery Range's, the same way (everglade/range/place.coax).
 static void place_open(void) {
   void *place = plc_new();
   if (!place) STOP("Everglade: the temple did not build.");
@@ -323,10 +325,21 @@ static void place_open(void) {
   if (vf <= 0 || rf <= 0 || dn <= 0) STOP("Everglade: the temple did not build.");
   g.mesh = buffer((VkDeviceSize)vf * 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
   g.records = buffer((VkDeviceSize)rf * 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-  g.draws_place = malloc((size_t)dn * 4);
-  if (plc_copy_mesh(place, g.mesh.map, vf) != 1 || plc_copy_records(place, g.records.map, rf) != 1 || plc_copy_draws(place, g.draws_place, dn) != 1)
+  g.draws_place[0] = malloc((size_t)dn * 4);
+  if (plc_copy_mesh(place, g.mesh.map, vf) != 1 || plc_copy_records(place, g.records.map, rf) != 1 || plc_copy_draws(place, g.draws_place[0], dn) != 1)
     STOP("Everglade: the temple did not build.");
-  for (int k = 0; k < 3; k++) { g.group_first[k] = plc_group_first(place, k); g.group_count[k] = plc_group_count(place, k); }
+  for (int k = 0; k < 3; k++) { g.group_first[0][k] = plc_group_first(place, k); g.group_count[0][k] = plc_group_count(place, k); }
+  free(place);
+  place = rpl_new();
+  if (!place) STOP("Everglade: the range did not build.");
+  vf = rpl_vertex_floats() * rpl_vertices(place); rf = rpl_record_floats() * rpl_records(place); dn = rpl_draws(place) * 4;
+  if (vf <= 0 || rf <= 0 || dn <= 0) STOP("Everglade: the range did not build.");
+  g.range_mesh = buffer((VkDeviceSize)vf * 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+  g.range_records = buffer((VkDeviceSize)rf * 4, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+  g.draws_place[1] = malloc((size_t)dn * 4);
+  if (rpl_copy_mesh(place, g.range_mesh.map, vf) != 1 || rpl_copy_records(place, g.range_records.map, rf) != 1 || rpl_copy_draws(place, g.draws_place[1], dn) != 1)
+    STOP("Everglade: the range did not build.");
+  for (int k = 0; k < 3; k++) { g.group_first[1][k] = rpl_group_first(place, k); g.group_count[1][k] = rpl_group_count(place, k); }
   free(place);
   g.u_place = buffer(96, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
   g.u_mirror = buffer(96, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
@@ -494,7 +507,13 @@ static void pipelines_open(void) {
   // A mirror image nothing has been drawn into yet, for the passes that don't read it.
   g.blank = image(VK_FORMAT_R16G16B16A16_SFLOAT, 1, 1, 1, 1, VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT, 0);
   once_begin(); layout(g.blank.image, 0, 1, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL); once_end();
-  g.place_set = set(g.place_layout); g.mirror_set = set(g.place_layout); g.model_set = set(g.model_layout); g.stroke_set = set(g.stroke_layout);
+  g.place_set = set(g.place_layout); g.mirror_set = set(g.place_layout); g.range_set = set(g.place_layout); g.model_set = set(g.model_layout); g.stroke_set = set(g.stroke_layout);
+  // The range: its own mesh and records, the same uniforms, and no mirror image to read.
+  put_buffer(g.range_set, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &g.u_place);
+  put_buffer(g.range_set, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &g.range_mesh);
+  put_buffer(g.range_set, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &g.range_records);
+  put_image(g.range_set, 3, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, g.blank.view, VK_NULL_HANDLE);
+  put_image(g.range_set, 4, VK_DESCRIPTOR_TYPE_SAMPLER, VK_NULL_HANDLE, g.smooth);
   for (int k = 0; k < 2; k++) {
     VkDescriptorSet s = k ? g.mirror_set : g.place_set;
     put_buffer(s, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, k ? &g.u_mirror : &g.u_place);
@@ -520,8 +539,13 @@ static void pipelines_open(void) {
   g.light = pipeline(light, "vs", light, "fs", g.place_pipes, g.pass, 1, VK_COMPARE_OP_LESS, 0, 0, 0);
   g.model_pipe = pipeline(mv, "main", mf, "main", g.model_pipes, g.pass, 0, VK_COMPARE_OP_LESS, 1, 0, 0);
   g.strokes = pipeline(sv, "main", sf, "main", g.stroke_pipes, g.pass, 2, VK_COMPARE_OP_ALWAYS, 0, 0, 1);
-  VkShaderModule all[7] = { sky, scene, light, mv, mf, sv, sf };
-  for (int i = 0; i < 7; i++) vkDestroyShaderModule(g.device, all[i], NULL);
+  // The range's three, emitted from everglade/range/gpu/range.coax and bound as the temple's are.
+  VkShaderModule rsky = shader("range-sky.spv"), rscene = shader("range-scene.spv"), rlight = shader("range-light.spv");
+  g.range_sky = pipeline(rsky, "vs", rsky, "fs", g.place_pipes, g.pass, 0, VK_COMPARE_OP_ALWAYS, 0, 0, 0);
+  g.range_scene = pipeline(rscene, "vs", rscene, "fs", g.place_pipes, g.pass, 0, VK_COMPARE_OP_LESS, 1, 0, 0);
+  g.range_light = pipeline(rlight, "vs", rlight, "fs", g.place_pipes, g.pass, 1, VK_COMPARE_OP_LESS, 0, 0, 0);
+  VkShaderModule all[10] = { sky, scene, light, mv, mf, sv, sf, rsky, rscene, rlight };
+  for (int i = 0; i < 10; i++) vkDestroyShaderModule(g.device, all[i], NULL);
 }
 
 // ---- A frame ----
@@ -531,9 +555,10 @@ static void model_step(void *p) {
   struct Step *s = p;
   g.model_draws = egm_frame(g.model, s->you, s->dt, g.model_records.map, g.draws_model);
 }
-static void group(int k) {
-  for (int d = g.group_first[k]; d < g.group_first[k] + g.group_count[k]; d++) {
-    uint32_t first = g.draws_place[d * 4], count = g.draws_place[d * 4 + 1], record = g.draws_place[d * 4 + 2], n = g.draws_place[d * 4 + 3];
+// Group k of place p (0 the temple, 1 the range).
+static void group(int p, int k) {
+  for (int d = g.group_first[p][k]; d < g.group_first[p][k] + g.group_count[p][k]; d++) {
+    uint32_t first = g.draws_place[p][d * 4], count = g.draws_place[p][d * 4 + 1], record = g.draws_place[p][d * 4 + 2], n = g.draws_place[p][d * 4 + 3];
     if (count > 0 && n > 0) vkCmdDraw(g.cmd, count, n, first, record);
   }
 }
@@ -584,7 +609,9 @@ static void frame(void) {
   struct Step step = { .dt = dt };
   if (eg_you(g.state, step.you) == 1) deep(model_step, &step); else g.model_draws = 0;
   int seen = eg_camera(g.state, w / s, h / s, s, camera) == 1;
-  camera[16] = w; camera[17] = h; camera[18] = g.time;
+  // The place behind the world that is open (face.h eg_place): 0 the temple, 1 the range.
+  int range = eg_place(g.state) == 2;
+  camera[16] = w; camera[17] = h; camera[18] = g.time; camera[19] = range ? 2.0f : 1.0f;
   // The place's uniforms (everglade/workshop/gpu/temple.coax).
   pu[0] = w; pu[1] = h; pu[2] = g.time;
   for (int k = 0; k < 3; k++) { pu[4 + k] = camera[k]; pu[8 + k] = camera[4 + k]; pu[12 + k] = camera[8 + k]; pu[16 + k] = camera[12 + k]; pu[20 + k] = step.you[k]; }
@@ -609,16 +636,17 @@ static void frame(void) {
   view();
   vkCmdBindDescriptorSets(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.place_pipes, 0, 1, &g.mirror_set, 0, NULL);
   vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.sky_mirror); vkCmdDraw(g.cmd, 3, 1, 0, 0);
-  if (seen) { vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.scene_mirror); group(0); }
+  if (seen && !range) { vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.scene_mirror); group(0, 0); }
   vkCmdEndRenderPass(g.cmd);
   // The night, what stands, the floor over the mirror image, you, what is only light, and the text.
   rb.renderPass = g.pass; rb.framebuffer = g.frames[at];
   vkCmdBeginRenderPass(g.cmd, &rb, VK_SUBPASS_CONTENTS_INLINE);
   view();
   if (seen) {
-    vkCmdBindDescriptorSets(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.place_pipes, 0, 1, &g.place_set, 0, NULL);
-    vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.sky); vkCmdDraw(g.cmd, 3, 1, 0, 0);
-    vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.scene); group(0); group(1);
+    VkDescriptorSet *place = range ? &g.range_set : &g.place_set;
+    vkCmdBindDescriptorSets(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.place_pipes, 0, 1, place, 0, NULL);
+    vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, range ? g.range_sky : g.sky); vkCmdDraw(g.cmd, 3, 1, 0, 0);
+    vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, range ? g.range_scene : g.scene); group(range, 0); group(range, 1);
     if (g.model_draws > 0) {
       vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.model_pipe);
       vkCmdBindDescriptorSets(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.model_pipes, 0, 1, &g.model_set, 0, NULL);
@@ -628,8 +656,8 @@ static void frame(void) {
         if (count > 0 && (uint64_t)first + count <= g.index_count) vkCmdDrawIndexed(g.cmd, count, 1, first, 0, record);
       }
     }
-    vkCmdBindDescriptorSets(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.place_pipes, 0, 1, &g.place_set, 0, NULL);
-    vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.light); group(2);
+    vkCmdBindDescriptorSets(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g.place_pipes, 0, 1, place, 0, NULL);
+    vkCmdBindPipeline(g.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, range ? g.range_light : g.light); group(range, 2);
   }
   if (n > 0) {
     float u[4] = { w, h, g.time, 0 }; VkDeviceSize zero = 0;
@@ -668,7 +696,8 @@ static int32_t input(struct android_app *app, AInputEvent *ev) {
   float s = scale(), w = (float)g.extent.width / s;
   if (what == AMOTION_EVENT_ACTION_DOWN || what == AMOTION_EVENT_ACTION_POINTER_DOWN) {
     int32_t id = AMotionEvent_getPointerId(ev, which); float x = AMotionEvent_getX(ev, which) / s, y = AMotionEvent_getY(ev, which) / s;
-    if (g.stick < 0 && x < w * 0.45f) { g.stick = id; g.stick_x = x; g.stick_y = y; }
+    // A touch on the list of worlds or on a button is a press, never the stick.
+    if (g.stick < 0 && x < w * 0.45f && eg_claims(g.state, x, y) == 0) { g.stick = id; g.stick_x = x; g.stick_y = y; }
     else if (g.look < 0) { g.look = id; g.look_moved = 0; g.look_down = now(); eg_pointer(g.state, x, y, 0); }
     else if (g.pinch < 0) { g.pinch = id; g.pinch_span = 0; g.look_moved = 1000; }
     return 1;
@@ -713,8 +742,9 @@ static int32_t input(struct android_app *app, AInputEvent *ev) {
       else if (id == g.look) {
         g.look = -1; g.pinch = -1;
         eg_pointer(g.state, x, y, 2);
-        // A finger down and up in one place, quickly, is a tap: the jump key, held a moment.
-        if (tapped && g.look_moved < 12 && now() - g.look_down < 0.35) { eg_key(g.state, 32, 1); g.jump_up = now() + 0.1; }
+        // A finger down and up in one place, quickly, is a tap: on the list or a button it is theirs,
+        // anywhere else it is the jump key, held a moment.
+        if (tapped && g.look_moved < 12 && now() - g.look_down < 0.35 && eg_tap(g.state, x, y) == 0) { eg_key(g.state, 32, 1); g.jump_up = now() + 0.1; }
       }
     }
     return 1;

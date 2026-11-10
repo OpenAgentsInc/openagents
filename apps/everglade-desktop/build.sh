@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, metal and swiftc; holds no logic)
-# Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the
-# Workshop scene with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
+# Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the worlds (the list,
+# the Workshop, the Archery Range) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
 # Everglade II's pack, and the AppKit and Metal host in Swift.
@@ -32,13 +32,21 @@ for pair in sky scene light; do
   "$coax" metal "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/c/temple-$pair.metal" 2> "$work/c/temple-$pair.bind"
   xcrun -sdk macosx metal -w "$work/c/temple-$pair.metal" -o "$app/Contents/Resources/temple-$pair.metallib"
 done
+# The Archery Range's place and its shaders, the same way (everglade/range/).
+"$coax" c "$repo/everglade/range/place.coax" --library --header "$work/c/range-place.h" > "$work/c/range-place.c"
+/usr/bin/clang "${cflags[@]}" -w -c "$work/c/range-place.c" -o "$work/c/range-place.o"
+/usr/bin/clang "${cflags[@]}" -c "$here/range-place-face.c" -o "$work/c/range-place-face.o"
+for pair in sky scene light; do
+  "$coax" metal "$repo/everglade/range/gpu/range.coax" --vertex "range_${pair}_vs" --fragment "range_${pair}_fs" -o "$work/c/range-$pair.metal" 2> "$work/c/range-$pair.bind"
+  xcrun -sdk macosx metal -w "$work/c/range-$pair.metal" -o "$app/Contents/Resources/range-$pair.metallib"
+done
 # Everglade's faces and their licences (SIL OFL 1.1), as the web realm ships them.
 rm -rf "$app/Contents/Resources/fonts"
 cp -R "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$app/Contents/Resources/fonts"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/Contents/Resources/everglade2.pack"
 # The web's character code passes its Creator and Bodies by value, megabytes a call, so the main
 # thread, which runs every Coax call, gets a 512 MB stack (reserved, not touched until used).
-xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" \
+xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/range-place.o" "$work/c/range-place-face.o" "$work/c/process.o" \
   -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -lm \
   -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's

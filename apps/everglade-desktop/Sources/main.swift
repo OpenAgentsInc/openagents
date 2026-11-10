@@ -1,9 +1,12 @@
 // Firm reason: 6 (AppKit and Metal have no C API; this host holds no product logic).
 // Everglade for desktop, the Mac host (everglade/docs/desktop-app-spec.md): a window,
-// a Metal view and input. Everything drawn comes from workshop.coax through face.h.
+// a Metal view and input. Everything drawn comes from scenes.coax (the list of worlds, the
+// Workshop, the Archery Range) through face.h. Escape is the list; --scene N opens on world N
+// (1 Everglade, 2 the Workshop, 3 the Archery Range, 4 Experimental).
 //   Everglade                      opens the window
-//   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS]
-//       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits
+//   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS] [--scene N]
+//       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits;
+//       without --scene it is the list of worlds
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
 //       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
@@ -16,7 +19,9 @@ import MetalKit
 
 final class WorkshopView: MTKView, MTKViewDelegate {
   let state = eg_new()!
-  var place: Place!
+  var temple: Place!, range: Place!
+  // The place behind the world that is open (face.h eg_place).
+  var place: Place { eg_place(state) == 2 ? range : temple }
   var strokes: MTLRenderPipelineState!
   var vertices: MTLBuffer!
   var model: Model?
@@ -43,11 +48,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let lib = try! device.makeLibrary(URL: url)
     let b = MTLRenderPipelineDescriptor()
     // The place: the temple's parts and Aethyr's shaders. Without them there is nowhere to stand.
-    guard let pl = Place(device: device, color: colorPixelFormat) else {
-      FileHandle.standardError.write(Data("Everglade: the temple did not build or its shaders are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
+    guard let pl = Place(device: device, color: colorPixelFormat), let rg = Place(device: device, color: colorPixelFormat, range: true) else {
+      FileHandle.standardError.write(Data("Everglade: the temple or the range did not build, or their shaders are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       exit(1)
     }
-    place = pl
+    temple = pl; range = rg
     let f = MTLRenderPipelineDescriptor()
     f.vertexFunction = lib.makeFunction(name: "fx_vs"); f.fragmentFunction = lib.makeFunction(name: "fx_fs")
     let v = MTLVertexDescriptor()
@@ -106,7 +111,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     // first twenty floats Model.metal's MU.
     var camera = [Float](repeating: 0, count: 24)
     let seen = eg_camera(state, Float(size.width) / scale, Float(size.height) / scale, scale, &camera) == 1
-    camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time
+    camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time; camera[19] = Float(eg_place(state))
+    let place = self.place
     var you = [Float](repeating: 0, count: 5)
     if eg_you(state, &you) == 1 { camera[20] = you[0]; camera[21] = you[1]; camera[22] = you[2] }
     guard let cmd = queue.makeCommandBuffer() else { return }
@@ -303,7 +309,9 @@ final class App: NSObject, NSApplicationDelegate {
     window = NSWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
     window.title = "Everglade"
     window.minSize = NSSize(width: 900, height: 600)
-    window.contentView = WorkshopView(frame: frame)
+    let view = WorkshopView(frame: frame)
+    if let w = CommandLine.arguments.firstIndex(of: "--scene"), w + 1 < CommandLine.arguments.count, let v = Int32(CommandLine.arguments[w + 1]) { eg_go(view.state, v) }
+    window.contentView = view
     window.center()
     window.makeKeyAndOrderFront(nil)
     window.makeFirstResponder(window.contentView)
@@ -338,6 +346,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   if let w = args.firstIndex(of: "--next"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 600 { view.nextWait = v }
   if let r = args.firstIndex(of: "--reply"), r + 1 < args.count { view.nextReply = args[r + 1] }
   if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { view.nextRuns = v }
+  if let w = args.firstIndex(of: "--scene"), w + 1 < args.count, let v = Int32(args[w + 1]) { eg_go(view.state, v) }
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
   }

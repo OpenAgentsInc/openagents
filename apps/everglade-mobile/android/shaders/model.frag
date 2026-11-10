@@ -40,7 +40,8 @@ void main() {
   // The chamber's light, as Model.metal has it.
   vec3 key = clamp(dot(n, normalize(vec3(0.25, 0.9, 0.3))), 0.0, 1.0) * vec3(0.55, 0.72, 1.0) * 1.1;
   vec3 off = vec3(0.0, 1.45, 0.0) - world;
-  vec3 ember = clamp(dot(n, normalize(off)), 0.0, 1.0) * vec3(1.0, 0.5, 0.16) * (2.2 / (1.0 + 0.25 * dot(off, off)));
+  // The ember is the Workshop's (pad.y is the place: 1 the temple, 2 the range, which has no sphere).
+  vec3 ember = clamp(dot(n, normalize(off)), 0.0, 1.0) * vec3(1.0, 0.5, 0.16) * (2.2 / (1.0 + 0.25 * dot(off, off))) * (u.pad.y > 1.5 ? 0.0 : 1.0);
   vec3 fill = clamp(dot(n, normalize(view + vec3(0.0, 0.35, 0.0))), 0.0, 1.0) * vec3(0.85, 0.78, 0.7) * 0.75;
   colour = vec4(encode(albedo * (vec3(0.1, 0.13, 0.2) + key + ember + fill)), 1.0);
 }

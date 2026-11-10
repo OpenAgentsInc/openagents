@@ -6,7 +6,8 @@
 //
 // Touch: a drag that starts on the left side is a stick that moves you; one that starts on the
 // right side looks round; a tap on the right side jumps; a second finger on the right side
-// pinches to zoom. Both thumbs work at once: the fingers are followed here, not by a gesture
+// pinches to zoom. A touch that begins on the list of worlds or on one of a world's buttons is a
+// press wherever it is (face.h eg_claims). Both thumbs work at once: the fingers are followed here, not by a gesture
 // recognizer, which would take them away from each other. Turning the phone looks round too
 // (PhoneTurn.swift) while the scene's Gyro switch is on. The Coax decides what each does: the
 // host only reports where fingers are and how the phone turned.
@@ -34,7 +35,9 @@ final class Deep {
 
 final class WorkshopView: MTKView, MTKViewDelegate {
   let state = eg_new()!
-  var place: Place!
+  var temple: Place!, range: Place!
+  // The place behind the world that is open (face.h eg_place).
+  var place: Place { eg_place(state) == 2 ? range : temple }
   var model: Model?
   var strokes: MTLRenderPipelineState!
   var vertices: MTLBuffer!
@@ -77,8 +80,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let fd = MTLDepthStencilDescriptor(); fd.depthCompareFunction = .always; fd.isDepthWriteEnabled = false
     flat = device.makeDepthStencilState(descriptor: fd)!
     // The app's own parts. Without one of them there is nothing to show, so say which and stop.
-    guard let pl = Place(device: device, color: colorPixelFormat) else { fatalError("Everglade: the temple did not build or its shaders are missing. Rebuild with apps/everglade-mobile/build.sh.") }
-    place = pl
+    guard let pl = Place(device: device, color: colorPixelFormat), let rg = Place(device: device, color: colorPixelFormat, range: true) else { fatalError("Everglade: the temple or the range did not build, or their shaders are missing. Rebuild with apps/everglade-mobile/build.sh.") }
+    temple = pl; range = rg
     guard let atlas = faceAtlas(device) else { fatalError("Everglade: the app's fonts are missing. Rebuild with apps/everglade-mobile/build.sh.") }
     faces = atlas
     let fsd = MTLSamplerDescriptor(); fsd.minFilter = .linear; fsd.magFilter = .linear; fsd.mipFilter = .linear
@@ -88,6 +91,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
           let m = Model(device: device, library: lib, color: colorPixelFormat, pack: pack) else { fatalError("Everglade: the app's everglade2.pack is missing or doesn't hold the player's parts. Rebuild with apps/everglade-mobile/build.sh.") }
     model = m
     eg_pad(state, 0, 0)   // a touch screen: the scene shows the touch hint
+    // "--scene N" opens on world N (face.h eg_scene), for a look at one without a tap.
+    if let w = CommandLine.arguments.firstIndex(of: "--scene"), w + 1 < CommandLine.arguments.count, let v = Int32(CommandLine.arguments[w + 1]) { eg_go(state, v) }
     turn.view = self
     // The simulator has no gyro; "--offer-gyro" shows the switch there, to see it drawn.
     if turn.available || CommandLine.arguments.contains("--offer-gyro") { eg_turn_offer(state) }
@@ -112,7 +117,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     model?.step(state, dt: dt)
     var camera = [Float](repeating: 0, count: 24)
     let seen = eg_camera(state, Float(size.width) / scale, Float(size.height) / scale, scale, &camera) == 1
-    camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time
+    camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time; camera[19] = Float(eg_place(state))
+    let place = self.place
     var you = [Float](repeating: 0, count: 5)
     if eg_you(state, &you) == 1 { camera[20] = you[0]; camera[21] = you[1]; camera[22] = you[2] }
     // The place's uniforms (everglade/workshop/gpu/temple.coax).
@@ -139,7 +145,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
     for t in touches {
       let p = t.location(in: self)
-      if stick == nil && p.x < bounds.width * 0.45 { stick = t; stickFrom = p }
+      // A touch on the list of worlds or on a button is a press, never the stick.
+      if stick == nil && p.x < bounds.width * 0.45 && eg_claims(state, Float(p.x), Float(p.y)) == 0 { stick = t; stickFrom = p }
       else if look == nil { look = t; lookMoved = 0; lookDown = CACurrentMediaTime(); eg_pointer(state, Float(p.x), Float(p.y), 0) }
       else if pinch == nil { pinch = t; pinchSpan = 0; lookMoved = 1000 }
     }

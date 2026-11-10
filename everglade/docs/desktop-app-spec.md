@@ -15,6 +15,10 @@ cloud with a far city's lamps in its gaps.
 - **The technology.** Lines of light inlaid in the polished floor, threads of
   light from each crystal to the golem's sphere, and four holographic
   displays hung between the pylons.
+- **A list of worlds.** The app now opens on a list of four worlds
+  ([spec](app-scenes-spec.md)): the Workshop and the
+  [Archery Range](archery-range-spec.md) run in it; Everglade's main flow and
+  Experimental are cards that say where they run on the web.
 - **On a phone too.** [`apps/everglade-mobile/`](../../apps/everglade-mobile/README.md)
   is the same Workshop as an iOS app, `com.openagents.everglade`, with touch
   controls and no Next issue panel, and as an Android app on a Vulkan host.

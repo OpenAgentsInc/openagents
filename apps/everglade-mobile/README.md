@@ -1,12 +1,22 @@
 # Everglade for mobile
 
 The Everglade app for iOS and Android, bundle id `com.openagents.everglade`.
-It opens on the Golemancers' Workshop, the same scene as
-[Everglade for desktop](../../everglade/docs/desktop-app-spec.md): the temple
-built from Aethyr's architecture kit, drawn by Aethyr's shaders, with your
-character and the shared walking controller.
+It opens on a list of worlds ([spec](../../everglade/docs/app-scenes-spec.md)),
+the same as [Everglade for desktop](../../everglade/docs/desktop-app-spec.md):
 
-Status: **iOS runs in the simulator and Android runs in the emulator.** No real device has run either.
+| World | In the app |
+| --- | --- |
+| Everglade (the main flow) | Not yet: a card says where it runs on the web |
+| The Golemancers' Workshop | Yes: the temple, your character, the shared walking controller |
+| The Archery Range | Yes: shoot for points on foot, from horseback and dragonback ([spec](../../everglade/docs/archery-range-spec.md)) |
+| Everglade Experimental | Not yet: a card says where it runs on the web |
+
+These apps are an experiment beside the main experience, which is the web app.
+
+Status: **the Workshop ran in the iOS simulator and the Android emulator
+before the list of worlds was added. The list and the Archery Range have not
+been built or run on either yet** (written on Linux; the Coax is checked).
+No real device has run any of it.
 
 ## Run it on iOS
 
@@ -48,6 +58,8 @@ the app. See [`android/README.md`](android/README.md) for what it needs.
 
 ## Controls
 
+Tap a world on the list to open it. **Worlds**, under a world's title, comes back.
+
 | Touch | What it does |
 | --- | --- |
 | Drag on the left side | Move. A small push walks, a full push runs |
@@ -58,6 +70,10 @@ the app. See [`android/README.md`](android/README.md) for what it needs.
 
 Both thumbs work at once: you can walk and look together.
 
+The Archery Range adds its own buttons: hold **Draw**, drag to aim and let go
+to loose; **Foot**, **Horse** and **Dragon** change how you shoot; on the
+dragon, **Up** and **Down**.
+
 The app turns with the phone, upright or sideways.
 
 ## What is shared with the desktop app
@@ -66,7 +82,9 @@ Nothing in the scene is written twice.
 
 | Piece | Where |
 | --- | --- |
-| The scene: walking, camera, collision, the text | [`apps/everglade-desktop/workshop.coax`](../everglade-desktop/workshop.coax) |
+| The list of worlds, and which one gets each key and touch | [`apps/everglade-desktop/scenes.coax`](../everglade-desktop/scenes.coax) |
+| The Workshop: walking, camera, collision, the text | [`apps/everglade-desktop/workshop.coax`](../everglade-desktop/workshop.coax) |
+| The Archery Range: the bow, the mounts, scoring | [`apps/everglade-desktop/range.coax`](../everglade-desktop/range.coax), [`everglade/range/`](../../everglade/range) |
 | The temple's parts and where they stand | [`everglade/workshop/temple.coax`](../../everglade/workshop/temple.coax), from [`aethyr/arch/`](../../aethyr/arch/README.md) |
 | The temple's shaders | [`everglade/workshop/gpu/temple.coax`](../../everglade/workshop/gpu/temple.coax), emitted by `coax metal` for iOS and `coax spirv` for Android |
 | Your character | [`apps/everglade-desktop/model.coax`](../everglade-desktop/model.coax) and Everglade II's pack |

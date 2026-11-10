@@ -1,0 +1,678 @@
+// Everglade's apps, the Archery Range scene (everglade/docs/archery-range-spec.md): five butts at
+// 10, 20, 30, 50 and 70 m and two faces on tall poles, shot on foot, from horseback and from
+// dragonback, with every arrow scored and your accuracy kept by distance and by how you shot.
+//
+// Nothing about archery is written twice. The bow and its arrows are Aethyr's (aethyr/action/
+// bow.coax: the draw, the arc under gravity, the launch that lands on the point aimed at); the
+// horse and the dragon are Aethyr's mounts (aethyr/action/mount.coax, its winged flight); you walk
+// with the shared controller (aethyr/walk.coax); what an arrow scores and how sure the aim is are
+// the range's rules (everglade/range/score.coax); where things stand is everglade/range/layout.coax,
+// which the place is also built and lit from (everglade/range/place.coax, gpu/range.coax).
+//
+// This file is the scene: your keys and touches, the three ways of shooting, the camera over your
+// shoulder, the arrows' flight against the faces, and what is drawn over the place: the reticle
+// (its ring is the aim's spread), the arrows, the horse and the dragon as lit strokes (their models
+// come with the Experimental pack: spec section 8), and the tally.
+//
+// Part of scenes.coax's unit, loaded after workshop.coax: it uses its view (WsView, ws_view,
+// ws_eye) and the faces (text.coax).
+//   coax/bin/coax test --library apps/everglade-desktop/scenes.coax --only "range"
+#load "../../everglade/range/score.coax";
+#load "../../aethyr/action/bow.coax";
+#load "../../aethyr/action/mount.coax";
+
+RS_HAND :: 1.45;           // metres over your feet an arrow leaves from (Experimental's XC_BOW_HAND)
+RS_SEAT_HORSE :: 0.95;     // your feet's height in the saddle
+RS_SEAT_DRAGON :: 1.9;     // and on the dragon's back, over its feet
+RS_ARROW :: 0.8;           // an arrow's length as drawn
+RS_AIM_FAR :: 150.0;       // how far the line of sight is followed for something to aim at
+RS_AIM_PAST :: 60.0;       // with nothing in it, the arrow is aimed this far out
+RS_WALLS :: RG_LANES;      // each lane's butt, a box you can't walk or ride through
+// keys: the walker's bits (1 forward, 2 back, 4 left, 8 right, 16 jump, 32 Shift), then 64 the bow
+// held (F) and 128 land (X).
+RS_KEY_BOW :: 64; RS_KEY_LAND :: 128;
+// The boxes a press can begin in.
+RS_BOX_DRAW :: 1; RS_BOX_FOOT :: 2; RS_BOX_HORSE :: 3; RS_BOX_DRAGON :: 4; RS_BOX_UP :: 5; RS_BOX_DOWN :: 6; RS_BOX_RESET :: 7;
+
+Range :: struct {
+  time: f32; started: bool; you: pc.Player; keys: int; look_x: f32; look_y: f32;
+  held: bool; px: f32; py: f32;
+  pad_x: f32; pad_y: f32; touch: bool;
+  safe_left: f32; safe_top: f32; safe_bottom: f32;
+  width: f32; height: f32;                 // the picture's size last frame, points: where the boxes are
+  mode: int;                               // RG_FOOT, RG_HORSE or RG_DRAGON: how you are shooting now
+  horse: [1] Mount; dragon: [1] Mount; wings: WingProfile;
+  jump_was: bool;                          // the jump was held last frame (a dragon beats on the press)
+  draw: [1] BowDraw;
+  bow_touch: bool; up_touch: bool; down_touch: bool;   // a finger holds Draw, Up or Down
+  press_in: int; took: bool;               // the box a press began in; whether the last press let go was a box's
+  arrows: [1] Arrows;
+  shot_far: [ARROWS] f32; shot_mode: [ARROWS] int;     // each arrow in flight: how far its face was, and how it was shot
+  score: [1] RgScore;
+  seed: int = 20261110;                    // the spread's dice: the same shots give the same arrows
+  pace: f32;                               // your speed, a share of the fastest this way of shooting goes
+  last_x: f32; last_z: f32;
+}
+
+// ---- small pieces
+
+rs_put :: (out: []u8, n: int, text: string) -> int { m := n; for c: text { if m < out.count { out[m] = c; m += 1; } } return m; }
+rs_put_int :: (out: []u8, n: int, v: int) -> int {
+  d: [24] u8; k := 0; x := v; if x < 0 { x = 0; }
+  while x > 0 || k == 0 { d[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; if k >= 22 { break; } }
+  m := n; for i: 0..<k { if m < out.count { out[m] = d[k - 1 - i]; m += 1; } }
+  return m;
+}
+// Tenths as "6.4".
+rs_put_tenths :: (out: []u8, n: int, v: int) -> int { m := rs_put_int(out, n, v / 10); m = rs_put(out, m, "."); return rs_put_int(out, m, v % 10); }
+rs_len3 :: (x: f32, y: f32, z: f32) -> f32 { return sqrt(x * x + y * y + z * z); }
+
+// The lanes' butts as the walker's and the mounts' boxes (min x, y, z, max x, y, z each).
+rs_walls :: (out: []f32) -> int {
+  if out.count < RS_WALLS * 6 { return 0; }
+  for i: 0..<RG_LANES {
+    r := RG_LANE_RADIUS[i] + f32(RG_BUTT_MARGIN); o := i * 6;
+    out[o] = RG_LANE_X[i] - r; out[o + 1] = 0; out[o + 2] = RG_LANE_Z[i] - f32(RG_BUTT_DEEP) - 0.2;
+    out[o + 3] = RG_LANE_X[i] + r; out[o + 4] = f32(RG_FACE_Y) + r; out[o + 5] = RG_LANE_Z[i] + 0.1;
+  }
+  return RS_WALLS * 6;
+}
+// The dragon's handling: a horse's, with the body of something four times its length.
+rs_dragon_tune :: () -> MountTune { t: MountTune; t.radius = 1.2; t.half_length = 2.6; t.high = 3.2; t.reach = 5.0; t.side = 2.4; return t; }
+
+rs_start :: (s: []Range) {
+  if s[0].started { return; }
+  s[0].you = pc.walk_place(f32(RG_START_X), 0, f32(RG_START_Z), f32(pc.PI));
+  s[0].you.theta = 0; s[0].you.phi = 1.25;
+  s[0].horse[0] = mount_place(f32(RG_HORSE_X), f32(RG_HORSE_Z), 1.5707963);        // along the track, toward +x
+  s[0].dragon[0] = mount_place_wings(f32(RG_DRAGON_X), f32(RG_DRAGON_Z), f32(pc.PI), 0);
+  s[0].wings = wing_profile_srd(40, 80, 7.5);                                      // Everglade's dragon (everglade/mounts.coax)
+  s[0].wings.vertical.ceiling = f32(RG_CEILING);
+  s[0].mode = RG_FOOT; s[0].last_x = f32(RG_START_X); s[0].last_z = f32(RG_START_Z);
+  s[0].started = true;
+}
+
+// Where your body is: your feet, the way you face, and what you are doing (the walker's act; in a
+// saddle you sit still).
+RsBody :: struct { x: f32; y: f32; z: f32; face: f32; act: int; }
+rs_body :: (s: []Range) -> RsBody {
+  if s[0].mode == RG_HORSE { h := s[0].horse[0]; return RsBody.{x = h.x, y = f32(RS_SEAT_HORSE), z = h.z, face = h.face}; }
+  if s[0].mode == RG_DRAGON { g := s[0].dragon[0]; return RsBody.{x = g.x, y = mount_feet(g, 0) + f32(RS_SEAT_DRAGON), z = g.z, face = g.face}; }
+  f := pc.walk_feet(s[0].you);
+  return RsBody.{x = f.x, y = f.y, z = f.z, face = pc.walk_face(s[0].you), act = pc.walk_act(s[0].you)};
+}
+
+// Changes how you shoot. Into a saddle you are put where the mount stands; out of one you step
+// down at its left. Nobody gets off a dragon in the air. True when it changed.
+rs_ride :: (s: []Range, mode: int) -> bool {
+  rs_start(s);
+  if mode == s[0].mode || mode < 0 || mode >= RG_MODES { return false; }
+  if s[0].mode == RG_DRAGON && mount_aloft(s[0].dragon[0]) { return false; }
+  bow_cancel(s[0].draw[..]);
+  if s[0].mode != RG_FOOT {
+    m := ifx s[0].mode == RG_HORSE then s[0].horse[..] else s[0].dragon[..];
+    side := ifx s[0].mode == RG_HORSE then 1.3f32 else 2.6f32;
+    // its left is +x when it faces +z
+    x := m[0].x + cos(m[0].face) * side; z := m[0].z - sin(m[0].face) * side;
+    theta := s[0].you.theta; phi := s[0].you.phi; zoom := s[0].you.max_dist;
+    s[0].you = pc.walk_place(x, 0, z, m[0].face);
+    s[0].you.theta = theta; s[0].you.phi = phi; s[0].you.max_dist = zoom;
+    m[0].state = MOUNT_FREE; m[0].rider = -1; m[0].speed = 0;
+  }
+  if mode != RG_FOOT {
+    m := ifx mode == RG_HORSE then s[0].horse[..] else s[0].dragon[..];
+    m[0].state = MOUNT_RIDDEN; m[0].rider = 0;
+  }
+  s[0].mode = mode; s[0].jump_was = (s[0].keys & 16) != 0 || s[0].up_touch; s[0].pace = 0;
+  b := rs_body(s); s[0].last_x = b.x; s[0].last_z = b.z;
+  return true;
+}
+
+// ---- the view and the aim
+
+// The camera: the walker's follow camera on foot, the same orbit round you in a saddle (further
+// back), and either way moved up and to your right, so the middle of the picture, where the
+// reticle is, looks past your shoulder and not at the back of your head.
+rs_view :: (s: []Range, width: f32, height: f32, d: f32) -> WsView {
+  at := pc.walk_at(s[0].you); eye := pc.walk_eye(s[0].you);
+  side: f32 = 0.55; lift: f32 = 0.35;
+  if s[0].mode != RG_FOOT {
+    b := rs_body(s); o := pc.orbit_offset(s[0].you);
+    far := s[0].you.max_dist * (ifx s[0].mode == RG_DRAGON then 2.2f32 else 1.4f32);
+    at = pc.Vec3.{x = b.x, y = b.y + 1.5, z = b.z};
+    eye = pc.Vec3.{x = at.x + o.x * far, y = at.y + o.y * far, z = at.z + o.z * far};
+    side = ifx s[0].mode == RG_DRAGON then 1.6f32 else 0.9f32; lift = ifx s[0].mode == RG_DRAGON then 1.2f32 else 0.6f32;
+  }
+  fx := at.x - eye.x; fz := at.z - eye.z; flat := sqrt(fx * fx + fz * fz);
+  if flat > 0.0001 {
+    // right is forward cross up (workshop.coax ws_view)
+    rx := -fz / flat; rz := fx / flat;
+    at.x += rx * side; at.z += rz * side; eye.x += rx * side; eye.z += rz * side;
+  }
+  at.y += lift; eye.y += lift;
+  if eye.y < 0.25 { eye.y = 0.25; }
+  return ws_view(eye, at, width, height, d);
+}
+
+// What the line of sight meets: the point an arrow is aimed at, the face you are shooting at
+// (the one the line meets, else the one nearest it), and how far that face is from your hand.
+RsAim :: struct { point: [3] f32; face: int; far: f32; }
+rs_aim :: (v: WsView, hand: [3] f32) -> RsAim {
+  a: RsAim; a.face = -1;
+  best: f32 = RS_AIM_FAR; found := false;
+  for i: 0..<RG_TARGETS {
+    f := rg_face(i);
+    along := v.fx * f.nx + v.fy * f.ny + v.fz * f.nz;
+    if !(along < -0.001) { continue; }
+    t := ((f.x - v.ex) * f.nx + (f.y - v.ey) * f.ny + (f.z - v.ez) * f.nz) / along;
+    if !(t > 2) || t >= best { continue; }
+    off := rs_len3(v.ex + v.fx * t - f.x, v.ey + v.fy * t - f.y, v.ez + v.fz * t - f.z);
+    if off <= f.radius * 1.5 { best = t; a.face = i; found = true; }
+  }
+  if v.fy < -0.001 {
+    t := (0.02 - v.ey) / v.fy;
+    if t > 2 && t < best { best = t; a.face = -1; found = true; }
+  }
+  if !found { best = RS_AIM_PAST; }
+  a.point = [3] f32.[v.ex + v.fx * best, v.ey + v.fy * best, v.ez + v.fz * best];
+  if a.face < 0 {
+    // the face nearest the line of sight
+    most: f32 = -2;
+    for i: 0..<RG_TARGETS {
+      f := rg_face(i); x := f.x - v.ex; y := f.y - v.ey; z := f.z - v.ez; m := rs_len3(x, y, z);
+      if m > 0.001 { c := (x * v.fx + y * v.fy + z * v.fz) / m; if c > most { most = c; a.face = i; } }
+    }
+  }
+  f := rg_face(a.face);
+  a.far = rs_len3(f.x - hand[0], f.y - hand[1], f.z - hand[2]);
+  return a;
+}
+
+// The next of the spread's dice, -1 to 1.
+rs_dice :: (s: []Range) -> f32 {
+  s[0].seed = (s[0].seed * 1103515245 + 12345) & 0x7fffffff;
+  return cast(f32) ((s[0].seed / 1024) % 2001) / 1000.0 - 1.0;
+}
+// How sure the aim is now (rg_spread): the bow's strength, how long it has been held, your pace.
+rs_spread :: (s: []Range) -> f32 {
+  d := s[0].draw[0];
+  return rg_spread(bow_strength(d, s[0].time), ifx d.on then s[0].time - d.at else 0.0f32, s[0].pace);
+}
+// Let go: an arrow leaves your hand for the point aimed at, off the line by at most the spread.
+rs_loose :: (s: []Range, v: WsView) {
+  if !s[0].draw[0].on { return; }
+  spread := rs_spread(s);
+  strength := bow_release(s[0].draw[..], s[0].time);
+  b := rs_body(s); hand := [3] f32.[b.x, b.y + f32(RS_HAND), b.z];
+  aim := rs_aim(v, hand);
+  x := aim.point[0] - hand[0]; y := aim.point[1] - hand[1]; z := aim.point[2] - hand[2]; far := rs_len3(x, y, z);
+  if !(far > 0.01) { return; }
+  // A point in the unit disc, then that much of the spread across and up the picture.
+  p := rs_dice(s); q := rs_dice(s); if p * p + q * q > 1 { p = p * 0.7071; q = q * 0.7071; }
+  x = x / far + (v.rx * p + v.ux * q) * spread; y = y / far + v.uy * q * spread; z = z / far + (v.rz * p + v.uz * q) * spread;
+  to := [3] f32.[hand[0] + x * far, hand[1] + y * far, hand[2] + z * far];
+  slot := arrow_loose(s[0].arrows[..], 0, hand, arrow_aim_velocity(hand, to, bow_speed(strength)), s[0].time, aim.face, strength);
+  s[0].shot_far[slot] = aim.far; s[0].shot_mode[slot] = s[0].mode;
+}
+
+// Every arrow in flight takes its step: into the first face it crosses (scored by its ring), else
+// into the ground (a miss); one that flies on too long is a miss too.
+rs_arrows :: (s: []Range) {
+  now := s[0].time;
+  for i: 0..<ARROWS {
+    a := s[0].arrows[0].a[i];
+    if a.state != ARROW_FLYING { continue; }
+    if now - a.t0 > f32(ARROW_LONG) { rg_record(s[0].score[..], s[0].shot_mode[i], s[0].shot_far[i], 0, now); continue; }
+    seg := arrow_segment(s[0].arrows[..], i, now);
+    if seg.count == 0 { continue; }
+    first: f32 = 2; points := 0;
+    for k: 0..<RG_TARGETS { st := rg_strike(rg_face(k), seg.p0, seg.p1); if st.hit && st.u < first { first = st.u; points = st.points; } }
+    if first <= 1 { arrow_stop(s[0].arrows[..], i, seg, first, false); rg_record(s[0].score[..], s[0].shot_mode[i], s[0].shot_far[i], points, now); continue; }
+    if seg.p1[1] <= 0 {
+      u: f32 = 0; if seg.p0[1] > 0 { u = seg.p0[1] / (seg.p0[1] - seg.p1[1]); }
+      arrow_stop(s[0].arrows[..], i, seg, u, false); rg_record(s[0].score[..], s[0].shot_mode[i], s[0].shot_far[i], 0, now);
+    }
+  }
+  arrow_tidy(s[0].arrows[..], now);
+}
+
+// ---- a frame of moving
+
+rs_inside :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b { return b; } return v; }
+rs_step :: (s: []Range, dt: f32) {
+  k := s[0].keys;
+  key_x := cast(f32) ((ifx (k & 8) != 0 then 1 else 0) - (ifx (k & 4) != 0 then 1 else 0));
+  key_y := cast(f32) ((ifx (k & 1) != 0 then 1 else 0) - (ifx (k & 2) != 0 then 1 else 0));
+  jump := (k & 16) != 0 || s[0].up_touch; shift := (k & 32) != 0;
+  walls: [RS_WALLS * 6] f32; count := rs_walls(walls[..]);
+  edge: f32 = RG_HALF_WIDE - 0.6; back: f32 = RG_BACK - 0.6; far: f32 = RG_FAR + 0.6;
+  fastest: f32 = 6.0;
+  if s[0].mode == RG_FOOT {
+    p := pc.walk_input(s[0].you, key_x, key_y, s[0].pad_x, s[0].pad_y, pc.walk_runs(shift, false, s[0].pad_x, s[0].pad_y), jump, s[0].look_x, s[0].look_y);
+    p = pc.walk_advance_on(p, dt, walls[0..<0], walls[0..<count], walls[0..<0]);
+    x := rs_inside(p.pos.x, -edge, edge); z := rs_inside(p.pos.z, far, back);
+    if x != p.pos.x || z != p.pos.z { p = pc.walk_constrain(p, x, z); }
+    s[0].you = p;
+  } else {
+    // In a saddle the walker stands still: only its camera's angles turn.
+    s[0].you = pc.walk_input(s[0].you, 0, 0, 0, 0, false, false, s[0].look_x, s[0].look_y);
+    i: MountIn;
+    i.forward = rs_inside(key_y + s[0].pad_y, -1, 1); i.turn = rs_inside(key_x + s[0].pad_x, -1, 1);
+    push := s[0].pad_x * s[0].pad_x + s[0].pad_y * s[0].pad_y;
+    if s[0].mode == RG_HORSE {
+      i.gallop = shift || push > 0.81;
+      t: MountTune;
+      mount_step(s[0].horse[..], t, i, dt, walls[..], RS_WALLS);
+      h := s[0].horse[..];
+      x := rs_inside(h[0].x, -edge, edge); z := rs_inside(h[0].z, far, back);
+      if x != h[0].x || z != h[0].z { h[0].x = x; h[0].z = z; h[0].speed *= 0.5; }
+      fastest = t.gallop;
+    } else {
+      g := s[0].dragon[..];
+      low := mount_feet(g[0], 0) < 3.0;
+      i.jump = jump && !s[0].jump_was; i.climb = jump; i.dive = shift || s[0].down_touch;
+      i.land = (k & RS_KEY_LAND) != 0 || (s[0].down_touch && low && mount_aloft(g[0]));
+      mount_step_wings(g, rs_dragon_tune(), s[0].wings, i, 0, dt, walls[..], RS_WALLS);
+      x := rs_inside(g[0].x, -edge, edge); z := rs_inside(g[0].z, far, back);
+      if x != g[0].x || z != g[0].z { g[0].x = x; g[0].z = z; g[0].wing.x = x; g[0].wing.z = z; }
+      fastest = s[0].wings.fly;
+    }
+  }
+  s[0].jump_was = jump;
+  s[0].look_x = 0; s[0].look_y = 0;
+  // Your pace: the ground covered this frame, as a share of the fastest this way goes.
+  b := rs_body(s);
+  if dt > 0.0001 { s[0].pace = rs_inside(rs_len3(b.x - s[0].last_x, 0, b.z - s[0].last_z) / dt / fastest, 0, 1); }
+  s[0].last_x = b.x; s[0].last_z = b.z;
+}
+
+// ---- what is drawn over the place
+
+RsDot :: struct { ok: bool; x: f32; y: f32; }
+// A world point on the picture, in points; not ok behind the eye.
+rs_dot :: (v: WsView, p: [3] f32) -> RsDot {
+  e := ws_eye(v, WsPoint.{x = p[0], y = p[1], z = p[2]});
+  if !(e.z > 0.3) { return RsDot.{}; }
+  return RsDot.{ok = true, x = (v.cx + e.x * v.focal / e.z) / v.d, y = (v.cz - e.y * v.focal / e.z) / v.d};
+}
+rs_line :: (out: []f32, n: int, v: WsView, a: [3] f32, b: [3] f32, pen: HdPen, kind: int, light: f32) -> int {
+  p := rs_dot(v, a); q := rs_dot(v, b);
+  if !p.ok || !q.ok { return n; }
+  // a line a long way off the picture is not drawn
+  if (p.x < -4000 || p.x > 8000 || p.y < -4000 || p.y > 8000) || (q.x < -4000 || q.x > 8000 || q.y < -4000 || q.y > 8000) { return n; }
+  return hd_line(out, n, p.x, p.y, q.x, q.y, pen, kind, light);
+}
+// A line between two points of a mount's own space (x across, y up, z ahead).
+rs_limb :: (out: []f32, n: int, v: WsView, m: Mount, ground: f32, a: [3] f32, b: [3] f32, pen: HdPen, light: f32) -> int {
+  return rs_line(out, n, v, mount_seat(m, ground, a), mount_seat(m, ground, b), pen, 1, light);
+}
+// The horse, as strokes: back, neck and head, four legs that swing with its gait, a tail.
+rs_horse :: (out: []f32, at: int, v: WsView, m: Mount, pen: HdPen) -> int {
+  n := at; swing := math_sin(m.phase * 6.2831853) * (ifx m.clip == MOUNT_IDLE then 0.0f32 else 0.35f32);
+  n = rs_limb(out, n, v, m, 0, [3] f32.[0, 1.35, -0.9], [3] f32.[0, 1.4, 0.8], pen, 0.9);
+  n = rs_limb(out, n, v, m, 0, [3] f32.[0, 1.4, 0.8], [3] f32.[0, 2.0, 1.3], pen, 0.9);
+  n = rs_limb(out, n, v, m, 0, [3] f32.[0, 2.0, 1.3], [3] f32.[0, 1.8, 1.75], pen, 0.9);
+  n = rs_limb(out, n, v, m, 0, [3] f32.[0, 1.35, -0.9], [3] f32.[0, 0.8, -1.3], pen, 0.6);
+  for side: 0..<2 {
+    x := ifx side == 0 then -0.22f32 else 0.22f32; w := ifx side == 0 then swing else -swing;
+    n = rs_limb(out, n, v, m, 0, [3] f32.[x, 1.35, 0.7], [3] f32.[x, 0, 0.7 + w], pen, 0.7);
+    n = rs_limb(out, n, v, m, 0, [3] f32.[x, 1.3, -0.8], [3] f32.[x, 0, -0.8 - w], pen, 0.7);
+  }
+  return n;
+}
+// The dragon: spine, neck and head, tail, legs, and two wings that beat while it flies.
+rs_dragon :: (out: []f32, at: int, v: WsView, m: Mount, time: f32, pen: HdPen) -> int {
+  n := at; g := mount_feet(m, 0);
+  beat := ifx mount_aloft(m) then math_sin(time * 5.0) * 1.4 else -0.9f32;
+  n = rs_limb(out, n, v, m, g, [3] f32.[0, 1.7, -2.4], [3] f32.[0, 1.9, 2.0], pen, 0.9);
+  n = rs_limb(out, n, v, m, g, [3] f32.[0, 1.9, 2.0], [3] f32.[0, 3.0, 3.2], pen, 0.9);
+  n = rs_limb(out, n, v, m, g, [3] f32.[0, 3.0, 3.2], [3] f32.[0, 2.7, 4.1], pen, 0.9);
+  n = rs_limb(out, n, v, m, g, [3] f32.[0, 1.7, -2.4], [3] f32.[0, 0.9, -5.2], pen, 0.7);
+  for side: 0..<2 {
+    x := ifx side == 0 then -1.0f32 else 1.0f32;
+    n = rs_limb(out, n, v, m, g, [3] f32.[0, 2.0, 0.8], [3] f32.[x * 3.4, 2.4 + beat, 0.6], pen, 0.9);
+    n = rs_limb(out, n, v, m, g, [3] f32.[x * 3.4, 2.4 + beat, 0.6], [3] f32.[x * 6.0, 2.0 + beat * 1.6, -0.6], pen, 0.9);
+    n = rs_limb(out, n, v, m, g, [3] f32.[x * 6.0, 2.0 + beat * 1.6, -0.6], [3] f32.[x * 3.0, 2.0 + beat * 0.6, -1.4], pen, 0.6);
+    n = rs_limb(out, n, v, m, g, [3] f32.[x * 3.0, 2.0 + beat * 0.6, -1.4], [3] f32.[0, 1.8, -1.0], pen, 0.6);
+    n = rs_limb(out, n, v, m, g, [3] f32.[x * 0.6, 1.7, 1.2], [3] f32.[x * 0.7, 0, 1.4], pen, 0.6);
+    n = rs_limb(out, n, v, m, g, [3] f32.[x * 0.6, 1.6, -1.4], [3] f32.[x * 0.7, 0, -1.2], pen, 0.6);
+  }
+  return n;
+}
+
+// The boxes, in points. The three ways of shooting are under the title; Draw, and a dragon's Up
+// and Down, are at the right for a thumb and only on a touch screen.
+rs_box :: (s: []Range, which: int) -> HudBox {
+  left := 36 + s[0].safe_left; top := s[0].safe_top; w := s[0].width; h := s[0].height;
+  if which == RS_BOX_FOOT { return HudBox.{x = left, y = top + 150, width = 78, height = 34}; }
+  if which == RS_BOX_HORSE { return HudBox.{x = left + 86, y = top + 150, width = 78, height = 34}; }
+  if which == RS_BOX_DRAGON { return HudBox.{x = left + 172, y = top + 150, width = 86, height = 34}; }
+  if which == RS_BOX_RESET { return HudBox.{x = left + 266, y = top + 150, width = 70, height = 34}; }
+  if !s[0].touch { return HudBox.{}; }
+  if which == RS_BOX_DRAW { return HudBox.{x = w - 36 - 104, y = h - 70 - s[0].safe_bottom - 104, width = 104, height = 104}; }
+  if s[0].mode != RG_DRAGON { return HudBox.{}; }
+  if which == RS_BOX_UP { return HudBox.{x = w - 36 - 104, y = h - 70 - s[0].safe_bottom - 104 - 112, width = 104, height = 46}; }
+  if which == RS_BOX_DOWN { return HudBox.{x = w - 36 - 104, y = h - 70 - s[0].safe_bottom - 104 - 58, width = 104, height = 46}; }
+  return HudBox.{};
+}
+// The box at a point, 0 none.
+rs_box_at :: (s: []Range, x: f32, y: f32) -> int {
+  for which: 1..<8 {
+    b := rs_box(s, which);
+    if b.width > 0 && x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height { return which; }
+  }
+  return 0;
+}
+rs_button :: (out: []f32, at: int, s: []Range, which: int, label: string, lit_up: bool, pen: HdPen, d: f32) -> int {
+  b := rs_box(s, which); if !(b.width > 0) { return at; }
+  n := hd_rect(out, at, b, pen, ifx lit_up then 2 else 1, ifx lit_up then 1.0f32 else 0.6f32);
+  return eg_text(out, n, label, b.x + (b.width - eg_width(label, 15, EG_TITLE)) * 0.5, b.y + b.height * 0.5 + 5, 15, d, EG_TITLE, ifx lit_up then EG_WHITE else EG_MID);
+}
+
+// One tally as a line of text: "12 arrows   9 hits 75%   58 points   6.4 an arrow".
+rs_tally_text :: (out: []u8, n0: int, t: RgTally) -> int {
+  n := rs_put_int(out, n0, t.shots); n = rs_put(out, n, ifx t.shots == 1 then " arrow   " else " arrows   ");
+  n = rs_put_int(out, n, t.hits); n = rs_put(out, n, ifx t.hits == 1 then " hit " else " hits "); n = rs_put_int(out, n, rg_accuracy(t)); n = rs_put(out, n, "%   ");
+  n = rs_put_int(out, n, t.points); n = rs_put(out, n, " points   "); n = rs_put_tenths(out, n, rg_average_tenths(t)); n = rs_put(out, n, " an arrow");
+  return n;
+}
+
+// One frame of the range with nothing drawn: you move, the bow draws or looses, the arrows fly.
+// width, height and d are the picture's, for the view an arrow is aimed along.
+rs_tick :: (s: []Range, width: f32, height: f32, d: f32, dt: f32) {
+  step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
+  rs_start(s);
+  s[0].time += step; s[0].width = width; s[0].height = height;
+  rs_step(s, step);
+  if !(width > 0) || !(height > 0) || !(d > 0) { return; }
+  // The bow: held it draws, let go it looses. A press of the key and a finger on Draw are the same hold.
+  hold := (s[0].keys & RS_KEY_BOW) != 0 || s[0].bow_touch;
+  if hold && !s[0].draw[0].on { bow_begin(s[0].draw[..], s[0].time, false); }
+  if !hold && s[0].draw[0].on { rs_loose(s, rs_view(s, width, height, d)); }
+  bow_step(s[0].draw[..], step);
+  rs_arrows(s);
+}
+rs_frame :: (s: []Range, out: []f32, width: f32, height: f32, d: f32, dt: f32) -> int {
+  rs_tick(s, width, height, d, dt);
+  if !(width > 0) || !(height > 0) || !(d > 0) { return 0; }
+  v := rs_view(s, width, height, d);
+
+  pen := HdPen.{d = d, cyan = true, top = 0, bottom = height, sans = false};
+  n := 0;
+  // The mounts, and the arrows: one in flight is a bright stroke along its heading, one that has
+  // landed a dimmer one that fades.
+  n = rs_horse(out, n, v, s[0].horse[0], pen);
+  n = rs_dragon(out, n, v, s[0].dragon[0], s[0].time, pen);
+  for i: 0..<ARROWS {
+    a := s[0].arrows[0].a[i];
+    if a.state == ARROW_FLYING {
+      t := a.last - a.t0; p := arrow_pos(a, t); q := arrow_dir(a, t);
+      n = rs_line(out, n, v, [3] f32.[p[0] - q[0] * f32(RS_ARROW), p[1] - q[1] * f32(RS_ARROW), p[2] - q[2] * f32(RS_ARROW)], p, pen, 0, 1);
+    } else if a.state == ARROW_STUCK {
+      light := arrow_alpha(a, s[0].time) * 0.8;
+      n = rs_line(out, n, v, [3] f32.[a.at[0] - a.dir[0] * f32(RS_ARROW), a.at[1] - a.dir[1] * f32(RS_ARROW), a.at[2] - a.dir[2] * f32(RS_ARROW)], a.at, pen, 2, light);
+    }
+  }
+  // The reticle, in the middle: a dot, and a ring as wide as the aim's spread, which closes as the
+  // bow comes to full draw and opens again as your arm tires or your mount runs.
+  cx := width * 0.5; cy := height * 0.5;
+  ring := rs_spread(s) * v.focal / d; if ring < 5 { ring = 5; } if ring > 90 { ring = 90; }
+  drawn := s[0].draw[0].on;
+  for i: 0..<24 {
+    a0 := 6.2831853 * cast(f32) i / 24.0; a1 := 6.2831853 * cast(f32) (i + 1) / 24.0;
+    n = hd_line(out, n, cx + math_cos(a0) * ring, cy + math_sin(a0) * ring, cx + math_cos(a1) * ring, cy + math_sin(a1) * ring, pen, ifx drawn then 2 else 1, ifx drawn then 0.9f32 else 0.45f32);
+  }
+  n = hd_line(out, n, cx - 1.5, cy, cx + 1.5, cy, pen, 0, 1);
+  if drawn {
+    // how drawn the bow is: a bar under the ring
+    st := bow_strength(s[0].draw[0], s[0].time);
+    n = hd_line(out, n, cx - 40, cy + 104, cx - 40 + 80 * st, cy + 104, pen, ifx st >= 0.999 then 2 else 0, 1);
+    n = hd_line(out, n, cx - 40, cy + 110, cx + 40, cy + 110, pen, 3, 0.5);
+  }
+
+  // The words.
+  left := 36 + s[0].safe_left; top := s[0].safe_top; foot := height - 30 - s[0].safe_bottom;
+  n = eg_text(out, n, "Archery Range", left, top + 66, 34, d, EG_TITLE, EG_WHITE);
+  n = rs_button(out, n, s, RS_BOX_FOOT, "Foot", s[0].mode == RG_FOOT, pen, d);
+  n = rs_button(out, n, s, RS_BOX_HORSE, "Horse", s[0].mode == RG_HORSE, pen, d);
+  n = rs_button(out, n, s, RS_BOX_DRAGON, "Dragon", s[0].mode == RG_DRAGON, pen, d);
+  n = rs_button(out, n, s, RS_BOX_RESET, "Reset", false, pen, d);
+  n = rs_button(out, n, s, RS_BOX_DRAW, ifx drawn then "Loose" else "Draw", drawn, pen, d);
+  n = rs_button(out, n, s, RS_BOX_UP, "Up", s[0].up_touch, pen, d);
+  n = rs_button(out, n, s, RS_BOX_DOWN, "Down", s[0].down_touch, pen, d);
+  words: [200] u8; k := 0;
+  all := rg_sum(s[0].score[0], -1, -1);
+  k = rs_tally_text(words[..], 0, all);
+  n = eg_text(out, n, cast(string) words[0..<k], left, top + 214, 16, d, EG_BODY, EG_WHITE);
+  k = rs_put(words[..], 0, "In a row "); k = rs_put_int(words[..], k, s[0].score[0].run); k = rs_put(words[..], k, "   best "); k = rs_put_int(words[..], k, s[0].score[0].best_run);
+  k = rs_put(words[..], k, "   golds "); k = rs_put_int(words[..], k, all.golds);
+  n = eg_text(out, n, cast(string) words[0..<k], left, top + 236, 14, d, EG_BODY, EG_MID);
+  // This way of shooting, band by band: only the bands you have shot in.
+  name := ifx s[0].mode == RG_HORSE then "From horseback" else ifx s[0].mode == RG_DRAGON then "From dragonback" else "On foot";
+  n = eg_text(out, n, name, left, top + 268, 15, d, EG_TITLE, EG_MID);
+  row := 0;
+  for b: 0..<RG_BANDS {
+    t := rg_sum(s[0].score[0], s[0].mode, b); if t.shots == 0 { continue; }
+    if b < RG_BANDS - 1 { k = rs_put(words[..], 0, "to "); k = rs_put_int(words[..], k, cast(int) RG_BAND_TO[b]); k = rs_put(words[..], k, " m   "); }
+    else { k = rs_put(words[..], 0, "past "); k = rs_put_int(words[..], k, cast(int) RG_BAND_TO[RG_BANDS - 2]); k = rs_put(words[..], k, " m   "); }
+    k = rs_tally_text(words[..], k, t);
+    n = eg_text(out, n, cast(string) words[0..<k], left, top + 290 + 20 * f32(row), 13, d, EG_BODY, EG_DIM);
+    row += 1;
+  }
+  // The arrow that last landed, over the reticle, for a while.
+  since := s[0].time - s[0].score[0].last_at;
+  if s[0].score[0].last_points >= 0 && since < 2.5 {
+    if s[0].score[0].last_points > 0 { k = rs_put_int(words[..], 0, s[0].score[0].last_points); } else { k = rs_put(words[..], 0, "Miss"); }
+    big := cast(string) words[0..<k]; bw := eg_width(big, 44, EG_TITLE);
+    n = eg_text(out, n, big, cx - bw * 0.5, cy - 120, 44, d, EG_TITLE, ifx s[0].score[0].last_points >= 9 then EG_ACCENT else EG_WHITE);
+    k = rs_put(words[..], 0, "at "); k = rs_put_int(words[..], k, cast(int) (s[0].score[0].last_distance + 0.5)); k = rs_put(words[..], k, " m");
+    small := cast(string) words[0..<k];
+    n = eg_text(out, n, small, cx - eg_width(small, 15, EG_BODY) * 0.5, cy - 98, 15, d, EG_BODY, EG_MID);
+  }
+  if !s[0].touch {
+    n = eg_text(out, n, "W A S D move    Hold F to draw, let go to loose    1 foot  2 horse  3 dragon    R reset    Esc worlds", left, foot - 20, 14, d, EG_BODY, EG_DIM);
+    hint := ifx s[0].mode == RG_DRAGON then "Dragon: Space beats and climbs    Shift dives    X lands" else ifx s[0].mode == RG_HORSE then "Horse: W walks on, Shift gallops, A and D turn, S slows" else "Space jump    Shift walk    Drag look    Wheel zoom";
+    n = eg_text(out, n, hint, left, foot, 14, d, EG_BODY, EG_DIM);
+  } else {
+    n = eg_text(out, n, "Left thumb moves. Hold Draw, drag to aim, let go to loose.", left, foot, 14, d, EG_BODY, EG_DIM);
+  }
+  return n;
+}
+
+// ---- the scene's face (scenes.coax calls these)
+
+// Where you are and the view, as workshop.coax's ws_you and ws_camera give them.
+rs_you :: (s: []Range, out: []f32) -> bool {
+  if out.count < 5 || !s[0].started { return false; }
+  b := rs_body(s);
+  out[0] = b.x; out[1] = b.y; out[2] = b.z; out[3] = b.face; out[4] = cast(f32) b.act;
+  return true;
+}
+rs_camera :: (s: []Range, width: f32, height: f32, d: f32, out: []f32) -> bool {
+  if out.count < 16 || !s[0].started { return false; }
+  v := rs_view(s, width, height, d);
+  out[0] = v.ex; out[1] = v.ey; out[2] = v.ez; out[3] = 0;
+  out[4] = v.rx; out[5] = 0; out[6] = v.rz; out[7] = 0;
+  out[8] = v.ux; out[9] = v.uy; out[10] = v.uz; out[11] = 0;
+  out[12] = v.fx; out[13] = v.fy; out[14] = v.fz; out[15] = v.focal;
+  return true;
+}
+// A key held or let go, in the web realms' codes (workshop.coax ws_key), and the range's own: F the
+// bow, X land, 1 2 3 the ways of shooting, R the tally cleared. -1: every key is let go.
+rs_key :: (s: []Range, key: int, down: bool) -> bool {
+  if key == -1 { s[0].keys = 0; s[0].held = false; s[0].look_x = 0; s[0].look_y = 0; s[0].bow_touch = false; s[0].up_touch = false; s[0].down_touch = false; bow_cancel(s[0].draw[..]); return true; }
+  bit := 0;
+  if key == 87 || key == 119 { bit = 1; }
+  if key == 83 || key == 115 { bit = 2; }
+  if key == 65 || key == 97 { bit = 4; }
+  if key == 68 || key == 100 { bit = 8; }
+  if key == 32 { bit = 16; }
+  if key == -13 { bit = 32; }
+  if key == 70 || key == 102 { bit = RS_KEY_BOW; }
+  if key == 88 || key == 120 { bit = RS_KEY_LAND; }
+  if bit != 0 { if down { s[0].keys |= bit; } else { s[0].keys = (s[0].keys | bit) - bit; } return true; }
+  if down {
+    if key == 49 { changed := rs_ride(s, RG_FOOT); return true; }
+    if key == 50 { changed := rs_ride(s, RG_HORSE); return true; }
+    if key == 51 { changed := rs_ride(s, RG_DRAGON); return true; }
+    if key == 82 || key == 114 { s[0].score[0] = RgScore.{}; return true; }
+    if key == -4 { s[0].look_x += 0.12; return true; }
+    if key == -5 { s[0].look_x -= 0.12; return true; }
+    if key == -6 { s[0].look_y += 0.08; return true; }
+    if key == -7 { s[0].look_y -= 0.08; return true; }
+  }
+  return false;
+}
+// A press: phase 0 down, 1 moved, 2 up; points from the top left. A press that begins in a box is
+// that box's (Draw is held, the rest act when let go on them); a drag looks round either way, so
+// a thumb on Draw aims as it holds.
+rs_pointer :: (s: []Range, x: f32, y: f32, phase: int) {
+  if phase == 0 {
+    s[0].held = true; s[0].press_in = rs_box_at(s, x, y); s[0].took = false;
+    if s[0].press_in == RS_BOX_DRAW { s[0].bow_touch = true; }
+    if s[0].press_in == RS_BOX_UP { s[0].up_touch = true; }
+    if s[0].press_in == RS_BOX_DOWN { s[0].down_touch = true; }
+  }
+  if phase == 1 && s[0].held { s[0].look_x -= (x - s[0].px) * WS_LOOK; s[0].look_y -= (y - s[0].py) * WS_LOOK; }
+  if phase == 2 {
+    s[0].held = false; s[0].took = s[0].press_in != 0;
+    s[0].bow_touch = false; s[0].up_touch = false; s[0].down_touch = false;
+    if s[0].press_in != 0 && rs_box_at(s, x, y) == s[0].press_in {
+      if s[0].press_in == RS_BOX_FOOT { changed := rs_ride(s, RG_FOOT); }
+      if s[0].press_in == RS_BOX_HORSE { changed := rs_ride(s, RG_HORSE); }
+      if s[0].press_in == RS_BOX_DRAGON { changed := rs_ride(s, RG_DRAGON); }
+      if s[0].press_in == RS_BOX_RESET { s[0].score[0] = RgScore.{}; }
+    }
+    s[0].press_in = 0;
+  }
+  s[0].px = x; s[0].py = y;
+}
+rs_pad :: (s: []Range, x: f32, y: f32) {
+  s[0].touch = true;
+  s[0].pad_x = ifx x == x then rs_inside(x, -1, 1) else 0.0f32;
+  s[0].pad_y = ifx y == y then rs_inside(y, -1, 1) else 0.0f32;
+}
+rs_wheel :: (s: []Range, dy: f32) { rs_start(s); s[0].you = pc.walk_zoom(s[0].you, dy * 0.01); }
+
+// ---- checks
+
+// Stands you at (x, z) on foot, looking straight downrange and level.
+rs_test_stand :: (s: []Range, x: f32, z: f32) {
+  rs_start(s);
+  s[0].you = pc.walk_place(x, 0, z, f32(pc.PI)); s[0].you.theta = 0; s[0].you.phi = 1.5707963;
+}
+// Flies every arrow to its end.
+rs_test_fly :: (s: []Range) { for i: 0..<400 { s[0].time += 0.02; rs_arrows(s); } }
+
+#test "range: you arrive behind the line facing the butts, on foot, with the mounts waiting" {
+  s: [1] Range; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32;
+  n := rs_frame(s[..], out[..], 1280, 800, 2, 0.016);
+  #assert n > 60 && n <= WS_MAX_VERTICES && n % 6 == 0 && s[0].started && s[0].mode == RG_FOOT;
+  b := rs_body(s[..]); v := rs_view(s[..], 1280, 800, 1);
+  #assert b.z > RG_LINE_Z && v.fz < -0.5 && v.ez > b.z;
+  #assert s[0].horse[0].on && s[0].dragon[0].on && s[0].dragon[0].flies && !mount_aloft(s[0].dragon[0]);
+  small: [125] f32; small[120] = 911;
+  m := rs_frame(s[..], small[0..<120], 1280, 800, 2, 0.016); #assert m <= 10 && small[120] == 911;
+  #assert rs_frame(s[..], out[..], 0, 800, 2, 0.016) == 0;
+}
+#test "range: the line of sight on a face aims at it, and a full draw from the line lands on it" {
+  s: [1] Range; rs_test_stand(s[..], RG_LANE_X[1], 0);
+  f := rg_face(1);
+  // The view straight at the 20 m face's middle.
+  v := ws_view(pc.Vec3.{x = f.x, y = f.y, z = 2}, pc.Vec3.{x = f.x, y = f.y, z = 0}, 1280, 800, 1);
+  aim := rs_aim(v, [3] f32.[f.x, f32(RS_HAND), 0]);
+  #assert aim.face == 1 && aim.far > 19.9 && aim.far < 20.2 && abs(aim.point[2] - f.z) < 0.01 && abs(aim.point[1] - f.y) < 0.01;
+  bow_begin(s[0].draw[..], s[0].time, false); s[0].time += 1.0;
+  rs_loose(s[..], v);
+  #assert s[0].arrows[0].loosed == 1 && !s[0].draw[0].on;
+  rs_test_fly(s[..]);
+  all := rg_sum(s[0].score[0], -1, -1);
+  // The surest aim is a quarter of a metre wide at 70 m: at 20 m it is inside the red.
+  #assert all.shots == 1 && all.hits == 1 && s[0].score[0].last_points >= 7 && rg_sum(s[0].score[0], RG_FOOT, 1).shots == 1;
+}
+#test "range: an undrawn bow falls short of the 70 m face, and an arrow into the ground is a miss" {
+  s: [1] Range; rs_test_stand(s[..], RG_LANE_X[4], 0);
+  f := rg_face(4);
+  v := ws_view(pc.Vec3.{x = f.x, y = f.y, z = 2}, pc.Vec3.{x = f.x, y = f.y, z = 0}, 1280, 800, 1);
+  bow_begin(s[0].draw[..], s[0].time, false);   // let go at once: a slack bow
+  rs_loose(s[..], v);
+  rs_test_fly(s[..]);
+  all := rg_sum(s[0].score[0], -1, -1);
+  #assert all.shots == 1 && all.hits == 0 && s[0].score[0].last_points == 0 && s[0].score[0].run == 0 && rg_sum(s[0].score[0], RG_FOOT, 4).shots == 1;
+}
+#test "range: the aim is surer at full draw than half drawn, and a gallop widens it" {
+  s: [1] Range; rs_start(s[..]);
+  bow_begin(s[0].draw[..], s[0].time, false); s[0].time += 0.2; half := rs_spread(s[..]);
+  s[0].time += 0.8; full := rs_spread(s[..]);
+  s[0].pace = 1; running := rs_spread(s[..]);
+  #assert full < half && running > full && full == RG_SPREAD_BEST;
+}
+#test "range: 2 puts you in the saddle, W and Shift gallop the horse, and you shoot from it as from horseback" {
+  s: [1] Range; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; rs_start(s[..]);
+  #assert rs_key(s[..], 50, true) && s[0].mode == RG_HORSE && mount_ridden(s[0].horse[0]);
+  b := rs_body(s[..]); #assert b.x == RG_HORSE_X && b.z == RG_HORSE_Z && b.y == RS_SEAT_HORSE;
+  #assert rs_key(s[..], 119, true) && rs_key(s[..], -13, true);
+  for i: 0..<150 { rs_tick(s[..], 1280, 800, 2, 0.016); }
+  #assert s[0].horse[0].x > RG_HORSE_X + 10 && s[0].horse[0].speed > 8 && s[0].pace > 0.5;
+  // It stops at the fence.
+  for i: 0..<600 { rs_tick(s[..], 1280, 800, 2, 0.016); }
+  #assert s[0].horse[0].x <= RG_HALF_WIDE - 0.5;
+  #assert rs_key(s[..], -1, true);
+  #assert rs_key(s[..], 102, true); n := rs_frame(s[..], out[..], 1280, 800, 2, 0.016); #assert s[0].draw[0].on;
+  for i: 0..<60 { rs_tick(s[..], 1280, 800, 2, 0.016); }
+  #assert rs_key(s[..], 102, false); n = rs_frame(s[..], out[..], 1280, 800, 2, 0.016);
+  #assert !s[0].draw[0].on && s[0].arrows[0].loosed == 1 && s[0].shot_mode[0] == RG_HORSE;
+  // 1 steps you down beside it, and it stays where you left it.
+  hx := s[0].horse[0].x;
+  #assert rs_key(s[..], 49, true) && s[0].mode == RG_FOOT && !mount_ridden(s[0].horse[0]) && s[0].horse[0].x == hx;
+  f := rs_body(s[..]); #assert abs(f.x - hx) < 2 && f.y == 0;
+}
+#test "range: 3 mounts the dragon, Space takes it off, it stays under the ceiling and inside the fence, and nobody gets off in the air" {
+  s: [1] Range; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; rs_start(s[..]);
+  #assert rs_key(s[..], 51, true) && s[0].mode == RG_DRAGON;
+  #assert rs_key(s[..], 32, true) && rs_key(s[..], 119, true);
+  for i: 0..<300 { rs_tick(s[..], 1280, 800, 2, 0.016); }
+  #assert mount_aloft(s[0].dragon[0]) && mount_feet(s[0].dragon[0], 0) > 3;
+  #assert !rs_ride(s[..], RG_FOOT) && s[0].mode == RG_DRAGON;
+  for i: 0..<800 { rs_tick(s[..], 1280, 800, 2, 0.016); }
+  g := s[0].dragon[0];
+  #assert mount_feet(g, 0) <= RG_CEILING + 0.5 && g.x >= -RG_HALF_WIDE && g.x <= RG_HALF_WIDE && g.z >= RG_FAR && g.z <= RG_BACK;
+  b := rs_body(s[..]); #assert b.y > 3;
+  // X brings it down, and then you can get off.
+  #assert rs_key(s[..], -1, true) && rs_key(s[..], 120, true);
+  for i: 0..<700 { rs_tick(s[..], 1280, 800, 2, 0.016); }
+  #assert !mount_aloft(s[0].dragon[0]) && rs_ride(s[..], RG_FOOT);
+}
+#test "range: a press on Horse rides, on Reset clears the tally, and a finger on Draw holds the bow until it lifts" {
+  s: [1] Range; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32;
+  rs_pad(s[..], 0, 0);
+  n := rs_frame(s[..], out[..], 402, 874, 3, 0.016);
+  h := rs_box(s[..], RS_BOX_HORSE); #assert h.width > 0 && rs_box_at(s[..], h.x + 5, h.y + 5) == RS_BOX_HORSE && rs_box_at(s[..], 200, 500) == 0;
+  rs_pointer(s[..], h.x + 5, h.y + 5, 0); rs_pointer(s[..], h.x + 5, h.y + 5, 2);
+  #assert s[0].mode == RG_HORSE && s[0].took;
+  dr := rs_box(s[..], RS_BOX_DRAW); #assert dr.width > 0 && dr.x + dr.width <= 402 && dr.x > 201;
+  rs_pointer(s[..], dr.x + 20, dr.y + 20, 0); n = rs_frame(s[..], out[..], 402, 874, 3, 0.016);
+  #assert s[0].bow_touch && s[0].draw[0].on;
+  theta := s[0].you.theta;
+  rs_pointer(s[..], dr.x - 40, dr.y + 20, 1); n = rs_frame(s[..], out[..], 402, 874, 3, 0.5);
+  #assert s[0].you.theta != theta && s[0].draw[0].on;
+  rs_pointer(s[..], dr.x - 40, dr.y + 20, 2); n = rs_frame(s[..], out[..], 402, 874, 3, 0.016);
+  #assert !s[0].draw[0].on && s[0].arrows[0].loosed == 1 && s[0].took;
+  rg_record(s[0].score[..], RG_FOOT, 10, 9, 1);
+  r := rs_box(s[..], RS_BOX_RESET); rs_pointer(s[..], r.x + 5, r.y + 5, 0); rs_pointer(s[..], r.x + 5, r.y + 5, 2);
+  #assert rg_sum(s[0].score[0], -1, -1).shots == 0;
+  // A drag that begins on nothing is a look, not a box's.
+  rs_pointer(s[..], 300, 500, 0); rs_pointer(s[..], 300, 500, 2); #assert !s[0].took;
+  // Up and Down are a dragon's, and only on a touch screen.
+  #assert rs_box(s[..], RS_BOX_UP).width == 0; changed := rs_ride(s[..], RG_DRAGON); #assert rs_box(s[..], RS_BOX_UP).width > 0 && rs_box(s[..], RS_BOX_DOWN).width > 0;
+}
+#test "range: the host reads where you stand and the view only once you have started; the butts stop you" {
+  s: [1] Range; you: [5] f32; cam: [16] f32;
+  #assert !rs_you(s[..], you[..]) && !rs_camera(s[..], 1280, 800, 2, cam[..]);
+  rs_test_stand(s[..], RG_LANE_X[0], -6);
+  #assert rs_you(s[..], you[..]) && you[2] == -6 && rs_camera(s[..], 1280, 800, 2, cam[..]) && cam[15] > 0;
+  #assert rs_key(s[..], 119, true);
+  for i: 0..<400 { rs_step(s[..], 0.016); }
+  // The 10 m butt's face is at z = -10; your body is 0.3 m round.
+  #assert s[0].you.pos.z > RG_LANE_Z[0] && s[0].you.pos.z < RG_LANE_Z[0] + 1.0;
+}
