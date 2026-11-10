@@ -3119,7 +3119,9 @@ LAB_STAGE_TURN :: 2;
 LAB_STAGE_SLOTS :: 5;
 lab_stage_site :: (s: [] Lab) -> building.BuildingFrame { return building.BuildingFrame.{x = s[0].stage_x, z = s[0].stage_z, turn = s[0].stage_turn}; }
 lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
-  t := lab_stage_t(s); site := lab_stage_site(s); g := xterrain.exp_height(site.x, site.z);
+  t := lab_stage_t(s);
+  s[0].creator[0].clock = t;   // the page clock is the stage's too, so the builders' trips (cc_crew_set) land on the same frames every run
+  site := lab_stage_site(s); g := xterrain.exp_height(site.x, site.z);
   // the houses: each a build site at its progress (aethyr/world/build-site.coax, #13106)
   h: [LAB_STAGE_SLOTS] hws.HwsHouse; n := hws.hws_houses(s[0].stage, t, 0, 0, h[..]);
   for i: 0..<LAB_STAGE_SLOTS {

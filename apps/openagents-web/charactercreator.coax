@@ -1953,7 +1953,7 @@ build_review_page :: (facts:string)->bool {
 BUILD_REVIEW_AT :: [2]f32.[-60,-38];   // the open grass south of the glade's village, where the time-lapses stand (fivelab.coax LAB_STAGE_X)
 build_review_frame :: (s:[]Creator) {
  if !s[0].build_review {return;}
- if s[0].build_t0<0 {s[0].build_t0=s[0].clock;}
+ if s[0].build_t0<0 {s[0].clock=0;s[0].build_t0=0;}   // from 0, so the builder's trips land on the same frames every recording
  f:=building.BuildingFrame.{x=BUILD_REVIEW_AT[0],z=BUILD_REVIEW_AT[1],turn=2};g:=meadow.exp_height(f.x,f.z);
  // the player stands off the front-left corner; the camera looks on from the front right, drifting a little
  p:=building.building_point(f,-3.2,4.6);s[0].player_x=p[0];s[0].player_z=p[1];
