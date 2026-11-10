@@ -85,6 +85,12 @@ int32_t nxp_take_decision(void *panel, uint8_t *out, int32_t cap);
 int32_t nxp_state(void *panel);
 // Ends the agent's process group; call when the app quits.
 void nxp_close(void *panel);
+// The Golems board (golem-board.coax): every agent on this Mac. nxp_frame's panel4 holds 8 floats:
+// Next issue's box, then the board's. When nxp_golems_due says so, run everglade-golems snapshot
+// --now NOW and hand its stdout to nxp_golems. nxp_golems_open opens the board (--golems).
+int32_t nxp_golems_due(void *panel, int64_t now);
+void nxp_golems(void *panel, const uint8_t *text, int32_t length, int64_t now);
+void nxp_golems_open(void *panel);
 
 // The place (everglade/workshop/temple.coax, place-face.c): the temple's parts as one mesh, the
 // records that stand them, and the draws, built once from Aethyr's architecture kit.

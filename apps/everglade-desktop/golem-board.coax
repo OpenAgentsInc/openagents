@@ -1,0 +1,265 @@
+// golem-board.coax: the Golems board in the Workshop. Every agent working on this Mac, live:
+// the Autopilot coders, the Claude Code sessions you run in a terminal and the subagents they
+// start, wherever they were started. The host runs everglade-golems (golems.coax) every few
+// seconds and hands its lines to gb_take; the board draws them over the left of the window.
+//
+// A card a golem: where it works (#ISSUE for an Autopilot worktree), its model, how long since it
+// last did anything, what it was asked, its coding steps as seven pips (read, edited, built,
+// tested, committed, pushed, closed) and the last thing it did. Click a card for its latest
+// messages; All goes back. Loaded into next.coax's unit; drawn by np_frame.
+
+GB_RAW :: 65536;
+GB_MAX :: 32;
+GB_W :: 540.0; GB_CARD :: 86.0; GB_PAD :: 16.0;
+GB_EVERY_OPEN :: 3;      // seconds between snapshots while the board is open
+GB_EVERY_SHUT :: 30;     // and while it is shut, for the count on its button
+GB_STEPS :: [7] string.["read", "edited", "built", "tested", "committed", "pushed", "closed"];
+
+GolemBoard :: struct {
+  open: bool;
+  raw: [GB_RAW] u8; n: int;            // the last snapshot, as everglade-golems printed it
+  at: int;                             // when it came
+  asked: int; pending: bool;           // when the host was last asked, and whether it is still out
+  line: [GB_MAX] int; count: int;      // where each G line starts
+  working: int; waiting: int;
+  sel: int = -1; scroll: int;
+  down: int;                           // what a press began on: 1 the button, 2 Close or All, 10+i a card
+}
+
+gb_field :: (line: string, i: int) -> string {
+  k := 0; from := 0;
+  for c, j: line { if c == '\t' { if k == i { return line[from..<j]; } k += 1; from = j + 1; } }
+  return ifx k == i then line[from..<line.count] else "";
+}
+gb_line_at :: (raw: string, at: int) -> string { end := at; while end < raw.count && raw[end] != '\n' { end += 1; } return raw[at..<end]; }
+gb_num :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return v; } v = v * 10 + cast(int) (c - '0'); } return v; }
+
+// A snapshot arrives: the G lines are indexed and counted.
+gb_take :: (b: []GolemBoard, text: string, now: int) {
+  b[0].pending = false;
+  m := 0; for c: text { if m >= GB_RAW { break; } b[0].raw[m] = c; m += 1; }
+  b[0].n = m; b[0].at = now; b[0].count = 0; b[0].working = 0; b[0].waiting = 0;
+  raw := cast(string) b[0].raw[0..<b[0].n];
+  at := 0;
+  while at < raw.count {
+    l := gb_line_at(raw, at);
+    if l.count > 2 && l[0] == 'G' && l[1] == '\t' && b[0].count < GB_MAX {
+      b[0].line[b[0].count] = at; b[0].count += 1;
+      st := gb_field(l, 2); if st == "working" { b[0].working += 1; } else if st == "waiting" { b[0].waiting += 1; }
+    }
+    at += l.count + 1;
+  }
+  if b[0].sel >= b[0].count { b[0].sel = -1; }
+}
+// Whether the host should run everglade-golems now; asking marks it out until gb_take.
+gb_due :: (b: []GolemBoard, now: int) -> bool {
+  if b[0].pending && now - b[0].asked < 20 { return false; }
+  every := ifx b[0].open then GB_EVERY_OPEN else GB_EVERY_SHUT;
+  if b[0].asked > 0 && now - b[0].asked < every { return false; }
+  b[0].asked = now; b[0].pending = true;
+  return true;
+}
+gb_golem :: (b: []GolemBoard, i: int) -> string { return gb_line_at(cast(string) b[0].raw[0..<b[0].n], b[0].line[i]); }
+
+gb_button :: (width: f32) -> HudBox { a := np_auto_box(width); return HudBox.{x = a.x - 12 - 150, y = a.y, width = 150, height = a.height}; }
+gb_panel :: (width: f32, height: f32) -> HudBox {
+  w := f32(GB_W); if w > width - 2 * f32(NP_MARGIN) { w = width - 2 * f32(NP_MARGIN); }
+  return HudBox.{x = f32(NP_MARGIN), y = f32(NP_MARGIN), width = w, height = height - 2 * f32(NP_MARGIN)};
+}
+gb_close_box :: (p: HudBox) -> HudBox { return HudBox.{x = p.x + p.width - 76, y = p.y + 10, width = 64, height = 26}; }
+gb_list_top :: (p: HudBox) -> f32 { return p.y + 56; }
+gb_card :: (p: HudBox, row: int) -> HudBox { return HudBox.{x = p.x + f32(GB_PAD), y = gb_list_top(p) + f32(row) * (GB_CARD + 8), width = p.width - 2 * f32(GB_PAD), height = f32(GB_CARD)}; }
+gb_rows :: (p: HudBox) -> int { r := cast(int) ((p.y + p.height - 12 - gb_list_top(p)) / (GB_CARD + 8)); return ifx r < 1 then 1 else r; }
+
+// The longest start of text that fits in width, as a string over text's bytes.
+gb_fit :: (text: string, width: f32, size: f32, face: int) -> string {
+  if eg_width(text, size, face) <= width { return text; }
+  lo := 0; hi := text.count;
+  while lo < hi { mid := (lo + hi + 1) / 2; if eg_width(text[0..<mid], size, face) <= width - eg_width("...", size, face) { lo = mid; } else { hi = mid - 1; } }
+  return text[0..<lo];
+}
+gb_text_fit :: (out: []f32, n: int, text: string, x: f32, base: f32, width: f32, size: f32, d: f32, face: int, kind: int) -> int {
+  shown := gb_fit(text, width, size, face);
+  m := eg_text(out, n, shown, x, base, size, d, face, kind);
+  if shown.count < text.count { m = eg_text(out, m, "...", x + eg_width(shown, size, face), base, size, d, face, kind); }
+  return m;
+}
+gb_age :: (seconds: int, out: []u8) -> string {
+  k := 0;
+  if seconds < 60 { k = np_put_int(out, 0, seconds); k = np_put(out, k, "s ago"); }
+  else if seconds < 3600 { k = np_put_int(out, 0, seconds / 60); k = np_put(out, k, "m ago"); }
+  else { k = np_put_int(out, 0, seconds / 3600); k = np_put(out, k, "h ago"); }
+  return cast(string) out[0..<k];
+}
+// claude-sonnet-5-5 reads as Sonnet 5.5.
+gb_model :: (model: string, out: []u8) -> string {
+  if model.count < 8 || model[0..<7] != "claude-" { return model; }
+  rest := model[7..<model.count]; k := 0; dash := 0;
+  for c: rest {
+    if c == '-' { dash += 1; if dash == 1 { if k < out.count { out[k] = ' '; k += 1; } } else if k < out.count { out[k] = '.'; k += 1; } continue; }
+    if k < out.count { out[k] = ifx k == 0 && c >= 'a' && c <= 'z' then c - 32 else c; k += 1; }
+  }
+  return cast(string) out[0..<k];
+}
+gb_status_kind :: (status: string) -> int { return ifx status == "working" then EG_ACCENT else ifx status == "waiting" then EG_WHITE else EG_DIM; }
+
+// The steps as pips; the latest reached is named.
+gb_pips :: (out: []f32, n: int, steps: int, x: f32, y: f32, pen: HdPen, d: f32) -> int {
+  m := n; last := -1;
+  for i: 0..<7 {
+    on := (steps & (1 << i)) != 0; if on { last = i; }
+    m = hd_rect(out, m, HudBox.{x = x + f32(i) * 16, y = y, width = 10, height = 10}, pen, ifx on then 2 else 1, ifx on then 1.0f32 else 0.35f32);
+  }
+  if last >= 0 { m = eg_text(out, m, GB_STEPS[last], x + 7 * 16 + 6, y + 10, 13, d, EG_BODY, EG_MID); }
+  return m;
+}
+
+gb_frame :: (b: []GolemBoard, out: []f32, n: int, width: f32, height: f32, d: f32, pen: HdPen, now: int, panel: []f32) -> int {
+  m := n;
+  bb := gb_button(width);
+  m = hd_rect(out, m, bb, pen, ifx b[0].open then 2 else 1, ifx b[0].open then 1.0f32 else 0.7f32);
+  lb: [32] u8; k := np_put(lb[..], 0, "Golems "); k = np_put_int(lb[..], k, b[0].working); if b[0].count > b[0].working { k = np_put(lb[..], k, "/"); k = np_put_int(lb[..], k, b[0].count); }
+  label := cast(string) lb[0..<k];
+  m = eg_text(out, m, label, bb.x + (bb.width - eg_width(label, 16, EG_TITLE)) * 0.5, bb.y + 23, 16, d, EG_TITLE, ifx b[0].working > 0 then EG_WHITE else EG_MID);
+  if !b[0].open { return m; }
+  p := gb_panel(width, height);
+  if p.height < 240 || p.width < 280 { return m; }
+  if panel.count >= 8 { panel[4] = p.x; panel[5] = p.y; panel[6] = p.width; panel[7] = p.height; }
+  m = hd_rect(out, m, p, pen, 1, 0.8);
+  c := gb_close_box(p);
+  m = hd_rect(out, m, c, pen, 1, 0.7);
+  back := b[0].sel >= 0;
+  cl := ifx back then "All" else "Close";
+  m = eg_text(out, m, cl, c.x + (c.width - eg_width(cl, 14, EG_BODY)) * 0.5, c.y + 18, 14, d, EG_BODY, EG_WHITE);
+  m = eg_text(out, m, "Golems", p.x + f32(GB_PAD), p.y + 30, 19, d, EG_TITLE, EG_WHITE);
+  sb: [96] u8; sk := np_put_int(sb[..], 0, b[0].working); sk = np_put(sb[..], sk, " working, "); sk = np_put_int(sb[..], sk, b[0].waiting); sk = np_put(sb[..], sk, " waiting, ");
+  sk = np_put_int(sb[..], sk, b[0].count - b[0].working - b[0].waiting); sk = np_put(sb[..], sk, " idle");
+  m = eg_text(out, m, cast(string) sb[0..<sk], p.x + f32(GB_PAD) + eg_width("Golems", 19, EG_TITLE) + 14, p.y + 30, 13, d, EG_BODY, EG_DIM);
+  m = hd_line(out, m, p.x, p.y + 46, p.x + p.width, p.y + 46, pen, 1, 0.5);
+  inner := p.width - 2 * f32(GB_PAD) - 20;
+  if b[0].count == 0 {
+    return eg_text(out, m, ifx b[0].at == 0 then "Looking for agents..." else "No agent has worked in the last 12 hours.", p.x + f32(GB_PAD), gb_list_top(p) + 20, f32(NP_SIZE), d, EG_BODY, EG_MID);
+  }
+  if !back {
+    rows := gb_rows(p);
+    most := b[0].count - rows; if most < 0 { most = 0; }
+    if b[0].scroll > most { b[0].scroll = most; } if b[0].scroll < 0 { b[0].scroll = 0; }
+    for row: 0..<rows {
+      i := b[0].scroll + row; if i >= b[0].count { break; }
+      m = gb_card_draw(b, out, m, gb_golem(b, i), gb_card(p, row), d, pen, inner);
+    }
+    return m;
+  }
+  // One golem: its card, then its latest messages, newest last.
+  l := gb_golem(b, b[0].sel);
+  card := gb_card(p, 0);
+  m = gb_card_draw(b, out, m, l, card, d, pen, inner);
+  y := card.y + card.height + 26;
+  raw := cast(string) b[0].raw[0..<b[0].n];
+  at := b[0].line[b[0].sel] + l.count + 1;
+  while at < raw.count && y < p.y + p.height - 16 {
+    ml := gb_line_at(raw, at);
+    if ml.count < 2 || ml[0] != 'M' { break; }
+    kind := gb_field(ml, 1); text := gb_field(ml, 2);
+    lead := ifx kind == "t" then "> " else ifx kind == "u" then "Asked: " else "";
+    ink := ifx kind == "t" then EG_ACCENT else ifx kind == "u" then EG_MID else EG_WHITE;
+    // A message wraps to at most three lines.
+    from := 0; lines := 0; first := true;
+    while from < text.count && lines < 3 && y < p.y + p.height - 16 {
+      x := p.x + f32(GB_PAD); w := inner;
+      if first && lead.count > 0 { m = eg_text(out, m, lead, x, y, 14, d, EG_BODY, ink); x += eg_width(lead, 14, EG_BODY); w -= eg_width(lead, 14, EG_BODY); }
+      part := np_line(text[from..<text.count], 0, w);
+      seg := text[from..<from + part.end];
+      if lines == 2 && from + part.end < text.count { m = gb_text_fit(out, m, text[from..<text.count], x, y, w, 14, d, EG_BODY, ink); }
+      else { m = eg_text(out, m, seg, x, y, 14, d, EG_BODY, ink); }
+      if part.next <= 0 { break; }
+      from += part.next; lines += 1; y += 19; first = false;
+    }
+    y += 8;
+    at += ml.count + 1;
+  }
+  return m;
+}
+
+gb_card_draw :: (b: []GolemBoard, out: []f32, n: int, l: string, card: HudBox, d: f32, pen: HdPen, inner: f32) -> int {
+  m := hd_rect(out, n, card, pen, 1, 0.45);
+  status := gb_field(l, 2); age := gb_num(gb_field(l, 3));
+  x := card.x + 12; w := card.width - 24;
+  // Line 1: where, the model, and since when.
+  place := gb_field(l, 6); sub := gb_field(l, 9).count > 0;
+  m = eg_text(out, m, place, x, card.y + 22, 16, d, EG_TITLE, gb_status_kind(status));
+  px := x + eg_width(place, 16, EG_TITLE) + 10;
+  mb: [48] u8; model := gb_model(gb_field(l, 4), mb[..]);
+  tag: [80] u8; tk := np_put(tag[..], 0, model); if sub { tk = np_put(tag[..], tk, ", subagent"); }
+  m = eg_text(out, m, cast(string) tag[0..<tk], px, card.y + 22, 13, d, EG_BODY, EG_MID);
+  ab: [32] u8; ag := gb_age(age, ab[..]);
+  st: [48] u8; sk := np_put(st[..], 0, status); sk = np_put(st[..], sk, ", "); sk = np_put(st[..], sk, ag);
+  right := cast(string) st[0..<sk];
+  m = eg_text(out, m, right, card.x + card.width - 12 - eg_width(right, 13, EG_BODY), card.y + 22, 13, d, EG_BODY, gb_status_kind(status));
+  // Line 2: what it was asked.
+  m = gb_text_fit(out, m, gb_field(l, 5), x, card.y + 44, w, 14, d, EG_BODY, EG_WHITE);
+  // Line 3: its steps, then what it last did.
+  m = gb_pips(out, m, gb_num(gb_field(l, 8)), x, card.y + 56, pen, d);
+  m = gb_text_fit(out, m, gb_field(l, 10), x + 210, card.y + 66, w - 210, 13, d, EG_BODY, EG_DIM);
+  return m;
+}
+
+// A press, a drag or a release (phase 0, 1, 2); true when the board took it.
+gb_pointer :: (b: []GolemBoard, x: f32, y: f32, phase: int, width: f32, height: f32) -> bool {
+  bb := gb_button(width); p := gb_panel(width, height);
+  over := b[0].open && np_in(p, x, y);
+  if phase == 0 {
+    b[0].down = 0;
+    if np_in(bb, x, y) { b[0].down = 1; }
+    else if over && np_in(gb_close_box(p), x, y) { b[0].down = 2; }
+    else if over && b[0].sel < 0 {
+      for row: 0..<gb_rows(p) { if b[0].scroll + row < b[0].count && np_in(gb_card(p, row), x, y) { b[0].down = 10 + b[0].scroll + row; } }
+    }
+    return b[0].down != 0 || over;
+  }
+  if phase == 1 { return b[0].down != 0 || over; }
+  took := b[0].down != 0 || over;
+  if b[0].down == 1 && np_in(bb, x, y) { b[0].open = !b[0].open; if b[0].open { b[0].asked = 0; } }
+  if b[0].down == 2 && np_in(gb_close_box(p), x, y) { if b[0].sel >= 0 { b[0].sel = -1; } else { b[0].open = false; } }
+  if b[0].down >= 10 { row := b[0].down - 10 - b[0].scroll; if row >= 0 && np_in(gb_card(p, row), x, y) { b[0].sel = b[0].down - 10; } }
+  b[0].down = 0;
+  return took;
+}
+gb_wheel :: (b: []GolemBoard, x: f32, y: f32, dy: f32, width: f32, height: f32) -> bool {
+  if !b[0].open || !np_in(gb_panel(width, height), x, y) { return false; }
+  if dy > 0 { b[0].scroll += 1; } else if dy < 0 { b[0].scroll -= 1; }
+  return true;
+}
+
+#test "golems board: a snapshot's agents are indexed and counted" {
+  b: [1] GolemBoard;
+  snap := "G\tk1\tworking\t2\tclaude-sonnet-5-5\tFix the comma\t#13116\t16\t4\t\tBash coax/build.sh\nM\tt\tBash coax/build.sh\nM\ta\tBuilding.\nG\tk2\tidle\t9000\tclaude-opus-5-5\tGreen main\t#13134\t31\t124\t\tdone\n";
+  gb_take(b[..], snap, 100);
+  #assert b[0].count == 2 && b[0].working == 1 && b[0].waiting == 0;
+  #assert gb_field(gb_golem(b[..], 0), 6) == "#13116" && gb_num(gb_field(gb_golem(b[..], 1), 8)) == 124;
+  mb: [48] u8; #assert gb_model("claude-sonnet-5-5", mb[..]) == "Sonnet 5.5";
+  ab: [32] u8; #assert gb_age(9000, ab[..]) == "2h ago" && gb_age(42, ab[..]) == "42s ago";
+}
+#test "golems board: it asks every 30 s shut and every 3 s open, never twice at once" {
+  b: [1] GolemBoard;
+  #assert gb_due(b[..], 1000) && !gb_due(b[..], 1001);
+  gb_take(b[..], "", 1002); #assert !gb_due(b[..], 1010) && gb_due(b[..], 1031);
+  b[0].open = true; gb_take(b[..], "", 1032); #assert gb_due(b[..], 1034);
+}
+#test "golems board: its button sits left of Autopilot, its panel on the left" {
+  g := gb_button(1320); a := np_auto_box(1320);
+  #assert g.x + g.width < a.x && g.y == a.y && g.x > 0;
+  p := gb_panel(1320, 880); #assert p.x == NP_MARGIN && p.width == f32(GB_W) && gb_rows(p) >= 6;
+}
+#test "golems board: a click on a card shows that golem; All goes back; Close shuts it" {
+  b: [1] GolemBoard; b[0].sel = -1;
+  gb_take(b[..], "G\tk1\tworking\t2\tclaude-sonnet-5-5\tFix\t#13116\t1\t4\t\tx\nM\ta\thi\nG\tk2\tidle\t9\tclaude-opus-5-5\tGreen\t#13134\t1\t1\t\ty\n", 1);
+  bb := gb_button(1320);
+  #assert gb_pointer(b[..], bb.x + 5, bb.y + 5, 0, 1320, 880) && gb_pointer(b[..], bb.x + 5, bb.y + 5, 2, 1320, 880) && b[0].open;
+  c := gb_card(gb_panel(1320, 880), 1);
+  #assert gb_pointer(b[..], c.x + 5, c.y + 5, 0, 1320, 880) && gb_pointer(b[..], c.x + 5, c.y + 5, 2, 1320, 880) && b[0].sel == 1;
+  x := gb_close_box(gb_panel(1320, 880));
+  #assert gb_pointer(b[..], x.x + 5, x.y + 5, 0, 1320, 880) && gb_pointer(b[..], x.x + 5, x.y + 5, 2, 1320, 880) && b[0].sel == -1 && b[0].open;
+  #assert gb_pointer(b[..], x.x + 5, x.y + 5, 0, 1320, 880) && gb_pointer(b[..], x.x + 5, x.y + 5, 2, 1320, 880) && !b[0].open;
+  #assert !gb_pointer(b[..], 1000, 600, 0, 1320, 880);   // off the board, shut: the world gets it
+}

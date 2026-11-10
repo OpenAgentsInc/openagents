@@ -1,0 +1,308 @@
+// golems.coax: every agent working on this Mac, read from its own transcript. Bundled in the
+// desktop app as everglade-golems; the Golems board in the Workshop (next.coax) shows what it prints.
+//
+//   coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now SECONDS [--hours H]
+//
+// An agent is one Claude Code session: a transcript under ~/.claude/projects/PROJECT/ (the
+// session) or PROJECT/SESSION/subagents/ (an agent that session started). So the board shows the
+// Autopilot coders, the sessions you run in a terminal and their subagents alike, wherever they
+// were started. Nothing is asked of a model and nothing is sent anywhere: it reads the end of each
+// transcript changed in the last H hours (12) and prints, newest first, one G line an agent and
+// its latest messages as M lines:
+//
+//   G  key status age model title place tools steps parent last
+//   M  kind text                (kind: a its words, u what it was asked, t a tool call)
+//
+// Fields are tab-separated, with tabs and newlines in text made spaces. status is working (its
+// transcript changed in the last two minutes), waiting (in the last half hour) or idle. steps is
+// a bitmask of the coding steps it has reached, read from its tool calls' own fields (the tool's
+// name and a Bash command's first words), never from what anyone said:
+//   1 read  2 edited  4 built  8 tested  16 committed  32 pushed  64 closed the issue
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/agent/claude/claude.coax";
+
+GS_TAIL :: 393216;        // bytes read from the end of a transcript
+GS_HEAD :: 32768;         // bytes read from its start, for what it was first asked
+GS_MAX :: 32;             // agents shown
+GS_MSGS :: 8;             // messages kept an agent
+GS_TEXT :: 180;           // bytes of one message
+GS_WORKING :: 120; GS_WAITING :: 1800;
+
+GS_READ :: 1; GS_EDIT :: 2; GS_BUILD :: 4; GS_TEST :: 8; GS_COMMIT :: 16; GS_PUSH :: 32; GS_CLOSE :: 64;
+
+GsMsg :: struct { kind: u8; text: [GS_TEXT] u8; n: int; }
+Golem :: struct {
+  path: [1024] u8; path_n: int; mtime: int; sub: bool;
+  key: [80] u8; key_n: int; parent: [80] u8; parent_n: int;
+  model: [48] u8; model_n: int;
+  title: [GS_TEXT] u8; title_n: int;
+  place: [96] u8; place_n: int;
+  last: [GS_TEXT] u8; last_n: int;
+  tools: int; steps: int;
+  msgs: [GS_MSGS] GsMsg; m0: int; mn: int;   // a ring: the newest GS_MSGS
+}
+
+gs_put :: (out: []u8, n: int, s: string) -> int {
+  m := n;
+  for c: s { if m >= out.count { break; } out[m] = ifx c == '\t' || c == '\n' || c == '\r' then ' ' else c; m += 1; }
+  return m;
+}
+gs_set :: (out: []u8, s: string) -> int { return gs_put(out, 0, s); }
+// The format's own tabs and newlines, put as they are.
+gs_raw :: (out: []u8, n: int, s: string) -> int { m := n; for c: s { if m >= out.count { break; } out[m] = c; m += 1; } return m; }
+gs_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+gs_has :: (s: string, p: string) -> bool { if p.count > s.count { return false; } for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return true; } } return false; }
+gs_trim :: (s: string) -> string { a := 0; b := s.count; while a < b && s[a] <= 32 { a += 1; } while b > a && s[b - 1] <= 32 { b -= 1; } return s[a..<b]; }
+
+// The steps a shell command reaches, from its leading words (after cd ... && and env settings).
+gs_command_steps :: (command: string) -> int {
+  steps := 0; at := 0;
+  while at < command.count {
+    // One command of a && / ; / | chain.
+    end := at; while end < command.count && command[end] != '&' && command[end] != ';' && command[end] != '|' && command[end] != '\n' { end += 1; }
+    c := gs_trim(command[at..<end]);
+    while c.count > 0 {   // leading NAME=value settings
+      sp := 0; while sp < c.count && c[sp] != ' ' { sp += 1; }
+      eq := false; for i: 0..<sp { if c[i] == '=' { eq = true; } }
+      if !eq { break; } c = gs_trim(c[sp..<c.count]);
+    }
+    if gs_starts(c, "git commit") { steps |= GS_COMMIT; }
+    if gs_starts(c, "git push") { steps |= GS_PUSH; }
+    if gs_starts(c, "gh issue close") { steps |= GS_CLOSE; }
+    if gs_starts(c, "coax/build.sh") || gs_starts(c, "coax/remote/remote.sh") || gs_has(c, "/build.sh") || gs_starts(c, "cargo build") { steps |= GS_BUILD; }
+    if gs_starts(c, "coax/bin/coax test") || gs_starts(c, "coax test") || gs_has(c, "check.sh") || gs_starts(c, "cargo test") { steps |= GS_TEST; }
+    at = end + 1;
+  }
+  return steps;
+}
+
+gs_msg :: (g: []Golem, kind: u8, text: string) {
+  t := gs_trim(text); if t.count == 0 { return; }
+  slot := (g[0].m0 + g[0].mn) % GS_MSGS;
+  if g[0].mn == GS_MSGS { g[0].m0 = (g[0].m0 + 1) % GS_MSGS; } else { g[0].mn += 1; }
+  g[0].msgs[slot].kind = kind; g[0].msgs[slot].n = gs_set(g[0].msgs[slot].text[..], t);
+}
+
+// One tool call as a short line: its name and what it is on.
+gs_tool_line :: (ar: []ClArena, name: string, input: string, out: []u8) -> int {
+  n := gs_put(out, 0, name);
+  what := "";
+  for field: [5] string.["command", "file_path", "pattern", "description", "message"] { if what.count == 0 { what = cl_str(ar, input, field); } }
+  if what.count > 0 { n = gs_put(out, n, " "); n = gs_put(out, n, what); }
+  return n;
+}
+
+// Reads one record of a transcript into the agent.
+gs_record :: (g: []Golem, ar: []ClArena, l: string, first_only: bool) {
+  ar[0].at = 0; ar[0].full = false;
+  kind := cl_str(ar, l, "type");
+  if kind == "user" {
+    c := cl_at(l, "message.content");
+    text := "";
+    if c.ok && c.tok == JSON_STRING { text = cl_text(ar, l, c); }
+    else { raw := cl_json(l, c); if cl_count(raw) > 0 && cl_str(ar, raw, "0.type") == "text" { text = cl_str(ar, raw, "0.text"); } }
+    if text.count == 0 || gs_starts(text, "<") || cl_bool(l, "isMeta").value { return; }
+    if g[0].title_n == 0 { g[0].title_n = gs_set(g[0].title[..], text); }
+    if !first_only { gs_msg(g, 'u', text); }
+    return;
+  }
+  if first_only { return; }
+  if kind == "last-prompt" { p := cl_str(ar, l, "lastPrompt"); if p.count > 0 && !g[0].sub { g[0].title_n = gs_set(g[0].title[..], p); } return; }
+  if kind != "assistant" { return; }
+  model := cl_str(ar, l, "message.model"); if model.count > 0 && model[0] != '<' { g[0].model_n = gs_set(g[0].model[..], model); }
+  content := cl_raw(l, "message.content");
+  for i: 0..<cl_count(content) {
+    item := cl_json(content, cl_item(content, i));
+    t := cl_str(ar, item, "type");
+    if t == "text" { words := cl_str(ar, item, "text"); gs_msg(g, 'a', words); g[0].last_n = gs_set(g[0].last[..], gs_trim(words)); }
+    if t == "tool_use" {
+      g[0].tools += 1;
+      name := cl_str(ar, item, "name"); input := cl_raw(item, "input");
+      if name == "Read" || name == "Grep" || name == "Glob" { g[0].steps |= GS_READ; }
+      if name == "Edit" || name == "Write" { g[0].steps |= GS_EDIT; }
+      if name == "Bash" { g[0].steps |= gs_command_steps(cl_str(ar, input, "command")); }
+      line: [GS_TEXT] u8; ln := gs_tool_line(ar, name, input, line[..]);
+      gs_msg(g, 't', cast(string) line[0..<ln]);
+      g[0].last_n = gs_set(g[0].last[..], cast(string) line[0..<ln]);
+    }
+  }
+}
+
+// Each line of text, handed to gs_record; a first line cut by the read is skipped.
+gs_lines :: (g: []Golem, ar: []ClArena, text: string, cut: bool, first_only: bool) {
+  at := 0;
+  if cut { while at < text.count && text[at] != '\n' { at += 1; } at += 1; }
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    if end == text.count && first_only { break; }      // a head's last line may be cut
+    if end > at && text[at] == '{' { gs_record(g, ar, text[at..<end], first_only); if first_only && g[0].title_n > 0 { return; } }
+    at = end + 1;
+  }
+}
+
+gs_read :: (g: []Golem, ar: []ClArena, buf: []u8) {
+  path := cast(string) g[0].path[0..<g[0].path_n];
+  size := fs_size(path); if size <= 0 { return; }
+  if size > GS_TAIL || g[0].sub {
+    // What it was first asked: a subagent's brief, or a long session's first prompt.
+    n := fs_read_at(path, 0, buf[0..<GS_HEAD]);
+    if n > 0 { gs_lines(g, ar, cast(string) buf[0..<n], false, true); }
+  }
+  from := ifx size > GS_TAIL then size - GS_TAIL else 0;
+  n := fs_read_at(path, from, buf[0..<GS_TAIL]);
+  if n > 0 { gs_lines(g, ar, cast(string) buf[0..<n], from > 0, false); }
+}
+
+// The place an agent works: its project folder's last part, with an issue's worktree as #N.
+gs_place :: (project: string, out: []u8) -> int {
+  // Project folders are the working directory with / and . made -.
+  at := project.count; while at > 0 && project[at - 1] != '-' { at -= 1; }
+  tail := project[at..<project.count];
+  if at >= 7 && project[at - 7..<at] == "-issue-" && tail.count > 0 { n := gs_put(out, 0, "#"); return gs_put(out, n, tail); }
+  // Keep the last two parts (work-openagents reads as openagents).
+  cut := project.count; dashes := 0;
+  i := project.count; while i > 0 { i -= 1; if project[i] == '-' { dashes += 1; if dashes == 1 { cut = i + 1; } } if dashes == 1 { break; } }
+  return gs_put(out, 0, project[cut..<project.count]);
+}
+
+gs_age :: (now: int, mtime: int) -> int { a := now - mtime; return ifx a < 0 then 0 else a; }
+gs_status :: (age: int) -> string { return ifx age < GS_WORKING then "working" else ifx age < GS_WAITING then "waiting" else "idle"; }
+
+Found :: struct { path: [1024] u8; n: int; mtime: int; sub: bool; project: [256] u8; pn: int; parent: [80] u8; parentn: int; }
+
+gs_add :: (found: []Found, count: int, path: string, mtime: int, sub: bool, project: string, parent: string) -> int {
+  // The newest GS_MAX: a full list drops its oldest for a newer one.
+  slot := count;
+  if count >= found.count {
+    oldest := 0; for i: 1..<found.count { if found[i].mtime < found[oldest].mtime { oldest = i; } }
+    if found[oldest].mtime >= mtime { return count; }
+    slot = oldest;
+  }
+  found[slot].n = gs_put(found[slot].path[..], 0, path); found[slot].mtime = mtime; found[slot].sub = sub;
+  found[slot].pn = gs_put(found[slot].project[..], 0, project); found[slot].parentn = gs_put(found[slot].parent[..], 0, parent);
+  return ifx count < found.count then count + 1 else count;
+}
+gs_jsonl :: (name: string) -> bool { return name.count > 6 && name[name.count - 6..<name.count] == ".jsonl"; }
+
+
+gs_snapshot :: (now: int, hours: int) -> int {
+  home_b: [1024] u8; home := cl_getenv("HOME", home_b[..]);
+  if home.count == 0 { tool_errln("golems: HOME is not set"); return 1; }
+  root_b: [1200] u8; root := fs_join(home, ".claude/projects", root_b[..]);
+  since := now - hours * 3600;
+  projects: [1] FsList; sessions: [1] FsList; subs: [1] FsList;
+  found: [GS_MAX] Found; count := 0;
+  k := fs_list(root, projects[..]);
+  for i: 0..<k {
+    project := fs_entry(projects[..], i);
+    pb: [1400] u8; pdir := fs_join(root, project, pb[..]);
+    if fs_kind(pdir) != FS_DIR || fs_mtime_ns(pdir) / 1000000000 < since - 86400 { continue; }
+    m := fs_list(pdir, sessions[..]);
+    for j: 0..<m {
+      name := fs_entry(sessions[..], j);
+      fb: [1600] u8; f := fs_join(pdir, name, fb[..]);
+      if gs_jsonl(name) {
+        t := fs_mtime_ns(f) / 1000000000;
+        if t >= since { count = gs_add(found[..], count, f, t, false, project, name[0..<name.count - 6]); }
+        continue;
+      }
+      // SESSION/subagents/agent-*.jsonl
+      sb: [1700] u8; sdir := fs_join(f, "subagents", sb[..]);
+      if fs_kind(sdir) != FS_DIR || fs_mtime_ns(sdir) / 1000000000 < since { continue; }
+      q := fs_list(sdir, subs[..]);
+      for r: 0..<q {
+        sname := fs_entry(subs[..], r); if !gs_jsonl(sname) { continue; }
+        ab: [1900] u8; af := fs_join(sdir, sname, ab[..]);
+        t := fs_mtime_ns(af) / 1000000000;
+        if t >= since { count = gs_add(found[..], count, af, t, true, project, name); }
+      }
+    }
+  }
+  // Newest first.
+  order: [GS_MAX] int; for i: 0..<count { order[i] = i; }
+  for i: 1..<count { j := i; while j > 0 && found[order[j - 1]].mtime < found[order[j]].mtime { x := order[j]; order[j] = order[j - 1]; order[j - 1] = x; j -= 1; } }
+
+  buf: [GS_TAIL] u8; ab: [262144] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  g: [1] Golem;
+  out: [16384] u8;
+  for oi: 0..<count {
+    f := found[order[oi]];
+    g[0] = Golem.{};
+    g[0].path_n = gs_put(g[0].path[..], 0, cast(string) f.path[0..<f.n]); g[0].mtime = f.mtime; g[0].sub = f.sub;
+    path := cast(string) f.path[0..<f.n];
+    base := fs_base(path); base = base[0..<base.count - 6];
+    g[0].key_n = gs_set(g[0].key[..], base);
+    if f.sub { g[0].parent_n = gs_set(g[0].parent[..], cast(string) f.parent[0..<f.parentn]); }
+    g[0].place_n = gs_place(cast(string) f.project[0..<f.pn], g[0].place[..]);
+    gs_read(g[..], ar[..], buf[..]);
+    if g[0].tools == 0 && g[0].mn == 0 { continue; }
+    age := gs_age(now, f.mtime);
+    n := 0;
+    n = gs_raw(out[..], n, "G\t"); n = gs_put(out[..], n, cast(string) g[0].key[0..<g[0].key_n]);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, gs_status(age));
+    n = gs_raw(out[..], n, "\t"); n = gs_int(out[..], n, age);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].model[0..<g[0].model_n]);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].title[0..<g[0].title_n]);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].place[0..<g[0].place_n]);
+    n = gs_raw(out[..], n, "\t"); n = gs_int(out[..], n, g[0].tools);
+    n = gs_raw(out[..], n, "\t"); n = gs_int(out[..], n, g[0].steps);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].parent[0..<g[0].parent_n]);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].last[0..<g[0].last_n]);
+    n = gs_raw(out[..], n, "\n");
+    for mi: 0..<g[0].mn {
+      msg := g[0].msgs[(g[0].m0 + mi) % GS_MSGS];
+      one: [2] u8; one[0] = msg.kind; one[1] = '\t';
+      n = gs_raw(out[..], n, "M\t"); n = gs_raw(out[..], n, cast(string) one[..]);
+      n = gs_put(out[..], n, cast(string) msg.text[0..<msg.n]); n = gs_raw(out[..], n, "\n");
+    }
+    print("%", cast(string) out[0..<n]);
+  }
+  return 0;
+}
+gs_int :: (out: []u8, n: int, v: int) -> int {
+  b: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if x == 0 { b[0] = '0'; k = 1; }
+  while x > 0 { b[k] = cast,trunc(u8) (48 + x % 10); x /= 10; k += 1; }
+  m := n; if v < 0 && m < out.count { out[m] = '-'; m += 1; }
+  while k > 0 { k -= 1; if m < out.count { out[m] = b[k]; m += 1; } }
+  return m;
+}
+
+// Seconds since the epoch (args_whole stops at nine digits); -1 when it isn't one.
+gs_seconds :: (text: string) -> int {
+  if text.count < 1 || text.count > 12 { return -1; }
+  v := 0; for c: text { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_at(a[..], 0) != "snapshot" { tool_errln("usage: golems snapshot --now SECONDS [--hours H]"); return 2; }
+  now := gs_seconds(args_value(a[..], "--now", ""));
+  if now <= 0 { tool_errln("golems: --now SECONDS is required"); return 2; }
+  hours := args_whole(args_value(a[..], "--hours", "12")); if hours <= 0 { hours = 12; }
+  return gs_snapshot(now, hours);
+}
+
+#test "golems: a command's steps come from its leading words, past cd and settings" {
+  #assert gs_command_steps("cd /w && git commit -m x && git push origin HEAD:main") == GS_COMMIT | GS_PUSH;
+  #assert gs_command_steps("BROWSER=/usr/bin/true coax/bin/coax test a.coax | tail -3") == GS_TEST;
+  #assert gs_command_steps("gh issue close 13116 --comment done") == GS_CLOSE;
+  #assert gs_command_steps("echo git push") == 0 && gs_command_steps("grep 'git commit' x") == 0;
+  #assert gs_command_steps("coax/build.sh >/dev/null; apps/everglade-desktop/build.sh") == GS_BUILD;
+}
+#test "golems: an issue's worktree reads as its number, a checkout as its folder" {
+  b: [64] u8;
+  #assert cast(string) b[0..<gs_place("-Users-me-work-openagents-issue-13116", b[..])] == "#13116";
+  #assert cast(string) b[0..<gs_place("-Users-me-work-openagents", b[..])] == "openagents";
+  #assert gs_seconds("1794348248") == 1794348248 && gs_seconds("17x") == -1 && gs_seconds("") == -1;
+  #assert gs_status(5) == "working" && gs_status(600) == "waiting" && gs_status(7200) == "idle";
+}
+#test "golems: a full list keeps the newest" {
+  f: [2] Found; c := 0;
+  c = gs_add(f[..], c, "/a", 10, false, "p", "a"); c = gs_add(f[..], c, "/b", 30, false, "p", "b");
+  c = gs_add(f[..], c, "/c", 20, false, "p", "c"); c = gs_add(f[..], c, "/d", 5, false, "p", "d");
+  #assert c == 2 && ((f[0].mtime == 20 && f[1].mtime == 30) || (f[0].mtime == 30 && f[1].mtime == 20));
+}

@@ -135,12 +135,12 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
     }
     // Next issue, over everything: its panel's dark box, then its strokes.
-    var box = [Float](repeating: 0, count: 4)
+    var box = [Float](repeating: 0, count: 8)
     let tn = nxp_frame(next, overlay.contents().assumingMemoryBound(to: Float.self), &box, Float(size.width) / scale, Float(size.height) / scale, scale, dt, Int64(Date().timeIntervalSince1970))
     serve()
     enc.setDepthStencilState(flat)
-    if box[2] > 0 {
-      var ru: [Float] = [box[0] * scale, box[1] * scale, box[2] * scale, box[3] * scale, Float(size.width), Float(size.height), 0, 0]
+    for k in [0, 4] where box[k + 2] > 0 {
+      var ru: [Float] = [box[k] * scale, box[k + 1] * scale, box[k + 2] * scale, box[k + 3] * scale, Float(size.width), Float(size.height), 0, 0]
       enc.setRenderPipelineState(panel)
       enc.setVertexBytes(&ru, length: 32, index: 0)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
@@ -196,6 +196,24 @@ final class WorkshopView: MTKView, MTKViewDelegate {
         }
       }
     }
+    // The Golems board: every agent's transcript, read by everglade-golems off the main thread.
+    let now = Int64(Date().timeIntervalSince1970)
+    if !readingGolems && nxp_golems_due(next, now) != 0 {
+      readingGolems = true
+      let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/everglade-golems")
+      DispatchQueue.global().async { [weak self] in
+        let process = Process(), out = Pipe()
+        process.executableURL = tool; process.arguments = ["snapshot", "--now", String(now)]
+        process.standardOutput = out; process.standardError = FileHandle.nullDevice
+        var text = Data()
+        if (try? process.run()) != nil { text = out.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit() }
+        DispatchQueue.main.async {
+          guard let self else { return }
+          self.readingGolems = false
+          text.withUnsafeBytes { t in nxp_golems(self.next, t.bindMemory(to: UInt8.self).baseAddress, Int32(t.count), Int64(Date().timeIntervalSince1970)) }
+        }
+      }
+    }
     var line = [UInt8](repeating: 0, count: 4096)
     let home = FileManager.default.homeDirectoryForCurrentUser
     var n = Int(nxp_take_usage(next, &line, Int32(line.count)))
@@ -215,6 +233,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
 
   // One frame offscreen, after `seconds` of the scene's own time, as a PNG.
   var nextWait: Float = 0
+  var readingGolems = false
+  var golemsWait: Double = 0   // --golems in a shot: seconds to let the board read the agents first
   var nextReply = ""
   var nextRuns: Int32 = 0
   func shot(to path: String, width: Int, height: Int, seconds: Float) -> Bool {
@@ -250,6 +270,10 @@ final class WorkshopView: MTKView, MTKViewDelegate {
         wait()
       }
       FileHandle.standardError.write(Data("next issue state \(nxp_state(next))\n".utf8))
+    }
+    if golemsWait > 0 {
+      let until = CACurrentMediaTime() + golemsWait
+      repeat { render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < until && readingGolems || CACurrentMediaTime() < until - golemsWait + 0.5
     }
     var left = seconds
     while left > 0 { let step = min(left, 0.05); render(pass, size: CGSize(width: width, height: height), scale: 2, dt: step) { _ in }; left -= step }
@@ -313,6 +337,7 @@ final class App: NSObject, NSApplicationDelegate {
     window.minSize = NSSize(width: 900, height: 600)
     let view = WorkshopView(frame: frame)
     if let w = CommandLine.arguments.firstIndex(of: "--scene"), w + 1 < CommandLine.arguments.count, let v = Int32(CommandLine.arguments[w + 1]) { eg_go(view.state, v) }
+    if CommandLine.arguments.contains("--golems") { nxp_golems_open(view.next) }
     window.contentView = view
     window.center()
     window.makeKeyAndOrderFront(nil)
@@ -352,6 +377,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
   }
+  if args.contains("--golems") { nxp_golems_open(view.next); view.golemsWait = 6 }
   exit(view.shot(to: args[i + 1], width: width, height: height, seconds: seconds) ? 0 : 1)
 }
 let app = NSApplication.shared

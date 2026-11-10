@@ -36,6 +36,7 @@
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/agent/tier.coax";
+#load "golem-board.coax";
 
 NP_MODEL :: "claude-haiku-5-5";
 NP_TOOL :: "mcp__next__choose";
@@ -99,6 +100,7 @@ NextPanel :: struct {
   star: bool;                             // np_say: an asterisk is held, in case the next is its pair
   down: bool; down_in: int;               // which box the press began in: 1 the button, 2 Close, 3 Refresh
   q: [1] ClQuery; p: [1] ClProcess; started: bool;
+  board: [1] GolemBoard;                  // the Golems board (golem-board.coax)
   line: [1048576] u8; arena: [262144] u8; out: [1048576] u8; scratch: [131072] u8;
   context: [NP_CONTEXT] u8;
 }
@@ -528,7 +530,7 @@ np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, 
   if s[0].want_start { s[0].want_start = false; if s[0].started || s[0].state == NP_CONTEXT_WAIT { s[0].open = !s[0].open; s[0].focus = s[0].open; } else { np_ask(s, false, false); } }
   if s[0].state == NP_RUNNING { s[0].seconds += step; }
   np_poll(s);
-  for i: 0..<4 { if i < panel.count { panel[i] = 0; } }
+  for i: 0..<8 { if i < panel.count { panel[i] = 0; } }
   if !(width > 0) || !(height > 0) || !(d > 0) { return 0; }
   pen := HdPen.{d = d, cyan = true, top = 0, bottom = height, sans = false};
   n := 0;
@@ -540,6 +542,7 @@ np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, 
   n = hd_rect(out, n, b, pen, 2, 1);
   label := ifx np_busy(s) && s[0].open then "Stop" else "Next issue";
   n = eg_text(out, n, label, b.x + (b.width - eg_width(label, 16, EG_TITLE)) * 0.5, b.y + 23, 16, d, EG_TITLE, EG_WHITE);
+  n = gb_frame(s[0].board[..], out, n, width, height, d, pen, now, panel);
   if !s[0].open { return n; }
   box := np_panel(width, height);
   if box.height < 220 { return n; }
@@ -600,6 +603,8 @@ np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, 
 // the host leaves the world's look-drag alone. A button acts when the press began and ended on it.
 // A press on the panel gives it the keys; a press on the world takes them back.
 np_pointer :: (s: []NextPanel, x: f32, y: f32, phase: int, width: f32, height: f32) -> bool #export_c #effects(all) {
+  // The Golems board first, unless a press that began on Next issue is still held.
+  if !(phase != 0 && s[0].down) && gb_pointer(s[0].board[..], x, y, phase, width, height) { return true; }
   b := np_button(width); box := np_panel(width, height);
   over_panel := s[0].open && np_in(box, x, y);
   if phase == 0 {
@@ -623,6 +628,7 @@ np_pointer :: (s: []NextPanel, x: f32, y: f32, phase: int, width: f32, height: f
 }
 // The wheel over the panel scrolls it. True when the panel took it.
 np_wheel :: (s: []NextPanel, x: f32, y: f32, dy: f32, width: f32, height: f32) -> bool #export_c #effects(all) {
+  if gb_wheel(s[0].board[..], x, y, dy, width, height) { return true; }
   if !s[0].open || !np_in(np_panel(width, height), x, y) { return false; }
   s[0].scroll += cast(int) (dy / 12);
   if s[0].scroll < 0 { s[0].scroll = 0; }
@@ -657,8 +663,12 @@ np_take_decision :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) {
 np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { cl_close(s[0].p[..]); s[0].started = false; } }
 // 0 idle, 1 reading the cache, 2 the agent's turn, 3 your turn, 4 failed, 5 stopped.
 np_state :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].state; }
+// Whether the host should run everglade-golems now, and its answer.
+np_golems_due :: (s: []NextPanel, now: int) -> bool #export_c #effects(all) { return gb_due(s[0].board[..], now); }
+np_golems :: (s: []NextPanel, text: string, now: int) #export_c #effects(all) { gb_take(s[0].board[..], text, now); }
+np_golems_open :: (s: []NextPanel) #export_c #effects(all) { s[0].board[0].open = true; s[0].board[0].asked = 0; }
 np_size :: () -> int #export_c #effects(all) { return size_of(NextPanel); }
-np_init :: (s: []NextPanel) #export_c #effects(all) { s[0].autopilot = true; s[0].state = NP_IDLE; s[0].cost_e6 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL); }
+np_init :: (s: []NextPanel) #export_c #effects(all) { s[0].board[0].sel = -1; s[0].autopilot = true; s[0].state = NP_IDLE; s[0].cost_e6 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL); }
 np_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
 

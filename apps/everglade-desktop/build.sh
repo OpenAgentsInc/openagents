@@ -55,6 +55,11 @@ xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*
 tool="$repo/coax/web/build/tools/next-context-$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
 [[ -x "$tool" ]] || { echo "build.sh: next-context did not build; run coax/web/tool.sh apps/everglade-desktop/next-context.coax status" >&2; exit 1; }
 cp "$tool" "$app/Contents/MacOS/everglade-next"
+# The Golems board's reader (golems.coax), the same way.
+"$repo/coax/web/tool.sh" "$here/golems.coax" build-only >/dev/null 2>&1 || true
+tool="$repo/coax/web/build/tools/golems-$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
+[[ -x "$tool" ]] || { echo "build.sh: golems did not build; run coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now 1" >&2; exit 1; }
+cp "$tool" "$app/Contents/MacOS/everglade-golems"
 # The checkout a worktree for an issue branches off: the main one, whichever worktree builds this.
 dirname "$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" > "$app/Contents/Resources/repo.txt"
 cp "$here/Info.plist" "$app/Contents/Info.plist"

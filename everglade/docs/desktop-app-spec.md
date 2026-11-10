@@ -716,3 +716,37 @@ Everglade II fixes (#13104, #13117, #13129, #13130). State carry on reload
    machine you already have?
 7. **Golems at once.** Is eight the right capacity?
 8. **Standing commands.** In the first version, or after the door?
+
+## The Golems board (built 2026-11-10)
+
+**Golems N/M**, left of Autopilot, opens a board over the left of the window: every
+agent working on this Mac, live, wherever it was started. That includes the Autopilot
+coders, Claude Code sessions run in a terminal, and the subagents they start. N agents
+are working now, out of M seen in the last 12 hours.
+
+- **Where the data comes from.** `everglade-golems` (`apps/everglade-desktop/golems.coax`)
+  reads the end of each Claude Code transcript under `~/.claude/projects/` changed in
+  the last 12 hours. It reads `PROJECT/SESSION/subagents/` too. It asks no model and
+  sends nothing anywhere. The app runs it off the main thread every 3 seconds while
+  the board is open, and every 30 seconds while it is shut, to keep the count current.
+  Run it yourself with
+  `coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now $(date +%s)`.
+- **A card.** Each card shows:
+  - where the agent works (`#N` for an issue's worktree);
+  - its model;
+  - working, waiting or idle (its transcript changed in the last 2 minutes, in the
+    last 30 minutes, or longer ago), and when;
+  - what it was asked;
+  - its last action;
+  - seven step boxes: read, edited, built, tested, committed, pushed, closed. A step
+    counts only from the agent's own tool calls (the tool's name, and the first
+    words of a Bash command), never from anything it wrote.
+- **Click a card** to see that agent's latest messages, tool calls and what it was
+  asked. **All** goes back, and **Close** shuts the board.
+- `--golems` opens the board at launch, and in `--shot` it waits for the first read.
+
+Not built yet:
+- Codex sessions (`~/.codex/sessions`) and the Coder and Foreman agents running on
+  other hosts.
+- Golems standing in the world for each agent.
+- A cost for each agent from the AI call ledger.
