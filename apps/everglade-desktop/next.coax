@@ -20,7 +20,12 @@
 // Autopilot (a button beside Next issue, on by default) makes it a loop with no one in it: the
 // picker is told not to ask, picks and starts; when the coding agent's turn ends the caches are
 // fetched again and the picker picks the next, leaving out what this run already worked. It stops
-// when an agent fails, when the picker finds nothing worth starting, or when you press Stop.
+// when an agent fails, when the picker finds nothing worth starting, when the run has spent
+// NP_BUDGET_E6, or when you press Stop (which also stops it between turns, while the caches are
+// read or a worktree is made).
+//
+// The issues are only the owner's own (next-context's NC_AUTHOR): an agent with a shell is never
+// handed text a stranger filed.
 //
 // Every turn's model, tokens and cost go to the ledger (np_take_usage, one JSON line a turn).
 // The agent is polled from the frame without waiting (cl_poll), so the world keeps running.
@@ -38,6 +43,7 @@ NP_ASK :: "\nSuggest the one issue to work on next.";
 NP_ASK_AUTO :: "\nAutopilot is on: nobody will answer you. Pick the one issue to work on next and call `choose` with action `start` now, before any text; then say in two short lines which issue and why. If no open issue is worth starting, call `choose` with action `none`.";
 NP_GO :: "Yes. Start it.";      // what Autopilot answers when the picker asks anyway
 NP_WORKED :: 32;                // issues one run remembers it worked
+NP_BUDGET_E6 :: 100000000;      // millionths of a dollar one Autopilot run may spend before it stops going round
 NP_CHOOSE_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"start\",\"another\",\"none\"]},\"issue\":{\"type\":\"integer\",\"description\":\"The issue number the action is about; 0 for none.\"},\"reason\":{\"type\":\"string\",\"description\":\"One line: what the developer said that decided it.\"}},\"required\":[\"action\",\"issue\",\"reason\"],\"additionalProperties\":false}";
 NP_CHOOSE_ABOUT :: "Record what the developer decided about the suggested issue: start it, ask for another, or none.";
 NP_STARTING :: "Recorded. A coding agent now starts on it in a fresh worktree, in this chat. Tell the developer that in one line.";
@@ -79,6 +85,8 @@ NextPanel :: struct {
   worked: [NP_WORKED] int; worked_n: int; // the issues this run has worked, which the picker is told to leave
   runs: int;                              // coding turns that have ended
   nudged: bool;                           // Autopilot has answered this picker once
+  declined: bool;                         // this picker chose `none`: nothing is worth starting, so Autopilot doesn't press it
+  run_cost_e6: int;                       // what this run's turns have cost, pickers and coders
   pending_work: bool;                     // you said start: when the picker's turn ends, the coding flow begins
   coding: bool;                           // the open session is the coding agent's, not the picker's
   rehearsal: bool;
@@ -171,6 +179,8 @@ np_in :: (b: HudBox, x: f32, y: f32) -> bool { return x >= b.x && x <= b.x + b.w
 
 // ---- the agent
 
+// An agent's turn, or the host is fetching for one: what Stop stops.
+np_busy :: (s: []NextPanel) -> bool { return s[0].state == NP_RUNNING || s[0].state == NP_CONTEXT_WAIT; }
 np_end :: (s: []NextPanel, state: int) {
   if s[0].started { cl_close(s[0].p[..]); s[0].started = false; }
   s[0].state = state;
@@ -179,8 +189,8 @@ np_end :: (s: []NextPanel, state: int) {
 // Autopilot going round: the chat so far stays, and so does what this run has worked.
 np_ask :: (s: []NextPanel, refetch: bool, again: bool) {
   np_end(s, NP_CONTEXT_WAIT);
-  if again { np_gap(s); np_append(s, "> next\n\n"); } else { s[0].text_n = 0; s[0].cut = false; s[0].worked_n = 0; s[0].focus = true; }
-  s[0].scroll = 0; s[0].open = true; s[0].nudged = false;
+  if again { np_gap(s); np_append(s, "> next\n\n"); } else { s[0].text_n = 0; s[0].cut = false; s[0].worked_n = 0; s[0].run_cost_e6 = 0; s[0].focus = true; }
+  s[0].scroll = 0; s[0].open = true; s[0].nudged = false; s[0].declined = false;
   s[0].turn = 0; s[0].seconds = 0; s[0].cost_e6 = -1; s[0].session_cost_e6 = 0; s[0].chosen = 0; s[0].report_n = 0;
   s[0].pending_work = false; s[0].coding = false; s[0].after_tool = false;
   s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL);
@@ -190,6 +200,7 @@ np_ask :: (s: []NextPanel, refetch: bool, again: bool) {
 // and the message goes to it.
 np_context :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #effects(all) {
   if s[0].state != NP_CONTEXT_WAIT || s[0].coding { return; }
+  s[0].request = 0;   // an answer to an asking you stopped serves the one you made since
   s[0].report_n = np_put(s[0].report[..], 0, report);
   while s[0].report_n > 0 && s[0].report[s[0].report_n - 1] <= 32 { s[0].report_n -= 1; }
   for i: 0..<s[0].report_n { if s[0].report[i] < 32 { s[0].report[i] = ' '; } }
@@ -243,7 +254,7 @@ np_work :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #e
   n = np_put_int(s[0].context[..], n, s[0].chosen);
   n = np_put(s[0].context[..], n, ifx s[0].rehearsal then ": read only, change nothing.\n\nThe worktree is " else " and nothing else, then push it and close the issue.\n\nYour worktree is ");
   n = np_put(s[0].context[..], n, cast(string) s[0].cwd[0..<s[0].cwd_n]);
-  n = np_put(s[0].context[..], n, ", detached at origin/main.\n\n");
+  n = np_put(s[0].context[..], n, ".\n\n");
   n = np_put(s[0].context[..], n, text[eol + 1..<text.count]);
   s[0].context_n = n;
   cl_init(s[0].q[..], s[0].line[..], s[0].arena[..], s[0].out[..]);
@@ -356,7 +367,7 @@ np_choose :: (s: []NextPanel, arguments: string) {
     return;
   }
   if act == "another" { np_append(s, "> another\n\n"); cl_tool_text(s[0].q[..], "Recorded. Suggest the next best issue.", false); return; }
-  if act == "none" { np_append(s, "> none\n\n"); cl_tool_text(s[0].q[..], "Recorded. Nothing will be started.", false); return; }
+  if act == "none" { s[0].declined = true; np_append(s, "> none\n\n"); cl_tool_text(s[0].q[..], "Recorded. Nothing will be started.", false); return; }
   cl_tool_text(s[0].q[..], "The action must be start (with an issue number), another or none.", true);
 }
 
@@ -406,6 +417,7 @@ np_message :: (s: []NextPanel, m: ClMessage) {
     total := cl_num(l, "total_cost_usd"); total_e6 := ifx total.ok then cast(int) (total.value * 1000000 + 0.5) else s[0].session_cost_e6;
     s[0].cost_e6 = total_e6 - s[0].session_cost_e6; if s[0].cost_e6 < 0 { s[0].cost_e6 = total_e6; }
     s[0].session_cost_e6 = total_e6;
+    s[0].run_cost_e6 += s[0].cost_e6;
     ms := cl_int(l, "duration_ms"); api := cl_int(l, "duration_api_ms"); turns := cl_int(l, "num_turns");
     np_record(s, l, ifx ms.ok then ms.value else 0, ifx api.ok then api.value else 0, ifx turns.ok then turns.value else 0);
     s[0].turn += 1; s[0].draft_n = 0;
@@ -420,10 +432,11 @@ np_message :: (s: []NextPanel, m: ClMessage) {
     if s[0].coding {
       s[0].runs += 1;
       if s[0].worked_n < NP_WORKED { s[0].worked[s[0].worked_n] = s[0].chosen; s[0].worked_n += 1; }
-      if s[0].autopilot && s[0].worked_n < NP_WORKED { np_ask(s, true, true); return; }
+      if s[0].autopilot && s[0].run_cost_e6 >= NP_BUDGET_E6 { np_gap(s); np_append(s, "> Autopilot stopped: this run has spent its budget.\n"); }
+      else if s[0].autopilot && s[0].worked_n < NP_WORKED { np_ask(s, true, true); return; }
     }
     // The picker asked instead of starting: Autopilot answers it once.
-    if s[0].autopilot && !s[0].coding && !s[0].pending_work && s[0].chosen == 0 && !s[0].nudged {
+    if s[0].autopilot && !s[0].coding && !s[0].pending_work && s[0].chosen == 0 && !s[0].nudged && !s[0].declined {
       s[0].nudged = true; s[0].draft_n = np_put(s[0].draft[..], 0, NP_GO); np_send(s); return;
     }
     // You said start: the picker's turn is over and written down, so its session ends and the
@@ -477,7 +490,11 @@ np_status :: (s: []NextPanel, out: []u8) -> string {
 np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, d: f32, dt: f32, now: int) -> int #export_c #effects(all) {
   step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
   s[0].now = now;
-  if s[0].want_stop { s[0].want_stop = false; if s[0].state == NP_RUNNING { np_break(s); np_end(s, NP_STOPPED); } }
+  if s[0].want_stop {
+    s[0].want_stop = false;
+    // Between turns too: the host's answer to what was asked is then left unread.
+    if np_busy(s) { np_break(s); np_end(s, NP_STOPPED); s[0].request = 0; s[0].pending_work = false; s[0].coding = false; }
+  }
   if s[0].want_refresh { s[0].want_refresh = false; np_ask(s, true, false); }
   if s[0].want_start { s[0].want_start = false; if s[0].started || s[0].state == NP_CONTEXT_WAIT { s[0].open = !s[0].open; s[0].focus = s[0].open; } else { np_ask(s, false, false); } }
   if s[0].state == NP_RUNNING { s[0].seconds += step; }
@@ -492,7 +509,7 @@ np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, 
   n = eg_text(out, n, auto_label, auto_box.x + (auto_box.width - eg_width(auto_label, 16, EG_TITLE)) * 0.5, auto_box.y + 23, 16, d, EG_TITLE, ifx s[0].autopilot then EG_WHITE else EG_MID);
   b := np_button(width);
   n = hd_rect(out, n, b, pen, 2, 1);
-  label := ifx s[0].state == NP_RUNNING && s[0].open then "Stop" else "Next issue";
+  label := ifx np_busy(s) && s[0].open then "Stop" else "Next issue";
   n = eg_text(out, n, label, b.x + (b.width - eg_width(label, 16, EG_TITLE)) * 0.5, b.y + 23, 16, d, EG_TITLE, EG_WHITE);
   if !s[0].open { return n; }
   box := np_panel(width, height);
@@ -568,7 +585,7 @@ np_pointer :: (s: []NextPanel, x: f32, y: f32, phase: int, width: f32, height: f
   }
   if phase == 1 { return s[0].down; }
   took := s[0].down; s[0].down = false;
-  if s[0].down_in == 1 && np_in(b, x, y) { if s[0].state == NP_RUNNING && s[0].open { s[0].want_stop = true; } else { s[0].want_start = true; } }
+  if s[0].down_in == 1 && np_in(b, x, y) { if np_busy(s) && s[0].open { s[0].want_stop = true; } else { s[0].want_start = true; } }
   if s[0].down_in == 2 && np_in(np_close_box(box), x, y) { s[0].open = false; s[0].focus = false; }
   if s[0].down_in == 3 && np_in(np_refresh_box(box), x, y) { s[0].want_refresh = true; }
   if s[0].down_in == 4 && np_in(np_auto_box(width), x, y) { s[0].autopilot = !s[0].autopilot; }
@@ -664,6 +681,24 @@ np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
   s: [1] NextPanel;
   np_say(s[..], "**Bold** and `code`, 2 * 3, a *"); np_say(s[..], "* split pair.");
   #assert cast(string) s[0].text[0..<s[0].text_n] == "Bold and code, 2 * 3, a  split pair.";
+}
+#test "next issue: Stop stops between turns too, and the answer to a stopped asking is left unread" {
+  s: [1] NextPanel; np_init(s[..]); out: [1200] f32; box: [4] f32; b := np_button(1320);
+  #assert np_pointer(s[..], b.x + 5, b.y + 5, 0, 1320, 880) && np_pointer(s[..], b.x + 5, b.y + 5, 2, 1320, 880);
+  n := np_frame(s[..], out[..], box[..], 1320, 880, 2, 0.016, 1);
+  #assert s[0].state == NP_CONTEXT_WAIT && s[0].open && np_take_request(s[..]) == 1;
+  #assert np_pointer(s[..], b.x + 5, b.y + 5, 0, 1320, 880) && np_pointer(s[..], b.x + 5, b.y + 5, 2, 1320, 880) && s[0].want_stop;
+  n = np_frame(s[..], out[..], box[..], 1320, 880, 2, 0.016, 2);
+  #assert s[0].state == NP_STOPPED && np_take_request(s[..]) == 0;
+  np_context(s[..], "issues", "", true);
+  #assert s[0].state == NP_STOPPED && !s[0].started;
+}
+#test "next issue: a picker that chose none is not pressed to start, and a run has a budget" {
+  s: [1] NextPanel; np_init(s[..]);
+  #assert !s[0].declined && NP_BUDGET_E6 > 0;
+  np_ask(s[..], false, false); s[0].declined = true; s[0].run_cost_e6 = 5;
+  np_ask(s[..], true, true); #assert !s[0].declined && s[0].run_cost_e6 == 5;
+  np_ask(s[..], false, false); #assert s[0].run_cost_e6 == 0;
 }
 #test "next issue: Autopilot is on by default, its button toggles it, and it sits beside Next issue" {
   s: [1] NextPanel; np_init(s[..]);

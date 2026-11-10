@@ -548,6 +548,8 @@ static void view(void) {
 static void insets(int32_t out[3]) {
   JNIEnv *e = g.env; out[0] = out[1] = out[2] = 0;
   if (!e) return;
+  // This thread never returns to Java, so nothing frees its local references but this frame.
+  if ((*e)->PushLocalFrame(e, 16) != 0) { (*e)->ExceptionClear(e); return; }
   jobject act = g.app->activity->clazz;
   jobject win = (*e)->CallObjectMethod(e, act, (*e)->GetMethodID(e, (*e)->GetObjectClass(e, act), "getWindow", "()Landroid/view/Window;"));
   jobject decor = win ? (*e)->CallObjectMethod(e, win, (*e)->GetMethodID(e, (*e)->GetObjectClass(e, win), "getDecorView", "()Landroid/view/View;")) : NULL;
@@ -559,9 +561,7 @@ static void insets(int32_t out[3]) {
     out[2] = (*e)->CallIntMethod(e, in, (*e)->GetMethodID(e, c, "getSystemWindowInsetBottom", "()I"));
   }
   if ((*e)->ExceptionCheck(e)) { (*e)->ExceptionClear(e); out[0] = out[1] = out[2] = 0; }
-  if (in) (*e)->DeleteLocalRef(e, in);
-  if (decor) (*e)->DeleteLocalRef(e, decor);
-  if (win) (*e)->DeleteLocalRef(e, win);
+  (*e)->PopLocalFrame(e, NULL);
 }
 
 static float scale(void) {
@@ -703,7 +703,13 @@ static int32_t input(struct android_app *app, AInputEvent *ev) {
       if (what != AMOTION_EVENT_ACTION_CANCEL && i != which) continue;
       int32_t id = AMotionEvent_getPointerId(ev, i); float x = AMotionEvent_getX(ev, i) / s, y = AMotionEvent_getY(ev, i) / s;
       if (id == g.stick) { g.stick = -1; eg_pad(g.state, 0, 0); }
-      else if (id == g.pinch) { g.pinch = -1; }
+      else if (id == g.pinch) {
+        g.pinch = -1;
+        // The looking finger moved while it pinched and none of that was a look: it starts again
+        // from where it is now, or the camera would jump by all of it.
+        for (size_t k = 0; k < count && what != AMOTION_EVENT_ACTION_CANCEL; k++)
+          if (AMotionEvent_getPointerId(ev, k) == g.look) eg_pointer(g.state, AMotionEvent_getX(ev, k) / s, AMotionEvent_getY(ev, k) / s, 0);
+      }
       else if (id == g.look) {
         g.look = -1; g.pinch = -1;
         eg_pointer(g.state, x, y, 2);
@@ -739,7 +745,7 @@ void android_main(struct android_app *app) {
   if (!g.state) STOP("Everglade: no memory for the scene.");
   eg_pad(g.state, 0, 0);   // a touch screen: the scene shows the touch hint
   g.last = now();
-  int opened = 0, frames = 0; double since = now();
+  int opened = 0, loaded = 0, frames = 0; double since = now();
   for (;;) {
     int events; struct android_poll_source *source;
     // Asleep while there is no window to draw into.
@@ -753,7 +759,8 @@ void android_main(struct android_app *app) {
       }
     }
     if (app->window && g.resized) {
-      if (!opened) { gpu_open(); faces_open(); place_open(); model_open(); g.stroke_vertices = buffer((VkDeviceSize)eg_max_vertices() * eg_vertex_floats() * 4, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT); }
+      // Once, even when the first window has no size yet and the pipelines wait for the next.
+      if (!loaded) { gpu_open(); faces_open(); place_open(); model_open(); g.stroke_vertices = buffer((VkDeviceSize)eg_max_vertices() * eg_vertex_floats() * 4, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT); loaded = 1; }
       window_open();
       if (!opened && g.ready) { pipelines_open(); opened = 1; }
     }

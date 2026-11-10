@@ -27,6 +27,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var flat: MTLDepthStencilState!
   var faces: MTLTexture!
   var faceSampler: MTLSamplerState!
+  var queue: MTLCommandQueue!     // one for the life of the view: Metal means a queue to be kept
   var last = CACurrentMediaTime()
   var time: Float = 0
 
@@ -37,6 +38,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     preferredFramesPerSecond = NSScreen.main?.maximumFramesPerSecond ?? 60
     clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     depthStencilPixelFormat = .depth32Float; clearDepth = 1
+    queue = device.makeCommandQueue()
     let url = Bundle.main.url(forResource: "default", withExtension: "metallib")!
     let lib = try! device.makeLibrary(URL: url)
     let b = MTLRenderPipelineDescriptor()
@@ -91,10 +93,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   func draw(in view: MTKView) {
     guard let pass = currentRenderPassDescriptor, let drawable = currentDrawable else { return }
     let now = CACurrentMediaTime(); let dt = Float(now - last); last = now
-    render(pass, size: drawableSize, scale: Float(window?.backingScaleFactor ?? 2), dt: dt) { $0.present(drawable) }
+    render(pass, size: drawableSize, scale: Float(window?.backingScaleFactor ?? 2), dt: dt, wait: false) { $0.present(drawable) }
   }
 
-  func render(_ pass: MTLRenderPassDescriptor, size: CGSize, scale: Float, dt: Float, then: (MTLCommandBuffer) -> Void) {
+  // `wait` holds the caller until the GPU has drawn: a shot reads the picture back, the window doesn't.
+  func render(_ pass: MTLRenderPassDescriptor, size: CGSize, scale: Float, dt: Float, wait: Bool = true, then: (MTLCommandBuffer) -> Void) {
     time += dt
     let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
     var u: [Float] = [Float(size.width), Float(size.height), time, 0]
@@ -106,7 +109,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time
     var you = [Float](repeating: 0, count: 5)
     if eg_you(state, &you) == 1 { camera[20] = you[0]; camera[21] = you[1]; camera[22] = you[2] }
-    guard let queue = device?.makeCommandQueue(), let cmd = queue.makeCommandBuffer() else { return }
+    guard let cmd = queue.makeCommandBuffer() else { return }
     // The place's uniforms (everglade/workshop/gpu/temple.coax): size, clock, mirror flag, the eye
     // and its right, up and forward with the focal length, and where you stand.
     var pu = [Float](repeating: 0, count: 24)
@@ -115,7 +118,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     pu[19] = camera[15]
     if seen, let device { place.reflect(cmd, device: device, uniforms: pu, width: Int(size.width), height: Int(size.height)) }
     guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
-    if seen { place.draw(enc, uniforms: pu) }
+    // The place, you, what is only light, then the scene's text over them, as the phones draw it.
+    if seen { place.draw(enc, uniforms: pu); model?.draw(enc, camera: camera); place.glow(enc, uniforms: pu) }
     enc.setDepthStencilState(flat)
     if n > 0 {
       enc.setRenderPipelineState(strokes)
@@ -124,7 +128,6 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       enc.setVertexBytes(&u, length: 16, index: 1)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
     }
-    if seen { model?.draw(enc, camera: camera); place.glow(enc, uniforms: pu) }
     // Next issue, over everything: its panel's dark box, then its strokes.
     var box = [Float](repeating: 0, count: 4)
     let tn = nxp_frame(next, overlay.contents().assumingMemoryBound(to: Float.self), &box, Float(size.width) / scale, Float(size.height) / scale, scale, dt, Int64(Date().timeIntervalSince1970))
@@ -146,14 +149,15 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     enc.endEncoding()
     then(cmd)
     cmd.commit()
-    cmd.waitUntilCompleted()
+    if wait { cmd.waitUntilCompleted() }
   }
 
   // What the panel asked of the host this frame. The host holds no logic here: it runs the
   // context program the panel asks for and appends the lines the panel hands it.
   func serve() {
-    let request = nxp_take_request(next)
-    if request != 0 && !fetching {
+    // A request is taken only when the last one's program has answered, so none is dropped.
+    let request = fetching ? 0 : nxp_take_request(next)
+    if request != 0 {
       fetching = true
       let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/everglade-next")
       let process = Process(), out = Pipe(), err = Pipe()

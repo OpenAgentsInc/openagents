@@ -153,11 +153,15 @@ ws_you :: (s: []Workshop, out: []f32) -> bool #export_c #effects(all) {
 }
 // The follow camera's eye, kept inside the temple: the balustrade is a line you can't cross, not
 // a collider the camera knows, so an eye that would stand outside it is drawn in along its line of
-// sight to WS_EYE_REACH from the middle, and never below the floor.
-WS_EYE_REACH :: 6.7;
+// sight to WS_EYE_REACH from the middle, and never below the floor. The reach is past where you
+// can stand (WK_REACH) and inside the balustrade's line (WK_WALL): were it nearer the middle
+// than you can be, the point looked at would itself be outside it with your back to the rail, and
+// the eye would be drawn all the way in to that point, inside your own head.
+WS_EYE_REACH :: 7.05;
 ws_eye_inside :: (eye: pc.Vec3, at: pc.Vec3) -> pc.Vec3 {
   e := eye;
-  if e.x * e.x + e.z * e.z > WS_EYE_REACH * WS_EYE_REACH {
+  // A point looked at that is itself outside the reach (it can't be while WK_REACH holds you) keeps the eye where it is.
+  if at.x * at.x + at.z * at.z < WS_EYE_REACH * WS_EYE_REACH && e.x * e.x + e.z * e.z > WS_EYE_REACH * WS_EYE_REACH {
     // Halve toward the point looked at until the eye is inside; twelve halvings is under a millimetre.
     low: f32 = 0; high: f32 = 1;
     for i: 0..<12 {
@@ -356,6 +360,20 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   drawn := ws_eye_inside(pc.Vec3.{x = 0, y = 3.5, z = 10}, at);
   #assert drawn.z <= WS_EYE_REACH + 0.001 && drawn.z > WS_EYE_REACH - 0.01 && drawn.y > 1.5 && drawn.y < 3.5;
   low := ws_eye_inside(pc.Vec3.{x = 1, y = -2, z = 1}, at); #assert low.y == 0.25;
+}
+#test "backed against the balustrade the eye stays behind you, not inside your head" {
+  #assert WS_EYE_REACH > WS_REACH + 0.1 && WS_EYE_REACH < WS_WALL;
+  s: [1] Workshop; ws_start(s[..]);
+  #assert ws_key(s[..], 115, true);
+  for i: 0..<600 { ws_walk(s[..], 0.016); }
+  #assert ws_key(s[..], 115, false);
+  for i: 0..<120 { ws_walk(s[..], 0.016); }
+  at := pc.walk_at(s[0].you); e := ws_eye_inside(pc.walk_eye(s[0].you), at);
+  gap := sqrt((e.x - at.x) * (e.x - at.x) + (e.y - at.y) * (e.y - at.y) + (e.z - at.z) * (e.z - at.z));
+  #assert gap > 0.15 && e.x * e.x + e.z * e.z <= WS_EYE_REACH * WS_EYE_REACH + 0.01;
+  // A point looked at outside the reach leaves the eye where it was.
+  far := pc.Vec3.{x = 0, y = 1.5, z = 7.5}; kept := ws_eye_inside(pc.Vec3.{x = 0, y = 3, z = 9}, far);
+  #assert kept.z == 9 && kept.y == 3;
 }
 #test "a touch stick walks you: pushed forward you go toward the golem, let go you stop, and it keeps to its range" {
   s: [1] Workshop; ws_start(s[..]);

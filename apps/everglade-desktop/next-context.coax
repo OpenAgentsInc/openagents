@@ -5,8 +5,10 @@
 // part first (the issues, oldest first, so a new issue appends and the prompt cache's prefix
 // holds), then what changes (commits, recent prompts, the prompt in hand).
 //
-//   coax/web/tool.sh apps/everglade-desktop/next-context.coax context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO]
-//       prints the message on stdout; stderr says what came from cache and how old it is
+//   coax/web/tool.sh apps/everglade-desktop/next-context.coax context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO] [--author LOGIN]
+//       prints the message on stdout; stderr says what came from cache and how old it is.
+//       Only issues filed by LOGIN (NC_AUTHOR unless given) are read: an agent with a shell is
+//       never handed a stranger's text
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax work NUMBER --repo-dir CHECKOUT [--owner PID]
 //       makes a fresh worktree for the issue off origin/main beside CHECKOUT (CHECKOUT-issue-NUMBER;
 //       an existing one is reused) and prints its path on the first line, then the issue whole
@@ -33,6 +35,10 @@ NC_PROMPT_BYTES :: 320;    // bytes of each
 NC_COMMITS :: 25;          // recent commits fetched
 NC_TAIL :: 8000000;        // bytes read from the end of a transcript; a long session writes megabytes between prompts
 NC_ISSUES_MAX :: 400;
+// Whose issues an agent may be given. An issue's text goes to an agent that has a shell and may
+// push, and anyone can file an issue on a public repository, so only this login's are read:
+// asked of GitHub (--author) and checked again on every issue read from the cache.
+NC_AUTHOR :: "AtlantisPleb";
 
 // ---- small pieces
 
@@ -66,6 +72,21 @@ nc_repo_ok :: (repo: string) -> bool {
   }
   return slash > 0 && slash < repo.count - 1 && repo.count <= 100;
 }
+// A GitHub login: letters, digits and '-', so it is safe in a shell word.
+nc_login_ok :: (login: string) -> bool {
+  for c: login { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return login.count > 0 && login.count <= 39;
+}
+// Logins are the same whatever their letters' case.
+nc_same_login :: (a: string, b: string) -> bool {
+  if a.count != b.count || a.count == 0 { return false; }
+  for c, i: a {
+    x := c; y := b[i];
+    if x >= 'A' && x <= 'Z' { x += 32; } if y >= 'A' && y <= 'Z' { y += 32; }
+    if x != y { return false; }
+  }
+  return true;
+}
 nc_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
 nc_has :: (s: string, part: string) -> bool {
   if part.count > s.count { return false; }
@@ -77,6 +98,10 @@ nc_has :: (s: string, part: string) -> bool {
   #assert nc_repo_ok("OpenAgentsInc/openagents") && nc_repo_ok("a/b.c_d-e");
   #assert !nc_repo_ok("openagents") && !nc_repo_ok("/x") && !nc_repo_ok("x/") && !nc_repo_ok("a/b/c");
   #assert !nc_repo_ok("a/b;rm") && !nc_repo_ok("a/$(x)") && !nc_repo_ok("a/b c") && !nc_repo_ok("a/'b'");
+}
+#test "a login is GitHub's letters, and two are the same whatever their case" {
+  #assert nc_login_ok("AtlantisPleb") && nc_login_ok("a-b9") && !nc_login_ok("") && !nc_login_ok("a b") && !nc_login_ok("a;rm") && !nc_login_ok("a'") && !nc_login_ok("$(x)");
+  #assert nc_same_login("AtlantisPleb", "atlantispleb") && !nc_same_login("AtlantisPleb", "AtlantisPleb2") && !nc_same_login("", "") && !nc_same_login("AtlantisPleb", "AtlantisPlob");
 }
 #test "a line of text is one line, its spaces single, cut where it must be" {
   b: [64] u8; o: [1] Out; o[0].buf = b[..];
@@ -137,10 +162,10 @@ nc_fetch :: (p: [] Paths, name: string, command: string) -> bool {
   }
   return fs_rename(tmp, fs_join(nc_dir(p), name, p[0].a[..]));
 }
-nc_fetch_issues :: (p: [] Paths, repo: string) -> bool {
+nc_fetch_issues :: (p: [] Paths, repo: string, author: string) -> bool {
   b: [512] u8; o: [1] Out; o[0].buf = b[..];
-  nc_put(o[..], "gh issue list --repo "); nc_put(o[..], repo);
-  nc_put(o[..], " --state open --limit "); nc_put_int(o[..], NC_ISSUES_MAX); nc_put(o[..], " --json number,title,labels,updatedAt,body");
+  nc_put(o[..], "gh issue list --repo "); nc_put(o[..], repo); nc_put(o[..], " --author "); nc_put(o[..], author);
+  nc_put(o[..], " --state open --limit "); nc_put_int(o[..], NC_ISSUES_MAX); nc_put(o[..], " --json number,title,labels,updatedAt,body,author");
   return nc_fetch(p, "issues.json", nc_text(o[..]));
 }
 nc_fetch_commits :: (p: [] Paths, repo: string) -> bool {
@@ -153,13 +178,13 @@ nc_fetch_commits :: (p: [] Paths, repo: string) -> bool {
 // One cached file: fetched when it is missing, older than ttl, or a refresh is asked. `age` is how
 // old the copy now in place is; `fetched` whether this run fetched it.
 Cached :: struct { ok: bool; fetched: bool; age: int; at: int; }
-nc_ensure :: (p: [] Paths, repo: string, name: string, ttl: int, refresh: bool, now: int) -> Cached {
+nc_ensure :: (p: [] Paths, repo: string, author: string, name: string, ttl: int, refresh: bool, now: int) -> Cached {
   c: Cached;
   path_b: [2048] u8; path := fs_join(nc_dir(p), name, path_b[..]);
   at := nc_mtime(path);
   stale := at < 0 || refresh || now - at > ttl;
   if stale {
-    got := ifx name == "issues.json" then nc_fetch_issues(p, repo) else nc_fetch_commits(p, repo);
+    got := ifx name == "issues.json" then nc_fetch_issues(p, repo, author) else nc_fetch_commits(p, repo);
     if got { c.fetched = true; at = nc_mtime(path); }
   }
   c.ok = at >= 0; c.at = at; c.age = ifx at >= 0 then nc_now(p) - at else -1;
@@ -183,13 +208,23 @@ nc_meta :: (p: [] Paths, repo: string, issues: Cached, count: int, commits: Cach
 
 // The open issues, oldest first: number, labels, the day it last changed, title, and the start of
 // its body. Returns how many, or -1 when the cache can't be read.
-nc_issues :: (p: [] Paths, o: [] Out, raw: [] u8, nodes: [] JvNode) -> int {
+// Whether the issue at `at` was filed by `author`. One with no author recorded (a cache from
+// before authors were kept) is not theirs.
+nc_by :: (d: Jv, at: int, author: string) -> bool {
+  who: [64] u8; m := jv_str(d, jv_get(d, jv_get(d, at, "author"), "login"), who[..]);
+  return m > 0 && nc_same_login(cast(string) who[0..<m], author);
+}
+nc_issues :: (p: [] Paths, author: string, o: [] Out, raw: [] u8, nodes: [] JvNode) -> int {
   n := fs_read(fs_join(nc_dir(p), "issues.json", p[0].a[..]), raw);
   d: [1] Jv;
   if n < 2 || !jv_parse(d[..], cast(string) raw[0..<n], nodes) { return -1; }
-  count := jv_len(d[0], 0); if count > NC_ISSUES_MAX { count = NC_ISSUES_MAX; }
-  number: [NC_ISSUES_MAX] int; node: [NC_ISSUES_MAX] int;
-  for i: 0..<count { node[i] = jv_at(d[0], 0, i); number[i] = jv_int(d[0], jv_get(d[0], node[i], "number"), 0); }
+  all := jv_len(d[0], 0); if all > NC_ISSUES_MAX { all = NC_ISSUES_MAX; }
+  number: [NC_ISSUES_MAX] int; node: [NC_ISSUES_MAX] int; count := 0;
+  for i: 0..<all {
+    at := jv_at(d[0], 0, i);
+    if !nc_by(d[0], at, author) { continue; }
+    node[count] = at; number[count] = jv_int(d[0], jv_get(d[0], at, "number"), 0); count += 1;
+  }
   // Oldest first: an insertion sort by number.
   for i: 1..<count {
     k := i;
@@ -311,19 +346,19 @@ nc_age_text :: (c: Cached, what: string, count: int) {
   tool_errln(nc_text(o[..]));
 }
 
-nc_context :: (a: [] Args, repo: string) -> int {
+nc_context :: (a: [] Args, repo: string, author: string) -> int {
   p: [1] Paths;
   if !nc_paths(p[..], repo) { tool_errln("next-context: no HOME, or ~/.openagents/cache can't be made"); return 1; }
   ttl := NC_TTL; t := args_whole(args_value(a, "--ttl", "")); if t >= 0 { ttl = t; }
   refresh := args_has(a, "--refresh");
   now := nc_now(p[..]);
-  issues := nc_ensure(p[..], repo, "issues.json", ttl, refresh, now);
-  commits := nc_ensure(p[..], repo, "commits.txt", ttl, refresh, now);
+  issues := nc_ensure(p[..], repo, author, "issues.json", ttl, refresh, now);
+  commits := nc_ensure(p[..], repo, author, "commits.txt", ttl, refresh, now);
   buf: [1048576] u8; o: [1] Out; o[0].buf = buf[..];
   raw: [16777216] u8; nodes: [400000] JvNode;   // the issues file whole, then a transcript's tail
-  nc_put(o[..], "OPEN ISSUES of "); nc_put(o[..], repo); nc_put(o[..], ", oldest first\n\n");
+  nc_put(o[..], "OPEN ISSUES of "); nc_put(o[..], repo); nc_put(o[..], " filed by "); nc_put(o[..], author); nc_put(o[..], ", oldest first\n\n");
   count := -1;
-  if issues.ok { count = nc_issues(p[..], o[..], raw[..], nodes[..]); }
+  if issues.ok { count = nc_issues(p[..], author, o[..], raw[..], nodes[..]); }
   if count < 0 { tool_errln("next-context: there are no issues to read: gh must be installed and logged in (gh auth login)"); return 1; }
   nc_meta(p[..], repo, issues, count, commits);
   // What changes from one asking to the next goes after the issues.
@@ -377,7 +412,7 @@ nc_git :: (dir: string, args: [] string, timeout_ms: int) -> bool {
 // A fresh worktree for issue `number` off origin/main, beside the checkout: no build output comes
 // with it, and the compiler is one `coax/build.sh` away (it installs the published build in
 // seconds), so a worktree costs no rebuild. An existing worktree for the issue is reused as it is.
-nc_work :: (a: [] Args, repo: string) -> int {
+nc_work :: (a: [] Args, repo: string, author: string) -> int {
   number := args_whole(args_at(a, 1));
   dir := args_value(a, "--repo-dir", "");
   if number <= 0 || dir.count == 0 || dir[0] != '/' { tool_errln("usage: next-context work NUMBER --repo-dir /ABSOLUTE/CHECKOUT"); return 2; }
@@ -405,13 +440,14 @@ nc_work :: (a: [] Args, repo: string) -> int {
       if r.started == 0 && r.status == 0 { tool_err("next-context: issue "); tool_err(args_at(a, 1)); tool_err(" is being worked by another process ("); tool_err(other); tool_errln("); its worktree is left alone"); return 1; }
     }
   }
+  reused := false;
   if fs_kind(path) <= 0 {
     fetch := [3] string.["fetch", "origin", "main"];
     if !nc_git(dir, fetch[..], 120000) { return 1; }
     add := [5] string.["worktree", "add", "--detach", path, "origin/main"];
     if !nc_git(dir, add[..], 300000) { return 1; }
     tool_err("worktree: made "); tool_errln(path);
-  } else { tool_err("worktree: reused "); tool_errln(path); }
+  } else { reused = true; tool_err("worktree: reused "); tool_errln(path); }
   if owner.count > 0 { ok := fs_write(lock, owner); }
   // The issue, whole, from the cache.
   p: [1] Paths;
@@ -426,7 +462,10 @@ nc_work :: (a: [] Args, repo: string) -> int {
     for i: 0..<jv_len(d[0], 0) {
       at := jv_at(d[0], 0, i);
       if jv_int(d[0], jv_get(d[0], at, "number"), 0) != number { continue; }
+      if !nc_by(d[0], at, author) { tool_err("next-context: that issue was not filed by "); tool_err(author); tool_errln(", so no agent is given it"); return 1; }
       found = true;
+      // What state the worktree is in, said to the agent: one left by an earlier try is not at origin/main.
+      nc_put(o[..], ifx reused then "WORKTREE: left by an earlier try at this issue. It may hold commits or changes and is not at origin/main: run git status and git log origin/main..HEAD before anything else, keep what is good, and rebase.\n\n" else "WORKTREE: new, detached at origin/main.\n\n");
       nc_put(o[..], "ISSUE #"); nc_put_int(o[..], number); nc_put(o[..], " ");
       m := jv_str(d[0], jv_get(d[0], at, "title"), text[..]); if m > 0 { nc_put_line(o[..], cast(string) text[0..<m], 300); }
       nc_put(o[..], "\n\n");
@@ -485,8 +524,10 @@ tool_main :: () -> int #export_c #effects(all) {
   repo := args_value(a[..], "--repo", NC_REPO);
   if !nc_repo_ok(repo) { tool_errln("next-context: --repo is OWNER/REPO"); return 2; }
   verb := args_at(a[..], 0);
-  if verb == "context" { return nc_context(a[..], repo); }
-  if verb == "work" { return nc_work(a[..], repo); }
+  author := args_value(a[..], "--author", NC_AUTHOR);
+  if !nc_login_ok(author) { tool_errln("next-context: --author is a GitHub login"); return 2; }
+  if verb == "context" { return nc_context(a[..], repo, author); }
+  if verb == "work" { return nc_work(a[..], repo, author); }
   if verb == "status" { return nc_status(repo); }
   if verb == "usage" { return nc_usage(); }
   tool_errln("next-context: the verbs are context, work, status and usage");

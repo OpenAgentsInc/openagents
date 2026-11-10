@@ -169,7 +169,12 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     for t in touches {
       let p = t.location(in: self)
       if t === stick { stick = nil; eg_pad(state, 0, 0) }
-      else if t === pinch { pinch = nil }
+      else if t === pinch {
+        pinch = nil
+        // The looking finger moved while it pinched and none of that was a look: it starts again
+        // from where it is now, or the camera would jump by all of it.
+        if let l = look, !touches.contains(l) { let q = l.location(in: self); eg_pointer(state, Float(q.x), Float(q.y), 0) }
+      }
       else if t === look {
         look = nil; pinch = nil
         eg_pointer(state, Float(p.x), Float(p.y), 2)
