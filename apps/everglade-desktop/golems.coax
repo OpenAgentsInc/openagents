@@ -10,11 +10,11 @@
 // transcript changed in the last H hours (12) and prints, newest first, one G line an agent and
 // its latest messages as M lines:
 //
-//   G  key status age model title place tools steps parent last
+//   G  key status age model title place tools steps parent last said tool
 //   M  kind text                (kind: a its words, u what it was asked, t a tool call)
 //
 // Fields are tab-separated, with tabs and newlines in text made spaces. status is working (its
-// transcript changed in the last two minutes), waiting (in the last half hour) or idle. steps is
+// transcript changed in the last two minutes); said is its latest words and tool its latest tool call (last is whichever came last), waiting (in the last half hour) or idle. steps is
 // a bitmask of the coding steps it has reached, read from its tool calls' own fields (the tool's
 // name and a Bash command's first words), never from what anyone said:
 //   1 read  2 edited  4 built  8 tested  16 committed  32 pushed  64 closed the issue
@@ -41,6 +41,8 @@ Golem :: struct {
   title: [GS_TEXT] u8; title_n: int;
   place: [96] u8; place_n: int;
   last: [GS_TEXT] u8; last_n: int;
+  said: [GS_TEXT] u8; said_n: int;         // its latest words
+  tool: [GS_TEXT] u8; tool_n: int;         // its latest tool call
   tools: int; steps: int;
   msgs: [GS_MSGS] GsMsg; m0: int; mn: int;   // a ring: the newest GS_MSGS
 }
@@ -117,7 +119,7 @@ gs_record :: (g: []Golem, ar: []ClArena, l: string, first_only: bool) {
   for i: 0..<cl_count(content) {
     item := cl_json(content, cl_item(content, i));
     t := cl_str(ar, item, "type");
-    if t == "text" { words := cl_str(ar, item, "text"); gs_msg(g, 'a', words); g[0].last_n = gs_set(g[0].last[..], gs_trim(words)); }
+    if t == "text" { words := cl_str(ar, item, "text"); gs_msg(g, 'a', words); g[0].last_n = gs_set(g[0].last[..], gs_trim(words)); if gs_trim(words).count > 0 { g[0].said_n = gs_set(g[0].said[..], gs_trim(words)); } }
     if t == "tool_use" {
       g[0].tools += 1;
       name := cl_str(ar, item, "name"); input := cl_raw(item, "input");
@@ -127,6 +129,7 @@ gs_record :: (g: []Golem, ar: []ClArena, l: string, first_only: bool) {
       line: [GS_TEXT] u8; ln := gs_tool_line(ar, name, input, line[..]);
       gs_msg(g, 't', cast(string) line[0..<ln]);
       g[0].last_n = gs_set(g[0].last[..], cast(string) line[0..<ln]);
+      g[0].tool_n = gs_set(g[0].tool[..], cast(string) line[0..<ln]);
     }
   }
 }
@@ -251,6 +254,8 @@ gs_snapshot :: (now: int, hours: int) -> int {
     n = gs_raw(out[..], n, "\t"); n = gs_int(out[..], n, g[0].steps);
     n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].parent[0..<g[0].parent_n]);
     n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].last[0..<g[0].last_n]);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].said[0..<g[0].said_n]);
+    n = gs_raw(out[..], n, "\t"); n = gs_put(out[..], n, cast(string) g[0].tool[0..<g[0].tool_n]);
     n = gs_raw(out[..], n, "\n");
     for mi: 0..<g[0].mn {
       msg := g[0].msgs[(g[0].m0 + mi) % GS_MSGS];

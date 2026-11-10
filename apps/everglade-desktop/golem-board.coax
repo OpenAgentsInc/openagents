@@ -4,8 +4,8 @@
 // seconds and hands its lines to gb_take; the board draws them over the left of the window.
 //
 // A card a golem: where it works (#ISSUE for an Autopilot worktree), its model, how long since it
-// last did anything, what it was asked, its coding steps as seven pips (read, edited, built,
-// tested, committed, pushed, closed) and the last thing it did. Click a card for its latest
+// last did anything, its latest words, its coding steps as seven pips (read, edited, built,
+// tested, committed, pushed, closed) and its latest tool call. Click a card for its latest
 // messages; All goes back. Loaded into next.coax's unit; drawn by np_frame.
 
 GB_RAW :: 65536;
@@ -196,11 +196,13 @@ gb_card_draw :: (b: []GolemBoard, out: []f32, n: int, l: string, card: HudBox, d
   st: [48] u8; sk := np_put(st[..], 0, status); sk = np_put(st[..], sk, ", "); sk = np_put(st[..], sk, ag);
   right := cast(string) st[0..<sk];
   m = eg_text(out, m, right, card.x + card.width - 12 - eg_width(right, 13, EG_BODY), card.y + 22, 13, d, EG_BODY, gb_status_kind(status));
-  // Line 2: what it was asked.
-  m = gb_text_fit(out, m, gb_field(l, 5), x, card.y + 44, w, 14, d, EG_BODY, EG_WHITE);
-  // Line 3: its steps, then what it last did.
+  // Line 2: its latest words (what it was asked, until it has said something).
+  said := gb_field(l, 11); if said.count == 0 { said = gb_field(l, 5); }
+  m = gb_text_fit(out, m, said, x, card.y + 44, w, 14, d, EG_BODY, EG_WHITE);
+  // Line 3: its steps, then its latest tool call.
+  tool := gb_field(l, 12); if tool.count == 0 { tool = gb_field(l, 10); }
   m = gb_pips(out, m, gb_num(gb_field(l, 8)), x, card.y + 56, pen, d);
-  m = gb_text_fit(out, m, gb_field(l, 10), x + 210, card.y + 66, w - 210, 13, d, EG_BODY, EG_DIM);
+  m = gb_text_fit(out, m, tool, x + 210, card.y + 66, w - 210, 13, d, EG_BODY, EG_DIM);
   return m;
 }
 
@@ -236,7 +238,7 @@ gb_wheel :: (b: []GolemBoard, x: f32, y: f32, dy: f32, width: f32, height: f32) 
   snap := "G\tk1\tworking\t2\tclaude-sonnet-5-5\tFix the comma\t#13116\t16\t4\t\tBash coax/build.sh\nM\tt\tBash coax/build.sh\nM\ta\tBuilding.\nG\tk2\tidle\t9000\tclaude-opus-5-5\tGreen main\t#13134\t31\t124\t\tdone\n";
   gb_take(b[..], snap, 100);
   #assert b[0].count == 2 && b[0].working == 1 && b[0].waiting == 0;
-  #assert gb_field(gb_golem(b[..], 0), 6) == "#13116" && gb_num(gb_field(gb_golem(b[..], 1), 8)) == 124;
+  #assert gb_field(gb_golem(b[..], 0), 11) == "" && gb_field(gb_golem(b[..], 0), 6) == "#13116" && gb_num(gb_field(gb_golem(b[..], 1), 8)) == 124;
   mb: [48] u8; #assert gb_model("claude-sonnet-5-5", mb[..]) == "Sonnet 5.5";
   ab: [32] u8; #assert gb_age(9000, ab[..]) == "2h ago" && gb_age(42, ab[..]) == "42s ago";
 }

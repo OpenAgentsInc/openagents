@@ -736,8 +736,8 @@ are working now, out of M seen in the last 12 hours.
   - its model;
   - working, waiting or idle (its transcript changed in the last 2 minutes, in the
     last 30 minutes, or longer ago), and when;
-  - what it was asked;
-  - its last action;
+  - its latest message (what it was asked, until it has said anything);
+  - its latest tool call;
   - seven step boxes: read, edited, built, tested, committed, pushed, closed. A step
     counts only from the agent's own tool calls (the tool's name, and the first
     words of a Bash command), never from anything it wrote.
