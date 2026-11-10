@@ -17,6 +17,7 @@
 #load "familiar_pack.coax";
 #load "horse_pack.coax";   // the rideable white horse (everglade/docs/mounts-spec.md)
 #load "cat_pack.coax";     // Everglade's cat (everglade/creatures/cat.coax)
+#load "weapon_pack.coax";  // the Ranger's bow, string and arrow for a pack with only the Sword (Everglade II)
 #load "dragon_pack.coax";
 #load "meadow_pack.coax";
 
@@ -897,10 +898,10 @@ gp_entry :: (out:[]u8,row:int,kind:int,license:int,name:string,offset:int,size:i
 // Append the shared meshes to an existing world pack without rebuilding its
 // other assets. The appended model indices start at their own vertex base.
 // model: GP_APPEND_FAMILIARS, or the horse's (horse_bake.py) or the cat's (cat_bake.py) frames in `frames`.
-GP_APPEND_FAMILIARS :: 0; GP_APPEND_HORSE :: 1; GP_APPEND_CAT :: 2;
+GP_APPEND_FAMILIARS :: 0; GP_APPEND_HORSE :: 1; GP_APPEND_CAT :: 2; GP_APPEND_WEAPONS :: 3;   // weapons: `frames` names an uncompressed glade.pack (weapon_pack.coax)
 gp_append_familiars :: (input:string,output:string)->int {return gp_append_models(input,output,GP_APPEND_FAMILIARS,"");}
 gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
-  horse:=model==GP_APPEND_HORSE; kitty:=model==GP_APPEND_CAT;
+  horse:=model==GP_APPEND_HORSE; kitty:=model==GP_APPEND_CAT; arms:=model==GP_APPEND_WEAPONS;
   w:[1]Gp; src:=w[0].out[..];
   size:=fs_read(input,src);
   if size<32 || cast(string)src[0..<4]!="VPK1" || gl_u32(src,8)!=size { return 1; }
@@ -926,18 +927,26 @@ gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
     if model==GP_APPEND_FAMILIARS && (starts(line,"C glade/familiar") || starts(line,"L 248 ")) { tool_errln("pack already contains familiar models or uses source 248"); return 1; }
     if horse && (starts(line,"C glade/horse") || starts(line,"L 247 ")) { tool_errln("pack already contains the horse or uses source 247"); return 1; }
     if kitty && (starts(line,"C glade/cat") || starts(line,"L 245 ")) { tool_errln("pack already contains the cat or uses source 245"); return 1; }
+    if arms && (starts(line,"C glade/weapon4 ") || starts(line,"C glade/weapon5 ") || starts(line,"C glade/weapon6 ")) { tool_errln("pack already contains the Ranger's kit"); return 1; }
     if starts(line,"bytes ") && line.count==16 { size_at=at+6; }
     at=end+1;
   }
   if size_at<0 { return 1; }
 
   first:[GP_CAT_FRAMES]int; count:[GP_CAT_FRAMES]int;   // the most frames a model appends (the cat's 64; the horse's 36)
-  if horse { gp_horse_meshes(w[..],frames,first[..],count[..]); } else if kitty { gp_cat_meshes(w[..],frames,first[..],count[..]); } else { gp_familiar_meshes(w[..],first[..],count[..]); }
+  out:[536870912]u8;
+  // the weapons' records draw from the Sword's vertex base, so their indices count from it
+  sword:=gp_catalog_row(cat,"glade/weapon1");
+  if arms {
+    if sword.count<=0 || sword.word%8!=0 || sword.word>vertex_bytes/4 { tool_errln("pack has no Sword to share its vertex base"); return 1; }
+    n:=fs_read(frames,out[..]);
+    if n<=0 || !gp_weapon_meshes(w[..],out[0..<n],vertex_bytes/32-sword.word/8,first[..],count[..]) { tool_errln("missing or invalid glade.pack weapons"); return 1; }
+  }
+  else if horse { gp_horse_meshes(w[..],frames,first[..],count[..]); } else if kitty { gp_cat_meshes(w[..],frames,first[..],count[..]); } else { gp_familiar_meshes(w[..],first[..],count[..]); }
   extra:[8192]u8; c:[1]Sb; c[0]=sb(extra[..]);
   sb_byte(c[..],'\n');
-  if horse { gp_horse_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else if kitty { gp_cat_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else { gp_familiar_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); }
+  if arms { gp_weapon_catalog(c[..],first[..],count[..],index_bytes/4,sword.word); } else if horse { gp_horse_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else if kitty { gp_cat_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); } else { gp_familiar_catalog(c[..],first[..],count[..],index_bytes/4,vertex_bytes/4); }
   appendix:=sb_text(c[..]);
-  out:[536870912]u8;
   new_size:=size+appendix.count+w[0].nv*32+w[0].ni*4+4;
   if new_size>out.count || new_size>gl_u32(src,12) { tool_errln("appended models exceed the pack budget"); return 1; }
   for i:0..<start { out[i]=src[i]; }
@@ -957,7 +966,7 @@ gp_append_models :: (input:string,output:string,model:int,frames:string)->int {
   value:=pos;
   for i:0..<10 { out[start+size_at+9-i]=cast(u8)(48+value%10); value/=10; }
   if !fs_write(output,cast(string)out[0..<pos]) { return 1; }
-  print("Appended % % meshes to % (% bytes)\n",ifx horse then GP_HORSE_FRAMES else ifx kitty then GP_CAT_FRAMES else FAM_FORMS,ifx horse then "horse" else ifx kitty then "cat" else "familiar",output,pos);
+  print("Appended % % meshes to % (% bytes)\n",ifx arms then GP_WEAPON_KIT.count else ifx horse then GP_HORSE_FRAMES else ifx kitty then GP_CAT_FRAMES else FAM_FORMS,ifx arms then "weapon" else ifx horse then "horse" else ifx kitty then "cat" else "familiar",output,pos);
   return 0;
 }
 
@@ -965,6 +974,7 @@ tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) {return 2;}
  if args_count(args[..])==3 && args_at(args[..],0)=="--append-familiars" {return gp_append_familiars(args_at(args[..],1),args_at(args[..],2));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-horse" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_HORSE,args_at(args[..],3));}
+ if args_count(args[..])==4 && args_at(args[..],0)=="--append-weapons" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_WEAPONS,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-cat" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_CAT,args_at(args[..],3));}
  if args_count(args[..])==3 && args_at(args[..],0)=="--append-piles" {return gp_append_piles(args_at(args[..],1),args_at(args[..],2));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-build" {return gp_append_build(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}

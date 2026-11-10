@@ -186,6 +186,16 @@ Once you strike him, he fights until you drop, leave his 28 m leash, or stop fig
 see and hear each of his attacks, 0.7 s apart. The room check
 `e2 guard: an SRD level 10 Fighter` covers his numbers and his attacks a turn.
 
+Then add the Ranger's kit: Experimental's Longbow, its string and its Arrow (`glade/weapon4..6`),
+copied out of its `glade.pack` onto the Sword's vertex base and shaded by vertex colour alone
+(`verse/tools/assets/weapon_pack.coax`). Without them a Ranger here carries nothing:
+
+```sh
+gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-weapons \
+  BASE.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack /tmp/glade.pack
+```
+
 Then add the characters' material maps (#13012). The tool appends the Fantasy Source's normal and
 ORM maps for each outfit family, and the base bodies' normal and roughness maps, as 14 linear
 data layers at 512 px, between the colour layers and the sounds. That brings the pack to 57 MB.
