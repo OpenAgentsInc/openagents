@@ -3,7 +3,7 @@
 #load "../../../verse/character-glade.coax";
 #load "character-glade-light.coax";
 #load "../../../verse/everglade2/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)
-#load "../../../verse/experimental-terrain.coax";   // the ground it stands on (exp_height)
+#load "../../../verse/experimental-ground.coax";   // the ground it stands on (exp_height_gpu); not experimental-terrain.coax, whose dungeon and visibility WGSL does not take (#13132)
 // The sky, the soil seams and the cloud shadows are the shared painterly default's
 // (aethyr/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
 // shadows and the sky read the frame's resolved environment (u at PAINT_ENV_U, #13066).

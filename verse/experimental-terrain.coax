@@ -2,6 +2,7 @@
 // height function, leaving the original Character Create glade untouched.
 #module "verse.experimentalterrain";
 #load "character-glade.coax" as glade;
+#load "experimental-ground.coax" as ground;   // the GPU passes' copy of the sites and exp_height_gpu (#13132)
 #load "experimental-dungeon.coax" as dungeon;
 #load "../aethyr/world/building.coax" as building;
 #load "../everglade/world/housewright.coax" as hw;
@@ -169,67 +170,26 @@ exp_showcase_boxes :: (tier:int,stage:int,out:[]f32,n:int)->int {
 }
 exp_site_group :: (i:int)->int {if i>=EXP_SHOWCASE_SITE && i<EXP_SHOWCASE_SITE+EXP_SHOWCASE_SITES {return -4;}if i==EXP_HOME_SITE {return -3;}if i==18 {return -2;}if i==27 {return 0;}if i>=19 {return 1;}if i>=9 {return -1;}if i<4 {return i;}if i==4 || i==7 || i==8 {return 3;}if i==5 {return 0;}return 1;}
 exp_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
-exp_distance :: (s:ExpSite,x:f32,z:f32)->f32 {
- dx:=exp_max(s.x-s.left-x,x-s.x-s.right);dz:=exp_max(s.z-s.back-z,z-s.z-s.front);return exp_max(dx,dz);
-}
-exp_castle_distance :: (x:f32,z:f32)->f32 {return exp_distance(ExpSite.{x=46,z= -47,left=32.5,right=32.5,back=31.5,front=31},x,z);}
+exp_distance :: (s:ExpSite,x:f32,z:f32)->f32 {return ground.exp_ground_distance(s.x,s.z,s.left,s.right,s.back,s.front,x,z);}
+exp_castle_distance :: (x:f32,z:f32)->f32 {return ground.exp_ground_castle_distance(x,z);}
 exp_clear :: (x:f32,z:f32)->bool {for i:0..<EXP_SITES {if exp_distance(exp_site(i),x,z)<1.0 {return true;}}return false;}
 // One site's pull on a height h at (x, z): level within the site, eased back to h over 4 m.
-exp_level :: (h:f32,s:ExpSite,x:f32,z:f32)->f32 {
- d:=exp_distance(s,x,z);if d>=4 {return h;}
- t:=ifx d<=0 then 0.0f32 else d/4;t=t*t*(3-2*t);return glade.cg_height(s.x,s.z)*(1-t)+h*t;
-}
+exp_level :: (h:f32,s:ExpSite,x:f32,z:f32)->f32 {return ground.exp_ground_level(h,s.x,s.z,s.left,s.right,s.back,s.front,x,z);}
 exp_height :: (x:f32,z:f32)->f32 {
  h:=glade.cg_height(x,z);
  for i:0..<EXP_SITES {h=exp_level(h,exp_site(i),x,z);}
  d:=exp_castle_distance(x,z);if d<4 {t:=ifx d<=0 then 0.0f32 else d/4;t=t*t*(3-2*t);h=glade.cg_height(18,-20)*(1-t)+h*t;}
  return h;
 }
-// exp_height for the GPU passes (gpu/character-glade.coax places the open meadow's grass and kits on
-// it): WGSL takes no constant table of sites, so the sites come from a local copy of EXP_SITE_AT,
-// built once a call, and a check holds the two equal. A height on the CPU stays on the table.
-exp_height_gpu :: (x:f32,z:f32)->f32 {
- t:=[EXP_SITES*6]f32.[
-  -18,-23,10,4,10.8,4.1,
-  18,-20,4.2,3.8,4.1,3.9,
-  -50,25,2.9,22,7,6.2,
-  35,30,2.9,6.2,7,5.2,
-  -20,25,2.9,6.2,7,5.2,
-  -45,44,10,4,7.5,4.2,
-  -19,45,4.2,3.8,4.1,3.9,
-  -5,-23,2.9,6.2,7,5.2,
-  15,-5,2.9,6.2,7,5.2,
-  48,43,2.5,2.5,2.5,2.5,
-  58,43,2.5,2.5,2.5,2.5,
-  68,43,2.5,2.5,2.5,2.5,
-  78,43,2.5,2.5,2.5,2.5,
-  48,53,2.5,2.5,2.5,2.5,
-  58,53,2.5,2.5,2.5,2.5,
-  68,53,2.5,2.5,2.5,2.5,
-  78,53,2.5,2.5,2.5,2.5,
-  48,63,2.5,2.5,2.5,2.5,
-  -38,-54,0,0,0,0,
-  50,-20,4.2,3.8,4.1,3.9,
-  18,-52,4.2,3.8,4.1,3.9,
-  50,-52,4.2,3.8,4.1,3.9,
-  74,-20,4.2,3.8,4.1,3.9,
-  74,-52,4.2,3.8,4.1,3.9,
-  18,-74,4.2,3.8,4.1,3.9,
-  50,-74,4.2,3.8,4.1,3.9,
-  74,-74,4.2,3.8,4.1,3.9,
-  36,-34,10,4,10.8,4.1,
-  -20,-5,2.5,2.5,2.5,2.5,
-  26.27,46.0,15.17,15.17,6.6,6.6,
-  10.79,72.15,30.69,30.69,9.6,9.6,
-  59.95,78.5,14.3,14.3,3.7,3.25];
- h:=glade.cg_height(x,z);
- for i:0..<EXP_SITES {o:=i*6;s:=ExpSite.{x=t[o],z=t[o+1],left=t[o+2],right=t[o+3],back=t[o+4],front=t[o+5]};if i==18 {s=exp_dungeon_site();}h=exp_level(h,s,x,z);}
- d:=exp_castle_distance(x,z);if d<4 {u:=ifx d<=0 then 0.0f32 else d/4;u=u*u*(3-2*u);h=glade.cg_height(18,-20)*(1-u)+h*u;}
- return h;
+// The GPU passes read the ground from experimental-ground.coax (exp_height_gpu), which loads none of
+// this file's CPU-side modules (#13132): these checks hold its sites and its height to the table here.
+#test "the GPU's sites are exp_site's" {
+ t:=ground.exp_ground_sites();#assert ground.EXP_GROUND_SITES==EXP_SITES;
+ for i:0..<EXP_SITES {s:=exp_site(i);o:=i*6;#assert t[o]==s.x && t[o+1]==s.z && t[o+2]==s.left && t[o+3]==s.right && t[o+4]==s.back && t[o+5]==s.front;}
 }
 #test "the GPU's height reads the same sites as exp_height" {
  for i:0..<EXP_SITES {s:=exp_site(i);for p:[5][2]f32.[[2]f32.[0,0],[2]f32.[-1,-1],[2]f32.[1,1],[2]f32.[-1,1],[2]f32.[1,-1]] {
-  x:=s.x+p[0]*(s.right+2);z:=s.z+p[1]*(s.front+2);#assert exp_height_gpu(x,z)==exp_height(x,z);}}
+  x:=s.x+p[0]*(s.right+2);z:=s.z+p[1]*(s.front+2);#assert ground.exp_height_gpu(x,z)==exp_height(x,z);}}
 }
 #test "castle grounds and walls share one level foundation" {
  base:=exp_height(18,-20);for p:[6][2]f32.[[2]f32.[21,-20],[2]f32.[47,-20],[2]f32.[18,-35],[2]f32.[50,-35],[2]f32.[74,-52],[2]f32.[34,-74]] {#assert abs(exp_height(p[0],p[1])-base)<0.001;}

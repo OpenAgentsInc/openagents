@@ -1,0 +1,75 @@
+// Experimental meadow's ground height for the GPU passes (gpu/character-glade.coax places the open
+// meadow's grass and kits on it, #13132). It loads only the glade's height, so a shader module that
+// loads it doesn't reach the CPU-side terrain (experimental-terrain.coax), the dungeon or the
+// visibility service, whose quantities WGSL doesn't take. experimental-terrain.coax keeps the site
+// table and its exp_height; its checks hold this table equal to exp_site at every site and
+// exp_height_gpu equal to exp_height round every site. Its exp_distance and exp_level are these.
+//   coax/bin/coax test verse/experimental-terrain.coax --library
+#module "verse.experimentalground";
+#load "character-glade.coax" as glade;
+
+EXP_GROUND_SITES :: 32;
+// How far (x, z) is outside a site's level ground: centre (sx, sz), reaching left, right, back and front.
+exp_ground_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+exp_ground_distance :: (sx:f32,sz:f32,left:f32,right:f32,back:f32,front:f32,x:f32,z:f32)->f32 {
+ dx:=exp_ground_max(sx-left-x,x-sx-right);dz:=exp_ground_max(sz-back-z,z-sz-front);return exp_ground_max(dx,dz);
+}
+// One site's pull on a height h at (x, z): level within the site, eased back to h over 4 m.
+exp_ground_level :: (h:f32,sx:f32,sz:f32,left:f32,right:f32,back:f32,front:f32,x:f32,z:f32)->f32 {
+ d:=exp_ground_distance(sx,sz,left,right,back,front,x,z);if d>=4 {return h;}
+ t:=ifx d<=0 then 0.0f32 else d/4;t=t*t*(3-2*t);return glade.cg_height(sx,sz)*(1-t)+h*t;
+}
+// The castle grounds' level foundation.
+exp_ground_castle_distance :: (x:f32,z:f32)->f32 {return exp_ground_distance(46,-47,32.5,32.5,31.5,31,x,z);}
+// exp_height for the GPU: WGSL takes no constant table of sites, so the sites (x, z, left, right,
+// back, front, in experimental-terrain.coax's order) come from a local table built once a call.
+// Site 18 is the dungeon's block (experimental-terrain.coax exp_dungeon_site), written out.
+exp_height_gpu :: (x:f32,z:f32)->f32 {
+ t:=exp_ground_sites();
+ h:=glade.cg_height(x,z);
+ for i:0..<EXP_GROUND_SITES {o:=i*6;h=exp_ground_level(h,t[o],t[o+1],t[o+2],t[o+3],t[o+4],t[o+5],x,z);}
+ d:=exp_ground_castle_distance(x,z);if d<4 {u:=ifx d<=0 then 0.0f32 else d/4;u=u*u*(3-2*u);h=glade.cg_height(18,-20)*(1-u)+h*u;}
+ return h;
+}
+exp_ground_sites :: ()->[EXP_GROUND_SITES*6]f32 {
+ return [EXP_GROUND_SITES*6]f32.[
+  -18,-23,10,4,10.8,4.1,
+  18,-20,4.2,3.8,4.1,3.9,
+  -50,25,2.9,22,7,6.2,
+  35,30,2.9,6.2,7,5.2,
+  -20,25,2.9,6.2,7,5.2,
+  -45,44,10,4,7.5,4.2,
+  -19,45,4.2,3.8,4.1,3.9,
+  -5,-23,2.9,6.2,7,5.2,
+  15,-5,2.9,6.2,7,5.2,
+  48,43,2.5,2.5,2.5,2.5,
+  58,43,2.5,2.5,2.5,2.5,
+  68,43,2.5,2.5,2.5,2.5,
+  78,43,2.5,2.5,2.5,2.5,
+  48,53,2.5,2.5,2.5,2.5,
+  58,53,2.5,2.5,2.5,2.5,
+  68,53,2.5,2.5,2.5,2.5,
+  78,53,2.5,2.5,2.5,2.5,
+  48,63,2.5,2.5,2.5,2.5,
+  -38,-54,10.55,45.55,100.55,10.55,
+  50,-20,4.2,3.8,4.1,3.9,
+  18,-52,4.2,3.8,4.1,3.9,
+  50,-52,4.2,3.8,4.1,3.9,
+  74,-20,4.2,3.8,4.1,3.9,
+  74,-52,4.2,3.8,4.1,3.9,
+  18,-74,4.2,3.8,4.1,3.9,
+  50,-74,4.2,3.8,4.1,3.9,
+  74,-74,4.2,3.8,4.1,3.9,
+  36,-34,10,4,10.8,4.1,
+  -20,-5,2.5,2.5,2.5,2.5,
+  26.27,46.0,15.17,15.17,6.6,6.6,
+  10.79,72.15,30.69,30.69,9.6,9.6,
+  59.95,78.5,14.3,14.3,3.7,3.25];
+}
+#test "the GPU's ground is the glade's away from every site and level inside one" {
+ #assert exp_height_gpu(0,0)==glade.cg_height(0,0);
+ #assert exp_height_gpu(-18,-23)==glade.cg_height(-18,-23) && exp_height_gpu(-20,-25)==glade.cg_height(-18,-23);
+ #assert exp_height_gpu(20,-22)==glade.cg_height(18,-20);
+ #assert exp_ground_distance(0,0,1,2,3,4,5,0)==3 && exp_ground_distance(0,0,1,2,3,4,0,0)== -1;
+ #assert exp_ground_level(7,0,0,1,1,1,1,9,0)==7;
+}
