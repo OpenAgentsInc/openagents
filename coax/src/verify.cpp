@@ -107,6 +107,9 @@ struct PassedCheck {
   double seconds = 0;
   bool reused = false;  // taken from the check cache (ax-check-reuse), not run
   std::vector<const ProcDecl *> executed;
+  // Its steps and traversal near their limits, with their consumers, as it
+  // ran them (#13123): the notes a run of it here would print.
+  std::vector<std::pair<std::string, CapacityRefusal>> near;
 };
 
 // passed: the checks that already passed in a child process (parallel_checks);
@@ -138,6 +141,7 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       r.cases = child->cases;
       r.budget = child->budget;
       r.executed = child->executed;
+      r.near = child->near;
     } else r = run_check(file, c, c->steps ? c->steps : max_steps, profile);
     const double seconds = child ? child->seconds : seconds_since(began);
     const long long ms = (long long)(seconds * 1000);
@@ -931,13 +935,17 @@ struct ReuseIndex {
   }
 
   // The key of a check's inputs, given the items of the procedures it ran.
+  // mode: each item's part in the key being made, NONE between calls (a
+  // program has tens of thousands of items and a check reaches a few).
+  std::vector<uint8_t> mode;
   std::string key(int32_t check, const std::set<int32_t> &ran, const std::string &head) {
-    std::vector<uint8_t> mode(items.size(), NONE);
-    std::vector<int32_t> work{check};
+    if (mode.size() != items.size()) mode.assign(items.size(), NONE);
+    std::vector<int32_t> work{check}, reached{check};
     mode[(size_t)check] = EXEC;
     auto visit = [&](int32_t k, uint8_t m) {
       if (!items[(size_t)k].proc) m = FULL;
       if (m <= mode[(size_t)k]) return;
+      if (!mode[(size_t)k]) reached.push_back(k);
       mode[(size_t)k] = m;
       work.push_back(k);
     };
@@ -955,15 +963,119 @@ struct ReuseIndex {
         visit(j, !items[(size_t)j].proc || deep ? FULL : m == SIG ? SIG : ran.count(j) ? EXEC : SIG);
     }
     std::string text = "coax.check-reuse.v1\n" + head + "global\t" + global + "\ncheck\t" + items[(size_t)check].id + "\n";
-    for (size_t k = 0; k < items.size(); k++) {
-      if (!mode[k]) continue;
-      if (items[k].id.empty()) return "";
+    // In item order, as a walk over every item would list them.
+    std::sort(reached.begin(), reached.end());
+    bool named = true;
+    for (int32_t r : reached) {
+      const size_t k = (size_t)r;
+      if (items[k].id.empty()) { named = false; break; }
       text += std::string(mode[k] == SIG ? "S\t" : mode[k] == EXEC ? "E\t" : "F\t") + items[k].id + "\t" +
               (mode[k] == SIG ? sig_digest((int32_t)k) : full_digest((int32_t)k)) + "\n";
     }
-    return debug_source_hash(text);
+    for (int32_t r : reached) mode[(size_t)r] = NONE;
+    return named ? debug_source_hash(text) : "";
   }
 };
+
+// A check's near-limit uses (CheckOutcome::near), as bytes: from a child to
+// the parent with each consumer's location, and in the check cache with each
+// location as an item and a token in it (#13123), so a reused check prints
+// the note a run of it prints, where its consumers are now.
+struct NearWriter {
+  std::string out;
+  void u(uint64_t v) { out.append((const char *)&v, sizeof v); }
+  void s(const std::string &v) { u(v.size()); out += v; }
+};
+struct NearReader {
+  const std::string &in;
+  size_t at = 0;
+  bool ok = true;
+  uint64_t u() {
+    uint64_t v = 0;
+    if (in.size() - at < sizeof v) { ok = false; return 0; }
+    memcpy(&v, in.data() + at, sizeof v);
+    at += sizeof v;
+    return v;
+  }
+  std::string s() {
+    const uint64_t n = u();
+    if (!ok || n > in.size() - at) { ok = false; return ""; }
+    std::string v = in.substr(at, (size_t)n);
+    at += (size_t)n;
+    return v;
+  }
+};
+// place(loc, writer): writes where loc is, false when it can't be named.
+template <class Place>
+static bool near_write(const std::vector<std::pair<std::string, CapacityRefusal>> &near, std::string *out, Place place) {
+  NearWriter w;
+  w.u(near.size());
+  for (const auto &[resource, r] : near) {
+    w.s(resource);
+    w.s(r.resource);
+    w.u(r.used);
+    w.u(r.limit);
+    w.s(r.detail.unit);
+    w.s(r.detail.fix);
+    w.u(r.detail.consumers.size());
+    for (const CapacityConsumer &c : r.detail.consumers) {
+      w.s(c.what);
+      w.u(c.amount);
+      w.u(c.has_loc);
+      if (c.has_loc && !place(c.loc, &w)) return false;
+    }
+  }
+  *out = std::move(w.out);
+  return true;
+}
+// locate(reader, loc): reads where a consumer is, false when it is gone.
+template <class Locate>
+static bool near_read(const std::string &bytes, const Source *src, std::vector<std::pair<std::string, CapacityRefusal>> *near, Locate locate) {
+  NearReader r{bytes};
+  const uint64_t n = r.u();
+  if (!r.ok || n > 8) return false;
+  near->clear();
+  for (uint64_t i = 0; i < n; i++) {
+    std::string resource = r.s();
+    CapacityRefusal c;
+    c.resource = r.s();
+    c.used = r.u();
+    c.limit = r.u();
+    c.detail.src = src;
+    c.detail.unit = r.s();
+    c.detail.fix = r.s();
+    const uint64_t consumers = r.u();
+    if (!r.ok || consumers > CAPACITY_TOP) return false;
+    for (uint64_t k = 0; k < consumers; k++) {
+      CapacityConsumer v;
+      v.what = r.s();
+      v.amount = r.u();
+      v.has_loc = r.u() != 0;
+      if (v.has_loc && !locate(r, &v.loc)) return false;
+      c.detail.consumers.push_back(std::move(v));
+    }
+    if (!r.ok) return false;
+    near->push_back({std::move(resource), std::move(c)});
+  }
+  return r.ok && r.at == bytes.size();
+}
+static std::string hex_bytes(const std::string &bytes) {
+  static const char digits[] = "0123456789abcdef";
+  std::string out;
+  for (unsigned char c : bytes) { out += digits[c >> 4]; out += digits[c & 15]; }
+  return out;
+}
+static bool unhex_bytes(const std::string &text, std::string *out) {
+  if (text.size() % 2) return false;
+  out->clear();
+  auto value = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; };
+  for (size_t i = 0; i < text.size(); i += 2) {
+    const int hi = value(text[i]), lo = value(text[i + 1]);
+    if (hi < 0 || lo < 0) return false;
+    *out += (char)(hi * 16 + lo);
+  }
+  return true;
+}
 
 // The record of one program's reusable checks: one file in the check cache
 // under the SHA-256 of its entry unit and the key's first lines, holding a
@@ -971,11 +1083,12 @@ struct ReuseIndex {
 // what its child reported.
 struct ReuseRecord {
   enum { STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS, END_SLOTS, END_CONTAINERS, END_STRINGS, NUMBERS };
-  struct Entry { std::string key; uint64_t numbers[NUMBERS] = {}; std::vector<std::string> ran; };
+  // near: the check's near-limit uses (near_write, each location an item and a token in it), "" for none.
+  struct Entry { std::string key; uint64_t numbers[NUMBERS] = {}; std::vector<std::string> ran; std::string near; };
   std::map<std::string, Entry> entries;  // by the check's identity
   void load(const std::string &path) {
     std::string text;
-    if (!read_record(path, &text) || text.compare(0, 20, "coax.check-reuse.v1\n") != 0) return;
+    if (!read_record(path, &text) || text.compare(0, 20, "coax.check-reuse.v2\n") != 0) return;
     cache_touch(path);
     std::vector<std::string> table;
     for (size_t at = 20; at < text.size();) {
@@ -992,9 +1105,10 @@ struct ReuseRecord {
         if (tab == std::string::npos) break;
         s = tab + 1;
       }
-      if (f.size() != 3 + NUMBERS) return;
+      if (f.size() != 4 + NUMBERS) return;
       Entry e;
       e.key = f[1];
+      if (!unhex_bytes(f[3 + NUMBERS], &e.near)) return;
       for (size_t i = 0; i < NUMBERS; i++) e.numbers[i] = strtoull(f[2 + i].c_str(), nullptr, 10);
       const std::string &list = f[2 + NUMBERS];
       for (size_t s = 0; s < list.size();) {
@@ -1020,14 +1134,14 @@ struct ReuseRecord {
         if (at == index.end()) { at = index.emplace(e.ran[i], index.size()).first; table += "p\t" + e.ran[i] + "\n"; }
         rows += (i ? "," : "") + std::to_string(at->second);
       }
-      rows += "\n";
+      rows += "\t" + hex_bytes(e.near) + "\n";
     }
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     const std::string temp = dir + "/." + path.substr(path.rfind('/') + 1) + "." + std::to_string(getpid());
     FILE *f = fopen(temp.c_str(), "wb");
     if (!f) return false;
-    const std::string text = "coax.check-reuse.v1\n" + table + rows;
+    const std::string text = "coax.check-reuse.v2\n" + table + rows;
     const bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
     if (fclose(f) != 0 || !ok || std::rename(temp.c_str(), path.c_str()) != 0) { unlink(temp.c_str()); return false; }
     return true;
@@ -1078,8 +1192,8 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   const size_t frozen = file->frozen_values.size();
   const int64_t pending = defaults_pending(file);
   enum { MAGIC, PASSED, STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS,
-         END_SLOTS, END_CONTAINERS, END_STRINGS, SHARED, DIAGNOSTICS, EXECUTED, FIELDS };
-  static constexpr uint64_t REPORT = 0x636f61782d636b32ULL;  // "coax-ck2"
+         END_SLOTS, END_CONTAINERS, END_STRINGS, SHARED, DIAGNOSTICS, NEAR_BYTES, EXECUTED, FIELDS };
+  static constexpr uint64_t REPORT = 0x636f61782d636b33ULL;  // "coax-ck3"
   struct Child { pid_t pid; int fd; size_t index; std::string bytes; };
   std::vector<Child> running;
   std::vector<std::vector<uint64_t>> reports(n);
@@ -1103,6 +1217,43 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   const bool reuse = g_check_reuse.on && g_check_reuse.tokens && !g_check_reuse.prefix.empty() &&
                      (index.src = g_check_reuse.src, index.tokens = g_check_reuse.tokens, index.build(file));
   if (getenv("COAX_CHECK_REUSE_DEBUG") && g_check_reuse.on && !index.why.empty()) fprintf(stderr, "check reuse off: %s\n", index.why.c_str());
+  // Each check's near-limit uses (#13123): from its child, or its record.
+  std::vector<std::vector<std::pair<std::string, CapacityRefusal>>> nears(n);
+  // A location between a child and the parent: as it is.
+  auto raw_place = [](Loc loc, NearWriter *w) { w->u((uint32_t)loc.line); w->u((uint32_t)loc.col); w->u((uint32_t)loc.offset); return true; };
+  auto raw_locate = [](NearReader &r, Loc *loc) { loc->line = (int32_t)r.u(); loc->col = (int32_t)r.u(); loc->offset = (int32_t)r.u(); return r.ok; };
+  // A location in the record: the item it is in (its identity and digest) and
+  // which of the item's tokens it is, so a moved item still names it.
+  std::map<std::string, int32_t> item_by_id;
+  auto record_place = [&](Loc loc, NearWriter *w) {
+    const int32_t k = index.item_at(loc.offset);
+    if (k < 0 || index.items[(size_t)k].id.empty()) return false;
+    const ReuseIndex::Item &it = index.items[(size_t)k];
+    for (int32_t t = it.first; t <= it.last; t++) {
+      const Loc &at = (*index.tokens)[(size_t)t].loc;
+      if (at.offset != loc.offset) continue;
+      if (at.line != loc.line || at.col != loc.col) return false;
+      w->s(it.id);
+      w->s(index.full_digest(k));
+      w->u((uint64_t)(t - it.first));
+      return true;
+    }
+    return false;
+  };
+  auto record_locate = [&](NearReader &r, Loc *loc) {
+    const std::string id = r.s(), digest = r.s();
+    const uint64_t token = r.u();
+    if (!r.ok) return false;
+    if (item_by_id.empty())
+      for (size_t k = 0; k < index.items.size(); k++)
+        if (!index.items[k].id.empty()) item_by_id.emplace(index.items[k].id, (int32_t)k);
+    const auto at = item_by_id.find(id);
+    if (at == item_by_id.end() || index.full_digest(at->second) != digest) return false;
+    const ReuseIndex::Item &it = index.items[(size_t)at->second];
+    if (token > (uint64_t)(it.last - it.first)) return false;
+    *loc = (*index.tokens)[(size_t)it.first + (size_t)token].loc;
+    return true;
+  };
   if (reuse) {
     head = g_check_reuse.prefix + "start\t" + std::to_string(slots) + " " + std::to_string(containers) + " " + std::to_string(strings) + " " +
            std::to_string(frozen) + " " + std::to_string(pending) + " limits " + std::to_string(memory.slot_limit) + " " +
@@ -1125,6 +1276,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
         ran.insert(index.proc_item[p->second]);
       }
       if (!known_all || index.key(at->second, ran, head) != e->second.key) continue;
+      if (!e->second.near.empty() && !near_read(e->second.near, file->src, &nears[i], record_locate)) { nears[i].clear(); continue; }
       const uint64_t *v = e->second.numbers;
       std::vector<uint64_t> report(FIELDS + procs.size());
       report[MAGIC] = REPORT;
@@ -1140,6 +1292,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       report[END_CONTAINERS] = v[ReuseRecord::END_CONTAINERS];
       report[END_STRINGS] = v[ReuseRecord::END_STRINGS];
       report[SHARED] = 0;
+      report[NEAR_BYTES] = 0;
       report[EXECUTED] = procs.size();
       for (size_t k = 0; k < procs.size(); k++) report[FIELDS + k] = (uint64_t)(uintptr_t)procs[k];
       reports[i] = std::move(report);
@@ -1169,7 +1322,9 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       const auto began = std::chrono::steady_clock::now();
       CheckOutcome r = run_check(file, c, c->steps ? c->steps : max_steps, false);
       const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
-      std::vector<uint64_t> report(FIELDS + r.executed.size());
+      std::string near;
+      near_write(r.near, &near, raw_place);
+      std::vector<uint64_t> report(FIELDS + r.executed.size() + (near.size() + 7) / 8);
       uint64_t seconds_bits;
       memcpy(&seconds_bits, &seconds, sizeof seconds_bits);
       report[MAGIC] = REPORT;
@@ -1185,11 +1340,15 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       report[END_CONTAINERS] = memory.containers;
       report[END_STRINGS] = memory.string_bytes;
       report[SHARED] = file->frozen_values.size() != frozen || defaults_pending(file) != pending;
-      report[DIAGNOSTICS] = !r.near.empty() || capacity_near(memory.peak_slots, memory.slot_limit) ||
+      // Storage near its limit needs who held it then: the parent runs the
+      // check again. Steps and traversal near theirs come with it (#13123).
+      report[DIAGNOSTICS] = capacity_near(memory.peak_slots, memory.slot_limit) ||
                             capacity_near(memory.peak_containers, memory.container_limit) ||
                             capacity_near(memory.string_peak_bytes, CB_string_live_limit());
+      report[NEAR_BYTES] = near.size();
       report[EXECUTED] = r.executed.size();
       for (size_t i = 0; i < r.executed.size(); i++) report[FIELDS + i] = (uint64_t)(uintptr_t)r.executed[i];
+      if (!near.empty()) memcpy(&report[FIELDS + r.executed.size()], near.data(), near.size());
       const char *at = (const char *)report.data();
       size_t left = report.size() * sizeof(uint64_t);
       while (left) {
@@ -1237,7 +1396,14 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
           c.bytes.size() >= FIELDS * sizeof(uint64_t)) {
         std::vector<uint64_t> report(c.bytes.size() / sizeof(uint64_t));
         memcpy(report.data(), c.bytes.data(), c.bytes.size());
-        if (report[MAGIC] == REPORT && report[EXECUTED] == report.size() - FIELDS) reports[c.index] = std::move(report);
+        if (report[MAGIC] == REPORT && report[EXECUTED] <= report.size() - FIELDS &&
+            (report[NEAR_BYTES] + 7) / 8 == report.size() - FIELDS - report[EXECUTED]) {
+          const std::string near((const char *)&report[FIELDS + report[EXECUTED]], (size_t)report[NEAR_BYTES]);
+          if (near.empty() || near_read(near, file->src, &nears[c.index], raw_locate)) {
+            report.resize(FIELDS + report[EXECUTED]);
+            reports[c.index] = std::move(report);
+          } else nears[c.index].clear();
+        }
       }
       running.erase(running.begin() + (std::ptrdiff_t)k);
       workers.stop();
@@ -1272,6 +1438,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
         ran.insert(index.proc_item[p]);
       }
       if (named) e.key = index.key(index.check_item[file->checks[(int32_t)i]], ran, head);
+      if (!nears[i].empty() && !near_write(nears[i], &e.near, record_place)) e.key.clear();
       if (e.key.empty()) {
         if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
         continue;
@@ -1296,7 +1463,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   // with what every check before it left behind.
   std::set<const ProcDecl *> procedures(file->procs.begin(), file->procs.end());
   int64_t extra_slots = 0, extra_containers = 0, extra_strings = 0;
-  bool left = false, failed = false, diagnostics = false;
+  bool left = false, failed = false, diagnostics = false, near = false;
   out->assign(n, PassedCheck{});
   for (size_t i = 0; i < n; i++) {
     const std::vector<uint64_t> &report = reports[i];
@@ -1314,10 +1481,12 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     extra_containers += dc;
     extra_strings += db;
     if (!report[PASSED]) { failed = true; continue; }
-    // A note needs the current source's detailed consumers. Rerun this check
-    // in the parent and keep only quiet checks in the per-check cache.
+    // A storage note needs who held the storage in this run: rerun this check
+    // in the parent. Steps and traversal notes come with the check (nears).
     if (report[DIAGNOSTICS]) { diagnostics = true; continue; }
     PassedCheck &passed = (*out)[i];
+    near = near || !nears[i].empty();
+    passed.near = nears[i];
     passed.passed = true;
     passed.steps = report[STEPS];
     passed.cases = report[CASES];
@@ -1331,7 +1500,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   }
   // A failing check runs again here, after none of the others; that is where
   // a sequential run would start it only when no check left anything behind.
-  if (diagnostics && left) return sequential("a diagnostic check follows retained storage");
+  if ((diagnostics || near) && left) return sequential("a diagnostic check follows retained storage");
   if (failed && left) return sequential("a check failed after checks left storage behind");
   g_timings.parallel = "parallel: " + std::to_string(n) + " checks, " + std::to_string(jobs) + " jobs";
   return true;

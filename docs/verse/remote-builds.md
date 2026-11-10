@@ -297,6 +297,43 @@ found nothing: fivelab's reports said `"check_reuse": {"reused": 0, "run":
 The C those compiles emit is unchanged, so wasm.sh's own cache keys stay
 valid. The change reaches agents with the next published compiler.
 
+### A comment reruns no check (#13123)
+
+Each check's record is keyed on the declarations it reaches, by their tokens
+(a comment or a blank line is no token), plus the compiler's hash. Two
+things still ran checks again after a comment:
+
+- **Notes near a limit.** A check whose steps or traversal came within the
+  near-limit fraction of its budget prints a note naming what used them, at
+  their current lines. Its record didn't keep the note, so every compile ran
+  it again: on the status page, 11 of 90 checks after any edit. Now the record
+  keeps the note, with each consumer as the declaration it is in and which of
+  its tokens it is, and a reused check prints the note a cold compile prints.
+  A check whose value slots, arrays or strings come near their limits still
+  runs again, since that note names who held the storage at the time.
+- **Library verdicts.** A loaded unit's own verdict was keyed on the bytes of
+  its `#load` closure. It is now keyed on each unit's tokens.
+
+`coax/tests/check-reuse.coax` checks that a comment appended to a loaded file
+runs no check and prints a cold compile's note, that lines added above the
+note's consumer name its new line, and that an edit to one engine procedure
+runs only the check that reaches it. `coax/tests/library-checks.coax` checks
+that a comment in a library reuses its verdict.
+
+Measured on oa-build-3 (30 cores, load 11 to 19), fivelab's own unit:
+
+| Edit | Checks run | Coax to C |
+| --- | --- | --- |
+| None (a cold compile) | 1,259 of 1,259 | 132 to 185 s |
+| A comment appended to `verse/experimental-dungeon.coax` | 0 of 1,259 | 27 to 34 s (before: 104 s) |
+| `DG_HEIGHT :: 5.0;` to `5.0 + 0.0;` in that file | 961 of 1,259 | 130 s |
+
+The one-line edit runs 961 checks because they all reach `DG_HEIGHT`. With
+no check to run, a compile of fivelab still takes about 27 s: 11 s to key
+its 1,259 checks (`authority.reuse`), 9 s to lex and load its sources, and
+the rest to check and emit them. The 15-second target for a one-line edit is
+not met yet.
+
 `coax/tests/check-reuse.coax`'s corpus step fails on the host with main's
 compiler as with this one (its 120-second limit); the other steps pass.
 

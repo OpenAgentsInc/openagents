@@ -1364,25 +1364,24 @@ static std::vector<int32_t> library_closure(const Source *src, int32_t at) {
 }
 
 // The cache key of unit `at`'s standalone check, or "" when there is none.
-static std::string library_key(const Source *src, int32_t at, const EmitOptions &opts, const std::string &compiler, bool run) {
+// Each unit is known by the SHA-256 of its tokens (kind, spelling, value:
+// ReuseIndex::put), not its bytes, so a comment or a blank line changes no
+// verdict (#13123); sums holds them by unit, "" for none.
+static std::string library_key(const Source *src, int32_t at, const EmitOptions &opts, const std::string &compiler, bool run,
+                               const std::vector<std::string> &sums) {
   if (compiler.empty()) return "";
   namespace fs = std::filesystem;
   const fs::path base = fs::path(src->units[(size_t)at]->canonical).parent_path();
-  std::string text = "coax.library-check.v1\n" + compiler + "\n" + (run ? "run\n" : "check\n");
+  std::string text = "coax.library-check.v2\n" + compiler + "\n" + (run ? "run\n" : "check\n");
   text += "run_steps=" + std::to_string(opts.run_steps) + " development=" + std::to_string(opts.development) +
           " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
           " metal=" + std::to_string(opts.metal) + " cuda=" + std::to_string(opts.cuda) + " metal_compute=" +
           std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) +
           (g_check_slots ? " check_slots=" + std::to_string(g_check_slots) : std::string()) +
           (g_traversal_limit ? " traversal=" + std::to_string(g_traversal_limit) : std::string()) + "\n";
-  // Each unit's SHA-256 once a process (a child inherits them): a unit is in
-  // many closures. The text is kept beside it, so an edited unit hashes again.
-  static std::map<std::string, std::pair<std::string, std::string>> hashes;  // canonical -> (text, SHA-256)
   for (int32_t u : library_closure(src, at)) {
     const SourceUnit &unit = *src->units[(size_t)u];
-    auto &known = hashes[unit.canonical];
-    if (known.second.empty() || known.first != unit.text) known = {unit.text, debug_source_hash(unit.text)};
-    const std::string &sha = known.second;
+    const std::string &sha = (size_t)u < sums.size() ? sums[(size_t)u] : std::string();
     if (sha.empty()) return "";
     text += fs::path(unit.canonical).lexically_relative(base).string() + "\t" + sha + "\n";
   }
@@ -1562,6 +1561,20 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
         for (size_t i = 0; i < n; i++) if (src->units[i].get() == u) proto[i] = true;
   const std::string compiler = compiler_hash();
   const std::string dir = library_cache_dir();
+  // Each unit's tokens' SHA-256 (library_key).
+  std::vector<std::string> sums(n);
+  if (!compiler.empty()) {
+    std::map<const SourceUnit *, size_t> index;
+    for (size_t i = 0; i < n; i++) index[src->units[i].get()] = i;
+    std::vector<std::string> bytes(n);
+    for (const Token &t : tokens) {
+      if (t.kind == Tok::eof) continue;
+      const SourceUnit *u = source_unit_at(src, t.loc);
+      auto at = u ? index.find(u) : index.end();
+      if (at != index.end()) ReuseIndex::put(bytes[at->second], t);
+    }
+    for (size_t i = 0; i < n; i++) sums[i] = debug_source_hash("coax.unit-tokens.v1\n" + bytes[i]);
+  }
   // Loaded units before their loaders, so a unit's own check reuses its libraries' verdicts.
   std::vector<int32_t> order;
   std::vector<uint8_t> state(n, 0);
@@ -1583,7 +1596,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     auto known = g_library_verdicts.find(canonical + (run ? "\nrun" : ""));
     if (known != g_library_verdicts.end()) { out[(size_t)u] = SU_library_checks(false, authority, imports, known->second); continue; }
     const auto began = std::chrono::steady_clock::now();
-    const std::string key = library_key(src, u, opts, compiler, run);
+    const std::string key = library_key(src, u, opts, compiler, run, sums);
     std::string record;
     if (!key.empty() && read_record(dir + "/" + key, &record) && (record == "checks\n" || record == "does not check alone\n")) {
       cache_touch(dir + "/" + key);

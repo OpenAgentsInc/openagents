@@ -1,0 +1,3 @@
+// The engine: a loop that costs a step a turn, and an addition.
+grow :: (n: int) -> int #effects(all) { s := 0; for i: 0..<n { s += i; } return s; }
+add :: (a: int, b: int) -> int { return a + b; }

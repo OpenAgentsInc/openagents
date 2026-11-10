@@ -1,0 +1,12 @@
+// An #authority program like a game's zone (tests/check-reuse.coax, #13123):
+// it loads an engine and a zone, and one check is near its step budget, so
+// every compile prints a near-limit note naming what in it used the steps.
+// A comment in the zone runs no check again; an edit to one engine procedure
+// runs only the checks that reach it.
+#load "engine.coax";
+#load "zone.coax";
+#authority;
+#test "the zone's trees grow" #steps 40000 { #assert grow(TREES) > 0; }
+#test "the engine adds" { #assert add(2, 3) == 5; }
+#test "the zone has its trees" { #assert TREES == 8000; }
+main :: () { }
