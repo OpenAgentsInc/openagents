@@ -1,0 +1,487 @@
+// Aethyr's agent driver (GitHub #13095; docs/research/exact/03-what-to-adapt.md): what an agent
+// sees of a realm and the world operations it may ask for, the same in every realm. `coax drive`
+// (coax/web/drive.coax) sends a realm one command at a time through the host (message 700,
+// coax/web/host.js coaxial.drive) and reads the answer back as text.
+//
+// What it sees (`tree`, `layout`): the world's entities by stable id (you, the monsters, the
+// people, mounts and placed things: `goblin-3`, `guard`, `horse-white`), which the realm puts
+// here each frame from what it draws, and the HUD's widgets from Aethyr's layout trace
+// (aethyr/ui/trace.coax) with ids made from their part and name (`bar.fire-bolt`).
+//
+// What it asks for: `walk-to ID`, `face ID`, `use ABILITY on ID` and `mount ID`. None of them moves
+// anything here: drv_steer says which way to go, the realm turns that into the same input a
+// player's keys make (its controller, and in a room the room's input stream), and a `use` presses
+// the ability's slot as a key would, through the deed pipeline (aethyr/action/deed.coax). The room
+// stays the authority, so an agent's command is exactly what a player's input would be.
+//
+// With no command ever sent (`on` false) a realm's per-frame calls return at once and keep nothing.
+//   coax/bin/coax test aethyr/agent/drive.coax --library
+#load "../ui/trace.coax";
+
+DRV_ENTS :: 128;      // entities one frame lists
+DRV_ID :: 32;         // bytes of an id or a label
+DRV_WHY :: 96;        // bytes of the last command's outcome
+DRV_OUT :: 49152;     // bytes of one answer
+DRV_PLAYER :: 0; DRV_MONSTER :: 1; DRV_NPC :: 2; DRV_MOUNT :: 3; DRV_OBJECT :: 4; DRV_KINDS :: 5;
+DRV_KIND :: [5] string.["player", "monster", "npc", "mount", "object"];
+DRV_NONE :: 0; DRV_WALK :: 1; DRV_FACE :: 2; DRV_USE :: 3; DRV_RIDE :: 4;
+DRV_OP :: [5] string.["none", "walk-to", "face", "use", "mount"];
+DRV_IDLE :: 0; DRV_GOING :: 1; DRV_DONE :: 2; DRV_FAILED :: 3;
+DRV_STATUS :: [4] string.["idle", "going", "done", "failed"];
+DRV_REACH :: 1.8;     // m: walk-to, use and mount stop this near the target (two bodies and an arm)
+DRV_AIM :: 0.97;      // cos of the angle you may face off the target and still face it (about 14 degrees)
+DRV_STUCK_S :: 2.0;   // s: closing less than DRV_STUCK_M in this long is stuck
+DRV_STUCK_M :: 0.3;
+
+DrvEnt :: struct {
+  id: [DRV_ID] u8; id_n: int; kind: int;
+  label: [DRV_ID] u8; label_n: int;
+  x: f32; y: f32; z: f32;
+  hp: int = -1; max: int = -1;     // hit points, -1 when it has none
+  down: bool;                      // fallen
+}
+Drive :: struct {
+  on: bool;                        // a driver has spoken to this realm
+  n: int; ents: [DRV_ENTS] DrvEnt; lost: int;
+  trace: [1] UitTrace; view: UitView;
+  op: int; status: int; target: [DRV_ID] u8; target_n: int; ability: [DRV_ID] u8; ability_n: int;
+  reach: f32 = DRV_REACH; t0: f32;
+  seen: bool; best: f32; best_at: f32;   // the nearest it has come to the target, and when
+  why: [DRV_WHY] u8; why_n: int;
+  out: [DRV_OUT] u8; out_n: int;
+}
+// Which way to go this frame: a unit direction on the ground (x, z), and whether to press now.
+DrvSteer :: struct { go: bool; dx: f32; dz: f32; press: bool; dist: f32 = -1; }
+
+
+// ---- text
+drv_put_s :: (out: [] u8, at: int, t: string) -> int { return uit_text_put(out, at, t); }
+drv_put_i :: (out: [] u8, at: int, v: int) -> int { return uit_int(out, at, v); }
+// v with one decimal: "-3.5"
+drv_put_f :: (out: [] u8, at: int, v: f32) -> int {
+  n := at; t := v;
+  if t < 0 { n = drv_put_s(out, n, "-"); t = -t; }
+  tenths := cast(int) floor(f64(t) * 10.0 + 0.5);
+  n = drv_put_i(out, n, tenths / 10); n = drv_put_s(out, n, "."); return drv_put_i(out, n, tenths % 10);
+}
+drv_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then cast(u8)(c + 32) else c; }
+drv_word_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'); }
+// An id from words: lower case, letters and digits, a dash between runs ("Fire Bolt 2" is fire-bolt-2).
+drv_slug :: (out: [] u8, at: int, t: string) -> int {
+  n := at; gap := false; any := false;
+  for ch: t {
+    c := drv_lower(ch);
+    if !drv_word_char(c) { gap = any; continue; }
+    if gap { n = drv_put_s(out, n, "-"); gap = false; }
+    if n < out.count { out[n] = c; n += 1; }
+    any = true;
+  }
+  return n;
+}
+drv_same_slug :: (a: string, b: string) -> bool {
+  x: [64] u8; y: [64] u8;
+  xn := drv_slug(x[..], 0, a); yn := drv_slug(y[..], 0, b);
+  return xn > 0 && cast(string) x[0..<xn] == cast(string) y[0..<yn];
+}
+drv_starts :: (s: string, head: string) -> bool { return s.count >= head.count && s[0..<head.count] == head; }
+cp_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+#test "ids are slugs" {
+  b: [64] u8;
+  n := drv_slug(b[..], 0, "Fire Bolt 2"); #assert cast(string) b[0..<n] == "fire-bolt-2";
+  n = drv_slug(b[..], 0, "  Healer's Kit!"); #assert cast(string) b[0..<n] == "healer-s-kit";
+  n = drv_slug(b[..], 0, "--"); #assert n == 0;
+  small: [3] u8; #assert drv_slug(small[..], 0, "abcd") == 3 && cast(string) small[0..<3] == "abc";
+  n = drv_put_f(b[..], 0, -3.46); #assert cast(string) b[0..<n] == "-3.5";
+  n = drv_put_f(b[..], 0, 0.04); #assert cast(string) b[0..<n] == "0.0";
+  #assert drv_same_slug("fire-bolt", "Fire Bolt") && !drv_same_slug("fire", "Fire Bolt") && !drv_same_slug("", "") && drv_same_slug("a", "A");
+  #assert drv_lower('A') == 'a' && drv_lower('Z') == 'z' && drv_lower('q') == 'q' && drv_lower('@') == '@' && drv_lower('[') == '[';
+  #assert drv_word_char('a') && drv_word_char('z') && drv_word_char('0') && drv_word_char('9') && !drv_word_char('-') && !drv_word_char('{') && !drv_word_char(':') && !drv_word_char('/') && !drv_word_char('`');
+  #assert drv_starts("goblin-2", "goblin") && drv_starts("goblin", "goblin") && !drv_starts("gob", "goblin") && !drv_starts("wolf-1", "goblin");
+  #assert cp_has("ab", "ab") && cp_has("ab", "b") && cp_has("ab", "") && !cp_has("a", "ab") && !cp_has("ab", "x") && !cp_has("abc", "bd");
+}
+
+// ---- the frame: the realm lists what an agent may see
+// A new frame on a screen w by h device px at k device px a CSS px: the lists start empty.
+drv_frame :: (d: [] Drive, w: f32, h: f32, k: f32, touch: bool) {
+  if !d[0].on { return; }
+  d[0].n = 0; d[0].lost = 0; uit_clear(d[0].trace[..]);
+  d[0].view = UitView.{w = w, h = h, k = ifx k > 0 then k else 1, touch = touch};
+}
+// The layout trace the HUD records into this frame: empty (off) until a driver speaks.
+drv_trace :: (d: [] Drive) -> [] UitTrace { return ifx d[0].on then d[0].trace[..] else d[0].trace[0..<0]; }
+// One entity: `base` alone ("guard", "you") or base-index ("goblin-3") when index >= 0. The realm
+// lists you first: the tree measures distances from the first entity.
+drv_add :: (d: [] Drive, kind: int, base: string, index: int, label: string, x: f32, y: f32, z: f32, hp: int, max: int, down: bool) {
+  if !d[0].on { return; }
+  if d[0].n >= DRV_ENTS { d[0].lost += 1; return; }
+  e := DrvEnt.{kind = ifx kind >= 0 && kind < DRV_KINDS then kind else DRV_OBJECT, x = x, y = y, z = z, hp = hp, max = max, down = down};
+  e.id_n = drv_slug(e.id[..], 0, base);
+  if index >= 0 { e.id_n = drv_put_s(e.id[..], e.id_n, "-"); e.id_n = drv_put_i(e.id[..], e.id_n, index); }
+  e.label_n = drv_put_s(e.label[..], 0, label);
+  d[0].ents[d[0].n] = e; d[0].n += 1;
+}
+// drv_add, answering the entity's index, or -1 when it isn't kept.
+drv_put :: (d: [] Drive, kind: int, base: string, index: int, label: string, x: f32, y: f32, z: f32, hp: int, max: int, down: bool) -> int {
+  was := d[0].n;
+  drv_add(d, kind, base, index, label, x, y, z, hp, max, down);
+  return ifx d[0].n > was then was else -1;
+}
+drv_id :: (d: [] Drive, i: int) -> string { return cast(string) d[0].ents[i].id[0..<d[0].ents[i].id_n]; }
+drv_find :: (d: [] Drive, id: string) -> int {
+  for i: 0..<d[0].n { if drv_id(d, i) == id { return i; } }
+  return -1;
+}
+#test "entities by stable id, nothing kept until a driver speaks" {
+  d: [1] Drive;
+  drv_frame(d[..], 100, 100, 2, false);
+  #assert drv_put(d[..], DRV_MONSTER, "goblin", 3, "Goblin", 1, 0, 2, 7, 7, false) == -1 && d[0].n == 0 && drv_trace(d[..]).count == 0;
+  d[0].on = true; drv_frame(d[..], 100, 100, 2, false);
+  #assert drv_trace(d[..]).count == 1 && d[0].view.k == 2;
+  uit_add(drv_trace(d[..]), UIT_NONE, UIT_TEXT, 0, 0, 1, 1, "x"); drv_frame(d[..], 100, 100, 2, false); #assert d[0].trace[0].n == 0;
+  #assert drv_put(d[..], DRV_PLAYER, "you", -1, "Ash", 0, 0, 0, 10, 12, false) == 0;
+  #assert drv_put(d[..], DRV_MONSTER, "Goblin", 3, "Goblin", 1, 0, 2, 7, 7, false) == 1;
+  #assert drv_put(d[..], 99, "stone", 0, "Stone", 1, 0, 2, -1, -1, false) == 2 && d[0].ents[2].kind == DRV_OBJECT;
+  #assert drv_put(d[..], -1, "rock", 1, "Rock", 1, 0, 2, -1, -1, false) == 3 && d[0].ents[3].kind == DRV_OBJECT;
+  #assert drv_put(d[..], DRV_KINDS, "rock", 2, "Rock", 1, 0, 2, -1, -1, false) == 4 && d[0].ents[4].kind == DRV_OBJECT;
+  #assert drv_put(d[..], DRV_OBJECT, "chest", -1, "Chest", 1, 0, 2, -1, -1, false) == 5 && d[0].ents[5].kind == DRV_OBJECT && d[0].ents[1].kind == DRV_MONSTER;
+  #assert drv_find(d[..], "goblin-3") == 1 && drv_find(d[..], "you") == 0 && drv_find(d[..], "goblin") == -1 && drv_find(d[..], "stone-0") == 2;
+  d[0].n = DRV_ENTS - 1; #assert drv_put(d[..], DRV_NPC, "x", -1, "", 0, 0, 0, -1, -1, false) == DRV_ENTS - 1 && d[0].lost == 0;
+  #assert drv_put(d[..], DRV_NPC, "x", -1, "", 0, 0, 0, -1, -1, false) == -1 && d[0].lost == 1;
+  drv_add(d[..], DRV_NPC, "x", -1, "", 0, 0, 0, -1, -1, false); #assert d[0].lost == 2 && d[0].n == DRV_ENTS;
+  drv_frame(d[..], 100, 100, 0, true); #assert d[0].n == 0 && d[0].lost == 0 && d[0].view.k == 1 && d[0].view.touch;
+}
+
+// ---- the answers
+// The answer to a command is out[0..<n]; drv_said reads it back (the realm's export).
+drv_say :: (d: [] Drive, n: int) -> string { d[0].out_n = n; return cast(string) d[0].out[0..<n]; }
+drv_said :: (d: [] Drive) -> string { return cast(string) d[0].out[0..<d[0].out_n]; }
+drv_say3 :: (d: [] Drive, a: string, b: string, c: string) -> string {
+  out := d[0].out[..];
+  return drv_say(d, drv_put_s(out, drv_put_s(out, drv_put_s(out, 0, a), b), c));
+}
+// A HUD widget's plain id: its part and name as slugs ("bar.fire-bolt").
+drv_hud_id_plain :: (t: [] UitTrace, i: int, out: [] u8) -> int {
+  r := t[0].rects[i];
+  n := drv_slug(out, 0, cast(string) r.part[0..<r.part_n]);
+  if n == 0 { n = drv_put_s(out, n, "hud"); }
+  n = drv_put_s(out, n, ".");
+  m := drv_slug(out, n, cast(string) r.name[0..<r.name_n]);
+  if m == n { m = drv_put_i(out, drv_put_s(out, n, "item"), i); }
+  return m;
+}
+// Its id: the plain one, -N when N - 1 earlier widgets have the same.
+drv_hud_id :: (t: [] UitTrace, i: int, out: [] u8, at: int) -> int {
+  b: [96] u8; bn := drv_hud_id_plain(t, i, b[..]);
+  again := 0;
+  for j: 0..<i {
+    o: [96] u8; on := drv_hud_id_plain(t, j, o[..]);
+    if cast(string) o[0..<on] == cast(string) b[0..<bn] { again += 1; }
+  }
+  n := drv_put_s(out, at, cast(string) b[0..<bn]);
+  return ifx again > 0 then drv_put_i(out, drv_put_s(out, n, "-"), again + 1) else n;
+}
+DRV_UIT_KIND :: [5] string.["widget", "panel", "text", "button", "bar"];
+drv_uit_kind :: (k: int) -> string {
+  if k < 0 || k >= UIT_KINDS { return DRV_UIT_KIND[0]; }   // mutant: equivalent (kind 0 is "widget" either way)
+  return DRV_UIT_KIND[k];
+}
+drv_css :: (v: f32, k: f32) -> int { return cast(int) floor(f64(v / k) + 0.5); }
+drv_rect :: (out: [] u8, at: int, r: UitRect, k: f32) -> int {
+  n := drv_put_s(out, at, " at "); n = drv_put_i(out, n, drv_css(r.x0, k));
+  n = drv_put_s(out, n, " "); n = drv_put_i(out, n, drv_css(r.y0, k));
+  n = drv_put_s(out, n, " size "); n = drv_put_i(out, n, drv_css(r.x1 - r.x0, k));
+  n = drv_put_s(out, n, "x"); return drv_put_i(out, n, drv_css(r.y1 - r.y0, k));
+}
+// One entity's line, its distance from (fx, fz): `goblin-3 monster "Goblin" at 12.0 0.0 -4.5, 6.2 m, hp 7/7`
+drv_ent_line :: (d: [] Drive, i: int, fx: f32, fz: f32, out: [] u8, at: int) -> int {
+  e := d[0].ents[i];
+  n := drv_put_s(out, at, drv_id(d, i)); n = drv_put_s(out, n, " "); n = drv_put_s(out, n, DRV_KIND[e.kind]);
+  n = drv_put_s(out, n, " \""); n = drv_put_s(out, n, cast(string) e.label[0..<e.label_n]); n = drv_put_s(out, n, "\" at ");
+  n = drv_put_f(out, n, e.x); n = drv_put_s(out, n, " "); n = drv_put_f(out, n, e.y); n = drv_put_s(out, n, " "); n = drv_put_f(out, n, e.z);
+  dx := e.x - fx; dz := e.z - fz;
+  n = drv_put_s(out, n, ", "); n = drv_put_f(out, n, sqrt(dx * dx + dz * dz)); n = drv_put_s(out, n, " m");
+  if e.max > 0 { n = drv_put_s(out, n, ", hp "); n = drv_put_i(out, n, e.hp); n = drv_put_s(out, n, "/"); n = drv_put_i(out, n, e.max); }
+  if e.down { n = drv_put_s(out, n, ", down"); }
+  return n;
+}
+// The tree: the world's entities as the realm lists them (you first, distances from you), then the
+// HUD's widgets that can be tapped or read (buttons, bars, words), in CSS px. The layout adds the
+// panels, what holds each widget, and the developer's tools.
+drv_tree :: (d: [] Drive, layout: bool) -> string {
+  out := d[0].out[..]; n := 0;
+  fx := d[0].ents[0].x; fz := d[0].ents[0].z;
+  for i: 0..<d[0].n { n = drv_ent_line(d, i, fx, fz, out, n); n = drv_put_s(out, n, "\n"); }
+  if d[0].lost > 0 { n = drv_put_s(out, n, "(and "); n = drv_put_i(out, n, d[0].lost); n = drv_put_s(out, n, " more entities)\n"); }
+  t := d[0].trace[..];
+  for i: 0..<t[0].n {
+    r := t[0].rects[i];
+    if !layout && (r.kind == UIT_PANEL || r.debug) { continue; }
+    n = drv_hud_id(t, i, out, n); n = drv_put_s(out, n, " "); n = drv_put_s(out, n, drv_uit_kind(r.kind));
+    n = drv_put_s(out, n, " \""); n = drv_put_s(out, n, cast(string) r.name[0..<r.name_n]); n = drv_put_s(out, n, "\"");
+    n = drv_rect(out, n, r, d[0].view.k);
+    if layout && r.parent != UIT_NONE { n = drv_put_s(out, n, " in "); n = drv_hud_id(t, r.parent, out, n); }
+    if layout && r.debug { n = drv_put_s(out, n, " (developer)"); }
+    n = drv_put_s(out, n, "\n");
+  }
+  if t[0].lost > 0 { n = drv_put_s(out, n, "(and "); n = drv_put_i(out, n, t[0].lost); n = drv_put_s(out, n, " more widgets)\n"); }
+  if n == 0 { n = drv_put_s(out, n, "(nothing yet: the realm has drawn no entities or widgets)\n"); }
+  return drv_say(d, n);
+}
+// The centre of widget `id`, CSS px, for a tap: "x y", or why there is none.
+drv_target :: (d: [] Drive, id: string) -> string {
+  out := d[0].out[..]; t := d[0].trace[..];
+  for i: 0..<t[0].n {
+    b: [96] u8; bn := drv_hud_id(t, i, b[..], 0);
+    if cast(string) b[0..<bn] != id { continue; }
+    r := t[0].rects[i]; k := d[0].view.k;
+    n := drv_put_i(out, 0, drv_css((r.x0 + r.x1) * 0.5, k)); n = drv_put_s(out, n, " ");
+    return drv_say(d, drv_put_i(out, n, drv_css((r.y0 + r.y1) * 0.5, k)));
+  }
+  if drv_find(d, id) >= 0 { return drv_say3(d, "no widget: ", id, " is in the world; use walk-to, face or use ... on it"); }
+  return drv_say3(d, "no widget: no ", id, " in the tree");
+}
+#test "the tree lists you, the rest in the realm's order, then the HUD with ids" {
+  d: [1] Drive; d[0].on = true; drv_frame(d[..], 400, 200, 2, false);
+  drv_add(d[..], DRV_PLAYER, "you", -1, "Ash", 1, 0, -1, 10, 12, false);
+  drv_add(d[..], DRV_MONSTER, "goblin", 1, "Goblin", 7, 0, 7, 0, 7, true);
+  drv_add(d[..], DRV_NPC, "guard", -1, "Guard", 4, 0, 3, -1, -1, false);
+  drv_add(d[..], DRV_OBJECT, "rat", -1, "Rat", 1, 0, -1, 1, 1, false);
+  drv_add(d[..], DRV_OBJECT, "post", -1, "Post", 1, 0, -1, 0, 0, false);
+  t := drv_trace(d[..]);
+  uit_part(t, "bar"); p := uit_put(t, UIT_NONE, UIT_PANEL, 0, 0, 200, 100, "frame");
+  uit_add(t, p, UIT_BUTTON, 10, 10, 50, 50, "Fire Bolt"); uit_add(t, p, UIT_BUTTON, 60, 10, 100, 50, "Fire Bolt");
+  uit_part(t, ""); uit_add(t, UIT_NONE, UIT_TEXT, 0, 0, 4, 4, "");
+  uit_part(t, "a"); uit_add(t, UIT_NONE, 7, 0, 0, 4, 4, "b");
+  text := drv_tree(d[..], false);
+  #assert text == "you player \"Ash\" at 1.0 0.0 -1.0, 0.0 m, hp 10/12\ngoblin-1 monster \"Goblin\" at 7.0 0.0 7.0, 10.0 m, hp 0/7, down\nguard npc \"Guard\" at 4.0 0.0 3.0, 5.0 m\nrat object \"Rat\" at 1.0 0.0 -1.0, 0.0 m, hp 1/1\npost object \"Post\" at 1.0 0.0 -1.0, 0.0 m\nbar.fire-bolt button \"Fire Bolt\" at 5 5 size 20x20\nbar.fire-bolt-2 button \"Fire Bolt\" at 30 5 size 20x20\nhud.item3 text \"\" at 0 0 size 2x2\na.b widget \"b\" at 0 0 size 2x2\n";
+  #assert drv_said(d[..]) == text;
+  lay := drv_tree(d[..], true);
+  #assert cp_has(lay, "bar.frame panel \"frame\" at 0 0 size 100x50\n") && cp_has(lay, "bar.fire-bolt-2 button \"Fire Bolt\" at 30 5 size 20x20 in bar.frame\n");
+  #assert drv_target(d[..], "bar.fire-bolt-2") == "40 15" && drv_target(d[..], "bar.fire-bolt") == "15 15" && drv_target(d[..], "bar.frame") == "50 25" && drv_said(d[..]) == "50 25";
+  #assert drv_target(d[..], "guard") == "no widget: guard is in the world; use walk-to, face or use ... on it" && drv_said(d[..]).count == 68;
+  #assert cp_has(drv_target(d[..], "you"), "you is in the world");
+  #assert drv_target(d[..], "nope") == "no widget: no nope in the tree" && drv_said(d[..]) == "no widget: no nope in the tree";
+  e: [1] Drive; e[0].on = true; drv_frame(e[..], 10, 10, 1, false); #assert drv_tree(e[..], false) == "(nothing yet: the realm has drawn no entities or widgets)\n";
+  e[0].lost = 1; e[0].trace[0].lost = 1; #assert drv_tree(e[..], false) == "(and 1 more entities)\n(and 1 more widgets)\n";
+  uit_add(e[0].trace[..], UIT_NONE, UIT_BUTTON, 0, 0, 2, 2, "go"); uit_add(e[0].trace[..], UIT_NONE, UIT_BUTTON, 0, 0, 2, 2, "go");
+  uit_debug(e[0].trace[..]); uit_add(e[0].trace[..], UIT_NONE, UIT_BAR, 0, 0, 2, 2, "fps");
+  #assert drv_tree(e[..], false) == "(and 1 more entities)\nhud.go button \"go\" at 0 0 size 2x2\nhud.go-2 button \"go\" at 0 0 size 2x2\n(and 1 more widgets)\n";
+  #assert cp_has(drv_tree(e[..], true), "hud.fps bar \"fps\" at 0 0 size 2x2 (developer)\n");
+  #assert drv_uit_kind(UIT_KINDS) == "widget" && drv_uit_kind(-1) == "widget" && drv_uit_kind(UIT_BAR) == "bar" && drv_uit_kind(UIT_PANEL) == "panel";
+}
+
+// ---- commands
+drv_why :: (d: [] Drive, a: string, b: string, c: string) {
+  n := drv_put_s(d[0].why[..], 0, a); n = drv_put_s(d[0].why[..], n, b); d[0].why_n = drv_put_s(d[0].why[..], n, c);
+}
+drv_end :: (d: [] Drive, status: int, a: string, b: string, c: string) { d[0].status = status; drv_why(d, a, b, c); }
+// The command's words: word w of t (spaces between), or "".
+drv_word :: (t: string, w: int) -> string {
+  at := 0; k := 0;
+  while at < t.count {
+    if t[at] == ' ' { at += 1; continue; }
+    from := at;
+    while at < t.count && t[at] != ' ' { at += 1; }
+    if k == w { return t[from..<at]; }
+    k += 1;
+  }
+  return "";
+}
+drv_target_id :: (d: [] Drive) -> string { return cast(string) d[0].target[0..<d[0].target_n]; }
+drv_ability_name :: (d: [] Drive) -> string { return cast(string) d[0].ability[0..<d[0].ability_n]; }
+// Where things stand: `walk-to guard: going, 6.2 m` or the outcome.
+drv_status :: (d: [] Drive) -> string {
+  out := d[0].out[..];
+  n := drv_put_s(out, 0, DRV_OP[d[0].op]);
+  if d[0].op == DRV_USE { n = drv_put_s(out, n, " "); n = drv_put_s(out, n, drv_ability_name(d)); n = drv_put_s(out, n, " on"); }
+  if d[0].op != DRV_NONE { n = drv_put_s(out, n, " "); n = drv_put_s(out, n, drv_target_id(d)); }
+  n = drv_put_s(out, n, ": "); n = drv_put_s(out, n, DRV_STATUS[d[0].status]);
+  if d[0].status == DRV_GOING && d[0].seen { n = drv_put_s(out, n, ", "); n = drv_put_f(out, n, d[0].best); n = drv_put_s(out, n, " m"); }
+  if d[0].why_n > 0 { n = drv_put_s(out, n, ", "); n = drv_put_s(out, n, cast(string) d[0].why[0..<d[0].why_n]); }
+  return drv_say(d, n);
+}
+DRV_HELP :: "operations: tree, layout, target ID, status, walk-to ID, face ID, use ABILITY on ID, mount ID, stop";
+DRV_NEAR :: 8;   // ids a miss suggests
+// The ids most like `id`: the ones that share its first word ("goblin-9": goblin-1 goblin-2), else all.
+drv_near :: (d: [] Drive, id: string, out: [] u8, at: int) -> int {
+  base := id; for c, i: id { if c == '-' { base = id[0..<i]; break; } }
+  any := false; for i: 0..<d[0].n { any = any || drv_starts(drv_id(d, i), base); }
+  n := at; shown := 0;
+  for i: 0..<d[0].n {
+    if shown >= DRV_NEAR { break; }
+    if any && !drv_starts(drv_id(d, i), base) { continue; }
+    n = drv_put_s(out, n, ifx shown == 0 then " (" else " "); n = drv_put_s(out, n, drv_id(d, i)); shown += 1;
+  }
+  return ifx shown > 0 then drv_put_s(out, n, ")") else n;
+}
+// One command from a driver, at the realm's clock `now` (s). It answers at once; a world operation
+// starts here and drv_steer carries it out over the frames that follow (ask `status`).
+drv_command :: (d: [] Drive, text: string, now: f32) -> string {
+  d[0].on = true;
+  op := drv_word(text, 0);
+  if op == "tree" { return drv_tree(d, false); }
+  if op == "layout" { return drv_tree(d, true); }
+  if op == "status" { return drv_status(d); }
+  if op == "target" { return drv_target(d, drv_word(text, 1)); }
+  if op == "stop" { d[0].op = DRV_NONE; drv_end(d, DRV_IDLE, "stopped", "", ""); return drv_status(d); }
+  kind := DRV_NONE; id := drv_word(text, 1); ability := "";
+  if op == "walk-to" { kind = DRV_WALK; }
+  if op == "face" { kind = DRV_FACE; }
+  if op == "mount" { kind = DRV_RIDE; }
+  if op == "use" {
+    kind = DRV_USE; ability = drv_word(text, 1); id = drv_word(text, 3);
+    if drv_word(text, 2) != "on" || ability.count == 0 || id.count == 0 { return drv_say3(d, "use takes an ability and a target: use ABILITY on ID", "", ""); }
+  }
+  if kind == DRV_NONE { return drv_say3(d, "unknown operation '", op, "'; operations: tree, layout, target ID, status, walk-to ID, face ID, use ABILITY on ID, mount ID, stop"); }
+  if id.count == 0 { return drv_say3(d, op, " takes an id from the tree", ""); }
+  if drv_find(d, id) < 0 {
+    out := d[0].out[..];
+    n := drv_put_s(out, drv_put_s(out, drv_put_s(out, 0, "no entity "), id), " in the tree");
+    return drv_say(d, drv_near(d, id, out, n));
+  }
+  d[0].op = kind; d[0].status = DRV_GOING; d[0].why_n = 0; d[0].t0 = now; d[0].seen = false;
+  d[0].target_n = drv_put_s(d[0].target[..], 0, id); d[0].ability_n = drv_put_s(d[0].ability[..], 0, ability);
+  return drv_status(d);
+}
+// The world operation's step this frame, from where you stand (x, z) facing `face` (rad, the way
+// (sin face, cos face) points), at the realm's clock `now` (s).
+drv_steer :: (d: [] Drive, x: f32, z: f32, face: f32, now: f32) -> DrvSteer {
+  if d[0].status != DRV_GOING { return DrvSteer.{}; }
+  if d[0].n > 0 && d[0].ents[0].down { drv_end(d, DRV_FAILED, "you are down", "", ""); return DrvSteer.{}; }   // the realm lists you first
+  i := drv_find(d, drv_target_id(d));
+  if i < 0 { drv_end(d, DRV_FAILED, drv_target_id(d), " is gone", ""); return DrvSteer.{}; }
+  e := d[0].ents[i];
+  dx := e.x - x; dz := e.z - z; dist := sqrt(dx * dx + dz * dz);
+  ux := 0.0f32; uz := 0.0f32;
+  if dist > 0 { ux = dx / dist; uz = dz / dist; }
+  aimed := (ux == 0 && uz == 0) || sin(face) * ux + cos(face) * uz >= f32(DRV_AIM);   // mutant: equivalent (>= and > differ only at exactly DRV_AIM)
+  if !d[0].seen || dist < d[0].best - f32(DRV_STUCK_M) { d[0].seen = true; d[0].best = dist; d[0].best_at = now; }   // mutant: equivalent (< and <= differ only at exactly DRV_STUCK_M closer)
+  near := dist <= d[0].reach;
+  if d[0].op == DRV_FACE && aimed { drv_end(d, DRV_DONE, "facing it", "", ""); return DrvSteer.{dist = dist}; }
+  if d[0].op == DRV_WALK && near { drv_end(d, DRV_DONE, "there", "", ""); return DrvSteer.{dist = dist}; }
+  if (d[0].op == DRV_USE || d[0].op == DRV_RIDE) && near && aimed { return DrvSteer.{press = true, dist = dist}; }
+  if now - d[0].best_at > f32(DRV_STUCK_S) && !near { drv_end(d, DRV_FAILED, "stuck: something is in the way", "", ""); return DrvSteer.{dist = dist}; }
+  return DrvSteer.{go = true, dx = ux, dz = uz, dist = dist};
+}
+// The realm pressed (or couldn't press) what a use or mount asked for: the operation ends.
+drv_pressed :: (d: [] Drive, ok: bool, what: string) {
+  if ok { drv_end(d, DRV_DONE, "pressed ", what, ""); } else { drv_end(d, DRV_FAILED, "could not press ", what, ""); }
+}
+// Whether a slot named `name`, at position `slot` (1 is the first), is the ability a use asks for:
+// its name ("fire-bolt", "Fire Bolt") or its number ("2").
+drv_ability_is :: (d: [] Drive, name: string, slot: int) -> bool {
+  a := drv_ability_name(d);
+  if a.count == 0 { return false; }
+  b: [24] u8; bn := drv_put_i(b[..], 0, slot);
+  return a == cast(string) b[0..<bn] || drv_same_slug(a, name);
+}
+// No slot answers to the ability: the use fails, naming the ones there are.
+drv_no_ability :: (d: [] Drive, names: string) { drv_end(d, DRV_FAILED, "no slot is ", drv_ability_name(d), names); }
+
+#test "commands start world operations and answer at once" {
+  d: [1] Drive;
+  #assert drv_command(d[..], "dance", 0) == "unknown operation 'dance'; operations: tree, layout, target ID, status, walk-to ID, face ID, use ABILITY on ID, mount ID, stop" && d[0].on;
+  #assert cp_has(drv_said(d[..]), "'dance'; operations");
+  drv_frame(d[..], 100, 100, 1, false);
+  drv_add(d[..], DRV_PLAYER, "you", -1, "Ash", 0, 0, 0, 10, 12, false);
+  drv_add(d[..], DRV_MONSTER, "goblin", 1, "Goblin", 0, 0, 10, 7, 7, false);
+  drv_add(d[..], DRV_MONSTER, "goblin", 2, "Goblin", 0, 0, 10, 7, 7, false);
+  drv_add(d[..], DRV_MOUNT, "horse", -1, "Horse", 0, 0, 10, -1, -1, false);
+  uit_part(drv_trace(d[..]), "bar"); uit_add(drv_trace(d[..]), UIT_NONE, UIT_PANEL, 0, 0, 9, 9, "frame");
+  #assert drv_command(d[..], "walk-to goblin-9", 0) == "no entity goblin-9 in the tree (goblin-1 goblin-2)" && drv_said(d[..]) == "no entity goblin-9 in the tree (goblin-1 goblin-2)";
+  #assert drv_command(d[..], "walk-to zebra", 0) == "no entity zebra in the tree (you goblin-1 goblin-2 horse)";
+  #assert drv_command(d[..], "walk-to horse-2", 0) == "no entity horse-2 in the tree (horse)";
+  #assert drv_command(d[..], "walk-to you-2", 0) == "no entity you-2 in the tree (you)";
+  #assert drv_command(d[..], "walk-to", 0) == "walk-to takes an id from the tree" && drv_said(d[..]) == "walk-to takes an id from the tree";
+  #assert drv_command(d[..], "use fire-bolt goblin-1", 0) == "use takes an ability and a target: use ABILITY on ID";
+  #assert drv_command(d[..], "use fire-bolt at goblin-1", 0) == "use takes an ability and a target: use ABILITY on ID" && drv_said(d[..]).count == 52;
+  #assert drv_command(d[..], "use on goblin-1", 0) == "use takes an ability and a target: use ABILITY on ID";
+  #assert drv_command(d[..], "use fire-bolt on", 0) == "use takes an ability and a target: use ABILITY on ID";
+  #assert drv_command(d[..], "status", 0) == "none: idle" && drv_said(d[..]) == "none: idle";
+  #assert drv_command(d[..], "  walk-to   goblin-2 ", 1) == "walk-to goblin-2: going" && d[0].op == DRV_WALK && d[0].t0 == 1;
+  #assert drv_command(d[..], "use fire-bolt on goblin-1", 2) == "use fire-bolt on goblin-1: going" && d[0].op == DRV_USE;
+  #assert drv_command(d[..], "face horse", 3) == "face horse: going" && drv_command(d[..], "mount horse", 3) == "mount horse: going" && d[0].op == DRV_RIDE;
+  #assert drv_command(d[..], "stop", 4) == "none: idle, stopped" && d[0].op == DRV_NONE;
+  #assert drv_command(d[..], "target nope", 4) == "no widget: no nope in the tree";
+  tree := drv_command(d[..], "tree", 4); #assert cp_has(tree, "goblin-2 monster") && !cp_has(tree, "panel");
+  #assert cp_has(drv_command(d[..], "layout", 4), "bar.frame panel");
+  #assert drv_word("a  bb c", 1) == "bb" && drv_word("a", 3) == "" && drv_word("   ", 0) == "" && drv_word("a b", 1) == "b";
+  // a miss suggests at most DRV_NEAR ids
+  drv_frame(d[..], 100, 100, 1, false);
+  for i: 0..<10 { drv_add(d[..], DRV_MONSTER, "imp", i, "Imp", 0, 0, 0, 1, 1, false); }
+  #assert drv_command(d[..], "walk-to imp-99", 5) == "no entity imp-99 in the tree (imp-0 imp-1 imp-2 imp-3 imp-4 imp-5 imp-6 imp-7)";
+  drv_frame(d[..], 100, 100, 1, false); #assert drv_command(d[..], "walk-to imp-1", 5) == "no entity imp-1 in the tree";
+  // status: the nearest so far, and the outcome
+  d[0].op = DRV_FACE; d[0].status = DRV_GOING; d[0].seen = true; d[0].best = 0; d[0].why_n = 0; d[0].target_n = 1; d[0].target[0] = 'x';
+  #assert drv_status(d[..]) == "face x: going, 0.0 m";
+  drv_end(d[..], DRV_FAILED, "y", "", ""); #assert drv_status(d[..]) == "face x: failed, y";
+}
+#test "walk-to steers straight at the target and ends near it" {
+  d: [1] Drive; d[0].on = true; drv_frame(d[..], 100, 100, 1, false);
+  drv_add(d[..], DRV_NPC, "guard", -1, "Guard", 0, 0, 10, -1, -1, false);
+  #assert !drv_steer(d[..], 0, 0, 0, 0).go;   // nothing asked
+  #assert drv_command(d[..], "walk-to guard", 0).count > 0;
+  s := drv_steer(d[..], 0, 0, 0, 0); #assert s.go && s.dx == 0 && s.dz == 1 && s.dist == 10 && !s.press;
+  #assert drv_status(d[..]) == "walk-to guard: going, 10.0 m";
+  s = drv_steer(d[..], 0, 8.3, 0, 1); #assert !s.go && d[0].status == DRV_DONE && s.dist > 1.6;
+  #assert drv_status(d[..]) == "walk-to guard: done, there";
+  s = drv_steer(d[..], 0, 9, 0, 2); #assert !s.go;   // done stays done
+  s = drv_steer(d[..], 0, 0, 0, 2); #assert !s.go && d[0].status == DRV_DONE;
+  // reach is inclusive
+  d[0].reach = 2; #assert drv_command(d[..], "walk-to guard", 3) == "walk-to guard: going";
+  s = drv_steer(d[..], 0, 8, 0, 3); #assert !s.go && d[0].status == DRV_DONE;
+  d[0].reach = DRV_REACH;
+  // stuck: closing less than DRV_STUCK_M in DRV_STUCK_S
+  #assert drv_command(d[..], "walk-to guard", 10).count > 0;
+  s = drv_steer(d[..], 0, 0, 0, 10); #assert s.go;
+  s = drv_steer(d[..], 0, 0.2, 0, 11); #assert s.go;
+  s = drv_steer(d[..], 0, 0.25, 0, 12); #assert s.go;   // DRV_STUCK_S exactly: not yet
+  s = drv_steer(d[..], 0, 0.25, 0, 12.5); #assert !s.go && d[0].status == DRV_FAILED && drv_status(d[..]) == "walk-to guard: failed, stuck: something is in the way";
+  #assert drv_command(d[..], "walk-to guard", 20) == "walk-to guard: going";
+  s = drv_steer(d[..], 0, 0, 0, 20); s = drv_steer(d[..], 0, 1, 0, 21.9); s = drv_steer(d[..], 0, 1.2, 0, 23.8); #assert s.go;   // kept closing
+  // a diagonal: the way is the unit vector toward it
+  drv_frame(d[..], 100, 100, 1, false); drv_add(d[..], DRV_NPC, "post", -1, "Post", 3, 0, 4, -1, -1, false);
+  #assert drv_command(d[..], "walk-to post", 30).count > 0;
+  s = drv_steer(d[..], 0, 0, 0, 30); #assert s.go && s.dist == 5 && s.dx > 0.599 && s.dx < 0.601 && s.dz > 0.799 && s.dz < 0.801;
+  // you fallen: nothing more goes
+  #assert drv_command(d[..], "walk-to post", 31).count > 0; d[0].ents[0].down = true;
+  s = drv_steer(d[..], 0, 0, 0, 31); #assert !s.go && drv_status(d[..]) == "walk-to post: failed, you are down";
+  #assert drv_command(d[..], "walk-to post", 31).count > 0;
+  // the target gone (a fallen first entity from an earlier frame isn't you)
+  drv_frame(d[..], 100, 100, 1, false); s = drv_steer(d[..], 0, 0, 0, 31);
+  #assert !s.go && drv_status(d[..]) == "walk-to post: failed, post is gone";
+}
+#test "face turns toward the target; use and mount press once near and facing" {
+  d: [1] Drive; d[0].on = true; drv_frame(d[..], 100, 100, 1, false);
+  drv_add(d[..], DRV_MONSTER, "goblin", 1, "Goblin", 1, 0, 0, 7, 7, false);   // east of you
+  drv_add(d[..], DRV_NPC, "guard", -1, "Guard", 0, 0, 10, -1, -1, false);      // north
+  drv_add(d[..], DRV_NPC, "post", -1, "Post", 3, 0, 4, -1, -1, false);         // north-east
+  #assert drv_command(d[..], "face goblin-1", 0).count > 0;
+  s := drv_steer(d[..], 0, 0, 0, 0); #assert s.go && s.dx == 1 && s.dz == 0;   // facing north: not yet
+  s = drv_steer(d[..], 0, 0, 1.5707963, 0.1); #assert !s.go && drv_status(d[..]) == "face goblin-1: done, facing it";
+  s = drv_steer(d[..], 1, 0, 0, 0.1); #assert !s.go;
+  #assert drv_command(d[..], "face guard", 0).count > 0;
+  s = drv_steer(d[..], 0, 0, 1.5707963, 0); #assert s.go;   // facing east, the guard north
+  #assert drv_command(d[..], "face post", 0).count > 0;
+  s = drv_steer(d[..], 0, 0, 0.6435011, 0); #assert !s.go && d[0].status == DRV_DONE;   // atan2(3, 4)
+  #assert drv_command(d[..], "use 2 on goblin-1", 1).count > 0;
+  s = drv_steer(d[..], 0, 0, 0, 1); #assert s.go && !s.press;          // near, not facing
+  s = drv_steer(d[..], 0, 0, 0, 4); #assert s.go && !s.press;          // turning near it is not stuck
+  s = drv_steer(d[..], 0, 0, 1.5707963, 4.1); #assert s.press && !s.go;  // near and facing
+  #assert drv_ability_is(d[..], "Fire Bolt", 2) && !drv_ability_is(d[..], "Fire Bolt", 3);
+  drv_pressed(d[..], true, "Fire Bolt"); #assert drv_status(d[..]) == "use 2 on goblin-1: done, pressed Fire Bolt";
+  #assert drv_command(d[..], "use fire-bolt on goblin-1", 2).count > 0;
+  #assert drv_ability_is(d[..], "Fire Bolt", 5) && !drv_ability_is(d[..], "Frost", 1);
+  drv_no_ability(d[..], ": Frost, Cure"); #assert drv_status(d[..]) == "use fire-bolt on goblin-1: failed, no slot is fire-bolt: Frost, Cure";
+  #assert drv_command(d[..], "mount goblin-1", 3).count > 0;
+  s = drv_steer(d[..], -5, 0, 1.5707963, 3); #assert s.go && !s.press && s.dist == 6;
+  s = drv_steer(d[..], 0, 0, 1.5707963, 3.1); #assert s.press;
+  drv_pressed(d[..], false, "the mount"); #assert drv_status(d[..]) == "mount goblin-1: failed, could not press the mount";
+  d[0].ability_n = 0; #assert !drv_ability_is(d[..], "x", 1);
+  // you on the target: facing anything faces it
+  #assert drv_command(d[..], "face goblin-1", 4).count > 0; s = drv_steer(d[..], 1, 0, 3, 4); #assert d[0].status == DRV_DONE;
+}

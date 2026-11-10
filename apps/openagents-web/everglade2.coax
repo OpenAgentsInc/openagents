@@ -44,6 +44,8 @@
 #load "everglade2-stage.coax";  // ?stage=: the path and the empty clearing for film, the HUD off
 #load "../../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, as Experimental's
 #load "../../aethyr/action/area-aim.coax" as aa;   // ground targeting for a placed area (Entangle's square)
+#load "../../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
+#load "everglade2-drive.coax";   // ... wired to this world
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 32768;     // strokes: the frame rate in the bottom right corner
@@ -132,6 +134,7 @@ E2 :: struct {
   wild: [1] E2Wild;                              // the glade's cat (everglade2-wild.coax)
   hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
   zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
+  drive: [1] Drive;                              // the agent driver (aethyr/agent/drive.coax): off until a driver speaks
   hero_class: int = -1; hero_level: int; hero_ac: int; hero_slots: [10] int;   // your class's AC and spell slots by level, as the rules build it (fb_cl_hero)
   floats: [1] fl.Floats;                         // the numbers over whoever a blow struck: the room's hit words (e2_float)
 }
@@ -206,7 +209,9 @@ e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film")
 // u[60] the film quality, u[61] the maps off (gpu/everglade2.coax cc_player_fs).
 // u[62] the canopy's baked AO at your middle (verse/everglade2/ground.coax): it shades only your indirect light.
 e2_material_uniforms :: (s: [] E2, u: [] f32) { u[60] = ifx s[0].film then 1.0f32 else 0.0f32; u[61] = ifx s[0].maps_off then 1.0f32 else 0.0f32; u[62] = e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0); }
+E2_HOST_DRIVE :: 700;   // a driver's command (coax/web/host.js coaxial.drive)
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
+  if kind == E2_HOST_DRIVE { e2d_message(s, t); return; }
   if kind == 1 { e2c_name_type(s, t); return; }   // typed or pasted text: Character Create's NAME
   if kind == 16 { cc.load_player(s[0].creator[..], t); e2_net_look(s); return; }
   if kind == 4 { ok := cc.restore(s[0].creator[..], t); return; }
@@ -340,6 +345,7 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
     return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
   }
   if h != 0 { s[0].autowalk = false; }
+  dm := e2d_move_in(s); if dm.ok && h == 0 { return dm.in; }   // an agent's walk-to, face or use (everglade2-drive.coax)
   // asleep, as the room's rules hold you: your keys move nothing until you wake (WATCH, END)
   if e2n_asleep(s[0].net[..]) { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
   // down, or held by a condition (your bearing, aethyr/rules/srd/condition-bearing.coax): your keys move nothing, as the room steps you
@@ -1111,7 +1117,9 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   // the frame's step for the plates' fades (the first frame snaps them)
   s[0].sight_dt = ifx s[0].sight_at < 0 then 1.0f32 else ifx s[0].clock - s[0].sight_at > 0.1 then 0.1f32 else ifx s[0].clock < s[0].sight_at then 0.0f32 else s[0].clock - s[0].sight_at;
   s[0].sight_at = s[0].clock;
+  e2d_frame(s);   // the agent driver's entities this frame (off: nothing)
   hud := e2_hud(s, out, dt);
+  e2d_bar(s);
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   if s[0].wild[0].stage || s[0].stage != E2ST_NONE { hud = 0; s[0].media_n = 0; }   // a staged shot (?stage=cat, everglade2-stage.coax) draws no HUD: no strokes, no bar pictures
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)

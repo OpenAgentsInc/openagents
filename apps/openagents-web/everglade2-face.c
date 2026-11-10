@@ -381,6 +381,9 @@ EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { e2_acti
 
 // Your saved character arrives as message 16 (the browser's own copy, from Character Create).
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }
+/* The agent driver (aethyr/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
+EXPORT("coaxial_drive_out") uint32_t coaxial_drive_out(uint32_t state) { return (uint32_t)(uintptr_t)e2_drive_out(at(state)).data; }
+EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(uint32_t state) { return (uint32_t)e2_drive_out(at(state)).count; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_t field) { return (int32_t)e2_probe(at(state), field); }
 
 // ---- the casts (#13058, everglade2-cast.coax): their effects, drawn after the scene and depth-tested

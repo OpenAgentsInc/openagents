@@ -102,6 +102,8 @@
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each,
 //   612 the network: "1" back online (a socket from before is likely dead), "0" offline (#12856)
+//   700 a driver's command (coax drive, aethyr/agent/drive.coax): the realm answers through
+//       coaxial_drive_out(state) and coaxial_drive_out_len(state), read by coaxial.drive.send
 //   613 the GPU, once the adapter opens: gpu_vendor, gpu_arch, gpu_fallback (also in every later 600), and
 //       action 33 keeps the graphics rung the app settled at (verse.quality.settled, the next 600's settled=)
 // and, on a page with data-drops (drop.js, /projects): files dropped on the page or picked go to
@@ -876,7 +878,7 @@ const nip07Imports = {
 };
 
 // ---- the page: what the browser knows about this visit, for the app
-const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604, VIEWER_KIND = 606;
+const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604, VIEWER_KIND = 606, DRIVE_KIND = 700;
 // Who is logged in, the same on every page: /api/auth/viewer's lines (/api/auth/me's: K| npub, H| hex key,
 // M| a member key it speaks for, J| a private project), or "" when nobody is (a 200, so no console error).
 // Apps that care read VIEWER_KIND.
@@ -3311,6 +3313,25 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageF
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1,
   // The room's state for a page opening this one in place (zone-host.js): -1 none, 0 off, 1 opening, 2 open, 3 down.
   room: () => engine?.exports.coaxial_net_probe?.(arena.state, 0) ?? -1,
+  // The agent driver (coax drive: coax/web/drive.coax, aethyr/agent/drive.coax): send gives a realm one
+  // command as message 700 and returns its answer (coaxial_drive_out), or null when the engine can't
+  // take it yet; peek returns `size` bytes of the state at `offset` as hex, for `state` (the driver
+  // reads the field's place and type from the build's layout, build/APP.layout).
+  drive: {
+    send: (text) => {
+      const x = engine?.exports;
+      if (!x?.coaxial_drive_out || waiting || !arena) return null;
+      send(DRIVE_KIND, String(text));
+      return new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_drive_out(arena.state), x.coaxial_drive_out_len(arena.state)));
+    },
+    peek: (offset, size) => {
+      const n = engine?.exports.coaxial_state_size?.() ?? 0;
+      if (!arena || !(offset >= 0) || !(size > 0) || offset + size > n) return null;
+      return Array.from(new Uint8Array(memory.buffer, arena.state + offset, size), (b) => b.toString(16).padStart(2, "0")).join("");
+    },
+    stateSize: () => engine?.exports.coaxial_state_size?.() ?? 0,
+    app: () => script?.dataset.app ?? "",
+  },
   // zone-host.js: this page, opened in place, is shown now
   shown: () => send(SHOWN_KIND, `now=${Date.now()}\n`) };
 // Headless verification observes effects without exposing renderer policy.

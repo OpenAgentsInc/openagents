@@ -34,6 +34,7 @@ static coax_t_Sticks sticks;   // a phone's thumbs
 static float width, height, dpr;
 static double now;
 static bool touched;
+static coax_t_Drive drive;   // the agent driver's (aethyr/agent/drive.coax): the Lab holds a view of it
 
 static coax_t_Lab *lab_at(uint32_t state) { return (coax_t_Lab *)(uintptr_t)state; }
 static coax_v_t_Lab at(uint32_t state) { return (coax_v_t_Lab){lab_at(state), 1}; }
@@ -42,7 +43,7 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Lab) * 1000003u + offsetof(coax_t_Lab, outbox) * 13u + 0x35454c42u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Lab); }
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Lab((coax_t_Lab *)(uintptr_t)state); }
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Lab((coax_t_Lab *)(uintptr_t)state); lab_drive_attach(at(state), (coax_v_t_Drive){&drive, 1}); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_lab_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_lab_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
@@ -184,6 +185,9 @@ EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { return (uint32_
 EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { coax_t_Lab *l = lab_at(state); return l->creator.e[0].experimental && !l->creator.e[0].walk.on ? (uint32_t)l->xc.e[0].media_n : 0u; }
 
 // Read-only observations for headless wardrobe checks.
+/* The agent driver (aethyr/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
+EXPORT("coaxial_drive_out") uint32_t coaxial_drive_out(uint32_t state) { return (uint32_t)(uintptr_t)lab_drive_out(at(state)).data; }
+EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(uint32_t state) { return (uint32_t)lab_drive_out(at(state)).count; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state,int32_t field) {return (int32_t)lab_creator_probe(at(state),field);}
 
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }

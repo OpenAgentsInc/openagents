@@ -1,0 +1,639 @@
+// coax drive (GitHub #13095; docs/research/exact/03-what-to-adapt.md): an agent drives a realm by
+// ids, one operation an argument, in one live session of headless Chrome (no window, muted).
+//   coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] OP...
+//   coax/web/tool.sh drive web apps/openagents-web /worlds/everglade2 tree "walk-to guard" \
+//     "use 1 on goblin-5" "clock +2000" "state you_x" "screenshot out.png"
+// It serves APP_DIR as it is built (coax/web/serve.sh --static, on a free port above 9000), opens
+// PATH, waits for the first scene, then runs each operation in order and prints its answer:
+//   tree | layout                 the world's entities by id, then the HUD's widgets (aethyr/agent/drive.coax)
+//   state [PATH]                  a field of the realm's state, read through the build's layout
+//                                 (build/.drive/APP.layout): `state you_x`, `state net.mon_rows[3].hp`;
+//                                 alone, the state's top-level fields
+//   tap ID                        a click at the centre of HUD widget ID
+//   type ID TEXT | type ID key NAME   tap ID, then the text (or one key: Enter, Escape, 1, w ...);
+//                                 ID - types into the page as it is
+//   walk-to ID | face ID | use ABILITY on ID | mount ID | stop
+//                                 a world operation: the realm walks, turns and presses as a player's
+//                                 input would (a deed the room answers); it waits until the operation
+//                                 is done or failed, at most --within ms (30000)
+//   status                        the last world operation's state
+//   clock +MS                     lets MS of real time pass (the agent clock is phase 2, #13096)
+//   screenshot OUT.png            the page as it is
+//   logs                          the page's console and errors since the last `logs`
+//   prefer color-scheme dark|light | prefer reduced-motion reduce|no-preference | prefer size WxH
+//   perf                          frames drawn in one second, and the world loop's counters
+// It refuses a build older than its sources (build/.drive/APP.sources, written by coax/web/wasm.sh),
+// printing the command that rebuilds it.
+#import "Basic";
+#load "../lib/media/media.coax";
+#load "../lib/crypto/sha256_workspace.coax";
+
+cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
+cxtool_out_flush :: () -> int #foreign #effects(all);
+
+DV_FILE :: 33554432;   // the largest layout, source list, build script or source file read
+DV_TEXT :: 65536;
+DV_HEX :: "0123456789abcdef";
+
+// A text being built.
+Dv :: struct { b: [DV_TEXT] u8; n: int; }
+dv_s :: (t: [] Dv, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+dv_i :: (t: [] Dv, v: int) { b: [24] u8; n := uit_int_dv(b[..], v); dv_s(t, cast(string) b[0..<n]); }
+dv_text :: (t: [] Dv) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+uit_int_dv :: (out: [] u8, v: int) -> int {
+  n := 0; x := v;
+  if x < 0 { out[0] = '-'; n = 1; x = -x; }
+  d: [20] u8; c := 0;
+  while true { d[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 { break; } }
+  while c > 0 { c -= 1; out[n] = d[c]; n += 1; }
+  return n;
+}
+dv_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+dv_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+// Line `k` of text (from `at`): the line and where the next starts.
+DvLine :: struct { from: int; to: int; next: int; }
+dv_line :: (t: string, at: int) -> DvLine {
+  e := at; while e < t.count && t[e] != '\n' { e += 1; }
+  return DvLine.{from = at, to = e, next = ifx e < t.count then e + 1 else e};
+}
+// Whitespace-separated word w of a line.
+dv_word :: (t: string, w: int) -> string {
+  at := 0; k := 0;
+  while at < t.count {
+    while at < t.count && (t[at] == ' ' || t[at] == '\t') { at += 1; }
+    if at >= t.count { break; }
+    from := at;
+    while at < t.count && t[at] != ' ' && t[at] != '\t' { at += 1; }
+    if k == w { return t[from..<at]; }
+    k += 1;
+  }
+  return "";
+}
+// What follows word w (the rest of the line from it).
+dv_rest :: (t: string, w: int) -> string {
+  at := 0; k := 0;
+  while at < t.count {
+    while at < t.count && t[at] == ' ' { at += 1; }
+    if at >= t.count { break; }
+    if k == w { return t[at..<t.count]; }
+    while at < t.count && t[at] != ' ' { at += 1; }
+    k += 1;
+  }
+  return "";
+}
+dv_int :: (s: string) -> int {
+  if s.count == 0 { return -1; }
+  v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+#test "words, lines and numbers" {
+  #assert dv_word("  a\tbb  c", 1) == "bb" && dv_word("a", 2) == "" && dv_rest("type chat hello there", 2) == "hello there" && dv_rest("a", 3) == "";
+  l := dv_line("ab\ncd", 0); #assert l.to == 2 && l.next == 3; l = dv_line("ab\ncd", 3); #assert l.to == 5 && l.next == 5;
+  #assert dv_int("42") == 42 && dv_int("") == -1 && dv_int("4x") == -1;
+  #assert dv_has("abc", "bc") && !dv_has("ab", "abc") && dv_starts("walk-to x", "walk-to") && !dv_starts("w", "walk");
+  t: [1] Dv; dv_s(t[..], "n="); dv_i(t[..], -305); #assert dv_text(t[..]) == "n=-305";
+}
+
+// ---- the state's layout (`coax layout` of the realm: "NAME  size N  align A", then "OFFSET SIZE name: type")
+DvField :: struct { found: bool; offset: int; size: int; type: string; }
+// The struct named `name`: where its first field line starts, and its size (-1 none).
+DvStruct :: struct { at: int = -1; size: int = -1; fields: int; }
+dv_struct :: (lay: string, name: string) -> DvStruct {
+  at := 0;
+  while at < lay.count {
+    l := dv_line(lay, at); line := lay[l.from..<l.to];
+    if line.count > 0 && line[0] != ' ' && dv_word(line, 0) == name && dv_word(line, 1) == "size" {
+      s := DvStruct.{at = l.next, size = dv_int(dv_word(line, 2))};
+      p := l.next;
+      while p < lay.count { m := dv_line(lay, p); f := lay[m.from..<m.to]; if f.count == 0 || f[0] != ' ' { break; } if !dv_has(f, "(padding)") { s.fields += 1; } p = m.next; }
+      return s;
+    }
+    at = l.next;
+  }
+  return DvStruct.{};
+}
+// Field `name` of the struct whose fields start at `at`.
+dv_field :: (lay: string, at: int, name: string) -> DvField {
+  p := at;
+  while p < lay.count {
+    l := dv_line(lay, p); f := lay[l.from..<l.to];
+    if f.count == 0 || f[0] != ' ' { break; }
+    w := dv_word(f, 2);
+    if w.count > 1 && w[0..<w.count - 1] == name && w[w.count - 1] == ':' {
+      colon := 0; for c, i: f { if c == ':' { colon = i; break; } }
+      return DvField.{found = true, offset = dv_int(dv_word(f, 0)), size = dv_int(dv_word(f, 1)), type = f[colon + 2..<f.count]};
+    }
+    p = l.next;
+  }
+  return DvField.{};
+}
+// The root: the struct the state is (its size the page's state size); of several, the one with most fields.
+dv_root :: (lay: string, size: int) -> string {
+  best := ""; most := -1; at := 0;
+  while at < lay.count {
+    l := dv_line(lay, at); line := lay[l.from..<l.to];
+    if line.count > 0 && line[0] != ' ' && dv_word(line, 1) == "size" && dv_int(dv_word(line, 2)) == size {
+      s := dv_struct(lay, dv_word(line, 0));
+      if s.fields > most { most = s.fields; best = dv_word(line, 0); }
+    }
+    at = l.next;
+  }
+  return best;
+}
+// "[N] T" -> N and T; else N -1.
+DvArray :: struct { n: int = -1; elem: string; }
+dv_array :: (type: string) -> DvArray {
+  if type.count < 4 || type[0] != '[' { return DvArray.{}; }
+  close := 0; for c, i: type { if c == ']' { close = i; break; } }
+  if close < 2 || close + 2 > type.count { return DvArray.{}; }
+  return DvArray.{n = dv_int(type[1..<close]), elem = type[close + 2..<type.count]};
+}
+// A path's field: offset from the state's start, size and type; or why not.
+DvAt :: struct { ok: bool; offset: int; size: int; type: string; why: string; }
+dv_resolve :: (lay: string, root: string, path: string) -> DvAt {
+  st := dv_struct(lay, root);
+  if st.at < 0 { return DvAt.{why = "the layout has no state struct"}; }
+  off := 0; type := root; size := st.size; i := 0;
+  while i < path.count {
+    j := i; while j < path.count && path[j] != '.' && path[j] != '[' { j += 1; }
+    name := path[i..<j];
+    if name.count > 0 {
+      // a [1] T on the way is its one element
+      a := dv_array(type); if a.n == 1 { type = a.elem; size = size; }
+      s := dv_struct(lay, type);
+      if s.at < 0 { return DvAt.{why = "not a struct here", type = type}; }
+      f := dv_field(lay, s.at, name);
+      if !f.found { return DvAt.{why = "no such field", type = type}; }
+      off += f.offset; size = f.size; type = f.type;
+    }
+    if j < path.count && path[j] == '[' {
+      k := j + 1; while k < path.count && path[k] != ']' { k += 1; }
+      idx := dv_int(path[j + 1..<k]); a := dv_array(type);
+      if a.n < 0 { return DvAt.{why = "not an array", type = type}; }
+      if idx < 0 || idx >= a.n { return DvAt.{why = "index out of range", type = type}; }
+      es := size / a.n; off += idx * es; size = es; type = a.elem; j = k + 1;
+    }
+    i = ifx j < path.count && path[j] == '.' then j + 1 else j;
+  }
+  return DvAt.{ok = true, offset = off, size = size, type = type};
+}
+#test "a path through the layout" {
+  lay := "In  size 8  align 4\n       0     4  a: f32\n       4     3  b: [3] u8\n       7     1  (padding)\nS  size 56  align 8\n       0     8  x: int\n       8     8  inn: [1] In\n      16    16  ins: [2] In\n      32    16  s: string\n      48     1  ok: bool\n      49     7  (padding)\nT  size 56  align 8\n       0    56  only: [56] u8\n";
+  #assert dv_root(lay, 56) == "S" && dv_root(lay, 9) == "";
+  #assert dv_struct(lay, "S").fields == 5 && dv_struct(lay, "Nope").at == -1;
+  r := dv_resolve(lay, "S", "x"); #assert r.ok && r.offset == 0 && r.size == 8 && r.type == "int";
+  r = dv_resolve(lay, "S", "inn.b"); #assert r.ok && r.offset == 12 && r.size == 3 && r.type == "[3] u8";
+  r = dv_resolve(lay, "S", "ins[1].a"); #assert r.ok && r.offset == 24 && r.size == 4 && r.type == "f32";
+  r = dv_resolve(lay, "S", "ins[1].b[2]"); #assert r.ok && r.offset == 30 && r.size == 1 && r.type == "u8";
+  r = dv_resolve(lay, "S", "ins[2]"); #assert !r.ok && r.why == "index out of range";
+  r = dv_resolve(lay, "S", "x[0]"); #assert !r.ok && r.why == "not an array";
+  r = dv_resolve(lay, "S", "nope"); #assert !r.ok && r.why == "no such field";
+  r = dv_resolve(lay, "S", "x.y"); #assert !r.ok && r.why == "not a struct here";
+  r = dv_resolve(lay, "S", ""); #assert r.ok && r.type == "S" && r.size == 56;
+  r = dv_resolve(lay, "Q", "x"); #assert !r.ok;
+  a := dv_array("[12] E2nMon"); #assert a.n == 12 && a.elem == "E2nMon" && dv_array("int").n == -1 && dv_array("[x").n == -1;
+}
+
+// ---- a field's bytes (little endian, as hex from the page) as text
+dv_hexv :: (c: u8) -> int { return ifx c >= '0' && c <= '9' then cast(int) (c - '0') else ifx c >= 'a' && c <= 'f' then cast(int) (c - 'a') + 10 else 0; }
+dv_byte :: (hex: string, i: int) -> int { return ifx 2 * i + 1 < hex.count then dv_hexv(hex[2 * i]) * 16 + dv_hexv(hex[2 * i + 1]) else 0; }
+dv_uint :: (hex: string, at: int, size: int) -> u64 {
+  v: u64 = 0; for k: 0..<size { v |= cast(u64) dv_byte(hex, at + size - 1 - k) << cast(u64) (8 * (size - 1 - k)); }
+  return v;
+}
+dv_sint :: (hex: string, at: int, size: int) -> int {
+  u := dv_uint(hex, at, size);
+  if size >= 8 { return ifx u >= 0x8000000000000000 then -cast(int) (0xffffffffffffffff - u) - 1 else cast(int) u; }
+  top: u64 = cast(u64) 1 << cast(u64) (8 * size - 1);
+  return ifx (u & top) != 0 then cast(int) u - cast(int) (top << 1) else cast(int) u;
+}
+dv_float :: (t: [] Dv, hex: string, at: int, size: int) {
+  v: f64 = ifx size == 4 then f64(f32_from_bits(cast,trunc(u32) dv_uint(hex, at, 4))) else f64_from_bits(dv_uint(hex, at, 8));
+  neg := v < 0; if neg { v = -v; dv_s(t, "-"); }
+  whole := floor(v); dv_i(t, cast(int) whole); dv_s(t, ".");
+  frac := cast(int) floor((v - whole) * 1000.0 + 0.5); if frac >= 1000 { frac = 999; }
+  if frac < 100 { dv_s(t, "0"); } if frac < 10 { dv_s(t, "0"); } dv_i(t, frac);
+}
+dv_scalar :: (t: [] Dv, type: string, hex: string, at: int, size: int) -> bool {
+  if type == "f32" || type == "f64" { dv_float(t, hex, at, size); return true; }
+  if type == "bool" { dv_s(t, ifx dv_byte(hex, at) != 0 then "true" else "false"); return true; }
+  if type == "int" || type == "s64" || type == "s32" || type == "s16" || type == "s8" { dv_i(t, dv_sint(hex, at, size)); return true; }
+  if type == "u64" || type == "u32" || type == "u16" || type == "u8" || type == "uint" { dv_i(t, cast(int) dv_uint(hex, at, size)); return true; }
+  return false;
+}
+// The value of `size` bytes of type `type` (hex), as text; a struct's scalar fields one level down.
+dv_value :: (t: [] Dv, lay: string, type: string, hex: string, size: int) {
+  if dv_scalar(t, type, hex, 0, size) { return; }
+  a := dv_array(type);
+  if a.n > 0 && (a.elem == "u8" || a.elem == "s8") {
+    // bytes: words while they read as text, up to the first NUL
+    text := true; end := 0;
+    for k: 0..<a.n { b := dv_byte(hex, k); if b == 0 { break; } if b < 32 || b > 126 { text = false; } end = k + 1; }
+    if text { dv_s(t, "\""); for k: 0..<end { c: [1] u8; c[0] = cast,trunc(u8) dv_byte(hex, k); dv_s(t, cast(string) c[..]); } dv_s(t, "\""); return; }
+  }
+  if a.n > 0 {
+    es := size / a.n; shown := ifx a.n > 16 then 16 else a.n;
+    dv_s(t, "[");
+    for k: 0..<shown {
+      if k > 0 { dv_s(t, ", "); }
+      if !dv_scalar(t, a.elem, hex, k * es, es) { dv_s(t, "{"); dv_s(t, a.elem); dv_s(t, "}"); }
+    }
+    if shown < a.n { dv_s(t, ", ... "); dv_i(t, a.n); dv_s(t, " in all"); }
+    dv_s(t, "]"); return;
+  }
+  s := dv_struct(lay, type);
+  if s.at < 0 {
+    if type == "string" || (type.count > 2 && type[0] == '[' && type[1] == ']') { dv_s(t, "(a view: its bytes are elsewhere)"); return; }
+    dv_s(t, type); dv_s(t, " "); dv_i(t, dv_sint(hex, 0, ifx size > 8 then 8 else size)); return;   // an enum: its value
+  }
+  dv_s(t, "{"); p := s.at; first := true;
+  while p < lay.count {
+    l := dv_line(lay, p); f := lay[l.from..<l.to];
+    if f.count == 0 || f[0] != ' ' { break; }
+    if !dv_has(f, "(padding)") {
+      w := dv_word(f, 2); fo := dv_int(dv_word(f, 0)); fs := dv_int(dv_word(f, 1)); colon := 0; for c, i: f { if c == ':' { colon = i; break; } }
+      ft := f[colon + 2..<f.count];
+      if !first { dv_s(t, ", "); } first = false;
+      dv_s(t, w[0..<w.count - 1]); dv_s(t, " ");
+      if !dv_scalar(t, ft, hex, fo, fs) { dv_s(t, ft); }
+    }
+    p = l.next;
+  }
+  dv_s(t, "}");
+}
+#test "a field's bytes as text" {
+  lay := "In  size 8  align 4\n       0     4  a: f32\n       4     3  b: [3] u8\n       7     1  (padding)\n";
+  t: [1] Dv;
+  dv_value(t[..], lay, "f32", "0000c03f", 4); #assert dv_text(t[..]) == "1.500";
+  t[0].n = 0; dv_value(t[..], lay, "f32", "0000c0bf", 4); #assert dv_text(t[..]) == "-1.500";
+  t[0].n = 0; dv_value(t[..], lay, "int", "feffffffffffffff", 8); #assert dv_text(t[..]) == "-2";
+  t[0].n = 0; dv_value(t[..], lay, "s32", "ffffffff", 4); #assert dv_text(t[..]) == "-1";
+  t[0].n = 0; dv_value(t[..], lay, "u32", "ffffffff", 4); #assert dv_text(t[..]) == "4294967295";
+  t[0].n = 0; dv_value(t[..], lay, "bool", "01", 1); #assert dv_text(t[..]) == "true";
+  t[0].n = 0; dv_value(t[..], lay, "[3] u8", "414200", 3); #assert dv_text(t[..]) == "\"AB\"";
+  t[0].n = 0; dv_value(t[..], lay, "[2] u8", "01ff", 2); #assert dv_text(t[..]) == "[1, 255]";
+  t[0].n = 0; dv_value(t[..], lay, "In", "0000803f41420000", 8); #assert dv_text(t[..]) == "{a 1.000, b [3] u8}";
+  t[0].n = 0; dv_value(t[..], lay, "[2] In", "0000803f414200000000803f41420000", 16); #assert dv_text(t[..]) == "[{In}, {In}]";
+  t[0].n = 0; dv_value(t[..], lay, "string", "00", 16); #assert dv_text(t[..]) == "(a view: its bytes are elsewhere)";
+  t[0].n = 0; dv_value(t[..], lay, "DeedPose", "03", 1); #assert dv_text(t[..]) == "DeedPose 3";
+  t[0].n = 0; dv_value(t[..], lay, "f64", "000000000000f03f", 8); #assert dv_text(t[..]) == "1.000";
+  t[0].n = 0; dv_value(t[..], lay, "[20] u8", "0102030405060708090a0b0c0d0e0f101112131400", 20); #assert dv_has(dv_text(t[..]), ", ... 20 in all]");
+}
+
+// ---- stale builds
+// The rebuild command for build/APP.wasm, from APP_DIR/build.sh's wasm.sh line for it.
+dv_rebuild :: (script: string, app_dir: string, app: string, t: [] Dv) -> string {
+  t[0].n = 0;
+  want: [256] u8; wn := 0; for c: "/build/" { want[wn] = c; wn += 1; } for c: app { want[wn] = c; wn += 1; } for c: ".wasm\"" { want[wn] = c; wn += 1; }
+  at := 0;
+  while at < script.count {
+    l := dv_line(script, at); line := script[l.from..<l.to];
+    if dv_has(line, "wasm.sh") && dv_has(line, cast(string) want[0..<wn]) && !dv_starts(line, "#") {
+      dv_s(t, "coax/remote/remote.sh run --");
+      whole := line; more := "";
+      if line.count > 0 && line[line.count - 1] == '\\' { m := dv_line(script, l.next); more = script[m.from..<m.to]; whole = line[0..<line.count - 1]; }
+      for pass: 0..<2 {
+        part := ifx pass == 0 then whole else more;
+        w := 0;
+        while true {
+          word := dv_word(part, w); w += 1;
+          if word.count == 0 || word == "&" || word == "\\" { break; }
+          dv_s(t, " "); dv_word_path(t, word, app_dir);
+        }
+      }
+      return dv_text(t);
+    }
+    at = l.next;
+  }
+  dv_s(t, "coax/remote/remote.sh run -- "); dv_s(t, app_dir); dv_s(t, "/build.sh");
+  return dv_text(t);
+}
+// One word of build.sh made a path from the repository: "$here/../../coax/web/wasm.sh" is coax/web/wasm.sh.
+dv_word_path :: (t: [] Dv, word: string, app_dir: string) {
+  w := word; if w.count >= 2 && w[0] == '"' && w[w.count - 1] == '"' { w = w[1..<w.count - 1]; }
+  if dv_starts(w, "$here/../../") { dv_s(t, w[12..<w.count]); return; }
+  if dv_starts(w, "$here/") { dv_s(t, app_dir); dv_s(t, w[5..<w.count]); return; }
+  if dv_starts(w, "$a/") { dv_s(t, "aethyr"); dv_s(t, w[2..<w.count]); return; }
+  dv_s(t, w);
+}
+#test "the rebuild command comes from build.sh's line for the module" {
+  sh := "# a comment build/x.wasm\" wasm.sh\n\"$here/../../coax/web/wasm.sh\" \"$here/everglade2.coax\" \"$here/everglade2-face.c\" \"$here/build/everglade2.wasm\" \\\n  \"$here/everglade-step.coax\" \"$a/sticks.coax\" &\nnext\n";
+  t: [1] Dv;
+  #assert dv_rebuild(sh, "apps/openagents-web", "everglade2", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/everglade2.coax apps/openagents-web/everglade2-face.c apps/openagents-web/build/everglade2.wasm apps/openagents-web/everglade-step.coax aethyr/sticks.coax";
+  #assert dv_rebuild(sh, "apps/openagents-web", "fivelab", t[..]) == "coax/remote/remote.sh run -- apps/openagents-web/build.sh";
+  #assert dv_rebuild("\"$here/../../coax/web/wasm.sh\" x \"$here/build/a.wasm\" &\n", "d", "a", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh x d/build/a.wasm";
+}
+// The first source in `list` ("SHA  path" lines, paths from the repository) whose bytes changed: "" when none.
+dv_changed :: (list: string, root: string, buf: [] u8, hex: [] u8, t: [] Dv) -> string {
+  at := 0;
+  while at < list.count {
+    l := dv_line(list, at); line := list[l.from..<l.to]; at = l.next;
+    want := dv_word(line, 0); path := dv_rest(line, 1);
+    if want.count != 64 || path.count == 0 { continue; }
+    t[0].n = 0; dv_s(t, root); dv_s(t, "/"); dv_s(t, path);
+    n := fs_read(dv_text(t), buf);
+    if n < 0 || n >= buf.count || dv_sha(buf[0..<n], hex) != want { return path; }
+  }
+  return "";
+}
+dv_sha :: (data: [] u8, out: [] u8) -> string {
+  w: [1] ShaOwned; d: [32] u8;
+  ok := so_init(w[..]);
+  i := 0;
+  while i < data.count { e := ifx data.count - i > 1048576 then i + 1048576 else data.count; ok = ok && so_update(w[..], data[i..<e], false); i = e; }
+  ok = ok && so_finish(w[..], d[..], false);
+  for k: 0..<32 { out[2 * k] = DV_HEX[cast(int) (d[k] >> 4)]; out[2 * k + 1] = DV_HEX[cast(int) (d[k] & 15)]; }
+  return cast(string) out[0..<64];
+}
+#test "SHA-256 of the sources" {
+  o: [64] u8; e: [1] u8;
+  #assert dv_sha(e[0..<0], o[..]) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+}
+// The page's app: data-app="NAME" in the page's index.html.
+dv_app_of :: (html: string) -> string {
+  key := "data-app=\"";
+  if html.count < key.count { return ""; }
+  for i: 0..<html.count - key.count + 1 {
+    if html[i..<i + key.count] != key { continue; }
+    j := i + key.count; k := j; while k < html.count && html[k] != '"' { k += 1; }
+    return html[j..<k];
+  }
+  return "";
+}
+#test "the page names its app" { #assert dv_app_of("<script data-app=\"everglade2\" src=x>") == "everglade2" && dv_app_of("<p>") == "" && dv_app_of("") == ""; }
+
+// ---- the session
+DvS :: struct {
+  c: [1] Cdp; serve: int = -1; port: int; within: int = 30000;
+  lay: [DV_FILE] u8; lay_n: int; root: [128] u8; root_n: int;
+  value: [1048576] u8;
+}
+// A script's text value: its length, or -1.
+dv_eval :: (s: [] DvS, script: string) -> string {
+  n := media_value(s[0].c[..], script, s[0].value[..]);
+  return ifx n >= 0 then cast(string) s[0].value[0..<n] else "";
+}
+// A command to the realm: its answer (it retries while the engine is between modules).
+dv_send :: (s: [] DvS, cmd: string) -> string {
+  js: [8192] u8; j: [1] Jo; jo_start(j[..], js[..]); jo_str(j[..], cmd);
+  t: [1] Dv; dv_s(t[..], "(() => { const d = globalThis.coaxial?.drive; if (!d) return '!no driver: this page\\'s host has no coaxial.drive'; const a = d.send("); dv_s(t[..], jo_text(j[..])); dv_s(t[..], "); return a === null ? '!not ready' : '=' + a; })()");
+  for tries: 0..<50 {
+    v := dv_eval(s, dv_text(t[..]));
+    if v != "!not ready" { return ifx v.count > 0 then v[1..<v.count] else "the page gave no answer"; }
+    proc_sleep(100);
+  }
+  return "the realm took no command for 5 s";
+}
+dv_mouse :: (s: [] DvS, kind: string, x: int, y: int) -> bool {
+  p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]);
+  jo_obj(j[..]); jo_key(j[..], "type"); jo_str(j[..], kind); jo_key(j[..], "x"); jo_int(j[..], x); jo_key(j[..], "y"); jo_int(j[..], y);
+  jo_key(j[..], "button"); jo_str(j[..], "left"); jo_key(j[..], "buttons"); jo_int(j[..], ifx kind == "mousePressed" then 1 else 0); jo_key(j[..], "clickCount"); jo_int(j[..], 1); jo_end(j[..]);
+  return cdp_call(s[0].c[..], "Input.dispatchMouseEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
+// A key by name (Enter, Escape, Tab, Backspace, Space, Arrow*, or one character).
+dv_key :: (s: [] DvS, name: string) -> bool {
+  key := name; text := ""; code := 0;
+  if name == "Space" { key = " "; text = " "; code = 32; }
+  else if name == "Enter" { code = 13; text = "\r"; } else if name == "Escape" { code = 27; } else if name == "Tab" { code = 9; } else if name == "Backspace" { code = 8; }
+  else if name == "ArrowLeft" { code = 37; } else if name == "ArrowUp" { code = 38; } else if name == "ArrowRight" { code = 39; } else if name == "ArrowDown" { code = 40; }
+  else if name.count == 1 { text = name; c := name[0]; code = cast(int) (ifx c >= 'a' && c <= 'z' then c - 32 else c); }
+  else { return false; }
+  for down: 0..<2 {
+    p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]);
+    jo_obj(j[..]); jo_key(j[..], "type"); jo_str(j[..], ifx down == 0 then (ifx text.count > 0 then "keyDown" else "rawKeyDown") else "keyUp"); jo_key(j[..], "key"); jo_str(j[..], key);
+    if down == 0 && text.count > 0 { jo_key(j[..], "text"); jo_str(j[..], text); }
+    jo_key(j[..], "windowsVirtualKeyCode"); jo_int(j[..], code); jo_end(j[..]);
+    if cdp_call(s[0].c[..], "Input.dispatchKeyEvent", jo_text(j[..]), CDP_CALL_MS) < 0 { return false; }
+  }
+  return true;
+}
+DV_LOGS_JS :: "(() => { if (globalThis.__driveLogs) return; const L = globalThis.__driveLogs = []; const k = (t, a) => { try { L.push(t + ': ' + a.map((x) => typeof x === 'string' ? x : JSON.stringify(x)).join(' ')); if (L.length > 500) L.shift(); } catch {} }; for (const m of ['error', 'warn', 'log', 'info']) { const o = console[m].bind(console); console[m] = (...a) => { k(m, a); o(...a); }; } addEventListener('error', (e) => k('page error', [e.message + ' at ' + e.filename + ':' + e.lineno])); addEventListener('unhandledrejection', (e) => k('unhandled rejection', [String(e.reason)])); })()";
+DV_PERF_JS :: "(async () => { const c = globalThis.coaxial; if (!c?.worldLoop) return 'no world loop on this page'; const a = c.worldLoop(), t0 = performance.now(); await new Promise((r) => setTimeout(r, 1000)); const b = c.worldLoop(), ms = performance.now() - t0; return (Math.round((b.frames - a.frames) * 10000 / ms) / 10) + ' frames a second; ' + JSON.stringify(b); })()";
+
+// One operation; its answer (printed by the caller); false when it couldn't run at all.
+dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
+  out[0].n = 0;
+  w0 := dv_word(op, 0);
+  if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" { dv_s(out, dv_send(s, op)); return true; }
+  if w0 == "walk-to" || w0 == "face" || w0 == "use" || w0 == "mount" || w0 == "stop" {
+    first := dv_send(s, op);
+    if !dv_has(first, ": going") { dv_s(out, first); return true; }
+    start := proc_now_ms(); last := first;
+    while proc_now_ms() - start < s[0].within {
+      proc_sleep(100);
+      last = dv_send(s, "status");
+      if !dv_has(last, ": going") { break; }
+    }
+    dv_s(out, last);
+    if dv_has(last, ": going") { dv_s(out, " (still going after "); dv_i(out, s[0].within); dv_s(out, " ms; `stop` ends it)"); }
+    return true;
+  }
+  if w0 == "state" { return dv_state(s, dv_word(op, 1), out); }
+  if w0 == "tap" || w0 == "type" {
+    id := dv_word(op, 1);
+    if id.count == 0 { dv_s(out, w0); dv_s(out, " takes an id from the tree"); return false; }
+    if id != "-" {
+      jb: [256] u8; at := dv_send(s, dv_cat2("target ", id, jb[..]));
+      x := dv_int(dv_word(at, 0)); y := dv_int(dv_word(at, 1));
+      if x < 0 || y < 0 || dv_word(at, 2).count > 0 { dv_s(out, at); return false; }
+      if !dv_mouse(s, "mouseMoved", x, y) || !dv_mouse(s, "mousePressed", x, y) || !dv_mouse(s, "mouseReleased", x, y) { dv_s(out, "the click failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
+      dv_s(out, "tapped "); dv_s(out, id); dv_s(out, " at "); dv_s(out, at);
+    }
+    if w0 == "type" {
+      if dv_word(op, 2) == "key" {
+        k := dv_word(op, 3);
+        if !dv_key(s, k) { dv_s(out, "; no key "); dv_s(out, k); dv_s(out, " (Enter, Escape, Tab, Backspace, Space, ArrowUp ... or one character)"); return false; }
+        dv_s(out, ifx id == "-" then "pressed " else "; pressed "); dv_s(out, k);
+      } else {
+        text := dv_rest(op, 2);
+        p: [8192] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]); jo_key(j[..], "text"); jo_str(j[..], text); jo_end(j[..]);
+        if cdp_call(s[0].c[..], "Input.insertText", jo_text(j[..]), CDP_CALL_MS) < 0 { dv_s(out, "typing failed"); return false; }
+        dv_s(out, ifx id == "-" then "typed \"" else "; typed \""); dv_s(out, text); dv_s(out, "\"");
+      }
+    }
+    return true;
+  }
+  if w0 == "clock" {
+    a := dv_word(op, 1);
+    if a.count > 1 && a[0] == '+' && dv_int(a[1..<a.count]) >= 0 { proc_sleep(dv_int(a[1..<a.count])); dv_s(out, "waited "); dv_s(out, a[1..<a.count]); dv_s(out, " ms of real time"); return true; }
+    dv_s(out, "clock takes +MS (settle, until and the agent clock come with phase 2, #13096)"); return false;
+  }
+  if w0 == "screenshot" {
+    path := dv_word(op, 1);
+    if path.count == 0 { dv_s(out, "screenshot takes a file: screenshot out.png"); return false; }
+    png: [MEDIA_PNG] u8; n := cdp_screenshot(s[0].c[..], png[..]);
+    if n < 0 || !fs_write(path, cast(string) png[0..<n]) { dv_s(out, "no screenshot: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
+    dv_s(out, path); return true;
+  }
+  if w0 == "logs" {
+    v := dv_eval(s, "(globalThis.__driveLogs || []).splice(0).join('\\n')");
+    dv_s(out, ifx v.count > 0 then v else "(no logs)"); return true;
+  }
+  if w0 == "perf" { dv_s(out, dv_eval(s, DV_PERF_JS)); return true; }
+  if w0 == "prefer" {
+    k := dv_word(op, 1); v := dv_word(op, 2);
+    if k == "size" { wh := args_size(v); if !wh.ok || !media_size(s[0].c[..], wh) { dv_s(out, "prefer size takes WxH"); return false; } dv_s(out, "size "); dv_s(out, v); return true; }
+    if (k == "color-scheme" && (v == "dark" || v == "light")) || (k == "reduced-motion" && (v == "reduce" || v == "no-preference")) {
+      p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]);
+      jo_obj(j[..]); jo_key(j[..], "features"); jo_arr(j[..]); jo_obj(j[..]); jo_key(j[..], "name"); jb: [64] u8; jo_str(j[..], dv_cat2("prefers-", k, jb[..])); jo_key(j[..], "value"); jo_str(j[..], v); jo_end(j[..]); jo_end(j[..]); jo_end(j[..]);
+      if cdp_call(s[0].c[..], "Emulation.setEmulatedMedia", jo_text(j[..]), CDP_CALL_MS) < 0 { dv_s(out, cdp_error(s[0].c[..])); return false; }
+      dv_s(out, k); dv_s(out, " "); dv_s(out, v); return true;
+    }
+    dv_s(out, "prefer takes color-scheme dark|light, reduced-motion reduce|no-preference or size WxH"); return false;
+  }
+  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, tap, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
+  return false;
+}
+dv_cat2 :: (a: string, b: string, t: [] u8) -> string {
+  n := 0;
+  for c: a { if n < t.count { t[n] = c; n += 1; } } for c: b { if n < t.count { t[n] = c; n += 1; } }
+  return cast(string) t[0..<n];
+}
+dv_state :: (s: [] DvS, path: string, out: [] Dv) -> bool {
+  if s[0].lay_n <= 0 { dv_s(out, "no state layout: build/.drive/APP.layout is missing (coax/web/wasm.sh writes it)"); return false; }
+  lay := cast(string) s[0].lay[0..<s[0].lay_n];
+  if s[0].root_n == 0 {
+    size := dv_int(dv_eval(s, "String(globalThis.coaxial?.drive?.stateSize() ?? 0)"));
+    root := dv_root(lay, size);
+    if root.count == 0 { dv_s(out, "the layout names no struct of the state's size ("); dv_i(out, size); dv_s(out, " bytes): the build and its layout differ"); return false; }
+    for c, i: root { s[0].root[i] = c; } s[0].root_n = root.count;
+  }
+  root := cast(string) s[0].root[0..<s[0].root_n];
+  r := dv_resolve(lay, root, path);
+  if !r.ok { dv_s(out, path); dv_s(out, ": "); dv_s(out, r.why); dv_s(out, " (in "); dv_s(out, r.type); dv_s(out, ")"); return false; }
+  if path.count == 0 {
+    // the top-level fields
+    st := dv_struct(lay, root); p := st.at;
+    dv_s(out, root); dv_s(out, ":");
+    while p < lay.count { l := dv_line(lay, p); f := lay[l.from..<l.to]; if f.count == 0 || f[0] != ' ' { break; } if !dv_has(f, "(padding)") { dv_s(out, "\n  "); dv_s(out, dv_rest(f, 2)); } p = l.next; }
+    return true;
+  }
+  if r.size > 65536 { dv_s(out, path); dv_s(out, ": "); dv_s(out, r.type); dv_s(out, ", "); dv_i(out, r.size); dv_s(out, " bytes: name a field inside it"); return true; }
+  t: [1] Dv; dv_s(t[..], "globalThis.coaxial.drive.peek("); dv_i(t[..], r.offset); dv_s(t[..], ", "); dv_i(t[..], r.size); dv_s(t[..], ")");
+  hex := dv_eval(s, dv_text(t[..]));
+  if hex.count != 2 * r.size { dv_s(out, path); dv_s(out, ": the page gave no bytes"); return false; }
+  dv_s(out, path); dv_s(out, " = "); dv_value(out, lay, r.type, hex, r.size);
+  return true;
+}
+
+dv_usage :: () -> int {
+  tool_errln("usage: coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] OP...");
+  tool_errln("  OP: tree, layout, state [PATH], tap ID, type ID TEXT, type ID key NAME, walk-to ID, face ID,");
+  tool_errln("      use ABILITY on ID, mount ID, stop, status, clock +MS, screenshot OUT.png, logs, prefer K V, perf");
+  return 2;
+}
+// The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
+dv_root_dir :: (self: string) -> string { r := self; for i: 0..<5 { r = fs_dir(r); } return r; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
+  app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
+  query := ""; size := "1280x800"; port := -1; within := 30000;
+  ops: [64] string; n_ops := 0;
+  i := 3;
+  while i < args_count(a[..]) {
+    x := args_at(a[..], i);
+    if (x == "--query" || x == "--size" || x == "--port" || x == "--within") && i + 1 < args_count(a[..]) {
+      v := args_at(a[..], i + 1);
+      if x == "--query" { query = v; } else if x == "--size" { size = v; } else if x == "--port" { port = dv_int(v); } else { within = dv_int(v); }
+      i += 2; continue;
+    }
+    if n_ops >= ops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
+    ops[n_ops] = x; n_ops += 1; i += 1;
+  }
+  wh := args_size(size);
+  if !wh.ok || within < 0 || (port >= 0 && port <= 9000) { tool_errln("drive: --size is WxH, --within a number of ms, --port above 9000"); return 2; }
+  selfb: [4096] u8; sn := cxproc_self_path(selfb[..]);
+  if sn <= 0 { tool_errln("drive: can't find the repository"); return 1; }
+  root := dv_root_dir(cast(string) selfb[0..<sn]);
+  s: [1] DvS; s[0].within = within;
+  t: [1] Dv; buf: [DV_FILE] u8;
+  // the page's app, from its index.html
+  dv_s(t[..], root); dv_s(t[..], "/"); dv_s(t[..], app_dir);
+  if dv_starts(path, "/worlds/") { dv_s(t[..], "/realms/"); dv_s(t[..], path[8..<path.count]); } else { dv_s(t[..], path); }
+  dv_s(t[..], "/index.html");
+  hn := fs_read(dv_text(t[..]), buf[..]);
+  app := ifx hn > 0 then dv_app_of(cast(string) buf[0..<hn]) else "";
+  if app.count == 0 { tool_err("drive: no page with data-app at "); tool_errln(dv_text(t[..])); return 2; }
+  appb: [128] u8; for c, k: app { appb[k] = c; } app = cast(string) appb[0..<app.count];
+  // refuse a build older than its sources
+  t[0].n = 0; dv_s(t[..], root); dv_s(t[..], "/"); dv_s(t[..], app_dir); dv_s(t[..], "/build/.drive/"); dv_s(t[..], app); dv_s(t[..], ".sources");
+  list: [DV_FILE] u8; ln := fs_read(dv_text(t[..]), list[..]);
+  t[0].n = 0; dv_s(t[..], root); dv_s(t[..], "/"); dv_s(t[..], app_dir); dv_s(t[..], "/build.sh");
+  scr: [DV_FILE] u8; scn := fs_read(dv_text(t[..]), scr[..]);
+  rb: [1] Dv; rebuild := dv_rebuild(ifx scn > 0 then cast(string) scr[0..<scn] else "", app_dir, app, rb[..]);
+  if ln <= 0 { tool_err("drive: refused: no build record for "); tool_err(app); tool_errln(" (build/.drive/APP.sources). Build it:"); tool_errln(rebuild); return 1; }
+  hex: [64] u8; ct: [1] Dv;
+  changed := dv_changed(cast(string) list[0..<ln], root, buf[..], hex[..], ct[..]);
+  if changed.count > 0 { tool_err("drive: refused: build/"); tool_err(app); tool_err(".wasm is older than its sources ("); tool_err(changed); tool_errln(" changed). Rebuild:"); tool_errln(rebuild); return 1; }
+  t[0].n = 0; dv_s(t[..], root); dv_s(t[..], "/"); dv_s(t[..], app_dir); dv_s(t[..], "/build/.drive/"); dv_s(t[..], app); dv_s(t[..], ".layout");
+  s[0].lay_n = fs_read(dv_text(t[..]), s[0].lay[..]);
+  // serve the app as built, on a free port above 9000
+  serve_sh: [1] Dv; dv_s(serve_sh[..], root); dv_s(serve_sh[..], "/coax/web/serve.sh");
+  appd: [1] Dv; dv_s(appd[..], root); dv_s(appd[..], "/"); dv_s(appd[..], app_dir);
+  for attempt: 0..<6 {
+    p := ifx port > 0 then port else 9100 + cast(int) ((proc_now_ns() / 1000 + attempt * 7919) % 800);
+    lb: [64] u8; lt: [1] Dv; dv_s(lt[..], "127.0.0.1:"); dv_i(lt[..], p);
+    h := proc_new();
+    ok := h >= 0 && proc_gentle(h);
+    for x: [6] string.[dv_text(serve_sh[..]), dv_text(appd[..]), "--static", "--cache", "0", "--listen"] { ok = ok && proc_arg(h, x); }
+    ok = ok && proc_arg(h, dv_text(lt[..]));
+    if !ok || proc_start(h) != 0 { if h >= 0 { r := proc_release(h); } continue; }
+    line: [4096] u8; m := proc_line(h, 15000, line[..]);
+    if m > 0 && dv_has(cast(string) line[0..<m], "coax serve: http://") { s[0].serve = h; s[0].port = p; break; }
+    k := proc_kill(h, 15); w := proc_wait(h, 2000); r := proc_release(h);
+    ignored := lb[0];
+    if port > 0 { break; }
+  }
+  if s[0].serve < 0 { tool_errln("drive: could not start coax/web/serve.sh on a free port above 9000"); return 1; }
+  status := dv_session(s[..], path, query, wh, ops[0..<n_ops]);
+  k := proc_kill(s[0].serve, 15); w := proc_wait(s[0].serve, 5000); r := proc_release(s[0].serve);
+  return status;
+}
+dv_session :: (s: [] DvS, path: string, query: string, wh: ArgsSize, ops: [] string) -> int {
+  c := s[0].c[..];
+  if !cdp_launch(c, wh.w, wh.h, "coax-drive-") { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
+  status := dv_open(s, path, query, wh);
+  if status == 0 {
+    out: [1] Dv;
+    for op: ops {
+      print("> %\n", op);
+      ok := dv_op(s, op, out[..]);
+      print("%\n", dv_text(out[..])); f := cxtool_out_flush();
+      if !ok { status = 1; }
+    }
+  }
+  cdp_close(c);
+  return status;
+}
+DV_FIRST_MS :: 250;   // ms the page draws after the first command, before the operations start
+dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
+  c := s[0].c[..];
+  p: [8192] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]); jo_key(j[..], "source"); jo_str(j[..], DV_LOGS_JS); jo_end(j[..]);
+  if !media_size(c, wh) || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(j[..]), CDP_CALL_MS) < 0 { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
+  u: [1] Dv; dv_s(u[..], "http://127.0.0.1:"); dv_i(u[..], s[0].port); dv_s(u[..], path);
+  if query.count > 0 { dv_s(u[..], ifx query[0] == '?' then "" else "?"); dv_s(u[..], query); }
+  q: [8192] u8; k: [1] Jo; jo_start(k[..], q[..]); jo_obj(k[..]); jo_key(k[..], "url"); jo_str(k[..], dv_text(u[..])); jo_end(k[..]);
+  if cdp_call(c, "Page.navigate", jo_text(k[..]), CDP_CALL_MS) < 0 { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
+  start := proc_now_ms(); idle_from := -1;
+  while true {
+    status := dv_eval(s, MEDIA_READY_JS); now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - start, ifx idle_from < 0 then 0 else now - idle_from, MEDIA_READY_MS);
+    if step == MEDIA_READY { break; }
+    if step == MEDIA_TIMEOUT { tool_err("drive: the page never drew its first scene: "); tool_errln(dv_text(u[..])); return 1; }
+    if step == MEDIA_FAILED { tool_err("drive: the page failed to load: "); tool_errln(status); return 1; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  // The realm lists nothing until a driver speaks: speak once, then let a few frames list the world.
+  first := dv_send(s, "status");
+  if first != "none: idle" { tool_err("drive: "); tool_errln(first); return 1; }
+  proc_sleep(DV_FIRST_MS);
+  print("drive: % ready in % ms (WebGPU adapter: %)\n", dv_text(u[..]), proc_now_ms() - start, cdp_adapter(c, s[0].value[..]));
+  return 0;
+}

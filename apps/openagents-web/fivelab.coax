@@ -60,6 +60,8 @@
 #load "experimental-objects.coax";
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "experimental-ride.coax";               // Experimental's riding: E, the saddle, the prompt
+#load "../../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
+#load "fivelab-drive.coax";   // ... wired to Everglade Experimental
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../../aethyr/cam/track.coax" as trk;   // ?stage= setups' camera tracks (lab_stage)
 #load "../../everglade/world/housewright-stage.coax" as hws;   // ?stage=house-*: the housewright time-lapses (#13107)
@@ -167,6 +169,7 @@ Lab :: struct {
   ride_fire_at: f32;   // the dragon-fire stage: when (stage seconds) the dragon breathed
   breath_dn: f32;   // how far down the breath was aimed (its torrent keeps that tilt as the dragon flies)
   breath_puff_at: f32 = -100;   // when the breath's torrent last left the dragon's jaws (experimental-ride.coax lab_breath_stream)
+  drive: [] Drive;   // the agent driver (aethyr/agent/drive.coax), held by the face (fivelab-face.c): empty in checks, off until a driver speaks
   xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
   creator: [1] cc.Creator;
   aribeth_state:[1]nwna.Aribeth;
@@ -1892,6 +1895,7 @@ lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
   if sprint.sprint_on(s[0].xc[0].dash[0], s[0].creator[0].clock) {
     return EgMoveIn.{key_y = 1, run = true, theta = s[0].xc[0].dash[0].face - 3.14159265, link_flags = 512};
   }
+  dm := fd_move_in(s); if dm.ok && h == 0 { return xd_move_in(s, dm.in); }   // an agent's walk-to, face or use (fivelab-drive.coax)
   return xd_move_in(s, EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
                    jump = h & HOLD_JUMP != 0, theta = ifx s[0].creator[0].experimental then s[0].creator[0].yaw else you_theta(s)});
 }
@@ -3191,6 +3195,7 @@ lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k
 // clock moves it, so the record is resolved once and the same words go up every frame.
 lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   n := lab_frame_draw(s, out, u, width, height, dpr, dt, still);
+  fd_frame(s);   // the agent driver's entities and bar this frame (off: nothing)
   if u.count >= UNIFORM_FLOATS { lab_light(s, u); }
   return n;
 }
@@ -3895,6 +3900,7 @@ lab_mouselook_step :: (s: [] Lab, dt: f32) {
 }
 HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
 lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
+  if kind == 700 { fd_message(s, t); return; }   // a driver's command (coax/web/host.js coaxial.drive)
   if kind==12 { _ := xc_order_load(s[0].xc[..], t); return; }
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}

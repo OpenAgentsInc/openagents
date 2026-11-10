@@ -542,3 +542,22 @@ if [[ "$mode" != dev && -z "${COAX_FAST_EDIT:-}" ]]; then
   fi
 fi
 mv "$work/output.wasm" "$out"   # the server never serves a half-written module
+# What `coax drive` (coax/web/drive.coax) reads beside the module, under build/.drive/ (never served):
+# NAME.layout, the state's layout as `coax layout` prints it (`state PATH` reads a field through it), and
+# NAME.sources, a SHA-256 for each source the module was built from (the Coax files `coax deps` names,
+# the face and the libraries), so the driver refuses a module older than its sources.
+drive_dir="$(dirname "$out")/.drive"; mkdir -p "$drive_dir"
+if ! (cd "$repo" && "$coax_driver" layout "$coax_file" --library > "$drive_dir/$module.layout.tmp.$$" 2> /dev/null && mv -f "$drive_dir/$module.layout.tmp.$$" "$drive_dir/$module.layout"); then
+  rm -f "$drive_dir/$module.layout.tmp.$$"; echo "wasm.sh: $module: no state layout for coax drive" >&2
+fi
+if deps="$(cd "$repo" && "$coax_driver" deps "$coax_file" --library 2> /dev/null)"; then
+  {
+    { grep -o '"sources":\[[^]]*\]' <<< "$deps" | grep -o '"[^"]*"' | tr -d '"' | grep -v '^sources$'; echo "$face"; for l in ${libraries[@]+"${libraries[@]}"}; do echo "$repo/$l"; done; } |
+      while IFS= read -r f; do
+        [[ "$f" == /* ]] || f="$repo/$f"
+        [[ -f "$f" ]] || continue
+        r="$(cd "$repo" && pwd -P)"; p="$(cd "$(dirname "$f")" && pwd -P)/$(basename "$f")"
+        printf '%s  %s\n' "$(shasum -a 256 "$f" | cut -d ' ' -f 1)" "${p#"$r"/}"
+      done | sort -u -k2
+  } > "$drive_dir/$module.sources.tmp.$$" && mv -f "$drive_dir/$module.sources.tmp.$$" "$drive_dir/$module.sources"
+else echo "wasm.sh: $module: no source list for coax drive" >&2; fi
