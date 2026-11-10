@@ -64,6 +64,11 @@ copies are in [`android/shaders/`](android/shaders).
 The phone has no Next issue panel: that panel runs a `claude` process, which a
 phone can't do.
 
+## The icon
+
+Both apps carry the big E of the Everglade logo. The sources and how to draw
+them again are in [`icon/`](icon/README.md).
+
 ## Not done
 
 - **A real device.** The build targets the simulator. A device build needs a
@@ -73,5 +78,5 @@ phone can't do.
   character's parts. A phone build should carry only those parts.
 - **The deep-stack thread** is 512 MB of address space. It works in the
   simulator; whether a device grants it is untested.
-- **An app icon and a launch screen.**
+- **A launch screen.**
 - **TestFlight.** Nothing is uploaded.

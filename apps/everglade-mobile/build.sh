@@ -32,6 +32,9 @@ xcrun -sdk "$sdk" swiftc -target "$target" -O -import-objc-header "$desk/face.h"
   "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" \
   -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework ImageIO -framework CoreGraphics -lm -o "$app/Everglade"
 cp "$here/ios/Info.plist" "$app/Info.plist"
+# The icon: actool makes the sizes iOS asks for from the one picture, and says what Info.plist needs.
+xcrun actool "$here/ios/Assets.xcassets" --compile "$app" --platform "$sdk" --minimum-deployment-target 17.0 --app-icon AppIcon --output-partial-info-plist "$work/icon.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Merge $work/icon.plist" "$app/Info.plist"
 cp -R "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$app/fonts"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/everglade2.pack"
 codesign --force --sign - "$app" >/dev/null

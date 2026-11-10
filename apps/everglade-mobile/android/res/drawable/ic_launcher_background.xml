@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Everglade icon's green, lighter behind the E (icon/ios.svg has the same). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+  <gradient android:type="radial" android:gradientRadius="70dp" android:centerX="0.5" android:centerY="0.45"
+            android:startColor="#2c5a35" android:centerColor="#16301c" android:endColor="#0a1a0f" />
+</shape>

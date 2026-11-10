@@ -47,7 +47,8 @@ xcrun -sdk macosx swiftc -O "$here/bake-faces/main.swift" "$desk/Sources/Faces.s
 "$work/bake-faces" "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$work/apk/assets/faces.bin"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$work/apk/assets/everglade2.pack"
 # The package: the manifest, then the library and the files (stored, not squeezed, so the app maps them).
-"$tools/aapt2" link -o "$work/unsigned.apk" -I "$platform" --manifest "$here/AndroidManifest.xml" --min-sdk-version 30 --target-sdk-version 35
+"$tools/aapt2" compile --dir "$here/res" -o "$work/res.zip"
+"$tools/aapt2" link -o "$work/unsigned.apk" -I "$platform" "$work/res.zip" --manifest "$here/AndroidManifest.xml" --min-sdk-version 30 --target-sdk-version 35
 (cd "$work/apk" && zip -q -0 -r "$work/unsigned.apk" lib assets)
 "$tools/zipalign" -f -p 4 "$work/unsigned.apk" "$work/aligned.apk"
 # A debug key, as Android Studio makes; a release needs the owner's.

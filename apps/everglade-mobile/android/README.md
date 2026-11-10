@@ -29,6 +29,7 @@ the app is one native library.
 | [`host.c`](host.c) | The host: a `NativeActivity`, a Vulkan swapchain, touch, and the GPU side that `Engine.swift` is on iOS |
 | [`shaders/`](shaders) | The strokes' and your model's shaders as GLSL: the Vulkan versions of `Workshop.metal` and `Model.metal` |
 | [`bake-faces/`](bake-faces/main.swift) | Writes the fonts' atlas to a file at build time, from the same drawing code the Apple hosts use |
+| [`res/`](res) | The icon: the logo's E over its green, with a one-colour layer for themed icons ([`../icon/`](../icon/README.md)) |
 | [`AndroidManifest.xml`](AndroidManifest.xml) | The package: Android 11 and up, Vulkan 1.1 |
 | [`build.sh`](build.sh) | Builds, packs and signs the APK with the NDK, `aapt2` and `apksigner` |
 
@@ -55,5 +56,4 @@ source, emitted by `coax spirv` where iOS uses `coax metal`.
   remade) and untested.
 - **Pinch** is written (a second finger on the look side) and untested: the
   emulator's scripted input has one finger.
-- **An icon.** The app shows Android's default.
 - **App size.** The APK is 64 MB, nearly all of it Everglade II's whole pack.
