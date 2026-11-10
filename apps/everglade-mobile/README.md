@@ -18,6 +18,25 @@ That builds `build/ios/Everglade.app` for the simulator, installs it and
 opens it. If no simulator device exists it makes an iPhone 17 Pro named
 "Everglade iPhone". It needs Xcode with an iOS simulator runtime.
 
+## Send it to TestFlight
+
+```sh
+apps/everglade-mobile/ios/release.sh BUILD_NUMBER
+```
+
+That builds for iPhone, signs with the team's Apple Distribution identity,
+and uploads to the App Store Connect app "Everglade". The build number must
+be higher than the last one uploaded (1 went up on 2026-11-10). It needs
+`~/work/.secrets/appstoreconnect.env`. Apple then processes the build:
+
+```sh
+apps/everglade-mobile/ios/release.sh status BUILD_NUMBER
+```
+
+The script does not add the build to a tester group. Do that in
+[App Store Connect](https://appstoreconnect.apple.com/apps/6833092875/testflight/ios),
+under TestFlight.
+
 ## Run it on Android
 
 ```sh
@@ -71,12 +90,10 @@ them again are in [`icon/`](icon/README.md).
 
 ## Not done
 
-- **A real device.** The build targets the simulator. A device build needs a
-  signing team and a provisioning profile, which are the owner's.
+- **A real phone has not run it.** Build 1 went to TestFlight without one.
 - **Android's own list** is in [`android/README.md`](android/README.md).
 - **App size.** The bundle carries Everglade II's whole 61 MB pack for the
   character's parts. A phone build should carry only those parts.
 - **The deep-stack thread** is 512 MB of address space. It works in the
   simulator; whether a device grants it is untested.
 - **A launch screen.**
-- **TestFlight.** Nothing is uploaded.
