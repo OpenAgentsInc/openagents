@@ -5,17 +5,29 @@
 # wrapper: git, coax/web/tool.sh suites, coax/tests/run.sh, the web build and
 # the report checks, then grep and awk over their output.
 #
-#   coax/remote/check.sh branch BASE      the suites whose sources changed since BASE,
-#                                         and the web build when the branch touched
-#                                         what it builds (the integrator's check)
+#   coax/remote/check.sh branch BASE [ALSO...]
+#                                         the suites whose sources changed since BASE,
+#                                         the web build when the branch touched what it
+#                                         builds, and the report checks (the integrator's
+#                                         check); ALSO is one more check that must pass
+#                                         ("only PATH", "reports"...: a revert's own check)
+#   coax/remote/check.sh since BASE I/N   the I-th of N parts of the suites whose sources
+#                                         changed since BASE (after.sh's fast run)
+#   coax/remote/check.sh web BASE         the rest of a fast run: the web modules the
+#                                         change touched, the report checks, and the room
+#                                         build when the change reaches it
 #   coax/remote/check.sh suites I/N       the I-th of N parts of every suite
 #   coax/remote/check.sh only PATH,PATH   these suites (a bisect)
 #   coax/remote/check.sh compiler I/N     the I-th of N parts of coax/tests/run.sh
+#   coax/remote/check.sh unit UNIT        one unit of coax/tests/run.sh (a bisect)
 #   coax/remote/check.sh wasm             the web build: every module against its budget
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
-#   coax/remote/check.sh tools            tools-check, everglade-parity, the committed
-#                                         shaders against their Coax, the room build
+#   coax/remote/check.sh module NAME      one module of the web build (a bisect)
+#   coax/remote/check.sh reports          tools-check, everglade-parity and the committed
+#                                         shaders against their Coax
+#   coax/remote/check.sh room             the room build
+#   coax/remote/check.sh tools            reports and room
 #
 # It writes build/pipeline/: MODE.log (the output), status, failed (one line
 # per failing suite or step), limits.txt (each compile-time limit note:
@@ -24,7 +36,7 @@
 # Exit 0 when the check passed, 1 when it failed.
 set -uo pipefail
 export LC_ALL=C
-mode="${1:-}"; arg="${2:-}"
+mode="${1:-}"; arg="${2:-}"; also=("${@:3}")
 root="$(git rev-parse --show-toplevel)" || exit 2
 cd "$root" || exit 2
 out="$root/build/pipeline"; rm -rf "$out"; mkdir -p "$out"; : > "$out/started"   # sizes() reads modules newer than this
@@ -53,7 +65,7 @@ fi
 suites() {   # args for tool.sh suites
   step suites ${compiler_env[@]+"${compiler_env[@]}"} coax/web/tool.sh suites --jobs "${OA_CHECK_JOBS:-8}" "$@"
   local s=$?
-  grep -E '^FAIL ' "$log" | sed -E 's/^FAIL ([^ :]+).*/suite \1/' | sort -u >> "$out/failed"
+  sed -nE 's/^FAIL ([^ :]+\.coax)([ :].*)?$/suite \1/p' "$log" | sort -u >> "$out/failed"
   return "$s"
 }
 # Each wasm.sh unit compile prints its near-limit notes on stderr
@@ -100,13 +112,46 @@ module_cmds() {
   awk '{ if (sub(/\\$/, "")) { buf = buf $0 " "; next } print buf $0; buf = "" }' "$root/apps/openagents-web/build.sh" |
     grep 'coax/web/wasm.sh"' | sed -E 's/[[:space:]]*&[[:space:]]*$//' | grep -vE '/build/(project|projects)\.wasm"'
 }
+# The .coax files the change reaches through #load, in $out/affected, once: 0,
+# 3 when the graph can't tell, else the tool failed.
+affected_files() {
+  if [[ ! -f "$out/affected.status" ]]; then
+    ${compiler_env[@]+"${compiler_env[@]}"} coax/web/tool.sh suites --since "$arg" --affected --faces > "$out/affected" 2>> "$log"
+    echo $? > "$out/affected.status"
+    faces
+  fi
+  return "$(cat "$out/affected.status")"
+}
+# The changed C faces and headers, and every tracked .c or .h that includes
+# one (by name, through any depth), in $out/faces: a module is touched when
+# its command names one.
+faces() {
+  grep -E '\.[ch]$' "$out/changed" | sort -u > "$out/faces"
+  local round new
+  for round in 1 2 3 4 5 6; do
+    [[ -s "$out/faces" ]] || break
+    new="$(sed -E 's#.*/##; s#[.]#[.]#g' "$out/faces" | sort -u | paste -sd'|' -)"
+    git grep -lE "#include \"([^\"]*/)?($new)\"" -- '*.c' '*.h' 2> /dev/null | cat - "$out/faces" | sort -u > "$out/faces.new"
+    if cmp -s "$out/faces" "$out/faces.new"; then break; fi
+    mv "$out/faces.new" "$out/faces"
+  done
+  rm -f "$out/faces.new"
+}
+# The room server builds room.coax and Everglade's headless world (room/build.sh).
+room_units='coax/web/room/room.coax apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax'
+room_touched() {   # whether the change since $arg reaches the room build (yes when it can't tell)
+  grep -Eq "$web_whole|^coax/web/room/" "$out/changed" && return 0
+  affected_files || return 0
+  local u; for u in $room_units; do grep -qxF "$u" "$out/affected" && return 0; done
+  return 1
+}
 web_touched() {
   local here="$root/apps/openagents-web" m a cmd words w hit
   m="$here/../../verse"; a="$here/../../aethyr"
   : > "$out/modules"
-  # The .coax files the change reaches through #load (suites --affected); when
-  # the graph can't tell, every module is built.
-  ${compiler_env[@]+"${compiler_env[@]}"} coax/web/tool.sh suites --since "$arg" --affected > "$out/affected" 2>> "$log"
+  # The graph (suites --affected) names the touched files; when it can't tell,
+  # every module is built.
+  affected_files
   case $? in
     0) ;;
     3) module_cmds > "$out/modules"; build_modules; return ;;
@@ -117,7 +162,7 @@ web_touched() {
     hit=0
     for w in "${words[@]}"; do
       case "$w" in
-        *.c|*.coax) grep -qxF "$(realpath -m --relative-to="$root" "$w" 2> /dev/null)" "$out/affected" "$out/changed" && { hit=1; break; } ;;
+        *.c|*.coax) grep -qxF "$(realpath -m --relative-to="$root" "$w" 2> /dev/null)" "$out/affected" "$out/changed" "$out/faces" && { hit=1; break; } ;;
       esac
     done
     (( hit == 0 )) || printf '%s\n' "$cmd" >> "$out/modules"
@@ -144,41 +189,91 @@ build_modules() {   # each command in $out/modules, as build.sh runs it
 
 : > "$out/warnings.txt"
 status=0
+changed_since() {   # the files changed since $arg, in $out/changed
+  [[ -n "$arg" ]] || { echo "check.sh $mode BASE" >&2; exit 2; }
+  git diff --name-only "$arg" HEAD > "$out/changed" || exit 2
+  echo "$(wc -l < "$out/changed" | tr -d ' ') files changed since ${arg:0:10}" >> "$log"
+}
+reports() {
+  step tools-check coax/web/tool.sh tools-check || status=1
+  step everglade-parity coax/web/tool.sh everglade-parity || status=1
+  step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
+}
+room() { step room-build coax/web/room/build.sh || status=1; }
+# The web build for a change: all of it, its touched modules, or nothing.
+web_since() {
+  if grep -Eq "$web_whole" "$out/changed"; then
+    step wasm env COAXIAL_MODE=release apps/openagents-web/build.sh || status=1
+  elif grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then
+    step modules web_touched || status=1
+    cat "$out"/module-*.log >> "$log" 2> /dev/null
+  else
+    echo "== wasm: skipped, the change touches nothing the web build reads" >> "$log"
+  fi
+}
+# The report checks for a change: a tool file or a zone's source can be any
+# file but a document; the shaders follow the web build's inputs.
+reports_since() {
+  if grep -qv '\.md$' "$out/changed"; then
+    step tools-check coax/web/tool.sh tools-check || status=1
+    step everglade-parity coax/web/tool.sh everglade-parity || status=1
+  fi
+  if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then
+    step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
+  fi
+}
+run() {   # mode arg: one check
+  local mode="$1" arg="${2:-}"
+  case "$mode" in
+    suites) suites --part "$arg" || status=1 ;;
+    only) suites --only "$arg" || status=1 ;;
+    compiler|unit)
+      # In the host's own toolchain, not compiler_env: the units build their own
+      # sanitized programs with cc and c++, and the static musl toolchain has no
+      # ASan or UBSan runtimes (cannot find libasan_preinit.o, #13134).
+      if [[ "$mode" == unit ]]; then step compiler coax/tests/run.sh --only "$arg" || status=1
+      else step compiler coax/tests/run.sh --part "$arg" || status=1; fi
+      # A unit that failed ("== UNIT: FAILED (N) in S s") or run.sh's own note
+      # ("FAIL UNIT: why"); a unit's inner "FAIL some case" lines name no unit.
+      sed -nE 's/^== ([^ :]+): FAILED .*/compiler \1/p; s/^FAIL ([^ :]+): .*/compiler \1/p' "$log" | sort -u >> "$out/failed" ;;
+    wasm) step wasm env COAXIAL_MODE=release apps/openagents-web/build.sh || status=1 ;;
+    modules)
+      module_cmds | awk -v p="$arg" 'BEGIN { split(p, f, "/") } (NR - 1) % f[2] == f[1] - 1' > "$out/modules"
+      step modules build_modules || status=1
+      cat "$out"/module-*.log >> "$log" 2> /dev/null ;;
+    module)
+      module_cmds | grep -F "/build/$arg.wasm\"" > "$out/modules"
+      [[ -s "$out/modules" ]] || echo "module $arg: build.sh has no such module at this commit" >> "$log"
+      step modules build_modules || status=1
+      cat "$out"/module-*.log >> "$log" 2> /dev/null ;;
+    reports) reports ;;
+    room) room ;;
+    tools) reports; room ;;
+    *) return 2 ;;
+  esac
+  return 0
+}
 case "$mode" in
   branch)
-    [[ -n "$arg" ]] || { echo "check.sh branch BASE" >&2; exit 2; }
-    git diff --name-only "$arg" HEAD > "$out/changed"
-    echo "$(wc -l < "$out/changed" | tr -d ' ') files changed since ${arg:0:10}" > "$log"
+    changed_since
     # Documents alone run nothing (suites --since reads every suite's sources).
     if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" || status=1
     else echo "== suites: skipped, the branch changes only documents" >> "$log"; fi
-    if grep -Eq "$web_whole" "$out/changed"; then
-      step wasm env COAXIAL_MODE=release apps/openagents-web/build.sh || status=1
-    elif grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then
-      step modules web_touched || status=1
-      cat "$out"/module-*.log >> "$log" 2> /dev/null
-    else
-      echo "== wasm: skipped, the branch changes nothing the web build reads" >> "$log"
-    fi ;;
-  suites) suites --part "$arg" || status=1 ;;
-  only) suites --only "$arg" || status=1 ;;
-  compiler)
-    # In the host's own toolchain, not compiler_env: the units build their own
-    # sanitized programs with cc and c++, and the static musl toolchain has no
-    # ASan or UBSan runtimes (cannot find libasan_preinit.o, #13134).
-    step compiler coax/tests/run.sh --part "$arg" || status=1
-    grep -E '^FAIL ' "$log" | sed -E 's/^FAIL ([^ :]+).*/compiler \1/' | sort -u >> "$out/failed" ;;
-  wasm) step wasm env COAXIAL_MODE=release apps/openagents-web/build.sh || status=1 ;;
-  modules)
-    module_cmds | awk -v p="$arg" 'BEGIN { split(p, f, "/") } (NR - 1) % f[2] == f[1] - 1' > "$out/modules"
-    step modules build_modules || status=1
-    cat "$out"/module-*.log >> "$log" 2> /dev/null ;;
-  tools)
-    step tools-check coax/web/tool.sh tools-check || status=1
-    step everglade-parity coax/web/tool.sh everglade-parity || status=1
-    step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
-    step room-build coax/web/room/build.sh || status=1 ;;
-  *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+    web_since
+    reports_since
+    if (( ${#also[@]} > 0 )); then run "${also[@]}" || { echo "check.sh: unknown check ${also[*]}" >&2; exit 2; }; fi ;;
+  since)
+    part="${3:-1/1}"
+    changed_since
+    if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --part "$part" || status=1
+    else echo "== suites: skipped, the change is only documents" >> "$log"; fi ;;
+  web)
+    changed_since
+    web_since
+    reports_since
+    if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room
+    else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
+  *) run "$mode" "$arg" || { sed -n '8,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 echo "$status" > "$out/status"

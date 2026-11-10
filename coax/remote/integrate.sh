@@ -22,12 +22,13 @@
 #      agent gets a message; the branches behind it are checked again next
 #      round, without it. A check the hosts could not run leaves its branch
 #      queued.
-#   4. With --revert (or OA_INTEGRATE_REVERT=1): a red-list culprit not fixed
-#      within OA_REVERT_MINUTES (30) gets a revert, queued ahead of everything
-#      and checked like any other branch.
-# Only the integrator pushes main once agents submit (AGENTS.md). While agents
-# still push main directly, a landing that loses the race to a direct push is
-# stacked and checked again on the new head.
+#   4. With --revert (or OA_INTEGRATE_REVERT=1; after.sh --watch runs it so):
+#      a red-list culprit that an after-landing run still saw failing
+#      OA_REVERT_MINUTES (30) after its entry opened gets a revert, queued
+#      ahead of everything. Its check is a branch's, and the check the culprit
+#      broke must pass with the revert, so a wrong culprit is not reverted.
+# Agents may push main directly (AGENTS.md) or submit. A landing that loses
+# the race to a direct push is stacked and checked again on the new head.
 #
 # Settings: OA_INTEGRATE_MAX (6 branches a round), OA_INTEGRATE_POLL (30 s
 # between looks at an empty queue), OA_INTEGRATE_TIMEOUT (2400 s a check),
@@ -88,14 +89,14 @@ stack() {   # tip sha: the branch's commits onto tip (fails on a conflict)
   for c in $(git rev-list --reverse --no-merges "$main_ref..$2"); do tip="$(pick "$tip" "$c")" || return 1; done
   echo "$tip"
 }
-run_check() {   # commit base outdir: 0 passed, 1 failed, 97 the hosts could not run it
-  local commit="$1" base="$2" dir="$3" s
+run_check() {   # commit base outdir [also...]: 0 passed, 1 failed, 97 the hosts could not run it
+  local commit="$1" base="$2" dir="$3" s; shift 3
   mkdir -p "$dir"
   if [[ -n "${OA_INTEGRATE_CHECK:-}" ]]; then
     # shellcheck disable=SC2086
-    timeout "$limit" $OA_INTEGRATE_CHECK "$commit" "$base" "$dir" > "$dir/out" 2>&1; s=$?
+    timeout "$limit" $OA_INTEGRATE_CHECK "$commit" "$base" "$dir" "$@" > "$dir/out" 2>&1; s=$?
   else
-    OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- coax/remote/check.sh branch "$base" > "$dir/out" 2>&1; s=$?
+    OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- coax/remote/check.sh branch "$base" "$@" > "$dir/out" 2>&1; s=$?
   fi
   case "$s" in 0|1) return "$s" ;; 124) echo "integrate: the check ran past $limit s" >> "$dir/out"; return 97 ;; 97|255) return 97 ;; *) return 1 ;; esac
 }
@@ -113,12 +114,24 @@ $failed
   pl_say "sent back $name: $why"
 }
 
-# The revert step: a culprit still red after the window gets a revert,
-# queued ahead of every branch.
+# The check a red-list item names, as check.sh arguments ("" when it has none
+# of its own): a revert must make it pass.
+also_for() {   # item
+  case "$1" in
+    suite\ *) echo "only ${1#suite }" ;;
+    module\ *) echo "module ${1#module }" ;;
+    compiler\ *) echo "unit ${1#compiler }" ;;
+    step\ wasm) echo "wasm" ;;
+    step\ tools-check|step\ everglade-parity|step\ wgsl) echo "reports" ;;
+    step\ room-build) echo "room" ;;
+  esac
+}
+# The revert step: a culprit that an after-landing run still saw failing
+# (seen) the window after its entry opened gets a revert, queued ahead of
+# every branch.
 queue_reverts() {
   [[ "$revert" == 1 ]] || return 0
-  local cutoff=$(( $(date +%s) - revert_minutes * 60 ))
-  jq -r --argjson cut "$cutoff" '.[] | select(.status == "open" and (.revert // "") == "" and .opened <= $cut) | "\(.id)|\(.culprit)|\(.opened)|\(.issue // "")"' "$pl_red" |
+  jq -r --argjson w "$(( revert_minutes * 60 ))" '.[] | select(.status == "open" and (.revert // "") == "" and ((.seen // 0) - .opened) >= $w) | "\(.id)|\(.culprit)|\(.opened)|\(.issue // "")"' "$pl_red" |
   while IFS='|' read -r id culprit opened issue; do
     [[ -n "$culprit" ]] || continue   # failing before the first green run: nothing to revert
     [[ -n "$id" ]] || continue
@@ -139,7 +152,7 @@ This reverts commit $culprit.
 
 The after-landing check \`$check\` fails since this commit${issue:+ (#$issue)}, and no fix
 landed within $revert_minutes minutes. To land the change again: fix the failure on the
-newest $pl_main, then submit it with coax/remote/submit.sh.
+newest $pl_main, then push it or submit it with coax/remote/submit.sh.
 
 Agent: integrator"
     # Its commit time is the failure's, so the queue checks it first.
@@ -160,7 +173,11 @@ reverted() {   # queue name of a landed revert, landed commit
   [[ -n "$id" ]] || return 0
   pl_red_update '(.[] | select(.id == $id) | .status) = "reverted"' --arg id "$id"
   [[ "$pl_issues" != 1 || -z "$issue" ]] || gh issue reopen "$issue" --repo "$pl_repo" > /dev/null 2>&1 || true
-  pl_issue_comment "$issue" "The revert landed as ${2:0:10}. Fix the failure, then submit the change again with coax/remote/submit.sh."
+  pl_issue_comment "$issue" "The revert landed as ${2:0:10}. Fix the failure, then land the change again."
+  local agent culprit check
+  IFS='|' read -r agent culprit check < <(jq -r --arg id "$id" '.[] | select(.id == $id) | "\(.agent)|\(.culprit)|\(.check)"' "$pl_red")
+  pl_message "${agent:-unknown}" "Your commit ${culprit:0:10} was reverted on $pl_main as ${2:0:10}: \`$check\` still failed 30 minutes after it was reported.${issue:+ Issue: https://github.com/$pl_repo/issues/$issue.}
+Fix the failure on the newest $pl_main, then land the change again."
 }
 
 round() {
@@ -201,7 +218,12 @@ round() {
   # 2. The checks, side by side.
   local pids=() i
   for i in "${!cands[@]}"; do
-    run_check "${cands[$i]}" "${bases[$i]}" "$dir/$((i + 1))" & pids+=($!)
+    local also=""
+    # A revert must make the check its culprit broke pass.
+    [[ "${names[${keep[$i]}]}" != integrator/revert-* ]] ||
+      also="$(also_for "$(jq -r --arg r "${names[${keep[$i]}]}" '[.[] | select(.revert == $r)][0].check // ""' "$pl_red")")"
+    # shellcheck disable=SC2086
+    run_check "${cands[$i]}" "${bases[$i]}" "$dir/$((i + 1))" $also & pids+=($!)
   done
   local results=()
   for i in "${!pids[@]}"; do wait "${pids[$i]}"; results+=($?); done
@@ -241,7 +263,7 @@ round() {
 }
 
 main_loop() {
-  if [[ "$once" == 1 ]]; then round; s=$?; (( s == 1 )) && pl_say "the queue is empty"; return 0; fi
+  if [[ "$once" == 1 ]]; then round; s=$?; (( s == 1 )) && [[ -z "${OA_INTEGRATE_QUIET:-}" ]] && pl_say "the queue is empty"; return 0; fi
   pl_say "integrator: watching $pl_remote $pl_queue/* for $pl_main (OA_INTEGRATE_MAX=$max, revert $([[ $revert == 1 ]] && echo "after $revert_minutes minutes" || echo off))"
   while true; do
     round; s=$?
@@ -250,5 +272,5 @@ main_loop() {
 }
 # One integrator at a time.
 exec 9> "$pl_dir/integrate.lock"
-if ! flock -n 9; then echo "integrate: another integrator is running ($pl_dir/integrate.lock)" >&2; exit 75; fi
+if ! flock -n 9; then [[ -n "${OA_INTEGRATE_QUIET:-}" ]] || echo "integrate: another integrator is running ($pl_dir/integrate.lock)" >&2; exit 75; fi
 main_loop

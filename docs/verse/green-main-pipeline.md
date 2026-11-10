@@ -1,20 +1,27 @@
 # The green-main pipeline
 
 This document describes how changes from many agents reach `main` and
-production without blocking each other. Builders hand a finished branch to
-an integrator instead of pushing. The integrator checks each branch against
-the latest `main`, testing only what the branch touched, and lands branches
-in order. The full suite runs after landings, on the remote build hosts. A
-last-known-good commit, `main-green`, is what releases ship and what new work
-starts from. When a check fails, the pipeline finds the commit that caused it
-and sends the fix to the agent that wrote it.
+production without blocking each other. Agents push `main` directly. An
+after-landing check runs on the remote build hosts on every new head, testing
+only what changed since the last head that passed. A last-known-good commit,
+`main-green`, is what releases ship and what new work starts from. When a
+check fails, the pipeline finds the commit that caused it, tells the agent
+that wrote it, and reverts the commit if it still fails 30 minutes later.
+
+To see the state of `main`:
+
+```sh
+coax/remote/after.sh state    # main, main-green, the last runs, the red list
+```
 
 The design follows a merge-queue layout that Kit Langton published on
 2026-11-09: builders hand off to an integrator, a fast check runs before
 landing, a full check runs after, and a failure becomes a task that names the
 culprit. Here it is fitted to Coax, the remote build hosts
 ([remote-builds.md](remote-builds.md), #13077), `coax/web/release.sh` and our
-push rate.
+push rate. The integrator and its queue are built and optional: an agent can
+submit a branch instead of pushing, and the integrator lands it after its
+check. The pipeline doesn't depend on it.
 
 ## Our push rate
 
@@ -61,26 +68,21 @@ four, and the landing races that our push rate would cause.
 
 ```
  builder worktree (from main-green)
-        │  finished branch, with an Agent: trailer
-        ▼
- submit ──► queue
-              │
-              ▼
- integrator: checks every queued branch at once, each on its own host slot
-   rebase on the head it will land on · compile and test the touched units
-   · wasm sizes · compile-limit warnings
-              │ green, in queue order                 │ red or conflict
-              ▼                                        ▼
-         lands on main                       back to its builder
-              │
-              ▼
- after-landing check, on the remote hosts, on the newest head
-   every suite · every wasm budget · compile limits · room · parity
+        │  finished commits, each with an Agent: trailer
+        ├──────────────► git push origin HEAD:main
+        ▼ (optional)                       │
+ submit ──► queue ──► integrator:          │
+   checks each branch on the head it       │
+   lands on, lands the green ones ─────────┤
+                                           ▼
+ after-landing check, on the remote hosts, on every new head
+   fast run: only what changed since main-green
+   full run, every three hours: every suite · every wasm budget · room · parity
        │ green                                │ red
        ▼                                      ▼
  main-green moves to this commit        bisect from main-green to the head;
-       │                                task to the culprit's agent;
-       ▼                                revert if not fixed in 30 min
+       │                                issue and message to the culprit's agent;
+       ▼                                revert if it still fails 30 minutes on
  release.sh ships main-green
 ```
 
@@ -98,16 +100,19 @@ A failure in that worktree belongs to the agent's own change.
 Every commit carries an `Agent:` trailer with the agent's ID, so a failure can
 reach the agent that wrote it.
 
-### 2. Builders submit; they don't push
+### 2. Builders push, or submit
 
-When a branch is done and its own tests pass, the builder submits it:
+When a branch is done and its own tests pass, the builder pushes `main`
+(`git push origin HEAD:main`), and the after-landing check (step 4) takes it
+from there. A builder that wants its branch checked on the head it lands on
+before it lands submits it instead:
 
 ```sh
 coax/remote/submit.sh
 ```
 
 This pushes the branch to `refs/heads/queue/<agent>/<topic>` and adds it to
-the queue. The builder doesn't push `main`.
+the queue.
 
 ### 3. The integrator checks branches in parallel and lands them in order
 
@@ -136,25 +141,35 @@ own work is light; checks run on the remote hosts. For the queue in order
 With 12 host slots, one round checks up to 12 branches in about 4 minutes,
 which lands up to 180 branches an hour. That is well above the busiest hour.
 
-Only the integrator pushes `main`. Pushes no longer race, and every landed
-commit was tested on exactly the code it landed on.
+A submitted branch was tested on exactly the code it landed on. A landing
+that loses the race to a direct push is stacked and checked again on the new
+head.
 
-### 4. The full check runs after landing, on the newest head
+### 4. The after-landing check runs on every new head
 
-The integrator also starts the full check, `coax/remote/after.sh`, on the
-newest head of `main` whenever the previous full run has finished. Each run
-covers every landing since the last one. At the busiest hour that is 6 to 8
-commits a run.
+`coax/remote/after.sh --watch` checks the newest head of `main` whenever the
+previous run has finished. Each run covers every landing since the last one.
 
-A full run covers:
+Most runs are fast runs. A fast run checks head `H` against `main-green` `G`,
+and runs only what the commits between them can have changed:
 
-- every Coax test suite that `coax/build.sh test` covers, split across host
-  slots;
-- every wasm target against its budget;
-- the room tests and the drift check's offline profile;
-- `everglade-parity`, `tools-check` and the committed shaders against their
-  Coax (`wgsl-module --site --check`);
-- each unit's compile-time totals and wasm sizes, recorded per commit.
+- the suites whose sources changed since `G` (`coax/web/tool.sh suites
+  --since G`, from the `#load` graph), in three parts on three host slots;
+- the web modules the change touched, each against its budget;
+- `tools-check`, `everglade-parity` and the committed shaders against their
+  Coax;
+- the room build, when the change reaches one of its units;
+- `coax/tests/run.sh` in eight parts, when compiler sources changed.
+
+Every other check passed at `G` and reads no file that changed, so it passes
+at `H`. A head that changes only documents is green with no job.
+
+A full run is the backstop: every suite, every web module against its budget,
+the report checks, the room build, and the compiler's units when its sources
+changed since the last full green run. It runs when there is no `main-green`,
+and at most every three hours after that (`OA_AFTER_GAP`). If a full run fails
+where the fast runs passed, it bisects from the last head a full run passed
+and moves `main-green` back to that head.
 
 When a run passes, it moves `main-green`:
 
@@ -162,31 +177,41 @@ When a run passes, it moves `main-green`:
 git push origin <commit>:refs/heads/main-green
 ```
 
-Then, in the background, it builds that commit's pages once into the shared
-store (`coax/remote/pages.sh build`, #13119), so the release of the commit
-takes its modules instead of building them again, and agents fetch them with
-`coax/remote/pages.sh` ([remote-builds.md](remote-builds.md#the-shared-cache)).
-`OA_AFTER_PAGES=0` turns this off.
+Then, in the background and at most once an hour, it builds that commit's
+pages once into the shared store (`coax/remote/pages.sh build`, #13119), so
+the release of the commit takes its modules instead of building them again,
+and agents fetch them with `coax/remote/pages.sh`
+([remote-builds.md](remote-builds.md#the-shared-cache)). `OA_AFTER_PAGES=0`
+turns this off.
 
 Results go under `releases/after/<commit>/`. The per-commit history of
 compile-time totals and wasm sizes shows which commit made a unit grow.
 
+A job whose host stops under it (the hosts are spot machines) runs again, up
+to two more times, before the run counts as unfinished.
+
 ### 5. A failure finds its culprit and goes back to its author
 
-When a full run fails, `after.sh` bisects between `main-green` and the failing
-head. It runs only the failing checks, several commits at once on parallel
+When a run fails, `after.sh` bisects between `main-green` and the failing
+head. It runs only the failing check, several commits at once on parallel
 host slots, so a run of eight commits takes one or two rounds. It then:
 
 1. Files an issue that names the culprit commit, the failing check and its
    output, and the agent from the commit's `Agent:` trailer.
-2. Messages that agent with the issue.
+2. Messages that agent with the issue and the command that runs the check
+   alone.
 3. Adds the failure to the red list (`releases/after/red.json`), so other
    agents know a failure on `main` is already owned.
 
-If the culprit's fix hasn't landed within 30 minutes, the integrator lands a
-revert of the culprit commit and reopens its issue. The revert is checked like
-any other branch. Its message says which check failed and how to land the
-change again.
+A check that fails at the head and passes when run again is flaky. It is
+recorded in `releases/after/flaky.txt` and has no culprit.
+
+Each later run that still sees the failure stamps the red-list entry. When a
+run sees it 30 minutes or more after the entry opened, the integrator lands a
+revert of the culprit commit and reopens its issue. The revert's check is a
+branch's check plus the check the culprit broke, which must pass with the
+revert, so a wrong culprit is never reverted. The revert's message says which
+check failed, and the agent gets a message that names the revert.
 
 ### 6. Releases ship `main-green`
 
@@ -197,13 +222,15 @@ passes on production stops it) stays as it is.
 
 ## What changes for agents
 
-- Start worktrees from `origin/main-green`.
+- Start worktrees from `origin/main-green` when it exists. A failure in that
+  worktree is your own change's.
 - Put `Agent: <id>` in every commit message.
 - Run your own touched tests on the remote hosts while you work (#13077), then
-  `coax/remote/submit.sh`. Don't push `main` and don't run whole suites.
+  push `main`. Don't run whole suites: the after-landing check does.
+- Before you investigate a failure on `main`, run `coax/remote/after.sh
+  state`. A failure on the red list is owned by the agent it names.
 - When a red-list entry names your commit, fixing it comes before new work.
-- A failure on `main` that names someone else's commit is theirs. Check the
-  red list before investigating.
+  You have 30 minutes before the commit is reverted.
 
 ## What we already have
 
@@ -225,9 +252,9 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | --- | --- |
 | Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
-| One check on a host | `coax/remote/check.sh` (`branch BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `modules I/N`, `wasm`, `tools`) |
-| The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `red`, `history`) |
-| The revert | `coax/remote/integrate.sh --revert` |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `room`, `tools`) |
+| The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `state`, `red`, `history`) |
+| The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
 | Releases from `main-green` | `coax/web/release.sh` |
 | Shared settings | `coax/remote/pipeline-lib.sh` |
 
@@ -236,31 +263,40 @@ instead of a snapshot of the checkout, so the integrator and `after.sh` check
 exact commits without a worktree. `coax/web/tool.sh suites --part I/N` splits
 the suites across host slots.
 
-The coordinator runs the integrator and the after-landing check on the Mac:
+The coordinator runs one watcher on the Mac. It runs the after-landing check
+on each new head, and one integrator round a minute for the 30-minute revert
+and for any branch an agent submitted:
 
 ```sh
-coax/remote/integrate.sh            # a round whenever a branch is queued
-coax/remote/after.sh --watch        # a full run on main's newest head, at most once an hour
+coax/remote/after.sh --watch        # --no-revert: report culprits, revert nothing
 ```
-
-The integrator starts `after.sh --once` after each landing as well; a run
-starts only when the last one started an hour ago or more (`OA_AFTER_GAP`).
 
 Measured on 2026-11-09 on today's tree: a branch check takes 8 to 42 s of
 host time when it touches a few suites or modules, about $0.001 to $0.003 of
 host time (remote.sh's ledger bills each job at a whole host's price, three
 times that). A full run is 11 jobs and 11,712 slot-seconds, about $0.30 of
 host time ($0.90 on the ledger); with the hosts shared with agents' own
-builds it took 31 minutes. Hourly runs cost at most about $7 a day of host
-time ($22 a day on the ledger, against its daily cap). Logs, each
+builds it took 31 minutes. Logs, each
 job's output and the red list are under `~/.openagents/pipeline/`
 (`releases/after/COMMIT/`, `releases/after/red.json`,
 `releases/after/history.tsv`). A message to an agent goes to
 `~/.openagents/pipeline/inbox/AGENT.log`, which `submit.sh status --agent ID`
 prints, and to `OA_PIPELINE_NOTIFY` when it is set.
 
+Measured on 2026-11-10: a fast run of a change to nine files took 153 s on
+four host slots (three suite parts of about 55 s each, and 153 s for the web
+modules, the report checks and the shaders), 315 slot-seconds, under $0.01 of
+host time. When compiler sources change, the compiler's units add eight jobs
+of 6 to 30 minutes. A full run of all 980 suites, 55 modules, the reports,
+the room build and the compiler's units took 41 minutes on shared hosts and
+20,315 slot-seconds, about $0.52 of host time; eight a day is about $4.
+
 ### Differences from the design
 
+- Agents push `main` directly (owner, 2026-11-10). Submitting is optional, so
+  a landed commit was not always tested on the code it landed on. The fast
+  after-landing run takes that role: it checks each new head within minutes
+  and names the culprit.
 - The queue runs in the order of each branch's newest commit time. A
   resubmitted branch keeps its place only if its commits are unchanged.
 - A branch that conflicts only with a branch ahead of it waits for the next
@@ -268,21 +304,34 @@ prints, and to `OA_PIPELINE_NOTIFY` when it is set.
 - Compile-limit totals come from the web build's near-limit notes (75% and
   up). `tool.sh suites` doesn't pass a suite's notes on, so a touched test
   suite's totals aren't reported.
-- The full run leaves out the drift check: it needs a browser, and the hosts
-  have none. `coax/tests/run.sh` runs only when compiler sources changed since
-  `main-green`.
+- No run includes the drift check: it needs a browser, and the hosts have
+  none.
+- `suites --since` picks suites from the `#load` graph. A suite's checks run
+  at compile time, and the compiler reads only `#load`, `#import_proto` and
+  itself, so a changed file that isn't Coax matters only when it is a `.pb`
+  descriptor, a compiler source (`coax/src/`, `coax/bootstrap/`,
+  `coax/build.sh`) or the C a native suite links. Then every suite asks
+  `coax deps`, which runs most of them. Before 2026-11-10 any changed file
+  that wasn't Coax (a Swift source, a C face, a script), and any changed Coax
+  file that nothing loads, did that: a three-commit range took over five
+  minutes to pick its suites, and now takes three seconds.
+- The web modules a change touched come from the same graph, plus the C faces:
+  a changed `.c` or `.h` file touches the modules whose build command names
+  it or a file that includes it. Any other changed file under the trees the
+  web build reads builds every module.
 - A failure that passes when run again on the same head is flaky: it is
   recorded in `releases/after/flaky.txt`, and if every failure of a run was
   flaky, `main-green` moves.
 - Before the first green run there is no `main-green` to bisect against.
   Each failure of that run goes on the red list owned by nobody, under one
   issue, so later runs don't bisect it, and it is never reverted.
-  `main-green` is first set at the head where every check passes.
+  `main-green` is first set at the head where every check of a full run
+  passes, the compiler's units included.
 - The full run builds the web modules in three parts, each module as
   `build.sh` runs it. It leaves out `project` and `projects`, which need the
   tables `build.sh` bakes from Nostr first.
-- A culprit's revert waits for `--revert`, off until agents submit instead of
-  pushing.
+- The red list and the messages to agents are files on the coordinator's Mac.
+  An agent on another machine reads `origin/main-green` and the issues.
 
 ## Capacity and cost
 

@@ -22,7 +22,7 @@ tool_main :: ()->int #export_c #effects(all) {
   first:=crr_find(text,"passed=\"$(live)\"",0);last:=crr_find(text,"lap compat \"$t\"",first);
   if first<0 || last<0 {tool_errln("release reference audit: source fragment missing");return 2;}last+=15;
   // These doubles cover effects only. Baseline selection and its guard come from the actual script.
-  prefix:="set -eu\nfull=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; commit=aaaaaaaaaa; ref=origin/main; prod=false; repo=.\nlive() { printf '%s' \"${CASE_PRODUCTION}\"; }\nnow() { echo 0; }\nlap() { :; }\ncompiler() { :; }\ngit() { if [ \"${3-}\" = worktree ] && [ \"${4-}\" = add ]; then mkdir -p \"$7/coax/web\"; ln -s \"$AUDIT_COMPAT_EXEC\" \"$7/coax/web/tool.sh\"; fi; }\ntrap 'if [ -n \"${tree:-}\" ]; then rm -rf \"${tree%/release}\"; fi; if [ -n \"${reports:-}\" ]; then rm -rf \"$reports\"; fi' EXIT\n";
+  prefix:="set -eu\nfull=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; commit=aaaaaaaaaa; ref=origin/main; prod=false; build_only=false; repo=.\nlive() { printf '%s' \"${CASE_PRODUCTION}\"; }\nnow() { echo 0; }\nlap() { :; }\ncompiler() { :; }\ngit() { if [ \"${3-}\" = worktree ] && [ \"${4-}\" = add ]; then mkdir -p \"$7/coax/web\"; ln -s \"$AUDIT_COMPAT_EXEC\" \"$7/coax/web/tool.sh\"; fi; }\ntrap 'if [ -n \"${tree:-}\" ]; then rm -rf \"${tree%/release}\"; fi; if [ -n \"${reports:-}\" ]; then rm -rf \"$reports\"; fi' EXIT\n";
   program:[32768]u8;writer:[1]Jo;jo_start(writer[..],program[..]);jo_put(writer[..],prefix);jo_put(writer[..],text[first..<last]);jo_put(writer[..],"\n");if writer[0].bad {return 2;}
   values:=[2]string.["CASE_PRODUCTION=bbbbbbbbbb stamp","CASE_PRODUCTION="];bad:=0;
   for entry,i:values {

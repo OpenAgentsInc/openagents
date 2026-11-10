@@ -47,8 +47,8 @@ EF_FEATURES :: [11] EfFeature.[
     files = "dash"},
   EfFeature.{name = "mounts", title = "mounts", required = false, issue = 0,
     owners = "aethyr/action/mount.coax aethyr/action/ride-pose.coax everglade/mounts.coax",
-    marks = "=Mount =mount Mounted mounted_ mount_up dismount ride_pose rider_ Steed steed_ Horse horse_",
-    files = "mount horse"},
+    marks = "=Mount =mount Mounted mounted_ mount_up dismount =ride_pose rider_ Steed steed_ Horse horse_",
+    files = "mount"},
   EfFeature.{name = "name-plates", title = "name plates", required = true, issue = 13088,
     owners = "aethyr/ui/hud-plates.coax everglade/hud/",
     marks = "E2Plate _plates remote_plate REMOTE_PLATE PLATE_NEAR _plate_seen =Label _labels =labels draw_names np_named name_point name_hidden md_plate nameplate name_plate",
@@ -84,33 +84,42 @@ EF_ZONES :: [3] EfZone.[
     uses = "area-targeting conditions hud dash spell-effects camera"}
 ];
 
-// The burn-down: the zone-local copies that were there when the check landed, one row each as
+// The burn-down: the zone-local copies that were there when the check landed, and the ten that
+// landed on main before the check gated it (#13135), one row each as
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [153] string.[
+EF_KNOWN :: [161] string.[
+  "hud apps/openagents-web/everglade2-bench.coax e2b_hud",
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
+  "hud apps/openagents-web/everglade2-cast.coax e2k_down_hud",
   "hud apps/openagents-web/everglade2-create.coax e2c_hud",
+  "hud apps/openagents-web/everglade2-create.coax e2c_menu_hud",
   "hud apps/openagents-web/everglade2-monsters.coax e2mn_hud",
+  "hud apps/openagents-web/everglade2-npc.coax e2p_hud",
   "class-bars apps/openagents-web/everglade2-net.coax E2nKit",
   "class-bars apps/openagents-web/everglade2-net.coax e2n_kit",
   "hud apps/openagents-web/everglade2.coax e2_quality_hud",
   "hud apps/openagents-web/everglade2.coax e2_light_hud",
+  "hud apps/openagents-web/everglade2.coax e2_hud",
+  "hud apps/openagents-web/everglade2.coax e2_floats_hud",
   "hud apps/openagents-web/charactercreator.coax dev_hud",
   "hud apps/openagents-web/charactercreator.coax combat_hud",
   "bow apps/openagents-web/charactercreator.coax held_weapon",
   "bow apps/openagents-web/charactercreator.coax bow_string",
   "bow apps/openagents-web/charactercreator.coax bow_basis",
   "bow apps/openagents-web/charactercreator.coax bow_matrix",
+  "bow apps/openagents-web/charactercreator.coax bow_string_points",
+  "bow apps/openagents-web/charactercreator.coax bow_matrix_turned",
+  "bow apps/openagents-web/charactercreator.coax bow_matrix_held",
   "hud apps/openagents-web/charactercreator.coax layout",
-  "damage-numbers apps/openagents-web/experimental-combat.coax XC_FLOATS",
-  "damage-numbers apps/openagents-web/experimental-combat.coax XcFloat",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_from",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_int",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_hit_mark",
   "hud apps/openagents-web/experimental-combat.coax xc_slot_box",
   "hud apps/openagents-web/experimental-combat.coax xc_frame_box",
+  "hud apps/openagents-web/experimental-ride.coax lab_ride_hud",
   "damage-numbers apps/openagents-web/fivelab.coax HIT_GROUPS",
   "damage-numbers apps/openagents-web/fivelab.coax HIT_FOLD",
   "damage-numbers apps/openagents-web/fivelab.coax HIT_SHOW",

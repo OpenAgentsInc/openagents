@@ -135,9 +135,12 @@ through `battle.coax` (`rs_dash`, `rs_cunning_dash`) and `fivebar.coax`
 Mounts are arriving from another agent. The spec
 ([mounts-spec.md](../../everglade/docs/mounts-spec.md)) puts the engine in
 `aethyr/action/mount.coax` and `aethyr/action/ride-pose.coax`, and the game
-layer in `everglade/mounts.coax`. No zone has mounts today. The manifest lists
-the feature as not required yet, so a zone may wire it when it lands, and any
-zone-local mount code (`Mount`, `mount_up`, `Horse` and so on) fails the check.
+layer in `everglade/mounts.coax`. Experimental wires them
+(`experimental-horse.coax`, `bd_ride_posed` fivelab-bodies.coax). The manifest
+lists the feature as not required yet, and any zone-local mount code (`Mount`,
+`mount_up`, `Horse`, a zone's own `ride_pose` and so on) fails the check. A
+wrapper of the shared `ride_pose` and a wiring file named for its horse pass
+(#13135).
 
 ### Name plates
 
@@ -196,7 +199,8 @@ and `aethyr/follow.coax`.
 - `EF_ZONES`: each zone's path prefixes, its entry units, and the features it
   declares (`uses`).
 - `EF_KNOWN`: the burn-down, one row a zone-local copy that existed when the
-  check landed (`feature path symbol`).
+  check landed (`feature path symbol`), and the ten that landed on `main`
+  before the check gated it (#13135).
 - `EF_GAPS`: required features a zone doesn't wire yet (`zone feature`).
 
 ## The check
@@ -253,11 +257,11 @@ when v1 wires the shared module or retires.
 
 | Feature | Issue | Copies (II / Experimental / v1) | Gaps |
 | --- | --- | --- | --- |
-| Bow carry and draw | #13079 | 0 / 4 / 0 | Everglade v1 |
+| Bow carry and draw | #13079 | 0 / 7 / 0 | Everglade v1 |
 | Damage numbers | #13080 | 7 / 14 / 24 | Everglade II, Experimental, Everglade v1 |
 | Area targeting | #13081 | 0 / 0 / 10 | |
 | Conditions | #13082 | 0 / 0 / 15 | none |
-| HUD parts | #13083 | 6 / 10 / 24 | none |
+| HUD parts | #13083 | 11 / 11 / 24 | none |
 | Class bars | #13084 | 2 / 1 / 5 | Everglade v1 |
 | Dash | #13085 | 0 / 2 / 0 | none |
 | Name plates | #13088 | 0 / 0 / 14 | Everglade v1 |
@@ -268,9 +272,9 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### Bow carry and draw (#13079)
 
-4 zone-local copies.
+7 zone-local copies.
 
-- Experimental: `held_weapon` charactercreator.coax:409, `bow_string` charactercreator.coax:441, `bow_basis` charactercreator.coax:503, `bow_matrix` charactercreator.coax:520.
+- Experimental: `held_weapon` charactercreator.coax:409, `bow_string` charactercreator.coax:441, `bow_basis` charactercreator.coax:503, `bow_matrix` charactercreator.coax:520, and, landed before the check gated `main` (#13135), `bow_string_points` charactercreator.coax:532, `bow_matrix_turned` charactercreator.coax:660, `bow_matrix_held` charactercreator.coax:692.
 
 ### Damage numbers (#13080)
 
@@ -295,10 +299,10 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### HUD parts (#13083)
 
-40 zone-local copies.
+46 zone-local copies.
 
-- Everglade II: `e2k_hud` everglade2-cast.coax:259, `e2c_hud` everglade2-create.coax:417, `e2gd_hud` everglade2-guard.coax:160, `e2mn_hud` everglade2-monsters.coax:186, `e2_quality_hud` everglade2.coax:785, `e2_light_hud` everglade2.coax:1062.
-- Experimental: `dev_hud` charactercreator.coax:277, `combat_hud` charactercreator.coax:302, `layout` charactercreator.coax:921, `xc_slot_box` experimental-combat.coax:1686, `xc_frame_box` experimental-combat.coax:1992, `layout` fivelab.coax:2427, `draw_panel` fivelab.coax:2802, `draw_player` fivelab.coax:2971, `draw_top` fivelab.coax:3069, `draw_sliders` fivelab.coax:3409.
+- Everglade II: `e2k_hud` everglade2-cast.coax:259, `e2c_hud` everglade2-create.coax:417, `e2mn_hud` everglade2-monsters.coax:186, `e2_quality_hud` everglade2.coax:785, `e2_light_hud` everglade2.coax:1062, and, landed before the check gated `main` (#13135), `e2b_hud` everglade2-bench.coax:203, `e2k_down_hud` everglade2-cast.coax:135, `e2c_menu_hud` everglade2-create.coax:317, `e2p_hud` everglade2-npc.coax:136, `e2_hud` everglade2.coax:1140, `e2_floats_hud` everglade2.coax:1820.
+- Experimental: `lab_ride_hud` experimental-ride.coax:375 (#13135), `dev_hud` charactercreator.coax:277, `combat_hud` charactercreator.coax:302, `layout` charactercreator.coax:921, `xc_slot_box` experimental-combat.coax:1686, `xc_frame_box` experimental-combat.coax:1992, `layout` fivelab.coax:2427, `draw_panel` fivelab.coax:2802, `draw_player` fivelab.coax:2971, `draw_top` fivelab.coax:3069, `draw_sliders` fivelab.coax:3409.
 - Everglade v1: `ega_hud` everglade-access.coax:398, `ega_test_hud` everglade-access.coax:708, `cz_hud` everglade-create.coax:328, `everglade_edit_hud` everglade-edit.coax:348, `ege_hud` everglade-events.coax:553, `forge_hud` everglade-forge.coax:179, `fork_hud` everglade-fork.coax:327, `everglade_guide_hud` everglade-guide.coax:106, `eg_first_hud` everglade-guide.coax:187, `eg_raid_arrival_hud` everglade-guide.coax:245, `everglade-hotbar.coax` (file), `join_hud` everglade-join.coax:311, `pt_draw` everglade-party.coax:222, `eg_quality_hud` everglade-quality.coax:62, `rp_hud_off` everglade-raid-preview.coax:140, `egs_hud` everglade-sound.coax:507, `spells_hud` everglade-spells.coax:2023, `sp_bar` everglade-spells.coax:2254, `sp_bar_desk` everglade-spells.coax:2313, `sp_bar_card` everglade-spells.coax:2348, `st_hud` everglade-storm.coax:549, `everglade_voice_hud` everglade-voice.coax:1032, `watch_hud` everglade-watch.coax:692, `hud` everglade.coax:4084.
 
 ### Class bars (#13084)
