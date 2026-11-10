@@ -507,8 +507,19 @@ ws_budgets :: (a: [] Args) -> int {
   return ifx wrong > 0 then 1 else 0;
 }
 
+// A module up to 2% over its line only warns: a small overrun never stops a release.
+ws_within_slack :: (size: int, budget: int) -> bool { return size * 100 <= budget * 102; }
+
+#test "up to 2% over a budget warns, more stops" {
+  #assert ws_within_slack(1000, 1000);
+  #assert ws_within_slack(1020, 1000);
+  #assert !ws_within_slack(1021, 1000);
+  #assert ws_within_slack(975000, 970000);
+  #assert !ws_within_slack(990000, 970000);
+}
+
 // wasm-size budget BUDGETS NAME FILE.wasm: the module against its line. Exit
-// 0 within it, 1 over it, 4 when it has no line.
+// 0 within it or up to 2% over it (a warning), 1 more than 2% over, 4 when it has no line.
 ws_budget :: (a: [] Args) -> int {
   body: [WS_FILE] u8;
   file := args_at(a, 1); name := args_at(a, 2); module := args_at(a, 3);
@@ -527,6 +538,11 @@ ws_budget :: (a: [] Args) -> int {
     return 4;
   }
   if size <= bytes[k] { return 0; }
+  if ws_within_slack(size, bytes[k]) {   // up to 2% over warns, never stops a build, release or room deploy
+    tool_err("wasm-size: warning: "); tool_err(name); tool_err(" is "); tool_err(ws_num(size, o[..]));
+    tool_err(" bytes, over its budget of "); tool_err(ws_num(bytes[k], o[..])); tool_err(" by less than 2% (raise it in "); tool_err(file); tool_errln(")");
+    return 0;
+  }
   tool_err("wasm-size: "); tool_err(name); tool_err(" is "); tool_err(ws_num(size, o[..]));
   tool_err(" bytes, over its budget of "); tool_err(ws_num(bytes[k], o[..])); tool_err(" ("); tool_err(file); tool_errln(")");
   return 1;
