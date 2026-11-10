@@ -1,7 +1,22 @@
 # Everglade for desktop: Mac, Linux and Windows (spec, draft)
 
 Written 2026-11-10. Status: **proposal.** Nothing in this spec is built
-except the pieces marked **exists today**.
+except the pieces marked **exists today** and the first scene below.
+
+**Built (2026-11-10):** `apps/everglade-desktop/` opens a native Mac window
+on the Workshop's chamber, drawn as lines of light: six pylons round the
+dais, the unfinished golem with the sphere turning in its chest, and the iron
+door. The view circles the dais; a drag turns it and the wheel moves it in and
+out. The scene is `workshop.coax`, compiled to C and drawn with Aethyr's
+strokes (`aethyr/ui/draw.coax`) by a small AppKit and Metal host. It isn't the
+`aethyr-host-v1` realm host of section 3 yet: there is no room, no golem and
+no title screen.
+
+```sh
+apps/everglade-desktop/build.sh --open        # builds, copies to ~/.openagents/everglade/, opens
+coax/bin/coax test --library apps/everglade-desktop/workshop.coax
+build/Everglade.app/Contents/MacOS/Everglade --shot out.png   # one frame offscreen, from apps/everglade-desktop/
+```
 
 Everglade for desktop is a native app that plays Everglade and holds the
 Golemancers' Workshop. The Workshop is a standalone world that runs on your

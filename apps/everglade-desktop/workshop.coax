@@ -1,0 +1,255 @@
+// Everglade for desktop, its first scene (everglade/docs/desktop-app-spec.md section 4.1): the
+// Golemancers' Workshop as a chamber of light. Six pylons stand round a dais, an unfinished golem
+// stands on the dais with a sphere turning in its chest, and the iron door is at the back. The view
+// circles the dais; a drag turns it. Nothing here is a game yet: no room, no golems, no controls.
+// It draws Aethyr's twelve-float strokes (aethyr/ui/draw.coax), which the host's shader lights.
+//   coax/bin/coax test --library apps/everglade-desktop/workshop.coax
+#load "../../aethyr/ui/draw.coax";
+#load "../../aethyr/math.coax";
+
+WS_MAX_VERTICES :: 36000;
+WS_PYLONS :: 6;
+WS_PYLON_RING :: 4.6;     // metres from the dais to each pylon
+WS_PYLON_HEIGHT :: 3.4;
+WS_DOOR_AT :: 7.2;        // metres from the dais to the iron door
+WS_NEAR :: 0.2;           // nothing closer than this to the eye is drawn
+WS_TURN :: 0.07;          // radians a second the view circles at rest
+
+Workshop :: struct {
+  time: f32; yaw: f32 = 0.6; pitch: f32 = 0.24; back: f32 = 12.5;
+  held: bool; px: f32; py: f32;
+}
+
+// The eye for one frame, and the picture it projects onto.
+WsView :: struct { ex: f32; ey: f32; ez: f32; sy: f32; cy: f32; sp: f32; cp: f32; cx: f32; cz: f32; focal: f32; d: f32; }
+WsPoint :: struct { x: f32; y: f32; z: f32; }
+WsInk :: struct { red: f32; green: f32; blue: f32; light: f32; }
+
+WS_BLUE :: WsInk.{red = 0.22, green = 0.52, blue = 1.0, light = 0.9};
+WS_PALE :: WsInk.{red = 0.55, green = 0.72, blue = 1.0, light = 0.55};
+WS_DIM :: WsInk.{red = 0.16, green = 0.26, blue = 0.5, light = 0.5};
+WS_EMBER :: WsInk.{red = 1.0, green = 0.5, blue = 0.16, light = 0.8};
+WS_IRON :: WsInk.{red = 0.5, green = 0.47, blue = 0.44, light = 0.6};
+
+ws_view :: (s: Workshop, width: f32, height: f32, d: f32) -> WsView {
+  v: WsView;
+  v.sy = math_sin(s.yaw); v.cy = math_cos(s.yaw); v.sp = math_sin(s.pitch); v.cp = math_cos(s.pitch);
+  // The eye looks at a point 1.3 m above the dais from `back` metres away.
+  v.ex = v.sy * v.cp * s.back; v.ey = 1.3 + v.sp * s.back; v.ez = v.cy * v.cp * s.back;
+  v.cx = width * 0.5 * d; v.cz = height * 0.54 * d; v.focal = height * 1.15 * d; v.d = d;
+  return v;
+}
+
+// A world point in the eye's own space: x right, y up, z ahead.
+ws_eye :: (v: WsView, p: WsPoint) -> WsPoint {
+  x := p.x - v.ex; y := p.y - v.ey; z := p.z - v.ez;
+  rx := x * v.cy - z * v.sy;
+  fz := -(x * v.sy + z * v.cy);
+  return WsPoint.{x = rx, y = y * v.cp + fz * v.sp, z = fz * v.cp - y * v.sp};
+}
+
+// One lit line between two world points, cut at the near plane. The vertex count after it.
+ws_line :: (out: []f32, at: int, v: WsView, a: WsPoint, b: WsPoint, k: WsInk) -> int {
+  p := ws_eye(v, a); q := ws_eye(v, b);
+  if p.z < WS_NEAR && q.z < WS_NEAR { return at; }
+  if p.z < WS_NEAR { t := (WS_NEAR - p.z) / (q.z - p.z); p = WsPoint.{x = p.x + (q.x - p.x) * t, y = p.y + (q.y - p.y) * t, z = WS_NEAR}; }
+  if q.z < WS_NEAR { t := (WS_NEAR - q.z) / (p.z - q.z); q = WsPoint.{x = q.x + (p.x - q.x) * t, y = q.y + (p.y - q.y) * t, z = WS_NEAR}; }
+  ax := v.cx + p.x / p.z * v.focal; ay := v.cz - p.y / p.z * v.focal;
+  bx := v.cx + q.x / q.z * v.focal; by := v.cz - q.y / q.z * v.focal;
+  // Far lines are fainter, so the chamber has depth.
+  far := (p.z + q.z) * 0.5; fade := 9.0 / (9.0 + far); light := k.light * (0.35 + 1.3 * fade);
+  if lit(out, at, ax, ay, bx, by, 0.55 * v.d, light, 2.6 * v.d, k.red, k.green, k.blue, 0) { return at + 6; }
+  return at;
+}
+
+// A flat ring round the y axis, as `parts` straight lines.
+ws_ring :: (out: []f32, at: int, v: WsView, radius: f32, y: f32, parts: int, k: WsInk) -> int {
+  n := at; step := 6.2831853 / cast(f32) parts;
+  for i: 0..<parts {
+    a := step * cast(f32) i; b := step * cast(f32) (i + 1);
+    n = ws_line(out, n, v, WsPoint.{x = math_cos(a) * radius, y = y, z = math_sin(a) * radius},
+                WsPoint.{x = math_cos(b) * radius, y = y, z = math_sin(b) * radius}, k);
+  }
+  return n;
+}
+
+// An upright box turned to `turn` radians: its twelve edges.
+ws_box :: (out: []f32, at: int, v: WsView, cx: f32, cz: f32, low: f32, high: f32, half_w: f32, half_d: f32, turn: f32, k: WsInk) -> int {
+  n := at; s := math_sin(turn); c := math_cos(turn);
+  sx := [4] f32.[-1, 1, 1, -1]; sz := [4] f32.[-1, -1, 1, 1];
+  px: [4] f32; pz: [4] f32;
+  for i: 0..<4 { lx := sx[i] * half_w; lz := sz[i] * half_d; px[i] = cx + lx * c - lz * s; pz[i] = cz + lx * s + lz * c; }
+  for i: 0..<4 {
+    j := (i + 1) % 4;
+    n = ws_line(out, n, v, WsPoint.{x = px[i], y = low, z = pz[i]}, WsPoint.{x = px[j], y = low, z = pz[j]}, k);
+    n = ws_line(out, n, v, WsPoint.{x = px[i], y = high, z = pz[i]}, WsPoint.{x = px[j], y = high, z = pz[j]}, k);
+    n = ws_line(out, n, v, WsPoint.{x = px[i], y = low, z = pz[i]}, WsPoint.{x = px[i], y = high, z = pz[i]}, k);
+  }
+  return n;
+}
+
+// Where pylon `i` stands: the six are a sixth of a turn apart, the first to the right of the door.
+ws_pylon_at :: (i: int) -> WsPoint {
+  a := 0.5235988 + 1.0471976 * cast(f32) i;
+  return WsPoint.{x = math_cos(a) * WS_PYLON_RING, y = 0, z = math_sin(a) * WS_PYLON_RING};
+}
+
+ws_pylons :: (out: []f32, at: int, v: WsView, time: f32) -> int {
+  n := at;
+  for i: 0..<WS_PYLONS {
+    p := ws_pylon_at(i); turn := 0.5235988 + 1.0471976 * cast(f32) i;
+    n = ws_box(out, n, v, p.x, p.z, 0, WS_PYLON_HEIGHT, 0.34, 0.34, turn, WS_PALE);
+    n = ws_box(out, n, v, p.x, p.z, 0, 0.3, 0.52, 0.52, turn, WS_DIM);
+    // Each pylon's light breathes a little out of step with the next.
+    beat := 0.6 + 0.4 * math_sin(time * 1.1 + cast(f32) i * 1.3);
+    glow := WsInk.{red = WS_BLUE.red, green = WS_BLUE.green, blue = WS_BLUE.blue, light = WS_BLUE.light * beat};
+    for r: 0..<3 {
+      y := WS_PYLON_HEIGHT + 0.25 + 0.22 * cast(f32) r;
+      n = ws_line(out, n, v, WsPoint.{x = p.x - 0.2, y = y, z = p.z}, WsPoint.{x = p.x + 0.2, y = y, z = p.z}, glow);
+      n = ws_line(out, n, v, WsPoint.{x = p.x, y = y, z = p.z - 0.2}, WsPoint.{x = p.x, y = y, z = p.z + 0.2}, glow);
+    }
+    // A thread of light from each pylon's crown to the sphere in the golem's chest.
+    thread := WsInk.{red = WS_BLUE.red, green = WS_BLUE.green, blue = WS_BLUE.blue, light = 0.16 * beat};
+    n = ws_line(out, n, v, WsPoint.{x = p.x, y = WS_PYLON_HEIGHT + 0.25, z = p.z}, WsPoint.{x = 0, y = 1.75, z = 0}, thread);
+  }
+  return n;
+}
+
+ws_floor :: (out: []f32, at: int, v: WsView) -> int {
+  n := at;
+  n = ws_ring(out, n, v, 2.9, 0, 48, WS_DIM);
+  n = ws_ring(out, n, v, WS_PYLON_RING, 0, 60, WS_DIM);
+  n = ws_ring(out, n, v, 6.4, 0, 72, WS_DIM);
+  for i: 0..<12 {
+    a := 0.5235988 * cast(f32) i;
+    n = ws_line(out, n, v, WsPoint.{x = math_cos(a) * 1.9, y = 0, z = math_sin(a) * 1.9},
+                WsPoint.{x = math_cos(a) * 6.4, y = 0, z = math_sin(a) * 6.4}, WS_DIM);
+  }
+  // The dais: two steps.
+  n = ws_ring(out, n, v, 1.9, 0, 36, WS_PALE);
+  n = ws_ring(out, n, v, 1.9, 0.18, 36, WS_PALE);
+  n = ws_ring(out, n, v, 1.45, 0.18, 30, WS_PALE);
+  n = ws_ring(out, n, v, 1.45, 0.36, 30, WS_BLUE);
+  return n;
+}
+
+// The unfinished golem: a lattice of a body with no hands or face yet, and the sphere in its chest.
+ws_golem :: (out: []f32, at: int, v: WsView, time: f32) -> int {
+  n := at; base: f32 = 0.36;
+  n = ws_box(out, n, v, -0.24, 0, base, base + 0.95, 0.13, 0.15, 0, WS_PALE);
+  n = ws_box(out, n, v, 0.24, 0, base, base + 0.95, 0.13, 0.15, 0, WS_PALE);
+  n = ws_box(out, n, v, 0, 0, base + 0.95, base + 1.95, 0.46, 0.26, 0, WS_PALE);
+  n = ws_box(out, n, v, 0, 0, base + 2.05, base + 2.45, 0.2, 0.2, 0.7853982, WS_PALE);
+  n = ws_box(out, n, v, -0.66, 0, base + 1.0, base + 1.9, 0.11, 0.13, 0, WS_DIM);
+  n = ws_line(out, n, v, WsPoint.{x = 0.46, y = base + 1.9, z = 0}, WsPoint.{x = 0.7, y = base + 1.55, z = 0}, WS_DIM);
+  // The sphere: three rings turning about its centre.
+  cy: f32 = base + 1.45; spin: f32 = time * 0.8;
+  for ring: 0..<3 {
+    tilt := spin + 2.0943951 * cast(f32) ring; st := math_sin(tilt); ct := math_cos(tilt);
+    for i: 0..<20 {
+      a := 0.31415927 * cast(f32) i; b := 0.31415927 * cast(f32) (i + 1);
+      ax := math_cos(a) * 0.17; ay := math_sin(a) * 0.17; bx := math_cos(b) * 0.17; by := math_sin(b) * 0.17;
+      n = ws_line(out, n, v, WsPoint.{x = ax * ct, y = cy + ay, z = ax * st}, WsPoint.{x = bx * ct, y = cy + by, z = bx * st}, WS_EMBER);
+    }
+  }
+  return n;
+}
+
+// The iron door at the back, shut: its frame, its bars and the marks across it.
+ws_door :: (out: []f32, at: int, v: WsView) -> int {
+  n := at; z: f32 = -WS_DOOR_AT;
+  n = ws_box(out, n, v, 0, z, 0, 4.2, 1.7, 0.18, 0, WS_IRON);
+  for i: 0..<5 {
+    x := -1.36 + 0.68 * cast(f32) i;
+    n = ws_line(out, n, v, WsPoint.{x = x, y = 0, z = z + 0.18}, WsPoint.{x = x, y = 4.2, z = z + 0.18}, WS_IRON);
+  }
+  n = ws_line(out, n, v, WsPoint.{x = -1.7, y = 2.1, z = z + 0.18}, WsPoint.{x = 1.7, y = 2.1, z = z + 0.18}, WS_IRON);
+  n = ws_line(out, n, v, WsPoint.{x = -0.9, y = 3.3, z = z + 0.19}, WsPoint.{x = -0.2, y = 1.2, z = z + 0.19}, WS_EMBER);
+  n = ws_line(out, n, v, WsPoint.{x = -0.5, y = 3.4, z = z + 0.19}, WsPoint.{x = 0.25, y = 1.3, z = z + 0.19}, WS_EMBER);
+  n = ws_line(out, n, v, WsPoint.{x = -0.1, y = 3.3, z = z + 0.19}, WsPoint.{x = 0.6, y = 1.4, z = z + 0.19}, WS_EMBER);
+  return n;
+}
+
+ws_frame :: (s: []Workshop, out: []f32, width: f32, height: f32, d: f32, dt: f32) -> int {
+  step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
+  s[0].time += step;
+  if !s[0].held { s[0].yaw += WS_TURN * step; }
+  if !(width > 0) || !(height > 0) || !(d > 0) { return 0; }
+  v := ws_view(s[0], width, height, d);
+  n := 0;
+  n = ws_floor(out, n, v);
+  n = ws_door(out, n, v);
+  n = ws_pylons(out, n, v, s[0].time);
+  n = ws_golem(out, n, v, s[0].time);
+  pen := HdPen.{d = d, cyan = true, top = 0, bottom = height, sans = false};
+  n = hd_text(out, n, "EVERGLADE", 36, 64, 26, pen, 0);
+  n = hd_text(out, n, "The Golemancers' Workshop", 36, 92, 15, pen, 1);
+  return n;
+}
+
+// The host's face.
+ws_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+ws_max_vertices :: () -> int #export_c #effects(all) { return WS_MAX_VERTICES; }
+ws_state_size :: () -> int #export_c #effects(all) { return size_of(Workshop); }
+ws_state_init :: (s: []Workshop) #export_c #effects(all) { s[0] = Workshop.{}; }
+ws_draw :: (s: []Workshop, out: []f32, width: f32, height: f32, d: f32, dt: f32) -> int #export_c #effects(all) {
+  return ws_frame(s, out, width, height, d, dt);
+}
+// A drag turns the view: phase 0 down, 1 moved, 2 up. Points, from the top left.
+ws_pointer :: (s: []Workshop, x: f32, y: f32, phase: int) #export_c #effects(all) {
+  if phase == 0 { s[0].held = true; }
+  if phase == 1 && s[0].held {
+    s[0].yaw -= (x - s[0].px) * 0.008;
+    pitch := s[0].pitch + (y - s[0].py) * 0.005;
+    if pitch < 0.05 { pitch = 0.05; } if pitch > 1.2 { pitch = 1.2; }
+    s[0].pitch = pitch;
+  }
+  if phase == 2 { s[0].held = false; }
+  s[0].px = x; s[0].py = y;
+}
+// The wheel moves the eye in and out, between 6 and 20 metres.
+ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
+  back := s[0].back + dy * 0.02;
+  if back < 6 { back = 6; } if back > 20 { back = 20; }
+  s[0].back = back;
+}
+
+#test "the workshop has six pylons a sixth of a turn apart, all the same distance from the dais" {
+  for i: 0..<WS_PYLONS {
+    p := ws_pylon_at(i); r := sqrt(p.x * p.x + p.z * p.z);
+    #assert r > WS_PYLON_RING - 0.001 && r < WS_PYLON_RING + 0.001 && p.y == 0;
+    q := ws_pylon_at((i + 1) % WS_PYLONS); gap := sqrt((p.x - q.x) * (p.x - q.x) + (p.z - q.z) * (p.z - q.z));
+    #assert gap > WS_PYLON_RING - 0.01 && gap < WS_PYLON_RING + 0.01;
+  }
+}
+#test "a frame draws whole lines inside its buffer, and a short buffer is never overrun" {
+  s: [1] Workshop; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32;
+  n := ws_frame(s[..], out[..], 1280, 800, 2, 0.016);
+  #assert n > 600 && n <= WS_MAX_VERTICES && n % 6 == 0;
+  small: [125] f32; small[120] = 911;
+  m := ws_frame(s[..], small[0..<120], 1280, 800, 2, 0.016);
+  #assert m <= 10 && small[120] == 911;
+  #assert ws_frame(s[..], out[..], 0, 800, 2, 0.016) == 0;
+}
+#test "the view circles at rest, holds still while dragged, and a drag turns it" {
+  s: [1] Workshop; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; yaw := s[0].yaw;
+  n := ws_frame(s[..], out[..], 1280, 800, 2, 0.05);
+  #assert s[0].yaw > yaw;
+  ws_pointer(s[..], 100, 100, 0); yaw = s[0].yaw;
+  n = ws_frame(s[..], out[..], 1280, 800, 2, 0.05);
+  #assert s[0].yaw == yaw;
+  ws_pointer(s[..], 160, 100, 1);
+  #assert s[0].yaw < yaw;
+  ws_pointer(s[..], 160, 100, 2);
+  #assert !s[0].held;
+  ws_wheel(s[..], 100000); #assert s[0].back == 20;
+  ws_wheel(s[..], -100000); #assert s[0].back == 6;
+}
+#test "a line wholly behind the eye is not drawn, and one that crosses the near plane is cut" {
+  s: [1] Workshop; v := ws_view(s[0], 1280, 800, 1); out: [144] f32;
+  behind := WsPoint.{x = v.ex * 2, y = v.ey, z = v.ez * 2};
+  further := WsPoint.{x = v.ex * 3, y = v.ey, z = v.ez * 3};
+  #assert ws_line(out[..], 0, v, behind, further, WS_BLUE) == 0;
+  #assert ws_line(out[..], 0, v, behind, WsPoint.{x = 0, y = 1, z = 0}, WS_BLUE) == 6;
+  for i: 0..<72 { #assert out[i] == out[i]; }
+}
