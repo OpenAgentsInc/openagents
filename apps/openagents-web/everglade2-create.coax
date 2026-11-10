@@ -457,7 +457,7 @@ E2C_TITLE_CAP :: 17.0; E2C_WORD_CAP :: 9.5; E2C_CAPTION_CAP :: 7.5; E2C_VALUE_CA
 
 e2c_title_cap :: (s: [] E2, k: f32) -> f32 {
   c := s[0].cz[0];
-  if !c.mobile { return 22 * k; }
+  if !c.mobile { fit := (c.card.x1 - 14 * k - 30 * k) / cc.face_width("Character Create", 1, cc.HUD_FACE_TITLE); return ifx fit < 22 * k then fit else 22 * k; }
   room := c.boxes[15].x0 - 10 * k - (c.card.x0 + f32(E2C_PADDING) * k);
   fit := room / cc.face_width("Character Create", 1, cc.HUD_FACE_TITLE);
   return ifx fit < f32(E2C_TITLE_CAP) * k then fit else f32(E2C_TITLE_CAP) * k;
@@ -470,9 +470,12 @@ e2c_text_w :: (t: string, cap: f32) -> f32 {
 }
 e2c_box :: (x0: f32, y0: f32, x1: f32, y1: f32) -> cc.Box { return cc.Box.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}; }
 e2c_tab_of :: (s: [] E2) -> int { t := s[0].cz[0].tab; return ifx t < 0 then 0 else ifx t >= E2C_TABS then E2C_TABS - 1 else t; }
+// A phone's layout, also a tablet's (under 1100 x 700 CSS px, which may be touched, so each control is a
+// finger's size, #13089): the desktop's column has no room for 44 px rows.
+e2c_small :: (w: f32, h: f32, k: f32) -> bool { return w < 840 * k || h < 760 * k || cc.hud_touch_size(w, h, k, false); }
 e2c_layout :: (s: [] E2, w: f32, h: f32, k: f32) {
   c := s[0].cz[..];
-  c[0].mobile = w < 840 * k || h < 760 * k;
+  c[0].mobile = e2c_small(w, h, k);
   for i: 0..<E2C_BOXES { c[0].boxes[i] = cc.Box.{}; }
   c[0].card = cc.Box.{}; c[0].sheet = cc.Box.{};
   if c[0].mobile {
@@ -711,7 +714,8 @@ e2c_hud :: (s: [] E2, out: [] f32) -> int {
     }
     if i >= E2C_TAB_BOX { on := i - E2C_TAB_BOX == e2c_tab_of(s); n = e2c_word_ink(ui, box_at[i], "", out, n, E2C_TAB_NAMES[i - E2C_TAB_BOX], b, word, ifx on then t.title else t.text_dim, f, k); continue; }
     lab := ifx i == 13 then "RESET" else ifx i == 14 then "SURPRISE ME" else ifx i == 15 then (ifx cr.pan_mode then (ifx phone then "PAN" else "DRAG: PAN") else (ifx phone then "ROTATE" else "DRAG: ROTATE")) else ifx i == 16 then e2c_save_word(s) else "USE IN EVERGLADE";
-    n = e2c_word_ink(ui, box_at[i], "", out, n, lab, b, word, ifx i == 17 || (i == 15 && cr.pan_mode) then t.title else t.text, f, k);
+    wcap := word; lw := cc.face_width(lab, wcap, cc.HUD_FACE_TITLE); room := b.x1 - b.x0 - 12 * k; if lw > room && lw > 0 { wcap = wcap * room / lw; }
+    n = e2c_word_ink(ui, box_at[i], "", out, n, lab, b, wcap, ifx i == 17 || (i == 15 && cr.pan_mode) then t.title else t.text, f, k);
   }
   if phone && e2c_tab_of(s) == E2C_TAB_CLASS { n = e2c_class_card(s, l[..], out, n, f, true, sheet_p); }
   if !phone { n = e2c_say(ui, cc.UIT_NONE, "HINT", out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5, h - 77 * k, 8 * k, cc.HUD_TEXT_LABEL, f, k, true); }
@@ -1127,7 +1131,7 @@ e2c_words :: (s: [] E2, out: [] f32, at: int, cl: int, x: f32, y0: f32, wide: f3
 // either side of you in the sky, from under the top band to over the wardrobe's.
 e2c_pane :: (s: [] E2, w: f32, h: f32, k: f32) -> E2cPane {
   cl := e2c_class_of(s); out: [1] f32;
-  if w < 840 * k || h < 760 * k { return E2cPane.{}; }   // a phone: its CLASS tab says the class (e2c_class_card)
+  if e2c_small(w, h, k) { return E2cPane.{}; }   // a phone: its CLASS tab says the class (e2c_class_card)
   pw := f32(E2C_PANE_W) * k; pad := f32(E2C_PAD) * k;
   tall := e2c_words(s, out[..], 0, cl, 0, 0, pw - 2 * pad, k, 0, 1, false).h + 2 * pad;
   return E2cPane.{a = cc.Box.{x0 = w - 16 * k - pw, y0 = 20 * k, x1 = w - 16 * k, y1 = 20 * k + e2c_clamp(tall, 200 * k, h - 40 * k)}};
@@ -1174,7 +1178,7 @@ e2c_media :: (s: [] E2, kind: string, name: string, tail: string, x0: f32, y0: f
     s[0].creator[0].klass = cl;
     // a desktop: at the right, clear of the middle and of the left glass, inside the screen
     for size: 0..<2 {
-      w := ifx size == 0 then 1440.0f32 else 900.0f32; h := ifx size == 0 then 900.0f32 else 780.0f32;
+      w := ifx size == 0 then 1440.0f32 else 1200.0f32; h := ifx size == 0 then 900.0f32 else 780.0f32;
       p := e2c_pane(s[..], w, h, 1);
       #assert p.a.x0 > w * 0.5 + 60 && p.a.x0 > 350 && p.a.x1 <= w - 16 && p.a.y0 >= 20 && p.a.y1 <= h - 20 && p.b.x1 == 0;
     }

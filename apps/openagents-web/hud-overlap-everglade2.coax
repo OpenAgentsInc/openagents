@@ -13,60 +13,7 @@ HUD_GATE :: true;   // a NEW finding in the player's HUD fails the run
 // The findings already reported (docs/verification/hud-overlap-2026-11-09.md), each under the issue
 // that fixes it: their keys, as printed, with the screen and state each first shows on. When a fix
 // lands, the run says "gone" for its keys; take them out here.
-H2_KNOWN :: [57] string.[
-  // #13089, Character Create
-  "small create/button \"BODY\"",   // 1024x768 studio
-  "small create/button \"BODY <\"",   // 1024x768 studio
-  "small create/button \"BODY >\"",   // 1024x768 studio
-  "small create/button \"CLOTHES\"",   // 1024x768 studio
-  "small create/button \"CLOTHES <\"",   // 1024x768 studio
-  "small create/button \"CLOTHES >\"",   // 1024x768 studio
-  "small create/button \"HOOD\"",   // 1024x768 studio
-  "small create/button \"HOOD <\"",   // 1024x768 studio
-  "small create/button \"HOOD >\"",   // 1024x768 studio
-  "small create/button \"COLORWAY\"",   // 1024x768 studio
-  "small create/button \"COLORWAY <\"",   // 1024x768 studio
-  "small create/button \"COLORWAY >\"",   // 1024x768 studio
-  "small create/button \"CLOTH DYE\"",   // 1024x768 studio
-  "small create/button \"CLOTH DYE <\"",   // 1024x768 studio
-  "small create/button \"CLOTH DYE >\"",   // 1024x768 studio
-  "small create/button \"SKIN TONE\"",   // 1024x768 studio
-  "small create/button \"SKIN TONE <\"",   // 1024x768 studio
-  "small create/button \"SKIN TONE >\"",   // 1024x768 studio
-  "small create/button \"HAIR STYLE\"",   // 1024x768 studio
-  "small create/button \"HAIR STYLE <\"",   // 1024x768 studio
-  "small create/button \"HAIR STYLE >\"",   // 1024x768 studio
-  "small create/button \"HAIR COLOR\"",   // 1024x768 studio
-  "small create/button \"HAIR COLOR <\"",   // 1024x768 studio
-  "small create/button \"HAIR COLOR >\"",   // 1024x768 studio
-  "small create/button \"BEARD\"",   // 1024x768 studio
-  "small create/button \"BEARD <\"",   // 1024x768 studio
-  "small create/button \"BEARD >\"",   // 1024x768 studio
-  "small create/button \"ANIMATION\"",   // 1024x768 studio
-  "small create/button \"ANIMATION <\"",   // 1024x768 studio
-  "small create/button \"ANIMATION >\"",   // 1024x768 studio
-  "small create/button \"MODULAR PART\"",   // 1024x768 studio
-  "small create/button \"MODULAR PART <\"",   // 1024x768 studio
-  "small create/button \"MODULAR PART >\"",   // 1024x768 studio
-  "small create/button \"WEAR PART\"",   // 1024x768 studio
-  "small create/button \"WEAR PART <\"",   // 1024x768 studio
-  "small create/button \"WEAR PART >\"",   // 1024x768 studio
-  "small create/button \"EYE COLOR\"",   // 1024x768 studio
-  "small create/button \"EYE COLOR <\"",   // 1024x768 studio
-  "small create/button \"EYE COLOR >\"",   // 1024x768 studio
-  "small create/button \"RESET\"",   // 1024x768 studio
-  "small create/button \"SURPRISE ME\"",   // 1024x768 studio
-  "small create/button \"SAVE\"",   // 1024x768 studio
-  "small create/button \"USE\"",   // 1024x768 studio
-  "small create/button \"CLASS\"",   // 1024x768 studio
-  "small create/button \"CLASS <\"",   // 1024x768 studio
-  "small create/button \"CLASS >\"",   // 1024x768 studio
-  "small create/button \"NAME\"",   // 1024x768 studio
-  "small create/button \"LEVEL\"",   // 1024x768 studio
-  "small create/button \"LEVEL <\"",   // 1024x768 studio
-  "small create/button \"LEVEL >\"",   // 1024x768 studio
-  "overflow create/text \"title\" | create/panel \"card\"",   // 1024x768 studio
-  "overflow create/text \"USE IN EVERGLADE\" | create/button \"USE\"",   // 1024x768 studio
+H2_KNOWN :: [5] string.[
   // #13090, the GFX and frame-rate plaque
   "overlap bar/panel \"emblem\" | gfx/button \"GFX\"",   // 390x844 world
   "overlap side bar/panel \"side tray\" | gfx/button \"GFX\"",   // 390x844 world, rest controls
