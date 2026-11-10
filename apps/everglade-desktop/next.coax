@@ -35,19 +35,20 @@
 #load "text.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/agent/tier.coax";
 
 NP_MODEL :: "claude-haiku-5-5";
 NP_TOOL :: "mcp__next__choose";
-NP_SYSTEM :: "You help one developer pick the next GitHub issue to work on in their repository. You are given the open issues, recent commits, what they asked for recently, and sometimes what they say now. What they say now outweighs what they asked recently, which outweighs the commits. Prefer an issue that unblocks others, then one that continues the work in hand.\n\nSuggest exactly one issue. Write: line 1, the issue as `#NUMBER title`; then at most three short lines on why it is next, naming the signal you used; then the line `Do it?`. Plain ASCII, no Markdown, lines under 60 characters.\n\nWhen the developer answers, work out what they mean. If it is a decision, call the tool `choose` first, before you write anything: action `start` when they agree to work on an issue (the one you suggested or one they name), `another` when they turn it down or want a different one, `none` when they want to stop. Every decision is recorded through the tool, so never skip it. After `another`, suggest the next best issue in the same form, using what they said. After `start` or `none`, say in one line what the tool told you. Only if their answer is purely a question, answer it briefly without the tool.";
+NP_SYSTEM :: "You help one developer pick the next GitHub issue to work on in their repository. You are given the open issues, recent commits, what they asked for recently, and sometimes what they say now. What they say now outweighs what they asked recently, which outweighs the commits. Prefer an issue that unblocks others, then one that continues the work in hand.\n\nSuggest exactly one issue. Write: line 1, the issue as `#NUMBER title`; then at most three short lines on why it is next, naming the signal you used; then the line `Do it?`. Plain ASCII, no Markdown, lines under 60 characters.\n\nWhen the developer answers, work out what they mean. If it is a decision, call the tool `choose` first, before you write anything: action `start` when they agree to work on an issue (the one you suggested or one they name), `another` when they turn it down or want a different one, `none` when they want to stop. Every decision is recorded through the tool, so never skip it. After `another`, suggest the next best issue in the same form, using what they said. After `start` or `none`, say in one line what the tool told you. Only if their answer is purely a question, answer it briefly without the tool.\n\nWith every `choose` call, fill the rubric below for the issue it names: the scores decide which model works it, from Haiku for housekeeping to Fable for the hardest. For `none`, give zeros. Never start an issue you rated not delegable; pick another.";
 NP_ASK :: "\nSuggest the one issue to work on next.";
 NP_ASK_AUTO :: "\nAutopilot is on: nobody will answer you. Pick the one issue to work on next and call `choose` with action `start` now, before any text; then say in two short lines which issue and why. If no open issue is worth starting, call `choose` with action `none`.";
 NP_GO :: "Yes. Start it.";      // what Autopilot answers when the picker asks anyway
 NP_WORKED :: 32;                // issues one run remembers it worked
 NP_BUDGET_E6 :: 100000000;      // millionths of a dollar one Autopilot run may spend before it stops going round
-NP_CHOOSE_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"start\",\"another\",\"none\"]},\"issue\":{\"type\":\"integer\",\"description\":\"The issue number the action is about; 0 for none.\"},\"reason\":{\"type\":\"string\",\"description\":\"One line: what the developer said that decided it.\"}},\"required\":[\"action\",\"issue\",\"reason\"],\"additionalProperties\":false}";
+NP_CHOOSE_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\"string\",\"enum\":[\"start\",\"another\",\"none\"]},\"issue\":{\"type\":\"integer\",\"description\":\"The issue number the action is about; 0 for none.\"},\"reason\":{\"type\":\"string\",\"description\":\"One line: what the developer said that decided it.\"},\"scope\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"ambiguity\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"risk\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"depth\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"delegable\":{\"type\":\"boolean\"}},\"required\":[\"action\",\"issue\",\"reason\",\"scope\",\"ambiguity\",\"risk\",\"depth\",\"delegable\"],\"additionalProperties\":false}";
 NP_CHOOSE_ABOUT :: "Record what the developer decided about the suggested issue: start it, ask for another, or none.";
 NP_STARTING :: "Recorded. A coding agent now starts on it in a fresh worktree, in this chat. Tell the developer that in one line.";
-NP_CODER_MODEL :: "claude-opus-5-5";
+NP_CODER_MODEL :: "claude-opus-5-5";   // when the picker gave no usable scores
 NP_CODER_RULES :: "You are working one GitHub issue for OpenAgentsInc/openagents in a fresh git worktree, detached at origin/main. Do what the issue asks and nothing else: no other issues, no cleanup it did not ask for. Read AGENTS.md and coax/start-here.md first. Run coax/build.sh once to get the compiler; it installs the published build in seconds. Run heavy builds and large test units through coax/remote/remote.sh, not on this Mac. Do not use subagents. Do not touch the main checkout or any other worktree. When the work is done and the checks for the units you touched pass: commit only your files, run git fetch origin and git rebase origin/main, push with git push origin HEAD:main, then close the issue with gh issue close NUMBER --comment naming the commit. If you cannot finish, stop, say exactly what blocks you, and leave the issue open. Keep your messages short: what you found and what you did. Write plain text, no Markdown.";
 NP_CODER_REHEARSAL :: "This is a rehearsal of working one GitHub issue for OpenAgentsInc/openagents. You may only read: you have Read, Grep and Glob. Do not try to edit, commit, push or close anything. Read the issue, find the files it touches in at most eight tool calls, and say in under ten short lines of plain text, no Markdown, what you would change. Then stop.";
 NP_INSTALL :: "Claude Code is not installed. Install it with:\ncurl -fsSL https://claude.ai/install.sh | bash";
@@ -91,6 +92,8 @@ NextPanel :: struct {
   coding: bool;                           // the open session is the coding agent's, not the picker's
   rehearsal: bool;
   model: [64] u8; model_n: int;           // the open session's model
+  scores: TierScores; tier: int;          // the picker's rubric for the issue to start, and the tier it gives (tier.coax)
+  system: [8192] u8;                      // the picker's system prompt: NP_SYSTEM and the rubric
   cwd: [2048] u8; cwd_n: int;             // the coding agent's worktree
   after_tool: bool;                       // the last line written was a tool call's
   star: bool;                             // np_say: an asterisk is held, in case the next is its pair
@@ -218,7 +221,8 @@ np_context :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c
   cl_init(s[0].q[..], s[0].line[..], s[0].arena[..], s[0].out[..]);
   o: [1] ClOptions;
   o[0].model = NP_MODEL;
-  o[0].system_prompt = NP_SYSTEM;
+  sn := np_put(s[0].system[..], 0, NP_SYSTEM); sn = np_put(s[0].system[..], sn, "\n\n"); sn = np_put(s[0].system[..], sn, TIER_RUBRIC);
+  o[0].system_prompt = cast(string) s[0].system[0..<sn];
   o[0].persist_session = false;
   o[0].setting_sources_set = true;          // no settings files: no project rules, hooks or other servers
   o[0].include_partial_messages = true;     // the text streams
@@ -248,7 +252,8 @@ np_work :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #e
   s[0].cwd_n = np_put(s[0].cwd[..], 0, text[0..<eol]);
   mode: [32] u8; s[0].rehearsal = cl_getenv("EVERGLADE_CODER_MODE", mode[..]) == "rehearsal";
   named: [64] u8; model := cl_getenv("EVERGLADE_CODER_MODEL", named[..]);
-  s[0].model_n = np_put(s[0].model[..], 0, ifx model.count > 0 then model else NP_CODER_MODEL);
+  tiered := tier_model(s[0].tier);
+  s[0].model_n = np_put(s[0].model[..], 0, ifx model.count > 0 then model else ifx tiered.count > 0 then tiered else NP_CODER_MODEL);
   // The first message: the one job, where it is, and the issue.
   n := np_put(s[0].context[..], 0, ifx s[0].rehearsal then "Rehearse GitHub issue #" else "Complete GitHub issue #");
   n = np_put_int(s[0].context[..], n, s[0].chosen);
@@ -346,6 +351,14 @@ np_decide :: (s: []NextPanel, action: string, issue: int, reason: string) {
   jo_key(o[..], "reason"); jo_str(o[..], ifx reason.count > 400 then reason[0..<400] else reason);
   jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].q[..]));
   jo_key(o[..], "coding_flow"); jo_str(o[..], ifx action == "start" then "started" else "none");
+  if action == "start" {
+    jo_key(o[..], "tier"); jo_str(o[..], tier_name(s[0].tier));
+    jo_key(o[..], "scores"); jo_obj(o[..]);
+    jo_key(o[..], "scope"); jo_int(o[..], s[0].scores.scope); jo_key(o[..], "ambiguity"); jo_int(o[..], s[0].scores.ambiguity);
+    jo_key(o[..], "risk"); jo_int(o[..], s[0].scores.risk); jo_key(o[..], "depth"); jo_int(o[..], s[0].scores.depth);
+    jo_key(o[..], "delegable"); jo_bool(o[..], s[0].scores.delegable);
+    jo_end(o[..]);
+  }
   jo_end(o[..]);
   s[0].decision_n = ifx o[0].bad then 0 else o[0].n;
 }
@@ -356,11 +369,19 @@ np_choose :: (s: []NextPanel, arguments: string) {
   action := cl_str(ar, arguments, "action"); issue := cl_int(arguments, "issue"); number := ifx issue.ok then issue.value else 0;
   held: [16] u8; an := np_put(held[..], 0, action); act := cast(string) held[0..<an];   // the arena is reused by the next read
   reason := cl_str(ar, arguments, "reason");
+  delegable := cl_bool(arguments, "delegable");
+  s[0].scores = TierScores.{scope = cl_int(arguments, "scope").value, ambiguity = cl_int(arguments, "ambiguity").value, risk = cl_int(arguments, "risk").value, depth = cl_int(arguments, "depth").value, delegable = !delegable.ok || delegable.value};
+  s[0].tier = tier_of(s[0].scores);
+  if act == "start" && number > 0 && s[0].tier == TIER_NONE {
+    cl_tool_text(s[0].q[..], "You rated that issue not delegable, so nothing was started. Pick another issue, or call choose with none.", true);
+    return;
+  }
   np_decide(s, act, number, reason);
   np_gap(s);
   if act == "start" && number > 0 {
     s[0].chosen = number;
-    np_append(s, "> start #"); b: [24] u8; n := np_put_int(b[..], 0, number); np_append(s, cast(string) b[0..<n]); np_append(s, "\n");
+    np_append(s, "> start #"); b: [24] u8; n := np_put_int(b[..], 0, number); np_append(s, cast(string) b[0..<n]);
+    np_append(s, " on "); np_append(s, tier_name(s[0].tier)); np_append(s, "\n");
     np_append(s, "\n");
     s[0].pending_work = true;
     cl_tool_text(s[0].q[..], NP_STARTING, false);
@@ -663,6 +684,19 @@ np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
   #assert cast(string) b[0..<np_put_cost(b[..], 0, 1234567)] == "$1.2346";
   #assert cast(string) b[0..<np_put_cost(b[..], 0, 0)] == "$0.0000";
   #assert cast(string) b[0..<np_put_int(b[..], 0, 13135)] == "13135" && cast(string) b[0..<np_put_int(b[..], 0, 0)] == "0";
+}
+#test "next issue: the picker rates the issue it starts, and the rating picks the coding model" {
+  for word: [5] string.["\"scope\"", "\"ambiguity\"", "\"risk\"", "\"depth\"", "\"delegable\""] {
+    found := false;
+    for i: 0..<NP_CHOOSE_SCHEMA.count - word.count + 1 { if NP_CHOOSE_SCHEMA[i..<i + word.count] == word { found = true; } }
+    #assert found;
+  }
+  s: [1] NextPanel; np_init(s[..]);
+  np_choose(s[..], "{\"action\":\"start\",\"issue\":13116,\"reason\":\"auto\",\"scope\":0,\"ambiguity\":0,\"risk\":1,\"depth\":0,\"delegable\":true}");
+  #assert s[0].chosen == 13116 && s[0].pending_work && s[0].tier == TIER_HAIKU && tier_model(s[0].tier) == "claude-haiku-5-5";
+  t: [1] NextPanel; np_init(t[..]);
+  np_choose(t[..], "{\"action\":\"start\",\"issue\":13128,\"reason\":\"auto\",\"scope\":3,\"ambiguity\":2,\"risk\":2,\"depth\":3,\"delegable\":false}");
+  #assert t[0].chosen == 0 && !t[0].pending_work;   // a tracker is never started
 }
 #test "next issue: the coding agent defaults to Opus 5.5 and is told the one job, pushing and closing" {
   #assert NP_CODER_MODEL == "claude-opus-5-5";

@@ -1,0 +1,127 @@
+// tiers.coax: rate every open issue with Golemancy's rubric and say which model would work each.
+//
+//   coax/web/tool.sh apps/everglade-desktop/next-context.coax context > /tmp/ctx.txt
+//   coax/web/tool.sh apps/everglade-desktop/tiers.coax /tmp/ctx.txt [--model claude-haiku-5-5]
+//
+// The input is the picker's own message (next-context context): the open issues, the
+// commits and your recent prompts. One Claude agent (Haiku 5.5 by default, the picker's
+// model, on your Claude Code login) reads it and calls `rate` once per issue with the
+// rubric's four scores (tier.coax). The thresholds in tier.coax then pick the model.
+// It prints one row per issue, oldest first, and writes its turn to the AI call ledger
+// (~/.openagents/usage/ai-calls.jsonl) with purpose issue.tier.
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/agent/tier.coax";
+
+TS_MODEL :: "claude-haiku-5-5";
+TS_MAX :: 200;
+TS_SYSTEM :: "You rate GitHub issues for an automated coding loop. For every open issue in the message, call the tool `rate` exactly once, with its number, the rubric's scores and one short line on why. Rate what the issue asks for, not how important it is. Call the tool for all of them, several calls at a time, then reply with the single word: done.";
+TS_SCHEMA_HEAD :: "{\"type\":\"object\",\"properties\":{\"issue\":{\"type\":\"integer\"},";
+TS_SCHEMA_TAIL :: ",\"why\":{\"type\":\"string\",\"description\":\"One short line.\"}},\"required\":[\"issue\",";
+TS_SCHEMA_END :: ",\"why\"],\"additionalProperties\":false}";
+
+Rated :: struct { issue: int; t: TierScores; tier: int; why: [160] u8; why_n: int; }
+
+ts_put :: (out: []u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: tiers CONTEXT_FILE [--model MODEL]"); return 2; }
+  ctx: [400000] u8;
+  n := fs_read(args_at(a[..], 0), ctx[..]);
+  if n <= 0 { tool_errln("tiers: the context file could not be read"); return 1; }
+  model := args_value(a[..], "--model", TS_MODEL);
+
+  schema: [2048] u8; k := 0;
+  k = ts_put(schema[..], k, TS_SCHEMA_HEAD); k = ts_put(schema[..], k, TIER_PROPERTIES);
+  k = ts_put(schema[..], k, TS_SCHEMA_TAIL); k = ts_put(schema[..], k, TIER_REQUIRED); k = ts_put(schema[..], k, TS_SCHEMA_END);
+  system: [4096] u8; sn := ts_put(system[..], 0, TS_SYSTEM); sn = ts_put(system[..], sn, "\n\n"); sn = ts_put(system[..], sn, TIER_RUBRIC);
+
+  line: [CL_LINE_MAX] u8; arena: [262144] u8; out: [262144] u8; scratch: [196608] u8;
+  q: [1] ClQuery; cl_init(q[..], line[..], arena[..], out[..]);
+  o: [1] ClOptions;
+  o[0].model = model;
+  o[0].system_prompt = cast(string) system[0..<sn];
+  o[0].persist_session = false;
+  o[0].setting_sources_set = true;
+  o[0].tools_set = true;
+  o[0].max_turns = 40;
+  server := cl_add_server(o[..], "tier", "1");
+  tool := cl_add_server_tool(o[..], server, "rate", "Record the rubric's scores for one issue.", cast(string) schema[0..<k]);
+  cl_add_allowed(o[..], "mcp__tier__rate");
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+  q[0].options = o[0];
+  p: [1] ClProcess;
+  problem := cl_start(q[..], p[..], cast(string) ctx[0..<n], false, scratch[..]);
+  if problem.count > 0 { tool_err("tiers: "); tool_errln(problem); return 1; }
+  defer cl_close(p[..]);
+
+  rated: [TS_MAX] Rated; rn := 0;
+  cost := 0.0; ms := 0; turns := 0; ok := false;
+  usage: ClUsage;
+  while true {
+    ev := cl_next(q[..], p[..]);
+    if ev.kind == ClEventKind.end { break; }
+    if ev.kind == ClEventKind.failed { tool_err("tiers: "); tool_errln(cl_error(q[..])); return 1; }
+    if ev.kind == ClEventKind.tool_call {
+      g := ev.arguments;
+      issue := cl_int(g, "issue").value;
+      r: Rated; r.issue = issue;
+      r.t = TierScores.{scope = cl_int(g, "scope").value, ambiguity = cl_int(g, "ambiguity").value, risk = cl_int(g, "risk").value, depth = cl_int(g, "depth").value, delegable = cl_bool(g, "delegable").value};
+      r.tier = tier_of(r.t);
+      why := cl_str(q[0].ar[..], g, "why"); r.why_n = ts_put(r.why[..], 0, why);
+      // A second rating of one issue replaces the first.
+      at := -1; for i: 0..<rn { if rated[i].issue == issue { at = i; } }
+      if at >= 0 { rated[at] = r; } else if rn < TS_MAX { rated[rn] = r; rn += 1; }
+      cl_tool_text(q[..], tier_name(r.tier), false);
+      continue;
+    }
+    if ev.kind != ClEventKind.message { continue; }
+    m := ev.message;
+    if m.kind == ClKind.result {
+      res := cl_result_of(q[0].ar[..], m);
+      cost = res.total_cost_usd; ms = res.duration_ms; turns = res.num_turns; usage = res.usage;
+      ok = res.kind == ClResultKind.success && !res.is_error;
+    }
+  }
+
+  // Oldest first.
+  for i: 1..<rn { j := i; while j > 0 && rated[j - 1].issue > rated[j].issue { tmp := rated[j]; rated[j] = rated[j - 1]; rated[j - 1] = tmp; j -= 1; } }
+  print("issue\tmodel\tscope\tambiguity\trisk\tdepth\tsum\twhy\n");
+  counts: [5] int;
+  for i: 0..<rn {
+    r := rated[i]; counts[r.tier] += 1;
+    print("%\t%\t%\t%\t%\t%\t%\t%\n", r.issue, tier_name(r.tier), r.t.scope, r.t.ambiguity, r.t.risk, r.t.depth,
+      r.t.scope + r.t.ambiguity + r.t.risk + r.t.depth, cast(string) r.why[0..<r.why_n]);
+  }
+  print("\nrated % issues: Haiku %, Sonnet %, Opus %, Fable %, none %\n", rn, counts[1], counts[2], counts[3], counts[4], counts[0]);
+  print("rater % cost $% in % ms, % turns\n", model, cost, ms, turns);
+
+  // The ledger.
+  home_b: [1024] u8; home := cl_getenv("HOME", home_b[..]);
+  if home.count > 0 {
+    jb: [2048] u8; j: [1] Jo; jo_start(j[..], jb[..]);
+    jo_obj(j[..]);
+    jo_key(j[..], "schema"); jo_str(j[..], "openagents.ai-call.v1");
+    jo_key(j[..], "app"); jo_str(j[..], "everglade-desktop");
+    jo_key(j[..], "purpose"); jo_str(j[..], "issue.tier");
+    jo_key(j[..], "harness"); jo_str(j[..], "claude-code");
+    jo_key(j[..], "model"); jo_str(j[..], model);
+    jo_key(j[..], "input_tokens"); jo_int(j[..], usage.input_tokens);
+    jo_key(j[..], "cache_read_input_tokens"); jo_int(j[..], usage.cache_read_input_tokens.value);
+    jo_key(j[..], "cache_creation_input_tokens"); jo_int(j[..], usage.cache_creation_input_tokens.value);
+    jo_key(j[..], "output_tokens"); jo_int(j[..], usage.output_tokens);
+    jo_key(j[..], "cost_usd_e6"); jo_int(j[..], int(cost * 1000000.0));
+    jo_key(j[..], "duration_ms"); jo_int(j[..], ms);
+    jo_key(j[..], "model_turns"); jo_int(j[..], turns);
+    jo_key(j[..], "issues_rated"); jo_int(j[..], rn);
+    jo_end(j[..]);
+    pb: [2048] u8; path := fs_join(home, ".openagents/usage/ai-calls.jsonl", pb[..]);
+    if !j[0].bad { jo_put(j[..], "\n"); wrote := fs_append(path, jo_text(j[..])); if !wrote { tool_errln("tiers: the ledger line was not written"); } }
+  }
+  return ifx ok && rn > 0 then 0 else 1;
+}

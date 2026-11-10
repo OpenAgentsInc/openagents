@@ -1,0 +1,103 @@
+// tier.coax: which model works an issue. Golemancy's thresholds.
+//
+// A model reads the issue and fills a typed rubric: four scores, 0 to 3, each
+// with a written anchor, and whether the issue is something an agent should
+// work at all. The scores are its judgment; the thresholds below are ours and
+// fixed. tier_of turns the scores into a tier, and tier_model names the model:
+//
+//   Haiku   housekeeping: a stated, mechanical change in one place
+//   Sonnet  ordinary work: a clear bug or feature in one app or unit
+//   Opus    advanced work: shared engine code, design choices, or real risk
+//   Fable   the hardest: compiler, GPU and engine internals with open design,
+//           or broad work that is deep, open and risky at once
+//
+// The words of an issue are never matched against keywords here (the
+// workspace's semantic routing rule): the model's typed scores are the input.
+// Shared by every app that hands an issue to a coding agent: the Everglade desktop app's
+// Autopilot (apps/everglade-desktop/next.coax) and the batch report (apps/everglade-desktop/tiers.coax).
+// It has no game or app dependencies, so Coder, Foreman or any tool can load it.
+
+TIER_NONE :: 0; TIER_HAIKU :: 1; TIER_SONNET :: 2; TIER_OPUS :: 3; TIER_FABLE :: 4;
+
+// The thresholds, on the sum of the four scores (0 to 12).
+TIER_SONNET_AT :: 3;   // a sum of 3 or more is past housekeeping
+TIER_OPUS_AT :: 6;
+TIER_FABLE_AT :: 9;
+TIER_HAIKU_RISK :: 1;  // Haiku only when the risk is 1 or less, whatever the sum
+
+TIER_HAIKU_MODEL :: "claude-haiku-5-5";
+TIER_SONNET_MODEL :: "claude-sonnet-5-5";
+TIER_OPUS_MODEL :: "claude-opus-5-5";
+TIER_FABLE_MODEL :: "claude-fable-5-2";
+
+TierScores :: struct { scope: int; ambiguity: int; risk: int; depth: int; delegable: bool; }
+
+tier_clamp :: (v: int) -> int { return ifx v < 0 then 0 else ifx v > 3 then 3 else v; }
+
+// The rule, in order:
+//   not delegable                           -> none (a tracker, a parked or owner-only issue)
+//   depth 3 and ambiguity 2 or more         -> Fable
+//   sum 9 or more                           -> Fable
+//   sum 6 or more, risk 3, or depth 3       -> Opus
+//   sum 3 or more, or risk 2 or more        -> Sonnet
+//   otherwise                               -> Haiku
+tier_of :: (t: TierScores) -> int {
+  if !t.delegable { return TIER_NONE; }
+  scope := tier_clamp(t.scope); ambiguity := tier_clamp(t.ambiguity); risk := tier_clamp(t.risk); depth := tier_clamp(t.depth);
+  sum := scope + ambiguity + risk + depth;
+  if depth == 3 && ambiguity >= 2 { return TIER_FABLE; }
+  if sum >= TIER_FABLE_AT { return TIER_FABLE; }
+  if sum >= TIER_OPUS_AT || risk == 3 || depth == 3 { return TIER_OPUS; }
+  if sum >= TIER_SONNET_AT || risk > TIER_HAIKU_RISK { return TIER_SONNET; }
+  return TIER_HAIKU;
+}
+
+tier_model :: (tier: int) -> string {
+  if tier == TIER_HAIKU { return TIER_HAIKU_MODEL; }
+  if tier == TIER_SONNET { return TIER_SONNET_MODEL; }
+  if tier == TIER_OPUS { return TIER_OPUS_MODEL; }
+  if tier == TIER_FABLE { return TIER_FABLE_MODEL; }
+  return "";
+}
+
+tier_name :: (tier: int) -> string {
+  if tier == TIER_HAIKU { return "Haiku"; }
+  if tier == TIER_SONNET { return "Sonnet"; }
+  if tier == TIER_OPUS { return "Opus"; }
+  if tier == TIER_FABLE { return "Fable"; }
+  return "none";
+}
+
+// The rubric the model is given. Each score has an anchor for every value, so two
+// readings of one issue land on the same number.
+TIER_RUBRIC :: "Rate the issue on four scores, 0 to 3, using these anchors.\nscope: 0 one file, a few lines; 1 a few files in one unit; 2 several units, or a new module; 3 many units or every host.\nambiguity: 0 the issue states the exact change; 1 a clear goal with small choices; 2 needs design choices nobody has made; 3 open-ended, needs research or a spec first.\nrisk: 0 docs, copy, tests or numbers in a table; 1 one app's feature, easy to revert; 2 shared engine, library or build code that other work depends on; 3 production deploys, money, auth or secrets, the release pipeline, or data loss.\ndepth: 0 mechanical (rename, config, a budget, a label); 1 ordinary app or UI code; 2 engine systems (rendering, networking, physics, game rules, build caching); 3 the compiler, GPU shaders or kernels, concurrency, or verification.\ndelegable: false when an agent should not work it now: a tracking issue whose work is in other issues, an issue that says it is parked or waiting on the owner, or one that needs a person on a device. Otherwise true.";
+
+// The scores as JSON-schema properties, shared by the picker's `choose` and the batch's `rate`.
+TIER_PROPERTIES :: "\"scope\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"ambiguity\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"risk\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"depth\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3},\"delegable\":{\"type\":\"boolean\"}";
+TIER_REQUIRED :: "\"scope\",\"ambiguity\",\"risk\",\"depth\",\"delegable\"";
+
+#test "tiers: housekeeping goes to Haiku, ordinary work to Sonnet" {
+  #assert tier_of(TierScores.{scope = 0, ambiguity = 0, risk = 0, depth = 0, delegable = true}) == TIER_HAIKU;
+  #assert tier_of(TierScores.{scope = 1, ambiguity = 0, risk = 1, depth = 0, delegable = true}) == TIER_HAIKU;
+  #assert tier_of(TierScores.{scope = 1, ambiguity = 1, risk = 0, depth = 1, delegable = true}) == TIER_SONNET;
+  // A small change to shared code is past housekeeping, however small.
+  #assert tier_of(TierScores.{scope = 0, ambiguity = 0, risk = 2, depth = 0, delegable = true}) == TIER_SONNET;
+}
+#test "tiers: risk 3 or depth 3 is at least Opus; deep and open is Fable" {
+  #assert tier_of(TierScores.{scope = 0, ambiguity = 0, risk = 3, depth = 0, delegable = true}) == TIER_OPUS;
+  #assert tier_of(TierScores.{scope = 0, ambiguity = 0, risk = 0, depth = 3, delegable = true}) == TIER_OPUS;
+  #assert tier_of(TierScores.{scope = 2, ambiguity = 1, risk = 2, depth = 1, delegable = true}) == TIER_OPUS;
+  #assert tier_of(TierScores.{scope = 1, ambiguity = 2, risk = 1, depth = 3, delegable = true}) == TIER_FABLE;
+  #assert tier_of(TierScores.{scope = 3, ambiguity = 2, risk = 2, depth = 2, delegable = true}) == TIER_FABLE;
+}
+#test "tiers: a tracker or parked issue goes to no one; scores out of range are clamped" {
+  #assert tier_of(TierScores.{scope = 3, ambiguity = 3, risk = 3, depth = 3, delegable = false}) == TIER_NONE;
+  #assert tier_model(TIER_NONE) == "" && tier_name(TIER_NONE) == "none";
+  #assert tier_of(TierScores.{scope = -4, ambiguity = 0, risk = 0, depth = 0, delegable = true}) == TIER_HAIKU;
+  #assert tier_of(TierScores.{scope = 9, ambiguity = 9, risk = 9, depth = 9, delegable = true}) == TIER_FABLE;
+}
+#test "tiers: every tier names a model, in order of capability" {
+  #assert tier_model(TIER_HAIKU) == "claude-haiku-5-5" && tier_model(TIER_SONNET) == "claude-sonnet-5-5";
+  #assert tier_model(TIER_OPUS) == "claude-opus-5-5" && tier_model(TIER_FABLE) == "claude-fable-5-2";
+  #assert TIER_SONNET_AT < TIER_OPUS_AT && TIER_OPUS_AT < TIER_FABLE_AT && TIER_FABLE_AT <= 12;
+}

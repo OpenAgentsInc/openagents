@@ -178,11 +178,49 @@ and its session ends. Then:
 
 | Setting | Value |
 | --- | --- |
-| Model | Claude Opus 5.5 (`claude-opus-5-5`). `EVERGLADE_CODER_MODEL` overrides it |
+| Model | The tier the picker's rubric gives (below): Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.2. Opus 5.5 when no scores came. `EVERGLADE_CODER_MODEL` overrides it |
 | Tools | Bash, Read, Edit, Write, Grep, Glob. Nothing else: no Task or Agent (no subagents), no web |
 | Permissions | Edits and the shell run without asking, inside the worktree it starts in |
 | Rules it loads | The repository's own (`AGENTS.md`, `CLAUDE.md`). Not your user settings |
 | Its one job | That issue and nothing else. When its checks pass: commit its files, rebase on `origin/main`, push `HEAD:main`, close the issue with a comment naming the commit. If it can't finish: stop, say what blocks it, leave the issue open |
+
+### Which model works the issue (tiers)
+
+With every `choose` call the picker also fills a rubric for the issue it
+names: four scores from 0 to 3, each with written anchors, and whether an agent
+should work it at all. The scores are the model's judgment. The thresholds are
+fixed code in `coax/lib/agent/tier.coax`, shared so that any app handing an
+issue to an agent (Coder, Foreman, a tool) can use the same rule.
+
+| Score | 0 | 1 | 2 | 3 |
+| --- | --- | --- | --- | --- |
+| scope | one file, a few lines | a few files in one unit | several units, or a new module | many units or every host |
+| ambiguity | the exact change is stated | a clear goal, small choices | design choices nobody has made | open-ended: research or a spec first |
+| risk | docs, copy, tests, table numbers | one app's feature, easy to revert | shared engine, library or build code | production, money, auth, the release pipeline, data loss |
+| depth | mechanical | ordinary app or UI code | engine systems | the compiler, GPU shaders, concurrency, verification |
+
+The rule, first match wins:
+
+| Condition | Model |
+| --- | --- |
+| Not delegable (a tracker, parked, owner-only, needs a device) | none: the picker is told to pick another |
+| depth 3 and ambiguity 2 or more, or a sum of 9 or more | Fable 5.2 |
+| a sum of 6 or more, risk 3, or depth 3 | Opus 5.5 |
+| a sum of 3 or more, or risk 2 or more | Sonnet 5.5 |
+| otherwise (housekeeping) | Haiku 5.5 |
+
+The chat shows `> start #N on Sonnet`, and the decision line carries `tier`
+and `scores`. To rate every open issue at once (one Haiku session, about
+$0.01 for 27 issues):
+
+```sh
+coax/web/tool.sh apps/everglade-desktop/next-context.coax context > ctx.txt
+coax/web/tool.sh apps/everglade-desktop/tiers.coax ctx.txt [--model claude-sonnet-5-5]
+```
+
+Measured 2026-11-10 on 27 open issues: two Haiku passes gave the same model
+for 26; Sonnet as the rater agreed with Haiku on 21, each difference one step
+across a threshold. No open issue was housekeeping, so none went to Haiku.
 
 **Why always a worktree.** The rule was: a fresh worktree unless that forces
 an expensive rebuild. It doesn't. A worktree carries no build output, and
