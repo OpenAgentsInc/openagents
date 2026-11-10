@@ -1,0 +1,40 @@
+// The Golemancers' Workshop, where things are: one set of numbers for what stops you
+// (apps/everglade-desktop/workshop.coax), what is built (temple.coax) and how it is lit
+// (gpu/temple.coax). Metres, +y up; the door is toward -z and you start toward +z.
+//   coax/bin/coax test --library everglade/workshop/layout.coax
+#module "everglade.workshop.layout";
+
+WK_PYLONS :: 6;               // the inner columns, a sixth of a turn apart, the first toward +x
+WK_PYLON_RING :: 4.6;         // metres from the middle to each
+WK_PYLON_HEIGHT :: 3.4;
+WK_PYLON_BASE :: 0.52;        // half the width of a pylon's square foot
+WK_PYLON_FOOT :: 0.3;         // the foot's height
+WK_PYLON_RADIUS :: 0.3;       // the shaft's radius at its foot
+WK_CRYSTAL_UP :: 0.62;        // a pylon's crystal floats this far over its top
+WK_WALL :: 7.2;               // the balustrade's line, and the door's face
+WK_REACH :: 6.85;             // how far from the middle your feet may go: the wall, less your body
+WK_COLUMNS :: 16;             // the outer colonnade, the door in the gap between two
+WK_COLONNADE :: 7.75;         // metres from the middle to each outer column
+WK_COLUMN_RADIUS :: 0.4;
+WK_COLUMN_HEIGHT :: 6.0;
+WK_RAIL_HEIGHT :: 0.94;       // the balustrade's top
+WK_FLOOR :: 8.7;              // the floor's edge
+WK_DOOR_HALF :: 1.7;          // half the door's width
+WK_DOOR_HEIGHT :: 4.2;
+WK_DOOR_DEPTH :: 0.36;        // how far the door stands in from the wall's line
+WK_DOOR_ANGLE :: -1.5707963;  // the door's place round the temple: toward -z
+WK_CORE_Y :: 1.5;             // the sphere in the golem's chest
+WK_CORE_Z :: 0.2;
+// The golem's box, which stops you: x from -0.77 to 0.7, z 0.26 each way, 2.45 tall.
+WK_GOLEM_LEFT :: -0.77; WK_GOLEM_RIGHT :: 0.7; WK_GOLEM_DEEP :: 0.26; WK_GOLEM_HEIGHT :: 2.45;
+WK_DISPLAYS :: 4;             // hung in the gaps between pylons: two by the door, two nearer you
+WK_DISPLAY_AT :: [4] f32.[3.6651914, 5.7595865, 2.6179939, 0.5235988];   // 7, 11, 5 and 1 twelfths of a turn
+WK_DISPLAY_Y :: 2.0;
+
+#test "the workshop's ring holds: pylons inside your reach, the wall outside it, the colonnade past the wall" {
+  #assert WK_PYLON_RING + WK_PYLON_BASE < WK_REACH && WK_REACH < WK_WALL && WK_WALL < WK_COLONNADE - WK_COLUMN_RADIUS && WK_COLONNADE + WK_COLUMN_RADIUS < WK_FLOOR;
+  #assert WK_PYLON_HEIGHT < WK_COLUMN_HEIGHT && WK_DOOR_HEIGHT < WK_COLUMN_HEIGHT && WK_GOLEM_HEIGHT < WK_PYLON_HEIGHT;
+  // The door's gap: no outer column stands in front of it.
+  step := 6.2831853 / cast(f32) WK_COLUMNS;
+  for i: 0..<WK_COLUMNS { a := step * 0.5 + step * cast(f32) i; x := cos(a) * WK_COLONNADE; z := sin(a) * WK_COLONNADE; #assert !(z < 0 && abs(x) < WK_DOOR_HALF - WK_COLUMN_RADIUS); }
+}

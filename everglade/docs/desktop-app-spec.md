@@ -15,14 +15,26 @@ cloud with a far city's lamps in its gaps.
 - **The technology.** Lines of light inlaid in the polished floor, threads of
   light from each crystal to the golem's sphere, and four holographic
   displays hung between the pylons.
-- **How it is drawn.** `Temple.metal` marches a distance field in one pass:
-  moonlight with soft shadows, the lamps, the crystals, one mirror bounce off
-  the floor, and the sky. It is drawn at half the window's size and laid over
-  the full picture with its depth, so your model stands behind and in front of
-  things correctly and stays sharp. About 9 ms a frame at 2640 by 1760 on
-  this Mac.
-- **One layout.** `workshop.coax` says where things are and what stops you;
-  `Temple.metal` draws the same numbers. Keep the two in step.
+- **Built from parts.** Every piece is a reusable part from Aethyr's
+  architecture kit ([`aethyr/arch/`](../../aethyr/arch/README.md)), written in
+  Coax: a fluted Doric column, a plinth, a turned baluster, rails, an
+  entablature, a brazier and its flame, a band of light, and the shapes under
+  them (boxes, lathes, rings, rounded solids). A part is built once and stood
+  many times: one column mesh serves all sixteen outer columns.
+  [`everglade/workshop/temple.coax`](../workshop/temple.coax) puts the temple
+  together from them; the golem is a statue made from the same shapes.
+- **Drawn by Aethyr shaders.** [`everglade/workshop/gpu/temple.coax`](../workshop/gpu/temple.coax)
+  is the sky, the scene and the lights, written in Coax and emitted for Metal
+  by `coax metal` at build time. The same source can be emitted for WebGPU and
+  Vulkan. The host uploads the mesh, the records and the draws once and issues
+  instanced draws; it decides nothing about what is where or how it looks.
+- **A real mirror.** What stands on the floor is drawn once upside down into
+  an image, and the polished floor reads that image. Column shadows on the
+  floor are worked out in the shader for each column.
+- **Full resolution.** About 7 ms a frame at 2640 by 1760 on this Mac.
+- **One layout.** [`everglade/workshop/layout.coax`](../workshop/layout.coax)
+  holds where things are. What stops you (`workshop.coax`), what is built and
+  how it is lit all load it, so they can't drift apart.
 - **The camera stays inside.** The follow camera's eye is drawn in to the
   balustrade's line, so it never looks in from outside.
 
@@ -52,8 +64,7 @@ the app).
 - **Clips.** Idle, walk, run and the jump's loop, with the web's fade between
   them. The gaits advance by the ground you cover.
 - **Light.** Your model has its own simple light (blue from above, the
-  sphere's ember, a fill from the camera), not the temple's: it casts no
-  shadow but a soft dark under its feet, and it is not mirrored in the floor.
+  sphere's ember, a fill from the camera), not the temple's.
 
 **Next issue.** A button at the top right asks one Claude agent which issue
 to work on next, and you answer in your own words. It is specified in
@@ -99,10 +110,14 @@ What it isn't yet:
 
 - **Your own character.** You wear the default. The look you made in
   Character Create is saved by the web, and the app has no log in to fetch it.
-- **The `aethyr-host-v1` realm host** of section 3. A small AppKit and Metal
-  host runs `workshop.coax` (compiled to C), draws the temple with a shader
-  of its own, reads the pack and draws the model. The temple is not an Aethyr
-  render plan, so no other realm or host can draw it yet.
+- **The `aethyr-host-v1` realm host** of section 3. The temple's parts and
+  shaders are Aethyr's and portable, but a small AppKit and Metal host still
+  binds and draws them by hand. The temple is not yet a profile in Aethyr's
+  render catalog (`aethyr/render/catalog.coax`), so the web and the Vulkan
+  host can't draw it until it is one.
+- **Your model in Aethyr's own shader.** The model is still drawn by
+  `Model.metal`, a hand copy of the web's vertex math. It casts no shadow and
+  is not in the floor's mirror.
 - **A room, a golem to wake, or a title screen.**
 
 Two things to know when you change it:

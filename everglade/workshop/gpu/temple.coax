@@ -1,0 +1,384 @@
+// The Golemancers' Workshop, lit: Aethyr shaders, written in Coax and emitted for each GPU
+// (`coax metal`, `coax wgsl`, `coax spirv`), that draw what temple.coax builds.
+//
+//   temple_sky_vs / temple_sky_fs      the night behind everything: stars, the moon, a sea of cloud
+//                                      below with a far city's lamps in its gaps
+//   temple_scene_vs / temple_scene_fs  the parts: a vertex pulled from the mesh, stood by its record,
+//                                      lit by the moon, the fires, the crystals and the golem's sphere
+//   temple_light_vs / temple_light_fs  what is only light, added on top: the displays, the threads
+//
+// The floor is polished: the standing parts are drawn once upside down into an image (u[3] = 1,
+// colour left linear), and the floor's fragments read that image where they are on the screen.
+//
+// The uniform block is floats: the picture's size 0, the clock 2, the mirror flag 3, the eye 4, its
+// right 8, up 12 and forward 16 with the focal length in pixels at 19, and where you stand 20.
+//   coax/bin/coax test --library everglade/workshop/gpu/temple.coax
+#load "../../../verse/gpu/shader.coax";
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../aethyr/render/noise.coax";
+#load "../layout.coax";
+
+TempleObj :: struct {a:V4; b:V4; c:V4; d:V4;}
+TempleS :: struct {pos:V4; world:V3; normal:V3; uv:V2; info:V4 #flat;}   // info: material, the record's value, its phase
+
+TEMPLE_TAU :: 6.2831853f32;
+temple_moon :: ()->V3 {return normalize3(v3(-0.36f32,0.42f32,-0.83f32));}
+temple_cyan :: ()->V3 {return v3(0.42f32,0.82f32,1.0f32);}
+temple_amber :: ()->V3 {return v3(1.0f32,0.58f32,0.24f32);}
+temple_core :: ()->V3 {return v3(0.0f32,WK_CORE_Y,WK_CORE_Z);}
+
+// Smooth noise on Aethyr's lattice hash (aethyr/render/noise.coax): the hash gives one value a
+// whole-number cell, and these blend the cells' corners.
+temple_cell :: (x:f32)->u32 {return cast,trunc(u32)(cast(s32)floor(fmin(fmax(x,0.0f32-33554432.0f32),33554430.0f32)));}
+temple_hash2 :: (x:f32,y:f32)->f32 {return render_noise_unit(render_noise_mix2(temple_cell(x),temple_cell(y)));}
+temple_hash3 :: (x:f32,y:f32,z:f32)->f32 {return render_noise_unit(render_noise_mix3(temple_cell(x),temple_cell(y),temple_cell(z)));}
+temple_noise2 :: (x:f32,y:f32)->f32 {
+  ix:f32=floor(x); iy:f32=floor(y); fx:f32=x-ix; fy:f32=y-iy;
+  sx:f32=fx*fx*(3.0f32-2.0f32*fx); sy:f32=fy*fy*(3.0f32-2.0f32*fy);
+  return mix(mix(temple_hash2(ix,iy),temple_hash2(ix+1.0f32,iy),sx),mix(temple_hash2(ix,iy+1.0f32),temple_hash2(ix+1.0f32,iy+1.0f32),sx),sy);
+}
+temple_noise3 :: (x:f32,y:f32,z:f32)->f32 {
+  ix:f32=floor(x); iy:f32=floor(y); iz:f32=floor(z); fx:f32=x-ix; fy:f32=y-iy; fz:f32=z-iz;
+  sx:f32=fx*fx*(3.0f32-2.0f32*fx); sy:f32=fy*fy*(3.0f32-2.0f32*fy); sz:f32=fz*fz*(3.0f32-2.0f32*fz);
+  a:f32=mix(mix(temple_hash3(ix,iy,iz),temple_hash3(ix+1.0f32,iy,iz),sx),mix(temple_hash3(ix,iy+1.0f32,iz),temple_hash3(ix+1.0f32,iy+1.0f32,iz),sx),sy);
+  b:f32=mix(mix(temple_hash3(ix,iy,iz+1.0f32),temple_hash3(ix+1.0f32,iy,iz+1.0f32),sx),mix(temple_hash3(ix,iy+1.0f32,iz+1.0f32),temple_hash3(ix+1.0f32,iy+1.0f32,iz+1.0f32),sx),sy);
+  return mix(a,b,sz);
+}
+temple_fbm2 :: (x:f32,y:f32)->f32 {
+  v:f32=0.0f32; a:f32=0.5f32; px:f32=x; py:f32=y;
+  {
+    k:s32=0;
+    while k<5 {
+      v+=a*temple_noise2(px,py);
+      px=px*2.03f32+1.7f32; py=py*2.03f32+9.2f32; a*=0.5f32;
+      k+=1;
+    }
+  }
+  return v;
+}
+// The point turned into the one of n equal sectors round the y axis that holds it.
+temple_sector :: (p:V3,n:f32,offset:f32)->V3 {
+  s:f32=TEMPLE_TAU/n;
+  a:f32=wg_atan2(p.z,p.x)-offset;
+  a=a-s*floor(a/s+0.5f32);
+  r:f32=sqrt(p.x*p.x+p.z*p.z);
+  return v3(cos(a)*r,p.y,sin(a)*r);
+}
+// A world point on the screen: the eye's own right, up and forward, then a perspective divide.
+temple_project :: (w:V3,u:[]f32)->V4 {
+  e:V3=sub3(w,wg_at3(u,4));
+  x:f32=dot3(e,wg_at3(u,8)); y:f32=dot3(e,wg_at3(u,12)); z:f32=dot3(e,wg_at3(u,16));
+  near:f32=0.1f32; far:f32=200.0f32;
+  return v4(x*u[19]*2.0f32/u[0],y*u[19]*2.0f32/u[1],far*(z-near)/(far-near),z);
+}
+// The ray through a pixel.
+temple_ray :: (pos:V4,u:[]f32)->V3 {
+  return normalize3(add3(scale3(wg_at3(u,16),u[19]),add3(scale3(wg_at3(u,8),pos.x-u[0]*0.5f32),scale3(wg_at3(u,12),u[1]*0.5f32-pos.y))));
+}
+// To the screen: a filmic curve, then the display's gamma.
+temple_film :: (c:V3)->V3 {
+  x:V3=scale3(c,0.95f32);
+  r:f32=saturate(x.x*(2.51f32*x.x+0.03f32)/(x.x*(2.43f32*x.x+0.59f32)+0.14f32));
+  g:f32=saturate(x.y*(2.51f32*x.y+0.03f32)/(x.y*(2.43f32*x.y+0.59f32)+0.14f32));
+  b:f32=saturate(x.z*(2.51f32*x.z+0.03f32)/(x.z*(2.43f32*x.z+0.59f32)+0.14f32));
+  return v3(pow(r,1.0f32/2.2f32),pow(g,1.0f32/2.2f32),pow(b,1.0f32/2.2f32));
+}
+
+// The night: stars, the moon, and below the horizon a sea of cloud with a far city's lamps in its gaps.
+temple_sky :: (ro:V3,rd:V3,time:f32)->V3 {
+  moon:V3=temple_moon();
+  up:f32=saturate(rd.y);
+  c:V3=mix3(v3(0.035f32,0.07f32,0.14f32),v3(0.004f32,0.008f32,0.028f32),pow(up,0.5f32));
+  g:V3=scale3(rd,190.0f32);
+  star:f32=temple_hash3(g.x,g.y,g.z);
+  twinkle:f32=0.6f32+0.4f32*sin(time*(1.0f32+star*3.0f32)+star*40.0f32);
+  fx:f32=fract(g.x)-0.5f32; fy:f32=fract(g.y)-0.5f32; fz:f32=fract(g.z)-0.5f32;
+  dot_size:f32=smoothstep(0.75f32,0.2f32,sqrt(fx*fx+fy*fy+fz*fz));
+  c=add3(c,scale3(v3(0.9f32,0.95f32,1.0f32),stepf(0.9972f32,star)*twinkle*smoothstep(0.02f32,0.25f32,rd.y)*dot_size));
+  m:f32=dot3(rd,moon);
+  c=add3(c,scale3(v3(1.0f32,0.96f32,0.86f32),smoothstep(0.99975f32,0.99985f32,m)*2.4f32+pow(saturate(m),3000.0f32)*0.5f32+pow(saturate(m),40.0f32)*0.14f32));
+  if (rd.y<0.0f32) {
+    t:f32=(ro.y+46.0f32)/(0.0f32-rd.y);
+    ax:f32=ro.x+rd.x*t; az:f32=ro.z+rd.z*t;
+    n:f32=temple_fbm2(ax*0.012f32+time*0.004f32,az*0.012f32);
+    billow:f32=temple_fbm2(ax*0.05f32+3.0f32,az*0.05f32+3.0f32);
+    cloud:f32=smoothstep(0.38f32,0.72f32,n+0.18f32*billow);
+    flat:f32=fmax(sqrt(rd.x*rd.x+rd.z*rd.z),0.0001f32);
+    mflat:f32=sqrt(moon.x*moon.x+moon.z*moon.z);
+    lit:f32=0.35f32+0.65f32*saturate((moon.x*rd.x+moon.z*rd.z)/(flat*mflat));
+    sea:V3=mix3(v3(0.006f32,0.012f32,0.03f32),scale3(v3(0.13f32,0.17f32,0.26f32),lit),cloud*(0.45f32+0.55f32*billow));
+    // The city: lamps in the gaps, gathered into districts.
+    lx:f32=ax*0.33f32; lz:f32=az*0.33f32;
+    lamp:f32=temple_hash2(lx,lz);
+    district:f32=smoothstep(0.5f32,0.75f32,temple_fbm2(ax*0.006f32+20.0f32,az*0.006f32+20.0f32));
+    cx:f32=fract(lx)-0.5f32; cz:f32=fract(lz)-0.5f32;
+    on:f32=stepf(0.72f32,lamp)*district*(1.0f32-cloud)*smoothstep(0.5f32,0.08f32,sqrt(cx*cx+cz*cz));
+    sea=add3(sea,scale3(temple_amber(),on*5.0f32+district*(1.0f32-cloud)*0.05f32));
+    far:f32=saturate(t/900.0f32);
+    c=mix3(sea,v3(0.035f32,0.07f32,0.14f32),far*far);
+  }
+  return c;
+}
+
+temple_sky_vs :: (i:u32,_iid:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,1.0f32,1.0f32);
+}
+temple_sky_fs :: (pos:V4,u:[]f32)->V4 {
+  rd:V3=temple_ray(pos,u);
+  // The mirror image looks up where the picture looks down.
+  if (u[3]>0.5f32) { rd=v3(rd.x,0.0f32-rd.y,rd.z); }
+  c:V3=temple_sky(wg_at3(u,4),rd,u[2]);
+  if (u[3]>0.5f32) { return v4(c.x,c.y,c.z,1.0f32); }
+  f:V3=temple_film(c);
+  return v4(f.x,f.y,f.z,1.0f32);
+}
+
+temple_scene_vs :: (id:u32,instance:u32,u:[]f32,mesh:[]f32,objects:[]TempleObj)->TempleS {
+  m:TempleObj=objects[cast(int)instance];
+  o:int=cast(int)id*12;
+  local:V3=scale3(v3(mesh[o],mesh[o+1],mesh[o+2]),m.b.x);
+  n:V3=v3(mesh[o+3],mesh[o+4],mesh[o+5]);
+  yaw:f32=m.a.w; lift:f32=0.0f32;
+  // A floating part bobs and turns.
+  if (m.b.y>0.5f32) { yaw=yaw+u[2]*0.6f32; lift=0.07f32*sin(u[2]*1.1f32+m.b.z); }
+  c:f32=cos(yaw); sn:f32=sin(yaw);
+  w:V3=v3(local.x*c+local.z*sn+m.a.x,local.y+m.a.y+lift,(0.0f32-local.x)*sn+local.z*c+m.a.z);
+  s:TempleS;
+  s.world=w;
+  s.normal=v3(n.x*c+n.z*sn,n.y,(0.0f32-n.x)*sn+n.z*c);
+  s.uv=v2(mesh[o+7],mesh[o+8]);
+  s.info=v4(mesh[o+6],m.c.w,m.b.z,0.0f32);
+  seen:V3=w;
+  if (u[3]>0.5f32) { seen=v3(w.x,0.0f32-w.y,w.z); }
+  s.pos=temple_project(seen,u);
+  return s;
+}
+
+// How much of the moon reaches a point on the floor past one column: the column's shadow is a
+// strip from its foot, away from the moon, as long as the column is tall.
+temple_column_shade :: (p:V3,cx:f32,cz:f32,radius:f32,height:f32)->f32 {
+  moon:V3=temple_moon();
+  flat:f32=sqrt(moon.x*moon.x+moon.z*moon.z);
+  dx:f32=(0.0f32-moon.x)/flat; dz:f32=(0.0f32-moon.z)/flat;
+  qx:f32=p.x-cx; qz:f32=p.z-cz;
+  along:f32=qx*dx+qz*dz;
+  across:f32=abs(qx*dz-qz*dx);
+  reach:f32=height*flat/moon.y;
+  soft:f32=0.03f32+along*0.03f32;
+  inside:f32=(1.0f32-smoothstep(radius-soft,radius+soft,across))*smoothstep(0.0f32-radius,0.0f32,along)*(1.0f32-smoothstep(reach*0.85f32,reach,along));
+  return 1.0f32-inside;
+}
+// The moon on the floor, past every column and the golem.
+temple_floor_shade :: (p:V3)->f32 {
+  shade:f32=1.0f32;
+  {
+    k:s32=0;
+    while k<WK_PYLONS {
+      a:f32=TEMPLE_TAU*(cast(f32)(k))/(cast(f32)(WK_PYLONS));
+      shade=fmin(shade,temple_column_shade(p,cos(a)*WK_PYLON_RING,sin(a)*WK_PYLON_RING,0.36f32,WK_PYLON_HEIGHT));
+      k+=1;
+    }
+  }
+  {
+    k:s32=0;
+    while k<WK_COLUMNS {
+      a:f32=TEMPLE_TAU*((cast(f32)(k))+0.5f32)/(cast(f32)(WK_COLUMNS));
+      shade=fmin(shade,temple_column_shade(p,cos(a)*WK_COLONNADE,sin(a)*WK_COLONNADE,0.42f32,WK_COLUMN_HEIGHT));
+      k+=1;
+    }
+  }
+  shade=fmin(shade,temple_column_shade(p,0.0f32,0.0f32,0.4f32,2.3f32));
+  // The door's pier is a wall toward the moon.
+  return shade;
+}
+
+// A surface's own colour, light and polish, by what it is made of.
+TempleSurface :: struct {albedo:V3; glow:V3; gloss:f32; polish:f32;}
+temple_surface :: (s:TempleS,u:[]f32)->TempleSurface {
+  o:TempleSurface;
+  p:V3=s.world; time:f32=u[2]; mat:f32=s.info.x;
+  r:f32=sqrt(p.x*p.x+p.z*p.z);
+  o.albedo=v3(0.8f32,0.8f32,0.8f32); o.glow=v3(0.0f32,0.0f32,0.0f32); o.gloss=0.25f32; o.polish=0.0f32;
+  if (mat<1.5f32) {
+    // The floor: pale stone, slate for the dais and round each ring, cut into radial stones,
+    // with lines of light inlaid.
+    a:f32=wg_atan2(p.z,p.x);
+    ring:f32=floor(r/1.45f32);
+    stones:f32=12.0f32+ring*6.0f32;
+    edge:f32=abs(fract(r/1.45f32)-0.5f32)*2.0f32;
+    tile:f32=fmax(smoothstep(1.5f32,1.42f32,r),smoothstep(0.78f32,0.86f32,edge)*stepf(1.45f32,r));
+    vein:f32=temple_fbm2(p.x*1.7f32+ring*3.0f32,p.z*1.7f32);
+    pale:V3=scale3(v3(0.56f32,0.52f32,0.45f32),0.78f32+0.3f32*vein);
+    slate:V3=scale3(v3(0.10f32,0.13f32,0.19f32),0.8f32+0.5f32*vein);
+    o.albedo=mix3(pale,slate,tile);
+    fr:f32=fract(r/1.45f32); fa:f32=fract(a/TEMPLE_TAU*stones+ring*0.5f32);
+    joint:f32=fmin(fmin(fr,1.0f32-fr)*1.45f32,fmin(fa,1.0f32-fa)*(r*TEMPLE_TAU/stones));
+    o.albedo=scale3(o.albedo,mix(0.45f32,1.0f32,smoothstep(0.004f32,0.02f32,joint)));
+    top:bool=s.normal.y>0.5f32&&p.y>(0.0f32-0.01f32);
+    if (top) {
+      d1:f32=(r-1.45f32)*60.0f32; d2:f32=(r-1.9f32)*80.0f32; d3:f32=(r-WK_PYLON_RING)*60.0f32; d4:f32=(r-2.9f32)*80.0f32;
+      lines:f32=exp(0.0f32-d1*d1)+0.6f32*exp(0.0f32-d2*d2)+0.5f32*exp(0.0f32-d3*d3)+0.3f32*exp(0.0f32-d4*d4);
+      dash:f32=0.6f32+0.4f32*stepf(0.25f32,fract(a/TEMPLE_TAU*48.0f32-time*0.02f32));
+      o.glow=scale3(temple_cyan(),lines*dash*(0.75f32+0.1f32*sin(time*1.3f32)));
+      o.polish=mix(0.34f32,0.55f32,tile);
+    } else {
+      o.albedo=scale3(v3(0.74f32,0.72f32,0.68f32),0.85f32+0.2f32*vein);
+    }
+    o.gloss=0.7f32;
+  } else if (mat<2.5f32) {
+    vein:f32=temple_noise3(p.x*2.2f32,p.y*0.7f32,p.z*2.2f32)*0.6f32+temple_noise3(p.x*7.0f32,p.y*7.0f32,p.z*7.0f32)*0.4f32;
+    o.albedo=scale3(v3(0.80f32,0.74f32,0.64f32),0.8f32+0.24f32*vein);
+    o.gloss=0.35f32;
+  } else if (mat<3.5f32) {
+    // The door: old bronze in two leaves, three panels each, and the marks across it still hot.
+    qx:f32=p.x; qy:f32=p.y;
+    px:f32=fract(abs(qx)/0.85f32+0.02f32); py:f32=fract(qy/1.4f32+0.02f32);
+    inset:f32=smoothstep(0.06f32,0.1f32,px)*smoothstep(0.06f32,0.1f32,1.0f32-px)*smoothstep(0.05f32,0.09f32,py)*smoothstep(0.05f32,0.09f32,1.0f32-py);
+    leaf:f32=smoothstep(0.0f32,0.03f32,abs(qx));
+    grain:f32=temple_noise3(p.x*9.0f32,p.y*9.0f32,p.z*9.0f32);
+    o.albedo=scale3(mix3(v3(0.16f32,0.105f32,0.06f32),v3(0.3f32,0.2f32,0.1f32),inset),(0.7f32+0.5f32*grain)*(0.4f32+0.6f32*leaf));
+    o.albedo=mix3(o.albedo,v3(0.12f32,0.2f32,0.17f32),0.35f32*temple_noise3(p.x*3.0f32,p.y*3.0f32,p.z*3.0f32));
+    o.gloss=0.6f32;
+    if (s.normal.z>0.5f32) {
+      k:s32=0;
+      while k<3 {
+        x0:f32=(0.0f32-0.9f32)+0.4f32*(cast(f32)(k)); slope:f32=0.34f32;
+        dline:f32=abs((qx-x0)-(3.35f32-qy)*slope)/sqrt(1.0f32+slope*slope);
+        along:f32=smoothstep(1.2f32,1.5f32,qy)*smoothstep(3.45f32,3.2f32,qy);
+        o.glow=add3(o.glow,scale3(temple_amber(),(exp(0.0f32-dline*55.0f32)*2.4f32+exp(0.0f32-dline*9.0f32)*0.25f32)*along*(0.8f32+0.2f32*sin(time*2.3f32+(cast(f32)(k))))));
+        k+=1;
+      }
+    }
+  } else if (mat<4.5f32) {
+    // The golem: dark stone shot through with a night sky, and the sphere's glow on its chest.
+    grain:f32=temple_noise3(p.x*14.0f32,p.y*14.0f32,p.z*14.0f32);
+    o.albedo=scale3(v3(0.07f32,0.075f32,0.095f32),0.7f32+0.6f32*grain);
+    gx:f32=p.x*46.0f32; gy:f32=p.y*46.0f32; gz:f32=p.z*46.0f32;
+    speck:f32=temple_hash3(gx,gy,gz);
+    sx:f32=fract(gx)-0.5f32; sy:f32=fract(gy)-0.5f32; sz:f32=fract(gz)-0.5f32;
+    o.glow=scale3(v3(0.7f32,0.85f32,1.0f32),stepf(0.985f32,speck)*smoothstep(0.5f32,0.1f32,sqrt(sx*sx+sy*sy+sz*sz))*1.4f32);
+    seam:f32=exp(0.0f32-abs(fract(p.y*2.2f32+0.2f32)-0.5f32)*90.0f32)*stepf(0.5f32,p.y);
+    o.glow=add3(o.glow,scale3(temple_cyan(),seam*0.35f32));
+    o.glow=add3(o.glow,scale3(temple_amber(),0.6f32*exp(0.0f32-length3(sub3(p,temple_core()))*7.0f32)));
+    o.gloss=0.5f32;
+  } else if (mat<5.5f32) {
+    o.albedo=v3(0.2f32,0.4f32,0.5f32); o.glow=scale3(temple_cyan(),1.1f32+0.2f32*sin(time*2.1f32+s.info.z)); o.gloss=0.9f32;
+  } else if (mat<6.5f32) {
+    o.albedo=v3(0.4f32,0.2f32,0.1f32); o.glow=scale3(temple_amber(),2.4f32);
+  } else if (mat<7.5f32) {
+    o.albedo=v3(0.1f32,0.2f32,0.25f32); o.glow=scale3(temple_cyan(),1.3f32+0.2f32*sin(time*1.7f32));
+  } else if (mat<8.5f32) {
+    // A fire: brighter at its heart, flickering.
+    flick:f32=0.75f32+0.25f32*sin(time*9.0f32+s.info.z*3.0f32)*sin(time*5.3f32+s.info.z);
+    heart:f32=saturate(1.0f32-s.uv.y);
+    o.albedo=v3(0.3f32,0.1f32,0.02f32); o.glow=scale3(mix3(v3(1.0f32,0.22f32,0.03f32),v3(1.0f32,0.6f32,0.2f32),heart),(0.55f32+0.95f32*heart)*flick);
+  } else {
+    // Iron.
+    o.albedo=scale3(v3(0.05f32,0.045f32,0.04f32),0.7f32+0.6f32*temple_noise3(p.x*20.0f32,p.y*20.0f32,p.z*20.0f32)); o.gloss=0.6f32;
+  }
+  return o;
+}
+
+temple_scene_fs :: (s:TempleS,front:bool,u:[]f32,mirror:Tex2D,smooth:Sampler)->V4 {
+  p:V3=s.world; time:f32=u[2];
+  n:V3=normalize3(s.normal);
+  if (!front) { n=scale3(n,0.0f32-1.0f32); }
+  eye:V3=wg_at3(u,4);
+  view:V3=normalize3(sub3(eye,p));
+  m:TempleSurface=temple_surface(s,u);
+  r:f32=sqrt(p.x*p.x+p.z*p.z);
+  moon:V3=temple_moon();
+  // The moon; on the floor the columns shade it.
+  direct:f32=saturate(dot3(n,moon));
+  if (s.info.x<1.5f32&&n.y>0.5f32) { direct=direct*temple_floor_shade(p); }
+  light:V3=scale3(v3(0.42f32,0.55f32,0.95f32),direct*0.75f32);
+  // The sky's own light.
+  light=add3(light,scale3(v3(0.03f32,0.05f32,0.10f32),0.55f32+0.45f32*n.y));
+  // The sphere in the golem's chest: a warm pool in the middle of the floor.
+  to:V3=sub3(add3(temple_core(),v3(0.0f32,0.0f32,0.15f32)),p); dc:f32=length3(to);
+  light=add3(light,scale3(temple_amber(),saturate(dot3(n,scale3(to,1.0f32/dc)))*2.6f32/(1.0f32+0.6f32*dc*dc)));
+  // The nearest pylon's crystal.
+  q:V3=temple_sector(p,cast(f32)(WK_PYLONS),0.0f32);
+  nq:V3=sub3(temple_sector(add3(p,n),cast(f32)(WK_PYLONS),0.0f32),q);
+  tc:V3=sub3(v3(WK_PYLON_RING,WK_PYLON_HEIGHT+WK_CRYSTAL_UP,0.0f32),q); dq:f32=length3(tc);
+  light=add3(light,scale3(temple_cyan(),saturate(dot3(nq,scale3(tc,1.0f32/dq))*0.8f32+0.2f32)*1.1f32/(1.0f32+0.45f32*dq*dq)));
+  // The line of light under the beam.
+  ts:V3=sub3(v3(WK_COLONNADE-0.7f32,WK_COLUMN_HEIGHT,0.0f32),v3(r,p.y,0.0f32));
+  light=add3(light,scale3(temple_cyan(),saturate(dot3(v3(nq.x,n.y,0.0f32),normalize3(ts)))*0.5f32/(1.0f32+0.1f32*dot3(ts,ts))));
+  // The nearest fire, throwing amber up the stone.
+  oq:V3=temple_sector(p,cast(f32)(WK_COLUMNS),0.0f32);
+  on:V3=sub3(temple_sector(add3(p,n),cast(f32)(WK_COLUMNS),0.0f32),oq);
+  lamp:V3=sub3(v3(WK_COLONNADE,1.1f32,0.0f32),oq); dl:f32=length3(lamp);
+  flick:f32=0.85f32+0.15f32*sin(time*7.0f32+wg_atan2(p.z,p.x)*8.0f32);
+  light=add3(light,scale3(temple_amber(),saturate(dot3(on,scale3(lamp,1.0f32/dl))*0.8f32+0.2f32)*3.0f32*flick/(1.0f32+0.8f32*dl*dl)));
+  c:V3=mul3(m.albedo,light);
+  h:V3=normalize3(add3(moon,view));
+  c=add3(c,scale3(v3(0.6f32,0.7f32,1.0f32),pow(saturate(dot3(n,h)),40.0f32)*m.gloss*direct*0.6f32));
+  c=add3(c,m.glow);
+  if (u[3]>0.5f32) {
+    // The mirror image stays linear, for the floor to read.
+    return v4(c.x,c.y,c.z,1.0f32);
+  }
+  if (m.polish>0.0f32) {
+    // Polished stone: the image of what stands on it, and you, a soft dark under your feet.
+    seen:V4=gpu_sample(mirror,smooth,v2(s.pos.x/u[0],s.pos.y/u[1]));
+    fresnel:f32=0.07f32+0.6f32*pow(1.0f32-saturate(dot3(view,n)),3.0f32);
+    c=mix3(c,v3(seen.x,seen.y,seen.z),fresnel*m.polish);
+    fx:f32=p.x-u[20]; fz:f32=p.z-u[22]; lift:f32=fmax(u[21],0.0f32);
+    c=scale3(c,1.0f32-0.55f32*exp(0.0f32-(fx*fx+fz*fz)/(0.09f32+0.3f32*lift))/(1.0f32+2.0f32*lift));
+  }
+  far:f32=length3(sub3(p,eye));
+  c=mix3(c,v3(0.03f32,0.055f32,0.11f32),1.0f32-exp(0.0f32-far*0.006f32));
+  f:V3=temple_film(c);
+  return v4(f.x,f.y,f.z,1.0f32);
+}
+
+// A display hung in the air: a frame, a title, rows that fill and empty, a dial, and its scan lines.
+temple_display :: (uv:V2,id:f32,time:f32)->f32 {
+  ex:f32=1.0f32-abs(uv.x); ey:f32=1.0f32-abs(uv.y);
+  a:f32=0.05f32;
+  a+=smoothstep(0.03f32,0.0f32,fmin(ex*1.45f32,ey))*0.9f32;
+  a+=stepf(0.78f32,uv.y)*stepf(uv.x,0.0f32-0.25f32)*stepf(ex,0.93f32)*stepf(0.08f32,ey)*0.5f32;
+  if (uv.y>(0.0f32-0.62f32)&&uv.y<0.62f32&&uv.x<0.18f32) {
+    row:f32=floor((uv.y+0.62f32)/0.2f32);
+    h1:f32=temple_hash2(row+17.0f32,id+3.0f32);
+    h2:f32=temple_hash2(id+5.0f32,row+9.0f32);
+    fill:f32=0.25f32+0.7f32*h1*(0.6f32+0.4f32*sin(time*(0.4f32+h2)+row));
+    y:f32=fract((uv.y+0.62f32)/0.2f32);
+    bar:f32=stepf(0.3f32,y)*stepf(y,0.62f32)*stepf(0.0f32-0.88f32,uv.x);
+    a+=bar*stepf(uv.x,fill-0.88f32)*0.75f32+bar*0.08f32;
+  }
+  cx:f32=(uv.x-0.58f32)*0.72f32; cy:f32=uv.y-0.02f32; rr:f32=sqrt(cx*cx+cy*cy);
+  a+=smoothstep(0.012f32,0.0f32,abs(rr-0.3f32))*0.8f32+smoothstep(0.012f32,0.0f32,abs(rr-0.21f32))*0.35f32;
+  sweep:f32=fract(wg_atan2(cy,cx)/TEMPLE_TAU-time*0.12f32-id*0.3f32);
+  a+=stepf(rr,0.3f32)*stepf(0.06f32,rr)*pow(sweep,5.0f32)*0.6f32;
+  a=a*(0.82f32+0.18f32*sin(uv.y*150.0f32+time*6.0f32));
+  a=a*(0.9f32+0.1f32*sin(time*9.0f32+id*5.0f32));
+  return a;
+}
+temple_light_vs :: (id:u32,instance:u32,u:[]f32,mesh:[]f32,objects:[]TempleObj)->TempleS {return temple_scene_vs(id,instance,u,mesh,objects);}
+temple_light_fs :: (s:TempleS,front:bool,u:[]f32)->V4 {
+  time:f32=u[2];
+  c:V3=v3(0.0f32,0.0f32,0.0f32);
+  if (s.info.x<9.5f32) {
+    // A display: a little dimmer seen from behind.
+    c=scale3(temple_cyan(),temple_display(s.uv,s.info.y,time)*(ifx front then 0.95f32 else 0.5f32));
+  } else {
+    // A thread: a pulse running down it to the golem.
+    pulse:f32=0.5f32+0.5f32*sin(time*2.0f32-s.uv.y*9.0f32+s.info.z);
+    c=scale3(temple_cyan(),(0.25f32+0.75f32*pulse)*0.11f32);
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+
+#test "the temple's shading keeps its bounds: a sector folds a point home, the film stays in range, a column's shadow is a strip" {
+  q:=temple_sector(v3(0.0f32,1.0f32,4.6f32),6.0f32,0.0f32);
+  #assert abs(sqrt(q.x*q.x+q.z*q.z)-4.6f32)<0.001f32 && q.y==1.0f32 && abs(q.z)<=4.6f32*0.5001f32+0.01f32;
+  f:=temple_film(v3(100.0f32,0.0f32,0.5f32)); #assert f.x<=1.0f32 && f.y>=0.0f32 && f.z>0.0f32 && f.z<1.0f32;
+  // Straight away from the moon at the column's foot: in shadow. Far to one side: lit.
+  moon:=temple_moon(); flat:=sqrt(moon.x*moon.x+moon.z*moon.z);
+  #assert temple_column_shade(v3((0.0f32-moon.x)/flat*2.0f32,0.0f32,(0.0f32-moon.z)/flat*2.0f32),0.0f32,0.0f32,0.4f32,6.0f32)<0.05f32;
+  #assert temple_column_shade(v3(5.0f32,0.0f32,5.0f32),0.0f32,0.0f32,0.4f32,6.0f32)>0.99f32;
+  #assert temple_display(v2(0.0f32,0.0f32),1.0f32,3.0f32)>=0.0f32;
+}

@@ -1,0 +1,222 @@
+// The Golemancers' Workshop, built: a round marble temple put together from Aethyr's architecture
+// kit (aethyr/arch/). Each part is built once into one mesh; records stand it where layout.coax
+// says; draws name a part and its records. The host uploads the three and Aethyr's shaders
+// (gpu/temple.coax) draw them. Nothing here is a picture: it is parts and places.
+//
+// Three groups of draws:
+//   TP_STANDING  what stands on the floor (columns, rails, the door, the golem, crystals, fires):
+//                drawn, and drawn again upside down for the floor to mirror
+//   TP_FLOOR     the floor and its step: drawn over the mirror image, letting some of it through
+//   TP_LIGHT     what is only light (the displays, the threads from crystals to the golem): added on top
+//   coax/bin/coax test --library everglade/workshop/temple.coax
+#module "everglade.workshop.temple";
+#load "../../aethyr/arch/classical.coax";
+#load "../../aethyr/arch/place.coax";
+#load "layout.coax";
+
+// What a surface is made of (the shader reads it from each vertex).
+TP_FLOOR_STONE :: 1; TP_MARBLE :: 2; TP_BRONZE :: 3; TP_GOLEM :: 4; TP_CRYSTAL :: 5; TP_CORE :: 6;
+TP_STRIP :: 7;    // a line of pale blue light
+TP_FLAME :: 8; TP_DISPLAY :: 9; TP_THREAD :: 10; TP_IRON :: 11;
+
+TP_STANDING :: 0; TP_FLOOR :: 1; TP_LIGHT :: 2; TP_GROUPS :: 3;
+TP_VERTICES :: 90000;
+TP_RECORDS :: 256;
+TP_DRAWS :: 64;
+TP_BALUSTERS :: 96;
+
+Temple :: struct {
+  mesh: [TP_VERTICES * ARCH_VERTEX_FLOATS] f32; vertices: int;
+  records: [TP_RECORDS * ARCH_RECORD_FLOATS] f32; record_n: int;
+  draws: [TP_DRAWS * 4] u32; draw_n: int;
+  group_first: [TP_GROUPS] int; group_count: [TP_GROUPS] int;
+  built: bool;
+}
+
+// The golem, unfinished: a statue's shapes laid over one another, one arm ending at the elbow.
+// It faces +z, toward where you come in, and keeps inside its box (layout.coax WK_GOLEM_*).
+tp_golem :: (p: [] ArchPen) -> ArchPart {
+  from := p[0].n; p[0].material = TP_GOLEM;
+  for side: 0..<2 {
+    x: f32 = ifx side == 0 then -0.19 else 0.19;
+    arch_box(p, x, 0.06, 0.05, 0.1, 0.06, 0.18);
+    arch_limb(p, x, 0.1, 0, x, 0.52, 0, 0.1, 0.115, 14);
+    arch_ellipsoid(p, x, 0.52, 0, 0.12, 0.12, 0.12, 14, 8);
+    arch_limb(p, x, 0.52, 0, x * 1.05, 0.98, 0, 0.12, 0.15, 14);
+  }
+  arch_ellipsoid(p, 0, 1.0, 0, 0.3, 0.2, 0.2, 20, 10);       // the hips
+  arch_ellipsoid(p, 0, 1.2, 0, 0.26, 0.3, 0.17, 20, 10);     // the waist
+  arch_ellipsoid(p, 0, 1.62, 0, 0.37, 0.4, 0.22, 24, 12);    // the chest
+  arch_limb(p, 0, 1.9, 0, 0, 2.1, 0, 0.09, 0.08, 12);        // the neck
+  arch_ellipsoid(p, 0, 2.25, 0.01, 0.16, 0.19, 0.17, 18, 10); // the head
+  arch_ellipsoid(p, -0.43, 1.84, 0, 0.15, 0.14, 0.15, 14, 8);
+  arch_ellipsoid(p, 0.43, 1.84, 0, 0.15, 0.14, 0.15, 14, 8);
+  // The whole arm: shoulder to elbow to hand.
+  arch_limb(p, -0.5, 1.8, 0, -0.6, 1.3, 0.02, 0.1, 0.085, 12);
+  arch_ellipsoid(p, -0.6, 1.3, 0.02, 0.09, 0.09, 0.09, 12, 8);
+  arch_limb(p, -0.6, 1.3, 0.02, -0.58, 0.84, 0.1, 0.085, 0.07, 12);
+  arch_ellipsoid(p, -0.58, 0.76, 0.12, 0.085, 0.1, 0.07, 12, 8);
+  // The arm that was never finished.
+  arch_limb(p, 0.5, 1.8, 0, 0.6, 1.42, 0.02, 0.1, 0.095, 12);
+  arch_ellipsoid(p, 0.6, 1.42, 0.02, 0.095, 0.04, 0.095, 12, 6);
+  // The sphere in its chest.
+  p[0].material = TP_CORE;
+  arch_ellipsoid(p, 0, WK_CORE_Y, WK_CORE_Z, 0.12, 0.12, 0.12, 20, 12);
+  return arch_part(p, from);
+}
+
+// Builds the temple: every part, every place. True when it all fitted.
+tp_build :: (t: [] Temple) -> bool {
+  p: [1] ArchPen; arch_pen(p[..], t[0].mesh[..]);
+  s: [1] ArchScene; arch_scene(s[..], t[0].records[..], t[0].draws[..]);
+  tau := f32(ARCH_TAU);
+
+  // ---- what stands on the floor
+  t[0].group_first[TP_STANDING] = 0;
+  // The outer colonnade, and what it carries.
+  p[0].material = TP_MARBLE;
+  column := arch_column(p[..], WK_COLUMN_RADIUS, WK_COLUMN_HEIGHT, ARCH_FLUTES);
+  placed := arch_round(s[..], column, WK_COLUMNS, WK_COLONNADE, tau / cast(f32) (WK_COLUMNS * 2), 0, 0, 0);
+  arch_once(s[..], arch_entablature(p[..], WK_COLONNADE, 0.62, WK_COLUMN_HEIGHT, 0.9, 96));
+  // A line of light under the beam, on its inner edge.
+  p[0].material = TP_STRIP;
+  from := p[0].n; arch_ring(p[..], WK_COLONNADE - 0.66, WK_COLONNADE - 0.6, WK_COLUMN_HEIGHT - 0.04, WK_COLUMN_HEIGHT + 0.03, 0, tau, 96);
+  arch_once(s[..], arch_part(p[..], from));
+  // The balustrade: two rails round the wall's line and the balusters between, with a gap for the door.
+  p[0].material = TP_MARBLE;
+  gap := f32(WK_DOOR_HALF + 0.35) / f32(WK_WALL);   // the angle the door and its frame take up
+  from = p[0].n;
+  arch_ring(p[..], WK_WALL - 0.02, WK_WALL + 0.18, 0, 0.1, f32(WK_DOOR_ANGLE) + gap, f32(WK_DOOR_ANGLE) + tau - gap, 96);
+  arch_ring(p[..], WK_WALL - 0.04, WK_WALL + 0.2, WK_RAIL_HEIGHT - 0.1, WK_RAIL_HEIGHT, f32(WK_DOOR_ANGLE) + gap, f32(WK_DOOR_ANGLE) + tau - gap, 96);
+  arch_once(s[..], arch_part(p[..], from));
+  baluster := arch_baluster(p[..], WK_RAIL_HEIGHT - 0.2, 0.07);
+  from = p[0].n; arch_move(t[0].mesh[..], baluster, 0, 0.1, 0);
+  placed = arch_round(s[..], baluster, TP_BALUSTERS, WK_WALL + 0.08, tau / cast(f32) (TP_BALUSTERS * 2), 0, WK_DOOR_ANGLE, gap);
+  // A line of light at the balustrade's foot.
+  p[0].material = TP_STRIP;
+  from = p[0].n; arch_ring(p[..], WK_WALL - 0.1, WK_WALL - 0.03, 0.002, 0.03, f32(WK_DOOR_ANGLE) + gap, f32(WK_DOOR_ANGLE) + tau - gap, 96);
+  arch_once(s[..], arch_part(p[..], from));
+
+  // The six pylons: a square foot, a fluted column, two bands of light, and a crystal afloat.
+  p[0].material = TP_MARBLE;
+  from = p[0].n;
+  foot := arch_plinth(p[..], WK_PYLON_BASE, WK_PYLON_FOOT);
+  shaft := arch_column(p[..], WK_PYLON_RADIUS, WK_PYLON_HEIGHT - WK_PYLON_FOOT, ARCH_FLUTES);
+  arch_move(t[0].mesh[..], shaft, 0, WK_PYLON_FOOT, 0);
+  p[0].material = TP_STRIP;
+  low := arch_band(p[..], WK_PYLON_RADIUS * 0.99, 0.78, 0.035, 0.014);
+  high := arch_band(p[..], WK_PYLON_RADIUS * 0.89, WK_PYLON_HEIGHT - 0.62, 0.035, 0.014);
+  pylon := arch_part(p[..], from);
+  placed = arch_round(s[..], pylon, WK_PYLONS, WK_PYLON_RING, 0, 0, 0, 0);
+  p[0].material = TP_CRYSTAL;
+  from = p[0].n; arch_gem(p[..], 0, 0, 0, 0.2, 0.34);
+  crystal := arch_part(p[..], from);
+  first := s[0].rn;
+  for i: 0..<WK_PYLONS {
+    a := tau * cast(f32) i / cast(f32) WK_PYLONS;
+    r := arch_stand(s[..], cos(a) * WK_PYLON_RING, WK_PYLON_HEIGHT + WK_CRYSTAL_UP, sin(a) * WK_PYLON_RING, -a, 1);
+    arch_motion(s[..], r, ARCH_FLOAT, cast(f32) i * 1.3);
+  }
+  arch_draw(s[..], crystal, first, WK_PYLONS);
+
+  // Fires in the gaps of the colonnade: a brazier between each pair of columns, but not in the door's.
+  p[0].material = TP_IRON;
+  brazier := arch_brazier(p[..], 0.9);
+  placed = arch_round(s[..], brazier, WK_COLUMNS, WK_COLONNADE, 0, 0, WK_DOOR_ANGLE, 0.1);
+  p[0].material = TP_FLAME;
+  flame := arch_flame(p[..], 0.55, 0.17);
+  arch_move(t[0].mesh[..], flame, 0, 0.84, 0);
+  first = s[0].rn;
+  for i: 0..<WK_COLUMNS {
+    a := tau * cast(f32) i / cast(f32) WK_COLUMNS;
+    d := a - f32(WK_DOOR_ANGLE); d -= tau * floor(d / tau + 0.5);
+    if abs(d) < 0.1 { continue; }
+    r := arch_stand(s[..], cos(a) * WK_COLONNADE, 0, sin(a) * WK_COLONNADE, -a, 1);
+    arch_motion(s[..], r, ARCH_STILL, cast(f32) i * 2.1);
+  }
+  arch_draw(s[..], flame, first, s[0].rn - first);
+
+  // The door: a pier of marble behind, a frame, and the bronze leaves on the wall's line.
+  p[0].material = TP_MARBLE;
+  from = p[0].n;
+  arch_box(p[..], 0, 3.0, -(WK_WALL + 0.75), WK_DOOR_HALF + 0.6, 3.0, 0.6);
+  arch_box(p[..], -(WK_DOOR_HALF + 0.13), WK_DOOR_HEIGHT * 0.5 + 0.1, -(WK_WALL + 0.02), 0.13, WK_DOOR_HEIGHT * 0.5 + 0.1, 0.2);
+  arch_box(p[..], WK_DOOR_HALF + 0.13, WK_DOOR_HEIGHT * 0.5 + 0.1, -(WK_WALL + 0.02), 0.13, WK_DOOR_HEIGHT * 0.5 + 0.1, 0.2);
+  arch_box(p[..], 0, WK_DOOR_HEIGHT + 0.22, -(WK_WALL + 0.02), WK_DOOR_HALF + 0.36, 0.14, 0.24);
+  p[0].material = TP_BRONZE;
+  arch_box(p[..], 0, WK_DOOR_HEIGHT * 0.5, -(WK_WALL - WK_DOOR_DEPTH * 0.5), WK_DOOR_HALF, WK_DOOR_HEIGHT * 0.5, WK_DOOR_DEPTH * 0.5);
+  arch_once(s[..], arch_part(p[..], from));
+
+  // The golem, in the middle.
+  arch_once(s[..], tp_golem(p[..]));
+  t[0].group_count[TP_STANDING] = s[0].dn;
+
+  // ---- the floor: a disc of stone, and a wider step under it
+  t[0].group_first[TP_FLOOR] = s[0].dn;
+  p[0].material = TP_FLOOR_STONE;
+  from = p[0].n; arch_ring(p[..], 0, WK_FLOOR, -1.0, 0, 0, tau, 128);
+  p[0].material = TP_MARBLE;
+  arch_ring(p[..], WK_FLOOR - 0.2, WK_FLOOR + 0.7, -1.5, -0.3, 0, tau, 128);
+  arch_once(s[..], arch_part(p[..], from));
+  t[0].group_count[TP_FLOOR] = s[0].dn - t[0].group_first[TP_FLOOR];
+
+  // ---- what is only light
+  t[0].group_first[TP_LIGHT] = s[0].dn;
+  // The displays, hung in gaps between the pylons, each facing the middle.
+  p[0].material = TP_DISPLAY;
+  from = p[0].n; arch_panel(p[..], 0, 0, 0, 1.05, 0.62);
+  panel := arch_part(p[..], from);
+  first = s[0].rn;
+  for i: 0..<WK_DISPLAYS {
+    a := WK_DISPLAY_AT[i];
+    r := arch_stand(s[..], cos(a) * WK_PYLON_RING, WK_DISPLAY_Y, sin(a) * WK_PYLON_RING, -a - 1.5707963, 1);
+    arch_motion(s[..], r, ARCH_STILL, cast(f32) i);
+    arch_value(s[..], r, cast(f32) i);
+  }
+  arch_draw(s[..], panel, first, WK_DISPLAYS);
+  // A thread of light from each crystal to the sphere in the golem's chest.
+  p[0].material = TP_THREAD;
+  from = p[0].n; arch_limb(p[..], WK_PYLON_RING, WK_PYLON_HEIGHT + WK_CRYSTAL_UP, 0, 0.1, WK_CORE_Y, 0, 0.007, 0.007, 6);
+  thread := arch_part(p[..], from);
+  placed = arch_round(s[..], thread, WK_PYLONS, 0, 0, 0, 0, 0);
+  t[0].group_count[TP_LIGHT] = s[0].dn - t[0].group_first[TP_LIGHT];
+
+  t[0].vertices = p[0].n; t[0].record_n = s[0].rn; t[0].draw_n = s[0].dn;
+  t[0].built = !p[0].full && !s[0].full;
+  return t[0].built;
+}
+
+// ---- the host's face: sizes, then copies of the three buffers
+
+tp_size :: () -> int #export_c #effects(all) { return size_of(Temple); }
+tp_make :: (t: [] Temple) -> bool #export_c #effects(all) { return tp_build(t); }
+tp_vertex_floats :: () -> int #export_c #effects(all) { return ARCH_VERTEX_FLOATS; }
+tp_record_floats :: () -> int #export_c #effects(all) { return ARCH_RECORD_FLOATS; }
+tp_vertices :: (t: [] Temple) -> int #export_c #effects(all) { return t[0].vertices; }
+tp_records :: (t: [] Temple) -> int #export_c #effects(all) { return t[0].record_n; }
+tp_draws :: (t: [] Temple) -> int #export_c #effects(all) { return t[0].draw_n; }
+tp_group_first :: (t: [] Temple, group: int) -> int #export_c #effects(all) { return ifx group >= 0 && group < TP_GROUPS then t[0].group_first[group] else 0; }
+tp_group_count :: (t: [] Temple, group: int) -> int #export_c #effects(all) { return ifx group >= 0 && group < TP_GROUPS then t[0].group_count[group] else 0; }
+tp_copy_mesh :: (t: [] Temple, out: [] f32) -> bool #export_c #effects(all) {
+  n := t[0].vertices * ARCH_VERTEX_FLOATS; if out.count < n { return false; }
+  for i: 0..<n { out[i] = t[0].mesh[i]; } return true;
+}
+tp_copy_records :: (t: [] Temple, out: [] f32) -> bool #export_c #effects(all) {
+  n := t[0].record_n * ARCH_RECORD_FLOATS; if out.count < n { return false; }
+  for i: 0..<n { out[i] = t[0].records[i]; } return true;
+}
+tp_copy_draws :: (t: [] Temple, out: [] u32) -> bool #export_c #effects(all) {
+  n := t[0].draw_n * 4; if out.count < n { return false; }
+  for i: 0..<n { out[i] = t[0].draws[i]; } return true;
+}
+
+#test "the golem keeps inside the box that stops you, facing out" {
+  buf: [20000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  g := tp_golem(p[..]);
+  #assert !p[0].full && arch_facing(buf[..], g) > cast(f32) (g.count / 3) * 0.85;
+  for i: 0..<g.count {
+    o := (g.first + i) * ARCH_VERTEX_FLOATS;
+    if buf[o + 6] == TP_CORE { continue; }   // the sphere stands out of its chest
+    #assert buf[o] >= WK_GOLEM_LEFT - 0.001 && buf[o] <= WK_GOLEM_RIGHT + 0.001 && abs(buf[o + 2]) <= WK_GOLEM_DEEP + 0.001 && buf[o + 1] >= 0 && buf[o + 1] <= WK_GOLEM_HEIGHT + 0.001;
+  }
+}

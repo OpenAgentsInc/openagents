@@ -1,0 +1,290 @@
+// Aethyr's architecture kit, its mesh pen: triangles written into a buffer the caller owns, for
+// buildings made from parts (aethyr/arch/classical.coax builds columns, balusters and the rest with
+// it). A part is built once and drawn many times: a realm keeps where each part's vertices start
+// and how many there are, and places it with records (aethyr/arch/place.coax).
+//
+// A vertex is ARCH_VERTEX_FLOATS floats: its place (x, y, z), its normal (x, y, z), its material,
+// two coordinates across its surface (u, v) and three spare. Triangles are a plain list, three
+// vertices each, counter-clockwise seen from outside. Units are metres, +y up.
+// A pen that fills stops whole: it never writes part of a triangle, and says it is full.
+//   coax/bin/coax test --library aethyr/arch/mesh.coax
+#module "aethyr.arch.mesh";
+
+ARCH_VERTEX_FLOATS :: 12;
+ARCH_TAU :: 6.2831853;
+
+ArchPen :: struct {
+  out: [] f32;
+  n: int;               // vertices written
+  full: bool;           // a triangle did not fit, and was left out
+  material: f32;        // what the next triangles are made of
+}
+ArchPoint :: struct { x: f32; y: f32; z: f32; nx: f32; ny: f32; nz: f32; u: f32; v: f32; }
+// A span of a pen's vertices: one part.
+ArchPart :: struct { first: int; count: int; }
+
+arch_pen :: (p: [] ArchPen, out: [] f32) { p[0].out = out; p[0].n = 0; p[0].full = false; p[0].material = 0; }
+arch_at :: (x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) -> ArchPoint {
+  return ArchPoint.{x = x, y = y, z = z, nx = nx, ny = ny, nz = nz, u = u, v = v};
+}
+arch_put :: (p: [] ArchPen, a: ArchPoint) {
+  o := p[0].n * ARCH_VERTEX_FLOATS;
+  p[0].out[o] = a.x; p[0].out[o + 1] = a.y; p[0].out[o + 2] = a.z;
+  p[0].out[o + 3] = a.nx; p[0].out[o + 4] = a.ny; p[0].out[o + 5] = a.nz;
+  p[0].out[o + 6] = p[0].material; p[0].out[o + 7] = a.u; p[0].out[o + 8] = a.v;
+  p[0].out[o + 9] = 0; p[0].out[o + 10] = 0; p[0].out[o + 11] = 0;
+  p[0].n += 1;
+}
+arch_tri :: (p: [] ArchPen, a: ArchPoint, b: ArchPoint, c: ArchPoint) {
+  if (p[0].n + 3) * ARCH_VERTEX_FLOATS > p[0].out.count { p[0].full = true; return; }
+  arch_put(p, a); arch_put(p, b); arch_put(p, c);
+}
+// A four-sided face, its corners in order round it.
+arch_quad :: (p: [] ArchPen, a: ArchPoint, b: ArchPoint, c: ArchPoint, d: ArchPoint) { arch_tri(p, a, b, c); arch_tri(p, a, c, d); }
+// The part written since `from`.
+arch_part :: (p: [] ArchPen, from: int) -> ArchPart { return ArchPart.{first = from, count = p[0].n - from}; }
+
+// A box: its middle and half its size each way. Flat faces; u and v run 0 to 1 across each.
+arch_box :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32) {
+  // Each face: its normal, then the two directions across it, so the corners go counter-clockwise from outside.
+  nx := [6] f32.[1, -1, 0, 0, 0, 0]; ny := [6] f32.[0, 0, 1, -1, 0, 0]; nz := [6] f32.[0, 0, 0, 0, 1, -1];
+  ax := [6] f32.[0, 0, 1, 1, -1, 1]; ay := [6] f32.[0, 0, 0, 0, 0, 0]; az := [6] f32.[1, -1, 0, 0, 0, 0];
+  bx := [6] f32.[0, 0, 0, 0, 0, 0]; by := [6] f32.[1, 1, 0, 0, 1, 1]; bz := [6] f32.[0, 0, -1, 1, 0, 0];
+  for f: 0..<6 {
+    c: [4] ArchPoint; su := [4] f32.[-1, 1, 1, -1]; sv := [4] f32.[-1, -1, 1, 1];
+    for k: 0..<4 {
+      x := (nx[f] + ax[f] * su[k] + bx[f] * sv[k]) * hx; y := (ny[f] + ay[f] * su[k] + by[f] * sv[k]) * hy; z := (nz[f] + az[f] * su[k] + bz[f] * sv[k]) * hz;
+      c[k] = arch_at(cx + x, cy + y, cz + z, nx[f], ny[f], nz[f], su[k] * 0.5 + 0.5, sv[k] * 0.5 + 0.5);
+    }
+    // a cross b must point along the normal for the winding to face out; flip the faces where it doesn't.
+    wx := ay[f] * bz[f] - az[f] * by[f]; wy := az[f] * bx[f] - ax[f] * bz[f]; wz := ax[f] * by[f] - ay[f] * bx[f];
+    if wx * nx[f] + wy * ny[f] + wz * nz[f] > 0 { arch_quad(p, c[0], c[1], c[2], c[3]); } else { arch_quad(p, c[0], c[3], c[2], c[1]); }
+  }
+}
+
+// One point of a profile to turn round the y axis: how far out, how high, and how much of the
+// fluting it takes (0 none, 1 all).
+ArchTurn :: struct { r: f32; y: f32; flute: f32; }
+arch_turn_point :: (t: ArchTurn, angle: f32, flutes: int, depth: f32) -> ArchPoint {
+  r := t.r;
+  if flutes > 0 { r -= depth * t.flute * (0.5 + 0.5 * cos(angle * cast(f32) flutes)); }
+  return arch_at(cos(angle) * r, t.y, sin(angle) * r, 0, 0, 0, 0, 0);
+}
+// A profile turned round the y axis (a lathe), standing at the origin: `segments` steps round,
+// with `flutes` grooves `depth` deep cut down the points that take fluting. Smooth normals. The
+// ends are closed with flat discs when the profile doesn't reach the axis.
+arch_lathe :: (p: [] ArchPen, profile: [] ArchTurn, segments: int, flutes: int, depth: f32) {
+  if profile.count < 2 || segments < 3 { return; }
+  step := f32(ARCH_TAU) / cast(f32) segments;
+  for j: 0..<profile.count - 1 {
+    for i: 0..<segments {
+      c: [4] ArchPoint;
+      for k: 0..<4 {
+        ii := i + (ifx k == 1 || k == 2 then 1 else 0); jj := j + (ifx k >= 2 then 1 else 0);
+        a := step * cast(f32) ii;
+        q := arch_turn_point(profile[jj], a, flutes, depth);
+        // The normal: across the surface's two directions, round and along the profile.
+        qa := arch_turn_point(profile[jj], a + 0.01, flutes, depth); qb := arch_turn_point(profile[jj], a - 0.01, flutes, depth);
+        lo := ifx jj > 0 then jj - 1 else jj; hi := ifx jj < profile.count - 1 then jj + 1 else jj;
+        qc := arch_turn_point(profile[hi], a, flutes, depth); qd := arch_turn_point(profile[lo], a, flutes, depth);
+        tx := qa.x - qb.x; ty := qa.y - qb.y; tz := qa.z - qb.z;
+        sx := qc.x - qd.x; sy := qc.y - qd.y; sz := qc.z - qd.z;
+        nx := sy * tz - sz * ty; ny := sz * tx - sx * tz; nz := sx * ty - sy * tx;
+        len2 := nx * nx + ny * ny + nz * nz;
+        if len2 > 0.0000000001 { inv := 1 / sqrt(len2); nx *= inv; ny *= inv; nz *= inv; } else { nx = cos(a); ny = 0; nz = sin(a); }
+        q.nx = nx; q.ny = ny; q.nz = nz;
+        q.u = cast(f32) ii / cast(f32) segments; q.v = cast(f32) jj / cast(f32) (profile.count - 1);
+        c[k] = q;
+      }
+      // Rising profile, turning counter-clockwise seen from above: this order faces out.
+      arch_quad(p, c[0], c[3], c[2], c[1]);
+    }
+  }
+  // The ends.
+  for e: 0..<2 {
+    t := ifx e == 0 then profile[0] else profile[profile.count - 1];
+    if t.r < 0.0001 { continue; }
+    ny: f32 = ifx e == 0 then -1 else 1;
+    for i: 0..<segments {
+      a := step * cast(f32) i; b := step * cast(f32) (i + 1);
+      qa := arch_turn_point(t, a, flutes, depth); qb := arch_turn_point(t, b, flutes, depth);
+      qa.ny = ny; qb.ny = ny; qa.u = 0.5 + 0.5 * cos(a); qa.v = 0.5 + 0.5 * sin(a); qb.u = 0.5 + 0.5 * cos(b); qb.v = 0.5 + 0.5 * sin(b);
+      mid := arch_at(0, t.y, 0, 0, ny, 0, 0.5, 0.5);
+      if e == 0 { arch_tri(p, mid, qa, qb); } else { arch_tri(p, mid, qb, qa); }
+    }
+  }
+}
+
+// A ring of rectangular section round the y axis, or a part of one: from radius r0 out to r1,
+// from height y0 up to y1, from angle a0 round to a1 in `segments` steps. All four long faces, and
+// the two ends when it is not a whole turn. u runs round it, v across each face.
+arch_ring :: (p: [] ArchPen, r0: f32, r1: f32, y0: f32, y1: f32, a0: f32, a1: f32, segments: int) {
+  if segments < 1 { return; }
+  step := (a1 - a0) / cast(f32) segments;
+  for i: 0..<segments {
+    a := a0 + step * cast(f32) i; b := a + step;
+    ca := cos(a); sa := sin(a); cb := cos(b); sb := sin(b);
+    ua := cast(f32) i / cast(f32) segments; ub := cast(f32) (i + 1) / cast(f32) segments;
+    // top
+    arch_quad(p, arch_at(ca * r0, y1, sa * r0, 0, 1, 0, ua, 0), arch_at(cb * r0, y1, sb * r0, 0, 1, 0, ub, 0), arch_at(cb * r1, y1, sb * r1, 0, 1, 0, ub, 1), arch_at(ca * r1, y1, sa * r1, 0, 1, 0, ua, 1));
+    // bottom
+    arch_quad(p, arch_at(ca * r0, y0, sa * r0, 0, -1, 0, ua, 0), arch_at(ca * r1, y0, sa * r1, 0, -1, 0, ua, 1), arch_at(cb * r1, y0, sb * r1, 0, -1, 0, ub, 1), arch_at(cb * r0, y0, sb * r0, 0, -1, 0, ub, 0));
+    // outer
+    arch_quad(p, arch_at(ca * r1, y0, sa * r1, ca, 0, sa, ua, 0), arch_at(ca * r1, y1, sa * r1, ca, 0, sa, ua, 1), arch_at(cb * r1, y1, sb * r1, cb, 0, sb, ub, 1), arch_at(cb * r1, y0, sb * r1, cb, 0, sb, ub, 0));
+    // inner
+    if r0 > 0.0001 {
+      arch_quad(p, arch_at(ca * r0, y0, sa * r0, -ca, 0, -sa, ua, 0), arch_at(cb * r0, y0, sb * r0, -cb, 0, -sb, ub, 0), arch_at(cb * r0, y1, sb * r0, -cb, 0, -sb, ub, 1), arch_at(ca * r0, y1, sa * r0, -ca, 0, -sa, ua, 1));
+    }
+  }
+  whole := a1 - a0 > f32(ARCH_TAU) - 0.001;
+  if !whole {
+    for e: 0..<2 {
+      a := ifx e == 0 then a0 else a1; c := cos(a); s := sin(a);
+      // The end's normal points back along the ring at its start and on along it at its end.
+      nx := ifx e == 0 then s else -s; nz := ifx e == 0 then -c else c;
+      q0 := arch_at(c * r0, y0, s * r0, nx, 0, nz, 0, 0); q1 := arch_at(c * r1, y0, s * r1, nx, 0, nz, 1, 0);
+      q2 := arch_at(c * r1, y1, s * r1, nx, 0, nz, 1, 1); q3 := arch_at(c * r0, y1, s * r0, nx, 0, nz, 0, 1);
+      if e == 0 { arch_quad(p, q0, q3, q2, q1); } else { arch_quad(p, q0, q1, q2, q3); }
+    }
+  }
+}
+
+// A rounded solid: its middle and its three radii, `segments` round and `rings` from pole to pole.
+arch_ellipsoid :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32, rz: f32, segments: int, rings: int) {
+  if segments < 3 || rings < 2 { return; }
+  for j: 0..<rings {
+    for i: 0..<segments {
+      c: [4] ArchPoint;
+      for k: 0..<4 {
+        ii := i + (ifx k == 1 || k == 2 then 1 else 0); jj := j + (ifx k >= 2 then 1 else 0);
+        a := f32(ARCH_TAU) * cast(f32) ii / cast(f32) segments; b := f32(ARCH_TAU) * 0.5 * cast(f32) jj / cast(f32) rings;
+        // b runs from the bottom pole (0) to the top (half a turn).
+        dx := cos(a) * sin(b); dy := -cos(b); dz := sin(a) * sin(b);
+        nx := dx / rx; ny := dy / ry; nz := dz / rz; inv := 1 / sqrt(nx * nx + ny * ny + nz * nz);
+        c[k] = arch_at(cx + dx * rx, cy + dy * ry, cz + dz * rz, nx * inv, ny * inv, nz * inv, cast(f32) ii / cast(f32) segments, cast(f32) jj / cast(f32) rings);
+      }
+      if j == 0 { arch_tri(p, c[0], c[3], c[2]); }
+      else if j == rings - 1 { arch_tri(p, c[0], c[3], c[1]); }
+      else { arch_quad(p, c[0], c[3], c[2], c[1]); }
+    }
+  }
+}
+
+// A limb: a round bar from one point to another, ra thick at the first and rb at the second,
+// open at its ends (close them with an ellipsoid at each joint).
+arch_limb :: (p: [] ArchPen, ax: f32, ay: f32, az: f32, bx: f32, by: f32, bz: f32, ra: f32, rb: f32, segments: int) {
+  dx := bx - ax; dy := by - ay; dz := bz - az; span := sqrt(dx * dx + dy * dy + dz * dz);
+  if span < 0.0001 || segments < 3 { return; }
+  dx /= span; dy /= span; dz /= span;
+  // Two directions across the bar.
+  ux: f32 = 0; uy: f32 = 0; uz: f32 = 1;
+  if abs(dz) > 0.9 { ux = 1; uz = 0; }
+  // v = d cross u, then u = v cross d, both unit.
+  vx := dy * uz - dz * uy; vy := dz * ux - dx * uz; vz := dx * uy - dy * ux; vl := sqrt(vx * vx + vy * vy + vz * vz);
+  vx /= vl; vy /= vl; vz /= vl;
+  ux = vy * dz - vz * dy; uy = vz * dx - vx * dz; uz = vx * dy - vy * dx;
+  for i: 0..<segments {
+    c: [4] ArchPoint;
+    for k: 0..<4 {
+      ii := i + (ifx k == 1 || k == 2 then 1 else 0); top := k >= 2;
+      a := f32(ARCH_TAU) * cast(f32) ii / cast(f32) segments; ca := cos(a); sa := sin(a);
+      nx := ux * ca + vx * sa; ny := uy * ca + vy * sa; nz := uz * ca + vz * sa;
+      r := ifx top then rb else ra;
+      c[k] = arch_at((ifx top then bx else ax) + nx * r, (ifx top then by else ay) + ny * r, (ifx top then bz else az) + nz * r, nx, ny, nz, cast(f32) ii / cast(f32) segments, ifx top then 1.0f32 else 0.0f32);
+    }
+    arch_quad(p, c[0], c[1], c[2], c[3]);
+  }
+}
+
+// An eight-sided gem: rx out to each side, ry up and down. Flat faces.
+arch_gem :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32) {
+  for half: 0..<2 {
+    sy: f32 = ifx half == 0 then 1 else -1;
+    for i: 0..<4 {
+      a := f32(ARCH_TAU) * 0.25 * cast(f32) i; b := a + f32(ARCH_TAU) * 0.25; m := (a + b) * 0.5;
+      nx := cos(m) * ry; ny := sy * rx * 0.7071; nz := sin(m) * ry; inv := 1 / sqrt(nx * nx + ny * ny + nz * nz);
+      nx *= inv; ny *= inv; nz *= inv;
+      tip := arch_at(cx, cy + sy * ry, cz, nx, ny, nz, 0.5, 1);
+      qa := arch_at(cx + cos(a) * rx, cy, cz + sin(a) * rx, nx, ny, nz, 0, 0); qb := arch_at(cx + cos(b) * rx, cy, cz + sin(b) * rx, nx, ny, nz, 1, 0);
+      if half == 0 { arch_tri(p, tip, qb, qa); } else { arch_tri(p, tip, qa, qb); }
+    }
+  }
+}
+
+// A flat panel standing upright, facing +z, seen from both sides: its middle, half its width and
+// half its height. u and v run -1 to 1 across it.
+arch_panel :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, hw: f32, hh: f32) {
+  a := arch_at(cx - hw, cy - hh, cz, 0, 0, 1, -1, -1); b := arch_at(cx + hw, cy - hh, cz, 0, 0, 1, 1, -1);
+  c := arch_at(cx + hw, cy + hh, cz, 0, 0, 1, 1, 1); d := arch_at(cx - hw, cy + hh, cz, 0, 0, 1, -1, 1);
+  arch_quad(p, a, b, c, d); arch_quad(p, a, d, c, b);
+}
+
+// Moves a part where it is wanted, after it is built at the origin.
+arch_move :: (out: [] f32, part: ArchPart, dx: f32, dy: f32, dz: f32) {
+  for i: 0..<part.count { o := (part.first + i) * ARCH_VERTEX_FLOATS; out[o] += dx; out[o + 1] += dy; out[o + 2] += dz; }
+}
+// How far the triangle's own facing agrees with its vertices' normals, summed over a part: a part
+// built inside out comes back negative.
+arch_facing :: (out: [] f32, part: ArchPart) -> f32 {
+  sum: f32 = 0;
+  for t: 0..<part.count / 3 {
+    o := (part.first + t * 3) * ARCH_VERTEX_FLOATS;
+    ax := out[o]; ay := out[o + 1]; az := out[o + 2];
+    bx := out[o + 12] - ax; by := out[o + 13] - ay; bz := out[o + 14] - az;
+    cx := out[o + 24] - ax; cy := out[o + 25] - ay; cz := out[o + 26] - az;
+    fx := by * cz - bz * cy; fy := bz * cx - bx * cz; fz := bx * cy - by * cx;
+    fl := sqrt(fx * fx + fy * fy + fz * fz);
+    if fl > 0.00000001 { sum += (fx * out[o + 3] + fy * out[o + 4] + fz * out[o + 5]) / fl; }
+  }
+  return sum;
+}
+// The lowest and highest y in a part, and the furthest it reaches from the y axis.
+ArchReach :: struct { low: f32; high: f32; out: f32; }
+arch_reach :: (out: [] f32, part: ArchPart) -> ArchReach {
+  r := ArchReach.{low = 1000000, high = -1000000, out = 0};
+  for i: 0..<part.count {
+    o := (part.first + i) * ARCH_VERTEX_FLOATS;
+    if out[o + 1] < r.low { r.low = out[o + 1]; } if out[o + 1] > r.high { r.high = out[o + 1]; }
+    d := sqrt(out[o] * out[o] + out[o + 2] * out[o + 2]); if d > r.out { r.out = d; }
+  }
+  return r;
+}
+
+#test "a box is twelve triangles facing out, inside its size, and a full pen stops whole" {
+  buf: [36 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]); p[0].material = 3;
+  arch_box(p[..], 1, 2, 3, 0.5, 1, 2);
+  part := arch_part(p[..], 0);
+  #assert part.count == 36 && !p[0].full && arch_facing(buf[..], part) > 11.9;
+  for i: 0..<36 { o := i * ARCH_VERTEX_FLOATS; #assert abs(buf[o] - 1) <= 0.5001 && abs(buf[o + 1] - 2) <= 1.0001 && abs(buf[o + 2] - 3) <= 2.0001 && buf[o + 6] == 3; }
+  small: [35 * ARCH_VERTEX_FLOATS + 1] f32; small[35 * ARCH_VERTEX_FLOATS] = 911; q: [1] ArchPen; arch_pen(q[..], small[0..<35 * ARCH_VERTEX_FLOATS]);
+  arch_box(q[..], 0, 0, 0, 1, 1, 1);
+  #assert q[0].full && q[0].n == 33 && small[35 * ARCH_VERTEX_FLOATS] == 911;
+}
+#test "a lathe faces out, keeps to its profile, and fluting only cuts inward" {
+  buf: [20000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  profile := [3] ArchTurn.[ArchTurn.{r = 0.5, y = 0, flute = 0}, ArchTurn.{r = 0.4, y = 2, flute = 1}, ArchTurn.{r = 0.6, y = 3, flute = 0}];
+  arch_lathe(p[..], profile[..], 24, 0, 0);
+  plain := arch_part(p[..], 0); reach := arch_reach(buf[..], plain);
+  #assert !p[0].full && plain.count == 24 * 2 * 6 + 24 * 3 * 2 && arch_facing(buf[..], plain) > cast(f32) (plain.count / 3) * 0.9;
+  #assert reach.low == 0 && reach.high == 3 && reach.out > 0.599 && reach.out < 0.601;
+  from := p[0].n; arch_lathe(p[..], profile[..], 80, 20, 0.05);
+  fluted := arch_part(p[..], from);
+  #assert arch_facing(buf[..], fluted) > cast(f32) (fluted.count / 3) * 0.85 && arch_reach(buf[..], fluted).out < 0.601;
+}
+#test "rings, rounded solids, limbs, gems and panels all face out" {
+  buf: [30000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  arch_ring(p[..], 2, 3, 0, 1, 0, ARCH_TAU, 32); whole := arch_part(p[..], 0);
+  #assert whole.count == 32 * 4 * 6 && arch_facing(buf[..], whole) > cast(f32) (whole.count / 3) * 0.99;
+  from := p[0].n; arch_ring(p[..], 2, 3, 0, 1, 0.2, 1.2, 8); arc := arch_part(p[..], from);
+  #assert arc.count == 8 * 4 * 6 + 12 && arch_facing(buf[..], arc) > cast(f32) (arc.count / 3) * 0.99;
+  from = p[0].n; arch_ring(p[..], 0, 3, 0, 1, 0, ARCH_TAU, 16); disc := arch_part(p[..], from);
+  #assert disc.count == 16 * 3 * 6;
+  from = p[0].n; arch_ellipsoid(p[..], 0, 1, 0, 0.5, 1, 0.3, 16, 10); ball := arch_part(p[..], from);
+  #assert arch_facing(buf[..], ball) > cast(f32) (ball.count / 3) * 0.9 && arch_reach(buf[..], ball).high < 2.001 && arch_reach(buf[..], ball).low > -0.001;
+  from = p[0].n; arch_limb(p[..], 0, 0, 0, 0.3, 1, 0.2, 0.1, 0.07, 12); limb := arch_part(p[..], from);
+  #assert limb.count == 12 * 6 && arch_facing(buf[..], limb) > cast(f32) (limb.count / 3) * 0.9;
+  from = p[0].n; arch_gem(p[..], 0, 0, 0, 0.2, 0.35); gem := arch_part(p[..], from);
+  #assert gem.count == 24 && arch_facing(buf[..], gem) > 7.9;
+  from = p[0].n; arch_panel(p[..], 0, 2, 0, 1, 0.6); panel := arch_part(p[..], from);
+  #assert panel.count == 12 && !p[0].full;
+}

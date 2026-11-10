@@ -73,6 +73,125 @@ struct Pack {
   }
 }
 
+// The place on the GPU: the temple's parts (everglade/workshop/temple.coax, built from Aethyr's
+// architecture kit) and the Aethyr shaders that draw them (everglade/workshop/gpu/temple.coax,
+// emitted for Metal by `coax metal` at build time). The host uploads three buffers once and
+// issues the draws; it decides nothing about what is where or how it looks.
+//
+// An emitted shader takes its resources at fixed places (its .bind file lists them): the uniform
+// floats at buffer 0, the mesh at 1, the records at 2, a lengths buffer at 29, and for the scene
+// the mirror image at texture 0 with its sampler.
+final class Place {
+  let mesh: MTLBuffer, records: MTLBuffer, lengths: MTLBuffer
+  var draws: [UInt32]
+  var groups: [(first: Int, count: Int)] = []
+  let sky: MTLRenderPipelineState, skyMirror: MTLRenderPipelineState
+  let scene: MTLRenderPipelineState, sceneMirror: MTLRenderPipelineState, light: MTLRenderPipelineState
+  let solid: MTLDepthStencilState, behind: MTLDepthStencilState, over: MTLDepthStencilState
+  let smooth: MTLSamplerState, blank: MTLTexture
+  var mirror: MTLTexture?, mirrorDepth: MTLTexture?
+
+  init?(device: MTLDevice, color: MTLPixelFormat) {
+    guard let state = plc_new() else { return nil }
+    defer { free(state) }
+    let vf = Int(plc_vertex_floats()) * Int(plc_vertices(state)), rf = Int(plc_record_floats()) * Int(plc_records(state)), dn = Int(plc_draws(state)) * 4
+    draws = [UInt32](repeating: 0, count: dn)
+    guard vf > 0, rf > 0, dn > 0,
+          let m = device.makeBuffer(length: vf * 4, options: .storageModeShared),
+          let r = device.makeBuffer(length: rf * 4, options: .storageModeShared),
+          let l = device.makeBuffer(length: 64, options: .storageModeShared),
+          plc_copy_mesh(state, m.contents().assumingMemoryBound(to: Float.self), Int32(vf)) == 1,
+          plc_copy_records(state, r.contents().assumingMemoryBound(to: Float.self), Int32(rf)) == 1,
+          plc_copy_draws(state, &draws, Int32(dn)) == 1 else { return nil }
+    mesh = m; records = r; lengths = l
+    for g in 0..<3 { groups.append((Int(plc_group_first(state, Int32(g))), Int(plc_group_count(state, Int32(g))))) }
+    func library(_ name: String) -> MTLLibrary? { Bundle.main.url(forResource: name, withExtension: "metallib").flatMap { try? device.makeLibrary(URL: $0) } }
+    guard let skyLib = library("temple-sky"), let sceneLib = library("temple-scene"), let lightLib = library("temple-light") else { return nil }
+    // Each pair twice: once for the picture, once for the mirror image (linear colour, sixteen-bit).
+    func pipeline(_ lib: MTLLibrary, _ pair: String, _ format: MTLPixelFormat, add: Bool) -> MTLRenderPipelineState? {
+      let d = MTLRenderPipelineDescriptor()
+      d.vertexFunction = lib.makeFunction(name: "temple_\(pair)_vs"); d.fragmentFunction = lib.makeFunction(name: "temple_\(pair)_fs")
+      d.colorAttachments[0].pixelFormat = format; d.depthAttachmentPixelFormat = .depth32Float
+      if add {
+        let a = d.colorAttachments[0]!
+        a.isBlendingEnabled = true; a.sourceRGBBlendFactor = .one; a.destinationRGBBlendFactor = .one; a.sourceAlphaBlendFactor = .one; a.destinationAlphaBlendFactor = .one
+      }
+      return try? device.makeRenderPipelineState(descriptor: d)
+    }
+    guard let a = pipeline(skyLib, "sky", color, add: false), let b = pipeline(skyLib, "sky", .rgba16Float, add: false),
+          let c = pipeline(sceneLib, "scene", color, add: false), let e = pipeline(sceneLib, "scene", .rgba16Float, add: false),
+          let f = pipeline(lightLib, "light", color, add: true) else { return nil }
+    sky = a; skyMirror = b; scene = c; sceneMirror = e; light = f
+    func depth(_ compare: MTLCompareFunction, _ write: Bool) -> MTLDepthStencilState? {
+      let d = MTLDepthStencilDescriptor(); d.depthCompareFunction = compare; d.isDepthWriteEnabled = write
+      return device.makeDepthStencilState(descriptor: d)
+    }
+    let sd = MTLSamplerDescriptor(); sd.minFilter = .linear; sd.magFilter = .linear
+    let bd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: 1, height: 1, mipmapped: false)
+    guard let s1 = depth(.less, true), let s2 = depth(.always, false), let s3 = depth(.less, false),
+          let sm = device.makeSamplerState(descriptor: sd), let bl = device.makeTexture(descriptor: bd) else { return nil }
+    solid = s1; behind = s2; over = s3; smooth = sm; blank = bl
+  }
+
+  func bind(_ enc: MTLRenderCommandEncoder, _ u: inout [Float], image: MTLTexture) {
+    enc.setVertexBytes(&u, length: u.count * 4, index: 0); enc.setFragmentBytes(&u, length: u.count * 4, index: 0)
+    enc.setVertexBuffer(mesh, offset: 0, index: 1); enc.setFragmentBuffer(mesh, offset: 0, index: 1)
+    enc.setVertexBuffer(records, offset: 0, index: 2); enc.setFragmentBuffer(records, offset: 0, index: 2)
+    enc.setVertexBuffer(lengths, offset: 0, index: 29); enc.setFragmentBuffer(lengths, offset: 0, index: 29)
+    enc.setVertexTexture(image, index: 0); enc.setFragmentTexture(image, index: 0)
+    enc.setVertexSamplerState(smooth, index: 0); enc.setFragmentSamplerState(smooth, index: 0)
+    // The kit's triangles are counter-clockwise seen from outside; the shader turns a normal
+    // round for the side seen from behind.
+    enc.setCullMode(.none); enc.setFrontFacing(.counterClockwise)
+  }
+  func group(_ enc: MTLRenderCommandEncoder, _ g: Int) {
+    for k in groups[g].first..<groups[g].first + groups[g].count {
+      let first = Int(draws[k * 4]), count = Int(draws[k * 4 + 1]), record = Int(draws[k * 4 + 2]), n = Int(draws[k * 4 + 3])
+      if count > 0 && n > 0 { enc.drawPrimitives(type: .triangle, vertexStart: first, vertexCount: count, instanceCount: n, baseInstance: record) }
+    }
+  }
+  // What stands on the floor, upside down, into the mirror image.
+  func reflect(_ cmd: MTLCommandBuffer, device: MTLDevice, uniforms: [Float], width: Int, height: Int) {
+    if mirror == nil || mirror!.width != width || mirror!.height != height {
+      let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: width, height: height, mipmapped: false)
+      cd.usage = [.renderTarget, .shaderRead]; cd.storageMode = .private
+      let dd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: width, height: height, mipmapped: false)
+      dd.usage = [.renderTarget]; dd.storageMode = .private
+      mirror = device.makeTexture(descriptor: cd); mirrorDepth = device.makeTexture(descriptor: dd)
+    }
+    guard let image = mirror, let z = mirrorDepth else { return }
+    let pass = MTLRenderPassDescriptor()
+    pass.colorAttachments[0].texture = image; pass.colorAttachments[0].loadAction = .dontCare; pass.colorAttachments[0].storeAction = .store
+    pass.depthAttachment.texture = z; pass.depthAttachment.loadAction = .clear; pass.depthAttachment.clearDepth = 1; pass.depthAttachment.storeAction = .dontCare
+    guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
+    var u = uniforms; u[3] = 1
+    bind(enc, &u, image: blank)
+    // Upside down, a triangle that faced you turns the other way round.
+    enc.setFrontFacing(.clockwise)
+    enc.setRenderPipelineState(skyMirror); enc.setDepthStencilState(behind)
+    enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    enc.setRenderPipelineState(sceneMirror); enc.setDepthStencilState(solid)
+    group(enc, 0)
+    enc.endEncoding()
+  }
+  // The night, what stands, and the floor over the mirror image.
+  func draw(_ enc: MTLRenderCommandEncoder, uniforms: [Float]) {
+    var u = uniforms; u[3] = 0
+    bind(enc, &u, image: mirror ?? blank)
+    enc.setRenderPipelineState(sky); enc.setDepthStencilState(behind)
+    enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    enc.setRenderPipelineState(scene); enc.setDepthStencilState(solid)
+    group(enc, 0); group(enc, 1)
+  }
+  // What is only light, added over everything that stands.
+  func glow(_ enc: MTLRenderCommandEncoder, uniforms: [Float]) {
+    var u = uniforms; u[3] = 0
+    bind(enc, &u, image: blank)
+    enc.setRenderPipelineState(light); enc.setDepthStencilState(over)
+    group(enc, 2)
+  }
+}
+
 // Your model on the GPU: the pack's mesh and layers, the baked clips, and this frame's records.
 final class Model {
   static let sheet = 512
@@ -149,7 +268,7 @@ final class Model {
 
 final class WorkshopView: MTKView, MTKViewDelegate {
   let state = eg_new()!
-  var background: MTLRenderPipelineState!
+  var place: Place!
   var strokes: MTLRenderPipelineState!
   var vertices: MTLBuffer!
   var model: Model?
@@ -158,11 +277,6 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var overlay: MTLBuffer!
   var panel: MTLRenderPipelineState!
   var flat: MTLDepthStencilState!
-  var placeDepth: MTLDepthStencilState!
-  var laid: MTLRenderPipelineState!
-  var nearSampler: MTLSamplerState!
-  var placeColour: MTLTexture?
-  var placeDistance: MTLTexture?
   var faces: MTLTexture!
   var faceSampler: MTLSamplerState!
   var last = CACurrentMediaTime()
@@ -178,17 +292,12 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let url = Bundle.main.url(forResource: "default", withExtension: "metallib")!
     let lib = try! device.makeLibrary(URL: url)
     let b = MTLRenderPipelineDescriptor()
-    // The place: marched at half size into a colour image and a depth image (Temple.metal), then
-    // laid over the full picture with its depth.
-    b.vertexFunction = lib.makeFunction(name: "temple_vs"); b.fragmentFunction = lib.makeFunction(name: "temple_fs")
-    b.colorAttachments[0].pixelFormat = colorPixelFormat; b.colorAttachments[1].pixelFormat = .r32Float
-    background = try! device.makeRenderPipelineState(descriptor: b)
-    let lay = MTLRenderPipelineDescriptor()
-    lay.vertexFunction = lib.makeFunction(name: "place_vs"); lay.fragmentFunction = lib.makeFunction(name: "place_fs")
-    lay.colorAttachments[0].pixelFormat = colorPixelFormat; lay.depthAttachmentPixelFormat = .depth32Float
-    laid = try! device.makeRenderPipelineState(descriptor: lay)
-    let ns = MTLSamplerDescriptor(); ns.minFilter = .nearest; ns.magFilter = .nearest
-    nearSampler = device.makeSamplerState(descriptor: ns)!
+    // The place: the temple's parts and Aethyr's shaders. Without them there is nowhere to stand.
+    guard let pl = Place(device: device, color: colorPixelFormat) else {
+      FileHandle.standardError.write(Data("Everglade: the temple did not build or its shaders are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
+      exit(1)
+    }
+    place = pl
     let f = MTLRenderPipelineDescriptor()
     f.vertexFunction = lib.makeFunction(name: "fx_vs"); f.fragmentFunction = lib.makeFunction(name: "fx_fs")
     let v = MTLVertexDescriptor()
@@ -210,9 +319,6 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     ra.sourceRGBBlendFactor = .sourceAlpha; ra.destinationRGBBlendFactor = .oneMinusSourceAlpha; ra.sourceAlphaBlendFactor = .one; ra.destinationAlphaBlendFactor = .one
     panel = try! device.makeRenderPipelineState(descriptor: r)
     let fd = MTLDepthStencilDescriptor(); fd.depthCompareFunction = .always; fd.isDepthWriteEnabled = false
-    // The place writes its own depth for every pixel, so your model is hidden by what stands in front of it.
-    let pd = MTLDepthStencilDescriptor(); pd.depthCompareFunction = .always; pd.isDepthWriteEnabled = true
-    placeDepth = device.makeDepthStencilState(descriptor: pd)!
     flat = device.makeDepthStencilState(descriptor: fd)!
     // Everglade's faces, from the font files in the app. Without them there is no text to read.
     guard let atlas = faceAtlas(device) else {
@@ -245,7 +351,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
     var u: [Float] = [Float(size.width), Float(size.height), time, 0]
     model?.step(state, dt: dt)
-    // The view, the picture's size, the clock and where you stand: Temple.metal's TU, and the
+    // The view, the picture's size, the clock and where you stand: the place's uniforms, and the
     // first twenty floats Model.metal's MU.
     var camera = [Float](repeating: 0, count: 24)
     let seen = eg_camera(state, Float(size.width) / scale, Float(size.height) / scale, scale, &camera) == 1
@@ -253,36 +359,15 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     var you = [Float](repeating: 0, count: 5)
     if eg_you(state, &you) == 1 { camera[20] = you[0]; camera[21] = you[1]; camera[22] = you[2] }
     guard let queue = device?.makeCommandQueue(), let cmd = queue.makeCommandBuffer() else { return }
-    // The place, at half size: the same view with half the focal length and half the picture.
-    let hw = max(1, Int(size.width) / 2), hh = max(1, Int(size.height) / 2)
-    if placeColour == nil || placeColour!.width != hw || placeColour!.height != hh {
-      let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: hw, height: hh, mipmapped: false)
-      cd.usage = [.renderTarget, .shaderRead]; cd.storageMode = .private
-      let dd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: hw, height: hh, mipmapped: false)
-      dd.usage = [.renderTarget, .shaderRead]; dd.storageMode = .private
-      placeColour = device?.makeTexture(descriptor: cd); placeDistance = device?.makeTexture(descriptor: dd)
-    }
-    if seen, let colour = placeColour, let distance = placeDistance {
-      var half = camera
-      half[15] *= Float(hw) / Float(size.width); half[16] = Float(hw); half[17] = Float(hh)
-      let pp = MTLRenderPassDescriptor()
-      pp.colorAttachments[0].texture = colour; pp.colorAttachments[0].loadAction = .dontCare; pp.colorAttachments[0].storeAction = .store
-      pp.colorAttachments[1].texture = distance; pp.colorAttachments[1].loadAction = .dontCare; pp.colorAttachments[1].storeAction = .store
-      if let pe = cmd.makeRenderCommandEncoder(descriptor: pp) {
-        pe.setRenderPipelineState(background)
-        pe.setFragmentBytes(&half, length: 96, index: 0)
-        pe.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        pe.endEncoding()
-      }
-    }
+    // The place's uniforms (everglade/workshop/gpu/temple.coax): size, clock, mirror flag, the eye
+    // and its right, up and forward with the focal length, and where you stand.
+    var pu = [Float](repeating: 0, count: 24)
+    pu[0] = Float(size.width); pu[1] = Float(size.height); pu[2] = time
+    for k in 0..<3 { pu[4 + k] = camera[k]; pu[8 + k] = camera[4 + k]; pu[12 + k] = camera[8 + k]; pu[16 + k] = camera[12 + k]; pu[20 + k] = camera[20 + k] }
+    pu[19] = camera[15]
+    if seen, let device { place.reflect(cmd, device: device, uniforms: pu, width: Int(size.width), height: Int(size.height)) }
     guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
-    if seen, let colour = placeColour, let distance = placeDistance {
-      enc.setRenderPipelineState(laid)
-      enc.setDepthStencilState(placeDepth)
-      enc.setFragmentTexture(colour, index: 0); enc.setFragmentTexture(distance, index: 1)
-      enc.setFragmentSamplerState(faceSampler, index: 0); enc.setFragmentSamplerState(nearSampler, index: 1)
-      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-    }
+    if seen { place.draw(enc, uniforms: pu) }
     enc.setDepthStencilState(flat)
     if n > 0 {
       enc.setRenderPipelineState(strokes)
@@ -291,7 +376,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       enc.setVertexBytes(&u, length: 16, index: 1)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
     }
-    if seen { model?.draw(enc, camera: camera) }
+    if seen { model?.draw(enc, camera: camera); place.glow(enc, uniforms: pu) }
     // Next issue, over everything: its panel's dark box, then its strokes.
     var box = [Float](repeating: 0, count: 4)
     let tn = nxp_frame(next, overlay.contents().assumingMemoryBound(to: Float.self), &box, Float(size.width) / scale, Float(size.height) / scale, scale, dt, Int64(Date().timeIntervalSince1970))

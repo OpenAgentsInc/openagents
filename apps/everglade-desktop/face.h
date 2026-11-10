@@ -62,3 +62,18 @@ int32_t nxp_take_decision(void *panel, uint8_t *out, int32_t cap);
 int32_t nxp_state(void *panel);
 // Ends the agent's process group; call when the app quits.
 void nxp_close(void *panel);
+
+// The place (everglade/workshop/temple.coax, place-face.c): the temple's parts as one mesh, the
+// records that stand them, and the draws, built once from Aethyr's architecture kit.
+void *plc_new(void);            // builds it; NULL when it did not fit
+int32_t plc_vertex_floats(void);
+int32_t plc_record_floats(void);
+int32_t plc_vertices(void *place);
+int32_t plc_records(void *place);
+int32_t plc_draws(void *place);
+// A group's first draw and how many: 0 what stands on the floor, 1 the floor, 2 what is only light.
+int32_t plc_group_first(void *place, int32_t group);
+int32_t plc_group_count(void *place, int32_t group);
+int32_t plc_copy_mesh(void *place, float *out, int32_t floats);
+int32_t plc_copy_records(void *place, float *out, int32_t floats);
+int32_t plc_copy_draws(void *place, uint32_t *out, int32_t words);

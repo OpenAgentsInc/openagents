@@ -1,8 +1,8 @@
 // Everglade for desktop, its first scene (everglade/docs/desktop-app-spec.md section 4.1): the
 // Golemancers' Workshop, a round marble temple open to the night. Six pylons stand round the
 // middle, where an unfinished golem stands with a sphere in its chest, and the bronze door is in
-// the wall at the back. This file is where things are and what stops you; the host's Temple.metal
-// draws the place from the same numbers (keep the two in step). You walk it with the controller every web realm uses (aethyr/walk.coax: its fixed step, its
+// the wall at the back. This file is what stops you and how you move; where things are is
+// everglade/workshop/layout.coax, which the temple is also built and lit from. You walk it with the controller every web realm uses (aethyr/walk.coax: its fixed step, its
 // follow camera, its run and jump) and the web's keys: W A S D, Space, Shift to walk, a drag or the
 // arrows to look, the wheel to zoom.
 // You are the web's player model, which model.coax holds and the host draws: ws_you says where
@@ -12,16 +12,17 @@
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/math.coax";
 #load "../../aethyr/walk.coax" as pc;
+#load "../../everglade/workshop/layout.coax";   // where things are: the same numbers the temple is built and lit from
 #load "text.coax";     // Everglade's faces, Spectral and Cinzel
 #load "next.coax";     // the Next issue button and its panel, in this unit (both draw with draw.coax, whose exports can't be linked twice)
 
 WS_MAX_VERTICES :: 36000;
-WS_PYLONS :: 6;
-WS_PYLON_RING :: 4.6;     // metres from the dais to each pylon
-WS_PYLON_HEIGHT :: 3.4;
-WS_PYLON_BASE :: 0.52;    // half the width of a pylon's foot
-WS_WALL :: 7.2;           // metres from the middle to the chamber's wall, which holds the iron door
-WS_REACH :: 6.85;         // how far from the middle your feet may go: the wall, less your body
+WS_PYLONS :: WK_PYLONS;
+WS_PYLON_RING :: WK_PYLON_RING;     // metres from the dais to each pylon
+WS_PYLON_HEIGHT :: WK_PYLON_HEIGHT;
+WS_PYLON_BASE :: WK_PYLON_BASE;    // half the width of a pylon's foot
+WS_WALL :: WK_WALL;           // metres from the middle to the chamber's wall, which holds the iron door
+WS_REACH :: WK_REACH;         // how far from the middle your feet may go: the wall, less your body
 WS_NEAR :: 0.2;           // nothing closer than this to the eye is drawn
 WS_LOOK :: 0.006;         // radians a point dragged, as aethyr/sticks.coax's STICKS_LOOK
 WS_WALLS :: 8;            // the six pylons, the golem and the door, each a box you can't walk through
@@ -75,9 +76,9 @@ ws_walls :: (out: []f32) -> int {
     out[o + 3] = p.x + WS_PYLON_BASE; out[o + 4] = WS_PYLON_HEIGHT; out[o + 5] = p.z + WS_PYLON_BASE;
   }
   g := WS_PYLONS * pc.WALL;
-  out[g] = -0.77; out[g + 1] = 0; out[g + 2] = -0.26; out[g + 3] = 0.7; out[g + 4] = 2.45; out[g + 5] = 0.26;
+  out[g] = WK_GOLEM_LEFT; out[g + 1] = 0; out[g + 2] = -WK_GOLEM_DEEP; out[g + 3] = WK_GOLEM_RIGHT; out[g + 4] = WK_GOLEM_HEIGHT; out[g + 5] = WK_GOLEM_DEEP;
   d := g + pc.WALL;
-  out[d] = -1.7; out[d + 1] = 0; out[d + 2] = -WS_WALL; out[d + 3] = 1.7; out[d + 4] = 4.2; out[d + 5] = -WS_WALL + 0.36;
+  out[d] = -WK_DOOR_HALF; out[d + 1] = 0; out[d + 2] = -WS_WALL; out[d + 3] = WK_DOOR_HALF; out[d + 4] = WK_DOOR_HEIGHT; out[d + 5] = -WS_WALL + WK_DOOR_DEPTH;
   return WS_WALLS * pc.WALL;
 }
 
