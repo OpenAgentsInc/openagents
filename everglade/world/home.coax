@@ -1,6 +1,6 @@
 // The player's home (game): your first house, a one-room wooden house of the Medieval Village
-// MegaKit with a workbench against its back wall. The workbench becomes the Binding Table, where
-// you make pacts, write orders and read reports (everglade/docs/agentics-profession-spec.md);
+// MegaKit with a workbench against its back wall. The workbench becomes the place you command
+// golems from (Golemancy, everglade/docs/golemancy-profession-spec.md);
 // crafting is not built yet. Any Everglade zone places the same home at a building frame of its
 // own: Everglade Experimental at verse/experimental-terrain.coax exp_home, and Everglade II can
 // do the same. The house is the engine's 4 m room (aethyr/world/building.coax), so its walls,
@@ -10,7 +10,7 @@
 #load "../../aethyr/world/building.coax" as building;
 #load "../../aethyr/world/interact.coax" as interact;
 
-HOME_BENCH_ID :: "home/workbench";   // the workbench's stable id: the future Binding Table
+HOME_BENCH_ID :: "home/workbench";   // the workbench's stable id: the future Golemancy bench
 
 HomePart :: struct {name:string;x:f32;y:f32;z:f32;side:bool;}
 HomeProp :: struct {name:string;x:f32;y:f32;z:f32;yaw:f32;}
@@ -62,7 +62,7 @@ home_prop_placed :: (turn:int,i:int)->HomeProp {
  p:=home_prop(i);f:=building.BuildingFrame.{turn=turn};w:=building.building_point(f,p.x,p.z);
  return HomeProp.{name=p.name,x=w[0],y=p.y,z=w[1],yaw=p.yaw+f32(((turn%4)+4)%4)*1.5707963};
 }
-// The workbench's spot: in front of it, facing it. "Use the workbench" (the future Binding Table)
+// The workbench's spot: in front of it, facing it. "Use the workbench" (the future Golemancy bench)
 // is the interact key at this spot (aethyr/world/interact.coax interact_pick); crafting opens there.
 home_bench_spot :: (f:building.BuildingFrame)->interact.InteractSpot {
  p:=building.building_point(f,0.6,-0.25);return interact.InteractSpot.{id=HOME_BENCH_ID,x=p[0],z=p[1],face=f32(((f.turn%4)+4)%4)*1.5707963+3.1415927};

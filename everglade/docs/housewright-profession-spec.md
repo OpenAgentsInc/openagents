@@ -78,8 +78,8 @@ branch lean-to → woven hut → wattle-and-daub cottage → timber house → st
 ```
 
 Each step needs new tools, new materials and new skill. The house itself
-is the reward: a place to rest, store things, respawn and, later, run the
-Binding Table ([Agentics](agentics-profession-spec.md)).
+is the reward: a place to rest, store things, respawn and, later, command
+golems from its workbench ([Golemancy](golemancy-profession-spec.md)).
 
 Three concerns that real builders struggled with become the measures of a
 good house:
@@ -114,8 +114,8 @@ CONTENT-EQUIPMENT as partial.
 ### Time
 
 A build stage's length is stated in SRD workdays, then converted with the
-same world constant the Agentics spec uses
-([section 4.4](agentics-profession-spec.md#44-time-the-workday-in-real-time)):
+same world constant the Golemancy spec uses
+([section 4.4](golemancy-profession-spec.md#44-time-the-workday-in-real-time)):
 
 ```text
 WORKDAY_S = 1200      one SRD workday (8 hours of work) = 20 real minutes
@@ -290,8 +290,8 @@ What the measures do, without adding warnings to the screen:
   bad weather. A lean-to only shelters you from light weather.
 - **Respawn.** Your house is your respawn point.
 - **Storage.** A storage chest keeps materials and items, from tier 2 up.
-- **The workbench.** From tier 3, the workbench is the Binding Table
-  ([Agentics](agentics-profession-spec.md)).
+- **The workbench.** From tier 3, the workbench is where you command golems
+  ([Golemancy](golemancy-profession-spec.md)).
 - **Fire.** A house with high fire risk can catch from its own hearth. Fire
   damages the roof first, and you can put it out and repair it.
 - **Wear.** Thatch and daub wear over weeks of real time. Repairs take a few

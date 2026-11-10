@@ -46,7 +46,7 @@ Tracked areas with no row, and what each is (verified against the tree):
 | --- | --- | --- |
 | `bitcoin/` | 501 | *Bitcoin From Scratch*, the book that builds Bitcoin and Lightning in Coax, and its examples. The code it teaches is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and `coax/lib/lightning/`. Check: `python3 psionic/tests/book.py --book bitcoin`. |
 | `coder/` | 143 | Coder, the coding agent: `book/` (*Coder: Coding Agents From Scratch*), `plugins/`, `tests/` and `tui/`. Check: `python3 psionic/tests/book.py --book coder`. |
-| `everglade/` | 34 | Everglade, the MMORPG on the D&D 5E SRD: `book/`, `docs/` (the Housewright, Agentics and mounts specs), `world/`, `hud/` and `features.coax`. Most of its game code is still in `apps/openagents-web/` and `verse/`. Check: `coax/web/tool.sh everglade-parity`. |
+| `everglade/` | 34 | Everglade, the MMORPG on the D&D 5E SRD: `book/`, `docs/` (the Housewright, Golemancy and mounts specs), `world/`, `hud/` and `features.coax`. Most of its game code is still in `apps/openagents-web/` and `verse/`. Check: `coax/web/tool.sh everglade-parity`. |
 | `apps/openagents-desktop/` | 88 | The macOS desktop app in Coax, with `build.sh` and `check.sh`. Design: `docs/desktop/coax-desktop.md`. |
 | `apps/aethyrforge-desktop/` | 113 | Aethyrforge desktop (experimental): the native realm builder. It has its own `README.md`. |
 | `apps/shared/` | 50 | Coax shared between apps: dictation (`dictation*.coax`) and the Zeron UI library (`zeron/`). |

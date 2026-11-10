@@ -211,8 +211,8 @@ and go straight in. Inside, a workbench stands against the back wall, with a
 candlestick on it, a wall lantern, a barrel of apples and a crate. The rest of
 the floor is left clear. The workbench has the stable id `home/workbench` and
 a place to stand in front of it at (-20.25, -5.6). It will become the crafting
-table (the Binding Table in
-[Agentics](../../everglade/docs/agentics-profession-spec.md)); crafting is not
+table and the place you command golems from
+([Golemancy](../../everglade/docs/golemancy-profession-spec.md)); crafting is not
 built yet. The parts live where they belong:
 
 - Engine: `aethyr/world/building.coax` places a building at a frame turned in
