@@ -1,0 +1,272 @@
+// Everglade II's staged shots (?stage=NAME, docs/verse/clips.md): the forest path and the city's
+// empty clearing, each its own camera on Aethyr's camera track (aethyr/cam/track.coax) with the HUD
+// off, in late afternoon light. The keys are laid on the land's own functions (verse/everglade2/
+// forest.coax: e2_road_x, e2_height, e2_city), so a shot keeps to the path and the clearing as the land
+// changes. A stage opens no room, and its clock is game time, so coax/web/clip.coax's fixed steps
+// give the same frames on every run.
+//
+//   path-fly          a low, slow glide down the path through the trees, no one on it
+//   path-walk         your character walks the path; the camera follows and slowly draws alongside
+//   clearing-empty    the city's empty clearing from the path's edge, then a slow rise and orbit over it
+//   clearing-walk-in  your character steps off the path into the empty clearing, toward the camera
+//   bow-fight         a level 5 Ranger by the goblin camp draws and looses at its goblins as they come,
+//                     over the shoulder and then wide. It needs a room for the goblins (a local one:
+//                     &relay=ws://localhost:PORT), so it stands in the room, not apart from it. The
+//                     Ranger closes to the Attack's reach (in Everglade II it lands only there), and a
+//                     local dev room's god mode keeps the Ranger up for the take
+//
+//   coax/web/tool.sh clip "http://127.0.0.1:PORT/worlds/everglade2?stage=path-fly" path-fly.mp4 \
+//     --size 1920x1080 --seconds 25 --skip 2
+#load "../../aethyr/cam/track.coax" as trk;
+
+E2ST_NONE :: 0; E2ST_PATH_FLY :: 1; E2ST_PATH_WALK :: 2; E2ST_CLEARING_EMPTY :: 3; E2ST_CLEARING_WALK_IN :: 4; E2ST_BOW_FIGHT :: 5;
+E2ST_LEAD :: 2.0;            // seconds the shot holds its first key: the recorder's --skip lead-up
+E2ST_DAY :: 0.70;            // the day's fraction (0.5 noon): late afternoon, the sun low over the woods
+E2ST_EYE :: 1.7;             // a standing eye, metres over the ground
+E2ST_RANGER :: 7;            // the class the bow-fight plays (everglade2-create.coax E2C_CLASS_NAMES)
+E2ST_CLOSE :: 2.0;           // m from the goblin the bow-fight's Ranger stops: inside the Attack's reach (class-kit.coax XC_REACH)
+E2ST_LEVEL :: 5;             // at level 5, with the Hit Points to stand against the camp
+E2ST_SHOT_EVERY :: 1.8;      // s between the bow-fight's arrows: a draw, held, then the loose
+E2ST_DRAW_AT :: 0.2; E2ST_LOOSE_AT :: 1.2;   // s into each: the draw starts, the arrow goes
+E2ST_WIDE_AT :: 9.0;         // s: the bow-fight's camera leaves your shoulder for the wide view over 2 s
+
+#test "?stage= names a shot; anything else is none" {
+  #assert e2st_named("path-fly") == E2ST_PATH_FLY && e2st_named("path-walk") == E2ST_PATH_WALK;
+  #assert e2st_named("clearing-empty") == E2ST_CLEARING_EMPTY && e2st_named("clearing-walk-in") == E2ST_CLEARING_WALK_IN;
+  #assert e2st_named("bow-fight") == E2ST_BOW_FIGHT && !e2st_apart(E2ST_BOW_FIGHT) && e2st_apart(E2ST_PATH_FLY);
+  #assert e2st_named("") == E2ST_NONE && e2st_named("path") == E2ST_NONE && e2st_named("darian") == E2ST_NONE;
+}
+#test "every stage keeps its camera over open ground, above the land and out of the trees" #steps 2000000000 {
+  for st: 1..<5 {
+    for i: 0..<30 {
+      t := f32(i);
+      v := e2st_view(st, t, e2st_start_x(st), e2st_start_z(st) - (ifx e2st_walks(st) then 1.0f32 else 0.0f32) * t, 0);
+      // over open ground: the path's corridor or a clearing, where no tree stands
+      #assert e2_road_dist(v.ex, v.ez) < 2.5 || e2_clearing(v.ex, v.ez) > 0.5;
+      // and above it, under the canopy's crowns on the path, clear of the meadow in the clearing
+      g := e2_height(v.ex, v.ez); #assert v.ey > g + 1.2 && v.ey < g + 20;
+      // looking somewhere: never at its own eye
+      dx := v.lx - v.ex; dy := v.ly - v.ey; dz := v.lz - v.ez; #assert dx * dx + dy * dy + dz * dz > 4;
+    }
+  }
+}
+#test "the glide and the orbit move slowly and smoothly: never more than 6 m/s, no jump" #steps 4000000000 {
+  for st: 1..<5 {
+    p := e2st_view(st, 0, e2st_start_x(st), e2st_start_z(st), 0);
+    for i: 1..<300 {
+      t := f32(i) / 10; q := e2st_view(st, t, e2st_start_x(st), e2st_start_z(st) - (ifx e2st_walks(st) then 0.14f32 else 0.0f32) * f32(i), 0);
+      dx := q.ex - p.ex; dy := q.ey - p.ey; dz := q.ez - p.ez; #assert sqrt(dx * dx + dy * dy + dz * dz) < 0.6;
+      p = q;
+    }
+  }
+}
+#test "the walk-in leaves the path for the clearing and stops short of the camera" #steps 2000000000 {
+  x := e2st_start_x(E2ST_CLEARING_WALK_IN); z := e2st_start_z(E2ST_CLEARING_WALK_IN);
+  #assert e2_road_dist(x, z) < 1;
+  // walked by its headings, 1.4 m a second for 40 s
+  for i: 0..<400 {
+    m := e2st_walk_in(x, z);
+    if !m.walk { break; }
+    nx := x + sin(m.heading) * 0.14; nz := z + cos(m.heading) * 0.14;
+    #assert e2_may_stand(nx, nz);
+    x = nx; z = nz;
+  }
+  #assert e2_clearing(x, z) > 0.9;
+  e := e2st_walk_in_eye(); dx := x - e[0]; dz := z - e[1]; #assert sqrt(dx * dx + dz * dz) < 9;
+}
+
+e2st_named :: (n: string) -> int {
+  if n == "path-fly" { return E2ST_PATH_FLY; } if n == "path-walk" { return E2ST_PATH_WALK; }
+  if n == "clearing-empty" { return E2ST_CLEARING_EMPTY; } if n == "clearing-walk-in" { return E2ST_CLEARING_WALK_IN; }
+  if n == "bow-fight" { return E2ST_BOW_FIGHT; }
+  return E2ST_NONE;
+}
+// Whether your character walks in the stage (the others leave it standing in the glade, out of sight).
+// Whether a stage stands apart from any room (all but the bow-fight, whose goblins are the room's).
+e2st_apart :: (st: int) -> bool { return st != E2ST_NONE && st != E2ST_BOW_FIGHT; }
+e2st_walks :: (st: int) -> bool { return st == E2ST_PATH_WALK || st == E2ST_CLEARING_WALK_IN; }
+// Where the stage starts you: on the path, at its z (the glade for the shots without you).
+e2st_start_z :: (st: int) -> f32 {
+  if st == E2ST_PATH_WALK { return -26; }
+  if st == E2ST_CLEARING_WALK_IN { return e2st_open_z() + 6; }
+  if st == E2ST_BOW_FIGHT { return f32(E2_CAMP_Z) + 10; }   // 10 m up the path from the camp: inside a goblin's notice (18 m), so they come
+  return 0;
+}
+e2st_start_x :: (st: int) -> f32 { z := e2st_start_z(st); return ifx z < 0 then e2_road_x(z) else 0.0f32; }
+// The first place south along the path where the city's clearing opens off its east side.
+e2st_open_z :: () -> f32 {
+  for i: 0..<40 { z := -50 - f32(i) * 2; if e2_clearing(e2_road_x(z) + 8, z) > 0.9 { return z; } }
+  return f32(E2_CITY_Z);
+}
+
+// ---- the walk-in: along the path to where the clearing opens, then across it toward the camera
+E2stWalk :: struct { walk: bool; heading: f32; }
+e2st_walk_in_eye :: () -> [2] f32 {
+  // 18 m in from where the clearing opens, toward its middle: near enough that you fill the frame as you come
+  oz := e2st_open_z(); ox := e2_road_x(oz) + 6;
+  dx := f32(E2_CITY_X) - ox; dz := f32(E2_CITY_Z) - oz; l := sqrt(dx * dx + dz * dz); u := ifx l > 18 then 18 / l else 1.0f32;
+  return [2] f32.[ox + dx * u, oz + dz * u];
+}
+e2st_walk_in :: (x: f32, z: f32) -> E2stWalk {
+  e := e2st_walk_in_eye(); dx := e[0] - x; dz := e[1] - z;
+  if sqrt(dx * dx + dz * dz) < 8 { return E2stWalk.{}; }
+  oz := e2st_open_z();
+  if z > oz + 1 { tz := z - 4; return E2stWalk.{walk = true, heading = figs.atan2(e2_road_x(tz) - x, tz - z)}; }
+  return E2stWalk.{walk = true, heading = figs.atan2(dx, dz)};
+}
+
+// ---- the shots: the camera at `t` seconds into the stage, you at (x, z) when you walk in it
+e2st_road_eye :: (z: f32, up: f32) -> [3] f32 { x := e2_road_x(z); return [3] f32.[x, e2_height(x, z) + up, z]; }
+e2st_view :: (st: int, t0: f32, you_x: f32, you_z: f32, you_y: f32) -> trk.CamView {
+  t := t0 - f32(E2ST_LEAD); if t < 0 { t = 0; }
+  if st == E2ST_PATH_FLY {
+    // 2.1 m over the path's middle, 2.2 m a second, looking 14 m on down it
+    z := -24 - 2.2 * t; e := e2st_road_eye(z, 2.1); a := e2st_road_eye(z - 14, 1.5);
+    return trk.CamView.{ex = e[0], ey = e[1], ez = e[2], lx = a[0], ly = a[1], lz = a[2]};
+  }
+  if st == E2ST_PATH_WALK {
+    // behind you on the path, 5 m back and drawing in to 2 m beside you over 20 s, 1.8 m up
+    y := e2_height(you_x, you_z);
+    back := 5.0f32 - 0.15 * t; if back < 2 { back = 2; }
+    bz := you_z + back; bx := e2_road_x(bz) + 1.1 * (1 - back / 5.0f32) + 0.4;
+    return trk.CamView.{ex = bx, ey = e2_height(bx, bz) + 1.8, ez = bz, lx = you_x, ly = y + 1.3, lz = you_z - 1.5};
+  }
+  if st == E2ST_CLEARING_WALK_IN {
+    e := e2st_walk_in_eye(); g := e2_city_level();
+    // standing in the clearing, drawing back 0.25 m a second as you come
+    oz := e2st_open_z(); ox := e2_road_x(oz);
+    dx := e[0] - ox; dz := e[1] - oz; l := sqrt(dx * dx + dz * dz); dx /= l; dz /= l;
+    ex := e[0] + dx * 0.25 * t; ez := e[1] + dz * 0.25 * t;
+    lx := ifx you_x == you_x then you_x else ox; lz := ifx you_z == you_z then you_z else oz;
+    return trk.CamView.{ex = ex, ey = g + E2ST_EYE, ez = ez, lx = lx, ly = e2_height(lx, lz) + 1.1, lz = lz};
+  }
+  if st == E2ST_CLEARING_EMPTY {
+    // from the path's edge across the empty meadow, then rising and wheeling round its middle
+    g := e2_city_level(); cx := f32(E2_CITY_X); cz := f32(E2_CITY_Z);
+    oz := e2st_open_z(); ox := e2_road_x(oz) + 1.5;
+    rows: [5 * trk.CAM_TRACK_ROW] f32;
+    // the path's edge, looking in, at a walker's eye; then out into the meadow along its west side
+    a0 := figs.atan2(ox - cx, oz - cz); r := 34.0f32;
+    e2st_row(rows[..], 0, 0, ox, g + 2.4, oz, cx, g + 1, cz, trk.EASE_SMOOTH);
+    for k: 1..<5 {
+      a := a0 - f32(k) * 0.32; h := g + 3 + f32(k) * 3.2;
+      e2st_row(rows[..], k, f32(k) * 6.25, cx + sin(a) * r, h, cz + cos(a) * r, cx, g + 1.5, cz, trk.EASE_LINEAR);
+    }
+    k := trk.cam_track_load(rows[..], E2ST_DAY, 0);
+    return trk.cam_track_at(k, t);
+  }
+  return trk.CamView.{};
+}
+e2st_row :: (rows: [] f32, k: int, at: f32, ex: f32, ey: f32, ez: f32, lx: f32, ly: f32, lz: f32, ease: int) {
+  r := k * trk.CAM_TRACK_ROW;
+  rows[r] = at; rows[r + 1] = ex; rows[r + 2] = ey; rows[r + 3] = ez; rows[r + 4] = lx; rows[r + 5] = ly; rows[r + 6] = lz; rows[r + 7] = f32(ease);
+}
+
+// ---- the page's hooks (everglade2.coax): the facts, the shot, the walk, the light
+e2st_facts :: (s: [] E2, t: string) {
+  s[0].stage = e2st_named(net_query(fact_of(t, "url"), "stage"));
+  if s[0].stage == E2ST_NONE { return; }
+  s[0].start_z = e2st_start_z(s[0].stage); s[0].autowalk = false; s[0].stage_t0 = -1; s[0].stage_fire = -1;
+  if s[0].stage == E2ST_BOW_FIGHT { s[0].creator[0].klass = E2ST_RANGER; s[0].creator[0].level = E2ST_LEVEL; }   // the room hears a Ranger from the hello
+}
+e2st_time :: (s: [] E2) -> f32 {
+  if s[0].stage_t0 < 0 { s[0].stage_t0 = s[0].clock; }
+  return s[0].clock - s[0].stage_t0;
+}
+e2st_shot :: (s: [] E2, shot: figs.Shot) -> figs.Shot {
+  if s[0].stage == E2ST_NONE { return shot; }
+  if s[0].stage == E2ST_BOW_FIGHT { return e2st_bow_fight(s, shot); }
+  v := e2st_view(s[0].stage, e2st_time(s), s[0].you_x, s[0].you_z, s[0].you_y);
+  return figs.Shot.{eye = figs.v3(v.ex, v.ey, v.ez), at = figs.v3(v.lx, v.ly, v.lz)};
+}
+
+// ---- the bow-fight: the nearest goblin standing, faced, drawn on and loosed at in turn
+e2st_target :: (s: [] E2) -> [3] f32 {
+  best := 70.0f32; t := [3] f32.[e2_camp_x(), e2_height(e2_camp_x(), f32(E2_CAMP_Z)), f32(E2_CAMP_Z)];
+  for m: 0..<E2MN_N {
+    g := s[0].monsters[0].mon[m];
+    if !g.up || g.kind != 1 { continue; }
+    dx := g.x - s[0].you_x; dz := g.z - s[0].you_z; d := sqrt(dx * dx + dz * dz);
+    if d < best { best = d; t = [3] f32.[g.x, g.y, g.z]; }
+  }
+  return t;
+}
+// Which beat of the fight `t` is in: the shot's number times two, and 1 once its draw has started.
+e2st_beat :: (t: f32) -> int {
+  if t < f32(E2ST_LEAD) { return -1; }
+  u := t - f32(E2ST_LEAD); n := cast(int) floor(u / f32(E2ST_SHOT_EVERY)); in := u - f32(n) * f32(E2ST_SHOT_EVERY);
+  return ifx in >= f32(E2ST_LOOSE_AT) then n * 2 + 1 else ifx in >= f32(E2ST_DRAW_AT) then n * 2 else -1;
+}
+#test "the bow-fight draws, then looses, once a shot, every few seconds" {
+  #assert e2st_beat(0) == -1 && e2st_beat(f32(E2ST_LEAD) + 0.1) == -1;
+  #assert e2st_beat(f32(E2ST_LEAD) + 0.3) == 0 && e2st_beat(f32(E2ST_LEAD) + 1.6) == 1;
+  #assert e2st_beat(f32(E2ST_LEAD) + f32(E2ST_SHOT_EVERY) + 0.3) == 2 && e2st_beat(f32(E2ST_LEAD) + f32(E2ST_SHOT_EVERY) + f32(E2ST_LOOSE_AT) + 0.1) == 3;
+  // the shoulder view looks past you at the goblin; the wide one stands off to the side
+  a := e2st_fight_view(0, 0, 0, 0, 0, 0, -20);
+  #assert a.ez > 0 && a.lz < -10 && abs(a.ex) < 2;
+  b := e2st_fight_view(20, 0, 0, 0, 0, 0, -20);
+  #assert abs(b.ex) > 6 && b.lz < 0 && b.lz > -20;
+}
+// The camera for the fight at `t`: behind your right shoulder looking at the goblin, then wide.
+e2st_fight_view :: (t: f32, x: f32, y: f32, z: f32, tx: f32, ty: f32, tz: f32) -> trk.CamView {
+  dx := tx - x; dz := tz - z; l := sqrt(dx * dx + dz * dz); if l < 0.01 { dx = 0; dz = -1; l = 1; }
+  dx /= l; dz /= l; rx := -dz; rz := dx;   // the way to the goblin, and across it
+  w := e2_sat((t - f32(E2ST_WIDE_AT)) / 2); w = w * w * (3 - 2 * w);
+  // over the shoulder: 2.8 m back, 0.9 m to the side, 1.9 m up; looking just over the goblin
+  ox := x - dx * 2.8 + rx * 0.9; oz := z - dz * 2.8 + rz * 0.9;
+  o := trk.CamView.{ex = ox, ey = e2st_max(y + 1.9, e2_height(ox, oz) + 1.2), ez = oz, lx = tx, ly = ty + 1.0, lz = tz};
+  // wide: off to the side of the line between you, far enough out to hold you both, looking at its middle
+  // on the side that is open meadow, coming in from the trees until it stands in the open
+  mx := (x + tx) * 0.5; mz := (z + tz) * 0.5; my := (y + ty) * 0.5; out := ifx l > 7 then l else 7.0f32;
+  side := ifx e2_clearing(mx - rx * out, mz - rz * out) > e2_clearing(mx + rx * out, mz + rz * out) then -1.0f32 else 1.0f32;
+  for q: 0..<6 { if out <= 7 || e2_clearing(mx + side * rx * out, mz + side * rz * out) > 0.6 { break; } out = e2st_max(7, out - 3); }
+  ex := mx + side * rx * out - dx * 3; ez := mz + side * rz * out - dz * 3;
+  v := trk.CamView.{ex = ex, ey = e2st_max(my + 2.6, e2_height(ex, ez) + 2.2), ez = ez, lx = mx, ly = my + 1, lz = mz};
+  return trk.CamView.{ex = o.ex + (v.ex - o.ex) * w, ey = o.ey + (v.ey - o.ey) * w, ez = o.ez + (v.ez - o.ez) * w,
+                      lx = o.lx + (v.lx - o.lx) * w, ly = o.ly + (v.ly - o.ly) * w, lz = o.lz + (v.lz - o.lz) * w};
+}
+e2st_max :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+e2st_bow_fight :: (s: [] E2, shot: figs.Shot) -> figs.Shot {
+  t := e2st_time(s);
+  s[0].creator[0].klass = E2ST_RANGER; s[0].creator[0].level = E2ST_LEVEL;
+  // the goblin, eased so the camera never jumps when the nearest one changes
+  g := e2st_target(s);
+  if s[0].stage_aim_at < 0 { s[0].stage_aim = g; }
+  e := 1 - exp(-(s[0].clock - s[0].stage_aim_at) * 2.5); if s[0].stage_aim_at < 0 { e = 1; }
+  for q: 0..<3 { s[0].stage_aim[q] += (g[q] - s[0].stage_aim[q]) * e2_sat(e); }
+  s[0].stage_aim_at = s[0].clock;
+  a := s[0].stage_aim;
+  s[0].you_face = figs.atan2(a[0] - s[0].you_x, a[2] - s[0].you_z);
+  // the shot's beat: draw once, loose once
+  b := e2st_beat(t);
+  if b >= 0 && b != s[0].stage_fire {
+    if b % 2 == 0 { _ := e2m_draw(s, false); } else { _ := e2m_loose(s); }
+    // a local room's god mode (room-e2-admin.coax, which takes it from 127.0.0.1 in a dev room only):
+    // the camp's blows land and show, and the Ranger stays up for the whole take
+    if b % 2 == 0 && e2n_open(s[0].net[..]) { _ := e2a_word(s, "X god 1"); }
+    s[0].stage_fire = b;
+  }
+  v := e2st_fight_view(t, s[0].you_x, s[0].you_y, s[0].you_z, a[0], a[1], a[2]);
+  return figs.Shot.{eye = figs.v3(v.ex, v.ey, v.ez), at = figs.v3(v.lx, v.ly, v.lz)};
+}
+// Whether the stage walks you this frame, and how (e2_move_in): a walk, never a run, after the lead.
+e2st_moves :: (s: [] E2) -> bool { return e2st_walks(s[0].stage) || s[0].stage == E2ST_BOW_FIGHT; }
+e2st_move_in :: (s: [] E2) -> EgMoveIn {
+  still := EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)};
+  if e2st_time(s) < f32(E2ST_LEAD) * 0.5 { return still; }
+  if s[0].stage == E2ST_BOW_FIGHT {
+    // up to the goblin to within a Shortsword's reach, where the Ranger's Attack lands (everglade2-cast.coax e2mn_aim)
+    g := e2st_target(s); dx := g[0] - s[0].you_x; dz := g[2] - s[0].you_z;
+    if dx * dx + dz * dz < E2ST_CLOSE * E2ST_CLOSE { return still; }
+    return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(figs.atan2(dx, dz))};
+  }
+  if s[0].stage == E2ST_PATH_WALK {
+    if s[0].you_z < E2_CLEAR_Z + 10 { return still; }
+    return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
+  }
+  m := e2st_walk_in(s[0].you_x, s[0].you_z);
+  if !m.walk { return still; }
+  return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(m.heading)};
+}
+// The light's day for a stage, as the room's (ms into the day at tick 0).
+e2st_day_ms :: () -> s64 { return cast(s64) (f32(E2ST_DAY) * f32(WIRE_DAY_MS)); }
