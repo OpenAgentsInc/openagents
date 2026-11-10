@@ -84,15 +84,44 @@ rm -rf "$in"
 # tree's compiler sources (or bootstraps one), once per source fingerprint.
 cd "$tree" || infra "no tree"
 fingerprint="$(coax/published.sh name "$tree" 2> /dev/null || echo unknown)"
+compiler_line=""
 if [[ ! -x coax/bin/coax || "$(cat ~/slots/$slot/compiler 2> /dev/null)" != "$fingerprint" ]]; then
-  # The Linux release toolchain (publish-host.sh): static GCC for musl from nixpkgs.
-  if ! nix shell nixpkgs#pkgsStatic.stdenv.cc nixpkgs#python3 nixpkgs#gnumake --command env \
-      CC="$(uname -m)-unknown-linux-musl-gcc" CXX="$(uname -m)-unknown-linux-musl-g++" COAX_LDFLAGS=-static \
-      coax/build.sh > ~/slots/$slot/build.log 2>&1; then
+  # A compiler another host built for these sources (#13119): build.sh's
+  # cache entry (~/.cache/coax-release/FINGERPRINT), from the shared bucket
+  # under compiler/ARCH/FINGERPRINT.tar.gz. build.sh verifies it against this
+  # tree's fingerprint and its record before installing it, else bootstraps.
+  release_cache="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
+  # The Linux release toolchain (publish-host.sh): static GCC for musl from
+  # nixpkgs. The fingerprint names the toolchain too, so it is taken in it.
+  toolchain=(nix shell nixpkgs#pkgsStatic.stdenv.cc nixpkgs#python3 nixpkgs#gnumake --command env
+             CC="$(uname -m)-unknown-linux-musl-gcc" CXX="$(uname -m)-unknown-linux-musl-g++" COAX_LDFLAGS=-static)
+  release_key="$("${toolchain[@]}" coax/provenance.sh fingerprint "$tree" 2> /dev/null || true)"
+  compiler_object="compiler/$(uname -m)/$release_key.tar.gz"
+  tool="${COAX_SHARED_CACHE_TOOL:-}"
+  fetched=0 compiler_began=$(date +%s)
+  if [[ -n "$release_key" && -n "$tool" && ! -d "$release_cache/$release_key" ]] && mkdir -p "$release_cache" &&
+     got="$(mktemp -d "$release_cache/.shared.XXXXXXXX")"; then
+    if "$tool" get "$compiler_object" "$got/c.tgz" && mkdir "$got/x" && tar -xzf "$got/c.tgz" -C "$got/x" 2> /dev/null &&
+       [[ -x "$got/x/coax" && -f "$got/x/provenance.record" ]] && mv -T "$got/x" "$release_cache/$release_key" 2> /dev/null; then
+      fetched=1
+    fi
+    rm -rf "$got"
+  fi
+  if ! "${toolchain[@]}" coax/build.sh > ~/slots/$slot/build.log 2>&1; then
     tail -n 30 ~/slots/$slot/build.log >&2
     infra "coax/build.sh failed on $(hostname) (log above)"
   fi
   echo "$fingerprint" > ~/slots/$slot/compiler
+  if grep -q "installed the checked build" ~/slots/$slot/build.log && (( fetched )); then
+    compiler_line="compiler from the bucket in $(( $(date +%s) - compiler_began )) s"
+  elif (( fetched )); then
+    compiler_line="the bucket's compiler didn't verify; built here"
+  elif [[ -n "$release_key" && -n "$tool" && -d "$release_cache/$release_key" ]]; then
+    # Built here: share it (unless another host already did), off the job's path.
+    ( tar -czf ~/slots/$slot/compiler-out.tgz -C "$release_cache/$release_key" . 2> /dev/null &&
+        "$tool" put "$compiler_object" ~/slots/$slot/compiler-out.tgz; rm -f ~/slots/$slot/compiler-out.tgz ) > /dev/null 2>&1 &
+    compiler_line="compiler built here, shared"
+  fi
 fi
 ready=$(date +%s)
 # Paths in the command that named the caller's checkout (@ROOT@) name this one.
@@ -131,6 +160,7 @@ if [[ -n "$tool" && -n "${COAX_SHARED_CACHE_TOKEN:-}" ]]; then
 fi
 cache_line=""
 [[ -z "$tool" ]] || cache_line="; $("$tool" summary "$stats")"
+[[ -z "$compiler_line" ]] || cache_line="$cache_line; $compiler_line"
 # The files the command wrote or changed come back: everything newer than the
 # marker, except Git's, the compiler's and node_modules.
 cd "$tree" || infra "no tree"

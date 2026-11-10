@@ -98,6 +98,17 @@ host's disk caches, under the same keys:
   those checks ran before. A remote job does the same for its whole command
   (`checks-job/COMMAND.tar.gz`), so `coax test` on a second host reuses the
   first host's checks.
+- **The compiler.** A host that needs a compiler for a tree's compiler sources
+  first looks for `compiler/ARCH/FINGERPRINT.tar.gz` (`coax/build.sh`'s cache
+  entry, keyed by `coax/provenance.sh fingerprint`). `coax/build.sh` then
+  verifies it against the tree's fingerprint and its provenance record before
+  installing it, and bootstraps when it doesn't verify. A host that built or
+  already had one shares it after the job's compiler step. A restarted host
+  that spent 48 minutes building the compiler now fetches it (12 MB) in about
+  10 s; the job's line says `compiler from the bucket in N s`. It also makes
+  the other keys match: they name the compiler's SHA-256, and a compiler each
+  host bootstrapped differs in its bytes (one fingerprint, `1fa13a88e401`,
+  had four different binaries on oa-build-1 to oa-build-4).
 
 `remote.sh` mints a token for each job that can read and write this bucket and
 nothing else (the automation account's token, exchanged at Google's STS for
