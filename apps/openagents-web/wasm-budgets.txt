@@ -37,7 +37,8 @@ everglade5e 2250000
 # 1,199,435 on main 82961a04b8 (already over 1,180,000); 1,210,275 with cover, grappling, Ready and movement modes (#13040); about 2% room.
 # 1,244,296 on main 5f3aa40254 after the SRD familiar steps, lifecycle and borrowed Blindsight (#13030); about 5% room.
 # 1,321,158 on main b089816462 with Everglade II's wolves, goblin camp and the path guard as a level 10 Fighter (room-e2-monsters.coax, room-e2-guard.coax); about 2% room.
-everglade-room 1345000
+# 1,345,507 on main 0945a228e1 with released attacks rolling after the caster dies (#13120) and the shared condition display (#13082); about 2% room.
+everglade-room 1372000
 fairy 695000
 # Character Studio adds the full Source wardrobe UI and appearance codec to the existing people producer: 590,971 bytes measured; about 5% headroom.
 # Character Create's walk to Everglade and its in-place hand-off (e560d2f8b3) bring it to 625,572 bytes; about 4% headroom.
