@@ -1042,7 +1042,13 @@ xc_bow_strike :: (s: [] Lab, foe: int) -> bool {
   slot := xc_slot_of(x, FB_ATTACK);
   x[0].releasing = true; ok := xc_use_ab(s, ifx slot >= 0 then slot else 0, shot, foe); x[0].releasing = false;   // loosed, it lands though you fell since
   hit := ok && (x[0].landed > landed || x[0].kills > kills);
-  if hit { x[0].bow_hits += 1; fx_start_at(s, FXR_HIT, s[0].creator[0].clock, fxp_v(s[0].creator[0].player_x, 1.4, s[0].creator[0].player_z), fxp_v(e.x, meadow_y(e.x, e.z) + 0.9 * e.scale, e.z), fxp_v(0.8, 0.7, 0.55), 0.8, 1); }
+  if hit {
+    x[0].bow_hits += 1;
+    // the strike's flash at its chest, a stride back toward you (from your feet it streaked from below the ground)
+    c := s[0].creator[0]; dx := c.player_x - e.x; dz := c.player_z - e.z; l := sqrt(dx * dx + dz * dz); if l < 0.01 { l = 0.01; }
+    y := meadow_y(e.x, e.z) + 0.9 * e.scale;
+    fx_start_at(s, FXR_HIT, c.clock, fxp_v(e.x + dx / l * 0.8, y, e.z + dz / l * 0.8), fxp_v(e.x, y, e.z), fxp_v(0.8, 0.7, 0.55), 0.8, 1);
+  }
   else { x[0].bow_misses += 1; }
   return hit;
 }

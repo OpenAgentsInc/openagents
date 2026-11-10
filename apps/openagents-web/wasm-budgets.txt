@@ -76,8 +76,9 @@ fairy 695000
 # straight-alpha switch: 2,751,223 bytes measured before sight. Plates on the engine's visibility service
 # (aethyr/visibility.coax through hud-sight.coax) and captions fitted to their slots: 2,781,170 bytes
 # measured on the remote hosts. Experimental on Everglade's side bar and the touch-sized CLASSES picker
-# (#13092): 2,834,070 bytes; about 3% headroom.
-fivelab 2920000
+# (#13092): 2,834,070 bytes; about 3% headroom. The riders' straddle checked against the horse's and dragon's
+# bodies and the horse-archer stage (#13113): 2,923,469 bytes; about 1% headroom.
+fivelab 2960000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,
 # #13023) to 319,706; about 6% headroom.
