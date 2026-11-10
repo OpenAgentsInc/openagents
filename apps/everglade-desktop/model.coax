@@ -1,0 +1,83 @@
+// Everglade for desktop: your model. You are the web's player model: Character Create's default
+// character (charactercreator.coax), its Quaternius parts from Everglade II's pack, skinned from
+// the same baked clips (fivelab-bodies.coax) by the same vertex math (Model.metal, from
+// gpu/fivelab.coax fivelab_scene_vs). The host gives this the pack's catalog, uploads the bake and
+// draws the records; workshop.coax's ws_you says where you stand and what you are doing.
+// A unit of its own: charactercreator.coax and aethyr/walk.coax can't share one (each has an atan2).
+//   coax/bin/coax test --library apps/everglade-desktop/model.coax --only "your model"
+#load "../openagents-web/charactercreator.coax" as cc;
+#load "../openagents-web/fivelab-bodies.coax" as figs;
+
+WS_MODEL_PARTS :: 48;     // records at most: 40 worn pieces, a head, hair and a beard
+WS_STRIDE_WALK :: 1.3;    // metres one loop of the walk covers (people-rig.coax PEOPLE_DISTANCE)
+WS_STRIDE_RUN :: 3.4;
+// The pack's parts (the people's and the wardrobe's), your character, and what it plays.
+WsModel :: struct {
+  bodies: [1] figs.Bodies; you: [1] cc.Creator; people: [1] figs.People;
+  ready: bool; clock: f32;
+  clip: int = -1; t0: f32; phase: f32; prev: int = -1; pt0: f32; pphase: f32; fade_at: f32 = -100;
+  last_x: f32; last_z: f32;
+}
+
+// The pack's catalog (its text): where the people's parts and the wardrobe's are. True when it
+// names them all, and then you wear Character Create's default.
+ws_model_catalog :: (m: []WsModel, text: string) -> bool #export_c #effects(all) {
+  figs.bd_catalog(m[0].bodies[..], text);
+  cc.catalog(m[0].you[..], text);
+  cc.ensure(m[0].you[..]);
+  m[0].ready = m[0].bodies[0].ready && cc.catalog_ready(m[0].you[0]);
+  return m[0].ready;
+}
+// Every frame of the people's clips as skinning rows, for the GPU: BD_BAKE_FLOATS floats.
+ws_model_bake_floats :: () -> int #export_c #effects(all) { return figs.BD_BAKE_FLOATS; }
+ws_model_bake :: (m: []WsModel, out: []f32) -> bool #export_c #effects(all) {
+  if out.count < figs.BD_BAKE_FLOATS { return false; }
+  figs.people_load(m[0].people[..]);
+  figs.bd_bake(m[0].people[..], out, false);
+  return true;
+}
+// The clip your walking calls for (aethyr/walk.coax's Act): idle, the walk, the run, or the jump's loop.
+ws_model_clip :: (act: int) -> int {
+  if act == 1 { return figs.BD_WALK; }
+  if act == 2 { return figs.BD_RUN; }
+  if act == 3 { return figs.BD_JUMP_LOOP; }
+  return figs.BD_IDLE;
+}
+// This frame's records for your model (BD_REC_FLOATS floats each, the web shader's FivelabObj) and
+// its draws (first index, count, record, instances): one a part you wear. `you` is ws_you's five
+// floats. The gaits advance by the ground you cover, so your feet keep pace; a change of clip
+// fades over BD_FADE.
+ws_model_frame :: (m: []WsModel, you: []f32, dt: f32, out: []f32, draws: []u32) -> int #export_c #effects(all) {
+  if !m[0].ready || you.count < 5 || out.count < WS_MODEL_PARTS * figs.BD_REC_FLOATS || draws.count < WS_MODEL_PARTS * 4 { return 0; }
+  step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
+  m[0].clock += step;
+  dx := you[0] - m[0].last_x; dz := you[2] - m[0].last_z; moved := sqrt(dx * dx + dz * dz);
+  if m[0].clip < 0 { moved = 0; }
+  m[0].last_x = you[0]; m[0].last_z = you[2];
+  clip := ws_model_clip(cast(int) you[4]);
+  if clip != m[0].clip {
+    m[0].prev = m[0].clip; m[0].pt0 = m[0].t0; m[0].pphase = m[0].phase; m[0].fade_at = m[0].clock;
+    m[0].clip = clip; m[0].t0 = m[0].clock;
+  }
+  if clip == figs.BD_WALK { m[0].phase += moved / WS_STRIDE_WALK; }
+  if clip == figs.BD_RUN { m[0].phase += moved / WS_STRIDE_RUN; }
+  if m[0].phase > 1024 { m[0].phase -= 1024; }
+  a: figs.BdAnim; a.on = true; a.own = true;
+  a.x = you[0]; a.y = you[1]; a.z = you[2]; a.yaw = you[3];
+  a.clip = clip; a.t0 = m[0].t0; a.phase = m[0].phase;
+  a.prev = m[0].prev; a.pt0 = m[0].pt0; a.pphase = m[0].pphase; a.fade_at = m[0].fade_at;
+  m[0].you[0].clock = m[0].clock;
+  n := cc.figure_records(m[0].you[..], m[0].bodies[..], cc.look(m[0].you[0]), a, out, 0);
+  for i: 0..<n * 4 { draws[i] = m[0].bodies[0].draws[i]; }
+  return n;
+}
+ws_model_size :: () -> int #export_c #effects(all) { return size_of(WsModel); }
+ws_model_init :: (m: []WsModel) #export_c #effects(all) { m[0] = WsModel.{}; }
+ws_model_records :: () -> int #export_c #effects(all) { return WS_MODEL_PARTS; }
+ws_model_record_floats :: () -> int #export_c #effects(all) { return figs.BD_REC_FLOATS; }
+
+#test "your model plays the clip your walking calls for, on the strides the clips were made with" {
+  #assert ws_model_clip(0) == figs.BD_IDLE && ws_model_clip(1) == figs.BD_WALK && ws_model_clip(2) == figs.BD_RUN && ws_model_clip(3) == figs.BD_JUMP_LOOP;
+  #assert WS_STRIDE_WALK == figs.PEOPLE_DISTANCE[figs.PEOPLE_WALK] && WS_STRIDE_RUN == figs.PEOPLE_DISTANCE[figs.PEOPLE_RUN];
+  #assert WS_MODEL_PARTS * 4 <= 4096;
+}

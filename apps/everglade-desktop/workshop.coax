@@ -3,14 +3,14 @@
 // stands in the middle with a sphere turning in its chest, and the iron door is in the wall at the
 // back. You walk it with the controller every web realm uses (aethyr/walk.coax: its fixed step, its
 // follow camera, its run and jump) and the web's keys: W A S D, Space, Shift to walk, a drag or the
-// arrows to look, the wheel to zoom. You are drawn as an Aethyr figure (aethyr/figure.coax), in its
-// own stand, walk and run. There is no room and no golem to wake yet.
+// arrows to look, the wheel to zoom.
+// You are the web's player model, which model.coax holds and the host draws: ws_you says where
+// you stand and what you are doing, and ws_camera the view. There is no room and no golem to wake yet.
 // It draws Aethyr's twelve-float strokes (aethyr/ui/draw.coax), which the host's shader lights.
 //   coax/bin/coax test --library apps/everglade-desktop/workshop.coax
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/math.coax";
 #load "../../aethyr/walk.coax" as pc;
-#load "../../aethyr/figure.coax" as fig;
 
 WS_MAX_VERTICES :: 36000;
 WS_PYLONS :: 6;
@@ -26,7 +26,7 @@ WS_WALLS :: 8;            // the six pylons, the golem and the door, each a box 
 // keys: the web realms' bits: 1 forward, 2 back, 4 left, 8 right, 16 jump, 32 Shift.
 Workshop :: struct {
   time: f32; started: bool; you: pc.Player; keys: int; look_x: f32; look_y: f32;
-  held: bool; px: f32; py: f32; stride: f32;
+  held: bool; px: f32; py: f32;
 }
 
 // The eye for one frame, its right, up and forward, and the picture it projects onto.
@@ -39,7 +39,6 @@ WS_PALE :: WsInk.{red = 0.55, green = 0.72, blue = 1.0, light = 0.55};
 WS_DIM :: WsInk.{red = 0.16, green = 0.26, blue = 0.5, light = 0.5};
 WS_EMBER :: WsInk.{red = 1.0, green = 0.5, blue = 0.16, light = 0.8};
 WS_IRON :: WsInk.{red = 0.5, green = 0.47, blue = 0.44, light = 0.6};
-WS_YOU :: WsInk.{red = 1.0, green = 0.93, blue = 0.8, light = 1.0};
 
 // The view from an eye toward a point. You face +Z with your left along +X (aethyr/figure.coax),
 // so right is forward cross up.
@@ -230,28 +229,6 @@ ws_walk :: (s: []Workshop, dt: f32) {
   s[0].you = p; s[0].look_x = 0; s[0].look_y = 0;
 }
 
-// You, as an Aethyr figure in the gait your walking calls for: each bone a line.
-ws_you :: (out: []f32, at: int, v: WsView, s: []Workshop, dt: f32) -> int {
-  shape: fig.Shape; act := pc.walk_act(s[0].you);
-  gait := fig.Gait.stand;
-  if act == 1 { gait = fig.Gait.walk; }
-  if act == 2 { gait = fig.Gait.run; }
-  s[0].stride += fig.verse_figure_stride_rate(shape, gait) * dt;
-  if s[0].stride > 1024 { s[0].stride -= 1024; }
-  pose := fig.verse_figure_gait(fig.Rig.person, gait, s[0].stride, s[0].time);
-  feet := pc.walk_feet(s[0].you);
-  bones: [fig.MAX_PARTS * fig.BONE_FLOATS] f32; bound: [4] f32;
-  count := fig.verse_figure_place(fig.verse_figure_skeleton(shape), pose,
-    fig.Place.{x = feet.x, y = feet.y, z = feet.z, yaw = pc.walk_face(s[0].you)}, bones[..], bound[..]);
-  n := at;
-  for i: 0..<count {
-    o := i * fig.BONE_FLOATS;
-    n = ws_line(out, n, v, WsPoint.{x = bones[o], y = bones[o + 1], z = bones[o + 2]},
-                WsPoint.{x = bones[o + 4], y = bones[o + 5], z = bones[o + 6]}, WS_YOU);
-  }
-  return n;
-}
-
 ws_frame :: (s: []Workshop, out: []f32, width: f32, height: f32, d: f32, dt: f32) -> int {
   step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
   ws_start(s);
@@ -264,12 +241,31 @@ ws_frame :: (s: []Workshop, out: []f32, width: f32, height: f32, d: f32, dt: f32
   n = ws_door(out, n, v);
   n = ws_pylons(out, n, v, s[0].time);
   n = ws_golem(out, n, v, s[0].time);
-  n = ws_you(out, n, v, s, step);
   pen := HdPen.{d = d, cyan = true, top = 0, bottom = height, sans = false};
   n = hd_text(out, n, "EVERGLADE", 36, 64, 26, pen, 0);
   n = hd_text(out, n, "The Golemancers' Workshop", 36, 92, 15, pen, 1);
   n = hd_text(out, n, "W A S D move   Space jump   Shift walk   Drag look   Wheel zoom", 36, height - 30, 15, pen, 3);
   return n;
+}
+
+// Where you stand and what you are doing, for the host's model (model.coax): your feet (x, y,
+// z), the way you face, and your act (0 idle, 1 walking, 2 running, 3 in the air).
+ws_you :: (s: []Workshop, out: []f32) -> bool #export_c #effects(all) {
+  if out.count < 5 || !s[0].started { return false; }
+  feet := pc.walk_feet(s[0].you);
+  out[0] = feet.x; out[1] = feet.y; out[2] = feet.z; out[3] = pc.walk_face(s[0].you); out[4] = cast(f32) pc.walk_act(s[0].you);
+  return true;
+}
+// The view this frame, for the host's model pass: the eye, its right, up and forward, then the
+// focal length and the picture's middle in pixels (16 floats).
+ws_camera :: (s: []Workshop, width: f32, height: f32, d: f32, out: []f32) -> bool #export_c #effects(all) {
+  if out.count < 16 || !s[0].started { return false; }
+  v := ws_view(pc.walk_eye(s[0].you), pc.walk_at(s[0].you), width, height, d);
+  out[0] = v.ex; out[1] = v.ey; out[2] = v.ez; out[3] = 0;
+  out[4] = v.rx; out[5] = 0; out[6] = v.rz; out[7] = 0;
+  out[8] = v.ux; out[9] = v.uy; out[10] = v.uz; out[11] = 0;
+  out[12] = v.fx; out[13] = v.fy; out[14] = v.fz; out[15] = v.focal;
+  return true;
 }
 
 // The host's face.
@@ -382,4 +378,12 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   #assert ws_line(line[..], 0, v, WsPoint.{x = 0, y = 1, z = 9}, WsPoint.{x = 1, y = 1, z = 12}, WS_BLUE) == 0;
   #assert ws_line(line[..], 0, v, WsPoint.{x = 0, y = 1, z = 9}, WsPoint.{x = 1, y = 1, z = 0}, WS_BLUE) == 6;
   for i: 0..<72 { #assert line[i] == line[i]; }
+}
+#test "the host reads where you stand and the view only once you have started" {
+  s: [1] Workshop; you: [5] f32; cam: [16] f32;
+  #assert !ws_you(s[..], you[..]) && !ws_camera(s[..], 1280, 800, 2, cam[..]);
+  ws_start(s[..]);
+  #assert ws_you(s[..], you[..]) && you[0] == 0 && you[1] == 0 && you[2] > 4 && you[4] == 0;
+  #assert ws_camera(s[..], 1280, 800, 2, cam[..]) && cam[2] > you[2] && cam[14] < -0.5 && cam[15] > 0;
+  #assert !ws_you(s[..], you[0..<4]) && !ws_camera(s[..], 1280, 800, 2, cam[0..<15]);
 }

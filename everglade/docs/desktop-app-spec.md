@@ -19,22 +19,43 @@ web's keys:
 | Drag, or the arrow keys | Look |
 | Wheel | Zoom |
 
-The pylons, the golem, the door and the chamber's wall stop you. You are
-drawn as an Aethyr figure (`aethyr/figure.coax`) in its stand, walk and run.
+The pylons, the golem, the door and the chamber's wall stop you.
+
+You are the web's player model: Character Create's default character, in its
+Quaternius parts from Everglade II's pack (`everglade2.pack`, copied into
+the app).
+
+- **Same code.** `model.coax` loads the web's `charactercreator.coax` and
+  `fivelab-bodies.coax` for the parts you wear, the baked clips and each
+  frame's draw records.
+- **Same vertex math.** `Model.metal` skins each vertex as the web's
+  `fivelab_scene_vs` does, with the same dye and eye rules.
+- **Clips.** Idle, walk, run and the jump's loop, with the web's fade between
+  them. The gaits advance by the ground you cover.
+- **Light.** The chamber's own: the pylons' blue, the sphere's ember and a
+  fill from the camera. It is not the glade's sky and it casts no shadows.
 
 What it isn't yet:
 
-- **Your Everglade character.** The figure is a stand-in. Your character's
-  look, name and class need the skinned-mesh renderer and a log in, and the
-  app has neither.
+- **Your own character.** You wear the default. The look you made in
+  Character Create is saved by the web, and the app has no log in to fetch it.
 - **The `aethyr-host-v1` realm host** of section 3. The scene is
   `workshop.coax`, compiled to C and drawn with Aethyr's strokes
-  (`aethyr/ui/draw.coax`) by a small AppKit and Metal host.
+  (`aethyr/ui/draw.coax`) by a small AppKit and Metal host, which also reads
+  the pack and draws the model.
 - **A room, a golem to wake, or a title screen.**
+
+Two things to know when you change it:
+
+- `charactercreator.coax` and `aethyr/walk.coax` can't be loaded into one
+  unit (each declares an `atan2`), so the scene and the model are two units.
+- The web's character code passes large structures by value, so the app
+  links with a 512 MB main-thread stack.
 
 ```sh
 apps/everglade-desktop/build.sh --open        # builds, copies to ~/.openagents/everglade/, opens
 coax/bin/coax test --library apps/everglade-desktop/workshop.coax
+coax/bin/coax test --library apps/everglade-desktop/model.coax --only "your model"
 build/Everglade.app/Contents/MacOS/Everglade --shot out.png --at 0.9 --hold wd   # from apps/everglade-desktop/: one frame offscreen after 0.9 s with W and D held
 ```
 
