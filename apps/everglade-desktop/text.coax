@@ -1,0 +1,75 @@
+// Everglade for desktop: its text, in Everglade's own faces (everglade/hud/fonts.coax): Spectral
+// Medium to read and Cinzel at weight 600 for names and titles, both SIL Open Font License 1.1.
+// The host draws ASCII 32..126 of each into one atlas (Sources/main.swift faceAtlas: the sans
+// atlas's cells, aethyr/render/sans-profile.coax; Spectral in red, Cinzel in green) and this lays
+// text out by the faces' own advance widths: one textured quad a glyph, in the twelve-float
+// vertex, its mode 4 for Spectral and 5 for Cinzel (Workshop.metal fx_fs).
+//   coax/bin/coax test --library apps/everglade-desktop/text.coax --only "face"
+#load "../../aethyr/ui/draw.coax";
+#load "../../everglade/hud/fonts.coax";
+
+EG_BODY :: 0; EG_TITLE :: 1;
+EG_ATLAS_ROWS :: 6;        // 95 glyphs, 16 a row
+EG_WHITE :: 0; EG_MID :: 1; EG_ACCENT :: 2; EG_DIM :: 3;   // a text's colour, as hd_ink's kinds
+
+eg_glyph :: (c: u8) -> int { if c < 32 || c > 126 { return '?' - 32; } return cast(int) c - 32; }
+eg_advance :: (face: int, g: int) -> f32 {
+  if face == EG_TITLE { return cast(f32) EG_TITLE_WIDTH[g] / f32(EG_FONT_UPM); }
+  return cast(f32) EG_BODY_WIDTH[g] / f32(EG_FONT_UPM);
+}
+// How wide text is at `size` (the em, in points), in points.
+eg_width :: (text: string, size: f32, face: int) -> f32 {
+  w: f32 = 0;
+  for c: text { w += eg_advance(face, eg_glyph(c)) * size; }
+  return w;
+}
+// Draws text with its baseline's left end at x, base (points), `size` the em in points, d the
+// pixels a point. Returns the vertex count after it; a full buffer stops it at a whole glyph.
+eg_text :: (out: []f32, at: int, text: string, x: f32, base: f32, size: f32, d: f32, face: int, kind: int) -> int {
+  if !(size > 0) || !(d > 0) || at < 0 { return at; }
+  p := HdPen.{d = d, cyan = true, top = 0, bottom = 100000, sans = false};
+  k := hd_ink(p, kind);
+  em := size * d; s := em / f32(SANS_EM);
+  w := f32(SANS_CELL) * cast(f32) SANS_COLUMNS; h := f32(SANS_CELL) * cast(f32) EG_ATLAS_ROWS;
+  y0 := floor(base * d + 0.5) - f32(SANS_BASE) * s;
+  v := at; pen := x * d;
+  for c: text {
+    g := eg_glyph(c);
+    if c != ' ' {
+      if (v + 6) * VERTEX_FLOATS > out.count { return v; }
+      cx := cast(f32) (g % SANS_COLUMNS) * f32(SANS_CELL); cy := cast(f32) (g / SANS_COLUMNS) * f32(SANS_CELL);
+      x0 := pen - f32(SANS_LEFT) * s; x1 := x0 + f32(SANS_CELL) * s; y1 := y0 + f32(SANS_CELL) * s;
+      qx := [6] f32.[x0, x1, x1, x0, x1, x0];
+      qy := [6] f32.[y0, y0, y1, y0, y1, y1];
+      ux := [6] f32.[cx, cx + f32(SANS_CELL), cx + f32(SANS_CELL), cx, cx + f32(SANS_CELL), cx];
+      uy := [6] f32.[cy, cy, cy + f32(SANS_CELL), cy, cy + f32(SANS_CELL), cy + f32(SANS_CELL)];
+      for q: 0..<6 {
+        o := (v + q) * VERTEX_FLOATS;
+        out[o] = qx[q]; out[o + 1] = qy[q];
+        out[o + 2] = ux[q] / w; out[o + 3] = uy[q] / h;
+        out[o + 4] = em; out[o + 5] = 0; out[o + 6] = 1; out[o + 7] = 0;
+        out[o + 8] = k.red; out[o + 9] = k.green; out[o + 10] = k.blue; out[o + 11] = ifx face == EG_TITLE then 5.0f32 else 4.0f32;
+      }
+      v += 6;
+    }
+    pen += eg_advance(face, g) * em;
+  }
+  return v;
+}
+
+#test "the faces measure by their own widths, and a glyph outside ASCII is a question mark" {
+  #assert eg_glyph('A') == 33 && eg_glyph(' ') == 0 && eg_glyph('~') == 94 && eg_glyph(200) == eg_glyph('?') && eg_glyph(10) == eg_glyph('?');
+  #assert eg_width("M", 1000, EG_BODY) == cast(f32) EG_BODY_WIDTH[45] && eg_width("M", 1000, EG_TITLE) == cast(f32) EG_TITLE_WIDTH[45];
+  #assert eg_width("ab", 10, EG_BODY) == eg_width("a", 10, EG_BODY) + eg_width("b", 10, EG_BODY) && eg_width("", 10, EG_BODY) == 0;
+  #assert SANS_COLUMNS * EG_ATLAS_ROWS >= 95;
+}
+#test "the faces draw a quad a glyph inside the atlas, skip spaces, and stop at a full buffer" {
+  out: [6 * 12 * 3 + 1] f32; out[216] = 911;
+  n := eg_text(out[0..<216], 0, "A b", 10, 20, 16, 2, EG_BODY, EG_WHITE);
+  #assert n == 12 && out[11] == 4 && out[216] == 911;
+  for i: 0..<12 { #assert out[i * 12 + 2] >= 0 && out[i * 12 + 2] <= 1 && out[i * 12 + 3] >= 0 && out[i * 12 + 3] <= 1; }
+  // The second glyph starts an A's and a space's advance on, in pixels.
+  #assert abs((out[72] - out[0]) - (eg_width("A ", 16, EG_BODY) * 2)) < 0.01;
+  #assert eg_text(out[0..<216], 0, "ABCDE", 10, 20, 16, 2, EG_TITLE, EG_ACCENT) == 18 && out[11] == 5;
+  #assert eg_text(out[0..<216], 0, "A", 10, 20, 0, 2, EG_BODY, EG_WHITE) == 0;
+}

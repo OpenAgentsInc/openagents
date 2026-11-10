@@ -22,11 +22,14 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 /usr/bin/clang "${cflags[@]}" -c "$here/triage-face.c" -o "$work/c/triage-face.o"
 /usr/bin/clang -std=gnu11 -O2 -w -I"$repo/coax/platform" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
 xcrun -sdk macosx metal "$here/Workshop.metal" "$here/Model.metal" -o "$app/Contents/Resources/default.metallib"
+# Everglade's faces and their licences (SIL OFL 1.1), as the web realm ships them.
+rm -rf "$app/Contents/Resources/fonts"
+cp -R "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$app/Contents/Resources/fonts"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/Contents/Resources/everglade2.pack"
 # The web's character code passes its Creator and Bodies by value, megabytes a call, so the main
 # thread, which runs every Coax call, gets a 512 MB stack (reserved, not touched until used).
 xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/triage-face.o" "$work/c/process.o" \
-  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -lm \
+  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -lm \
   -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 codesign --force --sign - "$app" >/dev/null

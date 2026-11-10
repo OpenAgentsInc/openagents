@@ -57,6 +57,19 @@ It needs `claude` and `gh` installed and logged in. Without `claude` the
 panel shows the install line; logged out, it shows `claude /login`. The code
 is `triage.coax`, loaded into the scene's unit.
 
+**Text.** Everything you read is set in Everglade's own faces, the ones the
+web realm uses (`everglade/hud/fonts.coax`): Cinzel at weight 600 for titles
+and Spectral Medium for reading. Both are SIL Open Font License 1.1, and the
+font files and their licences are copied into the app from
+`apps/openagents-web/realms/everglade2/assets/fonts/`.
+
+- `text.coax` lays text out by each face's advance widths and emits one
+  textured quad a glyph.
+- The host draws ASCII 32 to 126 of both faces into one atlas, each mip at
+  its own size, in the layout of the web's sans atlas.
+- A character outside ASCII draws as a question mark, and Triage's text
+  replaces it with a space.
+
 What it isn't yet:
 
 - **Your own character.** You wear the default. The look you made in

@@ -10,6 +10,45 @@ import AppKit
 import Metal
 import MetalKit
 import ImageIO
+import CoreText
+
+// The faces' atlas (text.coax): ASCII 32..126 of Spectral Medium in red and of Cinzel at weight 600
+// in green, 16 columns of 96-texel cells, the pen at x 16 and the baseline at y 72 at 64 px, as the
+// sans atlas (aethyr/render/sans-profile.coax). Each mip is drawn at its own size.
+func faceAtlas(_ device: MTLDevice) -> MTLTexture? {
+  func face(_ file: String, weight: CGFloat?) -> CTFontDescriptor? {
+    guard let url = Bundle.main.url(forResource: file, withExtension: "ttf", subdirectory: "fonts"),
+          let all = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor], let d = all.first else { return nil }
+    guard let weight else { return d }
+    // Cinzel is variable; 'wght' is its weight axis.
+    return CTFontDescriptorCreateCopyWithAttributes(d, [kCTFontVariationAttribute: [NSNumber(value: 0x77676874): NSNumber(value: Double(weight))]] as CFDictionary)
+  }
+  guard let body = face("Spectral-Medium", weight: nil), let title = face("Cinzel", weight: 600) else { return nil }
+  let cols = 16, rows = 6, cell = 96, levels = 5
+  let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg8Unorm, width: cols * cell, height: rows * cell, mipmapped: true)
+  td.mipmapLevelCount = levels
+  guard let texture = device.makeTexture(descriptor: td) else { return nil }
+  for level in 0..<levels {
+    let c = cell >> level, w = cols * c, h = rows * c, scale = CGFloat(1 << level)
+    var both = [UInt8](repeating: 0, count: w * h * 2)
+    for (channel, descriptor) in [body, title].enumerated() {
+      guard let g = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+      g.setFillColor(gray: 0, alpha: 1); g.fill(CGRect(x: 0, y: 0, width: w, height: h))
+      g.setShouldSmoothFonts(false); g.setAllowsAntialiasing(true); g.textMatrix = .identity
+      let font = CTFontCreateWithFontDescriptor(descriptor, 64 / scale, nil)
+      let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: CGColor(gray: 1, alpha: 1)]
+      for i in 0..<95 {
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: String(Character(Unicode.Scalar(UInt8(32 + i)))), attributes: attrs))
+        g.textPosition = CGPoint(x: CGFloat((i % cols) * c) + 16 / scale, y: CGFloat(h) - (CGFloat((i / cols) * c) + 72 / scale))
+        CTLineDraw(line, g)
+      }
+      let gray = g.data!.assumingMemoryBound(to: UInt8.self)
+      for p in 0..<w * h { both[p * 2 + channel] = gray[p] }
+    }
+    texture.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: level, withBytes: both, bytesPerRow: w * 2)
+  }
+  return texture
+}
 
 // Everglade II's pack (verse/tools/pack_realm.py VPK1): a catalog, the vertices, the indices and
 // the texture layers. The host only finds the entries; model.coax reads the catalog.
@@ -114,6 +153,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var overlay: MTLBuffer!
   var panel: MTLRenderPipelineState!
   var flat: MTLDepthStencilState!
+  var faces: MTLTexture!
+  var faceSampler: MTLSamplerState!
   var last = CACurrentMediaTime()
   var time: Float = 0
 
@@ -152,6 +193,14 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     panel = try! device.makeRenderPipelineState(descriptor: r)
     let fd = MTLDepthStencilDescriptor(); fd.depthCompareFunction = .always; fd.isDepthWriteEnabled = false
     flat = device.makeDepthStencilState(descriptor: fd)!
+    // Everglade's faces, from the font files in the app. Without them there is no text to read.
+    guard let atlas = faceAtlas(device) else {
+      FileHandle.standardError.write(Data("Everglade: the app's fonts (Spectral-Medium.ttf, Cinzel.ttf) are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
+      exit(1)
+    }
+    faces = atlas
+    let fsd = MTLSamplerDescriptor(); fsd.minFilter = .linear; fsd.magFilter = .linear; fsd.mipFilter = .linear
+    faceSampler = device.makeSamplerState(descriptor: fsd)!
     // Your model, from the pack in the app. Without it there is no you to draw, so say so and stop.
     guard let url = Bundle.main.url(forResource: "everglade2", withExtension: "pack"), let pack = Pack(url),
           let m = Model(device: device, library: lib, color: colorPixelFormat, pack: pack) else {
@@ -184,6 +233,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     if n > 0 {
       enc.setRenderPipelineState(strokes)
+      enc.setFragmentTexture(faces, index: 0); enc.setFragmentSamplerState(faceSampler, index: 0)
       enc.setVertexBuffer(vertices, offset: 0, index: 0)
       enc.setVertexBytes(&u, length: 16, index: 1)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
@@ -201,6 +251,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     }
     if tn > 0 {
       enc.setRenderPipelineState(strokes)
+      enc.setFragmentTexture(faces, index: 0); enc.setFragmentSamplerState(faceSampler, index: 0)
       enc.setVertexBuffer(overlay, offset: 0, index: 0)
       enc.setVertexBytes(&u, length: 16, index: 1)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(tn))

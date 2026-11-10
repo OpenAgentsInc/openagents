@@ -1,6 +1,6 @@
 // Everglade for desktop: the chamber's dark, then Aethyr's twelve-float strokes
-// (aethyr/ui/draw.coax `lit`): a core, a halo and the vector font's modes, as
-// apps/openagents-desktop/Shaders.metal lights them.
+// (aethyr/ui/draw.coax `lit`): a core and a halo, as apps/openagents-desktop/Shaders.metal
+// lights them, and text from the faces' atlas (text.coax).
 #include <metal_stdlib>
 using namespace metal;
 
@@ -29,7 +29,15 @@ vertex V fx_vs(In v [[stage_in]], constant U &u [[buffer(1)]]) {
   o.place = v.a.zw; o.shape = v.b; o.tint = v.c;
   return o;
 }
-fragment float4 fx_fs(V v [[stage_in]]) {
+fragment float4 fx_fs(V v [[stage_in]], texture2d<float> faces [[texture(0)]], sampler sm [[sampler(0)]]) {
+  // Text (text.coax): a glyph from the faces' atlas, Spectral in red (mode 4), Cinzel in green (5).
+  // place is the atlas coordinate and shape.x the em in pixels, which picks the mip drawn nearest it.
+  if (v.tint.w > 3.5) {
+    float lod = clamp(log2(64.0 / max(v.shape.x, 1.0)), 0.0, 4.0);
+    float4 t = faces.sample(sm, v.place, level(lod));
+    float a = pow(v.tint.w > 4.5 ? t.g : t.r, 0.9);
+    return float4(v.tint.rgb * a * v.shape.z, 1.0);
+  }
   float along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   float d = length(float2(along, v.place.y));
   float mode = v.tint.w;

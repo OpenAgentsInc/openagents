@@ -8,12 +8,13 @@
 // so the two are one unit.
 //   coax/bin/coax test --library apps/everglade-desktop/triage.coax --only "triage"
 #load "../../aethyr/ui/draw.coax";
+#load "text.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
 
 TR_MODEL :: "claude-haiku-5-5";
 TR_COMMAND :: "gh issue list --repo OpenAgentsInc/openagents --state open --limit 60 --json number,title,labels,updatedAt";
 TR_ALLOWED :: "Bash(gh issue list:*)";   // the one command the agent may run; anything else is denied
-TR_SYSTEM :: "You triage GitHub issues for the OpenAgents repository, a game engine (Aethyr), its language (Coax) and the game Everglade. You have one tool, Bash, and it may run only `gh issue list`. Write plain ASCII text with no Markdown: no #, *, backticks or tables. Keep every line under 64 characters.";
+TR_SYSTEM :: "You triage GitHub issues for the OpenAgents repository, a game engine (Aethyr), its language (Coax) and the game Everglade. You have one tool, Bash, and it may run only `gh issue list`. Write plain ASCII text with no Markdown: no #, *, backticks or tables. Keep every line under 60 characters.";
 TR_PROMPT :: "Run this command once with Bash, exactly as written:\n\ngh issue list --repo OpenAgentsInc/openagents --state open --limit 60 --json number,title,labels,updatedAt\n\nThen write the triage:\n\nLine 1: how many issues are open.\nThen up to four groups, each a heading in capitals on its own line, a blank line before it. Under a heading, one line an issue: its number, then at most eight words on what it is. Put the group that blocks other work first.\nEnd with a blank line, the line START WITH, and the three issue numbers to do first, each with one short reason.\n\nDo not run any other command. If the command fails, say what it printed and stop.";
 TR_INSTALL :: "Claude Code is not installed. Install it with:\ncurl -fsSL https://claude.ai/install.sh | bash";
 TR_LOGIN :: "Claude Code is logged out. Log in with:\nclaude /login";
@@ -22,7 +23,7 @@ TR_TEXT :: 24000;         // bytes of triage kept; more than that is cut and the
 TR_MAX_VERTICES :: 120000;
 TR_BUTTON_W :: 112.0; TR_BUTTON_H :: 34.0; TR_MARGIN :: 24.0;
 TR_PANEL_W :: 500.0;      // points; narrower windows give it the width they have
-TR_CAP :: 12.0;           // the text's cap height, points
+TR_SIZE :: 15.0;          // the text's size (its em), points
 TR_LINE :: 21.0;          // a line's height, points
 TR_PAD :: 18.0;
 
@@ -44,7 +45,7 @@ Triage :: struct {
 tr_append :: (s: []Triage, t: string) {
   for c: t {
     if s[0].text_n >= TR_TEXT { s[0].cut = true; return; }
-    // The vector font is ASCII; anything else reads as a space.
+    // The faces' atlas is ASCII; anything else reads as a space.
     b := c; if (b < 32 && b != '\n') || b > 126 { b = ' '; }
     s[0].text[s[0].text_n] = b; s[0].text_n += 1;
   }
@@ -61,12 +62,12 @@ tr_put_int :: (s: []Triage, v: int, digits: int) {
 // the last space that fits, or mid-word when one word is wider than the panel. `next` is where the
 // line after it starts.
 TrLine :: struct { end: int; next: int; }
-tr_line :: (text: string, from: int, width: f32, k: Ink) -> TrLine {
+tr_line :: (text: string, from: int, width: f32) -> TrLine {
   i := from; space := -1;
   while i < text.count {
     if text[i] == '\n' { return TrLine.{end = i, next = i + 1}; }
     if text[i] == ' ' { space = i; }
-    if ink_width(text[from..<i + 1], TR_CAP, 0.22, 0.72, k) > width {
+    if eg_width(text[from..<i + 1], TR_SIZE, EG_BODY) > width {
       if space > from { return TrLine.{end = space, next = space + 1}; }
       if i == from { return TrLine.{end = i + 1, next = i + 1}; }
       return TrLine.{end = i, next = i};
@@ -196,44 +197,43 @@ tr_frame :: (s: []Triage, out: []f32, panel: []f32, width: f32, height: f32, d: 
   b := tr_button(width);
   n = hd_rect(out, n, b, pen, 2, 1);
   label := ifx s[0].state == TR_RUNNING then "Stop" else "Triage";
-  n = hd_text(out, n, label, b.x + 22, b.y + 23, 13, pen, 0);
+  n = eg_text(out, n, label, b.x + (b.width - eg_width(label, 17, EG_TITLE)) * 0.5, b.y + 23, 17, d, EG_TITLE, EG_WHITE);
   if !s[0].open { return n; }
   box := tr_panel(width, height);
   if box.height < 120 { return n; }
   if panel.count >= 4 { panel[0] = box.x; panel[1] = box.y; panel[2] = box.width; panel[3] = box.height; }
   n = hd_rect(out, n, box, pen, 1, 0.8);
-  n = hd_text(out, n, "Triage", box.x + f32(TR_PAD), box.y + 28, 13, pen, 0);
-  n = hd_text(out, n, TR_MODEL, box.x + f32(TR_PAD) + 78, box.y + 28, 11, pen, 3);
+  n = eg_text(out, n, "Triage", box.x + f32(TR_PAD), box.y + 30, 19, d, EG_TITLE, EG_WHITE);
+  n = eg_text(out, n, TR_MODEL, box.x + f32(TR_PAD) + eg_width("Triage", 19, EG_TITLE) + 14, box.y + 30, 13, d, EG_BODY, EG_DIM);
   if s[0].state != TR_RUNNING {
     c := tr_close_box(box);
     n = hd_rect(out, n, c, pen, 1, 0.7);
-    n = hd_text(out, n, "Close", c.x + 10, c.y + 18, 11, pen, 0);
+    n = eg_text(out, n, "Close", c.x + (c.width - eg_width("Close", 14, EG_BODY)) * 0.5, c.y + 18, 14, d, EG_BODY, EG_WHITE);
   }
   n = hd_line(out, n, box.x, box.y + 46, box.x + box.width, box.y + 46, pen, 1, 0.5);
   // The body: every line laid out, then the ones in view drawn, the newest at the bottom.
   top := box.y + 46 + f32(TR_PAD); bottom := box.y + box.height - 40;
   fits := cast(int) ((bottom - top) / f32(TR_LINE)); if fits < 1 { fits = 1; }
   text := cast(string) s[0].text[0..<s[0].text_n];
-  k := hd_ink(pen, 0); k.sans = false; k.scale = 1;
   inner := box.width - 2 * f32(TR_PAD);
   total := 0; at := 0;
-  while at < text.count { l := tr_line(text, at, inner, k); total += 1; at = l.next; }
+  while at < text.count { l := tr_line(text, at, inner); total += 1; at = l.next; }
   s[0].lines = total; s[0].shown = fits;
   most := total - fits; if most < 0 { most = 0; }
   if s[0].scroll > most { s[0].scroll = most; } if s[0].scroll < 0 { s[0].scroll = 0; }
   first := most - s[0].scroll;
   row := 0; at = 0;
   while at < text.count {
-    l := tr_line(text, at, inner, k);
+    l := tr_line(text, at, inner);
     if row >= first && row < first + fits && l.end > at {
       heading := text[at] == '>' ;
-      n = hd_text(out, n, text[at..<l.end], box.x + f32(TR_PAD), top + f32(TR_LINE) * f32(row - first) + f32(TR_CAP), f32(TR_CAP), pen, ifx heading then 2 else 0);
+      n = eg_text(out, n, text[at..<l.end], box.x + f32(TR_PAD), top + f32(TR_LINE) * f32(row - first) + 13, f32(TR_SIZE), d, EG_BODY, ifx heading then EG_ACCENT else EG_WHITE);
     }
     row += 1; at = l.next;
   }
   n = hd_line(out, n, box.x, bottom + 6, box.x + box.width, bottom + 6, pen, 1, 0.5);
   words: [96] u8;
-  n = hd_text(out, n, tr_status(s, words[..]), box.x + f32(TR_PAD), box.y + box.height - 14, 11, pen, 1);
+  n = eg_text(out, n, tr_status(s, words[..]), box.x + f32(TR_PAD), box.y + box.height - 14, 13, d, EG_BODY, EG_MID);
   return n;
 }
 
@@ -280,14 +280,13 @@ tr_max_vertices :: () -> int #export_c #effects(all) { return TR_MAX_VERTICES; }
   for i: 0..<TR_PROMPT.count - TR_COMMAND.count + 1 { if TR_PROMPT[i..<i + TR_COMMAND.count] == TR_COMMAND { found = true; } }
   #assert found;
 }
-#test "triage text keeps to its buffer, to ASCII and to whole lines" {
-  k := Ink.{core = 0.5, light = 1, glow = 2, red = 1, green = 1, blue = 1, scale = 1, sans = false};
-  a := tr_line("one two three", 0, 10000, k); #assert a.end == 13 && a.next == 13;
-  b := tr_line("one\ntwo", 0, 10000, k); #assert b.end == 3 && b.next == 4;
-  wide := ink_width("one two", TR_CAP, 0.22, 0.72, k);
-  c := tr_line("one two three", 0, wide + 1, k); #assert c.end == 7 && c.next == 8;
-  d := tr_line("onetwothree", 0, ink_width("onetw", TR_CAP, 0.22, 0.72, k) + 0.5, k); #assert d.end == 5 && d.next == 5;
-  e := tr_line("x", 0, 0, k); #assert e.end == 1 && e.next == 1;
+#test "triage text wraps at a newline, at the last space that fits, or inside a word too wide" {
+  a := tr_line("one two three", 0, 10000); #assert a.end == 13 && a.next == 13;
+  b := tr_line("one\ntwo", 0, 10000); #assert b.end == 3 && b.next == 4;
+  wide := eg_width("one two", TR_SIZE, EG_BODY);
+  c := tr_line("one two three", 0, wide + 1); #assert c.end == 7 && c.next == 8;
+  d := tr_line("onetwothree", 0, eg_width("onetw", TR_SIZE, EG_BODY) + 0.5); #assert d.end == 5 && d.next == 5;
+  e := tr_line("x", 0, 0); #assert e.end == 1 && e.next == 1;
 }
 #test "triage boxes: the button at the top right, the panel under it, Close inside the panel" {
   b := tr_button(1320); p := tr_panel(1320, 880); c := tr_close_box(p);
