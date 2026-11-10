@@ -8,40 +8,14 @@ import CoreGraphics
 import CoreText
 import ImageIO
 
-// The faces' atlas (text.coax): ASCII 32..126 of Spectral Medium in red and of Cinzel at weight 600
-// in green, 16 columns of 96-texel cells, the pen at x 16 and the baseline at y 72 at 64 px, as the
-// sans atlas (aethyr/render/sans-profile.coax). Each mip is drawn at its own size.
+// The faces' atlas on the GPU: Faces.swift draws each mip; this uploads them.
 func faceAtlas(_ device: MTLDevice) -> MTLTexture? {
-  func face(_ file: String, weight: CGFloat?) -> CTFontDescriptor? {
-    guard let url = Bundle.main.url(forResource: file, withExtension: "ttf", subdirectory: "fonts"),
-          let all = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor], let d = all.first else { return nil }
-    guard let weight else { return d }
-    // Cinzel is variable; 'wght' is its weight axis.
-    return CTFontDescriptorCreateCopyWithAttributes(d, [kCTFontVariationAttribute: [NSNumber(value: 0x77676874): NSNumber(value: Double(weight))]] as CFDictionary)
-  }
-  guard let body = face("Spectral-Medium", weight: nil), let title = face("Cinzel", weight: 600) else { return nil }
-  let cols = 16, rows = 6, cell = 96, levels = 5
-  let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg8Unorm, width: cols * cell, height: rows * cell, mipmapped: true)
-  td.mipmapLevelCount = levels
+  guard let dir = Bundle.main.url(forResource: "fonts", withExtension: nil), let levels = faceLevels(fonts: dir), let top = levels.first else { return nil }
+  let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg8Unorm, width: top.width, height: top.height, mipmapped: true)
+  td.mipmapLevelCount = levels.count
   guard let texture = device.makeTexture(descriptor: td) else { return nil }
-  for level in 0..<levels {
-    let c = cell >> level, w = cols * c, h = rows * c, scale = CGFloat(1 << level)
-    var both = [UInt8](repeating: 0, count: w * h * 2)
-    for (channel, descriptor) in [body, title].enumerated() {
-      guard let g = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
-      g.setFillColor(gray: 0, alpha: 1); g.fill(CGRect(x: 0, y: 0, width: w, height: h))
-      g.setShouldSmoothFonts(false); g.setAllowsAntialiasing(true); g.textMatrix = .identity
-      let font = CTFontCreateWithFontDescriptor(descriptor, 64 / scale, nil)
-      let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: CGColor(gray: 1, alpha: 1)]
-      for i in 0..<95 {
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: String(Character(Unicode.Scalar(UInt8(32 + i)))), attributes: attrs))
-        g.textPosition = CGPoint(x: CGFloat((i % cols) * c) + 16 / scale, y: CGFloat(h) - (CGFloat((i / cols) * c) + 72 / scale))
-        CTLineDraw(line, g)
-      }
-      let gray = g.data!.assumingMemoryBound(to: UInt8.self)
-      for p in 0..<w * h { both[p * 2 + channel] = gray[p] }
-    }
-    texture.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: level, withBytes: both, bytesPerRow: w * 2)
+  for (level, l) in levels.enumerated() {
+    texture.replace(region: MTLRegionMake2D(0, 0, l.width, l.height), mipmapLevel: level, withBytes: l.bytes, bytesPerRow: l.width * 2)
   }
   return texture
 }

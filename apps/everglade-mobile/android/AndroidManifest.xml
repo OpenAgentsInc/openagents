@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.openagents.everglade" android:versionCode="1" android:versionName="0.1.0">
+  <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="35" />
+  <uses-feature android:name="android.hardware.vulkan.version" android:version="0x401000" android:required="true" />
+  <application android:label="Everglade" android:hasCode="false" android:extractNativeLibs="true">
+    <activity android:name="android.app.NativeActivity" android:exported="true"
+              android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+              android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|density|smallestScreenSize|uiMode">
+      <meta-data android:name="android.app.lib_name" android:value="everglade" />
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

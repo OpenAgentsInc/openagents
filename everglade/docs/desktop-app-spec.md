@@ -17,8 +17,8 @@ cloud with a far city's lamps in its gaps.
   displays hung between the pylons.
 - **On a phone too.** [`apps/everglade-mobile/`](../../apps/everglade-mobile/README.md)
   is the same Workshop as an iOS app, `com.openagents.everglade`, with touch
-  controls and no Next issue panel. It runs in the iOS simulator. Android is
-  planned and not built.
+  controls and no Next issue panel, and as an Android app on a Vulkan host.
+  Both run in their emulators; no real phone has run either.
 - **Built from parts.** Every piece is a reusable part from Aethyr's
   architecture kit ([`aethyr/arch/`](../../aethyr/arch/README.md)), written in
   Coax: a fluted Doric column, a plinth, a turned baluster, rails, an
