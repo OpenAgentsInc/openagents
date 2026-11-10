@@ -172,6 +172,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       let checkout = (Bundle.main.url(forResource: "repo", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       let working = request == 3
       process.arguments = working ? ["work", String(nxp_chosen(next)), "--repo-dir", checkout, "--owner", String(getpid())] : request == 2 ? ["context", "--refresh"] : ["context"]
+      // EVERGLADE_NEXT_PROMPT is what you say now, for a run with no one at the window (--shot).
+      if !working, let said = ProcessInfo.processInfo.environment["EVERGLADE_NEXT_PROMPT"], !said.isEmpty { process.arguments! += ["--prompt", said] }
       process.standardOutput = out; process.standardError = err
       DispatchQueue.global().async { [weak self] in
         var text = Data(), report = Data(), ok = false
@@ -343,7 +345,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   }
   if let t = args.firstIndex(of: "--at"), t + 1 < args.count, let v = Float(args[t + 1]), v >= 0, v <= 600 { seconds = v }
   let view = WorkshopView(frame: NSRect(x: 0, y: 0, width: width / 2, height: height / 2))
-  if let w = args.firstIndex(of: "--next"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 600 { view.nextWait = v }
+  if let w = args.firstIndex(of: "--next"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 86400 { view.nextWait = v }
   if let r = args.firstIndex(of: "--reply"), r + 1 < args.count { view.nextReply = args[r + 1] }
   if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { view.nextRuns = v }
   if let w = args.firstIndex(of: "--scene"), w + 1 < args.count, let v = Int32(args[w + 1]) { eg_go(view.state, v) }

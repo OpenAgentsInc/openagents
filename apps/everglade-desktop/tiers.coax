@@ -53,7 +53,7 @@ tool_main :: () -> int #export_c #effects(all) {
   server := cl_add_server(o[..], "tier", "1");
   tool := cl_add_server_tool(o[..], server, "rate", "Record the rubric's scores for one issue.", cast(string) schema[0..<k]);
   cl_add_allowed(o[..], "mcp__tier__rate");
-  cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY"); cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
   q[0].options = o[0];
   p: [1] ClProcess;
   problem := cl_start(q[..], p[..], cast(string) ctx[0..<n], false, scratch[..]);
