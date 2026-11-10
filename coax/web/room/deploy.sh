@@ -39,7 +39,9 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../../.." && pwd)"
 cd "$root"
+# A failure is confirmed by a second run: on a busy Mac its position probe fails by millimetres (#13137).
 if "$here/../tool.sh" everglade-drift; then echo "room: the drift check holds"
+elif echo "room: the drift check failed once (its table above): running it again to confirm" >&2 && "$here/../tool.sh" everglade-drift; then echo "room: the drift check holds on its second run"
 else echo "room: the drift check fails (its table above): not deploying" >&2; exit 1
 fi
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"

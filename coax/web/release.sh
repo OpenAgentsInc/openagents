@@ -24,7 +24,7 @@
 # the same two checks run on production; a new failure rolls back.
 #
 # The Everglade drift check holds to the same rule: when the release changes Everglade, a drift
-# it fails here stops the release only if production's commit holds it.
+# it fails here, twice, stops the release only if production's commit holds it.
 #
 # Everything else is a report and never stops a release: tools-check,
 # everglade-parity (no zone-local copy of a shared Everglade feature, #13075),
@@ -194,7 +194,13 @@ drift_check() {
 everglade='^(apps/openagents-web/everglade|coax/web/room/|coax/web/room-worker\.js|coax/web/host\.js|coax/web/everglade-drift|aethyr/|verse/everglade/|verse/grid\.coax)'
 if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full" | grep -Eq "$everglade"; then
   t=$(now)
-  if (cd "$tree" && coax/web/room/build.sh && coax/web/tool.sh everglade-drift) > "$reports/drift" 2>&1; then echo "  drift      holds"
+  # A failure is confirmed by a second run before it counts, as the other checks' are: the first run
+  # shares the Mac with the starts walk's Chromes, and its position probe then fails by millimetres
+  # (#13137). The second waits for the walk to end.
+  drift_run() { (cd "$tree" && coax/web/room/build.sh && coax/web/tool.sh everglade-drift) > "$reports/drift" 2>&1; }
+  walk_done() { local n=0; while [[ ! -e "$reports/starts-done" ]] && (( n++ < 400 )); do sleep 5; done; }
+  if drift_run; then echo "  drift      holds"
+  elif cp "$reports/drift" "$reports/drift-first" && walk_done && drift_run; then echo "  drift      holds on a second run, once the starts walk was done (the first failed beside it: $(grep -cE '^DRIFT ' "$reports/drift-first") probe(s))"
   else
     old="$(mktemp -d)/production"
     git -C "$repo" worktree add -q --detach "$old" "${passed%% *}"
@@ -217,6 +223,7 @@ drift_check > "$drift_out" 2>&1 & drift_job=$!
 
 t=$(now)
 out=$(starts "$staging")
+: > "$reports/starts-done"
 grep -q '^goldens ' <<< "$out" || { kill "$drift_job" 2>/dev/null; echo "release $commit: STOPPED. the staging starts walk did not finish within 1800 s, or did not run (Mac load: $(uptime | sed 's/.*averages*: //')):" >&2; tail -5 <<< "$out" >&2; exit 1; }
 broke=$(new_starts "$out" "$base_starts" "$staging")
 [[ -z "$broke" ]] || { kill "$drift_job" 2>/dev/null; echo "release $commit: STOPPED. pages fail on staging that pass on production; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
