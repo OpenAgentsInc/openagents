@@ -54,7 +54,7 @@ Proposed names for the rest (not decided):
 | --- | --- |
 | The bench in your house | **Golemancer's Bench** ("the bench" in this doc) |
 | The tool kit | Golemancer's Tools |
-| A golem's upkeep | Quickening oil |
+| A golem's upkeep | Golem salt |
 | A golem that acts outside the world | An envoy |
 | The bench's link to the world outside | The Veilstone |
 | Code prefix and records | `golem_` in code, `golemancy.*` records |
@@ -160,7 +160,7 @@ commands and read what they report.
 > **Weight:** 6 lb.
 > **Utilize:** Read the command written inside a golem (DC 10), or quiet a
 > golem that is refusing an order (DC 15)
-> **Craft:** Golem bodies (section 6.2), command scrolls, quickening oil
+> **Craft:** Golem bodies (section 6.2), command scrolls, golem salt
 
 - It costs what Tinker's Tools costs, the nearest SRD kit, and uses
   Intelligence because the work is writing commands, not handwork.
@@ -208,7 +208,7 @@ All in-game currency and materials, from SRD prices where they exist:
 | Materials for a crafted item | Half its price (SRD p. 103) |
 | A golem body | Crafted as a nonmagical item from its price, or a Common magic item (5 days, 50 GP) for a beast golem |
 | Quickening a golem | 10 GP of ink and incense, the price of Find Familiar's incense |
-| Quickening oil | Upkeep: one per workday of work, craftable with Golemancer's Tools |
+| Golem salt | Upkeep: one per workday of work, craftable with Golemancer's Tools |
 
 Money for out-of-world actions is separate and is never in-game currency
 (section 9.6).
@@ -250,7 +250,7 @@ Golemancy reads the bench id; it never places or moves the prop.
 
 | Panel | Contents |
 | --- | --- |
-| **Golems** | Each golem by name, its body, what it is doing, time left, quickening oil |
+| **Golems** | Each golem by name, its body, what it is doing, time left, golem salt |
 | **Orders** | Each golem's queue, with each task's days, cost, DC and success chance |
 | **Reports** | Finished tasks: what happened, the roll, what came back. Also sent as letters |
 | **Shaping** | Shape and quicken a new golem, move one to a new body, unmake one |
@@ -480,7 +480,7 @@ Versioned protocol records, like the familiar's:
 
 ```text
 golemancy.profession.v1   character id, rank, task count by family, tool proficiency
-golemancy.golem.v1        golem id, owner character, name, kind, body, HP, aptitudes, quickening oil, state
+golemancy.golem.v1        golem id, owner character, name, kind, body, HP, aptitudes, golem salt, state
 golemancy.order.v1        order id, golem id, task kind, target, repeat, days, wage, materials, DC,
                           state (queued → running → succeeded | failed | cancelled), start, end, roll
 golemancy.report.v1       order id, outcome, roll, items, letter text
