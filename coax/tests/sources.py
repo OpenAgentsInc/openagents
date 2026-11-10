@@ -51,6 +51,24 @@ class Sources(unittest.TestCase):
         self.assertEqual(deps["descriptors"],[])
         self.assertEqual(self.success("deps",main),self.success("deps",main))
 
+    def test_composed_tokens_keep_their_places_and_values(self):
+        # The composed input's tokens come from each unit's own lex (#13131):
+        # a token after blanked #module, #export and #load directives, in a
+        # unit after one with no final newline, keeps its line, column and value.
+        self.write("first.coax",'#module "lib.first"; #export first;\r\nfirst :: ()->int #effects(all) {return 0x10;} /* no final\nnewline */')
+        part=self.write("part.coax",'#module "lib.part"; #export text, half; #load "first.coax";\n\n'
+                        'text :: ()->string #effects(all) {return "a\\tb";} half :: ()->f64 #effects(all) {return 0.5;}')
+        main=self.write("main.coax",'#import "Basic";\n#load "part.coax"; #load "first.coax";\n'
+                        'main :: () {print("%|%|%\\n", text(), half(), first());}')
+        self.assertEqual(self.success("run",main),"a\tb|0.5|16\n")
+        part.write_text(part.read_text()+' bad :: ()->int #effects(all) {return missing;}')
+        record=next(r for r in self.error(main,"E0306",part) if r["code"]=="E0306")
+        self.assertEqual((record["line"],record["col"]),(3,part.read_text().splitlines()[2].index("missing")+1))
+        main.write_text(main.read_text()+'\n  wrong :: ()->int #effects(all) {return gone;}')
+        part.write_text(part.read_text().replace("missing","0"))
+        record=next(r for r in self.error(main,"E0306",main) if r["code"]=="E0306")
+        self.assertEqual((record["line"],record["col"]),(4,main.read_text().splitlines()[3].index("gone")+1))
+
     def test_cycles_symlinks_and_once_only_identity(self):
         main=self.write("main.coax",'#load "b.coax";\nmain :: () {}')
         other=self.write("b.coax",'#load "alias.coax";')

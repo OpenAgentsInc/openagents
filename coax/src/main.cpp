@@ -1821,10 +1821,10 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
                       bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks, bool mutation_lowering, QueryParsed *parsed) {
-  {TimedPhase phase{"load"};if (!load_sources(arena, src, path)) return false;}
+  std::vector<Token> tokens;  // load_sources makes them from each unit's lex; else the composed text is lexed
+  {TimedPhase phase{"load"};if (!load_sources(arena, src, path, &tokens)) return false;}
   for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;
-  std::vector<Token> tokens;
-  bool ok;{TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);}
+  bool ok=true;if(tokens.empty()){TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);}
   if (ok) {
     size_t before = src->text.size();
     {TimedPhase phase{"imports"};ok=import_protos(src, opts, tokens);}

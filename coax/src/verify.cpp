@@ -737,6 +737,12 @@ static void check_cache_used(const std::string &dir);  // main.cpp: evicts old r
 
 struct ReuseIndex {
   enum : uint8_t { NONE, SIG, EXEC, FULL };
+  // A SHA-256 as four 64-bit lanes. A key holds the lane-wise sum of its
+  // items' lines, so it needs no text of every line (#13131).
+  struct LineSum {
+    uint64_t lane[4] = {};
+    void add(const LineSum &o) { for (int i = 0; i < 4; i++) lane[i] += o.lane[i]; }
+  };
   struct Item {
     int32_t first = 0, last = -1, sig_last = -1;  // tokens [first, last]; a procedure's signature is [first, sig_last]
     int32_t unit = -1;
@@ -744,6 +750,8 @@ struct ReuseIndex {
     bool named = false, proc = false, check = false, run = false, sig_run = false;  // run: its tokens hold #run (sig_run: its signature's)
     std::vector<int32_t> uses, sig_uses;  // the named items its tokens (its signature's) spell
     std::string full, sig;                 // digests, when first needed
+    LineSum line[3];                       // its line in a key as S, E and F, when first needed
+    uint8_t lines = 0;                     // which of line[] are made
   };
   const Source *src = nullptr;
   const std::vector<Token> *tokens = nullptr;
@@ -934,12 +942,34 @@ struct ReuseIndex {
     return true;
   }
 
+  // An item's line in a key: its part (S, E or F), its identity and its
+  // digest (its signature's for S), hashed. false when this compiler can't hash.
+  bool line_sum(int32_t k, uint8_t m, LineSum *out) {
+    Item &it = items[(size_t)k];
+    const int at = m - SIG;
+    if (!(it.lines >> at & 1)) {
+      const std::string hex = debug_source_hash(std::string(m == SIG ? "S\t" : m == EXEC ? "E\t" : "F\t") + it.id + "\t" +
+                                                (m == SIG ? sig_digest(k) : full_digest(k)) + "\n");
+      if (hex.size() != 64) return false;
+      for (int lane = 0; lane < 4; lane++) it.line[at].lane[lane] = strtoull(hex.substr((size_t)lane * 16, 16).c_str(), nullptr, 16);
+      it.lines |= (uint8_t)(1 << at);
+    }
+    *out = it.line[at];
+    return true;
+  }
+
   // The key of a check's inputs, given the items of the procedures it ran.
   // mode: each item's part in the key being made, NONE between calls (a
-  // program has tens of thousands of items and a check reaches a few).
-  std::vector<uint8_t> mode;
+  // program has thousands of items and a check reaches some). in_ran: the
+  // items in ran, the same way. A key is the SHA-256 of its first lines, how
+  // many items the check reaches and the sum of their lines: the items are a
+  // set, each with one part, so the sum names them in any order, and a key
+  // costs one addition an item where it cost a line of text to hash (fivelab's
+  // checks reach 2.8 million items between them: 321 MB of lines, #13131).
+  std::vector<uint8_t> mode, in_ran;
   std::string key(int32_t check, const std::set<int32_t> &ran, const std::string &head) {
-    if (mode.size() != items.size()) mode.assign(items.size(), NONE);
+    if (mode.size() != items.size()) { mode.assign(items.size(), NONE); in_ran.assign(items.size(), 0); }
+    for (int32_t r : ran) in_ran[(size_t)r] = 1;
     std::vector<int32_t> work{check}, reached{check};
     mode[(size_t)check] = EXEC;
     auto visit = [&](int32_t k, uint8_t m) {
@@ -960,20 +990,22 @@ struct ReuseIndex {
       // it when the check ran it too, else its signature.
       const bool deep = m == FULL || (m == SIG ? it.sig_run : it.run);
       for (int32_t j : m == SIG ? it.sig_uses : it.uses)
-        visit(j, !items[(size_t)j].proc || deep ? FULL : m == SIG ? SIG : ran.count(j) ? EXEC : SIG);
+        visit(j, !items[(size_t)j].proc || deep ? FULL : m == SIG ? SIG : in_ran[(size_t)j] ? EXEC : SIG);
     }
-    std::string text = "coax.check-reuse.v1\n" + head + "global\t" + global + "\ncheck\t" + items[(size_t)check].id + "\n";
-    // In item order, as a walk over every item would list them.
-    std::sort(reached.begin(), reached.end());
     bool named = true;
+    LineSum sum, line;
     for (int32_t r : reached) {
-      const size_t k = (size_t)r;
-      if (items[k].id.empty()) { named = false; break; }
-      text += std::string(mode[k] == SIG ? "S\t" : mode[k] == EXEC ? "E\t" : "F\t") + items[k].id + "\t" +
-              (mode[k] == SIG ? sig_digest((int32_t)k) : full_digest((int32_t)k)) + "\n";
+      if (items[(size_t)r].id.empty() || !line_sum(r, mode[(size_t)r], &line)) { named = false; break; }
+      sum.add(line);
     }
     for (int32_t r : reached) mode[(size_t)r] = NONE;
-    return named ? debug_source_hash(text) : "";
+    for (int32_t r : ran) in_ran[(size_t)r] = 0;
+    if (!named) return "";
+    char lanes[80];
+    snprintf(lanes, sizeof lanes, "%016llx%016llx%016llx%016llx", (unsigned long long)sum.lane[0], (unsigned long long)sum.lane[1],
+             (unsigned long long)sum.lane[2], (unsigned long long)sum.lane[3]);
+    return debug_source_hash("coax.check-reuse.v2\n" + head + "global\t" + global + "\ncheck\t" + items[(size_t)check].id + "\nitems\t" +
+                             std::to_string(reached.size()) + "\t" + lanes + "\n");
   }
 };
 

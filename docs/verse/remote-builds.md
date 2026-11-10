@@ -348,6 +348,42 @@ not met yet.
 `coax/tests/check-reuse.coax`'s corpus step fails on the host with main's
 compiler as with this one (its 120-second limit); the other steps pass.
 
+### A recompile that runs no check (#13131)
+
+With no check to run, fivelab's compile spent its time in two places that
+did the same work twice:
+
+- **Keys.** A check's key was the SHA-256 of one line of text for each
+  declaration the check reaches. fivelab's checks reach 2.8 million
+  declarations between them, so each compile hashed 321 MB of lines. Now each
+  declaration's line is hashed once a compile, and a check's key is the
+  SHA-256 of its first lines, how many declarations it reaches and the sum of
+  their line hashes. A key depends on the same declarations as before. A
+  compile that records checks makes the same keys: on oa-build-3,
+  `authority.record` took 13.1 s for 1,652 checks before and 1.3 s for 1,306
+  after.
+- **Lexing.** The loader lexes each unit to find its `#load`, `#module` and
+  `#export` directives, and the compiler then lexed the composed text again.
+  Now the composed text's tokens are the units' own tokens, moved to their
+  place in it. `coax/tests/sources.py` checks a token's line, column and
+  value after blanked directives and after a unit with no final newline.
+
+Measured on fivelab's own unit: a comment appended to
+`verse/experimental-dungeon.coax`, 0 of 1,306 checks run, three edits each.
+The first two rows are one job on oa-build-4 (30 cores, load 2 to 9), the
+new compiler built there from these sources. The third is the bootstrapped
+compiler on oa-build-3 while other jobs ran (load 12 to 20).
+
+| Compiler | Coax to C | `authority.reuse` | `lex` | `load` |
+| --- | --- | --- | --- | --- |
+| Before | 26.3 to 29.6 s | 12.2 to 14.6 s | 3.9 s | 4.8 s |
+| After | 11.4 to 11.8 s | 1.0 s | none | 4.9 s |
+| After, on a busy host | 14.2 to 14.9 s | 1.3 s | none | 5.8 to 6.9 s |
+
+What is left on a quiet host: 4.9 s to load (4.0 s of it the units' lexing),
+1.8 s to check, 1.3 s for the libraries' verdicts, 0.8 s to parse, 0.6 s to
+emit and 1.8 s for the `#authority` pass.
+
 ## The Linux toolchain
 
 The size budgets in `apps/openagents-web/wasm-budgets.txt` were measured

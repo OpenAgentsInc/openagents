@@ -80,10 +80,16 @@ static bool source_unit_syntax(const Source *source,const std::vector<Token> &to
   return parsed.ok;
 }
 
-static bool load_sources(Arena *arena, Source *src, const char *path) {
+// composed: the composed text's tokens, from each unit's own lex. A unit is
+// lexed here to find its directives, and the composed text is the units with
+// those directives blanked, each on its own lines, so lexing it again would
+// make the same tokens at shifted places (fivelab: 2.1 million tokens, 4 s,
+// #13131). Left empty when the composed text must be lexed.
+static bool load_sources(Arena *arena, Source *src, const char *path, std::vector<Token> *composed) {
   struct Unit {
     std::shared_ptr<SourceUnit> source;
     std::string masked;
+    std::vector<Token> tokens;  // outside the blanked directives, their text in source->text
     uint8_t state = 1;
     bool balanced = true;
     std::vector<std::pair<int64_t,int64_t>> loaders; // (loading unit, directive offset there)
@@ -191,6 +197,21 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     // After lexer errors the unit's syntax errors are still reported, then it stops.
     if (!lexed_ok) {source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed);return stop();}
     u->source->authority=scan.authority;u->balanced=scan.balanced;u->masked=local.text;
+    {
+      std::vector<std::pair<int64_t,int64_t>> blank;  // as blanked in masked below
+      for (int64_t i=0;i<scan.count;i++) blank.push_back({loads[(size_t)i].begin,loads[(size_t)i].end});
+      if (scan.claims) blank.push_back({scan.owner_begin,scan.owner_end});
+      for (int64_t i=0;i<list.count;i++) blank.push_back({exported[(size_t)i].begin,exported[(size_t)i].end});
+      u->tokens.reserve(tokens.size());
+      for (const auto &t:tokens) {
+        if (t.kind==Tok::eof) continue;
+        bool blanked=false;
+        for (const auto &[from,to]:blank) blanked=blanked || (t.loc.offset>=from && t.loc.offset<to);
+        if (blanked) continue;
+        u->tokens.push_back(t);
+        u->tokens.back().text.data=u->source->text.data()+(t.text.data-local.text.data());
+      }
+    }
     composition=composition || scan.count!=0;
     if (composition && !u->balanced) {
       error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return stop();
@@ -226,6 +247,28 @@ static bool load_sources(Arena *arena, Source *src, const char *path) {
     if (composition && (src->text.empty() || src->text.back()!='\n'))src->text+='\n';
     line+=(int32_t)std::count(src->text.begin()+u->source->begin,src->text.end(),'\n');
     u->source->end=(int32_t)src->text.size();src->units.push_back(u->source);
+  }
+  // Each unit begins a line of the composed text, so a token keeps its column
+  // and moves by its unit's first line and offset. The lexer's own limit on a
+  // source's bytes is its to report.
+  if (LX_capacities((int64_t)src->text.size()).decoded) {
+    size_t count=1;
+    for (const auto &u:units) count+=u->tokens.size();
+    composed->reserve(count);
+    for (const auto &u:units) {
+      const SourceUnit &unit=*u->source;
+      for (Token t:u->tokens) {
+        t.text.data=src->text.data()+unit.begin+(t.text.data-unit.text.data());
+        t.loc.line+=unit.first_line-1;t.loc.offset+=unit.begin;
+        composed->push_back(t);
+      }
+      std::vector<Token>().swap(u->tokens);
+    }
+    Token eof;
+    const size_t last=src->text.rfind('\n');
+    eof.loc={line,(int32_t)(src->text.size()-(last==std::string::npos?0:last+1))+1,(int32_t)src->text.size()};
+    eof.text={src->text.data()+src->text.size(),0};
+    composed->push_back(eof);
   }
   // Owners in topological order (a loader finishes after what it loads): a
   // claim owns itself; an unclaimed member joins its loaders' owners, which
