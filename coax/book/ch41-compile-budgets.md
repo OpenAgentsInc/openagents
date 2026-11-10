@@ -136,7 +136,7 @@ the binary as several processes. A check that passes natively counts as
 passed. Every other check (a trap, a refusal, a time limit, or one that
 reaches an unevaluated `#run`) runs in the evaluator, so failures still get
 the evaluator's diagnostic and `#forall` counterexample.
-[`coax/docs/native-checks.md`](../docs/native-checks.md) describes the
+`coax/docs/native-checks.md` describes the
 design and its settings.
 
 Cold compiles with `--library` on one remote build host (a fresh check
