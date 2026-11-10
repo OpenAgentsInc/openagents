@@ -22,7 +22,7 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 /usr/bin/clang "${cflags[@]}" -c "$here/model-face.c" -o "$work/c/model-face.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/next-face.c" -o "$work/c/next-face.o"
 /usr/bin/clang -std=gnu11 -O2 -w -I"$repo/coax/platform" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
-xcrun -sdk macosx metal "$here/Workshop.metal" "$here/Model.metal" -o "$app/Contents/Resources/default.metallib"
+xcrun -sdk macosx metal "$here/Workshop.metal" "$here/Temple.metal" "$here/Model.metal" -o "$app/Contents/Resources/default.metallib"
 # Everglade's faces and their licences (SIL OFL 1.1), as the web realm ships them.
 rm -rf "$app/Contents/Resources/fonts"
 cp -R "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$app/Contents/Resources/fonts"

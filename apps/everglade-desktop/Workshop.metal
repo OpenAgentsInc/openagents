@@ -1,24 +1,10 @@
-// Everglade for desktop: the chamber's dark, then Aethyr's twelve-float strokes
-// (aethyr/ui/draw.coax `lit`): a core and a halo, as apps/openagents-desktop/Shaders.metal
-// lights them, and text from the faces' atlas (text.coax).
+// Everglade for desktop: what is drawn over the place (Temple.metal) and your model (Model.metal):
+// Aethyr's twelve-float strokes (aethyr/ui/draw.coax `lit`), a core and a halo, as
+// apps/openagents-desktop/Shaders.metal lights them, and text from the faces' atlas (text.coax).
 #include <metal_stdlib>
 using namespace metal;
 
 struct U { float2 size; float time; float pad; };
-
-vertex float4 bg_vs(uint i [[vertex_id]]) {
-  const float2 p[3] = {float2(-1.0, -3.0), float2(-1.0, 1.0), float2(3.0, 1.0)};
-  return float4(p[i], 0.0, 1.0);
-}
-static float hash(float2 p) { return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
-fragment float4 bg_fs(float4 pos [[position]], constant U &u [[buffer(0)]]) {
-  float2 uv = (pos.xy - 0.5 * u.size) / u.size.y;
-  // Black stone, a faint blue light from the middle of the floor, and a little grain.
-  float glow = exp(-2.4 * dot(uv - float2(0.0, 0.1), uv - float2(0.0, 0.1)));
-  float3 c = float3(0.004, 0.006, 0.012) + float3(0.012, 0.03, 0.075) * glow * (0.85 + 0.15 * sin(u.time * 0.9));
-  c += (hash(floor(pos.xy)) - 0.5) * 0.006;
-  return float4(max(c, float3(0.0)), 1.0);
-}
 
 struct In { float4 a [[attribute(0)]]; float4 b [[attribute(1)]]; float4 c [[attribute(2)]]; };
 struct V { float4 pos [[position]]; float2 place; float4 shape; float4 tint; };

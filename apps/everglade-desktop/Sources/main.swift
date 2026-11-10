@@ -157,6 +157,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var overlay: MTLBuffer!
   var panel: MTLRenderPipelineState!
   var flat: MTLDepthStencilState!
+  var placeDepth: MTLDepthStencilState!
+  var laid: MTLRenderPipelineState!
+  var nearSampler: MTLSamplerState!
+  var placeColour: MTLTexture?
+  var placeDistance: MTLTexture?
   var faces: MTLTexture!
   var faceSampler: MTLSamplerState!
   var last = CACurrentMediaTime()
@@ -172,9 +177,17 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let url = Bundle.main.url(forResource: "default", withExtension: "metallib")!
     let lib = try! device.makeLibrary(URL: url)
     let b = MTLRenderPipelineDescriptor()
-    b.vertexFunction = lib.makeFunction(name: "bg_vs"); b.fragmentFunction = lib.makeFunction(name: "bg_fs")
-    b.colorAttachments[0].pixelFormat = colorPixelFormat; b.depthAttachmentPixelFormat = .depth32Float
+    // The place: marched at half size into a colour image and a depth image (Temple.metal), then
+    // laid over the full picture with its depth.
+    b.vertexFunction = lib.makeFunction(name: "temple_vs"); b.fragmentFunction = lib.makeFunction(name: "temple_fs")
+    b.colorAttachments[0].pixelFormat = colorPixelFormat; b.colorAttachments[1].pixelFormat = .r32Float
     background = try! device.makeRenderPipelineState(descriptor: b)
+    let lay = MTLRenderPipelineDescriptor()
+    lay.vertexFunction = lib.makeFunction(name: "place_vs"); lay.fragmentFunction = lib.makeFunction(name: "place_fs")
+    lay.colorAttachments[0].pixelFormat = colorPixelFormat; lay.depthAttachmentPixelFormat = .depth32Float
+    laid = try! device.makeRenderPipelineState(descriptor: lay)
+    let ns = MTLSamplerDescriptor(); ns.minFilter = .nearest; ns.magFilter = .nearest
+    nearSampler = device.makeSamplerState(descriptor: ns)!
     let f = MTLRenderPipelineDescriptor()
     f.vertexFunction = lib.makeFunction(name: "fx_vs"); f.fragmentFunction = lib.makeFunction(name: "fx_fs")
     let v = MTLVertexDescriptor()
@@ -196,6 +209,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     ra.sourceRGBBlendFactor = .sourceAlpha; ra.destinationRGBBlendFactor = .oneMinusSourceAlpha; ra.sourceAlphaBlendFactor = .one; ra.destinationAlphaBlendFactor = .one
     panel = try! device.makeRenderPipelineState(descriptor: r)
     let fd = MTLDepthStencilDescriptor(); fd.depthCompareFunction = .always; fd.isDepthWriteEnabled = false
+    // The place writes its own depth for every pixel, so your model is hidden by what stands in front of it.
+    let pd = MTLDepthStencilDescriptor(); pd.depthCompareFunction = .always; pd.isDepthWriteEnabled = true
+    placeDepth = device.makeDepthStencilState(descriptor: pd)!
     flat = device.makeDepthStencilState(descriptor: fd)!
     // Everglade's faces, from the font files in the app. Without them there is no text to read.
     guard let atlas = faceAtlas(device) else {
@@ -228,13 +244,45 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
     var u: [Float] = [Float(size.width), Float(size.height), time, 0]
     model?.step(state, dt: dt)
-    var camera = [Float](repeating: 0, count: 20)
+    // The view, the picture's size, the clock and where you stand: Temple.metal's TU, and the
+    // first twenty floats Model.metal's MU.
+    var camera = [Float](repeating: 0, count: 24)
     let seen = eg_camera(state, Float(size.width) / scale, Float(size.height) / scale, scale, &camera) == 1
-    camera[16] = Float(size.width); camera[17] = Float(size.height)
-    guard let queue = device?.makeCommandQueue(), let cmd = queue.makeCommandBuffer(), let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
-    enc.setRenderPipelineState(background)
-    enc.setFragmentBytes(&u, length: 16, index: 0)
-    enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time
+    var you = [Float](repeating: 0, count: 5)
+    if eg_you(state, &you) == 1 { camera[20] = you[0]; camera[21] = you[1]; camera[22] = you[2] }
+    guard let queue = device?.makeCommandQueue(), let cmd = queue.makeCommandBuffer() else { return }
+    // The place, at half size: the same view with half the focal length and half the picture.
+    let hw = max(1, Int(size.width) / 2), hh = max(1, Int(size.height) / 2)
+    if placeColour == nil || placeColour!.width != hw || placeColour!.height != hh {
+      let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: hw, height: hh, mipmapped: false)
+      cd.usage = [.renderTarget, .shaderRead]; cd.storageMode = .private
+      let dd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: hw, height: hh, mipmapped: false)
+      dd.usage = [.renderTarget, .shaderRead]; dd.storageMode = .private
+      placeColour = device?.makeTexture(descriptor: cd); placeDistance = device?.makeTexture(descriptor: dd)
+    }
+    if seen, let colour = placeColour, let distance = placeDistance {
+      var half = camera
+      half[15] *= Float(hw) / Float(size.width); half[16] = Float(hw); half[17] = Float(hh)
+      let pp = MTLRenderPassDescriptor()
+      pp.colorAttachments[0].texture = colour; pp.colorAttachments[0].loadAction = .dontCare; pp.colorAttachments[0].storeAction = .store
+      pp.colorAttachments[1].texture = distance; pp.colorAttachments[1].loadAction = .dontCare; pp.colorAttachments[1].storeAction = .store
+      if let pe = cmd.makeRenderCommandEncoder(descriptor: pp) {
+        pe.setRenderPipelineState(background)
+        pe.setFragmentBytes(&half, length: 96, index: 0)
+        pe.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        pe.endEncoding()
+      }
+    }
+    guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
+    if seen, let colour = placeColour, let distance = placeDistance {
+      enc.setRenderPipelineState(laid)
+      enc.setDepthStencilState(placeDepth)
+      enc.setFragmentTexture(colour, index: 0); enc.setFragmentTexture(distance, index: 1)
+      enc.setFragmentSamplerState(faceSampler, index: 0); enc.setFragmentSamplerState(nearSampler, index: 1)
+      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    }
+    enc.setDepthStencilState(flat)
     if n > 0 {
       enc.setRenderPipelineState(strokes)
       enc.setFragmentTexture(faces, index: 0); enc.setFragmentSamplerState(faceSampler, index: 0)

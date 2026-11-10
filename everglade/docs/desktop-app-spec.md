@@ -4,8 +4,27 @@ Written 2026-11-10. Status: **proposal.** Nothing in this spec is built
 except the pieces marked **exists today** and the first scene below.
 
 **Built (2026-11-10):** `apps/everglade-desktop/` opens a native Mac window
-on the Workshop's chamber, drawn as lines of light: six pylons round the
-golem, which has a sphere turning in its chest, and the iron door in the wall.
+on the Workshop: a round marble temple open to the night, above a sea of
+cloud with a far city's lamps in its gaps.
+
+- **The place.** An outer colonnade lit amber from its feet, with a
+  balustrade at the edge. Six inner columns, the pylons, banded with pale blue
+  light and crowned with floating crystals. The unfinished golem in the
+  middle, dark stone shot with stars, a warm sphere in its open chest. The
+  bronze door in its pier at the back, the marks across it still hot.
+- **The technology.** Lines of light inlaid in the polished floor, threads of
+  light from each crystal to the golem's sphere, and four holographic
+  displays hung between the pylons.
+- **How it is drawn.** `Temple.metal` marches a distance field in one pass:
+  moonlight with soft shadows, the lamps, the crystals, one mirror bounce off
+  the floor, and the sky. It is drawn at half the window's size and laid over
+  the full picture with its depth, so your model stands behind and in front of
+  things correctly and stays sharp. About 9 ms a frame at 2640 by 1760 on
+  this Mac.
+- **One layout.** `workshop.coax` says where things are and what stops you;
+  `Temple.metal` draws the same numbers. Keep the two in step.
+- **The camera stays inside.** The follow camera's eye is drawn in to the
+  balustrade's line, so it never looks in from outside.
 
 You walk the chamber with the controller every web realm uses
 (`aethyr/walk.coax`: its fixed step, run, jump and follow camera) and the
@@ -19,7 +38,7 @@ web's keys:
 | Drag, or the arrow keys | Look |
 | Wheel | Zoom |
 
-The pylons, the golem, the door and the chamber's wall stop you.
+The pylons, the golem, the door and the balustrade stop you.
 
 You are the web's player model: Character Create's default character, in its
 Quaternius parts from Everglade II's pack (`everglade2.pack`, copied into
@@ -32,8 +51,9 @@ the app).
   `fivelab_scene_vs` does, with the same dye and eye rules.
 - **Clips.** Idle, walk, run and the jump's loop, with the web's fade between
   them. The gaits advance by the ground you cover.
-- **Light.** The chamber's own: the pylons' blue, the sphere's ember and a
-  fill from the camera. It is not the glade's sky and it casts no shadows.
+- **Light.** Your model has its own simple light (blue from above, the
+  sphere's ember, a fill from the camera), not the temple's: it casts no
+  shadow but a soft dark under its feet, and it is not mirrored in the floor.
 
 **Next issue.** A button at the top right asks one Claude agent which issue
 to work on next, and you answer in your own words. It is specified in
@@ -76,10 +96,10 @@ What it isn't yet:
 
 - **Your own character.** You wear the default. The look you made in
   Character Create is saved by the web, and the app has no log in to fetch it.
-- **The `aethyr-host-v1` realm host** of section 3. The scene is
-  `workshop.coax`, compiled to C and drawn with Aethyr's strokes
-  (`aethyr/ui/draw.coax`) by a small AppKit and Metal host, which also reads
-  the pack and draws the model.
+- **The `aethyr-host-v1` realm host** of section 3. A small AppKit and Metal
+  host runs `workshop.coax` (compiled to C), draws the temple with a shader
+  of its own, reads the pack and draws the model. The temple is not an Aethyr
+  render plan, so no other realm or host can draw it yet.
 - **A room, a golem to wake, or a title screen.**
 
 Two things to know when you change it:
