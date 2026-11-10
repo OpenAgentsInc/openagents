@@ -149,7 +149,8 @@ cd_codex_options_cmd :: (a: [] App, msg: string) -> bool {
   models := msg == "/model" || rt_has_prefix(msg, "/model ");
   effort := msg == "/effort" || rt_has_prefix(msg, "/effort ");
   if !models && !effort { return false; }
-  if a[0].engine != ENGINE_CODEX { cd_commit(a, TUI_DIM, "  /model and /effort configure Codex. Switch with /engine codex or Shift-Tab."); return true; }
+  if a[0].engine == ENGINE_CLAUDE { cd_claude_model_cmd(a, msg, models, effort); return true; }
+  if a[0].engine != ENGINE_CODEX { cd_commit(a, TUI_DIM, "  /model and /effort configure Claude and Codex. Switch with /engine claude, /engine codex, or Shift-Tab."); return true; }
   cd_codex_open(a);
   if models && a[0].cx_live && a[0].cx_options[0].catalog_failed {
     cd_codex_catalog_start(a);
@@ -179,6 +180,7 @@ cd_codex_options_cmd :: (a: [] App, msg: string) -> bool {
   return true;
 }
 
+CLAUDE_MODEL_HELP :: "/model [MODEL]          Claude's model: claude-fable-5-2, fable, opus, sonnet, haiku, or another id\n/effort [LEVEL]          low, medium, high, xhigh or max; a live session keeps its effort until /clear";
 CODEX_HELP :: "/model [MODEL [EFFORT]]  Codex's current settings and available models; select a model and optional reasoning level\n/effort [LEVEL]          Codex's supported reasoning levels; change the level for the next message\n                        Selections last for this Coder session and survive switching agents. Codex's --effort also accepts xhigh, max and ultra when supported.";
 
 cd_codex_catalog_start :: (a: [] App) {

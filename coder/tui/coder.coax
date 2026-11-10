@@ -130,6 +130,7 @@ App :: struct {
   engine: int;
   api_key: bool;                 // ANTHROPIC_API_KEY is set: the claude engine uses it, not the Claude Code login
   model: string;
+  model_b: [80] u8; nmodel_b: int;   // /model's copy; model points here after /model
   route_model: [128]u8;          // owned automatic model alias; never borrow a finished route's buffers
   model_engine: int;             // --model is for the engine it came with
   ask_first: bool;               // --ask: permission prompts instead of skipping them
@@ -398,7 +399,8 @@ cd_draw :: (a: [] App) {
   k = tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
   // the agent first, so a narrow row still names it
   hb: [256] u8; hn := cd_cat(hb[..], 0, ifx a[0].engine == ENGINE_ECHO then "echo (offline)" else ifx a[0].engine == ENGINE_CLAUDE && a[0].api_key then cd_claude_title(true) else cd_engine_name(a[0].engine));
-  if a[0].engine == ENGINE_CODEX { hn = cd_cat(hb[..], hn, " · /model · /effort"); }
+  if a[0].engine == ENGINE_CLAUDE && a[0].model_engine == ENGINE_CLAUDE && a[0].model.count > 0 { hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, a[0].model); }
+  if a[0].engine == ENGINE_CLAUDE || a[0].engine == ENGINE_CODEX { hn = cd_cat(hb[..], hn, " · /model · /effort"); }
   if a[0].jobs > 0 { jb: [16] u8; hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cd_itoa(a[0].jobs, jb[..])); hn = cd_cat(hb[..], hn, ifx a[0].jobs == 1 then " job running" else " jobs running"); }
   if a[0].dct_consent { hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cdd_gesture_label(a[0].dct_key)); hn = cd_cat(hb[..], hn, " dictate"); }
   hn = cd_cat(hb[..], hn, " · Enter send · Shift-Enter newline · Shift-Tab agent · ↑ history · Esc stop · Ctrl-C quit");
@@ -897,6 +899,92 @@ cd_claude_api_key :: (key: string) -> bool {
 // What the opening line and Shift-Tab call the claude engine.
 cd_claude_title :: (api_key: bool) -> string { return ifx api_key then "Claude API" else "Claude Code"; }
 
+// Ids Claude Code accepts, including aliases (fable is the current Fable, claude-fable-5-2).
+// A name not in the list is still accepted: new models are typed the same way.
+CD_CLAUDE_MODELS :: [8] string.["claude-fable-5-2", "fable", "claude-fable-5-1", "claude-opus-5-5", "opus", "claude-sonnet-5-5", "sonnet", "haiku"];
+
+cd_claude_model_name_ok :: (name: string) -> bool {
+  if name.count == 0 || name.count > 64 { return false; }
+  for c: name {
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '[' || c == ']';
+    if !ok { return false; }
+  }
+  return true;
+}
+
+cd_claude_effort_ok :: (level: string) -> bool {
+  return level == "low" || level == "medium" || level == "high" || level == "xhigh" || level == "max";
+}
+
+// Copies the id into the session, in lower case. "" when it is kept. Does not talk to a live CLI.
+cd_claude_model_keep :: (a: [] App, name: string) -> string {
+  nb: [80] u8; n := 0;
+  for c: name {
+    low := ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+    if n < nb.count { nb[n] = low; n += 1; }
+  }
+  id := cast(string) nb[0..<n];
+  if !cd_claude_model_name_ok(id) { return "A model id is letters, digits, and - _ . [ ]. /model lists some, including claude-fable-5-2."; }
+  a[0].nmodel_b = cd_cat(a[0].model_b[..], 0, id);
+  a[0].model = cast(string) a[0].model_b[0..<a[0].nmodel_b];
+  a[0].model_engine = ENGINE_CLAUDE;
+  return "";
+}
+
+cd_claude_effort_keep :: (a: [] App, level: string) -> string {
+  if !cd_claude_effort_ok(level) { return "Effort is low, medium, high, xhigh or max."; }
+  a[0].neffort = cd_cat(a[0].effort_b[..], 0, level);
+  return "";
+}
+
+cd_claude_model_show :: (a: [] App) {
+  b: [240] u8;
+  cur := "default";
+  if a[0].model_engine == ENGINE_CLAUDE && a[0].model.count > 0 { cur = a[0].model; }
+  ef := "default";
+  if a[0].neffort > 0 { ef = cd_effort(a); }
+  n := cd_cat(b[..], 0, cd_claude_title(a[0].api_key));
+  n = cd_cat(b[..], n, " · "); n = cd_cat(b[..], n, cur);
+  n = cd_cat(b[..], n, " · effort "); n = cd_cat(b[..], n, ef);
+  cd_commit(a, TUI_DIM, cast(string) b[0..<n]);
+  names := CD_CLAUDE_MODELS;
+  notes := [8] string.["Fable 5.2", "current Fable", "Fable 5.1", "Opus 5.5", "Opus", "Sonnet 5.5", "Sonnet", "Haiku"];
+  for name, i: names {
+    n = cd_cat(b[..], 0, ifx name == cur then "  · " else "    ");
+    n = cd_cat(b[..], n, name);
+    n = cd_cat(b[..], n, "  ");
+    n = cd_cat(b[..], n, notes[i]);
+    cd_commit(a, TUI_DIM, cast(string) b[0..<n]);
+  }
+  cd_commit(a, TUI_FAINT, "  /model MODEL sets it. Another id is accepted too. /effort LEVEL is low, medium, high, xhigh or max.");
+}
+
+// /model and /effort on the claude engine, including a session on ANTHROPIC_API_KEY.
+cd_claude_model_cmd :: (a: [] App, msg: string, models: bool, effort: bool) {
+  start := ifx models then 6 else 7;
+  s := start; while s < msg.count && msg[s] == ' ' { s += 1; }
+  e := s; while e < msg.count && msg[e] != ' ' { e += 1; }
+  if s >= msg.count { cd_claude_model_show(a); return; }
+  value := cast(string) msg[s..<e];
+  while e < msg.count && msg[e] == ' ' { e += 1; }
+  if e < msg.count { cd_commit(a, TUI_RED, ifx models then "  Usage: /model MODEL" else "  Usage: /effort LEVEL"); return; }
+  if models {
+    why := cd_claude_model_keep(a, value);
+    if why.count > 0 { cd_commit_prefixed(a, TUI_RED, "  ", "  ", why); return; }
+    if a[0].live {
+      sent := cl_set_model(a[0].q, a[0].model);
+      if sent < 0 { cd_commit(a, TUI_RED, "  The model could not be sent to this session."); return; }
+    }
+    cd_claude_model_show(a);
+    if !a[0].live { cd_commit(a, TUI_FAINT, "  The next message starts on this model."); }
+    return;
+  }
+  why := cd_claude_effort_keep(a, value);
+  if why.count > 0 { cd_commit_prefixed(a, TUI_RED, "  ", "  ", why); return; }
+  cd_claude_model_show(a);
+  if a[0].live { cd_commit(a, TUI_FAINT, "  Effort applies when the next session starts. /clear starts one."); }
+}
+
 // Whether this process was started with ANTHROPIC_API_KEY. The copy is wiped.
 cd_claude_api_key_set :: () -> bool {
   kb: [4096] u8;
@@ -1251,7 +1339,7 @@ cd_submit :: (a: [] App) {
   if cd_is_slash_command(a[0].pl, msg) {
     cd_commit_prefixed(a, TUI_DIM, "› ", "  ", msg);
     if msg == "/quit" || msg == "/exit" { a[0].quit = true; return; }
-    if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); cd_commit_prefixed(a, TUI_DIM, "  ", "  ", CODEX_HELP); return; }
+    if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); cd_commit_prefixed(a, TUI_DIM, "  ", "  ", CLAUDE_MODEL_HELP); cd_commit_prefixed(a, TUI_DIM, "  ", "  ", CODEX_HELP); return; }
     if cd_codex_options_cmd(a, msg) { return; }
     if msg == "/clear" {
       cd_claude_close(a); cd_codex_close(a); cd_cursor_close(a); cd_micro_close(a); a[0].ncursor_resume = 0; a[0].nav += 1;
@@ -2809,6 +2897,31 @@ tool_main :: () -> int #export_c #effects(all) {
   cd_flush(a);
   x = cxterm_keys(0);
   return 0;
+}
+
+#test "claude /model selects an id such as Fable 5.2 and /effort sets the level" {
+  #assert cd_claude_model_name_ok("claude-fable-5-2") && cd_claude_model_name_ok("fable");
+  #assert !cd_claude_model_name_ok("") && !cd_claude_model_name_ok("fable 5.2") && !cd_claude_model_name_ok("a/b");
+  #assert cd_claude_effort_ok("xhigh") && !cd_claude_effort_ok("ultra");
+  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a[0].log = logs[..]; logs[0].json = true; a[0].pl = pl[..]; a[0].plain = true; a[0].cols = 80;
+  a[0].engine = ENGINE_CLAUDE; a[0].api_key = true;
+  #assert cd_claude_model_keep(a[..], "claude-fable-5-2") == "";
+  #assert a[0].model == "claude-fable-5-2" && a[0].model_engine == ENGINE_CLAUDE;
+  #assert cd_claude_model_keep(a[..], "bad name") != "";
+  #assert a[0].model == "claude-fable-5-2";
+  #assert cd_claude_effort_keep(a[..], "high") == "" && cd_effort(a[..]) == "high";
+  tui_ed_set(a[0].ed[..], "/model"); cd_submit(a[..]);
+  shown := cast(string) a[0].hist[0..<a[0].nhist];
+  #assert cd_holds(shown, "claude-fable-5-2") && cd_holds(shown, "fable") && !cd_holds(shown, "configure Codex");
+  tui_ed_set(a[0].ed[..], "/model fable"); cd_submit(a[..]);
+  #assert a[0].model == "fable" && a[0].model_engine == ENGINE_CLAUDE;
+  tui_ed_set(a[0].ed[..], "/effort max"); cd_submit(a[..]);
+  #assert cd_effort(a[..]) == "max";
+  tui_ed_set(a[0].ed[..], "/effort ultra"); cd_submit(a[..]);
+  #assert cd_effort(a[..]) == "max" && cd_holds(cast(string) a[0].hist[0..<a[0].nhist], "low, medium, high");
+  #assert cd_holds(cast(string) a[0].hist[0..<a[0].nhist], "Fable 5.2");
+  #assert cd_claude_model_keep(a[..], "Fable") == "" && a[0].model == "fable";
 }
 
 #test "an API key authenticates Claude and an empty key stays on the Claude Code login" {
