@@ -14,6 +14,15 @@ Character Create spent 18.9 of 30.5 s on 389 checks; the status page spent
 compiler failure in 7,884 agent runs. The tree-walking evaluator pays for
 every node it visits. The same checks compiled to C run in milliseconds.
 
+## Where it is on
+
+Native checks are off unless `COAX_NATIVE_CHECKS` is set. One unit has them
+on: `coax/web/wasm.sh` sets `COAX_NATIVE_CHECKS=1` when it builds
+`apps/openagents-web/fivelab.coax` (5E Lab and Experimental), for that
+module's compiles, its libraries included. `COAX_NATIVE_CHECKS=0` turns them
+off there. To add a unit, add it to `native_check_units` in `wasm.sh` after
+`COAX_NATIVE_CHECKS=compare` finds no `disagree` row for it.
+
 ## What happens
 
 With `COAX_NATIVE_CHECKS=1`, every place that runs a unit's checks (an
@@ -127,3 +136,18 @@ cold compile is mostly the loaded units' standalone library checks, each
 of which loads and checks its unit again. All checks in the three units
 passed natively, and `compare` found no disagreement in their 2,400
 checks, library checks included.
+
+On `main` of 2026-11-10 (after #13131), one build host, two runs each way,
+each with a fresh check cache:
+
+| What | Evaluator | Native |
+| --- | --- | --- |
+| fivelab compile to C, whole | 161.6 s, 162.4 s | 24.8 s, 24.6 s |
+| its check phase | 102.5 s, 99.2 s | 8.8 s, 7.8 s |
+| its loaded units' library checks | 50.6 s, 53.8 s | 7.2 s, 7.5 s |
+| the fivelab module through `wasm.sh` (release, no C or object cache; one run) | 314.4 s | 81.9 s |
+
+Both give the same C and the same module bytes. `compare` on the compile
+found 1,662 `agree` rows and no other; `coax test` of the unit passed all
+1,662 checks natively in 15.4 s; the module build ran 3,785 checks natively
+in 98 runs, and all passed.
