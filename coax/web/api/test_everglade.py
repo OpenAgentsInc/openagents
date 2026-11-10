@@ -1,3 +1,4 @@
+# Firm reason: 2 (black-box HTTP checks of the C API from another language, run by test.py with the other API tests).
 # Everglade's report (/admin/analytics, EVERGLADE: admin.c everglade) and the team link that marks an
 # admin's browser on everglade.world (admin.c team_link, analytics.c team_mark). test.py runs this file.
 import urllib.parse
