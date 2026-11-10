@@ -26,7 +26,7 @@ apps/everglade-mobile/ios/release.sh BUILD_NUMBER
 
 That builds for iPhone, signs with the team's Apple Distribution identity,
 and uploads to the App Store Connect app "Everglade". The build number must
-be higher than the last one uploaded (1 went up on 2026-11-10). It needs
+be higher than the last one uploaded (2 went up on 2026-11-10). It needs
 `~/work/.secrets/appstoreconnect.env`. Apple then processes the build:
 
 ```sh
@@ -53,7 +53,10 @@ the app. See [`android/README.md`](android/README.md) for what it needs.
 | Drag on the left side | Move. A small push walks, a full push runs |
 | Drag on the right side | Look |
 | Tap on the right side | Jump |
-| Pinch (on Android, two fingers on the right side) | Zoom |
+| Two fingers on the right side, pinched | Zoom |
+| Turn the phone (iOS) | Look, while the Gyro switch under the title is on. Tap the switch to turn it off |
+
+Both thumbs work at once: you can walk and look together.
 
 The app turns with the phone, upright or sideways.
 

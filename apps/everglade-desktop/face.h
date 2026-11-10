@@ -15,6 +15,14 @@ void eg_wheel(void *state, float dy);
 void eg_pad(void *state, float x, float y);
 // The points the screen's edges keep clear (a notch, a home bar), so the text stays out from under them.
 void eg_safe(void *state, float left, float top, float bottom);
+// The phone's turn as camera look (a gyro). A host that can read it offers it once: the scene then
+// draws a Gyro switch, on to begin with. eg_turns is 1 while it is on; eg_turn gives the turn since
+// the last call, in radians, signed as a drag (yaw right negative, pitch up positive). eg_tap is 1
+// when a tap at that point was on the switch, which it flips, so the host doesn't jump.
+void eg_turn_offer(void *state);
+int32_t eg_turns(void *state);
+void eg_turn(void *state, float yaw, float pitch);
+int32_t eg_tap(void *state, float x, float y);
 // A key held or let go, in the web realms' codes: a letter's ASCII, 32 Space, -13 Shift,
 // -4 -5 -6 -7 the arrows left, right, up, down, -1 the window lost the keys. 1 when used.
 int32_t eg_key(void *state, int32_t key, int32_t down);

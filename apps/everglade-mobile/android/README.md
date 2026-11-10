@@ -47,6 +47,8 @@ source, emitted by `coax spirv` where iOS uses `coax metal`.
 
 ## Not done
 
+- **Turning the phone to look.** iOS has it (the Gyro switch); the Android host doesn't read the gyro yet, so the switch isn't shown.
+
 - **A real phone.** Only the emulator has run it. A phone's GPU may differ:
   the 64-bit integers above, and memory for the 512 MB deep stack the
   character's code needs.

@@ -33,6 +33,8 @@ Workshop :: struct {
   pad_x: f32; pad_y: f32;   // a touch stick: x right, y forward, each -1 to 1
   touch: bool;              // the host has a touch screen, not keys
   safe_left: f32; safe_top: f32; safe_bottom: f32;   // points the screen's edges keep clear (a notch, a home bar)
+  turn_can: bool; turn_on: bool;                     // the host can turn the camera as the phone turns, and it is on
+  bx: f32; by: f32; bw: f32; bh: f32;                // where the Gyro switch was drawn last, in points
 }
 
 // The eye for one frame, its right, up and forward, and the picture it projects onto.
@@ -121,6 +123,14 @@ ws_frame :: (s: []Workshop, out: []f32, width: f32, height: f32, d: f32, dt: f32
   left := 36 + s[0].safe_left; top := s[0].safe_top; foot := height - 30 - s[0].safe_bottom;
   n = eg_text(out, n, "Everglade", left, top + 66, 40, d, EG_TITLE, EG_WHITE);
   n = eg_text(out, n, "The Golemancers' Workshop", left + 1, top + 94, 18, d, EG_TITLE, EG_MID);
+  s[0].bw = 0;
+  if s[0].turn_can {
+    // The Gyro switch, on the right under the title (which fills an upright phone's width): bright when the phone's turn turns the camera.
+    tw := eg_width("Gyro off", 16, EG_TITLE); tx := width - left - tw;
+    if s[0].turn_on { n = eg_text(out, n, "Gyro on", tx, top + 130, 16, d, EG_TITLE, EG_WHITE); }
+    else { n = eg_text(out, n, "Gyro off", tx, top + 130, 16, d, EG_TITLE, EG_DIM); }
+    s[0].bx = tx - 16; s[0].by = top + 130 - 32; s[0].bw = tw + 32; s[0].bh = 48;
+  }
   if !s[0].touch {
     n = eg_text(out, n, "W A S D move    Space jump    Shift walk    Drag look    Wheel zoom", left, foot, 15, d, EG_BODY, EG_DIM);
   } else if width - left < 640 {
@@ -213,6 +223,24 @@ ws_safe :: (s: []Workshop, left: f32, top: f32, bottom: f32) #export_c #effects(
   s[0].safe_top = ifx top > 0 && top < 200 then top else 0.0f32;
   s[0].safe_bottom = ifx bottom > 0 && bottom < 200 then bottom else 0.0f32;
 }
+// The phone's turn as camera look. A host that can read it offers it once; it starts on, and a
+// tap on the Gyro switch turns it off and on.
+ws_turn_offer :: (s: []Workshop) #export_c #effects(all) { s[0].turn_can = true; s[0].turn_on = true; }
+ws_turns :: (s: []Workshop) -> bool #export_c #effects(all) { return s[0].turn_can && s[0].turn_on; }
+// How far the phone turned since the last call, in radians, signed as a drag is: yaw to the right
+// is negative, pitch up is positive. More than a radian in one call is a fault, not a turn.
+ws_turn :: (s: []Workshop, yaw: f32, pitch: f32) #export_c #effects(all) {
+  if !s[0].turn_can || !s[0].turn_on { return; }
+  if yaw > -1 && yaw < 1 { s[0].look_x += yaw; }
+  if pitch > -1 && pitch < 1 { s[0].look_y += pitch; }
+}
+// A tap at a point: true when it was on the Gyro switch, which it flips, so the host doesn't jump.
+ws_tap :: (s: []Workshop, x: f32, y: f32) -> bool #export_c #effects(all) {
+  if !s[0].turn_can || !(s[0].bw > 0) { return false; }
+  if x < s[0].bx || x > s[0].bx + s[0].bw || y < s[0].by || y > s[0].by + s[0].bh { return false; }
+  s[0].turn_on = !s[0].turn_on;
+  return true;
+}
 // A drag looks round: phase 0 down, 1 moved, 2 up. Points, from the top left.
 ws_pointer :: (s: []Workshop, x: f32, y: f32, phase: int) #export_c #effects(all) {
   if phase == 0 { s[0].held = true; }
@@ -291,6 +319,28 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   #assert !s[0].held && s[0].look_x < 0;
   n := ws_frame(s[..], out[..], 1280, 800, 2, 0.016);
   #assert s[0].you.theta != theta && s[0].look_x == 0;
+}
+#test "you walk and look at once: a stick pushed forward and a drag in the same frames both take" {
+  s: [1] Workshop; ws_start(s[..]); theta := s[0].you.theta; z := s[0].you.pos.z; x := s[0].you.pos.x;
+  ws_pad(s[..], 0, 1); ws_pointer(s[..], 300, 300, 0);
+  px: f32 = 300;
+  for i: 0..<30 { px += 4; ws_pointer(s[..], px, 300, 1); ws_walk(s[..], 0.016); }
+  moved := (s[0].you.pos.z - z) * (s[0].you.pos.z - z) + (s[0].you.pos.x - x) * (s[0].you.pos.x - x);
+  #assert s[0].you.theta != theta && moved > 0.25;
+}
+#test "the Gyro switch: offered it is on and the phone's turn looks; a tap on it turns it off; elsewhere a tap is not its" {
+  s: [1] Workshop; out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; ws_start(s[..]);
+  ws_turn(s[..], 0.1, 0.1); #assert s[0].look_x == 0 && !ws_turns(s[..]) && !ws_tap(s[..], 350, 60);
+  ws_pad(s[..], 0, 0); ws_turn_offer(s[..]); #assert ws_turns(s[..]);
+  n := ws_frame(s[..], out[..], 402, 874, 3, 0.016);
+  #assert s[0].bw > 0 && s[0].bx + s[0].bw <= 402 && s[0].bx > 201;
+  theta := s[0].you.theta;
+  ws_turn(s[..], -0.2, 0); ws_turn(s[..], 5, 0); #assert s[0].look_x < -0.19 && s[0].look_x > -0.21;
+  ws_walk(s[..], 0.016); #assert s[0].you.theta != theta;
+  #assert !ws_tap(s[..], 40, 400) && ws_turns(s[..]);
+  #assert ws_tap(s[..], s[0].bx + 20, s[0].by + 20) && !ws_turns(s[..]);
+  ws_turn(s[..], -0.2, 0); #assert s[0].look_x == 0;
+  #assert ws_tap(s[..], s[0].bx + 20, s[0].by + 20) && ws_turns(s[..]);
 }
 #test "the host reads where you stand and the view only once you have started" {
   s: [1] Workshop; you: [5] f32; cam: [16] f32;

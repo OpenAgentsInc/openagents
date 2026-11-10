@@ -5,8 +5,11 @@
 // apps/everglade-desktop/Sources/Engine.swift.
 //
 // Touch: a drag that starts on the left side is a stick that moves you; one that starts on the
-// right side looks round; a tap on the right side jumps; a pinch zooms. The Coax decides what
-// each does: the host only reports where fingers are.
+// right side looks round; a tap on the right side jumps; a second finger on the right side
+// pinches to zoom. Both thumbs work at once: the fingers are followed here, not by a gesture
+// recognizer, which would take them away from each other. Turning the phone looks round too
+// (PhoneTurn.swift) while the scene's Gyro switch is on. The Coax decides what each does: the
+// host only reports where fingers are and how the phone turned.
 import UIKit
 import Metal
 import MetalKit
@@ -44,6 +47,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // The finger that is the stick and where it went down; the finger that looks, and how far it has gone.
   var stick: UITouch?, stickFrom = CGPoint.zero
   var look: UITouch?, lookMoved: CGFloat = 0, lookDown = 0.0
+  // A second finger on the look side, and how far apart the two were last.
+  var pinch: UITouch?, pinchSpan: CGFloat = 0
+  let turn = PhoneTurn()
   var jumpUp = 0.0
 
   init(frame: CGRect, deep: Deep) {
@@ -82,7 +88,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
           let m = Model(device: device, library: lib, color: colorPixelFormat, pack: pack) else { fatalError("Everglade: the app's everglade2.pack is missing or doesn't hold the player's parts. Rebuild with apps/everglade-mobile/build.sh.") }
     model = m
     eg_pad(state, 0, 0)   // a touch screen: the scene shows the touch hint
-    addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinch(_:))))
+    turn.view = self
+    // The simulator has no gyro; "--offer-gyro" shows the switch there, to see it drawn.
+    if turn.available || CommandLine.arguments.contains("--offer-gyro") { eg_turn_offer(state) }
     delegate = self
   }
   required init(coder: NSCoder) { fatalError() }
@@ -94,6 +102,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     if jumpUp > 0 && now >= jumpUp { jumpUp = 0; _ = eg_key(state, 32, 0) }
     let size = drawableSize, scale = Float(contentScaleFactor)
     time += dt
+    // The phone's turn, while the scene's Gyro switch is on.
+    if eg_turns(state) == 1 {
+      if !turn.running { turn.start() }
+      let t = turn.take(); eg_turn(state, Float(t.yaw), Float(t.pitch))
+    } else if turn.running { turn.stop() }
     let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
     var u: [Float] = [Float(size.width), Float(size.height), time, 0]
     model?.step(state, dt: dt)
@@ -128,6 +141,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       let p = t.location(in: self)
       if stick == nil && p.x < bounds.width * 0.45 { stick = t; stickFrom = p }
       else if look == nil { look = t; lookMoved = 0; lookDown = CACurrentMediaTime(); eg_pointer(state, Float(p.x), Float(p.y), 0) }
+      else if pinch == nil { pinch = t; pinchSpan = 0; lookMoved = 1000 }
     }
   }
   override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -136,11 +150,17 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       if t === stick {
         // The stick's whole travel is 70 points; forward is up the screen.
         eg_pad(state, Float((p.x - stickFrom.x) / 70), Float((stickFrom.y - p.y) / 70))
-      } else if t === look {
+      } else if t === look && pinch == nil {
         let q = t.previousLocation(in: self)
         lookMoved += abs(p.x - q.x) + abs(p.y - q.y)
         eg_pointer(state, Float(p.x), Float(p.y), 1)
       }
+    }
+    // Two fingers on the look side: how far apart they are zooms, and neither looks.
+    if let a = look, let b = pinch {
+      let p = a.location(in: self), q = b.location(in: self), span = hypot(p.x - q.x, p.y - q.y)
+      if pinchSpan > 1 && span > 1 { eg_wheel(state, Float(1 - span / pinchSpan) * 220) }
+      pinchSpan = span
     }
   }
   override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { lift(touches, tapped: true) }
@@ -149,16 +169,15 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     for t in touches {
       let p = t.location(in: self)
       if t === stick { stick = nil; eg_pad(state, 0, 0) }
+      else if t === pinch { pinch = nil }
       else if t === look {
-        look = nil
+        look = nil; pinch = nil
         eg_pointer(state, Float(p.x), Float(p.y), 2)
-        // A finger down and up in one place, quickly, is a tap: the jump key, held a moment.
-        if tapped && lookMoved < 12 && CACurrentMediaTime() - lookDown < 0.35 { _ = eg_key(state, 32, 1); jumpUp = CACurrentMediaTime() + 0.1 }
+        // A finger down and up in one place, quickly, is a tap: on the Gyro switch it flips it,
+        // anywhere else it is the jump key, held a moment.
+        if tapped && lookMoved < 12 && CACurrentMediaTime() - lookDown < 0.35 && eg_tap(state, Float(p.x), Float(p.y)) == 0 { _ = eg_key(state, 32, 1); jumpUp = CACurrentMediaTime() + 0.1 }
       }
     }
-  }
-  @objc func pinch(_ g: UIPinchGestureRecognizer) {
-    if g.state == .changed { eg_wheel(state, Float(1 - g.scale) * 220); g.scale = 1 }
   }
 }
 
@@ -186,7 +205,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
   }
   // Losing the screen lets every key and finger go.
   func applicationWillResignActive(_ application: UIApplication) {
-    if let v = window?.rootViewController?.view as? WorkshopView { _ = eg_key(v.state, -1, 1); eg_pad(v.state, 0, 0); v.stick = nil; v.look = nil }
+    if let v = window?.rootViewController?.view as? WorkshopView { _ = eg_key(v.state, -1, 1); eg_pad(v.state, 0, 0); v.stick = nil; v.look = nil; v.pinch = nil; v.turn.stop() }
   }
 }
 

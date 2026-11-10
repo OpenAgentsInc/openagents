@@ -24,3 +24,7 @@ int32_t eg_you(void *state, float *out5) { return ws_you(at(state), (coax_v_f32)
 int32_t eg_camera(void *state, float width, float height, float scale, float *out16) { return ws_camera(at(state), width, height, scale, (coax_v_f32){out16, 16}) ? 1 : 0; }
 void eg_pad(void *state, float x, float y) { ws_pad(at(state), x, y); }
 void eg_safe(void *state, float left, float top, float bottom) { ws_safe(at(state), left, top, bottom); }
+void eg_turn_offer(void *state) { ws_turn_offer(at(state)); }
+int32_t eg_turns(void *state) { return ws_turns(at(state)) ? 1 : 0; }
+void eg_turn(void *state, float yaw, float pitch) { ws_turn(at(state), yaw, pitch); }
+int32_t eg_tap(void *state, float x, float y) { return ws_tap(at(state), x, y) ? 1 : 0; }
