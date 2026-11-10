@@ -111,4 +111,19 @@ annotations that no longer matter come out of the tree in their own commit.
 
 ## Measurements
 
-See the table in the issue and below, filled in as each unit lands.
+Cold compiles with `--library` on one remote build host, each with a fresh
+check cache, 2026-11-09 (`COAX_NATIVE_CHECKS=1` against the evaluator):
+
+| Unit | Checks | Before | After | Check phase before | Check phase after |
+| --- | --- | --- | --- | --- | --- |
+| status | 90 | 84.6 s | 5.8 s | 83.0 s | 1.4 s |
+| charactercreator | 439 | 68.3 s | 39.7 s | 26.0 s | 2.3 s |
+| fivelab | 1,256 | 144.5 s | 44.5 s | 104.5 s | 7.2 s |
+
+fivelab's native run: emit 0.6 s, compile 2.1 s (parallel parts at `-O0`),
+run 3.7 s (parallel processes). Its evaluator checks took 1,382 s of CPU
+time. Warm compiles are unchanged (13.5 s for fivelab). What remains of a
+cold compile is mostly the loaded units' standalone library checks, each
+of which loads and checks its unit again. All checks in the three units
+passed natively, and `compare` found no disagreement in their 2,400
+checks, library checks included.

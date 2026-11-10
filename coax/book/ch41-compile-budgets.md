@@ -1,8 +1,9 @@
 # 41. Compile and startup budgets
 
 > **Status: partly implemented.** Phase and declaration reports, the Wasm
-> build's per-step cache, split C emission and capacity diagnostics run
-> today. R22's general five-case kernel and startup budgets remain planned.
+> build's per-step cache, split C emission, capacity diagnostics and native
+> checks (behind `COAX_NATIVE_CHECKS=1`) run today. R22's general five-case
+> kernel and startup budgets remain planned.
 
 Measure the stage that slows an edit before changing its budget. The compiler
 reports its phases and work; the browser build reports C compilation, linking
@@ -124,6 +125,40 @@ Renderer carriers default to `COAXIAL_SPLIT=16`; other units default to 0.
 selects one unit. A local gameplay edit can then compile only its changed
 parts. Splitting does not bypass Coax checking or authority checks and is
 not a resident incremental compiler. Release linking uses 8 LTO partitions.
+
+## Checks as native code
+
+Most of a large unit's cold compile goes to its checks. The evaluator walks
+the checked syntax tree and pays for every node it visits. With
+`COAX_NATIVE_CHECKS=1`, the compiler instead emits the selected checks and
+the procedures they call as C, compiles that C in parallel parts, and runs
+the binary as several processes. A check that passes natively counts as
+passed. Every other check (a trap, a refusal, a time limit, or one that
+reaches an unevaluated `#run`) runs in the evaluator, so failures still get
+the evaluator's diagnostic and `#forall` counterexample.
+[`coax/docs/native-checks.md`](../docs/native-checks.md) describes the
+design and its settings.
+
+Cold compiles with `--library` on one remote build host (a fresh check
+cache for each run; 2026-11-09):
+
+| Unit | Checks | Before | After | Check phase before | Check phase after |
+| --- | --- | --- | --- | --- | --- |
+| `apps/openagents-web/status.coax` | 90 | 84.6 s | 5.8 s | 83.0 s | 1.4 s |
+| `apps/openagents-web/charactercreator.coax` | 439 | 68.3 s | 39.7 s | 26.0 s | 2.3 s |
+| `apps/openagents-web/fivelab.coax` | 1,256 | 144.5 s | 44.5 s | 104.5 s | 7.2 s |
+
+The check phase is the `authority` time. In fivelab's, the evaluator spent
+1,382 s of CPU time across its parallel check workers. Native code spent
+2.1 s compiling the C, 3.7 s running the checks and 0.6 s emitting. A warm
+compile, where the check cache answers, takes the same time either way
+(13.5 s for fivelab). Most of what remains of a cold compile is the loaded
+units' standalone library checks, which load and check each unit again.
+
+`COAX_NATIVE_CHECKS=compare` runs both for every check and reports any
+check where they disagree. Native code has no step or traversal budget, so
+a check that passes natively doesn't stop at E0400. `#steps` and
+`#traversal` still govern checks the evaluator runs.
 
 ## Capacity refusals and near-limit notes
 

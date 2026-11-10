@@ -123,7 +123,11 @@ identified only through their environment and toolchain, not content-pinned.
 
 The evaluator uses the checked AST. Bytecode is not required to prove
 compile-time semantics; adopt an internal bytecode representation only if
-profiling justifies its implementation and debugging costs. The interpreter
+profiling justifies its implementation and debugging costs. Measured cost
+went to checks, and checks can run as native code instead (#13122,
+`coax/docs/native-checks.md`): on 2026-11-09, fivelab's check phase fell
+from 104.5 s in the evaluator to 7.2 s as compiled C. The evaluator stays
+for compile-time constants, `#run`, failing checks and evidence runs. The interpreter
 belongs to the compiler. Target programs contain native code and small C
 support helpers for strings, printing, checked arithmetic, bounds and casts, not that
 interpreter. Startup and support code still exist; there is no managed heap.
@@ -2306,7 +2310,10 @@ programs or compiler plugins.
    before a programmable build replaces existing source manifests?
 5. Which host capability interface can support useful file/process work while
    preserving input provenance and safe editor analysis?
-6. When does measured AST evaluation cost justify an internal bytecode VM?
+6. Answered for checks 2026-11-09 (#13122): checks run as compiled C, not in
+   a bytecode VM (fivelab's check phase 104.5 s to 7.2 s). Still open: when
+   does the cost of the remaining evaluator work (constants, `#run`, failing
+   checks) justify a bytecode VM?
 7. Should shader layout sharing remain a generator feeding existing shader
    tools, or justify a restricted Coax backend after the pipeline experiment?
 8. Decided 2026-10-27: Coax lives in `coax/` at the root of the openagents

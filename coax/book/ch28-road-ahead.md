@@ -224,7 +224,10 @@ answered by building something, not by argument.
 5. What host capability interface allows useful file and process work
    while keeping inputs recorded and editor analysis safe?
 6. When does the measured cost of tree-walking evaluation justify a
-   bytecode VM?
+   bytecode VM? For checks, the answer is native code instead: they compile
+   to C and run as a binary (#13122). On fivelab, the check phase fell from
+   104.5 s to 7.2 s. The question stays open for the evaluator's remaining
+   work: compile-time constants, `#run` and failing checks.
 7. Should GPU work share layouts with existing shader tools, or does a
    restricted Coax shader backend earn its cost? Chapter 17's experiment
    decides.

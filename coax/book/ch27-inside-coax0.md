@@ -528,6 +528,8 @@ inside procedure bodies. In our program that's `speed: f32 = 1.5` and
 
 The evaluator walks the checked syntax tree directly. There's no bytecode;
 the spec says to add one only if profiling shows the tree walk is too slow.
+Checks, where that cost showed, can run as compiled C instead
+(`COAX_NATIVE_CHECKS=1`; Chapter 41).
 A compile-time `Value` is a type plus an integer bit pattern, a float, a
 string, or shared storage for a struct's fields or an array's elements.
 A `Value` never holds a host address, which is how the compiler guarantees
