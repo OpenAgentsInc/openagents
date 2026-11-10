@@ -50,8 +50,13 @@ NP_CHOOSE_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"action\":{\"type\":\
 NP_CHOOSE_ABOUT :: "Record what the developer decided about the suggested issue: start it, ask for another, or none.";
 NP_STARTING :: "Recorded. A coding agent now starts on it in a fresh worktree, in this chat. Tell the developer that in one line.";
 NP_CODER_MODEL :: "claude-opus-5-5";   // when the picker gave no usable scores
-NP_CODER_RULES :: "You are working one GitHub issue for OpenAgentsInc/openagents in a fresh git worktree, detached at origin/main. Do what the issue asks and nothing else: no other issues, no cleanup it did not ask for. Read AGENTS.md and coax/start-here.md first. Run coax/build.sh once to get the compiler; it installs the published build in seconds. Run heavy builds and large test units through coax/remote/remote.sh, not on this Mac. Do not use subagents. Do not touch the main checkout or any other worktree. When the work is done and the checks for the units you touched pass: commit only your files, run git fetch origin and git rebase origin/main, push with git push origin HEAD:main, then close the issue with gh issue close NUMBER --comment naming the commit. If you cannot finish, stop, say exactly what blocks you, and leave the issue open. Keep your messages short: what you found and what you did. Write plain text, no Markdown.";
-NP_CODER_REHEARSAL :: "This is a rehearsal of working one GitHub issue for OpenAgentsInc/openagents. You may only read: you have Read, Grep and Glob. Do not try to edit, commit, push or close anything. Read the issue, find the files it touches in at most eight tool calls, and say in under ten short lines of plain text, no Markdown, what you would change. Then stop.";
+NP_CODER_RULES :: "You are working one GitHub issue for OpenAgentsInc/openagents in a fresh git worktree, detached at origin/main. Do what the issue asks and nothing else: no other issues, no cleanup it did not ask for. Read AGENTS.md and coax/start-here.md first. Run coax/build.sh once to get the compiler; it installs the published build in seconds. Run heavy builds and large test units through coax/remote/remote.sh, not on this Mac. Do not use subagents. Do not touch the main checkout or any other worktree. When the work is done and the checks for the units you touched pass: commit only your files, run git fetch origin and git rebase origin/main, push with git push origin HEAD:main, then close the issue with gh issue close NUMBER --comment naming the commit. If you cannot finish, stop, say exactly what blocks you, and leave the issue open. Never end your turn while something you started still runs (a remote check, a build, a background job): wait for it in the foreground, however long it takes. End by calling the tool report: done after you pushed and closed the issue, blocked when you stop and leave it open. Your turn is over only when you have called report. Keep your messages short: what you found and what you did. Write plain text, no Markdown.";
+NP_REPORT_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"status\":{\"type\":\"string\",\"enum\":[\"done\",\"blocked\"]},\"summary\":{\"type\":\"string\",\"description\":\"One line: the commit, or what blocks you.\"}},\"required\":[\"status\",\"summary\"],\"additionalProperties\":false}";
+NP_REPORT_ABOUT :: "Say that your work on the issue is over: done (pushed and closed) or blocked (stopped, issue left open).";
+NP_REPORT_TOOL :: "mcp__next__report";
+NP_NUDGES :: 3;            // times Autopilot tells a coder that ended its turn without report to finish
+NP_KEEP_GOING :: "You ended your turn without calling report, and nobody is watching. If something you started is still running, wait for it in the foreground now. Then finish the issue and call report, or call report with blocked.";
+NP_CODER_REHEARSAL :: "This is a rehearsal of working one GitHub issue for OpenAgentsInc/openagents. You may only read: you have Read, Grep and Glob. Do not try to edit, commit, push or close anything. Read the issue, find the files it touches in at most eight tool calls, and say in under ten short lines of plain text, no Markdown, what you would change. Then call the tool report with done and stop.";
 NP_INSTALL :: "Claude Code is not installed. Install it with:\ncurl -fsSL https://claude.ai/install.sh | bash";
 NP_LOGIN :: "Claude Code is logged out. Log in with:\nclaude /login";
 
@@ -92,6 +97,7 @@ NextPanel :: struct {
   pending_work: bool;                     // you said start: when the picker's turn ends, the coding flow begins
   coding: bool;                           // the open session is the coding agent's, not the picker's
   rehearsal: bool;
+  reported: int; nudges: int;             // the coder's report: 0 none yet, 1 done, 2 blocked; and how often Autopilot told it to finish
   model: [64] u8; model_n: int;           // the open session's model
   scores: TierScores; tier: int;          // the picker's rubric for the issue to start, and the tier it gives (tier.coax)
   system: [8192] u8;                      // the picker's system prompt: NP_SYSTEM and the rubric
@@ -268,6 +274,10 @@ np_work :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #e
   o: [1] ClOptions;
   o[0].model = cast(string) s[0].model[0..<s[0].model_n];
   o[0].append_system_prompt = ifx s[0].rehearsal then NP_CODER_REHEARSAL else NP_CODER_RULES;
+  s[0].reported = 0; s[0].nudges = 0;
+  server := cl_add_server(o[..], "next", "1");
+  tool := cl_add_server_tool(o[..], server, "report", NP_REPORT_ABOUT, NP_REPORT_SCHEMA);
+  cl_add_allowed(o[..], NP_REPORT_TOOL);
   o[0].cwd = cast(string) s[0].cwd[0..<s[0].cwd_n];
   cl_add_setting_source(o[..], "project");   // the repository's own rules (AGENTS.md, CLAUDE.md); not your user settings
   o[0].include_partial_messages = true;
@@ -365,6 +375,16 @@ np_decide :: (s: []NextPanel, action: string, issue: int, reason: string) {
   s[0].decision_n = ifx o[0].bad then 0 else o[0].n;
 }
 
+// The coder called `report`: its work on the issue is over.
+np_report :: (s: []NextPanel, arguments: string) {
+  ar := s[0].q[0].ar[..];
+  status := cl_str(ar, arguments, "status");
+  if status != "done" && status != "blocked" { cl_tool_text(s[0].q[..], "status must be done or blocked.", true); return; }
+  s[0].reported = ifx status == "done" then 1 else 2;
+  np_break(s); np_append(s, ifx s[0].reported == 1 then "> done: " else "> blocked: ");
+  np_append(s, cl_str(ar, arguments, "summary")); np_append(s, "\n");
+  cl_tool_text(s[0].q[..], "Recorded. End your turn now.", false);
+}
 // The agent called `choose`: what you meant, as it read it.
 np_choose :: (s: []NextPanel, arguments: string) {
   ar := s[0].q[0].ar[..];
@@ -460,6 +480,12 @@ np_message :: (s: []NextPanel, m: ClMessage) {
     np_break(s); s[0].state = NP_YOURS; s[0].after_tool = false;
     // The coding agent's turn is over: the issue is one this run has worked, and Autopilot goes
     // round: the caches are fetched again (the issue may be closed now) and the picker picks.
+    // A coder that ended its turn without saying done or blocked is told to finish: it may have
+    // left a check running and stopped to wait for it, and in a turn nobody answers that is the end.
+    if s[0].coding && s[0].autopilot && s[0].reported == 0 && s[0].nudges < NP_NUDGES {
+      s[0].nudges += 1; np_append(s, "> no report yet: told to finish\n");
+      s[0].draft_n = np_put(s[0].draft[..], 0, NP_KEEP_GOING); np_send(s); return;
+    }
     if s[0].coding {
       s[0].runs += 1;
       if s[0].worked_n < NP_WORKED { s[0].worked[s[0].worked_n] = s[0].chosen; s[0].worked_n += 1; }
@@ -484,7 +510,7 @@ np_poll :: (s: []NextPanel) {
     ev := cl_poll(s[0].q[..], s[0].p[..], 0);
     if ev.kind == ClEventKind.idle { return; }
     if ev.kind == ClEventKind.message { np_message(s, ev.message); continue; }
-    if ev.kind == ClEventKind.tool_call { if s[0].coding { cl_tool_text(s[0].q[..], "There is no such tool here.", true); } else { np_choose(s, ev.arguments); } continue; }
+    if ev.kind == ClEventKind.tool_call { if s[0].coding { np_report(s, ev.arguments); } else { np_choose(s, ev.arguments); } continue; }
     if ev.kind == ClEventKind.failed { np_break(s); np_append(s, cl_error(s[0].q[..])); np_end(s, NP_FAILED); return; }
     if ev.kind == ClEventKind.end { np_break(s); np_append(s, "Claude Code closed before it answered."); np_end(s, NP_FAILED); return; }
   }
@@ -719,6 +745,17 @@ np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
 #test "next issue: a run billed to anything but your Claude login is refused" {
   #assert np_login_billed("none") && np_login_billed("");
   #assert !np_login_billed("ANTHROPIC_API_KEY") && !np_login_billed("apiKeyHelper") && !np_login_billed("/login managed key");
+}
+#test "next issue: a coder reports done or blocked, and is told never to stop while its work still runs" {
+  for word: [3] string.["report", "wait for it in the foreground", "blocked"] {
+    found := false;
+    for i: 0..<NP_CODER_RULES.count - word.count + 1 { if NP_CODER_RULES[i..<i + word.count] == word { found = true; } }
+    #assert found;
+  }
+  #assert NP_NUDGES > 0 && NP_REPORT_TOOL == "mcp__next__report";
+  s: [1] NextPanel; np_init(s[..]); s[0].coding = true;
+  np_report(s[..], "{\"status\":\"blocked\",\"summary\":\"the hosts are out of budget\"}"); #assert s[0].reported == 2;
+  np_report(s[..], "{\"status\":\"done\",\"summary\":\"abc123\"}"); #assert s[0].reported == 1;
 }
 #test "next issue: the coding agent defaults to Opus 5.5 and is told the one job, pushing and closing" {
   #assert NP_CODER_MODEL == "claude-opus-5-5";

@@ -222,6 +222,16 @@ Measured 2026-11-10 on 27 open issues: two Haiku passes gave the same model
 for 26; Sonnet as the rater agreed with Haiku on 21, each difference one step
 across a threshold. No open issue was housekeeping, so none went to Haiku.
 
+**How a coder finishes.** The coder has one in-process tool, `report(status:
+done | blocked, summary)`. It is told to end only by calling it, and never to end
+its turn while something it started is still running: it waits in the
+foreground. With Autopilot on, a turn that ends without `report` gets
+"finish, or report blocked" up to three times before the loop moves on. The
+chat shows `> done: ...` or `> blocked: ...`. This came from a Fable run on #13135
+(2026-11-10). It started six check suites on the build hosts, said it was waiting
+for them, and ended its turn. Autopilot took that as the end of the issue, and
+the fix was left uncommitted.
+
 **Why always a worktree.** The rule was: a fresh worktree unless that forces
 an expensive rebuild. It doesn't. A worktree carries no build output, and
 `coax/build.sh` installs the published compiler in seconds; heavy builds go
