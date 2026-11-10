@@ -11,6 +11,7 @@
 #load "../../aethyr/ui/draw.coax";
 #load "../../aethyr/math.coax";
 #load "../../aethyr/walk.coax" as pc;
+#load "triage.coax";   // the Triage button and its panel, in this unit (both draw with draw.coax, whose exports can't be linked twice)
 
 WS_MAX_VERTICES :: 36000;
 WS_PYLONS :: 6;

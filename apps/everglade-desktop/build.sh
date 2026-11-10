@@ -2,8 +2,8 @@
 # Firm reason: 5 (thin wrapper around coax, clang, metal and swiftc; holds no logic)
 # Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the
 # Workshop scene (workshop.coax) and your model (model.coax) compiled to C
-# behind face.h, their shaders, Everglade II's pack, and the AppKit and Metal
-# host in Swift.
+# behind face.h, Triage (triage.coax, in the scene's unit: the Coax Claude Agent SDK), their shaders,
+# Everglade II's pack, and the AppKit and Metal host in Swift.
 #   apps/everglade-desktop/build.sh [--open]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -19,11 +19,13 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 "$coax" c "$here/model.coax" --library --header "$work/c/model.h" > "$work/c/model.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/model.c" -o "$work/c/model.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/model-face.c" -o "$work/c/model-face.o"
+/usr/bin/clang "${cflags[@]}" -c "$here/triage-face.c" -o "$work/c/triage-face.o"
+/usr/bin/clang -std=gnu11 -O2 -w -I"$repo/coax/platform" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
 xcrun -sdk macosx metal "$here/Workshop.metal" "$here/Model.metal" -o "$app/Contents/Resources/default.metallib"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/Contents/Resources/everglade2.pack"
 # The web's character code passes its Creator and Bodies by value, megabytes a call, so the main
 # thread, which runs every Coax call, gets a 512 MB stack (reserved, not touched until used).
-xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" \
+xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/triage-face.o" "$work/c/process.o" \
   -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -lm \
   -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 cp "$here/Info.plist" "$app/Contents/Info.plist"

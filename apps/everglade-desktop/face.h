@@ -31,3 +31,17 @@ int32_t egm_record_floats(void);
 // This frame's records (egm_records * egm_record_floats floats) and draws (first index, count,
 // record, instances: egm_records * 4 words) from eg_you's five floats. The count of draws.
 int32_t egm_frame(void *model, const float *you5, float dt, float *records, uint32_t *draws);
+
+// Triage (triage.coax, triage-face.c): the button, its panel, and one Claude agent on your login.
+void *trg_new(void);
+int32_t trg_vertex_floats(void);
+int32_t trg_max_vertices(void);
+// One frame: polls the agent and draws the button and panel. panel4 gets the panel's box in points (all 0 when shut).
+int32_t trg_frame(void *triage, float *vertices, float *panel4, float width, float height, float scale, float dt);
+// 1 when Triage took the press or the wheel, so the world doesn't.
+int32_t trg_pointer(void *triage, float x, float y, int32_t phase, float width, float height);
+int32_t trg_wheel(void *triage, float x, float y, float dy, float width, float height);
+// 0 idle, 1 running, 2 done, 3 failed, 4 stopped.
+int32_t trg_state(void *triage);
+// Ends the agent's process group; call when the app quits.
+void trg_close(void *triage);

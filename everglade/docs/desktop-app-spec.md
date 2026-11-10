@@ -35,6 +35,28 @@ the app).
 - **Light.** The chamber's own: the pylons' blue, the sphere's ember and a
   fill from the camera. It is not the glade's sky and it casts no shadows.
 
+**Triage.** A button at the top right starts one Claude agent through the
+Coax Claude Agent SDK (`coax/lib/agent/claude`) on your own Claude Code
+login. It is the app's first use of the SDK.
+
+- **Model:** Claude Haiku 5.5 (`claude-haiku-5-5`).
+- **Tools:** one. The base set is Bash alone, and Bash is allowed one
+  command, `gh issue list`. Anything else is denied. No settings files load,
+  and `ANTHROPIC_API_KEY` is removed from the agent's environment.
+- **What it does:** reads the open issues of `OpenAgentsInc/openagents` and
+  writes a short triage: groups, one line an issue, and three to start with.
+- **Where it shows:** a panel on the right. The text streams in as it
+  arrives, the command the agent runs shows on its own line, and the foot
+  shows the state, the seconds and the cost. The wheel scrolls it.
+- **Stop:** while the agent runs the button says Stop, which ends the agent's
+  process group. Quitting the app does the same.
+- **Not blocked:** the agent is polled from the frame without waiting, so you
+  keep walking while it works.
+
+It needs `claude` and `gh` installed and logged in. Without `claude` the
+panel shows the install line; logged out, it shows `claude /login`. The code
+is `triage.coax`, loaded into the scene's unit.
+
 What it isn't yet:
 
 - **Your own character.** You wear the default. The look you made in
@@ -57,6 +79,7 @@ apps/everglade-desktop/build.sh --open        # builds, copies to ~/.openagents/
 coax/bin/coax test --library apps/everglade-desktop/workshop.coax
 coax/bin/coax test --library apps/everglade-desktop/model.coax --only "your model"
 build/Everglade.app/Contents/MacOS/Everglade --shot out.png --at 0.9 --hold wd   # from apps/everglade-desktop/: one frame offscreen after 0.9 s with W and D held
+build/Everglade.app/Contents/MacOS/Everglade --shot out.png --triage 150   # presses Triage and waits for the agent: a real Haiku turn on your login
 ```
 
 Everglade for desktop is a native app that plays Everglade and holds the

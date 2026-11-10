@@ -1,0 +1,299 @@
+// Everglade for desktop: Triage. A button at the top right starts one Claude agent through the
+// Coax Claude Agent SDK (coax/lib/agent/claude) on your own Claude Code login: Haiku 5.5, with one
+// tool, Bash, allowed one command, `gh issue list`. It reads the open issues of
+// OpenAgentsInc/openagents and writes a short triage, which streams into a panel on the right.
+// The agent is polled without blocking from the frame (cl_poll), so the world keeps running.
+// While it runs the button says Stop; Stop ends the agent's process group.
+// Drawn over the scene with Aethyr's strokes (aethyr/ui/draw.coax). workshop.coax loads this file,
+// so the two are one unit.
+//   coax/bin/coax test --library apps/everglade-desktop/triage.coax --only "triage"
+#load "../../aethyr/ui/draw.coax";
+#load "../../coax/lib/agent/claude/claude.coax";
+
+TR_MODEL :: "claude-haiku-5-5";
+TR_COMMAND :: "gh issue list --repo OpenAgentsInc/openagents --state open --limit 60 --json number,title,labels,updatedAt";
+TR_ALLOWED :: "Bash(gh issue list:*)";   // the one command the agent may run; anything else is denied
+TR_SYSTEM :: "You triage GitHub issues for the OpenAgents repository, a game engine (Aethyr), its language (Coax) and the game Everglade. You have one tool, Bash, and it may run only `gh issue list`. Write plain ASCII text with no Markdown: no #, *, backticks or tables. Keep every line under 64 characters.";
+TR_PROMPT :: "Run this command once with Bash, exactly as written:\n\ngh issue list --repo OpenAgentsInc/openagents --state open --limit 60 --json number,title,labels,updatedAt\n\nThen write the triage:\n\nLine 1: how many issues are open.\nThen up to four groups, each a heading in capitals on its own line, a blank line before it. Under a heading, one line an issue: its number, then at most eight words on what it is. Put the group that blocks other work first.\nEnd with a blank line, the line START WITH, and the three issue numbers to do first, each with one short reason.\n\nDo not run any other command. If the command fails, say what it printed and stop.";
+TR_INSTALL :: "Claude Code is not installed. Install it with:\ncurl -fsSL https://claude.ai/install.sh | bash";
+TR_LOGIN :: "Claude Code is logged out. Log in with:\nclaude /login";
+
+TR_TEXT :: 24000;         // bytes of triage kept; more than that is cut and the panel says so
+TR_MAX_VERTICES :: 120000;
+TR_BUTTON_W :: 112.0; TR_BUTTON_H :: 34.0; TR_MARGIN :: 24.0;
+TR_PANEL_W :: 500.0;      // points; narrower windows give it the width they have
+TR_CAP :: 12.0;           // the text's cap height, points
+TR_LINE :: 21.0;          // a line's height, points
+TR_PAD :: 18.0;
+
+TR_IDLE :: 0; TR_RUNNING :: 1; TR_DONE :: 2; TR_FAILED :: 3; TR_STOPPED :: 4;
+
+Triage :: struct {
+  state: int; open: bool;
+  want_start: bool; want_stop: bool;      // a press asked; the next frame does it
+  text: [TR_TEXT] u8; text_n: int; cut: bool;
+  scroll: int; lines: int; shown: int;    // lines scrolled up from the bottom; lines in all; lines the panel fits
+  cost_e4: int = -1; seconds: f32; clock: f32;
+  down: bool; down_in: int;               // which box the press began in: 1 the button, 2 Close
+  q: [1] ClQuery; p: [1] ClProcess; started: bool;
+  line: [1048576] u8; arena: [262144] u8; out: [65536] u8; scratch: [65536] u8;
+}
+
+// ---- the text
+
+tr_append :: (s: []Triage, t: string) {
+  for c: t {
+    if s[0].text_n >= TR_TEXT { s[0].cut = true; return; }
+    // The vector font is ASCII; anything else reads as a space.
+    b := c; if (b < 32 && b != '\n') || b > 126 { b = ' '; }
+    s[0].text[s[0].text_n] = b; s[0].text_n += 1;
+  }
+}
+// The text ends its line, so what comes next starts a new one.
+tr_break :: (s: []Triage) { if s[0].text_n > 0 && s[0].text[s[0].text_n - 1] != '\n' { tr_append(s, "\n"); } }
+tr_put_int :: (s: []Triage, v: int, digits: int) {
+  d: [20] u8; n := 0; x := v; if x < 0 { x = 0; }
+  while x > 0 || n < digits || n == 0 { d[n] = cast(u8) ('0' + x % 10); x = x / 10; n += 1; if n >= 20 { break; } }
+  for i: 0..<n { one: [1] u8; one[0] = d[n - 1 - i]; tr_append(s, cast(string) one[..]); }
+}
+
+// Where the line starting at `from` ends when it must fit `width` points: at its newline, or at
+// the last space that fits, or mid-word when one word is wider than the panel. `next` is where the
+// line after it starts.
+TrLine :: struct { end: int; next: int; }
+tr_line :: (text: string, from: int, width: f32, k: Ink) -> TrLine {
+  i := from; space := -1;
+  while i < text.count {
+    if text[i] == '\n' { return TrLine.{end = i, next = i + 1}; }
+    if text[i] == ' ' { space = i; }
+    if ink_width(text[from..<i + 1], TR_CAP, 0.22, 0.72, k) > width {
+      if space > from { return TrLine.{end = space, next = space + 1}; }
+      if i == from { return TrLine.{end = i + 1, next = i + 1}; }
+      return TrLine.{end = i, next = i};
+    }
+    i += 1;
+  }
+  return TrLine.{end = text.count, next = text.count};
+}
+
+// ---- the boxes
+
+tr_button :: (width: f32) -> HudBox { return HudBox.{x = width - f32(TR_MARGIN) - f32(TR_BUTTON_W), y = f32(TR_MARGIN), width = f32(TR_BUTTON_W), height = f32(TR_BUTTON_H)}; }
+tr_panel :: (width: f32, height: f32) -> HudBox {
+  w := f32(TR_PANEL_W); if w > width - 2 * f32(TR_MARGIN) { w = width - 2 * f32(TR_MARGIN); }
+  top := f32(TR_MARGIN) + f32(TR_BUTTON_H) + 12;
+  return HudBox.{x = width - f32(TR_MARGIN) - w, y = top, width = w, height = height - top - f32(TR_MARGIN)};
+}
+tr_close_box :: (b: HudBox) -> HudBox { return HudBox.{x = b.x + b.width - 76, y = b.y + 10, width = 64, height = 26}; }
+tr_in :: (b: HudBox, x: f32, y: f32) -> bool { return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height; }
+
+// ---- the agent
+
+tr_begin :: (s: []Triage) {
+  s[0].text_n = 0; s[0].cut = false; s[0].scroll = 0; s[0].cost_e4 = -1; s[0].seconds = 0; s[0].open = true;
+  cl_init(s[0].q[..], s[0].line[..], s[0].arena[..], s[0].out[..]);
+  o: [1] ClOptions;
+  o[0].model = TR_MODEL;
+  o[0].system_prompt = TR_SYSTEM;
+  o[0].persist_session = false;
+  o[0].setting_sources_set = true;          // no settings files: no project rules, hooks or other servers
+  o[0].include_partial_messages = true;     // the text streams
+  cl_add_tool(o[..], "Bash");               // the base set is Bash alone
+  cl_add_allowed(o[..], TR_ALLOWED);        // and of Bash, one command
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY"); // your login, never a key
+  s[0].q[0].options = o[0];
+  problem := cl_start(s[0].q[..], s[0].p[..], TR_PROMPT, false, s[0].scratch[..]);
+  if problem.count > 0 {
+    tr_append(s, TR_INSTALL); tr_break(s); tr_append(s, problem);
+    s[0].state = TR_FAILED; s[0].started = false; return;
+  }
+  s[0].started = true; s[0].state = TR_RUNNING;
+}
+tr_end :: (s: []Triage, state: int) {
+  if s[0].started { cl_close(s[0].p[..]); s[0].started = false; }
+  s[0].state = state;
+}
+tr_message :: (s: []Triage, m: ClMessage) {
+  if m.parent_tool_use_id.count > 0 { return; }
+  l := m.line; ar := s[0].q[0].ar[..];
+  if m.kind == ClKind.stream_event {
+    if !cl_eq(l, cl_at(l, "event.type"), "content_block_delta") { return; }
+    if cl_eq(l, cl_at(l, "event.delta.type"), "text_delta") { tr_append(s, cl_str(ar, l, "event.delta.text")); }
+    return;
+  }
+  if m.kind == ClKind.assistant {
+    content := cl_raw(l, "message.content");
+    for i: 0..<cl_count(content) {
+      item := cl_json(content, cl_item(content, i));
+      // A tool call is shown as the command it runs, on a line of its own.
+      if cl_str(ar, item, "type") == "tool_use" { tr_break(s); tr_append(s, "> "); tr_append(s, cl_str(ar, cl_raw(item, "input"), "command")); tr_append(s, "\n\n"); }
+    }
+    e := cl_assistant_error(l, cl_at(l, "error"));
+    if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed { tr_break(s); tr_append(s, TR_LOGIN); tr_end(s, TR_FAILED); }
+    return;
+  }
+  if m.kind == ClKind.result {
+    c := cl_num(l, "total_cost_usd"); if c.ok { s[0].cost_e4 = cast(int) (c.value * 10000 + 0.5); }
+    failed := cl_bool(l, "is_error").value || m.result != ClResultKind.success;
+    if failed {
+      why := cl_str(ar, l, "result"); if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
+      tr_break(s); tr_append(s, ifx why.count > 0 then why else "The turn failed.");
+    }
+    tr_end(s, ifx failed then TR_FAILED else TR_DONE);
+  }
+}
+// What has arrived since the last frame, without waiting for more.
+tr_poll :: (s: []Triage) {
+  for i: 0..<256 {
+    if s[0].state != TR_RUNNING || !s[0].started { return; }
+    ev := cl_poll(s[0].q[..], s[0].p[..], 0);
+    if ev.kind == ClEventKind.idle { return; }
+    if ev.kind == ClEventKind.message { tr_message(s, ev.message); continue; }
+    if ev.kind == ClEventKind.failed { tr_break(s); tr_append(s, cl_error(s[0].q[..])); tr_end(s, TR_FAILED); return; }
+    if ev.kind == ClEventKind.end { tr_break(s); tr_append(s, "Claude Code closed before it answered."); tr_end(s, TR_FAILED); return; }
+  }
+}
+
+// ---- the frame
+
+tr_put :: (out: []u8, n: int, text: string) -> int { m := n; for c: text { if m < out.count { out[m] = c; m += 1; } } return m; }
+tr_status :: (s: []Triage, out: []u8) -> string {
+  n := 0;
+  word := "";
+  if s[0].state == TR_DONE { word = "Done"; }
+  if s[0].state == TR_FAILED { word = "Failed"; }
+  if s[0].state == TR_STOPPED { word = "Stopped"; }
+  if s[0].state == TR_RUNNING { word = "Running"; }
+  n = tr_put(out, n, word);
+  secs := cast(int) s[0].seconds;
+  n = tr_put(out, n, "  ");
+  d: [8] u8; k := 0; x := secs; while x > 0 || k == 0 { d[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; if k >= 8 { break; } }
+  for i: 0..<k { one: [1] u8; one[0] = d[k - 1 - i]; n = tr_put(out, n, cast(string) one[..]); }
+  n = tr_put(out, n, " s");
+  if s[0].cost_e4 >= 0 {
+    n = tr_put(out, n, "  $");
+    whole := s[0].cost_e4 / 10000; frac := s[0].cost_e4 % 10000;
+    one: [1] u8; one[0] = cast(u8) ('0' + whole % 10); n = tr_put(out, n, cast(string) one[..]); n = tr_put(out, n, ".");
+    div := 1000; for i: 0..<4 { one[0] = cast(u8) ('0' + (frac / div) % 10); n = tr_put(out, n, cast(string) one[..]); div = div / 10; }
+  }
+  if s[0].cut { n = tr_put(out, n, "  (cut at 24,000 characters)"); }
+  return cast(string) out[0..<n];
+}
+
+// One frame: what a press asked for, what the agent sent, then the button and the panel.
+// Returns the vertex count; `panel` gets the panel's box in points (x, y, width, height; all 0
+// when it is shut) for the host to darken before these strokes.
+tr_frame :: (s: []Triage, out: []f32, panel: []f32, width: f32, height: f32, d: f32, dt: f32) -> int #export_c #effects(all) {
+  step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
+  if s[0].want_stop { s[0].want_stop = false; if s[0].state == TR_RUNNING { tr_break(s); tr_end(s, TR_STOPPED); } }
+  if s[0].want_start { s[0].want_start = false; if s[0].state != TR_RUNNING { tr_begin(s); } }
+  if s[0].state == TR_RUNNING { s[0].seconds += step; }
+  tr_poll(s);
+  for i: 0..<4 { if i < panel.count { panel[i] = 0; } }
+  if !(width > 0) || !(height > 0) || !(d > 0) { return 0; }
+  pen := HdPen.{d = d, cyan = true, top = 0, bottom = height, sans = false};
+  n := 0;
+  b := tr_button(width);
+  n = hd_rect(out, n, b, pen, 2, 1);
+  label := ifx s[0].state == TR_RUNNING then "Stop" else "Triage";
+  n = hd_text(out, n, label, b.x + 22, b.y + 23, 13, pen, 0);
+  if !s[0].open { return n; }
+  box := tr_panel(width, height);
+  if box.height < 120 { return n; }
+  if panel.count >= 4 { panel[0] = box.x; panel[1] = box.y; panel[2] = box.width; panel[3] = box.height; }
+  n = hd_rect(out, n, box, pen, 1, 0.8);
+  n = hd_text(out, n, "Triage", box.x + f32(TR_PAD), box.y + 28, 13, pen, 0);
+  n = hd_text(out, n, TR_MODEL, box.x + f32(TR_PAD) + 78, box.y + 28, 11, pen, 3);
+  if s[0].state != TR_RUNNING {
+    c := tr_close_box(box);
+    n = hd_rect(out, n, c, pen, 1, 0.7);
+    n = hd_text(out, n, "Close", c.x + 10, c.y + 18, 11, pen, 0);
+  }
+  n = hd_line(out, n, box.x, box.y + 46, box.x + box.width, box.y + 46, pen, 1, 0.5);
+  // The body: every line laid out, then the ones in view drawn, the newest at the bottom.
+  top := box.y + 46 + f32(TR_PAD); bottom := box.y + box.height - 40;
+  fits := cast(int) ((bottom - top) / f32(TR_LINE)); if fits < 1 { fits = 1; }
+  text := cast(string) s[0].text[0..<s[0].text_n];
+  k := hd_ink(pen, 0); k.sans = false; k.scale = 1;
+  inner := box.width - 2 * f32(TR_PAD);
+  total := 0; at := 0;
+  while at < text.count { l := tr_line(text, at, inner, k); total += 1; at = l.next; }
+  s[0].lines = total; s[0].shown = fits;
+  most := total - fits; if most < 0 { most = 0; }
+  if s[0].scroll > most { s[0].scroll = most; } if s[0].scroll < 0 { s[0].scroll = 0; }
+  first := most - s[0].scroll;
+  row := 0; at = 0;
+  while at < text.count {
+    l := tr_line(text, at, inner, k);
+    if row >= first && row < first + fits && l.end > at {
+      heading := text[at] == '>' ;
+      n = hd_text(out, n, text[at..<l.end], box.x + f32(TR_PAD), top + f32(TR_LINE) * f32(row - first) + f32(TR_CAP), f32(TR_CAP), pen, ifx heading then 2 else 0);
+    }
+    row += 1; at = l.next;
+  }
+  n = hd_line(out, n, box.x, bottom + 6, box.x + box.width, bottom + 6, pen, 1, 0.5);
+  words: [96] u8;
+  n = hd_text(out, n, tr_status(s, words[..]), box.x + f32(TR_PAD), box.y + box.height - 14, 11, pen, 1);
+  return n;
+}
+
+// A press: phase 0 down, 1 moved, 2 up; points from the top left. True when Triage took it, so
+// the host leaves the world's look-drag alone. A button acts when the press began and ended on it.
+tr_pointer :: (s: []Triage, x: f32, y: f32, phase: int, width: f32, height: f32) -> bool #export_c #effects(all) {
+  b := tr_button(width); box := tr_panel(width, height);
+  over_panel := s[0].open && tr_in(box, x, y);
+  if phase == 0 {
+    s[0].down_in = 0;
+    if tr_in(b, x, y) { s[0].down_in = 1; }
+    else if over_panel && s[0].state != TR_RUNNING && tr_in(tr_close_box(box), x, y) { s[0].down_in = 2; }
+    s[0].down = s[0].down_in != 0 || over_panel;
+    return s[0].down;
+  }
+  if phase == 1 { return s[0].down; }
+  took := s[0].down; s[0].down = false;
+  if s[0].down_in == 1 && tr_in(b, x, y) { if s[0].state == TR_RUNNING { s[0].want_stop = true; } else { s[0].want_start = true; } }
+  if s[0].down_in == 2 && tr_in(tr_close_box(box), x, y) { s[0].open = false; }
+  s[0].down_in = 0;
+  return took;
+}
+// The wheel over the panel scrolls it. True when Triage took it.
+tr_wheel :: (s: []Triage, x: f32, y: f32, dy: f32, width: f32, height: f32) -> bool #export_c #effects(all) {
+  if !s[0].open || !tr_in(tr_panel(width, height), x, y) { return false; }
+  s[0].scroll += cast(int) (dy / 12);
+  if s[0].scroll < 0 { s[0].scroll = 0; }
+  return true;
+}
+// The app is quitting: the agent's process group goes with it.
+tr_close :: (s: []Triage) #export_c #effects(all) { if s[0].started { cl_close(s[0].p[..]); s[0].started = false; } }
+// 0 idle, 1 running, 2 done, 3 failed, 4 stopped.
+tr_state :: (s: []Triage) -> int #export_c #effects(all) { return s[0].state; }
+tr_size :: () -> int #export_c #effects(all) { return size_of(Triage); }
+tr_init :: (s: []Triage) #export_c #effects(all) { s[0].state = TR_IDLE; s[0].cost_e4 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; }
+tr_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
+tr_max_vertices :: () -> int #export_c #effects(all) { return TR_MAX_VERTICES; }
+
+#test "triage allows one command, and it is the one the prompt names" {
+  #assert TR_MODEL == "claude-haiku-5-5";
+  #assert TR_ALLOWED == "Bash(gh issue list:*)";
+  #assert TR_COMMAND.count > 20 && TR_COMMAND[0..<13] == "gh issue list";
+  found := false;
+  for i: 0..<TR_PROMPT.count - TR_COMMAND.count + 1 { if TR_PROMPT[i..<i + TR_COMMAND.count] == TR_COMMAND { found = true; } }
+  #assert found;
+}
+#test "triage text keeps to its buffer, to ASCII and to whole lines" {
+  k := Ink.{core = 0.5, light = 1, glow = 2, red = 1, green = 1, blue = 1, scale = 1, sans = false};
+  a := tr_line("one two three", 0, 10000, k); #assert a.end == 13 && a.next == 13;
+  b := tr_line("one\ntwo", 0, 10000, k); #assert b.end == 3 && b.next == 4;
+  wide := ink_width("one two", TR_CAP, 0.22, 0.72, k);
+  c := tr_line("one two three", 0, wide + 1, k); #assert c.end == 7 && c.next == 8;
+  d := tr_line("onetwothree", 0, ink_width("onetw", TR_CAP, 0.22, 0.72, k) + 0.5, k); #assert d.end == 5 && d.next == 5;
+  e := tr_line("x", 0, 0, k); #assert e.end == 1 && e.next == 1;
+}
+#test "triage boxes: the button at the top right, the panel under it, Close inside the panel" {
+  b := tr_button(1320); p := tr_panel(1320, 880); c := tr_close_box(p);
+  #assert b.x + b.width == 1320 - TR_MARGIN && b.y == TR_MARGIN;
+  #assert p.y > b.y + b.height && p.x + p.width == 1320 - TR_MARGIN && p.y + p.height == 880 - TR_MARGIN && p.width == TR_PANEL_W;
+  #assert tr_in(p, c.x, c.y) && tr_in(p, c.x + c.width, c.y + c.height);
+  #assert tr_panel(400, 600).width == 400 - 2 * TR_MARGIN;
+  #assert tr_in(b, b.x + 5, b.y + 5) && !tr_in(b, b.x - 1, b.y + 5);
+}

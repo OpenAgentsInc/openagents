@@ -4,6 +4,8 @@
 //   Everglade                      opens the window
 //   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS]
 //       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits
+//   Everglade --shot OUT.png --triage WAIT
+//       presses Triage first and waits up to WAIT seconds for the agent (a real Haiku turn on your login)
 import AppKit
 import Metal
 import MetalKit
@@ -108,6 +110,10 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var strokes: MTLRenderPipelineState!
   var vertices: MTLBuffer!
   var model: Model?
+  let triage = trg_new()!
+  var overlay: MTLBuffer!
+  var panel: MTLRenderPipelineState!
+  var flat: MTLDepthStencilState!
   var last = CACurrentMediaTime()
   var time: Float = 0
 
@@ -136,6 +142,16 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     a.sourceRGBBlendFactor = .one; a.destinationRGBBlendFactor = .one; a.sourceAlphaBlendFactor = .one; a.destinationAlphaBlendFactor = .one
     strokes = try! device.makeRenderPipelineState(descriptor: f)
     vertices = device.makeBuffer(length: Int(eg_max_vertices()) * Int(eg_vertex_floats()) * 4, options: .storageModeShared)!
+    overlay = device.makeBuffer(length: Int(trg_max_vertices()) * Int(trg_vertex_floats()) * 4, options: .storageModeShared)!
+    let r = MTLRenderPipelineDescriptor()
+    r.vertexFunction = lib.makeFunction(name: "rect_vs"); r.fragmentFunction = lib.makeFunction(name: "rect_fs")
+    r.depthAttachmentPixelFormat = .depth32Float
+    let ra = r.colorAttachments[0]!
+    ra.pixelFormat = colorPixelFormat; ra.isBlendingEnabled = true
+    ra.sourceRGBBlendFactor = .sourceAlpha; ra.destinationRGBBlendFactor = .oneMinusSourceAlpha; ra.sourceAlphaBlendFactor = .one; ra.destinationAlphaBlendFactor = .one
+    panel = try! device.makeRenderPipelineState(descriptor: r)
+    let fd = MTLDepthStencilDescriptor(); fd.depthCompareFunction = .always; fd.isDepthWriteEnabled = false
+    flat = device.makeDepthStencilState(descriptor: fd)!
     // Your model, from the pack in the app. Without it there is no you to draw, so say so and stop.
     guard let url = Bundle.main.url(forResource: "everglade2", withExtension: "pack"), let pack = Pack(url),
           let m = Model(device: device, library: lib, color: colorPixelFormat, pack: pack) else {
@@ -173,6 +189,22 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
     }
     if seen { model?.draw(enc, camera: camera) }
+    // Triage, over everything: its panel's dark box, then its strokes.
+    var box = [Float](repeating: 0, count: 4)
+    let tn = trg_frame(triage, overlay.contents().assumingMemoryBound(to: Float.self), &box, Float(size.width) / scale, Float(size.height) / scale, scale, dt)
+    enc.setDepthStencilState(flat)
+    if box[2] > 0 {
+      var ru: [Float] = [box[0] * scale, box[1] * scale, box[2] * scale, box[3] * scale, Float(size.width), Float(size.height), 0, 0]
+      enc.setRenderPipelineState(panel)
+      enc.setVertexBytes(&ru, length: 32, index: 0)
+      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+    }
+    if tn > 0 {
+      enc.setRenderPipelineState(strokes)
+      enc.setVertexBuffer(overlay, offset: 0, index: 0)
+      enc.setVertexBytes(&u, length: 16, index: 1)
+      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(tn))
+    }
     enc.endEncoding()
     then(cmd)
     cmd.commit()
@@ -180,6 +212,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   }
 
   // One frame offscreen, after `seconds` of the scene's own time, as a PNG.
+  var triageWait: Float = 0
   func shot(to path: String, width: Int, height: Int, seconds: Float) -> Bool {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
     d.usage = [.renderTarget, .shaderRead]; d.storageMode = .shared
@@ -190,6 +223,18 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     zd.usage = [.renderTarget]; zd.storageMode = .private
     guard let z = device?.makeTexture(descriptor: zd) else { return false }
     pass.depthAttachment.texture = z; pass.depthAttachment.loadAction = .clear; pass.depthAttachment.clearDepth = 1; pass.depthAttachment.storeAction = .dontCare
+    // --triage: press the button, then draw in real time until the agent is done or the wait is up.
+    if triageWait > 0 {
+      let w = Float(width) / 2, h = Float(height) / 2, bx = w - 24 - 56, by: Float = 24 + 17
+      render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0) { _ in }
+      _ = trg_pointer(triage, bx, by, 0, w, h); _ = trg_pointer(triage, bx, by, 2, w, h)
+      let until = CACurrentMediaTime() + Double(triageWait)
+      repeat {
+        render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }
+        usleep(50_000)
+      } while CACurrentMediaTime() < until && trg_state(triage) <= 1
+      FileHandle.standardError.write(Data("triage state \(trg_state(triage))\n".utf8))
+    }
     var left = seconds
     while left > 0 { let step = min(left, 0.05); render(pass, size: CGSize(width: width, height: height), scale: 2, dt: step) { _ in }; left -= step }
     render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0) { _ in }
@@ -198,14 +243,20 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let info = CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
     guard let ctx = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info),
           let image = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return false }
+    trg_close(triage)
     return (try? png.write(to: URL(fileURLWithPath: path))) != nil
   }
 
   override var acceptsFirstResponder: Bool { true }
   func point(_ e: NSEvent) -> (Float, Float) { let p = convert(e.locationInWindow, from: nil); return (Float(p.x), Float(bounds.height - p.y)) }
-  override func mouseDown(with e: NSEvent) { let p = point(e); eg_pointer(state, p.0, p.1, 0) }
-  override func mouseDragged(with e: NSEvent) { let p = point(e); eg_pointer(state, p.0, p.1, 1) }
-  override func mouseUp(with e: NSEvent) { let p = point(e); eg_pointer(state, p.0, p.1, 2) }
+  // Triage's button and panel take a press first; the world gets what they leave.
+  func press(_ e: NSEvent, _ phase: Int32) {
+    let p = point(e)
+    if trg_pointer(triage, p.0, p.1, phase, Float(bounds.width), Float(bounds.height)) == 0 { eg_pointer(state, p.0, p.1, phase) }
+  }
+  override func mouseDown(with e: NSEvent) { press(e, 0) }
+  override func mouseDragged(with e: NSEvent) { press(e, 1) }
+  override func mouseUp(with e: NSEvent) { press(e, 2) }
   // Keys go to Coax in the web realms' codes; Cmd chords stay with the menu.
   func code(_ e: NSEvent) -> Int32? {
     switch e.keyCode { case 123: return -4; case 124: return -5; case 126: return -6; case 125: return -7; case 49: return 32; default: break }
@@ -219,7 +270,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   override func keyUp(with e: NSEvent) { if let k = code(e) { _ = eg_key(state, k, 0) } }
   override func flagsChanged(with e: NSEvent) { _ = eg_key(state, -13, e.modifierFlags.contains(.shift) ? 1 : 0) }
   override func resignFirstResponder() -> Bool { _ = eg_key(state, -1, 1); return super.resignFirstResponder() }
-  override func scrollWheel(with e: NSEvent) { eg_wheel(state, Float(e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 10)) }
+  override func scrollWheel(with e: NSEvent) {
+    let p = point(e), dy = Float(e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 10)
+    if trg_wheel(triage, p.0, p.1, dy, Float(bounds.width), Float(bounds.height)) == 1 { return }
+    eg_wheel(state, dy)
+  }
 }
 
 final class App: NSObject, NSApplicationDelegate {
@@ -236,6 +291,7 @@ final class App: NSObject, NSApplicationDelegate {
     NSApp.activate(ignoringOtherApps: true)
   }
   func applicationDidResignActive(_ note: Notification) { if let v = window.contentView as? WorkshopView { _ = eg_key(v.state, -1, 1) } }
+  func applicationWillTerminate(_ note: Notification) { if let v = window.contentView as? WorkshopView { trg_close(v.triage) } }
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
 }
 
@@ -245,6 +301,12 @@ func menus() {
   item.submenu = menu; bar.addItem(item); NSApp.mainMenu = bar
 }
 
+// Opened from the Finder the app gets a bare PATH; the agent's `gh` and a Homebrew or user install
+// of `claude` live in these, so they are added once, for this process and its children.
+do {
+  let home = NSHomeDirectory(), have = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+  setenv("PATH", have + ":/opt/homebrew/bin:/usr/local/bin:\(home)/.local/bin", 1)
+}
 let args = CommandLine.arguments
 if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   var width = 2640, height = 1760, seconds: Float = 2
@@ -254,6 +316,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   }
   if let t = args.firstIndex(of: "--at"), t + 1 < args.count, let v = Float(args[t + 1]), v >= 0, v <= 600 { seconds = v }
   let view = WorkshopView(frame: NSRect(x: 0, y: 0, width: width / 2, height: height / 2))
+  if let w = args.firstIndex(of: "--triage"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 600 { view.triageWait = v }
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
   }

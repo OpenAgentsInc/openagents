@@ -53,3 +53,12 @@ fragment float4 fx_fs(V v [[stage_in]]) {
   }
   return float4(v.tint.rgb * (core + halo) * v.shape.z, 1.0);
 }
+
+// A dark box under the Triage panel's text, so it reads over the scene. rect: x, y, width, height in pixels.
+struct RU { float4 rect; float2 size; float2 pad; };
+vertex float4 rect_vs(uint i [[vertex_id]], constant RU &u [[buffer(0)]]) {
+  const float2 c[6] = {float2(0, 0), float2(1, 0), float2(0, 1), float2(1, 0), float2(1, 1), float2(0, 1)};
+  float2 p = u.rect.xy + c[i] * u.rect.zw;
+  return float4(p.x / u.size.x * 2.0 - 1.0, 1.0 - p.y / u.size.y * 2.0, 0.0, 1.0);
+}
+fragment float4 rect_fs() { return float4(0.006, 0.01, 0.022, 0.93); }
