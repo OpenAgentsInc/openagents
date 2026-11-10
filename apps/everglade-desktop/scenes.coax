@@ -6,14 +6,15 @@
 //   The Archery Range          range.coax
 //   Everglade Experimental     the web's Experimental world
 //
-// The Workshop and the Range run here. The other two are the web's everglade2 and fivelab apps,
-// which no native host can open yet (their shaders are only emitted for the web, and their faces
-// are older than Aethyr's host contract): choosing one says so and where it runs today, and the
-// spec lists what brings each here. Nothing pretends: there is no web view standing in.
+// The Workshop and the Range run here. Everglade is the web's everglade2 realm: a host that can run
+// a realm's page (aethyr/host/apple/, the Mac app) says so with sc_host_runs, draws the realm
+// itself and sends it the keys; this file then draws only the Worlds button over it. On a host
+// that can't yet, and for Experimental (the web's fivelab app) everywhere, choosing the world
+// says where it runs today. Nothing pretends: there is no web view standing in.
 //
 // This file is the one face every host calls (face.h, face.c): it holds each scene's state, sends
 // a frame, a key, a press and a stick to the scene that is open, and draws what they share: the
-// list, and the Worlds button that brings you back to it (Escape does too).
+// list, and the Worlds button that brings you back to it (Escape does too, outside a realm).
 //   coax/bin/coax test --library apps/everglade-desktop/scenes.coax --only "scenes"
 #load "workshop.coax";
 #load "range.coax";
@@ -31,6 +32,7 @@ Scenes :: struct {
   touch: bool; safe_left: f32; safe_top: f32; safe_bottom: f32;
   press_row: int; press_back: bool;   // the row of the list, or the Worlds button, a press began on
   took: bool;                         // the last press let go was the list's or a button's, not the world's
+  realm_main: bool;                   // this host runs Everglade's realm itself (sc_host_runs)
 }
 
 sc_name :: (world: int) -> string {
@@ -45,8 +47,12 @@ sc_about :: (world: int) -> string {
   if world == SC_RANGE { return "Shoot for points on foot, from horseback and dragonback"; }
   return "Classes, monsters, a horse and a red dragon";
 }
-// Whether a world runs in this app today.
+// Whether a world is one of this file's own scenes.
 sc_here :: (world: int) -> bool { return world == SC_WORKSHOP || world == SC_RANGE; }
+// Whether a world runs in this app today: this file's scenes, and a realm the host runs.
+sc_runs :: (s: []Scenes, world: int) -> bool { return sc_here(world) || (world == SC_MAIN && s[0].realm_main); }
+// Whether the host is drawing a realm now, under the Worlds button.
+sc_in_realm :: (s: []Scenes) -> bool { return s[0].scene == SC_MAIN && s[0].realm_main; }
 // Where a world that doesn't runs meanwhile.
 sc_address :: (world: int) -> string {
   if world == SC_MAIN { return "openagents.com/worlds/character-creator"; }
@@ -66,8 +72,12 @@ sc_row_at :: (s: []Scenes, x: f32, y: f32) -> int {
   for i: 0..<SC_WORLDS { b := sc_row(s, i); if x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height { return i; } }
   return -1;
 }
-// The Worlds button, under a scene's title.
-sc_back :: (s: []Scenes) -> HudBox { return HudBox.{x = sc_left(s), y = s[0].safe_top + 106, width = 92, height = 32}; }
+// The Worlds button, under a scene's title. Over a realm, which has no title of ours, it sits at
+// the middle of the top edge, between the realm's own panels in the corners.
+sc_back :: (s: []Scenes) -> HudBox {
+  if sc_in_realm(s) { return HudBox.{x = (s[0].width - 92) * 0.5, y = s[0].safe_top + 10, width = 92, height = 32}; }
+  return HudBox.{x = sc_left(s), y = s[0].safe_top + 106, width = 92, height = 32};
+}
 sc_on_back :: (s: []Scenes, x: f32, y: f32) -> bool {
   b := sc_back(s);
   return s[0].scene != SC_LIST && x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
@@ -91,7 +101,7 @@ sc_list :: (s: []Scenes, out: []f32, d: f32) -> int {
   if s[0].scene == SC_LIST {
     n = eg_text(out, n, "Choose a world", left + 1, top + 94, 18, d, EG_TITLE, EG_MID);
     for i: 0..<SC_WORLDS {
-      b := sc_row(s, i); world := i + 1; here := sc_here(world);
+      b := sc_row(s, i); world := i + 1; here := sc_runs(s, world);
       n = hd_rect(out, n, b, pen, ifx here then 2 else 1, ifx here then 0.9f32 else 0.5f32);
       n = eg_text(out, n, sc_name(world), b.x + 16, b.y + 28, 19, d, EG_TITLE, ifx here then EG_WHITE else EG_MID);
       // On a narrow screen the line about a world gives way to whether it opens here.
@@ -105,12 +115,9 @@ sc_list :: (s: []Scenes, out: []f32, d: f32) -> int {
   }
   n = eg_text(out, n, sc_name(s[0].scene), left + 1, top + 94, 18, d, EG_TITLE, EG_MID);
   y := top + 190;
-  n = eg_text(out, n, "This world isn't in the app yet.", left, y, 19, d, EG_TITLE, EG_WHITE);
-  n = eg_text(out, n, "It runs on the web today:", left, y + 34, 15, d, EG_BODY, EG_MID);
+  n = eg_text(out, n, "This world isn't in this app yet.", left, y, 19, d, EG_TITLE, EG_WHITE);
+  n = eg_text(out, n, ifx s[0].scene == SC_MAIN then "It runs in the Mac app, and on the web:" else "It runs on the web today:", left, y + 34, 15, d, EG_BODY, EG_MID);
   n = eg_text(out, n, sc_address(s[0].scene), left, y + 58, 15, d, EG_BODY, EG_ACCENT);
-  n = eg_text(out, n, "It comes here when its shaders are emitted", left, y + 98, 14, d, EG_BODY, EG_DIM);
-  n = eg_text(out, n, "for Metal and Vulkan and its face meets", left, y + 118, 14, d, EG_BODY, EG_DIM);
-  n = eg_text(out, n, "Aethyr's host contract.", left, y + 138, 14, d, EG_BODY, EG_DIM);
   return n;
 }
 
@@ -120,6 +127,7 @@ sc_frame :: (s: []Scenes, out: []f32, width: f32, height: f32, d: f32, dt: f32) 
   n := 0;
   if s[0].scene == SC_WORKSHOP { n = ws_frame(s[0].workshop[..], out, width, height, d, dt); }
   else if s[0].scene == SC_RANGE { n = rs_frame(s[0].range[..], out, width, height, d, dt); }
+  else if sc_in_realm(s) { n = 0; }   // the host draws the realm; only the Worlds button is ours
   else { if !(width > 0) || !(height > 0) || !(d > 0) { return 0; } n = sc_list(s, out, d); }
   if !(width > 0) || !(height > 0) || !(d > 0) { return n; }
   return n + sc_worlds_button(s, out, n, d);
@@ -146,6 +154,11 @@ sc_scene :: (s: []Scenes) -> int #export_c #effects(all) { return s[0].scene; }
 sc_place :: (s: []Scenes) -> int #export_c #effects(all) { return ifx s[0].scene == SC_RANGE then SC_PLACE_RANGE else SC_PLACE_TEMPLE; }
 // Opens a world from outside (a host's own menu or a launch argument): SC_LIST to SC_EXPERIMENTAL.
 sc_go :: (s: []Scenes, world: int) #export_c #effects(all) { sc_open(s, world); }
+// The host says whether it runs a realm itself (SC_MAIN: Everglade, the web's everglade2). It then
+// draws the realm and sends it the keys and presses while that world is open; this file draws the
+// Worlds button over it and takes the presses that begin on it (sc_on_worlds).
+sc_host_runs :: (s: []Scenes, world: int, runs: bool) #export_c #effects(all) { if world == SC_MAIN { s[0].realm_main = runs; } }
+sc_on_worlds :: (s: []Scenes, x: f32, y: f32) -> bool #export_c #effects(all) { return sc_on_back(s, x, y); }
 
 // A key (workshop.coax ws_key's codes). Escape (27) is the list from anywhere; on the list 1 to 4
 // open a world.
@@ -288,8 +301,25 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   s: [1] Scenes; sc_state_init(s[..]); out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; you: [5] f32;
   #assert sc_key(s[..], 49, true) && sc_scene(s[..]) == SC_MAIN;
   n := sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
-  #assert n > 300 && !sc_you(s[..], you[..]) && sc_claims(s[..], 600, 400) && sc_place(s[..]) == SC_PLACE_TEMPLE;
+  #assert n > 200 && !sc_you(s[..], you[..]) && sc_claims(s[..], 600, 400) && sc_place(s[..]) == SC_PLACE_TEMPLE;
   b := sc_back(s[..]); sc_pointer(s[..], b.x + 4, b.y + 4, 0); sc_pointer(s[..], b.x + 4, b.y + 4, 2);
   #assert sc_scene(s[..]) == SC_LIST;
   sc_go(s[..], SC_EXPERIMENTAL); #assert sc_scene(s[..]) == SC_EXPERIMENTAL; sc_go(s[..], 99); #assert sc_scene(s[..]) == SC_EXPERIMENTAL;
+}
+#test "scenes: a host that runs Everglade's realm gets only the Worlds button to draw over it, and the row reads as a world that opens" {
+  s: [1] Scenes; sc_state_init(s[..]); out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; you: [5] f32;
+  #assert !sc_runs(s[..], SC_MAIN) && sc_runs(s[..], SC_WORKSHOP) && !sc_runs(s[..], SC_EXPERIMENTAL);
+  sc_host_runs(s[..], SC_EXPERIMENTAL, true); #assert !sc_runs(s[..], SC_EXPERIMENTAL);
+  sc_host_runs(s[..], SC_MAIN, true); #assert sc_runs(s[..], SC_MAIN) && !sc_in_realm(s[..]);
+  list := sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
+  #assert sc_key(s[..], 49, true) && sc_scene(s[..]) == SC_MAIN && sc_in_realm(s[..]) && !sc_you(s[..], you[..]);
+  n := sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
+  // the button alone: far fewer strokes than the list, and none of a card's
+  #assert n > 0 && n < 400 && n < list;
+  b := sc_back(s[..]); #assert b.x > 500 && b.x + b.width < 780 && b.y < 40 && sc_on_worlds(s[..], b.x + 4, b.y + 4) && !sc_on_worlds(s[..], 600, 400) && !sc_on_worlds(s[..], 40, 20);
+  sc_pointer(s[..], b.x + 4, b.y + 4, 0); sc_pointer(s[..], b.x + 4, b.y + 4, 2);
+  #assert sc_scene(s[..]) == SC_LIST && !sc_on_worlds(s[..], b.x + 4, b.y + 4);
+  // without the realm the same row opens the card, as before
+  sc_host_runs(s[..], SC_MAIN, false); sc_go(s[..], SC_MAIN); n = sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
+  #assert !sc_in_realm(s[..]) && n > 200;
 }

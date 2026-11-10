@@ -1,7 +1,8 @@
 # Worlds in the Everglade apps (spec)
 
-Written 2026-11-10. Status: **the list and two worlds are built; two worlds
-are specified, not built.**
+Written 2026-11-10. Status: **the list and three worlds are built on the Mac
+(Everglade itself, the Workshop and the Archery Range); the phones have two;
+Experimental is specified, not built.**
 
 The Everglade apps are an experiment beside the main experience, which is
 the web app. They are where the next work, managing agents from inside a
@@ -20,7 +21,7 @@ them.
 
 | World | What it is | In the apps today |
 | --- | --- | --- |
-| Everglade | The main flow, as the web has it: make a character, then walk into the glade | No. A card says where it runs on the web |
+| Everglade | The main flow, as the web has it: make a character, then walk into the glade | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
 | The Golemancers' Workshop | The temple and the unfinished golem | Yes |
 | The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | Yes |
 | Everglade Experimental | Classes, monsters, a horse and a red dragon | No. A card says where it runs on the web |
@@ -39,6 +40,9 @@ share.
   camera.
 - Click or tap a row to open that world. On a keyboard, 1 to 4.
 - Every world has a **Worlds** button under its title. Escape does the same.
+- In Everglade the keys are the realm's, Escape too. The Worlds button sits
+  at the middle of the top edge, between the realm's own panels, and the
+  Mac's menu has **Worlds** (Command 0).
 - Leaving a world lets go of every key and finger, and the world keeps its
   state: come back to the range and your tally is still there.
 - `--scene N` opens the Mac and iOS apps on world N.
@@ -57,31 +61,78 @@ under the left thumb.
 The main flow is the web's `everglade2` app
 (`apps/openagents-web/everglade2.coax`, with Character Create inside it).
 Experimental is the web's `fivelab` app
-(`apps/openagents-web/fivelab.coax`). Neither can be opened by a native host
-today. This is the work, in order:
+(`apps/openagents-web/fivelab.coax`).
 
-1. **Shaders for Metal and Vulkan.** Both worlds' shaders are emitted only
-   as WGSL (`gpu/everglade2.coax`, `gpu/fivelab.coax`,
-   `gpu/charactercreator.coax`). Each needs a render carrier and a catalog
-   profile (`aethyr/render/carriers/`, `aethyr/render/catalog.coax`), as
-   `everglade5e` has.
-2. **Faces at host contract v1.** `everglade2-face.c` and `fivelab-face.c`
-   are older than [`aethyr/host/README.md`](../../aethyr/host/README.md):
-   they declare no contract version and lack `focus`, `outbox_capacity` and
-   `media_capacity`.
-3. **A native build of each.** `verse/native/build.sh REALM OUT` already
-   compiles any web realm and its face to C. It needs step 1's carrier.
-4. **Native versions of what the browser gives:** the socket, HTTP and the
-   clock (`coaxial_socket_open`, `coaxial_http`, `coaxial_now_ms`), and the
-   saved character (`coaxial_store`).
-5. **The realm host inside these apps.** `apps/aethyrforge-desktop/`
-   (`MetalRealm.m`) already runs Everglade 5e on Metal through that
-   contract, and `verse/native/realm-host.c` does on Vulkan. The Everglade
-   apps link those and open a realm when its row is chosen.
-6. **Packs.** Experimental needs its own pack (`glade.pack`) in the app.
+### Everglade on the Mac (built 2026-11-10)
 
-Step 1 is the large one. Steps 2 to 4 are small. After step 5 the two cards
-become worlds with no change to the list.
+The Everglade row opens the realm itself: Character Create, then the run
+into the glade and the path beyond, with the web's HUD, class bar and
+pictures. It is the same Coax and the same shaders as the web, not a copy.
+
+- **The page host.** [`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h)
+  is the native twin of the browser host's own passes (`coax/web/host.js`):
+  it loads a realm's face, hands it the pack, the messages, the keys and the
+  frames, uploads what the face hands back, and draws the shadow tiles, the
+  scene, the particles, bloom, post and the HUD with Metal. It is engine
+  code, not the app's: any realm that draws through the page's passes can
+  open in it, on the Mac and on iOS.
+- **The realm.** `verse/native/build.sh everglade2 OUT` compiles the realm
+  and its face to C, as it does any web realm. The app builds that into a
+  library the host loads.
+- **The shaders.** `coax metal` emits each pair of `gpu/everglade2.coax` and
+  `gpu/everglade2-fx.coax` for Metal at build time, with the list of what
+  each reads. The host binds every resource by its name.
+- **The face.** `everglade2-face.c` takes addresses of the host's width and
+  has what host contract v1 asks of a face: `focus`, `outbox_capacity`,
+  `media_capacity` and the sound bank's allocations. A native build
+  declares version 1. The browser's module does not yet (see below).
+- **The browser's services.** The socket and HTTP are the Mac's own
+  (URLSession), to `https://openagents.com`: the app joins the site's room
+  (`wss://openagents.com/api/room/`) as a guest's browser does. The clock is
+  the machine's. What a browser keeps in its storage (your character, your
+  guest key, your place, your settings) is kept as files under
+  `~/.openagents/everglade/realm/`, readable only by you.
+- **In the app.** `scenes.coax` knows a host can run a realm
+  (`sc_host_runs`): the row then opens the world, and the Coax draws only
+  the Worlds button over it.
+
+What it doesn't do yet:
+
+- **Sound.** The realm's sounds are taken and not played. The host needs
+  Aethyr's audio interpreter (`aethyr/audio/host-pcm.coax`), as Aethyrforge
+  has.
+- **Your web character.** The app has no log in, so it starts from its own
+  kept character, not the one your browser has.
+- **The catalog renderer.** The host draws with the page's own passes, as
+  the web's Everglade II does today. It is not a profile in Aethyr's render
+  catalog (`aethyr/render/catalog.coax`), and the shared transport and
+  lifecycle authorities (`aethyr/host/transport.coax`, `lifecycle.coax`)
+  are not in its path. In the browser, declaring contract v1 also needs the
+  shared adapter a page gets with its render carrier, so the web module
+  declares no version until Everglade II has a carrier.
+- **Leaving for another page.** A portal to another realm, the clipboard
+  and the address bar have no effect.
+- **Instance culling on the GPU.** The host draws every piece the page
+  picked, as the browser does without its cull module.
+- **Math mode.** The shaders are compiled in Metal's relaxed math mode, not
+  the safe mode the host contract names for catalog renderers. The safe mode
+  took about 45% more GPU time a frame here. Change one flag in
+  `apps/everglade-desktop/build.sh` to compare.
+
+### What is left, in order
+
+1. **Sound** in the page host.
+2. **The phones.** iOS can link the same page host (it is Metal and
+   Foundation only); its app needs the realm's library, shaders and pack in
+   its bundle and its touches sent to the host. Android needs a twin of the
+   host on Vulkan (`verse/native/realm-host.c` is the start).
+3. **Experimental.** `fivelab-face.c` needs the same changes
+   `everglade2-face.c` got, its shaders emitted the same way
+   (`gpu/fivelab.coax`), and its own pack (`glade.pack`) in the app. The
+   page host then opens it with no change.
+4. **A carrier and catalog profile** for both, when the web's Everglade II
+   moves to the shared renderer. The page host then gives way to the realm
+   host (`apps/aethyrforge-desktop/MetalRealm.m`).
 
 ## 5. Adding a world
 

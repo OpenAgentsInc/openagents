@@ -106,8 +106,9 @@ if [[ -x "$coax" ]]; then
   cp "$face" "$web"/*-face.h "$web"/*-bridge.h "$web/face-address.h" ${faces_too[@]+"${faces_too[@]}"} "$out/"
   cp "$here"/face.h "$here"/face-defaults.h "$here"/realm-host.h "$here"/realm-host.c "$here"/audio-host.h "$here"/realm-run.c "$out/"
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
-  # C the face includes itself (the haunted house's realm-flight.c ...): beside it, not a unit
-  for inc in $(grep -o '^#include "[^"]*\.c"' "$face" | cut -d'"' -f2); do cp "$web/$inc" "$out/"; done
+  # C the face includes itself (the haunted house's realm-flight.c ...), and a header of the
+  # site's it shares with another face (experimental-sound-bank.h): beside it, not a unit
+  for inc in $(grep -o '^#include "[^"]*\.[ch]"' "$face" | cut -d'"' -f2); do [[ -f "$web/$inc" ]] && cp "$web/$inc" "$out/"; done
   # The face's unit, so the export aliases below go with it rather than into the face.
   printf '#include "%s"\n' "$(basename "$face")" > "$out/$realm.face.c"
   # An export named apart from its C function (the homepage's EXPORT("coaxial_page") void page): wasm

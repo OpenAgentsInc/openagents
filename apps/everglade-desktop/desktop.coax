@@ -5,3 +5,5 @@
 //   coax/bin/coax test --library apps/everglade-desktop/desktop.coax
 #load "scenes.coax";
 #load "next.coax";
+// A Mac wheel's travel in the host contract's units, for the realm the host runs (aethyr/host/README.md, Input).
+#load "../../aethyr/host/appkit-input.coax";
