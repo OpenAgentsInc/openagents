@@ -79,15 +79,17 @@ bounded() {
 starts_fails() { sed -n 's/^  FAIL  //p' | sed -E 's# https?://[^ ]*##; s/ \(.*$//' | sort -u; }
 # 1800 s: on a loaded Mac (agents' builds and recordings) the walk has taken over 900 s, and a cut-off
 # walk stops the release with no failure in it.
-starts() { bounded 1800 bun "$tree/coax/web/goldens.ts" "$1" --starts 2>&1 || true; }
+starts() { bounded 1800 bun "$tree/coax/web/goldens.ts" "$1" --starts ${2:+--only "$2"} 2>&1 || true; }
 # new_starts STAGING_OUT BASE_FAILS URL: failures new against BASE, still failing on a second walk.
 new_starts() {
   local broke again
   broke=$(new_fails "$(starts_fails <<< "$1")" "$2")
   [[ -n "$broke" ]] || return 0
-  echo "  starts     $(wc -l <<< "$broke" | tr -d ' ') new failure(s); walking again to confirm" >&2
+  # Confirm by walking only the pages that failed, not every page again (#13133).
+  local pages; pages=$(sed -n 's/^\([a-z0-9-]*\):.*/\1/p' <<< "$broke" | sort -u | paste -sd, -)
+  echo "  starts     $(wc -l <<< "$broke" | tr -d ' ') new failure(s); walking ${pages:-them} again to confirm" >&2
   sleep 10
-  again=$(starts "$3" | starts_fails)
+  again=$(starts "$3" "$pages" | starts_fails)
   comm -12 <(printf '%s\n' "$broke" | sort -u) <(printf '%s\n' "$again" | sed '/^$/d' | sort -u)
 }
 
@@ -183,18 +185,12 @@ broke=$(broken_by_release "$out" "$base_smoke" "$tree/coax/web/smoke.sh" "$stagi
 [[ -z "$broke" ]] || { echo "release $commit: STOPPED. staging smoke fails where production passes; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
 lap smoke "$t"
 
-t=$(now)
-out=$(starts "$staging")
-grep -q '^goldens ' <<< "$out" || { echo "release $commit: STOPPED. the staging starts walk did not finish within 1800 s, or did not run (Mac load: $(uptime | sed 's/.*averages*: //')):" >&2; tail -5 <<< "$out" >&2; exit 1; }
-broke=$(new_starts "$out" "$base_starts" "$staging")
-[[ -z "$broke" ]] || { echo "release $commit: STOPPED. pages fail on staging that pass on production; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
-echo "  starts     staging $(starts_fails <<< "$out" | sed '/^$/d' | wc -l | tr -d ' ') failing check(s), production $(sed '/^$/d' <<< "$base_starts" | wc -l | tr -d ' '); none new"
-lap starts "$t"
-
 # The Everglade drift check (#12778, coax/web/everglade-drift.coax): a release that changes Everglade's
 # page, its room or the engine under them plays it on this release's build (deploy.sh built the page
 # here). It stops the release when it fails here and holds on production's commit, a drift this
 # release causes; when production's commit fails it too, it is a report.
+# It runs alongside the staging starts walk (#13133); its stop messages print when both are done.
+drift_check() {
 everglade='^(apps/openagents-web/everglade|coax/web/room/|coax/web/room-worker\.js|coax/web/host\.js|coax/web/everglade-drift|aethyr/|verse/everglade/|verse/grid\.coax)'
 if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full" | grep -Eq "$everglade"; then
   t=$(now)
@@ -207,13 +203,27 @@ if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full"
       git -C "$repo" worktree remove --force "$old"
       echo "release $commit: STOPPED. the Everglade drift check fails here and holds on production's ${passed:0:10}; production is untouched:" >&2
       grep -E '^DRIFT ' "$reports/drift" | head -20 | sed 's/^/  /' >&2
-      exit 1
+      return 1
     fi
     git -C "$repo" worktree remove --force "$old"
     echo "  report     the Everglade drift check fails here and on production's ${passed:0:10} (not stopping): $(tail -1 "$reports/drift")"
   fi
   lap drift "$t"
 fi
+
+}
+drift_out="$reports/drift-run"
+drift_check > "$drift_out" 2>&1 & drift_job=$!
+
+t=$(now)
+out=$(starts "$staging")
+grep -q '^goldens ' <<< "$out" || { kill "$drift_job" 2>/dev/null; echo "release $commit: STOPPED. the staging starts walk did not finish within 1800 s, or did not run (Mac load: $(uptime | sed 's/.*averages*: //')):" >&2; tail -5 <<< "$out" >&2; exit 1; }
+broke=$(new_starts "$out" "$base_starts" "$staging")
+[[ -z "$broke" ]] || { kill "$drift_job" 2>/dev/null; echo "release $commit: STOPPED. pages fail on staging that pass on production; production is untouched:" >&2; echo "$broke" | sed 's/^/  /' >&2; exit 1; }
+echo "  starts     staging $(starts_fails <<< "$out" | sed '/^$/d' | wc -l | tr -d ' ') failing check(s), production $(sed '/^$/d' <<< "$base_starts" | wc -l | tr -d ' '); none new"
+lap starts "$t"
+
+if wait "$drift_job"; then cat "$drift_out"; else cat "$drift_out" >&2; exit 1; fi
 
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s"; exit 0; }
 

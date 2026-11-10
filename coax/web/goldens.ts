@@ -416,7 +416,8 @@ if (!root) for (const name of Object.keys(BY_ADDRESS)) {
 }
 
 // --starts (release.sh's brief production check): every page, by its address, answers and starts.
-if (startsOnly) lanes.splice(0, lanes.length, ...Object.keys(PAGES).filter((n) => !root || n !== "garden").map((name) => ({ name, run: async (t: Tab) => {
+// With --only NAME,NAME the starts walk covers just those pages (release.sh re-walks only what failed).
+if (startsOnly) lanes.splice(0, lanes.length, ...Object.keys(PAGES).filter((n) => (!root || n !== "garden") && (!only.size || only.has(n))).map((name) => ({ name, run: async (t: Tab) => {
   const want = base + root + PAGES[name].path
   t.errors = []
   const answer = await fetch(want).then((r) => r.status).catch(() => 0)
