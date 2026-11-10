@@ -15,7 +15,7 @@ cut after its first disagreeing assertion, and written to --keep DIR.
 
 The native harness is a separate, temporary source beside the file (so its
 #load paths resolve): the file as it is (its tests still exercise every procedure), each
-eligible body as `__native_check_K :: () -> int`, its `#assert E;` as
+eligible body as `__native_check_K :: () -> int #effects(all)`, its `#assert E;` as
 `if !(E) { return N; }`, and a `main` that runs them in order and prints a line
 per check. A trap stops the process; the harness is rebuilt without the checks
 already run and carries on. Product emission (`coax c FILE`) never contains
@@ -283,7 +283,8 @@ def harness(code: str, checks) -> str:
     if '#import "Basic"' not in code:
         lines.insert(0, '#import "Basic";')
     for k, (name, body) in enumerate(checks):
-        lines.append(f"__native_check_{k} :: () -> int {{{body}\n  return 0;\n}}")
+        # #effects(all): a unit that requires effect annotations (E0942) takes these too
+        lines.append(f"__native_check_{k} :: () -> int #effects(all) {{{body}\n  return 0;\n}}")
         # every procedure must be exercised by a check (E0380): this one is, by the evaluator's run
         lines.append(f'#test "__native_check_{k}" {{ #assert __native_check_{k}() >= 0; }}')
     lines.append("main :: () {")

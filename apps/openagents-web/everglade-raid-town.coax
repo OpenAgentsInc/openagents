@@ -36,7 +36,7 @@ rp_same_box :: (src: [] f32, i: int, n: int) -> bool {
   // every solid of the plan's but the world's edges lies in one of them
   solids: [EG_SOLIDS * EG_BOX] f32;
   m := everglade_solids(solids[..]);
-  for i: 0..<m - 4 {
+  for i: 0..<m - EG_EDGES {
     k := i * EG_BOX;
     held := false;
     for b: 0..<RT_BOXES {

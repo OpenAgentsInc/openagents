@@ -19,6 +19,7 @@
 //
 // The KcWork holds every plaintext byte and the conversation key, and is
 // cleared before every return.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "nip44-key.coax";
 #load "event.coax";
 #load "event_sign.coax";

@@ -3,8 +3,8 @@
 #load "types.coax";
 #authority;
 GS_MAX :: 201088;
-GS_LAST :: (cast(u64)18446744073709551615) #effects(all);
-GS_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15) #effects(all);
+GS_LAST :: (cast(u64)18446744073709551615);
+GS_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15);
 GSeed :: struct {seed:u64;counter:u64;}
 GDraw :: struct {status:GStatus;value:f64;next:GSeed;}
 GPick :: struct {status:GStatus;token:int;}

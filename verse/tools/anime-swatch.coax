@@ -236,7 +236,7 @@ main :: () {
   }
 }
 
-#test "the swatch: every variant draws its head in two hard tones, ink round its shapes, a sky darker up top" #steps 450000000 {
+#test "the swatch: every variant draws its head in two hard tones, ink round its shapes, a sky darker up top" #steps 600000000 {
   rgb: [AS_N * 3] u8;
   for v: 0..<ANIME_VARIANTS {
     s := as_render(v, rgb[..]);

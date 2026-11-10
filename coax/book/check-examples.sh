@@ -80,7 +80,7 @@ for src in "${sources[@]}"; do
         fail=1
       fi
     done
-  elif ! rg -q '^main\s*::' "$src"; then
+  elif ! grep -qE '^main[[:space:]]*::' "$src"; then
     # No main: an #export_c library, built as an object file in both profiles.
     for mode in debug release; do
       flags=()
@@ -92,7 +92,7 @@ for src in "${sources[@]}"; do
   elif ! "$COAX" c "$src" > /dev/null 2> "$tmp/compile.log"; then
     echo "FAIL $src does not compile"; cat "$tmp/compile.log"; fail=1
   fi
-  if rg -q '^\s*#(test|forall)\b' "$src"; then
+  if grep -qE '^[[:space:]]*#(test|forall)([^A-Za-z0-9_]|$)' "$src"; then
     "$COAX" test "$src" > "$tmp/checks.log" 2>&1 || { echo "FAIL $src checks"; cat "$tmp/checks.log"; fail=1; }
   fi
 done

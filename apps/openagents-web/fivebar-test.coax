@@ -400,7 +400,7 @@ ft_slots :: (from: int, to: int) -> int {
   #assert out[4].sp == SP_SPIRIT_GUARDIANS && out[4].tg == FB_SELF && out[5].art == "turn-undead";
   total := 0;
   for kl: 0..<RS_CLASSES { if kl != RS_MONSTER { total += fb_class_bar(kl, out[..]); } }
-  #assert total == 70;
+  #assert total == 71;   // Lesser Restoration on the Life Cleric's bar (417eef69a4)
 }
 
 #test "every slot has its picture: 5E MMO's class bars and Everglade's bar" {

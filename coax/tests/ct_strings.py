@@ -106,7 +106,7 @@ class StringTests(unittest.TestCase):
             subprocess.run(['c++', '-std=c++20', '-O1', '-g', '-fsanitize=address,undefined',
                             '-DCOAX_BOOTSTRAP_IMPORTER', '-I', str(ROOT / 'bootstrap'),
                             '-I', runtime, str(ROOT / 'tests/ct_strings.cpp'), *objects,
-                            '-o', str(exe)], check=True, capture_output=True, timeout=120)
+                            '-o', str(exe)], check=True, capture_output=True, timeout=900)   # the whole compiler under ASan/UBSan: minutes on a busy build host
             result = subprocess.run([str(exe)], text=True, capture_output=True, timeout=180,
                                     env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
             self.assertEqual(result.returncode, 0, result.stderr)

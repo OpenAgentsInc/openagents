@@ -9,15 +9,15 @@ main :: () {
   frames := [3] int.[300, 300, 300];
   bad := 0;
   for k: 0..<3 {
-    st: [1] Store; g := dg_bind(st[..]);
+    st: [1] DgStore; g := dg_bind(st[..]);
     p := passage_run(g, widths[k], frames[k]);
-    again: [1] Store; h := dg_bind(again[..]);
+    again: [1] DgStore; h := dg_bind(again[..]);
     same := passage_run(h, widths[k], frames[k]).digest == p.digest;
     print("passage % cm: % of 6 crossed in % steps, % stopped, closest % cm, the same twice: %\n", int(widths[k] * 100 + 0.5), p.crossed, p.frames, g.st[0].stops, int(p.nearest * 100), same);
     want := p.crossed == 6 && g.st[0].stops == 0;
     if !want || !same || p.inside || p.over || p.nearest <= f32(REACH) - 0.05 { bad += 1; }
   }
-  cs: [1] Store;
+  cs: [1] DgStore;
   print("digests % % %\n", deadgears_npc_case(cs[..], 0), deadgears_npc_case(cs[..], 1), deadgears_npc_case(cs[..], 2));
   print("runs not as stated: %\n", bad);
 }

@@ -58,7 +58,7 @@ has :: (text: string, part: string) -> bool {
 run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
   argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
   err: [1024] u8;
-  return proc_run(argv[..], 120000, out, err[..]);
+  return proc_run(argv[..], 600000, out, err[..]);   // a hang guard: the corpus step compiles every corpus file four times
 }
 
 // chk NAME CMD [ARGS...]: compiles $MAIN (default $D/w/main.coax) with CMD

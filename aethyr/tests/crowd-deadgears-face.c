@@ -3,5 +3,5 @@
 #include "crowd-deadgears.h"
 #include <stdint.h>
 #define EXPORT(name) __attribute__((export_name(name)))
-static coax_t_Store store;
-EXPORT("deadgears_npc_case") int64_t deadgears_npc_case_wasm(int64_t k) {return deadgears_npc_case((coax_v_t_Store){&store, 1}, k);}
+static coax_t_DgStore store;
+EXPORT("deadgears_npc_case") int64_t deadgears_npc_case_wasm(int64_t k) {return deadgears_npc_case((coax_v_t_DgStore){&store, 1}, k);}

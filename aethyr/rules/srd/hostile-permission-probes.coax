@@ -2,7 +2,7 @@
 #load "../../../verse/experimental-hostiles.coax" as hostile;
 
 hostile_permission_probe :: () -> bool {
-  h: [1] hostile.Hostiles; hostile.hostile_start(h[..]);
+  h: [1] hostile.Hostiles; hostile.hostile_test_start(h[..]);
   for i: 0..<hostile.HS_N { h[0].enemies[i].dead=true; }
   e := h[0].enemies[0..<1]; e[0].dead=false; e[0].inactive=true; e[0].x=4; e[0].z=0;
   hostile.hostile_tick(h[..],0,0,0,0.05);
@@ -13,8 +13,9 @@ hostile_permission_probe :: () -> bool {
   e[0].stopped=false;
   for k: 0..<100 { hostile.hostile_tick(h[..],0,0,0,0.05); }
   if h[0].hits!=0 || e[0].swing>=0 { return false; }
-  e[0].inactive=false; e[0].held=true; e[0].cool=0;
+  // held: it swings where it stands (the steering may have circled it round you while inactive)
+  e[0].inactive=false; e[0].held=true; e[0].cool=0; x := e[0].x; z := e[0].z;
   hostile.hostile_tick(h[..],0,0,0,0.05);
-  return e[0].swing==0 && e[0].x==0 && e[0].z == -1;
+  return e[0].swing==0 && e[0].x==x && e[0].z==z;
 }
 #test "native hostile adapter witness separates pursuit and attack permission" { #assert hostile_permission_probe(); }

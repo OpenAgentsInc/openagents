@@ -206,7 +206,7 @@ unit_constant_time() { python3 tests/constant_time.py; }
 unit_wrapping() { python3 tests/wrapping.py; }
 unit_integer_ops() { python3 tests/integer_ops.py; }
 unit_nominal_ids() { COAX="$COAX_ABS" python3 tests/nominal-ids.py; }
-unit_handles() { "$COAX" test lib/handle.coax && "$COAX" mutate lib/handle.coax --root-only; }
+unit_handles() { "$COAX" test lib/handle.coax --library && "$COAX" mutate lib/handle.coax --library --root-only; }
 unit_effect_contracts() {
   "$COAX" test lib/compiler/effect-contract.coax &&
     "$COAX" mutate lib/compiler/effect-contract.coax --root-only &&

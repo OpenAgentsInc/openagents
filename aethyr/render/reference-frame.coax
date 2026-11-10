@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/render/reference-frame.coax
 // The CPU frame consumes the same compiled catalog and frame program as the
 // GPU adapters. Checked tree bytes are authenticated by the package carrier;
 // no platform code selects shader parameters, draws, resources or pass order.

@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/producer-facts-text-policy.coax
 // Buffer.readFileSync(...,"utf8") followed by UTF-8 encoding: valid scalar
 // sequences are unchanged; each maximal malformed subpart becomes U+FFFD.
 // The caller bounds source bytes before passing a view (capture: 64 MiB).

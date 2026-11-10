@@ -12,7 +12,7 @@ np_root :: (root:string,home:string)->bool #effects(all) {
   return true;
 }
 NP_DENY :: [23]u32.[41,42,53,425,426,427,101,310,311,438,304,321,323,165,272,308,250,248,249,169,175,176,246];
-NP_FILTER_BYTES :: (7+23*2)*8 #effects(all);
+NP_FILTER_BYTES :: (7+23*2)*8;
 
 np_tool_admit :: (ceiling:int,command:bool)->bool #effects(all) {
   effect:=ifx command then 3 else 0;

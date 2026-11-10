@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/anim/import-face.coax
 // Live Link Face's wide CSV. Timecode rate is explicit (CLI default 60);
 // header names select curves, never their incidental column order.
 #load "import-build.coax";

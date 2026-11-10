@@ -15,8 +15,8 @@ TbValue :: struct {status:TbStatus;value:f64;}
 TbClass :: struct {status:TbStatus;accuracy:f64;cost:f64;late:int;caught:int;}
 TbChoice :: struct {status:TbStatus;threshold:f64;cost:f64;}
 
-TB_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15) #effects(all);
-TB_SESSION_COUNTER :: (cast(u64)1048576) #effects(all);
+TB_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15);
+TB_SESSION_COUNTER :: (cast(u64)1048576);
 TB_SESSIONS_MAX :: 512;
 TB_PER_SESSION :: 8;
 TB_ROWS_MAX :: 4096;

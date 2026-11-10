@@ -19,7 +19,6 @@ extern "C" {
 typedef struct { const char *data; int64_t count; } coax_string;
 #endif
 
-typedef struct coax_o_6_string coax_o_6_string;
 typedef struct coax_t_EC_Procedure coax_t_EC_Procedure;
 typedef struct coax_t_EC_Edge coax_t_EC_Edge;
 typedef struct coax_t_EC_Site coax_t_EC_Site;

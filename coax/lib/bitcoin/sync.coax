@@ -33,6 +33,7 @@
 // pinned revision ddea9196; coax/tests/bitcoin/sync.py transliterates
 // them and replays the example. Headers and blocks are public, so
 // everything here runs in variable time (Bitcoin chapter 3).
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "blockindex.coax";
 #load "dos.coax";
 #authority;

@@ -24,6 +24,7 @@
 // messages and signatures are public.
 // coax/tests/bitcoin/bip322.py checks each result against
 // bip322_reference.py and replays the example.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "psbt.coax";
 #load "signmessage.coax";
 #load "../../tests/bitcoin/bip322_vectors.coax";

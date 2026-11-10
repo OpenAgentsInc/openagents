@@ -90,7 +90,7 @@ class Debugging(unittest.TestCase):
   source=self.d/'entry.coax';source.write_text('#load "helper.coax";\nmain :: () {answer:=leaf();}\n')
   code=self.call('c',source,'--debug-info');self.assertEqual(code.returncode,0,code.stderr)
   c=self.d/'program.c';c.write_text(code.stdout.replace("return missing(","return undeclared_native_symbol("))
-  compile=subprocess.run(['cc','-std=c11','-Werror=unused-variable','-c',str(c),'-o',str(self.d/'bad.o')],capture_output=True,text=True)
+  compile=subprocess.run(['cc','-std=c11','-Werror=unused-variable','-Werror=implicit-function-declaration','-c',str(c),'-o',str(self.d/'bad.o')],capture_output=True,text=True)   # gcc 12 only warns on an undeclared call
   self.assertNotEqual(compile.returncode,0);self.assertIn(str(helper)+':2:',compile.stderr)
  def test_metadata_paths_escape_quotes_and_backslashes(self):
   source=self.d/'quote"back\\name.coax';source.write_text('main :: () {n:=1;#assert n==1;}')

@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/everglade-stock-policy.coax
 // Observation completion never turns a stock golden refusal into a pass.
 #load "render-host-policy.coax";
 #authority;

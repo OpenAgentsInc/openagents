@@ -10,30 +10,30 @@ NsAdmission :: struct {status:u32;id:[32]u8;created:int;kind:int;written:int;}
 NS_VALID_TEST :: "{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":1,\"tags\":[],\"content\":\"hello\",\"id\":\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\",\"sig\":\"92f72cb720a448d2ffd93220af78149293a81406c9f19c813e90d51388861d92ced3eae53e3c8e87f2770506fa5110c8dd692a673c4e2ad25481b92abc2a77b1\"}";
 NS_EPHEMERAL_TEST :: "{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":20000,\"tags\":[],\"content\":\"hello\",\"id\":\"0b09c9c0cb5f15bf0291b7e8b5e61f2b1adc909b886735ca1f59fb164ef2e93a\",\"sig\":\"13100f4cd1ac624c8441b293b9d72970a6e49ebc94a6494bfd5e08c348b740b6139398afa00e53396cfc3a35b7a921ab83c819b6b0e1e7c22d85feb658f5bf8e\"}";
 NS_WRONG_SIGNER_TEST :: "{\"pubkey\":\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"created_at\":0,\"kind\":1,\"tags\":[],\"content\":\"hello\",\"id\":\"e5383da928d4c08f7bfb8601b9719d26b7ae989280e4826244eb85b2b3f71ca9\",\"sig\":\"ed195de38514a3be425317516c899cb03ceea45a6f57422b124dab46f497da1f285a2081ea9b1feb51de248eb29546e08bd596efdc4cb19a1e42c86438a62f49\"}";
-#test "verified original reaches a framed snapshot under the default budget" {
+#test "verified original reaches a framed snapshot under the default budget" #steps 40000000 {
  scratch:[1024]u8;out:[1024]u8;result:=ns_admit_one(NS_VALID_TEST,scratch[..],out[..],false);
  #assert result.status==NS_ADMIT_OK && result.kind==1 && result.created==0;
  index:[2]int;frame:=ns_snapshot_scan(out[0..<result.written],index[..],false);
  #assert frame.ok && index[0]==20 && index[1]==NS_VALID_TEST.count;
  #assert cast(string)out[index[0]..<index[0]+index[1]]==NS_VALID_TEST;
 }
-#test "a forged signature cannot publish a snapshot" {
+#test "a forged signature cannot publish a snapshot" #steps 40000000 {
  raw:[1024]u8;for i:0..<NS_VALID_TEST.count {raw[i]=NS_VALID_TEST[i];}raw[NS_VALID_TEST.count-3]='0';
  scratch:[1024]u8;out:[1024]u8;out[0]=77;
  result:=ns_admit_one(cast(string)raw[0..<NS_VALID_TEST.count],scratch[..],out[..],false);
  #assert result.status==NS_ADMIT_INVALID && result.written==0 && out[0]==77;
 }
-#test "a matching hash signed by a different key is refused" {
+#test "a matching hash signed by a different key is refused" #steps 40000000 {
  scratch:[1024]u8;out:[1024]u8;out[0]=77;
  result:=ns_admit_one(NS_WRONG_SIGNER_TEST,scratch[..],out[..],false);
  #assert result.status==NS_ADMIT_INVALID && result.written==0 && out[0]==77;
 }
-#test "valid ephemeral events are verified but not persisted" {
+#test "valid ephemeral events are verified but not persisted" #steps 40000000 {
  scratch:[1024]u8;out:[1024]u8;out[0]=77;
  result:=ns_admit_one(NS_EPHEMERAL_TEST,scratch[..],out[..],false);
  #assert result.status==NS_ADMIT_EPHEMERAL && result.written==0 && out[0]==77;
 }
-#test "verified input with short output refuses before snapshot publication" {
+#test "verified input with short output refuses before snapshot publication" #steps 40000000 {
  scratch:[1024]u8;out:[1]u8;out[0]=77;
  result:=ns_admit_one(NS_VALID_TEST,scratch[..],out[..],false);
  #assert result.status==NS_ADMIT_CAPACITY && result.written==0 && out[0]==77;

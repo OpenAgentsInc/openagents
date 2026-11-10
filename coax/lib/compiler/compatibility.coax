@@ -291,18 +291,18 @@ KC_valid :: (rows: [] const KC_Row) -> bool #export_c #effects(all) {
   p:=KC_Row.{kind=4,shape="[]int"};n:=p;n.shape="[]const int";#assert KC_change(p,n)==0 && KC_change(n,p)==2;
   p.kind=5;n.kind=5;#assert KC_change(n,p)==0 && KC_change(p,n)==2;
 }
-KC_drop :: (text:string,prefix:string)->string? #effects(all) {
-  for ch,i:prefix {if i>=text.count || text[i]!=ch {return null;}}
-  return some(text[prefix.count..<text.count]);
+// Whether text begins with prefix. No optional result: coax query's index
+// (coax.query.v1) holds no tagged values, and it indexes the compiler's sources.
+KC_starts :: (text:string,prefix:string)->bool #effects(all) {
+  for ch,i:prefix {if i>=text.count || text[i]!=ch {return false;}}
+  return true;
 }
+KC_CONST_VIEW :: "[]const "; KC_VIEW :: "[]";
 KC_accepts :: (wanted:string,offered:string)->bool #effects(all) {
   if wanted==offered {return true;}
-  switch KC_drop(wanted,"[]const ") {
-    case none {return false;}
-    case some(value) {
-      switch KC_drop(offered,"[]") {case none {return false;}case some(actual) {return value!="" && value==actual;}}
-    }
-  }
+  if !KC_starts(wanted,KC_CONST_VIEW) || !KC_starts(offered,KC_VIEW) {return false;}
+  value:=wanted[KC_CONST_VIEW.count..<wanted.count];actual:=offered[KC_VIEW.count..<offered.count];
+  return value!="" && value==actual;
 }
 #test "view prefixes refuse truncation and preserve exact suffixes" {
   for text:[4]string.["","[","[]const","[]const "] {
@@ -310,10 +310,8 @@ KC_accepts :: (wanted:string,offered:string)->bool #effects(all) {
   }
   #assert KC_accepts("[]const T","[]T") && !KC_accepts("[]const T","[]");
   #assert KC_accepts("same","same");
-  switch KC_drop("abc","") {case none {#assert false;}case some(value) {#assert value=="abc";}}
-  switch KC_drop("abc","abc") {case none {#assert false;}case some(value) {#assert value=="";}}
-  switch KC_drop("abc","abcd") {case none {}case some(wrong) {#assert false;}}
-  switch KC_drop("abc","abd") {case none {}case some(wrong) {#assert false;}}
+  #assert KC_starts("abc","") && KC_starts("abc","ab") && KC_starts("abc","abc");
+  #assert !KC_starts("abc","abcd") && !KC_starts("abc","abd") && !KC_starts("","a");
 }
 #test "procedure manifests retain every argument and one checked result" {
  rows:=[3]KC_Row.[KC_Row.{kind=2,name="f",shape="Coax",size=1},KC_Row.{kind=4,owner="f",name="argument",shape="[]int"},KC_Row.{kind=5,owner="f",name="return",shape="[]const int"}];

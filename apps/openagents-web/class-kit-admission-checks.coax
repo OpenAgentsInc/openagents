@@ -3,7 +3,11 @@
 
 xk_check_components :: (klass:int) {
   for level:1..<7 {
-    hero:=fb_cl_hero(klass,"You",0,level);
+    // a fresh visit's one-a-visit materials, as Experimental and the room stock them
+    h:=[1]RsCreature.[fb_cl_hero(klass,"You",0,level)];
+    if klass==FB_CL_PALADIN { fb_paladin_protection_preset(h[..],false); }
+    if klass==FB_CL_CLERIC { fb_cleric_revivify_preset(h[..],false); }
+    hero:=h[0];
     bar:[XC_SLOTS] FbAb; n:=xc_bar_level(klass,level,bar[..]);
     #assert n>0;
     for i:0..<n {

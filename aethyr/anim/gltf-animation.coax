@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/anim/gltf-animation.coax
 // glTF interpolation is evaluated at a recorded uniform rate. CUBICSPLINE
 // tangents are scaled by the source key interval; quaternions are normalized.
 #load "gltf-scene.coax";

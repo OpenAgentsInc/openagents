@@ -1,5 +1,6 @@
 // Read-only observations of local agent processes. Never reads argv, prompts,
 // credentials or transcripts; a running process is not a grant to use it.
+#import "Basic";
 #load "../sys/fs.coax";
 #load "../json/json.coax";
 

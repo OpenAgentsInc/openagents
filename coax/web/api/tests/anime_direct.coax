@@ -4,6 +4,7 @@
 // ANIME_PORT=51392 ANIME_ISOLATED_DB=oa_anime12632 coax/web/tool.sh FILE.coax
 // ORIGIN may differ from the loopback transport API (the ordinary API test.sh).
 // tool.sh: tls
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #import "Basic";
 #load "../../../lib/sys/tool.coax";
 #load "../../../lib/sys/proc.coax";

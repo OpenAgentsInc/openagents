@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/native-gpu-parity-policy.coax
 // Complete receipt admission, independently qualified against frozen actual
 // legacy readbacks. CLI orchestration supplies independently hashed shaders.
 #load "native-gpu-tool-policy.coax";

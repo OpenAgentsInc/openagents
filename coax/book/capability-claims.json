@@ -172,13 +172,13 @@
     {
       "id": "psionic.execution.current",
       "document": "psionic/docs/roadmap.md",
-      "scope": "Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified.",
+      "scope": "Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md.",
       "text_sha256": "e2325a7eef60c64370d2713306864b371278916b6fd299c58823996b42b37edb",
       "features": [],
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "ff6d26ee426a3e5dea54ccd78646ded57a3350bb5e2fc72d3e5e08d1c15ea135"
+          "sha256": "7059f68c6eae940f87725197f1f237bf11083cd2ebb7b2e57b6bbd8b8a05a662"
         },
         {
           "path": "psionic/book/examples.json",
@@ -257,13 +257,13 @@
     {
       "id": "psionic.gpu.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open.",
+      "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open. Reviewed for #13134: 11da31e23c only adds part headings to psionic/book/SUMMARY.md.",
       "text_sha256": "d2572a5bbc768f22a40c2c28c93c7900d5fc3cb6b2fbc64043c62880f306c185",
       "features": [],
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "ff6d26ee426a3e5dea54ccd78646ded57a3350bb5e2fc72d3e5e08d1c15ea135"
+          "sha256": "7059f68c6eae940f87725197f1f237bf11083cd2ebb7b2e57b6bbd8b8a05a662"
         },
         {
           "path": "psionic/book/examples.json",
@@ -286,7 +286,7 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle.",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate. Reviewed after #12867: Metal graphics emission is a graphics path and does not qualify Psionic Metal or WebGPU compute beyond the bounded kernels named. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82's WGSL compute entries serve the engine's GPU cull only and qualify no Psionic browser compute; cdf2eedd13 adds checks only.",
       "text_sha256": "5355a62aeec2932ae6bc961b475b423689af0e5bfdbf8545a1415730624bda68",
       "features": [
         {
@@ -349,7 +349,7 @@
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "bdd399f6e85490c0a46938b0e6419988ff32f40fbeeea65f748fa33e1e6bfa32"
+          "sha256": "b5ab1bae7ffe1ab22391ab41254b23b6dbb9458c5e4ec0315107dccbac2e6dca"
         },
         {
           "path": "docs/verse/native-gpu.md",
@@ -442,7 +442,7 @@
     {
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
-      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle.",
+      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (aethyr/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles.",
       "text_sha256": "dc825e0eb306e3779a73f999e9e4cdaca1ae204a5c92b15f7ad241f83d9e9d28",
       "features": [
         {
@@ -453,11 +453,11 @@
       "evidence": [
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "bdd399f6e85490c0a46938b0e6419988ff32f40fbeeea65f748fa33e1e6bfa32"
+          "sha256": "b5ab1bae7ffe1ab22391ab41254b23b6dbb9458c5e4ec0315107dccbac2e6dca"
         },
         {
           "path": "coax/src/shader.cpp",
-          "sha256": "a993abeff68ed8688e093e1b9b196e4d45e6568df24ccfc40cd5d2284363e6cc"
+          "sha256": "ad2e700b6536f76901f95aaf64aaeb5a779a8c8a77060d8d1956bdbdeb6a2612"
         },
         {
           "path": "docs/verse/native-gpu.md",
@@ -469,7 +469,7 @@
         },
         {
           "path": "verse/everglade/gpu.bindings",
-          "sha256": "cb8d7d2a9236e5eb52b620848f0b9a06b06089a5cf15fdb7ce3092f05b7e8940"
+          "sha256": "d823b242b1159e264b3408e674c5e42a63b9cb62a730a7e6c578006921beabe2"
         },
         {
           "path": "verse/everglade/gpu-fx.module",

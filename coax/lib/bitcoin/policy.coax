@@ -27,6 +27,7 @@
 // Transactions and scripts are public, so everything here runs in
 // variable time and every procedure that decides ends in _vartime
 // (Bitcoin chapter 3).
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "sigops.coax";
 #authority;
 

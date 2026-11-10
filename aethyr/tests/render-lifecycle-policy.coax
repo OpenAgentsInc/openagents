@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/render-lifecycle-policy.coax
 // Verdicts over actual imported-memory and decoded-bitmap observations.
 #load "render-test-origin-policy.coax";
 #authority;

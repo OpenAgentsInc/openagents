@@ -25,6 +25,7 @@
 //
 // coax/tests/bitcoin/frost.py checks every published vector with the
 // BIP's reference implementation and replays the example.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "musig.coax";
 #load "../../tests/bitcoin/frost_vectors.coax";
 #authority;

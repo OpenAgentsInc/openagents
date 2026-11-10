@@ -36,8 +36,8 @@ SH_MODELS_MAX :: 16;
 SH_NAME_MAX :: 32;
 SH_BLOB :: 56;
 SH_JOIN :: 0.8;
-SH_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15) #effects(all);
-SH_WRONG :: (cast(u64)1048576) #effects(all);
+SH_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15);
+SH_WRONG :: (cast(u64)1048576);
 
 // Checks precede the implementation. Pinned values come from
 // psionic/tests/shadow_oracle.py --tests, which uses Python's hashlib.

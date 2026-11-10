@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/render/tests/spirv-tool-policy.coax
 // SPIR-V validation control bytes and literal remote transport arguments.
 #import "Basic";
 #authority;

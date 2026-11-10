@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/render/reference-package.coax
 // CPU reference admission consumes the same package and authenticated checked
 // trees as the GPU adapters. Implemented reference capabilities are explicit;
 // this never describes a physical GPU or accepts unchecked C arithmetic.

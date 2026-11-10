@@ -18,6 +18,7 @@
 // Routes, onions and messages are public, so the procedures here run in
 // variable time; secrets go only to chapter 111's onion code and to the
 // channel's signer.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "channel.coax";
 #load "gossip.coax";
 #load "onion.coax";
@@ -1129,7 +1130,7 @@ pay_test_failure :: (m: [] PayMap, t: PayTestOnion, end: [] LnhNode) -> [2] int 
   pay_learn(m[..], p[..], 0, junk[..]);
   #assert p[0].refused && p[0].parts[0].fail_hop == -2;
 }
-#test "one channel opened with chapter 109's messages, then paid end to end" #steps 30000000000 {
+#test "one channel opened with chapter 109's messages, then paid end to end" #steps 30000000000 #traversal 268435456 {
   net: [1] PayNet; m: [1] PayMap;
   for k: 0..<2 { s: [32] u8; for i: 0..<32 { s[i] = cast(u8) (11 * k + i + 1); } n := pay_node(net[..], s[..]); }
   net[0].height = 1000;

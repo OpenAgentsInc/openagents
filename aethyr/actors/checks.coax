@@ -1,4 +1,5 @@
 #module "aethyr.actors.checks";
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/actors/checks.coax
 #run_steps 250000000;
 #load "lab.coax";
 #load "tests/runtime-adapters.coax";

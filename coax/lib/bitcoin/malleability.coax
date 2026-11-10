@@ -14,6 +14,7 @@
 //
 // Transactions and signatures are public, so everything here runs in
 // variable time and every procedure ends in _vartime (Bitcoin chapter 3).
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "../crypto/ecdsa_sign.coax";   // ecdsa_der, chapter 20's strict DER writer
 #load "der.coax";
 #load "tx.coax";

@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/render-golden-query.coax
 // URLSearchParams form decoding/encoding and the three forced probe flags.
 #load "../render/tests/tooling-policy.coax";
 #load "../../coax/lib/net/uri.coax";

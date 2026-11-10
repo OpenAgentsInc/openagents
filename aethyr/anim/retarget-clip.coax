@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/anim/retarget-clip.coax
 #load "retarget.coax";
 #load "write.coax";
 #load "retarget-clip-checks.coax";

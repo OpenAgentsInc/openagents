@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/render/tests/build-tool-policy.coax
 // Independent frozen-declaration, textual product and reflection predicates.
 // This file does not load the product catalog, builder or package parser.
 #load "tooling-policy.coax";

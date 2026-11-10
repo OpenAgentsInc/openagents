@@ -698,7 +698,7 @@ bow_matrix_held :: (hl:[12]f32,hand_l:[3]f32,aim:f32,splay:f32,hold:f32,yaw:f32,
  turn:f32=0;
  if cc_dot(tp,tp)>0.0001 {
   x0:=f0[0];cx:=[3]f32.[x0[1]*tp[2]-x0[2]*tp[1],x0[2]*tp[0]-x0[0]*tp[2],x0[0]*tp[1]-x0[1]*tp[0]];
-  turn=atan2(cc_dot(cx,y0),cc_dot(x0,tp));
+  turn=figs.atan2(cc_dot(cx,y0),cc_dot(x0,tp));
   turn=ifx turn>f32(CC_BOW_FACE_MAX) then f32(CC_BOW_FACE_MAX) else ifx turn< -f32(CC_BOW_FACE_MAX) then -f32(CC_BOW_FACE_MAX) else turn;
  }
  dr:=[3][3]f32.[cc_turn_about(f0[0],y0,turn),y0,cc_turn_about(f0[2],y0,turn)];

@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/render-host-entry-policy.coax
 // Capture profile for worlds which enter from their actual frame callback.
 // It changes only observer scheduling; it never sends a synthetic Start key.
 #load "render-host-policy.coax";

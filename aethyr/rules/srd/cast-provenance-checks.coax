@@ -11,10 +11,9 @@ RsGrantSource :: struct { klass: int; from: int; sp: int; page: int; }
 // Druidic p.42, Circle of the Land (Polar) p.46, Fiend Spells p.76, Fiendish Vigor p.73 (this preset's level 5
 // invocation; Level 2+ Warlock), Magical Discoveries p.35 (this preset's two
 // choices), Blessed Warrior and Paladin's Smite p.54, Oath of Devotion Spells p.56, Draconic Spells
-// p.70, Life Domain Spells p.40, Favored Enemy p.58. Source spells without engine records (Aid,
-// Suggestion, Alter Self, Protection from Evil and Good, Lesser Restoration, Revivify and others)
-// grant no ID.
-RS_GRANT_SOURCES :: [20] RsGrantSource.[
+// p.70, Life Domain Spells p.40, Favored Enemy p.58. Source spells without engine records
+// (Suggestion, Alter Self and others) grant no ID.
+RS_GRANT_SOURCES :: [27] RsGrantSource.[
   RsGrantSource.{klass = RS_DRUID, from = 1, sp = SP_SPEAK_WITH_ANIMALS, page = 42},
   RsGrantSource.{klass = RS_DRUID, from = 3, sp = SP_FOG_CLOUD, page = 46}, RsGrantSource.{klass = RS_DRUID, from = 3, sp = SP_HOLD_PERSON, page = 46},
   RsGrantSource.{klass = RS_DRUID, from = 3, sp = SP_RAY_OF_FROST, page = 46}, RsGrantSource.{klass = RS_DRUID, from = 5, sp = SP_SLEET_STORM, page = 46},
@@ -23,11 +22,25 @@ RS_GRANT_SOURCES :: [20] RsGrantSource.[
   RsGrantSource.{klass = RS_WARLOCK, from = 5, sp = SP_FALSE_LIFE, page = 73},
   RsGrantSource.{klass = RS_BARD, from = 6, sp = SP_FIREBALL, page = 35}, RsGrantSource.{klass = RS_BARD, from = 6, sp = SP_SPIRIT_GUARDIANS, page = 35},
   RsGrantSource.{klass = RS_PALADIN, from = 2, sp = SP_SACRED_FLAME, page = 54}, RsGrantSource.{klass = RS_PALADIN, from = 2, sp = SP_DIVINE_SMITE, page = 54},
-  RsGrantSource.{klass = RS_PALADIN, from = 3, sp = SP_SHIELD_OF_FAITH, page = 56},
+  RsGrantSource.{klass = RS_PALADIN, from = 2, sp = SP_GUIDANCE, page = 54},
+  RsGrantSource.{klass = RS_PALADIN, from = 3, sp = SP_SHIELD_OF_FAITH, page = 56}, RsGrantSource.{klass = RS_PALADIN, from = 3, sp = SP_PROTECTION_GOOD_EVIL, page = 56},
+  RsGrantSource.{klass = RS_PALADIN, from = 5, sp = SP_AID, page = 56}, RsGrantSource.{klass = RS_PALADIN, from = 5, sp = SP_ZONE_OF_TRUTH, page = 56},
   RsGrantSource.{klass = RS_SORCERER, from = 3, sp = SP_COMMAND, page = 70},
   RsGrantSource.{klass = RS_CLERIC, from = 3, sp = SP_BLESS, page = 40}, RsGrantSource.{klass = RS_CLERIC, from = 3, sp = SP_CURE_WOUNDS, page = 40},
+  RsGrantSource.{klass = RS_CLERIC, from = 3, sp = SP_LESSER_RESTORATION, page = 40}, RsGrantSource.{klass = RS_CLERIC, from = 3, sp = SP_AID, page = 40},
+  RsGrantSource.{klass = RS_CLERIC, from = 5, sp = SP_REVIVIFY, page = 40},
   RsGrantSource.{klass = RS_CLERIC, from = 5, sp = SP_MASS_HEALING_WORD, page = 40},
   RsGrantSource.{klass = RS_RANGER, from = 1, sp = SP_HUNTERS_MARK, page = 58}];
+// Consumed materials a world supplies one a visit (apps/openagents-web/fivebar.coax's
+// per-visit presets), so a spent one stays spent across preset changes: the Life Cleric's
+// 300 GP diamond for Revivify (p.159) and the Devotion Paladin's holy water for Protection
+// from Evil and Good (p.157).
+RS_WORLD_SUPPLIES :: [2] RsGrantSource.[RsGrantSource.{klass = RS_CLERIC, from = 5, sp = SP_REVIVIFY, page = 159},
+  RsGrantSource.{klass = RS_PALADIN, from = 3, sp = SP_PROTECTION_GOOD_EVIL, page = 157}];
+pv_supplied :: (klass: int, sp: int) -> bool {
+  for g: RS_WORLD_SUPPLIES { if g.klass == klass && g.sp == sp { return true; } }
+  return false;
+}
 RS_PROVENANCE_CLASSES :: [12] int.[RS_BARBARIAN, RS_BARD, RS_CLERIC, RS_DRUID, RS_FIGHTER, RS_MONK, RS_PALADIN, RS_RANGER, RS_ROGUE, RS_SORCERER, RS_WARLOCK, RS_WIZARD];
 
 pv_preset :: (klass: int, level: int) -> RsCreature {
@@ -70,8 +83,8 @@ pv_listed :: (klass: int, level: int, sp: int) -> bool {
     }
     // Fiendish Vigor's prerequisite: a level 2+ Warlock
     if g.sp == SP_FALSE_LIFE { #assert g.klass == RS_WARLOCK && g.from >= 2 && rs_warlock("P", 0, g.from, SP_ELDRITCH_BLAST).vigor; }
-    // Blessed Warrior: a Cleric cantrip
-    if g.klass == RS_PALADIN && g.sp == SP_SACRED_FLAME { #assert s.level == 0 && rs_has_class(s.classes, "Cleric"); }
+    // Blessed Warrior: Cleric cantrips
+    if g.klass == RS_PALADIN && (g.sp == SP_SACRED_FLAME || g.sp == SP_GUIDANCE) { #assert s.level == 0 && rs_has_class(s.classes, "Cleric"); }
   }
 }
 #test "every spell a level 1-6 preset can cast has its components from its own focus, voice, hand or receipt" #steps 400000000 {
@@ -81,10 +94,16 @@ pv_listed :: (klass: int, level: int, sp: int) -> bool {
     else { #assert !c.focus_held && c.focus_class == -1; }
     for sp: 0..<RS_MORE_END {
       if !rs_spell_ready(c, sp) { continue; }
-      #assert rs_cast_components_ready(c, sp);
+      // a world's one-a-visit material: the fresh preset holds none, the world's visit stocks one
+      w := c;
+      if pv_supplied(klass, sp) {
+        #assert rs_material_slot(c, rs_component_key(sp)) < 0 && !rs_cast_components_ready(c, sp);
+        w.materials[1] = RsMaterialStock.{key = rs_component_key(sp), count = 1};
+      }
+      #assert rs_cast_components_ready(w, sp);
       mask := rs_component_mask(sp);
       // a priced or consumed material only from a held receipt; the focus never stands in for it
-      if (mask & (RS_C_PRICE | RS_C_CONSUME)) != 0 { #assert rs_material_slot(c, rs_component_key(sp)) >= 0; }
+      if (mask & (RS_C_PRICE | RS_C_CONSUME)) != 0 { #assert rs_material_slot(w, rs_component_key(sp)) >= 0; }
       // ordinary materials come through the focus only for its class's own list or that class's grant
       if (mask & RS_C_M) != 0 && (mask & (RS_C_PRICE | RS_C_CONSUME)) == 0 && !c.component_pouch { #assert rs_component_focus(c, sp); }
     }

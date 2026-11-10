@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/producer-capture-fixture.coax
 // Independent authored producer for capture-tool parity. This is a CPU-only
 // WebAssembly fixture, not a renderer or a production realm.
 #load "producer-capture-fixture-checks.coax";

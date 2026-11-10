@@ -3,7 +3,7 @@
 #load "../../../verse/experimental-hostiles.coax" as hostile;
 
 contact_health_probe :: () -> bool {
-  h: [1] hostile.Hostiles; hostile.hostile_start(h[..]); h[0].shared=true;
+  h: [1] hostile.Hostiles; hostile.hostile_test_start(h[..]); h[0].shared=true;
   for i: 0..<hostile.HS_N { h[0].enemies[i].dead=true; }
   h[0].enemies[0].dead=false; h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].swing=0.34;
   before := h[0].dice[0].state; hostile.hostile_tick(h[..],0,0,0,0.05);

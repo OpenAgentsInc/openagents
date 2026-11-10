@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library verse/animlab/layer-demo.coax
 // A private study performance. Contact annotations exclude the introductory
 // and outgoing base blends, where the feet are deliberately not planted.
 #load "../../aethyr/anim/fixup.coax";

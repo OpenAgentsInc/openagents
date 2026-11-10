@@ -26,6 +26,7 @@
 // Keys, scripts and PSBTs are public, so everything here runs in variable
 // time; private keys go only to chapter 94's signer and chapter 101's
 // MuSig2, which keep chapter 3's rules.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "psbt.coax";
 #load "musig.coax";
 #authority;

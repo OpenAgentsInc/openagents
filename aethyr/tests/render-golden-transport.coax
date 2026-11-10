@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/render-golden-transport.coax
 // Capture transport and reuse decisions belong to Coax. The byte sinks are
 // bounded separately from the browser's 64 MiB producer-memory boundary.
 #load "render-golden-options.coax";

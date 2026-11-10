@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/tests/render-golden-observation.coax
 #load "render-golden-numbers.coax";
 #load "../render/tests/tooling-policy.coax";
 #load "../../coax/lib/crypto/sha256-kernel.coax";

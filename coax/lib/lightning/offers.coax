@@ -16,6 +16,7 @@
 // variable time and the procedures' names end in _vartime (chapter 3).
 // Signing uses a private key: offer_sign_vartime calls chapter 24's
 // constant-time signer, and only public values steer its own branches.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "../crypto/sha256.coax";
 #load "../crypto/sha256_workspace.coax";
 #load "../crypto/schnorr_sign.coax";

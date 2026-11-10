@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/anim/import-bvh.coax
 // BVH's declared channel order is retained. v1 uses centimetres and Y-up;
 // callers never infer units from a character's size.
 #load "import-build.coax";

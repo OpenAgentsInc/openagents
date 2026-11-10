@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/actors/instances.coax
 // Realm-owned actor slots. Entity visibility still changes at entity_flush;
 // the caller applies lifecycle edits and begin only on its paid fixed step.
 #authority;

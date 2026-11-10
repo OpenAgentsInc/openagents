@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/render/tests/wgsl-tool-policy.coax
 // WGSL native compilation facts are admitted in Coax, never browser glue.
 #import "Basic";
 #load "tooling-policy.coax";

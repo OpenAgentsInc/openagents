@@ -1,6 +1,7 @@
 // Semantic decisions are Coax. This file transports the indexed syntax graph,
 // allocates native representations and copies checked results for the evaluator.
 #include "coax.h"
+#include <algorithm>
 #ifdef COAX_BOOTSTRAP_IMPORTER
 #include "checker.h"
 #include "parser.h"

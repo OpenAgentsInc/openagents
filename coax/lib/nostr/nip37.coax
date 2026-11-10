@@ -67,7 +67,7 @@ Nip37Keys :: struct {ec:[1]EcdhScratch; self:[32]u8; ck:[32]u8;}
   #assert nip37_tags("",1,-1,out[..])==-1 && nip37_tags("x",-1,-1,out[..])==-1 && nip37_tags("x",65536,-1,out[..])==-1;
   #assert nip37_tags("x",65535,-1,out[..])>0 && nip37_tags("x",1,-1,out[0..<20])==-1 && nip37_tags("x",1,-1,out[0..<21])==21;
 }
-#test "seal refuses views, the draft and a bad secret before encrypting; keys are wiped" {
+#test "seal refuses views, the draft and a bad secret before encrypting; keys are wiped" #steps 40000000 {
   k:=N37_KEY_1;nonce:[32]u8;work:[1024]u8;out:[1024]u8;out[0]=7;dk:[16]u8;dq:[16]u8;db:=n37_bytes("{\"kind\":1}",dk[..]);
   keys:[2]Nip37Keys;
   #assert nip37_seal(k[0..<31],nonce[..],db,keys[0..<1],work[..],out[..],false).error==N37_INPUT;
@@ -82,7 +82,7 @@ Nip37Keys :: struct {ec:[1]EcdhScratch; self:[32]u8; ck:[32]u8;}
   #assert nip37_seal(zero[..],nonce[..],n37_bytes("{\"kind\":0}",dq[..]),keys[0..<1],work[..],out[..],false).error==N37_KEY;
   #assert n37_wiped(keys[0..<1]) && out[0]==7;
 }
-#test "open refuses views and a bad secret first; keys are wiped" {
+#test "open refuses views and a bad secret first; keys are wiped" #steps 40000000 {
   k:=N37_KEY_1;s:[4096]u8;work:[1024]u8;out:[1024]u8;keys:[2]Nip37Keys;
   #assert nip37_open(k[0..<31],"{}",keys[0..<1],s[..],work[..],out[..],false).error==N37_INPUT;
   #assert nip37_open(k[..],"{}",keys[0..<2],s[..],work[..],out[..],false).error==N37_INPUT;

@@ -30,7 +30,7 @@ CN_MIN_CONNECT :: 30;          // MINIMUM_CONNECT_TIME
 CN_CHECK_INTERVAL :: 45;       // EXTRA_PEER_CHECK_INTERVAL
 CN_RANDOMIZER_NETGROUP :: cast(u64) 0x6c0edd8036ef4036; // RANDOMIZER_ID_NETGROUP
 CN_NET_LOCAL :: 7;             // NET_MAX: eviction's stand-in for localhost peers
-CN_IPV4_IPV6 :: (1 << AM_NET_IPV4) | (1 << AM_NET_IPV6) #effects(all);
+CN_IPV4_IPV6 :: (1 << AM_NET_IPV4) | (1 << AM_NET_IPV6);
 
 // book:begin limits
 // The slots for -maxconnections=max (CConnman::Init): 8 full-relay and 2

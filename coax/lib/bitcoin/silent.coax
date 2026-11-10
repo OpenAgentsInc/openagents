@@ -27,6 +27,7 @@
 //
 // coax/tests/bitcoin/silent.py runs BIP-352's reference.py on every
 // published vector and replays the example.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "taproot.coax";
 #load "../crypto/bip32.coax";
 #load "../crypto/secp_mult_const.coax";
@@ -686,7 +687,7 @@ sl_kmax :: () -> int #effects(all) {
     #assert d.reason == SLA_OK && d.version == 0 && !d.testnet && tx_hex_is(d.scan[..], p.scan) && tx_hex_is(d.spend[..], p.spend);
   }
 }
-#forall "each receiver's addresses, unlabeled and labeled, are the published ones" i: 0..<SL_RECEIVES.count #steps 2000000000 {
+#forall "each receiver's addresses, unlabeled and labeled, are the published ones" i: 0..<SL_RECEIVES.count #steps 2000000000 #traversal 268435456 {
   #assert sl_receiver_addresses(SL_RECEIVES[i]);
 }
 // One check per run of cases: each check has its own budget.

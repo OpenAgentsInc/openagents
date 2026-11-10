@@ -18,6 +18,7 @@
 // reference code (coax/tests/bitcoin/adaptor.py). The secret key, the
 // nonce and t go through chapter 24's constant-time scalar and fixed-base
 // code; everything public uses chapter 16's ecmult_vartime.
+#run_steps 250000000;   // the secp256k1 base-point table is built at compile time
 #load "musig.coax";
 #load "../../tests/bitcoin/adaptor_vectors.coax";
 #authority;

@@ -1,0 +1,6 @@
+// The type checker's checks as a suite (coax/web/suites.coax). Its parts in
+// lib/compiler/checker/ use each other's names, so none checks on its own, and
+// checker.coax is a compiler input, so it can't take a suite line: this file
+// beside it loads it, and every check of the checker and its parts runs here.
+//   coax/bin/coax test --library coax/lib/checker-checks.coax
+#load "compiler/checker.coax";

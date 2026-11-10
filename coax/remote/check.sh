@@ -163,7 +163,10 @@ case "$mode" in
   suites) suites --part "$arg" || status=1 ;;
   only) suites --only "$arg" || status=1 ;;
   compiler)
-    step compiler ${compiler_env[@]+"${compiler_env[@]}"} coax/tests/run.sh --part "$arg" || status=1
+    # In the host's own toolchain, not compiler_env: the units build their own
+    # sanitized programs with cc and c++, and the static musl toolchain has no
+    # ASan or UBSan runtimes (cannot find libasan_preinit.o, #13134).
+    step compiler coax/tests/run.sh --part "$arg" || status=1
     grep -E '^FAIL ' "$log" | sed -E 's/^FAIL ([^ :]+).*/compiler \1/' | sort -u >> "$out/failed" ;;
   wasm) step wasm env COAXIAL_MODE=release apps/openagents-web/build.sh || status=1 ;;
   modules)

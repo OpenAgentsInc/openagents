@@ -38,7 +38,7 @@ cdg_flow_agrees :: (n: [] Nav, goal: Point) -> bool {
 }
 
 #test "the deck's flow fields are the oracle's distances, and stay so when rubble blocks a route" #steps 3000000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   goals := [3] Point.[v3(0, 0, 8), v3(-12, 0, -6), v3(10, 0, -20)];
   for k: 0..<3 { #assert cdg_flow_agrees(g.nav, goals[k]); }
   #assert cdg_flow_agrees(g.nav, goals[1]);
@@ -49,7 +49,7 @@ cdg_flow_agrees :: (n: [] Nav, goal: Point) -> bool {
 }
 
 #forall "what a mutant sees is the sampled oracle's line, wherever the oracle can decide" which: 0..<4 #steps 2000000000 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
   boxes: [BOXES * 6] f32;
   nb := cdg_boxes(g.arena, boxes[..]);
   judged := 0; seen := 0;
@@ -79,7 +79,7 @@ passage_run :: (g: Game, w: f32, frames: int) -> Passage {
   clear_mutants(g);
   r := dg_add_cover(g, 11.2 - w / 2 - 1.8, 0, 3.6, 4, 1.6);
   r = dg_add_cover(g, 11.2 + w / 2 + 1.8, 0, 3.6, 4, 1.6);
-  ids: [6] int;
+  ids: [6] Handle(Entity);
   for k: 0..<3 { ids[k] = spawn_now(g, REAVER, 10.4 + 0.8 * f32(k), -7, -1); ids[k + 3] = spawn_now(g, REAVER, 10.4 + 0.8 * f32(k), 7, -1); }
   out: Passage;
   while out.frames < frames && out.crossed < 6 {
@@ -102,13 +102,13 @@ passage_run :: (g: Game, w: f32, frames: int) -> Passage {
 // One body wide (1.6 m) and two (2.2 m) the same: aethyr/tests/crowd-deadgears-native.coax runs
 // all three widths, and the digests below hold wasm to them.
 #test "two crowds meeting head on in a narrow passage keep right and pass each other" #steps 9000000000 {
-  st: [1] Store; g := dg_bind(st[..]);
+  st: [1] DgStore; g := dg_bind(st[..]);
   p := passage_run(g, 2.2, 300);
   #assert p.crossed == 6 && !p.inside && !p.over && p.nearest > f32(REACH) - 0.05 && g.st[0].stops == 0;
 }
 
 #test "a crowd three abreast, as wide as the passage, passes one coming the other way" #steps 9000000000 {
-  st: [1] Store; g := dg_bind(st[..]);
+  st: [1] DgStore; g := dg_bind(st[..]);
   p := passage_run(g, 2.8, 300);
   #assert p.crossed == 6 && !p.inside && !p.over && p.nearest > f32(REACH) - 0.05 && g.st[0].stops == 0;
 }
@@ -117,8 +117,8 @@ passage_run :: (g: Game, w: f32, frames: int) -> Passage {
 
 // Case k's digest: the passage one body wide (0), two (1) and three (2).
 // The caller owns the store (in wasm, crowd-deadgears-face.c keeps it off the stack).
-deadgears_npc_case :: (st: [] Store, k: int) -> int #export_c #effects(all) {
-  st[0] = Store.{};
+deadgears_npc_case :: (st: [] DgStore, k: int) -> int #export_c #effects(all) {
+  st[0] = DgStore.{};
   g := dg_bind(st);
   if k == 0 { return passage_run(g, 1.6, 300).digest; }
   if k == 1 { return passage_run(g, 2.2, 300).digest; }

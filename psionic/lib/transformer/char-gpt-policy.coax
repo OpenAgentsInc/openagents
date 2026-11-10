@@ -14,7 +14,7 @@ CgStatus :: enum u8 {ok;corpus;shape;budget;order;number;checkpoint;ledger;devic
 // The frozen corpus: Tiny Shakespeare, by length, FNV-1a 64 and its 65
 // distinct bytes.
 CGP_CORPUS_BYTES :: 1115394;
-CGP_CORPUS_FNV :: (cast(u64)0x4016c93c3be74c18) #effects(all);
+CGP_CORPUS_FNV :: (cast(u64)0x4016c93c3be74c18);
 CGP_VOCAB :: 65;
 cgp_fnv :: (x:[]u8)->u64 #export_c #effects(all) {
     h:=(cast(u64)0xcbf29ce484222325);

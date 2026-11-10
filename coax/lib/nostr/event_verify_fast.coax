@@ -12,7 +12,7 @@
 #load "../../tests/nostr/relay_read_fixtures.coax";
 #authority;
 
-#test "a real event's read verifies, as the full entry does" {
+#test "a real event's read verifies, as the full entry does" #steps 40000000 {
   scratch: [4096] u8;
   read := nostr_event_read(RLR_REAL, scratch[..], false);
   #assert read.error == NE_OK && !read.verified;
@@ -20,7 +20,7 @@
   #assert e.error == NE_OK && e.verified && e.written == read.written && e.original == RLR_REAL;
   #assert e.id[0] == RLR_REAL_ID0 && e.id[31] == RLR_REAL_ID31 && e.created_at == RLR_REAL_AT;
 }
-#test "a changed signature bit refuses" {
+#test "a changed signature bit refuses" #steps 40000000 {
   scratch: [4096] u8;
   read := nostr_event_read(RLR_BAD_SIG, scratch[..], false);
   #assert read.error == NE_OK;

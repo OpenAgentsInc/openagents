@@ -1,3 +1,4 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library aethyr/render/tests/native-frame-measure-policy.coax
 // Raw native-frame measurement admission; image/parity verdicts live outside.
 #load "../../tests/native-gpu-transport-policy.coax";
 #load "tooling-policy.coax";

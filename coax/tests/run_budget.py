@@ -160,7 +160,7 @@ class RunBudgetTests(unittest.TestCase):
         built = subprocess.run(['c++', '-std=c++20', '-O1', '-g', '-fsanitize=address,undefined',
                         '-DCOAX_BOOTSTRAP_IMPORTER', '-I', str(ROOT / 'bootstrap'),
                         '-I', str(ROOT / 'bin'), str(ROOT / 'tests/ct_storage.cpp'),
-                        *objects, '-o', str(exe)], capture_output=True, text=True, timeout=120)
+                        *objects, '-o', str(exe)], capture_output=True, text=True, timeout=900)   # the whole compiler under ASan/UBSan: minutes on a busy build host
         self.assertEqual(built.returncode, 0, built.stderr)
         result = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60,
                                 env={**__import__('os').environ, 'ASAN_OPTIONS':'detect_leaks=0'})
