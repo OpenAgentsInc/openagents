@@ -1,7 +1,8 @@
 # Next issue: pick what to work on, from caches, and measure every call (spec)
 
-Written 2026-11-10. Status: **the first version is built** in
-`apps/everglade-desktop/`. Sections marked **Planned** are not.
+Written 2026-11-10. Status: **built** in `apps/everglade-desktop/`,
+including the coding flow that "start" begins. Sections marked **Planned**
+are not.
 
 The program answers one question: which issue should you work on next? It
 reads your priorities from what you say and what you have been doing, gets
@@ -34,13 +35,14 @@ In Everglade for desktop, the **Next issue** button at the top right:
 3. Shows one suggested issue and why.
 4. Takes your reply in your own words: "yes", "not that, something for the
    desktop app", "why that one?".
-5. Records what you decided. If you said to start, the coding flow begins
-   there. The coding flow is not built: the panel says so and nothing starts.
+5. Records what you decided. If you said to start, a coding agent starts on
+   that issue in a fresh worktree, in the same chat (section 6).
 
 The same context is available from the command line, without the app:
 
 ```sh
 coax/web/tool.sh apps/everglade-desktop/next-context.coax context --prompt "focus on the desktop app"
+coax/web/tool.sh apps/everglade-desktop/next-context.coax work 13134 --repo-dir ~/work/openagents   # the worktree and the issue, whole
 coax/web/tool.sh apps/everglade-desktop/next-context.coax status     # the caches and their ages
 coax/web/tool.sh apps/everglade-desktop/next-context.coax usage      # the ledger, summed
 ```
@@ -145,7 +147,7 @@ choose(action: "start" | "another" | "none", issue: integer, reason: string)
 
 | Action | When | What happens |
 | --- | --- | --- |
-| `start` | You agreed to an issue | The coding flow begins here. **Stub:** the panel says the coding flow is not built and nothing was started |
+| `start` | You agreed to an issue | The coding flow begins (below) |
 | `another` | You turned it down | The agent suggests the next best, using what you said |
 | `none` | You want to stop | Nothing |
 
@@ -160,7 +162,60 @@ Every decision is appended to
  "session":"9b0adefa-...","coding_flow":"not built"}
 ```
 
-That file is where the coding flow will pick up: it reads the newest `start`.
+### The coding flow
+
+When you say start, the picker finishes its turn, so its cost is recorded,
+and its session ends. Then:
+
+1. **A worktree.** `next-context work N --repo-dir CHECKOUT` fetches
+   `origin/main` and makes `CHECKOUT-issue-N`, detached at `origin/main`. An
+   existing worktree for the issue is reused as it is. `CHECKOUT` is the main
+   checkout the app was built from. It prints the worktree's path and the
+   issue whole, from the cache.
+2. **A coding agent.** A second session starts in that worktree, in the same
+   chat.
+3. **You can steer it.** A reply now goes to the coding agent.
+
+| Setting | Value |
+| --- | --- |
+| Model | Claude Opus 5.5 (`claude-opus-5-5`). `EVERGLADE_CODER_MODEL` overrides it |
+| Tools | Bash, Read, Edit, Write, Grep, Glob. Nothing else: no Task or Agent (no subagents), no web |
+| Permissions | Edits and the shell run without asking, inside the worktree it starts in |
+| Rules it loads | The repository's own (`AGENTS.md`, `CLAUDE.md`). Not your user settings |
+| Its one job | That issue and nothing else. When its checks pass: commit its files, rebase on `origin/main`, push `HEAD:main`, close the issue with a comment naming the commit. If it can't finish: stop, say what blocks it, leave the issue open |
+
+**Why always a worktree.** The rule was: a fresh worktree unless that forces
+an expensive rebuild. It doesn't. A worktree carries no build output, and
+`coax/build.sh` installs the published compiler in seconds; heavy builds go
+through `coax/remote/remote.sh` either way. So the flow never works in the
+main checkout, which other agents share.
+
+**What you see.** The agent's messages stream into the chat as plain text
+(Markdown's bold marks and backticks are left out). Each tool call is one
+line: `> $ git status`, `> Read coax/src/main.cpp`, `> Grep pattern`, with
+paths shown from the worktree and the line cut at 96 bytes. A tool's result
+shows only when it failed, as one line. A long run keeps the newest half of
+the chat; the wheel scrolls it.
+
+**Stop** ends the agent's process group. The worktree stays, so a new start
+on the same issue picks it up.
+
+**Rehearsal.** `EVERGLADE_CODER_MODE=rehearsal` gives the agent Read, Grep
+and Glob only and tells it to say what it would change and stop. Use it with
+`EVERGLADE_CODER_MODEL=claude-haiku-5-5` to try the flow without changing
+anything:
+
+```sh
+EVERGLADE_CODER_MODE=rehearsal EVERGLADE_CODER_MODEL=claude-haiku-5-5 \
+  build/Everglade.app/Contents/MacOS/Everglade --shot out.png --next 240 --reply "yes, do it"
+```
+
+A rehearsal of #13134 on Haiku took 31 seconds in all and cost $0.0116 for
+the agent's turn (six tool calls, 178,841 tokens read from cache).
+
+Not built: a worktree is not removed when the issue closes; two issues can't
+run at once in one window; there is no cap on what a run may spend (you can
+stop it, and section 11 asks whether you want a limit you set).
 
 ## 7. The ledger
 
@@ -170,7 +225,8 @@ Every model turn appends one line to `~/.openagents/usage/ai-calls.jsonl`
 | Field | Meaning |
 | --- | --- |
 | `at` | Seconds since the epoch |
-| `app`, `purpose` | Who asked and what for: `next-issue.suggest`, `next-issue.reply` |
+| `app`, `purpose` | Who asked and what for: `next-issue.suggest`, `next-issue.reply`, `issue.code`, `issue.rehearse` |
+| `issue` | The issue a coding turn worked on |
 | `harness`, `model` | `claude-code`, and the model asked for |
 | `session`, `turn` | The session and the turn within it |
 | `input_tokens` | New input tokens, not from cache |
@@ -264,8 +320,8 @@ index lets the suggestion say which files an issue touches and how big it is.
 **Issue changes only.** Fetch issues changed since the last fetch
 (`updated:>TIME`) and merge them, instead of the whole list.
 
-**The coding flow.** `start` hands the issue, its whole body from the cache,
-and the files from the index to a coding agent. Separate work.
+**The files for an issue, handed to the coding agent.** Today it gets the
+issue and finds the files itself. With the index it starts with them.
 
 **All AI work in the ledger.** An importer that reads Claude Code and Codex
 transcripts (each assistant message carries its usage) and writes ledger
@@ -284,5 +340,7 @@ order, and what is assigned to you.
    Should it sync anywhere?
 3. **Freshness.** Is ten minutes right for issues, or should the panel always
    show the cache and fetch behind it?
-4. **The first known-answer set.** Which ten asks, and whose picks, do we
+4. **A spending limit.** A coding run on Opus has no cap. Do you want a
+   limit you set (dollars or turns) that stops the run and asks?
+5. **The first known-answer set.** Which ten asks, and whose picks, do we
    hill-climb against?

@@ -25,6 +25,11 @@ void nxp_context(void *panel, const uint8_t *text, int32_t length, const uint8_t
   if (length < 0 || report_length < 0) return;
   np_context(nat(panel), (coax_string){(const char *)text, length}, (coax_string){(const char *)report, report_length}, ok != 0);
 }
+int32_t nxp_chosen(void *panel) { return (int32_t)np_chosen(nat(panel)); }
+void nxp_work(void *panel, const uint8_t *text, int32_t length, const uint8_t *report, int32_t report_length, int32_t ok) {
+  if (length < 0 || report_length < 0) return;
+  np_work(nat(panel), (coax_string){(const char *)text, length}, (coax_string){(const char *)report, report_length}, ok != 0);
+}
 int32_t nxp_take_usage(void *panel, uint8_t *out, int32_t cap) { return cap <= 0 ? 0 : (int32_t)np_take_usage(nat(panel), (coax_v_u8){out, cap}); }
 int32_t nxp_take_decision(void *panel, uint8_t *out, int32_t cap) { return cap <= 0 ? 0 : (int32_t)np_take_decision(nat(panel), (coax_v_u8){out, cap}); }
 int32_t nxp_state(void *panel) { return (int32_t)np_state(nat(panel)); }

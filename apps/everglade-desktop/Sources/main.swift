@@ -6,7 +6,9 @@
 //       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
-//       your login); --reply then types TEXT as your answer and waits for the agent again
+//       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
+//       that starts an issue starts the coding agent: set EVERGLADE_CODER_MODE=rehearsal (read-only)
+//       and EVERGLADE_CODER_MODEL=claude-haiku-5-5 to try the flow without changing anything
 import AppKit
 import Metal
 import MetalKit
@@ -274,7 +276,10 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/everglade-next")
       let process = Process(), out = Pipe(), err = Pipe()
       process.executableURL = tool
-      process.arguments = request == 2 ? ["context", "--refresh"] : ["context"]
+      // The checkout the app was built from is where a worktree for an issue branches off.
+      let checkout = (Bundle.main.url(forResource: "repo", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      let working = request == 3
+      process.arguments = working ? ["work", String(nxp_chosen(next)), "--repo-dir", checkout] : request == 2 ? ["context", "--refresh"] : ["context"]
       process.standardOutput = out; process.standardError = err
       DispatchQueue.global().async { [weak self] in
         var text = Data(), report = Data(), ok = false
@@ -290,7 +295,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
           guard let self else { return }
           self.fetching = false
           text.withUnsafeBytes { t in report.withUnsafeBytes { r in
-            nxp_context(self.next, t.bindMemory(to: UInt8.self).baseAddress, Int32(t.count), r.bindMemory(to: UInt8.self).baseAddress, Int32(r.count), ok ? 1 : 0)
+            let tb = t.bindMemory(to: UInt8.self).baseAddress, rb = r.bindMemory(to: UInt8.self).baseAddress
+            if working { nxp_work(self.next, tb, Int32(t.count), rb, Int32(r.count), ok ? 1 : 0) }
+            else { nxp_context(self.next, tb, Int32(t.count), rb, Int32(r.count), ok ? 1 : 0) }
           } }
         }
       }

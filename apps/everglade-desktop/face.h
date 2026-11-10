@@ -45,8 +45,12 @@ int32_t nxp_wheel(void *panel, float x, float y, float dy, float width, float he
 // 1 while the keys go to the reply; then a key: printable ASCII, 13 Enter, 8 Backspace, 27 Escape.
 int32_t nxp_wants_keys(void *panel);
 void nxp_key(void *panel, int32_t key);
-// What the host is asked to do, once: 0 nothing, 1 run next-context, 2 run it with --refresh.
+// What the host is asked to do, once: 0 nothing, 1 run `next-context context`, 2 run it with
+// --refresh, 3 run `next-context work N --repo-dir CHECKOUT` for nxp_chosen's issue.
 int32_t nxp_take_request(void *panel);
+int32_t nxp_chosen(void *panel);
+// `next-context work`'s answer: its stdout (the worktree's path, then the issue), its stderr, and whether it exited 0.
+void nxp_work(void *panel, const uint8_t *text, int32_t length, const uint8_t *report, int32_t report_length, int32_t ok);
 // next-context's answer: its stdout, what it said on stderr, and whether it exited 0.
 void nxp_context(void *panel, const uint8_t *text, int32_t length, const uint8_t *report, int32_t report_length, int32_t ok);
 // A line waiting to be appended to the AI call ledger, or to the decisions file: its length, 0 when none.

@@ -38,6 +38,8 @@ xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*
 tool="$repo/coax/web/build/tools/next-context-$(shasum -a 256 "$coax" | cut -d ' ' -f 1)"
 [[ -x "$tool" ]] || { echo "build.sh: next-context did not build; run coax/web/tool.sh apps/everglade-desktop/next-context.coax status" >&2; exit 1; }
 cp "$tool" "$app/Contents/MacOS/everglade-next"
+# The checkout a worktree for an issue branches off: the main one, whichever worktree builds this.
+dirname "$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" > "$app/Contents/Resources/repo.txt"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 codesign --force --sign - "$app" >/dev/null
 echo "built $app"

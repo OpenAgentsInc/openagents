@@ -7,6 +7,10 @@
 //
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO]
 //       prints the message on stdout; stderr says what came from cache and how old it is
+//   coax/web/tool.sh apps/everglade-desktop/next-context.coax work NUMBER --repo-dir CHECKOUT
+//       makes a fresh worktree for the issue off origin/main beside CHECKOUT (CHECKOUT-issue-NUMBER;
+//       an existing one is reused) and prints its path on the first line, then the issue whole
+//       from the cache, for the coding agent
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax status     the caches and their ages, as JSON
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax usage      the AI call ledger, summed by purpose and model
 //
@@ -357,6 +361,63 @@ nc_status :: (repo: string) -> int {
   return 0;
 }
 
+// ---- the work: a worktree and the issue, whole
+
+nc_git :: (dir: string, args: [] string, timeout_ms: int) -> bool {
+  argv: [12] string; n := 0;
+  argv[0] = "git"; argv[1] = "-C"; argv[2] = dir; n = 3;
+  for a: args { if n < 12 { argv[n] = a; n += 1; } }
+  out: [8192] u8; err: [8192] u8;
+  r := proc_run(argv[0..<n], timeout_ms, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { tool_err("next-context: git "); tool_err(args[0]); tool_err(": "); tool_errln(cast(string) err[0..<r.err_n]); return false; }
+  return true;
+}
+// A fresh worktree for issue `number` off origin/main, beside the checkout: no build output comes
+// with it, and the compiler is one `coax/build.sh` away (it installs the published build in
+// seconds), so a worktree costs no rebuild. An existing worktree for the issue is reused as it is.
+nc_work :: (a: [] Args, repo: string) -> int {
+  number := args_whole(args_at(a, 1));
+  dir := args_value(a, "--repo-dir", "");
+  if number <= 0 || dir.count == 0 || dir[0] != '/' { tool_errln("usage: next-context work NUMBER --repo-dir /ABSOLUTE/CHECKOUT"); return 2; }
+  while dir.count > 1 && dir[dir.count - 1] == '/' { dir = dir[0..<dir.count - 1]; }
+  git_b: [2048] u8;
+  if fs_kind(fs_join(dir, ".git", git_b[..])) <= 0 { tool_err("next-context: not a git checkout: "); tool_errln(dir); return 1; }
+  path_b: [2048] u8; w: [1] Out; w[0].buf = path_b[..];
+  nc_put(w[..], dir); nc_put(w[..], "-issue-"); nc_put_int(w[..], number);
+  path := nc_text(w[..]);
+  if fs_kind(path) <= 0 {
+    fetch := [3] string.["fetch", "origin", "main"];
+    if !nc_git(dir, fetch[..], 120000) { return 1; }
+    add := [5] string.["worktree", "add", "--detach", path, "origin/main"];
+    if !nc_git(dir, add[..], 300000) { return 1; }
+    tool_err("worktree: made "); tool_errln(path);
+  } else { tool_err("worktree: reused "); tool_errln(path); }
+  // The issue, whole, from the cache.
+  p: [1] Paths;
+  if !nc_paths(p[..], repo) { return 1; }
+  buf: [262144] u8; o: [1] Out; o[0].buf = buf[..];
+  nc_put(o[..], path); nc_put(o[..], "\n");
+  raw: [16777216] u8; nodes: [400000] JvNode; d: [1] Jv;
+  n := fs_read(fs_join(nc_dir(p[..]), "issues.json", p[0].a[..]), raw[..]);
+  found := false;
+  if n > 2 && jv_parse(d[..], cast(string) raw[0..<n], nodes[..]) {
+    text: [200000] u8;
+    for i: 0..<jv_len(d[0], 0) {
+      at := jv_at(d[0], 0, i);
+      if jv_int(d[0], jv_get(d[0], at, "number"), 0) != number { continue; }
+      found = true;
+      nc_put(o[..], "ISSUE #"); nc_put_int(o[..], number); nc_put(o[..], " ");
+      m := jv_str(d[0], jv_get(d[0], at, "title"), text[..]); if m > 0 { nc_put_line(o[..], cast(string) text[0..<m], 300); }
+      nc_put(o[..], "\n\n");
+      m = jv_str(d[0], jv_get(d[0], at, "body"), text[..]); if m > 0 { nc_put(o[..], cast(string) text[0..<m]); }
+      nc_put(o[..], "\n");
+    }
+  }
+  if !found { tool_errln("next-context: that issue is not in the cache of open issues"); return 1; }
+  print("%", nc_text(o[..]));
+  return 0;
+}
+
 // ---- the ledger (~/.openagents/usage/ai-calls.jsonl), summed
 
 Group :: struct { purpose: [48] u8; pn: int; model: [48] u8; mn: int; calls: int; input: int; output: int; cache_read: int; cache_write: int; cost_e6: int; ms: int; }
@@ -399,13 +460,14 @@ nc_usage :: () -> int {
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: next-context context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO] | status | usage"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: next-context context [--refresh] [--ttl SECONDS] [--prompt TEXT] [--repo OWNER/REPO] | work NUMBER --repo-dir CHECKOUT | status | usage"); return 2; }
   repo := args_value(a[..], "--repo", NC_REPO);
   if !nc_repo_ok(repo) { tool_errln("next-context: --repo is OWNER/REPO"); return 2; }
   verb := args_at(a[..], 0);
   if verb == "context" { return nc_context(a[..], repo); }
+  if verb == "work" { return nc_work(a[..], repo); }
   if verb == "status" { return nc_status(repo); }
   if verb == "usage" { return nc_usage(); }
-  tool_errln("next-context: the verbs are context, status and usage");
+  tool_errln("next-context: the verbs are context, work, status and usage");
   return 2;
 }

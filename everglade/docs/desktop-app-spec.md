@@ -47,8 +47,11 @@ to work on next, and you answer in your own words. It is specified in
   own login, with no built-in tools and one in-process tool, `choose`.
 - **A conversation.** The session stays open. You type a reply, and the model
   calls `choose` with what you meant: start, another, or none.
-- **The coding flow is a stub.** `start` records the decision and says
-  nothing was started.
+- **Start begins the work.** A coding agent (Claude Opus 5.5 by default;
+  Bash, Read, Edit, Write, Grep and Glob; no subagents) starts on the issue in
+  a fresh worktree off `origin/main`, in the same chat, told to do that issue
+  and nothing else, push it and close it. Its tool calls show as one line
+  each.
 - **Measured.** Every turn's model, tokens and cost go to
   `~/.openagents/usage/ai-calls.jsonl`.
 
