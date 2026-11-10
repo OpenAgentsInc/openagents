@@ -164,6 +164,9 @@ Lab :: struct {
   stage_hit: f32; stage_rein: f32;  // a horse-archer stage: when its shooting ended, and when the rider reined in (0: not yet)
   ride_view: int;  // a stage's &view=side or &view=rear: the camera beside or behind the rider, close (0: the stage's own)
   ride_land: bool; // X pressed on the dragon in the air: it comes down to land
+  ride_fire_at: f32;   // the dragon-fire stage: when (stage seconds) the dragon breathed
+  breath_dn: f32;   // how far down the breath was aimed (its torrent keeps that tilt as the dragon flies)
+  breath_puff_at: f32 = -100;   // when the breath's torrent last left the dragon's jaws (experimental-ride.coax lab_breath_stream)
   xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
   creator: [1] cc.Creator;
   aribeth_state:[1]nwna.Aribeth;
@@ -2029,7 +2032,7 @@ lab_jump_pay :: (s:[] Lab)->bool {
 // Admission between controller advance and body publication. The host only
 // transports this result back into the shared controller.
 lab_keep_body :: (s:[] Lab,origin:EgBody,proposed:EgBody)->EgBody #export_c #effects(all) {
-  lab_ride_dev(s);
+  lab_ride_dev(s); lab_breath_slot(s);
   if lab_riding(s) { return lab_ride_body(s,origin,proposed); }   // the horse carries you (experimental-ride.coax)
   body:=ifx s[0].creator[0].experimental then lab_jump_limit(s,origin,proposed) else proposed;
   kept:=lab_keep(s,body.x,body.z); body.x=kept.x; body.z=kept.z;
@@ -3516,7 +3519,7 @@ lab_dev_cell :: (s: [] Lab, facts: string) {
   }
   cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].xc[..],cl);}
   rd:=url_number(q,"ride");if rd>0 && rd<=3 {s[0].ride_dev=rd;}
-  if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horse-archer") {s[0].ride_dev=LAB_STAGE_HORSE_ARCHER;s[0].xc[0].open=false;} if url_has(q,"view=side") {s[0].ride_view=1;} if url_has(q,"view=rear") {s[0].ride_view=2;}
+  if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horse-archer") {s[0].ride_dev=LAB_STAGE_HORSE_ARCHER;s[0].xc[0].open=false;} if url_has(q,"stage=dragon-fire") {s[0].ride_dev=LAB_STAGE_DRAGONFIRE;s[0].xc[0].open=false;} if url_has(q,"view=side") {s[0].ride_view=1;} if url_has(q,"view=rear") {s[0].ride_view=2;}
   // px, pz: any spot, metres plus 1000 (px=970&pz=1010 is (-30, 10)); yaw the way you face in degrees
   // (0 is +z), the camera behind you; dist the camera's metres; pitch its tilt down in degrees; class a
   // class's row (fivebar.coax FB_CL_*)
@@ -3636,7 +3639,7 @@ lab_respawn_pointer :: (s:[]Lab,x:f32,y:f32,phase:int,id:int)->bool {
  if s[0].respawn_id!=id {return false;}if phase==2 {s[0].respawn_id= -1;if inside {_:=lab_respawn(s);}return true;}if phase==3 {s[0].respawn_id= -1;return true;}return true;
 }
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
-  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if (key=='e' || key=='E') && lab_mount_key(s) {return true;}if (key=='x' || key=='X') && lab_land_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
+  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if (key=='e' || key=='E') && lab_mount_key(s) {return true;}if (key=='x' || key=='X') && lab_land_key(s) {return true;}if (key=='f' || key=='F') && lab_breath_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
   if s[0].creator[0].on {return cc.key(s[0].creator[..],key);}
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)

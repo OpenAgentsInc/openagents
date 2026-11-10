@@ -43,6 +43,7 @@ lab_ride_body :: (s: [] Lab, origin: EgBody, proposed: EgBody) -> EgBody {
   }
   on := cr[0].mounts[0].riding;
   r := cc.xh_ride(cr, i, egm.eg_mounts_dt(cr[0].mounts[..], now), now);
+  lab_breath_stream(s);
   b := origin;
   if r.on { b.x = r.x; b.z = r.z; }
   else { k := cr[0].mounts[0].mounts[on]; b.x = k.from_x; b.z = k.from_z; }   // just stepped down
@@ -52,6 +53,122 @@ lab_ride_body :: (s: [] Lab, origin: EgBody, proposed: EgBody) -> EgBody {
 // Your feet's height over the ground while you ride (the figure, the bow's launch and the camera all
 // read it from your body): the saddle less your pelvis.
 lab_ride_lift :: (s: [] Lab) -> f32 { if !lab_riding(s) { return 0; } return cc.xh_lift(s[0].creator[..], s[0].creator[0].clock); }
+// The red dragon you ride as a creature of the battle, on your side: the SRD Adult Red Dragon, its
+// turns kept by its own seat (experimental-combat.coax xc_hostile_contacts steps it), so its breath
+// recharges on the SRD's 5-6 and what it sets alight burns. Its index, or -1 when there's no room.
+lab_dragon_join :: (s: [] Lab) -> int {
+  x := s[0].xc[..]; b := x[0].b[..];
+  i := x[0].dragon_seat[0].me;
+  if i > 0 && i < b[0].n && rs_breather(b[0].c[i]) && b[0].c[i].team == b[0].c[0].team { return i; }
+  i = rs_add(b, rs_monster(MON_ADULT_RED_DRAGON, "Red Dragon", b[0].c[0].team), XC_MID, XC_MID + 1);
+  if i < 0 { return -1; }
+  x[0].dragon_seat[0] = FbSeat.{me = i};
+  return i;
+}
+// F (or the bar's Fire Breath) on the dragon: its breath ahead, on the ground or in the air. You ask
+// with your bearing (everglade/mounts.coax eg_breath_ask); the SRD's 60-foot cone
+// (aethyr/rules/srd/dragon-actions.coax rs_in_cone3) runs from its jaws along its heading, tipped
+// down as far as you look down (in the air, down to the ground), and picks the monsters in it; the
+// SRD's breath acts on them on the dragon's own turn (rs_fire_breath_on: Dex save DC 21, 17d6 fire,
+// half on a success, Burning on a failure). Only a yes shows the torrent and its roar; each monster
+// it reaches flinches, cries out or falls (xc_harmed), the ones that failed burn, and the grass under
+// the cone catches. False when you aren't on the dragon (the key goes on).
+LAB_BREATH_DOWN :: 0.35;   // how far (the aim's down part) the cone tips down on the ground at most; in the air, 0.9
+// The cone's aim: along the dragon's heading, tipped down by dn (the aim's down part), at most as far
+// as LAB_BREATH_DOWN on the ground and 0.9 in the air.
+lab_breath_aim :: (s: [] Lab, dn0: f32) -> [3] f32 {
+  m := s[0].creator[0].mounts[0]; k := m.mounts[m.riding]; dn := dn0;
+  lo_y := ifx egm.eg_aloft(m) then -0.9f32 else -f32(LAB_BREATH_DOWN);
+  if dn < lo_y { dn = lo_y; } if dn > 0.2 { dn = 0.2; }
+  h := sqrt(1 - dn * dn);
+  return [3] f32.[sin(k.face) * h, dn, cos(k.face) * h];
+}
+// How far down you look: the camera's view's down part.
+lab_look_down :: (s: [] Lab) -> f32 {
+  x := s[0].xc[0]; fy := x.u[21]; fl := sqrt(x.u[20] * x.u[20] + fy * fy + x.u[22] * x.u[22]);
+  return ifx fl > 0.0001 then fy / fl else 0;
+}
+lab_breath_key :: (s: [] Lab) -> bool { return lab_breath_down(s, lab_look_down(s)); }
+// The breath tipped down by dn (a stage aims it at what it films).
+lab_breath_down :: (s: [] Lab, dn: f32) -> bool {
+  cr := s[0].creator[..]; m := cr[0].mounts[..]; x := s[0].xc[..];
+  if !cr[0].experimental || !egm.eg_on_dragon(m[0]) || !x[0].started { return false; }
+  now := cr[0].clock;
+  seq := egm.eg_breath_ask(m, now, lab_bearing(s)); if seq == 0 { return true; }
+  i := lab_dragon_join(s);
+  if i < 0 { egm.eg_breath_answer(m, seq, false, now); return true; }
+  b := x[0].b[..]; h := cr[0].hostiles[..];
+  jaws := egm.eg_dragon_mouth(m[0], m[0].riding);
+  f := lab_breath_aim(s, dn); s[0].breath_dn = f[1];
+  picks: [XC_FOES] int; before: [XC_FOES] int; n := 0;
+  for g: 0..<XC_FOES {
+    e := h[0].enemies[g]; before[g] = rs_max(b[0].c[1 + g].hp, 0); if e.dead { continue; }
+    ft := 1.0f32 / 0.3048;
+    dx := (e.x - jaws[0]) * ft; dy := (meadow_y(e.x, e.z) + 0.9 * e.scale - jaws[1]) * ft; dz := (e.z - jaws[2]) * ft;
+    if rs_in_cone3(dx, dy, dz, f[0], f[1], f[2], f32(RS_BREATH_FT)) { picks[n] = 1 + g; n += 1; }
+  }
+  fb_seat_in(b, x[0].dragon_seat[..]); r := rs_fire_breath_on(b, i, picks[0..<n]); fb_seat_out(b, x[0].dragon_seat[..]);
+  egm.eg_breath_answer(m, seq, r >= 0, now);
+  if r < 0 { return true; }
+  w := m[0].show; far := f32(egm.EG_BREATH_M);
+  xc_cue(s, w.sound, 0.9, jaws[0], jaws[2], 0.8);
+  xc_cue(s, "rage-roar", 0.6, jaws[0], jaws[2], 0.6);   // the dragon's roar under the flames
+  to := fxp_v(jaws[0] + f[0] * far, jaws[1] + f[1] * far, jaws[2] + f[2] * far);
+  fx_start_at(s, w.fx, now, fxp_v(jaws[0], jaws[1], jaws[2]), to, fxp_v(1, 0.5, 0.1), 2.2, far); s[0].breath_puff_at = now;
+  // the grass catches where the cone meets the ground: flames along its floor and the ground left black, wider the farther out
+  for q: 1..<7 {
+    d := far * f32(q) / 6; px := jaws[0] + f[0] * d; pz := jaws[2] + f[2] * d; gy := meadow_y(px, pz);
+    if jaws[1] + f[1] * d - gy > d * 0.5 + 0.5 { continue; }
+    fx_start_at(s, FXR_BURNING, now + 0.15 * f32(q), fxp_v(px, gy, pz), fxp_v(px, gy, pz), fxp_v(1, 0.5, 0.1), 0.8 + d * 0.06, 1);
+    fx_start_at(s, FXR_SCORCH, now + 0.15 * f32(q), fxp_v(px, gy, pz), fxp_v(px, gy, pz), fxp_v(0.1, 0.08, 0.06), 1, 1.5 + d * 0.3);
+  }
+  // each monster in it: the number, the flinch, the cry or the fall; the ones that failed burn
+  for j: 0..<n {
+    g := picks[j] - 1; e := h[0].enemies[g];
+    _ := xc_harmed(s, g, before[g], react.DMG_FIRE, "fire-hit", 1, now);
+    if b[0].c[1 + g].burning > 0 || b[0].c[1 + g].dead { fx_start_at(s, FXR_BURNING, now + 0.2, fxp_v(e.x, meadow_y(e.x, e.z), e.z), fxp_v(e.x, meadow_y(e.x, e.z), e.z), fxp_v(1, 0.5, 0.1), e.scale, 1); }
+  }
+  xc_sync_permissions(s);
+  return true;
+}
+// The breath pours from the jaws as the dragon flies on (its rules acted once, at the word): its
+// torrents stay fixed to the jaws and the tilt it was aimed at, and a second torrent follows the first
+// LAB_BREATH_AGAIN seconds on, so the fire lasts about a second and a half. Every frame while you ride.
+LAB_BREATH_AGAIN :: 0.55;
+lab_breath_stream :: (s: [] Lab) {
+  m := s[0].creator[0].mounts[0]; now := s[0].creator[0].clock; b := m.breath_at;
+  if !egm.eg_on_dragon(m) || now - b > f32(LAB_BREATH_AGAIN) + 2 { return; }
+  jaws := egm.eg_dragon_mouth(m, m.riding); f := lab_breath_aim(s, s[0].breath_dn); far := f32(egm.EG_BREATH_M);
+  from := fxp_v(jaws[0], jaws[1], jaws[2]); to := fxp_v(jaws[0] + f[0] * far, jaws[1] + f[1] * far, jaws[2] + f[2] * far);
+  if now - b >= f32(LAB_BREATH_AGAIN) && s[0].breath_puff_at < b + f32(LAB_BREATH_AGAIN) * 0.5 {
+    fx_start_at(s, FXR_DRAGON_BREATH, now, from, to, fxp_v(1, 0.5, 0.1), 2.2, far); s[0].breath_puff_at = now;
+  }
+  p := s[0].puffs[..];
+  for k: 0..<p[0].live.count {
+    c := p[0].live[k];
+    if p[0].on[k] && c.recipe == FXR_DRAGON_BREATH && c.t0 >= b - 0.001 { p[0].live[k].from = from; p[0].live[k].to = to; }
+  }
+}
+// The dragon's Fire Breath on the bar while you ride it, after your own slots: there as you mount it,
+// gone as you get off. Every frame.
+lab_breath_slot :: (s: [] Lab) {
+  x := s[0].xc[..]; if !x[0].started { return; }
+  want := s[0].creator[0].experimental && egm.eg_on_dragon(s[0].creator[0].mounts[0]);
+  k := xc_slot_of(x, XC_BREATH);
+  if want && k < 0 && x[0].bar_n < x[0].bar.count { x[0].bar[x[0].bar_n] = fb_feature(XC_BREATH, "Fire Breath", "fireball"); x[0].bar[x[0].bar_n].tg = FB_POINT; x[0].bar_n += 1; }
+  if !want && k >= 0 {
+    for i: k..<x[0].bar_n - 1 { x[0].bar[i] = x[0].bar[i + 1]; }
+    x[0].bar_n -= 1; x[0].used = -1; x[0].hover = -1; x[0].fizzle = -1;
+  }
+}
+// The breath's slot's sweep, 0 to 1: 0 ready; spent, the share of a round left to the dragon's next
+// Recharge roll (on a 5 or 6 it is back), so it sweeps once a round until it comes back.
+lab_breath_wait :: (s: [] Lab) -> f32 {
+  x := s[0].xc[0]; i := x.dragon_seat[0].me;
+  if i <= 0 || i >= x.b[0].n || !x.b[0].c[i].breath_spent { return 0; }
+  left := (x.b[0].c[i].round_at - x.b[0].clock) / f32(RS_ROUND);
+  return ifx left > 1 then 1.0f32 else ifx left < 0.04 then 0.04f32 else left;
+}
 // X on the dragon in the air: it comes down to land (Space again flies on). False otherwise.
 lab_land_key :: (s: [] Lab) -> bool {
   m := s[0].creator[0].mounts[0];
@@ -60,16 +177,18 @@ lab_land_key :: (s: [] Lab) -> bool {
 }
 // A local page's ?ride= (lab_dev_cell), for looking at riding headless: 1 puts you in the saddle, 2
 // gallops (W and Shift held), 3 draws the bow in the saddle (a Ranger: add ?class=). Once.
-// The stages (?stage=dragonback, ?stage=horseback; LAB_STAGE_*) ride on every frame: lab_ride_stage.
-LAB_STAGE_DRAGONBACK :: 4; LAB_STAGE_HORSEBACK :: 5; LAB_STAGE_HORSE_ARCHER :: 7;
+// The stages (?stage=dragonback, ?stage=horseback, ?stage=dragon-fire, ?stage=horse-archer;
+// LAB_STAGE_*) ride on every frame: lab_ride_stage.
+LAB_STAGE_DRAGONBACK :: 4; LAB_STAGE_HORSEBACK :: 5; LAB_STAGE_DRAGONFIRE :: 6; LAB_STAGE_HORSE_ARCHER :: 7;
 lab_ride_dev :: (s: [] Lab) {
   d := s[0].ride_dev; cr := s[0].creator[..];
   if d <= 0 || !cr[0].experimental || cr[0].mounts[0].n == 0 { return; }
   if cr[0].mounts[0].riding < 0 {
-    k := ifx d == LAB_STAGE_DRAGONBACK then cc.xh_dragon(cr) else 0; if k < 0 { return; }
+    k := ifx d == LAB_STAGE_DRAGONBACK || d == LAB_STAGE_DRAGONFIRE then cc.xh_dragon(cr) else 0; if k < 0 { return; }
     if d == LAB_STAGE_HORSE_ARCHER { xc_set_class(s[0].xc[..], FB_CL_RANGER); lab_archer_place(s); }
     h := cr[0].mounts[0].mounts[k]; side := egm.eg_tune(cr[0].mounts[0], k).radius + 1.2;
     cr[0].player_x = h.x + cos(h.face) * side; cr[0].player_z = h.z - sin(h.face) * side;
+    if d == LAB_STAGE_DRAGONFIRE { lab_fire_stage_set(s, k); h = cr[0].mounts[0].mounts[k]; }
     _ := lab_mount_key(s); cr[0].yaw = h.face + 3.1415927; s[0].stage_at = cr[0].clock; return;
   }
   if cc.xh_rider(cr, cr[0].clock).seated < 1 { return; }
@@ -78,15 +197,67 @@ lab_ride_dev :: (s: [] Lab) {
   if d == 3 { _ := xc_bow_begin(s, false); }
   s[0].ride_dev = 0;
 }
+// The dragon-fire stage's field: open meadow north of the dungeon, west of spawn, where a band of
+// gremlins stands; the dragon turns to face it before it takes off.
+LAB_FIRE_FIELD_X :: -39.0; LAB_FIRE_FIELD_Z :: -23.0;
+LAB_FIRE_HIGH :: 13.0;   // m over the ground it climbs to first
+LAB_FIRE_LOW :: 5.5;     // m over the ground it swoops down to
+LAB_FIRE_BREATH_M :: 15.0;   // m short of the band it breathes
+LAB_FIRE_WAIT :: 2.0;       // seconds it stands before it takes off
+lab_fire_stage_set :: (s: [] Lab, k: int) {
+  cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..];
+  d := cr[0].mounts[0].mounts[k..<k + 1];
+  d[0].face = atan2(f32(LAB_FIRE_FIELD_X) - d[0].x, f32(LAB_FIRE_FIELD_Z) - d[0].z);
+  // the band: every gremlin in a loose knot round the field's middle, standing its ground
+  n := 0;
+  for g: 0..<XC_FOES {
+    if hostile.hostile_kind(g) != xdungeon.DG_KIND_GREMLIN || n >= 7 { continue; }
+    a := f32(n) * 2.39996; r := ifx n == 0 then 0.0f32 else 2.2 + 0.9 * f32(n % 3);
+    e := h[0].enemies[g..<g + 1];
+    e[0].x = f32(LAB_FIRE_FIELD_X) + cos(a) * r; e[0].z = f32(LAB_FIRE_FIELD_Z) + sin(a) * r;
+    e[0].home_x = e[0].x; e[0].home_z = e[0].z; e[0].face_x = -sin(d[0].face); e[0].face_z = -cos(d[0].face);
+    e[0].moving = false; e[0].awake = false; e[0].dead = false;
+    x[0].calm[g] = true; n += 1;
+  }
+}
 // A stage's rider, every frame once seated: the keys a player would hold and a camera that follows.
 // dragonback: up off the meadow over the trees by spawn, on over the village and above the castle's
 // towers, then circling left over the village and castle. horseback: a gallop down the meadow past the autumn
-// trees, the camera off the horse's shoulder.
+// trees, the camera off the horse's shoulder. dragon-fire: up off the meadow toward the band of
+// gremlins, a swoop down low over them, Fire Breath across them, and a climb away.
 LAB_STAGE_ALT :: 32.0;   // m over the ground the dragonback stage holds: above the castle's towers
 lab_ride_stage :: (s: [] Lab, d: int) {
   cr := s[0].creator[..]; m := cr[0].mounts[0]; h := m.mounts[m.riding]; t := cr[0].clock - s[0].stage_at;
   side: f32 = 0;
-  if d == LAB_STAGE_DRAGONBACK {
+  if d == LAB_STAGE_DRAGONFIRE {
+    alt := h.wing.y - meadow_y(h.x, h.z);
+    fx := f32(LAB_FIRE_FIELD_X) - h.x; fz := f32(LAB_FIRE_FIELD_Z) - h.z; far := sqrt(fx * fx + fz * fz);
+    ahead := fx * sin(h.face) + fz * cos(h.face);   // the band ahead (> 0) or passed (< 0)
+    breathed := s[0].xc[0].dragon_seat[0].me > 0;
+    held := 0; dive := false; side = 0.5;
+    if t < f32(LAB_FIRE_WAIT) { cr[0].pitch = 0.2; }   // it stands a moment, its rider in the saddle
+    else if !breathed && ahead > 0 {
+      // up off the meadow, unhurried (W held in beats), then down low as it nears them
+      if far > 40 { held = ifx t - 0.5 * floor(t / 0.5) < 0.32 then HOLD_W else 0; if alt < f32(LAB_FIRE_HIGH) { held |= HOLD_JUMP; } }
+      else { held = HOLD_W; if alt > f32(LAB_FIRE_LOW) { dive = true; } else if alt < f32(LAB_FIRE_LOW) - 1.5 { held |= HOLD_JUMP; } }
+      // the swoop seen from ahead and to the side: the dragon comes on, the band burns in the foreground
+      cr[0].pitch = ifx far > 60 then 0.25f32 else 0.3f32; side = ifx far > 60 then 0.5f32 else 2.5f32;
+      if ahead < f32(LAB_FIRE_BREATH_M) && (alt < f32(LAB_FIRE_LOW) + 2.5 || ahead < 7) {
+        // down at the band's middle, chest high, from the jaws
+        j := egm.eg_dragon_mouth(m, m.riding); gy := meadow_y(f32(LAB_FIRE_FIELD_X), f32(LAB_FIRE_FIELD_Z)) + 0.9;
+        dx := f32(LAB_FIRE_FIELD_X) - j[0]; dz := f32(LAB_FIRE_FIELD_Z) - j[2]; dy := gy - j[1];
+        _ := lab_breath_down(s, dy / sqrt(dx * dx + dy * dy + dz * dz));
+      }
+    } else {
+      // on past them, low, then hard round to the left, back over the burned ground (the meadow ends not far past them)
+      if s[0].ride_fire_at <= 0 { s[0].ride_fire_at = t; }
+      after := t - s[0].ride_fire_at;
+      held = HOLD_W; if alt < f32(LAB_FIRE_LOW) + 3 { held |= HOLD_JUMP; }
+      if after > 0.8 && (after < 3.6 || t - 0.5 * floor(t / 0.5) < 0.25) { held |= HOLD_A; }
+      cr[0].pitch = ifx after < 2.0 then 0.3f32 else 0.4f32; side = ifx after < 2.0 then 2.5f32 else 0.7f32;
+    }
+    s[0].held = held; s[0].shift = dive;
+  } else if d == LAB_STAGE_DRAGONBACK {
     alt := h.wing.y - meadow_y(h.x, h.z);
     held := HOLD_W; if alt < f32(LAB_STAGE_ALT) { held |= HOLD_JUMP; }
     // round to the left over the village and castle: A in short presses, a wide circle about 35 m across
@@ -191,18 +362,32 @@ lab_ride_pointer :: (s: [] Lab, x: f32, y: f32, phase: int) -> bool {
   b := lab_ride_box(s); if x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1 { return false; }
   return lab_mount_key(s);
 }
-// The prompt: "E  Mount" by a free horse, "E  Dismount" riding; on a phone, the button.
+// The mount's keys (everglade/mounts.coax eg_mount_hint): a small line under the bar, never in the
+// middle of the view, so nothing sits over the horse or the dragon while you ride. On a phone, the
+// MOUNT and DISMOUNT button; what it can't press ("Land first") goes on the same line.
+LAB_HINT_CAP :: 9.0;   // CSS px
+// Where the hint's line starts (its left, its baseline) and its size, device px, for a page w by h at
+// scale k: centred under the bar, made smaller until it fits a narrow page.
+lab_ride_hint_at :: (t: string, w: f32, h: f32, k: f32) -> [3] f32 {
+  cap := xc_fit_cap(t, f32(LAB_HINT_CAP) * k, w - 32 * k);
+  return [3] f32.[w * 0.5 - xc_text_w(t, cap) * 0.5, h - 11 * k, cap];
+}
 lab_ride_hud :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   c := s[0].creator[0]; n := at;
   if !c.experimental || c.hostiles[0].hp <= 0 { return n; }
-  t := egm.eg_mount_prompt(c.mounts[0], c.player_x, c.player_z, c.clock, s[0].touch);
-  if t.count == 0 { return n; }
   ink := ink_col(k, 0.98, 0.94, 0.82);
-  if s[0].touch && t[0] != 'N' {
-    b := lab_ride_box(s); n = xc_frame_box(out, n, b, 1.4 * k, 0.98, 0.86, 0.5);
-    return cc.text(out, n, t, (b.x0 + b.x1) * 0.5 - xc_text_w(t, 12 * k) * 0.5, b.y0 + 31 * k, 12 * k, ink);
+  if s[0].touch {
+    t := egm.eg_mount_prompt(c.mounts[0], c.player_x, c.player_z, c.clock, true);
+    if t.count > 0 && t[0] != 'N' && t[0] != 'L' {
+      b := lab_ride_box(s); n = xc_frame_box(out, n, b, 1.4 * k, 0.98, 0.86, 0.5);
+      return cc.text(out, n, t, (b.x0 + b.x1) * 0.5 - xc_text_w(t, 12 * k) * 0.5, b.y0 + 31 * k, 12 * k, ink);
+    }
+    if t.count == 0 { return n; }
   }
-  return cc.text(out, n, t, w * 0.5 - xc_text_w(t, 12 * k) * 0.5, h * 0.64, 12 * k, ink);
+  t := egm.eg_mount_hint(c.mounts[0], c.player_x, c.player_z, c.clock);
+  if t.count == 0 { return n; }
+  p := lab_ride_hint_at(t, w, h, k);
+  return cc.text(out, n, t, p[0], p[1], p[2], ink);
 }
 
 #test "E mounts the white horse only in reach and E gets you off; you ride on the ground, lifted to the saddle (mounts)" #steps 400000000 {
@@ -309,4 +494,107 @@ lab_ride_hud :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int
   #assert cr[0].mounts[0].riding == 0;
   #assert s[0].stage_rein > 0 && sqrt(dx * dx + dz * dz) < f32(LAB_ARCHER_STAND_M);
   #assert x[0].bow_shots > 0;
+}
+#test "on the dragon, F breathes fire where you look: the SRD's breath burns the monster in the cone, then waits to recharge (mounts)" #steps 900000000 {
+  s: [1]Lab; xc_test_bow(s[..], [3] f32.[0, -0.1, 1]);
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; b := x[0].b[..];
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  k := egm.eg_dragon_add(cr[0].mounts[..], cr[0].player_x - 3.5, cr[0].player_z, 0, meadow_y(cr[0].player_x - 3.5, cr[0].player_z));
+  #assert !lab_breath_key(s[..]);   // on foot, F is not the dragon's
+  #assert lab_mount_key(s[..]) && egm.eg_on_dragon(cr[0].mounts[0]);
+  body := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for j: 0..<90 { cr[0].clock += 1.0 / 60; body = lab_keep_body(s[..], body, body); }
+  d := cr[0].mounts[0].mounts[k];
+  // a monster 9 m ahead of its jaws, one well off to the side
+  g := 3; h[0].enemies[g].x = d.x; h[0].enemies[g].z = d.z + 15; b[0].c[1 + g].hp = 300; b[0].c[1 + g].hp_max = 300;
+  o := 1; h[0].enemies[o].x = d.x + 30; h[0].enemies[o].z = d.z + 2; hp_o := b[0].c[1 + o].hp;
+  shows := cr[0].mounts[0].shows;
+  #assert lab_breath_key(s[..]);
+  i := x[0].dragon_seat[0].me;
+  #assert i > XC_FOES && rs_breather(b[0].c[i]) && b[0].c[i].breath_spent && b[0].c[i].team == b[0].c[0].team;
+  #assert b[0].c[1 + g].hp < 300 && b[0].c[1 + o].hp == hp_o;
+  #assert cr[0].mounts[0].shows == shows + 1 && fxp_live(s[0].puffs[..]) > 0;
+  // spent: F again asks, the rules say no, and nothing shows
+  #assert lab_breath_key(s[..]) && cr[0].mounts[0].shows == shows + 1 && lab_dragon_join(s[..]) == i;
+}
+// Whether the mount's hint draws something on a page w by h at scale k, all of it outside the middle
+// half of the view (where the horse and the dragon are) and on the page; true too when it draws nothing.
+lab_hint_clear :: (s: [] Lab, w: f32, h: f32, k: f32) -> bool {
+  out: [24000] f32; n := lab_ride_hud(s, out[..], 0, w, h, k); vf := cc.VERTEX_FLOATS;
+  for q: 0..<n {
+    x := out[q * vf]; y := out[q * vf + 1];
+    if x > w * 0.25 && x < w * 0.75 && y > h * 0.25 && y < h * 0.75 { return false; }
+    if x < 0 || x > w || y < 0 || y > h { return false; }
+  }
+  return true;
+}
+lab_hint_clear_all :: (s: [] Lab) -> bool {
+  return lab_hint_clear(s, 1920, 1080, 1) && lab_hint_clear(s, 1280, 720, 1) && lab_hint_clear(s, 2560, 1440, 2) && lab_hint_clear(s, 1170, 2532, 3);
+}
+#test "the mount's keys draw under the bar, never in the middle of the view: by the horse, riding it, on the dragon on the ground and in the air (mounts)" #steps 2000000000 {
+  s: [1]Lab; cr := s[0].creator[..]; cr[0].experimental = true; cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  cc.xh_place(cr); h := cr[0].mounts[0].mounts[0];
+  out: [24000] f32;
+  // by the horse, then on it
+  cr[0].player_x = h.x + 1.8; cr[0].player_z = h.z; #assert lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
+  #assert lab_mount_key(s[..]);
+  b := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true}; f := 0;
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
+  #assert lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
+  cr[0].player_x = b.x; cr[0].player_z = b.z; #assert lab_mount_key(s[..]);
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
+  // the dragon: on the ground, in the air, and E in the air
+  k := cc.xh_dragon(cr); d := cr[0].mounts[0].mounts[k];
+  cr[0].player_x = d.x + cos(d.face) * 3.5; cr[0].player_z = d.z - sin(d.face) * 3.5; #assert lab_mount_key(s[..]);
+  b = EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for j: 0..<90 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
+  #assert egm.eg_on_dragon(cr[0].mounts[0]);
+  #assert egm.eg_mount_hint(cr[0].mounts[0], cr[0].player_x, cr[0].player_z, cr[0].clock).count > 0;
+  #assert lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0;
+  #assert lab_hint_clear_all(s[..]);
+  s[0].held = HOLD_W | HOLD_JUMP;
+  for j: 0..<240 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
+  #assert egm.eg_aloft(cr[0].mounts[0]) && lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
+  cr[0].player_x = b.x; cr[0].player_z = b.z; #assert lab_mount_key(s[..]) && lab_hint_clear_all(s[..]);
+  s[0].touch = true; #assert lab_hint_clear_all(s[..]);
+}
+#test "the bar carries the dragon's Fire Breath while you ride it, and its slot sweeps until it recharges (mounts)" #steps 900000000 {
+  s: [1]Lab; xc_test_bow(s[..], [3] f32.[0, -0.1, 1]);
+  x := s[0].xc[..]; cr := s[0].creator[..];
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  _ := egm.eg_dragon_add(cr[0].mounts[..], cr[0].player_x - 3.5, cr[0].player_z, 0, meadow_y(cr[0].player_x - 3.5, cr[0].player_z));
+  n0 := x[0].bar_n; lab_breath_slot(s[..]); #assert x[0].bar_n == n0 && xc_slot_of(x, XC_BREATH) < 0;
+  #assert lab_mount_key(s[..]);
+  body := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for j: 0..<90 { cr[0].clock += 1.0 / 60; body = lab_keep_body(s[..], body, body); }
+  k := xc_slot_of(x, XC_BREATH); #assert k == n0 && x[0].bar_n == n0 + 1 && lab_breath_wait(s[..]) == 0;
+  // the slot breathes; spent, it sweeps
+  #assert xc_press(s[..], k) && x[0].b[0].c[x[0].dragon_seat[0].me].breath_spent;
+  w := lab_breath_wait(s[..]); #assert w > 0 && w <= 1;
+  // a second torrent follows the first from the jaws
+  for j: 0..<40 { cr[0].clock += 1.0 / 60; body = lab_keep_body(s[..], body, body); }
+  #assert s[0].breath_puff_at > cr[0].mounts[0].breath_at;
+  // off the dragon, the slot goes
+  for j: 0..<120 { cr[0].clock += 1.0 / 60; body = lab_keep_body(s[..], body, body); }
+  cr[0].player_x = body.x; cr[0].player_z = body.z; #assert lab_mount_key(s[..]);
+  for j: 0..<60 { cr[0].clock += 1.0 / 60; body = lab_keep_body(s[..], body, body); }
+  #assert xc_slot_of(x, XC_BREATH) < 0 && x[0].bar_n == n0;
+}
+#test "the dragon-fire stage swoops down low over the gremlins and burns them (mounts)" #steps 4000000000 {
+  s: [1]Lab; cr := s[0].creator[..]; cr[0].experimental = true; hs := cr[0].hostiles[..]; hostile.hostile_start(hs); cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  xc_start(s[0].xc[..], s[0].xc[0].klass);
+  cc.xh_place(cr); s[0].ride_dev = LAB_STAGE_DRAGONFIRE;
+  b := EgBody.{ground = true}; low: f32 = 100;
+  for j: 0..<900 {
+    cr[0].clock = f32(j) / 60; b = lab_keep_body(s[..], b, b);
+    m := cr[0].mounts[0]; if m.riding >= 0 && egm.eg_aloft(m) && s[0].xc[0].dragon_seat[0].me <= 0 { h := m.mounts[m.riding]; a := h.wing.y - meadow_y(h.x, h.z); dx := h.x - f32(LAB_FIRE_FIELD_X); dz := h.z - f32(LAB_FIRE_FIELD_Z); if dx * dx + dz * dz < 30 * 30 && a < low { low = a; } }
+  }
+  dead := 0; for g: 0..<XC_FOES { if hostile.hostile_kind(g) == xdungeon.DG_KIND_GREMLIN && hs[0].enemies[g].dead { dead += 1; } }
+  #assert s[0].xc[0].dragon_seat[0].me > 0;
+  #assert low < 9;
+  #assert dead >= 3;
 }

@@ -205,15 +205,21 @@ there. Only how it moves is different.
   turn; W flies on, and letting go of W slows it to a hover. **X** lands. It
   also lands when it glides down to the ground.
 - **No getting off in the air.** E works only on the ground. In the air the
-  prompt says "Land first" instead of "E  Dismount".
+  hint says "LAND FIRST" instead of "E DISMOUNT".
+- **The keys' hint.** While you ride, or stand by a mount, its keys show as one
+  small line under the hotbar (`eg_mount_hint`), never in the middle of the
+  view over the horse or the dragon.
 - **Collision.** Low over the ground its body meets walls as the horse's does.
   High enough, it flies over them. It stays under the zone's ceiling (60
   metres).
 - **Camera.** While you ride the dragon the camera pulls back further than on
   the horse, enough to fit its wings.
 - **Fighting from its back.** Your bow works as on the horse, through the
-  shared bow system. **F** asks the dragon for its Fire Breath, aimed where
-  you look (your yaw and pitch), through the SRD's dragon actions
+  shared bow system. **F**, or the Fire Breath slot the bar gains while you
+  ride the dragon, asks it for its Fire Breath, on the ground or in the air:
+  the cone runs from its jaws along its heading, tipped down as far as you
+  look down. The dragon joins the battle as its own creature and breathes on
+  its own turn, through the SRD's dragon actions
   (`aethyr/rules/srd/dragon-actions.coax`: `rs_breath_ready`,
   `rs_in_cone3`, `rs_fire_breath_on`). The breath recharges on the SRD's
   Recharge 5-6, rolled at the start of the dragon's turn.
@@ -229,7 +235,7 @@ summoning lands.
 
 | Action | Keyboard and mouse | Phone |
 | --- | --- | --- |
-| Mount | **E** within 2.5 m of the horse; the prompt "E  Mount" shows | the MOUNT button |
+| Mount | **E** within 2.5 m of the horse; the hint "E MOUNT" shows under the bar | the MOUNT button |
 | Dismount | **E** while riding | the DISMOUNT button |
 | Steer | **W** forward, **A** and **D** turn, **S** slows and backs up | the left stick: forward, turn, back |
 | Gallop | hold **Shift** | push the stick all the way |
@@ -239,14 +245,14 @@ summoning lands.
 | Take off, beat, climb (flying mount) | **Space**: press to take off or beat, hold to climb | the JUMP button |
 | Dive (flying mount) | hold **Shift** in the air | the DIVE button |
 | Land (flying mount) | **X** | the LAND button |
-| Fire Breath (dragon) | **F**, aimed where you look | the BREATH button |
+| Fire Breath (dragon) | **F** or its hotbar slot, ahead of the dragon, tipped down as you look down | the Fire Breath slot |
 
 - **Mounting.** Mounting takes 0.6 seconds. You step to the horse's left side
   and swing up into the saddle. The horse stands still while you mount.
 - **Dismounting.** Dismounting takes 0.5 seconds. You step down on the
   horse's left side. If that side is blocked, you step down on the right; if
-  both are blocked, you can't dismount there and the prompt says "No room to
-  step down".
+  both are blocked, you can't dismount there and the hint says "NO ROOM TO
+  STEP DOWN".
 - **The SRD cost.** In a fight, mounting and dismounting spend half your
   Speed, as the SRD says. Outside a fight there is no cost.
 - **Camera.** While you ride, the follow camera pulls back 1.5 metres and

@@ -77,7 +77,8 @@ fairy 695000
 # (aethyr/visibility.coax through hud-sight.coax) and captions fitted to their slots: 2,781,170 bytes
 # measured on the remote hosts. Experimental on Everglade's side bar and the touch-sized CLASSES picker
 # (#13092): 2,834,070 bytes; about 3% headroom. The riders' straddle checked against the horse's and dragon's
-# bodies and the horse-archer stage (#13113): 2,923,469 bytes; about 1% headroom.
+# bodies and the horse-archer stage (#13113): 2,923,469 bytes; about 1% headroom. The red dragon's Fire
+# Breath (#13121): 2,933,577 bytes with main's latest.
 fivelab 2960000
 # Everglade II's graphics governor (aethyr/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade2-create.coax,

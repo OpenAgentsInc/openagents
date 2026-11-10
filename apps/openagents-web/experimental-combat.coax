@@ -77,12 +77,14 @@ XC_HEAD :: CM_HEAD; XC_ROW :: CM_ROW; XC_ROWS_TOP :: CM_ROWS_TOP; XC_GAP :: CM_G
 
 XcFloat :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; text: [12] u8; n: int; heal: bool; }
 XC_FAMILIAR :: 29;
+XC_BREATH :: 31;   // the dragon's Fire Breath while you ride it (experimental-ride.coax lab_breath_slot): the dragon's, not your class's, so never in the bar's saved order
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
 XcCombat :: struct {
   sight: [XC_FOES] cc.HudSight; sight_at: f32 = -1;   // each foe's plate's share shown while its body shows (xc_sight_shows), fading
   plates: [1] cc.HudPlates;                   // the frame's plates over bodies (xc_frame: aethyr/ui/hud-plates.coax)
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
+  dragon_seat:[1]FbSeat;   // the red dragon you ride, once it has joined the battle (experimental-ride.coax lab_dragon_join)
   familiar_incense:int=1; // one Lab supply, carried across preset changes
   protection_water_used:bool;
   revivify_diamond_used:bool; // one Lab diamond, carried across preset changes
@@ -167,6 +169,7 @@ xc_set_level :: (x: [] XcCombat, level: int) {
 xc_order_bar :: (x: [] XcCombat) {
   c := x[0].klass;
   for i: 0..<x[0].bar_n {
+    if x[0].bar[i].kind == XC_BREATH { continue; }
     id := xc_id(x[0].bar[i]); found := false;
     for j: 0..<x[0].order_n[c] { if x[0].order[c][j] == id { found = true; } }
     if !found && x[0].order_n[c] < XC_SLOTS { x[0].order[c][x[0].order_n[c]] = id; x[0].order_n[c] += 1; }
@@ -185,6 +188,7 @@ xc_order_bar :: (x: [] XcCombat) {
 }
 xc_swap :: (x: [] XcCombat, from: int, to: int) {
   if from < 0 || to < 0 || from >= x[0].bar_n || to >= x[0].bar_n || from == to { return; }
+  if x[0].bar[from].kind == XC_BREATH || x[0].bar[to].kind == XC_BREATH { return; }
   c := x[0].klass; a := x[0].bar[from]; b := x[0].bar[to];
   for j: 0..<x[0].order_n[c] {
     if x[0].order[c][j] == xc_id(a) { x[0].order[c][j] = xc_id(b); }
@@ -745,6 +749,7 @@ xc_hostile_contacts :: (s: [] Lab) {
     if b[0].c[f].hp==0 { x[0].familiar_order=XC_FAMILIAR_CAST; }
   }
   for i: 0..<XC_FOES { fb_seat_step(b,x[0].npc_seat[i..<i+1]); }
+  if x[0].dragon_seat[0].me > 0 { fb_seat_step(b,x[0].dragon_seat[..]); }   // its turns: Burning ticks, the breath recharges
   while h[0].contacts[0].count>0 {
     foe := hostile.hc_take(h[0].contacts[..]);
     // a shot that arrives with no Action to spend, or at no one, flies on past (hostile_shot_result)
@@ -1134,6 +1139,7 @@ xc_press :: (s: [] Lab, k: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   if !cr[0].experimental || cr[0].walk.on || !x[0].started || k < 0 || k >= x[0].bar_n { return false; }
   xc_sync_vitals(s);
+  if x[0].bar[k].kind == XC_BREATH { return lab_breath_key(s); }   // the dragon's own action, on its own Recharge
   now := cr[0].clock;
   if now - x[0].cool_at < f32(XC_COOL) || h[0].hp <= 0 { x[0].refused += 1; return false; }
   xc_strike_due(s);
@@ -1603,19 +1609,7 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
         }
       }
     }
-    lost := before[i] - rs_max(c.hp, 0);
-    if lost > 0 { x[0].calm[i] = false; hostile.hostile_provoke(h, i); }   // harmed, it fights again, and comes after you
-    if lost > 0 { struck = true; x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
-      if !c.dead && c.hp > 0 { xc_stop_hit(s, i, ifx swung then react.DMG_SLASH else ifx a.kind == FB_SHOOT then react.DMG_PIERCE else cast(u32) 0); }
-      xc_cue(s, snd.hit, 0.55, e[0].x, e[0].z, snd.rate);
-      if !c.dead && c.hp > 0 { xc_voice(s, i, false); }
-      if rs_knocked_out(c) { xc_float(x, e[0].x, 2.4, e[0].z, now, "KNOCKED OUT", false); } }
-    if !e[0].dead && (c.dead || c.hp <= 0) {
-      e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
-      x[0].kills += 1; xc_voice(s, i, true);
-      if x[0].target == i { x[0].target = -1; x[0].lock = attn.AttnState.{}; }
-      fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
-    }
+    if xc_harmed(s, i, before[i], ifx swung then react.DMG_SLASH else ifx a.kind == FB_SHOOT then react.DMG_PIERCE else cast(u32) 0, snd.hit, snd.rate, now) { struck = true; }
   }
   xc_sync_permissions(s);
   if facing_cube { xc_sync_world(s); }
@@ -1623,6 +1617,26 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
   if foe >= 0 && foe < XC_FOES && aim.kind != XC_AIM_AREA && aim.kind != XC_AIM_SELF { hostile.hostile_provoke(h, foe); }
   if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
   return true;
+}
+// What a blow, a spell or a dragon's breath did to monster i, which had `before` Hit Points: the
+// number rising off it, its flinch (a hit-stop of react's `kinds`), the hit's sound and its voice;
+// at 0 Hit Points it falls, cries out and dust puffs up. True when it lost any.
+xc_harmed :: (s: [] Lab, i: int, before: int, kinds: u32, hit: string, rate: f32, now: f32) -> bool {
+  x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; c := x[0].b[0].c[1 + i]; e := h[0].enemies[i..<i + 1];
+  lost := before - rs_max(c.hp, 0);
+  if lost > 0 { x[0].calm[i] = false; hostile.hostile_provoke(h, i); }   // harmed, it fights again, and comes after you
+  if lost > 0 { x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
+    if !c.dead && c.hp > 0 { xc_stop_hit(s, i, kinds); }
+    xc_cue(s, hit, 0.55, e[0].x, e[0].z, rate);
+    if !c.dead && c.hp > 0 { xc_voice(s, i, false); }
+    if rs_knocked_out(c) { xc_float(x, e[0].x, 2.4, e[0].z, now, "KNOCKED OUT", false); } }
+  if !e[0].dead && (c.dead || c.hp <= 0) {
+    e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
+    x[0].kills += 1; xc_voice(s, i, true);
+    if x[0].target == i { x[0].target = -1; x[0].lock = attn.AttnState.{}; }
+    fx_start_at(s, FXR_DUST, now, fxp_v(e[0].x, 0.2, e[0].z), fxp_v(e[0].x, 0.2, e[0].z), fxp_v(0.6, 0.5, 0.4), 1.2, 1.2);
+  }
+  return lost > 0;
 }
 // One of the glade's effects (aethyr/fx/puff.coax), on the creator's clock.
 fx_start_at :: (s: [] Lab, recipe: int, now: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
@@ -1976,8 +1990,10 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
     m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, "\n");
     left := f32(XC_COOL) - (now - x[0].cool_at);
+    // the dragon's breath sweeps on its own: spent, the time to its next Recharge roll
+    if a.kind == XC_BREATH { left = lab_breath_wait(s); }
     if left > 0 {
-      share := left / f32(XC_COOL);
+      share := ifx a.kind == XC_BREATH then left else left / f32(XC_COOL);
       dim := cc.Box.{x0 = r.x0, y0 = r.y0, x1 = r.x1, y1 = r.y0 + (r.y1 - r.y0) * share};
       m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
       m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
@@ -1990,7 +2006,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
       m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
       m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, " "); m = put_int(x[0].media[..], m, cast(int) (100 - 65 * grey)); m = put(x[0].media[..], m, " 0 1000\n");
     }
-    if i < 9 && xc_draw_slot_key(i,art) {key: [2] u8; key[0] = cast(u8) (49 + i);
+    if a.kind == XC_BREATH { n = cc.text(out, n, "F", r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85)); }
+    else if i < 9 && xc_draw_slot_key(i,art) {key: [2] u8; key[0] = cast(u8) (49 + i);
      n = cc.text(out, n, cast(string) key[0..<1], r.x0 + 4 * k, r.y0 + 13 * k, 9 * k, ink_col(k, 0.98, 0.95, 0.85));}
     if i == x[0].used && left > 0 { n = xc_line(out, n, r.x0, r.y1 + 4 * k, r.x1, r.y1 + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
     // its choices: the slot level it casts at (when it has more than one) and its option
@@ -2063,7 +2080,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, 3 * k, 1, 0.8, 0.4);
     n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, 3 * k, 1, 0.8, 0.4);
   }
-  if !x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n {
+  if !x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n && x[0].bar[x[0].hover].kind != XC_BREATH {
     a := x[0].bar[x[0].hover];
     r := xc_slot_box(x, x[0].hover);
     cw := 358 * k; ch := 171 * k; cx := (r.x0 + r.x1) / 2;

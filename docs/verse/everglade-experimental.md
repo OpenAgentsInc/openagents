@@ -315,17 +315,28 @@ playing, add `?ride=1` (in the saddle), `?ride=2` (galloping) or `?ride=3&class=
 A red dragon stands in the open ahead and to the left of spawn, facing back over
 the village. E mounts it from its flank; you sit at the base of its neck. Space
 takes off, beats the wings and (held) climbs, Shift dives, A and D turn it (level, under you),
-and X lands. E in the air says "Land first". It walks at 10 m/s and flies at 20 m/s
+and X lands. E in the air says "Land first". F, or the Fire Breath slot the bar
+gains while you ride the dragon, breathes fire ahead of it, on the ground or in the
+air: the SRD Adult Red Dragon's 60-foot cone from its jaws along its heading, tipped
+down as far as you look down. The dragon joins the battle as its own creature, so the
+breath acts on its own turn through the shared rules: a DC 21 Dexterity save, 59 (17d6)
+fire damage, half on a success, and Burning on a failure. It recharges on a 5 or 6
+(Recharge 5-6), rolled at the start of each of its rounds; while it is spent, the
+slot's picture sweeps over the time to the next roll. The torrent pours from the jaws
+for over a second, the grass under the cone catches and is left black, and each monster
+it reaches flinches and cries out or falls. The mount's keys show as one small line
+under the bar, never over the horse or the dragon. It walks at 10 m/s and flies at 20 m/s
 (the SRD Adult Red Dragon's Speed 40 ft and Fly 80 ft), on the shared winged flight
-(`aethyr/action/flight.coax`). Three staged shots ride on their own and hide the HUD:
+(`aethyr/action/flight.coax`). Four staged shots ride on their own and hide the HUD:
 `?stage=dragonback` (up off the meadow and over the village and castle),
-`?stage=horseback` (a gallop down the meadow past the autumn trees) and
-`?stage=horse-archer` (a Ranger canters at two gremlins south-west of the village,
-reins in and shoots the first with the Longbow until an arrow hits; each shot is the
-real SRD attack, so a take can miss before it hits), recorded with
-`coax/web/tool.sh clip`. Add `&view=side` or `&view=rear` to the first two to watch
-the seat close up from beside or behind the rider. An arrow that hits flashes at the
-monster's chest.
+`?stage=horseback` (a gallop down the meadow past the autumn trees),
+`?stage=dragon-fire` (a swoop down low over a band of gremlins in the meadow west of
+spawn, and Fire Breath across them) and `?stage=horse-archer` (a Ranger canters at two
+gremlins south-west of the village, reins in and shoots the first with the Longbow until
+an arrow hits; each shot is the real SRD attack, so a take can miss before it hits),
+recorded with `coax/web/tool.sh clip`. Add `&view=side` or `&view=rear` to dragonback
+or horseback to watch the seat close up from beside or behind the rider. An arrow that
+hits flashes at the monster's chest.
 
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
 

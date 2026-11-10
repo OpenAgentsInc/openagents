@@ -105,10 +105,11 @@ EG_DRAGON_CAM_BACK :: 15.0;     // metres the camera pulls back round the dragon
 EG_DRAGON_CAM_UP :: 4.0;
 EG_LAND_FIRST_S :: 2.0;         // seconds "Land first" shows
 // The two deeds, slots of the mounts' own bar, and their animations (Everglade's IDs, past class-feel.coax's).
-EG_DEED_MOUNT :: 0; EG_DEED_DISMOUNT :: 1;
-EG_ANIM_MOUNT :: 16; EG_ANIM_DISMOUNT :: 17;
+EG_DEED_MOUNT :: 0; EG_DEED_DISMOUNT :: 1; EG_DEED_BREATH :: 2;
+EG_ANIM_MOUNT :: 16; EG_ANIM_DISMOUNT :: 17; EG_ANIM_BREATH :: 18;
 // Mounting: the swing up (the seat's blend), dust at the stirrup, a footfall; getting off the same down.
 eg_mount_feel :: (slot: int) -> DeedFeel {
+  if slot == EG_DEED_BREATH { return DeedFeel.{anim = EG_ANIM_BREATH, fx = FXR_DRAGON_BREATH, sound = "fireball", move = DeedMove.still}; }
   up := slot == EG_DEED_MOUNT;
   return DeedFeel.{anim = ifx up then EG_ANIM_MOUNT else EG_ANIM_DISMOUNT, fx = FXR_DUST, sound = ifx up then "step-2" else "step-1", move = DeedMove.step};
 }
@@ -125,6 +126,7 @@ EgMounts :: struct {
   clip_was: [EG_MOUNTS] int; clip_at: [EG_MOUNTS] f32;   // a dragon's clip and when it began, for its frames
   dfirst: [DR_TOTAL] int; dcount: [DR_TOTAL] int; dword: [DR_TOTAL] int; dframes: int;   // the pack's glade/dragon frames
   aloft_at: f32 = -100;      // when a dismount in the air was refused
+  breath_at: f32 = -100;     // when the dragon you ride last breathed fire (its torrent pours on a moment: the zone's)
 }
 // A kind's handling, and the dragon's wings.
 eg_tune :: (m: EgMounts, k: int) -> MountTune { return ifx m.kind[k] == EG_DRAGON then EG_RED_DRAGON else EG_RIDING_HORSE; }
@@ -344,6 +346,47 @@ eg_dragon_record :: (m: EgMounts, k: int, now: f32, out: [] f32, rec: int) -> Eg
   return EgHorseDraw.{first = m.dfirst[f], count = m.dcount[f]};
 }
 
+// ---- the dragon's Fire Breath, at your word
+
+// Its jaws at rest, in its own frame (x its left, y up, z ahead), metres: a little over its height
+// and a little under half its length ahead of its feet.
+EG_DRAGON_MOUTH :: [3] f32.[0, 3.6, 6.3];
+EG_BREATH_M :: 18.288;   // the SRD's 60-foot cone, in metres
+// Where the jaws are now: turned to its heading and pitched with its climb.
+eg_dragon_mouth :: (m: EgMounts, k: int) -> [3] f32 {
+  h := m.mounts[k]; p := eg_dragon_pitch(h); sc := f32(EG_DRAGON_SCALE);
+  y := EG_DRAGON_MOUTH[1] * sc; z := EG_DRAGON_MOUTH[2] * sc;
+  return mount_seat(h, h.wing.y, [3] f32.[0, y * cos(p) + z * sin(p), -y * sin(p) + z * cos(p)]);
+}
+// F on the dragon: the rider asks with their bearing (the dragon breathes at your word; knocked out or
+// held, you can't give it). The request's number for the zone, which acts with the SRD's breath on
+// its battle and answers with eg_breath_answer; 0 when there's no dragon under you or no yes.
+eg_breath_ask :: (m: [] EgMounts, now: f32, b: DeedBearing) -> int {
+  if !eg_on_dragon(m[0]) || m[0].mounts[m[0].riding].state != MOUNT_RIDDEN { return 0; }
+  return deed_ask(m[0].deeds[..], EG_DEED_BREATH, deed_tick(now), b, eg_mount_feel(EG_DEED_BREATH));
+}
+// The rules' answer: only a yes presents (its fire, its roar of flame).
+eg_breath_answer :: (m: [] EgMounts, seq: int, ok: bool, now: f32) {
+  _ := deed_answer(m[0].deeds[..], seq, ok, deed_tick(now), 0);
+  if ok { m[0].show = deed_show(eg_mount_feel(EG_DEED_BREATH), DeedResult.effect); m[0].shows += 1; m[0].breath_at = now; }
+}
+// The keys while you ride, or stand by a mount: a short line for the HUD's hint under the bar, never
+// the middle of the view. What E, Space, Shift, A and D, X and F do now; "" for nothing.
+eg_mount_hint :: (m: EgMounts, x: f32, z: f32, now: f32) -> string {
+  if now - m.refused_at < EG_REFUSED_S { return "NO ROOM TO STEP DOWN"; }
+  if now - m.aloft_at < f32(EG_LAND_FIRST_S) { return "LAND FIRST"; }
+  if m.riding >= 0 {
+    h := m.mounts[m.riding]; if h.state != MOUNT_RIDDEN { return ""; }
+    if m.kind[m.riding] == EG_DRAGON {
+      if mount_aloft(h) { return "SPACE CLIMB  SHIFT DIVE  A D BANK  F FIRE BREATH  X LAND"; }
+      return "SPACE TAKE OFF  F FIRE BREATH  E DISMOUNT";
+    }
+    return "SHIFT GALLOP  E DISMOUNT";
+  }
+  if eg_mount_nearest(m, x, z) >= 0 { return "E MOUNT"; }
+  return "";
+}
+
 // ---- checks
 
 EG_TEST_CATALOG :: "C glade/environment 9 12 250 100 8 0\nC glade/horse0 300 60 247 100 0 0\nC glade/horse35 900 63 247 100 0 0\n";
@@ -450,4 +493,39 @@ EG_TEST_CATALOG :: "C glade/environment 9 12 250 100 8 0\nC glade/horse0 300 60 
   s := eg_saddle(m[0], 0, 0, 0); #assert abs(s[0] - 3) < 0.05 && abs(s[1] - (1 + DR_SEAT[dr_first(DR_FLY) * 3 + 1] + f32(EG_DRAGON_SEAT_UP))) < 0.01;
   m[0].mounts[0].wing.vy = 20;
   c := eg_saddle(m[0], 0, 0, 0); #assert eg_dragon_pitch(m[0].mounts[0]) == f32(EG_DRAGON_CLIMB_PITCH) && c[2] < s[2] - 0.5;
+}
+#test "the breath is a deed the rider asks for: only on the dragon, and only a yes shows its fire" {
+  m: [1] EgMounts; none: [6] f32;
+  _ := eg_mount_add(m[..], 0, 0, 0); _ = eg_dragon_add(m[..], 20, 0, 0, 0);
+  #assert deed_feel_ok(eg_mount_feel(EG_DEED_BREATH)) && eg_mount_feel(EG_DEED_BREATH).fx == FXR_DRAGON_BREATH;
+  #assert eg_mount_press(m[..], 0, 1.5, 0, 0, DeedBearing.{}, none[..], 0) == EG_PRESS_MOUNTED;
+  go := eg_mounts_fly(m[..], MountIn.{}, 0.05, 1, 0, none[..], 0); #assert eg_breath_ask(m[..], 1, DeedBearing.{}) == 0;   // a horse has none
+  #assert eg_mount_press(m[..], 0, 0, 0, 2, DeedBearing.{}, none[..], 0) == EG_PRESS_DISMOUNTED;
+  for i: 0..<30 { go = eg_mounts_fly(m[..], MountIn.{}, 0.05, 2 + f32(i) * 0.05, 0, none[..], 0); }
+  #assert eg_mount_press(m[..], 0, 23.5, 0, 4, DeedBearing.{}, none[..], 0) == EG_PRESS_MOUNTED && eg_on_dragon(m[0]);
+  for i: 0..<30 { go = eg_mounts_fly(m[..], MountIn.{}, 0.05, 4 + f32(i) * 0.05, 0, none[..], 0); }
+  shows := m[0].shows;
+  down := deed_bear(DeedBearing.{}, DeedPose.down, DEED_LOCK_ALL);
+  #assert eg_breath_ask(m[..], 6, down) == 0 && m[0].shows == shows;
+  seq := eg_breath_ask(m[..], 7, DeedBearing.{}); #assert seq != 0;
+  eg_breath_answer(m[..], seq, false, 7); #assert m[0].shows == shows;
+  seq = eg_breath_ask(m[..], 9, DeedBearing.{}); #assert seq != 0;
+  eg_breath_answer(m[..], seq, true, 9); #assert m[0].shows == shows + 1 && m[0].show.fx == FXR_DRAGON_BREATH && m[0].show.sound == "fireball";
+  j := eg_dragon_mouth(m[0], 1); #assert abs(j[2] - 6.3) < 0.01 && abs(j[0] - 20) < 0.01 && j[1] > 3;
+}
+#test "the mount's keys are a short hint: by a horse, on it, on the dragon on the ground and in the air" #steps 400000000 {
+  m: [1] EgMounts; none: [6] f32; g: f32 = 0;
+  _ := eg_mount_add(m[..], 0, 0, 0); _ = eg_dragon_add(m[..], 30, 0, 0, g);
+  #assert eg_mount_hint(m[0], 9, 9, 0) == "" && eg_mount_hint(m[0], 1.5, 0, 0) == "E MOUNT";
+  _ = eg_mount_press(m[..], 0, 1.5, 0, 0, DeedBearing.{}, none[..], 0); go := eg_mounts_fly(m[..], MountIn.{}, 0.05, 1, g, none[..], 0);
+  #assert eg_mount_hint(m[0], 0, 0, 1) == "SHIFT GALLOP  E DISMOUNT";
+  _ = eg_mount_press(m[..], 0, 0, 0, 2, DeedBearing.{}, none[..], 0);
+  for i: 0..<30 { go = eg_mounts_fly(m[..], MountIn.{}, 0.05, 2 + f32(i) * 0.05, g, none[..], 0); }
+  #assert eg_mount_press(m[..], 0, 33.5, 0, 4, DeedBearing.{}, none[..], 0) == EG_PRESS_MOUNTED;
+  now: f32 = 4; dt: f32 = 1.0 / 60;
+  for i: 0..<60 { now += dt; go = eg_mounts_fly(m[..], MountIn.{}, dt, now, g, none[..], 0); }
+  #assert eg_mount_hint(m[0], 0, 0, now) == "SPACE TAKE OFF  F FIRE BREATH  E DISMOUNT";
+  for i: 0..<90 { now += dt; go = eg_mounts_fly(m[..], MountIn.{forward = 1, jump = true, climb = true}, dt, now, g, none[..], 0); }
+  #assert eg_aloft(m[0]) && eg_mount_hint(m[0], 0, 0, now) == "SPACE CLIMB  SHIFT DIVE  A D BANK  F FIRE BREATH  X LAND";
+  #assert eg_mount_press(m[..], 0, 0, 0, now, DeedBearing.{}, none[..], 0) == EG_PRESS_LAND_FIRST && eg_mount_hint(m[0], 0, 0, now + 0.5) == "LAND FIRST";
 }
