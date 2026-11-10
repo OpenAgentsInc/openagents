@@ -11,6 +11,10 @@ int32_t eg_frame(void *state, float *vertices, float width, float height, float 
 // phase 0 down, 1 moved, 2 up; x and y in points from the top left.
 void eg_pointer(void *state, float x, float y, int32_t phase);
 void eg_wheel(void *state, float dy);
+// A touch stick: how far it is pushed right and forward, each -1 to 1 (0, 0 when let go).
+void eg_pad(void *state, float x, float y);
+// The points the screen's edges keep clear (a notch, a home bar), so the text stays out from under them.
+void eg_safe(void *state, float left, float top, float bottom);
 // A key held or let go, in the web realms' codes: a letter's ASCII, 32 Space, -13 Shift,
 // -4 -5 -6 -7 the arrows left, right, up, down, -1 the window lost the keys. 1 when used.
 int32_t eg_key(void *state, int32_t key, int32_t down);

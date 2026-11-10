@@ -15,6 +15,10 @@ cloud with a far city's lamps in its gaps.
 - **The technology.** Lines of light inlaid in the polished floor, threads of
   light from each crystal to the golem's sphere, and four holographic
   displays hung between the pylons.
+- **On a phone too.** [`apps/everglade-mobile/`](../../apps/everglade-mobile/README.md)
+  is the same Workshop as an iOS app, `com.openagents.everglade`, with touch
+  controls and no Next issue panel. It runs in the iOS simulator. Android is
+  planned and not built.
 - **Built from parts.** Every piece is a reusable part from Aethyr's
   architecture kit ([`aethyr/arch/`](../../aethyr/arch/README.md)), written in
   Coax: a fluted Doric column, a plinth, a turned baluster, rails, an

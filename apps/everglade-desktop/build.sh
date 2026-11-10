@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, metal and swiftc; holds no logic)
 # Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the
-# Workshop scene (workshop.coax) and your model (model.coax) compiled to C
+# Workshop scene with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
 # Everglade II's pack, and the AppKit and Metal host in Swift.
@@ -13,7 +13,7 @@ coax="${COAX:-$repo/coax/bin/coax}"
 work="$here/build"
 app="$work/Everglade.app"
 mkdir -p "$work/c" "$app/Contents/MacOS" "$app/Contents/Resources"
-"$coax" c "$here/workshop.coax" --library --header "$work/c/workshop.h" > "$work/c/workshop.c"
+"$coax" c "$here/desktop.coax" --library --header "$work/c/workshop.h" > "$work/c/workshop.c"
 cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -I"$work/c" -I"$here")
 /usr/bin/clang "${cflags[@]}" -c "$work/c/workshop.c" -o "$work/c/workshop.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/face.c" -o "$work/c/face.o"

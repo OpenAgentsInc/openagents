@@ -22,3 +22,5 @@ void eg_wheel(void *state, float dy) { ws_wheel(at(state), dy); }
 int32_t eg_key(void *state, int32_t key, int32_t down) { return ws_key(at(state), key, down != 0) ? 1 : 0; }
 int32_t eg_you(void *state, float *out5) { return ws_you(at(state), (coax_v_f32){out5, 5}) ? 1 : 0; }
 int32_t eg_camera(void *state, float width, float height, float scale, float *out16) { return ws_camera(at(state), width, height, scale, (coax_v_f32){out16, 16}) ? 1 : 0; }
+void eg_pad(void *state, float x, float y) { ws_pad(at(state), x, y); }
+void eg_safe(void *state, float left, float top, float bottom) { ws_safe(at(state), left, top, bottom); }

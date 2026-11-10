@@ -1,0 +1,6 @@
+// Everglade for desktop, its unit: the scene (workshop.coax) and the Next issue panel (next.coax)
+// compiled together. They are one unit because both draw with aethyr/ui/draw.coax, whose exports
+// can't be linked twice. The scene alone is what the mobile app compiles: it has no agent.
+//   coax/bin/coax test --library apps/everglade-desktop/desktop.coax
+#load "workshop.coax";
+#load "next.coax";

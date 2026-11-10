@@ -14,7 +14,6 @@
 #load "../../aethyr/walk.coax" as pc;
 #load "../../everglade/workshop/layout.coax";   // where things are: the same numbers the temple is built and lit from
 #load "text.coax";     // Everglade's faces, Spectral and Cinzel
-#load "next.coax";     // the Next issue button and its panel, in this unit (both draw with draw.coax, whose exports can't be linked twice)
 
 WS_MAX_VERTICES :: 36000;
 WS_PYLONS :: WK_PYLONS;
@@ -31,6 +30,9 @@ WS_WALLS :: 8;            // the six pylons, the golem and the door, each a box 
 Workshop :: struct {
   time: f32; started: bool; you: pc.Player; keys: int; look_x: f32; look_y: f32;
   held: bool; px: f32; py: f32;
+  pad_x: f32; pad_y: f32;   // a touch stick: x right, y forward, each -1 to 1
+  touch: bool;              // the host has a touch screen, not keys
+  safe_left: f32; safe_top: f32; safe_bottom: f32;   // points the screen's edges keep clear (a notch, a home bar)
 }
 
 // The eye for one frame, its right, up and forward, and the picture it projects onto.
@@ -49,7 +51,12 @@ ws_view :: (eye: pc.Vec3, at: pc.Vec3, width: f32, height: f32, d: f32) -> WsVie
   rx = rx / flat; rz = rz / flat;
   v.ex = eye.x; v.ey = eye.y; v.ez = eye.z; v.fx = fx; v.fy = fy; v.fz = fz; v.rx = rx; v.rz = rz;
   v.ux = -rz * fy; v.uy = rz * fx - rx * fz; v.uz = rx * fy;
-  v.cx = width * 0.5 * d; v.cz = height * 0.5 * d; v.focal = height * 1.0 * d; v.d = d;
+  v.cx = width * 0.5 * d; v.cz = height * 0.5 * d; v.d = d;
+  // The focal length is the picture's height, so a wide window sees the same height of the world
+  // however wide it is; a tall, narrow one (an upright phone) takes it from its width, or it
+  // would see only a sliver.
+  span := height; if width * 1.2 < span { span = width * 1.2; }
+  v.focal = span * d;
   return v;
 }
 
@@ -96,7 +103,7 @@ ws_walk :: (s: []Workshop, dt: f32) {
   k := s[0].keys;
   key_x := cast(f32) ((ifx (k & 8) != 0 then 1 else 0) - (ifx (k & 4) != 0 then 1 else 0));
   key_y := cast(f32) ((ifx (k & 1) != 0 then 1 else 0) - (ifx (k & 2) != 0 then 1 else 0));
-  p := pc.walk_input(s[0].you, key_x, key_y, 0, 0, pc.walk_runs((k & 32) != 0, false, 0, 0), (k & 16) != 0, s[0].look_x, s[0].look_y);
+  p := pc.walk_input(s[0].you, key_x, key_y, s[0].pad_x, s[0].pad_y, pc.walk_runs((k & 32) != 0, false, s[0].pad_x, s[0].pad_y), (k & 16) != 0, s[0].look_x, s[0].look_y);
   walls: [WS_WALLS * pc.WALL] f32; count := ws_walls(walls[..]);
   p = pc.walk_advance_on(p, dt, walls[0..<0], walls[0..<count], walls[0..<0]);
   r := sqrt(p.pos.x * p.pos.x + p.pos.z * p.pos.z);
@@ -111,9 +118,18 @@ ws_frame :: (s: []Workshop, out: []f32, width: f32, height: f32, d: f32, dt: f32
   ws_walk(s, step);
   if !(width > 0) || !(height > 0) || !(d > 0) { return 0; }
   n := 0;
-  n = eg_text(out, n, "Everglade", 36, 66, 40, d, EG_TITLE, EG_WHITE);
-  n = eg_text(out, n, "The Golemancers' Workshop", 37, 94, 18, d, EG_TITLE, EG_MID);
-  n = eg_text(out, n, "W A S D move    Space jump    Shift walk    Drag look    Wheel zoom", 36, height - 30, 15, d, EG_BODY, EG_DIM);
+  left := 36 + s[0].safe_left; top := s[0].safe_top; foot := height - 30 - s[0].safe_bottom;
+  n = eg_text(out, n, "Everglade", left, top + 66, 40, d, EG_TITLE, EG_WHITE);
+  n = eg_text(out, n, "The Golemancers' Workshop", left + 1, top + 94, 18, d, EG_TITLE, EG_MID);
+  if !s[0].touch {
+    n = eg_text(out, n, "W A S D move    Space jump    Shift walk    Drag look    Wheel zoom", left, foot, 15, d, EG_BODY, EG_DIM);
+  } else if width - left < 640 {
+    // An upright phone: the hint in two lines.
+    n = eg_text(out, n, "Drag the left side to move, the right to look", left, foot - 22, 15, d, EG_BODY, EG_DIM);
+    n = eg_text(out, n, "Tap to jump    Pinch to zoom", left, foot, 15, d, EG_BODY, EG_DIM);
+  } else {
+    n = eg_text(out, n, "Drag the left side to move    Drag the right side to look    Tap to jump    Pinch to zoom", left, foot, 15, d, EG_BODY, EG_DIM);
+  }
   return n;
 }
 
@@ -183,6 +199,19 @@ ws_key :: (s: []Workshop, key: int, down: bool) -> bool #export_c #effects(all) 
     if key == -7 { s[0].look_y -= 0.08; return true; }
   }
   return false;
+}
+// A touch stick, for a host without keys: how far it is pushed right and forward, each -1 to 1
+// (0, 0 when let go). The walker's own stick rules apply: a small push is no push, a full one runs.
+ws_pad :: (s: []Workshop, x: f32, y: f32) #export_c #effects(all) {
+  s[0].touch = true;
+  s[0].pad_x = ifx x == x then (ifx x < -1 then -1.0f32 else ifx x > 1 then 1.0f32 else x) else 0.0f32;
+  s[0].pad_y = ifx y == y then (ifx y < -1 then -1.0f32 else ifx y > 1 then 1.0f32 else y) else 0.0f32;
+}
+// The points the screen's edges keep clear, so the text stays out from under a notch or a home bar.
+ws_safe :: (s: []Workshop, left: f32, top: f32, bottom: f32) #export_c #effects(all) {
+  s[0].safe_left = ifx left > 0 && left < 200 then left else 0.0f32;
+  s[0].safe_top = ifx top > 0 && top < 200 then top else 0.0f32;
+  s[0].safe_bottom = ifx bottom > 0 && bottom < 200 then bottom else 0.0f32;
 }
 // A drag looks round: phase 0 down, 1 moved, 2 up. Points, from the top left.
 ws_pointer :: (s: []Workshop, x: f32, y: f32, phase: int) #export_c #effects(all) {
@@ -277,4 +306,17 @@ ws_wheel :: (s: []Workshop, dy: f32) #export_c #effects(all) {
   drawn := ws_eye_inside(pc.Vec3.{x = 0, y = 3.5, z = 10}, at);
   #assert drawn.z <= WS_EYE_REACH + 0.001 && drawn.z > WS_EYE_REACH - 0.01 && drawn.y > 1.5 && drawn.y < 3.5;
   low := ws_eye_inside(pc.Vec3.{x = 1, y = -2, z = 1}, at); #assert low.y == 0.25;
+}
+#test "a touch stick walks you: pushed forward you go toward the golem, let go you stop, and it keeps to its range" {
+  s: [1] Workshop; ws_start(s[..]);
+  ws_pad(s[..], 0, 5);
+  #assert s[0].touch && s[0].pad_y == 1 && s[0].pad_x == 0;
+  for i: 0..<40 { ws_walk(s[..], 0.016); }
+  #assert s[0].you.pos.z < 4.0;
+  ws_pad(s[..], 0, 0); z := s[0].you.pos.z;
+  for i: 0..<60 { ws_walk(s[..], 0.016); }
+  after := s[0].you.pos.z;
+  for i: 0..<30 { ws_walk(s[..], 0.016); }
+  #assert s[0].you.pos.z == after && after <= z;
+  zero: f32 = 0; ws_pad(s[..], zero / zero, -9); #assert s[0].pad_x == 0 && s[0].pad_y == -1;
 }
