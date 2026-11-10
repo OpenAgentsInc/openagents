@@ -154,9 +154,12 @@ e2mo_move :: (mo: [] E2Mon, tx: f32, tz: f32, speed: f32, dt: f32, stop: f32) ->
   mo[0].x = nx; mo[0].z = nz;
   return st;
 }
+// The yaw stays within a half turn of 0: a wolf circling its quarry turns one way lap after lap, and a
+// yaw that grew with each lap would pass what the pages take in an h2 row (everglade2-net.coax).
+e2mo_wrap :: (a: f32) -> f32 { d := a; while d > 3.14159265 { d -= 6.2831853; } while d < -3.14159265 { d += 6.2831853; } return d; }
 e2mo_turn :: (yaw: f32, goal: f32, rate: f32, dt: f32) -> f32 {
-  d := goal - yaw; while d > 3.14159265 { d -= 6.2831853; } while d < -3.14159265 { d += 6.2831853; }
-  m := rate * dt; return yaw + (ifx d > m then m else ifx d < -m then -m else d);
+  d := e2mo_wrap(goal - yaw);
+  m := rate * dt; return e2mo_wrap(yaw + (ifx d > m then m else ifx d < -m then -m else d));
 }
 // Its group takes up seat s (the pack, the camp all come).
 e2mo_rouse :: (v: [] RmServer, k: int, group: int, s: int) {
@@ -560,6 +563,21 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   // they circle you, round their own sides
   a0 := e5rr_heading(ms[0].mon[0].x - px, ms[0].mon[0].z - pz); a1 := e5rr_heading(ms[0].mon[1].x - px, ms[0].mon[1].z - pz);
   #assert abs(a0 - a1) > 0.2 && e2mo_dist(ms[0].mon[0].x, ms[0].mon[0].z, px, pz) < 4;
+}
+#test "e2 monsters: a pack circling its quarry lap after lap keeps every yaw within a half turn" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-laps"); #assert k >= 0;
+  ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
+  b[0].c[E5RR_SEAT].hp = 20000; b[0].c[E5RR_SEAT].hp_max = 20000; b[0].c[E5RR_SEAT].ac = 30;
+  w := ms[0].mon[0]; px := e2_road_x(w.z - 8); pz := w.z - 8;
+  chased := false; lap: f32 = 0; was := ms[0].mon[0].orbit;
+  for q: 0..<EG_HZ * 30 {
+    e2mt_at(v[..], k, px, pz); e2mt_tick(v[..], k);
+    if ms[0].mon[0].state == E2M_CHASE { chased = true; lap += abs(ms[0].mon[0].orbit - was); }
+    was = ms[0].mon[0].orbit;
+    for m: 0..<E2M_N { #assert abs(ms[0].mon[m].yaw) <= 3.1416; }
+  }
+  #assert chased && lap > 12.6;   // two laps and more round you
+  #assert e2mo_wrap(7.5) < 3.1416 && e2mo_wrap(-7.5) > -3.1416 && abs(e2mo_turn(3.1, -3.1, 10, 0.1) + 3.1) < 0.001;
 }
 #test "e2 monsters: the leash takes the pack home before the glade and makes it whole there" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-leash"); #assert k >= 0;

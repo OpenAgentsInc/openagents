@@ -785,7 +785,9 @@ e2n_mon_rows :: (n:[]E2Net,t:string) {
     x:=wire_num(t,rd[..]); z:=wire_num(t,rd[..]); yaw:=wire_num(t,rd[..]); hp:=wire_num(t,rd[..]); max:=wire_num(t,rd[..]);
     act:=wire_num(t,rd[..]); at:=wire_num(t,rd[..]); foe:=wire_num(t,rd[..]);
     if !rd[0].ok || m<0 || m>=E2N_MONS || life<0 || kind<0 || kind>1 || state<0 || state>5 || hp<0 || max<1 || hp>max || act<0 || act>2 || foe< -1 || foe>=64 ||
-      x < -20000 || x > 20000 || z < -65000 || z > 20000 || yaw < -7000 || yaw > 7000 { return; }
+      x < -20000 || x > 20000 || z < -65000 || z > 20000 || yaw < -1000000 || yaw > 1000000 { return; }
+    // any yaw is a facing: wrapped to a half turn, never a reason to drop the word (a circling wolf's once grew a lap at a time)
+    while yaw>3142 { yaw-=6283; } while yaw< -3142 { yaw+=6283; }
     ids[q]=m;
     rows[q]=E2nMon.{t=e2n_tick_t(n,tick),life=life,kind=kind,state=state,x=f32(x)/100,z=f32(z)/100,yaw=f32(yaw)/1000,hp=hp,max=max,act=act,act_t=ifx at>0 then e2n_tick_t(n,at) else -1,foe=foe};
   }
@@ -845,6 +847,8 @@ e2n_mon_at :: (n:[]E2Net,m:int,rt:int)->E2nMon {
   #assert e2n_mon_at(n[..],9,1000).kind==1 && e2n_mon_at(n[..],9,1000).act==2 && e2n_mon_at(n[..],9,3000).state==4;
   e2n_record(n[..],"h2 61 1 3 1 0 1 1300 -20000 3140 99 11 1 45 0");   // Hit Points over their most: not taken
   #assert n[0].mon_tick==60;
+  e2n_record(n[..],"h2 62 1 3 1 0 1 1300 -20000 9423 9 11 0 0 0");   // a yaw laps past a turn: taken, as the facing it is
+  #assert n[0].mon_tick==62 && abs(e2n_mon_at(n[..],3,62*1000/30).yaw-3.14)<0.001;
   e2n_record(n[..],"h3 90 3 10 0 0 500 -30000 520 -31000 700");
   #assert n[0].mon_hits[0].live && n[0].mon_hits[0].t==3000 && abs(n[0].mon_hits[0].tz+310)<0.001 && abs(n[0].mon_hits[0].fly-0.7)<0.001;
   e2n_record(n[..],"h3 90 2 3 -1 4"); #assert n[0].mon_hits[1].live && n[0].mon_hits[1].seat== -1 && n[0].mon_hits[1].amount==4;
