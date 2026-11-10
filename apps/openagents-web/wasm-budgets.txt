@@ -123,7 +123,10 @@ fivelab 2920000
 # floats): 916,653 bytes measured with the fantasy HUD, inside the same budget.
 # Plates on the engine's visibility service (aethyr/visibility.coax through hud-sight.coax) and the side bar
 # and world layout in the game layer: 926,788 bytes measured on the remote hosts; about 3% headroom.
-everglade2 955000
+# Main at 4ca2379f0e already measured 956,592 bytes, over 955,000. The shared plates (aethyr/ui/hud-plates.coax:
+# reach, order, lift or fold, and everglade/hud/parts.coax eg_plates, #13088) take Everglade II to 958,822;
+# about 0.6% headroom.
+everglade2 965000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 # 1,757,350 bytes measured 2026-11-09 at 1f648c6a67 after the day's shared rules, visibility, sprint and HUD work; about 4% headroom.

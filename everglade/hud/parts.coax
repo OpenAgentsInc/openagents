@@ -193,6 +193,34 @@ eg_plate :: (out: [] f32, at: int, name: string, sx: f32, sy: f32, k: f32, share
   ink := ifx target then t.title else ifx foe then hud_mix(t.bad, t.text, 0.25) else t.title;
   return eg_say_ink(out, v, name, sx, sy - 9 * k, 10.5 * k, HUD_TEXT_NAME, ink, alpha, k, true);
 }
+// The frame's plates over bodies, every zone's (aethyr/ui/hud-plates.coax places them): each name in
+// the title face over its bar, a covered one's count ("+3") beside the name over it. Measures the
+// names, places the plates from the camera, then draws them; most is the vertex count to stop short
+// of (0: none), and a plate left off for want of room is counted in skipped.
+EG_PLATE_CAP :: 10.5;    // CSS px: a plate's name
+EG_PLATE_ROOM :: 900;    // vertices one plate may take
+eg_plates :: (out: [] f32, at: int, p: [] HudPlates, view: HudPlateView, k: f32, most: int) -> int {
+  cap := EG_PLATE_CAP * k; p[0].cap = cap;
+  for i: 0..<p[0].n { plate := p[0].items[i]; p[0].items[i].wide = ifx plate.n > 0 then face_width(cast(string) plate.text[0..<plate.n], cap, HUD_FACE_TITLE) else 0.0f32; }
+  hud_plates_place(p, view);
+  t := eg_tokens(); v := at;
+  for i: 0..<p[0].n {
+    plate := p[0].items[i];
+    if !(plate.shown > 0.01) { continue; }
+    if most > 0 && v + EG_PLATE_ROOM > most { p[0].skipped += 1; continue; }
+    name := ifx plate.named then cast(string) plate.text[0..<plate.n] else "";
+    if !plate.inked { v = eg_plate(out, v, name, plate.sx, plate.sy, k, plate.share, plate.foe, plate.target, plate.shown); }
+    else {
+      if plate.share >= 0 { l: [1] HudList; hud_plate(l[..], t, plate.sx, plate.sy, 26 * k, plate.share, plate.foe, plate.target, plate.shown, k); v = hud_emit(out, v, l[..]); }
+      if plate.named { v = eg_say_ink(out, v, name, plate.sx, plate.sy - 9 * k, cap, HUD_TEXT_NAME, hud_rgba(plate.r, plate.g, plate.b, 1), plate.shown, k, true); }
+    }
+    if plate.named && plate.more > 0 {
+      b: [12] u8; m := eg_put(b[..], 0, "+"); m = eg_int(b[..], m, plate.more);
+      v = eg_say(out, v, cast(string) b[0..<m], plate.sx + plate.wide * 0.5 + 3 * k, plate.sy - 9 * k, 7.5 * k, HUD_TEXT_LABEL, plate.shown, k, false);
+    }
+  }
+  return v;
+}
 // A number rising off a creature: damage dealt (orange), harm to you (red), a miss, healing (green).
 EG_FLOAT_DEALT :: 0; EG_FLOAT_HARM :: 1; EG_FLOAT_MISS :: 2; EG_FLOAT_HEAL :: 3;
 eg_float :: (out: [] f32, at: int, t: string, sx: f32, sy: f32, k: f32, kind: int, alpha: f32) -> int {
@@ -262,4 +290,16 @@ eg_world :: (out: [] f32, at: int, w: f32, h: f32, k: f32, wd: EgWorld, dots: []
   px := ifx phone then 8.0f32 else 14.0f32;
   if !eg_meets(wd.cover, hud_box(px * k, top * k, (px + wide) * k, (top + 100) * k)) { v = eg_portrait(out, v, px * k, top * k, wide, k, p, 1); }
   return eg_banner(out, v, w, h * 0.22, k, wd.place, wd.since);
+}
+#test "eg plates: the frame's plates placed and drawn, a covered name counted on the one over it, none past most" #steps 400000000 {
+  out: [60000] f32; p: [1] HudPlates;
+  v := HudPlateView.{eye = [3] f32.[0, 2, 0], fwd = [3] f32.[0, 0, -1], right = [3] f32.[1, 0, 0], up = [3] f32.[0, 1, 0], focal = 900, cx = 640, cy = 360, w = 1280, h = 720};
+  hud_plates_begin(p[..]); p[0].fold = true;
+  hud_plates_push(p[..], 0, 2.3, -8, "Wolf", 0.5, true, false, 1);
+  hud_plates_push(p[..], 0, 2.4, -12, "Wolf", 0.5, true, false, 1);
+  a := eg_plates(out[..], 0, p[..], v, 1, 0);
+  #assert a > 0 && p[0].placed == 2 && p[0].items[0].named && p[0].items[0].more == 1 && !p[0].items[1].named;
+  #assert eg_plates(out[..], 0, p[..], v, 1, 100) == 0 && p[0].skipped == 2;
+  hud_plates_begin(p[..]); i := hud_plates_add(p[..], 0, 2.3, -8, "Ana", -1, false, false, 1); hud_plates_ink(p[..], i, 0.3, 0.8, 1);
+  #assert eg_plates(out[..], 0, p[..], v, 1, 0) > 0 && p[0].items[i].named;
 }

@@ -80,6 +80,7 @@ XC_FAMILIAR :: 29;
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
 XcCombat :: struct {
   sight: [XC_FOES] cc.HudSight; sight_at: f32 = -1;   // each foe's plate's share shown while its body shows (xc_sight_shows), fading
+  plates: [1] cc.HudPlates;                   // the frame's plates over bodies (xc_frame: aethyr/ui/hud-plates.coax)
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
   familiar_incense:int=1; // one Lab supply, carried across preset changes
@@ -1681,6 +1682,12 @@ xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
   up := dx * u[28] + dy * u[29] + dz * u[30];
   return XcAt.{x = u[23] + u[19] * r / z, y = u[27] - u[19] * up / z, ok = true};
 }
+// The camera xc_proj projects through, as the shared plates take it (aethyr/ui/hud-plates.coax).
+xc_plate_view :: (x: [] XcCombat, w: f32, h: f32) -> cc.HudPlateView {
+  u := x[0].u[..];
+  return cc.HudPlateView.{eye = [3] f32.[u[16], u[17], u[18]], fwd = [3] f32.[u[20], u[21], u[22]], right = [3] f32.[u[24], u[25], u[26]],
+                          up = [3] f32.[u[28], u[29], u[30]], focal = u[19], cx = u[23], cy = u[27], w = w, h = h};
+}
 // The column's height, CSS px: its header, and when open its twelve rows.
 xc_wild_next :: (mask:int,after:int)->int {
   for k:1..<MON_N { form:=(after+k)%MON_N; if (mask&(1<<form))!=0 { return form; } }
@@ -1896,23 +1903,25 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   wave := x[0].wave; wave_y := x[0].wave_y;
   if wave_preview { wave=aa.area_face(xk_spell_area(SP_THUNDERWAVE),cr[0].player_x,cr[0].player_z,cr[0].player_face); wave_y=cr[0].player_y; }
   if wave_on { n=xc_area_draw(x,wave,wave_y,out,n,k,ifx wave_preview then 0.8 else 1.0); }
-  if xc_objects_ready(s) {
-    for i:0..<XC_OBJECTS {
-      o:=x[0].objects[i].rules[0];if o.destroyed {continue;}
-      pos:=XC_OBJECT_POS[i];p:=xc_proj(x,pos[0],xmeadow.exp_height(pos[0],pos[1])+1.25,pos[1]);
-      if !p.ok || p.x<0 || p.x>w || p.y<0 || p.y>h {continue;}
-      label:=ifx o.burning then "BURNING CRATE" else "SUPPLY CRATE";
-      n=cc.text(out,n,label,p.x-xc_text_w(label,8*k)/2,p.y-8*k,8*k,ink_col(k,1,0.78,0.35));
-      share:=f32(o.hp)/f32(rs_object_hp(o.size,o.resilient));
-      n=xc_line(out,n,p.x-20*k,p.y,p.x+20*k,p.y,3*k,0.18,0.06,0.05);
-      n=xc_line(out,n,p.x-20*k,p.y,p.x-20*k+40*k*share,p.y,3*k,0.86,0.45,0.12);
-    }
-  }
-  // the monsters' names and Hit Points over them, your target's in gold
+  // the plates over bodies, Everglade's shared ones (aethyr/ui/hud-plates.coax places them,
+  // everglade/hud/parts.coax eg_plates draws them): the crates', the monsters' (your target's in gold)
+  // and your familiar's; a monster's while its body shows (xc_sight_shows), fading in and out
   sight_dt := ifx x[0].sight_at < 0 then 1.0f32 else ifx now - x[0].sight_at > 0.1 then 0.1f32 else ifx now < x[0].sight_at then 0.0f32 else now - x[0].sight_at;
   x[0].sight_at = now;
   view_x:=ifx observing then x[0].familiar_x else cr[0].player_x;
   view_z:=ifx observing then x[0].familiar_z else cr[0].player_z;
+  pl := x[0].plates[..]; view := xc_plate_view(x, w, h);
+  cc.hud_plates_begin(pl); pl[0].far = 0;   // no fade with distance: a monster's plate shows within what sees you (30 m)
+  cc.hud_plates_keep_out(pl, pick_box.x0 - 40 * k, pick_box.y0 - 20 * k, pick_box.x1 + 40 * k, pick_box.y1 + 20 * k);   // not over the picker
+  if xc_objects_ready(s) {
+    for i:0..<XC_OBJECTS {
+      o:=x[0].objects[i].rules[0];if o.destroyed {continue;}
+      pos:=XC_OBJECT_POS[i];
+      label:=ifx o.burning then "BURNING CRATE" else "SUPPLY CRATE";
+      q:=cc.hud_plates_add(pl,pos[0],xmeadow.exp_height(pos[0],pos[1])+1.25,pos[1],label,f32(o.hp)/f32(rs_object_hp(o.size,o.resilient)),true,false,1);
+      cc.hud_plates_ink(pl,q,1,0.78,0.35);
+    }
+  }
   for i: 0..<XC_FOES {
     e := hs[0].enemies[i];
     c := x[0].b[0].c[1 + i];
@@ -1921,26 +1930,17 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if dx * dx + dz * dz > 30 * 30 || !hostile.hostile_sees(e, view_x, view_z) { x[0].sight[i] = cc.hud_sight_gone(); continue; }
     // the name and its health bar ride one settled answer, fading over 0.15 s
     x[0].sight[i] = xc_sight_step(x, x[0].sight[i], e.x, meadow_y(e.x, e.z), e.z, 1.7, sight_dt);
-    if x[0].sight[i].share <= 0 { continue; }
-    p := xc_proj(x, e.x, meadow_y(e.x, e.z) + 1.55, e.z);
-    if !p.ok || p.x < 0 || p.x > w || p.y < 0 || p.y > h { continue; }
-    if p.x > pick_box.x0 - 40 * k && p.x < pick_box.x1 + 40 * k && p.y > pick_box.y0 - 20 * k && p.y < pick_box.y1 + 20 * k { continue; }   // not over the picker
-    name := XC_FOE_NAMES[e.kind];
     on := i == x[0].target || (wave_on && aa.area_aim_contains(wave,e.x,e.z));
     nb: [32] u8;
-    n = cc.eg_plate(out, n, cc.eg_title(nb[..], name), p.x, p.y, k, f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i].share);
+    cc.hud_plates_push(pl, e.x, meadow_y(e.x, e.z) + 1.55, e.z, cc.eg_title(nb[..], XC_FOE_NAMES[e.kind]), f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i].share);
   }
-  // A world-anchored familiar marker is drawn at the actor's position.
   familiar:=rs_familiar_of(x[0].b[..],0);
   fx:=x[0].familiar_x; fz:=x[0].familiar_z;
   if !observing && familiar>=0 && rs_up(x[0].b[0].c[familiar]) && xdungeon.dg_sight(cr[0].player_x,cr[0].player_z,fx,fz) {
-    p:=xc_proj(x,fx,meadow_y(fx,fz)+0.5,fz);
-    if p.ok && p.x>=0 && p.x<=w && p.y>=0 && p.y<=h {
-      label:=rs_monster_block(x[0].b[0].c[familiar].familiar_form).name;
-      n=cc.text(out,n,label,p.x-xc_text_w(label,9*k)/2,p.y-8*k,9*k,ink_col(k,0.55,0.9,1));
-      n=xc_line(out,n,p.x-10*k,p.y,p.x+10*k,p.y,2*k,0.35,0.75,0.9);
-    }
+    fc:=x[0].b[0].c[familiar];
+    cc.hud_plates_push(pl,fx,meadow_y(fx,fz)+0.75,fz,rs_monster_block(fc.familiar_form).name,f32(rs_max(fc.hp,0))/f32(rs_max(fc.hp_max,1)),false,false,1);
   }
+  n = cc.eg_plates(out, n, pl, view, k, 0);
   // the numbers rising off whoever took them
   for q: 0..<XC_FLOATS {
     f := x[0].fl[q];

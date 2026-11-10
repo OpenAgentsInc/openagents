@@ -153,22 +153,13 @@ e2gd_arrow :: (s: [] E2, x: f32, y: f32, z: f32) {
   face := figs.atan2(x - gl[0].x, z - gl[0].z);
   _ := e2k_play(s, FB_CL_RANGER, xk_slot(FB_CL_RANGER, at), gl[0].x, gl[0].y, gl[0].z, face, x, y, z, 7, act[..], false);
 }
-// His name and Hit Points over his head (the blows' numbers: e2_float).
-e2gd_hud :: (s: [] E2, out: [] f32, at: int) -> int {
-  v := at; gl := s[0].guard[0]; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up; k := s[0].k; now := s[0].clock;
-  cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
-  if gl.up && gl.fade > 0.05 {
-    y := gl.y + 2.05; dx := gl.x - e[0]; dy := y - e[1]; dz := gl.z - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2]; dist := sqrt(dx * dx + dy * dy + dz * dz);
-    rw := e2n_guard_at(s[0].net[..], s[0].net[0].rt);
-    s[0].sight_guard = ifx ahead > 0.5 && dist < f32(E2_PLATE_FAR) then e2_sight_step(s, s[0].sight_guard, gl.x, gl.y, gl.z, 1.9) else cc.hud_sight_gone();
-    sight := s[0].sight_guard.share;
-    if sight > 0 && rw.max > 0 {
-      alpha := sight * gl.fade * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
-      sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-      sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-      v = cc.eg_plate(out, v, "Guard", sx, sy, k, f32(rw.hp) / f32(rw.max), false, false, alpha);
-    }
-  }
-  return v;
+// His name and Hit Points on the frame's plates (e2_heads), while his body shows (the blows' numbers:
+// e2_float).
+e2gd_plate_add :: (s: [] E2, p: [] cc.HudPlates, view: cc.HudPlateView) {
+  gl := s[0].guard[0];
+  if !gl.up || gl.fade <= 0.05 { return; }
+  y := gl.y + 2.05;
+  rw := e2n_guard_at(s[0].net[..], s[0].net[0].rt);
+  s[0].sight_guard = ifx cc.hud_plate_in_reach(view, gl.x, y, gl.z, cc.HUD_PLATE_FAR) then e2_sight_step(s, s[0].sight_guard, gl.x, gl.y, gl.z, 1.9) else cc.hud_sight_gone();
+  if rw.max > 0 { cc.hud_plates_push(p, gl.x, y, gl.z, "Guard", f32(rw.hp) / f32(rw.max), false, false, s[0].sight_guard.share * gl.fade); }
 }

@@ -155,13 +155,14 @@ Each part is engine (any realm), game (every Everglade zone) or zone wiring
 | Engine | Style tokens, text roles and part drawers, SCIFI and FANTASY | `aethyr/ui/hud-style.coax` |
 | Engine | Side bar, menu, tip and words | `aethyr/ui/hud-menu.coax` |
 | Engine | Sight for plates, health bars, names and damage numbers: a body as the visibility service's target, the settled answer faded over 0.15 s | `aethyr/ui/hud-sight.coax` on `aethyr/visibility.coax` |
+| Engine | Where plates over bodies go: reach, order, lift or fold | `aethyr/ui/hud-plates.coax` |
 | Engine | The straight-alpha HUD blend and the two-face glyph atlas | `coax/web/host.js` (`coaxial_fx_alpha_v1`, `sansAtlas`) |
 | Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `apps/openagents-web/charactercreator.coax` |
-| Game | Portrait plate, bar tray, map ring, name plates, place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
+| Game | Portrait plate, bar tray, map ring, name plates (`eg_plates`), place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
 | Game | The side bar: its class features (Healer's Kit, Wild Companion, Find Familiar), the rest menu and how the rest stands, the knock-out toggle, where they sit, what a press does and their drawing (`eg_side_geo`, `eg_side_press`, `eg_side_draw`) | `everglade/hud/class-bar.coax` |
 | Game | The CLASSES and LEVEL picker shared by Everglade's test pages: buttons a finger tall on phones and tablets, the classes as a grid that keeps over the side bar, the wild-shape swap (`cm_pick`, `cm_pick_hit`, `cm_pick_draw`) | `apps/openagents-web/class-menu.coax` |
 | Game | The faces' widths | `everglade/hud/fonts.coax`; the faces in `realms.json` |
-| Zone wiring | Everglade II: its facts and its room's requests | `e2_world_view` in `everglade2.coax`; `e2k_facts`, `e2k_menu_do`, `e2k_side_bar` in `everglade2-cast.coax`; its colliders and land for sight in `everglade2-sight.coax`; plates in `everglade2-monsters.coax`, `everglade2-guard.coax` |
+| Zone wiring | Everglade II: its facts and its room's requests | `e2_world_view` in `everglade2.coax`; `e2k_facts`, `e2k_menu_do`, `e2k_side_bar` in `everglade2-cast.coax`; its colliders and land for sight in `everglade2-sight.coax`; plates in `e2_heads` (`everglade2.coax`), which adds the monsters' and the guard's from `everglade2-monsters.coax` and `everglade2-guard.coax` |
 | Zone wiring | Character Create's wardrobe | `everglade2-create.coax` |
 | Zone wiring | Everglade Experimental: its facts for the side bar and its rest requests (`xc_facts`, `xc_side_act`), where the picker sits (`xc_pick`), the coordinates and FPS lifted over the bar (`hud_floor`), and its walls and meadow for sight (`xc_sight_in`) | `experimental-combat.coax` |
 

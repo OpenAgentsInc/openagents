@@ -9,6 +9,7 @@
 //   coax/bin/coax test aethyr/ui/hud-menu.coax --library
 #load "hud-style.coax";
 #load "hud-sight.coax";   // what floats over a body shows while the body does
+#load "hud-plates.coax";  // where the plates over bodies go
 
 // Words for the realm's renderer to set: each a run of text in a role at a baseline, its left end or
 // its centre, optionally in its own ink. The text lives in one buffer.

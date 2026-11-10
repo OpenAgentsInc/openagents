@@ -54,7 +54,6 @@ E2_DRAWS :: 640;              // draws a pass at most (the woods' runs, the gras
 E2_REMOTES :: 16;             // other players drawn at most (a room seats 16)
 E2_FADE_S :: 0.6;             // s: another player thins in as it comes into your view, and out as it leaves
 E2_POP :: 0.25;               // a body cut off while more than this of it showed is a pop (e2_probe 19)
-E2_PLATE_NEAR :: 20.0; E2_PLATE_FAR :: 32.0;   // m: a name over a head is whole within NEAR, gone past FAR
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
 E2_KIT_BASE :: 1048576;       // gpu/everglade2.coax E2_KIT_BASE
 E2_BUCKETS :: E2_KITS * E2_LODS;
@@ -119,8 +118,8 @@ E2 :: struct {
   rfade: [E2N_ENTS] f32; rlast: [E2N_ENTS] E2Remote; rseat: [E2N_ENTS] int; rlook: [E2N_ENTS * NET_LOOK] u8; rlook_n: [E2N_ENTS] int;
   fade_ins: int; pops: int; ghosts: int;   // e2_probe 18, 19, 87
   rtmp: [1] cc.Creator;                  // a remote's look: your creator's catalog with its record (e2_remote_look)
-  plates: [E2_REMOTES] E2Plate; plate_n: int;   // the names over the others' heads this frame (e2_plates)
-  plates_drawn: int;                             // the names e2_plates drew in the last frame
+  heads: [E2_REMOTES] E2Head; head_n: int;     // the others' heads this frame (e2_remotes_draw): their plates, the map's dots, the reticle
+  plates: [1] cc.HudPlates;                      // the frame's plates over bodies (e2_heads: aethyr/ui/hud-plates.coax)
   // what floats over each body shows while the body does (everglade2-sight.coax): each one's share, fading
   sight_rem: [E2_REMOTES] cc.HudSight; sight_mon: [12] cc.HudSight; sight_guard: cc.HudSight; sight_dt: f32 = 1; sight_at: f32 = -1;
   cy: f32;                                       // the picture's centre row (e2c_lens: the studio frames you off centre)
@@ -136,7 +135,7 @@ E2 :: struct {
   hero_class: int = -1; hero_level: int; hero_ac: int; hero_slots: [10] int;   // your class's AC and spell slots by level, as the rules build it (fb_cl_hero)
   floats: [1] fl.Floats;                         // the numbers over whoever a blow struck: the room's hit words (e2_float)
 }
-E2Plate :: struct { x: f32; y: f32; z: f32; alpha: f32; fade: f32 = 1; sy: f32; name: [NET_NAME] u8; name_n: int; }
+E2Head :: struct { x: f32; y: f32; z: f32; fade: f32 = 1; name: [NET_NAME] u8; name_n: int; }
 
 // ---- the pack: the catalog's kit rows (e2/k<kit>/<level>), and Character Create's own rows
 // The face keeps the ground's two tile sets outside the state (everglade2-face.c), as it does the catalog.
@@ -580,8 +579,8 @@ e2_reticle :: (s: [] E2, out: [] f32, at: int) -> int {
   m := s[0].ml[0]; if m.shown <= 0.01 { return at; }
   k := s[0].k; cx := s[0].width * 0.5; cy := s[0].cy;
   over := false; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up;
-  for i: 0..<s[0].plate_n {
-    p := s[0].plates[i]; dx := p.x - e[0]; dy := p.y - 0.8 - e[1]; dz := p.z - e[2];
+  for i: 0..<s[0].head_n {
+    p := s[0].heads[i]; dx := p.x - e[0]; dy := p.y - 0.8 - e[1]; dz := p.z - e[2];
     z := dx * f[0] + dy * f[1] + dz * f[2]; if z < 0.5 { continue; }
     sx := cx + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / z; sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / z;
     reach := 26 * k + s[0].focal * 0.5 / z;
@@ -1084,7 +1083,7 @@ e2_world_view :: (s: [] E2, out: [] f32, at: int) -> int {
   reach := 60.0f32; z0 := s[0].you_z - reach * 1.5;
   pz := floor(z0 / 6) * 6;
   while pz < s[0].you_z + reach * 1.5 && nd < 40 { if pz < -6 && pz > f32(E2_CLEAR_Z) + f32(E2_CLEAR_R) * 0.5 { dots[nd] = cc.EgDot.{x = e2_road_x(pz), z = pz, kind = cc.EG_DOT_PATH}; nd += 1; } pz += 6; }
-  for i: 0..<s[0].plate_n { if nd < 64 { dots[nd] = cc.EgDot.{x = s[0].plates[i].x, z = s[0].plates[i].z, kind = cc.EG_DOT_FRIEND}; nd += 1; } }
+  for i: 0..<s[0].head_n { if nd < 64 { dots[nd] = cc.EgDot.{x = s[0].heads[i].x, z = s[0].heads[i].z, kind = cc.EG_DOT_FRIEND}; nd += 1; } }
   ml := s[0].monsters[0];
   for m: 0..<E2MN_N { g := ml.mon[m]; if g.up && g.fade > 0.05 && nd < 64 { dots[nd] = cc.EgDot.{x = g.x, z = g.z, kind = cc.EG_DOT_FOE}; nd += 1; } }
   gl := s[0].guard[0]; if gl.up && gl.fade > 0.05 && nd < 64 { dots[nd] = cc.EgDot.{x = gl.x, z = gl.z, kind = cc.EG_DOT_GUARD}; nd += 1; }
@@ -1143,7 +1142,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   // the frame's step for the plates' fades (the first frame snaps them)
   s[0].sight_dt = ifx s[0].sight_at < 0 then 1.0f32 else ifx s[0].clock - s[0].sight_at > 0.1 then 0.1f32 else ifx s[0].clock < s[0].sight_at then 0.0f32 else s[0].clock - s[0].sight_at;
   s[0].sight_at = s[0].clock;
-  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_plates(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2gd_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out)))))))))), dt));
+  hud := e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))))), dt));
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   if s[0].wild[0].stage { hud = 0; s[0].media_n = 0; }   // ?stage=cat is a shot: no HUD
   cc.hud_seal(out, 0, hud);   // every stroke blends by its coverage (everglade2-face.c coaxial_fx_alpha_v1)
@@ -1618,9 +1617,9 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 14 || field == 15 { v := 0; for i: 0..<s[0].draw_n { k := i * 4; grass := s[0].draws[k + 2] >= cast(u32) E2_FIELD_BASE;
       tree := !grass && s[0].draws[k + 2] >= cast(u32) E2_KIT_BASE && s[0].draws[k] < cast(u32) s[0].kit_first[E2_TREES * E2_LODS];
       if (field == 14 && grass) || (field == 15 && tree) { v += cast(int)(s[0].draws[k + 1] * s[0].draws[k + 3]) / 1000; } } return v; }
-  // 16 the names drawn over the others this frame (e2_plates), 17 the others' bodies collected for it
-  if field == 16 { return s[0].plates_drawn; }
-  if field == 17 { return s[0].plate_n; }
+  // 16 the plates drawn over bodies this frame (e2_heads), 17 the others' heads collected for them
+  if field == 16 { return s[0].plates[0].placed; }
+  if field == 17 { return s[0].head_n; }
   // 18 the others that came into your view and thinned in, 19 pops (a body cut off more than E2_POP
   // shown), 87 the bodies thinning out this frame (e2_remotes_draw)
   if field == 18 { return s[0].fade_ins; } if field == 19 { return s[0].pops; } if field == 87 { return s[0].ghosts; }
@@ -1884,7 +1883,7 @@ e2_my_held :: (s: [] E2, d: E2Drawn, from: int) -> E2Drawn {
   return e2_held(s, d, from, e2_kit_of(klass), s[0].creator[0].female, bow.bow_aim(m.draw[0]), m.draw[0].on, 0);
 }
 // The others, as the room has them drawn this frame: each on the land, its own walk and run from how
-// fast it goes, its jump from its feet off the ground, its own look; and its name for e2_plates.
+// fast it goes, its jump from its feet off the ground, its own look; and its name for e2_heads.
 e2_familiars_draw :: (s:[]E2,at:E2Drawn)->E2Drawn {
   d:=at; net:=s[0].net[..]; c:=s[0].creator[..];
   for i:0..<E2N_FAMILIARS {
@@ -1902,7 +1901,7 @@ e2_familiars_draw :: (s:[]E2,at:E2Drawn)->E2Drawn {
   return d;
 }
 e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
-  d := at; s[0].plate_n = 0; s[0].ghosts = 0;
+  d := at; s[0].head_n = 0; s[0].ghosts = 0;
   step := ifx bdt > 0 then bdt / f32(E2_FADE_S) else 0.0f32;
   seen: [E2N_ENTS] bool;
   // the graphics quality's crowd knob: past its share, the others thin out as if gone from view
@@ -1923,11 +1922,11 @@ e2_remotes_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
     if !a[0].on || s[0].rlife[slot] != en.born { a[0] = figs.BdAnim.{}; a[0].on = true; s[0].rair[slot] = false; s[0].rland_at[slot] = -100; s[0].rlife[slot] = en.born; s[0].casts[0].them[slot] = E2kAct.{}; }
     ground := e2_height(r.x, r.z);
     d = e2_remote_body(s, r, slot, d, bdt);
-    if s[0].plate_n < E2_REMOTES && en.name_n > 0 {
-      p := s[0].plates[s[0].plate_n..<s[0].plate_n + 1];
-      p[0].x = r.x; p[0].y = ground + r.y + 2.05; p[0].z = r.z; p[0].alpha = 0; p[0].fade = s[0].rfade[slot];   // the head's top
+    if s[0].head_n < E2_REMOTES && en.name_n > 0 {
+      p := s[0].heads[s[0].head_n..<s[0].head_n + 1];
+      p[0].x = r.x; p[0].y = ground + r.y + 2.05; p[0].z = r.z; p[0].fade = s[0].rfade[slot];   // the head's top
       p[0].name_n = en.name_n; for i: 0..<en.name_n { p[0].name[i] = en.name[i]; }
-      s[0].plate_n += 1;
+      s[0].head_n += 1;
     }
   }
   // the ones gone from your view: thinning out where they were last drawn
@@ -1984,95 +1983,60 @@ e2_fade_drop :: (f: f32) -> f32 { t := ifx f < 0 then 0.0f32 else ifx f > 1 then
   for f: 1..<45 { #assert abs(shown[f] - shown[f - 1]) < 0.03; }
   #assert shown[19] > 0.5 && shown[19] < 0.6 && shown[44] == 0 && s[0].rseat[k] == 0 && rows >= 38 && rows <= 40;
 }
-// The names over the others' heads, in Character Create's face (AR Kai C, cc.text): each where its
-// head is on the screen, whole within E2_PLATE_NEAR m, fading to nothing at E2_PLATE_FAR, and not
-// drawn when the land stands between your eye and the head.
-e2_plates :: (s: [] E2, out: [] f32, at: int) -> int {
-  v := at; k := s[0].k; w := s[0].width; h := s[0].height; s[0].plates_drawn = 0;
-  e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up;
-  // nearest first, so a nearer name keeps its place and one behind it in the picture moves up clear
-  order: [E2_REMOTES] int; dists: [E2_REMOTES] f32;
-  for i: 0..<s[0].plate_n {
-    p := s[0].plates[i]; dx := p.x - e[0]; dy := p.y - e[1]; dz := p.z - e[2];
-    dists[i] = dx * dx + dy * dy + dz * dz; order[i] = i;
-    j := i; while j > 0 && dists[order[j - 1]] > dists[order[j]] { t := order[j]; order[j] = order[j - 1]; order[j - 1] = t; j -= 1; }
-  }
-  taken: [E2_REMOTES * 4] f32; tn := 0;
-  for oi: 0..<s[0].plate_n {
-    i := order[oi];
-    p := s[0].plates[i];
-    hx := p.x; hy := p.y; hz := p.z;
-    dx := hx - e[0]; dy := hy - e[1]; dz := hz - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    dist := sqrt(dx * dx + dy * dy + dz * dz);
-    s[0].plates[i].alpha = 0;
-    if ahead < 0.5 || dist > f32(E2_PLATE_FAR) { s[0].sight_rem[i] = cc.hud_sight_gone(); continue; }
-    s[0].sight_rem[i] = e2_sight_step(s, s[0].sight_rem[i], hx, hy - 2.05, hz, 1.8); sight := s[0].sight_rem[i].share;
-    if sight <= 0 { continue; }
-    alpha := sight * (ifx dist <= f32(E2_PLATE_NEAR) then 1.0f32 else 1 - (dist - f32(E2_PLATE_NEAR)) / f32(E2_PLATE_FAR - E2_PLATE_NEAR));
-    sx := w * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-    sy := (ifx s[0].cy > 0 then s[0].cy else h * 0.5) - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    cap := 12 * k;
-    name := cast(string) p.name[0..<p.name_n];
-    wide := cc.face_width(name, cap, cc.HUD_FACE_TITLE);
-    // over a nearer name: up a line at a time, at most four
-    for lift: 0..<4 {
-      over := false;
-      for q: 0..<tn { if sx - wide * 0.5 < taken[q * 4 + 2] && sx + wide * 0.5 > taken[q * 4] && sy - cap * 1.3 < taken[q * 4 + 3] && sy > taken[q * 4 + 1] { over = true; } }
-      if !over { break; }
-      sy -= cap * 1.4;
-    }
-    if sx + wide * 0.5 < 0 || sx - wide * 0.5 > w || sy < 0 || sy > h { continue; }
-    v = cc.eg_say(out, v, name, sx, sy - cap, cap, cc.HUD_TEXT_NAME, alpha, k, true);
-    taken[tn * 4] = sx - wide * 0.5; taken[tn * 4 + 1] = sy - cap * 1.3; taken[tn * 4 + 2] = sx + wide * 0.5; taken[tn * 4 + 3] = sy; tn += 1;
-    s[0].plates[i].alpha = alpha * p.fade; s[0].plates_drawn += 1; s[0].plates[i].sy = sy;
-  }
-  return e2_familiar_plates(s, out, v);
+// The view the plates over bodies are placed from: the eye, its axes, the picture's centre and size.
+e2_plate_view :: (s: [] E2) -> cc.HudPlateView {
+  return cc.HudPlateView.{eye = s[0].eye, fwd = s[0].fwd, right = s[0].right, up = s[0].up, focal = s[0].focal,
+                          cx = s[0].width * 0.5, cy = ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5, w = s[0].width, h = s[0].height};
 }
-e2_familiar_plates :: (s: [] E2, out: [] f32, at: int) -> int {
-  v := at; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up;
-  for row: s[0].net[0].familiar_rows {
-    if !row.live { continue; }
-    y := e2_height(row.x, row.z) + 0.65;
-    dx := row.x - e[0]; dy := y - e[1]; dz := row.z - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    if ahead < 0.5 || dx * dx + dy * dy + dz * dz > 900 || !e2_sight_shows(s, row.x, e2_height(row.x, row.z), row.z, 0.6) { continue; }
-    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-    sy := (ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5) - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    if sx < 0 || sx > s[0].width || sy < 0 || sy > s[0].height { continue; }
-    k := s[0].k;
-    name := rs_monster_block(RS_FAMILIAR_FORMS[row.form]).name;
-    v = cc.text(out, v, name, sx - 14 * k, sy - 12 * k, 11 * k, cc.ink(k, 0.54, 0.88, 1));
-    v = e2k_line(out, v, sx - 14 * k, sy, sx + 14 * k, sy, 2 * k, 0.18, 0.30, 0.36);
-    v = e2k_line(out, v, sx - 14 * k, sy, sx - 14 * k + 28 * k * f32(row.hp) / f32(row.max), sy, 2 * k, 0.54, 0.88, 1);
+// The plates over bodies, Everglade's shared ones (aethyr/ui/hud-plates.coax places them,
+// everglade/hud/parts.coax eg_plates draws them): the others' names, the familiars' names and health,
+// the monsters' and the guard's. Each shows while its body does (everglade2-sight.coax), whole within
+// HUD_PLATE_NEAR m and gone past HUD_PLATE_FAR; a farther name over a nearer one lifts clear of it.
+e2_heads :: (s: [] E2, out: [] f32, at: int) -> int {
+  p := s[0].plates[..]; view := e2_plate_view(s);
+  cc.hud_plates_begin(p);
+  // the others first, in order, so plate i is head i
+  for i: 0..<s[0].head_n {
+    h := s[0].heads[i];
+    s[0].sight_rem[i] = ifx cc.hud_plate_in_reach(view, h.x, h.y, h.z, cc.HUD_PLATE_FAR) then e2_sight_step(s, s[0].sight_rem[i], h.x, h.y - 2.05, h.z, 1.8) else cc.hud_sight_gone();
+    seen := s[0].sight_rem[i].share;
+    cc.hud_plates_push(p, h.x, h.y, h.z, cast(string) h.name[0..<h.name_n], -1, false, false, seen * h.fade);
   }
-  return v;
+  for row: s[0].net[0].familiar_rows {
+    if !row.live || row.max <= 0 { continue; }
+    foot := e2_height(row.x, row.z);
+    if !cc.hud_plate_in_reach(view, row.x, foot + 0.65, row.z, cc.HUD_PLATE_FAR) || !e2_sight_shows(s, row.x, foot, row.z, 0.6) { continue; }
+    cc.hud_plates_push(p, row.x, foot + 0.65, row.z, rs_monster_block(RS_FAMILIAR_FORMS[row.form]).name, f32(row.hp) / f32(row.max), false, false, 1);
+  }
+  e2mn_plate_add(s, p, view); e2gd_plate_add(s, p, view);
+  return cc.eg_plates(out, at, p, view, s[0].k, 0);
 }
 #test "two names in the same place in the picture: the farther one moves up clear of the nearer" {
   s: [1] E2; out: [8192 * E2_VERTEX_FLOATS] f32;
   s[0].k = 1; s[0].width = 1280; s[0].height = 720; s[0].focal = 900;
   y := e2_height(0, -150) + 2;
   s[0].eye = [3]f32.[0, y, -150]; s[0].fwd = [3]f32.[0, 0, -1]; s[0].right = [3]f32.[1, 0, 0]; s[0].up = [3]f32.[0, 1, 0];
-  s[0].plate_n = 2;
-  s[0].plates[0].x = 0; s[0].plates[0].y = y + 0.4; s[0].plates[0].z = -162;   // farther, first in the list
-  s[0].plates[1].x = 0; s[0].plates[1].y = y + 0.3; s[0].plates[1].z = -158;
-  for i: 0..<2 { for c: 0..<6 { s[0].plates[i].name[c] = "Badger"[c]; } s[0].plates[i].name_n = 6; }
-  _ := e2_plates(s[..], out[..], 0);
-  #assert s[0].plates_drawn == 2 && s[0].plates[0].sy < s[0].plates[1].sy - 13;
+  s[0].head_n = 2;
+  s[0].heads[0].x = 0; s[0].heads[0].y = y + 0.4; s[0].heads[0].z = -162;   // farther, first in the list
+  s[0].heads[1].x = 0; s[0].heads[1].y = y + 0.3; s[0].heads[1].z = -158;
+  for i: 0..<2 { for c: 0..<6 { s[0].heads[i].name[c] = "Badger"[c]; } s[0].heads[i].name_n = 6; }
+  _ := e2_heads(s[..], out[..], 0);
+  pl := s[0].plates[0];
+  #assert pl.placed == 2 && pl.items[0].sy < pl.items[1].sy - 13;
 }
-// The land doesn't stand between the eye and (x, y, z): its height under eight points along the way.
 #test "a name is drawn over a head ahead within reach, and not over one behind you or too far" {
   s: [1] E2; out: [4096 * E2_VERTEX_FLOATS] f32;
   s[0].k = 1; s[0].width = 1280; s[0].height = 720; s[0].focal = 900;
   y := e2_height(0, -150) + 2;
   s[0].eye = [3]f32.[0, y, -150]; s[0].fwd = [3]f32.[0, 0, -1]; s[0].right = [3]f32.[1, 0, 0]; s[0].up = [3]f32.[0, 1, 0];
-  s[0].plate_n = 3;
-  s[0].plates[0].x = 0; s[0].plates[0].y = e2_height(0, -158) + 2.05; s[0].plates[0].z = -158;   // 8 m ahead
-  s[0].plates[1].x = 0; s[0].plates[1].y = e2_height(0, -142) + 2.05; s[0].plates[1].z = -142;   // behind
-  s[0].plates[2].x = 0; s[0].plates[2].y = e2_height(0, -200) + 2.05; s[0].plates[2].z = -200;   // 50 m off
-  for i: 0..<3 { s[0].plates[i].name[0] = 'A'; s[0].plates[i].name[1] = 'r'; s[0].plates[i].name_n = 2; }
-  v := e2_plates(s[..], out[..], 0);
-  #assert s[0].plates_drawn == 1 && v > 0 && s[0].plates[0].alpha == 1 && s[0].plates[1].alpha == 0 && s[0].plates[2].alpha == 0;
+  s[0].head_n = 3;
+  s[0].heads[0].x = 0; s[0].heads[0].y = e2_height(0, -158) + 2.05; s[0].heads[0].z = -158;   // 8 m ahead
+  s[0].heads[1].x = 0; s[0].heads[1].y = e2_height(0, -142) + 2.05; s[0].heads[1].z = -142;   // behind
+  s[0].heads[2].x = 0; s[0].heads[2].y = e2_height(0, -200) + 2.05; s[0].heads[2].z = -200;   // 50 m off
+  for i: 0..<3 { s[0].heads[i].name[0] = 'A'; s[0].heads[i].name[1] = 'r'; s[0].heads[i].name_n = 2; }
+  v := e2_heads(s[..], out[..], 0);
+  pl := s[0].plates[0];
+  #assert pl.placed == 1 && v > 0 && pl.items[0].shown == 1 && pl.items[1].shown == 0 && pl.items[2].shown == 0;
 }
 #test "a plate shows only while its body does: behind the camp's stall none is drawn, beside it one is, fading over 0.15 s" {
   s: [1] E2; out: [4096 * E2_VERTEX_FLOATS] f32; s[0].k = 1; s[0].width = 1280; s[0].height = 720; s[0].focal = 900;
@@ -2085,22 +2049,22 @@ e2_familiar_plates :: (s: [] E2, out: [] f32, at: int) -> int {
     bx := ifx q == 0 then hx else ox; bz := ifx q == 0 then hz else oz;
     dx := bx - ex; dz := bz - ez; l := sqrt(dx * dx + dz * dz);
     s[0].fwd = [3] f32.[dx / l, 0, dz / l]; s[0].right = [3] f32.[-dz / l, 0, dx / l]; s[0].up = [3] f32.[0, 1, 0];
-    s[0].plate_n = 1; s[0].plates[0].x = bx; s[0].plates[0].y = e2_height(bx, bz) + 2.05; s[0].plates[0].z = bz;
-    s[0].plates[0].name[0] = 'A'; s[0].plates[0].name_n = 1; s[0].sight_rem[0] = cc.HudSight.{}; s[0].sight_dt = 1;
-    _ := e2_plates(s[..], out[..], 0);
-    #assert (q == 0) == (s[0].plates_drawn == 0);
+    s[0].head_n = 1; s[0].heads[0].x = bx; s[0].heads[0].y = e2_height(bx, bz) + 2.05; s[0].heads[0].z = bz;
+    s[0].heads[0].name[0] = 'A'; s[0].heads[0].name_n = 1; s[0].sight_rem[0] = cc.HudSight.{}; s[0].sight_dt = 1;
+    _ := e2_heads(s[..], out[..], 0);
+    #assert (q == 0) == (s[0].plates[0].placed == 0);
   }
   // coming into view, it fades in over 0.15 s, not at once
-  s[0].sight_rem[0] = cc.HudSight.{}; s[0].sight_dt = 0.05; _ := e2_plates(s[..], out[..], 0);
-  #assert s[0].plates_drawn == 1 && s[0].sight_rem[0].share > 0.3 && s[0].sight_rem[0].share < 0.4;
+  s[0].sight_rem[0] = cc.HudSight.{}; s[0].sight_dt = 0.05; _ := e2_heads(s[..], out[..], 0);
+  #assert s[0].plates[0].placed == 1 && s[0].sight_rem[0].share > 0.3 && s[0].sight_rem[0].share < 0.4;
   // its health bar and name ride the same answer: behind the stall again, the plate holds one stray
   // frame (aethyr/visibility.coax vis_settle), then fades
-  s[0].plates[0].x = hx; s[0].plates[0].y = e2_height(hx, hz) + 2.05; s[0].plates[0].z = hz;
+  s[0].heads[0].x = hx; s[0].heads[0].y = e2_height(hx, hz) + 2.05; s[0].heads[0].z = hz;
   dx := hx - ex; dz := hz - ez; l := sqrt(dx * dx + dz * dz);
   s[0].fwd = [3] f32.[dx / l, 0, dz / l]; s[0].right = [3] f32.[-dz / l, 0, dx / l];
-  s[0].sight_rem[0] = cc.HudSight.{share = 1}; _ = e2_plates(s[..], out[..], 0);
-  #assert s[0].sight_rem[0].memo.shown && s[0].plates_drawn == 1;
-  _ = e2_plates(s[..], out[..], 0); #assert !s[0].sight_rem[0].memo.shown && s[0].sight_rem[0].share < 0.7;
+  s[0].sight_rem[0] = cc.HudSight.{share = 1}; _ = e2_heads(s[..], out[..], 0);
+  #assert s[0].sight_rem[0].memo.shown && s[0].plates[0].placed == 1;
+  _ = e2_heads(s[..], out[..], 0); #assert !s[0].sight_rem[0].memo.shown && s[0].sight_rem[0].share < 0.7;
 }
 #test "a name over a head fades with distance and hides behind the land" {
   s: [1] E2; s[0].eye = [3] f32.[0, e2_height(0, 0) + 2, 0];
@@ -2618,9 +2582,9 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   s[0].eye=[3]f32.[-4,e2_height(-4,13.5)+2,13.5];
   s[0].fwd=[3]f32.[0,0,-1]; s[0].right=[3]f32.[1,0,0]; s[0].up=[3]f32.[0,1,0];
   out:[8192 * E2_VERTEX_FLOATS]f32;
-  #assert e2_plates(s[..],out[..],0)>0;
+  #assert e2_heads(s[..],out[..],0)>0;
   e2n_record(n,"m2 6 0");
-  #assert !n[0].familiar_rows[2].live && e2_plates(s[..],out[..],0)==0;
+  #assert !n[0].familiar_rows[2].live && e2_heads(s[..],out[..],0)==0;
   e2n_record(n,"m2 7 1 2 0 -4000 -470000 2 2");
   #assert n[0].familiar_rows[2].live && n[0].familiar_rows[2].z== -470;
 }

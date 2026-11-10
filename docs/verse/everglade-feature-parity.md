@@ -139,12 +139,20 @@ zone-local mount code (`Mount`, `mount_up`, `Horse` and so on) fails the check.
 
 ### Name plates
 
-No shared module exists yet. Its home is `everglade/hud/`.
+The engine places plates in `aethyr/ui/hud-plates.coax`: a realm adds each
+plate it wants a frame (a point over a head, a name, a health share and its own
+fade, such as the body's sight share from `aethyr/ui/hud-sight.coax`), and the
+module places them from the camera. It fades them with distance, keeps them out
+of boxes the realm keeps clear, puts the ones always shown first and the rest
+nearest first, and lifts a covered name clear or folds it into a count on the
+name over it. A plate can set its own height, so a label of two lines (the
+housewright showcase's signs in the 5E Lab) takes its full box. Everglade draws
+placed plates in FANTASY with `eg_plates` in `everglade/hud/parts.coax`.
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Local: players (`E2Plate` everglade2.coax:127, `e2_plates` :1779, `e2_plate_seen` :1852), familiars (`e2_familiar_plates` :1820), monsters and the guard (inside `e2mn_hud` and `e2gd_hud`). |
-| Experimental | Local: the 5E Lab (`draw_labels3` fivelab.coax:2642, `draw_names3` :2686), its biome and comparison labels (`lab_biome_labels` :3167, `lab_comparison_labels` :3176), and the combat's monster names inside `xc_frame` (experimental-combat.coax:1812-1834). |
+| Everglade II | Wired: `e2_heads` everglade2.coax adds the others, the familiars, the monsters (`e2mn_plate_add`) and the guard (`e2gd_plate_add`) and draws them with `eg_plates`. |
+| Experimental | Wired: `xc_frame` experimental-combat.coax adds the crates, the monsters and your familiar, and `lab_pack_titles` fivelab.coax the private packs' titles; both draw with `eg_plates`. The 5E Lab (`lab_heads3` fivelab.coax) places with the shared module and draws in its own strokes, because it keeps SCIFI's blend. |
 | Everglade v1 | Local: `Label` and `labels` everglade.coax:3734, `name_point` :3817, other players' plates (`remote_plate_at` everglade-rangers.coax:525, `rangers_labels` :543), `room_labels` everglade-room.coax:109, and the moderator's `md_plate` everglade-moderate.coax:86. |
 
 ### Spell effects
@@ -249,7 +257,7 @@ when v1 wires the shared module or retires.
 | HUD parts | #13083 | 6 / 10 / 24 | none |
 | Class bars | #13084 | 2 / 1 / 5 | Everglade v1 |
 | Dash | #13085 | 0 / 2 / 0 | none |
-| Name plates | #13088 | 5 / 5 / 14 | Everglade II, Experimental, Everglade v1 |
+| Name plates | #13088 | 0 / 0 / 14 | Everglade v1 |
 | Spell effects | #13086 | 0 / 0 / 20 | none |
 | Camera | #13087 | 8 / 9 / 5 | none |
 
@@ -307,10 +315,8 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### Name plates (#13088)
 
-24 zone-local copies.
+14 zone-local copies.
 
-- Everglade II: `E2_PLATE_NEAR` everglade2.coax:52, `E2Plate` everglade2.coax:127, `e2_plates` everglade2.coax:1779, `e2_familiar_plates` everglade2.coax:1820, `e2_plate_seen` everglade2.coax:1852.
-- Experimental: `draw_labels3` fivelab.coax:2642, `np_named` fivelab.coax:2684, `draw_names3` fivelab.coax:2686, `lab_biome_labels` fivelab.coax:3167, `lab_comparison_labels` fivelab.coax:3176.
 - Everglade v1: `md_plates_clear` everglade-moderate.coax:84, `md_plate` everglade-moderate.coax:86, `rp_labels` everglade-raid-preview.coax:541, `REMOTE_PLATE_NEAR` everglade-rangers.coax:53, `REMOTE_PLATE_FADE` everglade-rangers.coax:54, `remote_plate_at` everglade-rangers.coax:525, `remote_plate_for` everglade-rangers.coax:532, `remote_plate_shown` everglade-rangers.coax:536, `rangers_labels` everglade-rangers.coax:543, `room_labels` everglade-room.coax:109, `Label` everglade.coax:3733, `labels` everglade.coax:3734, `name_point` everglade.coax:3817, `name_hidden` everglade.coax:3827.
 
 ### Spell effects (#13086)

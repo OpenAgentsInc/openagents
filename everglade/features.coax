@@ -50,7 +50,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "=Mount =mount Mounted mounted_ mount_up dismount ride_pose rider_ Steed steed_ Horse horse_",
     files = "mount horse"},
   EfFeature.{name = "name-plates", title = "name plates", required = true, issue = 13088,
-    owners = "everglade/hud/",
+    owners = "aethyr/ui/hud-plates.coax everglade/hud/",
     marks = "E2Plate _plates remote_plate REMOTE_PLATE PLATE_NEAR _plate_seen =Label _labels =labels draw_names np_named name_point name_hidden md_plate nameplate name_plate",
     files = "nameplate"},
   EfFeature.{name = "spell-effects", title = "spell effects", required = true, issue = 13086,
@@ -73,11 +73,11 @@ EF_ZONES :: [3] EfZone.[
   EfZone.{name = "everglade-ii",
     paths = "apps/openagents-web/everglade2 coax/web/room/room-e2- coax/web/room/room-everglade.coax",
     entries = "apps/openagents-web/everglade2.coax coax/web/room/room-everglade.coax",
-    uses = "bow damage-numbers area-targeting conditions hud class-bars dash spell-effects camera"},
+    uses = "bow damage-numbers area-targeting conditions hud class-bars dash name-plates spell-effects camera"},
   EfZone.{name = "experimental",
     paths = "apps/openagents-web/fivelab apps/openagents-web/charactercreator apps/openagents-web/experimental- verse/experimental-",
     entries = "apps/openagents-web/fivelab.coax",
-    uses = "bow area-targeting conditions hud class-bars dash spell-effects camera"},
+    uses = "bow area-targeting conditions hud class-bars dash name-plates spell-effects camera"},
   EfZone.{name = "everglade-v1",
     paths = "apps/openagents-web/everglade- apps/openagents-web/everglade.coax",
     entries = "apps/openagents-web/everglade.coax",
@@ -88,7 +88,7 @@ EF_ZONES :: [3] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [188] string.[
+EF_KNOWN :: [178] string.[
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
   "conditions apps/openagents-web/everglade2-cast.coax e2k_health_text",
   "conditions apps/openagents-web/everglade2-cast.coax E2K_CONDITION",
@@ -98,22 +98,17 @@ EF_KNOWN :: [188] string.[
   "hud apps/openagents-web/everglade2-create.coax e2c_hud",
   "camera apps/openagents-web/everglade2-create.coax e2c_shot",
   "camera apps/openagents-web/everglade2-create.coax e2c_lens",
-  "hud apps/openagents-web/everglade2-guard.coax e2gd_hud",
   "hud apps/openagents-web/everglade2-monsters.coax e2mn_hud",
   "class-bars apps/openagents-web/everglade2-net.coax E2nKit",
   "class-bars apps/openagents-web/everglade2-net.coax e2n_kit",
-  "name-plates apps/openagents-web/everglade2.coax E2_PLATE_NEAR",
   "camera apps/openagents-web/everglade2.coax E2_CAM_TRUNKS",
   "camera apps/openagents-web/everglade2.coax E2_LOOK_DRAG",
-  "name-plates apps/openagents-web/everglade2.coax E2Plate",
   "camera apps/openagents-web/everglade2.coax e2_ml_shot",
   "camera apps/openagents-web/everglade2.coax e2_cam_ground",
   "camera apps/openagents-web/everglade2.coax e2_shot",
   "camera apps/openagents-web/everglade2.coax e2_follow",
   "hud apps/openagents-web/everglade2.coax e2_quality_hud",
   "hud apps/openagents-web/everglade2.coax e2_light_hud",
-  "name-plates apps/openagents-web/everglade2.coax e2_plates",
-  "name-plates apps/openagents-web/everglade2.coax e2_familiar_plates",
   "conditions coax/web/room/room-everglade.coax rm_eg_cond",
   "conditions coax/web/room/room-everglade.coax rm_eg_cond_left",
   "camera apps/openagents-web/charactercreator-walk.coax walk_camera",
@@ -147,14 +142,9 @@ EF_KNOWN :: [188] string.[
   "camera apps/openagents-web/fivelab.coax LOOK_DRAG",
   "camera apps/openagents-web/fivelab.coax follow_cam",
   "hud apps/openagents-web/fivelab.coax layout",
-  "name-plates apps/openagents-web/fivelab.coax draw_labels3",
-  "name-plates apps/openagents-web/fivelab.coax np_named",
-  "name-plates apps/openagents-web/fivelab.coax draw_names3",
   "hud apps/openagents-web/fivelab.coax draw_panel",
   "hud apps/openagents-web/fivelab.coax draw_player",
   "hud apps/openagents-web/fivelab.coax draw_top",
-  "name-plates apps/openagents-web/fivelab.coax lab_biome_labels",
-  "name-plates apps/openagents-web/fivelab.coax lab_comparison_labels",
   "hud apps/openagents-web/fivelab.coax draw_sliders",
   "camera apps/openagents-web/fivelab.coax cam_zoom",
   "camera apps/openagents-web/fivelab.coax cam_home",
@@ -281,10 +271,8 @@ EF_KNOWN :: [188] string.[
 
 // Required features a zone doesn't wire yet, as "zone feature": each is a warning that names the
 // feature's issue. Take a row off when the zone wires the feature (and add it to the zone's uses).
-EF_GAPS :: [7] string.[
-  "everglade-ii name-plates",
+EF_GAPS :: [5] string.[
   "experimental damage-numbers",
-  "experimental name-plates",
   "everglade-v1 bow",
   "everglade-v1 damage-numbers",
   "everglade-v1 class-bars",
