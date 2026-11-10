@@ -1853,12 +1853,12 @@ mouse_pointer :: (s:[]Creator,x:f32,y:f32,phase:int,id:int,button:int)->bool {
  #assert !scene_capture("url=http://127.0.0.1/worlds/character-creator?scene=0\n");
 }
 // ?stage=build-cottage (#13106's review clip): a wattle-and-daub cottage goes up from its bare
-// site to its last stage in front of you, two seconds a stage, starting a second in.
+// site to its last stage, two seconds a stage, starting a second in, with no HUD (fivelab.coax).
 build_review_page :: (facts:string)->bool {
  want:="stage=build-cottage";if facts.count<want.count+1 {return false;}
  for i:1..<facts.count-want.count+1 {if (facts[i-1]=='?' || facts[i-1]=='&') && facts[i..<i+want.count]==want {e:=i+want.count;if e==facts.count || facts[e]=='\n' || facts[e]=='&' || facts[e]=='#' {return true;}}}return false;
 }
-BUILD_REVIEW_AT :: [2]f32.[62,66];
+BUILD_REVIEW_AT :: [2]f32.[-60,-38];   // the open grass south of the glade's village, where the time-lapses stand (fivelab.coax LAB_STAGE_X)
 build_review_frame :: (s:[]Creator) {
  if !s[0].build_review {return;}
  if s[0].build_t0<0 {s[0].build_t0=s[0].clock;}

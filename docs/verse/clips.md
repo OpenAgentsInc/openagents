@@ -92,6 +92,23 @@ realm, a feature being shown off, or a moment a player really had.
   coax/web/tool.sh shot "http://127.0.0.1:8800/worlds/everglade?raid=preview&stage=darian" ~/Desktop/darian.png 1440x900 3000
   ```
 
+- **Housewright time-lapses** (`/worlds/everglade-experimental?stage=house-leanto`, `house-hut`,
+  `house-cottage`, `house-timber`, `house-stone`, `house-row`; Episode 293, #13107): one house
+  builds on the open grass at (-60, -38), south of the glade's village, from its bare site to finished, drawn by the build sites
+  at any progress (#13106), with no HUD. The game layer
+  (`everglade/world/housewright-stage.coax`) holds each shot's progress keys, its camera track
+  (`aethyr/cam/track.coax`) and its sky clock. The sun moves over the build: the stone cottage
+  passes a full day and night. The corner shows the speed (the tier's workdays over the clip) and
+  the workday. Under the house, the text gives its starting materials and its work. `house-row`
+  stands the five finished houses small to large, with the tool that unlocks each under it. The
+  clock counts game steps of the frame time, so two recordings give the same frames.
+
+  ```shell
+  coax/web/tool.sh clip "http://127.0.0.1:8800/worlds/everglade-experimental?stage=house-cottage" ~/Desktop/cottage.mp4 --size 1920x1080 --seconds 10
+  ```
+
+  Lengths: lean-to 5 s, hut 8 s, cottage 10 s, timber house 8 s, stone cottage 10 s, row 6 s.
+
 ## Native film frames
 
 A realm that runs natively renders a clip without Chrome: `vk-realm`

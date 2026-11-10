@@ -82,6 +82,14 @@ is arriving and where, and the materials used so far. A whole-number progress
 draws exactly that stage. Open `?stage=build-cottage` to watch one
 wattle-and-daub cottage go up on the meadow at (62, 66), two seconds a stage.
 
+### Time-lapses
+
+`?stage=house-leanto`, `house-hut`, `house-cottage`, `house-timber`, `house-stone` and
+`house-row` film one house building on the open grass at (-60, -38), south of the glade's village, or the five finished side by
+side. Each one owns the camera (a keyed track, `aethyr/cam/track.coax`) and the sun (the
+glade's day, `env_glade_day_profile`), and draws no HUD. On a local page, `&sx=` and `&sz=` (metres
+plus 1000) and `&turn=` stand it somewhere else. See [Gameplay clips](clips.md).
+
 ## Fight back
 
 You fight the monsters with your class's level 1 kit

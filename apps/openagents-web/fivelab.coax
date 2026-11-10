@@ -153,6 +153,7 @@ Num :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f3
 Lab :: struct {
   stage: int = -1;   // a ?stage= setup (lab_stage): a housewright time-lapse (hws), -1 none
   stage_steps: int;  // its clock: the game steps (1/60 s) it has run
+  stage_x: f32 = LAB_STAGE_X; stage_z: f32 = LAB_STAGE_Z; stage_turn: int = LAB_STAGE_TURN;   // where it stands: LAB_STAGE_*, or on a local page &sx=, &sz= (metres + 1000) and &turn=
   experimental_audio: [1] exsound.ExperimentalSound;
   respawn_id:int = -1;
   ride_dev: int;   // a local page's ?ride= or ?stage= (experimental-ride.coax lab_ride_dev): mounted, galloping, drawing on the horse, or a stage
@@ -3090,25 +3091,28 @@ lab_stage :: (s: [] Lab, facts: string) {
     if line.count < 4 || line[0..<4] != "url=" { continue; }
     st := hws.hws_find(line[4..<line.count]);
     if st >= 0 { s[0].stage = st; s[0].stage_steps = 0; s[0].xc[0].open = false; }
+    q := line[4..<line.count]; x := url_number(q, "sx"); z := url_number(q, "sz"); r := url_number(q, "turn");
+    if st >= 0 && x >= 0 && z >= 0 { s[0].stage_x = f32(x) - 1000; s[0].stage_z = f32(z) - 1000; }
+    if st >= 0 && r >= 0 && r < 4 { s[0].stage_turn = r; }
   }
 }
 lab_stage_t :: (s: [] Lab) -> f32 { return trk.cam_track_clock(s[0].stage_steps, hws.HWS_HZ); }
-// Where the time-lapses stand: the clear, level meadow east of the showcase yard, south of the
-// village's last houses. Every house fronts +z, so the camera looks back over the village and the
-// castle, and the glade's sun stands behind the house.
-LAB_STAGE_X :: 62.0;
-LAB_STAGE_Z :: 74.0;
-LAB_STAGE_TURN :: 0;
+// Where the time-lapses stand: the open grass of the glade south of its village, west of the
+// dungeon and clear of every building site (verse/experimental-terrain.coax EXP_SITES). Every house
+// fronts -z (a half turn), so the sun lights its front and the camera looks north over the village.
+LAB_STAGE_X :: -60.0;
+LAB_STAGE_Z :: -38.0;
+LAB_STAGE_TURN :: 2;
 LAB_STAGE_SLOTS :: 5;
-lab_stage_site :: () -> building.BuildingFrame { return building.BuildingFrame.{x = LAB_STAGE_X, z = LAB_STAGE_Z, turn = LAB_STAGE_TURN}; }
+lab_stage_site :: (s: [] Lab) -> building.BuildingFrame { return building.BuildingFrame.{x = s[0].stage_x, z = s[0].stage_z, turn = s[0].stage_turn}; }
 lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
-  t := lab_stage_t(s); site := lab_stage_site(); g := xterrain.exp_height(site.x, site.z);
+  t := lab_stage_t(s); site := lab_stage_site(s); g := xterrain.exp_height(site.x, site.z);
   // the houses: each a build site at its progress (aethyr/world/build-site.coax, #13106)
   h: [LAB_STAGE_SLOTS] hws.HwsHouse; n := hws.hws_houses(s[0].stage, t, 0, 0, h[..]);
   for i: 0..<LAB_STAGE_SLOTS {
     if i >= n { cc.build_site_clear(s[0].creator[..], i); continue; }
     p := building.building_point(site, h[i].frame.x, h[i].frame.z);
-    f := building.BuildingFrame.{x = p[0], z = p[1], turn = LAB_STAGE_TURN};
+    f := building.BuildingFrame.{x = p[0], z = p[1], turn = site.turn};
     cc.build_site_set(s[0].creator[..], i, h[i].tier, f, xterrain.exp_height(p[0], p[1]), h[i].progress);
   }
   v := hws.hws_view(s[0].stage, t, 0, 0, 0);
@@ -3129,7 +3133,7 @@ lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k
   n := at; st := s[0].stage; t := lab_stage_t(s); tier := hws.hws_tier(st);
   if st == hws.HWS_ROW {
     // the row: under each finished house, the tool that unlocks it
-    site := lab_stage_site(); rh: [LAB_STAGE_SLOTS] hws.HwsHouse; m := hws.hws_houses(st, t, 0, 0, rh[..]);
+    site := lab_stage_site(s); rh: [LAB_STAGE_SLOTS] hws.HwsHouse; m := hws.hws_houses(st, t, 0, 0, rh[..]);
     for i: 0..<m {
       p := building.building_point(site, rh[i].frame.x, rh[i].frame.z + hw.HW_REACH[rh[i].tier][1] + 0.6);
       q := lab_stage_at(u, p[0], xterrain.exp_height(p[0], p[1]), p[1]);
@@ -3179,7 +3183,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
   return n;
 }
 lab_light :: (s: [] Lab, u: [] f32) {
-  if s[0].stage >= 0 && s[0].creator[0].stage_on {
+  if (s[0].stage >= 0 || s[0].creator[0].build_review) && s[0].creator[0].stage_on {
     w := envf.env_frame_glade_day_words(s[0].creator[0].stage_day); for i: 0..<U_ENV_WORDS { u[U_ENV + i] = w[i]; }
     envf.env_frame_day_halo(s[0].creator[0].stage_day, u, 32); return;
   }
@@ -3209,6 +3213,12 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
       lab_stage_step(s, dt, still);
       n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
       n = lab_stage_text(s,out,n,u,width,height,hi(dpr,0.5));
+      cc.hud_seal(out,0,n);
+      return n;
+    }
+    if s[0].creator[0].build_review {
+      // ?stage=build-cottage films its cottage: the world alone, no HUD or bar
+      n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
       cc.hud_seal(out,0,n);
       return n;
     }
