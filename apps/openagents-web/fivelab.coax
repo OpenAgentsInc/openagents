@@ -3127,8 +3127,9 @@ lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
   v := hws.hws_view(s[0].stage, t, 0, 0, 0);
   e := building.building_point(site, v.ex, v.ez); l := building.building_point(site, v.lx, v.lz);
   cc.stage_set(s[0].creator[..], trk.CamView.{ex = e[0], ey = v.ey + g, ez = e[1], lx = l[0], ly = v.ly + g, lz = l[1]}, hws.hws_day(s[0].stage, t));
-  // whole game steps of the frame's time (a clip's fixed 1/30 s is exactly 2), so any frame rate keeps time
-  if dt > 0 && dt < 1 && !still { q := int(dt * f32(hws.HWS_HZ) + 0.5); s[0].stage_steps += ifx q < 1 then 1 else q; }
+  // whole game steps of the frame's time: a clip's fixed 1/30 s is exactly 2, and its loading steps (a
+  // millionth of a second each) none, so the take starts on step 0 however long the page took to load
+  if dt > 0 && dt < 1 && !still { q := int(dt * f32(hws.HWS_HZ) + 0.5); s[0].stage_steps += ifx q < 1 && dt > 0.001 then 1 else q; }
 }
 lab_stage_at :: (u: [] f32, px: f32, py: f32, pz: f32) -> [3] f32 {
   dx := px - u[16]; dy := py - u[17]; dz := pz - u[18];
@@ -3167,6 +3168,8 @@ lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k
 #test "a ?stage=house-* page stages its house: the clock is whole steps and the camera and day are the stage's" {
   s: [1] Lab; lab_stage(s[..], "tab=1\nurl=http://127.0.0.1:8800/worlds/everglade-experimental?stage=house-cottage\n");
   #assert s[0].stage == 2 && s[0].stage_steps == 0 && !s[0].xc[0].open;
+  for i: 0..<600 { lab_stage_step(s[..], 0.000001, false); }   // a clip's loading steps
+  #assert s[0].stage_steps == 0;
   for i: 0..<45 { lab_stage_step(s[..], 1.0 / 30.0, false); }
   #assert s[0].stage_steps == 90 && lab_stage_t(s[..]) == 1.5 && s[0].creator[0].stage_on;
   lab_stage_step(s[..], 0, true); #assert s[0].stage_steps == 90;
