@@ -66,6 +66,7 @@ UNDO :: EB_UNDO; REDO :: EB_REDO;
 EDIT_NONE :: EB_EDIT_NONE;
 // How a press selects (press_intent); a drag keeps the unit it started with.
 PRESS_CARET :: 0; PRESS_EXTEND :: 1; PRESS_WORD :: 2; PRESS_LINE :: 3;
+PRESS_TRIPLE :: 3;            // the clicks that select a line
 
 Composer :: struct {
   ed: [1] EditBuf;              // the text, its selection, undo and IME composition (components/core/edit.coax)
@@ -396,7 +397,7 @@ composer_press :: (c: [] Composer, a: [] Atlas, x: f32, y: f32, clicks: int, shi
   if hit >= 0 { c[0].clicked = hit; return true; }
   if !inside || !a[0].ready { return inside; }
   if c[0].ed[0].marked { composer_unmark(c); }
-  intent := ifx clicks >= 3 then PRESS_LINE else ifx clicks == 2 then PRESS_WORD else ifx shift then PRESS_EXTEND else PRESS_CARET;
+  intent := ifx clicks >= PRESS_TRIPLE then PRESS_LINE else ifx clicks == 2 then PRESS_WORD else ifx shift then PRESS_EXTEND else PRESS_CARET;
   h := content_hit(c, a, x, y);
   c[0].selecting = true; c[0].drag_unit = intent;
   if intent == PRESS_WORD || intent == PRESS_LINE {
@@ -741,11 +742,11 @@ test_atlas :: (a: [] Atlas) {
   }
   for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
 }
-measure_all :: (a: [] Atlas) {
+test_measure_all :: (a: [] Atlas) {
   for s: 0..<GP_DYN_SLOTS { if a[0].clusters[s].state == 1 { a[0].clusters[s].advance = 14; a[0].clusters[s].state = 2; } }
 }
 // A focused composer holding text, wrapped 800 wide, the caret at the end.
-setup :: (c: [] Composer, a: [] Atlas, s: string) {
+test_setup :: (c: [] Composer, a: [] Atlas, s: string) {
   test_atlas(a);
   c[0].focused = true;
   composer_insert(c, s);
@@ -757,7 +758,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 
 #test "typing inserts at the caret; Backspace and Delete take a grapheme, a word or the line" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "hello world");
+  test_setup(c[..], a[..], "hello world");
   #assert typed(c[..]) == "hello world" && c[0].ed[0].caret == 11;
   #assert press_key(c[..], a[..], KEY_BACKSPACE, 0) && typed(c[..]) == "hello worl";
   #assert press_key(c[..], a[..], KEY_BACKSPACE, MOD_ALT) && typed(c[..]) == "hello ";
@@ -775,7 +776,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "Cmd+Backspace and Cmd+Delete stop at the logical line; Alt+Delete takes the next word" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "one two\nthree four");
+  test_setup(c[..], a[..], "one two\nthree four");
   move_to(c[..], 14);   // inside "four"... after "three "
   #assert press_key(c[..], a[..], KEY_BACKSPACE, MOD_CMD) && typed(c[..]) == "one two\nfour";
   #assert press_key(c[..], a[..], KEY_DELETE, MOD_ALT) && typed(c[..]) == "one two\n";
@@ -784,7 +785,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "typing or deleting over a selection replaces it; plain arrows collapse it to its edge" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "hello world");
+  test_setup(c[..], a[..], "hello world");
   #assert press_key(c[..], a[..], KEY_LEFT, MOD_SHIFT | MOD_ALT) && sel_lo(c[..]) == 6 && sel_hi(c[..]) == 11 && selected(c[..]) == "world";
   composer_insert(c[..], "there");
   #assert typed(c[..]) == "hello there" && c[0].ed[0].caret == 11 && c[0].ed[0].anchor == 11;
@@ -800,7 +801,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "words are UAX 29 segments: punctuation stops, apostrophes and decimal points don't" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "don't stop, 3.14 foo_bar  日本語 カタカナ!");
+  test_setup(c[..], a[..], "don't stop, 3.14 foo_bar  日本語 カタカナ!");
   t := typed(c[..]);
   #assert word_seg_end(t, 0) == 5 && word_seg_end(t, 6) == 10 && word_seg_end(t, 10) == 11;
   #assert word_seg_end(t, 12) == 16 && word_seg_end(t, 17) == 24 && word_seg_end(t, 24) == 26;
@@ -813,7 +814,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "undo rewinds in typed bursts; redo replays; a new edit drops redo" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "");
+  test_setup(c[..], a[..], "");
   for ch: 0..<5 { composer_insert(c[..], "a"); c[0].ed[0].clock += 0.1; }
   composer_insert(c[..], " ");                 // a space starts a step
   composer_insert(c[..], "b");
@@ -837,7 +838,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "the history keeps 200 steps and drops the oldest" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "");
+  test_setup(c[..], a[..], "");
   for k: 0..<203 { composer_insert(c[..], " "); }
   #assert c[0].ed[0].hist[UNDO].count == UNDO_LIMIT;
   for k: 0..<UNDO_LIMIT { composer_undo(c[..]); }
@@ -845,7 +846,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "cut takes the selection as its own step; Enter clears as a new document" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "cut me");
+  test_setup(c[..], a[..], "cut me");
   move_to(c[..], 4); select_to(c[..], 6);
   #assert selected(c[..]) == "me";
   composer_cut_selection(c[..]);
@@ -856,7 +857,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "Home and End reach the logical line, Cmd+Up and Cmd+Down the document; Up and Down keep the column" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "abcdef\nab\nabcdef");
+  test_setup(c[..], a[..], "abcdef\nab\nabcdef");
   move_to(c[..], 12);   // "ab|cdef" on the third line
   #assert press_key(c[..], a[..], KEY_HOME, MOD_SHIFT) && selected(c[..]) == "ab";
   #assert press_key(c[..], a[..], KEY_RIGHT, MOD_CMD) && c[0].ed[0].caret == 16;
@@ -869,7 +870,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "a press puts the caret, shift extends, two select the word, three the line; a drag keeps the unit" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "alpha beta\ngamma");
+  test_setup(c[..], a[..], "alpha beta\ngamma");
   c[0].x = 0; c[0].y = 0; c[0].w = 800; c[0].h = 200; c[0].text_x = 10; c[0].text_y = 10;
   row0: f32 = 10 + 5; row1: f32 = 10 + 22.75 + 5;
   #assert composer_press(c[..], a[..], 10 + 8 * 7 + 2, row0, 1, false) && c[0].ed[0].caret == 7 && c[0].ed[0].anchor == 7;
@@ -893,7 +894,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "a click past a soft-wrapped row's end puts the caret at that row's end" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "aaaa bbbb cc");
+  test_setup(c[..], a[..], "aaaa bbbb cc");
   composer_wrap(c[..], a[..], 40);
   #assert c[0].lines == 3 && c[0].line_end[0] == 5 && c[0].line_at[1] == 5;
   c[0].x = 0; c[0].y = 0; c[0].w = 800; c[0].h = 200; c[0].text_x = 0; c[0].text_y = 0;
@@ -902,7 +903,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "IME: marked text replaces itself, commits once, and undoes as one step" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "x ");
+  test_setup(c[..], a[..], "x ");
   composer_mark(c[..], -1, -1, "n", -1, -1);
   composer_mark(c[..], -1, -1, "にh", -1, -1);
   composer_mark(c[..], -1, -1, "にほ", 0, 6);       // the IME selects inside it
@@ -931,7 +932,7 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
 }
 #test "text wraps at spaces and at newlines (CR LF is one)" {
   c: [1] Composer; a: [1] Atlas;
-  setup(c[..], a[..], "aaaa bbbb cc");
+  test_setup(c[..], a[..], "aaaa bbbb cc");
   composer_wrap(c[..], a[..], 80);
   #assert c[0].lines == 2 && c[0].line_at[1] == 10 && c[0].line_end[0] == 10;
   c[0].ed[0].n = 0; move_to(c[..], 0);
