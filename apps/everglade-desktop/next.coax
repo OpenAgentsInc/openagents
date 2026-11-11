@@ -34,6 +34,7 @@
 #load "../../aethyr/ui/draw.coax";
 #load "text.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/agent/tier.coax";
 #load "golem-board.coax";
@@ -105,7 +106,9 @@ NextPanel :: struct {
   after_tool: bool;                       // the last line written was a tool call's
   star: bool;                             // np_say: an asterisk is held, in case the next is its pair
   down: bool; down_in: int;               // which box the press began in: 1 the button, 2 Close, 3 Refresh
-  q: [1] ClQuery; p: [1] ClProcess; started: bool;
+  // The panel's agent (the picker, then the coder) runs on the shared Claude engine with the panel's own
+  // options (np_run); the engine folds its messages into ses, and the panel answers its own tool.
+  eng: [1] Engine; ses: [1] Session; opt: [1] ClOptions; pool: [262144] u8; started: bool;
   board: [1] GolemBoard;                  // the Golems board (golem-board.coax)
   line: [1048576] u8; arena: [262144] u8; out: [1048576] u8; scratch: [131072] u8;
   context: [NP_CONTEXT] u8;
@@ -190,10 +193,23 @@ np_in :: (b: HudBox, x: f32, y: f32) -> bool { return x >= b.x && x <= b.x + b.w
 
 // ---- the agent
 
+// Starts the panel's agent on the shared Claude engine with these options; the context is its first
+// message, sent once the CLI has answered initialize. "" when it started, else why not.
+np_run :: (s: []NextPanel, o: [] ClOptions) -> string {
+  e := s[0].eng[..]; ses := s[0].ses[..];
+  if s[0].started { e_close(e); s[0].started = false; }
+  s[0].opt[0] = o[0];
+  e_attach(e, s[0].line[..], s[0].arena[..], s[0].out[..], s[0].scratch[..], s[0].context[..]);
+  e_own(e, s[0].opt[..]);
+  s_init(ses, s[0].pool[..]); ses[0].tabs = true;
+  e_send_as(e, ses, "", cast(string) s[0].context[0..<s[0].context_n]);
+  if !e[0].running { return ifx ses[0].n > 1 then s_text_of(ses, ses[0].n - 1) else "Claude Code did not start"; }
+  return "";
+}
 // An agent's turn, or the host is fetching for one: what Stop stops.
 np_busy :: (s: []NextPanel) -> bool { return s[0].state == NP_RUNNING || s[0].state == NP_CONTEXT_WAIT; }
 np_end :: (s: []NextPanel, state: int) {
-  if s[0].started { cl_close(s[0].p[..]); s[0].started = false; }
+  if s[0].started { e_close(s[0].eng[..]); s[0].started = false; }
   s[0].state = state;
 }
 // A fresh asking: the old session ends and the host is asked for the context. `again` is
@@ -226,7 +242,6 @@ np_context :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c
     n = np_put(s[0].context[..], n, "\n");
   }
   n = np_put(s[0].context[..], n, ifx s[0].autopilot then NP_ASK_AUTO else NP_ASK); s[0].context_n = n;
-  cl_init(s[0].q[..], s[0].line[..], s[0].arena[..], s[0].out[..]);
   o: [1] ClOptions;
   o[0].model = NP_MODEL;
   sn := np_put(s[0].system[..], 0, NP_SYSTEM); sn = np_put(s[0].system[..], sn, "\n\n"); sn = np_put(s[0].system[..], sn, TIER_RUBRIC);
@@ -239,11 +254,9 @@ np_context :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c
   tool := cl_add_server_tool(o[..], server, "choose", NP_CHOOSE_ABOUT, NP_CHOOSE_SCHEMA);
   cl_add_allowed(o[..], NP_TOOL);
   cl_remove_env(o[..], "ANTHROPIC_API_KEY"); cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN"); // your login, never a key
-  s[0].q[0].options = o[0];
-  problem := cl_start(s[0].q[..], s[0].p[..], "", true, s[0].scratch[..]);
+  problem := np_run(s, o[..]);
   if problem.count > 0 { np_append(s, NP_INSTALL); np_break(s); np_append(s, problem); s[0].state = NP_FAILED; s[0].started = false; return; }
   s[0].started = true; s[0].state = NP_RUNNING; s[0].seconds = 0;
-  cl_send_user(s[0].q[..], cast(string) s[0].context[0..<s[0].context_n]);
 }
 
 // The host's answer to a start: next-context work's output, the worktree's path on its first line
@@ -270,7 +283,6 @@ np_work :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #e
   n = np_put(s[0].context[..], n, ".\n\n");
   n = np_put(s[0].context[..], n, text[eol + 1..<text.count]);
   s[0].context_n = n;
-  cl_init(s[0].q[..], s[0].line[..], s[0].arena[..], s[0].out[..]);
   o: [1] ClOptions;
   o[0].model = cast(string) s[0].model[0..<s[0].model_n];
   o[0].append_system_prompt = ifx s[0].rehearsal then NP_CODER_REHEARSAL else NP_CODER_RULES;
@@ -286,19 +298,17 @@ np_work :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #e
   else { for t: [6] string.["Bash", "Read", "Edit", "Write", "Grep", "Glob"] { cl_add_tool(o[..], t); cl_add_allowed(o[..], t); } o[0].permission_mode = ClPermissionMode.accept_edits; }
   for t: [4] string.["Task", "Agent", "WebSearch", "WebFetch"] { cl_add_disallowed(o[..], t); }
   cl_remove_env(o[..], "ANTHROPIC_API_KEY"); cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
-  s[0].q[0].options = o[0];
-  problem := cl_start(s[0].q[..], s[0].p[..], "", true, s[0].scratch[..]);
+  problem := np_run(s, o[..]);
   if problem.count > 0 { np_gap(s); np_append(s, NP_INSTALL); np_break(s); np_append(s, problem); s[0].state = NP_FAILED; s[0].started = false; return; }
   s[0].started = true; s[0].state = NP_RUNNING; s[0].seconds = 0; s[0].turn = 0; s[0].session_cost_e6 = 0; s[0].cost_e6 = -1;
   np_gap(s); np_append(s, "> "); np_append(s, cast(string) s[0].model[0..<s[0].model_n]);
   np_append(s, ifx s[0].rehearsal then " rehearses #" else " works #"); b: [24] u8; k := np_put_int(b[..], 0, s[0].chosen); np_append(s, cast(string) b[0..<k]);
   np_append(s, " in "); np_append(s, cast(string) s[0].cwd[0..<s[0].cwd_n]); np_append(s, "\n\n");
-  cl_send_user(s[0].q[..], cast(string) s[0].context[0..<s[0].context_n]);
 }
 
 // One tool call as one short line: what it is and what it is on. Paths are shown from the worktree.
 np_tool_line :: (s: []NextPanel, name: string, input: string) {
-  ar := s[0].q[0].ar[..];
+  ar := s[0].eng[0].q[0].ar[..];
   held: [24] u8; kn := np_put(held[..], 0, name); kind := cast(string) held[0..<kn];
   key := "";
   if kind == "Bash" { key = "command"; }
@@ -335,7 +345,7 @@ np_record :: (s: []NextPanel, l: string, duration_ms: int, api_ms: int, turns: i
   jo_key(o[..], "harness"); jo_str(o[..], "claude-code");
   jo_key(o[..], "model"); jo_str(o[..], cast(string) s[0].model[0..<s[0].model_n]);
   if s[0].coding { jo_key(o[..], "issue"); jo_int(o[..], s[0].chosen); }
-  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].q[..]));
+  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].eng[0].q[..]));
   jo_key(o[..], "turn"); jo_int(o[..], s[0].turn);
   jo_key(o[..], "input_tokens"); jo_int(o[..], s[0].input);
   jo_key(o[..], "cache_read_input_tokens"); jo_int(o[..], s[0].cache_read);
@@ -361,7 +371,7 @@ np_decide :: (s: []NextPanel, action: string, issue: int, reason: string) {
   jo_key(o[..], "action"); jo_str(o[..], action);
   jo_key(o[..], "issue"); jo_int(o[..], issue);
   jo_key(o[..], "reason"); jo_str(o[..], ifx reason.count > 400 then reason[0..<400] else reason);
-  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].q[..]));
+  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].eng[0].q[..]));
   jo_key(o[..], "coding_flow"); jo_str(o[..], ifx action == "start" then "started" else "none");
   if action == "start" {
     jo_key(o[..], "tier"); jo_str(o[..], tier_name(s[0].tier));
@@ -377,17 +387,17 @@ np_decide :: (s: []NextPanel, action: string, issue: int, reason: string) {
 
 // The coder called `report`: its work on the issue is over.
 np_report :: (s: []NextPanel, arguments: string) {
-  ar := s[0].q[0].ar[..];
+  ar := s[0].eng[0].q[0].ar[..];
   status := cl_str(ar, arguments, "status");
-  if status != "done" && status != "blocked" { cl_tool_text(s[0].q[..], "status must be done or blocked.", true); return; }
+  if status != "done" && status != "blocked" { cl_tool_text(s[0].eng[0].q[..], "status must be done or blocked.", true); return; }
   s[0].reported = ifx status == "done" then 1 else 2;
   np_break(s); np_append(s, ifx s[0].reported == 1 then "> done: " else "> blocked: ");
   np_append(s, cl_str(ar, arguments, "summary")); np_append(s, "\n");
-  cl_tool_text(s[0].q[..], "Recorded. End your turn now.", false);
+  cl_tool_text(s[0].eng[0].q[..], "Recorded. End your turn now.", false);
 }
 // The agent called `choose`: what you meant, as it read it.
 np_choose :: (s: []NextPanel, arguments: string) {
-  ar := s[0].q[0].ar[..];
+  ar := s[0].eng[0].q[0].ar[..];
   action := cl_str(ar, arguments, "action"); issue := cl_int(arguments, "issue"); number := ifx issue.ok then issue.value else 0;
   held: [16] u8; an := np_put(held[..], 0, action); act := cast(string) held[0..<an];   // the arena is reused by the next read
   reason := cl_str(ar, arguments, "reason");
@@ -395,7 +405,7 @@ np_choose :: (s: []NextPanel, arguments: string) {
   s[0].scores = TierScores.{scope = cl_int(arguments, "scope").value, ambiguity = cl_int(arguments, "ambiguity").value, risk = cl_int(arguments, "risk").value, depth = cl_int(arguments, "depth").value, delegable = !delegable.ok || delegable.value};
   s[0].tier = tier_of(s[0].scores);
   if act == "start" && number > 0 && s[0].tier == TIER_NONE {
-    cl_tool_text(s[0].q[..], "You rated that issue not delegable, so nothing was started. Pick another issue, or call choose with none.", true);
+    cl_tool_text(s[0].eng[0].q[..], "You rated that issue not delegable, so nothing was started. Pick another issue, or call choose with none.", true);
     return;
   }
   np_decide(s, act, number, reason);
@@ -406,19 +416,19 @@ np_choose :: (s: []NextPanel, arguments: string) {
     np_append(s, " on "); np_append(s, tier_name(s[0].tier)); np_append(s, "\n");
     np_append(s, "\n");
     s[0].pending_work = true;
-    cl_tool_text(s[0].q[..], NP_STARTING, false);
+    cl_tool_text(s[0].eng[0].q[..], NP_STARTING, false);
     return;
   }
-  if act == "another" { np_append(s, "> another\n\n"); cl_tool_text(s[0].q[..], "Recorded. Suggest the next best issue.", false); return; }
-  if act == "none" { s[0].declined = true; np_append(s, "> none\n\n"); cl_tool_text(s[0].q[..], "Recorded. Nothing will be started.", false); return; }
-  cl_tool_text(s[0].q[..], "The action must be start (with an issue number), another or none.", true);
+  if act == "another" { np_append(s, "> another\n\n"); cl_tool_text(s[0].eng[0].q[..], "Recorded. Suggest the next best issue.", false); return; }
+  if act == "none" { s[0].declined = true; np_append(s, "> none\n\n"); cl_tool_text(s[0].eng[0].q[..], "Recorded. Nothing will be started.", false); return; }
+  cl_tool_text(s[0].eng[0].q[..], "The action must be start (with an issue number), another or none.", true);
 }
 
 // Claude Code reports where its credentials came from: "none" means your claude.ai login.
 np_login_billed :: (source: string) -> bool { return source.count == 0 || source == "none"; }
 np_message :: (s: []NextPanel, m: ClMessage) {
   if m.parent_tool_use_id.count > 0 { return; }
-  l := m.line; ar := s[0].q[0].ar[..];
+  l := m.line; ar := s[0].eng[0].q[0].ar[..];
   // Every run is billed to your Claude login. "none" is the login; anything else is a key or a
   // helper, and the run stops before its first model turn is paid for.
   if m.kind == ClKind.system && m.system == ClSystem.init && !np_login_billed(cl_str(ar, l, "apiKeySource")) {
@@ -507,11 +517,16 @@ np_message :: (s: []NextPanel, m: ClMessage) {
 np_poll :: (s: []NextPanel) {
   for i: 0..<256 {
     if s[0].state != NP_RUNNING || !s[0].started { return; }
-    ev := cl_poll(s[0].q[..], s[0].p[..], 0);
+    one: [1] ClEvent;
+    e_poll(s[0].eng[..], s[0].ses[..], one[..]);
+    ev := one[0];
+    // the panel prints from the messages themselves: the record is read to its end so it starts over and never fills
+    cur: [1] SCursor; cur[0].part = s[0].ses[0].n;
+    trimmed := s_trim(s[0].ses[..], cur[..]);
     if ev.kind == ClEventKind.idle { return; }
     if ev.kind == ClEventKind.message { np_message(s, ev.message); continue; }
     if ev.kind == ClEventKind.tool_call { if s[0].coding { np_report(s, ev.arguments); } else { np_choose(s, ev.arguments); } continue; }
-    if ev.kind == ClEventKind.failed { np_break(s); np_append(s, cl_error(s[0].q[..])); np_end(s, NP_FAILED); return; }
+    if ev.kind == ClEventKind.failed { np_break(s); np_append(s, cl_error(s[0].eng[0].q[..])); np_end(s, NP_FAILED); return; }
     if ev.kind == ClEventKind.end { np_break(s); np_append(s, "Claude Code closed before it answered."); np_end(s, NP_FAILED); return; }
   }
 }
@@ -520,7 +535,7 @@ np_send :: (s: []NextPanel) {
   if s[0].state != NP_YOURS || !s[0].started || s[0].draft_n == 0 { return; }
   said := cast(string) s[0].draft[0..<s[0].draft_n];
   np_gap(s); np_append(s, "You: "); np_append(s, said); np_append(s, "\n\n");
-  cl_send_user(s[0].q[..], said);
+  e_send_as(s[0].eng[..], s[0].ses[..], said, said);
   s[0].state = NP_RUNNING; s[0].seconds = 0; s[0].scroll = 0;
 }
 
@@ -687,7 +702,7 @@ np_take_decision :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) {
   for i: 0..<n { out[i] = s[0].decision[i]; } s[0].decision_n = 0; return n;
 }
 // The app is quitting: the agent's process group goes with it.
-np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { cl_close(s[0].p[..]); s[0].started = false; } }
+np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { e_close(s[0].eng[..]); s[0].started = false; } }
 // 0 idle, 1 reading the cache, 2 the agent's turn, 3 your turn, 4 failed, 5 stopped.
 np_state :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].state; }
 // Whether the host should run everglade-golems now, and its answer.

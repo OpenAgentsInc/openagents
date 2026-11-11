@@ -14,6 +14,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/agent/tier.coax";
 
@@ -42,7 +43,6 @@ tool_main :: () -> int #export_c #effects(all) {
   system: [4096] u8; sn := ts_put(system[..], 0, TS_SYSTEM); sn = ts_put(system[..], sn, "\n\n"); sn = ts_put(system[..], sn, TIER_RUBRIC);
 
   line: [CL_LINE_MAX] u8; arena: [262144] u8; out: [262144] u8; scratch: [196608] u8;
-  q: [1] ClQuery; cl_init(q[..], line[..], arena[..], out[..]);
   o: [1] ClOptions;
   o[0].model = model;
   o[0].system_prompt = cast(string) system[0..<sn];
@@ -54,19 +54,30 @@ tool_main :: () -> int #export_c #effects(all) {
   tool := cl_add_server_tool(o[..], server, "rate", "Record the rubric's scores for one issue.", cast(string) schema[0..<k]);
   cl_add_allowed(o[..], "mcp__tier__rate");
   cl_remove_env(o[..], "ANTHROPIC_API_KEY"); cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
-  q[0].options = o[0];
-  p: [1] ClProcess;
-  problem := cl_start(q[..], p[..], cast(string) ctx[0..<n], false, scratch[..]);
-  if problem.count > 0 { tool_err("tiers: "); tool_errln(problem); return 1; }
-  defer cl_close(p[..]);
+  // The rater runs on the shared Claude engine (coax/lib/agent/engine/claude.coax) as one turn with
+  // these options; the engine folds its messages into a session record, and this tool answers its
+  // own `rate` tool and reads the result.
+  eng: [1] Engine; ses: [1] Session; pool: [262144] u8;
+  e_attach(eng[..], line[..], arena[..], out[..], scratch[..], ctx[..]);
+  e_own(eng[..], o[..]); eng[0].once = true;
+  s_init(ses[..], pool[..]); ses[0].frames = true; ses[0].tabs = true;
+  q := eng[0].q[..];
+  e_send_as(eng[..], ses[..], "Rate the open issues.", cast(string) ctx[0..<n]);
+  if !eng[0].running { tool_err("tiers: "); tool_errln(ifx ses[0].n > 1 then s_text_of(ses[..], ses[0].n - 1) else "Claude Code did not start"); return 1; }
+  defer e_close(eng[..]);
 
   rated: [TS_MAX] Rated; rn := 0;
   cost := 0.0; ms := 0; turns := 0; ok := false;
   usage: ClUsage;
   while true {
-    ev := cl_next(q[..], p[..]);
+    one: [1] ClEvent;
+    e_next(eng[..], ses[..], one[..]);
+    ev := one[0];
+    // nothing prints the record: it is read to its end so it starts over and never fills
+    cur: [1] SCursor; cur[0].part = ses[0].n;
+    trimmed := s_trim(ses[..], cur[..]);
     if ev.kind == ClEventKind.end { break; }
-    if ev.kind == ClEventKind.failed { tool_err("tiers: "); tool_errln(cl_error(q[..])); return 1; }
+    if ev.kind == ClEventKind.failed { tool_err("tiers: "); tool_errln(cl_error(q)); return 1; }
     if ev.kind == ClEventKind.tool_call {
       g := ev.arguments;
       issue := cl_int(g, "issue").value;
@@ -77,7 +88,7 @@ tool_main :: () -> int #export_c #effects(all) {
       // A second rating of one issue replaces the first.
       at := -1; for i: 0..<rn { if rated[i].issue == issue { at = i; } }
       if at >= 0 { rated[at] = r; } else if rn < TS_MAX { rated[rn] = r; rn += 1; }
-      cl_tool_text(q[..], tier_name(r.tier), false);
+      e_tool_text(eng[..], tier_name(r.tier), false);
       continue;
     }
     if ev.kind != ClEventKind.message { continue; }
