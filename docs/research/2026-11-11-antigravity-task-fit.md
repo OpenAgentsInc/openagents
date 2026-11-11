@@ -27,6 +27,9 @@ Opus 5.5. Codex was not run: its login was out of quota until 2026-11-13.
   Carbon was slow" below: its long thinking, minutes-long waits for a first
   token and a dropped prompt cache in the `global` location. Coder now fails
   a turn agy gave up on, and coderos-4080 names the `us` location.
+- "Speed fixes and rerun" below: Antigravity now thinks low by default and
+  recovers a reply that stops arriving. All six slow runs passed when rerun,
+  in half the time or less except one.
 - Carbon hit the 15-minute limit twice (the bug fix and the atlas change). In
   each run it waited minutes for a model reply: once more than 5 minutes for a
   single reply, and more than 4 minutes for the first reply of a 12-line doc edit.
@@ -419,6 +422,94 @@ names `e_take`, `set_model`, `e_drift` and `run_model`).
 
 Spend for these experiments: $6.14 at the catalog prices above (17 runs and
 two location probes), plus cents of agy's Flash-Lite monitor calls.
+
+## Speed fixes and rerun (2026-11-11)
+
+GitHub #13193. Two changes to Coder and the Workshop, then the slow
+Antigravity runs again. Where the time went before is in "Why Carbon was
+slow" above, and this section builds on it.
+
+### What changed
+
+- **Low thinking by default** (2620f8fe9c). When no effort is named, Coder's
+  and the Workshop's Antigravity turns think low. A base model
+  (`gemini-4-argon`) goes as its `-low` variant, or with `thought_level` low
+  when agy lists no such variant. A model named with its level
+  (`gemini-4-argon-medium`) and an explicit `--effort` are kept. The
+  Workshop's Gemini tiers now name Argon and Carbon without a level, so they
+  run low. Flash keeps `-low` for Haiku and `-high` for Sonnet, because the
+  level is the only difference between those two tiers.
+- **A stall watchdog** (2620f8fe9c, e7e07ba706). agy waits 5 minutes on a
+  reply stream that went silent before it retries. The shared ACP engine now
+  watches a turn on the owner's clock. If agy sends nothing for 120 s
+  (`CODER_AGY_STALL_S`) while no tool call runs, Coder cancels the turn and
+  asks the same session to continue, at most twice a turn
+  (`CODER_AGY_RECOVER`). Each recovery is a note line in the session log and
+  a line in the Workshop's chat. It is off for Cursor.
+- **Why 120 s and not 45.** agy sends a thought chunk every 2 to 3 s while a
+  model thinks. It sends nothing while a model writes a tool call's
+  arguments, or while it waits for a first token. A probe on Flash at low
+  wrote a 1,500-line file after 27 s of silence. In the reruns below, quiet
+  stretches that ended in a normal reply reached 62 s. At 45 s the watchdog
+  would have cancelled calls that were working.
+
+### Rerun
+
+Each run is one run of the task, with Coder at 2620f8fe9c, agy 1.5.6, and
+`GOOGLE_CLOUD_LOCATION=us` from #13227. The six ran at the same time. "Before"
+is the first table's run: `global`, medium effort, 25 runs at a time.
+Base model names were used, so the new low default applied, except in the
+`argon, medium` row. That row runs T2 at medium with the watchdog on, in the
+same location and build, to separate effort from the other changes.
+
+| Task | Config | Before: check, wall | After: check, wall | Model calls | Seconds per call | Longest gap | Tokens after | Cost before | Cost after | Recoveries |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T2 | argon | pass, 207 s | pass, 100 s | 14 → 10 | 14.8 → 10.0 | 42 → 34 s | 172k / 303k / 2k (0) | $0.65 | $0.78 | 0 |
+| T2 | argon, medium | (as above) | pass, 253 s | 14 → 12 | 14.8 → 21.1 | 42 → 54 s | 159k / 493k / 12k (5k) | $0.65 | $0.98 | 0 |
+| T2 | carbon | fail (limit), 900 s | pass, 212 s | 23 → 18 | 39.1 → 11.8 | 314 → 37 s | 105k / 1202k / 4k (0) | $1.58 | $0.74 | 0 |
+| T5 | argon | pass, 428 s | pass, 209 s | 19 → 16 | 22.5 → 13.1 | 92 → 63 s | 244k / 930k / 8k (0) | $2.52 | $1.31 | 0 |
+| T5 | carbon | fail (limit), 900 s | pass, 667 s | 24 → 20 | 37.5 → 33.4 | 101 → 120 s | 498k / 1966k / 10k (0) | $2.85 | $2.59 | 1 |
+| T5 | flash | pass, 506 s | pass, 195 s | 65 → 50 | 7.8 → 3.9 | 36 → 12 s | 223k / 1960k / 10k (0) | $1.51 | $0.70 | 0 |
+
+- Seconds per call is wall time divided by model calls, tools included.
+  The longest gap is the longest time between two events in agy's ACP log: a
+  reply starting, a tool confirmed, a prompt, a cancel, or a 429. Tokens are
+  uncached input / cached input / output (of which thinking). Wall time is
+  Coder's turn time plus 1 s, because `bc` was missing, as for T1 above.
+- **All six passed**, including the two Carbon tasks that hit the 15-minute
+  limit before. Wall time fell by half or more in every pair except T5 on
+  Carbon (900 s, unfinished, to 667 s).
+- **Effort is most of the gain.** In the same location and build, T2 on
+  Argon took 100 s at low and 253 s at medium. Medium spent 5k thinking
+  tokens and 12k output against 2k. `us` at medium was no faster than
+  `global` at medium on this task (253 s against 207 s, one run each).
+- **The watchdog fired once.** In T5 on Carbon, after two commands finished,
+  agy's next request got no reply for 120 s. Coder cancelled it at 120 s, and
+  the continue request was answering 7 s later. No log line can show whether
+  the first request would still have answered. agy's own limit would have
+  waited up to 5 minutes. The other five runs had no recoveries. Their
+  quiet stretches were up to 62 s, which shows how close 45 s would have come
+  to cancelling working calls.
+- **T5 on Carbon was still slow.** Of its 667 s, several calls waited 50 to
+  60 s for a first token or a long edit, one 429 cost 56 s plus 50 s before
+  agy's retry, and the stall cost 120 s.
+- **Cost** fell in four of five pairs. T2 on Argon cost more at low ($0.78
+  against $0.65): it sent 172k uncached input tokens against 87k.
+- **A gap in the ledger, fixed.** The build these runs used wrote no usage
+  line for the part of a turn the watchdog cancelled. T5 on Carbon's tokens
+  come from agy's conversation store, which matched the usage lines of
+  finished runs exactly (T5 on Argon, T2 on Carbon). e7e07ba706 writes that
+  part's usage line, and the Workshop prices it.
+- #13227's own reruns (T4 and T6, in `us`) are in "Before and after" above
+  and were not repeated here.
+
+This is six runs, one per cell, and the before and after differ in three
+ways at once: effort, location and load (6 runs at a time against 25). Only
+the `argon, medium` row separates one of them. Read the direction, not the
+exact ratios.
+
+Spend: $7.11 for these six runs at the catalog prices above, plus a few
+cents of Flash probes for the watchdog's limit.
 
 ## Not run, and why
 

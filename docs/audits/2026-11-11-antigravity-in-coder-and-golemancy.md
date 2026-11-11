@@ -46,8 +46,8 @@ until the Codex runs are done).
 
 - **Coding agent.** `EVERGLADE_CODER_ENGINE=antigravity`, or
   `EVERGLADE_TIER_FAMILY=gemini`, which also maps the rubric's tiers to
-  Gemini models: Flash low for Haiku, Flash high for Sonnet, Argon high for
-  Opus, Carbon high for Fable. Claude stays the default and the picker stays
+  Gemini models: Flash low for Haiku, Flash high for Sonnet, Argon for
+  Opus, Carbon for Fable (Argon and Carbon at low thinking, see Speed). Claude stays the default and the picker stays
   Haiku.
 - **Parity with the Claude coder.** The same rules, worktree, nudges, Stop,
   budget and per-turn ledger lines, in Next issue and in Autopilot. The
@@ -112,6 +112,21 @@ write-up, with the tasks and per-run records, is
   what keeps #13193 open. A compiler task: the commits that fit have no
   published compiler build, and building one takes longer than the run
   limit. A multi-file refactor: cut for time.
+
+## Speed
+
+Antigravity's slowness was on the model's side, not Coder's. #13227 found
+long medium-effort thinking, minute-long waits for a first token and dropped
+prompt caches in the `global` location, so coderos-4080 now uses `us`, and a
+model call agy gave up on now fails the turn. #13193's follow-up made low
+thinking the default for Antigravity in Coder and the Workshop, and added a
+stall watchdog: after 120 s of silence with no tool running, Coder cancels the
+turn and asks it to continue, at most twice. Rerun on the six slow cases
+(T2 and T5), all passed, in half the time or less except T5 on Carbon (900 s,
+unfinished, to 667 s). Low effort was most of the gain (T2 on Argon: 100 s at
+low, 253 s at medium). The watchdog fired once. This is six runs, one each.
+Details: the research doc's "Why Carbon was slow" and "Speed fixes and
+rerun".
 
 ## Bugs found and fixed
 
