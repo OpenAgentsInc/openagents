@@ -317,7 +317,13 @@ Each phase ends with every existing check and golden unchanged.
    is a Linux program on the shared Wayland and Vulkan host
    (`components/gallery/linux/build.sh`, then
    `components/gallery/build/linux/Components --shot OUT.png`, which opens
-   no window): that is how it was looked at, at two widths. Not done: it
+   no window): that is how it was looked at, at two widths. The same
+   `main.c` and Coax build for the Mac on the shared Mac host
+   (`apps/shared/host/apple/ui-host.m`, the same `ui-host.h`;
+   `components/gallery/apple/build.sh`, then
+   `components/gallery/build/apple/Components --shot OUT.png`, which opens
+   no window and no Dock icon), with the shader emitted as Metal and the
+   atlas from `components/raster/` (2026-11-11, #13156). Not done: it
    has not been seen in a browser (no headless WebGPU capture on the Linux
    machine it was written on; a browser's own fonts will draw the terminal
    card's task boxes, which Geist Mono lacks), and there are no picture

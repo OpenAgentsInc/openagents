@@ -1,4 +1,4 @@
-// The component library's Linux host: components/gallery/page.coax behind the
+// The component library's host program (Linux, and the Mac through apps/shared/host/apple/): components/gallery/page.coax behind the
 // shared Wayland and Vulkan host (apps/shared/host/linux/ui-host.h), with the
 // atlas built in Coax (components/raster/atlas.coax). It holds no behaviour:
 // it reads the fonts and icons, hands frames, the pointer and the wheel to
@@ -16,6 +16,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 typedef struct {
   UiHost *host;
@@ -111,13 +114,22 @@ static void on_signal(int sig) { (void)sig; stopping = 1; }
 
 int main(int argc, char **argv) {
   static App a;
-  // the resources sit beside the program: fonts/, icons/, components.spv
+  // the resources sit beside the program: fonts/, icons/, and the shader (components.spv on
+  // Linux, components.metal on the Mac, whose host is apps/shared/host/apple/ui-host.m)
+#ifdef __APPLE__
+  uint32_t cap = sizeof a.resources;
+  char exe[PATH_MAX];
+  if (_NSGetExecutablePath(exe, &cap) != 0 || !realpath(exe, a.resources)) return 1;
+  const char *shader_file = "components.metal";
+#else
   ssize_t len = readlink("/proc/self/exe", a.resources, sizeof a.resources - 1);
   if (len <= 0) return 1;
   a.resources[len] = 0;
+  const char *shader_file = "components.spv";
+#endif
   char *slash = strrchr(a.resources, '/');
   if (slash) *slash = 0;
-  char shader[PATH_MAX + 16]; snprintf(shader, sizeof shader, "%s/components.spv", a.resources);
+  char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/%s", a.resources, shader_file);
   const char *shot = value(argc, argv, "--shot"), *size = value(argc, argv, "--size"), *dpr = value(argc, argv, "--dpr");
   unsigned w = shot ? 3840 : 1920, h = shot ? 2400 : 1200;
   if (size && sscanf(size, "%u%*[x,]%u", &w, &h) != 2) { fprintf(stderr, "Components: --size WxH\n"); return 2; }
