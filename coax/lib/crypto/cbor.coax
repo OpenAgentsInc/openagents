@@ -1,0 +1,406 @@
+// A bounded CBOR (RFC 8949) reader for the deterministic subset that
+// WebAuthn's attestationObject and COSE keys use: unsigned and negative
+// integers, byte strings, text strings, arrays and maps, every head in its
+// shortest form (RFC 8949 4.2.1) and every length definite. Everything else
+// is refused: tags, floats, simple values (false, true, null, undefined),
+// indefinite lengths, the reserved additional-information values 28 to 30,
+// text that is not well-formed UTF-8, a map with a repeated key, and bytes
+// left over after the item. Map keys are not required to be in sorted
+// order, since authenticators sort them by CTAP2's older rule; every key is
+// still unique.
+//
+// Nothing allocates. A CborItem is a position in the caller's bytes: the
+// head's major type and argument, where the payload starts and where the
+// whole item (with everything nested in it) ends. Walking an item never
+// recurses: one counter holds how many items are still to read, and a
+// counter above the bytes left refuses at once, so the work is linear in
+// the input. Duplicate keys are checked map by map, at most CBOR_MAP_MAX
+// pairs each. Inputs are public (a browser's bytes), so it branches freely.
+#load "bytes.coax";
+#authority;
+
+CBOR_UINT :: 0; CBOR_NEGATIVE :: 1; CBOR_BYTES :: 2; CBOR_TEXT :: 3; CBOR_ARRAY :: 4; CBOR_MAP :: 5;
+CBOR_MAP_MAX :: 64;            // pairs in one map
+CBOR_MAX_BYTES :: 65536;       // the largest input
+// A head (cbor_head) or a whole item (cbor_at: end is past everything in it).
+CborItem :: struct { major: int; arg: u64; at: int; data: int; end: int; ok: bool; }
+CborInt :: struct { value: s64; ok: bool; }
+
+// ---- checks
+cb_hex_value :: (c: u8) -> int #effects(all) { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+cb_unhex :: (text: string, out: [] u8) -> [] u8 #effects(all) {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (cb_hex_value(text[2*i])*16 + cb_hex_value(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+cb_reads :: (hex: string) -> bool #effects(all) { b: [128] u8; return cbor_read(cb_unhex(hex, b[..])).ok; }
+#test "heads in the shortest form, every width" {
+  b: [16] u8;
+  pairs := [10] string.["00", "17", "1818", "18ff", "190100", "19ffff", "1a00010000", "1affffffff", "1b0000000100000000", "1bffffffffffffffff"];
+  values := [10] u64.[0, 23, 24, 255, 256, 65535, 65536, 4294967295, 4294967296, 18446744073709551615];
+  for i: 0..<10 {
+    item := cbor_read(cb_unhex(pairs[i], b[..]));
+    #assert item.ok && item.major == CBOR_UINT && item.arg == values[i] && item.end == pairs[i].count / 2;
+  }
+  // The same values one width too wide: not deterministic.
+  wide := [5] string.["1800", "1817", "1900ff", "1a0000ffff", "1b00000000ffffffff"];
+  for w: wide { #assert !cb_reads(w); }
+  // Truncated heads and payloads.
+  for t: [7] string.["18", "19ff", "1affffff", "1bffffffffffffff", "41", "6261", "830102"] { #assert !cb_reads(t); }
+  for t: [4] string.["8118", "8119ff", "811bffffffffffffff", "820018"] { #assert !cb_reads(t); }     // cut after an offset
+}
+#test "integers: the s64 range and beyond" {
+  b: [16] u8;
+  #assert cbor_int(cb_unhex("20", b[..]), cbor_read(cb_unhex("20", b[..]))).value == -1;
+  #assert cbor_int(b[0..<1], cbor_read(cb_unhex("3863", b[..]))).value == -100;
+  max := cbor_read(cb_unhex("1b7fffffffffffffff", b[..]));
+  #assert cbor_int(b[0..<9], max).ok && cbor_int(b[0..<9], max).value == 9223372036854775807;
+  over := cbor_read(cb_unhex("1b8000000000000000", b[..]));
+  #assert over.ok && !cbor_int(b[0..<9], over).ok;
+  min := cbor_read(cb_unhex("3b7fffffffffffffff", b[..]));
+  #assert cbor_int(b[0..<9], min).ok && cbor_int(b[0..<9], min).value == -9223372036854775807 - 1;
+  under := cbor_read(cb_unhex("3b8000000000000000", b[..]));
+  #assert under.ok && !cbor_int(b[0..<9], under).ok;
+  text := cbor_read(cb_unhex("6161", b[..]));
+  #assert text.ok && !cbor_int(b[0..<2], text).ok;
+}
+#test "everything outside the subset refuses" {
+  // Tags, floats, simple values, break, indefinite lengths, reserved 28-30.
+  outside := [17] string.["c074", "c11a514b67b0", "d82076", "f4", "f5", "f6", "f7", "f0", "f8ff", "f90000", "fa47c35000",
+    "fb3ff199999999999a", "ff", "5f42010243030405ff", "7f657374726561646d696e67ff", "9fff", "bf6346756ef563416d7421ff"];
+  for o: outside { #assert !cb_reads(o); }
+  #assert !cb_reads("c0") && !cb_reads("d8ff") && !cb_reads("e0");                  // a tag or simple value alone
+  for r: [6] string.["1c", "1d", "1e", "3c", "5d", "be"] { #assert !cb_reads(r); }
+  // Inside a container, too.
+  #assert !cb_reads("81f6") && !cb_reads("a16161f4") && !cb_reads("a1f401");
+  // Leftover bytes, and the empty input.
+  #assert !cb_reads("0000") && !cb_reads("");
+  #assert cb_reads("00");
+}
+#test "text must be well-formed UTF-8" {
+  #assert cb_reads("62c3bc") && cb_reads("63e6b0b4") && cb_reads("64f0908591") && cb_reads("647f7f7f7f");
+  #assert !cb_reads("6180") && !cb_reads("61c3") && !cb_reads("62c33c");          // a lone continuation, a cut, a bad continuation
+  #assert !cb_reads("62c0af") && !cb_reads("62c1bf") && cb_reads("62c280");        // overlong two-byte forms
+  #assert !cb_reads("63e08080") && !cb_reads("63e09fbf") && cb_reads("63e0a080");  // overlong three-byte forms
+  #assert !cb_reads("63eda080") && !cb_reads("63edbfbf") && cb_reads("63ed9fbf");  // UTF-16 surrogates
+  #assert !cb_reads("64f08080bf") && !cb_reads("64f08fbfbf") && cb_reads("64f0908080");  // overlong four-byte forms
+  #assert !cb_reads("64f4908080") && cb_reads("64f48fbfbf") && !cb_reads("64f5808080");  // above U+10FFFF
+  #assert !cb_reads("62f880") && !cb_reads("61ff") && !cb_reads("62e282");       // invalid lead bytes, a short text
+  #assert !cb_reads("63e282") && !cb_reads("64f09085");                          // cut in the middle
+  #assert !cb_reads("63e2c2a2") && !cb_reads("64f0c2a2a2") && !cb_reads("64f090c2a2");   // a lead byte as continuation
+  #assert cb_reads("60") && cb_reads("40");
+  #assert !cb_reads("624180") && !cb_reads("6241e2") && !cb_reads("63c3bc80") && cb_reads("64e282ac41");
+  #assert !cb_reads("62c2c0") && !cb_reads("63e282c0") && !cb_reads("63e2827f") && !cb_reads("62c1bf") && cb_reads("62dfbf");
+  #assert cb_reads("63efbfbf") && cb_reads("63ee8080") && cb_reads("64f3bfbfbf") && cb_reads("64f1808080") && !cb_reads("64f0808080");
+  b: [8] u8; #assert cbor_utf8(cb_unhex("e282ac", b[..])) && !cbor_utf8(cb_unhex("e282", b[..]));
+}
+#test "maps: lookups, and a repeated key refuses" {
+  b: [64] u8;
+  m := cb_unhex("a3016161206162636b6579436b6579", b[..]);    // {1: "a", -1: "b", "key": h'6b6579'}
+  map := cbor_read(m);
+  #assert map.ok && map.major == CBOR_MAP && map.arg == 3;
+  one := cbor_map_int(m, map, 1);
+  #assert one.ok && one.major == CBOR_TEXT && cast(string) cbor_payload(m, one) == "a";
+  minus := cbor_map_int(m, map, -1);
+  #assert minus.ok && cast(string) cbor_payload(m, minus) == "b";
+  key := cbor_map_text(m, map, "key");
+  #assert key.ok && key.major == CBOR_BYTES && cast(string) cbor_payload(m, key) == "key";
+  #assert !cbor_map_int(m, map, 2).ok && !cbor_map_int(m, map, -2).ok && !cbor_map_text(m, map, "ke").ok && !cbor_map_text(m, map, "keys").ok;
+  #assert !cbor_map_text(m, map, "a").ok;                  // a value, not a key
+  #assert !cbor_map_text(m, cbor_read(cb_unhex("826161", b[..])), "a").ok && !cbor_map_text(m, CborItem.{major=CBOR_MAP}, "a").ok;
+  #assert !cbor_map_int(m, CborItem.{major=CBOR_MAP}, 1).ok;
+  c: [32] u8; m2 := cb_unhex("a3016161206162636b6579436b6579", c[..]);    // a map marked not ok is never searched
+  #assert cbor_map_text(m2, cbor_read(m2), "key").ok && !cbor_map_text(m2, CborItem.{major=CBOR_MAP,arg=3,data=1}, "key").ok;
+  #assert cbor_map_int(m2, cbor_read(m2), 1).ok && !cbor_map_int(m2, CborItem.{major=CBOR_MAP,arg=3,data=1}, 1).ok;
+  pairs := cb_unhex("a201020304", b[..]);
+  #assert cbor_int(pairs, cbor_map_int(pairs, cbor_read(pairs), 3)).value == 4 && cbor_int(pairs, cbor_map_int(pairs, cbor_read(pairs), 1)).value == 2;
+  #assert cbor_payload(pairs, cbor_read(pairs)).count == 0 && cbor_payload(pairs, CborItem.{major=CBOR_BYTES,arg=1}).count == 0;
+  #assert !cbor_map_int(m, cbor_read(cb_unhex("820102", b[..])), 1).ok;   // not a map
+  // Repeated keys: integers, texts, and the same value under two spellings is impossible (shortest form).
+  #assert !cb_reads("a201020103") && !cb_reads("a2616101616102") && cb_reads("a2616101616201");
+  #assert !cb_reads("a220012002") && !cb_reads("a320010102200f");
+  // Inside an array, and nested.
+  #assert !cb_reads("81a201020103") && !cb_reads("a101a201020103") && cb_reads("a101a201020304");
+  // A key may be any item; a repeated array key refuses.
+  #assert !cb_reads("a28101008101") && cb_reads("a2810100810200");
+  // A map of more than CBOR_MAP_MAX pairs refuses; exactly that many reads.
+  big: [300] u8; big[0] = 0xb8; big[1] = 64;
+  // 64 distinct keys: 0 to 23, -1 to -24, then 24 to 39, each with the value 0.
+  n := 2;
+  for i: 0..<64 {
+    if i < 24 { big[n] = cast(u8) i; n += 1; }
+    else if i < 48 { big[n] = cast(u8) (0x20 + i - 24); n += 1; }
+    else { big[n] = 0x18; big[n+1] = cast(u8) (24 + i - 48); n += 2; }
+    big[n] = 0; n += 1;
+  }
+  #assert cbor_read(big[0..<n]).ok;
+  big[1] = 65; big[n] = 0x18; big[n+1] = 0xff; big[n+2] = 0;
+  #assert !cbor_read(big[0..<n+3]).ok;
+}
+#test "arrays and nesting, and counts the bytes cannot hold" {
+  b: [64] u8;
+  #assert cb_reads("8301820203820405") && cb_reads("826161a161626163") && cb_reads("80") && cb_reads("a0");
+  item := cbor_read(cb_unhex("8301820203820405", b[..]));
+  #assert item.ok && item.major == CBOR_ARRAY && item.arg == 3 && item.end == 8 && item.data == 1;
+  // An array that claims more items than bytes remain.
+  #assert !cb_reads("83010203ff") && !cb_reads("9a0000ffff") && !cb_reads("9bffffffffffffffff");
+  #assert !cb_reads("8301") && !cb_reads("a201") && !cb_reads("a1") && cb_reads("a10102");
+  #assert !cb_reads("5bffffffffffffffff") && !cb_reads("5a0000ffff00");
+  // cbor_at reads one item inside a larger input; cbor_read wants it all.
+  x := cb_unhex("0102", b[..]);
+  #assert cbor_at(x, 1).ok && cbor_at(x, 1).end == 2 && cbor_at(x, 0).end == 1 && !cbor_at(x, 2).ok && !cbor_at(x, -1).ok;
+  big: [65537] u8; #assert !cbor_read(big[..]).ok && !cbor_at(big[..], 0).ok;
+  // Each refusal in the walk answers -1, also from inside an input.
+  for w: [6] string.["0018", "00f6", "005b0000000100000000", "0062c0af", "009b0000000100000000", "00b841"] {
+    #assert cbor_walk(cb_unhex(w, b[..]), 1) == -1 && !cbor_at(cb_unhex(w, b[..]), 1).ok;
+  }
+  #assert cbor_walk(cb_unhex("0041ff", b[..]), 1) == 3;
+  // The largest input: a byte string that fills 65536 bytes exactly.
+  big[0] = 0x59; big[1] = 0xff; big[2] = 0xfd;
+  #assert cbor_read(big[0..<65536]).ok && !cbor_read(big[0..<65535]).ok;
+}
+
+#test "RFC 8949 appendix A: the subset's 34 examples read, the other 47 refuse" {
+  // Every row of the table (pinned: coax/tests/vectors/upstream/rfc/rfc8949.txt).
+  // Inside the subset: integers, byte and text strings, definite arrays and maps.
+  inside := [34] string.[
+    "00",
+    "01",
+    "0a",
+    "17",
+    "1818",
+    "1819",
+    "1864",
+    "1903e8",
+    "1a000f4240",
+    "1b000000e8d4a51000",
+    "1bffffffffffffffff",
+    "3bffffffffffffffff",
+    "20",
+    "29",
+    "3863",
+    "3903e7",
+    "40",
+    "4401020304",
+    "60",
+    "6161",
+    "6449455446",
+    "62225c",
+    "62c3bc",
+    "63e6b0b4",
+    "64f0908591",
+    "80",
+    "83010203",
+    "8301820203820405",
+    "98190102030405060708090a0b0c0d0e0f101112131415161718181819",
+    "a0",
+    "a201020304",
+    "a26161016162820203",
+    "826161a161626163",
+    "a56161614161626142616361436164614461656145"];
+  // Outside: bignum tags, floats, simple values, other tags, indefinite lengths.
+  outside := [47] string.[
+    "c249010000000000000000",
+    "c349010000000000000000",
+    "f90000",
+    "f98000",
+    "f93c00",
+    "fb3ff199999999999a",
+    "f93e00",
+    "f97bff",
+    "fa47c35000",
+    "fa7f7fffff",
+    "fb7e37e43c8800759c",
+    "f90001",
+    "f90400",
+    "f9c400",
+    "fbc010666666666666",
+    "f97c00",
+    "f97e00",
+    "f9fc00",
+    "fa7f800000",
+    "fa7fc00000",
+    "faff800000",
+    "fb7ff0000000000000",
+    "fb7ff8000000000000",
+    "fbfff0000000000000",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f0",
+    "f8ff",
+    "c074323031332d30332d32315432303a30343a30305a",
+    "c11a514b67b0",
+    "c1fb41d452d9ec200000",
+    "d74401020304",
+    "d818456449455446",
+    "d82076687474703a2f2f7777772e6578616d706c652e636f6d",
+    "5f42010243030405ff",
+    "7f657374726561646d696e67ff",
+    "9fff",
+    "9f018202039f0405ffff",
+    "9f01820203820405ff",
+    "83018202039f0405ff",
+    "83019f0203ff820405",
+    "9f0102030405060708090a0b0c0d0e0f101112131415161718181819ff",
+    "bf61610161629f0203ffff",
+    "826161bf61626163ff",
+    "bf6346756ef563416d7421ff"];
+  for h: inside { #assert cb_reads(h); }
+  for h: outside { #assert !cb_reads(h); }
+  b: [32] u8;
+  #assert cbor_int(b[..], cbor_read(cb_unhex("1b000000e8d4a51000", b[..]))).value == 1000000000000;
+  #assert cbor_int(b[..], cbor_read(cb_unhex("3903e7", b[..]))).value == -1000;
+  #assert cbor_read(cb_unhex("3bffffffffffffffff", b[..])).arg == 18446744073709551615;
+  m := cb_unhex("a26161016162820203", b[..]);
+  #assert cbor_int(m, cbor_map_text(m, cbor_read(m), "a")).value == 1 && cbor_map_text(m, cbor_read(m), "b").major == CBOR_ARRAY;
+}
+
+// ---- heads
+// The head at data[at]: major type, argument and where its payload starts,
+// shortest form only. ok false for anything outside the subset or cut.
+cbor_head :: (data: [] u8, at: int) -> CborItem #effects(all) {
+  if at < 0 || at >= data.count || data.count > CBOR_MAX_BYTES { return CborItem.{}; }
+  first := data[at];
+  major := cast(int) (first >> 5); info := cast(int) (first & 31);
+  if major > CBOR_MAP || info > 27 { return CborItem.{}; }
+  width := 0;
+  if info == 24 { width = 1; } else if info == 25 { width = 2; } else if info == 26 { width = 4; } else if info == 27 { width = 8; }
+  if data.count - at - 1 < width { return CborItem.{}; }
+  arg := cast(u64) info;
+  if width > 0 {
+    arg = 0;
+    for i: 0..<width { arg = (arg << 8) | cast(u64) data[at + 1 + i]; }
+    // Shortest form: one byte from 24, two from 256, four from 65536, eight from 2^32.
+    least := ifx width == 1 then cast(u64) 24 else cast(u64) 1 << cast(u64) (4 * width);
+    if arg < least { return CborItem.{}; }
+  }
+  return CborItem.{major=major,arg=arg,at=at,data=at+1+width,ok=true};
+}
+
+// ---- UTF-8
+// Well-formed UTF-8 (RFC 3629): no overlong form, no surrogate, nothing
+// above U+10FFFF. A lead byte from C2 to F4 starts 2, 3 or 4 bytes; its
+// second byte has a narrower range after E0, ED, F0 and F4.
+cbor_utf8 :: (text: [] u8) -> bool #effects(all) {
+  i := 0;
+  while i < text.count {
+    c := text[i];
+    if c < 0x80 { i += 1; continue; }
+    if c < 0xc2 || c > 0xf4 { return false; }
+    n := ifx c >= 0xf0 then 3 else ifx c >= 0xe0 then 2 else 1;
+    low := ifx c == 0xe0 then cast(u8) 0xa0 else ifx c == 0xf0 then cast(u8) 0x90 else cast(u8) 0x80;
+    high := ifx c == 0xed then cast(u8) 0x9f else ifx c == 0xf4 then cast(u8) 0x8f else cast(u8) 0xbf;
+    if text.count - i <= n { return false; }
+    if text[i + 1] < low || text[i + 1] > high { return false; }
+    for k: 2..<n+1 { if text[i + k] < 0x80 || text[i + k] > 0xbf { return false; } }
+    i += n + 1;
+  }
+  return true;
+}
+
+// ---- items
+// The end of the whole item at data[at], everything nested in it included,
+// or -1. No recursion: `left` counts the items still to read, and each one
+// takes at least a byte, so the loop ends within the input. Strings must
+// fit the input and text must be UTF-8. Keys are not compared here.
+cbor_walk :: (data: [] u8, at: int) -> int #effects(all) {
+  left: u64 = 1; pos := at;
+  while left > 0 {
+    head := cbor_head(data, pos);
+    if !head.ok { return -1; }
+    left -= 1; pos = head.data;
+    remaining := cast(u64) (data.count - pos);
+    if head.major == CBOR_BYTES || head.major == CBOR_TEXT {
+      if head.arg > remaining { return -1; }
+      end := pos + cast(int) head.arg;
+      if head.major == CBOR_TEXT && !cbor_utf8(data[pos..<end]) { return -1; }
+      pos = end;
+    } else if head.major == CBOR_ARRAY {
+      if head.arg > remaining { return -1; }
+      left += head.arg;
+    } else if head.major == CBOR_MAP {
+      if head.arg > CBOR_MAP_MAX { return -1; }
+      left += 2 * head.arg;
+    }
+  }
+  return pos;
+}
+// True when every map in the well-formed item data[at..<end] has keys
+// whose encodings all differ (shortest-form heads make equal keys encode
+// equally). It visits every head in order and compares each map's keys.
+cbor_unique :: (data: [] u8, at: int, end: int) -> bool #effects(all) {
+  pos := at;
+  while pos < end {
+    head := cbor_head(data, pos);
+    pos = head.data;
+    if head.major == CBOR_BYTES || head.major == CBOR_TEXT { pos += cast(int) head.arg; }
+    if head.major == CBOR_MAP {
+      starts: [CBOR_MAP_MAX] int; ends: [CBOR_MAP_MAX] int; key := pos;
+      for i: 0..<cast(int) head.arg {
+        starts[i] = key; ends[i] = cbor_walk(data, key); key = cbor_walk(data, ends[i]);
+        for j: 0..<i {
+          if ends[j] - starts[j] == ends[i] - starts[i] {
+            same := true;
+            for k: 0..<ends[i]-starts[i] { if data[starts[j]+k] != data[starts[i]+k] { same = false; } }
+            if same { return false; }
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+// One whole item at data[at]: its head, and end past everything in it.
+cbor_at :: (data: [] u8, at: int) -> CborItem #effects(all) {
+  top := cbor_head(data, at);
+  if !top.ok { return CborItem.{}; }
+  end := cbor_walk(data, at);
+  if end == -1 || !cbor_unique(data, at, end) { return CborItem.{}; }
+  top.end = end;
+  return top;
+}
+// The whole input as one item, with nothing after it.
+cbor_read :: (data: [] u8) -> CborItem #effects(all) {
+  item := cbor_at(data, 0);
+  if !item.ok || item.end != data.count { return CborItem.{}; }
+  return item;
+}
+// A byte or text string's payload.
+cbor_payload :: (data: [] u8, item: CborItem) -> [] u8 #effects(all) {
+  if !item.ok || (item.major != CBOR_BYTES && item.major != CBOR_TEXT) { return data[0..<0]; }
+  return data[item.data..<item.data + cast(int) item.arg];
+}
+// An unsigned or negative integer that fits s64.
+cbor_int :: (data: [] u8, item: CborItem) -> CborInt #effects(all) {
+  if !item.ok || item.arg > 9223372036854775807 { return CborInt.{}; }
+  if item.major == CBOR_UINT { return CborInt.{value=cast(s64) item.arg,ok=true}; }
+  if item.major == CBOR_NEGATIVE { return CborInt.{value=-1 - cast(s64) item.arg,ok=true}; }
+  return CborInt.{};
+}
+// The value under an integer key, or ok false. The map came from cbor_at
+// or cbor_read, so its keys are unique and its items are whole.
+cbor_map_int :: (data: [] u8, map: CborItem, key: s64) -> CborItem #effects(all) {
+  if !map.ok || map.major != CBOR_MAP { return CborItem.{}; }
+  pos := map.data;
+  for i: 0..<cast(int) map.arg {
+    k := cbor_at(data, pos);
+    value := cbor_at(data, k.end);
+    got := cbor_int(data, k);
+    if got.ok && got.value == key { return value; }
+    pos = value.end;
+  }
+  return CborItem.{};
+}
+// The value under a text key, or ok false.
+cbor_map_text :: (data: [] u8, map: CborItem, key: string) -> CborItem #effects(all) {
+  if !map.ok || map.major != CBOR_MAP { return CborItem.{}; }
+  pos := map.data;
+  for i: 0..<cast(int) map.arg {
+    k := cbor_at(data, pos);
+    value := cbor_at(data, k.end);
+    if k.major == CBOR_TEXT && cast(string) cbor_payload(data, k) == key { return value; }
+    pos = value.end;
+  }
+  return CborItem.{};
+}

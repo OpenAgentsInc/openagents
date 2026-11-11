@@ -1,0 +1,154 @@
+// COSE public keys (RFC 9052 section 7, RFC 9053 sections 7.1 and 7.2, RFC
+// 8230 for RSA) as WebAuthn stores them: one CBOR map per credential. Three
+// shapes are admitted, each with exactly its labels and nothing else:
+//
+//   EC2 P-256, ES256 (-7):   {1: 2, 3: -7, -1: 1, -2: x (32 bytes), -3: y (32 bytes)}
+//   OKP Ed25519, EdDSA (-8): {1: 1, 3: -8, -1: 6, -2: x (32 bytes)}
+//   RSA, RS256 (-257):       {1: 3, 3: -257, -1: n (256 to 512 bytes), -2: e = 65537}
+//
+// The P-256 point must be on the curve (p2_decode); the RSA modulus must be
+// what rsa_verify_sha256 admits (2048 to 4096 bits, odd) with the exponent
+// 65537 in its shortest bytes. An Ed25519 x is taken as 32 bytes; its point
+// is checked by the Ed25519 verifier, which is not written yet, so a WebAuthn
+// assertion with -8 refuses (webauthn.coax). A private part (-4, d) or any
+// other label refuses: the map must hold exactly the labels above.
+// Inputs are public, so this branches freely.
+#load "cbor.coax";
+#load "p256.coax";
+#load "rsa_verify.coax";
+#authority;
+
+COSE_ES256 :: -7; COSE_EDDSA :: -8; COSE_RS256 :: -257;
+COSE_OKP :: 1; COSE_EC2 :: 2; COSE_RSA :: 3;
+// alg 0 when not ok. point is SEC 1 uncompressed (04 || x || y) for ES256;
+// ed25519 the x for EdDSA; modulus[0..<modulus_count] the n for RS256.
+CoseKey :: struct { alg: int; point: [65] u8; ed25519: [32] u8; modulus: [512] u8; modulus_count: int; ok: bool; }
+
+// Hex parts joined into out, for the tests.
+cose_build :: (parts: [8] string, out: [] u8) -> [] u8 #effects(all) {
+  n := 0;
+  for part: parts { got := cb_unhex(part, out[n..<out.count]); n += got.count; }
+  return out[0..<n];
+}
+cose_parses :: (parts: [8] string) -> bool #effects(all) { b: [600] u8; return cose_key(cose_build(parts, b[..])).ok; }
+// The none.ES256 credential key of the WebAuthn Level 3 test vectors
+// (sctn-test-vectors-none-es256), and the Ed25519 one of packed.EdDSA.
+COSE_X :: "5820afefa16f97ca9b2d23eb86ccb64098d20db90856062eb249c33a9b672f26df61";
+COSE_Y :: "5820930a56b87a2fca66334b03458abf879717c12cc68ed73290af2e2664796b9220";
+COSE_ED :: "582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832";
+#test "EC2 P-256 (ES256): the key reads; every wrong field refuses" {
+  b: [200] u8;
+  good := cose_key(cose_build([8] string.["a5010203262001", "21", COSE_X, "22", COSE_Y, "", "", ""], b[..]));
+  #assert good.ok && good.alg == COSE_ES256 && good.point[0] == 4 && good.point[1] == 0xaf && good.point[32] == 0x61 && good.point[33] == 0x93 && good.point[64] == 0x20;
+  #assert good.modulus_count == 0 && good.ed25519[0] == 0;
+  // Labels in another order read the same.
+  #assert cose_parses([8] string.["a5", "22", COSE_Y, "010203262001", "21", COSE_X, "", ""]);
+  #assert !cose_parses([8] string.["a5010103262001", "21", COSE_X, "22", COSE_Y, "", "", ""]);     // kty OKP
+  #assert !cose_parses([8] string.["a5010203272001", "21", COSE_X, "22", COSE_Y, "", "", ""]);     // alg EdDSA
+  #assert !cose_parses([8] string.["a5010203262002", "21", COSE_X, "22", COSE_Y, "", "", ""]);     // crv P-384
+  #assert !cose_parses([8] string.["a5010203", "3900ff", "2001", "21", COSE_X, "22", COSE_Y, ""]);  // alg -256
+  #assert !cose_parses([8] string.["a5010203262001", "21", COSE_X, "21", COSE_Y, "", "", ""]);     // x twice, no y
+  #assert !cose_parses([8] string.["a5010203262001", "22", COSE_X, "23", COSE_Y, "", "", ""]);     // y and d, no x
+  #assert !cose_parses([8] string.["a4010203262001", "21", COSE_X, "", "", "", "", ""]);           // no y
+  #assert !cose_parses([8] string.["a6010203262001", "21", COSE_X, "22", COSE_Y, "2340", "", ""]);   // a private d
+  #assert !cose_parses([8] string.["a6010203262001", "21", COSE_X, "22", COSE_Y, "0240", "", ""]);   // a kid
+  #assert !cose_parses([8] string.["a5010203262001", "21", COSE_X, "22", "581f930a56b87a2fca66334b03458abf879717c12cc68ed73290af2e2664796b92", "", "", ""]);
+  #assert !cose_parses([8] string.["a5010203262001", "21", "581faf", "22", COSE_Y, "", "", ""]);
+  #assert !cose_parses([8] string.["a5010203262001", "21", COSE_X, "22", "5820930a56b87a2fca66334b03458abf879717c12cc68ed73290af2e2664796b9221", "", "", ""]);  // off the curve
+  #assert !cose_parses([8] string.["a5010203262001", "21", COSE_X, "22", "7820930a56b87a2fca66334b03458abf879717c12cc68ed73290af2e2664796b9220", "", "", ""]);  // y as text
+  #assert !cose_parses([8] string.["a5010203262001", "21", "7820afefa16f97ca9b2d23eb86ccb64098d20db90856062eb249c33a9b672f26df61", "22", COSE_Y, "", "", ""]);
+  #assert !cose_parses([8] string.["a501020326", "2002", "21", COSE_X, "22", COSE_Y, "", ""]) && !cose_parses([8] string.["a501020326", "2061", "21", COSE_X, "22", COSE_Y, "", ""]);
+  #assert !cose_parses([8] string.["a501", "6161", "03262001", "21", COSE_X, "22", COSE_Y, ""]);   // kty as text
+  #assert !cose_parses([8] string.["a5010203", "6161", "2001", "21", COSE_X, "22", COSE_Y, ""]);   // alg as text
+  #assert !cose_parses([8] string.["8101", "", "", "", "", "", "", ""]) && !cose_parses([8] string.["", "", "", "", "", "", "", ""]) && !cose_parses([8] string.["a0", "", "", "", "", "", "", ""]) && !cose_parses([8] string.["a10102", "", "", "", "", "", "", ""]);
+}
+#test "OKP Ed25519 (EdDSA): the key reads; wrong fields refuse" {
+  b: [200] u8;
+  key := cose_key(cose_build([8] string.["a4010103272006", "21", COSE_ED, "", "", "", "", ""], b[..]));
+  #assert key.ok && key.alg == COSE_EDDSA && key.ed25519[0] == 0x44 && key.ed25519[31] == 0x32 && key.point[0] == 0 && key.modulus_count == 0;
+  #assert !cose_parses([8] string.["a4010103272001", "21", COSE_ED, "", "", "", "", ""]);       // crv P-256
+  #assert !cose_parses([8] string.["a4010103272005", "21", COSE_ED, "", "", "", "", ""]);       // crv X448
+  #assert !cose_parses([8] string.["a4010103262006", "21", COSE_ED, "", "", "", "", ""]);       // alg ES256
+  #assert !cose_parses([8] string.["a4010203272006", "21", COSE_ED, "", "", "", "", ""]);       // kty EC2
+  #assert !cose_parses([8] string.["a4010103272006", "21", "581f44e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf8", "", "", "", "", ""]);
+  #assert !cose_parses([8] string.["a4010103272006", "21", "7820", "44e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832", "", "", "", ""]);
+  #assert !cose_parses([8] string.["a5010103272006", "21", COSE_ED, "2340", "", "", "", ""]);
+  // x as 32 bytes of text (valid UTF-8) refuses.
+  #assert !cose_parses([8] string.["a4010103272006", "21", "7820", "6161616161616161616161616161616161616161616161616161616161616161", "", "", "", ""]);
+  #assert !cose_parses([8] string.["a4010103272006", "22", COSE_ED, "", "", "", "", ""]);       // x under the wrong label
+  #assert !cose_parses([8] string.["a3010103272006", "", "", "", "", "", "", ""]);
+}
+#test "RSA (RS256): moduli rsa_verify admits, e 65537 only" {
+  head: [16] u8; tail: [8] u8; b: [600] u8;
+  for size: [3] int.[256, 384, 512] {
+    for e: [2] string.["43010001", "4401000100"] {
+      n := 0;
+      for c: cb_unhex("a4010303390100205901", head[..]) { b[n] = c; n += 1; }
+      // The length's low byte, then the modulus: top bit set, odd.
+      b[n-1] = cast(u8) (size >> 8); b[n] = cast(u8) (size & 255); n += 1;
+      for i: 0..<size { b[n+i] = cast(u8) (ifx i == 0 then 0xc5 else ifx i == size-1 then 1 else 0x5a); }
+      n += size;
+      b[n] = 0x21; n += 1;
+      for c: cb_unhex(e, tail[..]) { b[n] = c; n += 1; }
+      key := cose_key(b[0..<n]);
+      #assert key.ok == (e == "43010001") && (!key.ok || (key.alg == COSE_RS256 && key.modulus_count == size && key.modulus[0] == 0xc5 && key.modulus[size-1] == 1 && key.point[0] == 0));
+      // Each bad shape on the good key: an even n, a top byte too small, e = 3, kty or alg changed, e not bytes.
+      if e == "43010001" {
+        b[11 + size - 1] = 2; #assert !cose_key(b[0..<n]).ok; b[11 + size - 1] = 1;
+        if size == 256 { b[11] = 0x7f; #assert !cose_key(b[0..<n]).ok; b[11] = 0xc5; }
+        b[n-1] = 3; #assert !cose_key(b[0..<n]).ok; b[n-3] = 0; #assert !cose_key(b[0..<n]).ok; b[n-1] = 1; #assert !cose_key(b[0..<n]).ok; b[n-3] = 1;
+        b[n-2] = 1; #assert !cose_key(b[0..<n]).ok; b[n-2] = 0;
+        b[n-4] = 0x63; #assert !cose_key(b[0..<n]).ok; b[n-4] = 0x43;
+        b[2] = 2; #assert !cose_key(b[0..<n]).ok; b[2] = 3;
+        b[6] = 0x01; #assert !cose_key(b[0..<n]).ok; b[6] = 0x00;
+        b[8] = 0x79; #assert !cose_key(b[0..<n]).ok; b[8] = 0x59;
+        #assert cose_key(b[0..<n]).ok;
+      }
+    }
+  }
+  // 255 and 513 bytes refuse.
+  for size: [2] int.[255, 513] {
+    n := 0;
+    for c: cb_unhex("a4010303390100205901", head[..]) { b[n] = c; n += 1; }
+    b[n-1] = cast(u8) (size >> 8); b[n] = cast(u8) (size & 255); n += 1;
+    for i: 0..<size { b[n+i] = 0xc5; }
+    n += size; b[n] = 0x21; b[n+1] = 0x43; b[n+2] = 1; b[n+3] = 0; b[n+4] = 1; n += 5;
+    #assert !cose_key(b[0..<n]).ok;
+  }
+}
+
+// A COSE key from its CBOR bytes.
+cose_key :: (data: [] u8) -> CoseKey #effects(all) {
+  out: CoseKey;
+  // A missing label, or a map that is not one, reads as not ok (value 0),
+  // which no branch below takes.
+  map := cbor_read(data);
+  kty := cbor_int(data, cbor_map_int(data, map, 1));
+  alg := cbor_int(data, cbor_map_int(data, map, 3));
+  crv := cbor_int(data, cbor_map_int(data, map, -1));
+  if kty.value == COSE_EC2 && alg.value == COSE_ES256 && map.arg == 5 && crv.ok && crv.value == 1 {
+    x := cbor_map_int(data, map, -2); y := cbor_map_int(data, map, -3);
+    if !cose_bytes32(x) || !cose_bytes32(y) { return out; }
+    out.point[0] = 4;
+    for i: 0..<32 { out.point[1 + i] = data[x.data + i]; out.point[33 + i] = data[y.data + i]; }
+    if !p2_decode(out.point[..]).ok { return CoseKey.{}; }
+  } else if kty.value == COSE_OKP && alg.value == COSE_EDDSA && map.arg == 4 && crv.ok && crv.value == 6 {
+    x := cbor_map_int(data, map, -2);
+    if !cose_bytes32(x) { return out; }
+    for i: 0..<32 { out.ed25519[i] = data[x.data + i]; }
+  } else if kty.value == COSE_RSA && alg.value == COSE_RS256 && map.arg == 4 {
+    n := cbor_map_int(data, map, -1); e := cbor_map_int(data, map, -2);
+    if n.major != CBOR_BYTES || e.major != CBOR_BYTES || e.arg != 3 { return out; }
+    if data[e.data] != 1 || data[e.data + 1] != 0 || data[e.data + 2] != 1 { return out; }
+    if !cose_rsa_ok(cbor_payload(data, n)) { return out; }
+    for i: 0..<cast(int) n.arg { out.modulus[i] = data[n.data + i]; }
+    out.modulus_count = cast(int) n.arg;
+  } else { return out; }
+  out.alg = cast(int) alg.value; out.ok = true;
+  return out;
+}
+// A byte string of 32 bytes.
+cose_bytes32 :: (item: CborItem) -> bool #effects(all) { return item.major == CBOR_BYTES && item.arg == 32; }
+// A modulus rsa_verify_sha256 admits: 256 to 512 bytes, no leading zero
+// byte, 2048 bits at least, odd.
+cose_rsa_ok :: (n: [] u8) -> bool #effects(all) { return rsa_modulus_ok(n, n.count); }

@@ -4814,6 +4814,32 @@
       "retrieved": "2026-11-11",
       "sha256": "456e8f17558fdbd206f968b96fc6f1b4a71ea331ab30ad17f711ab3adaa7d701",
       "bytes": 140386
+    },
+    {
+      "path": "upstream/rfc/rfc8949.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc8949.txt",
+      "revision": "RFC 8949",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "cbor"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "f1164a5b31a39350ad46abe29b83575eb933ca6c45366989c118b6b1058a214a",
+      "bytes": 185226
+    },
+    {
+      "path": "upstream/rfc/rfc9053.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc9053.txt",
+      "revision": "RFC 9053",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "cose"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "3d470615875620375f8453ba25b8dce7e4d0271e76b0b79a46df34ccb2d56ab0",
+      "bytes": 120315
     }
   ]
 }

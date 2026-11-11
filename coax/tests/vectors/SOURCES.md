@@ -70,6 +70,9 @@ that a maliciously replaced manifest is authentic.
   RFC 6979 appendix A.2.5's SHA-256 cases check the deterministic nonce.
   Retrieved 2026-11-11 for `coax/lib/crypto/p256_ecdsa.coax`
   (`coax/tests/auth/p256_vectors_test.coax`; GitHub #13198).
+- **CBOR and COSE (auth, WebAuthn):** RFC 8949 (CBOR; appendix A's
+  examples for the deterministic subset) and RFC 9053 (COSE algorithms and
+  key parameters), retrieved 2026-11-11 for GitHub #13199.
 - **ECDSA signing:** tiny-secp256k1's complete `tests/fixtures/ecdsa.json`
   at revision `e1fd7a77`, retrieved 2026-11-02 for Bitcoin chapter 20. Its
   2,020 `valid` rows give a key, a 32-byte hash and the compact signature
@@ -1196,3 +1199,5 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/nist/ecdsa/PKV.rsp`](upstream/nist/ecdsa/PKV.rsp) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `1d33551c1a199b1fc2b0e4075cdfd52d4830503ef37e6b16f04ce617d524f3f1` |
 | [`upstream/nist/ecdsa/KeyPair.rsp`](upstream/nist/ecdsa/KeyPair.rsp) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `a85cc17bf78868326dffde6ebfc298987fe187606d406ba5dd417d491d67411d` |
 | [`upstream/rfc/rfc6979.txt`](upstream/rfc/rfc6979.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc6979.txt) | `456e8f17558fdbd206f968b96fc6f1b4a71ea331ab30ad17f711ab3adaa7d701` |
+| [`upstream/rfc/rfc8949.txt`](upstream/rfc/rfc8949.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc8949.txt) | `f1164a5b31a39350ad46abe29b83575eb933ca6c45366989c118b6b1058a214a` |
+| [`upstream/rfc/rfc9053.txt`](upstream/rfc/rfc9053.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc9053.txt) | `3d470615875620375f8453ba25b8dce7e4d0271e76b0b79a46df34ccb2d56ab0` |
