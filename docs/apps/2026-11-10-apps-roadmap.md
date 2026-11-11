@@ -299,6 +299,40 @@ only tests.
    folder and tabs, the shared session record, and access for people who are
    not admins.
 
+Status (2026-11-11, GitHub #13156, on the owner's Mac):
+
+- **Built: the hosts.** `apps/shared/host/apple/ui-host.m` is the Mac and
+  iOS host on `ui-host.h` (AppKit or a UIKit view, Metal, the input
+  method through NSTextInputClient, pictures through ImageIO);
+  `apps/shared/host/android/ui-host.c` is the Android one (Vulkan through
+  `verse/gpu/`, offscreen only: no window yet). The component gallery's own
+  `main.c` and Coax build on all four (`components/gallery/{linux,apple,android}/build.sh`).
+  Its picture at 780 by 1688, 2x, is the same to the pixel in the iPhone
+  simulator and an Android 35 emulator.
+- **Built: one shader.** The Mac apps draw with
+  `components/backend/gpu-shader.coax` emitted as Metal; `Zeron.metal` is
+  deleted and the 21 Mac goldens still pass.
+- **Kept: CoreText's atlas on the Mac** (components/spec.md, decision 3).
+- **Not built:** OpenAgents, Everglade and Aethyrforge still run their own
+  `main.swift` hosts. Moving them is the next part: OpenAgents first (its
+  Linux `main.c` already runs on the contract and needs a Mac file chooser
+  and dictation host in place of the portal and the Linux ones, and a
+  CoreText atlas filler in place of the Coax one), then Everglade's
+  Workshop (which then gets the component pass Phase 4 needs), with the
+  page host for the realms kept as it is, then Aethyrforge. The Android
+  window, on the activity's `ANativeWindow`, is not written. Who and when:
+  components/spec.md, "Phases".
+- **Staged: /chat's server engines.** `coax/web/agent/deploy.sh --staging`
+  put the runner with #13153's engines on `oa-agent-staging`. Its first turn
+  failed: the checkout of the public repository (1.7 GB) ran the container
+  out of memory. The runner now leaves packed data out (about 480 MB), and
+  on staging a Haiku turn answered from the checkout and a second turn
+  resumed its session. Production is not deployed (NEEDS_OWNER.md).
+- **Not built: /chat's folders and tabs and the shared record.** They need
+  a change to the `chat` schema (a migration, which is a production deploy)
+  and the page. Who may use /chat beyond admins is the owner's decision
+  (NEEDS_OWNER.md).
+
 ## Housekeeping
 
 - `AGENTS.md`'s table doesn't list `aethyrforge-desktop`, `everglade-desktop`,

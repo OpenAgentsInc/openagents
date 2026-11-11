@@ -278,6 +278,19 @@ number, banner, talk window. These are `everglade/hud/` and
 
 Each phase ends with every existing check and golden unchanged.
 
+Who does each phase and by when (the audit's recommendation 7,
+docs/research/exact/04-apps-audit-2026-11-10.md; set 2026-11-11, #13156). A
+phase with no implementer by its date is cut from this list, not left open.
+
+| Phase | Implementer | Date |
+| --- | --- | --- |
+| 1. Move | The apps agents on `coderos-4080` (#13153) | Done 2026-11-10 |
+| 2. Split Markdown first: the rest of the transcript, the composer, the pickers and attachments onto the display list and the skin | The apps agent on `coderos-4080`, under #13153's follow-up | 2026-11-14 |
+| 3. Skins and the gallery: picture goldens (`gallery/check.coax`) and a look in a browser | The apps agent on the owner's Mac (headless Chrome renders WebGPU there) | 2026-11-14 |
+| 4. Chat in Everglade for desktop | The apps agent on the owner's Mac, after the Workshop's host draws a component pass (#13156) | 2026-11-17 |
+| 5. The terminal and the leftovers: Coder's terminal painting through `kit/markdown.coax`, one edit buffer, the HUD set | The apps agent on `coderos-4080` | 2026-11-17 |
+| Hosts: OpenAgents, Everglade and Aethyrforge on the shared Mac host, and the Android window (the hosts themselves draw and take pictures since 2026-11-11, #13156) | The apps agent on the owner's Mac | 2026-11-17 |
+
 1. **Move.** Done 2026-11-10: `apps/shared/zeron/` is now `components/zeron/`,
    with no content change;
    the web, the Mac app and Aethyrforge load it from there.
