@@ -16,10 +16,23 @@ every node it visits. The same checks compiled to C run in milliseconds.
 
 ## Where it is on
 
-Native checks are on by default for every unit (#13143). `COAX_NATIVE_CHECKS=0`
-turns them off: the evaluator then runs every check, as it did before.
-`COAX_NATIVE_CHECKS=compare` runs both and reports where they differ.
-The evaluator remains the fallback for every check native code doesn't pass.
+Native checks are on by default for every unit (#13143). The evaluator
+remains the fallback for every check native code doesn't pass.
+
+| `COAX_NATIVE_CHECKS` | What runs a unit's checks |
+| --- | --- |
+| unset | Native code first, when the run pays for the C compiler: it has at least 16 checks (`COAX_NATIVE_CHECKS_MIN`), or a check in it carries `#steps` or `#traversal`. A smaller run stays in the evaluator |
+| `1` | Native code first, whatever the run's size |
+| `0` | The evaluator alone, as before #13122 |
+| `compare` | Both, for every check; differences are reported |
+
+The size rule exists because compiling and starting the check binary takes
+0.2 to 0.5 s, and the evaluator runs a couple of million steps in that time.
+A library with five small checks takes 0.06 s in the evaluator and 0.45 s
+natively (a Mac, 2026-11-10). A check without `#steps` can't use more than
+the default 20 million steps, so a small run the rule leaves to the
+evaluator costs what it cost before. A run is the checks one compile has to
+run: after an edit, only the checks the check cache doesn't answer count.
 
 ## What happens
 

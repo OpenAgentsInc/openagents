@@ -97,18 +97,22 @@ unit_native_checks() {
 }
 unit_lexer() { python3 tests/lexer.py; }
 unit_parser() { python3 tests/parser.py; }
-unit_budget() { python3 tests/run_budget.py && python3 tests/capacity_refusals.py; }
+# The evaluator's own limits (steps, storage, its parallel check workers and
+# their job budget) are what budget, steps, parallel_checks and job_budget
+# test: they run with COAX_NATIVE_CHECKS=0. Native code has no step budget, so
+# a check that runs out of #steps in the evaluator passes natively (#13143).
+unit_budget() { COAX_NATIVE_CHECKS=0 python3 tests/run_budget.py && COAX_NATIVE_CHECKS=0 python3 tests/capacity_refusals.py; }
 unit_strings() { python3 tests/ct_strings.py; }
 unit_traversal() { python3 tests/traversal_work.py; }
 unit_provenance() { python3 tests/provenance.py && web/tool.sh tests/stale-compiler.coax "$PWD" "$COAX_ABS"; }
 unit_query() { web/tool.sh tests/query.coax "$COAX_ABS"; }
-unit_steps() { web/tool.sh tests/steps.coax "$COAX_ABS"; }
+unit_steps() { COAX_NATIVE_CHECKS=0 web/tool.sh tests/steps.coax "$COAX_ABS"; }
 unit_library_checks() { web/tool.sh tests/library-checks.coax "$COAX_ABS"; }
 unit_authority_cache() { web/tool.sh tests/authority-cache.coax "$COAX_ABS"; }
 unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
 unit_serve() { web/tool.sh tests/serve.coax "$COAX_ABS"; }
-unit_parallel_checks() { web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
-unit_job_budget() { web/tool.sh tests/job_budget.coax "$COAX_ABS"; }
+unit_parallel_checks() { COAX_NATIVE_CHECKS=0 web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
+unit_job_budget() { COAX_NATIVE_CHECKS=0 web/tool.sh tests/job_budget.coax "$COAX_ABS"; }
 # A sample of units that compare stdout and stderr between compiles, run with
 # every build over the load limit ($COAX_JOBS_LOAD_NOW, src/jobs.cpp): a
 # notice reaching compared output fails them (GitHub #12939).
