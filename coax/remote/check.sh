@@ -13,9 +13,11 @@
 #                                         ("only PATH", "reports"...: a revert's own check)
 #   coax/remote/check.sh since BASE I/N   the I-th of N parts of the suites whose sources
 #                                         changed since BASE (after.sh's fast run)
-#   coax/remote/check.sh web BASE         the rest of a fast run: the web modules the
-#                                         change touched, the report checks, and the room
-#                                         build when the change reaches it
+#   coax/remote/check.sh web BASE         the web modules the change since BASE touched,
+#                                         and the report checks (a fast run)
+#   coax/remote/check.sh room-since BASE  the room build, when the change since BASE
+#                                         reaches it (a fast run; its own job: it takes
+#                                         25 minutes)
 #   coax/remote/check.sh suites I/N       the I-th of N parts of every suite
 #   coax/remote/check.sh only PATH,PATH   these suites (a bisect)
 #   coax/remote/check.sh compiler I/N     the I-th of N parts of coax/tests/run.sh
@@ -282,10 +284,12 @@ case "$mode" in
   web)
     changed_since
     web_since
-    reports_since
+    reports_since ;;
+  room-since)
+    changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,31p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,33p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 echo "$status" > "$out/status"

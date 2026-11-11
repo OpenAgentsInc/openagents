@@ -158,7 +158,8 @@ and runs only what the commits between them can have changed:
 - the web modules the change touched, each against its budget;
 - `tools-check`, `everglade-parity` and the committed shaders against their
   Coax;
-- the room build, when the change reaches one of its units;
+- the room build, when the change reaches one of its units, as its own job
+  (it takes about 25 minutes);
 - `coax/tests/run.sh` in eight parts, when compiler sources changed.
 
 Every other check passed at `G` and reads no file that changed, so it passes
@@ -252,7 +253,7 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | --- | --- |
 | Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
-| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `room`, `tools`) |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `room`, `tools`) |
 | The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `state`, `red`, `history`) |
 | The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
 | Releases from `main-green` | `coax/web/release.sh` |
@@ -287,7 +288,12 @@ Measured on 2026-11-10: a fast run of a change to nine files took 153 s on
 four host slots (three suite parts of about 55 s each, and 153 s for the web
 modules, the report checks and the shaders), 315 slot-seconds, under $0.01 of
 host time. When compiler sources change, the compiler's units add eight jobs
-of 6 to 30 minutes. A full run of all 980 suites, 55 modules, the reports,
+of 6 to 30 minutes, and a change that reaches the room adds its 25-minute
+build. The first fast run on `main`, on a loaded evening (every slot of
+eight hosts busy), covered 12 commits that touched 26 suites, the room and
+the compiler's units: 13 jobs, 49 minutes, and one unit that timed out under
+load and passed when run again. The time to a verdict is set by the slowest
+job and by free slots, not by the number of commits. A full run of all 980 suites, 55 modules, the reports,
 the room build and the compiler's units took 41 minutes on shared hosts and
 20,315 slot-seconds, about $0.52 of host time; eight a day is about $4.
 

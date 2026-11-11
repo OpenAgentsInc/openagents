@@ -17,9 +17,10 @@
 #
 # A fast run, on every new head H once main-green exists: only what changed
 # since main-green G. The suites whose sources changed (check.sh since G, in
-# OA_AFTER_FAST_PARTS parts), the web modules the change touched, the report
-# checks and the room build when the change reaches it (check.sh web G), and
-# coax/tests/run.sh in 8 parts when compiler sources changed. Everything else
+# OA_AFTER_FAST_PARTS parts), the web modules the change touched and the
+# report checks (check.sh web G), the room build when the change reaches it
+# (check.sh room-since G), and coax/tests/run.sh in 8 parts when compiler
+# sources changed. Everything else
 # passed at G and reads no changed file, so it passes at H. A head that changes
 # only documents is green with no job.
 #
@@ -318,7 +319,7 @@ run_head() {
     if [[ -n "$changed" ]] && grep -qvE '(\.md$|^docs/)' <<< "$changed"; then
       for (( i = 1; i <= fast_parts; i++ )); do jobs+=("since $ref $i/$fast_parts"); done
     fi
-    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref")
+    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref" "room-since $ref")
     # The last full run's failures, each as its own check.
     if [[ -n "$known" ]]; then
       local item a j
