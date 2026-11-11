@@ -1,0 +1,455 @@
+// WebAuthn Level 3 relying-party checks (W3C Web Authentication, sections
+// 7.1 "Registering a New Credential" and 7.2 "Verifying an Authentication
+// Assertion") for passkeys made with attestation "none".
+//
+//   webauthn_register: clientDataJSON (type "webauthn.create", the
+//     challenge, the origin, no cross-origin), the attestationObject (fmt
+//     "none", an empty attStmt), and its authenticatorData (the RP ID hash,
+//     UP, UV when asked, BS only with BE, AT set, the credential id, a COSE
+//     key cose_key admits, extensions only when ED says so, nothing after).
+//     The answer says where the credential id and COSE key sit in the
+//     attestationObject, for the caller to store with the flags and count.
+//   webauthn_assert: clientDataJSON ("webauthn.get"), authenticatorData (as
+//     above, with AT clear and BE as stored), the signature over
+//     authenticatorData || SHA-256(clientDataJSON) under the stored COSE key
+//     (ES256 as DER, RS256 as PKCS#1 v1.5), then the sign count: when the
+//     stored or the new count is nonzero, the new one must be larger.
+//
+// Every refusal has its own code. EdDSA (-8) keys register, but their
+// assertions answer WA_ALGORITHM until the Ed25519 verifier exists.
+// Inputs are a browser's bytes and the server's own values: public, so
+// this branches freely.
+#load "cose.coax";
+#load "p256_ecdsa.coax";
+#load "../json/json.coax";
+#authority;
+
+WA_OK :: 0; WA_CLIENT_DATA :: 1; WA_TYPE :: 2; WA_CHALLENGE :: 3; WA_ORIGIN :: 4; WA_CROSS_ORIGIN :: 5;
+WA_ATTESTATION :: 6; WA_AUTH_DATA :: 7; WA_RP_ID :: 8; WA_PRESENCE :: 9; WA_VERIFICATION :: 10;
+WA_BACKUP :: 11; WA_KEY :: 12; WA_SIGNATURE :: 13; WA_COUNTER :: 14; WA_ALGORITHM :: 15; WA_INPUT :: 16;
+// authenticatorData flags (section 6.1).
+WA_UP :: 0x01; WA_UV :: 0x04; WA_BE :: 0x08; WA_BS :: 0x10; WA_AT :: 0x40; WA_ED :: 0x80;
+WA_CLIENT_MAX :: 4096;      // clientDataJSON bytes
+WA_AUTH_MAX :: 1024;        // an assertion's authenticatorData bytes
+WA_ID_MAX :: 1023;          // credential id bytes (credentialIdLength, section 6.5.1)
+WA_JSON_NODES :: 64;
+
+// Where things sit in authenticatorData (offsets into it).
+WaAuthData :: struct { error: int; flags: u32; count: u32; id_at: int; id_count: int; key_at: int; key_count: int; }
+// A registration: offsets into the attestationObject.
+WaRegistration :: struct { error: int; flags: u32; count: u32; alg: int; aaguid: [16] u8; id_at: int; id_count: int; key_at: int; key_count: int; }
+WaAssertion :: struct { error: int; flags: u32; count: u32; }
+
+// ---- checks
+// The none.ES256 example of the WebAuthn Level 3 test vectors
+// (sctn-test-vectors-none-es256; RP ID example.org, origin https://example.org;
+// pinned in coax/tests/vectors/upstream/w3c/webauthn-index.bs).
+WA_REG_CHALLENGE :: "00c30fb78531c464d2b6771dab8d7b603c01162f2fa486bea70f283ae556e130";
+WA_PRIVATE :: "6e68e7a58484a3264f66b77f5d6dc5bc36a47085b615c9727ab334e8c369c2ee";
+WA_AAGUID :: "8446ccb9ab1db374750b2367ff6f3a1f";
+WA_ID :: "f91f391db4c9b2fde0ea70189cba3fb63f579ba6122b33ad94ff3ec330084be4";
+WA_REG_CLIENT :: "{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\",\"crossOrigin\":false,\"extraData\":\"clientDataJSON may be extended with additional fields in the future, such as this: BkQeDjdcTBrXBiAwJTLE5Q\"}";
+WA_ATTESTATION_HEX :: "a363666d74646e6f6e656761747453746d74a068617574684461746158a4bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b559000000008446ccb9ab1db374750b2367ff6f3a1f0020f91f391db4c9b2fde0ea70189cba3fb63f579ba6122b33ad94ff3ec330084be4a5010203262001215820afefa16f97ca9b2d23eb86ccb64098d20db90856062eb249c33a9b672f26df61225820930a56b87a2fca66334b03458abf879717c12cc68ed73290af2e2664796b9220";
+WA_GET_CHALLENGE :: "39c0e7521417ba54d43e8dc95174f423dee9bf3cd804ff6d65c857c9abf4d408";
+WA_AUTH_HEX :: "bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000";
+WA_GET_CLIENT :: "{\"type\":\"webauthn.get\",\"challenge\":\"OcDnUhQXulTUPo3JUXT0I97pvzzYBP9tZchXyav01Ag\",\"origin\":\"https://example.org\",\"crossOrigin\":false}";
+WA_SIGNATURE_HEX :: "3046022100f50a4e2e4409249c4a853ba361282f09841df4dd4547a13a87780218deffcd380221008480ac0f0b93538174f575bf11a1dd5d78c6e486013f937295ea13653e331e87";
+WA_EXAMPLE_ORIGIN :: "https://example.org";
+WA_RP :: "example.org";
+// The COSE key sits at bytes 117 to 193 of the attestationObject.
+wa_text :: (s: string, out: [] u8) -> [] u8 #effects(all) { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+wa_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// Registration of the example with one change: client data text, and the
+// attestationObject with byte `at` set to `value` (at -1: none).
+wa_reg :: (client: string, at: int, value: u8, uv: bool) -> int #effects(all) {
+  att: [400] u8; cd: [600] u8; ch: [32] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  if at >= 0 { a[at] = value; }
+  return webauthn_register(a, wa_text(client, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, uv).error;
+}
+// An assertion over authenticatorData (the example's RP ID hash, then flags and rest in hex) and client data signed with the example's
+// private key, checked against its stored COSE key.
+wa_signed :: (flags: string, rest: string, pad: int, client: string, uv: bool, stored: u32, be: bool) -> WaAssertion #effects(all) {
+  att: [400] u8; ad: [1100] u8; cd: [600] u8; ch: [32] u8; key: [32] u8; message: [1200] u8; hash: [32] u8; raw: [64] u8; der: [80] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  // The example's RP ID hash, then flags, the rest, and pad zero bytes (ad starts zeroed).
+  h := cb_unhex("bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b5", ad[..]);
+  f := cb_unhex(flags, ad[32..<ad.count]);
+  t := cb_unhex(rest, ad[33..<ad.count]);
+  data := ad[0..<h.count + f.count + t.count + pad]; c := wa_text(client, cd[..]);
+  for i: 0..<data.count { message[i] = data[i]; }
+  digest: [32] u8; #assert sha256_hash_checked(c, digest[..], false) == SHA_OK;
+  for i: 0..<32 { message[data.count + i] = digest[i]; }
+  #assert sha256_hash_checked(message[0..<data.count+32], hash[..], false) == SHA_OK;
+  #assert p256_sign(cb_unhex(WA_PRIVATE, key[..]), hash[..], raw[..]);
+  n := pe_der_write(raw[..], der[..]);
+  return webauthn_assert(data, c, der[0..<n], a[117..<194], cb_unhex(WA_GET_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, uv, stored, be);
+}
+#test "test helpers and the largest assertion" #steps 40000000000 #traversal 1073741824 {
+  a: [3] u8; b: [3] u8; a[0] = 1; b[0] = 1;
+  #assert wa_same(a[..], b[..]) && !wa_same(a[..], b[0..<2]);
+  b[0] = 2; #assert !wa_same(a[..], b[..]); b[0] = 1; b[2] = 9; #assert !wa_same(a[..], b[..]);
+  #assert wa_byte(a[..], 0) == 1 && wa_byte(a[..], 2) == 0 && wa_byte(a[..], 3) == 0;
+  // ED with one extension holding L bytes: 37 + 5 + L bytes of authenticatorData.
+  // L = 982 makes exactly WA_AUTH_MAX (1024) and is taken; 983 is one over.
+  #assert wa_signed("99", "00000000a1015903d6", 982, WA_GET_CLIENT, false, 0, true).error == WA_OK;
+  #assert wa_signed("99", "00000000a1015903d7", 983, WA_GET_CLIENT, false, 0, true).error == WA_AUTH_DATA;
+}
+#test "credential id lengths: 1, 300 and 1023 bytes register, 1024 does not" {
+  att: [400] u8; d: [1200] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  for size: [4] int.[1, 300, 1023, 1024] {
+    for i: 0..<53 { d[i] = a[30 + i]; }
+    d[53] = cast(u8) (size >> 8); d[54] = cast(u8) (size & 255);
+    for i: 0..<size { d[55 + i] = 7; }
+    for i: 0..<77 { d[55 + size + i] = a[117 + i]; }
+    r := wa_auth_data(d[0..<55 + size + 77], WA_RP, true, false);
+    #assert (r.error == WA_OK) == (size <= 1023) && (size > 1023 || (r.id_count == size && r.key_at == 55 + size && r.key_count == 77));
+  }
+}
+#test "base64url without padding: RFC 4648's examples and the whole alphabet" {
+  out: [96] u8; b: [64] u8;
+  inputs := [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+  outputs := [7] string.["", "Zg", "Zm8", "Zm9v", "Zm9vYg", "Zm9vYmE", "Zm9vYmFy"];
+  for i: 0..<7 { n := wa_b64url(wa_text(inputs[i], b[..]), out[..]); #assert cast(string) out[0..<n] == outputs[i]; }
+  all := cb_unhex("00108310518720928b30d38f41149351559761969b71d79f8218a39259a7a29aabb2dbafc31cb3d35db7e39ebbf3dfbf", b[..]);
+  n := wa_b64url(all, out[..]);
+  #assert cast(string) out[0..<n] == "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  #assert wa_b64url(all, out[0..<63]) == -1 && wa_b64url(all, out[0..<64]) == 64;
+  #assert wa_b64url_char(0) == 'A' && wa_b64url_char(25) == 'Z' && wa_b64url_char(26) == 'a' && wa_b64url_char(51) == 'z';
+  #assert wa_b64url_char(52) == '0' && wa_b64url_char(61) == '9' && wa_b64url_char(62) == '-' && wa_b64url_char(63) == '_';
+}
+#test "registration: the spec's none.ES256 example" #steps 4000000000 #traversal 1073741824 {
+  att: [400] u8; cd: [600] u8; ch: [32] u8; id: [32] u8; aaguid: [16] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  r := webauthn_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, false);
+  #assert r.error == WA_OK && r.alg == COSE_ES256 && r.flags == 0x59 && r.count == 0;
+  #assert wa_same(a[r.id_at..<r.id_at+r.id_count], cb_unhex(WA_ID, id[..])) && wa_same(r.aaguid[..], cb_unhex(WA_AAGUID, aaguid[..]));
+  #assert r.key_at == 117 && r.key_count == 77 && cose_key(a[r.key_at..<r.key_at+r.key_count]).ok;
+  // UV was not given (flags 59: UP, BE, BS, AT), so asking for it refuses.
+  #assert wa_reg(WA_REG_CLIENT, -1, 0, true) == WA_VERIFICATION;
+}
+#test "registration: client data refusals" #steps 4000000000 #traversal 1073741824 {
+  #assert wa_reg("{\"type\":\"webauthn.get\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\"}", -1, 0, false) == WA_TYPE;
+  #assert wa_reg("{\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\"}", -1, 0, false) == WA_TYPE;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TB\",\"origin\":\"https://example.org\"}", -1, 0, false) == WA_CHALLENGE;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA=\",\"origin\":\"https://example.org\"}", -1, 0, false) == WA_CHALLENGE;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.com\"}", -1, 0, false) == WA_ORIGIN;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org:443\"}", -1, 0, false) == WA_ORIGIN;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\"}", -1, 0, false) == WA_OK;
+  // An empty origin matches only an empty expected origin.
+  att0: [400] u8; cd0: [300] u8; ch0: [32] u8;
+  empty := "{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"\"}";
+  #assert webauthn_register(cb_unhex(WA_ATTESTATION_HEX, att0[..]), wa_text(empty, cd0[..]), cb_unhex(WA_REG_CHALLENGE, ch0[..]), "", WA_RP, false).error == WA_OK;
+  #assert webauthn_register(cb_unhex(WA_ATTESTATION_HEX, att0[..]), wa_text(empty, cd0[..]), cb_unhex(WA_REG_CHALLENGE, ch0[..]), "h", WA_RP, false).error == WA_ORIGIN;
+  // Escapes decode before comparing.
+  #assert wa_reg("{\"type\":\"webauthn.\\u0063reate\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https:\\/\\/example.org\"}", -1, 0, false) == WA_OK;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\",\"crossOrigin\":true}", -1, 0, false) == WA_CROSS_ORIGIN;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\",\"crossOrigin\":null}", -1, 0, false) == WA_CROSS_ORIGIN;
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\",\"topOrigin\":\"https://example.com\"}", -1, 0, false) == WA_CROSS_ORIGIN;
+  for key: [5] string.["type", "challenge", "origin", "crossOrigin", "topOrigin"] {
+    text: [400] u8; n := 0;
+    for c: wa_text("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\",\"", text[..]) { n += 1; }
+    for i: 0..<key.count { text[n+i] = key[i]; }
+    n += key.count;
+    for c: wa_text("\":\"x\"}", text[n..<text.count]) { n += 1; }
+    got := wa_reg(cast(string) text[0..<n], -1, 0, false);
+    #assert got == WA_CLIENT_DATA || (key == "crossOrigin" && got == WA_CROSS_ORIGIN) || (key == "topOrigin" && got == WA_CROSS_ORIGIN);
+    #assert key == "crossOrigin" || key == "topOrigin" || got == WA_CLIENT_DATA;
+  }
+  #assert wa_reg("{\"type\":\"webauthn.create\",\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\"}", -1, 0, false) == WA_CLIENT_DATA;
+  #assert wa_reg("[\"webauthn.create\"]", -1, 0, false) == WA_CLIENT_DATA && wa_reg("{\"type\":", -1, 0, false) == WA_CLIENT_DATA && wa_reg("", -1, 0, false) == WA_CLIENT_DATA;
+  // A challenge outside 16 to 128 bytes, or client data over 4096 bytes, is not taken.
+  att: [400] u8; cd: [4200] u8; ch: [129] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  c := wa_text(WA_REG_CLIENT, cd[..]);
+  #assert webauthn_register(a, c, ch[0..<15], WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_INPUT && webauthn_register(a, c, ch[0..<129], WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_INPUT;
+  #assert webauthn_register(a, c, ch[0..<16], WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_CHALLENGE && webauthn_register(a, c, ch[0..<128], WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_CHALLENGE;
+  for i: 0..<4097 { cd[i] = ' '; }
+  for i: 0..<c.count { cd[i] = WA_REG_CLIENT[i]; }
+  #assert webauthn_register(a, cd[0..<4096], cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_OK;
+  #assert webauthn_register(a, cd[0..<4097], cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_INPUT;
+  // More members than the JSON node budget refuses.
+  many: [800] u8; m := 0;
+  for ch2: cast([] u8) wa_text("{\"type\":\"webauthn.create\",\"challenge\":\"AMMPt4UxxGTStncdq417YDwBFi8vpIa-pw8oOuVW4TA\",\"origin\":\"https://example.org\",\"a\":[", many[..]) { m += 1; }
+  for i: 0..<70 { many[m] = '0'; many[m+1] = ','; m += 2; }
+  many[m-1] = ']'; many[m] = '}'; m += 1;
+  #assert wa_reg(cast(string) many[0..<m], -1, 0, false) == WA_CLIENT_DATA;
+}
+#test "registration: attestationObject and authenticatorData refusals" #steps 4000000000 #traversal 1073741824 {
+  // Byte offsets: authData starts at 30; its flags at 62, count at 63, AAGUID
+  // at 67, id length at 83, id at 85, COSE key at 117 (87 within authData).
+  #assert wa_reg(WA_REG_CLIENT, 9, 'm', false) == WA_ATTESTATION;            // fmt "nonm"
+  #assert wa_reg(WA_REG_CLIENT, 17, 0xa1, false) == WA_ATTESTATION;          // attStmt with a pair
+  #assert wa_reg(WA_REG_CLIENT, 0, 0xa4, false) == WA_ATTESTATION;           // four pairs, three given
+  four: [400] u8; fc: [600] u8; fch: [32] u8;
+  f := cb_unhex(WA_ATTESTATION_HEX, four[..]); four[0] = 0xa4; four[f.count] = 0x61; four[f.count+1] = 'x'; four[f.count+2] = 0;
+  #assert webauthn_register(four[0..<f.count+3], wa_text(WA_REG_CLIENT, fc[..]), cb_unhex(WA_REG_CHALLENGE, fch[..]), WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_ATTESTATION;
+  // An array of three items is not an attestation either.
+  four[0] = 0x83; #assert webauthn_register(f, wa_text(WA_REG_CLIENT, fc[..]), cb_unhex(WA_REG_CHALLENGE, fch[..]), WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_ATTESTATION;
+  #assert wa_reg(WA_REG_CLIENT, 28, 0x78, false) == WA_ATTESTATION;          // authData as text
+  #assert wa_reg(WA_REG_CLIENT, 1, 0x64, false) == WA_ATTESTATION;           // "fmt" becomes a 4-letter key
+  #assert wa_reg(WA_REG_CLIENT, 12, 0x75, false) == WA_ATTESTATION;          // attStmt key renamed
+  #assert wa_reg(WA_REG_CLIENT, 19, 0x62, false) == WA_ATTESTATION;          // authData key renamed
+  #assert wa_reg(WA_REG_CLIENT, 6, 0x45, false) == WA_ATTESTATION;           // fmt as bytes
+  #assert wa_reg(WA_REG_CLIENT, 30, 0xbe, false) == WA_RP_ID && wa_reg(WA_REG_CLIENT, 61, 0xb4, false) == WA_RP_ID;
+  #assert wa_reg(WA_REG_CLIENT, 62, 0x58, false) == WA_PRESENCE;             // UP clear
+  #assert wa_reg(WA_REG_CLIENT, 62, 0x5d, true) == WA_OK && wa_reg(WA_REG_CLIENT, 62, 0x5d, false) == WA_OK;   // UV set
+  #assert wa_reg(WA_REG_CLIENT, 62, 0x51, false) == WA_BACKUP;               // BS without BE
+  #assert wa_reg(WA_REG_CLIENT, 62, 0x49, false) == WA_OK && wa_reg(WA_REG_CLIENT, 62, 0x41, false) == WA_OK;
+  #assert wa_reg(WA_REG_CLIENT, 62, 0x19, false) == WA_AUTH_DATA;            // AT clear
+  #assert wa_reg(WA_REG_CLIENT, 62, 0xd9, false) == WA_AUTH_DATA;            // ED set, no extensions
+  #assert wa_reg(WA_REG_CLIENT, 62, 0x5b, false) == WA_OK && wa_reg(WA_REG_CLIENT, 62, 0x79, false) == WA_OK;  // reserved bits are ignored
+  #assert wa_reg(WA_REG_CLIENT, 84, 0, false) == WA_AUTH_DATA;               // id length 0
+  #assert wa_reg(WA_REG_CLIENT, 84, 0x21, false) == WA_KEY;                  // 33: the key starts a byte late
+  #assert wa_reg(WA_REG_CLIENT, 83, 0x04, false) == WA_AUTH_DATA;            // 1056 > 1023
+  #assert wa_reg(WA_REG_CLIENT, 83, 0x03, false) == WA_AUTH_DATA;            // 800: past the end
+  #assert wa_reg(WA_REG_CLIENT, 117, 0xa6, false) == WA_KEY && wa_reg(WA_REG_CLIENT, 117, 0xa4, false) == WA_AUTH_DATA;  // cut, or short of the end
+  #assert wa_reg(WA_REG_CLIENT, 117, 0x81, false) == WA_KEY;                 // not a map
+  #assert wa_reg(WA_REG_CLIENT, 121, 0x27, false) == WA_KEY;                 // alg -8 on an EC2 key
+  // The count is read big-endian.
+  att: [400] u8; cd: [600] u8; ch: [32] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  a[63] = 1; a[64] = 2; a[65] = 3; a[66] = 4;
+  #assert webauthn_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, false).count == 0x01020304;
+  #assert webauthn_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, "example.com", false).error == WA_RP_ID;
+  long: [300] u8;
+  #assert webauthn_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, cast(string) long[0..<254], false).error == WA_INPUT;
+  #assert webauthn_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, cast(string) long[0..<253], false).error == WA_RP_ID;
+}
+#test "authenticatorData on its own: lengths, extensions and trailing bytes" {
+  att: [400] u8; d: [200] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  for i: 0..<164 { d[i] = a[30 + i]; }
+  #assert wa_auth_data(d[0..<164], WA_RP, true, false).error == WA_OK;
+  #assert wa_auth_data(d[0..<165], WA_RP, true, false).error == WA_AUTH_DATA;     // a byte after the key
+  d[164] = 0xa0; d[32] = 0xd9;
+  #assert wa_auth_data(d[0..<165], WA_RP, true, false).error == WA_OK;            // ED and an empty map
+  d[164] = 0x80;
+  #assert wa_auth_data(d[0..<165], WA_RP, true, false).error == WA_AUTH_DATA;     // ED and not a map
+  d[32] = 0x59;
+  #assert wa_auth_data(d[0..<36], WA_RP, true, false).error == WA_AUTH_DATA && wa_auth_data(d[0..<37], WA_RP, false, false).error == WA_AUTH_DATA;
+  #assert wa_auth_data(d[0..<54], WA_RP, true, false).error == WA_AUTH_DATA && wa_auth_data(d[0..<55], WA_RP, true, false).error == WA_AUTH_DATA;
+  #assert wa_auth_data(d[0..<86], WA_RP, true, false).error == WA_AUTH_DATA && wa_auth_data(d[0..<87], WA_RP, true, false).error == WA_KEY;
+  r := wa_auth_data(d[0..<164], WA_RP, true, false);
+  #assert r.id_at == 55 && r.id_count == 32 && r.key_at == 87 && r.key_count == 77 && r.flags == 0x59;
+  d[53] = 3; d[54] = 0xff; #assert wa_auth_data(d[0..<164], WA_RP, true, false).error == WA_AUTH_DATA;   // 1023 > what is left
+  d[32] = 0x19; d[37] = 0xa0;
+  #assert wa_auth_data(d[0..<37], WA_RP, false, false).error == WA_OK && wa_auth_data(d[0..<38], WA_RP, false, false).error == WA_AUTH_DATA;
+  d[32] = 0x99; #assert wa_auth_data(d[0..<38], WA_RP, false, false).error == WA_OK;
+}
+#test "assertion: the spec's none.ES256 example, and each refusal" #steps 40000000000 #traversal 1073741824 {
+  att: [400] u8; ad: [64] u8; cd: [400] u8; sig: [80] u8; ch: [32] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]); key := a[117..<194];
+  data := cb_unhex(WA_AUTH_HEX, ad[..]); c := wa_text(WA_GET_CLIENT, cd[..]); s := cb_unhex(WA_SIGNATURE_HEX, sig[..]);
+  challenge := cb_unhex(WA_GET_CHALLENGE, ch[..]);
+  r := webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true);
+  #assert r.error == WA_OK && r.flags == 0x19 && r.count == 0;
+  #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, true, 0, true).error == WA_VERIFICATION;
+  #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, false).error == WA_BACKUP;   // BE changed
+  #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 1, true).error == WA_COUNTER;   // 0 after 1
+  #assert webauthn_assert(data, c, s, key, challenge, "https://example.com", WA_RP, false, 0, true).error == WA_ORIGIN;
+  #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, "example.com", false, 0, true).error == WA_RP_ID;
+  #assert webauthn_assert(data, wa_text(WA_REG_CLIENT, cd[..]), s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_TYPE;
+  c = wa_text(WA_GET_CLIENT, cd[..]);
+  s[40] ^= 1; #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE; s[40] ^= 1;
+  s[0] = 0x31; #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE; s[0] = 0x30;
+  c[c.count-2] = ' '; #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_CLIENT_DATA;
+  c = wa_text(WA_GET_CLIENT, cd[..]);
+  // A client data that differs only in whitespace parses the same but is signed differently.
+  sp: [400] u8; sp[0] = '{'; sp[1] = ' '; for i: 1..<c.count { sp[i+1] = c[i]; }
+  #assert webauthn_assert(data, sp[0..<c.count+1], s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE;
+  data[36] = 1; #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE; data[36] = 0;
+  data[32] = 0x59; #assert webauthn_assert(data, c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_AUTH_DATA; data[32] = 0x19;
+  bad: [80] u8; for i: 0..<77 { bad[i] = key[i]; } bad[4] = 0x27;
+  #assert webauthn_assert(data, c, s, bad[0..<77], challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_KEY;
+  ed: [64] u8; edkey := cb_unhex("a401010327200621582044e06ddd331c36a8dc667bab52bcae63486c916aa5e339e6acebaa84934bf832", ed[..]);
+  #assert webauthn_assert(data, c, s, edkey, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_ALGORITHM;
+  big: [1025] u8; for i: 0..<37 { big[i] = data[i]; }
+  #assert webauthn_assert(big[..], c, s, key, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_AUTH_DATA;
+}
+#test "assertion: sign counts, flags and extensions, signed with the example's key" #steps 40000000000 #traversal 1073741824 {
+  // Counts: stored, then the new one.
+  #assert wa_signed("19", "00000006", 0, WA_GET_CLIENT, false, 5, true).error == WA_OK;
+  #assert wa_signed("19", "00000005", 0, WA_GET_CLIENT, false, 5, true).error == WA_COUNTER;
+  #assert wa_signed("19", "00000004", 0, WA_GET_CLIENT, false, 5, true).error == WA_COUNTER;
+  #assert wa_signed("19", "00000003", 0, WA_GET_CLIENT, false, 0, true).error == WA_OK;
+  #assert wa_signed("19", "00000000", 0, WA_GET_CLIENT, false, 3, true).error == WA_COUNTER;
+  #assert wa_signed("19", "01000000", 0, WA_GET_CLIENT, false, 0xffffff, true).count == 0x1000000;
+}
+#test "assertion: UV, BE, BS, UP and ED flags, signed with the example's key" #steps 40000000000 #traversal 1073741824 {
+  r := wa_signed("1d", "00000001", 0, WA_GET_CLIENT, true, 0, true);
+  #assert r.error == WA_OK && r.flags == 0x1d && r.count == 1;
+  #assert wa_signed("11", "00000000", 0, WA_GET_CLIENT, false, 0, false).error == WA_BACKUP;   // BS without BE
+  #assert wa_signed("01", "00000000", 0, WA_GET_CLIENT, false, 0, false).error == WA_OK;      // neither
+  #assert wa_signed("18", "00000000", 0, WA_GET_CLIENT, false, 0, true).error == WA_PRESENCE;
+  #assert wa_signed("99", "00000000a0", 0, WA_GET_CLIENT, false, 0, true).error == WA_OK;     // ED: an empty map
+  #assert wa_signed("19", "00000000a0", 0, WA_GET_CLIENT, false, 0, true).error == WA_AUTH_DATA;
+}
+
+#test "assertion: the spec's packed.RS256 example (RS256, a 3482-bit modulus)" #steps 400000000000 #traversal 1073741824 {
+  // sctn-test-vectors-packed-rs256: the credential key from its attestationObject, and its assertion.
+  key: [460] u8; ad: [64] u8; cd: [200] u8; sig: [440] u8; ch: [32] u8;
+  k := cb_unhex("a4010303390100205901b403fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012143010001", key[..]);
+  data := cb_unhex("bfabc37432958b063360d3ad6461c9c4735ae7f8edd46592a5e0f01452b2e4b51900000000", ad[..]);
+  c := wa_text("{\"type\":\"webauthn.get\",\"challenge\":\"KV9Z9fqP5ixayp4nYmx4yNo3aubYzS3SmuutYB4bxMU\",\"origin\":\"https://example.org\",\"crossOrigin\":false}", cd[..]);
+  s := cb_unhex("01063d52d7c39b4d432fc7063c5d93e582bdcb16889cd71f888d67d880ea730a428498d3bc8e1ee11f2b1ecbe6c292b118c55ffaaddefa8cad0a54dd137c51f1eec673f1bb6c4d1789d6826a222b22d0f585fc901fdc933212e579d199b89d672aa44891333e6a1355536025e82b25590256c3538229b55737083b2f6b9377e49e2472f11952f79fdd0da180b5ffd901b4049a8f081bb40711bef76c62aed943571f2d0575304cb549d68d8892f95086a30f93716aee818f8dc06e96c0d5e0ed4cfa9fd8773d90464b68cf140f7986666ff9c9e3302acd0535d60d769f465e2ab57ef8aabc89fccfef7ba32a64154a8b3d26be2298f470b8cc5377dbe3dfd4b0b45f8f01e63bde6cfc76b62771f9b70aa27cf40152cad93aa5acd784fd4b90f676e2ea828d0bf2400aebbaae4153e5838f537f88b6228346782a93a899be66ec77de45b3efcf311da6321c92e6b0cd11bfe653bf3e98cee8e341f02d67dbb6f9c98d9e8178090cfb5b70fbc6d541599ac794ae2f1d4de1286ec8de8c2daf7b1d15c8438e90d924df5c19045220a4c8438c1b979bbe016cf3d0eeec23c3999d4882cc645b776de930756612cdc6dd398160ff02a6", sig[..]);
+  challenge := cb_unhex("295f59f5fa8fe62c5aca9e27626c78c8da376ae6d8cd2dd29aebad601e1bc4c5", ch[..]);
+  #assert cose_key(k).alg == COSE_RS256 && cose_key(k).modulus_count == 436;
+  r := webauthn_assert(data, c, s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true);
+  #assert r.error == WA_OK && r.flags == 0x19;
+  s[435] ^= 1; #assert webauthn_assert(data, c, s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE; s[435] ^= 1;
+  #assert webauthn_assert(data, c, s[0..<435], k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE;
+  data[36] = 1; #assert webauthn_assert(data, c, s, k, challenge, WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE;
+}
+
+// ---- base64url, without padding (RFC 4648 section 5), for the challenge
+wa_b64url_char :: (v: u32) -> u8 #effects(all) {
+  if v < 26 { return cast(u8) ('A' + v); }
+  if v < 52 { return cast(u8) ('a' + v - 26); }
+  if v < 62 { return cast(u8) ('0' + v - 52); }
+  return ifx v == 62 then cast(u8) '-' else cast(u8) '_';
+}
+// in as base64url into out: the length, or -1 when out is too small.
+wa_b64url :: (input: [] u8, out: [] u8) -> int #effects(all) {
+  n := (input.count * 8 + 5) / 6;
+  if n > out.count { return -1; }
+  for i: 0..<n {
+    bit := i * 6; byte := bit / 8;
+    pair := cast(u32) input[byte] << 8;
+    if byte + 1 < input.count { pair |= cast(u32) input[byte + 1]; }
+    out[i] = wa_b64url_char((pair >> cast(u32) (10 - bit % 8)) & 63);
+  }
+  return n;
+}
+
+// ---- clientDataJSON (section 5.8.1)
+// How many members of the object at `at` are called key.
+wa_members :: (d: Jv, key: string) -> int #effects(all) {
+  count := 0; k := d.nodes[0].first;
+  while k != -1 { if jv_raw_eq(jv_key(d, k), key) { count += 1; } k = d.nodes[k].next; }
+  return count;
+}
+// The string member key unescaped equals want.
+wa_string_is :: (d: Jv, key: string, want: string) -> bool #effects(all) {
+  buf: [1024] u8;
+  n := jv_str(d, jv_get(d, 0, key), buf[..]);
+  return n >= 0 && cast(string) buf[0..<n] == want;
+}
+// WA_OK, or the first thing that does not match. Each of type, challenge,
+// origin, crossOrigin and topOrigin appears at most once; crossOrigin, when
+// present, is false, and topOrigin is absent.
+wa_client_data :: (json: [] u8, type: string, challenge: [] u8, origin: string) -> int #effects(all) {
+  if json.count > WA_CLIENT_MAX || challenge.count < 16 || challenge.count > 128 { return WA_INPUT; }
+  nodes: [WA_JSON_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return WA_CLIENT_DATA; }
+  v := d[0];
+  for key: [5] string.["type", "challenge", "origin", "crossOrigin", "topOrigin"] { if wa_members(v, key) > 1 { return WA_CLIENT_DATA; } }
+  if !wa_string_is(v, "type", type) { return WA_TYPE; }
+  want: [176] u8; n := wa_b64url(challenge, want[..]);
+  if !wa_string_is(v, "challenge", cast(string) want[0..<n]) { return WA_CHALLENGE; }
+  if !wa_string_is(v, "origin", origin) { return WA_ORIGIN; }
+  cross := jv_get(v, 0, "crossOrigin");
+  if (cross != -1 && jv_kind(v, cross) != JV_FALSE) || jv_get(v, 0, "topOrigin") != -1 { return WA_CROSS_ORIGIN; }
+  return WA_OK;
+}
+
+// ---- authenticatorData (section 6.1)
+// A byte of b, or 0 past its end: short data then fails a length check.
+wa_byte :: (b: [] u8, at: int) -> int #effects(all) { return ifx at < b.count then cast(int) b[at] else 0; }
+wa_u32 :: (b: [] u8, at: int) -> u32 #effects(all) { return cast(u32) b[at] << 24 | cast(u32) b[at+1] << 16 | cast(u32) b[at+2] << 8 | cast(u32) b[at+3]; }
+// The fields of authenticatorData for rp_id. registration: AT must be set
+// (and is clear otherwise). uv: UV must be set.
+wa_auth_data :: (data: [] u8, rp_id: string, registration: bool, uv: bool) -> WaAuthData #effects(all) {
+  out: WaAuthData;
+  if data.count < 37 { out.error = WA_AUTH_DATA; return out; }
+  hash: [32] u8; id: [256] u8;
+  if rp_id.count > 253 { out.error = WA_INPUT; return out; }
+  for i: 0..<rp_id.count { id[i] = rp_id[i]; }
+  #assert sha256_hash_checked(id[0..<rp_id.count], hash[..], false) == SHA_OK;   // at most 253 bytes
+  for i: 0..<32 { if data[i] != hash[i] { out.error = WA_RP_ID; return out; } }
+  flags := cast(u32) data[32];
+  out.flags = flags; out.count = wa_u32(data, 33);
+  if flags & WA_UP == 0 { out.error = WA_PRESENCE; return out; }
+  if uv && flags & WA_UV == 0 { out.error = WA_VERIFICATION; return out; }
+  if flags & WA_BS != 0 && flags & WA_BE == 0 { out.error = WA_BACKUP; return out; }
+  if (flags & WA_AT != 0) != registration { out.error = WA_AUTH_DATA; return out; }
+  at := 37;
+  if registration {
+    out.id_count = wa_byte(data, at + 16) << 8 | wa_byte(data, at + 17); out.id_at = at + 18;
+    if out.id_count < 1 || out.id_count > WA_ID_MAX || data.count - out.id_at < out.id_count { out.error = WA_AUTH_DATA; return out; }
+    out.key_at = out.id_at + out.id_count;
+    key := cbor_at(data, out.key_at);
+    if !key.ok || key.major != CBOR_MAP { out.error = WA_KEY; return out; }
+    out.key_count = key.end - out.key_at; at = key.end;
+  }
+  if flags & WA_ED != 0 {
+    extensions := cbor_at(data, at);
+    if !extensions.ok || extensions.major != CBOR_MAP { out.error = WA_AUTH_DATA; return out; }
+    at = extensions.end;
+  }
+  if at != data.count { out.error = WA_AUTH_DATA; }
+  return out;
+}
+
+// ---- registration (section 7.1)
+webauthn_register :: (attestation: [] u8, client_data: [] u8, challenge: [] u8, origin: string, rp_id: string, uv: bool) -> WaRegistration #effects(all) {
+  out: WaRegistration;
+  out.error = wa_client_data(client_data, "webauthn.create", challenge, origin);
+  if out.error != WA_OK { return out; }
+  map := cbor_read(attestation);
+  fmt := cbor_map_text(attestation, map, "fmt");
+  statement := cbor_map_text(attestation, map, "attStmt");
+  auth := cbor_map_text(attestation, map, "authData");
+  // Not a map: no key is found, so fmt is not text.
+  if map.arg != 3 || fmt.major != CBOR_TEXT || cast(string) cbor_payload(attestation, fmt) != "none" ||
+     statement.major != CBOR_MAP || statement.arg != 0 || auth.major != CBOR_BYTES || !auth.ok {
+    out.error = WA_ATTESTATION; return out;
+  }
+  data := cbor_payload(attestation, auth);
+  parsed := wa_auth_data(data, rp_id, true, uv);
+  out.flags = parsed.flags; out.count = parsed.count;
+  if parsed.error != WA_OK { out.error = parsed.error; return out; }
+  key := cose_key(data[parsed.key_at..<parsed.key_at + parsed.key_count]);
+  if !key.ok { out.error = WA_KEY; return out; }
+  for i: 0..<16 { out.aaguid[i] = data[37 + i]; }
+  out.alg = key.alg;
+  out.id_at = auth.data + parsed.id_at; out.id_count = parsed.id_count;
+  out.key_at = auth.data + parsed.key_at; out.key_count = parsed.key_count;
+  return out;
+}
+
+// ---- assertion (section 7.2)
+// stored_count and backup_eligible are what the registration (or the last
+// assertion) saved; public_key is the stored COSE key.
+webauthn_assert :: (auth_data: [] u8, client_data: [] u8, signature: [] u8, public_key: [] u8, challenge: [] u8,
+                    origin: string, rp_id: string, uv: bool, stored_count: u32, backup_eligible: bool) -> WaAssertion #effects(all) {
+  out: WaAssertion;
+  out.error = wa_client_data(client_data, "webauthn.get", challenge, origin);
+  if out.error != WA_OK { return out; }
+  if auth_data.count > WA_AUTH_MAX { out.error = WA_AUTH_DATA; return out; }
+  parsed := wa_auth_data(auth_data, rp_id, false, uv);
+  out.flags = parsed.flags; out.count = parsed.count;
+  if parsed.error != WA_OK { out.error = parsed.error; return out; }
+  if (parsed.flags & WA_BE != 0) != backup_eligible { out.error = WA_BACKUP; return out; }
+  key := cose_key(public_key);
+  if !key.ok { out.error = WA_KEY; return out; }
+  // The signed bytes: authenticatorData || SHA-256(clientDataJSON).
+  message: [WA_AUTH_MAX + 32] u8;
+  for i: 0..<auth_data.count { message[i] = auth_data[i]; }
+  n := auth_data.count + 32;
+  #assert sha256_hash_checked(client_data, message[auth_data.count..<n], false) == SHA_OK;   // at most 4096 bytes
+  if key.alg == COSE_EDDSA { out.error = WA_ALGORITHM; return out; }
+  hash: [32] u8;
+  #assert sha256_hash_checked(message[0..<n], hash[..], false) == SHA_OK;
+  // cose_key admits ES256, EdDSA and RS256 only.
+  good := ifx key.alg == COSE_ES256 then p256_verify_der(hash[..], key.point[..], signature, false)
+          else rsa_verify_sha256(key.modulus[0..<key.modulus_count], signature, message[0..<n]);
+  if !good { out.error = WA_SIGNATURE; return out; }
+  if (stored_count != 0 || parsed.count != 0) && parsed.count <= stored_count { out.error = WA_COUNTER; }
+  return out;
+}

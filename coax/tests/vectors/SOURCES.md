@@ -70,9 +70,16 @@ that a maliciously replaced manifest is authentic.
   RFC 6979 appendix A.2.5's SHA-256 cases check the deterministic nonce.
   Retrieved 2026-11-11 for `coax/lib/crypto/p256_ecdsa.coax`
   (`coax/tests/auth/p256_vectors_test.coax`; GitHub #13198).
-- **CBOR and COSE (auth, WebAuthn):** RFC 8949 (CBOR; appendix A's
-  examples for the deterministic subset) and RFC 9053 (COSE algorithms and
-  key parameters), retrieved 2026-11-11 for GitHub #13199.
+- **RS256, CBOR and COSE (auth, WebAuthn):** Wycheproof
+  `rsa_signature_2048_sha256_test.json` (PKCS#1 v1.5 with SHA-256), RFC 8949
+  (CBOR; appendix A's examples for the deterministic subset) and RFC 9053
+  (COSE algorithms and key parameters), retrieved 2026-11-11 for GitHub
+  #13199. WebAuthn: the Level 3 editor's draft source `index.bs` at
+  `w3c/webauthn@d1353042` (its "Test Vectors" section: registration and
+  authentication pairs for none, packed, TPM, Android Key, Apple and FIDO
+  U2F credentials) and py_webauthn's registration and authentication tests
+  at `duo-labs/py_webauthn@c9ba2b7d` (real browser responses for EC2, RSA
+  and OKP credentials), read by `coax/tests/auth/make_webauthn_vectors.py`.
 - **ECDSA signing:** tiny-secp256k1's complete `tests/fixtures/ecdsa.json`
   at revision `e1fd7a77`, retrieved 2026-11-02 for Bitcoin chapter 20. Its
   2,020 `valid` rows give a key, a 32-byte hash and the compact signature
@@ -1193,6 +1200,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/txindex_tests.cpp`](upstream/bitcoin-core/txindex_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/txindex_tests.cpp) | `ed64ffb75d4602b26bf3c2407c8e83bed7bc5ebc0157f5c126a4ad934b3a84b8` |
 | [`upstream/wycheproof/ecdsa_secp256r1_sha256_test.json`](upstream/wycheproof/ecdsa_secp256r1_sha256_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256r1_sha256_test.json) | `182db4f3e230f6f9fa9f800d2a614dede30284b8e8438bbfe1171905402e9332` |
 | [`upstream/wycheproof/ecdsa_secp256r1_sha256_p1363_test.json`](upstream/wycheproof/ecdsa_secp256r1_sha256_p1363_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256r1_sha256_p1363_test.json) | `c60de693930e386c3a5472d08081623ef8504decc54b38ac01ec6b2a2575c986` |
+| [`upstream/wycheproof/rsa_signature_2048_sha256_test.json`](upstream/wycheproof/rsa_signature_2048_sha256_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/rsa_signature_2048_sha256_test.json) | `94a917b01ff50fb874cfc05bf29b4af44868d944a6558201cf18380da93fb393` |
 | [`upstream/nist/ecdsa/Readme.txt`](upstream/nist/ecdsa/Readme.txt) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `4f82fd967392f327e29db9318643379cedb760dfea73c249b4f9a1ffd09bb0c8` |
 | [`upstream/nist/ecdsa/SigVer.rsp`](upstream/nist/ecdsa/SigVer.rsp) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `e9841c3d12e323042751460d0b8ef4bc59c2640105ec7da4852775f80ab10191` |
 | [`upstream/nist/ecdsa/SigGen.txt`](upstream/nist/ecdsa/SigGen.txt) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `95d0a19c03f6d2dc16e9e18fd5c3318e1952e0bc88a45127c996c35b4a15f4e2` |
@@ -1201,3 +1209,6 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/rfc/rfc6979.txt`](upstream/rfc/rfc6979.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc6979.txt) | `456e8f17558fdbd206f968b96fc6f1b4a71ea331ab30ad17f711ab3adaa7d701` |
 | [`upstream/rfc/rfc8949.txt`](upstream/rfc/rfc8949.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc8949.txt) | `f1164a5b31a39350ad46abe29b83575eb933ca6c45366989c118b6b1058a214a` |
 | [`upstream/rfc/rfc9053.txt`](upstream/rfc/rfc9053.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc9053.txt) | `3d470615875620375f8453ba25b8dce7e4d0271e76b0b79a46df34ccb2d56ab0` |
+| [`upstream/w3c/webauthn-index.bs`](upstream/w3c/webauthn-index.bs) | [pinned source](https://raw.githubusercontent.com/w3c/webauthn/d13530428a290701eaa7ae6483c9632e4adae633/index.bs) | `a7c4dcae9078b83064f8a776b469fd5998c99243fd49d661a4513dbf44157835` |
+| [`upstream/py_webauthn/test_verify_registration_response.py`](upstream/py_webauthn/test_verify_registration_response.py) | [pinned source](https://raw.githubusercontent.com/duo-labs/py_webauthn/c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb/tests/test_verify_registration_response.py) | `3608df7532ef9b7aae2add99377a285a2c78b537ffa0910eea5c2f0b27998952` |
+| [`upstream/py_webauthn/test_verify_authentication_response.py`](upstream/py_webauthn/test_verify_authentication_response.py) | [pinned source](https://raw.githubusercontent.com/duo-labs/py_webauthn/c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb/tests/test_verify_authentication_response.py) | `dd071fd3c28b26a68521b6ece35ef06effa827b0e3fb66c7bec23402d47f1b48` |

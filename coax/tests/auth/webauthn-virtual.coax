@@ -1,0 +1,143 @@
+// WebAuthn against a real browser: headless Chrome with a CDP virtual
+// authenticator (CTAP2, internal, resident keys, user verification) makes
+// passkeys and assertions on https://webauthn.test, a page this tool serves
+// through Fetch.fulfillRequest, and coax/lib/crypto/webauthn.coax checks
+// what the browser returns. For ES256 and RS256 it registers a passkey
+// (attestation "none", UV required), checks two assertions (each sign count
+// above the last), and refuses an assertion under another challenge,
+// another origin, a stale count and a changed signature. EdDSA registers
+// and its assertion answers WA_ALGORITHM (no Ed25519 verifier yet).
+//
+//   coax/web/tool.sh coax/tests/auth/webauthn-virtual.coax
+#import "Basic";
+#load "../../lib/net/cdp.coax";
+#load "../../lib/crypto/webauthn.coax";
+
+WV_ORIGIN :: "https://webauthn.test";
+WV_RP :: "webauthn.test";
+// The page: base64 of "<!doctype html><title>webauthn</title>".
+WV_PAGE :: "PCFkb2N0eXBlIGh0bWw+PHRpdGxlPndlYmF1dGhuPC90aXRsZT4=";
+WV_JS_HEX :: "var hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');var unhex=h=>new Uint8Array(h.match(/../g).map(x=>parseInt(x,16)));";
+
+wv_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+wv_hex_of :: (bytes: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<bytes.count { out[2*i] = digits[bytes[i] >> 4]; out[2*i+1] = digits[bytes[i] & 15]; }
+  return cast(string) out[0..<2*bytes.count];
+}
+wv_unhex :: (text: string, out: [] u8) -> int {
+  if text.count % 2 != 0 || text.count / 2 > out.count { return -1; }
+  for i: 0..<text.count/2 {
+    a := cb_hex_value(text[2*i]); b := cb_hex_value(text[2*i+1]);
+    if a < 0 || a > 15 || b < 0 || b > 15 { return -1; }
+    out[i] = cast(u8) (a * 16 + b);
+  }
+  return text.count / 2;
+}
+// A string field of the evaluated value as bytes (it holds hex): the count, or -1.
+wv_field :: (c: [] Cdp, v: int, key: string, out: [] u8) -> int {
+  d := c[0].doc[0];
+  return wv_unhex(jv_raw(d, jv_get(d, v, key)), out);
+}
+wv_fail :: (what: string) -> bool { print("webauthn-virtual: FAIL %\n", what); return false; }
+wv_last :: (c: [] Cdp) { t := c[0].doc[0].text; print("last message: %\n", ifx t.count > 600 then t[0..<600] else t); }
+
+// One algorithm: register, assert twice, and the refusals.
+wv_round :: (c: [] Cdp, alg: int, name: string) -> bool {
+  challenge: [32] u8; for i: 0..<32 { challenge[i] = cast(u8) ((i * 7 - alg) & 255); }
+  ch_hex: [64] u8; ch := wv_hex_of(challenge[..], ch_hex[..]);
+  js: [4096] u8; n := 0;
+  n = wv_put(js[..], n, WV_JS_HEX);
+  n = wv_put(js[..], n, "(async()=>{const c=await navigator.credentials.create({publicKey:{challenge:unhex('");
+  n = wv_put(js[..], n, ch);
+  n = wv_put(js[..], n, "'),rp:{id:'webauthn.test',name:'OpenAgents test'},user:{id:new Uint8Array(32).fill(9),name:'test',displayName:'test'},pubKeyCredParams:[{type:'public-key',alg:");
+  alg_text: [8] u8; k := 0; a := -alg; digits: [8] u8; d := 0;
+  while a > 0 { digits[d] = cast(u8) ('0' + a % 10); a /= 10; d += 1; }
+  alg_text[0] = '-'; k = 1; for i: 0..<d { alg_text[k] = digits[d-1-i]; k += 1; }
+  n = wv_put(js[..], n, cast(string) alg_text[0..<k]);
+  n = wv_put(js[..], n, "}],authenticatorSelection:{residentKey:'required',userVerification:'required'},attestation:'none'}});return {att:hex(c.response.attestationObject),cd:hex(c.response.clientDataJSON)};})().catch(e=>({err:String(e)}))");
+  if n < 0 { return wv_fail("script too long"); }
+  v := cdp_evaluate(c, cast(string) js[0..<n]);
+  if v < 0 { return wv_fail(cdp_error(c)); }
+  if jv_get(c[0].doc[0], v, "err") >= 0 { return wv_fail(jv_raw(c[0].doc[0], jv_get(c[0].doc[0], v, "err"))); }
+  att: [4096] u8; cd: [1024] u8;
+  na := wv_field(c, v, "att", att[..]); nc := wv_field(c, v, "cd", cd[..]);
+  if na <= 0 || nc <= 0 { return wv_fail("create returned no attestation"); }
+  reg := webauthn_register(att[0..<na], cd[0..<nc], challenge[..], WV_ORIGIN, WV_RP, true);
+  print("%: register error % alg % flags % count % id % bytes key % bytes\n", name, reg.error, reg.alg, reg.flags, reg.count, reg.id_count, reg.key_count);
+  if reg.error != WA_OK || reg.alg != alg { return wv_fail("registration"); }
+  key: [1024] u8; for i: 0..<reg.key_count { key[i] = att[reg.key_at + i]; }
+  public_key := key[0..<reg.key_count];
+  stored := reg.count; be := reg.flags & WA_BE != 0;
+  for round: 0..<2 {
+    for i: 0..<32 { challenge[i] = cast(u8) ((i * 13 + round + 1) & 255); }
+    ch = wv_hex_of(challenge[..], ch_hex[..]);
+    n = 0;
+    n = wv_put(js[..], n, WV_JS_HEX);
+    n = wv_put(js[..], n, "(async()=>{const c=await navigator.credentials.get({publicKey:{challenge:unhex('");
+    n = wv_put(js[..], n, ch);
+    n = wv_put(js[..], n, "'),rpId:'webauthn.test',allowCredentials:[],userVerification:'required'}});return {ad:hex(c.response.authenticatorData),cd:hex(c.response.clientDataJSON),sig:hex(c.response.signature)};})().catch(e=>({err:String(e)}))");
+    v = cdp_evaluate(c, cast(string) js[0..<n]);
+    if v < 0 { wv_last(c); return wv_fail(cdp_error(c)); }
+    if jv_get(c[0].doc[0], v, "err") >= 0 { return wv_fail(jv_raw(c[0].doc[0], jv_get(c[0].doc[0], v, "err"))); }
+    ad: [1024] u8; sig: [1024] u8;
+    nd := wv_field(c, v, "ad", ad[..]); nc = wv_field(c, v, "cd", cd[..]); ns := wv_field(c, v, "sig", sig[..]);
+    if nd <= 0 || nc <= 0 || ns <= 0 { return wv_fail("get returned nothing"); }
+    got := webauthn_assert(ad[0..<nd], cd[0..<nc], sig[0..<ns], public_key, challenge[..], WV_ORIGIN, WV_RP, true, stored, be);
+    print("%: assertion % error % flags % count % (stored %)\n", name, round + 1, got.error, got.flags, got.count, stored);
+    want := ifx alg == COSE_EDDSA then WA_ALGORITHM else WA_OK;
+    if got.error != want { return wv_fail("assertion"); }
+    if alg == COSE_EDDSA { return true; }
+    // The same answer under another challenge, origin or a later stored count refuses.
+    other: [32] u8; for i: 0..<32 { other[i] = challenge[i] ^ 1; }
+    if webauthn_assert(ad[0..<nd], cd[0..<nc], sig[0..<ns], public_key, other[..], WV_ORIGIN, WV_RP, true, stored, be).error != WA_CHALLENGE { return wv_fail("another challenge"); }
+    if webauthn_assert(ad[0..<nd], cd[0..<nc], sig[0..<ns], public_key, challenge[..], "https://evil.test", WV_RP, true, stored, be).error != WA_ORIGIN { return wv_fail("another origin"); }
+    if got.count != 0 && webauthn_assert(ad[0..<nd], cd[0..<nc], sig[0..<ns], public_key, challenge[..], WV_ORIGIN, WV_RP, true, got.count, be).error != WA_COUNTER { return wv_fail("a replayed count"); }
+    sig[ns - 1] ^= 1;
+    if webauthn_assert(ad[0..<nd], cd[0..<nc], sig[0..<ns], public_key, challenge[..], WV_ORIGIN, WV_RP, true, stored, be).error != WA_SIGNATURE { return wv_fail("a changed signature"); }
+    stored = got.count;
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], 800, 600, "webauthn-virtual-") { print("webauthn-virtual: %\n", cdp_error(c[..])); return 1; }
+  ok := cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) >= 0;
+  ok = ok && cdp_call(c[..], "Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"https://webauthn.test/*\"}]}", CDP_CALL_MS) >= 0;
+  ok = ok && cdp_send(c[..], "Page.navigate", "{\"url\":\"https://webauthn.test/\"}") >= 0;
+  // Serve the page, then wait for it to load.
+  served := false; loaded := false;
+  while ok && !loaded {
+    k := cdp_poll(c[..], 30000);
+    if k != CDP_GOT { ok = false; break; }
+    d := c[0].doc[0]; method := cdp_event_method(d);
+    if method == "Fetch.requestPaused" {
+      reply: [512] u8; n := 0;
+      n = wv_put(reply[..], n, "{\"requestId\":\"");
+      n = wv_put(reply[..], n, jv_raw(d, jv_path(d, 0, "params.requestId")));
+      n = wv_put(reply[..], n, "\",\"responseCode\":200,\"responseHeaders\":[{\"name\":\"Content-Type\",\"value\":\"text/html\"}],\"body\":\"");
+      n = wv_put(reply[..], n, WV_PAGE);
+      n = wv_put(reply[..], n, "\"}");
+      ok = n > 0 && cdp_send(c[..], "Fetch.fulfillRequest", cast(string) reply[0..<n]) >= 0;
+      served = true;
+    }
+    if method == "Page.loadEventFired" { loaded = true; }
+  }
+  ok = ok && served;
+  ok = ok && cdp_call(c[..], "WebAuthn.enable", "{\"enableUI\":false}", CDP_CALL_MS) >= 0;
+  ok = ok && cdp_call(c[..], "WebAuthn.addVirtualAuthenticator", "{\"options\":{\"protocol\":\"ctap2\",\"ctap2Version\":\"ctap2_1\",\"transport\":\"internal\",\"hasResidentKey\":true,\"hasUserVerification\":true,\"isUserVerified\":true,\"automaticPresenceSimulation\":true}}", CDP_CALL_MS) >= 0;
+  if !ok { print("webauthn-virtual: setup failed: %\n", cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  origin := cdp_evaluate(c[..], "location.origin");
+  print("page origin %\n", jv_raw(c[0].doc[0], origin));
+  good := wv_round(c[..], COSE_ES256, "ES256");
+  good = wv_round(c[..], COSE_RS256, "RS256") && good;
+  good = wv_round(c[..], COSE_EDDSA, "EdDSA") && good;
+  cdp_close(c[..]);
+  print("webauthn-virtual: %\n", ifx good then "ok" else "FAILED");
+  return ifx good then 0 else 1;
+}

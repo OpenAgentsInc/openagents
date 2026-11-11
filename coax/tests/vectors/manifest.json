@@ -4728,6 +4728,19 @@
       "bytes": 242550
     },
     {
+      "path": "upstream/wycheproof/rsa_signature_2048_sha256_test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/rsa_signature_2048_sha256_test.json",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "rs256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "94a917b01ff50fb874cfc05bf29b4af44868d944a6558201cf18380da93fb393",
+      "bytes": 211075
+    },
+    {
       "path": "upstream/nist/ecdsa/Readme.txt",
       "kind": "upstream",
       "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip",
@@ -4840,6 +4853,45 @@
       "retrieved": "2026-11-11",
       "sha256": "3d470615875620375f8453ba25b8dce7e4d0271e76b0b79a46df34ccb2d56ab0",
       "bytes": 120315
+    },
+    {
+      "path": "upstream/w3c/webauthn-index.bs",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/w3c/webauthn/d13530428a290701eaa7ae6483c9632e4adae633/index.bs",
+      "revision": "git:d13530428a290701eaa7ae6483c9632e4adae633",
+      "license": "W3C-20150513",
+      "covers": [
+        "webauthn"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "a7c4dcae9078b83064f8a776b469fd5998c99243fd49d661a4513dbf44157835",
+      "bytes": 689997
+    },
+    {
+      "path": "upstream/py_webauthn/test_verify_registration_response.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/duo-labs/py_webauthn/c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb/tests/test_verify_registration_response.py",
+      "revision": "git:c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb",
+      "license": "BSD-3-Clause",
+      "covers": [
+        "webauthn"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "3608df7532ef9b7aae2add99377a285a2c78b537ffa0910eea5c2f0b27998952",
+      "bytes": 26162
+    },
+    {
+      "path": "upstream/py_webauthn/test_verify_authentication_response.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/duo-labs/py_webauthn/c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb/tests/test_verify_authentication_response.py",
+      "revision": "git:c9ba2b7dad6b76bec89e44c76c8ed81fc43287bb",
+      "license": "BSD-3-Clause",
+      "covers": [
+        "webauthn"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "dd071fd3c28b26a68521b6ece35ef06effa827b0e3fb66c7bec23402d47f1b48",
+      "bytes": 21399
     }
   ]
 }
