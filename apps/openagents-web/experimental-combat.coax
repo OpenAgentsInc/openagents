@@ -1758,7 +1758,8 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
     if !l.ok { continue; }
     f := x[0].floats[0].items[q];
     p := xc_proj(x, l.x, l.y, l.z);
-    if !p.ok || !xc_sight_shows(x, f.x, meadow_y(f.x, f.z), f.z, 1.6) { continue; }
+    // a target's points show wherever they are on screen, however far (eg_numbers_always); a creature's only while it shows
+    if !p.ok || (!cc.eg_numbers_always(x[0].floats[..], q) && !xc_sight_shows(x, f.x, meadow_y(f.x, f.z), f.z, 1.6)) { continue; }
     n = cc.eg_numbers_draw(out, n, x[0].floats[..], q, l, p.x, p.y, k);
   }
   // the bar: its iron round the pictures (everglade/hud/parts.coax), each slot's key over its picture; your class and your target over it

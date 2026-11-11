@@ -20,6 +20,13 @@ eg_numbers_amount :: (f: [] fnum.Floats, source: int, x: f32, y: f32, z: f32, t0
   kind := ifx heal then fnum.FLOAT_HEAL else ifx taken then fnum.FLOAT_TAKEN else fnum.FLOAT_DEALT;
   return fnum.floats_amount(f, source, x, y, z, t0, kind, crit, amount);
 }
+// A target's points over (x, y, z) at t0 (the Archery Range's butts and faces): shown wherever the point is
+// on screen, however far away; a zone never culls one by sight (eg_numbers_always).
+eg_numbers_mark :: (f: [] fnum.Floats, x: f32, y: f32, z: f32, t0: f32, points: int) -> bool {
+  return fnum.floats_amount(f, 0, x, y, z, t0, fnum.FLOAT_MARK, false, points);
+}
+// Whether number q shows wherever its point is on screen: a zone skips its sight check for it.
+eg_numbers_always :: (f: [] fnum.Floats, q: int) -> bool { return f[0].items[q].kind == fnum.FLOAT_MARK; }
 // Number q as it shows at now (floats_look); one that is done is taken off. A zone projects (x, y, z)
 // with its own camera and hands the screen point to eg_numbers_draw.
 eg_numbers_look :: (f: [] fnum.Floats, q: int, now: f32) -> fnum.FloatLook {
@@ -133,6 +140,8 @@ eg_struck_from :: (out: [] f32, at: int, side: f32, ahead: f32, age: f32, w: f32
   #assert eg_numbers_word(f[..], 0, 0, 2, 0, 1, "5 TEMP HP", true) && f[0].items[2].kind == fnum.FLOAT_HEAL;
   #assert eg_numbers_amount(f[..], 1, 0, 2, 0, 1, true, false, false, 7) && fnum.floats_text(f[..], 3) == "-7" && f[0].items[3].kind == fnum.FLOAT_TAKEN;
   #assert eg_numbers_amount(f[..], 1, 0, 2, 0, 1, false, true, false, 4) && fnum.floats_text(f[..], 4) == "+4";
+  #assert eg_numbers_mark(f[..], 0, 2, 70, 1, 30) && fnum.floats_text(f[..], 5) == "+30" && eg_numbers_always(f[..], 5) && !eg_numbers_always(f[..], 3);
+  #assert eg_numbers_ink(fnum.FLOAT_MARK) == EG_FLOAT_DEALT;
   #assert eg_numbers_ink(fnum.FLOAT_TAKEN) == EG_FLOAT_HARM && eg_numbers_ink(fnum.FLOAT_DEALT) == EG_FLOAT_DEALT && eg_numbers_ink(fnum.FLOAT_WORD) == EG_FLOAT_DEALT;
   out: [20000] f32;
   l := eg_numbers_look(f[..], 3, 1.1);

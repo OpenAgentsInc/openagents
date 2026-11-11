@@ -17,6 +17,9 @@ FLOAT_TEXT :: 16;
 FLOAT_LIFE :: 1.2;          // seconds one shows
 FLOAT_RISE :: 0.9;          // metres it rises over its life
 FLOAT_TAKEN :: 0; FLOAT_DEALT :: 1; FLOAT_MISS :: 2; FLOAT_HEAL :: 3; FLOAT_WORD :: 4;
+// A result on a thing you aimed at, not a creature (a target's points): drawn as dealt damage is, and
+// a realm shows it wherever its point is on screen, however far, never culled by sight or distance.
+FLOAT_MARK :: 5;
 
 FloatNum :: struct { on: bool; x: f32; y: f32; z: f32; t0: f32; kind: int; crit: bool; text: [FLOAT_TEXT] u8; n: int; }
 Floats :: struct { items: [FLOATS] FloatNum; present: react.PresentQueue; per_source: int = 4; shown: int; suppressed: int; }
@@ -40,11 +43,11 @@ floats_add :: (f: [] Floats, source: int, x: f32, y: f32, z: f32, t0: f32, kind:
   f[0].items[q] = one;
   return true;
 }
-// An amount: damage as "-N" (taken or dealt), a heal as "+N", a miss (amount 0 of damage) as "miss".
+// An amount: damage as "-N" (taken or dealt), a heal or a target's points as "+N", a miss (amount 0 of damage) as "miss".
 floats_amount :: (f: [] Floats, source: int, x: f32, y: f32, z: f32, t0: f32, kind: int, crit: bool, amount: int) -> bool {
-  if (kind == FLOAT_TAKEN || kind == FLOAT_DEALT) && amount <= 0 { return floats_add(f, source, x, y, z, t0, FLOAT_MISS, false, "miss"); }
+  if (kind == FLOAT_TAKEN || kind == FLOAT_DEALT || kind == FLOAT_MARK) && amount <= 0 { return floats_add(f, source, x, y, z, t0, FLOAT_MISS, false, "miss"); }
   b: [FLOAT_TEXT] u8; n := 0;
-  b[0] = ifx kind == FLOAT_HEAL then '+' else '-'; n = 1;
+  b[0] = ifx kind == FLOAT_HEAL || kind == FLOAT_MARK then '+' else '-'; n = 1;   // a target's points are a score, not harm
   v := ifx amount < 0 then -amount else amount;
   digits: [12] u8; d := 0;
   while true { digits[d] = cast(u8)(48 + v % 10); d += 1; v = v / 10; if v == 0 || d >= 12 { break; } }

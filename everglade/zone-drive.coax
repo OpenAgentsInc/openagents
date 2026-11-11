@@ -8,6 +8,7 @@
 // not in the zone, so its checks stay inside the compile-time value budget;
 // with none attached (the checks) every call here does nothing.
 
+FD_FACE_IDS :: [7] string.["butt-10m", "butt-20m", "butt-30m", "butt-50m", "butt-70m", "sky-14m", "sky-20m"];   // rg_piece order (everglade/range/place.coax)
 fd_on :: (s: [] EgZone) -> bool { return s[0].creator[0].experimental && s[0].you_on; }
 // The face's Drive, given once at start.
 zone_drive_attach :: (s: [] EgZone, d: [] Drive) #export_c #effects(all) { d[0] = Drive.{}; s[0].drive = d; }
@@ -31,6 +32,11 @@ fd_frame :: (s: [] EgZone) {
     if !m[0].mounts[k].on { continue; }
     dragon := m[0].kind[k] == egm.EG_DRAGON;
     drv_add(d, DRV_MOUNT, ifx dragon then "dragon" else "horse", k, ifx dragon then "Dragon" else "Horse", m[0].mounts[k].x, s[0].you_y, m[0].mounts[k].z, -1, -1, false);
+  }
+  // the Archery Range's faces (apps/openagents-web/archery-range.coax): its butts by their distance downrange, its sky faces by their height
+  if s[0].creator[0].range_on {
+    ft := x[0].ar[0].targets[0];
+    for i: 0..<ft.n { if i < FD_FACE_IDS.count { f := ft.face[i]; drv_add(d, DRV_OBJECT, FD_FACE_IDS[i], i, FD_FACE_IDS[i], f.x, f.y, f.z, -1, -1, false); } }
   }
   t := drv_trace(d);
   if t.count == 0 || !x[0].started { return; }

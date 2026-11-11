@@ -39,6 +39,7 @@ Range :: struct {
   score: [1] RgScore;
   shot: [bow.ARROWS] XrShot;
   seen: int;                           // the arrows you have loosed that the tally has taken in
+  stage_face: int = -1;                // ?range-hit=N (shots and clips): an arrow from where you stand lands in face N, once, a second in
 }
 
 xr_page :: (facts: string) -> bool { for p: XR_PATHS { if cc.page_path(facts, p) { return true; } } return false; }
@@ -87,7 +88,7 @@ xr_land :: (r: [] Range, sh: XrShot, mark: int, off: f32, at: [3] f32) {
   if mark >= 0 && mark < t.n {
     f := t.face[mark]; points := rg_points(off, f.radius);
     rg_record(r[0].score[..], sh.mode, xr_far(f, sh.from), points, now);
-    _ := cc.eg_numbers_amount(x[0].floats[..], 0, at[0], at[1] + 0.25, at[2], now, false, false, false, points);   // Everglade's damage numbers (everglade/hud/numbers.coax)
+    _ := cc.eg_numbers_mark(x[0].floats[..], at[0], at[1] + 0.25, at[2], now, points);   // Everglade's numbers (everglade/hud/numbers.coax): shown however far the face
     return;
   }
   rg_record(r[0].score[..], sh.mode, xr_far(t.face[xr_nearest(t, at)], sh.from), 0, now);
@@ -99,6 +100,12 @@ xr_frame :: (r: [] Range, dt: f32) {
   if !r[0].stood { xr_stand(r); }
   for i: 0..<XC_FOES { if !h[0].enemies[i].dead { h[0].enemies[i].dead = true; h[0].enemies[i].died = -100; h[0].enemies[i].awake = false; } }
   now := cr[0].clock; rg := r[0].shot[..];
+  // ?range-hit=N: the hit a shot or clip shows, through the same landing as a loosed arrow's (xr_land)
+  f := r[0].stage_face; ft := x[0].ar[0].targets[0];
+  if f >= 0 && f < ft.n && now > 1 {
+    r[0].stage_face = -1; c := ft.face[f];
+    xr_land(r, XrShot.{live = true, mode = xr_mode(r), from = [3] f32.[s[0].you_x, s[0].you_y + 1.5, s[0].you_z]}, f, 0, [3] f32.[c.x, c.y, c.z]);
+  }
   if x[0].ar[0].shots != r[0].seen {
     r[0].seen = x[0].ar[0].shots; i := x[0].ar[0].last;
     if i >= 0 && i < bow.ARROWS {
@@ -192,7 +199,21 @@ range_frame :: (r: [] Range, out: [] f32, u: [] f32, width: f32, height: f32, dp
 range_message :: (r: [] Range, kind: int, t: string) #export_c #effects(all) {
   s := r[0].z[..];
   if zone_message(s, kind, t) { return; }
-  if kind == HOST_PAGE { xr_enter(r); zone_enter(s, t); }
+  if kind == HOST_PAGE { xr_enter(r); zone_enter(s, t); xr_staged(r, t); }
+}
+// On a local page, ?range-hit=N stages a hit in face N (rg_piece order) for shots and clips.
+xr_staged :: (r: [] Range, facts: string) {
+  if !cc.dev_local(facts) { return; }
+  key := "range-hit="; i := 0;
+  while i + 1 + key.count < facts.count {
+    if (facts[i] == '?' || facts[i] == '&') && facts[i + 1..<i + 1 + key.count] == key {
+      j := i + 1 + key.count; v := 0; any := false;
+      while j < facts.count && facts[j] >= '0' && facts[j] <= '9' && v < 1000 { v = v * 10 + cast(int) (facts[j] - '0'); j += 1; any = true; }
+      if any { r[0].stage_face = v; }
+      return;
+    }
+    i += 1;
+  }
 }
 
 // ---- checks
@@ -251,6 +272,16 @@ xr_test_fly :: (r: [] Range, seconds: f32) {
   #assert xc_bow_begin(s, false); xr_test_fly(r[..], 1.0); #assert xc_bow_loose(s);
   xr_test_fly(r[..], 1.5);
   all = rg_sum(r[0].score[0], -1, -1); #assert all.shots == 2 && all.hits == 1 && r[0].score[0].run == 0 && r[0].score[0].last_points == 0;
+}
+#test "archery range: a hit on the 70 m butt rises as a number shown however far, never culled by sight (?range-hit)" #steps 2000000000 {
+  r: [1] Range; xr_test_lab(r[..]); s := r[0].z[..]; x := s[0].xc[..]; cr := s[0].creator[..];
+  xr_frame(r[..], 1.0 / 60);
+  xr_staged(r[..], "url=http://127.0.0.1/worlds/archery-range?range-hit=4\n"); #assert r[0].stage_face == 4;
+  { o: [1] Range; xr_staged(o[..], "url=https://openagents.com/worlds/archery-range?range-hit=4\n"); #assert o[0].stage_face == -1; }
+  cr[0].clock = 2; xr_frame(r[..], 1.0 / 60);
+  #assert r[0].stage_face == -1 && rg_sum(r[0].score[0], -1, -1).hits == 1 && x[0].floats[0].shown == 1;
+  q := -1; for i: 0..<fl.FLOATS { if x[0].floats[0].items[i].on { q = i; } }
+  #assert q >= 0 && cc.eg_numbers_always(x[0].floats[..], q) && abs(x[0].floats[0].items[q].z - x[0].ar[0].targets[0].face[4].z) < 0.01;
 }
 #test "archery range: an arrow into the straw beside the face sticks in the butt and misses; a half-drawn one drops short" #steps 2000000000 {
   r: [1] Range; xr_test_lab(r[..]); s := r[0].z[..]; x := s[0].xc[..];
