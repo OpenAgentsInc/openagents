@@ -1,0 +1,366 @@
+// The token codec for every secret the API issues (docs/auth/sessions-and-
+// tokens.md#token-formats): a fixed prefix, 32 random bytes in base32 (RFC
+// 4648, the upper-case alphabet, no padding: 52 characters) and a
+// 6-character checksum, the top 30 bits of the CRC-32 (IEEE 802.3, the
+// zlib polynomial) of the prefix and the body, in the same alphabet.
+//
+//   oas_     web session      oas_ + 52 + 6
+//   oa_at_   access token     oa_at_ + 52 + 6
+//   oa_rt_   refresh token    oa_rt_ + 52 + 6
+//   oa_key_  agent API key    oa_key_ + 8-character id + _ + 52 + 6
+//
+// token_check refuses a wrong prefix, a wrong length, a character outside
+// the alphabet, a body with nonzero padding bits and a wrong checksum before
+// any database lookup; the database stores SHA-256 of the whole string
+// (token_digest). The checksum only catches typing and copying mistakes and
+// lets a scanner recognize a leaked token; it is not a MAC.
+//
+// The 32 random bytes are a secret, so encoding and decoding follow Bitcoin
+// chapter 3: no branch on them, no table index from them (the alphabet is
+// arithmetic, not a lookup) and every character is read whatever an earlier
+// one held. The prefix, the length and the final verdict are public. The
+// randomness is the caller's: the C host fills it from the OS (getrandom).
+#load "bytes.coax";
+#load "sha256.coax";
+#authority;
+
+TK_OK :: 0;
+TK_PREFIX :: 1;      // not one of the four prefixes, or a bad agent key id
+TK_LENGTH :: 2;      // the wrong length for its prefix
+TK_CHARACTER :: 3;   // a character outside the alphabet, or nonzero padding bits
+TK_CHECKSUM :: 4;    // the checksum does not match
+TK_INPUT :: 5;       // a caller's buffer or random bytes are the wrong size
+
+TK_SESSION :: 1; TK_ACCESS :: 2; TK_REFRESH :: 3; TK_KEY :: 4;
+TK_RANDOM_BYTES :: 32;
+TK_BODY :: 52;       // base32 of 32 bytes: 256 bits in 52 characters, 4 padding bits
+TK_SUM :: 6;         // 30 bits of the CRC-32
+TK_KEY_ID :: 8;      // an agent key's id: 8 base32 characters (40 bits)
+TK_MAX :: 16 + TK_BODY + TK_SUM;   // oa_key_ + id + _ is the longest prefix, 16
+
+TkPrefix :: struct { kind: int; length: int; }
+TkCheck :: struct { kind: int; error: int; }
+
+// ---- checks
+// RFC 4648 section 10's base32 vectors (pinned in
+// coax/tests/vectors/upstream/rfc/rfc4648.txt), with the padding removed.
+TK_PLAIN :: [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+TK_CODES :: [7] string.["", "MY", "MZXQ", "MZXW6", "MZXW6YQ", "MZXW6YTB", "MZXW6YTBOI"];
+#test "RFC 4648 base32 vectors, both ways" {
+  for i: 0..<7 {
+    out: [16] u8; back: [8] u8;
+    n := b32_encode(TK_PLAIN[i], out[..]);
+    #assert n == TK_CODES[i].count && cast(string) out[0..<n] == TK_CODES[i] && b32_encoded_size(TK_PLAIN[i].count) == n;
+    k := b32_decode(TK_CODES[i], back[..]);
+    #assert k == TK_PLAIN[i].count && cast(string) back[0..<k] == TK_PLAIN[i];
+  }
+  out: [4] u8;
+  #assert b32_encode("foo", out[..]) == -1;                // 5 characters into 4
+  #assert b32_decode("MZXW6", out[0..<2]) == -1;                       // 3 bytes into 2
+}
+#test "base32: every byte value, the whole alphabet and its edges" {
+  all: [255] u8; text: [408] u8; back: [255] u8;
+  for i: 0..<255 { all[i] = cast(u8) i; }
+  n := b32_encode(cast(string) all[..], text[..]);
+  #assert n == 408 && b32_decode(cast(string) text[0..<n], back[..]) == 255;
+  for i: 0..<255 { #assert back[i] == cast(u8) i; }
+  // 0x00 0x44 0x32 0x14 0xc7 0x42 0x54 0xb6 0x35 0xcf 0x84 0x65 0x3a 0x56 0xd7 0xc6 0x75 0xbe 0x77 0xdf
+  // is the 32 values 0..31 in 5-bit groups.
+  alpha := [20] u8.[0x00,0x44,0x32,0x14,0xc7,0x42,0x54,0xb6,0x35,0xcf,0x84,0x65,0x3a,0x56,0xd7,0xc6,0x75,0xbe,0x77,0xdf];
+  #assert b32_encode(cast(string) alpha[..], text[..]) == 32 && cast(string) text[0..<32] == "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  #assert b32_decode("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", back[..]) == 20;
+  for i: 0..<20 { #assert back[i] == alpha[i]; }
+  for v: 0..<32 {
+    c := b32_char(cast(u64) v);
+    #assert c == "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[v];
+    #assert b32_value(c) == cast(u64) v && b32_valid(c) == 1;
+  }
+  #assert b32_char(25) == 'Z' && b32_char(26) == '2';
+}
+#test "base32 decoding refuses every other character, padding and length" {
+  out: [8] u8;
+  // Each byte that is not in the alphabet, in a two-character text.
+  for c: 0..<256 {
+    text: [2] u8; text[0] = 'M'; text[1] = cast(u8) c;
+    inside := (c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7');
+    #assert b32_valid(cast(u8) c) == ifx inside then cast(u64) 1 else cast(u64) 0;
+    if !inside { #assert b32_decode(cast(string) text[..], out[..]) == -1; }
+    // the same character first, where its value would fill the high bits
+    text[0] = cast(u8) c; text[1] = 'A';
+    if !inside { #assert b32_decode(cast(string) text[..], out[..]) == -1; }
+  }
+  // The edges of the two ranges.
+  #assert b32_valid('@') == 0 && b32_valid('[') == 0 && b32_valid('1') == 0 && b32_valid('8') == 0;
+  #assert b32_valid('a') == 0 && b32_valid('z') == 0 && b32_valid('=') == 0;
+  // Lengths that no byte count encodes to: 1, 3 and 6 characters mod 8.
+  #assert b32_decode("M", out[..]) == -1 && b32_decode("MZX", out[..]) == -1 && b32_decode("MZXW6Y", out[..]) == -1;
+  #assert b32_decode("MZXW6YTBM", out[..]) == -1;
+  // the same lengths with zero padding bits, so only the length refuses
+  #assert b32_decode("A", out[..]) == -1 && b32_decode("AAA", out[..]) == -1 && b32_decode("AAAAAA", out[..]) == -1;
+  #assert b32_decode("AA", out[..]) == 1 && b32_decode("AAAA", out[..]) == 2 && b32_decode("AAAAA", out[..]) == 3 && b32_decode("AAAAAAA", out[..]) == 4;
+  // Padding is refused: tokens never carry it.
+  #assert b32_decode("MY======", out[..]) == -1 && b32_decode("MY=", out[..]) == -1;
+  // Nonzero padding bits make a second spelling of the same bytes.
+  #assert b32_decode("MZ", out[..]) == -1;           // f with 2 padding bits 01
+  #assert b32_decode("MZXR", out[..]) == -1;         // fo with 4 padding bits 0001
+  #assert b32_decode("MZXW7", out[..]) == -1;        // foo with 1 padding bit
+  #assert b32_decode("MZXW6YR", out[..]) == -1;      // foob with 3 padding bits 001
+  #assert b32_decode("MZXW6YU", out[..]) == -1;      // foob with 3 padding bits 100
+  #assert b32_decode("", out[..]) == 0;
+  // a refusal writes nothing
+  out[0] = 9; #assert b32_decode("M@", out[..]) == -1 && out[0] == 9;
+}
+// The CRC-32 check value (the "catalogue of parametrised CRC algorithms",
+// CRC-32/ISO-HDLC: check=0xcbf43926) and three more published sums.
+#test "CRC-32 check values" {
+  #assert crc32_ieee("123456789") == 0xcbf43926;
+  #assert crc32_ieee("") == 0;
+  #assert crc32_ieee("a") == 0xe8b7be43;
+  #assert crc32_ieee("The quick brown fox jumps over the lazy dog") == 0x414fa339;
+  zeros: [32] u8; #assert crc32_ieee(cast(string) zeros[..]) == 0x190a55ad;
+  ones: [32] u8; for i: 0..<32 { ones[i] = 255; } #assert crc32_ieee(cast(string) ones[..]) == 0xff6cab0b;
+  // Incremental: the sum of a whole equals the sum continued from its first part.
+  #assert crc32_ieee_update(crc32_ieee("12345"), "6789") == 0xcbf43926;
+}
+TK_RANDOM :: [32] u8.[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31];
+#test "a made token checks, with its kind, for each prefix" {
+  out: [TK_MAX] u8;
+  prefixes := [4] string.["oas_", "oa_at_", "oa_rt_", "oa_key_ABCDEFGH_"];
+  kinds := [4] int.[TK_SESSION, TK_ACCESS, TK_REFRESH, TK_KEY];
+  for p: 0..<4 {
+    n := token_make(prefixes[p], TK_RANDOM[..], out[..]);
+    #assert n == prefixes[p].count + 58;
+    text := cast(string) out[0..<n];
+    #assert text[0..<prefixes[p].count] == prefixes[p];
+    result := token_check(text);
+    #assert result.error == TK_OK && result.kind == kinds[p];
+  }
+  // The body is the random bytes in base32, then the checksum.
+  n := token_make("oas_", TK_RANDOM[..], out[..]);
+  #assert cast(string) out[0..<n] == "oas_AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQTCQKRMFYYDENBWHA5DYPQLUR7XK";
+  body: [32] u8; #assert b32_decode(cast(string) out[4..<56], body[..]) == 32;
+  for i: 0..<32 { #assert body[i] == cast(u8) i; }
+  sum := crc32_ieee(cast(string) out[0..<56]) >> 2;
+  for i: 0..<6 { #assert out[56+i] == b32_char(cast(u64) ((sum >> cast(u32) (25 - 5*i)) & 31)); }
+}
+#test "token_check refuses each fault alone" {
+  out: [TK_MAX] u8;
+  n := token_make("oa_rt_", TK_RANDOM[..], out[..]);
+  good := cast(string) out[0..<n];
+  #assert token_check(good).error == TK_OK;
+  // One character changed, anywhere: in the prefix, the body or the sum.
+  for i: 0..<n {
+    copy: [TK_MAX] u8; for j: 0..<n { copy[j] = out[j]; }
+    copy[i] = ifx copy[i] == 'B' then cast(u8) 'C' else cast(u8) 'B';
+    result := token_check(cast(string) copy[0..<n]);
+    #assert result.error != TK_OK && result.kind == 0;
+    if i >= 6 && i < n - 7 { #assert result.error == TK_CHECKSUM; }
+    if i == n - 7 { #assert result.error == TK_CHARACTER; }   // B sets a padding bit
+    if i >= n - 6 { #assert result.error == TK_CHECKSUM; }
+  }
+  // Each length one short and one long.
+  #assert token_check(good[0..<n-1]).error == TK_LENGTH;
+  long: [TK_MAX+1] u8; for j: 0..<n { long[j] = out[j]; } long[n] = 'A';
+  #assert token_check(cast(string) long[0..<n+1]).error == TK_LENGTH;
+  // Prefixes: unknown, a near miss, empty, and a prefix alone.
+  #assert token_check("").error == TK_PREFIX && token_check("oa_").error == TK_PREFIX;
+  #assert token_check("oa_rt").error == TK_PREFIX && token_check("oa_rt_").error == TK_LENGTH;
+  #assert token_check("oax_AAAA").error == TK_PREFIX && token_check("OAS_AAAA").error == TK_PREFIX;
+  // A character outside the alphabet in the body and in the sum.
+  copy: [TK_MAX] u8; for j: 0..<n { copy[j] = out[j]; }
+  copy[10] = 'a'; #assert token_check(cast(string) copy[0..<n]).error == TK_CHARACTER;
+  copy[10] = out[10]; copy[n-1] = '1'; #assert token_check(cast(string) copy[0..<n]).error == TK_CHARACTER;
+  copy[n-1] = out[n-1]; copy[n-6] = '8'; #assert token_check(cast(string) copy[0..<n]).error == TK_CHARACTER;
+  copy[n-6] = out[n-6];
+  // Nonzero padding bits in the last body character, with a sum made for them.
+  copy[6+51] = b32_char(b32_value(out[6+51]) | 1);
+  fix := crc32_ieee(cast(string) copy[0..<n-6]) >> 2;
+  for i: 0..<6 { copy[n-6+i] = b32_char(cast(u64) ((fix >> cast(u32) (25 - 5*i)) & 31)); }
+  #assert token_check(cast(string) copy[0..<n]).error == TK_CHARACTER;
+}
+#test "agent key ids are 8 base32 characters then _" {
+  out: [TK_MAX] u8;
+  #assert token_make("oa_key_ABCDEFG_", TK_RANDOM[..], out[..]) == -TK_PREFIX;    // 7 characters
+  #assert token_make("oa_key_ABCDEFGHI", TK_RANDOM[..], out[..]) == -TK_PREFIX;   // no _
+  #assert token_make("oa_key_ABCDEFGH-", TK_RANDOM[..], out[..]) == -TK_PREFIX;
+  #assert token_make("oa_key_abcdefgh_", TK_RANDOM[..], out[..]) == -TK_PREFIX;   // lower case
+  #assert token_make("oa_key_ABCDEFG1_", TK_RANDOM[..], out[..]) == -TK_PREFIX;   // 1 is not base32
+  #assert token_make("oa_key_aBCDEFGH_", TK_RANDOM[..], out[..]) == -TK_PREFIX;   // the first id character
+  #assert token_make("oa_key_", TK_RANDOM[..], out[..]) == -TK_PREFIX;
+  #assert token_prefix("oa_key_A2345677_").kind == TK_KEY && token_prefix("oa_key_A2345677_").length == 16;
+  #assert token_prefix("oa_key_A2345677").kind == 0;
+  n := token_make("oa_key_ZZ234567_", TK_RANDOM[..], out[..]);
+  #assert n == 74 && token_check(cast(string) out[0..<n]).kind == TK_KEY;
+  // The id is covered by the checksum.
+  out[8] = 'Y'; #assert token_check(cast(string) out[0..<n]).error == TK_CHECKSUM;
+  out[8] = '_'; #assert token_check(cast(string) out[0..<n]).error == TK_PREFIX;
+}
+#test "token_make refuses bad inputs and writes nothing" {
+  out: [TK_MAX] u8; for i: 0..<TK_MAX { out[i] = 7; }
+  #assert token_make("oas_", TK_RANDOM[0..<31], out[..]) == -TK_INPUT;
+  #assert token_make("oas_", TK_RANDOM[..], out[0..<61]) == -TK_INPUT;
+  #assert token_make("oas", TK_RANDOM[..], out[..]) == -TK_PREFIX;
+  #assert token_make("oas_x", TK_RANDOM[..], out[..]) == -TK_PREFIX;
+  for i: 0..<TK_MAX { #assert out[i] == 7; }
+  #assert token_make("oas_", TK_RANDOM[..], out[0..<62]) == 62;
+}
+#test "token_digest is SHA-256 of the whole string, for valid tokens only" {
+  out: [TK_MAX] u8; digest: [32] u8; expect: [32] u8;
+  n := token_make("oa_at_", TK_RANDOM[..], out[..]);
+  #assert token_digest(cast(string) out[0..<n], digest[..]);
+  #assert sha256_hash_checked(out[0..<n], expect[..], false) == SHA_OK;
+  for i: 0..<32 { #assert digest[i] == expect[i]; }
+  for i: 0..<32 { digest[i] = 1; }
+  #assert !token_digest(cast(string) out[0..<n-1], digest[..]) && digest[0] == 1;
+  #assert !token_digest(cast(string) out[0..<n], digest[0..<31]);
+  // SHA-256("abc") is FIPS 180-2's first example: digest goes through the hash.
+  abc := [3] u8.['a', 'b', 'c'];
+  #assert sha256_hash_checked(abc[..], expect[..], false) == SHA_OK && expect[0] == 0xba && expect[31] == 0xad;
+}
+
+// ---- constant-time helpers
+// 1 when a < b, else 0, for a and b below 2^32, without a branch or a compare.
+tk_less :: (a: u64, b: u64) -> u64 #effects(all) { return ((a + 4294967296 - b) >> 32) ^ 1; }
+
+// ---- base32
+b32_encoded_size :: (n: int) -> int #export_c #effects(all) { return (n * 8 + 4) / 5; }
+// One 5-bit value as its character: A to Z for 0 to 25, 2 to 7 for 26 to
+// 31. Arithmetic, not a table, so a secret value selects no address.
+b32_char :: (v: u64) -> u8 #effects(all) {
+  late := cb_mask(tk_less(25, v & 31));                  // all ones for 26..31
+  return cast,trunc(u8) (65 + (v & 31) - (41 & late));   // '2' is 'A' + 26 - 41
+}
+B32Char :: struct { value: u64; valid: u64; }
+// One character's value and whether it is in the alphabet (valid 1, else
+// 0), with no branch: both ranges are tested and the value is selected.
+b32_read :: (c: u8) -> B32Char #effects(all) {
+  x := cast(u64) c;
+  upper := tk_less(64, x) & tk_less(x, 91);
+  digit := tk_less(49, x) & tk_less(x, 56);
+  return B32Char.{value=cb_ct_select64(cb_mask(digit), (x + 232) & 31, (x + 191) & 31),valid=upper|digit};
+}
+b32_valid :: (c: u8) -> u64 #effects(all) { return b32_read(c).valid; }
+// The value of an alphabet character; the caller checks b32_valid.
+b32_value :: (c: u8) -> u64 #effects(all) { return b32_read(c).value; }
+// input as unpadded base32 into out: the length, or -1 when out is too
+// small. Character k is bits 5k to 5k+4 of the input, read big-endian from
+// the two bytes that hold them.
+b32_encode :: (input: string, out: [] u8) -> int #export_c #effects(all) {
+  needed := b32_encoded_size(input.count);
+  if out.count < needed { return -1; }
+  for k: 0..<needed {
+    at := 5 * k; i := at / 8;
+    window := cast(u64) input[i] << 8;
+    if i + 1 < input.count { window |= cast(u64) input[i + 1]; }
+    out[k] = b32_char(window >> cast(u64) (11 - at % 8));
+  }
+  return needed;
+}
+// Unpadded canonical base32 into out: the length, or -1 for a character
+// outside the alphabet, '=', a length no byte count encodes to (1, 3 or 6
+// characters past a multiple of 8), nonzero padding bits, or an out too
+// small. Every character is read whatever the earlier ones held, and out is
+// written only when the whole text is good. Byte j is bits 8j to 8j+7,
+// which lie in at most three characters.
+b32_decode :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  tail := text.count % 8;
+  if tail == 1 || tail == 3 || tail == 6 { return -1; }
+  n := text.count * 5 / 8;
+  if out.count < n { return -1; }
+  if text.count == 0 { return 0; }
+  good: u64 = 1;
+  for c: text { good &= b32_valid(c); }
+  padding := cast(u64) (text.count * 5 - n * 8);       // 0 to 4 bits
+  last := b32_value(text[text.count - 1]);
+  good &= tk_less(last & ((cast(u64) 1 << padding) - 1), 1);
+  if good != 1 { return -1; }
+  for j: 0..<n {
+    at := 8 * j; c := at / 5;
+    // Bit 8j+7 is in character c + 1 or later, so c + 1 always exists.
+    window := (b32_value(text[c]) << 10) | (b32_value(text[c + 1]) << 5);
+    if c + 2 < text.count { window |= b32_value(text[c + 2]); }
+    out[j] = cast,trunc(u8) ((window >> cast(u64) (7 - at % 5)) & 255);
+  }
+  return n;
+}
+
+// ---- CRC-32
+// The reflected IEEE polynomial with no table: each bit's conditional XOR is
+// a mask, so the sum of a secret takes the same steps for every value.
+CRC32_POLY :: cast(u32) 0xEDB88320;
+crc32_ieee_update :: (crc: u32, data: string) -> u32 #export_c #effects(all) {
+  c := crc ^ CB_MAX32;
+  for byte: data {
+    c ^= cast(u32) byte;
+    for k: 0..<8 { c = (c >> 1) ^ (CRC32_POLY & cast,trunc(u32) cb_mask(cast(u64) (c & 1))); }
+  }
+  return c ^ CB_MAX32;
+}
+crc32_ieee :: (data: string) -> u32 #export_c #effects(all) { return crc32_ieee_update(0, data); }
+
+// ---- tokens
+// The kind and length of the prefix at the start of text, or kind 0. An
+// agent key's prefix is oa_key_, an 8-character base32 id and _.
+token_prefix :: (text: string) -> TkPrefix #effects(all) {
+  if text.count >= 4 && text[0..<4] == "oas_" { return TkPrefix.{kind=TK_SESSION,length=4}; }
+  if text.count >= 6 && text[0..<6] == "oa_at_" { return TkPrefix.{kind=TK_ACCESS,length=6}; }
+  if text.count >= 6 && text[0..<6] == "oa_rt_" { return TkPrefix.{kind=TK_REFRESH,length=6}; }
+  if text.count >= 16 && text[0..<7] == "oa_key_" && text[15] == '_' {
+    ok: u64 = 1;
+    for i: 7..<15 { ok &= b32_valid(text[i]); }
+    if ok == 1 { return TkPrefix.{kind=TK_KEY,length=16}; }
+  }
+  return TkPrefix.{};
+}
+// The six checksum characters of the token text before them.
+tk_sum :: (text: string, out: [] u8) #effects(all) {
+  sum := cast(u64) (crc32_ieee(text) >> 2);
+  for i: 0..<TK_SUM { out[i] = b32_char(sum >> cast(u64) (25 - 5*i)); }
+}
+// A new token: prefix (exactly one of the four), the 32 random bytes and the
+// checksum, into out. The length written, or -TK_PREFIX or -TK_INPUT; out is
+// written only on success.
+token_make :: (prefix: string, random: [] const u8, out: [] u8) -> int #export_c #effects(all) {
+  p := token_prefix(prefix);
+  if p.kind == 0 || p.length != prefix.count { return -TK_PREFIX; }
+  total := p.length + TK_BODY + TK_SUM;
+  if random.count != TK_RANDOM_BYTES || out.count < total { return -TK_INPUT; }
+  body: [TK_BODY] u8;
+  defer { secure_zero(body[..]); #assert crypto_zeroed(body[..]); }
+  written := b32_encode(cast(string) random, body[..]);
+  #assert written == TK_BODY;
+  for i: 0..<p.length { out[i] = prefix[i]; }
+  for i: 0..<TK_BODY { out[p.length+i] = body[i]; }
+  tk_sum(cast(string) out[0..<p.length+TK_BODY], out[p.length+TK_BODY..<total]);
+  return total;
+}
+// Is text a well-formed token? Checks the prefix, then the length, then
+// that the body and sum are in the alphabet with zero padding bits, then
+// the checksum, and returns its kind. Nothing here touches a database.
+token_check :: (text: string) -> TkCheck #export_c #effects(all) {
+  p := token_prefix(text);
+  if p.kind == 0 { return TkCheck.{error=TK_PREFIX}; }
+  if text.count != p.length + TK_BODY + TK_SUM { return TkCheck.{error=TK_LENGTH}; }
+  body: [TK_RANDOM_BYTES] u8;
+  defer { secure_zero(body[..]); #assert crypto_zeroed(body[..]); }
+  good: u64 = 1;
+  for i: p.length+TK_BODY..<text.count { good &= b32_valid(text[i]); }
+  if b32_decode(text[p.length..<p.length+TK_BODY], body[..]) != TK_RANDOM_BYTES { good = 0; }
+  if good != 1 { return TkCheck.{error=TK_CHARACTER}; }
+  sum: [TK_SUM] u8;
+  tk_sum(text[0..<p.length+TK_BODY], sum[..]);
+  given: [TK_SUM] u8;
+  for i: 0..<TK_SUM { given[i] = text[text.count-TK_SUM+i]; }
+  if cb_ct_equal(sum[..], given[..]) == 0 { return TkCheck.{error=TK_CHECKSUM}; }
+  return TkCheck.{kind=p.kind};
+}
+// SHA-256 of a well-formed token's whole string into out (32 bytes): the
+// value the database stores and looks up. False for a token token_check
+// refuses or a wrong out size, and then out is untouched.
+token_digest :: (text: string, out: [] u8) -> bool #export_c #effects(all) {
+  if out.count != 32 || token_check(text).error != TK_OK { return false; }
+  copy: [TK_MAX] u8;
+  defer { secure_zero(copy[..]); #assert crypto_zeroed(copy[..]); }
+  for i: 0..<text.count { copy[i] = text[i]; }
+  return sha256_hash_checked(copy[0..<text.count], out, false) == SHA_OK;
+}
