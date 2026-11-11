@@ -136,6 +136,7 @@ void zr_quit(void *state) { coaxial_zeron_quit(at(state)); }
 // The desk (zeron/desk.coax): every session's chat, the sidebar and the tabs.
 static coax_v_t_Desk desk_at(void *desk) { return (coax_v_t_Desk){(coax_t_Desk *)desk, 1}; }
 void *dsk_new(void) { return calloc(1, sizeof(coax_t_Desk)); }
+int32_t dsk_set_skin(void *desk, const uint8_t *name, int32_t length) { return coaxial_desk_set_skin(desk_at(desk), str(name, length)) ? 1 : 0; }
 int32_t dsk_add(void *desk, void *state, const uint8_t *cwd, int32_t length) { return (int32_t)coaxial_desk_add(desk_at(desk), at(state), str(cwd, length)); }
 void *dsk_active(void *desk) {
   coax_t_Desk *k = desk;

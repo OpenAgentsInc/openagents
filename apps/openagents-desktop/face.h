@@ -95,6 +95,8 @@ void zr_quit(void *state);
 // The desk (zeron/desk.coax, zeron-face.c): the sessions, sidebar and tabs.
 void *dsk_new(void);
 int32_t dsk_add(void *desk, void *state, const uint8_t *cwd, int32_t length);
+// The skin the desk draws in by name (zeron, everglade, verse); 0 for an unknown one.
+int32_t dsk_set_skin(void *desk, const uint8_t *name, int32_t length);
 void *dsk_active(void *desk);
 void *dsk_chat(void *desk, int32_t i);
 int32_t dsk_count(void *desk);

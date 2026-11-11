@@ -26,6 +26,7 @@
 #load "dictation-ui.coax";
 #load "dictation-labels.coax";
 #load "modes.coax";
+#load "../../../components/skin/all.coax";   // a skin by id (zr_set_skin)
 
 ZR_MAX_VERTICES :: 200000;
 ZR_COLUMN_PAD :: 16.0;
@@ -456,13 +457,21 @@ zr_tick :: (s: [] ZeronState, width: f32, height: f32, dpr: f32, dt: f32) {
   t[0].work_secs = ss[0].secs; if !s[0].still { t[0].spin += dt1; }
   c[0].running = ss[0].live && !s[0].demo;
 }
+// The skin the chat is drawn in (its transcript's): Zeron's until zr_set_skin gives it another.
+zr_skin :: (s: [] ZeronState) -> UiSkin { return t_skin(s[0].transcript[..]); }
+// Draws the chat in a skin: the transcript, the composer, the menus and the attachments' chips.
+zr_set_skin :: (s: [] ZeronState, skin: UiSkin) {
+  if t_skin(s[0].transcript[..]).id == skin.id { return; }
+  t_set_skin(s[0].transcript[..], skin); composer_set_skin(s[0].composer[..], skin);
+  pk_set_skin(s[0].picker[..], skin); at_set_skin(s[0].att[..], skin);
+}
 // The chat drawn at the size zr_tick last saw.
 zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
   t := s[0].transcript[..]; c := s[0].composer[..]; ss := s[0].session[..];
   d := s[0].d;
-  th := zeron_dark();
+  th := zeron_dark(); sk := zr_skin(s);
   w := s[0].width / d; h := s[0].height / d;
-  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, sk.canvas, sk.canvas);
   if !s[0].atlas[0].ready { return v; }
   column := ifx w < COMPOSER_MAX_WIDTH then w else COMPOSER_MAX_WIDTH;
   cw := column - 2 * ZR_COLUMN_PAD;
@@ -545,12 +554,13 @@ zr_status_text :: (s: [] ZeronState, out: [] u8) -> string {
 }
 zr_paint_status :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, x: f32, y: f32, cw: f32) -> int {
   if s[0].demo { return at; }
+  sk := zr_skin(s);
   buf: [96] u8;
   st := zr_status(s);
-  dot := ifx st == ZR_STATUS_WORKING then th.accent else ifx st == ZR_STATUS_WAITING then hex(WARNING, 1) else opacity(th.faint, 0.5);
+  dot := ifx st == ZR_STATUS_WORKING then sk.accent else ifx st == ZR_STATUS_WAITING then sk.warning else opacity(sk.faint, 0.5);
   top := y + 8; size: f32 = 6;
   v := paint_quad(out, at, d, x + 16, top + (STATUS_STRIP_HEIGHT - size) / 2, size, size, size / 2, 0, dot, dot);
-  return paint_text(out, v, s[0].atlas[..], d, FONT_SMALL, zr_status_text(s, buf[..]), x + 16 + size + 8, top, STATUS_STRIP_HEIGHT, th.faint);
+  return paint_text(out, v, s[0].atlas[..], d, sk.small.face, zr_status_text(s, buf[..]), x + 16 + size + 8, top, STATUS_STRIP_HEIGHT, sk.faint);
 }
 
 // The catalogs the menus show, one per mode (Claude's is the engine's).
@@ -570,23 +580,24 @@ zr_paint_failure :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, 
   c := s[0].composer[..]; a := s[0].atlas[..];
   if c[0].failure_n == 0 { c[0].failure_h = 0; return at; }
   msg := cast(string) c[0].failure[0..<c[0].failure_n];
-  accent := hex(DANGER, 1); muted := hex(DANGER_MUTED, 1);
+  sk := zr_skin(s);
+  accent := sk.danger; muted := sk.danger_muted;
   w := cw - 8;
   no_runs: [1] MdRun;
   lines: [16] TextLine;
-  nl := md_wrap(a, msg, no_runs[0..<0], w - 2 * NOTICE_PAD, true, lines[..]);
+  nl := t_wrap(s[0].transcript[..], a, msg, no_runs[0..<0], w - 2 * NOTICE_PAD, true, lines[..]);
   h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
   y := composer_y - 6 - h;
   c[0].failure_y = y; c[0].failure_h = h;
-  v := paint_quad(out, at, d, x + 4, y, w, h, 10, 0, flatten(opacity(accent, 0.1), th.shell), flatten(opacity(accent, 0.1), th.shell));
+  v := paint_quad(out, at, d, x + 4, y, w, h, 10, 0, flatten(opacity(accent, 0.1), sk.canvas), flatten(opacity(accent, 0.1), sk.canvas));
   hy := y + NOTICE_PY;
   v = paint_quad(out, v, d, x + 4 + NOTICE_PAD, hy, NOTICE_TILE, NOTICE_TILE, 6, 0, opacity(accent, 0.12), opacity(accent, 0.12));
   v = paint_icon(out, v, a, d, ICON_DANGER, x + 4 + NOTICE_PAD + 4, hy + 4, 12, 12, opacity(muted, 0.8));
-  v = paint_text(out, v, a, d, FONT_CHIP, "Error", x + 4 + NOTICE_PAD + NOTICE_TILE + 8, hy + (NOTICE_TILE - NOTICE_LINE) / 2, NOTICE_LINE, opacity(muted, 0.8));
+  v = paint_text(out, v, a, d, sk.label.face, "Error", x + 4 + NOTICE_PAD + NOTICE_TILE + 8, hy + (NOTICE_TILE - NOTICE_LINE) / 2, NOTICE_LINE, opacity(muted, 0.8));
   my := hy + NOTICE_TILE + NOTICE_GAP;
   for q: 0..<nl {
     seg := cast(string) msg[lines[q].from..<lines[q].to];
-    v = paint_text(out, v, a, d, FONT_TOOL, seg, x + 4 + NOTICE_PAD, my + cast(f32) q * NOTICE_LINE, NOTICE_LINE, muted);
+    v = paint_text(out, v, a, d, sk.tool.face, seg, x + 4 + NOTICE_PAD, my + cast(f32) q * NOTICE_LINE, NOTICE_LINE, muted);
   }
   return v;
 }
@@ -1434,17 +1445,17 @@ coaxial_zeron_dictation_hit :: (s:[]ZeronState,x:f32,y:f32)->bool #export_c #eff
 }
 zr_paint_dictation :: (out:[]f32,at:int,s:[]ZeronState,th:Theme,d:f32)->int {
  if !s[0].dictation_enabled {return at;}c:=s[0].composer[..];x:=c[0].x+c[0].w-28;y:=c[0].y+c[0].h+4;
- active:=s[0].dictation_phase==2 || s[0].dictation_phase==3;fg:=ifx active then th.accent else th.muted;
- bg:=ifx active then opacity(th.accent,0.15) else th.surface;
+ sk:=zr_skin(s);active:=s[0].dictation_phase==2 || s[0].dictation_phase==3;fg:=ifx active then sk.accent else sk.muted;
+ bg:=ifx active then opacity(sk.accent,0.15) else sk.surface;
  v:=paint_quad(out,at,d,x,y,28,28,14,0,bg,bg);
  // A microphone drawn in Coax: capsule, lower cradle, stem and base.
- v=paint_quad(out,v,d,x+7,y+10,14,11,7,1.5,rgba(0,0,0,0),fg);
+ v=paint_quad(out,v,d,x+7,y+10,14,11,7,1.5,sk.clear,fg);
  v=paint_quad(out,v,d,x+6,y+8,16,7,0,0,bg,bg);
- v=paint_quad(out,v,d,x+10,y+4,8,14,4,1.5,rgba(0,0,0,0),fg);
+ v=paint_quad(out,v,d,x+10,y+4,8,14,4,1.5,sk.clear,fg);
  v=paint_quad(out,v,d,x+13.25,y+21,1.5,3,0,0,fg,fg);
  v=paint_quad(out,v,d,x+9,y+24,10,1.5,0,0,fg,fg);
  label:=zdu_label(s[0].dictation_phase,s[0].dictation_outcome,s[0].dictation_fault,s[0].dictation_preparing,s[0].dictation_ctrl);
- return paint_text(out,v,s[0].atlas[..],d,FONT_CHIP,label,x-8-text_width(s[0].atlas[..],FONT_CHIP,label),y,28,fg);
+ return paint_text(out,v,s[0].atlas[..],d,sk.label.face,label,x-8-text_width(s[0].atlas[..],sk.label.face,label),y,28,fg);
 }
 #test "the dictation label's key is the host's: Control only where the host says Control is its Command" {
  s:[1]ZeronState;#assert !s[0].dictation_ctrl;

@@ -47,12 +47,14 @@ LC_HOLD :: "newchat ; type Please inspect ; dictation on ; waitdictationready 60
 // home, `@P` the dictation clip and `@Q` half a second of silence. dictation: 0 none, LC_STAND_IN the
 // fixture with the stand-in recognizer, LC_PARAKEET the fixture with the pinned model, LC_RECORDER the
 // stand-in recorder with the stand-in recognizer, LC_RECORDER_PARAKEET the stand-in recorder with the model.
-LcCase :: struct { name: string; size: string; engine: string; steps: string; expect: string; picture: bool; settings: bool; dictation: int; }
-LC_CASES :: [23] LcCase.[
+LcCase :: struct { name: string; size: string; engine: string; steps: string; expect: string; picture: bool; settings: bool; dictation: int; skin: string; }
+LC_CASES :: [24] LcCase.[
   LcCase.{name = "chat-1320x880", size = "1320,880", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
   LcCase.{name = "chat-900x600", size = "900,600", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
   LcCase.{name = "chat-table", size = "1320,880", engine = "demo", steps = "fixture table", expect = "", picture = true, settings = false},
   LcCase.{name = "sidebar-closed", size = "1320,880", engine = "demo", steps = "fixture open ; sidebar", expect = "", picture = true, settings = false},
+  // the chat set in the everglade skin (components/spec.md Phase 4): the same demo, every component in Everglade's roles
+  LcCase.{name = "chat-everglade", size = "1320,880", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false, skin = "everglade"},
   LcCase.{name = "claude-missing", size = "1320,880", engine = "", steps = "wait 2 ; type Hello from Coax", expect = "", picture = true, settings = false},
   LcCase.{name = "attach", size = "1320,880", engine = "", steps = "wait 2 ; attach @H/work/notes.txt ; attach @H/work/missing.bin ; type see the file", expect = "", picture = true, settings = false},
   LcCase.{name = "turn", size = "1320,880", engine = "stream", steps = "wait 1 ; send What is two plus two? ; waitidle 10 ; last", expect = "last: Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = false},
@@ -220,6 +222,7 @@ tool_main :: () -> int #export_c #effects(all) {
     argv[n] = lc_path(pb[12][..], root, lc_path(pb[13][..], "/", LC_APP)); n += 1;
     for s: [8] string.["--shot", shot, "--size", c.size, "--dpr", "1", "--cwd", lc_path(pb[4][..], home, "/work")] { argv[n] = s; n += 1; }
     if c.engine == "demo" { argv[n] = "--demo"; n += 1; }
+    if c.skin.count > 0 { argv[n] = "--skin"; argv[n + 1] = c.skin; n += 2; }
     // the dictation cases keep their setting in a file of their own
     if c.settings { argv[n] = "--settings"; argv[n + 1] = lc_path(pb[14][..], work, ifx c.dictation != 0 then "/dictation/settings.json" else "/store/settings.json"); n += 2; }
     if live { argv[n] = "--dictation-recorder"; argv[n + 1] = recorder; n += 2; }

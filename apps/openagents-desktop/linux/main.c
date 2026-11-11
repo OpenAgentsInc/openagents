@@ -6,7 +6,7 @@
 // sessions, builds each chat's glyph atlas in Coax, hands frames and input across,
 // and takes the app's actions.
 //
-//   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N] [--dictation on|off]
+//   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N] [--dictation on|off] [--skin zeron|everglade|verse]
 //              [--dictation-recorder PROGRAM]
 //   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "STEP ; STEP"]
 //              [--dictation-fixture | --dictation-recorder PROGRAM] [--dictation-stand-in WORDS]
@@ -683,6 +683,8 @@ int main(int argc, char **argv) {
                .user = &a, .frame = on_frame, .pointer = on_pointer, .wheel = on_wheel, .key = on_key, .text = on_text, .wants_text = on_wants_text};
   // the sessions first: the seat's first events come while the window opens
   a.desk = dsk_new(); a.settings = ds_new(); a.first = zr_new();
+  const char *skin = value(argc, argv, "--skin");
+  if (skin && !dsk_set_skin(a.desk, (const uint8_t *)skin, (int32_t)strlen(skin))) { fprintf(stderr, "OpenAgents: no skin named %s (zeron, everglade, verse)\n", skin); return 2; }
   if (!a.desk || !a.settings || !a.first) return 1;
   room_open(&a);
   a.host = ui_open(&app, shot != NULL);

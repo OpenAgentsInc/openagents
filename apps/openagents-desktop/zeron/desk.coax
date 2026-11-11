@@ -543,6 +543,7 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
     if ss[0].live || ss[0].n != k[0].chats[i].seen_n { k[0].chats[i].active_at = k[0].clock; k[0].chats[i].seen_n = ss[0].n; }
   }
   s := dsk_chat(k);
+  zr_set_skin(s, dsk_skin(k));   // the chat shown wears the desk's skin
   a := s[0].atlas[..];
   v := 0;
   if !k[0].room_shown { v = zr_paint(s, out); dsk_shift(out, 0, v, side * d); }
@@ -904,6 +905,14 @@ dsk_reveal :: (k: [] Desk, i: int) {
 
 // ---------------------------------------------------------------- the host's calls
 
+// The skin every chat, the sidebar and the tabs are drawn in, by name (components/skin/all.coax:
+// zeron, everglade, verse, terminal); false for a name no skin has. Zeron's is the default.
+coaxial_desk_set_skin :: (k: [] Desk, name: string) -> bool #export_c #effects(all) {
+  id := uiskin_named(name);
+  if k.count < 1 || uiskin(id).name != name || id == UISKIN_TERMINAL { return false; }   // the terminal skin is cells, not pixels
+  dsk_set_skin(k, uiskin(id));
+  return true;
+}
 coaxial_desk_add :: (k: [] Desk, s: [] ZeronState, cwd: string) -> int #export_c #effects(all) { if k.count < 1 { return -1; } return dsk_add(k, s, cwd); }
 coaxial_desk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if k.count < 1 || width < 1 || height < 1 { return 0; }
@@ -1257,4 +1266,16 @@ coaxial_desk_dictation_point :: (k:[]Desk,out:[]f32)->bool #export_c #effects(al
  if k.count<1 || k[0].n<1 || !k[0].dictation_enabled || k[0].room_shown || out.count<2 {return false;}
  s:=dsk_chat(k);c:=s[0].composer[..];d:=ifx k[0].d<1 then 1.0f32 else k[0].d;
  out[0]=(c[0].x+c[0].w-14+dsk_side(k))*d;out[1]=(c[0].y+c[0].h+18)*d;return true;
+}
+
+#test "the desk's skin by name: a pixel skin it has, never an unknown name or the terminal's cells; the chat shown wears it" {
+  k: [1] Desk;
+  #assert dsk_skin(k[..]).id == UISKIN_ZERON;
+  #assert coaxial_desk_set_skin(k[..], "everglade") && dsk_skin(k[..]).id == UISKIN_EVERGLADE;
+  #assert !coaxial_desk_set_skin(k[..], "steampunk") && !coaxial_desk_set_skin(k[..], "terminal") && dsk_skin(k[..]).id == UISKIN_EVERGLADE;
+  s: [1] ZeronState;
+  zr_set_skin(s[..], dsk_skin(k[..]));
+  #assert zr_skin(s[..]).id == UISKIN_EVERGLADE && composer_skin(s[0].composer[..]).id == UISKIN_EVERGLADE;
+  #assert pk_skin(s[0].picker[..]).id == UISKIN_EVERGLADE && at_skin(s[0].att[..]).id == UISKIN_EVERGLADE;
+  #assert coaxial_desk_set_skin(k[..], "zeron") && dsk_skin(k[..]).id == UISKIN_ZERON;
 }
