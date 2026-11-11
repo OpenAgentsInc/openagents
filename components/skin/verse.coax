@@ -35,6 +35,7 @@ verse_skin :: () -> UiSkin {
   s.add_wash = opacity(s.success, 0.07); s.add_bar = opacity(s.success, 0.6); s.del_wash = opacity(s.danger, 0.07); s.del_bar = opacity(s.danger, 0.6);
   s.danger_muted = rgba(1, 0.62, 0.58, 1); s.warning_muted = rgba(1, 0.80, 0.66, 1); s.file_tint = cyan;
   s.spinner[0] = cyan; s.spinner[1] = text; s.spinner[2] = dim;
+  s.doc_tint = rgba(0.75, 0.90, 0.92, 1);
   s.clear = rgba(0, 0, 0, 0); s.accent_light = rgba(0.8, 1, 1, 0.2);
   s.brand = rgba(0.85, 0.47, 0.34, 1); s.field_edge = rgba(0.42, 0.42, 0.42, 0.9); s.lift = rgba(0, 0, 0, 0.25); s.hover_chip = opacity(cyan, 0.12);
   s.menu_hover = rgba(1, 1, 1, 0.05); s.menu_selected = opacity(cyan, 0.14); s.menu_ring = opacity(cyan, 0.4);

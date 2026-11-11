@@ -27,7 +27,6 @@ AT_NAME :: 256;
 AT_INLINE_MAX :: 5242880;       // 5 MB: an image inlined (Claude's own limit)
 AT_STAGE_MAX_MB :: 24;          // what the host stages
 AT_TEXT_MAX :: 262144;          // a text file inlined for a text-only engine
-AT_FILE_TINT :: Rgba.{r = 0.796, g = 0.835, b = 0.882, a = 1};   // the file theme's dark tint, #CBD5E1
 
 AtFile :: struct {
   chip: int;                    // its chip (gpui.coax's registry)
@@ -42,7 +41,15 @@ Attachments :: struct {
   files: [AT_MAX] AtFile; sn: int; n: int;
   images: int;                  // the draft's images so far (Image N)
   next_chip: int;
+  skin: UiSkin;                 // the skin its chips are tinted in (at_skin: Zeron's when none was set)
 }
+
+// The skin the chips are tinted in: Zeron's until at_set_skin gives them another.
+at_skin :: (t: [] Attachments) -> UiSkin {
+  if !uiskin_is_set(t[0].skin) { t[0].skin = zeron_skin(); }
+  return t[0].skin;
+}
+at_set_skin :: (t: [] Attachments, skin: UiSkin) { t[0].skin = skin; }
 
 at_lower_ext :: (name: string, out: [] u8) -> string {
   dot := -1;
@@ -109,7 +116,8 @@ at_add :: (t: [] Attachments, a: [] Atlas, path: string, name: string, bytes: []
   b: [8] u8;
   e := at_lower_ext(shown, b[..]);
   icon := ifx f.image then ICON_GALLERY else ifx e == "txt" || e == "md" || e == "log" then ICON_FILE_TEXT else ICON_FILE;
-  gp_set_chip(a, f.chip, cast(string) f.label[0..<f.ln], icon, ifx f.image then zeron_dark().muted else AT_FILE_TINT);
+  sk := at_skin(t);
+  gp_set_chip(a, f.chip, cast(string) f.label[0..<f.ln], icon, ifx f.image then sk.muted else sk.doc_tint);
   t[0].files[t[0].n] = f; t[0].n += 1;
   return gp_chip_utf8(f.chip, out, 0);
 }

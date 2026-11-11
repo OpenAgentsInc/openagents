@@ -85,6 +85,7 @@ UiSkin :: struct {
   add_wash: Rgba; add_bar: Rgba; del_wash: Rgba; del_bar: Rgba;     // a diff's added and removed lines: the row and its edge bar
   danger_muted: Rgba; warning_muted: Rgba;          // a notice's text on its tinted ground
   file_tint: Rgba;          // a source file's icon
+  doc_tint: Rgba;           // an attached document's icon (an image's is the muted ink)
   spinner: [3] Rgba;        // the working spinner's three rows
   clear: Rgba;              // nothing: the fill under a ring or a rim
   brand: Rgba;              // Claude's mark, in its own tone

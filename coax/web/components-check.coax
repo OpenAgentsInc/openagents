@@ -7,8 +7,9 @@
 //    component (kit/) loads core, layout, paint, skin and other components,
 //    never a backend: a component doesn't know where it is drawn. None of
 //    them loads anything outside components/, but for the shader's library.
-// 2. No looks in a component. A colour literal or a face named in kit/
-//    fails: a component reads its skin's roles.
+// 2. No looks in a component. A colour literal or a face named in kit/ or
+//    in the chat set (components/zeron/) fails: a component reads its
+//    skin's roles. Checks (#test blocks, *-checks.coax files) may name them.
 // 3. One of each. Reading Markdown's marks, wrapping lines of text and
 //    moving a caret through an edit buffer live in components/. A file
 //    outside it that does one of these fails, unless it is on the list of
@@ -30,7 +31,8 @@ CC_SHADER :: "components/backend/gpu-shader.coax";
 
 // The layers, in the order they may load each other.
 CC_CORE :: 0; CC_LAYOUT :: 1; CC_PAINT :: 2; CC_SKIN :: 3; CC_BACKEND :: 4; CC_KIT :: 5;
-CC_OTHER :: 6;              // in components/ but no layer: gallery/, zeron/ (the chat set still moving), raster/
+CC_OTHER :: 6;              // in components/ but no layer: gallery/, zeron/ (the chat set), raster/
+CC_CHAT :: "components/zeron/";   // the chat set: no layer of its own yet, but its components wear only their skin
 CC_OUTSIDE :: -1;
 CC_LAYERS :: [6] string.["components/core/", "components/layout/", "components/paint/", "components/skin/", "components/backend/", "components/kit/"];
 // What a layer may load from outside components/.
@@ -227,7 +229,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if r.started != 0 || r.status != 0 || r.cut { tool_errln("components-check: git ls-files failed"); return 2; }
   all := cast(string) files[0..<r.out_n];
   body: [CC_FILE] u8; rb: [512] u8; wb: [128] u8;
-  bad := 0; layered := 0; scanned := 0;
+  bad := 0; layered := 0; scanned := 0; chats := 0;
   found: [64] bool;                  // which of CC_TO_MOVE still does what it is listed for
   list := CC_TO_MOVE;
   i := 0;
@@ -248,8 +250,9 @@ tool_main :: () -> int #export_c #effects(all) {
       for k: 0..<list.count { if list[k].path == path && k < found.count { found[k] = true; if (want & (does ^ 7)) != 0 { print("on the list for what it no longer does (%): % (correct its line)\n", cc_words(want & (does ^ 7), wb[..]), path); bad += 1; } } }
       continue;
     }
-    if layer == CC_OTHER { continue; }
-    layered += 1;
+    chat := cc_starts(path, CC_CHAT);
+    if layer == CC_OTHER && !chat { continue; }
+    if chat { chats += 1; } else { layered += 1; }
     k := 0; in_test := false;
     checks_file := cc_ends(path, "-checks.coax");
     while k < text.count {
@@ -262,7 +265,7 @@ tool_main :: () -> int #export_c #effects(all) {
         if !cc_may_load(layer, to) { print("layers: % loads % (a layer loads only the layers before it; a component never loads a backend)\n", path, to); bad += 1; }
       }
       // rule 2
-      if layer == CC_KIT && !checks_file {
+      if (layer == CC_KIT || chat) && !checks_file {
         if cc_starts(line, "#test") || cc_starts(line, "#forall") { in_test = true; }
         if in_test { if cc_starts(line, "}") { in_test = false; } continue; }
         if cc_names_a_look(cc_code(line)) { print("a look in a component: % names a colour or a face (read it from the skin): %\n", path, line); bad += 1; }
@@ -282,7 +285,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // rule 4
   if !cc_lowers("spirv", "/tmp/components-check.spv") { print("the shader: % does not lower to SPIR-V (coax spirv)\n", CC_SHADER); bad += 1; }
   if !cc_lowers("metal", "/tmp/components-check.metal") { print("the shader: % does not lower to Metal (coax metal)\n", CC_SHADER); bad += 1; }
-  print("components-check: % layer files, % files outside components/ scanned, % still to move, % failed\n", layered, scanned, moving, bad);
+  print("components-check: % layer files, % chat-set files, % files outside components/ scanned, % still to move, % failed\n", layered, chats, scanned, moving, bad);
   return ifx bad == 0 then 0 else 1;
 }
 

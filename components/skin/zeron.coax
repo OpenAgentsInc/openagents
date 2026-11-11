@@ -150,6 +150,7 @@ zeron_skin :: () -> UiSkin {
   tints := GSPIN_TINTS;
   for k: 0..<3 { s.spinner[k] = hex(tints[k], 1); }
   // the composer and its menus (composer.rs, pickers.rs, glass.rs)
+  s.doc_tint = rgba(0.796, 0.835, 0.882, 1);   // the file theme's dark tint, #CBD5E1
   s.clear = rgba(0, 0, 0, 0); s.accent_light = ink(0.12);
   s.brand = th.claude; s.field_edge = th.border; s.lift = rgba(0, 0, 0, 0.1); s.hover_chip = CHIP_WASH;
   s.menu_hover = ink(0.05); s.menu_selected = wash(0.11); s.menu_ring = ink(0.09);   // card_selected_bg, card_selected_shadows
