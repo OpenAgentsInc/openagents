@@ -7,7 +7,8 @@
 //
 // sl_step fills argv with step `step`'s command and returns its length, or 0 when there are no
 // more steps; each caller runs the steps in order with its own runner. objects is the folder with
-// session.o, setup-face.o, chat.o and chat-face.o; sdk the native Metal units' (build/metal);
+// session.o, setup-face.o, chat.o and chat-face.o, and the turn runner's platform units
+// (process-native.o, store-file-native.o, agent-signer-none.o); sdk the native Metal units' (build/metal);
 // work a folder for this build's own objects; binary the program to write.
 SL_UNITS :: 6;
 sl_step :: (root:string,objects:string,sdk:string,work:string,binary:string,step:int,argv:[]string,paths:[][4096]u8)->int {
@@ -37,7 +38,7 @@ sl_step :: (root:string,objects:string,sdk:string,work:string,binary:string,step
   for s:[3]string.["xcrun","swiftc","-target"] {argv[n]=s;n+=1;}
   argv[n]="arm64-apple-macos26.0";n+=1;
   for object:[6]string.["app.o","chatview.o","checks.o","ui-host.o","ct-atlas.o","realm.o"] {argv[n]=fs_join(work,object,paths[p][..]);n+=1;p+=1;}
-  for object:[4]string.["session.o","setup-face.o","chat.o","chat-face.o"] {argv[n]=fs_join(objects,object,paths[p][..]);n+=1;p+=1;}
+  for object:[7]string.["session.o","setup-face.o","chat.o","chat-face.o","process-native.o","store-file-native.o","agent-signer-none.o"] {argv[n]=fs_join(objects,object,paths[p][..]);n+=1;p+=1;}
   for object:[4]string.["MetalRealm.o","MetalRender.o","RenderTexture.o","AppKitInput.o"] {argv[n]=fs_join(sdk,object,paths[p][..]);n+=1;p+=1;}
   argv[n]="-Xlinker";argv[n+1]="-export_dynamic";n+=2;
   for framework:[11]string.["MetalKit","AppKit","WebKit","AVFoundation","QuartzCore","ImageIO","CoreGraphics","CoreText","IOKit","UniformTypeIdentifiers","Metal"] {argv[n]="-framework";argv[n+1]=framework;n+=2;}

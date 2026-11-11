@@ -36,10 +36,6 @@ int64_t fgc_feed_copy(uint8_t *p,int64_t cap) {
   coax_string s=fc_feed_text((coax_v_t_HudFeed){&feed,1});
   if(s.count>cap)return -1;memcpy(p,s.data,(size_t)s.count);return s.count;
 }
-int64_t fgc_launch_option(int64_t i,uint8_t *out,int64_t cap) {
-  coax_string s=fc_launch_option(i);if(s.count>cap)return -1;
-  memcpy(out,s.data,(size_t)s.count);return s.count;
-}
 int64_t fgc_scene_instructions(uint8_t *out,int64_t cap) {
   coax_string s=fc_scene_context();if(s.count>cap)return -1;memcpy(out,s.data,(size_t)s.count);return s.count;
 }
@@ -68,3 +64,18 @@ float fgc_box(int64_t kind, float w, float h, int64_t component) {
 int64_t fgc_draw(float *out, int64_t cap, float w, float h, float d, bool busy) {
   return fc_draw((coax_v_f32){out,cap},w,h,d,busy);
 }
+// A chat turn on the shared turn runner (chat-run.coax), in this process. The
+// runner's engines and buffers are one static block (TrBuffers, about 13 MB).
+static coax_t_ForgeChatRun chat_run;
+static bool chat_run_ready;
+static coax_v_t_ForgeChatRun chat_run_view(void) {
+  if(!chat_run_ready){coax_default_t_ForgeChatRun(&chat_run);chat_run_ready=true;}
+  return (coax_v_t_ForgeChatRun){&chat_run,1};
+}
+static coax_string chat_str(const uint8_t *p,int64_t n){return (coax_string){(const char *)p,n};}
+bool fgc_run_start(const uint8_t *text,int64_t tn,const uint8_t *parent,int64_t pn,const uint8_t *cwd,int64_t cn,const uint8_t *context,int64_t xn,const uint8_t *engine,int64_t en) {
+  return fcr_start(chat_run_view(),chat_str(text,tn),chat_str(parent,pn),chat_str(cwd,cn),chat_str(context,xn),chat_str(engine,en));
+}
+bool fgc_run_poll(void) { return fcr_poll(chat_run_view()); }
+int64_t fgc_run_line(uint8_t *out,int64_t cap) { return fcr_line(chat_run_view(),(coax_v_u8){out,cap}); }
+void fgc_run_stop(void) { fcr_stop(chat_run_view()); }

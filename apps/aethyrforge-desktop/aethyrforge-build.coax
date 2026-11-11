@@ -223,6 +223,14 @@ tool_main :: () -> int #export_c #effects(all) {
   chat_face := af_path(p[..],work,"chat-face.o");
   cbc := [10]string.["/usr/bin/clang","-std=c11","-O2","-c",af_path(p[..],here,"chat-face.c"),"-I",work,"-o",chat_face,"-Wno-unused-function"];
   if af_run(cbc[..],out[..],deadline)<0 {return 1;}
+  // The turn runner's effects (chat-run.coax, a chat turn in this process): child processes, files, and no Lab signer.
+  platform := af_path(p[..],root,"coax/platform");
+  for unit,i:[3]string.["process-native.c","store-file-native.c","agent-signer-none.c"] {
+    objname := [3]string.["process-native.o","store-file-native.o","agent-signer-none.o"];
+    unit_src: [4096] u8; unit_o: [4096] u8; us := fs_join(platform,unit,unit_src[..]); uo := fs_join(work,objname[i],unit_o[..]);
+    puc := [11]string.["/usr/bin/clang","-std=c11","-O2","-D_DARWIN_C_SOURCE","-c",us,"-I",platform,"-o",uo,"-Wno-unused-function"];
+    if af_run(puc[..],out[..],deadline)<0 {return 1;}
+  }
   hud_copy := [3]string.["ditto",af_path(p[..],here,"HUD.metal"),af_path(p[..],res,"HUD.metal")];
   if af_run(hud_copy[..],out[..],deadline)<0 {return 1;}
   // The shell (shell-link.coax): the realm's Swift, the app's Objective-C on the shared Mac host, linked.

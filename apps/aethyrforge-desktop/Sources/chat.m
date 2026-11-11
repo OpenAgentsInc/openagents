@@ -1,6 +1,7 @@
 // Firm reason: 6 (AppKit text and input method, Metal presentation and process effects).
-// The Coder chat (Forge.h ForgeChat). Coder owns agents, tools, history and consent; Coax owns the
-// HUD, the presentation and the JSONL events (chat.coax behind face.h).
+// The Coder chat (Forge.h ForgeChat). A turn runs in this process on the shared turn runner
+// (chat-run.coax: agents, routing, consent and the session log, as Coder's plain runs have them);
+// Coax owns the HUD, the presentation and the session's events (chat.coax behind face.h).
 #import "Forge.h"
 #import <Metal/Metal.h>
 #include <unistd.h>
@@ -23,7 +24,7 @@ static NSColor *teal(void) { return NSColor.systemTealColor; }
 static NSColor *orange(void) { return NSColor.systemOrangeColor; }
 
 @implementation ForgeChat {
-  NSTask *_process;
+  NSTimer *_turnClock;          // polls the turn on the shared runner (fgc_run_poll)
   NSTimer *_clock;
   int64_t _rendered;
   float *_strokes;
@@ -304,31 +305,13 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   if (_busy) { [self stopTurn]; return; }
   [self startTurn:_input.string voice:NO];
 }
-// Reads a pipe's lines on a thread of its own, each handed to block on the main thread in order.
-static void forge_lines(NSFileHandle *h, void (^line)(NSString *), void (^done)(NSString *problem)) {
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-    NSMutableData *pending = [NSMutableData data];
-    uint8_t bytes[8192];
-    NSString *problem = nil;
-    int fd = h.fileDescriptor;
-    for (;;) {
-      ssize_t n = read(fd, bytes, sizeof bytes);
-      if (n < 0 && errno == EINTR) continue;
-      if (n <= 0) break;
-      [pending appendBytes:bytes length:(NSUInteger)n];
-      for (;;) {
-        const uint8_t *p = pending.bytes;
-        const uint8_t *nl = memchr(p, '\n', pending.length);
-        if (!nl) break;
-        NSString *s = utf8(p, nl - p);
-        [pending replaceBytesInRange:NSMakeRange(0, (NSUInteger)(nl - p) + 1) withBytes:NULL length:0];
-        dispatch_sync(dispatch_get_main_queue(), ^{ line(s); });
-      }
-      if (pending.length > 262144) { problem = @"Coder output exceeded its line limit."; break; }
-    }
-    if (!problem && pending.length) { NSString *s = utf8(pending.bytes, (int64_t)pending.length); dispatch_sync(dispatch_get_main_queue(), ^{ line(s); }); }
-    dispatch_async(dispatch_get_main_queue(), ^{ done(problem); });
-  });
+// The turn runner's engines (Claude Code, Codex, Cursor, Microcoder) start
+// from this process, so they inherit its environment: the agent CLIs' PATH,
+// Microcoder's worker, the scene tool, the session home.
+- (void)adoptEnvironment {
+  NSDictionary *env = [self environment];
+  for (NSString *key in env) setenv(key.UTF8String, [env[key] UTF8String], 1);
+  unsetenv("CODER_ASK_FILE");
 }
 - (void)startTurn:(NSString *)draft voice:(BOOL)voice {
   if (_stopping) return;
@@ -341,51 +324,40 @@ static void forge_lines(NSFileHandle *h, void (^line)(NSString *), void (^done)(
   [self closeComposer];
   [self append:[NSString stringWithFormat:@"\n%@\n%@\n\n", voice ? @"VOICE" : @"YOU", text] color:NSColor.whiteColor];
   if (voice) [self appendMessage:[NSString stringWithFormat:@"You: %@\n\n", text]];
-  NSMutableArray *args = [NSMutableArray arrayWithObject:@"coder"];
-  if (_parent.length) [args addObjectsFromArray:@[ @"fork", _parent, text ]]; else [args addObjectsFromArray:@[ @"run", text ]];
-  [args addObjectsFromArray:@[ @"--cwd", _cwd.path ]];
-  if (_sceneContextURL) [args addObjectsFromArray:@[ @"--context", _sceneContextURL.path ]];
-  for (int i = 0; i < 8; i++) {
-    uint8_t o[128]; int64_t n = fgc_launch_option(i, o, sizeof o);
-    if (n <= 0) break;
-    NSString *option = utf8(o, n);
-    [args addObject:[option isEqualToString:@"auto"] ? (_engineOverride ?: option) : option];
-  }
-  NSTask *p = [NSTask new];
-  p.executableURL = self.cli; p.arguments = args; p.currentDirectoryURL = _cwd; p.environment = [self environment];
-  NSPipe *output = [NSPipe pipe], *errors = [NSPipe pipe];
-  p.standardOutput = output; p.standardError = errors; p.standardInput = NSFileHandle.fileHandleWithNullDevice;
-  _selectedEngine = _engineOverride ?: @"auto";
+  // The turn runs in this process on the shared turn runner (chat-run.coax), as on Linux: no Coder child.
+  NSString *engine = _engineOverride ?: @"auto";
+  NSData *td = [text dataUsingEncoding:NSUTF8StringEncoding], *pd = [(_parent ?: @"") dataUsingEncoding:NSUTF8StringEncoding];
+  NSData *cd = [_cwd.path dataUsingEncoding:NSUTF8StringEncoding], *xd = [(_sceneContextURL ? _sceneContextURL.path : @"") dataUsingEncoding:NSUTF8StringEncoding];
+  NSData *ed = [engine dataUsingEncoding:NSUTF8StringEncoding];
+  _selectedEngine = engine;
   _router.stringValue = @"Automatic routing · deciding…";
-  _process = p; _status.stringValue = @"Coder is routing this task…"; [self update];
-  NSError *error = nil;
-  if (![p launchAndReturnError:&error]) { [self append:[NSString stringWithFormat:@"\nCoder: %@\n", error.localizedDescription] color:orange()]; _lastEnding = @"failed"; [self endTurn]; return; }
-  __block NSMutableString *problem = [NSMutableString string];
-  __block int open = 2;
+  _status.stringValue = @"Coder is routing this task…"; [self update];
+  [self adoptEnvironment];
+  if (!fgc_run_start(td.bytes, (int64_t)td.length, pd.bytes, (int64_t)pd.length, cd.bytes, (int64_t)cd.length, xd.bytes, (int64_t)xd.length, ed.bytes, (int64_t)ed.length)) {
+    [self append:@"\nCoder: this conversation's session log is missing.\n" color:orange()]; _lastEnding = @"failed"; [self endTurn]; return;
+  }
   __weak ForgeChat *weak = self;
-  void (^finished)(void) = ^{
-    ForgeChat *s = weak; if (!s) return;
-    if (--open) return;
-    [p waitUntilExit];
-    if (!s.lastEnding.length) {
-      [s append:[NSString stringWithFormat:@"\nCoder exited (%d). %@\n", p.terminationStatus, problem.length > 8192 ? [problem substringToIndex:8192] : problem] color:orange()];
-      s.lastEnding = @"failed";
-    }
-    [s endTurn];
-  };
-  forge_lines(errors.fileHandleForReading, ^(NSString *line) { if (problem.length < 8192) [problem appendFormat:@"%@\n", line]; }, ^(NSString *why) { (void)why; finished(); });
-  forge_lines(output.fileHandleForReading, ^(NSString *line) { if (line.length <= 262144) [weak receive:line]; }, ^(NSString *why) {
-    ForgeChat *s = weak;
-    if (why && s) {
-      if (p.running) { [s stopTurn]; NSDate *end = [NSDate dateWithTimeIntervalSinceNow:2]; while (p.running && end.timeIntervalSinceNow > 0) usleep(50000); if (p.running) [p terminate]; }
-      [s append:[NSString stringWithFormat:@"\nCoder: %@\n", why] color:orange()]; s.lastEnding = @"failed";
-    }
-    finished();
-  });
+  _turnClock = [NSTimer timerWithTimeInterval:0.02 repeats:YES block:^(NSTimer *t) { (void)t; [weak pumpTurn]; }];
+  [NSRunLoop.mainRunLoop addTimer:_turnClock forMode:NSRunLoopCommonModes];
+}
+// One poll of the turn: its new session lines, each read as Coder's were; at its end, the turn ends here.
+- (void)pumpTurn {
+  bool alive = fgc_run_poll();
+  NSMutableData *b = [NSMutableData dataWithLength:262144];
+  for (;;) {
+    int64_t n = fgc_run_line(b.mutableBytes, (int64_t)b.length);
+    if (n == 0) break;
+    if (n < 0) continue;        // longer than a line the chat takes: skipped
+    [self receive:utf8(b.bytes, n)];
+  }
+  if (alive) return;
+  [_turnClock invalidate]; _turnClock = nil;
+  if (!_lastEnding.length) { [self append:@"\nCoder: the turn ended without an ending.\n" color:orange()]; _lastEnding = @"failed"; }
+  [self endTurn];
 }
 - (void)endTurn {
   if (_session.length) _parent = _session;
-  _busy = NO; _pending = NO; _process = nil; [self finishMessages];
+  _busy = NO; _pending = NO; [_turnClock invalidate]; _turnClock = nil; [self finishMessages];
   _status.stringValue = [NSString stringWithFormat:@"%@ · %@ · %@", _lastEnding, _selectedEngine, _session.length ? _session : _cwd.path];
 }
 - (NSString *)field:(int)i {
@@ -432,20 +404,12 @@ static void forge_lines(NSFileHandle *h, void (^line)(NSString *), void (^done)(
 - (void)stopTurn {
   if (!_busy) return;
   _pending = NO; [self update]; _status.stringValue = @"Stopping Coder…";
-  // The CLI's stop file is polled even while an approval is pending.
-  NSData *b = [_session dataUsingEncoding:NSUTF8StringEncoding];
-  if (fgc_answer(_busy, YES, b.bytes, (int64_t)b.length))
-    [[@"stop" dataUsingEncoding:NSUTF8StringEncoding] writeToURL:[self.sessions URLByAppendingPathComponent:[_session stringByAppendingString:@".stop"]] atomically:YES];
-  else [_process terminate];
+  fgc_run_stop();       // the turn and its engine end now
+  if (!_lastEnding.length) { [self append:@"\n[stopped]\n" color:orange()]; _lastEnding = @"stopped"; }
+  [self endTurn];
 }
 - (void)shutdown {
   [_clock invalidate]; _clock = nil;
   _stopping = YES; [self stopTurn];
-  NSTask *p = _process;
-  if (p) {
-    NSDate *end = [NSDate dateWithTimeIntervalSinceNow:2];
-    while (p.running && end.timeIntervalSinceNow > 0) usleep(10000);
-    if (p.running) [p terminate];
-  }
 }
 @end

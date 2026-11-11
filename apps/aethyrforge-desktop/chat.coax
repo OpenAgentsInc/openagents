@@ -4,6 +4,7 @@
 #load "chat-policy.coax";
 #load "chat-presentation.coax";
 #load "chat-launch.coax";
+#load "chat-run.coax";        // a turn on the shared turn runner, in this process (the Mac's chat.m through chat-face.c)
 #load "scene-context.coax";
 #load "voice-coder.coax";
 #load "microphone.coax";

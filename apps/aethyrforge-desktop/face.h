@@ -72,7 +72,12 @@ int64_t fc_chat_hold_ms(void);
 int64_t fgc_chat_mode(bool opened, bool busy, int64_t now_ms);
 void fgc_feed_event(int64_t kind, const uint8_t *p, int64_t n, int64_t now_ms);
 int64_t fgc_feed_copy(uint8_t *p,int64_t cap);
-int64_t fgc_launch_option(int64_t i,uint8_t *out,int64_t cap);
+// A chat turn on the shared turn runner, in this process (chat-run.coax): start
+// it, poll it each frame, read its session lines (fgc_read reads each), stop it.
+bool fgc_run_start(const uint8_t *text,int64_t tn,const uint8_t *parent,int64_t pn,const uint8_t *cwd,int64_t cn,const uint8_t *context,int64_t xn,const uint8_t *engine,int64_t en);
+bool fgc_run_poll(void);
+int64_t fgc_run_line(uint8_t *out,int64_t cap);
+void fgc_run_stop(void);
 int64_t fgc_scene_instructions(uint8_t *out,int64_t cap);
 int64_t fgc_feed_draw(float *out,int64_t cap,float w,float h,float d);
 int64_t fgc_enter_route(bool ready, bool opened, int64_t key, bool down, bool repeated, bool modified, bool held);

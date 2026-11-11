@@ -247,7 +247,7 @@ only received reply text appears on the left during an active run, with no
 background, heading, controls or mouse interception. Replies remain visible
 for five seconds after the run ends, then hide; Enter restores the
 conversation, including tools, results, paths and errors.
-Desktop turns use Coder's unattended provider mode, without `--ask`: Claude's
+Desktop turns run unattended, as Coder's plain runs do: Claude's
 `bypassPermissions` and Codex's `approvalPolicy=never` with `danger-full-access`.
 The Codex adapter uses the app-server equivalent of its
 [documented unattended mode](https://learn.chatgpt.com/docs/developer-commands?surface=cli).
@@ -256,8 +256,11 @@ remain available for an explicitly constrained backend, but normal desktop
 turns do not request tool approval. New chat and folder changes start fresh.
 Slash commands, history browsing and attachment to a running PID are future work.
 
-The UI calls shared `~/.openagents/bin/openagents coder run|fork --engine auto --stream-json`,
-the same Coder as the TUI. Every submitted turn routes, including follow-ups,
+Each turn runs in the app's own process on the shared turn runner
+(`chat-run.coax` over `coax/lib/agent/engine/run.coax`, through `fgc_run_*` in
+`chat-face.c`), the one Coder's plain stream-json runs and the Linux app use; the
+app no longer starts `openagents coder` (this change was not built on a Mac, #13156).
+Every submitted turn routes, including follow-ups,
 which carry the previous durable session's
 context. Prebuilt Coder/Microcoder are bundled; messages do not build tools or
 need a checkout. Provider CLIs use their existing logins. Coder's existing typed

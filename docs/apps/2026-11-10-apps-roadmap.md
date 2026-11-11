@@ -269,30 +269,38 @@ Status (2026-11-10, GitHub #13153):
   a context file ahead of the first turn (`sf_*`). Coder runs on all of it:
   32 `coder run`, `fork`, `route` and `replay` runs against stand-ins print
   and write the same before and after.
-- **Not built: move 4, the child itself.** Aethyrforge's chat still starts
-  `coder run|fork ... --engine auto --stream-json` (`linux-native.coax`
-  `fgn_launch` and `fgn_tick`'s line reader; `Sources/Chat.swift` on the
-  Mac). What is left is one headless turn runner in `agent/engine/` (say
-  `run.coax`) that does per turn what `coder run` does in its plain
-  `--stream-json` mode, and that both Coder's plain runs and Aethyrforge
-  call: route (a remote or hosted door needs the consent gate, which is
-  Coder's `gate.coax` `gt_session_to_so` today and moves with it), start the
-  picked engine with the options Coder gives it (Claude `cd_claude_options`
-  through `e_own`; Codex Coder's `CxSettings` through `cxe_own`; Cursor
-  `cue_launch`, `cue_resume`, `cue_send`; Microcoder and Psionic `mcw_start`
-  and Coder's `McTask`), answer approvals as an unattended run does (deny,
-  or an owner's answer), write each engine's events as the lines `fc_read`
-  reads (`session`, `route`, `model`, `user`, `reply_delta`/`reply_end`,
-  `reply`, `tool`, `result`, `ask`, `diff`, `end`) and the session log with
-  its `engine_session` lines (so `sf_fork` resumes). That glue is App-bound
-  in Coder today: `coder.coax` `cd_claude_*`, `codex.coax`, `cursor.coax`,
-  `microcoder.coax` and `session.coax` `cs_*`. Then `fgn_launch` and the
-  reader become runner calls, `chat-launch.coax` (`#authority`) names the
-  runner's options instead of argv and is mutated, `linux-native-check.coax`
-  reads the fork's parent from the shared log, and `Chat.swift` calls the
-  runner through the face (Mac build owed, #13156). Check: Aethyrforge's
-  checks and `linux-native-check` with echo and the stand-ins, before and
-  after.
+- **Built: move 4, the turn runner** (2026-11-11). `coax/lib/agent/engine/run.coax`
+  (`tr_*`) runs one headless turn for any owner the way `coder run
+  --stream-json` runs it: System One's pick with the task gated on the
+  owner's consent ledger (`consent-gate.coax`, moved from Coder's
+  `gate.coax`), the session's lines through the shared writer
+  (`session/writer.coax`, moved from Coder's `session.coax`), a fork's
+  turns, a context file and remembered facts ahead of the first message,
+  then Claude Code, Codex, Cursor, Microcoder, Psionic or echo, unattended;
+  what still asks waits for the owner (`tr_answer`, `tr_tool_answer`).
+  Moved beside it for it: the approval policy (`ceiling.coax`), Codex's
+  catalog, Microcoder's observations and worker client, the line diff
+  (`edit-lines.coax`). Coder's `coder run` and `fork` with `--stream-json`
+  run on it when nothing in them asks a person or a plugin; Aethyrforge's
+  Linux chat runs every turn on it in its own process (`chat-run.coax`
+  `fcr_*`; `chat-launch.coax` names the runner's options) and starts no
+  Coder child. Checked before and after with stand-ins: Coder's 32 runs and
+  43 engine runs, and Aethyrforge's chat through two turns with echo, auto
+  to Claude Code, Codex and the Microcoder replay, and no eligible engine,
+  print and write the same. Aethyrforge's turns carry no remembered facts,
+  offer Codex no Coder tools, send "$ " to the engine as text, and wait for
+  System One on the frame.
+- **Not built or checked: the Mac's chat on the runner.** `Sources/chat.m`
+  calls the runner through `chat-face.c` (`fgc_run_*`) and the Mac link
+  gains `process-native`, `store-file-native` and `agent-signer-none`; the
+  Coax and the C face compile and link on Linux, but the app was not built
+  or run on a Mac (#13156).
+- **Left: Coder's terminal and its asking runs.** Coder's interactive
+  terminal and its text runs, and runs with `--ask`, a policy, hooks or
+  Coder's tools, still drive the engines through `App` (`coder.coax`
+  `cd_claude_*`, `codex.coax`, `cursor.coax`, `microcoder.coax`): moving them
+  onto the runner needs it to hand the owner display events and approvals
+  in place of answering them.
 - **Also left.** On the Mac the desktop app's session files are still beside
   `settings.json` in Application Support (the Swift host picks the folder);
   on Linux they are under `~/.openagents/desktop/`. Coder writes the log's
