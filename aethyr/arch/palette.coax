@@ -30,6 +30,22 @@
 //   ARCH_M_SETT       small squared setts in courses (u along a course, v across) yes
 //   ARCH_M_ROSE       a rose window: petals of glass round a boss (u, v from -1 to 1) yes (the petals)
 //   ARCH_M_WATER      still or falling water: pale, with moving glints           yes
+//   ARCH_M_CLIFF      a cliff's rock: beds of grey stone with dark creases        yes
+//                     between them, moss on what faces up (v its height, metres)
+//   ARCH_M_PETAL      a flower's petals: their colour in full, barely shaded      yes
+//
+// Wet materials. A world draws these in the stylized water pass, after everything else and
+// blended over it (aethyr/render/stylized.coax, stylized_water_*); in the plain pass they are
+// drawn solid.
+//   ARCH_M_RIVER      a river, a pool or a pond: blue, deeper where the ground    yes (the deep colour)
+//                     lies deeper under it, ripples that run downstream, foam
+//                     at the shore and where the ground table says it churns
+//                     (u metres downstream, v metres across)
+//   ARCH_M_FALLS      a waterfall's sheet: white streaks that fall (u across it   yes
+//                     0 to 1, v metres down from its lip)
+//   ARCH_M_MIST       spray: a soft white puff with no edge                       yes
+//   ARCH_M_RAINBOW    a rainbow's band (u across the band 0 to 1, v along it      no
+//                     0 to 1)
 
 ARCH_M_GROUND :: 1;
 ARCH_M_PLASTER :: 2;
@@ -54,4 +70,12 @@ ARCH_M_SLAB :: 20;
 ARCH_M_SETT :: 21;
 ARCH_M_ROSE :: 22;
 ARCH_M_WATER :: 23;
-ARCH_M_COUNT :: 24;
+ARCH_M_CLIFF :: 24;
+ARCH_M_PETAL :: 25;
+ARCH_M_RIVER :: 26;
+ARCH_M_FALLS :: 27;
+ARCH_M_MIST :: 28;
+ARCH_M_RAINBOW :: 29;
+ARCH_M_COUNT :: 30;
+// The first wet material: this one and those after it belong in the water pass.
+ARCH_M_WET :: 26;

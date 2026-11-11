@@ -14,6 +14,7 @@ wherever a realm wants it.
 | `village.coax` | The village library: generators for buildings, walls and street furniture ([parameters](#the-village-and-flora-library)) |
 | `plaza.coax` | A town square: steps, a terrace, piers, a fountain, benches, banners, a parasol stall, barrels and jars, paving ([parameters](#a-town-square-plazacoax)) |
 | `flora.coax` | Trees by species and season, bushes, far hills and the ground ([parameters](#the-village-and-flora-library)) |
+| `land.coax` | Wild land: a cliff, boulders, a river, a waterfall with spray and a rainbow, a plank bridge, reeds, flowers and vines ([parameters](#wild-land-and-water-landcoax)) |
 
 The first user is the Golemancers' Workshop
 ([`everglade/workshop/temple.coax`](../../everglade/workshop/temple.coax)),
@@ -87,11 +88,11 @@ oak := arch_tree(p[..], arch_tree_spec(ARCH_OAK, ARCH_AUTUMN, 7));
 | Generator | Parameters |
 | --- | --- |
 | `arch_tree_spec(species, season, seed)` | An `ArchTree` for a species (`ARCH_OAK` broad and round, `ARCH_MAPLE` taller, `ARCH_POPLAR` narrow, `ARCH_PINE` a conifer) in a season (`ARCH_SUMMER`, `ARCH_AUTUMN`, `ARCH_GOLD`, `ARCH_SPRING`); the seed varies its size and shape |
-| `arch_tree(p, ArchTree)` | A tree. `species`; `height` to the top of the crown; `crown` its radius; `squash` its height as a share of its width; `trunk` the trunk's radius; `clumps` masses of leaves (a pine's tiers of boughs); `tufts` tufts of three leaves on each mass (0: bare faceted lumps); `leaf` a leaf's length as a share of its mass; `leaf_r/g/b` and `leaf2_r/g/b` two leaf colours each mass mixes; `seed` |
+| `arch_tree(p, ArchTree)` | A tree. `species`; `height` to the top of the crown; `crown` its radius; `squash` its height as a share of its width; `trunk` the trunk's radius; `clumps` masses of leaves (a pine's tiers of boughs); `tufts` tufts of three leaves on each mass (0: bare faceted lumps); `leaf` a leaf's length as a share of its mass; `leaf_r/g/b` and `leaf2_r/g/b` two leaf colours each mass mixes; `bark_r/g/b` the bark (0: its own brown); `seed` |
 | `arch_bush(p, r, h, r, g, b, seed)` | A low bush of the same leaves |
 | `arch_leaf_mass`, `arch_leaves`, `arch_clump` | One mass of leaves (a dark heart under layers of pointed leaves), the leaves alone, and one bare lump, for hedges of your own |
 | `arch_peak(p, r, h, sharp, ragged, seed)` | A far hill or a mountain: its radius and height; `sharp` below 1 a dome, above 1 a peak; `ragged` how broken its outline is |
-| `arch_ground(p, ArchGround, table)` | The ground as a grid over a table of heights, grass cover and paving (`ARCH_GROUND_FLOATS` floats a node); `arch_ground_at` reads the table at a place |
+| `arch_ground(p, ArchGround, table)` | The ground as a grid over a table of heights, grass cover (above 1: long grass), paving and churn (how white water runs there) (`ARCH_GROUND_FLOATS` floats a node); `arch_ground_at` reads the table at a place |
 
 
 ### A town square (`plaza.coax`)
@@ -108,6 +109,22 @@ oak := arch_tree(p[..], arch_tree_spec(ARCH_OAK, ARCH_AUTUMN, 7));
 | `arch_barrel(p, r, h)`, `arch_urn(p, r, h, r, g, b)`, `arch_planter(p, r, h, seed)` | A barrel, a clay jar, a stone urn with a clipped bush |
 | `arch_dais(p, r, h, tiers)`, `arch_podium(p, w, d, h, tiers)` | A round and a square stepped base; each tier is a step |
 | `arch_paved_ring(p, r0, r1, kerb, lift)` | A ring of setts laid in arcs inside a stone kerb |
+
+### Wild land and water (`land.coax`)
+
+| Generator | Parameters |
+| --- | --- |
+| `arch_cliff(p, ArchCliff)` | A wall of rock along x, its face toward +z: rounded buttresses of bedded stone before a mass of it. `run`, `h`, `depth`; `bulge` a buttress's radius; `beds` a bed's thickness; `hollow` how far its middle is set back (a cove); `gap`, `gap_at` a cleft left open for a waterfall; `vines` the share of buttresses hung with vines; `r/g/b`; `seed`. Nobody climbs it |
+| `arch_boulder(p, rx, ry, rz, seed)` | A rounded stone, mossy on top |
+| `arch_river(p, line, y)` | A river's surface along points of x, z and half width, level at `y`. Its ripples run downstream |
+| `arch_pool(p, r)` | A round pool's surface |
+| `arch_falls(p, w, h, out)` | A waterfall's sheet from its lip at `h`, thrown `out` forward as it falls |
+| `arch_mist(p, r, h, puffs, seed)`, `arch_rainbow(p, r, wide, from, to)` | Spray, and a rainbow's arc in it |
+| `arch_plank_bridge(p, ArchBridge)` | A bridge along z, its deck at height 0: `run`, `w`, `bays` between posts, `rail`, `drop` of its piles, `r/g/b` the planks, `rail_r/g/b`. The deck is ground and the rails stop a walker |
+| `arch_reeds(p, r, h, blades, seed)`, `arch_flowers(p, r, tall, stems, r, g, b, seed)`, `arch_vine(p, w, drop, strands, seed)` | Reeds with cattails, a drift of flower spikes, a curtain of hanging leaves |
+
+The river, the falls, spray and the rainbow are wet materials (`ARCH_M_WET` and
+up). Draw them last, in [the stylized water pass](../render/README.md#stylized-shading).
 
 ## Solids: what blocks a walker
 
@@ -148,6 +165,7 @@ coax/bin/coax test --library aethyr/arch/solid.coax
 coax/bin/coax test --library aethyr/arch/village.coax
 coax/bin/coax test --library aethyr/arch/flora.coax
 coax/bin/coax test --library aethyr/arch/plaza.coax
+coax/bin/coax test --library aethyr/arch/land.coax
 coax/bin/coax test --library aethyr/arch/solids.coax
 ```
 
