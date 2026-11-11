@@ -1,8 +1,11 @@
 # Components: one component system for every OpenAgents and Verse app (spec, draft)
 
-Written 2026-11-10. Status: Phase 1 (the move) is done. Phase 2 is under way:
-the layers exist and the chat components draw through them with the same
-vertices as before (see "Phases" for what has moved).
+Written 2026-11-10. Status: Phase 1 (the move) and Phase 3 (skins and the
+gallery) are done. Phase 2 is under way: the layers exist, and the chat
+components paint display lists in their skin's roles with the same vertices
+as before; their measures are still Zeron's numbers (see "Phases" for what
+has moved and what has not). Phase 4 has its first step (the chat set in
+the `everglade` skin on Linux); the Workshop itself does not run on Linux.
 Tracked in GitHub #13153. The code this replaces is listed under "What exists
 today".
 
@@ -293,10 +296,30 @@ Each phase ends with every existing check and golden unchanged.
    the transcript's whole display list is the paint layer's primitives,
    drawn by `gpu_draw`. Chat's frames did not change. The same file lays
    the same document out in cells in the terminal skin
-   (`kit/markdown-checks.coax`). Still to move onto the display list and
-   the skin: the rest of the transcript (bubbles, tool groups, diffs,
-   notices), the composer, the pickers and the attachments, which still
-   call `paint_*` with Zeron's constants.
+   (`kit/markdown-checks.coax`).
+   Done 2026-11-11: every colour and face the chat set paints is its skin's
+   role. The transcript's bubbles, tool groups, chips, diffs, notices and
+   working trailer (`t_skin`), the composer expanded and docked
+   (`composer_prims`, `composer_skin`), the model panel, model list and
+   access menu (`pk_prims`, `pk_skin`), the attachments' chip tints
+   (`at_skin`), and the desktop app's sidebar and tabs (`dsk_sidebar_prims`,
+   `dsk_tabs_prims`, `dsk_skin`) paint the paint layer's primitives, drawn by
+   `gpu_draw`; the skin gained the roles they read (`UiSkin`'s chat-set
+   roles, `UiPlate`, `uiskin_plate`). `components-check` holds
+   `components/zeron/` to its skin as it holds `kit/`.
+   `components/zeron/skins-checks.coax` lays the transcript, the composer
+   and the menus out in Everglade and fails on any Zeron colour; the desktop
+   app takes `--skin` and `linux/check.coax`'s `chat-everglade` case pins
+   the whole chat in Everglade. Chat's eight frames, the menus' other states
+   (hashed before and after) and the Linux app's pictures (byte for byte)
+   did not change.
+   Not done, so Phase 2 stays open: the chat set's measures (paddings,
+   radii, row heights, a chip's 20 and 22 px wells, the notice's tile) are
+   still numbers in `components/zeron/` and in `desk.coax`, not the skin's;
+   the screen's status strip, failure notice and dictation button
+   (`screen.coax`) read the skin but still write vertices with `paint_*`;
+   and `/chat`'s own buttons, sign-in field and notice
+   (`apps/openagents-web/chat.coax`) are Zeron's constants.
 3. **Skins and the gallery.** Done 2026-11-10: `skin/skin.coax` (`UiSkin`:
    colour roles, type roles, spacing, Markdown's measures, and the frames
    `uiskin_panel`, `uiskin_control`, `uiskin_slot`, `uiskin_bar`), with
@@ -331,12 +354,22 @@ Each phase ends with every existing check and golden unchanged.
    goldens (`gallery/check.coax`) yet.
 4. **Chat in Everglade for desktop.** The Workshop gets the same transcript
    and composer in the `everglade` skin, on the shared engines. Its boards
-   (`golem-board.coax`) move onto the list and panel components. Not
-   started. What exists for it: the `everglade` skin, and Markdown, the
-   panel and the list as components that draw in it (see `/components`).
-   What it still needs: the transcript and the composer reading a skin
-   (Phase 2's remainder: they are Zeron's constants today); and a way for
-   the Workshop to draw a display list, which is one of two things. Either
+   (`golem-board.coax`) move onto the list and panel components. Started
+   2026-11-11: the whole chat set (transcript, composer, menus, attachments,
+   sidebar and tabs) draws in the `everglade` skin on the shared engines'
+   session record, on the shared Linux host, offscreen
+   (`OpenAgents --demo --skin everglade --shot OUT.png`, pinned by
+   `linux/check.coax`'s `chat-everglade` golden). The Workshop itself does
+   not run on Linux, and cannot without new host work: its temple and your
+   model are drawn by the Mac host's own Metal pipelines from hand-written
+   `Workshop.metal` and `Model.metal` (`Sources/main.swift`), its words are
+   12-float HUD strokes over `text.coax`'s Spectral and Cinzel atlas drawn by
+   a third Metal pipeline, its input is `aethyr/host/appkit-input.coax`, and
+   the shared Linux host (`apps/shared/host/linux/ui-host.h`) has one
+   pipeline, the component shader over 28-float vertices, and no scene or
+   depth pass. The Workshop has no chat yet either: where it opens and
+   which engine it starts is still to be decided. What it needs is a way
+   for the Workshop to draw a display list, which is one of two things. Either
    its Mac host gets a component pass (the 28-float vertices, the component
    shader and an atlas with Everglade's faces, Spectral and Cinzel, in the
    skin's slots), or a backend writes a display list as the Workshop's
