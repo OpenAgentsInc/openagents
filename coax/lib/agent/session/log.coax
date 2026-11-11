@@ -1,0 +1,439 @@
+// The session log: one conversation on disk, one JSON object a line, the
+// same for every program that keeps or reads a conversation
+// (docs/apps/2026-11-10-apps-roadmap.md, Step 2). It is Coder's session log
+// (coder/tui/session.coax, ~/.openagents/coder/sessions/ID.jsonl), which
+// `coder ls`, `coder status`, `coder log`, Aethyrforge's chat and the agent
+// boards already read, with the keys a session record (session.coax) needs to
+// come back whole. A reader that knows only Coder's keys still reads every
+// line: the new keys ride on Coder's lines and the new kinds are ones it
+// skips.
+//
+// The lines, in the order a turn writes them:
+//   {"kind":"session","schema":"openagents.session.v1","id":ID,"engine":E,"cwd":DIR[,"started_us":T]}
+//   {"kind":"user","text":T}                 a message the person sent
+//   {"kind":"thinking","text":T}             the model's thinking
+//   {"kind":"reply","text":T}                the answer's text (Markdown); a turn has one per stretch of text
+//   {"kind":"tool","label":"Bash(ls)","tool":K,"id":ID[,"arg":A][,"detail":D][,"old":O][,"new":N][,"input":I]}
+//                                            a tool call: K is its kind (SL_TOOLS), old and new an edit's text,
+//                                            input the call's JSON or a file change's unified diff
+//   {"kind":"result","text":T,"error":B[,"bytes":N,"output":WHOLE],"id":ID}
+//                                            its result: text is the first 4000 bytes as Coder logs it; a longer
+//                                            one says its size and carries the whole in output
+//   {"kind":"routed","text":T,"tool":K[,"detail":D][,"output":O]}   a routing or loading step (the Lab's decision)
+//   {"kind":"notice","notice":K,"text":T}    K is SL_NOTICES: error, signed_out, limit, install, stopped, ...
+//   {"kind":"ask","text":T}                  an approval waiting on the person
+//   {"kind":"end","ending":E,"ms":N,"steps":N[,"cost_usd_e6":N]}   E: finished, stopped or failed
+//
+// Reading (sl_load) rebuilds the record. It also reads what was written
+// before this format: Coder's own lines (a tool line with only its label, a
+// result with only text, an edit's separate {"kind":"diff","path","old","new"}
+// line, an end whose text is the failure) and the desktop app's first format
+// ({"k":"user","t":T} ...), so no saved conversation is lost. Lines of any
+// other kind are skipped. No transcript field can run anything.
+
+#load "session.coax";
+#load "../claude/fields.coax";
+
+SL_SCHEMA :: "openagents.session.v1";
+SL_RESULT_TEXT :: 4000;           // Coder's cut for a result's text
+SL_ARENA :: 262144;
+
+// A tool kind's name on disk, by TK_*.
+SL_TOOLS :: [15] string.["thought", "exec", "read", "edit", "search", "fetch", "write", "glob", "web", "todo", "mcp", "agent", "tool", "route", "load"];
+// What Coder's label calls it (the tool's own name), by TK_*; "" takes the part's detail.
+SL_LABELS :: [15] string.["Thought", "Bash", "Read", "Edit", "Grep", "WebFetch", "Write", "Glob", "WebSearch", "TodoWrite", "", "Agent", "", "Route", "Load"];
+// A notice kind's name on disk, by N_* (N_ASK is its own line, "ask").
+SL_NOTICES :: [10] string.["error", "signed_out", "limit", "install", "stopped", "ask", "busy", "offline", "meta", "codex_install"];
+
+SlOut :: struct { buf: [] u8; n: int; failed: bool; }
+sl_raw :: (o: [] SlOut, text: string) {
+  if o[0].failed { return; }
+  n := json_raw(o[0].buf, o[0].n, text);
+  if n < 0 { o[0].failed = true; return; }
+  o[0].n = n;
+}
+sl_str :: (o: [] SlOut, text: string) {
+  if o[0].failed { return; }
+  n := json_write_string(o[0].buf, o[0].n, text);
+  if n < 0 { o[0].failed = true; return; }
+  o[0].n = n;
+}
+sl_num :: (o: [] SlOut, v: int) {
+  if o[0].failed { return; }
+  n := json_write_int(o[0].buf, o[0].n, v);
+  if n < 0 { o[0].failed = true; return; }
+  o[0].n = n;
+}
+// ,"key":"value" when there is a value.
+sl_field :: (o: [] SlOut, key: string, v: string) { if v.count > 0 { sl_raw(o, ",\""); sl_raw(o, key); sl_raw(o, "\":"); sl_str(o, v); } }
+
+sl_index :: (names: [] const string, name: string) -> int { for i: 0..<names.count { if names[i] == name { return i; } } return -1; }
+
+// The file's first line. Its length (0 when it did not fit).
+sl_header :: (out: [] u8, id: string, engine: string, cwd: string, started_us: int) -> int {
+  o: [1] SlOut; o[0].buf = out;
+  sl_raw(o[..], "{\"kind\":\"session\",\"schema\":\""); sl_raw(o[..], SL_SCHEMA); sl_raw(o[..], "\",\"id\":"); sl_str(o[..], id);
+  sl_field(o[..], "engine", engine); sl_field(o[..], "cwd", cwd);
+  if started_us > 0 { sl_raw(o[..], ",\"started_us\":"); sl_num(o[..], started_us); }
+  sl_raw(o[..], "}\n");
+  return ifx o[0].failed then 0 else o[0].n;
+}
+
+// A tool part as Coder labels a call: "Bash(ls -la)", "Edit(/w/notes.txt)".
+sl_label :: (o: [] SlOut, s: [] Session, k: int) {
+  p := s[0].parts[k];
+  names := SL_LABELS;
+  name := ifx p.tk >= 0 && p.tk < 15 then names[p.tk] else "";
+  inside := ifx p.detail.count > 0 && name.count > 0 then p.detail else p.arg;
+  if name.count == 0 { name = ifx p.detail.count > 0 then p.detail else "Tool"; inside = ""; }
+  // one line, and short: the label is what a list shows
+  buf: [200] u8; n := 0;
+  for c: name { if n < 60 { buf[n] = c; n += 1; } }
+  if inside.count > 0 {
+    buf[n] = '('; n += 1;
+    for c: inside { if c == '\n' || n >= 196 { break; } buf[n] = c; n += 1; }
+    while n > 0 && (buf[n - 1] & 0xC0) == 0x80 { n -= 1; }     // never cut inside a character
+    if n > 0 && buf[n - 1] >= 0xC0 { n -= 1; }
+    buf[n] = ')'; n += 1;
+  }
+  sl_str(o, cast(string) buf[0..<n]);
+}
+
+// The turn's ending, read from the record: stopped, failed (it has an error notice) or finished.
+sl_ending :: (s: [] Session, from: int, to: int) -> string {
+  failed := false;
+  for k: from..<to {
+    p := s[0].parts[k];
+    if p.kind != P_NOTICE { continue; }
+    if p.notice == N_STOPPED { return "stopped"; }
+    if p.notice != N_ASK && p.notice != N_META && p.notice != N_INSTALL && p.notice != N_CODEX_INSTALL { failed = true; }
+  }
+  return ifx failed then "failed" else "finished";
+}
+
+// Parts from..<to as lines, then the turn's end when it is over. Its length (0 when it did not fit).
+sl_lines :: (s: [] Session, from: int, to: int, ended: bool, out: [] u8) -> int {
+  o: [1] SlOut; o[0].buf = out;
+  tools := SL_TOOLS; notices := SL_NOTICES;
+  steps := 0;
+  for k: from..<to {
+    p := s[0].parts[k];
+    text := s_text_of(s, k);
+    if p.kind == P_USER { sl_raw(o[..], "{\"kind\":\"user\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
+    else if p.kind == P_TEXT { sl_raw(o[..], "{\"kind\":\"reply\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
+    else if p.kind == P_THINK { sl_raw(o[..], "{\"kind\":\"thinking\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
+    else if p.kind == P_NOTICE {
+      if p.notice == N_ASK { sl_raw(o[..], "{\"kind\":\"ask\",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n"); }
+      else {
+        sl_raw(o[..], "{\"kind\":\"notice\",\"notice\":"); sl_str(o[..], ifx p.notice >= 0 && p.notice < 10 then notices[p.notice] else "error");
+        sl_raw(o[..], ",\"text\":"); sl_str(o[..], text); sl_raw(o[..], "}\n");
+      }
+    }
+    else if p.kind == P_ROUTE {
+      sl_raw(o[..], "{\"kind\":\"routed\",\"text\":"); sl_str(o[..], text);
+      sl_field(o[..], "tool", ifx p.tk >= 0 && p.tk < 15 then tools[p.tk] else "route");
+      sl_field(o[..], "id", p.id); sl_field(o[..], "arg", p.arg); sl_field(o[..], "detail", p.detail); sl_field(o[..], "output", p.output);
+      if p.failed { sl_raw(o[..], ",\"error\":true"); }
+      if p.resolved { sl_raw(o[..], ",\"resolved\":true"); }
+      sl_raw(o[..], "}\n");
+    }
+    else if p.kind == P_TOOL {
+      steps += 1;
+      sl_raw(o[..], "{\"kind\":\"tool\",\"label\":"); sl_label(o[..], s, k);
+      sl_field(o[..], "tool", ifx p.tk >= 0 && p.tk < 15 then tools[p.tk] else "tool");
+      sl_field(o[..], "id", p.id); sl_field(o[..], "arg", p.arg); sl_field(o[..], "detail", p.detail);
+      sl_field(o[..], "old", p.before); sl_field(o[..], "new", p.after); sl_field(o[..], "input", p.input);
+      sl_raw(o[..], "}\n");
+      if p.resolved || p.failed || p.output.count > 0 {
+        cut := ifx p.output.count > SL_RESULT_TEXT then SL_RESULT_TEXT else p.output.count;
+        while cut > 0 && cut < p.output.count && (p.output[cut] & 0xC0) == 0x80 { cut -= 1; }
+        sl_raw(o[..], "{\"kind\":\"result\",\"text\":"); sl_str(o[..], cast(string) p.output[0..<cut]);
+        sl_raw(o[..], ifx p.failed then ",\"error\":true" else ",\"error\":false");
+        if cut < p.output.count { sl_raw(o[..], ",\"bytes\":"); sl_num(o[..], p.output.count); sl_field(o[..], "output", p.output); }
+        sl_field(o[..], "id", p.id);
+        if !p.resolved { sl_raw(o[..], ",\"open\":true"); }
+        sl_raw(o[..], "}\n");
+      }
+    }
+  }
+  if ended {
+    sl_raw(o[..], "{\"kind\":\"end\",\"ending\":"); sl_str(o[..], sl_ending(s, from, to));
+    sl_raw(o[..], ",\"ms\":"); sl_num(o[..], s[0].turn_ms);
+    sl_raw(o[..], ",\"steps\":"); sl_num(o[..], steps);
+    sl_raw(o[..], ",\"cost_usd_e6\":"); sl_num(o[..], cast(int) (s[0].cost * 1000000.0));
+    sl_raw(o[..], "}\n");
+  }
+  return ifx o[0].failed then 0 else o[0].n;
+}
+
+// A Coder label back into a tool part: "Bash(ls -la)" is an exec whose argument is "ls -la".
+sl_from_label :: (s: [] Session, k: int, label: string) {
+  open := -1;
+  for i: 0..<label.count { if label[i] == '(' { open = i; break; } }
+  name := ifx open >= 0 then cast(string) label[0..<open] else label;
+  inside := ifx open >= 0 && label.count > open + 1 && label[label.count - 1] == ')' then cast(string) label[open + 1..<label.count - 1] else "";
+  names := SL_LABELS;
+  tk := TK_TOOL;
+  for i: 0..<15 { if names[i].count > 0 && names[i] == name { tk = i; } }
+  if name == "Task" { tk = TK_AGENT; }
+  if name == "MultiEdit" || name == "NotebookEdit" { tk = TK_EDIT; }
+  s[0].parts[k].tk = tk;
+  if tk == TK_TOOL { s[0].parts[k].detail = s_put(s, name); s[0].parts[k].arg = s_put(s, inside); return; }
+  s[0].parts[k].arg = s_put(s, inside);
+  if tk == TK_EXEC || tk == TK_AGENT { s[0].parts[k].detail = s_single(s, inside); }
+}
+
+// The last tool part a result or a diff belongs to: by id, else the newest one still open, else the newest.
+sl_tool_for :: (s: [] Session, id: string) -> int {
+  if id.count > 0 { k := s_tool_of(s, id); if k >= 0 { return k; } }
+  k := s[0].n - 1; newest := -1;
+  while k >= 0 && s[0].parts[k].kind != P_USER {
+    if s[0].parts[k].kind == P_TOOL { if newest < 0 { newest = k; } if !s[0].parts[k].resolved { return k; } }
+    k -= 1;
+  }
+  return newest;
+}
+
+// Whether the turn in progress (since the last user part) already has a notice of its ending.
+sl_turn_noticed :: (s: [] Session) -> bool {
+  k := s[0].n - 1;
+  while k >= 0 && s[0].parts[k].kind != P_USER {
+    if s[0].parts[k].kind == P_NOTICE && s[0].parts[k].notice != N_ASK && s[0].parts[k].notice != N_META { return true; }
+    k -= 1;
+  }
+  return false;
+}
+
+// The desktop app's first format, one line: {"k":"tool","t":T,"tk":N,...} (apps/openagents-desktop/zeron/store.coax before this file).
+sl_load_first :: (s: [] Session, ar: [] ClArena, line: string, name: string) -> bool {
+  if name == "end" {
+    ms := cl_int(line, "ms"); if ms.ok { s[0].turn_ms = cast(int) ms.value; }
+    c := cl_num(line, "cost"); if c.ok { s[0].cost = c.value; }
+    return true;
+  }
+  kinds := [6] string.["user", "text", "think", "tool", "notice", "route"];
+  kind := sl_index(kinds[..], name);
+  if kind < 0 { return true; }
+  k := s_part(s, kind);
+  if k < 0 { return false; }
+  s_append(s, k, cl_str(ar, line, "t"));
+  if kind == P_USER { s[0].turns += 1; }
+  if kind == P_NOTICE { v := cl_int(line, "notice"); if v.ok { s[0].parts[k].notice = cast(int) v.value; } }
+  if kind == P_TOOL || kind == P_ROUTE {
+    p := s[0].parts[k];
+    v := cl_int(line, "tk"); if v.ok { p.tk = cast(int) v.value; }
+    p.id = s_put(s, cl_str(ar, line, "id")); p.arg = s_put(s, cl_str(ar, line, "arg"));
+    p.detail = s_put(s, cl_str(ar, line, "detail")); p.before = s_put(s, cl_str(ar, line, "before"));
+    p.after = s_put(s, cl_str(ar, line, "after")); p.input = s_put(s, cl_str(ar, line, "input"));
+    p.output = s_put(s, cl_str(ar, line, "output"));
+    p.failed = cl_bool(line, "failed").value; p.resolved = cl_bool(line, "resolved").value;
+    s[0].parts[k] = p;
+  }
+  return true;
+}
+
+// One line into the record. False when the record is full (reading stops).
+sl_load_line :: (s: [] Session, ar: [] ClArena, line: string) -> bool {
+  first := cl_str(ar, line, "k");
+  if first.count > 0 { return sl_load_first(s, ar, line, first); }
+  kind := cl_str(ar, line, "kind");
+  tools := SL_TOOLS; notices := SL_NOTICES;
+  if kind == "user" || kind == "reply" || kind == "thinking" {
+    k := s_part(s, ifx kind == "user" then P_USER else ifx kind == "reply" then P_TEXT else P_THINK);
+    if k < 0 { return false; }
+    s_append(s, k, cl_str(ar, line, "text"));
+    if kind == "user" { s[0].turns += 1; }
+    return true;
+  }
+  if kind == "tool" || kind == "routed" {
+    k := s_part(s, ifx kind == "tool" then P_TOOL else P_ROUTE);
+    if k < 0 { return false; }
+    if kind == "routed" { s_append(s, k, cl_str(ar, line, "text")); }
+    name := cl_str(ar, line, "tool");
+    if name.count == 0 && kind == "tool" { sl_from_label(s, k, cl_str(ar, line, "label")); return true; }   // Coder's own line
+    p := s[0].parts[k];
+    tk := sl_index(tools[..], name);
+    p.tk = ifx tk >= 0 then tk else ifx kind == "tool" then TK_TOOL else TK_ROUTE;
+    p.id = s_put(s, cl_str(ar, line, "id")); p.arg = s_put(s, cl_str(ar, line, "arg")); p.detail = s_put(s, cl_str(ar, line, "detail"));
+    p.before = s_put(s, cl_str(ar, line, "old")); p.after = s_put(s, cl_str(ar, line, "new")); p.input = s_put(s, cl_str(ar, line, "input"));
+    if kind == "routed" { p.output = s_put(s, cl_str(ar, line, "output")); p.failed = cl_bool(line, "error").value; p.resolved = cl_bool(line, "resolved").value; }
+    s[0].parts[k] = p;
+    return true;
+  }
+  if kind == "result" {
+    k := sl_tool_for(s, cl_str(ar, line, "id"));
+    if k < 0 { return true; }
+    whole := cl_at(line, "output");
+    s[0].parts[k].output = s_put(s, ifx whole.ok then cl_text(ar, line, whole) else cl_str(ar, line, "text"));
+    s[0].parts[k].failed = cl_bool(line, "error").value;
+    s[0].parts[k].resolved = !cl_bool(line, "open").value;
+    return true;
+  }
+  if kind == "diff" {
+    // Coder logs an edit's text on its own line, after the call
+    path := cl_str(ar, line, "path");
+    k := sl_tool_for(s, "");
+    if k < 0 || (s[0].parts[k].tk != TK_EDIT && s[0].parts[k].tk != TK_WRITE) || s[0].parts[k].before.count > 0 || s[0].parts[k].after.count > 0 {
+      k = s_part(s, P_TOOL);
+      if k < 0 { return false; }
+      s[0].parts[k].tk = TK_EDIT; s[0].parts[k].resolved = true;
+    }
+    if s[0].parts[k].arg.count == 0 { s[0].parts[k].arg = s_put(s, path); }
+    s[0].parts[k].before = s_put(s, cl_str(ar, line, "old")); s[0].parts[k].after = s_put(s, cl_str(ar, line, "new"));
+    return true;
+  }
+  if kind == "notice" || kind == "ask" {
+    k := s_part(s, P_NOTICE);
+    if k < 0 { return false; }
+    n := ifx kind == "ask" then N_ASK else sl_index(notices[..], cl_str(ar, line, "notice"));
+    s[0].parts[k].notice = ifx n >= 0 then n else N_ERROR;
+    s_append(s, k, cl_str(ar, line, "text"));
+    return true;
+  }
+  if kind == "end" {
+    ms := cl_int(line, "ms"); if ms.ok { s[0].turn_ms = cast(int) ms.value; }
+    c := cl_int(line, "cost_usd_e6"); if c.ok { s[0].cost = cast(f64) c.value / 1000000.0; }
+    // a log that names its ending without a notice (Coder's): the record shows it the same way
+    ending := cl_str(ar, line, "ending");
+    if (ending == "stopped" || ending == "failed" || ending == "expired") && !sl_turn_noticed(s) {
+      k := s_part(s, P_NOTICE);
+      if k < 0 { return false; }
+      s[0].parts[k].notice = ifx ending == "stopped" then N_STOPPED else N_ERROR;
+      if ending != "stopped" { why := cl_str(ar, line, "text"); s_append(s, k, ifx why.count > 0 then why else ifx ending == "expired" then "The job passed its deadline." else "The turn failed."); }
+    }
+    return true;
+  }
+  return true;
+}
+
+// A log back into a fresh record: the same parts, its turns, cost and last turn's time.
+sl_load :: (s: [] Session, text: string) {
+  abuf: [SL_ARENA] u8; ar: [1] ClArena;
+  q := 0;
+  while q < text.count {
+    e := q; while e < text.count && text[e] != '\n' { e += 1; }
+    line := cast(string) text[q..<e];
+    q = e + 1;
+    if line.count < 2 { continue; }
+    ar[0].buf = abuf[..]; ar[0].at = 0; ar[0].full = false;
+    if !sl_load_line(s, ar[..], line) { break; }
+  }
+  s[0].changed = true;
+}
+
+// ---------------------------------------------------------------- checks
+
+sl_test_same :: (a: [] Session, b: [] Session) -> bool {
+  if a[0].n != b[0].n { return false; }
+  for k: 0..<a[0].n {
+    p := a[0].parts[k]; q := b[0].parts[k];
+    if p.kind != q.kind || s_text_of(a, k) != s_text_of(b, k) || p.notice != q.notice { return false; }
+    if p.tk != q.tk || p.id != q.id || p.arg != q.arg || p.detail != q.detail || p.before != q.before || p.after != q.after { return false; }
+    if p.input != q.input || p.output != q.output || p.failed != q.failed || p.resolved != q.resolved { return false; }
+  }
+  return true;
+}
+// A tool part as an engine leaves it.
+sl_test_tool :: (s: [] Session, id: string, tk: int, arg: string, detail: string, before: string, after: string, input: string, output: string, failed: bool) {
+  k := s_part(s, P_TOOL);
+  p := SPart.{kind = P_TOOL, at = s[0].np, id = s_put(s, id), tk = tk, arg = s_put(s, arg), detail = s_put(s, detail), before = s_put(s, before),
+              after = s_put(s, after), input = s_put(s, input), output = s_put(s, output), failed = failed, resolved = true};
+  s[0].parts[k] = p;
+}
+
+#test "a record written as a log reads back the same: every kind of part, its tool calls whole, the cost and time" {
+  s: [1] Session; pool: [65536] u8; s_init(s[..], pool[..]);
+  s_user(s[..], "Fix the \"sidebar\" width\nplease");
+  s_delta(s[..], P_THINK, "Looking at desk.coax");
+  sl_test_tool(s[..], "t1", TK_EDIT, "/w/desk.coax", "", "220", "240", "{\"file_path\":\"/w/desk.coax\"}", "ok", false);
+  sl_test_tool(s[..], "t2", TK_EXEC, "ls\n -la", "ls -la", "", "", "{\"command\":\"ls\\n -la\"}", "denied", true);
+  sl_test_tool(s[..], "t3", TK_MCP, "{\"title\":\"x\"}", "github · create_issue", "", "", "{\"title\":\"x\"}", "", false);
+  r0 := s_part(s[..], P_ROUTE);
+  s_append(s[..], r0, "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s");
+  s[0].parts[r0].tk = TK_ROUTE; s[0].parts[r0].id = s_put(s[..], "lab-route"); s[0].parts[r0].detail = s_put(s[..], "elephant-1 · 1900 ms");
+  s[0].parts[r0].output = s_put(s[..], "harness  claude_code 0.9"); s[0].parts[r0].resolved = true;
+  s_delta(s[..], P_TEXT, "Done: the sidebar is 240 px. ✓");
+  s_notice(s[..], N_LIMIT, "Limit reached");
+  s[0].cost = 0.031; s[0].turn_ms = 12500;
+  s_turn_end(s[..], false, "");
+  first := s[0].n;
+  s_user(s[..], "again");
+  s[0].stopping = true;
+  s_turn_end(s[..], false, "");
+  out: [65536] u8;
+  h := sl_header(out[..], "20261110-120000-001", "claude", "/w", 1794000000000000);
+  n1 := sl_lines(s[..], 0, first, true, out[h..<out.count]);
+  n2 := sl_lines(s[..], first, s[0].n, true, out[h + n1..<out.count]);
+  #assert h > 0 && n1 > 0 && n2 > 0;
+  file := cast(string) out[0..<h + n1 + n2];
+  r: [1] Session; rpool: [65536] u8; s_init(r[..], rpool[..]);
+  sl_load(r[..], file);
+  #assert sl_test_same(s[..], r[..]);
+  #assert r[0].turns == 2 && r[0].turn_ms == 12500 && r[0].cost > 0.0309 && r[0].cost < 0.0311 && r[0].changed;
+  // Coder's readers find their keys: the header, the label, the result's text, the ending and the steps
+  #assert s_has(file, "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"20261110-120000-001\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":1794000000000000}\n");
+  #assert s_has(file, "{\"kind\":\"tool\",\"label\":\"edit(/w/desk.coax)\",\"tool\":\"edit\",\"id\":\"t1\"");
+  #assert s_has(file, "\"label\":\"bash(ls -la)\"") && s_has(file, "\"label\":\"github · create_issue\"");
+  #assert s_has(file, "{\"kind\":\"result\",\"text\":\"denied\",\"error\":true,\"id\":\"t2\"}\n");
+  #assert s_has(file, "{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":12500,\"steps\":3,\"cost_usd_e6\":31000}\n");
+  #assert s_has(file, "{\"kind\":\"notice\",\"notice\":\"stopped\",\"text\":\"\"}\n{\"kind\":\"end\",\"ending\":\"stopped\"");
+}
+
+#test "a long result keeps Coder's 4000-byte text and its size, and comes back whole; a call still running stays open" {
+  s: [1] Session; pool: [32768] u8; s_init(s[..], pool[..]);
+  s_user(s[..], "cat it");
+  big: [5000] u8; for i: 0..<5000 { big[i] = cast(u8) ('a' + i % 26); }
+  sl_test_tool(s[..], "t1", TK_EXEC, "cat big", "cat big", "", "", "", cast(string) big[..], false);
+  k := s_part(s[..], P_TOOL);
+  s[0].parts[k].tk = TK_READ; s[0].parts[k].id = s_put(s[..], "t2"); s[0].parts[k].arg = s_put(s[..], "/w/a.txt");
+  out: [32768] u8;
+  n := sl_lines(s[..], 0, s[0].n, false, out[..]);
+  file := cast(string) out[0..<n];
+  #assert n > 9000 && s_has(file, ",\"error\":false,\"bytes\":5000,\"output\":\"") && !s_has(file, "\"kind\":\"end\"");
+  r: [1] Session; rpool: [32768] u8; s_init(r[..], rpool[..]);
+  sl_load(r[..], file);
+  #assert sl_test_same(s[..], r[..]) && r[0].parts[1].output.count == 5000 && !r[0].parts[2].resolved;
+  // too small a buffer writes nothing
+  small: [64] u8;
+  #assert sl_lines(s[..], 0, s[0].n, true, small[..]) == 0 && sl_header(small[0..<8], "x", "claude", "/w", 0) == 0;
+}
+
+#test "a log Coder wrote reads into the record: labels become calls, an edit's diff line its old and new, the ending its notice" {
+  text := "{\"kind\":\"session\",\"id\":\"20261102-153012-417\",\"version\":\"0.1\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":5}\n{\"kind\":\"user\",\"text\":\"fix it\"}\n{\"kind\":\"request\",\"sha256\":\"ab\",\"bytes\":6}\n{\"kind\":\"reply\",\"text\":\"Looking.\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls -la)\"}\n{\"kind\":\"result\",\"text\":\"notes.txt\",\"error\":false}\n{\"kind\":\"tool\",\"label\":\"Edit(/w/notes.txt)\"}\n{\"kind\":\"result\",\"text\":\"updated\",\"error\":false}\n{\"kind\":\"diff\",\"path\":\"/w/notes.txt\",\"adds\":1,\"dels\":1,\"old\":\"bred\",\"new\":\"bread\"}\n{\"kind\":\"tool\",\"label\":\"mcp__coder__status\"}\n{\"kind\":\"result\",\"text\":\"no\",\"error\":true}\n{\"kind\":\"reply\",\"text\":\"Fixed.\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":900,\"steps\":3,\"text\":\"Fixed.\"}\n{\"kind\":\"user\",\"text\":\"again\"}\n{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":5,\"steps\":0,\"text\":\"login needed\",\"cause\":\"provider\"}\n{\"kind\":\"user\",\"text\":\"once more\"}\n{\"kind\":\"end\",\"ending\":\"stopped\",\"ms\":5,\"steps\":0}\n";
+  s: [1] Session; pool: [8192] u8; s_init(s[..], pool[..]);
+  sl_load(s[..], text);
+  #assert s[0].n == 10 && s[0].turns == 3 && s[0].turn_ms == 5;
+  #assert s[0].parts[0].kind == P_USER && s[0].parts[1].kind == P_TEXT && s_text_of(s[..], 1) == "Looking.";
+  #assert s[0].parts[2].kind == P_TOOL && s[0].parts[2].tk == TK_EXEC && s[0].parts[2].arg == "ls -la" && s[0].parts[2].output == "notes.txt" && s[0].parts[2].resolved;
+  #assert s[0].parts[3].tk == TK_EDIT && s[0].parts[3].arg == "/w/notes.txt" && s[0].parts[3].before == "bred" && s[0].parts[3].after == "bread" && s[0].parts[3].output == "updated";
+  #assert s[0].parts[4].tk == TK_TOOL && s[0].parts[4].detail == "mcp__coder__status" && s[0].parts[4].failed;
+  #assert s[0].parts[5].kind == P_TEXT && s[0].parts[6].kind == P_USER;
+  #assert s[0].parts[7].kind == P_NOTICE && s[0].parts[7].notice == N_ERROR && s_text_of(s[..], 7) == "login needed";
+  #assert s[0].parts[8].kind == P_USER && s[0].parts[9].kind == P_NOTICE && s[0].parts[9].notice == N_STOPPED;
+}
+
+#test "the desktop app's first format still reads, alone or with new lines after it" {
+  old := "{\"k\":\"user\",\"t\":\"hi\"}\n{\"k\":\"think\",\"t\":\"hm\"}\n{\"k\":\"tool\",\"tk\":3,\"id\":\"t1\",\"arg\":\"/w/a\",\"before\":\"1\",\"after\":\"2\",\"input\":\"{}\",\"output\":\"ok\",\"resolved\":true}\n{\"k\":\"text\",\"t\":\"Done.\"}\n{\"k\":\"notice\",\"t\":\"\",\"notice\":4}\n{\"k\":\"end\",\"ms\":70,\"cost\":2500e-6}\n";
+  s: [1] Session; pool: [4096] u8; s_init(s[..], pool[..]);
+  sl_load(s[..], old);
+  #assert s[0].n == 5 && s[0].turns == 1 && s[0].turn_ms == 70 && s[0].cost > 0.00249 && s[0].cost < 0.00251;
+  #assert s[0].parts[2].tk == TK_EDIT && s[0].parts[2].before == "1" && s[0].parts[2].after == "2" && s[0].parts[2].resolved && s[0].parts[4].notice == N_STOPPED;
+  out: [4096] u8;
+  n := sl_lines(s[..], 0, s[0].n, true, out[..]);
+  r: [1] Session; rpool: [4096] u8; s_init(r[..], rpool[..]);
+  both: [8192] u8; m := 0;
+  for c: old { both[m] = c; m += 1; }
+  for i: 0..<n { both[m] = out[i]; m += 1; }
+  sl_load(r[..], cast(string) both[0..<m]);
+  #assert r[0].n == 10 && r[0].turns == 2 && r[0].parts[7].tk == TK_EDIT && r[0].parts[7].output == "ok" && r[0].parts[9].notice == N_STOPPED;
+}
+
+#test "what is not a part is skipped, and a full record stops the read without a fault" {
+  s: [1] Session; pool: [256] u8; s_init(s[..], pool[..]);
+  sl_load(s[..], "\n{}\nnot json\n{\"kind\":\"memory\",\"text\":\"x\"}\n{\"kind\":\"result\",\"text\":\"orphan\",\"error\":false}\n{\"kind\":\"model\",\"model\":\"m\"}\n{\"kind\":\"user\",\"text\":\"one\"}\n");
+  #assert s[0].n == 1 && s_text_of(s[..], 0) == "one";
+  s[0].n = S_PARTS;
+  sl_load(s[..], "{\"kind\":\"user\",\"text\":\"two\"}\n{\"kind\":\"user\",\"text\":\"three\"}\n");
+  #assert s[0].n == S_PARTS && s[0].turns == 1;
+  #assert sl_ending(s[..], 0, 0) == "finished";
+}

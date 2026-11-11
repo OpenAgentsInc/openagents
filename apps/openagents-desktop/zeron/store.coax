@@ -1,91 +1,21 @@
 // Conversations kept locally (docs/desktop/coax-desktop.md, "Storage"): each
 // session's transcript appends to sessions/<id>.jsonl beside settings.json,
-// one JSON line a part (the message, text, thought, tool call with its
-// output, notice) and one at each turn's end (its cost and time). The host
+// in the shared session log format (coax/lib/agent/session/log.coax: Coder's
+// JSONL, one line a part and one at each turn's end with its cost and time,
+// after a header naming the session, its engine and its folder). The host
 // appends what st_take gives it after every finished turn and at quit, and
 // at launch hands each restored session its file (st_load), which rebuilds
 // the same transcript; the next message resumes the harness's own session
 // (settings.json keeps Claude Code's session id and Codex's thread).
 
 #load "desk.coax";
+#load "../../../coax/lib/agent/session/log.coax";
 
-ST_KINDS :: [6] string.["user", "text", "think", "tool", "notice", "route"];
-ST_ARENA :: 262144;
-
-st_kind_of :: (name: string) -> int {
-  kinds := ST_KINDS;
-  for j: 0..<6 { if kinds[j] == name { return j; } }
-  return -1;
-}
-st_field :: (o: [] ClOut, key: string, v: string) { if v.count > 0 { cl_put(o, ","); cl_put_string(o, key); cl_put(o, ":"); cl_put_string(o, v); } }
-st_num :: (o: [] ClOut, key: string, v: int) { cl_put(o, ","); cl_put_string(o, key); cl_put(o, ":"); ds_put_num(o, v); }
-
-// Parts from..<to as lines, then the turn's end when it is over. Its length (0 when it did not fit).
-st_lines :: (s: [] Session, from: int, to: int, ended: bool, out: [] u8) -> int {
-  o: [1] ClOut; o[0].buf = out;
-  kinds := ST_KINDS;
-  for k: from..<to {
-    p := s[0].parts[k];
-    if p.kind < 0 || p.kind >= 6 { continue; }
-    cl_put(o[..], "{\"k\":"); cl_put_string(o[..], kinds[p.kind]);
-    st_field(o[..], "t", s_text_of(s, k));
-    if p.kind == P_NOTICE { st_num(o[..], "notice", p.notice); }
-    if p.kind == P_TOOL || p.kind == P_ROUTE {
-      st_num(o[..], "tk", p.tk);
-      st_field(o[..], "id", p.id); st_field(o[..], "arg", p.arg); st_field(o[..], "detail", p.detail);
-      st_field(o[..], "before", p.before); st_field(o[..], "after", p.after); st_field(o[..], "input", p.input);
-      st_field(o[..], "output", p.output);
-      if p.failed { cl_put(o[..], ",\"failed\":true"); }
-      if p.resolved { cl_put(o[..], ",\"resolved\":true"); }
-    }
-    cl_put(o[..], "}\n");
-  }
-  if ended {
-    cl_put(o[..], "{\"k\":\"end\"");
-    st_num(o[..], "ms", s[0].turn_ms);
-    cl_put(o[..], ",\"cost\":");
-    b: [32] u8; n := zr_put_int(b[..], 0, cast(int) (s[0].cost * 1000000.0));
-    cl_put(o[..], cast(string) b[0..<n]); cl_put(o[..], "e-6}\n");
-  }
-  return ifx o[0].failed then 0 else o[0].len;
-}
-
-// A recorded file back into a fresh session: the same parts, its turns, cost and last turn's time.
-st_load :: (s: [] Session, text: string) {
-  abuf: [ST_ARENA] u8; ar: [1] ClArena;
-  q := 0;
-  while q < text.count {
-    e := q; while e < text.count && text[e] != '\n' { e += 1; }
-    line := cast(string) text[q..<e];
-    q = e + 1;
-    if line.count < 2 { continue; }
-    ar[0].buf = abuf[..]; ar[0].at = 0; ar[0].full = false;
-    name := cl_str(ar[..], line, "k");
-    if name == "end" {
-      ms := cl_int(line, "ms"); if ms.ok { s[0].turn_ms = cast(int) ms.value; }
-      c := cl_num(line, "cost"); if c.ok { s[0].cost = c.value; }
-      continue;
-    }
-    kind := st_kind_of(name);
-    if kind < 0 { continue; }
-    k := s_part(s, kind);
-    if k < 0 { return; }
-    s_append(s, k, cl_str(ar[..], line, "t"));
-    if kind == P_USER { s[0].turns += 1; }
-    if kind == P_NOTICE { v := cl_int(line, "notice"); if v.ok { s[0].parts[k].notice = cast(int) v.value; } }
-    if kind == P_TOOL || kind == P_ROUTE {
-      p := s[0].parts[k];
-      v := cl_int(line, "tk"); if v.ok { p.tk = cast(int) v.value; }
-      p.id = s_put(s, cl_str(ar[..], line, "id")); p.arg = s_put(s, cl_str(ar[..], line, "arg"));
-      p.detail = s_put(s, cl_str(ar[..], line, "detail")); p.before = s_put(s, cl_str(ar[..], line, "before"));
-      p.after = s_put(s, cl_str(ar[..], line, "after")); p.input = s_put(s, cl_str(ar[..], line, "input"));
-      p.output = s_put(s, cl_str(ar[..], line, "output"));
-      p.failed = cl_bool(line, "failed").value; p.resolved = cl_bool(line, "resolved").value;
-      s[0].parts[k] = p;
-    }
-  }
-  s[0].changed = true;
-}
+// The lines are the shared session log (coax/lib/agent/session/log.coax: Coder's JSONL with the keys a
+// record needs to come back whole); st_load also reads the files this app wrote before that format.
+st_lines :: (s: [] Session, from: int, to: int, ended: bool, out: [] u8) -> int { return sl_lines(s, from, to, ended, out); }
+st_load :: (s: [] Session, text: string) { sl_load(s, text); }
+ST_ENGINES :: [MODE_COUNT] string.["claude", "psionic", "lab", "codex"];
 
 // Chat i's new lines for its file: its finished turns (at quit, force: what there is). Its length.
 st_take :: (k: [] Desk, i: int, force: bool, out: [] u8) -> int {
@@ -97,9 +27,16 @@ st_take :: (k: [] Desk, i: int, force: bool, out: [] u8) -> int {
   if k[0].chats[i].stored > s[0].n { k[0].chats[i].stored = s[0].n; }
   from := k[0].chats[i].stored;
   if from == s[0].n { return 0; }
-  n := st_lines(s, from, s[0].n, !s[0].live, out);
+  // a new file starts with the log's header: the session's id, its engine and its folder
+  h := 0;
+  if from == 0 {
+    engines := ST_ENGINES; e := z[0].engine[..];
+    h = sl_header(out, cast(string) k[0].chats[i].store[0..<k[0].chats[i].store_n], engines[z[0].mode], e_str(e[0].cwd[..], e[0].cwd_n), 0);
+    if h == 0 { return 0; }
+  }
+  n := st_lines(s, from, s[0].n, !s[0].live, out[h..<out.count]);
   if n > 0 { k[0].chats[i].stored = s[0].n; }
-  return n;
+  return ifx n > 0 then h + n else 0;
 }
 
 coaxial_desk_set_store :: (k: [] Desk, i: int, id: string) #export_c #effects(all) {
@@ -149,4 +86,38 @@ coaxial_desk_store_load :: (k: [] Desk, i: int, text: string) #export_c #effects
     #assert a.input == b.input && a.output == b.output && a.failed == b.failed && a.resolved == b.resolved;
   }
   #assert s_text_of(r[..], 0) == "Fix the \"sidebar\" width\nplease" && r[0].parts[3].failed && r[0].parts[6].kind == P_NOTICE && r[0].parts[6].notice == N_STOPPED;
+}
+
+#test "a chat's file starts with the log's header, then only what is new each time; a running turn waits" {
+  k: [1] Desk; a: [1] ZeronState;
+  dsk_test_chat(a[..]);
+  i := dsk_add(k[..], a[..], "/w/one");
+  out: [8192] u8;
+  s := a[0].session[..];
+  pool: [1024] u8; s_init(s, pool[..]);
+  s_user(s, "hello");
+  #assert st_take(k[..], i, false, out[..]) == 0;          // no file named yet
+  coaxial_desk_set_store(k[..], i, "20261110-1");
+  #assert st_take(k[..], i, false, out[..]) == 0;          // the turn is still running
+  s_delta(s, P_TEXT, "Hi.");
+  s_turn_end(s, false, "");
+  n := st_take(k[..], i, false, out[..]);
+  first := cast(string) out[0..<n];
+  #assert s_has(first, "{\"kind\":\"session\",\"schema\":\"openagents.session.v1\",\"id\":\"20261110-1\",\"engine\":\"claude\"");
+  #assert s_has(first, "{\"kind\":\"user\",\"text\":\"hello\"}\n{\"kind\":\"reply\",\"text\":\"hi.\"}\n{\"kind\":\"end\",\"ending\":\"finished\"");
+  both: [8192] u8; q := 0;                                 // the file, as the host appends each piece
+  for c: first { both[q] = c; q += 1; }
+  #assert st_take(k[..], i, true, out[..]) == 0;           // nothing new
+  s_user(s, "again");
+  m := st_take(k[..], i, true, out[..]);                   // at quit: what there is, without an end
+  second := cast(string) out[0..<m];
+  #assert m > 0 && !s_has(second, "\"kind\":\"session\"") && !s_has(second, "\"kind\":\"end\"") && s_has(second, "{\"kind\":\"user\",\"text\":\"again\"}");
+  // the two pieces, as the host appends them, restore the conversation
+  for c: second { both[q] = c; q += 1; }
+  b: [1] ZeronState; dsk_test_chat(b[..]);
+  k2: [1] Desk; j := dsk_add(k2[..], b[..], "/w/one");
+  r := b[0].session[..];
+  rpool: [1024] u8; s_init(r, rpool[..]);
+  coaxial_desk_store_load(k2[..], j, cast(string) both[0..<q]);
+  #assert r[0].n == 3 && s_text_of(r, 1) == "Hi." && r[0].turns == 2 && k2[0].chats[j].stored == 3;
 }

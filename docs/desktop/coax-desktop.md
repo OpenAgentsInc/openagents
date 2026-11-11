@@ -571,9 +571,12 @@ goldens) come out the same every run.
 Built (2026-10-31, zeron/store.coax): each session's transcript is kept in
 `sessions/<id>.jsonl` beside settings.json (mode 600), the id a UUID the
 session gets when it is made and settings.json keeps as `store`. One line a
-part (`{"k":"user"|"text"|"think"|"tool"|"notice"|"route","t":…}`, a tool
-with its kind, argument, input, output and whether it failed) and one at
-each turn's end (`{"k":"end","ms":…,"cost":…}`); the host appends a turn
+part in the shared session log format (`coax/lib/agent/session/log.coax`,
+2026-11-10: Coder's JSONL, `{"kind":"user"|"thinking"|"reply"|"tool"|"result"|"routed"|"notice"|"ask","text":…}`,
+a tool with its kind, argument, input, output and whether it failed), a
+`{"kind":"session",…}` header first and one line at each turn's end
+(`{"kind":"end","ending":…,"ms":…,"steps":…,"cost_usd_e6":…}`). Files written
+before that (`{"k":"user",…}` lines) still load; the host appends a turn
 when it finishes and what there is at quit. At launch each restored session
 reads its file back into the same transcript, and the next message resumes
 it. check.sh store-quit then store-reopen: two sessions, quit, reopen, and
