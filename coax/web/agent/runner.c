@@ -723,23 +723,35 @@ static void turns(const char *slug) {
 
 // ---- the wake server: one turn loop per project at a time
 #define SLUGS 32
-static struct { char slug[72]; pid_t pid; } loops[SLUGS];
+// again: a wake came while the loop ran. The loop may already have asked for its next turn, found
+// none and be on its way out, so the new turn would wait in the queue; once it is reaped it starts again.
+static struct { char slug[72]; pid_t pid; bool again; } loops[SLUGS];
 static void seat_reaped(pid_t p);   // seat-runner.c: a hosted seat's oa-seat went
+static void wake(const char *slug);
 static void reap(void) {
   int st; pid_t p;
-  while ((p = waitpid(-1, &st, WNOHANG)) > 0) { for (int i = 0; i < SLUGS; i++) if (loops[i].pid == p) loops[i].pid = 0; seat_reaped(p); }
+  char rerun[SLUGS][72]; int nre = 0;
+  while ((p = waitpid(-1, &st, WNOHANG)) > 0) {
+    for (int i = 0; i < SLUGS; i++) if (loops[i].pid == p) {
+      if (loops[i].again && nre < SLUGS) snprintf(rerun[nre++], sizeof rerun[0], "%s", loops[i].slug);
+      loops[i].pid = 0; loops[i].again = false;
+    }
+    seat_reaped(p);
+  }
+  for (int i = 0; i < nre; i++) wake(rerun[i]);
 }
+static bool waking(void) { for (int i = 0; i < SLUGS; i++) if (loops[i].pid && loops[i].again) return true; return false; }
 static void wake(const char *slug) {
   reap();
   int free_slot = -1;
   for (int i = 0; i < SLUGS; i++) {
-    if (loops[i].pid && !strcmp(loops[i].slug, slug)) return;   // its loop will take the new turn
+    if (loops[i].pid && !strcmp(loops[i].slug, slug)) { loops[i].again = true; return; }   // its loop takes the turn, or starts again
     if (!loops[i].pid && free_slot < 0) free_slot = i;
   }
   if (free_slot < 0) return;
   pid_t pid = fork();
   if (pid == 0) { if (!strcmp(slug, "@chat")) chat_turns(); else turns(slug); _exit(0); }
-  if (pid > 0) { snprintf(loops[free_slot].slug, sizeof loops[free_slot].slug, "%s", slug); loops[free_slot].pid = pid; }
+  if (pid > 0) { snprintf(loops[free_slot].slug, sizeof loops[free_slot].slug, "%s", slug); loops[free_slot].pid = pid; loops[free_slot].again = false; }
 }
 static void respond(int fd, int status, const char *body) {
   char head[256];
@@ -806,7 +818,8 @@ int main(int argc, char **argv) {
   for (;;) {
     // hosted seats close after their idle limit: wake at least every 30 s to look
     struct pollfd lp = {lfd, POLLIN, 0};
-    int ready = poll(&lp, 1, 30000);
+    // and every 100 ms while a loop that was woken again may be ending (reap starts it again)
+    int ready = poll(&lp, 1, waking() ? 100 : 30000);
     reap(); seats_idle();
     if (ready <= 0) continue;
     int fd = accept(lfd, NULL, NULL);

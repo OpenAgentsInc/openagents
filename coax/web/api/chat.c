@@ -10,6 +10,8 @@
 //   POST /api/chat/send {c, text, model}   a message: a turn, and the runner is woken (c absent: a new conversation)
 //   POST /api/chat/model {c, model}        the model the next turn uses
 //   POST /api/chat/stop {c}        STOP
+//   POST /api/chat/tab {c, open}   open (true) or close (false) a conversation's tab (migrations/0139)
+//   GET  /api/chat/record?c=ID     the conversation as the shared session log (openagents.session.v1, one JSON a line)
 //   POST /api/chat/key {credential}        an Anthropic API key or a Claude subscription token: the runner
 //                                  checks it (a models list, or a one-line Haiku turn) and seals it; only
 //                                  the sealed bytes, the kind and the last four characters are kept
@@ -289,7 +291,7 @@ bool chat_route(const request *q) {
   const char *op = q->path + 10;
   bool runner = !strncmp(op, "runner/", 7);
   if (runner) op += 7;
-  static const char *const member_ops[] = {"state", "new", "send", "model", "stop", "key", "key_remove", NULL};
+  static const char *const member_ops[] = {"state", "new", "send", "model", "stop", "tab", "record", "key", "key_remove", NULL};
   static const char *const runner_ops[] = {"next", "event", "end", NULL};
   bool known = false;
   for (const char *const *o = runner ? runner_ops : member_ops; *o; o++) if (!strcmp(*o, op)) known = true;
@@ -297,7 +299,8 @@ bool chat_route(const request *q) {
   if (!known) return false;
   bool post = !strcmp(q->method, "POST");
   if (!post && strcmp(q->method, "GET")) { reply(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
-  if ((!strcmp(op, "state")) == post) { reply(q->fd, 405, post ? "{\"error\":\"GET this\"}" : "{\"error\":\"POST this\"}"); return true; }
+  bool get_op = !strcmp(op, "state") || !strcmp(op, "record");
+  if (get_op == post) { reply(q->fd, 405, post ? "{\"error\":\"GET this\"}" : "{\"error\":\"POST this\"}"); return true; }
   if (q->body_len > 64 * 1024) { reply(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
   PGconn *db = api_db();
   if (!db) { reply(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
@@ -336,7 +339,7 @@ bool chat_route(const request *q) {
   int status = 0; bool wake = false;
   char *out = call(db, op, body, pubkey, runner, &status, &wake);
   free(body);
-  bool lines = !strcmp(op, "state") && status == 200;
+  bool lines = get_op && status == 200;
   if (wake) {   // a child wakes the runner, then answers; the parent goes on
     signal(SIGCHLD, SIG_IGN);
     pid_t pid = fork();
@@ -350,7 +353,7 @@ bool chat_route(const request *q) {
     }
     if (pid > 0) { api_log("chat %s %d", op, status); free(out); return true; }
   }
-  api_respond(q->fd, status, lines ? "text/plain; charset=utf-8" : "application/json", CHAT_HEADERS, out, strlen(out));
+  api_respond(q->fd, status, lines ? (!strcmp(op, "record") ? "application/x-ndjson; charset=utf-8" : "text/plain; charset=utf-8") : "application/json", CHAT_HEADERS, out, strlen(out));
   if (strcmp(op, "state") && strcmp(op, "event")) api_log("chat %s%s %d", runner ? "runner " : "", op, status);
   free(out);
   return true;

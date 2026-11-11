@@ -193,6 +193,37 @@ s, b = cpage("POST", "stop", {"c": str(C)})
 b, u = until_turn(C, T4, ("stopped", "failed", "done"))
 check("chat: STOP stops the running turn", s == 200 and u and u[2] == "stopped", (s, u))
 
+# ---- folders, tabs and the session record (migrations/0139_chat_folders_tabs.sql)
+s, b = state(C)
+cl = next((l for l in lines(b, "C") if l[1] == str(C)), None)
+check("chat: the page is told the record has folders and tabs", lines(b, "Z")[0][8] == "2", lines(b, "Z"))
+check("chat: a conversation is in the folder its turns read, and its first message opened its tab", cl and cl[6] == "openagents" and cl[7] == "1", cl)
+s, b = cpage("POST", "new", {"model": "claude-haiku-5-5"})
+C2 = json.loads(b).get("c") if s == 200 else None
+tabs = lambda: {l[1]: l[7] for l in lines(state(C2)[1], "C")}
+check("chat: a new conversation opens the next tab", C2 and tabs().get(str(C2)) == "2", (s, b, tabs()))
+s, b = cpage("POST", "tab", {"c": str(C), "open": False})
+check("chat: closing a tab moves the ones after it up", s == 200 and tabs() == {str(C): "", str(C2): "1"}, (s, b, tabs()))
+s, b = cpage("POST", "tab", {"c": str(C)})
+check("chat: opening it again puts it last", s == 200 and json.loads(b).get("tab") == 2 and tabs() == {str(C): "2", str(C2): "1"}, (s, b, tabs()))
+s, b = cpage("POST", "tab", {"c": "999999"})
+check("chat: no tab for a conversation that isn't yours", s == 404, (s, b))
+s, b = cpage("POST", "record", {"c": str(C)})
+check("chat: the record is read with GET", s == 405, (s, b))
+s, b = cpage("GET", "record", query=f"?c={C}")
+rec = [json.loads(l) for l in b.splitlines()] if s == 200 else []
+kinds = [r.get("kind") for r in rec]
+check("chat: the record starts with the session line of the shared log format",
+      rec and rec[0] == {"kind": "session", "schema": "openagents.session.v1", "id": sql(f"select session_id from chat.conversations where id = {C}"),
+                         "engine": "claude", "cwd": "openagents", "started_us": int(sql(f"select created_ms from chat.conversations where id = {C}")) * 1000,
+                         "title": "What does README.md say?", "model": "claude-opus-5-5"}, rec[:1])
+check("chat: each turn is its message, its tools and their results, its answer and its end",
+      kinds[1:7] == ["user", "tool", "result", "reply", "end", "user"] and rec[1]["text"] == "What does README.md say?"
+      and rec[2]["label"] == "Read(README.md)" and rec[2]["tool"] == "read" and rec[3]["id"] == rec[2]["id"]
+      and rec[4]["text"].startswith("## Answer") and rec[5]["ending"] == "finished" and rec[5]["steps"] == 1, rec[:7])
+check("chat: a stopped turn ends stopped", any(r.get("ending") == "stopped" for r in rec) and kinds.count("user") == kinds.count("end") == 4, kinds)
+check("chat: the record's first line is written the way the log reader expects it", b.startswith('{"kind":"session","schema":"openagents.session.v1"'), b[:80])
+
 # ---- the cap on our key ($1 here)
 s, b = cpage("POST", "send", {"c": str(C), "text": "costly"})
 T5 = json.loads(b).get("turn") if s == 200 else None

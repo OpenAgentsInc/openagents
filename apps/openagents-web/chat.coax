@@ -8,7 +8,9 @@
 // only Log in.
 //
 // What it draws: the conversations (a sidebar on a wide window, Chats over
-// the page on a phone) and New chat; the conversation shown, its messages
+// the page on a phone) under the folder their turns read, and New chat; the
+// open ones as tabs across the top of a wide window, each closed with its x
+// (the desktop app's desk; oa-api keeps both, migrations/0139); the conversation shown, its messages
 // as Zeron's bubbles, the agent's answers as Markdown, the tools it used as
 // Zeron's tool group and chips, the model and credential under each answer;
 // Zeron's composer (its own selection, undo and IME, no paperclip: the API
@@ -35,7 +37,7 @@ WC_TYPED :: 1; WC_SHOWN :: 602;
 WC_NAVIGATE :: 1; WC_COPY :: 2;
 WC_BUSY :: 2.0;            // seconds between reads while a turn waits or runs
 WC_REFRESH :: 30.0;        // else
-POST_SEND :: 1; POST_MODEL :: 2; POST_STOP :: 3; POST_KEY :: 4; POST_KEY_REMOVE :: 5;
+POST_SEND :: 1; POST_MODEL :: 2; POST_STOP :: 3; POST_KEY :: 4; POST_KEY_REMOVE :: 5; POST_TAB :: 6;
 // The host's named keys beyond composer.coax's: Shift and Control held, Tab.
 WK_SHIFT :: -13; WK_CONTROL :: -14; WK_TAB :: -15;
 // What oa-api runs (chat.api: Opus by default), in Zeron's order, and the menu's words.
@@ -53,13 +55,19 @@ WC_DOCK_BOTTOM :: 40.0;
 WC_DOCK_BOTTOM_PHONE :: 16.0;
 WC_HERO_LIFT :: 12.0;
 WC_ROW :: 52.0;            // a conversation's row in the list
+WC_FOLDER_ROW :: 28.0;     // a folder's name above its conversations (the desk's header)
+WC_FOLDERS :: 8;
+// The tabs (the desk's measures, components/skin/zeron.coax zeron_desk).
+WC_TAB_H :: 28.0; WC_TAB_MIN :: 96.0; WC_TAB_MAX :: 200.0; WC_TAB_GAP :: 4.0; WC_TAB_PAD :: 10.0; WC_TAB_X :: 18.0;
+WC_TABS :: 32;
 WC_BUTTON_H :: 28.0;
 WC_INTRO :: "Ask anything about OpenAgents. The agent reads a fresh copy of the public openagents repository (main) and the web, and says which files it read. It can't change anything.";
 // The chrome's presses (WcState.hits): the list's rows are WH_CONV + index.
 WH_NONE :: -1; WH_LOGIN :: 1; WH_NEW :: 2; WH_CHATS :: 3; WH_KEY :: 4; WH_KFIELD :: 5; WH_KSAVE :: 6;
 WH_REPLACE :: 7; WH_REMOVE :: 8; WH_CLOSE :: 9; WH_HOME :: 10; WH_SHADE :: 11;
 WH_CONV :: 100;
-WC_HITS :: 96;
+WH_TAB :: 1000; WH_TAB_CLOSE :: 2000;   // + the tab's place, from 0
+WC_HITS :: 256;
 
 WcHit :: struct { x: f32; y: f32; w: f32; h: f32; id: int; }
 // A painted button: the vertices so far and its width.
@@ -174,6 +182,23 @@ wc_nth :: (s: [] WcState, kind: u8, k: int) -> int {
 }
 wc_z :: (s: [] WcState, col: int) -> string { z := wc_first(s, 'Z'); return ifx z < 0 then "" else wc_cell(s, z, col); }
 wc_has_key :: (s: [] WcState) -> bool { return wc_z(s, 3).count > 0; }
+// oa-api keeps folders and tabs (migrations/0139: Z's ninth field is 2); an older one keeps neither.
+wc_tabbed :: (s: [] WcState) -> bool { return wc_z(s, 8) == "2"; }
+// The open tabs in order, as the C lines' places among the conversations (wc_nth's k). How many.
+wc_tabs :: (s: [] WcState, out: [] int) -> int {
+  for j: 0..<out.count { out[j] = -1; }
+  if !wc_tabbed(s) { return 0; }
+  k := 0;
+  for i: 0..<s[0].line_n {
+    if wc_kind(s, i) != 'C' { continue; }
+    p := wc_int(wc_cell(s, i, 7));
+    if p >= 1 && p <= out.count { out[p - 1] = k; }
+    k += 1;
+  }
+  n := 0;
+  while n < out.count && out[n] >= 0 { n += 1; }
+  return n;
+}
 // Today's spend on OpenAgents' key has reached the cap, and no key of the asker's is saved.
 wc_capped :: (s: [] WcState) -> bool {
   if wc_has_key(s) || wc_first(s, 'Z') < 0 { return false; }
@@ -403,6 +428,8 @@ wc_answer :: (s: [] WcState, id: int, bytes: string) {
     else { wc_say_key(s, ifx err.count > 0 then err else "That key didn't work: no answer"); }
   } else if kind == POST_KEY_REMOVE {
     if code == 200 { s[0].replacing = false; s[0].knote_n = 0; wc_say_key(s, "Removed."); }
+  } else if kind == POST_TAB {
+    if code != 200 { wc_say(s, ifx err.count > 0 then err else "The tab didn't change."); }
   }
   s[0].asked_at = -1000;   // read the state again now
 }
@@ -629,10 +656,27 @@ wc_open_conv :: (s: [] WcState, k: int) {
   if i < 0 { return; }
   id := wc_int(wc_cell(s, i, 1));
   s[0].listing = false;
+  // its tab, if it has none yet
+  if wc_tabbed(s) && wc_cell(s, i, 7).count == 0 && s[0].post_n == 0 && s[0].post_id < 0 {
+    wc_post(s, "tab", POST_TAB, "c", wc_cell(s, i, 1), "open", "true", "", "");
+  }
   if id == s[0].shown { return; }
   s[0].shown = id; s[0].model = -1;
   wc_forget_view(s);
   s[0].asked_at = -1000;
+}
+// A tab's x: closed at oa-api; the one shown gives way to the tab after it, else the one before, else a new chat.
+wc_close_tab :: (s: [] WcState, place: int) {
+  tabs: [WC_TABS] int; n := wc_tabs(s, tabs[..]);
+  if place < 0 || place >= n || s[0].post_n > 0 || s[0].post_id >= 0 { return; }
+  i := wc_nth(s, 'C', tabs[place]);
+  id := wc_int(wc_cell(s, i, 1));
+  wc_post(s, "tab", POST_TAB, "c", wc_cell(s, i, 1), "open", "false", "", "");
+  if id != s[0].shown { return; }
+  next := ifx place + 1 < n then place + 1 else place - 1;
+  if next < 0 { wc_new(s); return; }
+  s[0].shown = wc_int(wc_cell(s, wc_nth(s, 'C', tabs[next]), 1)); s[0].model = -1;
+  wc_forget_view(s);
 }
 
 // ---------------------------------------------------------------- painting the chrome
@@ -743,12 +787,42 @@ wc_paint_list :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32
   v = paint_text(out, v, a, d, FONT_MENU_SMALL, cast(string) cb[0..<cn], x + w - 18 - text_width(a, FONT_MENU_SMALL, cast(string) cb[0..<cn]), hy, 20, th.faint);
   ly := hy + 24;
   room := bottom - ly;
-  s[0].side_h = cast(f32) n * WC_ROW;
+  // the rows: each folder's name, then its conversations, newest first (an oa-api without folders: the conversations alone)
+  folders: [WC_FOLDERS] string; nf := 0;
+  if wc_tabbed(s) {
+    for k: 0..<n {
+      f := wc_cell(s, wc_nth(s, 'C', k), 6);
+      known := false;
+      for j: 0..<nf { if folders[j] == f { known = true; } }
+      if !known && nf < WC_FOLDERS { folders[nf] = f; nf += 1; }
+    }
+  }
+  order: [256] int; row_y: [256] f32; head_y: [WC_FOLDERS] f32; no := 0;
+  yy: f32 = 0;
+  if nf == 0 {
+    for k: 0..<n { if no < 256 { order[no] = k; row_y[no] = yy; no += 1; yy += WC_ROW; } }
+  } else {
+    for j: 0..<nf {
+      head_y[j] = yy; yy += WC_FOLDER_ROW;
+      for k: 0..<n {
+        if no < 256 && wc_cell(s, wc_nth(s, 'C', k), 6) == folders[j] { order[no] = k; row_y[no] = yy; no += 1; yy += WC_ROW; }
+      }
+    }
+  }
+  s[0].side_h = yy;
   most := s[0].side_h - room;
   if s[0].side_scroll > most { s[0].side_scroll = most; }
   if s[0].side_scroll < 0 { s[0].side_scroll = 0; }
-  for k: 0..<n {
-    y := ly + cast(f32) k * WC_ROW - s[0].side_scroll;
+  for j: 0..<nf {
+    y := ly + head_y[j] - s[0].side_scroll;
+    if y < ly - 1 || y + WC_FOLDER_ROW > bottom + 1 { continue; }
+    v = paint_icon(out, v, a, d, ICON_FOLDER, x + 18, y + 7, 14, 14, th.faint);
+    fb: [160] u8;
+    v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, folders[j], w - 60, fb[..]), x + 40, y + 4, 20, th.faint);
+  }
+  for r: 0..<no {
+    k := order[r];
+    y := ly + row_y[r] - s[0].side_scroll;
     if y + WC_ROW <= ly || y >= bottom { continue; }
     i := wc_nth(s, 'C', k);
     on := wc_int(wc_cell(s, i, 1)) == s[0].shown;
@@ -767,6 +841,38 @@ wc_paint_list :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32
     gb: [160] u8;
     if y + 26 + 18 <= bottom + 2 { v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, cast(string) mb[0..<m], w - 36, gb[..]), x + 18, y + 26, 18, th.faint); }
     wc_hit(s, WH_CONV + k, x + 8, ifx y < ly then ly else y, w - 16, WC_ROW - 4);
+  }
+  return v;
+}
+// The open tabs across the top of the conversation (a wide window): each its title, the shown one washed, its x on the right.
+wc_paint_tabs :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f32, w0: f32) -> int {
+  a := s[0].atlas[..];
+  tabs: [WC_TABS] int; n := wc_tabs(s, tabs[..]);
+  if n == 0 { return at; }
+  v := paint_quad(out, at, d, x0, 0, w0, TITLEBAR_HEIGHT, 0, 0, th.shell, th.shell);
+  avail := w0 - 2 * WC_TAB_PAD;
+  tw := (avail - cast(f32) (n - 1) * WC_TAB_GAP) / cast(f32) n;
+  if tw > WC_TAB_MAX { tw = WC_TAB_MAX; }
+  if tw < WC_TAB_MIN { tw = WC_TAB_MIN; }
+  tw = round_layout(tw);
+  y := round_layout((TITLEBAR_HEIGHT - WC_TAB_H) / 2);
+  for t: 0..<n {
+    x := x0 + WC_TAB_PAD + cast(f32) t * (tw + WC_TAB_GAP);
+    if x + tw > x0 + w0 - WC_TAB_PAD + 1 { break; }   // more than fit: the sidebar lists every one
+    i := wc_nth(s, 'C', tabs[t]);
+    shown := wc_int(wc_cell(s, i, 1)) == s[0].shown;
+    hot := s[0].hot == WH_TAB + t || s[0].hot == WH_TAB_CLOSE + t;
+    if shown || hot { v = paint_quad(out, v, d, x, y, tw, WC_TAB_H, CHIP_RADIUS, 0, rgba(1, 1, 1, ifx shown then 0.07f32 else 0.04f32), rgba(1, 1, 1, 0)); }
+    tb: [400] u8;
+    title := wc_decode_into(wc_cell(s, i, 2), tb[..]);
+    if title.count == 0 { title = "New chat"; }
+    fb: [400] u8;
+    v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, title, tw - 2 * WC_TAB_PAD - WC_TAB_X, fb[..]), x + WC_TAB_PAD, y + 4, 20, ifx shown then th.text else th.muted);
+    wc_hit(s, WH_TAB + t, x, y, tw, WC_TAB_H);
+    // the x: always on the shown tab, on another under the pointer
+    cx := x + tw - WC_TAB_PAD - WC_TAB_X + 4;
+    if shown || hot { v = paint_text(out, v, a, d, FONT_MENU_SMALL, "×", cx + 3, y + 4, 20, ifx s[0].hot == WH_TAB_CLOSE + t then th.text else th.faint); }
+    wc_hit(s, WH_TAB_CLOSE + t, cx, y + 4, WC_TAB_X - 4, WC_TAB_H - 8);
   }
   return v;
 }
@@ -975,6 +1081,7 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
     v = paint_composer_docked(out, v, c, a, th, d, x, h - bottom_gap, cw);
     v = wc_paint_failure(out, v, s, th, d, x, c[0].y, cw, cast(string) fb[0..<fn]);
   }
+  if side { v = wc_paint_tabs(out, v, s, th, d, mx, mw); }
   // the composer's caret: where the keyboard field (the IME's) goes
   if c[0].focused && !s[0].keying {
     s[0].field[0] = c[0].text_x * d; s[0].field[1] = c[0].text_y * d;
@@ -1045,6 +1152,12 @@ wc_act :: (s: [] WcState, id: int) {
   if id == WH_KSAVE { wc_save_key(s); return; }
   if id == WH_REPLACE { s[0].replacing = true; s[0].key_focus = true; wc_wipe_key(s); return; }
   if id == WH_REMOVE { if s[0].post_n == 0 && s[0].post_id < 0 { wc_post(s, "key_remove", POST_KEY_REMOVE, "", "", "", "", "", ""); } return; }
+  if id >= WH_TAB_CLOSE { wc_close_tab(s, id - WH_TAB_CLOSE); return; }
+  if id >= WH_TAB {
+    tabs: [WC_TABS] int; n := wc_tabs(s, tabs[..]);
+    if id - WH_TAB < n { wc_open_conv(s, tabs[id - WH_TAB]); }
+    return;
+  }
   if id >= WH_CONV { wc_open_conv(s, id - WH_CONV); }
 }
 wc_close_key :: (s: [] WcState) {
@@ -1318,4 +1431,24 @@ coaxial_chat_cell_ready :: (s: [] WcState, cell: int) #export_c #effects(all) { 
   #assert c[0].n == 3 && c[0].id[0] == "claude-opus-5-5" && c[0].label[2] == "Haiku 5.5";
   #assert pk_level_for(c[..], 0, 0) == -1;
   #assert wc_model_index("claude-sonnet-5-5") == 1 && wc_model_name("claude-haiku-5-5") == "Haiku 5.5";
+}
+#test "the tabs come from the state in their order, and closing the shown one shows the tab after it" {
+  s: [1] WcState;
+  data: [512] u8;
+  text := "Z|0.00|10.00|||0|0|7|2\nC|9|Nine|claude-opus-5-5|Nov 11 10:00|0|openagents|2\nC|7|Seven|claude-opus-5-5|Nov 11 09:00|0|openagents|1\nC|5|Five|claude-opus-5-5|Nov 10 09:00|0|openagents|\n";
+  for c: text { data[s[0].data_n] = c; s[0].data_n += 1; }
+  s[0].data = data[..];
+  wc_index(s[..]);
+  tabs: [WC_TABS] int;
+  #assert wc_tabbed(s[..]) && wc_tabs(s[..], tabs[..]) == 2 && tabs[0] == 1 && tabs[1] == 0;
+  s[0].shown = 7; s[0].post_id = -1;
+  wc_close_tab(s[..], 0);
+  #assert s[0].shown == 9 && s[0].post_kind == POST_TAB;
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/tab" && cast(string) s[0].body[0..<s[0].body_n] == "{\"c\":\"7\",\"open\":\"false\"}";
+  // an oa-api from before folders and tabs: none
+  old := "Z|0.00|10.00|||0|0|7\nC|7|Seven|claude-opus-5-5|Nov 11 09:00|0\n";
+  s[0].data_n = 0;
+  for c: old { data[s[0].data_n] = c; s[0].data_n += 1; }
+  wc_index(s[..]);
+  #assert !wc_tabbed(s[..]) && wc_tabs(s[..], tabs[..]) == 0;
 }

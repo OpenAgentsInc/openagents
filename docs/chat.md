@@ -26,7 +26,7 @@ anything. Admins only for now.
 | The page, drawn in Coax | `apps/openagents-web/chat.coax`, `chat-face.c`, `chat.wgsl`, `chat/index.html` |
 | The Zeron components it draws with | `components/zeron/` (shared with the Mac app) |
 | The atlas host | `coax/web/gpui.js` (used by `coax/web/host.js`) |
-| The API | `coax/web/api/chat.c`, `migrations/0021_chat.sql` (schema `chat`) |
+| The API | `coax/web/api/chat.c`, `migrations/0021_chat.sql` (schema `chat`), `migrations/0139_chat_folders_tabs.sql` (folders, tabs, the record) |
 | The runner's general mode | `coax/web/agent/chat-runner.c` (included by `runner.c`) |
 | The engine | `coax/web/agent/chat.coax` (Coax Claude Agent SDK) |
 | Checks | `coax/web/api/test_zchat.py` (with `test-chat-engine.py`), the `#test`s in `chat.coax` |
@@ -100,6 +100,34 @@ subscription token (`claude setup-token`, `sk-ant-oat...`).
   sealed credential, and the turn header says "CHRIS'S KEY" or
   "OPENAGENTS KEY". An expired token fails that turn with the same message
   and marks the credential expired.
+
+## Folders, tabs and the record
+
+The page lists conversations the way the desktop app's desk lists sessions
+(GitHub #13156, `migrations/0139_chat_folders_tabs.sql`):
+
+- **Folders.** A conversation's folder is the checkout its turns read. The
+  runner has one checkout, the public openagents repository, so every
+  conversation is in `openagents`. The sidebar shows the folder's name above
+  its conversations. `chat.folder_ok` lists the folders the runner can read;
+  a second folder needs a second checkout in the runner first.
+- **Tabs.** A conversation's `tab` is its place among your open tabs, or
+  empty when it isn't open. Sending a message or starting a new chat opens
+  its tab, and so does picking a conversation in the list. On a wide window
+  the tabs run across the top. Click a tab to show its conversation, or its
+  **×** to close it. Closing the shown tab shows the tab after it, or the
+  one before. The server keeps your tabs, so another browser shows the same
+  ones.
+- **The record.** `GET /api/chat/record?c=ID` returns the conversation in
+  the shared session log format (`coax/lib/agent/session/log.coax`,
+  `openagents.session.v1`), one JSON object a line. That is the same format
+  the desktop app, Coder and the agent boards read. The tools' output is not
+  kept on the server, so each tool's result line is empty.
+
+API: `POST /api/chat/tab {c, open}` (open is `true` or `false`) and
+`GET /api/chat/record?c=ID`. The state's `Z` line ends in `2` when the
+server keeps folders and tabs. `C` lines then carry the folder and the tab.
+An older server sends neither, and the page draws its old list.
 
 ## How the page is drawn
 

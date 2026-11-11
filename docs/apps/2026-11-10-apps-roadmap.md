@@ -369,10 +369,16 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
   out of memory. The runner now leaves packed data out (about 480 MB), and
   on staging a Haiku turn answered from the checkout and a second turn
   resumed its session. Production is not deployed (NEEDS_OWNER.md).
-- **Not built: /chat's folders and tabs and the shared record.** They need
-  a change to the `chat` schema (a migration, which is a production deploy)
-  and the page. Who may use /chat beyond admins is the owner's decision
-  (NEEDS_OWNER.md).
+- **Built: /chat's folders and tabs and the shared record** (2026-11-11,
+  #13156). `migrations/0139_chat_folders_tabs.sql` gives each conversation its
+  folder (the checkout its turns read, `openagents` for now) and its place
+  among the open tabs. `GET /api/chat/record` writes a conversation in the
+  shared session log format (`openagents.session.v1`). The page lists
+  conversations under their folder and draws the open tabs across the top
+  of a wide window (docs/chat.md, "Folders, tabs and the record").
+  It is on staging. Production gets it with the owner's next API deploy and
+  web release (NEEDS_OWNER.md). Who may use /chat beyond admins is the
+  owner's decision too.
 
 ## Housekeeping
 
