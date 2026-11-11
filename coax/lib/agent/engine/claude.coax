@@ -580,8 +580,13 @@ e_note_start :: (e: [] Engine) {
   e[0].run_mode = e_mode(e);
 }
 // What was chosen since the CLI started and has not reached it: 1 the model, 2 the permission mode.
+// Only the engine's own choices drift (the desktop app's). An owner's options (e_own) start the CLI
+// with the owner's model and mode, which the engine's catalog choice knows nothing of: comparing the
+// two sent the catalog's default model ahead of every owner's first message, so Coder asked for
+// Sonnet and ran Opus (#13193).
 E_DRIFT_MODEL :: 1; E_DRIFT_MODE :: 2;
 e_drift :: (e: [] Engine) -> int {
+  if e[0].opt.count > 0 { return 0; }
   d := 0;
   if e[0].cat[0].id[e[0].model] != e_str(e[0].run_model[..], e[0].run_model_n) { d += E_DRIFT_MODEL; }
   if e_mode(e) != e[0].run_mode { d += E_DRIFT_MODE; }
@@ -953,6 +958,21 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
   #assert e_drift(e[..]) == E_DRIFT_MODEL + E_DRIFT_MODE;
   e_note_start(e[..]);                 // sent with initialize's answer (e_take), or started with them
   #assert e_drift(e[..]) == 0 && e_str(e[0].run_model[..], e[0].run_model_n) == "claude-sonnet-5";
+}
+
+#test "an owner's model is never replaced by the engine's own choice when the CLI is ready (#13193)" {
+  e: [1] Engine; e_init(e[..]);
+  o: [1] ClOptions; o[0].model = "claude-sonnet-5-5"; o[0].permission_mode = ClPermissionMode.bypass_permissions;
+  e_own(e[..], o[..]);
+  e_note_start(e[..]);
+  // the engine's catalog still holds its default model and access: nothing of it is owed to an owner's CLI
+  #assert e[0].cat[0].id[e[0].model] != "claude-sonnet-5-5";
+  #assert e_drift(e[..]) == 0;
+  e_set_access(e[..], ACC_EDITS);
+  #assert e_drift(e[..]) == 0;
+  // without an owner, the engine's own choices drift as before
+  e_own(e[..], o[0..<0]);
+  #assert e_drift(e[..]) == E_DRIFT_MODE;
 }
 
 #test "an owner's options start the CLI as they are; without them the desktop app's for its model and access" {
