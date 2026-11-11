@@ -36,7 +36,7 @@
 // to curl through its environment only (never an argument, never logged).
 
 #load "claude.coax";
-#load "../../../coax/lib/gateway/transport.coax";
+#load "../../gateway/transport.coax";
 #load "psionic_fixture.coax";
 
 PS_MODEL :: "gpt-oss-20b";
@@ -885,12 +885,6 @@ ps_contains :: (text: string, needle: string) -> int {
   p[0].ar[0].at = 0;
   msg := ps_item(p[..], 2);
   #assert cl_str(p[0].ar[..], msg, "type") == "message" && cl_str(p[0].ar[..], msg, "content.0.text") == s_text_of(s[..], 2);
-  // the transcript: a bubble, the thinking group, the Markdown
-  t: [1] Transcript; a: [1] Atlas; ui: [1] SUi;
-  md_test_atlas(a[..]);
-  for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
-  s_build(s[..], ui[..], t[..]);
-  #assert t[0].rows[0].kind == R_USER && t[0].rows[1].kind == R_GROUP && t[0].groups[0].summary == "Thought process" && t[0].rows[t[0].nr - 1].kind == R_MD;
 }
 
 #test "the next turn replays the prior output without its reasoning; a call becomes a chip, asked about, its output replayed" {

@@ -10,7 +10,7 @@
 # per-message usage and diagnostics), so the Coax test's interpreted feed
 # stays within its step budget; what is left is as it came.
 #   fixture.py RECORDED.jsonl PROJECT_DIR > claude-tools.jsonl
-#   fixture.py --coax claude-tools.jsonl > ../claude_fixture.coax
+#   fixture.py --coax claude-tools.jsonl > ../../../../coax/lib/agent/engine/claude_fixture.coax
 import json, sys
 
 def scrub(path, project):

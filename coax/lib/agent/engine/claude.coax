@@ -1,0 +1,860 @@
+// The Claude engine: the user's own Claude Code, driven through the Coax
+// Claude Agent SDK (../claude), and what its stream becomes in the session
+// record (../session/session.coax). One long-lived `claude` per conversation,
+// in streaming input (each message a user frame on its stdin, resumed with
+// --resume=SESSION when it has to start again), polled without blocking
+// (e_pump over cl_poll), so its owner stays one thread.
+//
+// The stream maps onto the session's parts as Zeron's Claude harness and
+// document fold do (harness/src/claude/normalize.rs, doc/src/parts.rs
+// fold_event_into_parts): text and thinking come from the stream's deltas,
+// each extending the trailing part of its kind or starting one; tool calls
+// come from the full assistant frames (decode_tool_use: Bash, Read, Write,
+// Edit, Grep, Glob, WebFetch, WebSearch, TodoWrite, Agent/Task,
+// mcp__server__tool, any other by name); tool results attach to their call
+// (is_error marks it failed); frames from a subagent (parent_tool_use_id)
+// stay out of the parent's record; an assistant error, a failed result or a
+// dead process becomes the error notice, labelled as run_errors.rs reads
+// it. A call keeps its output and an edit or write its old and new text, so
+// a surface can open onto them.
+//
+// The login, PATH and environment rules: the user's own login (no API key:
+// ANTHROPIC_API_KEY is removed from the child), their login shell's PATH
+// (probed once, ~/.local/bin, /opt/homebrew/bin and /usr/local/bin added
+// when missing), BROWSER=true (the SDK's), and an install line when claude
+// is missing.
+//
+// Extracted from the desktop app (apps/openagents-desktop/zeron/claude.coax,
+// which keeps how the parts become its transcript's rows) with no change in
+// behaviour. Based on Zeron by Wing, MIT.
+
+#load "../session/session.coax";
+#load "catalog.coax";
+#load "claude_fixture.coax";
+#load "../claude/claude.coax";
+
+
+// A tool call (decode_tool_use), its input decoded into the pool.
+s_tool_use :: (s: [] Session, ar: [] ClArena, id: string, name: string, input: string) {
+  k := s_tool_of(s, id);
+  if k < 0 { k = s_part(s, P_TOOL); }
+  if k < 0 { return; }
+  p := SPart.{kind = P_TOOL, at = s[0].np, id = s_put(s, id), input = s_put(s, input)};
+  p.output = s[0].parts[k].output; p.failed = s[0].parts[k].failed; p.resolved = s[0].parts[k].resolved;
+  if name == "Bash" { p.tk = TK_EXEC; p.arg = s_put(s, cl_str(ar, input, "command")); p.detail = s_single(s, p.arg); }
+  else if name == "Read" { p.tk = TK_READ; p.arg = s_put(s, cl_str(ar, input, "file_path")); }
+  else if name == "Write" { p.tk = TK_WRITE; p.arg = s_put(s, cl_str(ar, input, "file_path")); p.after = s_put(s, cl_str(ar, input, "content")); }
+  else if name == "Edit" {
+    p.tk = TK_EDIT; p.arg = s_put(s, cl_str(ar, input, "file_path"));
+    p.before = s_put(s, cl_str(ar, input, "old_string")); p.after = s_put(s, cl_str(ar, input, "new_string"));
+  }
+  else if name == "MultiEdit" || name == "NotebookEdit" { p.tk = TK_EDIT; p.arg = s_put(s, ifx name == "MultiEdit" then cl_str(ar, input, "file_path") else cl_str(ar, input, "notebook_path")); }
+  else if name == "Grep" {
+    p.tk = TK_SEARCH; p.arg = s_put(s, cl_str(ar, input, "pattern"));
+    path := cl_str(ar, input, "path");
+    if path.count > 0 {
+      at := s[0].np; a := s_put(s, p.arg); b := s_put(s, " in "); c := s_put(s, path);
+      p.detail = cast(string) s[0].pool[at..<s[0].np];
+    }
+  }
+  else if name == "Glob" { p.tk = TK_GLOB; p.arg = s_put(s, cl_str(ar, input, "pattern")); }
+  else if name == "WebFetch" { p.tk = TK_FETCH; p.arg = s_put(s, cl_str(ar, input, "url")); }
+  else if name == "WebSearch" { p.tk = TK_WEB; p.arg = s_put(s, cl_str(ar, input, "query")); }
+  else if name == "TodoWrite" {
+    p.tk = TK_TODO;
+    todos := cl_raw(input, "todos");
+    total := cl_count(todos); done := 0;
+    at := s[0].np;
+    for i: 0..<total {
+      item := cl_json(todos, cl_item(todos, i));
+      fin := cl_str(ar, item, "status") == "completed";
+      if fin { done += 1; }
+      if i > 0 { q := s_put(s, "\n"); }
+      q := s_put(s, ifx fin then "[x] " else "[ ] "); q = s_put(s, cl_str(ar, item, "content"));
+    }
+    p.arg = cast(string) s[0].pool[at..<s[0].np];
+    buf: [40] u8; nb := s_int(buf[..], 0, done); buf[nb] = '/'; nb += 1; nb = s_int(buf[..], nb, total);
+    for c: " done" { buf[nb] = c; nb += 1; }
+    p.detail = s_put(s, cast(string) buf[0..<nb]);
+  }
+  else if name == "Agent" || name == "Task" {
+    p.tk = TK_AGENT; p.detail = s_single(s, cl_str(ar, input, "description"));
+    p.arg = s_put(s, cl_str(ar, input, "prompt"));
+    if p.arg.count == 0 { p.arg = p.detail; }
+  }
+  else if name.count > 5 && name[0..<5] == "mcp__" {
+    p.tk = TK_MCP; p.arg = p.input;
+    rest := cast(string) name[5..<name.count];
+    cut := -1;
+    for i: 0..<rest.count - 1 { if rest[i] == '_' && rest[i + 1] == '_' { cut = i; break; } }
+    at := s[0].np;
+    if cut > 0 { a := s_put(s, cast(string) rest[0..<cut]); b := s_put(s, " · "); c := s_put(s, cast(string) rest[cut + 2..<rest.count]); }
+    else { a := s_put(s, rest); }
+    p.detail = cast(string) s[0].pool[at..<s[0].np];
+  }
+  else { p.tk = TK_TOOL; p.detail = s_put(s, name); p.arg = p.input; }
+  s[0].parts[k] = p;
+  s[0].changed = true;
+}
+
+// A tool result: its output (a string, or the text of its blocks).
+s_tool_result :: (s: [] Session, ar: [] ClArena, item: string) {
+  k := s_tool_of(s, cl_str(ar, item, "tool_use_id"));
+  if k < 0 { return; }
+  c := cl_at(item, "content");
+  out := "";
+  if c.ok && c.tok == JSON_STRING { out = s_put(s, cl_text(ar, item, c)); }
+  else if c.ok {
+    blocks := cl_json(item, c);
+    at := s[0].np;
+    for i: 0..<cl_count(blocks) {
+      b := cl_json(blocks, cl_item(blocks, i));
+      if cl_str(ar, b, "type") == "text" { if s[0].np > at { q := s_put(s, "\n"); } q := s_put(s, cl_str(ar, b, "text")); }
+    }
+    out = cast(string) s[0].pool[at..<s[0].np];
+  }
+  s[0].parts[k].output = out;
+  s[0].parts[k].failed = cl_bool(item, "is_error").value;
+  s[0].parts[k].resolved = true;
+  s[0].changed = true;
+}
+
+// One SDK message from the CLI's stdout.
+s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
+  if m.parent_tool_use_id.count > 0 { return; }   // a subagent's frame
+  l := m.line;
+  if m.kind == ClKind.stream_event {
+    if !cl_eq(l, cl_at(l, "event.type"), "content_block_delta") { return; }
+    dt := cl_at(l, "event.delta.type");
+    if cl_eq(l, dt, "text_delta") { s_delta(s, P_TEXT, cl_str(ar, l, "event.delta.text")); }
+    else if cl_eq(l, dt, "thinking_delta") { s_delta(s, P_THINK, cl_str(ar, l, "event.delta.thinking")); }
+    return;
+  }
+  if m.kind == ClKind.assistant {
+    content := cl_raw(l, "message.content");
+    for i: 0..<cl_count(content) {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(ar, item, "type") == "tool_use" { s_tool_use(s, ar, cl_str(ar, item, "id"), cl_str(ar, item, "name"), cl_raw(item, "input")); }
+    }
+    e := cl_assistant_error(l, cl_at(l, "error"));
+    if e != ClAssistantError.none && !s[0].noticed {
+      text := "";
+      for i: 0..<cl_count(content) {
+        item := cl_json(content, cl_item(content, i));
+        if cl_str(ar, item, "type") == "text" { text = cl_str(ar, item, "text"); break; }
+      }
+      kind := s_problem(text);
+      if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed { kind = N_SIGNED_OUT; }
+      if e == ClAssistantError.rate_limit || e == ClAssistantError.billing_error { kind = N_LIMIT; }
+      s_notice(s, kind, ifx kind == N_SIGNED_OUT then LOGIN_TEXT else ifx text.count > 0 then text else "Claude Code answered with an error.");
+    }
+    return;
+  }
+  if m.kind == ClKind.user {
+    content := cl_raw(l, "message.content");
+    for i: 0..<cl_count(content) {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(ar, item, "type") == "tool_result" { s_tool_result(s, ar, item); }
+    }
+    return;
+  }
+  if m.kind == ClKind.result {
+    why := cl_str(ar, l, "result");
+    if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
+    c := cl_num(l, "total_cost_usd"); if c.ok { s[0].cost = c.value; }
+    d := cl_int(l, "duration_ms"); if d.ok { s[0].turn_ms = d.value; }
+    s_claude_end(s, cl_bool(l, "is_error").value || m.result != ClResultKind.success, why);
+  }
+}
+// A Claude turn's end: signed out, the notice gives the login line its Log in button runs, never the CLI's bare "/login".
+LOGIN_TEXT :: "Log in to Claude Code in Terminal, then send again: claude /login";
+INSTALL_TEXT :: "Install it in Terminal, then send again: curl -fsSL https://claude.ai/install.sh | bash";
+HINT_TEXT :: "Install it in Terminal, then send your message: curl -fsSL https://claude.ai/install.sh | bash";
+s_claude_end :: (s: [] Session, failed: bool, why: string) {
+  if failed && s[0].live && !s[0].stopping && !s[0].noticed && s_problem(why) == N_SIGNED_OUT { s_notice(s, N_SIGNED_OUT, LOGIN_TEXT); }
+  s_turn_end(s, failed, why);
+}
+// Before any message in a Claude chat: when the probe found no claude, the install line, with Install.
+s_hint_install :: (s: [] Session) {
+  if s[0].n != 0 || s[0].live { return; }
+  s_notice(s, N_INSTALL, HINT_TEXT);
+  s[0].hint = true; s[0].noticed = false;
+}
+s_drop_hint :: (s: [] Session) {
+  if !s[0].hint { return; }
+  s[0].n = 0; s[0].np = 0; s[0].hint = false; s[0].changed = true;
+}
+
+// ---------------------------------------------------------------- the engine
+
+// Zeron's access levels for Claude (its access picker): Full access answers
+// every permission prompt itself; Auto-accept edits runs in acceptEdits and
+// asks for the rest; Supervised asks for each call. Plan mode runs in plan.
+ACC_FULL :: 0; ACC_EDITS :: 1; ACC_SUPERVISED :: 2;
+ACCESS_NAMES :: [3] string.["Full access", "Auto-accept edits", "Supervised"];
+ACCESS_DESCS :: [3] string.["Run commands and edits without asking.", "Apply edits, ask before other actions.", "Ask before commands and file changes."];
+
+// Zeron's Claude catalog (harness/src/claude/catalog.rs): its curated rows
+// (static_models: labels, descriptions, effort ladders), then what the
+// installed CLI's initialize answer lists (with_discovered_models: each
+// concrete model id not curated yet, with its displayName, description and
+// supportedEffortLevels; aliases skipped, dated snapshots folded into their
+// curated row, the CLI's default moved first). Until the CLI has answered,
+// the first row is its default unnamed (no --model). Ultracode runs at xhigh
+// with ultracode on in the settings; Ultrathink sends no --effort and opens
+// the message with "Ultrathink:" (to_effort); X-High falls back to Max on a
+// model without it.
+// The Lab's router names three models and five efforts (lab.coax); a
+// decision lands on the catalog's model with that id (or its family) and on
+// the level of the same index.
+MODEL_IDS :: [3] string.["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+MODEL_NAMES :: [3] string.["Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
+EFFORT_IDS :: [5] string.["low", "medium", "high", "xhigh", "max"];
+EFFORT_NAMES :: [5] string.["Low", "Medium", "High", "X-High", "Max"];
+CLAUDE_LEVEL_IDS :: [7] string.["low", "medium", "high", "xhigh", "max", "ultracode", "ultrathink"];
+CLAUDE_LEVEL_NAMES :: [7] string.["Low", "Medium", "High", "X-High", "Max", "Ultracode", "Ultrathink"];
+LV_XHIGH :: 3; LV_MAX :: 4; LV_ULTRACODE :: 5; LV_ULTRATHINK :: 6;
+LADDER_FULL :: 127; LADDER_NO_ULTRACODE :: 95; LADDER_CLASSIC :: 23;   // all; less Ultracode; low, medium, high, max
+claude_catalog :: () -> AgCatalog {
+  c := claude_curated();
+  for k: 0..<c.n { j := c.n - k; c.id[j] = c.id[j - 1]; c.label[j] = c.label[j - 1]; c.desc[j] = c.desc[j - 1]; c.ladder[j] = c.ladder[j - 1]; }
+  c.n += 1;
+  // the CLI's default until its initialize answer names the model (a second after launch)
+  c.id[0] = ""; c.label[0] = "Claude"; c.desc[0] = ""; c.ladder[0] = LADDER_FULL;
+  return c;
+}
+// static_models, in its order.
+claude_curated :: () -> AgCatalog {
+  c := AgCatalog.{provider = "Claude", levels = 7, default_level = 2,
+                  access = 3, full_access = 2, plan = true};
+  ids := [7] string.["claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5", "claude-haiku-4-5"];
+  names := [7] string.["Fable 5.1", "Fable 5", "Opus 5.5", "Opus 4.8", "Opus 4.7", "Sonnet 5", "Haiku 4.5"];
+  descs := [7] string.["Most intelligent model for building agents", "Previous generation Fable", "Best for everyday, complex tasks",
+                       "Previous generation Opus", "Older generation Opus", "Balanced speed and intelligence", "Fastest model for everyday tasks"];
+  ladders := [7] int.[LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_FULL, LADDER_NO_ULTRACODE, LADDER_NO_ULTRACODE, 0];
+  c.n = 7;
+  for k: 0..<7 { c.id[k] = ids[k]; c.label[k] = names[k]; c.desc[k] = descs[k]; c.ladder[k] = ladders[k]; }
+  lids := CLAUDE_LEVEL_IDS; lnames := CLAUDE_LEVEL_NAMES;
+  for k: 0..<7 { c.level_id[k] = lids[k]; c.level_label[k] = lnames[k]; }
+  // the menu's order: Supervised, Auto-accept edits, Full access
+  names3 := ACCESS_NAMES; descs3 := ACCESS_DESCS;
+  order := [3] int.[ACC_SUPERVISED, ACC_EDITS, ACC_FULL];
+  for k: 0..<3 { c.access_label[k] = names3[order[k]]; c.access_desc[k] = descs3[order[k]]; c.access_value[k] = order[k]; }
+  return c;
+}
+// A copy of text in the pool (the catalog's strings outlive the CLI's line).
+claude_keep :: (pool: [] u8, at: [] int, text: string) -> string {
+  if at[0] + text.count > pool.count { return ""; }
+  from := at[0];
+  for i: 0..<text.count { pool[from + i] = text[i]; }
+  at[0] = from + text.count;
+  return cast(string) pool[from..<at[0]];
+}
+// "claude-haiku-4-5-20251001" -> "claude-haiku-4-5" (else "").
+claude_snapshot_base :: (id: string) -> string {
+  if id.count < 10 || id[id.count - 9] != '-' { return ""; }
+  for i: id.count - 8..<id.count { if id[i] < '0' || id[i] > '9' { return ""; } }
+  return cast(string) id[0..<id.count - 9];
+}
+// The default entry's name as its model: another entry's displayName for the
+// same resolvedModel (the "haiku" alias's "Haiku 5.5"), else its description
+// when that isn't a sentence, else the id. Never "Default (recommended)".
+claude_default_name :: (ar: [] ClArena, response: string, models: ClSlice, id: string, entry: string) -> string {
+  for i: 0..<AG_MODELS * 2 {
+    v := cl_element(response, models, i);
+    if !v.ok { break; }
+    other := cl_json(response, v);
+    if cl_str(ar, other, "value") == "default" || cl_str(ar, other, "resolvedModel") != id { continue; }
+    name := cl_str(ar, other, "displayName");
+    if name.count > 0 { return name; }
+  }
+  desc := cl_str(ar, entry, "description");
+  if desc.count > 0 && desc.count < 24 && desc[desc.count - 1] != '.' { return desc; }
+  return id;
+}
+claude_find :: (c: [] AgCatalog, id: string) -> int { for k: 0..<c[0].n { if c[0].id[k] == id { return k; } } return -1; }
+// The catalog from the CLI's initialize answer (with_discovered_models),
+// its strings kept in pool. Whether the answer listed a model.
+claude_discover :: (c: [] AgCatalog, ar: [] ClArena, response: string, pool: [] u8, at: [] int) -> bool {
+  c[0] = claude_curated();
+  at[0] = 0;
+  models := cl_at(response, "models");
+  if !models.ok || models.tok != JSON_ARRAY { return false; }
+  valid := false; first := -1;
+  lids := CLAUDE_LEVEL_IDS;
+  for i: 0..<AG_MODELS * 2 {
+    v := cl_element(response, models, i);
+    if !v.ok { break; }
+    entry := cl_json(response, v);
+    id := cl_str(ar, entry, "resolvedModel");
+    if id.count == 0 { id = cl_str(ar, entry, "value"); }
+    if id.count == 0 { continue; }
+    bare := ifx id.count > 4 && cast(string) id[id.count - 4..<id.count] == "[1m]" then cast(string) id[0..<id.count - 4] else id;
+    if bare == "default" || bare == "opus" || bare == "sonnet" || bare == "haiku" || bare == "fable" { continue; }
+    valid = true;
+    base := claude_snapshot_base(id);
+    if base.count > 0 && claude_find(c, base) >= 0 { id = base; }
+    // a long-context variant of a listed model is that model (the picker's fold)
+    if bare != id && claude_find(c, bare) >= 0 { id = bare; }
+    k := claude_find(c, id);
+    if k < 0 && c[0].n < AG_MODELS {
+      k = c[0].n;
+      label := ifx cl_str(ar, entry, "value") == "default" then claude_default_name(ar, response, models, cl_str(ar, entry, "resolvedModel"), entry) else cl_str(ar, entry, "displayName");
+      c[0].id[k] = claude_keep(pool, at, id);
+      c[0].label[k] = claude_keep(pool, at, ifx label.count > 0 then label else id);
+      desc := cl_str(ar, entry, "description");
+      c[0].desc[k] = claude_keep(pool, at, ifx desc == c[0].label[k] then "" else desc);
+      if c[0].id[k].count == 0 { continue; }        // the pool is full
+      bits := 0;
+      levels := cl_at(entry, "supportedEffortLevels");
+      for j: 0..<8 {
+        lv := cl_element(entry, levels, j);
+        if !lv.ok { break; }
+        name := cl_text(ar, entry, lv);
+        for l: 0..<5 { if name == lids[l] { bits |= 1 << l; } }
+      }
+      if (bits & (1 << LV_XHIGH)) != 0 { bits |= (1 << LV_ULTRACODE) | (1 << LV_ULTRATHINK); }
+      c[0].ladder[k] = bits;
+      c[0].n += 1;
+    }
+    if k >= 0 && cl_str(ar, entry, "value") == "default" { first = k; }
+  }
+  if !valid { c[0] = claude_catalog(); return false; }
+  // the CLI's default first
+  if first > 0 {
+    id := c[0].id[first]; label := c[0].label[first]; desc := c[0].desc[first]; ladder := c[0].ladder[first];
+    for j: 0..<first { k := first - j; c[0].id[k] = c[0].id[k - 1]; c[0].label[k] = c[0].label[k - 1]; c[0].desc[k] = c[0].desc[k - 1]; c[0].ladder[k] = c[0].ladder[k - 1]; }
+    c[0].id[0] = id; c[0].label[0] = label; c[0].desc[0] = desc; c[0].ladder[0] = ladder;
+  }
+  return true;
+}
+// The catalog's model with this id, else the first of its family
+// ("claude-haiku-5-5" lands on Haiku 4.5 when there is no 5.5), else Default.
+claude_model_index :: (cat: [] AgCatalog, id: string) -> int {
+  for k: 0..<cat[0].n { if cat[0].id[k] == id { return k; } }
+  fam := 0; dashes := 0;
+  while fam < id.count && dashes < 2 { if id[fam] == '-' { dashes += 1; } fam += 1; }
+  if dashes == 2 {
+    for k: 0..<cat[0].n { m := cat[0].id[k]; if m.count >= fam && cast(string) m[0..<fam] == cast(string) id[0..<fam] { return k; } }
+  }
+  return 0;
+}
+// Whether a model takes --effort xhigh (supports_xhigh).
+claude_xhigh :: (id: string) -> bool {
+  pre := [6] string.["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-4-9"];
+  for p: pre { if id.count >= p.count && cast(string) id[0..<p.count] == p { return true; } }
+  return id == "opus";
+}
+// The --effort a level runs with on a model ("" for none) and whether ultracode is on.
+claude_effort :: (cat: [] AgCatalog, m: int, level: int) -> string {
+  lv := ag_level_for(cat, m, level);
+  if lv < 0 || lv == LV_ULTRATHINK { return ""; }
+  ids := CLAUDE_LEVEL_IDS;
+  if lv == LV_ULTRACODE || lv == LV_XHIGH { return ifx claude_xhigh(cat[0].id[m]) then "xhigh" else "max"; }
+  return ids[lv];
+}
+INSTALL_LINE :: "curl -fsSL https://claude.ai/install.sh | bash";
+
+E_PATH :: 4096; E_FILE :: 1024;
+
+// An image that goes with a message: its media type ("image/png") and bytes.
+AgImage :: struct { media: string; bytes: [] u8; }
+
+Engine :: struct {
+  on: bool;                          // the host attached buffers (never in tests)
+  q: [1] ClQuery; p: [1] ClProcess;
+  line: [] u8; arena: [] u8; out: [] u8; scratch: [] u8;
+  running: bool;                     // the CLI is up
+  ready: bool;                       // it answered initialize
+  pend: int;                         // a user part waiting for initialize, or -1
+  model: int; effort: int; access: int;            // chosen (the catalog's model and level, ACC_*)
+  plan: bool;                        // plan mode
+  cat: [1] AgCatalog;                // claude_catalog, then the CLI's (claude_discover)
+  cat_pool: [2048] u8; cat_at: [1] int;            // the discovered rows' strings
+  cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
+  warmed: bool;                      // the CLI was started once ahead of the first message, for its models
+  run_effort: [24] u8; run_n: int;   // what the running CLI was started with (its --effort, "+" for ultracode)
+  // the message owed to the CLI (its text for Claude) and the images that go
+  // with it (the owner's: it fills them before a send, and their bytes stay
+  // its until `delivered` counts the message as gone)
+  prompt: [] u8; prompt_n: int;      // (the owner's buffer)
+  images: [] AgImage; images_n: int;
+  delivered: int;                    // messages handed to the CLI (or dropped with no CLI) so far
+  // the login shell's PATH and claude, probed once
+  probe: int; probed: bool;
+  probe_out: [E_PATH + 1024] u8; probe_n: int;
+  path_env: [E_PATH + 8] u8; path_n: int;          // "PATH=..."
+  claude: [E_FILE] u8; claude_n: int;
+  codex: bool;                       // codex is installed and signed in (the Lab offers it)
+  codex_exe: string;                 // where codex is (in probe_out; codex.coax starts it)
+  codex_auth: bool;                  // its login is on disk (~/.codex/auth.json)
+  cwd: [E_FILE] u8; cwd_n: int;
+  sid: [128] u8; sid_n: int;         // the conversation's session, for --resume
+  err: [2048] u8;
+  // the room's tools (desk.coax gives them when the chat is on a desk with others)
+  room: bool;
+  calling: bool;                     // a room tool call waits for the desk's answer
+  call: int;                         // which (ROOM_*)
+  call_args: [8192] u8; call_n: int; // its arguments, JSON
+  call_ask: int;                     // an ask_agent's id while it waits for the answer, else -1
+}
+// The room's tools, in the order the server lists them.
+ROOM_AGENTS :: 0; ROOM_ASK :: 1; ROOM_TELL :: 2; ROOM_READ :: 3;
+ROOM_SERVER :: "room";
+// The room as an in-process MCP server on the CLI's options.
+e_room_tools :: (o: [] ClOptions) {
+  k := cl_add_server(o, ROOM_SERVER, "1.0.0");
+  o[0].servers[k].instructions = "Other agents work beside you in this window, each in its own session. agents_list names them; ask_agent waits for one's answer; tell_agent leaves one a note for its next turn; room_read shows the messages between agents.";
+  t := cl_add_server_tool(o, k, "agents_list", "The other agents in this window: name, harness, folder, and whether each is busy.", "{\"type\":\"object\",\"properties\":{}}");
+  t = cl_add_server_tool(o, k, "ask_agent", "Ask another agent (by its name from agents_list). It runs your message as a new turn in its session; its final answer comes back as this tool's result.", "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"name\",\"message\"]}");
+  t = cl_add_server_tool(o, k, "tell_agent", "Leave another agent a note it reads with its next message. Returns at once.", "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"message\":{\"type\":\"string\"}},\"required\":[\"name\",\"message\"]}");
+  t = cl_add_server_tool(o, k, "room_read", "The messages between agents after a point (0 for all), each with its number, from, to and text.", "{\"type\":\"object\",\"properties\":{\"since\":{\"type\":\"integer\"}}}");
+}
+// The room tool's answer goes back to the CLI, which then reads on.
+e_room_reply :: (e: [] Engine, text: string, is_error: bool) {
+  if !e[0].calling { return; }
+  e[0].calling = false; e[0].call_ask = -1;
+  if e[0].on { cl_tool_text(e[0].q[..], text, is_error); }
+}
+e_call_args :: (e: [] Engine) -> string { return cast(string) e[0].call_args[0..<e[0].call_n]; }
+
+e_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+
+// The login shell's PATH and where claude is (the old Backend's lookup: the
+// usual install places, then `command -v claude`), and where codex is (on
+// PATH, else the usual npm, nvm, Volta and Homebrew places) and whether its login is on disk.
+PROBE_SCRIPT :: "printf 'OA_PATH=%s\\n' \"$PATH\"; for p in \"$HOME/.local/bin/claude\" /opt/homebrew/bin/claude /usr/local/bin/claude \"$HOME/.claude/local/claude\"; do if [ -x \"$p\" ]; then printf 'OA_CLAUDE=%s\\n' \"$p\"; fi; done; printf 'OA_CLAUDE=%s\\n' \"$(command -v claude)\"; c=\"$(command -v codex)\"; if [ -z \"$c\" ]; then setopt null_glob 2>/dev/null; for p in \"$HOME\"/.nvm/versions/node/*/bin/codex \"$HOME/.volta/bin/codex\" \"$HOME/.bun/bin/codex\" \"$HOME/.npm-global/bin/codex\" \"$HOME/.local/bin/codex\" \"$HOME/.codex/bin/codex\" /opt/homebrew/bin/codex /usr/local/bin/codex; do if [ -x \"$p\" ]; then c=\"$p\"; fi; done; fi; printf 'OA_CODEX=%s\\n' \"$c\"; if [ -f \"${CODEX_HOME:-$HOME/.codex}/auth.json\" ]; then printf 'OA_CODEX_AUTH=1\\n'; fi";
+
+e_probe_start :: (e: [] Engine) {
+  h := cxproc_new();
+  if h < 0 { e[0].probed = true; return; }
+  ok := cl_push(h, CL_FIELD_ARG, "/bin/zsh") && cl_push(h, CL_FIELD_ARG, "-lc") && cl_push(h, CL_FIELD_ARG, PROBE_SCRIPT);
+  ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=true");
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); e[0].probed = true; e_probe_done(e); return; }
+  e[0].probe = h;
+}
+// Reads what the probe printed; when it ends, settles PATH and claude.
+e_probe_poll :: (e: [] Engine) {
+  if e[0].probed || e[0].probe < 0 { return; }
+  for guard: 0..<16 {
+    n := cxproc_read_line(e[0].probe, 0);
+    if n == CL_TIMEOUT { return; }
+    if n < 0 { break; }
+    if e[0].probe_n + n + 1 < e[0].probe_out.count {
+      for i: 0..<n { e[0].probe_out[e[0].probe_n + i] = cast(u8) cxproc_line_byte(e[0].probe, i); }
+      e[0].probe_n += n; e[0].probe_out[e[0].probe_n] = '\n'; e[0].probe_n += 1;
+    }
+  }
+  r := cxproc_release(e[0].probe); e[0].probe = -1; e[0].probed = true;
+  e_probe_done(e);
+}
+e_set :: (dst: [] u8, at: int, s: string) -> int { k := at; for c: s { if k < dst.count { dst[k] = c; k += 1; } } return k; }
+e_path_has :: (path: string, dir: string) -> bool {
+  i := 0;
+  while i <= path.count {
+    j := i; while j < path.count && path[j] != ':' { j += 1; }
+    if cast(string) path[i..<j] == dir { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+e_probe_done :: (e: [] Engine) {
+  out := e_str(e[0].probe_out[..], e[0].probe_n);
+  path := ""; i := 0;
+  while i < out.count {
+    j := i; while j < out.count && out[j] != '\n' { j += 1; }
+    l := cast(string) out[i..<j];
+    if l.count > 8 && l[0..<8] == "OA_PATH=" { path = cast(string) l[8..<l.count]; }
+    if l.count > 9 && l[0..<9] == "OA_CODEX=" && e[0].codex_exe.count == 0 { e[0].codex_exe = cast(string) l[9..<l.count]; }
+    if l == "OA_CODEX_AUTH=1" { e[0].codex_auth = true; }
+    if l.count > 10 && l[0..<10] == "OA_CLAUDE=" && e[0].claude_n == 0 && l.count - 10 < E_FILE { e[0].claude_n = e_set(e[0].claude[..], 0, cast(string) l[10..<l.count]); }
+    i = j + 1;
+  }
+  e[0].codex = e[0].codex_exe.count > 0 && e[0].codex_auth;
+  home: [E_FILE] u8;
+  h := cl_getenv("HOME", home[..]);
+  k := e_set(e[0].path_env[..], 0, "PATH=");
+  local: [E_FILE + 16] u8; ln := e_set(local[..], e_set(local[..], 0, h), "/.local/bin");
+  extra := [3] string.[e_str(local[..], ln), "/opt/homebrew/bin", "/usr/local/bin"];
+  for x: extra { if !e_path_has(path, x) && k + x.count + 1 < E_PATH { k = e_set(e[0].path_env[..], k, x); k = e_set(e[0].path_env[..], k, ":"); } }
+  if path.count == 0 { path = "/usr/bin:/bin:/usr/sbin:/sbin"; }
+  if k + path.count < E_PATH { k = e_set(e[0].path_env[..], k, path); }
+  else if k > 5 { k -= 1; }
+  e[0].path_n = k;
+}
+
+// Starts the CLI for the chosen model, effort and access (resuming the
+// conversation's session when it has one). Whether it started.
+e_start :: (e: [] Engine, s: [] Session) -> bool { return e_launch(e, s, false); }
+// warm: ahead of any message (for the CLI's model list), quiet if it fails.
+e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
+  if e[0].p[0].handle >= 0 { cl_close(e[0].p[..]); }
+  e[0].q[0] = ClQuery.{};
+  q := e[0].q[..];
+  cl_init(q, e[0].line, e[0].arena, e[0].out);
+  o: [1] ClOptions;
+  o[0].persist_session = true; o[0].control_timeout_ms = 60000;
+  if e[0].claude_n > 0 { o[0].program = e_str(e[0].claude[..], e[0].claude_n); }
+  cat := e[0].cat[..];
+  o[0].model = cat[0].id[e[0].model];
+  o[0].effort = claude_effort(cat, e[0].model, e[0].effort);
+  if ag_level_for(cat, e[0].model, e[0].effort) == LV_ULTRACODE { o[0].settings = "{\"ultracode\":true}"; }
+  o[0].include_partial_messages = true;
+  o[0].thinking_display = "summarized";
+  o[0].permission_handler = true;
+  o[0].permission_mode = e_mode(e);
+  if e[0].cwd_n > 0 { o[0].cwd = e_str(e[0].cwd[..], e[0].cwd_n); }
+  if e[0].path_n > 5 { cl_add_env(o[..], e_str(e[0].path_env[..], e[0].path_n)); }
+  cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+  if e[0].sid_n > 0 { o[0].resume = e_str(e[0].sid[..], e[0].sid_n); }
+  if e[0].room { e_room_tools(o[..]); }
+  q[0].options = o[0];
+  why := cl_start(q, e[0].p[..], "", true, e[0].scratch);
+  if why.count > 0 {
+    e[0].p[0].handle = -1;
+    if warm { return false; }
+    if why == "claude executable not found" || e[0].claude_n == 0 && why == "failed to spawn claude process" {
+      s_notice(s, N_INSTALL, INSTALL_TEXT);
+    } else { s_notice(s, N_ERROR, why); }
+    s_turn_end(s, false, "");
+    return false;
+  }
+  if e[0].claude_n == 0 { e[0].claude_n = e_set(e[0].claude[..], 0, "claude"); }   // installed since the probe: found on PATH
+  e[0].running = true; e[0].ready = false; e[0].run_n = e_effort_key(e, e[0].run_effort[..]);
+  return true;
+}
+e_mode :: (e: [] Engine) -> ClPermissionMode {
+  if e[0].plan { return ClPermissionMode.plan; }
+  return ifx e[0].access == ACC_EDITS then ClPermissionMode.accept_edits else ClPermissionMode.default;
+}
+// What the CLI must be started with for the chosen model and level (a new one restarts it).
+e_effort_key :: (e: [] Engine, out: [] u8) -> int {
+  k := e_set(out, 0, claude_effort(e[0].cat[..], e[0].model, e[0].effort));
+  if ag_level_for(e[0].cat[..], e[0].model, e[0].effort) == LV_ULTRACODE { k = e_set(out, k, "+"); }
+  return k;
+}
+e_restart_due :: (e: [] Engine) -> bool {
+  now: [24] u8;
+  n := e_effort_key(e, now[..]);
+  return e_str(now[..], n) != e_str(e[0].run_effort[..], e[0].run_n);
+}
+// The message to the CLI: Ultrathink's opener, the text, and (written in
+// place) the images attached to it before the text.
+e_deliver :: (e: [] Engine) {
+  q := e[0].q[..];
+  text := cast(string) e[0].prompt[0..<e[0].prompt_n];
+  images := ifx e[0].images_n < e[0].images.count then e[0].images_n else e[0].images.count;
+  if images == 0 { cl_send_user(q, text); }
+  else {
+    o := q[0].out[..];
+    cl_user_open(o);
+    for j: 0..<images { cl_image_block_bytes(o, e[0].images[j].media, e[0].images[j].bytes); cl_put(o, ","); }
+    cl_text_block(o, text);
+    cl_user_close(o, cl_session_id(q), q[0].options.verbatim_prompts);
+  }
+  e_delivered(e);
+}
+// The message is gone: its images are the owner's to drop.
+e_delivered :: (e: [] Engine) { e[0].images_n = 0; e[0].delivered += 1; }
+
+// The user sent a message: it joins the transcript as shown (its
+// attachments' chips), then goes to the CLI as text (started, or restarted
+// for a new effort, first).
+e_send :: (e: [] Engine, s: [] Session, text: string) { e_send_as(e, s, text, text); }
+e_send_as :: (e: [] Engine, s: [] Session, shown: string, text: string) {
+  was_live := s[0].live;
+  s_user(s, shown);
+  e_prompt(e, text);
+  e_go(e, s, s[0].n - 1, was_live);
+}
+// User part k goes to the CLI (the Lab sends it here once Elephant has routed it).
+e_forward :: (e: [] Engine, s: [] Session, k: int, was_live: bool) { e_prompt(e, s_text_of(s, k)); e_go(e, s, k, was_live); }
+// What the CLI reads: the text, Ultrathink opening it (to_effort).
+e_prompt :: (e: [] Engine, text: string) {
+  pre := ifx ag_level_for(e[0].cat[..], e[0].model, e[0].effort) == LV_ULTRATHINK then "Ultrathink:\n" else "";
+  if text.count + pre.count <= e[0].prompt.count {
+    for i: 0..<text.count { e[0].prompt[text.count - 1 - i + pre.count] = text[text.count - 1 - i]; }   // back to front: text may already sit in this buffer
+    for i: 0..<pre.count { e[0].prompt[i] = pre[i]; }
+    e[0].prompt_n = text.count + pre.count;
+  } else { e[0].prompt_n = e_set(e[0].prompt, 0, text); }
+}
+// The prompt goes (started, or restarted for a new effort, first).
+e_go :: (e: [] Engine, s: [] Session, k: int, was_live: bool) {
+  if !e[0].on { e_delivered(e); return; }
+  if !e[0].probed { e[0].pend = k; return; }   // e_pump starts it once PATH is known
+  if e[0].running && e_restart_due(e) && e[0].ready && !was_live { e_close(e); }
+  if !e[0].running { e[0].pend = k; if !e_start(e, s) { e[0].pend = -1; } return; }
+  if !e[0].ready { e[0].pend = k; return; }
+  e_deliver(e);
+}
+e_close :: (e: [] Engine) {
+  if e[0].p[0].handle >= 0 { cl_close(e[0].p[..]); }
+  e[0].running = false; e[0].ready = false; e[0].calling = false;
+}
+
+// STOP: the control protocol's interrupt (a CLI still starting is closed).
+e_stop :: (e: [] Engine, s: [] Session) {
+  if !s[0].live { return; }
+  s[0].stopping = true;
+  if s[0].asking >= 0 { e_answer(e, s, false); }
+  if !e[0].on || !e[0].running || !e[0].ready {
+    e[0].pend = -1;
+    if e[0].running { e_close(e); }
+    s_turn_end(s, false, "");
+    return;
+  }
+  r := cl_interrupt(e[0].q[..]);
+}
+
+// The chips: the model and access change the running CLI (set_model,
+// set_permission_mode); a new effort starts it again with the next message.
+e_set_model :: (e: [] Engine, m: int) {
+  if m < 0 || m >= e[0].cat[0].n { return; }
+  e[0].model = m;
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_model(e[0].q[..], e[0].cat[0].id[m]); }
+}
+e_set_access :: (e: [] Engine, a: int) {
+  e[0].access = a;
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); }
+}
+e_set_plan :: (e: [] Engine, on: bool) {
+  e[0].plan = on;
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); }
+}
+// The engine before the host's buffers: its catalog, High.
+e_init :: (e: [] Engine) {
+  if e[0].cat[0].n == 0 { e[0].cat[0] = claude_catalog(); e[0].effort = 2; }
+}
+
+// An approval's answer (the chip's Allow or Deny).
+e_answer :: (e: [] Engine, s: [] Session, allow: bool) {
+  k := s[0].asking;
+  if k < 0 { return; }
+  s[0].asking = -1;
+  input := s[0].parts[k].input;
+  // the approval chip leaves once answered
+  if k < s[0].n && s[0].parts[k].kind == P_NOTICE {
+    for j: k..<s[0].n - 1 { s[0].parts[j] = s[0].parts[j + 1]; }
+    s[0].n -= 1; s[0].changed = true;
+  }
+  if !e[0].on { return; }
+  if allow { cl_allow(e[0].q[..], input, ""); }
+  else { cl_deny(e[0].q[..], "The user denied this.", false); }
+}
+
+// A permission prompt (can_use_tool): Full access allows it; otherwise the
+// transcript asks (polling waits for the answer: cl_poll would answer it).
+e_permission :: (e: [] Engine, s: [] Session, ev: ClEvent) {
+  if e[0].access == ACC_FULL { cl_allow(e[0].q[..], ev.request.input, ""); return; }
+  buf: [600] u8;
+  k := e_set(buf[..], 0, ev.request.tool_name);
+  cmd := cl_str(e[0].q[0].ar[..], ev.request.input, "command");
+  if cmd.count == 0 { cmd = cl_str(e[0].q[0].ar[..], ev.request.input, "file_path"); }
+  if cmd.count > 0 { k = e_set(buf[..], k, ": "); k = e_set(buf[..], k, cmd); }
+  s_notice(s, N_ASK, e_str(buf[..], k));
+  s[0].asking = s[0].n - 1;
+  s[0].parts[s[0].asking].input = s_put(s, ev.request.input);
+}
+
+// The CLI's models become the catalog; the chosen model stays chosen (the
+// unnamed default is the CLI's default, now first).
+e_take_models :: (e: [] Engine, response: string) {
+  was := e[0].cat[0].id[e[0].model];
+  unnamed := was.count == 0;
+  wid: [96] u8; wn := e_set(wid[..], 0, was);
+  c: [1] AgCatalog;
+  if !claude_discover(c[..], e[0].q[0].ar[..], response, e[0].cat_pool[..], e[0].cat_at[..]) { return; }
+  e[0].cat[0] = c[0];
+  k := ifx unnamed then 0 else claude_find(e[0].cat[..], e_str(wid[..], wn));
+  e[0].model = ifx k < 0 then 0 else k;
+  e[0].cat_gen += 1;
+}
+// Each frame: the probe, then what the CLI wrote (at most a batch of lines).
+e_pump :: (e: [] Engine, s: [] Session) {
+  if !e[0].on { return; }
+  if !e[0].probed { e_probe_poll(e); if !e[0].probed { return; } }
+  if !e[0].running && e[0].pend >= 0 && s[0].live {
+    if !e_start(e, s) { e[0].pend = -1; return; }
+  }
+  // once PATH is known, the CLI starts ahead of the first message: its
+  // initialize answer lists the account's models (Zeron's model probe), and
+  // the first message finds it ready
+  if !e[0].running && !e[0].warmed && e[0].claude_n > 0 { e[0].warmed = true; b := e_launch(e, s, true); }
+  if !e[0].running || s[0].asking >= 0 || e[0].calling { return; }
+  for guard: 0..<200 {
+    ev := cl_poll(e[0].q[..], e[0].p[..], 0);
+    if ev.kind == ClEventKind.idle { return; }
+    if ev.kind == ClEventKind.initialized {
+      e[0].ready = true;
+      e_take_models(e, ev.response.response);
+      if e[0].pend >= 0 { e_deliver(e); e[0].pend = -1; }
+      continue;
+    }
+    if ev.kind == ClEventKind.message {
+      s_on_message(s, e[0].q[0].ar[..], ev.message);
+      sid := cl_session_id(e[0].q[..]);
+      if sid.count > 0 { e[0].sid_n = e_set(e[0].sid[..], 0, sid); }
+      continue;
+    }
+    if ev.kind == ClEventKind.tool_call {
+      // a room tool: the desk answers it (now, or when the other agent has)
+      e[0].calling = true; e[0].call = ev.tool; e[0].call_ask = -1;
+      e[0].call_n = e_set(e[0].call_args[..], 0, ev.arguments);
+      return;
+    }
+    if ev.kind == ClEventKind.permission {
+      e_permission(e, s, ev);
+      if s[0].asking >= 0 { return; }
+      continue;
+    }
+    if ev.kind == ClEventKind.failed || ev.kind == ClEventKind.end {
+      why := "";
+      if ev.kind == ClEventKind.failed { why = cl_error(e[0].q[..]); }
+      tail := cl_stderr(e[0].p[..], e[0].err[..]);
+      if tail.count > 0 { why = tail; }
+      if why.count == 0 { why = "Claude Code stopped before answering."; }
+      e_close(e);
+      e[0].pend = -1;
+      if !s[0].live { return; }          // the warm CLI went (signed out, say): the first message starts it again and says why
+      s_claude_end(s, !s[0].stopping, why);
+      return;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- checks
+
+// Claude Code 2.1.312's initialize answer on a Max account (models only, abridged to the fields read).
+CLAUDE_TEST_MODELS :: "{\"models\":[{\"value\":\"default\",\"resolvedModel\":\"claude-haiku-5-5\",\"displayName\":\"Default (recommended)\",\"description\":\"Haiku 5.5\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"opus\",\"resolvedModel\":\"claude-opus-5-5\",\"displayName\":\"Opus 5.5\",\"description\":\"For complex work and everyday tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"fable\",\"resolvedModel\":\"claude-fable-5-1\",\"displayName\":\"Fable 5.1\",\"description\":\"For your toughest challenges\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"sonnet\",\"resolvedModel\":\"claude-sonnet-5-5\",\"displayName\":\"Sonnet 5.5\",\"description\":\"Most efficient for simpler tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"haiku\",\"resolvedModel\":\"claude-haiku-5-5\",\"displayName\":\"Haiku 5.5\",\"description\":\"Fastest for quick answers\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-haiku-4-5-20251001\",\"resolvedModel\":\"claude-haiku-4-5-20251001\",\"displayName\":\"Haiku 4.5\",\"description\":\"Fastest for quick answers\"},{\"value\":\"claude-sonnet-5\",\"resolvedModel\":\"claude-sonnet-5\",\"displayName\":\"Sonnet 5\",\"description\":\"Efficient for routine tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-5\",\"resolvedModel\":\"claude-opus-5\",\"displayName\":\"Opus 5\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-fable-5\",\"resolvedModel\":\"claude-fable-5\",\"displayName\":\"Fable 5\",\"description\":\"Most capable for your hardest and longest-running tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-8\",\"resolvedModel\":\"claude-opus-4-8\",\"displayName\":\"Opus 4.8\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-7\",\"resolvedModel\":\"claude-opus-4-7\",\"displayName\":\"Opus 4.7\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"value\":\"claude-opus-4-6\",\"resolvedModel\":\"claude-opus-4-6\",\"displayName\":\"Opus 4.6\",\"description\":\"Best for everyday, complex tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"max\"]},{\"value\":\"claude-sonnet-4-6\",\"resolvedModel\":\"claude-sonnet-4-6\",\"displayName\":\"Sonnet 4.6\",\"description\":\"Efficient for routine tasks\",\"supportedEffortLevels\":[\"low\",\"medium\",\"high\",\"max\"]}]}";
+
+#test "the CLI's models join Zeron's curated rows: one row a model, its default first, the chosen model kept" {
+  abuf: [4096] u8; ar := [1] ClArena.[ClArena.{buf = abuf[..]}];
+  pool: [2048] u8; at: [1] int; c: [1] AgCatalog;
+  #assert claude_discover(c[..], ar[..], CLAUDE_TEST_MODELS, pool[..], at[..]);
+  #assert c[0].n == 12 && c[0].id[0] == "claude-haiku-5-5" && c[0].label[0] == "Haiku 5.5";
+  #assert c[0].label[1] == "Fable 5.1" && c[0].label[3] == "Opus 5.5" && c[0].id[7] == "claude-haiku-4-5" && c[0].ladder[7] == 0;
+  #assert c[0].id[8] == "claude-sonnet-5-5" && c[0].label[8] == "Sonnet 5.5" && c[0].ladder[8] == LADDER_FULL;
+  #assert c[0].label[10] == "Opus 4.6" && c[0].ladder[10] == LADDER_CLASSIC && c[0].label[11] == "Sonnet 4.6";
+  for i: 0..<c[0].n { for j: i + 1..<c[0].n { #assert c[0].label[i] != c[0].label[j] && c[0].id[i] != c[0].id[j]; } }
+  // a long-context default lands on its curated row, moved first under its own name
+  ar[0].at = 0;
+  #assert claude_discover(c[..], ar[..], "{\"models\":[{\"value\":\"default\",\"resolvedModel\":\"claude-opus-5-5[1m]\",\"displayName\":\"Default (recommended)\"},{\"value\":\"opus\",\"resolvedModel\":\"claude-opus-5-5\"}]}", pool[..], at[..]);
+  #assert c[0].n == 7 && c[0].id[0] == "claude-opus-5-5" && c[0].label[0] == "Opus 5.5" && c[0].label[1] == "Fable 5.1";
+  #assert !claude_discover(c[..], ar[..], "{\"models\":[]}", pool[..], at[..]) && c[0].n == 8 && c[0].id[0] == "";
+  // the engine keeps what was chosen: the unnamed default is the CLI's, a named model stays by id
+  e: [1] Engine; e_init(e[..]);
+  abuf2: [4096] u8; e[0].q[0].ar[0].buf = abuf2[..];
+  #assert e[0].cat[0].n == 8 && e[0].model == 0;
+  e_take_models(e[..], CLAUDE_TEST_MODELS);
+  #assert e[0].cat_gen == 1 && e[0].model == 0 && e[0].cat[0].id[0] == "claude-haiku-5-5";
+  e[0].model = 3;   // Opus 5.5
+  e_take_models(e[..], CLAUDE_TEST_MODELS);
+  #assert e[0].cat[0].id[e[0].model] == "claude-opus-5-5";
+}
+
+// A recorded line as the engine's reader classifies it, reading only what
+// the mapping uses (its type, a result's subtype, its parent): the SDK's
+// cl_classify checks every frame against its spec too, which an
+// interpreted test can afford for a few frames (the last check below
+// feeds those through cl_feed), not for the whole turn.
+s_test_message :: (ar: [] ClArena, line: string) -> ClMessage {
+  m := ClMessage.{frame = ClFrame.message, line = line};
+  names := CL_TYPES;
+  m.kind = cast(ClKind) (cl_index_of(line, cl_find(line, "type"), names[..]) + 1);
+  if m.kind == ClKind.result { m.result = ifx cl_eq(line, cl_find(line, "subtype"), "success") then ClResultKind.success else ClResultKind.error_during_execution; }
+  p := cl_find(line, "parent_tool_use_id");
+  if p.ok && p.tok == JSON_STRING { m.parent_tool_use_id = cl_text(ar, line, p); }
+  return m;
+}
+s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
+  for line: lines { q[0].ar[0].at = 0; s_on_message(s, q[0].ar[..], s_test_message(q[0].ar[..], line)); }
+}
+
+#test "the engine's reader takes the recorded frames: cl_feed classifies them and the result ends the turn" {
+  q: [1] ClQuery; line: [8] u8; arena: [65536] u8; out: [4096] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  q[0].streaming = true;
+  s: [1] Session; pool: [16384] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "fix the typo");
+  fx := CLAUDE_FIXTURE;
+  // the init, the edit's call and its result, the final result
+  picked := 0;
+  for l: fx {
+    q[0].ar[0].at = 0;
+    ty := cl_str(q[0].ar[..], l, "type");
+    keep := ty == "result" || (ty == "system" && picked == 0);
+    if !keep && (ty == "assistant" || ty == "user") { keep = s_has(l, "notes.txt has been updated") || s_has(l, "\"name\":\"edit\""); }
+    if !keep { continue; }
+    ev := cl_feed(q[..], l);
+    #assert ev.kind == ClEventKind.message && ev.message.kind != ClKind.unknown;
+    s_on_message(s[..], q[0].ar[..], ev.message);
+    picked += 1;
+  }
+  #assert picked == 4 && cl_session_id(q[..]) == "dfc3d0c7-79e7-4d09-b940-c3ad305b7492";
+  #assert s[0].parts[1].kind == P_TOOL && s[0].parts[1].tk == TK_EDIT && s[0].parts[1].resolved && !s[0].parts[1].failed;
+  #assert !s[0].live && s[0].n == 2 && s[0].cost > 0.0041 && s[0].cost < 0.0042;
+}
+
+#test "a recorded Claude Code turn folds into Zeron's parts: thinking, calls with their results, the answer" {
+  q: [1] ClQuery; line: [8] u8; arena: [65536] u8; out: [4096] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  q[0].streaming = true;
+  s: [1] Session; pool: [65536] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "Look around this folder and fix the typo in notes.txt");
+  fx := CLAUDE_FIXTURE;
+  s_test_feed(s[..], q[..], fx[..]);
+  #assert !s[0].live && !s[0].noticed;
+  #assert s[0].cost > 0.0041 && s[0].cost < 0.0042 && s[0].turn_ms > 0;
+  kinds: [32] int; n := 0;
+  for k: 0..<s[0].n { if n < 32 { kinds[n] = s[0].parts[k].kind; n += 1; } }
+  // the message, Bash ls and cat, the thought, Read, Grep, Edit, the failed cat, then the answer
+  #assert kinds[0] == P_USER;
+  tools := 0; thoughts := 0; texts := 0;
+  for k: 1..<s[0].n {
+    p := s[0].parts[k];
+    if p.kind == P_TOOL { tools += 1; #assert p.resolved; }
+    if p.kind == P_THINK { thoughts += 1; }
+    if p.kind == P_TEXT { texts += 1; }
+  }
+  #assert tools == 6 && thoughts >= 1 && texts >= 1;
+  // calls decode as decode_tool_use does
+  edit := -1; failed := -1; grep := -1;
+  for k: 0..<s[0].n {
+    p := s[0].parts[k];
+    if p.kind != P_TOOL { continue; }
+    if p.tk == TK_EDIT { edit = k; }
+    if p.failed { failed = k; }
+    if p.tk == TK_SEARCH { grep = k; }
+  }
+  #assert edit > 0 && s[0].parts[edit].arg == "/tmp/demo/notes.txt" && s[0].parts[edit].before == "- bred" && s[0].parts[edit].after == "- bread";
+  #assert failed > 0 && s[0].parts[failed].tk == TK_EXEC && s[0].parts[failed].arg == "cat missing.txt";
+  #assert s[0].parts[failed].output == "Exit code 1\ncat: missing.txt: No such file or directory";
+  #assert grep > 0 && s[0].parts[grep].arg == "TODO";
+  // the answer is the streamed Markdown, whole
+  last := s_text_of(s[..], s[0].n - 1);
+  #assert s[0].parts[s[0].n - 1].kind == P_TEXT && last.count > 40;
+}
+
+#test "signed out, the notice is the login line; missing, the empty chat shows the install line until a message goes" {
+  s: [1] Session; pool: [4096] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "hi");
+  s_claude_end(s[..], true, "Not logged in · Please run /login");
+  #assert !s[0].live && s[0].n == 2 && s[0].parts[1].notice == N_SIGNED_OUT && s_text_of(s[..], 1) == LOGIN_TEXT;
+  s_user(s[..], "again");
+  s_claude_end(s[..], true, "exit status 2");
+  #assert s[0].parts[s[0].n - 1].notice == N_ERROR && s_text_of(s[..], s[0].n - 1) == "exit status 2";
+  s_init(s[..], pool[..]);
+  s_hint_install(s[..]);
+  #assert s[0].hint && s[0].n == 1 && s[0].parts[0].notice == N_INSTALL && s_text_of(s[..], 0) == HINT_TEXT;
+  s_hint_install(s[..]);
+  #assert s[0].n == 1;
+  s_user(s[..], "hello");
+  #assert !s[0].hint && s[0].n == 1 && s[0].parts[0].kind == P_USER && s_text_of(s[..], 0) == "hello";
+  s_init(s[..], pool[..]);
+  s_hint_install(s[..]);
+  s_drop_hint(s[..]);
+  #assert s[0].n == 0 && !s[0].hint;
+}

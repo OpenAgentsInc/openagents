@@ -72,7 +72,7 @@ int32_t zr_can_cut(void *state) { return coaxial_zeron_can_cut(at(state)) ? 1 : 
 int32_t zr_take_copy(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_take_copy(at(state), (coax_v_u8){out, cap}); }
 void zr_fixture(void *state, int32_t open) { if (open == 2) coaxial_zeron_fixture_table(at(state)); else coaxial_zeron_fixture(at(state), open != 0); }
 void zr_scroll_to(void *state, float px) { coaxial_zeron_scroll_to(at(state), px); }
-// The chat's engine (zeron/claude.coax): its buffers, the folder Claude Code
+// The chat's engine (coax/lib/agent/engine/claude.coax): its buffers, the folder Claude Code
 // works in, and what the host does for it.
 #define ZR_POOL (8 << 20)
 #define ZR_LINE (1 << 20)
@@ -87,18 +87,18 @@ void zr_attach(void *state, const uint8_t *cwd, int32_t length) {
                        (coax_v_u8){out, ZR_OUT}, (coax_v_u8){scratch, ZR_SCRATCH}, str(cwd, length));
   uint8_t *store = malloc(ZR_STORE);
   if (store) coaxial_zeron_attach_store(at(state), (coax_v_u8){store, ZR_STORE});
-  // The Codex engine (zeron/codex.coax): itself and its buffers, kept for the app's life.
+  // The Codex engine (coax/lib/agent/engine/codex.coax): itself and its buffers, kept for the app's life.
   coax_t_CxEngine *codex = calloc(1, sizeof(coax_t_CxEngine));
   int64_t cmem = coaxial_zeron_codex_mem();
   uint8_t *cline = malloc(ZR_LINE), *carena = malloc(ZR_ARENA), *cout = malloc(ZR_LINE), *cm = malloc((size_t)cmem);
   if (codex && cline && carena && cout && cm)
     coaxial_zeron_attach_codex(at(state), (coax_v_t_CxEngine){codex, 1}, (coax_v_u8){cline, ZR_LINE}, (coax_v_u8){carena, ZR_ARENA},
                                (coax_v_u8){cout, ZR_LINE}, (coax_v_u8){cm, cmem});
-  // Microcoder for the Lab's other route (zeron/microcoder.coax): its loop, plan and buffers, kept for the app's life.
+  // Microcoder for the Lab's other route (coax/lib/agent/engine/microcoder.coax): its loop, plan and buffers, kept for the app's life.
   coax_t_LabMc *mc = calloc(1, sizeof(coax_t_LabMc));
   if (mc) coaxial_zeron_attach_mc(at(state), (coax_v_t_LabMc){mc, 1});
 }
-// The clock Codex's usage-limit notices count from (zeron/codex.coax).
+// The clock Codex's usage-limit notices count from (coax/lib/agent/engine/codex.coax).
 int64_t zr_unix_s(void) { return (int64_t)time(NULL); }
 int64_t zr_random_u64(void) { int64_t v; arc4random_buf(&v, sizeof v); return v; }   // microcoder.coax: aux for our route's signatures
 int64_t zr_lab_unix_s(void) { return (int64_t)time(NULL); }

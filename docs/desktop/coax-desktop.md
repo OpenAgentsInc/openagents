@@ -47,7 +47,7 @@ How it works:
   chip until the text needs more). `zeron/screen.coax` is the chat screen:
   the canvas, the transcript and the docked composer, connected to your own
   Claude Code (below).
-- `zeron/claude.coax` runs your `claude` CLI through `coax/lib/agent/claude`
+- `coax/lib/agent/engine/claude.coax` (the shared engine layer, roadmap Step 2; `zeron/claude.coax` keeps how its session becomes rows) runs your `claude` CLI through `coax/lib/agent/claude`
   (stream-json both ways, the control protocol), polled without blocking from
   the frame loop: one long-lived session per conversation, cwd `$HOME` or
   `--cwd PATH`. Like the old Backend it injects no key (ANTHROPIC_API_KEY is
@@ -110,7 +110,7 @@ How it works:
   (`zeron/fixtures/claude-tools.jsonl`, regenerated with `fixture.py`)
   through the mapping.
 - Claude | Psionic: a chat runs on Claude (above) or on Psionic, our own
-  gpt-oss-20b through the Psionic Responses API (`zeron/psionic.coax`). As in
+  gpt-oss-20b through the Psionic Responses API (`coax/lib/agent/engine/psionic.coax`). As in
   Zeron the harness rides on the model chip: its mark (the OpenAgents power
   symbol for Psionic) and model; on an empty chat the model list has a tab
   per mode (Tab moves between them); a conversation keeps its mode. Psionic's
@@ -140,10 +140,10 @@ How it works:
   from `~/.config/psionic-responses.env`), is started by the GPU switch
   below, and the app opens the tunnel itself. gpt-oss-20b needs most of the
   4080's 16 GB, so it cannot run beside another resident model there. Flags `--mode claude|psionic`,
-  shot step `mode NAME`. Tests: `coax test --library zeron/psionic.coax`
+  shot step `mode NAME`. Tests: `coax test --library coax/lib/agent/engine/psionic.coax`
   runs recorded streams (`zeron/fixtures/psionic-turns.sse`, recorded and
   turned into `psionic_fixture.coax` by `fixtures/psionic.py`).
-- Codex: the third harness (`zeron/codex.coax` over `coax/lib/agent/codex/`,
+- Codex: the third harness (`coax/lib/agent/engine/codex.coax` over `coax/lib/agent/codex/`,
   the pull-based client for `codex app-server`), mapped as Zeron maps it
   (`harness/src/codex/`). It uses the ChatGPT login the Codex CLI already
   has (the child never gets `OPENAI_API_KEY` or `CODEX_API_KEY` and never
@@ -161,7 +161,7 @@ How it works:
   plan/todo; signed out, not installed, and usage or rate limits are Zeron's
   notices; Stop interrupts the turn. Attachments go as paths in the prompt
   (as Zeron sends them). The Lab routes to Codex when Elephant picks it.
-  Flags `--mode codex`; tests `coax test --library zeron/codex.coax` run a
+  Flags `--mode codex`; tests `coax test --library coax/lib/agent/engine/codex.coax` run a
   scrubbed recorded session through the mapping.
 - `zeron/transcript.coax` (with `markdown.coax` and `tools.coax`) is Zeron's
   chat transcript (`crates/ui/src/transcript.rs`, `render.rs`'s Markdown and
@@ -202,7 +202,7 @@ How it works:
   GPUI's does: Coax asks for each new grapheme, the host shapes it with
   CoreText and rasterizes its cells (emoji into a color atlas). Zeron's
   composer has no context menu, so neither does this one.
-- The Lab (`zeron/lab.coax`, 2026-10-29) is the third mode beside Claude
+- The Lab (`coax/lib/agent/engine/lab.coax`, 2026-10-29) is the third mode beside Claude
   and Psionic: on the model chip after Psionic in an empty chat (or
   `--mode lab`, shot step `mode lab`).
   Each message first goes to our own Elephant, `elephant-1` served by
@@ -231,7 +231,7 @@ How it works:
   round trip adds latency and a relay to a call the app makes per message.
   A five-question decision takes about 1.8 s on the server (the device
   plan was raised to 512 tokens per question for it).
-- One GPU, two models (`zeron/gpu.coax`, 2026-10-29). The RTX 4080 holds
+- One GPU, two models (`coax/lib/agent/engine/gpu.coax`, 2026-10-29). The RTX 4080 holds
   elephant-1 (about 13.5 GiB resident plus 1.3 GiB pinned) or gpt-oss-20b
   (about 13.9 GiB), not both, so a small switch on `coderos-4080` owns the
   card: `psionic/platform/gpu-switch.py`, the systemd user unit

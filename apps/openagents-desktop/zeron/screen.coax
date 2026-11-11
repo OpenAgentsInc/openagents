@@ -84,6 +84,8 @@ ZeronState :: struct {
   cx_gen: int;                     // the Codex engine's catalog these copy
   ps_place_gen: int;               // the Psionic engine's place these copy
   att: [1] Attachments;
+  images: [AT_MAX] AgImage;        // the sent message's images as the Claude engine takes them (zr_images)
+  seen_delivered: int;             // the engines' deliveries the attachments already followed (zr_delivered)
   own_store: [256] u8;           // the attachments' bytes until the host attaches its store
   prompt: [] u8;                 // a message as its engine reads it (the store's last 512 KiB)
   own_prompt: [256] u8; 
@@ -223,7 +225,7 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
   }
   n := at_take(t, text);
   if s[0].mode == MODE_PSIONIC {
-    if n == 0 { zr_ps_send(s, text, text); return true; }
+    if n == 0 { ag_send(zr_agent(s), text, text); return true; }
     why: [512] u8; wn: [1] int;
     msg := at_text_only(t, a, text, PS_MODEL, s[0].prompt[..], why[..], wn[..]);
     if msg.count == 0 {
@@ -233,7 +235,7 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
       zr_fail(s, cast(string) why[0..<wn[0]]);
       return false;
     }
-    zr_ps_send(s, text, msg);
+    ag_send(zr_agent(s), text, msg);
     at_delivered(t);
     return true;
   }
@@ -244,13 +246,37 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
       zr_fail(s, "The Lab doesn't take attachments yet. Pick a Claude model to send files.");
       return false;
     }
-    lab_send(s[0].lab[..], s[0].engine[..], s[0].psionic[..], s[0].gpu[..], s[0].session[..], text);
+    ag_send(zr_agent(s), text, text);
+    zr_delivered(s);
     return true;
   }
   // Codex reads the attachments as Zeron sends them: their paths in the text
-  if s[0].mode == MODE_CODEX { cxe_send_as(s[0].codex, s[0].session[..], text, at_prompt(t, a, text, s[0].prompt[..])); return true; }
-  e_send_as(s[0].engine[..], s[0].session[..], text, at_prompt(t, a, text, s[0].prompt[..]));
+  if s[0].mode == MODE_CLAUDE { zr_images(s); }
+  ag_send(zr_agent(s), text, at_prompt(t, a, text, s[0].prompt[..]));
+  zr_delivered(s);
   return true;
+}
+// The chat's engines and session as the one engine interface takes them (coax/lib/agent/engine/engine.coax).
+zr_agent :: (s: [] ZeronState) -> Agent {
+  return Agent.{mode = s[0].mode, claude = s[0].engine[..], psionic = s[0].psionic[..], codex = s[0].codex, lab = s[0].lab[..], gpu = s[0].gpu[..], session = s[0].session[..]};
+}
+// The sent message's images for Claude Code: each attachment that is an image it takes, with its bytes (kept in the store until delivered).
+zr_images :: (s: [] ZeronState) {
+  t := s[0].att[..]; e := s[0].engine[..];
+  if e[0].images.count == 0 { e[0].images = s[0].images[..]; }
+  n := 0;
+  for j: 0..<t[0].sn {
+    m := at_media_of(t, j);
+    if m.count > 0 && n < e[0].images.count { e[0].images[n] = AgImage.{media = m, bytes = at_bytes(t, t[0].files[j])}; n += 1; }
+  }
+  e[0].images_n = n;
+}
+// An engine handed the sent message on (or dropped it with no process): its attachments leave, and the draft's are next.
+zr_delivered :: (s: [] ZeronState) {
+  d := s[0].engine[0].delivered + (ifx s[0].codex.count > 0 then s[0].codex[0].delivered else 0);
+  if d == s[0].seen_delivered { return; }
+  s[0].seen_delivered = d;
+  at_delivered(s[0].att[..]);
 }
 // "@Codex 1 check the tests": when the line starts with another agent's name (any case), its note is queued for the desk.
 zr_mention :: (s: [] ZeronState, rest: string) -> bool {
@@ -277,26 +303,12 @@ zr_fail :: (s: [] ZeronState, why: string) {
   c := s[0].composer[..];
   c[0].failure_n = e_copy(c[0].failure[..], 0, why);
 }
-// A Psionic message: gpt-oss-20b must be on the GPU first (the switch may be holding Elephant there).
-zr_ps_send :: (s: [] ZeronState, shown: string, text: string) {
-  p := s[0].psionic[..]; ss := s[0].session[..]; l := s[0].lab[..];
-  s_user(ss, shown);
-  if p[0].on { ps_configure(p); lab_door(l); p[0].hold = gs_want(s[0].gpu[..], ss, GS_GPTOSS, GT_PSIONIC, lab_url(l), ps_url(p)); }
-  ps_forward(p, ss, text);
-}
 zr_stop :: (s: [] ZeronState) {
   s[0].stops += 1;
-  if gs_stop(s[0].gpu[..], s[0].session[..]) { s[0].psionic[0].hold = false; }
-  if s[0].mode == MODE_PSIONIC || zr_lab_psionic(s) { ps_stop(s[0].psionic[..], s[0].session[..]); return; }
-  if s[0].mode == MODE_LAB && lab_stop(s[0].lab[..], s[0].session[..]) { return; }
-  if zr_codex(s) { cxe_stop(s[0].codex, s[0].session[..]); return; }
-  e_stop(s[0].engine[..], s[0].session[..]);
+  ag_stop(zr_agent(s));
 }
 // The chat's message is running on Codex (the Codex mode, or the Lab's Codex route): its Stop, approvals and sign-in go there.
-zr_codex :: (s: [] ZeronState) -> bool { return s[0].mode == MODE_CODEX || (s[0].mode == MODE_LAB && s[0].lab[0].via == 2); }
-// The Lab's message is running on Psionic (its Stop and approvals go there).
-zr_lab_psionic :: (s: [] ZeronState) -> bool { return s[0].mode == MODE_LAB && s[0].lab[0].via == 1 && !s[0].lab[0].fallback;
-}
+zr_codex :: (s: [] ZeronState) -> bool { return ag_codex(zr_agent(s)); }
 // Cmd+N (File > New Chat): Zeron's empty new chat. A running turn stops;
 // each engine forgets the conversation (Claude's session, Codex's thread,
 // Psionic's replay) so the next message starts a new one; the draft stays.
@@ -386,9 +398,9 @@ zr_tick :: (s: [] ZeronState, width: f32, height: f32, dpr: f32, dt: f32) {
     zr_catalogs(s);
     if s[0].att[0].store.count == 0 { s[0].att[0].store = s[0].own_store[..]; }
     if s[0].prompt.count == 0 { s[0].prompt = s[0].own_prompt[..]; }
-    e[0].att = s[0].att[..]; e[0].prompt = s[0].prompt;
+    e[0].images = s[0].images[..]; e[0].prompt = s[0].prompt;
     cxe_init(s[0].codex);
-    if s[0].codex.count > 0 { s[0].codex[0].att = s[0].att[..]; s[0].codex[0].prompt = s[0].prompt; }
+    if s[0].codex.count > 0 { s[0].codex[0].prompt = s[0].prompt; }
     if !s[0].psionic[0].on { ps_init(s[0].psionic[..]); }
     if !s[0].gpu[0].on { gs_init(s[0].gpu[..]); }
     t[0].seed = 1;
@@ -402,31 +414,17 @@ zr_tick :: (s: [] ZeronState, width: f32, height: f32, dpr: f32, dt: f32) {
   c[0].clock += dt1;
   s[0].atlas[0].frame += 1;
   // the engines: what Claude Code (or curl, for Psionic) wrote since the last frame
-  e_pump(e, ss);
-  // Claude Code isn't installed: an empty Claude chat says so at once, with the install line and Install
-  if s[0].mode == MODE_CLAUDE && !s[0].demo && e[0].on && e[0].probed && e[0].claude_n == 0 { s_hint_install(ss); }
-  else if ss[0].hint { s_drop_hint(ss); s[0].transcript[0].nr = 0; }
-  if e[0].cat_gen != s[0].cat_gen { s[0].cat_gen = e[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // the CLI listed its models
-  s[0].psionic[0].access = e[0].access;
-  ps_pump(s[0].psionic[..], ss, dt1);
-  if s[0].psionic[0].place_gen != s[0].ps_place_gen { zr_catalogs(s); }   // it found where gpt-oss-20b answers from
-  // Codex: started ahead of a message once its tab is in view (its model/list fills the picker)
+  // (coax/lib/agent/engine/engine.coax ag_poll: Claude Code, Psionic, Codex, the Lab and its GPU switch, in that order)
   cx := s[0].codex;
-  if cx.count > 0 {
-    cx[0].access = e[0].access;
-    cx[0].want_warm = cx[0].want_warm || s[0].mode == MODE_CODEX || (pk_is_open(s[0].picker[..]) && zr_view(s) == MODE_CODEX);
-    cxe_pump(cx, e, ss);
-    if cx[0].cat_gen != s[0].cx_gen { s[0].cx_gen = cx[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // Codex listed its models
-  }
-  lab_pump(s[0].lab[..], e, s[0].psionic[..], s[0].gpu[..], ss, dt1);
-  // the Lab routed a message to Codex: the Codex engine runs it at the decided effort, on its default model
-  if s[0].lab[0].codex_due && cx.count > 0 {
-    s[0].lab[0].codex_due = false;
-    lv := s[0].lab[0].codex_effort + 1;      // EFFORT_IDS low..max are Codex's levels 1..5
-    cx[0].effort = ifx lv >= 1 && lv <= 5 then lv else CX_LV_HIGH; cx[0].model = 0;
-    cxe_forward(cx, ss, s[0].lab[0].part);
-  }
-  lab_gpu_pump(s[0].lab[..], e, s[0].psionic[..], s[0].gpu[..], ss, dt1);
+  // Codex is started ahead of a message once its tab is in view (its model/list fills the picker)
+  if cx.count > 0 { cx[0].want_warm = cx[0].want_warm || (pk_is_open(s[0].picker[..]) && zr_view(s) == MODE_CODEX); }
+  was_hint := ss[0].hint;
+  ag_poll(zr_agent(s), dt1, s[0].demo);
+  zr_delivered(s);
+  if was_hint && !ss[0].hint { s[0].transcript[0].nr = 0; }    // the install hint left: an empty chat again
+  if e[0].cat_gen != s[0].cat_gen { s[0].cat_gen = e[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // the CLI listed its models
+  if s[0].psionic[0].place_gen != s[0].ps_place_gen { zr_catalogs(s); }   // it found where gpt-oss-20b answers from
+  if cx.count > 0 && cx[0].cat_gen != s[0].cx_gen { s[0].cx_gen = cx[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // Codex listed its models
   // Send, Stop and the chips
   if c[0].clicked >= 0 { k := c[0].clicked; c[0].clicked = -1; zr_chip(s, k); }
   // a sent message joins the transcript as the user's bubble (and goes to Claude Code), and the view follows it
@@ -440,9 +438,7 @@ zr_tick :: (s: [] ZeronState, width: f32, height: f32, dpr: f32, dt: f32) {
   // a notice's buttons
   if t[0].action != A_NONE {
     if t[0].action == A_ALLOW || t[0].action == A_DENY {
-      if s[0].mode == MODE_PSIONIC || zr_lab_psionic(s) { ps_answer(s[0].psionic[..], ss, t[0].action == A_ALLOW); }
-      else if zr_codex(s) { cxe_answer(s[0].codex, ss, t[0].action == A_ALLOW); }
-      else { e_answer(e, ss, t[0].action == A_ALLOW); }
+      ag_answer(zr_agent(s), t[0].action == A_ALLOW);
     }
     else if zr_codex(s) { s[0].host_action = ifx t[0].action == A_INSTALL then HOST_CODEX_INSTALL else HOST_CODEX_LOGIN; }
     else { s[0].host_action = ifx t[0].action == A_INSTALL then HOST_INSTALL else HOST_LOGIN; }
@@ -558,13 +554,13 @@ zr_paint_status :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, x
 
 // The catalogs the menus show, one per mode (Claude's is the engine's).
 zr_catalogs :: (s: [] ZeronState) {
-  s[0].cats[MODE_CLAUDE] = s[0].engine[0].cat[0];
+  s[0].cats[MODE_CLAUDE] = pk_of(s[0].engine[0].cat[0], ICON_CLAUDE_14, CLAUDE_TINT);
   s[0].cats[MODE_PSIONIC] = mode_catalog(MODE_PSIONIC);
   s[0].cats[MODE_PSIONIC].place = ps_where(s[0].psionic[..]);   // "coderos-4080 · RTX 4080"
   s[0].ps_place_gen = s[0].psionic[0].place_gen;
   s[0].cats[MODE_LAB] = mode_catalog(MODE_LAB);
   cxe_init(s[0].codex);
-  s[0].cats[MODE_CODEX] = ifx s[0].codex.count > 0 then s[0].codex[0].cat[0] else codex_catalog();
+  s[0].cats[MODE_CODEX] = pk_of(ifx s[0].codex.count > 0 then s[0].codex[0].cat[0] else codex_catalog(), ICON_OPENAI_14, zeron_dark().muted);
 }
 // Zeron's failure notice above the composer (mx 4, 6 over it): the danger
 // wash, the tile with its mark, "Error", the message under it; a press
@@ -773,7 +769,7 @@ coaxial_zeron_attach :: (s: [] ZeronState, pool: [] u8, line: [] u8, arena: [] u
   e[0].cwd_n = e_set(e[0].cwd[..], 0, cwd);
   e_init(e);
   zr_catalogs(s);
-  e[0].att = s[0].att[..];
+  e[0].images = s[0].images[..];
   e[0].on = true;
   e_probe_start(e);
   p := s[0].psionic[..];
@@ -792,7 +788,7 @@ coaxial_zeron_attach_codex :: (s: [] ZeronState, x: [] CxEngine, line: [] u8, ar
   e := s[0].engine[..];
   s[0].codex = x;
   cxe_attach(x, line, arena, out, mem, e_str(e[0].cwd[..], e[0].cwd_n));
-  x[0].att = s[0].att[..]; x[0].prompt = s[0].prompt;
+  x[0].prompt = s[0].prompt;
   zr_catalogs(s);
 }
 // Microcoder for the Lab's other route (microcoder.coax), the host's for the app's life; it works in the chat's folder.

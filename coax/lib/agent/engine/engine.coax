@@ -1,0 +1,190 @@
+// One interface to every engine: start, send, poll, answer an approval, stop
+// (docs/apps/2026-11-10-apps-roadmap.md, Step 2). An Agent names which
+// engine answers a conversation (its mode) and views the engines and the
+// session record its owner holds; the five calls below route to the right
+// one. A surface (the desktop app's screen, a terminal, a server) calls only
+// these and reads the session; it never talks to an SDK.
+//
+//   ag_start   the engines before their first message: catalogs, defaults
+//   ag_send    a message: it joins the session and goes to the mode's engine
+//   ag_poll    what the engines wrote since the last call (call it every
+//              frame or loop turn; it never blocks)
+//   ag_answer  Allow or Deny for the approval the session is asking about
+//   ag_stop    STOP the running turn
+//
+// The modes: Claude is the user's own Claude Code (claude.coax); Codex the
+// user's own Codex (codex.coax, codex app-server on their ChatGPT login);
+// Psionic is our own gpt-oss-20b through the Psionic Responses API
+// (psionic.coax); the Lab (lab.coax) has our own Elephant route each message
+// to one of them, or to Microcoder (microcoder.coax). A conversation keeps
+// its mode. A new mode is a new number here and a branch in each call.
+//
+// The owner allocates the engines (they hold megabytes of buffers) and
+// fills the view; a slice left empty is an engine that owner does not have
+// (Codex is absent in the checks, as it was in the desktop app's). Taken
+// from the desktop app's screen (apps/openagents-desktop/zeron/screen.coax
+// zr_send, zr_stop and its frame's pumps) with no change in behaviour.
+
+#load "psionic.coax";
+#load "codex.coax";
+#load "lab.coax";
+
+// (a new mode takes the next index: hosts' --mode lists and saved choices
+// read these numbers)
+MODE_CLAUDE :: 0; MODE_PSIONIC :: 1; MODE_LAB :: 2; MODE_CODEX :: 3;
+MODE_COUNT :: 4;
+MODE_NAMES :: [MODE_COUNT] string.["Claude", "Psionic", "Lab", "Codex"];
+
+Agent :: struct {
+  mode: int;                     // MODE_*
+  claude: [] Engine;             // always one: the probe, the access and the Lab's fallback are its
+  psionic: [] PsEngine;
+  codex: [] CxEngine;            // empty: no Codex here
+  lab: [] Lab;
+  gpu: [] GpuSwitch;             // which model the shared GPU holds
+  session: [] Session;
+}
+
+// The message is running on Codex (the Codex mode, or the Lab's Codex route): its Stop and approvals go there.
+ag_codex :: (a: Agent) -> bool { return a.mode == MODE_CODEX || (a.mode == MODE_LAB && a.lab[0].via == 2); }
+// The Lab's message is running on Psionic (its Stop and approvals go there).
+ag_lab_psionic :: (a: Agent) -> bool { return a.mode == MODE_LAB && a.lab[0].via == 1 && !a.lab[0].fallback; }
+
+// The engines before the owner's buffers and flags: Claude's catalog at High, Codex's, Psionic's and the switch's defaults.
+ag_start :: (a: Agent) {
+  e_init(a.claude);
+  cxe_init(a.codex);
+  if !a.psionic[0].on { ps_init(a.psionic); }
+  if !a.gpu[0].on { gs_init(a.gpu); }
+}
+
+// A Psionic message: gpt-oss-20b must be on the GPU first (the switch may be holding Elephant there).
+ag_ps_send :: (a: Agent, shown: string, text: string) {
+  p := a.psionic; ss := a.session; l := a.lab;
+  s_user(ss, shown);
+  if p[0].on { ps_configure(p); lab_door(l); p[0].hold = gs_want(a.gpu, ss, GS_GPTOSS, GT_PSIONIC, lab_url(l), ps_url(p)); }
+  ps_forward(p, ss, text);
+}
+
+// A message: `shown` joins the session as the user's part, `text` is what the
+// engine reads (the same, or with attachments spelled out). The Lab routes
+// what is shown.
+ag_send :: (a: Agent, shown: string, text: string) {
+  if a.mode == MODE_PSIONIC { ag_ps_send(a, shown, text); return; }
+  if a.mode == MODE_LAB { lab_send(a.lab, a.claude, a.psionic, a.gpu, a.session, shown); return; }
+  if a.mode == MODE_CODEX { cxe_send_as(a.codex, a.session, shown, text); return; }
+  e_send_as(a.claude, a.session, shown, text);
+}
+
+// STOP.
+ag_stop :: (a: Agent) {
+  if gs_stop(a.gpu, a.session) { a.psionic[0].hold = false; }
+  if a.mode == MODE_PSIONIC || ag_lab_psionic(a) { ps_stop(a.psionic, a.session); return; }
+  if a.mode == MODE_LAB && lab_stop(a.lab, a.session) { return; }
+  if ag_codex(a) { cxe_stop(a.codex, a.session); return; }
+  e_stop(a.claude, a.session);
+}
+
+// The answer to the approval the session is asking about (session.asking).
+ag_answer :: (a: Agent, allow: bool) {
+  if a.mode == MODE_PSIONIC || ag_lab_psionic(a) { ps_answer(a.psionic, a.session, allow); }
+  else if ag_codex(a) { cxe_answer(a.codex, a.session, allow); }
+  else { e_answer(a.claude, a.session, allow); }
+}
+
+// What every engine wrote since the last call; dt is the seconds since
+// then. `quiet` is a surface showing something other than this conversation
+// (the desktop app's demo): no install hint then.
+ag_poll :: (a: Agent, dt: f32, quiet: bool) {
+  e := a.claude; ss := a.session;
+  e_pump(e, ss);
+  // Claude Code isn't installed: an empty Claude conversation says so at once, with the install line
+  if a.mode == MODE_CLAUDE && !quiet && e[0].on && e[0].probed && e[0].claude_n == 0 { s_hint_install(ss); }
+  else if ss[0].hint { s_drop_hint(ss); }
+  a.psionic[0].access = e[0].access;
+  ps_pump(a.psionic, ss, dt);
+  // Codex: started ahead of a message once it is wanted (its model/list fills the catalog)
+  cx := a.codex;
+  if cx.count > 0 {
+    cx[0].access = e[0].access;
+    cx[0].want_warm = cx[0].want_warm || a.mode == MODE_CODEX;
+    cxe_pump(cx, e, ss);
+  }
+  lab_pump(a.lab, e, a.psionic, a.gpu, ss, dt);
+  // the Lab routed a message to Codex: the Codex engine runs it at the decided effort, on its default model
+  if a.lab[0].codex_due && cx.count > 0 {
+    a.lab[0].codex_due = false;
+    lv := a.lab[0].codex_effort + 1;      // EFFORT_IDS low..max are Codex's levels 1..5
+    cx[0].effort = ifx lv >= 1 && lv <= 5 then lv else CX_LV_HIGH; cx[0].model = 0;
+    cxe_forward(cx, ss, a.lab[0].part);
+  }
+  lab_gpu_pump(a.lab, e, a.psionic, a.gpu, ss, dt);
+}
+
+// ---------------------------------------------------------------- checks
+
+// An Agent over engines with no host buffers (nothing starts): the calls still write the session.
+AgTest :: struct { e: [1] Engine; p: [1] PsEngine; l: [1] Lab; g: [1] GpuSwitch; s: [1] Session; pool: [8192] u8; }
+ag_test :: (b: [] AgTest, mode: int) -> Agent {
+  s_init(b[0].s[..], b[0].pool[..]);
+  none: [] CxEngine;
+  a := Agent.{mode = mode, claude = b[0].e[..], psionic = b[0].p[..], codex = none, lab = b[0].l[..], gpu = b[0].g[..], session = b[0].s[..]};
+  ag_start(a);
+  return a;
+}
+
+#test "start gives every engine its defaults: Claude's catalog at High, Psionic and the switch ready" {
+  b: [1] AgTest; a := ag_test(b[..], MODE_CLAUDE);
+  #assert a.claude[0].cat[0].n == 8 && a.claude[0].effort == 2 && a.session[0].asking == -1;
+  names := MODE_NAMES;
+  #assert names[MODE_CODEX] == "Codex" && names[MODE_LAB] == "Lab";
+}
+
+#test "a message joins the session as shown in every mode, and STOP ends its turn with the Stopped notice" {
+  for mode: 0..<MODE_COUNT {
+    b: [1] AgTest; a := ag_test(b[..], mode);
+    ag_send(a, "hello", "hello\n\nAttached: a.txt");
+    s := a.session;
+    #assert s[0].n == 1 && s[0].parts[0].kind == P_USER && s_text_of(s, 0) == "hello" && s[0].live && s[0].turns == 1;
+    ag_poll(a, 0.016, false);
+    #assert s[0].live && s[0].n == 1;
+    ag_stop(a);
+    #assert !s[0].live && s[0].n == 2 && s[0].parts[1].kind == P_NOTICE && s[0].parts[1].notice == N_STOPPED;
+    ag_stop(a);
+    #assert s[0].n == 2;
+  }
+}
+
+#test "an approval's answer goes to the engine that asked and the asking notice leaves" {
+  for mode: 0..<MODE_COUNT {
+    if mode == MODE_LAB { continue; }     // the Lab asks through the engine it routed to
+    b: [1] AgTest; a := ag_test(b[..], mode);
+    s := a.session;
+    ag_send(a, "edit it", "edit it");
+    s_notice(s, N_ASK, "Edit: notes.txt");
+    s[0].asking = s[0].n - 1;
+    ag_answer(a, false);
+    #assert s[0].asking == -1;
+    for k: 0..<s[0].n { #assert !(s[0].parts[k].kind == P_NOTICE && s[0].parts[k].notice == N_ASK); }
+  }
+}
+
+#test "the Lab's routes take Stop and approvals: Codex's, Psionic's, else Claude Code's" {
+  b: [1] AgTest; a := ag_test(b[..], MODE_LAB);
+  #assert !ag_codex(a) && !ag_lab_psionic(a);
+  a.lab[0].via = 2; #assert ag_codex(a) && !ag_lab_psionic(a);
+  a.lab[0].via = 1; #assert !ag_codex(a) && ag_lab_psionic(a);
+  a.lab[0].fallback = true; #assert !ag_lab_psionic(a);
+  a.mode = MODE_CODEX; #assert ag_codex(a);
+  a.mode = MODE_PSIONIC; #assert !ag_lab_psionic(a);
+}
+
+#test "the install hint: an empty Claude conversation without claude says so, another mode or a quiet surface does not" {
+  b: [1] AgTest; a := ag_test(b[..], MODE_CLAUDE);
+  s := a.session;
+  // (the hint needs the engine attached and probed; the check sets what the probe would)
+  s_hint_install(s);
+  #assert s[0].hint && s[0].n == 1;
+  ag_poll(a, 0.016, false);
+  #assert !s[0].hint && s[0].n == 0;      // not attached: no hint stays
+}

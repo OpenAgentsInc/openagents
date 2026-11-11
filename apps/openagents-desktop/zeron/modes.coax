@@ -11,16 +11,17 @@
 // screen.coax exports them as coaxial_zeron_option_*). A new mode is a new
 // row in each table and a branch where screen.coax routes send, stop and
 // the pump. Based on Zeron by Wing, MIT.
+//
+// The engines themselves are shared code, coax/lib/agent/engine/ (claude.coax,
+// codex.coax, psionic.coax, lab.coax, gpu.coax, microcoder.coax, and
+// engine.coax, the one interface the screen calls: MODE_*, ag_send, ag_poll,
+// ag_answer, ag_stop). This file keeps what is the picker's: marks, tints
+// and the option tables.
 
-#load "psionic.coax";
-#load "codex.coax";
-#load "lab.coax";
+#load "claude.coax";
+#load "../../../coax/lib/agent/engine/engine.coax";
 
-// (a new mode takes the next index: the host's --mode list and saved
-// choices read these numbers)
-MODE_CLAUDE :: 0; MODE_PSIONIC :: 1; MODE_LAB :: 2; MODE_CODEX :: 3;
-MODE_COUNT :: 4;
-MODE_NAMES :: [MODE_COUNT] string.["Claude", "Psionic", "Lab", "Codex"];
+// (MODE_* and MODE_NAMES are the engines': coax/lib/agent/engine/engine.coax)
 LAB_EFFORT :: "Elephant decides";
 // The model chip's mark per mode (Composer.brand: 0 the Claude mark; Codex
 // the OpenAI mark, monochrome as Zeron's harness_brand_icon draws it).
@@ -35,7 +36,7 @@ CH_MODE :: 4;                    // coaxial_zeron_choose's which for the mode
 // engine's model/list in the menus), Psionic's one model and its three
 // efforts, the Lab's one row (Elephant decides).
 mode_catalog :: (mode: int) -> PkCatalog {
-  if mode == MODE_CODEX { return codex_catalog(); }
+  if mode == MODE_CODEX { return pk_of(codex_catalog(), ICON_OPENAI_14, zeron_dark().muted); }
   if mode == MODE_LAB {
     // one row: Elephant picks the engine, the model and the effort per message
     l := PkCatalog.{provider = "Lab", icon = ICON_PSIONIC, tint = zeron_dark().muted, n = 1, levels = 1, default_level = 0,
@@ -46,7 +47,7 @@ mode_catalog :: (mode: int) -> PkCatalog {
     for k: 0..<3 { l.access_label[k] = cl.access_label[k]; l.access_desc[k] = cl.access_desc[k]; l.access_value[k] = cl.access_value[k]; }
     return l;
   }
-  if mode != MODE_PSIONIC { return claude_catalog(); }
+  if mode != MODE_PSIONIC { return pk_of(claude_catalog(), ICON_CLAUDE_14, CLAUDE_TINT); }
   c := PkCatalog.{provider = "Psionic", icon = ICON_PSIONIC, tint = zeron_dark().muted, n = 1, levels = 3, default_level = 1,
                   access = 3, full_access = 2, plan = false};
   c.id[0] = PS_MODEL; c.label[0] = PS_MODEL; c.ladder[0] = 7;
@@ -83,4 +84,33 @@ mode_option_label :: (mode: int, which: int, i: int) -> string {
   #assert mode_option_label(MODE_PSIONIC, CH_MODE, 1) == "Psionic" && mode_option_label(MODE_PSIONIC, CH_ACCESS, 1) == "Auto-accept edits";
   #assert mode_option_label(MODE_LAB, CH_MODE, 3) == "Codex" && mode_option_count(MODE_CODEX, CH_EFFORT) == 7 && mode_option_label(MODE_CODEX, CH_EFFORT, 4) == "X-High";
   #assert mode_option_label(MODE_LAB, CH_MODE, 2) == "Lab" && mode_option_label(MODE_LAB, CH_MODEL, 0) == "Lab" && mode_option_label(MODE_LAB, CH_EFFORT, 0) == LAB_EFFORT;
+}
+
+// The engines' own checks are in coax/lib/agent/engine/; these two read what an engine left in the session as rows.
+#test "the Lab's decision in the transcript: its own group, the Routed by chip opening onto the distributions" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "fix the failing test in coax/web");
+  lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_ANSWER, 1900);
+  #assert ss[0].n == 2 && ss[0].parts[1].kind == P_ROUTE && ss[0].parts[1].tk == TK_ROUTE;
+  t: [1] Transcript; ui: [1] SUi;
+  s_build(ss[..], ui[..], t[..]);
+  #assert t[0].ng == 1 && t[0].nt == 1 && t[0].groups[0].summary == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && !t[0].groups[0].open;
+  #assert t[0].tools[0].kind == TK_ROUTE && tool_label(t[0].tools[0]) == "Routed by" && tool_detail(t[0].tools[0]) == "elephant-1 · 1900 ms";
+  #assert s_has(t[0].tools[0].output, "claude_model  claude-sonnet-5-5 0.65");
+}
+
+#test "a recorded gpt-oss-20b turn in the transcript: a bubble, the thinking group, the Markdown" {
+  p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
+  ps_test_setup(p[..], s[..], b[..]);
+  ps_send(p[..], s[..], "In one sentence: what is a GPU?");
+  fx := PSIONIC_TEXT;
+  call := ps_test_feed(p[..], s[..], fx[..]);
+  ps_test_end(p[..], s[..], 200, "", call);
+  #assert s[0].n == 3 && s[0].parts[1].kind == P_THINK && s[0].parts[2].kind == P_TEXT;
+  t: [1] Transcript; a: [1] Atlas; ui: [1] SUi;
+  md_test_atlas(a[..]);
+  for k: 0..<ICON_COUNT { a[0].icons[k] = GpIcon.{x = 0, y = 0, w = 36, h = 36}; }
+  s_build(s[..], ui[..], t[..]);
+  #assert t[0].rows[0].kind == R_USER && t[0].rows[1].kind == R_GROUP && t[0].groups[0].summary == "Thought process" && t[0].rows[t[0].nr - 1].kind == R_MD;
 }

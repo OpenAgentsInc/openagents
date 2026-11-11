@@ -1,0 +1,46 @@
+// What an engine offers, as plain data: its models (an id, the name, a
+// description, which effort levels each takes), the effort levels, the
+// access modes, and whether it has a plan mode. An empty id is the CLI's
+// default model. An engine fills one (claude_catalog, codex_catalog) and
+// replaces it when its CLI lists the account's models; a surface shows it
+// (the desktop app copies it into the picker's PkCatalog and adds the brand
+// mark and tint, which are the surface's, not the engine's).
+
+AG_MODELS :: 32;
+AG_LEVELS :: 8;
+AG_ACCESS :: 4;
+
+AgCatalog :: struct {
+  provider: string;             // the provider's name
+  n: int;
+  id: [AG_MODELS] string; label: [AG_MODELS] string; desc: [AG_MODELS] string;
+  ladder: [AG_MODELS] int;      // bit k: level k on that model
+  levels: int;
+  level_id: [AG_LEVELS] string; level_label: [AG_LEVELS] string;
+  default_level: int;
+  access: int;
+  access_label: [AG_ACCESS] string; access_desc: [AG_ACCESS] string;
+  access_value: [AG_ACCESS] int;  // each row's value for the engine (its own numbering)
+  full_access: int;             // the access mode that asks nothing
+  plan: bool;                   // a plan mode to switch on
+}
+
+// The level a model runs at: the chosen one when its ladder has it, else
+// the catalog's default, else the ladder's last (-1: no ladder).
+ag_level_for :: (cat: [] AgCatalog, m: int, level: int) -> int {
+  if m < 0 || m >= cat[0].n || cat[0].ladder[m] == 0 { return -1; }
+  if level >= 0 && (cat[0].ladder[m] & (1 << level)) != 0 { return level; }
+  if (cat[0].ladder[m] & (1 << cat[0].default_level)) != 0 { return cat[0].default_level; }
+  last := -1;
+  for k: 0..<cat[0].levels { if (cat[0].ladder[m] & (1 << k)) != 0 { last = k; } }
+  return last;
+}
+
+#test "a model runs at the chosen level when its ladder has it, else the default, else its last" {
+  c: [1] AgCatalog;
+  c[0].n = 3; c[0].levels = 5; c[0].default_level = 2;
+  c[0].ladder[0] = 31; c[0].ladder[1] = 3; c[0].ladder[2] = 0;
+  #assert ag_level_for(c[..], 0, 4) == 4 && ag_level_for(c[..], 0, -1) == 2 && ag_level_for(c[..], 0, 7) == 2;
+  #assert ag_level_for(c[..], 1, 1) == 1 && ag_level_for(c[..], 1, 4) == 1;
+  #assert ag_level_for(c[..], 2, 0) == -1 && ag_level_for(c[..], 3, 0) == -1 && ag_level_for(c[..], -1, 0) == -1;
+}

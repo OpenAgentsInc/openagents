@@ -1,4 +1,4 @@
-// The chat's Codex engine: the user's own Codex (`codex app-server`, their
+// The Codex engine: the user's own Codex (`codex app-server`, their
 // ChatGPT login), driven through the Coax Codex client
 // (coax/lib/agent/codex), and what its notifications become in Zeron's
 // transcript. One long-lived server per chat, one thread per conversation
@@ -35,8 +35,8 @@
 // removed) nor opens a browser. Based on Zeron by Wing, MIT.
 
 #load "claude.coax";
-#load "../../../coax/lib/agent/codex/codex.coax";
-#load "../../../coax/lib/agent/codex/fixture.coax";
+#load "../codex/codex.coax";
+#load "../codex/fixture.coax";
 
 // The wall clock in seconds (zeron-face.c): a limit's reset time is a Unix time.
 zr_unix_s :: () -> int #foreign #effects(all);
@@ -54,8 +54,8 @@ CX_OUTPUT_MAX :: 65536;                    // a command's output kept
 
 // Zeron's Codex catalog: the static snapshot (catalog.rs static_models),
 // until model/list answers.
-codex_catalog :: () -> PkCatalog {
-  c := PkCatalog.{provider = "Codex", icon = ICON_OPENAI_14, tint = zeron_dark().muted, levels = 7, default_level = CX_LV_HIGH,
+codex_catalog :: () -> AgCatalog {
+  c := AgCatalog.{provider = "Codex", levels = 7, default_level = CX_LV_HIGH,
                   access = 3, full_access = 2, plan = true};
   ids := [9] string.["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-daybreak-blue-latest", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"];
   names := [9] string.["GPT-6-Astra", "GPT-5.6-Sol", "GPT-5.6-Terra", "GPT-5.6-Luna", "Daybreak Blue", "GPT-5.5", "GPT-5.4", "GPT-5.4-Mini", "GPT-5.3-Codex-Spark"];
@@ -74,7 +74,7 @@ codex_catalog :: () -> PkCatalog {
 // The catalog from a model/list answer (parse_model_list_page), its strings
 // kept in pool: visible models in the server's order, the default first.
 // Whether it listed one.
-codex_discover :: (c: [] PkCatalog, ar: [] ClArena, result: string, pool: [] u8, at: [] int) -> bool {
+codex_discover :: (c: [] AgCatalog, ar: [] ClArena, result: string, pool: [] u8, at: [] int) -> bool {
   base := codex_catalog();
   c[0] = base; c[0].n = 0;
   at[0] = 0;
@@ -82,10 +82,10 @@ codex_discover :: (c: [] PkCatalog, ar: [] ClArena, result: string, pool: [] u8,
   if !data.ok || data.tok != JSON_ARRAY { c[0] = base; return false; }
   first := -1;
   lids := CODEX_LEVEL_IDS;
-  for i: 0..<PK_MODELS * 2 {
+  for i: 0..<AG_MODELS * 2 {
     v := cl_element(result, data, i);
     if !v.ok { break; }
-    if c[0].n >= PK_MODELS { break; }
+    if c[0].n >= AG_MODELS { break; }
     item := cl_json(result, v);
     if cl_bool(item, "hidden").value { continue; }
     id := cl_str(ar, item, "model");
@@ -126,9 +126,9 @@ codex_wait :: (out: [] u8, at: int, secs: int) -> int {
   d := minutes / 1440; h := minutes / 60 % 24; m := minutes % 60;
   k := at;
   if d == 0 && h == 0 && m == 0 { return e_set(out, k, "under a minute"); }
-  if d > 0 { k = put_int(out, k, d); k = e_set(out, k, "d"); if h > 0 { k = e_set(out, k, " "); k = put_int(out, k, h); k = e_set(out, k, "h"); } return k; }
-  if h > 0 { k = put_int(out, k, h); k = e_set(out, k, "h"); if m > 0 { k = e_set(out, k, " "); } }
-  if m > 0 { k = put_int(out, k, m); k = e_set(out, k, "m"); }
+  if d > 0 { k = s_int(out, k, d); k = e_set(out, k, "d"); if h > 0 { k = e_set(out, k, " "); k = s_int(out, k, h); k = e_set(out, k, "h"); } return k; }
+  if h > 0 { k = s_int(out, k, h); k = e_set(out, k, "h"); if m > 0 { k = e_set(out, k, " "); } }
+  if m > 0 { k = s_int(out, k, m); k = e_set(out, k, "m"); }
   return k;
 }
 
@@ -202,13 +202,13 @@ CxEngine :: struct {
   model: int; effort: int;           // chosen (the catalog's model and level)
   access: int;                       // ACC_* (the screen's, shared with the other engines)
   plan: bool; plan_used: bool;       // plan mode; it was on once (each turn then names its mode)
-  cat: [1] PkCatalog;                // codex_catalog, then the server's (codex_discover)
+  cat: [1] AgCatalog;                // codex_catalog, then the server's (codex_discover)
   cat_pool: [] u8; cat_at: [1] int;
   cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
   listed: bool;                      // model/list was asked
   want_warm: bool; warmed: bool;     // start the server ahead of a message (the Codex tab is open), once
   prompt: [] u8; prompt_n: int;      // (the screen's buffer)
-  att: [] Attachments;
+  delivered: int;                    // messages handed to the server (or dropped with no server) so far: their attachments are the owner's to drop
   settled: bool;                     // took the probe's codex and PATH (claude.coax e_probe_done)
   exe: [] u8; exe_n: int;
   path_env: [] u8; path_n: int;
@@ -266,7 +266,7 @@ cxe_settings :: (x: [] CxEngine) -> CxSettings {
   st := CxSettings.{cwd = cx_str(x[0].cwd, x[0].cwd_n), plan = x[0].plan, name_mode = x[0].plan_used};
   cat := x[0].cat[..];
   if x[0].model >= 0 && x[0].model < cat[0].n { st.model = cat[0].id[x[0].model]; }
-  lv := pk_level_for(cat, x[0].model, x[0].effort);
+  lv := ag_level_for(cat, x[0].model, x[0].effort);
   efforts := CODEX_EFFORTS;
   if lv >= 0 { st.effort = efforts[lv]; }
   if x[0].access == ACC_FULL { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
@@ -335,7 +335,7 @@ cxe_send_as :: (x: [] CxEngine, s: [] Session, shown: string, text: string) {
 cxe_forward :: (x: [] CxEngine, s: [] Session, k: int) { if x.count < 1 { return; } x[0].prompt_n = e_set(x[0].prompt, 0, s_text_of(s, k)); cxe_go(x, s, k); }
 cxe_go :: (x: [] CxEngine, s: [] Session, k: int) {
   x[0].stop_due = false; x[0].held_n = 0; x[0].streamed_n = 0; x[0].rs_have = false;
-  if !x[0].on && !x[0].running { if x[0].att.count > 0 { at_delivered(x[0].att); } return; }   // the checks: no process
+  if !x[0].on && !x[0].running { x[0].delivered += 1; return; }   // the checks: no process
   x[0].pend = k;
   if !x[0].settled && x[0].on { return; }        // cxe_pump starts it once the probe is done
   if !x[0].running { if !cxe_launch(x, s, false) { x[0].pend = -1; } return; }
@@ -355,7 +355,7 @@ cxe_deliver :: (x: [] CxEngine) {
   r := cx_turn_start(x[0].c[..], cx_str(x[0].prompt, x[0].prompt_n), none[0..<0], st);
   if x[0].plan { x[0].plan_used = true; }
   x[0].turn_wait = true; x[0].turn_n = 0; x[0].pend = -1;
-  if x[0].att.count > 0 { at_delivered(x[0].att); }
+  x[0].delivered += 1;
 }
 
 // STOP: turn/interrupt (before the turn has an id, once it has one; a server still starting is closed).
@@ -480,7 +480,7 @@ cxe_todo :: (s: [] Session, ar: [] ClArena, k: int, list: string, text_key: stri
     q := s_put(s, ifx fin then "[x] " else "[ ] "); q = s_put(s, cl_str(ar, item, text_key));
   }
   s[0].parts[k].arg = cast(string) s[0].pool[at..<s[0].np];
-  buf: [40] u8; nb := put_int(buf[..], 0, done); buf[nb] = '/'; nb += 1; nb = put_int(buf[..], nb, total);
+  buf: [40] u8; nb := s_int(buf[..], 0, done); buf[nb] = '/'; nb += 1; nb = s_int(buf[..], nb, total);
   for c: " done" { buf[nb] = c; nb += 1; }
   s[0].parts[k].detail = s_put(s, cast(string) buf[0..<nb]);
   s[0].parts[k].resolved = true;
@@ -525,7 +525,7 @@ cxe_item :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, done: bool, item: st
     if k < 0 { return; }
     if s[0].parts[k].arg.count == 0 {
       if n == 1 { s[0].parts[k].arg = s_put(s, cl_str(ar, first, "path")); }
-      else { buf: [32] u8; nb := put_int(buf[..], 0, n); nb = e_set(buf[..], nb, " files"); s[0].parts[k].arg = s_put(s, cast(string) buf[0..<nb]); }
+      else { buf: [32] u8; nb := s_int(buf[..], 0, n); nb = e_set(buf[..], nb, " files"); s[0].parts[k].arg = s_put(s, cast(string) buf[0..<nb]); }
       // one file's diff (a patch over several files lists them, its chip has no single diff)
       if n == 1 { s[0].parts[k].input = s_put(s, cl_str(ar, first, "diff")); }
     }
@@ -716,7 +716,7 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
 cxe_take_models :: (x: [] CxEngine, result: string) {
   was := x[0].cat[0].id[x[0].model];
   wid: [96] u8; wn := e_set(wid[..], 0, was);
-  c: [1] PkCatalog;
+  c: [1] AgCatalog;
   if !codex_discover(c[..], x[0].c[0].ar[..], result, x[0].cat_pool, x[0].cat_at[..]) { return; }
   first := x[0].cat_gen == 0;
   x[0].cat[0] = c[0];
@@ -785,12 +785,12 @@ cxe_test_engine :: (x: [] CxEngine, b: [] CxeTest) {
 
 #test "Codex's model/list becomes the catalog: visible models, the default first, levels from its efforts" {
   abuf: [8192] u8; ar := [1] ClArena.[ClArena.{buf = abuf[..]}];
-  pool: [4096] u8; at: [1] int; c: [1] PkCatalog;
+  pool: [4096] u8; at: [1] int; c: [1] AgCatalog;
   fx := CX_FIXTURE_FULL;
   r := cl_raw(fx[1], "result");
   #assert codex_discover(c[..], ar[..], r, pool[..], at[..]);
   #assert c[0].n == 8 && c[0].id[0] == "gpt-6.1-sol" && c[0].label[0] == "GPT-6.1-Sol" && c[0].ladder[0] == CX_LADDER_ULTRA;
-  #assert c[0].provider == "Codex" && c[0].icon == ICON_OPENAI_14 && c[0].level_label[4] == "X-High" && c[0].plan;
+  #assert c[0].provider == "Codex" && c[0].level_label[4] == "X-High" && c[0].plan;
   for i: 0..<c[0].n { #assert c[0].ladder[i] != 0; for j: i + 1..<c[0].n { #assert c[0].id[i] != c[0].id[j]; } }
   // a hidden model is left out, the default moves first
   ar[0].at = 0;
@@ -932,15 +932,6 @@ cxe_test_full :: (x: [] CxEngine, s: [] Session, last: int, models: bool) {
   #assert denied > 0 && s[0].parts[denied].failed && s[0].parts[denied].resolved;
   // the story stopped: the transcript's quiet Stopped line
   #assert s[0].parts[s[0].n - 1].kind == P_NOTICE && s[0].parts[s[0].n - 1].notice == N_STOPPED;
-  // the edit's chip: the hunk header from the diff, its lines numbered from it
-  t: [1] Transcript; ui: [1] SUi;
-  s_build(s[..], ui[..], t[..]);
-  ed := -1;
-  for k: 0..<t[0].nt { if t[0].tools[k].kind == TK_EDIT { ed = k; } }
-  #assert ed >= 0 && t[0].tools[ed].hunk == "@@ -2,2 +2,2 @@" && t[0].tools[ed].diff_lines == 3;
-  d := t[0].tools[ed].diff_from;
-  #assert t[0].diff[d].kind == DL_CONTEXT && t[0].diff[d].text == "- bread" && t[0].diff[d + 1].kind == DL_DEL && t[0].diff[d + 1].text == "- milk";
-  #assert t[0].diff[d + 2].kind == DL_ADD && t[0].diff[d + 2].text == "- oat milk";
 }
 
 #test "auto-accept edits answers a file change itself; a failed turn's error chip reads signed out" {

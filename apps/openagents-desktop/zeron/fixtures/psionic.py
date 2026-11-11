@@ -9,11 +9,11 @@
 #     fixture-host.coax: its owned continuations answer any tool list with a
 #     {"city":"Paris"} call to the first tool, so the call turn offers its
 #     owned weather tool and the text turn sets tool_choice none)
-#   psionic.py --coax psionic-turns.sse > ../psionic_fixture.coax
+#   psionic.py --coax psionic-turns.sse > ../../../../coax/lib/agent/engine/psionic_fixture.coax
 import json, os, re, sys, urllib.request
 from pathlib import Path
 
-TOOLS = json.loads(re.search(r'^PS_TOOLS :: "(.*)";$', (Path(__file__).parent.parent / "psionic.coax").read_text(), re.M).group(1).encode().decode("unicode_escape"))
+TOOLS = json.loads(re.search(r'^PS_TOOLS :: "(.*)";$', (Path(__file__).resolve().parents[4] / "coax/lib/agent/engine/psionic.coax").read_text(), re.M).group(1).encode().decode("unicode_escape"))
 INSTRUCTIONS = ("You are gpt-oss-20b on OpenAgents' own Psionic engine, chatting in the OpenAgents Mac app. Answer in Markdown."
                 " Use the tools only when the request needs the user's files or a command. Working folder: /tmp/demo")
 

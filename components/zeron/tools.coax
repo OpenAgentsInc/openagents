@@ -13,15 +13,8 @@
 
 #load "markdown.coax";
 
-TK_THOUGHT :: 0; TK_EXEC :: 1; TK_READ :: 2; TK_EDIT :: 3; TK_SEARCH :: 4; TK_FETCH :: 5;
-// The rest of Zeron's ToolCall kinds (proto view.rs tool_chip_content):
-// Write, Glob, Web (a web search), Todo, MCP ("server · tool"), Agent (a
-// subagent, its description) and any other tool by its name.
-TK_WRITE :: 6; TK_GLOB :: 7; TK_WEB :: 8; TK_TODO :: 9; TK_MCP :: 10; TK_AGENT :: 11; TK_TOOL :: 12;
-// The Lab's routing decision (lab.coax): who decided, in how long, and every distribution.
-TK_ROUTE :: 13;
-// A model loading on the GPU before its message goes (gpu.coax): the switch's answers.
-TK_LOAD :: 14;
+// The tool kinds (TK_*) are the session record's: engines write them, a chip shows them.
+#load "../../coax/lib/agent/session/kinds.coax";
 
 // transcript.rs / changes.rs constants
 CHIP_CARD_HEIGHT :: 30.0;

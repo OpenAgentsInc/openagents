@@ -40,11 +40,12 @@
 // LabMc for the app's life); without it (the checks) the Lab doesn't offer
 // Microcoder.
 
-#load "../../../coax/lib/microcoder/run.coax";
-#load "../../../coax/lib/gateway/vertex.coax";
-#load "../../../coax/lib/gateway/openrouter.coax";
-#load "../../../coax/lib/gateway/ours.coax";
-#load "../../../coax/lib/x402/x402.coax";
+// (Loaded by lab.coax, whose names it uses: it is not a unit of its own. Check it with `coax test lab.coax`.)
+#load "../../microcoder/run.coax";
+#load "../../gateway/vertex.coax";
+#load "../../gateway/openrouter.coax";
+#load "../../gateway/ours.coax";
+#load "../../x402/x402.coax";
 
 zr_random_u64 :: () -> int #foreign #effects(all);
 zr_lab_unix_s :: () -> int #foreign #effects(all);   // the time, for signatures (codex.coax has its own; lab.coax is checked without it)
@@ -239,7 +240,7 @@ lab_mc_start :: (m: [] LabMc, task: string, effort: int, level: int, local_work:
 lab_mc_attempt :: (m: [] LmcView, s: [] Session, a: GwAttemptLog) {
   k := s_part(s, P_TOOL);
   if k < 0 { return; }
-  ib: [32] u8; ni := e_set(ib[..], 0, "mc-attempt-"); ni = put_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
+  ib: [32] u8; ni := e_set(ib[..], 0, "mc-attempt-"); ni = s_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
   db: [300] u8; nd := e_set(db[..], 0, a.gateway); nd = e_set(db[..], nd, " · "); nd = e_set(db[..], nd, a.model);
   nd = e_set(db[..], nd, " · "); nd = e_set(db[..], nd, gw_outcome_name(a.outcome));
   lb: [512] u8;
@@ -253,12 +254,12 @@ lab_mc_attempt :: (m: [] LmcView, s: [] Session, a: GwAttemptLog) {
 lab_mc_command :: (m: [] LmcView, s: [] Session, e: McRunEvent) {
   k := s_part(s, P_TOOL);
   if k < 0 { return; }
-  ib: [32] u8; ni := e_set(ib[..], 0, "mc-cmd-"); ni = put_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
+  ib: [32] u8; ni := e_set(ib[..], 0, "mc-cmd-"); ni = s_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
   p := SPart.{kind = P_TOOL, at = s[0].np, tk = TK_EXEC, id = s_put(s, e_str(ib[..], ni)), resolved = true, failed = e.exit != 0};
   p.arg = s_put(s, e.text); p.detail = s_single(s, p.arg);
   ob: [64] u8; no := 0;
   if e.timed_out { no = e_set(ob[..], 0, "\n[timed out]"); }
-  else if e.exit != 0 { no = e_set(ob[..], 0, "\n[exit "); no = put_int(ob[..], no, e.exit); no = e_set(ob[..], no, "]"); }
+  else if e.exit != 0 { no = e_set(ob[..], 0, "\n[exit "); no = s_int(ob[..], no, e.exit); no = e_set(ob[..], no, "]"); }
   at := s[0].np; q := s_put(s, e.output); q = s_put(s, e_str(ob[..], no));
   p.output = cast(string) s[0].pool[at..<s[0].np];
   s[0].parts[k] = p;
@@ -267,7 +268,7 @@ lab_mc_command :: (m: [] LmcView, s: [] Session, e: McRunEvent) {
 lab_mc_view :: (m: [] LmcView, s: [] Session, e: McRunEvent) {
   k := s_part(s, P_TOOL);
   if k < 0 { return; }
-  ib: [32] u8; ni := e_set(ib[..], 0, "mc-view-"); ni = put_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
+  ib: [32] u8; ni := e_set(ib[..], 0, "mc-view-"); ni = s_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
   s[0].parts[k] = SPart.{kind = P_TOOL, at = s[0].np, tk = TK_READ, id = s_put(s, e_str(ib[..], ni)), resolved = true, failed = !e.found};
   s[0].parts[k].arg = s_put(s, e.text);
 }
@@ -394,7 +395,7 @@ lab_mc_pay_start :: (m: [] LabMc, s: [] Session) {
   p[0].nu = lmc_credit_url(cast(string) m[0].ours[0].url[0..<m[0].ours[0].nu], p[0].url[..]);
   if p[0].nu < 0 { lab_mc_pay_end(m, s, false, "Our route needs credit, and its URL is too long."); return; }
   n := e_set(p[0].req[..], 0, "{\"pubkey\":\""); n = e_set(p[0].req[..], n, cast(string) pk[0..<64]);
-  n = e_set(p[0].req[..], n, "\",\"msat\":\""); n = put_int(p[0].req[..], n, LMC_CREDIT_MSAT); n = e_set(p[0].req[..], n, "\"}");
+  n = e_set(p[0].req[..], n, "\",\"msat\":\""); n = s_int(p[0].req[..], n, LMC_CREDIT_MSAT); n = e_set(p[0].req[..], n, "\"}");
   p[0].nr = n;
   why := lab_mc_pay_send(m, false);
   if why.count > 0 { lab_mc_pay_end(m, s, false, why); return; }
@@ -438,7 +439,7 @@ lab_mc_pay_pump :: (m: [] LabMc, s: [] Session) {
     gw_close(p[0].st[..]);
     if status == 402 { lab_mc_pay_show(m, s); return; }
     t: [200] u8; n := e_set(t[..], 0, "Our route needs credit, and its top-up answered ");
-    n = put_int(t[..], n, status); n = e_set(t[..], n, ": "); n = e_set(t[..], n, e_str(p[0].bodyj[..], ifx p[0].nb < 120 then p[0].nb else 120));
+    n = s_int(t[..], n, status); n = e_set(t[..], n, ": "); n = e_set(t[..], n, e_str(p[0].bodyj[..], ifx p[0].nb < 120 then p[0].nb else 120));
     lab_mc_pay_end(m, s, false, e_str(t[..], n));
     return;
   }
@@ -459,7 +460,7 @@ lab_mc_pay_pump :: (m: [] LabMc, s: [] Session) {
     if status == 409 { lab_mc_pay_end(m, s, true, ""); return; }   // duplicate_settlement: it was credited already
     if status == 402 || status == 0 || status >= 500 { p[0].stage = LMC_PAY_WAITING; p[0].next_s = now + LMC_PAY_EVERY_S; return; }
     t: [200] u8; n := e_set(t[..], 0, "The top-up was refused (");
-    n = put_int(t[..], n, status); n = e_set(t[..], n, "): "); n = e_set(t[..], n, e_str(p[0].bodyj[..], ifx p[0].nb < 120 then p[0].nb else 120));
+    n = s_int(t[..], n, status); n = e_set(t[..], n, "): "); n = e_set(t[..], n, e_str(p[0].bodyj[..], ifx p[0].nb < 120 then p[0].nb else 120));
     lab_mc_pay_end(m, s, false, e_str(t[..], n));
   }
 }

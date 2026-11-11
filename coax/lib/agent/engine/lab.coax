@@ -29,7 +29,7 @@
 
 #load "gpu.coax";
 #load "microcoder.coax";
-#load "../../../coax/lib/systemone/systemone.coax";
+#load "../../systemone/systemone.coax";
 
 LAB_TUNNEL :: "ssh -N -L 8790:127.0.0.1:8790 coderos-4080";
 LAB_START :: "systemctl --user start psionic-gpu-switch";   // the GPU switch (gpu.coax) starts Elephant
@@ -211,8 +211,8 @@ lab_headline :: (out: [] u8, d: LabDecision, round_ms: int) -> string {
   else if d.harness == 3 { k = e_set(out, k, " · Gemini Flash"); }
   else if d.harness == 0 { k = e_set(out, k, " · "); k = e_set(out, k, models[d.model]); }
   k = e_set(out, k, " · "); k = e_set(out, k, efforts[d.effort]);
-  k = e_set(out, k, " · "); k = put_int(out, k, round_ms / 1000); k = e_set(out, k, ".");
-  k = put_int(out, k, (round_ms % 1000) / 100); k = e_set(out, k, " s");
+  k = e_set(out, k, " · "); k = s_int(out, k, round_ms / 1000); k = e_set(out, k, ".");
+  k = s_int(out, k, (round_ms % 1000) / 100); k = e_set(out, k, " s");
   return cast(string) out[0..<k];
 }
 
@@ -222,18 +222,18 @@ lab_details :: (out: [] u8, text: string, d: LabDecision, codex: bool, mc: bool,
   offered := lab_offered(keys[..], labels[..], codex, mc);
   levels := [5] string.["0", "1", "2", "3", "4"]; names := LAB_LEVEL_NAMES;
   k := e_set(out, 0, "harness       "); k = lab_ranked(out, k, text, "harness", keys[0..<offered]);
-  k = e_set(out, k, "\ndifficulty    "); k = put_int(out, k, cast(int) d.difficulty); k = e_set(out, k, ".");
-  k = put_int(out, k, (cast(int) (d.difficulty * 10.0 + 0.5)) % 10);
+  k = e_set(out, k, "\ndifficulty    "); k = s_int(out, k, cast(int) d.difficulty); k = e_set(out, k, ".");
+  k = s_int(out, k, (cast(int) (d.difficulty * 10.0 + 0.5)) % 10);
   k = e_set(out, k, " of 4, most likely "); k = e_set(out, k, names[d.level]); k = e_set(out, k, " · levels ");
   k = lab_ranked(out, k, text, "difficulty", levels[..]);
   k = e_set(out, k, "\neffort        "); k = lab_ranked(out, k, text, "effort", efforts[..]);
   k = e_set(out, k, "\nclaude_model  "); k = lab_ranked(out, k, text, "claude_model", models[..]);
   k = e_set(out, k, "\nlocal_work    yes "); k = lab_prob(out, k, d.local_work);
-  k = e_set(out, k, "\nlatency       "); k = put_int(out, k, round_ms); k = e_set(out, k, " ms round trip");
-  if d.latency_ms >= 0 { k = e_set(out, k, " · "); k = put_int(out, k, d.latency_ms); k = e_set(out, k, " ms deciding on the server"); }
+  k = e_set(out, k, "\nlatency       "); k = s_int(out, k, round_ms); k = e_set(out, k, " ms round trip");
+  if d.latency_ms >= 0 { k = e_set(out, k, " · "); k = s_int(out, k, d.latency_ms); k = e_set(out, k, " ms deciding on the server"); }
   u := so_usage(text);
   k = e_set(out, k, "\nusage         ");
-  if u.ok { k = put_int(out, k, u.input_tokens); k = e_set(out, k, " tokens in · "); k = put_int(out, k, u.output_tokens); k = e_set(out, k, " out"); }
+  if u.ok { k = s_int(out, k, u.input_tokens); k = e_set(out, k, " tokens in · "); k = s_int(out, k, u.output_tokens); k = e_set(out, k, " out"); }
   else { k = e_set(out, k, "not reported (psionic-serve keeps no usage records)"); }
   ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
   who := cl_str(ar[..], text, "service.identity");
@@ -263,7 +263,7 @@ lab_problem :: (out: [] u8, r: SoResult, url: string) -> string {
   if r.status == 524 || code == "timeout" { return "Elephant didn't decide before its deadline (524 timeout)."; }
   if r.status == 413 || code == "limit_exceeded" { return "The message is too long for Elephant to read (413: a question holds 512 tokens on our server)."; }
   k = e_set(out, k, "Elephant refused the request (");
-  k = put_int(out, k, r.status);
+  k = s_int(out, k, r.status);
   if code.count > 0 { k = e_set(out, k, " "); k = e_set(out, k, code); }
   k = e_set(out, k, ")");
   m := so_error_of(ar[..], r.body);
@@ -321,7 +321,7 @@ lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Se
   if k < 0 { return; }
   s_append(s, k, lab_headline(hb[..], d, round_ms));
   ik := e_set(ib[..], 0, "POST "); ik = e_set(ib[..], ik, lab_url(l)); ik = e_set(ib[..], ik, "  model elephant-1, 5 questions");
-  det: [64] u8; n := e_set(det[..], 0, "elephant-1 · "); n = put_int(det[..], n, round_ms); n = e_set(det[..], n, " ms");
+  det: [64] u8; n := e_set(det[..], 0, "elephant-1 · "); n = s_int(det[..], n, round_ms); n = e_set(det[..], n, " ms");
   s[0].parts[k].tk = TK_ROUTE; s[0].parts[k].resolved = true;
   s[0].parts[k].arg = s_put(s, cast(string) ib[0..<ik]);
   s[0].parts[k].detail = s_put(s, cast(string) det[0..<n]);
@@ -545,11 +545,6 @@ LAB_TEST_CODEX :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"c
   #assert s_text_of(ss[..], 1) == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && ss[0].parts[1].detail == "elephant-1 · 1900 ms";
   // before the CLI has listed its models, Sonnet 5.5 lands on its family's curated row
   #assert e[0].cat[0].id[e[0].model] == "claude-sonnet-5" && e[0].effort == 1 && ss[0].live;
-  t: [1] Transcript; ui: [1] SUi;
-  s_build(ss[..], ui[..], t[..]);
-  #assert t[0].ng == 1 && t[0].nt == 1 && t[0].groups[0].summary == "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s" && !t[0].groups[0].open;
-  #assert t[0].tools[0].kind == TK_ROUTE && tool_label(t[0].tools[0]) == "Routed by" && tool_detail(t[0].tools[0]) == "elephant-1 · 1900 ms";
-  #assert s_has(t[0].tools[0].output, "claude_model  claude-sonnet-5-5 0.65");
   // the next message waits for this turn
   lab_send(l[..], e[..], p[..], g[..], ss[..], "again");
   #assert ss[0].n == 3 && ss[0].parts[2].kind == P_NOTICE;

@@ -28,6 +28,7 @@
 //                           with PSIONIC_URL=http://127.0.0.1:8794): no tunnel and no swap for it
 
 #load "psionic.coax";
+#load "../../systemone/systemone.coax";   // SO_PSIONIC_URL, Elephant's door on the RTX 4080
 
 GS_ELEPHANT :: 0; GS_GPTOSS :: 1;
 GS_IDS :: [2] string.["elephant", "gptoss"];
@@ -109,8 +110,8 @@ gs_headline :: (out: [] u8, model: int, state: int, secs: int) -> string {
   else if state == GS_GO { k = e_set(out, k, "Loaded "); }
   else { k = e_set(out, k, "Couldn't load "); }
   k = e_set(out, k, GS_NAMES[model]); k = e_set(out, k, " on "); k = e_set(out, k, GS_CARD);
-  if state == GS_PENDING { k = e_set(out, k, "… "); k = put_int(out, k, secs); k = e_set(out, k, " s"); }
-  if state == GS_GO { k = e_set(out, k, " in "); k = put_int(out, k, secs); k = e_set(out, k, " s"); }
+  if state == GS_PENDING { k = e_set(out, k, "… "); k = s_int(out, k, secs); k = e_set(out, k, " s"); }
+  if state == GS_GO { k = e_set(out, k, " in "); k = s_int(out, k, secs); k = e_set(out, k, " s"); }
   return cast(string) out[0..<k];
 }
 
@@ -245,7 +246,7 @@ gs_show :: (g: [] GpuSwitch, s: [] Session, state: int, secs: int) {
   s_append(s, k, text);
   s[0].parts[k].resolved = state != GS_PENDING;
   s[0].parts[k].failed = state == GS_FAIL;
-  db: [64] u8; dk := e_set(db[..], 0, GS_NAMES[g[0].model]); dk = e_set(db[..], dk, " · "); dk = put_int(db[..], dk, secs); dk = e_set(db[..], dk, " s");
+  db: [64] u8; dk := e_set(db[..], 0, GS_NAMES[g[0].model]); dk = e_set(db[..], dk, " · "); dk = s_int(db[..], dk, secs); dk = e_set(db[..], dk, " s");
   s[0].parts[k].detail = s_put(s, e_str(db[..], dk));
   if state != GS_PENDING { s[0].parts[k].output = s_put(s, e_str(g[0].log[..], g[0].log_n)); }
   g[0].shown = secs;

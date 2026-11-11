@@ -1,4 +1,4 @@
-// The Lab's NIP-98 signer for our inference route (zeron/microcoder.coax,
+// The Lab's NIP-98 signer for our inference route (coax/lib/agent/engine/microcoder.coax,
 // coax/lib/gateway/ours.coax): a unit of its own, since the crypto's local
 // names clash with Zeron's procedures (hex, lift, selected) in screen.coax's unit.
 #load "../../coax/lib/gateway/ours_sign.coax";

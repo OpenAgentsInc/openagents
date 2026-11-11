@@ -1,0 +1,245 @@
+// The session record: one conversation as its parts, the same for every
+// engine and every surface (docs/apps/2026-11-10-apps-roadmap.md, Step 2;
+// components/spec.md, "Conversation"). An engine (../engine/) writes it; a
+// surface only reads it, and draws or prints what it finds. Nothing here
+// knows about a model, a process, a colour or a pixel.
+//
+// A part is the user's message (P_USER), the answer's text (P_TEXT, Markdown),
+// thinking (P_THINK), a tool call with its result (P_TOOL: the call's kind
+// TK_*, its argument and one-line detail, an edit's old and new text or a
+// file change's unified diff, the output and whether it failed), a notice
+// (P_NOTICE: N_* for an error, signed out, a limit, stopped, and N_ASK for
+// an approval waiting on the person), or a routing or loading step
+// (P_ROUTE). The status is the turn's: live while it runs, stopping once
+// STOP was pressed, asking while a call waits for Allow or Deny, and the
+// cost and time of the last turn.
+//
+// All text is in one pool the owner supplies (s_init); a part names its
+// span. Text streams by extending the trailing part of its kind. The log on
+// disk is log.coax. Taken from the desktop app's engine layer
+// (apps/openagents-desktop/zeron/claude.coax) without a change in behaviour.
+
+#load "kinds.coax";
+
+S_PARTS :: 768;
+P_USER :: 0; P_TEXT :: 1; P_THINK :: 2; P_TOOL :: 3; P_NOTICE :: 4;
+// The Lab's routing decision (lab.coax): its own group, the headline as its text, a TK_ROUTE chip;
+// also a model loading on the GPU (gpu.coax, tk TK_LOAD).
+P_ROUTE :: 5;
+S_DIFF_MAX :: 40;          // lines an edit's diff keeps a side (Zeron caps the chip's body too)
+
+SPart :: struct {
+  kind: int;
+  at: int; n: int;          // its text in the pool: the message, text, thought or notice
+  notice: int;              // P_NOTICE: N_*
+  // P_TOOL, decoded when the call arrives
+  id: string; tk: int;
+  arg: string; detail: string;
+  before: string; after: string; // an edit's old and new strings, a write's content (new)
+  input: string;            // the call's input, JSON (an approval answers with it); Codex's
+                            // file change has none: its unified diff is kept here instead (123 is "{")
+  output: string; failed: bool; resolved: bool;
+}
+
+Session :: struct {
+  pool: [] u8; np: int;
+  parts: [S_PARTS] SPart; n: int;
+  live: bool;               // a turn is running
+  stopping: bool;           // STOP was pressed in it
+  noticed: bool;            // it already has its error chip
+  secs: f32;                // its elapsed seconds
+  turns: int;
+  changed: bool;            // since the transcript was last built
+  asking: int;              // the part asking to approve a call, or -1
+  cost: f64;                // the conversation's cost so far (USD), from the last result
+  turn_ms: int;             // the last turn's duration (ms)
+  hint: bool;               // its one part is a notice shown before any message (Claude Code missing), gone at the first
+}
+
+s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; }
+
+s_text_of :: (s: [] Session, k: int) -> string { return cast(string) s[0].pool[s[0].parts[k].at..<s[0].parts[k].at + s[0].parts[k].n]; }
+
+// Copies text into the pool ("" when it is full). Tabs become a space each:
+// the transcript's fonts draw no tab.
+s_put :: (s: [] Session, text: string) -> string {
+  if s[0].np + text.count > s[0].pool.count { return ""; }
+  at := s[0].np;
+  for k: 0..<text.count { c := text[k]; s[0].pool[at + k] = ifx c == '\t' then ' ' else c; }
+  s[0].np += text.count;
+  return cast(string) s[0].pool[at..<at + text.count];
+}
+// One line of text for a chip's header (single_line: whitespace runs as one space).
+s_single :: (s: [] Session, text: string) -> string {
+  at := s[0].np; n := 0; space := false;
+  for k: 0..<text.count {
+    c := text[k];
+    if c == '\n' || c == '\r' || c == '\t' || c == ' ' { space = n > 0; continue; }
+    if at + n + 2 > s[0].pool.count { break; }
+    if space { s[0].pool[at + n] = ' '; n += 1; space = false; }
+    s[0].pool[at + n] = c; n += 1;
+  }
+  s[0].np += n;
+  return cast(string) s[0].pool[at..<at + n];
+}
+s_part :: (s: [] Session, kind: int) -> int {
+  if s[0].n >= S_PARTS { return -1; }
+  k := s[0].n; s[0].n += 1;
+  s[0].parts[k] = SPart.{kind = kind, at = s[0].np};
+  s[0].changed = true;
+  return k;
+}
+// Appends to a part's text, moving it to the pool's end first when something came after it.
+s_append :: (s: [] Session, k: int, text: string) {
+  p := s[0].parts[k];
+  if p.at + p.n != s[0].np {
+    if s[0].np + p.n + text.count > s[0].pool.count { return; }
+    at := s[0].np;
+    for q: 0..<p.n { s[0].pool[at + q] = s[0].pool[p.at + q]; }
+    s[0].np += p.n; s[0].parts[k].at = at;
+  }
+  if s[0].np + text.count > s[0].pool.count { return; }
+  q := s_put(s, text);
+  s[0].parts[k].n += text.count;
+  s[0].changed = true;
+}
+
+// A message the user sent: a new turn.
+s_user :: (s: [] Session, text: string) {
+  if s[0].hint { s[0].n = 0; s[0].np = 0; s[0].hint = false; }
+  k := s_part(s, P_USER);
+  if k >= 0 { s_append(s, k, text); }
+  s[0].live = true; s[0].stopping = false; s[0].noticed = false; s[0].secs = 0; s[0].turns += 1;
+}
+// A text or thinking delta (TextDelta, ReasoningDelta): the trailing part of
+// its kind grows, else a new one starts.
+s_delta :: (s: [] Session, kind: int, text: string) {
+  if text.count == 0 { return; }
+  k := s[0].n - 1;
+  if k < 0 || s[0].parts[k].kind != kind { k = s_part(s, kind); }
+  if k >= 0 { s_append(s, k, text); }
+}
+s_notice :: (s: [] Session, kind: int, text: string) {
+  k := s_part(s, P_NOTICE);
+  if k < 0 { return; }
+  s[0].parts[k].notice = kind;
+  s_append(s, k, text);
+  if kind != N_ASK { s[0].noticed = true; }
+}
+s_tool_of :: (s: [] Session, id: string) -> int {
+  k := s[0].n - 1;
+  while k >= 0 { if s[0].parts[k].kind == P_TOOL && s[0].parts[k].id == id { return k; } k -= 1; }
+  return -1;
+}
+
+// Lowercase ASCII contains (run_errors.rs compares lowercased text).
+s_has :: (text: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > text.count { return needle.count == 0; }
+  for i: 0..<text.count - needle.count + 1 {
+    same := true;
+    for j: 0..<needle.count {
+      c := text[i + j];
+      if c >= 'A' && c <= 'Z' { c = c + 32; }
+      if c != needle[j] { same = false; break; }
+    }
+    if same { return true; }
+  }
+  return false;
+}
+SIGNED_OUT_NEEDLES :: [26] string.["isn't signed in", "is not signed in", "not signed in", "not logged in",
+  "please run /login", "run `claude login`", "run codex login", "authentication failed", "authentication_error",
+  "sign in to claude again", "sign in again", "log in again", "invalid api key", "invalid x-api-key",
+  "oauth token has expired", "token has expired", "token expired", "refresh token", "unauthorized", "http 401",
+  "status 401", "(401)", "401 ", "logged out", "login required", "please log in"];
+LIMIT_NEEDLES :: [12] string.["usage limit", "limit reached", "rate limit", "rate-limit", "you've hit your",
+  "you have hit your", "hit your limit", "quota", "http 429", "status 429", "(429)", "too many requests"];
+// What an error's text reports (provider_problem): signed out, a limit, or neither.
+s_problem :: (text: string) -> int {
+  if s_has(text, "out of credits") || s_has(text, "cloud credits") { return N_ERROR; }
+  for n: SIGNED_OUT_NEEDLES { if s_has(text, n) { return N_SIGNED_OUT; } }
+  for n: LIMIT_NEEDLES { if s_has(text, n) { return N_LIMIT; } }
+  return N_ERROR;
+}
+
+// The end of a turn: stopped, failed (its error chip once) or done.
+s_turn_end :: (s: [] Session, failed: bool, why: string) {
+  if !s[0].live { return; }
+  s[0].live = false; s[0].changed = true;
+  if s[0].stopping { s_notice(s, N_STOPPED, ""); return; }
+  if failed && !s[0].noticed { s_notice(s, s_problem(why), ifx why.count > 0 then why else "The turn failed."); }
+}
+
+// A whole number (0 or more) as decimal digits into buf at at; where it ends.
+s_int :: (buf: [] u8, at: int, v: int) -> int {
+  digits: [12] u8; nd := 0; m := v;
+  if m == 0 { digits[0] = '0'; nd = 1; }
+  while m > 0 && nd < 12 { digits[nd] = cast(u8) ('0' + m % 10); m /= 10; nd += 1; }
+  for q: 0..<nd { buf[at + q] = digits[nd - 1 - q]; }
+  return at + nd;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "text streams into the trailing part of its kind; a part that grows after another moved to the pool's end" {
+  s: [1] Session; pool: [256] u8;
+  s_init(s[..], pool[..]);
+  #assert s[0].asking == -1 && s[0].n == 0;
+  s_user(s[..], "hi\tthere");
+  #assert s[0].live && s[0].turns == 1 && s[0].parts[0].kind == P_USER && s_text_of(s[..], 0) == "hi there";
+  s_delta(s[..], P_THINK, "Let me ");
+  s_delta(s[..], P_THINK, "look.");
+  s_delta(s[..], P_THINK, "");
+  #assert s[0].n == 2 && s_text_of(s[..], 1) == "Let me look.";
+  s_delta(s[..], P_TEXT, "Hello");
+  k := s_part(s[..], P_TOOL);
+  s[0].parts[k].id = s_put(s[..], "call-1");
+  #assert s_tool_of(s[..], "call-1") == 3 && s_tool_of(s[..], "none") == -1;
+  // the text is no longer last in the pool: appending moves it there whole
+  s_append(s[..], 2, " there");
+  #assert s_text_of(s[..], 2) == "Hello there" && s[0].parts[2].at + s[0].parts[2].n == s[0].np && s[0].changed;
+  #assert s_single(s[..], "  ls\n   -la\t x ") == "ls -la x";
+}
+
+#test "a full pool or a full part table drops what does not fit and keeps what it has" {
+  s: [1] Session; pool: [8] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "12345");
+  #assert s_text_of(s[..], 0) == "12345" && s_put(s[..], "6789") == "" && s[0].np == 5;
+  s_append(s[..], 0, "6789");
+  #assert s_text_of(s[..], 0) == "12345";
+  s[0].n = S_PARTS;
+  #assert s_part(s[..], P_TEXT) == -1;
+}
+
+#test "a turn ends once: stopped, failed with what its error reports, or done" {
+  s: [1] Session; pool: [1024] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "a");
+  s[0].stopping = true;
+  s_turn_end(s[..], true, "exit status 2");
+  #assert !s[0].live && s[0].parts[1].kind == P_NOTICE && s[0].parts[1].notice == N_STOPPED;
+  s_turn_end(s[..], true, "again");
+  #assert s[0].n == 2;
+  s_user(s[..], "b");
+  #assert !s[0].stopping && !s[0].noticed && s[0].turns == 2;
+  s_turn_end(s[..], true, "");
+  #assert s[0].parts[3].notice == N_ERROR && s_text_of(s[..], 3) == "The turn failed." && s[0].noticed;
+  s_user(s[..], "c");
+  s_notice(s[..], N_ASK, "Bash: ls");
+  #assert !s[0].noticed;
+  s_notice(s[..], N_LIMIT, "Limit");
+  s_turn_end(s[..], true, "ignored: the turn already has its chip");
+  #assert s[0].n == 7 && !s[0].live;
+  s_user(s[..], "d");
+  s_turn_end(s[..], false, "");
+  #assert s[0].n == 8 && s[0].parts[7].kind == P_USER;
+  #assert s_problem("exit status 2") == N_ERROR && s_problem("HTTP 401 Unauthorized") == N_SIGNED_OUT;
+  #assert s_problem("You've hit your usage limit.") == N_LIMIT && s_problem("Out of credits: quota") == N_ERROR;
+  #assert s_has("Rate Limit", "rate limit") && !s_has("ab", "abc") && s_has("x", "");
+}
+
+#test "s_int writes decimal digits where asked" {
+  b: [16] u8;
+  n := s_int(b[..], 0, 0); #assert cast(string) b[0..<n] == "0";
+  n = s_int(b[..], 2, 4096); #assert n == 6 && cast(string) b[2..<n] == "4096";
+}
