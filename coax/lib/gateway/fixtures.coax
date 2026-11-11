@@ -152,6 +152,17 @@ GW_FX_OPENROUTER_GEMINI_3_8_FLASH :: [26] string.[
   "",
 ];
 
+GW_FX_VERTEX_GEMINI_3_8_FLASH_ACTION :: [8] string.[
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"{\\n  \\\"rationale\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-3.8-flash\",\"createTime\": \"2026-11-11T23:13:47.572383Z\",\"responseId\": \"q_b0at_3IqmEkNUPgcqp6Ac\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\\\": \\\"Check the line count of a.txt using wc -l.\\\",\\n  \\\"commands\\\": [\\\"wc -l a.txt\\\"],\\n  \\\"view\\\": [],\\n  \\\"finished\\\": false,\\n  \\\"reply\\\": \\\"\\\",\\n  \\\"ask\\\": \\\"\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-3.8-flash\",\"createTime\": \"2026-11-11T23:13:47.572383Z\",\"responseId\": \"q_b0at_3IqmEkNUPgcqp6Ac\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"none\\\"\\n}\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-3.8-flash\",\"createTime\": \"2026-11-11T23:13:47.572383Z\",\"responseId\": \"q_b0at_3IqmEkNUPgcqp6Ac\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"AY89a1+Z5cCMxs4Bdz8jYyh5OyOyJfPo8HEzwKbFg+y5CVVSec+DWfz1pJbQEH6fcjWQTrXWc83owtzI4I+LXZ5pnER3IAjeVft+iCKIshsEcMXx3buj3ESpfYhrXH0ioVOTGFV5ahT5+n7f39vNVLUKDXYixSKkjUvtzAce3wVn8/RYDqfbk+4MIYnidFoYYB0kjnKHuhpvnQ4Wc1nG+JmnMADFtos0++43Mcu4/dcwhbZNxPCzNOAKOeK4cXgfRhK+iQtNSSIg5/yE/wE=\"}]},\"finishReason\": \"STOP\"}],\"usageMetadata\": {\"promptTokenCount\": 541,\"candidatesTokenCount\": 63,\"totalTokenCount\": 632,\"trafficType\": \"ON_DEMAND\",\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 541}],\"candidatesTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 63}],\"thoughtsTokenCount\": 28},\"modelVersion\": \"gemini-3.8-flash\",\"createTime\": \"2026-11-11T23:13:47.572383Z\",\"responseId\": \"q_b0at_3IqmEkNUPgcqp6Ac\"}",
+  "",
+];
+
 GW_FX_VERTEX_GEMINI_3_8_FLASH :: [7] string.[
   "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"One\\n\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-3.8-flash\",\"createTime\": \"2026-10-10T12:35:06.417536Z\",\"responseId\": \"-jDKaoC-GeGr8sYP4L6goA8\"}",
   "",
@@ -159,6 +170,28 @@ GW_FX_VERTEX_GEMINI_3_8_FLASH :: [7] string.[
   "",
   "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"AY89a18UoMOnnCuTJT340X1wN4miWRdRWAqdhB9JRqbL0yk1qzPnAjE/3rCV7RyZuFkiM9jUTQZEeVumZmHdsj3rTYtA7zGGqbC0L0FFA1XVvw2iLiBj\"}]},\"finishReason\": \"STOP\"}],\"usageMetadata\": {\"promptTokenCount\": 15,\"candidatesTokenCount\": 9,\"totalTokenCount\": 24,\"trafficType\": \"ON_DEMAND\",\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 15}],\"candidatesTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 9}]},\"modelVersion\": \"gemini-3.8-flash\",\"createTime\": \"2026-10-10T12:35:06.417536Z\",\"responseId\": \"-jDKaoC-GeGr8sYP4L6goA8\"}",
   "",
+  "",
+];
+
+GW_FX_VERTEX_GEMINI_4_ARGON_ACTION :: [8] string.[
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"{\\\"rationale\\\":\\\"Count the lines in a\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-argon\",\"createTime\": \"2026-11-11T23:13:25.223910Z\",\"responseId\": \"lfb0aqbVDZWFkNUPjKmoiAg\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \".txt using wc -l and view the file.\\\",\\\"commands\\\":[\\\"wc -l a.txt\\\"],\\\"view\\\":[\\\"a.txt\\\"],\\\"finished\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-argon\",\"createTime\": \"2026-11-11T23:13:25.223910Z\",\"responseId\": \"lfb0aqbVDZWFkNUPjKmoiAg\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\\\":false,\\\"reply\\\":\\\"\\\",\\\"ask\\\":\\\"none\\\"}\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-argon\",\"createTime\": \"2026-11-11T23:13:25.223910Z\",\"responseId\": \"lfb0aqbVDZWFkNUPjKmoiAg\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"AY89a1/RBpRAR2//8s/edCL1JryK/KTyYZWHyGi5h3jioFBpjDbvX3r7g3F/FjI8t3wXlPYRv5XHndMK10zIu6kw8Io1h9wpDj8RJviMeS+9VeiP3ILswFgUQ4gqqYgi\"}]},\"finishReason\": \"STOP\"}],\"usageMetadata\": {\"promptTokenCount\": 665,\"candidatesTokenCount\": 62,\"totalTokenCount\": 727,\"trafficType\": \"ON_DEMAND\",\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 665}],\"candidatesTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 62}]},\"modelVersion\": \"gemini-4-argon\",\"createTime\": \"2026-11-11T23:13:25.223910Z\",\"responseId\": \"lfb0aqbVDZWFkNUPjKmoiAg\"}",
+  "",
+];
+
+GW_FX_VERTEX_GEMINI_4_CARBON_ACTION :: [8] string.[
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"{\\\"rationale\\\":\\\"Check the number of lines in a.txt\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T23:13:47.577267Z\",\"responseId\": \"q_b0avOdI6CZkNUPx8nMgAg\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \" using wc -l and also view a.txt or check for trailing newline.\\\",\\\"commands\\\":[\\\"wc -l a.txt\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T23:13:47.577267Z\",\"responseId\": \"q_b0avOdI6CZkNUPx8nMgAg\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\\\",\\\"awk 'END {print NR}' a.txt\\\"],\\\"view\\\":[\\\"a.txt\\\"],\\\"finished\\\":false,\\\"reply\\\":\\\"\\\",\\\"ask\\\":\\\"none\\\"}\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T23:13:47.577267Z\",\"responseId\": \"q_b0avOdI6CZkNUPx8nMgAg\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"AY89a18HdhLgc6XoPn8pAKdlcGEF28IGQkjtqWmVzMFnPiJXgym0w9Jx6I71cI1E/rRodatTVzq1I+wGuQnYo3Bz15lfwoSTq/9gyCwmBJe1aE3EuHGNreC18x+NC4fy4Q==\"}]},\"finishReason\": \"STOP\"}],\"usageMetadata\": {\"promptTokenCount\": 671,\"candidatesTokenCount\": 81,\"totalTokenCount\": 752,\"trafficType\": \"ON_DEMAND\",\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 671}],\"candidatesTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 81}]},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T23:13:47.577267Z\",\"responseId\": \"q_b0avOdI6CZkNUPx8nMgAg\"}",
   "",
 ];
 

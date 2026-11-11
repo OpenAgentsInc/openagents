@@ -1,0 +1,8 @@
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "{\"rationale\":\"Count the lines in a"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-11T23:13:25.223910Z","responseId": "lfb0aqbVDZWFkNUPjKmoiAg"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": ".txt using wc -l and view the file.\",\"commands\":[\"wc -l a.txt\"],\"view\":[\"a.txt\"],\"finished"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-11T23:13:25.223910Z","responseId": "lfb0aqbVDZWFkNUPjKmoiAg"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "\":false,\"reply\":\"\",\"ask\":\"none\"}"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-argon","createTime": "2026-11-11T23:13:25.223910Z","responseId": "lfb0aqbVDZWFkNUPjKmoiAg"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a1/RBpRAR2//8s/edCL1JryK/KTyYZWHyGi5h3jioFBpjDbvX3r7g3F/FjI8t3wXlPYRv5XHndMK10zIu6kw8Io1h9wpDj8RJviMeS+9VeiP3ILswFgUQ4gqqYgi"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 665,"candidatesTokenCount": 62,"totalTokenCount": 727,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 665}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 62}]},"modelVersion": "gemini-4-argon","createTime": "2026-11-11T23:13:25.223910Z","responseId": "lfb0aqbVDZWFkNUPjKmoiAg"}
+

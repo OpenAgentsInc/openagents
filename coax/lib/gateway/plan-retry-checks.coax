@@ -1,0 +1,188 @@
+// The plan's retries and stall watch (plan.coax, GitHub #13231) against a
+// real curl and a server on loopback that answers as scripted: holds the
+// request without a word (a stall), answers 429, answers a Gemini stream,
+// or cuts a stream after its first text. No network beyond 127.0.0.1. A
+// tool, since `coax test` runs no host effects: it prints a line per check (stderr)
+// and exits 1 when one fails (about 3 s).
+//
+//   coax/web/tool.sh coax/lib/gateway/plan-retry-checks.coax
+#import "Basic";
+#load "../sys/tool.coax";
+#load "plan.coax";
+#load "../net/socket_foreign.coax";
+
+// Prints the check's line; whether it passed.
+pr_check :: (ok: bool, name: string) -> bool {
+  tool_err(ifx ok then "ok   " else "FAIL "); tool_errln(name);
+  return ok;
+}
+
+PR_STALL :: 1;                   // take the request, answer nothing
+PR_429 :: 2;                     // Vertex's quota refusal
+PR_OK :: 3;                      // a whole Gemini stream: thinking, text, done
+PR_CUT :: 4;                     // a first text chunk, then the connection closes
+
+PR_OK_BODY :: "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"weighing it\",\"thought\":true}]}}]}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"OK.\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":34,\"candidatesTokenCount\":2,\"thoughtsTokenCount\":5,\"cachedContentTokenCount\":0}}\r\n\r\n";
+PR_CUT_BODY :: "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"O\"}]}}]}\r\n\r\n";
+PR_429_BODY :: "{\"error\":{\"code\":429,\"message\":\"Resource exhausted. Please try again later.\",\"status\":\"RESOURCE_EXHAUSTED\"}}";
+
+PrServer :: struct {
+  srv: int;
+  script: [] int; at: int;       // what each connection gets, in order
+  held: [8] int; nheld: int;     // stalled connections, closed at the end
+  served: int;
+}
+
+pr_send :: (h: int, s: string) -> bool {
+  for c: s { if cxsock_write(h, cast(int) c) < 0 { return false; } }
+  return cxsock_flush(h, 1000) >= 0;
+}
+
+// Takes what a connection sent (the request) until it pauses.
+pr_drain :: (h: int) {
+  for guard: 0..<200 {
+    n := cxsock_read(h, 40);
+    if n <= 0 { return; }
+  }
+}
+
+// One connection, if one is waiting: answered by the script's next entry.
+pr_serve :: (s: [] PrServer) {
+  h := cxsock_accept(s[0].srv, 0);
+  if h < 0 { return; }
+  pr_drain(h);
+  what := ifx s[0].at < s[0].script.count then s[0].script[s[0].at] else PR_OK;
+  s[0].at += 1; s[0].served += 1;
+  if what == PR_STALL { if s[0].nheld < 8 { s[0].held[s[0].nheld] = h; s[0].nheld += 1; } return; }
+  ok := true;
+  if what == PR_429 {
+    ok = pr_send(h, "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n") && pr_send(h, PR_429_BODY);
+  } else {
+    ok = pr_send(h, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n");
+    ok = ok && pr_send(h, ifx what == PR_CUT then PR_CUT_BODY else PR_OK_BODY);
+  }
+  x := cxsock_close(h);
+}
+
+PrResult :: struct {
+  text: [256] u8; nt: int;
+  reasoning: int;
+  ended: int;                    // GW_EV_DONE or GW_EV_REFUSED
+  status: int;
+  input: int;
+}
+
+// Runs the plan against the server until it ends (10 s at most).
+pr_run :: (p: [] GwPlan, bench: [] GwBench, s: [] PrServer, r: [] PrResult) {
+  for guard: 0..<5000 {
+    pr_serve(s);
+    ev: [8] GwEvent;
+    n := gw_plan_poll(p, bench, ev[..]);
+    for i: 0..<n {
+      e := ev[i];
+      if e.kind == GW_EV_TEXT { for c: e.text { if r[0].nt < 256 { r[0].text[r[0].nt] = c; r[0].nt += 1; } } }
+      if e.kind == GW_EV_REASONING { r[0].reasoning += 1; }
+      if e.kind == GW_EV_DONE || e.kind == GW_EV_REFUSED { r[0].ended = e.kind; r[0].status = e.status; r[0].input = e.usage.input_tokens; }
+    }
+    if r[0].ended != 0 { break; }
+    x := cxproc_sleep_ms(2);
+  }
+  for i: 0..<s[0].nheld { x := cxsock_close(s[0].held[i]); }
+  s[0].nheld = 0;
+}
+
+cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
+
+// A plan of one attempt at the server: the Gemini wire, no key, small limits.
+pr_plan :: (p: [] GwPlan, b: [] GwPlanBuffers, url: [] u8, port: int, retries: int, none: [] string) {
+  n := json_raw(url, 0, "http://127.0.0.1:"); n = json_write_int(url, n, port); n = json_raw(url, n, "/v1/models/m:streamGenerateContent?alt=sse");
+  gw_plan_init(p, b);
+  x := gw_plan_add(p, Gateway.{name = "loop", url = cast(string) url[0..<n], key_env = "", wire = GW_WIRE_GEMINI}, "m", none[0..<0]);
+  p[0].retries = retries; p[0].backoff_ms = 20; p[0].first_limit_ms = 600; p[0].idle_limit_ms = 600;
+}
+
+PrTest :: struct { p: [1] GwPlan; b: [1] GwPlanBuffers; bench: [1] GwBench; url: [256] u8; msgs: [1] GwMessage; none: [1] string; }
+
+pr_request :: (t: [] PrTest) -> GwRequest {
+  t[0].msgs[0] = GwMessage.{role = "user", text = "Say OK."};
+  return GwRequest.{model = "m", messages = t[0].msgs[..], effort = "low"};
+}
+
+pr_case0 :: () -> bool {  // a call silent past its first-token limit is cut and tried again; the second answers
+  t: [1] PrTest; srv := cxsock_listen(0);
+  if srv < 0 { return pr_check(false, "a loopback port to listen on"); }
+  pr_plan(t[0].p[..], t[0].b[..], t[0].url[..], cxsock_port(srv), 2, t[0].none[..]);
+  script := [2] int.[PR_STALL, PR_OK];
+  s: [1] PrServer; s[0] = PrServer.{srv = srv, script = script[..]};
+  r: [1] PrResult;
+  gw_plan_start(t[0].p[..], t[0].bench[..], pr_request(t[..]));
+  pr_run(t[0].p[..], t[0].bench[..], s[..], r[..]);
+  x := cxsock_close(srv);
+  if !pr_check(r[0].ended == GW_EV_DONE && cast(string) r[0].text[0..<r[0].nt] == "OK." && r[0].reasoning == 1 && r[0].input == 34, "a call silent past its first-token limit is cut and tried again; the second answers") { return false; }
+  if !pr_check(s[0].served == 2 && t[0].p[0].nlog == 2, "a call silent past its first-token limit is cut and tried again; the second answers") { return false; }
+  if !pr_check(t[0].p[0].log[0].outcome == GW_OUT_RETRIED && t[0].p[0].log[0].status == 0 && t[0].p[0].log[1].outcome == GW_OUT_DONE, "a call silent past its first-token limit is cut and tried again; the second answers") { return false; }
+  return true;
+}
+
+pr_case1 :: () -> bool {  // a 429 waits its backoff and goes again; when the tries run out the refusal reaches the caller
+  t: [1] PrTest; srv := cxsock_listen(0);
+  if srv < 0 { return pr_check(false, "a loopback port to listen on"); }
+  pr_plan(t[0].p[..], t[0].b[..], t[0].url[..], cxsock_port(srv), 2, t[0].none[..]);
+  script := [3] int.[PR_429, PR_429, PR_OK];
+  s: [1] PrServer; s[0] = PrServer.{srv = srv, script = script[..]};
+  r: [1] PrResult;
+  gw_plan_start(t[0].p[..], t[0].bench[..], pr_request(t[..]));
+  pr_run(t[0].p[..], t[0].bench[..], s[..], r[..]);
+  if !pr_check(r[0].ended == GW_EV_DONE && cast(string) r[0].text[0..<r[0].nt] == "OK." && s[0].served == 3, "a 429 waits its backoff and goes again; when the tries run out the refusal reaches the caller") { return false; }
+  if !pr_check(t[0].p[0].nlog == 3 && t[0].p[0].log[0].status == 429 && t[0].p[0].log[1].outcome == GW_OUT_RETRIED && t[0].p[0].log[2].outcome == GW_OUT_DONE, "a 429 waits its backoff and goes again; when the tries run out the refusal reaches the caller") { return false; }
+  // one retry only: the second 429 ends it, with the provider's reason
+  pr_plan(t[0].p[..], t[0].b[..], t[0].url[..], cxsock_port(srv), 1, t[0].none[..]);
+  s[0] = PrServer.{srv = srv, script = script[..]};
+  r[0] = PrResult.{};
+  gw_plan_start(t[0].p[..], t[0].bench[..], pr_request(t[..]));
+  pr_run(t[0].p[..], t[0].bench[..], s[..], r[..]);
+  x := cxsock_close(srv);
+  if !pr_check(r[0].ended == GW_EV_REFUSED && r[0].status == 429 && s[0].served == 2 && r[0].nt == 0, "a 429 waits its backoff and goes again; when the tries run out the refusal reaches the caller") { return false; }
+  if !pr_check(t[0].p[0].nlog == 2 && t[0].p[0].log[0].outcome == GW_OUT_RETRIED && t[0].p[0].log[1].outcome == GW_OUT_LAST, "a 429 waits its backoff and goes again; when the tries run out the refusal reaches the caller") { return false; }
+  if !pr_check(t[0].p[0].why == "Resource exhausted. Please try again later.", "a 429 waits its backoff and goes again; when the tries run out the refusal reaches the caller") { return false; }
+  return true;
+}
+
+pr_case2 :: () -> bool {  // after text nothing retries: a stream cut mid-answer ends as cut
+  t: [1] PrTest; srv := cxsock_listen(0);
+  if srv < 0 { return pr_check(false, "a loopback port to listen on"); }
+  pr_plan(t[0].p[..], t[0].b[..], t[0].url[..], cxsock_port(srv), 2, t[0].none[..]);
+  script := [2] int.[PR_CUT, PR_OK];
+  s: [1] PrServer; s[0] = PrServer.{srv = srv, script = script[..]};
+  r: [1] PrResult;
+  gw_plan_start(t[0].p[..], t[0].bench[..], pr_request(t[..]));
+  pr_run(t[0].p[..], t[0].bench[..], s[..], r[..]);
+  x := cxsock_close(srv);
+  if !pr_check(r[0].ended == GW_EV_REFUSED && cast(string) r[0].text[0..<r[0].nt] == "O" && s[0].served == 1, "after text nothing retries: a stream cut mid-answer ends as cut") { return false; }
+  if !pr_check(t[0].p[0].nlog == 1 && t[0].p[0].log[0].outcome == GW_OUT_CUT, "after text nothing retries: a stream cut mid-answer ends as cut") { return false; }
+  return true;
+}
+
+pr_case3 :: () -> bool {  // with no retries set a stall still ends the call, as a refusal
+  t: [1] PrTest; srv := cxsock_listen(0);
+  if srv < 0 { return pr_check(false, "a loopback port to listen on"); }
+  pr_plan(t[0].p[..], t[0].b[..], t[0].url[..], cxsock_port(srv), 0, t[0].none[..]);
+  script := [1] int.[PR_STALL];
+  s: [1] PrServer; s[0] = PrServer.{srv = srv, script = script[..]};
+  r: [1] PrResult;
+  gw_plan_start(t[0].p[..], t[0].bench[..], pr_request(t[..]));
+  pr_run(t[0].p[..], t[0].bench[..], s[..], r[..]);
+  x := cxsock_close(srv);
+  if !pr_check(r[0].ended == GW_EV_REFUSED && r[0].status == 0 && s[0].served == 1 && t[0].p[0].log[0].outcome == GW_OUT_LAST, "with no retries set a stall still ends the call, as a refusal") { return false; }
+  if !pr_check(t[0].p[0].why == "nothing came within the first-token limit", "with no retries set a stall still ends the call, as a refusal") { return false; }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  failed := 0;
+  if !pr_case0() { failed += 1; }
+  if !pr_case1() { failed += 1; }
+  if !pr_case2() { failed += 1; }
+  if !pr_case3() { failed += 1; }
+  return ifx failed > 0 then 1 else 0;
+}

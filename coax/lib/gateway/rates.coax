@@ -91,3 +91,26 @@ gw_price :: (gateway: string, model: string, u: GwUsage, usd_per_btc: int) -> Gw
   #assert gw_price("openai", "gpt-5.4-mini", u, 100000).card_usd_micros == -1;
   #assert gw_msats(1000000, 50000) == 2000000;   // a dollar at $50k is 2,000 sats
 }
+
+// Microcoder's next_action at thinking level low from each model it runs on Vertex (us, recorded
+// 2026-11-11 through Coder's microcoder engine with GW_RECORD, GitHub #13231): the JSON answer
+// streams as text, the done chunk carries the usage, and the card prices it.
+#test "each model's recorded next_action on Vertex (Argon, Flash, Carbon at low) parses and is priced on the card" {
+  fa := GW_FX_VERTEX_GEMINI_4_ARGON_ACTION; ff := GW_FX_VERTEX_GEMINI_3_8_FLASH_ACTION; fc := GW_FX_VERTEX_GEMINI_4_CARBON_ACTION;
+  r: [1] GwReplay;
+  gw_replay(GW_WIRE_GEMINI, fa[..], r[..]);
+  #assert json_valid(gw_replay_text(r[..])) && r[0].done == 1 && r[0].done_at_end && r[0].refused == 0;
+  #assert r[0].usage.input_tokens == 665 && r[0].usage.output_tokens == 62 && gw_price("vertex", "gemini-4-argon", r[0].usage, 0).card_usd_micros == 3900;
+  r[0] = GwReplay.{};
+  gw_replay(GW_WIRE_GEMINI, ff[..], r[..]);
+  #assert json_valid(gw_replay_text(r[..])) && r[0].done == 1 && r[0].thoughts == 0;
+  // Flash thinks a little at low: 28 reasoning tokens, billed as output, and no thought text streams
+  #assert r[0].usage.input_tokens == 541 && r[0].usage.reasoning_tokens == 28 && r[0].usage.output_tokens == 91 && gw_price("vertex", "gemini-3.8-flash", r[0].usage, 0).card_usd_micros == 1494;
+  r[0] = GwReplay.{};
+  gw_replay(GW_WIRE_GEMINI, fc[..], r[..]);
+  #assert json_valid(gw_replay_text(r[..])) && r[0].done == 1;
+  #assert r[0].usage.input_tokens == 671 && r[0].usage.output_tokens == 81 && gw_price("vertex", "gemini-4-carbon", r[0].usage, 0).card_usd_micros == 4304;
+  // cached input at the card's cached price: 600 of 671 cached
+  u := r[0].usage; u.cached_tokens = 600;
+  #assert gw_price("vertex", "gemini-4-carbon", u, 0).card_usd_micros == 71 * 4 + 600 * 4 / 20 + 81 * 20;
+}

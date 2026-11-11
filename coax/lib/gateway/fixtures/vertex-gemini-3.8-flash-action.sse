@@ -1,0 +1,8 @@
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "{\n  \"rationale"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-11T23:13:47.572383Z","responseId": "q_b0at_3IqmEkNUPgcqp6Ac"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "\": \"Check the line count of a.txt using wc -l.\",\n  \"commands\": [\"wc -l a.txt\"],\n  \"view\": [],\n  \"finished\": false,\n  \"reply\": \"\",\n  \"ask\": \""}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-11T23:13:47.572383Z","responseId": "q_b0at_3IqmEkNUPgcqp6Ac"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "none\"\n}"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-11T23:13:47.572383Z","responseId": "q_b0at_3IqmEkNUPgcqp6Ac"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a1+Z5cCMxs4Bdz8jYyh5OyOyJfPo8HEzwKbFg+y5CVVSec+DWfz1pJbQEH6fcjWQTrXWc83owtzI4I+LXZ5pnER3IAjeVft+iCKIshsEcMXx3buj3ESpfYhrXH0ioVOTGFV5ahT5+n7f39vNVLUKDXYixSKkjUvtzAce3wVn8/RYDqfbk+4MIYnidFoYYB0kjnKHuhpvnQ4Wc1nG+JmnMADFtos0++43Mcu4/dcwhbZNxPCzNOAKOeK4cXgfRhK+iQtNSSIg5/yE/wE="}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 541,"candidatesTokenCount": 63,"totalTokenCount": 632,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 541}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 63}],"thoughtsTokenCount": 28},"modelVersion": "gemini-3.8-flash","createTime": "2026-11-11T23:13:47.572383Z","responseId": "q_b0at_3IqmEkNUPgcqp6Ac"}
+

@@ -404,6 +404,7 @@ GwCall :: struct {
   first: bool;                   // a delta has been handed back
   finished: bool;                // done or refused has been handed back
   started_ms: int;
+  last_ms: int = -1;             // when the last body line came, -1 before the first (a plan's stall watch)
   ps: [1] GwParse;
   seen: bool;                    // a body line that isn't blank has come
   whole: bool;                   // the body is one JSON document, not an event stream
@@ -430,7 +431,7 @@ gw_call_start :: (call: [] GwCall, g: Gateway, body: string, headers: [] string)
   call[0].wire = g.wire; call[0].nerr = 0; call[0].first = false; call[0].finished = false;
   call[0].ps[0] = GwParse.{}; call[0].whole = false; call[0].seen = false; call[0].nw = 0; call[0].wfull = false;
   gw_sse_clear(call[0].sse[..]);
-  call[0].started_ms = cxproc_now_ms();
+  call[0].started_ms = cxproc_now_ms(); call[0].last_ms = -1;
   why := gw_start(gw_client(g), body, headers, call[0].st[..]);
   if why.count > 0 { call[0].finished = true; }
   return why;
@@ -446,6 +447,7 @@ gw_call_poll :: (call: [] GwCall, out: [] GwEvent) -> int {
     r := gw_poll(st, call[0].line);
     if r.kind == GW_IDLE { return 0; }
     if r.kind == GW_END { return gw_call_end(call, out); }
+    call[0].last_ms = cxproc_now_ms();
     if st[0].status != 200 {
       if call[0].nerr > 0 && call[0].nerr < call[0].errbody.count { call[0].errbody[call[0].nerr] = '\n'; call[0].nerr += 1; }
       for c: r.text { if call[0].nerr < call[0].errbody.count { call[0].errbody[call[0].nerr] = c; call[0].nerr += 1; } }

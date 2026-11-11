@@ -12,13 +12,24 @@
 // next upstream would refuse it too); here each gateway translates the
 // request its own way, so a 400 falls through like any refusal.
 //
+// Retries and stalls (GitHub #13231), off unless the caller sets them: with
+// retries > 0, an attempt refused before any text with a status worth
+// another try (no response, a stream cut short, 408, 429, 5xx) goes again,
+// the same gateway and model, after a backoff that grows 4x from backoff_ms
+// to 30 s; and a call silent past first_limit_ms (nothing in its body yet)
+// or idle_limit_ms (nothing since its last line) is cut and counts as such a
+// refusal. Reasoning before the cut doesn't stop a retry: the caller acts on
+// text only. Each try is logged ("retried"). After text nothing retries.
+//
 // gw_plan_decide is the rule, pure, for tests; GwPlan runs it over GwCall.
 
 #load "rates.coax";
 #load "../agent/journal-file.coax";
 
 GW_PLAN_MAX :: 3;
+GW_LOG_MAX :: 12;                // attempts and their retries logged for one request
 GW_BENCH_MAX :: 16;
+GW_BACKOFF_CAP_MS :: 30000;
 
 GwAttempt :: struct {
   gateway: Gateway;
@@ -49,6 +60,7 @@ GW_OUT_CUT :: 4;                 // failed after the first token: the call ended
 GW_OUT_LAST :: 5;                // refused before the first token with no attempt left
 GW_OUT_SKIPPED :: 6;             // not tried: its gateway was benched
 GW_OUT_STOPPED :: 7;             // the caller stopped it
+GW_OUT_RETRIED :: 8;             // refused or silent before any text: the same attempt went again
 
 // One attempt in the log. No field can hold the prompt or the answer.
 GwAttemptLog :: struct {
@@ -75,6 +87,7 @@ gw_outcome_name :: (o: int) -> string {
   if o == GW_OUT_LAST { return "refused"; }
   if o == GW_OUT_SKIPPED { return "skipped"; }
   if o == GW_OUT_STOPPED { return "stopped"; }
+  if o == GW_OUT_RETRIED { return "retried"; }
   return "";
 }
 
@@ -110,12 +123,40 @@ gw_plan_decide :: (ev: GwEvent, first: bool, left: int) -> int {
 
 gw_bench_status :: (status: int) -> bool { return status == 401 || status == 402; }
 
+// A refusal worth another try of the same attempt: no response (0), a 200 stream cut before its
+// end, a timeout (408), too many requests (429) or a server error (5xx).
+gw_retryable :: (status: int) -> bool { return status == 0 || status == 200 || status == 408 || status == 429 || (status >= 500 && status < 600); }
+
+// The wait before retry number tried + 1: base, then 4x each time, at most 30 s.
+gw_backoff :: (base: int, tried: int) -> int {
+  b := ifx base > 0 then base else 0;
+  for i: 0..<tried { b *= 4; if b >= GW_BACKOFF_CAP_MS { return GW_BACKOFF_CAP_MS; } }
+  return ifx b > GW_BACKOFF_CAP_MS then GW_BACKOFF_CAP_MS else b;
+}
+
+// Whether a call has gone silent: started at started, its last body line at last (-1: none yet).
+// A limit of 0 is off.
+GW_STALL_NONE :: 0;
+GW_STALL_FIRST :: 1;             // nothing in the body within first_limit
+GW_STALL_IDLE :: 2;              // nothing since the last line within idle_limit
+gw_stall :: (first_limit: int, idle_limit: int, started: int, last: int, now: int) -> int {
+  if last < 0 { return ifx first_limit > 0 && now - started >= first_limit then GW_STALL_FIRST else GW_STALL_NONE; }
+  return ifx idle_limit > 0 && now - last >= idle_limit then GW_STALL_IDLE else GW_STALL_NONE;
+}
+
 GwPlan :: struct {
   journal: [] JfWriter;
   journal_live: bool;
   attempts: [GW_PLAN_MAX] GwAttempt; n: int;
   at: int;                       // the attempt running, or n when none is
-  log: [GW_PLAN_MAX] GwAttemptLog; nlog: int;
+  log: [GW_LOG_MAX] GwAttemptLog; nlog: int;
+  retries: int;                  // tries again of an attempt refused or silent before text (0: none)
+  backoff_ms: int = 2000;        // the first retry's wait
+  first_limit_ms: int;           // a call with nothing in its body this long is cut (0: no limit)
+  idle_limit_ms: int;            // a call with no new line this long is cut (0: no limit)
+  tried: int;                    // retries spent on this request
+  retry_at: int;                 // when the waiting retry starts, 0 when none waits
+  texted: bool;                  // the running attempt has handed back text
   call: [1] GwCall;
   req: GwRequest;
   body: [] u8;
@@ -132,7 +173,7 @@ GwPlanBuffers :: struct {
 }
 
 gw_plan_init :: (p: [] GwPlan, b: [] GwPlanBuffers) {
-  p[0] = GwPlan.{body = b[0].body[..]};
+  p[0] = GwPlan.{body = b[0].body[..], backoff_ms = 2000};
   gw_call_init(p[0].call[..], b[0].call[..]);
 }
 
@@ -157,7 +198,7 @@ gw_plan_log :: (p: [] GwPlan, i: int, outcome: int, status: int, raw: GwUsage) {
       p[0].why="durable model completion failed; outcome requires inspection";
     }
   }
-  if p[0].nlog >= GW_PLAN_MAX { return; }
+  if p[0].nlog >= GW_LOG_MAX { return; }
   a := p[0].attempts[i];
   usage := gw_plan_price(p, i, raw);
   now := cxproc_now_ms();
@@ -195,6 +236,7 @@ gw_plan_launch :: (p: [] GwPlan, bench: [] GwBench) -> bool {
       }
       p[0].journal_live=true;
     }
+    p[0].texted = false;
     e := gw_call_start(p[0].call[..], a.gateway, body, a.headers);
     if e.count > 0 { p[0].why = e; gw_plan_log(p, p[0].at, GW_OUT_FELL_THROUGH, 0, none); p[0].at += 1; continue; }
     return true;
@@ -205,6 +247,7 @@ gw_plan_launch :: (p: [] GwPlan, bench: [] GwBench) -> bool {
 // Starts the plan for req (its model is replaced by each attempt's). Poll it next.
 gw_plan_start :: (p: [] GwPlan, bench: [] GwBench, req: GwRequest) {
   p[0].req = req; p[0].at = 0; p[0].nlog = 0; p[0].over = false; p[0].why = "";
+  p[0].tried = 0; p[0].retry_at = 0; p[0].texted = false;
   if p[0].n == 0 { p[0].why = "the plan has no attempts"; }
   x := gw_plan_launch(p, bench);
 }
@@ -221,14 +264,38 @@ gw_plan_no_capacity :: (p: [] GwPlan, out: [] GwEvent, status: int) -> int {
 gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
   if p[0].over { return 0; }
   if p[0].at >= p[0].n { return gw_plan_no_capacity(p, out, 0); }
+  if p[0].retry_at > 0 {
+    if cxproc_now_ms() < p[0].retry_at { return 0; }
+    p[0].retry_at = 0;
+    if !gw_plan_launch(p, bench) { return gw_plan_no_capacity(p, out, 0); }
+    return 0;
+  }
   ev: [8] GwEvent;
   n := gw_call_poll(p[0].call[..], ev[..]);
+  if n == 0 {
+    c := p[0].call[0];
+    s := gw_stall(p[0].first_limit_ms, p[0].idle_limit_ms, c.started_ms, c.last_ms, cxproc_now_ms());
+    if s == GW_STALL_NONE { return 0; }
+    gw_call_close(p[0].call[..]);
+    ev[0] = GwEvent.{kind = GW_EV_REFUSED, status = 0, reason = ifx s == GW_STALL_FIRST then "nothing came within the first-token limit" else "the stream went silent past the idle limit"};
+    n = 1;
+  }
   k := 0;
   for i: 0..<n {
     x := ev[i];
     if x.kind==GW_EV_TEXT && p[0].journal.count>0 && !jf_reply(p[0].journal,x.text) {
       gw_call_close(p[0].call[..]);p[0].why="durable model reply failed; no tool will start";
       p[0].at=p[0].n;return gw_plan_no_capacity(p,out,0);
+    }
+    if x.kind == GW_EV_TEXT { p[0].texted = true; }
+    if x.kind == GW_EV_REFUSED && !p[0].texted && p[0].tried < p[0].retries && gw_retryable(x.status) {
+      gw_call_close(p[0].call[..]);
+      gw_plan_log(p, p[0].at, GW_OUT_RETRIED, x.status, x.usage);
+      p[0].why = x.reason;
+      p[0].retry_at = cxproc_now_ms() + gw_backoff(p[0].backoff_ms, p[0].tried);
+      if p[0].retry_at <= 0 { p[0].retry_at = 1; }
+      p[0].tried += 1;
+      return k;
     }
     first := p[0].call[0].first;
     if (x.kind == GW_EV_TEXT || x.kind == GW_EV_REASONING) && p[0].first_ms < 0 { p[0].first_ms = cxproc_now_ms(); }
@@ -279,6 +346,23 @@ gw_plan_stop :: (p: [] GwPlan) {
   #assert gw_plan_decide(r, false, 0) == GW_END_PASS;      // the last attempt: no_capacity
   #assert gw_plan_decide(r, true, 2) == GW_END_PASS;       // after the first token: cut, no retry
   #assert gw_bench_status(401) && gw_bench_status(402) && !gw_bench_status(429) && !gw_bench_status(0);
+}
+
+#test "retries: which refusals go again, the backoff, and when a call has gone silent" {
+  #assert gw_retryable(0) && gw_retryable(200) && gw_retryable(408) && gw_retryable(429) && gw_retryable(500) && gw_retryable(503) && gw_retryable(599);
+  #assert !gw_retryable(400) && !gw_retryable(401) && !gw_retryable(403) && !gw_retryable(404) && !gw_retryable(600) && !gw_retryable(499);
+  #assert gw_backoff(2000, 0) == 2000 && gw_backoff(2000, 1) == 8000 && gw_backoff(2000, 2) == 30000 && gw_backoff(2000, 9) == 30000;
+  #assert gw_backoff(10, 1) == 40 && gw_backoff(0, 3) == 0 && gw_backoff(-5, 0) == 0 && gw_backoff(40000, 0) == 30000;
+  #assert gw_stall(1000, 500, 0, -1, 999) == GW_STALL_NONE && gw_stall(1000, 500, 0, -1, 1000) == GW_STALL_FIRST;
+  #assert gw_stall(1000, 500, 0, 100, 599) == GW_STALL_NONE && gw_stall(1000, 500, 0, 100, 600) == GW_STALL_IDLE;
+  #assert gw_stall(0, 0, 0, -1, 1000000) == GW_STALL_NONE && gw_stall(0, 0, 0, 5, 1000000) == GW_STALL_NONE;
+  #assert gw_outcome_name(GW_OUT_RETRIED) == "retried";
+}
+
+#forall "a stall is judged by the first limit before any line and by the idle limit after" first: 0..<4, idle: 0..<4, last: -1..<3, now: 0..<8 {
+  s := gw_stall(first, idle, 0, last, now);
+  if last < 0 { #assert s == (ifx first > 0 && now >= first then GW_STALL_FIRST else GW_STALL_NONE); }
+  else { #assert s == (ifx idle > 0 && now - last >= idle then GW_STALL_IDLE else GW_STALL_NONE); }
 }
 
 #test "the bench holds gateway names for the session" {

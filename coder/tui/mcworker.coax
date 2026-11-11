@@ -7,6 +7,7 @@
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
 //        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
+//        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Flash and low by default)
 //        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams
@@ -227,7 +228,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if local.ok && local.value {
       wb: [512] u8; why := mk_plan_local(k[..], plan[..], pb[..], wb[..]);
       if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
-    } else if mk_plan(k[..], plan[..], pb[..]) == 0 {
+    } else if mk_plan(k[..], plan[..], pb[..], cl_str(ar[..], msg, "model")) == 0 {
       mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
       continue;
     }
@@ -255,7 +256,10 @@ tool_main :: () -> int #export_c #effects(all) {
     nc=json_raw(context[..],nc,ifx run[0].gated then ",\"gated\":true}" else ",\"gated\":false}");
     if nc<0 || !jf_context(journal[..],cast(string)context[0..<nc]) {mw_ended(out[..],"failed","durable context failed; no request or tool started");continue;}
     plan[0].journal=journal[..];
-    mc_run_start(run[..], plan[..], bench[..], cd, "low");
+    effort := cl_str(ar[..], msg, "effort");
+    if effort != "medium" && effort != "high" { effort = "low"; }
+    mk_plan_limits(plan[..], effort);
+    mc_run_start(run[..], plan[..], bench[..], cd, effort);
     running = true;
   }
   if running { ev: [32] McRunEvent; n := mc_run_stop(run[..], ev[..]); }

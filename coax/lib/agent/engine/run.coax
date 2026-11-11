@@ -1149,7 +1149,8 @@ tr_micro_send :: (r: [] TrRun, msg: string) {
   p: [1] CdPolicy; tr_no_policy(p[..]);
   t := McTask.{task = msg, session = sw_id(r[0].log), cwd = tr_cwd(r), local = r[0].engine == TR_PSIONIC,
                sandbox = cd_codex_sandbox(p[..], false), policy = false, allow = CD_EFFECT_READ,
-               ceiling = CD_EFFECT_RUN, roots = "", gated = false};
+               ceiling = CD_EFFECT_RUN, roots = "", gated = false,
+               model = ifx tr_is_micro(r[0].model_engine) then tr_model(r) else "", effort = tr_effort(r)};
   if !mcw_task(w, t) { tr_micro_close(r); tr_finish(r, TR_FAILED, "Microcoder's worker is gone."); }
 }
 

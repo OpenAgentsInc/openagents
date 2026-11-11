@@ -17,6 +17,9 @@ the gateways replay.
 | `vertex-gemini-4-carbon.sse` | Gemini native | Vertex AI `streamGenerateContent?alt=sse`, `gemini-4-carbon`, thinking level low, 2026-11-11 |
 | `vertex-gemini-4-carbon-high.sse` | Gemini native | the same at thinking level high: 256 reasoning tokens counted, no thought text streamed (Carbon sends only a signature), 2026-11-11 |
 | `vertex-openai-gemini-4-carbon.sse` | Chat Completions | Vertex AI's OpenAI endpoint, `google/gemini-4-carbon`, `reasoning_effort` low, 2026-11-11 |
+| `vertex-gemini-4-argon-action.sse` | Gemini native | Vertex AI (location `us`), `gemini-4-argon`, thinking level low: Microcoder's first next_action for a one-file task, recorded through Coder's microcoder engine with `GW_RECORD`, 2026-11-11 (#13231) |
+| `vertex-gemini-3.8-flash-action.sse` | Gemini native | the same with `gemini-3.8-flash`: 28 reasoning tokens counted, no thought text |
+| `vertex-gemini-4-carbon-action.sse` | Gemini native | the same with `gemini-4-carbon` |
 | `anthropic-text.sse` | Anthropic Messages | hand-written from the documented stream, not a recording |
 | `anthropic-tool.sse` | Anthropic Messages | hand-written from the documented stream, not a recording |
 

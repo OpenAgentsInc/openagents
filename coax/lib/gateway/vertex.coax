@@ -41,10 +41,16 @@ GwVertex :: struct {
   url: [512] u8; nu: int;
 }
 
+// The endpoint's host for the location: global is aiplatform.googleapis.com, the multi-regions
+// us and eu are aiplatform.us.rep.googleapis.com and aiplatform.eu.rep.googleapis.com (Gemini 4
+// Carbon and Argon run only in global, us and eu; us-aiplatform.googleapis.com is refused as an
+// invalid hostname, probed 2026-11-11, GitHub #13231), and a region R is R-aiplatform.googleapis.com.
 gw_vertex_host :: (v: [] GwVertex, out: [] u8) -> int {
   if v[0].host.count > 0 { return json_raw(out, 0, v[0].host); }
   n := json_raw(out, 0, "https://");
-  if v[0].location != "global" { n = json_raw(out, n, v[0].location); n = json_raw(out, n, "-"); }
+  loc := v[0].location;
+  if loc == "us" || loc == "eu" { n = json_raw(out, n, "aiplatform."); n = json_raw(out, n, loc); return json_raw(out, n, ".rep.googleapis.com"); }
+  if loc != "global" { n = json_raw(out, n, loc); n = json_raw(out, n, "-"); }
   return json_raw(out, n, "aiplatform.googleapis.com");
 }
 
@@ -110,7 +116,8 @@ gw_vertex_token_file :: (v: [] GwVertex, gcloud: string, keyfile: string, config
   eb: [3072] u8;
   n := json_raw(eb[..], 0, "GOOGLE_APPLICATION_CREDENTIALS="); n = json_raw(eb[..], n, keyfile);
   m := json_raw(eb[..], n, "CLOUDSDK_CONFIG="); m = json_raw(eb[..], m, config);
-  k := json_raw(eb[..], m, "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
+  // NixOS keeps dirname and readlink, which its gcloud wrapper runs, in /run/current-system/sw/bin
+  k := json_raw(eb[..], m, "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/run/current-system/sw/bin");
   if k < 0 { return "the gcloud environment does not fit"; }
   env: [3] string;
   env[0] = cast(string) eb[0..<n]; env[1] = cast(string) eb[n..<m]; env[2] = cast(string) eb[m..<k];
@@ -145,12 +152,17 @@ gw_vertex_token :: (v: [] GwVertex) -> string {
 
 // ---------------------------------------------------------------- checks
 
-#test "Vertex URLs: the OpenAI endpoint and the native stream, global and regional" {
+#test "Vertex URLs: the OpenAI endpoint and the native stream, global, the us and eu multi-regions, and regional" {
   v: [1] GwVertex;
   #assert gw_vertex_chat_url(v[..]) == "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi/chat/completions";
   #assert gw_vertex_native_url(v[..], GW_VERTEX_FLASH) == "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/google/models/gemini-3.8-flash:streamGenerateContent?alt=sse";
   v[0].location = "us-central1";
   #assert gw_vertex_chat_url(v[..]) == "https://us-central1-aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/us-central1/endpoints/openapi/chat/completions";
+  v[0].location = "us";
+  #assert gw_vertex_native_url(v[..], "gemini-4-argon") == "https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/publishers/google/models/gemini-4-argon:streamGenerateContent?alt=sse";
+  v[0].location = "eu";
+  #assert gw_vertex_chat_url(v[..]) == "https://aiplatform.eu.rep.googleapis.com/v1/projects/openagentsgemini/locations/eu/endpoints/openapi/chat/completions";
+  v[0].location = "us-central1";
   v[0].host = "http://127.0.0.1:9";
   #assert gw_vertex_native_url(v[..], "gemini-2.5-flash-lite") == "http://127.0.0.1:9/v1/projects/openagentsgemini/locations/us-central1/publishers/google/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse";
 }
@@ -171,4 +183,21 @@ gw_vertex_token :: (v: [] GwVertex) -> string {
   r: [1] GwReplay; fx := GW_FX_VERTEX_GEMINI_3_8_FLASH;
   gw_replay(GW_WIRE_GEMINI, fx[..], r[..]);
   #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive" && r[0].done == 1 && r[0].usage.input_tokens == 15;
+}
+
+#test "the thinking level reaches Vertex's native request as thinkingConfig.thinkingLevel" {
+  v: [1] GwVertex; v[0].location = "us";
+  g := gw_vertex_native(v[..], "gemini-4-argon");
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "hi"};
+  out: [2048] u8; why: [1] string;
+  efforts := [3] string.["low", "medium", "high"];
+  for e: efforts {
+    body := gw_translate(g, GwRequest.{model = "gemini-4-argon", messages = msgs[..], effort = e, schema = "{\"type\":\"object\"}"}, out[..], why[..]);
+    ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    #assert json_valid(body) && cl_str(ar[..], body, "generationConfig.thinkingConfig.thinkingLevel") == e;
+    #assert cl_str(ar[..], body, "generationConfig.responseMimeType") == "application/json";
+  }
+  body := gw_translate(g, GwRequest.{model = "gemini-4-argon", messages = msgs[..]}, out[..], why[..]);
+  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert cl_str(ar[..], body, "generationConfig.thinkingConfig.thinkingLevel") == "";   // no effort: the model's own
 }

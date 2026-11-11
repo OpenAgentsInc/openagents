@@ -3,8 +3,19 @@
 // ~/work/.secrets go into curl's child environment only, through
 // Gateway.key_value, and Vertex's token is minted by gcloud with the
 // service-account key file and a gcloud config of its own, set in gcloud's
-// environment only), the plan built from them (Vertex Gemini Flash, then
-// the Gemini API, then OpenRouter), and the earlier turns told to each run.
+// environment only), the plan built from them (Vertex Gemini, then the
+// Gemini API, then OpenRouter), and the earlier turns told to each run.
+//
+// Vertex (GitHub #13231): the service account, project and location are the
+// ones ~/.openagents/coder/antigravity.env names for Coder's Antigravity
+// engine (GOOGLE_APPLICATION_CREDENTIALS, a path; GOOGLE_CLOUD_PROJECT;
+// GOOGLE_CLOUD_LOCATION), read the way that engine reads them: a variable
+// already in this process's environment wins over the file. Without them,
+// ~/work/.secrets/vertex-sa-inference.json, openagentsgemini, global. The
+// owner's --model (gemini-4-argon, gemini-4-carbon, gemini-3.8-flash; Flash
+// by default) goes to Vertex's native streamGenerateContent, which reports
+// thoughts and cached tokens; recorded answers (GW_REPLAY) stay on the
+// OpenAI endpoint they were recorded from.
 
 #load "../../coax/lib/microcoder/run.coax";
 #load "../../coax/lib/gateway/vertex.coax";
@@ -15,7 +26,9 @@
 MK_SECRETS :: "/work/.secrets/";                          // under $HOME
 MK_VERTEX_KEYFILE :: "/work/.secrets/vertex-sa-inference.json";
 MK_GCLOUD_CONFIG :: "/.cache/openagents/coder-gcloud";
-MK_GCLOUDS :: [3] string.["/google-cloud-sdk/bin/gcloud", "/opt/homebrew/bin/gcloud", "/usr/local/bin/gcloud"];   // the first under $HOME
+MK_GCLOUDS :: [5] string.["/google-cloud-sdk/bin/gcloud", "/.nix-profile/bin/gcloud", "/opt/homebrew/bin/gcloud", "/usr/local/bin/gcloud", "/run/current-system/sw/bin/gcloud"];   // the first two under $HOME
+MK_GCLOUDS_HOME :: 2;
+MK_AGY_ENV :: "/.openagents/coder/antigravity.env";      // under $HOME: the Antigravity engine's Google Cloud sign-in
 MK_TURNS :: 6;                   // earlier turns each run is told
 MK_TURN_TEXT :: 1200;            // bytes of each task and reply kept
 
@@ -32,6 +45,7 @@ MkKeys :: struct {
   none: [1] string;              // no headers, also kept
   told: bool;                    // why Vertex was skipped went to stderr
   pbase: [512] u8; purl: [600] u8; pmodel: [256] u8;   // the psionic engine's server
+  project: [128] u8; location: [64] u8;                // Vertex's, when antigravity.env or the environment names them
 }
 
 mk_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
@@ -74,21 +88,46 @@ mk_secret :: (home: string, file: string, name: string, dst: [] u8) -> int {
   return n;
 }
 
+// NAME's value: this process's environment first, then the Antigravity file's text; "" for neither.
+mk_agy_value :: (agy: string, name: string, out: [] u8) -> string {
+  e := cl_getenv(name, out);
+  if e.count > 0 { return e; }
+  v := mk_env_value(agy, name);
+  if v.count == 0 || v.count > out.count { return ""; }
+  return cast(string) out[0..<mk_cat(out, 0, v)];
+}
+
+// Vertex's project and location, each "" for the default, into k (copied into its buffers).
+mk_vertex_place :: (k: [] MkKeys, project: string, location: string) {
+  k[0].vx[0].project = GW_VERTEX_PROJECT; k[0].vx[0].location = GW_VERTEX_LOCATION;
+  if project.count > 0 && project.count <= k[0].project.count { k[0].vx[0].project = cast(string) k[0].project[0..<mk_cat(k[0].project[..], 0, project)]; }
+  if location.count > 0 && location.count <= k[0].location.count { k[0].vx[0].location = cast(string) k[0].location[0..<mk_cat(k[0].location[..], 0, location)]; }
+}
+
 // The credentials this machine has, read once.
 mk_keys :: (k: [] MkKeys) {
   if k[0].read { return; }
   k[0].read = true;
-  if k[0].vx[0].project.count == 0 { k[0].vx[0].project = GW_VERTEX_PROJECT; }
-  if k[0].vx[0].location.count == 0 { k[0].vx[0].location = GW_VERTEX_LOCATION; }
+  k[0].vx[0].project = GW_VERTEX_PROJECT; k[0].vx[0].location = GW_VERTEX_LOCATION;
   hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
   if home.count == 0 { return; }
   k[0].nor = mk_secret(home, "openrouter.env", GW_OPENROUTER_KEY_ENV, k[0].or_key[..]);
   k[0].ngm = mk_secret(home, "openagents-gemini-provider.env", "GEMINI_API_KEY", k[0].gm_key[..]);
-  kf := mk_cat(k[0].keyfile[..], mk_cat(k[0].keyfile[..], 0, home), MK_VERTEX_KEYFILE);
-  if mk_exists(cast(string) k[0].keyfile[0..<kf]) { k[0].nkf = kf; }
+  ap: [1400] u8; ab: [4096] u8;
+  na := fs_read(cast(string) ap[0..<mk_cat(ap[..], mk_cat(ap[..], 0, home), MK_AGY_ENV)], ab[..]);
+  agy := cast(string) ab[0..<ifx na > 0 then na else 0];
+  pb2: [128] u8; lb2: [64] u8;
+  mk_vertex_place(k, mk_agy_value(agy, "GOOGLE_CLOUD_PROJECT", pb2[..]), mk_agy_value(agy, "GOOGLE_CLOUD_LOCATION", lb2[..]));
+  kb: [1200] u8; named := mk_env_value(agy, "GOOGLE_APPLICATION_CREDENTIALS");
+  if named.count > 0 && named.count <= kb.count && mk_exists(named) { k[0].nkf = mk_cat(k[0].keyfile[..], 0, named); }
+  else {
+    kf := mk_cat(k[0].keyfile[..], mk_cat(k[0].keyfile[..], 0, home), MK_VERTEX_KEYFILE);
+    if mk_exists(cast(string) k[0].keyfile[0..<kf]) { k[0].nkf = kf; }
+  }
+  for i: 0..<ab.count { ab[i] = 0; }
   gclouds := MK_GCLOUDS;
   for g, i: gclouds {
-    n := ifx i == 0 then mk_cat(k[0].gcloud[..], mk_cat(k[0].gcloud[..], 0, home), g) else mk_cat(k[0].gcloud[..], 0, g);
+    n := ifx i < MK_GCLOUDS_HOME then mk_cat(k[0].gcloud[..], mk_cat(k[0].gcloud[..], 0, home), g) else mk_cat(k[0].gcloud[..], 0, g);
     if mk_exists(cast(string) k[0].gcloud[0..<n]) { k[0].ngc = n; break; }
   }
   k[0].ncf = mk_cat(k[0].config[..], mk_cat(k[0].config[..], 0, home), MK_GCLOUD_CONFIG);
@@ -103,15 +142,38 @@ mk_vertex :: (k: [] MkKeys) -> string {
   return gw_vertex_token_file(k[0].vx[..], cast(string) k[0].gcloud[0..<k[0].ngc], cast(string) k[0].keyfile[0..<k[0].nkf], cast(string) k[0].config[0..<k[0].ncf]);
 }
 
+// The Vertex model for the owner's --model: a Gemini name without "google/", else Flash.
+mk_vertex_model :: (model: string) -> string {
+  m := gw_gemini_model(model);
+  if m.count > 7 && m[0..<7] == "gemini-" { return m; }
+  return gw_gemini_model(GW_VERTEX_FLASH);
+}
+
+// How long a call may stay silent, by effort (GitHub #13231): at low, Flash, Argon and Carbon
+// answer an 11K-token prompt in 3-7 s; at medium they can think for minutes.
+mk_first_limit_ms :: (effort: string) -> int {
+  if effort == "medium" { return 240000; }
+  if effort == "high" { return 290000; }
+  return 90000;
+}
+MK_IDLE_LIMIT_MS :: 90000;
+MK_RETRIES :: 3;
+
+// The plan's retries and silence limits for a run at effort.
+mk_plan_limits :: (p: [] GwPlan, effort: string) {
+  p[0].retries = MK_RETRIES; p[0].backoff_ms = 2000;
+  p[0].first_limit_ms = mk_first_limit_ms(effort); p[0].idle_limit_ms = MK_IDLE_LIMIT_MS;
+}
+
 // The plan for one message: every gateway with a credential, Vertex first. How many.
-mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers) -> int {
+mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, model: string) -> int {
   gw_plan_init(p, pb);
   none := k[0].none[0..<0];
   // a replay of recorded answers (GW_REPLAY): Vertex's wire, with no credential, since nothing is sent
   rb: [1024] u8;
   if gw_env("GW_REPLAY", rb[..]).count > 0 { x := gw_plan_add(p, gw_vertex(k[0].vx[..]), GW_VERTEX_FLASH, none); return p[0].n; }
   why := mk_vertex(k);
-  if why.count == 0 { x := gw_plan_add(p, gw_vertex(k[0].vx[..]), GW_VERTEX_FLASH, none); }
+  if why.count == 0 { vm := mk_vertex_model(model); x := gw_plan_add(p, gw_vertex_native(k[0].vx[..], vm), vm, none); }
   else if !k[0].told { k[0].told = true; tool_err("microcoder: Vertex skipped: "); tool_errln(why); }
   if k[0].ngm > 0 {
     g := gw_gemini(GW_GEMINI_FLASH, true, k[0].gurl[..]); g.key_value = cast(string) k[0].gm_key[0..<k[0].ngm];
@@ -198,6 +260,22 @@ mk_facts :: (h: [] MkTurns, cwd: string, o: [] u8) -> string {
   #assert h[0].turns == MK_TURNS && mk_text(h[..], 0) == "c" && mk_text(h[..], 2 * MK_TURNS - 2) == "h";
   f := mk_facts(h[..], "/w", o[..]);
   #assert cl_count(cl_raw(f, "conversation")) == MK_TURNS;
+}
+
+#test "Vertex from antigravity.env: its project and location, the defaults without them; the model and its limits" {
+  k: [1] MkKeys;
+  agy := "# agy\nAGY_ADC_AUTH=1\nGOOGLE_APPLICATION_CREDENTIALS=/k/sa.json\nGOOGLE_CLOUD_PROJECT=p-test-only\nGOOGLE_CLOUD_LOCATION=us\n";
+  mk_vertex_place(k[..], mk_env_value(agy, "GOOGLE_CLOUD_PROJECT"), mk_env_value(agy, "GOOGLE_CLOUD_LOCATION"));
+  #assert k[0].vx[0].project == "p-test-only" && k[0].vx[0].location == "us" && mk_env_value(agy, "GOOGLE_APPLICATION_CREDENTIALS") == "/k/sa.json";
+  #assert gw_vertex_native_url(k[0].vx[..], "gemini-4-argon") == "https://aiplatform.us.rep.googleapis.com/v1/projects/p-test-only/locations/us/publishers/google/models/gemini-4-argon:streamGenerateContent?alt=sse";
+  mk_vertex_place(k[..], "", "");
+  #assert k[0].vx[0].project == GW_VERTEX_PROJECT && k[0].vx[0].location == GW_VERTEX_LOCATION;
+  #assert mk_vertex_model("gemini-4-carbon") == "gemini-4-carbon" && mk_vertex_model("google/gemini-4-argon") == "gemini-4-argon";
+  #assert mk_vertex_model("") == "gemini-3.8-flash" && mk_vertex_model("claude-sonnet-5-5") == "gemini-3.8-flash";
+  p: [1] GwPlan;
+  mk_plan_limits(p[..], "low");
+  #assert p[0].retries == MK_RETRIES && p[0].first_limit_ms == 90000 && p[0].idle_limit_ms == MK_IDLE_LIMIT_MS;
+  #assert mk_first_limit_ms("medium") == 240000 && mk_first_limit_ms("high") == 290000 && mk_first_limit_ms("") == 90000;
 }
 
 #test "env files: export prefixes, quotes and carriage returns" {
