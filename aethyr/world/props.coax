@@ -1,0 +1,51 @@
+// A zone's own standing things (engine): boxes round what a zone stands in its world outside its
+// packed scene's colliders, such as a target butt or a post. One list answers every question about
+// them, so what you see is what you walk into and what an arrow sticks in:
+//
+//   whether a point in the air is inside one (props_inside: a projectile's step, a sight line);
+//   the boxes near a place, as heights over the ground there (props_near: the walker's and a
+//   mount's walls, six numbers each: x0, y0, z0, x1, y1, z1).
+//
+// The boxes are kept in world metres with their heights absolute.
+//   coax/bin/coax test aethyr/world/props.coax --library
+#module "aethyr.world.props";
+
+PROPS :: 32;
+Props :: struct { n: int; box: [PROPS * 6] f32; }
+
+props_clear :: (p: [] Props) { p[0].n = 0; }
+// Takes the first n boxes of `boxes` (six numbers each), as many as fit; the count kept.
+props_set :: (p: [] Props, boxes: [] f32, n: int) -> int {
+  m := ifx n > PROPS then PROPS else n; if m * 6 > boxes.count { m = boxes.count / 6; }
+  for i: 0..<m * 6 { p[0].box[i] = boxes[i]; }
+  p[0].n = m;
+  return m;
+}
+props_inside :: (p: Props, x: f32, y: f32, z: f32) -> bool {
+  for i: 0..<p.n { o := i * 6;
+    if x > p.box[o] && x < p.box[o + 3] && y > p.box[o + 1] && y < p.box[o + 4] && z > p.box[o + 2] && z < p.box[o + 5] { return true; } }
+  return false;
+}
+// The boxes within `reach` metres of (x, z), their heights over `base` (the ground there), into
+// `out` from box n0. The count after; a box that doesn't fit is left out.
+props_near :: (p: Props, x: f32, z: f32, reach: f32, base: f32, out: [] f32, n0: int) -> int {
+  n := n0;
+  for i: 0..<p.n { o := i * 6;
+    if p.box[o] > x + reach || p.box[o + 3] < x - reach || p.box[o + 2] > z + reach || p.box[o + 5] < z - reach { continue; }
+    if (n + 1) * 6 > out.count { break; }
+    q := n * 6;
+    out[q] = p.box[o]; out[q + 1] = p.box[o + 1] - base; out[q + 2] = p.box[o + 2]; out[q + 3] = p.box[o + 3]; out[q + 4] = p.box[o + 4] - base; out[q + 5] = p.box[o + 5];
+    n += 1;
+  }
+  return n;
+}
+
+#test "a zone's boxes answer a point in the air and the walls near a place, over the ground there" {
+  p: [1] Props; b := [12] f32.[0, 2, 0, 1, 4, 1, 50, 0, 50, 51, 9, 51];
+  #assert props_set(p[..], b[..], 2) == 2 && props_inside(p[0], 0.5, 3, 0.5) && !props_inside(p[0], 0.5, 5, 0.5) && !props_inside(p[0], 2, 3, 0.5) && props_inside(p[0], 50.5, 1, 50.5);
+  out: [12] f32; n := props_near(p[0], 3, 3, 8, 2, out[..], 0);
+  #assert n == 1 && out[1] == 0 && out[4] == 2 && out[3] == 1;
+  #assert props_near(p[0], 3, 3, 80, 0, out[..], 0) == 2 && props_near(p[0], 3, 3, 80, 0, out[..], 1) == 2 && props_near(p[0], -30, -30, 8, 0, out[..], 0) == 0;
+  props_clear(p[..]); #assert !props_inside(p[0], 0.5, 3, 0.5);
+  big: [PROPS * 6 + 6] f32; #assert props_set(p[..], big[..], PROPS + 1) == PROPS && props_set(p[..], b[..], 5) == 2;
+}

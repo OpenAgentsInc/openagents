@@ -1,0 +1,103 @@
+// Static targets (docs/verse/bow-combat.md, Targets): round faces that stand in a world and that a
+// projectile strikes. Any realm may stand some: an archery butt, a mark on a wall, a gong. Nothing
+// here scores, rolls or draws; a realm's rules decide what a strike is worth (Everglade's range:
+// everglade/range/score.coax). This module owns
+//
+//   a face (TargetFace): a disc with a middle, the way it looks (a unit normal) and a radius;
+//   a strike (target_strike): a projectile's step from p0 to p1 crosses the face's plane from the
+//   front, inside the rim; `u` is how far along the step, `off` how far from the middle;
+//   a ray (target_ray): where a sight line first meets the face from the front, so a reticle's
+//   point can rest on it;
+//   a set (Targets): a realm's faces, with the first one a step strikes (targets_first) or a ray
+//   meets (targets_sight).
+//
+// A realm adopts it by keeping one Targets, adding its faces once, and asking targets_first for
+// each flying arrow's segment (aethyr/action/bow.coax arrow_segment) beside its own ground, walls
+// and bodies. What holds a face up (a butt, a pole) is the realm's own collider.
+//   coax/bin/coax test aethyr/action/target.coax --library
+#module "aethyr.action.target";
+
+TargetFace :: struct { x: f32; y: f32; z: f32; nx: f32; ny: f32; nz: f32 = 1; radius: f32; }
+// A step's meeting with a face: `hit`, how far along the step (`u`, 0 to 1), how far from the
+// middle (`off`, metres) and where (`at`).
+TargetStrike :: struct { hit: bool; u: f32; off: f32; at: [3] f32; }
+
+target_strike :: (f: TargetFace, p0: [3] f32, p1: [3] f32) -> TargetStrike {
+  s: TargetStrike;
+  d0 := (p0[0] - f.x) * f.nx + (p0[1] - f.y) * f.ny + (p0[2] - f.z) * f.nz;
+  d1 := (p1[0] - f.x) * f.nx + (p1[1] - f.y) * f.ny + (p1[2] - f.z) * f.nz;
+  if !(d0 > 0) || d1 > 0 { return s; }
+  u := d0 / (d0 - d1);
+  at := [3] f32.[p0[0] + (p1[0] - p0[0]) * u, p0[1] + (p1[1] - p0[1]) * u, p0[2] + (p1[2] - p0[2]) * u];
+  x := at[0] - f.x; y := at[1] - f.y; z := at[2] - f.z;
+  off := sqrt(x * x + y * y + z * z);
+  if off > f.radius { return s; }
+  s.hit = true; s.u = u; s.off = off; s.at = at;
+  return s;
+}
+// How far along the ray from `eye` along unit `dir` it meets face f from the front, within `far`;
+// -1 when it doesn't.
+target_ray :: (f: TargetFace, eye: [3] f32, dir: [3] f32, far: f32) -> f32 {
+  to := [3] f32.[eye[0] + dir[0] * far, eye[1] + dir[1] * far, eye[2] + dir[2] * far];
+  s := target_strike(f, eye, to);
+  return ifx s.hit then s.u * far else -1.0f32;
+}
+
+TARGETS :: 16;
+Targets :: struct { n: int; face: [TARGETS] TargetFace; }
+// Stands face f in the set; its index, or -1 when the set is full or the face has no size or no way to look.
+targets_add :: (t: [] Targets, f: TargetFace) -> int {
+  l := sqrt(f.nx * f.nx + f.ny * f.ny + f.nz * f.nz);
+  if t[0].n >= TARGETS || !(f.radius > 0) || !(l > 0.0001) { return -1; }
+  g := f; g.nx = f.nx / l; g.ny = f.ny / l; g.nz = f.nz / l;
+  t[0].face[t[0].n] = g; t[0].n += 1;
+  return t[0].n - 1;
+}
+// The first face a step or a sight line meets: its index (-1 none), and the strike. For a sight
+// line, `u` is metres along it.
+TargetHit :: struct { i: int = -1; u: f32; off: f32; at: [3] f32; }
+targets_first :: (t: Targets, p0: [3] f32, p1: [3] f32) -> TargetHit {
+  r: TargetHit;
+  for i: 0..<t.n {
+    s := target_strike(t.face[i], p0, p1);
+    if s.hit && (r.i < 0 || s.u < r.u) { r = TargetHit.{i = i, u = s.u, off = s.off, at = s.at}; }
+  }
+  return r;
+}
+targets_sight :: (t: Targets, eye: [3] f32, dir: [3] f32, far: f32) -> TargetHit {
+  to := [3] f32.[eye[0] + dir[0] * far, eye[1] + dir[1] * far, eye[2] + dir[2] * far];
+  r := targets_first(t, eye, to);
+  if r.i >= 0 { r.u = r.u * far; }
+  return r;
+}
+
+#test "a step strikes a face it crosses from the front inside the rim, and no other way" {
+  f := TargetFace.{x = 2, y = 1.3, z = -30, nz = 1, radius = 0.61};
+  a := target_strike(f, [3] f32.[2.2, 1.3, -29], [3] f32.[2.2, 1.3, -31]);
+  #assert a.hit && a.u > 0.49 && a.u < 0.51 && a.off > 0.19 && a.off < 0.21 && abs(a.at[2] + 30) < 0.001;
+  #assert !target_strike(f, [3] f32.[2, 1.3, -31], [3] f32.[2, 1.3, -29]).hit;       // from behind
+  #assert !target_strike(f, [3] f32.[2.7, 1.3, -29], [3] f32.[2.7, 1.3, -31]).hit;   // past the rim
+  #assert !target_strike(f, [3] f32.[2, 1.3, -27], [3] f32.[2, 1.3, -29]).hit;       // not there yet
+  #assert target_strike(f, [3] f32.[2, 1.3, -29], [3] f32.[2, 1.3, -30]).hit;        // it ends on the face
+  // a face leaning back: a step falling onto it from above and in front strikes it
+  k := TargetFace.{y = 14, ny = 0.5646425, nz = 0.8253356, radius = 1};
+  #assert target_strike(k, [3] f32.[0, 16, 2], [3] f32.[0, 13, -1]).hit;
+}
+#test "a sight line rests on the face it meets, at its distance" {
+  f := TargetFace.{y = 1.3, z = -20, nz = 1, radius = 0.61};
+  d := target_ray(f, [3] f32.[0, 1.3, 5], [3] f32.[0, 0, -1], 150);
+  #assert abs(d - 25) < 0.01 && target_ray(f, [3] f32.[0, 1.3, 5], [3] f32.[0, 0, -1], 20) < 0 && target_ray(f, [3] f32.[0, 1.3, 5], [3] f32.[0, 0, 1], 150) < 0;
+  #assert target_ray(f, [3] f32.[3, 1.3, 5], [3] f32.[0, 0, -1], 150) < 0;
+}
+#test "a set answers with the first face along the way, and refuses a face with no size" {
+  t: [1] Targets;
+  #assert targets_add(t[..], TargetFace.{z = -30, nz = 1, radius = 1}) == 0 && targets_add(t[..], TargetFace.{z = -10, nz = 2, radius = 1}) == 1;
+  #assert targets_add(t[..], TargetFace.{nz = 1}) == -1 && targets_add(t[..], TargetFace.{nz = 0, radius = 1}) == -1 && t[0].n == 2;
+  #assert t[0].face[1].nz == 1;   // kept as a unit normal
+  h := targets_first(t[0], [3] f32.[0.5, 0, 0], [3] f32.[0.5, 0, -40]);
+  #assert h.i == 1 && abs(h.u - 0.25) < 0.001 && abs(h.off - 0.5) < 0.001;
+  #assert targets_first(t[0], [3] f32.[5, 0, 0], [3] f32.[5, 0, -40]).i == -1;
+  g := targets_sight(t[0], [3] f32.[0, 0, -15], [3] f32.[0, 0, -1], 150); #assert g.i == 0 && abs(g.u - 15) < 0.01;
+  for k: 0..<TARGETS { _ := targets_add(t[..], TargetFace.{z = -f32(k), nz = 1, radius = 1}); }
+  #assert t[0].n == TARGETS && targets_add(t[..], TargetFace.{nz = 1, radius = 1}) == -1;
+}

@@ -84,6 +84,27 @@ bow_pace :: (d: BowDraw) -> f32 { return 1 - (1 - f32(BOW_WALK)) * bow_aim(d); }
   bow_step(d[..], f32(BOW_FOLLOW) * 0.5); #assert bow_aim(d[0]) == 1;
   bow_step(d[..], f32(BOW_FOLLOW)); bow_step(d[..], 1); #assert bow_aim(d[0]) == 0;
 }
+// What a body shows of a draw, for its pose, its string and the arrow on it: how far the string is
+// back, whether an arrow is nocked, and when the last one left. Every archer's realm steps one
+// beside its BowDraw (bow_show_step each frame after bow_step, bow_show_loosed at the loose), so a
+// drawn bow looks the same wherever it is held. The string stays back for 0.3 s after the loose,
+// while the release's frames play.
+BOW_SHOW_HOLD :: 0.3;
+BowShow :: struct { strength: f32; nocked: bool; loose_at: f32 = -100; }
+bow_show_step :: (sh: [] BowShow, d: BowDraw, now: f32) {
+  sh[0].nocked = d.on;
+  if d.on { sh[0].strength = bow_strength(d, now); } else if now - sh[0].loose_at > f32(BOW_SHOW_HOLD) { sh[0].strength = 0; }
+}
+bow_show_loosed :: (sh: [] BowShow, now: f32) { sh[0].loose_at = now; sh[0].nocked = false; }
+#test "a body shows the string coming back as the draw builds, the arrow gone at the loose, and the string home a moment after" {
+  d: [1] BowDraw; sh: [1] BowShow;
+  bow_show_step(sh[..], d[0], 0); #assert !sh[0].nocked && sh[0].strength == 0;
+  bow_begin(d[..], 1, false); bow_show_step(sh[..], d[0], 1.4); #assert sh[0].nocked && sh[0].strength > 0.5 && sh[0].strength < 1;
+  bow_show_step(sh[..], d[0], 2); #assert sh[0].strength == 1;
+  _ := bow_release(d[..], 2); bow_show_loosed(sh[..], 2); bow_show_step(sh[..], d[0], 2.1);
+  #assert !sh[0].nocked && sh[0].strength == 1 && sh[0].loose_at == 2;
+  bow_show_step(sh[..], d[0], 2.31); #assert sh[0].strength == 0;
+}
 #test "a self-loosing draw is due at full draw" {
   d: [1] BowDraw; bow_begin(d[..], 1, true);
   #assert !bow_due(d[0], 1.5) && bow_due(d[0], 1 + f32(BOW_FULL));
@@ -99,9 +120,11 @@ ARROW_FREE :: 0; ARROW_FLYING :: 1; ARROW_STUCK :: 2; ARROW_HIT :: 3;
 // An arrow: who loosed it (a realm's id: Experimental's 0 you, 1 + i its monster i), where from and
 // how fast at `t0`, the clock its last segment reached (`last`); stopped (stuck or on a body) at
 // `end` where it was then. aim: the creature it was loosed at, -1 none; passed: the one whose
-// body it went through on a miss (it is not tested again); strength: how drawn its bow was.
+// body it went through on a miss (it is not tested again); strength: how drawn its bow was;
+// mark: the static target it stuck in (a realm's index, aethyr/action/target.coax), -1 none, and
+// off: how far from that target's middle.
 Arrow :: struct {
-  state: int; owner: int; aim: int = -1; passed: int = -1; strength: f32 = 1;
+  state: int; owner: int; aim: int = -1; passed: int = -1; strength: f32 = 1; mark: int = -1; off: f32;
   from: [3] f32; vel: [3] f32; t0: f32; last: f32; end: f32;
   at: [3] f32; dir: [3] f32;   // where it stopped, and the way it points there
 }
@@ -144,6 +167,12 @@ arrow_stop :: (p: [] Arrows, i: int, s: ArrowSeg, u: f32, hit: bool) {
 }
 // How visible arrow a is `now`: whole in flight; stuck, whole for ARROW_STAY then fading over
 // ARROW_FADE; gone in a body at once.
+// Arrow i sticks in static target `mark`, `off` metres from its middle, `u` of the way along its
+// segment: stuck as in a prop, and it remembers what it struck.
+arrow_mark :: (p: [] Arrows, i: int, s: ArrowSeg, u: f32, mark: int, off: f32) {
+  arrow_stop(p, i, s, u, false);
+  p[0].a[i].mark = mark; p[0].a[i].off = off;
+}
 arrow_alpha :: (a: Arrow, now: f32) -> f32 {
   if a.state == ARROW_FLYING { return 1; }
   if a.state == ARROW_STUCK { return bow_clamp(1 - (now - a.end - f32(ARROW_STAY)) / f32(ARROW_FADE), 0, 1); }
@@ -166,6 +195,12 @@ arrow_aim_velocity :: (from: [3] f32, to: [3] f32, speed: f32) -> [3] f32 {
   c := 0.70710678f32; s := 0.70710678f32;   // tan of the angle: (v2 - sqrt(disc)) / (g r)
   if disc >= 0 { tn := (v2 - sqrt(disc)) / (g * r); c = 1 / sqrt(1 + tn * tn); s = tn * c; }
   return [3] f32.[dx / r * speed * c, speed * s, dz / r * speed * c];
+}
+// The launch from `from` for a bow drawn to `strength` and aimed at `to`: a full draw lands on it,
+// a short draw flies the same line slower and drops short.
+arrow_launch :: (from: [3] f32, to: [3] f32, strength: f32) -> [3] f32 {
+  v := arrow_aim_velocity(from, to, bow_speed(1)); k := bow_speed(strength) / bow_speed(1);
+  return [3] f32.[v[0] * k, v[1] * k, v[2] * k];
 }
 // The launch velocity that arrives at `to` from `from` after `fly` seconds.
 arrow_timed_velocity :: (from: [3] f32, to: [3] f32, fly: f32) -> [3] f32 {
@@ -232,6 +267,15 @@ arrow_capsule :: (p0: [3] f32, p1: [3] f32, c0: [3] f32, c1: [3] f32, r: f32) ->
   #assert arrow_alpha(stuck, 1.25 + f32(ARROW_STAY)) == 1 && arrow_alpha(stuck, 1.25 + f32(ARROW_STAY) + 0.5) > 0 && arrow_alpha(stuck, 1.25 + f32(ARROW_STAY) + f32(ARROW_FADE) + 0.01) == 0;
   arrow_tidy(p[..], 3); #assert p[0].a[j].state == ARROW_STUCK;
   arrow_tidy(p[..], 1.25 + f32(ARROW_STAY) + f32(ARROW_FADE) + 0.1); #assert p[0].a[j].state == ARROW_FREE;
+}
+#test "an arrow that sticks in a static target remembers which and how far from its middle; a short draw launches the same line slower" {
+  p: [1] Arrows; i := arrow_loose(p[..], 0, [3] f32.[0, 1, 0], arrow_launch([3] f32.[0, 1, 0], [3] f32.[0, 1, 20], 1), 0, -1, 1);
+  #assert p[0].a[i].mark == -1;
+  s := arrow_segment(p[..], i, 0.2); arrow_mark(p[..], i, s, 0.5, 3, 0.07);
+  #assert p[0].a[i].state == ARROW_STUCK && p[0].a[i].mark == 3 && abs(p[0].a[i].off - 0.07) < 0.0001 && p[0].stuck == 1;
+  j := arrow_loose(p[..], 0, [3] f32.[0, 1, 0], [3] f32.[0, 0, 10], 1, -1, 1); #assert p[0].a[j].mark == -1;
+  full := arrow_launch([3] f32.[0, 1, 0], [3] f32.[0, 1, 20], 1); half := arrow_launch([3] f32.[0, 1, 0], [3] f32.[0, 1, 20], 0.5);
+  k := bow_speed(0.5) / bow_speed(1); #assert abs(half[2] - full[2] * k) < 0.001 && abs(half[1] - full[1] * k) < 0.001 && half[2] < full[2];
 }
 #test "a full pool lets the longest-stuck arrow go first" {
   p: [1] Arrows;
