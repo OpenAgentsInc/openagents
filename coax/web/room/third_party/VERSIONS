@@ -1,0 +1,19 @@
+The room's QUIC stack (#13175): vendored C source, built by build.sh with nothing installed.
+Only the files the room links are kept; each upstream's license is beside its source.
+
+ngtcp2   1.26.0   https://github.com/ngtcp2/ngtcp2/releases/download/v1.26.0/ngtcp2-1.26.0.tar.xz
+                  sha256 7804aa0fa1c39942ba322a90805824c37231f7675b08d0c3cc4332858a7b085e   MIT (ngtcp2/COPYING)
+                  lib/, crypto/shared.*, crypto/includes/; crypto/ngtcp2_crypto_minicrypto.c is
+                  crypto/picotls/picotls.c on picotls's minicrypto binding (PATCHES.md)
+nghttp3  1.19.0   https://github.com/ngtcp2/nghttp3/releases/download/v1.19.0/nghttp3-1.19.0.tar.xz
+                  sha256 228e17f5cc3d4de7bfced9912bd09de30e7f45741cc47503cf88d3fa9209e155   MIT (nghttp3/COPYING)
+                  lib/ and lib/sfparse/; one patch (PATCHES.md)
+picotls  a2d95de4c875d6dcb27658e476e3b624f4381bf0 (the commit ngtcp2 1.26.0's README names)
+                  https://github.com/h2o/picotls/archive/a2d95de4c875d6dcb27658e476e3b624f4381bf0.tar.gz
+                  sha256 d54263601c4652ef28451533bb2e2fae3f5f44aff54338cf5110b9c12c4bab3a   MIT (picotls/LICENSE)
+                  lib/ (core, PEM, ASN.1, minicrypto), include/; deps/cifra (CC0, deps/cifra/COPYING)
+                  and deps/micro-ecc (BSD 2-clause, deps/micro-ecc/LICENSE.txt)
+
+To update: download the new release tarballs, check their sha256 against the release's
+checksums, replace the same files, keep PATCHES.md's changes, update this file, and run
+coax/web/room/wt-check.sh.

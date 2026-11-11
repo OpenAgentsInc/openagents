@@ -220,7 +220,8 @@ generated() {
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.
 cards() { step realm-cards bun coax/web/og.ts --cards apps/openagents-web || status=1; }
-room() { step room-build coax/web/room/build.sh || status=1; }
+# and the WebTransport stack's check (#13175): wt-echo against a headless Chrome, where there is one
+room() { step room-build coax/web/room/build.sh || status=1; step room-webtransport coax/web/room/wt-check.sh 9441 || status=1; }
 # The web build for a change: all of it, its touched modules, or nothing.
 web_since() {
   if grep -Eq "$web_whole" "$out/changed"; then

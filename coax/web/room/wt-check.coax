@@ -1,0 +1,99 @@
+// The WebTransport prototype's check (#13175): a headless Chrome opens the page at ORIGIN (any
+// secure origin: http://127.0.0.1:PORT/, which wt-echo serves) and from it a WebTransport session
+// to URL with the certificate's SHA-256 (hex) as serverCertificateHashes; it sends COUNT numbered
+// datagrams and counts the echoes, round-trips BYTES on a bidirectional stream and closes the
+// session (wt-check.js, in the page). One JSON line, then holds or fails: at least 99% of the
+// datagrams echoed (with no loss injected), the stream's bytes back intact, and a clean close.
+//   coax/web/tool.sh coax/web/room/wt-check.coax ORIGIN URL HASH [--count N] [--bytes N] [--min-permille P]
+// coax/web/room/wt-check.sh builds wt-echo, makes the certificate and runs this against it.
+#import "Basic";
+#load "../../lib/net/cdp.coax";
+
+Wb :: struct { b: [65536] u8; n: int; bad: bool; }
+wput :: (o: [] Wb, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+wtext :: (o: [] Wb) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+// A hex SHA-256: 64 hex digits, nothing else.
+wc_hash_ok :: (h: string) -> bool {
+  if h.count != 64 { return false; }
+  for c: h { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// A URL the page script may quote: no quote, backslash or control character.
+wc_url_ok :: (u: string) -> bool {
+  if u.count == 0 { return false; }
+  for c: u { if c == '\'' || c == '\\' || c < 32 { return false; } }
+  return true;
+}
+// Whether `got` of `want` echoed passes the bar (permille of them at least).
+wc_enough :: (got: int, want: int, permille: int) -> bool { return want > 0 && got * 1000 >= want * permille; }
+#test "the WebTransport check's arguments and its bar" {
+  #assert wc_hash_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !wc_hash_ok("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef") && !wc_hash_ok("ab");
+  #assert wc_url_ok("https://127.0.0.1:9441/wt") && !wc_url_ok("https://x/'") && !wc_url_ok("");
+  #assert wc_enough(990, 1000, 990) && !wc_enough(989, 1000, 990) && !wc_enough(0, 0, 990);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  origin := args_at(a[..], 0); url := args_at(a[..], 1); hash := args_at(a[..], 2);
+  count := args_whole(args_value(a[..], "--count", "1000"));
+  bytes := args_whole(args_value(a[..], "--bytes", "100000"));
+  bar := args_whole(args_value(a[..], "--min-permille", "990"));
+  if !ok || !wc_url_ok(origin) || !wc_url_ok(url) || !(wc_hash_ok(hash) || hash == "-") || count < 1 || count > 100000 || bytes < 1 || bytes > 16000000 || bar < 0 || bar > 1000 {
+    tool_errln("usage: coax/web/tool.sh coax/web/room/wt-check.coax ORIGIN URL HASH|- [--count N] [--bytes N] [--min-permille P] (from the repository's root)"); return 2;
+  }
+  js: [16384] u8;
+  jn := fs_read("coax/web/room/wt-check.js", js[..]);
+  if jn <= 0 { tool_errln("wt-check: can't read coax/web/room/wt-check.js (run it from the repository's root)"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 800, 600, "coax-wtcheck-") { tool_err("wt-check: "); tool_errln(cdp_error(c[..])); return 1; }
+  status := wc_run(c[..], origin, url, hash, count, bytes, bar, cast(string) js[0..<jn]);
+  cdp_close(c[..]);
+  return status;
+}
+
+wc_run :: (c: [] Cdp, origin: string, url: string, hash: string, count: int, bytes: int, bar: int, script: string) -> int {
+  nav: [1] Wb; wput(nav[..], "{\"url\":\""); wput(nav[..], origin); wput(nav[..], "\"}");
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 || cdp_call(c, "Page.navigate", wtext(nav[..]), CDP_CALL_MS) < 0 { tool_errln("wt-check: can't open the page"); print("fails\n"); return 1; }
+  ready := false;
+  for k: 0..<100 {
+    v := cdp_evaluate(c, "document.readyState === 'complete' && location.href.startsWith('http') ? 1 : 0");
+    if v >= 0 && jv_int(cdp_doc(c), v, 0) == 1 { ready = true; break; }
+    proc_sleep(100);
+  }
+  if !ready { tool_errln("wt-check: the page never loaded"); print("fails\n"); return 1; }
+  e: [1] Wb;
+  wput(e[..], "window.__wtArgs = {url: '"); wput(e[..], url); wput(e[..], "', hash: '"); wput(e[..], ifx hash == "-" then "" else hash);
+  cb: [24] u8; bb: [24] u8;
+  wput(e[..], "', count: "); wput(e[..], wc_int(count, cb[..])); wput(e[..], ", bytes: "); wput(e[..], wc_int(bytes, bb[..])); wput(e[..], "};\n");
+  wput(e[..], script);
+  if e[0].bad { tool_errln("wt-check: the script is too long"); return 1; }
+  v := cdp_evaluate(c, wtext(e[..]));
+  out: [8192] u8;
+  n := ifx v >= 0 then jv_str(cdp_doc(c), v, out[..]) else 0;
+  line := ifx n > 0 then cast(string) out[0..<n] else "";
+  print("%\n", ifx line.count > 0 then line else "{\"ok\":false,\"error\":\"no answer from the page\"}");
+  if line.count == 0 { print("fails\n"); return 1; }
+  d: [1] Jv; nodes: [512] JvNode;
+  if !jv_parse(d[..], line, nodes[..]) { print("fails\n"); return 1; }
+  got := jv_int(d[0], jv_get(d[0], 0, "datagrams_echoed"), 0);
+  back := jv_int(d[0], jv_get(d[0], 0, "stream_bytes"), 0);
+  same := jv_bool(d[0], jv_get(d[0], 0, "stream_same"));
+  closed := jv_bool(d[0], jv_get(d[0], 0, "closed"));
+  all := wc_enough(got, count, bar) && back == bytes && same && closed;
+  print("% session opened, % of % datagrams echoed, % of % stream bytes back%, closed %\n", ifx jv_get(d[0], 0, "ready_ms") >= 0 then "a" else "no", got, count, back, bytes, ifx same then " intact" else " CHANGED", closed);
+  print("%\n", ifx all then "holds" else "fails");
+  return ifx all then 0 else 1;
+}
+wc_int :: (v: int, out: [] u8) -> string {
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { out[k] = d[n - 1 - k]; }
+  return cast(string) out[0..<n];
+}
