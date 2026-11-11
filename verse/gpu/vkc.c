@@ -52,7 +52,13 @@ void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const 
   if (ni > 7) { fprintf(stderr, "vkc: at most 7 instance extensions\n"); exit(1); }
   for (uint32_t i = 0; i < ni; i++) exts[ne++] = instance_exts[i];
   if (v->validating) exts[ne++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-  VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "verse-gpu", .apiVersion = VK_API_VERSION_1_1};
+  // Vulkan 1.2 where the loader has it: there float controls are core, and a 1.2 driver need not list
+  // VK_KHR_shader_float_controls (Android's gfxstream does not); 1.1 otherwise.
+  uint32_t loader = VK_API_VERSION_1_1;
+  PFN_vkEnumerateInstanceVersion version = (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(NULL, "vkEnumerateInstanceVersion");
+  if (version && version(&loader) != VK_SUCCESS) loader = VK_API_VERSION_1_1;
+  VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "verse-gpu",
+                           .apiVersion = loader >= VK_API_VERSION_1_2 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1};
   VkInstanceCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app,
                               .enabledExtensionCount = ne, .ppEnabledExtensionNames = exts};
   CHECK(vkCreateInstance(&ici, NULL, &v->inst));
@@ -89,10 +95,13 @@ void vkc_open_with(Vkc *v, const char *const *instance_exts, uint32_t ni, const 
   float priority = 1;
   VkDeviceQueueCreateInfo qci = {.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, .queueFamilyIndex = v->family, .queueCount = 1, .pQueuePriorities = &priority};
   // Kernels and draws from coax spirv keep f32 NaN, infinity and signed zero (float controls).
-  const char *dexts[9] = {VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME};
+  // The extension where the device lists it; a 1.2 device without it has float controls in core.
+  const char *dexts[9];
+  uint32_t dext_count = 0;
+  if (has_device_extension(v->gpu, VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME) || v->props.apiVersion < VK_API_VERSION_1_2)
+    dexts[dext_count++] = VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME;
   if (nd > 7) { fprintf(stderr, "vkc: at most 7 device extensions\n"); exit(1); }
-  for (uint32_t i = 0; i < nd; i++) dexts[1 + i] = device_exts[i];
-  uint32_t dext_count = 1 + nd;
+  for (uint32_t i = 0; i < nd; i++) dexts[dext_count++] = device_exts[i];
   // This is platform feature discovery/enablement, not shader admission.
   // Coax must refuse a required helper feature when enabled remains false.
   VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT demote = {

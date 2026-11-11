@@ -1,7 +1,7 @@
 // Firm reason: 6 (AppKit and Metal are Objective-C APIs; every app's behaviour is Coax).
-// The shared Mac host for apps drawn with the component system (components/spec.md,
-// docs/apps/2026-11-10-apps-roadmap.md, GitHub #13156): the same contract as the Linux one
-// (../linux/ui-host.h): an NSWindow with a CAMetalLayer, AppKit's keyboard (NSTextInputClient,
+// The shared Apple host (the Mac, and iOS) for apps drawn with the component system
+// (components/spec.md, docs/apps/2026-11-10-apps-roadmap.md, GitHub #13156): the same contract
+// as the Linux one (../linux/ui-host.h). On the Mac: an NSWindow with a CAMetalLayer, AppKit's keyboard (NSTextInputClient,
 // so an input method's marked text and its window work) and pointer, and one pipeline that draws
 // the components' vertices (28 floats each, components/zeron/gpui.coax) with the component
 // shader, components/backend/gpu-shader.coax emitted as Metal (`coax metal --vertex chat_fx_vs
@@ -11,13 +11,23 @@
 // UiApp.shader is the emitted Metal source (.metal) or a compiled library (.metallib).
 // Offscreen (ui_open(app, 1)) it makes no window, no Dock icon and no menu: ui_shot_frame and
 // ui_shot_write only.
+//
+// On iOS an app owns its UIApplication and window, so ui_open(app, 0) makes a view
+// (ui-host-apple.h: ui_view) the app puts in its window; touches are the pointer (the first
+// finger), the app's display link calls ui_frame, and the rest is the same as the Mac's.
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
 #import <AppKit/AppKit.h>
+#else
+#import <UIKit/UIKit.h>
+#endif
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <objc/runtime.h>
 #include "../linux/ui-host.h"
+#include "ui-host-apple.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,7 +49,9 @@ struct UiHost {
   float dpr;
   double last;
   uint64_t shown; int stale;
+#if TARGET_OS_OSX
   NSWindow *window;
+#endif
   UiView *view;
   CAMetalLayer *layer;
   int cursor_kind;
@@ -48,6 +60,7 @@ struct UiHost {
 };
 
 static double ui_now(void) { return CACurrentMediaTime(); }
+#if TARGET_OS_OSX
 static int ui_mods_of(NSEventModifierFlags f) {
   return ((f & NSEventModifierFlagShift) ? 1 : 0) | ((f & NSEventModifierFlagControl) ? 2 : 0) |
          ((f & NSEventModifierFlagOption) ? 4 : 0) | ((f & NSEventModifierFlagCommand) ? 8 : 0);
@@ -162,6 +175,26 @@ static int ui_named(unsigned short code, unichar c) {
 @implementation UiWindowDelegate
 - (void)windowWillClose:(NSNotification *)n { (void)n; self.host->closed = 1; }
 @end
+#else
+// iOS: the view the app puts in its window. Its layer is the CAMetalLayer frames are presented to.
+@interface UiView : UIView
+@property(nonatomic, assign) UiHost *host;
+@end
+@implementation UiView
++ (Class)layerClass { return [CAMetalLayer class]; }
+- (void)pointer:(NSSet<UITouch *> *)touches phase:(int)phase {
+  UiHost *h = self.host;
+  UITouch *t = touches.anyObject;
+  if (!h->app.pointer || !t) return;
+  CGPoint p = [t locationInView:self];
+  h->app.pointer(h->app.user, (float)(p.x * h->dpr), (float)(p.y * h->dpr), phase, (int)MIN(MAX(t.tapCount, 1), 3), 0);
+}
+- (void)touchesBegan:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:0]; }
+- (void)touchesMoved:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:1]; }
+- (void)touchesEnded:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:2]; }
+- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; [self pointer:t phase:2]; }
+@end
+#endif
 
 // ---- the pipeline
 
@@ -246,6 +279,7 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
 
 // ---- the seat
 
+#if TARGET_OS_OSX
 void ui_cursor(UiHost *h, int kind) {
   h->cursor_kind = kind;
   if (h->offscreen) return;
@@ -261,6 +295,19 @@ int ui_copy(UiHost *h, const char *bytes, size_t n) {
 }
 int ui_mods(UiHost *h) { return h->offscreen ? 0 : ui_mods_of(NSEvent.modifierFlags); }
 int ui_focused(UiHost *h) { return h->offscreen ? 0 : (h->window.isKeyWindow && NSApp.isActive); }
+#else
+void ui_cursor(UiHost *h, int kind) { h->cursor_kind = kind; }   // a touch screen has no pointer to shape
+int ui_copy(UiHost *h, const char *bytes, size_t n) {
+  if (h->offscreen) return 0;
+  NSString *s = [[NSString alloc] initWithBytes:bytes length:n encoding:NSUTF8StringEncoding];
+  if (!s) return 0;
+  UIPasteboard.generalPasteboard.string = s;
+  return 1;
+}
+int ui_mods(UiHost *h) { (void)h; return 0; }
+int ui_focused(UiHost *h) { return h->offscreen ? 0 : h->view.window.isKeyWindow; }
+#endif
+void *ui_view(UiHost *h) { return (__bridge void *)h->view; }
 float ui_dpr(UiHost *h) { return h->dpr; }
 void ui_set_dpr(UiHost *h, float dpr) { if (dpr > 0) h->dpr = dpr; }
 
@@ -278,6 +325,7 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   h->verts = [h->dev newBufferWithLength:(NSUInteger)app->max_vertices * UI_VERTEX_BYTES options:MTLResourceStorageModeShared];
   h->frame = malloc((size_t)app->max_vertices * UI_VERTEX_BYTES);
   if (!h->verts || !h->frame) { fprintf(stderr, "ui-host: no memory for a frame's vertices\n"); free(h->frame); free(h); return NULL; }
+#if TARGET_OS_OSX
   if (!offscreen) {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -302,12 +350,23 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
     [NSApp activateIgnoringOtherApps:YES];
     h->dpr = (float)h->window.backingScaleFactor;
   }
+#else
+  if (!offscreen) {
+    h->view = [[UiView alloc] initWithFrame:CGRectMake(0, 0, app->width, app->height)];
+    h->view.host = h; h->view.multipleTouchEnabled = NO;
+    h->layer = (CAMetalLayer *)h->view.layer;
+    h->layer.device = h->dev; h->layer.pixelFormat = MTLPixelFormatBGRA8Unorm; h->layer.framebufferOnly = YES;
+    h->dpr = (float)UIScreen.mainScreen.scale;
+    h->view.contentScaleFactor = h->dpr;
+  }
+#endif
   h->last = ui_now();
   return h;
 }
 int ui_frame(UiHost *h) {
   if (h->offscreen) return 0;
   @autoreleasepool {
+#if TARGET_OS_OSX
     // the seat's events, without waiting: a frame's time at most when nothing changed
     NSDate *until = h->stale ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
     NSEvent *e;
@@ -317,7 +376,11 @@ int ui_frame(UiHost *h) {
     }
     if (h->closed) return 0;
     h->dpr = (float)h->window.backingScaleFactor;
-    NSSize s = h->view.bounds.size;
+#else
+    // iOS: UIKit delivers the touches; this is one frame, called by the app's display link
+    h->dpr = (float)h->view.contentScaleFactor;
+#endif
+    CGSize s = h->view.bounds.size;
     uint32_t w = (uint32_t)lround(s.width * h->dpr), rows = (uint32_t)lround(s.height * h->dpr);
     if (!w || !rows) return 1;
     if (w != h->w || rows != h->rows) { h->w = w; h->rows = rows; h->layer.contentsScale = h->dpr; h->layer.drawableSize = CGSizeMake(w, rows); h->stale = 1; }
@@ -378,9 +441,14 @@ int ui_shot_write(UiHost *h, const char *png) {
 }
 void ui_close(UiHost *h) {
   if (!h) return;
+#if TARGET_OS_OSX
   if (h->window) { h->window.delegate = nil; [h->window close]; }
+  h->window = nil;
+#else
+  [h->view removeFromSuperview];
+#endif
   // ARC keeps the struct's object fields: let them go before the memory does
-  h->window = nil; h->view = nil; h->layer = nil; h->pipe = nil; h->queue = nil;
+  h->view = nil; h->layer = nil; h->pipe = nil; h->queue = nil;
   h->mono = nil; h->color = nil; h->target = nil; h->verts = nil; h->dev = nil;
   free(h->frame);
   free(h);
