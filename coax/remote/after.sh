@@ -22,7 +22,8 @@
 # (check.sh room-since G), and coax/tests/run.sh in 8 parts when compiler
 # sources changed. Everything else
 # passed at G and reads no changed file, so it passes at H. A head that changes
-# only documents is green with no job.
+# only documents is green with no job. A head that changes the compiler
+# (coax/src, coax/bootstrap, coax/build.sh) gets a full run instead.
 #
 # With no main-green, a fast run compares against the head of the last full
 # run and runs that run's failures again: when they and everything the change
@@ -296,7 +297,10 @@ run_head() {
   local kind="" full_gap="$gap"
   [[ -n "$green" ]] || full_gap=$(( gap < 3600 ? gap : 3600 ))
   if [[ ! -f "$dir/full" ]] && due last-full "$full_gap"; then kind=full
-  elif [[ -n "$ref" && "$head" != "$ref" && ! -f "$dir/status" ]] && due last-fast "$fast_gap"; then kind=fast
+  elif [[ -n "$ref" && "$head" != "$ref" && ! -f "$dir/status" ]] && due last-fast "$fast_gap"; then
+    kind=fast
+    # A changed compiler can change any check, so that head gets a full run.
+    if [[ ! -f "$dir/full" ]] && git diff --name-only "$ref" "$head" | grep -Eq '^coax/(src|bootstrap)/|^coax/(build|provenance)\.sh$|^coax/web/native-check\.c$'; then kind=full; fi
   fi
   if [[ -z "$kind" ]]; then
     # main has not moved since a red run: its failures are still there.

@@ -163,7 +163,9 @@ and runs only what the commits between them can have changed:
 - `coax/tests/run.sh` in eight parts, when compiler sources changed.
 
 Every other check passed at `G` and reads no file that changed, so it passes
-at `H`. A head that changes only documents is green with no job.
+at `H`. A head that changes only documents is green with no job. A head that
+changes the compiler (`coax/src/`, `coax/bootstrap/`, `coax/build.sh`) gets a
+full run instead, since a changed compiler can change any check.
 
 A full run is the backstop: every suite, every web module against its budget,
 the report checks, the room build, and the compiler's units when its sources
