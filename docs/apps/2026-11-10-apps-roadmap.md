@@ -45,26 +45,48 @@ with no adapter shows the message.
 
 ## Step 1. OpenAgents for desktop opens on Linux
 
-Status, 2026-11-10: it opens, and slices 1 to 4 below are done except IME
-and dictation. `apps/openagents-desktop/linux/build.sh --install --open`
+Status, 2026-11-10: it opens, and slices 1 to 4 below are done except IME.
+`apps/openagents-desktop/linux/build.sh --install --open`
 builds it, installs `~/.openagents/bin/openagents-desktop` and opens the
 window on `coderos-4080`.
 
 What was checked: `coax/web/tool.sh apps/openagents-desktop/linux/check.coax`
-passes 13 cases offscreen. Six are pictures against `goldens/linux/` (the
-demo conversation at two sizes, a table, the sidebar closed, no Claude Code
-installed, an attachment). Seven are what the app prints: a turn, an
+passes 23 cases offscreen, 21 on a machine without the Parakeet model. Seven
+are pictures against `goldens/linux/` (the demo conversation at two sizes, a
+table, the sidebar closed, no Claude Code installed, an attachment,
+dictation listening). Seven are what the app prints: a turn, an
 approval allowed and one denied, Claude asking Codex and Codex asking Claude
 through the room, a session kept at quit and continued after reopening. They
-use the stand-in Claude Code and Codex the Mac's checks use. One real Claude
+use the stand-in Claude Code and Codex the Mac's checks use. Nine more are
+what dictation prints (below). One real Claude
 Code turn also ran offscreen, and the window held 60 frames a second
 through a resize. Text is drawn and kerned by Coax (`components/raster/`,
 `coax/lib/text/ttf.coax`); the kerning agrees with fontTools on all 2,891
 kerned ASCII pairs of Geist.
 
+Dictation is the Mac's. Hold Ctrl+D, or the microphone under the composer,
+and speak; the words go into the draft when you let go and are never sent.
+It is off until you press Ctrl+Shift+D or start the app with `--dictation
+on`, and `settings.json` keeps the choice. The same Coax decides everything
+(`zr_dictation_*`, `apps/shared/dictation-policy.coax`). The Linux host
+(`linux/dictation-host.c`) runs the recorder `openagents dictate` runs
+(`pw-record`) and Psionic's Parakeet on CUDA, and looks for the model in the
+shared model home (`~/.openagents/models/`, or `OPENAGENTS_MODEL_CACHE`).
+Ten of the 23 cases are dictation's, and none opens the microphone. Eight
+feed a recorded clip on the app's fixture clock: the picture, the key with
+Undo, the microphone button, a tap, dictation off, and the setting saved and
+restored. Two run in real time, with a stand-in
+(`tests/recorder-stand-in.coax`) started in `pw-record`'s place and the key
+held while it plays the clip. One of each kind recognizes the clip with the
+pinned Parakeet model on the GPU and is skipped where the model home has no
+model; the other eight use a stand-in recognizer that answers with the
+clip's words.
+
 Not checked: typing into the window with a real keyboard, an input method,
-and choosing a file in the desktop's file chooser (the dialog was opened
-and closed by a test, never answered). Not built on Linux: dictation,
+choosing a file in the desktop's file chooser (the dialog was opened
+and closed by a test, never answered), and dictation with a real
+microphone and a real keyboard: `pw-record` itself has never been run by
+the app. Not built on Linux:
 colour emoji, the five font dilation levels, and a terminal for a notice's
 Log in or Install button (the command is printed instead).
 
@@ -85,7 +107,7 @@ and `Sources/main.swift` supply:
 | Glyph and icon atlas | CoreText and AppKit SVG | To decide: see the open question below |
 | Clipboard, IME, file picker | AppKit | Wayland data device and text input; `xdg-desktop-portal` for files |
 | Offscreen shots | `--shot`, `--do`, `--compare` | The same flags, so `check.sh` and its goldens run on Linux |
-| Dictation audio | AVFoundation | PipeWire; the CLI's Linux dictation already records |
+| Dictation audio | AVFoundation | PipeWire, through the CLI's recorder (`pw-record`) |
 
 Slices, each one opens and is checked before the next:
 

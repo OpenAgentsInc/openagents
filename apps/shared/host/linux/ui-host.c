@@ -163,6 +163,7 @@ static void shm_global_remove(void *d, struct wl_registry *r, uint32_t name) { (
 static const struct wl_registry_listener shm_listener = {.global = shm_global, .global_remove = shm_global_remove};
 
 int ui_mods(UiHost *h) { return h->offscreen ? 0 : hwi_sdk_mods(&h->win.input); }
+int ui_focused(UiHost *h) { return h->offscreen ? 0 : h->win.keyboard_focused; }
 int ui_copy(UiHost *h, const char *bytes, size_t n) { return h->offscreen ? 0 : vkw_clipboard_set(&h->win, bytes, n); }
 float ui_dpr(UiHost *h) { return h->dpr; }
 void ui_set_dpr(UiHost *h, float dpr) { if (dpr > 0) h->dpr = dpr; }

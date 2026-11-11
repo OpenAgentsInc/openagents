@@ -156,6 +156,8 @@ int32_t zr_dictation_begin(void *state, int64_t ticket, int32_t source);
 void zr_dictation_cancel(void *state);
 int32_t zr_dictation_apply(void *state, int64_t ticket, int32_t current, const uint8_t *text, int32_t n);
 void zr_dictation_status(void *state, int32_t enabled, int32_t phase, int32_t outcome, int32_t fault, int32_t preparing);
+// The host's Command is the Control key (Linux): the idle label then names Ctrl+D, not ⌘D.
+void zr_dictation_chord(void *state, int32_t ctrl);
 int32_t zr_dictation_source(void *state);
 int32_t zr_dictation_key(void *state, int32_t key, int32_t mods, int32_t down, int32_t repeated, int32_t marked, int32_t room);
 int32_t zr_dictation_draft(void *state, uint8_t *out, int32_t cap);

@@ -57,6 +57,8 @@ void ui_cursor(UiHost *h, int kind);
 int ui_copy(UiHost *h, const char *bytes, size_t n);
 // The keyboard's modifiers now, as key's mods.
 int ui_mods(UiHost *h);
+// 1 while the window has the keyboard (0 offscreen).
+int ui_focused(UiHost *h);
 float ui_dpr(UiHost *h);
 void ui_close(UiHost *h);
 #endif

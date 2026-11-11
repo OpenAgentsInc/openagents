@@ -47,6 +47,7 @@ ZeronState :: struct {
   dictation_enabled: bool;
   dictation_phase: int; dictation_outcome: int; dictation_fault: int; dictation_preparing: int;
   dictation_source: int; // 1 keyboard, 2 pointer; kept until completed/cancelled
+  dictation_ctrl: bool; // the host's Command is Control (Linux): the idle label names Ctrl+D
 
   width: f32; height: f32; d: f32;
   atlas: [1] Atlas;
@@ -1421,6 +1422,7 @@ coaxial_zeron_dictation_status :: (s:[]ZeronState,enabled:bool,phase:int,outcome
  if s.count<1 {return;}s[0].dictation_enabled=enabled;s[0].dictation_phase=phase;s[0].dictation_outcome=outcome;s[0].dictation_fault=fault;s[0].dictation_preparing=preparing;
  if !enabled || phase==0 || (phase==1 && outcome>=1 && outcome<=4) {coaxial_zeron_dictation_cancel(s);}
 }
+coaxial_zeron_dictation_chord :: (s:[]ZeronState,ctrl:bool) #export_c #effects(all) {if s.count>0 {s[0].dictation_ctrl=ctrl;}}
 coaxial_zeron_dictation_source :: (s:[]ZeronState)->int #export_c #effects(all) {return ifx s.count>0 then s[0].dictation_source else 0;}
 coaxial_zeron_dictation_key :: (s:[]ZeronState,key:int,mods:int,down:bool,repeated:bool,marked:bool,room:bool)->int #export_c #effects(all) {
  if s.count<1 {return 0;}holding:=s[0].dictation_source==1 || (key==53 && s[0].dictation[0].active);
@@ -1441,8 +1443,14 @@ zr_paint_dictation :: (out:[]f32,at:int,s:[]ZeronState,th:Theme,d:f32)->int {
  v=paint_quad(out,v,d,x+10,y+4,8,14,4,1.5,rgba(0,0,0,0),fg);
  v=paint_quad(out,v,d,x+13.25,y+21,1.5,3,0,0,fg,fg);
  v=paint_quad(out,v,d,x+9,y+24,10,1.5,0,0,fg,fg);
- label:=zdu_label(s[0].dictation_phase,s[0].dictation_outcome,s[0].dictation_fault,s[0].dictation_preparing);
+ label:=zdu_label(s[0].dictation_phase,s[0].dictation_outcome,s[0].dictation_fault,s[0].dictation_preparing,s[0].dictation_ctrl);
  return paint_text(out,v,s[0].atlas[..],d,FONT_CHIP,label,x-8-text_width(s[0].atlas[..],FONT_CHIP,label),y,28,fg);
+}
+#test "the dictation label's key is the host's: Control only where the host says Control is its Command" {
+ s:[1]ZeronState;#assert !s[0].dictation_ctrl;
+ coaxial_zeron_dictation_chord(s[..],true);#assert s[0].dictation_ctrl;
+ coaxial_zeron_dictation_chord(s[..],false);#assert !s[0].dictation_ctrl;
+ coaxial_zeron_dictation_chord(s[0..<0],true);#assert !s[0].dictation_ctrl;
 }
 #test "dictation screen inserts a literal draft without a session or send" {
  s:[1]ZeronState;test_atlas(s[0].atlas[..]);s[0].dictation_enabled=true;s[0].composer[0].focused=true;

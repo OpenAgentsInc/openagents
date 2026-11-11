@@ -226,7 +226,7 @@ int64_t cxdict_model_open(coax_v_u8 dir, int64_t gpu, coax_v_u8 err) {
   if (engine) return 0;
   if (dir.count < 1 || (size_t)dir.count >= sizeof path) return -1;
   memcpy(path, dir.data, (size_t)dir.count); path[dir.count] = 0;
-  job_audio = calloc(MAX_SAMPLES, sizeof *job_audio);
+  if (!job_audio) job_audio = calloc(MAX_SAMPLES, sizeof *job_audio);   /* kept when a host closes and opens again */
   if (!job_audio) return -1;
   engine = psionic_parakeet_open(path, gpu ? 1 : 0, e, sizeof e);
   if (engine) return 0;

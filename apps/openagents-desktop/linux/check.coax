@@ -9,12 +9,22 @@
 //   coax/web/tool.sh apps/openagents-desktop/linux/check.coax --update  rewrite the goldens (look at them before committing)
 // The steps are the app's own --do steps. docs/research/exact/04-apps-audit-2026-11-10.md says
 // they should become `coax drive` operations; these cases move with them.
+//
+// The dictation cases never open the microphone and play no sound. Most use the app's
+// --dictation-fixture, which takes a recorded clip's samples (psionic/fixtures/parakeet/) on its
+// own clock. The two dictation-recorder cases run in real time: the app starts a stand-in
+// (tests/recorder-stand-in.coax) in pw-record's place, which writes the same clip as a recorder
+// would, and the key is held while it plays. A case's recognizer is the app's stand-in, which
+// answers with the clip's words, so it runs on any machine, or the pinned Parakeet model on the
+// GPU: those two cases are skipped, and say so, where the shared model home (`openagents models
+// ls`) has no model.
 #import "Basic";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/args.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/sys/openagents-paths.coax";
 
 LC_APP :: "apps/openagents-desktop/build/linux/OpenAgents";
 LC_GOLDENS :: "apps/openagents-desktop/goldens/linux/";
@@ -23,10 +33,22 @@ LC_FIXTURES :: "apps/openagents-desktop/zeron/fixtures/";
 // At most this many pixels in a thousand may differ from the golden.
 LC_PIXELS :: 2;
 
+// The dictation cases' clip, 3.2 s of LibriSpeech (psionic/fixtures/parakeet/clips.txt), and its words.
+LC_CLIP :: "psionic/fixtures/parakeet/6930-75918-0011.pcm";
+LC_WORDS :: "I am convinced of what I say, said the Count.";
+LC_STAND_IN :: 1; LC_PARAKEET :: 2; LC_RECORDER :: 3; LC_RECORDER_PARAKEET :: 4;
+// The stand-in recorder: 2.5 s of silence, then the clip. A case presses the key a second in and holds it past the clip's end.
+LC_RECORDER_TOOL :: "apps/openagents-desktop/tests/recorder-stand-in.coax";
+LC_LEAD :: "2500";
+LC_HOLD :: "newchat ; type Please inspect ; dictation on ; waitdictationready 60 ; wait 1 ; dictation down ; wait 5.5 ; dictation up ; waitdictation 15 ; draft ; dictation state";
+
 // A case's engine: "demo" (the demo conversation), "" (an empty home with no Claude Code on PATH), or a
-// folder of zeron/fixtures/ whose stand-in claude and codex are on PATH. `@H` in its steps is the case's home.
-LcCase :: struct { name: string; size: string; engine: string; steps: string; expect: string; picture: bool; settings: bool; }
-LC_CASES :: [13] LcCase.[
+// folder of zeron/fixtures/ whose stand-in claude and codex are on PATH. In its steps `@H` is the case's
+// home, `@P` the dictation clip and `@Q` half a second of silence. dictation: 0 none, LC_STAND_IN the
+// fixture with the stand-in recognizer, LC_PARAKEET the fixture with the pinned model, LC_RECORDER the
+// stand-in recorder with the stand-in recognizer, LC_RECORDER_PARAKEET the stand-in recorder with the model.
+LcCase :: struct { name: string; size: string; engine: string; steps: string; expect: string; picture: bool; settings: bool; dictation: int; }
+LC_CASES :: [23] LcCase.[
   LcCase.{name = "chat-1320x880", size = "1320,880", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
   LcCase.{name = "chat-900x600", size = "900,600", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
   LcCase.{name = "chat-table", size = "1320,880", engine = "demo", steps = "fixture table", expect = "", picture = true, settings = false},
@@ -39,16 +61,43 @@ LC_CASES :: [13] LcCase.[
   LcCase.{name = "room-ask", size = "1320,880", engine = "room", steps = "wait 1 ; folder @H/work/zeron ; mode codex ; wait 1 ; keyevent cmd+1 ; send Ask Codex to review the diff ; waitidle 15 ; wait 1 ; last", expect = "last: Codex reviewed it: Review: the diff renames a to b; it reads well. (80 chars read)", picture = false, settings = false},
   LcCase.{name = "room-codex-asks", size = "1320,880", engine = "room", steps = "wait 1 ; folder @H/work/zeron ; mode codex ; wait 1 ; send Ask Claude whether the build is green ; waitidle 20 ; wait 1 ; last", expect = "last: Claude says: The build is green. (tools: agents_list, ask_agent, tell_agent, room_read)", picture = false, settings = false},
   LcCase.{name = "store-quit", size = "1320,880", engine = "stream", steps = "wait 1 ; send What is two plus two? ; waitidle 10 ; desk", expect = "desk: active=0 tabs=0 sessions=1 collapsed=0", picture = false, settings = true},
-  LcCase.{name = "store-reopen", size = "1320,880", engine = "stream", steps = "wait 1 ; send One more? ; waitidle 10 ; last", expect = "last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = true}
+  LcCase.{name = "store-reopen", size = "1320,880", engine = "stream", steps = "wait 1 ; send One more? ; waitidle 10 ; last", expect = "last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = true},
+  LcCase.{name = "dictation-listening", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation down ; dictation feed @P", expect = "", picture = true, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-key", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation down ; dictation feed @P ; dictation up ; waitdictation 15 ; draft ; key cmd+z ; draft", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndraft: Please inspect\ndraft-state: sent=0 parts=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-mouse", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation mousedown ; dictation feed @P ; dictation mouseup ; waitdictation 15 ; draft ; dictation state", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=5 samples=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-tap", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation down ; dictation up ; waitdictation 5 ; draft ; dictation state", expect = "draft: Please inspect\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=1 samples=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-off", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation down ; dictation feed @P ; dictation up ; draft ; dictation state", expect = "draft: Please inspect\ndraft-state: sent=0 parts=0\ndictation: phase=0 outcome=0 samples=0\ndictation-setting: enabled=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-saved", size = "1320,880", engine = "stream", steps = "dictation state ; dictation on ; waitdictationready 10 ; dictation state", expect = "dictation-setting: enabled=0\ndictation: phase=1 outcome=0 samples=0\ndictation-setting: enabled=1", picture = false, settings = true, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-restored", size = "1320,880", engine = "stream", steps = "waitdictationready 10 ; dictation state ; type Please inspect ; dictation down ; dictation feed @P ; dictation up ; waitdictation 15 ; draft", expect = "dictation: phase=1 outcome=0 samples=0\ndictation-setting: enabled=1\ndraft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0", picture = false, settings = true, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-parakeet", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 60 ; dictation down ; dictation feed @P ; dictation up ; waitdictation 15 ; draft ; key cmd+z ; draft ; dictation feed @Q ; dictation mousedown ; dictation feed @P ; dictation mouseup ; waitdictation 15 ; draft", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndraft: Please inspect\ndraft-state: sent=0 parts=0\ndraft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0", picture = false, settings = false, dictation = LC_PARAKEET},
+  LcCase.{name = "dictation-recorder", size = "1320,880", engine = "demo", steps = LC_HOLD, expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=5 samples=0", picture = false, settings = false, dictation = LC_RECORDER},
+  LcCase.{name = "dictation-recorder-parakeet", size = "1320,880", engine = "demo", steps = LC_HOLD, expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=5 samples=0", picture = false, settings = false, dictation = LC_RECORDER_PARAKEET}
 ];
 
-// A case's steps with `@H` replaced by the home's path.
-lc_steps :: (steps: string, home: string, b: [] u8) -> string {
+// Steps with `@` and a letter replaced by a path.
+lc_swap :: (steps: string, letter: u8, path: string, b: [] u8) -> string {
   o: [1] Jo; jo_start(o[..], b); from := 0;
   for i: 0..<steps.count {
-    if i + 1 < steps.count && steps[i] == '@' && steps[i + 1] == 'H' && i >= from { jo_put(o[..], steps[from..<i]); jo_put(o[..], home); from = i + 2; }
+    if i + 1 < steps.count && steps[i] == '@' && steps[i + 1] == letter && i >= from { jo_put(o[..], steps[from..<i]); jo_put(o[..], path); from = i + 2; }
   }
   jo_put(o[..], steps[from..<steps.count]);
+  return jo_text(o[..]);
+}
+// A case's steps with `@H` replaced by the home's path.
+lc_steps :: (steps: string, home: string, b: [] u8) -> string { return lc_swap(steps, 'H', home, b); }
+#test "a case's clip and its silence are put into its steps, and what it expects is said on one line" {
+  b: [256] u8; c: [256] u8;
+  #assert lc_swap(lc_swap("dictation feed @P ; dictation feed @Q ; draft", 'P', "/r/clip.pcm", b[..]), 'Q', "/w/quiet.pcm", c[..]) == "dictation feed /r/clip.pcm ; dictation feed /w/quiet.pcm ; draft";
+  #assert lc_swap("feed @P", 'Q', "/x", b[..]) == "feed @P" && lc_swap("@P@P", 'P', "/x", b[..]) == "/x/x";
+  #assert lc_flat("draft: a\ndraft-state: sent=0 parts=0\n", b[..]) == "draft: a | draft-state: sent=0 parts=0" && lc_flat("last: ok", b[..]) == "last: ok" && lc_flat("", b[..]) == "";
+}
+// What a case expects, on one line: its line ends become " | ".
+lc_flat :: (expect: string, b: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], b);
+  for i: 0..<expect.count {
+    if expect[i] != 10 { jo_put(o[..], expect[i..<i + 1]); }
+    else if i + 1 < expect.count { jo_put(o[..], " | "); }
+  }
   return jo_text(o[..]);
 }
 #test "a case's home is put into its steps" {
@@ -125,6 +174,34 @@ tool_main :: () -> int #export_c #effects(all) {
   if !fs_write(lc_path(pb[7][..], home, "/.codex/auth.json"), "{}\n") { return 2; }
   if !fs_write(lc_path(pb[7][..], home, "/work/notes.txt"), "alpha\nbeta\n") { return 2; }   // the attach case's file
   path := proc_getenv("PATH", env_b[..]);
+  // dictation: the recorded clip, half a second of silence (16 kHz, 16 bits), and the pinned model where the shared
+  // model home has it (OPENAGENTS_PARAKEET_MODEL, else OPENAGENTS_MODEL_CACHE or ~/.openagents/models)
+  db: [6] [4096] u8; zeros: [16000] u8;
+  clip := lc_path(db[0][..], root, lc_path(db[1][..], "/", LC_CLIP));
+  quiet := lc_path(db[2][..], work, "/quiet.pcm");
+  if !fs_exists(clip) || !fs_write(quiet, cast(string) zeros[..]) { tool_errln("check: no dictation clip, or its silence could not be written"); return 2; }
+  real_home := proc_getenv("HOME", db[3][..]);
+  model := proc_getenv("OPENAGENTS_PARAKEET_MODEL", db[4][..]);
+  if model == "" { cache_b: [4096] u8; model = oa_models_path(real_home, proc_getenv("OPENAGENTS_MODEL_CACHE", cache_b[..]), OA_PARAKEET_FOLDER, db[4][..]); }
+  mw: [2] [4200] u8;
+  have_model := model != "" && fs_kind(fs_join(model, "model.safetensors", mw[0][..])) == FS_FILE && fs_kind(fs_join(model, "tokenizer.json", mw[1][..])) == FS_FILE;
+  // NVRTC, as the engine looks for it (psionic/platform/cuda-host.c): CUDA_HOME, else cuda-13.2 in the real home
+  cuda_b: [2] [4200] u8; cuda := proc_getenv("CUDA_HOME", cuda_b[0][..]);
+  if cuda == "" { cuda = lc_path(cuda_b[0][..], real_home, "/cuda-13.2"); }
+  // the stand-in recorder: built now, so the app is not kept waiting for its first audio, and started by a script
+  // of its own with this check's PATH
+  rb: [6] [8192] u8; rs: [32768] u8;
+  tool := lc_path(rb[0][..], root, "/coax/web/tool.sh");
+  recorder_tool := lc_path(rb[1][..], root, lc_path(rb[2][..], "/", LC_RECORDER_TOOL));
+  warm := [2] string.[tool, recorder_tool];
+  r = proc_run(warm[..], 300000, out[..], err[..]);   // with no arguments it says how it is used
+  recorder := lc_path(rb[3][..], bin, "/recorder");
+  ro: [1] Jo; jo_start(ro[..], rs[..]);
+  jo_put(ro[..], "#!/bin/sh\nPATH='"); jo_put(ro[..], path); jo_put(ro[..], "' exec "); jo_put(ro[..], tool); jo_put(ro[..], " "); jo_put(ro[..], recorder_tool);
+  jo_put(ro[..], " "); jo_put(ro[..], clip); jo_put(ro[..], " "); jo_put(ro[..], LC_LEAD); jo_put(ro[..], " \"$@\"\n");
+  if !fs_write(recorder, jo_text(ro[..])) { tool_errln("check: could not write the stand-in recorder"); return 2; }
+  rc := [3] string.["chmod", "755", recorder];
+  r = proc_run(rc[..], 20000, out[..], err[..]);
   failed := 0;
   cases := LC_CASES;
   for c: cases {
@@ -134,19 +211,28 @@ tool_main :: () -> int #export_c #effects(all) {
     env_home := lc_path(eb[0][..], "HOME=", home);
     standin := c.engine != "demo" && c.engine != "";
     env_path := ifx standin then lc_path(eb[1][..], "PATH=", lc_path(eb[2][..], bin, lc_path(pb[11][..], "/", lc_path(pb[7][..], c.engine, lc_path(pb[5][..], ":", path))))) else lc_path(eb[1][..], "PATH=", "/run/current-system/sw/bin:/usr/bin:/bin");
-    argv: [24] string; n := 0;
+    parakeet := c.dictation == LC_PARAKEET || c.dictation == LC_RECORDER_PARAKEET;
+    live := c.dictation == LC_RECORDER || c.dictation == LC_RECORDER_PARAKEET;
+    if parakeet && !have_model { print("skip %: no Parakeet model in % (see `openagents models ls`)\n", c.name, model); continue; }
+    argv: [32] string; n := 0; xb: [2] [8192] u8;
     for s: [5] string.["env", env_home, env_path, "BROWSER=true", "PSIONIC_HOST=none"] { argv[n] = s; n += 1; }
+    if parakeet { argv[n] = lc_path(xb[0][..], "OPENAGENTS_PARAKEET_MODEL=", model); argv[n + 1] = lc_path(xb[1][..], "CUDA_HOME=", cuda); n += 2; }
     argv[n] = lc_path(pb[12][..], root, lc_path(pb[13][..], "/", LC_APP)); n += 1;
     for s: [8] string.["--shot", shot, "--size", c.size, "--dpr", "1", "--cwd", lc_path(pb[4][..], home, "/work")] { argv[n] = s; n += 1; }
     if c.engine == "demo" { argv[n] = "--demo"; n += 1; }
-    if c.settings { argv[n] = "--settings"; argv[n + 1] = lc_path(pb[14][..], work, "/store/settings.json"); n += 2; }
-    sb: [8192] u8;
-    argv[n] = "--do"; argv[n + 1] = lc_steps(c.steps, home, sb[..]); n += 2;
+    // the dictation cases keep their setting in a file of their own
+    if c.settings { argv[n] = "--settings"; argv[n + 1] = lc_path(pb[14][..], work, ifx c.dictation != 0 then "/dictation/settings.json" else "/store/settings.json"); n += 2; }
+    if live { argv[n] = "--dictation-recorder"; argv[n + 1] = recorder; n += 2; }
+    else if c.dictation != 0 { argv[n] = "--dictation-fixture"; n += 1; }
+    if c.dictation != 0 && !parakeet { argv[n] = "--dictation-stand-in"; argv[n + 1] = LC_WORDS; n += 2; }
+    sb: [3] [8192] u8;
+    argv[n] = "--do"; argv[n + 1] = lc_swap(lc_swap(lc_steps(c.steps, home, sb[0][..]), 'P', clip, sb[1][..]), 'Q', quiet, sb[2][..]); n += 2;
     r = proc_run(argv[0..<n], 120000, out[..], err[..]);
     said := cast(string) out[0..<r.out_n];
     if r.started != 0 || r.status != 0 || r.timed_out { print("FAIL %: the app ended with status %: %\n", c.name, r.status, cast(string) err[0..<r.err_n]); failed += 1; continue; }
-    if !lc_has(said, c.expect) { print("FAIL %: no \"%\" in: %\n", c.name, c.expect, said); failed += 1; continue; }
-    if !c.picture { print("ok   %: %\n", c.name, c.expect); continue; }
+    fb: [4096] u8;
+    if !lc_has(said, c.expect) { print("FAIL %: no \"%\" in: %\n", c.name, lc_flat(c.expect, fb[..]), said); failed += 1; continue; }
+    if !c.picture { print("ok   %: %\n", c.name, lc_flat(c.expect, fb[..])); continue; }
     golden := lc_path(pb[15][..], root, lc_path(pb[9][..], "/", lc_path(pb[10][..], LC_GOLDENS, lc_path(pb[11][..], c.name, ".png"))));
     if update {
       cp := [3] string.["cp", shot, golden];

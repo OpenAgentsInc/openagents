@@ -6,18 +6,31 @@
 // sessions, builds each chat's glyph atlas in Coax, hands frames and input across,
 // and takes the app's actions.
 //
-//   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N]
+//   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N] [--dictation on|off]
+//              [--dictation-recorder PROGRAM]
 //   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "STEP ; STEP"]
+//              [--dictation-fixture | --dictation-recorder PROGRAM] [--dictation-stand-in WORDS]
 // Steps, as the Mac's (Sources/Zeron.swift step): wait SECONDS, waitidle [SECONDS], fixture
 // open|closed|table, newchat, sidebar, room, folder PATH, attach PATH, closetab, type TEXT, send TEXT, stop,
 // mode|model|effort|access NAME, plan on|off, open model|access, answer allow|deny, click X,Y[,N],
-// move X,Y, wheel DY, scroll PX, key CHORD (cmd+1, shift+down, enter), status, last, desk.
+// move X,Y, wheel DY, scroll PX, key CHORD (cmd+1, shift+down, enter), status, last, desk, draft.
+// With --dictation-fixture, which never runs a recorder: dictation on|off|down|up|mousedown|mouseup|cancel|
+// feed FILE|state (FILE is 16 kHz mono 16-bit samples, a WAV or its bare samples), waitdictationready
+// [SECONDS], waitdictation [SECONDS]. With --dictation-recorder instead, the same steps but feed, in real
+// time: PROGRAM runs in pw-record's place with its arguments (a check's stand-in, which writes a recorded
+// clip as 48 kHz mono 32-bit float samples), and a picture is never taken with the microphone.
+// --dictation-stand-in WORDS, for a picture only: a stand-in recognizer that answers WORDS; no model is opened.
+//
+// Dictation (Sources/Zeron.swift's dictation members; dictation-host.h): hold Ctrl+D, or the microphone
+// under the composer, and speak; the words go into the draft when you let go, and are never sent.
+// It is off until you turn it on: Ctrl+Shift+D in the window, or --dictation on. It is kept in settings.json.
 //   OpenAgents --mcp-room SOCKET AGENT    the room's MCP server, which Codex starts
 #define _GNU_SOURCE
 #include "zeron.h"
 #include "face.h"
 #include "ui-host.h"
 #include "portal.h"
+#include "dictation-host.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -60,6 +73,20 @@ typedef struct {
   char room_buf[16][65536];
   int wait_idle;      // --do: the wait ends when the running turn does
   Portal *portal;     // the desktop's file chooser; NULL offscreen and where there is no session bus
+  // dictation: the recorder and the recognizer (NULL for a picture with neither --dictation-fixture nor
+  // --dictation-recorder), the request in flight (ticket 0: none) with the chat it began in, and the
+  // controller's facts as last said
+  Dictation *dictation;
+  uint64_t dictation_ticket;
+  void *dictation_chat;
+  int dictation_phase, dictation_outcome, dictation_fault, dictation_preparing;
+  int dictation_key;        // D is down
+  int pointer_down;         // the left button is down
+  int focused;              // the window has the keyboard
+  int offscreen;            // a picture, not a window
+  int dictation_fixture;    // --dictation-fixture: its clock, and what a --do wait is for (1 the model, 2 the request)
+  int64_t dictation_clock;
+  int wait_dictation;
 } App;
 
 static uint8_t *slurp(const char *dir, const char *sub, const char *name, const char *ext, size_t *n) {
@@ -130,6 +157,61 @@ static void copy_selection(App *a) {
   if (b && zr_selected(state, b, n) == n) ui_copy(a->host, (const char *)b, (size_t)n);
   free(b);
 }
+// ---- dictation (Sources/Zeron.swift): the host never submits. The Coax binds a result to the one
+// unchanged composer it began in, and Enter and Send stay the only ways to send.
+
+static void cancel_dictation(App *a) {
+  if (a->dictation_ticket) { zr_dictation_cancel(a->dictation_chat); a->dictation_ticket = 0; }
+  if (a->dictation) dn_cancel(a->dictation);
+}
+static void cancel_dictation_for_edit(App *a) { if (a->dictation_ticket) cancel_dictation(a); }
+static void sync_dictation(App *a) {
+  if (a->dictation_ticket && (a->dictation_chat != active(a) || dsk_room_shown(a->desk))) cancel_dictation(a);
+  zr_dictation_chord(active(a), 1);   // Ctrl is what Command is on the Mac: the key to hold is Ctrl+D
+  zr_dictation_status(active(a), dsk_dictation_enabled(a->desk), a->dictation_phase, a->dictation_outcome, a->dictation_fault, a->dictation_preparing);
+}
+static void begin_dictation(App *a, int source) {
+  if (!a->dictation) return;
+  cancel_dictation_for_edit(a); sync_dictation(a);
+  void *origin = active(a);
+  uint64_t ticket = dn_begin(a->dictation);
+  if (!ticket) return;
+  if (zr_dictation_begin(origin, (int64_t)ticket, source)) { a->dictation_ticket = ticket; a->dictation_chat = origin; }
+  else dn_cancel(a->dictation);
+}
+static void on_dictation_state(void *user, int phase, int outcome, int fault, int preparing) {
+  App *a = user;
+  a->dictation_phase = phase; a->dictation_outcome = outcome; a->dictation_fault = fault; a->dictation_preparing = preparing;
+  sync_dictation(a);
+  if (a->dictation_ticket && zr_dictation_source(a->dictation_chat) == 0) a->dictation_ticket = 0;
+}
+static void on_dictation_words(void *user, uint64_t ticket, const uint8_t *text, int n) {
+  App *a = user;
+  if (!a->dictation_ticket || a->dictation_ticket != ticket) return;
+  int current = active(a) == a->dictation_chat && !dsk_room_shown(a->desk);
+  int inserted = zr_dictation_apply(a->dictation_chat, (int64_t)ticket, current, text, n);
+  a->dictation_ticket = 0;
+  a->dictation_phase = 1; a->dictation_outcome = inserted ? 5 : 3;
+  if (!inserted) dn_cancel(a->dictation);
+  sync_dictation(a);
+}
+static void save_settings(App *a);
+// The user's consent, kept in settings.json (the Mac's Enable Local Dictation menu item).
+static void set_dictation(App *a, int on) {
+  cancel_dictation_for_edit(a);
+  dsk_dictation_set(a->desk, on);
+  if (a->dictation) dn_enable(a->dictation, dsk_dictation_enabled(a->desk));
+  save_settings(a); sync_dictation(a);
+}
+// Capture needs the window to have the keyboard (zeron/dictation-ui.coax); it ends when it loses it.
+static void focus_dictation(App *a, int focused) {
+  if (focused == a->focused) return;
+  a->focused = focused;
+  a->dictation_key = 0;   // a key let go while another window had the keyboard is never heard of
+  if (zr_dictation_focus(focused, focused)) { if (a->dictation) dn_activate(a->dictation); }
+  else { cancel_dictation_for_edit(a); if (a->dictation) dn_deactivate(a->dictation); }
+}
+
 // ---- what is kept between runs (Sources/Zeron.swift saveSettings, storeFile, flushStore)
 
 static void make_dirs(const char *file) {   // the folders a file's path names
@@ -250,6 +332,7 @@ static void attach(App *a, const char *path) {
 }
 
 static void new_session(App *a, const char *cwd) {
+  cancel_dictation_for_edit(a);
   void *chat = zr_new();
   if (!chat) return;
   zr_attach(chat, (const uint8_t *)cwd, (int32_t)strlen(cwd));
@@ -362,6 +445,11 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
   if (!c) return 0;
   if (a->bound != shown) atlas_upload(a, c);
   a->w = (uint32_t)w; a->h = (uint32_t)h;
+  if (a->dictation) {
+    if (!a->offscreen) focus_dictation(a, ui_focused(a->host));
+    dn_pump(a->dictation);
+  }
+  sync_dictation(a);
   room_pump(a);
   flush_store(a, 0);
   int n = dsk_frame(a->desk, vertices, w, h, dpr, dt);
@@ -387,16 +475,43 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
   if (k > 0) ui_copy(a->host, (const char *)copied, (size_t)k);
   return n;
 }
-static void on_pointer(void *user, float x, float y, int phase, int clicks, int mods) { App *a = user; dsk_pointer(a->desk, x, y, phase, clicks, app_mods(mods)); }
+static void on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
+  App *a = user;
+  // the microphone under the composer: held, it records, and the pointer does nothing else until it is let go
+  int held = a->pointer_down;
+  a->pointer_down = phase == 0 || (phase == 1 && held);
+  if (phase == 0) {
+    if (dsk_dictation_hit(a->desk, x, y)) { begin_dictation(a, 2); return; }
+    cancel_dictation_for_edit(a);
+  } else if (zr_dictation_source(active(a)) == 2 && (phase == 2 || held)) {
+    if (phase == 2 && a->dictation) dn_end(a->dictation);
+    return;
+  }
+  dsk_pointer(a->desk, x, y, phase, clicks, app_mods(mods));
+}
 // GPUI's pixel delta: the Mac passes lines times the line height (22.75); a wheel notch here is 100, three lines.
 static void on_wheel(void *user, float dy) { App *a = user; dsk_wheel(a->desk, -dy * 0.6825f); }
 static int on_wants_text(void *user) { App *a = user; return !dsk_room_shown(a->desk) && zr_wants_text(active(a)); }
-static void on_text(void *user, const char *bytes, size_t n) { App *a = user; if (on_wants_text(a)) zr_text(active(a), (const uint8_t *)bytes, (int32_t)n); }
+static void on_text(void *user, const char *bytes, size_t n) { App *a = user; cancel_dictation_for_edit(a); if (on_wants_text(a)) zr_text(active(a), (const uint8_t *)bytes, (int32_t)n); }
 static int on_key(void *user, int key, int mods, int down) {
   App *a = user;
-  if (!down || key == -13 || key == -14 || key == 0) return 0;   // a release; Shift and Control by themselves
+  if (key == -13 || key == -14 || key == 0) return 0;   // Shift and Control by themselves
   void *state = active(a);
   int m = app_mods(mods);
+  // Dictation's keys first, as the Coax names them (zeron/dictation-ui.coax): AppKit's key code 2 is D and
+  // 53 is Escape. It says what a press or a release means: 1 begin, 2 end, 3 cancel, 4 a repeat to swallow.
+  int code = key == 'd' || key == 'D' ? 2 : key == -1 ? 53 : -1;
+  int repeated = down && code == 2 && a->dictation_key;
+  if (code == 2) a->dictation_key = down;
+  int action = zr_dictation_key(state, code, m, down, repeated, ((coax_t_ZeronState *)state)->composer.e[0].marked, dsk_room_shown(a->desk));
+  if (!down) {   // a release: nothing else takes one
+    if (action == 2 && a->dictation) dn_end(a->dictation);
+    return action == 2;
+  }
+  if (action == 1) { begin_dictation(a, 1); return 1; }
+  if (action == 3) { cancel_dictation_for_edit(a); return 1; }
+  if (action == 4) return 1;
+  cancel_dictation_for_edit(a);
   if (key == -15) key = -13;   // Tab, as the app names it
   if (key < 0) {
     if (dsk_key(a->desk, key, m)) return 1;
@@ -414,6 +529,7 @@ static int on_key(void *user, int key, int mods, int down) {
     if (c == 'n') { uint8_t cwd[PATH_MAX]; int k = dsk_cwd(a->desk, cwd, sizeof cwd - 1); cwd[k > 0 ? k : 0] = 0; new_session(a, k > 0 ? (const char *)cwd : getenv("HOME")); return 1; }
     if (c == 'w') { if (!dsk_close_tab(a->desk)) return 0; return 1; }
     if (c == 'b') { dsk_toggle(a->desk); return 1; }
+    if (c == 'd' && (m & 1)) { set_dictation(a, !dsk_dictation_enabled(a->desk)); return 1; }   // Ctrl+Shift+D: dictation on or off
   }
   if (dsk_room_shown(a->desk) || !zr_wants_text(state)) return 0;
   return zr_key(state, c, m);
@@ -425,6 +541,42 @@ static void say(const char *verb, void *state, int32_t (*get)(void *, uint8_t *,
   uint8_t b[4096]; int n = get(state, b, sizeof b - 1);
   b[n > 0 ? n : 0] = 0;
   printf("%s: %s\n", verb, b);
+}
+// --dictation-fixture: the key and the button through the window's own handlers, and a file's samples in
+// place of the recorder's, on the fixture's clock (Sources/Zeron.swift fixtureDictationKey and the rest).
+static void fixture_key(App *a, int down) {
+  if (a->dictation_fixture) dn_fixture_time(a->dictation, a->dictation_clock);
+  on_key(a, 'd', down ? 2 : 0, down);
+}
+static void fixture_mouse(App *a, int down) {
+  float at[2] = {0, 0};
+  if (a->dictation_fixture) dn_fixture_time(a->dictation, a->dictation_clock);
+  if (dsk_dictation_point(a->desk, at)) on_pointer(a, at[0], at[1], down ? 0 : 2, 1, 0);
+}
+static void fixture_audio(App *a, const char *path) {
+  size_t n; uint8_t *bytes = read_file(path, &n);
+  // 16 kHz mono 16-bit samples: a WAV's, after its 44-byte header, or the bare samples
+  size_t from = bytes && n >= 44 && !memcmp(bytes, "RIFF", 4) && !memcmp(bytes + 8, "WAVE", 4) ? 44 : 0;
+  if (!bytes || (n - from) % 2) { fprintf(stderr, "OpenAgents: %s is not 16-bit samples\n", path); free(bytes); return; }
+  int64_t start = a->dictation_clock, count = (int64_t)((n - from) / 2);
+  for (int64_t at = 0; at < count; at += 320) {
+    float chunk[320]; int k = count - at < 320 ? (int)(count - at) : 320;
+    for (int i = 0; i < k; i++) { const uint8_t *b = bytes + from + 2 * (at + i); chunk[i] = (float)(int16_t)(b[0] | b[1] << 8) / 32768; }
+    int64_t stamp = start + at / 16;
+    dn_fixture_time(a->dictation, stamp);
+    dn_fixture_audio(a->dictation, chunk, k, 16000, stamp);
+  }
+  a->dictation_clock = start + count / 16;
+  dn_fixture_time(a->dictation, a->dictation_clock);
+  free(bytes);
+}
+static void fixture_tail(App *a) {   // the 200 ms of input a release waits for
+  static const float quiet[320];
+  if (!a->dictation_fixture) return;
+  for (int i = 0; i < 10; i++) {
+    dn_fixture_audio(a->dictation, quiet, 320, 16000, a->dictation_clock);
+    a->dictation_clock += 20; dn_fixture_time(a->dictation, a->dictation_clock);
+  }
 }
 static double step(App *a, char *line) {
   while (*line == ' ') line++;
@@ -465,6 +617,29 @@ static double step(App *a, char *line) {
   else if (!strcmp(line, "scroll") && count >= 1) zr_scroll_to(state, n[0]);
   else if (!strcmp(line, "answer")) { if (!zr_answer(state, !strcmp(arg, "allow"))) printf("answer: nothing is asking\n"); }
   else if (!strcmp(line, "waitidle")) { a->wait_idle = 1; return count >= 1 ? n[0] : 300; }   // until the running turn ends
+  else if (!strcmp(line, "dictation") && a->offscreen && a->dictation) {
+    if (!strcmp(arg, "on")) { dsk_dictation_set(a->desk, 1); dn_enable(a->dictation, 1); dn_activate(a->dictation); sync_dictation(a); }
+    else if (!strcmp(arg, "off")) { dsk_dictation_set(a->desk, 0); dn_enable(a->dictation, 0); sync_dictation(a); }
+    else if (!strcmp(arg, "down")) fixture_key(a, 1);
+    else if (!strcmp(arg, "up")) { fixture_key(a, 0); fixture_tail(a); }
+    else if (!strcmp(arg, "mousedown")) fixture_mouse(a, 1);
+    else if (!strcmp(arg, "mouseup")) { fixture_mouse(a, 0); fixture_tail(a); }
+    else if (!strcmp(arg, "cancel")) cancel_dictation_for_edit(a);
+    else if (!strncmp(arg, "feed ", 5) && a->dictation_fixture) fixture_audio(a, arg + 5);
+    else if (!strcmp(arg, "state")) {
+      int phase, outcome, samples; dn_inspect(a->dictation, &phase, &outcome, &samples);
+      printf("dictation: phase=%d outcome=%d samples=%d\n", phase, outcome, samples);
+      printf("dictation-setting: enabled=%d\n", dsk_dictation_enabled(a->desk));
+    }
+    else fprintf(stderr, "OpenAgents: unknown step dictation %s\n", arg);
+  }
+  else if (!strcmp(line, "waitdictationready") && a->offscreen && a->dictation) { a->wait_dictation = 1; double t = count >= 1 ? n[0] : 60; return t < 0 ? 0 : t > 120 ? 120 : t; }
+  else if (!strcmp(line, "waitdictation") && a->offscreen && a->dictation) { a->wait_dictation = 2; double t = count >= 1 ? n[0] : 10; return t < 0 ? 0 : t > 120 ? 120 : t; }
+  else if (!strcmp(line, "draft")) {
+    static uint8_t b[8192]; int k = zr_dictation_draft(state, b, sizeof b);
+    printf("draft: %.*s\n", k > 0 ? k : 0, (const char *)b);
+    printf("draft-state: sent=%d parts=%d\n", zr_dictation_sent(state), zr_dictation_parts(state));
+  }
   else if (!strcmp(line, "status")) say("status", state, zr_status_text);
   else if (!strcmp(line, "last")) say("last", state, zr_last_text);
   else if (!strcmp(line, "desk")) {
@@ -530,6 +705,26 @@ int main(int argc, char **argv) {
     add_chat(&a, a.first, cwd);
   }
 
+  // Dictation (Sources/Zeron.swift configureDictation): in a window; for a picture, only with a fixture
+  // or a stand-in recorder.
+  const char *dictation = value(argc, argv, "--dictation");
+  if (dictation && (!strcmp(dictation, "on") || !strcmp(dictation, "off"))) { dsk_dictation_set(a.desk, !strcmp(dictation, "on")); save_settings(&a); }
+  const char *recorder = value(argc, argv, "--dictation-recorder");
+  a.offscreen = shot != NULL;
+  a.dictation_fixture = shot && has(argc, argv, "--dictation-fixture");
+  a.dictation_clock = 1000;
+  // a picture never runs the microphone's recorder: it has the fixture, or a program named in its place
+  if (!shot || a.dictation_fixture || recorder) {
+    char model[PATH_MAX]; dn_model_dir(model, sizeof model);
+    a.dictation = dn_new(a.dictation_fixture, model, shot ? value(argc, argv, "--dictation-stand-in") : NULL, recorder, (DictationTo){&a, on_dictation_state, on_dictation_words});
+  }
+  if (!a.dictation) a.dictation_fixture = 0;
+  if (a.dictation) {
+    dn_enable(a.dictation, dsk_dictation_enabled(a.desk));
+    if (shot) dn_activate(a.dictation);   // a picture has no keyboard to be given
+    sync_dictation(&a);
+  }
+
   int status = 0;
   if (shot) {
     const char *script = value(argc, argv, "--do");
@@ -539,13 +734,17 @@ int main(int argc, char **argv) {
       char *next = strstr(s, " ; ");
       if (next) { *next = 0; next += 3; }
       double wait = step(&a, s);
+      int wait_dictation = a.wait_dictation;
       // an engine's answer comes in real time: frames a sixtieth apart until the wait is over
       struct timespec nap = {0, 16000000};
       for (double t = 0; t < wait; t += 1 / 60.0) {
         ui_shot_frame(a.host, w, h, 1 / 60.0f); nanosleep(&nap, NULL);
         if (a.wait_idle && t > 0.2 && !zr_live(active(&a))) break;
+        if ((a.wait_dictation == 1 && dn_ready(a.dictation)) || (a.wait_dictation == 2 && !a.dictation_ticket)) a.wait_dictation = 0;
+        if (wait_dictation && !a.wait_dictation) break;
       }
-      a.wait_idle = 0;
+      if (a.wait_dictation) printf("dictation fixture: wait timed out\n");
+      a.wait_idle = 0; a.wait_dictation = 0;
       for (int i = 0; i < 3; i++) ui_shot_frame(a.host, w, h, 1 / 60.0f);
       s = next;
     }
@@ -560,6 +759,8 @@ int main(int argc, char **argv) {
       if (limit > 0) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); if (t.tv_sec - t0.tv_sec + (t.tv_nsec - t0.tv_nsec) / 1e9 > limit) break; }
     }
   }
+  cancel_dictation_for_edit(&a);
+  dn_close(a.dictation); a.dictation = NULL;
   flush_store(&a, 1);
   save_settings(&a);
   portal_close(a.portal);

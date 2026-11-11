@@ -1,0 +1,114 @@
+// A recorder for the Linux app's dictation checks (linux/check.coax): what pw-record is to
+// the app, with a recorded clip in the microphone's place. The app runs it with the recorder's
+// own arguments (apps/openagents-cli/dictate-rules.coax dc_recorder), which this program
+// insists on, and it writes what that recorder would: mono 32-bit float samples at 48 kHz to
+// its stdout, 20 ms at a time and no faster than they would be heard. First LEAD_MS of
+// silence, then the clip (16 kHz, 16 bits, mono), then silence until it is stopped or two
+// minutes have gone by. It opens no device and plays no sound.
+//   coax/web/tool.sh apps/openagents-desktop/tests/recorder-stand-in.coax CLIP.pcm LEAD_MS --raw --rate 48000 ... -
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/args.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+RS_BUFFER :: 960;        // 20 ms at 48 kHz
+RS_CLIP :: 1920000;      // a minute of 16 kHz, 16-bit samples
+RS_LIMIT :: 6000;        // buffers: two minutes
+
+#test "a clip's 16-bit samples are read as signed, least significant byte first" {
+  b := [8] u8.[0, 0, 255, 127, 0, 128, 255, 255];
+  #assert rs_s16(b[..], 0) == 0 && rs_s16(b[..], 1) == 32767 && rs_s16(b[..], 2) == -32768 && rs_s16(b[..], 3) == -1;
+}
+#test "three samples at 48 kHz for each at 16 kHz, on the line to the next one, and silence after the last" {
+  // 0, 16384, -16384: a half, then minus a half
+  b := [6] u8.[0, 0, 0, 64, 0, 192];
+  #assert rs_sample(b[..], 3, 0) == 0 && rs_sample(b[..], 3, 3) == 0.5 && rs_sample(b[..], 3, 6) == -0.5;
+  #assert rs_sample(b[..], 3, 1) > 0.166 && rs_sample(b[..], 3, 1) < 0.167 && rs_sample(b[..], 3, 2) > 0.333 && rs_sample(b[..], 3, 2) < 0.334;
+  #assert rs_sample(b[..], 3, 4) > 0.166 && rs_sample(b[..], 3, 4) < 0.167 && rs_sample(b[..], 3, 5) < -0.166 && rs_sample(b[..], 3, 5) > -0.167;
+  // the last sample holds, then nothing
+  #assert rs_sample(b[..], 3, 7) == -0.5 && rs_sample(b[..], 3, 8) == -0.5 && rs_sample(b[..], 3, 9) == 0 && rs_sample(b[..], 3, 900) == 0;
+  #assert rs_sample(b[..], 3, -1) == 0 && rs_sample(b[..], 0, 0) == 0;
+}
+#test "a sample is written as the four bytes of a 32-bit float, least significant first" {
+  out: [8] u8;
+  rs_put(out[..], 0, 0.5); rs_put(out[..], 1, -1);
+  #assert out[0] == 0 && out[1] == 0 && out[2] == 0 && out[3] == 0x3f && out[4] == 0 && out[5] == 0 && out[6] == 0x80 && out[7] == 0xbf;
+}
+#test "only the recorder's own arguments are taken: 48 kHz, one channel, 32-bit float, to stdout" {
+  a: [1] Args;
+  for s: [15] string.["clip.pcm", "1500", "--raw", "--rate", "48000", "--channels", "1", "--format", "f32", "--latency", "20ms", "--media-category", "Capture", "-", ""] { if s != "" { ok := args_add(a[..], s); } }
+  #assert rs_recorder(a[..], 2);
+  for fault: 0..<5 {
+    b: [1] Args;
+    for s: [14] string.["clip.pcm", "1500", "--raw", "--rate", "48000", "--channels", "1", "--format", "f32", "--latency", "20ms", "--media-category", "Capture", "-"] {
+      t := s;
+      if fault == 0 && s == "48000" { t = "44100"; }
+      if fault == 1 && s == "1" { t = "2"; }
+      if fault == 2 && s == "f32" { t = "s16"; }
+      if fault == 3 && s == "-" { t = "out.raw"; }
+      if fault == 4 && s == "--raw" { t = "--wav"; }
+      ok := args_add(b[..], t);
+    }
+    #assert !rs_recorder(b[..], 2);
+  }
+  c: [1] Args; ok := args_add(c[..], "clip.pcm") && args_add(c[..], "1500");
+  #assert !rs_recorder(c[..], 2);
+}
+#test "the lead is whole milliseconds, at most a minute" {
+  #assert rs_ms("0") == 0 && rs_ms("1500") == 1500 && rs_ms("60000") == 60000;
+  #assert rs_ms("") == -1 && rs_ms("60001") == -1 && rs_ms("-5") == -1 && rs_ms("1.5") == -1 && rs_ms("999999999999") == -1;
+}
+
+rs_s16 :: (clip: [] u8, i: int) -> int {
+  v := cast(int) clip[2 * i] | (cast(int) clip[2 * i + 1] << 8);
+  return ifx v >= 32768 then v - 65536 else v;
+}
+// Sample i at 48 kHz of a clip of `count` samples at 16 kHz.
+rs_sample :: (clip: [] u8, count: int, i: int) -> f32 {
+  at := i / 3; part := i % 3;
+  if i < 0 || at >= count { return 0; }
+  a := rs_s16(clip, at); b := ifx at + 1 < count then rs_s16(clip, at + 1) else a;
+  return f32(a * (3 - part) + b * part) / 98304;
+}
+rs_put :: (out: [] u8, i: int, v: f32) {
+  bits := cast(u64) f32_bits(v);
+  for k: 0..<4 { out[4 * i + k] = cast(u8) ((bits >> cast(u64) (8 * k)) & 255); }
+}
+rs_pair :: (a: [] Args, from: int, flag: string, value: string) -> bool {
+  for i: from..<args_count(a) - 1 { if args_at(a, i) == flag { return args_at(a, i + 1) == value; } }
+  return false;
+}
+rs_recorder :: (a: [] Args, from: int) -> bool {
+  n := args_count(a);
+  if n <= from || args_at(a, n - 1) != "-" { return false; }
+  raw := false;
+  for i: from..<n { if args_at(a, i) == "--raw" { raw = true; } }
+  return raw && rs_pair(a, from, "--rate", "48000") && rs_pair(a, from, "--channels", "1") && rs_pair(a, from, "--format", "f32");
+}
+rs_ms :: (text: string) -> int {
+  if text.count < 1 || text.count > 5 { return -1; }
+  v := 0;
+  for c: text { if c < '0' || c > '9' { return -1; } v = v * 10 + (cast(int) c - 48); }
+  return ifx v > 60000 then -1 else v;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: recorder-stand-in CLIP.pcm LEAD_MS and the recorder's arguments"); return 2; }
+  lead := rs_ms(args_at(a[..], 1));
+  if lead < 0 || !rs_recorder(a[..], 2) { tool_errln("recorder-stand-in: not the recorder's arguments (48 kHz, one channel, f32, to stdout)"); return 2; }
+  clip: [RS_CLIP] u8;
+  size := fs_size(args_at(a[..], 0));
+  if size < 2 || size > RS_CLIP || size % 2 != 0 || fs_read(args_at(a[..], 0), clip[..]) != size { tool_errln("recorder-stand-in: the clip is not 16-bit samples, a minute at most"); return 2; }
+  count := size / 2; before := lead * 48;
+  out: [3840] u8;
+  start := proc_now_ms();
+  for k: 0..<RS_LIMIT {
+    for i: 0..<RS_BUFFER { rs_put(out[..], i, rs_sample(clip[0..<size], count, k * RS_BUFFER + i - before)); }
+    if !fs_append("/dev/stdout", cast(string) out[..]) { return 0; }   // the app closed its end
+    wait := start + (k + 1) * 20 - proc_now_ms();
+    if wait > 0 { proc_sleep(wait); }
+  }
+  return 0;
+}
