@@ -250,6 +250,60 @@ tool_main :: () -> int #export_c #effects(all) {
   return rc;
 }
 
+// What the module is built from, as one SHA-256: the mode, each unit's #load closure by its
+// files' hashes, and the C and tools linked with them. Not the compiler's bytes: a host's and the
+// Mac's differ, and the commit names the compiler's sources. "" when a list can't be made.
+WK_BUILT_ALSO :: [5] string.["coax/web/room/room-math.c", "coax/web/room/room-world.c", "coax/web/room/room-worker.c", "coax/web/room/worker.coax", "coax/web/room/worker-profile.coax"];
+wk_inputs :: (root: string, env: [] string, buf: [] u8, out: [] u8) -> string {
+  t: [1] Wk; wk_s(t[..], "coax-room-built-1\n");
+  mb: [64] u8; mode := proc_getenv("COAXIAL_MODE", mb[..]);
+  wk_s(t[..], ifx mode == "dev" then "dev" else "release"); wk_s(t[..], "\n");
+  for u: WK_UNITS {
+    lb: [262144] u8;
+    la := [4] string.["coax/web/tool.sh", "wasm-size", "sources", u];
+    ln := wk_run(la[..], root, env, lb[..]);
+    if ln <= 0 { tool_err("worker: no built record: no source list for "); tool_errln(u); return ""; }
+    // A chain over the files' hashes (room.coax's closure is hundreds of files).
+    acc: [64] u8; ah := wk_sha(acc[0..<0], acc[..]);
+    list := cast(string) lb[0..<ln]; j := 0;
+    while j < list.count {
+      while j < list.count && (list[j] == ' ' || list[j] == '\n' || list[j] == '\t') { j += 1; }
+      e := j; while e < list.count && list[e] != ' ' && list[e] != '\n' && list[e] != '\t' { e += 1; }
+      if e > j {
+        f := list[j..<e]; fp: [1] Wk; hx: [64] u8;
+        h := wk_file_sha(wk_source_path(root, f, fp[..]), buf, hx[..]);
+        if h.count == 0 { tool_err("worker: no built record: can't read "); tool_errln(f); return ""; }
+        two: [128] u8; for x: 0..<64 { two[x] = acc[x]; two[64 + x] = h[x]; }
+        ah = wk_sha(two[..], acc[..]);
+      }
+      j = e;
+    }
+    wk_s(t[..], u); wk_s(t[..], " "); wk_s(t[..], cast(string) acc[..]); wk_s(t[..], "\n");
+  }
+  for f: WK_BUILT_ALSO {
+    fp: [1] Wk; hx: [64] u8;
+    h := wk_file_sha(wk_source_path(root, f, fp[..]), buf, hx[..]);
+    if h.count == 0 { tool_err("worker: no built record: can't read "); tool_errln(f); return ""; }
+    wk_s(t[..], f); wk_s(t[..], " "); wk_s(t[..], h); wk_s(t[..], "\n");
+  }
+  return wk_sha(t[0].b[0..<t[0].n], out);
+}
+// The built-module record beside the module, .c/NAME.built, as wasm.sh keeps for its modules
+// (#13119): "coax-room-built-1", "inputs SHA", "sha256 SHA of the module's bytes".
+wk_built_path :: (out: string, t: [] Wk) -> string {
+  bn := fs_base(out); bn = ifx bn.count > 5 && bn[bn.count - 5..<bn.count] == ".wasm" then bn[0..<bn.count - 5] else bn;
+  t[0].n = 0; wk_s(t, out[0..<out.count - fs_base(out).count]); wk_s(t, ".c/"); wk_s(t, bn); wk_s(t, ".built");
+  return wk_text(t);
+}
+wk_built_text :: (inputs: string, sum: string, t: [] Wk) -> string {
+  t[0].n = 0; wk_s(t, "coax-room-built-1\ninputs "); wk_s(t, inputs); wk_s(t, "\nsha256 "); wk_s(t, sum); wk_s(t, "\n");
+  return wk_text(t);
+}
+#test "the built record sits in .c beside the module and names its inputs and bytes" {
+  p: [1] Wk; r: [1] Wk;
+  #assert wk_built_path("apps/openagents-web/build/everglade-room.wasm", p[..]) == "apps/openagents-web/build/.c/everglade-room.built";
+  #assert wk_built_text("aa", "bb", r[..]) == "coax-room-built-1\ninputs aa\nsha256 bb\n";
+}
 wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res_dir: string, wasm_opt: string, env: [] string, work: string, out: string) -> int {
   buf: [WK_FILE] u8;
   // the cache: COAXIAL_WASM_CACHE (empty for none), default ~/.cache/coax-wasm
@@ -257,6 +311,21 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   chb: [1] Wk;
   if !proc_has_env("COAXIAL_WASM_CACHE") { hb: [4096] u8; wk_s(chb[..], proc_getenv("HOME", hb[..])); wk_s(chb[..], "/.cache/coax-wasm"); cache = wk_text(chb[..]); }
   if cache.count > 0 && !fs_mkdir(cache) && fs_kind(cache) <= 0 { tool_err("worker: can't make "); tool_errln(cache); return 1; }
+  // COAXIAL_PREBUILT=1 (release.sh, after pages.sh fetched the hosts' build of the same commit):
+  // the module already at out is taken when its record names these inputs and its bytes.
+  pmb: [64] u8; inb: [64] u8; inputs := "";
+  if proc_getenv("COAXIAL_MODE", pmb[..]) != "dev" { inputs = wk_inputs(root, env, buf[..], inb[..]); }
+  pvb: [8] u8; rp: [1] Wk; built := wk_built_path(out, rp[..]);
+  if inputs.count > 0 && proc_getenv("COAXIAL_PREBUILT", pvb[..]) == "1" && fs_kind(built) == 1 && fs_kind(out) == 1 {
+    rb: [512] u8; rn := fs_read(built, rb[..]);
+    osb: [64] u8; osum := wk_file_sha(out, buf[..], osb[..]);
+    want: [1] Wk;
+    if rn > 0 && osum.count > 0 && cast(string) rb[0..<rn] == wk_built_text(inputs, osum, want[..]) {
+      print("% is prebuilt (the hosts' build of these sources, sha256 %)\n", out, osum[0..<12]);
+      return 0;
+    }
+    tool_errln("worker: the prebuilt module doesn't match these sources; building it");
+  }
   csb: [64] u8; compiler_sum := wk_file_sha(coax, buf[..], csb[..]);
   if compiler_sum.count == 0 { tool_err("worker: can't read "); tool_errln(coax); return 1; }
   hs: [6] int; keys: [6] [64] u8; keyed: [6] bool;
@@ -478,6 +547,12 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   if !fs_rename(wk_text(outw[..]), out) {
     n := fs_read(wk_text(outw[..]), buf[..]);
     if n < 0 || n >= buf.count || !fs_write(out, cast(string) buf[0..<n]) { tool_err("worker: can't write "); tool_errln(out); return 1; }
+  }
+  if inputs.count > 0 {
+    osb: [64] u8; osum := wk_file_sha(out, buf[..], osb[..]); rec: [1] Wk;
+    md: [1] Wk; wk_s(md[..], built[0..<built.count - fs_base(built).count]);
+    made := fs_mkdir(wk_text(md[..]));
+    if osum.count == 0 || !fs_write(built, wk_built_text(inputs, osum, rec[..])) { tool_errln("worker: can't write the built record (the release will build this module again)"); }
   }
   print("built % (% bytes)\n", out, fs_size(out));
   return 0;

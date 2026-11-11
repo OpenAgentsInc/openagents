@@ -226,6 +226,23 @@ module with no record, or whose inputs differ here (the project pages' tables
 come from Nostr at build time), builds on the Mac as before. A release of a
 commit without stored pages builds everything, as before.
 
+The offline room's module (`everglade-room.wasm`, built by
+`coax/web/room/worker.coax`, not `wasm.sh`) keeps the same kind of record,
+`build/.c/everglade-room.built`, and is taken the same way. Its inputs are the
+mode, each unit's `#load` closure by its files' hashes, and the C linked with
+them; not the compiler's bytes, which differ between a host and the Mac.
+
+Measured on 2026-11-10, `release.sh --ref 8df6f203ef --build-only` on the Mac,
+the first commit with stored pages: the fetch took 10 s, and 49 of the 58
+`wasm.sh` modules were taken prebuilt. Nine were built on the Mac: eight whose
+inputs differ there (`project`, `projects`, `status`, `connect-pylon`, `admin`,
+`audiolab`, `og`, `private`: they load tables the build writes from Nostr and
+the release's own snapshot; 5 to 77 s each, side by side) and `realm`, which
+has no record. The room module had no record yet and compiled `room.coax` and
+`everglade.coax` on the Mac, most of the run's 27 minutes; with its record it
+is taken in under a second. The whole build step has not been timed again
+since, so the 2-minute target is not shown yet.
+
 The release then ships the hosts' bytes (Linux, clang 23.1.3), not the Mac's
 (Homebrew clang 23); they differ by a few hundred bytes a module, so the first
 such release renames each module's content-named URL once.
