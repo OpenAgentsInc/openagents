@@ -6,7 +6,7 @@
 // sessions, builds each chat's glyph atlas in Coax, hands frames and input across,
 // and takes the app's actions.
 //
-//   OpenAgents [--demo] [--cwd PATH] [--size WxH] [--dpr K] [--seconds N]
+//   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N]
 //   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "STEP ; STEP"]
 // Steps: wait SECONDS, fixture open|closed|table, newchat, sidebar, type TEXT,
 // send TEXT, click X,Y[,N], move X,Y, wheel DY, key NAME, status, last, desk.
@@ -14,10 +14,14 @@
 #include "zeron.h"
 #include "face.h"
 #include "ui-host.h"
+#include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -40,6 +44,9 @@ typedef struct {
   int natlases;
   void *bound;        // the chat whose atlas the GPU holds
   float dpr;
+  // settings.json (zeron/settings.coax) and sessions/<id>.jsonl beside it (zeron/store.coax); empty: nothing is saved
+  char settings_path[PATH_MAX];
+  uint32_t w, h;
 } App;
 
 static uint8_t *slurp(const char *dir, const char *sub, const char *name, const char *ext, size_t *n) {
@@ -110,12 +117,100 @@ static void copy_selection(App *a) {
   if (b && zr_selected(state, b, n) == n) ui_copy(a->host, (const char *)b, (size_t)n);
   free(b);
 }
+// ---- what is kept between runs (Sources/Zeron.swift saveSettings, storeFile, flushStore)
+
+static void make_dirs(const char *file) {   // the folders a file's path names
+  char dir[PATH_MAX]; snprintf(dir, sizeof dir, "%s", file);
+  for (char *c = dir + 1; *c; c++) if (*c == '/') { *c = 0; mkdir(dir, 0700); *c = '/'; }
+}
+static uint8_t *read_file(const char *path, size_t *n) {
+  FILE *f = fopen(path, "rb");
+  if (!f) return NULL;
+  fseek(f, 0, SEEK_END); long size = ftell(f); fseek(f, 0, SEEK_SET);
+  uint8_t *p = size >= 0 ? malloc((size_t)size + 1) : NULL;
+  if (!p || fread(p, 1, (size_t)size, f) != (size_t)size) { fclose(f); free(p); return NULL; }
+  fclose(f); *n = (size_t)size;
+  return p;
+}
+static int store_file(App *a, int i, char *out, size_t cap) {
+  uint8_t id[64]; int n = dsk_store_id(a->desk, i, id, sizeof id - 1);
+  if (!a->settings_path[0] || n <= 0) return 0;
+  id[n] = 0;
+  char dir[PATH_MAX]; snprintf(dir, sizeof dir, "%s", a->settings_path);
+  char *slash = strrchr(dir, '/');
+  if (!slash) return 0;
+  *slash = 0;
+  return snprintf(out, cap, "%s/sessions/%s.jsonl", dir, id) < (int)cap;
+}
+// What each session finished since the last call (at quit, force: all it has) goes on the end of its file.
+static void flush_store(App *a, int force) {
+  static uint8_t out[1 << 22];
+  if (!a->settings_path[0]) return;
+  for (int i = 0; i < dsk_count(a->desk); i++) {
+    int n = dsk_store_take(a->desk, i, force, out, sizeof out);
+    char path[PATH_MAX];
+    if (n <= 0 || !store_file(a, i, path, sizeof path)) continue;
+    make_dirs(path);
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+    if (fd < 0) continue;
+    for (int at = 0; at < n;) { ssize_t k = write(fd, out + at, (size_t)(n - at)); if (k <= 0) break; at += (int)k; }
+    close(fd);
+  }
+}
+static void save_settings(App *a) {
+  static uint8_t out[1 << 20];
+  if (!a->settings_path[0]) return;
+  int n = ds_save(a->desk, 0, 0, (float)a->w, (float)a->h, out, sizeof out);
+  if (n <= 0) return;
+  char tmp[PATH_MAX + 8]; snprintf(tmp, sizeof tmp, "%s.new", a->settings_path);
+  make_dirs(tmp);
+  int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) return;
+  int ok = write(fd, out, (size_t)n) == n;
+  if (close(fd) == 0 && ok) rename(tmp, a->settings_path); else unlink(tmp);
+}
+// A session in the desk, with a file of its own when sessions are kept.
+static void add_chat(App *a, void *chat, const char *cwd) {
+  int i = dsk_add(a->desk, chat, (const uint8_t *)cwd, (int32_t)strlen(cwd));
+  if (!a->settings_path[0] || i < 0) return;
+  uint8_t r[16]; char id[40];
+  FILE *f = fopen("/dev/urandom", "rb");
+  if (!f || fread(r, 1, 16, f) != 16) { if (f) fclose(f); return; }
+  fclose(f);
+  r[6] = (uint8_t)((r[6] & 0x0f) | 0x40); r[8] = (uint8_t)((r[8] & 0x3f) | 0x80);   // a version 4 UUID, as the Mac names them
+  snprintf(id, sizeof id, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15]);
+  dsk_set_store(a->desk, i, (const uint8_t *)id, 36);
+}
+// Every session as it was at quit, each in its own chat, then the tabs. How many came back.
+static int restore(App *a, const char *cwd) {
+  size_t n; uint8_t *json = a->settings_path[0] ? read_file(a->settings_path, &n) : NULL;
+  if (!json) return 0;
+  int count = ds_load(a->settings, a->desk, json, (int32_t)n);
+  for (int i = 0; i < count; i++) {
+    uint8_t buf[PATH_MAX]; int m = ds_restore_cwd(a->settings, i, buf, sizeof buf - 1);
+    buf[m > 0 ? m : 0] = 0;
+    const char *dir = m > 0 ? (const char *)buf : cwd;
+    void *chat = i == 0 ? a->first : zr_new();
+    if (!chat) continue;
+    zr_attach(chat, (const uint8_t *)dir, (int32_t)strlen(dir));
+    add_chat(a, chat, dir);
+    int at = dsk_count(a->desk) - 1;
+    ds_restore(a->settings, a->desk, i, at);
+    char path[PATH_MAX]; size_t tn; uint8_t *text = store_file(a, at, path, sizeof path) ? read_file(path, &tn) : NULL;
+    if (text) { dsk_store_load(a->desk, at, text, (int32_t)tn); free(text); }
+  }
+  free(json);
+  if (count > 0) ds_restore_tabs(a->settings, a->desk, 0);
+  return count;
+}
+
 static void new_session(App *a, const char *cwd) {
   void *chat = zr_new();
   if (!chat) return;
   zr_attach(chat, (const uint8_t *)cwd, (int32_t)strlen(cwd));
   ds_defaults(a->settings, chat);
-  dsk_add(a->desk, chat, (const uint8_t *)cwd, (int32_t)strlen(cwd));
+  add_chat(a, chat, cwd);
+  save_settings(a);
 }
 
 static int on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
@@ -124,6 +219,8 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
   ChatAtlas *c = atlas_for(a, shown);
   if (!c) return 0;
   if (a->bound != shown) atlas_upload(a, c);
+  a->w = (uint32_t)w; a->h = (uint32_t)h;
+  flush_store(a, 0);
   int n = dsk_frame(a->desk, vertices, w, h, dpr, dt);
   // the graphemes and cells this frame wanted, for the next
   coaxial_ra_clean(plan_of(a));
@@ -221,6 +318,9 @@ static const char *value(int argc, char **argv, const char *flag) {
 }
 static int has(int argc, char **argv, const char *flag) { for (int i = 1; i < argc; i++) if (!strcmp(argv[i], flag)) return 1; return 0; }
 
+static volatile sig_atomic_t stopping;
+static void on_signal(int sig) { (void)sig; stopping = 1; }
+
 int main(int argc, char **argv) {
   static App a;
   // the resources sit beside the program: fonts/, icons/, zeron.spv
@@ -250,9 +350,16 @@ int main(int argc, char **argv) {
   if (!cwd) cwd = getenv("HOME");
   if (!cwd) cwd = "/";
   if (has(argc, argv, "--still-clock")) dsk_still(a.desk);
-  if (has(argc, argv, "--demo")) zr_demo(a.first);
-  else { zr_attach(a.first, (const uint8_t *)cwd, (int32_t)strlen(cwd)); ds_defaults(a.settings, a.first); }
-  dsk_add(a.desk, a.first, (const uint8_t *)cwd, (int32_t)strlen(cwd));
+  // settings.json: --settings PATH, else ~/.openagents/desktop/settings.json; none for --demo and for a picture without --settings
+  const char *settings = value(argc, argv, "--settings"), *home = getenv("HOME");
+  if (settings) snprintf(a.settings_path, sizeof a.settings_path, "%s", settings);
+  else if (!shot && !has(argc, argv, "--demo") && home) snprintf(a.settings_path, sizeof a.settings_path, "%s/.openagents/desktop/settings.json", home);
+  if (has(argc, argv, "--demo")) { a.settings_path[0] = 0; zr_demo(a.first); dsk_add(a.desk, a.first, (const uint8_t *)cwd, (int32_t)strlen(cwd)); }
+  else if (!restore(&a, cwd)) {
+    zr_attach(a.first, (const uint8_t *)cwd, (int32_t)strlen(cwd));
+    ds_defaults(a.settings, a.first);
+    add_chat(&a, a.first, cwd);
+  }
 
   int status = 0;
   if (shot) {
@@ -275,10 +382,13 @@ int main(int argc, char **argv) {
     const char *seconds = value(argc, argv, "--seconds");
     double limit = seconds ? atof(seconds) : 0;
     struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
-    while (ui_frame(a.host)) {
+    signal(SIGINT, on_signal); signal(SIGTERM, on_signal);
+    while (!stopping && ui_frame(a.host)) {
       if (limit > 0) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); if (t.tv_sec - t0.tv_sec + (t.tv_nsec - t0.tv_nsec) / 1e9 > limit) break; }
     }
   }
+  flush_store(&a, 1);
+  save_settings(&a);
   dsk_quit(a.desk);
   ui_close(a.host);
   return status;
