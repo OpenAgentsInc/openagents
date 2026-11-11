@@ -6,16 +6,16 @@
 #   coax/web/api/backup/deploy.sh             # build, jobs, schedules
 #   coax/web/api/backup/deploy.sh --run dump   # then run one: dump or drill, and wait
 #
-#   oa-db-dump   nightly 09:30 UTC (scheduler oa-db-dump-nightly): backup.sh dump
-#   oa-db-drill  the 3rd of each month 12:00 UTC (scheduler oa-db-drill-monthly): backup.sh drill
+#   oa-db-dump   nightly 09:30 UTC (scheduler oa-db-dump-nightly): backup dump (backup.coax)
+#   oa-db-drill  the 3rd of each month 12:00 UTC (scheduler oa-db-drill-monthly): backup drill
 #
 # Both run as the API's runtime account, read the database as oa_dump
-# (secret oa-db-dump-database-url, coax/web/api/db/roles.sh), and write only
+# (secret oa-db-dump-database-url, coax/web/api/db/roles.coax), and write only
 # new objects into gs://openagentsgemini-db-backups (until the owner moves
 # them to gs://openagents-backups-db), whose 35-day retention
 # policy is locked: nobody can delete or overwrite a dump before it's 35 days old.
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"
+here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../../../.." && pwd)"
 project=openagentsgemini region=us-central1
 instance="$project:$region:openagents-production-pg"
 sa="157437760789-compute@developer.gserviceaccount.com"
@@ -30,7 +30,18 @@ print(next((e.get("value", "") for e in env if e.get("name") == "OA_BACKUP_BUCKE
 bucket="${bucket:-openagentsgemini-db-backups}"
 commit="$(git -C "$here" rev-parse --short=12 HEAD)"
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-db-backup:$commit-$(date +%Y%m%d-%H%M%S)"
-gcloud builds submit "$here" --project "$project" --region "$region" --tag "$tag" --suppress-logs --quiet \
+# The image's context: backup.coax as C from this checkout's checked compiler (coax/build.sh), and
+# the tool platform's C that coax/web/tool.sh links; the Dockerfile compiles them for Linux.
+stage="$(mktemp -d)"; trap 'rm -rf "$stage" "$stage.log"' EXIT
+mkdir -p "$stage/gen"; cp "$here/Dockerfile" "$here/recipients.txt" "$stage/"
+(cd "$repo" && coax/build.sh) > "$stage.log" 2>&1 || { tail -30 "$stage.log"; exit 1; }
+"$repo/coax/bin/coax" c "$here/backup.coax" --library > "$stage/gen/backup.c"
+"$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$stage/gen/entropy-policy.h" > "$stage/gen/entropy.c"
+for f in tool-native process-native store-file-native read-file-native socket-native entropy-native entropy-foreign agent-signer-none; do
+  cp "$repo/coax/platform/$f.c" "$stage/gen/"
+done
+cp "$repo"/coax/platform/*.h "$stage/gen/"
+gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$tag" --suppress-logs --quiet \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > /dev/null
 echo "backup: built $tag; bucket gs://$bucket"

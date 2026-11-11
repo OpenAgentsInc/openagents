@@ -15,7 +15,7 @@
 # (oa_analytics), both on the Cloud SQL instance openagents-production-pg,
 # serving as the roles oa_api_staging and oa_api (rows only, no DDL), after the
 # jobs oa-api-migrate-staging and oa-api-migrate-production apply migrations as
-# the owner role oa_analytics (coax/web/api/db/roles.sh). Both on the instance,
+# the owner role oa_analytics (coax/web/api/db/roles.coax). Both on the instance,
 # reachable only through the openagents.com load balancer (path rule /api/
 # on hosts staging.openagents.com and openagents.com; coax/web/api/lb.sh).
 #
@@ -79,7 +79,7 @@ team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "pla
 
 deploy() {  # service runtime-secret host agent-projects-secret runner-service drops-folder owner-secret
   # Migrations first, as the owner role, in a job with this image; the service's own role has no
-  # DDL and owns nothing (coax/web/api/db/roles.sh, docs/auth/data-and-backups.md). A failed
+  # DDL and owns nothing (coax/web/api/db/roles.coax, docs/auth/data-and-backups.md). A failed
   # migration stops the deploy before the service changes.
   # The job keeps the account it has: the owner moves it to oa-api-migrator (NEEDS_OWNER.md, #13194).
   mkdir -p "$work/$1"

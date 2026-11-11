@@ -202,3 +202,19 @@ the same inputs, then deletes it in the same commit that switches callers.
 - The list holds 1,243 paths (2026-11-02). 488 of them were added that day:
   files the first enforced run found with neither a reason nor a place on
   the list.
+
+- 2026-11-11 (#13219): the database role and backup scripts are Coax.
+  `coax/web/api/db/roles.coax` replaces `roles.sh` (the role loop, the
+  SCRAM verifier, which matches the old Python's byte for byte, and the
+  DSN reading); its catalog check and guard probe are plain SQL
+  (`checks.sql`, `probe.sql`), and new passwords reach Secret Manager
+  through gcloud's stdin instead of a file. On staging it printed what
+  `roles.sh` printed; runs on staging and production changed nothing.
+  `coax/web/api/backup/backup.coax` replaces `backup.sh` (the snapshot
+  session, the counts, the bucket calls, the drill's comparison and its
+  result): `deploy.sh` emits its C and the job image compiles it for
+  Linux on `postgres:18-alpine`. In that image, on one database, the old
+  and the new made the same counts and the same dump contents, the same
+  drill results (timings aside), and the same failure lines on a changed
+  counts file. `proc_err_to_out` (`2>&1`) is new in `lib/sys/proc.coax`,
+  so the drill reads every pg_restore error line.

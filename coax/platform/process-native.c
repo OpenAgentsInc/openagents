@@ -31,7 +31,7 @@ typedef struct { char *data; size_t count, cap; } Bytes;
 typedef struct { Bytes *items; size_t count, cap; Bytes open; } List;
 
 typedef struct {
-  int used, started, reaped, status, quiet, detach, outnull, errours, gentle;
+  int used, started, reaped, status, quiet, detach, outnull, errours, errtoout, gentle;
   int pty, cols, rows; /* run on a pseudo-terminal of cols x rows instead of pipes */
   pid_t pid;
   int in, out, err;
@@ -367,7 +367,7 @@ int64_t cxproc_spawn(int64_t h) {
       if (p->outnull) { /* stdout to /dev/null, stderr left as this process's */
         int null = open("/dev/null", O_WRONLY);
         if (null >= 0) { dup2(null, 1); if (null > 2) close(null); }
-      } else { dup2(out[1], 1); if (!p->errours) dup2(err[1], 2); }
+      } else { dup2(out[1], 1); if (p->errtoout) dup2(out[1], 2); else if (!p->errours) dup2(err[1], 2); }
     }
     signal(SIGPIPE, SIG_DFL);
     /* a detached child is stopped by a signal from a later run, so an ignored SIGINT (a command
@@ -781,6 +781,15 @@ int64_t cxproc_err_ours(int64_t h) {
   Proc *p = get(h);
   if (!p || p->started) return -1;
   p->errours = 1;
+  return 0;
+}
+
+/* Before cxproc_spawn: the child's stderr joins its stdout pipe (2>&1), every line read in order
+   with cxproc_read_line, however much it writes (a restore's error list is counted whole). */
+int64_t cxproc_err_to_out(int64_t h) {
+  Proc *p = get(h);
+  if (!p || p->started) return -1;
+  p->errtoout = 1;
   return 0;
 }
 

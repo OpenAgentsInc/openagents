@@ -100,22 +100,24 @@ early. Moving it to `openagents-backups` is the owner's step in
 
 ### How it's built
 
-- **Roles:** `coax/web/api/db/roles.sh staging|production` makes the
-  roles, puts their connection strings in Secret Manager (passwords never
-  printed; Postgres gets SCRAM verifiers), applies `guard.sql` and
-  `grants.sql`, and checks the result: from the catalog, and by trying
-  `DROP` and `TRUNCATE` on a scratch table inside a transaction that rolls
-  back. It never touches a table's rows. Run it again after adding a role.
+- **Roles:** `coax/web/tool.sh coax/web/api/db/roles.coax staging|production`
+  makes the roles, puts their connection strings in Secret Manager
+  (passwords never printed; Postgres gets SCRAM verifiers), applies
+  `guard.sql` and `grants.sql`, and checks the result: from the catalog
+  (`checks.sql`), and by trying `DROP` and `TRUNCATE` on a scratch table
+  inside a transaction that rolls back (`probe.sql`). It never touches a table's rows. Run it again after adding a role.
 - **Migrations:** `api --migrations /migrations --migrate-only` applies
   them and exits. `coax/web/api/deploy.sh` runs it as the Cloud Run job
   `oa-api-migrate-<env>`, with the same image, before the service rollout;
   a failed migration stops the deploy. The service itself no longer
   migrates at startup. Local tests (`test.sh`) still pass `--migrations`.
-- **Dumps:** `coax/web/api/backup/backup.sh dump` takes one snapshot,
+- **Dumps:** `backup dump` (`coax/web/api/backup/backup.coax`, the job
+  image's entrypoint) takes one snapshot,
   counts every table's rows in it, `pg_dump`s it (custom format), encrypts
   with age, and writes `oa_analytics/<time>.dump.age` and
   `<time>.counts.tsv` create-only. `coax/web/api/backup/deploy.sh` builds
-  the image (Postgres 18 Alpine plus age) and makes the jobs and schedules.
+  the image (Postgres 18 Alpine plus age, with `backup.coax` compiled for
+  Linux) and makes the jobs and schedules.
 - **Decrypt by hand:** `age -d -i <offline key file> <time>.dump.age > db.dump`,
   then `pg_restore -d <empty database> --no-owner --no-acl db.dump` with
   Postgres 18 tools.
@@ -150,7 +152,7 @@ early. Moving it to `openagents-backups` is the owner's step in
 | `oa_api`, `oa_api_staging` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on tables; sequences; functions | `CREATE`, `DROP`, `ALTER`, `TRUNCATE`; owning anything | The API. Secrets `oa-api-database-url`, `oa-api-staging-database-url` |
 | `oa_readonly` | `SELECT` on every table | Anything else | Agents, analytics, debugging. Secret `oa-analytics-readonly-database-url` |
 | `oa_dump` | `SELECT` on every table, for `pg_dump` | Writes | The dump and drill jobs. Secret `oa-db-dump-database-url` |
-| `oa_admin` | A `cloudsqlsuperuser`: make roles, own the guard | Serve requests | `roles.sh` only. Secret `oa-pg-admin-database-url` |
+| `oa_admin` | A `cloudsqlsuperuser`: make roles, own the guard | Serve requests | `roles.coax` only. Secret `oa-pg-admin-database-url` |
 
 Default privileges give `oa_api` and the readers what later migrations
 make. When `auth.audit` lands, its migration revokes `UPDATE` and `DELETE`
@@ -209,7 +211,7 @@ what stop that from losing data.
 ### Restore drills
 
 Monthly, on the 3rd at 12:00 UTC, the Cloud Run job `oa-db-drill`
-(`backup.sh drill`):
+(`backup drill`, `backup.coax`):
 
 1. takes the newest dump from the locked bucket,
 2. decrypts it with the drill key (Secret Manager

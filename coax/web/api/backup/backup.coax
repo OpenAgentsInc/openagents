@@ -1,0 +1,469 @@
+// The API database's logical backups (docs/auth/data-and-backups.md, #13194, #13219).
+//
+//   backup dump    pg_dump of the whole database, encrypted to recipients.txt,
+//                  into the locked bucket, with its row counts
+//   backup drill   the newest dump, decrypted with the drill key, restored into
+//                  a throwaway Postgres in this container, its row counts checked
+//                  against the dump's and against production; the result goes
+//                  into the bucket under drills/
+//
+// Environment: OA_DUMP_DATABASE (libpq DSN of the SELECT-only role oa_dump),
+// OA_BACKUP_BUCKET, OA_BACKUP_PREFIX (default oa_analytics), and for the drill
+// OA_DRILL_AGE_KEY (the drill key's private half). The entrypoint of the
+// postgres:18-alpine job image (Dockerfile, built for Linux by deploy.sh), run
+// as Cloud Run jobs oa-db-dump (nightly) and oa-db-drill (monthly). It runs
+// psql, pg_dump, pg_restore, initdb, pg_ctl, createdb, su-exec, age, chown,
+// chmod and curl (the bucket's JSON API with the job account's metadata token).
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../lib/sys/args.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/json/json.coax";
+
+cxtool_out_flush :: () -> int #foreign #effects(all);
+cxproc_wall_us :: () -> int #foreign #effects(all);
+cxproc_out_null :: (h: int) -> int #foreign #effects(all);
+
+BK_RECIPIENTS :: "/backup/recipients.txt";
+BK_BIG :: 16777216;       // the most a captured output (a count list, a bucket listing) may hold
+BK_TABLES :: 16384;
+
+// Every table's exact row count, as "schema.table<TAB>count", sorted.
+BK_COUNTS_SQL :: "SELECT format('%s.%s', n.nspname, c.relname) || E'\\t' ||\n  (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', n.nspname, c.relname), false, true, '')))[1]::text\nFROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%'\nORDER BY 1;";
+
+// A text being built.
+Bt :: struct { b: [8192] u8; n: int; }
+bt_s :: (t: [] Bt, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+bt_i :: (t: [] Bt, v: int) {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if v < 0 { bt_s(t, "-"); }
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
+}
+// v as at least w digits.
+bt_pad :: (t: [] Bt, v: int, w: int) {
+  p := 1; for i: 1..<w { p *= 10; }
+  while p > 1 && v < p { bt_s(t, "0"); p /= 10; }
+  bt_i(t, v);
+}
+bt_text :: (t: [] Bt) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+bt_flush :: () { f := cxtool_out_flush(); }
+
+// Days since 1970-01-01 of a civil date, and back (proleptic Gregorian).
+bk_days :: (y: int, m: int, d: int) -> int {
+  yy := ifx m <= 2 then y - 1 else y;
+  era := (ifx yy >= 0 then yy else yy - 399) / 400;
+  yoe := yy - era * 400;
+  doy := (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
+  return era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+}
+BkCivil :: struct { y: int; m: int; d: int; hh: int; mm: int; ss: int; }
+bk_civil :: (unix: int) -> BkCivil {
+  c: BkCivil;
+  days := unix / 86400; s := unix % 86400;
+  if s < 0 { s += 86400; days -= 1; }
+  c.hh = s / 3600; c.mm = s / 60 % 60; c.ss = s % 60;
+  z := days + 719468;
+  era := (ifx z >= 0 then z else z - 146096) / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  c.d = doy - (153 * mp + 2) / 5 + 1;
+  c.m = ifx mp < 10 then mp + 3 else mp - 9;
+  c.y = yoe + era * 400 + (ifx c.m <= 2 then 1 else 0);
+  return c;
+}
+// date -u +%Y%m%dT%H%M%SZ
+bk_stamp :: (unix: int, t: [] Bt) {
+  c := bk_civil(unix);
+  bt_pad(t, c.y, 4); bt_pad(t, c.m, 2); bt_pad(t, c.d, 2); bt_s(t, "T");
+  bt_pad(t, c.hh, 2); bt_pad(t, c.mm, 2); bt_pad(t, c.ss, 2); bt_s(t, "Z");
+}
+// The Unix time of such a stamp, or -1.
+bk_unstamp :: (s: string) -> int {
+  if s.count != 16 || s[8] != 'T' || s[15] != 'Z' { return -1; }
+  for i: 0..<15 { if i != 8 && (s[i] < '0' || s[i] > '9') { return -1; } }
+  y := args_whole(s[0..<4]); m := args_whole(s[4..<6]); d := args_whole(s[6..<8]);
+  h := args_whole(s[9..<11]); mi := args_whole(s[11..<13]); se := args_whole(s[13..<15]);
+  if m < 1 || m > 12 || d < 1 || d > 31 { return -1; }
+  return bk_days(y, m, d) * 86400 + h * 3600 + mi * 60 + se;
+}
+#test "stamps, both ways" {
+  t: [1] Bt; bk_stamp(0, t[..]); #assert bt_text(t[..]) == "19700101T000000Z";
+  u: [1] Bt; bk_stamp(1762850400, u[..]); #assert bt_text(u[..]) == "20251111T084000Z";
+  v: [1] Bt; bk_stamp(951782400, v[..]); #assert bt_text(v[..]) == "20000229T000000Z";
+  #assert bk_unstamp("20251111T084000Z") == 1762850400 && bk_unstamp("20000229T000000Z") == 951782400;
+  #assert bk_unstamp("20261231T235959Z") == 1798761599 && bk_unstamp("19700101T000000Z") == 0;
+  #assert bk_unstamp("2025111T084000Z") == -1 && bk_unstamp("20251111X084000Z") == -1;
+}
+bk_now :: () -> int { return cxproc_wall_us() / 1000000; }
+bk_log :: (msg: string) {
+  c := bk_civil(bk_now());
+  u: [1] Bt; t := u[..];
+  bt_pad(t, c.hh, 2); bt_s(t, ":"); bt_pad(t, c.mm, 2); bt_s(t, ":"); bt_pad(t, c.ss, 2);
+  print("% %\n", bt_text(t), msg); bt_flush();
+}
+
+// Snapshot ids are pg_export_snapshot()'s: hex digits and dashes.
+bk_snapshot_ok :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || c == '-') { return false; } }
+  return true;
+}
+#test "snapshot ids" {
+  #assert bk_snapshot_ok("00000003-0000001B-1") && !bk_snapshot_ok("") && !bk_snapshot_ok("ERROR:  x") && !bk_snapshot_ok("0000000a-1");
+}
+
+// The newest PREFIX/<stamp>.dump.age among a bucket listing's item names, or "".
+bk_newest :: (d: Jv, prefix: string) -> string {
+  best := "";
+  items := jv_get(d, 0, "items");
+  k := ifx jv_kind(d, items) == JV_ARRAY then d.nodes[items].first else -1;
+  while k != -1 {
+    nm := jv_get(d, k, "name");
+    k = d.nodes[k].next;
+    if jv_kind(d, nm) != JV_STRING { continue; }
+    name := jv_raw(d, nm);
+    tail := ".dump.age";
+    if name.count <= prefix.count + 1 + tail.count || name[0..<prefix.count] != prefix || name[prefix.count] != '/' { continue; }
+    if name[name.count - tail.count..<name.count] != tail { continue; }
+    mid := name[prefix.count + 1..<name.count - tail.count];
+    good := true;
+    for c: mid { if !((c >= '0' && c <= '9') || c == 'T' || c == 'Z') { good = false; } }
+    if !good { continue; }
+    if best.count == 0 || bk_after(name, best) { best = name; }
+  }
+  return best;
+}
+// Whether a sorts after b, byte by byte (sort | tail -1 in the C locale).
+bk_after :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] > b[i]; } }
+  return a.count > b.count;
+}
+#test "the newest dump in a listing" {
+  nodes: [64] JvNode; d: [1] Jv;
+  l := "{\"items\": [{\"name\": \"oa_analytics/20251110T093000Z.dump.age\"}, {\"name\": \"oa_analytics/20251111T093000Z.counts.tsv\"},\n {\"name\": \"oa_analytics/20251111T093000Z.dump.age\"}, {\"name\": \"oa_analytics/x.dump.age\"}, {\"name\": \"other/20991111T093000Z.dump.age\"}]}";
+  #assert jv_parse(d[..], l, nodes[..]);
+  #assert bk_newest(d[0], "oa_analytics") == "oa_analytics/20251111T093000Z.dump.age";
+  e: [1] Jv; #assert jv_parse(e[..], "{}", nodes[..]) && bk_newest(e[0], "oa_analytics") == "";
+}
+
+// A count list: "name<TAB>count" lines.
+Tsv :: struct { name: [BK_TABLES] string; count: [BK_TABLES] string; n: int; }
+bk_tsv :: (text: string, t: [] Tsv) -> bool {
+  i := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    line := text[i..<j]; i = j + 1;
+    if line.count == 0 { continue; }
+    tab := 0;
+    while tab < line.count && line[tab] != '\t' { tab += 1; }
+    if t[0].n >= BK_TABLES { return false; }
+    t[0].name[t[0].n] = line[0..<tab];
+    t[0].count[t[0].n] = ifx tab < line.count then line[tab + 1..<line.count] else "";
+    t[0].n += 1;
+  }
+  return true;
+}
+bk_find :: (t: [] Tsv, name: string) -> int {
+  for i: 0..<t[0].n { if t[0].name[i] == name { return i; } }
+  return -1;
+}
+bk_num :: (s: string) -> int { v := args_whole(s); return ifx v < 0 then 0 else v; }
+// The verdict: each dumped table restored with exactly its dumped row count. mismatch gets
+// up to 20 "table<TAB>dumped<TAB>restored" lines (MISSING when not restored).
+Verdict :: struct { tables: int; rows: int; drift: int; bad: int; }
+bk_verdict :: (dumped: [] Tsv, restored: [] Tsv, live: [] Tsv, mismatch: [] Bt) -> Verdict {
+  v: Verdict;
+  v.tables = dumped[0].n;
+  for i: 0..<dumped[0].n {
+    r := bk_find(restored, dumped[0].name[i]);
+    got := ifx r >= 0 then restored[0].count[r] else "MISSING";
+    if got != dumped[0].count[i] {
+      if v.bad < 20 {
+        if mismatch[0].n > 0 { bt_s(mismatch, "\n"); }
+        bt_s(mismatch, dumped[0].name[i]); bt_s(mismatch, "\t"); bt_s(mismatch, dumped[0].count[i]); bt_s(mismatch, "\t"); bt_s(mismatch, got);
+      }
+      v.bad += 1;
+    }
+  }
+  for i: 0..<restored[0].n {
+    v.rows += bk_num(restored[0].count[i]);
+    l := bk_find(live, restored[0].name[i]);
+    if l >= 0 { d := bk_num(live[0].count[l]) - bk_num(restored[0].count[i]); v.drift += ifx d < 0 then -d else d; }
+  }
+  return v;
+}
+#test "the drill's verdict" {
+  d: [1] Tsv; r: [1] Tsv; l: [1] Tsv;
+  #assert bk_tsv("a.x\t3\na.y\t5\na.z\t0\n", d[..]) && bk_tsv("a.x\t3\na.y\t5\na.z\t0\n", r[..]) && bk_tsv("a.x\t4\na.y\t1\nb.w\t9\n", l[..]);
+  m: [1] Bt;
+  v := bk_verdict(d[..], r[..], l[..], m[..]);
+  #assert v.bad == 0 && v.tables == 3 && v.rows == 8 && v.drift == 5 && m[0].n == 0;
+  r2: [1] Tsv; #assert bk_tsv("a.x\t2\na.z\t0\n", r2[..]);
+  m2: [1] Bt;
+  v2 := bk_verdict(d[..], r2[..], l[..], m2[..]);
+  #assert v2.bad == 2 && v2.rows == 2 && v2.drift == 2 && bt_text(m2[..]) == "a.x\t3\t2\na.y\t5\tMISSING";
+}
+
+BK_OURS :: 0;       // stdout captured, stderr ours
+BK_NULL :: 1;       // stdout to /dev/null, stderr ours
+BK_MERGED :: 2;     // stdout and stderr captured together (2>&1)
+// A finished run: exit status (-1 when it didn't start) and captured bytes (lines, each ended by \n).
+Br :: struct { status: int = -1; n: int; }
+bk_run :: (argv: [] string, input: string, mode: int, out: [] u8) -> Br {
+  r: Br;
+  h := proc_new();
+  if h < 0 { return r; }
+  ok := true;
+  if mode == BK_OURS { ok = proc_err_ours(h); }
+  else if mode == BK_NULL { ok = cxproc_out_null(h) == 0; }
+  else { ok = proc_err_to_out(h); }
+  for a: argv { ok = ok && proc_arg(h, a); }
+  if !ok || proc_start(h) != 0 { done := proc_release(h); tool_err("backup: can't run "); tool_errln(argv[0]); return r; }
+  sent := input.count == 0 || proc_send(h, input);
+  closed := proc_close_stdin(h);
+  if mode != BK_NULL {
+    line: [65536] u8;
+    while true {
+      k := proc_line(h, -1, line[..]);
+      if k == PROC_EOF || k == PROC_ERROR { break; }
+      if k < 0 { continue; }
+      for i: 0..<k { if r.n < out.count { out[r.n] = line[i]; r.n += 1; } }
+      if r.n < out.count { out[r.n] = '\n'; r.n += 1; }
+    }
+  }
+  r.status = proc_wait(h, -1);
+  done := proc_release(h);
+  return r;
+}
+bk_ok :: (argv: [] string, mode: int) -> bool { no: [1] u8; return bk_run(argv, "", mode, no[0..<0]).status == 0; }
+
+Bk :: struct { bucket: string; prefix: string; dsn: string; work: string; }
+
+// The job account's access token, from the metadata server.
+bk_token :: (t: [] Bt) -> bool {
+  argv := [5] string.["curl", "-sf", "-H", "Metadata-Flavor: Google", "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"];
+  out: [16384] u8;
+  r := bk_run(argv[..], "", BK_OURS, out[..]);
+  if r.status != 0 { return false; }
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) out[0..<r.n], nodes[..]) { return false; }
+  a := jv_get(d[0], 0, "access_token");
+  if jv_kind(d[0], a) != JV_STRING { return false; }
+  bt_s(t, "Authorization: Bearer "); bt_s(t, jv_raw(d[0], a));
+  return true;
+}
+// Writes the local file as the object name, create only: never overwrites.
+bk_put :: (b: Bk, local: string, name: string) -> bool {
+  auth: [1] Bt; if !bk_token(auth[..]) { return false; }
+  data: [1] Bt; bt_s(data[..], "@"); bt_s(data[..], local);
+  url: [1] Bt; bt_s(url[..], "https://storage.googleapis.com/upload/storage/v1/b/"); bt_s(url[..], b.bucket);
+  bt_s(url[..], "/o?uploadType=media&ifGenerationMatch=0&name="); bt_s(url[..], name);
+  argv := [11] string.["curl", "-sf", "-X", "POST", "--data-binary", bt_text(data[..]), "-H", bt_text(auth[..]),
+                       "-H", "Content-Type: application/octet-stream", bt_text(url[..])];
+  return bk_ok(argv[..], BK_NULL);
+}
+// Reads the object name into the local file.
+bk_get :: (b: Bk, name: string, local: string) -> bool {
+  auth: [1] Bt; if !bk_token(auth[..]) { return false; }
+  url: [1] Bt; bt_s(url[..], "https://storage.googleapis.com/storage/v1/b/"); bt_s(url[..], b.bucket); bt_s(url[..], "/o/");
+  for c: name { if c == '/' { bt_s(url[..], "%2F"); } else { s: [1] u8; s[0] = c; bt_s(url[..], cast(string) s[..]); } }
+  bt_s(url[..], "?alt=media");
+  argv := [7] string.["curl", "-sf", "-H", bt_text(auth[..]), "-o", local, bt_text(url[..])];
+  return bk_ok(argv[..], BK_OURS);
+}
+bk_path :: (b: Bk, name: string, t: [] Bt) -> string { bt_s(t, b.work); bt_s(t, "/"); bt_s(t, name); return bt_text(t); }
+
+bk_dump :: (b: Bk) -> int {
+  st: [1] Bt; bk_stamp(bk_now(), st[..]); stamp := bt_text(st[..]);
+  t0 := bk_now();
+  // One snapshot for both the dump and its counts, held open by a psql session.
+  h := proc_new();
+  ok := h >= 0 && proc_err_ours(h);
+  pa := [8] string.["psql", b.dsn, "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1"];
+  for a: pa { ok = ok && proc_arg(h, a); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("backup: can't run psql"); return 1; }
+  line: [65536] u8;
+  sent := proc_send(h, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SELECT pg_export_snapshot();\n");
+  k := proc_line(h, -1, line[..]);
+  snap := ifx k >= 0 then cast(string) line[0..<k] else "";
+  if !bk_snapshot_ok(snap) { tool_err("dump: no snapshot: "); tool_errln(snap); r := proc_release(h); return 1; }
+  sn: [1] Bt; bt_s(sn[..], "--snapshot="); bt_s(sn[..], snap);
+  sent = proc_send(h, BK_COUNTS_SQL) && proc_send(h, "\nSELECT '--end--';\n");
+  tsv: [BK_BIG] u8; tn := 0; tables := 0;
+  while true {
+    k = proc_line(h, -1, line[..]);
+    if k < 0 { tool_errln("dump: psql ended before the counts did"); r := proc_release(h); return 1; }
+    l := cast(string) line[0..<k];
+    if l == "--end--" { break; }
+    for c: l { if tn < tsv.count { tsv[tn] = c; tn += 1; } }
+    if tn < tsv.count { tsv[tn] = '\n'; tn += 1; }
+    tables += 1;
+  }
+  cp: [1] Bt; counts_path := bk_path(b, "counts.tsv", cp[..]);
+  dp: [1] Bt; dump_path := bk_path(b, "db.dump", dp[..]);
+  ap: [1] Bt; age_path := bk_path(b, "db.dump.age", ap[..]);
+  if !fs_write(counts_path, cast(string) tsv[0..<tn]) { tool_errln("dump: can't write the counts"); r := proc_release(h); return 1; }
+  pd := [7] string.["pg_dump", b.dsn, bt_text(sn[..]), "-Fc", "-Z", "6", "-f"];
+  pdv: [8] string; for a, i: pd { pdv[i] = a; } pdv[7] = dump_path;
+  if !bk_ok(pdv[..], BK_OURS) { r := proc_release(h); return 1; }
+  sent = proc_send(h, "COMMIT;\n");
+  closed := proc_close_stdin(h);
+  while true { k = proc_line(h, -1, line[..]); if k == PROC_EOF || k == PROC_ERROR { break; } }
+  w := proc_wait(h, -1);
+  done := proc_release(h);
+  age := [6] string.["age", "-R", BK_RECIPIENTS, "-o", age_path, dump_path];
+  if !bk_ok(age[..], BK_OURS) { return 1; }
+  gone := fs_remove(dump_path);
+  n1: [1] Bt; bt_s(n1[..], b.prefix); bt_s(n1[..], "/"); bt_s(n1[..], stamp); bt_s(n1[..], ".dump.age");
+  n2: [1] Bt; bt_s(n2[..], b.prefix); bt_s(n2[..], "/"); bt_s(n2[..], stamp); bt_s(n2[..], ".counts.tsv");
+  if !bk_put(b, age_path, bt_text(n1[..])) || !bk_put(b, counts_path, bt_text(n2[..])) { return 1; }
+  msg: [1] Bt;
+  bt_s(msg[..], "dump: "); bt_s(msg[..], bt_text(n1[..])); bt_s(msg[..], ", "); bt_i(msg[..], fs_size(age_path));
+  bt_s(msg[..], " bytes, "); bt_i(msg[..], tables); bt_s(msg[..], " tables, "); bt_i(msg[..], bk_now() - t0); bt_s(msg[..], "s");
+  bk_log(bt_text(msg[..]));
+  return 0;
+}
+
+bk_drill :: (b: Bk, key: string) -> int {
+  t0 := bk_now();
+  auth: [1] Bt; if !bk_token(auth[..]) { return 1; }
+  url: [1] Bt; bt_s(url[..], "https://storage.googleapis.com/storage/v1/b/"); bt_s(url[..], b.bucket);
+  bt_s(url[..], "/o?prefix="); bt_s(url[..], b.prefix); bt_s(url[..], "/&fields=items(name),nextPageToken&maxResults=1000");
+  la := [5] string.["curl", "-sf", "-H", bt_text(auth[..]), bt_text(url[..])];
+  list: [BK_BIG] u8;
+  lr := bk_run(la[..], "", BK_OURS, list[..]);
+  if lr.status != 0 { return 1; }
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) list[0..<lr.n], nodes[..]) { tool_errln("drill: the bucket listing isn't JSON"); return 1; }
+  newest := bk_newest(d[0], b.prefix);
+  if newest.count == 0 { tool_err("drill: no dump in gs://"); tool_err(b.bucket); tool_err("/"); tool_err(b.prefix); tool_errln("/"); return 1; }
+  stamp := newest[b.prefix.count + 1..<newest.count - ".dump.age".count];
+  dumped_at := bk_unstamp(stamp);
+  if dumped_at < 0 { tool_err("drill: a dump name without a time: "); tool_errln(newest); return 1; }
+  ap: [1] Bt; age_path := bk_path(b, "db.dump.age", ap[..]);
+  dp: [1] Bt; dump_path := bk_path(b, "db.dump", dp[..]);
+  tp: [1] Bt; dumped_path := bk_path(b, "dumped.tsv", tp[..]);
+  kp: [1] Bt; key_path := bk_path(b, "key", kp[..]);
+  cn: [1] Bt; bt_s(cn[..], b.prefix); bt_s(cn[..], "/"); bt_s(cn[..], stamp); bt_s(cn[..], ".counts.tsv");
+  if !bk_get(b, newest, age_path) || !bk_get(b, bt_text(cn[..]), dumped_path) { return 1; }
+  // The work directory is 0700 (mkdtemp), so the key is the job's alone until it is removed.
+  kt: [1] Bt; bt_s(kt[..], key); bt_s(kt[..], "\n");
+  if !fs_write(key_path, bt_text(kt[..])) { tool_errln("drill: can't write the key"); return 1; }
+  for i: 0..<kt[0].n { kt[0].b[i] = 0; }
+  dec := [7] string.["age", "-d", "-i", key_path, "-o", dump_path, age_path];
+  decrypted := bk_ok(dec[..], BK_OURS);
+  gone := fs_remove(key_path);
+  if !decrypted { return 1; }
+  gone = fs_remove(age_path);
+  // A throwaway Postgres in this container: the restore target, gone when the job ends.
+  pg: [1] Bt; pg_dir := bk_path(b, "pg", pg[..]);
+  so: [1] Bt; sock := bk_path(b, "sock", so[..]);
+  lg: [1] Bt; bt_s(lg[..], sock); bt_s(lg[..], "/pg.log");
+  if !fs_mkdir(pg_dir) || !fs_mkdir(sock) { tool_errln("drill: can't make the server's directories"); return 1; }
+  own := [5] string.["chown", "-R", "postgres", pg_dir, sock];
+  open := [3] string.["chmod", "755", b.work];
+  init := [8] string.["su-exec", "postgres", "initdb", "-D", pg_dir, "-U", "postgres", "-A"];
+  initv: [9] string; for a, i: init { initv[i] = a; } initv[8] = "trust";
+  opt: [1] Bt; bt_s(opt[..], "-k "); bt_s(opt[..], sock); bt_s(opt[..], " -c listen_addresses=''");
+  start := [11] string.["su-exec", "postgres", "pg_ctl", "-D", pg_dir, "-o", bt_text(opt[..]), "-l", bt_text(lg[..]), "-w", "start"];
+  mkdb := [8] string.["su-exec", "postgres", "createdb", "-h", sock, "-U", "postgres", "restore"];
+  readable := [3] string.["chmod", "644", dump_path];
+  if !bk_ok(own[..], BK_OURS) || !bk_ok(open[..], BK_OURS) || !bk_ok(initv[..], BK_NULL) || !bk_ok(start[..], BK_NULL)
+     || !bk_ok(mkdb[..], BK_OURS) || !bk_ok(readable[..], BK_OURS) { return 1; }
+  ld: [1] Bt; bt_s(ld[..], "host="); bt_s(ld[..], sock); bt_s(ld[..], " user=postgres dbname=restore");
+  local_dsn := bt_text(ld[..]);
+  r0 := bk_now();
+  rs := [9] string.["pg_restore", "-d", local_dsn, "--no-owner", "--no-acl", "-j", "2", dump_path, ""];
+  said: [BK_BIG] u8;
+  rr := bk_run(rs[0..<8], "", BK_MERGED, said[..]);
+  restore_status := rr.status;
+  restore_s := bk_now() - r0;
+  restored_text: [BK_BIG] u8; live_text: [BK_BIG] u8;
+  qr := [8] string.["psql", local_dsn, "-X", "-q", "-A", "-t", "-c", BK_COUNTS_SQL];
+  r1 := bk_run(qr[..], "", BK_OURS, restored_text[..]);
+  if r1.status != 0 { return 1; }
+  ql := [8] string.["psql", b.dsn, "-X", "-q", "-A", "-t", "-c", BK_COUNTS_SQL];
+  r2 := bk_run(ql[..], "", BK_OURS, live_text[..]);
+  if r2.status != 0 { return 1; }
+  stop := [8] string.["su-exec", "postgres", "pg_ctl", "-D", pg_dir, "-m", "fast", "stop"];
+  if !bk_ok(stop[..], BK_NULL) { return 1; }
+  dumped_text: [BK_BIG] u8;
+  dn := fs_read(dumped_path, dumped_text[..]);
+  if dn < 0 { tool_errln("drill: can't read the dump's counts"); return 1; }
+  dumped: [1] Tsv; restored: [1] Tsv; live: [1] Tsv;
+  if !bk_tsv(cast(string) dumped_text[0..<dn], dumped[..]) || !bk_tsv(cast(string) restored_text[0..<r1.n], restored[..]) || !bk_tsv(cast(string) live_text[0..<r2.n], live[..]) {
+    tool_errln("drill: more tables than it can compare"); return 1;
+  }
+  // The verdict: every dumped table restored with exactly its dumped row count.
+  mismatch: [1] Bt;
+  v := bk_verdict(dumped[..], restored[..], live[..], mismatch[..]);
+  // pg_restore's errors: counted, and the first ten kept.
+  errors := 0; first: [1] Bt;
+  output := cast(string) said[0..<rr.n];
+  mark := "pg_restore: error";
+  i := 0;
+  while i < output.count {
+    j := i;
+    while j < output.count && output[j] != '\n' { j += 1; }
+    l := output[i..<j]; i = j + 1;
+    if l.count >= mark.count && l[0..<mark.count] == mark {
+      if errors < 10 { bt_s(first[..], l); bt_s(first[..], "\n"); }
+      errors += 1;
+    }
+  }
+  now := bk_now();
+  ok := v.bad == 0;
+  res: [1] Bt;
+  bt_s(res[..], "{\"ok\":"); bt_s(res[..], ifx ok then "true" else "false");
+  bt_s(res[..], ",\"dump\":\""); bt_s(res[..], newest);
+  bt_s(res[..], "\",\"tables\":"); bt_i(res[..], v.tables);
+  bt_s(res[..], ",\"rows\":"); bt_i(res[..], v.rows);
+  bt_s(res[..], ",\"restore_exit\":"); bt_i(res[..], restore_status);
+  bt_s(res[..], ",\"restore_errors\":"); bt_i(res[..], errors);
+  bt_s(res[..], ",\"dump_age_s\":"); bt_i(res[..], now - dumped_at);
+  bt_s(res[..], ",\"restore_s\":"); bt_i(res[..], restore_s);
+  bt_s(res[..], ",\"drill_s\":"); bt_i(res[..], now - t0);
+  bt_s(res[..], ",\"rows_changed_since_dump\":"); bt_i(res[..], v.drift);
+  bt_s(res[..], "}\n");
+  rp: [1] Bt; result_path := bk_path(b, "result.json", rp[..]);
+  if !fs_write(result_path, bt_text(res[..])) { tool_errln("drill: can't write the result"); return 1; }
+  rn: [1] Bt; bt_s(rn[..], "drills/"); bk_stamp(bk_now(), rn[..]); bt_s(rn[..], ".json");
+  if !bk_put(b, result_path, bt_text(rn[..])) { return 1; }
+  print("%", bt_text(res[..]));
+  if errors != 0 { print("drill: pg_restore errors:\n%", bt_text(first[..])); }
+  if !ok { print("drill: FAILED, tables that differ (table, dumped, restored):\n%\n", bt_text(mismatch[..])); bt_flush(); return 1; }
+  bt_flush();
+  return 0;
+}
+
+bk_env :: (name: string, out: [] u8) -> string {
+  v := proc_getenv(name, out);
+  if v.count == 0 { tool_err(name); tool_errln(": parameter null or not set"); }
+  return v;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: backup dump|drill"); return 2; }
+  mode := ifx args_count(a[..]) >= 1 then args_at(a[..], 0) else "";
+  bb: [4096] u8; pb: [4096] u8; db: [65536] u8; kb: [65536] u8; wb: [4096] u8;
+  b: Bk;
+  b.bucket = bk_env("OA_BACKUP_BUCKET", bb[..]); if b.bucket.count == 0 { return 1; }
+  b.prefix = proc_getenv("OA_BACKUP_PREFIX", pb[..]); if b.prefix.count == 0 { b.prefix = "oa_analytics"; }
+  b.dsn = bk_env("OA_DUMP_DATABASE", db[..]); if b.dsn.count == 0 { return 1; }
+  if mode != "dump" && mode != "drill" { tool_errln("usage: backup dump|drill"); return 2; }
+  key := "";
+  if mode == "drill" { key = bk_env("OA_DRILL_AGE_KEY", kb[..]); if key.count == 0 { return 1; } }
+  b.work = fs_temp("backup.", wb[..]);
+  if b.work.count == 0 { tool_errln("backup: no temporary directory"); return 1; }
+  status := ifx mode == "dump" then bk_dump(b) else bk_drill(b, key);
+  gone := fs_remove(b.work);
+  return status;
+}

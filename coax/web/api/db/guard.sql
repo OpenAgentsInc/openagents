@@ -1,5 +1,5 @@
 -- The DROP and TRUNCATE guard (docs/auth/data-and-backups.md, #13194).
--- Run once per database by a cloudsqlsuperuser (roles.sh, as oa_admin):
+-- Run once per database by a cloudsqlsuperuser (roles.coax, as oa_admin):
 -- event triggers need it. Idempotent.
 --
 -- Outside a migration, DROP of any object and TRUNCATE of any table fail,

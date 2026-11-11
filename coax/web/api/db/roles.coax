@@ -1,0 +1,361 @@
+// Splits the API's database roles (docs/auth/data-and-backups.md, #13194, #13219):
+//
+//   coax/web/tool.sh coax/web/api/db/roles.coax staging      # oa_analytics_staging: oa_api_staging
+//   coax/web/tool.sh coax/web/api/db/roles.coax production   # oa_analytics: oa_api, oa_dump, oa_readonly
+//
+// Roles on the instance openagents-production-pg:
+//   oa_analytics   owns every schema; runs migrations. Only deploy.sh's job
+//                  oa-api-migrate[-staging] uses it (secret oa-analytics[-staging]-database-url).
+//   oa_api[_staging]  the API: SELECT, INSERT, UPDATE, DELETE; no DDL, no TRUNCATE, owns nothing
+//                  (secret oa-api[-staging]-database-url, read by the API's runtime account).
+//   oa_dump        SELECT on everything, for the nightly dump (secret oa-db-dump-database-url).
+//   oa_readonly    SELECT on everything, for agents and debugging (secret oa-analytics-readonly-database-url).
+//   oa_admin       a cloudsqlsuperuser that makes the roles and the guard (secret oa-pg-admin-database-url).
+// Plus the guard (guard.sql): DROP and TRUNCATE fail outside a migration.
+//
+// Idempotent. A role that exists keeps its password. Passwords are made here,
+// go only into Secret Manager (through gcloud's stdin, never a file), and reach
+// Postgres as SCRAM verifiers; nothing is printed. It ends by checking, from the
+// catalog (checks.sql) and inside a rolled-back transaction (probe.sql), that the
+// runtime role can't run DDL or TRUNCATE and that the guard refuses DROP and
+// TRUNCATE. It never touches a table's rows. It runs gcloud, cloud-sql-proxy, nc
+// and psql; gcloud uses CLOUDSDK_CONFIG, by default the automation account's.
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../lib/sys/args.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/crypto/hmac.coax";
+#load "../../../lib/crypto/rand_foreign.coax";
+#load "../../../lib/text/base64.coax";
+
+cxtool_out_flush :: () -> int #foreign #effects(all);
+ro_flush :: () { f := cxtool_out_flush(); }
+
+RO_PROJECT :: "openagentsgemini";
+RO_INSTANCE :: "openagentsgemini:us-central1:openagents-production-pg";
+RO_RUNTIME_SA :: "157437760789-compute@developer.gserviceaccount.com";
+RO_ADMIN :: "oa-pg-admin-database-url";
+RO_OUT :: 1048576;
+
+// A text being built.
+Rt :: struct { b: [8192] u8; n: int; }
+rt_s :: (t: [] Rt, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+rt_i :: (t: [] Rt, v: int) {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if v < 0 { rt_s(t, "-"); }
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
+}
+rt_text :: (t: [] Rt) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+rt_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i] == part[0] && s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+rt_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\n' || s[a] == '\t' || s[a] == '\r') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\n' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return s[a..<b];
+}
+
+// One value of a libpq key=value DSN ("host=... user=... password=..."), split on
+// whitespace, the last of a repeated key winning; fallback when absent.
+ro_dsn_get :: (dsn: string, key: string, fallback: string) -> string {
+  found := fallback; i := 0;
+  while i < dsn.count {
+    while i < dsn.count && (dsn[i] == ' ' || dsn[i] == '\n' || dsn[i] == '\t' || dsn[i] == '\r') { i += 1; }
+    j := i;
+    while j < dsn.count && !(dsn[j] == ' ' || dsn[j] == '\n' || dsn[j] == '\t' || dsn[j] == '\r') { j += 1; }
+    word := dsn[i..<j]; i = j;
+    if word.count > key.count && word[0..<key.count] == key && word[key.count] == '=' { found = word[key.count + 1..<word.count]; }
+  }
+  return found;
+}
+#test "a DSN's fields" {
+  d := "host=/cloudsql/p:r:i user=oa_api dbname=oa_analytics password=a-b_c=d\n";
+  #assert ro_dsn_get(d, "user", "") == "oa_api" && ro_dsn_get(d, "password", "") == "a-b_c=d";
+  #assert ro_dsn_get(d, "dbname", "postgres") == "oa_analytics" && ro_dsn_get("user=x password=y", "dbname", "postgres") == "postgres";
+  #assert ro_dsn_get("user=a user=b", "user", "") == "b" && ro_dsn_get("username=a", "user", "") == "";
+}
+
+// PBKDF2-HMAC-SHA256 with one 32-byte block, as Postgres's SCRAM-SHA-256 uses it.
+ro_pbkdf2 :: (key: [] u8, salt: [] u8, rounds: int, out: [] u8) -> bool {
+  msg: [64] u8;
+  for i: 0..<salt.count { msg[i] = salt[i]; }
+  msg[salt.count] = 0; msg[salt.count + 1] = 0; msg[salt.count + 2] = 0; msg[salt.count + 3] = 1;
+  u: [32] u8; next: [32] u8;
+  if hmac_sha256_checked(key, msg[0..<salt.count + 4], u[..], false) != SHA_OK { return false; }
+  for i: 0..<32 { out[i] = u[i]; }
+  for r: 1..<rounds {
+    if hmac_sha256_checked(key, u[..], next[..], false) != SHA_OK { return false; }
+    for i: 0..<32 { u[i] = next[i]; out[i] = out[i] ^ next[i]; }
+  }
+  return true;
+}
+// The SCRAM-SHA-256 verifier Postgres stores for pw: SCRAM-SHA-256$ITER:SALT$STORED:SERVER.
+ro_verifier :: (pw: [] u8, salt: [] u8, rounds: int, t: [] Rt) -> bool {
+  salted: [32] u8; ck: [32] u8; sk: [32] u8; stored: [32] u8; b: [64] u8; label: [10] u8;
+  if !ro_pbkdf2(pw, salt, rounds, salted[..]) { return false; }
+  for c, i: "Client Key" { label[i] = c; }
+  if hmac_sha256_checked(salted[..], label[..], ck[..], false) != SHA_OK { return false; }
+  for c, i: "Server Key" { label[i] = c; }
+  if hmac_sha256_checked(salted[..], label[..], sk[..], false) != SHA_OK { return false; }
+  if sha256_hash_checked(ck[..], stored[..], false) != SHA_OK { return false; }
+  rt_s(t, "SCRAM-SHA-256$"); rt_i(t, rounds); rt_s(t, ":");
+  n := b64_encode(cast(string) salt, b[..]); rt_s(t, cast(string) b[0..<n]); rt_s(t, "$");
+  n = b64_encode(cast(string) stored[..], b[..]); rt_s(t, cast(string) b[0..<n]); rt_s(t, ":");
+  n = b64_encode(cast(string) sk[..], b[..]); rt_s(t, cast(string) b[0..<n]);
+  return true;
+}
+#test "the SCRAM verifier matches Python's hashlib and hmac (the old roles.sh)" {
+  salt: [16] u8; for i: 0..<16 { salt[i] = cast(u8) i; }
+  pw: [1] Rt; rt_s(pw[..], "pencil");
+  t: [1] Rt;
+  #assert ro_verifier(pw[0].b[0..<pw[0].n], salt[..], 4096, t[..]);
+  #assert rt_text(t[..]) == "SCRAM-SHA-256$4096:AAECAwQFBgcICQoLDA0ODw==$zHCdol2044/ZyWzPLi7oxApCkamKw9Z+E4U/QApd/5Y=:dd5peBOitVnLNFu7VmwP+HiDaaw4OUCv396eVCWhYiE=";
+}
+// Python's secrets.token_urlsafe for these bytes: URL-safe base64 without padding.
+ro_urlsafe :: (raw: [] u8, t: [] Rt) {
+  b: [64] u8;
+  n := b64_encode(cast(string) raw, b[..]);
+  for i: 0..<n {
+    c := b[i];
+    if c == '=' { continue; }
+    if c == '+' { c = '-'; } else if c == '/' { c = '_'; }
+    if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; }
+  }
+}
+#test "passwords are token_urlsafe(32)" {
+  raw: [32] u8; for i: 0..<32 { raw[i] = cast(u8) i; }
+  t: [1] Rt; ro_urlsafe(raw[..], t[..]);
+  #assert rt_text(t[..]) == "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+  raw[0] = 251; raw[1] = 255;
+  u: [1] Rt; ro_urlsafe(raw[0..<3], u[..]);
+  #assert rt_text(u[..]) == "-_8C";
+}
+
+// A finished run: its exit status (-1 when it didn't start), its stdout lines (each ended by a
+// newline) in out[0..<n], and when kept, the end of its stderr in err[0..<e].
+Rr :: struct { status: int = -1; n: int; e: int; }
+// Runs argv with env entries ("NAME=value") added and input on its stdin. Its stderr is ours,
+// as a shell script's children's is, unless keep_err.
+ro_run :: (argv: [] string, env: [] string, input: string, out: [] u8, keep_err: bool, err: [] u8) -> Rr {
+  r: Rr;
+  h := proc_new();
+  if h < 0 { return r; }
+  ok := keep_err || proc_err_ours(h);
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for v: env { ok = ok && proc_env(h, v); }
+  if !ok || proc_start(h) != 0 {
+    done := proc_release(h);
+    tool_err("roles: can't run "); tool_errln(argv[0]);
+    return r;
+  }
+  sent := input.count == 0 || proc_send(h, input);
+  closed := proc_close_stdin(h);
+  line: [65536] u8;
+  while true {
+    k := proc_line(h, -1, line[..]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k < 0 { continue; }
+    for i: 0..<k { if r.n < out.count { out[r.n] = line[i]; r.n += 1; } }
+    if r.n < out.count { out[r.n] = '\n'; r.n += 1; }
+  }
+  r.status = proc_wait(h, -1);
+  if keep_err { r.e = proc_stderr(h, err).count; }
+  done := proc_release(h);
+  return r;
+}
+
+Ro :: struct { port: string; sdk: string; }
+
+// gcloud ARGS with this tool's CLOUDSDK_CONFIG; true when it exits 0. Its stdout is dropped.
+ro_gcloud :: (c: Ro, args: [] string, input: string, quiet_err: bool) -> bool {
+  argv: [24] string; k := 0;
+  argv[0] = "gcloud"; k = 1;
+  for a: args { argv[k] = a; k += 1; }
+  env := [1] string.[c.sdk];
+  out: [4096] u8; err: [4096] u8;
+  return ro_run(argv[0..<k], env[..], input, out[..], quiet_err, err[..]).status == 0;
+}
+
+// psql through the proxy as the user in the DSN secret, in dbname (the DSN's own when empty),
+// with input on its stdin. out gets its stdout. The DSN is read into memory, never a file.
+ro_as :: (c: Ro, secret: string, dbname: string, extra: [] string, input: string, out: [] u8, keep_err: bool, err: [] u8) -> Rr {
+  fail: Rr; fail.status = 1;
+  get := [9] string.["gcloud", "secrets", "versions", "access", "latest", "--secret", secret, "--project", RO_PROJECT];
+  env1 := [1] string.[c.sdk];
+  dsn: [8192] u8; no: [1] u8;
+  g := ro_run(get[..], env1[..], "", dsn[..], false, no[0..<0]);
+  if g.status != 0 { return fail; }
+  text := cast(string) dsn[0..<g.n];
+  user := ro_dsn_get(text, "user", ""); pw := ro_dsn_get(text, "password", "");
+  db := ifx dbname.count > 0 then dbname else ro_dsn_get(text, "dbname", "postgres");
+  if user.count == 0 || pw.count == 0 { tool_err("roles: no user or password in "); tool_errln(secret); return fail; }
+  eu: [1] Rt; rt_s(eu[..], "PGUSER="); rt_s(eu[..], user);
+  ep: [1] Rt; rt_s(ep[..], "PGPASSWORD="); rt_s(ep[..], pw);
+  ed: [1] Rt; rt_s(ed[..], "PGDATABASE="); rt_s(ed[..], db);
+  env := [4] string.[rt_text(eu[..]), rt_text(ep[..]), rt_text(ed[..]), c.sdk];
+  argv: [24] string;
+  base := [9] string.["psql", "-h", "127.0.0.1", "-p", c.port, "-X", "-q", "-v", "ON_ERROR_STOP=1"];
+  k := 0;
+  for a: base { argv[k] = a; k += 1; }
+  for a: extra { argv[k] = a; k += 1; }
+  r := ro_run(argv[0..<k], env[..], input, out, keep_err, err);
+  for i: 0..<g.n { dsn[i] = 0; }
+  for i: 0..<ep[0].n { ep[0].b[i] = 0; }
+  return r;
+}
+
+RoEnv :: struct {
+  db: string; owner: string; runtime: string; readers: string;
+  roles: [3] string; secrets: [3] string; n: int;
+}
+ro_env :: (name: string, e: [] RoEnv) -> bool {
+  if name == "staging" {
+    e[0].db = "oa_analytics_staging"; e[0].owner = "oa-analytics-staging-database-url";
+    e[0].runtime = "oa_api_staging"; e[0].readers = "";
+    e[0].roles[0] = "oa_api_staging"; e[0].secrets[0] = "oa-api-staging-database-url"; e[0].n = 1;
+    return true;
+  }
+  if name == "production" {
+    e[0].db = "oa_analytics"; e[0].owner = "oa-analytics-database-url";
+    e[0].runtime = "oa_api"; e[0].readers = "oa_dump,oa_readonly";
+    e[0].roles[0] = "oa_api"; e[0].secrets[0] = "oa-api-database-url";
+    e[0].roles[1] = "oa_dump"; e[0].secrets[1] = "oa-db-dump-database-url";
+    e[0].roles[2] = "oa_readonly"; e[0].secrets[2] = "oa-analytics-readonly-database-url"; e[0].n = 3;
+    return true;
+  }
+  return false;
+}
+
+// Makes role (or finds it), with its DSN in secret. False on any failure (already reported).
+ro_role :: (c: Ro, e: RoEnv, role: string, secret: string) -> bool {
+  out: [4096] u8; no: [1] u8;
+  q: [1] Rt; rt_s(q[..], "SELECT count(*) FROM pg_roles WHERE rolname = '"); rt_s(q[..], role); rt_s(q[..], "'");
+  ex := [2] string.["-Atc", rt_text(q[..])];
+  r := ro_as(c, RO_ADMIN, "postgres", ex[..], "", out[..], false, no[0..<0]);
+  if r.status != 0 { return false; }
+  describe := [5] string.["secrets", "describe", secret, "--project", RO_PROJECT];
+  if rt_trim(cast(string) out[0..<r.n]) != "0" {
+    if !ro_gcloud(c, describe[..], "", false) { tool_err("roles: "); tool_err(role); tool_err(" exists but "); tool_err(secret); tool_errln(" doesn't"); return false; }
+    print("roles: % already there\n", role); ro_flush();
+    return true;
+  }
+  raw: [32] u8; salt: [16] u8;
+  if cxrand_draw(raw[..], 32) != 0 || cxrand_draw(salt[..], 16) != 0 { tool_errln("roles: no random bytes"); return false; }
+  pw: [1] Rt; ro_urlsafe(raw[..], pw[..]);
+  for i: 0..<32 { raw[i] = 0; }
+  v: [1] Rt;
+  if !ro_verifier(pw[0].b[0..<pw[0].n], salt[..], 4096, v[..]) { tool_errln("roles: SCRAM failed"); return false; }
+  dsn: [1] Rt;
+  rt_s(dsn[..], "host=/cloudsql/"); rt_s(dsn[..], RO_INSTANCE); rt_s(dsn[..], " user="); rt_s(dsn[..], role);
+  rt_s(dsn[..], " dbname="); rt_s(dsn[..], e.db); rt_s(dsn[..], " password="); rt_s(dsn[..], rt_text(pw[..]));
+  for i: 0..<pw[0].n { pw[0].b[i] = 0; }
+  rv: [1] Rt; rt_s(rv[..], "role="); rt_s(rv[..], role);
+  vv: [1] Rt; rt_s(vv[..], "verifier="); rt_s(vv[..], rt_text(v[..]));
+  mk := [4] string.["-v", rt_text(rv[..]), "-v", rt_text(vv[..])];
+  made := ro_as(c, RO_ADMIN, "postgres", mk[..], "CREATE ROLE :\"role\" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD :'verifier'\n", out[..], false, no[0..<0]);
+  if made.status != 0 { return false; }
+  ok := false;
+  if ro_gcloud(c, describe[..], "", true) {
+    add := [7] string.["secrets", "versions", "add", secret, "--project", RO_PROJECT, "--data-file=-"];
+    ok = ro_gcloud(c, add[..], rt_text(dsn[..]), false);
+  } else {
+    create := [8] string.["secrets", "create", secret, "--project", RO_PROJECT, "--replication-policy", "automatic", "--data-file=-"];
+    ok = ro_gcloud(c, create[..], rt_text(dsn[..]), false);
+  }
+  for i: 0..<dsn[0].n { dsn[0].b[i] = 0; }
+  if !ok { return false; }
+  print("roles: made %; its DSN is in %\n", role, secret); ro_flush();
+  return true;
+}
+
+ro_main :: (c: Ro, e: RoEnv, repo: string) -> int {
+  for i: 0..<e.n { if !ro_role(c, e, e.roles[i], e.secrets[i]) { return 1; } }
+  // The API's runtime account reads its own DSN (and the dump's); oa_readonly's is for people and agents.
+  member: [1] Rt; rt_s(member[..], "serviceAccount:"); rt_s(member[..], RO_RUNTIME_SA);
+  for i: 0..<e.n {
+    if e.roles[i] == "oa_readonly" { continue; }
+    bind := [10] string.["secrets", "add-iam-policy-binding", e.secrets[i], "--project", RO_PROJECT, "--member", rt_text(member[..]),
+                         "--role", "roles/secretmanager.secretAccessor", "--condition=None"];
+    if !ro_gcloud(c, bind[..], "", false) { return 1; }
+  }
+  out: [RO_OUT] u8; err: [65536] u8; no: [1] u8;
+  // The guard's schema belongs to oa_admin, so the owner role can't rewrite it; the owner lets it in.
+  g: [1] Rt; rt_s(g[..], "GRANT CREATE ON DATABASE "); rt_s(g[..], e.db); rt_s(g[..], " TO oa_admin\n");
+  none: [1] string;
+  if ro_as(c, e.owner, e.db, none[0..<0], rt_text(g[..]), out[..], false, no[0..<0]).status != 0 { return 1; }
+  guard: [1] Rt; rt_s(guard[..], repo); rt_s(guard[..], "/coax/web/api/db/guard.sql");
+  gf := [2] string.["-f", rt_text(guard[..])];
+  r := ro_as(c, RO_ADMIN, e.db, gf[..], "", out[..], false, no[0..<0]);
+  if r.status != 0 { return 1; }
+  if r.n > 0 { print("%", cast(string) out[0..<r.n]); }
+  rv: [1] Rt; rt_s(rv[..], "runtime="); rt_s(rv[..], e.runtime);
+  dv: [1] Rt; rt_s(dv[..], "readers="); rt_s(dv[..], e.readers);
+  grants: [1] Rt; rt_s(grants[..], repo); rt_s(grants[..], "/coax/web/api/db/grants.sql");
+  gr := [6] string.["-v", rt_text(rv[..]), "-v", rt_text(dv[..]), "-f", rt_text(grants[..])];
+  if ro_as(c, e.owner, e.db, gr[..], "", out[..], false, no[0..<0]).status != 0 { return 1; }
+  print("roles: guard and grants applied in %\n", e.db); ro_flush();
+
+  // Checks: catalog only (checks.sql lists what is wrong), and DDL tried inside a transaction that
+  // rolls back (probe.sql).
+  checks: [1] Rt; rt_s(checks[..], repo); rt_s(checks[..], "/coax/web/api/db/checks.sql");
+  ck := [4] string.["-v", rt_text(rv[..]), "-Atf", rt_text(checks[..])];
+  r = ro_as(c, RO_ADMIN, e.db, ck[..], "", out[..], false, no[0..<0]);
+  if r.status != 0 { return 1; }
+  bad := rt_trim(cast(string) out[0..<r.n]);
+  if bad.count > 0 { tool_errln(bad); return 1; }
+  probe: [1] Rt; rt_s(probe[..], repo); rt_s(probe[..], "/coax/web/api/db/probe.sql");
+  pf := [2] string.["-Atf", rt_text(probe[..])];
+  r = ro_as(c, e.owner, e.db, pf[..], "", out[..], true, err[..]);
+  said := cast(string) err[0..<r.e];
+  if !(rt_has(said, "truncate refused") && rt_has(said, "drop refused")) {
+    tool_err("roles: the guard let the owner through: "); tool_err(cast(string) out[0..<r.n]); tool_errln(rt_trim(said));
+    return 1;
+  }
+  print("roles: checked: % has no DDL or TRUNCATE and owns nothing; the owner's DROP and TRUNCATE are refused outside a migration\n", e.runtime); ro_flush();
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  e: [1] RoEnv;
+  if !args_load(a[..]) || args_count(a[..]) != 1 || !ro_env(args_at(a[..], 0), e[..]) { tool_errln("usage: roles.coax staging|production"); return 1; }
+  rb: [4096] u8; repo := proc_getenv("COAX_TOOL_REPO", rb[..]);
+  if repo.count == 0 { tool_errln("roles: run it with coax/web/tool.sh (no COAX_TOOL_REPO)"); return 1; }
+  sb: [4096] u8; hb: [4096] u8;
+  sdk: [1] Rt; rt_s(sdk[..], "CLOUDSDK_CONFIG=");
+  if proc_has_env("CLOUDSDK_CONFIG") { rt_s(sdk[..], proc_getenv("CLOUDSDK_CONFIG", sb[..])); }
+  else { rt_s(sdk[..], proc_getenv("HOME", hb[..])); rt_s(sdk[..], "/work/.secrets/gcloud-sa-config"); }
+  pick: [2] u8;
+  if cxrand_draw(pick[..], 2) != 0 { tool_errln("roles: no random bytes"); return 1; }
+  pt: [1] Rt; rt_i(pt[..], 20000 + (cast(int) pick[0] * 256 + cast(int) pick[1]) % 20000);
+  c: Ro; c.port = rt_text(pt[..]); c.sdk = rt_text(sdk[..]);
+
+  tok: [8192] u8; no: [1] u8;
+  pa := [3] string.["gcloud", "auth", "print-access-token"];
+  env1 := [1] string.[c.sdk];
+  t := ro_run(pa[..], env1[..], "", tok[..], false, no[0..<0]);
+  if t.status != 0 { return 1; }
+  token := rt_trim(cast(string) tok[0..<t.n]);
+  proxy := proc_new();
+  ok := proxy >= 0 && proc_quiet(proxy);
+  argv := [6] string.["cloud-sql-proxy", RO_INSTANCE, "--port", c.port, "--token", token];
+  for x: argv { ok = ok && proc_arg(proxy, x); }
+  if !ok || proc_start(proxy) != 0 { r := proc_release(proxy); tool_errln("roles: can't start cloud-sql-proxy"); return 1; }
+  for i: 0..<t.n { tok[i] = 0; }
+  nc := [4] string.["nc", "-z", "127.0.0.1", c.port];
+  out: [256] u8; err: [256] u8;
+  for i: 0..<50 {
+    if proc_run(nc[..], 5000, out[..], err[..]).status == 0 { break; }
+    proc_sleep(200);
+  }
+  status := ro_main(c, e[0], repo);
+  done := proc_release(proxy);
+  return status;
+}

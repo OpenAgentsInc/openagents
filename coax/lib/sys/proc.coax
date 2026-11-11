@@ -15,6 +15,7 @@
 cxproc_quiet :: (h: int) -> int #foreign #effects(all);
 cxproc_detach :: (h: int) -> int #foreign #effects(all);
 cxproc_err_ours :: (h: int) -> int #foreign #effects(all);
+cxproc_err_to_out :: (h: int) -> int #foreign #effects(all);
 cxproc_gentle :: (h: int) -> int #foreign #effects(all);
 cxproc_now_ns :: () -> int #foreign #effects(foreign, clock);
 cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
@@ -76,6 +77,8 @@ proc_quiet :: (h: int) -> bool { return cxproc_quiet(h) == 0; }
 proc_detach :: (h: int) -> bool { return cxproc_detach(h) == 0; }
 // Before proc_start: the child's stderr is this program's (the terminal), its stdout still a pipe.
 proc_err_ours :: (h: int) -> bool { return cxproc_err_ours(h) == 0; }
+// Before proc_start: the child's stderr joins its stdout (2>&1), read in order with proc_line.
+proc_err_to_out :: (h: int) -> bool { return cxproc_err_to_out(h) == 0; }
 // Before proc_start: when this program is stopped by a signal, the child gets a TERM and 2 s before the KILL.
 proc_gentle :: (h: int) -> bool { return cxproc_gentle(h) == 0; }
 // Starts the child: 0, PROC_ENOENT when the program is not found, another errno otherwise.

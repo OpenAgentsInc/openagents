@@ -84,6 +84,7 @@ int64_t cxproc_cmdline(int64_t pid, coax_v_u8 out);
 /* Before spawn: stdout to /dev/null, stderr inherited, stdin a pipe. */
 int64_t cxproc_out_null(int64_t h);
 int64_t cxproc_err_ours(int64_t h);
+int64_t cxproc_err_to_out(int64_t h);
 int64_t cxproc_gentle(int64_t h);
 /* Non-blocking write to the child's stdin: the count taken (0 when full), -1 when broken. */
 int64_t cxproc_write_some(int64_t h, coax_v_u8 s);
