@@ -26,6 +26,7 @@ typedef uintptr_t A;
  F(uint32_t,key,(A,int32_t,int32_t)) F(uint32_t,key_up,(A,int32_t,int32_t)) F(void,blur,(A)) F(void,focus,(A)) \
  F(uint32_t,pointer,(A,float,float,int32_t,int32_t,int32_t)) F(uint32_t,pointer_buttons_v1,(A,float,float,int32_t,int32_t,int32_t,int32_t)) \
  F(uint32_t,wheel,(A,float)) F(int32_t,mouselook,(A)) F(void,look_delta,(A,float,float)) F(void,pointer_lock,(A,int32_t)) F(int32_t,cursor,(A)) \
+ F(void,tilt,(A,float,float)) F(int32_t,gyro,(A)) F(void,gyro_status,(A,int32_t)) \
  F(uint32_t,wants_text,(A)) F(A,inbox,(A)) F(uint32_t,inbox_cap,(void)) F(void,message,(A,int32_t,uint32_t)) \
  F(A,asset,(A,int32_t,uint32_t)) F(uint32_t,asset_capacity,(A,int32_t)) F(void,asset_ready,(A,int32_t,uint32_t)) \
  F(A,draws,(A)) F(uint32_t,draw_count,(A)) F(A,shadow_draws_v1,(A)) F(uint32_t,shadow_draw_count_v1,(A)) \
@@ -223,6 +224,7 @@ static NSData *phInflate(NSData *gz) {
  else if (code == 33) [self keep:@"verse.quality.settled" text:[text substringToIndex:MIN(text.length, 16)]];
  else if (code == 13) [self keep:@"verse.sound" text:[text substringToIndex:MIN(text.length, 16)]];
  else if (code == 14) [self keep:@"verse.settings" text:[text substringToIndex:MIN(text.length, 256)]];
+ else if (code == 15) [self keep:@"verse.gyro" text:[text substringToIndex:MIN(text.length, 32)]];
  // 1 (go to another page), 2 (the clipboard), 3 and 19 (the address bar) and the rest have no
  // effect here: a page in this host has no address bar and opens no other page.
 }
@@ -247,7 +249,7 @@ static NSData *phInflate(NSData *gz) {
  put(@"cores", @(NSProcessInfo.processInfo.activeProcessorCount)); put(@"memory", @(MIN(8, (int)(NSProcessInfo.processInfo.physicalMemory >> 30))));
  put(@"quality", [self kept:@"verse.quality"]); put(@"settled", [self kept:@"verse.quality.settled"]);
  put(@"gpu_vendor", @"apple"); put(@"gpu_arch", @"metal-3"); put(@"gpu_fallback", @0);
- put(@"sound", [self kept:@"verse.sound"]); put(@"settings", [self kept:@"verse.settings"]);
+ put(@"sound", [self kept:@"verse.sound"]); put(@"settings", [self kept:@"verse.settings"]); put(@"gyro", [self kept:@"verse.gyro"]);
  put(@"focused", @1); put(@"clip", @0); put(@"webdriver", config.automated ? @1 : @0);
  put(@"player", playerId ?: @""); put(@"account", playerAccount ?: @"");
  put(@"realm", config.realm ?: @""); put(@"slot", config.slot ?: @"");
@@ -1040,6 +1042,10 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 - (int32_t)mouselook { return !closed && x.mouselook ? x.mouselook(state) : 0; }
 - (void)pointerLock:(int32_t)status { if (!closed && x.pointer_lock) x.pointer_lock(state, status); }
 - (void)look:(CGPoint)travel { if (!closed && x.look_delta) x.look_delta(state, (float)travel.x, (float)travel.y); }
+// The phone's turn (aethyr/cam/gyro.coax), fed as touches are: the app reads CoreMotion while the page wants it.
+- (BOOL)wantsMotion { return !closed && x.gyro && x.gyro(state) == 1; }
+- (void)tilt:(float)yaw pitch:(float)pitch { if (!closed && x.tilt) { x.tilt(state, yaw, pitch); [self after]; } }
+- (void)motionStatus:(int32_t)status { if (!closed && x.gyro_status) x.gyro_status(state, status); }
 - (BOOL)wantsText { return !closed && x.wants_text && x.wants_text(state) == 1; }
 - (int32_t)cursor { return !closed && x.cursor ? x.cursor(state) : 0; }
 - (void)close {

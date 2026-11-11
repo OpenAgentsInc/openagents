@@ -42,7 +42,9 @@ Range :: struct {
   stage_face: int = -1;                // ?range-hit=N (shots and clips): an arrow from where you stand lands in face N, once, a second in
   want: int = -1;                      // a phone's FOOT, HORSE or DRAGON button: the way of shooting asked for (RG_*), -1 none
   want_at: f32; want_put: bool;        // when it was asked, and whether you have been put beside the mount
+  tally_box: cc.Box;                   // the tally (or its line) this frame, px: a tap on an upright phone opens and shuts it
   tally_foot: f32;                     // the tally's foot this frame, px: the phone's buttons sit under it
+  open: bool;                          // an upright phone: the tally and its buttons are open (else one line)
 }
 
 xr_page :: (facts: string) -> bool { for p: XR_PATHS { if cc.page_path(facts, p) { return true; } } return false; }
@@ -133,6 +135,18 @@ xr_frame :: (r: [] Range, dt: f32) {
 XR_BTN :: 4; XR_BTN_H :: 44.0; XR_BTN_GAP :: 6.0; XR_WANT_S :: 12.0;
 XR_BTN_NAME :: [XR_BTN] string.["FOOT", "HORSE", "DRAGON", "RESET"];
 xr_touch :: (r: [] Range) -> bool { return r[0].on && r[0].z[0].xc[0].started && zt_on(r[0].z[..]); }
+// An upright phone (everglade/zone-touch.coax zone_compact, #13189): the tally is one line, a raised
+// plate; a tap opens it whole with FOOT, HORSE, DRAGON and RESET under it, and a tap on it shuts it.
+xr_folded :: (r: [] Range) -> bool { return zone_compact(r[0].z[..]) && !r[0].open; }
+// The line, device px.
+xr_line_box :: (r: [] Range, top: f32, k: f32, wide: f32) -> cc.Box { return cc.Box.{x0 = 12 * k, y0 = top, x1 = 12 * k + wide + 28 * k, y1 = top + 44 * k}; }
+// Its words: "ON FOOT · 3/5 HITS · 27 PTS".
+xr_short :: (b: [] u8, sc: RgScore, mode: int) -> int {
+  t := rg_sum(sc, mode, -1);
+  n := xr_text(b, 0, XR_MODE_NAME[mode]); n = xr_text(b, n, "  ·  "); n = xr_num(b, n, t.hits); n = xr_text(b, n, "/"); n = xr_num(b, n, t.shots);
+  n = xr_text(b, n, " HITS  ·  "); n = xr_num(b, n, rg_sum(sc, -1, -1).points); n = xr_text(b, n, " PTS");
+  return n;
+}
 xr_button :: (r: [] Range, i: int) -> cc.Box {
   k := r[0].z[0].creator[0].scale; wide := (f32(XR_WIDE) - f32(XR_BTN - 1) * f32(XR_BTN_GAP)) / f32(XR_BTN);
   x0 := (12 + f32(i) * (wide + f32(XR_BTN_GAP))) * k; y0 := r[0].tally_foot + f32(XR_BTN_GAP) * k;
@@ -158,9 +172,14 @@ xr_reset :: (r: [] Range) {
 // A finger down on one of the buttons.
 xr_press :: (r: [] Range, x: f32, y: f32, phase: int) -> bool {
   if phase != 0 || !xr_touch(r) { return false; }
+  if zone_compact(r[0].z[..]) {
+    if x >= r[0].tally_box.x0 && x <= r[0].tally_box.x1 && y >= r[0].tally_box.y0 && y <= r[0].tally_box.y1 { r[0].open = !r[0].open; return true; }
+    if !r[0].open { return false; }
+  }
   for i: 0..<XR_BTN {
     b := xr_button(r, i);
     if x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1 { continue; }
+    r[0].open = false;   // the world again
     if i == 3 { xr_reset(r); return true; }
     _ := xc_bow_cancel(r[0].z[..]);
     r[0].want = i; r[0].want_at = r[0].z[0].creator[0].clock; r[0].want_put = false;
@@ -193,7 +212,7 @@ xr_want_step :: (r: [] Range) {
   r[0].want = -1;
 }
 xr_buttons_draw :: (r: [] Range, out: [] f32, n0: int) -> int {
-  if !xr_touch(r) { return n0; }
+  if !xr_touch(r) || xr_folded(r) { return n0; }
   s := r[0].z[..]; k := s[0].creator[0].scale; ui := s[0].creator[0].ui; mode := xr_mode(r);
   t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui;
   for i: 0..<XR_BTN {
@@ -240,8 +259,18 @@ xr_tally_draw :: (r: [] Range, out: [] f32, n0: int, w: f32, h: f32, k: f32) -> 
   if !r[0].on || !x[0].started { return n0; }
   sc := r[0].score[0]; mode := xr_mode(r); now := s[0].creator[0].clock;
   t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ui := s[0].creator[0].ui;
-  box := xr_panel(sc, mode, ifx x[0].top > 0 then x[0].top else 20 * k, k);   // where the picker's top is (under a developer's ANIMATIONS bar)
-  r[0].tally_foot = box.y1;
+  top := ifx x[0].top > 0 then x[0].top else 20 * k;   // where the picker's top is (under a developer's ANIMATIONS bar)
+  if xr_folded(r) {
+    b: [96] u8; m := xr_short(b[..], sc, mode); line := cast(string) b[0..<m]; cap := 9.5 * k;
+    box := xr_line_box(r, top, k, cc.face_width(line, cap, cc.HUD_FACE_TITLE));
+    r[0].tally_box = box; r[0].tally_foot = box.y1; s[0].zt_top = box.y1 + f32(XR_BTN_GAP) * k;   // the thumb's side begins under it
+    cc.hud_button(l[..], t, cc.hud_box(box.x0, box.y0, box.x1, box.y1), k, false);
+    ws[0].ui = ui; ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_BUTTON, box.x0, box.y0, box.x1, box.y1, "ARCHERY RANGE");
+    cc.hud_word(ws[..], line, (box.x0 + box.x1) * 0.5, (box.y0 + box.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, true);
+    return cc.hud_draw(out, n0, l[..], ws[..], 1, k);
+  }
+  box := xr_panel(sc, mode, top, k);
+  r[0].tally_box = box; r[0].tally_foot = box.y1;
   cc.hud_panel(l[..], t, cc.hud_box(box.x0, box.y0, box.x1, box.y1), k);
   ws[0].ui = ui; ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, box.x0, box.y0, box.x1, box.y1, "ARCHERY RANGE");
   left := box.x0 + f32(XR_PAD) * k; y := box.y0 + (f32(XR_PAD) + 11) * k; row := f32(XR_ROW) * k; b: [96] u8;
@@ -423,10 +452,18 @@ xr_test_fly :: (r: [] Range, seconds: f32) {
   out: [8192 * 16] f32; n := xr_tally_draw(r[..], out[..], 0, 1170, 2532, 3); #assert r[0].tally_foot > 0;
   // no finger has touched the page: no buttons, and a press there is the zone's
   b := xr_button(r[..], RG_HORSE); #assert !xr_press(r[..], b.x0 + 9, b.y0 + 9, 0) && xr_buttons_draw(r[..], out[..], 0) == 0;
-  s[0].touch = true; #assert xr_buttons_draw(r[..], out[..], 0) > 0;
+  s[0].touch = true;
+  // an upright phone (#13189): the tally is one line, a finger tall, and no buttons until a tap opens it
+  #assert xr_folded(r[..]) && xr_buttons_draw(r[..], out[..], 0) == 0;
+  n = xr_tally_draw(r[..], out[..], 0, 1170, 2532, 3); lb := r[0].tally_box;
+  #assert n > 0 && lb.y1 - lb.y0 >= 44 * 3 && lb.x1 < 1170 && r[0].tally_foot == lb.y1 && s[0].zt_top > lb.y1;
+  #assert range_pointer(r[..], lb.x0 + 9, lb.y0 + 9, 0, 1, 4) && r[0].open && !xr_folded(r[..]); _ = range_pointer(r[..], lb.x0 + 9, lb.y0 + 9, 2, 1, 4);
+  n = xr_tally_draw(r[..], out[..], 0, 1170, 2532, 3); #assert r[0].tally_foot > lb.y1 && xr_buttons_draw(r[..], out[..], 0) > 0;
+  // a tap on the open tally shuts it
+  pb := r[0].tally_box; _ = xr_press(r[..], pb.x0 + 9, pb.y0 + 9, 0); #assert !r[0].open; _ = xr_press(r[..], pb.x0 + 9, pb.y0 + 9, 0); #assert r[0].open;
   for i: 0..<XR_BTN { q := xr_button(r[..], i); #assert q.x1 - q.x0 >= 44 * 3 && q.y1 - q.y0 >= 44 * 3 && q.y0 > r[0].tally_foot; if i > 0 { #assert q.x0 > xr_button(r[..], i - 1).x1; } }
   // HORSE: put beside it, then E
-  #assert range_pointer(r[..], b.x0 + 9, b.y0 + 9, 0, 1, 5) && r[0].want == RG_HORSE && !zone_thumb(s);
+  #assert range_pointer(r[..], b.x0 + 9, b.y0 + 9, 0, 1, 5) && r[0].want == RG_HORSE && !zone_thumb(s) && !r[0].open;   // a choice gives the world back
   body := EgBody.{ground = true};
   for k: 0..<240 {
     cr[0].clock = f32(k) / 60; xr_want_step(r[..]);
@@ -436,6 +473,7 @@ xr_test_fly :: (r: [] Range, seconds: f32) {
   h := cr[0].mounts[0].mounts[0];
   #assert xr_mode(r[..]) == RG_HORSE && r[0].want == -1 && abs(body.x - h.x) < 0.6 && abs(body.z - h.z) < 0.6;
   // FOOT: off again
+  _ = xr_press(r[..], pb.x0 + 9, pb.y0 + 9, 0);
   f := xr_button(r[..], RG_FOOT); #assert range_pointer(r[..], f.x0 + 9, f.y0 + 9, 0, 1, 6) && r[0].want == RG_FOOT;
   for k: 240..<480 {
     cr[0].clock = f32(k) / 60; xr_want_step(r[..]);
@@ -444,6 +482,7 @@ xr_test_fly :: (r: [] Range, seconds: f32) {
   #assert xr_mode(r[..]) == RG_FOOT && r[0].want == -1;
   // RESET: a clean tally, back behind the line
   rg_record(r[0].score[..], RG_FOOT, 20, 9, cr[0].clock); #assert rg_sum(r[0].score[0], -1, -1).shots == 1;
+  _ = xr_press(r[..], pb.x0 + 9, pb.y0 + 9, 0);
   q := xr_button(r[..], 3); #assert range_pointer(r[..], q.x0 + 9, q.y0 + 9, 0, 1, 7);
   #assert rg_sum(r[0].score[0], -1, -1).shots == 0 && r[0].score[0].last_points == -1;
   w := zone_walk(s); #assert w.put && w.x == RG_AT_X + RG_START_X && w.z == RG_AT_Z + RG_START_Z;

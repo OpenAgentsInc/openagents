@@ -65,6 +65,25 @@ zt_up :: (s: [] EgZone) -> cc.Box {
   }
   return cc.Box.{x0 = x0, y0 = y0, x1 = b[2], y1 = y0 + 48 * k};
 }
+// An upright phone (#13189): a touch screen's world, taller than it is wide and narrower than a
+// tablet. The world is the screen there: the bar is one row (experimental-combat.coax xc_slot), no
+// second class plate, no debug lines unless ?net, and a realm folds its own panels to a line.
+ZT_COMPACT_W :: 700.0;   // CSS px: a page narrower than this, held upright
+zone_compact :: (s: [] EgZone) -> bool {
+  x := s[0].xc[..];
+  return s[0].touch && zone_world(s) && !x[0].dr.on && x[0].h > x[0].w && x[0].w < f32(ZT_COMPACT_W) * x[0].k;
+}
+// GYRO: over JUMP, the phone's turn as look and aim (aethyr/cam/gyro.coax); a press opens its menu.
+// Not there when the host has no sensor (a desktop's touch screen).
+zt_gyro_shown :: (s: [] EgZone) -> bool { return zt_on(s) && s[0].gyro[0].status != gy.GYRO_NONE; }
+zt_gyro :: (s: [] EgZone) -> cc.Box { u := zt_up(s); k := s[0].creator[0].scale; return cc.Box.{x0 = u.x0, y0 = u.y0 - 54 * k, x1 = u.x1, y1 = u.y0 - 10 * k}; }
+// Its menu: a row a setting (gy.gyro_row), left of GYRO and JUMP (GYRO shuts it), its foot at
+// JUMP's, under your portrait and a realm's own panel.
+zt_gyro_menu :: (s: [] EgZone) -> cc.HudMenu {
+  k := s[0].creator[0].scale; g := zt_gyro(s); u := zt_up(s); b: [40] u8; wide := 0.0f32;
+  for r: 0..<gy.GYRO_ROWS { t := gy.gyro_row(s[0].gyro[0], r, b[..]); f := cc.face_width(t, 10 * k, cc.HUD_FACE_TITLE); if f > wide { wide = f; } }
+  return cc.hud_menu(cc.hud_box(g.x0, g.y0, g.x1, g.y1), gy.GYRO_ROWS, wide + 24 * k, 44 * k, 22 * k, 6 * k, hi(f32(XC_PORTRAIT_FOOT) * k, s[0].zt_top), u.y1, 12 * k, g.x0 - 6 * k);
+}
 zt_down :: (s: [] EgZone) -> cc.Box { u := zt_up(s); k := s[0].creator[0].scale; return cc.Box.{x0 = u.x0 - 76 * k, y0 = u.y0, x1 = u.x0 - 12 * k, y1 = u.y1}; }
 zt_in :: (b: cc.Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 zt_down_on :: (s: [] EgZone) -> bool { m := s[0].creator[0].mounts[0]; return egm.eg_on_dragon(m) && egm.eg_aloft(m); }
@@ -80,11 +99,19 @@ zt_held :: (s: [] EgZone, phase: int, id: int) -> bool {
   if phase == 0 { return false; }
   if id == s[0].zt_stick { s[0].zt_thumb = true; if phase >= 2 { s[0].zt_stick = ZT_NONE; } return true; }
   if id == s[0].zt_up { if phase >= 2 { s[0].zt_up = ZT_NONE; s[0].held = s[0].held & (HOLD_ALL - HOLD_JUMP); } return true; }
+  if id == s[0].gyro_finger { if phase >= 2 { s[0].gyro_finger = ZT_NONE; } return true; }
   return false;
 }
 // A finger down on JUMP or DOWN.
 zt_press :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool {
   if phase != 0 || !zt_on(s) { return false; }
+  // GYRO's menu: a row changes its setting; a finger anywhere else shuts it (and is still that finger's)
+  if s[0].gyro_menu {
+    m := zt_gyro_menu(s);
+    for r: 0..<gy.GYRO_ROWS { if cc.hud_in(cc.hud_menu_row(m, r), x, y) { gy.gyro_tap(s[0].gyro[..], r); s[0].gyro_finger = id; return true; } }
+    s[0].gyro_menu = false;
+    if zt_in(zt_gyro(s), x, y) || cc.hud_in(m.panel, x, y) { s[0].gyro_finger = id; return true; }
+  } else if zt_gyro_shown(s) && zt_in(zt_gyro(s), x, y) { s[0].gyro_menu = true; s[0].gyro_finger = id; return true; }
   if zt_in(zt_up(s), x, y) { if s[0].zt_up == ZT_NONE { s[0].zt_up = id; s[0].held |= HOLD_JUMP; } return true; }
   if zt_down_on(s) && zt_in(zt_down(s), x, y) { _ := zone_land_key(s); return true; }
   return false;
@@ -100,7 +127,7 @@ zt_stick :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool {
 // Whether the pointer event the zone just took (zone_pointer) was the thumb's: the face then hands
 // it to its stick (aethyr/sticks.coax verse_sticks_world_touch).
 zone_thumb :: (s: [] EgZone) -> bool #export_c #effects(all) { return s[0].zt_thumb; }
-zt_blur :: (s: [] EgZone) { s[0].zt_stick = ZT_NONE; s[0].zt_up = ZT_NONE; s[0].zt_thumb = false; }
+zt_blur :: (s: [] EgZone) { s[0].zt_stick = ZT_NONE; s[0].zt_up = ZT_NONE; s[0].zt_thumb = false; s[0].gyro_finger = ZT_NONE; }
 
 // The ring where the thumb is held, or where to put it, and the two buttons.
 zt_draw :: (s: [] EgZone, out: [] f32, at: int) -> int {
@@ -113,6 +140,14 @@ zt_draw :: (s: [] EgZone, out: [] f32, at: int) -> int {
   ui := s[0].creator[0].ui; t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui;
   zt_button(l[..], ws[..], t, zt_up(s), ifx egm.eg_on_dragon(s[0].creator[0].mounts[0]) then "UP" else "JUMP", s[0].zt_up != ZT_NONE, k);
   if zt_down_on(s) { zt_button(l[..], ws[..], t, zt_down(s), "DOWN", false, k); }
+  g := s[0].gyro[0];
+  if zt_gyro_shown(s) { zt_button(l[..], ws[..], t, zt_gyro(s), "GYRO", g.mode != gy.GYRO_OFF && g.status != gy.GYRO_REFUSED, k); }
+  else { s[0].gyro_menu = false; }
+  if s[0].gyro_menu {
+    labels: [gy.GYRO_ROWS] string; bufs: [gy.GYRO_ROWS * 40] u8;
+    for r: 0..<gy.GYRO_ROWS { labels[r] = gy.gyro_row(g, r, bufs[r * 40..<r * 40 + 40]); }
+    cc.hud_menu_draw(l[..], ws[..], t, zt_gyro_menu(s), "GYRO", labels[..], gy.GYRO_ROWS, ifx g.mode != gy.GYRO_OFF && g.status != gy.GYRO_REFUSED then gy.GYRO_ROW_ON else -1, 10 * k, k);
+  }
   ws[0].parent = cc.UIT_NONE;
   return cc.hud_draw(out, n, l[..], ws[..], 1, k);
 }
@@ -188,4 +223,25 @@ zt_lab :: (s: [] EgZone) {
   _ = zone_pointer(s[..], a.x0 + 60, a.y0 - 200, 2, 1, 4); #assert x[0].hover == -1;
   // a mouse still hovers
   _ = zone_pointer(s[..], r.x0 + 6, r.y0 + 6, 1, 0, 1); #assert x[0].hover == other;
+}
+#test "an upright phone is compact, and GYRO over JUMP opens its menu: a row changes a setting, a finger elsewhere shuts it (touch)" #steps 2000000000 {
+  s: [1] EgZone; zt_lab(s[..]); s[0].touch = true;
+  #assert zone_compact(s[..]) && zt_gyro_shown(s[..]);
+  g := zt_gyro(s[..]); u := zt_up(s[..]);
+  #assert g.y1 < u.y0 && g.x0 == u.x0 && g.y1 - g.y0 >= 44 * 3 && g.y0 > XC_PORTRAIT_FOOT * 3;
+  #assert zone_pointer(s[..], g.x0 + 5, g.y0 + 5, 0, 1, 5) && s[0].gyro_menu && !zone_thumb(s[..]);
+  #assert zone_pointer(s[..], g.x0 + 5, g.y0 + 5, 2, 1, 5) && s[0].gyro_menu;
+  m := zt_gyro_menu(s[..]);
+  #assert m.panel.x1 <= g.x0 && m.panel.x0 >= 0 && m.panel.y1 == u.y1 && m.panel.y0 >= XC_PORTRAIT_FOOT * 3 && m.cols == 1;
+  r := cc.hud_menu_row(m, gy.GYRO_ROW_ON);
+  #assert zone_pointer(s[..], r.x0 + 4, r.y0 + 4, 0, 1, 6) && s[0].gyro[0].mode == gy.GYRO_OFF && zone_gyro(s[..]) == 0 && s[0].gyro[0].dirty;
+  _ := zone_pointer(s[..], r.x0 + 4, r.y0 + 4, 2, 1, 6);
+  out: [4096 * 16] f32; #assert zt_draw(s[..], out[..], 0) > 0;
+  // a finger elsewhere shuts it, and on the stick's side it is the thumb's
+  _ = zone_pointer(s[..], 200, 1500, 0, 1, 7); #assert !s[0].gyro_menu && zone_thumb(s[..]);
+  _ = zone_pointer(s[..], 200, 1500, 2, 1, 7);
+  // a host with no sensor: no GYRO, and a press there is no one's
+  gy.gyro_status(s[0].gyro[..], gy.GYRO_NONE); #assert !zt_gyro_shown(s[..]); _ = zone_pointer(s[..], g.x0 + 5, g.y0 + 5, 0, 1, 8); #assert !s[0].gyro_menu;
+  // on its side the phone is not compact
+  s[0].xc[0].w = 2532; s[0].xc[0].h = 1170; #assert !zone_compact(s[..]);
 }

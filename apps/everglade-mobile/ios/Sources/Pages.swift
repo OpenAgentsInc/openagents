@@ -32,6 +32,8 @@ import Metal
   var box = CGRect.zero
   // "--offline": no socket and no request leaves the phone (a shot).
   let offline = CommandLine.arguments.contains("--offline")
+  // The phone's motion sensor for the realms' gyro (aethyr/cam/gyro.coax): 1 there, 3 none. main.swift sets it.
+  var motion: Int32 = 3
 
   init(state: UnsafeMutableRawPointer, deep: Deep, device: MTLDevice, queue: MTLCommandQueue) {
     self.state = state; self.deep = deep; self.device = device; self.queue = queue
@@ -99,6 +101,7 @@ import Metal
     begun = nil
     eg_opening(state, 0)
     pages[world] = into.page
+    if let page = into.page { let m = motion; deep.run { page.motionStatus(m) } }
     // A shot never plays: its sound is rendered offline, in the shot's time.
     if let page = into.page, let res = Bundle.main.resourceURL { sounds[world] = AEPageAudio(page: page, resources: res, offline: offline) }
     if into.page == nil {
@@ -186,6 +189,12 @@ import Metal
     guard !opening, let p = pages[shown] else { return }
     deep.run { _ = p.key(code, mods: 0, down: down) }
   }
+  // The phone's turn for the realm on screen (aethyr/cam/gyro.coax): whether it wants it now, and the turn.
+  var wantsMotion: Bool { var w = false; if !opening, let p = pages[shown] { deep.run { w = p.wantsMotion() } }; return w }
+  func tilt(_ yaw: Float, _ pitch: Float) {
+    guard !opening, let p = pages[shown] else { return }
+    deep.run { p.tilt(yaw, pitch: pitch) }
+  }
   // What the realm on screen has played, for a shot's script (a shot renders its sound offline).
   var heard: String { sounds[shown]?.summary() ?? "no sound" }
   // The realm's agent driver (aethyr/agent/drive.coax), for a shot's script.
@@ -204,6 +213,8 @@ import Metal
 //   tap:X,Y                a finger down and up
 //   drag:F:X,Y:S           finger F, already down, moves to X,Y over S seconds
 //   key:CODE:S             holds a key (the host contract's code: 119 is W) for S seconds
+//   tilt:YAW,PITCH:S       the phone turns that far (radians, the page host's tilt) over S seconds, as
+//                          CoreMotion would say it: the simulator has no gyro
 //   drive:COMMAND          the realm's agent driver; its answer goes to the log
 //   sound                  what the realm has played so far goes to the log
 //   mark:NAME              writes Documents/NAME, so whoever takes the picture knows the step was reached
@@ -223,6 +234,10 @@ import Metal
         let n = max(2, Int(s * 30))
         for i in 0..<n { steps += [["glide", p[1], p[2], String(n - i)], ["wait", String(s / Double(n))]] }
       } else if verb == "key", p.count > 2 { steps += [["keydown", p[1]], ["wait", p[2]], ["keyup", p[1]]] }
+      else if verb == "tilt", p.count > 2, let s = Double(p[2]) {
+        let n = max(2, Int(s * 60))
+        for _ in 0..<n { steps += [["turn", p[1], String(n)], ["wait", String(s / Double(n))]] }
+      }
       else { steps.append(p) }
     }
   }
@@ -245,6 +260,7 @@ import Metal
         let xy = CGPoint(x: from.x + (to.x - from.x) / left, y: from.y + (to.y - from.y) / left)
         at[p[1]] = xy; touch(key, xy, 1)
       } else if verb == "keydown" || verb == "keyup", p.count > 1, let code = Int32(p[1]) { pages.key(code, down: verb == "keydown") }
+      else if verb == "turn", p.count > 2, let yp = point(p[1]), let n = Double(p[2]), n >= 1 { pages.tilt(Float(yp.x / n), Float(yp.y / n)) }
       else if verb == "drive", p.count > 1 { NSLog("Everglade drive: %@", pages.drive(p[1...].joined(separator: ":"))) }
       else if verb == "sound" { NSLog("Everglade sound: %@", pages.heard) }
       else if verb == "mark", p.count > 1, let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {

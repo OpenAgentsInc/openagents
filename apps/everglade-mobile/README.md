@@ -127,6 +127,12 @@ In the Workshop (a realm's touches are its own, above):
 | Two fingers on the right side, pinched | Zoom |
 | Turn the phone (iOS) | Look, while the Gyro switch under the title is on. Tap the switch to turn it off |
 
+In a realm (the Archery Range, Experimental, Bitcoin Lab) the phone's turn is
+the realm's own gyro (`aethyr/cam/gyro.coax`): its GYRO button over JUMP, on
+while the bow is drawn by default. The app reads CoreMotion only while the
+realm asks for it. The simulator has no gyro, so a shot turns it from its
+script: `--offer-gyro --do "...;tilt:YAW,PITCH:SECONDS"` (radians).
+
 Both thumbs work at once: you can walk and look together.
 
 The app turns with the phone, upright or sideways.

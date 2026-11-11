@@ -62,6 +62,13 @@
 - (int32_t)mouselook;
 - (void)pointerLock:(int32_t)status;
 - (void)look:(CGPoint)travel;
+// The phone's turn as look and aim (aethyr/cam/gyro.coax): YES while the page wants it, so the app
+// runs CoreMotion only then; the turn since the last call in radians (yaw about the world's up, a
+// turn to the left positive; pitch about the screen's across, the top tilted back positive); and
+// the sensor's word: 1 its turns come, 2 refused, 3 none.
+- (BOOL)wantsMotion;
+- (void)tilt:(float)yaw pitch:(float)pitch;
+- (void)motionStatus:(int32_t)status;
 - (BOOL)wantsText;
 // 0 the arrow, 1 a hand, 2 a crosshair, 3 a text bar, 4 none.
 - (int32_t)cursor;

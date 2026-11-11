@@ -161,6 +161,10 @@ EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (in
 EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(cx_face_addr state) { return (int32_t)zone_mouselook(zone(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(cx_face_addr state, float dx, float dy) { zone_look_delta(zone(state), dx, dy); }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(cx_face_addr state, int32_t status) { zone_pointer_lock(zone(state), status); }
+/* A phone's turn as look and aim (aethyr/cam/gyro.coax, #13189): host.js from devicemotion, the page host from CoreMotion. */
+EXPORT("coaxial_tilt") void coaxial_tilt(cx_face_addr state, float dyaw, float dpitch) { zone_tilt(zone(state), dyaw, dpitch); }
+EXPORT("coaxial_gyro") int32_t coaxial_gyro(cx_face_addr state) { return (int32_t)zone_gyro(zone(state)); }
+EXPORT("coaxial_gyro_status") void coaxial_gyro_status(cx_face_addr state, int32_t status) { zone_gyro_status(zone(state), status); }
 
 // ---- the Grid, its sky and the stations, drawn after the scene (bitcoin-lab-fx.wgsl, host.js particles): quads of 16 floats
 EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_BitcoinWalk *)0)->quads.e); }

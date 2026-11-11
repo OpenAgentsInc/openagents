@@ -1,0 +1,202 @@
+// Gyro look and aim: a phone's turn turns the camera, the way the common mobile shooters do (GitHub
+// #13189). Every realm on a touch screen can use it; the host only says how far the phone turned.
+//
+// The host face: coaxial_tilt(state, dyaw, dpitch) the phone's turn since the last call, radians
+// (coax/web/host.js from the browser's devicemotion, aethyr/host/apple/PageHost.m from CoreMotion):
+// yaw about the world's up, a turn to the left positive; pitch about the screen's across, the top
+// tilted back positive. coaxial_gyro(state) -> gyro_host: whether the page wants the phone's turn
+// now (so the browser asks for the motion permission inside a touch, and the app runs CoreMotion
+// only then). coaxial_gyro_status(state, status) -> gyro_status: the host's word on the sensor.
+//
+// The rules:
+// - Three modes: OFF, WHILE AIMING (the default: the turn aims while the bow is drawn) and ALWAYS
+//   (the turn looks round whenever you are in the world).
+// - The camera turns as the phone does, times the sensitivity (0.5 to 3, the steps in GYRO_SENS):
+//   at 1 a phone turned 10 degrees turns the camera 10 degrees. Invert flips up and down.
+// - A turn slower than GYRO_STILL radians a second is the hand's tremor and the sensor's drift, and
+//   moves nothing.
+// - Recentring: a turn made while the gyro is not aiming is dropped, never saved up, and lifting the
+//   finger drops what is waiting. The next aim starts from where the phone is held then.
+// - The settings are one record, "g1 m=MODE s=STEP i=0|1", which the host keeps for the player and
+//   gives back in the page's facts as gyro=. A record that doesn't read whole gives the defaults.
+//   coax/bin/coax test aethyr/cam/gyro.coax --library
+#module "aethyr.cam.gyro";
+
+GYRO_OFF :: 0; GYRO_AIM :: 1; GYRO_ALWAYS :: 2;
+GYRO_SENS :: [7] f32.[0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
+GYRO_SENS_WORD :: [7] string.["0.5", "0.75", "1", "1.25", "1.5", "2", "3"];
+GYRO_SENS_DEFAULT :: 2;
+GYRO_STILL :: 0.03;        // radians a second: slower is tremor and drift
+GYRO_MOST :: 0.6;          // radians a frame at most: a sensor's spike never spins the camera
+GYRO_VERSION :: 1;
+// The host's word on the sensor (gyro_status).
+GYRO_UNKNOWN :: 0; GYRO_LIVE :: 1; GYRO_REFUSED :: 2; GYRO_NONE :: 3;
+
+Gyro :: struct {
+  mode: int = GYRO_AIM;
+  sens: int = GYRO_SENS_DEFAULT;   // a step of GYRO_SENS
+  invert: bool;                    // up and down flipped
+  status: int;                     // GYRO_UNKNOWN until the host says
+  yaw: f32; pitch: f32;            // the turn waiting for the next frame, radians
+  aiming: bool;                    // the last frame aimed
+  dirty: bool;                     // changed since the host kept it
+}
+
+gyro_finite :: (v: f32) -> bool { return v == v && v < 1e30 && v > -1e30; }
+// The host's turn since the last call: waiting for the frame.
+gyro_feed :: (g: [] Gyro, dyaw: f32, dpitch: f32) {
+  if !gyro_finite(dyaw) || !gyro_finite(dpitch) || g[0].mode == GYRO_OFF { return; }
+  g[0].yaw += dyaw; g[0].pitch += dpitch;
+  if g[0].status == GYRO_UNKNOWN { g[0].status = GYRO_LIVE; }   // a turn came: the sensor is there
+}
+// Whether the phone's turn moves the camera now. aiming: the bow is drawn (or the realm's aim is up).
+gyro_on :: (g: Gyro, aiming: bool) -> bool {
+  if g.status == GYRO_REFUSED || g.status == GYRO_NONE { return false; }
+  return g.mode == GYRO_ALWAYS || (g.mode == GYRO_AIM && aiming);
+}
+// What the host is told: 1 the page wants the phone's turn now (in the world, the gyro not off), 0 not.
+gyro_host :: (g: Gyro, world: bool) -> int { return ifx world && g.mode != GYRO_OFF && g.status != GYRO_REFUSED && g.status != GYRO_NONE then 1 else 0; }
+gyro_status :: (g: [] Gyro, status: int) { if status >= GYRO_UNKNOWN && status <= GYRO_NONE { g[0].status = status; } }
+// Recentre: what is waiting is dropped (a finger lifted, the aim let down).
+gyro_recentre :: (g: [] Gyro) { g[0].yaw = 0; g[0].pitch = 0; }
+gyro_clamp :: (v: f32, most: f32) -> f32 { return ifx v > most then most else ifx v < -most then -most else v; }
+// A frame: the camera's turn and tilt, radians (yaw: left positive; pitch: down positive, as a drag
+// down), and the turn waiting is spent. Nothing while the gyro isn't on; the turn made then is dropped.
+gyro_take :: (g: [] Gyro, aiming: bool, dt: f32) -> [2] f32 {
+  on := gyro_on(g[0], aiming);
+  if g[0].aiming && !on { gyro_recentre(g); }
+  g[0].aiming = on;
+  y := g[0].yaw; p := g[0].pitch; gyro_recentre(g);
+  if !on || !gyro_finite(dt) || dt <= 0 { return [2] f32.[0, 0]; }
+  if abs(y) < f32(GYRO_STILL) * dt { y = 0; }
+  if abs(p) < f32(GYRO_STILL) * dt { p = 0; }
+  k := GYRO_SENS[g[0].sens];
+  // tilting the top back looks down (as through the phone), unless inverted
+  return [2] f32.[gyro_clamp(y * k, f32(GYRO_MOST)), gyro_clamp((ifx g[0].invert then -p else p) * k, f32(GYRO_MOST))];
+}
+
+// ---- the menu a realm shows for it: one row a setting, a tap changes it
+GYRO_ROWS :: 4;
+GYRO_ROW_ON :: 0; GYRO_ROW_MODE :: 1; GYRO_ROW_SENS :: 2; GYRO_ROW_INVERT :: 3;
+// Row r's words into b.
+gyro_row :: (g: Gyro, r: int, b: [] u8) -> string {
+  n := 0;
+  if r == GYRO_ROW_ON {
+    n = gyro_put(b, 0, ifx g.status == GYRO_REFUSED then "MOTION NOT ALLOWED" else ifx g.mode == GYRO_OFF then "GYRO OFF" else "GYRO ON");
+  } else if r == GYRO_ROW_MODE {
+    n = gyro_put(b, 0, ifx g.mode == GYRO_ALWAYS then "ALWAYS" else "WHILE AIMING");
+  } else if r == GYRO_ROW_SENS {
+    n = gyro_put(b, 0, "SPEED "); n = gyro_put(b, n, GYRO_SENS_WORD[g.sens]); n = gyro_put(b, n, "x");
+  } else if r == GYRO_ROW_INVERT {
+    n = gyro_put(b, 0, ifx g.invert then "UP-DOWN INVERTED" else "UP-DOWN NORMAL");
+  }
+  return cast(string) b[0..<n];
+}
+// A tap on row r. ON turns it off and on (on: while aiming, or the mode it had); MODE swaps while
+// aiming and always; SPEED steps up through GYRO_SENS and from the top back to the bottom; INVERT flips.
+gyro_tap :: (g: [] Gyro, r: int) {
+  if r == GYRO_ROW_ON {
+    if g[0].status == GYRO_REFUSED { g[0].status = GYRO_UNKNOWN; g[0].mode = GYRO_OFF; }   // the host asks again at the next turn on
+    else { g[0].mode = ifx g[0].mode == GYRO_OFF then GYRO_AIM else GYRO_OFF; }
+  } else if r == GYRO_ROW_MODE {
+    g[0].mode = ifx g[0].mode == GYRO_ALWAYS then GYRO_AIM else GYRO_ALWAYS;
+  } else if r == GYRO_ROW_SENS {
+    g[0].sens = (g[0].sens + 1) % GYRO_SENS.count;
+  } else if r == GYRO_ROW_INVERT {
+    g[0].invert = !g[0].invert;
+  } else { return; }
+  gyro_recentre(g); g[0].dirty = true;
+}
+
+// ---- the record
+gyro_put :: (out: [] u8, at: int, t: string) -> int { n := at; for c: t { if n < out.count { out[n] = c; n += 1; } } return n; }
+gyro_digit :: (out: [] u8, at: int, v: int) -> int { if at < out.count { out[at] = cast(u8) ('0' + v % 10); return at + 1; } return at; }
+// "g1 m=1 s=2 i=0": its length in out.
+gyro_write :: (g: Gyro, out: [] u8) -> int {
+  n := gyro_put(out, 0, "g"); n = gyro_digit(out, n, GYRO_VERSION);
+  n = gyro_put(out, n, " m="); n = gyro_digit(out, n, g.mode);
+  n = gyro_put(out, n, " s="); n = gyro_digit(out, n, g.sens);
+  n = gyro_put(out, n, ifx g.invert then " i=1" else " i=0");
+  return n;
+}
+// Field "L=D" with D from 0 to most: D, else -1.
+gyro_field :: (f: string, letter: u8, most: int) -> int {
+  if f.count != 3 || f[0] != letter || f[1] != '=' || f[2] < '0' || f[2] > '9' { return -1; }
+  v := cast(int) (f[2] - '0'); return ifx v <= most then v else -1;
+}
+// The settings a record holds, the status kept as it is; the defaults when it doesn't read whole.
+gyro_read :: (g0: Gyro, t: string) -> Gyro {
+  d := Gyro.{status = g0.status};
+  if t.count != 14 || t[0..<2] != "g1" || t[2] != ' ' || t[6] != ' ' || t[10] != ' ' { return d; }
+  m := gyro_field(t[3..<6], 'm', GYRO_ALWAYS); s := gyro_field(t[7..<10], 's', GYRO_SENS.count - 1); i := gyro_field(t[11..<14], 'i', 1);
+  if m < 0 || s < 0 || i < 0 { return d; }
+  return Gyro.{mode = m, sens = s, invert = i == 1, status = g0.status};
+}
+// The gyro= line of the page's facts (key=value lines): its record, or "" with none.
+gyro_fact :: (facts: string) -> string {
+  at := 0;
+  while at < facts.count {
+    e := at; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - at >= 5 && facts[at..<at + 5] == "gyro=" { return facts[at + 5..<e]; }
+    at = e + 1;
+  }
+  return "";
+}
+
+// ---- checks
+#test "gyro: on by default while aiming; then the phone's turn turns the camera at the speed, and not otherwise" {
+  g: [1] Gyro;
+  #assert g[0].mode == GYRO_AIM && GYRO_SENS[g[0].sens] == 1 && gyro_host(g[0], true) == 1 && gyro_host(g[0], false) == 0;
+  gyro_feed(g[..], 0.1, 0.05); t := gyro_take(g[..], false, 0.016);
+  #assert t[0] == 0 && t[1] == 0 && g[0].yaw == 0;   // not aiming: the turn is dropped, not saved up
+  gyro_feed(g[..], 0.1, 0.05); t = gyro_take(g[..], true, 0.016);
+  #assert t[0] == 0.1 && t[1] == 0.05 && g[0].status == GYRO_LIVE;
+  g[0].sens = 5; gyro_feed(g[..], 0.1, -0.05); t = gyro_take(g[..], true, 0.016); #assert t[0] == 0.2 && t[1] == -0.1;
+  g[0].invert = true; gyro_feed(g[..], 0, 0.05); t = gyro_take(g[..], true, 0.016); #assert t[1] == -0.1;
+  g[0].mode = GYRO_ALWAYS; gyro_feed(g[..], 0.02, 0); t = gyro_take(g[..], false, 0.016); #assert t[0] == 0.04;
+  g[0].mode = GYRO_OFF; gyro_feed(g[..], 0.3, 0); t = gyro_take(g[..], true, 0.016); #assert t[0] == 0 && gyro_host(g[0], true) == 0;
+}
+#test "gyro: tremor and drift move nothing, a spike is held, and nothing that isn't a number gets in" {
+  g: [1] Gyro;
+  gyro_feed(g[..], 0.0004, -0.0004); t := gyro_take(g[..], true, 0.016); #assert t[0] == 0 && t[1] == 0;   // 0.025 rad/s
+  gyro_feed(g[..], 0.0006, 0); t = gyro_take(g[..], true, 0.016); #assert t[0] == 0.0006;                // 0.0375 rad/s
+  gyro_feed(g[..], 5, -5); t = gyro_take(g[..], true, 0.016); #assert t[0] == GYRO_MOST && t[1] == -GYRO_MOST;
+  nan := 0.0f32 / 0.0f32; gyro_feed(g[..], nan, 0.1); #assert g[0].yaw == 0 && g[0].pitch == 0;
+  gyro_feed(g[..], 0.1, 0.1); t = gyro_take(g[..], true, 0); #assert t[0] == 0 && g[0].yaw == 0;
+}
+#test "gyro: recentring drops what waits; letting the aim down drops it too" {
+  g: [1] Gyro;
+  _ := gyro_take(g[..], true, 0.016); gyro_feed(g[..], 0.2, 0.1); gyro_recentre(g[..]); t := gyro_take(g[..], true, 0.016); #assert t[0] == 0 && t[1] == 0;
+  gyro_feed(g[..], 0.2, 0.1); t = gyro_take(g[..], false, 0.016); #assert t[0] == 0 && !g[0].aiming;
+  gyro_feed(g[..], 0.2, 0); t = gyro_take(g[..], true, 0.016); #assert t[0] == 0.2;
+}
+#test "gyro: the host's word: refused or no sensor turns nothing and asks for nothing" {
+  g: [1] Gyro;
+  gyro_status(g[..], GYRO_REFUSED); #assert !gyro_on(g[0], true) && gyro_host(g[0], true) == 0;
+  b: [32] u8; #assert gyro_row(g[0], GYRO_ROW_ON, b[..]) == "MOTION NOT ALLOWED";
+  gyro_tap(g[..], GYRO_ROW_ON); #assert g[0].status == GYRO_UNKNOWN && g[0].mode == GYRO_OFF && g[0].dirty;
+  gyro_tap(g[..], GYRO_ROW_ON); #assert g[0].mode == GYRO_AIM && gyro_host(g[0], true) == 1;
+  gyro_status(g[..], GYRO_NONE); #assert gyro_host(g[0], true) == 0 && !gyro_on(g[0], true);
+  gyro_status(g[..], 9); #assert g[0].status == GYRO_NONE;
+}
+#test "gyro: the menu's rows say the settings, and a tap changes each in turn" {
+  g: [1] Gyro; b: [32] u8;
+  #assert gyro_row(g[0], GYRO_ROW_ON, b[..]) == "GYRO ON" && gyro_row(g[0], GYRO_ROW_MODE, b[..]) == "WHILE AIMING";
+  #assert gyro_row(g[0], GYRO_ROW_SENS, b[..]) == "SPEED 1x" && gyro_row(g[0], GYRO_ROW_INVERT, b[..]) == "UP-DOWN NORMAL";
+  gyro_tap(g[..], GYRO_ROW_MODE); #assert g[0].mode == GYRO_ALWAYS && gyro_row(g[0], GYRO_ROW_MODE, b[..]) == "ALWAYS";
+  gyro_tap(g[..], GYRO_ROW_ON); #assert g[0].mode == GYRO_OFF && gyro_row(g[0], GYRO_ROW_ON, b[..]) == "GYRO OFF";
+  gyro_tap(g[..], GYRO_ROW_ON); #assert g[0].mode == GYRO_AIM;
+  for i: 0..<4 { gyro_tap(g[..], GYRO_ROW_SENS); } #assert g[0].sens == 6 && gyro_row(g[0], GYRO_ROW_SENS, b[..]) == "SPEED 3x";
+  gyro_tap(g[..], GYRO_ROW_SENS); #assert g[0].sens == 0 && gyro_row(g[0], GYRO_ROW_SENS, b[..]) == "SPEED 0.5x";   // from the top, the bottom
+  gyro_tap(g[..], GYRO_ROW_INVERT); #assert g[0].invert && gyro_row(g[0], GYRO_ROW_INVERT, b[..]) == "UP-DOWN INVERTED";
+  g[0].dirty = false; gyro_tap(g[..], 7); #assert !g[0].dirty;
+}
+#test "gyro: the record keeps the settings, and one that doesn't read whole gives the defaults" {
+  g := Gyro.{mode = GYRO_ALWAYS, sens = 5, invert = true, status = GYRO_LIVE}; b: [32] u8;
+  n := gyro_write(g, b[..]); #assert cast(string) b[0..<n] == "g1 m=2 s=5 i=1";
+  r := gyro_read(Gyro.{status = GYRO_LIVE}, cast(string) b[0..<n]); #assert r.mode == GYRO_ALWAYS && r.sens == 5 && r.invert && r.status == GYRO_LIVE && !r.dirty;
+  d := gyro_read(Gyro.{}, "g1 m=3 s=5 i=1"); #assert d.mode == GYRO_AIM && d.sens == GYRO_SENS_DEFAULT && !d.invert;
+  #assert gyro_read(Gyro.{}, "g2 m=0 s=5 i=1").mode == GYRO_AIM && gyro_read(Gyro.{}, "g1 m=0 s=7 i=1").mode == GYRO_AIM && gyro_read(Gyro.{}, "").mode == GYRO_AIM;
+  #assert gyro_read(Gyro.{}, "g1 m=0 s=1 i=0").mode == GYRO_OFF;
+  #assert gyro_fact("url=/x\ngyro=g1 m=0 s=1 i=0\ncoarse=1") == "g1 m=0 s=1 i=0" && gyro_fact("url=/x\nsound=1") == "" && gyro_fact("") == "";
+}

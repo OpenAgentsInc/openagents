@@ -32,7 +32,12 @@
 //                             (Pointer Lock, inside a user gesture; aethyr/cam/mouselook.coax)
 //   coaxial_look_delta(state, dx, dy) the mouse moved while the pointer is held, CSS pixels
 //   coaxial_pointer_lock(state, status) 1 the pointer is held, 0 let go (Escape too), 2 refused
-//   coaxial_tilt(state, dyaw, dpitch) the phone turned, radians (the OpenAgents app's gyro: coaxial.tilt)
+//   coaxial_tilt(state, dyaw, dpitch) the phone turned, radians (the OpenAgents app's gyro: coaxial.tilt; a
+//                             phone's browser, from devicemotion: yaw about the world's up, left positive;
+//                             pitch about the screen's across, the top tilted back positive)
+//   coaxial_gyro(state)       optional: 1 while the app wants the phone's turn (iOS asks for the motion
+//                             permission at the next touch), 0 not (aethyr/cam/gyro.coax)
+//   coaxial_gyro_status(state, status) the motion sensor: 1 its turns come, 2 refused, 3 none
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
 //                             text in: kind 1 is typed or pasted text; kind 2 the page's data-text,
 //                             once each time an engine loads (which project a page shows, say);
@@ -960,6 +965,7 @@ function pageFacts() {
     frame_hz: globalThis.coaxialPreferredFrameRate || 0, minimum_hz: globalThis.coaxialMinimumFrameRate || 0,
     sound: (() => { try { return localStorage.getItem("verse.sound") || ""; } catch { return ""; } })(),
     settings: (() => { try { return localStorage.getItem("verse.settings") || ""; } catch { return ""; } })(),
+    gyro: (() => { try { return localStorage.getItem("verse.gyro") || ""; } catch { return ""; } })(),
     focused: document.hasFocus() ? 1 : 0,
     clip: globalThis.coaxialClip === true ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
@@ -3516,6 +3522,45 @@ if (dev) {
 }
 // The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
 globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };
+// A phone's browser turns the camera with the phone too, while the app asks (coaxial_gyro, aethyr/cam/gyro.coax):
+// devicemotion's rotation rate, in the screen's frame, summed between frames. iOS asks for the motion
+// permission, which only a touch's end may do; the app hears what came of it (coaxial_gyro_status).
+// Browser glue: the sign of up from gravity is taken toward the screen's top and face, since WebKit's
+// and Chrome's accelerationIncludingGravity point opposite ways.
+const gyro = { on: false, asked: false, last: 0, quiet: 0 };
+function gyroStatus(v) { if (engine?.exports.coaxial_gyro_status) call("coaxial_gyro_status", v); }
+function gyroMotion(e) {
+  const r = e.rotationRate, g = e.accelerationIncludingGravity, now = performance.now();
+  const dt = gyro.last ? Math.min(0.1, (now - gyro.last) / 1000) : 0; gyro.last = now;
+  // a browser with no sensor says so with an empty event (desktop Chrome); a real turn later says otherwise
+  if (!r || (r.alpha == null && r.beta == null && r.gamma == null)) { if (!gyro.quiet++) gyroStatus(3); return; }
+  if (gyro.quiet) { gyro.quiet = 0; gyroStatus(1); }
+  if (!dt || !engine?.exports.coaxial_tilt) return;
+  const k = Math.PI / 180, rx = (r.beta || 0) * k, ry = (r.gamma || 0) * k, rz = (r.alpha || 0) * k;
+  const a = ((screen.orientation?.angle ?? window.orientation ?? 0) % 360 + 360) % 360;
+  const across = a === 90 ? [0, -1] : a === 270 ? [0, 1] : a === 180 ? [-1, 0] : [1, 0];
+  const top = a === 90 ? [1, 0] : a === 270 ? [-1, 0] : a === 180 ? [0, -1] : [0, 1];
+  let ux = g?.x || 0, uy = g?.y || 0, uz = g?.z || 0; const len = Math.hypot(ux, uy, uz);
+  let dyaw = 0;
+  if (len > 1) { ux /= len; uy /= len; uz /= len; if (ux * top[0] + uy * top[1] + uz < 0) { ux = -ux; uy = -uy; uz = -uz; } dyaw = (rx * ux + ry * uy + rz * uz) * dt; }
+  call("coaxial_tilt", dyaw, -(rx * across[0] + ry * across[1]) * dt);
+}
+function gyroListen() { if (gyro.on) return; gyro.on = true; gyro.last = 0; addEventListener("devicemotion", gyroMotion); gyroStatus(1); }
+// After a touch: start or stop as the app wants; iOS's permission inside the touch's end (touchend).
+function gyroSync(ended) {
+  if (!engine?.exports.coaxial_gyro) return;
+  const want = call("coaxial_gyro") === 1;
+  // a sensor that has only said it is not there is still heard: a real turn after it says it is (gyroMotion)
+  if (!want) { if (gyro.on && !gyro.quiet) { removeEventListener("devicemotion", gyroMotion); gyro.on = false; } return; }
+  if (gyro.on) return;
+  if (typeof DeviceMotionEvent === "undefined") { gyroStatus(3); return; }
+  if (typeof DeviceMotionEvent.requestPermission !== "function") { gyroListen(); return; }
+  if (!ended || gyro.asked) return;
+  gyro.asked = true;
+  // "denied" is the player's answer; a throw (no gesture) is not, and the next touch asks again
+  DeviceMotionEvent.requestPermission().then((r) => { gyro.asked = false; if (r === "granted") gyroListen(); else gyroStatus(2); }, () => { gyro.asked = false; });
+}
+canvas?.addEventListener("touchend", () => gyroSync(true));
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
 if (script?.dataset.drops) startDrops({ send });
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.
@@ -3666,6 +3711,8 @@ function after(gesture, tap = false) {
     else if (code === 13) { if (!golden) try { localStorage.setItem("verse.sound", text.slice(0, 16)); } catch {} }
     // a realm's input and reading settings (aethyr/ui/settings.coax), back in its facts as settings=
     else if (code === 14) { if (!golden) try { localStorage.setItem("verse.settings", text.slice(0, 256)); } catch {} }
+    // the player's gyro settings (aethyr/cam/gyro.coax), back in its facts as gyro=
+    else if (code === 15) { if (!golden) try { localStorage.setItem("verse.gyro", text.slice(0, 32)); } catch {} }
     else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "hold" ? "hold" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);
     else if (code === ACT_VOICE_SAY && voice) voice.say(text);
@@ -3787,6 +3834,7 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
     if (engine.exports.coaxial_pointer_buttons_v1) call("coaxial_pointer_buttons_v1", x * dpr, y * dpr, ph, touch ? 1 : 0, e.pointerId, e.button);
     else call("coaxial_pointer", x * dpr, y * dpr, ph, touch ? 1 : 0, e.pointerId);
     after(ph === 2, ph === 2);
+    if (touch) gyroSync(false);
   });
 
 // Mouselook (aethyr/cam/mouselook.coax): the app says when it wants the pointer held; the host asks the

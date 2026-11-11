@@ -118,6 +118,7 @@ final class WorkshopView: MTKView, MTKViewDelegate, UIKeyInput {
     turn.view = self
     // The simulator has no gyro; "--offer-gyro" shows the switch there, to see it drawn.
     if turn.available || CommandLine.arguments.contains("--offer-gyro") { eg_turn_offer(state) }
+    if turn.available || CommandLine.arguments.contains("--offer-gyro") { pages.motion = 1 }
     delegate = self
   }
   required init(coder: NSCoder) { fatalError() }
@@ -136,10 +137,13 @@ final class WorkshopView: MTKView, MTKViewDelegate, UIKeyInput {
     let realm = pages.frame(scale: CGFloat(scale), dt: dt)
     let typing = realm != nil && pages.wantsText
     if typing != isFirstResponder { if typing { _ = becomeFirstResponder() } else { _ = resignFirstResponder() } }
-    // The phone's turn, while the scene's Gyro switch is on.
-    if eg_turns(state) == 1 {
+    // The phone's turn: the Workshop's while its Gyro switch is on, a realm's while it wants it
+    // (aethyr/cam/gyro.coax: its GYRO button, the bow drawn).
+    let realmTurns = realm != nil && pages.wantsMotion
+    if eg_turns(state) == 1 || realmTurns {
       if !turn.running { turn.start() }
-      let t = turn.take(); eg_turn(state, Float(t.yaw), Float(t.pitch))
+      let t = turn.take()
+      if realmTurns { pages.tilt(Float(t.yaw), Float(t.pitch)) } else { eg_turn(state, Float(t.yaw), Float(t.pitch)) }
     } else if turn.running { turn.stop() }
     let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
     var u: [Float] = [Float(size.width), Float(size.height), time, 0]

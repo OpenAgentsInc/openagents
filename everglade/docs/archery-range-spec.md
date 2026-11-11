@@ -121,8 +121,12 @@ the start).
 | Left thumb, anywhere on the left side between the buttons and the bar | The stick. On foot a small push walks and a full push runs. In the saddle it steers, and a full push ahead gallops |
 | Drag anywhere else | Look |
 | Hold the bow's slot (Attack), drag, lift | Draw, aim, loose. A tap is a quick shot |
-| FOOT, HORSE, DRAGON (under the tally) | How you shoot. HORSE and DRAGON put you beside that mount and mount it. FOOT gets you off; in the air the dragon lands first |
-| RESET (under the tally) | Clears the tally. On foot it also puts you back behind the line |
+| The tally's line (top left) | On an upright phone the tally is one line: how you shoot, hits and points. A tap opens the whole tally with FOOT, HORSE, DRAGON and RESET under it; a tap on the line again, or on any of them, folds it |
+| FOOT, HORSE, DRAGON (under the open tally) | How you shoot. HORSE and DRAGON put you beside that mount and mount it. FOOT gets you off; in the air the dragon lands first |
+| RESET (under the open tally) | Clears the tally. On foot it also puts you back behind the line |
+| MORE (the bar's last slot, upright) | The bar is one row on an upright phone: the slots that fit, then MORE. MORE opens the rest in a row over it; LESS, or using one of them, shuts it |
+| GYRO (right side, over JUMP) | Its menu: the gyro on or off, while aiming or always, its speed (0.5x to 3x) and up-down normal or inverted. Your choice is kept |
+| Turn the phone | While the bow is drawn (or always, if you choose), turning the phone turns your aim: left and right, and tilting its top back looks down. Lifting the finger recentres it. On an iPhone's Safari the first touch asks for motion; if you refuse, the menu says MOTION NOT ALLOWED. A phone with no gyro shows no GYRO |
 | JUMP (right side, over MOUNT) | Jump, on foot and on the horse |
 | UP (right side, on the dragon) | Held, the dragon takes off and climbs |
 | DOWN (right side, while the dragon flies) | The dragon lands |
@@ -134,6 +138,11 @@ on. Which finger is the thumb's, and JUMP, UP and DOWN, are the zone's
 Experimental has them too. FOOT, HORSE, DRAGON and RESET are the range's. A
 button only asks: the range then presses the keys a player would (X to land,
 E to get off, E beside the mount).
+
+On an upright phone nothing else covers the world: no class plate over the
+bar (your portrait says the class), and the graphics, frames-a-second and
+place lines show only with `?net`. A phone on its side, a tablet and a desktop
+keep the full tally, both rows of the bar and those lines.
 
 A slot's card shows while a finger holds the slot, and goes when it lifts. The
 bow's slot shows none, because holding it is the draw.

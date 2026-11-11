@@ -32,6 +32,7 @@
 #load "../apps/openagents-web/everglade-move-types.coax";   // what a face hands Everglade's movement step (everglade-step.coax)
 #load "../apps/openagents-web/experimental-sound.coax" as exsound;
 #load "../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held
+#load "../aethyr/cam/gyro.coax" as gy;          // a phone's turn looks and aims (#13189)
 #load "../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (dash.coax, wired in experimental-combat.coax xc_sprint_frame)
 #load "hud/class-bar.coax";   // Everglade's class menus: rest, in the menu your portrait opens (#13092, #13147)
 #load "hud/lines.coax";       // Everglade's line HUD (#13083)
@@ -95,6 +96,8 @@ EgZone :: struct {
   env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (zone_light)
   qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/quality-page.coax): the pixels drawn and the knobs; the finger on its control
   glade_cull: [1] mc.MeshCull;   // the glade's environment mesh's runs and their boxes, from the host (zone_mesh_cull; a face's coaxial_mesh_bounds_v1)
+  gyro: [1] gy.Gyro; gyro_menu: bool; gyro_finger: int = -100;   // a phone's turn as look and aim, its menu open, the finger on its button (zone-touch.coax)
+  lines: bool;  // ?net: the coordinates, the graphics and the frame rate on an upright phone too (experimental-combat.coax xc_corner)
   bare: bool;   // a zone with nothing to fight (Bitcoin Lab): no class bar, no monsters, no casting keys; you walk and look
 }
 // The world is up: the page is a zone's, and you aren't walking out of Character Create's studio.
@@ -450,6 +453,7 @@ zone_begin :: (s: [] EgZone) {
 zone_draw :: (s: [] EgZone, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int {
   cr := s[0].creator[..];
   zone_mouselook_step(s, ifx still then 0.0f32 else dt);
+  zone_gyro_step(s, ifx still then 0.0f32 else dt);
   n := cc.frame(cr,out,u,width,height,hi(dpr,0.5),dt,still);
   if cr[0].experimental && !cr[0].walk.on && s[0].bare {
     for i: 0..<XC_FOES { cr[0].hostiles[0].enemies[i].dead = true; cr[0].hostiles[0].enemies[i].died = -100; cr[0].hostiles[0].enemies[i].awake = false; }
@@ -550,6 +554,7 @@ zone_wheel :: (s: [] EgZone, dy: f32) -> bool #export_c #effects(all) { cc.wheel
 // camera's drag).
 zone_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
+  if phase >= 2 && kind != 0 { gy.gyro_recentre(s[0].gyro[..]); }   // a finger lifted: the gyro recentres
   s[0].zt_thumb = false;
   if s[0].creator[0].on {
     if s[0].creator[0].experimental {
@@ -607,6 +612,48 @@ zone_pointer_lock :: (s: [] EgZone, status: int) #export_c #effects(all) { mlook
   s[0].creator[0].hostiles[0].hp = 0; zone_mouselook_step(s[..], 0.1); #assert zone_mouselook(s[..]) == 0;
   s[0].creator[0].experimental = false; zone_mouselook_step(s[..], 0.1); #assert zone_mouselook(s[..]) == 0;
 }
+// ---- a phone's turn (aethyr/cam/gyro.coax, #13189): the host's turn waits for the frame, which
+// turns the camera with it while the gyro aims (the bow drawn) or always, by the player's setting.
+ZONE_ACT_GYRO :: 15;   // the host keeps the outbox's record for the player and gives it back in its facts as gyro=
+zone_tilt :: (s: [] EgZone, dyaw: f32, dpitch: f32) #export_c #effects(all) { gy.gyro_feed(s[0].gyro[..], dyaw, dpitch); }
+// Whether the page wants the phone's turn now: a touch screen's world, the gyro on.
+zone_gyro :: (s: [] EgZone) -> int #export_c #effects(all) { return gy.gyro_host(s[0].gyro[0], s[0].touch && zone_world(s)); }
+zone_gyro_status :: (s: [] EgZone, status: int) #export_c #effects(all) { gy.gyro_status(s[0].gyro[..], status); }
+zone_aiming :: (s: [] EgZone) -> bool { return s[0].xc[0].ar[0].draw[0].on || s[0].creator[0].aim > 0.01; }
+zone_gyro_step :: (s: [] EgZone, dt: f32) {
+  c := s[0].creator[..];
+  if !zone_world(s) || (c[0].hostiles[0].ready && c[0].hostiles[0].hp <= 0) { gy.gyro_recentre(s[0].gyro[..]); return; }
+  t := gy.gyro_take(s[0].gyro[..], zone_aiming(s), dt);
+  if t[0] != 0 || t[1] != 0 { c[0].yaw = figs.wrap_angle(c[0].yaw + t[0]); c[0].pitch = cc.cc_clamp(c[0].pitch + t[1], -1.2, 1.2); }
+}
+#test "a phone's turn turns the camera while the bow is drawn, and the player's setting is kept" {
+  s: [1] EgZone; s[0].creator[0].on = true; s[0].creator[0].experimental = true; s[0].touch = true;
+  yaw := s[0].creator[0].yaw; pitch := s[0].creator[0].pitch;
+  #assert zone_gyro(s[..]) == 1;
+  zone_tilt(s[..], 0.2, 0.1); zone_gyro_step(s[..], 0.016); #assert s[0].creator[0].yaw == yaw && s[0].creator[0].pitch == pitch;   // no aim: nothing, and dropped
+  s[0].creator[0].aim = 1; zone_tilt(s[..], 0.2, 0.1); zone_gyro_step(s[..], 0.016);
+  #assert abs(s[0].creator[0].yaw - (yaw + 0.2)) < 0.0001 && abs(s[0].creator[0].pitch - (pitch + 0.1)) < 0.0001;
+  // the finger lifts: what waited is dropped
+  zone_tilt(s[..], 0.2, 0); _ := zone_pointer(s[..], 10, 10, 2, 1, 3); y2 := s[0].creator[0].yaw; zone_gyro_step(s[..], 0.016); #assert s[0].creator[0].yaw == y2;
+  // a tap in its menu is kept: the host is asked to keep the record
+  gy.gyro_tap(s[0].gyro[..], gy.GYRO_ROW_SENS); #assert zone_action(s[..]) == ZONE_ACT_GYRO && cast(string) s[0].outbox[0..<s[0].out_n] == "g1 m=1 s=3 i=0"; zone_action_done(s[..]);
+  zone_prefs(s[..], "url=http://x/worlds/archery-range\ncoarse=1\ngyro=g1 m=2 s=4 i=1\n"); #assert s[0].gyro[0].mode == gy.GYRO_ALWAYS && s[0].gyro[0].sens == 4 && s[0].gyro[0].invert && !s[0].lines;
+  zone_prefs(s[..], "url=http://x/worlds/archery-range?net\n"); #assert s[0].lines && s[0].gyro[0].mode == gy.GYRO_AIM;
+  gy.gyro_status(s[0].gyro[..], gy.GYRO_NONE); #assert zone_gyro(s[..]) == 0;
+}
+// The page's facts: the player's gyro, kept by the host (gyro=), and ?net.
+zone_prefs :: (s: [] EgZone, t: string) { s[0].gyro[0] = gy.gyro_read(s[0].gyro[0], gy.gyro_fact(t)); s[0].lines = zone_query_flag(t, "net"); }
+// A flag in the page's url (?net, &net, net=1): on; net=0 or none, off.
+zone_query_flag :: (facts: string, key: string) -> bool {
+  for i: 1..<facts.count - key.count + 1 {
+    if (facts[i - 1] == '?' || facts[i - 1] == '&') && facts[i..<i + key.count] == key {
+      e := i + key.count;
+      if e >= facts.count || facts[e] == '&' || facts[e] == '#' || facts[e] == '\n' { return true; }
+      if facts[e] == '=' { return e + 1 < facts.count && facts[e + 1] != '0' && facts[e + 1] != '&' && facts[e + 1] != '\n'; }
+    }
+  }
+  return false;
+}
 zone_mouselook_step :: (s: [] EgZone, dt: f32) {
   c := s[0].creator[..];
   c[0].ml[0].able = c[0].on && c[0].experimental && !c[0].walk.on && !(c[0].hostiles[0].ready && c[0].hostiles[0].hp <= 0);
@@ -633,11 +680,13 @@ zone_enter :: (s: [] EgZone, t: string) #export_c #effects(all) {
   cr := s[0].creator[..];
   if !cr[0].experimental {cr[0].preview_collapsed=true;}
   if zt_coarse(t) { s[0].touch = true; }   // a touch screen: the thumb's ring and the buttons are up before the first finger
+  zone_prefs(s, t);
   cr[0].on=true;cr[0].experimental=true;cr[0].dev_animations=cc.dev_local(t);cr[0].build_review=cc.build_review_page(t);cr[0].yaw=0;cr[0].pitch=0.35;cr[0].dist=4;
   cc.ensure(cr);
 }
 zone_action :: (s: [] EgZone) -> int #export_c #effects(all) {
  if s[0].creator[0].on && s[0].creator[0].profile_request {for i:0..<56 {s[0].outbox[i]=s[0].creator[0].profile_bytes[i];}s[0].out_n=56;s[0].creator[0].profile_request=false;return 16;}
+ if s[0].gyro[0].dirty {s[0].out_n=gy.gyro_write(s[0].gyro[0],s[0].outbox[..]);s[0].gyro[0].dirty=false;return ZONE_ACT_GYRO;}   // the player's gyro, kept by the host (gyro= in its facts)
  if s[0].creator[0].experimental && s[0].xc[0].order_dirty {s[0].out_n=xc_order_save(s[0].xc[..],s[0].outbox[..]);s[0].xc[0].order_dirty=false;if s[0].out_n>0 {return 12;}}
  // USE IN EVERGLADE: open Everglade out of sight while the character walks there, then hand over in place (charactercreator-walk.coax).
  if s[0].creator[0].on && cc.walk_ask(s[0].creator[..]) {s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_PREFETCH;}
@@ -646,8 +695,8 @@ zone_action :: (s: [] EgZone) -> int #export_c #effects(all) {
  a := s[0].action; s[0].action = 0; return a; }
 zone_action_done :: (s: [] EgZone) #export_c #effects(all) { s[0].out_n = 0; }
 
-// 840 mouselook's word to the host, 841 the pointer held, 842 the reticle (percent), 843 the camera's turn, 844 its tilt (milliradians), 845 the bar slot under the pointer
+// 840 mouselook's word to the host, 841 the pointer held, 842 the reticle (percent), 843 the camera's turn, 844 its tilt (milliradians), 845 the bar slot under the pointer, 839 the gyro (aethyr/cam/gyro.coax: its mode times ten and its sensor's word)
 // the graphics governor (zone_quality_frame): 846 its rung (-1 before it starts), 847 the tier shown (0 high, 1 med, 2 low), 848 the mode (3 auto), 849 the grass knob in hundredths
 zone_probe :: (s:[] EgZone,f:int)->int #export_c #effects(all) {if f>=900 {return xc_probe(s,f);}
   if f==846 {return ifx s[0].qp[0].ready then s[0].qp[0].q[0].rung else -1;}if f==847 {return ifx s[0].qp[0].ready then quality_tier(s[0].qp[0].q[..]) else -1;}if f==848 {return s[0].qp[0].q[0].mode;}if f==849 {return cast(int)(s[0].creator[0].q_grass*100+0.5);}
-  c := s[0].creator[..];if f==840 {return mlook.ml_host(c[0].ml[0]);}if f==841 {return ifx c[0].ml[0].locked then 1 else 0;}if f==842 {return cast(int)(c[0].ml[0].shown*100);}if f==843 {return cast(int)(c[0].yaw*1000);}if f==844 {return cast(int)(c[0].pitch*1000);}if f==845 {return s[0].xc[0].hover;}return cc.probe(s[0].creator[..],f);}
+  c := s[0].creator[..];if f==840 {return mlook.ml_host(c[0].ml[0]);}if f==841 {return ifx c[0].ml[0].locked then 1 else 0;}if f==842 {return cast(int)(c[0].ml[0].shown*100);}if f==843 {return cast(int)(c[0].yaw*1000);}if f==844 {return cast(int)(c[0].pitch*1000);}if f==845 {return s[0].xc[0].hover;}if f==839 {return s[0].gyro[0].mode*10+s[0].gyro[0].status;}return cc.probe(s[0].creator[..],f);}

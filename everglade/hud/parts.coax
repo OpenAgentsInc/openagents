@@ -163,6 +163,7 @@ eg_bar_frame :: (ui: [] UitTrace, out: [] f32, at: int, b: [] f32, n: int, k: f3
   cx := (x0 + x1) * 0.5; er := 15 * k; ey := y0 - er - 2 * k;   // clear of the slots: its foot 2 px over them
   uit_part(ui, "bar"); bar := uit_put(ui, UIT_NONE, UIT_PANEL, tray.x0, tray.y0, tray.x1, tray.y1, "bar tray");
   for i: 0..<n { _ := uit_put_i(ui, bar, UIT_BUTTON, b[i * 4], b[i * 4 + 1], b[i * 4 + 2], b[i * 4 + 3], "slot", i + 1); }
+  if initial == 0 { eg_fade_list(l[..], a); return hud_emit(out, at, l[..]); }   // no emblem (an upright phone: your portrait names your class)
   uit_over(ui, uit_put(ui, bar, UIT_PANEL, cx - er, ey - er, cx + er, ey + er, "emblem"));   // on the tray's rim, on purpose
   hud_medallion(l[..], t, cx, ey, er, hud_rgba(0.20, 0.30, 0.22, 1), hud_rgba(0.06, 0.10, 0.07, 1), k);
   eg_fade_list(l[..], a);
@@ -196,6 +197,7 @@ eg_vignette :: (out: [] f32, at: int, v: HudVignette, w: f32, h: f32) -> int {
   n := eg_bar_frame(nt, out[..], 0, b[..], 3, 1, 'D', 1);
   #assert n > 6 * 20 && out[(n - 1) * VERTEX_FLOATS + 11] < 10 && out[11] >= 10;
   #assert eg_bar_frame(nt, out[..], 0, b[..], 0, 1, 'D', 1) == 0;
+  bare := eg_bar_frame(nt, out[..], 0, b[..], 3, 1, 0, 1); #assert bare > 0 && bare < n && out[(bare - 1) * VERTEX_FLOATS + 11] >= 10;   // no emblem, no letter
   // traced: the tray, then each slot in it
   tr: [1] UitTrace; at := uit_next(tr[..]);
   #assert eg_bar_frame(tr[..], out[..], 0, b[..], 3, 1, 'D', 1) == n && tr[0].n == 5 && eg_bar_slot_at(tr[..], at, 2) == 3 && tr[0].rects[3].parent == at;
