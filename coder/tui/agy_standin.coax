@@ -13,6 +13,8 @@
 //   "edit"          edit_file of notes.txt with its old and new text, asked first the same way
 //   "refuse"        the turn ends with stopReason refusal
 //   "error"         session/prompt is answered with an error, as a model failure is
+//   "notice"        agy's failure notice as the turn's words, end_turn and no usage, as agy 1.5.6
+//                   reports a model call it gave up on (a location without the model, a 429)
 //   anything else   a two-part reply
 //
 // Every turn first sends what agy sends ahead of its reply (available commands, the user's
@@ -140,6 +142,10 @@ gs_turn :: (s: [] Gs, id_in: string, d: Jv) {
   gs_chunk("user_message_chunk", msg);
   gs_update("{\"sessionUpdate\":\"session_info_update\",\"title\":\"Stand-in turn\"}");
   if gs_has(msg, "error") { gs_error(id, "-32603", "The model is unavailable. Try again later."); return; }
+  if gs_has(msg, "notice") {
+    gs_chunk("agent_message_chunk", "\n⚠ Selected model is not supported in the selected location.\n");
+    gs_result(id, "{\"stopReason\":\"end_turn\"}"); return;
+  }
   stop := "end_turn";
   if gs_has(msg, "refuse") { gs_chunk("agent_message_chunk", "I can't help with that."); stop = "refusal"; }
   else if gs_has(msg, "run ls") {

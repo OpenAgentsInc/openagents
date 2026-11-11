@@ -204,6 +204,12 @@ cd_cursor_finish_turn :: (a: [] App, result: string) {
   reason = cast(string) rb[0..<rn];
   a[0].stopping = false;
   if agy_is(a[0].cue) { cs_acp_usage(a, "antigravity", cl_raw(result, "usage")); }
+  failed := ifx agy_is(a[0].cue) then agy_turn_failed(a[0].cue, result) else "";
+  if failed.count > 0 {
+    if agy_provider(failed) { a[0].ncause = cd_cat(a[0].cause[..], 0, "provider"); }
+    fb: [1100] u8; fn := cd_cat(fb[..], 0, "Antigravity: "); fn = cd_cat(fb[..], fn, failed);
+    cd_finish(a, END_FAILED, cast(string) fb[0..<fn]); return;
+  }
   if reason == "end_turn" || reason == "end" || reason.count == 0 { cd_finish(a, END_FINISHED, ""); return; }
   if reason == "cancelled" { cd_finish(a, END_STOPPED, ""); return; }
   wb: [160] u8; wn := cd_cat(wb[..], 0, cue_title(a[0].cue)); wn = cd_cat(wb[..], wn, " ended the turn: "); wn = cd_cat(wb[..], wn, reason);
@@ -340,7 +346,7 @@ cd_cursor_poll :: (a: [] App) -> bool {
     if kind == "agent_thought_chunk" || kind == "user_message_chunk" { continue; }
     if kind == "agent_message_chunk" {
       text := cl_str(c[0].ar[..], update, "content.text");
-      if text.count > 0 { cd_reply_add(a, text); cd_reply_commit(a, false); }
+      if text.count > 0 { cd_reply_add(a, text); cd_reply_commit(a, false); if agy_is(x) { agy_chunk(x, text); } }
       continue;
     }
     if kind == "tool_call" {

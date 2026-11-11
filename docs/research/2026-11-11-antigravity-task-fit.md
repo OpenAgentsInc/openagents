@@ -23,6 +23,10 @@ Opus 5.5. Codex was not run: its login was out of quota until 2026-11-13.
 - Argon and Flash fixed the bug and made the shared atlas change. Both got the
   feature's exit codes right but printed the failure message for the new
   warning.
+- Why Carbon was slow, and what was fixed (GitHub #13227), is under "Why
+  Carbon was slow" below: its long thinking, minutes-long waits for a first
+  token and a dropped prompt cache in the `global` location. Coder now fails
+  a turn agy gave up on, and coderos-4080 names the `us` location.
 - Carbon hit the 15-minute limit twice (the bug fix and the atlas change). In
   each run it waited minutes for a model reply: once more than 5 minutes for a
   single reply, and more than 4 minutes for the first reply of a 12-line doc edit.
@@ -305,6 +309,116 @@ worth using when the Claude plan is the constraint, not to save money per task.
 - Keep a checking step after each Gemini turn that compares the change with the
   issue's stated behaviour. Both T3 failures were behaviour that passed their own
   #tests: the exit codes were right and the message was wrong.
+
+## Why Carbon was slow (GitHub #13227)
+
+Measured the same day on coderos-4080, Coder at cfa30d3534, agy 1.5.6.
+
+### Where a run's time goes
+
+agy keeps two records that split a run without a proxy:
+
+- Its conversation store (`conversations/ID.db`, table `gen_metadata`) records
+  each model call's time to the first token, its streaming time, and its
+  tokens (uncached input, cached input, output, and the thinking part).
+- Its ACP log (`log/acp-server-*.log`) records when each response began
+  (`ResponseID`), each 429 and its retry, and each call to its safety monitor.
+
+The time between one call's last token and the next call's request is
+everything else: the tool run, agy's own work, and Coder's answer to a
+permission request.
+
+| Run | Wall | Waiting for the first token | Streaming | Between calls | Of which agy's safety monitor | 429s |
+| --- | --- | --- | --- | --- | --- | --- |
+| #13220, 40 Carbon calls | 1448 s | 524 s (36%) | 840 s (58%) | 81 s (6%) | 25 calls, 26 s | 1, 39 s |
+| #13226 at 29 minutes, 53 calls | 1745 s | 1041 s (60%) | 509 s (29%) | 174 s (10%) | 29 calls, 33 s | 0 |
+
+Coder answered agy's permission requests in a median of 10 ms (34 requests,
+0.35 s in all, in #13220). Coder's engine is not where the time goes.
+
+The time went to three things, all on the model's side.
+
+1. **Long thinking at medium effort.** In #13220, two calls thought for 23k
+   and 26k tokens before writing a file, and streamed for 289 s and 386 s at
+   about 85 tokens a second. Those two calls are 675 s, 47% of the run. They
+   are the 5- and 6-minute quiet gaps.
+2. **Minutes before the first token.** Most calls start in 5 to 10 s.
+   Some wait far longer for no reason in the request: 115 s and 86 s in
+   #13220, 229 s (on 24k uncached tokens) and 157 s in #13226, 213 s in a
+   one-line rename. These all came from the `global` location.
+3. **A dropped prompt cache.** In `global`, a call sometimes resent the whole
+   conversation uncached: in #13220, 3 calls of about 200k tokens each, 635k
+   tokens that would have been 95% cheaper cached ($2.54 instead of $0.13),
+   and in #13226, 2 calls and 263k tokens. Each of those calls also waited
+   16 to 115 s for its first token.
+
+The one 429 (`TPM quota exhausted. No spare capacity is currently available
+to serve over-limit requests`) cost 39 s: 35 s for the refused request and
+4 s before agy's retry, which then succeeded.
+
+### What was ours, and fixed
+
+- **A model call agy gave up on counted as a finished turn.** agy reports it
+  as the turn's words (`⚠ Selected model is not supported in the selected
+  location`, or a 429 after its retries), with `end_turn` and no usage.
+  Coder logged `end finished` with 0 steps and exit 0, so a script or the
+  Workshop took a failed turn for a done one. It now fails as `Antigravity:
+  MESSAGE`, with the cause `provider` for quota and capacity, which starts
+  routing's cooldown. Checked with the stand-in agy (`notice`).
+- **No location was named.** `antigravity.env` on coderos-4080 named no
+  `GOOGLE_CLOUD_LOCATION`, so agy used `global`. It now names `us`.
+
+Nothing else in Coder's handling was slow. agy's safety monitor (a
+`gemini-3.1-flash-lite` call of about 1 s before a shell command with
+operators) is agy's own, about 2% of a run, and Coder has no switch for it.
+
+### Location, effort and quota
+
+Carbon and Argon are served in `global`, `us` and `eu`. Single regions
+(`us-central1`, `us-east4`, `us-east5`, `us-south1`, `europe-west4`) answer
+`404 NOT_FOUND`.
+
+Each run below is one run of a task from this document's set, on Carbon at
+medium effort unless named, all at the same time of day:
+
+| Task | `global` | `us` | `us`, low effort |
+| --- | --- | --- | --- |
+| T1 rename | 301 s, 102 s | 62 s, 61 s | 95 s (`global`) |
+| T6 doc paragraph | 81 s | 67 s | 202 s |
+| T4 reading | 389 s | 280 s | 212 s |
+| Calls waiting over 60 s for the first token | 2 of 32 (213 s, 108 s) | 0 of 29 (longest 22 s) | 3 of 18 (83 s, 54 s, 48 s) |
+| Large cache misses | in #13220 and #13226 | none | none |
+
+- **Location: use `us`.** In these runs it never waited a minute and never
+  dropped the cache. `global` did both, here and in both issue runs. Four
+  runs per location is a small sample, so the gap is a direction, not a
+  guarantee.
+- **Effort: low removes thinking, not the waits.** Low spent no thinking
+  tokens (T4: 5.8k output against 14.9k, $1.00 against $1.28, streaming 21 s
+  against 168 s), so #13220's two 5- and 6-minute calls would not happen.
+  But the first-token waits stayed, and T6 took longer than at medium.
+  Keep medium for code that needs judgement; use low for mechanical work.
+- **Quota.** The 429 is Standard PayGo running out of shared capacity.
+  Provisioned Throughput reserves capacity but is bought by the month, well
+  over the $1,500 a month GCP budget, so it was not bought or measured. One
+  429 in two long runs cost 39 s; agy's own retry covers it.
+
+### Before and after
+
+The same tasks as the first table, before (`global`, the task-fit runs
+above, run 25 at a time) and after (`us`, the fixes above):
+
+| Task | Carbon before | Carbon after | Argon before | Argon after |
+| --- | --- | --- | --- | --- |
+| T6 doc paragraph | 713 s | 67 s | 46 s | 32 s (`global`: 36 s) |
+| T4 reading | 531 s | 280 s | 191 s | not rerun |
+
+Part of the "before" is load: those runs went 25 at a time. Both "after"
+Carbon runs passed (T6's paragraph was added in place; T4's EXPLAIN.md
+names `e_take`, `set_model`, `e_drift` and `run_model`).
+
+Spend for these experiments: $6.14 at the catalog prices above (17 runs and
+two location probes), plus cents of agy's Flash-Lite monitor calls.
 
 ## Not run, and why
 

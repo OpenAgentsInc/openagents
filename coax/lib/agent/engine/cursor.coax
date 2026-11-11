@@ -40,6 +40,7 @@ CuEngine :: struct {
   cwd: [1024] u8; ncwd: int;
   err: [2048] u8; err_n: int;     // why the agent stopped, when it said nothing itself
   agent: CuAgent;                 // the agent and its quirks; none (no name) is Cursor's
+  notice: [1024] u8; notice_n: int; // the turn's words were agy's failure notice (antigravity.coax, agy_chunk)
 }
 
 cue_attach :: (x: [] CuEngine, c: [] CuClient, p: [] ClProcess, line: [] u8, arena: [] u8, out: [] u8) {
@@ -81,6 +82,7 @@ cue_resume :: (x: [] CuEngine, session: string) { x[0].nresume = e_set(x[0].resu
 
 // A message: at once on an open session with nothing held, else owed (cut to CUE_OWED). Whether it went.
 cue_send :: (x: [] CuEngine, msg: string) -> bool {
+  x[0].notice_n = 0;
   if x[0].live && x[0].ready && x[0].hold == 0 { r := cu_session_prompt(x[0].c, msg); return true; }
   x[0].nowed = e_set(x[0].owed[..], 0, msg);
   return false;

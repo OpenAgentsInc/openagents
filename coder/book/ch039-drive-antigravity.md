@@ -124,6 +124,30 @@ Anything else fails it as `Antigravity ended the turn: REASON`. A refused
 the provider (quota, rate, overload, unavailable), the end line's cause is
 `provider` and routing's cooldown is recorded.
 
+### A model call agy gave up on
+
+agy does not refuse `session/prompt` when a model call fails for good (a
+location that does not serve the model, or a 429 still there after its own
+retries). It sends the failure as the turn's words, `\n⚠ MESSAGE\n`, answers
+`end_turn`, and reports no usage. Coder used to log that as a finished turn
+with no steps. Now a turn whose words are such a notice and whose answer has
+no usage fails as `Antigravity: MESSAGE`, with the cause `provider` when the
+message names quota, rate or capacity (GitHub #13227). A notice followed by
+other words, or an answer with usage, is an ordinary turn.
+
+### Where the model runs
+
+agy calls Vertex AI in `GOOGLE_CLOUD_LOCATION`, `global` when the
+credentials file names none. Gemini 4 Carbon and Argon are served in
+`global` and in the `us` and `eu` multi-regions, not in single regions such
+as `us-central1` or `us-east5`. On 2026-11-11, `us` answered Carbon's
+requests with a steady 5 to 8 seconds to the first token and kept its
+prompt cache. `global` sometimes waited minutes and dropped the cache.
+`coderos-4080`'s credentials file names `GOOGLE_CLOUD_LOCATION=us`. The
+measurements are in
+[docs/research/2026-11-11-antigravity-task-fit.md](../../docs/research/2026-11-11-antigravity-task-fit.md),
+"Why Carbon was slow".
+
 ## Resume and fork
 
 `coder fork ID "TASK"` of an Antigravity session sends `session/resume`
@@ -151,8 +175,9 @@ coax/web/tool.sh coder/tui/agy_standin.coax                  # the stand-in agy,
 ```
 
 The stand-in covers a plain turn, a command allowed and denied, an edit
-allowed and denied, a refusal, a refused turn, a signed-out agy, model and
-effort, resume, a resume refused, and no `agy` on `PATH`. Runs of
+allowed and denied, a refusal, a refused turn, agy's failure notice, a
+signed-out agy, model and effort, resume, a resume refused, and no `agy` on
+`PATH`. Runs of
 `coder run --stream-json` against the Claude Code, Codex and Cursor
 stand-ins, Microcoder's recorded replay and the echo engine printed the
 same stdout, stderr, session JSONL and protocol lines before and after this

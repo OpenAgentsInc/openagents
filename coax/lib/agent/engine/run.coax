@@ -1029,6 +1029,12 @@ tr_cursor_finish :: (r: [] TrRun, result: string) {
   reason = cast(string) rb[0..<rn];
   r[0].stopping = false;
   if agy_is(r[0].cue) { sw_acp_usage(r[0].log, "antigravity", cl_raw(result, "usage")); }
+  failed := ifx agy_is(r[0].cue) then agy_turn_failed(r[0].cue, result) else "";
+  if failed.count > 0 {
+    if agy_provider(failed) { r[0].ncause = tr_cat(r[0].cause[..], 0, "provider"); }
+    fb: [1100] u8; fn := tr_cat(fb[..], 0, "Antigravity: "); fn = tr_cat(fb[..], fn, failed);
+    tr_finish(r, TR_FAILED, cast(string) fb[0..<fn]); return;
+  }
   if reason == "end_turn" || reason == "end" || reason.count == 0 { tr_finish(r, TR_FINISHED, ""); return; }
   if reason == "cancelled" { tr_finish(r, TR_STOPPED, ""); return; }
   wb: [160] u8; wn := tr_cat(wb[..], 0, cue_title(r[0].cue)); wn = tr_cat(wb[..], wn, " ended the turn: "); wn = tr_cat(wb[..], wn, reason);
@@ -1117,7 +1123,7 @@ tr_cursor_poll :: (r: [] TrRun) -> bool {
     if kind == "agent_thought_chunk" || kind == "user_message_chunk" { continue; }
     if kind == "agent_message_chunk" {
       text := cl_str(c[0].ar[..], update, "content.text");
-      if text.count > 0 { tr_reply(r, text); }
+      if text.count > 0 { tr_reply(r, text); if agy_is(x) { agy_chunk(x, text); } }
       continue;
     }
     if kind == "tool_call" { r[0].nrep = 0; r[0].steps += 1; continue; }     // a row, not a log line (as Coder)

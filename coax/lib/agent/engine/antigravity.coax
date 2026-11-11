@@ -179,6 +179,50 @@ agy_provider :: (message: string) -> bool {
   #assert !agy_provider("Authentication required") && !agy_provider("Unknown model ID: nope") && !agy_provider("");
 }
 
+// ---------------------------------------------------------------- a model call that failed
+
+// agy reports a model call it gave up on (a location that does not serve the model, a quota
+// still exhausted after its own retries) as the turn's words, "\n⚠ MESSAGE\n", answers
+// session/prompt with stopReason end_turn, and reports no usage. Measured on agy 1.5.6
+// (GitHub #13227): GOOGLE_CLOUD_LOCATION=us-east5 with gemini-4-carbon. Such a turn failed.
+
+// The message of agy's failure notice, or "" when the words are not one.
+agy_notice :: (text: string) -> string {
+  a := 0; b := text.count;
+  while a < b && text[a] <= 32 { a += 1; }
+  while b > a && text[b - 1] <= 32 { b -= 1; }
+  mark := "⚠";
+  if b - a < mark.count || cast(string) text[a..<a + mark.count] != mark { return ""; }
+  a += mark.count;
+  while a < b && text[a] <= 32 { a += 1; }
+  return ifx a < b then cast(string) text[a..<b] else "";
+}
+// One chunk of the turn's words: a notice is kept, other words forget it.
+agy_chunk :: (x: [] CuEngine, text: string) {
+  m := agy_notice(text);
+  if m.count > 0 { x[0].notice_n = cl_copy(x[0].notice[..], m); return; }
+  for c: text { if c > 32 { x[0].notice_n = 0; return; } }
+}
+// Why the turn session/prompt answered (result) failed: agy's notice when its words were one and
+// the answer reports no usage; "" when it did not fail this way.
+agy_turn_failed :: (x: [] CuEngine, result: string) -> string {
+  if x[0].notice_n == 0 || cl_raw(result, "usage").count > 0 { return ""; }
+  return cast(string) x[0].notice[0..<x[0].notice_n];
+}
+
+#test "antigravity: a turn whose words are agy's failure notice, with no usage, failed" {
+  #assert agy_notice("\n⚠ Selected model is not supported in the selected location.\n") == "Selected model is not supported in the selected location.";
+  #assert agy_notice("⚠ RESOURCE_EXHAUSTED (code 429)") == "RESOURCE_EXHAUSTED (code 429)" && agy_notice("Done. ⚠ careful") == "" && agy_notice("⚠  ") == "" && agy_notice("") == "";
+  xb: [1] CuEngine; x := xb[..];
+  agy_chunk(x, "\n⚠ Selected model is not supported in the selected location.\n");
+  #assert agy_turn_failed(x, "{\"stopReason\":\"end_turn\"}") == "Selected model is not supported in the selected location.";
+  #assert agy_turn_failed(x, "{\"stopReason\":\"end_turn\",\"usage\":{\"totalTokens\":9}}") == "";   // the model answered
+  agy_chunk(x, "  \n"); #assert x[0].notice_n > 0;                                             // blank words keep it
+  agy_chunk(x, "I fixed it."); #assert agy_turn_failed(x, "{\"stopReason\":\"end_turn\"}") == "";   // later words forget it
+  agy_chunk(x, "⚠ quota"); #assert x[0].notice_n > 0;
+  sent := cue_send(x, "next"); #assert !sent && x[0].notice_n == 0;                          // a new message starts clean
+}
+
 AGY_PATH_KEYS :: [5] string.["Path", "Cwd", "TargetFile", "AbsolutePath", "DirectoryPath"];
 
 // True when a path agy's tools name in rawInput (read_file's Path, run_command's Cwd, ...) contains "..".
