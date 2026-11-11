@@ -75,7 +75,7 @@ drill() {
   # A throwaway Postgres in this container: the restore target, gone when the job ends.
   mkdir -p "$work/pg" "$work/sock"; chown -R postgres "$work/pg" "$work/sock"; chmod 755 "$work"
   su-exec postgres initdb -D "$work/pg" -U postgres -A trust > /dev/null
-  su-exec postgres pg_ctl -D "$work/pg" -o "-k $work/sock -c listen_addresses=''" -l "$work/pg.log" -w start > /dev/null
+  su-exec postgres pg_ctl -D "$work/pg" -o "-k $work/sock -c listen_addresses=''" -l "$work/sock/pg.log" -w start > /dev/null
   local local_dsn="host=$work/sock user=postgres dbname=restore"
   su-exec postgres createdb -h "$work/sock" -U postgres restore
   chmod 644 "$work/db.dump"
