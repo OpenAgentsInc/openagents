@@ -1,0 +1,35 @@
+{
+ "talk": "~/Desktop/294/chrisraw.mp4",
+ "words": "words.srt",
+ "fixes": {
+  "Nostril": "Nostr",
+  "coax": "Coax",
+  "Lib, SecP,": "libsecp256k1,",
+  "named as BitBolt or RFC in the": "names its BIP, BOLT or RFC and the",
+  "has a rule.": "has a row.",
+  "layer, too?": "layer two?",
+  "cryptography Bitcoin": "cryptography, Bitcoin"
+ },
+ "segments": [
+  {"at": 0.0, "to": 9.5, "src": "~/Desktop/294/open3dworlds.mov", "in": 0, "hold_last": true, "tag": "Our post on X"},
+  {"at": 9.5, "to": 15.4, "kind": "card", "lines": [["What Bitcoin library?", 11.76], ["Which SDK?", 13.5], ["Which layer two?", 14.26]]},
+  {"at": 15.4, "to": 17.42, "src": "~/work/film-out/ep293-clips/dragonback-1080.mp4", "in": 1.0, "tag": "Our game engine: Aethyr (Everglade)"},
+  {"at": 17.42, "to": 20.35, "kind": "still", "src": "stills/coax-book.png", "zoom": [300, 40, 1300, 812], "tag": "Our language: Coax"},
+  {"at": 20.35, "to": 22.5, "kind": "still", "src": "stills/psionic.png", "zoom": [240, 150, 1440, 900], "tag": "Our ML library: Psionic"},
+  {"at": 22.5, "to": 24.42, "kind": "scroll", "src": "stills/code-nostr.png", "y0": 0, "y1": 500, "tag": "Our Nostr library, in Coax"},
+  {"at": 24.42, "to": 29.3, "kind": "scroll", "src": "stills/code-sha256.png", "y0": 0, "y1": 1500, "tag": "Our cryptography, from scratch in Coax"},
+  {"at": 29.3, "to": 33.5, "src": "lab/tour.mp4", "in": 35.2, "tag": "Bitcoin Lab"},
+  {"at": 33.5, "to": 37.9, "src": "~/work/film-out/verse/meteor.mp4", "in": 0.6, "tag": "Aethyr: a meteor meets a house"},
+  {"at": 37.9, "to": 43.85, "src": "~/work/film-out/ep293-clips/horde.mp4", "in": 3, "tag": "Aethyr: thousands of agents in one battle"},
+  {"at": 43.85, "to": 53.1, "kind": "scroll", "src": "stills/code-header.png", "y0": 0, "y1": 2600, "tag": "Bitcoin, written by agents, in Coax"},
+  {"at": 53.1, "to": 65.4, "src": "~/Desktop/294/book.mov", "in": 0, "hold_last": true, "tag": "The book: Bitcoin From Scratch"},
+  {"at": 65.4, "to": 79.5, "kind": "still", "src": "stills/book-last.png", "zoom": [800, 230, 1940, 1330], "tag": "The rules"},
+  {"at": 79.5, "to": 107.8, "src": "lab/tour.mp4", "in": 0, "tag": "Bitcoin Lab: walk the book"},
+  {"at": 107.8, "to": null, "src": "lab/tour.mp4", "in": 37.9, "hold_last": true}
+ ],
+ "side": [
+  {"at": 0.0, "to": 53.1, "kind": "title", "text": "Bitcoin From Scratch"},
+  {"at": 85.6, "to": 107.8, "kind": "links", "text": "BITCOIN LAB|openagents.com/worlds/bitcoin-lab|github.com/OpenAgentsInc/openagents"},
+  {"at": 107.8, "to": null, "kind": "end", "text": "FOLLOW ALONG|openagents.com/worlds/bitcoin-lab|github.com/OpenAgentsInc/openagents"}
+ ]
+}
