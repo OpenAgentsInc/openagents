@@ -9,10 +9,12 @@
 //              [--dictation-recorder PROGRAM]
 //   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "OP ; OP"] [--drive SOCKET] [--real-time] [--tree OUT.txt]
 //              [--dictation-fixture | --dictation-recorder PROGRAM] [--dictation-stand-in WORDS]
-//   OpenAgents --drive SOCKET [--agent-clock] ...   a window that coax drive can drive
+//   OpenAgents --drive SOCKET [--agent-clock] [--hidden] ...   a window that coax drive can drive (--hidden, the
+//              Mac's: made but never shown, no Dock icon; a check of the window's VoiceOver elements, ax)
 // The operations are coax drive's (apps/shared/host/drive.c: clock +MS, clock settle [within MS], screenshot,
 // quit), the chat's (chat.h oa_chat_drive: tree, tap ID, type ID TEXT, send, state last ...) and, on the Mac,
-// this app's (menu TITLE, shortcut TITLE, clip TEXT, mark TEXT, commit TEXT, state pasteboard, state window).
+// this app's (menu TITLE, shortcut TITLE, clip TEXT, mark TEXT, commit TEXT, state pasteboard, state window) and
+// the host's VoiceOver elements (ax, ax-press ID, ax-key tab|shift-tab|space|enter; about ID is the chat's).
 // A picture runs them in order on the agent clock, printing each answer, then answers --drive's socket until
 // `quit`, then is written, and with --tree its element table (`tree`) as text beside it.
 // `coax/web/tool.sh drive native SOCKET OP...` sends them to a running app.
@@ -264,7 +266,7 @@ int main(int argc, char **argv) {
                .drive = on_drive, .busy = on_busy};
 #ifdef __APPLE__
   // the Mac's window: under a transparent title bar, at least 900 by 600 points, where it was at quit
-  app.chrome = 1; app.min_width = 900; app.min_height = 600;
+  app.chrome = 1; app.min_width = 900; app.min_height = 600; app.hidden = has(argc, argv, "--hidden");
   app.ime = &oac_ime; app.command = on_command; app.command_state = on_command_state; app.file = on_file;
   if (settings_path[0] && !demo) {
     size_t sn; uint8_t *json = oac_read_file(settings_path, &sn);

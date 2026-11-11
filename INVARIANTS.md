@@ -6077,8 +6077,17 @@ Everglade do). Coax owns labels, geometry, readiness and button rectangles, and
 `UiApp.hit` hands every other point to the world view under the panel. The
 `--shot` pictures of the setup and status panels and of the message feed match
 the former Swift host's own drawing pixel for pixel. The setup buttons are no
-longer AppKit buttons, so VoiceOver does not reach them until the shared host has
-accessibility. The surfaces redraw on changes, with no idle animation loop. The game's own HUD is unchanged. CPU measurement converts
+longer AppKit buttons. Since GitHub #13180 the shared host gives VoiceOver every
+row of an app's element table (`components/core/elements.coax`, read through
+`UiApp.drive`'s `tree`): each row is an `NSAccessibilityElement` under the host's
+view, with its stable id as the identifier, a role from the row's role, its label,
+the value and enabled state the app's optional `about ID` gives, and AXPress as the
+app's `tap ID`. Tab and Shift-Tab move focus through the rows that can be pressed or
+typed into; Space and Enter press the focused one. Aethyrforge's panel fills that
+table in Coax (`chrome.coax` `fui_elements`: `setup.open`, `setup.refresh`,
+`setup.verify-voice`, `setup.folder`, `setup.microphone`, and the panel's status
+lines). A disabled button refuses AXPress, as it refuses a click.
+`apps/shared/host/apple/a11y-check.sh` checks the window's tree headlessly. The surfaces redraw on changes, with no idle animation loop. The game's own HUD is unchanged. CPU measurement converts
 `proc_pid_rusage` Mach ticks to nanoseconds and is checked against the independent
 POSIX process CPU clock before any numbers are recorded.
 

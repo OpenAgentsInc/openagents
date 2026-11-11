@@ -34,6 +34,9 @@ void fgu_update(bool scene,bool checking,bool verifying,bool status,bool paused,
 int64_t fgu_draw(float *out,int64_t cap,float w,float h,float d) {return fui_draw(ui(),view(),(coax_v_f32){out,cap},w,h,d);}
 int64_t fgu_hit(float w,float h,float x,float y) {return fui_hit(ui(),view(),w,h,x,y);}
 float fgu_box(int64_t kind,float w,float h,int64_t field) {return fui_box_field(kind,w,h,field);}
+int64_t fgu_tree(float w,float h,uint8_t *out,int64_t cap) {return fui_tree(ui(),view(),w,h,(coax_v_u8){out,cap});}
+int64_t fgu_element(const char *id,int64_t n) {return fui_element((coax_string){id,n});}
+int64_t fgu_about(int64_t button,uint8_t *out,int64_t cap) {return fui_about(ui(),view(),button,(coax_v_u8){out,cap});}
 int32_t fgu_glyph_count(void) {return 98;}
 uint32_t fgu_glyph_code(int32_t g) {return fui_glyph_code(g);}
 int32_t fgu_font_count(void) {return 4;}

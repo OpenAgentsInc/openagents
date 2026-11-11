@@ -16,6 +16,10 @@ void fgu_update(bool scene,bool checking,bool verifying,bool status,bool paused,
 int64_t fgu_draw(float *out,int64_t cap,float w,float h,float d);
 int64_t fgu_hit(float w,float h,float x,float y);
 float fgu_box(int64_t kind,float w,float h,int64_t field);
+// The setup panel's rows for coax drive and VoiceOver (chrome.coax fui_tree, fui_element, fui_about).
+int64_t fgu_tree(float w,float h,uint8_t *out,int64_t cap);
+int64_t fgu_element(const char *id,int64_t n);
+int64_t fgu_about(int64_t button,uint8_t *out,int64_t cap);
 int32_t fgu_glyph_count(void);
 uint32_t fgu_glyph_code(int32_t g);
 int32_t fgu_font_count(void);

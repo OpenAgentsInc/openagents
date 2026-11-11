@@ -68,6 +68,10 @@ struct UiHost {
   NSView *root;               // with native children (ui_child): the content view holding them and the host's view
   int under;                  // children under the components: the layer is clear where nothing is drawn
   NSMutableArray *observers;  // UiApp.life's notifications
+  // accessibility (VoiceOver, #13180): the app's element table as NSAccessibilityElements, kept by id
+  NSMutableDictionary *ax_by_id;
+  NSArray *ax_rows;           // the last table's elements, in its order
+  NSString *ax_focus;         // the id Tab and VoiceOver last moved to
 #endif
   int looking;                // ui_hold_pointer
   // the app's own layer (ui_layer)
@@ -98,6 +102,12 @@ static int ui_named(unsigned short code, unichar c) {
 // ---- the view: input and the drawable
 
 static int ui_paste_from(UiHost *h, NSPasteboard *pb);
+// accessibility (below): the elements, the one under a point, Tab's move, and pressing what has focus
+static NSArray *ui_ax_children(UiHost *h);
+static id ui_ax_at(UiHost *h, NSPoint screen);
+static id ui_ax_focused(UiHost *h);
+static NSString *ui_ax_move(UiHost *h, int back);
+static int ui_ax_press_focus(UiHost *h);
 
 @interface UiView : NSView <NSTextInputClient>
 @property(nonatomic, assign) UiHost *host;
@@ -190,9 +200,24 @@ static int ui_paste_from(UiHost *h, NSPasteboard *pb);
       if (h->app.key(h->app.user, c, mods, 1)) return;
     }
   }
-  if (h->app.wants_text && h->app.wants_text(h->app.user)) [self interpretKeyEvents:@[ e ]];
-  else if (h->app.key && bare.length) h->app.key(h->app.user, (int)[bare characterAtIndex:0], mods, 1);
+  // keys the app left: Tab and Shift-Tab move focus through the element table; Enter presses what has it
+  if (![self composing] && !(mods & (2 | 4 | 8))) {
+    if (named == -15) { ui_ax_move(h, mods & 1); return; }
+    if (named == -2 && ui_ax_press_focus(h)) return;
+  }
+  int text = h->app.wants_text && h->app.wants_text(h->app.user);
+  if (text) [self interpretKeyEvents:@[ e ]];
+  else if (h->app.key && bare.length && h->app.key(h->app.user, (int)[bare characterAtIndex:0], mods, 1)) {}
+  else if ([bare isEqualToString:@" "] && !mods) ui_ax_press_focus(h);   // Space presses what has focus
 }
+// Accessibility: the view is a group whose children are the app's element table (components/core/elements.coax,
+// read through UiApp.drive's `tree`), so VoiceOver reaches every row the components draw.
+- (BOOL)isAccessibilityElement { return YES; }
+- (NSAccessibilityRole)accessibilityRole { return NSAccessibilityGroupRole; }
+- (NSString *)accessibilityLabel { return self.window.title.length ? self.window.title : nil; }
+- (NSArray *)accessibilityChildren { return ui_ax_children(self.host); }
+- (id)accessibilityHitTest:(NSPoint)p { return ui_ax_at(self.host, p) ?: self; }
+- (id)accessibilityFocusedUIElement { return ui_ax_focused(self.host) ?: self; }
 - (void)keyUp:(NSEvent *)e {
   UiHost *h = self.host;
   NSString *bare = e.charactersIgnoringModifiers;
@@ -314,6 +339,197 @@ static int ui_to(NSRange r) { return r.location == NSNotFound ? -1 : (int)(r.loc
 - (void)windowDidDeminiaturize:(NSNotification *)n { (void)n; [self life:UI_LIFE_RESTORED]; }
 - (void)windowDidChangeOcclusionState:(NSNotification *)n { (void)n; [self life:UI_LIFE_OCCLUSION]; }
 @end
+
+// ---- accessibility (VoiceOver; GitHub #13180)
+// Each row of the app's element table (components/core/elements.coax: `ID ROLE "LABEL" at X Y size WxH`,
+// logical px from the view's top left, which on the Mac are points) is one NSAccessibilityElement, kept by
+// its stable id so VoiceOver's cursor stays on it from frame to frame. Its value and whether it can be
+// pressed come from the app's optional `about ID` ("value TEXT" and "enabled 0|1" lines); pressing it is
+// the app's `tap ID`, the same operation coax drive's checks use.
+enum { UI_AX_BUTTON, UI_AX_ROW, UI_AX_TAB, UI_AX_FIELD, UI_AX_REGION, UI_AX_ITEM };
+static const char *const ui_ax_roles[] = {"button", "row", "tab", "field", "region", "item"};
+@interface UiAxElement : NSAccessibilityElement
+@property(nonatomic, assign) UiHost *host;
+@property(nonatomic, copy) NSString *ident, *label, *value;
+@property(nonatomic) int kind, enabled;
+@property(nonatomic) NSRect box;   // logical px, y down from the view's top left
+@end
+static int ui_ax_tap(UiHost *h, NSString *ident);
+@implementation UiAxElement
+- (NSAccessibilityRole)accessibilityRole {
+  switch (self.kind) {
+    case UI_AX_BUTTON: case UI_AX_ROW: return NSAccessibilityButtonRole;
+    case UI_AX_TAB: return NSAccessibilityRadioButtonRole;
+    case UI_AX_FIELD: return NSAccessibilityTextFieldRole;
+    case UI_AX_ITEM: return NSAccessibilityStaticTextRole;
+  }
+  return NSAccessibilityGroupRole;
+}
+- (NSAccessibilitySubrole)accessibilitySubrole { return self.kind == UI_AX_TAB ? NSAccessibilityTabButtonSubrole : nil; }
+- (NSString *)accessibilityRoleDescription {
+  if (self.kind == UI_AX_ROW) return @"row";
+  if (self.kind == UI_AX_TAB) return @"tab";
+  return NSAccessibilityRoleDescription(self.accessibilityRole, self.accessibilitySubrole);
+}
+- (NSString *)accessibilityIdentifier { return self.ident; }
+- (NSString *)accessibilityLabel { return self.kind == UI_AX_ITEM && !self.value ? nil : self.label; }   // text is read once, as its value
+- (id)accessibilityValue { return self.kind == UI_AX_ITEM && !self.value ? self.label : self.value; }
+- (BOOL)isAccessibilityEnabled { return self.enabled; }
+- (BOOL)isAccessibilityElement { return YES; }
+- (id)accessibilityParent { UiHost *h = self.host; return h && h->view ? h->view : nil; }
+- (NSRect)accessibilityFrame {
+  UiHost *h = self.host; NSRect b = self.box;
+  if (!h || !h->view || !h->view.window) return b;   // offscreen: the table's own coordinates
+  NSRect v = NSMakeRect(b.origin.x, h->view.bounds.size.height - b.origin.y - b.size.height, b.size.width, b.size.height);
+  return NSAccessibilityFrameInView(h->view, v);
+}
+- (BOOL)isAccessibilityFocused { UiHost *h = self.host; return h && [h->ax_focus isEqualToString:self.ident]; }
+- (void)setAccessibilityFocused:(BOOL)on { UiHost *h = self.host; if (h && on) h->ax_focus = [self.ident copy]; }
+- (BOOL)accessibilityPerformPress {
+  if (self.kind == UI_AX_REGION || self.kind == UI_AX_ITEM || !self.enabled) return NO;
+  return ui_ax_tap(self.host, self.ident) != 0;
+}
+- (NSArray *)accessibilityCustomActions { return nil; }
+@end
+
+static int ui_ax_tap(UiHost *h, NSString *ident) {
+  if (!h || !h->app.drive || !ident.length) return 0;
+  char op[128], out[512];
+  snprintf(op, sizeof op, "tap %s", ident.UTF8String);
+  int n = h->app.drive(h->app.user, op, out, (int)sizeof out);
+  if (n < 0) return 0;
+  h->stale = 1;
+  return !(n > 0 && !strncmp(out, "no row", 6));   // the chat's answer when the id is gone
+}
+// The app's table now, as elements (the same objects for the same ids).
+static NSArray *ui_ax_children(UiHost *h) {
+  if (!h || !h->app.drive) return @[];
+  static char tree[1 << 16];
+  int n = h->app.drive(h->app.user, "tree", tree, (int)sizeof tree - 1);
+  if (n < 0) return @[];
+  tree[n] = 0;
+  if (!h->ax_by_id) h->ax_by_id = [NSMutableDictionary dictionary];
+  NSMutableArray *rows = [NSMutableArray array];
+  for (char *line = tree, *next; line && *line; line = next) {
+    next = strchr(line, '\n');
+    if (next) *next++ = 0;
+    if (line[0] == '(' || !line[0]) continue;   // "(nothing yet ...)", "(and N more rows)"
+    char *sp = strchr(line, ' '), *q0 = sp ? strchr(sp, '"') : NULL, *q1 = q0 ? strstr(q0 + 1, "\" at ") : NULL;
+    if (!sp || !q0 || !q1) continue;
+    *sp = 0;
+    char role[16] = {0}; snprintf(role, sizeof role, "%.*s", (int)(q0 - sp - 2 > 0 ? q0 - sp - 2 : 0), sp + 1);
+    float x, y, w, rows_h;
+    if (sscanf(q1 + 5, "%f %f size %fx%f", &x, &y, &w, &rows_h) != 4) continue;
+    NSString *ident = [NSString stringWithUTF8String:line];
+    NSString *label = [[NSString alloc] initWithBytes:q0 + 1 length:(NSUInteger)(q1 - q0 - 1) encoding:NSUTF8StringEncoding];
+    if (!ident || [rows containsObject:h->ax_by_id[ident] ?: NSNull.null]) continue;
+    UiAxElement *el = h->ax_by_id[ident];
+    if (!el) { el = [UiAxElement new]; el.host = h; el.ident = ident; h->ax_by_id[ident] = el; }
+    el.kind = UI_AX_REGION;
+    for (int k = 0; k < 6; k++) if (!strcmp(role, ui_ax_roles[k])) el.kind = k;
+    el.label = label ?: @""; el.box = NSMakeRect(x, y, w, rows_h); el.value = nil; el.enabled = 1;
+    static char about[8192]; char op[128];
+    snprintf(op, sizeof op, "about %s", line);
+    int k = h->app.drive(h->app.user, op, about, (int)sizeof about - 1);
+    if (k > 0) {
+      about[k] = 0;
+      for (char *a = about, *an; a && *a; a = an) {
+        an = strchr(a, '\n'); if (an) *an++ = 0;
+        if (!strncmp(a, "value ", 6)) el.value = [NSString stringWithUTF8String:a + 6];
+        else if (!strncmp(a, "enabled ", 8)) el.enabled = atoi(a + 8) != 0;
+      }
+    }
+    [rows addObject:el];
+  }
+  // ids no longer drawn go; their objects stay out of VoiceOver's reach
+  for (NSString *ident in h->ax_by_id.allKeys) if (![rows containsObject:h->ax_by_id[ident]]) { ((UiAxElement *)h->ax_by_id[ident]).host = NULL; [h->ax_by_id removeObjectForKey:ident]; }
+  if (h->ax_focus && !h->ax_by_id[h->ax_focus]) h->ax_focus = nil;
+  h->ax_rows = rows;
+  return rows;
+}
+static id ui_ax_at(UiHost *h, NSPoint screen) {
+  for (UiAxElement *el in [ui_ax_children(h) reverseObjectEnumerator]) if (NSPointInRect(screen, el.accessibilityFrame)) return el;
+  return nil;
+}
+static id ui_ax_focused(UiHost *h) { return h && h->ax_focus ? h->ax_by_id[h->ax_focus] : nil; }
+// Tab (back 0) and Shift-Tab (back 1): the next element that can be pressed or typed into, in the table's
+// order, wrapping. A field gets the keyboard (its tap). The id it moved to, or nil.
+static NSString *ui_ax_move(UiHost *h, int back) {
+  NSMutableArray *stops = [NSMutableArray array];
+  for (UiAxElement *el in ui_ax_children(h)) if (el.enabled && el.kind != UI_AX_REGION && el.kind != UI_AX_ITEM) [stops addObject:el];
+  if (!stops.count) return nil;
+  NSUInteger at = NSNotFound;
+  for (NSUInteger i = 0; i < stops.count; i++) if ([((UiAxElement *)stops[i]).ident isEqualToString:h->ax_focus]) at = i;
+  NSUInteger to = at == NSNotFound ? (back ? stops.count - 1 : 0) : (at + (back ? stops.count - 1 : 1)) % stops.count;
+  UiAxElement *el = stops[to];
+  h->ax_focus = [el.ident copy];
+  if (el.kind == UI_AX_FIELD) ui_ax_tap(h, el.ident);
+  if (h->view && h->view.window) NSAccessibilityPostNotification(el, NSAccessibilityFocusedUIElementChangedNotification);
+  h->stale = 1;
+  return el.ident;
+}
+static int ui_ax_press_focus(UiHost *h) {
+  UiAxElement *el = ui_ax_focused(h);
+  return el && el.kind != UI_AX_FIELD ? [el accessibilityPerformPress] : 0;
+}
+// The elements as VoiceOver reaches them: from the window down through accessibilityChildren (offscreen,
+// the host's own list), each with what the Accessibility API says of it.
+static void ui_ax_walk(id node, NSMutableArray *found, int depth) {
+  if (!node || depth > 12) return;
+  if ([node isKindOfClass:UiAxElement.class]) { [found addObject:node]; return; }
+  NSArray *kids = [node respondsToSelector:@selector(accessibilityChildren)] ? [node accessibilityChildren] : nil;
+  for (id k in kids) ui_ax_walk(k, found, depth + 1);
+}
+static NSArray *ui_ax_reached(UiHost *h) {
+  if (!h->window) return ui_ax_children(h);
+  NSMutableArray *found = [NSMutableArray array];
+  ui_ax_walk(h->window, found, 0);
+  return found;
+}
+static int ui_ax_drive(UiHost *h, const char *op, char *out, int cap) {
+  int n = 0;
+#define UI_AX_SAY(...) do { if (n < cap) { int k_ = snprintf(out + n, (size_t)(cap - n), __VA_ARGS__); n += k_ > 0 ? k_ : 0; if (n >= cap) n = cap - 1; } } while (0)
+  if (!strcmp(op, "ax")) {   // ax: every element VoiceOver reaches, one a line
+    NSArray *els = ui_ax_reached(h);
+    if (!h->window) UI_AX_SAY("(offscreen: no window; the host's elements)\n");
+    if (!els.count) UI_AX_SAY("(no elements)\n");
+    for (UiAxElement *el in els) {
+      NSRect f = el.accessibilityFrame;
+      id v = el.accessibilityValue;
+      UI_AX_SAY("%s %s%s%s \"%s\"%s%s%s%s%s at %.0f %.0f size %.0fx%.0f\n", el.accessibilityIdentifier.UTF8String, el.accessibilityRole.UTF8String,
+                el.accessibilitySubrole ? "/" : "", el.accessibilitySubrole ? el.accessibilitySubrole.UTF8String : "", el.accessibilityLabel ? el.accessibilityLabel.UTF8String : "",
+                v ? " value \"" : "", v ? [[v description] UTF8String] : "", v ? "\"" : "", el.isAccessibilityEnabled ? "" : " disabled",
+                el.isAccessibilityFocused ? " focused" : "", f.origin.x, f.origin.y, f.size.width, f.size.height);
+    }
+    return n;
+  }
+  if (!strncmp(op, "ax-press ", 9)) {   // ax-press ID: AXPress on the element with that identifier
+    for (UiAxElement *el in ui_ax_reached(h))
+      if (!strcmp(el.accessibilityIdentifier.UTF8String, op + 9)) {
+        UI_AX_SAY("%s %s\n", [el accessibilityPerformPress] ? "pressed" : "not pressed", op + 9);
+        return n;
+      }
+    UI_AX_SAY("no element %s\n", op + 9);
+    return n;
+  }
+  if (!strncmp(op, "ax-key ", 7)) {   // ax-key tab|shift-tab|space|enter: the key as the window gets it
+    const char *k = op + 7;
+    int tab = !strcmp(k, "tab") || !strcmp(k, "shift-tab"), shift = !strcmp(k, "shift-tab"), space = !strcmp(k, "space");
+    if (!tab && !space && strcmp(k, "enter")) { UI_AX_SAY("ax-key tab|shift-tab|space|enter\n"); return n; }
+    if (h->view && h->window) {
+      unsigned short code = tab ? 48 : space ? 49 : 36;
+      NSString *c = tab ? @"\t" : space ? @" " : @"\r";
+      NSEvent *e = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:shift ? NSEventModifierFlagShift : 0 timestamp:0
+                                windowNumber:h->window.windowNumber context:nil characters:c charactersIgnoringModifiers:c isARepeat:NO keyCode:code];
+      [h->view keyDown:e];
+    } else if (tab) ui_ax_move(h, shift);
+    else ui_ax_press_focus(h);
+    UI_AX_SAY("focus %s\n", h->ax_focus ? h->ax_focus.UTF8String : "-");
+    return n;
+  }
+#undef UI_AX_SAY
+  return -1;
+}
 #else
 // iOS: the view the app puts in its window. Its layer is the CAMetalLayer frames are presented to.
 @interface UiView : UIView
@@ -884,6 +1100,8 @@ void ui_close(UiHost *h) {
   h->observers = nil;
   if (h->window) { h->window.delegate = nil; ((UiWindow *)h->window).host = NULL; [h->window close]; }
   h->window = nil; h->root = nil;
+  for (UiAxElement *el in h->ax_by_id.allValues) el.host = NULL;   // VoiceOver may still hold them
+  h->ax_by_id = nil; h->ax_rows = nil; h->ax_focus = nil;
 #else
   [h->view removeFromSuperview];
 #endif
@@ -898,4 +1116,7 @@ void ui_close(UiHost *h) {
   free(h);
 }
 
+#if TARGET_OS_OSX
+#define UI_DRIVE_HOST ui_ax_drive   // the Mac's own operations (ax, ax-press, ax-key), before the app's
+#endif
 #include "../drive.c"

@@ -2,6 +2,7 @@
 // The realm's HUD is independent. AppKit supplies input and font rasterization.
 #load "../../components/zeron/gpui.coax";
 #load "setup.coax";
+#load "../../components/core/elements.coax";   // the rows coax drive and VoiceOver name (fui_elements)
 
 ForgeChrome :: struct {atlas:[1]Atlas;scene:bool;checking:bool;verifying:bool;status:bool;paused:bool;error:[2048]u8;error_n:int;}
 ForgePanelBox :: struct {x:f32;y:f32;w:f32;h:f32;}
@@ -79,6 +80,44 @@ fui_button :: (c:[]ForgeChrome,s:[]ForgeSetup,button:int)->string {
 fui_hit :: (c:[]ForgeChrome,s:[]ForgeSetup,w:f32,h:f32,x:f32,y:f32)->int #export_c #effects(all) {
   for button:1..<6 {if fui_enabled(c,s,button) && fui_at(button,w,h,x,y) {return button;}}return 0;
 }
+// The panel as rows of the element table (components/core/elements.coax), logical px: its buttons by
+// stable ids, and the lines a screen reader needs (the title, the CLI, the voice model, the agents and the
+// world). The shared Mac host makes them VoiceOver's elements (apps/shared/host/apple/ui-host.m, #13180).
+FUI_IDS :: [6]string.["","setup.open","setup.refresh","setup.verify-voice","setup.folder","setup.microphone"];
+fui_world_line :: (c:[]ForgeChrome)->string {return ifx !c[0].scene then "Waiting for the world's first rendered frame…" else ifx c[0].paused then "World view paused · native room continues ticking" else "World view running · native room active";}
+fui_cli_line :: (c:[]ForgeChrome,s:[]ForgeSetup)->string {return ifx c[0].error_n>0 then cast(string)c[0].error[0..<c[0].error_n] else fsu_text(s,2);}
+fui_elements :: (c:[]ForgeChrome,s:[]ForgeSetup,w:f32,h:f32,e:[]Elements) {
+  el_clear(e);p:=fui_box(0,w,h);x:=p.x+28;y:=p.y;span:=p.w-56;
+  el_add(e,"setup.title",EL_ITEM,ifx c[0].status then "Local status" else fsu_text(s,0),x,y+52,span,30);
+  el_add(e,"setup.cli",EL_ITEM,fui_cli_line(c,s),x,y+170,span,24);
+  el_add(e,"setup.voice",EL_ITEM,ifx c[0].verifying then "Verifying pinned model files…" else fsu_text(s,4),x,y+270,span,24);
+  el_add(e,"setup.agents",EL_ITEM,fsu_text(s,7),x,y+464,span,24);
+  el_add(e,"setup.world",EL_ITEM,fui_world_line(c),x,y+532,span,24);
+  for button:1..<6 {b:=fui_box(button,w,h);el_add(e,FUI_IDS[button],EL_BUTTON,fui_button(c,s,button),b.x,b.y,b.w,b.h);}
+}
+// coax drive's `tree`: the rows as text. Bytes written.
+fui_tree :: (c:[]ForgeChrome,s:[]ForgeSetup,w:f32,h:f32,out:[]u8)->int #export_c #effects(all) {e:[1]Elements;fui_elements(c,s,w,h,e[..]);return el_tree(e[..],out);}
+// The button a row's id names (fgu_hit's kinds), 0 for none.
+fui_element :: (id:string)->int #export_c #effects(all) {for button:1..<6 {if FUI_IDS[button]==id {return button;}}return 0;}
+// coax drive's `about ID` for a button: "enabled 0|1" and, where it has one, "value TEXT" (what it acts on).
+fui_about :: (c:[]ForgeChrome,s:[]ForgeSetup,button:int,out:[]u8)->int #export_c #effects(all) {
+  if button<1 || button>5 {return 0;}
+  n:=el_put(out,0,ifx fui_enabled(c,s,button) then "enabled 1\n" else "enabled 0\n");
+  value:=ifx button==2 then fui_cli_line(c,s) else ifx button==3 then fsu_text(s,4) else ifx button==5 then fsu_text(s,14) else "";
+  if value.count>0 {n=el_put(out,n,"value ");n=el_put(out,n,value);n=el_put(out,n,"\n");}
+  return n;
+}
+#test "the panel's rows: buttons by stable ids where they are drawn, their state in about" {
+  c:[1]ForgeChrome;s:[1]ForgeSetup;e:[1]Elements;
+  fui_elements(c[..],s[..],1280,800,e[..]);
+  for button:1..<6 {i:=el_find(e[..],FUI_IDS[button]);b:=fui_box(button,1280,800);#assert i>=0 && e[0].rows[i].role==EL_BUTTON && e[0].rows[i].x==b.x && e[0].rows[i].w==b.w && fui_element(FUI_IDS[button])==button;}
+  #assert el_label(e[..],el_find(e[..],"setup.open"))=="Open Everglade" && el_label(e[..],el_find(e[..],"setup.title"))=="Set up Aethyrforge";
+  #assert fui_element("setup.nothing")==0 && fui_element("")==0;
+  out:[512]u8;n:=fui_about(c[..],s[..],1,out[..]);#assert cast(string)out[0..<n]=="enabled 0\n";
+  n=fui_about(c[..],s[..],3,out[..]);#assert cast(string)out[0..<n]=="enabled 0\nvalue Checking local models…\n";
+  c[0].status=true;n=fui_about(c[..],s[..],1,out[..]);#assert cast(string)out[0..<n]=="enabled 1\n";
+  t:[4096]u8;k:=fui_tree(c[..],s[..],1280,800,t[..]);#assert el_has(cast(string)t[0..<k],"setup.open button \"Return to Everglade\" at ");
+}
 fui_text :: (c:[]ForgeChrome,out:[]f32,n:int,d:f32,font:int,text:string,x:f32,y:f32,width:f32)->int {
   k:=paint_text(out,n,c[0].atlas[..],d,font,text,x,y,22,hex(0xe5e7eb,1));
   gp_clip(out,n,k,d,x,y,width,24);return k;
@@ -93,7 +132,7 @@ fui_draw :: (c:[]ForgeChrome,s:[]ForgeSetup,out:[]f32,width:f32,height:f32,d:f32
   n=fui_text(c,out,n,d,0,fsu_text(s,1),x,y+94,span);
   n=paint_quad(out,n,d,x,y+132,span,1,0,0,hex(0x405362,1),hex(0,0));
   n=fui_text(c,out,n,d,3,"OPENAGENTS CLI",x,y+146,span);
-  n=fui_text(c,out,n,d,0,ifx c[0].error_n>0 then cast(string)c[0].error[0..<c[0].error_n] else fsu_text(s,2),x,y+170,span);
+  n=fui_text(c,out,n,d,0,fui_cli_line(c,s),x,y+170,span);
   n=fui_text(c,out,n,d,3,"LOCAL VOICE",x,y+210,span-196);
   n=fui_text(c,out,n,d,1,fsu_text(s,3),x,y+242,span);
   n=fui_text(c,out,n,d,0,ifx c[0].verifying then "Verifying pinned model files…" else fsu_text(s,4),x,y+270,span);
@@ -104,7 +143,7 @@ fui_draw :: (c:[]ForgeChrome,s:[]ForgeSetup,out:[]f32,width:f32,height:f32,d:f32
   n=fui_text(c,out,n,d,3,"LOCAL AGENTS",x,y+440,span);
   n=fui_text(c,out,n,d,0,fsu_text(s,7),x,y+464,span);
   n=fui_text(c,out,n,d,0,"Automatic routing · agent, model and effort chosen per task",x,y+490,span);
-  n=fui_text(c,out,n,d,0,ifx !c[0].scene then "Waiting for the world's first rendered frame…" else ifx c[0].paused then "World view paused · native room continues ticking" else "World view running · native room active",x,y+532,span);
+  n=fui_text(c,out,n,d,0,fui_world_line(c),x,y+532,span);
   n=fui_text(c,out,n,d,3,"Model files are shared with other OpenAgents apps.",x,y+560,span);
   for button:1..<6 {
     b:=fui_box(button,w,h);enabled:=fui_enabled(c,s,button);

@@ -4,9 +4,10 @@
 // notice are native children under its layer (ui_child), and its layer draws the chat's HUD and
 // the setup panel's components (chrome.coax) over them.
 //   Aethyrforge [--world web|metal] [--data-dir DIR] [--mute-audio] [--offline]
-//   Aethyrforge --shot OUT.png [--size WxH] [--scene setup|status|feed|composer]
+//   Aethyrforge --shot OUT.png [--size WxH] [--scene setup|status|feed|composer] [--do "OP ; OP"] [--drive SOCKET]
 //       draws one frame offscreen and exits: the setup panel, the status panel, or the chat's
-//       message feed or composer, with no window, no world and no child process.
+//       message feed or composer, with no window, no world and no child process. --do and --drive then run
+//       coax drive's operations on it: the panel's (tree, tap ID, about ID) and the host's (ax, ax-press ID, ax-key KEY).
 //   the checks: --smoke-test, --chat-smoke, --input-smoke, --hotbar-smoke, --scene-smoke, --npc-smoke,
 //       --audio-smoke, --voice-smoke, --voice-warm-smoke, --setup-smoke REPORT (a window that is
 //       never shown); --launch-check, --microphone-check, --setup-profile, --offline-check,
@@ -114,6 +115,7 @@ enum { C_QUIT = 1, C_RELOAD, C_PREVIEW, C_SETUP, C_STATUS, C_CHAT, C_FOLDER };
 - (void)command:(int)id;
 - (int)commandState:(int)id;
 - (void)focus:(int)on;
+- (int)drive:(const char *)op out:(char *)out cap:(int)cap;
 @end
 
 static int cb_frame(void *u, float *v, float w, float h, float dpr, float dt) { (void)dt; return [(__bridge ForgeApp *)u frame:v width:w height:h dpr:dpr]; }
@@ -129,6 +131,7 @@ static int cb_event(void *u, void *e) { return [(__bridge ForgeApp *)u event:(__
 static void cb_command(void *u, int id) { [(__bridge ForgeApp *)u command:id]; }
 static int cb_command_state(void *u, int id) { return [(__bridge ForgeApp *)u commandState:id]; }
 static void cb_focus(void *u, int on) { [(__bridge ForgeApp *)u focus:on]; }
+static int cb_drive(void *u, const char *op, char *out, int cap) { return [(__bridge ForgeApp *)u drive:op out:out cap:cap]; }
 static void cb_prepare(void *u, void *cmd, uint32_t w, uint32_t h, float dpr);
 static void cb_encode(void *u, void *enc, uint32_t w, uint32_t h, float dpr);
 static int cb_changed(void *u);
@@ -151,6 +154,7 @@ static int cb_changed(void *u);
   float _atlasDpr;
   UiHost *_shot;   // capturePanel's and --shot's offscreen host
   BOOL _pressing;  // a press on the setup panel, to its release
+  float _panelW, _panelH;   // the panel's last frame, logical px (coax drive's rows are laid out in it)
   int _pressed;
 }
 
@@ -233,7 +237,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   app.user = (__bridge void *)self;
   app.frame = cb_frame; app.pointer = cb_pointer; app.wheel = cb_wheel; app.key = cb_key; app.text = cb_text;
   app.wants_text = cb_wants_text; app.text_rect = cb_text_rect; app.command = cb_command; app.command_state = cb_command_state;
-  app.focus = cb_focus; app.hit = cb_hit; app.life = cb_life; app.event = cb_event; app.hidden = hidden;
+  app.focus = cb_focus; app.hit = cb_hit; app.life = cb_life; app.event = cb_event; app.hidden = hidden; app.drive = cb_drive;
   BOOL bench = self.benchmarkReportURL != nil;
   app.min_width = 900; app.min_height = bench ? 500 : 740;
   self.host = ui_open(&app, 0);
@@ -386,6 +390,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   if (_shot) ui_atlas_rows(_shot, _full, (uint32_t)y0, (uint32_t)y1, _color, (uint32_t)cy0, (uint32_t)cy1);
 }
 - (int)frame:(float *)v width:(float)w height:(float)h dpr:(float)dpr {
+  if (dpr > 0) { _panelW = w / dpr; _panelH = h / dpr; }
   if (self.setupHidden || ![self atlasAt:dpr]) return 0;
   [self updateSetup];
   int64_t n = 0;
@@ -410,6 +415,30 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   case 4: [NSWorkspace.sharedWorkspace openURL:[NSFileManager.defaultManager.homeDirectoryForCurrentUser URLByAppendingPathComponent:@".openagents"]]; break;
   case 5: [self microphoneSetupPressed]; break;
   }
+}
+// coax drive's operations on the setup panel (chrome.coax fui_tree): `tree`, `tap ID` and `about ID`. The shared
+// Mac host makes the same rows VoiceOver's elements and presses them with `tap` (ui-host.m, #13180).
+- (int)drive:(const char *)op out:(char *)out cap:(int)cap {
+  if (cap < 2) return 0;
+  int n = -1;
+  BOOL tap = !strncmp(op, "tap ", 4), about = !strncmp(op, "about ", 6);
+  if (!strcmp(op, "tree")) {
+    [self updateSetup];
+    n = self.setupHidden || _panelW <= 0 ? snprintf(out, (size_t)cap, "(nothing yet: no rows drawn)\n") : (int)fgu_tree(_panelW, _panelH, (uint8_t *)out, cap);
+  } else if (tap || about) {
+    const char *id = op + (tap ? 4 : 6);
+    int64_t b = self.setupHidden ? 0 : fgu_element(id, (int64_t)strlen(id));
+    [self updateSetup];
+    if (!b) n = snprintf(out, (size_t)cap, "no row %s in the tree\n", id);
+    else if (about) n = (int)fgu_about(b, (uint8_t *)out, cap);
+    else {
+      // pressed where it is drawn, as a click would be: a button that is not enabled takes nothing
+      float x = fgu_box(b, _panelW, _panelH, 0) + fgu_box(b, _panelW, _panelH, 2) / 2, y = fgu_box(b, _panelW, _panelH, 1) + fgu_box(b, _panelW, _panelH, 3) / 2;
+      if (fgu_hit(_panelW, _panelH, x, y) == b) { [self setupButton:(int)b]; n = 0; }
+      else n = snprintf(out, (size_t)cap, "%s is not enabled\n", id);
+    }
+  }
+  return n < 0 ? -1 : n >= cap ? cap - 1 : n;
 }
 - (int)key:(int)key mods:(int)mods down:(int)down {
   (void)mods;
@@ -509,7 +538,7 @@ static int cb_changed(void *u) {
     UiApp app = {0};
     app.app_id = "com.openagents.aethyrforge"; app.max_vertices = FORGE_MAX_VERTICES;
     NSString *shader = [self.resources URLByAppendingPathComponent:@"Component.metal"].path;
-    app.shader = shader.fileSystemRepresentation; app.user = (__bridge void *)self; app.frame = cb_frame;
+    app.shader = shader.fileSystemRepresentation; app.user = (__bridge void *)self; app.frame = cb_frame; app.drive = cb_drive;
     _shot = ui_open(&app, 1);
     if (!_shot) return NO;
     UiLayer layer = {(__bridge void *)self, 0, NULL, cb_encode};
@@ -1292,6 +1321,22 @@ static int cb_changed(void *u) {
     } else self.chat.composerOpen = YES;
   }
   if (![self shotOf:[NSURL fileURLWithPath:path] width:(uint32_t)(w * d) height:(uint32_t)(h * d) dpr:d]) { fprintf(stderr, "Aethyrforge: the picture was not written\n"); return 1; }
+  // --do "OP ; OP": coax drive's operations on the picture's host (tree, tap ID, about ID, and the host's ax,
+  // ax-press ID, ax-key KEY), each answer printed; --drive SOCKET: then whatever coax drive asks, until quit.
+  NSString *script = [self arg:@"--do"], *socket = [self arg:@"--drive"];
+  if (script || socket) {
+    self.host = _shot;
+    static char answer[1 << 16];
+    for (NSString *part in [script ?: @"" componentsSeparatedByString:@" ; "]) {
+      NSString *one = [part stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+      if (!one.length) continue;
+      int k = ui_drive(_shot, one.UTF8String, answer, (int)sizeof answer);
+      if (k > 0) printf("%.*s%s", k, answer, answer[k - 1] == '\n' ? "" : "\n");
+    }
+    if (socket && !ui_drive_listen(_shot, socket.fileSystemRepresentation)) { fprintf(stderr, "Aethyrforge: could not listen on %s\n", socket.UTF8String); return 1; }
+    if (socket) ui_drive_serve(_shot);
+    self.host = NULL;
+  }
   if ([scene isEqualToString:@"feed"]) {   // and the feed alone, as --input-smoke's frame
     NSURL *frame = [[NSURL fileURLWithPath:path].URLByDeletingPathExtension URLByAppendingPathExtension:@"frame.png"];
     if ([self.chat saveFeedFrame:frame device:(__bridge id<MTLDevice>)ui_device(_shot) queue:(__bridge id<MTLCommandQueue>)ui_queue(_shot)] <= 0) return 1;

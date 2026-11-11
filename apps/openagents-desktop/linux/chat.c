@@ -780,6 +780,16 @@ int oa_chat_drive(OaChat *a, const char *request, char *out, int cap) {
     on_pointer(a, x, y, 0, clicks, mods); on_pointer(a, x, y, 2, clicks, mods);
     return o.n;
   }
+  if (!strcmp(line, "about")) {   // about ID: what a screen reader says of a row besides its label (the Mac host's VoiceOver elements)
+    float x, y;
+    if (!centre(a, arg, &x, &y)) { say(&o, "no row %s in the tree\n", arg); return o.n; }
+    if (!strcmp(arg, "composer")) {   // the draft as typed, on one line
+      static uint8_t b[8192]; int k = zr_dictation_draft(state, b, sizeof b);
+      for (int i = 0; i < k; i++) if (b[i] == '\n' || b[i] == '\r') b[i] = ' ';
+      if (k > 0) say(&o, "value %.*s\n", k, (const char *)b);
+    }
+    return o.n;
+  }
   if (!strcmp(line, "drag")) {   // drag ID DX,DY: from the row's centre, by DX, DY logical px
     char *id = arg, *by = strchr(arg, ' ');
     float x, y, d[2] = {0, 0};
