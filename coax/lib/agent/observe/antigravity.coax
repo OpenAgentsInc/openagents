@@ -1,0 +1,138 @@
+// Antigravity's transcripts, read (GitHub #13193): what the Golems board
+// (apps/everglade-desktop/golems.coax) needs to show an agy conversation working
+// and waiting like a Claude Code session. transcripts.coax finds them
+// (~/.gemini/antigravity-cli/brain/ID/.system_generated/logs/transcript.jsonl, one
+// folder a conversation, as agy 1.5.6 keeps them); this reads one record at a time.
+//
+// A record is one JSON line, a step of the conversation:
+//
+//   {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE",
+//    "created_at":"2026-11-11T20:40:26Z","content":"<USER_REQUEST>\n...\n</USER_REQUEST>..."}
+//   {"type":"PLANNER_RESPONSE","input_tokens":3847,"cache_read_tokens":3589,"output_tokens":41,
+//    "tool_calls":[{"name":"read_file","args":{"Path":"\"/w/notes.txt\""}}]}    (args are JSON, quoted)
+//   {"type":"GENERIC","content":"Command exited with code 0. ..."}               (a tool's result)
+//   {"type":"PLANNER_RESPONSE",...,"content":"I have listed the directory ..."}  (its words: the turn ends)
+//   {"type":"SYSTEM_MESSAGE",...}
+//
+// agr_step reads a record into an AgrStep; agr_turn says where the turn stands after it,
+// with the board's numbers (GS_NEW, GS_OPEN, GS_TOOL, GS_ENDED): a request opens a turn,
+// tool calls hold it, a result gives it back to the model, the model's words with no tool
+// call end it. The model's name is only in the request where it was chosen
+// ("`Model Selection` from None to Gemini 3.8 Flash (Low)").
+
+#load "../claude/claude.coax";
+
+AGR_OTHER :: 0; AGR_USER :: 1; AGR_MODEL :: 2; AGR_RESULT :: 3;
+AGR_NEW :: 0; AGR_OPEN :: 1; AGR_TOOL :: 2; AGR_ENDED :: 3;
+AGR_ARG_KEYS :: [6] string.["CommandLine", "Path", "TargetFile", "AbsolutePath", "Query", "toolSummary"];
+
+AgrStep :: struct {
+  kind: int;                     // AGR_*
+  at: int;                       // created_at, seconds since the epoch (0 when absent)
+  done: bool;                    // status DONE
+  text: string;                  // a request's words, the model's words, a result
+  model: string;                 // the model chosen in this request, if one was
+  tools: int;                    // tool calls in a model step
+  tool: string; arg: string;     // the last of them and its first telling argument
+  input: int; cached: int; output: int;
+}
+
+agr_has :: (s: string, p: string) -> bool { if p.count > s.count { return false; } for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return true; } } return false; }
+agr_find :: (s: string, p: string, from: int) -> int { if p.count > s.count { return -1; } for i: from..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return i; } } return -1; }
+agr_two :: (s: string, at: int) -> int { return cast(int) (s[at] - '0') * 10 + cast(int) (s[at + 1] - '0'); }
+// 2026-11-11T20:40:26Z as seconds since the epoch; 0 when it isn't one.
+agr_time :: (s: string) -> int {
+  if s.count < 19 || s[4] != '-' || s[7] != '-' || s[10] != 'T' { return 0; }
+  for i: [12] int.[0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15] { if s[i] < '0' || s[i] > '9' { return 0; } }
+  y := agr_two(s, 0) * 100 + agr_two(s, 2); m := agr_two(s, 5); d := agr_two(s, 8);
+  yy := ifx m <= 2 then y - 1 else y; era := yy / 400; yoe := yy - era * 400;
+  mp := ifx m > 2 then m - 3 else m + 9; doy := (153 * mp + 2) / 5 + d - 1;
+  days := era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+  return days * 86400 + agr_two(s, 11) * 3600 + agr_two(s, 14) * 60 + agr_two(s, 17);
+}
+// What is between <USER_REQUEST> and its end, trimmed; the whole text when there is no such tag.
+agr_request :: (content: string) -> string {
+  a := agr_find(content, "<USER_REQUEST>", 0);
+  if a < 0 { return content; }
+  a += 14; b := agr_find(content, "</USER_REQUEST>", a); if b < 0 { b = content.count; }
+  while a < b && content[a] <= 32 { a += 1; }
+  while b > a && content[b - 1] <= 32 { b -= 1; }
+  return content[a..<b];
+}
+// The model a request chose: "`Model Selection` from X to MODEL." gives MODEL; "" when it chose none.
+agr_model :: (content: string) -> string {
+  at := agr_find(content, "`Model Selection` from ", 0);
+  if at < 0 { return ""; }
+  to := agr_find(content, " to ", at + 23);
+  if to < 0 { return ""; }
+  from := to + 4; end := from;
+  while end < content.count && content[end] != '\n' && !(content[end] == '.' && (end + 1 == content.count || content[end + 1] == ' ' || content[end + 1] == '\n')) { end += 1; }
+  return content[from..<end];
+}
+// An argument's value as agy records it: JSON text, a string's quotes still on it.
+agr_unquote :: (v: string) -> string {
+  if v.count >= 2 && v[0] == '"' && v[v.count - 1] == '"' { return v[1..<v.count - 1]; }
+  return v;
+}
+
+agr_step :: (line: string, ar: [] ClArena) -> AgrStep {
+  r: AgrStep;
+  ar[0].at = 0; ar[0].full = false;
+  ty := cl_str(ar, line, "type");
+  r.at = agr_time(cl_str(ar, line, "created_at"));
+  r.done = cl_str(ar, line, "status") == "DONE";
+  content := cl_str(ar, line, "content");
+  if ty == "USER_INPUT" { r.kind = AGR_USER; r.text = agr_request(content); r.model = agr_model(content); return r; }
+  if ty == "GENERIC" { r.kind = AGR_RESULT; r.text = content; return r; }
+  if ty != "PLANNER_RESPONSE" { return r; }
+  r.kind = AGR_MODEL; r.text = content;
+  a := cl_int(line, "input_tokens"); r.input = ifx a.ok then a.value else 0;
+  b := cl_int(line, "cache_read_tokens"); r.cached = ifx b.ok then b.value else 0;
+  c := cl_int(line, "output_tokens"); r.output = ifx c.ok then c.value else 0;
+  calls := cl_raw(line, "tool_calls");
+  r.tools = cl_count(calls); if r.tools < 0 { r.tools = 0; }   // (-1: no tool_calls)
+  if r.tools > 0 {
+    last := cl_json(calls, cl_item(calls, r.tools - 1));
+    r.tool = cl_str(ar, last, "name");
+    args := cl_raw(last, "args");
+    keys := AGR_ARG_KEYS;
+    for k: keys { if r.arg.count == 0 { r.arg = agr_unquote(cl_str(ar, args, k)); } }
+  }
+  return r;
+}
+
+// Where the turn stands after a step.
+agr_turn :: (turn: int, s: AgrStep) -> int {
+  if s.kind == AGR_USER || s.kind == AGR_RESULT { return AGR_OPEN; }
+  if s.kind != AGR_MODEL { return turn; }
+  if s.tools > 0 { return AGR_TOOL; }
+  return ifx s.done then AGR_ENDED else AGR_OPEN;
+}
+
+#test "antigravity transcript: a request, a tool call, its result and the words that end the turn" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  u := agr_step("{\"step_index\":0,\"source\":\"USER_EXPLICIT\",\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:26Z\",\"content\":\"<USER_REQUEST>\\nRun ls, then edit notes.txt.\\n</USER_REQUEST>\\n<USER_SETTINGS_CHANGE>\\nThe user changed setting `Model Selection` from None to Gemini 3.8 Flash (Low). No need to comment.\\n</USER_SETTINGS_CHANGE>\"}", ar[..]);
+  #assert u.kind == AGR_USER && u.done && u.text == "Run ls, then edit notes.txt." && u.model == "Gemini 3.8 Flash (Low)" && u.at == 1794429626;
+  #assert agr_turn(AGR_NEW, u) == AGR_OPEN;
+  t := agr_step("{\"step_index\":1,\"source\":\"MODEL\",\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:26Z\",\"input_tokens\":7330,\"cache_read_tokens\":0,\"output_tokens\":35,\"tool_calls\":[{\"name\":\"run_command\",\"args\":{\"CommandLine\":\"\\\"ls\\\"\",\"WaitMsBeforeAsync\":\"5000\",\"toolSummary\":\"\\\"Run ls command\\\"\"}}]}", ar[..]);
+  #assert t.kind == AGR_MODEL && t.tools == 1 && t.tool == "run_command" && t.arg == "ls" && t.input == 7330 && t.output == 35 && t.text.count == 0;
+  #assert agr_turn(AGR_OPEN, t) == AGR_TOOL;
+  g := agr_step("{\"step_index\":2,\"source\":\"MODEL\",\"type\":\"GENERIC\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:27Z\",\"content\":\"Command exited with code 0.\"}", ar[..]);
+  #assert g.kind == AGR_RESULT && agr_turn(AGR_TOOL, g) == AGR_OPEN;
+  e := agr_step("{\"step_index\":7,\"source\":\"MODEL\",\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:32Z\",\"input_tokens\":4123,\"cache_read_tokens\":3583,\"output_tokens\":53,\"content\":\"I have updated notes.txt.\"}", ar[..]);
+  #assert e.kind == AGR_MODEL && e.tools == 0 && e.text == "I have updated notes.txt." && e.cached == 3583 && agr_turn(AGR_OPEN, e) == AGR_ENDED;
+  // A step still running holds the turn open; a system message leaves it where it was.
+  w := agr_step("{\"type\":\"PLANNER_RESPONSE\",\"status\":\"RUNNING\",\"content\":\"Looking\"}", ar[..]);
+  #assert !w.done && agr_turn(AGR_OPEN, w) == AGR_OPEN;
+  m := agr_step("{\"type\":\"SYSTEM_MESSAGE\",\"status\":\"DONE\",\"content\":\"[Notice]\"}", ar[..]);
+  #assert m.kind == AGR_OTHER && agr_turn(AGR_ENDED, m) == AGR_ENDED && agr_turn(AGR_TOOL, m) == AGR_TOOL;
+  #assert agr_step("not json", ar[..]).kind == AGR_OTHER;
+}
+#test "antigravity transcript: times, requests and model names" {
+  #assert agr_time("1970-01-01T00:00:00Z") == 0 && agr_time("2026-11-11T20:40:26Z") == 1794429626 && agr_time("2000-02-29T00:00:01Z") == 951782401;
+  #assert agr_time("") == 0 && agr_time("2026-1x-11T20:40:26Z") == 0;
+  #assert agr_request("plain words") == "plain words" && agr_request("<USER_REQUEST>  hi \n</USER_REQUEST>") == "hi" && agr_request("<USER_REQUEST>open") == "open";
+  #assert agr_model("no change") == "" && agr_model("`Model Selection` from A to B.") == "B" && agr_model("`Model Selection` from None to Gemini 4 Carbon (High)\nmore") == "Gemini 4 Carbon (High)";
+  #assert agr_model("`Model Selection` from Gemini 3.8 Flash to Gemini 4.1 Pro. Next") == "Gemini 4.1 Pro";
+  #assert agr_unquote("\"x\"") == "x" && agr_unquote("5000") == "5000" && agr_unquote("\"") == "\"";
+}

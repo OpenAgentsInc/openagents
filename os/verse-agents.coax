@@ -1,7 +1,8 @@
 // Verse OS: the agents on this machine, for the Grid to show as figures (docs/os/2026-11-02-verse-os.md,
 // V4). Every few seconds the session looks at where each agent writes its transcript — Claude Code
-// (~/.claude/projects/PROJECT/SESSION.jsonl), Codex (~/.codex/sessions/YYYY/MM/DD/*.jsonl) and Coder
-// (~/.openagents/coder/sessions/*.jsonl) — and a transcript written in the last two minutes is an
+// (~/.claude/projects/PROJECT/SESSION.jsonl), Codex (~/.codex/sessions/YYYY/MM/DD/*.jsonl), Coder
+// (~/.openagents/coder/sessions/*.jsonl) and Antigravity
+// (~/.gemini/antigravity-cli/brain/ID/.system_generated/logs/transcript.jsonl) — and a transcript written in the last two minutes is an
 // agent at work; in the last half hour, one waiting. It writes them, newest first, as
 // `agent=KIND|PROJECT|STATE|MINUTES` lines, which vk-realm sends the Grid when they change
 // (--agents; apps/openagents-web/newland-local.coax draws them). Only names and times: nothing of
@@ -77,13 +78,14 @@ va_text :: (l: [] VaList, out: [] u8) -> int {
 }
 
 // Every agent under home, now. Where the transcripts are is the shared walker's
-// (coax/lib/agent/observe/transcripts.coax): Claude Code's sessions by project, Codex's by date, Coder's.
+// (coax/lib/agent/observe/transcripts.coax): Claude Code's sessions by project, Codex's by date,
+// Coder's, Antigravity's conversations (kind antigravity, project antigravity).
 va_scan :: (l: [] VaList, home: string) {
   l[0].n = 0;
   now_s := cxproc_wall_us() / 1000000;
   kinds := OB_KINDS;
   w: [1] ObWalk;
-  w[0].claude = true; w[0].codex = true; w[0].coder = true;
+  w[0].claude = true; w[0].codex = true; w[0].coder = true; w[0].agy = true;
   ob_start(w[..], home);
   while ob_next(w[..]) {
     project := ifx w[0].kind == OB_CLAUDE then ob_project_of(ob_project(w[..])) else ob_project(w[..]);

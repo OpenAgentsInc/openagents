@@ -10,6 +10,13 @@
 // Autopilot coders, the sessions you run in a terminal and their subagents alike, wherever they
 // were started. Nothing is asked of a model and nothing is sent anywhere.
 //
+// An Antigravity conversation is an agent too (GitHub #13193): its transcript under
+// ~/.gemini/antigravity-cli/brain/ID/ (coax/lib/agent/observe/transcripts.coax finds it,
+// observe/antigravity.coax reads its records), keyed by the conversation's ID, its place
+// "antigravity", its title agy's own (annotations/ID.pbtxt). Its transcripts are small and read
+// whole each snapshot, with no cache file; agy reports no cost, so its cost is -1, and a
+// REPORT: line in its latest words (next.coax's Antigravity coder) is its report.
+//
 // snapshot is fast because it reads each transcript once. What it has counted for an agent (its
 // tokens, cost, time use, commits, files, latest messages) is kept in
 // ~/.openagents/everglade/golems/cache/KEY with the byte it read up to; the next snapshot reads
@@ -51,6 +58,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/agent/observe/transcripts.coax";
+#load "../../coax/lib/agent/observe/antigravity.coax";
 
 GS_CHUNK :: 2097152;      // bytes of a transcript read at a time
 GS_BUDGET :: 1200;       // milliseconds one snapshot spends reading transcripts; the rest waits for the next
@@ -546,6 +554,68 @@ gs_issue :: (g: []Golem) -> int {
   return 0;
 }
 
+// ---- an Antigravity conversation (observe/antigravity.coax reads its records)
+
+// One record of an agy transcript into the agent.
+gs_agy_record :: (g: []Golem, st: AgrStep) {
+  if st.at > 0 { if g[0].started == 0 { g[0].started = st.at; } g[0].last_at = st.at; }
+  if st.kind == AGR_USER {
+    if st.model.count > 0 { g[0].model_n = gs_set(g[0].model[..], st.model); }
+    words := gs_trim(st.text);
+    if words.count > 0 { gs_msg(g, 'u', st.at, words); g[0].last_n = gs_set(g[0].last[..], words); if g[0].title_n == 0 { g[0].title_n = gs_set(g[0].title[..], words); } }
+  }
+  if st.kind == AGR_MODEL {
+    g[0].t_in += st.input; g[0].t_read += st.cached; g[0].t_out += st.output;
+    words := gs_trim(st.text);
+    if words.count > 0 {
+      gs_msg(g, 'a', st.at, words); g[0].last_n = gs_set(g[0].last[..], words); g[0].said_n = gs_set(g[0].said[..], words);
+      // next.coax's Antigravity coder reports with a last line: REPORT: done or REPORT: blocked.
+      if gs_has(words, "REPORT: blocked") { g[0].reported = 2; } else if gs_has(words, "REPORT: done") { g[0].reported = 1; }
+    }
+    if st.tools > 0 {
+      g[0].tools += st.tools;
+      line: [GS_TEXT] u8; ln := gs_put(line[..], 0, ifx st.tool == "run_command" then "$" else st.tool);
+      if st.arg.count > 0 { ln = gs_put(line[..], ln, " "); ln = gs_put(line[..], ln, st.arg); }
+      gs_msg(g, 't', st.at, cast(string) line[0..<ln]);
+      g[0].tool_n = gs_set(g[0].tool[..], cast(string) line[0..<ln]); g[0].last_n = gs_set(g[0].last[..], cast(string) line[0..<ln]);
+      if st.tool == "run_command" { g[0].steps |= gs_command_steps(st.arg); }
+      else if gs_has(st.tool, "edit") || gs_has(st.tool, "write") || gs_has(st.tool, "replace") { g[0].steps |= GS_EDIT; }
+      else { g[0].steps |= GS_READ; }
+      g[0].cat = ifx st.tool == "run_command" && (gs_command_steps(st.arg) & (GS_BUILD | GS_TEST)) != 0 then GS_T_BUILD else GS_T_OTHER;
+      if g[0].turn != GS_TOOL { g[0].wait_since = st.at; }
+    }
+  }
+  g[0].turn = agr_turn(g[0].turn, st);
+}
+// The conversation's transcript read whole (its last GS_CHUNK bytes), and agy's title for it.
+gs_agy :: (g: []Golem, ar: []ClArena, buf: []u8, home: string) {
+  path := cast(string) g[0].path[0..<g[0].path_n];
+  from := ifx g[0].size > buf.count then g[0].size - buf.count else 0;
+  n := fs_read_at(path, from, buf);
+  g[0].offset = g[0].size;
+  if n <= 0 { return; }
+  text := cast(string) buf[0..<n]; at := 0;
+  if from > 0 { while at < text.count && text[at] != '\n' { at += 1; } at += 1; }   // a read from the middle starts inside a line
+  while at < text.count {
+    l := gs_line_at(text, at); at += l.count + 1;
+    if l.count > 1 { gs_agy_record(g, agr_step(l, ar)); }
+  }
+  // annotations/ID.pbtxt: title:"Run LS And Edit Notes"
+  pb: [1400] u8; k := gs_raw(pb[..], 0, home); k = gs_raw(pb[..], k, "/.gemini/antigravity-cli/annotations/"); k = gs_raw(pb[..], k, cast(string) g[0].key[0..<g[0].key_n]); k = gs_raw(pb[..], k, ".pbtxt");
+  tb: [2048] u8; tn := fs_read(cast(string) pb[0..<k], tb[..]);
+  if tn > 0 { t := gs_agy_title(cast(string) tb[0..<tn]); if t.count > 0 { g[0].title_n = gs_set(g[0].title[..], t); } }
+}
+// The title in agy's annotation text, or "".
+gs_agy_title :: (text: string) -> string {
+  for i: 0..<text.count {
+    if gs_starts(text[i..<text.count], "title:\"") {
+      e := i + 7; while e < text.count && text[e] != '"' { if text[e] == '\\' { e += 1; } e += 1; }
+      return text[i + 7..<(ifx e < text.count then e else text.count)];
+    }
+  }
+  return "";
+}
+
 // Where the transcripts are is the shared walker's (coax/lib/agent/observe/transcripts.coax: ObWalk,
 // ObFound, ob_add); this board keeps the newest GS_MAX of Claude Code's sessions and their subagents.
 
@@ -625,7 +695,7 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
   since := now - hours * 3600; if day < since { since = day; }
   found: [GS_MAX] ObFound; count := 0;
   walk: [1] ObWalk;
-  walk[0].claude = true; walk[0].subagents = true; walk[0].since = since; walk[0].prune = true;
+  walk[0].claude = true; walk[0].subagents = true; walk[0].agy = true; walk[0].since = since; walk[0].prune = true;
   ob_start(walk[..], home);
   while ob_next(walk[..]) { count = ob_keep(walk[..], found[..], count); }
   // Newest first, so a short budget goes to the agents at work.
@@ -653,17 +723,19 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
     path := cast(string) f.path[0..<f.n];
     g[0].path_n = gs_put(g[0].path[..], 0, path); g[0].mtime = f.mtime; g[0].sub = f.sub; g[0].size = fs_size(path);
     base := fs_base(path); base = base[0..<base.count - 6];
+    if f.kind == OB_AGY { base = cast(string) f.parent[0..<f.parentn]; }
     g[0].key_n = gs_set(g[0].key[..], base);
     if f.sub { g[0].parent_n = gs_set(g[0].parent[..], cast(string) f.parent[0..<f.parentn]); }
-    g[0].place_n = gs_place(cast(string) f.project[0..<f.pn], g[0].place[..]);
+    g[0].place_n = ifx f.kind == OB_AGY then gs_set(g[0].place[..], "antigravity") else gs_place(cast(string) f.project[0..<f.pn], g[0].place[..]);
     cf_b: [1600] u8; cf := fs_join(cache, base, cf_b[..]);
-    cn := fs_read(cf, small[..]);
-    if !(cn > 0 && gs_load(g[..], cast(string) small[0..<cn])) || g[0].offset > g[0].size {
+    cn := ifx f.kind == OB_AGY then 0 else fs_read(cf, small[..]);
+    if f.kind == OB_AGY { gs_agy(g[..], ar[..], buf[..], home); }
+    else if !(cn > 0 && gs_load(g[..], cast(string) small[0..<cn])) || g[0].offset > g[0].size {
       fresh := Golem.{}; fresh.path = g[0].path; fresh.path_n = g[0].path_n; fresh.mtime = g[0].mtime; fresh.size = g[0].size; fresh.sub = g[0].sub;
       fresh.key = g[0].key; fresh.key_n = g[0].key_n; fresh.parent = g[0].parent; fresh.parent_n = g[0].parent_n; fresh.place = g[0].place; fresh.place_n = g[0].place_n;
       g[0] = fresh;
     }
-    if g[0].offset < g[0].size && cxproc_now_ms() < until {
+    if f.kind != OB_AGY && g[0].offset < g[0].size && cxproc_now_ms() < until {
       read := gs_advance(g[..], ar[..], buf[..], day, until);
       saved := gs_save(g[..], cf, small[..]);
     }
@@ -942,4 +1014,27 @@ gs_test_result :: (at: string, text: string, out: []u8) -> string {
   #assert h[0].offset == 4096 && h[0].started == 100 && h[0].t_out == 7 && h[0].cost_e8 == 123456 && h[0].spent[GS_T_BUILD] == 240 && h[0].turn == GS_TOOL && h[0].cat == GS_T_BUILD && h[0].u[4] == 50;
   #assert cast(string) h[0].model[0..<h[0].model_n] == "claude-opus-5-5" && cast(string) h[0].commits[0..<h[0].commits_n] == "abc1234" && h[0].mn == 2 && h[0].msgs[1].at == 201 && h[0].msgs[0].kind == 't';
   #assert !gs_load(h[..], "golem1\t0\n") && !gs_load(h[..], "");
+}
+#test "golems: an Antigravity conversation reads its requests, tool calls, words, tokens and state" {
+  ab: [16384] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  g: [1] Golem;
+  lines := [5] string.[
+    "{\"step_index\":0,\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:26Z\",\"content\":\"<USER_REQUEST>\\nRehearse GitHub issue #13180: read only.\\n</USER_REQUEST>\\nThe user changed setting `Model Selection` from None to Gemini 3.8 Flash (Low). No need.\"}",
+    "{\"step_index\":1,\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:27Z\",\"input_tokens\":7330,\"cache_read_tokens\":100,\"output_tokens\":35,\"tool_calls\":[{\"name\":\"run_command\",\"args\":{\"CommandLine\":\"\\\"git push origin HEAD:main\\\"\"}}]}",
+    "{\"step_index\":2,\"type\":\"GENERIC\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:28Z\",\"content\":\"ok\"}",
+    "{\"step_index\":3,\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:29Z\",\"input_tokens\":10,\"cache_read_tokens\":5,\"output_tokens\":3,\"tool_calls\":[{\"name\":\"view_file\",\"args\":{\"Path\":\"\\\"/w/a.txt\\\"\"}}]}",
+    "{\"step_index\":4,\"type\":\"GENERIC\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:30Z\",\"content\":\"1: a\"}"];
+  for l: lines { gs_agy_record(g[..], agr_step(l, ar[..])); }
+  #assert g[0].turn == GS_OPEN && g[0].tools == 2 && g[0].t_in == 7340 && g[0].t_read == 105 && g[0].t_out == 38;
+  #assert (g[0].steps & GS_PUSH) != 0 && (g[0].steps & GS_READ) != 0 && cast(string) g[0].model[0..<g[0].model_n] == "Gemini 3.8 Flash (Low)";
+  #assert cast(string) g[0].title[0..<g[0].title_n] == "Rehearse GitHub issue #13180: read only." && cast(string) g[0].tool[0..<g[0].tool_n] == "view_file /w/a.txt";
+  #assert g[0].started == 1794429626 && g[0].last_at == 1794429630 && g[0].mn == 3;
+  #assert gs_state(g[..], 10) == "working" && gs_state(g[..], GS_STUCK) == "stuck";
+  gs_agy_record(g[..], agr_step("{\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:31Z\",\"content\":\"It needs the hosts.\\nREPORT: blocked the hosts are out of budget\"}", ar[..]));
+  #assert g[0].turn == GS_ENDED && g[0].reported == 2 && gs_state(g[..], 10) == "blocked";
+  h: [1] Golem;
+  gs_agy_record(h[..], agr_step("{\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"content\":\"hi\"}", ar[..]));
+  gs_agy_record(h[..], agr_step("{\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"content\":\"Hello.\"}", ar[..]));
+  #assert h[0].turn == GS_ENDED && gs_state(h[..], 60) == "yours" && gs_state(h[..], GS_YOURS) == "idle";
+  #assert gs_agy_title("title:\"Run LS And Edit Notes\"\n") == "Run LS And Edit Notes" && gs_agy_title("other:1") == "";
 }

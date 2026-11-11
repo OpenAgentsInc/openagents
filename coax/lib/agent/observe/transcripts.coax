@@ -8,23 +8,27 @@
 //                 session started: PROJECT/SESSION/subagents/NAME.jsonl
 //   Codex         ~/.codex/sessions/YYYY/MM/DD/NAME.jsonl
 //   Coder         ~/.openagents/coder/sessions/ID.jsonl   (the session log, ../session/log.coax)
+//   Antigravity   ~/.gemini/antigravity-cli/brain/ID/.system_generated/logs/transcript.jsonl, one
+//                 folder a conversation (agy 1.5.6; read by antigravity.coax beside this file)
 //
 // ob_start names the home and what to look for; each ob_next finds the next
 // transcript (its path, when it was last written, whose it is). The order is
 // fixed: Claude Code's projects by name and each project's entries by name,
-// then Codex by date, then Coder. A caller keeps what it wants: the newest
+// then Codex by date, then Coder, then Antigravity. A caller keeps what it wants: the newest
 // few (ob_add), or only those written since some time.
 
 #load "../../sys/fs.coax";
 
-OB_CLAUDE :: 0; OB_CODEX :: 1; OB_CODER :: 2;
-OB_KINDS :: [3] string.["claude", "codex", "coder"];
-OB_DONE :: 3;
+OB_CLAUDE :: 0; OB_CODEX :: 1; OB_CODER :: 2; OB_AGY :: 3;
+OB_KINDS :: [4] string.["claude", "codex", "coder", "antigravity"];
+OB_DONE :: 4;
+OB_AGY_BRAIN :: ".gemini/antigravity-cli/brain";
+OB_AGY_LOG :: ".system_generated/logs";
 OB_DIR :: 2048;
 
 ObWalk :: struct {
   home: [1024] u8; home_n: int;
-  claude: bool; codex: bool; coder: bool;     // whose transcripts
+  claude: bool; codex: bool; coder: bool; agy: bool;   // whose transcripts
   subagents: bool;               // also the agents a Claude Code session started
   since: int;                    // only transcripts written at or after this second (0: all)
   // The Golems board's shortcut, kept as it was: a project folder not changed for a day before
@@ -37,10 +41,10 @@ ObWalk :: struct {
   // the transcript ob_next found
   path: [OB_DIR] u8; path_n: int;
   mtime: int;                    // when it was last written, in seconds
-  kind: int;                     // OB_CLAUDE, OB_CODEX or OB_CODER
+  kind: int;                     // OB_CLAUDE, OB_CODEX, OB_CODER or OB_AGY
   sub: bool;                     // a subagent's
-  project: [256] u8; project_n: int;   // Claude Code's project folder name ("-home-you-repo"); "codex"; "coder"
-  parent: [80] u8; parent_n: int;      // a session's own name; for a subagent, the session that started it
+  project: [256] u8; project_n: int;   // Claude Code's project folder name ("-home-you-repo"); "codex"; "coder"; "antigravity"
+  parent: [80] u8; parent_n: int;      // a session's own name; for a subagent, the session that started it; Antigravity's conversation
 }
 
 ob_put :: (out: [] u8, at: int, s: string) -> int { k := at; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
@@ -60,7 +64,7 @@ ob_dir :: (w: [] ObWalk, level: int) -> string { return cast(string) w[0].dir[le
   #assert ob_jsonl("a.jsonl") && !ob_jsonl(".jsonl") && !ob_jsonl("a.json") && !ob_jsonl("notes.txt") && !ob_jsonl("");
   #assert ob_project_of("-home-christopherdavid-openagents") == "openagents" && ob_project_of("plain") == "plain" && ob_project_of("-a-") == "-a-";
   kinds := OB_KINDS;
-  #assert kinds[OB_CLAUDE] == "claude" && kinds[OB_CODEX] == "codex" && kinds[OB_CODER] == "coder";
+  #assert kinds[OB_CLAUDE] == "claude" && kinds[OB_CODEX] == "codex" && kinds[OB_CODER] == "coder" && kinds[OB_AGY] == "antigravity";
 }
 
 // Everything under home, from the start.
@@ -154,13 +158,28 @@ ob_next :: (w: [] ObWalk) -> bool {
       if ob_take(w, 3, name) { return true; }
       continue;
     }
-    if !w[0].coder { w[0].phase = OB_DONE; continue; }
-    if w[0].depth == 0 { ob_open(w, 0, fs_join(cast(string) w[0].home[0..<w[0].home_n], ".openagents/coder/sessions", b[..])); continue; }
+    if w[0].phase == OB_CODER {
+      if !w[0].coder { w[0].phase = OB_AGY; w[0].depth = 0; continue; }
+      if w[0].depth == 0 { ob_open(w, 0, fs_join(cast(string) w[0].home[0..<w[0].home_n], ".openagents/coder/sessions", b[..])); continue; }
+      name := ob_name(w, 0);
+      if name.count == 0 { w[0].phase = OB_AGY; w[0].depth = 0; continue; }
+      w[0].sub = false; w[0].kind = OB_CODER; w[0].parent_n = 0;
+      w[0].project_n = ob_put(w[0].project[..], 0, "coder");
+      if ob_take(w, 0, name) { return true; }
+      continue;
+    }
+    // Antigravity: brain/ID/.system_generated/logs/transcript.jsonl, ID the conversation.
+    if !w[0].agy { w[0].phase = OB_DONE; continue; }
+    if w[0].depth == 0 { ob_open(w, 0, fs_join(cast(string) w[0].home[0..<w[0].home_n], OB_AGY_BRAIN, b[..])); continue; }
     name := ob_name(w, 0);
     if name.count == 0 { w[0].phase = OB_DONE; continue; }
-    w[0].sub = false; w[0].kind = OB_CODER; w[0].parent_n = 0;
-    w[0].project_n = ob_put(w[0].project[..], 0, "coder");
-    if ob_take(w, 0, name) { return true; }
+    if name[0] == '.' { continue; }
+    lb: [OB_DIR] u8;
+    w[0].dir_n[1] = ob_put(w[0].dir[1][..], 0, fs_join(fs_join(ob_dir(w, 0), name, b[..]), OB_AGY_LOG, lb[..]));
+    w[0].sub = false; w[0].kind = OB_AGY;
+    w[0].project_n = ob_put(w[0].project[..], 0, "antigravity");
+    w[0].parent_n = ob_put(w[0].parent[..], 0, name);
+    if ob_take(w, 1, "transcript.jsonl") { return true; }
   }
   return false;
 }
@@ -199,3 +218,4 @@ ob_keep :: (w: [] ObWalk, found: [] ObFound, count: int) -> int {
   #assert n == 3 && cast(string) f[0].path[0..<f[0].n] == "/new.jsonl" && f[0].kind == OB_CODER && f[0].mtime == 400;
   #assert cast(string) f[0].project[0..<f[0].pn] == "coder" && f[0].parentn == 0 && cast(string) f[2].parent[0..<f[2].parentn] == "a";
 }
+
