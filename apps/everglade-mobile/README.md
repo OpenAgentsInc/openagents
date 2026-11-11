@@ -10,18 +10,20 @@ the same as [Everglade for desktop](../../everglade/docs/desktop-app-spec.md):
 | The Golemancers' Workshop | Yes: the temple, your character, the shared walking controller | Yes |
 | The Archery Range | Yes: the web's realm, run natively ([spec](../../everglade/docs/archery-range-spec.md)) | Not yet: a card |
 | Everglade Experimental | Yes: the web's realm, run natively | Not yet: a card |
+| The Bitcoin Lab | Yes: the web's realm, run natively | Not yet: a card |
 
 These apps are an experiment beside the main experience, which is the web app.
 
-Status: **on iOS the four worlds ran in the iPhone 17 Pro simulator on
-2026-11-10** (shots read: the range with a draw, an arrow in a face and the
-tally counting; Character Create and the glade; Experimental). The Workshop
+Status: **on iOS the five worlds ran in the iPhone 17 Pro simulator on
+2026-11-11** (shots read: the range walked and an arrow hit; Character Create
+and, online, the glade; Experimental walked; the Bitcoin Lab's stations, walked
+to the third). The Workshop
 ran in the Android emulator before the list of worlds was added. No real
 device has been checked by hand.
 
 ## The web's realms on iOS
 
-The three realms run through Aethyr's page host
+The four realms run through Aethyr's page host
 ([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h)), the same host
 and the same table of rows
 ([`Realms.swift`](../everglade-desktop/Sources/Realms.swift)) as the Mac app
@@ -87,8 +89,11 @@ apps/everglade-mobile/ios/release.sh BUILD_NUMBER
 
 That builds for iPhone, signs with the team's Apple Distribution identity,
 and uploads to the App Store Connect app "Everglade". The build number must
-be higher than the last one uploaded (4 went up on 2026-11-10: walking by
-touch in the range and Experimental; 3 was the first with the web's realms). It needs
+be higher than the last one uploaded (5 went up on 2026-11-11: the Bitcoin
+Lab, the faster grass and meshes, the HUD clear of the hotbar, and the room
+over the WebSocket where the page asks for WebTransport; 4 on 2026-11-10:
+walking by touch in the range and Experimental; 3 was the first with the
+web's realms). It needs
 `~/work/.secrets/appstoreconnect.env`. Apple then processes the build:
 
 ```sh
@@ -161,8 +166,11 @@ them again are in [`icon/`](icon/README.md).
 
 ## Not done
 
-- **A real phone has not run it.** Builds 1 to 4 went to TestFlight without one.
+- **A real phone has not run it.** Builds 1 to 5 went to TestFlight without one.
 - **Android's own list** is in [`android/README.md`](android/README.md).
+- **WebTransport.** The page host has only the WebSocket: a "wt+" room URL
+  opens as the WebSocket at the same address, as a browser without
+  WebTransport does.
 - **App size.** The bundle carries Everglade II's 59 MB pack, Experimental's
   92 MB pack and 28 MB of the bars' pictures.
 - **The deep-stack thread** is 512 MB of address space. It works in the
