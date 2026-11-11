@@ -97,13 +97,14 @@ unit_native_checks() {
 }
 unit_lexer() { python3 tests/lexer.py; }
 unit_parser() { python3 tests/parser.py; }
-# The evaluator's own limits (steps, storage, its parallel check workers and
-# their job budget) are what budget, steps, parallel_checks and job_budget
-# test: they run with COAX_NATIVE_CHECKS=0. Native code has no step budget, so
-# a check that runs out of #steps in the evaluator passes natively (#13143).
+# The evaluator's own limits (steps, storage, traversal, its parallel check
+# workers and their job budget) are what budget, steps, traversal,
+# parallel_checks and job_budget test: they run with COAX_NATIVE_CHECKS=0.
+# Native code has no step or traversal budget, so a check that runs out of
+# either in the evaluator passes natively (#13143).
 unit_budget() { COAX_NATIVE_CHECKS=0 python3 tests/run_budget.py && COAX_NATIVE_CHECKS=0 python3 tests/capacity_refusals.py; }
 unit_strings() { python3 tests/ct_strings.py; }
-unit_traversal() { python3 tests/traversal_work.py; }
+unit_traversal() { COAX_NATIVE_CHECKS=0 python3 tests/traversal_work.py; }
 unit_provenance() { python3 tests/provenance.py && web/tool.sh tests/stale-compiler.coax "$PWD" "$COAX_ABS"; }
 unit_query() { web/tool.sh tests/query.coax "$COAX_ABS"; }
 unit_steps() { COAX_NATIVE_CHECKS=0 web/tool.sh tests/steps.coax "$COAX_ABS"; }
