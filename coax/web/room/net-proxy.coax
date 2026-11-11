@@ -103,14 +103,16 @@ np_due :: (net: [] NpNet, now: int, last: int) -> int {
 NP_UDP_PAGES :: 6;          // pages through it at once (socket-native.h CXUDP_MAX less the listener)
 NP_UDP_HELD :: 4096;        // datagrams held at once, both ways
 NP_UDP_MTU :: 1500;
-NpDgram :: struct { due: int; n: int; up: bool; page: int; b: [NP_UDP_MTU] u8; }
+NpDgram :: struct { due: int; order: int; n: int; up: bool; page: int; b: [NP_UDP_MTU] u8; }
 NpUdp :: struct {
   listen: int; room: int;
   page_port: [NP_UDP_PAGES] int; page_up: [NP_UDP_PAGES] int;   // a page's port, and its socket to the room (-1 none)
   held: [NP_UDP_HELD] NpDgram; n: int;
   sent: [2] int; lost: [2] int; full: int;   // datagrams each way (0 up, 1 down) delivered and lost; dropped for room
+  last: [NP_UDP_PAGES] [2] int; taken: int;  // each page's way's last due (jitter queues, never reorders: as the TCP path, np_due); datagrams taken
 }
-// When a datagram taken at `now` arrives, or -1 when it is lost on the way.
+// When a datagram taken at `now` arrives, or -1 when it is lost on the way (before np_udp_after puts it
+// behind the one ahead of it).
 np_udp_due :: (net: [] NpNet, now: int) -> int {
   if net[0].loss > 0 && np_rand(net, 1000) < net[0].loss { return -1; }
   d := net[0].latency / 2;
@@ -126,6 +128,12 @@ np_udp_due :: (net: [] NpNet, now: int) -> int {
   first: [1] NpNet; first[0] = again[0];
   #assert np_udp_due(first[..], 5) == np_udp_due(again[..], 5);   // the same seed, the same fate
   quiet: [1] NpNet; #assert np_udp_due(quiet[..], 77) == 77;
+}
+// A datagram due at `due` on a way whose last was due at `last`: never before it (a path's jitter is
+// its queue's, so a datagram never overtakes the one sent before it, as on the TCP path).
+np_udp_after :: (due: int, last: int) -> int { return ifx due < last then last else due; }
+#test "a datagram never overtakes the one sent before it on its way" {
+  #assert np_udp_after(100, 130) == 130 && np_udp_after(130, 100) == 130 && np_udp_after(5, 5) == 5;
 }
 // The page sending from `port`: its index, a new one (with its own socket to the room), or -1 when full.
 np_udp_page :: (u: [] NpUdp, port: int) -> int {
@@ -152,21 +160,23 @@ np_udp_take :: (net: [] NpNet, u: [] NpUdp, h: int, up: bool, page: int, now: in
     due := np_udp_due(net, now);
     if due < 0 { u[0].lost[w] += 1; continue; }
     if r > NP_UDP_MTU || u[0].n >= NP_UDP_HELD { u[0].full += 1; continue; }
+    due = np_udp_after(due, u[0].last[p][w]); u[0].last[p][w] = due;
     slot := -1;
     for q: 0..<NP_UDP_HELD { if u[0].held[q].n == 0 { slot = q; break; } }
     d := u[0].held[slot..<slot + 1];
-    d[0].due = due; d[0].n = r; d[0].up = up; d[0].page = p;
+    d[0].due = due; d[0].n = r; d[0].up = up; d[0].page = p; d[0].order = u[0].taken; u[0].taken += 1;
     for b: 0..<r { d[0].b[b] = cast(u8) cxudp_byte(h, b); }
     u[0].n += 1;
   }
   return any;
 }
-// Every held datagram that is due, sent on.
+// Every held datagram that is due, sent on in the order they were taken.
 np_udp_give :: (u: [] NpUdp, now: int) {
-  if u[0].n == 0 { return; }
-  for q: 0..<NP_UDP_HELD {
+  while u[0].n > 0 {
+    q := -1;
+    for k: 0..<NP_UDP_HELD { e := u[0].held[k..<k + 1]; if e[0].n != 0 && e[0].due <= now && (q < 0 || e[0].order < u[0].held[q].order) { q = k; } }
+    if q < 0 { return; }
     d := u[0].held[q..<q + 1];
-    if d[0].n == 0 || d[0].due > now { continue; }
     h := ifx d[0].up then u[0].page_up[d[0].page] else u[0].listen;
     to := ifx d[0].up then u[0].room else u[0].page_port[d[0].page];
     for b: 0..<d[0].n { r := cxudp_put(h, cast(int) d[0].b[b]); }

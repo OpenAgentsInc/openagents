@@ -398,20 +398,17 @@ static void conn_close_error(qconn *c, int liberr) {
   if (w > 0) send_to(c->s, buf, (size_t)w, (struct sockaddr *)ps.path.remote.addr, ps.path.remote.addrlen);
   c->dead = true;
 }
-/* Everything connection c may send now: its waiting datagrams, then its streams' bytes (HTTP/3's
-   and the sessions'), then whatever QUIC itself owes (acknowledgements, resends, probes). */
-static void conn_write(qconn *c) {
-  if (c->dead) return;
+/* Connection c's waiting datagrams, as far as the congestion window takes them. */
+static bool conn_write_datagrams(qconn *c, ngtcp2_tstamp now) {
   wt_server *s = c->s;
   uint8_t buf[PKT_MAX]; ngtcp2_path_storage ps; ngtcp2_path_storage_zero(&ps); ngtcp2_pkt_info pi;
-  ngtcp2_tstamp now = ts_now();
   while (c->dq_n) {
     dgram *g = &c->dq[c->dq_head];
     int acc = 0; ngtcp2_vec v = {g->b, g->n};
     ngtcp2_ssize w = ngtcp2_conn_writev_datagram(c->conn, &ps.path, &pi, buf, sizeof buf, &acc, 0, c->dgram_id++, &v, 1, now);
     if (w < 0) {
       if (w == NGTCP2_ERR_INVALID_ARGUMENT) { s->st.datagrams_dropped++; c->dq_head = (c->dq_head + 1) % DQ; c->dq_n--; continue; }
-      conn_close_error(c, (int)w); return;
+      conn_close_error(c, (int)w); return false;
     }
     if (w == 0) break;   /* the congestion window is full: they wait (or the host drops them as stale) */
     send_to(s, buf, (size_t)w, (struct sockaddr *)ps.path.remote.addr, ps.path.remote.addrlen);
@@ -420,6 +417,19 @@ static void conn_write(qconn *c) {
       c->dq_head = (c->dq_head + 1) % DQ; c->dq_n--;
     }
   }
+  return true;
+}
+/* Everything connection c may send now: its streams' bytes (HTTP/3's and the sessions') with
+   whatever QUIC itself owes (acknowledgements, resends, probes), then its waiting datagrams. The
+   streams go first: they carry the outcomes and the page's casts, few and small, and under loss a
+   shrunken congestion window full of each tick's state would starve them (#13177: at 10% loss the
+   room's outcomes stopped while its state still came). A tick's state that doesn't fit waits, and
+   the next tick's replaces it (wt_drop_waiting). */
+static void conn_write(qconn *c) {
+  if (c->dead) return;
+  wt_server *s = c->s;
+  uint8_t buf[PKT_MAX]; ngtcp2_path_storage ps; ngtcp2_path_storage_zero(&ps); ngtcp2_pkt_info pi;
+  ngtcp2_tstamp now = ts_now();
   for (wt_strm *t = c->streams; t; t = t->next) t->blocked = false;
   for (int guard = 0; guard < 512; guard++) {
     int64_t sid = -1; int fin = 0; nghttp3_vec vec[16]; nghttp3_ssize cnt = 0; wt_strm *t = NULL;
@@ -450,6 +460,7 @@ static void conn_write(qconn *c) {
     if (w == 0) break;
     send_to(s, buf, (size_t)w, (struct sockaddr *)ps.path.remote.addr, ps.path.remote.addrlen);
   }
+  if (!conn_write_datagrams(c, now)) return;
   ngtcp2_conn_update_pkt_tx_time(c->conn, now);
 }
 

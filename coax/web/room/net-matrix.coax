@@ -2,11 +2,11 @@
 // two headless Chromes) through a bad network (net-proxy.coax: TCP and UDP, seeded), on each
 // transport, for each loss and round trip. One JSON line per cell into OUT, and a table.
 //   coax/web/tool.sh coax/web/room/net-matrix.coax --page URL --room PORT --hash HEX --out FILE
-//       [--proxy PORT] [--trials N] [--seed S] [--quick] [--check BASELINE]
+//       [--proxy PORT] [--trials N] [--seed S] [--quick] [--rtt MS] [--transport ws|wt] [--check BASELINE]
 // --page is a local page server's origin and --room its room's port (coax/web/room/local.coax, the
 // room started with OA_ROOM_WT_CERT and OA_ROOM_WT_KEY; --hash the certificate's SHA-256, wt-cert.sh).
 // The cells: loss 0, 2, 5 and 10%; round trip 50, 100 and 150 ms; jitter ±30 ms; WebSocket and
-// WebTransport. --quick runs 2% at 120 ms on both (the pipeline's subset). Each cell's line:
+// WebTransport. --quick runs 2% at 120 ms on both (the pipeline's subset); --rtt MS only that round trip, --transport ws|wt only that transport. Each cell's line:
 //   {"transport":"wt","loss_permille":20,"rtt_ms":120,"jitter_ms":60,"tick_p50_us":..,"tick_p95_us":..,"latency":{...}}
 // with everglade2-latency's own JSON (arrow_remote is "A looses, B sees it"; walk is input to
 // response; lag_a the others' delay as drawn; bytes the payload bytes a second each way and the
@@ -92,7 +92,7 @@ nm_regressed :: (now_p95: int, now_answered: int, n: int, base_p95: int) -> bool
   #assert nm_regressed(100, 3, 8, 200) && !nm_regressed(100, 4, 8, 200) && nm_regressed(-1, 8, 8, 200) && !nm_regressed(900, 8, 8, -1);
 }
 
-nm_usage :: () -> int { tool_errln("usage: net-matrix.coax --page URL --room PORT --hash HEX --out FILE [--proxy PORT] [--trials N] [--seed S] [--quick] [--check BASELINE]"); return 2; }
+nm_usage :: () -> int { tool_errln("usage: net-matrix.coax --page URL --room PORT --hash HEX --out FILE [--proxy PORT] [--trials N] [--seed S] [--quick] [--rtt MS] [--transport ws|wt] [--check BASELINE]"); return 2; }
 
 // One cell: the proxy up, the latency check through it, the room's health; its JSON line (or "").
 nm_cell :: (root: string, page: string, room: int, proxy: int, hash: string, transport: string, loss: int, rtt: int, trials: int, seed: int, line: [] Nb) -> bool {
@@ -182,9 +182,13 @@ tool_main :: () -> int #export_c #effects(all) {
   bad := 0;
   losses := ifx quick then [4] int.[20, -1, -1, -1] else NM_LOSS;
   rtts := ifx quick then [3] int.[120, -1, -1] else NM_RTT;
+  only := args_whole(args_value(a[..], "--rtt", "0"));   // one round trip of the matrix (a run in parts)
+  if only > 0 { rtts = [3] int.[only, -1, -1]; }
+  just := args_value(a[..], "--transport", "");   // ws or wt: that transport's cells only
   for loss: losses { if loss < 0 { continue; }
     for rtt: rtts { if rtt < 0 { continue; }
       for transport: NM_TRANSPORTS {
+        if just.count > 0 && transport != just { continue; }
         line: [1] Nb;
         if !nm_cell(root, page, room, proxy, hash, transport, loss, rtt, trials, seed, line[..]) { bad += 1; print("| % | % | % | no result |\n", transport, loss, rtt); continue; }
         if !fs_append(out_file, nb_text(line[..])) || !fs_append(out_file, "\n") { tool_errln("net-matrix: can't write OUT"); return 1; }
