@@ -1521,46 +1521,12 @@ TG_FOE :: 0; TG_POINT :: 1; TG_SELF :: 2; TG_ALLY :: 3; TG_BESIDE :: 4;   // a s
 Ab :: struct { kind: int; sp: int; lvl: int; tg: int; name: string; }
 mk_ab :: (kind: int, name: string) -> Ab { return Ab.{kind = kind, sp = -1, name = name}; }
 spell_ab :: (sp: int, lvl: int, tg: int) -> Ab { return Ab.{kind = AB_SPELL, sp = sp, lvl = lvl, tg = tg, name = rs_spell(sp).name}; }
-// The abilities a class's hotbar holds, in slot order (the ones its rules in the engine support).
-abilities :: (kl: int, out: [] Ab) -> int {
-  n := 0;
-  if kl == RS_DRUID {
-    out[0] = spell_ab(SP_STARRY_WISP, 0, TG_FOE); out[1] = spell_ab(SP_PRODUCE_FLAME, 0, TG_SELF); out[2] = spell_ab(SP_FLAME_HURL, 0, TG_FOE);
-    out[3] = spell_ab(SP_THUNDERWAVE, 1, TG_POINT); out[4] = spell_ab(SP_ENTANGLE, 1, TG_POINT); out[5] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY);
-    out[6] = spell_ab(SP_CALL_LIGHTNING, 3, TG_POINT); out[7] = mk_ab(AB_LANDS, "LAND'S AID"); out[8] = mk_ab(FB_DASH, "DASH"); n = 9;
-  } else if kl == RS_WIZARD {
-    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = spell_ab(SP_RAY_OF_SICKNESS, 1, TG_FOE);
-    out[3] = spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = spell_ab(SP_MAGIC_MISSILE, 1, TG_FOE); out[5] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE);
-    out[6] = spell_ab(SP_BLINDNESS, 2, TG_FOE); out[7] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[8] = mk_ab(FB_DASH, "DASH"); n = 9;
-  } else if kl == RS_WARLOCK {
-    n = lw_abilities(out);   // the Warlock you play is level 17 (fivelab-warlock.coax)
-  } else if kl == RS_SORCERER {
-    out[0] = spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = spell_ab(SP_ACID_SPLASH, 0, TG_POINT); out[2] = spell_ab(SP_MAGIC_MISSILE, 1, TG_FOE);
-    out[3] = spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[4] = spell_ab(SP_SHATTER, 2, TG_POINT); out[5] = spell_ab(SP_FIREBALL, 3, TG_POINT);
-    out[6] = mk_ab(AB_INNATE, "INNATE SORCERY"); out[7] = mk_ab(FB_DASH, "DASH"); n = 8;
-  } else if kl == RS_BARD {
-    out[0] = spell_ab(SP_VICIOUS_MOCKERY, 0, TG_FOE); out[1] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = mk_ab(AB_INSPIRE, "BARDIC INSPIRATION");
-    out[3] = spell_ab(SP_SHATTER, 2, TG_POINT); out[4] = spell_ab(SP_HYPNOTIC_PATTERN, 3, TG_POINT); out[5] = spell_ab(SP_MASS_HEALING_WORD, 3, TG_ALLY);
-    out[6] = spell_ab(SP_FIREBALL, 3, TG_POINT); out[7] = mk_ab(FB_DASH, "DASH"); n = 8;
-  } else if kl == RS_CLERIC {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[2] = spell_ab(SP_GUIDING_BOLT, 1, TG_FOE);
-    out[3] = spell_ab(SP_INFLICT_WOUNDS, 1, TG_FOE); out[4] = spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[5] = spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF);
-    out[6] = mk_ab(AB_TURN, "TURN UNDEAD"); out[7] = mk_ab(AB_PRESERVE, "PRESERVE LIFE"); out[8] = mk_ab(FB_DASH, "DASH"); n = 9;
-  } else if kl == RS_FIGHTER {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_SECOND, "SECOND WIND"); out[2] = mk_ab(AB_SURGE, "ACTION SURGE"); out[3] = mk_ab(FB_DASH, "DASH"); n = 4;
-  } else if kl == RS_PALADIN {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_DIVINE_SMITE, 1, TG_FOE); out[2] = mk_ab(AB_LAY, "LAY ON HANDS");
-    out[3] = mk_ab(AB_SACRED, "SACRED WEAPON"); out[4] = spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[5] = mk_ab(FB_DASH, "DASH"); n = 6;
-  } else if kl == RS_BARBARIAN {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_RECKLESS, "RECKLESS ATTACK"); out[2] = mk_ab(AB_RAGE, "RAGE"); out[3] = mk_ab(FB_DASH, "DASH"); n = 4;
-  } else if kl == RS_MONK {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_FLURRY, "FLURRY OF BLOWS"); out[2] = mk_ab(AB_PATIENT, "PATIENT DEFENSE");
-    out[3] = mk_ab(AB_WIND, "STEP OF THE WIND"); out[4] = mk_ab(AB_WHOLE, "WHOLENESS OF BODY"); out[5] = mk_ab(FB_DASH, "DASH"); n = 6;
-  } else if kl == RS_ROGUE {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(AB_AIM, "STEADY AIM"); out[2] = mk_ab(FB_CDASH, "CUNNING DASH"); out[3] = mk_ab(FB_DASH, "DASH"); n = 4;
-  } else if kl == RS_RANGER {
-    out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = spell_ab(SP_HUNTERS_MARK, 1, TG_FOE); out[2] = mk_ab(FB_DASH, "DASH"); n = 3;
-  } else { out[0] = mk_ab(AB_ATTACK, "ATTACK"); out[1] = mk_ab(FB_DASH, "DASH"); n = 2; }
+// The abilities a class's hotbar holds, in slot order: the shared bar's (fivebar.coax fb_lab_bar), as
+// the Lab's own slots; the Warlock you play is level 17 (fivelab-warlock.coax).
+lab_bar :: (kl: int, out: [] Ab) -> int {
+  if kl == RS_WARLOCK { return lw_abilities(out); }
+  bar: [FB_CLASS_SLOTS] FbAb; n := fb_lab_bar(kl, bar[..]);
+  for q: 0..<n { out[q] = Ab.{kind = bar[q].kind, sp = bar[q].sp, lvl = bar[q].lvl, tg = bar[q].tg, name = bar[q].name}; }
   return n;
 }
 // The panel's row q (two columns of SIDE): the first 48 heroes; in the Siege, the watch on the
@@ -1589,7 +1555,7 @@ next_scenario :: (s: [] Lab) {
 hero_abilities :: (s: [] Lab, i: int, out: [] Ab) -> int {
   c := s[0].battle[0].c[i..<i + 1];
   if c[0].npc != RS_NPC_NONE { return siege_abilities(c[0], out); }
-  return abilities(c[0].klass, out);
+  return lab_bar(c[0].klass, out);
 }
 // Whether a slot can be used now, from the hero's slots, uses, Rages and Focus.
 ab_ready :: (s: [] Lab, i: int, a: Ab) -> bool {
@@ -1688,7 +1654,7 @@ use_ab :: (s: [] Lab, i: int, a: Ab, foe: int) {
 // subclass's, Magical Discoveries') need no choice. AI heroes keep their presets.
 lab_prepare_bar :: (c: [] RsCreature) {
   if c[0].klass == RS_WARLOCK { return; }   // the level 17 Warlock you play has its own kit (lw_raise)
-  list: [SLOTS] Ab; n := abilities(c[0].klass, list[..]);
+  list: [SLOTS] Ab; n := lab_bar(c[0].klass, list[..]);
   keys: [SLOTS + 2] int; m := 0;
   for k: 0..<n {
     a := list[k];
@@ -3682,12 +3648,12 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   #assert n > 300 && s[0].slots[0].x1 > s[0].slots[0].x0;
   // every class's hotbar holds its own abilities, Attack or a cantrip first and Dash last
   for c: 0..<12 {
-    list: [SLOTS] Ab; nab := abilities(ROSTER[c], list[..]);
+    list: [SLOTS] Ab; nab := lab_bar(ROSTER[c], list[..]);
     #assert nab >= 3 && nab <= SLOTS && list[nab - 1].kind == FB_DASH;
   }
   list: [SLOTS] Ab;
-  #assert abilities(RS_BARBARIAN, list[..]) == 4 && list[2].kind == AB_RAGE;
-  #assert abilities(RS_WIZARD, list[..]) == 9 && list[4].sp == SP_MAGIC_MISSILE && list[7].sp == SP_FIREBALL;
+  #assert lab_bar(RS_BARBARIAN, list[..]) == 4 && list[2].kind == AB_RAGE;
+  #assert lab_bar(RS_WIZARD, list[..]) == 9 && list[4].sp == SP_MAGIC_MISSILE && list[7].sp == SP_FIREBALL;
   ok = lab_key(s[..], 'p', 0); #assert !s[0].player && s[0].me < 0;
 }
 
@@ -4071,7 +4037,7 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
   }
 }
 
-// Player mode offers each class's hotbar (abilities) on a LEVEL hero built as the Lab builds it
+// Player mode offers each class's hotbar (lab_bar) on a LEVEL hero built as the Lab builds it
 // (hero_for, then lab_prepare_bar). Every displayed spell must be one that hero can cast under the shared
 // rules: accessible, selected or granted, and with its components supplied. (The level 17
 // Warlock's bar is checked in fivelab-warlock.coax.)
@@ -4080,7 +4046,7 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
     if kl == RS_MONSTER || kl == RS_WARLOCK { continue; }
     built := hero_for(kl, "You", 0, LEVEL);
     h: [1] RsCreature; h[0] = built; lab_prepare_bar(h[..]); hero := h[0];
-    list: [SLOTS] Ab; n := abilities(kl, list[..]);
+    list: [SLOTS] Ab; n := lab_bar(kl, list[..]);
     #assert n > 0 && n <= SLOTS;
     for k: 0..<n {
       if list[k].kind != AB_SPELL { continue; }
@@ -4104,7 +4070,7 @@ player_mode_casts :: (kl: int) -> int {
   for p: 0..<12 { if ROSTER[p] == kl { s[0].pick = p; } }
   s[0].player = true; pick_hero(s[..]);
   me := s[0].me; #assert me >= 0 && b[0].c[me].klass == kl;
-  list: [SLOTS] Ab; n := abilities(kl, list[..]);
+  list: [SLOTS] Ab; n := lab_bar(kl, list[..]);
   for k: 0..<n {
     a := list[k];
     if a.kind != AB_SPELL || a.sp < SP_INFLICT_WOUNDS || a.sp > SP_SHATTER { continue; }

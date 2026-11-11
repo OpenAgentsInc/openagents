@@ -125,13 +125,14 @@ rate's corner and where the top buttons, the picker and the hotbar go).
 ### Class bars
 
 The shared modules are `class-kit.coax` (`xk_bar_at`, `xk_entry_at`) and
-`fivebar.coax` (`fb_ready`, `fb_left`, `fb_use`). No zone draws a class
-resource bar (Rage, Focus, slots) beyond text.
+`fivebar.coax` (`fb_ready`, `fb_left`, `fb_use`, and the per-class lists
+`fb_class_bar` and `fb_lab_bar`). The class resource bar (Rages, Focus) is
+`everglade/hud/class-resource.coax`.
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared bar; the room's counts print in a slot's corner (everglade2-cast.coax:261-272). Local client record `E2nKit` everglade2-net.coax:911. |
-| Experimental | The combat is shared (`fivebar.coax` through `class-kit.coax`). The 5E Lab copies the per-class lists in `abilities` fivelab.coax:1764 and shows resources as text in `draw_panel` :2802. |
+| Everglade II | Shared bar; the room's counts read through `xk_room_slot` (class-kit.coax), and the resource bar draws Rages and Focus. |
+| Experimental | The combat is shared (`fivebar.coax` through `class-kit.coax`). The 5E Lab takes its per-class lists from `fb_lab_bar` (fivebar.coax) and shows resources as text in `draw_panel`. |
 | Everglade v1 | Local: everglade-classes.coax (`EgClass` :39, `cl_cast` :146, `cl_bar` :247): one ability slot a class. |
 
 ### Dash
@@ -322,10 +323,8 @@ No zone-local copies: the held kit moved to `everglade/held-kit.coax`.
 
 ### Class bars (#13084)
 
-8 zone-local copies.
+5 zone-local copies, all in Everglade v1, which is frozen while Everglade is rebuilt.
 
-- Everglade II: `E2nKit` everglade2-net.coax:911, `e2n_kit` everglade2-net.coax:912.
-- Experimental: `abilities` fivelab.coax:1764.
 - Everglade v1: `everglade-classes.coax` (file), `CL_ABILITY` everglade-classes.coax:30, `EgClass` everglade-classes.coax:39, `cl_cast` everglade-classes.coax:146, `cl_bar` everglade-classes.coax:247.
 
 ### Dash (#13085)

@@ -119,6 +119,35 @@ fb_class_bar :: (kl: int, out: [] FbAb) -> int {
   return n;
 }
 
+// ---- the 5E Lab's bar (fivelab.coax): fb_class_bar, with the fuller lists its Wizard, Sorcerer, Bard
+// and Cleric fight with (Magic Missile, Acid Splash, Shatter, Mass Healing Word, Inflict Wounds). Its
+// Warlock is level 17 (fb_warlock_bar's, through fivelab-warlock.coax).
+
+fb_lab_bar :: (kl: int, out: [] FbAb) -> int {
+  dash := fb_feature(FB_DASH, "DASH", "dash");
+  if kl == RS_WIZARD {
+    out[0] = fb_spell(SP_FIRE_BOLT, 0, FB_FOE); out[1] = fb_spell(SP_CHILL_TOUCH, 0, FB_FOE); out[2] = fb_spell(SP_RAY_OF_SICKNESS, 1, FB_FOE);
+    out[3] = fb_spell(SP_FALSE_LIFE, 1, FB_SELF); out[4] = fb_spell(SP_MAGIC_MISSILE, 1, FB_FOE); out[5] = fb_spell(SP_SCORCHING_RAY, 2, FB_FOE);
+    out[6] = fb_spell(SP_BLINDNESS, 2, FB_FOE); out[7] = fb_spell(SP_FIREBALL, 3, FB_POINT); out[8] = dash; return 9;
+  }
+  if kl == RS_SORCERER {
+    out[0] = fb_spell(SP_FIRE_BOLT, 0, FB_FOE); out[1] = fb_spell(SP_ACID_SPLASH, 0, FB_POINT); out[2] = fb_spell(SP_MAGIC_MISSILE, 1, FB_FOE);
+    out[3] = fb_spell(SP_SCORCHING_RAY, 2, FB_FOE); out[4] = fb_spell(SP_SHATTER, 2, FB_POINT); out[5] = fb_spell(SP_FIREBALL, 3, FB_POINT);
+    out[6] = fb_feature(FB_INNATE, "INNATE SORCERY", "innate-sorcery"); out[7] = dash; return 8;
+  }
+  if kl == RS_BARD {
+    out[0] = fb_spell(SP_VICIOUS_MOCKERY, 0, FB_FOE); out[1] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); out[2] = fb_feature(FB_INSPIRE, "BARDIC INSPIRATION", "bardic-inspiration");
+    out[3] = fb_spell(SP_SHATTER, 2, FB_POINT); out[4] = fb_spell(SP_HYPNOTIC_PATTERN, 3, FB_POINT); out[5] = fb_spell(SP_MASS_HEALING_WORD, 3, FB_ALLY);
+    out[6] = fb_spell(SP_FIREBALL, 3, FB_POINT); out[7] = dash; return 8;
+  }
+  if kl == RS_CLERIC {
+    out[0] = fb_feature(FB_ATTACK, "ATTACK", "attack"); out[1] = fb_spell(SP_SACRED_FLAME, 0, FB_FOE); out[2] = fb_spell(SP_GUIDING_BOLT, 1, FB_FOE);
+    out[3] = fb_spell(SP_INFLICT_WOUNDS, 1, FB_FOE); out[4] = fb_spell(SP_HEALING_WORD, 1, FB_ALLY); out[5] = fb_spell(SP_SPIRIT_GUARDIANS, 3, FB_SELF);
+    out[6] = fb_feature(FB_TURN, "TURN UNDEAD", "turn-undead"); out[7] = fb_feature(FB_PRESERVE, "PRESERVE LIFE", "preserve-life"); out[8] = dash; return 9;
+  }
+  return fb_class_bar(kl, out);
+}
+
 // ---- Everglade's bar, in its slot order (everglade-hotbar.coax HB_NAME; `art` is that name)
 
 fb_everglade :: (out: [] FbAb) -> int {
