@@ -11,10 +11,17 @@
 // (aethyr/render/stylized.coax, named by gpu/painted.coax) draws them: store 0 the kit's vertices,
 // store 1 the records, store 2 the ground table, each copied to the GPU once.
 //
-// Keys: W A S D or the arrows walk, a drag looks, shift runs, 1 and 2 go to the two shots, C shows
-// what blocks you, H hides the HUD, Escape leaves. On a phone the left half of the screen walks
-// and the right half looks. `#shot` and `#shot2` in the address open a shot with no HUD (for
-// comparing with the reference); `#solids` and `#solids2` show the solids over it.
+// South of the village (verse/painted/wilds.coax) the road runs on as a path through pines, over a
+// plank bridge and into a meadow of oaks under a cliff and its waterfall. The river, the falls,
+// their spray and the rainbow are the scene's last draws: the host draws them in the water pass
+// (coaxial_water_draws; aethyr/render/stylized.coax, stylized_water_*).
+//
+// Keys: W A S D or the arrows walk, a drag looks, shift runs, C shows what blocks you, H hides the
+// HUD, Escape leaves. The shots, by their reference frame: 1 the road, 2 the plaza, 3 the church
+// steps, 5 6 7 8 the meadow, 9 and 0 the waterfall, - the bridge, = the pine path. On a phone the
+// left half of the screen walks and the right half looks. `#shot`, `#shot2` ... `#shot12` in the
+// address open a shot with no HUD (for comparing with the reference); `#solids`, `#solids2` ...
+// show the solids over it.
 //   coax/bin/coax test apps/openagents-web/painted.coax --steps 2000000000
 
 #load "font.coax";
@@ -31,9 +38,9 @@ PAINTED_FRAME_NS :: 100000000;
 WALK :: 3.6;             // metres a second
 RUN :: 9.0;
 EYE :: 1.68;             // the eye above the ground
-EDGE :: 88.0;            // how far from the middle you may walk
+EDGE :: VW_EDGE;         // how far from the middle you may walk
 NORTH :: -142.0;         // and how far along the road's line: from behind the church
-SOUTH :: 34.0;           // to the road's start
+SOUTH :: VW_SOUTH;       // to the meadow's far side
 RISE :: 9.0;             // how fast the eye follows the feet up a step, a second
 
 HOST_PAGE :: 600;
@@ -48,6 +55,7 @@ Painted :: struct {
   started: bool;
   cam: StyCamera;
   feet: f32;                 // the height your feet stand at
+  held: f32;                 // the eye above them: EYE once you walk
   solids: bool;              // the solids are drawn over the scene
   look: StyLook;
   keys: int;                 // GO_ bits held
@@ -77,22 +85,31 @@ put :: (buf: [] u8, at: int, text: string) -> int {
   return n;
 }
 
-// Stand where a shot was taken: 1 the village road, 2 the plaza.
+// Stand where a shot was taken, by its reference frame's number: 1 the village road, 2 the plaza,
+// 3 the church steps, 5 to 12 the country to the south.
 painted_shot_at :: (s: [] Painted, shot: int) {
-  s[0].cam = ifx shot == 2 then vr_plaza_camera() else vr_shot_camera();
+  s[0].cam = vr_camera(shot);
   s[0].feet = s[0].cam.y - EYE;
+  // A shot from above or below head height: the feet are on the ground there, and the eye comes
+  // to head height once you walk.
+  if shot >= 3 { s[0].feet = ifx shot == 11 then f32(VW_DECK) else vr_height(s[0].cam.x, s[0].cam.z); }
+  s[0].held = s[0].cam.y - s[0].feet;
 }
 painted_shot :: (s: [] Painted) { painted_shot_at(s, 1); }
 // The host's draws: a part's vertices in order (the top bit of the base instance), once a record.
 // The solids' own mesh is left out unless they are shown.
 painted_list :: (s: [] Painted) {
-  n := 0;
-  for d: 0..<s[0].scene[0].draw_n {
-    if d == s[0].scene[0].solid_draw && !s[0].solids { continue; }
-    o := d * 4;
-    s[0].host_draws[n * 4] = s[0].scene[0].draws[o]; s[0].host_draws[n * 4 + 1] = s[0].scene[0].draws[o + 1];
-    s[0].host_draws[n * 4 + 2] = s[0].scene[0].draws[o + 2] | 0x80000000; s[0].host_draws[n * 4 + 3] = s[0].scene[0].draws[o + 3];
-    n += 1;
+  n := 0; wet0 := s[0].scene[0].wet_first; wet1 := wet0 + s[0].scene[0].wet_n;
+  // What is solid first, then the water: the host draws its last painted_water draws in the water pass.
+  for pass: 0..<2 {
+    for d: 0..<s[0].scene[0].draw_n {
+      if d == s[0].scene[0].solid_draw && !s[0].solids { continue; }
+      if (d >= wet0 && d < wet1) != (pass == 1) { continue; }
+      o := d * 4;
+      s[0].host_draws[n * 4] = s[0].scene[0].draws[o]; s[0].host_draws[n * 4 + 1] = s[0].scene[0].draws[o + 1];
+      s[0].host_draws[n * 4 + 2] = s[0].scene[0].draws[o + 2] | 0x80000000; s[0].host_draws[n * 4 + 3] = s[0].scene[0].draws[o + 3];
+      n += 1;
+    }
   }
   s[0].host_draw_n = ifx s[0].scene[0].built then n else 0;
 }
@@ -100,8 +117,8 @@ painted_start :: (s: [] Painted) {
   if s[0].started { return; }
   s[0].started = true;
   s[0].look = vr_look();
-  painted_shot(s);
   built := vr_build(s[0].scene[..]);
+  painted_shot(s);
   painted_list(s);
   s[0].generation = 1;
 }
@@ -114,13 +131,14 @@ leave_to :: (s: [] Painted, url: string) {
 // One fixed step: walk the way the keys and the thumb say. Aethyr's walking capsule slides you
 // along what blocks you and stands you on the ground, a step or a terrace; the eye follows the feet.
 step :: (s: [] Painted, dt: f32) {
-  s[0].cam.y += (s[0].feet + EYE - s[0].cam.y) * lo(1, RISE * dt);
+  s[0].cam.y += (s[0].feet + s[0].held - s[0].cam.y) * lo(1, RISE * dt);
   ahead: f32 = 0; side: f32 = 0;
   if s[0].keys & GO_AHEAD != 0 { ahead += 1; } if s[0].keys & GO_BACK != 0 { ahead -= 1; }
   if s[0].keys & GO_RIGHT != 0 { side += 1; } if s[0].keys & GO_LEFT != 0 { side -= 1; }
   ahead += s[0].stick_y; side += s[0].stick_x;
   size := sqrt(ahead * ahead + side * side);
   if size < 0.01 { return; }
+  s[0].held = EYE;
   if size > 1 { ahead /= size; side /= size; }
   speed: f32 = ifx s[0].keys & GO_RUN != 0 then RUN else WALK;
   c := cos(s[0].cam.yaw); sn := sin(s[0].cam.yaw);
@@ -173,7 +191,7 @@ ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
 say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
   return draw_text(out, n, t, x, base, cap, GAP, SPACE, k, false, false);
 }
-HOW :: "W A S D WALK. DRAG LOOKS. 1 AND 2 THE SHOTS. C SHOWS WHAT BLOCKS YOU. H HIDES THIS.";
+HOW :: "W A S D WALK. DRAG LOOKS. 1 TO 0 THE SHOTS. C SHOWS WHAT BLOCKS YOU. H HIDES THIS.";
 HOW_PHONE :: "LEFT THUMB WALKS. RIGHT THUMB LOOKS.";
 draw_hud :: (s: [] Painted, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   n := at;
@@ -210,6 +228,13 @@ painted_frame :: (s: [] Painted, out: [] f32, u: [] f32, width: f32, height: f32
 
 // ---- input
 
+// The shot a key goes to, by its reference frame's number (0: none).
+shot_key :: (key: int) -> int {
+  if key >= '1' && key <= '3' { return key - '0'; }
+  if key >= '5' && key <= '9' { return key - '0'; }
+  if key == '0' { return 10; } if key == '-' { return 11; } if key == '=' { return 12; }
+  return 0;
+}
 held_bit :: (key: int) -> int {
   if key == 'w' || key == 'W' || key == KEY_UP { return GO_AHEAD; }
   if key == 's' || key == 'S' || key == KEY_DOWN { return GO_BACK; }
@@ -226,8 +251,9 @@ painted_key :: (s: [] Painted, key: int, mods: int) -> bool #export_c #effects(a
     if key == 'W' || key == 'A' || key == 'S' || key == 'D' || mods & 1 != 0 { s[0].keys |= GO_RUN; } else { s[0].keys = s[0].keys & (GO_AHEAD | GO_BACK | GO_LEFT | GO_RIGHT); }
     return true;
   }
-  if key == '1' { painted_shot_at(s, 1); return true; }
-  if key == '2' { painted_shot_at(s, 2); return true; }
+  // The shots: 1 2 3, then 5 to 9, 0 the tenth, - and = the eleventh and twelfth.
+  shot := shot_key(key);
+  if shot > 0 { painted_shot_at(s, shot); return true; }
   if key == 'c' || key == 'C' { s[0].solids = !s[0].solids; painted_list(s); return true; }
   if key == 'h' || key == 'H' { s[0].clean = !s[0].clean; return true; }
   if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
@@ -284,9 +310,16 @@ painted_message :: (s: [] Painted, kind: int, t: string) #export_c #effects(all)
 // the same with the solids shown.
 painted_hash :: (s: [] Painted, t: string) #export_c #effects(all) {
   painted_start(s);
-  if t == "shot" || t == "solids" { s[0].clean = true; painted_shot_at(s, 1); }
-  if t == "shot2" || t == "solids2" { s[0].clean = true; painted_shot_at(s, 2); }
-  if t == "solids" || t == "solids2" { s[0].solids = true; painted_list(s); }
+  // `shot` or `solids`, then the shot's number (none: the first).
+  solids := t.count >= 6 && t[0] == 's' && t[1] == 'o' && t[2] == 'l' && t[3] == 'i' && t[4] == 'd' && t[5] == 's';
+  shot := t.count >= 4 && t[0] == 's' && t[1] == 'h' && t[2] == 'o' && t[3] == 't';
+  if !solids && !shot { return; }
+  n := 0; from := ifx solids then 6 else 4;
+  for i: from..<t.count { if t[i] < '0' || t[i] > '9' { return; } n = n * 10 + cast(int) (t[i] - '0'); }
+  if n == 0 { n = 1; }
+  if n > 12 || n == 4 { return; }
+  s[0].clean = true; painted_shot_at(s, n);
+  if solids { s[0].solids = true; painted_list(s); }
 }
 painted_golden :: (s: [] Painted, on: bool) #export_c #effects(all) { painted_start(s); s[0].golden = on; }
 painted_action :: (s: [] Painted) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
@@ -294,6 +327,7 @@ painted_action_done :: (s: [] Painted) #export_c #effects(all) { s[0].out_n = 0;
 
 // ---- what the host draws: the parts, the grass, and the three stores
 painted_draws :: (s: [] Painted) -> int #export_c #effects(all) { return s[0].host_draw_n; }
+painted_water :: (s: [] Painted) -> int #export_c #effects(all) { return ifx s[0].host_draw_n > 0 then s[0].scene[0].wet_n else 0; }
 painted_grass :: (s: [] Painted) -> int #export_c #effects(all) { return ifx s[0].host_draw_n > 0 then s[0].blades else 0; }
 painted_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return VR_VERTICES * ARCH_VERTEX_FLOATS * 4; }
@@ -363,4 +397,30 @@ frame_at :: (s: [] Painted, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   // A phone: the HUD fits.
   s[0].clean = false; n = frame_at(s[..], 390 * 3, 844 * 3, 3, 0);
   #assert n > 0 && s[0].worlds.x1 < 390 * 3 / 2 && text_width(HOW_PHONE, 12 * 3 * 0.85) > 0;
+}
+#test "the water is drawn last, and the other shots stand you at the church steps, on the bridge and in the country" #steps 2000000000 {
+  s: [1] Painted;
+  n := frame_at(s[..], 1920, 1080, 1, 0.016);
+  #assert s[0].scene[0].built;
+  // The water is the host's last draws, and stays last when the solids are shown.
+  wet := s[0].scene[0].wet_n; #assert painted_water(s[..]) == wet && wet > 0;
+  for d: 0..<s[0].host_draw_n {
+    o := cast(int) s[0].host_draws[d * 4] * ARCH_VERTEX_FLOATS;
+    #assert (s[0].scene[0].mesh[o + 6] >= ARCH_M_WET) == (d >= s[0].host_draw_n - wet);
+  }
+  #assert painted_key(s[..], 'c', 0) && s[0].scene[0].mesh[cast(int) s[0].host_draws[(s[0].host_draw_n - 1) * 4] * ARCH_VERTEX_FLOATS + 6] >= ARCH_M_WET && painted_key(s[..], 'c', 0);
+  // 3 stands you low at the foot of the church steps; you come to head height when you walk.
+  steps := vr_camera(3);
+  #assert painted_key(s[..], '3', 0) && s[0].cam.y == steps.y && s[0].feet == VR_VILLAGE && s[0].cam.y < s[0].feet + 1;
+  #assert painted_key(s[..], 'w', 0); for i: 0..<60 { n = frame_at(s[..], 1920, 1080, 1, 0.0166667); }
+  #assert painted_key_up(s[..], 'w', 0) && s[0].cam.y > s[0].feet + EYE - 0.05 && s[0].cam.z < steps.z - 3;
+  // The other shots: 5 to 9, 0, - and = stand you where frames 5 to 12 were taken; = is the pine path, - the bridge's deck.
+  #assert shot_key('4') == 0 && shot_key('5') == 5 && shot_key('0') == 10 && shot_key('-') == 11 && shot_key('=') == 12;
+  #assert painted_key(s[..], '-', 0) && s[0].cam.z == vr_camera(11).z && s[0].feet == VW_DECK && s[0].held == EYE;
+  // From the deck you walk off the bridge's north end onto the path.
+  #assert painted_key(s[..], 'W', 0); for i: 0..<120 { n = frame_at(s[..], 1920, 1080, 1, 0.0166667); }
+  #assert painted_key_up(s[..], 'W', 0) && s[0].cam.z < VW_BRIDGE_Z - VW_BRIDGE_RUN * 0.5 && abs(s[0].feet) < 0.2 && abs(s[0].cam.x - VR_ROAD_X) < 0.01;
+  painted_hash(s[..], "shot10"); #assert s[0].clean && s[0].cam.z == vr_camera(10).z && s[0].cam.x == vr_camera(10).x;
+  painted_hash(s[..], "shot4"); painted_hash(s[..], "shot13"); painted_hash(s[..], "shots"); #assert s[0].cam.z == vr_camera(10).z;
+  painted_hash(s[..], "solids9"); #assert s[0].cam.z == vr_camera(9).z && s[0].solids;
 }

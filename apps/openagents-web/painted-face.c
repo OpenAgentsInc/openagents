@@ -35,6 +35,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 // The scene: its draws, the grass, and the stores.
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)page_at(state)->host_draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)painted_draws(at(state)); }
+EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { return (uint32_t)painted_water(at(state)); }
 EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(uint32_t state) { return (uint32_t)painted_grass(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 3; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)painted_store_cap(k); }

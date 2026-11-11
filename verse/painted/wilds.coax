@@ -1,0 +1,349 @@
+// Painted Village, the country south of it: the road leaves the village as a dirt path through
+// tall pines, crosses a river on a plank bridge, and comes out into a meadow of long grass and
+// great oaks under rolling hills. Upstream the river falls from a cliff into a pool, in spray and
+// a rainbow.
+//   Shot 5   the meadow from under its oaks.          Shot 9   the waterfall from the river's bank.
+//   Shot 6   over the oaks' crowns to the hills.      Shot 10  the waterfall from its pool.
+//   Shot 7   the meadow, the cliff and its fall.      Shot 11  the plank bridge, looking up the path.
+//   Shot 8   the path across the meadow under a       Shot 12  the path into the pines.
+//            great hill and its far falls.
+// (The numbers are the reference frames'.)
+//
+// Like the village, nothing is modelled here: every part is a generator of Aethyr's architecture
+// kit (aethyr/arch/land.coax: the cliff, boulders, the river, the falls, spray, the rainbow, the
+// bridge, reeds, flowers; aethyr/arch/flora.coax: trees, bushes, hills, the ground). The river,
+// the falls, the spray and the rainbow are drawn last, in Aethyr's stylized water pass. It is one
+// world with the village (verse/painted/village-road.coax, which loads this file and builds it):
+// the same ground table, the same solids, the same walker.
+#load "../../aethyr/arch/land.coax";
+
+VW_START :: 30.0;                  // the village's land gives way to this country from here (z)
+VW_BLEND :: 16.0;                  // over this many metres
+VW_WATER :: -0.85;                 // the river's level
+VW_BED :: -1.9;                    // its bed
+VW_DECK :: 0.12;                   // the bridge's deck
+VW_BRIDGE_Z :: 111.0;              // the bridge's middle
+VW_BRIDGE_RUN :: 17.0;
+VW_CLIFF_X :: 84.0;                // the cliff: its face looks west from here,
+VW_CLIFF_Z :: 91.0;                // its middle,
+VW_CLIFF_RUN :: 96.0;              // its length from north to south,
+VW_CLIFF_H :: 27.0;
+VW_FALLS_Z :: 111.0;               // and the cleft the river falls from
+VW_RIVER_POINTS :: 10;
+VW_PATHS :: 5;
+VW_SOUTH :: 198.0;                 // how far south, east and west a walker may go
+VW_EDGE :: 170.0;
+
+// The river from the foot of the falls downstream: x, z and half its width.
+vw_river_line :: () -> [30] f32 {
+  return [30] f32.[84.0, 111.0, 8.5,   70.0, 111.0, 6.2,   54.0, 112.5, 5.2,   36.0, 113.0, 5.0,   18.0, 112.0, 5.0,
+                   0.0, 111.0, 5.2,   -20.0, 110.5, 5.5,   -50.0, 113.0, 6.0,   -95.0, 116.0, 7.0,   -182.0, 112.0, 8.0];
+}
+// How far a place is outside the river's edge, in metres (below 0: in it).
+vw_river_edge :: (x: f32, z: f32) -> f32 {
+  l := vw_river_line(); best: f32 = 100000;
+  for i: 0..<VW_RIVER_POINTS - 1 {
+    ax := l[i * 3]; az := l[i * 3 + 1]; bx := l[i * 3 + 3] - ax; bz := l[i * 3 + 4] - az;
+    t := ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz);
+    if t < 0 { t = 0; } if t > 1 { t = 1; }
+    ex := x - ax - bx * t; ez := z - az - bz * t;
+    d := sqrt(ex * ex + ez * ez) - (l[i * 3 + 2] + (l[i * 3 + 5] - l[i * 3 + 2]) * t);
+    if d < best { best = d; }
+  }
+  return best;
+}
+// The dirt paths: from (x, z) to (x, z), and half its width. The pine path from the village to
+// the bridge, on from it into the meadow, across the meadow under the great hill, and a branch
+// that leaves the pine path westward.
+vw_paths :: () -> [25] f32 {
+  return [25] f32.[VR_ROAD_X, 38.0, VR_ROAD_X, 103.2, 2.0,     VR_ROAD_X, 118.8, VR_ROAD_X, 130.0, 2.0,
+                   VR_ROAD_X, 130.0, 28.0, 158.0, 1.7,         28.0, 158.0, 96.0, 171.0, 1.7,
+                   -4.0, 95.0, -40.0, 84.0, 1.5];
+}
+vw_path_away :: (x: f32, z: f32) -> f32 {
+  l := vw_paths(); best: f32 = 100000;
+  for i: 0..<VW_PATHS {
+    ax := l[i * 5]; az := l[i * 5 + 1]; bx := l[i * 5 + 2] - ax; bz := l[i * 5 + 3] - az;
+    t := ((x - ax) * bx + (z - az) * bz) / (bx * bx + bz * bz);
+    if t < 0 { t = 0; } if t > 1 { t = 1; }
+    ex := x - ax - bx * t; ez := z - az - bz * t;
+    d := sqrt(ex * ex + ez * ez) - l[i * 5 + 4];
+    if d < best { best = d; }
+  }
+  return best;
+}
+// A round hill's share at a place: 1 at its middle, 0 at its edge.
+vw_bump :: (dx: f32, dz: f32, rx: f32, rz: f32) -> f32 {
+  k := 1 - (dx / rx) * (dx / rx) - (dz / rz) * (dz / rz);
+  if k <= 0 { return 0; }
+  return k * k * (3 - 2 * k);
+}
+// The rocks that stand in the river: x, z and a size.
+VW_ROCKS :: 9;
+vw_rocks :: () -> [27] f32 {
+  return [27] f32.[66.0, 108.2, 1.0,   65.2, 111.4, 1.25,   66.4, 114.3, 0.95,   73.5, 105.6, 1.5,   74.5, 116.6, 1.4,
+                   50.0, 111.2, 0.8,   31.0, 114.8, 0.9,   12.0, 109.8, 0.75,   -14.0, 112.6, 0.85];
+}
+
+// The country's land: it rolls a little, lies level by the path, rises east of the pine path and
+// in a knoll in the meadow, climbs toward the hills at its edges, and falls to the river's bed.
+vw_height :: (x: f32, z: f32) -> f32 {
+  d := vw_river_edge(x, z);
+  roll := 0.6 * sin(x * 0.043 + 0.6) * sin(z * 0.05 + 1.1) + 0.3 * sin(x * 0.11 + 2.0) * cos(z * 0.09);
+  h := roll * vr_smooth(3, 14, vw_path_away(x, z));
+  h += 4.4 * vw_bump(x - 31, z - 80, 27, 22);
+  h += 6.5 * vw_bump(x + 54, z - 172, 24, 20);
+  h += 3.0 * vw_bump(x - 120, z - 178, 44, 30);
+  h += 5.0 * vr_smooth(184, 204, z) + 5.0 * vr_smooth(-138, -176, x) + 4.0 * vr_smooth(140, 176, x);
+  return h * vr_smooth(-0.5, 7, d) + f32(VW_BED) * (1 - vr_smooth(-3.2, 1.6, d));
+}
+// How the grass grows there: none in the river and on its banks, grass in the pines and by the
+// path, and long grass (above 1) in the meadow.
+vw_cover :: (x: f32, z: f32) -> f32 {
+  d := vw_river_edge(x, z);
+  if d < 0.7 { return 0; }
+  meadow := vr_smooth(116, 124, z) * vr_smooth(2, 9, vw_path_away(x, z));
+  return 1.05 + 0.5 * meadow;
+}
+// How white the river runs there: under the falls, over the stones below the pool, round a rock.
+vw_churn :: (x: f32, z: f32) -> f32 {
+  dx := x - (VW_CLIFF_X + 2.0); dz := z - VW_FALLS_Z;
+  k := 1 - vr_smooth(2.5, 6.5, sqrt(dx * dx + dz * dz));
+  if abs(x - 65.6) < 1.3 && vw_river_edge(x, z) < 0 { k = arch_highf(k, 0.85); }
+  rocks := vw_rocks();
+  for i: 0..<VW_ROCKS {
+    rx := x - rocks[i * 3]; rz := z - rocks[i * 3 + 1];
+    k = arch_highf(k, 1 - sqrt(rx * rx + rz * rz) / (1.6 + rocks[i * 3 + 2]));
+  }
+  return k;
+}
+
+// Where a shot was taken (by its reference frame's number).
+vw_camera :: (shot: int) -> StyCamera {
+  c: StyCamera; c.fov = 1.0472; lift: f32 = 1.68;
+  if shot == 5 { c.x = -30.0; c.z = 150.0; c.yaw = 1.5; c.pitch = 0.03; }
+  else if shot == 6 { c.x = -54.0; c.z = 172.0; c.yaw = 1.12; c.pitch = -0.04; lift = 3.4; }
+  else if shot == 7 { c.x = 41.0; c.z = 151.0; c.yaw = 1.42; c.pitch = 0.03; }
+  else if shot == 8 { c.x = 12.0; c.z = 137.0; c.yaw = 2.86; c.pitch = 0.06; }
+  else if shot == 9 { c.x = 51.0; c.z = 105.0; c.yaw = 1.47; c.pitch = 0.13; }
+  else if shot == 10 { c.x = 62.5; c.z = 110.6; c.yaw = 1.5; c.pitch = 0.27; lift = 2.5; }
+  else if shot == 11 { c.x = VR_ROAD_X; c.z = 117.6; c.yaw = 0.0; c.pitch = -0.06; }
+  else { c.x = VR_ROAD_X + 0.4; c.z = 93.0; c.yaw = 0.02; c.pitch = 0.02; }
+  c.y = vr_height(c.x, c.z) + lift;
+  if shot == 11 { c.y = f32(VW_DECK) + lift; }
+  return c;
+}
+// Whether a tree may stand at a place: `clear` metres off the river, the paths and the cliff,
+// and not where a shot is taken.
+vw_free :: (x: f32, z: f32, clear: f32) -> bool {
+  if vw_river_edge(x, z) < clear + 1.5 || vw_path_away(x, z) < clear { return false; }
+  if x > VW_CLIFF_X - 12 && x < VW_CLIFF_X + 44 && z > VW_CLIFF_Z - VW_CLIFF_RUN * 0.5 - 6 && z < VW_CLIFF_Z + VW_CLIFF_RUN * 0.5 + 6 { return false; }
+  for shot: 5..<13 {
+    c := vw_camera(shot); dx := x - c.x; dz := z - c.z;
+    if dx * dx + dz * dz < (clear + 5) * (clear + 5) { return false; }
+  }
+  return true;
+}
+// Up to `count` of a part stood at free places in a box, each turned, scaled between s0 and s1
+// and washed a little its own colour.
+vw_scatter :: (v: [] VillageRoad, s: [] ArchScene, part: ArchPart, count: int, x0: f32, z0: f32, x1: f32, z1: f32, s0: f32, s1: f32, clear: f32, seed: int) -> int {
+  first := s[0].rn; n := 0;
+  for i: 0..<count * 5 {
+    if n >= count { break; }
+    x := arch_vary(seed, i * 2, x0, x1); z := arch_vary(seed, i * 2 + 1, z0, z1);
+    if !vw_free(x, z, clear) { continue; }
+    r := arch_stand(s, x, vr_at(v, x, z) - 0.06, z, arch_hash(seed, 9000 + i) * f32(ARCH_TAU), arch_vary(seed, 18000 + i, s0, s1));
+    if r < 0 { break; }
+    k := arch_vary(seed, 27000 + i, 0.9, 1.08);
+    vr_wash(s, r, k * arch_vary(seed, 36000 + i, 0.94, 1.06), k, k * arch_vary(seed, 45000 + i, 0.92, 1.05));
+    n += 1;
+  }
+  if n > 0 { arch_draw(s, part, first, n); }
+  return n;
+}
+// One part at each of a list of places: x, z, yaw, scale.
+vw_each :: (v: [] VillageRoad, s: [] ArchScene, part: ArchPart, places: [] f32, sink: f32) {
+  first := s[0].rn; n := 0;
+  for i: 0..<places.count / 4 {
+    if arch_stand(s, places[i * 4], vr_at(v, places[i * 4], places[i * 4 + 1]) - sink, places[i * 4 + 1], places[i * 4 + 2], places[i * 4 + 3]) < 0 { break; }
+    n += 1;
+  }
+  if n > 0 { arch_draw(s, part, first, n); }
+}
+
+// What stands in the country, but its water.
+vw_build :: (v: [] VillageRoad, p: [] ArchPen, s: [] ArchScene) {
+  quarter := f32(ARCH_TAU) * 0.25;
+  // ---- the cliff: its face looks west, its cleft over the river's head
+  cliff: ArchCliff;
+  cliff.run = VW_CLIFF_RUN; cliff.h = VW_CLIFF_H; cliff.depth = 34; cliff.bulge = 4.6; cliff.hollow = 5; cliff.gap = 2.6; cliff.vines = 0.6; cliff.gap_at = f32(VW_FALLS_Z) - f32(VW_CLIFF_Z); cliff.seed = 5;
+  r := arch_stand(s, VW_CLIFF_X, -0.4, VW_CLIFF_Z, -quarter, 1); arch_draw(s, arch_cliff(p, cliff), r, 1);
+  // Its south end turns east, so the massif is rock on that side too.
+  side: ArchCliff; side.run = 34; side.h = VW_CLIFF_H * 0.82; side.depth = 10; side.bulge = 4.4; side.seed = 11;
+  r = arch_stand(s, f32(VW_CLIFF_X) + 20, -0.4, f32(VW_CLIFF_Z) + f32(VW_CLIFF_RUN) * 0.5 - 3, 0, 1); arch_draw(s, arch_cliff(p, side), r, 1);
+
+  // ---- boulders: in the river, round the pool, and lying in the meadow
+  boulder := arch_boulder(p, 1.0, 0.72, 0.9, 7);
+  rocks := vw_rocks(); first := s[0].rn;
+  for i: 0..<VW_ROCKS { r = arch_stand(s, rocks[i * 3], f32(VW_WATER) - 0.42 * rocks[i * 3 + 2], rocks[i * 3 + 1], cast(f32) i * 1.7, rocks[i * 3 + 2]); }
+  arch_draw(s, boulder, first, VW_ROCKS);
+  slab := arch_boulder(p, 1.7, 0.8, 1.2, 12);
+  slabs := [48] f32.[70.0, 101.5, 0.4, 1.3,   76.0, 102.0, 2.0, 1.6,   69.0, 120.0, 1.0, 1.2,   76.5, 121.0, 3.0, 1.7,   58.0, 119.5, 4.1, 0.9,   60.5, 103.4, 5.0, 0.8,
+                     62.0, 143.0, 0.2, 1.1,   66.0, 141.0, 1.3, 1.5,   70.0, 144.5, 2.5, 1.0,   56.0, 146.0, 3.3, 0.8,   74.0, 148.0, 0.9, 1.3,   -24.0, 121.0, 1.0, 0.9];
+  vw_each(v, s, slab, slabs[..], 0.15);
+
+  // ---- the bridge
+  bridge: ArchBridge; bridge.run = VW_BRIDGE_RUN; bridge.w = 3.6; bridge.bays = 5; bridge.drop = 2.4;
+  r = arch_stand(s, VR_ROAD_X, VW_DECK, VW_BRIDGE_Z, 0, 1); arch_draw(s, arch_plank_bridge(p, bridge), r, 1);
+  post := arch_signpost(p, 2.3, 2);
+  r = vr_put(v, s, post, VR_ROAD_X - 3.6, 97.0, 0.5, 1);
+
+  // ---- the pines: tall ones on both sides of the path, a few south of the river and far ones at the land's edges
+  spec := arch_tree_spec(ARCH_PINE, ARCH_SUMMER, 6);
+  spec.height = 15.5; spec.crown = 4.0; spec.trunk = 0.4; spec.clumps = 12;
+  spec.leaf_r = 0.11; spec.leaf_g = 0.37; spec.leaf_b = 0.17; spec.leaf2_r = 0.2; spec.leaf2_g = 0.5; spec.leaf2_b = 0.2;
+  spec.bark_r = 0.36; spec.bark_g = 0.21; spec.bark_b = 0.15;
+  pine := arch_tree(p, spec);
+  // A row each side of the path, placed by hand so the path runs between them.
+  rows := [80] f32.[-11.5, 99.5, 0.3, 1.05,   6.5, 97.5, 1.2, 1.15,   -8.0, 84.0, 2.2, 1.2,   8.5, 86.0, 3.1, 1.0,   -12.5, 73.0, 4.0, 1.1,   14.5, 67.0, 5.2, 1.25,
+                    -8.0, 62.0, 0.9, 1.0,   9.5, 60.0, 1.9, 1.1,   -10.0, 50.0, 2.8, 1.2,   7.5, 49.0, 3.7, 1.05,   -18.0, 91.0, 4.6, 1.3,   17.0, 92.0, 5.5, 1.2,
+                    -21.0, 79.0, 0.5, 1.15,   21.0, 76.0, 1.4, 1.3,   -19.0, 66.0, 2.3, 1.25,   19.0, 64.0, 3.2, 1.1,   -17.0, 55.0, 4.1, 1.2,   16.5, 53.0, 5.0, 1.3,
+                    -7.0, 41.0, 0.2, 1.15,   8.0, 40.0, 1.1, 1.2];
+  vr_wood(v, s, pine, rows[..], 41);
+  n := vw_scatter(v, s, pine, 46, -70, 40, -24, 102, 0.95, 1.45, 3.0, 42);
+  n = vw_scatter(v, s, pine, 36, 24, 40, 72, 98, 0.95, 1.45, 3.0, 43);
+  n = vw_scatter(v, s, pine, 22, -150, 44, -74, 106, 1.0, 1.5, 3.0, 44);
+  n = vw_scatter(v, s, pine, 26, -168, 122, -92, 198, 1.0, 1.5, 3.0, 45);
+  n = vw_scatter(v, s, pine, 22, -80, 186, 150, 200, 1.0, 1.5, 3.0, 46);
+  // On the cliff's top, behind its buttresses. Nobody walks there: no solids.
+  far_pine := ArchPart.{first = pine.first, count = pine.count};
+  first = s[0].rn; n = 0;
+  for i: 0..<16 {
+    x := f32(VW_CLIFF_X) + arch_vary(51, i, 9, 34); z := f32(VW_CLIFF_Z) + arch_vary(52, i, -44, 44);
+    if arch_stand(s, x, f32(VW_CLIFF_H) * 0.8 - 0.6, z, cast(f32) i, arch_vary(53, i, 0.6, 0.95)) < 0 { break; }
+    n += 1;
+  }
+  arch_draw(s, far_pine, first, n);
+
+  // ---- the meadow's oaks: great ones, broad and low, and smaller ones about them
+  oak_spec := arch_tree_spec(ARCH_OAK, ARCH_SUMMER, 31);
+  oak_spec.height = 11.8; oak_spec.crown = 7.0; oak_spec.squash = 0.55; oak_spec.trunk = 0.5; oak_spec.clumps = 28; oak_spec.leaf = 0.5;
+  oak_spec.leaf_r = 0.2; oak_spec.leaf_g = 0.45; oak_spec.leaf_b = 0.13; oak_spec.leaf2_r = 0.29; oak_spec.leaf2_g = 0.55; oak_spec.leaf2_b = 0.16;
+  oak_spec.bark_r = 0.4; oak_spec.bark_g = 0.24; oak_spec.bark_b = 0.16;
+  great := arch_tree(p, oak_spec);
+  greats := [44] f32.[-23.0, 145.2, 0.4, 1.1,   -16.0, 139.5, 2.0, 1.0,   -8.0, 139.0, 3.3, 1.0,   6.0, 163.0, 1.1, 0.95,   -22.0, 176.0, 4.4, 1.05,   66.0, 133.0, 0.8, 1.15,
+                      92.0, 152.0, 5.1, 1.0,   124.0, 160.0, 2.6, 1.1,   38.0, 182.0, 0.2, 1.0,   -70.0, 150.0, 3.9, 1.05,   146.0, 186.0, 1.5, 1.1];
+  vr_wood(v, s, great, greats[..], 61);
+  small_spec := arch_tree_spec(ARCH_OAK, ARCH_SUMMER, 17);
+  small_spec.height = 7.6; small_spec.crown = 3.9; small_spec.squash = 0.62; small_spec.trunk = 0.36; small_spec.clumps = 18;
+  small_spec.leaf_r = 0.19; small_spec.leaf_g = 0.43; small_spec.leaf_b = 0.14; small_spec.leaf2_r = 0.27; small_spec.leaf2_g = 0.52; small_spec.leaf2_b = 0.17;
+  small_spec.bark_r = 0.38; small_spec.bark_g = 0.23; small_spec.bark_b = 0.16;
+  small := arch_tree(p, small_spec);
+  n = vw_scatter(v, s, small, 34, -86, 126, 170, 196, 0.85, 1.25, 4.0, 62);
+  // The gold trees: one in the meadow among the oaks, one by the pines east of the path.
+  gold_spec := arch_tree_spec(ARCH_OAK, ARCH_GOLD, 23);
+  gold_spec.height = 6.8; gold_spec.crown = 3.0; gold_spec.squash = 0.78; gold_spec.trunk = 0.3; gold_spec.clumps = 16;
+  gold_spec.bark_r = 0.36; gold_spec.bark_g = 0.21; gold_spec.bark_b = 0.15;
+  gold := arch_tree(p, gold_spec);
+  golds := [16] f32.[-2.0, 151.0, 0.6, 1.0,   9.5, 75.0, 2.0, 1.15,   56.0, 129.5, 3.4, 0.9,   -62.0, 131.0, 1.2, 1.1];
+  vr_wood(v, s, gold, golds[..], 63);
+
+  // ---- bushes on the river's banks, reeds at the water's edge, and drifts of flowers
+  bush := arch_bush(p, 2.4, 2.6, 0.17, 0.5, 0.15, 9);
+  bushes := [40] f32.[72.0, 122.5, 0.3, 1.25,   67.0, 124.0, 1.4, 1.0,   77.0, 124.5, 2.5, 1.1,   62.0, 122.5, 3.6, 0.8,   78.0, 99.0, 0.9, 1.0,   73.0, 97.5, 2.2, 0.8,
+                      79.5, 131.0, 4.0, 0.9,   40.0, 119.5, 5.0, 0.6,   -12.0, 119.0, 1.0, 0.55,   14.0, 104.0, 3.0, 0.5];
+  vw_each(v, s, bush, bushes[..], 0.1);
+  reeds := arch_reeds(p, 0.55, 1.5, 22, 5);
+  reed_at := [56] f32.[62.0, 105.2, 0.0, 1.0,   66.5, 104.4, 1.0, 1.1,   72.0, 103.2, 2.0, 0.9,   58.0, 118.3, 3.0, 1.0,   64.0, 117.9, 4.0, 1.2,   70.5, 118.6, 5.0, 0.9,
+                       46.0, 107.5, 0.5, 0.9,   37.0, 118.6, 1.5, 1.0,   50.5, 118.2, 2.5, 0.8,   -8.2, 105.3, 3.5, 0.9,   5.0, 117.0, 4.5, 1.0,   56.0, 106.6, 5.5, 0.85,
+                       24.0, 106.8, 0.7, 0.9,   -26.0, 116.6, 1.7, 1.0];
+  vw_each(v, s, reeds, reed_at[..], 0.25);
+  blue := arch_flowers(p, 1.5, 0.8, 16, 0.42, 0.42, 0.9, 3);
+  n = vw_scatter(v, s, blue, 26, -60, 121, 150, 190, 0.8, 1.3, 0.5, 71);
+  yellow := arch_flowers(p, 1.2, 0.45, 14, 0.95, 0.8, 0.2, 8);
+  n = vw_scatter(v, s, yellow, 16, -60, 121, 150, 190, 0.8, 1.3, 0.5, 72);
+
+  // ---- the hills: a great dome south of the meadow, rounded hills east and west of it
+  dome := arch_peak(p, 180, 150, 0.55, 0.035, 21);
+  r = arch_stand(s, 76, -12, 402, 0.7, 1); arch_draw(s, dome, r, 1);
+  r = arch_stand(s, -210, -12, 330, 2.9, 0.62); arch_draw(s, dome, r, 1);
+  r = arch_stand(s, 330, -12, 215, 4.3, 0.7); arch_draw(s, dome, r, 1);
+  knoll := arch_peak(p, 90, 34, 0.6, 0.03, 33);
+  hills := [20] f32.[-80.0, 262.0, 0.3, 1.0,   200.0, 268.0, 1.6, 1.2,   262.0, 120.0, 2.8, 1.1,   -252.0, 150.0, 4.0, 1.25,   -246.0, 36.0, 5.1, 1.0];
+  first = s[0].rn;
+  for i: 0..<5 { r = arch_stand(s, hills[i * 4], -8, hills[i * 4 + 1], hills[i * 4 + 2], hills[i * 4 + 3]); }
+  arch_draw(s, knoll, first, 5);
+  // Pines on the hills' shoulders, far off: no solids.
+  first = s[0].rn; n = 0;
+  for i: 0..<26 {
+    k := i % 5; a := arch_hash(81, i) * f32(ARCH_TAU); d := arch_vary(82, i, 0, 34) * hills[k * 4 + 3];
+    if arch_stand(s, hills[k * 4] + cos(a) * d, 34 * hills[k * 4 + 3] * (1 - pow(d / (90 * hills[k * 4 + 3]), 2.6)) - 9.5, hills[k * 4 + 1] + sin(a) * d, a, arch_vary(83, i, 1.3, 2.1)) < 0 { break; }
+    n += 1;
+  }
+  arch_draw(s, far_pine, first, n);
+}
+// The country's water, drawn last: the river, the far falls on the great hill, the falls, their
+// spray and the rainbow in it.
+vw_build_wet :: (v: [] VillageRoad, p: [] ArchPen, s: [] ArchScene) {
+  quarter := f32(ARCH_TAU) * 0.25;
+  // The surface lies a little wider than the river: the banks' own shape cuts its shore.
+  wide := vw_river_line();
+  for i: 0..<VW_RIVER_POINTS { wide[i * 3 + 2] += 2.4; }
+  wide[0] += 5;
+  arch_once(s, arch_river(p, wide[..], VW_WATER));
+  far := arch_falls(p, 8, 34, 3);
+  r := arch_stand(s, 96, 2, 240, f32(ARCH_TAU) * 0.5, 1); arch_draw(s, far, r, 1);
+  r = arch_stand(s, 123, 30, 251, f32(ARCH_TAU) * 0.5, 0.7); arch_draw(s, far, r, 1);
+  drop := f32(VW_CLIFF_H) * 0.8 - 0.4 - f32(VW_WATER);
+  falls := arch_falls(p, 4.6, drop, 2.4);
+  r = arch_stand(s, f32(VW_CLIFF_X) + 3.6, VW_WATER, VW_FALLS_Z, -quarter, 1); arch_draw(s, falls, r, 1);
+  mist := arch_mist(p, 6.4, 8.0, 18, 4);
+  r = arch_stand(s, f32(VW_CLIFF_X) + 0.6, VW_WATER, VW_FALLS_Z, -quarter, 1); arch_draw(s, mist, r, 1);
+  bow := arch_rainbow(p, 4.4, 0.62, 0.25, 2.25);
+  r = arch_stand(s, f32(VW_CLIFF_X) - 1.4, f32(VW_WATER) + 1.6, f32(VW_FALLS_Z) + 1.2, -quarter, 1); arch_draw(s, bow, r, 1);
+}
+
+#test "the river lies in its bed under its bridge, the path runs level to it, and the falls churn at their foot" {
+  #assert vw_river_edge(0, 111) < -4 && vw_river_edge(0, 125) > 5 && abs(vr_height(0, 111) - VW_BED) < 0.01 && vr_height(0, 111) < VW_WATER;
+  // The path: level from the village to the bridge and on into the meadow, the deck a step above it.
+  #assert abs(vr_height(VR_ROAD_X, 60)) < 0.02 && abs(vr_height(VR_ROAD_X, VW_BRIDGE_Z - VW_BRIDGE_RUN * 0.5)) < 0.05 && abs(vr_height(VR_ROAD_X, VW_BRIDGE_Z + VW_BRIDGE_RUN * 0.5)) < 0.05 && VW_DECK < 0.55 && VW_DECK > VW_WATER + 0.5;
+  // The village's own land is as it was: this country starts south of the road's start.
+  #assert abs(vr_height(VR_ROAD_X, 0)) < 0.001 && vr_height(40, 20) != vw_height(40, 20) && vr_height(40, 60) == vw_height(40, 60);
+  #assert vw_cover(0, 111) == 0 && vw_cover(30, 150) > 1.3 && vw_cover(VR_ROAD_X, 60) > 1 && vw_cover(VR_ROAD_X, 60) < 1.1;
+  #assert vw_churn(VW_CLIFF_X + 2, VW_FALLS_Z) == 1 && vw_churn(0, 111) == 0 && vw_churn(66, 108.2) == 1 && vw_churn(30, 160) == 0;
+  // Every shot is taken from above the ground, the bridge's from its deck, and no tree stands on one.
+  for shot: 5..<13 {
+    c := vw_camera(shot);
+    #assert c.y > vr_height(c.x, c.z) + 1.6 && c.z > VW_START + VW_BLEND && abs(c.x) < VW_EDGE && c.z < VW_SOUTH && !vw_free(c.x, c.z, 0);
+  }
+  b := vw_camera(11); #assert abs(b.y - VW_DECK - 1.68) < 0.001 && abs(b.z - VW_BRIDGE_Z) < VW_BRIDGE_RUN * 0.5 && b.x == VR_ROAD_X;
+  #assert !vw_free(VR_ROAD_X, 70, 3) && !vw_free(0, 111, 3) && !vw_free(VW_CLIFF_X + 10, VW_CLIFF_Z, 3) && vw_free(-60, 160, 3);
+}
+#test "you walk the path from the village over the bridge into the meadow; its rails, the cliff and the trees stop you" #steps 2000000000 {
+  scene: [1] VillageRoad; v := scene[..];
+  #assert vr_build(v);
+  // The water is the scene's last draws before the solids' own: a river, far falls, the falls, spray and a rainbow.
+  #assert v[0].wet_n == 6 && v[0].wet_first + v[0].wet_n == v[0].solid_draw;
+  for d: 0..<v[0].draw_n {
+    o := cast(int) v[0].draws[d * 4] * ARCH_VERTEX_FLOATS; wet := d >= v[0].wet_first && d < v[0].wet_first + v[0].wet_n;
+    #assert (v[0].mesh[o + 6] >= ARCH_M_WET) == wet;
+  }
+  at := world_point(VR_ROAD_X, vr_at(v, VR_ROAD_X, 50), 50); on_deck := 0;
+  for i: 0..<900 {
+    at = vr_walk(v, at, 0, 0.1);
+    if at.z > VW_BRIDGE_Z - VW_BRIDGE_RUN * 0.5 + 0.4 && at.z < VW_BRIDGE_Z + VW_BRIDGE_RUN * 0.5 - 0.4 { #assert abs(at.y - VW_DECK) < 0.01; on_deck += 1; }
+    else { #assert abs(at.y) < 0.3; }
+  }
+  #assert on_deck > 150 && at.z > 132 && abs(at.x - VR_ROAD_X) < 0.01;
+  // From the middle of the deck, east: the rail stops you above the water.
+  at = world_point(VR_ROAD_X, VW_DECK, VW_BRIDGE_Z);
+  for i: 0..<80 { at = vr_walk(v, at, 0.1, 0); } #assert at.x < VR_ROAD_X + 1.6 && abs(at.y - VW_DECK) < 0.01;
+  // East along the river's north bank: the cliff stops you at its foot.
+  at = world_point(60, vr_at(v, 60, 98), 98);
+  for i: 0..<400 { at = vr_walk(v, at, 0.1, 0); } #assert at.x > 66 && at.x < VW_CLIFF_X + 2 && at.y < 3;
+  // Into a great oak's trunk and a pine's by the path: you stop outside each.
+  at = world_point(-23.0, vr_at(v, -23.0, 149.5), 149.5);
+  for i: 0..<80 { at = vr_walk(v, at, 0, -0.1); d := sqrt((at.x + 23.0) * (at.x + 23.0) + (at.z - 145.2) * (at.z - 145.2)); #assert d > 0.5; }
+  at = world_point(-11.5, vr_at(v, -11.5, 103), 103);
+  for i: 0..<80 { at = vr_walk(v, at, 0, -0.1); d := sqrt((at.x + 11.5) * (at.x + 11.5) + (at.z - 99.5) * (at.z - 99.5)); #assert d > 0.4; }
+}

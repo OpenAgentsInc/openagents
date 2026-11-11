@@ -23,15 +23,16 @@
 #load "../../aethyr/arch/place.coax";
 #load "../../aethyr/arch/solids.coax";
 #load "../../aethyr/render/stylized-frame.coax";
+#load "wilds.coax";
 
-VR_VERTICES :: 640000;
-VR_RECORDS :: 768;
-VR_DRAWS :: 320;
-VR_LOCAL_SOLIDS :: 640;            // solids in the parts' own space
-VR_PLACED :: 2048;                 // solids stood in the world
-VR_GROUND_N :: 128;                // cells a side of the ground table
-VR_GROUND_CELL :: 1.5;
-VR_GROUND_X0 :: -96.0;
+VR_VERTICES :: 860000;
+VR_RECORDS :: 1280;
+VR_DRAWS :: 448;
+VR_LOCAL_SOLIDS :: 960;            // solids in the parts' own space
+VR_PLACED :: 3072;                 // solids stood in the world
+VR_GROUND_N :: 176;                // cells a side of the ground table
+VR_GROUND_CELL :: 2.0;
+VR_GROUND_X0 :: -176.0;
 VR_GROUND_Z0 :: -150.0;
 VR_NODES :: (VR_GROUND_N + 1) * (VR_GROUND_N + 1);
 VR_VILLAGE :: 1.15;                // the village stands this far above the road's start
@@ -55,20 +56,26 @@ VillageRoad :: struct {
   local: [VR_LOCAL_SOLIDS * ARCH_SOLID_FLOATS] f32;
   placed: [VR_PLACED * ARCH_PLACED_FLOATS] f32; placed_n: int;
   solid_draw: int;                   // the draw that shows the solids themselves (the last one)
+  wet_first: int; wet_n: int;        // the draws that are water: a host draws them last, in the water pass
   built: bool;
 }
 
 vr_smooth :: (a: f32, b: f32, x: f32) -> f32 { t := (x - a) / (b - a); if t < 0 { t = 0; } if t > 1 { t = 1; } return t * t * (3 - 2 * t); }
 // The land: the road climbs to the village's level, which lies flat under the village, the plaza
-// and the church; the meadow rolls a little, and far out the ground rises toward the hills.
+// and the church; the meadow rolls a little, and far out the ground rises toward the hills. South
+// of the road's start it gives way to the country beyond (verse/painted/wilds.coax).
 vr_height :: (x: f32, z: f32) -> f32 {
+  south := vr_smooth(VW_START, VW_START + VW_BLEND, z);
+  if south >= 1 { return vw_height(x, z); }
   climb := vr_smooth(-2, -9, z) * VR_VILLAGE;
   off_road := vr_smooth(5.4, 10, abs(x - VR_ROAD_X));
   in_village := vr_smooth(-9.5, -12, z) * (1 - vr_smooth(-124, -136, z)) * (1 - vr_smooth(52, 62, abs(x - VR_AXIS)));
   roll := 0.14 * sin(x * 0.21 + 1.3) * sin(z * 0.17 + 0.4) * off_road * (1 - in_village);
   dx := x; dz := z + 62; out := sqrt(dx * dx + dz * dz);
   far := vr_smooth(74, 132, out) * (3 + 3 * sin(x * 0.045 + 0.7) * cos(z * 0.038));
-  return climb + roll + far;
+  north := climb + roll + far;
+  if south <= 0 { return north; }
+  return north + (vw_height(x, z) - north) * south;
 }
 // The plaza's flagstones: 1 on them, 0 off them.
 vr_paved :: (x: f32, z: f32) -> f32 {
@@ -136,6 +143,20 @@ vr_plaza_camera :: () -> StyCamera {
   c.x = VR_AXIS + 2.7; c.z = -52.0; c.y = VR_VILLAGE + 1.68; c.yaw = 0.0; c.pitch = 0.015; c.fov = 1.0472;
   return c;
 }
+// Shot 3: the foot of the church steps, looking up them at the fountain, the statue and the church.
+vr_steps_camera :: () -> StyCamera {
+  c: StyCamera;
+  c.x = VR_AXIS - 0.4; c.z = VR_PLAZA_FAR + 6.4; c.y = VR_VILLAGE + 0.5; c.yaw = 0.0; c.pitch = 0.14; c.fov = 1.0472;
+  return c;
+}
+// Where a shot was taken, by its reference frame's number: 1 the road, 2 the plaza, 3 the church
+// steps, 5 to 12 the country south of the village (verse/painted/wilds.coax).
+vr_camera :: (shot: int) -> StyCamera {
+  if shot == 2 { return vr_plaza_camera(); }
+  if shot == 3 { return vr_steps_camera(); }
+  if shot >= 5 && shot <= 12 { return vw_camera(shot); }
+  return vr_shot_camera();
+}
 // The look: Aethyr's stylized default (warm daylight from behind the village, soft blue shade),
 // light haze, and a clear sky with one great heap of cloud and two small ones.
 vr_look :: () -> StyLook {
@@ -148,8 +169,9 @@ vr_look :: () -> StyLook {
   l.haze = 0.0038; l.haze_start = 16; l.haze_most = 0.46; l.haze_r = 0.76; l.haze_g = 0.86; l.haze_b = 0.95;
   l.cloud = 0.0; l.cloud_scale = 1.6; l.cloud_turn = 1.2;
   l.zenith_r = 0.36; l.zenith_g = 0.6; l.zenith_b = 0.88; l.horizon_r = 0.7; l.horizon_g = 0.84; l.horizon_b = 0.95;
+  // Three more stand over the country to the south: one over the great hill, one east over the cliff, one west.
   l.cumulus = [24] f32.[-0.5, 0.3, 0.52, 0.4,   0.5, 0.265, 0.2, 0.065,   0.2, 0.2, 0.1, 0.05,
-                        0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0];
+                        3.4, 0.34, 0.5, 0.36,   1.75, 0.3, 0.42, 0.3,   -2.0, 0.24, 0.5, 0.3];
   l.meadow_dry = 0.56; l.meadow_shift = 9;
   return l;
 }
@@ -170,6 +192,9 @@ vr_frame :: (u: [] f32, look: StyLook, eye: StyCamera) -> int {
   // A worn track to the cottage's porch and one to the stone house's door.
   road = sty_path_add(u, -3.0, -11.0, -6.6, -11.4, 0.55);
   road = sty_path_add(u, 2.6, -11.8, 5.2, -12.4, 0.5);
+  // The paths of the country to the south.
+  paths := vw_paths();
+  for i: 0..<VW_PATHS { road = sty_path_add(u, paths[i * 5], paths[i * 5 + 1], paths[i * 5 + 2], paths[i * 5 + 3], paths[i * 5 + 4]); }
   if !ok { return 0; }
   half := cast(f32) VR_GRASS_COLS * look.grass_cell * 0.5;
   return sty_grass_field(u, look, eye.x + sin(eye.yaw) * 22 - half, eye.z - cos(eye.yaw) * 22 - half, VR_GRASS_COLS, VR_GRASS_ROWS);
@@ -191,20 +216,22 @@ vr_build :: (v: [] VillageRoad) -> bool {
   for j: 0..<g.n + 1 {
     for i: 0..<g.n + 1 {
       x := g.x0 + cast(f32) i * g.cell; z := g.z0 + cast(f32) j * g.cell; o := (j * (g.n + 1) + i) * ARCH_GROUND_FLOATS;
-      paved := vr_paved(x, z);
-      v[0].table[o] = vr_height(x, z); v[0].table[o + 1] = 1 - paved; v[0].table[o + 2] = paved; v[0].table[o + 3] = 0;
+      paved := vr_paved(x, z); south := z > VW_START + VW_BLEND * 0.5;
+      v[0].table[o] = vr_height(x, z); v[0].table[o + 1] = ifx south then vw_cover(x, z) else 1 - paved; v[0].table[o + 2] = paved;
+      v[0].table[o + 3] = ifx south then vw_churn(x, z) else 0.0f32;
     }
   }
   vr_bare(v, -10.6, -18.0, -3.8, -12.0);     // the cottage
   vr_bare(v, 3.0, -20.2, 15.8, -13.2);       // the stone house
   vr_bare(v, -17.5, -18.1, -15.7, -16.3);    // the tower
   vr_bare(v, A - VR_PLAZA_HALF - 1, -118.0, A + VR_PLAZA_HALF + 1, VR_PLAZA_FAR + 1);   // the terrace and the church
+  vr_bare(v, VW_CLIFF_X - 4, VW_CLIFF_Z - VW_CLIFF_RUN * 0.5 - 2, VW_CLIFF_X + 44, VW_CLIFF_Z + VW_CLIFF_RUN * 0.5 + 4);   // the cliff
   ok := arch_heights(v[0].heights[..], g, v[0].table[..]);
   arch_once(s[..], arch_ground(p[..], g, v[0].table[..]));
   // The land beyond the table, out to the hills.
   from := p[0].n; p[0].material = ARCH_M_GROUND; p[0].tint = [3] f32.[0, 0, 0];
   far: f32 = 1600;
-  arch_quad(p[..], arch_at(-far, -0.6, far, 0, 1, 0, 1, 0), arch_at(far, -0.6, far, 0, 1, 0, 1, 0), arch_at(far, -0.6, -far, 0, 1, 0, 1, 0), arch_at(-far, -0.6, -far, 0, 1, 0, 1, 0));
+  arch_quad(p[..], arch_at(-far, -2.6, far, 0, 1, 0, 1, 0), arch_at(far, -2.6, far, 0, 1, 0, 1, 0), arch_at(far, -2.6, -far, 0, 1, 0, 1, 0), arch_at(-far, -2.6, -far, 0, 1, 0, 1, 0));
   arch_once(s[..], arch_part(p[..], from));
 
   // ---- scene 1: the two houses on the road
@@ -421,7 +448,7 @@ vr_build :: (v: [] VillageRoad) -> bool {
     a := arch_hash(77, i) * f32(ARCH_TAU); d := arch_vary(78, i, 86, 140);
     x := cos(a) * d; z := -62 + sin(a) * d;
     if z > 20 && abs(x) < 30 { continue; }
-    if x < VR_GROUND_X0 + 2 || x > -VR_GROUND_X0 - 2 || z < VR_GROUND_Z0 + 2 || z > VR_GROUND_Z0 + 190 { continue; }
+    if x < -94 || x > 94 || z < VR_GROUND_Z0 + 2 || z > 38 { continue; }
     r = arch_stand(s[..], x, vr_at(v, x, z) - 0.2, z, a * 3, arch_vary(79, i, 1.0, 1.8));
     if r < 0 { break; }
     k := arch_vary(80, i, 0.85, 1.1); vr_wash(s[..], r, k, k, k); n += 1;
@@ -452,6 +479,12 @@ vr_build :: (v: [] VillageRoad) -> bool {
     n += 1;
   }
   arch_draw(s[..], far_pine, first, n);
+
+  // ---- the country south of the village, and last its water
+  vw_build(v, p[..], s[..]);
+  v[0].wet_first = s[0].dn;
+  vw_build_wet(v, p[..], s[..]);
+  v[0].wet_n = s[0].dn - v[0].wet_first;
 
   // ---- what blocks a walker, and a mesh of it to look at
   v[0].placed_n = s[0].pn;
@@ -529,7 +562,7 @@ vr_build :: (v: [] VillageRoad) -> bool {
   u: [STY_UNIFORM_FLOATS] f32; look := vr_look(); eye := vr_shot_camera();
   #assert sty_frame(u[..], 1920, 1080, 0, eye, look);
   blades := vr_frame(u[..], look, eye);
-  #assert blades == VR_GRASS_COLS * VR_GRASS_ROWS && u[STY_U_PATH_INFO] == 5 && u[STY_U_PATH + 4] == VR_ROAD_HALF && u[STY_U_GROUND + 3] == VR_GROUND_N;
+  #assert blades == VR_GRASS_COLS * VR_GRASS_ROWS && u[STY_U_PATH_INFO] == 5 + VW_PATHS && u[STY_U_PATH + 4] == VR_ROAD_HALF && u[STY_U_GROUND + 3] == VR_GROUND_N;
   // The road's far end is ahead and near the middle of the picture; the cottage is left of it and the stone house right.
   end := sty_project(u[..], 0.2, VR_VILLAGE, -30); left := sty_project(u[..], -7.4, 3, -15.1); right := sty_project(u[..], 10.2, 3, -16.6);
   #assert end.ahead && abs(end.x - 960) < 80 && end.y > 480 && end.y < 600 && left.x < 600 && left.x > 0 && right.x > 1300 && right.x < 1920;
