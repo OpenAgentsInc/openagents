@@ -1,0 +1,110 @@
+// Measure: the one thing layout knows about a target (components/spec.md,
+// GitHub #13153).
+//
+//   (face, text) -> each grapheme's advance; a face's ascent, descent and line height
+//
+// A pixel target answers from its fonts' metrics (layout/font.coax: logical
+// pixels, kerning between neighbours, the glyph cache for what the fixed set
+// lacks). A terminal answers in cells: a grapheme is 0, 1 or 2 columns wide,
+// every face is the same, a line is 1 tall. Coax has no procedure values, so
+// the interface is a small value that says which target it is, and measure_step
+// picks: a component's layout is written once against measure_step and works on
+// both.
+//   coax/bin/coax test components/layout/measure.coax
+
+#load "font.coax";
+
+MEASURE_FONT :: 0;               // a pixel target: the atlas's fonts
+MEASURE_CELLS :: 1;              // a terminal: columns
+
+TextMeasure :: struct { kind: int; atlas: [] Atlas; }
+measure_font :: (a: [] Atlas) -> TextMeasure { return TextMeasure.{kind = MEASURE_FONT, atlas = a}; }
+measure_cells :: () -> TextMeasure { return TextMeasure.{kind = MEASURE_CELLS}; }
+
+// Columns a code point takes in a terminal: 0 for controls, combining marks
+// and joiners, 2 for wide East Asian and emoji ranges, 1 otherwise. A short
+// table, not full UAX #11 (the one Coder's terminal has always used).
+cell_width :: (cp: u32) -> int {
+  if cp < 32 || cp == 127 { return 0; }
+  if (cp >= 0x300 && cp <= 0x36f) || (cp >= 0x200b && cp <= 0x200f) || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0x1f3fb && cp <= 0x1f3ff) { return 0; }
+  if (cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) { return 2; }
+  if (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) || (cp >= 0xffe0 && cp <= 0xffe6) { return 2; }
+  if (cp >= 0x1f300 && cp <= 0x1f64f) || (cp >= 0x1f900 && cp <= 0x1faff) || (cp >= 0x20000 && cp <= 0x3fffd) { return 2; }
+  return 1;
+}
+// The columns of the grapheme text[i..<i+n]: its widest code point (a letter
+// with its marks is 1, an emoji with its modifiers and joiners 2).
+cells_of :: (text: string, i: int, n: int) -> int {
+  w := 0; k := i;
+  while k < i + n && k < text.count {
+    r := rune_at(text, k);
+    cw := cell_width(r.code);
+    if cw > w { w = cw; }
+    k += r.len;
+  }
+  return w;
+}
+
+// One step along a line: the grapheme at byte i, its bytes and its advance
+// (with any kerning against the step before it: pass that step's `chain`
+// as prev, -1 at a line's or a face's start).
+MeasureStep :: struct { len: int; advance: f32; chain: int; }
+
+measure_step :: (m: TextMeasure, face: int, text: string, i: int, prev: int) -> MeasureStep {
+  if m.kind == MEASURE_CELLS {
+    n := cluster_len(text, i);
+    return MeasureStep.{len = n, advance = cast(f32) cells_of(text, i, n), chain = -1};
+  }
+  st := gp_step(m.atlas, face, text, i, prev);
+  return MeasureStep.{len = st.len, advance = st.advance, chain = st.glyph};
+}
+
+// The width of text in one face.
+measure_width :: (m: TextMeasure, face: int, text: string) -> f32 {
+  if m.kind == MEASURE_FONT { return text_width(m.atlas, face, text); }
+  x: f32 = 0; i := 0;
+  while i < text.count {
+    st := measure_step(m, face, text, i, -1);
+    x += st.advance; i += st.len;
+  }
+  return x;
+}
+
+// A face's line: its ascent and descent, and the height of a line of it set
+// solid (a component's skin usually gives a taller line box).
+MeasureFace :: struct { ascent: f32; descent: f32; height: f32; }
+measure_face :: (m: TextMeasure, face: int) -> MeasureFace {
+  if m.kind == MEASURE_CELLS || face < 0 || face >= GP_FONTS { return MeasureFace.{ascent = 1, descent = 0, height = 1}; }
+  f := m.atlas[0].fonts[face];
+  return MeasureFace.{ascent = f.ascent, descent = f.descent, height = f.ascent + f.descent};
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a terminal measures in columns: letters 1, CJK and emoji 2, marks and joiners 0" {
+  m := measure_cells();
+  #assert measure_width(m, 0, "hello") == 5 && measure_width(m, 3, "hello") == 5;       // every face is the same
+  #assert measure_width(m, 0, "日本") == 4 && measure_width(m, 0, "a日b") == 4;
+  #assert measure_width(m, 0, "é") == 1;            // e + combining acute: one grapheme, one column
+  #assert measure_width(m, 0, "👍🏽") == 2;      // the skin tone joins its emoji
+  #assert measure_width(m, 0, "a\tb") == 2;          // a control takes no column
+  st := measure_step(m, 0, "日本", 0, -1);
+  #assert st.len == 3 && st.advance == 2 && st.chain == -1;
+  f := measure_face(m, 5);
+  #assert f.height == 1 && f.ascent == 1 && f.descent == 0;
+  #assert cell_width(0x1f600) == 2 && cell_width(0x200d) == 0 && cell_width('~') == 1;
+}
+#test "a pixel target measures with its fonts' advances and kerning" {
+  a: [1] Atlas;
+  for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7; a[0].fonts[1].advance[g] = 9; }
+  a[0].fonts[0].kern[glyph_of('A') * GP_GLYPHS + glyph_of('V')] = -1;
+  a[0].fonts[1].ascent = 13; a[0].fonts[1].descent = 3;
+  m := measure_font(a[..]);
+  #assert measure_width(m, 0, "AV") == 13 && measure_width(m, 1, "AV") == 18;
+  s0 := measure_step(m, 0, "AV", 0, -1);
+  s1 := measure_step(m, 0, "AV", 1, s0.chain);
+  #assert s0.advance == 7 && s1.advance == 6 && s1.len == 1;
+  #assert measure_step(m, 0, "AV", 1, -1).advance == 7;                             // no chain: no kerning
+  f := measure_face(m, 1);
+  #assert f.ascent == 13 && f.descent == 3 && f.height == 16;
+}

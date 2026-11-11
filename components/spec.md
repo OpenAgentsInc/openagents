@@ -1,6 +1,8 @@
 # Components: one component system for every OpenAgents and Verse app (spec, draft)
 
-Written 2026-11-10. Status: Phase 1 (the move) is done; the rest is a plan.
+Written 2026-11-10. Status: Phase 1 (the move) is done. Phase 2 is under way:
+the layers exist and the chat components draw through them with the same
+vertices as before (see "Phases" for what has moved).
 Tracked in GitHub #13153. The code this replaces is listed under "What exists
 today".
 
@@ -31,8 +33,10 @@ components/
   spec.md          this file
   README.md        how to use a component and add one
   core/            what a component is: state and rules, no pixels
+                   (color, text, markdown, syntax)
   layout/          sizes and positions from state, a width and a skin
-  paint/           the display list: the primitives a frame is made of
+                   (round, font, measure, text)
+  paint/           the display list: the primitives a frame is made of (list)
   skin/            tokens and frames: zeron.coax, verse.coax, everglade.coax, terminal.coax
   backend/         display list to a target: gpu.coax (and its shader), terminal.coax
   kit/             the components themselves, one file each
@@ -61,13 +65,18 @@ Each layer loads only the layers above it in this list. A check enforces it
 
 ### 1. Core: state and rules
 
-Plain data and functions. No colours, no pixels, no fonts, no platform calls.
+Plain data and functions. No colour choices, no pixels, no fonts, no platform
+calls. The colour *type* (`core/color.coax`: `Rgba` and GPUI's arithmetic on
+it) is core, because layout, paint, skins and backends all carry colours;
+which colour a component wears is its skin's to say.
 
-- **Text**: UTF-8, grapheme clusters, the edit buffer (selection, undo,
-  marked text for an IME, UTF-16 offsets for hosts that need them).
-- **Markdown**: source to a document (`MdDoc`: blocks, items, styled runs,
-  tables, code with its language). Streaming-safe: an unfinished reply
-  parses.
+- **Text** (`core/text.coax`): UTF-8 and grapheme clusters. The edit buffer
+  (selection, undo, marked text for an IME, UTF-16 offsets for hosts that
+  need them) is still inside `zeron/composer.coax`.
+- **Markdown** (`core/markdown.coax`): source to a document (`MdDoc`: blocks,
+  items, styled runs, tables, code with its language). Streaming-safe: an
+  unfinished reply parses. `core/syntax.coax` gives a line of code its
+  tokens' roles (keyword, string, type); a skin colours the roles.
 - **Conversation**: a transcript as parts (text, thinking, tool call, tool
   result, diff, notice, approval). This is the session record of the apps
   roadmap, Step 2 ([docs/apps/2026-11-10-apps-roadmap.md](../docs/apps/2026-11-10-apps-roadmap.md)):
@@ -92,17 +101,30 @@ Measure: (face, size, text) -> advance, and the face's ascent, descent, line hei
 A pixel target answers from font metrics. A terminal answers in cells. This
 is the only thing layout knows about a target.
 
+Coax has no procedure values, so the interface is a value, not a callback
+(`layout/measure.coax`): a `TextMeasure` says which target it is
+(`measure_font(atlas)` or `measure_cells()`), and `measure_step`,
+`measure_width` and `measure_face` answer for it. A pixel target's font
+metrics, as its host measured them, are `layout/font.coax` (the `Atlas`: each
+face's advances and kerning, and the glyph cache). The same struct carries
+where each glyph's cell sits in the atlas texture, because the host hands
+both over in one call; only the GPU backend reads that part.
+`layout/text.coax` is the one line wrapper (`text_wrap`), and
+`layout/round.coax` is GPUI's rounding.
+
 ### 3. Paint: the display list
 
-A component paints into a list of primitives, not vertices:
+A component paints into a list of primitives, not vertices
+(`paint/list.coax`). A list is the caller's array of `Prim` and a count;
+each `prim_*` procedure appends one and returns the new count:
 
 | Primitive | Carries |
 | --- | --- |
 | Box | bounds, corner radius, fill, border width and colour |
-| Shadow | bounds, radius, blur, colour; inset or drop |
+| Shadow, inset | bounds, radius, offset, blur, spread, colour; an inset is the lit edge inside a shape |
 | Gradient | bounds, radius, two stops |
-| Line, ring, arc | points, width, colour (the HUD's bars, rings and pie sweeps) |
-| Text run | position, face, size, colour, the text |
+| Line, ring, arc, elbow | points, width, colour (the HUD's bars, rings and pie sweeps; the transcript's activity rail) |
+| Text run | position, face, line height, colour, the text; its selectable line and offset |
 | Icon | bounds, icon id, tint |
 | Image | bounds, image id |
 | Clip, fade | a scissor rectangle; fade bands at an edge |
@@ -131,10 +153,17 @@ defect, and a check finds it.
 
 ### 5. Backend: where it draws
 
-- **`backend/gpu.coax`**: the display list to vertices, with one shader
-  written in Coax and emitted as WGSL, Metal and SPIR-V. It starts from the
-  28-float vertex and the shader in `apps/openagents-web/gpu/chat.coax`. The
-  hand-written `Zeron.metal` goes away.
+- **`backend/gpu.coax`**: the display list to vertices (`gpu_draw`), with one
+  shader written in Coax, `backend/gpu-shader.coax`, emitted as WGSL
+  (`coax wgsl`), SPIR-V (`coax spirv`) and Metal (`coax metal`). The vertex
+  is GPUI's 28 floats, unchanged, and so is the atlas contract
+  (`gp_set_font`, `gp_set_icon`, `gp_set_atlas`, the glyph cache). The
+  `paint_*` procedures that write one primitive's vertices directly stay for
+  the components not yet on the display list; both ways give the same
+  floats, and a check holds them to it. Not drawn yet: an arc, a slanted
+  line and an image (`gpu_draws` says so); they need a path in the shader.
+  The hand-written `Zeron.metal` goes away when the Mac app builds the
+  emitted Metal; that needs a Mac, and hasn't been done.
 - **`backend/terminal.coax`**: the display list to terminal cells, through
   `coax/lib/tui`'s output. Boxes become borders or nothing, colours map to
   the terminal's.
@@ -199,13 +228,18 @@ Each phase ends with every existing check and golden unchanged.
 1. **Move.** Done 2026-11-10: `apps/shared/zeron/` is now `components/zeron/`,
    with no content change;
    the web, the Mac app and Aethyrforge load it from there.
-2. **Split Markdown first.** Started 2026-11-10: the parser is
-   `core/markdown.coax` and passes its checks with no drawing code loaded;
-   wrapping and highlighting are still in `zeron/markdown.coax`. Next:
-   `core/markdown.coax` (parse),
-   `layout/text.coax` (wrap), `kit/markdown.coax` (paint), the display list
-   and `backend/gpu.coax`. Markdown is the proof: when chat's pictures don't
-   change, the layers are right. Then the rest of the chat set the same way.
+2. **Split Markdown first.** Started 2026-11-10. Done: the parser is
+   `core/markdown.coax` and the highlighter's roles are `core/syntax.coax`,
+   with no drawing code loaded; wrapping is `layout/text.coax` behind
+   `layout/measure.coax`; the display list is `paint/list.coax`;
+   `backend/gpu.coax` writes its vertices and `backend/gpu-shader.coax` is
+   the shader. `zeron/gpui.coax` and `zeron/markdown.coax` are now only ways
+   in to those files. Chat's frames are pinned by
+   `apps/openagents-web/chat-frames.coax` (eight scenes of `/chat`, hashed
+   vertex buffers): the same input gives the same floats as before the
+   split. Next: `kit/markdown.coax` (paint), then the rest of the chat set.
+   Markdown is the proof: when chat's pictures don't change, the layers are
+   right.
 3. **Skins and the gallery.** The `zeron` skin from the constants now in the
    code, the `everglade` skin, and openagents.com/components.
 4. **Chat in Everglade for desktop.** The Workshop gets the same transcript

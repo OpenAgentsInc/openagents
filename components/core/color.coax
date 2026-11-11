@@ -1,0 +1,28 @@
+// A colour as data: straight (not premultiplied) sRGB with alpha, and the
+// arithmetic GPUI does on it. The type is the core layer's (components/spec.md,
+// GitHub #13153) because layout, paint, skins and backends all carry colours;
+// which colours a component wears is its skin's to say, never the component's.
+//   coax/bin/coax test components/core/color.coax
+
+Rgba :: struct { r: f32; g: f32; b: f32; a: f32; }
+
+rgba :: (r: f32, g: f32, b: f32, a: f32) -> Rgba { return Rgba.{r = r, g = g, b = b, a = a}; }
+// #rrggbb
+hex :: (v: int, a: f32) -> Rgba {
+  return Rgba.{r = cast(f32) ((v >> 16) & 255) / 255, g = cast(f32) ((v >> 8) & 255) / 255, b = cast(f32) (v & 255) / 255, a = a};
+}
+// GPUI's Hsla::opacity: the alpha times o.
+opacity :: (c: Rgba, o: f32) -> Rgba { return Rgba.{r = c.r, g = c.g, b = c.b, a = c.a * o}; }
+// A color over another, as one opaque color (zeron theme.rs flatten).
+flatten :: (top: Rgba, under: Rgba) -> Rgba {
+  a := top.a;
+  return Rgba.{r = top.r * a + under.r * (1 - a), g = top.g * a + under.g * (1 - a), b = top.b * a + under.b * (1 - a), a = 1};
+}
+
+#test "colors, opacity and flattening are GPUI's" {
+  c := hex(0xe8e8ea, 1);
+  #assert abs(c.r - 232.0 / 255.0) < 0.0001 && c.a == 1;
+  #assert opacity(c, 0.35).a == 0.35;
+  w := flatten(rgba(1, 1, 1, 0.1), hex(0x000000, 1));
+  #assert abs(w.r - 0.1) < 0.0001 && w.a == 1;
+}

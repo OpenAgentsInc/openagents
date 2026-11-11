@@ -1,0 +1,28 @@
+// Rounding, as GPUI does it: layout edges on whole logical pixels (Taffy's
+// rounding), painted bounds snapped to device pixels half toward zero, a
+// stroke never thinner than one device pixel. Layout uses round_layout; a
+// pixel backend uses the snaps (components/spec.md, GitHub #13153).
+//   coax/bin/coax test components/layout/round.coax
+
+ceil :: (v: f32) -> f32 { return -floor(-v); }
+
+// gpui util.rs round_half_toward_zero, and the device-pixel snaps on it.
+round_half_toward_zero :: (v: f32) -> f32 {
+  m := ceil(abs(v) - 0.5);
+  return ifx v < 0 then -m else m;
+}
+// Taffy's layout rounding (GPUI lays out with rounding on): each box's edges
+// land on whole logical pixels, rounded half away from zero.
+round_layout :: (v: f32) -> f32 { return ifx v < 0 then -floor(-v + 0.5) else floor(v + 0.5); }
+snap :: (v: f32, d: f32) -> f32 { return round_half_toward_zero(v * d); }
+snap_stroke :: (v: f32, d: f32) -> f32 {
+  if v == 0 { return 0; }
+  s := snap(v, d);
+  return ifx s < 1 then 1.0f32 else s;
+}
+
+#test "bounds snap half toward zero, strokes to at least a device pixel" {
+  #assert round_half_toward_zero(2.5) == 2 && round_half_toward_zero(2.51) == 3 && round_half_toward_zero(-2.5) == -2;
+  #assert snap(10.25, 2) == 20 && snap(10.3, 2) == 21;
+  #assert snap_stroke(0.25, 2) == 1 && snap_stroke(1, 2) == 2 && snap_stroke(0, 2) == 0;
+}

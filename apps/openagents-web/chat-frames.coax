@@ -1,0 +1,137 @@
+// /chat's frames, pinned: the demo conversation (closed, opened, the table
+// reply, the new-chat composer with its menu) painted with a fixed atlas and
+// the vertex buffer hashed. The component system's phases (components/spec.md,
+// GitHub #13153) move code between layers without changing what is drawn:
+// the same input must give the same floats, so these hashes stay as they are
+// until a change means to move a pixel, and then they change in that commit.
+//   coax/bin/coax test apps/openagents-web/chat-frames.coax --only frames
+
+#load "chat.coax";
+
+// A fixed atlas with uneven advances and some kerning, so wrapping, kerning
+// and subpixel placement all show in the floats.
+cf_atlas :: (a: [] Atlas) {
+  gp_set_atlas(a, 4096, 4096, 2);
+  sizes := FONT_SIZES;
+  for k: 0..<GP_FONTS {
+    sz := sizes[k];
+    a[0].fonts[k].size = sz; a[0].fonts[k].ascent = floor(sz * 0.93 + 0.5); a[0].fonts[k].descent = floor(sz * 0.22 + 0.5);
+    a[0].fonts[k].cell = 64; a[0].fonts[k].pen_x = 8; a[0].fonts[k].pen_y = 44; a[0].fonts[k].y0 = cast(f32) k * 256; a[0].fonts[k].cols = 64;
+    mono := k == FONT_MONO_14 || k == FONT_CODE || k == FONT_MONO_12 || k == FONT_MONO_11;
+    for g: 0..<GP_GLYPHS {
+      a[0].fonts[k].advance[g] = ifx mono then sz * 0.6 else sz * (0.36 + cast(f32) ((g * 7 + k) % 9) * 0.04);
+    }
+    if !mono {
+      a[0].fonts[k].kern[glyph_of('T') * GP_GLYPHS + glyph_of('o')] = -sz * 0.07;
+      a[0].fonts[k].kern[glyph_of('r') * GP_GLYPHS + glyph_of('.')] = -sz * 0.05;
+      a[0].fonts[k].kern[glyph_of('e') * GP_GLYPHS + glyph_of('d')] = sz * 0.01;
+    }
+  }
+  for k: 0..<GP_ICONS { gp_set_icon(a, k, cast(f32) (k % 8) * 40, 3200 + cast(f32) (k / 8) * 40, 32, 32); }
+  gp_set_dynamic(a, 48, 10, 34, 3500, 80, 20, 1024, 256);
+}
+
+// A hash of the vertices' floats in 1/4096ths (positions land on quarter
+// device pixels, colors on bytes), with the vertex count in its low digits.
+cf_hash :: (out: [] f32, n: int) -> int {
+  h := 7;
+  for k: 0..<n * GP_VERTEX_FLOATS { h = (h * 1000003 + cast(int) floor(out[k] * 4096 + 0.5) + k) & 0xFFFFFFFFFF; }
+  return h * 100000 + n;
+}
+
+CF_VERTICES :: 30000;
+CfOut :: struct { v: [840000] f32; }   // CF_VERTICES * GP_VERTEX_FLOATS
+
+cf_start :: (h: [] WcHost) {
+  fresh: WcState; h[0].s[0] = fresh;   // every scene starts from nothing
+  coaxial_chat_bind(h);
+  s := h[0].s[..];
+  wc_init(s); s[0].golden = true;
+  cf_atlas(s[0].atlas[..]);
+}
+cf_frame :: (h: [] WcHost, o: [] CfOut, w: f32, ht: f32, d: f32) -> int {
+  u: [4] f32;
+  n := wc_frame(h[0].s[..], o[0].v[..], u[..], w, ht, d, 0.016);
+  return cf_hash(o[0].v[..], n);
+}
+
+// The scenes. Each returns its frame's hash.
+// 0: the demo conversation as it opens. 1: its groups and three chips open,
+// scrolled. 2: the same on a phone at density 1.
+cf_demo :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
+  cf_start(h);
+  s := h[0].s[..];
+  wc_demo(s);
+  if scene == 0 { return cf_frame(h, o, 2560, 1600, 2); }
+  t := s[0].transcript[..];
+  t_set_open(t, 0, -1, true); t_set_open(t, 0, 0, true); t_set_open(t, 0, 3, true); t_set_open(t, 0, 4, true);
+  t_set_open(t, 1, -1, true);
+  x := cf_frame(h, o, 2560, 1600, 2);
+  t_scroll_to(t, 120);
+  if scene == 1 { return cf_frame(h, o, 2560, 1600, 2); }
+  return cf_frame(h, o, 390, 800, 1);
+}
+CF_REPLY :: "> # Quoted\n>\n> a quoted **paragraph** with `code`\n> - point\n\n1. one\n2. two\n   - nested item that is long enough to wrap onto a second line in a narrow column, so it does\n\nA naive cafe — and more.";
+// 0: the table reply, a quote, lists, two notices and the working trailer. 1: with a selection across rows.
+cf_table :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
+  cf_start(h);
+  s := h[0].s[..];
+  wc_demo(s);
+  t := s[0].transcript[..];
+  t_reset(t);
+  t_table_demo(t);
+  t_text(t, CF_REPLY);
+  k := t_notice(t, N_ERROR, "The run failed: the model returned an error after a long wait.");
+  k = t_notice(t, N_ASK, "Run `cargo test`?");
+  t[0].working = true; t[0].work_secs = 75;
+  x := cf_frame(h, o, 1280, 900, 1);
+  if scene == 0 { return x; }
+  t[0].has_sel = true; t[0].anchor = SelPos.{line = t[0].nsel - 14, off = 3}; t[0].focus = SelPos.{line = t[0].nsel - 4, off = 5};
+  return cf_frame(h, o, 1280, 900, 1);
+}
+// 0: the new-chat composer, empty. 1: with two lines typed. 2: its model menu open.
+cf_new :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
+  cf_start(h);
+  s := h[0].s[..];
+  s[0].status = 200;
+  x := cf_frame(h, o, 1440, 900, 2);
+  if scene == 0 { return x; }
+  wc_typed(s, "Explain how the transcript lays out a table, then\nwrite the check for it.");
+  x = cf_frame(h, o, 1440, 900, 2);
+  if scene == 1 { return x; }
+  wc_chip(s, CH_MODEL);
+  return cf_frame(h, o, 1440, 900, 2);
+}
+
+#test "frames: the demo conversation as it opens" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_demo(h[..], o[..], 0) == 106710439169503552;
+}
+#test "frames: the demo with its groups and three chips open, scrolled" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_demo(h[..], o[..], 1) == 88335731829705892;
+}
+#test "frames: the opened demo on a phone at density 1" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_demo(h[..], o[..], 2) == 74379182179705808;
+}
+#test "frames: the table reply, a quote, lists, two notices and the working trailer" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_table(h[..], o[..], 0) == 6096006678903090;
+}
+#test "frames: a selection across those rows" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_table(h[..], o[..], 1) == 87509957226503156;
+}
+#test "frames: the new-chat composer, empty" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_new(h[..], o[..], 0) == 53697978660901140;
+}
+#test "frames: the new-chat composer with two lines typed" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_new(h[..], o[..], 1) == 25269101554501374;
+}
+#test "frames: the new-chat composer with its model menu open" #steps 200000000 {
+  h: [1] WcHost; o: [1] CfOut;
+  #assert cf_new(h[..], o[..], 2) == 104144573636901692;
+}

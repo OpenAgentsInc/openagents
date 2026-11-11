@@ -1,0 +1,99 @@
+// Syntax highlighting, the part with no colours: a line of code in, its
+// tokens' roles out (components/spec.md, GitHub #13153: the core layer).
+// A code block and a diff show the same roles; the skin colours them.
+// Today it reads Rust, the roles tree-sitter-rust's highlights give Zeron.
+// Based on Zeron by Wing, MIT.
+//   coax/bin/coax test components/core/syntax.coax
+
+#load "markdown.coax";      // MdRun: a stretch of bytes and its role
+
+// The roles a token can have (Zeron's theme crate names them: builtins.rs syntax()).
+// A skin gives each role its colour.
+SYN_COMMENT :: 0; SYN_KEYWORD :: 1; SYN_STRING :: 2; SYN_NUMBER :: 3; SYN_TYPE :: 4; SYN_FUNCTION :: 5;
+SYN_PROPERTY :: 6; SYN_VARIABLE :: 7; SYN_PUNCTUATION :: 8; SYN_TAG :: 9; SYN_ATTRIBUTE :: 10; SYN_INVALID :: 11;
+SYN_PLAIN :: -1;
+
+syn_ident_start :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+syn_ident :: (c: u8) -> bool { return syn_ident_start(c) || (c >= '0' && c <= '9'); }
+syn_is :: (s: string, w: string) -> bool {
+  if s.count != w.count { return false; }
+  for k: 0..<s.count { if s[k] != w[k] { return false; } }
+  return true;
+}
+RUST_KEYWORDS :: [36] string.["fn", "let", "mut", "if", "else", "match", "return", "pub", "use", "impl", "struct", "enum",
+  "for", "while", "loop", "in", "as", "const", "static", "mod", "crate", "self", "super", "where", "move", "ref",
+  "trait", "type", "unsafe", "async", "await", "dyn", "break", "continue", "extern", "Self"];
+syn_keyword :: (w: string) -> bool {
+  ks := RUST_KEYWORDS;
+  for k: 0..<36 { if syn_is(w, ks[k]) { return true; } }
+  return false;
+}
+
+// Highlights one line of Rust into runs (style = a SYN_ role), the roles
+// tree-sitter-rust's highlights give Zeron for what the transcript shows:
+// keywords and operators, functions (defined or called), types, fields
+// after a dot, parameters and locals as variables, brackets and delimiters
+// as punctuation, comments, strings and numbers. Returns the run count.
+syn_rust :: (line: string, out: [] MdRun) -> int {
+  n := 0; i := 0; prev_fn := false; after_dot := false;
+  while i < line.count && n < out.count {
+    c := line[i];
+    j := i + 1; role := SYN_PLAIN;
+    if c == ' ' || c == '\t' {
+      while j < line.count && (line[j] == ' ' || line[j] == '\t') { j += 1; }
+      i = j; continue;
+    } else if c == '/' && i + 1 < line.count && line[i + 1] == '/' {
+      j = line.count; role = SYN_COMMENT;
+    } else if c == '"' {
+      while j < line.count && line[j] != '"' { if line[j] == '\\' { j += 1; } j += 1; }
+      if j < line.count { j += 1; }
+      if j > line.count { j = line.count; }
+      role = SYN_STRING;
+    } else if c >= '0' && c <= '9' {
+      while j < line.count && (syn_ident(line[j]) || line[j] == '.') { j += 1; }
+      role = SYN_NUMBER;
+    } else if syn_ident_start(c) {
+      while j < line.count && syn_ident(line[j]) { j += 1; }
+      w := cast(string) line[i..<j];
+      k := j; while k < line.count && line[k] == ' ' { k += 1; }
+      called := k < line.count && line[k] == '(';
+      if syn_keyword(w) && !after_dot { role = ifx syn_is(w, "Self") then SYN_TYPE else SYN_KEYWORD; }
+      else if syn_is(w, "true") || syn_is(w, "false") { role = SYN_NUMBER; }
+      else if prev_fn || called { role = SYN_FUNCTION; }
+      else if after_dot { role = SYN_PROPERTY; }
+      else if c >= 'A' && c <= 'Z' { role = SYN_TYPE; }
+      else { role = SYN_VARIABLE; }
+      prev_fn = syn_is(w, "fn");
+      after_dot = false;
+      out[n] = MdRun.{from = i, to = j, style = role}; n += 1;
+      i = j; continue;
+    } else if c == '-' && i + 1 < line.count && line[i + 1] == '>' {
+      j = i + 2; role = SYN_PLAIN;
+    } else if c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ';' || c == ':' || c == '.' {
+      role = SYN_PUNCTUATION;
+      if c == ':' && j < line.count && line[j] == ':' { j += 1; }
+    } else if c == '&' || c == '=' || c == '+' || c == '-' || c == '*' || c == '!' || c == '<' || c == '>' || c == '|' || c == '%' || c == '^' || c == '?' {
+      role = SYN_KEYWORD;
+    }
+    after_dot = c == '.';
+    if c != ' ' { prev_fn = false; }
+    out[n] = MdRun.{from = i, to = j, style = role}; n += 1;
+    i = j;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "Rust lines highlight with Zeron Dark's roles" {
+  runs: [64] MdRun;
+  l := "fn header_color(_group: &ToolGroup) -> Hsla {";
+  n := syn_rust(l, runs[..]);
+  #assert runs[0].style == SYN_KEYWORD && runs[1].style == SYN_FUNCTION && runs[2].style == SYN_PUNCTUATION;
+  #assert runs[3].style == SYN_VARIABLE && runs[4].style == SYN_PUNCTUATION && runs[5].style == SYN_KEYWORD && runs[6].style == SYN_TYPE;
+  #assert runs[8].style == SYN_PLAIN && runs[9].style == SYN_TYPE && runs[n - 1].style == SYN_PUNCTUATION;
+  n = syn_rust("    theme.text_muted // quiet", runs[..]);
+  #assert n == 4 && runs[0].style == SYN_VARIABLE && runs[1].style == SYN_PUNCTUATION && runs[2].style == SYN_PROPERTY && runs[3].style == SYN_COMMENT;
+  n = syn_rust("if group.any_failed() { \"s\" } else { 1 }", runs[..]);
+  #assert runs[0].style == SYN_KEYWORD && runs[3].style == SYN_FUNCTION && runs[7].style == SYN_STRING && runs[9].style == SYN_KEYWORD && runs[11].style == SYN_NUMBER;
+}

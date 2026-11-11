@@ -572,7 +572,7 @@ zr_paint_failure :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, 
   accent := hex(DANGER, 1); muted := hex(DANGER_MUTED, 1);
   w := cw - 8;
   no_runs: [1] MdRun;
-  lines: [16] MdLine;
+  lines: [16] TextLine;
   nl := md_wrap(a, msg, no_runs[0..<0], w - 2 * NOTICE_PAD, true, lines[..]);
   h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
   y := composer_y - 6 - h;

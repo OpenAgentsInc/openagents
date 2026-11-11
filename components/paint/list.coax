@@ -1,0 +1,190 @@
+// The display list: what a frame is made of, before any target draws it
+// (components/spec.md, GitHub #13153). A component paints primitives into a
+// list, in logical pixels with y down; a backend turns the list into its
+// target's output (components/backend/gpu.coax: vertices;
+// components/backend/terminal.coax: cells). A component never writes a
+// vertex or an escape code.
+//
+// A list is a caller's array of Prim and a count: every p_* procedure
+// appends one primitive at n and returns the new count, or n unchanged when
+// the array is full. It is the union of what GPUI paints for Zeron (boxes,
+// shadows, gradients, text, icons) and what the realm HUDs paint
+// (aethyr/ui/hud-style.coax's HudPrim: bars, rings, arcs, lines).
+//
+//   kind        bounds (x, y, w, h)        the rest
+//   PRIM_BOX       the box                    radius, border, fill, edge (the border's colour)
+//   PRIM_SHADOW    the box it falls from      radius, fill; a, b its offset, c its blur, d its spread
+//   PRIM_INSET     the box it lights          radius, fill; b its offset down (no blur)
+//   PRIM_GRADIENT  the box                    radius, fill at the top, edge at the bottom
+//   PRIM_ELBOW     x, y its top               radius its bend, a where it ends (x), on: joined to a trunk; fill
+//   PRIM_LINE      x, y its start             a, b its end, border its width, fill
+//   PRIM_RING      the circle's box           border its width, fill
+//   PRIM_ARC       the circle's box           border its width, fill; a its start, b its sweep (turns, clockwise from the top)
+//   PRIM_TEXT      x the pen, y the line      h the line's height, w the run's width, id its face, fill, text;
+//               box's top                  line and off: its selectable line and byte offset in it (line -1: none)
+//   PRIM_ICON      the box it is centred in   id, fill its tint
+//   PRIM_IMAGE     the box                    id
+//   PRIM_CLIP      x, y the left and top      a, b the right and bottom edges: what follows draws inside
+//               edges                      (an edge at or past PRIM_OPEN is no edge); on false: no clip
+//   PRIM_FADE      y the top edge             a its band, b the bottom edge, c its band: what follows fades
+//                                          out toward each edge over its band; on false: no fade
+//   coax/bin/coax test components/paint/list.coax
+
+#load "../core/color.coax";
+
+PRIM_BOX :: 0; PRIM_SHADOW :: 1; PRIM_INSET :: 2; PRIM_GRADIENT :: 3; PRIM_ELBOW :: 4; PRIM_LINE :: 5; PRIM_RING :: 6; PRIM_ARC :: 7;
+PRIM_TEXT :: 8; PRIM_ICON :: 9; PRIM_IMAGE :: 10; PRIM_CLIP :: 11; PRIM_FADE :: 12;
+PRIM_KINDS :: 13;
+PRIM_OPEN :: 1000000.0;        // a clip edge this far out is no edge
+
+Prim :: struct {
+  kind: int;
+  x: f32; y: f32; w: f32; h: f32;
+  radius: f32; border: f32;
+  fill: Rgba; edge: Rgba;
+  a: f32; b: f32; c: f32; d: f32;
+  id: int; on: bool;
+  text: string;
+  line: int; off: int;
+}
+
+prim_put :: (list: [] Prim, n: int, p: Prim) -> int {
+  if n < 0 || n >= list.count { return n; }
+  list[n] = p;
+  return n + 1;
+}
+
+prim_box :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_BOX, x = x, y = y, w = w, h = h, radius = radius, border = border, fill = fill, edge = edge, id = -1, line = -1});
+}
+// A box with no border.
+prim_fill :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba) -> int {
+  return prim_box(list, n, x, y, w, h, radius, 0, fill, fill);
+}
+prim_shadow :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, dx: f32, dy: f32, blur: f32, spread: f32, color: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_SHADOW, x = x, y = y, w = w, h = h, radius = radius, fill = color, edge = color, a = dx, b = dy, c = blur, d = spread, id = -1, line = -1});
+}
+prim_inset :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, dy: f32, color: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_INSET, x = x, y = y, w = w, h = h, radius = radius, fill = color, edge = color, b = dy, id = -1, line = -1});
+}
+prim_gradient :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, top: Rgba, bottom: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_GRADIENT, x = x, y = y, w = w, h = h, radius = radius, fill = top, edge = bottom, id = -1, line = -1});
+}
+prim_elbow :: (list: [] Prim, n: int, x: f32, y: f32, radius: f32, end_x: f32, joined: bool, color: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_ELBOW, x = x, y = y, radius = radius, fill = color, edge = color, a = end_x, on = joined, id = -1, line = -1});
+}
+prim_line :: (list: [] Prim, n: int, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_LINE, x = x0, y = y0, a = x1, b = y1, border = width, fill = color, edge = color, id = -1, line = -1});
+}
+prim_ring :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, width: f32, color: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_RING, x = x, y = y, w = w, h = h, border = width, fill = color, edge = color, id = -1, line = -1});
+}
+prim_arc :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, width: f32, start: f32, sweep: f32, color: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_ARC, x = x, y = y, w = w, h = h, border = width, fill = color, edge = color, a = start, b = sweep, id = -1, line = -1});
+}
+// A run of text in one face and colour: its pen x, its line box's top and
+// height, and its measured width (layout measured it; a backend need not).
+prim_text :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, face: int, color: Rgba, text: string) -> int {
+  if text.count == 0 { return n; }
+  return prim_put(list, n, Prim.{kind = PRIM_TEXT, x = x, y = y, w = w, h = h, fill = color, edge = color, id = face, text = text, line = -1});
+}
+prim_icon :: (list: [] Prim, n: int, icon: int, x: f32, y: f32, w: f32, h: f32, tint: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_ICON, x = x, y = y, w = w, h = h, fill = tint, edge = tint, id = icon, line = -1});
+}
+prim_image :: (list: [] Prim, n: int, image: int, x: f32, y: f32, w: f32, h: f32) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_IMAGE, x = x, y = y, w = w, h = h, id = image, line = -1});
+}
+// What follows draws only inside the edges; an edge at or past PRIM_OPEN (either sign) is open.
+prim_clip :: (list: [] Prim, n: int, left: f32, top: f32, right: f32, bottom: f32) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_CLIP, x = left, y = top, a = right, b = bottom, on = true, id = -1, line = -1});
+}
+prim_unclip :: (list: [] Prim, n: int) -> int { return prim_put(list, n, Prim.{kind = PRIM_CLIP, id = -1, line = -1}); }
+prim_fade :: (list: [] Prim, n: int, top: f32, band_top: f32, bottom: f32, band_bottom: f32) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_FADE, y = top, a = band_top, b = bottom, c = band_bottom, on = true, id = -1, line = -1});
+}
+prim_unfade :: (list: [] Prim, n: int) -> int { return prim_put(list, n, Prim.{kind = PRIM_FADE, id = -1, line = -1}); }
+
+// Moves primitives from..<to by (dx, dy): what a parent does once it knows
+// where a child it has already painted goes. A clip's and a fade's edges
+// move with them (an open edge stays open).
+prim_move :: (list: [] Prim, from: int, to: int, dx: f32, dy: f32) {
+  for k: from..<to {
+    if k < 0 || k >= list.count { continue; }
+    kind := list[k].kind;
+    if kind == PRIM_CLIP {
+      if !list[k].on { continue; }
+      if list[k].x > -PRIM_OPEN { list[k].x += dx; }
+      if list[k].y > -PRIM_OPEN { list[k].y += dy; }
+      if list[k].a < PRIM_OPEN { list[k].a += dx; }
+      if list[k].b < PRIM_OPEN { list[k].b += dy; }
+      continue;
+    }
+    if kind == PRIM_FADE { list[k].y += dy; list[k].b += dy; continue; }
+    list[k].x += dx; list[k].y += dy;
+    if kind == PRIM_LINE { list[k].a += dx; list[k].b += dy; }
+    if kind == PRIM_ELBOW { list[k].a += dx; }
+  }
+}
+
+// How far below its y a primitive reaches: what a backend culls with.
+prim_extent :: (p: Prim) -> f32 {
+  if p.kind == PRIM_ELBOW { return p.radius + 1; }
+  if p.kind == PRIM_LINE { return ifx p.b > p.y then p.b - p.y else 0.0f32; }
+  return p.h;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a primitive appends with its fields; a full list keeps what it has" {
+  list: [3] Prim;
+  n := prim_box(list[..], 0, 10, 20, 100, 50, 8, 1, hex(0x202020, 1), rgba(1, 1, 1, 0.1));
+  #assert n == 1 && list[0].kind == PRIM_BOX && list[0].x == 10 && list[0].h == 50 && list[0].radius == 8 && list[0].border == 1;
+  #assert list[0].edge.a == 0.1 && list[0].line == -1 && list[0].id == -1;
+  n = prim_text(list[..], n, 12, 22, 40, 18, 2, hex(0xffffff, 1), "hello");
+  #assert n == 2 && list[1].kind == PRIM_TEXT && list[1].id == 2 && list[1].text == "hello" && list[1].w == 40 && list[1].h == 18;
+  #assert prim_text(list[..], n, 0, 0, 0, 18, 2, hex(0xffffff, 1), "") == 2;      // nothing to draw
+  n = prim_icon(list[..], n, 7, 0, 0, 16, 16, hex(0xffffff, 1));
+  #assert n == 3 && list[2].id == 7;
+  #assert prim_fill(list[..], n, 0, 0, 1, 1, 0, hex(0, 1)) == 3 && list[2].kind == PRIM_ICON;   // full
+  #assert prim_fill(list[..], -1, 0, 0, 1, 1, 0, hex(0, 1)) == -1;
+}
+#test "each kind carries what its row in the table says" {
+  list: [12] Prim; n := 0;
+  n = prim_shadow(list[..], n, 0, 0, 100, 50, 26, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
+  #assert list[0].kind == PRIM_SHADOW && list[0].b == 10 && list[0].c == 15 && list[0].d == -3;
+  n = prim_inset(list[..], n, 0, 0, 100, 50, 26, 1, rgba(1, 1, 1, 0.1));
+  #assert list[1].kind == PRIM_INSET && list[1].b == 1;
+  n = prim_gradient(list[..], n, 0, 0, 100, 50, 26, hex(0x111111, 1), hex(0x222222, 1));
+  #assert list[2].kind == PRIM_GRADIENT && list[2].fill.r < list[2].edge.r;
+  n = prim_elbow(list[..], n, 304.5, 100, 6, 320, true, rgba(1, 1, 1, 0.12));
+  #assert list[3].kind == PRIM_ELBOW && list[3].radius == 6 && list[3].a == 320 && list[3].on && prim_extent(list[3]) == 7;
+  n = prim_line(list[..], n, 0, 10, 40, 10, 2, hex(0xffffff, 1));
+  #assert list[4].kind == PRIM_LINE && list[4].a == 40 && list[4].b == 10 && list[4].border == 2 && prim_extent(list[4]) == 0;
+  n = prim_ring(list[..], n, 0, 0, 32, 32, 3, hex(0xffffff, 1));
+  n = prim_arc(list[..], n, 0, 0, 32, 32, 3, 0.25, 0.5, hex(0xffffff, 1));
+  #assert list[5].kind == PRIM_RING && list[6].kind == PRIM_ARC && list[6].a == 0.25 && list[6].b == 0.5;
+  n = prim_image(list[..], n, 4, 0, 0, 64, 64);
+  #assert list[7].kind == PRIM_IMAGE && list[7].id == 4 && prim_extent(list[7]) == 64;
+  n = prim_clip(list[..], n, -PRIM_OPEN, -PRIM_OPEN, 500, PRIM_OPEN);
+  n = prim_unclip(list[..], n);
+  #assert list[8].kind == PRIM_CLIP && list[8].on && list[8].a == 500 && !list[9].on;
+  n = prim_fade(list[..], n, 38, 24, 880, 89);
+  n = prim_unfade(list[..], n);
+  #assert n == 12 && list[10].on && list[10].y == 38 && list[10].a == 24 && list[10].b == 880 && list[10].c == 89 && !list[11].on;
+}
+#test "moving a range moves positions, never sizes, and leaves open clip edges open" {
+  list: [6] Prim; n := 0;
+  n = prim_fill(list[..], n, 10, 20, 100, 50, 0, hex(0, 1));
+  n = prim_line(list[..], n, 0, 10, 40, 30, 2, hex(0, 1));
+  n = prim_clip(list[..], n, -PRIM_OPEN, 5, 500, PRIM_OPEN);
+  n = prim_elbow(list[..], n, 4, 8, 6, 20, false, hex(0, 1));
+  n = prim_fade(list[..], n, 38, 24, 880, 89);
+  n = prim_fill(list[..], n, 1, 1, 1, 1, 0, hex(0, 1));
+  prim_move(list[..], 0, 5, 3, 7);
+  #assert list[0].x == 13 && list[0].y == 27 && list[0].w == 100 && list[0].h == 50;
+  #assert list[1].x == 3 && list[1].y == 17 && list[1].a == 43 && list[1].b == 37;
+  #assert list[2].x == -PRIM_OPEN && list[2].y == 12 && list[2].a == 503 && list[2].b == PRIM_OPEN;
+  #assert list[3].x == 7 && list[3].y == 15 && list[3].a == 23 && list[3].radius == 6;
+  #assert list[4].y == 45 && list[4].b == 887 && list[4].a == 24;
+  #assert list[5].x == 1;      // outside the range
+}

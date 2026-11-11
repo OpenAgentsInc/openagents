@@ -1,0 +1,497 @@
+// The GPU backend: primitives to vertices, for one shader on every pixel
+// target (components/backend/gpu-shader.coax, emitted as WGSL, Metal and
+// SPIR-V). components/spec.md, GitHub #13153.
+//
+// It is GPUI's drawing model (zeronsh/zui, the renderer Zeron draws with):
+// quads (a rounded rect with a fill and a border), drop shadows (a
+// gaussian-blurred rounded rect) and monochrome sprites (glyphs and SVG
+// icons, alpha masks in an atlas, tinted). Layout is in logical pixels; a
+// primitive's bounds snap to device pixels the way GPUI's window.rs does
+// (snap_bounds, cover_bounds). Two more for the transcript: the activity
+// rail's elbow (paint_elbow, a quadratic bend into a straight branch, as
+// transcript.rs paints it with a path) and Zeron's EdgeFade, a per-vertex
+// fade band at the top and bottom of the transcript (gp_fade, floats 24..27
+// of a vertex). And two for Zeron's glass (glass.rs Plate): a vertical
+// gradient fill (GPUI's linear_gradient at 180 degrees) and an inset shadow
+// without blur, the lit top edge (paint_inset_shadows).
+//
+// Two ways in: a component paints a display list (components/paint/list.coax)
+// and gpu_draw writes its vertices; the paint_* procedures write one
+// primitive's vertices directly, which the chat components not yet moved to
+// the display list still call. Both give the same floats.
+// Based on Zeron by Wing, MIT.
+//   coax/bin/coax test components/backend/gpu.coax
+
+#load "../layout/font.coax";
+#load "../paint/list.coax";
+
+GP_VERTEX_FLOATS :: 28;
+GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0; GP_GRADIENT :: 5.0; GP_INSET :: 6.0;
+GP_NO_CLIP :: 1000000.0;
+
+// gpui_macos glyph_dilation_for_color: CoreGraphics thickens light text more.
+dilation :: (c: Rgba) -> int {
+  l := 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  level := cast(int) floor(4 * l + 0.5);
+  if level < 0 { return 0; }
+  if level > 4 { return 4; }
+  return level;
+}
+
+// The dilation level whose cells hold a color's glyphs: dilation(c), folded
+// onto the levels the host drew (the darkest level alone when it drew one).
+gp_level :: (a: [] Atlas, c: Rgba) -> int {
+  level := dilation(c);
+  n := a[0].levels;
+  if n <= 0 || n >= GP_DILATIONS { return level; }
+  k := level * n / GP_DILATIONS;
+  return ifx k >= n then n - 1 else k;
+}
+
+// ---------------------------------------------------------------- vertices
+
+// Six vertices over the device rectangle (x0, y0)-(x1, y1), all carrying the
+// primitive's bounds and paint; a sprite's uv runs from (u0, v0) to (u1, v1).
+emit :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, kind: f32, blur: f32,
+         bx: f32, by: f32, bw: f32, bh: f32, radius: f32, border: f32,
+         u0: f32, v0: f32, u1: f32, v1: f32, fill: Rgba, edge: Rgba) -> int {
+  if at < 0 || (at + 6) * GP_VERTEX_FLOATS > out.count { return at; }
+  xs := [6] f32.[x0, x1, x1, x0, x1, x0];
+  ys := [6] f32.[y0, y0, y1, y0, y1, y1];
+  us := [6] f32.[u0, u1, u1, u0, u1, u0];
+  vs := [6] f32.[v0, v0, v1, v0, v1, v1];
+  for k: 0..<6 {
+    o := (at + k) * GP_VERTEX_FLOATS;
+    out[o] = xs[k]; out[o + 1] = ys[k]; out[o + 2] = kind; out[o + 3] = blur;
+    out[o + 4] = bx; out[o + 5] = by; out[o + 6] = bw; out[o + 7] = bh;
+    out[o + 8] = radius; out[o + 9] = border; out[o + 10] = us[k]; out[o + 11] = vs[k];
+    out[o + 12] = fill.r; out[o + 13] = fill.g; out[o + 14] = fill.b; out[o + 15] = fill.a;
+    out[o + 16] = edge.r; out[o + 17] = edge.g; out[o + 18] = edge.b; out[o + 19] = edge.a;
+    out[o + 20] = -GP_NO_CLIP; out[o + 21] = -GP_NO_CLIP; out[o + 22] = GP_NO_CLIP; out[o + 23] = GP_NO_CLIP;
+    out[o + 24] = 0; out[o + 25] = 0; out[o + 26] = 0; out[o + 27] = 0;
+  }
+  return at + 6;
+}
+
+// GPUI's content mask: vertices from..<to draw only inside the logical
+// rectangle (snapped as window.rs snapped_content_mask does).
+gp_clip :: (out: [] f32, from: int, to: int, d: f32, x: f32, y: f32, w: f32, h: f32) {
+  x0 := snap(x, d); y0 := snap(y, d); x1 := snap(x + w, d); y1 := snap(y + h, d);
+  for k: from..<to {
+    o := k * GP_VERTEX_FLOATS;
+    if o + GP_VERTEX_FLOATS > out.count { return; }
+    if x0 > out[o + 20] { out[o + 20] = x0; }
+    if y0 > out[o + 21] { out[o + 21] = y0; }
+    if x1 < out[o + 22] { out[o + 22] = x1; }
+    if y1 < out[o + 23] { out[o + 23] = y1; }
+  }
+}
+
+// GPUI's EdgeFade (zui shaders.metal edge_fade_alpha): vertices from..<to
+// fade out toward a top and a bottom edge (logical y), each over its band;
+// the alpha is the ramp squared. A band of 0 leaves that edge alone.
+gp_fade :: (out: [] f32, from: int, to: int, d: f32, top: f32, band_top: f32, bottom: f32, band_bottom: f32) {
+  for k: from..<to {
+    o := k * GP_VERTEX_FLOATS;
+    if o + GP_VERTEX_FLOATS > out.count { return; }
+    out[o + 24] = top * d; out[o + 25] = band_top * d; out[o + 26] = bottom * d; out[o + 27] = band_bottom * d;
+  }
+}
+
+// GPUI paint_quad: a rect of logical bounds, corner radius and border width,
+// snapped to device pixels.
+paint_quad :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
+  if fill.a <= 0 && (border <= 0 || edge.a <= 0) { return at; }
+  x0 := snap(x, d); y0 := snap(y, d);
+  x1 := snap(x + w, d); y1 := snap(y + h, d);
+  if x1 < x0 { x1 = x0; }
+  if y1 < y0 { y1 = y0; }
+  return emit(out, at, x0, y0, x1, y1, GP_QUAD, 0, x0, y0, x1 - x0, y1 - y0, radius * d, snap_stroke(border, d), 0, 0, 0, 0, fill, edge);
+}
+
+// GPUI paint_shadows for one BoxShadow under an element of logical bounds and
+// radius: offset, blur radius, spread and color as in Tailwind's shadows.
+paint_shadow :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32,
+                 dx: f32, dy: f32, blur: f32, spread: f32, color: Rgba) -> int {
+  if color.a <= 0 { return at; }
+  sx := x + dx - spread; sy := y + dy - spread;
+  x0 := floor(sx * d); y0 := floor(sy * d);
+  x1 := ceil((sx + w + 2 * spread) * d); y1 := ceil((sy + h + 2 * spread) * d);
+  b := blur * d;
+  m := 3 * b;
+  return emit(out, at, x0 - m, y0 - m, x1 + m, y1 + m, GP_SHADOW, b, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, color, color);
+}
+
+// A quad filled with GPUI's vertical linear gradient, top to bottom (no border).
+paint_gradient :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, top: Rgba, bottom: Rgba) -> int {
+  if top.a <= 0 && bottom.a <= 0 { return at; }
+  x0 := snap(x, d); y0 := snap(y, d);
+  x1 := snap(x + w, d); y1 := snap(y + h, d);
+  return emit(out, at, x0, y0, x1, y1, GP_GRADIENT, 0, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, top, bottom);
+}
+// GPUI paint_inset_shadows for an unblurred inset shadow offset dy down:
+// the band of the shape the shape moved dy down leaves uncovered (dy 1, the
+// lit top edge).
+paint_inset :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, dy: f32, color: Rgba) -> int {
+  if color.a <= 0 { return at; }
+  x0 := snap(x, d); y0 := snap(y, d);
+  x1 := snap(x + w, d); y1 := snap(y + h, d);
+  return emit(out, at, x0, y0, x1, y1, GP_INSET, dy * d, x0, y0, x1 - x0, y1 - y0, radius * d, 0, 0, 0, 0, 0, color, color);
+}
+
+// One glass surface (glass.rs Plate): a vertical gradient, a 1px rim, an
+// unblurred inset light dy down, and a soft drop under it.
+GpPlate :: struct {
+  top: Rgba; bottom: Rgba; rim: Rgba;
+  inset: Rgba; inset_dy: f32;
+  drop: Rgba; drop_dy: f32; drop_blur: f32;
+}
+// Plate::paint: the drop beneath, the fill with its rim, the inset light above.
+paint_plate :: (out: [] f32, at: int, d: f32, x: f32, y: f32, w: f32, h: f32, radius: f32, p: GpPlate) -> int {
+  v := paint_shadow(out, at, d, x, y, w, h, radius, 0, p.drop_dy, p.drop_blur, 0, p.drop);
+  v = paint_gradient(out, v, d, x, y, w, h, radius, p.top, p.bottom);
+  v = paint_quad(out, v, d, x, y, w, h, radius, 1, rgba(0, 0, 0, 0), p.rim);
+  return paint_inset(out, v, d, x, y, w, h, radius, p.inset_dy, p.inset);
+}
+
+// The activity rail's elbow (transcript.rs activity_ribbon): a 1px ribbon
+// from (x, y) down and round to (x + r, y + r) along GPUI's quadratic
+// (r t^2, r (2t - t^2)), then straight on to end_x, filled as GPUI fills the
+// path (antialiased coverage of a 1px-wide band). joined: the trunk carries
+// on down through x, so the ribbon there is not painted twice.
+paint_elbow :: (out: [] f32, at: int, d: f32, x: f32, y: f32, r: f32, end_x: f32, joined: bool, color: Rgba) -> int {
+  if color.a <= 0 { return at; }
+  x0 := floor((x - 1) * d); y0 := floor(y * d);
+  x1 := ceil((end_x + 1) * d); y1 := ceil((y + r + 1) * d);
+  return emit(out, at, x0, y0, x1, y1, GP_ELBOW, 0, x * d, y * d, r * d, end_x * d, d, ifx joined then 1.0f32 else 0.0f32, 0, 0, 0, 0, color, color);
+}
+
+// A tinted alpha mask: device rectangle, atlas tile in texels.
+paint_sprite :: (out: [] f32, at: int, a: [] Atlas, x0: f32, y0: f32, x1: f32, y1: f32,
+                 tx: f32, ty: f32, tw: f32, th: f32, color: Rgba) -> int {
+  if color.a <= 0 || a[0].width <= 0 { return at; }
+  W := a[0].width; H := a[0].height;
+  return emit(out, at, x0, y0, x1, y1, GP_SPRITE, 0, x0, y0, x1 - x0, y1 - y0, 0, 0,
+              tx / W, ty / H, (tx + tw) / W, (ty + th) / H, color, color);
+}
+
+// A color glyph from the color atlas, its own colors at the opacity (GPUI
+// paint_emoji, polychrome_sprite_fragment).
+paint_color_sprite :: (out: [] f32, at: int, a: [] Atlas, x0: f32, y0: f32, x1: f32, y1: f32,
+                       tx: f32, ty: f32, tw: f32, th: f32, alpha: f32) -> int {
+  if alpha <= 0 || a[0].color_width <= 0 { return at; }
+  W := a[0].color_width; H := a[0].color_height;
+  return emit(out, at, x0, y0, x1, y1, GP_COLOR_SPRITE, 0, x0, y0, x1 - x0, y1 - y0, 0, 0,
+              tx / W, ty / H, (tx + tw) / W, (ty + th) / H, rgba(1, 1, 1, alpha), rgba(1, 1, 1, alpha));
+}
+
+// GPUI paint_svg: an icon of logical size centered in a logical box. The
+// tile is GP_SVG_SCALE times the device size, drawn at half.
+paint_icon :: (out: [] f32, at: int, a: [] Atlas, d: f32, icon: int, x: f32, y: f32, w: f32, h: f32, color: Rgba) -> int {
+  if icon < 0 || icon >= GP_ICONS { return at; }
+  t := a[0].icons[icon];
+  if t.w <= 0 { return at; }
+  bx := snap(x, d); by := snap(y, d); bw := snap(x + w, d) - bx; bh := snap(y + h, d) - by;
+  sw := t.w / GP_SVG_SCALE; sh := t.h / GP_SVG_SCALE;
+  ox := round_half_toward_zero(bx + bw / 2 - sw / 2);
+  oy := round_half_toward_zero(by + bh / 2 - sh / 2);
+  return paint_sprite(out, at, a, ox, oy, ox + ceil(sw), oy + ceil(sh), t.x, t.y, t.w, t.h, color);
+}
+
+// paint_chip: the pill over the chip's whole display (inset from its row,
+// radius 5, ink 0.09), the well (1px in, the pill's height less 2, radius
+// 4, black 0.16) and the icon (14px, less for a short line) centered in it;
+// then the label after the icon slot, in the run's color.
+paint_chip :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, k: int, x: f32, top: f32, line_height: f32, color: Rgba) -> int {
+  inset := ifx a[0].chip_inset > 0 then a[0].chip_inset else 1.5f32;
+  w := gp_chip_width(a, font, k);
+  ph := line_height - 2 * inset; py := top + inset;
+  v := paint_quad(out, at, d, x, py, w, ph, 5, 0, rgba(1, 1, 1, 0.09), rgba(0, 0, 0, 0));
+  well := ph - 2;
+  v = paint_quad(out, v, d, x + 1, py + 1, well, well, 4, 0, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0));
+  side := ifx well - 4 < 14 then well - 4 else 14.0f32;
+  v = paint_icon(out, v, a, d, a[0].chips[k].icon, x + 1 + (well - side) / 2, py + 1 + (well - side) / 2, side, side, a[0].chips[k].tint);
+  lead := cast(f32) GP_CHIP_LEAD * a[0].fonts[font].advance[GP_NBSP];
+  return paint_text(out, v, a, d, font, gp_chip_label(a, k), x + lead, top, line_height, color);
+}
+
+// GPUI's line paint: glyphs of font slot `font` from logical (x, top) in a
+// line box of line_height, the baseline centered as gpui line.rs does
+// (top + (line_height - ascent - descent) / 2 + ascent). Each glyph's origin
+// snaps to a quarter device pixel in x and a whole one in y, as
+// window.rs paint_glyph does, and draws the cell rasterized for that
+// subpixel and for the color's dilation. A color glyph (emoji) lands on a
+// whole pixel and draws its own colors (paint_emoji).
+paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, top: f32, line_height: f32, color: Rgba) -> int {
+  if font < 0 || font >= GP_FONTS || !a[0].ready { return at; }
+  baseline := top + (line_height - a[0].fonts[font].ascent - a[0].fonts[font].descent) / 2 + a[0].fonts[font].ascent;
+  level := gp_level(a, color);
+  v := at; pen := x; prev := -1; i := 0;
+  sub := cast(f32) GP_SUBPIXEL;
+  cols := a[0].fonts[font].cols; size := a[0].fonts[font].cell;
+  while i < text.count {
+    st := gp_step(a, font, text, i, prev);
+    r := rune_at(text, i);
+    pen += st.advance - (ifx st.glyph >= 0 then a[0].fonts[font].advance[st.glyph] else st.advance);   // the kerning first
+    qx := round_half_toward_zero(pen * d * sub) / sub;
+    qy := round_half_toward_zero(baseline * d);
+    variant := cast(int) ((qx - floor(qx)) * sub);
+    ox := floor(qx); oy := qy;
+    if st.chip > 0 {
+      v = paint_chip(out, v, a, d, font, st.chip - 1, pen, top, line_height, color);
+    } else if st.glyph >= 0 && r.code != ' ' && r.code != 0xA0 {
+      cell := (level * GP_SUBPIXEL + variant) * GP_GLYPHS + st.glyph;
+      tx := cast(f32) (cell % cols) * size;
+      ty := a[0].fonts[font].y0 + cast(f32) (cell / cols) * size;
+      v = paint_sprite(out, v, a, ox - a[0].fonts[font].pen_x, oy - a[0].fonts[font].pen_y, ox - a[0].fonts[font].pen_x + size, oy - a[0].fonts[font].pen_y + size, tx, ty, size, size, color);
+    } else if st.slot >= 0 && a[0].clusters[st.slot].state == 2 && a[0].dyn_size > 0 {
+      c := dyn_cell(a, st.slot, level, variant);
+      if c >= 0 {
+        ds := a[0].dyn_size; px := a[0].dyn_pen_x; py := a[0].dyn_pen_y;
+        if c >= GP_DYN_MONO {
+          ex := floor(pen * d);
+          v = paint_color_sprite(out, v, a, ex - px, oy - py, ex - px + ds, oy - py + ds, dyn_cell_x(a, c), dyn_cell_y(a, c), ds, ds, color.a);
+        } else {
+          v = paint_sprite(out, v, a, ox - px, oy - py, ox - px + ds, oy - py + ds, dyn_cell_x(a, c), dyn_cell_y(a, c), ds, ds, color);
+        }
+      }
+    }
+    pen += ifx st.glyph >= 0 then a[0].fonts[font].advance[st.glyph] else st.advance;
+    prev = st.glyph; i += st.len;
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- the display list
+
+// A clip's edges (logical px) onto vertices from..<to, snapped as gp_clip
+// snaps them; an open edge (at or past PRIM_OPEN) leaves its side alone.
+gp_clip_edges :: (out: [] f32, from: int, to: int, d: f32, left: f32, top: f32, right: f32, bottom: f32) {
+  for k: from..<to {
+    o := k * GP_VERTEX_FLOATS;
+    if o + GP_VERTEX_FLOATS > out.count { return; }
+    if left > -PRIM_OPEN { e := snap(left, d); if e > out[o + 20] { out[o + 20] = e; } }
+    if top > -PRIM_OPEN { e := snap(top, d); if e > out[o + 21] { out[o + 21] = e; } }
+    if right < PRIM_OPEN { e := snap(right, d); if e < out[o + 22] { out[o + 22] = e; } }
+    if bottom < PRIM_OPEN { e := snap(bottom, d); if e < out[o + 23] { out[o + 23] = e; } }
+  }
+}
+
+// Whether this backend draws a kind today. An arc, a slanted line and an
+// image have no path in the shader yet (the realm HUDs draw arcs with their
+// own pass until they move, components/spec.md Phase 5): they are skipped.
+gpu_draws :: (p: Prim) -> bool {
+  if p.kind == PRIM_ARC || p.kind == PRIM_IMAGE { return false; }
+  if p.kind == PRIM_LINE { return p.x == p.a || p.y == p.b; }
+  return p.kind >= 0 && p.kind < PRIM_KINDS;
+}
+
+// Writes a display list's vertices: the list's (0, 0) at logical (ox, oy),
+// at density d. Only primitives that reach into the band y0..y1 (logical,
+// after the offset) are written, and inside a clip only those that start
+// before its right edge; pass -PRIM_OPEN and PRIM_OPEN to draw them all. Text
+// reads its face's cells from the atlas. Returns the vertex count so far.
+gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, oy: f32, y0: f32, y1: f32) -> int {
+  v := at;
+  clip := false; cl: f32 = 0; ct: f32 = 0; cr: f32 = 0; cb: f32 = 0;
+  fade := false; ft: f32 = 0; fa: f32 = 0; fb: f32 = 0; fc: f32 = 0;
+  for k: 0..<list.count {
+    p := list[k];
+    if p.kind == PRIM_CLIP { clip = p.on; cl = p.x; ct = p.y; cr = p.a; cb = p.b; continue; }
+    if p.kind == PRIM_FADE { fade = p.on; ft = p.y; fa = p.a; fb = p.b; fc = p.c; continue; }
+    x := p.x + ox; y := p.y + oy;
+    if y > y1 || y + prim_extent(p) < y0 { continue; }
+    if clip && cr < PRIM_OPEN && p.x >= cr { continue; }
+    v0 := v;
+    if p.kind == PRIM_BOX { v = paint_quad(out, v, d, x, y, p.w, p.h, p.radius, p.border, p.fill, p.edge); }
+    else if p.kind == PRIM_TEXT { v = paint_text(out, v, a, d, p.id, p.text, x, y, p.h, p.fill); }
+    else if p.kind == PRIM_ICON { v = paint_icon(out, v, a, d, p.id, x, y, p.w, p.h, p.fill); }
+    else if p.kind == PRIM_ELBOW { v = paint_elbow(out, v, d, x, y, p.radius, p.a + ox, p.on, p.fill); }
+    else if p.kind == PRIM_SHADOW { v = paint_shadow(out, v, d, x, y, p.w, p.h, p.radius, p.a, p.b, p.c, p.d, p.fill); }
+    else if p.kind == PRIM_INSET { v = paint_inset(out, v, d, x, y, p.w, p.h, p.radius, p.b, p.fill); }
+    else if p.kind == PRIM_GRADIENT { v = paint_gradient(out, v, d, x, y, p.w, p.h, p.radius, p.fill, p.edge); }
+    else if p.kind == PRIM_RING {
+      r := (ifx p.w < p.h then p.w else p.h) / 2;
+      v = paint_quad(out, v, d, x, y, p.w, p.h, r, p.border, rgba(0, 0, 0, 0), p.fill);
+    } else if p.kind == PRIM_LINE && gpu_draws(p) {
+      // a level or an upright line: a box as wide as the line is thick, centred on it
+      x1 := p.a + ox; y1e := p.b + oy; half := p.border / 2;
+      lx := ifx x < x1 then x else x1; ly := ifx y < y1e then y else y1e;
+      if p.y == p.b { v = paint_quad(out, v, d, lx, y - half, abs(x1 - x), p.border, 0, 0, p.fill, p.fill); }
+      else { v = paint_quad(out, v, d, x - half, ly, p.border, abs(y1e - y), 0, 0, p.fill, p.fill); }
+    }
+    if clip { gp_clip_edges(out, v0, v, d, ifx cl > -PRIM_OPEN then cl + ox else cl, ifx ct > -PRIM_OPEN then ct + oy else ct, ifx cr < PRIM_OPEN then cr + ox else cr, ifx cb < PRIM_OPEN then cb + oy else cb); }
+    if fade { gp_fade(out, v0, v, d, ft + oy, fa, fb + oy, fc); }
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a browser's fewer dilation levels fold the five" {
+  a: [1] Atlas;
+  #assert gp_level(a[..], hex(0xe8e8ea, 1)) == 4;           // 0: the Mac's five
+  a[0].levels = 2;
+  #assert gp_level(a[..], hex(0xe8e8ea, 1)) == 1 && gp_level(a[..], hex(0x060606, 1)) == 0 && gp_level(a[..], hex(0xa9a9ae, 1)) == 1;
+  a[0].levels = 1;
+  #assert gp_level(a[..], hex(0xe8e8ea, 1)) == 0;
+}
+#test "light text takes the heavier dilation, as CoreGraphics thickens it" {
+  #assert dilation(hex(0xe8e8ea, 1)) == 4 && dilation(hex(0x060606, 1)) == 0 && dilation(hex(0xa9a9ae, 1)) == 3;
+}
+#test "a quad is six vertices carrying its snapped bounds, radius and border" {
+  out: [168] f32;
+  n := paint_quad(out[..], 0, 2, 10, 20, 100, 50, 26, 1, hex(0x343438, 1), rgba(1, 1, 1, 0.1));
+  #assert n == 6;
+  #assert out[4] == 20 && out[5] == 40 && out[6] == 200 && out[7] == 100 && out[8] == 52 && out[9] == 2;
+  #assert out[0] == 20 && out[GP_VERTEX_FLOATS * 2] == 220 && out[GP_VERTEX_FLOATS * 2 + 1] == 140;
+  #assert paint_quad(out[..], 0, 2, 0, 0, 10, 10, 0, 0, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0)) == 0;
+  #assert paint_quad(out[..], 18, 2, 0, 0, 10, 10, 0, 0, hex(0, 1), hex(0, 1)) == 18;   // no room
+}
+#test "a shadow covers three blurs past its spread bounds" {
+  out: [168] f32;
+  n := paint_shadow(out[..], 0, 2, 0, 0, 100, 50, 26, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
+  #assert n == 6 && out[2] == GP_SHADOW && out[3] == 30;
+  #assert out[4] == 6 && out[5] == 26 && out[6] == 188 && out[7] == 88;
+  #assert out[0] == 6 - 90;
+}
+#test "a grapheme the atlas lacks is measured by the host, then drawn from its cell" {
+  a: [1] Atlas;
+  a[0].ready = true; a[0].width = 1024; a[0].height = 1024; a[0].frame = 1;
+  a[0].dyn_size = 48; a[0].dyn_pen_x = 10; a[0].dyn_pen_y = 34; a[0].dyn_y0 = 512; a[0].dyn_cols = 20;
+  a[0].color_cols = 20; a[0].color_width = 1024; a[0].color_height = 256;
+  a[0].fonts[0].ascent = 13; a[0].fonts[0].descent = 3; a[0].fonts[0].cell = 48; a[0].fonts[0].cols = 20;
+  for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7; }
+  #assert text_width(a[..], 0, "a日b") == 14;           // not measured yet
+  s := dyn_find(a[..], 0, "日", 0, 3);
+  #assert s >= 0 && a[0].clusters[s].state == 1;
+  a[0].clusters[s].advance = 14; a[0].clusters[s].state = 2;
+  #assert text_width(a[..], 0, "a日b") == 28 && text_offset(a[..], 0, "a日b", 12) == 1 && text_offset(a[..], 0, "a日b", 15) == 4;
+  out: [560] f32;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "日", 0, 0, 20, hex(0xffffff, 1)) == 0;   // its cell is wanted
+  c := a[0].clusters[s].cell[4 * GP_SUBPIXEL] - 1;
+  #assert c >= 0 && a[0].cells[c].state == 1 && a[0].cells[c].level == 4;
+  a[0].cells[c].state = 2;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "日", 0, 0, 20, hex(0xffffff, 1)) == 6 && out[2] == GP_SPRITE;
+  // an emoji is a color glyph: one cell in the color atlas
+  e := dyn_slot(a[..], 0, "😀", 0, 4);
+  a[0].clusters[e].advance = 18; a[0].clusters[e].color = true; a[0].clusters[e].state = 2;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "😀", 0, 0, 20, hex(0xffffff, 1)) == 0;
+  ce := a[0].clusters[e].cell[0] - 1;
+  #assert ce >= GP_DYN_MONO;
+  a[0].cells[ce].state = 2;
+  #assert paint_text(out[..], 0, a[..], 2, 0, "😀", 0, 0, 20, hex(0xffffff, 1)) == 6 && out[2] == GP_COLOR_SPRITE;
+  // full: the least recently used slot goes, and its hash entry with it
+  for k: 0..<GP_DYN_SLOTS { if a[0].clusters[k].state == 0 { a[0].clusters[k].state = 2; a[0].clusters[k].used = 1; a[0].clusters[k].n = 0; } }
+  a[0].clusters[s].used = 0; a[0].frame = 2;
+  t := dyn_slot(a[..], 0, "本", 0, 3);
+  #assert t == s && dyn_find(a[..], 0, "日", 0, 3) == -1 && dyn_find(a[..], 0, "本", 0, 3) == t;
+}
+#test "a content mask narrows the vertices it covers" {
+  out: [336] f32;
+  n := paint_quad(out[..], 0, 2, 0, 0, 100, 100, 0, 0, hex(0, 1), hex(0, 1));
+  #assert out[20] == -GP_NO_CLIP && out[25] == 0;
+  gp_clip(out[..], 0, n, 2, 10, 20, 30, 40);
+  #assert out[20] == 20 && out[21] == 40 && out[22] == 80 && out[23] == 120 && out[GP_VERTEX_FLOATS * 5 + 23] == 120;
+  gp_fade(out[..], 0, n, 2, 38, 24, 880, 89);
+  #assert out[24] == 76 && out[25] == 48 && out[26] == 1760 && out[GP_VERTEX_FLOATS * 5 + 27] == 178;
+  m := paint_elbow(out[..], n, 2, 304.5, 100, 6, 320, true, rgba(1, 1, 1, 0.12));
+  #assert m == n + 6 && out[n * GP_VERTEX_FLOATS + 2] == GP_ELBOW && out[n * GP_VERTEX_FLOATS + 4] == 609 && out[n * GP_VERTEX_FLOATS + 9] == 1;
+}
+#test "a glyph lands on a quarter device pixel, in the cell for its subpixel and dilation" {
+  a: [1] Atlas;
+  a[0].width = 1024; a[0].height = 1024; a[0].ready = true;
+  a[0].fonts[0].size = 14; a[0].fonts[0].ascent = 13; a[0].fonts[0].descent = 3;
+  a[0].fonts[0].cell = 48; a[0].fonts[0].pen_x = 8; a[0].fonts[0].pen_y = 36; a[0].fonts[0].cols = 20;
+  for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7.1; }
+  out: [336] f32;
+  n := paint_text(out[..], 0, a[..], 2, 0, "ab", 10.1, 0, 22.75, hex(0x000000, 1));
+  #assert n == 12;
+  // 'a' at x 20.2 device: quantized 20.25, variant 1; baseline 2 * (3.375 + 13) = 32.75, rounded 33
+  #assert out[0] == 20 - 8 && out[1] == 33 - 36;
+  cell := (0 * GP_SUBPIXEL + 1) * GP_GLYPHS + glyph_of('a');
+  #assert abs(out[10] - cast(f32) (cell % 20) * 48 / 1024) < 0.00001;
+  #assert paint_text(out[..], 0, a[..], 2, 0, " ", 0, 0, 20, hex(0, 1)) == 0;   // a space draws nothing
+}
+
+gpu_test_atlas :: (a: [] Atlas) {
+  a[0].width = 1024; a[0].height = 1024; a[0].ready = true;
+  a[0].fonts[0].size = 14; a[0].fonts[0].ascent = 13; a[0].fonts[0].descent = 3;
+  a[0].fonts[0].cell = 48; a[0].fonts[0].pen_x = 8; a[0].fonts[0].pen_y = 36; a[0].fonts[0].cols = 20;
+  for g: 0..<GP_GLYPHS { a[0].fonts[0].advance[g] = 7.1; }
+  a[0].icons[3] = GpIcon.{x = 100, y = 200, w = 32, h = 32};
+}
+gpu_same :: (p: [] f32, q: [] f32, n: int) -> bool {
+  for k: 0..<n * GP_VERTEX_FLOATS { if p[k] != q[k] { return false; } }
+  return true;
+}
+#test "a display list draws the floats its primitives' own procedures write, moved by the offset" {
+  a: [1] Atlas; gpu_test_atlas(a[..]);
+  list: [8] Prim; n := 0;
+  n = prim_shadow(list[..], n, 10, 20, 100, 50, 26, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
+  n = prim_gradient(list[..], n, 10, 20, 100, 50, 26, hex(0x2a2a2e, 1), hex(0x232326, 1));
+  n = prim_box(list[..], n, 10, 20, 100, 50, 26, 1, hex(0x343438, 1), rgba(1, 1, 1, 0.1));
+  n = prim_inset(list[..], n, 10, 20, 100, 50, 26, 1, rgba(1, 1, 1, 0.08));
+  n = prim_elbow(list[..], n, 30.5, 40, 6, 60, true, rgba(1, 1, 1, 0.12));
+  n = prim_icon(list[..], n, 3, 14, 24, 16, 16, hex(0xa9a9ae, 1));
+  n = prim_text(list[..], n, 40.1, 30, 14.2, 22.75, 0, hex(0xe8e8ea, 1), "ab");
+  got: [1344] f32; want: [1344] f32;       // 48 vertices
+  g := gpu_draw(got[..], 0, a[..], 2, list[0..<n], 5, 7, -PRIM_OPEN, PRIM_OPEN);
+  w := paint_shadow(want[..], 0, 2, 15, 27, 100, 50, 26, 0, 10, 15, -3, rgba(0, 0, 0, 0.1));
+  w = paint_gradient(want[..], w, 2, 15, 27, 100, 50, 26, hex(0x2a2a2e, 1), hex(0x232326, 1));
+  w = paint_quad(want[..], w, 2, 15, 27, 100, 50, 26, 1, hex(0x343438, 1), rgba(1, 1, 1, 0.1));
+  w = paint_inset(want[..], w, 2, 15, 27, 100, 50, 26, 1, rgba(1, 1, 1, 0.08));
+  w = paint_elbow(want[..], w, 2, 35.5, 47, 6, 65, true, rgba(1, 1, 1, 0.12));
+  w = paint_icon(want[..], w, a[..], 2, 3, 19, 31, 16, 16, hex(0xa9a9ae, 1));
+  w = paint_text(want[..], w, a[..], 2, 0, "ab", 45.1, 37, 22.75, hex(0xe8e8ea, 1));
+  #assert g == w && g == 48 && gpu_same(got[..], want[..], g);
+}
+#test "only primitives reaching into the band are drawn; a clip cuts what follows it and skips what starts past its right edge" {
+  a: [1] Atlas; gpu_test_atlas(a[..]);
+  list: [8] Prim; n := 0;
+  n = prim_fill(list[..], n, 0, 0, 10, 10, 0, hex(0xffffff, 1));        // above the band once offset
+  n = prim_fill(list[..], n, 0, 100, 10, 10, 0, hex(0xffffff, 1));
+  n = prim_elbow(list[..], n, 0, 93, 6, 20, false, hex(0xffffff, 1));    // reaches 7 below its y
+  n = prim_clip(list[..], n, -PRIM_OPEN, -PRIM_OPEN, 50, PRIM_OPEN);
+  n = prim_fill(list[..], n, 40, 100, 30, 10, 0, hex(0xffffff, 1));      // cut at 50
+  n = prim_fill(list[..], n, 50, 100, 30, 10, 0, hex(0xffffff, 1));      // starts at the edge: skipped
+  n = prim_unclip(list[..], n);
+  n = prim_fill(list[..], n, 60, 100, 30, 10, 0, hex(0xffffff, 1));
+  out: [840] f32;
+  v := gpu_draw(out[..], 0, a[..], 2, list[0..<n], 3, 0, 100, 200);
+  #assert v == 24;
+  #assert out[5] == 200 && out[2] == GP_QUAD && out[6 * GP_VERTEX_FLOATS + 2] == GP_ELBOW;
+  c := 12 * GP_VERTEX_FLOATS;
+  #assert out[c + 4] == 86 && out[c + 22] == 106 && out[c + 20] == -GP_NO_CLIP && out[c + 23] == GP_NO_CLIP;   // right edge (50 + 3) * 2
+  #assert out[18 * GP_VERTEX_FLOATS + 22] == GP_NO_CLIP;
+  #assert gpu_draw(out[..], 0, a[..], 2, list[0..<n], 3, 0, 111, 200) == 0;
+}
+#test "a ring is a round border, a level line a thin box; an arc and a slanted line wait for the shader" {
+  a: [1] Atlas; gpu_test_atlas(a[..]);
+  list: [5] Prim; n := 0;
+  n = prim_ring(list[..], n, 10, 10, 32, 32, 3, hex(0xffffff, 1));
+  n = prim_line(list[..], n, 10, 50, 40, 50, 2, hex(0xffffff, 1));
+  n = prim_line(list[..], n, 20, 60, 20, 80, 2, hex(0xffffff, 1));
+  n = prim_arc(list[..], n, 0, 0, 32, 32, 3, 0, 0.5, hex(0xffffff, 1));
+  n = prim_line(list[..], n, 0, 0, 40, 30, 2, hex(0xffffff, 1));
+  out: [840] f32;
+  v := gpu_draw(out[..], 0, a[..], 1, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
+  #assert v == 18 && !gpu_draws(list[3]) && !gpu_draws(list[4]) && gpu_draws(list[1]);
+  #assert out[8] == 16 && out[9] == 3 && out[15] == 0 && out[19] == 1;                    // radius, border, clear fill, the edge
+  l := 6 * GP_VERTEX_FLOATS;
+  #assert out[l + 4] == 10 && out[l + 5] == 49 && out[l + 6] == 30 && out[l + 7] == 2;
+  u := 12 * GP_VERTEX_FLOATS;
+  #assert out[u + 4] == 19 && out[u + 5] == 60 && out[u + 6] == 2 && out[u + 7] == 20;
+}
+#test "a fade in the list sets the bands of what follows it" {
+  a: [1] Atlas; gpu_test_atlas(a[..]);
+  list: [4] Prim; n := 0;
+  n = prim_fill(list[..], n, 0, 0, 10, 10, 0, hex(0xffffff, 1));
+  n = prim_fade(list[..], n, 38, 24, 880, 89);
+  n = prim_fill(list[..], n, 0, 0, 10, 10, 0, hex(0xffffff, 1));
+  out: [336] f32;
+  v := gpu_draw(out[..], 0, a[..], 2, list[0..<n], 0, 10, -PRIM_OPEN, PRIM_OPEN);
+  #assert v == 12 && out[25] == 0;
+  f := 6 * GP_VERTEX_FLOATS;
+  #assert out[f + 24] == 96 && out[f + 25] == 48 && out[f + 26] == 1780 && out[f + 27] == 178;
+}

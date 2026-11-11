@@ -1,0 +1,66 @@
+// Text as the core layer reads it (components/spec.md, GitHub #13153): UTF-8
+// code points and grapheme clusters, what a caret steps over and what a
+// measure advances by. No fonts, pixels or cells here: a pixel target and a
+// terminal measure the same clusters (components/layout/measure.coax).
+//   coax/bin/coax test components/core/text.coax
+
+Rune :: struct { code: u32; len: int; }
+
+// The code point at byte i of UTF-8 text; a malformed byte reads as itself.
+rune_at :: (text: string, i: int) -> Rune {
+  b := cast(u32) text[i];
+  if b < 0x80 { return Rune.{code = b, len = 1}; }
+  n := ifx b >= 0xF0 then 4 else ifx b >= 0xE0 then 3 else 2;
+  if b < 0xC0 || i + n > text.count { return Rune.{code = b, len = 1}; }
+  mask: u32 = ifx n == 2 then 31 else ifx n == 3 then 15 else 7;
+  c := b & mask;
+  for k: 1..<n { c = (c << 6) | (cast(u32) text[i + k] & 63); }
+  return Rune.{code = c, len = n};
+}
+
+// A code point that joins the one before it into one grapheme: combining
+// marks, variation selectors, emoji skin tones and tags.
+is_extend :: (c: u32) -> bool {
+  return (c >= 0x300 && c <= 0x36F) || (c >= 0x483 && c <= 0x489) || (c >= 0x591 && c <= 0x5C7) ||
+         (c >= 0x610 && c <= 0x61A) || (c >= 0x64B && c <= 0x65F) || (c >= 0x1AB0 && c <= 0x1AFF) ||
+         (c >= 0x1DC0 && c <= 0x1DFF) || (c >= 0x20D0 && c <= 0x20FF) || (c >= 0x3099 && c <= 0x309A) ||
+         (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0xFE20 && c <= 0xFE2F) || (c >= 0x1F3FB && c <= 0x1F3FF) ||
+         (c >= 0xE0020 && c <= 0xE007F) || (c >= 0xE0100 && c <= 0xE01EF);
+}
+is_regional :: (c: u32) -> bool { return c >= 0x1F1E6 && c <= 0x1F1FF; }
+
+// The bytes of the grapheme at byte i (what GPUI's caret steps over: a
+// letter with its marks, an emoji with its modifiers and joiners, a flag,
+// CR LF). 0 at the end.
+cluster_len :: (text: string, i: int) -> int {
+  if i >= text.count { return 0; }
+  r := rune_at(text, i);
+  k := i + r.len;
+  if r.code == '\r' && k < text.count && text[k] == '\n' { return 2; }
+  if r.code < 0x80 && (k >= text.count || text[k] < 0x80) { return r.len; }
+  if is_regional(r.code) && k < text.count {
+    r2 := rune_at(text, k);
+    if is_regional(r2.code) { k += r2.len; }
+  }
+  while k < text.count {
+    r2 := rune_at(text, k);
+    if r2.code == 0x200D {
+      k += r2.len;
+      if k < text.count { k += rune_at(text, k).len; }
+    } else if is_extend(r2.code) {
+      k += r2.len;
+    } else {
+      break;
+    }
+  }
+  return k - i;
+}
+
+#test "graphemes: a letter with its marks, emoji with modifiers and joiners, flags, CR LF" {
+  #assert cluster_len("ab", 0) == 1 && cluster_len("", 0) == 0;
+  #assert cluster_len("éx", 0) == 3;            // e + combining acute
+  #assert cluster_len("👍🏽", 0) == 8;    // thumbs up, medium skin
+  #assert cluster_len("👨‍👩", 0) == 11;   // man ZWJ woman
+  #assert cluster_len("🇯🇵🇺", 0) == 8;   // JP, then a lone U
+  #assert cluster_len("\r\nx", 0) == 2 && cluster_len("日本", 0) == 3;
+}

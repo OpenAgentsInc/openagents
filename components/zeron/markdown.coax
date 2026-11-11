@@ -1,30 +1,13 @@
-// Zeron's Markdown (crates/ui/src/markdown/render.rs), the part an assistant
-// reply in the transcript uses: paragraphs, bullet and numbered lists and
-// fenced code, with **bold** and `inline code` inside them. Parsing makes
-// blocks (each one a transcript row, as Zeron splits a text part into
-// m2#t0.0, m2#t0.1, ...) whose text has the markers taken out and styled
-// runs over it; wrapping breaks a run-styled text into lines at a width the
-// way GPUI's line wrapper does (at the last space that fits, else mid-word);
-// (the parser is components/core/markdown.coax); highlighting colors a line of Rust with Zeron Dark's syntax roles
-// (theme/src/builtins.rs syntax(): comment, keyword, string, number, type,
-// function, property, variable, punctuation, ...). Measuring goes through
-// gpui.coax, so every width here is the one painting uses.
-// Based on Zeron by Wing, MIT.
+// Zeron's Markdown, what is left of it here: the faces Zeron sets a reply in
+// and Zeron Dark's syntax colours. The parser is components/core/markdown.coax,
+// the highlighter's roles are components/core/syntax.coax and the line
+// wrapper is components/layout/text.coax (components/spec.md, GitHub #13153);
+// md_wrap and md_width are those, measured with the atlas's fonts, so every
+// width here is the one painting uses. Based on Zeron by Wing, MIT.
 
 #load "composer.coax";
-#load "../core/markdown.coax";   // the parser: MdDoc, md_parse
-
-// ---------------------------------------------------------------- wrapping
-
-// A wrapped line of a styled text: its bytes, and whether the text goes on
-// past it on the next line (a soft wrap).
-MdLine :: struct { from: int; to: int; }
-
-// The style of the run holding byte i (MD_PLAIN outside every run).
-md_style_at :: (runs: [] MdRun, i: int) -> int {
-  for k: 0..<runs.count { if i >= runs[k].from && i < runs[k].to { return runs[k].style; } }
-  return MD_PLAIN;
-}
+#load "../core/syntax.coax";
+#load "../layout/text.coax";
 
 // The fonts a style draws in, at the transcript's Markdown size (14) or
 // smaller (tool text, 12): Geist, Geist SemiBold, Geist Mono.
@@ -34,161 +17,29 @@ md_font :: (style: int, small: bool) -> int {
   if style == MD_CODE { return FONT_MONO_14; }
   return FONT_INPUT;
 }
+md_faces :: (small: bool) -> TextFaces {
+  return TextFaces.{plain = md_font(MD_PLAIN, small), bold = md_font(MD_BOLD, small), code = md_font(MD_CODE, small)};
+}
 
 // The width of text[from..<to] drawn run by run (kerning inside a run).
 md_width :: (a: [] Atlas, text: string, runs: [] MdRun, from: int, to: int, small: bool) -> f32 {
-  w: f32 = 0; i := from; prev := -1; style := -1;
-  while i < to {
-    s := md_style_at(runs, i);
-    if s != style { prev = -1; style = s; }
-    st := gp_step(a, md_font(s, small), text, i, prev);
-    w += st.advance; prev = st.glyph; i += st.len;
-  }
-  return w;
+  return text_run_width(measure_font(a), md_faces(small), text, runs, from, to);
 }
-
-// Wraps text (styled by runs) to width, GPUI's LineWrapper's way: a line
-// breaks before the word that would cross the width (after the spaces that
-// end the word before it, which stay on the line); a word longer than the
-// line breaks where it crosses. Returns the line count (at least one).
-md_wrap :: (a: [] Atlas, text: string, runs: [] MdRun, width: f32, small: bool, out: [] MdLine) -> int {
-  n := 0; start := 0;
-  while n < out.count {
-    x: f32 = 0; i := start; brk := -1; prev := -1; style := -1;
-    stop := text.count;
-    while i < text.count {
-      s := md_style_at(runs, i);
-      if s != style { prev = -1; style = s; }
-      st := gp_step(a, md_font(s, small), text, i, prev);
-      if text[i] != ' ' && x + st.advance > width && i > start {
-        stop = ifx brk > start then brk else i;
-        break;
-      }
-      x += st.advance; prev = st.glyph;
-      if text[i] == ' ' && i + 1 < text.count && text[i + 1] != ' ' { brk = i + 1; }
-      i += st.len;
-    }
-    out[n] = MdLine.{from = start, to = stop}; n += 1;
-    if stop >= text.count { break; }
-    start = stop;
-  }
-  return n;
+// Wraps text (styled by runs) to width (layout/text.coax text_wrap). Returns the line count (at least one).
+md_wrap :: (a: [] Atlas, text: string, runs: [] MdRun, width: f32, small: bool, out: [] TextLine) -> int {
+  return text_wrap(measure_font(a), md_faces(small), text, runs, width, out);
 }
-
-// ---------------------------------------------------------------- syntax
 
 // Zeron Dark's syntax seeds, by role (builtins.rs zeron_dark).
-SYN_COMMENT :: 0; SYN_KEYWORD :: 1; SYN_STRING :: 2; SYN_NUMBER :: 3; SYN_TYPE :: 4; SYN_FUNCTION :: 5;
-SYN_PROPERTY :: 6; SYN_VARIABLE :: 7; SYN_PUNCTUATION :: 8; SYN_TAG :: 9; SYN_ATTRIBUTE :: 10; SYN_INVALID :: 11;
-SYN_PLAIN :: -1;
 SYNTAX_DARK :: [12] int.[0x92929a, 0x8b7cf6, 0x34d399, 0xfacc15, 0xc084fc, 0x60a5fa, 0xf472b6, 0xe8e8ea, 0xa1a1aa, 0xf472b6, 0x22d3ee, 0xf87171];
 
-syn_ident_start :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
-syn_ident :: (c: u8) -> bool { return syn_ident_start(c) || (c >= '0' && c <= '9'); }
-syn_is :: (s: string, w: string) -> bool {
-  if s.count != w.count { return false; }
-  for k: 0..<s.count { if s[k] != w[k] { return false; } }
-  return true;
-}
-RUST_KEYWORDS :: [36] string.["fn", "let", "mut", "if", "else", "match", "return", "pub", "use", "impl", "struct", "enum",
-  "for", "while", "loop", "in", "as", "const", "static", "mod", "crate", "self", "super", "where", "move", "ref",
-  "trait", "type", "unsafe", "async", "await", "dyn", "break", "continue", "extern", "Self"];
-syn_keyword :: (w: string) -> bool {
-  ks := RUST_KEYWORDS;
-  for k: 0..<36 { if syn_is(w, ks[k]) { return true; } }
-  return false;
-}
+md_test_atlas :: (a: [] Atlas) { text_test_atlas(a); }
 
-// Highlights one line of Rust into runs (style = a SYN_ role), the roles
-// tree-sitter-rust's highlights give Zeron for what the transcript shows:
-// keywords and operators, functions (defined or called), types, fields
-// after a dot, parameters and locals as variables, brackets and delimiters
-// as punctuation, comments, strings and numbers. Returns the run count.
-syn_rust :: (line: string, out: [] MdRun) -> int {
-  n := 0; i := 0; prev_fn := false; after_dot := false;
-  while i < line.count && n < out.count {
-    c := line[i];
-    j := i + 1; role := SYN_PLAIN;
-    if c == ' ' || c == '\t' {
-      while j < line.count && (line[j] == ' ' || line[j] == '\t') { j += 1; }
-      i = j; continue;
-    } else if c == '/' && i + 1 < line.count && line[i + 1] == '/' {
-      j = line.count; role = SYN_COMMENT;
-    } else if c == '"' {
-      while j < line.count && line[j] != '"' { if line[j] == '\\' { j += 1; } j += 1; }
-      if j < line.count { j += 1; }
-      if j > line.count { j = line.count; }
-      role = SYN_STRING;
-    } else if c >= '0' && c <= '9' {
-      while j < line.count && (syn_ident(line[j]) || line[j] == '.') { j += 1; }
-      role = SYN_NUMBER;
-    } else if syn_ident_start(c) {
-      while j < line.count && syn_ident(line[j]) { j += 1; }
-      w := cast(string) line[i..<j];
-      k := j; while k < line.count && line[k] == ' ' { k += 1; }
-      called := k < line.count && line[k] == '(';
-      if syn_keyword(w) && !after_dot { role = ifx syn_is(w, "Self") then SYN_TYPE else SYN_KEYWORD; }
-      else if syn_is(w, "true") || syn_is(w, "false") { role = SYN_NUMBER; }
-      else if prev_fn || called { role = SYN_FUNCTION; }
-      else if after_dot { role = SYN_PROPERTY; }
-      else if c >= 'A' && c <= 'Z' { role = SYN_TYPE; }
-      else { role = SYN_VARIABLE; }
-      prev_fn = syn_is(w, "fn");
-      after_dot = false;
-      out[n] = MdRun.{from = i, to = j, style = role}; n += 1;
-      i = j; continue;
-    } else if c == '-' && i + 1 < line.count && line[i + 1] == '>' {
-      j = i + 2; role = SYN_PLAIN;
-    } else if c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' || c == ',' || c == ';' || c == ':' || c == '.' {
-      role = SYN_PUNCTUATION;
-      if c == ':' && j < line.count && line[j] == ':' { j += 1; }
-    } else if c == '&' || c == '=' || c == '+' || c == '-' || c == '*' || c == '!' || c == '<' || c == '>' || c == '|' || c == '%' || c == '^' || c == '?' {
-      role = SYN_KEYWORD;
-    }
-    after_dot = c == '.';
-    if c != ' ' { prev_fn = false; }
-    out[n] = MdRun.{from = i, to = j, style = role}; n += 1;
-    i = j;
-  }
-  return n;
-}
-
-// ---------------------------------------------------------------- checks
-
-md_test_atlas :: (a: [] Atlas) {
-  a[0].ready = true; a[0].width = 4096; a[0].height = 4096; a[0].frame = 1;
-  for k: 0..<GP_FONTS {
-    for g: 0..<GP_GLYPHS { a[0].fonts[k].advance[g] = 8; }
-    a[0].fonts[k].size = 14; a[0].fonts[k].ascent = 13; a[0].fonts[k].descent = 3;
-    a[0].fonts[k].cell = 64; a[0].fonts[k].cols = 64;
-  }
-}
-
-#test "wrapping breaks before the word that crosses, keeps its spaces, splits a long word" {
+#test "Zeron's faces: Geist 14, SemiBold for bold, Geist Mono for code; tool text a size down" {
+  f := md_faces(false); s := md_faces(true);
+  #assert f.plain == FONT_INPUT && f.bold == FONT_BOLD && f.code == FONT_MONO_14;
+  #assert s.plain == FONT_TOOL && s.bold == FONT_TOOL && s.code == FONT_MONO_12;
   a: [1] Atlas; md_test_atlas(a[..]);
-  lines: [16] MdLine;
-  no_runs: [1] MdRun;
-  t := "aaa bbb cc";
-  n := md_wrap(a[..], t, no_runs[0..<0], 50, false, lines[..]);
-  #assert n == 2 && lines[0].from == 0 && lines[0].to == 4 && lines[1].from == 4 && lines[1].to == 10;
-  #assert md_wrap(a[..], t, no_runs[0..<0], 1000, false, lines[..]) == 1;
-  n = md_wrap(a[..], "abcdefghij", no_runs[0..<0], 32, false, lines[..]);
-  #assert n == 3 && lines[0].to == 4 && lines[2].to == 10;
-  // a space that hangs past the width stays on its line
-  n = md_wrap(a[..], "abcd efgh", no_runs[0..<0], 32, false, lines[..]);
-  #assert n == 2 && lines[0].to == 5;
-  #assert md_width(a[..], "ab", no_runs[0..<0], 0, 2, false) == 16;
-}
-
-#test "Rust lines highlight with Zeron Dark's roles" {
-  runs: [64] MdRun;
-  l := "fn header_color(_group: &ToolGroup) -> Hsla {";
-  n := syn_rust(l, runs[..]);
-  #assert runs[0].style == SYN_KEYWORD && runs[1].style == SYN_FUNCTION && runs[2].style == SYN_PUNCTUATION;
-  #assert runs[3].style == SYN_VARIABLE && runs[4].style == SYN_PUNCTUATION && runs[5].style == SYN_KEYWORD && runs[6].style == SYN_TYPE;
-  #assert runs[8].style == SYN_PLAIN && runs[9].style == SYN_TYPE && runs[n - 1].style == SYN_PUNCTUATION;
-  n = syn_rust("    theme.text_muted // quiet", runs[..]);
-  #assert n == 4 && runs[0].style == SYN_VARIABLE && runs[1].style == SYN_PUNCTUATION && runs[2].style == SYN_PROPERTY && runs[3].style == SYN_COMMENT;
-  n = syn_rust("if group.any_failed() { \"s\" } else { 1 }", runs[..]);
-  #assert runs[0].style == SYN_KEYWORD && runs[3].style == SYN_FUNCTION && runs[7].style == SYN_STRING && runs[9].style == SYN_KEYWORD && runs[11].style == SYN_NUMBER;
+  lines: [4] TextLine; no_runs: [1] MdRun;
+  #assert md_wrap(a[..], "aaa bbb cc", no_runs[0..<0], 50, false, lines[..]) == 2 && md_width(a[..], "ab", no_runs[0..<0], 0, 2, false) == 16;
 }

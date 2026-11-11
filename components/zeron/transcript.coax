@@ -357,7 +357,7 @@ t_rich_line :: (t: [] Transcript, a: [] Atlas, th: Theme, text: string, runs: []
 }
 // A wrapped styled text at (x, y), width w; returns its height.
 t_rich :: (t: [] Transcript, a: [] Atlas, th: Theme, text: string, runs: [] MdRun, x: f32, y: f32, w: f32, lh: f32, color: Rgba) -> f32 {
-  lines: [64] MdLine;
+  lines: [64] TextLine;
   n := md_wrap(a, text, runs, w, false, lines[..]);
   for k: 0..<n { t_rich_line(t, a, th, text, runs, lines[k].from, lines[k].to, x, y + cast(f32) k * lh, lh, false, color, k + 1 == n); }
   return cast(f32) n * lh;
@@ -371,14 +371,14 @@ lay_user :: (t: [] Transcript, a: [] Atlas, th: Theme, r: int, x: f32, y: f32, w
   maxw := w * 0.8;
   inner := maxw - 2 * BUBBLE_PAD_X;
   no_runs: [1] MdRun;
-  lines: [64] MdLine;
+  lines: [64] TextLine;
   // each line the person typed wraps on its own (md_wrap does not break at a newline)
   n := 0; lq := 0;
   while lq <= text.count && n < lines.count {
     e := lq; while e < text.count && text[e] != '\n' { e += 1; }
-    part: [64] MdLine;
+    part: [64] TextLine;
     m := md_wrap(a, cast(string) text[lq..<e], no_runs[0..<0], inner, false, part[..]);
-    for j: 0..<m { if n < lines.count { lines[n] = MdLine.{from = part[j].from + lq, to = part[j].to + lq}; n += 1; } }
+    for j: 0..<m { if n < lines.count { lines[n] = TextLine.{from = part[j].from + lq, to = part[j].to + lq}; n += 1; } }
     lq = e + 1;
   }
   tw := ifx n > 1 then inner else ceil(text_width(a, FONT_INPUT, text));
@@ -462,7 +462,7 @@ lay_md :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: 
     // measure first, so the wash and rail go under the text
     iw: f32 = w - cast(f32) QUOTE_PAD_L - cast(f32) QUOTE_PAD_R;
     th_: f32 = 2 * QUOTE_PAD_Y;
-    lines: [64] MdLine;
+    lines: [64] TextLine;
     for k: 0..<doc[0].blocks[b].items {
       if k > 0 { th_ += QUOTE_GAP; }
       th_ += cast(f32) md_wrap(a, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), iw, false, lines[..]) * MD_LINE_HEIGHT;
@@ -569,7 +569,7 @@ lay_table :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, 
   wider := L.total > w + 0.5;
   box0 := t[0].nbox; text0 := t[0].ntext;
   h: f32 = 0;
-  lines: [64] MdLine;
+  lines: [64] TextLine;
   for r: 0..<L.rows {
     if r > 0 { t_quad(t, x, y + h, L.total, TABLE_DIVIDER, 0, ink(0.10)); h += TABLE_DIVIDER; }
     // the row's height: its tallest cell
@@ -765,7 +765,7 @@ lay_notice :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, x: f32, y: f32,
   muted := hex(ifx warn then WARNING_MUTED else DANGER_MUTED, 1);
   inner := w - 2 * NOTICE_PAD;
   no_runs: [1] MdRun;
-  lines: [64] MdLine;
+  lines: [64] TextLine;
   nl := md_wrap(a, n.text, no_runs[0..<0], inner, true, lines[..]);
   h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
   acts := n.kind == N_SIGNED_OUT || n.kind == N_LIMIT || n.kind == N_INSTALL || n.kind == N_CODEX_INSTALL || n.kind == N_ASK;

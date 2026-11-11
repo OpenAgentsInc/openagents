@@ -1,0 +1,133 @@
+// Text layout: breaking a styled text into lines at a width, for any target
+// (components/spec.md, GitHub #13153). The one line wrapper: Markdown,
+// messages, notices, menus and a terminal's rows all wrap here, measured
+// through layout/measure.coax, so a width is logical pixels on a pixel
+// target and columns on a terminal.
+//
+// It wraps the way GPUI's LineWrapper does: a line breaks before the word
+// that would cross the width (after the spaces that end the word before it,
+// which stay on the line); a word longer than the line breaks where it
+// crosses. A text's styles (core/markdown.coax's runs) pick each stretch's
+// face, since bold and code are wider or narrower than plain.
+//   coax/bin/coax test components/layout/text.coax
+
+#load "measure.coax";
+#load "../core/markdown.coax";
+
+// A wrapped line of a text: its bytes.
+TextLine :: struct { from: int; to: int; }
+
+// The faces a styled text is set in: one per inline style. A skin gives them.
+TextFaces :: struct { plain: int; bold: int; code: int; }
+text_face :: (f: TextFaces, style: int) -> int {
+  if style == MD_BOLD { return f.bold; }
+  if style == MD_CODE { return f.code; }
+  return f.plain;
+}
+
+// The width of text[from..<to] set run by run (kerning inside a run).
+text_run_width :: (m: TextMeasure, f: TextFaces, text: string, runs: [] MdRun, from: int, to: int) -> f32 {
+  w: f32 = 0; i := from; prev := -1; style := -1;
+  while i < to {
+    s := md_style_at(runs, i);
+    if s != style { prev = -1; style = s; }
+    st := measure_step(m, text_face(f, s), text, i, prev);
+    w += st.advance; prev = st.chain; i += st.len;
+  }
+  return w;
+}
+
+// Wraps text (styled by runs) to width. Returns the line count (at least one).
+text_wrap :: (m: TextMeasure, f: TextFaces, text: string, runs: [] MdRun, width: f32, out: [] TextLine) -> int {
+  n := 0; start := 0;
+  while n < out.count {
+    x: f32 = 0; i := start; brk := -1; prev := -1; style := -1;
+    stop := text.count;
+    while i < text.count {
+      s := md_style_at(runs, i);
+      if s != style { prev = -1; style = s; }
+      st := measure_step(m, text_face(f, s), text, i, prev);
+      if text[i] != ' ' && x + st.advance > width && i > start {
+        stop = ifx brk > start then brk else i;
+        break;
+      }
+      x += st.advance; prev = st.chain;
+      if text[i] == ' ' && i + 1 < text.count && text[i + 1] != ' ' { brk = i + 1; }
+      i += st.len;
+    }
+    out[n] = TextLine.{from = start, to = stop}; n += 1;
+    if stop >= text.count { break; }
+    start = stop;
+  }
+  return n;
+}
+
+// A text with hard line breaks: each line the writer typed wraps on its own
+// (text_wrap does not break at a newline). Returns the line count.
+text_wrap_lines :: (m: TextMeasure, f: TextFaces, text: string, width: f32, out: [] TextLine) -> int {
+  no_runs: [1] MdRun;
+  n := 0; lq := 0;
+  while lq <= text.count && n < out.count {
+    e := lq; while e < text.count && text[e] != '\n' { e += 1; }
+    part: [64] TextLine;
+    k := text_wrap(m, f, cast(string) text[lq..<e], no_runs[0..<0], width, part[..]);
+    for j: 0..<k { if n < out.count { out[n] = TextLine.{from = part[j].from + lq, to = part[j].to + lq}; n += 1; } }
+    lq = e + 1;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+text_test_atlas :: (a: [] Atlas) {
+  a[0].ready = true; a[0].width = 4096; a[0].height = 4096; a[0].frame = 1;
+  for k: 0..<GP_FONTS {
+    for g: 0..<GP_GLYPHS { a[0].fonts[k].advance[g] = 8; }
+    a[0].fonts[k].size = 14; a[0].fonts[k].ascent = 13; a[0].fonts[k].descent = 3;
+    a[0].fonts[k].cell = 64; a[0].fonts[k].cols = 64;
+  }
+}
+
+#test "wrapping breaks before the word that crosses, keeps its spaces, splits a long word" {
+  a: [1] Atlas; text_test_atlas(a[..]);
+  m := measure_font(a[..]); f := TextFaces.{plain = 0, bold = 3, code = 4};
+  lines: [16] TextLine;
+  no_runs: [1] MdRun;
+  t := "aaa bbb cc";
+  n := text_wrap(m, f, t, no_runs[0..<0], 50, lines[..]);
+  #assert n == 2 && lines[0].from == 0 && lines[0].to == 4 && lines[1].from == 4 && lines[1].to == 10;
+  #assert text_wrap(m, f, t, no_runs[0..<0], 1000, lines[..]) == 1;
+  n = text_wrap(m, f, "abcdefghij", no_runs[0..<0], 32, lines[..]);
+  #assert n == 3 && lines[0].to == 4 && lines[2].to == 10;
+  // a space that hangs past the width stays on its line
+  n = text_wrap(m, f, "abcd efgh", no_runs[0..<0], 32, lines[..]);
+  #assert n == 2 && lines[0].to == 5;
+  #assert text_run_width(m, f, "ab", no_runs[0..<0], 0, 2) == 16;
+}
+#test "the same text wraps in a terminal by columns: 12 columns, a wide glyph counts two" {
+  m := measure_cells(); f := TextFaces.{};
+  lines: [16] TextLine;
+  no_runs: [1] MdRun;
+  t := "the quick brown fox";
+  n := text_wrap(m, f, t, no_runs[0..<0], 12, lines[..]);
+  #assert n == 2 && cast(string) t[lines[0].from..<lines[0].to] == "the quick " && cast(string) t[lines[1].from..<lines[1].to] == "brown fox";
+  j := "日本語日本語日本語";
+  n = text_wrap(m, f, j, no_runs[0..<0], 12, lines[..]);
+  #assert n == 2 && lines[0].to == 18 && text_run_width(m, f, j, no_runs[0..<0], 0, 18) == 12;     // six glyphs, twelve columns
+}
+#test "styles pick the face a stretch is measured in" {
+  a: [1] Atlas; text_test_atlas(a[..]);
+  for g: 0..<GP_GLYPHS { a[0].fonts[3].advance[g] = 10; }
+  m := measure_font(a[..]); f := TextFaces.{plain = 0, bold = 3, code = 4};
+  runs := [2] MdRun.[MdRun.{from = 0, to = 2, style = MD_PLAIN}, MdRun.{from = 2, to = 4, style = MD_BOLD}];
+  #assert text_run_width(m, f, "abcd", runs[..], 0, 4) == 36;
+  #assert text_face(f, MD_CODE) == 4 && text_face(f, MD_PLAIN) == 0;
+}
+#test "typed lines wrap each on their own" {
+  m := measure_cells(); f := TextFaces.{};
+  lines: [16] TextLine;
+  t := "one two three\nfour";
+  n := text_wrap_lines(m, f, t, 8, lines[..]);
+  #assert n == 3 && cast(string) t[lines[0].from..<lines[0].to] == "one two " && cast(string) t[lines[1].from..<lines[1].to] == "three" && cast(string) t[lines[2].from..<lines[2].to] == "four";
+  #assert text_wrap_lines(m, f, "", 8, lines[..]) == 1 && lines[0].to == 0;
+}

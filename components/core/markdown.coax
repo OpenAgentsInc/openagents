@@ -2,8 +2,8 @@
 // items, table cells and styled runs over text with the markers taken out).
 // No pixels, fonts, colours or platform calls: the first file of the
 // component system's core layer (components/spec.md, GitHub #13153). Every
-// consumer that shows Markdown parses it here; wrapping and painting live in
-// their own layers (today components/zeron/markdown.coax).
+// consumer that shows Markdown parses it here; wrapping is
+// components/layout/text.coax and painting is the components' own.
 //
 // It reads what an assistant's reply uses: paragraphs, headings, bullet and
 // numbered lists with nesting, fenced code with its language, quotes, rules
@@ -60,6 +60,12 @@ md_item_text :: (doc: [] MdDoc, k: int) -> string { return md_str(doc, doc[0].it
 md_lang :: (doc: [] MdDoc, b: int) -> string { return md_str(doc, doc[0].blocks[b].lang_at, doc[0].blocks[b].lang_n); }
 md_block_runs :: (doc: [] MdDoc, b: int) -> [] MdRun { r := doc[0].blocks[b].run0; return doc[0].runs[r..<r + doc[0].blocks[b].runs]; }
 md_item_runs :: (doc: [] MdDoc, k: int) -> [] MdRun { r := doc[0].items[k].run0; return doc[0].runs[r..<r + doc[0].items[k].runs]; }
+
+// The style of the run holding byte i (MD_PLAIN outside every run).
+md_style_at :: (runs: [] MdRun, i: int) -> int {
+  for k: 0..<runs.count { if i >= runs[k].from && i < runs[k].to { return runs[k].style; } }
+  return MD_PLAIN;
+}
 
 md_put :: (doc: [] MdDoc, c: u8) {
   if doc[0].n < MD_TEXT { doc[0].text[doc[0].n] = c; doc[0].n += 1; }
