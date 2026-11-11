@@ -46,6 +46,14 @@ else echo "room: the drift check fails (its table above): not deploying" >&2; ex
 fi
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 project=openagentsgemini region=us-central1 service=oa-room map=coaxial-openagents-web-staging shards=6
+# Production's rooms on the room VM (#13174, docs/deployment/room-vm.md): when the url map sends
+# openagents.com's /api/room/ to the VM, a room deploy goes there (staging unit first, then the shards,
+# each drained), and Cloud Run's services stay as they are, the rollback (vm-deploy.sh switch run).
+if gcloud compute url-maps describe "$map" --global --project "$project" --format json 2>/dev/null | grep -q '/backendServices/oa-room-vm-s1"'; then
+  echo "room: production's rooms run on the room VM: deploying there (coax/web/room/vm-deploy.sh)"
+  "$here/vm-deploy.sh" deploy --staging && exec "$here/vm-deploy.sh" deploy
+  exit 1
+fi
 # no world event under way on any shard (#12797); a shard that doesn't answer has none
 for k in $(seq 1 "$shards"); do
   h="$(curl -s -m 20 "https://openagents.com/api/room/s$k/health" || true)"
@@ -88,18 +96,9 @@ drain() {
   echo "room: shard $k didn't finish its drain in $((drain_wait + 60)) s: stopping before replacing it" >&2; return 1
 }
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
-mkdir -p "$stage/src"
-coax="${COAX:-coax/bin/coax}"
-"$coax" c coax/web/room/room.coax --library --header "$stage/src/room.h" > "$stage/src/room.c"
-# the everglade rooms' world (room-world.c): the city's units, as build.sh links them
-for u in apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax; do
-  n="$(basename "$u" .coax)"
-  "$coax" c "$u" --library --header "$stage/src/$n.h" > "$stage/src/$n.c"
-done
-cp "$here/room-host.c" "$here/room-tick.c" "$here/room-stats.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$stage/src/"
-coax/web/tool.sh "$here/room-catalog.coax" apps/openagents-web/realms/everglade/assets/everglade.pack "$stage/src/room-catalog.c"
+# the room's C sources and coax/web/compat (stage.sh: the VM's deploy, vm-deploy.sh, stages the same)
+COAX="${COAX:-coax/bin/coax}" "$here/stage.sh" "$stage" >/dev/null
 cp "$here/Dockerfile" "$stage/"
-cp -R coax/web/compat "$stage/compat"
 image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/$service:$(git rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$image" --quiet \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \

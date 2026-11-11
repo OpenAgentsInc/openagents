@@ -1,0 +1,40 @@
+# TLS for the room VM (docs/deployment/room-vm.md): Let's Encrypt certificates for both names,
+# issued and renewed by Caddy over TLS-ALPN on TCP 443 (port 80 stays closed). The private keys stay
+# in /var/lib/caddy on the VM. UDP 443 is left for the room's own WebTransport (#13164): Caddy
+# serves HTTP/1.1 and HTTP/2 only.
+{
+	servers {
+		protocols h1 h2
+	}
+	auto_https disable_redirects
+}
+
+room.openagents.com {
+	@s2 path /api/room/s2/*
+	@s3 path /api/room/s3/*
+	@s4 path /api/room/s4/*
+	@s5 path /api/room/s5/*
+	@s6 path /api/room/s6/*
+	handle @s2 {
+		reverse_proxy 127.0.0.1:8082
+	}
+	handle @s3 {
+		reverse_proxy 127.0.0.1:8083
+	}
+	handle @s4 {
+		reverse_proxy 127.0.0.1:8084
+	}
+	handle @s5 {
+		reverse_proxy 127.0.0.1:8085
+	}
+	handle @s6 {
+		reverse_proxy 127.0.0.1:8086
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8081
+	}
+}
+
+room-staging.openagents.com {
+	reverse_proxy 127.0.0.1:8090
+}

@@ -1,0 +1,29 @@
+# One room server process on the room VM (docs/deployment/room-vm.md): oa-room@s1 to oa-room@s6 are
+# production's shards 1 to 6 on ports 8081 to 8086, oa-room@staging the staging unit on 8090.
+# /etc/oa-room/secret.env holds the seat-ticket key (root, 0600; vm-deploy.sh writes it from
+# Secret Manager); /etc/oa-room/%i.env the unit's port, shard and API.
+[Unit]
+Description=Everglade room server %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=/etc/oa-room/secret.env
+EnvironmentFile=/etc/oa-room/%i.env
+ExecStart=/opt/oa-room/bin/%i
+DynamicUser=yes
+Restart=always
+RestartSec=1
+# SIGTERM: the room notes every seat and flushes its outbox, then exits (room-host.c DRAIN_MS, 8 s)
+KillSignal=SIGTERM
+TimeoutStopSec=15
+LimitNOFILE=65536
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target
