@@ -1,6 +1,6 @@
 // The tools against a real folder (tools_smoke.sh makes it): a command's
 // output, a command past its timeout killed and recorded, views inside and
-// outside the working directory, and a loop step's tools recorded in state.
+// outside the working directory, exact edits, and a loop step's tools recorded in state.
 
 #import "Basic";
 #load "tools.coax";
@@ -35,6 +35,28 @@ main :: () {
   ok = ok && s == MC_TOOLS && mc_run_tools(l[..], dir, b[..]) == MC_AGAIN;
   j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  ok = ok && cl_str(ar[..], j, "actions.0.commands.0.output") == "3\n" && cl_str(ar[..], j, "files.0.content") == "print(\"b\")";
+  ok = ok && cl_str(ar[..], j, "actions.0.results.0.output") == "3\n" && cl_str(ar[..], j, "actions.0.results.1.content") == "print(\"b\")";
+  // exact edits: one place changed, a new file written, and the refusals
+  e := mc_edit_file(dir, McEdit.{path = "a.swift", old = "\"a\"", text = "\"a2\""}, "danger-full-access", b[..]);
+  v = mc_view_file(dir, "a.swift", b[0].view[..]);
+  print("edit: ok % why [%] now [%]\n", e.ok, e.why, v.content);
+  ok = ok && e.ok && v.content == "print(\"a2\")";
+  e = mc_edit_file(dir, McEdit.{path = "sub/new.txt", old = "", text = "x"}, "danger-full-access", b[..]);
+  ok = ok && !e.ok && e.why == "could not write the file: does its folder exist?";
+  e = mc_edit_file(dir, McEdit.{path = "notes.txt", old = "", text = "one\none\n"}, "danger-full-access", b[..]);
+  ok = ok && e.ok;
+  e = mc_edit_file(dir, McEdit.{path = "notes.txt", old = "one", text = "two"}, "danger-full-access", b[..]);
+  ok = ok && !e.ok && e.why == "the old text is in the file more than once: include more of the lines around it so it is unique";
+  e = mc_edit_file(dir, McEdit.{path = "notes.txt", old = "three", text = "two"}, "danger-full-access", b[..]);
+  ok = ok && !e.ok && e.why == "the old text is not in the file: copy it exactly, with its whitespace, from a view or the file";
+  e = mc_edit_file(dir, McEdit.{path = "nope.txt", old = "a", text = "b"}, "danger-full-access", b[..]);
+  ok = ok && !e.ok && e.why == "no such file (an empty old writes a new one)";
+  // an edit in a step: recorded before the step's commands, which see it
+  x = mc_request(l[..]);
+  s = mc_take(l[..], "{\"rationale\":\"fix\",\"edits\":[{\"path\":\"b.swift\",\"old\":\"b\",\"new\":\"b2\"}],\"commands\":[\"cat b.swift\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  ok = ok && s == MC_TOOLS && mc_run_tools(l[..], dir, b[..]) == MC_AGAIN;
+  j = mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ar[0].at = 0;
+  ok = ok && cl_bool(j, "actions.1.results.0.applied").value && cl_str(ar[..], j, "actions.1.results.1.output") == "print(\"b2\")\n";
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

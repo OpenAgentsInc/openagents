@@ -231,8 +231,9 @@ mk_remember :: (h: [] MkTurns, reply: string) {
 }
 
 // The facts a run is told: the machine, the folder and the conversation so far.
-mk_facts :: (h: [] MkTurns, cwd: string, o: [] u8) -> string {
-  n := json_raw(o, 0, "{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"cwd\":");
+mk_facts :: (h: [] MkTurns, os: string, cwd: string, o: [] u8) -> string {
+  n := json_raw(o, 0, "{\"os\":"); n = json_write_string(o, n, os);
+  n = json_raw(o, n, ",\"app\":\"Coder in the terminal\",\"cwd\":");
   n = json_write_string(o, n, cwd);
   if h[0].turns > 0 {
     n = json_raw(o, n, ",\"conversation\":[");
@@ -251,14 +252,15 @@ mk_facts :: (h: [] MkTurns, cwd: string, o: [] u8) -> string {
 
 #test "the conversation keeps the last turns, oldest first, and goes into the facts" {
   h: [1] MkTurns; o: [4096] u8;
-  #assert mk_facts(h[..], "/w", o[..]) == "{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"cwd\":\"/w\"}";
+  #assert mk_facts(h[..], "macOS", "/w", o[..]) == "{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"cwd\":\"/w\"}";
+  #assert mk_facts(h[..], "Linux", "/w", o[..]) == "{\"os\":\"Linux\",\"app\":\"Coder in the terminal\",\"cwd\":\"/w\"}";
   for i: 0..<MK_TURNS + 2 {
     tb: [8] u8; tb[0] = cast(u8) ('a' + i);
     h[0].ncur = mk_keep(h[0].cur[..], cast(string) tb[0..<1]);
     mk_remember(h[..], "r");
   }
   #assert h[0].turns == MK_TURNS && mk_text(h[..], 0) == "c" && mk_text(h[..], 2 * MK_TURNS - 2) == "h";
-  f := mk_facts(h[..], "/w", o[..]);
+  f := mk_facts(h[..], "Linux", "/w", o[..]);
   #assert cl_count(cl_raw(f, "conversation")) == MK_TURNS;
 }
 

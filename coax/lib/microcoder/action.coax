@@ -2,6 +2,7 @@
 // model call with a strict JSON schema, and the reply is this object:
 //
 //   { "rationale": "why this step, for the log; never shown as the reply",
+//     "edits":     [{"path": "a.txt", "old": "exact text", "new": "its replacement"}],
 //     "commands":  ["shell commands to run, in order"],
 //     "view":      ["files to show in full in the next step"],
 //     "finished":  false,
@@ -15,13 +16,19 @@
 #load "state.coax";
 
 MC_SCHEMA_NAME :: "next_action";
-MC_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
+MC_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\"],\"additionalProperties\":false}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\",\"edits\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
 
 MC_MAX_COMMANDS :: 32;
 MC_MAX_VIEWS :: 16;
+MC_MAX_EDITS :: 16;
+
+// An exact edit (GitHub #13231): old, which must appear in path exactly once, becomes new; an
+// empty old writes new as the whole file. Applied by the loop's tools, not a shell, so no quoting.
+McEdit :: struct { path: string; old: string; text: string; }   // text: the "new" field
 
 McAction :: struct {
   rationale: string;
+  edits: [MC_MAX_EDITS] McEdit; ne: int;
   commands: [MC_MAX_COMMANDS] string; nc: int;
   view: [MC_MAX_VIEWS] string; nv: int;
   finished: bool;
@@ -37,7 +44,17 @@ mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string {
   if !cl_valid(text, "s:rationale a:commands s:commands.* a:view s:view.* b:finished s:reply s:ask=none|question") {
     return "the reply does not match the next_action schema";
   }
+  if !cl_valid(text, "?a:edits ?o:edits.* ?s:edits.*.path ?s:edits.*.old ?s:edits.*.new") { return "the reply's edits do not match the next_action schema"; }
   a[0].rationale = cl_str(ar, text, "rationale");
+  eds := cl_raw(text, "edits");
+  ne := ifx eds.count > 0 then cl_count(eds) else 0;
+  if ne > MC_MAX_EDITS { return "the reply has more than 16 edits"; }
+  for i: 0..<ne {
+    e := cl_json(eds, cl_item(eds, i));
+    a[0].edits[i] = McEdit.{path = cl_str(ar, e, "path"), old = cl_str(ar, e, "old"), text = cl_str(ar, e, "new")};
+    if a[0].edits[i].path.count == 0 { return "an edit has no path"; }
+  }
+  a[0].ne = ne;
   cmds := cl_raw(text, "commands");
   nc := cl_count(cmds);
   if nc > MC_MAX_COMMANDS { return "the reply has more than 32 commands"; }
@@ -68,6 +85,18 @@ mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string {
   #assert why == "" && a[0].finished && a[0].reply == "4" && a[0].nc == 0 && a[0].nv == 0 && !a[0].asks;
   why = mc_action_parse(ar[..], "{\"rationale\":\"look\",\"commands\":[\"ls *.swift | wc -l\",\"echo \\\"hi\\\"\"],\"view\":[\"README.md\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}", a[..]);
   #assert why == "" && a[0].nc == 2 && a[0].commands[1] == "echo \"hi\"" && a[0].view[0] == "README.md" && !a[0].finished;
+}
+
+#test "edits: exact replacements parse; a reply without them is still an action; bad ones are refused" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a: [1] McAction;
+  why := mc_action_parse(ar[..], "{\"rationale\":\"fix\",\"edits\":[{\"path\":\"a.c\",\"old\":\"x = 1;\",\"new\":\"x = \\\"2\\\";\"},{\"path\":\"new.md\",\"old\":\"\",\"new\":\"# hi\\n\"}],\"commands\":[\"make\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}", a[..]);
+  #assert why == "" && a[0].ne == 2 && a[0].edits[0].path == "a.c" && a[0].edits[0].text == "x = \"2\";" && a[0].edits[1].old == "" && a[0].edits[1].text == "# hi\n" && a[0].nc == 1;
+  why = mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"4\",\"ask\":\"none\"}", a[..]);
+  #assert why == "" && a[0].ne == 0;
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"edits\":[{\"path\":\"a\",\"old\":1,\"new\":\"\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}", a[..]) != "";
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"edits\":[{\"path\":\"\",\"old\":\"\",\"new\":\"\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}", a[..]) == "an edit has no path";
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"edits\":\"no\",\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}", a[..]) != "";
 }
 
 #test "replies that fail the schema or its meaning are refused with a reason" {

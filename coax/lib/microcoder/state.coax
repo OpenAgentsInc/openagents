@@ -5,27 +5,35 @@
 //     environment   the Lab's Environment.facts (a JSON object, given)
 //     task          the user's message
 //     route         Mammoth's decision (a JSON object, given)
-//     actions[]     the last 12 steps: rationale, commands with exit codes,
-//                   output head and tail (6,000 bytes each)
-//     files[]       what the last `view` asked for
+//     left_out      how many of the earliest steps no longer fit (only when some)
+//     actions[]     the steps in order: rationale, then what each did ("results"): edits,
+//                   commands with exit codes and output head and tail (6,000 bytes
+//                   each), and the files it viewed, as they were then
 //     notes         what the loop writes for itself between steps
 //   }
 //
+// The log only grows at its end, so a step's prompt starts with the one before it, and the
+// provider's prompt cache serves that prefix at a tenth of the price or less (GitHub #13231:
+// with the last 12 actions in a ring and the files in view after them, Argon's prompts were
+// cached 0 to 40%). When the next action may not fit, the earliest steps leave in one go, down
+// to half the log, so the cached prefix breaks once per eviction, not on every step.
+//
 // Nothing allocates: the caller hands over McStateBuffers, the actions live
-// in 12 slots of it as finished JSON, and nothing in the state is a key, a
-// path under .secrets or another conversation (the caller gives the facts).
+// in its log as finished JSON, and nothing in the state is a key, a path
+// under .secrets or another conversation (the caller gives the facts).
 // From the old crates/microcoder-loop state.rs.
 
 #load "../gateway/gateway.coax";
 
-MC_RECENT :: 12;                 // actions kept; older ones leave the state
 MC_OUTPUT_HEAD :: 6000;          // bytes of a command's output kept from its start
 MC_OUTPUT_TAIL :: 6000;          // and from its end
-MC_SLOT :: 16384;                // one action's JSON, at most
+MC_LOG_BYTES :: 393216;          // the actions' JSON, all of them
+MC_ACTION_ROOM :: 98304;         // free log a new action starts with (older steps leave for it)
+MC_MAX_ACTIONS :: 512;           // actions the log can hold
+MC_PROMPT_BYTES :: 458752;       // the whole state's JSON: every buffer below, with room for its keys
 
 McStateBuffers :: struct {
-  slots: [196608] u8;            // MC_RECENT * MC_SLOT
-  files: [65536] u8;
+  log: [MC_LOG_BYTES] u8;
   notes: [8192] u8;
   facts: [16384] u8;
   task: [16384] u8;
@@ -36,13 +44,12 @@ McState :: struct {
   environment: string;           // JSON, copied into facts
   task: string;
   route: string;                 // JSON, copied into route
-  slots: [] u8;
-  slot_len: [MC_RECENT] int;
-  slot_step: [MC_RECENT] int;
+  log: [] u8; nlog: int;         // the actions' JSON objects, back to back
+  act_at: [MC_MAX_ACTIONS] int; nacts: int;   // where each kept action starts; the open one is the last
+  left_out: int;                 // steps that left the log
   steps: int;                    // actions recorded so far (the step number of the next is steps + 1)
-  open: int;                     // the slot being written, -1 when none
+  open: int;                     // the action being written (its index), -1 when none
   open_cmds: int;
-  files: [] u8; nf: int; nfiles: int;
   notes: [] u8; nn: int;
   facts: [] u8; task_buf: [] u8; route_buf: [] u8;
 }
@@ -55,7 +62,7 @@ mc_copy :: (dst: [] u8, s: string) -> string {
 
 // environment and route are JSON objects (anything else is kept as a string).
 mc_state_init :: (st: [] McState, b: [] McStateBuffers, environment: string, task: string, route: string) {
-  st[0] = McState.{slots = b[0].slots[..], files = b[0].files[..], notes = b[0].notes[..], facts = b[0].facts[..], task_buf = b[0].task[..], route_buf = b[0].route[..], open = -1};
+  st[0] = McState.{log = b[0].log[..], notes = b[0].notes[..], facts = b[0].facts[..], task_buf = b[0].task[..], route_buf = b[0].route[..], open = -1};
   st[0].environment = mc_copy(st[0].facts, environment);
   st[0].task = mc_copy(st[0].task_buf, task);
   st[0].route = mc_copy(st[0].route_buf, route);
@@ -92,34 +99,60 @@ mc_write_cut :: (out: [] u8, at: int, text: string, head: int, tail: int) -> int
   return json_raw(out, n, "\"");
 }
 
-mc_slot :: (st: [] McState, k: int) -> [] u8 { return st[0].slots[k * MC_SLOT..<(k + 1) * MC_SLOT]; }
+// The earliest steps leave until at most keep bytes of the log are used (never the open one).
+mc_log_drop :: (st: [] McState, keep: int) {
+  closed := ifx st[0].open >= 0 then st[0].nacts - 1 else st[0].nacts;
+  k := 0;
+  while k < closed && st[0].nlog - st[0].act_at[k] > keep { k += 1; }
+  if k == 0 { return; }
+  cut := st[0].act_at[k];
+  for i: cut..<st[0].nlog { st[0].log[i - cut] = st[0].log[i]; }
+  st[0].nlog -= cut;
+  for a: k..<st[0].nacts { st[0].act_at[a - k] = st[0].act_at[a] - cut; }
+  st[0].nacts -= k; st[0].left_out += k;
+  if st[0].open >= 0 { st[0].open -= k; }
+}
 
-// Begins the next action: {"step":N,"rationale":"...","commands":[
+// The open action's room: up to the log's end, less what closing it takes.
+mc_room :: (st: [] McState) -> [] u8 { return st[0].log[0..<st[0].log.count - 8]; }
+
+// Begins the next action: {"step":N,"rationale":"...","results":[
 mc_action_begin :: (st: [] McState, rationale: string) {
-  k := st[0].steps % MC_RECENT;
+  if st[0].open >= 0 { mc_action_end(st); }
+  if st[0].nacts >= MC_MAX_ACTIONS || st[0].log.count - st[0].nlog < MC_ACTION_ROOM { mc_log_drop(st, st[0].log.count / 2 - MC_ACTION_ROOM / 2); }
+  if st[0].nacts >= MC_MAX_ACTIONS { mc_log_drop(st, 0); }
   st[0].steps += 1;
-  out := mc_slot(st, k);
-  n := json_raw(out, 0, "{\"step\":");
+  at := st[0].nlog;
+  out := mc_room(st);
+  n := json_raw(out, at, ",{\"step\":");           // each action after a comma: the log renders from the first one's brace
   n = json_write_int(out, n, st[0].steps);
   n = json_raw(out, n, ",\"rationale\":");
   n = mc_write_cut(out, n, rationale, 2000, 0);
-  n = json_raw(out, n, ",\"commands\":[");
-  if n < 0 { n = json_raw(out, 0, "{\"step\":0,\"rationale\":\"\",\"commands\":["); }
-  st[0].slot_len[k] = n; st[0].slot_step[k] = st[0].steps;
-  st[0].open = k; st[0].open_cmds = 0;
+  n = json_raw(out, n, ",\"results\":[");
+  if n < 0 { n = json_raw(out, at, ",{\"step\":0,\"rationale\":\"\",\"results\":["); }
+  st[0].act_at[st[0].nacts] = at; st[0].open = st[0].nacts; st[0].nacts += 1;
+  st[0].nlog = n; st[0].open_cmds = 0;
+}
+
+// One result written into the open action by w (which writes at its start and returns its end or
+// -1), after a comma when it is not the first; when it doesn't fit, small instead (always fits).
+mc_result_start :: (st: [] McState) -> int {
+  if st[0].open < 0 { return -1; }
+  return ifx st[0].open_cmds > 0 then json_raw(mc_room(st), st[0].nlog, ",") else st[0].nlog;
+}
+mc_result_end :: (st: [] McState, n: int) -> bool {
+  if n < 0 { return false; }
+  st[0].nlog = n; st[0].open_cmds += 1;
+  return true;
 }
 
 // One command's result in the open action. exit is -1 when a signal or the
 // deadline ended it (timed_out says which).
 mc_action_command :: (st: [] McState, command: string, exit: int, timed_out: bool, output: string) {
-  k := st[0].open;
-  if k < 0 { return; }
-  out := mc_slot(st, k);
-  at := st[0].slot_len[k];
-  // leave room to close the action: "]}" plus a little
-  room := out[0..<out.count - 8];
-  n := ifx st[0].open_cmds > 0 then json_raw(room, at, ",") else at;
-  n = json_raw(room, n, "{\"command\":");
+  at := mc_result_start(st);
+  if at < 0 { return; }
+  room := mc_room(st);
+  n := json_raw(room, at, "{\"command\":");
   n = mc_write_cut(room, n, command, 1000, 0);
   n = json_raw(room, n, ",\"exit\":");
   n = json_write_int(room, n, exit);
@@ -128,66 +161,67 @@ mc_action_command :: (st: [] McState, command: string, exit: int, timed_out: boo
   n = mc_write_cut(room, n, output, MC_OUTPUT_HEAD, MC_OUTPUT_TAIL);
   n = json_raw(room, n, "}");
   if n < 0 {
-    // the slot is full: the command stays, its output doesn't
-    n = ifx st[0].open_cmds > 0 then json_raw(room, at, ",") else at;
-    n = json_raw(room, n, "{\"command\":");
+    // the log is full: the command stays, its output doesn't
+    n = json_raw(room, at, "{\"command\":");
     n = mc_write_cut(room, n, command, 200, 0);
     n = json_raw(room, n, ",\"exit\":");
     n = json_write_int(room, n, exit);
-    n = json_raw(room, n, ",\"output\":\"[left out: this step's outputs filled its space]\"}");
-    if n < 0 { return; }
+    n = json_raw(room, n, ",\"output\":\"[left out: this step's results filled its space]\"}");
   }
-  st[0].slot_len[k] = n; st[0].open_cmds += 1;
+  x := mc_result_end(st, n);
 }
 
 // A command the loop refused to run (why says so).
 mc_action_refused :: (st: [] McState, command: string, why: string) {
-  k := st[0].open;
-  if k < 0 { return; }
-  out := mc_slot(st, k);
-  room := out[0..<out.count - 8];
-  at := st[0].slot_len[k];
-  n := ifx st[0].open_cmds > 0 then json_raw(room, at, ",") else at;
-  n = json_raw(room, n, "{\"command\":");
+  at := mc_result_start(st);
+  if at < 0 { return; }
+  room := mc_room(st);
+  n := json_raw(room, at, "{\"command\":");
   n = mc_write_cut(room, n, command, 1000, 0);
   n = json_raw(room, n, ",\"refused\":");
   n = json_write_string(room, n, why);
   n = json_raw(room, n, "}");
-  if n < 0 { return; }
-  st[0].slot_len[k] = n; st[0].open_cmds += 1;
+  x := mc_result_end(st, n);
+}
+
+// An edit's result: applied, or why not.
+mc_action_edit :: (st: [] McState, path: string, ok: bool, why: string) {
+  at := mc_result_start(st);
+  if at < 0 { return; }
+  room := mc_room(st);
+  n := json_raw(room, at, "{\"edit\":");
+  n = mc_write_cut(room, n, path, 1000, 0);
+  if ok { n = json_raw(room, n, ",\"applied\":true}"); }
+  else { n = json_raw(room, n, ",\"failed\":"); n = json_write_string(room, n, why); n = json_raw(room, n, "}"); }
+  x := mc_result_end(st, n);
 }
 
 mc_action_end :: (st: [] McState) {
-  k := st[0].open;
-  if k < 0 { return; }
-  out := mc_slot(st, k);
-  st[0].slot_len[k] = json_raw(out, st[0].slot_len[k], "]}");
+  if st[0].open < 0 { return; }
+  st[0].nlog = json_raw(st[0].log, st[0].nlog, "]}");
   st[0].open = -1;
 }
 
-// The files the last view asked for replace the ones before.
-mc_files_clear :: (st: [] McState) { st[0].nf = 0; st[0].nfiles = 0; }
+// Kept for callers of the old files list; views are part of their step now.
+mc_files_clear :: (st: [] McState) {}
 
-// One viewed file; found false when there is no such file (content then
-// says why). Content is capped by the tool (64 KB); a file that doesn't fit
-// what's left is listed with a note.
+// One viewed file in the open action; found false when there is no such file (content then
+// says why). Content is capped by the tool (64 KB); one that doesn't fit the log is noted.
 mc_file :: (st: [] McState, path: string, found: bool, content: string) {
-  out := st[0].files;
-  at := st[0].nf;
-  n := ifx st[0].nfiles > 0 then json_raw(out, at, ",") else at;
-  n = json_raw(out, n, "{\"path\":");
-  n = json_write_string(out, n, path);
-  if found { n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content); }
-  else { n = json_raw(out, n, ",\"missing\":"); n = json_write_string(out, n, content); }
-  n = json_raw(out, n, "}");
+  at := mc_result_start(st);
+  if at < 0 { return; }
+  room := mc_room(st);
+  n := json_raw(room, at, "{\"view\":");
+  n = json_write_string(room, n, path);
+  if found { n = json_raw(room, n, ",\"content\":"); n = json_write_string(room, n, content); }
+  else { n = json_raw(room, n, ",\"missing\":"); n = json_write_string(room, n, content); }
+  n = json_raw(room, n, "}");
   if n < 0 {
-    n = ifx st[0].nfiles > 0 then json_raw(out, at, ",") else at;
-    n = json_raw(out, n, "{\"path\":");
-    n = json_write_string(out, n, path);
-    n = json_raw(out, n, ",\"missing\":\"too large to show with the other files in view\"}");
-    if n < 0 { return; }
+    n = json_raw(room, at, "{\"view\":");
+    n = json_write_string(room, n, path);
+    n = json_raw(room, n, ",\"missing\":\"too large to show with this step's other results: read parts of it with a command\"}");
   }
-  st[0].nf = n; st[0].nfiles += 1;
+  x := mc_result_end(st, n);
 }
 
 // A note for the next step (a reply that failed the schema, commands refused).
@@ -213,17 +247,11 @@ mc_state_json :: (st: [] McState, out: [] u8) -> string {
   n = json_write_string(out, n, st[0].task);
   n = json_raw(out, n, ",\"route\":");
   n = mc_json_or_string(out, n, st[0].route);
+  if st[0].left_out > 0 { n = json_raw(out, n, ",\"left_out\":"); n = json_write_int(out, n, st[0].left_out); }
   n = json_raw(out, n, ",\"actions\":[");
-  first := st[0].steps - MC_RECENT;
-  if first < 0 { first = 0; }
-  for s: first..<st[0].steps {
-    k := s % MC_RECENT;
-    if k == st[0].open { continue; }
-    if s > first { n = json_raw(out, n, ","); }
-    n = json_raw(out, n, cast(string) mc_slot(st, k)[0..<st[0].slot_len[k]]);
-  }
-  n = json_raw(out, n, "],\"files\":[");
-  n = json_raw(out, n, cast(string) st[0].files[0..<st[0].nf]);
+  closed := ifx st[0].open >= 0 then st[0].nacts - 1 else st[0].nacts;
+  end := ifx closed < st[0].nacts then st[0].act_at[closed] else st[0].nlog;
+  if closed > 0 { n = json_raw(out, n, cast(string) st[0].log[st[0].act_at[0] + 1..<end]); }
   n = json_raw(out, n, "],\"notes\":");
   n = json_write_string(out, n, cast(string) st[0].notes[0..<st[0].nn]);
   n = json_raw(out, n, "}");
@@ -233,52 +261,98 @@ mc_state_json :: (st: [] McState, out: [] u8) -> string {
 
 // ---------------------------------------------------------------- checks
 
-McStateTest :: struct { b: [1] McStateBuffers; out: [327680] u8; }
+McStateTest :: struct { b: [1] McStateBuffers; out: [MC_PROMPT_BYTES] u8; }
 
-#test "the state renders as one JSON object: facts and route as given, the actions in order, files and notes" {
+#test "the state renders as one JSON object: facts and route as given, the actions in order with what each did, notes" {
   t: [1] McStateTest; st: [1] McState;
   mc_state_init(st[..], t[0].b[..], "{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\"}", "how many swift files?", "{\"route\":\"other\",\"local_work\":0.9}");
   mc_action_begin(st[..], "count them");
+  mc_action_edit(st[..], "n.txt", true, "");
   mc_action_command(st[..], "ls *.swift | wc -l", 0, false, "3\n");
-  mc_action_end(st[..]);
-  mc_files_clear(st[..]);
   mc_file(st[..], "a.swift", true, "print(1)\n");
+  mc_action_end(st[..]);
   mc_note(st[..], "a note");
   j := mc_state_json(st[..], t[0].out[..]);
   #assert json_valid(j);
-  #assert j == "{\"environment\":{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\"},\"task\":\"how many swift files?\",\"route\":{\"route\":\"other\",\"local_work\":0.9},\"actions\":[{\"step\":1,\"rationale\":\"count them\",\"commands\":[{\"command\":\"ls *.swift | wc -l\",\"exit\":0,\"output\":\"3\\n\"}]}],\"files\":[{\"path\":\"a.swift\",\"content\":\"print(1)\\n\"}],\"notes\":\"a note\\n\"}";
+  #assert j == "{\"environment\":{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\"},\"task\":\"how many swift files?\",\"route\":{\"route\":\"other\",\"local_work\":0.9},\"actions\":[{\"step\":1,\"rationale\":\"count them\",\"results\":[{\"edit\":\"n.txt\",\"applied\":true},{\"command\":\"ls *.swift | wc -l\",\"exit\":0,\"output\":\"3\\n\"},{\"view\":\"a.swift\",\"content\":\"print(1)\\n\"}]}],\"notes\":\"a note\\n\"}";
 }
 
-#test "a long output keeps its head and tail, cut on a character boundary; only the last 12 actions stay" {
+#test "each step's prompt starts with the one before it: the log only grows at its end" {
+  t: [1] McStateTest; st: [1] McState; prev: [1] McStateTest;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  pn := 0;
+  for s: 0..<20 {
+    mc_action_begin(st[..], "look");
+    mc_action_command(st[..], "cat f", 0, false, "some output");
+    mc_file(st[..], "f", true, "contents");
+    // the state while the step is open: its action isn't in it yet
+    j := mc_state_json(st[..], t[0].out[..]);
+    #assert json_valid(j);
+    cut := 0; while cut < j.count && j[cut] != ']' { cut += 1; }    // up to the end of the actions
+    if s > 0 { #assert pn <= j.count && cast(string) prev[0].out[0..<pn] == cast(string) j[0..<pn]; }
+    pn = cut - 1; if pn < 0 { pn = 0; }
+    for i: 0..<pn { prev[0].out[i] = j[i]; }
+    mc_action_end(st[..]);
+  }
+  #assert st[0].left_out == 0 && st[0].nacts == 20;
+}
+
+#test "a long output keeps its head and tail, cut on a character boundary; when the log is full the earliest steps leave at once" #steps 80000000 {
   t: [1] McStateTest; st: [1] McState;
   mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
-  big: [20000] u8;
+  big: [70000] u8;
   for i: 0..<20000 { big[i] = cast(u8) ('a' + i % 26); }
   big[5999] = 0xC3; big[6000] = 0xA9;      // an é across the head's edge
   mc_action_begin(st[..], "r");
-  mc_action_command(st[..], "cat big", 0, false, cast(string) big[..]);
+  mc_action_command(st[..], "cat big", 0, false, cast(string) big[0..<20000]);
   mc_action_end(st[..]);
   j := mc_state_json(st[..], t[0].out[..]);
   #assert json_valid(j);
-  out := cl_raw(j, "actions.0.commands.0.output");
+  out := cl_raw(j, "actions.0.results.0.output");
   #assert out.count > 12000 && out.count < 12200;
-  for s: 0..<14 { mc_action_begin(st[..], "step"); mc_action_end(st[..]); }
+  for i: 0..<70000 { big[i] = 'v'; }
+  // 64 KB views: the log holds a few; then the earliest half leaves in one go
+  for s: 0..<4 { mc_action_begin(st[..], "view"); mc_file(st[..], "v", true, cast(string) big[0..<65536]); mc_action_end(st[..]); }
+  #assert st[0].left_out == 0 && st[0].nacts == 5;
+  for s: 0..<6 {
+    mc_action_begin(st[..], "view");
+    #assert st[0].log.count - st[0].nlog >= MC_ACTION_ROOM;
+    mc_file(st[..], "v", true, cast(string) big[0..<65536]);
+    if s < 5 { mc_action_end(st[..]); }
+  }
+  #assert st[0].left_out >= 2 && st[0].nacts + st[0].left_out == 11;
+  mc_action_end(st[..]);
   j = mc_state_json(st[..], t[0].out[..]);
-  acts := cl_raw(j, "actions");
-  #assert json_valid(j) && cl_count(acts) == 12;
-  #assert cl_int(j, "actions.0.step").value == 4 && cl_int(j, "actions.11.step").value == 15;
+  #assert json_valid(j) && cl_int(j, "left_out").value == st[0].left_out && cl_count(cl_raw(j, "actions")) == st[0].nacts;
+  #assert cl_int(j, "actions.0.step").value == st[0].left_out + 1;
 }
 
-#test "refused commands and missing files are recorded as such" {
+#test "a view too large for what is left of the log is noted, and the step goes on" #steps 80000000 {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  mc_action_begin(st[..], "view a lot");
+  for i: 0..<MC_PROMPT_BYTES { t[0].out[i] = 'q'; }
+  for k: 0..<7 { mc_file(st[..], "big", true, cast(string) t[0].out[0..<65536]); }
+  mc_action_command(st[..], "true", 0, false, "");
+  mc_action_end(st[..]);
+  j := mc_state_json(st[..], t[0].out[..]);
+  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && cl_count(cl_raw(j, "actions.0.results")) == 8;
+  #assert cl_str(ar[..], j, "actions.0.results.6.missing") == "too large to show with this step's other results: read parts of it with a command";
+  #assert cl_str(ar[..], j, "actions.0.results.7.command") == "true";
+}
+
+#test "refused commands, failed edits and missing files are recorded as such" {
   t: [1] McStateTest; st: [1] McState;
   mc_state_init(st[..], t[0].b[..], "not json", "x", "");
   mc_action_begin(st[..], "try");
   mc_action_refused(st[..], "rm -rf build", "this request is not local work");
-  mc_action_end(st[..]);
+  mc_action_edit(st[..], "a.c", false, "the old text is not in the file");
   mc_file(st[..], "nope.txt", false, "no such file");
+  mc_action_end(st[..]);
   j := mc_state_json(st[..], t[0].out[..]);
   #assert json_valid(j);
   ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  #assert cl_str(ar[..], j, "environment") == "not json" && cl_str(ar[..], j, "actions.0.commands.0.refused") == "this request is not local work";
-  #assert cl_str(ar[..], j, "files.0.missing") == "no such file";
+  #assert cl_str(ar[..], j, "environment") == "not json" && cl_str(ar[..], j, "actions.0.results.0.refused") == "this request is not local work";
+  #assert cl_str(ar[..], j, "actions.0.results.1.failed") == "the old text is not in the file" && cl_str(ar[..], j, "actions.0.results.2.missing") == "no such file";
 }

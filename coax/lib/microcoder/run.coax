@@ -150,11 +150,15 @@ mc_run_keep :: (r: [] McRun, s: string) -> string {
   return cast(string) r[0].obuf[at..<at + n];
 }
 
+// A journaled run's time budget: 15 minutes, as long as an unattended task gets (GitHub #13231:
+// at 5 minutes Argon's run of a five-file change ended mid-task as "run budget exhausted").
+MC_RUN_MS :: 900000;
+
 // Starts a run of the loop already set up in r.l (mc_init) through plan p
 // (gw_plan_add its attempts first); effort "" leaves it to the provider.
 mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
   r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
-  r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+300000;}r[0].effects=0;
+  r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;
   mc_run_call(r);
 }
 
@@ -219,6 +223,7 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   r[0].nob = 0;
   if status == MC_TOOLS {
     a := mc_pending(l);
+    for i: 0..<a.ne { k = mc_run_edit(r, out, k, a.edits[i]); if r[0].ended { return k; } }
     if r[0].gated && a.nc > 0 {
       r[0].ask_i = 0;
       return mc_run_ask(r,out,k,a.commands[0]);
@@ -256,6 +261,24 @@ mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int 
   if r[0].journal.count>0 && (!jf_output(r[0].journal,res.output) || !jf_result(r[0].journal,cast(string)metadata[0..<m])) {return mc_run_failed(r,out,k);}
   mc_command(r[0].l[..], command, res.exit, res.timed_out, res.output);
   return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = command, exit = res.exit, timed_out = res.timed_out, output = mc_run_keep(r, res.output)});
+}
+
+// One exact edit, applied and given out as a command row ("edit PATH", exit 0 or 1, the
+// result as output). A gated run's changes wait for approval, which edits have no way to ask
+// for: there the model is told to make the change with a command.
+mc_run_edit :: (r: [] McRun, out: [] McRunEvent, k: int, e: McEdit) -> int {
+  tb: [1100] u8; tn := json_raw(tb[..], 0, "edit "); tn = json_raw(tb[..], tn, e.path);
+  label := ifx tn < 0 then "edit" else cast(string) tb[0..<tn];
+  if r[0].gated {
+    why := "each change in this run waits for approval: make this one with a command";
+    mc_edited(r[0].l[..], e.path, false, why);
+    return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = 126, output = mc_run_keep(r, why)});
+  }
+  if !mc_run_intent(r, AjKind.command_intent, label) { return mc_run_failed(r, out, k); }
+  res := mc_edit_file(r[0].cwd, e, r[0].profile, r[0].tb[..]);
+  if r[0].journal.count > 0 && (!jf_output(r[0].journal, ifx res.ok then "applied" else res.why) || !jf_result(r[0].journal, ifx res.ok then "exit=0 timed_out=false" else "exit=1 timed_out=false")) { return mc_run_failed(r, out, k); }
+  mc_edited(r[0].l[..], e.path, res.ok, res.why);
+  return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = ifx res.ok then 0 else 1, output = mc_run_keep(r, ifx res.ok then "applied" else res.why)});
 }
 
 // After the step's commands: its views, then the next call or the end.

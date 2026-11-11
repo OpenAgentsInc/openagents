@@ -169,7 +169,7 @@ GwPlan :: struct {
 
 GwPlanBuffers :: struct {
   call: [1] GwCallBuffers;
-  body: [262144] u8;
+  body: [524288] u8;             // the request: Microcoder's state reaches 448 KB
 }
 
 gw_plan_init :: (p: [] GwPlan, b: [] GwPlanBuffers) {

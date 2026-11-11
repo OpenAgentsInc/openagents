@@ -187,16 +187,77 @@ mc_view_file_profile :: (cwd: string, path: string, buf: [] u8, profile:string) 
   return McViewResult.{found = true, content = cast(string) buf[0..<n]};
 }
 
+MC_EDIT_BYTES :: 524288;         // a file an edit can change, at most
+
 McToolBuffers :: struct {
   out: [1] McOutput;
   view: [65536] u8;
+  src: [MC_EDIT_BYTES] u8;       // an edited file before
+  dst: [MC_EDIT_BYTES] u8;       // and after
+  path: [4096] u8;
 }
 
-// Runs the pending action's commands in order, then its views, into the
+McEditResult :: struct { ok: bool; why: string; }
+
+// Where old is in text: its first place and how many times it appears (0 when never).
+McFound :: struct { at: int; count: int; }
+mc_find_all :: (text: string, old: string) -> McFound {
+  f := McFound.{at = -1};
+  if old.count == 0 || old.count > text.count { return f; }
+  i := 0;
+  while i + old.count <= text.count {
+    if text[i] == old[0] && cast(string) text[i..<i + old.count] == old {
+      if f.count == 0 { f.at = i; }
+      f.count += 1; i += old.count;
+    } else { i += 1; }
+  }
+  return f;
+}
+
+// text with its one old replaced by new into out: the new length, or -1 when it doesn't fit.
+mc_splice :: (text: string, at: int, old_count: int, new_text: string, out: [] u8) -> int {
+  total := text.count - old_count + new_text.count;
+  if total > out.count { return -1; }
+  for i: 0..<at { out[i] = text[i]; }
+  for c, i: new_text { out[at + i] = c; }
+  for i: at + old_count..<text.count { out[i - old_count + new_text.count] = text[i]; }
+  return total;
+}
+
+// One exact edit (action.coax McEdit) of a file under cwd: old, which must appear exactly once,
+// becomes text; an empty old writes text as the whole file. Not through a shell: nothing to quote.
+// A read-only profile edits nothing.
+mc_edit_file :: (cwd: string, e: McEdit, profile: string, b: [] McToolBuffers) -> McEditResult {
+  if profile == "read-only" { return McEditResult.{why = "this run may not change files"}; }
+  if !mc_path_inside(cwd, e.path) { return McEditResult.{why = "the path leaves the working directory"}; }
+  n := 0;
+  if e.path[0] != '/' { n = json_raw(b[0].path[..], 0, cwd); n = json_raw(b[0].path[..], n, "/"); }
+  n = json_raw(b[0].path[..], n, e.path);
+  if n < 0 { return McEditResult.{why = "the path is too long"}; }
+  full := cast(string) b[0].path[0..<n];
+  if e.old.count == 0 {
+    return ifx fs_write(full, e.text) then McEditResult.{ok = true} else McEditResult.{why = "could not write the file: does its folder exist?"};
+  }
+  k := fs_read(full, b[0].src[..]);
+  if k < 0 { return McEditResult.{why = ifx fs_exists(full) then "the file is over 512 KB: change it with a command" else "no such file (an empty old writes a new one)"}; }
+  text := cast(string) b[0].src[0..<k];
+  f := mc_find_all(text, e.old);
+  if f.count == 0 { return McEditResult.{why = "the old text is not in the file: copy it exactly, with its whitespace, from a view or the file"}; }
+  if f.count > 1 { return McEditResult.{why = "the old text is in the file more than once: include more of the lines around it so it is unique"}; }
+  m := mc_splice(text, f.at, e.old.count, e.text, b[0].dst[..]);
+  if m < 0 { return McEditResult.{why = "the edited file would be over 512 KB: change it with a command"}; }
+  return ifx fs_write(full, cast(string) b[0].dst[0..<m]) then McEditResult.{ok = true} else McEditResult.{why = "could not write the file"};
+}
+
+// Runs the pending action's edits, then its commands in order, then its views, into the
 // loop; then mc_tools_done. Each command and file is recorded as it ends.
 // A command that fails does not stop the ones after it.
 mc_run_tools :: (l: [] McLoop, cwd: string, b: [] McToolBuffers) -> int {
   a := mc_pending(l);
+  for i: 0..<a.ne {
+    e := mc_edit_file(cwd, a.edits[i], "danger-full-access", b);
+    mc_edited(l, a.edits[i].path, e.ok, e.why);
+  }
   for i: 0..<a.nc {
     r := mc_run_command(cwd, a.commands[i], MC_COMMAND_SECONDS, b[0].out[..]);
     mc_command(l, a.commands[i], r.exit, r.timed_out, r.output);
@@ -224,6 +285,18 @@ mc_run_tools :: (l: [] McLoop, cwd: string, b: [] McToolBuffers) -> int {
 #test "a view's head(1): /usr/bin/head where there is one or a sandbox links it, else NixOS's" {
   #assert mc_head("danger-full-access", true) == "/usr/bin/head" && mc_head("workspace-write", false) == "/usr/bin/head" && mc_head("read-only", false) == "/usr/bin/head";
   #assert mc_head("danger-full-access", false) == "/run/current-system/sw/bin/head";
+}
+
+#test "an edit finds its old text once, splices, and says why when it can't" {
+  #assert mc_find_all("a b a b", "a b").count == 2 && mc_find_all("a b a b", "b a").at == 2 && mc_find_all("aaa", "aa").count == 1;
+  #assert mc_find_all("abc", "").count == 0 && mc_find_all("ab", "abc").count == 0 && mc_find_all("xyz", "q").at == -1;
+  out: [32] u8;
+  n := mc_splice("let x = 1;", 4, 1, "count", out[..]);
+  #assert cast(string) out[0..<n] == "let count = 1;";
+  #assert mc_splice("abc", 0, 3, "", out[..]) == 0 && mc_splice("abc", 1, 1, "0123456789012345678901234567890123", out[..]) == -1;
+  b: [1] McToolBuffers;
+  #assert mc_edit_file("/w", McEdit.{path = "../x", old = "a", text = "b"}, "danger-full-access", b[..]).why == "the path leaves the working directory";
+  #assert mc_edit_file("/w", McEdit.{path = "x", old = "a", text = "b"}, "read-only", b[..]).why == "this run may not change files";
 }
 
 #test "paths stay under the working directory" {

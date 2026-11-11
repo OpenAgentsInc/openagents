@@ -64,6 +64,7 @@ Each step is **one** model call with a strict JSON schema. The model returns:
 ```json
 {
   "rationale": "why this step, for the log; never shown as the reply",
+  "edits": [{"path": "a.txt", "old": "exact text, once in the file", "new": "its replacement"}],
   "commands": ["shell commands to run, in order"],
   "view": ["files to show in full in the next step"],
   "finished": false,
@@ -86,12 +87,20 @@ MicroState {
   environment   // the Lab's Environment.facts: OS, app, hardware, agents, working directory
   task          // the user's message
   route         // Mammoth's decision: difficulty, effort, local_work
-  actions[]     // the last 12 steps: rationale, commands, exit codes,
-                //   output head and tail (6,000 bytes each)
-  files[]       // what `view` asked for, capped
+  left_out      // how many of the earliest steps no longer fit, when some
+  actions[]     // every step in order: rationale and its results: edits,
+                //   commands with exit codes and output head and tail
+                //   (6,000 bytes each), and the files it viewed (64 KB each)
   notes         // what the loop writes for itself between steps
 }
 ```
+
+The actions only grow at their end, so each step's prompt starts with the
+one before it and the provider's prompt cache serves that prefix. When the
+next step may not fit (384 KB of actions), the earliest steps leave in one
+go, down to about half. (Until #13231 it kept the last 12 actions in a ring
+and the last view's files after them, which broke the cached prefix on
+every step and dropped a viewed file at the next view.)
 
 The prompt is the state as JSON, plus a short system prompt that names the
 schema, the tools and the limits. The model never sees a key, a path under
@@ -101,8 +110,12 @@ schema, the tools and the limits. The model never sees a key, a path under
 
 - **`commands`**: run in the working directory through
   `coax/platform/process-native.c`, with a timeout per command (30 s) and the
-  output capped. With `local_work` under 0.5 the loop is told not to run
+  output capped. A run in Coder has 15 minutes (`MC_RUN_MS`). With `local_work` under 0.5 the loop is told not to run
   commands, and any it returns are refused with a note in state.
+- **`edits`**: exact replacements under the working directory (`old` must
+  appear exactly once; an empty `old` writes the whole file), applied by the
+  loop itself before the step's commands, so there is nothing to quote. A
+  gated run refuses them and asks for a command instead.
 - **`view`**: read files under the working directory, capped at 64 KB each.
 - Nothing else in v1: no network tools, no editing outside the working
   directory. Writes happen through commands, so they show in the transcript.

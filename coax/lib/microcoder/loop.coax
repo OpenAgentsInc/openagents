@@ -40,7 +40,7 @@ MC_BAD_LIMIT :: 3;
 MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
-MC_SYSTEM :: "You are Microcoder, a small agent in the OpenAgents Mac app. Each turn you get the state as JSON (environment, task, route, your last actions with their command output, files in view, notes) and answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply, with no commands.\n- To look or act on this machine: put shell commands in commands (they run in order in the working directory, 30 seconds each, output cut to its head and tail) and files to read in view; you see the results next turn.\n- Finish with finished true and reply addressed to the user. To ask the user something first, set ask to question with the question in reply.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, actions (every step so far, in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory, 30 seconds each, output cut to its head and tail), then view (files shown whole in this step's results). Do everything you can in each turn; you see all the results in the next.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
 
 mc_ending_name :: (e: int) -> string {
   if e == MC_END_FINISHED { return "finished"; }
@@ -54,7 +54,7 @@ mc_ending_name :: (e: int) -> string {
 }
 
 McLoopBuffers :: struct {
-  prompt: [327680] u8;
+  prompt: [MC_PROMPT_BYTES] u8;
   raw: [32768] u8;
   arena: [32768] u8;
   norm: [32768] u8;              // a text reply's action, rewritten whole
@@ -143,7 +143,7 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   a := l[0].pending[0];
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }
   if a.asks { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED); }
-  if a.nc == 0 && a.nv == 0 {
+  if a.nc == 0 && a.nv == 0 && a.ne == 0 {
     mc_record_bare(l);
     l[0].idle += 1;
     if l[0].idle >= MC_IDLE_LIMIT { return mc_end(l, MC_END_IDLE); }
@@ -151,13 +151,13 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   }
   l[0].idle = 0;
   mc_action_begin(l[0].st[..], a.rationale);
-  if a.nc > 0 && l[0].local_work < MC_LOCAL_WORK_MIN {
+  if (a.nc > 0 || a.ne > 0) && l[0].local_work < MC_LOCAL_WORK_MIN {
+    for i: 0..<a.ne { mc_action_edit(l[0].st[..], a.edits[i].path, false, "this request is not local work: answer without edits"); }
     for i: 0..<a.nc { mc_action_refused(l[0].st[..], a.commands[i], "this request is not local work: answer without commands"); }
     mc_note(l[0].st[..], "Your commands were refused: this request is not local work. Answer from what you know.");
-    l[0].pending[0].nc = 0;
+    l[0].pending[0].nc = 0; l[0].pending[0].ne = 0;
     if a.nv == 0 { mc_action_end(l[0].st[..]); return MC_AGAIN; }
   }
-  if l[0].pending[0].nv > 0 { mc_files_clear(l[0].st[..]); }
   return MC_TOOLS;
 }
 
@@ -174,6 +174,9 @@ mc_pending :: (l: [] McLoop) -> McAction { return l[0].pending[0]; }
 mc_command :: (l: [] McLoop, command: string, exit: int, timed_out: bool, output: string) {
   mc_action_command(l[0].st[..], command, exit, timed_out, output);
 }
+
+// An edit's result: applied, or why not.
+mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) { mc_action_edit(l[0].st[..], path, ok, why); }
 
 // A viewed file's content, or found false with why.
 mc_view :: (l: [] McLoop, path: string, found: bool, content: string) {
@@ -306,7 +309,7 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   #assert l[0].ending == MC_END_FINISHED && s[0].calls == 2 && s[0].nran == 1;
   j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  #assert cl_str(ar[..], j, "actions.0.commands.0.output") == "3\n" && cl_str(ar[..], j, "files.0.path") == "Package.swift";
+  #assert cl_str(ar[..], j, "actions.0.results.0.output") == "3\n" && cl_str(ar[..], j, "actions.0.results.1.view") == "Package.swift";
 }
 
 #test "asked, no_capacity, idle and stopped" {
@@ -347,7 +350,7 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   #assert l[0].ending == MC_END_FINISHED && s[0].nran == 0 && l[0].reply == "4";
   j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
   ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  #assert cl_str(ar[..], j, "actions.0.commands.0.refused").count > 0;
+  #assert cl_str(ar[..], j, "actions.0.results.0.refused").count > 0;
 }
 
 ps_count :: (text: string, needle: string) -> int {
