@@ -4,7 +4,7 @@
 # the same Coax the Mac app compiles (zeron/linux.coax) behind zeron-face.c, the atlas built in
 # Coax, the component shader emitted from Coax as SPIR-V, and the shared Wayland and Vulkan
 # host (apps/shared/host/linux/). Nix supplies the C headers and libraries only.
-#   apps/openagents-desktop/linux/build.sh [--open [APP ARGS...]]
+#   apps/openagents-desktop/linux/build.sh [--install] [--open [APP ARGS...]]
 # The program is build/linux/OpenAgents, with its fonts, icons and shader beside it.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -47,4 +47,17 @@ cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/"
 cp "$repo/components/zeron/NOTICE" "$work/NOTICE"
 mv "$work/OpenAgents.new" "$work/OpenAgents"
 echo "built $work/OpenAgents"
+# --install: a copy that does not need this checkout (~/.openagents/desktop/app/), the command
+# ~/.openagents/bin/openagents-desktop and a launcher entry. A window that is open keeps its own copy.
+if [[ "${1:-}" == --install ]]; then
+  shift
+  dest="$HOME/.openagents/desktop/app"
+  mkdir -p "$dest.new" "$HOME/.openagents/bin" "$HOME/.local/share/applications"
+  cp -R "$work/OpenAgents" "$work/zeron.spv" "$work/fonts" "$work/icons" "$work/NOTICE" "$dest.new/"
+  rm -rf "$dest.old"; [[ -d "$dest" ]] && mv "$dest" "$dest.old"; mv "$dest.new" "$dest"; rm -rf "$dest.old"
+  printf '#!/bin/sh\n# Firm reason: 5 (thin wrapper around the installed program)\nexec "$HOME/.openagents/desktop/app/OpenAgents" "$@"\n' > "$HOME/.openagents/bin/openagents-desktop"
+  chmod 755 "$HOME/.openagents/bin/openagents-desktop"
+  printf '[Desktop Entry]\nType=Application\nName=OpenAgents\nComment=Claude Code and Codex side by side\nExec=%s/.openagents/bin/openagents-desktop\nTerminal=false\nCategories=Development;\nStartupWMClass=com.openagents.desktop\n' "$HOME" > "$HOME/.local/share/applications/openagents-desktop.desktop"
+  echo "installed $HOME/.openagents/bin/openagents-desktop"
+fi
 if [[ "${1:-}" == --open ]]; then shift; exec "$work/OpenAgents" "$@"; fi
