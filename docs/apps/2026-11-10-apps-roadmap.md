@@ -45,20 +45,31 @@ with no adapter shows the message.
 
 ## Step 1. OpenAgents for desktop opens on Linux
 
-Status, 2026-11-10: it opens. `apps/openagents-desktop/linux/build.sh --open`
-builds and opens the window on `coderos-4080`. Slices 1 to 3 below are done,
-and from slice 4 saved sessions and settings. What was checked: the demo
-conversation and a new chat draw (text and icons from the Coax rasterizers,
-`components/raster/`); a turn with the stand-in Claude Code and one real turn
-ran offscreen; a session is kept and continued across a quit; the window
-holds 60 frames a second through a resize; and
-`coax/web/tool.sh apps/openagents-desktop/linux/check.coax` passes its eight
-cases against the goldens in `goldens/linux/`. Not checked: typing into the
-window with a real keyboard. Not built on Linux yet: kerning and colour
-emoji, the folder and file pickers, attachments, the room, dictation, and a
-terminal for a notice's Log in or Install button.
+Status, 2026-11-10: it opens, and slices 1 to 4 below are done except IME
+and dictation. `apps/openagents-desktop/linux/build.sh --install --open`
+builds it, installs `~/.openagents/bin/openagents-desktop` and opens the
+window on `coderos-4080`.
 
-The host is `apps/shared/host/linux/` (shared, 300 lines of C over the
+What was checked: `coax/web/tool.sh apps/openagents-desktop/linux/check.coax`
+passes 13 cases offscreen. Six are pictures against `goldens/linux/` (the
+demo conversation at two sizes, a table, the sidebar closed, no Claude Code
+installed, an attachment). Seven are what the app prints: a turn, an
+approval allowed and one denied, Claude asking Codex and Codex asking Claude
+through the room, a session kept at quit and continued after reopening. They
+use the stand-in Claude Code and Codex the Mac's checks use. One real Claude
+Code turn also ran offscreen, and the window held 60 frames a second
+through a resize. Text is drawn and kerned by Coax (`components/raster/`,
+`coax/lib/text/ttf.coax`); the kerning agrees with fontTools on all 2,891
+kerned ASCII pairs of Geist.
+
+Not checked: typing into the window with a real keyboard, an input method,
+and choosing a file in the desktop's file chooser (the dialog was opened
+and closed by a test, never answered). Not built on Linux: dictation,
+colour emoji, the five font dilation levels, and a terminal for a notice's
+Log in or Install button (the command is printed instead).
+
+The host is `apps/shared/host/linux/` (shared: the window and pipeline in
+`ui-host.c`, the desktop's file chooser in `portal.c`, over the
 realms' Vulkan and Wayland helpers in `verse/gpu/`). The audit in
 [docs/research/exact/04-apps-audit-2026-11-10.md](../research/exact/04-apps-audit-2026-11-10.md)
 recommends its `--do` steps become `coax drive` operations.

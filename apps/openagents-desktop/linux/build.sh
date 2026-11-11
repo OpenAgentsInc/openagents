@@ -12,7 +12,7 @@ repo="$(cd "$here/../../.." && pwd)"
 if [[ -z "${OA_LINUX_BUILD:-}" ]]; then
   export OA_LINUX_BUILD=1 OA_LINUX_BUILD_ENTRY="$here/build.sh"
   printf -v OA_LINUX_BUILD_ARGS '%q ' "$@"; export OA_LINUX_BUILD_ARGS
-  exec nix-shell -p gcc pkg-config vulkan-headers vulkan-loader wayland wayland-scanner wayland-protocols libxkbcommon \
+  exec nix-shell -p gcc pkg-config vulkan-headers vulkan-loader wayland wayland-scanner wayland-protocols libxkbcommon systemd \
     --run 'eval "exec \"$OA_LINUX_BUILD_ENTRY\" $OA_LINUX_BUILD_ARGS"'
 fi
 coax="${COAX:-$repo/coax/bin/coax}"
@@ -38,10 +38,10 @@ cc "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-si
 objcopy --keep-global-symbol=coaxial_lab_nip98 "$work/c/lab-sign.o"
 # shellcheck disable=SC2046
 cc "${cflags[@]}" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 \
-  "$here/main.c" "$here/stubs.c" "$app/zeron-face.c" "$repo/apps/shared/host/linux/ui-host.c" "$work/c/zeron.c" "$work/c/lab-sign.o" "$work/c/wayland-input.c" "$work/c/wayland-text.c" \
+  "$here/main.c" "$here/stubs.c" "$app/zeron-face.c" "$repo/apps/shared/host/linux/ui-host.c" "$repo/apps/shared/host/linux/portal.c" "$work/c/zeron.c" "$work/c/lab-sign.o" "$work/c/wayland-input.c" "$work/c/wayland-text.c" \
   "$repo/verse/gpu/vkc.c" "$repo/verse/gpu/vks.c" "$repo/verse/gpu/vkp.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
   "$work/wl/xdg-shell-protocol.c" "$work/wl/xdg-decoration-unstable-v1-protocol.c" "$work/wl/text-input-unstable-v3-protocol.c" \
-  $(pkg-config --cflags --libs wayland-client wayland-cursor xkbcommon) -lvulkan -lpthread -lm -o "$work/OpenAgents.new"
+  $(pkg-config --cflags --libs wayland-client wayland-cursor xkbcommon libsystemd) -lvulkan -lpthread -lm -o "$work/OpenAgents.new"
 rm -rf "$work/fonts" "$work/icons"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/"
 cp "$repo/components/zeron/NOTICE" "$work/NOTICE"

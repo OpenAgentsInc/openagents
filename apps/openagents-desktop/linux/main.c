@@ -9,7 +9,7 @@
 //   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N]
 //   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "STEP ; STEP"]
 // Steps, as the Mac's (Sources/Zeron.swift step): wait SECONDS, waitidle [SECONDS], fixture
-// open|closed|table, newchat, sidebar, room, folder PATH, closetab, type TEXT, send TEXT, stop,
+// open|closed|table, newchat, sidebar, room, folder PATH, attach PATH, closetab, type TEXT, send TEXT, stop,
 // mode|model|effort|access NAME, plan on|off, open model|access, answer allow|deny, click X,Y[,N],
 // move X,Y, wheel DY, scroll PX, key CHORD (cmd+1, shift+down, enter), status, last, desk.
 //   OpenAgents --mcp-room SOCKET AGENT    the room's MCP server, which Codex starts
@@ -17,6 +17,7 @@
 #include "zeron.h"
 #include "face.h"
 #include "ui-host.h"
+#include "portal.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -58,6 +59,7 @@ typedef struct {
   int room_fd, room_conns[16], room_n[16];
   char room_buf[16][65536];
   int wait_idle;      // --do: the wait ends when the running turn does
+  Portal *portal;     // the desktop's file chooser; NULL offscreen and where there is no session bus
 } App;
 
 static uint8_t *slurp(const char *dir, const char *sub, const char *name, const char *ext, size_t *n) {
@@ -215,6 +217,38 @@ static int restore(App *a, const char *cwd) {
   return count;
 }
 
+// ---- attachments (Sources/Zeron.swift attach): a file is copied into the app's uploads folder as
+// {id8}-{name}, then handed to the chat with its bytes when it is small enough to send inline.
+
+#define UPLOAD_MAX (24 << 20)
+#define INLINE_MAX (5 << 20)
+static void hand_over(App *a, const char *path, const char *name, const uint8_t *bytes, size_t n, int failure) {
+  zr_attach_file(active(a), (const uint8_t *)path, (int32_t)strlen(path), (const uint8_t *)name, (int32_t)strlen(name), bytes, (int32_t)n, failure);
+}
+static void attach(App *a, const char *path) {
+  const char *name = strrchr(path, '/'); name = name ? name + 1 : path;
+  struct stat st;
+  if (stat(path, &st) || !S_ISREG(st.st_mode)) { hand_over(a, "", name, NULL, 0, 2); return; }   // not a file
+  if (st.st_size > UPLOAD_MAX) { hand_over(a, "", name, NULL, 0, 1); return; }                    // too large
+  size_t n; uint8_t *bytes = read_file(path, &n);
+  if (!bytes) { hand_over(a, "", name, NULL, 0, 3); return; }                                     // unreadable
+  // the staged name: [A-Za-z0-9._-] kept and the rest "_", its last 80 characters, "upload" for none
+  char kept[128]; size_t len = strlen(name), from = len > 80 ? len - 80 : 0, k = 0;
+  for (size_t i = from; i < len; i++) { char c = name[i]; kept[k++] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' ? c : '_'; }
+  kept[k] = 0;
+  uint8_t r[4] = {0}; FILE *f = fopen("/dev/urandom", "rb");
+  if (f) { if (fread(r, 1, 4, f) != 4) memset(r, 0, 4); fclose(f); }
+  const char *home = getenv("HOME");
+  char dest[PATH_MAX]; snprintf(dest, sizeof dest, "%s/.openagents/desktop/uploads/%02x%02x%02x%02x-%s", home ? home : "/tmp", r[0], r[1], r[2], r[3], k ? kept : "upload");
+  make_dirs(dest);
+  int fd = open(dest, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  int ok = fd >= 0 && write(fd, bytes, n) == (ssize_t)n;
+  if (fd >= 0 && close(fd)) ok = 0;
+  if (!ok) hand_over(a, "", name, NULL, 0, 3);
+  else hand_over(a, dest, name, n <= INLINE_MAX ? bytes : NULL, n <= INLINE_MAX ? n : 0, 0);
+  free(bytes);
+}
+
 static void new_session(App *a, const char *cwd) {
   void *chat = zr_new();
   if (!chat) return;
@@ -318,6 +352,9 @@ static int mcp_room(const char *path, int agent) {
   return 0;
 }
 
+// What the file chooser came back with: files to attach (request 1), or the folder a new session works in (2).
+static void on_chosen(void *user, int request, const char *path) { App *a = user; if (request == 2) new_session(a, path); else attach(a, path); }
+
 static int on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   App *a = user;
   void *shown = active(a);
@@ -332,10 +369,11 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
   coaxial_ra_clean(plan_of(a));
   if (coaxial_ra_serve(atlas_of(shown), plan_of(a), (coax_v_t_RaFonts){&a->fonts, 1}, (coax_v_s64){a->weights, a->nfonts}, (coax_v_f32){a->sizes, a->nfonts},
                        (coax_v_u8){c->mono, (int64_t)mono_bytes(a)}, (coax_v_t_RaWork){a->work, 1}) > 0) atlas_upload(a, c);
-  if (dsk_take_action(a->desk) == 1) {   // New session in a folder: no folder picker yet, so the shown chat's folder
+  portal_poll(a->portal, on_chosen, a);
+  if (dsk_take_action(a->desk) == 1) {   // New session in a folder: the desktop's chooser, opened at the shown chat's folder
     uint8_t cwd[PATH_MAX]; int m = dsk_cwd(a->desk, cwd, sizeof cwd - 1);
     cwd[m > 0 ? m : 0] = 0;
-    new_session(a, m > 0 ? (const char *)cwd : getenv("HOME"));
+    if (!portal_pick(a->portal, 2, 1, "The folder the new session works in", (const char *)cwd)) new_session(a, m > 0 ? (const char *)cwd : getenv("HOME"));
   }
   int own = dsk_cursor(a->desk);
   ui_cursor(a->host, own >= 0 ? own : zr_cursor(shown));
@@ -343,6 +381,7 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
   static const char *const commands[6] = {NULL, "claude /login", "curl -fsSL https://claude.ai/install.sh | bash", NULL, "codex login", "npm install -g @openai/codex"};
   int action = zr_take_action(shown);
   if (action > 0 && action < 6 && commands[action]) fprintf(stderr, "OpenAgents: run this in a terminal: %s\n", commands[action]);
+  if (action == 3 && !portal_pick(a->portal, 1, 0, "Attach files", NULL)) fprintf(stderr, "OpenAgents: no file chooser on this desktop\n");   // the paperclip
   static uint8_t copied[65536];
   int k = zr_take_copy(shown, copied, sizeof copied);
   if (k > 0) ui_copy(a->host, (const char *)copied, (size_t)k);
@@ -418,6 +457,7 @@ static double step(App *a, char *line) {
   else if (!strcmp(line, "model") || !strcmp(line, "effort")) { if (!zr_choose_named(state, line[0] == 'm' ? 1 : 2, (const uint8_t *)arg, (int32_t)strlen(arg))) printf("no %s named %s\n", line, arg); }
   else if (!strcmp(line, "plan")) zr_choose(state, 5, strcmp(arg, "off") != 0);
   else if (!strcmp(line, "open")) zr_open_menu(state, !strcmp(arg, "access") ? 3 : 1);
+  else if (!strcmp(line, "attach")) attach(a, arg);
   else if (!strcmp(line, "folder")) new_session(a, arg);   // a new session in that folder, as the folder picker makes it
   else if (!strcmp(line, "room")) dsk_show_room(a->desk);
   else if (!strcmp(line, "closetab")) { if (!dsk_close_tab(a->desk)) printf("closetab: the last tab stays\n"); }
@@ -474,6 +514,7 @@ int main(int argc, char **argv) {
   if (!a.host) return 1;
   ui_set_dpr(a.host, a.dpr);
   if (!atlas_setup(&a)) return 1;
+  if (!shot) a.portal = portal_open();
   const char *cwd = value(argc, argv, "--cwd");
   if (!cwd) cwd = getenv("HOME");
   if (!cwd) cwd = "/";
@@ -521,6 +562,7 @@ int main(int argc, char **argv) {
   }
   flush_store(&a, 1);
   save_settings(&a);
+  portal_close(a.portal);
   dsk_quit(a.desk);
   if (a.room_fd >= 0) { close(a.room_fd); unlink(a.room_path); }
   ui_close(a.host);

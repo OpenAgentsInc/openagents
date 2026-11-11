@@ -26,12 +26,13 @@ LC_PIXELS :: 2;
 // A case's engine: "demo" (the demo conversation), "" (an empty home with no Claude Code on PATH), or a
 // folder of zeron/fixtures/ whose stand-in claude and codex are on PATH. `@H` in its steps is the case's home.
 LcCase :: struct { name: string; size: string; engine: string; steps: string; expect: string; picture: bool; settings: bool; }
-LC_CASES :: [12] LcCase.[
+LC_CASES :: [13] LcCase.[
   LcCase.{name = "chat-1320x880", size = "1320,880", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
   LcCase.{name = "chat-900x600", size = "900,600", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
   LcCase.{name = "chat-table", size = "1320,880", engine = "demo", steps = "fixture table", expect = "", picture = true, settings = false},
   LcCase.{name = "sidebar-closed", size = "1320,880", engine = "demo", steps = "fixture open ; sidebar", expect = "", picture = true, settings = false},
   LcCase.{name = "claude-missing", size = "1320,880", engine = "", steps = "wait 2 ; type Hello from Coax", expect = "", picture = true, settings = false},
+  LcCase.{name = "attach", size = "1320,880", engine = "", steps = "wait 2 ; attach @H/work/notes.txt ; attach @H/work/missing.bin ; type see the file", expect = "", picture = true, settings = false},
   LcCase.{name = "turn", size = "1320,880", engine = "stream", steps = "wait 1 ; send What is two plus two? ; waitidle 10 ; last", expect = "last: Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = false},
   LcCase.{name = "approval-allow", size = "1320,880", engine = "asks", steps = "wait 1 ; access supervised ; send list the files ; wait 3 ; answer allow ; waitidle 10 ; last", expect = "last: Allowed: ls found a.txt and b.txt.", picture = false, settings = false},
   LcCase.{name = "approval-deny", size = "1320,880", engine = "asks", steps = "wait 1 ; access supervised ; send list the files ; wait 3 ; answer deny ; waitidle 10 ; last", expect = "last: Refused: The user denied this.", picture = false, settings = false},
@@ -122,6 +123,7 @@ tool_main :: () -> int #export_c #effects(all) {
   mk2 := [4] string.["mkdir", "-p", lc_path(pb[7][..], home, "/.codex"), lc_path(pb[8][..], home, "/work/zeron")];
   r = proc_run(mk2[..], 20000, out[..], err[..]);
   if !fs_write(lc_path(pb[7][..], home, "/.codex/auth.json"), "{}\n") { return 2; }
+  if !fs_write(lc_path(pb[7][..], home, "/work/notes.txt"), "alpha\nbeta\n") { return 2; }   // the attach case's file
   path := proc_getenv("PATH", env_b[..]);
   failed := 0;
   cases := LC_CASES;
