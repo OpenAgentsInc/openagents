@@ -1631,7 +1631,7 @@ person at the computer allows a pairing, the browser grant has `observe` and
 `operate` for seven days, and `thread.run` starts a Coder job that reads and
 uses the realm tools only. The grant rules are
 [`coder/tui/host_grants.coax`](../../../coder/tui/host_grants.coax) and the
-job's ceiling is [`coder/tui/ceiling.coax`](../../../coder/tui/ceiling.coax),
+job's ceiling is [`coax/lib/agent/engine/ceiling.coax`](../../../coax/lib/agent/engine/ceiling.coax),
 both `#authority` with no surviving mutants. `coder/tui/host_smoke.coax` runs
 it against a local relay with a stand-in browser key, and on the claude
 engine with a stand-in `claude`.

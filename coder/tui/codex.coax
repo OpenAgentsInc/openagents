@@ -10,7 +10,7 @@
 // --ask each approval comes to the y/a/n prompt instead. Under a policy the
 // sandbox follows its ceiling (cd_codex_sandbox): read-only below write.
 
-#load "codex-options.coax";
+#load "../../coax/lib/agent/engine/codex-options.coax";
 
 // This read-only handoff is available in every Codex chat, without requiring
 // MCP configuration or --coder-tools. Share the public catalog's contract.

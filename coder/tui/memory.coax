@@ -33,50 +33,7 @@ MEM_USER :: 1;
 
 MemStore :: struct { events: [MEM_EVENTS] MmEvent; bytes: [MEM_BYTES] u8; facts: [MEM_EVENTS] MmFact; }
 
-mem_hexd :: (c: u8) -> int {
-  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
-  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
-  return -1;
-}
-
-// Appends b as lower-case hex.
-mem_hex :: (out: [] u8, at: int, b: string) -> int {
-  digits := "0123456789abcdef";
-  n := at;
-  for x: b { if n + 2 <= out.count { out[n] = digits[cast(int) (x >> 4)]; out[n + 1] = digits[cast(int) (x & 15)]; } n += 2; }
-  return n;
-}
-
-// Decodes hex s into out from at; the end, or -1 when s is not hex or out is full.
-mem_unhex :: (s: string, out: [] u8, at: int) -> int {
-  if s.count % 2 != 0 || at + s.count / 2 > out.count { return -1; }
-  for i: 0..<s.count / 2 {
-    h := mem_hexd(s[2 * i]); l := mem_hexd(s[2 * i + 1]);
-    if h < 0 || l < 0 { return -1; }
-    out[at + i] = cast,trunc(u8) (h * 16 + l);
-  }
-  return at + s.count / 2;
-}
-
-mem_d32 :: (s: string, ok: [] bool) -> [32] u8 {
-  d: [32] u8;
-  if s.count != 64 || mem_unhex(s, d[..], 0) != 32 { ok[0] = false; }
-  return d;
-}
-
-// A string field's raw value without its quotes (hex and names only, no escapes).
-mem_s :: (line: string, key: string) -> string {
-  r := cl_raw(line, key);
-  if r.count < 2 || r[0] != '"' { return ""; }
-  return cast(string) r[1..<r.count - 1];
-}
-
-mem_i :: (line: string, key: string, ok: [] bool) -> int {
-  v := cl_int(line, key);
-  if !v.ok { ok[0] = false; }
-  return v.value;
-}
-
+// mem_hex, mem_unhex, mem_d32, mem_s and mem_i: coax/lib/agent/engine/consent-gate.coax (the consent ledger reads the same way).
 mem_op_name :: (o: MmOp) -> string { return ifx o == MmOp.remember then "remember" else ifx o == MmOp.revise then "revise" else "forget"; }
 mem_scope_name :: (s: MmScope) -> string { return ifx s == MmScope.session then "session" else ifx s == MmScope.user then "user" else "project"; }
 mem_reason_name :: (r: MmReason) -> string { return ifx r == MmReason.none then "none" else ifx r == MmReason.correction then "correction" else ifx r == MmReason.update then "update" else "resolve"; }

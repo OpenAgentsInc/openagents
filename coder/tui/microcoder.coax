@@ -9,7 +9,7 @@
 // and how its lines are read are the shared engine's (coax/lib/agent/engine/microcoder.coax
 // McWorker, beside the desktop Lab's in-process run of the same loop); what it prints is Coder's.
 
-#load "micro-observation.coax";
+#load "../../coax/lib/agent/engine/micro-observation.coax";
 
 CD_MC_TOOL :: "/coax/web/tool.sh";              // under the repo
 CD_MC_WORKER :: "/coder/tui/mcworker.coax";

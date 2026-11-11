@@ -38,6 +38,7 @@
 #load "../../coax/lib/agent/engine/engine.coax";   // the shared engines (Claude, Codex, Cursor, the Microcoder worker) and the session record
 #load "../../coax/lib/agent/engine/echo.coax";     // the offline echo engine
 #load "../../coax/lib/agent/session/fork.coax";    // fork and context
+#load "../../coax/lib/agent/engine/run.coax";      // the turn runner: plain stream-json runs (cd_runner_run)
 #load "../../psionic/lib/apple-fm.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
@@ -51,7 +52,7 @@
 #load "plugins.coax";
 #load "router.coax";
 #load "mcp.coax";
-#load "ceiling.coax";
+#load "../../coax/lib/agent/engine/ceiling.coax";
 #load "approvals.coax";
 #load "term.coax";
 #load "acp.coax";
@@ -993,19 +994,8 @@ cd_claude_api_key_set :: () -> bool {
 // unless ANTHROPIC_API_KEY is set: then that key authenticates the child
 // and the login is not used.
 cd_claude_options :: (out: [] ClOptions, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool, tool_hooks: bool, api_key: bool) {
-  o: [1] ClOptions;
-  o[0].include_partial_messages = true;
-  if tool_hooks { cl_add_hook(o[..], "PreToolUse", "", 60.0); }    // every tool call first passes the policy and the plugins' tool_call hooks
-  if coder_tools { cd_claude_coder_server(o[..]); }
-  if effort.count > 0 { o[0].effort = effort; }
-  // Tools run without asking, as with claude --dangerously-skip-permissions;
-  // --ask sends each permission request to the y/a/n prompt instead.
-  if ask { o[0].permission_handler = true; }
-  else { o[0].permission_mode = ClPermissionMode.bypass_permissions; o[0].allow_dangerously_skip_permissions = true; }
-  o[0].cwd = cwd;
-  if model.count > 0 { o[0].model = model; }
-  if !api_key { cl_remove_env(o[..], "ANTHROPIC_API_KEY"); }
-  out[0] = o[0];
+  tr_claude_options(out, cwd, model, ask, effort, tool_hooks, api_key);      // run.coax: the same options a runner's turn has
+  if coder_tools { cd_claude_coder_server(out); }
 }
 
 // Starts the CLI on the first message; later messages go to the same session.
@@ -2492,6 +2482,122 @@ cd_cmd_stop :: (id_in: string, json: bool) -> int {
   return 1;
 }
 
+// ---------------------------------------------------------------- the turn runner
+
+// A plain `coder run` or `fork` with --stream-json that asks nothing of
+// anyone runs on the shared turn runner (coax/lib/agent/engine/run.coax),
+// the one Aethyrforge's chat calls: no --ask, policy, realm or Coder tools,
+// plugin hooks, goal, deadline, ask file, "$ " command or slash command.
+// Everything else runs here, on the terminal's own engine code.
+cd_any_hook :: (a: [] App) -> bool {
+  r := a[0].pl;
+  if r.count == 0 { return false; }
+  for i: 0..<r[0].nhooks { if r[0].p[r[0].hooks[i].owner].state == PL_ACTIVE { return true; } }
+  return false;
+}
+
+cd_runner_ok :: (a: [] App, args: [] Args, verb: string, task: string) -> bool {
+  if verb != "run" && verb != "fork" { return false; }
+  if !a[0].log[0].json || !a[0].log[0].live { return false; }
+  if a[0].ask_first || a[0].pol[0].on || a[0].pol[0].realm || a[0].coder_tools || cd_any_hook(a) { return false; }
+  if args_value(args, "--goal", "").count > 0 || args_value(args, "--deadline", "").count > 0 { return false; }
+  eb: [8] u8; if cl_getenv("CODER_ASK_FILE", eb[..]) == "1" { return false; }
+  s := 0; while s < task.count && (task[s] == ' ' || task[s] == 10) { s += 1; }
+  t := cast(string) task[s..<task.count];
+  if t.count > 2 && t[0] == '$' && t[1] == ' ' { return false; }
+  return !cd_is_slash_command(a[0].pl, t);
+}
+
+// What --json owes stdout, and a line that could not be stored stops the run.
+cd_runner_drain :: (a: [] App, r: [] TrRun) {
+  l := a[0].log;
+  if l[0].nout > 0 { x := cxterm_write(l[0].out[0..<l[0].nout]); l[0].nout = 0; }
+  if sw_lost(l) {
+    tr_close(r); r[0].running = false; r[0].ask = false; r[0].exit = 1;
+    tool_errln("Coder session storage failed; execution stopped. Inspect outstanding effects before retrying.");
+  }
+}
+
+// Codex's call to Coder's own tool (coder_session_read), checked as cd_codex_tool_call checks it.
+cd_runner_tool :: (a: [] App, r: [] TrRun) {
+  name := cast(string) r[0].tool_name[0..<r[0].ntool_name];
+  args := cast(string) r[0].tool_args[0..<r[0].ntool_args];
+  if !r[0].tool_active { tr_tool_answer(r, "Coder's Codex turn is inactive.", false); return; }
+  if name != "coder_session_read" { tr_tool_answer(r, "Unknown Coder tool.", false); return; }
+  if !r[0].tool_turn { tr_tool_answer(r, "Coder's Codex turn is inactive.", false); return; }
+  if args.count == 0 || r[0].tool_long || args.count > a[0].ask_input.count { tr_tool_answer(r, "Invalid or overlong reader arguments.", false); return; }
+  out: [CSR_OUTPUT_MAX] u8;
+  got := csr_request_in(args, a[0].cwd, out[..]);
+  tr_tool_answer(r, got, cl_raw(got, "error").count == 0);
+}
+
+// The run on the runner, as the plain loop runs it: System One's pick when
+// routed, the remembered facts, the turn, then a detached job's next messages,
+// `coder stop`'s file and the watchdog's redirect.
+cd_runner_run :: (a: [] App, args: [] Args, task: string, routed: bool, sess: string) -> int {
+  r_b: [1] TrRun; r := r_b[..];
+  tr_attach(r, a[0].log, a[0].eng, a[0].ses, a[0].ses_pool, a[0].cxe, a[0].cx_ses, a[0].cue, a[0].mcw[..], a[0].df_table, a[0].vt[..], a[0].vt_out[..]);
+  tr_owner(r, a[0].cwd, CODER_VERSION, "openagents-coder", "Coder");
+  r[0].engine = a[0].engine; r[0].model_engine = a[0].model_engine;
+  r[0].nmodel = cd_cat(r[0].model_b[..], 0, a[0].model);
+  r[0].neffort = cd_cat(r[0].effort_b[..], 0, cd_effort(a)); r[0].effort_flag = args_has(args, "--effort");
+  kept := ccx_keep(r[0].cx_options[0].launch_effort[..], ccx_text(a[0].cx_options[0].launch_effort[..]));
+  r[0].api_key = a[0].api_key;
+  r[0].nmcp = cd_cat(r[0].mcp[..], 0, cd_claude_realm_tools(a));
+  r[0].ncx_tools = cd_cat(r[0].cx_tools[..], 0, cd_codex_tools(a[0].cx_tools[..]));
+  r[0].ncontext = cd_cat(r[0].context[..], 0, a[0].context);
+  r[0].npre = cd_cat(r[0].pre_b[..], 0, a[0].pre);
+  r[0].nresume = cd_cat(r[0].resume[..], 0, cast(string) a[0].resume[0..<a[0].nresume]);
+  r[0].ncursor_resume = cd_cat(r[0].cursor_resume[..], 0, cast(string) a[0].cursor_resume[0..<a[0].ncursor_resume]);
+  if routed {
+    pb: [1400] u8;
+    ok := tr_begin(r, task, gt_path(pb[..]));
+    cd_runner_drain(a, r);
+    if !ok { return r[0].exit; }
+  }
+  if !a[0].no_memory {          // the facts from `coder remember`, for the engine that runs (chapter 19)
+    held: [1] int;
+    r[0].nmemory = mem_brief(a[0].cwd, r[0].engine, r[0].memory[..], held[..]); r[0].held = held[0];
+    if r[0].nmemory < 0 { r[0].nmemory = 0; }
+  }
+  tr_submit(r, task); cd_runner_drain(a, r);
+  stb: [1300] u8; stop_file := cs_sibling(a[0].log, ".stop", stb[..]);
+  tsb: [1300] u8; turnstop_file := cs_sibling(a[0].log, ".turnstop", tsb[..]);
+  pfb0: [1300] u8; job_pid_file := cs_sibling(a[0].log, ".pid", pfb0[..]);
+  next_look := cd_now(a); stopped := false;
+  for guard: 0..<100000000 {
+    if !r[0].running {
+      if sess.count == 0 || stopped { break; }
+      mb: [65536] u8; m := cd_msg_next(cs_id(a[0].log), mb[..]);
+      if m.count == 0 {
+        pt: [32] u8; ptn := fs_read(job_pid_file, pt[..]);
+        x := fs_remove(job_pid_file);
+        m = cd_msg_next(cs_id(a[0].log), mb[..]);
+        if m.count == 0 { break; }
+        if ptn > 0 { y := fs_write(job_pid_file, cast(string) pt[0..<ptn]); }
+      }
+      tr_submit(r, m); cd_runner_drain(a, r);
+      continue;
+    }
+    if r[0].ask { tr_answer(r, false); }
+    if r[0].tool { cd_runner_tool(a, r); }
+    if !stopped && stop_file.count > 0 && cd_now(a) >= next_look {
+      next_look = cd_now(a) + 200;
+      if fs_exists(stop_file) { stopped = true; tr_stop(r); }
+      else if !r[0].redirecting && fs_exists(turnstop_file) { x := fs_remove(turnstop_file); r[0].redirecting = true; tr_stop(r); }
+    }
+    changed := tr_poll(r);
+    cd_runner_drain(a, r);
+    if !changed { x := cxproc_sleep_ms(5); }
+  }
+  if stop_file.count > 0 { x := fs_remove(stop_file); }
+  cd_report_job(a);
+  pfb: [1300] u8; pid_file := cs_sibling(a[0].log, ".pid", pfb[..]);
+  if sess.count > 0 && pid_file.count > 0 { x := fs_remove(pid_file); }
+  tr_close(r); cd_runner_drain(a, r); cd_term_stop(a[0].term[..]);
+  return r[0].exit;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
@@ -2690,6 +2796,7 @@ tool_main :: () -> int #export_c #effects(all) {
     a[0].log[0].json = json;
     a[0].log[0].live = args_has(args,"--stream-json");
     if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
+    if cd_runner_ok(a, args, verb, task) { return cd_runner_run(a, args, task, cr_auto(verb, want), sess); }
     tui_ed_set(a[0].ed[..], task);
     // No --engine: System One chooses (chapter 13); the session's first lines say what and why.
     rt: [1] AgRoute; routed := cr_auto(verb,want);

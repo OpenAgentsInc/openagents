@@ -294,6 +294,6 @@ long job while it runs. No Claude or Codex login is used:
       --local http://127.0.0.1:47999 /tmp/spec.txt [SHOTS_DIR] [--require-hardware]
 
 What a job from the browser may do is decided on the computer. `coder/tui/host_grants.coax`
-holds the grants. `coder/tui/ceiling.coax` holds the read ceiling with the realm tools, under which
+holds the grants. `coax/lib/agent/engine/ceiling.coax` holds the read ceiling with the realm tools, under which
 a shell command or a file write is refused, and the refusal shows as a step. Both are `#authority`
 with no surviving mutants. On Codex the ceiling is also a read-only sandbox.

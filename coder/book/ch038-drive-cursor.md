@@ -111,7 +111,7 @@ protocol, not a byte capture of a live CLI. The pinned build is
 - [ ] A live smoke passes against CLI build `2026.10.14-941492e` on a
   logged-in account.
 - [x] Approvals are answered by chapter 5's policy. The decision is
-  `cd_policy_decide` in [ceiling.coax](../tui/ceiling.coax); the client
+  `cd_policy_decide` in [ceiling.coax](../../coax/lib/agent/engine/ceiling.coax); the client
   only maps kinds and offered options.
 
 ## Sources

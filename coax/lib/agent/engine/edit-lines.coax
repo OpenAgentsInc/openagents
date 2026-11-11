@@ -1,0 +1,111 @@
+// An edit's lines, compared: the lines of a text, a line diff by longest
+// common subsequence (removals before additions, as a reader expects), and
+// the counts a session's diff line carries (writer.coax sw_diff). Coder's
+// terminal draws the rows from these (coder/tui/diff.coax); the turn runner
+// (run.coax) only counts. Moved from coder/tui/diff.coax.
+
+DF_MAX_LINES :: 400;       // lines per side the diff compares
+
+DfLines :: struct { at: [DF_MAX_LINES] int; end: [DF_MAX_LINES] int; n: int; more: bool; }
+
+df_split :: (s: string, l: [] DfLines) {
+  l[0].n = 0; l[0].more = false;
+  if s.count == 0 { return; }
+  at := 0;
+  for guard: 0..<s.count + 1 {
+    if l[0].n >= DF_MAX_LINES { l[0].more = true; return; }
+    e := at; while e < s.count && s[e] != 10 { e += 1; }
+    l[0].at[l[0].n] = at; l[0].end[l[0].n] = e; l[0].n += 1;
+    if e >= s.count { return; }
+    at = e + 1;
+    if at >= s.count { return; }      // a trailing newline ends the last line
+  }
+}
+
+df_line :: (s: string, l: [] DfLines, i: int) -> string { return cast(string) s[l[0].at[i]..<l[0].end[i]]; }
+
+// Kinds of diff rows.
+DF_SAME :: 0; DF_DEL :: 1; DF_ADD :: 2;
+DfOps :: struct { kind: [2 * DF_MAX_LINES] u8; oi: [2 * DF_MAX_LINES] int; ni: [2 * DF_MAX_LINES] int; n: int; }
+DfTable :: struct { t: [(DF_MAX_LINES + 1) * (DF_MAX_LINES + 1)] u16; }
+
+// A line diff by longest common subsequence.
+df_ops :: (old: string, ol: [] DfLines, after: string, nl: [] DfLines, ops: [] DfOps, tb: [] DfTable) {
+  n := ol[0].n; m := nl[0].n; w := m + 1;
+  for i: 0..<n + 1 { tb[0].t[i * w + m] = 0; }
+  for j: 0..<m + 1 { tb[0].t[n * w + j] = 0; }
+  i := n - 1;
+  while i >= 0 {
+    j := m - 1;
+    while j >= 0 {
+      if df_line(old, ol, i) == df_line(after, nl, j) { tb[0].t[i * w + j] = tb[0].t[(i + 1) * w + j + 1] + 1; }
+      else {
+        x := tb[0].t[(i + 1) * w + j]; y := tb[0].t[i * w + j + 1];
+        tb[0].t[i * w + j] = ifx x >= y then x else y;
+      }
+      j -= 1;
+    }
+    i -= 1;
+  }
+  ops[0].n = 0; i = 0; j := 0;
+  while i < n || j < m {
+    k := ops[0].n;
+    if i < n && j < m && df_line(old, ol, i) == df_line(after, nl, j) { ops[0].kind[k] = DF_SAME; ops[0].oi[k] = i; ops[0].ni[k] = j; i += 1; j += 1; }
+    // removals before additions, as a reader expects
+    else if i < n && (j >= m || tb[0].t[(i + 1) * w + j] >= tb[0].t[i * w + j + 1]) { ops[0].kind[k] = DF_DEL; ops[0].oi[k] = i; ops[0].ni[k] = j; i += 1; }
+    else { ops[0].kind[k] = DF_ADD; ops[0].oi[k] = i; ops[0].ni[k] = j; j += 1; }
+    ops[0].n += 1;
+  }
+}
+
+// An Edit's counts: lines added and removed between old and after; a side
+// too long to compare line by line counts as all removed, then all added.
+df_counts :: (old: string, after: string, tb: [] DfTable, adds: [] int, dels: [] int) {
+  ol_b: [1] DfLines; ol := ol_b[..]; df_split(old, ol);
+  nl_b: [1] DfLines; nl := nl_b[..]; df_split(after, nl);
+  adds[0] = 0; dels[0] = 0;
+  if ol[0].more || nl[0].more { dels[0] = ol[0].n; adds[0] = nl[0].n; return; }
+  ops_b: [1] DfOps; ops := ops_b[..];
+  df_ops(old, ol, after, nl, ops, tb);
+  for k: 0..<ops[0].n { if ops[0].kind[k] == DF_ADD { adds[0] += 1; } else if ops[0].kind[k] == DF_DEL { dels[0] += 1; } }
+}
+
+// The lines a text has (a Write's, or a change shown whole), up to DF_MAX_LINES.
+df_count_lines :: (s: string) -> int { l: [1] DfLines; df_split(s, l[..]); return l[0].n; }
+
+// Whether a unified diff has a hunk header ("@@ ").
+df_has_hunks :: (diff: string) -> bool {
+  i := 0;
+  while i < diff.count { if i + 3 <= diff.count && cast(string) diff[i..<i + 3] == "@@ " { return true; } while i < diff.count && diff[i] != 10 { i += 1; } i += 1; }
+  return false;
+}
+
+// A unified diff's added and removed lines, its ---/+++ headers left out.
+df_unified_counts :: (diff: string, adds: [] int, dels: [] int) {
+  adds[0] = 0; dels[0] = 0; at := 0;
+  while at < diff.count {
+    e := at; while e < diff.count && diff[e] != 10 { e += 1; }
+    line := cast(string) diff[at..<e];
+    if line.count > 0 && line[0] == '+' && !(line.count >= 3 && cast(string) line[0..<3] == "+++") { adds[0] += 1; }
+    if line.count > 0 && line[0] == '-' && !(line.count >= 3 && cast(string) line[0..<3] == "---") { dels[0] += 1; }
+    at = e + 1;
+  }
+}
+
+#test "an edit counts its changed lines; a trailing newline ends the last line" {
+  tb: [1] DfTable; a: [1] int; d: [1] int;
+  df_counts("- bred\n- milk\n", "- bread\n- milk\n", tb[..], a[..], d[..]);
+  #assert a[0] == 1 && d[0] == 1;
+  df_counts("x\ny\n", "x\ny\nz", tb[..], a[..], d[..]);
+  #assert a[0] == 1 && d[0] == 0;
+  df_counts("", "one\ntwo", tb[..], a[..], d[..]);
+  #assert a[0] == 2 && d[0] == 0;
+  #assert df_count_lines("a\nb\n") == 2 && df_count_lines("") == 0 && df_count_lines("a") == 1;
+}
+
+#test "a unified diff counts its lines without its headers, and knows its hunks" {
+  a: [1] int; d: [1] int;
+  u := "--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n-old\n+new\n same\n";
+  df_unified_counts(u, a[..], d[..]);
+  #assert a[0] == 1 && d[0] == 1 && df_has_hunks(u) && !df_has_hunks("just text\n");
+}

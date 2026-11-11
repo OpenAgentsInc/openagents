@@ -538,7 +538,7 @@ Every rule a browser meets is in two `#authority` files, each checked by
 record: pairing waits and limits, allow, deny, forget and epochs, what
 `browser.status` answers, the refusal code for each admission verdict, that
 only the key that started a thread may read or stop it, the two-job limit,
-and the job's arguments. [ceiling.coax](../../coder/tui/ceiling.coax) holds
+and the job's arguments. [ceiling.coax](../../coax/lib/agent/engine/ceiling.coax) holds
 the approval policy every engine answers by: each tool's effect, the
 verdicts, the roots, the `--realm-tools` exception, and Codex's sandbox.
 

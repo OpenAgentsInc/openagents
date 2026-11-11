@@ -22,8 +22,8 @@
 // --ceiling read --allow read --realm-tools: it reads, and the openagents
 // MCP server's realm tools run; nothing else does. Codex's sandbox follows
 // the ceiling (cd_codex_sandbox), so a read ceiling is a read-only sandbox.
-//   coax/bin/coax test coder/tui/ceiling.coax --library
-//   coax/bin/coax mutate coder/tui/ceiling.coax --library
+//   coax/bin/coax test coax/lib/agent/engine/ceiling.coax --library
+//   coax/bin/coax mutate coax/lib/agent/engine/ceiling.coax --library
 #authority;
 
 CD_EFFECTS :: [4] string.["read", "network", "write", "run"];

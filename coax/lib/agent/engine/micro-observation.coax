@@ -1,5 +1,5 @@
 // Versioned, whitelisted observations shared by the worker and session writer.
-#load "../../coax/lib/agent/claude/fields.coax";
+#load "../claude/fields.coax";
 MO_SCHEMA :: "coder.observability.v2";
 MO_COUNTS :: [7] string.["input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "cache_write_tokens", "provider_cost_usd_micros", "card_estimate_usd_micros"];
 

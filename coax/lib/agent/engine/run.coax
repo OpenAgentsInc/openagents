@@ -1,0 +1,1268 @@
+// The turn runner (docs/apps/2026-11-10-apps-roadmap.md, Step 2): one
+// headless turn, for any owner, the way `coder run --stream-json` runs it.
+// Aethyrforge's chat calls it in its own process; Coder's plain stream-json
+// runs call it too, so the two cannot drift.
+//
+// Per session: route (System One's pick, the task gated on the owner's
+// consent ledger), open the session log, then per turn the message joins the
+// log, the turn's request goes out (a fork's earlier turns, a context file and
+// remembered facts ahead of it) and the picked engine runs it with the
+// owner's options: Claude Code, Codex, Cursor, Microcoder, Psionic or the
+// echo engine. Each engine's events become the log's lines (writer.coax),
+// which an owner that wants them as they happen (json, live) takes from the
+// log's outbox: session, route, model, user, reply_delta and reply_end,
+// reply, tool, result, diff, approval, engine_session, end.
+//
+// A turn runs unattended: Claude Code bypasses permissions, Codex runs with
+// approval policy never and full access, Cursor's permissions and plans are
+// accepted, Microcoder's commands run. What still asks (a permission a
+// Claude Code mode sends anyway) waits in ask until the owner answers
+// (tr_answer); Codex's dynamic tool calls wait in tool until the owner
+// answers them (tr_tool_answer). Policies, hooks and the terminal's
+// prompts stay the owner's: Coder runs those turns itself.
+//
+//   tr_attach     the owner's engines, log and buffers
+//   tr_fork       a new session carrying a parent's turns (fork.coax)
+//   tr_begin      System One's pick and the session's first lines (--engine auto)
+//   tr_open       the session's first line (an engine named)
+//   tr_submit     a message: it joins the log and its turn starts
+//   tr_poll       what the engine did since the last call; true when something changed
+//   tr_stop       STOP the running turn
+//   tr_close      every engine closed
+//
+// Engine numbers are Coder's (ENGINE_* in coder/tui/coder.coax).
+
+#load "engine.coax";
+#load "echo.coax";
+#load "consent-gate.coax";
+#load "ceiling.coax";
+#load "codex-options.coax";
+#load "micro-observation.coax";
+#load "edit-lines.coax";
+#load "../session/writer.coax";
+#load "../session/fork.coax";
+#load "../../tui/vt.coax";
+
+TR_ECHO :: 0; TR_CLAUDE :: 1; TR_CODEX :: 2; TR_MICRO :: 3; TR_PSIONIC :: 4; TR_CURSOR :: 5;
+TR_FINISHED :: 0; TR_STOPPED :: 1; TR_FAILED :: 2; TR_EXPIRED :: 3; TR_REDIRECTED :: 4;
+TR_COLS :: 100;              // a tool's label is cut to this many columns, as Coder's plain runs cut it
+TR_FIRST_MAX :: 16384;       // a CLI's first message
+TR_MSG_MAX :: 16384;         // a message, as Coder keeps one
+TR_MEMORY_MAX :: 8192;       // remembered facts ahead of a first message (Coder's MEM_BRIEF_MAX)
+TR_TOOL_ARGS :: 65536;
+TR_STOP_MS :: 5000;          // an interrupt not answered by then ends the engine
+TR_MC_TOOL :: "/coax/web/tool.sh";              // Microcoder's worker: under the repo
+TR_MC_WORKER :: "/coder/tui/mcworker.coax";
+
+// An Edit or a Write waiting for its result, to log as a diff.
+TrEdit :: struct {
+  id: [128] u8; nid: int;
+  path: [1024] u8; npath: int;
+  old: [65536] u8; nold: int;
+  next: [65536] u8; nnext: int;
+  write: bool;
+  active: bool;
+}
+
+TrRun :: struct {
+  // the owner's choices
+  engine: int;
+  cwd_b: [4096] u8; ncwd: int;
+  version: [64] u8; nversion: int;           // the session line's version
+  client: [64] u8; nclient: int;             // the name Codex and Cursor are told (Codex: its clientInfo name)
+  title: [64] u8; ntitle: int;               // the title Codex and Cursor are told
+  model_b: [128] u8; nmodel: int; model_engine: int;   // --model is for the engine it came with
+  effort_b: [16] u8; neffort: int;           // the effort: the owner's, or System One's
+  effort_flag: bool;                         // the owner named an effort: System One's does not replace it
+  api_key: bool;                             // ANTHROPIC_API_KEY authenticates Claude Code, not its login
+  mcp: [1200] u8; nmcp: int;                 // Claude Code's MCP servers (JSON), "" for none
+  cx_tools: [8192] u8; ncx_tools: int;       // Codex's dynamic tools (JSON), "" for none
+  context: [4096] u8; ncontext: int;         // a context file ahead of the first message
+  memory: [TR_MEMORY_MAX] u8; nmemory: int; held: int;   // remembered facts ahead of the first message, and how many stayed back
+  pre_b: [SF_PRE_MAX] u8; npre: int;         // a fork's earlier turns, ahead of its first message
+  resume: [128] u8; nresume: int;            // a fork resumes this Claude Code session
+  cursor_resume: [128] u8; ncursor_resume: int;   // ... or loads this Cursor session
+  // the turn
+  running: bool; started_ms: int; steps: int; turns: int; exit: int; cost: f64;
+  stopping: bool; stop_ms: int;
+  expiring: bool; redirecting: bool;         // the owner's: a stop ends the turn expired, or redirected
+  provider_reset_s: int;
+  cause: [32] u8; ncause: int;               // why a failed turn failed: "provider", "availability"
+  nrep: int;                                 // reply bytes since the last tool call
+  err: [1024] u8; nerr: int;                 // Codex's error notification, for a failed turn
+  engine_sid: [128] u8; nengine_sid: int;    // the engine's own session, logged once
+  ask: bool; ask_text: [1024] u8; nask: int; // an approval waits for the owner (tr_answer)
+  ask_input: [65536] u8; nask_input: int;
+  tool: bool; tool_name: [128] u8; ntool_name: int; tool_args: [TR_TOOL_ARGS] u8; ntool_args: int;   // a Codex dynamic tool call waits (tr_tool_answer)
+  tool_active: bool; tool_turn: bool; tool_long: bool;
+  edit: [1] TrEdit;
+  // the owner's engines and buffers (tr_attach)
+  log: [] SwLog;
+  echo: [1] AgEcho;
+  eng: [] Engine; ses: [] Session; ses_pool: [] u8; opt: [1] ClOptions; seen: [1] SCursor; live: bool;
+  cxe: [] CxEngine; cx_ses: [] Session; cx_seen: [1] SCursor; cx_set: [1] CxSettings; cx_launch: [1] CxLaunch;
+  cx_live: bool; cx_ready: bool; cx_options: [1] CdCxOptions;
+  cue: [] CuEngine;
+  mcw: [] McWorker;
+  df: [] DfTable;
+  vt: [] Vt; vt_out: [] u8;
+}
+
+tr_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+tr_s :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+tr_now :: () -> int { return cxproc_now_ms(); }
+
+// No policy: what Coder's --allow, --ceiling and --root leave when none is given.
+tr_no_policy :: (p: [] CdPolicy) { p[0] = CdPolicy.{}; p[0].ceiling = CD_EFFECT_RUN; }
+
+tr_engine_name :: (e: int) -> string { return ifx e == TR_CLAUDE then "claude" else ifx e == TR_CODEX then "codex" else ifx e == TR_CURSOR then "cursor" else ifx e == TR_MICRO then "microcoder" else ifx e == TR_PSIONIC then "psionic" else "echo"; }
+tr_is_micro :: (e: int) -> bool { return e == TR_MICRO || e == TR_PSIONIC; }
+tr_end_word :: (e: int) -> string { return ifx e == TR_STOPPED then "stopped" else ifx e == TR_FAILED then "failed" else ifx e == TR_EXPIRED then "expired" else ifx e == TR_REDIRECTED then "redirected" else "finished"; }
+
+tr_cwd :: (r: [] TrRun) -> string { return tr_s(r[0].cwd_b[..], r[0].ncwd); }
+tr_model :: (r: [] TrRun) -> string { return tr_s(r[0].model_b[..], r[0].nmodel); }
+tr_effort :: (r: [] TrRun) -> string { return tr_s(r[0].effort_b[..], r[0].neffort); }
+
+// The owner's engines (each attached as its owner attaches it), its log and the buffers the runner reads with.
+tr_attach :: (r: [] TrRun, journal: [] SwLog, eng: [] Engine, ses: [] Session, ses_pool: [] u8, cxe: [] CxEngine, cx_ses: [] Session, cue: [] CuEngine, mcw: [] McWorker, df: [] DfTable, vt: [] Vt, vt_out: [] u8) {
+  r[0].log = journal; r[0].eng = eng; r[0].ses = ses; r[0].ses_pool = ses_pool;
+  r[0].cxe = cxe; r[0].cx_ses = cx_ses; r[0].cue = cue; r[0].mcw = mcw; r[0].df = df; r[0].vt = vt; r[0].vt_out = vt_out;
+}
+
+// What the session names itself as: the owner's cwd, its version for the session line, its name and title for Codex and Cursor.
+tr_owner :: (r: [] TrRun, cwd: string, version: string, client: string, title: string) {
+  r[0].ncwd = tr_cat(r[0].cwd_b[..], 0, cwd);
+  r[0].nversion = tr_cat(r[0].version[..], 0, version);
+  r[0].nclient = tr_cat(r[0].client[..], 0, client);
+  r[0].ntitle = tr_cat(r[0].title[..], 0, title);
+}
+
+// ---------------------------------------------------------------- sessions
+
+// A session file under the sessions directory by its ID (the newest whose name starts with id);
+// its complete lines into buf, its full ID into idout. "" when there is none.
+tr_session_file :: (id: string, buf: [] u8, idout: [] u8) -> string {
+  db: [1100] u8; dir := sw_dir(db[..]);
+  if dir.count == 0 || id.count == 0 { return ""; }
+  l_b: [1] FsList; l := l_b[..];
+  n := fs_list(dir, l);
+  found := -1;
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count >= id.count + 6 && cast(string) name[0..<id.count] == id && cast(string) name[name.count - 6..<name.count] == ".jsonl" { found = i; }
+  }
+  if found < 0 { return ""; }
+  name := fs_entry(l, found);
+  k := tr_cat(idout, 0, cast(string) name[0..<name.count - 6]);
+  if k < idout.count { idout[k] = 0; }
+  pb: [1400] u8; pn := tr_cat(pb[..], 0, dir); pn = tr_cat(pb[..], pn, "/"); pn = tr_cat(pb[..], pn, name);
+  m := fs_read(cast(string) pb[0..<pn], buf);
+  if m < 0 { return ""; }
+  m = sw_complete(cast(string) buf[0..<m]);
+  return cast(string) buf[0..<m];
+}
+
+// A new session that carries parent's first `at` turns (all when 0): pid is
+// the parent's full ID, want the engine asked for ("" for the parent's).
+// Returns the parent's turns kept; more than that asked for changes nothing.
+tr_fork :: (r: [] TrRun, parent: string, pid: string, at: int, want: string) -> int {
+  if want.count == 0 {
+    // the parent's engine: its first line's, or the last agent it switched to
+    eb: [32] u8; en := 0; pos := 0;
+    while pos < parent.count {
+      e := pos; while e < parent.count && parent[e] != 10 { e += 1; }
+      line := cast(string) parent[pos..<e]; pos = e + 1;
+      ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+      kind := cl_str(ar[..], line, "kind");
+      if kind == "session" || kind == "agent" { en = tr_cat(eb[..], 0, cl_str(ar[..], line, "engine")); }
+    }
+    pe := cast(string) eb[0..<en];
+    r[0].engine = ifx pe == "codex" then TR_CODEX else ifx pe == "cursor" then TR_CURSOR else ifx pe == "microcoder" then TR_MICRO else ifx pe == "psionic" then TR_PSIONIC else ifx pe == "echo" then TR_ECHO else TR_CLAUDE;
+    r[0].model_engine = r[0].engine;
+  }
+  f: [1] SfFork;
+  kept := sf_fork(f[..], parent, at, want, tr_engine_name(r[0].engine), tr_cwd(r));
+  if at > kept { return kept; }
+  r[0].npre = tr_cat(r[0].pre_b[..], 0, sf_pre(f[..]));
+  r[0].nresume = tr_cat(r[0].resume[..], 0, cast(string) f[0].claude[0..<f[0].nclaude]);
+  r[0].ncursor_resume = tr_cat(r[0].cursor_resume[..], 0, cast(string) f[0].cursor[0..<f[0].ncursor]);
+  r[0].log[0].nparent = tr_cat(r[0].log[0].parent[..], 0, pid);
+  r[0].log[0].at = kept;
+  return kept;
+}
+
+// The session's first line, for its engine.
+tr_open :: (r: [] TrRun) {
+  sw_open(r[0].log, tr_engine_name(r[0].engine), tr_cwd(r), tr_s(r[0].version[..], r[0].nversion), tr_s(r[0].resume[..], r[0].nresume), "", "");
+}
+
+// The engine to run for a decision: System One's pick when it is sure and the
+// agent is eligible; else the first eligible engine, or none (-1).
+tr_pick :: (rt: [] AgRoute) -> int { pick := agr_pick(rt); return ifx pick < 0 then -1 else pick + 1; }
+
+TR_NO_ENGINE :: "no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine";
+
+// --engine auto: System One picks the session's engine from its first
+// message, the question gated on the consent ledger at `ledger`. With an
+// engine the session opens with its route line and true comes back; with
+// none, the session says so and ends failed (false).
+tr_begin :: (r: [] TrRun, task: string, ledger: string) -> bool {
+  rt: [1] AgRoute; cb: [16] u8;
+  rt[0].ncontext = tr_cat(rt[0].context[..], 0, agr_clip(tr_s(r[0].pre_b[..], r[0].npre), 256, true));
+  cg_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..], ledger);
+  pick := tr_pick(rt[..]);
+  l := r[0].log;
+  if pick < 0 {
+    tr_open(r); sw_user(l, task);
+    line := agr_json(rt[..], "", l[0].line[..]); sw_line(l, line);
+    sw_end(l, "failed", 0, 0, TR_NO_ENGINE, "availability");
+    r[0].exit = 1;
+    return false;
+  }
+  r[0].engine = pick; r[0].model_engine = pick;
+  if !r[0].effort_flag && rt[0].ok && rt[0].probability >= AGR_SURE { r[0].neffort = tr_cat(r[0].effort_b[..], 0, cast(string) rt[0].effort[0..<rt[0].neffort]); }
+  if r[0].nmodel == 0 && rt[0].ok && rt[0].probability >= AGR_SURE { r[0].nmodel = tr_cat(r[0].model_b[..], 0, cast(string) rt[0].model[0..<rt[0].nmodel]); }
+  tr_open(r);
+  line := agr_json(rt[..], tr_engine_name(r[0].engine), l[0].line[..]); sw_line(l, line);
+  return true;
+}
+
+// ---------------------------------------------------------------- a turn
+
+// A message: it joins the log and its turn starts (the session opens first when it has not).
+tr_submit :: (r: [] TrRun, text: string) {
+  s := 0; e := text.count;
+  while s < e && (text[s] == ' ' || text[s] == 10) { s += 1; }
+  while e > s && (text[e - 1] == ' ' || text[e - 1] == 10) { e -= 1; }
+  if s == e { return; }
+  mb: [TR_MSG_MAX] u8; mn := tr_cat(mb[..], 0, cast(string) text[s..<e]);
+  msg := cast(string) mb[0..<mn];
+  if r[0].log[0].nid == 0 { tr_open(r); }
+  sw_user(r[0].log, msg);
+  tr_start(r, msg);
+}
+
+tr_start :: (r: [] TrRun, msg: string) {
+  l := r[0].log;
+  if l[0].failed { r[0].running = false; r[0].exit = 1; return; }
+  r[0].provider_reset_s = 0;
+  r[0].running = true; r[0].started_ms = tr_now(); r[0].steps = 0; r[0].nrep = 0;
+  r[0].turns += 1;
+  sent := msg;
+  fb: [40000] u8;
+  if r[0].npre > 0 { sent = sf_earlier(tr_s(r[0].pre_b[..], r[0].npre), msg, fb[..]); r[0].npre = 0; }
+  xb: [SF_CONTEXT_MAX + 40100] u8;
+  if r[0].turns == 1 && r[0].ncontext > 0 {
+    cb: [SF_CONTEXT_MAX] u8; context := sf_context_read(tr_s(r[0].context[..], r[0].ncontext), cb[..]);
+    if context.count > 0 { sw_text(l, "context", "text", context); sent = sf_with_context(context, sent, xb[..]); }
+  }
+  mb: [TR_MEMORY_MAX + SF_CONTEXT_MAX + 40100] u8;
+  if r[0].turns == 1 {
+    if r[0].nmemory > 0 || r[0].held > 0 { sw_memory(l, tr_s(r[0].memory[..], r[0].nmemory), r[0].held); }
+    if r[0].nmemory > 0 {
+      bn := tr_cat(mb[..], 0, tr_s(r[0].memory[..], r[0].nmemory)); bn = tr_cat(mb[..], bn, "\n\n"); bn = tr_cat(mb[..], bn, sent);
+      sent = cast(string) mb[0..<bn];
+    }
+  }
+  sw_request(l, sent);
+  if r[0].engine == TR_ECHO { ech_send(r[0].echo[..], sent, tr_now()); return; }
+  r[0].nerr = 0;
+  if r[0].engine == TR_CODEX { tr_codex_send(r, sent); return; }
+  if r[0].engine == TR_CURSOR { tr_cursor_send(r, sent); return; }
+  if tr_is_micro(r[0].engine) { tr_micro_send(r, sent); return; }
+  tr_claude_send(r, sent);
+}
+
+// The turn's end: its line, the provider's cooldown when the provider failed it.
+tr_finish :: (r: [] TrRun, ending_in: int, text: string) {
+  ending := ifx ending_in == TR_STOPPED && r[0].expiring then TR_EXPIRED else ifx ending_in == TR_STOPPED && r[0].redirecting then TR_REDIRECTED else ending_in;
+  r[0].redirecting = false;
+  if ending == TR_FAILED && tr_s(r[0].cause[..], r[0].ncause) == "provider" { tr_provider_failed(r); }
+  sw_end(r[0].log, tr_end_word(ending), tr_now() - r[0].started_ms, r[0].steps, text, tr_s(r[0].cause[..], r[0].ncause));
+  r[0].ncause = 0;
+  r[0].exit = tr_exit(ending);
+  r[0].running = false; r[0].ask = false;
+}
+
+// coder run's exit code for a turn's ending.
+tr_exit :: (ending: int) -> int { return ifx ending == TR_FINISHED then 0 else ifx ending == TR_STOPPED then 130 else ifx ending == TR_EXPIRED then 124 else 1; }
+
+// A provider failure: its cooldown on disk (availability.coax) and the session's observability line.
+tr_provider_failed :: (r: [] TrRun) {
+  engine := ifx r[0].engine == TR_MICRO then "micro" else tr_engine_name(r[0].engine);
+  if ca_index(engine) < 0 { return; }
+  saved: [1] bool; retry := ca_record(engine, r[0].provider_reset_s, saved[..]);
+  o := r[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"availability\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(o, n, engine);
+  n = json_raw(o, n, ",\"retry_after_s\":"); n = json_write_int(o, n, retry);
+  n = json_raw(o, n, ",\"persisted\":"); n = json_raw(o, n, ifx saved[0] then "true}" else "false}");
+  sw_put(r[0].log, n);
+}
+
+tr_reply :: (r: [] TrRun, s: string) { sw_reply_add(r[0].log, s); r[0].nrep += s.count; }
+
+// A tool call: the reply so far is logged whole first.
+tr_tool :: (r: [] TrRun, label: string) { r[0].nrep = 0; sw_tool(r[0].log, label); r[0].steps += 1; }
+
+// What a terminal would show for output a program wrote: CR rewrites, cursor
+// moves and colours applied. Text with no control bytes comes back as it is.
+tr_screen :: (r: [] TrRun, output: string) -> string {
+  plain := true;
+  for c: output { if (c < 32 && c != 10 && c != 9) || c == 127 { plain = false; break; } }
+  if plain { return output; }
+  vt_init(r[0].vt, 200, 160, true);
+  vt_feed(r[0].vt, output);
+  return vt_text(r[0].vt, r[0].vt_out);
+}
+tr_result :: (r: [] TrRun, text: string, bad: bool) { sw_result(r[0].log, tr_screen(r, text), bad); }
+
+// Name(arg): the argument's first line, cut to the row, a path relative to the working directory.
+tr_label :: (r: [] TrRun, name: string, arg_in: string, out: [] u8) -> string {
+  n := tr_cat(out, 0, name);
+  arg := arg_in; cwd := tr_cwd(r);
+  if cwd.count > 0 && arg.count > cwd.count + 1 && cast(string) arg[0..<cwd.count] == cwd && arg[cwd.count] == '/' { arg = cast(string) arg[cwd.count + 1..<arg.count]; }
+  if arg.count > 0 {
+    n = tr_cat(out, n, "(");
+    line := 0; while line < arg.count && arg[line] != 10 { line += 1; }
+    shown := cast(string) arg[0..<line];
+    n = tr_cat(out, n, cast(string) shown[0..<tui_fit(shown, TR_COLS - name.count - 10)]);
+    if line < arg.count || tui_fit(shown, TR_COLS - name.count - 10) < shown.count { n = tr_cat(out, n, "…"); }
+    n = tr_cat(out, n, ")");
+  }
+  return cast(string) out[0..<n];
+}
+
+// A unified diff, or a whole file added or deleted (Codex's and Cursor's changes), as a diff line.
+tr_unified :: (r: [] TrRun, path: string, kind: string, diff: string) {
+  if kind == "delete" { sw_diff(r[0].log, path, 0, 0, false, "", ""); return; }
+  if kind == "add" || !df_has_hunks(diff) { sw_diff(r[0].log, path, df_count_lines(diff), 0, kind == "add", "", diff); return; }
+  a: [1] int; d: [1] int; df_unified_counts(diff, a[..], d[..]);
+  sw_diff(r[0].log, path, a[0], d[0], false, "", "");
+}
+
+// The answer to the approval in ask: allow or not.
+tr_answer :: (r: [] TrRun, allow: bool) {
+  if !r[0].ask { return; }
+  r[0].ask = false;
+  if r[0].engine == TR_CURSOR {
+    c := r[0].cue[0].c;
+    if c[0].asking == CU_ASK_PLAN { cu_plan(c, allow); return; }
+    id := ifx allow then cu_allow_option(c) else "";
+    if id.count == 0 { cu_decline(c); } else { cu_permit(c, id); }
+    return;
+  }
+  if r[0].engine == TR_CODEX { cxe_approve(r[0].cxe, allow); return; }
+  if tr_is_micro(r[0].engine) { tr_micro_answer(r, allow, "The person denied this."); return; }
+  if allow { e_allow(r[0].eng, tr_s(r[0].ask_input[..], r[0].nask_input), ""); }
+  else { e_deny(r[0].eng, "The person denied this.", false); }
+}
+
+// One poll of the running engine (and late lines between turns); true when something changed.
+tr_poll :: (r: [] TrRun) -> bool {
+  if !r[0].running {
+    changed := false;
+    if r[0].live { changed = tr_claude_poll(r); }
+    if r[0].cx_live { changed = tr_codex_poll(r) || changed; }
+    if r[0].cue.count > 0 && r[0].cue[0].live { changed = tr_cursor_poll(r) || changed; }
+    if r[0].mcw.count > 0 && r[0].mcw[0].h >= 0 { changed = tr_micro_poll(r) || changed; }
+    return changed;
+  }
+  if r[0].engine != TR_ECHO && r[0].stopping && tr_now() - r[0].stop_ms > TR_STOP_MS { tr_stop(r); return true; }
+  if r[0].engine == TR_CLAUDE { return tr_claude_poll(r); }
+  if r[0].engine == TR_CODEX { return tr_codex_poll(r); }
+  if r[0].engine == TR_CURSOR { return tr_cursor_poll(r); }
+  if tr_is_micro(r[0].engine) { return tr_micro_poll(r); }
+  w: [1] string; k := ech_poll(r[0].echo[..], tr_now(), w[..]);
+  if k == ECH_WAIT { return false; }
+  if k == ECH_DONE { tr_finish(r, TR_FINISHED, ""); return true; }
+  tr_reply(r, w[0]);
+  return true;
+}
+
+// STOP: the engine is interrupted, and the turn ends when it answers; asked
+// twice, or not answered in TR_STOP_MS, the engine is closed and the turn ends stopped.
+tr_stop :: (r: [] TrRun) {
+  if !r[0].running { return; }
+  if r[0].engine == TR_ECHO { ech_stop(r[0].echo[..]); tr_finish(r, TR_STOPPED, ""); return; }
+  if r[0].engine == TR_CODEX { tr_codex_stop(r); return; }
+  if r[0].engine == TR_CURSOR { tr_cursor_stop(r); return; }
+  if tr_is_micro(r[0].engine) { tr_micro_stop(r); return; }
+  if r[0].ask { e_deny(r[0].eng, "The person stopped the turn.", true); r[0].ask = false; }
+  if r[0].live && !r[0].stopping {
+    r[0].stopping = true;
+    e_stop(r[0].eng, r[0].ses);
+    r[0].stop_ms = tr_now();
+    if r[0].eng[0].running { return; }
+  }
+  tr_claude_close(r);
+  r[0].stopping = false;
+  tr_finish(r, TR_STOPPED, "");
+}
+
+tr_close :: (r: [] TrRun) { tr_claude_close(r); tr_codex_close(r); tr_cursor_close(r); tr_micro_close(r); }
+
+// ---------------------------------------------------------------- Claude Code
+
+// Partial messages so the reply streams. The person's Claude Code login,
+// unless ANTHROPIC_API_KEY is set: then that key authenticates the child.
+// Tools run without asking unless ask; tool_hooks sends each call to the owner first (PreToolUse).
+tr_claude_options :: (out: [] ClOptions, cwd: string, model: string, ask: bool, effort: string, tool_hooks: bool, api_key: bool) {
+  o: [1] ClOptions;
+  o[0].include_partial_messages = true;
+  if tool_hooks { cl_add_hook(o[..], "PreToolUse", "", 60.0); }
+  if effort.count > 0 { o[0].effort = effort; }
+  if ask { o[0].permission_handler = true; }
+  else { o[0].permission_mode = ClPermissionMode.bypass_permissions; o[0].allow_dangerously_skip_permissions = true; }
+  o[0].cwd = cwd;
+  if model.count > 0 { o[0].model = model; }
+  if !api_key { cl_remove_env(o[..], "ANTHROPIC_API_KEY"); }
+  out[0] = o[0];
+}
+
+// Starts the CLI on the first message; later messages go to the same session.
+tr_claude_send :: (r: [] TrRun, msg: string) {
+  e := r[0].eng; s := r[0].ses;
+  if !s[0].live { s_init(s, r[0].ses_pool); r[0].seen[0] = SCursor.{}; }
+  if r[0].live { e_send_as(e, s, msg, msg); return; }
+  tr_claude_options(r[0].opt[..], tr_cwd(r), ifx r[0].model_engine == TR_CLAUDE then tr_model(r) else "", false, tr_effort(r), false, r[0].api_key);
+  if r[0].nresume > 0 { r[0].opt[0].resume = tr_s(r[0].resume[..], r[0].nresume); r[0].opt[0].fork_session = true; }
+  r[0].opt[0].mcp_servers = tr_s(r[0].mcp[..], r[0].nmcp);
+  e_own(e, r[0].opt[..]);
+  first := cast(string) msg[0..<ifx msg.count < TR_FIRST_MAX then msg.count else TR_FIRST_MAX];
+  e_send_as(e, s, first, first);
+  if !e[0].running {
+    tr_finish(r, TR_FAILED, ifx s[0].n > 0 && s[0].parts[s[0].n - 1].kind == P_NOTICE then s_text_of(s, s[0].n - 1) else "Claude Code did not start.");
+    return;
+  }
+  r[0].live = true;
+}
+
+tr_claude_close :: (r: [] TrRun) {
+  if !r[0].live { return; }
+  e := r[0].eng;
+  if e[0].running { x := cl_end_input(e[0].q[..], e[0].p[..]); k := cl_kill(e[0].p[..]); }
+  e_close(e);
+  r[0].live = false;
+}
+
+// A tool call's label: Bash(command), Read(file_path) and so on.
+tr_claude_label :: (r: [] TrRun, name: string, input: string, out: [] u8) -> string {
+  ar := r[0].eng[0].q[0].ar[..];
+  arg := cl_str(ar, input, "command");
+  if arg.count == 0 { arg = cl_str(ar, input, "file_path"); }
+  if arg.count == 0 { arg = cl_str(ar, input, "pattern"); }
+  if arg.count == 0 { arg = cl_str(ar, input, "url"); }
+  if arg.count == 0 { arg = cl_str(ar, input, "description"); }
+  return tr_label(r, name, arg, out);
+}
+
+// What the record has that the log has not: the reply's text as it streams, and each tool call
+// once (an Edit or a Write is remembered, to log as a diff when it has run). The record keeps nothing logged.
+tr_claude_record :: (r: [] TrRun) {
+  s := r[0].ses; ar := r[0].eng[0].q[0].ar[..];
+  while true {
+    nw := s_next(s, r[0].seen[..]);
+    if nw.k < 0 { break; }
+    part := s[0].parts[nw.k];
+    if part.kind == P_TEXT { tr_reply(r, nw.text); continue; }
+    if part.kind != P_TOOL { continue; }
+    lb: [1024] u8;
+    tr_tool(r, tr_claude_label(r, part.name, part.input, lb[..]));
+    if part.name == "Edit" || part.name == "Write" {
+      p := r[0].edit[..];
+      p[0].write = part.name == "Write";
+      p[0].nid = tr_cat(p[0].id[..], 0, part.id);
+      p[0].npath = tr_cat(p[0].path[..], 0, cl_str(ar, part.input, "file_path"));
+      p[0].nold = tr_cat(p[0].old[..], 0, ifx p[0].write then "" else cl_str(ar, part.input, "old_string"));
+      p[0].nnext = tr_cat(p[0].next[..], 0, cl_str(ar, part.input, ifx p[0].write then "content" else "new_string"));
+      p[0].active = p[0].npath > 0;
+    }
+  }
+  trimmed := s_trim(s, r[0].seen[..]);
+}
+
+// An Edit's or a Write's diff line, once it has run.
+tr_claude_diff :: (r: [] TrRun) {
+  p := r[0].edit[..];
+  path := tr_s(p[0].path[..], p[0].npath); old := tr_s(p[0].old[..], p[0].nold); after := tr_s(p[0].next[..], p[0].nnext);
+  if p[0].write { sw_diff(r[0].log, path, df_count_lines(after), 0, true, "", after); return; }
+  a: [1] int; d: [1] int; df_counts(old, after, r[0].df, a[..], d[..]);
+  sw_diff(r[0].log, path, a[0], d[0], true, old, after);
+}
+
+tr_claude_message :: (r: [] TrRun, m: ClMessage) {
+  ar := r[0].eng[0].q[0].ar[..];
+  if m.parent_tool_use_id.count > 0 { return; }
+  if r[0].nengine_sid == 0 && m.session_id.count > 0 && m.session_id.count < 128 {
+    r[0].nengine_sid = tr_cat(r[0].engine_sid[..], 0, m.session_id);
+    sw_engine_session(r[0].log, "claude", m.session_id);
+  }
+  if m.kind == ClKind.rate_limit_event {
+    rate := cl_rate_limit_of(ar, m);
+    if rate.status == "rejected" && rate.resets_at.has { r[0].provider_reset_s = rate.resets_at.value; }
+    return;
+  }
+  tr_claude_record(r);
+  if m.kind == ClKind.stream_event { return; }
+  if m.kind == ClKind.assistant {
+    ae := cl_str(ar, m.line, "error");
+    if ae == "rate_limit" || ae == "server_error" || ae == "overloaded_error" { r[0].ncause = tr_cat(r[0].cause[..], 0, "provider"); }
+    return;
+  }
+  if m.kind == ClKind.user {
+    content := cl_raw(m.line, "message.content");
+    count := cl_count(content);
+    for i: 0..<count {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(ar, item, "type") != "tool_result" { continue; }
+      text := cl_str(ar, item, "content");
+      if text.count == 0 { text = cl_str(ar, item, "content.0.text"); }
+      bad := cl_bool(item, "is_error");
+      p := r[0].edit[..];
+      if p[0].active && cl_str(ar, item, "tool_use_id") == tr_s(p[0].id[..], p[0].nid) {
+        p[0].active = false;
+        if !(bad.ok && bad.value) { tr_claude_diff(r); continue; }
+      }
+      tr_result(r, text, bad.ok && bad.value);
+    }
+    return;
+  }
+  if m.kind == ClKind.result {
+    res := cl_result_of(ar, m);
+    r[0].cost += res.total_cost_usd;
+    ok := res.kind == ClResultKind.success && !res.is_error;
+    if !ok && r[0].nrep == 0 && res.result.count > 0 { tr_reply(r, res.result); }
+    tr_finish(r, ifx ok then TR_FINISHED else ifx r[0].stopping then TR_STOPPED else TR_FAILED, ifx ok then "" else "Claude Code ended the turn with an error.");
+    r[0].stopping = false;
+  }
+}
+
+// One poll of the CLI; true when something changed.
+tr_claude_poll :: (r: [] TrRun) -> bool {
+  if !r[0].live || r[0].ask { return false; }
+  e := r[0].eng;
+  changed := false;
+  one: [1] ClEvent;
+  for guard: 0..<64 {
+    e_poll(e, r[0].ses, one[..]);
+    ev := one[0];
+    if ev.kind == ClEventKind.idle { break; }
+    changed = true;
+    if ev.kind == ClEventKind.initialized { continue; }
+    if ev.kind == ClEventKind.end || ev.kind == ClEventKind.failed {
+      why := cl_error(e[0].q[..]);
+      if why.count == 0 { why = e_str(e[0].err[..], e[0].err_n); }
+      if why.count == 0 { why = "Claude Code exited."; }
+      wb: [2600] u8; wn := tr_cat(wb[..], 0, why);
+      tr_claude_close(r);
+      if r[0].running { tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]); }
+      return true;
+    }
+    if ev.kind == ClEventKind.permission {
+      lb: [1024] u8; label := tr_claude_label(r, ev.request.tool_name, ev.request.input, lb[..]);
+      r[0].nask = tr_cat(r[0].ask_text[..], 0, "Allow "); r[0].nask = tr_cat(r[0].ask_text[..], r[0].nask, label); r[0].nask = tr_cat(r[0].ask_text[..], r[0].nask, "?");
+      r[0].nask_input = tr_cat(r[0].ask_input[..], 0, ev.request.input);
+      r[0].ask = true;
+      return true;      // no more polls until answered: a poll would refuse the request
+    }
+    if ev.kind == ClEventKind.tool_call { e_tool_text(e, "This runner has no in-process tools.", true); continue; }
+    if ev.kind == ClEventKind.hook { cl_hook_answer(e[0].q[..], "{}"); continue; }
+    if ev.kind == ClEventKind.message { tr_claude_message(r, ev.message); }
+    if !r[0].live { return true; }
+  }
+  return changed;
+}
+
+// ---------------------------------------------------------------- Codex
+
+// The thread and its turns: no approvals and full access; the owner's dynamic tools.
+tr_codex_settings :: (r: [] TrRun) -> CxSettings {
+  st: CxSettings;
+  st.cwd = tr_cwd(r);
+  if r[0].model_engine == TR_CODEX { st.model = tr_model(r); }
+  st.effort = tr_effort(r);
+  launch_effort := ccx_text(r[0].cx_options[0].launch_effort[..]);
+  if launch_effort.count > 0 { st.effort = launch_effort; }
+  p: [1] CdPolicy; tr_no_policy(p[..]);
+  st.sandbox = cd_codex_sandbox(p[..], false);
+  st.approval_policy = "never";
+  st.dynamic_tools = ifx r[0].ncx_tools > 0 then tr_s(r[0].cx_tools[..], r[0].ncx_tools) else "";
+  return st;
+}
+
+tr_codex_own :: (r: [] TrRun) {
+  r[0].cx_set[0] = tr_codex_settings(r);
+  r[0].cx_launch[0] = CxLaunch.{}; r[0].cx_launch[0].cwd = tr_cwd(r);
+  cxe_own(r[0].cxe, r[0].cx_launch[..], r[0].cx_set[..], tr_s(r[0].client[..], r[0].nclient), tr_s(r[0].title[..], r[0].ntitle), tr_s(r[0].version[..], r[0].nversion));
+}
+
+tr_codex_open :: (r: [] TrRun) {
+  if r[0].cx_live { return; }
+  o := r[0].cx_options[..];
+  o[0].failed = false; o[0].resolved = false;
+  ok := ccx_keep(o[0].actual_model[..], ""); ok = ccx_keep(o[0].actual_effort[..], "");
+  tr_codex_own(r);
+  if !cxe_launch(r[0].cxe, r[0].cx_ses, true) {
+    wb: [2048] u8; wn := tr_cat(wb[..], 0, e_str(r[0].cxe[0].err, r[0].cxe[0].err_n));
+    o[0].failed = true;
+    if r[0].running { tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]); }
+    return;
+  }
+  r[0].cx_live = true; r[0].cx_ready = false;
+}
+
+tr_codex_send :: (r: [] TrRun, msg: string) {
+  ready := r[0].cx_live && r[0].cx_ready;
+  if !ready { tr_codex_open(r); if !r[0].cx_live { return; } }
+  s := r[0].cx_ses;
+  if !s[0].live { s_init(s, s[0].pool); r[0].cx_seen[0] = SCursor.{}; }
+  r[0].cx_set[0] = tr_codex_settings(r);
+  text := ifx ready || msg.count <= TR_FIRST_MAX then msg else cast(string) msg[0..<TR_FIRST_MAX];
+  cxe_send_as(r[0].cxe, s, text, text);
+}
+
+tr_codex_close :: (r: [] TrRun) {
+  if !r[0].cx_live { return; }
+  cxe_close(r[0].cxe);
+  r[0].cx_live = false; r[0].cx_ready = false;
+}
+
+tr_codex_catalog :: (r: [] TrRun) {
+  o := r[0].cx_options[..]; o[0].n = 0; o[0].pages = 0;
+  o[0].listed = false; o[0].catalog_failed = false;
+  for k: 0..<CCX_MODELS { o[0].nlevels[k] = 0; o[0].defaults[k][0] = 0; }
+  x := cx_model_list(r[0].cxe[0].c[..], "");
+}
+
+tr_cx_str :: (r: [] TrRun, json: string, path: string) -> string { return cl_str(r[0].cxe[0].c[0].ar[..], json, path); }
+
+// Codex's codexErrorInfo names the model provider not answering (it clears on its own).
+TR_CX_PROVIDER :: [7] string.["usageLimitExceeded", "httpConnectionFailed", "responseStreamConnectionFailed", "internalServerError", "responseStreamDisconnected", "responseTooManyFailedAttempts", "serverOverloaded"];
+tr_cx_provider :: (info: string) -> bool {
+  at := 0;
+  while at < info.count && (info[at] == ' ' || info[at] == '{') { at += 1; }
+  if at >= info.count || info[at] != '"' { return false; }
+  e := at + 1; while e < info.count && info[e] != '"' { e += 1; }
+  name := cast(string) info[at + 1..<e];
+  for v: TR_CX_PROVIDER { if name == v { return true; } }
+  return false;
+}
+
+tr_codex_command :: (r: [] TrRun, item: string) -> string {
+  cmd := tr_cx_str(r, item, "commandActions.0.command");
+  if cmd.count > 0 { return cmd; }
+  return tr_cx_str(r, item, "command");
+}
+
+tr_codex_started :: (r: [] TrRun, item: string) {
+  ty := tr_cx_str(r, item, "type");
+  lb: [1024] u8; label := "";
+  if ty == "agentMessage" { if r[0].nrep > 0 { r[0].nrep = 0; } return; }
+  if ty == "commandExecution" { label = tr_label(r, "Bash", tr_codex_command(r, item), lb[..]); }
+  else if ty == "fileChange" {
+    changes := cl_raw(item, "changes");
+    n := cl_count(changes);
+    path := tr_cx_str(r, item, "changes.0.path");
+    kind := tr_cx_str(r, item, "changes.0.kind.type");
+    label = tr_label(r, ifx kind == "add" then "Write" else ifx kind == "delete" then "Delete" else "Edit", path, lb[..]);
+    if n > 1 { tb: [24] u8; ln := label.count; ln = tr_cat(lb[..], ln, " and "); ln = tr_cat(lb[..], ln, cg_int(n - 1, tb[..])); ln = tr_cat(lb[..], ln, " more"); label = cast(string) lb[0..<ln]; }
+  }
+  else if ty == "mcpToolCall" {
+    nb: [256] u8; nn := tr_cat(nb[..], 0, tr_cx_str(r, item, "server")); nn = tr_cat(nb[..], nn, "."); nn = tr_cat(nb[..], nn, tr_cx_str(r, item, "tool"));
+    label = tr_label(r, cast(string) nb[0..<nn], "", lb[..]);
+  }
+  else if ty == "dynamicToolCall" { label = tr_label(r, tr_cx_str(r, item, "tool"), "", lb[..]); }
+  else if ty == "webSearch" { label = tr_label(r, "Search", tr_cx_str(r, item, "query"), lb[..]); }
+  else if ty == "imageView" { label = tr_label(r, "View", tr_cx_str(r, item, "path"), lb[..]); }
+  else { return; }
+  tr_tool(r, label);
+}
+
+tr_codex_completed :: (r: [] TrRun, item: string) {
+  ty := tr_cx_str(r, item, "type");
+  status := tr_cx_str(r, item, "status");
+  if ty == "commandExecution" {
+    out := tr_cx_str(r, item, "aggregatedOutput");
+    exit := cl_int(item, "exitCode");
+    bad := status == "failed" || status == "declined" || (exit.ok && exit.value != 0);
+    if status == "declined" { out = "declined"; }
+    tr_result(r, out, bad);
+    return;
+  }
+  if ty == "fileChange" {
+    if status != "completed" { tr_result(r, ifx status == "declined" then "declined" else "the change did not apply", true); return; }
+    changes := cl_raw(item, "changes");
+    n := cl_count(changes);
+    for i: 0..<n {
+      ch := cl_json(changes, cl_item(changes, i));
+      pb: [1024] u8; pn := tr_cat(pb[..], 0, tr_cx_str(r, ch, "path"));
+      kb: [16] u8; kn := tr_cat(kb[..], 0, tr_cx_str(r, ch, "kind.type"));
+      tr_unified(r, cast(string) pb[0..<pn], cast(string) kb[0..<kn], tr_cx_str(r, ch, "diff"));
+    }
+    return;
+  }
+  if ty == "mcpToolCall" || ty == "dynamicToolCall" {
+    tr_result(r, ifx status == "failed" then tr_cx_str(r, item, "error.message") else status, status == "failed");
+  }
+}
+
+tr_codex_poll :: (r: [] TrRun) -> bool {
+  if !r[0].cx_live || r[0].ask || r[0].tool { return false; }
+  changed := tr_codex_events(r);
+  s := r[0].cx_ses;
+  while s_next(s, r[0].cx_seen[..]).k >= 0 {}
+  trimmed := s_trim(s, r[0].cx_seen[..]);
+  return changed;
+}
+
+tr_codex_events :: (r: [] TrRun) -> bool {
+  x := r[0].cxe; c := x[0].c[..]; o := r[0].cx_options[..];
+  changed := false;
+  one: [1] CxEvent;
+  for guard: 0..<64 {
+    asked := cxe_poll(x, r[0].cx_ses, one[..]);
+    ev := one[0];
+    if ev.kind == CxEventKind.idle { break; }
+    changed = true;
+    if ev.kind == CxEventKind.end || ev.kind == CxEventKind.failed {
+      why := cx_error(c);
+      if why.count == 0 { why = e_str(x[0].err, x[0].err_n); }
+      if why.count == 0 { why = "Codex exited."; }
+      wb: [2600] u8; wn := tr_cat(wb[..], 0, why);
+      tr_codex_close(r);
+      o[0].failed = true;
+      if r[0].running && r[0].engine == TR_CODEX { tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]); }
+      return true;
+    }
+    if ev.kind == CxEventKind.initialized {
+      tr_codex_catalog(r);
+      r[0].cx_set[0] = tr_codex_settings(r);
+      cxe_thread(x);
+      continue;
+    }
+    if ev.kind == CxEventKind.answered && ev.of == CX_MODEL_LIST {
+      ccx_page(o, c[0].ar[..], ev.result);
+      cursor := tr_cx_str(r, ev.result, "nextCursor");
+      if cursor.count > 0 && o[0].n < CCX_MODELS && o[0].pages < CCX_MODELS { y := cx_model_list(c, cursor); }
+      else { o[0].listed = true; o[0].show_list = false; }
+      continue;
+    }
+    if ev.kind == CxEventKind.answered && ev.of == CX_THREAD_START {
+      ccx_resolved(o, c[0].ar[..], ev.result);
+      sw_cx_model(r[0].log, ccx_text(o[0].actual_model[..]), ccx_text(o[0].actual_effort[..]));
+      r[0].cx_ready = true;
+      continue;
+    }
+    if ev.kind == CxEventKind.refused {
+      mb: [1024] u8; mn := tr_cat(mb[..], 0, ev.message);
+      if ev.of == CX_MODEL_LIST { o[0].catalog_failed = true; o[0].show_list = false; continue; }
+      if ev.of == CX_THREAD_START { tr_codex_close(r); o[0].failed = true; }
+      if r[0].running && ev.of != CX_TURN_INTERRUPT { tr_finish(r, TR_FAILED, cast(string) mb[0..<mn]); r[0].stopping = false; }
+      if !r[0].cx_live { return true; }
+      continue;
+    }
+    if ev.kind == CxEventKind.tool_call {
+      if tr_codex_tool(r, ev) { return true; }
+      continue;
+    }
+    if ev.kind == CxEventKind.approval { cxe_approve(x, true); continue; }    // asked only for a hook: none here
+    if ev.kind != CxEventKind.notification { continue; }
+    if r[0].engine != TR_CODEX || !r[0].running { continue; }
+    m := ev.method;
+    if m == "thread/tokenUsage/updated" {
+      if cx_thread_id(c).count > 0 && cx_turn_id(c).count > 0 && tr_cx_str(r, ev.params, "threadId") == cx_thread_id(c) && tr_cx_str(r, ev.params, "turnId") == cx_turn_id(c) {
+        sw_cx_usage(r[0].log, cl_raw(ev.params, "tokenUsage"), true, cx_thread_id(c), cx_turn_id(c));
+      }
+      continue;
+    }
+    if m == "item/agentMessage/delta" { tr_reply(r, tr_cx_str(r, ev.params, "delta")); continue; }
+    if m == "item/started" { tr_codex_started(r, cl_raw(ev.params, "item")); continue; }
+    if m == "item/completed" { tr_codex_completed(r, cl_raw(ev.params, "item")); continue; }
+    if m == "error" {
+      retry := cl_bool(ev.params, "willRetry");
+      if !(retry.ok && retry.value) { r[0].nerr = tr_cat(r[0].err[..], 0, tr_cx_str(r, ev.params, "error.message")); }
+      continue;
+    }
+    if m == "turn/completed" {
+      st := tr_cx_str(r, ev.params, "turn.status");
+      if st == "completed" { tr_finish(r, TR_FINISHED, ""); }
+      else if st == "interrupted" { tr_finish(r, TR_STOPPED, ""); }
+      else {
+        if tr_cx_provider(cl_raw(ev.params, "turn.error.codexErrorInfo")) { r[0].ncause = tr_cat(r[0].cause[..], 0, "provider"); }
+        why := tr_cx_str(r, ev.params, "turn.error.message");
+        if why.count == 0 && r[0].nerr > 0 { why = tr_s(r[0].err[..], r[0].nerr); }
+        if why.count == 0 { why = "Codex ended the turn with an error."; }
+        wb: [1024] u8; wn := tr_cat(wb[..], 0, why);
+        tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]);
+      }
+      r[0].stopping = false; r[0].nerr = 0;
+      continue;
+    }
+  }
+  return changed;
+}
+
+// A dynamic tool call waits in tool for the owner, who checks it in its own
+// order and answers (tr_tool_answer): its name ("" with a namespace), whether
+// it is this turn's (tool_turn: the engine runs, the turn is not stopping, its
+// thread and turn are this one's), and its arguments (tool_long: too long to keep).
+tr_codex_tool :: (r: [] TrRun, ev: CxEvent) -> bool {
+  c := r[0].cxe[0].c[..];
+  name := tr_cx_str(r, ev.params, "tool");
+  if tr_cx_str(r, ev.params, "namespace").count > 0 { name = ""; }
+  r[0].ntool_name = tr_cat(r[0].tool_name[..], 0, name);
+  thread := tr_cx_str(r, ev.params, "threadId"); turn := tr_cx_str(r, ev.params, "turnId");
+  r[0].tool_active = r[0].engine == TR_CODEX && r[0].running && !r[0].stopping;
+  r[0].tool_turn = !((thread.count > 0 && thread != cx_thread_id(c)) || (turn.count > 0 && turn != cx_turn_id(c)));
+  args := cl_raw(ev.params, "arguments");
+  r[0].tool_long = args.count > r[0].tool_args.count;
+  r[0].ntool_args = ifx r[0].tool_long then 0 else tr_cat(r[0].tool_args[..], 0, args);
+  r[0].tool = true;
+  return true;
+}
+
+// The owner's answer to the dynamic tool call in tool.
+tr_tool_answer :: (r: [] TrRun, text: string, ok: bool) {
+  if !r[0].tool { return; }
+  r[0].tool = false;
+  cxe_tool_answer(r[0].cxe, text, ok);
+}
+
+tr_codex_stop :: (r: [] TrRun) {
+  if r[0].ask { cxe_approve(r[0].cxe, false); r[0].ask = false; }
+  if r[0].tool { tr_tool_answer(r, "The turn was stopped.", false); }
+  if r[0].cx_live && r[0].cx_ready && !r[0].stopping && cxe_interrupt(r[0].cxe, r[0].cx_ses) {
+    r[0].stopping = true;
+    r[0].stop_ms = tr_now();
+    return;
+  }
+  tr_codex_close(r);
+  r[0].stopping = false;
+  tr_finish(r, TR_STOPPED, "");
+}
+
+// ---------------------------------------------------------------- Cursor
+
+tr_cursor_open :: (r: [] TrRun) {
+  x := r[0].cue;
+  if x[0].live { return; }
+  prog: [4096] u8; program := cue_program(prog[..]);
+  if program.count == 0 {
+    if r[0].running { tr_finish(r, TR_FAILED, "Cursor's agent was not found. Install it from cursor.com/install, or put cursor-agent on PATH."); }
+    return;
+  }
+  cue_resume(x, tr_s(r[0].cursor_resume[..], r[0].ncursor_resume));
+  why := cue_launch(x, program, tr_cwd(r), tr_s(r[0].title[..], r[0].ntitle), tr_s(r[0].version[..], r[0].nversion));
+  if why.count > 0 && r[0].running { tr_finish(r, TR_FAILED, why); }
+}
+
+tr_cursor_send :: (r: [] TrRun, msg: string) {
+  if cue_send(r[0].cue, msg) { return; }
+  tr_cursor_open(r);
+}
+
+tr_cursor_close :: (r: [] TrRun) { if r[0].cue.count > 0 { cue_close(r[0].cue); } }
+
+tr_cursor_lines :: (text: string) -> int {
+  if text.count == 0 { return 0; }
+  n := 1;
+  for c: text { if c == 10 { n += 1; } }
+  if text[text.count - 1] == 10 { n -= 1; }
+  return n;
+}
+
+// Cursor's old and new text as one hunk of a unified diff.
+tr_cursor_unified :: (out: [] u8, old: string, newt: string) -> int {
+  tb: [24] u8;
+  n := tr_cat(out, 0, "@@ -1,"); n = tr_cat(out, n, cg_int(tr_cursor_lines(old), tb[..]));
+  n = tr_cat(out, n, " +1,"); n = tr_cat(out, n, cg_int(tr_cursor_lines(newt), tb[..])); n = tr_cat(out, n, " @@\n");
+  at := 0;
+  while at < old.count && n + 4 < out.count {
+    e := at; while e < old.count && old[e] != 10 { e += 1; }
+    n = tr_cat(out, n, "-"); n = tr_cat(out, n, cast(string) old[at..<e]); n = tr_cat(out, n, "\n");
+    at = ifx e < old.count then e + 1 else e;
+  }
+  at = 0;
+  while at < newt.count && n + 4 < out.count {
+    e := at; while e < newt.count && newt[e] != 10 { e += 1; }
+    n = tr_cat(out, n, "+"); n = tr_cat(out, n, cast(string) newt[at..<e]); n = tr_cat(out, n, "\n");
+    at = ifx e < newt.count then e + 1 else e;
+  }
+  return n;
+}
+
+tr_cursor_diff :: (r: [] TrRun, path: string, old: string, newt: string) {
+  if old.count == 0 { tr_unified(r, path, "add", newt); return; }
+  if newt.count == 0 { tr_unified(r, path, "delete", ""); return; }
+  if old.count > 6000 || newt.count > 6000 { return; }     // shown as edited, with no diff line
+  buf: [14000] u8; n := tr_cursor_unified(buf[..], old, newt);
+  tr_unified(r, path, "update", cast(string) buf[0..<n]);
+}
+
+tr_cursor_inside :: (r: [] TrRun, tool: string) -> bool {
+  ar := r[0].cue[0].c[0].ar[..];
+  if cu_tool_outside(tool, ar) { return false; }
+  p: [1] CdPolicy; tr_no_policy(p[..]);
+  locs := cl_raw(tool, "locations");
+  n := cl_count(locs);
+  for i: 0..<n {
+    item := cl_json(locs, cl_item(locs, i));
+    if !cd_inside(p[..], tr_cwd(r), cl_str(ar, item, "path")) { return false; }
+  }
+  raw := cl_raw(tool, "rawInput");
+  for key: [3] string.["path", "file_path", "cwd"] { if !cd_inside(p[..], tr_cwd(r), cl_str(ar, raw, key)) { return false; } }
+  return true;
+}
+
+tr_note :: (r: [] TrRun, text: string) { sw_text(r[0].log, "note", "text", text); }
+
+// One approval verdict, as a line in the session log.
+tr_approval :: (r: [] TrRun, label: string, effect: int, inside: bool, verdict: int, why: string) {
+  effects := CD_EFFECTS; verdicts := CD_VERDICTS;
+  l := r[0].log; o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"approval\",\"tool\":"); n = json_write_string(o, n, label);
+  n = json_raw(o, n, ",\"effect\":"); n = json_write_string(o, n, effects[effect]);
+  n = json_raw(o, n, ",\"inside\":"); n = json_raw(o, n, ifx inside then "true" else "false");
+  n = json_raw(o, n, ",\"verdict\":"); n = json_write_string(o, n, verdicts[verdict]);
+  n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, why);
+  n = json_raw(o, n, "}");
+  if l[0].nid > 0 && n > 0 { sw_put(l, n); }
+}
+
+tr_cursor_configure :: (r: [] TrRun, result: string) {
+  x := r[0].cue; ar := x[0].c[0].ar[..];
+  x[0].hold = 0;
+  model := ifx r[0].model_engine == TR_CURSOR then tr_model(r) else "";
+  if model.count > 0 {
+    id := cu_config_id(result, "model", model, ar);
+    if id.count == 0 { tr_note(r, "  --model was not applied: this Cursor session did not advertise it."); }
+    else { cue_set(x, id, model); }
+  }
+  effort := tr_effort(r);
+  if effort.count > 0 {
+    id := cu_config_id(result, "thought_level", effort, ar);
+    if id.count == 0 { tr_note(r, "  --effort was not applied: this Cursor session did not advertise a thought level."); }
+    else { cue_set(x, id, effort); }
+  }
+}
+
+tr_cursor_content :: (r: [] TrRun, update: string) {
+  ar := r[0].cue[0].c[0].ar[..];
+  content := cl_raw(update, "content");
+  n := cl_count(content);
+  status := cl_str(ar, update, "status");
+  shown := false;
+  for i: 0..<n {
+    item := cl_json(content, cl_item(content, i));
+    ty := cl_str(ar, item, "type");
+    if ty == "diff" {
+      tr_cursor_diff(r, cl_str(ar, item, "path"), cl_str(ar, item, "oldText"), cl_str(ar, item, "newText"));
+      shown = true;
+    } else if ty == "content" {
+      text := cl_str(ar, item, "content.text");
+      if text.count > 0 { tr_result(r, text, status == "failed"); shown = true; }
+    }
+  }
+  if !shown && status == "failed" { tr_result(r, "failed", true); }
+}
+
+tr_cursor_stop :: (r: [] TrRun) {
+  c := r[0].cue[0].c;
+  if r[0].ask {
+    if c[0].asking == CU_ASK_PERMISSION { cu_respond(c, "{\"outcome\":{\"outcome\":\"cancelled\"}}"); }
+    else { cu_decline(c); }
+    r[0].ask = false;
+  }
+  if r[0].cue[0].live && r[0].cue[0].ready && !r[0].stopping && c[0].session_n > 0 {
+    cu_session_cancel(c);
+    r[0].stopping = true;
+    r[0].stop_ms = tr_now();
+    return;
+  }
+  tr_cursor_close(r);
+  r[0].stopping = false;
+  tr_finish(r, TR_STOPPED, "");
+}
+
+tr_cursor_finish :: (r: [] TrRun, result: string) {
+  reason := cl_str(r[0].cue[0].c[0].ar[..], result, "stopReason");
+  rb: [64] u8; rn := tr_cat(rb[..], 0, reason);
+  reason = cast(string) rb[0..<rn];
+  r[0].stopping = false;
+  if reason == "end_turn" || reason == "end" || reason.count == 0 { tr_finish(r, TR_FINISHED, ""); return; }
+  if reason == "cancelled" { tr_finish(r, TR_STOPPED, ""); return; }
+  wb: [160] u8; wn := tr_cat(wb[..], 0, "Cursor ended the turn: "); wn = tr_cat(wb[..], wn, reason);
+  tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]);
+}
+
+tr_cursor_poll :: (r: [] TrRun) -> bool {
+  x := r[0].cue;
+  if !x[0].live || r[0].ask { return false; }
+  c := x[0].c;
+  changed := false;
+  one: [1] CuEvent;
+  for guard: 0..<64 {
+    cue_poll(x, one[..]);
+    ev := one[0];
+    if ev.kind == CuEventKind.idle { break; }
+    changed = true;
+    if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
+      why := cue_why(x);
+      if why.count == 0 { why = "Cursor exited."; }
+      wb: [2600] u8; wn := tr_cat(wb[..], 0, why);
+      tr_cursor_close(r);
+      if r[0].running && r[0].engine == TR_CURSOR { tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]); }
+      return true;
+    }
+    if ev.kind == CuEventKind.none || ev.kind == CuEventKind.initialized { continue; }
+    if ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE { r[0].ncursor_resume = 0; continue; }
+    if ev.kind == CuEventKind.refused && ev.of == CU_AUTHENTICATE {
+      tr_cursor_close(r);
+      if r[0].running { tr_finish(r, TR_FAILED, "Cursor is not logged in. Run agent login."); }
+      return true;
+    }
+    if ev.kind == CuEventKind.refused && ev.of == CU_SESSION_LOAD {
+      r[0].ncursor_resume = 0;
+      tr_note(r, "  The Cursor session could not be resumed. Starting a new one.");
+      continue;
+    }
+    if ev.kind == CuEventKind.refused {
+      mb: [1024] u8; mn := tr_cat(mb[..], 0, ev.message);
+      if ev.of == CU_SESSION_SET_CONFIG { tr_note(r, "  A Cursor setting was not applied."); cue_owed(x, r[0].running); continue; }
+      if r[0].running && ev.of == CU_SESSION_PROMPT { tr_finish(r, TR_FAILED, cast(string) mb[0..<mn]); r[0].stopping = false; }
+      else if ev.of == CU_SESSION_NEW {
+        tr_cursor_close(r);
+        if r[0].running { tr_finish(r, TR_FAILED, cast(string) mb[0..<mn]); }
+        return true;
+      }
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD) {
+      id := cu_session_id(c);
+      if id.count > 0 && r[0].nengine_sid == 0 { r[0].nengine_sid = tr_cat(r[0].engine_sid[..], 0, id); sw_engine_session(r[0].log, "cursor", id); }
+      tr_cursor_configure(r, ev.result);
+      cue_owed(x, r[0].running);
+      continue;
+    }
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_SET_CONFIG { cue_owed(x, r[0].running); continue; }
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT && r[0].running && r[0].engine == TR_CURSOR { tr_cursor_finish(r, ev.result); continue; }
+    if ev.kind == CuEventKind.question { cu_question(c, true); continue; }
+    if ev.kind == CuEventKind.plan { cu_plan(c, true); continue; }
+    if ev.kind == CuEventKind.permission {
+      tool := cl_raw(ev.params, "toolCall");
+      kb: [32] u8; kn := tr_cat(kb[..], 0, cl_str(c[0].ar[..], tool, "kind"));
+      tb: [400] u8; tn := tr_cat(tb[..], 0, cl_str(c[0].ar[..], tool, "title"));
+      title := cast(string) tb[0..<tn];
+      if tn == 0 { title = cast(string) kb[0..<kn]; }
+      effect := cu_kind_effect(cast(string) kb[0..<kn]);
+      inside := tr_cursor_inside(r, tool);
+      id := cu_allow_option(c);
+      if id.count == 0 { cu_decline(c); tr_approval(r, title, effect, inside, CD_VERDICT_REFUSE, "no allow option was offered"); }
+      else { cu_permit(c, id); tr_approval(r, title, effect, inside, CD_VERDICT_RUN, "the session trusts this agent"); }
+      continue;
+    }
+    if ev.kind != CuEventKind.notification { continue; }
+    if r[0].engine != TR_CURSOR || !r[0].running || x[0].replay { continue; }
+    update := cl_raw(ev.params, "update");
+    kind := cl_str(c[0].ar[..], update, "sessionUpdate");
+    if ev.method == "cursor/task" { continue; }
+    if kind == "agent_thought_chunk" || kind == "user_message_chunk" { continue; }
+    if kind == "agent_message_chunk" {
+      text := cl_str(c[0].ar[..], update, "content.text");
+      if text.count > 0 { tr_reply(r, text); }
+      continue;
+    }
+    if kind == "tool_call" { r[0].nrep = 0; r[0].steps += 1; continue; }     // a row, not a log line (as Coder)
+    if kind == "tool_call_update" { tr_cursor_content(r, update); continue; }
+  }
+  return changed;
+}
+
+// ---------------------------------------------------------------- Microcoder and Psionic
+
+// The worker: CODER_MICRO_WORKER when set (a built worker), else Coder's under CODER_REPO through tool.sh.
+tr_micro_send :: (r: [] TrRun, msg: string) {
+  w := r[0].mcw;
+  if w[0].h < 0 {
+    image: [4096] u8; worker := cl_getenv("CODER_MICRO_WORKER", image[..]);
+    rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+    if worker.count == 0 && repo.count == 0 { tr_finish(r, TR_FAILED, "CODER_REPO is not set: start Coder with coder/tui/coder.sh."); return; }
+    tb: [4200] u8; tn := tr_cat(tb[..], tr_cat(tb[..], 0, repo), TR_MC_TOOL);
+    wb: [4200] u8; wn := tr_cat(wb[..], tr_cat(wb[..], 0, repo), TR_MC_WORKER);
+    why := mcw_start(w, ifx worker.count > 0 then worker else cast(string) tb[0..<tn], ifx worker.count > 0 then "" else cast(string) wb[0..<wn], tr_cwd(r));
+    if why.count > 0 { tr_finish(r, TR_FAILED, why); return; }
+  }
+  p: [1] CdPolicy; tr_no_policy(p[..]);
+  t := McTask.{task = msg, session = sw_id(r[0].log), cwd = tr_cwd(r), local = r[0].engine == TR_PSIONIC,
+               sandbox = cd_codex_sandbox(p[..], false), policy = false, allow = CD_EFFECT_READ,
+               ceiling = CD_EFFECT_RUN, roots = "", gated = false};
+  if !mcw_task(w, t) { tr_micro_close(r); tr_finish(r, TR_FAILED, "Microcoder's worker is gone."); }
+}
+
+tr_micro_close :: (r: [] TrRun) { if r[0].mcw.count > 0 { mcw_close(r[0].mcw); } }
+
+tr_micro_poll :: (r: [] TrRun) -> bool {
+  w := r[0].mcw;
+  if w[0].h < 0 { return false; }
+  changed := false;
+  for guard: 0..<64 {
+    n := mcw_read(w);
+    if n == CL_TIMEOUT { break; }
+    changed = true;
+    if n == CL_EOF || (n < 0 && n != CL_TOO_LONG) {
+      eb: [2048] u8; why := mcw_stderr(w, eb[..]);
+      tr_micro_close(r);
+      if r[0].running && tr_is_micro(r[0].engine) { tr_finish(r, TR_FAILED, ifx why.count > 0 then why else "Microcoder's worker exited."); }
+      return true;
+    }
+    if n == CL_TOO_LONG { continue; }
+    tr_micro_line(r, cast(string) w[0].line[0..<n]);
+  }
+  return changed;
+}
+
+tr_mc_str :: (r: [] TrRun, json: string, path: string) -> string { return mcw_str(r[0].mcw, json, path); }
+
+tr_micro_line :: (r: [] TrRun, line: string) {
+  r[0].mcw[0].ar[0].at = 0; r[0].mcw[0].ar[0].full = false;
+  l := r[0].log;
+  kind := tr_mc_str(r, line, "kind");
+  if !r[0].running || !tr_is_micro(r[0].engine) { return; }
+  if kind == "journal" { n := json_raw(l[0].line[..], 0, line); sw_put(l, n); return; }
+  if kind == "reply" { tr_reply(r, tr_mc_str(r, line, "text")); return; }
+  if kind == "attempt" {
+    count := mo_relay(line, ifx r[0].engine == TR_PSIONIC then "psionic" else "micro", l[0].line[..]);
+    if count > 0 { sw_put(l, count); }
+    usd := cl_int(line, "usd_micros");
+    if usd.ok && usd.value > 0 { r[0].cost += cast(f64) usd.value / 1000000.0; }
+    return;
+  }
+  if kind == "command" || kind == "view" {
+    lb: [1024] u8;
+    pb: [1024] u8; pn := tr_cat(pb[..], 0, tr_mc_str(r, line, ifx kind == "view" then "path" else "command"));
+    tr_tool(r, tr_label(r, ifx kind == "view" then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
+    if kind == "view" {
+      found := cl_bool(line, "found");
+      if !(found.ok && found.value) { tr_result(r, "not found", true); }
+      return;
+    }
+    exit := cl_int(line, "exit");
+    late := cl_bool(line, "timed_out");
+    timed_out := late.ok && late.value;
+    tr_result(r, ifx timed_out then "timed out" else tr_mc_str(r, line, "output"), timed_out || (exit.ok && exit.value != 0));
+    return;
+  }
+  if kind == "ask" {
+    ticket := cl_int(line, "ticket");
+    if !ticket.ok || ticket.value <= 0 { tr_micro_close(r); tr_finish(r, TR_FAILED, "worker proposal has no owner ticket"); return; }
+    r[0].mcw[0].ticket = ticket.value;
+    tr_micro_answer(r, true, "");      // an unattended run's commands run
+    return;
+  }
+  if kind == "ended" {
+    eb: [64] u8; en := tr_cat(eb[..], 0, tr_mc_str(r, line, "ending")); ending := cast(string) eb[0..<en];
+    text := tr_mc_str(r, line, "text");
+    r[0].stopping = false;
+    if ending == "finished" || ending == "asked" {
+      if r[0].nrep == 0 && text.count > 0 { tr_reply(r, text); }
+      tr_finish(r, TR_FINISHED, "");
+      return;
+    }
+    if ending == "stopped" { tr_finish(r, TR_STOPPED, ""); return; }
+    wb: [1400] u8; wn := 0;
+    if ending == "no_capacity" { r[0].ncause = tr_cat(r[0].cause[..], 0, "provider"); wn = tr_cat(wb[..], 0, "No model answered: "); wn = tr_cat(wb[..], wn, text); }
+    else if ending == "bad_replies" { wn = tr_cat(wb[..], 0, "The model's replies didn't fit Microcoder's schema three times in a row."); }
+    else if ending == "idle" { wn = tr_cat(wb[..], 0, "The model gave nothing to do and no reply three times in a row."); }
+    else { wn = tr_cat(wb[..], 0, "Microcoder ended: "); wn = tr_cat(wb[..], wn, ending); wn = tr_cat(wb[..], wn, " "); wn = tr_cat(wb[..], wn, text); }
+    tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]);
+  }
+}
+
+tr_micro_answer :: (r: [] TrRun, allow: bool, why: string) {
+  if !mcw_answer(r[0].mcw, allow, why) { tr_micro_close(r); tr_finish(r, TR_FAILED, "Microcoder's worker is gone."); }
+}
+
+tr_micro_stop :: (r: [] TrRun) {
+  if r[0].mcw[0].h >= 0 && !r[0].stopping && mcw_stop(r[0].mcw) {
+    r[0].stopping = true;
+    r[0].stop_ms = tr_now();
+    return;
+  }
+  tr_micro_close(r);
+  r[0].stopping = false;
+  tr_finish(r, TR_STOPPED, "");
+}
+
+// ---------------------------------------------------------------- an owner's buffers
+
+// Every engine and buffer a runner needs, for an owner that keeps none of its
+// own (Aethyrforge's chat): allocate one, then tr_buffers.
+TrBuffers :: struct {
+  log: [1] SwLog; out: [1048576] u8;
+  eng: [1] Engine; ses: [1] Session; ses_pool: [2097152] u8;
+  qline: [CL_LINE_MAX] u8; qarena: [CL_LINE_MAX] u8; qout: [262144] u8; scratch: [196608] u8; prompt: [262144] u8;
+  cxe: [1] CxEngine; cxl: [CL_LINE_MAX] u8; cxa: [CL_LINE_MAX] u8; cxo: [262144] u8; cxm: [CX_MEM] u8; cxq: [262144] u8;
+  cxs: [1] Session; cxsp: [1048576] u8;
+  cu: [1] CuClient; cup: [1] ClProcess; cul: [262144] u8; cua: [262144] u8; cuo: [262144] u8; cue: [1] CuEngine;
+  mcw: [1] McWorker; mcl: [CL_LINE_MAX] u8; mca: [262144] u8;
+  df: [1] DfTable; vt: [1] Vt; vt_out: [131072] u8;
+}
+
+// Attaches every engine in b and the runner to them; json lines go to the log's outbox.
+tr_buffers :: (r: [] TrRun, b: [] TrBuffers) {
+  b[0].log[0] = SwLog.{}; b[0].log[0].out = b[0].out[..]; b[0].log[0].json = true; b[0].log[0].live = true;
+  e_attach(b[0].eng[..], b[0].qline[..], b[0].qarena[..], b[0].qout[..], b[0].scratch[..], b[0].prompt[..]);
+  s_init(b[0].ses[..], b[0].ses_pool[..]); b[0].ses[0].tabs = true;
+  cxe_attach(b[0].cxe[..], b[0].cxl[..], b[0].cxa[..], b[0].cxo[..], b[0].cxm[..], "");
+  b[0].cxe[0].prompt = b[0].cxq[..];
+  s_init(b[0].cxs[..], b[0].cxsp[..]); b[0].cxs[0].tabs = true;
+  b[0].cup[0].handle = -1;
+  cue_attach(b[0].cue[..], b[0].cu[..], b[0].cup[..], b[0].cul[..], b[0].cua[..], b[0].cuo[..]);
+  mcw_attach(b[0].mcw[..], b[0].mcl[..], b[0].mca[..]);
+  tr_attach(r, b[0].log[..], b[0].eng[..], b[0].ses[..], b[0].ses_pool[..], b[0].cxe[..], b[0].cxs[..], b[0].cue[..], b[0].mcw[..], b[0].df[..], b[0].vt[..], b[0].vt_out[..]);
+}
+
+// A new session on the same engines: the log and the turn start over, the engines are closed.
+tr_reset :: (r: [] TrRun) {
+  tr_close(r);
+  l := r[0].log; out := l[0].out; json := l[0].json; live := l[0].live;
+  l[0] = SwLog.{}; l[0].out = out; l[0].json = json; l[0].live = live;
+  r[0].running = false; r[0].turns = 0; r[0].steps = 0; r[0].exit = 0; r[0].stopping = false; r[0].ask = false; r[0].tool = false;
+  r[0].npre = 0; r[0].nresume = 0; r[0].ncursor_resume = 0; r[0].nengine_sid = 0; r[0].ncause = 0; r[0].nrep = 0;
+  r[0].expiring = false; r[0].redirecting = false; r[0].edit[0].active = false;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a turn's reply streams to the owner, a tool call logs it whole, and an ending names its exit" {
+  r: [1] TrRun; l: [1] SwLog; ob: [65536] u8; l[0].out = ob[..]; l[0].json = true; l[0].live = true;
+  r[0].log = l[..]; r[0].engine = TR_ECHO;
+  tr_owner(r[..], "/w", "0.1.0", "test", "Test");
+  #assert tr_engine_name(TR_MICRO) == "microcoder" && tr_engine_name(TR_ECHO) == "echo" && tr_end_word(TR_EXPIRED) == "expired";
+  tr_reply(r[..], "Hi");
+  #assert r[0].nrep == 2;
+  tr_tool(r[..], "Bash(ls)");
+  #assert r[0].nrep == 0 && r[0].steps == 1;
+  got: [65536] u8; n := sw_take(l[..], got[..]);
+  #assert cast(string) got[0..<n] == "{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0,\"text\":\"Hi\"}\n{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n";
+  #assert tr_exit(TR_FINISHED) == 0 && tr_exit(TR_STOPPED) == 130 && tr_exit(TR_EXPIRED) == 124 && tr_exit(TR_FAILED) == 1 && tr_exit(TR_REDIRECTED) == 1;
+}
+
+#test "a label is the argument's first line, relative to the folder, cut to the row" {
+  r: [1] TrRun; tr_owner(r[..], "/w", "", "", "");
+  b: [1024] u8;
+  #assert tr_label(r[..], "Read", "/w/a/b.txt", b[..]) == "Read(a/b.txt)";
+  #assert tr_label(r[..], "Bash", "ls\nmore", b[..]) == "Bash(ls…)";
+  #assert tr_label(r[..], "Grep", "", b[..]) == "Grep";
+}
+
+#test "Codex's provider failures are the ones that clear on their own" {
+  #assert tr_cx_provider("\"serverOverloaded\"") && tr_cx_provider("{\"httpConnectionFailed\":{\"httpStatusCode\":502}}");
+  #assert !tr_cx_provider("\"contextWindowExceeded\"") && !tr_cx_provider("");
+}
+
+#test "Cursor's change is one hunk: old lines removed, new lines added" {
+  b: [256] u8; n := tr_cursor_unified(b[..], "a\nb\n", "a\nc\n");
+  #assert cast(string) b[0..<n] == "@@ -1,2 +1,2 @@\n-a\n-b\n+a\n+c\n";
+  #assert tr_cursor_lines("") == 0 && tr_cursor_lines("x") == 1 && tr_cursor_lines("x\n") == 1;
+}

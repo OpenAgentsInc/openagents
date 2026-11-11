@@ -19,20 +19,9 @@
 //
 //   coder consent grant system-one --classes session [--days N]
 
-#load "../../psionic/lib/harness/consent.coax";
-
-GT_EVENTS :: 2048;
-GT_GRANTS :: 256;
-GT_FILE :: 2097152;
-GT_PERSON :: 1;               // the person at this machine
-GT_FOREVER :: 1000000000000;  // seconds, as chapter 19's facts
-
-GtStore :: struct { src: [GT_EVENTS] CsEvent; events: [GT_EVENTS] CsEvent; grants: [GT_GRANTS] CsGrant; }
+#load "../../coax/lib/agent/engine/consent-gate.coax";   // the ledger and the gate on System One (shared with the turn runner)
 
 gt_dest :: (engine: int) -> CsDest { return CsDest.{kind = CsKind.agent, id = engine, purpose = CsPurpose.delegate}; }
-
-GT_SYSTEM_ONE :: 1;
-gt_so_dest :: () -> CsDest { return CsDest.{kind = CsKind.tool, id = GT_SYSTEM_ONE, purpose = CsPurpose.call}; }
 
 gt_dest_name :: (d: CsDest) -> string {
   if d.kind == CsKind.tool && d.id == GT_SYSTEM_ONE { return "system-one"; }
@@ -62,86 +51,11 @@ gt_class_text :: (bits: int, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
-gt_why_name :: (w: CsWhy) -> string {
-  names := [17] string.["ok", "none", "classes", "early", "expired", "revoked", "shape", "capacity", "unknown", "person", "twice", "tick", "sequence", "link", "digest", "uncovered", "replay"];
-  return names[cast(int) w];
-}
-
-gt_line :: (ev: CsEvent, out: [] u8) -> int {
-  e := ev;
-  n := json_raw(out, 0, "{\"sequence\":"); n = json_write_int(out, n, e.sequence);
-  f := [17] int.[cast(int) e.op, e.tick, cast(int) e.dest.kind, e.dest.id, cast(int) e.dest.purpose, e.classes, e.start, e.until, e.person, e.grant, cast(int) e.why, e.cover[0], e.cover[1], e.cover[2], e.cover[3], e.cover[4], e.sends];
-  names := [17] string.["op", "tick", "kind", "id", "purpose", "classes", "start", "until", "person", "grant", "why", "c0", "c1", "c2", "c3", "c4", "sends"];
-  for i: 0..<17 { n = json_raw(out, n, ",\""); n = json_raw(out, n, names[i]); n = json_raw(out, n, "\":"); n = json_write_int(out, n, f[i]); }
-  n = json_raw(out, n, ",\"bytes\":"); n = json_write_int(out, n, e.bytes);
-  n = json_raw(out, n, ",\"content\":\""); n = mem_hex(out, n, cast(string) e.content[..]);
-  n = json_raw(out, n, "\",\"previous\":\""); n = mem_hex(out, n, cast(string) e.previous[..]);
-  n = json_raw(out, n, "\",\"digest\":\""); n = mem_hex(out, n, cast(string) e.digest[..]);
-  return json_raw(out, n, "\"}\n");
-}
-
-gt_unline :: (line: string, e: [] CsEvent) -> bool {
-  ok: [1] bool; ok[0] = true;
-  x: CsEvent;
-  x.sequence = mem_i(line, "sequence", ok[..]);
-  op := mem_i(line, "op", ok[..]); kind := mem_i(line, "kind", ok[..]); pu := mem_i(line, "purpose", ok[..]); why := mem_i(line, "why", ok[..]);
-  if op < 0 || op > 3 || kind < 0 || kind > 3 || pu < 0 || pu > 3 || why < 0 || why > 16 { return false; }
-  x.op = cast(CsOp) op; x.dest.kind = cast(CsKind) kind; x.dest.purpose = cast(CsPurpose) pu; x.why = cast(CsWhy) why;
-  x.tick = mem_i(line, "tick", ok[..]); x.dest.id = mem_i(line, "id", ok[..]); x.classes = mem_i(line, "classes", ok[..]);
-  x.start = mem_i(line, "start", ok[..]); x.until = mem_i(line, "until", ok[..]); x.person = mem_i(line, "person", ok[..]);
-  x.grant = mem_i(line, "grant", ok[..]); x.sends = mem_i(line, "sends", ok[..]); x.bytes = mem_i(line, "bytes", ok[..]);
-  x.cover[0] = mem_i(line, "c0", ok[..]); x.cover[1] = mem_i(line, "c1", ok[..]); x.cover[2] = mem_i(line, "c2", ok[..]);
-  x.cover[3] = mem_i(line, "c3", ok[..]); x.cover[4] = mem_i(line, "c4", ok[..]);
-  x.content = mem_d32(mem_s(line, "content"), ok[..]); x.previous = mem_d32(mem_s(line, "previous"), ok[..]); x.digest = mem_d32(mem_s(line, "digest"), ok[..]);
-  e[0] = x;
-  return ok[0];
-}
-
 gt_path :: (out: [] u8) -> string {
   p: [1] RtPaths;
   if !rt_init(p[..]) { return ""; }
   b: [1300] u8; x := fs_mkdir(rt_path(p[..], "/consent", b[..]));
   return cast(string) out[0..<cd_cat(out, 0, rt_path(p[..], "/consent/events.jsonl", b[..]))];
-}
-
-// Reads the ledger and replays it into l: grants rebuilt, every send
-// checked against the grants of its moment. "" when it did, else why not.
-gt_open :: (path: string, st: [] GtStore, l: [] CsLedger, file: [] u8) -> string {
-  src := CsLedger.{events = st[0].src[..], grants = st[0].grants[0..<0]};
-  l[0] = CsLedger.{events = st[0].events[..], grants = st[0].grants[..]};
-  if !fs_exists(path) { return ""; }
-  n := fs_read(path, file);
-  if n < 0 { return "The consent ledger could not be read."; }
-  if n >= file.count { return "The consent ledger is larger than Coder reads."; }
-  at := 0;
-  while at < n {
-    e := at; while e < n && file[e] != 10 { e += 1; }
-    if e > at {
-      if src.count == src.events.count { return "The consent ledger is full."; }
-      if !gt_unline(cast(string) file[at..<e], src.events[src.count..<src.count + 1]) { return "A line of the consent ledger does not parse."; }
-      src.count += 1;
-    }
-    at = e + 1;
-  }
-  v := cs_replay(src, l);
-  if v.why != CsWhy.ok {
-    wb: [24] u8; mb: [200] u8;
-    k := cd_cat(mb[..], 0, "The consent ledger does not replay at event "); k = cd_cat(mb[..], k, cd_itoa(v.index, wb[..]));
-    k = cd_cat(mb[..], k, " ("); k = cd_cat(mb[..], k, gt_why_name(v.why)); k = cd_cat(mb[..], k, ").");
-    for i: 0..<k { file[i] = mb[i]; }
-    return cast(string) file[0..<k];
-  }
-  return "";
-}
-
-// Appends events from..<l.count to the ledger file.
-gt_save :: (path: string, l: CsLedger, from: int) -> bool {
-  ln: [1024] u8;
-  for i: from..<l.count {
-    n := gt_line(l.events[i], ln[..]);
-    if n < 0 || !fs_append(path, cast(string) ln[0..<n]) { return false; }
-  }
-  return true;
 }
 
 gt_engine_id :: (name: string) -> int {
@@ -202,29 +116,9 @@ cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: 
   return 0;
 }
 
-// The gate on one message of session content to System One: logs the
-// decision and returns true when a grant covers it. why gets the refusal.
+// The gate on one message of session content to System One, on Coder's ledger.
 gt_session_to_so :: (text: string, what: string, why: [] u8, nwhy: [] int) -> bool {
-  pb: [1400] u8; path := gt_path(pb[..]);
-  if path.count == 0 { nwhy[0] = cd_cat(why, 0, "no $HOME for the consent ledger"); return false; }
-  st: [1] GtStore; l: [1] CsLedger; file: [GT_FILE] u8;
-  w := gt_open(path, st[..], l[..], file[..]);
-  if w.count > 0 { n := cd_cat(why, 0, "the consent ledger: "); nwhy[0] = cd_cat(why, n, w); return false; }
-  now := cxproc_wall_us() / 1000000;
-  if l[0].count > 0 && l[0].events[l[0].count - 1].tick > now { now = l[0].events[l[0].count - 1].tick; }
-  texts := [1] string.[text]; own := [1] int.[1]; labels := [1] int.[1];
-  g := CsGraph.{texts = texts[..], own = own[..], labels = labels[..], count = 1};
-  sb: [40000] u8; se: [4] int; sv: [4] int;
-  s: [1] CsSink; s[0] = CsSink.{bytes = sb[..], ends = se[..], events = sv[..]};
-  parts := [1] int.[0];
-  before := l[0].count;
-  r := cs_send(l[..], g, s[..], CsMessage.{dest = gt_so_dest(), parts = parts[..]}, now);
-  saved := gt_save(path, l[0], before);
-  if r.why == CsWhy.ok && saved { return true; }
-  if !saved { nwhy[0] = cd_cat(why, 0, "the consent ledger could not be written"); return false; }
-  n := cd_cat(why, 0, "no consent to send "); n = cd_cat(why, n, what);
-  nwhy[0] = cd_cat(why, n, " to System One. To allow it: coder consent grant system-one --classes session");
-  return false;
+  pb: [1400] u8; return cg_session_to_so(gt_path(pb[..]), text, what, why, nwhy);
 }
 
 // The gate on a session's remembered facts: parts[i] is fact i's text and

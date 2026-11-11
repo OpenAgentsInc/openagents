@@ -1,6 +1,6 @@
 // Codex's model catalog and the session's selections. All strings are owned:
 // app-server reuses its input line and JSON arena on every notification.
-#load "../../coax/lib/agent/claude/transport.coax";
+#load "../claude/transport.coax";
 
 CCX_MODELS :: 64;
 CdCxOptions :: struct {

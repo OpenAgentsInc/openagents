@@ -6,15 +6,8 @@
 
 #load "../../coax/lib/agent/engine/route.coax";
 
-// Asks System One; r says what it chose, or why there is no decision.
-cd_route :: (task: string, local: bool, r: [] AgRoute) {
-  q: [1] AgrAsk;
-  if !agr_begin(task, local, r, q[..]) { return; }
-  // the task leaves only under a grant (chapter 18)
-  gn: [1] int;
-  if agr_needs_grant(q[..]) && !gt_session_to_so(agr_question(q[..]), "the task", r[0].why[..], gn[..]) { agr_wipe(q[..]); r[0].ok = false; r[0].nwhy = gn[0]; return; }
-  agr_ask(q[..], r);
-}
+// Asks System One on Coder's consent ledger; r says what it chose, or why there is no decision.
+cd_route :: (task: string, local: bool, r: [] AgRoute) { pb: [1400] u8; cg_route(task, local, r, gt_path(pb[..])); }
 
 // System One as a tool (Coder book chapter 16): `coder decide QUESTION
 // --options A,B[,...] [--state TEXT]` asks one typed choice question and
