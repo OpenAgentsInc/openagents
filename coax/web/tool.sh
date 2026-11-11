@@ -36,8 +36,13 @@ bin="$here/build/tools/$name-$compiler_hash"
 # list, only those files, the compiler and the platform sources can make it
 # stale, so a change elsewhere in the repository doesn't rebuild the tool.
 sources="$bin.sources"
+# The image is named by its file's name, which two tools can share (apps/openagents-desktop/linux/check.coax
+# and apps/openagents-web/demos/hud/check.coax are both "check"), so each image records the entry file it
+# was built from, and another entry with the same name rebuilds it rather than running the wrong program.
+entry="$bin.entry"
 why=""
 if [[ ! -x "$bin" ]]; then why="first build"
+elif [[ "$(cat "$entry" 2>/dev/null)" != "$src" ]]; then why="another ${name}.coax was built here last"
 elif changed="$(find "$coax" "$p" "$here/tool.sh" "$repo/coax/lib/crypto/entropy.coax" -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then why="$changed changed"
 elif [[ -s "$sources" ]]; then
   while IFS= read -r f; do
@@ -91,6 +96,7 @@ if [[ -n "$why" ]]; then
     fi
   fi
   mv -f "$work/$name" "$bin"
+  printf '%s' "$src" > "$entry"
   # the sources this build read, for the next staleness check (none: the broad check)
   if wait "$deps_pid" && grep -o '"sources":\[[^]]*\]' "$work/deps.json" | grep -o '"/[^"]*"' | tr -d '"' > "$work/sources" && [[ -s "$work/sources" ]]; then
     mv -f "$work/sources" "$sources"
