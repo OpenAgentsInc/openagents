@@ -20,15 +20,20 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 /usr/bin/clang "${cflags[@]}" -c "$work/c/router.c" -o "$work/c/router.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/route-face.c" -o "$work/c/route-face.o"
 /usr/bin/clang "${cflags[@]}" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
+# The shared session log's files and journal (coax/lib/agent/session/log.coax) since the engines moved to coax/lib/agent/engine/.
+/usr/bin/clang "${cflags[@]}" -c "$repo/coax/platform/store-file-native.c" -o "$work/c/store-file.o"
 "$coax" c "$here/zeron/settings.coax" --library --header "$work/c/zeron.h" > "$work/c/zeron.c"
-/usr/bin/clang "${cflags[@]}" -c "$work/c/zeron.c" -o "$work/c/zeron.o"
+# The app's unit and Parakeet's both export Coax's SHA-256 (S_hash, S_hex): the app's copy gets names of its own.
+/usr/bin/clang "${cflags[@]}" -DS_hash=oa_zeron_S_hash -DS_hex=oa_zeron_S_hex -c "$work/c/zeron.c" -o "$work/c/zeron.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/zeron-face.c" -o "$work/c/zeron-face.o"
 # The Lab's NIP-98 signer for our inference route, a unit of its own (lab-sign.coax); its crypto's checks need the larger step budget.
 "$coax" c "$here/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h" > "$work/c/lab-sign.c"
-/usr/bin/clang "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign.o"
+/usr/bin/clang "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign-all.o"
+# It carries its own copy of the hashes the app's unit also exports: only its one entry point stays visible (objcopy on Linux).
+ld -r "$work/c/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -o "$work/c/lab-sign.o"
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/dictation-build.coax" "$repo" "$work/c"
 xcrun -sdk macosx metal "$here/Shaders.metal" "$repo/components/zeron/Zeron.metal" -o "$app/Contents/Resources/default.metallib"
-xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$repo/components/zeron/MetalUI.swift" "$work/c/chat.o" "$work/c/face.o" "$work/c/router.o" "$work/c/route-face.o" "$work/c/process.o" "$work/c/zeron.o" "$work/c/zeron-face.o" "$work/c/lab-sign.o" "$work/c/dictation.o" "$work/c/dictation-face.o" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
+xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$repo/components/zeron/MetalUI.swift" "$work/c/chat.o" "$work/c/face.o" "$work/c/router.o" "$work/c/route-face.o" "$work/c/process.o" "$work/c/store-file.o" "$work/c/zeron.o" "$work/c/zeron-face.o" "$work/c/lab-sign.o" "$work/c/dictation.o" "$work/c/dictation-face.o" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
   -framework AppKit -framework Metal -framework MetalKit -framework CoreText -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -lpthread -lm -o "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 rm -rf "$app/Contents/Resources/fonts" "$app/Contents/Resources/icons"

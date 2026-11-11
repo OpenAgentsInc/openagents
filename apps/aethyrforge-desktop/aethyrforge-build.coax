@@ -197,8 +197,13 @@ tool_main :: () -> int #export_c #effects(all) {
   if !af_native(root,here,work,coax,out[..],deadline) {return 1;}
   print("Building Aethyrforge's AppKit shell…\n");
   serve := af_path(p[..], res, "serve");
-  sc := [12] string.["/usr/bin/clang", "-std=c11", "-O2", "-D_DARWIN_C_SOURCE", "-Wall", "-Wextra", "-o", serve,
-    af_path(p[..], root, "coax/web/serve.c"), af_path(p[..], root, "verse/voice-host/ws.c"), "-lm", "-Wno-unused-function"];
+  // serve.c's HTTP ranges are Coax (coax/web/http-range.coax), compiled beside it as coax/web/serve.sh does.
+  range_h := af_path(p[..], work, "http-range.h"); range_c := af_path(p[..], work, "http-range.c");
+  rg := [6] string.[coax, "c", af_path(p[..], root, "coax/web/http-range.coax"), "--library", "--header", range_h];
+  rn := af_run(rg[..], out[..], deadline);
+  if rn < 0 || !fs_write(range_c, cast(string) out[0..<rn]) { return 1; }
+  sc := [15] string.["/usr/bin/clang", "-std=c11", "-O2", "-D_DARWIN_C_SOURCE", "-Wall", "-Wextra", "-I", work, "-o", serve,
+    af_path(p[..], root, "coax/web/serve.c"), range_c, af_path(p[..], root, "verse/voice-host/ws.c"), "-lm", "-Wno-unused-function"];
   if af_run(sc[..], out[..], deadline) < 0 { return 1; }
   header := af_path(p[..], work, "session.h"); code := af_path(p[..], work, "session.c"); object := af_path(p[..], work, "session.o");
   gen := [6] string.[coax, "c", af_path(p[..], here, "session.coax"), "--library", "--header", header];
