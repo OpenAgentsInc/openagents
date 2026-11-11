@@ -132,11 +132,12 @@ only tests.
    moved onto the same contract, replacing the three Mac `main.swift` files
    and the Android C host. A Verse app such as Everglade is then its Coax
    plus a short list of what it needs from the host.
-2. **One UI drawing layer.** Three exist: the Zeron components
-   (`apps/shared/zeron/gpui.coax`), Aethyr's HUD (`aethyr/ui/`) and
-   Everglade's HUD (`everglade/hud/`). Decide whether panels in a Verse app
-   use the Zeron components, the Aethyr HUD, or both over one vertex format.
-   This is the owner's decision; Steps 1 and 2 don't wait on it.
+2. **One component system.** Specified in
+   [components/spec.md](../../components/spec.md): one set of components in
+   `components/`, skins over them, and a library page at
+   openagents.com/components. It replaces the three drawing stacks (the
+   Zeron components, Aethyr's HUD and Everglade's HUD) and the four Markdown
+   implementations.
 3. **`/chat` on the shared stack.** `/chat` already draws with the Zeron
    components. What it lacks next to the desktop app: sessions grouped by
    folder and tabs, the shared session record, and access for people who are
