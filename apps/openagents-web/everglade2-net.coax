@@ -425,7 +425,13 @@ e2n_record :: (n: [] E2Net, t: string) {
     n[0].tick = d.tick; n[0].tick_t = clock;
     _ := wire_mirror_d(n[0].mir[..], d);
     from := r[0].at;
-    for k: 0..<wire_entries(t, from) { e2n_entry(n, wire_entry(t, from, k), d); }
+    rows := 0; row_b := 0;
+    for k: 0..<wire_entries(t, from) {
+      en := wire_entry(t, from, k);
+      if (en.count > 1 && en[0] == 's' && en[1] == ' ') || (en.count > 1 && en[0] == 'S') { rows += 1; row_b += en.count + 1; }   // the ?net overlay's ROWS (#13165)
+      e2n_entry(n, en, d);
+    }
+    net_stats_rows(n[0].stats[..], rows, row_b);
     wire_mirror_end(n[0].mir[..], d);
     if (d.f & 1) != 0 && (d.f & 2) == 0 {
       // a whole snapshot: whoever it doesn't hold has gone
@@ -474,7 +480,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if t.count < 1 { return; }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
   c := t[0];
-  if c == 's' {
+  if c == 's' || c == 'S' {   // a row, as text or packed (everglade-wire.coax, #13165)
     e := wire_mirror_s(n[0].mir[..], d.tick, t);
     if e >= 0 { e2n_row(n, wire_mirror_get(n[0].mir[..], e), d); }
     return;
@@ -649,7 +655,7 @@ e2n_hello :: (n: [] E2Net) {
   if n[0].again && n[0].at_known { e2n_send(n, wire_put_at(n[0].out[..], 0, WireAt.{x = n[0].at_x, z = n[0].at_z, yaw = n[0].at_yaw})); n[0].agains += 1; }
   n[0].again = false;
   kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
-  e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = cast(string) kind[0..<kn], flags = ifx n[0].account then 2 else 0, name = ""})));
+  e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = cast(string) kind[0..<kn], flags = (ifx n[0].account then 2 else 0) | WIRE_HELLO_PACKED, name = ""})));
   if n[0].change_due { _ := e2n_change(n); }
 }
 // V LOOK KIND: Change character (the Esc menu's, through Character Create, and the admin CLASSES and

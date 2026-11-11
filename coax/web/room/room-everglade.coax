@@ -771,6 +771,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   if tk.schema == 2 && tk.capture.ok && fb_cl_of_kind(kind) < 0 { kind = ifx tk.capture.state[0] == 1 then "warlock" else "druid"; }
   eg_seat_kind(v, k, seat_id, kind);
   st[0].flags = eg_clamp(h.flags, 0, 255);
+  st[0].rep[0].packed = (st[0].flags & WIRE_HELLO_PACKED) != 0;   // its rows go bit-packed (everglade-wire.coax, #13165)
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
   // Character Create's hello (RM_GLADE_FLAG) can come after the seat's first tick put it at the
@@ -1650,7 +1651,7 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   observed_seat:=k*EG_SEATS+s;v[0].st.rows_last[observed_seat]=0;v[0].st.left_last[observed_seat]=st[0].rep[0].left;v[0].st.rows_deferred+=st[0].rep[0].left;
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
-    if en.count>1&&en[0]=='s'&&en[1]==' '{v[0].st.rows+=1;v[0].st.row_bytes+=en.count;v[0].st.rows_last[observed_seat]+=1;}
+    if en.count>1&&((en[0]=='s'&&en[1]==' ')||en[0]=='S'){v[0].st.rows+=1;v[0].st.row_bytes+=en.count;v[0].st.rows_last[observed_seat]+=1;}
     if en.count > 0 { eg_out_entry(o[..], v, k, s_id, f, en); }
     if en.count > 1 && en[0] == 'x' && en[1] == ' ' { v[0].st.life_b += en.count + 1; }
   }

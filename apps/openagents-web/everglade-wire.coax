@@ -15,7 +15,7 @@
 // Page to server:
 //   P ENGINE RULES CONTENT         the build this page is (WIRE_PINS), just before its hello (#12839)
 //   H 5 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
-//                                  (1 touch, 2 logged in), the name shown ("-" none)
+//                                  (1 touch, 2 logged in, 8 reads packed rows: WIRE_HELLO_PACKED), the name shown ("-" none)
 //   I SEQ KX KY PX PY THETA B HEARD  one step's input (everglade-move-types.coax EgMoveIn), every step at
 //                                  30 Hz, idle ones too: the keys and the stick (-100 to 100, along the
 //                                  camera), the camera's yaw in 0.1 mrad (WIRE_FINE), B bits (1 run, 2 jump, 4 dive); HEARD the
@@ -44,6 +44,8 @@
 //                                  forgets every entity first (a snapshot), 2 more of this tick follows;
 //                                  PART counts this tick's frames from 0; entries a ';' apart:
 //     s ID BACK MASK V V ...       an entity's state (the replication model below)
+//     SBITS                        the same row bit-packed (#13165), to a page whose hello set WIRE_HELLO_PACKED:
+//                                  ID, BACK, MASK and each field's change in WIRE_B64's characters, after the S
 //     x ID                         an entity gone, or out of your view
 //     n SS ID LOOK CLASS FLAGS NAME  who a seat is ("-" none yet)
 //     e cast SS SLOT AX AY AZ SEED a cast the server took: every page plays it from SEED
@@ -592,6 +594,113 @@ wire_put_s_fields :: (out:[]u8,at:int,id:int,back:int,base:[]s32,now:[]s32,allow
   for q: 0..<WIRE_SF { if (mask & (1 << q)) != 0 { n = wire_int(out, n, cast(int) now[q] - cast(int) base[q]); } }
   return n;
 }
+
+// ---- packed rows (#13165): the same row, base and fields as "s", bit-packed. The fields are already
+// quantized (cm, cm/s, centiradians, tenths of a ms), so a field's change is a small whole number: zig-
+// zagged (0, -1, 1, -2 ... to 0, 1, 2, 3 ...) and written in groups of WIRE_PACK_GROUP bits, each with a
+// bit after it saying whether another follows. A walker's step is 10 bits, not 3 or 4 characters and a
+// space. The bits go six to a character of WIRE_B64 (URL-safe base64: no ';', '|', ' ' or newline, so the
+// D frame and the relay's '|' joins carry it as text). A room sends them only to a page whose hello says
+// it reads them (WIRE_HELLO_PACKED); any other page gets "s" rows, and a page reads both.
+WIRE_HELLO_PACKED :: 8;
+WIRE_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+WIRE_PACK_ID :: 5; WIRE_PACK_GROUP :: 4; WIRE_PACK_BACK :: 4;   // bits: an id's group, a change's group, BACK (WIRE_BASES 16)
+// MASK in two levels: which of five runs of fields changed (KIND to YAW, the velocity, G to COND, OWNER
+// to FORM, CARRY to WARP), then each changed run's own bits; a walker's is 18 bits, not 23.
+WIRE_PACK_RUNS :: 5; WIRE_PACK_RUN_AT :: [6] int.[0, 5, 8, 13, 18, WIRE_SF];
+wire_bits_put_mask :: (w: [] WireBits, out: [] u8, mask: int) {
+  runs := 0;
+  for g: 0..<WIRE_PACK_RUNS { a := WIRE_PACK_RUN_AT[g]; k := WIRE_PACK_RUN_AT[g + 1] - a; if ((mask >> a) & ((1 << k) - 1)) != 0 { runs |= 1 << g; } }
+  wire_bits_put(w, out, runs, WIRE_PACK_RUNS);
+  for g: 0..<WIRE_PACK_RUNS { if (runs & (1 << g)) != 0 { a := WIRE_PACK_RUN_AT[g]; k := WIRE_PACK_RUN_AT[g + 1] - a; wire_bits_put(w, out, (mask >> a) & ((1 << k) - 1), k); } }
+}
+wire_bits_get_mask :: (w: [] WireBits, t: string) -> int {
+  runs := wire_bits_get(w, t, WIRE_PACK_RUNS); mask := 0;
+  for g: 0..<WIRE_PACK_RUNS {
+    if (runs & (1 << g)) == 0 { continue; }
+    a := WIRE_PACK_RUN_AT[g]; k := WIRE_PACK_RUN_AT[g + 1] - a; b := wire_bits_get(w, t, k);
+    if b == 0 { w[0].ok = false; }   // a run said changed with none of its fields: not a row this writes
+    mask |= b << a;
+  }
+  return mask;
+}
+WireBits :: struct { at: int; acc: int; n: int; ok: bool = true; }   // where in the text, the bits in hand and how many
+wire_bits_put :: (w: [] WireBits, out: [] u8, v: int, k: int) {
+  for i: 0..<k {
+    w[0].acc = w[0].acc * 2 + ((v >> (k - 1 - i)) & 1); w[0].n += 1;
+    if w[0].n == 6 { if w[0].at < out.count { out[w[0].at] = WIRE_B64[w[0].acc]; } else { w[0].ok = false; } w[0].at += 1; w[0].acc = 0; w[0].n = 0; }
+  }
+}
+// v (0 or more) in groups of g bits, the lowest first, each followed by 1 if another comes
+wire_bits_put_u :: (w: [] WireBits, out: [] u8, v: int, g: int) {
+  x := ifx v < 0 then 0 else v; more := true;
+  while more { wire_bits_put(w, out, x & ((1 << g) - 1), g); x = x >> g; more = x != 0; wire_bits_put(w, out, ifx more then 1 else 0, 1); }
+}
+wire_bits_flush :: (w: [] WireBits, out: [] u8) { if w[0].n > 0 { wire_bits_put(w, out, 0, 6 - w[0].n); } }
+wire_zig :: (v: int) -> int { return ifx v >= 0 then v * 2 else -v * 2 - 1; }
+wire_unzig :: (z: int) -> int { return ifx z % 2 == 0 then z / 2 else -(z + 1) / 2; }
+wire_b64_value :: (c: u8) -> int {
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); } if c >= 'a' && c <= 'z' { return cast(int) (c - 'a') + 26; }
+  if c >= '0' && c <= '9' { return cast(int) (c - '0') + 52; } if c == '-' { return 62; } if c == '_' { return 63; }
+  return -1;
+}
+wire_bits_get :: (w: [] WireBits, t: string, k: int) -> int {
+  v := 0;
+  for i: 0..<k {
+    if w[0].n == 0 {
+      c := ifx w[0].at < t.count then wire_b64_value(t[w[0].at]) else -1;
+      if c < 0 { w[0].ok = false; return 0; }
+      w[0].acc = c; w[0].n = 6; w[0].at += 1;
+    }
+    w[0].n -= 1; v = v * 2 + ((w[0].acc >> w[0].n) & 1);
+  }
+  return v;
+}
+wire_bits_get_u :: (w: [] WireBits, t: string, g: int) -> int {
+  v := 0; shift := 0;
+  while w[0].ok {
+    if shift > 40 { w[0].ok = false; return 0; }   // past any field's change (a row's fields are 32 bits)
+    v += wire_bits_get(w, t, g) << shift; shift += g;
+    if wire_bits_get(w, t, 1) == 0 { break; }
+  }
+  return v;
+}
+// "SBITS": the row `now` against `base` (BACK ticks back; zeros with BACK 0), its `allowed` fields only.
+wire_put_s_packed :: (out: [] u8, at: int, id: int, back: int, base: [] s32, now: [] s32, allowed: int) -> int {
+  d := net_row_delta(WIRE_SF, allowed, base, now);
+  if !d.ok || id < 0 || back < 0 || back >= WIRE_BASES || at + 1 > out.count { return at; }
+  out[at] = 'S';
+  w: [1] WireBits; w[0].at = at + 1;
+  wire_bits_put_u(w[..], out, id, WIRE_PACK_ID);
+  wire_bits_put(w[..], out, back, WIRE_PACK_BACK);
+  wire_bits_put_mask(w[..], out, d.mask);
+  for q: 0..<WIRE_SF { if (d.mask & (1 << q)) != 0 { wire_bits_put_u(w[..], out, wire_zig(cast(int) now[q] - cast(int) base[q]), WIRE_PACK_GROUP); } }
+  wire_bits_flush(w[..], out);
+  return ifx w[0].ok then w[0].at else at;
+}
+// A row as it came, either way: its id, its BACK, its MASK and each masked field's change.
+WireRowIn :: struct { ok: bool; id: int; back: int; mask: int; d: [WIRE_SF] int; }
+wire_read_row :: (t: string) -> WireRowIn {
+  o: WireRowIn;
+  if t.count < 2 { return o; }
+  if t[0] == 's' {
+    if t.count < 3 || t[1] != ' ' { return o; }
+    r: [1] WireRd; r[0] = wire_rd(t, 1);
+    h := wire_read_s_head(t, r[..]);
+    o.id = h.id; o.back = h.back; o.mask = wire_num(t, r[..]);
+    if !r[0].ok || o.mask < 0 || o.mask >= (1 << WIRE_SF) { return WireRowIn.{}; }
+    for q: 0..<WIRE_SF { if (o.mask & (1 << q)) != 0 { o.d[q] = wire_num(t, r[..]); } }
+    if !r[0].ok || wire_more(t, r[..]) { return WireRowIn.{}; }
+    o.ok = true; return o;
+  }
+  if t[0] != 'S' { return o; }
+  w: [1] WireBits; w[0].at = 1;
+  o.id = wire_bits_get_u(w[..], t, WIRE_PACK_ID); o.back = wire_bits_get(w[..], t, WIRE_PACK_BACK); o.mask = wire_bits_get_mask(w[..], t);
+  for q: 0..<WIRE_SF { if (o.mask & (1 << q)) != 0 { o.d[q] = wire_unzig(wire_bits_get_u(w[..], t, WIRE_PACK_GROUP)); } }
+  // every character read, and the last one's spare bits zero
+  if !w[0].ok || w[0].at != t.count || (w[0].acc & ((1 << w[0].n) - 1)) != 0 || o.id < 0 || o.back >= WIRE_BASES { return WireRowIn.{}; }
+  o.ok = true; return o;
+}
 wire_read_s_head :: (t: string, r: [] WireRd) -> WireSHead {
   h: WireSHead;
   h.id = wire_num(t, r); h.back = wire_num(t, r);
@@ -645,10 +754,10 @@ wire_mirror_end :: (m: [] WireMirror, d: WireD) {
   if net_snapshot_received(m[0].heard,d.tick,m[0].tick,m[0].whole,(d.f&2)==0) {m[0].heard=d.tick;}
 }
 // A row ("s ...") at tick: its entity's place in the mirror, its newest row now this one; -1 unread.
+// (an "s" or a packed "S")
 wire_mirror_s :: (m: [] WireMirror, tick: int, t: string) -> int {
-  r: [1] WireRd; r[0] = wire_rd(t, 1);
-  h := wire_read_s_head(t, r[..]);
-  if !r[0].ok { m[0].whole = false; m[0].bad += 1; return -1; }
+  h := wire_read_row(t);
+  if !h.ok { m[0].whole = false; m[0].bad += 1; return -1; }
   e := wire_mirror_find(m, h.id);
   base: [WIRE_SF] s32;
   if h.back > 0 {
@@ -659,8 +768,7 @@ wire_mirror_s :: (m: [] WireMirror, tick: int, t: string) -> int {
     for f: 0..<WIRE_SF { base[f] = m[0].ents[e].f[q * WIRE_SF + f]; }
   }
   row: [WIRE_SF] s32;
-  wire_read_s_body(t, r[..], base[..], row[..]);
-  if !r[0].ok { m[0].whole = false; m[0].bad += 1; return -1; }
+  for q: 0..<WIRE_SF { row[q] = wire_s32(cast(int) base[q] + (ifx (h.mask & (1 << q)) != 0 then h.d[q] else 0)); }
   if e < 0 {
     for j: 0..<WIRE_MIRROR { if !m[0].ents[j].live { e = j; break; } }
     if e < 0 { m[0].whole = false; m[0].bad += 1; return -1; }
@@ -699,7 +807,7 @@ wire_mirror_frame :: (m: [] WireMirror, t: string) -> WireD {
   from := r[0].at;
   for k: 0..<wire_entries(t, from) {
     en := wire_entry(t, from, k);
-    if en.count > 2 && en[0] == 's' && en[1] == ' ' { _2 := wire_mirror_s(m, d.tick, en); }
+    if (en.count > 2 && en[0] == 's' && en[1] == ' ') || (en.count > 1 && en[0] == 'S') { _2 := wire_mirror_s(m, d.tick, en); }
     else if en.count > 2 && en[0] == 'x' && en[1] == ' ' { rx: [1] WireRd; rx[0] = wire_rd(en, 1); id := wire_num(en, rx[..]); if rx[0].ok { _3 := wire_mirror_x(m, id); } }
   }
   wire_mirror_end(m, d);
@@ -828,6 +936,8 @@ WireSeat :: struct {
   aged: int;                  // rows this tick that went for their age (WIRE_MAX_AGE), and all of them so far
   aged_all: int;
   oldest: int;                // ticks the oldest row still waiting has waited, after this tick
+  spaced: int;                // rows held back for their tier (wire_every), all so far
+  packed: bool;               // its page reads packed rows (WIRE_HELLO_PACKED): its rows go as S (kept through wire_seat_reset)
 }
 // The codec retains its packed arrays; shared lifecycle decisions operate on one recipient/row.
 wire_replica :: (st: [] WireSeat,q:int)->NetReplica {
@@ -866,11 +976,24 @@ wire_seat_put :: (st: [] WireSeat, h: [] WireHist, q: int, out: [] u8, at: int) 
   cur := (row * WIRE_SLOTS + q) * WIRE_SF;
   b := ifx cast(int) st[0].held[q] == id1 then wire_hist_at(h, st[0].base[q], q, id1) else -1;
   zero: [WIRE_SF] s32;
-  n := ifx b >= 0 then wire_put_s_fields(out, at, id1 - 1, now - st[0].base[q], h[0].f[b..<b + WIRE_SF], h[0].f[cur..<cur + WIRE_SF],st[0].wanted[q])
-       else wire_put_s_fields(out, at, id1 - 1, 0, zero[..], h[0].f[cur..<cur + WIRE_SF],st[0].wanted[q]);
+  back := ifx b >= 0 then now - st[0].base[q] else 0;
+  base := ifx b >= 0 then h[0].f[b..<b + WIRE_SF] else zero[..];
+  n := ifx st[0].packed then wire_put_s_packed(out, at, id1 - 1, back, base, h[0].f[cur..<cur + WIRE_SF], st[0].wanted[q])
+       else wire_put_s_fields(out, at, id1 - 1, back, base, h[0].f[cur..<cur + WIRE_SF], st[0].wanted[q]);
   wire_replica_set(st,q,net_replica_sent(wire_replica(st,q),id1,now,WIRE_ACKS));
   st[0].allowed[q]=st[0].wanted[q];
   return n;
+}
+// How often an entity's row goes, in ticks (#13165): by its distance over its weight (wire_rel), so a
+// player counts half as far as a zone and a townsperson a third farther. Within WIRE_EVERY_NEAR m of
+// weighed distance every tick (30 Hz), within WIRE_EVERY_MID every second (15 Hz), past it every third
+// (10 Hz): a third is a 100 ms step, inside the page's least interpolation delay (everglade-net-core.coax).
+WIRE_EVERY_NEAR :: 24.0; WIRE_EVERY_MID :: 60.0;
+// the fields a far row may wait on: where it is and how it moves (X Y Z YAW, the velocity, CARRY)
+WIRE_MOTION :: (1 << WS_X) | (1 << WS_Y) | (1 << WS_Z) | (1 << WS_YAW) | (1 << WS_VX) | (1 << WS_VY) | (1 << WS_VZ) | (1 << WS_CARRY);
+wire_every :: (d2: f32, w: f32) -> int {
+  d := sqrt(ifx d2 > 0 then d2 else 0.0f32) * 2 / (ifx w > 0.5 then w else 0.5f32);
+  return ifx d < f32(WIRE_EVERY_NEAR) then 1 else ifx d < f32(WIRE_EVERY_MID) then 2 else 3;
 }
 wire_bucket :: (a: f32) -> int { b := 0; v := a * 64; while v >= 2 && b < 31 { v = v * 0.5; b += 1; } return b; }
 // Seat st's rows for this tick (h's newest) into out, ';' apart as D's entries: the x's it owes, its
@@ -937,6 +1060,17 @@ wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:
       if l >= 0 && now - st[0].last[q] < WIRE_RESEND && wire_rows_same_fields(h[0].f[..],l,cur,st[0].wanted[q]) { continue; }
     }
     if pk >= f32(WIRE_PICK_OWN) { mine[mn] = q; mn += 1; continue; }
+    // a far one the page holds, whose only change since its last row is where it is and how it moves,
+    // goes less often (#13165): it waits out its tier's ticks since that row. Anything else (its HP, a
+    // condition, a fire, its clip, a new life) goes at once. Its age still counts toward WIRE_MAX_AGE,
+    // and its next row goes against what the page acknowledged.
+    if cast(int) st[0].held[q] == id1 && st[0].allowed[q] == st[0].wanted[q] && st[0].last[q] > 0 && now - st[0].last[q] < wire_every(d2, h[0].w[q]) {
+      l := wire_hist_at(h, st[0].last[q], q, id1);
+      if l >= 0 && (net_row_delta(WIRE_SF, (1 << WIRE_SF) - 1, h[0].f[l..<l + WIRE_SF], h[0].f[cur..<cur + WIRE_SF]).mask & (((1 << WIRE_SF) - 1) ^ WIRE_MOTION)) == 0 {
+        if st[0].since[q] == 0 { st[0].since[q] = now; }
+        st[0].spaced += 1; continue;
+      }
+    }
     st[0].acc[q] += h[0].w[q] / (1 + sqrt(d2) / f32(WIRE_NEAR)) + (ifx pk >= f32(WIRE_PICK_ROOM) then pk else 0.0f32);
     if st[0].since[q] == 0 { st[0].since[q] = now; }
     cand[cn] = q; cn += 1;
@@ -1072,16 +1206,19 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   f := wire_mirror_of(m[..], WIRE_ID_FOLK + 4);
   #assert f.kind == WK_FOLK && f.x == 12.34 && f.z == -56.78 && f.clip == 1 && f.hp == 9 && f.p1 == 4 && f.vx == 1.2 && f.yaw == 1.5;
   #assert wire_mirror_of(m[..], WIRE_ID_MADE + 7).owner == 2;
-  // tick 2: the page said it heard tick 1; the townsperson walked 4 cm and the wolf stands: one short
+  // ticks 2 to 4: the page said it heard tick 1; the townsperson walked 4 cm and the wolf stands. The
+  // townsperson, 58 m off, goes every third tick (wire_every, #13165): nothing at 2 or 3; at 4 one short
   // row, against tick 1's, its x alone; the wolf not at all
   wire_seat_ack(st[..], h[..], 1);
-  wire_hist_begin(h[..], 2);
-  wire_test_put(h[..], 20, WireS.{id = WIRE_ID_FOLK + 4, kind = WK_FOLK, x = 12.38, z = -56.78, yaw = 1.5, vx = 1.2, g = 0, clip = 1, hp = 9, p1 = 4});
-  wire_test_put(h[..], 40, WireS.{id = WIRE_ID_MADE + 7, kind = WK_BEAST, x = 3, y = 0.5, z = 4, hp = 11, max = 11, owner = 2, p1 = 1, g = 1});
-  n = wire_seat_frame(st[..], h[..], -1, 0, 0, 120, WIRE_BUDGET, buf[..]);
-  t = cast(string) buf[0..<n];
-  #assert t == "s 100004 1 2 4";
-  #assert wire_mirror_s(m[..], 2, t) >= 0 && wire_mirror_of(m[..], WIRE_ID_FOLK + 4).x == 12.38 && wire_mirror_of(m[..], WIRE_ID_FOLK + 4).hp == 9;
+  for tk: 2..<5 {
+    wire_hist_begin(h[..], tk);
+    wire_test_put(h[..], 20, WireS.{id = WIRE_ID_FOLK + 4, kind = WK_FOLK, x = 12.38, z = -56.78, yaw = 1.5, vx = 1.2, g = 0, clip = 1, hp = 9, p1 = 4});
+    wire_test_put(h[..], 40, WireS.{id = WIRE_ID_MADE + 7, kind = WK_BEAST, x = 3, y = 0.5, z = 4, hp = 11, max = 11, owner = 2, p1 = 1, g = 1});
+    n = wire_seat_frame(st[..], h[..], -1, 0, 0, 120, WIRE_BUDGET, buf[..]);
+    t = cast(string) buf[0..<n];
+    #assert (tk < 4 && t == "") || (tk == 4 && t == "s 100004 3 2 4");
+  }
+  #assert wire_mirror_s(m[..], 4, t) >= 0 && wire_mirror_of(m[..], WIRE_ID_FOLK + 4).x == 12.38 && wire_mirror_of(m[..], WIRE_ID_FOLK + 4).hp == 9;
   // a row against a base the page doesn't hold is refused, and the tick isn't heard
   _3 := wire_mirror_d(m[..], WireD.{tick = 5});
   #assert wire_mirror_s(m[..], 5, "s 100004 2 2 4") < 0 && m[0].bad == 1;   // against tick 3's: never heard
@@ -1098,6 +1235,71 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   #assert !r[0].ok;
   tt = "s 5 99 2 7"; r[0] = wire_rd(tt, 1); _7 := wire_read_s_head(tt, r[..]);
   #assert !r[0].ok;
+}
+
+#test "wire (#13165): a packed row reads back as its text row does, in under half the bytes, and a damaged one is refused" {
+  base: [WIRE_SF] s32; now: [WIRE_SF] s32; zero: [WIRE_SF] s32;
+  wire_s_pack(WireS.{id = 3, kind = WK_PLAYER, x = 12.34, y = 0.02, z = -56.78, yaw = 1.5, vx = 4.2, vz = -1.1, g = 1, clip = 2, hp = 40, max = 44, carry = 0.0137, life = 912345678, warp = 2}, base[..]);
+  wire_s_pack(WireS.{id = 3, kind = WK_PLAYER, x = 12.48, y = 0.02, z = -56.82, yaw = 1.53, vx = 4.2, vz = -1.2, g = 1, clip = 2, hp = 40, max = 44, carry = 0.0249, life = 912345678, warp = 2}, now[..]);
+  all := (1 << WIRE_SF) - 1;
+  tb: [WIRE_ROW] u8; pb: [WIRE_ROW] u8;
+  for c: 0..<4 {
+    b := ifx c % 2 == 0 then base[..] else zero[..]; back := ifx c % 2 == 0 then 3 else 0; id := ifx c < 2 then 3 else WIRE_ID_MADE + WIRE_TREE_EID + 77;
+    tn := wire_put_s_fields(tb[..], 0, id, back, b, now[..], all); pn := wire_put_s_packed(pb[..], 0, id, back, b, now[..], all);
+    t := wire_read_row(cast(string) tb[0..<tn]); p := wire_read_row(cast(string) pb[0..<pn]);
+    #assert t.ok && p.ok && pb[0] == 'S' && p.id == id && p.back == back && p.mask == t.mask;
+    for q: 0..<WIRE_SF { #assert p.d[q] == t.d[q]; }
+    for i: 1..<pn { #assert wire_b64_value(pb[i]) >= 0; }   // nothing the frame or the relay splits on
+    if c == 0 { #assert pn * 2 < tn; }                       // a walker's delta: under half
+  }
+  // into a mirror: the same row either way, against the base it holds
+  m: [1] WireMirror; d := WireD.{tick = 1};
+  _ := wire_mirror_d(m[..], d);
+  n := wire_put_s_packed(pb[..], 0, 3, 0, zero[..], base[..], all);
+  #assert wire_mirror_s(m[..], 1, cast(string) pb[0..<n]) >= 0;
+  n = wire_put_s_packed(pb[..], 0, 3, 1, base[..], now[..], all);
+  #assert wire_mirror_s(m[..], 2, cast(string) pb[0..<n]) >= 0;
+  w := wire_mirror_of(m[..], 3);
+  #assert w.x == 12.48 && w.z == -56.82 && w.yaw == 1.53 && w.vz == -1.2 && w.hp == 40 && w.life == 912345678 && m[0].bad == 0;
+  // damaged: a character out of the alphabet, one short, one over, a spare bit set, a BACK past the bases
+  n = wire_put_s_packed(pb[..], 0, 3, 1, base[..], now[..], all);
+  good := cast(string) pb[0..<n];
+  #assert wire_read_row(good).ok;
+  pb[3] = ';'; #assert !wire_read_row(good).ok;
+  n = wire_put_s_packed(pb[..], 0, 3, 1, base[..], now[..], all);
+  #assert !wire_read_row(cast(string) pb[0..<n - 1]).ok;
+  pb[n] = 'A'; #assert !wire_read_row(cast(string) pb[0..<n + 1]).ok;
+  #assert !wire_read_row("S").ok && !wire_read_row("S____________").ok && !wire_read_row("S AAAA").ok && !wire_read_row("qAAAA").ok;
+  #assert wire_put_s_packed(pb[..], 0, 3, WIRE_BASES, base[..], now[..], all) == 0;
+  for v: -70000..<70000 { if v % 97 == 0 || (v > -40 && v < 40) { #assert wire_unzig(wire_zig(v)) == v; } }
+}
+
+#test "wire (#13165): a seat that reads packed rows gets them, and every row still reads back true; near rows go every tick, far ones every second or third" #steps 2000000000 {
+  h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror; tx: [1] WireSeat; mx: [1] WireMirror;
+  st[0].packed = true;
+  // players 5 m, 40 m and 100 m off, and a townsperson 100 m off (wire_rel: a player counts half as far, a townsperson a third farther)
+  ids := [4] int.[1, 2, 3, WIRE_ID_FOLK + 3]; slot := [4] int.[1, 2, 3, 20]; dist := [4] f32.[5, 40, 100, 100]; every := [4] int.[1, 1, 2, 3];
+  got: [4] int; bytes := 0; text := 0;
+  for t: 1..<91 {
+    wire_hist_begin(h[..], t);
+    wire_test_put(h[..], 0, WireS.{id = 0, kind = WK_PLAYER, hp = 10, max = 10});
+    // (at tick 50 the far townsperson is hurt: that goes at once, whatever its tier)
+    for i: 0..<4 { wire_test_put(h[..], slot[i], WireS.{id = ids[i], kind = ifx i == 3 then WK_FOLK else WK_PLAYER, x = dist[i], z = f32(t) * 0.14, vz = 4.2, clip = 1, hp = ifx i == 3 && t >= 50 then 20 else 30, max = 30}); }
+    wire_seat_ack(st[..], h[..], m[0].heard); wire_seat_ack(tx[..], h[..], mx[0].heard);
+    bytes += wire_test_send(st[..], h[..], m[..], 0, WIRE_BUDGET, false, t == 1);
+    text += wire_test_send(tx[..], h[..], mx[..], 0, WIRE_BUDGET, false, t == 1);
+    for i: 0..<4 {
+      if st[0].last[slot[i]] == t { got[i] += 1; }
+      if i == 3 && t == 50 { #assert st[0].last[slot[i]] == 50 && wire_mirror_of(m[..], ids[i]).hp == 20; }
+      #assert wire_every(dist[i] * dist[i], wire_rel(ifx i == 3 then WK_FOLK else WK_PLAYER)) == every[i];
+      // what the page holds, either way, is never more than its tier behind
+      w := wire_mirror_of(m[..], ids[i]); v := wire_mirror_of(mx[..], ids[i]);
+      #assert w.id == ids[i] && f32(t) * 0.14 - w.z < 0.14 * f32(every[i] - 1) + 0.006 && v.id == ids[i] && abs(v.z - w.z) < 0.006;
+    }
+  }
+  #assert m[0].bad == 0 && mx[0].bad == 0 && got[0] == 90 && got[1] == 90 && got[2] == 45 && got[3] >= 30 && got[3] <= 31 && st[0].spaced >= 100;
+  #assert bytes * 3 < text * 2;   // the same rows packed: under two thirds of the bytes, the separators and own row included
+  #assert wire_every(0, 4) == 1 && wire_every(47 * 47, 4) == 1 && wire_every(49 * 49, 4) == 2 && wire_every(121 * 121, 4) == 3 && wire_every(17 * 17, 1.5) == 1 && wire_every(19 * 19, 1.5) == 2;
 }
 
 #test "wire: a frame lost on the way leaves its tick unheard; the server keeps the older base, and every row still reads back true" #steps 2000000000 {
@@ -1240,10 +1442,14 @@ WIRE_TEST_QN :: 64; WIRE_TEST_QB :: 4096;   // the throttle check's socket queue
       allow -= ql[qh]; queued -= ql[qh]; qh = (qh + 1) % WIRE_TEST_QN; qn -= 1;
     }
     if qn == 0 && allow > rate { allow = rate; }
-    // released: the first tick the page holds every walker where it is now
+    // released: the first tick the page holds every walker where it is now, or as near as its tier's
+    // spacing leaves it (wire_every, #13165)
     if t > 180 && recovered < 0 {
       ok := true;
-      for i: 0..<40 { w := wire_mirror_of(m[..], WIRE_ID_FOLK + i); if w.id < 0 || abs(w.z - f32(t) * 0.04) > 0.006 { ok = false; } }
+      for i: 0..<40 {
+        w := wire_mirror_of(m[..], WIRE_ID_FOLK + i); d := 2 + f32(i) * 2;
+        if w.id < 0 || abs(w.z - f32(t) * 0.04) > 0.04 * f32(wire_every(d * d, wire_rel(WK_FOLK)) - 1) + 0.006 { ok = false; }
+      }
       if ok { recovered = t - 180; }
     }
   }
