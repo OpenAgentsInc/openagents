@@ -35,6 +35,7 @@ CuLaunch :: struct {
   unset: [CU_ENV] string; unset_n: int;
   cwd: string;
   agent: CuAgent;                  // the agent; none (no name) is Cursor's
+  args: [CU_ENV] string; args_n: int;   // more arguments after `acp` (an owner's flags)
 }
 
 // The installer's shim, which exits unless a Cursor IDE binary is on PATH.
@@ -144,6 +145,7 @@ cu_start :: (c: [] CuClient, p: [] ClProcess, l: CuLaunch) -> string {
   program := l.program;
   if program.count == 0 { program = ag.program; }
   ok := cl_push(h, CL_FIELD_ARG, program) && cl_push(h, CL_FIELD_ARG, "acp");
+  for i: 0..<l.args_n { ok = ok && cl_push(h, CL_FIELD_ARG, l.args[i]); }
   for i: 0..<ag.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, ag.unset[i]); }
   for i: 0..<l.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, l.unset[i]); }
   ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true") && cl_push(h, CL_FIELD_ENV, "NO_OPEN_BROWSER=1");

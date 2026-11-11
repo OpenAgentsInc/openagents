@@ -17,6 +17,19 @@
 //      short line. Your replies go to it. EVERGLADE_CODER_MODE=rehearsal makes it read-only: it
 //      says what it would change and stops, for trying the flow without changing anything.
 //
+// The coding agent can be Antigravity instead (GitHub #13193): EVERGLADE_CODER_ENGINE=antigravity,
+// or EVERGLADE_TIER_FAMILY=gemini, which makes the rubric name Gemini models (tier.coax). It runs on
+// the shared ACP engine with Antigravity's agent (coax/lib/agent/engine/antigravity.coax, cue_* and
+// agy_*), as Coder runs it, in the same worktree with the same task and rules. agy has its own
+// tools, so the panel maps the Claude coder's limits onto them through its permission answers:
+// rehearsal allows only reading and searching; a coding run allows edits and commands inside the
+// worktree; web fetches, paths outside the worktree, subagents, the browser, web search, image
+// generation and swarms are refused, and a turn that starts one unasked is stopped. agy takes no
+// in-process tool, so the coder reports with a last line, `REPORT: done SUMMARY` or
+// `REPORT: blocked SUMMARY`, which the panel reads from its words when the turn ends. agy reports
+// tokens but no cost: the turn is priced from the rates card (coax/lib/gateway/card.coax, rates.coax's table), and that
+// price goes to the ledger line and the Autopilot budget. The picker stays Claude.
+//
 // Autopilot (a button beside Next issue, on by default) makes it a loop with no one in it: the
 // picker is told not to ask, picks and starts; when the coding agent's turn ends the caches are
 // fetched again and the picker picks the next, leaving out what this run already worked. It stops
@@ -35,6 +48,8 @@
 #load "text.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
+#load "../../coax/lib/agent/engine/antigravity.coax";   // the shared ACP engine with Antigravity's agent (agy_*), for an Antigravity coder
+#load "../../coax/lib/gateway/card.coax";   // what Antigravity's tokens cost (the rates card): it reports none
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/agent/tier.coax";
 #load "golem-board.coax";
@@ -58,6 +73,16 @@ NP_REPORT_TOOL :: "mcp__next__report";
 NP_NUDGES :: 3;            // times Autopilot tells a coder that ended its turn without report to finish
 NP_KEEP_GOING :: "You ended your turn without calling report, and nobody is watching. If something you started is still running, wait for it in the foreground now. Then finish the issue and call report, or call report with blocked.";
 NP_CODER_REHEARSAL :: "This is a rehearsal of working one GitHub issue for OpenAgentsInc/openagents. You may only read: you have Read, Grep and Glob. Do not try to edit, commit, push or close anything. Read the issue, find the files it touches in at most eight tool calls, and say in under ten short lines of plain text, no Markdown, what you would change. Then call the tool report with done and stop.";
+NP_SAID :: 8192;           // bytes of an Antigravity coder's words kept a turn
+// The Antigravity coder (GitHub #13193; the panel's header says how it maps the Claude coder's rules).
+NP_ENGINE_CLAUDE :: 0; NP_ENGINE_AGY :: 1;
+NP_AGY_CODER_MODEL :: "gemini-4-argon-high";   // when the picker gave no usable scores: the Opus tier's Gemini model
+NP_AGY_PRICE_FALLBACK :: "gemini-4-carbon";    // a model the card has no row for is priced at the dearest Gemini row, never free
+NP_AGY_ARGS :: [1] string.["--include-default-customizations=false"];   // no built-in plugins or skills: no swarms
+NP_AGY_BARRED :: [9] string.["browser", "invoke_subagent", "send_message", "manage_subagents", "define_subagent", "search_web", "read_url", "generate_image", "swarm"];
+NP_AGY_TOOLS :: "The instructions above are your system instructions. You run in the Antigravity CLI, so your tools are its own: reading and searching files, editing files and running commands, all in the worktree. Subagents, the browser, web search, reading URLs, image generation and swarms are refused here, and starting one stops your turn. There is no report tool: you report by ending your last message with one line, REPORT: done SUMMARY after you pushed and closed the issue, or REPORT: blocked SUMMARY when you stop and leave the issue open. Your turn is over only when that line is written.";
+NP_AGY_REHEARSAL_TOOLS :: "The instructions above are your system instructions. You run in the Antigravity CLI: only its reading and searching tools are allowed here, and every edit or command is refused. Subagents, the browser, web search, reading URLs, image generation and swarms are refused too. There is no report tool: end your last message with one line, REPORT: done followed by a short summary.";
+NP_AGY_KEEP_GOING :: "You ended your turn without the REPORT line, and nobody is watching. If something you started is still running, wait for it in the foreground now. Then finish the issue and end with REPORT: done SUMMARY, or end with REPORT: blocked SUMMARY.";
 NP_INSTALL :: "Claude Code is not installed. Install it with:\ncurl -fsSL https://claude.ai/install.sh | bash";
 NP_LOGIN :: "Claude Code is logged out. Log in with:\nclaude /login";
 
@@ -73,6 +98,12 @@ NP_PAD :: 18.0;
 
 // idle; asking the host for context; the agent's turn; your turn; the agent failed; you stopped it.
 NP_IDLE :: 0; NP_CONTEXT_WAIT :: 1; NP_RUNNING :: 2; NP_YOURS :: 3; NP_FAILED :: 4; NP_STOPPED :: 5;
+
+// The Antigravity coder's engine (the shared ACP engine, cue_*) and the buffers it reads and writes.
+NpAgy :: struct {
+  cue: [1] CuEngine; cu: [1] CuClient; cup: [1] ClProcess;
+  line: [1048576] u8; arena: [262144] u8; out: [1048576] u8;
+}
 
 NextPanel :: struct {
   state: int; open: bool; focus: bool;
@@ -109,6 +140,14 @@ NextPanel :: struct {
   // The panel's agent (the picker, then the coder) runs on the shared Claude engine with the panel's own
   // options (np_run); the engine folds its messages into ses, and the panel answers its own tool.
   eng: [1] Engine; ses: [1] Session; opt: [1] ClOptions; pool: [262144] u8; started: bool;
+  // An Antigravity coder: the shared ACP engine with agy's agent, and what the panel keeps of its turn.
+  agy: bool;                              // the open session is Antigravity's (else Claude Code's)
+  agy_owed: bool;                         // the first message goes once the session and its model are set
+  agy_barred: bool;                       // the turn started a tool it may not use: it was stopped
+  thought: int;                           // the turn's thought tokens (Antigravity's)
+  priced_as: [64] u8; priced_as_n: int;   // the rates card's row the turn was priced at
+  said: [NP_SAID] u8; said_n: int;        // the turn's words, for its REPORT line
+  ag: [1] NpAgy;                          // its engine and buffers
   board: [1] GolemBoard;                  // the Golems board (golem-board.coax)
   line: [1048576] u8; arena: [262144] u8; out: [1048576] u8; scratch: [131072] u8;
   context: [NP_CONTEXT] u8;
@@ -197,7 +236,7 @@ np_in :: (b: HudBox, x: f32, y: f32) -> bool { return x >= b.x && x <= b.x + b.w
 // message, sent once the CLI has answered initialize. "" when it started, else why not.
 np_run :: (s: []NextPanel, o: [] ClOptions) -> string {
   e := s[0].eng[..]; ses := s[0].ses[..];
-  if s[0].started { e_close(e); s[0].started = false; }
+  if s[0].started { np_end(s, s[0].state); }
   s[0].opt[0] = o[0];
   e_attach(e, s[0].line[..], s[0].arena[..], s[0].out[..], s[0].scratch[..], s[0].context[..]);
   e_own(e, s[0].opt[..]);
@@ -209,7 +248,9 @@ np_run :: (s: []NextPanel, o: [] ClOptions) -> string {
 // An agent's turn, or the host is fetching for one: what Stop stops.
 np_busy :: (s: []NextPanel) -> bool { return s[0].state == NP_RUNNING || s[0].state == NP_CONTEXT_WAIT; }
 np_end :: (s: []NextPanel, state: int) {
+  if s[0].started && s[0].agy { np_agy_close(s); }
   if s[0].started { e_close(s[0].eng[..]); s[0].started = false; }
+  s[0].agy = false; s[0].agy_owed = false;
   s[0].state = state;
 }
 // A fresh asking: the old session ends and the host is asked for the context. `again` is
@@ -272,21 +313,37 @@ np_work :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #e
   }
   s[0].cwd_n = np_put(s[0].cwd[..], 0, text[0..<eol]);
   mode: [32] u8; s[0].rehearsal = cl_getenv("EVERGLADE_CODER_MODE", mode[..]) == "rehearsal";
-  named: [64] u8; model := cl_getenv("EVERGLADE_CODER_MODEL", named[..]);
-  tiered := tier_model(s[0].tier);
-  s[0].model_n = np_put(s[0].model[..], 0, ifx model.count > 0 then model else ifx tiered.count > 0 then tiered else NP_CODER_MODEL);
-  // The first message: the one job, where it is, and the issue.
-  n := np_put(s[0].context[..], 0, ifx s[0].rehearsal then "Rehearse GitHub issue #" else "Complete GitHub issue #");
+  eb: [32] u8; fb: [32] u8;
+  choice := np_coder_choice(cl_getenv("EVERGLADE_CODER_ENGINE", eb[..]), cl_getenv("EVERGLADE_TIER_FAMILY", fb[..]));
+  if choice.problem.count > 0 { np_gap(s); np_append(s, choice.problem); np_append(s, "\n"); s[0].state = NP_FAILED; return; }
+  named: [64] u8;
+  s[0].model_n = np_put(s[0].model[..], 0, np_coder_model(choice, cl_getenv("EVERGLADE_CODER_MODEL", named[..]), s[0].tier));
+  // The first message: the one job, where it is, and the issue. Antigravity takes no system prompt
+  // here, so its first message carries the same rules ahead of the job, and how they map onto agy.
+  n := 0;
+  if choice.engine == NP_ENGINE_AGY {
+    n = np_put(s[0].context[..], n, ifx s[0].rehearsal then NP_CODER_REHEARSAL else NP_CODER_RULES);
+    n = np_put(s[0].context[..], n, "\n\n");
+    n = np_put(s[0].context[..], n, ifx s[0].rehearsal then NP_AGY_REHEARSAL_TOOLS else NP_AGY_TOOLS);
+    n = np_put(s[0].context[..], n, "\n\n---\n\n");
+  }
+  n = np_put(s[0].context[..], n, ifx s[0].rehearsal then "Rehearse GitHub issue #" else "Complete GitHub issue #");
   n = np_put_int(s[0].context[..], n, s[0].chosen);
   n = np_put(s[0].context[..], n, ifx s[0].rehearsal then ": read only, change nothing.\n\nThe worktree is " else " and nothing else, then push it and close the issue.\n\nYour worktree is ");
   n = np_put(s[0].context[..], n, cast(string) s[0].cwd[0..<s[0].cwd_n]);
   n = np_put(s[0].context[..], n, ".\n\n");
   n = np_put(s[0].context[..], n, text[eol + 1..<text.count]);
   s[0].context_n = n;
+  s[0].reported = 0; s[0].nudges = 0;
+  if choice.engine == NP_ENGINE_AGY {
+    problem := np_run_agy(s);
+    if problem.count > 0 { np_gap(s); np_append(s, problem); np_append(s, "\n"); s[0].state = NP_FAILED; return; }
+    np_begin_work(s);
+    return;
+  }
   o: [1] ClOptions;
   o[0].model = cast(string) s[0].model[0..<s[0].model_n];
   o[0].append_system_prompt = ifx s[0].rehearsal then NP_CODER_REHEARSAL else NP_CODER_RULES;
-  s[0].reported = 0; s[0].nudges = 0;
   server := cl_add_server(o[..], "next", "1");
   tool := cl_add_server_tool(o[..], server, "report", NP_REPORT_ABOUT, NP_REPORT_SCHEMA);
   cl_add_allowed(o[..], NP_REPORT_TOOL);
@@ -300,8 +357,14 @@ np_work :: (s: []NextPanel, text: string, report: string, ok: bool) #export_c #e
   cl_remove_env(o[..], "ANTHROPIC_API_KEY"); cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
   problem := np_run(s, o[..]);
   if problem.count > 0 { np_gap(s); np_append(s, NP_INSTALL); np_break(s); np_append(s, problem); s[0].state = NP_FAILED; s[0].started = false; return; }
-  s[0].started = true; s[0].state = NP_RUNNING; s[0].seconds = 0; s[0].turn = 0; s[0].session_cost_e6 = 0; s[0].cost_e6 = -1;
+  s[0].started = true;
+  np_begin_work(s);
+}
+// The coding agent started: its turn runs, and the chat says who works which issue where.
+np_begin_work :: (s: []NextPanel) {
+  s[0].state = NP_RUNNING; s[0].seconds = 0; s[0].turn = 0; s[0].session_cost_e6 = 0; s[0].cost_e6 = -1;
   np_gap(s); np_append(s, "> "); np_append(s, cast(string) s[0].model[0..<s[0].model_n]);
+  if s[0].agy { np_append(s, " (Antigravity)"); }
   np_append(s, ifx s[0].rehearsal then " rehearses #" else " works #"); b: [24] u8; k := np_put_int(b[..], 0, s[0].chosen); np_append(s, cast(string) b[0..<k]);
   np_append(s, " in "); np_append(s, cast(string) s[0].cwd[0..<s[0].cwd_n]); np_append(s, "\n\n");
 }
@@ -333,7 +396,7 @@ np_tool_line :: (s: []NextPanel, name: string, input: string) {
 }
 
 // One turn's line for the ledger: who asked, which model, what it cost.
-np_record :: (s: []NextPanel, l: string, duration_ms: int, api_ms: int, turns: int) {
+np_record :: (s: []NextPanel, harness: string, session: string, model_usage: string, duration_ms: int, api_ms: int, turns: int) {
   o: [1] Jo; jo_start(o[..], s[0].usage[..]);
   jo_obj(o[..]);
   jo_key(o[..], "schema"); jo_str(o[..], "openagents.ai-call.v1");
@@ -342,15 +405,20 @@ np_record :: (s: []NextPanel, l: string, duration_ms: int, api_ms: int, turns: i
   purpose := ifx s[0].turn == 0 then "next-issue.suggest" else "next-issue.reply";
   if s[0].coding { purpose = ifx s[0].rehearsal then "issue.rehearse" else "issue.code"; }
   jo_key(o[..], "purpose"); jo_str(o[..], purpose);
-  jo_key(o[..], "harness"); jo_str(o[..], "claude-code");
+  jo_key(o[..], "harness"); jo_str(o[..], harness);
   jo_key(o[..], "model"); jo_str(o[..], cast(string) s[0].model[0..<s[0].model_n]);
   if s[0].coding { jo_key(o[..], "issue"); jo_int(o[..], s[0].chosen); }
-  jo_key(o[..], "session"); jo_str(o[..], cl_session_id(s[0].eng[0].q[..]));
+  jo_key(o[..], "session"); jo_str(o[..], session);
   jo_key(o[..], "turn"); jo_int(o[..], s[0].turn);
   jo_key(o[..], "input_tokens"); jo_int(o[..], s[0].input);
   jo_key(o[..], "cache_read_input_tokens"); jo_int(o[..], s[0].cache_read);
   jo_key(o[..], "cache_creation_input_tokens"); jo_int(o[..], s[0].cache_write);
   jo_key(o[..], "output_tokens"); jo_int(o[..], s[0].output);
+  if s[0].agy {
+    // agy reports tokens but no cost: the cost is the rates card's price for them, at this row.
+    jo_key(o[..], "thought_tokens"); jo_int(o[..], s[0].thought);
+    jo_key(o[..], "cost_priced_as"); jo_str(o[..], cast(string) s[0].priced_as[0..<s[0].priced_as_n]);
+  }
   jo_key(o[..], "cost_usd_e6"); jo_int(o[..], ifx s[0].cost_e6 < 0 then 0 else s[0].cost_e6);
   jo_key(o[..], "session_cost_usd_e6"); jo_int(o[..], s[0].session_cost_e6);
   jo_key(o[..], "duration_ms"); jo_int(o[..], duration_ms);
@@ -358,7 +426,7 @@ np_record :: (s: []NextPanel, l: string, duration_ms: int, api_ms: int, turns: i
   jo_key(o[..], "model_turns"); jo_int(o[..], turns);
   jo_key(o[..], "prompt_bytes"); jo_int(o[..], ifx s[0].turn == 0 then s[0].context_n else s[0].draft_n);
   jo_key(o[..], "caches"); jo_str(o[..], cast(string) s[0].report[0..<s[0].report_n]);
-  per := cl_raw(l, "modelUsage"); if per.count > 1 && per.count < 900 { jo_key(o[..], "model_usage"); jo_raw(o[..], per); }
+  if model_usage.count > 1 && model_usage.count < 900 { jo_key(o[..], "model_usage"); jo_raw(o[..], model_usage); }
   jo_end(o[..]);
   s[0].usage_n = ifx o[0].bad then 0 else o[0].n;
 }
@@ -480,41 +548,46 @@ np_message :: (s: []NextPanel, m: ClMessage) {
     s[0].session_cost_e6 = total_e6;
     s[0].run_cost_e6 += s[0].cost_e6;
     ms := cl_int(l, "duration_ms"); api := cl_int(l, "duration_api_ms"); turns := cl_int(l, "num_turns");
-    np_record(s, l, ifx ms.ok then ms.value else 0, ifx api.ok then api.value else 0, ifx turns.ok then turns.value else 0);
+    np_record(s, "claude-code", cl_session_id(s[0].eng[0].q[..]), cl_raw(l, "modelUsage"), ifx ms.ok then ms.value else 0, ifx api.ok then api.value else 0, ifx turns.ok then turns.value else 0);
     s[0].turn += 1; s[0].draft_n = 0;
     failed := cl_bool(l, "is_error").value || m.result != ClResultKind.success;
     if failed {
       why := cl_str(ar, l, "result"); if why.count == 0 { why = cl_str(ar, l, "errors.0"); }
       np_break(s); np_append(s, ifx why.count > 0 then why else "The turn failed."); np_end(s, NP_FAILED); return;
     }
-    np_break(s); s[0].state = NP_YOURS; s[0].after_tool = false;
-    // The coding agent's turn is over: the issue is one this run has worked, and Autopilot goes
-    // round: the caches are fetched again (the issue may be closed now) and the picker picks.
-    // A coder that ended its turn without saying done or blocked is told to finish: it may have
-    // left a check running and stopped to wait for it, and in a turn nobody answers that is the end.
-    if s[0].coding && s[0].autopilot && s[0].reported == 0 && s[0].nudges < NP_NUDGES {
-      s[0].nudges += 1; np_append(s, "> no report yet: told to finish\n");
-      s[0].draft_n = np_put(s[0].draft[..], 0, NP_KEEP_GOING); np_send(s); return;
-    }
-    if s[0].coding {
-      s[0].runs += 1;
-      if s[0].worked_n < NP_WORKED { s[0].worked[s[0].worked_n] = s[0].chosen; s[0].worked_n += 1; }
-      if s[0].autopilot && s[0].run_cost_e6 >= NP_BUDGET_E6 { np_gap(s); np_append(s, "> Autopilot stopped: this run has spent its budget.\n"); }
-      else if s[0].autopilot && s[0].worked_n < NP_WORKED { np_ask(s, true, true); return; }
-    }
-    // The picker asked instead of starting: Autopilot answers it once.
-    if s[0].autopilot && !s[0].coding && !s[0].pending_work && s[0].chosen == 0 && !s[0].nudged && !s[0].declined {
-      s[0].nudged = true; s[0].draft_n = np_put(s[0].draft[..], 0, NP_GO); np_send(s); return;
-    }
-    // You said start: the picker's turn is over and written down, so its session ends and the
-    // host is asked for the worktree.
-    if s[0].pending_work && !s[0].coding {
-      s[0].pending_work = false; np_end(s, NP_CONTEXT_WAIT); s[0].coding = true; s[0].request = 3;
-    }
+    np_turn_over(s);
+  }
+}
+// A turn ended well, on either engine: what comes next.
+np_turn_over :: (s: []NextPanel) {
+  np_break(s); s[0].state = NP_YOURS; s[0].after_tool = false;
+  // The coding agent's turn is over: the issue is one this run has worked, and Autopilot goes
+  // round: the caches are fetched again (the issue may be closed now) and the picker picks.
+  // A coder that ended its turn without saying done or blocked is told to finish: it may have
+  // left a check running and stopped to wait for it, and in a turn nobody answers that is the end.
+  if s[0].coding && s[0].autopilot && s[0].reported == 0 && s[0].nudges < NP_NUDGES {
+    s[0].nudges += 1; np_append(s, "> no report yet: told to finish\n");
+    s[0].draft_n = np_put(s[0].draft[..], 0, ifx s[0].agy then NP_AGY_KEEP_GOING else NP_KEEP_GOING); np_send(s); return;
+  }
+  if s[0].coding {
+    s[0].runs += 1;
+    if s[0].worked_n < NP_WORKED { s[0].worked[s[0].worked_n] = s[0].chosen; s[0].worked_n += 1; }
+    if s[0].autopilot && s[0].run_cost_e6 >= NP_BUDGET_E6 { np_gap(s); np_append(s, "> Autopilot stopped: this run has spent its budget.\n"); }
+    else if s[0].autopilot && s[0].worked_n < NP_WORKED { np_ask(s, true, true); return; }
+  }
+  // The picker asked instead of starting: Autopilot answers it once.
+  if s[0].autopilot && !s[0].coding && !s[0].pending_work && s[0].chosen == 0 && !s[0].nudged && !s[0].declined {
+    s[0].nudged = true; s[0].draft_n = np_put(s[0].draft[..], 0, NP_GO); np_send(s); return;
+  }
+  // You said start: the picker's turn is over and written down, so its session ends and the
+  // host is asked for the worktree.
+  if s[0].pending_work && !s[0].coding {
+    s[0].pending_work = false; np_end(s, NP_CONTEXT_WAIT); s[0].coding = true; s[0].request = 3;
   }
 }
 // What has arrived since the last frame, without waiting for more.
 np_poll :: (s: []NextPanel) {
+  if s[0].agy { np_agy_poll(s); return; }
   for i: 0..<256 {
     if s[0].state != NP_RUNNING || !s[0].started { return; }
     one: [1] ClEvent;
@@ -535,8 +608,263 @@ np_send :: (s: []NextPanel) {
   if s[0].state != NP_YOURS || !s[0].started || s[0].draft_n == 0 { return; }
   said := cast(string) s[0].draft[0..<s[0].draft_n];
   np_gap(s); np_append(s, "You: "); np_append(s, said); np_append(s, "\n\n");
-  e_send_as(s[0].eng[..], s[0].ses[..], said, said);
+  if s[0].agy { s[0].said_n = 0; s[0].agy_barred = false; sent := cue_send(s[0].ag[0].cue[..], said); }
+  else { e_send_as(s[0].eng[..], s[0].ses[..], said, said); }
   s[0].state = NP_RUNNING; s[0].seconds = 0; s[0].scroll = 0;
+}
+
+// ---- the Antigravity coder
+
+// Which engine codes and which family the rubric names, from EVERGLADE_CODER_ENGINE and
+// EVERGLADE_TIER_FAMILY: either alone decides both (antigravity runs the Gemini family, gemini
+// runs on Antigravity), neither is Claude, and two that disagree are refused with why.
+NpCoder :: struct { engine: int; family: int; problem: string; }
+np_coder_choice :: (engine_word: string, family_word: string) -> NpCoder {
+  family := tier_family(family_word);
+  if family < 0 { return NpCoder.{engine = -1, family = -1, problem = "EVERGLADE_TIER_FAMILY is claude or gemini."}; }
+  runs := ifx engine_word.count > 0 then tier_family_of_engine(engine_word) else family;
+  if runs < 0 { return NpCoder.{engine = -1, family = -1, problem = "EVERGLADE_CODER_ENGINE is claude or antigravity."}; }
+  if family_word.count == 0 { family = runs; }
+  if family != runs { return NpCoder.{engine = -1, family = -1, problem = "EVERGLADE_TIER_FAMILY and EVERGLADE_CODER_ENGINE disagree: the gemini family runs on antigravity, the claude family on claude."}; }
+  return NpCoder.{engine = ifx runs == TIER_GEMINI then NP_ENGINE_AGY else NP_ENGINE_CLAUDE, family = family};
+}
+// The coder's model: the one EVERGLADE_CODER_MODEL names, else the tier's in the family, else the engine's default.
+np_coder_model :: (c: NpCoder, named: string, tier: int) -> string {
+  if named.count > 0 { return named; }
+  tiered := tier_model_in(tier, c.family);
+  if tiered.count > 0 { return tiered; }
+  return ifx c.engine == NP_ENGINE_AGY then NP_AGY_CODER_MODEL else NP_CODER_MODEL;
+}
+
+// Starts the Antigravity coder in the worktree: agy acp with the credentials file, no built-in
+// plugins or skills. The first message (s.context) goes once the session is open and its model set.
+// "" when it started, else why not.
+np_run_agy :: (s: []NextPanel) -> string {
+  if s[0].started { np_end(s, s[0].state); }
+  x := s[0].ag[0].cue[..];
+  a := s[0].ag[..];
+  cue_attach(x, a[0].cu[..], a[0].cup[..], a[0].line[..], a[0].arena[..], a[0].out[..]);
+  pb: [4096] u8; program := agy_program(pb[..]);
+  if program.count == 0 { return AGY_MISSING; }
+  args := NP_AGY_ARGS;
+  why := agy_launch_with(x, program, cast(string) s[0].cwd[0..<s[0].cwd_n], "everglade-desktop", "1", args[..]);
+  if why.count > 0 { return why; }
+  s[0].started = true; s[0].agy = true; s[0].agy_owed = true; s[0].agy_barred = false; s[0].said_n = 0;
+  return "";
+}
+
+// The agy process closed (cue_close's steps, spelled out: called on the panel's own engine it
+// runs out the checker's borrow budget, E0381).
+np_agy_close :: (s: []NextPanel) { a := s[0].ag[..]; cu_close_process(a[0].cup[..]); a[0].cue[0].live = false; a[0].cue[0].ready = false; a[0].cue[0].replay = false; a[0].cue[0].hold = 0; }
+// A tool agy may not use here, by its name: subagents, the browser, the web, images, swarms.
+np_agy_barred :: (name: string) -> bool {
+  barred := NP_AGY_BARRED;
+  for b: barred { if name.count >= b.count && name[0..<b.count] == b { return true; } }
+  return false;
+}
+// Whether a permission agy asks is allowed: never a barred tool, a fetch (the web) or a path
+// outside the worktree; in rehearsal only reading and searching; else what the worktree needs.
+np_agy_allows :: (rehearsal: bool, name: string, kind: string, inside: bool) -> bool {
+  if np_agy_barred(name) || kind == "fetch" || !inside { return false; }
+  if rehearsal { return kind == "read" || kind == "search"; }
+  return true;
+}
+// Whether every path a tool names is in the worktree (no "..", no absolute path elsewhere).
+np_agy_inside :: (cwd: string, tool: string, ar: [] ClArena) -> bool {
+  if cu_tool_outside(tool, ar) || agy_outside(tool, ar) { return false; }
+  locs := cl_raw(tool, "locations");
+  for i: 0..<cl_count(locs) { if !np_in_tree(cwd, cl_str(ar, cl_json(locs, cl_item(locs, i)), "path")) { return false; } }
+  raw := cl_raw(tool, "rawInput");
+  for key: [3] string.["path", "file_path", "cwd"] { if !np_in_tree(cwd, cl_str(ar, raw, key)) { return false; } }
+  keys := AGY_PATH_KEYS;
+  for key: keys { if !np_in_tree(cwd, cl_str(ar, raw, key)) { return false; } }
+  return true;
+}
+// A path is in the tree: relative, or the tree itself, or under it.
+np_in_tree :: (cwd: string, path: string) -> bool {
+  if path.count == 0 || path[0] != '/' { return true; }
+  if cwd.count == 0 || path.count < cwd.count || path[0..<cwd.count] != cwd { return false; }
+  return path.count == cwd.count || path[cwd.count] == '/';
+}
+
+// The turn's words, kept (without Markdown's marks) for the REPORT line; the oldest half goes when full.
+np_agy_keep :: (s: []NextPanel, t: string) {
+  for c: t {
+    if c == '`' || c == '*' { continue; }
+    if s[0].said_n >= NP_SAID { h := NP_SAID / 2; for i: h..<NP_SAID { s[0].said[i - h] = s[0].said[i]; } s[0].said_n -= h; }
+    s[0].said[s[0].said_n] = c; s[0].said_n += 1;
+  }
+}
+// The last REPORT line in a turn's words: status 1 done, 2 blocked, 0 none; and its summary.
+NpReport :: struct { status: int; summary: string; }
+np_agy_report :: (text: string) -> NpReport {
+  r: NpReport; at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    i := at; while i < end && (text[i] == ' ' || text[i] == '\t' || text[i] == '>' || text[i] == '-') { i += 1; }
+    if end - i >= 7 && (text[i..<i + 7] == "REPORT:" || text[i..<i + 7] == "Report:") {
+      j := i + 7; while j < end && text[j] == ' ' { j += 1; }
+      w := j; while w < end && text[w] != ' ' && text[w] != ':' && text[w] != '.' && text[w] != ',' { w += 1; }
+      word := text[j..<w];
+      st := ifx word == "done" || word == "Done" || word == "DONE" then 1 else ifx word == "blocked" || word == "Blocked" || word == "BLOCKED" then 2 else 0;
+      if st > 0 {
+        k := w; while k < end && (text[k] == ' ' || text[k] == ':' || text[k] == '-' || text[k] == '.' || text[k] == ',') { k += 1; }
+        e := end; while e > k && (text[e - 1] == ' ' || text[e - 1] == '\r') { e -= 1; }
+        r = NpReport.{status = st, summary = text[k..<e]};
+      }
+    }
+    at = end + 1;
+  }
+  return r;
+}
+
+// What a turn's tokens cost at the rates card: agy's model less its thinking level ("-low",
+// "-medium", "-high") is the card's model on Vertex; one the card lacks is priced at
+// NP_AGY_PRICE_FALLBACK, so the budget never reads an unpriced model as free. ACP's counts are
+// apart (input is uncached), and thought tokens are billed as output.
+np_agy_rate_model :: (model: string) -> string {
+  for suffix: [3] string.["-low", "-medium", "-high"] {
+    if model.count > suffix.count && model[model.count - suffix.count..<model.count] == suffix { return model[0..<model.count - suffix.count]; }
+  }
+  return model;
+}
+NpPrice :: struct { e6: int; row: string; }
+np_agy_price :: (model: string, input: int, cached: int, cache_write: int, output: int, thought: int) -> NpPrice {
+  row := np_agy_rate_model(model);
+  f := gw_rate("vertex", row);
+  if !f.ok { row = NP_AGY_PRICE_FALLBACK; f = gw_rate("vertex", row); }
+  return NpPrice.{e6 = gw_card_cost(f.rate, input + cached + cache_write, cached, cache_write, output + thought), row = row};
+}
+
+// The first message, once the session is open and no setting is still unanswered.
+np_agy_owed :: (s: []NextPanel) {
+  x := s[0].ag[0].cue[..];
+  if !s[0].agy_owed || !x[0].ready || x[0].hold > 0 || s[0].state != NP_RUNNING { return; }
+  r := cu_session_prompt(x[0].c, cast(string) s[0].context[0..<s[0].context_n]);
+  s[0].agy_owed = false;
+}
+
+// A permission agy asks, answered by the panel's rules (np_agy_allows); a refusal is one line.
+np_agy_permit :: (s: []NextPanel, params: string) {
+  c := s[0].ag[0].cue[0].c; ar := c[0].ar[..];
+  tool := cl_raw(params, "toolCall");
+  name := cl_str(ar, tool, "name"); kind := cl_str(ar, tool, "kind");
+  inside := np_agy_inside(cast(string) s[0].cwd[0..<s[0].cwd_n], tool, ar);
+  if np_agy_allows(s[0].rehearsal, name, kind, inside) {
+    id := cu_allow_option(c);
+    if id.count > 0 { cu_permit(c, id); return; }
+  }
+  cu_decline(c);
+  title := cl_str(ar, tool, "title"); if title.count == 0 { title = name; }
+  np_break(s); np_append(s, "  refused: "); np_line_of(s, title); np_append(s, "\n"); s[0].after_tool = true;
+}
+// At most 96 bytes of v on one line, its spaces single, the worktree's path left off.
+np_line_of :: (s: []NextPanel, v_in: string) {
+  v := v_in; cwd := cast(string) s[0].cwd[0..<s[0].cwd_n];
+  if cwd.count > 0 && v.count > cwd.count + 1 && v[0..<cwd.count] == cwd && v[cwd.count] == '/' { v = v[cwd.count + 1..<v.count]; }
+  n := 0; gap := false;
+  for c: v {
+    if n >= 96 { np_append(s, "..."); break; }
+    if c <= 32 { gap = n > 0; continue; }
+    if gap { np_append(s, " "); n += 1; gap = false; }
+    one: [1] u8; one[0] = c; np_append(s, cast(string) one[..]); n += 1;
+  }
+}
+// A tool call agy started, as one line; a barred one stops the turn.
+np_agy_tool :: (s: []NextPanel, update: string) {
+  c := s[0].ag[0].cue[0].c; ar := c[0].ar[..];
+  name := cl_str(ar, update, "name"); raw := cl_raw(update, "rawInput");
+  np_break(s); if !s[0].after_tool { np_gap(s); }
+  s[0].after_tool = true;
+  if np_agy_barred(name) {
+    np_append(s, "> refused: "); np_append(s, name); np_append(s, " is not allowed here; the turn is stopped\n");
+    if !s[0].agy_barred { s[0].agy_barred = true; cu_session_cancel(c); }
+    return;
+  }
+  what := cl_str(ar, raw, "CommandLine");
+  np_append(s, "> "); np_append(s, ifx name == "run_command" then "$" else ifx name.count > 0 then name else "tool");
+  if what.count == 0 { for key: [4] string.["Path", "TargetFile", "AbsolutePath", "DirectoryPath"] { if what.count == 0 { what = cl_str(ar, raw, key); } } }
+  if what.count == 0 { what = cl_str(ar, raw, "Query"); }
+  if what.count == 0 { what = cl_str(ar, update, "title"); }
+  if what.count > 0 { np_append(s, " "); np_line_of(s, what); }
+  np_append(s, "\n");
+}
+// The turn's answer: its usage priced and written down, its REPORT line read, then what comes next.
+np_agy_end :: (s: []NextPanel, result: string) {
+  c := s[0].ag[0].cue[0].c; ar := c[0].ar[..];
+  rb: [64] u8; rn := np_put(rb[..], 0, cl_str(ar, result, "stopReason")); reason := cast(string) rb[0..<rn];
+  u := cl_raw(result, "usage");
+  s[0].input = cl_int(u, "inputTokens").value; s[0].cache_read = cl_int(u, "cachedReadTokens").value;
+  s[0].cache_write = cl_int(u, "cachedWriteTokens").value; s[0].output = cl_int(u, "outputTokens").value; s[0].thought = cl_int(u, "thoughtTokens").value;
+  for v: [5] int.[s[0].input, s[0].cache_read, s[0].cache_write, s[0].output, s[0].thought] { if v < 0 { s[0].input = 0; s[0].cache_read = 0; s[0].cache_write = 0; s[0].output = 0; s[0].thought = 0; } }
+  price := np_agy_price(cast(string) s[0].model[0..<s[0].model_n], s[0].input, s[0].cache_read, s[0].cache_write, s[0].output, s[0].thought);
+  s[0].priced_as_n = np_put(s[0].priced_as[..], 0, price.row);
+  s[0].cost_e6 = price.e6; s[0].session_cost_e6 += price.e6; s[0].run_cost_e6 += price.e6;
+  np_record(s, "antigravity", cu_session_id(c), "", cast(int) (s[0].seconds * 1000), 0, 1);
+  s[0].turn += 1; s[0].draft_n = 0;
+  rep := np_agy_report(cast(string) s[0].said[0..<s[0].said_n]);
+  if rep.status > 0 {
+    s[0].reported = rep.status;
+    np_break(s); np_append(s, ifx rep.status == 1 then "> done: " else "> blocked: "); np_append(s, rep.summary); np_append(s, "\n");
+  }
+  s[0].said_n = 0;
+  if s[0].agy_barred { np_break(s); np_append(s, "Stopped: the coder started a tool it may not use here."); np_end(s, NP_FAILED); return; }
+  if reason.count > 0 && reason != "end_turn" && reason != "end" {
+    np_break(s); np_append(s, "Antigravity ended the turn: "); np_append(s, reason); np_end(s, NP_FAILED); return;
+  }
+  np_turn_over(s);
+}
+// One event from the Antigravity coder, after the shared engine's part of it (cue_take).
+np_agy_event :: (s: []NextPanel, ev: CuEvent) {
+  x := s[0].ag[0].cue[..]; c := x[0].c; ar := c[0].ar[..];
+  k := ev.kind;
+  if k == CuEventKind.end || k == CuEventKind.failed {
+    np_break(s); why := cue_why(x); np_append(s, ifx why.count > 0 then why else "Antigravity closed before it answered."); np_end(s, NP_FAILED); return;
+  }
+  if k == CuEventKind.refused {
+    if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODE { np_agy_owed(s); return; }
+    np_break(s);
+    if ev.of == CU_SESSION_SET_MODEL { np_append(s, "Antigravity did not take the model "); np_append(s, cast(string) s[0].model[0..<s[0].model_n]); np_append(s, ": "); }
+    np_append(s, ifx agy_signed_out(ev.message) then AGY_SIGNED_OUT else ev.message); np_end(s, NP_FAILED); return;
+  }
+  if k == CuEventKind.answered {
+    if ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_RESUME {
+      missed := agy_configure(x, ev.result, cast(string) s[0].model[0..<s[0].model_n], "");
+      if (missed & AGY_MODEL_NOT_APPLIED) != 0 {
+        np_break(s); np_append(s, "Antigravity does not offer the model "); np_append(s, cast(string) s[0].model[0..<s[0].model_n]); np_append(s, "."); np_end(s, NP_FAILED); return;
+      }
+      np_agy_owed(s); return;
+    }
+    if ev.of == CU_SESSION_PROMPT { np_agy_end(s, ev.result); return; }
+    np_agy_owed(s); return;   // a setting was answered
+  }
+  if k == CuEventKind.permission { np_agy_permit(s, ev.params); return; }
+  if k == CuEventKind.question { cu_question(c, true); return; }
+  if k == CuEventKind.plan { cu_plan(c, true); return; }
+  if k != CuEventKind.notification || ev.method != "session/update" { return; }
+  update := cl_raw(ev.params, "update"); kind := cl_str(ar, update, "sessionUpdate");
+  if kind == "agent_message_chunk" {
+    text := cl_str(ar, update, "content.text");
+    if s[0].after_tool { np_gap(s); s[0].after_tool = false; }
+    np_say(s, text); np_agy_keep(s, text);
+    return;
+  }
+  if kind == "tool_call" { np_agy_tool(s, update); return; }
+  if kind == "tool_call_update" && cl_str(ar, update, "status") == "failed" {
+    np_break(s); np_append(s, "  failed");
+    why := cl_str(ar, update, "content.0.content.text");
+    if why.count > 0 { np_append(s, ": "); n := 0; for ch: why { if n >= 90 || ch == '\n' { break; } one: [1] u8; one[0] = ch; np_append(s, cast(string) one[..]); n += 1; } }
+    np_append(s, "\n");
+  }
+}
+// What agy has sent since the last frame, without waiting for more.
+np_agy_poll :: (s: []NextPanel) {
+  for i: 0..<256 {
+    if s[0].state != NP_RUNNING || !s[0].started || !s[0].agy { return; }
+    one: [1] CuEvent; cue_poll(s[0].ag[0].cue[..], one[..]);
+    if one[0].kind == CuEventKind.idle { return; }
+    np_agy_event(s, one[0]);
+  }
 }
 
 // ---- the frame
@@ -702,7 +1030,7 @@ np_take_decision :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) {
   for i: 0..<n { out[i] = s[0].decision[i]; } s[0].decision_n = 0; return n;
 }
 // The app is quitting: the agent's process group goes with it.
-np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { e_close(s[0].eng[..]); s[0].started = false; } }
+np_close :: (s: []NextPanel) #export_c #effects(all) { if s[0].started { np_end(s, s[0].state); } }
 // 0 idle, 1 reading the cache, 2 the agent's turn, 3 your turn, 4 failed, 5 stopped.
 np_state :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].state; }
 // Whether the host should run everglade-golems now, and its answer.
@@ -830,4 +1158,169 @@ np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
   found := false;
   for i: 0..<NP_ASK_AUTO.count - 5 { if NP_ASK_AUTO[i..<i + 5] == "start" { found = true; } }
   #assert found;
+}
+
+// ---- the Antigravity coder's checks: a panel whose agy engine has no process, fed the lines the
+// stand-in agy (coder/tui/agy_standin.coax) and agy 1.5.6 send.
+
+NP_T_INIT :: "{\"jsonrpc\":\"2.0\",\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true},\"agentInfo\":{\"name\":\"Antigravity ACP Server\",\"version\":\"1.5.6\"}},\"id\":1}";
+NP_T_OPENED :: "{\"jsonrpc\":\"2.0\",\"result\":{\"sessionId\":\"agy-standin-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\"},{\"modelId\":\"gemini-3.8-flash-low\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"plan\"}]}},\"id\":2}";
+NP_T_MODEL_SET :: "{\"jsonrpc\":\"2.0\",\"result\":{},\"id\":3}";
+NP_T_USAGE :: "\"usage\":{\"inputTokens\":120,\"outputTokens\":12,\"cachedReadTokens\":64,\"cachedWriteTokens\":0,\"thoughtTokens\":8,\"totalTokens\":204}";
+
+// A panel in its coding turn on Antigravity, as np_work leaves it, with initialize sent.
+np_agy_test :: (s: []NextPanel, rehearsal: bool, model: string) {
+  np_init(s); s[0].coding = true; s[0].rehearsal = rehearsal; s[0].chosen = 13193;
+  s[0].cwd_n = np_put(s[0].cwd[..], 0, "/w");
+  s[0].model_n = np_put(s[0].model[..], 0, model);
+  s[0].context_n = np_put(s[0].context[..], 0, "Complete GitHub issue #13193 and nothing else.");
+  a := s[0].ag[..]; x := a[0].cue[..];
+  cue_test(x, a[0].cu[..], a[0].cup[..], a[0].line[..], a[0].arena[..], a[0].out[..]);
+  cue_agent(x, agy_agent());
+  s[0].started = true; s[0].agy = true; s[0].agy_owed = true; s[0].state = NP_RUNNING;
+}
+np_agy_feed :: (s: []NextPanel, line: string) { ev := cue_feed(s[0].ag[0].cue[..], line); np_agy_event(s, ev); }
+np_agy_sent :: (s: []NextPanel, part: string) -> bool { return agy_has(cu_outbox(s[0].ag[0].cue[0].c), part); }
+np_text_has :: (s: []NextPanel, part: string) -> bool { return agy_has(cast(string) s[0].text[0..<s[0].text_n], part); }
+np_usage_has :: (s: []NextPanel, part: string) -> bool { return agy_has(cast(string) s[0].usage[0..<s[0].usage_n], part); }
+// Opened: the model set, and the first message sent once that is answered.
+np_agy_open :: (s: []NextPanel) {
+  np_agy_feed(s, NP_T_INIT);
+  np_agy_feed(s, NP_T_OPENED);
+  np_agy_feed(s, NP_T_MODEL_SET);
+}
+np_agy_says :: (s: []NextPanel, text: string) {
+  o: [1] Jo; b: [4096] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0"); jo_key(o[..], "method"); jo_str(o[..], "session/update");
+  jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "sessionId"); jo_str(o[..], "agy-standin-1");
+  jo_key(o[..], "update"); jo_obj(o[..]); jo_key(o[..], "sessionUpdate"); jo_str(o[..], "agent_message_chunk");
+  jo_key(o[..], "content"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], text);
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  np_agy_feed(s, jo_text(o[..]));
+}
+np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
+  b: [512] u8; n := np_put(b[..], 0, "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\""); n = np_put(b[..], n, reason);
+  n = np_put(b[..], n, "\","); n = np_put(b[..], n, NP_T_USAGE); n = np_put(b[..], n, "},\"id\":"); n = np_put_int(b[..], n, id); n = np_put(b[..], n, "}");
+  np_agy_feed(s, cast(string) b[0..<n]);
+}
+
+#test "antigravity coder: the engine and the family come from either setting, and two that disagree are refused" {
+  c := np_coder_choice("", "");
+  #assert c.engine == NP_ENGINE_CLAUDE && c.family == TIER_CLAUDE && c.problem.count == 0;
+  c = np_coder_choice("antigravity", ""); #assert c.engine == NP_ENGINE_AGY && c.family == TIER_GEMINI && c.problem.count == 0;
+  c = np_coder_choice("agy", "gemini"); #assert c.engine == NP_ENGINE_AGY && c.family == TIER_GEMINI;
+  c = np_coder_choice("", "gemini"); #assert c.engine == NP_ENGINE_AGY && c.family == TIER_GEMINI;
+  c = np_coder_choice("claude", "claude"); #assert c.engine == NP_ENGINE_CLAUDE && c.family == TIER_CLAUDE;
+  #assert np_coder_choice("claude", "gemini").problem.count > 0 && np_coder_choice("antigravity", "claude").problem.count > 0;
+  #assert np_coder_choice("codex", "").problem.count > 0 && np_coder_choice("", "flash").problem.count > 0;
+  // The model: the one named, else the tier's in the family, else the engine's default.
+  g := np_coder_choice("antigravity", "");
+  #assert np_coder_model(g, "gemini-3.8-flash-low", TIER_FABLE) == "gemini-3.8-flash-low";
+  #assert np_coder_model(g, "", TIER_HAIKU) == "gemini-3.8-flash-low" && np_coder_model(g, "", TIER_FABLE) == "gemini-4-carbon-high";
+  #assert np_coder_model(g, "", TIER_NONE) == NP_AGY_CODER_MODEL && NP_AGY_CODER_MODEL == tier_model_in(TIER_OPUS, TIER_GEMINI);
+  cl := np_coder_choice("", "");
+  #assert np_coder_model(cl, "", TIER_SONNET) == "claude-sonnet-5-5" && np_coder_model(cl, "", TIER_NONE) == NP_CODER_MODEL;
+}
+#test "antigravity coder: the REPORT line, its permissions and its price" {
+  r := np_agy_report("Pushed it.\nREPORT: done abc123, #13193 closed\n");
+  #assert r.status == 1 && r.summary == "abc123, #13193 closed";
+  r = np_agy_report("REPORT: blocked: the hosts are out of budget"); #assert r.status == 2 && r.summary == "the hosts are out of budget";
+  r = np_agy_report("REPORT: done first\nmore\n  REPORT: blocked second  \r"); #assert r.status == 2 && r.summary == "second";
+  #assert np_agy_report("I will end with REPORT: done later.").status == 0 && np_agy_report("REPORT: maybe").status == 0 && np_agy_report("").status == 0;
+  #assert np_agy_report("Report: Done.").status == 1;
+  // Rehearsal reads and searches only; a run edits and runs inside the worktree; never the web or a barred tool.
+  #assert np_agy_allows(true, "view_file", "read", true) && np_agy_allows(true, "grep_search", "search", true);
+  #assert !np_agy_allows(true, "edit_file", "edit", true) && !np_agy_allows(true, "run_command", "execute", true);
+  #assert np_agy_allows(false, "edit_file", "edit", true) && np_agy_allows(false, "run_command", "execute", true);
+  #assert !np_agy_allows(false, "edit_file", "edit", false) && !np_agy_allows(false, "read_url_content", "fetch", true);
+  #assert !np_agy_allows(false, "invoke_subagent", "execute", true) && !np_agy_allows(false, "browser_click", "other", true) && !np_agy_allows(false, "generate_image", "other", true);
+  #assert np_agy_barred("search_web") && np_agy_barred("swarm_start") && !np_agy_barred("run_command") && !np_agy_barred("");
+  #assert np_in_tree("/w", "/w") && np_in_tree("/w", "/w/a.txt") && np_in_tree("/w", "a.txt") && np_in_tree("/w", "");
+  #assert !np_in_tree("/w", "/wx/a.txt") && !np_in_tree("/w", "/etc/passwd") && !np_in_tree("", "/w");
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert np_agy_inside("/w", "{\"rawInput\":{\"Path\":\"/w/notes.txt\"},\"locations\":[{\"path\":\"/w/notes.txt\"}]}", ar[..]);
+  #assert !np_agy_inside("/w", "{\"rawInput\":{\"TargetFile\":\"/home/x/notes.txt\"}}", ar[..]) && !np_agy_inside("/w", "{\"rawInput\":{\"Path\":\"/w/../etc\"}}", ar[..]);
+  #assert !np_agy_inside("/w", "{\"locations\":[{\"path\":\"/tmp/a\"}]}", ar[..]) && !np_agy_inside("/w", "{\"rawInput\":{\"Cwd\":\"/\"}}", ar[..]);
+  // Priced from the card: Flash's row without its level; a model the card lacks at Carbon's.
+  #assert np_agy_rate_model("gemini-3.8-flash-low") == "gemini-3.8-flash" && np_agy_rate_model("gemini-4-carbon-high") == "gemini-4-carbon" && np_agy_rate_model("gemini-3.5-flash") == "gemini-3.5-flash";
+  p := np_agy_price("gemini-3.8-flash-low", 120, 64, 0, 12, 8);
+  #assert p.row == "gemini-3.8-flash" && p.e6 == 170;     // 120 at $0.75, 64 cached at $0.075, 20 out at $3.75 a million
+  q := np_agy_price("gemini-4-argon-high", 1000000, 0, 0, 0, 0);
+  #assert q.row == NP_AGY_PRICE_FALLBACK && q.e6 == 4000000;
+}
+#test "antigravity coder: a turn that reports done is written down and Autopilot goes round" {
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low");
+  np_agy_feed(s[..], NP_T_INIT);
+  #assert np_agy_sent(s[..], "\"method\":\"session/new\"") && np_agy_sent(s[..], "\"cwd\":\"/w\"");
+  np_agy_feed(s[..], NP_T_OPENED);
+  #assert np_agy_sent(s[..], "\"method\":\"session/set_model\"") && np_agy_sent(s[..], "gemini-3.8-flash-low") && !np_agy_sent(s[..], "session/prompt") && s[0].agy_owed;
+  np_agy_feed(s[..], NP_T_MODEL_SET);
+  #assert np_agy_sent(s[..], "\"method\":\"session/prompt\"") && np_agy_sent(s[..], "Complete GitHub issue #13193") && !s[0].agy_owed;
+  np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c1\",\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"git push\",\"rawInput\":{\"CommandLine\":\"git push origin HEAD:main\",\"Cwd\":\"/w\"},\"status\":\"in_progress\"}}}");
+  np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"agy-standin-1\",\"toolCall\":{\"toolCallId\":\"c1\",\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"git push\",\"rawInput\":{\"CommandLine\":\"git push origin HEAD:main\",\"Cwd\":\"/w\"}},\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}]}}");
+  #assert np_agy_sent(s[..], "\"optionId\":\"allow\"") && np_text_has(s[..], "> $ git push origin HEAD:main");
+  np_agy_says(s[..], "Pushed **abc123** and closed the issue.\n");
+  np_agy_says(s[..], "REPORT: done abc123, #13193 closed");
+  np_agy_ends(s[..], 4, "end_turn");
+  #assert s[0].reported == 1 && np_text_has(s[..], "> done: abc123, #13193 closed") && s[0].runs == 1 && s[0].worked_n == 1 && s[0].worked[0] == 13193;
+  #assert s[0].state == NP_CONTEXT_WAIT && s[0].request == 2 && !s[0].agy && !s[0].started;   // Autopilot asks the picker again
+  #assert np_usage_has(s[..], "\"harness\":\"antigravity\"") && np_usage_has(s[..], "\"purpose\":\"issue.code\"") && np_usage_has(s[..], "\"model\":\"gemini-3.8-flash-low\"");
+  #assert np_usage_has(s[..], "\"session\":\"agy-standin-1\"") && np_usage_has(s[..], "\"input_tokens\":120") && np_usage_has(s[..], "\"cache_read_input_tokens\":64");
+  #assert np_usage_has(s[..], "\"output_tokens\":12") && np_usage_has(s[..], "\"thought_tokens\":8") && np_usage_has(s[..], "\"cost_priced_as\":\"gemini-3.8-flash\"") && np_usage_has(s[..], "\"cost_usd_e6\":170");
+  #assert s[0].run_cost_e6 == 170;
+}
+#test "antigravity coder: a turn that reports blocked ends the issue too, and one without a report is told to finish" {
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  np_agy_says(s[..], "The build hosts are out of budget.\nREPORT: blocked the hosts are out of budget");
+  np_agy_ends(s[..], 4, "end_turn");
+  #assert s[0].reported == 2 && np_text_has(s[..], "> blocked: the hosts are out of budget") && s[0].runs == 1 && s[0].state == NP_CONTEXT_WAIT;
+
+  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-3.8-flash-low"); np_agy_open(t[..]);
+  np_agy_says(t[..], "I started the remote check and will wait.");
+  np_agy_ends(t[..], 4, "end_turn");
+  #assert t[0].reported == 0 && t[0].nudges == 1 && t[0].runs == 0 && t[0].state == NP_RUNNING && t[0].agy;
+  #assert np_text_has(t[..], "> no report yet: told to finish") && np_agy_sent(t[..], "\"method\":\"session/prompt\"") && np_agy_sent(t[..], "without the REPORT line");
+  np_agy_says(t[..], "It passed.\nREPORT: done def456");
+  np_agy_ends(t[..], 5, "end_turn");
+  #assert t[0].reported == 1 && t[0].runs == 1 && t[0].state == NP_CONTEXT_WAIT && t[0].turn == 0;   // (np_ask begins the next round at turn 0)
+}
+#test "antigravity coder: Stop ends its turn, and a barred tool stops it" {
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]); s[0].open = true;
+  out: [8] f32; box: [8] f32; b := np_button(1320);
+  #assert np_busy(s[..]) && np_pointer(s[..], b.x + 5, b.y + 5, 0, 1320, 880) && np_pointer(s[..], b.x + 5, b.y + 5, 2, 1320, 880) && s[0].want_stop;
+  n := np_frame(s[..], out[..], box[..], 0, 0, 0, 0.016, 1);
+  #assert s[0].state == NP_STOPPED && !s[0].started && !s[0].agy && !s[0].ag[0].cue[0].live && s[0].runs == 0;
+
+  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-3.8-flash-low"); np_agy_open(t[..]);
+  np_agy_feed(t[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c2\",\"name\":\"invoke_subagent\",\"kind\":\"other\",\"title\":\"Ask the browser agent\",\"status\":\"in_progress\"}}}");
+  #assert t[0].agy_barred && np_agy_sent(t[..], "\"method\":\"session/cancel\"") && np_text_has(t[..], "> refused: invoke_subagent is not allowed here");
+  np_agy_ends(t[..], 4, "cancelled");
+  #assert t[0].state == NP_FAILED && np_text_has(t[..], "a tool it may not use") && t[0].runs == 0;
+}
+#test "antigravity coder: rehearsal refuses an edit and a command, allows a read" {
+  s: [1] NextPanel; np_agy_test(s[..], true, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"name\":\"edit_file\",\"kind\":\"edit\",\"title\":\"Edit notes.txt\",\"rawInput\":{\"Path\":\"/w/notes.txt\"}},\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}]}}");
+  #assert np_agy_sent(s[..], "\"optionId\":\"deny\"") && !np_agy_sent(s[..], "\"optionId\":\"allow\"") && np_text_has(s[..], "refused: Edit notes.txt");
+  np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"id\":\"2\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"ls\",\"rawInput\":{\"CommandLine\":\"ls\"}},\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}]}}");
+  #assert np_agy_sent(s[..], "\"optionId\":\"deny\"");
+  np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"id\":\"3\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"name\":\"view_file\",\"kind\":\"read\",\"title\":\"Read /etc/hosts\",\"rawInput\":{\"Path\":\"/w/README.md\"}},\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}]}}");
+  #assert np_agy_sent(s[..], "\"optionId\":\"allow\"");
+  np_agy_says(s[..], "I would change one line.\nREPORT: done would edit notes.txt");
+  np_agy_ends(s[..], 4, "end_turn");
+  #assert s[0].reported == 1 && np_usage_has(s[..], "\"purpose\":\"issue.rehearse\"") && s[0].runs == 1;
+}
+#test "antigravity coder: the priced turns stop Autopilot at its budget, and a model agy lacks is refused" {
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  s[0].run_cost_e6 = NP_BUDGET_E6 - 100;
+  np_agy_says(s[..], "REPORT: done abc123");
+  np_agy_ends(s[..], 4, "end_turn");
+  #assert s[0].run_cost_e6 == NP_BUDGET_E6 + 70 && s[0].runs == 1 && s[0].state == NP_YOURS && s[0].request == 0;
+  #assert np_text_has(s[..], "> Autopilot stopped: this run has spent its budget.");
+
+  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-9-nope");
+  np_agy_feed(t[..], NP_T_INIT); np_agy_feed(t[..], NP_T_OPENED);
+  #assert t[0].state == NP_FAILED && np_text_has(t[..], "Antigravity does not offer the model gemini-9-nope") && !np_agy_sent(t[..], "session/prompt");
+  u: [1] NextPanel; np_agy_test(u[..], false, "gemini-3.8-flash-low");
+  np_agy_feed(u[..], NP_T_INIT); np_agy_feed(u[..], "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Authentication required\"},\"id\":2}");
+  #assert u[0].state == NP_FAILED && np_text_has(u[..], "Antigravity is not signed in");
 }

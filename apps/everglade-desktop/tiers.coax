@@ -1,12 +1,14 @@
 // tiers.coax: rate every open issue with Golemancy's rubric and say which model would work each.
 //
 //   coax/web/tool.sh apps/everglade-desktop/next-context.coax context > /tmp/ctx.txt
-//   coax/web/tool.sh apps/everglade-desktop/tiers.coax /tmp/ctx.txt [--model claude-haiku-5-5]
+//   coax/web/tool.sh apps/everglade-desktop/tiers.coax /tmp/ctx.txt [--model claude-haiku-5-5] [--family claude|gemini]
 //
 // The input is the picker's own message (next-context context): the open issues, the
 // commits and your recent prompts. One Claude agent (Haiku 5.5 by default, the picker's
 // model, on your Claude Code login) reads it and calls `rate` once per issue with the
-// rubric's four scores (tier.coax). The thresholds in tier.coax then pick the model.
+// rubric's four scores (tier.coax). The thresholds in tier.coax then pick the model, in the
+// family --family names (else EVERGLADE_TIER_FAMILY, else Claude's): the tier and the model it
+// names in that family are the first columns.
 // It prints one row per issue, oldest first, and writes its turn to the AI call ledger
 // (~/.openagents/usage/ai-calls.jsonl) with purpose issue.tier.
 
@@ -36,6 +38,9 @@ tool_main :: () -> int #export_c #effects(all) {
   n := fs_read(args_at(a[..], 0), ctx[..]);
   if n <= 0 { tool_errln("tiers: the context file could not be read"); return 1; }
   model := args_value(a[..], "--model", TS_MODEL);
+  fb: [32] u8; family_word := args_value(a[..], "--family", cl_getenv("EVERGLADE_TIER_FAMILY", fb[..]));
+  family := tier_family(family_word);
+  if family < 0 { tool_errln("tiers: --family is claude or gemini"); return 2; }
 
   schema: [2048] u8; k := 0;
   k = ts_put(schema[..], k, TS_SCHEMA_HEAD); k = ts_put(schema[..], k, TIER_PROPERTIES);
@@ -102,11 +107,11 @@ tool_main :: () -> int #export_c #effects(all) {
 
   // Oldest first.
   for i: 1..<rn { j := i; while j > 0 && rated[j - 1].issue > rated[j].issue { tmp := rated[j]; rated[j] = rated[j - 1]; rated[j - 1] = tmp; j -= 1; } }
-  print("issue\tmodel\tscope\tambiguity\trisk\tdepth\tsum\twhy\n");
+  print("issue\ttier\tmodel\tscope\tambiguity\trisk\tdepth\tsum\twhy\n");
   counts: [5] int;
   for i: 0..<rn {
     r := rated[i]; counts[r.tier] += 1;
-    print("%\t%\t%\t%\t%\t%\t%\t%\n", r.issue, tier_name(r.tier), r.t.scope, r.t.ambiguity, r.t.risk, r.t.depth,
+    print("%\t%\t%\t%\t%\t%\t%\t%\t%\n", r.issue, tier_name(r.tier), ifx r.tier == TIER_NONE then "-" else tier_model_in(r.tier, family), r.t.scope, r.t.ambiguity, r.t.risk, r.t.depth,
       r.t.scope + r.t.ambiguity + r.t.risk + r.t.depth, cast(string) r.why[0..<r.why_n]);
   }
   print("\nrated % issues: Haiku %, Sonnet %, Opus %, Fable %, none %\n", rn, counts[1], counts[2], counts[3], counts[4], counts[0]);

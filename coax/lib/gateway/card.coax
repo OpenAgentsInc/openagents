@@ -1,0 +1,79 @@
+// The rates card's table and its arithmetic (rates.coax is the card with the gateway's usage):
+// what each (gateway, model) costs per million tokens, and what a count of tokens costs at a
+// row. It loads nothing, so an owner that needs only prices (the Everglade desktop app's
+// Antigravity coder, GitHub #13193) loads this without the gateway.
+//
+// Prices are millionths of a US dollar per million tokens, as the old card
+// kept them. Cached input and cache writes default to the input price.
+
+GwRate :: struct {
+  gateway: string;               // the Gateway's name
+  model: string;                 // as the plan sends it
+  input: int;                    // uncached input, micro-USD per million tokens
+  cached_input: int = -1;        // -1: the input price
+  cache_write: int = -1;         // -1: the input price
+  output: int;                   // output, reasoning included
+}
+
+// Every price, one row per (gateway, model). Sources: the old adapters' rows
+// at 0b401561a0^ (Gemini 3.8 Flash from Vercel's marketCost, cached at
+// Google's usual 10%; Gemini 2.5 Flash-Lite from the Vertex pricing page;
+// GLM 5.3 Flash at Z.ai's list price), and Anthropic's list price for
+// Claude Haiku 4.5 (cache reads 10%, five-minute cache writes 125%).
+// Gemini 4 Carbon (released 2026-11-10): Vertex's on-demand global prices from Google's Cloud
+// Billing catalog for project openagentsgemini, read 2026-11-11 (SKUs C47F-BE66-1A4E text input
+// $4.00, C3FF-AD89-C218 cached input $0.20, 1B77-85A0-B300 text output $20.00 per million, reasoning
+// included). The Gemini API lists the same from 2026-12-01 and half that through 2026-11-30
+// (aistudio.google.com/docs/pricing); the card keeps the standing price, as it keeps no promotions.
+GW_RATES :: [16] GwRate.[
+  GwRate.{gateway = "vertex", model = "google/gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
+  GwRate.{gateway = "vertex", model = "gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
+  GwRate.{gateway = "vertex", model = "google/gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
+  GwRate.{gateway = "vertex", model = "gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
+  GwRate.{gateway = "vertex", model = "google/gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
+  GwRate.{gateway = "vertex", model = "gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
+  GwRate.{gateway = "gemini", model = "gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
+  GwRate.{gateway = "gemini", model = "gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
+  GwRate.{gateway = "gemini", model = "gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
+  GwRate.{gateway = "openrouter", model = "google/gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
+  GwRate.{gateway = "openrouter", model = "z-ai/glm-5.3-flash", input = 150000, cached_input = 30000, output = 500000},
+  GwRate.{gateway = "vercel", model = "google/gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
+  GwRate.{gateway = "vercel", model = "zai/glm-5.3-flash", input = 150000, cached_input = 30000, output = 500000},
+  GwRate.{gateway = "zai", model = "glm-5.3-flash", input = 150000, cached_input = 30000, output = 500000},
+  GwRate.{gateway = "anthropic", model = "claude-haiku-4-5", input = 1000000, cached_input = 100000, cache_write = 1250000, output = 5000000},
+  GwRate.{gateway = "anthropic", model = "claude-haiku-4-5-20251001", input = 1000000, cached_input = 100000, cache_write = 1250000, output = 5000000},
+];
+
+// The row for gateway and model; ok false when the card has none.
+GwRateFound :: struct { ok: bool; rate: GwRate; }
+
+gw_rate :: (gateway: string, model: string) -> GwRateFound {
+  rows := GW_RATES;
+  for r: rows { if r.gateway == gateway && r.model == model { return GwRateFound.{ok = true, rate = r}; } }
+  return GwRateFound.{};
+}
+
+gw_round_div :: (v: int, by: int) -> int { return (v + by / 2) / by; }
+
+// What tokens cost at rate, micro-USD, rounded to the nearest. input counts all the input:
+// cached and cache-write tokens are parts of it (held to it when they say more).
+gw_card_cost :: (rate: GwRate, input: int, cached_in: int, cache_write: int, output: int) -> int {
+  cached := ifx cached_in < input then cached_in else input;
+  if cached < 0 { cached = 0; }
+  write := cache_write;
+  if write > input - cached { write = input - cached; }
+  if write < 0 { write = 0; }
+  plain := input - cached - write;
+  ci := ifx rate.cached_input >= 0 then rate.cached_input else rate.input;
+  cw := ifx rate.cache_write >= 0 then rate.cache_write else rate.input;
+  scaled := plain * rate.input + cached * ci + write * cw + output * rate.output;
+  return gw_round_div(scaled, 1000000);
+}
+
+#test "the card alone: Carbon's row and a cost from token counts" {
+  f := gw_rate("vertex", "gemini-4-carbon");
+  #assert f.ok && f.rate.input == 4000000 && f.rate.cached_input == 200000 && f.rate.output == 20000000;
+  // 61 in and 13 out: 244 + 260 micro-USD; a million in, all cached: $0.20
+  #assert gw_card_cost(f.rate, 61, 0, 0, 13) == 504 && gw_card_cost(f.rate, 1000000, 1000000, 0, 0) == 200000;
+  #assert !gw_rate("vertex", "gemini-4-argon").ok;
+}

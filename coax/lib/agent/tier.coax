@@ -16,6 +16,12 @@
 // Shared by every app that hands an issue to a coding agent: the Everglade desktop app's
 // Autopilot (apps/everglade-desktop/next.coax) and the batch report (apps/everglade-desktop/tiers.coax).
 // It has no game or app dependencies, so Coder, Foreman or any tool can load it.
+//
+// The tiers can name either of two families of models (GitHub #13193), by a setting the app reads
+// (EVERGLADE_TIER_FAMILY): Claude's, the default, run by Claude Code; or Gemini's, run by the
+// Antigravity CLI (agy): Gemini 3.8 Flash for housekeeping and ordinary work, Gemini 4 Argon (the
+// one agy's own `pro` subagent runs) for advanced work and Gemini 4 Carbon, the newest, for the
+// hardest. The family changes only the names: the scores and the thresholds are the same.
 
 TIER_NONE :: 0; TIER_HAIKU :: 1; TIER_SONNET :: 2; TIER_OPUS :: 3; TIER_FABLE :: 4;
 
@@ -29,6 +35,10 @@ TIER_HAIKU_MODEL :: "claude-haiku-5-5";
 TIER_SONNET_MODEL :: "claude-sonnet-5-5";
 TIER_OPUS_MODEL :: "claude-opus-5-5";
 TIER_FABLE_MODEL :: "claude-fable-5-2";
+
+// The families: which models the tiers name, and the engine that runs them.
+TIER_CLAUDE :: 0; TIER_GEMINI :: 1;
+TIER_GEMINI_MODELS :: [4] string.["gemini-3.8-flash-low", "gemini-3.8-flash-high", "gemini-4-argon-high", "gemini-4-carbon-high"];
 
 TierScores :: struct { scope: int; ambiguity: int; risk: int; depth: int; delegable: bool; }
 
@@ -52,12 +62,36 @@ tier_of :: (t: TierScores) -> int {
   return TIER_HAIKU;
 }
 
-tier_model :: (tier: int) -> string {
+tier_model :: (tier: int) -> string { return tier_model_in(tier, TIER_CLAUDE); }
+
+// The model a tier names in a family ("" for none, or a family that is not one).
+tier_model_in :: (tier: int, family: int) -> string {
+  if family == TIER_GEMINI {
+    if tier < TIER_HAIKU || tier > TIER_FABLE { return ""; }
+    models := TIER_GEMINI_MODELS;
+    return models[tier - TIER_HAIKU];
+  }
+  if family != TIER_CLAUDE { return ""; }
   if tier == TIER_HAIKU { return TIER_HAIKU_MODEL; }
   if tier == TIER_SONNET { return TIER_SONNET_MODEL; }
   if tier == TIER_OPUS { return TIER_OPUS_MODEL; }
   if tier == TIER_FABLE { return TIER_FABLE_MODEL; }
   return "";
+}
+
+// A family by its setting's word: "" and "claude" are Claude's, "gemini" Gemini's; anything else -1.
+tier_family :: (name: string) -> int {
+  if name.count == 0 || name == "claude" { return TIER_CLAUDE; }
+  if name == "gemini" { return TIER_GEMINI; }
+  return -1;
+}
+// The engine that runs a family's models, as the app's EVERGLADE_CODER_ENGINE names it.
+tier_engine :: (family: int) -> string { return ifx family == TIER_GEMINI then "antigravity" else ifx family == TIER_CLAUDE then "claude" else ""; }
+// The family an engine runs: Antigravity's is Gemini, Claude Code's (and "") Claude; anything else -1.
+tier_family_of_engine :: (engine: string) -> int {
+  if engine.count == 0 || engine == "claude" { return TIER_CLAUDE; }
+  if engine == "antigravity" || engine == "agy" { return TIER_GEMINI; }
+  return -1;
 }
 
 tier_name :: (tier: int) -> string {
@@ -100,4 +134,27 @@ TIER_REQUIRED :: "\"scope\",\"ambiguity\",\"risk\",\"depth\",\"delegable\"";
   #assert tier_model(TIER_HAIKU) == "claude-haiku-5-5" && tier_model(TIER_SONNET) == "claude-sonnet-5-5";
   #assert tier_model(TIER_OPUS) == "claude-opus-5-5" && tier_model(TIER_FABLE) == "claude-fable-5-2";
   #assert TIER_SONNET_AT < TIER_OPUS_AT && TIER_OPUS_AT < TIER_FABLE_AT && TIER_FABLE_AT <= 12;
+}
+#test "tiers: the Gemini family names Flash, Argon and Carbon for the same tiers, Claude's stays the default" {
+  #assert tier_model_in(TIER_HAIKU, TIER_GEMINI) == "gemini-3.8-flash-low" && tier_model_in(TIER_SONNET, TIER_GEMINI) == "gemini-3.8-flash-high";
+  #assert tier_model_in(TIER_OPUS, TIER_GEMINI) == "gemini-4-argon-high" && tier_model_in(TIER_FABLE, TIER_GEMINI) == "gemini-4-carbon-high";
+  #assert tier_model_in(TIER_NONE, TIER_GEMINI) == "" && tier_model_in(5, TIER_GEMINI) == "" && tier_model_in(-1, TIER_GEMINI) == "";
+  for t: [5] int.[TIER_NONE, TIER_HAIKU, TIER_SONNET, TIER_OPUS, TIER_FABLE] { #assert tier_model_in(t, TIER_CLAUDE) == tier_model(t); }
+  #assert tier_model_in(TIER_OPUS, 2) == "" && tier_model_in(TIER_HAIKU, -1) == "";
+  // The family changes only the name: the same scores give the same tier.
+  s := TierScores.{scope = 2, ambiguity = 1, risk = 2, depth = 1, delegable = true};
+  #assert tier_of(s) == TIER_OPUS && tier_model_in(tier_of(s), TIER_GEMINI) == "gemini-4-argon-high";
+}
+#test "tiers: a family by its word, its engine, and an engine's family" {
+  #assert tier_family("") == TIER_CLAUDE && tier_family("claude") == TIER_CLAUDE && tier_family("gemini") == TIER_GEMINI;
+  #assert tier_family("Gemini") == -1 && tier_family("antigravity") == -1 && tier_family("gemini ") == -1;
+  #assert tier_engine(TIER_CLAUDE) == "claude" && tier_engine(TIER_GEMINI) == "antigravity" && tier_engine(-1) == "" && tier_engine(2) == "";
+  #assert tier_family_of_engine("") == TIER_CLAUDE && tier_family_of_engine("claude") == TIER_CLAUDE;
+  #assert tier_family_of_engine("antigravity") == TIER_GEMINI && tier_family_of_engine("agy") == TIER_GEMINI;
+  #assert tier_family_of_engine("codex") == -1 && tier_family_of_engine("Claude") == -1;
+}
+#test "tiers: a score is clamped to 0..3, and every tier has its name" {
+  #assert tier_clamp(-1) == 0 && tier_clamp(0) == 0 && tier_clamp(1) == 1 && tier_clamp(2) == 2 && tier_clamp(3) == 3 && tier_clamp(4) == 3;
+  #assert tier_name(1) == "Haiku" && tier_name(2) == "Sonnet" && tier_name(3) == "Opus" && tier_name(4) == "Fable" && tier_name(5) == "none";
+  #assert TIER_HAIKU == 1 && TIER_SONNET == 2 && TIER_OPUS == 3 && TIER_FABLE == 4;
 }
