@@ -88,9 +88,13 @@ cdp_contains :: (s: string, part: string) -> bool {
   #assert cdp_nix_chromium(t, 0) == "/nix/store/xyz-chromium-131.0/bin";
   #assert cdp_nix_chromium("/nix/store/a-chromium/lib /nix/store/b-chromium-2/bin", 0) == "/nix/store/b-chromium-2/bin";
   #assert cdp_nix_chromium("/nix/store/a-firefox/bin", 0) == "" && cdp_nix_chromium("\"/nix/store/q\"chromium/bin", 0) == "";
+  #assert cdp_nix_browser("export PATH=\"/nix/store/nd18-google-chrome-152.0/bin:$PATH\"", 0, "google-chrome") == "/nix/store/nd18-google-chrome-152.0/bin";
+  #assert cdp_nix_browser("/nix/store/a-chromium/bin", 0, "google-chrome") == "";
 }
 // The first /nix/store/<name with "chromium">/bin in text at or after from, or "".
-cdp_nix_chromium :: (text: string, from: int) -> string {
+cdp_nix_chromium :: (text: string, from: int) -> string { return cdp_nix_browser(text, from, "chromium"); }
+// The same for a store name that has `name` in it (CoderOS's launcher runs Google Chrome since 2026-11-10).
+cdp_nix_browser :: (text: string, from: int, name: string) -> string {
   pre := "/nix/store/";
   i := from;
   while i + pre.count <= text.count {
@@ -98,7 +102,7 @@ cdp_nix_chromium :: (text: string, from: int) -> string {
       j := i + pre.count;
       while j < text.count && text[j] != '/' && text[j] != ':' && text[j] != '"' { j += 1; }
       seg := text[i + pre.count..<j];
-      if cdp_contains(seg, "chromium") && j + 4 <= text.count && text[j..<j + 4] == "/bin" { return text[i..<j + 4]; }
+      if cdp_contains(seg, name) && j + 4 <= text.count && text[j..<j + 4] == "/bin" { return text[i..<j + 4]; }
     }
     i += 1;
   }
@@ -358,10 +362,12 @@ cdp_chrome :: (out: [] u8) -> string {
         text: [65536] u8;
         n := fs_read(p, text[..]);
         if n < 0 { continue; }
-        bin := cdp_nix_chromium(cast(string) text[0..<n], 0);
-        if bin.count == 0 { continue; }
-        q := fs_join(bin, "chromium", head[..]);
-        if q.count > 0 && fs_kind(q) == FS_FILE { return cdp_cat2(q, "", out); }
+        for browser: [2] [2] string.[[2] string.["chromium", "chromium"], [2] string.["google-chrome", "google-chrome-stable"]] {
+          bin := cdp_nix_browser(cast(string) text[0..<n], 0, browser[0]);
+          if bin.count == 0 { continue; }
+          q := fs_join(bin, browser[1], head[..]);
+          if q.count > 0 && fs_kind(q) == FS_FILE { return cdp_cat2(q, "", out); }
+        }
       }
     }
   }
