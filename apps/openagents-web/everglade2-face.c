@@ -26,7 +26,7 @@ IMPORT("coaxial_http") int32_t coaxial_http(cx_face_addr url, uint32_t url_len, 
 IMPORT("coaxial_now_ms") int64_t coaxial_now_ms(void);
 
 static uint8_t inbox[4096];
-static uint8_t catalog[2097152];   /* the pack's catalog, with the ground's record in its G lines (#13059) */
+static uint8_t catalog[8388608];   /* the pack's catalog, with the ground's record in its G lines (#13059) and the woods in its P lines (#13150) */
 static uint8_t ground_record[1048576], catalog_rest[65536];   /* that record decoded, and the catalog without it */
 static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published and staged (verse/everglade2/ground.coax) */
 static coax_t_People rig;
@@ -262,6 +262,7 @@ EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) e2_catalog(at(state), (coax_string){(const char *)catalog, bytes}, (coax_v_u8){ground_record, sizeof ground_record}, (coax_v_u8){catalog_rest, sizeof catalog_rest});
+  else if (i == 0) e2_plant_due(at(state));   /* no catalog: the woods are planted here */
 }
 EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }

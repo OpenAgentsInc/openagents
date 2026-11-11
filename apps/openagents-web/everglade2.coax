@@ -76,6 +76,7 @@ E2 :: struct {
   creator: [1] cc.Creator;
   bodies: [1] figs.Bodies;
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
+  plant_due: bool; plant_route: int;   // plant here on the next frame; 1 the pack's P lines, 2 planted here (e2_take_planting)
   eg: [1] E2Ground;                                   // the ground's tiles and the glade's baked AO (verse/everglade2/ground.coax)
   catalog_in: bool; ground_code: int = -1; ground_done: bool;   // the catalog came; its ground record's status (-1 none); the ground settled and baked
   kit_first: [E2_BUCKETS] int; kit_count: [E2_BUCKETS] int; kits: bool;
@@ -156,7 +157,8 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   // the ground's record rides in the catalog as G lines (verse/everglade2/ground.coax): read and
   // published now, whole or not at all; the rest is the catalog the others read
   n := e2g_record_from_catalog(whole, rec);
-  s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1; s[0].catalog_in = true;
+  s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1;
+  e2_take_planting(s, whole); s[0].catalog_in = true;
   text := e2_catalog_rest(whole, rest);
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); e2w_catalog(s, text); e2b_catalog(s, text);
   s[0].mats_n = cmat.cm_table(text, s[0].mat_table[..], s[0].mats[..]); s[0].mats_v += 1;
@@ -175,12 +177,31 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
   }
   s[0].kits = any;
 }
-// The catalog without its G lines (or as it came, when that is too long to copy).
+// The woods from the catalog's P lines (verse/everglade2/plant.coax e2p_from_catalog, written by
+// build.sh), when they read back whole and the spot check finds this tree's planting in them; else
+// the next frame plants them here, as every frame-one did before (docs/verse/fast-loads.md).
+e2_take_planting :: (s: [] E2, whole: string) {
+  if s[0].plant_done { return; }
+  pn := e2p_from_catalog(whole, s[0].items[..], s[0].kinds[..], s[0].first[..]);
+  if pn > 0 && e2p_agrees(s[0].items[..], s[0].kinds[..], s[0].first[..], pn) { s[0].planted = pn; s[0].plant_done = true; s[0].plant_route = 1; return; }
+  s[0].plant_due = true;
+}
+// No catalog came (the pack failed, or it is too big for the face's buffer): plant here.
+e2_plant_due :: (s: [] E2) #export_c #effects(all) { if !s[0].plant_done { s[0].plant_due = true; } }
+#test "the woods come from the catalog's P lines, or are planted on the next frame" {
+  s: [1] E2; rec: [16] u8; rest: [512] u8;
+  e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\n", rec[..], rest[..]);
+  #assert !s[0].plant_done && s[0].plant_due && s[0].plant_route == 0;
+  // a damaged record is no planting: it is planted here
+  s[0].plant_due = false; e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\nP RTJQMQ==\n", rec[..], rest[..]);
+  #assert !s[0].plant_done && s[0].plant_due && cast(string) rest[0..<37] == "C glade/environment 9 12 250 100 8 0\n";
+}
+// The catalog without its G and P lines (or as it came, when that is too long to copy).
 e2_catalog_rest :: (t: string, out: [] u8) -> string {
   n := 0; at := 0;
   while at < t.count {
     e := at; while e < t.count && t[e] != '\n' { e += 1; }
-    if !(e - at > 1 && t[at] == 'G' && t[at + 1] == ' ') {
+    if !(e - at > 1 && (t[at] == 'G' || t[at] == 'P') && t[at + 1] == ' ') {
       if n + e - at + 1 > out.count { return t; }
       for q: at..<e { out[n] = t[q]; n += 1; } out[n] = '\n'; n += 1;
     }
@@ -1095,8 +1116,8 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].width = w; s[0].height = h; s[0].k = ifx dpr < 0.5 then 0.5f32 else dpr; s[0].media_n = 0;
   cc.ensure(s[0].creator[..]); s[0].creator[0].clock = s[0].clock;
   e2c_action(s); e2_place_keep(s);
-  if !s[0].plant_done {
-    s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true;
+  if !s[0].plant_done && s[0].plant_due {
+    s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true; s[0].plant_route = 2;
   }
   if !s[0].ground_done && s[0].catalog_in { e2_ground(s); }
   step := ifx still || dt <= 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
@@ -1577,11 +1598,12 @@ coaxial_e2_max_vertices :: () -> int #export_c #effects(all) { return E2_MAX_VER
 coaxial_e2_vertex_floats :: () -> int #export_c #effects(all) { return E2_VERTEX_FLOATS; }
 coaxial_e2_uniform_floats :: () -> int #export_c #effects(all) { return E2_UNIFORM_FLOATS; }
 // Read-only observations for headless checks (coaxial_field_probe): 0 draws, 1 shadow draws, 2 kit
-// pieces stored, 3 pieces planted, 4 kit rows read, 5 your z in centimetres.
+// pieces stored, 3 pieces planted, 4 kit rows read, 5 your z in centimetres, 173 where the woods came
+// from (0 not yet, 1 the pack's P lines, 2 planted here).
 e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   #if BUILD_DEBUG { if field >= 980 && field < 1000 { return e2a_probe(s, field); } }
   if field == 0 { return s[0].draw_n; } if field == 1 { return s[0].shadow_n; } if field == 2 { return s[0].inst_n; }
-  if field == 3 { return s[0].planted; }
+  if field == 3 { return s[0].planted; } if field == 173 { return s[0].plant_route; }
   // 160 to 168 the graphics quality (e2_knobs_frame): the rung, its tier, the mode, the knobs as the
   // frame uses them (in hundredths: grass, scenery, shadow, post, crowd), the bloom passes
   if field == 160 { return ifx s[0].q_ready then s[0].q[0].rung else -1; } if field == 161 { return ifx s[0].q_ready then quality_tier(s[0].q[..]) else -1; }

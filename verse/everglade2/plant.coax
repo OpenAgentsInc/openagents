@@ -52,6 +52,143 @@ e2_plant :: (out:[]f32,kinds:[]u8,first:[]int)->int {
  for j:0..<E2_CELLS_Z {for i:0..<E2_CELLS_X {c:=j*E2_CELLS_X+i;first[c]=n;n=e2_plant_cell(out,kinds,n,i,j);}}
  first[E2_CELLS_X*E2_CELLS_Z]=n;return n;
 }
+// ---- the planting baked into the pack (docs/verse/fast-loads.md, #13150)
+// e2_plant takes 1.8 s of a page's first frame, so build.sh plants once and writes the answer into
+// the pack's catalog as P lines (verse/tools/assets/everglade2_plant.coax): base64 of a record of
+// "E2P1", the count, the cells, then first[] (u32 each), the pieces' floats (their bits, u32 each)
+// and their kinds (a byte each), little-endian. A page reads it back (e2p_from_catalog) and checks a
+// few cells against e2_plant_cell (e2p_agrees) before it takes it; else it plants as it did.
+#load "../../coax/lib/text/base64.coax";
+E2P_MAGIC :: 0x31503245;                 // "E2P1"
+E2P_CELLS :: E2_CELLS_X*E2_CELLS_Z;
+E2P_HEAD :: 12;
+E2P_LINE :: 3072;                        // bytes a P line carries
+e2p_size :: (n:int)->int {return E2P_HEAD+4*(E2P_CELLS+1)+n*(4*E2_ITEM_FLOATS+1);}
+// The record's byte at b.
+e2p_byte :: (items:[]f32,kinds:[]u8,first:[]int,n:int,b:int)->u8 {
+ kat:=E2P_HEAD+4*(E2P_CELLS+1)+n*4*E2_ITEM_FLOATS;
+ if b>=kat {return kinds[b-kat];}
+ w:=b/4;v:u32=0;
+ if w==0 {v=cast(u32)E2P_MAGIC;} else if w==1 {v=cast(u32)n;} else if w==2 {v=cast(u32)E2P_CELLS;}
+ else if w<3+E2P_CELLS+1 {v=cast(u32)first[w-3];} else {v=f32_bits(items[w-3-(E2P_CELLS+1)]);}
+ return cast,trunc(u8)(v>>cast(u32)(8*(b%4)));
+}
+// The planting as P lines into out: the length, or -1 when out is too small.
+e2p_lines :: (items:[]f32,kinds:[]u8,first:[]int,n:int,out:[]u8)->int {
+ size:=e2p_size(n);at:=0;r:=0;chunk:[E2P_LINE]u8;
+ while r<size {
+  e:=ifx r+E2P_LINE<size then r+E2P_LINE else size;
+  for b:r..<e {chunk[b-r]=e2p_byte(items,kinds,first,n,b);}
+  if at+2+b64_encoded_size(e-r)+1>out.count {return -1;}
+  out[at]='P';out[at+1]=' ';at+=2;
+  at+=b64_encode(cast(string)chunk[0..<e-r],out[at..<out.count]);out[at]='\n';at+=1;r=e;
+ }
+ return at;
+}
+// The planting back out of a catalog's P lines into items, kinds and first: the count, 0 with no
+// lines, -1 refused (a bad line, magic, count, cell count, length or an unordered first[]).
+e2p_from_catalog :: (text:string,items:[]f32,kinds:[]u8,first:[]int)->int {
+ at:=0;n:=-1;size:=0;word:u32=0;p:=0;chunk:[E2P_LINE+4]u8;kat:=0;
+ lut:[256]int;for i:0..<256 {lut[i]=-1;}for i:0..<64 {lut[cast(int)B64_CHARS[i]]=i;}
+ while p<text.count {
+  e:=p;while e<text.count && text[e]!='\n' {e+=1;}
+  if e-p>2 && text[p]=='P' && text[p+1]==' ' {
+   if b64_decoded_max(e-p-2)>chunk.count {return -1;}
+   m:=e2p_b64(text[p+2..<e],lut[..],chunk[..]);if m<0 {return -1;}
+   q:=0;
+   while q<m {
+    // whole words past the header: a cell's start or a float, four bytes at once
+    if n>=0 && at%4==0 && q+4<=m && at+4<=kat && at>=E2P_HEAD {
+     v:=cast(u32)chunk[q]|(cast(u32)chunk[q+1]<<8)|(cast(u32)chunk[q+2]<<16)|(cast(u32)chunk[q+3]<<24);w:=at/4;
+     if w<3+E2P_CELLS+1 {first[w-3]=cast(int)v;} else {items[w-3-(E2P_CELLS+1)]=f32_from_bits(v);}
+     at+=4;q+=4;continue;}
+    c:=chunk[q];q+=1;if n>=0 && at>=size {return -1;}
+    if n>=0 && at>=kat {kinds[at-kat]=c;at+=1;continue;}
+    word=word|(cast(u32)c<<cast(u32)(8*(at%4)));
+    if at%4==3 {w:=at/4;
+     if w==0 {if word!=cast(u32)E2P_MAGIC {return -1;}}
+     else if w==1 {if word>cast(u32)E2_ITEMS || cast(int)word>items.count/E2_ITEM_FLOATS || cast(int)word>kinds.count {return -1;}n=cast(int)word;size=e2p_size(n);kat=size-n;}
+     else if w==2 {if word!=cast(u32)E2P_CELLS || first.count<E2P_CELLS+1 {return -1;}}
+     else if w<3+E2P_CELLS+1 {first[w-3]=cast(int)word;}
+     else {items[w-3-(E2P_CELLS+1)]=f32_from_bits(word);}
+     word=0;}
+    at+=1;
+   }
+  }
+  p=e+1;
+ }
+ if at==0 {return 0;}
+ if n<0 || at!=size || first[0]!=0 || first[E2P_CELLS]!=n {return -1;}
+ for c:0..<E2P_CELLS {if first[c+1]<first[c] {return -1;}}
+ return n;
+}
+// A P line's base64 into out by the table lut (each character's value, -1 for none): the length,
+// or -1. Four characters at a time, as e2p_lines writes them; '=' only at the line's end.
+e2p_b64 :: (t:string,lut:[]int,out:[]u8)->int {
+ if t.count%4!=0 {return -1;}
+ n:=0;i:=0;
+ while i<t.count {
+  pad:=0;if i+4==t.count {if t[i+3]=='=' {pad=1;if t[i+2]=='=' {pad=2;}}}
+  a:=lut[cast(int)t[i]];b:=lut[cast(int)t[i+1]];c:=ifx pad==2 then 0 else lut[cast(int)t[i+2]];d:=ifx pad>=1 then 0 else lut[cast(int)t[i+3]];
+  if a<0 || b<0 || c<0 || d<0 || n+3-pad>out.count {return -1;}
+  v:=(a<<18)|(b<<12)|(c<<6)|d;
+  out[n]=cast(u8)((v>>16)&255);if pad<2 {out[n+1]=cast(u8)((v>>8)&255);}if pad<1 {out[n+2]=cast(u8)(v&255);}
+  n+=3-pad;i+=4;
+ }
+ return n;
+}
+#test "a P line's base64 reads as the library's does" {
+ lut:[256]int;for i:0..<256 {lut[i]=-1;}for i:0..<64 {lut[cast(int)B64_CHARS[i]]=i;}
+ all:[256]u8;text:[344]u8;back:[256]u8;for i:0..<256 {all[i]=cast(u8)i;}
+ for ln:[5]int.[0,1,2,3,256] {k:=b64_encode(cast(string)all[0..<ln],text[..]);#assert e2p_b64(cast(string)text[0..<k],lut[..],back[..])==ln;for i:0..<ln {#assert back[i]==all[i];}}
+ #assert e2p_b64("Zg=a",lut[..],back[..])== -1 && e2p_b64("Zm9",lut[..],back[..])== -1 && e2p_b64("Zm9!",lut[..],back[..])== -1 && e2p_b64("Zm9v",lut[..],back[0..<2])== -1;
+}
+// Do these cells of a planting hold what e2_plant_cell plants there, bit for bit? The spawn's cell
+// and seven spread over the woods: 8 of the 1,242, 1.5 ms each in a page.
+E2P_SPOT :: [8][2]int.[[2]int.[12,5],[2]int.[4,4],[2]int.[22,4],[2]int.[4,40],[2]int.[22,40],[2]int.[13,23],[2]int.[6,31],[2]int.[20,12]];
+e2p_agrees :: (items:[]f32,kinds:[]u8,first:[]int,n:int)->bool {
+ for spot:E2P_SPOT {
+  c:=spot[1]*E2_CELLS_X+spot[0];a:=first[c];b:=first[c+1];
+  if a<0 || b<a || b>n || b-a>157 {return false;}
+  out:[157*E2_ITEM_FLOATS]f32;k:[157]u8;
+  m:=e2_plant_cell(out[..],k[..],0,spot[0],spot[1]);
+  if m!=b-a {return false;}
+  for q:0..<m {if k[q]!=kinds[a+q] {return false;}
+   for w:0..<E2_ITEM_FLOATS {if f32_bits(out[q*E2_ITEM_FLOATS+w])!=f32_bits(items[(a+q)*E2_ITEM_FLOATS+w]) {return false;}}}
+ }
+ return true;
+}
+E2PCheck :: struct {
+ a:[E2_ITEMS*E2_ITEM_FLOATS]f32;ak:[E2_ITEMS]u8;af:[E2P_CELLS+1]int;
+ b:[E2_ITEMS*E2_ITEM_FLOATS]f32;bk:[E2_ITEMS]u8;bf:[E2P_CELLS+1]int;
+ lines:[8000000]u8;
+}
+#test "the planting baked into P lines reads back as e2_plant plants it, byte for byte" #steps 8000000000 {
+ t:[1]E2PCheck;
+ n:=e2_plant(t[0].a[..],t[0].ak[..],t[0].af[..]);
+ // the lines among a catalog's others
+ text:="C glade/environment 9 12 250 100 8 0\nG AAAA\n";o:=text.count;for i:0..<o {t[0].lines[i]=text[i];}
+ ln:=e2p_lines(t[0].a[..],t[0].ak[..],t[0].af[..],n,t[0].lines[o..<t[0].lines.count]);#assert ln>e2p_size(n);
+ all:=cast(string)t[0].lines[0..<o+ln];
+ m:=e2p_from_catalog(all,t[0].b[..],t[0].bk[..],t[0].bf[..]);#assert m==n;
+ for i:0..<n*E2_ITEM_FLOATS {#assert f32_bits(t[0].a[i])==f32_bits(t[0].b[i]);}
+ for i:0..<n {#assert t[0].ak[i]==t[0].bk[i];}
+ for c:0..<E2P_CELLS+1 {#assert t[0].af[c]==t[0].bf[c];}
+ #assert e2p_agrees(t[0].b[..],t[0].bk[..],t[0].bf[..],m);
+ #assert e2p_from_catalog(text,t[0].b[..],t[0].bk[..],t[0].bf[..])==0;
+ // a planting that is not this one: a moved tree in the spawn's cell, or a kind, is refused by the spot check
+ full:=0;
+ for spot:E2P_SPOT {c:=spot[1]*E2_CELLS_X+spot[0];f:=t[0].bf[c];if t[0].bf[c+1]==f {continue;}full+=1;
+  t[0].b[f*E2_ITEM_FLOATS+1]+=0.001;#assert !e2p_agrees(t[0].b[..],t[0].bk[..],t[0].bf[..],m);t[0].b[f*E2_ITEM_FLOATS+1]=t[0].a[f*E2_ITEM_FLOATS+1];
+  t[0].bk[f]+=1;#assert !e2p_agrees(t[0].b[..],t[0].bk[..],t[0].bf[..],m);t[0].bk[f]-=1;}
+ #assert full>=7;
+ #assert e2p_agrees(t[0].b[..],t[0].bk[..],t[0].bf[..],m);
+ // a damaged record is refused: a short one, a wrong magic, a bad character
+ #assert e2p_from_catalog(cast(string)t[0].lines[0..<o+ln-4100],t[0].b[..],t[0].bk[..],t[0].bf[..])== -1;
+ c0:=t[0].lines[o+2];t[0].lines[o+2]='A';#assert e2p_from_catalog(all,t[0].b[..],t[0].bk[..],t[0].bf[..])== -1;t[0].lines[o+2]=c0;
+ c1:=t[0].lines[o+10];t[0].lines[o+10]='!';#assert e2p_from_catalog(all,t[0].b[..],t[0].bk[..],t[0].bf[..])== -1;t[0].lines[o+10]=c1;
+ #assert e2p_from_catalog(all,t[0].b[..],t[0].bk[..],t[0].bf[..])==n;
+}
 E2_TREE_STEP :: 2.6;
 e2_plant_cell :: (out:[]f32,kinds:[]u8,n0:int,i:int,j:int)->int {
  n:=n0;x0:=e2_cell_x(i);z0:=e2_cell_z(j);cs:=f32(E2_CELL);seed:=f32(i*131+j*977);

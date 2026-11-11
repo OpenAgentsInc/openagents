@@ -122,15 +122,60 @@ shot is taken 3 s sooner after the world starts, so the place's name ("THE
 GLADE") is still on screen. Pass `--exact-wait` with a longer wait for a shot
 without it.
 
+
+## Everglade II's woods come from the pack (#13150)
+
+Everglade II's first frame planted the woods (`e2_plant`, 71,384 pieces from
+194,000 samples of the land) for 1.8 to 1.9 s on the page's thread. Now
+`build.sh` plants them once, with this tree's `plant.coax`, and writes the
+answer into the `.vpk3`'s catalog as `P` lines
+(`verse/tools/assets/everglade2_plant.coax`): base64 of `first[]`, the pieces'
+floats as their bits and their kinds, 3.1 MB of text. The tracked
+`everglade2.pack` is unchanged; the planted copy lives only in the build.
+
+The page reads the lines when the catalog arrives (`e2_take_planting`), then
+plants 8 of the 1,242 cells itself and takes the lines only when those cells
+match bit for bit (`e2p_agrees`, about 12 ms). A catalog without lines (the
+Mac app's pack), with damaged lines or with another tree's planting is planted
+on the next frame, as before, and so is a page whose catalog never comes.
+`coaxial_field_probe(173)` says where the woods came from: 1 the pack, 2
+planted on the page.
+
+`load until ready`, old and new alternating on the Mac (load average 14 to 40,
+so both are slower than the table above), `coax/web/serve.sh --static`:
+
+| Everglade II | `pack-bytes` | `load until ready` |
+| --- | --- | --- |
+| Before (planted on the first frame) | 1.8 to 2.5 s | 2.2 to 3.4 s |
+| After (from the pack) | 1.0 to 1.3 s | 1.5 to 2.0 s (one load at 2.3) |
+
+The pack's bytes no longer wait for the page's thread. What is left is the
+pack: about 0.9 s from `pack-asked` to `pack-bytes` (its 309 pages fetched,
+inflated and admitted in one worker; `?ranges=12` makes no difference, so it is
+that worker's thread), then 0.25 to 0.35 s of layers and 0.1 s to the catalog
+and the bound scene. Reading the lines and checking the 8 cells takes about
+30 ms of that. The `.vpk3` grows from 30.6 MB to 32.5 MB.
+
+Checks: `plant.coax` "the planting baked into P lines reads back as e2_plant
+plants it, byte for byte" (every float's bits, every kind and every cell's
+start, and that a moved piece, a changed kind, a short record, a wrong magic and
+a bad character are each refused), and the pack tool's own check of the
+rewrite.
+
 ## What is left
 
-- **Everglade II's planting.** Its first frame still takes 1.8 to 1.9 s of the
-  2.5 s, and the pack is in long before it ends. Planting in a worker, or
-  baking the planting into the pack, would take most of that off.
 - **Layers last in the pack.** A pack holds its vertices, then its indices,
   then its layers, so a gzipped pack's layers can't be decoded until all of it
-  is unzipped. A pack written with its layers first would have them decoded by
-  the time the vertices arrive: up to 0.4 s less for Everglade Experimental.
+  is unzipped. Everglade Experimental spends 0.5 s on its layers after
+  `pack-buffers` (1.5 to 1.7 s in all, measured 2026-11-10 21:07); written
+  first, they would be decoded while the 290 MB of vertices unzip. Two things
+  stand in the way. The format (`aethyr/forge/pack.coax`, `#authority`) says
+  the entries lie in table order, and its table puts the catalog, vertices and
+  indices first, so a layers-first file is refused by `pack_read` (the page's
+  legacy `unpack` and the Mac app read by offset and would take it). And the
+  page only sees a pack whole: `pack-fetch.js` would have to hand each layer
+  over as its bytes are unzipped, and `loadPack` start `layerTexture` on them
+  before the rest is in. Both are needed together.
 - **Everglade Experimental as a `.vpk3`.** Its pages would download and inflate
   several at once. The pack reader holds at most 64 MiB and this pack is
   300 MiB, so it stays a `.pack.gz` for now.

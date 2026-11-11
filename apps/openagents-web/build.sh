@@ -48,8 +48,13 @@ host_sockets=$!
 host_packs=$!
 # Range-addressable packs (VPK3, aethyr/forge/page-pack.coax, #13001): each .vpk3 a realm names in
 # realms.json is written from its tracked .pack beside it (rewritten only when the pack changed).
+# Everglade II's first takes this tree's planting into its catalog (verse/tools/assets/
+# everglade2_plant.coax, #13150), so the page reads the woods instead of planting them for 1.8 s.
 for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
-  "$here/../../coax/web/tool.sh" "$here/../../aethyr/tools/page-pack.coax" "${vpk3%.vpk3}.pack" "$vpk3" > /dev/null
+  planted="$here/build/$(basename "${vpk3%.vpk3}")-planted.pack"
+  "$here/../../coax/web/tool.sh" "$here/../../verse/tools/assets/everglade2_plant.coax" "${vpk3%.vpk3}.pack" "$planted" > /dev/null
+  "$here/../../coax/web/tool.sh" "$here/../../aethyr/tools/page-pack.coax" "$planted" "$vpk3" > /dev/null
+  rm -f "$planted"
 done
 # Opt-in room timing stays separate from the realm's producer.
 "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-latency.coax" "$here/../.." "$here/build/latency-client.wasm" &
