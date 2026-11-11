@@ -1,0 +1,119 @@
+// The netcode readout (#13157): what a page's connection to its room is doing, a second at a time,
+// for the debug overlay any realm draws (Everglade II: ?net). It counts what the page sends and
+// hears, the state frames' sizes and spacing, and how far each reconciliation moved your own body,
+// and writes the lines the overlay shows. Nothing here changes what is sent or how anything moves.
+//   RTT 42 MS                 the clock pings' best round trip
+//   TICK 30 HZ GAP 33/41 MS   the room's rate; this second's state frames apart, mean and most
+//   DELAY 100 MS              how far behind the room's time the others are drawn
+//   IN 3.1 KB/S 31/S          bytes and frames heard in the last whole second
+//   SNAP 96 B MAX 140 B       the last state frame's bytes, and the largest in the last second
+//   OUT 1.2 KB/S 31/S         bytes and frames sent in the last whole second
+//   PRED 4 MM MAX 40 MM       the last re-run's correction of your body, the largest in the last second
+//   RERUNS 120                re-runs since the seat
+//   coax/bin/coax test aethyr/net/stats.coax
+#module "aethyr.net.stats";
+
+NET_STATS_LINES :: 8; NET_STATS_LINE :: 40;
+NetStats :: struct {
+  at: int = -1;                         // when this second began (ms; -1 none yet)
+  in_b: int; in_n: int; out_b: int; out_n: int; snap_max: int; fix_max: int; gap_sum: int; gap_n: int; gap_max: int;   // this second
+  in_bps: int; in_hz: int; out_bps: int; out_hz: int; snap_most: int; fix_most: int; gap_mean: int; gap_most: int;   // the last whole second
+  snap_b: int; snap_at: int = -1; fix_mm: int; fixes: int;
+}
+// What the realm knows that these counts don't: the round trip, the room's rate and the draw's delay.
+NetStatsView :: struct { rtt_ms: int = -1; hz: int; delay_ms: int; }
+NetStatsText :: struct { lines: [NET_STATS_LINES] [NET_STATS_LINE] u8; n: [NET_STATS_LINES] int; count: int; }
+
+// A second has passed since this one began: its counts become the last whole second's.
+net_stats_roll :: (st: [] NetStats, now_ms: int) {
+  if st[0].at < 0 { st[0].at = now_ms; return; }
+  if now_ms - st[0].at < 1000 { return; }
+  whole := now_ms - st[0].at >= 2000;   // a quiet second or more between: the last is empty
+  s := st[0];
+  st[0].in_bps = ifx whole then 0 else s.in_b; st[0].in_hz = ifx whole then 0 else s.in_n;
+  st[0].out_bps = ifx whole then 0 else s.out_b; st[0].out_hz = ifx whole then 0 else s.out_n;
+  st[0].snap_most = ifx whole then 0 else s.snap_max; st[0].fix_most = ifx whole then 0 else s.fix_max;
+  st[0].gap_mean = ifx whole || s.gap_n == 0 then 0 else s.gap_sum / s.gap_n; st[0].gap_most = ifx whole then 0 else s.gap_max;
+  st[0].in_b = 0; st[0].in_n = 0; st[0].out_b = 0; st[0].out_n = 0; st[0].snap_max = 0; st[0].fix_max = 0;
+  st[0].gap_sum = 0; st[0].gap_n = 0; st[0].gap_max = 0;
+  st[0].at = ifx whole then now_ms else s.at + 1000;
+}
+// A frame heard: `bytes` long; `snapshot` when it is a state frame.
+net_stats_in :: (st: [] NetStats, bytes: int, snapshot: bool, now_ms: int) {
+  net_stats_roll(st, now_ms);
+  st[0].in_b += bytes; st[0].in_n += 1;
+  if !snapshot { return; }
+  st[0].snap_b = bytes; if bytes > st[0].snap_max { st[0].snap_max = bytes; }
+  if st[0].snap_at >= 0 { g := now_ms - st[0].snap_at; if g >= 0 { st[0].gap_sum += g; st[0].gap_n += 1; if g > st[0].gap_max { st[0].gap_max = g; } } }
+  st[0].snap_at = now_ms;
+}
+net_stats_out :: (st: [] NetStats, bytes: int, now_ms: int) { net_stats_roll(st, now_ms); st[0].out_b += bytes; st[0].out_n += 1; }
+// A re-run moved your body `mm` from where it was drawn.
+net_stats_fix :: (st: [] NetStats, mm: int, now_ms: int) {
+  net_stats_roll(st, now_ms);
+  v := ifx mm < 0 then 0 else mm;
+  st[0].fix_mm = v; st[0].fixes += 1; if v > st[0].fix_max { st[0].fix_max = v; }
+}
+
+nst_put :: (b: [] u8, at: int, s: string) -> int { n := at; for c: s { if n < b.count { b[n] = c; n += 1; } } return n; }
+nst_int :: (b: [] u8, at: int, v: int) -> int {
+  if v < 0 { return nst_int(b, nst_put(b, at, "-"), -v); }
+  d: [20] u8; m := 0; x := v;
+  if x == 0 { d[0] = '0'; m = 1; }
+  while x > 0 { d[m] = cast(u8) ('0' + x % 10); x /= 10; m += 1; }
+  n := at; for i: 0..<m { if n < b.count { b[n] = d[m - 1 - i]; n += 1; } }
+  return n;
+}
+// bytes a second as KB/S with one decimal (1 KB 1000 bytes)
+nst_kb :: (b: [] u8, at: int, bps: int) -> int {
+  t := (ifx bps < 0 then 0 else bps) / 100;
+  n := nst_int(b, at, t / 10); n = nst_put(b, n, "."); n = nst_int(b, n, t % 10);
+  return nst_put(b, n, " KB/S");
+}
+nst_line :: (t: [] NetStatsText, b: [] u8, n: int) {
+  if t[0].count >= NET_STATS_LINES { return; }
+  l := t[0].count; m := ifx n < NET_STATS_LINE then n else NET_STATS_LINE;
+  for i: 0..<m { t[0].lines[l][i] = b[i]; }
+  t[0].n[l] = m; t[0].count += 1;
+}
+net_stats_line :: (t: [] NetStatsText, l: int) -> string {
+  if l < 0 || l >= t[0].count { return ""; }
+  return cast(string) t[0].lines[l][0..<t[0].n[l]];
+}
+// The overlay's lines, now.
+net_stats_text :: (st: NetStats, v: NetStatsView, t: [] NetStatsText) {
+  t[0].count = 0; b: [64] u8; n := 0;
+  n = nst_put(b[..], 0, "RTT "); n = ifx v.rtt_ms >= 0 then nst_int(b[..], n, v.rtt_ms) else nst_put(b[..], n, "-"); n = nst_put(b[..], n, " MS"); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "TICK "); n = nst_int(b[..], n, v.hz); n = nst_put(b[..], n, " HZ GAP "); n = nst_int(b[..], n, st.gap_mean); n = nst_put(b[..], n, "/"); n = nst_int(b[..], n, st.gap_most); n = nst_put(b[..], n, " MS"); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "DELAY "); n = nst_int(b[..], n, v.delay_ms); n = nst_put(b[..], n, " MS"); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "IN "); n = nst_kb(b[..], n, st.in_bps); n = nst_put(b[..], n, " "); n = nst_int(b[..], n, st.in_hz); n = nst_put(b[..], n, "/S"); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "SNAP "); n = nst_int(b[..], n, st.snap_b); n = nst_put(b[..], n, " B MAX "); n = nst_int(b[..], n, st.snap_most); n = nst_put(b[..], n, " B"); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "OUT "); n = nst_kb(b[..], n, st.out_bps); n = nst_put(b[..], n, " "); n = nst_int(b[..], n, st.out_hz); n = nst_put(b[..], n, "/S"); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "PRED "); n = nst_int(b[..], n, st.fix_mm); n = nst_put(b[..], n, " MM MAX "); n = nst_int(b[..], n, st.fix_most); n = nst_put(b[..], n, " MM"); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "RERUNS "); n = nst_int(b[..], n, st.fixes); nst_line(t, b[..], n);
+}
+
+#test "net stats: a second's frames, bytes, state gaps and corrections become the last second's" {
+  st: [1] NetStats;
+  for i: 0..<30 { net_stats_in(st[..], 100 + i, true, 1000 + i * 33); net_stats_out(st[..], 40, 1000 + i * 33); }
+  net_stats_fix(st[..], 12, 1500); net_stats_fix(st[..], 3, 1600);
+  #assert st[0].in_bps == 0 && st[0].snap_b == 129 && st[0].fix_mm == 3 && st[0].fixes == 2;   // the second isn't over
+  net_stats_in(st[..], 50, false, 2001);
+  #assert st[0].in_hz == 30 && st[0].in_bps == 30 * 100 + 435 && st[0].out_hz == 30 && st[0].out_bps == 1200;
+  #assert st[0].snap_most == 129 && st[0].fix_most == 12 && st[0].gap_mean == 33 && st[0].gap_most == 33;
+  #assert st[0].in_b == 50 && st[0].in_n == 1 && st[0].snap_b == 129;   // a frame that isn't state counts, but isn't a snapshot
+  // a quiet stretch: the last second is empty, not the one before it
+  net_stats_out(st[..], 10, 5200); #assert st[0].in_bps == 0 && st[0].out_hz == 0 && st[0].at == 5200;
+  net_stats_fix(st[..], -5, 5300); #assert st[0].fix_mm == 0;
+}
+#test "net stats: the overlay's lines" {
+  st: [1] NetStats; t: [1] NetStatsText;
+  st[0].in_bps = 3149; st[0].in_hz = 31; st[0].out_bps = 1200; st[0].out_hz = 30; st[0].snap_b = 96; st[0].snap_most = 140;
+  st[0].gap_mean = 33; st[0].gap_most = 41; st[0].fix_mm = 4; st[0].fix_most = 40; st[0].fixes = 120;
+  net_stats_text(st[0], NetStatsView.{rtt_ms = 42, hz = 30, delay_ms = 100}, t[..]);
+  #assert t[0].count == 8 && net_stats_line(t[..], 0) == "RTT 42 MS" && net_stats_line(t[..], 1) == "TICK 30 HZ GAP 33/41 MS";
+  #assert net_stats_line(t[..], 2) == "DELAY 100 MS" && net_stats_line(t[..], 3) == "IN 3.1 KB/S 31/S" && net_stats_line(t[..], 4) == "SNAP 96 B MAX 140 B";
+  #assert net_stats_line(t[..], 5) == "OUT 1.2 KB/S 30/S" && net_stats_line(t[..], 6) == "PRED 4 MM MAX 40 MM" && net_stats_line(t[..], 7) == "RERUNS 120";
+  #assert net_stats_line(t[..], 8) == "" && net_stats_line(t[..], -1) == "";
+  net_stats_text(NetStats.{}, NetStatsView.{}, t[..]); #assert net_stats_line(t[..], 0) == "RTT - MS" && net_stats_line(t[..], 3) == "IN 0.0 KB/S 0/S";
+}

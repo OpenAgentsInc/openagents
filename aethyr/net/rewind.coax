@@ -1,0 +1,71 @@
+// Lag compensation's bounds (#13157): how far back a room may take a player's word about time.
+// A player acts on what its page shows: its own body now, everyone else an interpolation delay
+// in the past. The room rewinds to that view to judge the act, as shipping action games do, but
+// only within these bounds, so a slow or lying page cannot reach far into the past.
+//   sent  the room's clock when the page says the act left it; taken at most NET_REWIND_AGE_MS
+//         before the room heard it, and never after
+//   view  how far behind its own time the page drew the others; at most NET_REWIND_VIEW_MS
+// The realm keeps its bodies' past (NET_REWIND_TICKS ticks) and asks net_rewind_tick which tick
+// a moment's bodies are read from.
+//   coax/bin/coax test aethyr/net/rewind.coax
+#module "aethyr.net.rewind";
+#authority;
+
+NET_REWIND_AGE_MS :: 250;    // an act's claimed age at most: a round trip of 500 ms
+NET_REWIND_VIEW_MS :: 400;   // the others' delay at most: the jitter buffer's ceiling (300 ms) and a margin
+NET_REWIND_TICKS :: 24;      // ticks of the bodies' past a realm keeps: 800 ms at 30 Hz, over AGE + VIEW
+
+NetRewind :: struct { age_ms: int; view_ms: int; }
+
+// The larger and smaller of two, without a branch: every bound below is one of these.
+nr_max :: (a: int, b: int) -> int #effects(all) { return (a + b + cast(int) abs(f64(a - b))) / 2; }
+nr_min :: (a: int, b: int) -> int #effects(all) { return (a + b - cast(int) abs(f64(a - b))) / 2; }
+
+// The act the room heard at now_ms, which its page says left at sent_ms with the others drawn
+// view_ms behind: both taken inside the bounds.
+net_rewind :: (now_ms: int, sent_ms: int, view_ms: int) -> NetRewind #effects(all) {
+  return NetRewind.{age_ms = nr_min(nr_max(now_ms - sent_ms, 0), NET_REWIND_AGE_MS), view_ms = nr_min(nr_max(view_ms, 0), NET_REWIND_VIEW_MS)};
+}
+// ms as whole ticks at hz, to the nearest; 0 for a rate that is not one, or no time.
+net_rewind_ticks :: (ms: int, hz: int) -> int #effects(all) {
+  return (nr_max(ms, 0) * nr_max(hz, 0) + 500) / 1000;
+}
+// The tick whose bodies stand for the moment `back` ticks before `tick`, when the realm has kept
+// `kept` ticks ending at `newest`: never newer than newest, never older than the oldest kept (the
+// newest alone when it has kept none).
+net_rewind_tick :: (tick: int, back: int, newest: int, kept: int) -> int #effects(all) {
+  want := nr_min(tick - nr_max(back, 0), newest);
+  held := nr_max(nr_min(kept, NET_REWIND_TICKS), 1);
+  return nr_max(want, newest - held + 1);
+}
+
+#test "rewind: an act's age and its view are taken inside the bounds" {
+  r := net_rewind(1000, 940, 120); #assert r.age_ms == 60 && r.view_ms == 120;
+  r = net_rewind(1000, 1000, 0); #assert r.age_ms == 0 && r.view_ms == 0;
+  r = net_rewind(1000, 1001, -1); #assert r.age_ms == 0 && r.view_ms == 0;        // a clock ahead, a view ahead: now
+  r = net_rewind(1000, 750, 400); #assert r.age_ms == 250 && r.view_ms == 400;      // at the bounds
+  r = net_rewind(1000, 749, 401); #assert r.age_ms == 250 && r.view_ms == 400;      // past them: the bounds
+  r = net_rewind(1000, -900000, 900000); #assert r.age_ms == NET_REWIND_AGE_MS && r.view_ms == NET_REWIND_VIEW_MS;
+  r = net_rewind(1000, 999, 1); #assert r.age_ms == 1 && r.view_ms == 1;
+}
+#test "rewind: the larger and the smaller" {
+  #assert nr_max(3, 7) == 7 && nr_max(7, 3) == 7 && nr_max(-4, -9) == -4 && nr_max(5, 5) == 5;
+  #assert nr_min(3, 7) == 3 && nr_min(7, 3) == 3 && nr_min(-4, -9) == -9 && nr_min(5, 5) == 5;
+}
+#test "rewind: ms to the nearest tick" {
+  #assert net_rewind_ticks(0, 1000) == 0 && net_rewind_ticks(-5, 1000) == 0 && net_rewind_ticks(1000, 0) == 0 && net_rewind_ticks(1000, -30) == 0;   // no time, or no rate: none, at any scale
+  #assert net_rewind_ticks(0, 30) == 0 && net_rewind_ticks(-5, 30) == 0 && net_rewind_ticks(100, 0) == 0 && net_rewind_ticks(100, -30) == 0;
+  #assert net_rewind_ticks(33, 30) == 1 && net_rewind_ticks(16, 30) == 0 && net_rewind_ticks(17, 30) == 1 && net_rewind_ticks(100, 30) == 3;
+  #assert net_rewind_ticks(1, 30) == 0 && net_rewind_ticks(50, 30) == 2 && net_rewind_ticks(49, 30) == 1;
+  #assert net_rewind_ticks(400, 30) == 12 && net_rewind_ticks(250, 60) == 15 && net_rewind_ticks(1000, 1) == 1 && net_rewind_ticks(499, 1) == 0 && net_rewind_ticks(500, 1) == 1;
+  #assert net_rewind_ticks(NET_REWIND_AGE_MS + NET_REWIND_VIEW_MS, 30) < NET_REWIND_TICKS;   // the kept past covers both bounds
+}
+#test "rewind: the tick read is inside what the realm kept" {
+  #assert net_rewind_tick(100, 3, 100, 24) == 97 && net_rewind_tick(100, 0, 100, 24) == 100 && net_rewind_tick(100, -4, 100, 24) == 100;
+  #assert net_rewind_tick(105, 2, 100, 24) == 100;                      // a moment after the newest: the newest
+  #assert net_rewind_tick(100, 23, 100, 24) == 77 && net_rewind_tick(100, 24, 100, 24) == 77 && net_rewind_tick(100, 900, 100, 24) == 77;
+  #assert net_rewind_tick(100, 5, 100, 3) == 98 && net_rewind_tick(100, 2, 100, 3) == 98 && net_rewind_tick(100, 1, 100, 3) == 99;   // a young room kept fewer
+  #assert net_rewind_tick(100, 5, 100, 0) == 100 && net_rewind_tick(100, 5, 100, -2) == 100 && net_rewind_tick(100, 5, 100, 1) == 100;
+  #assert net_rewind_tick(100, 30, 100, 99) == 77 && net_rewind_tick(100, 30, 100, 25) == 77;   // never more than NET_REWIND_TICKS
+  #assert net_rewind_tick(90, 1, 100, 24) == 89 && net_rewind_tick(78, 1, 100, 24) == 77 && net_rewind_tick(77, 1, 100, 24) == 77;
+}

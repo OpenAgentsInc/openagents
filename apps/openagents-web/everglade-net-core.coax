@@ -101,6 +101,17 @@ net_jitter_delay :: (j: NetJitter) -> int {
   late := ifx j.late_mean > 0 then j.late_mean else 0.0f32;
   return nc_clamp(NET_BASE + cast(int) (late + j.interval + 2 * j.jitter), NET_LOW, NET_HIGH);
 }
+// The tick map follows the states (#13157): a page maps the room's ticks to its own clock from the
+// moment it heard the world (W), so a room whose ticks run a little long or short of 1000/hz ms, or
+// that started them late, shows as lateness that only grows, and the buffer's delay climbs to
+// NET_HIGH over a steady stream (production: 300 ms behind over 32 ms round trips and 6 ms spread).
+// After each state the map takes NET_FOLLOW of the mean lateness up (ms, toward zero), so the buffer
+// holds the states' spread and interval, not the drift. Nothing moves while it settles.
+NET_FOLLOW :: 0.05;
+net_map_follow :: (late_mean: f32, ticks: int) -> int {
+  if ticks <= NET_SETTLE { return 0; }
+  return cast(int) (late_mean * f32(NET_FOLLOW));
+}
 // The delay drawn this frame (dt s): the buffer's at once for its first NET_SETTLE ticks, then coming
 // to it at NET_SLEW.
 net_lag_step :: (lag: f32, delay: int, ticks: int, dt: f32) -> f32 {
@@ -231,6 +242,15 @@ net_forest_sample :: (en: [] NetEnt, pose: NetState) -> NetState {
   d := net_jitter_delay(j); #assert d > 130 && d < 200;
   for i: 0..<200 { j = net_jitter_heard(j, 200 + i, i * 33 + 2000, i * 33, (i - 1) * 33); }
   #assert net_jitter_delay(j) == NET_HIGH;
+  // the tick map follows a drift: a room whose ticks run 1 ms long settles to the spread's delay, not NET_HIGH
+  jd: NetJitter; late_t := 0; ahead := 0;
+  for i: 0..<600 {
+    now := 1000 + i * 34 + 20 + (ifx i % 2 == 0 then 3 else -3); clock := 1000 + i * 33 + ahead;
+    jd = net_jitter_heard(jd, i, now, clock, 1000 + (i - 1) * 33 + ahead);
+    f := net_map_follow(jd.late_mean, i); ahead += f; jd.late_mean -= f32(f); late_t = i;
+  }
+  #assert net_jitter_delay(jd) == NET_LOW && abs(jd.late_mean) < 45 && late_t == 599;
+  #assert net_map_follow(500, NET_SETTLE) == 0 && net_map_follow(500, NET_SETTLE + 1) == 25 && net_map_follow(-500, NET_SETTLE + 1) == -25 && net_map_follow(19, 900) == 0;
   // the drawn delay: at once while settling, then at NET_SLEW
   #assert net_lag_step(100, 200, NET_SETTLE, 0.016) == 200;
   l := net_lag_step(100, 200, NET_SETTLE + 1, 0.5); #assert abs(l - 150) < 0.01;
