@@ -1,0 +1,75 @@
+// The chat set in every pixel skin (components/spec.md Phase 2, GitHub
+// #13153): the same transcript, composer and menus laid out in Zeron and in
+// Everglade, and nothing Everglade draws wears one of Zeron's colours. A
+// colour still written into a component shows up here as a Zeron colour in
+// the Everglade frame. Zeron's own frames are pinned by
+// apps/openagents-web/chat-frames.coax.
+//   coax/bin/coax test components/zeron/skins-checks.coax
+
+#load "transcript.coax";
+#load "../skin/all.coax";
+
+SC_MAX :: 4096;
+
+// Every colour a list paints, visible ones only.
+sc_colours :: (list: [] Prim, n: int, out: [] Rgba, m: int) -> int {
+  k := m;
+  for i: 0..<n {
+    for c: [2] Rgba.[list[i].fill, list[i].edge] {
+      if c.a <= 0 || k >= out.count { continue; }
+      seen := false;
+      for j: 0..<k { if out[j].r == c.r && out[j].g == c.g && out[j].b == c.b && out[j].a == c.a { seen = true; } }
+      if !seen { out[k] = c; k += 1; }
+    }
+  }
+  return k;
+}
+sc_has :: (set: [] Rgba, n: int, c: Rgba) -> bool {
+  for j: 0..<n { if set[j].r == c.r && set[j].g == c.g && set[j].b == c.b && set[j].a == c.a { return true; } }
+  return false;
+}
+
+// The demo with every group and chip open, the table reply, a notice of each
+// kind and the working trailer, laid out in a skin; returns its colours.
+sc_transcript :: (sk: UiSkin, out: [] Rgba) -> int {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  t_set_skin(t[..], sk);
+  t_table_demo(t[..]);
+  kinds := [5] int.[N_ASK, N_BUSY, N_LIMIT, N_META, N_STOPPED];
+  for kd: kinds { _ = t_notice(t[..], kd, "Claude Code needs your approval to run a command in this folder."); }
+  t[0].working = true; t[0].work_secs = 12;
+  for g: 0..<t[0].ng {
+    t_set_open(t[..], g, -1, true);
+    for c: 0..<t[0].groups[g].tools { t_set_open(t[..], g, c, true); }
+  }
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  n := sc_colours(t[0].boxes[..], t[0].nbox, out, 0);
+  return sc_colours(t[0].texts[..], t[0].ntext, out, n);
+}
+
+#test "the transcript in Everglade wears none of Zeron's colours" #steps 400000000 {
+  z: [SC_MAX] Rgba; e: [SC_MAX] Rgba;
+  nz := sc_transcript(zeron_skin(), z[..]);
+  ne := sc_transcript(everglade_skin(), e[..]);
+  #assert nz > 10 && ne > 10;
+  shared := 0;
+  for j: 0..<ne { if sc_has(z[..], nz, e[j]) { shared += 1; print("a Zeron colour in Everglade: % % % %\n", e[j].r, e[j].g, e[j].b, e[j].a); } }
+  #assert shared == 0;
+}
+
+#test "the transcript in Everglade: the bubble is the skin's raised wash, the reply its ink" #steps 400000000 {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  sk := everglade_skin();
+  t_set_skin(t[..], sk);
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  bubble := false; ink := false;
+  for k: 0..<t[0].nbox { b := t[0].boxes[k]; if b.kind == PRIM_BOX && b.fill.r == sk.raised.r && b.fill.a == sk.raised.a { bubble = true; } }
+  for k: 0..<t[0].ntext { if t[0].texts[k].fill.r == sk.ink.r && t[0].texts[k].fill.g == sk.ink.g { ink = true; } }
+  #assert bubble && ink;
+  // the same rows at the same places: the skin changes the look, not the layout
+  z: [1] Transcript; za: [1] Atlas;
+  t_test_setup(z[..], za[..]);
+  #assert z[0].nr == t[0].nr && z[0].content_h == t[0].content_h;
+}

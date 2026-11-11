@@ -35,6 +35,11 @@ everglade_skin :: () -> UiSkin {
   s.syntax[0] = dim; s.syntax[1] = trim; s.syntax[2] = s.success; s.syntax[3] = s.warning;
   s.syntax[4] = rgba(0.42, 0.62, 0.98, 1); s.syntax[5] = rgba(0.98, 0.84, 0.52, 1); s.syntax[6] = rgba(0.55, 0.95, 0.45, 1);
   s.syntax[7] = text; s.syntax[8] = dim; s.syntax[9] = s.danger; s.syntax[10] = rgba(0.42, 0.62, 0.98, 1); s.syntax[11] = s.danger;
+  s.chip = opacity(trim, 0.10); s.well = rgba(0, 0, 0, 0.30); s.rail = rgba(0.32, 0.24, 0.15, 0.6);
+  s.hunk_wash = opacity(trim, 0.08);
+  s.add_wash = opacity(s.success, 0.07); s.add_bar = opacity(s.success, 0.6); s.del_wash = opacity(s.danger, 0.07); s.del_bar = opacity(s.danger, 0.6);
+  s.danger_muted = rgba(0.96, 0.62, 0.52, 1); s.warning_muted = rgba(0.98, 0.84, 0.52, 1); s.file_tint = trim;
+  s.spinner[0] = trim; s.spinner[1] = text; s.spinner[2] = rgba(0.62, 0.48, 0.30, 1);
   s.radius = 6; s.radius_control = 4; s.border = 1.5;
   s.frame = UIFRAME_IRON;
   s.frame_mid = rgba(0.32, 0.24, 0.15, 1); s.frame_light = rgba(0.62, 0.48, 0.30, 1); s.trim = trim;

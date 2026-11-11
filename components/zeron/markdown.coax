@@ -9,16 +9,11 @@
 #load "../core/syntax.coax";
 #load "../layout/text.coax";
 
-// The fonts a style draws in, at the transcript's Markdown size (14) or
-// smaller (tool text, 12): Geist, Geist SemiBold, Geist Mono.
-md_font :: (style: int, small: bool) -> int {
-  if small { return ifx style == MD_CODE then FONT_MONO_12 else FONT_TOOL; }
-  if style == MD_BOLD { return FONT_BOLD; }
-  if style == MD_CODE { return FONT_MONO_14; }
-  return FONT_INPUT;
-}
+// The faces Zeron sets a reply in (Geist 14, SemiBold for bold, Geist Mono
+// for code) or tool text a size down: the Zeron skin's.
 md_faces :: (small: bool) -> TextFaces {
-  return TextFaces.{plain = md_font(MD_PLAIN, small), bold = md_font(MD_BOLD, small), code = md_font(MD_CODE, small)};
+  s := zeron_skin();
+  return ifx small then uiskin_small_faces(s) else uiskin_faces(s);
 }
 
 // The width of text[from..<to] drawn run by run (kerning inside a run).
