@@ -1036,6 +1036,19 @@ dr_stop :: (h: int) {
   if w == PROC_RUNNING { k = proc_kill(h, PROC_SIGKILL); w = proc_wait(h, 1000); }
   r := proc_release(h);
 }
+// A server still running (proc_wait: PROC_RUNNING), not one that exited because it couldn't listen.
+dr_running :: (h: int) -> bool { return h >= 0 && proc_wait(h, 0) == PROC_RUNNING; }
+DR_PORT_TRIES :: 8;
+// The next block of five ports past PORT's, stepping over the owner's servers (8830, 8872).
+dr_next_port :: (port: int) -> int {
+  p := port + 10;
+  while (p <= 8830 && p + 4 >= 8830) || (p <= 8872 && p + 4 >= 8872) { p += 10; }
+  return p;
+}
+#test "a held port block moves the run ten ports on, past the owner's servers" {
+  #assert dr_next_port(8960) == 8970 && dr_next_port(8970) == 8980;
+  #assert dr_next_port(8816) == 8836 && dr_next_port(8860) == 8880 && dr_next_port(8858) == 8878;
+}
 dr_ready :: (c: [] Cdp, room: bool) -> bool {
   deadline := proc_now_ms() + 90000;
   while proc_now_ms() < deadline {
@@ -1642,25 +1655,44 @@ tool_main :: () -> int #export_c #effects(all) {
   cb: [1] Buf; bput(cb[..], dir); bput(cb[..], "/room-control.txt");
   ctl := btext(cb[..]);
   _ = fs_write(ctl, DR_CONTROL_PAIR);
-  // the room server, the API's stand-in (--dev DIR): its seat tickets signed with the stand-in's key
-  q: [1] Buf;
-  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " > "); bput(q[..], dir); bput(q[..], "/room.log 2>&1");
-  hr := dr_spawn(btext(q[..]));
-  q[0].n = 0;
-  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 1); bput(q[..], " --api "); bint(q[..], port); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve.log 2>&1");
-  hs := dr_spawn(btext(q[..]));
-  // The offline page has its own API/server. The native host runs its local
-  // room there, so its tick measurement does not include the paired server's
-  // unrelated room and bots. The worker has no rooms in its API stand-in.
-  q[0].n = 0;
-  bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port + 4); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..],ifx native then " --listen 127.0.0.1 --native-local > " else " --no-rooms > "); bput(q[..], dir); bput(q[..], "/room-offline.log 2>&1");
-  hn := dr_spawn(btext(q[..]));
-  q[0].n = 0;
-  bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api "); bint(q[..],port+4); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
-  ho := dr_spawn(btext(q[..]));
+  // The servers take PORT to PORT + 4. Each one that can't listen exits at once (serve.c, room-host.c):
+  // a port another process holds, such as a server a stopped run left behind, would otherwise leave
+  // the pages on that process's site, ending minutes later in "the pages didn't come up" (#13195).
+  // So each must still be running once started; when one isn't, the run moves to the next block.
+  // serve.sh builds the server first when it is stale; build it now (its usage exits at once), so
+  // the check below sees the server listening or refused, not still compiling.
+  hb0 := dr_spawn("exec coax/web/serve.sh --build-only-check > /dev/null 2>&1");
+  if hb0 >= 0 { hw0 := proc_wait(hb0, 180000); hr0 := proc_release(hb0); }
+  hr := -1; hs := -1; hn := -1; ho := -1; q: [1] Buf; up := false; tries := 0;
+  while !up && tries < DR_PORT_TRIES {
+    if tries > 0 {
+      port = dr_next_port(port);
+      print("everglade-drift: a server couldn't listen on its port (another process holds it); moving to %-%\n", port, port + 4);
+    }
+    tries += 1;
+    // the room server, the API's stand-in (--dev DIR): its seat tickets signed with the stand-in's key
+    q[0].n = 0;
+    bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..], " > "); bput(q[..], dir); bput(q[..], "/room.log 2>&1");
+    hr = dr_spawn(btext(q[..]));
+    q[0].n = 0;
+    bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 1); bput(q[..], " --api "); bint(q[..], port); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve.log 2>&1");
+    hs = dr_spawn(btext(q[..]));
+    // The offline page has its own API/server. The native host runs its local
+    // room there, so its tick measurement does not include the paired server's
+    // unrelated room and bots. The worker has no rooms in its API stand-in.
+    q[0].n = 0;
+    bput(q[..], "exec coax/web/room/bin/room --port "); bint(q[..], port + 4); bput(q[..], " --dev "); bput(q[..], dir); bput(q[..],ifx native then " --listen 127.0.0.1 --native-local > " else " --no-rooms > "); bput(q[..], dir); bput(q[..], "/room-offline.log 2>&1");
+    hn = dr_spawn(btext(q[..]));
+    q[0].n = 0;
+    bput(q[..], "exec coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:"); bint(q[..], port + 3); bput(q[..], " --api "); bint(q[..],port+4); bput(q[..], " --static --cache 0 > "); bput(q[..], dir); bput(q[..], "/serve-offline.log 2>&1");
+    ho = dr_spawn(btext(q[..]));
+    proc_sleep(2000);
+    up = dr_running(hr) && dr_running(hs) && dr_running(hn) && dr_running(ho);
+    if !up { dr_stop(ho); dr_stop(hn); dr_stop(hs); dr_stop(hr); }
+  }
+  if !up { tool_errln("everglade-drift: no block of 5 free ports for its servers (see room.log and serve.log in the results)"); return 1; }
   // the bots sign their seat tickets with the room's key
   run := DrRun.{port = port, bots = bots, stamp = stamp, dir = dir, ctl = ctl, script = cast(string) js[0..<jn], key = DR_DEV_KEY, worker = offline!="page",native=native,tick_us=tick_us};
-  proc_sleep(2000);
   print("everglade-drift: room 127.0.0.1:%, page 127.0.0.1:%, results in %\n", port, port + 1, dir);
   all := true;
   reps: [DR_PROFILES] DrReport; names: [DR_PROFILES] string; ran: [DR_PROFILES] bool; np := 0;

@@ -69,7 +69,12 @@ const sent = new Set<string>()
 // under 1%), how long it settles, how many of its blocks may change.
 // --only NAME,NAME compares only those pages with their goldens (golden-check.sh):
 // the lanes that reach them still run, and every page they reach must start and draw.
-const { pages: PAGES, byAddress: BY_ADDRESS, open, unlisted } = goldenPages()
+const { pages: PAGES, byAddress: BY_ADDRESS, open: everyOpen, unlisted, devOnly } = goldenPages()
+// A released site (staging, production) never has the development-only realms (DEV-ONLY in the
+// route's directory: deploy.sh skips them), so its walk leaves them out; a local server has them (#13195).
+const released = !/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(base)
+if (released) for (const n of devOnly) { delete PAGES[n]; delete BY_ADDRESS[n] }
+const open = released ? everyOpen.filter((w) => !devOnly.has(w.realm!.slug)) : everyOpen
 const only = new Set(value("only").split(",").filter(Boolean))
 for (const n of only) if (!PAGES[n]) { console.error(`goldens: --only names no page ${n}`); process.exit(2) }
 const wanted = (name: string) => !only.size || only.has(name)

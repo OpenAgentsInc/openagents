@@ -33,7 +33,7 @@ export const GOLDEN_DIR = (process.env.GOLDENS_PLATFORM ?? (process.platform ===
 // shot; blocks: how many 8 px blocks may change; module: the app it runs; size: its viewport in css px
 // when not the walk's 1280x800 (a phone's 390x844: the phone tier, art-styles.md 14).
 export type Page = { path: string; lit: number; settle: number; blocks: number; module: string; size?: [number, number] }
-export type Pages = { pages: Record<string, Page>; byAddress: Record<string, Page>; open: ReturnType<typeof worlds>; unlisted: Set<string> }
+export type Pages = { pages: Record<string, Page>; byAddress: Record<string, Page>; open: ReturnType<typeof worlds>; unlisted: Set<string>; devOnly: Set<string> }
 
 export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   const pages: Record<string, Page> = { landing: { path: "/verse", lit: 0.004, settle: 2500, blocks: 4, module: "verse" } }
@@ -42,6 +42,9 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   for (const w of open) pages[w.realm!.slug] = { path: `/worlds/${w.realm!.slug}`, ...w.realm!.golden, module: w.realm!.module }
   // Realms /realms doesn't list yet: with no golden, their shot waits in pending/ (golden-policy.ts).
   const unlisted = new Set(open.filter((w) => w.listed === false).map((w) => w.realm!.slug))
+  // Realms for development only: a DEV-ONLY file in the route's directory, which deploy.sh never
+  // stages (its assets stay outside Git), so a released site answers 404 for them (#13195).
+  const devOnly = new Set(open.map((w) => w.realm!.slug).filter((slug) => existsSync(join(ROOT, APP, "realms", slug, "DEV-ONLY"))))
   // Pages of their own (not in realms.json), walked by their address.
   const byAddress: Record<string, Page> = { garden: { path: "/worlds/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
     "realms-new": { path: "/worlds/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
@@ -81,7 +84,7 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // and backlit at noon, the sun put behind the blob tree (?sun=, ?sunup=), for the light shafts (spec 6)
   byAddress["fixture-painterly-shafts"] = { path: "/worlds/fixture?style=painterly&clock=0.5&sun=156&sunup=9.5", lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
   for (const [name, page] of Object.entries(byAddress)) pages[name] ??= page
-  return { pages, byAddress, open, unlisted }
+  return { pages, byAddress, open, unlisted, devOnly }
 }
 
 /** What every page is built or walked with: files, and directories (ending in /). */

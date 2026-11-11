@@ -100,3 +100,10 @@ test("Coax changelog source and generator invalidate its two views",()=>{
   for(const path of ['coax/CHANGELOG.md','coax/web/changelog-page.coax','apps/openagents-web/changelog-content.coax','coax/web/changelog-links.coax'])
     expect(affected([path],p)).toEqual(['coax-changelog','coax-changelog-phone'])
 })
+
+test("development-only realms (DEV-ONLY, never deployed) are named so a released site's walk leaves them out", () => {
+  expect(p.devOnly.has("portal-lab")).toBe(true)
+  expect(p.devOnly.has("everglade-nights-experimental")).toBe(true)
+  expect(p.devOnly.has("everglade")).toBe(false)
+  expect(p.devOnly.has("valley-world")).toBe(false)
+})

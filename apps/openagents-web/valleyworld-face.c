@@ -21,7 +21,7 @@ EXPORT("coaxial_gpu_recover_ms_v1") uint32_t recover_ms(void){return (uint32_t)w
 EXPORT("coaxial_frame_admit") int32_t frame_admit(int32_t pending){return afp_submit(pending)?1:0;}
 EXPORT("coaxial_sampling_v1") uint32_t sampling(uint32_t p){return (uint32_t)canyon_sampling(canyon(p));}
 EXPORT("coaxial_pixel_budget") uint32_t pixel_budget(void){return (uint32_t)canyon_pixel_budget();}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){world_step(view(p),dt,still!=0);return (uint32_t)world_frame_clusters(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,128},w,h,d,(coax_v_u8){catalog,catalog_used},(coax_v_u8){cluster_tree,cluster_tree_used});}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){world_step(view(p),dt,still!=0);return (uint32_t)world_frame_clusters(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,136},w,h,d,(coax_v_u8){catalog,catalog_used},(coax_v_u8){cluster_tree,cluster_tree_used});}
 EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){(void)mods;return world_hold(view(p),k,true);}
 EXPORT("coaxial_key_up") uint32_t key_up(uint32_t p,int32_t k,int32_t mods){(void)mods;return world_hold(view(p),k,false);}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){return world_pointer(view(p),x,y,phase,kind,id);}

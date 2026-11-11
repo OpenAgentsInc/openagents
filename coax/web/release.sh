@@ -259,7 +259,9 @@ if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full"
   # A failure is confirmed by a second run before it counts, as the other checks' are: the first run
   # shares the Mac with the starts walk's Chromes, and its position probe then fails by millimetres
   # (#13137). The second waits for the walk to end.
-  drift_run() { (cd "$tree" && coax/web/room/build.sh && coax/web/tool.sh everglade-drift) > "$reports/drift" 2>&1; }
+  # bounded: in its own process group, so its servers and Chromes go with it however it ends (a server
+  # a stopped run left on the drift's ports kept every later run's pages from coming up, #13195).
+  drift_run() { (cd "$tree" && coax/web/room/build.sh && bounded 2400 coax/web/tool.sh everglade-drift) > "$reports/drift" 2>&1; }
   walk_done() { local n=0; while [[ ! -e "$reports/starts-done" ]] && (( n++ < 400 )); do sleep 5; done; }
   if drift_run; then echo "  drift      holds"
   elif cp "$reports/drift" "$reports/drift-first" && walk_done && drift_run; then echo "  drift      holds on a second run, once the starts walk was done (the first failed beside it: $(grep -cE '^DRIFT ' "$reports/drift-first") probe(s))"
@@ -267,7 +269,7 @@ if [[ -n "$passed" ]] && git -C "$tree" diff --name-only "${passed%% *}" "$full"
     old="$(mktemp -d)/production"
     git -C "$repo" worktree add -q --detach "$old" "${passed%% *}"
     if compiler "$old" > /dev/null &&
-       (cd "$old" && coax/web/room/build.sh && apps/openagents-web/build.sh && coax/web/tool.sh everglade-drift) > "$reports/drift-production" 2>&1; then
+       (cd "$old" && coax/web/room/build.sh && apps/openagents-web/build.sh && bounded 2400 coax/web/tool.sh everglade-drift) > "$reports/drift-production" 2>&1; then
       git -C "$repo" worktree remove --force "$old"
       echo "release $commit: STOPPED. the Everglade drift check fails here and holds on production's ${passed:0:10}; production is untouched:" >&2
       grep -E '^DRIFT ' "$reports/drift" | head -20 | sed 's/^/  /' >&2
