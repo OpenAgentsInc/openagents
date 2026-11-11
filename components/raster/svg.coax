@@ -1,0 +1,428 @@
+// SVG icons rasterized to 8-bit coverage, in Coax, so every host that has no
+// SVG renderer of its own (Linux, Android) draws the same icons from the same
+// files (components/spec.md, GitHub #13153). It reads what the bundled icons
+// use and no more: <svg> with a viewBox, <g>, <path> (M L H V C S Q A Z, both
+// cases), <rect> with rx and <circle>, with fill, stroke, stroke-width
+// inherited from the element's parents. Colours are not read: the result is
+// the alpha a host tints, as the atlas keeps icons. A fill is each pixel's
+// exact area under the non-zero rule (coax/lib/text/ttf.coax's rasterizer);
+// a stroke is each pixel centre's distance to the path, so its caps and
+// joins are round. Not read: transforms, dashes, miter joins, butt caps,
+// gradients, the even-odd rule (an even-odd shape whose holes wind the other
+// way, as the icons' do, fills the same), text and <use>.
+//   coax/bin/coax test components/raster/svg.coax --library
+#load "../../coax/lib/text/ttf.coax";
+
+SVG_POINTS :: 32768;
+SVG_SUBS :: 512;
+SVG_DEPTH :: 8;
+
+// The flattened outline of one element, in the tile's pixels.
+SvgPath :: struct {
+  x: [SVG_POINTS] f64; y: [SVG_POINTS] f64; n: int;
+  start: [SVG_SUBS] int; closed: [SVG_SUBS] bool; subs: int;
+  // the view box and the tile it maps onto
+  vx: f64; vy: f64; sx: f64; sy: f64;
+  // the pen, in the file's units
+  px: f64; py: f64; mx: f64; my: f64;
+}
+SvgStyle :: struct { fill: bool; stroke: bool; width: f64; }
+
+svg_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == ','; }
+svg_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+
+// The number at s[at[0]], past spaces and commas; at[0] moves past it. 0 when there is none.
+svg_number :: (s: string, at: [] int) -> f64 {
+  i := at[0];
+  while i < s.count && svg_space(s[i]) { i += 1; }
+  neg := false;
+  if i < s.count && (s[i] == '-' || s[i] == '+') { neg = s[i] == '-'; i += 1; }
+  v := 0.0f64; any := false;
+  while i < s.count && svg_digit(s[i]) { v = v * 10.0 + cast(f64) (cast(int) s[i] - 48); i += 1; any = true; }
+  if i < s.count && s[i] == '.' {
+    i += 1; scale := 0.1f64;
+    while i < s.count && svg_digit(s[i]) { v += cast(f64) (cast(int) s[i] - 48) * scale; scale = scale * 0.1; i += 1; any = true; }
+  }
+  if any && i + 1 < s.count && (s[i] == 'e' || s[i] == 'E') && (svg_digit(s[i + 1]) || ((s[i + 1] == '-' || s[i + 1] == '+') && i + 2 < s.count && svg_digit(s[i + 2]))) {
+    i += 1; eneg := false;
+    if s[i] == '-' || s[i] == '+' { eneg = s[i] == '-'; i += 1; }
+    e := 0;
+    while i < s.count && svg_digit(s[i]) { e = e * 10 + (cast(int) s[i] - 48); i += 1; }
+    for k: 0..<e { v = ifx eneg then v * 0.1 else v * 10.0; }
+  }
+  at[0] = i;
+  return ifx neg then -v else v;
+}
+// An arc's flag: one digit, which the next number may follow with nothing between.
+svg_flag :: (s: string, at: [] int) -> bool {
+  i := at[0];
+  while i < s.count && svg_space(s[i]) { i += 1; }
+  on := i < s.count && s[i] == '1';
+  if i < s.count && (s[i] == '0' || s[i] == '1') { i += 1; }
+  at[0] = i;
+  return on;
+}
+// Whether a number starts at or after s[i] before the next command letter.
+svg_more :: (s: string, from: int) -> bool {
+  i := from;
+  while i < s.count && svg_space(s[i]) { i += 1; }
+  return i < s.count && (svg_digit(s[i]) || s[i] == '-' || s[i] == '+' || s[i] == '.');
+}
+
+// An attribute's value in a tag's text (from its name to before its `>`), or "".
+svg_attr :: (tag: string, name: string) -> string {
+  i := 0;
+  while i + name.count + 2 < tag.count {
+    if svg_space(tag[i]) && tag[i + 1 + name.count] == '=' {
+      same := true;
+      for k: 0..<name.count { if tag[i + 1 + k] != name[k] { same = false; break; } }
+      q := i + 2 + name.count;
+      if same && q < tag.count && (tag[q] == '"' || tag[q] == 39) {
+        e := q + 1;
+        while e < tag.count && tag[e] != tag[q] { e += 1; }
+        return tag[q + 1..<e];
+      }
+    }
+    i += 1;
+  }
+  return "";
+}
+svg_value :: (tag: string, name: string, otherwise: f64) -> f64 {
+  v := svg_attr(tag, name);
+  if v.count == 0 { return otherwise; }
+  at: [1] int;
+  return svg_number(v, at[..]);
+}
+// A tag's own style over its parent's.
+svg_style :: (tag: string, parent: SvgStyle) -> SvgStyle {
+  s := parent;
+  f := svg_attr(tag, "fill");
+  if f.count > 0 { s.fill = f != "none"; }
+  k := svg_attr(tag, "stroke");
+  if k.count > 0 { s.stroke = k != "none"; }
+  s.width = svg_value(tag, "stroke-width", s.width);
+  return s;
+}
+
+// ---- building the outline
+
+svg_begin :: (p: [] SvgPath) { p[0].n = 0; p[0].subs = 0; }
+svg_move :: (p: [] SvgPath, x: f64, y: f64) {
+  p[0].px = x; p[0].py = y; p[0].mx = x; p[0].my = y;
+  if p[0].subs >= SVG_SUBS || p[0].n >= SVG_POINTS { return; }
+  p[0].start[p[0].subs] = p[0].n; p[0].closed[p[0].subs] = false; p[0].subs += 1;
+  p[0].x[p[0].n] = (x - p[0].vx) * p[0].sx; p[0].y[p[0].n] = (y - p[0].vy) * p[0].sy; p[0].n += 1;
+}
+svg_line :: (p: [] SvgPath, x: f64, y: f64) {
+  if p[0].subs == 0 { svg_move(p, p[0].px, p[0].py); }
+  p[0].px = x; p[0].py = y;
+  if p[0].n >= SVG_POINTS { return; }
+  p[0].x[p[0].n] = (x - p[0].vx) * p[0].sx; p[0].y[p[0].n] = (y - p[0].vy) * p[0].sy; p[0].n += 1;
+}
+svg_close :: (p: [] SvgPath) {
+  if p[0].subs > 0 { p[0].closed[p[0].subs - 1] = true; }
+  p[0].px = p[0].mx; p[0].py = p[0].my;
+}
+// How many lines a curve of about this length (file units) is cut into: one every two pixels.
+svg_steps :: (p: [] SvgPath, length: f64) -> int {
+  s := ifx p[0].sx > p[0].sy then p[0].sx else p[0].sy;
+  n := cast(int) (length * s / 2.0) + 4;
+  return ifx n > 96 then 96 else n;
+}
+svg_cubic :: (p: [] SvgPath, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) {
+  ax := p[0].px; ay := p[0].py;
+  n := svg_steps(p, abs(x1 - ax) + abs(y1 - ay) + abs(x2 - x1) + abs(y2 - y1) + abs(x - x2) + abs(y - y2));
+  for i: 1..<n + 1 {
+    t := cast(f64) i / cast(f64) n; u := 1.0 - t;
+    svg_line(p, u * u * u * ax + 3.0 * u * u * t * x1 + 3.0 * u * t * t * x2 + t * t * t * x,
+                u * u * u * ay + 3.0 * u * u * t * y1 + 3.0 * u * t * t * y2 + t * t * t * y);
+  }
+}
+svg_quad :: (p: [] SvgPath, x1: f64, y1: f64, x: f64, y: f64) {
+  ax := p[0].px; ay := p[0].py;
+  n := svg_steps(p, abs(x1 - ax) + abs(y1 - ay) + abs(x - x1) + abs(y - y1));
+  for i: 1..<n + 1 {
+    t := cast(f64) i / cast(f64) n; u := 1.0 - t;
+    svg_line(p, u * u * ax + 2.0 * u * t * x1 + t * t * x, u * u * ay + 2.0 * u * t * y1 + t * t * y);
+  }
+}
+SVG_PI :: 3.14159265358979323846;
+// The angle of (x, y), in (-pi, pi]: the argument halved twice, then atan's series.
+svg_angle :: (y: f64, x: f64) -> f64 {
+  if x == 0.0 && y == 0.0 { return 0.0; }
+  swap := abs(y) > abs(x);
+  z := ifx swap then x / y else y / x;
+  z = z / (1.0 + sqrt(1.0 + z * z));
+  z = z / (1.0 + sqrt(1.0 + z * z));
+  z2 := z * z;
+  a := 4.0 * z * (1.0 - z2 * (1.0 / 3.0 - z2 * (1.0 / 5.0 - z2 * (1.0 / 7.0 - z2 * (1.0 / 9.0 - z2 / 11.0)))));
+  if swap { a = (ifx z >= 0.0 then SVG_PI / 2.0 else -SVG_PI / 2.0) - a; if y < 0.0 && z >= 0.0 { a -= SVG_PI; } if y > 0.0 && z < 0.0 { a += SVG_PI; } return a; }
+  if x < 0.0 { a = ifx y >= 0.0 then a + SVG_PI else a - SVG_PI; }
+  return a;
+}
+// An elliptical arc from the pen to (x, y), as the SVG specification's appendix converts it to a centre.
+svg_arc :: (p: [] SvgPath, rx0: f64, ry0: f64, rotation: f64, large: bool, sweep: bool, x: f64, y: f64) {
+  x1 := p[0].px; y1 := p[0].py;
+  rx := abs(rx0); ry := abs(ry0);
+  if rx == 0.0 || ry == 0.0 || (x1 == x && y1 == y) { svg_line(p, x, y); return; }
+  phi := rotation * SVG_PI / 180.0;
+  cp := cos(phi); sp := sin(phi);
+  dx := (x1 - x) / 2.0; dy := (y1 - y) / 2.0;
+  xp := cp * dx + sp * dy; yp := cp * dy - sp * dx;
+  lambda := xp * xp / (rx * rx) + yp * yp / (ry * ry);
+  if lambda > 1.0 { k := sqrt(lambda); rx = rx * k; ry = ry * k; }
+  num := rx * rx * ry * ry - rx * rx * yp * yp - ry * ry * xp * xp;
+  den := rx * rx * yp * yp + ry * ry * xp * xp;
+  coef := ifx den == 0.0 || num <= 0.0 then 0.0 else sqrt(num / den);
+  if large == sweep { coef = -coef; }
+  cxp := coef * rx * yp / ry; cyp := -coef * ry * xp / rx;
+  cx := cp * cxp - sp * cyp + (x1 + x) / 2.0; cy := sp * cxp + cp * cyp + (y1 + y) / 2.0;
+  t1 := svg_angle((yp - cyp) / ry, (xp - cxp) / rx);
+  t2 := svg_angle((-yp - cyp) / ry, (-xp - cxp) / rx);
+  d := t2 - t1;
+  if !sweep && d > 0.0 { d -= 2.0 * SVG_PI; }
+  if sweep && d < 0.0 { d += 2.0 * SVG_PI; }
+  n := svg_steps(p, abs(d) * (ifx rx > ry then rx else ry));
+  for i: 1..<n {
+    t := t1 + d * cast(f64) i / cast(f64) n;
+    svg_line(p, cp * rx * cos(t) - sp * ry * sin(t) + cx, sp * rx * cos(t) + cp * ry * sin(t) + cy);
+  }
+  svg_line(p, x, y);
+}
+
+// A path's `d`.
+svg_path :: (p: [] SvgPath, d: string) {
+  at: [1] int; cmd: u8 = 0;
+  lx := 0.0f64; ly := 0.0f64; curve := 0;   // the last control point, and whether it was a cubic's (1) or a quadratic's (2)
+  guard := 0;
+  while at[0] < d.count && guard < 100000 {
+    guard += 1;
+    i := at[0];
+    while i < d.count && svg_space(d[i]) { i += 1; }
+    if i >= d.count { break; }
+    c := d[i];
+    if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') { cmd = c; at[0] = i + 1; if cmd != 'z' && cmd != 'Z' && !svg_more(d, at[0]) { continue; } }
+    else if !svg_more(d, i) || cmd == 0 { at[0] = i + 1; continue; }
+    rel := cmd >= 'a';
+    ox := ifx rel then p[0].px else 0.0; oy := ifx rel then p[0].py else 0.0;
+    was := curve; curve = 0;
+    if cmd == 'z' || cmd == 'Z' { svg_close(p); }
+    else if cmd == 'm' || cmd == 'M' { x := svg_number(d, at[..]) + ox; y := svg_number(d, at[..]) + oy; svg_move(p, x, y); cmd = ifx rel then cast(u8) 'l' else cast(u8) 'L'; }
+    else if cmd == 'l' || cmd == 'L' { x := svg_number(d, at[..]) + ox; y := svg_number(d, at[..]) + oy; svg_line(p, x, y); }
+    else if cmd == 'h' || cmd == 'H' { x := svg_number(d, at[..]) + ox; svg_line(p, x, p[0].py); }
+    else if cmd == 'v' || cmd == 'V' { y := svg_number(d, at[..]) + oy; svg_line(p, p[0].px, y); }
+    else if cmd == 'c' || cmd == 'C' {
+      x1 := svg_number(d, at[..]) + ox; y1 := svg_number(d, at[..]) + oy; x2 := svg_number(d, at[..]) + ox; y2 := svg_number(d, at[..]) + oy;
+      x := svg_number(d, at[..]) + ox; y := svg_number(d, at[..]) + oy;
+      svg_cubic(p, x1, y1, x2, y2, x, y); lx = x2; ly = y2; curve = 1;
+    } else if cmd == 's' || cmd == 'S' {
+      x1 := ifx was == 1 then 2.0 * p[0].px - lx else p[0].px; y1 := ifx was == 1 then 2.0 * p[0].py - ly else p[0].py;
+      x2 := svg_number(d, at[..]) + ox; y2 := svg_number(d, at[..]) + oy; x := svg_number(d, at[..]) + ox; y := svg_number(d, at[..]) + oy;
+      svg_cubic(p, x1, y1, x2, y2, x, y); lx = x2; ly = y2; curve = 1;
+    } else if cmd == 'q' || cmd == 'Q' {
+      x1 := svg_number(d, at[..]) + ox; y1 := svg_number(d, at[..]) + oy; x := svg_number(d, at[..]) + ox; y := svg_number(d, at[..]) + oy;
+      svg_quad(p, x1, y1, x, y); lx = x1; ly = y1; curve = 2;
+    } else if cmd == 't' || cmd == 'T' {
+      x1 := ifx was == 2 then 2.0 * p[0].px - lx else p[0].px; y1 := ifx was == 2 then 2.0 * p[0].py - ly else p[0].py;
+      x := svg_number(d, at[..]) + ox; y := svg_number(d, at[..]) + oy;
+      svg_quad(p, x1, y1, x, y); lx = x1; ly = y1; curve = 2;
+    } else if cmd == 'a' || cmd == 'A' {
+      rx := svg_number(d, at[..]); ry := svg_number(d, at[..]); rot := svg_number(d, at[..]);
+      large := svg_flag(d, at[..]); sweep := svg_flag(d, at[..]);
+      x := svg_number(d, at[..]) + ox; y := svg_number(d, at[..]) + oy;
+      svg_arc(p, rx, ry, rot, large, sweep, x, y);
+    } else { at[0] = at[0] + 1; }
+  }
+}
+svg_rect :: (p: [] SvgPath, x: f64, y: f64, w: f64, h: f64, r0: f64) {
+  r := r0;
+  if r > w / 2.0 { r = w / 2.0; }
+  if r > h / 2.0 { r = h / 2.0; }
+  svg_move(p, x + r, y); svg_line(p, x + w - r, y);
+  if r > 0.0 { svg_arc(p, r, r, 0.0, false, true, x + w, y + r); }
+  svg_line(p, x + w, y + h - r);
+  if r > 0.0 { svg_arc(p, r, r, 0.0, false, true, x + w - r, y + h); }
+  svg_line(p, x + r, y + h);
+  if r > 0.0 { svg_arc(p, r, r, 0.0, false, true, x, y + h - r); }
+  svg_line(p, x, y + r);
+  if r > 0.0 { svg_arc(p, r, r, 0.0, false, true, x + r, y); }
+  svg_close(p);
+}
+svg_circle :: (p: [] SvgPath, cx: f64, cy: f64, r: f64) {
+  svg_move(p, cx + r, cy);
+  svg_arc(p, r, r, 0.0, false, true, cx - r, cy);
+  svg_arc(p, r, r, 0.0, false, true, cx + r, cy);
+  svg_close(p);
+}
+
+// ---- coverage
+
+// v over what out holds at pixel o.
+svg_put :: (out: [] u8, o: int, cover: f64) {
+  if o < 0 || o >= out.count { return; }
+  c := ifx cover > 0.998 then 1.0 else cover;   // a whole pixel, less the rasterizer's rounding, is whole
+  if c <= 0.0 { return; }
+  a := cast(f64) (cast(int) out[o]) / 255.0;
+  v := cast(int) floor((a + c * (1.0 - a)) * 255.0 + 0.5);
+  out[o] = cast(u8) (ifx v > 255 then 255 else v);
+}
+// The outline filled into the size-pixel tile at (ox, oy) of out (stride bytes a row).
+svg_fill :: (p: [] SvgPath, r: [] TtfRaster, out: [] u8, stride: int, ox: int, oy: int, size: int) {
+  m := 2;
+  r[0].x0 = 0; r[0].y0 = 0; r[0].w = size + 2 * m; r[0].h = size + 2 * m;
+  if (r[0].w + 2) * r[0].h > TTF_ACC { return; }
+  for i: 0..<(r[0].w + 2) * r[0].h { r[0].acc[i] = 0.0; }
+  lo := 0.0f64; hi := cast(f64) (size + 2 * m) - 0.001;
+  for s: 0..<p[0].subs {
+    a := p[0].start[s];
+    b := ifx s + 1 < p[0].subs then p[0].start[s + 1] else p[0].n;
+    for i: a..<b {
+      j := ifx i + 1 < b then i + 1 else a;
+      // inside the raster: a point past the tile's edge is drawn at it
+      x0 := p[0].x[i] + cast(f64) m; y0 := p[0].y[i] + cast(f64) m; x1 := p[0].x[j] + cast(f64) m; y1 := p[0].y[j] + cast(f64) m;
+      if x0 < lo { x0 = lo; } if x0 > hi { x0 = hi; } if x1 < lo { x1 = lo; } if x1 > hi { x1 = hi; }
+      if y0 < lo { y0 = lo; } if y0 > hi { y0 = hi; } if y1 < lo { y1 = lo; } if y1 > hi { y1 = hi; }
+      ttf_line(r, x0, y0, x1, y1);
+    }
+  }
+  for y: m..<m + size {
+    sum := 0.0f64; line := y * (r[0].w + 2);
+    for x: 0..<r[0].w + 1 {
+      sum += r[0].acc[line + x];
+      if x <= m || x > m + size { continue; }
+      svg_put(out, (oy + y - m) * stride + ox + x - 1 - m, abs(sum));
+    }
+  }
+}
+// The outline stroked width pixels wide, round at its ends and corners.
+svg_stroke :: (p: [] SvgPath, width: f64, out: [] u8, stride: int, ox: int, oy: int, size: int) {
+  half := width / 2.0;
+  for s: 0..<p[0].subs {
+    a := p[0].start[s];
+    b := ifx s + 1 < p[0].subs then p[0].start[s + 1] else p[0].n;
+    last := ifx p[0].closed[s] then b else b - 1;
+    if b - a == 1 { last = b; }   // a lone point: a dot
+    for i: a..<last {
+      j := ifx i + 1 < b then i + 1 else a;
+      ax := p[0].x[i]; ay := p[0].y[i]; bx := p[0].x[j]; by := p[0].y[j];
+      // the pixels this segment can reach
+      x0 := cast(int) floor((ifx ax < bx then ax else bx) - half - 1.0); x1 := cast(int) floor((ifx ax > bx then ax else bx) + half + 2.0);
+      y0 := cast(int) floor((ifx ay < by then ay else by) - half - 1.0); y1 := cast(int) floor((ifx ay > by then ay else by) + half + 2.0);
+      if x0 < 0 { x0 = 0; } if y0 < 0 { y0 = 0; } if x1 > size { x1 = size; } if y1 > size { y1 = size; }
+      ex := bx - ax; ey := by - ay; len2 := ex * ex + ey * ey;
+      for y: y0..<y1 {
+        for x: x0..<x1 {
+          qx := cast(f64) x + 0.5 - ax; qy := cast(f64) y + 0.5 - ay;
+          t := ifx len2 > 0.0 then (qx * ex + qy * ey) / len2 else 0.0;
+          if t < 0.0 { t = 0.0; } if t > 1.0 { t = 1.0; }
+          dx := qx - t * ex; dy := qy - t * ey;
+          cover := half + 0.5 - sqrt(dx * dx + dy * dy);
+          if cover <= 0.0 { continue; }
+          // the larger of this and what the stroke's other segments left, so a stroke doesn't darken itself
+          o := (oy + y) * stride + ox + x;
+          if o >= 0 && o < out.count {
+            v := cast(int) floor((ifx cover > 1.0 then 1.0 else cover) * 255.0 + 0.5);
+            if v > cast(int) out[o] { out[o] = cast(u8) v; }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The icon in svg drawn into the size-pixel tile at (ox, oy) of out; false when it has no <svg>.
+svg_draw :: (svg: string, p: [] SvgPath, r: [] TtfRaster, out: [] u8, stride: int, ox: int, oy: int, size: int) -> bool {
+  styles: [SVG_DEPTH] SvgStyle; depth := 0; seen := false;
+  styles[0] = SvgStyle.{fill = true, stroke = false, width = 1.0};
+  p[0].vx = 0.0; p[0].vy = 0.0; p[0].sx = 1.0; p[0].sy = 1.0;
+  i := 0;
+  while i < svg.count {
+    if svg[i] != '<' { i += 1; continue; }
+    e := i + 1;
+    while e < svg.count && svg[e] != '>' { e += 1; }
+    tag := svg[i + 1..<e];
+    n := 0;
+    while n < tag.count && !svg_space(tag[n]) && tag[n] != '/' { n += 1; }
+    name := tag[0..<n];
+    if tag.count > 0 && tag[0] == '/' { if tag == "/g" && depth > 0 { depth -= 1; } i = e + 1; continue; }
+    if name == "svg" {
+      seen = true;
+      box := svg_attr(tag, "viewBox");
+      w := cast(f64) size; h := cast(f64) size;
+      if box.count > 0 { at: [1] int; p[0].vx = svg_number(box, at[..]); p[0].vy = svg_number(box, at[..]); w = svg_number(box, at[..]); h = svg_number(box, at[..]); }
+      if w > 0.0 && h > 0.0 { p[0].sx = cast(f64) size / w; p[0].sy = cast(f64) size / h; }
+      styles[0] = svg_style(tag, styles[0]);
+    } else if name == "g" {
+      if depth + 1 < SVG_DEPTH { styles[depth + 1] = svg_style(tag, styles[depth]); depth += 1; }
+    } else if name == "path" || name == "rect" || name == "circle" {
+      s := svg_style(tag, styles[depth]);
+      svg_begin(p);
+      if name == "path" { svg_path(p, svg_attr(tag, "d")); }
+      else if name == "rect" {
+        rr := svg_attr(tag, "rx");
+        svg_rect(p, svg_value(tag, "x", 0.0), svg_value(tag, "y", 0.0), svg_value(tag, "width", 0.0), svg_value(tag, "height", 0.0), ifx rr.count > 0 then svg_value(tag, "rx", 0.0) else svg_value(tag, "ry", 0.0));
+      } else { svg_circle(p, svg_value(tag, "cx", 0.0), svg_value(tag, "cy", 0.0), svg_value(tag, "r", 0.0)); }
+      if s.fill { svg_fill(p, r, out, stride, ox, oy, size); }
+      if s.stroke && s.width > 0.0 { svg_stroke(p, s.width * sqrt(p[0].sx * p[0].sy), out, stride, ox, oy, size); }
+    }
+    i = e + 1;
+  }
+  return seen;
+}
+
+// ---------------------------------------------------------------- checks
+
+SvgWork :: struct { path: [1] SvgPath; raster: [1] TtfRaster; }
+svg_test_at :: (out: [] u8, size: int, x: int, y: int) -> int { return cast(int) out[y * size + x]; }
+
+#test "numbers: signs, fractions, exponents, and one running into the next" {
+  at: [1] int;
+  #assert svg_number("12.5", at[..]) == 12.5 && at[0] == 4;
+  at[0] = 0; s := "1.5.25-3e1,4";
+  #assert svg_number(s, at[..]) == 1.5;
+  #assert abs(svg_number(s, at[..]) - 0.25) < 0.0000001;
+  #assert svg_number(s, at[..]) == -30.0;
+  #assert svg_number(s, at[..]) == 4.0 && at[0] == s.count;
+  at[0] = 0; f := "011.5";
+  #assert !svg_flag(f, at[..]) && svg_flag(f, at[..]) && svg_number(f, at[..]) == 1.5;
+}
+#test "an attribute is found by its whole name" {
+  tag := "rect x=\"1\" stroke-width=\"2.5\" width=\"8\" fill=\"none\"";
+  #assert svg_attr(tag, "width") == "8" && svg_attr(tag, "stroke-width") == "2.5" && svg_attr(tag, "fill") == "none" && svg_attr(tag, "height") == "";
+  s := svg_style(tag, SvgStyle.{fill = true, stroke = true, width = 1.0});
+  #assert !s.fill && s.stroke && s.width == 2.5;
+}
+#test "angles in every quadrant" {
+  #assert abs(svg_angle(0.0, 1.0)) < 0.000001 && abs(svg_angle(1.0, 0.0) - SVG_PI / 2.0) < 0.000001;
+  #assert abs(svg_angle(0.0, -1.0) - SVG_PI) < 0.000001 && abs(svg_angle(-1.0, 0.0) + SVG_PI / 2.0) < 0.000001;
+  #assert abs(svg_angle(1.0, 1.0) - SVG_PI / 4.0) < 0.000001 && abs(svg_angle(-1.0, -1.0) + 3.0 * SVG_PI / 4.0) < 0.000001;
+  #assert abs(svg_angle(2.0, -1.0) - 2.0344439357957027) < 0.000001 && abs(svg_angle(-2.0, 1.0) + 1.1071487177940904) < 0.000001;
+}
+#test "a filled rounded square covers its middle and leaves its corners" #steps 40000000 {
+  w: [1] SvgWork; out: [400] u8;
+  #assert svg_draw("<svg viewBox=\"0 0 10 10\"><rect x=\"1\" y=\"1\" width=\"8\" height=\"8\" rx=\"2\" fill=\"currentColor\"/></svg>", w[0].path[..], w[0].raster[..], out[..], 20, 0, 0, 20);
+  #assert svg_test_at(out[..], 20, 10, 10) == 255 && svg_test_at(out[..], 20, 3, 10) == 255 && svg_test_at(out[..], 20, 15, 15) == 255;
+  #assert svg_test_at(out[..], 20, 0, 0) == 0 && svg_test_at(out[..], 20, 1, 10) == 0 && svg_test_at(out[..], 20, 19, 19) == 0;
+  // the corner is cut: outside the 4-pixel radius
+  #assert svg_test_at(out[..], 20, 2, 2) < 60 && svg_test_at(out[..], 20, 4, 4) > 200;
+}
+#test "a stroked line is as wide as its width, round at its ends, and nothing else" #steps 40000000 {
+  w: [1] SvgWork; out: [400] u8;
+  #assert svg_draw("<svg viewBox=\"0 0 20 20\" fill=\"none\"><path d=\"M5 10h10\" stroke=\"currentColor\" stroke-width=\"4\" stroke-linecap=\"round\"/></svg>", w[0].path[..], w[0].raster[..], out[..], 20, 0, 0, 20);
+  #assert svg_test_at(out[..], 20, 10, 9) == 255 && svg_test_at(out[..], 20, 10, 10) == 255 && svg_test_at(out[..], 20, 10, 8) == 255 && svg_test_at(out[..], 20, 10, 11) == 255;
+  #assert svg_test_at(out[..], 20, 10, 6) == 0 && svg_test_at(out[..], 20, 10, 13) == 0;
+  // the round cap reaches two pixels past the end, on the line only
+  #assert svg_test_at(out[..], 20, 3, 9) > 100 && svg_test_at(out[..], 20, 3, 7) == 0 && svg_test_at(out[..], 20, 1, 9) == 0;
+}
+#test "an arc is a circle's: a stroked circle is a ring" #steps 60000000 {
+  w: [1] SvgWork; out: [1600] u8;
+  #assert svg_draw("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"12\" cy=\"12\" r=\"8\"/></svg>", w[0].path[..], w[0].raster[..], out[..], 40, 0, 0, 40);
+  // radius 8 of 24 in 40 pixels: 13.33 pixels from the centre at (20, 20)
+  #assert svg_test_at(out[..], 40, 33, 19) > 200 && svg_test_at(out[..], 40, 6, 19) > 200 && svg_test_at(out[..], 40, 19, 33) > 200 && svg_test_at(out[..], 40, 19, 6) > 200;
+  #assert svg_test_at(out[..], 40, 29, 29) > 150 && svg_test_at(out[..], 40, 20, 20) == 0 && svg_test_at(out[..], 40, 36, 20) == 0;
+}
+#test "a group's style reaches its paths, and a path's own wins" #steps 40000000 {
+  w: [1] SvgWork; out: [400] u8;
+  #assert svg_draw("<svg viewBox=\"0 0 20 20\" fill=\"none\"><g stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M2 5H18\"/><path d=\"M2 15H18\" stroke=\"none\"/></g></svg>", w[0].path[..], w[0].raster[..], out[..], 20, 0, 0, 20);
+  #assert svg_test_at(out[..], 20, 10, 4) == 255 && svg_test_at(out[..], 20, 10, 14) == 0 && svg_test_at(out[..], 20, 10, 15) == 0;
+}

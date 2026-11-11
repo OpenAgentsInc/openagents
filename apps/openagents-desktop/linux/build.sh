@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Firm reason: 5 (thin wrapper around coax, cc, wayland-scanner and pkg-config; holds no logic)
+# Builds OpenAgents for Linux (docs/apps/2026-11-10-apps-roadmap.md Step 1, GitHub #13153):
+# the same Coax the Mac app compiles (zeron/linux.coax) behind zeron-face.c, the atlas built in
+# Coax, the component shader emitted from Coax as SPIR-V, and the shared Wayland and Vulkan
+# host (apps/shared/host/linux/). Nix supplies the C headers and libraries only.
+#   apps/openagents-desktop/linux/build.sh [--open [APP ARGS...]]
+# The program is build/linux/OpenAgents, with its fonts, icons and shader beside it.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+repo="$(cd "$here/../../.." && pwd)"
+if [[ -z "${OA_LINUX_BUILD:-}" ]]; then
+  export OA_LINUX_BUILD=1 OA_LINUX_BUILD_ENTRY="$here/build.sh"
+  printf -v OA_LINUX_BUILD_ARGS '%q ' "$@"; export OA_LINUX_BUILD_ARGS
+  exec nix-shell -p gcc pkg-config vulkan-headers vulkan-loader wayland wayland-scanner wayland-protocols libxkbcommon \
+    --run 'eval "exec \"$OA_LINUX_BUILD_ENTRY\" $OA_LINUX_BUILD_ARGS"'
+fi
+coax="${COAX:-$repo/coax/bin/coax}"
+app="$here/.."
+work="$app/build/linux"
+mkdir -p "$work/c" "$work/wl"
+"$coax" c "$app/zeron/linux.coax" --library --header "$work/c/zeron.h" > "$work/c/zeron.c"
+"$coax" c "$app/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h" > "$work/c/lab-sign.c"
+# The seat's keys and text (aethyr/host/): what verse/gpu/vkw.h's XKB and text-input glue calls.
+"$coax" c "$repo/aethyr/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
+"$coax" c "$repo/aethyr/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
+"$coax" spirv "$repo/apps/openagents-web/gpu/chat.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/zeron.spv" 2> "$work/zeron.spv.bindings"
+protocols="$(pkg-config --variable=pkgdatadir wayland-protocols)"
+for spec in stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-unstable-v1 unstable/text-input/text-input-unstable-v3; do
+  name="$(basename "$spec")"
+  wayland-scanner client-header "$protocols/$spec.xml" "$work/wl/$name-client-protocol.h"
+  wayland-scanner private-code "$protocols/$spec.xml" "$work/wl/$name-protocol.c"
+done
+cflags=(-std=gnu11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$work/wl" -I"$app" -I"$repo/apps/shared/host/linux" -I"$repo/verse/gpu" -I"$repo/verse/kms" -I"$repo/coax/platform")
+# the lab's signer is a unit of its own (lab-sign.coax)
+cc "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign.o"
+# and it carries its own copy of the hashes the app's unit also exports: only its one entry point stays visible
+objcopy --keep-global-symbol=coaxial_lab_nip98 "$work/c/lab-sign.o"
+# shellcheck disable=SC2046
+cc "${cflags[@]}" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 \
+  "$here/main.c" "$here/stubs.c" "$app/zeron-face.c" "$repo/apps/shared/host/linux/ui-host.c" "$work/c/zeron.c" "$work/c/lab-sign.o" "$work/c/wayland-input.c" "$work/c/wayland-text.c" \
+  "$repo/verse/gpu/vkc.c" "$repo/verse/gpu/vks.c" "$repo/verse/gpu/vkp.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
+  "$work/wl/xdg-shell-protocol.c" "$work/wl/xdg-decoration-unstable-v1-protocol.c" "$work/wl/text-input-unstable-v3-protocol.c" \
+  $(pkg-config --cflags --libs wayland-client wayland-cursor xkbcommon) -lvulkan -lpthread -lm -o "$work/OpenAgents.new"
+rm -rf "$work/fonts" "$work/icons"
+cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$work/"
+cp "$repo/components/zeron/NOTICE" "$work/NOTICE"
+mv "$work/OpenAgents.new" "$work/OpenAgents"
+echo "built $work/OpenAgents"
+if [[ "${1:-}" == --open ]]; then shift; exec "$work/OpenAgents" "$@"; fi

@@ -1,0 +1,266 @@
+// The glyph and icon atlas, built in Coax (components/spec.md, GitHub #13153).
+// On the Mac CoreText and AppKit rasterize the atlas (components/zeron/MetalUI.swift)
+// and in a browser a canvas does (coax/web/gpui.js). A host with neither, Linux
+// first, builds it here: the fonts' outlines through coax/lib/text/ttf.coax and
+// the icons through svg.coax, so those hosts draw the same glyphs from the same
+// files. It fills gpui.coax's Atlas exactly as the other hosts do (gp_set_font,
+// gp_set_icon, gp_set_atlas, gp_set_dynamic, the glyph cache's requests).
+//
+// The host's part is small: read the font and icon files, allocate the pixels
+// (ra_plan says how many), upload them as an R8 texture, and call ra_serve
+// after each frame for the graphemes the frame wanted.
+//
+// What differs from the Mac's atlas, on purpose or not yet:
+//  - one dilation level (gp_set_atlas levels = 1): CoreText thickens light
+//    text on dark by the fill's luminance, this draws the outline as it is;
+//  - no kerning: the fonts' GPOS tables are not read yet, so a pair is its two
+//    advances;
+//  - no hinting (ttf.coax runs no font program), and no colour glyphs: a
+//    grapheme the font lacks is its missing-glyph box.
+//   coax/bin/coax test components/raster/atlas.coax --library
+#load "../zeron/gpui.coax";
+#load "svg.coax";
+
+RA_WIDTH :: 4096;
+RA_CELL_EM :: 2.0;          // a glyph's cell, in its font's size (the Mac uses 2.4 for five dilations)
+RA_WEIGHTS :: 4;            // Geist, Geist Medium, Geist SemiBold, Geist Mono
+RA_COLOR_CELLS :: 256;      // GP_DYN_CELLS - GP_DYN_MONO
+
+RaSlot :: struct { cell: int; pen_x: int; pen_y: int; y0: int; cols: int; }
+RaTile :: struct { x: int; y: int; size: int; }
+// Where everything is in the atlas, for one device scale.
+RaPlan :: struct {
+  dpr: f32; width: int; height: int;
+  slots: [GP_FONTS] RaSlot;
+  tiles: [GP_ICONS] RaTile; icons: int;
+  dyn_cell: int; dyn_pen_x: int; dyn_pen_y: int; dyn_y0: int; dyn_cols: int;
+  color_cols: int; color_height: int;
+  // the rows ra_serve drew into since ra_clean: the host uploads them
+  dirty_y0: int; dirty_y1: int;
+}
+RaFonts :: struct { f: [RA_WEIGHTS] TtfFont; }
+RaWork :: struct { raster: [1] TtfRaster; path: [1] SvgPath; }
+
+ra_ceil :: (v: f32) -> int { f := floor(v); return ifx f < v then cast(int) f + 1 else cast(int) f; }
+ra_round :: (v: f32) -> int { return cast(int) floor(v + 0.5); }
+
+// The layout: each font's cells (every glyph at GP_SUBPIXEL offsets), then the
+// icons at GP_SVG_SCALE times their size, then the glyph cache's cells.
+ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) {
+  p[0].dpr = dpr; p[0].width = RA_WIDTH;
+  y := 0; largest := 1;
+  for k: 0..<GP_FONTS {
+    size := ifx k < sizes.count then sizes[k] else 14.0f32;
+    cell := ra_ceil(size * dpr * RA_CELL_EM);
+    cols := RA_WIDTH / cell;
+    cells := GP_GLYPHS * GP_SUBPIXEL;
+    p[0].slots[k] = RaSlot.{cell = cell, pen_x = ra_round(cast(f32) cell * 0.25), pen_y = ra_round(cast(f32) cell * 0.7), y0 = y, cols = cols};
+    y += ((cells + cols - 1) / cols) * cell;
+    if cell > largest { largest = cell; }
+  }
+  x := 0; row := 0;
+  n := ifx icon_sizes.count < GP_ICONS then icon_sizes.count else GP_ICONS;
+  p[0].icons = n;
+  for i: 0..<n {
+    px := ra_ceil(icon_sizes[i] * dpr * GP_SVG_SCALE);
+    if x + px > RA_WIDTH { x = 0; y += row; row = 0; }
+    p[0].tiles[i] = RaTile.{x = x, y = y, size = px};
+    x += px + 2;
+    if px + 2 > row { row = px + 2; }
+  }
+  p[0].dyn_cell = largest;
+  p[0].dyn_pen_x = ra_round(cast(f32) largest * 0.25); p[0].dyn_pen_y = ra_round(cast(f32) largest * 0.7);
+  p[0].dyn_y0 = y + row + 1;
+  p[0].dyn_cols = RA_WIDTH / largest;
+  p[0].height = p[0].dyn_y0 + ((GP_DYN_MONO + p[0].dyn_cols - 1) / p[0].dyn_cols) * largest;
+  p[0].color_cols = p[0].dyn_cols;
+  p[0].color_height = ((RA_COLOR_CELLS + p[0].color_cols - 1) / p[0].color_cols) * largest;
+  p[0].dirty_y0 = 0; p[0].dirty_y1 = 0;
+}
+
+// A font's scale for size logical pixels at the plan's device scale (26.6 pixels a font unit, 16.16).
+ra_scale :: (f: TtfFont, size: f32, dpr: f32) -> int { return ttf_divfix(cast(int) floor(size * dpr * 64.0 + 0.5), f.upm); }
+// A glyph's advance in logical pixels, unrounded, as CoreText gives it.
+ra_advance :: (f: TtfFont, g: int, size: f32) -> f32 { return cast(f32) ttf_advance(f, g) * size / cast(f32) f.upm; }
+
+// A cell cleared and the raster made ready for outlines whose pen is the cell's.
+ra_cell_begin :: (r: [] TtfRaster, cell: int, pen_x: int, pen_y: int) -> bool {
+  m := cell;   // room around the cell for an outline that leaves it
+  r[0].x0 = -(pen_x + m); r[0].y0 = pen_y + m; r[0].w = cell + 2 * m; r[0].h = cell + 2 * m;
+  if (r[0].w + 2) * r[0].h > TTF_ACC { return false; }
+  for i: 0..<(r[0].w + 2) * r[0].h { r[0].acc[i] = 0.0; }
+  return true;
+}
+// The raster's coverage of the cell into the atlas at (ox, oy), replacing what was there.
+ra_cell_end :: (r: [] TtfRaster, px: [] u8, ox: int, oy: int, cell: int) {
+  m := cell;
+  for y: 0..<cell {
+    sum := 0.0f64; line := (y + m) * (r[0].w + 2);
+    for x: 0..<m + cell + 1 {
+      sum += r[0].acc[line + x];
+      if x <= m { continue; }
+      a := cast(int) floor(abs(sum) * 256.0);
+      o := (oy + y) * RA_WIDTH + ox + x - 1 - m;
+      if o >= 0 && o < px.count { px[o] = cast(u8) (ifx a > 255 then 255 else a); }
+    }
+  }
+}
+
+// One font slot: its measurements to the atlas, and every glyph at each subpixel offset.
+ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, f: TtfFont, size: f32, px: [] u8, w: [] RaWork) -> bool {
+  if slot < 0 || slot >= GP_FONTS || !f.ok { return false; }
+  s := p[0].slots[slot];
+  header := [7] f32.[cast(f32) f.ascender * size / cast(f32) f.upm, cast(f32) (-f.descender) * size / cast(f32) f.upm,
+                     cast(f32) s.cell, cast(f32) s.pen_x, cast(f32) s.pen_y, cast(f32) s.y0, cast(f32) s.cols];
+  advance: [GP_GLYPHS] f32; kern: [9604] f32; glyph: [GP_GLYPHS] int;
+  extra := GP_EXTRA;
+  for g: 0..<GP_GLYPHS {
+    code := ifx g < 95 then g + 32 else cast(int) extra[g - 95];
+    glyph[g] = ttf_glyph(f, code);
+    advance[g] = ra_advance(f, glyph[g], size);
+  }
+  gp_set_font(a, slot, size, header[..], advance[..], kern[..]);
+  scale := ra_scale(f, size, p[0].dpr);
+  for variant: 0..<GP_SUBPIXEL {
+    for g: 0..<GP_GLYPHS {
+      cell := variant * GP_GLYPHS + g;
+      if !ra_cell_begin(w[0].raster[..], s.cell, s.pen_x, s.pen_y) { return false; }
+      ok := ttf_outline(f, glyph[g], scale, variant * 64 / GP_SUBPIXEL, 0, w[0].raster[..], 0);
+      ra_cell_end(w[0].raster[..], px, (cell % s.cols) * s.cell, s.y0 + (cell / s.cols) * s.cell, s.cell);
+    }
+  }
+  return true;
+}
+// One icon from its SVG.
+ra_icon :: (a: [] Atlas, p: [] RaPlan, i: int, svg: string, px: [] u8, w: [] RaWork) -> bool {
+  if i < 0 || i >= p[0].icons { return false; }
+  t := p[0].tiles[i];
+  if !svg_draw(svg, w[0].path[..], w[0].raster[..], px, RA_WIDTH, t.x, t.y, t.size) { return false; }
+  gp_set_icon(a, i, cast(f32) t.x, cast(f32) t.y, cast(f32) t.size, cast(f32) t.size);
+  return true;
+}
+// The atlas's size and the glyph cache's part of it, after the fonts and icons.
+ra_finish :: (a: [] Atlas, p: [] RaPlan) {
+  gp_set_atlas(a, cast(f32) p[0].width, cast(f32) p[0].height, 1);
+  gp_set_dynamic(a, cast(f32) p[0].dyn_cell, cast(f32) p[0].dyn_pen_x, cast(f32) p[0].dyn_pen_y, cast(f32) p[0].dyn_y0, p[0].dyn_cols,
+                 p[0].color_cols, cast(f32) p[0].width, cast(f32) p[0].color_height);
+}
+
+// A code point that takes no room of its own in a grapheme: joiners, variation selectors, combining marks.
+ra_zero_width :: (cp: int) -> bool {
+  return cp == 0x200D || (cp >= 0xFE00 && cp <= 0xFE0F) || (cp >= 0x0300 && cp <= 0x036F) || (cp >= 0xE0100 && cp <= 0xE01EF);
+}
+// What the last frame asked of the glyph cache: each new grapheme measured, each wanted cell
+// drawn. The count of cells drawn; their rows are p.dirty_y0 ..< p.dirty_y1.
+ra_serve :: (a: [] Atlas, p: [] RaPlan, fonts: [] RaFonts, weights: [] int, sizes: [] f32, px: [] u8, w: [] RaWork) -> int {
+  bytes: [GP_CLUSTER_MAX] u8; n: [1] int; guard := 0;
+  while guard < 600 {
+    guard += 1;
+    slot := gp_next_cluster(a);
+    if slot < 0 { break; }
+    code := gp_cluster(a, slot, bytes[..]);
+    k := code / 256; count := code % 256;
+    if k < 0 || k >= GP_FONTS || k >= weights.count || k >= sizes.count { gp_measured(a, slot, 0, false); continue; }
+    f := fonts[0].f[weights[k] % RA_WEIGHTS];
+    text := cast(string) bytes[0..<count];
+    width := 0.0f32; i := 0;
+    while i < text.count {
+      cp := ttf_utf8(text, i, n[..]); i += n[0];
+      if !ra_zero_width(cp) { width += ra_advance(f, ttf_glyph(f, cp), sizes[k]); }
+    }
+    gp_measured(a, slot, width, false);
+  }
+  info: [6] f32; drawn := 0; guard = 0;
+  while guard < 3000 {
+    guard += 1;
+    c := gp_next_cell(a);
+    if c < 0 { break; }
+    if !gp_cell(a, c, info[..]) { a[0].cells[c].state = 2; continue; }
+    slot := cast(int) info[0]; variant := cast(int) info[2];
+    code := gp_cluster(a, slot, bytes[..]);
+    k := code / 256; count := code % 256;
+    // a colour cell is never asked for (ra_serve measures every grapheme as mono); mark it done
+    if info[3] > 0.5 || k < 0 || k >= GP_FONTS || k >= weights.count || k >= sizes.count { a[0].cells[c].state = 2; continue; }
+    f := fonts[0].f[weights[k] % RA_WEIGHTS];
+    scale := ra_scale(f, sizes[k], p[0].dpr);
+    if ra_cell_begin(w[0].raster[..], p[0].dyn_cell, p[0].dyn_pen_x, p[0].dyn_pen_y) {
+      text := cast(string) bytes[0..<count];
+      pen := variant * 64 / GP_SUBPIXEL; i := 0;
+      while i < text.count {
+        cp := ttf_utf8(text, i, n[..]); i += n[0];
+        if ra_zero_width(cp) { continue; }
+        g := ttf_glyph(f, cp);
+        ok := ttf_outline(f, g, scale, pen, 0, w[0].raster[..], 0);
+        pen += ttf_mulfix(ttf_advance(f, g), scale);
+      }
+      ox := cast(int) info[4]; oy := cast(int) info[5];
+      ra_cell_end(w[0].raster[..], px, ox, oy, p[0].dyn_cell);
+      if p[0].dirty_y1 <= p[0].dirty_y0 { p[0].dirty_y0 = oy; p[0].dirty_y1 = oy + p[0].dyn_cell; }
+      if oy < p[0].dirty_y0 { p[0].dirty_y0 = oy; }
+      if oy + p[0].dyn_cell > p[0].dirty_y1 { p[0].dirty_y1 = oy + p[0].dyn_cell; }
+      drawn += 1;
+    }
+    a[0].cells[c].state = 2;
+  }
+  return drawn;
+}
+
+// ---- the host's calls (C): the plan's numbers, the fonts' bytes, the build, the serve
+
+coaxial_ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) #export_c #effects(all) { if p.count > 0 { ra_plan(p, dpr, sizes, icon_sizes); } }
+coaxial_ra_width :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].width else 0; }
+coaxial_ra_height :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].height else 0; }
+coaxial_ra_color_height :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].color_height else 0; }
+// A font's bytes for a weight (they must stay where they are); whether it is a TrueType font.
+coaxial_ra_open :: (fonts: [] RaFonts, weight: int, data: [] u8) -> bool #export_c #effects(all) {
+  if fonts.count < 1 || weight < 0 || weight >= RA_WEIGHTS { return false; }
+  fonts[0].f[weight] = ttf_open(data);
+  return fonts[0].f[weight].ok;
+}
+coaxial_ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, fonts: [] RaFonts, weight: int, size: f32, px: [] u8, w: [] RaWork) -> bool #export_c #effects(all) {
+  if a.count < 1 || p.count < 1 || fonts.count < 1 || w.count < 1 || weight < 0 || weight >= RA_WEIGHTS || px.count < p[0].width * p[0].height { return false; }
+  return ra_font(a, p, slot, fonts[0].f[weight], size, px, w);
+}
+coaxial_ra_icon :: (a: [] Atlas, p: [] RaPlan, i: int, svg: string, px: [] u8, w: [] RaWork) -> bool #export_c #effects(all) {
+  if a.count < 1 || p.count < 1 || w.count < 1 || px.count < p[0].width * p[0].height { return false; }
+  return ra_icon(a, p, i, svg, px, w);
+}
+coaxial_ra_finish :: (a: [] Atlas, p: [] RaPlan) #export_c #effects(all) { if a.count > 0 && p.count > 0 { ra_finish(a, p); } }
+coaxial_ra_serve :: (a: [] Atlas, p: [] RaPlan, fonts: [] RaFonts, weights: [] int, sizes: [] f32, px: [] u8, w: [] RaWork) -> int #export_c #effects(all) {
+  if a.count < 1 || p.count < 1 || fonts.count < 1 || w.count < 1 || px.count < p[0].width * p[0].height { return 0; }
+  return ra_serve(a, p, fonts, weights, sizes, px, w);
+}
+coaxial_ra_dirty :: (p: [] RaPlan, which: int) -> int #export_c #effects(all) { if p.count < 1 { return 0; } return ifx which == 0 then p[0].dirty_y0 else p[0].dirty_y1; }
+coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[0].dirty_y0 = 0; p[0].dirty_y1 = 0; } }
+
+// ---------------------------------------------------------------- checks
+
+#test "the plan stacks the fonts, then the icons, then the glyph cache, none over another" {
+  p: [1] RaPlan;
+  sizes := [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
+  icons := [3] f32.[18, 14, 16];
+  ra_plan(p[..], 1, sizes[..], icons[..]);
+  #assert p[0].width == 4096 && p[0].slots[0].cell == 28 && p[0].slots[5].cell == 25 && p[0].slots[0].cols == 146;
+  #assert p[0].slots[0].pen_x == 7 && p[0].slots[0].pen_y == 20;
+  for k: 1..<GP_FONTS {
+    prev := p[0].slots[k - 1];
+    rows := (GP_GLYPHS * GP_SUBPIXEL + prev.cols - 1) / prev.cols;
+    #assert p[0].slots[k].y0 == prev.y0 + rows * prev.cell;
+  }
+  last := p[0].slots[GP_FONTS - 1];
+  #assert p[0].tiles[0].y >= last.y0 + ((GP_GLYPHS * GP_SUBPIXEL + last.cols - 1) / last.cols) * last.cell;
+  #assert p[0].tiles[0].size == 36 && p[0].tiles[1].x == 38 && p[0].tiles[1].size == 28 && p[0].tiles[2].x == 68;
+  #assert p[0].dyn_cell == 28 && p[0].dyn_y0 > p[0].tiles[0].y + 36 && p[0].height == p[0].dyn_y0 + ((GP_DYN_MONO + 145) / 146) * 28;
+  #assert p[0].color_height == ((256 + 145) / 146) * 28;
+}
+#test "a device scale of two doubles every cell and tile" {
+  p: [1] RaPlan; q: [1] RaPlan;
+  sizes := [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
+  icons := [2] f32.[18, 13];
+  ra_plan(p[..], 1, sizes[..], icons[..]); ra_plan(q[..], 2, sizes[..], icons[..]);
+  for k: 0..<GP_FONTS { #assert q[0].slots[k].cell == 2 * p[0].slots[k].cell; }
+  #assert q[0].tiles[0].size == 72 && q[0].tiles[1].size == 52 && q[0].dyn_cell == 56 && q[0].height > p[0].height;
+}
+#test "joiners and variation selectors take no room" {
+  #assert ra_zero_width(0x200D) && ra_zero_width(0xFE0F) && ra_zero_width(0x0301) && !ra_zero_width(65) && !ra_zero_width(0x1F600);
+}

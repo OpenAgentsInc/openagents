@@ -425,10 +425,14 @@ e_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
 // PATH, else the usual npm, nvm, Volta and Homebrew places) and whether its login is on disk.
 PROBE_SCRIPT :: "printf 'OA_PATH=%s\\n' \"$PATH\"; for p in \"$HOME/.local/bin/claude\" /opt/homebrew/bin/claude /usr/local/bin/claude \"$HOME/.claude/local/claude\"; do if [ -x \"$p\" ]; then printf 'OA_CLAUDE=%s\\n' \"$p\"; fi; done; printf 'OA_CLAUDE=%s\\n' \"$(command -v claude)\"; c=\"$(command -v codex)\"; if [ -z \"$c\" ]; then setopt null_glob 2>/dev/null; for p in \"$HOME\"/.nvm/versions/node/*/bin/codex \"$HOME/.volta/bin/codex\" \"$HOME/.bun/bin/codex\" \"$HOME/.npm-global/bin/codex\" \"$HOME/.local/bin/codex\" \"$HOME/.codex/bin/codex\" /opt/homebrew/bin/codex /usr/local/bin/codex; do if [ -x \"$p\" ]; then c=\"$p\"; fi; done; fi; printf 'OA_CODEX=%s\\n' \"$c\"; if [ -f \"${CODEX_HOME:-$HOME/.codex}/auth.json\" ]; then printf 'OA_CODEX_AUTH=1\\n'; fi";
 
+// The shell the probe and a Psionic tool call run in: the Mac's login zsh, and where there is no
+// /bin/zsh (Linux, NixOS among them) the system's sh, which reads the same login profile with -l.
+e_login_shell :: () -> string { return ifx fs_kind("/bin/zsh") == FS_FILE then "/bin/zsh" else "/bin/sh"; }
+
 e_probe_start :: (e: [] Engine) {
   h := cxproc_new();
   if h < 0 { e[0].probed = true; return; }
-  ok := cl_push(h, CL_FIELD_ARG, "/bin/zsh") && cl_push(h, CL_FIELD_ARG, "-lc") && cl_push(h, CL_FIELD_ARG, PROBE_SCRIPT);
+  ok := cl_push(h, CL_FIELD_ARG, e_login_shell()) && cl_push(h, CL_FIELD_ARG, "-lc") && cl_push(h, CL_FIELD_ARG, PROBE_SCRIPT);
   ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=true");
   if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); e[0].probed = true; e_probe_done(e); return; }
   e[0].probe = h;

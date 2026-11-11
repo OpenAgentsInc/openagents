@@ -740,7 +740,7 @@ ps_run :: (p: [] PsEngine, s: [] Session) {
   else {
     script: [8192] u8;
     n := e_set(script[..], e_set(script[..], 0, "exec 2>&1 </dev/null\n"), arg);
-    ok = cl_push(h, CL_FIELD_ARG, "/bin/zsh") && cl_push(h, CL_FIELD_ARG, "-lc") && cl_push(h, CL_FIELD_ARG, e_str(script[..], n));
+    ok = cl_push(h, CL_FIELD_ARG, e_login_shell()) && cl_push(h, CL_FIELD_ARG, "-lc") && cl_push(h, CL_FIELD_ARG, e_str(script[..], n));
   }
   ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true") && cl_push(h, CL_FIELD_UNSET, PS_KEY_ENV);
   if p[0].cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, p[0].cwd); }

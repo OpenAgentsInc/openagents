@@ -47,6 +47,9 @@ typedef struct {
   int (*text_rect)(void *user,float rect[4]);
   uint64_t (*text_owner)(void *user);
   void (*text_error)(void *user,const char *message);
+  // The pointer came over the window: set its cursor (a desktop app's; a realm hides it and draws its own).
+  void (*pointer_enter)(void *user,struct wl_pointer *pointer,uint32_t serial);
+  const char *app_id;   // the window's application id; a realm's when not given
 } VkwTo;
 
 typedef struct {
@@ -246,7 +249,8 @@ static const struct wl_keyboard_listener vkw_kb_listener = {.keymap = vkw_keymap
 // The pointer: hidden over the realm, which draws its own.
 static void vkw_pt_enter(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s, wl_fixed_t x, wl_fixed_t y) {
   (void)d; (void)s;
-  wl_pointer_set_cursor(p, serial, NULL, 0, 0);
+  if (vkw_->to.pointer_enter) vkw_->to.pointer_enter(vkw_->to.user, p, serial);
+  else wl_pointer_set_cursor(p, serial, NULL, 0, 0);
   vkw_->x = (float)wl_fixed_to_double(x);
   vkw_->y = (float)wl_fixed_to_double(y);
 }
@@ -400,7 +404,7 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
   w->toplevel = xdg_surface_get_toplevel(w->xdg);
   xdg_toplevel_add_listener(w->toplevel, &vkw_top_listener, NULL);
   xdg_toplevel_set_title(w->toplevel, title);
-  xdg_toplevel_set_app_id(w->toplevel, "com.openagents.verse");
+  xdg_toplevel_set_app_id(w->toplevel, to.app_id ? to.app_id : "com.openagents.verse");
   if (w->decorations) {
     w->decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(w->decorations, w->toplevel);
     zxdg_toplevel_decoration_v1_set_mode(w->decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
