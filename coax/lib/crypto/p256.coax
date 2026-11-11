@@ -1,0 +1,502 @@
+// P-256 (secp256r1, NIST FIPS 186-4 D.1.2.3, SEC 2 2.4.2): arithmetic
+// modulo the field prime p and the group order n, the group law, scalar
+// multiplication and SEC 1 point encodings. Passkeys (ES256), Secure
+// Enclave and Android Keystore device keys and APNs token signing use it
+// (docs/auth/build-order.md, step 1).
+//
+// The structure follows the secp256k1 code (secp_scalar.coax): eight
+// little-endian u32 limbs, Montgomery multiplication with one masked final
+// subtraction, Fermat inversion with a public exponent, and masked
+// selection. One Montgomery routine serves both moduli: P2_P for
+// coordinates (always kept in Montgomery form inside points) and P2_N for
+// scalars (kept canonical; p2_mul_mod converts on the way in).
+//
+// The group law is the complete projective addition of Renes, Costello and
+// Batina ("Complete addition formulas for prime order elliptic curves",
+// EUROCRYPT 2016, algorithm 4 for a = -3). It has no exceptional cases: the
+// same instructions add P + Q, P + P, P + (-P) and anything with the
+// identity (0 : 1 : 0), so doubling is the same call and scalar
+// multiplication is a Montgomery ladder whose steps never depend on the
+// scalar's bits except through masks (Bitcoin chapter 3). The ladder runs
+// over all 256 bit positions, which are public.
+//
+// What is public: lengths, encodings of public keys and the verdicts.
+// Decoding branches on public key bytes; nothing that handles a secret
+// scalar branches on it or indexes memory with it.
+#load "bytes.coax";
+#authority;
+
+P2Num :: struct { limbs: [8] u32; }
+// A modulus with -m^-1 mod 2^32, R^2 mod m (R = 2^256) and m - 2, the
+// Fermat exponent for inversion.
+P2Mod :: struct { m: P2Num; n0: u64; r2: P2Num; e: P2Num; }
+P2Diff :: struct { value: P2Num; borrow: u64; }
+P2Load :: struct { value: P2Num; ok: bool; }
+// Projective (X : Y : Z) for the affine point (X/Z, Y/Z), each coordinate
+// in Montgomery form; Z = 0 is the identity.
+P2Point :: struct { x: P2Num; y: P2Num; z: P2Num; }
+P2Decode :: struct { point: P2Point; ok: bool; }
+
+P2_BASE :: cast(u64) 4294967296;
+P2_WORD :: cast(u64) 4294967295;
+// p = 2^256 - 2^224 + 2^192 + 2^96 - 1. Its low limb is 2^32 - 1, so
+// -p^-1 mod 2^32 is 1.
+P2_P :: P2Mod.{m=P2Num.{limbs=[8]u32.[0xffffffff,0xffffffff,0xffffffff,0x00000000,0x00000000,0x00000000,0x00000001,0xffffffff]},n0=1,
+  r2=P2Num.{limbs=[8]u32.[0x00000003,0x00000000,0xffffffff,0xfffffffb,0xfffffffe,0xffffffff,0xfffffffd,0x00000004]},
+  e=P2Num.{limbs=[8]u32.[0xfffffffd,0xffffffff,0xffffffff,0x00000000,0x00000000,0x00000000,0x00000001,0xffffffff]}};
+// n = ffffffff 00000000 ffffffff ffffffff bce6faad a7179e84 f3b9cac2 fc632551.
+P2_N :: P2Mod.{m=P2Num.{limbs=[8]u32.[0xfc632551,0xf3b9cac2,0xa7179e84,0xbce6faad,0xffffffff,0xffffffff,0x00000000,0xffffffff]},n0=3993025615,
+  r2=P2Num.{limbs=[8]u32.[0xbe79eea2,0x83244c95,0x49bd6fa6,0x4699799c,0x2b6bec59,0x2845b239,0xf3d95620,0x66e12d94]},
+  e=P2Num.{limbs=[8]u32.[0xfc63254f,0xf3b9cac2,0xa7179e84,0xbce6faad,0xffffffff,0xffffffff,0x00000000,0xffffffff]}};
+// b and the generator, canonical (FIPS 186-4 D.1.2.3) ...
+P2_B :: P2Num.{limbs=[8]u32.[0x27d2604b,0x3bce3c3e,0xcc53b0f6,0x651d06b0,0x769886bc,0xb3ebbd55,0xaa3a93e7,0x5ac635d8]};
+P2_GX :: P2Num.{limbs=[8]u32.[0xd898c296,0xf4a13945,0x2deb33a0,0x77037d81,0x63a440f2,0xf8bce6e5,0xe12c4247,0x6b17d1f2]};
+P2_GY :: P2Num.{limbs=[8]u32.[0x37bf51f5,0xcbb64068,0x6b315ece,0x2bce3357,0x7c0f9e16,0x8ee7eb4a,0xfe1a7f9b,0x4fe342e2]};
+// ... and in Montgomery form (x R mod p), which the checks derive again.
+P2_B_M :: P2Num.{limbs=[8]u32.[0x29c4bddf,0xd89cdf62,0x78843090,0xacf005cd,0xf7212ed6,0xe5a220ab,0x04874834,0xdc30061d]};
+P2_GX_M :: P2Num.{limbs=[8]u32.[0x18a9143c,0x79e730d4,0x5fedb601,0x75ba95fc,0x77622510,0x79fb732b,0xa53755c6,0x18905f76]};
+P2_GY_M :: P2Num.{limbs=[8]u32.[0xce95560a,0xddf25357,0xba19e45c,0x8b4ab8e4,0xdd21f325,0xd2e88688,0x25885d85,0x8571ff18]};
+P2_ONE_M :: P2Num.{limbs=[8]u32.[0x00000001,0x00000000,0x00000000,0xffffffff,0xffffffff,0xffffffff,0xfffffffe,0x00000000]};
+// (p + 1) / 4: p is 3 mod 4, so a^((p+1)/4) is a square root of a square a.
+P2_SQRT_E :: P2Num.{limbs=[8]u32.[0x00000000,0x00000000,0x40000000,0x00000000,0x00000000,0x40000000,0xc0000000,0x3fffffff]};
+
+// ---- checks
+// Big-endian hex into a number, for the checks only.
+p2_hex :: (text: string) -> P2Num #effects(all) {
+  r: P2Num;
+  for i: 0..<64 {
+    c := text[63 - i];
+    v := ifx c >= 'a' then cast(u32) (c - 'a') + 10 else cast(u32) (c - '0');
+    r.limbs[i / 8] |= v << cast(u32) (4 * (i % 8));
+  }
+  return r;
+}
+p2_same :: (a: P2Num, b: P2Num) -> bool #effects(all) { return p2_equal(a, b) == 1; }
+// The affine point of P, canonical, for the checks.
+p2_check_xy :: (point: P2Point, x: string, y: string) -> bool #effects(all) {
+  out: [65] u8;
+  if !p2_encode(point, out[..]) { return false; }
+  return p2_same(p2_load(out[1..<33], P2_P).value, p2_hex(x)) && p2_same(p2_load(out[33..<65], P2_P).value, p2_hex(y));
+}
+P2_N_HEX :: "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551";
+P2_P_HEX :: "ffffffff00000001000000000000000000000000ffffffffffffffffffffffff";
+#test "the constants agree with each other" #steps 4000000000 {
+  for which: 0..<2 {
+    mod := ifx which == 0 then P2_P else P2_N;
+    #assert ((cast(u64) mod.m.limbs[0] * mod.n0) & P2_WORD) == P2_WORD;          // m n0 = -1 mod 2^32
+    two := p2_small(2);
+    #assert p2_same(p2_add(mod.e, two, mod), P2Num.{});                         // e + 2 = m = 0
+    // R^2 is right when x R R^-1 R^-1 ... comes back: to and from Montgomery form.
+    x := p2_hex("0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210");
+    #assert p2_same(p2_from(p2_to(x, mod), mod), x);
+    #assert p2_same(p2_from(p2_to(p2_small(1), mod), mod), p2_small(1));
+  }
+  #assert p2_same(P2_P.m, p2_hex(P2_P_HEX)) && p2_same(P2_N.m, p2_hex(P2_N_HEX));
+  #assert p2_same(p2_to(p2_small(1), P2_P), P2_ONE_M);
+  #assert p2_same(p2_to(P2_B, P2_P), P2_B_M) && p2_same(p2_to(P2_GX, P2_P), P2_GX_M) && p2_same(p2_to(P2_GY, P2_P), P2_GY_M);
+  #assert p2_same(P2_B, p2_hex("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b"));
+  #assert p2_same(P2_GX, p2_hex("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"));
+  #assert p2_same(P2_GY, p2_hex("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5"));
+  // 4 (sqrt exponent) = p + 1
+  // 4 (p + 1) / 4 = p + 1
+  e4: P2Num; carry: u32;
+  for i: 0..<8 { e4.limbs[i] = (P2_SQRT_E.limbs[i] << 2) | carry; carry = P2_SQRT_E.limbs[i] >> 30; }
+  #assert carry == 0 && p2_same(e4, p2_add_raw(P2_P.m, p2_small(1)));
+}
+#forall "small numbers use ordinary arithmetic under both moduli" a:0..<5, b:0..<5, which:0..<2 {
+  mod := ifx which == 0 then P2_P else P2_N;
+  x := p2_small(cast(u32) a); y := p2_small(cast(u32) b);
+  #assert p2_same(p2_add(x, y, mod), p2_small(cast(u32) (a + b)));
+  #assert p2_same(p2_mul_mod(x, y, mod), p2_small(cast(u32) (a * b)));
+  #assert p2_same(p2_sub(p2_add(x, y, mod), x, mod), y);
+  #assert p2_same(p2_add(x, p2_neg(x, mod), mod), P2Num.{});
+}
+#forall "each limb alone makes equality and zero false" limb:0..<8 {
+  a: P2Num; b: P2Num; b.limbs[limb] = 1;
+  #assert p2_equal(a, b) == 0 && p2_is_zero(b) == 0 && p2_is_zero(a) == 1 && p2_equal(b, b) == 1;
+  b.limbs[limb] = 0x80000000; #assert p2_equal(a, b) == 0 && p2_is_zero(b) == 0;
+}
+#forall "wrap-around at the modulus" which:0..<2 {
+  mod := ifx which == 0 then P2_P else P2_N;
+  top := p2_sub(P2Num.{}, p2_small(1), mod);                  // m - 1
+  #assert p2_same(p2_add(top, p2_small(1), mod), P2Num.{});
+  #assert p2_same(p2_add(top, top, mod), p2_sub(top, p2_small(1), mod));     // 2m - 2 = m - 2
+  #assert p2_same(p2_mul_mod(top, top, mod), p2_small(1));                    // (-1)^2
+  #assert p2_same(p2_mul_mod(top, p2_small(2), mod), p2_sub(P2Num.{}, p2_small(2), mod));
+  #assert p2_same(p2_neg(P2Num.{}, mod), P2Num.{});
+  #assert p2_less(top, mod.m) == 1 && p2_less(mod.m, mod.m) == 0 && p2_less(P2Num.{}, mod.m) == 1;
+  // Each limb of m alone: the comparison borrows through every limb.
+  for i: 0..<8 {
+    above := mod.m;
+    if above.limbs[i] != 0xffffffff { above.limbs[i] += 1; #assert p2_less(above, mod.m) == 0; }
+    below := mod.m; if below.limbs[i] != 0 { below.limbs[i] -= 1; #assert p2_less(below, mod.m) == 1; }
+  }
+}
+#test "inversion and square roots" #steps 4000000000 {
+  for which: 0..<2 {
+    mod := ifx which == 0 then P2_P else P2_N;
+    values := [4] string.["0000000000000000000000000000000000000000000000000000000000000002",
+      "0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210",
+      "fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffe",
+      "8000000000000000000000000000000000000000000000000000000000000001"];
+    for v: values {
+      x := p2_reduce(p2_hex(v), mod);
+      inverse := p2_from(p2_inverse(p2_to(x, mod), mod), mod);
+      #assert p2_same(p2_mul_mod(x, inverse, mod), p2_small(1));
+    }
+    #assert p2_same(p2_inverse(P2Num.{}, mod), P2Num.{});      // 0 has none; 0 comes back
+  }
+  // sqrt(4) is 2 or p - 2; a non-square has a root whose square differs.
+  r := p2_from(p2_sqrt(p2_to(p2_small(4), P2_P)), P2_P);
+  #assert p2_same(r, p2_small(2)) || p2_same(r, p2_neg(p2_small(2), P2_P));
+  m3 := p2_neg(p2_small(1), P2_P);                            // -1 is not a square: p = 3 mod 4
+  s := p2_sqrt(p2_to(m3, P2_P));
+  #assert !p2_same(p2_mont(s, s, P2_P), p2_to(m3, P2_P));
+}
+#test "loading refuses m and above, reducing takes any 256 bits" #steps 4000000000 {
+  bytes: [33] u8; for i: 0..<33 { bytes[i] = 0xff; }
+  #assert !p2_load(bytes[0..<32], P2_P).ok && !p2_load(bytes[0..<32], P2_N).ok;
+  #assert !p2_load(bytes[0..<31], P2_P).ok && !p2_load(bytes[..], P2_P).ok;
+  #assert p2_store(P2_N.m, bytes[0..<32]);
+  #assert !p2_load(bytes[0..<32], P2_N).ok && p2_load(bytes[0..<32], P2_P).ok;
+  #assert p2_same(p2_reduce(p2_load(bytes[0..<32], P2_P).value, P2_N), P2Num.{});
+  for i: 0..<32 { bytes[i] = 0xff; }
+  // 2^256 - 1 - n
+  #assert p2_same(p2_reduce_bytes(bytes[0..<32], P2_N), p2_hex("00000000ffffffff00000000000000004319055258e8617b0c46353d039cdaae"));
+  bytes[32] = 7;
+  #assert p2_store(p2_small(258), bytes[0..<32]) && bytes[30] == 1 && bytes[31] == 2 && bytes[0] == 0 && bytes[32] == 7;
+  #assert !p2_store(p2_small(1), bytes[0..<31]);
+  loaded := p2_load(bytes[0..<32], P2_P);
+  #assert loaded.ok && p2_same(loaded.value, p2_small(258));
+}
+P2_2G_X :: "7cf27b188d034f7e8a52380304b51ac3c08969e277f21b35a60b48fc47669978";
+P2_2G_Y :: "07775510db8ed040293d9ac69f7430dbba7dade63ce982299e04b79d227873d1";
+P2_3G_X :: "5ecbe4d1a6330a44c8f7ef951d4bf165e6c6b721efada985fb41661bc6e7fd6c";
+P2_3G_Y :: "8734640c4998ff7e374b06ce1a64a2ecd82ab036384fb83d9a79b127a27d5032";
+P2_GY_NEG :: "b01cbd1c01e58065711814b583f061e9d431cca994cea1313449bf97c840ae0a";
+P2_G_X :: "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296";
+P2_G_Y :: "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5";
+#test "the group law: doubling, adding, the identity and negation" #steps 4000000000 {
+  g := p2_generator();
+  #assert p2_on_curve(g) == 1 && p2_is_identity(g) == 0 && p2_is_identity(p2_identity()) == 1;
+  two := p2_add_point(g, g);
+  #assert p2_check_xy(two, P2_2G_X, P2_2G_Y);
+  three := p2_add_point(two, g);
+  #assert p2_check_xy(three, P2_3G_X, P2_3G_Y) && p2_check_xy(p2_add_point(g, two), P2_3G_X, P2_3G_Y);
+  #assert p2_on_curve(two) == 1 && p2_on_curve(three) == 1;
+  // Identity on either side, and P + (-P).
+  #assert p2_check_xy(p2_add_point(g, p2_identity()), P2_G_X, P2_G_Y);
+  #assert p2_check_xy(p2_add_point(p2_identity(), three), P2_3G_X, P2_3G_Y);
+  #assert p2_is_identity(p2_add_point(p2_identity(), p2_identity())) == 1;
+  neg := p2_negate(g);
+  #assert p2_check_xy(neg, P2_G_X, P2_GY_NEG);
+  #assert p2_is_identity(p2_add_point(g, neg)) == 1 && p2_is_identity(p2_add_point(neg, g)) == 1;
+  // The same point with a different Z adds the same.
+  scaled := g; k := p2_to(p2_small(5), P2_P);
+  scaled.x = p2_mont(g.x, k, P2_P); scaled.y = p2_mont(g.y, k, P2_P); scaled.z = p2_mont(g.z, k, P2_P);
+  #assert p2_check_xy(p2_add_point(scaled, g), P2_2G_X, P2_2G_Y) && p2_equal_point(scaled, g) == 1;
+  #assert p2_equal_point(two, g) == 0 && p2_equal_point(p2_identity(), p2_identity()) == 1 && p2_equal_point(g, p2_identity()) == 0;
+  #assert p2_equal_point(neg, g) == 0;
+  // The check helper itself refuses a wrong x, a wrong y and the identity.
+  #assert !p2_check_xy(g, P2_G_X, P2_GY_NEG) && !p2_check_xy(g, P2_2G_X, P2_G_Y) && !p2_check_xy(p2_identity(), P2_G_X, P2_G_Y);
+}
+#test "scalar multiplication: small multiples, n - 1, n and 0" #steps 4000000000 {
+  g := p2_generator();
+  #assert p2_is_identity(p2_mul(P2Num.{}, g)) == 1;
+  #assert p2_check_xy(p2_mul(p2_small(1), g), P2_G_X, P2_G_Y);
+  #assert p2_check_xy(p2_mul(p2_small(2), g), P2_2G_X, P2_2G_Y);
+  #assert p2_check_xy(p2_base_mul(p2_small(3)), P2_3G_X, P2_3G_Y);
+  top := p2_sub(P2Num.{}, p2_small(1), P2_N);
+  #assert p2_check_xy(p2_base_mul(top), P2_G_X, P2_GY_NEG);
+  #assert p2_is_identity(p2_mul(P2_N.m, g)) == 1;             // n G = O
+  // 2^255 G: the top bit alone (Python integers).
+  high: P2Num; high.limbs[7] = 0x80000000;
+  #assert p2_check_xy(p2_mul(high, g), "77b20a912e6b23135066e911891524bc4efe3560e3e92350b52dec8f375f2b54", "a3dc291825cea3f7f7b10bfcdd038a72df623da1e850e0f1caa801fcd6cc67ff");
+  // A NIST CAVP KeyPair.rsp [P-256] pair: d to Q.
+  d := p2_hex("c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357");
+  #assert p2_check_xy(p2_base_mul(d), "d0720dc691aa80096ba32fed1cb97c2b620690d06de0317b8618d5ce65eb728f",
+                      "9681b517b1cda17d0d83d335d9c4a8a9a9b0b1b3c7106d8f3c72bc5093dc275f");
+}
+#test "SEC 1 encodings: both forms, and every refusal" #steps 4000000000 {
+  out: [65] u8; short: [33] u8;
+  g := p2_generator();
+  #assert p2_encode(g, out[..]) && out[0] == 4;
+  #assert p2_encode_compressed(g, short[..]) && short[0] == 3;     // G's y is odd
+  two := p2_add_point(g, g);
+  three := p2_add_point(two, g);
+  #assert p2_encode_compressed(three, short[..]) && short[0] == 2;  // 3G's y is even
+  #assert !p2_encode(p2_identity(), out[..]) && !p2_encode_compressed(p2_identity(), short[..]);
+  #assert !p2_encode(g, out[0..<64]) && !p2_encode_compressed(g, short[0..<32]);
+  for which: 0..<2 {
+    point := ifx which == 0 then g else three;
+    #assert p2_encode(point, out[..]) && p2_encode_compressed(point, short[..]);
+    a := p2_decode(out[..]); b := p2_decode(short[..]);
+    #assert a.ok && b.ok && p2_equal_point(a.point, point) == 1 && p2_equal_point(b.point, point) == 1;
+  }
+  // k G for k = 1 to 8, through both forms: the roots' parities vary.
+  point := g;
+  for k: 1..<9 {
+    #assert p2_encode(point, out[..]) && p2_encode_compressed(point, short[..]);
+    #assert short[0] == 2 + (out[64] & 1);
+    a := p2_decode(out[..]); b := p2_decode(short[..]);
+    #assert a.ok && b.ok && p2_equal_point(a.point, point) == 1 && p2_equal_point(b.point, point) == 1;
+    point = p2_add_point(point, g);
+  }
+  #assert p2_encode(g, out[..]);
+  // Off the curve: y + 1.
+  out[64] ^= 1; #assert !p2_decode(out[..]).ok; out[64] ^= 1;
+  // Wrong prefixes, lengths and the identity's encoding.
+  out[0] = 2; #assert !p2_decode(out[..]).ok; out[0] = 6; #assert !p2_decode(out[..]).ok; out[0] = 4;
+  #assert !p2_decode(out[0..<64]).ok && !p2_decode(out[0..<1]).ok && !p2_decode(out[0..<0]).ok;
+  zero: [1] u8; #assert !p2_decode(zero[..]).ok;
+  short[0] = 4; #assert !p2_decode(short[..]).ok; short[0] = 1; #assert !p2_decode(short[..]).ok;
+  short[0] = 5; #assert !p2_decode(short[..]).ok;
+  // x = 1 has no y: x^3 - 3x + b is not a square.
+  for i: 0..<33 { short[i] = 0; } short[0] = 2; short[32] = 1;
+  #assert !p2_decode(short[..]).ok;
+  // x = p and y = p (the reduced values would be on the curve for x = 0 or not at all).
+  bytes: [32] u8;
+  for i: 0..<32 { bytes[i] = 0xff; }
+  for i: 0..<32 { short[1+i] = bytes[i]; } #assert !p2_decode(short[..]).ok;
+  // x = 0 is on the curve with y = sqrt(b); x + p in the encoding refuses.
+  for i: 0..<33 { short[i] = 0; } short[0] = 2;
+  zx := p2_decode(short[..]); #assert zx.ok;
+  #assert p2_encode(zx.point, out[..]);
+  p_bytes := [32] u8.[0xff,0xff,0xff,0xff,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff];
+  for i: 0..<32 { out[1+i] = p_bytes[i]; }                     // x = p, y = sqrt(b)
+  #assert !p2_decode(out[..]).ok;
+  for i: 0..<32 { short[1+i] = p_bytes[i]; }
+  #assert !p2_decode(short[..]).ok;
+  // y = p + y' for a small y' refuses even when y' is right: here y = p itself, x = 0.
+  #assert p2_encode(zx.point, out[..]);
+  for i: 0..<32 { out[33+i] = p_bytes[i]; }
+  #assert !p2_decode(out[..]).ok;
+  // The parity of a compressed point picks y or p - y.
+  for i: 0..<33 { short[i] = 0; } short[0] = 3;
+  zy := p2_decode(short[..]); #assert zy.ok && p2_equal_point(zy.point, p2_negate(zx.point)) == 1;
+}
+
+// ---- numbers
+p2_small :: (value: u32) -> P2Num #effects(all) { r: P2Num; r.limbs[0] = value; return r; }
+// 1 when word is 0, else 0, without a branch.
+p2_zero_bit :: (word: u32) -> u64 #effects(all) { return ((cast(u64) word + P2_WORD) >> 32) ^ 1; }
+p2_is_zero :: (a: P2Num) -> u64 #effects(all) { bits: u32; for i: 0..<8 { bits |= a.limbs[i]; } return p2_zero_bit(bits); }
+p2_equal :: (a: P2Num, b: P2Num) -> u64 #effects(all) { bits: u32; for i: 0..<8 { bits |= a.limbs[i] ^ b.limbs[i]; } return p2_zero_bit(bits); }
+// a when bit is 1, b when it is 0.
+p2_select :: (bit: u64, a: P2Num, b: P2Num) -> P2Num #effects(all) {
+  mask := cast,trunc(u32) cb_mask(bit); r: P2Num;
+  for i: 0..<8 { r.limbs[i] = cb_ct_select32(mask, a.limbs[i], b.limbs[i]); }
+  return r;
+}
+// a - m over nine limbs, and the borrow (1 when a < m).
+p2_sub_m :: (a: [9] u32, mod: P2Mod) -> P2Diff #effects(all) {
+  r: P2Diff; borrow: u64;
+  for i: 0..<8 {
+    wide := P2_BASE + cast(u64) a[i] - cast(u64) mod.m.limbs[i] - borrow;
+    r.value.limbs[i] = cast,trunc(u32) wide; borrow = 1 - (wide >> 32);
+  }
+  r.borrow = ((P2_BASE + cast(u64) a[8] - borrow) >> 32) ^ 1;
+  return r;
+}
+// a mod m for a < 2m.
+p2_reduce9 :: (a: [9] u32, mod: P2Mod) -> P2Num #effects(all) {
+  d := p2_sub_m(a, mod); low: P2Num;
+  for i: 0..<8 { low.limbs[i] = a[i]; }
+  return p2_select(d.borrow, low, d.value);
+}
+// 1 when a < m.
+p2_less :: (a: P2Num, m: P2Num) -> u64 #effects(all) {
+  borrow: u64;
+  for i: 0..<8 { wide := P2_BASE + cast(u64) a.limbs[i] - cast(u64) m.limbs[i] - borrow; borrow = 1 - (wide >> 32); }
+  return borrow;
+}
+// Any 256-bit a mod m (2^256 < 2m for both moduli, so one subtraction).
+p2_reduce :: (a: P2Num, mod: P2Mod) -> P2Num #effects(all) {
+  wide: [9] u32; for i: 0..<8 { wide[i] = a.limbs[i]; }
+  return p2_reduce9(wide, mod);
+}
+// a + b as 256-bit numbers, dropping the carry: for the checks of constants.
+p2_add_raw :: (a: P2Num, b: P2Num) -> P2Num #effects(all) {
+  r: P2Num; carry: u64;
+  for i: 0..<8 { wide := cast(u64) a.limbs[i] + cast(u64) b.limbs[i] + carry; r.limbs[i] = cast,trunc(u32) wide; carry = wide >> 32; }
+  return r;
+}
+// a + b mod m, for a, b < m.
+p2_add :: (a: P2Num, b: P2Num, mod: P2Mod) -> P2Num #effects(all) {
+  sum: [9] u32; carry: u64;
+  for i: 0..<8 { wide := cast(u64) a.limbs[i] + cast(u64) b.limbs[i] + carry; sum[i] = cast,trunc(u32) wide; carry = wide >> 32; }
+  sum[8] = cast,trunc(u32) carry;
+  return p2_reduce9(sum, mod);
+}
+// a - b mod m, for a, b < m: subtract, then add m back under the borrow's mask.
+p2_sub :: (a: P2Num, b: P2Num, mod: P2Mod) -> P2Num #effects(all) {
+  r: P2Num; borrow: u64;
+  for i: 0..<8 { wide := P2_BASE + cast(u64) a.limbs[i] - cast(u64) b.limbs[i] - borrow; r.limbs[i] = cast,trunc(u32) wide; borrow = 1 - (wide >> 32); }
+  mask := cast,trunc(u32) cb_mask(borrow); carry: u64;
+  for i: 0..<8 { wide := cast(u64) r.limbs[i] + cast(u64) (mod.m.limbs[i] & mask) + carry; r.limbs[i] = cast,trunc(u32) wide; carry = wide >> 32; }
+  return r;
+}
+p2_neg :: (a: P2Num, mod: P2Mod) -> P2Num #effects(all) { return p2_sub(P2Num.{}, a, mod); }
+// a b R^-1 mod m, for a, b < m: schoolbook rows, then Montgomery reduction
+// one word at a time, then one masked subtraction (the result is below 2m).
+p2_mont :: (a: P2Num, b: P2Num, mod: P2Mod) -> P2Num #effects(all) {
+  t: [17] u32;
+  for i: 0..<8 {
+    carry: u64;
+    for j: 0..<8 { wide := mul_wrap(cast(u64) a.limbs[i], cast(u64) b.limbs[j]) + cast(u64) t[i+j] + carry; t[i+j] = cast,trunc(u32) wide; carry = wide >> 32; }
+    t[i+8] = cast,trunc(u32) carry;
+  }
+  for i: 0..<8 {
+    factor := mul_wrap(cast(u64) t[i], mod.n0) & P2_WORD;
+    first := mul_wrap(factor, cast(u64) mod.m.limbs[0]) + cast(u64) t[i]; carry := first >> 32;
+    for j: 1..<8 { wide := mul_wrap(factor, cast(u64) mod.m.limbs[j]) + cast(u64) t[i+j] + carry; t[i+j] = cast,trunc(u32) wide; carry = wide >> 32; }
+    for k: i+8..<17 { wide := cast(u64) t[k] + carry; t[k] = cast,trunc(u32) wide; carry = wide >> 32; }
+  }
+  high: [9] u32; for i: 0..<9 { high[i] = t[i+8]; }
+  return p2_reduce9(high, mod);
+}
+p2_to :: (a: P2Num, mod: P2Mod) -> P2Num #effects(all) { return p2_mont(a, mod.r2, mod); }
+p2_from :: (a: P2Num, mod: P2Mod) -> P2Num #effects(all) { return p2_mont(a, p2_small(1), mod); }
+// a b mod m for canonical a, b.
+p2_mul_mod :: (a: P2Num, b: P2Num, mod: P2Mod) -> P2Num #effects(all) { return p2_mont(p2_to(a, mod), b, mod); }
+// a^e for a in Montgomery form and a public exponent e: square and
+// multiply on every bit, keeping the product under a mask.
+p2_pow :: (a: P2Num, e: P2Num, mod: P2Mod) -> P2Num #effects(all) {
+  acc := p2_to(p2_small(1), mod);
+  for round: 0..<256 {
+    bit := 255 - round;
+    acc = p2_mont(acc, acc, mod);
+    product := p2_mont(acc, a, mod);
+    acc = p2_select(cast(u64) ((e.limbs[bit / 32] >> cast(u32) (bit % 32)) & 1), product, acc);
+  }
+  return acc;
+}
+// a^-1 (Montgomery form in and out) by Fermat; 0 gives 0.
+p2_inverse :: (a: P2Num, mod: P2Mod) -> P2Num #effects(all) { return p2_pow(a, mod.e, mod); }
+// A square root of a (Montgomery form) when it has one; the caller squares
+// the result to see.
+p2_sqrt :: (a: P2Num) -> P2Num #effects(all) { return p2_pow(a, P2_SQRT_E, P2_P); }
+// 32 big-endian bytes, ok only when below m.
+p2_load :: (bytes: [] u8, mod: P2Mod) -> P2Load #effects(all) {
+  if bytes.count != 32 { return P2Load.{}; }
+  r: P2Num;
+  for i: 0..<8 { r.limbs[i] = cb_load_be32(bytes, (7 - i) * 4).value; }
+  return P2Load.{value=r,ok=p2_less(r, mod.m) == 1};
+}
+// 32 big-endian bytes as a number mod m (any value; a hash, say).
+p2_reduce_bytes :: (bytes: [] u8, mod: P2Mod) -> P2Num #effects(all) {
+  return p2_reduce(p2_load(bytes, mod).value, mod);
+}
+// a as 32 big-endian bytes into out, which must be 32 bytes.
+p2_store :: (a: P2Num, out: [] u8) -> bool #effects(all) {
+  if out.count != 32 { return false; }
+  for i: 0..<8 { stored := cb_store_be32(out, (7 - i) * 4, a.limbs[i]); }
+  return true;
+}
+
+// ---- points
+p2_fmul :: (a: P2Num, b: P2Num) -> P2Num #effects(all) { return p2_mont(a, b, P2_P); }
+p2_fadd :: (a: P2Num, b: P2Num) -> P2Num #effects(all) { return p2_add(a, b, P2_P); }
+p2_fsub :: (a: P2Num, b: P2Num) -> P2Num #effects(all) { return p2_sub(a, b, P2_P); }
+p2_ftriple :: (a: P2Num) -> P2Num #effects(all) { return p2_fadd(p2_fadd(a, a), a); }
+p2_identity :: () -> P2Point #effects(all) { return P2Point.{y=P2_ONE_M}; }
+p2_generator :: () -> P2Point #effects(all) { return P2Point.{x=P2_GX_M,y=P2_GY_M,z=P2_ONE_M}; }
+p2_is_identity :: (a: P2Point) -> u64 #effects(all) { return p2_is_zero(a.z); }
+p2_negate :: (a: P2Point) -> P2Point #effects(all) { r := a; r.y = p2_neg(a.y, P2_P); return r; }
+p2_select_point :: (bit: u64, a: P2Point, b: P2Point) -> P2Point #effects(all) {
+  return P2Point.{x=p2_select(bit, a.x, b.x),y=p2_select(bit, a.y, b.y),z=p2_select(bit, a.z, b.z)};
+}
+// 1 when a and b are the same point: X1 Z2 = X2 Z1 and Y1 Z2 = Y2 Z1, which
+// also holds for two identities (0 : y : 0) and for no finite point with one.
+p2_equal_point :: (a: P2Point, b: P2Point) -> u64 #effects(all) {
+  return p2_equal(p2_fmul(a.x, b.z), p2_fmul(b.x, a.z)) & p2_equal(p2_fmul(a.y, b.z), p2_fmul(b.y, a.z));
+}
+// The complete addition (Renes, Costello and Batina, algorithm 4, a = -3):
+// the same steps for every pair of points, the identity and P + P included.
+p2_add_point :: (p: P2Point, q: P2Point) -> P2Point #effects(all) {
+  x2 := p2_fmul(p.x, q.x); y2 := p2_fmul(p.y, q.y); z2 := p2_fmul(p.z, q.z);
+  xy := p2_fsub(p2_fmul(p2_fadd(p.x, p.y), p2_fadd(q.x, q.y)), p2_fadd(x2, y2));
+  yz := p2_fsub(p2_fmul(p2_fadd(p.y, p.z), p2_fadd(q.y, q.z)), p2_fadd(y2, z2));
+  xz := p2_fsub(p2_fmul(p2_fadd(p.x, p.z), p2_fadd(q.x, q.z)), p2_fadd(x2, z2));
+  bzz3 := p2_ftriple(p2_fsub(xz, p2_fmul(P2_B_M, z2)));
+  yy_minus := p2_fsub(y2, bzz3); yy_plus := p2_fadd(y2, bzz3);
+  z3 := p2_ftriple(z2);
+  bxz3 := p2_ftriple(p2_fsub(p2_fmul(P2_B_M, xz), p2_fadd(z3, x2)));
+  x3_z3 := p2_fsub(p2_ftriple(x2), z3);
+  return P2Point.{x=p2_fsub(p2_fmul(yy_plus, xy), p2_fmul(yz, bxz3)),
+                  y=p2_fadd(p2_fmul(yy_plus, yy_minus), p2_fmul(x3_z3, bxz3)),
+                  z=p2_fadd(p2_fmul(yy_minus, yz), p2_fmul(xy, x3_z3))};
+}
+// k P for any 256-bit k, by a Montgomery ladder: at each of the 256 bit
+// positions, from the top, the pair (R0, R1) with R1 - R0 = P becomes
+// (2 R0, R0 + R1) or (R0 + R1, 2 R1). The bit picks by masked swaps; both
+// additions run every time.
+p2_mul :: (k: P2Num, p: P2Point) -> P2Point #effects(all) {
+  r0 := p2_identity(); r1 := p;
+  for round: 0..<256 {
+    bit := 255 - round;
+    b := cast(u64) ((k.limbs[bit / 32] >> cast(u32) (bit % 32)) & 1);
+    a0 := p2_select_point(b, r1, r0); a1 := p2_select_point(b, r0, r1);   // swap when b is 1
+    a1 = p2_add_point(a0, a1); a0 = p2_add_point(a0, a0);
+    r0 = p2_select_point(b, a1, a0); r1 = p2_select_point(b, a0, a1);     // swap back
+  }
+  return r0;
+}
+p2_base_mul :: (k: P2Num) -> P2Point #effects(all) { return p2_mul(k, p2_generator()); }
+// 1 when Y^2 Z = X^3 - 3 X Z^2 + b Z^3, the projective curve equation
+// (true of the identity too, which callers refuse separately).
+p2_on_curve :: (a: P2Point) -> u64 #effects(all) {
+  z2 := p2_fmul(a.z, a.z);
+  left := p2_fmul(p2_fmul(a.y, a.y), a.z);
+  right := p2_fadd(p2_fsub(p2_fmul(p2_fmul(a.x, a.x), a.x), p2_ftriple(p2_fmul(a.x, z2))), p2_fmul(P2_B_M, p2_fmul(z2, a.z)));
+  return p2_equal(left, right);
+}
+// The canonical affine x and y of a finite point into out[0..<32] and
+// out[32..<64]; false for the identity.
+p2_affine :: (a: P2Point, out: [] u8) -> bool #effects(all) {
+  if out.count < 64 || p2_is_identity(a) == 1 { return false; }
+  zinv := p2_inverse(a.z, P2_P);
+  #assert p2_store(p2_from(p2_fmul(a.x, zinv), P2_P), out[0..<32]) && p2_store(p2_from(p2_fmul(a.y, zinv), P2_P), out[32..<64]);
+  return true;
+}
+// SEC 1 uncompressed, 04 || x || y, into out (65 bytes or more); false for
+// the identity, which has no encoding here.
+p2_encode :: (a: P2Point, out: [] u8) -> bool #effects(all) {
+  if out.count < 65 || !p2_affine(a, out[1..<65]) { return false; }
+  out[0] = 4;
+  return true;
+}
+// SEC 1 compressed, 02 or 03 (y's parity) || x, into out (33 bytes or more).
+p2_encode_compressed :: (a: P2Point, out: [] u8) -> bool #effects(all) {
+  xy: [64] u8;
+  if out.count < 33 || !p2_affine(a, xy[..]) { return false; }
+  out[0] = 2 | (xy[63] & 1);
+  for i: 0..<32 { out[1+i] = xy[i]; }
+  return true;
+}
+// A public key in SEC 1 form: 65 bytes 04 || x || y, or 33 bytes 02 or 03
+// || x. x and y must be below p and on the curve; the identity has no
+// encoding. Public input, so it branches.
+p2_decode :: (bytes: [] u8) -> P2Decode #effects(all) {
+  if bytes.count != 65 && bytes.count != 33 { return P2Decode.{}; }
+  if bytes.count == 65 && bytes[0] != 4 { return P2Decode.{}; }
+  if bytes.count == 33 && bytes[0] != 2 && bytes[0] != 3 { return P2Decode.{}; }
+  x := p2_load(bytes[1..<33], P2_P);
+  if !x.ok { return P2Decode.{}; }
+  point := P2Point.{x=p2_to(x.value, P2_P),z=P2_ONE_M};
+  if bytes.count == 65 {
+    y := p2_load(bytes[33..<65], P2_P);
+    if !y.ok { return P2Decode.{}; }
+    point.y = p2_to(y.value, P2_P);
+  } else {
+    x2 := p2_fmul(point.x, point.x);
+    right := p2_fadd(p2_fsub(p2_fmul(x2, point.x), p2_ftriple(point.x)), P2_B_M);
+    root := p2_sqrt(right);
+    if p2_equal(p2_fmul(root, root), right) != 1 { return P2Decode.{}; }
+    plain := p2_from(root, P2_P);
+    odd := cast(u64) ((plain.limbs[0] ^ cast(u32) bytes[0]) & 1);   // 1 when the root has the wrong parity
+    point.y = p2_select(odd, p2_neg(root, P2_P), root);
+  }
+  if p2_on_curve(point) != 1 { return P2Decode.{}; }
+  return P2Decode.{point=point,ok=true};
+}

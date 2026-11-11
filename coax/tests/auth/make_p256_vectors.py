@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: copies published vectors outside Coax)
+"""Writes coax/tests/auth/p256_vectors.coax, the P-256 ECDSA (SHA-256)
+vectors that p256_vectors_test.coax runs, from pinned upstream files:
+
+- Wycheproof ecdsa_secp256r1_sha256_test.json (DER signatures) and
+  ecdsa_secp256r1_sha256_p1363_test.json (r || s), in
+  coax/tests/vectors/upstream/wycheproof/;
+- NIST CAVP FIPS 186-4 ECDSA SigVer.rsp, SigGen.txt, PKV.rsp and
+  KeyPair.rsp, the [P-256,SHA-256] and [P-256] sections, in
+  coax/tests/vectors/upstream/nist/ecdsa/.
+
+  python3 -I coax/tests/auth/make_p256_vectors.py
+
+Each file's SHA-256 must equal its pin below. Nothing is hashed, signed or
+verified here: every key, message, signature, nonce and result is copied."""
+import hashlib, json
+from pathlib import Path
+
+UP = Path(__file__).resolve().parents[1] / 'vectors/upstream'
+PINS = {
+    'wycheproof/ecdsa_secp256r1_sha256_test.json': '182db4f3e230f6f9fa9f800d2a614dede30284b8e8438bbfe1171905402e9332',
+    'wycheproof/ecdsa_secp256r1_sha256_p1363_test.json': 'c60de693930e386c3a5472d08081623ef8504decc54b38ac01ec6b2a2575c986',
+    'nist/ecdsa/SigVer.rsp': 'e9841c3d12e323042751460d0b8ef4bc59c2640105ec7da4852775f80ab10191',
+    'nist/ecdsa/SigGen.txt': '95d0a19c03f6d2dc16e9e18fd5c3318e1952e0bc88a45127c996c35b4a15f4e2',
+    'nist/ecdsa/PKV.rsp': '1d33551c1a199b1fc2b0e4075cdfd52d4830503ef37e6b16f04ce617d524f3f1',
+    'nist/ecdsa/KeyPair.rsp': 'a85cc17bf78868326dffde6ebfc298987fe187606d406ba5dd417d491d67411d',
+}
+
+
+def read(name):
+    data = (UP / name).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == PINS[name], name
+    return data
+
+
+def wycheproof(name, schema, count):
+    doc = json.loads(read(name))
+    assert doc['algorithm'] == 'ECDSA' and doc['schema'] == schema and doc['numberOfTests'] == count
+    keys, cases = [], []
+    for group in doc['testGroups']:
+        assert group['sha'] == 'SHA-256' and group['publicKey']['curve'] == 'secp256r1'
+        keys.append(group['publicKey']['uncompressed'])
+        for t in group['tests']:
+            assert t['result'] in ('valid', 'invalid') and '\\' not in t['comment']
+            cases.append('P2Case.{id=%d,key=%d,msg="%s",sig="%s",valid=%s,comment="%s"}' % (
+                t['tcId'], len(keys) - 1, t['msg'], t['sig'], 'true' if t['result'] == 'valid' else 'false', t['comment'].replace('"', '\\"')))
+    assert len(cases) == count
+    return keys, cases
+
+
+def section(name, header):
+    """The records of one [header] section: a list of dicts, in order."""
+    lines = read(name).decode('ascii').replace('\r\n', '\n').split('\n')
+    records, current, inside = [], {}, False
+    for line in lines:
+        line = line.strip()
+        if line.startswith('[') and ' ' in line: continue      # KeyPair's [B.4.2 ...] subheading
+        if line.startswith('['):
+            if inside: break
+            inside = line == '[%s]' % header
+            continue
+        if not inside or line.startswith('#'): continue
+        if not line:
+            if current: records.append(current); current = {}
+            continue
+        if ' = ' in line:
+            k, v = line.split(' = ', 1)
+            if k in current: records.append(current); current = {}
+            current[k] = v
+    if current: records.append(current)
+    return [r for r in records if 'N' not in r]
+
+
+def nist():
+    sigver = section('nist/ecdsa/SigVer.rsp', 'P-256,SHA-256')
+    siggen = section('nist/ecdsa/SigGen.txt', 'P-256,SHA-256')
+    pkv = section('nist/ecdsa/PKV.rsp', 'P-256')
+    pairs = section('nist/ecdsa/KeyPair.rsp', 'P-256')
+    assert len(sigver) == 15 and len(siggen) == 15 and len(pkv) == 12 and len(pairs) == 10, (len(sigver), len(siggen), len(pkv), len(pairs))
+    out = []
+    out.append('P2_SIGVER :: [%d] P2SigVer.[\n%s];' % (len(sigver), ',\n'.join(
+        '  P2SigVer.{msg="%s",qx="%s",qy="%s",r="%s",s="%s",valid=%s}' % (
+            r['Msg'], r['Qx'], r['Qy'], r['R'], r['S'], 'true' if r['Result'].startswith('P') else 'false') for r in sigver)))
+    out.append('P2_SIGGEN :: [%d] P2SigGen.[\n%s];' % (len(siggen), ',\n'.join(
+        '  P2SigGen.{msg="%s",d="%s",qx="%s",qy="%s",k="%s",r="%s",s="%s"}' % (
+            r['Msg'], r['d'], r['Qx'], r['Qy'], r['k'], r['R'], r['S']) for r in siggen)))
+    out.append('P2_PKV :: [%d] P2Pkv.[\n%s];' % (len(pkv), ',\n'.join(
+        '  P2Pkv.{qx="%s",qy="%s",valid=%s}' % (r['Qx'], r['Qy'], 'true' if r['Result'].startswith('P') else 'false') for r in pkv)))
+    out.append('P2_PAIRS :: [%d] P2Pair.[\n%s];' % (len(pairs), ',\n'.join(
+        '  P2Pair.{d="%s",qx="%s",qy="%s"}' % (r['d'], r['Qx'], r['Qy']) for r in pairs)))
+    return out
+
+
+def render():
+    der_keys, der_cases = wycheproof('wycheproof/ecdsa_secp256r1_sha256_test.json', 'ecdsa_verify_schema_v1.json', 484)
+    raw_keys, raw_cases = wycheproof('wycheproof/ecdsa_secp256r1_sha256_p1363_test.json', 'ecdsa_p1363_verify_schema_v1.json', 262)
+    out = ['// Generated by make_p256_vectors.py from pinned Wycheproof and NIST CAVP',
+           '// files (coax/tests/vectors/SOURCES.md). Published values, copied, not',
+           '// computed. Test data only. Keys are SEC 1 uncompressed; each message is',
+           '// hashed once with SHA-256; valid is the published result.',
+           'P2Case :: struct {id:int;key:int;msg:string;sig:string;valid:bool;comment:string;}',
+           'P2SigVer :: struct {msg:string;qx:string;qy:string;r:string;s:string;valid:bool;}',
+           'P2SigGen :: struct {msg:string;d:string;qx:string;qy:string;k:string;r:string;s:string;}',
+           'P2Pkv :: struct {qx:string;qy:string;valid:bool;}',
+           'P2Pair :: struct {d:string;qx:string;qy:string;}',
+           '// Wycheproof ecdsa_secp256r1_sha256_test.json: DER signatures.',
+           'P2_DER_KEYS :: [%d] string.[\n%s];' % (len(der_keys), ',\n'.join('  "%s"' % k for k in der_keys)),
+           'P2_DER_CASES :: [%d] P2Case.[\n%s];' % (len(der_cases), ',\n'.join('  ' + c for c in der_cases)),
+           '// Wycheproof ecdsa_secp256r1_sha256_p1363_test.json: r || s signatures.',
+           'P2_RAW_KEYS :: [%d] string.[\n%s];' % (len(raw_keys), ',\n'.join('  "%s"' % k for k in raw_keys)),
+           'P2_RAW_CASES :: [%d] P2Case.[\n%s];' % (len(raw_cases), ',\n'.join('  ' + c for c in raw_cases)),
+           '// NIST CAVP 186-4: SigVer [P-256,SHA-256], SigGen.txt [P-256,SHA-256] (with',
+           '// each k), PKV [P-256] and KeyPair [P-256].'] + nist()
+    return '\n'.join(out) + '\n'
+
+
+if __name__ == '__main__':
+    Path(__file__).with_name('p256_vectors.coax').write_text(render())

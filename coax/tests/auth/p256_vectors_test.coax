@@ -1,0 +1,119 @@
+// Every published P-256 ECDSA (SHA-256) vector against
+// coax/lib/crypto/p256_ecdsa.coax: Wycheproof's DER and r || s files, and
+// NIST CAVP 186-4's SigVer, SigGen (with each published k), PKV and
+// KeyPair sections (p256_vectors.coax, generated from the pinned files by
+// make_p256_vectors.py). Run natively with
+//
+//   coax/bin/coax test coax/tests/auth/p256_vectors_test.coax
+//
+// Wycheproof's files expect plain ECDSA: both halves of s verify, so these
+// run without the low-S rule. Every valid case is also run with s replaced
+// by n - s, which must verify without the rule and refuse with it.
+#load "../../lib/crypto/p256_ecdsa.coax";
+#load "../../lib/nostr/hex.coax";
+#load "p256_vectors.coax";
+
+// Hex into out; the count, or -1 for hex that does not fit.
+pv_hex :: (text: string, out: [] u8) -> int {
+  if text.count % 2 != 0 || text.count / 2 > out.count { return -1; }
+  r := hex_decode_checked(text, out[0..<text.count/2], false);
+  if r.error != 0 { return -1; }
+  return r.written;
+}
+// A 32-byte big-endian value from hex of at most 64 digits, left-padded.
+pv_word :: (text: string, out: [] u8) -> bool {
+  if text.count > 64 { return false; }
+  padded: [64] u8;
+  for i: 0..<64 { padded[i] = '0'; }
+  for i: 0..<text.count { padded[64 - text.count + i] = text[i]; }
+  return pv_hex(cast(string) padded[..], out) == 32;
+}
+pv_sha256 :: (text: string, out: [] u8) -> bool {
+  msg: [4096] u8; n := pv_hex(text, msg[..]);
+  return n >= 0 && sha256_hash_checked(msg[0..<n], out, false) == SHA_OK;
+}
+// n - s in place, for the other half of a valid signature.
+pv_flip :: (sig: [] u8) {
+  s := p2_load(sig[32..<64], P2_N).value;
+  #assert p2_store(p2_neg(s, P2_N), sig[32..<64]);
+}
+
+#test "Wycheproof ecdsa_secp256r1_sha256 (DER): all 484 cases" #steps 4000000000000 {
+  valid := 0;
+  for c: P2_DER_CASES {
+    key: [65] u8; h: [32] u8; der: [256] u8;
+    #assert pv_hex(P2_DER_KEYS[c.key], key[..]) == 65 && pv_sha256(c.msg, h[..]);
+    n := pv_hex(c.sig, der[..]);
+    got := n >= 0 && p256_verify_der(h[..], key[..], der[0..<n], false);
+    if got != c.valid { print("tcId % expected % got %: %\n", c.id, c.valid, got, c.comment); }
+    #assert got == c.valid;
+    if c.valid {
+      valid += 1;
+      raw: [64] u8; #assert p256_der_read(der[0..<n], raw[..]);
+      low := p256_verify(h[..], key[..], raw[..], true);
+      pv_flip(raw[..]);
+      #assert p256_verify(h[..], key[..], raw[..], false) && p256_verify(h[..], key[..], raw[..], true) != low;
+    }
+  }
+  #assert valid == 174;
+}
+#test "Wycheproof ecdsa_secp256r1_sha256_p1363 (r || s): all 262 cases" #steps 4000000000000 {
+  for c: P2_RAW_CASES {
+    key: [65] u8; h: [32] u8; sig: [256] u8;
+    #assert pv_hex(P2_RAW_KEYS[c.key], key[..]) == 65 && pv_sha256(c.msg, h[..]);
+    n := pv_hex(c.sig, sig[..]);
+    got := n >= 0 && p256_verify(h[..], key[..], sig[0..<n], false);
+    if got != c.valid { print("tcId % expected % got %: %\n", c.id, c.valid, got, c.comment); }
+    #assert got == c.valid;
+    // The compressed form of the same key decides the same.
+    if c.valid {
+      short: [33] u8; #assert p2_encode_compressed(p2_decode(key[..]).point, short[..]);
+      #assert p256_verify(h[..], short[..], sig[0..<n], false);
+      // Exactly one of s and n - s is low.
+      low := p256_verify(h[..], key[..], sig[0..<n], true);
+      pv_flip(sig[0..<64]);
+      #assert p256_verify(h[..], key[..], sig[0..<n], false) && p256_verify(h[..], key[..], sig[0..<n], true) != low;
+    }
+  }
+}
+#test "NIST CAVP SigVer [P-256,SHA-256]" #steps 400000000000 {
+  for c: P2_SIGVER {
+    key: [65] u8; h: [32] u8; sig: [64] u8;
+    key[0] = 4;
+    #assert pv_word(c.qx, key[1..<33]) && pv_word(c.qy, key[33..<65]) && pv_sha256(c.msg, h[..]);
+    #assert pv_word(c.r, sig[0..<32]) && pv_word(c.s, sig[32..<64]);
+    #assert p256_verify(h[..], key[..], sig[..], false) == c.valid;
+  }
+}
+#test "NIST CAVP SigGen [P-256,SHA-256]: each published k gives its r and s" #steps 400000000000 {
+  for c: P2_SIGGEN {
+    d: [32] u8; k: [32] u8; h: [32] u8; sig: [64] u8; want: [64] u8; key: [65] u8; q: [65] u8;
+    #assert pv_word(c.d, d[..]) && pv_word(c.k, k[..]) && pv_sha256(c.msg, h[..]);
+    #assert pv_word(c.r, want[0..<32]) && pv_word(c.s, want[32..<64]);
+    nonce := P2Nonce.{k=p2_load(k[..], P2_N).value,valid=1};
+    #assert pe_sign_k(p2_load(d[..], P2_N).value, nonce, h[..], sig[..]);
+    for i: 0..<64 { #assert sig[i] == want[i]; }
+    #assert p256_public_key(d[..], key[..]);
+    q[0] = 4; #assert pv_word(c.qx, q[1..<33]) && pv_word(c.qy, q[33..<65]);
+    for i: 0..<65 { #assert key[i] == q[i]; }
+    #assert p256_verify(h[..], key[..], sig[..], false);
+    // RFC 6979's own nonce signs too, and verifies.
+    #assert p256_sign(d[..], h[..], sig[..]) && p256_verify(h[..], key[..], sig[..], false);
+  }
+}
+#test "NIST CAVP PKV [P-256]: public key validation" #steps 400000000000 {
+  for c: P2_PKV {
+    // An x or y of 65 hex digits is at least 2^256: no 65-byte encoding holds it.
+    key: [65] u8; key[0] = 4;
+    ok := pv_word(c.qx, key[1..<33]) && pv_word(c.qy, key[33..<65]) && p2_decode(key[..]).ok;
+    #assert ok == c.valid;
+  }
+}
+#test "NIST CAVP KeyPair [P-256]: d gives Q" #steps 400000000000 {
+  for c: P2_PAIRS {
+    d: [32] u8; key: [65] u8; q: [65] u8;
+    #assert pv_word(c.d, d[..]) && p256_public_key(d[..], key[..]);
+    q[0] = 4; #assert pv_word(c.qx, q[1..<33]) && pv_word(c.qy, q[33..<65]);
+    for i: 0..<65 { #assert key[i] == q[i]; }
+  }
+}

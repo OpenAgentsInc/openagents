@@ -1,0 +1,368 @@
+// ECDSA on P-256 with SHA-256 (ES256: FIPS 186-4 6.4, SEC 1 4.1, RFC 7518
+// 3.4): verification for passkeys and device keys, and signing with RFC
+// 6979's deterministic nonces for the APNs token JWT. The curve is
+// p256.coax.
+//
+// Verification reads only public data. It takes the signature as r || s
+// (32 bytes each, the form JOSE and WebAuthn's COSE layer use) or as strict
+// DER (the form a WebAuthn authenticator returns), refuses r or s outside
+// [1, n-1], refuses s above (n-1)/2 only when the caller asks (ES256 itself
+// allows both halves), and refuses public keys off the curve.
+//
+// Signing handles a secret key and nonce: no branch on them and no index
+// from them (Bitcoin chapter 3). It makes RFC 6979's first two candidates
+// and picks the first in [1, n-1] with a mask; the only fact it reveals is
+// whether it succeeded. The signature is r || s with s as computed (not
+// normalized), so RFC 6979's published values come out byte for byte.
+#load "p256.coax";
+#load "hmac.coax";
+#authority;
+
+P2Scalars :: struct { r: P2Num; s: P2Num; ok: bool; }
+P2Integer :: struct { end: int; ok: bool; }
+P2Nonce :: struct { k: P2Num; valid: u64; }
+// (n - 1) / 2: the largest low-half s.
+P2_HALF_N :: P2Num.{limbs=[8]u32.[0x7e3192a8,0x79dce561,0xd38bcf42,0xde737d56,0xffffffff,0x7fffffff,0x80000000,0x7fffffff]};
+
+// ---- checks
+pe_unhex :: (text: string, out: [] u8) -> [] u8 #effects(all) {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (pe_nibble(text[2*i])*16 + pe_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+pe_nibble :: (c: u8) -> int #effects(all) { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+pe_is :: (bytes: [] u8, text: string) -> bool #effects(all) {
+  b: [80] u8; want := pe_unhex(text, b[..]);
+  if want.count != bytes.count { return false; }
+  for i: 0..<bytes.count { if bytes[i] != want[i] { return false; } }
+  return true;
+}
+// RFC 6979 A.2.5 (P-256, SHA-256): the key, its public point and the two
+// messages "sample" and "test", with k, r and s as published.
+PE_X :: "c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721";
+PE_UX :: "60fed4ba255a9d31c961eb74c6356d68c049b8923b61fa6ce669622e60f29fb6";
+PE_UY :: "7903fe1008b8bc99a41ae9e95628bc64f2f1b20c2d7e9f5177a3c294d4462299";
+PE_SAMPLE_K :: "a6e3c57dd01abe90086538398355dd4c3b17aa873382b0f24d6129493d8aad60";
+PE_SAMPLE_R :: "efd48b2aacb6a8fd1140dd9cd45e81d69d2c877b56aaf991c34d0ea84eaf3716";
+PE_SAMPLE_S :: "f7cb1c942d657c41d436c7a1b6e29f65f3e900dbb9aff4064dc4ab2f843acda8";
+PE_TEST_K :: "d16b6ae827f17175e040871a1c7ec3500192c4c92677336ec2537acaee0008e0";
+PE_TEST_R :: "f1abb023518351cd71d881567b1ea663ed3efcf6c5132b354f28d3b0b7d38367";
+PE_TEST_S :: "019f4113742a2b14bd25926b49c649155f267e60d3814b4c0cc84250e46f0083";
+// SHA-256 of "sample" and "test" (FIPS 180-4; Python's hashlib).
+PE_SAMPLE_H :: "af2bdbe1aa9b6ec1e2ade1d694f41fc71a831d0268e9891562113d8a62add1bf";
+PE_TEST_H :: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+#test "public keys: RFC 6979's key gives its published point" #steps 4000000000 {
+  x: [32] u8; out: [65] u8;
+  #assert p256_public_key(pe_unhex(PE_X, x[..]), out[..]);
+  #assert out[0] == 4 && pe_is(out[1..<33], PE_UX) && pe_is(out[33..<65], PE_UY);
+  // 0, n and above refuse; 1 gives G.
+  zero: [32] u8; #assert !p256_public_key(zero[..], out[..]);
+  n: [32] u8; #assert p2_store(P2_N.m, n[..]) && !p256_public_key(n[..], out[..]);
+  zero[31] = 1; #assert p256_public_key(zero[..], out[..]) && pe_is(out[1..<33], "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296");
+  #assert !p256_public_key(zero[0..<31], out[..]) && !p256_public_key(zero[..], out[0..<64]);
+}
+#test "RFC 6979 nonces and signatures for sample and test" #steps 4000000000 {
+  x: [32] u8; h: [32] u8; sig: [64] u8; kb: [32] u8;
+  key := pe_unhex(PE_X, x[..]);
+  hash := pe_unhex(PE_SAMPLE_H, h[..]);
+  nonce := pe_nonce(key, hash);
+  #assert nonce.valid == 1 && p2_store(nonce.k, kb[..]) && pe_is(kb[..], PE_SAMPLE_K);
+  #assert p256_sign(key, hash, sig[..]) && pe_is(sig[0..<32], PE_SAMPLE_R) && pe_is(sig[32..<64], PE_SAMPLE_S);
+  public: [65] u8; #assert p256_public_key(key, public[..]);
+  #assert p256_verify(hash, public[..], sig[..], false);
+  #assert !p256_verify(hash, public[..], sig[..], true);             // this s is in the high half
+  hash = pe_unhex(PE_TEST_H, h[..]);
+  nonce = pe_nonce(key, hash);
+  #assert p2_store(nonce.k, kb[..]) && pe_is(kb[..], PE_TEST_K);
+  #assert p256_sign(key, hash, sig[..]) && pe_is(sig[0..<32], PE_TEST_R) && pe_is(sig[32..<64], PE_TEST_S);
+  #assert p256_verify(hash, public[..], sig[..], true);              // low s
+  // Wrong sizes and keys refuse and write nothing.
+  for i: 0..<64 { sig[i] = 9; }
+  #assert !p256_sign(key[0..<31], hash, sig[..]) && !p256_sign(key, hash[0..<31], sig[..]) && !p256_sign(key, hash, sig[0..<63]);
+  zero: [32] u8; #assert !p256_sign(zero[..], hash, sig[..]);
+  n: [32] u8; #assert p2_store(P2_N.m, n[..]) && !p256_sign(n[..], hash, sig[..]);
+  for i: 0..<64 { #assert sig[i] == 9; }
+}
+#test "a nonce candidate outside [1, n-1] is skipped by the mask" {
+  // The pick alone: the first candidate when it is valid, else the second.
+  a := p2_small(5); b := p2_small(7);
+  first := pe_pick(a, b);
+  #assert first.valid == 1 && p2_same(first.k, a);
+  second := pe_pick(P2Num.{}, b);
+  #assert second.valid == 1 && p2_same(second.k, b);
+  third := pe_pick(P2_N.m, b);
+  #assert third.valid == 1 && p2_same(third.k, b);
+  neither := pe_pick(P2Num.{}, P2_N.m);
+  #assert neither.valid == 0;
+  top := p2_sub(P2Num.{}, p2_small(1), P2_N);
+  #assert p2_same(pe_pick(top, b).k, top) && pe_valid_scalar(top) == 1 && pe_valid_scalar(P2_N.m) == 0 && pe_valid_scalar(P2Num.{}) == 0;
+}
+#test "r and s must be in [1, n-1]; low-S is the caller's choice" {
+  sig: [64] u8;
+  #assert !pe_scalars(sig[..]).ok;                                  // r = s = 0
+  sig[31] = 1; #assert !pe_scalars(sig[..]).ok;                      // s = 0
+  sig[63] = 1; #assert pe_scalars(sig[..]).ok;                       // r = s = 1
+  sig[31] = 0; #assert !pe_scalars(sig[..]).ok;                      // r = 0
+  #assert p2_store(P2_N.m, sig[0..<32]) && !pe_scalars(sig[..]).ok;  // r = n
+  sig[31] = 0x50; #assert pe_scalars(sig[..]).ok;                    // r = n - 1
+  #assert p2_store(P2_N.m, sig[32..<64]) && !pe_scalars(sig[..]).ok; // s = n
+  #assert !pe_scalars(sig[0..<63]).ok && !pe_scalars(sig[0..<0]).ok;
+  #assert !pe_high(P2_HALF_N) && pe_high(p2_add(P2_HALF_N, p2_small(1), P2_N)) && !pe_high(p2_small(1));
+  #assert p2_same(p2_add(p2_add(P2_HALF_N, P2_HALF_N, P2_N), p2_small(1), P2_N), P2Num.{});   // 2 half + 1 = n
+}
+#test "DER: the canonical form reads, every other form refuses" {
+  b: [80] u8; out: [64] u8;
+  #assert p256_der_read(pe_unhex("3006020101020102", b[..]), out[..]) && out[31] == 1 && out[63] == 2 && out[0] == 0;
+  #assert p256_der_read(pe_unhex("3006020100020101", b[..]), out[..]) && out[31] == 0 && out[63] == 1;
+  #assert p256_der_read(pe_unhex("30080202008002020081", b[..]), out[..]) && out[31] == 0x80 && out[63] == 0x81;
+  v := "3045022100ff0000000000000000000000000000000000000000000000000000000000000102207fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+  #assert p256_der_read(pe_unhex(v, b[..]), out[..]) && out[0] == 0xff && out[31] == 1 && out[32] == 0x7f && out[63] == 0xff;
+  out[0] = 9;
+  #assert !p256_der_read(pe_unhex("3106020101020102", b[..]), out[..]);   // not a SEQUENCE
+  #assert !p256_der_read(pe_unhex("3007020101020102", b[..]), out[..]);   // length too long
+  #assert !p256_der_read(pe_unhex("3005020101020102", b[..]), out[..]);   // length too short
+  #assert !p256_der_read(pe_unhex("300602010102010200", b[..]), out[..]); // a trailing byte
+  #assert !p256_der_read(pe_unhex("300702010102010200", b[..]), out[..]); // the same, counted
+  #assert !p256_der_read(pe_unhex("3006030101020102", b[..]), out[..]);   // r not an INTEGER
+  #assert !p256_der_read(pe_unhex("3006020101030102", b[..]), out[..]);   // s not an INTEGER
+  #assert !p256_der_read(pe_unhex("3006020001020102", b[..]), out[..]);   // r of length 0
+  #assert !p256_der_read(pe_unhex("3006020201020102", b[..]), out[..]);   // r runs into s
+  #assert !p256_der_read(pe_unhex("3006020101020202", b[..]), out[..]);   // s runs past the end
+  #assert !p256_der_read(pe_unhex("3006020181020102", b[..]), out[..]);   // r negative
+  #assert !p256_der_read(pe_unhex("3006020101020180", b[..]), out[..]);   // s negative
+  #assert !p256_der_read(pe_unhex("300702020001020102", b[..]), out[..]); // r with a needless zero
+  #assert !p256_der_read(pe_unhex("300702010102020002", b[..]), out[..]); // s with a needless zero
+  #assert !p256_der_read(pe_unhex("30810602010102010200", b[..]), out[..]);  // long-form length
+  #assert !p256_der_read(pe_unhex("3006020101020102", b[..]), out[0..<63]);  // short output
+  #assert !p256_der_read(pe_unhex("30050201010201", b[..]), out[..]);     // 7 bytes
+  #assert !p256_der_read(b[0..<1], out[..]) && !p256_der_read(b[0..<0], out[..]);
+  #assert out[0] == 9;
+  w := "3027022200800000000000000000000000000000000000000000000000000000000000000000020101";
+  #assert !p256_der_read(pe_unhex(w, b[..]), out[..]);                   // r of 34 bytes
+  x := "30260221010000000000000000000000000000000000000000000000000000000000000000020101";
+  #assert !p256_der_read(pe_unhex(x, b[..]), out[..]);                   // r at least 2^256
+  // 33 bytes, 00 then a byte below 0x80: a needless zero.
+  y := "302602210000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff020101";
+  #assert !p256_der_read(pe_unhex(y, b[..]), out[..]);
+}
+#test "verification refuses a changed hash, signature or key, and bad inputs" #steps 4000000000 {
+  x: [32] u8; h: [32] u8; sig: [64] u8; public: [65] u8; short: [33] u8; der: [72] u8;
+  key := pe_unhex(PE_X, x[..]); hash := pe_unhex(PE_TEST_H, h[..]);
+  #assert p256_sign(key, hash, sig[..]) && p256_public_key(key, public[..]);
+  #assert p256_verify(hash, public[..], sig[..], false);
+  #assert p2_encode_compressed(p2_decode(public[..]).point, short[..]) && p256_verify(hash, short[..], sig[..], false);
+  h[0] ^= 1; #assert !p256_verify(hash, public[..], sig[..], false); h[0] ^= 1;
+  h[31] ^= 1; #assert !p256_verify(hash, public[..], sig[..], false); h[31] ^= 1;
+  sig[0] ^= 1; #assert !p256_verify(hash, public[..], sig[..], false); sig[0] ^= 1;
+  sig[63] ^= 1; #assert !p256_verify(hash, public[..], sig[..], false); sig[63] ^= 1;
+  public[64] ^= 1; #assert !p256_verify(hash, public[..], sig[..], false); public[64] ^= 1;
+  #assert !p256_verify(hash[0..<31], public[..], sig[..], false) && !p256_verify(hash, public[0..<64], sig[..], false);
+  #assert !p256_verify(hash, public[..], sig[0..<63], false);
+  // n - s is the other valid s for the same r: both verify without low-S.
+  s := p2_load(sig[32..<64], P2_N).value;
+  #assert p2_store(p2_neg(s, P2_N), sig[32..<64]);
+  #assert p256_verify(hash, public[..], sig[..], false) && !p256_verify(hash, public[..], sig[..], true);
+  // Another key's signature does not verify under this one.
+  other: [65] u8; one: [32] u8; one[31] = 1; #assert p256_public_key(one[..], other[..]);
+  #assert !p256_verify(hash, other[..], sig[..], false);
+  // DER: the same signature, encoded.
+  n := pe_der_write(sig[..], der[..]);
+  #assert n > 8 && p256_verify_der(hash, public[..], der[0..<n], false) && !p256_verify_der(hash, public[..], der[0..<n], true);
+  #assert !p256_verify_der(hash, public[..], der[0..<n-1], false);
+  // A hash at least n is reduced: z = h mod n (here h = n + 1 signs as z = 1).
+  hn: [32] u8; #assert p2_store(p2_add_raw(P2_N.m, p2_small(1)), hn[..]);
+  #assert p256_sign(key, hn[..], sig[..]);
+  z1: [32] u8; z1[31] = 1; #assert p256_verify(z1[..], public[..], sig[..], false) && p256_verify(hn[..], public[..], sig[..], false);
+}
+#test "RFC 6979: both candidates for A.2.5's key and \"sample\"" {
+  key: [32] u8; h: [32] u8; first: [32] u8; second: [32] u8; want: [64] u8;
+  _ = pe_unhex(PE_X, key[..]); _ = pe_unhex(PE_SAMPLE_H, h[..]);
+  pe_candidates(key[..], h[..], first[..], second[..]);
+  // The first is A.2.5's k; the second is the next one section 3.2 step h.3 makes
+  // (computed with Python's hmac module).
+  _ = pe_unhex("a6e3c57dd01abe90086538398355dd4c3b17aa873382b0f24d6129493d8aad608e83dc490bc5fc4d5992bd63cd87f254adffcb930f8a8011702a88870f638fdb", want[..]);
+  for i: 0..<32 { #assert first[i] == want[i] && second[i] == want[32+i]; }
+}
+#test "test helpers refuse what differs, and R at infinity refuses" #steps 4000000000 {
+  b: [3] u8; b[0] = 1; b[1] = 2; b[2] = 3;
+  #assert pe_is(b[..], "010203") && !pe_is(b[..], "0102") && !pe_is(b[..], "000203") && !pe_is(b[..], "010003") && !pe_is(b[..], "010204");
+  // Q = G (d = 1), r = s = 1 and z = n - 1: u1 G + u2 Q = (n - 1 + 1) G is the identity.
+  one: [32] u8; one[31] = 1; key: [65] u8; sig: [64] u8; z: [32] u8;
+  #assert p256_public_key(one[..], key[..]) && !p256_public_key(one[..], key[0..<64]) && !p256_public_key(one[0..<31], key[..]);
+  sig[31] = 1; sig[63] = 1;
+  #assert p2_store(p2_sub(P2_N.m, p2_small(1), P2_N), z[..]);
+  #assert !p256_verify(z[..], key[..], sig[..], false);
+  // With z = n - 2 the sum is -G, whose x is G's: r = x(G) mod n would verify.
+  #assert p2_store(p2_sub(P2_N.m, p2_small(2), P2_N), z[..]) && !p256_verify(z[..], key[..], sig[..], false);
+}
+#test "the test DER encoder: short, padded and full-width halves" {
+  sig: [64] u8; out: [80] u8;
+  for i: 0..<80 { out[i] = 0xff; }
+  sig[31] = 1; sig[32] = 0x80; sig[63] = 2;               // r = 1, s = 0x80 00..02
+  n := pe_der_write(sig[..], out[..]);
+  #assert n == 40 && out[0] == 0x30 && out[1] == 38 && out[2] == 2 && out[3] == 1 && out[4] == 1;
+  #assert out[5] == 2 && out[6] == 33 && out[7] == 0 && out[8] == 0x80 && out[39] == 2;
+  sig[31] = 0; sig[30] = 0x7f; sig[32] = 0x7f;             // r = 0x7f00, s = 0x7f 00..02
+  n = pe_der_write(sig[..], out[..]);
+  #assert n == 40 && out[1] == 38 && out[3] == 2 && out[4] == 0x7f && out[5] == 0 && out[6] == 2 && out[7] == 32 && out[8] == 0x7f;
+  for i: 0..<64 { sig[i] = 0; }
+  n = pe_der_write(sig[..], out[..]);                     // zero halves still take one byte
+  #assert n == 8 && out[3] == 1 && out[4] == 0 && out[6] == 1 && out[7] == 0;
+  // An INTEGER cut after its tag at the very end refuses (no read past it).
+  cut: [9] u8; _ = pe_unhex("300702040102030402", cut[..]);
+  #assert !p256_der_read(cut[..], sig[..]);
+}
+// A test-only DER encoder: r || s into out, the length.
+pe_der_write :: (sig: [] u8, out: [] u8) -> int #effects(all) {
+  at := 2;
+  for half: 0..<2 {
+    part := sig[32*half..<32*half+32]; start := 0;
+    while start < 31 && part[start] == 0 { start += 1; }
+    pad := ifx part[start] >= 0x80 then 1 else 0;
+    out[at] = 2; out[at+1] = cast(u8) (32 - start + pad); at += 2;
+    if pad == 1 { out[at] = 0; at += 1; }
+    for i: start..<32 { out[at] = part[i]; at += 1; }
+  }
+  out[0] = 0x30; out[1] = cast(u8) (at - 2);
+  return at;
+}
+
+// ---- scalars
+// r and s from r || s, each in [1, n-1], neither reduced.
+pe_scalars :: (signature: [] u8) -> P2Scalars #effects(all) {
+  if signature.count != 64 { return P2Scalars.{}; }
+  r := p2_load(signature[0..<32], P2_N); s := p2_load(signature[32..<64], P2_N);
+  if !r.ok || !s.ok || p2_is_zero(r.value) == 1 || p2_is_zero(s.value) == 1 { return P2Scalars.{}; }
+  return P2Scalars.{r=r.value,s=s.value,ok=true};
+}
+// True when s > (n-1)/2.
+pe_high :: (s: P2Num) -> bool #effects(all) { return p2_less(P2_HALF_N, s) == 1; }
+// 1 when k is in [1, n-1].
+pe_valid_scalar :: (k: P2Num) -> u64 #effects(all) { return p2_less(k, P2_N.m) & (p2_is_zero(k) ^ 1); }
+
+// ---- verification
+// The signature r || s of a 32-byte hash under a SEC 1 public key (33 or
+// 65 bytes). With low_s, an s above (n-1)/2 refuses.
+p256_verify :: (hash: [] u8, public_key: [] u8, signature: [] u8, low_s: bool) -> bool #export_c #effects(all) {
+  if hash.count != 32 { return false; }
+  key := p2_decode(public_key);
+  if !key.ok { return false; }
+  rs := pe_scalars(signature);
+  if !rs.ok || (low_s && pe_high(rs.s)) { return false; }
+  z := p2_reduce_bytes(hash, P2_N);                                   // a hash at least n is reduced
+  w := p2_from(p2_inverse(p2_to(rs.s, P2_N), P2_N), P2_N);            // s is nonzero, so w exists
+  sum := p2_add_point(p2_base_mul(p2_mul_mod(z, w, P2_N)), p2_mul(p2_mul_mod(rs.r, w, P2_N), key.point));
+  xy: [64] u8;
+  if !p2_affine(sum, xy[..]) { return false; }                        // R is the identity
+  return p2_equal(p2_reduce_bytes(xy[0..<32], P2_N), rs.r) == 1;     // x(R) mod n = r
+}
+// The same for a strict DER signature.
+p256_verify_der :: (hash: [] u8, public_key: [] u8, der: [] u8, low_s: bool) -> bool #export_c #effects(all) {
+  signature: [64] u8;
+  if !p256_der_read(der, signature[..]) { return false; }
+  return p256_verify(hash, public_key, signature[..], low_s);
+}
+
+// ---- DER
+// One INTEGER at der[at..]: 0x02, a length from 1 to 33, a value that is
+// not negative and has no needless leading zero, right-aligned into out.
+pe_der_integer :: (der: [] u8, at: int, out: [] u8, base: int) -> P2Integer #effects(all) {
+  if der.count - at < 3 || der[at] != 0x02 { return P2Integer.{}; }
+  length := cast(int) der[at+1]; start := at + 2;
+  if length < 1 || length > 33 || der.count - start < length { return P2Integer.{}; }
+  if der[start] >= 0x80 { return P2Integer.{}; }                                     // negative
+  if length > 1 && der[start] == 0 && der[start+1] < 0x80 { return P2Integer.{}; }  // a needless zero
+  if length == 33 && der[start] != 0 { return P2Integer.{}; }                       // at least 2^256
+  skip := ifx length == 33 then 1 else 0;
+  for i: skip..<length { out[base+32-length+i] = der[start+i]; }
+  return P2Integer.{end=start+length,ok=true};
+}
+// SEQUENCE { INTEGER r, INTEGER s } and nothing after it, into r || s (64
+// bytes). out is written only when the result is true.
+p256_der_read :: (der: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if out.count != 64 || der.count < 8 { return false; }
+  if der[0] != 0x30 || cast(int) der[1] != der.count - 2 { return false; }   // short-form length only
+  compact: [64] u8;
+  r := pe_der_integer(der, 2, compact[..], 0);
+  if !r.ok { return false; }
+  s := pe_der_integer(der, r.end, compact[..], 32);
+  if !s.ok || s.end != der.count { return false; }
+  for i: 0..<64 { out[i] = compact[i]; }
+  return true;
+}
+
+// ---- signing
+// The first of a and b in [1, n-1], chosen with a mask; valid 0 when neither is.
+pe_pick :: (a: P2Num, b: P2Num) -> P2Nonce #effects(all) {
+  first := pe_valid_scalar(a);
+  return P2Nonce.{k=p2_select(first, a, b),valid=first|pe_valid_scalar(b)};
+}
+// out = HMAC-SHA256 under key over data, through a fresh buffer so out may
+// be the key or the data.
+pe_hmac :: (key: [] u8, data: [] u8, out: [] u8) #effects(all) {
+  t: [32] u8;
+  defer { secure_zero(t[..]); #assert crypto_zeroed(t[..]); }
+  #assert hmac_sha256_checked(key, data, t[..], false) == SHA_OK;
+  for i: 0..<32 { out[i] = t[i]; }
+}
+// RFC 6979 section 3.2 for SHA-256 and P-256's 256-bit order: K and V, then
+// the first two candidates into first and second (32 bytes each). buf holds
+// V || tag || x || bits2octets(h), where bits2octets(h) is h mod n.
+pe_candidates :: (secret: [] u8, hash: [] u8, first: [] u8, second: [] u8) #effects(all) {
+  v: [32] u8; k: [32] u8; buf: [97] u8;
+  defer { secure_zero(v[..]); secure_zero(k[..]); secure_zero(buf[..]);
+          #assert crypto_zeroed(v[..]); #assert crypto_zeroed(k[..]); #assert crypto_zeroed(buf[..]); }
+  for i: 0..<32 { v[i] = 1; buf[33+i] = secret[i]; }                      // b, c: V = 01..01, K = 00..00
+  #assert p2_store(p2_reduce_bytes(hash, P2_N), buf[65..<97]);
+  for tag: 0..<2 {                                                        // d to g
+    for i: 0..<32 { buf[i] = v[i]; }
+    buf[32] = cast(u8) tag;
+    pe_hmac(k[..], buf[..], k[..]);                                       // K = HMAC_K(V || tag || x || h)
+    pe_hmac(k[..], v[..], v[..]);                                         // V = HMAC_K(V)
+  }
+  pe_hmac(k[..], v[..], first);                                           // h: the first candidate
+  for i: 0..<32 { buf[i] = first[i]; }
+  buf[32] = 0;
+  pe_hmac(k[..], buf[0..<33], k[..]);                                     // K = HMAC_K(V || 00)
+  pe_hmac(k[..], first, v[..]);                                           // V = HMAC_K(V)
+  pe_hmac(k[..], v[..], second);                                          // the second candidate
+}
+// The first of the two candidates in [1, n-1], picked with a mask.
+pe_nonce :: (secret: [] u8, hash: [] u8) -> P2Nonce #effects(all) {
+  first: [32] u8; second: [32] u8;
+  defer { secure_zero(first[..]); secure_zero(second[..]); #assert crypto_zeroed(first[..]); #assert crypto_zeroed(second[..]); }
+  pe_candidates(secret, hash, first[..], second[..]);
+  return pe_pick(p2_load(first[..], P2_N).value, p2_load(second[..], P2_N).value);
+}
+// The uncompressed SEC 1 public key (65 bytes) of a 32-byte secret in
+// [1, n-1]; false, with out untouched, for any other secret.
+p256_public_key :: (secret: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if secret.count != 32 { return false; }
+  if out.count != 65 { return false; }
+  d := p2_load(secret, P2_N);
+  if pe_valid_scalar(d.value) != 1 { return false; }                     // the call's one public fact
+  return p2_encode(p2_base_mul(d.value), out);
+}
+// The ES256 signature r || s (64 bytes) of a 32-byte hash under a 32-byte
+// secret in [1, n-1], with RFC 6979's nonce. False, with out untouched, for
+// a bad secret or size, and in the 2^-64 case that neither candidate works.
+p256_sign :: (secret: [] u8, hash: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if secret.count != 32 || hash.count != 32 || out.count != 64 { return false; }
+  return pe_sign_k(p2_load(secret, P2_N).value, pe_nonce(secret, hash), hash, out);
+}
+// r || s for the secret d and the nonce k: r = x(kG) mod n and
+// s = (z + r d) / k. False, with out untouched, unless d and k are in
+// [1, n-1] and r and s are nonzero. NIST's SigGen vectors call it with
+// their published k.
+pe_sign_k :: (d: P2Num, nonce: P2Nonce, hash: [] u8, out: [] u8) -> bool #effects(all) {
+  xy: [64] u8;
+  defer { secure_zero(xy[..]); #assert crypto_zeroed(xy[..]); }
+  finite := p2_affine(p2_base_mul(nonce.k), xy[..]);                     // k is nonzero when valid
+  r := p2_reduce_bytes(xy[0..<32], P2_N);
+  z := p2_reduce_bytes(hash, P2_N);
+  kinv := p2_from(p2_inverse(p2_to(nonce.k, P2_N), P2_N), P2_N);
+  s := p2_mul_mod(kinv, p2_add(z, p2_mul_mod(r, d, P2_N), P2_N), P2_N);
+  valid := pe_valid_scalar(d) & nonce.valid & pe_valid_scalar(nonce.k) & (p2_is_zero(r) ^ 1) & (p2_is_zero(s) ^ 1);
+  if valid != 1 || !finite { return false; }                             // the one fact the signer reveals
+  #assert p2_store(r, out[0..<32]) && p2_store(s, out[32..<64]);
+  return true;
+}

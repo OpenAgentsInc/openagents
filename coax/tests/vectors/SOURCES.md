@@ -60,6 +60,16 @@ that a maliciously replaced manifest is authentic.
   (464 cases, 100 public keys) at the same revision as the ECDH file,
   retrieved 2026-11-02 for Bitcoin chapter 19. Its Bitcoin variant requires
   strict DER and low-S; every case gives its expected result.
+- **P-256 ECDSA (auth, ES256):** the complete Wycheproof
+  `ecdsa_secp256r1_sha256_test.json` (484 cases, DER) and
+  `ecdsa_secp256r1_sha256_p1363_test.json` (262 cases, r || s) at the same
+  revision, and NIST CAVP's FIPS 186-4 ECDSA example archive (archive
+  identity pinned): the `[P-256,SHA-256]` sections of `SigVer.rsp` and
+  `SigGen.txt` (with each published k) and the `[P-256]` sections of
+  `PKV.rsp` and `KeyPair.rsp`; other curves and hashes are not claimed.
+  RFC 6979 appendix A.2.5's SHA-256 cases check the deterministic nonce.
+  Retrieved 2026-11-11 for `coax/lib/crypto/p256_ecdsa.coax`
+  (`coax/tests/auth/p256_vectors_test.coax`; GitHub #13198).
 - **ECDSA signing:** tiny-secp256k1's complete `tests/fixtures/ecdsa.json`
   at revision `e1fd7a77`, retrieved 2026-11-02 for Bitcoin chapter 20. Its
   2,020 `valid` rows give a key, a 32-byte hash and the compact signature
@@ -1178,3 +1188,11 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/txindex.h`](upstream/bitcoin-core/txindex.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex.h) | `0f0819bc2a67dd3e4d6042e4bd747965b6525fe29812c2d0271dfd169d3ece39` |
 | [`upstream/bitcoin-core/txindex_key.h`](upstream/bitcoin-core/txindex_key.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/index/txindex_key.h) | `48685ad09715c7307498d856409adbef6512a10e6ff74401c5892613ea8b0ad2` |
 | [`upstream/bitcoin-core/txindex_tests.cpp`](upstream/bitcoin-core/txindex_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/txindex_tests.cpp) | `ed64ffb75d4602b26bf3c2407c8e83bed7bc5ebc0157f5c126a4ad934b3a84b8` |
+| [`upstream/wycheproof/ecdsa_secp256r1_sha256_test.json`](upstream/wycheproof/ecdsa_secp256r1_sha256_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256r1_sha256_test.json) | `182db4f3e230f6f9fa9f800d2a614dede30284b8e8438bbfe1171905402e9332` |
+| [`upstream/wycheproof/ecdsa_secp256r1_sha256_p1363_test.json`](upstream/wycheproof/ecdsa_secp256r1_sha256_p1363_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256r1_sha256_p1363_test.json) | `c60de693930e386c3a5472d08081623ef8504decc54b38ac01ec6b2a2575c986` |
+| [`upstream/nist/ecdsa/Readme.txt`](upstream/nist/ecdsa/Readme.txt) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `4f82fd967392f327e29db9318643379cedb760dfea73c249b4f9a1ffd09bb0c8` |
+| [`upstream/nist/ecdsa/SigVer.rsp`](upstream/nist/ecdsa/SigVer.rsp) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `e9841c3d12e323042751460d0b8ef4bc59c2640105ec7da4852775f80ab10191` |
+| [`upstream/nist/ecdsa/SigGen.txt`](upstream/nist/ecdsa/SigGen.txt) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `95d0a19c03f6d2dc16e9e18fd5c3318e1952e0bc88a45127c996c35b4a15f4e2` |
+| [`upstream/nist/ecdsa/PKV.rsp`](upstream/nist/ecdsa/PKV.rsp) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `1d33551c1a199b1fc2b0e4075cdfd52d4830503ef37e6b16f04ce617d524f3f1` |
+| [`upstream/nist/ecdsa/KeyPair.rsp`](upstream/nist/ecdsa/KeyPair.rsp) | [pinned source](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip) | `a85cc17bf78868326dffde6ebfc298987fe187606d406ba5dd417d491d67411d` |
+| [`upstream/rfc/rfc6979.txt`](upstream/rfc/rfc6979.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc6979.txt) | `456e8f17558fdbd206f968b96fc6f1b4a71ea331ab30ad17f711ab3adaa7d701` |

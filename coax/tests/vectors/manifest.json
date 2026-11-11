@@ -4700,6 +4700,120 @@
       "retrieved": "2026-11-03",
       "sha256": "ed64ffb75d4602b26bf3c2407c8e83bed7bc5ebc0157f5c126a4ad934b3a84b8",
       "bytes": 14284
+    },
+    {
+      "path": "upstream/wycheproof/ecdsa_secp256r1_sha256_test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256r1_sha256_test.json",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "p256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "182db4f3e230f6f9fa9f800d2a614dede30284b8e8438bbfe1171905402e9332",
+      "bytes": 327156
+    },
+    {
+      "path": "upstream/wycheproof/ecdsa_secp256r1_sha256_p1363_test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256r1_sha256_p1363_test.json",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "p256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "c60de693930e386c3a5472d08081623ef8504decc54b38ac01ec6b2a2575c986",
+      "bytes": 242550
+    },
+    {
+      "path": "upstream/nist/ecdsa/Readme.txt",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip",
+      "revision": "NIST CAVP FIPS 186-4 ECDSA example vectors (archive identity pinned)",
+      "archive_member": "186-4ecdsatestvectors/Readme.txt",
+      "archive_sha256": "fe47cc92b4cee418236125c9ffbcd9bb01c8c34e74a4ba195d954bcb72824752",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "notice"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "4f82fd967392f327e29db9318643379cedb760dfea73c249b4f9a1ffd09bb0c8",
+      "bytes": 1103
+    },
+    {
+      "path": "upstream/nist/ecdsa/SigVer.rsp",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip",
+      "revision": "NIST CAVP FIPS 186-4 ECDSA example vectors (archive identity pinned)",
+      "archive_member": "186-4ecdsatestvectors/SigVer.rsp",
+      "archive_sha256": "fe47cc92b4cee418236125c9ffbcd9bb01c8c34e74a4ba195d954bcb72824752",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "p256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "e9841c3d12e323042751460d0b8ef4bc59c2640105ec7da4852775f80ab10191",
+      "bytes": 730106
+    },
+    {
+      "path": "upstream/nist/ecdsa/SigGen.txt",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip",
+      "revision": "NIST CAVP FIPS 186-4 ECDSA example vectors (archive identity pinned)",
+      "archive_member": "186-4ecdsatestvectors/SigGen.txt",
+      "archive_sha256": "fe47cc92b4cee418236125c9ffbcd9bb01c8c34e74a4ba195d954bcb72824752",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "p256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "95d0a19c03f6d2dc16e9e18fd5c3318e1952e0bc88a45127c996c35b4a15f4e2",
+      "bytes": 616267
+    },
+    {
+      "path": "upstream/nist/ecdsa/PKV.rsp",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip",
+      "revision": "NIST CAVP FIPS 186-4 ECDSA example vectors (archive identity pinned)",
+      "archive_member": "186-4ecdsatestvectors/PKV.rsp",
+      "archive_sha256": "fe47cc92b4cee418236125c9ffbcd9bb01c8c34e74a4ba195d954bcb72824752",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "p256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "1d33551c1a199b1fc2b0e4075cdfd52d4830503ef37e6b16f04ce617d524f3f1",
+      "bytes": 38511
+    },
+    {
+      "path": "upstream/nist/ecdsa/KeyPair.rsp",
+      "kind": "upstream",
+      "url": "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss/186-4ecdsatestvectors.zip",
+      "revision": "NIST CAVP FIPS 186-4 ECDSA example vectors (archive identity pinned)",
+      "archive_member": "186-4ecdsatestvectors/KeyPair.rsp",
+      "archive_sha256": "fe47cc92b4cee418236125c9ffbcd9bb01c8c34e74a4ba195d954bcb72824752",
+      "license": "NIST U.S. Government source; archive has no standalone license; CAVS notices retained",
+      "covers": [
+        "p256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "a85cc17bf78868326dffde6ebfc298987fe187606d406ba5dd417d491d67411d",
+      "bytes": 41542
+    },
+    {
+      "path": "upstream/rfc/rfc6979.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc6979.txt",
+      "revision": "RFC 6979",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "p256"
+      ],
+      "retrieved": "2026-11-11",
+      "sha256": "456e8f17558fdbd206f968b96fc6f1b4a71ea331ab30ad17f711ab3adaa7d701",
+      "bytes": 140386
     }
   ]
 }
