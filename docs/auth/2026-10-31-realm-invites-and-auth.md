@@ -1,5 +1,10 @@
 # Realm invites and accounts
 
+> **Superseded in part (2026-11-11).** The account model, sessions and WorkOS
+> plan here are replaced by the greenfield design in [README.md](README.md).
+> The invite gate (§4) and its admin routes stay and move onto the new
+> accounts.
+
 Status: spec, and a first build behind two flags that are off
 (2026-10-31). Nothing is deployed. Owner's ask: only approved users make
 realms; add user authentication, probably WorkOS with Nostr.
