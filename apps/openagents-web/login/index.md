@@ -1,13 +1,17 @@
 # Log in
 
-Your account is made for you on this device; keep your 12 words to use it
-elsewhere. Open /login and the page makes the account in your browser: 12
-words (BIP-39) whose Nostr key (NIP-06) signs the login. SHOW WORDS shows
-them, SWAP ACCOUNT takes 12 other words. Nothing to type; no password.
+Log in to OpenAgents with your email, a Nostr key or the phone app. There is no password.
 
-You can also log in with the OpenAgents iOS app: scan the page's one-time
-QR code and approve it on your phone, and the page logs you in with your
-phone's Nostr key.
+- **Email.** Type your address and choose SEND CODE. We email you a 6-digit
+  code and a link. Type the code on the page, or open the link in the same
+  browser. A code works for 10 minutes and 5 tries. If you open the link in
+  another browser, it shows the code to type in the window where you asked.
+- **Key.** Choose LOG IN WITH A KEY. Your browser's Nostr extension (NIP-07)
+  signs a one-time challenge. Without an extension, the page says so.
+- **Phone app.** On a computer, choose LOG IN WITH THE PHONE APP and scan the
+  QR code with the OpenAgents app, then approve the login there. A code lasts
+  5 minutes; SHOW A NEW CODE makes another.
 
-How it works: [docs/web-log-in.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/web-log-in.md)
-and [docs/phone-sign-in.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/phone-sign-in.md).
+After you log in, the page takes you back to where you came from.
+
+Every limit on codes, tries and waits is listed at [/docs/limits](/docs/limits).

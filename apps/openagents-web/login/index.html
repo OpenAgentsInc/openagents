@@ -4,19 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Log in · OpenAgents</title>
+<meta name="description" content="Log in to OpenAgents with an email code or a Nostr key.">
 <meta name="robots" content="noindex">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/login/index.md">
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
 html,body{margin:0;height:100%;background:#000;color:#ededed}
 body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
 canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=text]{cursor:text}
 main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
 html:not(.gpu) body{overflow:auto}
-a{color:#ff8c1f}
+a{color:#b9e8e8}
 .gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
 </style>
 </head>
@@ -24,9 +27,9 @@ a{color:#ff8c1f}
 <canvas id="coaxial" aria-hidden="true"></canvas>
 <main>
 <h1>Log in</h1>
-<p><a href="/projects">Projects</a></p>
-<p><a href="https://testflight.apple.com/join/dvQdns5B">Get the iPhone app</a></p>
+<p><a href="/login/index.md">How to log in</a></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="private" data-page="2"></script>
+<script type="module" src="/login/key.js"></script>
+<script type="module" src="/coaxial/host.js" data-app="login" data-wgsl="/newland.wgsl" data-page="1"></script>
 </body>
 </html>

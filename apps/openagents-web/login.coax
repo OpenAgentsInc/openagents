@@ -1,0 +1,1008 @@
+// /login and /login/email: log in with an email code or a Nostr key
+// (docs/auth, #13204/#13205), drawn on the homepage's Grid. The Grid, text,
+// frames and buttons are newland.coax's.
+//
+// What it talks to (coax/web/api/auth.c), every answer as ?as=lines ("name value"):
+//   GET  /api/auth/account          logged_in 0|1
+//   POST /api/auth/email/start      {email} -> state sent, expires_in, tries
+//   POST /api/auth/email/verify     {code}  -> state logged-in
+//   POST /api/auth/email/link       {t}     -> state logged-in | 409 state elsewhere, code
+//   POST /api/auth/nostr/challenge          -> challenge, url
+//   POST /api/auth/nostr            {challenge}, Authorization: Nostr <NIP-98 event>
+//   POST /api/auth/logout           before a key login when a session is already here
+// A refusal is "error WORDS": shown as given (the words already say when a limit lifts).
+//
+// The key's signature comes from the browser's NIP-07 extension: the app asks for it with
+// action LG_ACT_SIGN ("URL\nBODY"), and login/key.js answers message LG_MSG_SIGNED
+// ("Nostr <base64>", or "!WORDS"); it also says whether an extension is there
+// (LG_MSG_HAS_KEY, "1" or "0").
+//   coax/bin/coax test apps/openagents-web/login.coax
+#load "newland.coax";
+
+LG_MAX_VERTICES :: 90000;
+LG_MSG_TYPED :: 1;       // typed or pasted text (the host's keyboard field)
+LG_MSG_PAGE :: 600;      // the host's page facts: url=...
+LG_MSG_HTTP :: 512;      // + id: an HTTP answer, "STATUS\nBODY"
+LG_MSG_SIGNED :: 72;     // login/key.js: "Nostr <base64 event>" or "!WORDS"
+LG_MSG_HAS_KEY :: 73;    // login/key.js: "1" a NIP-07 extension is here, "0" none
+LG_ACT_GO :: 1;          // go to the outbox's path
+LG_ACT_HASH :: 3;        // set the hash (cleared once the link's token is read)
+LG_ACT_SIGN :: 72;       // login/key.js: sign "URL\nBODY" with NIP-07 (NIP-98, kind 27235)
+LG_PAGE_LOGIN :: 1; LG_PAGE_LINK :: 2;   // data-page: /login, /login/email
+LG_EMAIL_MAX :: 254;
+LG_HTTP_POST :: 1; LG_HTTP_WANTED :: 4; LG_HTTP_AUTH :: 16;   // coaxial_http flags (coax/web/http-requests.js)
+
+// The screens.
+LG_EMAIL :: 0;      // an email field, Send code, Log in with a key
+LG_CODE :: 1;       // the 6 digits, tries and time left, Send a new code
+LG_IN :: 2;         // already logged in: Continue, Log out
+LG_DONE :: 3;       // logged in; going to next
+LG_LINK :: 4;       // /login/email: reading the link
+LG_ELSEWHERE :: 5;  // the link was opened in another browser: the code to type there
+LG_LINK_FAILED :: 6;
+LG_PHONE :: 7;      // the phone app's QR, polled until the app approves
+// The one request in flight.
+REQ_NONE :: 0; REQ_ACCOUNT :: 1; REQ_START :: 2; REQ_VERIFY :: 3; REQ_LINK :: 4;
+REQ_LOGOUT :: 5; REQ_CHALLENGE :: 6; REQ_NOSTR :: 7; REQ_SIGNING :: 8;   // SIGNING: waiting on key.js
+REQ_PHONE :: 9; REQ_POLL :: 10;
+// What can be pressed.
+H_NONE :: -1; H_FIELD :: 0; H_MAIN :: 1; H_RESEND :: 2; H_OTHER :: 3; H_KEY :: 4; H_LIMITS :: 5; H_HOME :: 6; H_LOGOUT :: 7; H_PHONE :: 8;
+LG_HITS :: 9;
+LG_QR :: 5929;           // every QR version's grid (coax/lib/qr)
+LG_POLL_EVERY :: 2.0;   // seconds between polls while the phone's QR shows
+LG_QR_WIDE :: 520.0;    // narrower than this, the page is most likely the phone that would scan it
+
+Lg :: struct {
+  ready: bool; page: int; w: f32; h: f32; dpr: f32; time: f32;
+  screen: int; req: int; req_id: int = -1; logout_then_key: bool;
+  email: [256] u8; email_n: int; code: [8] u8; code_n: int;
+  error: [300] u8; error_n: int;
+  sent_to: [256] u8; sent_n: int; tries: int; left: f32;   // the code: where it went, tries and seconds left
+  elsewhere: [8] u8; elsewhere_n: int;                      // "123 456"
+  token: [80] u8; token_n: int;                             // the link's t
+  challenge: [80] u8; challenge_n: int; nurl: [300] u8; nurl_n: int;
+  has_key: int = -1;                                        // -1 not heard yet, 0 none, 1 an extension
+  next: [256] u8; next_n: int;
+  // The request the face hands to coaxial_http, when want is set.
+  want: bool; url: [320] u8; url_n: int; body: [4400] u8; body_n: int; flags: int;
+  action: int; outbox: [800] u8; out_n: int;
+  qr: [LG_QR] u8; qr_size: int; qr_want: bool;             // the phone's QR: the face encodes qr_url when qr_want is set
+  qr_url: [300] u8; qr_url_n: int; poll: [80] u8; poll_n: int; poll_wait: f32; phone_over: bool;
+  panel: Box; err_y: f32; para_y: f32; qr_box: Box;         // where lg_layout put the panel, the refusal, the screen's words and the QR
+  hits: [LG_HITS] Box; field: [4] f32;                      // field: the text field, device pixels (the host's keyboard field)
+  px: f32; py: f32; down: bool; pressed: int = -1; focus: int = -1;
+}
+
+// ---------------------------------------------------------------- text
+lg_add :: (b: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < b.count { b[n] = t[i]; n += 1; } } return n; }
+lg_add_int :: (b: [] u8, at: int, v: int) -> int {
+  digits: [24] u8; c := 0; x := v; if x <= 0 { digits[0] = '0'; c = 1; }
+  while x > 0 && c < 23 { digits[c] = cast(u8) ('0' + x % 10); x = x / 10; c += 1; }
+  n := at; for i: 0..<c { if n < b.count { b[n] = digits[c - 1 - i]; n += 1; } }
+  return n;
+}
+lg_int :: (t: string) -> int { n := 0; for i: 0..<t.count { c := cast(int) t[i]; if c < 48 || c > 57 { break; } n = n * 10 + c - 48; } return n; }
+lg_is :: (t: string, at: int, pat: string) -> bool {
+  if at < 0 || at + pat.count > t.count { return false; }
+  for i: 0..<pat.count { if t[at + i] != pat[i] { return false; } } return true;
+}
+// The value of the line "name value" in an answer's lines, or "" (found tells which).
+lg_value :: (t: string, name: string, found: [] bool) -> string {
+  at := 0;
+  while at < t.count {
+    end := at; while end < t.count && t[end] != '\n' { end += 1; }
+    if end - at > name.count && lg_is(t, at, name) && t[at + name.count] == ' ' { found[0] = true; return t[at + name.count + 1..<end]; }
+    if end - at == name.count && lg_is(t, at, name) { found[0] = true; return t[end..<end]; }
+    at = end + 1;
+  }
+  found[0] = false; return t[0..<0];
+}
+lg_set :: (b: [] u8, t: string) -> int { n := 0; for i: 0..<t.count { if n < b.count { b[n] = t[i]; n += 1; } } return n; }
+lg_err :: (s: [] Lg, t: string) { s[0].error_n = lg_set(s[0].error[..], t); }
+lg_no_err :: (s: [] Lg) { s[0].error_n = 0; }
+
+// ---------------------------------------------------------------- where to go after
+lg_hex :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) c - 48; }
+  if c >= 'a' && c <= 'f' { return cast(int) c - 87; }
+  if c >= 'A' && c <= 'F' { return cast(int) c - 55; }
+  return -1;
+}
+// A path on this site: "/" then no second "/" or "\", printable, no spaces. Anything else goes home.
+lg_same_site :: (t: string) -> bool {
+  if t.count < 1 || t[0] != '/' { return false; }
+  if t.count > 1 && (t[1] == '/' || t[1] == '\\') { return false; }
+  for i: 0..<t.count { c := t[i]; if c <= ' ' || c >= 127 || c == '\\' { return false; } }
+  return true;
+}
+// ?next= from the page's url fact, percent-decoded; kept only when it is a same-site path
+// (and not the login page itself).
+lg_facts :: (s: [] Lg, text: string) {
+  p := -1;
+  if lg_is(text, 0, "url=") { p = 4; } else {
+    i := 0; while i + 5 <= text.count { if lg_is(text, i, "\nurl=") { p = i + 5; break; } i += 1; }
+  }
+  if p < 0 { return; }
+  end := p; while end < text.count && text[end] != '\n' { end += 1; }
+  url := text[p..<end];
+  q := 0; while q < url.count && url[q] != '?' && url[q] != '#' { q += 1; }
+  if q >= url.count || url[q] != '?' { return; }
+  i := q + 1;
+  while i < url.count && url[i] != '#' {
+    stop := i; while stop < url.count && url[stop] != '&' && url[stop] != '#' { stop += 1; }
+    if lg_is(url, i, "next=") {
+      raw := url[i + 5..<stop]; out: [256] u8; n := 0; j := 0; bad := false;
+      while j < raw.count {
+        c := raw[j];
+        if c == '%' {
+          if j + 2 >= raw.count { bad = true; break; }
+          a := lg_hex(raw[j + 1]); b := lg_hex(raw[j + 2]);
+          if a < 0 || b < 0 { bad = true; break; }
+          c = cast(u8) (a * 16 + b); j += 3;
+        } else { if c == '+' { c = ' '; } j += 1; }
+        if n >= 256 { bad = true; break; }
+        out[n] = c; n += 1;
+      }
+      t := cast(string) out[0..<n];
+      if !bad && lg_same_site(t) && !lg_is(t, 0, "/login") { s[0].next_n = lg_set(s[0].next[..], t); }
+      return;
+    }
+    i = stop + 1;
+  }
+}
+lg_go :: (s: [] Lg, path: string) { s[0].out_n = lg_set(s[0].outbox[..], path); s[0].action = LG_ACT_GO; }
+lg_go_next :: (s: [] Lg) {
+  if s[0].next_n > 0 { lg_go(s, cast(string) s[0].next[0..<s[0].next_n]); } else { lg_go(s, "/"); }
+}
+
+// ---------------------------------------------------------------- requests
+// One request at a time: the face sends it (coaxial_http) and calls lg_sent with its id.
+lg_ask :: (s: [] Lg, req: int, url: string, body: string, flags: int) {
+  s[0].req = req; s[0].req_id = -1; s[0].want = true; s[0].flags = flags | LG_HTTP_WANTED;
+  s[0].url_n = lg_set(s[0].url[..], url); s[0].body_n = lg_set(s[0].body[..], body);
+}
+lg_sent :: (s: [] Lg, id: int) #export_c #effects(all) { if s.count < 1 { return; } if id >= 0 { s[0].want = false; s[0].req_id = id; } }
+// A JSON string's characters: quotes and backslashes escaped; control bytes dropped.
+lg_json :: (b: [] u8, at: int, t: string) -> int {
+  n := at;
+  for i: 0..<t.count {
+    c := t[i];
+    if c < ' ' { continue; }
+    if (c == '"' || c == '\\') && n < b.count { b[n] = '\\'; n += 1; }
+    if n < b.count { b[n] = c; n += 1; }
+  }
+  return n;
+}
+lg_account :: (s: [] Lg) { lg_ask(s, REQ_ACCOUNT, "/api/auth/account?as=lines", "", 0); }
+lg_start :: (s: [] Lg) {
+  if s[0].req != REQ_NONE { return; }
+  e := cast(string) s[0].email[0..<s[0].email_n];
+  at := 0; while at < e.count && e[at] != '@' { at += 1; }
+  if e.count < 3 || at == 0 || at >= e.count - 1 { lg_err(s, "Type your email address."); return; }
+  b: [400] u8; n := lg_add(b[..], 0, "{\"email\":\""); n = lg_json(b[..], n, e); n = lg_add(b[..], n, "\"}");
+  lg_no_err(s); lg_ask(s, REQ_START, "/api/auth/email/start?as=lines", cast(string) b[0..<n], LG_HTTP_POST);
+}
+lg_verify :: (s: [] Lg) {
+  if s[0].req != REQ_NONE { return; }
+  if s[0].code_n != 6 { lg_err(s, "Type the 6 digits from the email."); return; }
+  b: [40] u8; n := lg_add(b[..], 0, "{\"code\":\""); n = lg_add(b[..], n, cast(string) s[0].code[0..<6]); n = lg_add(b[..], n, "\"}");
+  lg_no_err(s); lg_ask(s, REQ_VERIFY, "/api/auth/email/verify?as=lines", cast(string) b[0..<n], LG_HTTP_POST);
+}
+lg_key :: (s: [] Lg) {
+  if s[0].req != REQ_NONE { return; }
+  if s[0].has_key == 0 { lg_err(s, "This browser has no Nostr key extension (NIP-07). Add one, then try again."); return; }
+  lg_no_err(s);
+  // The API refuses two credentials: a session here logs out first.
+  if s[0].screen == LG_IN { s[0].logout_then_key = true; lg_ask(s, REQ_LOGOUT, "/api/auth/logout?as=lines", "{}", LG_HTTP_POST); return; }
+  lg_ask(s, REQ_CHALLENGE, "/api/auth/nostr/challenge?as=lines", "{}", LG_HTTP_POST);
+}
+lg_logout :: (s: [] Lg) {
+  if s[0].req != REQ_NONE { return; }
+  s[0].logout_then_key = false; lg_no_err(s); lg_ask(s, REQ_LOGOUT, "/api/auth/logout?as=lines", "{}", LG_HTTP_POST);
+}
+// The phone app's QR: a new challenge, and its poll token.
+lg_phone_start :: (s: [] Lg) {
+  if s[0].req != REQ_NONE { return; }
+  lg_no_err(s); s[0].qr_size = 0; s[0].poll_n = 0; s[0].phone_over = false;
+  lg_ask(s, REQ_PHONE, "/api/auth/phone/start?as=lines", "{}", LG_HTTP_POST);
+}
+lg_poll :: (s: [] Lg) {
+  if s[0].req != REQ_NONE || s[0].poll_n == 0 { return; }
+  b: [120] u8; n := lg_add(b[..], 0, "{\"poll\":\""); n = lg_add(b[..], n, cast(string) s[0].poll[0..<s[0].poll_n]); n = lg_add(b[..], n, "\"}");
+  lg_ask(s, REQ_POLL, "/api/auth/phone/poll?as=lines", cast(string) b[0..<n], LG_HTTP_POST);
+}
+// The face encoded qr_url into qr: status 0 and the grid's side, else a refusal.
+lg_qr :: (s: [] Lg, status: int, size: int) #export_c #effects(all) {
+  if s.count < 1 || !s[0].qr_want { return; }
+  s[0].qr_want = false;
+  if status != 0 || size < 21 || size * size > LG_QR { s[0].qr_size = 0; s[0].phone_over = true; lg_err(s, "The code didn't draw. Show a new one."); return; }
+  s[0].qr_size = size;
+}
+// The body the challenge is signed over, as the API reads it.
+lg_challenge_body :: (s: [] Lg, b: [] u8) -> int {
+  n := lg_add(b, 0, "{\"challenge\":\""); n = lg_add(b, n, cast(string) s[0].challenge[0..<s[0].challenge_n]); return lg_add(b, n, "\"}");
+}
+
+// ---------------------------------------------------------------- answers
+lg_failed :: (s: [] Lg, status: int, lines: string) {
+  found: [1] bool;
+  e := lg_value(lines, "error", found[..]);
+  if found[0] && e.count > 0 { lg_err(s, e); return; }
+  if status == 0 { lg_err(s, "We couldn't reach openagents.com. Check your connection and try again."); return; }
+  lg_err(s, "That didn't work. Try again.");
+}
+lg_answer :: (s: [] Lg, text: string) {
+  nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+  status := lg_int(text[0..<nl]);
+  lines := ifx nl < text.count then text[nl + 1..<text.count] else text[0..<0];
+  req := s[0].req; s[0].req = REQ_NONE; s[0].req_id = -1;
+  found: [1] bool;
+  ok := status >= 200 && status < 300;
+  if req == REQ_ACCOUNT {
+    v := lg_value(lines, "logged_in", found[..]);
+    if ok && found[0] && v == "1" && s[0].screen == LG_EMAIL { s[0].screen = LG_IN; s[0].focus = -1; }
+    return;
+  }
+  if req == REQ_START {
+    if !ok { lg_failed(s, status, lines); return; }
+    s[0].screen = LG_CODE; s[0].code_n = 0; s[0].focus = H_FIELD;
+    s[0].sent_n = lg_set(s[0].sent_to[..], cast(string) s[0].email[0..<s[0].email_n]);
+    t := lg_value(lines, "tries", found[..]); s[0].tries = ifx found[0] then lg_int(t) else 5;
+    x := lg_value(lines, "expires_in", found[..]); s[0].left = cast(f32) (ifx found[0] then lg_int(x) else 600);
+    return;
+  }
+  if req == REQ_VERIFY || req == REQ_NOSTR {
+    if ok && lg_value(lines, "state", found[..]) == "logged-in" { s[0].screen = LG_DONE; lg_go_next(s); return; }
+    if req == REQ_VERIFY && status == 401 && s[0].tries > 0 { s[0].tries -= 1; s[0].code_n = 0; }
+    lg_failed(s, status, lines); return;
+  }
+  if req == REQ_LINK {
+    state := lg_value(lines, "state", found[..]);
+    if ok && state == "logged-in" { s[0].screen = LG_DONE; lg_go(s, "/"); return; }
+    if status == 409 && state == "elsewhere" {
+      c := lg_value(lines, "code", found[..]); s[0].elsewhere_n = lg_set(s[0].elsewhere[..], c); s[0].screen = LG_ELSEWHERE; return;
+    }
+    s[0].screen = LG_LINK_FAILED; lg_failed(s, status, lines); return;
+  }
+  if req == REQ_LOGOUT {
+    if !ok { lg_failed(s, status, lines); return; }
+    s[0].screen = LG_EMAIL; s[0].focus = H_FIELD;
+    if s[0].logout_then_key { s[0].logout_then_key = false; lg_ask(s, REQ_CHALLENGE, "/api/auth/nostr/challenge?as=lines", "{}", LG_HTTP_POST); }
+    return;
+  }
+  if req == REQ_PHONE {
+    if !ok { if s[0].screen == LG_PHONE { s[0].phone_over = true; } lg_failed(s, status, lines); return; }
+    u := lg_value(lines, "url", found[..]);
+    pl := lg_value(lines, "poll", found[..]);
+    if u.count == 0 || u.count > 300 || pl.count != 64 { s[0].phone_over = true; lg_failed(s, 500, lines[0..<0]); return; }
+    s[0].screen = LG_PHONE; s[0].focus = -1; s[0].phone_over = false;
+    s[0].qr_url_n = lg_set(s[0].qr_url[..], u); s[0].qr_want = true; s[0].qr_size = 0;
+    s[0].poll_n = lg_set(s[0].poll[..], pl); s[0].poll_wait = LG_POLL_EVERY;
+    x := lg_value(lines, "expires_in", found[..]); s[0].left = cast(f32) (ifx found[0] then lg_int(x) else 300);
+    return;
+  }
+  if req == REQ_POLL {
+    if s[0].screen != LG_PHONE { return; }
+    state := lg_value(lines, "state", found[..]);
+    if ok && state == "logged-in" { s[0].screen = LG_DONE; s[0].poll_n = 0; lg_go_next(s); return; }
+    if ok && state == "waiting" { s[0].poll_wait = LG_POLL_EVERY; return; }
+    if status == 0 { s[0].poll_wait = LG_POLL_EVERY; return; }   // a dropped connection: the next poll tries again
+    s[0].phone_over = true; s[0].poll_n = 0; lg_failed(s, status, lines); return;
+  }
+  if req == REQ_CHALLENGE {
+    if !ok { lg_failed(s, status, lines); return; }
+    c := lg_value(lines, "challenge", found[..]);
+    if !found[0] || c.count != 64 { lg_failed(s, 500, lines[0..<0]); return; }
+    u := lg_value(lines, "url", found[..]);
+    if !found[0] || u.count == 0 { lg_failed(s, 500, lines[0..<0]); return; }
+    s[0].challenge_n = lg_set(s[0].challenge[..], c);
+    // The signature covers this exact URL: the API checks its own origin, the path and the query.
+    n := lg_set(s[0].nurl[..], u); n = lg_add(s[0].nurl[..], n, "?as=lines"); s[0].nurl_n = n;
+    b: [120] u8; bn := lg_challenge_body(s, b[..]);
+    m := lg_add(s[0].outbox[..], 0, cast(string) s[0].nurl[0..<n]); m = lg_add(s[0].outbox[..], m, "\n"); m = lg_add(s[0].outbox[..], m, cast(string) b[0..<bn]);
+    s[0].out_n = m; s[0].action = LG_ACT_SIGN; s[0].req = REQ_SIGNING;
+    return;
+  }
+}
+// key.js's answer: the Authorization header, or why there is none.
+lg_signed :: (s: [] Lg, text: string) {
+  if s[0].req != REQ_SIGNING { return; }
+  s[0].req = REQ_NONE;
+  if !lg_is(text, 0, "Nostr ") {
+    lg_err(s, ifx text.count > 1 && text[0] == '!' then text[1..<text.count] else "Your key extension didn't sign. Try again.");
+    if lg_is(text, 0, "!This browser has no") { s[0].has_key = 0; }
+    return;
+  }
+  b: [4400] u8; n := lg_add(b[..], 0, text); n = lg_add(b[..], n, "\n");
+  cb: [120] u8; cn := lg_challenge_body(s, cb[..]); n = lg_add(b[..], n, cast(string) cb[0..<cn]);
+  lg_ask(s, REQ_NOSTR, "/api/auth/nostr?as=lines", cast(string) b[0..<n], LG_HTTP_POST | LG_HTTP_AUTH);
+}
+// The hash on /login/email: t=TOKEN. Read once, then cleared from the address bar.
+lg_hash :: (s: [] Lg, text: string) #export_c #effects(all) {
+  if s.count < 1 || s[0].page != LG_PAGE_LINK || s[0].token_n > 0 { return; }
+  if !lg_is(text, 0, "t=") { if s[0].screen == LG_LINK && text.count > 0 { s[0].screen = LG_LINK_FAILED; lg_err(s, "That link isn't whole. Type the code instead."); } return; }
+  t := text[2..<text.count];
+  e := 0; while e < t.count && t[e] != '&' { e += 1; }
+  t = t[0..<e];
+  if t.count != 64 { s[0].screen = LG_LINK_FAILED; lg_err(s, "That link isn't whole. Type the code instead."); return; }
+  s[0].token_n = lg_set(s[0].token[..], t);
+  b: [120] u8; n := lg_add(b[..], 0, "{\"t\":\""); n = lg_json(b[..], n, t); n = lg_add(b[..], n, "\"}");
+  lg_ask(s, REQ_LINK, "/api/auth/email/link?as=lines", cast(string) b[0..<n], LG_HTTP_POST);
+  s[0].out_n = 0; s[0].action = LG_ACT_HASH;   // the token leaves the address bar
+}
+lg_page :: (s: [] Lg, page: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].page = page;
+  if page == LG_PAGE_LINK { s[0].screen = LG_LINK; s[0].focus = -1; } else { s[0].screen = LG_EMAIL; s[0].focus = H_FIELD; lg_account(s); }
+}
+
+// ---------------------------------------------------------------- typing
+lg_typed :: (s: [] Lg, text: string) {
+  if s[0].screen == LG_EMAIL && s[0].focus == H_FIELD {
+    for i: 0..<text.count {
+      c := text[i];
+      if c > ' ' && c < 127 && s[0].email_n < LG_EMAIL_MAX { s[0].email[s[0].email_n] = c; s[0].email_n += 1; }
+    }
+    lg_no_err(s);
+  }
+  if s[0].screen == LG_CODE && s[0].focus == H_FIELD {
+    for i: 0..<text.count {
+      c := text[i];
+      if c >= '0' && c <= '9' && s[0].code_n < 6 { s[0].code[s[0].code_n] = c; s[0].code_n += 1; }
+    }
+    lg_no_err(s);
+    if s[0].code_n == 6 && text.count >= 6 { lg_verify(s); }   // a pasted code goes at once
+  }
+}
+lg_message :: (s: [] Lg, kind: int, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if kind == LG_MSG_TYPED { lg_typed(s, text); return; }
+  if kind == LG_MSG_PAGE { lg_facts(s, text); return; }
+  if kind == LG_MSG_SIGNED { lg_signed(s, text); return; }
+  if kind == LG_MSG_HAS_KEY { s[0].has_key = ifx text == "1" then 1 else 0; return; }
+  if kind >= LG_MSG_HTTP && kind < LG_MSG_HTTP + 64 && kind - LG_MSG_HTTP == s[0].req_id && s[0].req != REQ_NONE { lg_answer(s, text); }
+}
+lg_press :: (s: [] Lg, h: int) {
+  sc := s[0].screen;
+  if h == H_FIELD && (sc == LG_EMAIL || sc == LG_CODE) { s[0].focus = H_FIELD; return; }
+  if h == H_HOME { lg_go(s, "/"); return; }
+  if h == H_LIMITS { lg_go(s, "/docs/limits"); return; }
+  if sc == LG_EMAIL {
+    if h == H_MAIN { lg_start(s); }
+    if h == H_KEY { lg_key(s); }
+    if h == H_PHONE && lg_wide(s) { lg_phone_start(s); }
+    return;
+  }
+  if sc == LG_PHONE {
+    if h == H_RESEND && s[0].phone_over { lg_phone_start(s); }
+    if h == H_OTHER { s[0].screen = LG_EMAIL; s[0].focus = H_FIELD; s[0].poll_n = 0; s[0].qr_size = 0; s[0].phone_over = false; lg_no_err(s); }
+    return;
+  }
+  if sc == LG_CODE {
+    if h == H_MAIN { lg_verify(s); }
+    if h == H_RESEND && s[0].req == REQ_NONE { s[0].code_n = 0; lg_start(s); }
+    if h == H_OTHER && s[0].req == REQ_NONE { s[0].screen = LG_EMAIL; s[0].focus = H_FIELD; s[0].code_n = 0; lg_no_err(s); }
+    return;
+  }
+  if sc == LG_IN {
+    if h == H_MAIN { lg_go_next(s); }
+    if h == H_LOGOUT { lg_logout(s); }
+    if h == H_KEY { lg_key(s); }
+    return;
+  }
+  if (sc == LG_ELSEWHERE || sc == LG_LINK_FAILED) && h == H_MAIN { lg_go(s, "/login"); }
+}
+lg_key_in :: (s: [] Lg, key: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if key == -3 && s[0].focus == H_FIELD {   // Backspace
+    if s[0].screen == LG_EMAIL && s[0].email_n > 0 { s[0].email_n -= 1; lg_no_err(s); }
+    if s[0].screen == LG_CODE && s[0].code_n > 0 { s[0].code_n -= 1; lg_no_err(s); }
+    return true;
+  }
+  if key == -2 {   // Enter: the focused control, or the screen's main button
+    lg_press(s, ifx s[0].focus > H_FIELD then s[0].focus else H_MAIN); return true;
+  }
+  if key == -15 {   // Tab: through what this screen shows
+    order: [8] int; n := lg_order(s, order[..]);
+    if n == 0 { return false; }
+    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
+    s[0].focus = order[(k + 1) % n]; return true;
+  }
+  if key == -1 && s[0].screen == LG_CODE && s[0].req == REQ_NONE { lg_press(s, H_OTHER); return true; }   // Escape
+  return false;
+}
+lg_done :: (s: [] Lg) #export_c #effects(all) { if s.count < 1 { return; } s[0].action = 0; s[0].out_n = 0; }
+lg_wants_text :: (s: [] Lg) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].focus == H_FIELD && (s[0].screen == LG_EMAIL || s[0].screen == LG_CODE);
+}
+
+// ---------------------------------------------------------------- layout
+// Which controls each screen shows, in Tab order.
+lg_order :: (s: [] Lg, out: [] int) -> int {
+  sc := s[0].screen; n := 0;
+  if sc == LG_EMAIL {
+    out[0] = H_FIELD; out[1] = H_MAIN; n = 2;
+    if s[0].has_key != 0 { out[n] = H_KEY; n += 1; }
+    if lg_wide(s) { out[n] = H_PHONE; n += 1; }
+    out[n] = H_LIMITS; n += 1;
+  }
+  if sc == LG_CODE { out[0] = H_FIELD; out[1] = H_MAIN; out[2] = H_RESEND; out[3] = H_OTHER; out[4] = H_LIMITS; n = 5; }
+  if sc == LG_IN { out[0] = H_MAIN; out[1] = H_LOGOUT; n = 2; if s[0].has_key != 0 { out[n] = H_KEY; n += 1; } }
+  if sc == LG_ELSEWHERE || sc == LG_LINK_FAILED { out[0] = H_MAIN; n = 1; }
+  if sc == LG_PHONE { if s[0].phone_over { out[n] = H_RESEND; n += 1; } out[n] = H_OTHER; n += 1; }
+  out[n] = H_HOME; n += 1;
+  return n;
+}
+lg_shown :: (s: [] Lg, h: int) -> bool { order: [10] int; n := lg_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
+// The phone app's QR only where a phone could scan it: not on a phone-width page.
+lg_wide :: (s: [] Lg) -> bool { return s[0].w >= LG_QR_WIDE; }
+LG_PANEL_W :: 440.0;
+LG_PARA :: 8.2;          // a screen's words: cap height, CSS pixels; a line is 2.1 caps
+LG_ERR :: 8.0;           // a refusal's
+LG_NO_KEY :: "Log in with a key needs a Nostr key extension (NIP-07), and this browser has none.";
+LG_ON_PHONE :: "To log in with the phone app, open openagents.com/login on a computer and scan its code with the OpenAgents app on this phone.";
+// Lines of wrapped text at width (CSS pixels), measured as lg_para draws them.
+lg_lines :: (text: string, width: f32, cap: f32) -> int {
+  k := lg_text(Pen.{d = 1, fade = 1, time = 0, still = true, phone = false}, INK_WHITE);
+  n := 0; from := 0;
+  while from < text.count {
+    end := lg_break(text, from, width, cap, k); n += 1;
+    from = end; while from < text.count && text[from] == ' ' { from += 1; }
+  }
+  return n;
+}
+lg_tall :: (text: string, width: f32, cap: f32) -> f32 { return cast(f32) lg_lines(text, width, cap) * cap * 2.1; }
+// The words a screen opens with, under its title ("" none). buf holds the ones made here.
+lg_words :: (s: [] Lg, buf: [] u8) -> string {
+  sc := s[0].screen;
+  if sc == LG_CODE {
+    n := lg_add(buf, 0, "We sent a 6-digit code to "); n = lg_add(buf, n, cast(string) s[0].sent_to[0..<s[0].sent_n]); n = lg_add(buf, n, ".");
+    return cast(string) buf[0..<n];
+  }
+  if sc == LG_IN { return "This browser is logged in. Continue, or log out to use another account."; }
+  if sc == LG_DONE { return "You're logged in."; }
+  if sc == LG_LINK { return ifx s[0].req == REQ_LINK then "Checking your link." else "Open the link from your email to log in."; }
+  if sc == LG_ELSEWHERE { return "This link was opened in another browser. Type this code in the window where you asked:"; }
+  if sc == LG_PHONE { return "Scan this with the OpenAgents app on your phone, then approve the login there."; }
+  return "";
+}
+// The refusal's place: whole, wrapped, at y; returns the y under it.
+lg_err_at :: (s: [] Lg, y: f32, w: f32) -> f32 {
+  s[0].err_y = y;
+  if s[0].error_n == 0 { return y; }
+  return y + lg_tall(cast(string) s[0].error[0..<s[0].error_n], w, LG_ERR) + 10;
+}
+// The panel and every control's box, in CSS pixels. The panel is as tall as what it holds.
+lg_layout :: (s: [] Lg) {
+  sw := hi(240, s[0].w); sh := hi(300, s[0].h);
+  pw := lo(LG_PANEL_W, sw - 32); px := (sw - pw) * 0.5;
+  top := ifx sh > 720 then 120.0f32 else 88.0f32;
+  x0 := px + 24; x1 := px + pw - 24; w := x1 - x0; y := top + 60;
+  for i: 0..<LG_HITS { s[0].hits[i] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  s[0].qr_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  s[0].hits[H_HOME] = Box.{x0 = px + pw - 64, y0 = top - 56, x1 = px + pw, y1 = top - 20};
+  sc := s[0].screen;
+  buf: [400] u8; words := lg_words(s, buf[..]);
+  s[0].para_y = y + 8; s[0].err_y = y;
+  if words.count > 0 { y += 8 + lg_tall(words, w, LG_PARA) + 4; }
+  if sc == LG_EMAIL {
+    y += 36; s[0].hits[H_FIELD] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 8;
+    y = lg_err_at(s, y, w) + 12;
+    s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 40;   // then OR
+    if s[0].has_key != 0 { s[0].hits[H_KEY] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
+    else { y += lg_tall(LG_NO_KEY, w, 7.8) + 8; }
+    if lg_wide(s) { s[0].hits[H_PHONE] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
+    else { y += lg_tall(LG_ON_PHONE, w, 7.8) + 8; }
+    y += 8; s[0].hits[H_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28 + 14;
+  }
+  if sc == LG_CODE {
+    s[0].hits[H_FIELD] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 8;
+    y = lg_err_at(s, y, w) + 12;
+    s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 34;   // then tries and time left
+    half := (x1 - x0 - 12) * 0.5;
+    s[0].hits[H_RESEND] = Box.{x0 = x0, y0 = y, x1 = x0 + half, y1 = y + 40};
+    s[0].hits[H_OTHER] = Box.{x0 = x1 - half, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16;
+    s[0].hits[H_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28 + 14;
+  }
+  if sc == LG_IN {
+    y = lg_err_at(s, y + 4, w) + 8;
+    s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 16;
+    s[0].hits[H_LOGOUT] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16;
+    if s[0].has_key != 0 { s[0].hits[H_KEY] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 16; }
+    y += 8;
+  }
+  if sc == LG_DONE || sc == LG_LINK { y = lg_err_at(s, y, w) + 24; }
+  if sc == LG_ELSEWHERE { y = lg_err_at(s, y + 70, w) + 8; s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 24; }
+  if sc == LG_LINK_FAILED { y = lg_err_at(s, y + 4, w) + 16; s[0].hits[H_MAIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 24; }
+  if sc == LG_PHONE {
+    side := lo(lo(w, 240), hi(150, sh - 430));
+    cx := (x0 + x1) * 0.5;
+    s[0].qr_box = Box.{x0 = floor(cx - side * 0.5), y0 = y, x1 = floor(cx - side * 0.5) + side, y1 = y + side}; y += side + 34;   // then the time left
+    y = lg_err_at(s, y, w) + 8;
+    if s[0].phone_over { s[0].hits[H_RESEND] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
+    s[0].hits[H_OTHER] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 24;
+  }
+  s[0].panel = Box.{x0 = px, y0 = top, x1 = px + pw, y1 = y};
+  d := hi(1, s[0].dpr); f := s[0].hits[H_FIELD];
+  s[0].field[0] = f.x0 * d; s[0].field[1] = f.y0 * d; s[0].field[2] = f.x1 * d; s[0].field[3] = f.y1 * d;
+}
+lg_hit :: (s: [] Lg, x: f32, y: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return H_NONE; }
+  for i: 0..<LG_HITS {
+    b := s[0].hits[i];
+    if b.x1 > b.x0 && lg_shown(s, i) && inside(b, x, y) { return i; }
+  }
+  return H_NONE;
+}
+lg_pointer :: (s: [] Lg, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  d := hi(1, s[0].dpr); px := x / d; py := y / d; s[0].px = px; s[0].py = py;
+  if phase == 0 { s[0].down = true; s[0].pressed = lg_hit(s, px, py); return true; }
+  if phase == 2 || phase == 3 {
+    was := s[0].down; s[0].down = false;
+    if was && phase == 2 && s[0].pressed >= 0 && lg_hit(s, px, py) == s[0].pressed { lg_press(s, s[0].pressed); lg_layout(s); }
+    return true;
+  }
+  return phase == 1 && s[0].down;
+}
+lg_cursor :: (s: [] Lg) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  h := lg_hit(s, s[0].px, s[0].py);
+  if h == H_FIELD { return 3; }
+  return ifx h >= 0 then 1 else 0;
+}
+lg_tick :: (s: [] Lg, dt: f32) {
+  if s[0].screen == LG_CODE && s[0].left > 0 { s[0].left = hi(0, s[0].left - dt); }
+  if s[0].screen == LG_PHONE && !s[0].phone_over {
+    s[0].left = hi(0, s[0].left - dt);
+    if s[0].left <= 0 { s[0].phone_over = true; s[0].poll_n = 0; return; }   // the code has ended: no more polls
+    if s[0].req == REQ_NONE { s[0].poll_wait -= dt; if s[0].poll_wait <= 0 { lg_poll(s); } }
+  }
+}
+
+// ---------------------------------------------------------------- drawing
+lg_text :: (p: Pen, kind: int) -> Ink { k := ink(p, kind); k.sans = true; k.scale = 0; k.glow = 1.1 * p.d; k.core = 0.45 * p.d; return k; }
+lg_red :: (p: Pen) -> Ink { k := lg_text(p, INK_BRIGHT); k.red = 0.95; k.green = 0.45; k.blue = 0.40; return k; }
+lg_box :: (b: Box, d: f32) -> Box { return Box.{x0 = b.x0 * d, y0 = b.y0 * d, x1 = b.x1 * d, y1 = b.y1 * d}; }
+lg_break :: (text: string, start: int, width: f32, cap: f32, k: Ink) -> int {
+  at := start; space := -1;
+  while at < text.count {
+    if text_width(text[start..<at + 1], cap, k) > width { if space > start { return space; } return hi_int(start + 1, at); }
+    if text[at] == ' ' { space = at; } at += 1;
+  }
+  return at;
+}
+// Wrapped text (CSS pixels); returns the vertex count, and the y under it through below.
+lg_para :: (out: [] f32, at: int, text: string, x: f32, y: f32, width: f32, cap: f32, k: Ink, d: f32, below: [] f32) -> int {
+  v := at; from := 0; line := y + cap;
+  while from < text.count {
+    end := lg_break(text, from, width * d, cap * d, k); v = put(out, v, text[from..<end], x * d, line * d, cap * d, k);
+    from = end; while from < text.count && text[from] == ' ' { from += 1; } line += cap * 2.1;
+  }
+  below[0] = line - cap; return v;
+}
+lg_hover :: (s: [] Lg, h: int) -> bool { return lg_hit(s, s[0].px, s[0].py) == h || s[0].focus == h; }
+lg_button :: (s: [] Lg, out: [] f32, at: int, p: Pen, h: int, text: string, main: bool) -> int {
+  b := s[0].hits[h]; if b.x1 <= b.x0 { return at; }
+  return button(out, at, lg_box(b, p.d), text, main, lg_hover(s, h), true, p, ifx s[0].req != REQ_NONE && h != H_HOME then 0.55f32 else 1.0f32);
+}
+lg_field :: (s: [] Lg, out: [] f32, at: int, p: Pen, hint: string, still: bool) -> int {
+  d := p.d; b := s[0].hits[H_FIELD]; on := s[0].focus == H_FIELD;
+  v := frame(out, at, lg_box(b, d), 6 * d, ink(p, ifx on then INK_WHITE else INK_DIM), ifx on then 0.85f32 else 0.45f32, p);
+  tx := b.x0 + 14; base := (b.y0 + b.y1) * 0.5 + 5.5; room := (b.x1 - b.x0 - 28) * d;
+  shown: [16] u8; text := cast(string) s[0].email[0..<s[0].email_n];
+  if s[0].screen == LG_CODE {
+    n := 0; for i: 0..<s[0].code_n { if i == 3 { shown[n] = ' '; n += 1; } shown[n] = s[0].code[i]; n += 1; }
+    text = cast(string) shown[0..<n];
+  }
+  white := lg_text(p, INK_WHITE); cap: f32 = ifx s[0].screen == LG_CODE then 13.0f32 else 10.0f32;
+  if text.count == 0 && !on { return put_fit(out, v, hint, tx * d, base * d, 10 * d, lg_text(p, INK_FAINT), room); }
+  from := 0; while from < text.count && text_width(text[from..<text.count], cap * d, white) > room { from += 1; }
+  v = put(out, v, text[from..<text.count], tx * d, (base + (cap - 10) * 0.5) * d, cap * d, white);
+  if on && (still || fract(s[0].time * 0.9) < 0.6) {
+    cx := tx * d + text_width(text[from..<text.count], cap * d, white) + 2 * d;
+    v = rule(out, v, cx, (base - cap - 2) * d, cx, (base + 3) * d, white, 0.9);
+  }
+  return v;
+}
+lg_left :: (b: [] u8, at: int, seconds: f32) -> int {
+  t := cast(int) floor(seconds + 0.999); m := t / 60; x := t % 60;
+  n := lg_add_int(b, at, m); n = lg_add(b, n, ":"); if x < 10 { n = lg_add(b, n, "0"); } return lg_add_int(b, n, x);
+}
+// The phone's QR: a light square (the light modules and a 4-module quiet zone), the dark
+// modules left dark, whole device pixels a module (as private.coax draws it).
+lg_dark :: (s: [] Lg, y: int, x: int) -> bool {
+  n := s[0].qr_size;
+  if x < 0 || y < 0 || x >= n || y >= n { return false; }
+  return s[0].qr[y * n + x] == 1;
+}
+lg_qr_draw :: (s: [] Lg, out: [] f32, at: int, b: Box, p: Pen) -> int {
+  n := s[0].qr_size; if n <= 0 { return at; }
+  d := p.d; all := n + 8; side := (b.x1 - b.x0) * d;
+  m := hi(1, floor(side / cast(f32) all));
+  x0 := floor(b.x0 * d + (side - m * cast(f32) all) * 0.5); y0 := floor(b.y0 * d + (side - m * cast(f32) all) * 0.5);
+  // newland's strokes have round ends: a module row is drawn as thin strips, so a run's
+  // corners stay square to within a strip's half height, and the strips overlap (no seams)
+  strips := hi_int(1, cast(int) lg_ceil(m / 2)); h := m / cast(f32) strips; r := h * 0.5;
+  v := at;
+  for row: 0..<all {
+    col := 0;
+    while col < all {
+      if lg_dark(s, row - 4, col - 4) { col += 1; continue; }
+      run := col; while run < all && !lg_dark(s, row - 4, run - 4) { run += 1; }
+      ax := x0 + cast(f32) col * m + r; bx := x0 + cast(f32) run * m - r;
+      if bx <= ax { bx = ax + 0.01; }
+      for k: 0..<strips {
+        y := y0 + cast(f32) row * m + (cast(f32) k + 0.5) * h;
+        if lit(out, v, ax, y, bx, y, r + 0.3, 1.0, 0, 0.97, 0.97, 0.97, MODE_STROKE) { v += 6; }
+      }
+      col = run;
+    }
+  }
+  return v;
+}
+lg_ceil :: (x: f32) -> f32 { f := floor(x); return ifx f < x then f + 1 else f; }
+lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
+  d := p.d; b := s[0].panel; x := b.x0 + 24; w := b.x1 - b.x0 - 48; v := at; below: [1] f32;
+  sc := s[0].screen;
+  title := ifx sc == LG_CODE then "CHECK YOUR EMAIL" else ifx sc == LG_IN then "YOU'RE LOGGED IN" else ifx sc == LG_DONE then "LOGGED IN" else ifx sc == LG_ELSEWHERE then "ONE MORE STEP" else ifx sc == LG_PHONE then "LOG IN WITH THE PHONE APP" else "LOG IN";
+  v = put_fit(out, v, title, x * d, (b.y0 + 44) * d, (ifx p.phone then 13.0f32 else 15.0f32) * d, chrome(ink(p, INK_WHITE)), w * d);
+  buf: [400] u8; n := 0;
+  words := lg_words(s, buf[..]);
+  if words.count > 0 { v = lg_para(out, v, words, x, s[0].para_y, w, LG_PARA, lg_text(p, INK_PALE), d, below[..]); }
+  if sc == LG_EMAIL {
+    v = put(out, v, "EMAIL", x * d, (s[0].hits[H_FIELD].y0 - 10) * d, 6.2 * d, ink(p, INK_DIM));
+    v = lg_field(s, out, v, p, "you@example.com", still);
+    v = lg_button(s, out, v, p, H_MAIN, ifx s[0].req == REQ_START then "SENDING" else "SEND CODE", true);
+    m := s[0].hits[H_MAIN].y1;
+    v = put_centred(out, v, "OR", (x + w * 0.5) * d, (m + 26) * d, 6.2 * d, ink(p, INK_DIM));
+    y := m + 40;
+    if s[0].has_key != 0 {
+      v = lg_button(s, out, v, p, H_KEY, ifx s[0].req == REQ_CHALLENGE || s[0].req == REQ_SIGNING || s[0].req == REQ_NOSTR then "SIGNING" else "LOG IN WITH A KEY", false);
+      y = s[0].hits[H_KEY].y1 + 12;
+    } else { v = lg_para(out, v, LG_NO_KEY, x, y, w, 7.8, lg_text(p, INK_DIM), d, below[..]); y = below[0] + 8; }
+    if lg_wide(s) { v = lg_button(s, out, v, p, H_PHONE, ifx s[0].req == REQ_PHONE then "ASKING" else "LOG IN WITH THE PHONE APP", false); }
+    else { v = lg_para(out, v, LG_ON_PHONE, x, y, w, 7.8, lg_text(p, INK_DIM), d, below[..]); }
+  }
+  if sc == LG_CODE {
+    v = lg_field(s, out, v, p, "123 456", still);
+    v = lg_button(s, out, v, p, H_MAIN, ifx s[0].req == REQ_VERIFY then "CHECKING" else "LOG IN", true);
+    m := s[0].hits[H_MAIN].y1;
+    if s[0].left > 0 {
+      n = lg_add_int(buf[..], 0, s[0].tries); n = lg_add(buf[..], n, ifx s[0].tries == 1 then " try left. Ends in " else " tries left. Ends in ");
+      n = lg_left(buf[..], n, s[0].left); n = lg_add(buf[..], n, ".");
+    } else { n = lg_add(buf[..], 0, "This code has ended. Send a new one."); }
+    v = put_fit(out, v, cast(string) buf[0..<n], x * d, (m + 20) * d, 7.8 * d, lg_text(p, INK_DIM), w * d);
+    v = lg_button(s, out, v, p, H_RESEND, ifx s[0].req == REQ_START then "SENDING" else "SEND A NEW CODE", false);
+    v = lg_button(s, out, v, p, H_OTHER, "OTHER EMAIL", false);
+  }
+  if sc == LG_IN {
+    v = lg_button(s, out, v, p, H_MAIN, "CONTINUE", true);
+    v = lg_button(s, out, v, p, H_LOGOUT, ifx s[0].req == REQ_LOGOUT && !s[0].logout_then_key then "LOGGING OUT" else "LOG OUT", false);
+    v = lg_button(s, out, v, p, H_KEY, "LOG IN WITH A KEY INSTEAD", false);
+  }
+  if sc == LG_ELSEWHERE {
+    v = put_centred(out, v, cast(string) s[0].elsewhere[0..<s[0].elsewhere_n], (x + w * 0.5) * d, (s[0].err_y - 26) * d, 22 * d, chrome(ink(p, INK_BRIGHT)));
+    v = lg_button(s, out, v, p, H_MAIN, "LOG IN HERE INSTEAD", false);
+  }
+  if sc == LG_LINK_FAILED { v = lg_button(s, out, v, p, H_MAIN, "LOG IN", true); }
+  if sc == LG_PHONE {
+    q := s[0].qr_box;
+    if s[0].qr_size > 0 && !s[0].phone_over { v = lg_qr_draw(s, out, v, q, p); }
+    else { v = frame(out, v, lg_box(q, d), 6 * d, ink(p, INK_DIM), 0.4, p); }
+    if s[0].phone_over { n = lg_add(buf[..], 0, "This code has ended. Show a new one."); }
+    else { n = lg_add(buf[..], 0, "Ends in "); n = lg_left(buf[..], n, s[0].left); n = lg_add(buf[..], n, "."); }
+    v = put_fit(out, v, cast(string) buf[0..<n], x * d, (q.y1 + 22) * d, 7.8 * d, lg_text(p, INK_DIM), w * d);
+    if s[0].phone_over { v = lg_button(s, out, v, p, H_RESEND, ifx s[0].req == REQ_PHONE then "ASKING" else "SHOW A NEW CODE", true); }
+    v = lg_button(s, out, v, p, H_OTHER, "USE EMAIL INSTEAD", false);
+  }
+  // The refusal, whole, as the API said it (a limit's says when it lifts).
+  if s[0].error_n > 0 { v = lg_para(out, v, cast(string) s[0].error[0..<s[0].error_n], x, s[0].err_y, w, LG_ERR, lg_red(p), d, below[..]); }
+  if lg_shown(s, H_LIMITS) {
+    l := s[0].hits[H_LIMITS]; hot := lg_hover(s, H_LIMITS);
+    v = put(out, v, "LIMITS", l.x0 * d, (l.y0 + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
+    v = rule(out, v, l.x0 * d, (l.y0 + 22) * d, (l.x0 + text_width("LIMITS", 6.4, ink(p, INK_DIM))) * d, (l.y0 + 22) * d, ink(p, ifx hot then INK_BLUE else INK_DIM), 0.5);
+    v = put_fit(out, v, "Codes, tries and waits", (l.x0 + 70) * d, (l.y0 + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 70) * d);
+  }
+  return v;
+}
+lg_frame :: (s: [] Lg, world: [] LandState, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  d := hi(1, dpr); w := width / d; h := height / d;
+  if !s[0].ready { s[0].ready = true; if s[0].page == 0 { lg_page(s, LG_PAGE_LOGIN); } }
+  s[0].w = w; s[0].h = h; s[0].dpr = d; s[0].time += clamp(dt, 0, 0.1);
+  lg_tick(s, clamp(dt, 0, 0.1)); lg_layout(s);
+  p := Pen.{d = d, fade = 1, time = 5 + s[0].time, still = still, phone = w < 760};
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still then 20.0f32 else 20 + s[0].time; u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32; u[6] = 0;
+  look := fv(0, 0, 0); c := cam(look, 0.785, 0.74, 40, width * 0.5, height * 0.62, width, Box.{x0 = 0, y0 = 0, x1 = width, y1 = height}, width, height);
+  v := floor_grid(out, 0, world, c, look, p);
+  b := s[0].panel; paper := lg_box(b, d);
+  for i: 0..<v { out[i * VERTEX_FLOATS + 6] *= ifx inside(paper, out[i * VERTEX_FLOATS], out[i * VERTEX_FLOATS + 1]) then 0.18f32 else 0.75f32; }
+  // nothing of the Grid behind the phone's QR: its dark modules stay dark
+  qb := lg_box(s[0].qr_box, d);
+  if qb.x1 > qb.x0 { for i: 0..<v { if inside(qb, out[i * VERTEX_FLOATS], out[i * VERTEX_FLOATS + 1]) { out[i * VERTEX_FLOATS + 6] = 0; } } }
+  glass(u, 0, paper, 10 * d, 0.86, 0); u[5] = 1;
+  v = frame(out, v, paper, 10 * d, ink(p, INK_DIM), 0.55, p);
+  v = put(out, v, "OPENAGENTS", b.x0 * d, (b.y0 - 32) * d, 6.8 * d, ink(p, INK_DIM));
+  v = lg_button(s, out, v, p, H_HOME, "HOME", false);
+  return lg_body(s, out, v, p, still);
+}
+lg_max_vertices :: () -> int #export_c #effects(all) { return LG_MAX_VERTICES; }
+
+// ---------------------------------------------------------------- tests
+lg_new :: (s: [] Lg, page: int) { s[0].w = 390; s[0].h = 844; s[0].dpr = 1; lg_page(s, page); lg_layout(s); }
+lg_type :: (s: [] Lg, t: string) { lg_message(s, LG_MSG_TYPED, t); }
+lg_reply :: (s: [] Lg, id: int, text: string) { lg_sent(s, id); lg_message(s, LG_MSG_HTTP + id, text); }
+lg_url :: (s: [] Lg) -> string { return cast(string) s[0].url[0..<s[0].url_n]; }
+lg_body_of :: (s: [] Lg) -> string { return cast(string) s[0].body[0..<s[0].body_n]; }
+lg_out :: (s: [] Lg) -> string { return cast(string) s[0].outbox[0..<s[0].out_n]; }
+lg_error_of :: (s: [] Lg) -> string { return cast(string) s[0].error[0..<s[0].error_n]; }
+
+#test "the login page asks who is logged in, and shows the email form to nobody" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN);
+  #assert s[0].want && s[0].req == REQ_ACCOUNT && lg_url(s[..]) == "/api/auth/account?as=lines" && s[0].flags == LG_HTTP_WANTED;
+  lg_reply(s[..], 3, "200\nlogged_in 0\n");
+  #assert s[0].screen == LG_EMAIL && s[0].req == REQ_NONE && lg_wants_text(s[..]);
+}
+#test "already logged in: Continue goes to next, Log out returns to the form" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN);
+  lg_message(s[..], LG_MSG_PAGE, "now=1\nurl=https://openagents.com/login?next=%2Fchat%3Fa%3D1\nref=");
+  lg_reply(s[..], 0, "200\nlogged_in 1\naccount acct_x\n");
+  #assert s[0].screen == LG_IN && !lg_wants_text(s[..]);
+  lg_press(s[..], H_MAIN);
+  #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/chat?a=1";
+  lg_done(s[..]); lg_press(s[..], H_LOGOUT);
+  #assert s[0].req == REQ_LOGOUT && lg_url(s[..]) == "/api/auth/logout?as=lines" && s[0].flags == (LG_HTTP_POST | LG_HTTP_WANTED);
+  lg_reply(s[..], 1, "200\nstate logged-out\n");
+  #assert s[0].screen == LG_EMAIL && s[0].req == REQ_NONE;
+}
+#test "next is kept only as a same-site path" {
+  s: [1] Lg;
+  lg_facts(s[..], "url=https://openagents.com/login?next=/projects/x");
+  #assert cast(string) s[0].next[0..<s[0].next_n] == "/projects/x";
+  bad := [7] string.["url=https://openagents.com/login?next=https://evil.example", "url=https://openagents.com/login?next=//evil.example",
+                     "url=https://openagents.com/login?next=%2F%2Fevil.example", "url=https://openagents.com/login?next=/%5Cevil.example",
+                     "url=https://openagents.com/login?next=javascript:alert(1)", "url=https://openagents.com/login?next=/login?next=/x",
+                     "url=https://openagents.com/login?next=/a%0Ab"];
+  for i: 0..<7 { t: [1] Lg; lg_facts(t[..], bad[i]); #assert t[0].next_n == 0; }
+  t: [1] Lg; lg_facts(t[..], "now=5\nurl=https://openagents.com/login#next=/x"); #assert t[0].next_n == 0;
+  lg_go_next(t[..]); #assert lg_out(t[..]) == "/";
+  #assert lg_same_site("/") && !lg_same_site("") && !lg_same_site("/a b") && !lg_same_site("x/y");
+}
+#test "email, code, logged in: the code screen shows tries and time, and login goes to next" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_facts(s[..], "url=https://openagents.com/login?next=%2Fchat");
+  lg_press(s[..], H_MAIN);
+  #assert s[0].req == REQ_NONE && lg_error_of(s[..]) == "Type your email address.";
+  lg_type(s[..], "ada@example.com"); lg_type(s[..], " ");
+  #assert s[0].error_n == 0 && s[0].email_n == 15;
+  #assert lg_key_in(s[..], -2);
+  #assert s[0].req == REQ_START && lg_url(s[..]) == "/api/auth/email/start?as=lines" && lg_body_of(s[..]) == "{\"email\":\"ada@example.com\"}";
+  lg_press(s[..], H_MAIN);   // a second press while one is out sends nothing new
+  #assert s[0].req == REQ_START;
+  lg_reply(s[..], 2, "200\nstate sent\nexpires_in 600\ntries 5\n");
+  #assert s[0].screen == LG_CODE && s[0].tries == 5 && s[0].left == 600 && lg_wants_text(s[..]);
+  lg_tick(s[..], 2.5); #assert s[0].left == 597.5;
+  lg_type(s[..], "48a2 9");
+  #assert s[0].code_n == 4 && s[0].req == REQ_NONE;
+  _ = lg_key_in(s[..], -3); #assert s[0].code_n == 3;
+  lg_press(s[..], H_MAIN); #assert lg_error_of(s[..]) == "Type the 6 digits from the email." && s[0].req == REQ_NONE;
+  lg_type(s[..], "913"); _ = lg_key_in(s[..], -2);
+  #assert s[0].req == REQ_VERIFY && lg_body_of(s[..]) == "{\"code\":\"482913\"}";
+  lg_reply(s[..], 4, "401\nerror That code isn't right. 4 tries left.\n");
+  #assert s[0].screen == LG_CODE && s[0].tries == 4 && s[0].code_n == 0 && lg_error_of(s[..]) == "That code isn't right. 4 tries left.";
+  lg_type(s[..], "123 456");   // a pasted code goes at once
+  #assert s[0].req == REQ_VERIFY;
+  lg_reply(s[..], 5, "200\nstate logged-in\naccount acct_x\nnew 0\n");
+  #assert s[0].screen == LG_DONE && s[0].action == LG_ACT_GO && lg_out(s[..]) == "/chat";
+}
+#test "a refusal is shown as the API words it, and an unreachable API says so" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_type(s[..], "a@b.co"); lg_press(s[..], H_MAIN);
+  lg_reply(s[..], 1, "429\nerror Too many codes for this address. Try again in 12 minutes.\nlimit email_codes\nuntil_ms 1\n");
+  #assert s[0].screen == LG_EMAIL && lg_error_of(s[..]) == "Too many codes for this address. Try again in 12 minutes.";
+  lg_press(s[..], H_MAIN); lg_reply(s[..], 2, "0\n");
+  #assert lg_error_of(s[..]) == "We couldn't reach openagents.com. Check your connection and try again.";
+  lg_press(s[..], H_MAIN); lg_reply(s[..], 3, "502\n<html>bad gateway</html>");
+  #assert lg_error_of(s[..]) == "That didn't work. Try again.";
+}
+#test "an answer for another request id is ignored" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_sent(s[..], 7);
+  lg_message(s[..], LG_MSG_HTTP + 6, "200\nlogged_in 1\n");
+  #assert s[0].req == REQ_ACCOUNT && s[0].screen == LG_EMAIL;
+}
+#test "Send a new code asks again for the same address; Other email goes back" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_type(s[..], "a@b.co"); lg_press(s[..], H_MAIN); lg_reply(s[..], 1, "200\nstate sent\nexpires_in 600\ntries 5\n");
+  lg_type(s[..], "12"); lg_press(s[..], H_RESEND);
+  #assert s[0].req == REQ_START && s[0].code_n == 0 && lg_body_of(s[..]) == "{\"email\":\"a@b.co\"}";
+  lg_reply(s[..], 2, "200\nstate sent\nexpires_in 600\ntries 5\n");
+  #assert s[0].screen == LG_CODE && s[0].left == 600;
+  lg_press(s[..], H_OTHER);
+  #assert s[0].screen == LG_EMAIL && s[0].email_n == 6;
+}
+#test "a key login: challenge, the extension signs the exact URL and body, then the signed post" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_message(s[..], LG_MSG_HAS_KEY, "1");
+  lg_press(s[..], H_KEY);
+  #assert s[0].req == REQ_CHALLENGE && lg_url(s[..]) == "/api/auth/nostr/challenge?as=lines" && s[0].flags == (LG_HTTP_POST | LG_HTTP_WANTED);
+  ch := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  ans: [200] u8; n := lg_add(ans[..], 0, "200\nchallenge "); n = lg_add(ans[..], n, ch); n = lg_add(ans[..], n, "\nurl https://openagents.com/api/auth/nostr\nexpires_in 300\n");
+  lg_reply(s[..], 1, cast(string) ans[0..<n]);
+  want: [200] u8; m := lg_add(want[..], 0, "https://openagents.com/api/auth/nostr?as=lines\n{\"challenge\":\""); m = lg_add(want[..], m, ch); m = lg_add(want[..], m, "\"}");
+  #assert s[0].req == REQ_SIGNING && s[0].action == LG_ACT_SIGN && lg_out(s[..]) == cast(string) want[0..<m];
+  lg_done(s[..]);
+  lg_message(s[..], LG_MSG_SIGNED, "Nostr eyJrIjoxfQ==");
+  body: [200] u8; k := lg_add(body[..], 0, "Nostr eyJrIjoxfQ==\n{\"challenge\":\""); k = lg_add(body[..], k, ch); k = lg_add(body[..], k, "\"}");
+  #assert s[0].req == REQ_NOSTR && lg_url(s[..]) == "/api/auth/nostr?as=lines" && s[0].flags == (LG_HTTP_POST | LG_HTTP_AUTH | LG_HTTP_WANTED) && lg_body_of(s[..]) == cast(string) body[0..<k];
+  lg_reply(s[..], 2, "200\nstate logged-in\naccount acct_k\nnew 1\n");
+  #assert s[0].screen == LG_DONE && lg_out(s[..]) == "/";
+}
+#test "a key login while logged in logs out first" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 1\n");
+  lg_press(s[..], H_KEY);
+  #assert s[0].req == REQ_LOGOUT && s[0].logout_then_key;
+  lg_reply(s[..], 1, "200\nstate logged-out\n");
+  #assert s[0].req == REQ_CHALLENGE && s[0].screen == LG_EMAIL;
+}
+#test "no extension, or one that won't sign, is said plainly and no request goes" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_message(s[..], LG_MSG_HAS_KEY, "0"); lg_layout(s[..]);
+  #assert !lg_shown(s[..], H_KEY) && s[0].hits[H_KEY].x1 == 0;
+  lg_key(s[..]);
+  #assert s[0].req == REQ_NONE && lg_error_of(s[..]) == "This browser has no Nostr key extension (NIP-07). Add one, then try again.";
+  t: [1] Lg; lg_new(t[..], LG_PAGE_LOGIN); lg_reply(t[..], 0, "200\nlogged_in 0\n");
+  lg_press(t[..], H_KEY); lg_reply(t[..], 1, "200\nchallenge aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nurl https://openagents.com/api/auth/nostr\n");
+  lg_message(t[..], LG_MSG_SIGNED, "!Your key extension didn't sign. Try again.");
+  #assert t[0].req == REQ_NONE && lg_error_of(t[..]) == "Your key extension didn't sign. Try again.";
+  lg_message(t[..], LG_MSG_SIGNED, "Nostr late");   // a late answer sends nothing
+  #assert t[0].req == REQ_NONE;
+}
+#test "the email link logs in, or gives the code to type in the other window" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LINK);
+  #assert s[0].screen == LG_LINK && !s[0].want && !lg_wants_text(s[..]);
+  tok := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  h: [80] u8; n := lg_add(h[..], 0, "t="); n = lg_add(h[..], n, tok);
+  lg_hash(s[..], cast(string) h[0..<n]);
+  #assert s[0].req == REQ_LINK && lg_url(s[..]) == "/api/auth/email/link?as=lines" && s[0].action == LG_ACT_HASH && s[0].out_n == 0;
+  lg_done(s[..]); lg_hash(s[..], "");   // the cleared hash changes nothing
+  #assert s[0].req == REQ_LINK && s[0].screen == LG_LINK;
+  lg_reply(s[..], 0, "409\nstate elsewhere\ncode 123 456\n");
+  #assert s[0].screen == LG_ELSEWHERE && cast(string) s[0].elsewhere[0..<s[0].elsewhere_n] == "123 456";
+  t: [1] Lg; lg_new(t[..], LG_PAGE_LINK); lg_hash(t[..], cast(string) h[0..<n]);
+  lg_reply(t[..], 0, "200\nstate logged-in\naccount acct_x\nnew 0\n");
+  #assert t[0].screen == LG_DONE && lg_out(t[..]) == "/";
+  u: [1] Lg; lg_new(u[..], LG_PAGE_LINK); lg_hash(u[..], "t=short");
+  #assert u[0].screen == LG_LINK_FAILED && u[0].req == REQ_NONE && lg_error_of(u[..]) == "That link isn't whole. Type the code instead.";
+  lg_press(u[..], H_MAIN); #assert lg_out(u[..]) == "/login";
+  e: [1] Lg; lg_new(e[..], LG_PAGE_LINK); lg_hash(e[..], cast(string) h[0..<n]);
+  lg_reply(e[..], 0, "410\nerror That link has ended. Ask for a new code.\n");
+  #assert e[0].screen == LG_LINK_FAILED && lg_error_of(e[..]) == "That link has ended. Ask for a new code.";
+}
+#test "every control a screen shows has a box inside the window, on a phone and a desktop, and a tap on it presses it" #steps 400000000 {
+  for k: 0..<2 {
+    s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+    s[0].w = ifx k == 0 then 360.0f32 else 1440.0f32; s[0].h = ifx k == 0 then 640.0f32 else 900.0f32;
+    for sc: 0..<3 {
+      s[0].screen = ifx sc == 0 then LG_EMAIL else ifx sc == 1 then LG_CODE else LG_IN; lg_layout(s[..]);
+      order: [8] int; n := lg_order(s[..], order[..]);
+      for i: 0..<n {
+        b := s[0].hits[order[i]];
+        #assert b.x1 > b.x0 && b.x0 >= 0 && b.x1 <= s[0].w && b.y0 >= 0 && b.y1 <= s[0].h;
+        #assert lg_hit(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == order[i];
+        for j: 0..<n { if j != i { c := s[0].hits[order[j]]; #assert b.x1 <= c.x0 || c.x1 <= b.x0 || b.y1 <= c.y0 || c.y1 <= b.y0; } }
+      }
+    }
+  }
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  l := s[0].hits[H_LIMITS]; x := (l.x0 + 10); y := (l.y0 + 10);
+  _ = lg_pointer(s[..], x, y, 0); _ = lg_pointer(s[..], x, y, 2);
+  #assert s[0].action == LG_ACT_GO && lg_out(s[..]) == "/docs/limits";
+}
+#test "Tab moves through the screen's controls and Enter presses the focused one" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  #assert s[0].focus == H_FIELD;
+  _ = lg_key_in(s[..], -15); #assert s[0].focus == H_MAIN;
+  _ = lg_key_in(s[..], -15); #assert s[0].focus == H_KEY;
+  _ = lg_key_in(s[..], -15); #assert s[0].focus == H_LIMITS;
+  _ = lg_key_in(s[..], -2); #assert lg_out(s[..]) == "/docs/limits";
+  lg_type(s[..], "x"); #assert s[0].email_n == 0;   // typing lands only in a focused field
+}
+#test "the page draws every screen within its vertex budget" #steps 900000000 {
+  out: [LG_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  for sc: 0..<8 {
+    s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+    s[0].screen = sc; s[0].qr_size = 25; for i: 0..<625 { s[0].qr[i] = cast(u8) (ifx i % 3 == 0 then 1 else 0); } lg_err(s[..], "Too many codes for this address. Try again in 12 minutes."); s[0].elsewhere_n = lg_set(s[0].elsewhere[..], "123 456");
+    v := lg_frame(s[..], world[0..<0], out[..], u[..], 390, 844, 1, 0.016, true);
+    #assert v > 0 && v < LG_MAX_VERTICES;
+  }
+}
+
+LG_LIMIT_WORDS :: "Too many codes for this address. Try again in 42 minutes.";
+LG_POLL64 :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+lg_phone_reply :: (s: [] Lg, id: int) {
+  a: [400] u8; n := lg_add(a[..], 0, "200\nchallenge cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\npoll "); n = lg_add(a[..], n, LG_POLL64);
+  n = lg_add(a[..], n, "\nurl https://openagents.com/login#c=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\nexpires_in 300\n");
+  lg_reply(s, id, cast(string) a[0..<n]);
+}
+#test "a refusal shows whole on every screen, at phone and desktop width: wrapped, never cut, nothing over it" {
+  for k: 0..<2 {
+    for sc: 0..<8 {
+      s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+      s[0].w = ifx k == 0 then 360.0f32 else 1440.0f32; s[0].h = ifx k == 0 then 640.0f32 else 900.0f32;
+      if sc == LG_PHONE { s[0].w = 520; s[0].phone_over = true; }
+      s[0].screen = sc; lg_err(s[..], LG_LIMIT_WORDS); lg_layout(s[..]);
+      w := s[0].panel.x1 - s[0].panel.x0 - 48;
+      lines := lg_lines(LG_LIMIT_WORDS, w, LG_ERR);
+      if k == 0 && sc != LG_PHONE { #assert lines >= 2; }
+      bottom := s[0].err_y + lg_tall(LG_LIMIT_WORDS, w, LG_ERR);
+      #assert bottom <= s[0].panel.y1 && s[0].panel.y1 <= s[0].h;
+      order: [10] int; n := lg_order(s[..], order[..]);
+      for i: 0..<n {
+        b := s[0].hits[order[i]];
+        if order[i] != H_HOME { #assert b.y1 <= s[0].err_y || b.y0 >= bottom; }
+      }
+    }
+  }
+}
+#test "the phone app's QR: asked for, drawn, polled every 2 s, and a yes logs in and goes on" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); s[0].w = 1280; s[0].h = 800; lg_reply(s[..], 0, "200\nlogged_in 0\n"); lg_layout(s[..]);
+  lg_facts(s[..], "url=https://openagents.com/login?next=/projects");
+  #assert lg_shown(s[..], H_PHONE);
+  b := s[0].hits[H_PHONE];
+  _ = lg_pointer(s[..], b.x0 + 5, b.y0 + 5, 0); _ = lg_pointer(s[..], b.x0 + 5, b.y0 + 5, 2);
+  #assert s[0].req == REQ_PHONE && lg_url(s[..]) == "/api/auth/phone/start?as=lines" && s[0].flags == (LG_HTTP_POST | LG_HTTP_WANTED);
+  lg_phone_reply(s[..], 1);
+  #assert s[0].screen == LG_PHONE && s[0].qr_want && s[0].left == 300 && !lg_wants_text(s[..]);
+  #assert cast(string) s[0].qr_url[0..<s[0].qr_url_n] == "https://openagents.com/login#c=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+  lg_qr(s[..], 0, 29); #assert s[0].qr_size == 29 && !s[0].qr_want;
+  lg_tick(s[..], 1.0); #assert s[0].req == REQ_NONE;
+  lg_tick(s[..], 1.1);
+  want: [100] u8; n := lg_add(want[..], 0, "{\"poll\":\""); n = lg_add(want[..], n, LG_POLL64); n = lg_add(want[..], n, "\"}");
+  #assert s[0].req == REQ_POLL && lg_url(s[..]) == "/api/auth/phone/poll?as=lines" && lg_body_of(s[..]) == cast(string) want[0..<n];
+  lg_tick(s[..], 5); #assert s[0].req == REQ_POLL;   // one poll at a time
+  lg_reply(s[..], 2, "200\nstate waiting\n");
+  #assert s[0].req == REQ_NONE && s[0].screen == LG_PHONE;
+  lg_tick(s[..], 2.1); #assert s[0].req == REQ_POLL;
+  lg_reply(s[..], 3, "0\n");   // a dropped connection: polling goes on
+  #assert !s[0].phone_over && s[0].error_n == 0;
+  lg_tick(s[..], 2.1);
+  lg_reply(s[..], 4, "200\nstate logged-in\naccount acct_p\nnew 0\n");
+  #assert s[0].screen == LG_DONE && s[0].action == LG_ACT_GO && lg_out(s[..]) == "/projects";
+}
+#test "polling stops when the QR's code ends, and SHOW A NEW CODE asks again" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); s[0].w = 1280; lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_press(s[..], H_PHONE); lg_phone_reply(s[..], 1);
+  s[0].left = 1; lg_tick(s[..], 1.5);
+  #assert s[0].phone_over && s[0].req == REQ_NONE && lg_shown(s[..], H_RESEND);
+  for i: 0..<10 { lg_tick(s[..], 2.5); }
+  #assert s[0].req == REQ_NONE;
+  lg_press(s[..], H_RESEND);
+  #assert s[0].req == REQ_PHONE;
+  lg_phone_reply(s[..], 2);
+  #assert !s[0].phone_over && s[0].left == 300 && !lg_shown(s[..], H_RESEND);
+}
+#test "a refused poll is shown as said and offers a new code; leaving for email drops a late answer" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); s[0].w = 1280; lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  lg_press(s[..], H_PHONE); lg_phone_reply(s[..], 1); lg_tick(s[..], 2.1);
+  lg_reply(s[..], 2, "410\nerror That code has ended. Show a new one.\n");
+  #assert s[0].phone_over && lg_error_of(s[..]) == "That code has ended. Show a new one." && lg_shown(s[..], H_RESEND);
+  lg_tick(s[..], 3); #assert s[0].req == REQ_NONE;
+  lg_press(s[..], H_RESEND); lg_phone_reply(s[..], 3); lg_tick(s[..], 2.1);
+  #assert s[0].req == REQ_POLL;
+  lg_press(s[..], H_OTHER);
+  #assert s[0].screen == LG_EMAIL && lg_wants_text(s[..]);
+  lg_reply(s[..], 4, "200\nstate logged-in\naccount acct_p\nnew 0\n");
+  #assert s[0].screen == LG_EMAIL && s[0].action == 0 && s[0].req == REQ_NONE;
+  t: [1] Lg; lg_new(t[..], LG_PAGE_LOGIN); t[0].w = 1280; lg_reply(t[..], 0, "200\nlogged_in 0\n");
+  lg_press(t[..], H_PHONE); lg_reply(t[..], 1, "429\nerror Too many codes from here. Try again in 5 minutes.\n");
+  #assert t[0].screen == LG_EMAIL && lg_error_of(t[..]) == "Too many codes from here. Try again in 5 minutes.";
+}
+#test "a phone-width page offers no QR to scan: it says how instead" {
+  s: [1] Lg; lg_new(s[..], LG_PAGE_LOGIN); lg_reply(s[..], 0, "200\nlogged_in 0\n");
+  #assert !lg_shown(s[..], H_PHONE) && s[0].hits[H_PHONE].x1 == 0;
+  lg_press(s[..], H_PHONE);   // nothing there to press, and nothing goes
+  #assert s[0].req == REQ_NONE && s[0].screen == LG_EMAIL;
+  lg_err(s[..], LG_LIMIT_WORDS);
+}
