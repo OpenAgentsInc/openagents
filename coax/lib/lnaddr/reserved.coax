@@ -1,0 +1,19 @@
+// Reserved @openagents.com Lightning Address names
+// (docs/auth/lightning-addresses.md#names). Changed only by a deploy, like
+// admins.conf; team members' own names are added here too. A candidate name is
+// refused when either the lowercased name itself or its skeleton matches any
+// entry in LN_RESERVED.
+
+LN_RESERVED_COUNT :: 28;
+LN_RESERVED :: [LN_RESERVED_COUNT] string.[
+  // The LUD-16 default identifier (_@openagents.com), left unused.
+  "_",
+  // System words.
+  "admin", "root", "api", "www", "mail",
+  "postmaster", "hostmaster", "webmaster", "abuse", "security",
+  "support", "help", "billing", "pay", "payments",
+  "wallet", "lnurl", "noreply",
+  // Our names.
+  "openagents", "oa", "team", "staff", "official",
+  "verse", "everglade", "coder", "foreman",
+];

@@ -1,0 +1,482 @@
+// Name rules for name@openagents.com Lightning Addresses
+// (docs/auth/lightning-addresses.md#names). Pure Coax: no database and no HTTP.
+//
+//   lnaddr_parse(input)        split "name" or "name+tag" (LUD-16 tags), fold
+//                              ASCII capitals to lowercase, refuse non-ASCII
+//                              and characters outside a-z, 0-9, ., - and _
+//   lnaddr_validity(name)      3 to 32 lowercase characters; ., - and _ never
+//                              first, never last, never twice in a row
+//   lnaddr_skeleton(name, out) drop ., - and _ and map 0 -> o, 1 -> l, i -> l
+//   lnaddr_is_reserved(name)   true when name or its skeleton hits LN_RESERVED
+//   lnaddr_lookup(input)       parse + reserved + validity + skeleton for a
+//                              lookup ("alice" and "alice+tips" resolve to the
+//                              same name and skeleton; a tag never selects a
+//                              different person)
+//   lnaddr_claim(input)        the same rules for claiming a name (+tag refused)
+//   lnaddr_reason_text(reason) a short refusal line a person can read
+#module "coax.lnaddr.name";
+#load "reserved.coax";
+#authority;
+
+LN_NAME_MIN :: 3;
+LN_NAME_MAX :: 32;
+LN_PARSE_MAX :: 64;
+LN_TAG_MAX :: 64;
+
+LnaddrReason :: enum u32 {
+  ok = 0;
+  non_ascii = 1;
+  character = 2;
+  bad_tag = 3;
+  tag_in_claim = 4;
+  too_short = 5;
+  too_long = 6;
+  separator_first = 7;
+  separator_last = 8;
+  separator_twice = 9;
+  reserved = 10;
+}
+
+LnaddrParsed :: struct {
+  reason: LnaddrReason;
+  name: [LN_PARSE_MAX] u8;
+  name_len: int;
+  has_tag: bool;
+  tag: [LN_TAG_MAX] u8;
+  tag_len: int;
+}
+
+LnaddrResult :: struct {
+  reason: LnaddrReason;
+  name: [LN_NAME_MAX] u8;
+  name_len: int;
+  skeleton: [LN_NAME_MAX] u8;
+  skeleton_len: int;
+  has_tag: bool;
+  tag: [LN_TAG_MAX] u8;
+  tag_len: int;
+}
+
+// ---- checks
+
+#forall "ASCII character set, case folding, and non-ASCII refusal" b: 0..<256 {
+  c := cast(u8) b;
+  lower := c >= 'a' && c <= 'z';
+  upper := c >= 'A' && c <= 'Z';
+  digit := c >= '0' && c <= '9';
+  sep := c == '.' || c == '-' || c == '_';
+  #assert lnaddr_is_sep(c) == sep;
+  #assert lnaddr_is_lower_char(c) == (lower || digit || sep);
+  folded := lnaddr_lower_byte(c);
+  if upper {
+    #assert folded == c + 32;
+  } else {
+    #assert folded == c;
+  }
+  expected := LnaddrReason.character;
+  if b >= 128 {
+    expected = LnaddrReason.non_ascii;
+  } else if lower || upper || digit || sep {
+    expected = LnaddrReason.ok;
+  }
+  #assert lnaddr_byte_reason(c) == expected;
+}
+
+#test "the doc's examples: alice, alice+tips, builder-bot, and chris.d / chrisd / chr1sd" {
+  alice := lnaddr_claim("alice");
+  #assert alice.reason == LnaddrReason.ok && !alice.has_tag && alice.tag_len == 0;
+  #assert cast(string) alice.name[0..<alice.name_len] == "alice";
+  #assert cast(string) alice.skeleton[0..<alice.skeleton_len] == "allce";
+
+  // LUD-16 +tag: reaches the same person and skeleton; never claimable as part of a name.
+  tagged := lnaddr_lookup("alice+tips");
+  #assert tagged.reason == LnaddrReason.ok && tagged.has_tag;
+  #assert cast(string) tagged.name[0..<tagged.name_len] == "alice";
+  #assert cast(string) tagged.skeleton[0..<tagged.skeleton_len] == "allce";
+  #assert cast(string) tagged.tag[0..<tagged.tag_len] == "tips";
+  #assert lnaddr_claim("alice+tips").reason == LnaddrReason.tag_in_claim;
+
+  bot := lnaddr_claim("builder-bot");
+  #assert bot.reason == LnaddrReason.ok;
+  #assert cast(string) bot.name[0..<bot.name_len] == "builder-bot";
+  #assert cast(string) bot.skeleton[0..<bot.skeleton_len] == "bullderbot";
+
+  // Uniqueness by skeleton: chris.d, chrisd and chr1sd share one skeleton.
+  c1 := lnaddr_claim("chris.d");
+  c2 := lnaddr_claim("chrisd");
+  c3 := lnaddr_claim("chr1sd");
+  #assert c1.reason == LnaddrReason.ok && c2.reason == LnaddrReason.ok && c3.reason == LnaddrReason.ok;
+  #assert cast(string) c1.name[0..<c1.name_len] == "chris.d";
+  #assert cast(string) c2.name[0..<c2.name_len] == "chrisd";
+  #assert cast(string) c3.name[0..<c3.name_len] == "chr1sd";
+  #assert cast(string) c1.skeleton[0..<c1.skeleton_len] == "chrlsd";
+  #assert cast(string) c2.skeleton[0..<c2.skeleton_len] == "chrlsd";
+  #assert cast(string) c3.skeleton[0..<c3.skeleton_len] == "chrlsd";
+}
+
+#test "capitals folded, é and non-ASCII refused, and +tag split rules" {
+  up := lnaddr_lookup("Alice+Tips");
+  #assert up.reason == LnaddrReason.ok && up.has_tag;
+  #assert cast(string) up.name[0..<up.name_len] == "alice";
+  #assert cast(string) up.tag[0..<up.tag_len] == "tips";
+
+  claimed := lnaddr_claim("CHRIS.D");
+  #assert claimed.reason == LnaddrReason.ok;
+  #assert cast(string) claimed.name[0..<claimed.name_len] == "chris.d";
+  #assert cast(string) claimed.skeleton[0..<claimed.skeleton_len] == "chrlsd";
+
+  alpha := lnaddr_claim("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567");
+  #assert alpha.reason == LnaddrReason.ok;
+  #assert cast(string) alpha.name[0..<alpha.name_len] == "abcdefghijklmnopqrstuvwxyz234567";
+
+  // Non-ASCII letters refused, never transliterated.
+  b127 := [1] u8.[127];
+  b128 := [1] u8.[128];
+  #assert lnaddr_validity(cast(string) b127[..]) == LnaddrReason.character;
+  #assert lnaddr_validity(cast(string) b128[..]) == LnaddrReason.non_ascii;
+  #assert lnaddr_parse("é").reason == LnaddrReason.non_ascii;
+  #assert lnaddr_validity("é") == LnaddrReason.non_ascii;
+  #assert lnaddr_lookup("é").reason == LnaddrReason.non_ascii;
+  #assert lnaddr_claim("é").reason == LnaddrReason.non_ascii;
+  #assert lnaddr_claim("élise").reason == LnaddrReason.non_ascii;
+  #assert lnaddr_claim("café").reason == LnaddrReason.non_ascii;
+  #assert lnaddr_claim("аlice").reason == LnaddrReason.non_ascii;   // Cyrillic а
+  #assert lnaddr_lookup("alice+é").reason == LnaddrReason.non_ascii;
+
+  // Disallowed ASCII characters in name vs malformed +tag.
+  #assert lnaddr_claim("alice@openagents.com").reason == LnaddrReason.character;
+  #assert lnaddr_claim("alice bob").reason == LnaddrReason.character;
+  #assert lnaddr_claim("alice!bob").reason == LnaddrReason.character;
+  #assert lnaddr_validity("Alice") == LnaddrReason.character;
+  #assert lnaddr_lookup("alice+").reason == LnaddrReason.bad_tag;
+  #assert lnaddr_lookup("alice+a+b").reason == LnaddrReason.bad_tag;
+  #assert lnaddr_lookup("alice+!").reason == LnaddrReason.bad_tag;
+  #assert lnaddr_lookup("+a+b").reason == LnaddrReason.bad_tag;
+  #assert lnaddr_lookup("+!").reason == LnaddrReason.bad_tag;
+  #assert lnaddr_lookup("+tips").reason == LnaddrReason.too_short;
+
+  // Tag length bounds: 1 and 64 pass; 65 refuses.
+  t1 := lnaddr_lookup("alice+x");
+  #assert t1.reason == LnaddrReason.ok && t1.has_tag && cast(string) t1.tag[0..<t1.tag_len] == "x";
+  buf: [71] u8;
+  prefix := "alice+";
+  for i: 0..<prefix.count { buf[i] = prefix[i]; }
+  for i: prefix.count..<71 { buf[i] = 't'; }
+  t64 := lnaddr_lookup(cast(string) buf[0..<70]);
+  #assert t64.reason == LnaddrReason.ok && t64.has_tag && t64.tag_len == 64;
+  #assert lnaddr_lookup(cast(string) buf[0..<71]).reason == LnaddrReason.bad_tag;
+}
+
+#test "length boundaries: 0, 1, 2, 3, 32, 33, 64 and 65" {
+  #assert lnaddr_parse("").reason == LnaddrReason.too_short;
+  #assert lnaddr_claim("").reason == LnaddrReason.too_short;
+  #assert lnaddr_claim("a").reason == LnaddrReason.too_short;
+  #assert lnaddr_claim("ab").reason == LnaddrReason.too_short;
+  #assert lnaddr_validity("ab") == LnaddrReason.too_short;
+
+  n3 := lnaddr_claim("abc");
+  #assert n3.reason == LnaddrReason.ok && n3.name_len == 3 && cast(string) n3.name[0..<3] == "abc";
+
+  chars: [65] u8;
+  for i: 0..<65 { chars[i] = 'a'; }
+  n32 := lnaddr_claim(cast(string) chars[0..<32]);
+  #assert n32.reason == LnaddrReason.ok && n32.name_len == 32;
+  #assert lnaddr_validity(cast(string) chars[0..<32]) == LnaddrReason.ok;
+  #assert lnaddr_validity(cast(string) chars[0..<33]) == LnaddrReason.too_long;
+  #assert lnaddr_claim(cast(string) chars[0..<33]).reason == LnaddrReason.too_long;
+  #assert lnaddr_lookup(cast(string) chars[0..<33]).reason == LnaddrReason.too_long;
+
+  // Overlong input whose skeleton matches a reserved name still fails length first.
+  over_reserved: [33] u8;
+  head := "openagents";
+  for i: 0..<head.count { over_reserved[i] = head[i]; }
+  for i: head.count..<33 { over_reserved[i] = '.'; }
+  #assert lnaddr_lookup(cast(string) over_reserved[..]).reason == LnaddrReason.too_long;
+
+  // lnaddr_parse accepts up to LN_PARSE_MAX (64) and refuses 65.
+  p64 := lnaddr_parse(cast(string) chars[0..<64]);
+  #assert p64.reason == LnaddrReason.ok && p64.name_len == 64;
+  #assert lnaddr_parse(cast(string) chars[0..<65]).reason == LnaddrReason.too_long;
+}
+
+#test "separators ., - and _: never first, never last, never twice in a row" {
+  for s: [3] string.["-ab", ".ab", "_ab"] {
+    #assert lnaddr_validity(s) == LnaddrReason.separator_first;
+    #assert lnaddr_claim(s).reason == LnaddrReason.separator_first;
+    #assert lnaddr_lookup(s).reason == LnaddrReason.separator_first;
+  }
+  for s: [3] string.["ab-", "ab.", "ab_"] {
+    #assert lnaddr_validity(s) == LnaddrReason.separator_last;
+    #assert lnaddr_claim(s).reason == LnaddrReason.separator_last;
+    #assert lnaddr_lookup(s).reason == LnaddrReason.separator_last;
+  }
+  for s: [11] string.["a..b", "a--b", "a__b", "a.-b", "a_-b", "a._b", "a-.b", "a_.b", "a-_b", "..a", "a.."] {
+    #assert lnaddr_validity(s) == LnaddrReason.separator_twice;
+    #assert lnaddr_claim(s).reason == LnaddrReason.separator_twice;
+    #assert lnaddr_lookup(s).reason == LnaddrReason.separator_twice;
+  }
+  for s: [4] string.["a.b", "a-b", "a_b", "a.b-c_9.z"] {
+    #assert lnaddr_validity(s) == LnaddrReason.ok;
+    #assert lnaddr_claim(s).reason == LnaddrReason.ok;
+  }
+}
+
+#test "skeleton mapping and output capacity" {
+  out: [16] u8;
+  for i: 0..<16 { out[i] = 99; }
+  n := lnaddr_skeleton("01iIlLoO23456789.-_abcXYZ", out[..]);
+  #assert n == -1 && out[0] == 99;
+
+  big: [32] u8;
+  n = lnaddr_skeleton("01iIlLoO23456789.-_abcXYZ", big[..]);
+  #assert n == 22 && cast(string) big[0..<n] == "ollllloo23456789abcxyz";
+
+  // Exact fit works; one byte short refuses without writing.
+  exact: [6] u8;
+  #assert lnaddr_skeleton("chris.d", exact[..]) == 6 && cast(string) exact[..] == "chrlsd";
+  for i: 0..<6 { exact[i] = 77; }
+  #assert lnaddr_skeleton("chris.d", exact[0..<5]) == -1 && exact[0] == 77;
+  #assert lnaddr_skeleton("é", exact[..]) == -1 && exact[0] == 77;
+  #assert lnaddr_skeleton("a+b", exact[..]) == -1 && exact[0] == 77;
+  #assert lnaddr_skeleton("._-", exact[0..<0]) == 0;
+}
+
+#test "reserved names from reserved.coax: exact, uppercase, +tag, and hit by skeleton" {
+  expected := [28] string.[
+    "_",
+    "admin", "root", "api", "www", "mail",
+    "postmaster", "hostmaster", "webmaster", "abuse", "security",
+    "support", "help", "billing", "pay", "payments",
+    "wallet", "lnurl", "noreply",
+    "openagents", "oa", "team", "staff", "official",
+    "verse", "everglade", "coder", "foreman",
+  ];
+  #assert LN_RESERVED_COUNT == 28;
+  for i: 0..<28 {
+    w := expected[i];
+    #assert LN_RESERVED[i] == w;
+    #assert lnaddr_is_reserved(w);
+    #assert lnaddr_claim(w).reason == LnaddrReason.reserved;
+    #assert lnaddr_lookup(w).reason == LnaddrReason.reserved;
+    tagged: [40] u8;
+    for j: 0..<w.count { tagged[j] = w[j]; }
+    suffix := "+tips";
+    for j: 0..<suffix.count { tagged[w.count + j] = suffix[j]; }
+    #assert lnaddr_lookup(cast(string) tagged[0..<w.count + suffix.count]).reason == LnaddrReason.reserved;
+  }
+
+  // Capitals and skeleton look-alikes hit reserved names.
+  skeleton_hits := [22] string.[
+    "ADMIN", "OpenAgents", "OA",
+    "adm1n", "ad.min", "a-d-m-l-n",
+    "r00t", "ap1", "w.w.w", "ma1l",
+    "p0stmaster", "h0stmaster", "secur1ty",
+    "supp0rt", "he1p", "b1ll1ng", "wa11et", "lnur1", "n0reply",
+    "0penagents", "o.a", "0-a",
+  ];
+  for s: skeleton_hits {
+    #assert lnaddr_is_reserved(s);
+    #assert lnaddr_claim(s).reason == LnaddrReason.reserved;
+    #assert lnaddr_lookup(s).reason == LnaddrReason.reserved;
+  }
+  #assert lnaddr_claim("0ff1c1al").reason == LnaddrReason.reserved;
+  #assert lnaddr_claim("c0der").reason == LnaddrReason.reserved;
+  #assert lnaddr_claim("f0reman").reason == LnaddrReason.reserved;
+  #assert lnaddr_claim("ever.glade").reason == LnaddrReason.reserved;
+  #assert lnaddr_claim("v_e_r_s_e").reason == LnaddrReason.reserved;
+
+  // Non-matches: separator-only strings don't match _, and unmapped digits stay distinct.
+  #assert !lnaddr_is_reserved("---") && !lnaddr_is_reserved("__") && !lnaddr_is_reserved(".");
+  #assert !lnaddr_is_reserved("é") && !lnaddr_is_reserved("alice");
+  #assert lnaddr_claim("s3curity").reason == LnaddrReason.ok;
+}
+
+#test "every refusal has a distinct typed reason and a readable line" {
+  #assert lnaddr_reason_text(LnaddrReason.ok) == "";
+  reasons := [10] LnaddrReason.[
+    LnaddrReason.non_ascii,
+    LnaddrReason.character,
+    LnaddrReason.bad_tag,
+    LnaddrReason.tag_in_claim,
+    LnaddrReason.too_short,
+    LnaddrReason.too_long,
+    LnaddrReason.separator_first,
+    LnaddrReason.separator_last,
+    LnaddrReason.separator_twice,
+    LnaddrReason.reserved,
+  ];
+  for i: 0..<10 {
+    line := lnaddr_reason_text(reasons[i]);
+    #assert line.count >= 16 && line.count <= 80;
+    for b: line { #assert b >= 32 && b < 127; }
+    for j: 0..<i { #assert line != lnaddr_reason_text(reasons[j]); }
+  }
+}
+
+// ---- character classes and skeleton
+
+lnaddr_is_sep :: (b: u8) -> bool #effects(all) {
+  return b == '.' || b == '-' || b == '_';
+}
+
+lnaddr_is_lower_char :: (b: u8) -> bool #effects(all) {
+  return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || lnaddr_is_sep(b);
+}
+
+lnaddr_lower_byte :: (b: u8) -> u8 #effects(all) {
+  if b >= 'A' && b <= 'Z' { return b + 32; }
+  return b;
+}
+
+lnaddr_byte_reason :: (b: u8) -> LnaddrReason #effects(all) {
+  if b >= 128 { return LnaddrReason.non_ascii; }
+  if lnaddr_is_lower_char(lnaddr_lower_byte(b)) { return LnaddrReason.ok; }
+  return LnaddrReason.character;
+}
+
+lnaddr_skeleton_char :: (c: u8) -> u8 #effects(all) {
+  if c == '0' { return 'o'; }
+  if c == '1' || c == 'i' { return 'l'; }
+  return c;
+}
+
+// Drops ., - and _, folds ASCII case, and maps 0 -> o, 1 -> l, i -> l into
+// out. Returns the skeleton length, or -1 if name has a disallowed byte or
+// out is too small (leaving out untouched).
+lnaddr_skeleton :: (name: string, out: [] u8) -> int #export_c #effects(all) {
+  needed := 0;
+  for b: name {
+    c := lnaddr_lower_byte(b);
+    if !lnaddr_is_lower_char(c) { return -1; }
+    if !lnaddr_is_sep(c) { needed += 1; }
+  }
+  if out.count < needed { return -1; }
+  at := 0;
+  for b: name {
+    c := lnaddr_lower_byte(b);
+    if !lnaddr_is_sep(c) {
+      out[at] = lnaddr_skeleton_char(c);
+      at += 1;
+    }
+  }
+  return needed;
+}
+
+// ---- parse, validity, reserved, lookup and claim
+
+// Splits "name" or "name+tag" at the first +, folds ASCII uppercase to
+// lowercase, and refuses non-ASCII, characters outside a-z, 0-9, ., - and _,
+// empty/overlong names, and empty/overlong/malformed tags.
+lnaddr_parse :: (input: string) -> LnaddrParsed #export_c #effects(all) {
+  plus := -1;
+  for i: 0..<input.count {
+    if plus < 0 && input[i] == '+' { plus = i; }
+  }
+  raw_name := ifx plus < 0 then input else input[0..<plus];
+  has_tag := plus >= 0;
+  raw_tag := ifx has_tag then input[plus + 1..<input.count] else "";
+  for b: raw_name {
+    r := lnaddr_byte_reason(b);
+    if r != LnaddrReason.ok { return LnaddrParsed.{reason = r}; }
+  }
+  for b: raw_tag {
+    r := lnaddr_byte_reason(b);
+    if r == LnaddrReason.non_ascii { return LnaddrParsed.{reason = LnaddrReason.non_ascii}; }
+    if r != LnaddrReason.ok { return LnaddrParsed.{reason = LnaddrReason.bad_tag}; }
+  }
+  if raw_name.count == 0 { return LnaddrParsed.{reason = LnaddrReason.too_short}; }
+  if raw_name.count > LN_PARSE_MAX { return LnaddrParsed.{reason = LnaddrReason.too_long}; }
+  if has_tag && (raw_tag.count == 0 || raw_tag.count > LN_TAG_MAX) {
+    return LnaddrParsed.{reason = LnaddrReason.bad_tag};
+  }
+  parsed: LnaddrParsed;
+  parsed.name_len = raw_name.count;
+  for i: 0..<raw_name.count { parsed.name[i] = lnaddr_lower_byte(raw_name[i]); }
+  parsed.has_tag = has_tag;
+  parsed.tag_len = raw_tag.count;
+  for i: 0..<raw_tag.count { parsed.tag[i] = lnaddr_lower_byte(raw_tag[i]); }
+  return parsed;
+}
+
+// Checks a lowercase name: 3 to 32 characters; ., - and _ never first, never
+// last, never twice in a row.
+lnaddr_validity :: (name: string) -> LnaddrReason #export_c #effects(all) {
+  for b: name {
+    if b >= 128 { return LnaddrReason.non_ascii; }
+    if !lnaddr_is_lower_char(b) { return LnaddrReason.character; }
+  }
+  if name.count < LN_NAME_MIN { return LnaddrReason.too_short; }
+  if name.count > LN_NAME_MAX { return LnaddrReason.too_long; }
+  for i: 1..<name.count {
+    if lnaddr_is_sep(name[i - 1]) && lnaddr_is_sep(name[i]) {
+      return LnaddrReason.separator_twice;
+    }
+  }
+  if lnaddr_is_sep(name[0]) { return LnaddrReason.separator_first; }
+  if lnaddr_is_sep(name[name.count - 1]) { return LnaddrReason.separator_last; }
+  return LnaddrReason.ok;
+}
+
+// True when name (case-insensitive) or its skeleton matches an entry in
+// LN_RESERVED.
+lnaddr_is_reserved :: (name: string) -> bool #export_c #effects(all) {
+  skel: [LN_PARSE_MAX] u8;
+  skel_len := lnaddr_skeleton(name, skel[..]);
+  if skel_len < 0 { return false; }
+  skel_str := cast(string) skel[0..<skel_len];
+  for r: LN_RESERVED {
+    if r == "_" {
+      if name == "_" { return true; }
+    } else {
+      r_skel: [LN_NAME_MAX] u8;
+      r_len := lnaddr_skeleton(r, r_skel[..]);
+      if skel_str == cast(string) r_skel[0..<r_len] { return true; }
+    }
+  }
+  return false;
+}
+
+// Resolves a lookup local-part ("name" or "name+tag") through every rule.
+lnaddr_lookup :: (input: string) -> LnaddrResult #export_c #effects(all) {
+  p := lnaddr_parse(input);
+  if p.reason != LnaddrReason.ok { return LnaddrResult.{reason = p.reason}; }
+  if p.name_len > LN_NAME_MAX { return LnaddrResult.{reason = LnaddrReason.too_long}; }
+  name_str := cast(string) p.name[0..<p.name_len];
+  if lnaddr_is_reserved(name_str) { return LnaddrResult.{reason = LnaddrReason.reserved}; }
+  v := lnaddr_validity(name_str);
+  if v != LnaddrReason.ok { return LnaddrResult.{reason = v}; }
+  out: LnaddrResult;
+  out.name_len = p.name_len;
+  for i: 0..<p.name_len { out.name[i] = p.name[i]; }
+  out.skeleton_len = lnaddr_skeleton(name_str, out.skeleton[..]);
+  out.has_tag = p.has_tag;
+  out.tag_len = p.tag_len;
+  for i: 0..<p.tag_len { out.tag[i] = p.tag[i]; }
+  return out;
+}
+
+// Validates a candidate name to claim (+tag is refused).
+lnaddr_claim :: (input: string) -> LnaddrResult #export_c #effects(all) {
+  r := lnaddr_lookup(input);
+  if r.reason == LnaddrReason.ok && r.has_tag {
+    return LnaddrResult.{reason = LnaddrReason.tag_in_claim};
+  }
+  return r;
+}
+
+// A short refusal line a person can read, or "" for LnaddrReason.ok.
+lnaddr_reason_text :: (reason: LnaddrReason) -> string #export_c #effects(all) {
+  switch reason {
+    case LnaddrReason.ok { return ""; }
+    case LnaddrReason.non_ascii { return "Non-ASCII letters aren't allowed; use a to z and 0 to 9"; }
+    case LnaddrReason.character { return "Use only letters a to z, digits 0 to 9, and ., - or _"; }
+    case LnaddrReason.bad_tag { return "A +tag must be 1 to 64 characters of a to z, 0 to 9, ., - or _"; }
+    case LnaddrReason.tag_in_claim { return "Don't include +tag when claiming a name"; }
+    case LnaddrReason.too_short { return "Names must be at least 3 characters"; }
+    case LnaddrReason.too_long { return "Names can be at most 32 characters"; }
+    case LnaddrReason.separator_first { return "Names can't start with ., - or _"; }
+    case LnaddrReason.separator_last { return "Names can't end with ., - or _"; }
+    case LnaddrReason.separator_twice { return "Separators ., - and _ can't come twice in a row"; }
+    case LnaddrReason.reserved { return "This name is reserved"; }
+  }
+}
