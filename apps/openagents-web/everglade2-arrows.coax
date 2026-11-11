@@ -1,0 +1,130 @@
+// Everglade II's arrows (#13157), the zone's wiring of the shared ones: the Ranger's Longbow looses a real arrow here, as in Everglade
+// Experimental and the Archery Range (everglade/zone-bow.coax), and the room owns it. The flight
+// is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's (everglade/longbow.coax),
+// and this zone's ground and bodies are everglade2-archery.coax's, which the room flies with too.
+//
+// Yours is drawn the frame you let go, from your bow hand toward where the crosshair rests: the page
+// doesn't wait for the room. It tells the room (aethyr/net/projectile.coax F, then the Attack's own
+// request), and the room flies the same arrow from the moment your page was drawing, against the
+// monsters as they stood then, and names it (a). Your page matches that word to its own arrow by the
+// request's number and takes the room's flight for it; how far the two were apart is kept (e2_probe
+// 199). Everyone else's arrow is drawn from the room's word, the same delay behind as its archer is
+// drawn, so it leaves the bow you see. Where an arrow ends is the room's word too (d): stuck in the
+// ground, or in a body. Your own page stops your arrow where its own flight says, at once, and the
+// room's word then puts it right. A refused loose fades its arrow out. Nothing here harms anyone: the
+// room's flight and the room's rules decide every hit.
+// The room's words on each arrow (which is yours, the room's flight, its end, a refused one's fade)
+// are the engine's (aethyr/net/shots.coax); this file gives them this zone's bodies, aim, sounds and puffs.
+// A room from before arrows says no a and no d: your arrow then flies and lands as this page reckons
+// it, and the Attack is the room's old one, at once.
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 bow"
+
+// Everglade II's arrows: every arrow this page draws, and the room's word on each.
+E2Bow :: struct {
+  ar: [1] arch.Archer;                 // yours and the others' (its draw is everglade2-mouse.coax's)
+  net: [1] NetShots;                   // the room's word on each (aethyr/net/shots.coax)
+  strength: f32 = 1;                   // the draw your next loose had (everglade2-mouse.coax e2m_loose)
+}
+
+// The bodies an arrow of yours may meet, as this page draws them: the monsters and the path's guard.
+e2bw_bodies :: (s: [] E2, out: [] arch.ArcheryBody) -> int {
+  n := 0;
+  for i: 0..<E2MN_N {
+    g := s[0].monsters[0].mon[i];
+    if !g.up || g.fade < 0.2 || n >= out.count { continue; }
+    out[n] = e2ar_monster(i, g.kind, g.x, g.z); n += 1;
+  }
+  g := s[0].guard[0];
+  if g.up && n < out.count { out[n] = e2ar_guard(g.x, g.z); n += 1; }
+  return n;
+}
+// Where the crosshair rests: the first monster or ground the camera's middle line meets past you,
+// within the Longbow's look, else a set way along it (everglade/zone-bow.coax xc_bow_point).
+e2bw_point :: (s: [] E2) -> arch.ArcheryAim {
+  m: [1] arch.SightMarch;
+  m[0] = arch.sight_begin(arch.archery_sight(s[0].eye, s[0].fwd, s[0].you_x, s[0].you_z), f32(EG_BOW_LOOK));
+  while arch.sight_next(m[..]) { m[0].solid = e2ar_solid(m[0].p[0], m[0].p[1], m[0].p[2]); }
+  bodies: [E2AR_BODIES] arch.ArcheryBody; n := e2bw_bodies(s, bodies[..]);
+  return arch.archery_rest(m[0], f32(EG_BOW_LOOK), f32(EG_BOW_PAST), s[0].bows[0].ar[0].targets[0], bodies[0..<n]);
+}
+e2bw_cue :: (s: [] E2, c: EgBowCue, x: f32, z: f32) { e2k_cue(s, c.name, c.gain, x, z, c.rate); }
+// Your arrow, the frame you let go: from your bow hand to where the crosshair rests, at the draw's
+// strength, and the room is told (F) under the Attack's request `seq`. Its slot.
+e2bw_loose :: (s: [] E2, seq: int) -> int {
+  b := s[0].bows[..]; now := s[0].clock; st := b[0].strength;
+  aim := e2bw_point(s);
+  from := eg_bow_hand(s[0].you_x, s[0].you_y, s[0].you_z, e2_show_face(s));
+  i := arch.archer_loose(b[0].ar[..], NET_SHOT_MINE, from, aim.at, st, aim.body, now);
+  net_shots_loosed(b[0].net[..], i, seq, s[0].net[0].rt);
+  _ := e2n_loose(s[0].net[..], NetLoose.{seq = seq, from = from, to = aim.at, strength = st, view_ms = e2n_view_ms(s[0].net[..])});
+  e2bw_cue(s, eg_bow_release_cue(st), s[0].you_x, s[0].you_z);
+  e2bw_cue(s, eg_bow_leave_cue(st), s[0].you_x, s[0].you_z);
+  return i;
+}
+// The room took your Attack (its e cast), or refused it or never answered (its arrow fades).
+e2bw_taken :: (s: [] E2, seq: int) { b := s[0].bows[..]; net_shots_taken(b[0].net[..], b[0].ar[0].arrows[..], seq); }
+e2bw_undo :: (s: [] E2, seq: int) { b := s[0].bows[..]; _ := net_shots_undo(b[0].net[..], b[0].ar[0].arrows[..], seq, s[0].clock); }
+// An arrow stuck in the ground at `at`: its dust and its thunk (everglade/longbow.coax).
+e2bw_landed :: (s: [] E2, at: [3] f32, grass: bool) {
+  l := arch.ArcheryLanding.{kind = arch.LAND_STUCK, at = at, grass = grass};
+  d := eg_bow_land_dust(l);
+  if d.big > 0 { _ := fxp_start(s[0].casts[0].puffs[..], FxCause.{recipe = FXR_DUST, seed = at[0] * 7.3 + at[2], t0 = s[0].clock, from = fxp_v(at[0], at[1], at[2]), to = fxp_v(at[0], at[1], at[2]), col = fxp_v(d.r, d.g, d.b), big = d.big, reach = d.reach}, s[0].clock); }
+  e2bw_cue(s, eg_bow_land_cue(l), at[0], at[2]);
+}
+// An arrow ended in a body at `at`: the strike's flash there.
+e2bw_struck :: (s: [] E2, at: [3] f32) {
+  t := EG_BOW_FLASH;
+  _ := fxp_start(s[0].casts[0].puffs[..], FxCause.{recipe = FXR_HIT, seed = at[0] * 3.1 + at[2], t0 = s[0].clock, from = fxp_v(at[0], at[1], at[2]), to = fxp_v(at[0], at[1], at[2]), col = fxp_v(t.r, t.g, t.b), big = t.big, reach = t.reach}, s[0].clock);
+}
+
+// The frame's arrows: the room's words the picture has reached, every arrow's flight against this
+// zone's ground, yours against the bodies you see, and the ones that are done let go.
+e2bw_step :: (s: [] E2) {
+  b := s[0].bows[..]; n := s[0].net[..]; now := s[0].clock; a := b[0].ar[..]; sh := b[0].net[..]; p := a[0].arrows[..];
+  // the room's words: yours at once (this page is already ahead of them), another's when the
+  // picture reaches the moment it names
+  for q: 0..<E2N_SHOTS {
+    w := n[0].shots[q]; if !w.ok { continue; }
+    if w.seat != n[0].seat && n[0].shot_t[q] > n[0].rt { continue; }
+    n[0].shots[q].ok = false;
+    if net_shots_named(sh, p, w, n[0].shot_t[q], n[0].seat, n[0].rt, now) == NET_SHOT_DID_OTHER { e2bw_cue(s, eg_bow_other_cue(), w.from[0], w.from[2]); }
+  }
+  for q: 0..<E2N_SHOTS {
+    w := n[0].ends[q]; if !w.ok { continue; }
+    i := net_shots_by_id(sh, p, w.id);
+    if !(i >= 0 && p[0].a[i].owner == NET_SHOT_MINE) && n[0].end_t[q] > n[0].rt { continue; }
+    n[0].ends[q].ok = false;
+    did := net_shots_ended(sh, p, w, now);
+    if did == NET_SHOT_DID_STUCK { e2bw_landed(s, w.at, true); }
+    if did == NET_SHOT_DID_BODY { e2bw_struck(s, w.at); }
+  }
+  bodies: [E2AR_BODIES] arch.ArcheryBody; nb := e2bw_bodies(s, bodies[..]);
+  f: [1] arch.ArrowFlight;
+  while e2ar_fly(p, f[..], now) {
+    l := arch.archery_land(a, f[0], bodies[0..<nb], NET_SHOT_MINE);
+    // yours reached a body as this page draws it: it ends there now, and the room's word says the harm
+    if l.kind == arch.LAND_BODY { arch.archery_body(a, f[0], l, true); c := bodies[0]; for k: 0..<nb { if bodies[k].id == l.body { c = bodies[k]; } } e2bw_struck(s, c.at); sh[0].landed += 1; continue; }
+    if l.kind == arch.LAND_STUCK { e2bw_landed(s, l.at, l.grass); sh[0].landed += 1; }
+  }
+  for i: 0..<bow.ARROWS { if p[0].a[i].state != bow.ARROW_FREE && net_shots_shown(sh, i, now) <= 0 { p[0].a[i] = bow.Arrow.{}; } }
+  arch.archery_tidy(a, now);
+  net_shots_tidy(sh, p, now);
+}
+// The arrows in the air and stuck, as puffs (aethyr/fx/puff.coax fxp_arrow_at), yours eased from
+// where this page had it to where the room flies it.
+e2bw_puffs :: (s: [] E2, pf: [] FxPuffs) {
+  b := s[0].bows[..]; now := s[0].clock;
+  for i: 0..<bow.ARROWS {
+    w := arch.archery_show(b[0].ar[0].arrows[0], i, s[0].eye[0], s[0].eye[2], now); if !w.on { continue; }
+    o := net_shots_offset(b[0].net[..], i, now);
+    fxp_arrow_at(pf, fxp_v(w.at[0] + o[0], w.at[1] + o[1], w.at[2] + o[2]), fxp_v(w.dir[0], w.dir[1], w.dir[2]), w.alpha * net_shots_shown(b[0].net[..], i, now), w.flying, w.seed);
+  }
+}
+// What the checks read (e2_probe 194 on).
+e2bw_probe :: (s: [] E2, field: int) -> int {
+  sh := s[0].bows[0].net[0];
+  if field == 194 { return sh.loosed; } if field == 195 { return sh.others; }
+  if field == 196 { return net_shots_up(s[0].bows[0].ar[0].arrows[..]); }
+  if field == 197 { return sh.landed; } if field == 198 { return sh.named; } if field == 199 { return sh.fix_mm; }
+  return -1;
+}

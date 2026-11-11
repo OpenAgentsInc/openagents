@@ -16,6 +16,8 @@
 #load "player-name.coax";
 #load "class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
 #load "analytics.coax";   // fact_of; and the page's Track (everglade2-track.coax)
+#load "../../aethyr/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
+#load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -26,6 +28,7 @@ E2N_PIPE_NAME :: 9;             // the pipe's POST of your name: /api/playtest/p
 E2N_HOLD_MS :: 4000;            // the run waits this long at most for its seat before it walks on its own
 E2N_SAY :: 48;
 E2N_CASTS :: 16;                // the others' casts heard and not yet played (e2n_cast_due)
+E2N_SHOTS :: 16;                // the room's words on arrows heard and not yet drawn (everglade2-arrows.coax e2bw_step)
 
 // One cast the room said (e cast SS SLOT AX AY AZ SEED, #13058): another player's, played when the
 // drawn picture reaches the tick it came with (t, the room's clock), at that player as drawn.
@@ -79,11 +82,15 @@ E2Net :: struct {
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
+  stats: [1] NetStats;           // the netcode readout's counts (aethyr/net/stats.coax): bytes, frames, state gaps, corrections
   said: [E2N_SAY] u8; said_n: int; said_at: int;
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
   ent_class: [E2N_ENTS] int;    // each other player's class (FB_CL_*, -1 none) from its n row's CLASS: the kit their body carries
   casts: [E2N_CASTS] E2nCast;   // the others' casts, waiting for their tick to be drawn
+  // the room's arrows (aethyr/net/projectile.coax a and d), each with the moment it names on this
+  // page's clock of the room (ms): when it left, when it ended; and how many were heard
+  shots: [E2N_SHOTS] NetShot; shot_t: [E2N_SHOTS] int; ends: [E2N_SHOTS] NetShotEnd; end_t: [E2N_SHOTS] int; shots_heard: int; ends_heard: int;
   mine_cast: E2nCast;           // your last cast the room took, as it said it (everglade2-cast.coax e2k_taken plays it)
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
@@ -118,7 +125,7 @@ e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >
 e2n_now :: (n: [] E2Net) -> int { return n[0].mono + n[0].offset; }
 e2n_send :: (n: [] E2Net, count: int) {
   if n[0].state != E2N_OPEN || n[0].sock < 0 || count <= 0 { return; }
-  if pipe_send(n[0].pipe[..], n[0].sock, cast(string) n[0].out[0..<count]) { n[0].frames_out += 1; }
+  if pipe_send(n[0].pipe[..], n[0].sock, cast(string) n[0].out[0..<count]) { n[0].frames_out += 1; net_stats_out(n[0].stats[..], count, n[0].mono); }
 }
 e2n_tell :: (n: [] E2Net, t: string) {
   n[0].said_n = 0;
@@ -304,7 +311,7 @@ e2n_event :: (n: [] E2Net, kind: int, text: string) -> bool {
     if n[0].seat >= 0 { n[0].lost = true; e2n_tell(n, "LOST THE ROOM · REJOINING"); }
     e2n_down(n); return true;
   }
-  if ev.event == SOCKET_FRAME { n[0].frames_in += 1; n[0].bytes_in += text.count; e2n_record(n, text); }
+  if ev.event == SOCKET_FRAME { n[0].frames_in += 1; n[0].bytes_in += text.count; net_stats_in(n[0].stats[..], text.count, text.count > 0 && text[0] == 'D', n[0].mono); e2n_record(n, text); }
   return true;
 }
 // The entity with id eid, made when new (make); -1 none.
@@ -325,6 +332,7 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 // One frame from the room.
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
+  if t.count > 2 && t[1] == ' ' && (t[0] == 'a' || t[0] == 'd') { e2n_shot_word(n, t); return; }   // an arrow loosed or ended
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
   if wire_is(t,"g2") { e2n_guard_row(n,t); return; }
   if wire_is(t,"h2") { e2n_mon_rows(n,t); return; }
@@ -410,6 +418,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     if d.part == 0 && (d.tick != n[0].tick || n[0].ticks == 0) {
       j := net_jitter_heard(NetJitter.{late_mean = n[0].late_mean, jitter = n[0].jitter, interval = n[0].interval}, n[0].ticks, e2n_now(n), clock, n[0].tick_t);
       n[0].late_mean = j.late_mean; n[0].jitter = j.jitter; n[0].interval = j.interval;
+      f := net_map_follow(n[0].late_mean, n[0].ticks); n[0].w_t += f; n[0].late_mean -= f32(f);   // the tick map follows a drift (everglade-net-core.coax)
       n[0].delay = net_jitter_delay(j);
       n[0].ticks += 1;
     }
@@ -574,6 +583,7 @@ e2n_replay_input :: (n: [] E2Net, k: int) -> EgMoveIn {
 // NET_SNAP m taken at once (as Everglade's net_fixed).
 e2n_fixed :: (n: [] E2Net, dx: f32, dy: f32, dz: f32) {
   n[0].fix_due = false; n[0].replays += 1; n[0].fix_sq = dx * dx + dy * dy + dz * dz;
+  net_stats_fix(n[0].stats[..], cast(int)(sqrt(n[0].fix_sq) * 1000), n[0].mono);
   if n[0].back_pending { n[0].back_pending = false; n[0].back_fix_mm = cast(int)(sqrt(dx * dx + dz * dz) * 1000); n[0].back_ms = ifx n[0].lost_at > 0 then n[0].mono - n[0].lost_at else -1; n[0].lost_at = 0; }
   ox := n[0].off_x - dx; oy := n[0].off_y - dy; oz := n[0].off_z - dz;
   if abs(ox) + abs(oy) + abs(oz) > f32(NET_SNAP) { ox = 0; oy = 0; oz = 0; }
@@ -671,6 +681,53 @@ e2n_cast :: (n: [] E2Net, slot: int, ax: f32, ay: f32, az: f32) -> bool {
   n[0].cast_sent += 1; n[0].cast_slot = slot;
   e2n_send(n, wire_put_cast(n[0].out[..], 0, WireCast.{seq = n[0].cast_seq, slot = slot, ax = ax, ay = ay, az = az}));
   return true;
+}
+// The number the next cast's request will carry (e2n_cast), for what is said just before it under
+// the same number (an arrow's launch, e2n_loose).
+e2n_cast_next :: (n: [] E2Net) -> int { return n[0].seq + 1000000 + n[0].cast_sent; }
+e2n_clamp_ms :: (v: int, lo: int, hi: int) -> int { return ifx v < lo then lo else ifx v > hi then hi else v; }
+// The moment of the room's world this page draws the others at, in ms of the room's ticks (tick *
+// 1000 / hz): what an arrow's launch says, so the room flies it from what you saw (0 before a W).
+e2n_view_ms :: (n: [] E2Net) -> int {
+  if n[0].worlds == 0 || n[0].hz <= 0 { return 0; }
+  v := n[0].w_tick * 1000 / n[0].hz + (n[0].rt - n[0].w_t);
+  return ifx v > 0 then v else 0;
+}
+// An arrow's launch (F), just before its Attack's request. False with no seat.
+e2n_loose :: (n: [] E2Net, l: NetLoose) -> bool {
+  if !e2n_open(n) { return false; }
+  c := net_loose_write(l, n[0].out[..]);
+  if c <= 0 { return false; }
+  e2n_send(n, c);
+  return true;
+}
+// The room's word on an arrow: loosed (a) or ended (d), kept until the picture reaches it. When
+// every place is taken the oldest gives way.
+e2n_shot_word :: (n: [] E2Net, t: string) {
+  if !e2n_open(n) { return; }
+  if t[0] == 'a' {
+    w := net_shot_read(t); if !w.ok { return; }
+    q := 0; for i: 0..<E2N_SHOTS { if !n[0].shots[i].ok { q = i; break; } if n[0].shot_t[i] < n[0].shot_t[q] { q = i; } }
+    n[0].shots[q] = w; n[0].shot_t[q] = e2n_tick_t(n, w.tick) - w.age_ms; n[0].shots_heard += 1;
+    return;
+  }
+  w := net_shot_end_read(t); if !w.ok { return; }
+  q := 0; for i: 0..<E2N_SHOTS { if !n[0].ends[i].ok { q = i; break; } if n[0].end_t[i] < n[0].end_t[q] { q = i; } }
+  n[0].ends[q] = w; n[0].end_t[q] = e2n_tick_t(n, w.tick); n[0].ends_heard += 1;
+}
+#test "an arrow's launch goes under the next cast's number, and the room's words on arrows wait for their moment (#13157)" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2; n[0].hz = 30; n[0].worlds = 1; n[0].w_tick = 300; n[0].w_t = 50000; n[0].mono = 50500; n[0].rt = 50400;
+  #assert e2n_view_ms(n[..]) == 10400;   // tick 300 is 10 000 ms of ticks; the picture is 400 ms past the W's moment
+  seq := e2n_cast_next(n[..]);
+  #assert e2n_loose(n[..], NetLoose.{seq = seq, from = [3] f32.[0, 1.45, -30], to = [3] f32.[0, 0, -60], strength = 1, view_ms = e2n_view_ms(n[..])});
+  #assert e2n_cast(n[..], 128, 0, 1, -40) && n[0].cast_seq == seq;
+  #assert pipe_bytes(n[0].pipe[..], 0) == "F 1000000 0 1450 -30000 0 0 -60000 1000 10400" && pipe_bytes(n[0].pipe[..], 1)[0] == 'C';
+  e2n_record(n[..], "a 315 9 4 1000007 0 1450 -30000 0 5000 -40000 1000 100");
+  #assert n[0].shots_heard == 1 && n[0].shots[0].ok && n[0].shots[0].id == 9 && n[0].shot_t[0] == 50400;   // tick 315 is 500 ms past the W's; it left 100 ms before
+  e2n_record(n[..], "d 330 9 1 0 200 -60000 0 -300 -950 -1");
+  #assert n[0].ends_heard == 1 && n[0].ends[0].ok && n[0].end_t[0] == 51000;
+  e2n_record(n[..], "a 315 0 4 7 0 0 0 0 0 0 1000 0"); e2n_record(n[..], "d nonsense"); #assert n[0].shots_heard == 1 && n[0].ends_heard == 1;
+  m: [1] E2Net; #assert !e2n_loose(m[..], NetLoose.{seq = 1}) && e2n_view_ms(m[..]) == 0;
 }
 // The room chooses the patient and reports the remaining charges.
 e2n_aid :: (n:[] E2Net)->bool {

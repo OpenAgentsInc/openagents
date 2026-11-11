@@ -7,26 +7,32 @@
 // shared rules; this page predicts presentation. A bolt flies to its range and fizzles, a blow swings at the air,
 // an area opens ahead.
 //
-// A press asks first and plays only once the room says yes (aethyr/action/deed.coax, docs/verse/
-// action-pipeline.md, #13072): your bearing (the SRD conditions on the room's row of you) must let you
-// act, and every ability declares its feel (class-feel.coax). It goes to the room (everglade2-net.coax
-// e2n_cast: C SEQ SLOT AX AY AZ -1), which takes it when the slot is your class's and tells every page
-// near (e cast SS SLOT AX AY AZ SEED, coax/web/room/room-everglade.coax eg_e2_cast). Yours plays when
-// that word comes back; a refusal (r SEQ WHY), or no word in 1.5 s, greys the slot and plays nothing.
-// Another's plays here when the picture of it reaches the tick it came with, from where it is drawn,
-// at its seed.
+// A press asks first (aethyr/action/deed.coax, docs/verse/action-pipeline.md, #13072): your bearing
+// (the SRD conditions on the room's row of you) must let you act, the slot must not be cooling down,
+// what the room's rules hold of it must not be spent (b, everglade2-net.coax e2n_slot), and every
+// ability declares its feel (class-feel.coax). When this page's own answer is yes it plays at once
+// (#13157): your press is never held for the room's round trip. It goes to the room in the same frame
+// (everglade2-net.coax e2n_cast: C SEQ SLOT AX AY AZ -1), which takes it when the slot is your class's
+// and tells every page near (e cast SS SLOT AX AY AZ SEED, coax/web/room/room-everglade.coax
+// eg_e2_cast). The room's yes confirms what is already playing. Its refusal (r SEQ WHY), or no word in
+// 1.5 s, takes it back: the effects and sounds fade out over E2K_FADE s, the clip on your body stops,
+// a loosed arrow fades (everglade2-arrows.coax), the slot greys and its cooldown lifts. Nothing the
+// press showed has harmed anyone: only the room rolls and spends. Another's plays here when the
+// picture of it reaches the tick it came with, from where it is drawn, at its seed.
 // everglade2.coax loads this beside class-look.coax and experimental-sound.coax (as exsound).
 
 E2K_LATER :: 8;      // sounds waiting a moment: a bolt's fizzle where it ends
 E2K_GAIN_START :: 0.55; E2K_GAIN_LAYER :: 0.32; E2K_GAIN_MISS :: 0.4;   // as Experimental's (xc_cast_sound)
 E2kLater :: struct { on: bool; t: f32; name: string; x: f32; z: f32; rate: f32 = 1; mine: bool; }
-// A refused cast's look and sound (#13046): what your press started, faded out over E2K_FADE s, never cut.
+// A refused cast's look and sound (#13046, #13157): what your press started, faded out over E2K_FADE s, never cut.
 E2K_FADE :: 0.25; E2K_MINE :: 4; E2K_FADES :: 8;
 E2kFade :: struct { slot: int = -1; t0: f32; at: f32; }
 // A body's cast: when it began and its clip (a blow's slash, a spell's cast), drawn over its gait.
 E2kAct :: struct { at: f32 = -100; clip: int = -1; }
-// Your press waiting for the room's answer: its request, its slot and where you faced.
-E2kAsk :: struct { seq: int; slot: int = -1; wire: int; face: f32; }
+// Your press waiting for the room's answer: its request, its slot and where you faced; the number it
+// went to the room under, and whether what it showed was taken back.
+// replay: it was taken back for want of an answer (not refused), so the room's late yes plays it after all.
+E2kAsk :: struct { seq: int; slot: int = -1; wire: int; face: f32; net_seq: int; rolled: bool; replay: bool; }
 E2Cast :: struct {
   klass: int = -1; level: int = 1; bar: [XC_SLOTS] FbAb; bar_n: int;
   wire: [XC_SLOTS] int;                    // each slot's ability on the wire (class-kit.coax xk_wire)
@@ -36,7 +42,7 @@ E2Cast :: struct {
   audio: [1] exsound.ExperimentalSound;    // their sounds, for the host (everglade2-face.c coaxial_sounds)
   later: [E2K_LATER] E2kLater;
   me: [1] E2kAct; them: [E2N_ENTS] E2kAct;     // yours, and each other's by its slot in the room's list
-  pressed: int; others: int; unseen: int; seed: u64 = 0x2545f4914f6cdd1d;
+  pressed: int; others: int; unseen: int; shown: int; seed: u64 = 0x2545f4914f6cdd1d;   // shown: your own casts' presentations begun
   refused_seen: int;                       // the room's refusals of your casts this page has reconciled
   // your last press's look and sound: its effects' slots (and their starts) and its voices
   mine: [E2K_MINE] int; mine_t0: [E2K_MINE] f32; mine_n: int; voice0: int; voice1: int;
@@ -48,6 +54,8 @@ E2Cast :: struct {
   area: [1] aa.AreaAim;                    // a placed area armed: its square or circle on the ground at the crosshair (aethyr/action/area-aim.coax)
   opened: aa.AreaAim; opened_sp: int = -1; // your last area where it opened (Thunderwave's cube, Entangle's square), shown until its until
   aimed_x: f32; aimed_z: f32;              // where your last cast was aimed
+  loosing: bool;                           // the bow's loose is pressing its Attack now (everglade2-mouse.coax e2m_loose)
+  rolled: int;                             // your presses whose presentation was taken back (the room refused, or never answered)
 }
 
 // Your class's bar at its level: once either changes (the druid at 1 until Character Create says).
@@ -91,6 +99,10 @@ e2k_play :: (s: [] E2, c: int, slot: int, px: f32, py: f32, pz: f32, face: f32, 
   e := xk_entry(c, slot);
   if !e.ok { return 0; }
   now := s[0].clock;
+  if mine { k[0].shown += 1; }
+  // a bow's Attack is its arrow (everglade2-arrows.coax): the loose, its flight and where it ends are
+  // drawn and heard there, and nothing flashes where it was aimed
+  if xc_kit(c) == XC_KIT_BOW && e.ab.kind == FB_ATTACK { act[0].at = now; act[0].clip = -1; return 1; }
   started := xc_look_start(k[0].puffs[..], xc_look_of(e.ab, px, py, pz, face, fxp_v(ax, ay, az)), now, f32(seed % 9973));
   d := xc_sound(e.ab, c);
   e2k_cue(s, d.start, f32(E2K_GAIN_START), px, pz, d.rate);
@@ -156,6 +168,9 @@ e2k_press :: (s: [] E2, i: int) -> bool {
   if !e2k_on(s) || i < 0 || i >= k[0].bar_n { return false; }
   if s[0].clock - k[0].cool_at < f32(XC_COOL) { return false; }
   c := k[0].klass; a := k[0].bar[i];
+  // a Ranger's Attack is the Longbow's: its key or its slot draws, and looses at full draw, as the
+  // left button does and as Experimental's key does (everglade2-mouse.coax)
+  if a.kind == FB_ATTACK && !k[0].loosing && e2m_archer(s) { return e2m_draw(s, true); }
   m := xc_aim_for(a, xk_weapon(c));
   face := e2_show_face(s); fx := sin(face); fz := cos(face);   // mouselook: the camera's way
   // a placed area (class-kit.coax xk_area_placed): the first press arms its preview on the ground, the
@@ -243,11 +258,55 @@ e2k_area_marks :: (s: [] E2, out: [] f32, at: int) -> int {
   cr := ifx a.far then 1.0f32 else 0.86f32; cg := ifx a.far then 0.32f32 else 0.78f32; cb := ifx a.far then 0.28f32 else 0.42f32;
   return e2k_area_draw(s, a, out, v, cr * pulse, cg * pulse, cb * pulse);
 }
-// Slot i cast at (px, pz) on the ground: asked (aethyr/action/deed.coax), then sent; it plays once the
-// room takes it (e2k_taken). False when the ask is refused or nothing could be sent.
+// The room refused your last press, or never answered: what it showed is taken back. Its effects fade
+// out where they are, its sounds fade out, the fizzle still to come never plays, its clip on your body
+// stops and its arrow fades. Nothing pops.
+e2k_undo :: (s: [] E2) {
+  k := s[0].casts[..]; now := s[0].clock;
+  if k[0].ask.rolled || k[0].ask.slot < 0 { return; }
+  for v: k[0].voice0 + 1..<k[0].voice1 + 1 {
+    b: [24] u8; m := e2k_put(b[..], 0, "-x"); m = e2k_int(b[..], m, v); m = e2k_put(b[..], m, "\n");
+    exsound.experimental_sound_add(k[0].audio[..], cast(string) b[0..<m]);
+  }
+  for j: 0..<k[0].mine_n {
+    q := k[0].mine[j];
+    if !k[0].puffs[0].on[q] || k[0].puffs[0].live[q].t0 != k[0].mine_t0[j] { continue; }
+    for f: 0..<E2K_FADES { if k[0].fades[f].slot < 0 || now - k[0].fades[f].at > f32(E2K_FADE) { k[0].fades[f] = E2kFade.{slot = q, t0 = k[0].mine_t0[j], at = now}; break; } }
+  }
+  for i: 0..<E2K_LATER { if k[0].later[i].mine { k[0].later[i].on = false; } }
+  k[0].mine_n = 0; k[0].voice0 = k[0].voice1; k[0].undone += 1;
+  k[0].me[0] = E2kAct.{}; k[0].opened.until = -1;
+  e2bw_undo(s, k[0].ask.net_seq);
+  k[0].ask.rolled = true; k[0].rolled += 1;
+}
+// Your press's presentation, begun now (#13157): its look and sound from where you stand, its clip on
+// your body, its area where it opens. What it starts is kept so a refusal can take it back (e2k_undo).
+e2k_predict :: (s: [] E2, i: int, face: f32, ax: f32, ay: f32, az: f32) {
+  k := s[0].casts[..]; now := s[0].clock; c := k[0].klass; ab := k[0].bar[i];
+  r := xk_area(ab);
+  if r.on {
+    k[0].opened = ifx aa.area_from_caster(r) then aa.area_face(r, s[0].you_x, s[0].you_z, face) else aa.area_face(r, ax, az, 0);
+    k[0].opened.until = now + f32(E2K_OPENED); k[0].opened_sp = ifx ab.kind == FB_SPELL then ab.sp else -1;
+  }
+  k[0].seed ^= k[0].seed << 13; k[0].seed ^= k[0].seed >> 7; k[0].seed ^= k[0].seed << 17;
+  before: [FX_LIVE] bool; for q: 0..<FX_LIVE { before[q] = k[0].puffs[0].on[q] && k[0].puffs[0].live[q].t0 == now; }
+  k[0].voice0 = k[0].audio[0].voice;
+  _ := e2k_play(s, c, k[0].wire[i], s[0].you_x, s[0].you_y, s[0].you_z, face, ax, ay, az, cast(int)(k[0].seed % 999983), k[0].me[..], true);
+  k[0].voice1 = k[0].audio[0].voice; k[0].mine_n = 0;
+  for q: 0..<FX_LIVE {
+    if before[q] || !k[0].puffs[0].on[q] || k[0].puffs[0].live[q].t0 != now || k[0].mine_n >= E2K_MINE { continue; }
+    k[0].mine[k[0].mine_n] = q; k[0].mine_t0[k[0].mine_n] = now; k[0].mine_n += 1;
+  }
+}
+// Slot i cast at (px, pz) on the ground: asked (aethyr/action/deed.coax), and when this page's own
+// answer is yes, played now and sent in the same frame; the room's word confirms it (e2k_taken) or
+// takes it back (e2k_undo). False when the ask is refused or nothing could be sent.
 e2k_cast :: (s: [] E2, i: int, face: f32, px: f32, pz: f32) -> bool {
   k := s[0].casts[..];
   now := s[0].clock; tick := deed_tick(now);
+  // what the room's rules hold of this slot is spent (its uses, its Rages): this page's own no
+  left := e2n_slot(s[0].net[..], i, k[0].bar_n);
+  if left.ok && left.left == 0 { deed_grey(k[0].deeds[..], i, tick); k[0].deeds[0].last = DeedVerdict.refused; return false; }
   seq := deed_ask(k[0].deeds[..], i, tick, e2k_bearing(s), xf_feel(k[0].klass, k[0].bar[i]));
   if seq == 0 { return false; }
   // another slot while the bow is drawn lets the draw down first: the press is this one, and the
@@ -256,25 +315,25 @@ e2k_cast :: (s: [] E2, i: int, face: f32, px: f32, pz: f32) -> bool {
   if mo[0].draw[0].on && i != e2m_attack(k) { bow.bow_cancel(mo[0].draw[..]); mo[0].cancels += 1; }
   k[0].aimed_x = px; k[0].aimed_z = pz;
   ay := s[0].you_y + 1.0;
-  k[0].ask = E2kAsk.{seq = seq, slot = i, wire = k[0].wire[i], face = face};
+  if !e2n_open(s[0].net[..]) { _ := deed_answer(k[0].deeds[..], seq, false, tick, 0); return false; }
+  k[0].ask = E2kAsk.{seq = seq, slot = i, wire = k[0].wire[i], face = face, net_seq = e2n_cast_next(s[0].net[..])};
   k[0].cool_at = now; k[0].used = i; k[0].pressed += 1;
-  if !e2n_cast(s[0].net[..], k[0].wire[i], px, ay, pz) { _ := deed_answer(k[0].deeds[..], seq, false, tick, 0); k[0].cool_at = -100; return false; }
+  // a bow's Attack is its arrow: loosed here now, and the room told of its launch under the same number
+  if xc_kit(k[0].klass) == XC_KIT_BOW && k[0].bar[i].kind == FB_ATTACK { _ := e2bw_loose(s, k[0].ask.net_seq); }
+  _ := e2n_cast(s[0].net[..], k[0].wire[i], px, ay, pz);
+  e2k_predict(s, i, face, px, ay, pz);
   return true;
 }
-// The room took your cast (its e cast for your seat): it plays now, from where you stand, at the
-// room's aim and seed. A word for an ask that has timed out plays nothing.
+// The room took your cast (its e cast for your seat): what your press began is confirmed, and its
+// arrow stays. A word that comes after this page gave up on it (1.5 s) and took it back plays it now,
+// from where you stand, at the room's aim and seed: it did happen.
 e2k_taken :: (s: [] E2, e: E2nCast) {
   k := s[0].casts[..];
-  if deed_answer(k[0].deeds[..], k[0].ask.seq, true, deed_tick(s[0].clock), 0) < 0 { return; }
+  if deed_answer(k[0].deeds[..], k[0].ask.seq, true, deed_tick(s[0].clock), 0) >= 0 { e2bw_taken(s, k[0].ask.net_seq); return; }
+  if !k[0].ask.rolled || !k[0].ask.replay || k[0].ask.wire != e.slot { return; }
+  k[0].ask.rolled = false; k[0].ask.replay = false;
   c := xk_slot_class(e.slot);
   if c < 0 { c = k[0].klass; }
-  // its area where it opened: from you the way you faced, or on the point it was cast at
-  ab: FbAb; if k[0].ask.slot >= 0 && k[0].ask.slot < k[0].bar_n { ab = k[0].bar[k[0].ask.slot]; }
-  r := xk_area(ab);
-  if r.on {
-    k[0].opened = ifx aa.area_from_caster(r) then aa.area_face(r, s[0].you_x, s[0].you_z, k[0].ask.face) else aa.area_face(r, e.ax, e.az, 0);
-    k[0].opened.until = s[0].clock + f32(E2K_OPENED); k[0].opened_sp = ifx ab.kind == FB_SPELL then ab.sp else -1;
-  }
   _ := e2k_play(s, c, e.slot, s[0].you_x, s[0].you_y, s[0].you_z, k[0].ask.face, e.ax, e.ay, e.az, e.seed, k[0].me[..], true);
 }
 
@@ -292,16 +351,20 @@ e2k_step :: (s: [] E2) {
       e2k_cue(s,cue.start,f32(E2K_GAIN_START),f.x,f.z,cue.rate);
     }
   }
-  // the room turned your last cast down before it spent anything (eg_e2_cast is all or nothing): its
-  // slot greys, nothing played, and the cooldown is lifted, so the bar is yours again at once
+  // the room turned your last cast down before it spent anything (eg_e2_cast is all or nothing): what
+  // your press showed is taken back, its slot greys, and the cooldown is lifted, so the bar is yours
+  // again at once
   tick := deed_tick(now);
   if n[0].cast_refused != k[0].refused_seen {
     k[0].refused_seen = n[0].cast_refused; k[0].cool_at = -100;
-    if deed_waiting(k[0].deeds[0], k[0].ask.seq) { _ := deed_answer(k[0].deeds[..], k[0].ask.seq, false, tick, 0); }
+    if deed_waiting(k[0].deeds[0], k[0].ask.seq) { _ := deed_answer(k[0].deeds[..], k[0].ask.seq, false, tick, 0); e2k_undo(s); }
   }
-  // the room took it: it plays now
+  // the room took it: what is playing is confirmed
   if n[0].cast_mine != k[0].mine_heard { k[0].mine_heard = n[0].cast_mine; e2k_taken(s, n[0].mine_cast); }
+  // no word in 1.5 s (the room is gone, or the request was lost): taken back as a refusal is
+  expired := k[0].deeds[0].expired;
   deed_expire(k[0].deeds[..], tick);
+  if k[0].deeds[0].expired != expired { e2k_undo(s); k[0].ask.replay = true; }
   e2k_lock_step(s);
   while true {
     e := e2n_cast_due(n, n[0].rt);
@@ -336,6 +399,7 @@ e2k_step :: (s: [] E2) {
     }
     if f <= 0 { pf[0].on[q] = false; }
   }
+  e2bw_puffs(s, pf);   // the arrows in the air and stuck (everglade2-arrows.coax)
   _ := fxp_close(pf);
 }
 

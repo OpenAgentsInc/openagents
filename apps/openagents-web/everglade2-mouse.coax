@@ -5,7 +5,8 @@
 // archer (aethyr/action/archery.coax) and its sounds Everglade's Longbow (everglade/longbow.coax),
 // as in every zone; only the buttons and the room's Attack are this zone's. The left button while drawing lets it
 // down. Any other press is the world's (everglade2.coax e2_pointer): a click looks again, a drag turns.
-// The arrow is the Ranger's Attack through the room, as the bar's (everglade2-cast.coax e2k_press).
+// The arrow is the Ranger's Attack through the room, as the bar's (everglade2-cast.coax e2k_press), and
+// it is drawn the frame you let go (everglade2-arrows.coax, #13157).
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 mouse"
 
 E2Mouse :: struct {
@@ -42,8 +43,9 @@ e2m_loose :: (s: [] E2) -> bool {
   m := s[0].mouse[..]; k := s[0].casts[..]; now := s[0].clock;
   if !m[0].draw[0].on { return false; }
   if !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); return false; }
-  _ := arch.archer_release(m[0].draw[..], m[0].show[..], now); m[0].looses += 1;
-  return e2k_press(s, e2m_attack(s[0].casts[..]));
+  s[0].bows[0].strength = arch.archer_release(m[0].draw[..], m[0].show[..], now); m[0].looses += 1;
+  k[0].loosing = true; ok := e2k_press(s, e2m_attack(k)); k[0].loosing = false;
+  return ok;
 }
 
 // A button: true when it was the cast's or the bow's. button 0 left, 2 right (host.js).
