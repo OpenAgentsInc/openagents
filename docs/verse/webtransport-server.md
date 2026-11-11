@@ -186,6 +186,14 @@ WebSocket when WebTransport fails. When neither opens (a network that blocks
 the port), it uses the load balancer's path from then on. `?transport=ws`
 keeps the WebSocket.
 
+Production check, 2026-11-11, after the deploy: two headless Chromes over
+WebTransport in one room on shard 1 (`wt-room-check.coax ... --player
+p-wtnet-1` and `p-wtnet-2` at once, through
+`room.openagents.com:4431`). Each heard state at 29 to 30 ticks a second,
+with 0.8% and 1.3% of ticks missed, input round trip p50 76 ms and p95
+140 ms. A fresh shard's first session can stall about 3 s while its world
+is prepared.
+
 ## Loss: the matrix and the pipeline check (#13177)
 
 Three tools measure the room under loss:

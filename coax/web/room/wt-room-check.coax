@@ -3,7 +3,7 @@
 // OA_ROOM_TICKET_KEY (room-ticket.coax, as load.coax's bots), says its hello and plays inputs for
 // SECONDS (wt-room-check.js). One JSON line, then holds or fails: the session opened, and the room's
 // state came at 25 ticks a second or more, with frames on its streams.
-//   OA_ROOM_TICKET_KEY=... coax/web/tool.sh coax/web/room/wt-room-check.coax ORIGIN URL HASH|- [--seconds N]
+//   OA_ROOM_TICKET_KEY=... coax/web/tool.sh coax/web/room/wt-room-check.coax ORIGIN URL HASH|- [--seconds N] [--player p-ID]
 // URL: https://room-staging.openagents.com/api/room/relay/everglade/pair-e2-wtnet-STAMP (the room VM's
 // staging unit on UDP 443, a CA certificate: HASH -).
 #load "../../lib/net/cdp.coax";
@@ -20,10 +20,12 @@ tool_main :: () -> int #export_c #effects(all) {
   ok := args_load(a[..]);
   origin := args_at(a[..], 0); url := args_at(a[..], 1); hash := args_at(a[..], 2);
   seconds := args_whole(args_value(a[..], "--seconds", "15"));
-  if !ok || !wc_ok(origin) || !wc_ok(url) || hash.count == 0 || seconds < 1 || seconds > 600 {
-    tool_errln("usage: coax/web/tool.sh coax/web/room/wt-room-check.coax ORIGIN URL HASH|- [--seconds N]"); return 2;
+  // --player ID: the seat's player (default p-wtnet-1), so two checks at once play one room as two players
+  player := args_value(a[..], "--player", "p-wtnet-1");
+  if !ok || !wc_ok(origin) || !wc_ok(url) || hash.count == 0 || seconds < 1 || seconds > 600 || player.count < 3 || player.count > 40 || player[0..<2] != "p-" {
+    tool_errln("usage: coax/web/tool.sh coax/web/room/wt-room-check.coax ORIGIN URL HASH|- [--seconds N] [--player p-ID]"); return 2;
   }
-  tb: [8192] u8; tu := rs_ticketed_on(tb[..], url, "p-wtnet-1", "Net check", 0);
+  tb: [8192] u8; tu := rs_ticketed_on(tb[..], url, player, "Net check", 0);
   if tu.count == 0 || tu == url { tool_errln("wt-room-check: no seat ticket (OA_ROOM_TICKET_KEY)"); return 2; }
   js: [16384] u8;
   jn := fs_read("coax/web/room/wt-room-check.js", js[..]);
