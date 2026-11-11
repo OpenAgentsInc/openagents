@@ -20,7 +20,7 @@
 //       A realm's sound is rendered offline in the shot's time, never played: stderr says what it
 //       did (the packets, the voices, the names played, the loudest sample), --audio OUT.wav writes it.
 //       --quality TIER starts the realm with that graphics tier kept (auto when none is).
-//       --scale S draws S pixels a point (2 unless given); --realtime gives each frame the time it took. --frames DIR writes every sixth frame after `record` (--every N: every Nth)
+//       --scale S draws S pixels a point (2 unless given); --realtime gives each frame the time it took, and stderr says the frame rate the realm ran at (the whole shot, and its last 5 seconds). --frames DIR writes every sixth frame after `record` (--every N: every Nth)
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
 //       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
@@ -416,6 +416,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     // In a shot nobody holds the pointer, so the harness answers the realm's mouselook as a held
     // pointer would (--do look), and writes a numbered frame every few when --frames DIR is given.
     var frameCount = 0
+    var frameStamps: [Double] = []   // --realtime: when each frame in a realm ended, for the frame rate said at the end
     func run(_ time: Float) {
       var left = time
       while left > 0 {
@@ -424,6 +425,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
         let step = shotRealtime && inRealm ? min(max(since, 1.0 / 240), 0.1) : min(left, inRealm ? 1.0 / 60 : 0.05); render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: step) { _ in }; left -= step
         if let page, inRealm, shotLooks { let want = page.mouselook(); if want == 2 && !lookHeld { lookHeld = true; page.pointerLock(1) } else if want != 2 && lookHeld { lookHeld = false; page.pointerLock(0) } }
         frameCount += 1
+        if shotRealtime && inRealm { frameStamps.append(CACurrentMediaTime()) }
         if !framesDir.isEmpty && recording && frameCount % framesEvery == 0 { _ = save(texture, width, height, framesDir + String(format: "/f%04d.png", frameCount)) }
       }
     }
@@ -478,6 +480,16 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     }
     render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0) { _ in }
     nxp_close(next)
+    // --realtime: the frame rate the realm really ran at, over the whole shot and over its last 5 seconds (the
+    // HUD's own number is the last half second's), so a measurement doesn't hang on one sample.
+    if shotRealtime, frameStamps.count > 2, let first = frameStamps.first, let last = frameStamps.last, last > first {
+      let tail = frameStamps.filter { $0 >= last - 5 }
+      var gaps: [Double] = []; for i in 1..<tail.count { gaps.append(tail[i] - tail[i - 1]) }
+      gaps.sort()
+      let late = tail.count > 1 && tail.last! > tail.first! ? Double(tail.count - 1) / (tail.last! - tail.first!) : 0
+      let line = String(format: "Everglade: frames %d in %.1f s, %.1f FPS; the last 5 s %.1f FPS, median frame %.1f ms\n", frameStamps.count, last - first, Double(frameStamps.count - 1) / (last - first), late, gaps.isEmpty ? 0 : gaps[gaps.count / 2] * 1000)
+      FileHandle.standardError.write(Data(line.utf8))
+    }
     if !shotAudio.isEmpty, let sound = sounds[eg_scene(state)], !sound.write(shotAudio) { FileHandle.standardError.write(Data("Everglade: couldn't write \(shotAudio)\n".utf8)) }
     for world in Array(pages.keys) { closePage(world) }; try? FileManager.default.removeItem(atPath: shotStore)
     return save(texture, width, height, path)

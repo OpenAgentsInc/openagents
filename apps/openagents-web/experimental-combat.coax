@@ -1603,7 +1603,8 @@ xc_corner :: (s:[] EgZone,lay:XcLayout,out:[]f32,at:int)->int {
   fh:=ifx top+7*k<h then top+7*k else h;
   c:=xc_card_box(x,lay); if c.x1>c.x0 && c.x1>cx0 && c.y1>fh-52*k && c.y0<fh { return at; }   // a slot's card is up over the corner
   n:=cc.coord_draw(cr[0],out,at,w,fh,k);
-  return cc.eg_fps(cr[0].ui,cr[0].fps[0],out,n,w,fh,k);
+  gb:[1]cc.Box;n=cc.eg_fps_gfx(cr[0].ui,cr[0].fps[0],cast(string)cr[0].gfx[0..<cr[0].gfx_n],out,n,w,fh,k,gb[..]);cr[0].gfx_box=gb[0];   // the graphics tier beside it (everglade/zone.coax zone_quality_frame)
+  return n;
 }
 xc_in :: (r: cc.Box, px: f32, py: f32) -> bool { return px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1; }
 xc_text_w :: (t: string, cap: f32) -> f32 {

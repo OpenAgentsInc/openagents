@@ -14,3 +14,18 @@ e2_meadow_side :: (kit: int, tier: int) -> int {
   if kit == 28 { return 27; }                // mushrooms
   return 0;
 }
+// A grid's cell (metres) and the ring round the eye its pieces are drawn in (metres), for a page
+// that culls the grid's cells before it draws them (aethyr/render/grid-cull.coax). meadow.coax
+// checks each against the kit's own cell and reach and the grass tier's start and end.
+e2_meadow_grid_cell :: (kit: int, tier: int) -> f32 {
+  if kit == E2_MEADOW_GRASS { return ifx tier == 0 then 0.5f32 else ifx tier == 1 then 1.0f32 else ifx tier == 2 then 2.0f32 else 4.0f32; }
+  share := ifx kit >= 25 && kit <= 27 then 0.55f32 / 3 else ifx kit == 31 then 0.17f32 else ifx kit >= 20 && kit <= 22 then 0.10f32 / 3 else ifx kit == 29 || kit == 30 then 0.05f32 else ifx kit == 28 then 0.08f32 else 0.0f32;
+  return ifx share <= 0 then 0.0f32 else sqrt(0.7f32 / (0.2109375f32 * share));
+}
+e2_meadow_grid_inner :: (kit: int, tier: int) -> f32 { return ifx kit == E2_MEADOW_GRASS && tier > 0 then 16.0f32 + f32(tier) * 12 else 0.0f32; }
+e2_meadow_grid_outer :: (kit: int, tier: int) -> f32 {
+  if kit == E2_MEADOW_GRASS { return ifx tier >= 3 then 140.0f32 else 16.0f32 + f32(tier + 1) * 12; }
+  return ifx kit >= 20 && kit <= 22 then 320.0f32 else ifx kit == 29 || kit == 30 then 140.0f32 else ifx kit >= 25 && kit <= 27 then 100.0f32 else 80.0f32;
+}
+// How far past its cell a piece of the kit reaches at most (metres): its mesh at its largest size.
+e2_meadow_grid_pad :: (kit: int) -> f32 { return ifx kit == E2_MEADOW_GRASS then 1.0f32 else ifx kit >= 20 && kit <= 22 then 3.0f32 else 1.5f32; }

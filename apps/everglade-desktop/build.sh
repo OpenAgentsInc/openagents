@@ -45,7 +45,11 @@ build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app'
   mkdir -p "$realm" "$pages"
   if [[ "$(cat "$realm/key" 2>/dev/null)" != "$key" || ! -f "$realm/lib$name.dylib" ]]; then
     rm -f "$realm/key"
-    COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
+    # fivelab's and the range's checks run natively, as coax/web/wasm.sh runs them (native_check_units):
+    # interpreted, fivelab's film-stage check runs past the compiler's traversal budget and nothing is emitted.
+    local native_checks=()
+    case "$name" in fivelab|archery-range) native_checks=(COAX_NATIVE_CHECKS=1) ;; esac
+    env ${native_checks[@]+"${native_checks[@]}"} COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
     local realm_sources realm_objects=() realm_pids=() s pid
     read -r -a realm_sources < "$realm/sources"
     for s in "${realm_sources[@]}"; do

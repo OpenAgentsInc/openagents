@@ -53,7 +53,13 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
 // bg_fs traces the glade's ground, trees and sky per pixel (the figures are drawn, not traced):
 // drawn at most 6.4 million pixels (3200 by 2000; the host scales the canvas up past that).
-EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) { return 6400000u; }
+// The graphics governor's (everglade/zone.coax zone_pixel_budget, aethyr/quality-page.coax): fewer while frames run long.
+static cx_face_addr quality_state;
+EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
+  if (!quality_state) return 6400000u;
+  int64_t px = lab_pixel_budget((coax_v_t_Lab){(coax_t_Lab *)(uintptr_t)quality_state, 1}, width, height, dpr);
+  return px > 0 ? (uint32_t)px : 6400000u;
+}
 // The experimental meadow and castle share one large geometry storage buffer.
 EXPORT("coaxial_character_storage_v1") uint32_t coaxial_character_storage_v1(void) { return 256u * 1024u * 1024u; }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
@@ -62,6 +68,7 @@ EXPORT("coaxial_frame")
 uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float w, float h, float scale, float dt, uint32_t still) {
   lab_golden(at(state), golden);
   width = w; height = h; dpr = scale; now += dt;
+  quality_state = state; lab_quality_frame(at(state), dt, w, h, scale, golden);
   // Player mode: your body's step on Everglade's controller, in everglade-face.c's order
   coax_t_ZoneWalk walk = lab_walk(at(state));
   if (walk.put) player = verse_player_place(walk.x, walk.y, walk.z, walk.face);

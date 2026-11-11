@@ -253,6 +253,24 @@ eg_fps :: (ui: [] UitTrace, f: FpsCounter, out: [] f32, at: int, w: f32, h: f32,
   p := eg_plaque(out, at, w - 16 * k - wide - 10 * k, h - 16 * k - 22 * k, w - 8 * k, h - 16 * k + 9 * k, k);
   return fps_draw(ui, f, out, p, w, h, k);
 }
+// The frame rate with the graphics control to its left on the one plaque ("GFX AUTO · MED  60 FPS",
+// aethyr/quality-page.coax qp_label); box gets where a tap or a click takes the control. With no
+// words it is the frame rate alone (eg_fps) and box is empty.
+eg_fps_gfx :: (ui: [] UitTrace, f: FpsCounter, gfx: string, out: [] f32, at: int, w: f32, h: f32, k: f32, box: [] Box) -> int {
+  box[0] = Box.{};
+  if gfx.count == 0 { return eg_fps(ui, f, out, at, w, h, k); }
+  buf: [16] u8; n := 0; v := cast(int)(f.fps + 0.5); if v > 999 { v = 999; }
+  n = eg_int(buf[..], 0, v); n = eg_put(buf[..], n, " FPS");
+  wide := face_width(cast(string) buf[0..<n], 13 * k, HUD_FACE_BODY);
+  em := sans_em(13 * k); gw := 0.0f32;
+  for ch: gfx { code := int(ch); a := ifx code >= 32 && code <= 126 then int(EG_BODY_WIDTH[code - 32]) else int(EG_BODY_WIDTH[31]); gw += f32(a) / f32(EG_FONT_UPM) * em; }
+  right := w - 16 * k - wide - 14 * k; base := h - 16 * k;
+  p := eg_plaque(out, at, right - gw - 10 * k, base - 22 * k, w - 8 * k, base + 9 * k, k);
+  box[0] = Box.{x0 = right - gw - 10 * k, y0 = base - 13 * k - 15 * k, x1 = right + 6 * k, y1 = base + 15 * k};
+  uit_part(ui, "gfx"); b := box[0]; g := uit_put(ui, UIT_NONE, UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, "GFX");
+  p = ttext(ui, g, out, p, gfx, right - gw, base, 13 * k, ink(k, 0.76, 0.74, 0.66), "GFX");
+  return fps_draw(ui, f, out, p, w, h, k);
+}
 // "DRUID" as a name: "Druid".
 eg_title :: (b: [] u8, t: string) -> string {
   n := 0; for ch: t { c := ch; if n > 0 && c >= 'A' && c <= 'Z' { c += 32; } if n < b.count { b[n] = c; n += 1; } }

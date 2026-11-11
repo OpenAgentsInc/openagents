@@ -1888,6 +1888,8 @@ fn coax_p_cg_meadow_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
   var l_origin: f32;
   var l_ex: f32;
   var l_ez: f32;
+  var l_reach: f32;
+  var l_fine: f32;
   var l_t: i32;
   var l_c: f32;
   var l_gx: u32;
@@ -1901,16 +1903,16 @@ fn coax_p_cg_meadow_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
   var l_d: f32;
   var l_shown: f32;
   var l_au: f32;
-  var l_c_28: f32;
-  var l_gx_29: u32;
-  var l_gz_30: u32;
-  var l_x_31: f32;
-  var l_z_32: f32;
-  var l_dx_33: f32;
-  var l_dz_34: f32;
+  var l_c_30: f32;
+  var l_gx_31: u32;
+  var l_gz_32: u32;
+  var l_x_33: f32;
+  var l_z_34: f32;
+  var l_dx_35: f32;
+  var l_dz_36: f32;
   var l_k: f32;
   var l_h: f32;
-  var l_au_37: f32;
+  var l_au_39: f32;
   var l_p: coax_t32;
   l_o = coax_t15();
   l_o.x = coax_p_v4(0.0f, 0.0f, (-0x1.000000p1f), 0x1.000000p0f);
@@ -1925,6 +1927,8 @@ fn coax_p_cg_meadow_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
   l_origin = (-0x1.000000p15f);
   l_ex = coax_at_u(i32(16i));
   l_ez = coax_at_u(i32(18i));
+  l_reach = select(0x1.000000p0f, l_m.y.y, (l_m.y.y > 0.0f));
+  l_fine = select(0x1.000000p0f, l_m.y.z, (l_m.y.z > 0.0f));
   if ((l_kit == 33i))
   {
     l_t = i32(l_m.x.y);
@@ -1938,11 +1942,11 @@ fn coax_p_cg_meadow_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
     l_dx = (l_x - l_ex);
     l_dz = (l_z - l_ez);
     l_d = sqrt(((l_dx * l_dx) + (l_dz * l_dz)));
-    if (((l_d < coax_p_e2_field_start(l_t)) || (l_d >= coax_p_e2_field_out(l_t))))
+    if (((l_d < coax_p_e2_field_start_r(l_t, l_reach, l_fine)) || (l_d >= coax_p_e2_field_out_r(l_t, l_reach, l_fine))))
     {
       return l_o;
     }
-    l_shown = coax_p_e2_field_shown(coax_p_e2_field_rel(l_t, l_d), coax_p_e2_field_rank(l_t, l_gx, l_gz, l_fx, l_fz));
+    l_shown = coax_p_e2_field_shown(coax_p_e2_field_rel_r(l_t, l_d, l_reach, l_fine), coax_p_e2_field_rank(l_t, l_gx, l_gz, l_fx, l_fz));
     if ((l_shown <= 0.0f))
     {
       return l_o;
@@ -1950,37 +1954,37 @@ fn coax_p_cg_meadow_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
     l_au = coax_p_e2_meadow_gold(l_x, l_z);
     return coax_p_cg_meadow_place(l_id, coax_p_v4(l_x, coax_p_exp_height_gpu(l_x, l_z), l_z, (coax_p_e2_unit(coax_p_e2_field_hash(l_fx, l_fz, 3u)) * 0x1.921fb6p2f)), (coax_p_e2_meadow_tuft_sv(l_fx, l_fz) * l_shown), (coax_p_e2_meadow_tuft_sh(l_fx, l_fz) * l_shown), coax_p_v3((0x1.333334p-2f + (0x1.0a3d70p-2f * l_au)), 0x1.eb851ep-2f, 0x1.c28f5cp-5f), l_au, l_m, l_o.f8);
   }
-  l_c_28 = coax_p_e2_meadow_cell(l_kit);
-  l_gx_29 = ((u32(floor(((l_ex - l_origin) / l_c_28))) + l_ix) - l_half);
-  l_gz_30 = ((u32(floor(((l_ez - l_origin) / l_c_28))) + l_iz) - l_half);
-  if ((!coax_p_e2_meadow_held(l_gx_29, l_gz_30, l_kit)))
+  l_c_30 = coax_p_e2_meadow_cell(l_kit);
+  l_gx_31 = ((u32(floor(((l_ex - l_origin) / l_c_30))) + l_ix) - l_half);
+  l_gz_32 = ((u32(floor(((l_ez - l_origin) / l_c_30))) + l_iz) - l_half);
+  if ((!coax_p_e2_meadow_held(l_gx_31, l_gz_32, l_kit)))
   {
     return l_o;
   }
-  l_x_31 = coax_p_e2_meadow_at_x(l_gx_29, l_gz_30, l_kit);
-  l_z_32 = coax_p_e2_meadow_at_z(l_gx_29, l_gz_30, l_kit);
-  l_dx_33 = (l_x_31 - l_ex);
-  l_dz_34 = (l_z_32 - l_ez);
+  l_x_33 = coax_p_e2_meadow_at_x(l_gx_31, l_gz_32, l_kit);
+  l_z_34 = coax_p_e2_meadow_at_z(l_gx_31, l_gz_32, l_kit);
+  l_dx_35 = (l_x_33 - l_ex);
+  l_dz_36 = (l_z_34 - l_ez);
   if ((l_m.z.z > l_m.z.x))
   {
-    if (((((l_x_31 > l_m.z.x) && (l_x_31 < l_m.z.z)) && (l_z_32 > l_m.z.y)) && (l_z_32 < l_m.z.w)))
+    if (((((l_x_33 > l_m.z.x) && (l_x_33 < l_m.z.z)) && (l_z_34 > l_m.z.y)) && (l_z_34 < l_m.z.w)))
     {
       return l_o;
     }
-    if (((l_m.x.w > 0.0f) && (((((l_x_31 < (l_m.z.x - l_m.x.w)) || (l_x_31 > (l_m.z.z + l_m.x.w))) || (l_z_32 < (l_m.z.y - l_m.x.w))) || (l_z_32 > (l_m.z.w + l_m.x.w))) || (coax_p_cg_hash(coax_p_e2_meadow_seed(l_gx_29, l_gz_30, l_kit), 0x1.200000p3f) > l_m.y.x))))
+    if (((l_m.x.w > 0.0f) && (((((l_x_33 < (l_m.z.x - l_m.x.w)) || (l_x_33 > (l_m.z.z + l_m.x.w))) || (l_z_34 < (l_m.z.y - l_m.x.w))) || (l_z_34 > (l_m.z.w + l_m.x.w))) || (coax_p_cg_hash(coax_p_e2_meadow_seed(l_gx_31, l_gz_32, l_kit), 0x1.200000p3f) > l_m.y.x))))
     {
       return l_o;
     }
   }
-  l_k = coax_p_e2_meadow_fade(l_kit, sqrt(((l_dx_33 * l_dx_33) + (l_dz_34 * l_dz_34))));
+  l_k = coax_p_e2_meadow_fade(l_kit, (sqrt(((l_dx_35 * l_dx_35) + (l_dz_36 * l_dz_36))) / l_reach));
   if ((l_k <= 0.0f))
   {
     return l_o;
   }
-  l_h = coax_p_e2_meadow_seed(l_gx_29, l_gz_30, l_kit);
-  l_au_37 = coax_p_e2_meadow_gold(l_x_31, l_z_32);
-  l_p = coax_p_e2_meadow_piece(l_kit, l_h, l_au_37);
-  return coax_p_cg_meadow_place(l_id, coax_p_v4(l_x_31, (coax_p_exp_height_gpu(l_x_31, l_z_32) - l_p.w), l_z_32, (coax_p_cg_hash(l_h, 0x1.000000p4f) * 0x1.921cacp2f)), (l_p.y * l_k), (l_p.z * l_k), coax_p_v3(l_p.f4[0i], l_p.f4[1i], l_p.f4[2i]), l_au_37, l_m, l_o.f8);
+  l_h = coax_p_e2_meadow_seed(l_gx_31, l_gz_32, l_kit);
+  l_au_39 = coax_p_e2_meadow_gold(l_x_33, l_z_34);
+  l_p = coax_p_e2_meadow_piece(l_kit, l_h, l_au_39);
+  return coax_p_cg_meadow_place(l_id, coax_p_v4(l_x_33, (coax_p_exp_height_gpu(l_x_33, l_z_34) - l_p.w), l_z_34, (coax_p_cg_hash(l_h, 0x1.000000p4f) * 0x1.921cacp2f)), (l_p.y * l_k), (l_p.z * l_k), coax_p_v3(l_p.f4[0i], l_p.f4[1i], l_p.f4[2i]), l_au_39, l_m, l_o.f8);
 }
 fn coax_p_cg_instanced_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
   var l_id: u32 = p_id;

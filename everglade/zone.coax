@@ -22,6 +22,7 @@
 #load "../verse/experimental-hostiles.coax" as hostile;
 #load "../verse/experimental-dungeon.coax" as xdungeon;
 #load "../aethyr/loop.coax";
+#load "../aethyr/quality-page.coax";   // the graphics governor, wired as every realm wires it (zone_quality_frame, #13147)
 #load "../aethyr/rules/srd/battle.coax";
 #load "../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
 #load "../aethyr/space.coax" as asp;
@@ -89,6 +90,7 @@ EgZone :: struct {
   village_near: [1] village.EvNear;   // the walls and floors round you, for the controller
   touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (aethyr/sticks.coax)
   env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (zone_light)
+  qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/quality-page.coax): the pixels drawn and the knobs; the finger on its control
 }
 // The world is up: the page is a zone's, and you aren't walking out of Character Create's studio.
 zone_world :: (s: [] EgZone) -> bool { c := s[0].creator[..]; return c[0].on && c[0].experimental && !c[0].walk.on; }
@@ -303,10 +305,63 @@ zone_scene :: (s: [] EgZone, out: [] f32) -> int #export_c #effects(all) {
     n=xc_familiar_draw(s,out,n);n=xd_draw(s,out,n);
     if n<s[0].bodies[0].draws.count/4 { n=xc_objects_draw(s,out,n); }
   }
+  n = cc.meadow_cull(s[0].creator[..], s[0].bodies[..], out, n, s[0].bodies[0].draws.count/4);   // the open field: only the cells in view (#13147)
   zone_shadow_select(s);
   // first person (charactercreator.coax cc_self_hidden): your body still casts its shadow, but isn't drawn from your eyes
   for i: 0..<s[0].bodies[0].self_n { s[0].bodies[0].draws[i*4+1] = 0; }
   return n;
+}
+
+// ---- the graphics governor (aethyr/quality.coax through aethyr/quality-page.coax, #13147): in AUTO
+// it draws fewer pixels, then less grass and understory, when frames run long, and more again when
+// they keep on time. A zone's face calls zone_quality_frame every frame and answers the host's
+// pixel budget with zone_pixel_budget; the tier shows beside the frame rate
+// (experimental-combat.coax xc_corner) and a tap there picks the next (zone_gfx_pointer).
+ZONE_PIXELS :: 6400000;   // the most pixels a frame draws at any tier (3200 by 2000): the glade's sky and ground are traced per pixel
+zone_quality_frame :: (s: [] EgZone, dt: f32, w: f32, h: f32, dpr: f32, golden: bool) #export_c #effects(all) {
+  cr := s[0].creator[..];
+  drawing := ifx cr[0].on then s[0].bodies[0].draw_n > 0 else true;   // the measured start waits for the scene's first draws
+  qp_frame(s[0].qp[..], dt, w, h, dpr, golden, drawing);
+  kn := s[0].qp[0].kn; cr[0].q_grass = kn.grass; cr[0].q_fine = kn.fine; cr[0].q_scenery = kn.scenery;
+  l: [40] u8; t := qp_label(s[0].qp[..], l[..]);
+  cr[0].gfx_n = t.count; for i: 0..<t.count { cr[0].gfx[i] = t[i]; }
+}
+// A golden frame keeps the zone's own budget, so its picture is the same on every screen.
+zone_pixel_budget :: (s: [] EgZone, w: f32, h: f32, dpr: f32) -> int #export_c #effects(all) {
+  if s[0].qp[0].golden { return ZONE_PIXELS; }
+  px := qp_pixels(s[0].qp[..], w, h, dpr);
+  return ifx px <= 0 || px > ZONE_PIXELS then ZONE_PIXELS else px;
+}
+zone_gfx_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool {
+  b := s[0].creator[0].gfx_box; inside := b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
+  if phase == 0 { if !inside { return false; } s[0].gfx_finger = id; return true; }
+  if s[0].gfx_finger < 0 || id != s[0].gfx_finger { return false; }
+  if phase >= 2 { s[0].gfx_finger = -1; if phase == 2 && inside { qp_pick(s[0].qp[..], quality_next(s[0].qp[0].q[0].mode)); } }
+  return true;
+}
+#test "a zone's graphics: AUTO steps the pixels and the grass down under long frames, the tier shows, and a tap picks the next" #steps 400000000 {
+  s: [1] EgZone; s[0].creator[0].on = true; s[0].creator[0].experimental = true; s[0].bodies[0].draw_n = 1;
+  #assert zone_pixel_budget(s[..], 2560, 1600, 2) == ZONE_PIXELS;   // no governor yet: the zone's own
+  #assert zone_message(s[..], QP_HOST_GPU, "gpu_vendor=apple\ngpu_arch=metal-3\ngpu_fallback=0\n") && !zone_message(s[..], HOST_PAGE, "url=http://x/worlds/archery-range\nvw=1280\nvh=800\ndpr=2\n");
+  zone_quality_frame(s[..], 0, 2560, 1600, 2, false);
+  #assert quality_auto(s[0].qp[0].q[..]) && zone_pixel_budget(s[..], 2560, 1600, 2) == ZONE_PIXELS && s[0].creator[0].q_grass == 1 && s[0].creator[0].q_scenery == 1;
+  #assert cast(string) s[0].creator[0].gfx[0..<s[0].creator[0].gfx_n] == "GFX AUTO · HIGH" && zone_probe(s[..], 847) == QUALITY_HIGH && zone_probe(s[..], 848) == QUALITY_AUTO;
+  for i: 0..<600 { zone_quality_frame(s[..], 0.06, 2560, 1600, 2, false); }
+  #assert quality_tier(s[0].qp[0].q[..]) == QUALITY_LOW && zone_pixel_budget(s[..], 2560, 1600, 2) <= 1280 * 800 && s[0].creator[0].q_grass < 0.5 && s[0].creator[0].q_scenery < 1;
+  #assert cast(string) s[0].creator[0].gfx[0..<s[0].creator[0].gfx_n] == "GFX AUTO · LOW";
+  #assert zone_probe(s[..], 846) == s[0].qp[0].q[0].rung && zone_probe(s[..], 847) == QUALITY_LOW && zone_probe(s[..], 849) < 50;
+  // the host is told the rung it settled at, when the zone has nothing else to send
+  for i: 0..<9000 { zone_quality_frame(s[..], 0.0178, 2560, 1600, 2, false); if quality_settled_due(s[0].qp[0].q[..]) { break; } }
+  #assert quality_settled_due(s[0].qp[0].q[..]) && zone_action(s[..]) == QP_ACT_SETTLED && s[0].out_n >= 5; zone_action_done(s[..]);
+  // a tap on the control picks HIGH, held whatever the frames do, and the host keeps it
+  s[0].creator[0].gfx_box = cc.Box.{x0 = 900, y0 = 700, x1 = 1000, y1 = 744};
+  #assert !zone_gfx_pointer(s[..], 10, 10, 0, 1) && zone_gfx_pointer(s[..], 950, 720, 0, 1) && zone_gfx_pointer(s[..], 950, 720, 2, 1);
+  #assert !quality_auto(s[0].qp[0].q[..]) && quality_tier(s[0].qp[0].q[..]) == QUALITY_HIGH;
+  #assert zone_action(s[..]) == QP_ACT_QUALITY && cast(string) s[0].outbox[0..<s[0].out_n] == "high";
+  for i: 0..<300 { zone_quality_frame(s[..], 0.06, 2560, 1600, 2, false); }
+  #assert quality_tier(s[0].qp[0].q[..]) == QUALITY_HIGH && zone_pixel_budget(s[..], 2560, 1600, 2) == ZONE_PIXELS && cast(string) s[0].creator[0].gfx[0..<s[0].creator[0].gfx_n] == "GFX HIGH";
+  // a golden frame draws the zone's own budget and shows no control
+  zone_quality_frame(s[..], 0.016, 390, 844, 3, true); #assert zone_pixel_budget(s[..], 390, 844, 3) == ZONE_PIXELS && s[0].creator[0].gfx_n == 0;
 }
 
 // ---- the frame
@@ -430,7 +485,7 @@ zone_wheel :: (s: [] EgZone, dy: f32) -> bool #export_c #effects(all) { cc.wheel
 // A pointer on the page: the respawn, the mount's button, your bar, then the scene's (the camera's drag).
 zone_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
-  if s[0].creator[0].on {if s[0].creator[0].experimental && zone_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && zone_ride_pointer(s,x,y,phase) {return true;}if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
+  if s[0].creator[0].on {if s[0].creator[0].experimental && zone_gfx_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && zone_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && zone_ride_pointer(s,x,y,phase) {return true;}if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
   return false;
 }
 // Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
@@ -484,6 +539,8 @@ zone_mouselook_step :: (s: [] EgZone, dt: f32) {
 // A message every zone takes the same way: a driver's command, the bar's kept order, your character
 // and its kept appearance. False when it is the realm's to read (the page's facts).
 zone_message :: (s: [] EgZone, kind: int, t: string) -> bool #export_c #effects(all) {
+  if kind == QP_HOST_GPU { qp_gpu(s[0].qp[..], t); return true; }   // the adapter's facts: the governor's alone
+  if kind == HOST_PAGE { qp_facts(s[0].qp[..], t); }                // the page's facts: the governor's start, and still the realm's to read
   if kind == 700 { fd_message(s, t); return true; }   // a driver's command (coax/web/host.js coaxial.drive)
   if kind==12 { _ := xc_order_load(s[0].xc[..], t); return true; }
   if kind==16 {cc.load_player(s[0].creator[..],t);return true;}
@@ -506,9 +563,12 @@ zone_action :: (s: [] EgZone) -> int #export_c #effects(all) {
  // USE IN EVERGLADE: open Everglade out of sight while the character walks there, then hand over in place (charactercreator-walk.coax).
  if s[0].creator[0].on && cc.walk_ask(s[0].creator[..]) {s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_PREFETCH;}
  if s[0].creator[0].on && cc.walk_leave(s[0].creator[..]) {s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_NAVIGATE;}
- if s[0].creator[0].on && s[0].creator[0].revision!=s[0].creator[0].saved {s[0].out_n=cc.save(s[0].creator[0],s[0].outbox[..]);s[0].creator[0].saved=s[0].creator[0].revision;return 4;} a := s[0].action; s[0].action = 0; return a; }
+ if s[0].creator[0].on && s[0].creator[0].revision!=s[0].creator[0].saved {s[0].out_n=cc.save(s[0].creator[0],s[0].outbox[..]);s[0].creator[0].saved=s[0].creator[0].revision;return 4;} if s[0].action == 0 { t := qp_tell(s[0].qp[..], s[0].outbox[..]); if t.action != 0 { s[0].out_n = t.n; return t.action; } }   // the tier to keep, or the rung AUTO settled at
+ a := s[0].action; s[0].action = 0; return a; }
 zone_action_done :: (s: [] EgZone) #export_c #effects(all) { s[0].out_n = 0; }
 
 // 840 mouselook's word to the host, 841 the pointer held, 842 the reticle (percent), 843 the camera's turn, 844 its tilt (milliradians), 845 the bar slot under the pointer
+// the graphics governor (zone_quality_frame): 846 its rung (-1 before it starts), 847 the tier shown (0 high, 1 med, 2 low), 848 the mode (3 auto), 849 the grass knob in hundredths
 zone_probe :: (s:[] EgZone,f:int)->int #export_c #effects(all) {if f>=900 {return xc_probe(s,f);}
+  if f==846 {return ifx s[0].qp[0].ready then s[0].qp[0].q[0].rung else -1;}if f==847 {return ifx s[0].qp[0].ready then quality_tier(s[0].qp[0].q[..]) else -1;}if f==848 {return s[0].qp[0].q[0].mode;}if f==849 {return cast(int)(s[0].creator[0].q_grass*100+0.5);}
   c := s[0].creator[..];if f==840 {return mlook.ml_host(c[0].ml[0]);}if f==841 {return ifx c[0].ml[0].locked then 1 else 0;}if f==842 {return cast(int)(c[0].ml[0].shown*100);}if f==843 {return cast(int)(c[0].yaw*1000);}if f==844 {return cast(int)(c[0].pitch*1000);}if f==845 {return s[0].xc[0].hover;}return cc.probe(s[0].creator[..],f);}

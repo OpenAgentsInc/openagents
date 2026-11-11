@@ -90,14 +90,17 @@ cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivel
  o:FivelabS;o.pos=v4(0,0,-2,1);o.dye=v4(0,0,0,12);o.who=(instance>>16)-1;
  i:=instance&65535;kit:=cast(int)m.a.x;side:=cast(u32)m.a.z;iz:=i/side;ix:=i-iz*side;half:=side/2;
  origin:=f32(E2_MEADOW_ORIGIN);ex:=u[16];ez:=u[18];
+ // the graphics quality's reach (b.y) and the finest grass tier's share (b.z), 1 where the record gives none
+ // (charactercreator.coax scene, aethyr/quality.coax): at 1 these are the full meadow, number for number
+ reach:=ifx m.b.y>0.0f32 then m.b.y else 1.0f32;fine:=ifx m.b.z>0.0f32 then m.b.z else 1.0f32;
  if (kit==33) {
   t:=cast(int)m.a.y;c:=e2_field_cell(t);
   gx:=add_wrap(cast(u32)floor((ex-origin)/c),ix)-half;gz:=add_wrap(cast(u32)floor((ez-origin)/c),iz)-half;
   fx:=e2_field_fine_x(t,gx,gz);fz:=e2_field_fine_z(t,gx,gz);
   x:=origin+(cast(f32)fx+e2_unit(e2_field_hash(fx,fz,cast(u32)1)))*0.5f32;z:=origin+(cast(f32)fz+e2_unit(e2_field_hash(fx,fz,cast(u32)2)))*0.5f32;
   dx:=x-ex;dz:=z-ez;d:=sqrt(dx*dx+dz*dz);
-  if (d<e2_field_start(t) || d>=e2_field_out(t)) {return o;}
-  shown:=e2_field_shown(e2_field_rel(t,d),e2_field_rank(t,gx,gz,fx,fz));
+  if (d<e2_field_start_r(t,reach,fine) || d>=e2_field_out_r(t,reach,fine)) {return o;}
+  shown:=e2_field_shown(e2_field_rel_r(t,d,reach,fine),e2_field_rank(t,gx,gz,fx,fz));
   if (shown<=0.0f32) {return o;}
   au:=e2_meadow_gold(x,z);
   return cg_meadow_place(id,v4(x,exp_height_gpu(x,z),z,e2_unit(e2_field_hash(fx,fz,cast(u32)3))*6.2831853f32),e2_meadow_tuft_sv(fx,fz)*shown,e2_meadow_tuft_sh(fx,fz)*shown,v3(0.30f32+0.26f32*au,0.48f32,0.055f32),au,m,u,vertices,o.who);
@@ -112,7 +115,7 @@ cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivel
   if (x>m.c.x && x<m.c.z && z>m.c.y && z<m.c.w) {return o;}
   if (m.a.w>0.0f32 && (x<m.c.x-m.a.w || x>m.c.z+m.a.w || z<m.c.y-m.a.w || z>m.c.w+m.a.w || cg_hash(e2_meadow_seed(gx,gz,kit),9)>m.b.x)) {return o;}
  }
- k:=e2_meadow_fade(kit,sqrt(dx*dx+dz*dz));
+ k:=e2_meadow_fade(kit,sqrt(dx*dx+dz*dz)/reach);
  if (k<=0.0f32) {return o;}
  h:=e2_meadow_seed(gx,gz,kit);au:=e2_meadow_gold(x,z);p:=e2_meadow_piece(kit,h,au);
  return cg_meadow_place(id,v4(x,exp_height_gpu(x,z)-p.sink,z,cg_hash(h,16)*6.283f32),p.sv*k,p.sh*k,v3(p.tint[0],p.tint[1],p.tint[2]),au,m,u,vertices,o.who);

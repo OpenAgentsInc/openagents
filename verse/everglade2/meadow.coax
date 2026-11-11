@@ -164,6 +164,10 @@ e2_meadow_weights :: (autumn: f32) -> [4] f32 {
   for i: 0..<E2_MEADOW_KITS { k := e2_meadow_kit_at(i); #assert e2_meadow_side(k, 0) == 2 * int(-floor(-e2_meadow_reach(k) / e2_meadow_cell(k))) + 1; }
   for t: 0..<4 { #assert e2_meadow_side(E2_MEADOW_GRASS, t) == 2 * int(-floor(-e2_field_out(t) / e2_field_cell(t))) + 1 && e2_meadow_side(E2_MEADOW_GRASS, t) * e2_meadow_side(E2_MEADOW_GRASS, t) <= 65535; }
   #assert e2_meadow_side(23, 0) == 0 && e2_meadow_side(E2_MEADOW_GRASS, 4) == 0;
+  // and the grid's cell and ring, as a page culls it (meadow-grid.coax), are the kit's and the tier's own
+  for i: 0..<E2_MEADOW_KITS { k := e2_meadow_kit_at(i);
+    #assert abs(e2_meadow_grid_cell(k, 0) - e2_meadow_cell(k)) < 0.0001 && e2_meadow_grid_inner(k, 0) == 0 && e2_meadow_grid_outer(k, 0) == e2_meadow_reach(k) && e2_meadow_grid_pad(k) > 0; }
+  for t: 0..<4 { g := E2_MEADOW_GRASS; #assert e2_meadow_grid_cell(g, t) == e2_field_cell(t) && e2_meadow_grid_inner(g, t) == e2_field_start(t) && e2_meadow_grid_outer(g, t) == e2_field_out(t); }
 }
 #test "an open meadow's gold is Everglade II's patches away from the woods" {
   for i: 0..<300 { x := f32(i) * 7.3 - 900; z := f32(i % 37) * 11.1 - 200; g := e2_meadow_gold(x, z); #assert g >= 0 && g <= 0.3; }

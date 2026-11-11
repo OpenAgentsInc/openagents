@@ -217,6 +217,9 @@ before (`coaxial_pixel_budget` returns 0) and don't show the tier.
 | File | What |
 | --- | --- |
 | `aethyr/quality.coax` | The ladder, the start rung, the governor, the label. Checks for each rule. |
+| `aethyr/quality-page.coax` | A page's wiring round its `Quality`, written once (`QualityPage`): the facts, the GPU's facts, the frame, the pixel budget, the eased knobs, what the host keeps, the label and a pick. |
+| `everglade/zone.coax` | A zone's governor (`zone_quality_frame`, `zone_pixel_budget`), so Experimental, the Druid's meadow and the Archery Range all run it; the tier shows beside the frame rate. |
+| `aethyr/render/grid-cull.coax` | The cells of a grid round the eye that the view can see, as runs: the open meadow draws those, not the whole grid (`charactercreator.coax` `meadow_cull`). |
 | `verse/demolish.coax` | `demo_caps`: the debris, splinter and dust budgets. |
 | `apps/openagents-web/everglade-quality.coax` | Everglade's side: facts, the per-frame call, the pixel budget, the control, a cost probe. |
 | `apps/openagents-web/everglade-spells.coax` | The debris budgets each frame; `sp_fx_thin`. |
@@ -229,6 +232,12 @@ A new world uses it the same way: `#load "../../aethyr/quality.coax"`, start
 it from the facts (`quality_device_from_facts`, `quality_mode_from_facts`),
 call `quality_frame` each frame, and read `quality_knobs`. Before the governor
 starts, `quality_start_pixels` gives the start rung's pixel budget.
+
+Simpler: keep one `QualityPage` (`#load "../../aethyr/quality-page.coax"`). It
+does all of that. Call `qp_facts` on host message 600, `qp_gpu` on 613,
+`qp_frame` each frame, answer `coaxial_pixel_budget` with `qp_pixels`, read
+the knobs from `kn`, and send what `qp_tell` asks when the page has no other
+action. An Everglade zone gets this from `everglade/zone.coax`.
 
 ### Everglade II
 

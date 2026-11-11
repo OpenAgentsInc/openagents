@@ -376,6 +376,9 @@ has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
 // The pack's catalog arrived (fivelab-face.c): Experimental's Aribeth keeps her clips here; the rest is the zone's.
 lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { s[0].w[0].creator[0].aribeth=s[0].aribeth_state[..]; zone_catalog(s[0].w[..], text); }
 // The figures' instances for the frame (the objects store) and their draws; the count of draws.
+// The graphics governor is the zone's (everglade/zone.coax zone_quality_frame): the tabletop's pages run it too.
+lab_quality_frame :: (s: [] Lab, dt: f32, w: f32, h: f32, dpr: f32, golden: bool) #export_c #effects(all) { zone_quality_frame(s[0].w[..], dt, w, h, dpr, golden); }
+lab_pixel_budget :: (s: [] Lab, w: f32, h: f32, dpr: f32) -> int #export_c #effects(all) { return zone_pixel_budget(s[0].w[..], w, h, dpr); }
 lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
   if s[0].w[0].creator[0].on { return zone_scene(s[0].w[..], out); }
   if !s[0].started || s[0].view != VIEW_GLADE { s[0].w[0].bodies[0].draw_n = 0; s[0].w[0].shadow_n = 0; return 0; }
