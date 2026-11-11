@@ -83,6 +83,27 @@ sty_cloud_field :: (ax:f32,ay:f32,cover:f32)->f32 {
   puff:f32=sty_noise2(ax*7.0f32+11.0f32,ay*7.0f32+3.0f32);
   return mass*0.62f32+billow*0.34f32+(puff-0.5f32)*0.07f32+(cover-0.5f32)*0.36f32;
 }
+// How far inside a heaped cloud a point is, in the cloud's own measure (its height 1, its flat
+// base along y 0, `wide` half its width): above 0 inside. A heap is nine round puffs, six along
+// its base, larger toward the middle, and three piled on them, with billows on its edge.
+sty_cumulus :: (px:f32,py:f32,wide:f32,seed:f32)->f32 {
+  d:f32=0.0f32-10.0f32;
+  for k:0..<9 {
+    fk:f32=cast(f32)k;
+    h1:f32=sty_hash2(fk+seed*7.0f32,seed+3.0f32); h2:f32=sty_hash2(fk+11.0f32,seed*5.0f32+1.0f32);
+    cx:f32=0.0f32; cy:f32=0.0f32; r:f32=0.0f32;
+    if (k<6) {
+      cx=wide*((fk+0.5f32)/6.0f32*1.7f32-0.85f32+(h1-0.5f32)*0.12f32);
+      edge:f32=cx/wide; r=0.24f32+0.3f32*(1.0f32-edge*edge)*(0.75f32+0.5f32*h2); cy=r*0.42f32;
+    } else {
+      cx=wide*((fk-7.0f32)*0.36f32+(h1-0.5f32)*0.2f32); r=0.33f32+0.15f32*h2; cy=0.5f32+0.14f32*h1;
+    }
+    dx:f32=px-cx; dy:f32=py-cy;
+    d=fmax(d,r-sqrt(dx*dx+dy*dy));
+  }
+  d=d+(sty_noise2(px*5.0f32+seed*13.0f32,py*5.0f32)-0.5f32)*0.09f32+(sty_noise2(px*13.0f32,py*13.0f32+seed)-0.5f32)*0.035f32;
+  return fmin(d,py*1.6f32+0.02f32);
+}
 sty_sky :: (rd:V3,u:[]f32)->V3 {
   zenith:V3=wg_at3(u,STY_U_ZENITH); horizon:V3=wg_at3(u,STY_U_HORIZON);
   up:f32=saturate(rd.y);
@@ -97,7 +118,7 @@ sty_sky :: (rd:V3,u:[]f32)->V3 {
   band:f32=smoothstep(0.04f32,0.22f32,up)*(1.0f32-smoothstep(0.7f32,0.98f32,up));
   // A crisp edge, about two pixels wide whatever the clouds' size.
   wide:f32=fmax(gpu_fwidth(d),0.0005f32);
-  edge:f32=smoothstep(0.5f32-wide,0.5f32+wide,d)*band;
+  edge:f32=smoothstep(0.5f32-wide,0.5f32+wide,d)*band*smoothstep(0.0f32,0.04f32,cover);
   if (edge>0.0f32) {
     sun:V3=wg_at3(u,STY_U_SUN);
     saz:f32=wg_atan2(sun.x,0.0f32-sun.z);
@@ -111,6 +132,26 @@ sty_sky :: (rd:V3,u:[]f32)->V3 {
     cloud:V3=mix3(shade,white,saturate(bright*0.85f32+0.12f32));
     cloud=mix3(horizon,cloud,smoothstep(0.02f32,0.3f32,up));
     c=mix3(c,cloud,edge);
+  }
+  // Heaped clouds, each placed by hand: a crisp edge a pixel or two wide, white above, soft
+  // blue-grey toward its flat base, and brightest on the edge that faces up to the light.
+  el:f32=wg_atan2(rd.y,sqrt(rd.x*rd.x+rd.z*rd.z));
+  for i:0..<STY_CUMULI {
+    o:int=STY_U_CUMULUS+i*4; tall:f32=u[o+3];
+    if (tall>0.001f32) {
+      turn:f32=az-u[o]; turn=turn-STY_TAU*floor(turn/STY_TAU+0.5f32);
+      px:f32=turn*cos(u[o+1])/tall; py:f32=(el-u[o+1])/tall; half:f32=u[o+2]/tall;
+      if (abs(px)<half+0.9f32&&py>0.0f32-0.2f32&&py<1.7f32) {
+        seed:f32=cast(f32)i+1.0f32;
+        in_:f32=sty_cumulus(px,py,half,seed);
+        w:f32=1.5f32/(fmax(u[STY_U_EYE+3],1.0f32)*tall);
+        over:f32=smoothstep(0.0f32-w,w,in_);
+        rim:f32=smoothstep(0.0f32-0.02f32,0.1f32,in_-sty_cumulus(px+0.03f32,py+0.14f32,half,seed));
+        body:f32=smoothstep(0.06f32,0.62f32,py+(sty_noise2(px*2.2f32+seed,py*2.2f32)-0.5f32)*0.4f32);
+        heap:V3=mix3(v3(0.78f32,0.85f32,0.94f32),v3(1.0f32,0.995f32,0.97f32),saturate(body*0.9f32+rim*0.45f32));
+        c=mix3(c,heap,over);
+      }
+    }
   }
   // Below the horizon: the haze the land fades into.
   if (rd.y<0.0f32) {return mix3(horizon,wg_at3(u,STY_U_HAZE),saturate(0.0f32-rd.y*8.0f32));}
@@ -207,6 +248,37 @@ sty_meadow :: (x:f32,z:f32,u:[]f32)->f32 {
   patch:f32=sty_noise2(sx*0.06f32+3.0f32,z*0.06f32); fine:f32=sty_noise2(sx*0.6f32,z*0.6f32+8.0f32);
   return saturate(patch*0.8f32+fine*0.3f32+u[STY_U_PATH_INFO+2]-0.55f32);
 }
+// The flag a place lies on, in flags (one about a unit across): how far its own stone's middle
+// is, how far the next nearest stone's, and a number of the stone's own from 0 to 1.
+sty_flags :: (x:f32,z:f32)->V3 {
+  ix:f32=floor(x); iz:f32=floor(z);
+  near:f32=10.0f32; next:f32=10.0f32; id:f32=0.0f32;
+  for j:0..<3 {
+    for i:0..<3 {
+      cx:f32=ix+cast(f32)i-1.0f32; cz:f32=iz+cast(f32)j-1.0f32;
+      dx:f32=cx+0.5f32+(sty_hash2(cx,cz)-0.5f32)*0.72f32-x; dz:f32=cz+0.5f32+(sty_hash2(cx+17.0f32,cz+29.0f32)-0.5f32)*0.72f32-z;
+      d:f32=sqrt(dx*dx+dz*dz);
+      if (d<near) { next=near; near=d; id=sty_hash2(cx+5.0f32,cz+3.0f32); } else if (d<next) { next=d; }
+    }
+  }
+  return v3(near,next,id);
+}
+// A bell about the origin, about a quarter of a unit tall: 1 on it, 0 off it.
+sty_bell :: (x:f32,y:f32)->f32 {
+  ax:f32=abs(x);
+  dome:bool=y>=0.02f32&&sqrt(x*x+(y-0.02f32)*(y-0.02f32))<0.085f32;
+  body:bool=y<0.02f32&&y>0.0f32-0.09f32&&ax<0.085f32+(0.02f32-y)*0.5f32;
+  lip:bool=y<=0.0f32-0.09f32&&y>0.0f32-0.115f32&&ax<0.16f32;
+  clapper:bool=sqrt(x*x+(y+0.145f32)*(y+0.145f32))<0.026f32;
+  knob:bool=sqrt(x*x+(y-0.125f32)*(y-0.125f32))<0.024f32;
+  if (dome||body||lip||clapper||knob) {return 1.0f32;}
+  return 0.0f32;
+}
+// A four-pointed star `size` across about the origin: 1 on it.
+sty_star :: (x:f32,y:f32,size:f32)->f32 {
+  if (sqrt(abs(x))+sqrt(abs(y))<sqrt(size)) {return 1.0f32;}
+  return 0.0f32;
+}
 sty_ground :: (p:V3,cover:f32,paved:f32,u:[]f32)->V3 {
   x:f32=p.x; z:f32=p.z;
   soil:f32=sty_fbm2(x*0.33f32,z*0.33f32); grit:f32=sty_noise2(x*3.1f32,z*3.1f32);
@@ -216,12 +288,13 @@ sty_ground :: (p:V3,cover:f32,paved:f32,u:[]f32)->V3 {
   path:f32=sty_path_share(x,z,u);
   c:V3=mix3(dirt,grass,saturate(cover)*(1.0f32-path));
   if (paved>0.01f32) {
-    // Cobbles: rows of stones, every other row a half stone along.
-    qz:f32=z*2.3f32; row:f32=floor(qz); qx:f32=x*2.3f32+0.5f32*(row-2.0f32*floor(row*0.5f32));
-    fx:f32=fract(qx); fz:f32=fract(qz);
-    joint:f32=smoothstep(0.03f32,0.12f32,fmin(fmin(fx,1.0f32-fx),fmin(fz,1.0f32-fz)));
-    stone:V3=mix3(v3(0.5f32,0.52f32,0.55f32),v3(0.7f32,0.7f32,0.69f32),sty_hash2(floor(qx),row));
-    c=mix3(c,mix3(v3(0.42f32,0.43f32,0.44f32),stone,joint),saturate(paved));
+    // Flagstones: many-sided flags about a metre across, each its own warm grey, with dark joints.
+    // The paving's edge follows whole stones' worth of noise, not a straight line.
+    f:V3=sty_flags(x*1.2f32,z*1.2f32);
+    joint:f32=smoothstep(0.02f32,0.055f32,f.y-f.x);
+    stone:V3=scale3(mix3(v3(0.55f32,0.53f32,0.49f32),v3(0.67f32,0.64f32,0.58f32),f.z),0.96f32+0.06f32*grit);
+    share:f32=smoothstep(0.38f32,0.62f32,paved+(sty_noise2(x*0.7f32,z*0.7f32)-0.5f32)*0.3f32);
+    c=mix3(c,mix3(v3(0.4f32,0.39f32,0.37f32),stone,joint),share);
   }
   return c;
 }
@@ -269,7 +342,9 @@ sty_surface :: (s:StyS,u:[]f32)->StySurface {
   }
   if (sty_is(m,ARCH_M_FIELDSTONE)) {
     base:V3=sty_base(s.tint,v3(0.6f32,0.59f32,0.54f32));
-    o.albedo=scale3(base,0.9f32+0.16f32*sty_noise2(p.x*3.0f32+p.y*2.0f32,p.z*3.0f32-p.y*2.0f32)); return o;
+    // A stone's top is its lightest face and what faces down its darkest: each reads as a block.
+    form:f32=0.8f32+0.24f32*smoothstep(0.0f32-0.3f32,0.9f32,normalize3(s.normal).y);
+    o.albedo=scale3(base,form*(0.94f32+0.08f32*sty_noise2(p.x*2.2f32+p.y*1.5f32,p.z*2.2f32-p.y*1.5f32))); return o;
   }
   if (sty_is(m,ARCH_M_PLANK)) {
     base:V3=sty_base(s.tint,v3(0.78f32,0.56f32,0.3f32));
@@ -301,11 +376,17 @@ sty_surface :: (s:StyS,u:[]f32)->StySurface {
     // A canopy clump: each facet its own stroke of the leaf's colour, darker underneath the crown
     // and a little yellower on top.
     base:V3=sty_base(s.tint,v3(0.26f32,0.5f32,0.17f32));
-    top:V3=mix3(base,mul3(base,v3(1.18f32,1.12f32,0.78f32)),smoothstep(0.35f32,0.95f32,a)*0.6f32);
-    // Brushwork: dabs of lighter and darker leaf about half a metre across, in three tones.
-    dab:f32=sty_noise2(p.x*1.9f32+p.y*1.3f32,p.z*1.9f32-p.y*1.1f32)+0.5f32*sty_noise2(p.x*4.3f32-p.y*2.0f32,p.z*4.3f32+p.y*3.1f32);
-    tone:f32=0.8f32+0.16f32*smoothstep(0.55f32,0.62f32,dab)+0.16f32*smoothstep(0.86f32,0.93f32,dab);
-    o.albedo=scale3(top,tone*(0.9f32+0.2f32*b)*(0.55f32+0.45f32*smoothstep(0.0f32,0.65f32,a))); return o;
+    // A mass's heart (v -1): the dark between its leaves.
+    if (b<0.0f32-0.5f32) { o.albedo=mul3(base,v3(0.4f32,0.5f32,0.52f32)); return o; }
+    // Leaves in four flat tones, chosen by how a leaf's mass faces the sun, how high it sits in
+    // its crown and its tuft's own number, so light and shade meet along tufts of leaves:
+    // deep shade, the leaf's colour, sunlit, and a few bright yellow tufts on top.
+    facing:f32=dot3(normalize3(s.normal),wg_at3(u,STY_U_SUN))*0.5f32+0.5f32;
+    light:f32=facing*0.74f32+a*0.24f32+(b-0.5f32)*0.07f32;
+    c:V3=mix3(mul3(base,v3(0.52f32,0.62f32,0.64f32)),base,smoothstep(0.38f32,0.41f32,light));
+    c=mix3(c,mul3(base,v3(1.28f32,1.2f32,0.86f32)),smoothstep(0.6f32,0.63f32,light));
+    c=mix3(c,mul3(base,v3(1.55f32,1.42f32,0.9f32)),smoothstep(0.84f32,0.87f32,light));
+    o.albedo=c; return o;
   }
   if (sty_is(m,ARCH_M_METAL)) { o.albedo=v3(0.075f32,0.075f32,0.085f32); return o; }
   if (sty_is(m,ARCH_M_GLOW)) {
@@ -327,6 +408,71 @@ sty_surface :: (s:StyS,u:[]f32)->StySurface {
     base:V3=sty_base(s.tint,v3(0.46f32,0.3f32,0.17f32));
     slat:f32=fract(b/0.085f32);
     o.albedo=scale3(base,0.55f32+0.5f32*smoothstep(0.0f32,0.5f32,slat)); return o;
+  }
+  if (sty_is(m,ARCH_M_STAINED)) {
+    // A stained light: a gold border, leaded blue glass, a gold bell and a red lozenge under it;
+    // or, with a red tint, a saint in red and gold. It glows a little by day.
+    gold:V3=v3(0.95f32,0.74f32,0.22f32); blue:V3=v3(0.14f32,0.2f32,0.78f32);
+    da:f32=fract((a+b)*3.0f32); db:f32=fract((a-b)*3.0f32);
+    lead:f32=1.0f32-smoothstep(0.03f32,0.07f32,fmin(fmin(da,1.0f32-da),fmin(db,1.0f32-db)));
+    c:V3=scale3(blue,0.8f32+0.35f32*sty_hash2(floor((a+b)*3.0f32),floor((a-b)*3.0f32)));
+    c=mix3(c,v3(0.05f32,0.06f32,0.2f32),lead*0.7f32);
+    if (s.tint.x>0.5f32) {
+      head:f32=sqrt((a-0.5f32)*(a-0.5f32)+(b+0.95f32)*(b+0.95f32));
+      if (b<0.0f32-1.12f32&&b>0.0f32-3.0f32&&abs(a-0.5f32)<0.13f32+(0.0f32-b-1.12f32)*0.09f32) { c=ifx fract(a*1.0f32+0.25f32)<0.5f32 then v3(0.82f32,0.14f32,0.1f32) else v3(0.93f32,0.66f32,0.16f32); }
+      if (head<0.14f32) { c=v3(0.96f32,0.82f32,0.6f32); } else if (head<0.2f32) { c=gold; }
+    } else {
+      if (sty_bell((a-0.5f32)*0.75f32,(b+1.0f32)*0.75f32)>0.5f32) { c=gold; }
+      loz:f32=abs(a-0.5f32)/0.22f32+abs(b+2.1f32)/0.36f32;
+      if (loz<1.0f32) { c=ifx loz<0.72f32 then v3(0.86f32,0.2f32,0.1f32) else gold; }
+    }
+    if (abs(a-0.5f32)>0.37f32) { c=gold; }
+    o.albedo=scale3(c,0.35f32); o.glow=scale3(c,0.62f32); return o;
+  }
+  if (sty_is(m,ARCH_M_BANNER)) {
+    // A banner: a field, a gold line down each side, a gold bell in a ring, four stars.
+    field:V3=sty_base(s.tint,v3(0.12f32,0.16f32,0.6f32)); gold:V3=v3(0.95f32,0.74f32,0.2f32);
+    c:V3=scale3(field,0.9f32+0.14f32*sin(a*9.0f32+b*1.7f32));
+    bx:f32=abs(a-0.5f32);
+    ring:f32=sqrt((a-0.5f32)*(a-0.5f32)+(b+0.74f32)*(b+0.74f32));
+    on:f32=sty_bell(a-0.5f32,b+0.74f32)+sty_star(a-0.5f32,b+1.34f32,0.07f32)+sty_star(a-0.27f32,b+1.6f32,0.05f32)+sty_star(a-0.73f32,b+1.6f32,0.05f32)+sty_star(a-0.5f32,b+1.88f32,0.06f32);
+    if (on>0.5f32||abs(ring-0.27f32)<0.022f32||(bx>0.39f32&&bx<0.44f32)||(b>0.0f32-0.1f32&&b<0.0f32-0.05f32)) { c=gold; }
+    o.albedo=c; return o;
+  }
+  if (sty_is(m,ARCH_M_SLAB)) {
+    // Paving slabs: courses 0.8 m deep of slabs 1.7 m long, every other course a half slab along.
+    base:V3=sty_base(s.tint,v3(0.79f32,0.78f32,0.73f32));
+    r:f32=b/0.8f32; row:f32=floor(r); fr:f32=r-row;
+    c:f32=a/1.7f32+0.5f32*(row-2.0f32*floor(row*0.5f32)); fc:f32=fract(c);
+    joint:f32=1.0f32-smoothstep(0.008f32,0.02f32,fmin(fmin(fr,1.0f32-fr)*0.8f32,fmin(fc,1.0f32-fc)*1.7f32));
+    o.albedo=mix3(scale3(base,0.93f32+0.1f32*sty_hash2(floor(c),row)),scale3(base,0.62f32),joint); return o;
+  }
+  if (sty_is(m,ARCH_M_SETT)) {
+    // Setts: courses 0.24 m wide of stones 0.36 m long.
+    base:V3=sty_base(s.tint,v3(0.6f32,0.59f32,0.56f32));
+    r:f32=b/0.24f32; row:f32=floor(r); fr:f32=r-row;
+    c:f32=a/0.36f32+0.5f32*(row-2.0f32*floor(row*0.5f32)); fc:f32=fract(c);
+    joint:f32=1.0f32-smoothstep(0.012f32,0.03f32,fmin(fmin(fr,1.0f32-fr)*0.24f32,fmin(fc,1.0f32-fc)*0.36f32));
+    o.albedo=mix3(scale3(base,0.86f32+0.22f32*sty_hash2(floor(c),row)),scale3(base,0.64f32),joint); return o;
+  }
+  if (sty_is(m,ARCH_M_ROSE)) {
+    // A rose window: eight petals of glass round a gold boss, an orange light in each, in gold tracery.
+    glass:V3=sty_base(s.tint,v3(0.5f32,0.38f32,0.95f32)); gold:V3=v3(0.93f32,0.74f32,0.3f32);
+    r:f32=sqrt(a*a+b*b); k:f32=(wg_atan2(b,a)/STY_TAU+0.5f32)*8.0f32; fk:f32=fract(k)-0.5f32;
+    c:V3=v3(0.1f32,0.1f32,0.3f32);
+    reach:f32=(r-0.58f32)/0.3f32;
+    if (r>0.26f32&&r<0.9f32&&abs(fk)<0.4f32*sqrt(fmax(1.0f32-reach*reach,0.0f32))) {
+      c=scale3(glass,0.75f32+0.4f32*sty_hash2(floor(k),2.0f32));
+      if (abs(fk)<0.13f32&&abs(r-0.6f32)<0.09f32) { c=v3(0.96f32,0.56f32,0.16f32); }
+    }
+    if (r<0.2f32||r>0.92f32) { c=gold; } else if (r<0.26f32) { c=scale3(glass,0.6f32); }
+    o.albedo=scale3(c,0.35f32); o.glow=scale3(c,0.62f32); return o;
+  }
+  if (sty_is(m,ARCH_M_WATER)) {
+    base:V3=sty_base(s.tint,v3(0.6f32,0.78f32,0.88f32));
+    t:f32=u[STY_U_SIZE+2];
+    glint:f32=smoothstep(0.62f32,0.74f32,sty_noise2(p.x*3.1f32+t*0.5f32,p.z*3.1f32+p.y*5.0f32+t*1.6f32));
+    o.albedo=mix3(base,v3(0.96f32,0.98f32,1.0f32),glint*0.7f32); return o;
   }
   return o;
 }
@@ -356,8 +502,10 @@ stylized_scene_fs :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompa
   albedo:V3=sty_decode(mul3(m.albedo,s.wash));
   ndl:f32=dot3(n,sun);
   // Leaves take the sun round their edges: the crown reads as one soft mass.
-  if (sty_is(s.info.x,ARCH_M_LEAF)) { ndl=ndl*0.75f32+0.25f32; }
   shadow:f32=sty_shadow(s.world,n,u,shadow_map,shadow_cmp);
+  // Leaves are painted in their own tones of light (sty_surface): the sun reaches every leaf,
+  // and another crown's shadow only dims it.
+  if (sty_is(s.info.x,ARCH_M_LEAF)) { ndl=1.0f32; shadow=mix(0.5f32,1.0f32,shadow); }
   c:V3=add3(sty_lit(albedo,n,ndl,shadow,u),sty_decode(m.glow));
   c=sty_encode(sty_haze(c,s.world,u));
   return v4(c.x,c.y,c.z,1.0f32);
@@ -465,18 +613,43 @@ stylized_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerC
 }
 #test "every material has a colour, a tint replaces it, and windows and lamps give their own light" {
   u:[STY_UNIFORM_FLOATS]f32;
-  s:StyS; s.world=v3(1.3f32,2.1f32,-4.2f32); s.uv=v2(0.37f32,0.61f32); s.tint=v3(0.0f32,0.0f32,0.0f32);
+  s:StyS; s.world=v3(1.3f32,2.1f32,-4.2f32); s.uv=v2(0.37f32,0.61f32); s.tint=v3(0.0f32,0.0f32,0.0f32); s.normal=v3(0.0f32,1.0f32,0.0f32);
   for k:1..<ARCH_M_COUNT {
     s.info=v4(cast(f32)k,0.0f32,0.0f32,0.0f32);
     m:StySurface=sty_surface(s,u[..]);
     #assert m.albedo.x>=0.0f32 && m.albedo.x<=1.3f32 && m.albedo.y>=0.0f32 && m.albedo.z>=0.0f32 && m.albedo.x+m.albedo.y+m.albedo.z>0.05f32;
-    lights:bool=k==ARCH_M_WINDOW||k==ARCH_M_GLOW;
+    lights:bool=k==ARCH_M_WINDOW||k==ARCH_M_GLOW||k==ARCH_M_STAINED||k==ARCH_M_ROSE;
     #assert (m.glow.x>0.0f32)==lights;
   }
   s.info=v4(cast(f32)ARCH_M_CLOTH,0.0f32,0.0f32,0.0f32); s.tint=v3(0.1f32,0.2f32,0.9f32);
   blue:StySurface=sty_surface(s,u[..]); #assert blue.albedo.z==0.9f32 && blue.albedo.x==0.1f32;
   s.info=v4(cast(f32)ARCH_M_ROOF,0.0f32,0.0f32,0.0f32); s.tint=v3(0.0f32,0.0f32,0.0f32);
   red:StySurface=sty_surface(s,u[..]); #assert red.albedo.x>red.albedo.y && red.albedo.y>red.albedo.z;
+}
+#test "a heaped cloud is white inside its puffs, sky outside them, and flat at its base" {
+  // In its own measure: inside near the middle of its base puffs, outside well above and well beside it.
+  #assert sty_cumulus(0.0f32,0.3f32,1.6f32,1.0f32)>0.05f32 && sty_cumulus(0.0f32,1.6f32,1.6f32,1.0f32)<0.0f32 && sty_cumulus(3.0f32,0.3f32,1.6f32,1.0f32)<0.0f32;
+  #assert sty_cumulus(0.0f32,0.0f32-0.05f32,1.6f32,1.0f32)<0.0f32;
+  u:[STY_UNIFORM_FLOATS]f32;
+  u[STY_U_ZENITH]=0.3f32; u[STY_U_ZENITH+1]=0.5f32; u[STY_U_ZENITH+2]=0.9f32;
+  u[STY_U_HORIZON]=0.7f32; u[STY_U_HORIZON+1]=0.8f32; u[STY_U_HORIZON+2]=0.95f32; u[STY_U_HORIZON+3]=1.0f32;
+  u[STY_U_SUN+1]=1.0f32; u[STY_U_EYE+3]=900.0f32;
+  clear:V3=sty_sky(normalize3(v3(0.0f32,0.42f32,0.0f32-1.0f32)),u[..]);
+  u[STY_U_CUMULUS]=0.0f32; u[STY_U_CUMULUS+1]=0.3f32; u[STY_U_CUMULUS+2]=0.5f32; u[STY_U_CUMULUS+3]=0.3f32;
+  cloud:V3=sty_sky(normalize3(v3(0.0f32,0.42f32,0.0f32-1.0f32)),u[..]);
+  beside:V3=sty_sky(normalize3(v3(1.0f32,0.42f32,0.0f32)),u[..]);
+  #assert cloud.x>clear.x+0.2f32 && cloud.x>0.75f32 && abs(beside.x-clear.x)<0.001f32;
+}
+#test "flags tile the ground, a bell and a star are where they are drawn, and leaves take four tones" {
+  f:V3=sty_flags(3.3f32,7.7f32); #assert f.x<=f.y && f.x<1.2f32 && f.z>=0.0f32 && f.z<1.0f32;
+  #assert sty_bell(0.0f32,0.0f32)==1.0f32 && sty_bell(0.3f32,0.0f32)==0.0f32 && sty_bell(0.0f32,0.0f32-0.145f32)==1.0f32;
+  #assert sty_star(0.0f32,0.0f32,0.07f32)==1.0f32 && sty_star(0.06f32,0.0f32,0.07f32)==1.0f32 && sty_star(0.04f32,0.04f32,0.07f32)==0.0f32;
+  u:[STY_UNIFORM_FLOATS]f32; u[STY_U_SUN+1]=1.0f32;
+  s:StyS; s.world=v3(1.0f32,5.0f32,2.0f32); s.tint=v3(0.3f32,0.5f32,0.2f32); s.info=v4(cast(f32)ARCH_M_LEAF,0.0f32,0.0f32,0.0f32);
+  s.normal=v3(0.0f32,0.0f32-1.0f32,0.0f32); s.uv=v2(0.0f32,0.1f32); shade:StySurface=sty_surface(s,u[..]);
+  s.normal=v3(0.0f32,1.0f32,0.0f32); s.uv=v2(1.0f32,0.9f32); bright:StySurface=sty_surface(s,u[..]);
+  s.uv=v2(0.5f32,0.0f32-1.0f32); heart:StySurface=sty_surface(s,u[..]);
+  #assert shade.albedo.y<0.32f32 && bright.albedo.y>0.7f32 && heart.albedo.y<0.26f32 && bright.albedo.x>bright.albedo.z;
 }
 #test "the sky is its zenith overhead, its horizon at the horizon, and haze below it" {
   u:[STY_UNIFORM_FLOATS]f32;

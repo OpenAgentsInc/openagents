@@ -22,6 +22,14 @@
 //   ARCH_M_ROCK       a far hill or a mountain: pale rock over green slopes      yes
 //   ARCH_M_SMOOTH     smooth cut stone: a coping, a pier, a sill                 yes
 //   ARCH_M_SHUTTER    a slatted shutter                                          yes
+//   ARCH_M_STAINED    a stained-glass light: a gold border, a bell and a lozenge  yes (red: saints instead)
+//                     on blue (u across it 0 to 1, v down from its top in widths)
+//   ARCH_M_BANNER     a heraldic banner: a gold bell in a ring and stars on a field yes (the field)
+//                     (u across it 0 to 1, v down from its top in widths)
+//   ARCH_M_SLAB       large smooth paving slabs with fine joints (steps, a terrace) yes
+//   ARCH_M_SETT       small squared setts in courses (u along a course, v across) yes
+//   ARCH_M_ROSE       a rose window: petals of glass round a boss (u, v from -1 to 1) yes (the petals)
+//   ARCH_M_WATER      still or falling water: pale, with moving glints           yes
 
 ARCH_M_GROUND :: 1;
 ARCH_M_PLASTER :: 2;
@@ -40,4 +48,10 @@ ARCH_M_CLOTH :: 14;
 ARCH_M_ROCK :: 15;
 ARCH_M_SMOOTH :: 16;
 ARCH_M_SHUTTER :: 17;
-ARCH_M_COUNT :: 18;
+ARCH_M_STAINED :: 18;
+ARCH_M_BANNER :: 19;
+ARCH_M_SLAB :: 20;
+ARCH_M_SETT :: 21;
+ARCH_M_ROSE :: 22;
+ARCH_M_WATER :: 23;
+ARCH_M_COUNT :: 24;

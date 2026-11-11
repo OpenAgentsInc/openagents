@@ -23,6 +23,9 @@
 //   STY_U_PATH_INFO   how many dirt paths, how soft their edges are (m), how dry the meadow is (0 lush, 1
 //                     dry), and how far its patches are shifted (m)
 //   STY_U_PATH        STY_PATHS paths, eight floats each: from (x, z) to (x, z), half its width, three spare
+//   STY_U_CUMULUS     STY_CUMULI heaped clouds, four floats each: where it stands round the horizon (radians,
+//                     0 along -z, turning toward +x), how high its flat base is (radians above the horizon),
+//                     half its width and its height (radians; 0: no cloud)
 
 STY_U_SIZE :: 0;
 STY_U_EYE :: 4;
@@ -46,7 +49,9 @@ STY_U_PATH_INFO :: 96;
 STY_U_PATH :: 100;
 STY_PATHS :: 12;
 STY_PATH_FLOATS :: 8;
-STY_UNIFORM_FLOATS :: 196;     // STY_U_PATH + STY_PATHS * STY_PATH_FLOATS
+STY_U_CUMULUS :: 196;          // STY_U_PATH + STY_PATHS * STY_PATH_FLOATS
+STY_CUMULI :: 3;
+STY_UNIFORM_FLOATS :: 208;     // STY_U_CUMULUS + STY_CUMULI * 4
 
 // The shadow map's bias: how far along its normal a surface is moved before it is looked up (m),
 // and how much nearer the sun it must be than what the map holds (a share of the map's depth).

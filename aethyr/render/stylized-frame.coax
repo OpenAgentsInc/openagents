@@ -31,6 +31,10 @@ StyLook :: struct {
   cloud: f32 = 0.5;                  // cloud cover: 0 clear, 1 overcast
   cloud_scale: f32 = 1.0;            // the clouds' size
   cloud_turn: f32 = 0.0;             // the clouds turned round the horizon, radians: which way the big ones lie
+  // Heaped clouds placed by hand, STY_CUMULI of them, four numbers each: where it stands round
+  // the horizon (radians: 0 along -z, turning toward +x), how high its flat base is above the
+  // horizon, half its width and its height (radians). A height of 0 is no cloud.
+  cumulus: [STY_CUMULI * 4] f32;
   blade: f32 = 0.34;                 // a blade of grass: its height
   blade_wide: f32 = 0.028;           // and its width at the root
   grass_cell: f32 = 0.15;            // metres between blades
@@ -85,6 +89,7 @@ sty_frame :: (u: [] f32, width: f32, height: f32, time: f32, c: StyCamera, look:
   sty_put3(u, STY_U_UP, up[0], up[1], up[2], 0);
   sty_put3(u, STY_U_FORWARD, f[0], f[1], f[2], 0);
   u[STY_U_PATH_INFO + 1] = look.path_soft; u[STY_U_PATH_INFO + 2] = look.meadow_dry; u[STY_U_PATH_INFO + 3] = look.meadow_shift;
+  for i: 0..<STY_CUMULI * 4 { u[STY_U_CUMULUS + i] = look.cumulus[i]; }
   return true;
 }
 
@@ -180,5 +185,9 @@ sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
   sty_path_clear(u[..]);
   for i: 0..<STY_PATHS { #assert sty_path_add(u[..], cast(f32) i, 0, cast(f32) i, 10, 2); }
   #assert !sty_path_add(u[..], 0, 0, 1, 1, 1) && u[STY_U_PATH_INFO] == STY_PATHS && u[STY_U_PATH + 8] == 1 && u[STY_U_PATH + 12] == 2;
-  #assert STY_U_PATH + STY_PATHS * STY_PATH_FLOATS == STY_UNIFORM_FLOATS && STY_UNIFORM_FLOATS % 4 == 0;
+  #assert STY_U_PATH + STY_PATHS * STY_PATH_FLOATS == STY_U_CUMULUS && STY_U_CUMULUS + STY_CUMULI * 4 == STY_UNIFORM_FLOATS && STY_UNIFORM_FLOATS % 4 == 0;
+  // A heaped cloud goes where the sky's shader reads it; with none placed, none is drawn.
+  #assert u[STY_U_CUMULUS + 3] == 0;
+  look.cumulus[4] = -0.4; look.cumulus[5] = 0.3; look.cumulus[6] = 0.5; look.cumulus[7] = 0.28;
+  #assert sty_frame(u[..], 800, 600, 0, c, look) && u[STY_U_CUMULUS + 4] == -0.4 && u[STY_U_CUMULUS + 7] == 0.28 && u[STY_U_CUMULUS + 3] == 0;
 }
