@@ -133,6 +133,9 @@ int main(int argc, char **argv) {
 #endif
   char *slash = strrchr(a.resources, '/');
   if (slash) *slash = 0;
+  // an Android app's are in its own files folder (components/gallery/android/activity.c)
+  const char *given = getenv("UI_RESOURCES");
+  if (given && *given) snprintf(a.resources, sizeof a.resources, "%s", given);
   char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/%s", a.resources, shader_file);
   const char *shot = value(argc, argv, "--shot"), *size = value(argc, argv, "--size"), *dpr = value(argc, argv, "--dpr");
   unsigned w = shot ? 3840 : 1920, h = shot ? 2400 : 1200;
@@ -146,6 +149,8 @@ int main(int argc, char **argv) {
                .user = &a, .frame = on_frame, .pointer = on_pointer, .wheel = on_wheel};
   a.host = ui_open(&app, shot != NULL);
   if (!a.host) return 1;
+  // a window without --dpr draws at the screen's own scale (an Android screen's density, a Mac's backing scale)
+  if (!shot && !dpr && ui_dpr(a.host) > 0) a.dpr = ui_dpr(a.host);
   ui_set_dpr(a.host, a.dpr);
   if (!atlas_setup(&a)) return 1;
   int status = 0;

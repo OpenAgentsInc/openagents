@@ -328,7 +328,7 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
   iOS host on `ui-host.h` (AppKit or a UIKit view, Metal, the input
   method through NSTextInputClient, pictures through ImageIO);
   `apps/shared/host/android/ui-host.c` is the Android one (Vulkan through
-  `verse/gpu/`, offscreen only: no window yet). The component gallery's own
+  `verse/gpu/`; its window since 2026-11-11). The component gallery's own
   `main.c` and Coax build on all four (`components/gallery/{linux,apple,android}/build.sh`).
   Its picture at 780 by 1688, 2x, is the same to the pixel in the iPhone
   simulator and an Android 35 emulator.
@@ -355,7 +355,13 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
   the Archery Range and Experimental, and a driven range run, match the
   Swift host's to the pixel.
 - **Not built:** Aethyrforge still runs its own `main.swift` host. The Android
-  window, on the activity's `ANativeWindow`, is not written. Who and when:
+  window is built (2026-11-11): an app built as a NativeActivity hands the
+  host its `android_app` (`apps/shared/host/android/ui-host-android.h`), and
+  the host draws to the activity's `ANativeWindow` through `verse/gpu/vkp`
+  and takes the first finger as the pointer.
+  `components/gallery/android/build.sh --install` puts the gallery on an
+  emulator as `Components.apk`; on `everglade_api35`, run headless, its
+  screen capture shows the gallery and a tap turns a toggle. Who and when:
   components/spec.md, "Phases".
 - **Staged: /chat's server engines.** `coax/web/agent/deploy.sh --staging`
   put the runner with #13153's engines on `oa-agent-staging`. Its first turn
