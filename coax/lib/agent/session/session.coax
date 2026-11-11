@@ -34,6 +34,7 @@ SPart :: struct {
   notice: int;              // P_NOTICE: N_*
   // P_TOOL, decoded when the call arrives
   id: string; tk: int;
+  name: string;             // the tool's own name as its engine calls it ("Bash", "MultiEdit", "mcp__github__create_issue"); "" when the engine has none
   arg: string; detail: string;
   before: string; after: string; // an edit's old and new strings, a write's content (new)
   input: string;            // the call's input, JSON (an approval answers with it); Codex's
@@ -54,6 +55,7 @@ Session :: struct {
   cost: f64;                // the conversation's cost so far (USD), from the last result
   turn_ms: int;             // the last turn's duration (ms)
   hint: bool;               // its one part is a notice shown before any message (Claude Code missing), gone at the first
+  frames: bool;             // text and thinking come from whole assistant frames, not stream deltas (an engine run without partial messages)
 }
 
 s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; }

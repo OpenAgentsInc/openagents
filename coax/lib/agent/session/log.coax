@@ -13,7 +13,7 @@
 //   {"kind":"user","text":T}                 a message the person sent
 //   {"kind":"thinking","text":T}             the model's thinking
 //   {"kind":"reply","text":T}                the answer's text (Markdown); a turn has one per stretch of text
-//   {"kind":"tool","label":"Bash(ls)","tool":K,"id":ID[,"arg":A][,"detail":D][,"old":O][,"new":N][,"input":I]}
+//   {"kind":"tool","label":"Bash(ls)","tool":K[,"name":NAME],"id":ID[,"arg":A][,"detail":D][,"old":O][,"new":N][,"input":I]}
 //                                            a tool call: K is its kind (SL_TOOLS), old and new an edit's text,
 //                                            input the call's JSON or a file change's unified diff
 //   {"kind":"result","text":T,"error":B[,"bytes":N,"output":WHOLE],"id":ID}
@@ -141,6 +141,7 @@ sl_lines :: (s: [] Session, from: int, to: int, ended: bool, out: [] u8) -> int 
       steps += 1;
       sl_raw(o[..], "{\"kind\":\"tool\",\"label\":"); sl_label(o[..], s, k);
       sl_field(o[..], "tool", ifx p.tk >= 0 && p.tk < 15 then tools[p.tk] else "tool");
+      sl_field(o[..], "name", p.name);
       sl_field(o[..], "id", p.id); sl_field(o[..], "arg", p.arg); sl_field(o[..], "detail", p.detail);
       sl_field(o[..], "old", p.before); sl_field(o[..], "new", p.after); sl_field(o[..], "input", p.input);
       sl_raw(o[..], "}\n");
@@ -256,6 +257,7 @@ sl_load_line :: (s: [] Session, ar: [] ClArena, line: string) -> bool {
     p.tk = ifx tk >= 0 then tk else ifx kind == "tool" then TK_TOOL else TK_ROUTE;
     p.id = s_put(s, cl_str(ar, line, "id")); p.arg = s_put(s, cl_str(ar, line, "arg")); p.detail = s_put(s, cl_str(ar, line, "detail"));
     p.before = s_put(s, cl_str(ar, line, "old")); p.after = s_put(s, cl_str(ar, line, "new")); p.input = s_put(s, cl_str(ar, line, "input"));
+    p.name = s_put(s, cl_str(ar, line, "name"));
     if kind == "routed" { p.output = s_put(s, cl_str(ar, line, "output")); p.failed = cl_bool(line, "error").value; p.resolved = cl_bool(line, "resolved").value; }
     s[0].parts[k] = p;
     return true;
@@ -329,7 +331,7 @@ sl_test_same :: (a: [] Session, b: [] Session) -> bool {
     p := a[0].parts[k]; q := b[0].parts[k];
     if p.kind != q.kind || s_text_of(a, k) != s_text_of(b, k) || p.notice != q.notice { return false; }
     if p.tk != q.tk || p.id != q.id || p.arg != q.arg || p.detail != q.detail || p.before != q.before || p.after != q.after { return false; }
-    if p.input != q.input || p.output != q.output || p.failed != q.failed || p.resolved != q.resolved { return false; }
+    if p.input != q.input || p.output != q.output || p.failed != q.failed || p.resolved != q.resolved || p.name != q.name { return false; }
   }
   return true;
 }
@@ -348,6 +350,7 @@ sl_test_tool :: (s: [] Session, id: string, tk: int, arg: string, detail: string
   sl_test_tool(s[..], "t1", TK_EDIT, "/w/desk.coax", "", "220", "240", "{\"file_path\":\"/w/desk.coax\"}", "ok", false);
   sl_test_tool(s[..], "t2", TK_EXEC, "ls\n -la", "ls -la", "", "", "{\"command\":\"ls\\n -la\"}", "denied", true);
   sl_test_tool(s[..], "t3", TK_MCP, "{\"title\":\"x\"}", "github · create_issue", "", "", "{\"title\":\"x\"}", "", false);
+  s[0].parts[s[0].n - 1].name = s_put(s[..], "mcp__github__create_issue");
   r0 := s_part(s[..], P_ROUTE);
   s_append(s[..], r0, "Routed to Claude Code · Sonnet 5.5 · Medium · 1.9 s");
   s[0].parts[r0].tk = TK_ROUTE; s[0].parts[r0].id = s_put(s[..], "lab-route"); s[0].parts[r0].detail = s_put(s[..], "elephant-1 · 1900 ms");
@@ -375,6 +378,7 @@ sl_test_tool :: (s: [] Session, id: string, tk: int, arg: string, detail: string
   #assert s_has(file, "{\"kind\":\"tool\",\"label\":\"edit(/w/desk.coax)\",\"tool\":\"edit\",\"id\":\"t1\"");
   #assert s_has(file, "\"label\":\"bash(ls -la)\"") && s_has(file, "\"label\":\"github · create_issue\"");
   #assert s_has(file, "{\"kind\":\"result\",\"text\":\"denied\",\"error\":true,\"id\":\"t2\"}\n");
+  #assert s_has(file, "\"tool\":\"mcp\",\"name\":\"mcp__github__create_issue\",\"id\":\"t3\"") && r[0].parts[4].name == "mcp__github__create_issue";
   #assert s_has(file, "{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":12500,\"steps\":3,\"cost_usd_e6\":31000}\n");
   #assert s_has(file, "{\"kind\":\"notice\",\"notice\":\"stopped\",\"text\":\"\"}\n{\"kind\":\"end\",\"ending\":\"stopped\"");
 }

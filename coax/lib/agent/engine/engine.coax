@@ -12,6 +12,16 @@
 //   ag_answer  Allow or Deny for the approval the session is asking about
 //   ag_stop    STOP the running turn
 //
+// An owner that is not the desktop app brings its own rules. It attaches
+// the Claude engine with e_attach and gives it its options with e_own
+// (claude.coax: system prompt, tools, in-process servers, hooks, permission
+// mode, credentials, budgets, resume and fork, used as they are), and takes
+// the engine's events one at a time with ag_next in place of ag_poll: the
+// engine still starts the CLI, sends the owed message and folds every
+// message into the session, and the owner answers what is its own (a hook,
+// a permission request, a call to one of its in-process tools) with
+// e_allow, e_deny and e_tool_text.
+//
 // The modes: Claude is the user's own Claude Code (claude.coax); Codex the
 // user's own Codex (codex.coax, codex app-server on their ChatGPT login);
 // Psionic is our own gpt-oss-20b through the Psionic Responses API
@@ -121,6 +131,17 @@ ag_poll :: (a: Agent, dt: f32, quiet: bool) {
   lab_gpu_pump(a.lab, e, a.psionic, a.gpu, ss, dt);
 }
 
+// One event of the conversation's engine into ev, for an owner that answers its own hooks,
+// permission requests and tool calls (ClEventKind.idle: nothing more for now). Claude Code's
+// events are the SDK's, after the engine's own part of each (claude.coax e_poll); the other
+// engines have none of their own to hand over, so their mode is pumped as ag_poll does and
+// reads idle.
+ag_next :: (a: Agent, ev: [] ClEvent, dt: f32) {
+  ev[0] = ClEvent.{kind = ClEventKind.idle};
+  if a.mode == MODE_CLAUDE { if a.claude[0].on && a.claude[0].running { e_poll(a.claude, a.session, ev); } return; }
+  ag_poll(a, dt, true);
+}
+
 // ---------------------------------------------------------------- checks
 
 // An Agent over engines with no host buffers (nothing starts): the calls still write the session.
@@ -187,4 +208,15 @@ ag_test :: (b: [] AgTest, mode: int) -> Agent {
   #assert s[0].hint && s[0].n == 1;
   ag_poll(a, 0.016, false);
   #assert !s[0].hint && s[0].n == 0;      // not attached: no hint stays
+}
+
+#test "an owner takes events one at a time: with no CLI running there is none, and the session is untouched" {
+  b: [1] AgTest; a := ag_test(b[..], MODE_CLAUDE);
+  ev: [1] ClEvent; ev[0].kind = ClEventKind.message;
+  ag_send(a, "hello", "hello");
+  ag_next(a, ev[..], 0.016);
+  #assert ev[0].kind == ClEventKind.idle && a.session[0].n == 1 && a.session[0].live;
+  a.mode = MODE_PSIONIC;
+  ag_next(a, ev[..], 0.016);
+  #assert ev[0].kind == ClEventKind.idle;
 }
