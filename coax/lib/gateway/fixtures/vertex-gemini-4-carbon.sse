@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "One\nTwo\nThree\nFour\nFive"}]}}],"usageMetadata": {"trafficType": "ON_DEMAND"},"modelVersion": "gemini-4-carbon","createTime": "2026-11-11T20:08:46.790477Z","responseId": "Tsv0as2fMLqI3dAPisr62Ao"}
+
+data: {"candidates": [{"content": {"role": "model","parts": [{"text": "","thoughtSignature": "AY89a1+ugFteQG4fLoLKD4TfZVD6Ff3Z+WHFpDBxJIi97e09BODObIjJ0eumBVMZtL/5MhaTOxnP4RPc8PAorfVfzRyhj1mDPZMaIQwcR6VJoeTbFIxMUUKlRXyWFyAg"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 61,"candidatesTokenCount": 13,"totalTokenCount": 74,"trafficType": "ON_DEMAND","promptTokensDetails": [{"modality": "TEXT","tokenCount": 61}],"candidatesTokensDetails": [{"modality": "TEXT","tokenCount": 13}]},"modelVersion": "gemini-4-carbon","createTime": "2026-11-11T20:08:46.790477Z","responseId": "Tsv0as2fMLqI3dAPisr62Ao"}
+

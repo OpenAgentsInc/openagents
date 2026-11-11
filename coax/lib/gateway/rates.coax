@@ -27,11 +27,19 @@ GwRate :: struct {
 // Google's usual 10%; Gemini 2.5 Flash-Lite from the Vertex pricing page;
 // GLM 5.3 Flash at Z.ai's list price), and Anthropic's list price for
 // Claude Haiku 4.5 (cache reads 10%, five-minute cache writes 125%).
-GW_RATES :: [13] GwRate.[
+// Gemini 4 Carbon (released 2026-11-10): Vertex's on-demand global prices from Google's Cloud
+// Billing catalog for project openagentsgemini, read 2026-11-11 (SKUs C47F-BE66-1A4E text input
+// $4.00, C3FF-AD89-C218 cached input $0.20, 1B77-85A0-B300 text output $20.00 per million, reasoning
+// included). The Gemini API lists the same from 2026-12-01 and half that through 2026-11-30
+// (aistudio.google.com/docs/pricing); the card keeps the standing price, as it keeps no promotions.
+GW_RATES :: [16] GwRate.[
   GwRate.{gateway = "vertex", model = "google/gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
   GwRate.{gateway = "vertex", model = "gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
   GwRate.{gateway = "vertex", model = "google/gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
   GwRate.{gateway = "vertex", model = "gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
+  GwRate.{gateway = "vertex", model = "google/gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
+  GwRate.{gateway = "vertex", model = "gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
+  GwRate.{gateway = "gemini", model = "gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
   GwRate.{gateway = "gemini", model = "gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
   GwRate.{gateway = "gemini", model = "gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
   GwRate.{gateway = "openrouter", model = "google/gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
@@ -109,6 +117,27 @@ gw_price :: (gateway: string, model: string, u: GwUsage, usd_per_btc: int) -> Gw
   #assert gw_cost(h.rate, GwUsage.{}) == 0;
   // cached more than input is held to input
   #assert gw_cost(f.rate, GwUsage.{ok = true, input_tokens = 10, cached_tokens = 50}) == 1;
+}
+
+#test "Gemini 4 Carbon's recorded streams are priced from the card: text, reasoning counted as output, and both endpoints" {
+  r: [1] GwReplay; fx := GW_FX_VERTEX_GEMINI_4_CARBON;
+  gw_replay(GW_WIRE_GEMINI, fx[..], r[..]);
+  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive" && r[0].done == 1;
+  #assert r[0].usage.ok && r[0].usage.input_tokens == 61 && r[0].usage.output_tokens == 13 && r[0].usage.reasoning_tokens == 0;
+  // 61 in at $4.00 and 13 out at $20.00 a million: 244 + 260 micro-USD
+  #assert gw_price("vertex", "gemini-4-carbon", r[0].usage, 100000).card_usd_micros == 504;
+  h: [1] GwReplay; hx := GW_FX_VERTEX_GEMINI_4_CARBON_HIGH;
+  gw_replay(GW_WIRE_GEMINI, hx[..], h[..]);
+  #assert gw_replay_text(h[..]) == "One\nTwo\nThree\nFour\nFive" && h[0].done == 1;
+  // thinking high: 256 reasoning tokens, billed as output beside the 13 of the answer
+  #assert h[0].usage.reasoning_tokens == 256 && h[0].usage.output_tokens == 269;
+  #assert gw_price("vertex", "gemini-4-carbon", h[0].usage, 100000).card_usd_micros == 244 + 5380;
+  o: [1] GwReplay; ox := GW_FX_VERTEX_OPENAI_GEMINI_4_CARBON;
+  gw_replay(GW_WIRE_CHAT, ox[..], o[..]);
+  #assert gw_replay_text(o[..]) == "One\nTwo\nThree\nFour\nFive" && o[0].done == 1 && o[0].usage.ok;
+  #assert gw_price("vertex", "google/gemini-4-carbon", o[0].usage, 100000).card_usd_micros == gw_price("vertex", "gemini-4-carbon", o[0].usage, 100000).card_usd_micros;
+  // cached input at its own price: a million in, all cached, is $0.20
+  #assert gw_cost(gw_rate("gemini", "gemini-4-carbon").rate, GwUsage.{ok = true, input_tokens = 1000000, cached_tokens = 1000000}) == 200000;
 }
 
 #test "a price on usage: the card's micros, msats at a bitcoin price, -1 off the card" {

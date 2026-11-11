@@ -162,12 +162,37 @@ GW_FX_VERTEX_GEMINI_3_8_FLASH :: [7] string.[
   "",
 ];
 
+GW_FX_VERTEX_GEMINI_4_CARBON_HIGH :: [4] string.[
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"One\\nTwo\\nThree\\nFour\\nFive\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T20:09:08.530057Z\",\"responseId\": \"ZMv0aomtIOKI3dAPxZKM-AY\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"AY89a19zCtOM+egicGnmpccPZBlEa7sVApz8/xF9RxB/ze4yPzPz3brE09Q18TM0XuAwm94HBdFcbDvf69OY2YoDKftQ1dnmo6une3Jdif3Lz8zDCIJ27h8sUjwXPIB3i6ETza639gpewy8pKH3IIb836hYC2ZVbLNrp5fLqxU18pQvKebe0tKOq4dAh63kpEg9MCALr0o+UxhIfc+31iZMxTrtx5lF61mFiJemg/goQR/IkzaWLeZmSb2QXtZxRGAauxhgG+ptzYXArl+lE54669x4DoyjY6M8wOlYngidb6KIrL0lrBZn6OcwGq6Q0mtBbCx2HjHHQRtbn1mNMww7X58Hez+C4ZjhXNugN9SyfUZwhKXm793W14bW6cEGUtpd2B+wOLnpyTyuBy+Qcb65fJSUJV/Tz/hSzMD6lYsTa8yyVSJuI+6mC+4mC5nOKEOVgN2uQbkPK+3WhpHwg6IW49fC8g7PuZqLVOIEXdPbV9Sh5KNl+LEUrrdRW7jOvUv1HELbH6DH4gbQdjLe3aGj9PES5R0417os7agd/myUMDvUZVaQjFzPJfOxNmvSs5xyzVvZZmIs29pvvWCDZA3qJHuYbVGAwmvmCWLc8J+XNEgtVisMPMQaFeP4NhVJEpIGTbEHFIUT0RB2ITZBeqBv844tsi5hnNvoJmk1KICZ0R2qo2bslNYbJ6QlzEeKpSEJrLqHQcntkHQcdeok8yNLAK2jOBRR4ew23wB1R7+sOFHOQHgQtidE6b9uzXHkIEHLw0y+i0YVQejEDOIZ8DwieP3Lfv+U0bTQgEUDz//P9YT26nAZP/EFKYwGsaPyanltKcp0+2ADuPlW9+KTOAPki6kKlnFY8jtGtFXA+uitjnWI8mmnV8opaf7PlDWG1hU0vRBEYeVNJHM1z1rM2/N1uG0vcKHd78cAnfm5/U/DaD+9CZ07NaBDE8DnIn3quI43XI+pz1cxofrPKUjUqUna/p45OEhONU9BgyTX+v//REwgEIYhLp8HFxjxmHOJb7yohqoPakYlcB7p3Xzn8m3xsT6DOTqPvTOwyG2ufwUEiNeeT3pn2U7kTElyuxSPgBYU0iZhDBFBuUj9/wG0XiChtFa+I9JugcLSuoTsussXx3y2nYFqJUaMnmx6VV9LWdYEu4YzTbndhWtabCovKE8IAaQ0GHoyij/0HLyToMjSt9xn3+//D765etx6Oh3JnpjVuNeLKuXl6uXfW3JbyfDHQI/YVNjtweDcMEylboYIcJ+g8dfZFPcU+Z2Tywf/A+RRL65oBmc1WSRBdcAKVnttziagE8q/TW0g0z4/aWaduJ/LeByDMhhfE5xqGy5LSLm/d/MmrOeJVzquM/sUpSCbGj5fM5SwoPv10bD0h2QWeu2al9lqWzDkfTemG+HdZLnE7/TQynK4CpBVyOoo0LPaYlkCWaBb0WGR0G5fJj4tgTlZEIXxGR3ESVgE/QXqUug/g7iYw2wFebyyl/YnQxrMx84Gz9Rprz4tL/pbtX6vfBxlj+co7tmNm3r42x7IIHVCMFHiSr4ug9jJqe0P0Fx75G2EVqjOI9t5g/5KT2r2ftorx10VpwNE=\"}]},\"finishReason\": \"STOP\"}],\"usageMetadata\": {\"promptTokenCount\": 61,\"candidatesTokenCount\": 13,\"totalTokenCount\": 330,\"trafficType\": \"ON_DEMAND\",\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 61}],\"candidatesTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 13}],\"thoughtsTokenCount\": 256},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T20:09:08.530057Z\",\"responseId\": \"ZMv0aomtIOKI3dAPxZKM-AY\"}",
+  "",
+];
+
+GW_FX_VERTEX_GEMINI_4_CARBON :: [4] string.[
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"One\\nTwo\\nThree\\nFour\\nFive\"}]}}],\"usageMetadata\": {\"trafficType\": \"ON_DEMAND\"},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T20:08:46.790477Z\",\"responseId\": \"Tsv0as2fMLqI3dAPisr62Ao\"}",
+  "",
+  "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"AY89a1+ugFteQG4fLoLKD4TfZVD6Ff3Z+WHFpDBxJIi97e09BODObIjJ0eumBVMZtL/5MhaTOxnP4RPc8PAorfVfzRyhj1mDPZMaIQwcR6VJoeTbFIxMUUKlRXyWFyAg\"}]},\"finishReason\": \"STOP\"}],\"usageMetadata\": {\"promptTokenCount\": 61,\"candidatesTokenCount\": 13,\"totalTokenCount\": 74,\"trafficType\": \"ON_DEMAND\",\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 61}],\"candidatesTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 13}]},\"modelVersion\": \"gemini-4-carbon\",\"createTime\": \"2026-11-11T20:08:46.790477Z\",\"responseId\": \"Tsv0as2fMLqI3dAPisr62Ao\"}",
+  "",
+];
+
 GW_FX_VERTEX_OPENAI_GEMINI_3_8_FLASH :: [8] string.[
   "data: {\"choices\":[{\"delta\":{\"content\":\"One\\n\",\"role\":\"assistant\"},\"index\":0,\"logprobs\":null}],\"created\":1793342380,\"id\":\"rDvkav7CFuqx3dAP8sfauQs\",\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\"}",
   "",
   "data: {\"choices\":[{\"delta\":{\"content\":\"Two\\nThree\\nFour\\nFive\",\"role\":\"assistant\"},\"index\":0,\"logprobs\":null}],\"created\":1793342380,\"id\":\"rDvkav7CFuqx3dAP8sfauQs\",\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\"}",
   "",
   "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89a1+5r2lLmt4OoN7fl2qvCVXp0ACGA8dtd4/RD+egxv1J7BuVluYKZil20iOOgghO9HNLkw1jx3K3SKE91/JfnYFmKyEg/MkOH2tHLu3kGDP9CEBV\"}},\"role\":\"assistant\"},\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null}],\"created\":1793342380,\"id\":\"rDvkav7CFuqx3dAP8sfauQs\",\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\",\"usage\":{\"completion_tokens\":9,\"extra_properties\":{\"google\":{\"traffic_type\":\"ON_DEMAND\"}},\"prompt_tokens\":25,\"total_tokens\":34}}",
+  "",
+  "data: [DONE]",
+  "",
+];
+
+GW_FX_VERTEX_OPENAI_GEMINI_4_CARBON :: [8] string.[
+  "data: {\"choices\":[{\"delta\":{\"content\":\"One\\nTwo\\n\",\"role\":\"assistant\"},\"index\":0,\"logprobs\":null}],\"created\":1794427732,\"id\":\"VMv0auzrOLqI3dAPisr62Ao\",\"model\":\"google/gemini-4-carbon\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\"}",
+  "",
+  "data: {\"choices\":[{\"delta\":{\"content\":\"Three\\nFour\\nFive\",\"role\":\"assistant\"},\"index\":0,\"logprobs\":null}],\"created\":1794427732,\"id\":\"VMv0auzrOLqI3dAPisr62Ao\",\"model\":\"google/gemini-4-carbon\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\"}",
+  "",
+  "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89a1/AD8t+D2Owt92/Q9tN4+W8+d91Q13SqSKlH9vxo4NSV855Sx7e0fOZmI/HRbt/35LW114JUdZwI10Egr2OPgILFJaxtHiW9UB5M4n6cy7ZWXB9kPKbVMcZprez\"}},\"role\":\"assistant\"},\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null}],\"created\":1794427732,\"id\":\"VMv0auzrOLqI3dAPisr62Ao\",\"model\":\"google/gemini-4-carbon\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\",\"usage\":{\"completion_tokens\":13,\"extra_properties\":{\"google\":{\"traffic_type\":\"ON_DEMAND\"}},\"prompt_tokens\":61,\"total_tokens\":74}}",
   "",
   "data: [DONE]",
   "",
