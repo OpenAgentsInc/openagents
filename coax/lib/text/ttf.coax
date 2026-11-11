@@ -15,6 +15,7 @@ TtfFont :: struct {
   upm: int; loc_long: bool; glyphs: int; metrics: int;
   ascender: int; descender: int; line_gap: int;
   sub: int; sub_format: int;     // the Unicode cmap subtable used and its format
+  gpos: int;                     // the GPOS table, 0 when the font has none (ttf_kern)
 }
 // A pixel coverage target: a w by h byte mask the glyphs are composited into.
 TtfMask :: struct { px: []u8; w: int; h: int; }
@@ -38,6 +39,7 @@ ttf_open :: (data: []u8) -> TtfFont {
     r := 12 + 16 * i; off := ttf_u32(f, r + 8);
     if ttf_tag(f, r, "head") { f.head = off; }
     if ttf_tag(f, r, "hhea") { f.hhea = off; }
+    if ttf_tag(f, r, "GPOS") { f.gpos = off; }
     if ttf_tag(f, r, "hmtx") { f.hmtx = off; }
     if ttf_tag(f, r, "cmap") { f.cmap = off; }
     if ttf_tag(f, r, "loca") { f.loca = off; }
@@ -119,6 +121,111 @@ ttf_scale :: (f: TtfFont, ppem: int) -> int { return ttf_divfix(ppem * 64, f.upm
 ttf_advance26 :: (f: TtfFont, g: int, ppem: int) -> int { return ttf_mulfix(ttf_advance(f, g), ttf_scale(f, ppem)); }
 // A font-unit length in 26.6 pixels (ascender, line height).
 ttf_units26 :: (f: TtfFont, v: int, ppem: int) -> int { return ttf_mulfix(v, ttf_scale(f, ppem)); }
+
+// ---- kerning: the GPOS table's pair adjustments (lookup type 2), the `kern` feature
+//
+// What a shaper adds between two glyphs. Only the first `kern` feature is read (the default
+// script's), only the first glyph's advance is adjusted, and no other feature is applied: enough
+// for Latin text in a font whose kerning is pairs and classes, as Geist's is.
+
+// Where glyph g is in a Coverage table, or -1.
+ttf_coverage :: (f: TtfFont, at: int, g: int) -> int {
+  format := ttf_u16(f, at); n := ttf_u16(f, at + 2);
+  lo := 0; hi := n - 1;
+  while lo <= hi {
+    mid := (lo + hi) / 2;
+    if format == 1 {
+      v := ttf_u16(f, at + 4 + 2 * mid);
+      if v == g { return mid; }
+      if v < g { lo = mid + 1; } else { hi = mid - 1; }
+    } else if format == 2 {
+      r := at + 4 + 6 * mid;
+      if g < ttf_u16(f, r) { hi = mid - 1; }
+      else if g > ttf_u16(f, r + 2) { lo = mid + 1; }
+      else { return ttf_u16(f, r + 4) + g - ttf_u16(f, r); }
+    } else { return -1; }
+  }
+  return -1;
+}
+// Glyph g's class in a ClassDef table (0 when it names none).
+ttf_class :: (f: TtfFont, at: int, g: int) -> int {
+  format := ttf_u16(f, at);
+  if format == 1 {
+    start := ttf_u16(f, at + 2); n := ttf_u16(f, at + 4);
+    return ifx g >= start && g < start + n then ttf_u16(f, at + 6 + 2 * (g - start)) else 0;
+  }
+  if format != 2 { return 0; }
+  lo := 0; hi := ttf_u16(f, at + 2) - 1;
+  while lo <= hi {
+    mid := (lo + hi) / 2; r := at + 4 + 6 * mid;
+    if g < ttf_u16(f, r) { hi = mid - 1; }
+    else if g > ttf_u16(f, r + 2) { lo = mid + 1; }
+    else { return ttf_u16(f, r + 4); }
+  }
+  return 0;
+}
+// The bytes a ValueRecord of this format takes.
+ttf_value_size :: (format: int) -> int {
+  n := 0;
+  for b: 0..<8 { if (format & (1 << b)) != 0 { n += 2; } }
+  return n;
+}
+// A pair subtable's adjustment to g1's advance before g2, in font units; applies[0] says whether
+// the subtable covers the pair (the first one that does ends its lookup).
+ttf_pair :: (f: TtfFont, sub: int, g1: int, g2: int, applies: [] bool) -> int {
+  applies[0] = false;
+  format := ttf_u16(f, sub); v1 := ttf_u16(f, sub + 4); v2 := ttf_u16(f, sub + 6);
+  index := ttf_coverage(f, sub + ttf_u16(f, sub + 2), g1);
+  if index < 0 { return 0; }
+  s1 := ttf_value_size(v1); s2 := ttf_value_size(v2);
+  x := ttf_value_size(v1 & 3);   // XAdvance comes after XPlacement and YPlacement
+  if format == 1 {
+    if index >= ttf_u16(f, sub + 8) { return 0; }
+    set := sub + ttf_u16(f, sub + 10 + 2 * index);
+    rec := 2 + s1 + s2;
+    lo := 0; hi := ttf_u16(f, set) - 1;
+    while lo <= hi {
+      mid := (lo + hi) / 2; r := set + 2 + rec * mid; second := ttf_u16(f, r);
+      if second == g2 { applies[0] = true; return ifx (v1 & 4) != 0 then ttf_s16(f, r + 2 + x) else 0; }
+      if second < g2 { lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return 0;
+  }
+  if format == 2 {
+    c1 := ttf_class(f, sub + ttf_u16(f, sub + 8), g1); c2 := ttf_class(f, sub + ttf_u16(f, sub + 10), g2);
+    n1 := ttf_u16(f, sub + 12); n2 := ttf_u16(f, sub + 14);
+    if c1 >= n1 || c2 >= n2 { return 0; }
+    applies[0] = true;
+    return ifx (v1 & 4) != 0 then ttf_s16(f, sub + 16 + (c1 * n2 + c2) * (s1 + s2) + x) else 0;
+  }
+  return 0;
+}
+// The kerning between glyphs g1 and g2, in font units (negative pulls them together); 0 with no GPOS.
+ttf_kern :: (f: TtfFont, g1: int, g2: int) -> int {
+  if f.gpos == 0 { return 0; }
+  features := f.gpos + ttf_u16(f, f.gpos + 6); lookups := f.gpos + ttf_u16(f, f.gpos + 8);
+  total := 0; applies: [1] bool;
+  for i: 0..<ttf_u16(f, features) {
+    rec := features + 2 + 6 * i;
+    if !ttf_tag(f, rec, "kern") { continue; }
+    feature := features + ttf_u16(f, rec + 4);
+    for k: 0..<ttf_u16(f, feature + 2) {
+      index := ttf_u16(f, feature + 4 + 2 * k);
+      if index >= ttf_u16(f, lookups) { continue; }
+      lookup := lookups + ttf_u16(f, lookups + 2 + 2 * index);
+      kind := ttf_u16(f, lookup);
+      for t: 0..<ttf_u16(f, lookup + 4) {
+        sub := lookup + ttf_u16(f, lookup + 6 + 2 * t); type := kind;
+        if kind == 9 { type = ttf_u16(f, sub + 2); sub = sub + ttf_u32(f, sub + 4); }   // an extension subtable
+        if type != 2 { continue; }
+        v := ttf_pair(f, sub, g1, g2, applies[..]);
+        if applies[0] { total += v; break; }
+      }
+    }
+    return total;   // the first kern feature
+  }
+  return 0;
+}
 
 // ---- the rasterizer: signed area per pixel, accumulated along rows
 TTF_ACC :: 1048576;
@@ -324,6 +431,43 @@ ttf_text :: (f: TtfFont, s: string, ppem: int, x: int, y: int, m: TtfMask, r: []
     pen += ttf_advance26(f, g, ppem);
   }
   return pen;
+}
+
+#test "pair kerning: a glyph pair, a class pair, the first subtable that covers the pair, and none" {
+  // Two bytes, then a GPOS: one kern feature, one pair lookup with two subtables.
+  d := [112] u8.[0, 0,
+    0, 1, 0, 0,  0, 0,  0, 10,  0, 24,                                 //   0 header: features at 10, lookups at 24
+    0, 1,  107, 101, 114, 110,  0, 8,                                  //  10 feature list: `kern`, its table at 18
+    0, 0,  0, 1,  0, 0,                                                //  18 the feature: lookup 0
+    0, 1,  0, 4,                                                       //  24 lookup list: one, at 28
+    0, 2,  0, 0,  0, 2,  0, 10,  0, 36,                                //  28 the lookup: pairs, subtables at 38 and 64
+    0, 1,  0, 18,  0, 4,  0, 0,  0, 1,  0, 12,                         //  38 format 1: coverage at 56, XAdvance, a pair set at 50
+    0, 1,  0, 7,  255, 206,                                            //  50 after its glyph, glyph 7: -50
+    0, 1,  0, 1,  0, 5,                                                //  56 coverage: glyph 5
+    0, 0,
+    0, 2,  0, 24,  0, 4,  0, 0,  0, 30,  0, 38,  0, 2,  0, 2,          //  64 format 2: coverage at 88, classes at 94 and 102, 2 by 2
+    0, 0,  0, 0,  0, 0,  255, 226,                                     //  80 class 1 then class 1: -30
+    0, 1,  0, 1,  0, 9,                                                //  88 coverage: glyph 9
+    0, 1,  0, 9,  0, 1,  0, 1,                                         //  94 first glyphs: 9 is class 1
+    0, 1,  0, 11,  0, 1,  0, 1];                                       // 102 second glyphs: 11 is class 1
+  f: TtfFont; f.data = d[..]; f.gpos = 2;
+  #assert ttf_kern(f, 5, 7) == -50 && ttf_kern(f, 5, 8) == 0 && ttf_kern(f, 6, 7) == 0;
+  #assert ttf_kern(f, 9, 11) == -30 && ttf_kern(f, 9, 12) == 0 && ttf_kern(f, 9, 7) == 0 && ttf_kern(f, 11, 9) == 0;
+  applies: [1] bool;
+  #assert ttf_pair(f, 40, 5, 7, applies[..]) == -50 && applies[0];
+  #assert ttf_pair(f, 40, 5, 8, applies[..]) == 0 && !applies[0];
+  #assert ttf_pair(f, 66, 9, 12, applies[..]) == 0 && applies[0];   // class 0 is a pair too: it ends the lookup
+  g: TtfFont; g.data = d[..];
+  #assert ttf_kern(g, 5, 7) == 0;   // no GPOS
+}
+#test "coverage and class tables, both formats" {
+  d := [40] u8.[0, 1, 0, 3, 0, 4, 0, 9, 0, 20,   0, 2, 0, 2, 0, 10, 0, 12, 0, 0, 0, 30, 0, 30, 0, 3,   0, 1, 0, 6, 0, 2, 0, 3, 0, 4, 0, 0, 0, 0];
+  f: TtfFont; f.data = d[..];
+  #assert ttf_coverage(f, 0, 4) == 0 && ttf_coverage(f, 0, 9) == 1 && ttf_coverage(f, 0, 20) == 2 && ttf_coverage(f, 0, 5) == -1 && ttf_coverage(f, 0, 21) == -1;
+  #assert ttf_coverage(f, 10, 10) == 0 && ttf_coverage(f, 10, 12) == 2 && ttf_coverage(f, 10, 30) == 3 && ttf_coverage(f, 10, 13) == -1;
+  #assert ttf_class(f, 26, 6) == 3 && ttf_class(f, 26, 7) == 4 && ttf_class(f, 26, 5) == 0 && ttf_class(f, 26, 8) == 0;
+  #assert ttf_class(f, 10, 11) == 0 && ttf_class(f, 10, 30) == 3 && ttf_class(f, 10, 29) == 0;
+  #assert ttf_value_size(4) == 2 && ttf_value_size(5) == 4 && ttf_value_size(0) == 0 && ttf_value_size(15) == 8;
 }
 
 #test "fixed point as FreeType's" {

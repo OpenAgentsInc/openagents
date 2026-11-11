@@ -13,8 +13,8 @@
 // What differs from the Mac's atlas, on purpose or not yet:
 //  - one dilation level (gp_set_atlas levels = 1): CoreText thickens light
 //    text on dark by the fill's luminance, this draws the outline as it is;
-//  - no kerning: the fonts' GPOS tables are not read yet, so a pair is its two
-//    advances;
+//  - kerning is the fonts' GPOS pair adjustments (ttf_kern), which is what
+//    CoreText applies for these fonts; no other shaping feature is applied;
 //  - no hinting (ttf.coax runs no font program), and no colour glyphs: a
 //    grapheme the font lacks is its missing-glyph box.
 //   coax/bin/coax test components/raster/atlas.coax --library
@@ -118,6 +118,13 @@ ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, f: TtfFont, size: f32, px: [] 
     code := ifx g < 95 then g + 32 else cast(int) extra[g - 95];
     glyph[g] = ttf_glyph(f, code);
     advance[g] = ra_advance(f, glyph[g], size);
+  }
+  // kerning as a shaper applies it (the font's GPOS pairs), for the printable ASCII pairs, as the Mac measures them
+  for g: 1..<95 {
+    for k: 1..<95 {
+      units := ttf_kern(f, glyph[g], glyph[k]);
+      if units != 0 { kern[g * GP_GLYPHS + k] = cast(f32) units * size / cast(f32) f.upm; }
+    }
   }
   gp_set_font(a, slot, size, header[..], advance[..], kern[..]);
   scale := ra_scale(f, size, p[0].dpr);
