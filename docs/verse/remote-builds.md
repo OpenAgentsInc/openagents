@@ -245,8 +245,15 @@ inputs differ there (`project`, `projects`, `status`, `connect-pylon`, `admin`,
 the release's own snapshot; 5 to 77 s each, side by side) and `realm`, which
 has no record. The room module had no record yet and compiled `room.coax` and
 `everglade.coax` on the Mac, most of the run's 27 minutes; with its record it
-is taken in under a second. The whole build step has not been timed again
-since, so the 2-minute target is not shown yet.
+is taken in under a second.
+
+With that, `release.sh --ref 68fcf1a65e --build-only` built in 746 s (860 s
+with the compiler, the fetch and staging), down from about 27 minutes: the
+same 49 modules prebuilt, the same nine built on the Mac in 4 to 42 s each.
+The run used 224 s of CPU in those 746 s, so what is left is not compiling:
+it is the build's serial steps and waits (the render packages one after
+another, the CLI's build, the project snapshots from Nostr, the Mac's build
+slots). The 2-minute target is not met; #13154 has the numbers.
 
 The release then ships the hosts' bytes (Linux, clang 23.1.3), not the Mac's
 (Homebrew clang 23); they differ by a few hundred bytes a module, so the first
