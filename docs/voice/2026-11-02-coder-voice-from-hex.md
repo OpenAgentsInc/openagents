@@ -180,7 +180,7 @@ a transcript is text, never a command.
                  before the caret
                  │
                  ▼
- composer draft (app: apps/shared/zeron/composer.coax; TUI: Coder's editor)
+ composer draft (app: components/zeron/composer.coax; TUI: Coder's editor)
 ```
 
 | Concern | Owner | Notes |

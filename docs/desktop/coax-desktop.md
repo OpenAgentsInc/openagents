@@ -18,7 +18,7 @@ pixel against a render of Zeron itself. Based on Zeron by Wing, MIT.
 
 Where the pieces live (moved 2026-10-29, file contents unchanged): the
 platform-neutral components are shared with openagents.com/chat in
-`apps/shared/zeron/` (`gpui.coax`, `composer.coax`, `markdown.coax`,
+`components/zeron/` (`gpui.coax`, `composer.coax`, `markdown.coax`,
 `tools.coax`, `transcript.coax`, `picker.coax`, `attachments.coax`, the
 `NOTICE`, `fonts/` with Geist's OFL, and `icons/`). What drives an engine or
 a host stays in `apps/openagents-desktop/zeron/` (`screen.coax`,
@@ -29,14 +29,14 @@ edits one of the moved files rebases onto the move as a rename.
 
 How it works:
 
-- `apps/shared/zeron/gpui.coax` is GPUI's drawing model in Coax:
+- `components/zeron/gpui.coax` is GPUI's drawing model in Coax:
   quads (rounded rect, fill, border), drop shadows (blurred rounded rect) and
   monochrome sprites (glyphs and SVG icons from an atlas), snapped to device
   pixels the way GPUI's `window.rs` snaps them, text placed on quarter-pixel
   x positions with CoreText's advances and kerning. `Zeron.metal` ports GPUI's
   `quad_fragment`, `shadow_fragment` and `monochrome_sprite_fragment`.
 - The Swift host (`Sources/Zeron.swift`) is GPUI's platform layer: it
-  rasterizes Geist (Zeron's font, bundled under `apps/shared/zeron/fonts/` with its OFL) exactly
+  rasterizes Geist (Zeron's font, bundled under `components/zeron/fonts/` with its OFL) exactly
   as `gpui_macos/text_system.rs` does (four subpixel offsets, the
   font-smoothing dilation picked from the text color's luminance) and Zeron's
   SVG icons at twice their device size, into one atlas, and hands Coax the

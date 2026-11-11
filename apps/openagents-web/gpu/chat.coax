@@ -6,7 +6,7 @@
 // /chat's passes: GPUI's quad, shadow and sprite shaders, the WebGPU port of
 // apps/openagents-desktop/Zeron.metal (itself zeronsh/zui's
 // gpui_macos/src/shaders.metal, Apache-2.0, the renderer Zeron draws with),
-// so the page draws the shared Zeron components (apps/shared/zeron/,
+// so the page draws the shared Zeron components (components/zeron/,
 // gpui.coax writes the vertices) exactly as the Mac app does. Based on Zeron
 // by Wing, MIT. Colors are straight sRGB with alpha, blended source-over into
 // a non-sRGB target, as GPUI does; the host (coax/web/gpui.js) gives this the

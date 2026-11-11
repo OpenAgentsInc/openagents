@@ -1,7 +1,8 @@
 # Components: one component system for every OpenAgents and Verse app (spec, draft)
 
-Written 2026-11-10. Status: proposal. Nothing here is built. The code this
-replaces is listed under "What exists today".
+Written 2026-11-10. Status: Phase 1 (the move) is done; the rest is a plan.
+Tracked in GitHub #13153. The code this replaces is listed under "What exists
+today".
 
 ## The goal
 
@@ -36,7 +37,9 @@ components/
   backend/         display list to a target: gpu.coax (and its shader), terminal.coax
   kit/             the components themselves, one file each
   gallery/         the /components page and the picture checks
-  fonts/, icons/   moved from apps/shared/zeron/, with their licences and NOTICE
+  fonts/, icons/   with their licences and NOTICE
+  zeron/           the chat components as moved from apps/shared/zeron/ (Phase 1, done),
+                   emptied as Phase 2 splits each file into the layers above
 ```
 
 ## What exists today
@@ -45,7 +48,7 @@ Three drawing stacks and four Markdown implementations:
 
 | Code | Draws | Problem |
 | --- | --- | --- |
-| `apps/shared/zeron/` (gpui, composer, markdown, tools, transcript, picker, attachments; about 5,700 lines) | Chat on the web and the Mac app | Parsing, layout, Zeron's colours and vertex output are in the same functions. `markdown.coax` loads `composer.coax` to get the atlas |
+| `components/zeron/` (gpui, composer, markdown, tools, transcript, picker, attachments; about 5,700 lines) | Chat on the web and the Mac app | Parsing, layout, Zeron's colours and vertex output are in the same functions. `markdown.coax` loads `composer.coax` to get the atlas |
 | `aethyr/ui/` (hud, draw, tree, feed, hud-style, arwes; 4,130 lines) | Realm HUDs | A second vertex format (12 floats, strokes) and its own text. It has the right ideas: `hud-style.coax` separates tokens from drawers, and `tree.coax` is one table for drawing, hit tests, focus and accessibility |
 | `everglade/hud/`, `apps/everglade-desktop/text.coax`, `golem-board.coax` | Everglade's HUD and the Workshop's boards | A third text path with its own atlas layout |
 | `coax/lib/tui/tui.coax` | Coder's terminal | Its own Markdown and composer |
@@ -166,7 +169,7 @@ visible rows laid out), composer (editor, attachment chips, send and stop),
 menu and popover, picker, button, toggle, slider, tabs, list with sections
 (the session sidebar), scrollbar, panel.
 
-Everything in `apps/shared/zeron/` today maps onto this list.
+Everything in `components/zeron/` maps onto this list.
 
 ### The second set: game HUD
 
@@ -193,7 +196,8 @@ number, banner, talk window. These are `everglade/hud/` and
 
 Each phase ends with every existing check and golden unchanged.
 
-1. **Move.** `apps/shared/zeron/` to `components/` with no content change;
+1. **Move.** Done 2026-11-10: `apps/shared/zeron/` is now `components/zeron/`,
+   with no content change;
    the web, the Mac app and Aethyrforge load it from there.
 2. **Split Markdown first.** `core/markdown.coax` (parse),
    `layout/text.coax` (wrap), `kit/markdown.coax` (paint), the display list

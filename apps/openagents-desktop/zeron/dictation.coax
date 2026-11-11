@@ -2,7 +2,7 @@
 // from. The screen also cancels this ticket at every edit/navigation event,
 // so editing and undoing cannot revive an old request. Transcript bytes are
 // pasted as one undoable draft edit; this module never submits a message.
-#load "../../shared/zeron/composer.coax";
+#load "../../../components/zeron/composer.coax";
 #load "../../../coax/lib/proto/wire.coax";
 #load "../../shared/dictation-join.coax";
 #authority;

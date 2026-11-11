@@ -1,5 +1,5 @@
 // openagents.com/chat, drawn with the Zeron components the Mac app draws
-// its chat with (apps/shared/zeron/: Zeron's composer, transcript,
+// its chat with (components/zeron/: Zeron's composer, transcript,
 // Markdown, tool chips and model menu, GPUI's primitives), on WebGPU by
 // chat.wgsl (Zeron.metal's port) with the atlas coax/web/gpui.js
 // rasterizes in the browser. A direct chat with the OpenAgents agent,
@@ -18,7 +18,7 @@
 // shows Zeron's demo conversation as the Mac app's --demo does, for
 // comparing the two renders. Based on Zeron by Wing, MIT.
 
-#load "../shared/zeron/picker.coax";
+#load "../../components/zeron/picker.coax";
 
 WC_MAX_VERTICES :: 120000;
 WC_INBOX :: 1048576;

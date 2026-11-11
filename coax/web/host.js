@@ -1262,7 +1262,7 @@ function useSans() {
 
 // GPUI's atlas (coax/web/gpui.js): a page whose shader declares gpui_atlas
 // (binding 1, r8 glyphs and icons), gpui_color (2, color glyphs) and
-// gpui_sampler (3) draws the shared Zeron components (apps/shared/zeron/,
+// gpui_sampler (3) draws the shared Zeron components (components/zeron/,
 // /chat); its vertices blend source-over, as GPUI's do. The atlas is built
 // for the device pixel ratio once the app's engine and the GPU are up, and
 // again when the ratio changes; the glyph cache is served after each frame.
@@ -3840,6 +3840,21 @@ function live() {
   socket.onclose = () => setTimeout(live, 1000);
 }
 
+// A browser with no WebGPU adapter gets the page's text (the <main> every page carries), and above
+// it one plain line saying why the page isn't drawn and what to do (#13153). Before this the reader
+// saw only a title and a link to the page's Markdown.
+function noGpuNotice() {
+  if (document.getElementById("coaxial-no-gpu")) return;
+  const note = document.createElement("p");
+  note.id = "coaxial-no-gpu"; note.setAttribute("role", "alert");
+  note.style.cssText = "margin:0 0 16px;padding:12px 14px;border:1px solid #ff8c1f;border-radius:6px;color:#ededed;background:#1a1a1a";
+  note.textContent = navigator.gpu
+    ? "This page is drawn with WebGPU, and this browser has no graphics adapter for it. Use a current Chrome, Edge or Safari with hardware acceleration turned on. In Chrome on Linux, start it with --enable-unsafe-webgpu."
+    : "This page is drawn with WebGPU, which this browser doesn't have. Use a current Chrome, Edge or Safari.";
+  const text = document.querySelector("main") || document.body;
+  text.prepend(note);
+}
+
 async function main() {
   try {
     loadMark("main");
@@ -3855,6 +3870,7 @@ async function main() {
     if (!started) {
       for (const incoming of packIncoming.values()) incoming.cancel();packIncoming.clear();
       document.documentElement.classList.remove("gpu"); loading.fail("SHADERS FAILED TO COMPILE", !gpu);
+      if (!gpu) noGpuNotice();
       lifeBeacon("load-fail", !navigator.gpu ? "no WebGPU" : !gpu ? "no GPU adapter" : "shaders failed to compile");
       return;
     }

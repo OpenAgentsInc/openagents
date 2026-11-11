@@ -1,5 +1,5 @@
 // /chat's C face for the browser: scalar Wasm exports over chat.coax (the
-// Zeron components, apps/shared/zeron/), the requests it asks for (a read of
+// Zeron components, components/zeron/), the requests it asks for (a read of
 // the state, or one post) handed to the host's HTTP import
 // (coax/web/host.js) with their answers wanted, and the atlas calls
 // coax/web/gpui.js makes (coaxial_gpui_*). The page records no analytics:

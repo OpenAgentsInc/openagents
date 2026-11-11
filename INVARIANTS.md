@@ -6010,7 +6010,7 @@ matrix. The visible `--setup-profile` measures process CPU, GPU submissions,
 room delivery and idle panel draws through setup, status, reload, minimize,
 hide and resume.
 
-Setup and status paint through `apps/shared/zeron/gpui.coax` and the shared
+Setup and status paint through `components/zeron/gpui.coax` and the shared
 `MetalUI.swift`/`Zeron.metal` effects used by OpenAgents desktop. Coax owns
 labels, geometry, readiness and button rectangles. AppKit's transparent buttons
 supply input/accessibility only. The surfaces redraw on changes, with no idle

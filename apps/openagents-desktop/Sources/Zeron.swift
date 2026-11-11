@@ -1,4 +1,4 @@
-// Zeron's AppKit effects; shared glyph atlas and Metal renderer live in apps/shared/zeron/MetalUI.swift.
+// Zeron's AppKit effects; shared glyph atlas and Metal renderer live in components/zeron/MetalUI.swift.
 import AppKit
 import CoreText
 import MetalKit

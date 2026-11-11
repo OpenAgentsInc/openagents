@@ -27,14 +27,14 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 "$coax" c "$here/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h" > "$work/c/lab-sign.c"
 /usr/bin/clang "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign.o"
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/dictation-build.coax" "$repo" "$work/c"
-xcrun -sdk macosx metal "$here/Shaders.metal" "$repo/apps/shared/zeron/Zeron.metal" -o "$app/Contents/Resources/default.metallib"
-xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$repo/apps/shared/zeron/MetalUI.swift" "$work/c/chat.o" "$work/c/face.o" "$work/c/router.o" "$work/c/route-face.o" "$work/c/process.o" "$work/c/zeron.o" "$work/c/zeron-face.o" "$work/c/lab-sign.o" "$work/c/dictation.o" "$work/c/dictation-face.o" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
+xcrun -sdk macosx metal "$here/Shaders.metal" "$repo/components/zeron/Zeron.metal" -o "$app/Contents/Resources/default.metallib"
+xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$repo/components/zeron/MetalUI.swift" "$work/c/chat.o" "$work/c/face.o" "$work/c/router.o" "$work/c/route-face.o" "$work/c/process.o" "$work/c/zeron.o" "$work/c/zeron-face.o" "$work/c/lab-sign.o" "$work/c/dictation.o" "$work/c/dictation-face.o" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
   -framework AppKit -framework Metal -framework MetalKit -framework CoreText -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -lpthread -lm -o "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 rm -rf "$app/Contents/Resources/fonts" "$app/Contents/Resources/icons"
-# Geist, its OFL, Zeron's icons and the NOTICE live beside the shared components (apps/shared/zeron/).
-cp -R "$repo/apps/shared/zeron/fonts" "$repo/apps/shared/zeron/icons" "$app/Contents/Resources/"
-cp "$repo/apps/shared/zeron/NOTICE" "$app/Contents/Resources/NOTICE"
+# Geist, its OFL, Zeron's icons and the NOTICE live beside the shared components (components/zeron/).
+cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$app/Contents/Resources/"
+cp "$repo/components/zeron/NOTICE" "$app/Contents/Resources/NOTICE"
 codesign --force --sign - "$app" >/dev/null
 echo "built $app"
 [[ "${1:-}" == --open ]] && open "$app"

@@ -1,6 +1,6 @@
 // Aethyrforge's own setup/status chrome on the shared Zeron primitives.
 // The realm's HUD is independent. AppKit supplies input and font rasterization.
-#load "../../apps/shared/zeron/gpui.coax";
+#load "../../components/zeron/gpui.coax";
 #load "setup.coax";
 
 ForgeChrome :: struct {atlas:[1]Atlas;scene:bool;checking:bool;verifying:bool;status:bool;paused:bool;error:[2048]u8;error_n:int;}

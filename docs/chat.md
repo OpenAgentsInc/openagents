@@ -24,7 +24,7 @@ anything. Admins only for now.
 | Piece | Where |
 | --- | --- |
 | The page, drawn in Coax | `apps/openagents-web/chat.coax`, `chat-face.c`, `chat.wgsl`, `chat/index.html` |
-| The Zeron components it draws with | `apps/shared/zeron/` (shared with the Mac app) |
+| The Zeron components it draws with | `components/zeron/` (shared with the Mac app) |
 | The atlas host | `coax/web/gpui.js` (used by `coax/web/host.js`) |
 | The API | `coax/web/api/chat.c`, `migrations/0021_chat.sql` (schema `chat`) |
 | The runner's general mode | `coax/web/agent/chat-runner.c` (included by `runner.c`) |
@@ -104,7 +104,7 @@ subscription token (`claude setup-token`, `sk-ant-oat...`).
 ## How the page is drawn
 
 Since 2026-10-29 the page draws everything with the Zeron/GPUI components the
-Mac app uses (`apps/shared/zeron/`: `gpui.coax`, `composer.coax`,
+Mac app uses (`components/zeron/`: `gpui.coax`, `composer.coax`,
 `markdown.coax`, `transcript.coax`, `picker.coax`, the icons and Geist under
 its OFL), compiled to wasm and drawn on WebGPU. The old HUD chat is
 `apps/openagents-web/chat-hud.coax`, kept for the Mac app's unshown HUD.
