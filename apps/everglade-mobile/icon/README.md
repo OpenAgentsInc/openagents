@@ -23,3 +23,13 @@ for d in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do
   rsvg-convert -w ${d##*:} -h ${d##*:} icon/android-monochrome.svg -o android/res/mipmap-${d%%:*}/ic_launcher_monochrome.png
 done
 ```
+
+## The Mac app
+
+`apps/everglade-desktop/AppIcon.icns` is `icon-1024.png` scaled to 824 px
+on a 1024 canvas, its corners rounded at a 185 px radius, with a soft shadow
+under it: the shape and margin of every macOS app icon. Draw it again after
+the iOS picture changes: scale and round it (any image tool), save the 16 to
+1024 px sizes into `AppIcon.iconset/` as `icon_NxN.png` and
+`icon_NxN@2x.png`, then `iconutil -c icns AppIcon.iconset -o
+apps/everglade-desktop/AppIcon.icns`.

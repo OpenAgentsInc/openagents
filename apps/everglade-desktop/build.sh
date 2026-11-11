@@ -120,6 +120,7 @@ cp "$tool" "$app/Contents/MacOS/everglade-golems"
 # The checkout a worktree for an issue branches off: the main one, whichever worktree builds this.
 dirname "$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)" > "$app/Contents/Resources/repo.txt"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
+cp "$here/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"   # apps/everglade-mobile/icon/README.md: the iOS icon on a macOS rounded square
 codesign --force --sign - "$app" >/dev/null
 echo "built $app"
 # --open runs a copy outside the checkout, so the app outlives a worktree. What follows --open
