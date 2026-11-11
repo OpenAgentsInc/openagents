@@ -14,7 +14,7 @@ CheckpointSlot :: struct {
 }
 RmCheckpoints :: struct {
   slot:[CF_CAP]CheckpointSlot;
-  cursor:int;rev:int;last:int;force:bool;
+  cursor:int;rev:int;last:int;
   fly:bool;waiting:bool;fly_i:int;fly_capture:CharacterCapture;fly_rest:CharacterRest;fly_mono:int;
   two_only:bool;two_falls:int;   // profile 3 refused by this API (400 or 5xx): profile 2 from then on (#13046)
   request:int;sent_mono:int;retry_at:int;tries:int;
@@ -70,6 +70,25 @@ RmCheckpoints :: struct {
   #assert rm_eg_unplaced(v[..],k, SeatId.{value = 0})&&rm_eg_back(v[..],k, SeatId.{value = 0},1)<-1.23;
 }
 
+#test "checkpoint: a player writes on the timer and at their own events, never per tick; an idle one writes nothing and plays on (#13184)" #steps 4000000000 {
+  v:[1]RmServer;ck_test_init(v[..]);k:=ck_test_join(v[..],0,7,CharacterCapture.{});
+  #assert rm_checkpoint_due(v[..])==0;   // joined and said hello, not yet placed: nothing to save
+  ck_test_place(v[..],k);#assert rm_checkpoint_pending(v[..])==1&&rm_checkpoint_due(v[..])>0;   // placed: its first capture at once
+  b:[256]u8;rm_checkpoint_answer(v[..],1,200,ck_test_receipt(v[..],"applied",b[..]));#assert rm_checkpoint_pending(v[..])==0;
+  i:=ck_find(v[..],"p-a");rev:=v[0].ck.slot[i].acked;
+  // a minute standing still: each timer finds the same character, writes nothing, and its play never pauses
+  wall:=1762190000000;mono:=v[0].mono_ms;
+  for q:1..<13{rm_clock(v[..],mono+q*CF_EVERY,wall+q*CF_EVERY);#assert rm_checkpoint_due(v[..])==0&&!rm_checkpoint_paused(v[..],k);}
+  #assert v[0].ck.posts==1&&v[0].ck.rev==rev&&v[0].ck.slot[i].accepted_mono==v[0].mono_ms;
+  // moving is not a write by itself: the next timer is
+  for q:0..<30{rm_eg_moved(v[..],k, SeatId.{value = 0},q+1,1+f32(q)*0.1,0,2,0,0,0,0,0,0,0);#assert rm_checkpoint_due(v[..])==0;}
+  rm_clock(v[..],mono+13*CF_EVERY,wall+13*CF_EVERY);#assert rm_checkpoint_due(v[..])>0&&v[0].ck.posts==2;
+  sent:=cc_read(cast(string)v[0].ck.out[0..<v[0].ck.out_n],true);#assert sent.ok&&sent.n[13]==3900;
+  rm_checkpoint_answer(v[..],2,200,ck_test_receipt(v[..],"applied",b[..]));
+  // its socket closing is its own event: saved now, without the timer
+  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].hp=3;eg_hold(v[..],k, SeatId.{value = 0});
+  #assert rm_checkpoint_pending(v[..])==1&&rm_checkpoint_due(v[..])>0&&cc_read(cast(string)v[0].ck.out[0..<v[0].ck.out_n],true).n[9]==3;
+}
 ck_find :: (v:[]RmServer,pid:string)->int {
   for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if e[0].live&&cast(string)e[0].pid[0..<e[0].pid_n]==pid{return i;}}return -1;
 }
@@ -81,26 +100,50 @@ ck_reserve :: (v:[]RmServer,tk:Ticket)->bool {
   if i>=0{if v[0].ck.slot[i].owner>tk.owner{return false;}if v[0].ck.slot[i].owner==tk.owner{return true;}}
   if i<0{for j:0..<CF_CAP{e:=v[0].ck.slot[j..<j+1];if !e[0].live{i=j;break;}ep:=cast(string)e[0].pid[0..<e[0].pid_n];if cf_reuse(e[0].live,e[0].latest.ok&&e[0].latest.n[3]>e[0].acked,ck_seated(v,ep),v[0].ck.fly&&v[0].ck.fly_i==j){i=j;break;}}}
   if i<0{v[0].ck.refused+=1;return false;}
-  v[0].ck.slot[i]=CheckpointSlot.{live=true,owner=tk.owner,pid_n=tk.pid_n};v[0].ck.force=true;for q:0..<tk.pid_n{v[0].ck.slot[i].pid[q]=pid[q];}return true;
+  v[0].ck.slot[i]=CheckpointSlot.{live=true,owner=tk.owner,pid_n=tk.pid_n};for q:0..<tk.pid_n{v[0].ck.slot[i].pid[q]=pid[q];}return true;
 }
 ck_slot_seat :: (v:[]RmServer,k:int, s_id: SeatId)->int {
   tk:=eg_ticket(v,k, s_id);if !tk.ok||tk.schema!=2{return -1;}return ck_find(v,cast(string)tk.pid[0..<tk.pid_n]);
 }
+// The write rate (#13184). A seat is captured on the CF_EVERY timer (rm_checkpoint_due) and at its own
+// events: placed after its hello, a socket closed, a leave, a journey to another room, a drain. Never per
+// tick, and another player's join captures nobody else. A capture equal to the seat's last one is no new
+// revision, so it is no write: an idle player writes nothing. So each player writes at most once per
+// CF_EVERY plus once per event of their own, and one post is in flight per process.
 ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   if v[0].ck.finalizing{return;}
   i:=ck_slot_seat(v,k, s_id);if i<0{return;}st:=v[0].eg[k].seat[s];if !st.placed||!st.checkpoint_hello{return;}
   tk:=eg_ticket(v,k, s_id);if v[0].ck.slot[i].owner!=tk.owner{return;}
-  r:=v[0].eg[k].relay;if r<0{return;}v[0].ck.rev+=1;
+  r:=v[0].eg[k].relay;if r<0{return;}
   c:=CharacterCapture.{ok=true,pid_n=tk.pid_n,room_n=v[0].relays[r].code_n};c.pid=tk.pid;c.room=v[0].relays[r].code;
   pins:=WirePins.{};hero:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s];
-  c.n=[17]int.[2,tk.owner,v[0].vit.gen,v[0].ck.rev,v[0].wall_ms,v[0].wall_ms,pins.engine,pins.rules,pins.content,hero.hp,hero.hp_max,ev_xp_of(v,k, s_id),v[0].eg[k].wanted[s],eg_round(st.pose.x*1000),eg_round(st.pose.y*1000),eg_round(st.pose.z*1000),eg_round(st.pose.yaw*1000)];
+  c.n=[17]int.[2,tk.owner,v[0].vit.gen,0,v[0].wall_ms,v[0].wall_ms,pins.engine,pins.rules,pins.content,hero.hp,hero.hp_max,ev_xp_of(v,k, s_id),v[0].eg[k].wanted[s],eg_round(st.pose.x*1000),eg_round(st.pose.y*1000),eg_round(st.pose.z*1000),eg_round(st.pose.yaw*1000)];
   c.dead=hero.dead&&hero.hp<=0;c.state[0]=ifx v[0].eg[k].rules[0].klass[s]==1 then 1 else 0;   // the capture's class bit: the Warlock or not (a Character Create class comes back with its hello)
   c.state[1]=ifx (st.flags&EV_DEMO_FLAG)!=0&&tk.admin then 1 else 0;c.state[2]=hero.temp;
   c.state[3]=rs_max(0,trv_repair_ticks()-(v[0].eg[k].tick-st.repaired));c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<CK_USES{c.state[16+q]=hero.uses[q];}
   // Everglade II also carries the seat's rest (profile 3)
   rest:=CharacterRest.{};if v[0].eg[k].e2&&rs_carry_out(v[0].eg[k].rules[0].b[..],E5RR_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;rest.more=true;for q:0..<CC_MORE{rest.uses[q]=hero.uses[CK_USES+q];}}
+  e:=v[0].ck.slot[i];
+  if e.latest.ok&&ck_same(e.latest,e.latest_rest,c,rest){
+    // unchanged: when the accepted capture is this one, it still describes the character now, so the
+    // loss bound (CF_BOUND) counts from now; nothing is unsaved
+    if e.accepted&&e.latest.n[3]<=e.acked{v[0].ck.slot[i].accepted_mono=v[0].mono_ms;}
+    return;
+  }
+  v[0].ck.rev+=1;c.n[3]=v[0].ck.rev;
   v[0].ck.slot[i].latest=c;v[0].ck.slot[i].latest_rest=rest;v[0].ck.slot[i].capture_mono=v[0].mono_ms;
+}
+// Whether two captures hold the same character: all but the revision and the capture and send times.
+ck_same :: (a:CharacterCapture,ar:CharacterRest,b:CharacterCapture,br:CharacterRest)->bool {
+  for q:0..<17{if q>=3&&q<=5{continue;}if a.n[q]!=b.n[q]{return false;}}
+  if a.dead!=b.dead||a.pid_n!=b.pid_n||a.room_n!=b.room_n{return false;}
+  for q:0..<a.room_n{if a.room[q]!=b.room[q]{return false;}}
+  for q:0..<CC_STATE{if a.state[q]!=b.state[q]{return false;}}
+  if ar.on!=br.on||ar.more!=br.more{return false;}
+  for q:0..<CC_REST{if ar.n[q]!=br.n[q]{return false;}}
+  for q:0..<CC_MORE{if ar.uses[q]!=br.uses[q]{return false;}}
+  return true;
 }
 ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   tk:=eg_ticket(v,k, s_id);c:=tk.capture;if tk.schema!=2||!c.ok{return;}
@@ -117,7 +160,10 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   // the same room's code, or for Everglade II any of its rooms: they are one land (#13057), so a
   // restarted or drained room's player comes back where they stood in whichever instance takes them
   here:=ifx r>=0 then cast(string)v[0].relays[r].code[0..<v[0].relays[r].code_n] else "";saved:=cast(string)room[0..<c.room_n];
-  if r>=0&&(saved==here||(v[0].eg[k].e2&&eg_e2_code(saved)&&eg_e2_code(here))){st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;st[0].back_at=c.n[4];}
+  if r>=0&&(saved==here||(v[0].eg[k].e2&&eg_e2_code(saved)&&eg_e2_code(here))){st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;st[0].back_at=rs_max(c.n[4],v[0].wall_ms-CF_BOUND);}
+  // back_at: an idle character's capture keeps its first time (an unchanged one is not written again),
+  // but the room never ran it more than CF_BOUND past its accepted capture, so that is the most a page's
+  // claim may have moved
 }
 ck_can_play :: (v:[]RmServer,k:int, s_id: SeatId)->bool {
   tk:=eg_ticket(v,k, s_id);if tk.schema!=2{return net_session_saved(NET_DURABLE_NONE,false,0);}i:=ck_slot_seat(v,k, s_id);return i>=0&&net_session_saved(NET_DURABLE_RECEIPTS,v[0].ck.slot[i].accepted,v[0].mono_ms-v[0].ck.slot[i].accepted_mono);
@@ -130,7 +176,7 @@ ck_pause :: (v:[]RmServer,k:int) {
   for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}st[0].q_n=0;st[0].bank=0;st[0].sat_ms=v[0].mono_ms;st[0].earned=0;}
 }
 rm_checkpoint_flush :: (v:[]RmServer) #export_c #effects(all) {
-  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{ck_capture(v,k, SeatId.{value = s});}}}v[0].ck.force=true;
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{ck_capture(v,k, SeatId.{value = s});}}}
 }
 rm_checkpoint_finish :: (v:[]RmServer) #export_c #effects(all) {rm_checkpoint_flush(v);v[0].ck.finalizing=true;}
 rm_checkpoint_clean :: (v:[]RmServer)->bool #export_c #effects(all) {return rm_checkpoint_pending(v)==0&&!v[0].ck.fly;}
@@ -139,7 +185,7 @@ rm_checkpoint_pending :: (v:[]RmServer)->int #export_c #effects(all) {
 }
 rm_checkpoint_due :: (v:[]RmServer)->int #export_c #effects(all) {
   v[0].ck.out_n=0;if v[0].tkey_n==0{return 0;}
-  if v[0].ck.force||v[0].mono_ms-v[0].ck.last>=CF_EVERY{rm_checkpoint_flush(v);v[0].ck.force=false;v[0].ck.last=v[0].mono_ms;}
+  if v[0].mono_ms-v[0].ck.last>=CF_EVERY{rm_checkpoint_flush(v);v[0].ck.last=v[0].mono_ms;}
   if v[0].ck.waiting{if v[0].mono_ms-v[0].ck.sent_mono<CF_RESPONSE{return 0;}ck_failed(v);}
   if v[0].mono_ms<v[0].ck.retry_at{return 0;}
   if !v[0].ck.fly{

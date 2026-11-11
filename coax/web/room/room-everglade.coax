@@ -473,7 +473,7 @@ eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].familiar=E2Familiar.{};
   v[0].eg[k].seat[s].familiar_hash=0;
   v[0].eg[k].seat[s].familiar_sense_sent=0;
-  rv_note_seat(v, k, s_id); v[0].vit.flush = true;
+  ck_capture(v, k, s_id); rv_note_seat(v, k, s_id); v[0].vit.flush = true;
   for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
   v[0].st.held += 1;
 }
@@ -500,7 +500,7 @@ eg_grace_ends :: (v: [] RmServer, k: int) {
 eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
-  rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
+  ck_capture(v, k, seat_id); rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
   rc_left(v, k, seat_id);   // publish the old lifetime's stops before invalidating it
   v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
@@ -798,7 +798,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   rv_hp_back(v, k, seat_id); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
   trv_carry(v, k, seat_id);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
   ck_restore(v,k, seat_id);
-  if tk.schema == 2 { st[0].checkpoint_hello=true; v[0].ck.force=true; }
+  if tk.schema == 2 { st[0].checkpoint_hello=true; ck_capture(v, k, seat_id); }   // captured now if already placed (#13184)
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
   for ch: h.name[0..<h.name_n] {
@@ -1041,8 +1041,9 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
   if v[0].eg[k].e2 { e2_rest_step(v, k, s_id, seq, was, was_placed); }
   accepted:=net_accepted_result(st[0].ack,seq);
   if accepted.advanced { st[0].ack=accepted.seq;st[0].ack_at=st[0].step_at; }
-  if !st[0].placed && st[0].checkpoint_hello { v[0].ck.force=true; }
+  first := !st[0].placed && st[0].checkpoint_hello;
   st[0].placed = true;
+  if first { ck_capture(v, k, s_id); }   // its first capture, which its gameplay waits on (#13184)
   r:=v[0].eg[k].rules[..];
   e5rr_place(r,s,x,z);
   if v[0].eg[k].e2 && was_placed && r[0].b[0].truth_zones!=0 {

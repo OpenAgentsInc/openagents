@@ -92,6 +92,10 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
   if gcloud secrets describe "$mesh" --project "$project" >/dev/null 2>&1; then secrets+=",OA_MESH_ROUTES=$mesh:latest"; fi
   # Scheduled jobs (jobs.c, schedules.sh): Cloud Scheduler's caller.
   env+="~OA_JOBS_CALLER=oa-api-jobs@$project.iam.gserviceaccount.com"
+  # Character checkpoints (player.c ticket_resume, docs/protocol/character-checkpoint-v2.md): v4 seat
+  # tickets carry the last accepted capture, so a room that dies brings its players back where they
+  # stood (#13184). Sticky per character from its first v4 ticket: never turn it off again.
+  env+="~OA_ROOM_CHECKPOINTS=1"
   # Email through Resend (email.c): the key, and on staging the only address mail may go to (the owner's).
   if gcloud secrets describe openagents-resend-api-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_RESEND_API_KEY=openagents-resend-api-key:latest"; fi
   # Seat tickets (player.c room_ticket): the key oa-room checks them with (coax/web/room/room-ticket.coax).
