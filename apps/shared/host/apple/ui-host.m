@@ -69,6 +69,7 @@ struct UiHost {
   int looking;                // ui_hold_pointer
   // the app's own layer (ui_layer)
   UiLayer layer_of; int layered;
+  float clip[4];   // ui_clip: where the components may draw, in pixels; w 0 for everywhere
   id<MTLLibrary> lib;
   id<MTLTexture> depth;
   id<MTLDepthStencilState> flat;
@@ -417,6 +418,10 @@ void ui_layer(UiHost *h, const UiLayer *layer) {
   }
   h->stale = 1;
 }
+void ui_clip(UiHost *h, float x, float y, float w, float rows) {
+  if (h->clip[0] != x || h->clip[1] != y || h->clip[2] != w || h->clip[3] != rows) h->stale = 1;
+  h->clip[0] = x; h->clip[1] = y; h->clip[2] = w; h->clip[3] = rows;
+}
 void *ui_device(UiHost *h) { return (__bridge void *)h->dev; }
 void *ui_queue(UiHost *h) { return (__bridge void *)h->queue; }
 // One frame into a texture: the background is the shell's colour, the app's own layer, then the vertices.
@@ -456,6 +461,10 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
     [e setVertexBytes:u length:sizeof u atIndex:0]; [e setFragmentBytes:u length:sizeof u atIndex:0];
     [e setVertexBytes:lengths length:sizeof lengths atIndex:29]; [e setFragmentBytes:lengths length:sizeof lengths atIndex:29];
     [e setFragmentTexture:h->mono atIndex:0]; [e setFragmentTexture:h->color atIndex:1];
+    if (h->clip[2] > 0 && h->clip[3] > 0) {
+      NSUInteger x = (NSUInteger)fmax(0, fmin(h->clip[0], into.width)), y = (NSUInteger)fmax(0, fmin(h->clip[1], into.height));
+      [e setScissorRect:(MTLScissorRect){x, y, (NSUInteger)fmin(h->clip[2], into.width - x), (NSUInteger)fmin(h->clip[3], into.height - y)}];
+    }
     [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:h->count];
   }
   [e endEncoding];

@@ -10,7 +10,11 @@
 // page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this app
 // hands it the frames, keys and presses, draws its picture under the Worlds button, and plays its
 // sound through the Apple audio host (aethyr/host/apple/PageAudio.swift).
-//   Everglade                      opens the window
+//   Everglade [--chat]             opens the window (--chat: with the chat open in the Workshop)
+// The chat (Chat in the Everglade menu, Command-J) is the OpenAgents chat (apps/openagents-desktop/linux/
+// chat.h), a panel on the Workshop's left drawn with the shared components; its sessions are kept in
+// ~/Library/Application Support/Everglade/chat/. A shot's --chat-demo opens it on the demo transcript, and
+// --do's tap, text, key and wait reach the list, the Workshop and the chat too, in points.
 //   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS] [--scene N]
 //       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits;
 //       without --scene it is the list of worlds. In a realm (--scene 1, 3 or 4) nothing leaves this
@@ -34,7 +38,7 @@ import AppKit
 import Metal
 
 // The menu bar's commands (ui_menus ids).
-let commandWorlds: Int32 = 1, commandQuit: Int32 = 2
+let commandWorlds: Int32 = 1, commandQuit: Int32 = 2, commandChat: Int32 = 3
 
 // The realms' sound (PageAudio.swift) is the main actor's; so is all of this, run on the main thread by the host.
 @MainActor
@@ -77,6 +81,15 @@ final class Workshop {
   var camera = [Float](repeating: 0, count: 24)
   var pu = [Float](repeating: 0, count: 24)
   var frameRealm: AEPageHost?
+  // The OpenAgents chat (apps/openagents-desktop/linux/chat.h), made the first time it is shown: a panel on the
+  // Workshop's left, drawn with the shared components. It has the keys after a press on it, until Escape or a
+  // press on the scene. `chatDemo` is a shot's: the demo transcript, nothing kept.
+  var chat: OpaquePointer?
+  var chatShown = false, chatFocus = false, chatDown = false, chatDemo = false
+  // The panel's width in points: under half the window, and at least the 600 the chat's sidebar and
+  // transcript lay out in (narrower, its lines would run past the edge the host clips them at).
+  var chatWidth: Float { min(max(viewW * 0.45, 600), min(720, viewW - 240)) }
+  var chatOn: Bool { chatShown && chat != nil && eg_scene(state) == 2 && !inRealm }
   // The realm of the world that is open, when it has one.
   var page: AEPageHost? { pages[eg_scene(state)] }
   var inRealm: Bool { page != nil }
@@ -151,6 +164,25 @@ final class Workshop {
     ui_layer(h, &layer)
   }
 
+  // The chat, first: its sessions are kept beside Everglade's own (a shot keeps none), in the folder you
+  // started the app from. It has no microphone here (dictation-none.c).
+  func openChat() {
+    if chat == nil {
+      let res = (Bundle.main.resourceURL?.appendingPathComponent("chat").path ?? ".")
+      let support = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("Everglade/chat/settings.json").path) ?? ""
+      let settings = pageShot ? "" : support
+      chat = res.withCString { r in settings.withCString { st in
+        var o = OaChatOptions()
+        o.resources = r; o.settings = st; o.dpr = pageShot ? shotScale : ui_dpr(host); o.offscreen = pageShot ? 1 : 0; o.demo = chatDemo ? 1 : 0; o.still_clock = pageShot ? 1 : 0
+        return oa_chat_new(&o)
+      } }
+      if let c = chat, oa_chat_start(c, host) == 0 { oa_chat_close(c); chat = nil }
+      if chat == nil { FileHandle.standardError.write(Data("Everglade: the chat did not open; its fonts and icons are in the app's Resources/chat. Rebuild with apps/everglade-desktop/build.sh.\n".utf8)) }
+    }
+    chatShown = chat != nil
+    if chatShown { eg_go(state, 2) }   // the chat is the Workshop's
+  }
+
   // Opens a world's realm: its library, shaders, pack, fonts and pictures from the app, and what a
   // browser would keep in its storage under ~/.openagents/everglade/realm/ (one folder for every
   // realm, as one site's pages share a browser's storage: your character is the same in each).
@@ -210,7 +242,7 @@ final class Workshop {
 
   // One frame's work before it is drawn (UiApp.frame): the realm's own picture, the scene's and
   // the Next issue panel's strokes, and what the panel asked of the Mac. w and h are device pixels.
-  func frame(width: Float, height: Float, scale: Float, dt: Float) {
+  func frame(_ out: UnsafeMutablePointer<Float>?, width: Float, height: Float, scale: Float, dt: Float) -> Int32 {
     viewW = width / scale; viewH = height / scale
     time += dt
     // A realm's row, first opened: the realm starts. Leaving it lets its keys go; it keeps its state.
@@ -242,6 +274,12 @@ final class Workshop {
     panelDrawn = nxp_frame(next, overlay.contents().assumingMemoryBound(to: Float.self), &box, viewW, viewH, scale, dt, Int64(Date().timeIntervalSince1970))
     serve()
     if !pageShot { syncRealm() }
+    // The chat's panel over the scene's left, in the components' pass; the cursor is its own over it.
+    guard chatOn, let chat, let out else { chatFocus = false; return 0 }
+    ui_clip(host, 0, 0, (chatWidth * scale).rounded(), height)   // a long line stops at the panel's edge
+    let n = oa_chat_frame(chat, out, chatWidth * scale, height, scale, dt)
+    if pointerX >= chatWidth { cursorShown = -1; setCursor(0) }
+    return n
   }
   // Passes of the place's own before the frame's: its reflection.
   func prepare(_ cmd: MTLCommandBuffer, _ width: Int, _ height: Int) {
@@ -439,7 +477,22 @@ final class Workshop {
     // --do: input for the realm, a step at a time, each followed by the frames it takes.
     for step in doSteps.split(separator: ";") {
       let part = step.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
-      guard let page, inRealm, let verb = part.first else { continue }
+      guard let verb = part.first else { continue }
+      // Outside a realm (the list, the Workshop and its chat) a step goes in as the window's input does, in points.
+      guard let page, inRealm else {
+        let s = Float(shotScale)
+        if verb == "wait", part.count > 1, let t = Float(part[1]) { run(t) }
+        else if verb == "tap", part.count > 1, case let xy = part[1].split(separator: ",").compactMap({ Float($0) }), xy.count == 2 {
+          pointer(xy[0] * s, xy[1] * s, 1); run(1.0 / 60); pointer(xy[0] * s, xy[1] * s, 0); run(1.0 / 60); pointer(xy[0] * s, xy[1] * s, 2); run(0.1)
+        }
+        else if verb == "text", part.count > 1 { text(part[1]); run(0.1) }
+        else if verb == "key", part.count > 1 {
+          let named: [String: Int32] = ["escape": -1, "enter": -2, "backspace": -3, "left": -4, "right": -5, "up": -6, "down": -7, "tab": -15]
+          let code = named[part[1]] ?? Int32(part[1].unicodeScalars.first?.value ?? 0)
+          _ = key(code, 0, true); run(part.count > 2 ? Float(part[2]) ?? 0.1 : 0.1); _ = key(code, 0, false); run(1.0 / 60)
+        }
+        continue
+      }
       if verb == "wait", part.count > 1, let t = Float(part[1]) { run(t) }
       else if verb == "key", part.count > 1 {
         let named: [String: Int32] = ["escape": -1, "enter": -2, "backspace": -3, "left": -4, "right": -5, "up": -6, "down": -7, "shift": -13, "tab": -15, "space": 32]
@@ -525,6 +578,14 @@ final class Workshop {
   func pointer(_ x: Float, _ y: Float, _ phase: Int32) {
     let s = ui_dpr(host), px = x / s, py = y / s
     pointerX = px; pointerY = py
+    // On the chat's panel, or a press that began there: the chat's, in the host's pixels as its own app has them.
+    if chatOn, let chat, chatDown || px < chatWidth {
+      if phase == 0 { chatDown = true; chatFocus = true; _ = eg_key(state, -1, 1) }
+      if phase == 2 { chatDown = false }
+      oa_chat_pointer(chat, x, y, phase, 1, 0)
+      return
+    }
+    if phase == 0 { chatFocus = false }
     if phase == 0 { leftDown = true }
     // A move with no button down is the realm's alone (its hover); the list and the panel take drags.
     if phase == 1 && !leftDown && !inRealm { return }
@@ -537,6 +598,8 @@ final class Workshop {
   }
   func motion(_ dx: Float, _ dy: Float) { if lookHeld, let page, inRealm { page.look(CGPoint(x: CGFloat(dx), y: CGFloat(dy))) } }
   func scroll(_ dy: Float, _ precise: Bool) {
+    // GPUI's pixel delta, as the host gives the chat's own app: a mouse's lines times the line height (22.75)
+    if chatOn, let chat, pointerX < chatWidth { oa_chat_wheel(chat, -(precise ? dy : dy * 22.75) * ui_dpr(host)); return }
     if let page, inRealm { page.wheel(hmi_appkit_wheel(dy, precise)); return }
     let d = precise ? dy : dy * 10
     if nxp_wheel(next, pointerX, pointerY, d, viewW, viewH) == 1 { return }
@@ -552,6 +615,11 @@ final class Workshop {
     }
   }
   func key(_ k: Int32, _ mods: Int32, _ down: Bool) -> Bool {
+    // The chat has the keys after a press on it: what it takes is its own, and Escape it leaves gives the keys back.
+    if chatFocus, chatOn, let chat {
+      if oa_chat_key(chat, k, mods, down ? 1 : 0) != 0 { return true }
+      if down && k == -1 { chatFocus = false; return true }
+    }
     if mods & 8 != 0 { return false }   // Command chords stay with the menu
     // While the reply has the keys they are typing, not walking: its text comes as text.
     if down && nxp_wants_keys(next) == 1 && !inRealm {
@@ -574,6 +642,7 @@ final class Workshop {
     return true
   }
   func text(_ typed: String) {
+    if chatFocus, chatOn, let chat, oa_chat_wants_text(chat) != 0 { typed.withCString { oa_chat_text(chat, $0, strlen($0)) }; return }
     if nxp_wants_keys(next) == 1 && !inRealm {
       for c in typed.unicodeScalars where c.isASCII && c.value >= 32 && c.value <= 126 { nxp_key(next, Int32(c.value)) }
       _ = eg_key(state, -1, 1)
@@ -582,7 +651,7 @@ final class Workshop {
     if let page, inRealm { heard(); page.text(typed); syncRealm() }
   }
   // While the reply or the realm's text box has the keys, AppKit's typing (and its input method) reaches text.
-  func wantsText() -> Bool { (nxp_wants_keys(next) == 1 && !inRealm) || (inRealm && page?.wantsText() == true) }
+  func wantsText() -> Bool { (chatFocus && chatOn && oa_chat_wants_text(chat) != 0) || (nxp_wants_keys(next) == 1 && !inRealm) || (inRealm && page?.wantsText() == true) }
   func focus(_ on: Bool) {
     if !on { _ = eg_key(state, -1, 1); hold(false) }
     if inRealm { page?.focus(on) }
@@ -590,8 +659,11 @@ final class Workshop {
   func command(_ id: Int32) {
     if id == commandWorlds { eg_go(state, 0) }   // the list of worlds from anywhere: in the realm Escape is the realm's own key
     if id == commandQuit { ui_quit(host) }
+    if id == commandChat { if chatOn { chatShown = false; chatFocus = false } else { openChat() } }
   }
-  func close() { hold(false); for world in Array(pages.keys) { closePage(world) }; nxp_close(next) }
+  // A file chosen in the paperclip's panel, dropped or pasted: the chat's.
+  func file(_ request: Int32, _ path: String) { if let chat { path.withCString { oa_chat_file(chat, request, $0) } } }
+  func close() { hold(false); for world in Array(pages.keys) { closePage(world) }; nxp_close(next); if let chat { oa_chat_close(chat) }; chat = nil }
 }
 
 @MainActor func workshop(_ u: UnsafeMutableRawPointer?) -> Workshop { Unmanaged<Workshop>.fromOpaque(u!).takeUnretainedValue() }
@@ -611,11 +683,11 @@ enum Everglade {
     var app = UiApp()
     app.title = UnsafePointer(strdup("Everglade")); app.app_id = UnsafePointer(strdup("com.openagents.everglade"))
     app.width = 1320; app.height = 880; app.min_width = 900; app.min_height = 600
-    app.max_vertices = 6
+    app.max_vertices = oa_chat_max_vertices()   // the chat's panel (chat.h), the one thing drawn with the components
     // The component shader (components/backend/gpu-shader.coax as Metal), for what the app draws with the shared components.
     app.shader = UnsafePointer(strdup(Bundle.main.url(forResource: "zeron", withExtension: "metallib")?.path ?? ""))
     app.user = Unmanaged.passUnretained(w).toOpaque()
-    app.frame = { u, _, width, height, dpr, dt in MainActor.assumeIsolated { workshop(u).frame(width: width, height: height, scale: dpr, dt: dt); return 0 } }
+    app.frame = { u, out, width, height, dpr, dt in MainActor.assumeIsolated { workshop(u).frame(out, width: width, height: height, scale: dpr, dt: dt) } }
     app.pointer = { u, x, y, phase, _, _ in MainActor.assumeIsolated { workshop(u).pointer(x, y, phase) } }
     app.button = { u, x, y, phase, b, _ in MainActor.assumeIsolated { workshop(u).button(x, y, phase, b) } }
     app.motion = { u, dx, dy in MainActor.assumeIsolated { workshop(u).motion(dx, dy) } }
@@ -628,6 +700,11 @@ enum Everglade {
     app.wants_text = { u in MainActor.assumeIsolated { workshop(u).wantsText() ? 1 : 0 } }
     app.focus = { u, on in MainActor.assumeIsolated { workshop(u).focus(on != 0) } }
     app.command = { u, id in MainActor.assumeIsolated { workshop(u).command(id) } }
+    app.file = { u, request, path in
+      guard let path else { return }
+      let p = String(cString: path)
+      MainActor.assumeIsolated { workshop(u).file(request, p) }
+    }
     app.modifier_keys = 1
     guard let h = ui_open(&app, shotAt != nil ? 1 : 0) else {
       FileHandle.standardError.write(Data("Everglade: the window did not open. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
@@ -664,13 +741,16 @@ enum Everglade {
         for c in args[k + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(w.state, Int32(c.value), 1) }
       }
       if args.contains("--golems") { nxp_golems_open(w.next); w.golemsWait = 6 }
+      // --chat: the chat's panel in the Workshop (--chat-demo: its demo transcript)
+      if args.contains("--chat") || args.contains("--chat-demo") { w.chatDemo = args.contains("--chat-demo"); w.openChat() }
       if let g = args.firstIndex(of: "--golems-view"), g + 1 < args.count, let v = Int32(args[g + 1]) { w.golemsView = v }
       exit(w.shot(to: path, width: width, height: height, seconds: seconds) ? 0 : 1)
     }
     if let s = args.firstIndex(of: "--scene"), s + 1 < args.count, let v = Int32(args[s + 1]) { eg_go(w.state, v) }
     if args.contains("--golems") { nxp_golems_open(w.next) }
+    if args.contains("--chat") { w.openChat() }
     let menus: [(String?, String, Int32, Int32, String?)] = [
-      ("Worlds", "0", 8, commandWorlds, nil), (nil, "", 0, -1, nil), ("Quit Everglade", "q", 8, commandQuit, nil),
+      ("Worlds", "0", 8, commandWorlds, nil), ("Chat", "j", 8, commandChat, nil), (nil, "", 0, -1, nil), ("Quit Everglade", "q", 8, commandQuit, nil),
     ]
     var items: [UiMenuItem] = menus.map { m in
       UiMenuItem(menu: UnsafePointer(strdup("Everglade")), title: m.0.map { UnsafePointer(strdup($0)) }, key: UnsafePointer(strdup(m.1)), mods: m.2, id: m.3, selector: m.4.map { UnsafePointer(strdup($0)) })

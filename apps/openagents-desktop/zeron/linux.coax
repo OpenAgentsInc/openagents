@@ -1,7 +1,7 @@
 // The app's Coax: settings.coax and what it loads, and the atlas built in Coax
 // (components/raster/atlas.coax), which the Mac draws with CoreText instead
 // (apps/shared/host/apple/ct-atlas.m). linux/build.sh and build.sh (the Mac) compile
-// this file; linux/main.c is its host on both (docs/apps/2026-11-10-apps-roadmap.md
+// this file; linux/chat.c (held by linux/main.c) is its host on both (docs/apps/2026-11-10-apps-roadmap.md
 // Step 1, GitHub #13153).
 #load "settings.coax";
 #load "../../../components/raster/atlas.coax";

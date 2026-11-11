@@ -3,7 +3,7 @@
 # Builds OpenAgents.app for this Mac (docs/desktop/coax-desktop.md, GitHub #13156): the
 # Zeron-fork chat screen (zeron/screen.coax, zeron/desk.coax) compiled to C behind zeron-face.c,
 # on the shared Mac host (apps/shared/host/apple/ui-host.m, the ui-host.h contract the Linux
-# app keeps) with the same linux/main.c, CoreText's atlas (apps/shared/host/apple/ct-atlas.m),
+# app keeps) with the same linux/main.c and the chat component it fills the window with (linux/chat.c), CoreText's atlas (apps/shared/host/apple/ct-atlas.m),
 # the component shader (components/backend/gpu-shader.coax) emitted as Metal, and dictation
 # (zeron/dictation-linux.coax's rules, linux/dictation-host.c, CoreAudio through
 # apps/openagents-cli/dictate-mac.m and Psionic's resident Parakeet on Metal).
@@ -36,7 +36,7 @@ for m in "$repo/apps/shared/host/apple/ui-host.m" "$repo/apps/shared/host/apple/
   /usr/bin/clang -fobjc-arc "${cflags[@]}" -c "$m" -o "$work/c/$(basename "$m" .m).o"; objc+=("$work/c/$(basename "$m" .m).o")
 done
 /usr/bin/clang -std=gnu11 "${cflags[@]}" \
-  "$here/linux/main.c" "$here/linux/dictation-host.c" "$here/dictation-face.c" "$here/zeron-face.c" "$work/c/dictation.c" \
+  "$here/linux/main.c" "$here/linux/chat.c" "$here/linux/dictation-host.c" "$here/dictation-face.c" "$here/zeron-face.c" "$work/c/dictation.c" \
   "$repo/apps/openagents-cli/dictate-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
   "$work/c/zeron.o" "$work/c/lab-sign.o" "${objc[@]}" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers \

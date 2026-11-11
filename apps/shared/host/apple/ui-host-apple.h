@@ -27,6 +27,9 @@ typedef struct {
   int (*changed)(void *user);
 } UiLayer;
 void ui_layer(UiHost *h, const UiLayer *layer);
+// The components drawn only inside x, y, w by h pixels (an app that gives them part of the window, as
+// Everglade's Workshop gives the chat its panel); w or h 0: the whole frame.
+void ui_clip(UiHost *h, float x, float y, float w, float rows);
 void *ui_device(UiHost *h);   // id<MTLDevice>
 void *ui_queue(UiHost *h);    // id<MTLCommandQueue>, the one the host draws with
 // Mouselook: the pointer hidden and held where it is; its moves still reach UiApp.motion.

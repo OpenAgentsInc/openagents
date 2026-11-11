@@ -1,5 +1,5 @@
 // The C face over zeron/screen.coax, the Zeron-fork chat screen, for the
-// Mac host (linux/main.c and apps/shared/host/apple/ct-atlas.m). Based on Zeron by Wing, MIT.
+// Mac host (the chat component, linux/chat.c, and apps/shared/host/apple/ct-atlas.m). Based on Zeron by Wing, MIT.
 #include "zeron.h"
 #include "face.h"
 #include <stdlib.h>
