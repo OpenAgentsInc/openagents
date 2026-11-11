@@ -74,6 +74,7 @@ Creator :: struct {
   view:[16]f32; view_w:f32; view_h:f32; view_ok:bool;   // the frame's view as cc_view wrote it (u[16..<32], the picture's width), for meadow_cull
   q_grass:f32 = 1; q_fine:f32 = 1; q_scenery:f32 = 1;   // the graphics quality's knobs (aethyr/quality.coax): the grass's reach (and the share of the glade's seeds drawn), its finest tier's share, the understory's reach
   gfx:[40]u8; gfx_n:int; gfx_box:Box;   // the graphics control's words beside the frame rate ("GFX AUTO · MED"; none: not shown) and where it was drawn
+  flat:bool;   // a zone on level ground (the Bitcoin Lab's Grid): the open field's rules with no meadow drawn, the ground at 0 everywhere (cc_ground) and no coordinates in the corner
   range_first:int; range_count:int; range_word:int; range_on:bool;   // the Archery Range's mesh ("C glade/range", everglade/range/place.coax), drawn where a zone stands it (range_on)
   stage_on:bool; stage_view:trk.CamView; stage_day:f32 = 0.5;   // a ?stage= setup owns the camera and the sun (stage_set)
   hostile_external:bool; // owner stages AI through shared combat before publication
@@ -112,7 +113,7 @@ coord_label :: (out:[]u8,x:f32,y:f32,z:f32)->string {
  n:=0;out[n]='X';out[n+1]=' ';n=coord_number(out,n+2,x);out[n]=' ';out[n+1]=' ';out[n+2]='Y';out[n+3]=' ';n=coord_number(out,n+4,y);out[n]=' ';out[n+1]=' ';out[n+2]='Z';out[n+3]=' ';n=coord_number(out,n+4,z);return cast(string)out[0..<n];
 }
 coord_draw :: (s:Creator,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
- b:[64]u8;label:=coord_label(b[..],s.player_x,meadow.exp_height(s.player_x,s.player_z)+s.player_y,s.player_z);cap:=10*k;em:=sans_em(cap);wide:f32=0;
+ b:[64]u8;label:=coord_label(b[..],s.player_x,cc_ground(s.flat,s.player_x,s.player_z)+s.player_y,s.player_z);cap:=10*k;em:=sans_em(cap);wide:f32=0;
  for c:label {wide+=f32(EG_BODY_WIDTH[cast(int)c-32])/f32(EG_FONT_UPM)*em;}
  uit_part(s.ui,"coords");return ttext(s.ui,UIT_NONE,out,at,label,w-16*k-wide,h-38*k,cap,ink(k,0.95,0.93,0.82),"COORDS");
 }
@@ -369,7 +370,7 @@ experimental_jump_weight :: (s:[]Creator)->f32 {
  return w*(1-cc_clamp((s[0].clock-s[0].land_at)/0.18,0,1));
 }
 experimental_figure :: (s:[]Creator,a0:figs.BdAnim)->figs.BdAnim {
- a:=a0;a.x=s[0].player_x;a.z=s[0].player_z;a.y=meadow.exp_height(a.x,a.z)+s[0].player_y;a.yaw=s[0].player_face;
+ a:=a0;a.x=s[0].player_x;a.z=s[0].player_z;a.y=cc_ground(s[0].flat,a.x,a.z)+s[0].player_y;a.yaw=s[0].player_face;
  if s[0].hostiles[0].ready && s[0].hostiles[0].hp<=0 {a.clip=figs.BD_DIE;a.t0=s[0].clock-(s[0].hostiles[0].time-s[0].hostiles[0].died_at);a.prev= -1;return a;}
  a.clip=ifx s[0].dev_animations && s[0].preview_clip>=0 then figs.BD_CLIPS+s[0].preview_clip else experimental_clip(s);
  a.t0=ifx a.clip==figs.BD_JUMP_START then s[0].clock-(s[0].clock-s[0].air_at)*figs.bd_seconds(a.clip)/0.2 else ifx a.clip==figs.BD_JUMP_LAND then s[0].clock-(s[0].clock-s[0].land_at)*figs.bd_seconds(a.clip)/0.35 else 0;
@@ -856,7 +857,8 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   // The open field (Creator.field, once its meadow is in the pack) stands in for the glade, its
   // village and its showcases: only the meadow, its grass and the creatures on it.
   open_field:=s[0].field && s[0].field_count>0;
-  if open_field && n<43 {
+  meadow_on:=open_field && !s[0].flat;   // a level zone draws its own floor: no meadow, no grass
+  if meadow_on && n<43 {
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24+7]=f32(s[0].field_word);out[n*24+8]=1;out[n*24+15]=16;   // c.x 1: the open meadow's ground, shaded as Everglade II's (cg_environment_fs)
     b[0].draws[n*4]=cast(u32)s[0].field_first;b[0].draws[n*4+1]=cast(u32)s[0].field_count;b[0].draws[n*4+2]=cast(u32)n;b[0].draws[n*4+3]=1;n+=1;
@@ -917,7 +919,7 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   }}
   // its grass and understory: each kit's mesh once (kit_first, glade/meadowkitK, slot K-20), placed by
   // the GPU over a grid of cells round the eye (record kind 20, gpu/character-glade.coax cg_meadow_vs)
-  if open_field {for j:0..<14 {kit:=20+j;for t:0..<(ifx kit==grid.E2_MEADOW_GRASS then 4 else 1) {side:=grid.e2_meadow_side(kit,t);if side<=0 || s[0].kit_count[j]<3 || n>=44-reserved {break;}
+  if meadow_on {for j:0..<14 {kit:=20+j;for t:0..<(ifx kit==grid.E2_MEADOW_GRASS then 4 else 1) {side:=grid.e2_meadow_side(kit,t);if side<=0 || s[0].kit_count[j]<3 || n>=44-reserved {break;}
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24]=f32(kit);out[n*24+1]=f32(t);out[n*24+2]=f32(side);out[n*24+7]=f32(s[0].kit_word[j]);out[n*24+15]=20;
     if kit>=20 && kit<=22 {for k:0..<4 {out[n*24+8+k]=s[0].field_clear[k];}out[n*24+3]=s[0].field_band;out[n*24+4]=s[0].field_keep;}   // rocks keep out of a zone's clearing (gpu/character-glade.coax cg_meadow_vs reads c)
@@ -955,7 +957,7 @@ meadow_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n0:int,cap:int)->int {
   cx:=s[0].view[7];w:=s[0].view_w;
   v:=gcull.GridView.{ex=s[0].view[0],ez=s[0].view[2],fx=s[0].view[4],fy=s[0].view[5],fz=s[0].view[6],rx=s[0].view[8],ry=s[0].view[9],rz=s[0].view[10],half=(ifx cx>w-cx then cx else w-cx)/s[0].view[3]};
   // nothing on the field stands further above or below the eye than the eye is over its ground, and the land's own rise and fall
-  up:=s[0].view[1]-meadow.exp_height(v.ex,v.ez);v.rise=(ifx up>0 then up else 0.0f32)+40;
+  up:=s[0].view[1]-cc_ground(s[0].flat,v.ex,v.ez);v.rise=(ifx up>0 then up else 0.0f32)+40;
   runs:[1024]u32;origin:f32= -32768;   // E2_MEADOW_ORIGIN: the grids' corner (gpu/character-glade.coax cg_meadow_vs)
   for i:0..<n0 {
     base:=cast(int)b[0].draws[i*4+2];if base<65536 || (base&65535)!=0 {continue;}
@@ -1362,8 +1364,8 @@ frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->in
     ensure(s);creator_layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);build_review_frame(s);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
     for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=ifx s[0].experimental then 0.0f32 else 1.0f32;if s[0].stage_on && s[0].shadow[0].on {s[0].shadow[0].glade=true;}u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
     if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
-    cc_view(s[0],u,w,h,k);for i:0..<16 {s[0].view[i]=u[16+i];}s[0].view_w=w;s[0].view_h=h;s[0].view_ok=true;dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);if s[0].stage_on {u[11]=1;fps_count(s[0].fps[..],dt);return 0;}n:=ifx s[0].dev_animations then dev_panel(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_overlay(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);if s[0].experimental && !s[0].walk.on {return n;}   // Experimental's HUD places them over its bar (experimental-combat.coax xc_corner)
-n=coord_draw(s[0],out,n,w,h,k);return ifx s[0].experimental then eg_fps(s[0].ui,s[0].fps[0],out,n,w,h,k) else fps_draw(s[0].ui,s[0].fps[0],out,n,w,h,k);
+    cc_view(s[0],u,w,h,k);for i:0..<16 {s[0].view[i]=u[16+i];}s[0].view_w=w;s[0].view_h=h;s[0].view_ok=true;dx:=u[16]-s[0].player_x;dy:=u[17]-(cc_ground(s[0].flat,s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);if s[0].stage_on {u[11]=1;fps_count(s[0].fps[..],dt);return 0;}n:=ifx s[0].dev_animations then dev_panel(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_overlay(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);if s[0].experimental && !s[0].walk.on {return n;}   // Experimental's HUD places them over its bar (experimental-combat.coax xc_corner)
+if !s[0].flat {n=coord_draw(s[0],out,n,w,h,k);}return ifx s[0].experimental then eg_fps(s[0].ui,s[0].fps[0],out,n,w,h,k) else fps_draw(s[0].ui,s[0].fps[0],out,n,w,h,k);
   }
   ensure(s); creator_layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.70,0.76,0.74); gold:=ink(k,0.83,0.69,0.43);
@@ -1494,15 +1496,15 @@ cc_view :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.stage_on {stage_camera(s,u,w,h);return;}
   if s.experimental {
     ck:=ifx s.cam_k>1 then s.cam_k else 1.0f32;   // a bigger body's camera: further out and higher (druid-scene.coax)
-    target:=meadow.exp_height(s.player_x,s.player_z)+s.player_y+1.2+(ck-1)*1.6;
+    target:=cc_ground(s.flat,s.player_x,s.player_z)+s.player_y+1.2+(ck-1)*1.6;
     cy:=cos(s.pitch); sy:=sin(s.pitch); sx:=sin(s.yaw+s.orbit); cz:=cos(s.yaw+s.orbit);
     ride:=egm.eg_ride_cam(s.mounts[0],s.clock);target+=egm.eg_ride_cam_up(s.mounts[0])*ride;   // riding, the camera pulls back and up to see the horse
     b:=figs.cam_boom(figs.CamBoomIn.{yaw=s.yaw+s.orbit,pitch=s.pitch,dist=s.dist*ck+egm.eg_ride_cam_back(s.mounts[0])*ride,aim=s.aim,look=s.ml[0].shown,first=cc_first_person(s)});
     target+=b.lift;boom:=b.boom;
     // the open field has no village for the boom to meet: only the zone's own standing things (aethyr/world/props.coax)
-    near:[1]village.EvNear;if s.field {near[0].wall_n=wprops.props_near(s.props[0],s.player_x,s.player_z,12,meadow.exp_height(s.player_x,s.player_z),near[0].walls[..],0);} else {village.ev_camera_near(near[..],s.player_x,s.player_z);}room:=figs.cam_boom_walls(near[0].walls[0..<near[0].wall_n*6],s.player_x,s.player_y+1.2,s.player_z,boom);
+    near:[1]village.EvNear;if s.field {near[0].wall_n=wprops.props_near(s.props[0],s.player_x,s.player_z,12,cc_ground(s.flat,s.player_x,s.player_z),near[0].walls[..],0);} else {village.ev_camera_near(near[..],s.player_x,s.player_z);}room:=figs.cam_boom_walls(near[0].walls[0..<near[0].wall_n*6],s.player_x,s.player_y+1.2,s.player_z,boom);
     sw:[1]figs.CamSweep;sw[0]=figs.cam_sweep(s.player_x,target,s.player_z,boom,f32(figs.CAM_BOOM_CLEAR));
-    while !sw[0].done {p:=figs.cam_sweep_at(sw[0]);figs.cam_sweep_feed(sw[..],meadow.exp_height(p[0],p[1]));}
+    while !sw[0].done {p:=figs.cam_sweep_at(sw[0]);figs.cam_sweep_feed(sw[..],cc_ground(s.flat,p[0],p[1]));}
     if sw[0].room<room {room=sw[0].room;}if s.camera_room>=0 && s.camera_room<room {room=s.camera_room;}share:=figs.cam_boom_share(b.length,room);
     u[16]=s.player_x+boom[0]*share;u[17]=target+boom[1]*share;u[18]=s.player_z+boom[2]*share;u[19]=h*0.89*(1+0.18*s.aim);
     u[20]= -sx*cy;u[21]= -sy;u[22]= -cz*cy;u[23]=w*0.5;
@@ -1578,6 +1580,11 @@ dev_local :: (facts:string)->bool {
 }
 experimental_page :: (facts:string)->bool {return page_path(facts,"/worlds/everglade-experimental") || page_path(facts,"/worlds/everglade-experimental/");}
 
+// The ground's height under (x, z): the meadow's, or 0 everywhere in a level zone (Creator.level).
+cc_ground :: (level:bool,x:f32,z:f32)->f32 { if level {return 0;} return meadow.exp_height(x,z); }
+#test "a level zone's ground is 0 everywhere; the meadow's is its own" {
+ #assert cc_ground(true,30,-40)==0 && cc_ground(false,30,-40)==meadow.exp_height(30,-40);
+}
 cc_clamp :: (v:f32,a:f32,b:f32)->f32 { if v<a {return a;} if v>b {return b;} return v; }
 
 lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,

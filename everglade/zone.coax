@@ -95,6 +95,7 @@ EgZone :: struct {
   env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (zone_light)
   qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/quality-page.coax): the pixels drawn and the knobs; the finger on its control
   glade_cull: [1] mc.MeshCull;   // the glade's environment mesh's runs and their boxes, from the host (zone_mesh_cull; a face's coaxial_mesh_bounds_v1)
+  bare: bool;   // a zone with nothing to fight (Bitcoin Lab): no class bar, no monsters, no casting keys; you walk and look
 }
 // The world is up: the page is a zone's, and you aren't walking out of Character Create's studio.
 zone_world :: (s: [] EgZone) -> bool { c := s[0].creator[..]; return c[0].on && c[0].experimental && !c[0].walk.on; }
@@ -153,7 +154,7 @@ zone_move_world :: (s: [] EgZone, x: f32, z: f32) -> EgMoveWorld #export_c #effe
   w: EgMoveWorld;
   w.deck = true;
   // the open field: no village, its walls or its bushes; only the zone's own standing things (aethyr/world/props.coax)
-  if s[0].creator[0].field {s[0].village_near[0].floor_n=0;s[0].village_near[0].wall_n=wprops.props_near(s[0].creator[0].props[0],x,z,8,xmeadow.exp_height(x,z),s[0].village_near[0].walls[..],0);w.walls=s[0].village_near[0].wall_n;w.bodies=0;w.pace=xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}return w;}
+  if s[0].creator[0].field {s[0].village_near[0].floor_n=0;s[0].village_near[0].wall_n=wprops.props_near(s[0].creator[0].props[0],x,z,8,cc.cc_ground(s[0].creator[0].flat,x,z),s[0].village_near[0].walls[..],0);w.walls=s[0].village_near[0].wall_n;w.bodies=0;w.pace=xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}return w;}
   rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {zone_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}if sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock) {w.link_flags=512;}return w;
 }
 zone_move_bodies :: (s: [] EgZone) -> [] f32 #export_c #effects(all) { return s[0].village_near[0].walls[0..<0]; }   // none: monsters yield, they don't block
@@ -450,7 +451,10 @@ zone_draw :: (s: [] EgZone, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   cr := s[0].creator[..];
   zone_mouselook_step(s, ifx still then 0.0f32 else dt);
   n := cc.frame(cr,out,u,width,height,hi(dpr,0.5),dt,still);
-  if cr[0].experimental && !cr[0].walk.on {
+  if cr[0].experimental && !cr[0].walk.on && s[0].bare {
+    for i: 0..<XC_FOES { cr[0].hostiles[0].enemies[i].dead = true; cr[0].hostiles[0].enemies[i].died = -100; cr[0].hostiles[0].enemies[i].awake = false; }
+    n = zt_draw(s,out,n);   // only a phone's stick and JUMP
+  } else if cr[0].experimental && !cr[0].walk.on {
     if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
     n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
     n = zone_ride_prompt(s,out,n,width,height,hi(dpr,0.5));
@@ -507,7 +511,7 @@ zone_respawn_pointer :: (s:[] EgZone,x:f32,y:f32,phase:int,id:int)->bool {
 // bar, then the walker's keys. False when the zone isn't up or the key isn't one of them.
 zone_key :: (s: [] EgZone, key: int) -> bool #export_c #effects(all) {
   if !s[0].creator[0].experimental { return false; }
-  if (key=='r' || key=='R') && zone_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if (key=='e' || key=='E') && zone_mount_key(s) {return true;}if (key=='x' || key=='X') && zone_land_key(s) {return true;}if (key=='f' || key=='F') && zone_breath_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;
+  if (key=='r' || key=='R') && zone_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if s[0].bare {if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}if (key=='e' || key=='E') && zone_mount_key(s) {return true;}if (key=='x' || key=='X') && zone_land_key(s) {return true;}if (key=='f' || key=='F') && zone_breath_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;
 }
 zone_key_up :: (s: [] EgZone, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == KEY_SHIFT { s[0].shift = false; }
