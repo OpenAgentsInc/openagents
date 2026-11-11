@@ -122,6 +122,8 @@ EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr st
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) lab_catalog(at(state), (coax_string){(const char *)catalog, bytes});
 }
+// The glade's environment mesh's ask for its runs' boxes (aethyr/render/mesh-cull.coax, #13168): the host writes them once the pack is in.
+EXPORT("coaxial_mesh_bounds_v1") cx_face_addr coaxial_mesh_bounds_v1(cx_face_addr state) { return zone_at(state)->glade_cull.e[0].ask.e[0] ? (cx_face_addr)(uintptr_t)&zone_at(state)->glade_cull.e[0] : 0u; }
 EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_at(state)->bodies.e[0].draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
 EXPORT("coaxial_shadow_draws_v1") cx_face_addr coaxial_shadow_draws_v1(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_at(state)->shadow_draws.e; }

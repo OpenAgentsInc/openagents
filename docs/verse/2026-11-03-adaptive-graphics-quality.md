@@ -220,6 +220,7 @@ before (`coaxial_pixel_budget` returns 0) and don't show the tier.
 | `aethyr/quality-page.coax` | A page's wiring round its `Quality`, written once (`QualityPage`): the facts, the GPU's facts, the frame, the pixel budget, the eased knobs, what the host keeps, the label and a pick. |
 | `everglade/zone.coax` | A zone's governor (`zone_quality_frame`, `zone_pixel_budget`), so Experimental, the Druid's meadow and the Archery Range all run it; the tier shows beside the frame rate. |
 | `aethyr/render/grid-cull.coax` | The cells of a grid round the eye that the view can see, as runs: the open meadow draws those, not the whole grid (`charactercreator.coax` `meadow_cull`). |
+| `aethyr/render/mesh-cull.coax` | A big static mesh drawn as the runs of 1,024 triangles the view can see. The host boxes each run once from the pack's bytes (`coaxial_mesh_bounds_v1`; host.js and PageHost.m `meshBounds`), so no pack changes. Experimental's glade mesh draws through it (`everglade/zone.coax` `zone_mesh_cull`); `coax/web/mesh-cull-check.coax` times it on and off. |
 | `verse/demolish.coax` | `demo_caps`: the debris, splinter and dust budgets. |
 | `apps/openagents-web/everglade-quality.coax` | Everglade's side: facts, the per-frame call, the pixel budget, the control, a cost probe. |
 | `apps/openagents-web/everglade-spells.coax` | The debris budgets each frame; `sp_fx_thin`. |

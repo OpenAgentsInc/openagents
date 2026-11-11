@@ -1,0 +1,115 @@
+// A realm's mesh cull (aethyr/render/mesh-cull.coax, GitHub #13168), checked and timed in headless
+// Chrome: the page in real time, with the cull on and off in turn (coaxial.meshCull, host.js
+// meshBounds). It
+//   - compares the pictures: on, off and on with the page's clock held (prefers-reduced-motion); the
+//     cull may only leave out triangles nothing shows, so on and off must match pixel for pixel
+//     (said, not judged: a realm's own motion, a figure's idle, can still move a pixel);
+//   - times the GPU with the host's pass timer (coaxialPassTimer: the first pass's start to the
+//     last one's end, the median of each 2.5 s), off and on in turn ROUNDS times each, and counts
+//     the frames each 2.5 s drew (the frame rate); each mode's medians are kept.
+//   coax/web/tool.sh coax/web/mesh-cull-check.coax URL [--size WxH] [--rounds N] [--still]
+// URL is the whole page's, with its query (?quality=high to hold the pixels, ?quality=auto for
+// the governor). --still holds the clock for the timing too. --size defaults to 2560x1600 at dpr 1.
+// Prints one line a round and a summary; exit 0 when the cull ran, 1 when not, 2 on bad usage or a
+// headless Chrome with no hardware WebGPU adapter.
+#import "Basic";
+#load "../lib/media/media.coax";      // MEDIA_READY_JS, media_ready_step; it loads cdp.coax
+#load "../lib/image/png.coax";
+
+MK_PNG :: 16777216;
+MK_PIXELS :: 2560 * 1600 * 4;
+MK_WORK :: 2560 * 1600 * 4 + 1600 + 16777216;
+MK_ROUNDS :: 16;
+// The mode, then the median GPU span over ms and the frames drawn in it, "us frames".
+MK_TIME_JS :: "(async(on,ms)=>{const c=globalThis.coaxial;c.meshCull(on);await new Promise(r=>setTimeout(r,1500));c.takePassTimes();await new Promise(r=>setTimeout(r,ms));const t=c.takePassTimes().map(r=>r[0]).filter(x=>x>0).sort((a,b)=>a-b);return (t.length?t[t.length>>1]:-1)*10000+t.length;})";
+
+MkBuf :: struct { b: [8192] u8; n: int; }
+mk_put :: (o: [] MkBuf, s: string) { for ch: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = ch; o[0].n += 1; } } }
+mk_int :: (o: [] MkBuf, value: int) { v := value; if v < 0 { mk_put(o, "-"); v = -v; } d: [24] u8; k := 0; while true { d[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } } while k > 0 { k -= 1; mk_put(o, cast(string) d[k..<k + 1]); } }
+mk_text :: (o: [] MkBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+mk_median :: (v: [] int) -> int {
+  s: [MK_ROUNDS] int; n := v.count; for i: 0..<n { s[i] = v[i]; }
+  for i: 1..<n { j := i; while j > 0 && s[j - 1] > s[j] { t := s[j]; s[j] = s[j - 1]; s[j - 1] = t; j -= 1; } }
+  return (s[(n - 1) / 2] + s[n / 2]) / 2;
+}
+#test "the check's median and numbers" {
+  v := [4] int.[9, 1, 5, 3]; #assert mk_median(v[..]) == 4 && mk_median(v[0..<3]) == 5;
+  o: [1] MkBuf; mk_int(o[..], -120); mk_put(o[..], " x"); #assert mk_text(o[..]) == "-120 x";
+}
+mk_call :: (c: [] Cdp, method: string, params: string) -> bool { return cdp_call(c, method, params, 30000) >= 0; }
+mk_number :: (c: [] Cdp, js: string) -> int { n := cdp_evaluate(c, js); if n < 0 { return -1; } return jv_int(c[0].doc[0], n, -1); }
+mk_shot :: (c: [] Cdp, on: bool, out: [] u8) -> int {
+  _w := mk_number(c, ifx on then "(async()=>{globalThis.coaxial.meshCull(true);await new Promise(r=>setTimeout(r,1500));return 1;})()"
+                          else "(async()=>{globalThis.coaxial.meshCull(false);await new Promise(r=>setTimeout(r,1500));return 1;})()");
+  return cdp_screenshot(c, out);
+}
+mk_ready :: (c: [] Cdp) -> bool {
+  t0 := proc_now_ms(); idle_from := -1;
+  while true {
+    word: [512] u8; wn := media_value(c, MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - t0, ifx idle_from < 0 then 0 else now - idle_from, 120000);
+    if step == MEDIA_READY { return true; }
+    if step == MEDIA_TIMEOUT || step == MEDIA_FAILED { return false; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  return false;
+}
+mk_differ :: (a: [] u8, an: int, b: [] u8, bn: int, work: [] u8, pa: [] u8, pb: [] u8) -> int {
+  if an == bn { same := true; for i: 0..<an { if a[i] != b[i] { same = false; break; } } if same { return 0; } }
+  ia := png_info(a[0..<an]); ib := png_info(b[0..<bn]);
+  if ia.status != PNG_OK || ib.status != PNG_OK || ia.w != ib.w || ia.h != ib.h { return -1; }
+  if png_decode(a[0..<an], work, pa) != PNG_OK || png_decode(b[0..<bn], work, pb) != PNG_OK { return -1; }
+  n := 0;
+  for p: 0..<ia.w * ia.h { o := p * 4; if pa[o] != pb[o] || pa[o + 1] != pb[o + 1] || pa[o + 2] != pb[o + 2] { n += 1; } }
+  return n;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: mesh-cull-check URL [--size WxH] [--rounds N] [--still]\n"); return 2; }
+  url := args_at(a[..], 0); size := args_value(a[..], "--size", "2560x1600"); still := args_has(a[..], "--still");
+  rs := args_value(a[..], "--rounds", "6"); rounds := 0; for ch: rs { if ch >= '0' && ch <= '9' { rounds = rounds * 10 + cast(int) (ch - '0'); } }
+  if rounds < 1 || rounds > MK_ROUNDS { print("mesh-cull-check: --rounds 1 to %\n", MK_ROUNDS); return 2; }
+  w := 0; h := 0; at := 0;
+  while at < size.count && size[at] >= '0' && size[at] <= '9' { w = w * 10 + cast(int) (size[at] - '0'); at += 1; }
+  at += 1; while at < size.count && size[at] >= '0' && size[at] <= '9' { h = h * 10 + cast(int) (size[at] - '0'); at += 1; }
+  if w < 64 || h < 64 || w * h * 4 > MK_PIXELS { print("mesh-cull-check: --size WxH, at most 2560x1600\n"); return 2; }
+  png_a: [MK_PNG] u8; png_b: [MK_PNG] u8; png_c: [MK_PNG] u8; work: [MK_WORK] u8; pa: [MK_PIXELS] u8; pb: [MK_PIXELS] u8;
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], w, h, "mesh-cull-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer { cdp_close(c[..]); }
+  vp: [1] MkBuf; mk_put(vp[..], "{\"width\":"); mk_int(vp[..], w); mk_put(vp[..], ",\"height\":"); mk_int(vp[..], h); mk_put(vp[..], ",\"deviceScaleFactor\":1,\"mobile\":false}");
+  if !mk_call(c[..], "Page.enable", "") || !mk_call(c[..], "Emulation.setDeviceMetricsOverride", mk_text(vp[..]))
+     || !mk_call(c[..], "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialPassTimer = true;\"}") { tool_errln(cdp_error(c[..])); return 1; }
+  nav: [4096] u8; jo: [1] Jo; jo_start(jo[..], nav[..]); jo_obj(jo[..]); jo_key(jo[..], "url"); jo_str(jo[..], url); jo_end(jo[..]);
+  if !mk_call(c[..], "Page.navigate", jo_text(jo[..])) || !mk_ready(c[..]) { print("FAIL: the scene didn't draw\n"); return 1; }
+  gb: [256] u8; line := cdp_adapter(c[..], gb[..]); print("mesh-cull-check: WebGPU adapter: %\n", line);
+  if !cdp_adapter_hardware(line) { tool_errln("mesh-cull-check: no hardware WebGPU adapter"); return 2; }
+  proc_sleep(4000);
+  if mk_number(c[..], "globalThis.coaxial.meshCull(true)?1:0") != 1 { print("FAIL: the page has no mesh cull, or the host has no boxes for it\n"); return 1; }
+  // the pictures, the clock held
+  _s := mk_call(c[..], "Emulation.setEmulatedMedia", "{\"features\":[{\"name\":\"prefers-reduced-motion\",\"value\":\"reduce\"}]}");
+  differ := -1;
+  for attempt: 0..<4 {
+    an := mk_shot(c[..], true, png_a[..]); bn := mk_shot(c[..], false, png_b[..]); cn := mk_shot(c[..], true, png_c[..]);
+    if an <= 0 || bn <= 0 || cn <= 0 { break; }
+    if mk_differ(png_a[..], an, png_c[..], cn, work[..], pa[..], pb[..]) != 0 { continue; }
+    differ = mk_differ(png_a[..], an, png_b[..], bn, work[..], pa[..], pb[..]); break;
+  }
+  print("pictures: % pixels differ between on and off (-1: the view never held still)\n", differ);
+  if !still { _m := mk_call(c[..], "Emulation.setEmulatedMedia", "{\"features\":[]}"); }
+  offs: [MK_ROUNDS] int; ons: [MK_ROUNDS] int; foff: [MK_ROUNDS] int; fon: [MK_ROUNDS] int;
+  for k: 0..<2 * rounds {
+    on := k % 2 == 1;
+    js: [1] MkBuf; mk_put(js[..], MK_TIME_JS); mk_put(js[..], ifx on then "(true,2500)" else "(false,2500)");
+    t := mk_number(c[..], mk_text(js[..])); us := t / 10000; frames := t % 10000;
+    if on { ons[k / 2] = us; fon[k / 2] = frames; } else { offs[k / 2] = us; foff[k / 2] = frames; }
+    print("round %: cull %: GPU % us, % FPS\n", k / 2 + 1, ifx on then "on " else "off", us, frames * 10 / 25);
+  }
+  print("GPU median: % us off, % us on; frames a second: % off, % on\n", mk_median(offs[0..<rounds]), mk_median(ons[0..<rounds]),
+        mk_median(foff[0..<rounds]) * 10 / 25, mk_median(fon[0..<rounds]) * 10 / 25);
+  return 0;
+}

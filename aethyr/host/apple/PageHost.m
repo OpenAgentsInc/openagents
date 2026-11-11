@@ -37,7 +37,7 @@ typedef uintptr_t A;
  F(int32_t,action,(A)) F(A,outbox,(A)) F(uint32_t,outbox_len,(A)) F(uint32_t,outbox_capacity,(A)) F(void,action_done,(A)) \
  F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void)) \
  F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
- F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A))
+ F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A)) F(A,mesh_bounds_v1,(A))
 typedef struct {
 #define PH_FN(result,name,args) result (*name) args;
  PH_FACE(PH_FN)
@@ -552,6 +552,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
   x.asset_ready(state, 0, fits ? (uint32_t)catalog.length : 0);
   x.asset_ready(state, 1, (uint32_t)packVertexBytes); x.asset_ready(state, 2, (uint32_t)packIndexBytes);
  }
+ [self meshBounds];
  storageBuffer = [device newBufferWithBytes:packVertices length:packVertexBytes options:MTLResourceStorageModeShared];
  indexBuffer = [device newBufferWithBytes:packIndices length:packIndexBytes options:MTLResourceStorageModeShared];
  int side = x.layers_side_v1 ? (int)x.layers_side_v1(state) : 0;
@@ -578,6 +579,35 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  // index count is kept), so an inflated pack's memory goes back.
  packBytes = nil; packVertices = packIndices = NULL;
  return nil;
+}
+
+// A big static mesh's runs' boxes (aethyr/render/mesh-cull.coax, #13168), as host.js meshBounds
+// writes them: the face asks for one index range once its catalog is in, and each run of its
+// triangles gets the box of its vertices' positions, flagged when a vertex's keep word matches.
+// AETHYR_MESH_CULL=0 answers "draw it whole", to compare.
+- (void)meshBounds {
+ uint32_t *ask = x.mesh_bounds_v1 ? (uint32_t *)x.mesh_bounds_v1(state) : NULL;
+ if (!ask || ((uintptr_t)ask & 3) || ask[0] != 1 || !packVertices || !packIndices) return;
+ uint32_t first = ask[1], count = ask[2], word = ask[3], stride = ask[4], tris = ask[5], cap = ask[6], keepAt = ask[7], keepMask = ask[8], keepValue = ask[9];
+ uint64_t tri3 = (uint64_t)tris * 3, runs = tri3 ? ((uint64_t)count + tri3 - 1) / tri3 : 0, words = packVertexBytes / 4;
+ if (!runs || runs > cap || (uint64_t)first + count > packIndexBytes / 4) { ask[0] = 3; return; }
+ const uint32_t *iu = (const uint32_t *)packIndices; const uint8_t *vb = packVertices;
+ float *box = (float *)(ask + 12); BOOL keep = keepAt != 0xffffffffu;
+ for (uint64_t r = 0; r < runs; r++) {
+  float lo[3] = {INFINITY, INFINITY, INFINITY}, hi[3] = {-INFINITY, -INFINITY, -INFINITY}; float kept = 0;
+  uint64_t end = MIN((r + 1) * tri3, (uint64_t)count);
+  for (uint64_t i = r * tri3; i < end; i++) {
+   uint32_t index; memcpy(&index, iu + first + i, 4);
+   uint64_t w = (uint64_t)word + (uint64_t)index * stride;
+   if (w + 3 > words || (keep && w + keepAt >= words)) { ask[0] = 3; return; }
+   float p[3]; memcpy(p, vb + w * 4, 12);
+   for (int k = 0; k < 3; k++) { if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; }
+   if (keep) { uint32_t v; memcpy(&v, vb + (w + keepAt) * 4, 4); if ((v & keepMask) == keepValue) kept = 1; }
+  }
+  float *b = box + r * 8; b[0] = lo[0]; b[1] = lo[1]; b[2] = lo[2]; b[3] = kept; b[4] = hi[0]; b[5] = hi[1]; b[6] = hi[2]; b[7] = 0;
+ }
+ const char *off = getenv("AETHYR_MESH_CULL");
+ ask[10] = (uint32_t)runs; ask[0] = off && !strcmp(off, "0") ? 4 : 2;
 }
 
 // ---- sockets and HTTP: bytes to the site and back, nothing else

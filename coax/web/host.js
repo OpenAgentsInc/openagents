@@ -160,6 +160,10 @@
 //   coaxial_cull_v1(state, field)   optional, with a cull:URL asset: the GPU instance cull's block
 //                             (instance-cull.js has its fields); its runs draw only what the
 //                             frustum and the frame's own depth leave in view
+//   coaxial_mesh_bounds_v1(state)   optional: a big static mesh's ask for its runs' boxes
+//                             (aethyr/render/mesh-cull.coax has its words), written once from the
+//                             pack's vertex and index bytes (meshBounds); ?meshcull=0 or
+//                             coaxial.meshCull(false) answers "draw it whole", to compare
 //   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
 //                             memory copied each frame to storage buffers; an app with
 //   coaxial_store_version(state, k)  has store k copied only when that number changes (a
@@ -1707,6 +1711,43 @@ function packBytes(pack) {
   promise.catch(() => {});   // a page that stops before loadPack never asks
   return { promise, cancel: job.cancel };
 }
+// A big static mesh's runs' boxes (aethyr/render/mesh-cull.coax, #13168), once the pack's catalog
+// is delivered: the face asks with coaxial_mesh_bounds_v1 for one index range, and its runs of
+// triangles each get the box of their vertices' positions (a vertex's first three words), flagged
+// when a vertex's keep word matches. Which runs are drawn is the realm's; this only measures.
+let meshCullOff = new URLSearchParams(location.search).get("meshcull") === "0";
+function meshBounds(vertices, indices) {
+  const x = engine?.exports, at = x?.coaxial_mesh_bounds_v1?.(arena.state) ?? 0;
+  if (!at || at % 4 || !vertices || !indices || at + 48 > memory.buffer.byteLength) return;
+  const ask = new Uint32Array(memory.buffer, at, 12);
+  if (ask[0] !== 1) return;
+  const [, first, count, word, stride, tris, cap, keepAt, keepMask, keepValue] = ask, tri3 = tris * 3, runs = tri3 ? Math.ceil(count / tri3) : 0;
+  if (vertices.byteOffset % 4 || indices.byteOffset % 4 || !runs || runs > cap || first + count > indices.byteLength / 4 || at + 48 + runs * 32 > memory.buffer.byteLength) { ask[0] = 3; return; }
+  const vu = new Uint32Array(vertices.buffer, vertices.byteOffset, vertices.byteLength >> 2), vf = new Float32Array(vertices.buffer, vertices.byteOffset, vertices.byteLength >> 2);
+  const iu = new Uint32Array(indices.buffer, indices.byteOffset, indices.byteLength >> 2), box = new Float32Array(memory.buffer, at + 48, runs * 8);
+  const keep = keepAt !== 0xffffffff, words = vu.length;
+  for (let r = 0; r < runs; r++) {
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity, kept = 0;
+    const end = Math.min((r + 1) * tri3, count);
+    for (let i = r * tri3; i < end; i++) {
+      const w = word + iu[first + i] * stride;
+      if (w + 3 > words || (keep && w + keepAt >= words)) { ask[0] = 3; return; }
+      const px = vf[w], py = vf[w + 1], pz = vf[w + 2];
+      if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py; if (pz < z0) z0 = pz; if (pz > z1) z1 = pz;
+      if (keep && ((vu[w + keepAt] & keepMask) >>> 0) === keepValue) kept = 1;
+    }
+    const b = r * 8; box[b] = x0; box[b + 1] = y0; box[b + 2] = z0; box[b + 3] = kept; box[b + 4] = x1; box[b + 5] = y1; box[b + 6] = z1; box[b + 7] = 0;
+  }
+  ask[10] = runs; ask[0] = meshCullOff ? 4 : 2;
+}
+function meshCullSwitch(on) {
+  meshCullOff = !on;
+  const at = engine?.exports.coaxial_mesh_bounds_v1?.(arena.state) ?? 0;
+  if (!at) return false;
+  const ask = new Uint32Array(memory.buffer, at, 12);
+  if (ask[0] === 2 || ask[0] === 4) ask[0] = on ? 2 : 4;
+  return ask[0] === 2;
+}
 async function loadPack(pack) {
   if(hostTransport)return loadPackV1(pack);
   if (pack.fetching || pack.done) return;pack.fetching = true;loadMark("pack-start");
@@ -1803,6 +1844,7 @@ async function loadPack(pack) {
   pack.fetching = false;pack.done = true;loadMark("pack-done");
   if (!parts.every(currentAsset)) return;
   for (const a of parts) { a.done = true; deliver(a); }
+  if (entries) meshBounds(entries.find((e) => e.kind === PACK_VERTICES)?.bytes, entries.find((e) => e.kind === PACK_INDICES)?.bytes);
   bindScene();loadMark("pack-delivered");
   loading.assetDone(parts[0].failed && !pack.quiet && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
 }
@@ -1810,7 +1852,7 @@ async function loadPack(pack) {
 async function loadPackV1(pack){
   if(pack.fetching||pack.done)return;
   const parts=assets.filter(row=>row.pack===pack),generation=wanted,exports=engine?.exports;
-  const group={pack,parts,sounds:[],generation,exports,loading:true,retired:false,result:null};
+  const group={pack,parts,sounds:[],generation,exports,loading:true,retired:false,result:null};let mesh=null;
   group.retiredPromise=new Promise(resolve=>{group.retiredResolve=resolve;});
   const current=()=>!group.retired&&wanted===generation&&engine?.exports===exports&&parts.every(currentAsset);
   const check=()=>{if(!current())throw new DOMException("pack renderer retired","AbortError");};
@@ -1837,7 +1879,7 @@ async function loadPackV1(pack){
       if(wantsDataLayers())loading.textures(0,2*of(PACK_DATA_LAYER).length);
       const dataTexture=wantsDataLayers()&&of(PACK_DATA_LAYER).length?await layerTexture(of(PACK_DATA_LAYER).map(entry=>entry.bytes),"rgba8unorm"):null;
       await rendererReady();
-      catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;
+      catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;mesh=[of(PACK_VERTICES)[0]?.bytes,of(PACK_INDICES)[0]?.bytes];
       for(const [row,entry]of [[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
         if(gpu.renderer){row.bytes=entry.bytes;row.size=entry.bytes.length;gpu.renderer.acceptAsset(row);}
         else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX|(wantsCull()?GPUBufferUsage.STORAGE:0):GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
@@ -1860,7 +1902,7 @@ async function loadPackV1(pack){
   }finally{group.loading=false;}
   if(!current())return;
   pack.fetching=false;pack.done=true;
-  for(const row of parts){row.done=true;deliver(row);}bindScene();
+  for(const row of parts){row.done=true;deliver(row);}if(mesh)meshBounds(mesh[0],mesh[1]);mesh=null;bindScene();
   loading.assetDone(parts[0].failed&&!pack.quiet&&`WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
 }
 // A private pack from the broker (coax/web/api/verse_packs.c): the session's bytes are the gzipped
@@ -3359,6 +3401,10 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => l
   // the instance cull (instance-cull.js): on or off for this page, and its latest counts when the pass timer is on
   cull: (on) => { if (gpu?.cull) gpu.cull.off = !on; return !!gpu?.cull && !gpu.cull.off; },
   cullStats: () => gpu?.cull?.stats() ?? null,
+  meshCull: (on) => meshCullSwitch(on !== false),
+  meshCullStats: () => { const x = engine?.exports, at = x?.coaxial_mesh_bounds_v1?.(arena.state) ?? 0, n = x?.coaxial_draw_count?.(arena.state) ?? 0, d = n ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), n * 4) : [];
+    let indices = 0; for (let i = 0; i < n; i++) indices += d[i * 4 + 1] * d[i * 4 + 3];
+    return at ? { state: new Uint32Array(memory.buffer, at, 12)[0], mesh: new Uint32Array(memory.buffer, at, 12)[2], runs: new Uint32Array(memory.buffer, at, 12)[10], draws: n, indices } : null; },
   frameQueue: () => ({pending:gpu?.device.__coaxialFrames||0,bounded:typeof engine?.exports.coaxial_frame_admit==="function"}),
   quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },

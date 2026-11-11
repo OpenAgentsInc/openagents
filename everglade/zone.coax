@@ -45,6 +45,7 @@
 #load "zone-drive.coax";      // ... wired to a zone
 #load "zone-touch.coax";      // a phone: which finger is the thumb's stick, JUMP, and the dragon's UP and DOWN (#13151)
 #load "../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../aethyr/render/mesh-cull.coax" as mc;   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
 
 // The strokes a frame may draw and the uniforms it writes (gpu/charactercreator.bindings).
 VERTEX_FLOATS :: 16;
@@ -93,6 +94,7 @@ EgZone :: struct {
   zt_stick: int = -100; zt_up: int = -100; zt_thumb: bool; zt_top: f32;   // a phone's fingers: the thumb's and JUMP's, and a realm's panel over the stick's side (zone-touch.coax)
   env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (zone_light)
   qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/quality-page.coax): the pixels drawn and the knobs; the finger on its control
+  glade_cull: [1] mc.MeshCull;   // the glade's environment mesh's runs and their boxes, from the host (zone_mesh_cull; a face's coaxial_mesh_bounds_v1)
 }
 // The world is up: the page is a zone's, and you aren't walking out of Character Create's studio.
 zone_world :: (s: [] EgZone) -> bool { c := s[0].creator[..]; return c[0].on && c[0].experimental && !c[0].walk.on; }
@@ -272,7 +274,14 @@ zone_you :: (s: [] EgZone, x: f32, y: f32, z: f32, face: f32, airborne: bool, to
 
 // ---- the figures and the shadows
 // The pack's catalog arrived (fivelab-face.c): the figures' parts.
-zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) { figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text); }
+zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) {
+  figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text);
+  // the glade's environment mesh: its boxes asked of the host, 8 words a vertex; a sky vertex (kind 0, the
+  // normal word's bits 24 to 27: gpu/character-glade.coax cg_environment_vs) is in screen space, so its run is always drawn
+  c := s[0].creator[..];
+  mc.mesh_cull_want(s[0].glade_cull[..], c[0].glade_first, c[0].glade_count, c[0].glade_word, 8, 3, 0x0f000000, 0);
+}
+
 // The clips baked into the bake store, once (fivelab-face.c).
 zone_bake :: (s: [] EgZone, d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out, s[0].creator[0].dev_animations); figs.bd_bake_owned(out); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
 // Existing optional layer-size hook: Character Create owns its quality choice.
@@ -309,9 +318,54 @@ zone_scene :: (s: [] EgZone, out: [] f32) -> int #export_c #effects(all) {
   }
   n = cc.meadow_cull(s[0].creator[..], s[0].bodies[..], out, n, s[0].bodies[0].draws.count/4);   // the open field: only the cells in view (#13147)
   zone_shadow_select(s);
+  n = zone_mesh_cull(s, n);   // after the shadows' draws: what casts a shadow into view is still drawn there
   // first person (charactercreator.coax cc_self_hidden): your body still casts its shadow, but isn't drawn from your eyes
   for i: 0..<s[0].bodies[0].self_n { s[0].bodies[0].draws[i*4+1] = 0; }
   return n;
+}
+
+// The glade's environment mesh (2.35 million triangles in Experimental) drawn as the runs of it the
+// view can see (aethyr/render/mesh-cull.coax, #13168): its draw takes the nearest span, and a draw
+// is added after the others for each further one, sharing its record. Without the host's boxes, or
+// with no room for another draw, it stays one whole draw. Returns the draws.
+ZONE_MESH_DRAWS :: 48;
+ZONE_MESH_PAD :: 0.1;   // metres: the wind sways a leaf at most 0.05 m (cg_environment_vs)
+zone_mesh_cull :: (s: [] EgZone, n0: int) -> int {
+  n := n0; c := s[0].creator[..]; b := s[0].bodies[..];
+  if !c[0].on || c[0].glade_count <= 0 || !c[0].view_ok { return n; }
+  vo := mc.mesh_cull_view(c[0].view[..], c[0].view_w, c[0].view_h); if !vo.ok { return n; }
+  d := -1;
+  for i: 0..<n { if cast(int) b[0].draws[i*4] == c[0].glade_first && cast(int) b[0].draws[i*4+1] == c[0].glade_count && b[0].draws[i*4+2] < 65536 && b[0].draws[i*4+3] == 1 { d = i; break; } }
+  if d < 0 { return n; }
+  most := b[0].draws.count/4 - n + 1; if most > ZONE_MESH_DRAWS { most = ZONE_MESH_DRAWS; }
+  spans: [ZONE_MESH_DRAWS * 2] u32;
+  m := mc.mesh_cull_spans(s[0].glade_cull[..], vo.v, ZONE_MESH_PAD, spans[..], most);
+  if m < 0 { return n; }
+  if m == 0 { b[0].draws[d*4+1] = 0; return n; }
+  b[0].draws[d*4] = spans[0]; b[0].draws[d*4+1] = spans[1];
+  for k: 1..<m { b[0].draws[n*4] = spans[k*2]; b[0].draws[n*4+1] = spans[k*2+1]; b[0].draws[n*4+2] = b[0].draws[d*4+2]; b[0].draws[n*4+3] = 1; n += 1; }
+  return n;
+}
+#test "the glade's mesh draws the spans in view, after the shadows took it whole, and whole until the host's boxes are in" #steps 900000000 {
+  s: [1] EgZone; c := s[0].creator[..]; b := s[0].bodies[..];
+  c[0].on = true; c[0].glade_first = 0; c[0].glade_count = mc.MC_TEST_TRIS * 3; c[0].glade_word = 0;
+  mc.mesh_cull_want(s[0].glade_cull[..], 0, mc.MC_TEST_TRIS * 3, 0, 4, 3, 0xffffffff, 0);
+  b[0].draws[0] = 0; b[0].draws[1] = cast(u32) (mc.MC_TEST_TRIS * 3); b[0].draws[2] = 0; b[0].draws[3] = 1;
+  b[0].draws[4] = 9; b[0].draws[5] = 30; b[0].draws[6] = 1; b[0].draws[7] = 1; b[0].draw_n = 2;
+  mc.mesh_cull_camera(c[0].view[..], 0, 3, 300, 3.14159, 0, 1280, 720, 345, 640); c[0].view_w = 1280; c[0].view_h = 720; c[0].view_ok = true;
+  #assert zone_mesh_cull(s[..], 2) == 2 && b[0].draws[1] == cast(u32) (mc.MC_TEST_TRIS * 3);   // no boxes yet
+  vertices: [mc.MC_TEST_TRIS * 3 * 4] f32; indices: [mc.MC_TEST_TRIS * 3] u32; mc.mesh_cull_field(vertices[..], indices[..]);
+  mc.mesh_cull_answer(s[0].glade_cull[..], vertices[..], indices[..]);
+  zone_shadow_select(s[..]); #assert s[0].shadow_n == 2 && s[0].shadow_draws[1] == cast(u32) (mc.MC_TEST_TRIS * 3);
+  // looking away from the field: only the sky's run, and the shadows' draw is still the whole mesh
+  #assert zone_mesh_cull(s[..], 2) == 2 && b[0].draws[0] == cast(u32) (5 * mc.MESH_CULL_TRIS * 3) && b[0].draws[4] == 9;
+  #assert s[0].shadow_draws[1] == cast(u32) (mc.MC_TEST_TRIS * 3);
+  // looking across it: more spans, each a draw of the glade's record
+  b[0].draws[0] = 0; b[0].draws[1] = cast(u32) (mc.MC_TEST_TRIS * 3);
+  mc.mesh_cull_camera(c[0].view[..], -100, 3, 120, 0.6, 0.1, 1280, 720, 345, 640);
+  n := zone_mesh_cull(s[..], 2); #assert n >= 2;
+  total := cast(int) b[0].draws[1]; for i: 2..<n { #assert b[0].draws[i*4+2] == 0 && b[0].draws[i*4+3] == 1; total += cast(int) b[0].draws[i*4+1]; }
+  #assert total > 0 && total <= mc.MC_TEST_TRIS * 3;
 }
 
 // ---- the graphics governor (aethyr/quality.coax through aethyr/quality-page.coax, #13147): in AUTO
