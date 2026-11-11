@@ -65,9 +65,10 @@ static void cookie_value(const char *cookies, const char *name, char *out, size_
 
 // Appends the tokens of `list` (split at commas and spaces) to a JSON array of
 // `kind` in out: kind:value tokens of OA_TEAM when `kind` is set, else the
-// 64-hex keys of OA_ADMIN_PUBKEYS. Only [A-Za-z0-9_-] gets through.
+// 64-hex keys of OA_ADMIN_PUBKEYS. Only [A-Za-z0-9_-] gets through. It continues an array
+// another call began.
 static size_t team_list(char *out, size_t n, size_t cap, const char *list, const char *kind) {
-  bool first = true;
+  bool first = n == 0 || out[n - 1] == '[';
   for (const char *p = list ? list : ""; *p;) {
     while (*p == ',' || *p == ' ' || *p == '\n' || *p == '\t') p++;
     const char *t = p;
@@ -94,6 +95,7 @@ void analytics_team_init(PGconn *db) {
   static char cfg[16384];
   size_t n = (size_t)snprintf(cfg, sizeof cfg, "{\"npub\":[");
   n = team_list(cfg, n, sizeof cfg, getenv("OA_ADMIN_PUBKEYS"), NULL);
+  n = team_list(cfg, n, sizeof cfg, team, "pubkey");   // a test key's logins (auth.is_team)
   n += (size_t)snprintf(cfg + n, sizeof cfg - n, "],\"player\":[");
   n = team_list(cfg, n, sizeof cfg, team, "player");
   n += (size_t)snprintf(cfg + n, sizeof cfg - n, "],\"email_sha256\":[");

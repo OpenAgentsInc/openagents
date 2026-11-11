@@ -75,7 +75,7 @@ image="$(python3 "$here/deploy_verify.py" build-image "$work/build.json" "$tag")
 admins="$(grep -v '^#' "$here/admins.conf" | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 # Our team (team.conf): kind:value,... ; its visits are our own testing, not usage.
-team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "player" || $1 == "email_sha256") { print $1 ":" $2 }' | paste -sd, - || true)"
+team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "player" || $1 == "email_sha256" || $1 == "pubkey") { print $1 ":" $2 }' | paste -sd, - || true)"
 
 deploy() {  # service runtime-secret host agent-projects-secret runner-service drops-folder owner-secret
   # Migrations first, as the owner role, in a job with this image; the service's own role has no
