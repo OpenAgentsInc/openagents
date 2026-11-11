@@ -27,6 +27,7 @@
 #load "dictation-labels.coax";
 #load "modes.coax";
 #load "../../../components/skin/all.coax";   // a skin by id (zr_set_skin)
+#load "../../../components/zeron/chrome.coax";   // the status strip, the failure notice, the dictation button
 
 ZR_MAX_VERTICES :: 200000;
 ZR_COLUMN_PAD :: 16.0;
@@ -367,7 +368,7 @@ zr_on_composer :: (s: [] ZeronState, x: f32, y: f32) -> bool {
 }
 // The transcript takes the pointer between the titlebar and the composer's stack.
 zr_on_transcript :: (s: [] ZeronState, x: f32, y: f32) -> bool {
-  return y >= TITLEBAR_HEIGHT && y < s[0].composer[0].y - STATUS_STRIP_HEIGHT;
+  return y >= zr_skin(s).tr.titlebar && y < s[0].composer[0].y - zr_skin(s).tr.status_strip;
 }
 zr_update_cursor :: (s: [] ZeronState) {
   c := s[0].composer[..];
@@ -473,7 +474,7 @@ zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
   w := s[0].width / d; h := s[0].height / d;
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, sk.canvas, sk.canvas);
   if !s[0].atlas[0].ready { return v; }
-  column := ifx w < COMPOSER_MAX_WIDTH then w else COMPOSER_MAX_WIDTH;
+  column := ifx w < sk.cmp.max_width then w else sk.cmp.max_width;
   cw := column - 2 * ZR_COLUMN_PAD;
   x := round_layout((w - cw) / 2);
   if zr_empty(s) {
@@ -490,14 +491,14 @@ zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
     return v;
   }
   ch := docked_height(c, s[0].atlas[..], cw);
-  stack := STATUS_STRIP_HEIGHT + ch + ZR_DOCK_BOTTOM;
+  stack := sk.tr.status_strip + ch + ZR_DOCK_BOTTOM;
   t[0].view_h = h;
-  t_layout(t, s[0].atlas[..], th, x, cw, stack + TRANSCRIPT_FADE_BAND + SPACE_SM);
+  t_layout(t, s[0].atlas[..], th, x, cw, stack + sk.tr.fade_band + sk.tr.gap);
   // a chat longer than the transcript holds starts at a later turn
   if !s[0].demo && s_overflowed(t) && s_drop_turn(ss, s[0].ui[..]) { ss[0].changed = true; }
   if s[0].want_scroll >= 0 { t_scroll_to(t, s[0].want_scroll); s[0].want_scroll = -1; }
   t_clamp(t);
-  v = t_paint(out, v, t, s[0].atlas[..], th, d, h, stack - STATUS_STRIP_HEIGHT);
+  v = t_paint(out, v, t, s[0].atlas[..], th, d, h, stack - sk.tr.status_strip);
   v = paint_composer_docked(out, v, c, s[0].atlas[..], th, d, x, h - ZR_DOCK_BOTTOM, cw);
   v = zr_paint_status(out, v, s, th, d, x, h - ZR_DOCK_BOTTOM, cw);
   v = zr_paint_dictation(out, v, s, th, d);
@@ -552,15 +553,20 @@ zr_status_text :: (s: [] ZeronState, out: [] u8) -> string {
   }
   return cast(string) out[0..<k];
 }
+// The status strip, the failure notice and the dictation button are the chat
+// set's (components/zeron/chrome.coax): each paints a display list in the
+// chat's skin, drawn here by gpu_draw.
+ZR_CHROME_PRIMS :: 64;
+zr_draw_prims :: (out: [] f32, at: int, s: [] ZeronState, d: f32, list: [] Prim, n: int) -> int {
+  return gpu_draw(out, at, s[0].atlas[..], d, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
+}
 zr_paint_status :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, x: f32, y: f32, cw: f32) -> int {
   if s[0].demo { return at; }
-  sk := zr_skin(s);
-  buf: [96] u8;
+  buf: [96] u8; list: [ZR_CHROME_PRIMS] Prim;
   st := zr_status(s);
-  dot := ifx st == ZR_STATUS_WORKING then sk.accent else ifx st == ZR_STATUS_WAITING then sk.warning else opacity(sk.faint, 0.5);
-  top := y + 8; size: f32 = 6;
-  v := paint_quad(out, at, d, x + 16, top + (STATUS_STRIP_HEIGHT - size) / 2, size, size, size / 2, 0, dot, dot);
-  return paint_text(out, v, s[0].atlas[..], d, sk.small.face, zr_status_text(s, buf[..]), x + 16 + size + 8, top, STATUS_STRIP_HEIGHT, sk.faint);
+  state := ifx st == ZR_STATUS_WORKING then CHROME_WORKING else ifx st == ZR_STATUS_WAITING then CHROME_WAITING else CHROME_IDLE;
+  n := chrome_status_prims(list[..], 0, zr_skin(s), x, y, state, zr_status_text(s, buf[..]));
+  return zr_draw_prims(out, at, s, d, list[..], n);
 }
 
 // The catalogs the menus show, one per mode (Claude's is the engine's).
@@ -580,26 +586,10 @@ zr_paint_failure :: (out: [] f32, at: int, s: [] ZeronState, th: Theme, d: f32, 
   c := s[0].composer[..]; a := s[0].atlas[..];
   if c[0].failure_n == 0 { c[0].failure_h = 0; return at; }
   msg := cast(string) c[0].failure[0..<c[0].failure_n];
-  sk := zr_skin(s);
-  accent := sk.danger; muted := sk.danger_muted;
-  w := cw - 8;
-  no_runs: [1] MdRun;
-  lines: [16] TextLine;
-  nl := t_wrap(s[0].transcript[..], a, msg, no_runs[0..<0], w - 2 * NOTICE_PAD, true, lines[..]);
-  h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
-  y := composer_y - 6 - h;
-  c[0].failure_y = y; c[0].failure_h = h;
-  v := paint_quad(out, at, d, x + 4, y, w, h, 10, 0, flatten(opacity(accent, 0.1), sk.canvas), flatten(opacity(accent, 0.1), sk.canvas));
-  hy := y + NOTICE_PY;
-  v = paint_quad(out, v, d, x + 4 + NOTICE_PAD, hy, NOTICE_TILE, NOTICE_TILE, 6, 0, opacity(accent, 0.12), opacity(accent, 0.12));
-  v = paint_icon(out, v, a, d, ICON_DANGER, x + 4 + NOTICE_PAD + 4, hy + 4, 12, 12, opacity(muted, 0.8));
-  v = paint_text(out, v, a, d, sk.label.face, "Error", x + 4 + NOTICE_PAD + NOTICE_TILE + 8, hy + (NOTICE_TILE - NOTICE_LINE) / 2, NOTICE_LINE, opacity(muted, 0.8));
-  my := hy + NOTICE_TILE + NOTICE_GAP;
-  for q: 0..<nl {
-    seg := cast(string) msg[lines[q].from..<lines[q].to];
-    v = paint_text(out, v, a, d, sk.tool.face, seg, x + 4 + NOTICE_PAD, my + cast(f32) q * NOTICE_LINE, NOTICE_LINE, muted);
-  }
-  return v;
+  list: [ZR_CHROME_PRIMS] Prim; box: [2] f32;
+  n := chrome_failure_prims(list[..], 0, zr_skin(s), a, x, composer_y, cw, "Error", msg, box[..]);
+  c[0].failure_y = box[0]; c[0].failure_h = box[1];
+  return zr_draw_prims(out, at, s, d, list[..], n);
 }
 
 // ---------------------------------------------------------------- the host's calls
@@ -1005,8 +995,8 @@ coaxial_zeron_rect16 :: (s: [] ZeronState, at16: int, out: [] f32) -> bool #expo
   i := byte_of(c, at16);
   k := ifx i == c[0].ed[0].caret then row_of(c, i, c[0].upstream) else row_of(c, i, false);
   out[0] = c[0].text_x + x_in_row(c, s[0].atlas[..], k, i);
-  out[1] = c[0].text_y - c[0].scroll + cast(f32) k * INPUT_LINE_HEIGHT;
-  out[2] = 2; out[3] = INPUT_LINE_HEIGHT;
+  out[1] = c[0].text_y - c[0].scroll + cast(f32) k * composer_line(c);
+  out[2] = 2; out[3] = composer_line(c);
   return true;
 }
 // character_index_for_point: the UTF-16 offset under a device point.
@@ -1444,18 +1434,12 @@ coaxial_zeron_dictation_hit :: (s:[]ZeronState,x:f32,y:f32)->bool #export_c #eff
  return zdu_hit(s[0].dictation_enabled,c[0].x,c[0].y,c[0].w,c[0].h,x/d,y/d);
 }
 zr_paint_dictation :: (out:[]f32,at:int,s:[]ZeronState,th:Theme,d:f32)->int {
- if !s[0].dictation_enabled {return at;}c:=s[0].composer[..];x:=c[0].x+c[0].w-28;y:=c[0].y+c[0].h+4;
- sk:=zr_skin(s);active:=s[0].dictation_phase==2 || s[0].dictation_phase==3;fg:=ifx active then sk.accent else sk.muted;
- bg:=ifx active then opacity(sk.accent,0.15) else sk.surface;
- v:=paint_quad(out,at,d,x,y,28,28,14,0,bg,bg);
- // A microphone drawn in Coax: capsule, lower cradle, stem and base.
- v=paint_quad(out,v,d,x+7,y+10,14,11,7,1.5,sk.clear,fg);
- v=paint_quad(out,v,d,x+6,y+8,16,7,0,0,bg,bg);
- v=paint_quad(out,v,d,x+10,y+4,8,14,4,1.5,sk.clear,fg);
- v=paint_quad(out,v,d,x+13.25,y+21,1.5,3,0,0,fg,fg);
- v=paint_quad(out,v,d,x+9,y+24,10,1.5,0,0,fg,fg);
+ if !s[0].dictation_enabled {return at;}c:=s[0].composer[..];
+ active:=s[0].dictation_phase==2 || s[0].dictation_phase==3;
  label:=zdu_label(s[0].dictation_phase,s[0].dictation_outcome,s[0].dictation_fault,s[0].dictation_preparing,s[0].dictation_ctrl);
- return paint_text(out,v,s[0].atlas[..],d,sk.label.face,label,x-8-text_width(s[0].atlas[..],sk.label.face,label),y,28,fg);
+ list:[ZR_CHROME_PRIMS]Prim;
+ n:=chrome_mic_prims(list[..],0,zr_skin(s),s[0].atlas[..],c[0].x,c[0].y,c[0].w,c[0].h,active,label);
+ return zr_draw_prims(out,at,s,d,list[..],n);
 }
 #test "the dictation label's key is the host's: Control only where the host says Control is its Command" {
  s:[1]ZeronState;#assert !s[0].dictation_ctrl;

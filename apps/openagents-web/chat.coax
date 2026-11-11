@@ -19,6 +19,7 @@
 // comparing the two renders. Based on Zeron by Wing, MIT.
 
 #load "../../components/zeron/picker.coax";
+#load "../../components/zeron/chrome.coax";   // the page's buttons, field and notice
 
 WC_MAX_VERTICES :: 120000;
 WC_INBOX :: 1048576;
@@ -650,24 +651,30 @@ wc_hit_at :: (s: [] WcState, x: f32, y: f32) -> int {
   }
   return WH_NONE;
 }
+// The page's own buttons, field and notice are the chat set's
+// (components/zeron/chrome.coax): display lists in the page's skin (its
+// transcript's, wc_skin), drawn here by gpu_draw.
+WC_PRIMS :: 64;
+wc_skin :: (s: [] WcState) -> UiSkin { return t_skin(s[0].transcript[..]); }
+wc_draw :: (out: [] f32, at: int, s: [] WcState, d: f32, list: [] Prim, n: int) -> int {
+  return gpu_draw(out, at, s[0].atlas[..], d, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
+}
 // A text button as Zeron's trigger chips are: the label in the muted tone, the wash under the pointer.
 wc_button :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: string, x: f32, y: f32, id: int, on: bool) -> WcB {
-  a := s[0].atlas[..];
-  w := round_layout(text_width(a, FONT_CHIP, label)) + 2 * CHIP_PAD;
-  v := at;
-  if on || s[0].hot == id { v = paint_quad(out, v, d, x, y, w, WC_BUTTON_H, CHIP_RADIUS, 0, CHIP_WASH, CHIP_WASH); }
-  v = paint_text(out, v, a, d, FONT_CHIP, label, x + CHIP_PAD, y, WC_BUTTON_H, ifx on || s[0].hot == id then th.text else th.muted);
-  wc_hit(s, id, x, y, w, WC_BUTTON_H);
+  sk := wc_skin(s); a := s[0].atlas[..];
+  list: [WC_PRIMS] Prim;
+  w := chrome_button_width(sk, a, label);
+  v := wc_draw(out, at, s, d, list[..], chrome_button_prims(list[..], 0, sk, a, label, x, y, on || s[0].hot == id));
+  wc_hit(s, id, x, y, w, sk.chrome.button_h);
   return WcB.{v = v, w = w};
 }
 // A filled button (Zeron's primary: the text tone's pill, the shell's label).
 wc_primary :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: string, x: f32, y: f32, id: int) -> WcB {
-  a := s[0].atlas[..];
-  w := round_layout(text_width(a, FONT_CHIP, label)) + 2 * 14;
-  fill := ifx s[0].hot == id then th.text else opacity(th.text, 0.9);
-  v := paint_quad(out, at, d, x, y, w, 32, CHIP_RADIUS, 0, fill, fill);
-  v = paint_text(out, v, a, d, FONT_CHIP, label, x + 14, y, 32, th.bg);
-  wc_hit(s, id, x, y, w, 32);
+  sk := wc_skin(s); a := s[0].atlas[..];
+  list: [WC_PRIMS] Prim;
+  w := chrome_primary_width(sk, a, label);
+  v := wc_draw(out, at, s, d, list[..], chrome_primary_prims(list[..], 0, sk, a, label, x, y, s[0].hot == id));
+  wc_hit(s, id, x, y, w, sk.chrome.primary_h);
   return WcB.{v = v, w = w};
 }
 WcFlow :: struct { v: int; y: f32; }
@@ -689,24 +696,11 @@ wc_words :: (out: [] f32, f: WcFlow, s: [] WcState, d: f32, text: string, x: f32
 wc_paint_failure :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32, composer_y: f32, cw: f32, msg: string) -> int {
   c := s[0].composer[..]; a := s[0].atlas[..];
   if msg.count == 0 { c[0].failure_h = 0; return at; }
-  accent := hex(DANGER, 1); muted := hex(DANGER_MUTED, 1);
-  w := cw - 8;
-  no_runs: [1] MdRun;
-  lines: [16] TextLine;
-  nl := md_wrap(a, msg, no_runs[0..<0], w - 2 * NOTICE_PAD, true, lines[..]);
-  h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
-  y := composer_y - 6 - h;
-  c[0].failure_y = y; c[0].failure_h = h;
-  v := paint_quad(out, at, d, x + 4, y, w, h, 10, 0, flatten(opacity(accent, 0.1), th.shell), flatten(opacity(accent, 0.1), th.shell));
-  hy := y + NOTICE_PY;
-  v = paint_quad(out, v, d, x + 4 + NOTICE_PAD, hy, NOTICE_TILE, NOTICE_TILE, 6, 0, opacity(accent, 0.12), opacity(accent, 0.12));
-  v = paint_icon(out, v, a, d, ICON_DANGER, x + 4 + NOTICE_PAD + 4, hy + 4, 12, 12, opacity(muted, 0.8));
-  v = paint_text(out, v, a, d, FONT_CHIP, ifx wc_capped(s) && s[0].note_n == 0 then "Limit reached" else "Error", x + 4 + NOTICE_PAD + NOTICE_TILE + 8, hy + (NOTICE_TILE - NOTICE_LINE) / 2, NOTICE_LINE, opacity(muted, 0.8));
-  my := hy + NOTICE_TILE + NOTICE_GAP;
-  for q: 0..<nl {
-    v = paint_text(out, v, a, d, FONT_TOOL, cast(string) msg[lines[q].from..<lines[q].to], x + 4 + NOTICE_PAD, my + cast(f32) q * NOTICE_LINE, NOTICE_LINE, muted);
-  }
-  return v;
+  list: [WC_PRIMS] Prim; box: [2] f32;
+  label := ifx wc_capped(s) && s[0].note_n == 0 then "Limit reached" else "Error";
+  n := chrome_failure_prims(list[..], 0, wc_skin(s), a, x, composer_y, cw, label, msg, box[..]);
+  c[0].failure_y = box[0]; c[0].failure_h = box[1];
+  return wc_draw(out, at, s, d, list[..], n);
 }
 // What stands above the composer: a note, else the cap (Today's $5.00 for /chat is used up…).
 wc_failure_text :: (s: [] WcState, buf: [] u8) -> int {
@@ -822,7 +816,8 @@ wc_paint_key :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f32
   r := WcFlow.{v = v, y = y + 18};
   r.v = paint_text(out, r.v, a, d, FONT_BOLD, "Key", ix, r.y, 22, th.text);
   r.v = paint_text(out, r.v, a, d, FONT_TOOL, "Yours, not ours", ix + text_width(a, FONT_BOLD, "Key") + 10, r.y + 2, 20, th.faint);
-  r.v = wc_button(out, r.v, s, th, d, "Close", x + cw - 12 - (round_layout(text_width(a, FONT_CHIP, "Close")) + 2 * CHIP_PAD), r.y - 3, WH_CLOSE, false).v;
+  sk := wc_skin(s);
+  r.v = wc_button(out, r.v, s, th, d, "Close", x + cw - 12 - chrome_button_width(sk, a, "Close"), r.y - 3, WH_CLOSE, false).v;
   r.y += 32;
   r = wc_words(out, r, s, d, "Use your own Anthropic API key or Claude subscription. Turns on it cost you, not us, and have no daily limit here. It is checked, then kept encrypted; only the agent's runner can open it, and it is never shown again.", ix, iw, true, 19.416408, th.muted, 8);
   r.y += 12;
@@ -835,26 +830,21 @@ wc_paint_key :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f32
     r.y += 26;
     if wc_z(s, 5) == "1" { r = wc_words(out, r, s, d, "Expired: make a new one with claude setup-token and replace it.", ix, iw, true, 19.416408, hex(DANGER_MUTED, 1), 2); }
     r.y += 6;
-    b1 := wc_button(out, r.v, s, th, d, "Replace", ix - CHIP_PAD, r.y, WH_REPLACE, false);
-    r.v = wc_button(out, b1.v, s, th, d, "Remove", ix - CHIP_PAD + b1.w + 4, r.y, WH_REMOVE, false).v;
+    b1 := wc_button(out, r.v, s, th, d, "Replace", ix - sk.cmp.chip_pad, r.y, WH_REPLACE, false);
+    r.v = wc_button(out, b1.v, s, th, d, "Remove", ix - sk.cmp.chip_pad + b1.w + 4, r.y, WH_REMOVE, false).v;
     r.y += WC_BUTTON_H + 4;
   } else {
     r = wc_words(out, r, s, d, "Anthropic API key (sk-ant-api...), or Claude subscription token (from claude setup-token)", ix, iw, true, 19.416408, th.faint, 3);
     r.y += 8;
     // the field: the composer's surface, the key as dots (never its characters)
-    fh := 40.0f32;
-    edge := ifx s[0].key_focus then opacity(th.accent, 0.6) else th.border;
-    r.v = paint_quad(out, r.v, d, ix, r.y, iw, fh, 10, 1, th.surface, edge);
+    fh := sk.chrome.field_h;
     wc_hit(s, WH_KFIELD, ix, r.y, iw, fh);
     dots: [WC_KEY * 3] u8; dn := 0;
     shown := ifx s[0].key_n > 48 then 48 else s[0].key_n;
     for k: 0..<shown { dot := "•"; for b: dot { dots[dn] = b; dn += 1; } }
-    tx := ix + 12;
-    if dn == 0 { r.v = paint_text(out, r.v, a, d, FONT_INPUT, "Paste it here", tx, r.y + (fh - INPUT_LINE_HEIGHT) / 2, INPUT_LINE_HEIGHT, th.faint); }
-    else { r.v = paint_text(out, r.v, a, d, FONT_INPUT, cast(string) dots[0..<dn], tx, r.y + (fh - INPUT_LINE_HEIGHT) / 2, INPUT_LINE_HEIGHT, th.text); }
-    cx := tx + ifx dn == 0 then 0.0f32 else text_width(a, FONT_INPUT, cast(string) dots[0..<dn]);
-    blink := s[0].golden || cast(int) floor(s[0].time / CARET_BLINK) % 2 == 0;
-    if s[0].key_focus && blink { r.v = paint_quad(out, r.v, d, cx, r.y + (fh - 18) / 2, 2, 18, 0, 0, th.accent, th.accent); }
+    blink := s[0].golden || cast(int) floor(s[0].time / sk.cmp.caret_blink) % 2 == 0;
+    fl: [WC_PRIMS] Prim;
+    r.v = wc_draw(out, r.v, s, d, fl[..], chrome_field_prims(fl[..], 0, sk, a, ix, r.y, iw, s[0].key_focus, cast(string) dots[0..<dn], "Paste it here", blink));
     s[0].field[0] = ix * s[0].d; s[0].field[1] = r.y * s[0].d; s[0].field[2] = (ix + iw) * s[0].d; s[0].field[3] = (r.y + fh) * s[0].d;
     r.y += fh + 10;
     r.v = wc_primary(out, r.v, s, th, d, ifx s[0].post_kind == POST_KEY then "Checking" else "Save", ix, r.y, WH_KSAVE).v;
@@ -958,7 +948,8 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
   mw := w - mx;
   phone := mw < 640;
   if side { v = wc_paint_sidebar(out, v, s, th, d, h); }
-  column := ifx mw < COMPOSER_MAX_WIDTH then mw else COMPOSER_MAX_WIDTH;
+  sk := wc_skin(s);
+  column := ifx mw < sk.cmp.max_width then mw else sk.cmp.max_width;
   cw := column - 2 * WC_PAD;
   x := round_layout(mx + (mw - cw) / 2);
   fb: [600] u8; fn := ifx s[0].demo then 0 else wc_failure_text(s, fb[..]);
@@ -974,13 +965,13 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
   } else {
     bottom_gap: f32 = ifx phone then WC_DOCK_BOTTOM_PHONE else WC_DOCK_BOTTOM;
     ch := docked_height(c, a, cw);
-    stack := STATUS_STRIP_HEIGHT + ch + bottom_gap;
+    stack := sk.tr.status_strip + ch + bottom_gap;
     t[0].view_h = h;
-    t_layout(t, a, th, x, cw, stack + TRANSCRIPT_FADE_BAND + SPACE_SM);
+    t_layout(t, a, th, x, cw, stack + sk.tr.fade_band + sk.tr.gap);
     // a chat longer than the transcript holds starts at a later turn
     if !s[0].demo && wc_overflowed(t) && s[0].first + 1 < wc_count(s, 'U') { s[0].first += 1; s[0].gen += 1; }
     t_clamp(t);
-    v = t_paint(out, v, t, a, th, d, h, stack - STATUS_STRIP_HEIGHT);
+    v = t_paint(out, v, t, a, th, d, h, stack - sk.tr.status_strip);
     v = paint_composer_docked(out, v, c, a, th, d, x, h - bottom_gap, cw);
     v = wc_paint_failure(out, v, s, th, d, x, c[0].y, cw, cast(string) fb[0..<fn]);
   }
@@ -992,16 +983,17 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
   if !s[0].demo {
     // the titlebar's buttons: Chats and New on a narrow window, Key
     if !wide {
-      b1 := wc_button(out, v, s, th, d, "Chats", WC_PAD - CHIP_PAD + 2, 5, WH_CHATS, s[0].listing);
-      b2 := wc_button(out, b1.v, s, th, d, "New", WC_PAD - CHIP_PAD + 2 + b1.w + 2, 5, WH_NEW, false);
-      kw := round_layout(text_width(a, FONT_CHIP, "Key")) + 2 * CHIP_PAD;
-      v = wc_button(out, b2.v, s, th, d, "Key", w - WC_PAD + CHIP_PAD - 2 - kw, 5, WH_KEY, s[0].keying).v;
+      pad := sk.cmp.chip_pad;
+      b1 := wc_button(out, v, s, th, d, "Chats", WC_PAD - pad + 2, 5, WH_CHATS, s[0].listing);
+      b2 := wc_button(out, b1.v, s, th, d, "New", WC_PAD - pad + 2 + b1.w + 2, 5, WH_NEW, false);
+      kw := chrome_button_width(sk, a, "Key");
+      v = wc_button(out, b2.v, s, th, d, "Key", w - WC_PAD + pad - 2 - kw, 5, WH_KEY, s[0].keying).v;
     }
     if s[0].keying { v = wc_paint_key(out, v, s, th, d, mx, mw, h); }
     if s[0].listing && !wide {
       v = paint_quad(out, v, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
       wc_hit(s, WH_SHADE, 0, 0, w, h);
-      v = wc_button(out, v, s, th, d, "Chats", WC_PAD - CHIP_PAD + 2, 5, WH_CHATS, true).v;
+      v = wc_button(out, v, s, th, d, "Chats", WC_PAD - sk.cmp.chip_pad + 2, 5, WH_CHATS, true).v;
       v = wc_paint_list(out, v, s, th, d, WC_PAD - 8, TITLEBAR_HEIGHT, w - 2 * (WC_PAD - 8), h - 70);
       cb: [200] u8; cn := wc_credential(s, cb[..]);
       r := wc_words(out, WcFlow.{v = v, y = h - 56}, s, d, cast(string) cb[0..<cn], WC_PAD + 10, w - 2 * WC_PAD - 20, true, 18, th.faint, 2);

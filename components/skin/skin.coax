@@ -173,6 +173,21 @@ UiDesk :: struct {
   room_margin: f32; room_top: f32; room_bottom: f32; room_cull: f32; room_mark_dy: f32; room_mark_gap: f32;
 }
 
+// The chat screen's own parts around the composer (components/zeron/chrome.coax):
+// the status strip, the failure notice's margins, the dictation button and
+// its microphone, drawn from boxes.
+UICHROME_STROKE :: 0; UICHROME_MASK :: 1; UICHROME_FILL :: 2;   // a box's paint: an outline in the ink, the well's ground, filled with the ink
+UiChromeBox :: struct { x: f32; y: f32; w: f32; h: f32; radius: f32; border: f32; paint: int; }
+UiChrome :: struct {
+  status_top: f32; status_x: f32; status_dot: f32; status_gap: f32; idle_ink: f32;   // the strip under the composer; an idle dot's alpha of the faint ink
+  failure_mx: f32; failure_gap: f32;                     // the failure notice inside the column; over the composer
+  mic: f32; mic_gap: f32; mic_label_gap: f32; mic_wash: f32;   // the dictation well, under the composer, its label's gap; the accent's alpha while it listens
+  mic_parts: [5] UiChromeBox;                            // the microphone in the well
+  button_h: f32;                                         // a text button (a trigger chip's look)
+  primary_h: f32; primary_pad: f32; primary_ink: f32;    // a filled button: its height, its label's padding, the ink's alpha at rest
+  field_h: f32; field_radius: f32; field_pad: f32; field_caret: f32; field_focus: f32;   // a one-line field; the accent's alpha on its edge when focused
+}
+
 // A floating surface's shadow (Tailwind's shadow-lg: two soft layers of the skin's lift).
 UiFloat :: struct { dy: [2] f32; blur: [2] f32; spread: [2] f32; }
 
@@ -258,6 +273,7 @@ UiSkin :: struct {
   cmp: UiComposer;
   menus: UiMenus;
   desk: UiDesk;
+  chrome: UiChrome;
   lifted: UiFloat;          // a floating card's shadow: the composer's pill, a menu
 }
 

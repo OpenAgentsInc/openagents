@@ -1,0 +1,127 @@
+// The chat screen's own parts around the composer (components/spec.md
+// Phase 2, GitHub #13153), as display lists in the skin's roles: the status
+// strip under the docked composer (a dot in the state's tone and its words),
+// Zeron's failure notice above the composer (the danger wash over the
+// canvas, the tile with its mark, "Error", the message under it), and the
+// dictation button under the composer's right end (a round well with a
+// microphone drawn from boxes, its label to the left). The screen
+// (apps/openagents-desktop/zeron/screen.coax) says what they show; these
+// say how. Based on Zeron by Wing, MIT.
+//   coax/bin/coax test components/zeron/chrome.coax
+
+#load "transcript.coax";
+#load "../skin/everglade.coax";   // its checks wear Everglade too
+
+CHROME_IDLE :: 0; CHROME_WORKING :: 1; CHROME_WAITING :: 2;
+
+// The status strip at (x, y), the composer's bottom: its dot and its words. Returns the count.
+chrome_status_prims :: (list: [] Prim, n: int, sk: UiSkin, x: f32, y: f32, state: int, words: string) -> int {
+  m := sk.chrome;
+  dot := ifx state == CHROME_WORKING then sk.accent else ifx state == CHROME_WAITING then sk.warning else opacity(sk.faint, m.idle_ink);
+  top := y + m.status_top; size := m.status_dot; strip := sk.tr.status_strip;
+  k := prim_fill(list, n, x + m.status_x, top + (strip - size) / 2, size, size, size / 2, dot);
+  return prim_text(list, k, x + m.status_x + size + m.status_gap, top, 0, strip, sk.small.face, sk.faint, words);
+}
+
+// The failure notice's height for a message wrapped to the column cw.
+chrome_failure_lines :: (a: [] Atlas, sk: UiSkin, msg: string, cw: f32, lines: [] TextLine) -> int {
+  no_runs: [1] MdRun;
+  return text_wrap(measure_font(a), uiskin_small_faces(sk), msg, no_runs[0..<0], cw - 2 * sk.chrome.failure_mx - 2 * sk.tr.notice_pad, lines);
+}
+chrome_failure_height :: (sk: UiSkin, nl: int) -> f32 {
+  t := sk.tr;
+  return t.notice_py + t.notice_tile + t.notice_gap + cast(f32) nl * t.notice_line + t.notice_py;
+}
+// The failure notice in the column (x, cw), its bottom the failure gap over composer_y, under
+// its label ("Error"). Returns the count; top[0] its top, top[1] its height.
+chrome_failure_prims :: (list: [] Prim, n: int, sk: UiSkin, a: [] Atlas, x: f32, composer_y: f32, cw: f32, label: string, msg: string, top: [] f32) -> int {
+  t := sk.tr; m := sk.chrome;
+  accent := sk.danger; muted := sk.danger_muted;
+  w := cw - 2 * m.failure_mx;
+  lines: [16] TextLine;
+  nl := chrome_failure_lines(a, sk, msg, cw, lines[..]);
+  h := chrome_failure_height(sk, nl);
+  y := composer_y - m.failure_gap - h;
+  top[0] = y; top[1] = h;
+  wash := flatten(opacity(accent, t.notice_wash), sk.canvas);
+  k := prim_fill(list, n, x + m.failure_mx, y, w, h, t.notice_radius, wash);
+  hy := y + t.notice_py;
+  tx := x + m.failure_mx + t.notice_pad;
+  k = prim_fill(list, k, tx, hy, t.notice_tile, t.notice_tile, t.notice_tile_radius, opacity(accent, t.notice_tile_wash));
+  k = prim_icon(list, k, ICON_DANGER, tx + t.notice_icon_inset, hy + t.notice_icon_inset, t.notice_icon, t.notice_icon, opacity(muted, t.notice_ink));
+  k = prim_text(list, k, tx + t.notice_tile + t.notice_label_gap, hy + (t.notice_tile - t.notice_line) / 2, 0, t.notice_line, sk.label.face, opacity(muted, t.notice_ink), label);
+  my := hy + t.notice_tile + t.notice_gap;
+  for q: 0..<nl {
+    k = prim_text(list, k, tx, my + cast(f32) q * t.notice_line, 0, t.notice_line, sk.tool.face, muted, cast(string) msg[lines[q].from..<lines[q].to]);
+  }
+  return k;
+}
+
+// A text button as Zeron's trigger chips are: the label in the muted tone, the chip's wash when it
+// is on or under the pointer. Its width is chrome_button_width.
+chrome_button_width :: (sk: UiSkin, a: [] Atlas, label: string) -> f32 { return round_layout(text_width(a, sk.label.face, label)) + 2 * sk.cmp.chip_pad; }
+chrome_button_prims :: (list: [] Prim, n: int, sk: UiSkin, a: [] Atlas, label: string, x: f32, y: f32, lit: bool) -> int {
+  m := sk.chrome;
+  k := n;
+  if lit { k = prim_fill(list, k, x, y, chrome_button_width(sk, a, label), m.button_h, sk.cmp.chip_radius, sk.hover_chip); }
+  return prim_text(list, k, x + sk.cmp.chip_pad, y, 0, m.button_h, sk.label.face, ifx lit then sk.ink else sk.muted, label);
+}
+// A filled button (Zeron's primary: the ink's pill, the label in what is drawn on the accent).
+chrome_primary_width :: (sk: UiSkin, a: [] Atlas, label: string) -> f32 { return round_layout(text_width(a, sk.label.face, label)) + 2 * sk.chrome.primary_pad; }
+chrome_primary_prims :: (list: [] Prim, n: int, sk: UiSkin, a: [] Atlas, label: string, x: f32, y: f32, hot: bool) -> int {
+  m := sk.chrome;
+  fill := ifx hot then sk.ink else opacity(sk.ink, m.primary_ink);
+  k := prim_fill(list, n, x, y, chrome_primary_width(sk, a, label), m.primary_h, sk.cmp.chip_radius, fill);
+  return prim_text(list, k, x + m.primary_pad, y, 0, m.primary_h, sk.label.face, sk.on_accent, label);
+}
+// A one-line field at (x, y), w wide: the composer's surface, its edge lit when focused, the text
+// (or the placeholder, faint) and the caret at its end when caret is set. Returns the count.
+chrome_field_prims :: (list: [] Prim, n: int, sk: UiSkin, a: [] Atlas, x: f32, y: f32, w: f32, focused: bool, text: string, placeholder: string, caret: bool) -> int {
+  m := sk.chrome; line := sk.cmp.line;
+  edge := ifx focused then opacity(sk.accent, m.field_focus) else sk.field_edge;
+  k := prim_box(list, n, x, y, w, m.field_h, m.field_radius, 1, sk.surface, edge);
+  tx := x + m.field_pad;
+  ty := y + (m.field_h - line) / 2;
+  if text.count == 0 { k = prim_text(list, k, tx, ty, 0, line, sk.body.face, sk.faint, placeholder); }
+  else { k = prim_text(list, k, tx, ty, 0, line, sk.body.face, sk.ink, text); }
+  cx := tx + ifx text.count == 0 then 0.0f32 else text_width(a, sk.body.face, text);
+  if focused && caret { k = prim_fill(list, k, cx, y + (m.field_h - m.field_caret) / 2, sk.cmp.caret, m.field_caret, 0, sk.accent); }
+  return k;
+}
+
+// The dictation button under the composer (cx, cy, cw, ch): the well, the
+// microphone in the accent while it listens, the label to its left. Returns the count.
+chrome_mic_prims :: (list: [] Prim, n: int, sk: UiSkin, a: [] Atlas, cx: f32, cy: f32, cw: f32, ch: f32, active: bool, label: string) -> int {
+  m := sk.chrome;
+  x := cx + cw - m.mic; y := cy + ch + m.mic_gap;
+  fg := ifx active then sk.accent else sk.muted;
+  bg := ifx active then opacity(sk.accent, m.mic_wash) else sk.surface;
+  k := prim_fill(list, n, x, y, m.mic, m.mic, m.mic / 2, bg);
+  // a microphone drawn from boxes: capsule, lower cradle, stem and base
+  for b: m.mic_parts {
+    if b.paint == UICHROME_STROKE { k = prim_box(list, k, x + b.x, y + b.y, b.w, b.h, b.radius, b.border, sk.clear, fg); }
+    else if b.paint == UICHROME_MASK { k = prim_fill(list, k, x + b.x, y + b.y, b.w, b.h, b.radius, bg); }
+    else { k = prim_fill(list, k, x + b.x, y + b.y, b.w, b.h, b.radius, fg); }
+  }
+  return prim_text(list, k, x - m.mic_label_gap - text_width(a, sk.label.face, label), y, 0, m.mic, sk.label.face, fg, label);
+}
+
+#test "the status strip, the failure notice and the dictation button paint in their skin" {
+  a: [1] Atlas; md_test_atlas(a[..]);
+  for sk: [2] UiSkin.[zeron_skin(), everglade_skin()] {
+    list: [64] Prim; top: [2] f32;
+    n := chrome_status_prims(list[..], 0, sk, 292, 800, CHROME_WAITING, "Waiting for your approval");
+    #assert n == 2 && list[0].fill.r == sk.warning.r && list[1].text == "Waiting for your approval" && list[1].fill.r == sk.faint.r;
+    n = chrome_failure_prims(list[..], 0, sk, a[..], 292, 700, 736, "Error", "movie.mov is too large (24 MB max).", top[..]);
+    #assert n == 5 && list[0].x == 296 && list[0].w == 728 && top[0] + top[1] == 694 && list[0].h == top[1] && list[3].text == "Error" && list[2].kind == PRIM_ICON;
+    n = chrome_mic_prims(list[..], 0, sk, a[..], 292, 600, 736, 49, true, "Listening");
+    #assert n == 7 && list[0].x == 1000 && list[0].y == 653 && list[1].edge.r == sk.accent.r && list[6].text == "Listening";
+    n = chrome_button_prims(list[..], 0, sk, a[..], "Key", 10, 5, true);
+    #assert n == 2 && list[0].w == 3 * 8 + 2 * sk.cmp.chip_pad && list[1].fill.r == sk.ink.r;
+    #assert chrome_button_prims(list[..], 0, sk, a[..], "Key", 10, 5, false) == 1 && list[0].fill.r == sk.muted.r;
+    n = chrome_primary_prims(list[..], 0, sk, a[..], "Save", 10, 5, false);
+    #assert n == 2 && list[0].fill.a < sk.ink.a && list[1].fill.r == sk.on_accent.r;
+    n = chrome_field_prims(list[..], 0, sk, a[..], 20, 100, 400, true, "", "Paste it here", true);
+    #assert n == 3 && list[0].edge.a < sk.accent.a && list[1].text == "Paste it here" && list[2].x == 20 + sk.chrome.field_pad;
+  }
+}

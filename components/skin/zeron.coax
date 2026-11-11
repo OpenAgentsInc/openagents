@@ -232,6 +232,21 @@ zeron_desk :: () -> UiDesk {
     room_margin = 64, room_top = 8, room_bottom = 24, room_cull = 200, room_mark_dy = 4, room_mark_gap = 6};
 }
 
+// The chat screen's status strip, failure notice and dictation button.
+zeron_chrome :: () -> UiChrome {
+  c := UiChrome.{status_top = 8, status_x = 16, status_dot = 6, status_gap = 8, idle_ink = 0.5,
+    failure_mx = 4, failure_gap = 6, mic = 28, mic_gap = 4, mic_label_gap = 8, mic_wash = 0.15,
+    button_h = 28, primary_h = 32, primary_pad = 14, primary_ink = 0.9,
+    field_h = 40, field_radius = 10, field_pad = 12, field_caret = 18, field_focus = 0.6};
+  // the microphone: capsule, lower cradle (the well's ground over the capsule's foot), stem and base
+  c.mic_parts[0] = UiChromeBox.{x = 7, y = 10, w = 14, h = 11, radius = 7, border = 1.5, paint = UICHROME_STROKE};
+  c.mic_parts[1] = UiChromeBox.{x = 6, y = 8, w = 16, h = 7, paint = UICHROME_MASK};
+  c.mic_parts[2] = UiChromeBox.{x = 10, y = 4, w = 8, h = 14, radius = 4, border = 1.5, paint = UICHROME_STROKE};
+  c.mic_parts[3] = UiChromeBox.{x = 13.25, y = 21, w = 1.5, h = 3, paint = UICHROME_FILL};
+  c.mic_parts[4] = UiChromeBox.{x = 9, y = 24, w = 10, h = 1.5, paint = UICHROME_FILL};
+  return c;
+}
+
 zeron_menus :: () -> UiMenus {
   return UiMenus.{card_radius = CARD_RADIUS, card_inset = CARD_INSET, card_borders = CARD_BORDERS,
     gap = MENU_GAP, item_radius = MENU_ITEM_RADIUS, offset = MENU_OFFSET, margin = MENU_MARGIN, most = MENU_MAX, room = MENU_ROOM, below_min = 180,
@@ -355,7 +370,7 @@ zeron_skin :: () -> UiSkin {
   for k: 0..<UISKIN_SYNTAX { s.syntax[k] = hex(palette[k], 1); }
   tints := GSPIN_TINTS;
   for k: 0..<3 { s.spinner[k] = hex(tints[k], 1); }
-  s.tr = zeron_transcript(); s.cmp = zeron_composer(); s.menus = zeron_menus(); s.desk = zeron_desk();
+  s.tr = zeron_transcript(); s.cmp = zeron_composer(); s.menus = zeron_menus(); s.desk = zeron_desk(); s.chrome = zeron_chrome();
   s.lifted = UiFloat.{dy = [2] f32.[10, 4], blur = [2] f32.[15, 6], spread = [2] f32.[-3, -4]};   // Tailwind's shadow-lg
   // the composer and its menus (composer.rs, pickers.rs, glass.rs)
   s.doc_tint = rgba(0.796, 0.835, 0.882, 1);   // the file theme's dark tint, #CBD5E1

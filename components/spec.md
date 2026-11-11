@@ -1,11 +1,11 @@
 # Components: one component system for every OpenAgents and Verse app (spec, draft)
 
-Written 2026-11-10. Status: Phase 1 (the move) and Phase 3 (skins and the
-gallery) are done. Phase 2 is under way: the layers exist, and the chat
-components paint display lists in their skin's roles with the same vertices
-as before; their measures are still Zeron's numbers (see "Phases" for what
-has moved and what has not). Phase 4 has its first step (the chat set in
-the `everglade` skin on Linux); the Workshop itself does not run on Linux.
+Written 2026-11-10. Status: Phase 1 (the move), Phase 2 (the layers and
+the chat set on them) and Phase 3 (skins and the gallery) are done: the
+chat components paint display lists in their skin's roles, colours, faces
+and measures alike, with the same vertices as before. Phase 4 has its first
+step (the chat set in the `everglade` skin on Linux); the Workshop itself
+does not run on Linux (GitHub #13156). See "Phases" for Phase 5.
 Tracked in GitHub #13153. The code this replaces is listed under "What exists
 today".
 
@@ -292,7 +292,12 @@ realm's faces.
     shader's library, `verse/gpu/wgsl.coax`, is the one exception);
   - a colour literal or a named face in `kit/` or in the chat set
     (`components/zeron/`) fails, outside checks (since 2026-11-11 for the
-    chat set: its colours and faces are its skin's roles);
+    chat set: its colours and faces are its skin's roles); so does a size,
+    a number other than 0, 1, 2 or a half (2026-11-11). A count is no
+    size: an array's length or an index, a range's end and an integer
+    constant (`T_ROWS :: 256;`) pass, as do strings and characters, a
+    fixture named for tests (`test_*`, `*_test*`) and a line that says
+    `// not a size` (an epsilon, a sentinel, a demo's line numbers);
   - a file outside `components/` that reads Markdown's marks, wraps text or
     keeps an edit buffer fails unless it is on the tool's list of files
     still to move, which is printed until it is empty (22 files on
@@ -353,13 +358,27 @@ phase with no implementer by its date is cut from this list, not left open.
    the whole chat in Everglade. Chat's eight frames, the menus' other states
    (hashed before and after) and the Linux app's pictures (byte for byte)
    did not change.
-   Not done, so Phase 2 stays open: the chat set's measures (paddings,
-   radii, row heights, a chip's 20 and 22 px wells, the notice's tile) are
-   still numbers in `components/zeron/` and in `desk.coax`, not the skin's;
-   the screen's status strip, failure notice and dictation button
-   (`screen.coax`) read the skin but still write vertices with `paint_*`;
-   and `/chat`'s own buttons, sign-in field and notice
-   (`apps/openagents-web/chat.coax`) are Zeron's constants.
+   Done 2026-11-11: the chat set's measures are its skin's too. `UiSkin`
+   gained `tr` (the transcript: gaps, bubbles, notices, the working
+   trailer, tool rows, chips and their badges, details and diffs), `cmp`
+   (the composer and its chips), `menus` (the cards, the model panel and
+   slider, the list, the access menu and its switch), `desk` (the desktop
+   app's sidebar, tabs and room), `chrome` (the status strip, the failure
+   notice's margins, the dictation button, a text button, a filled button,
+   a one-line field) and `lifted` (a floating card's two shadows). Zeron's
+   numbers moved into `skin/zeron.coax` unchanged, derived values folded
+   there as the old constant expressions were. The rules that were numbers
+   but no size moved to core (`core/media.coax`: extensions, media types,
+   text or not; `text_put_int`, `text_elapsed`, `text_ends` in
+   `core/text.coax`). The screen's status strip, failure notice and
+   dictation button, and `/chat`'s own buttons, sign-in field and notice,
+   are `components/zeron/chrome.coax`'s display lists in the chat's skin,
+   drawn by `gpu_draw`. `components-check` fails a size in `kit/` or the
+   chat set. `components/zeron/frames-checks.coax` pins the transcript,
+   composer and menus in Zeron, Everglade and the Verse by hashing their
+   prims (hashes taken before the move); they, chat's eight frames, the
+   page's buttons, notice and key card (hashed before and after) and the
+   Linux app's eight pictures (byte for byte) did not change.
 3. **Skins and the gallery.** Done 2026-11-10: `skin/skin.coax` (`UiSkin`:
    colour roles, type roles, spacing, Markdown's measures, and the frames
    `uiskin_panel`, `uiskin_control`, `uiskin_slot`, `uiskin_bar`), with
