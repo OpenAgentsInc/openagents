@@ -226,6 +226,7 @@ static void range_header(const char *request, char *out, size_t cap) {
     p = end;
   }
 }
+#define BIG_BODY (4 * 1024 * 1024)   // bytes: a body longer than this is sent by a child (serve_file)
 static void serve_file(int fd, const char *url, const char *request) {
   char path[PATH_MAX + 1024];
   if (!resolve(url, path, sizeof path)) { not_found(fd); return; }
@@ -249,7 +250,19 @@ static void serve_file(int fd, const char *url, const char *request) {
     (long long)r.status, r.status == 206 ? "Partial Content" : r.status == 416 ? "Range Not Satisfiable" : "OK",
     content_type(path), (long long)r.length, extra, static_mode && r.status != 416 ? cache_control : "no-store");
   if (fseeko(f, (off_t)r.first, SEEK_SET)) { fclose(f); respond(fd,500,"Read Failed","text/plain","",0); return; }
-  if (!send_all(fd, head, (size_t)h)) {fclose(f);return;}
+  // A large body (a realm's pack, 90 MB) goes out from a child of its own. Sent here, it held every
+  // other request (the page's shaders, fonts and sounds) until the browser had read all of it (#13141).
+  bool child = false;
+  if (!shaping_send && r.length > BIG_BODY) {
+    pid_t pid = fork();
+    if (pid > 0) { fclose(f); return; }   // the caller drops this process's copy of the socket
+    if (pid == 0) {
+      child = true; close(listen_fd);
+      if (build_fd >= 0) close(build_fd);
+      for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].fd >= 0 && clients[i].fd != fd) close(clients[i].fd);
+    }
+  }
+  if (!send_all(fd, head, (size_t)h)) {fclose(f);if (child) _exit(0);return;}
   char body[16384]; int64_t left = r.length;
   while (left > 0) {
     size_t want = left < (int64_t)sizeof body ? (size_t)left : sizeof body;
@@ -258,6 +271,7 @@ static void serve_file(int fd, const char *url, const char *request) {
     left -= (int64_t)n;
   }
   fclose(f);
+  if (child) _exit(0);
 }
 
 static void drop(client *c) { close(c->fd); c->fd = -1; c->ws = false; c->n = 0; }

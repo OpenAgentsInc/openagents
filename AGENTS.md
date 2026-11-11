@@ -148,6 +148,7 @@ coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/open
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
 coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/verse/fast-shots.md)
 coax/web/tool.sh shot --compare A.png B.png  # how much two pictures differ
+coax/web/tool.sh shot URL OUT.png --eval "JSON.stringify(coaxial.loadMarks())"  # where a page's load time went (docs/verse/fast-loads.md)
 ```
 
 Wait for a long command without polling. Run it in the foreground with a long

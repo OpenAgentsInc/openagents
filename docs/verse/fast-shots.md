@@ -181,10 +181,9 @@ on average: the page itself varies there from run to run.
 
 ## What is left
 
-- **World and pack load.** A page loaded anew still spends about 5 s on this
-  realm's world: the page unpacks its 90 MB pack, uploads it and builds its
-  pipelines. This is the page's own work. `--keep` skips it; nothing here
-  makes it shorter.
+- **World and pack load.** A page loaded anew spent about 5 s on this realm's
+  world. That is now about 1.5 s ([fast loads](fast-loads.md), #13141), and
+  `--keep` still skips it.
 - **Clip frames.** A frame takes 144 to 164 ms: about 30 ms to draw it and the
   rest for Chrome to read it back and encode it. A clip that costs its own
   length needs a frame in 33 ms. That needs the page to hand over its frames

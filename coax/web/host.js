@@ -245,6 +245,8 @@ import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
 import {openPackHost} from "./pack-host.js";
+import { layerBitmap, layerPoolWidth, poolLayerLevels, warmLayerPool } from "./layer-pool.js";
+import { fetchPackInWorker, fetchPagedImage, fetchWholePack } from "./pack-fetch.js";
 import { characterPass } from "./character-host.js";
 import { instanceCull } from "./instance-cull.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
@@ -309,6 +311,11 @@ let engineInstalling = false;
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
+// Where a fresh load's time goes (docs/verse/fast-loads.md): [name, ms since the page began], in
+// the order they happened. coaxial.loadMarks() reads them:
+//   coax/web/tool.sh shot URL OUT.png 1280x720 --eval "JSON.stringify(coaxial.loadMarks())"
+const loadMarks = [];
+function loadMark(name) { if (loadMarks.length < 256) loadMarks.push([name, Math.round(performance.now() * 10) / 10]); }
 const PACK_PARTS = ["data", "storage", "index", "layers"], PACK_KIND = 605;
 const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PACK_SOUND = 5;
 // A pack's data layers (normal and ORM maps, verse/tools/humans/pack_material_layers.coax): their
@@ -527,7 +534,7 @@ async function loadEngine(bytes, generation) {
   // The page's scripts may talk to the app from now (action 0: ready).
   if (kept) send(4, kept);
   if (x.coaxial_player_appearance_v1?.() === 1) {const appearance=local("aethyr.player.appearance.v1");if (appearance) send(16,appearance);}
-  globalThis.coaxial.ready = true;
+  globalThis.coaxial.ready = true;loadMark("engine-ready");
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
   // A page opening in place under another (zone-host.js) is out of sight until it is shown: its app
   // hears so (message 601), then 602 with the wall clock (now=) when the page is handed over.
@@ -1300,6 +1307,7 @@ async function loadShaders() {
   renderReload = next.catch(() => {});return next;
 }
 async function loadShadersOnce() {
+  loadMark("shaders-start");
   if (!engine) return false;
   shaderLoads += 1;
   invalidateScene();
@@ -1444,7 +1452,7 @@ async function loadShadersOnce() {
   [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, waterGroups, post) : [null, null];
   return true;
   } finally {
-    shaderLoads -= 1;
+    shaderLoads -= 1;loadMark("shaders-done");
     invalidateScene();
   }
 }
@@ -1652,9 +1660,25 @@ function parseAssets(text) {
   return list;
 }
 // ---- a realm's asset pack (verse/tools/pack_realm.py has the format)
+// A public pack's bytes on their way (pack-fetch.js): fetched, unzipped or inflated in a worker,
+// on this thread when there is none. main() starts each as soon as the engine is in, by its URL;
+// loadPack takes it up once the GPU is ready for it.
+const packIncoming = new Map();
+function packBytes(pack) {
+  const paged = /\.vpk3$/.test(pack.url), gzip = pack.url.endsWith(".pack.gz");
+  let told = 0;
+  const progress = (loaded, total) => { loading.bytes(pack.url, loaded, total); if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); } };
+  const here = async () => paged ? fetchPagedImage(packHost ??= await openPackHost(), pack, { owner: pack, progress }) : fetchWholePack(pack.url, { gzip, progress });
+  const job = fetchPackInWorker({ url: new URL(pack.url, location.href).href, gzip, paged, ranges: pack.ranges }, progress);
+  loadMark("pack-asked");
+  const promise = job.promise.catch((error) => { if (!error.worker) throw error; return here(); }).then((got) => { loadMark("pack-bytes");return got; });
+  promise.catch(() => {});   // a page that stops before loadPack never asks
+  return { promise, cancel: job.cancel };
+}
 async function loadPack(pack) {
   if(hostTransport)return loadPackV1(pack);
-  if (pack.fetching || pack.done) return;pack.fetching = true;
+  if (pack.fetching || pack.done) return;pack.fetching = true;loadMark("pack-start");
+  if (!gpu?.renderer) warmLayerPool();
   const parts = assets.filter((a) => a.pack === pack);
   const owner = engine, generation = wanted;
   let entries = null;
@@ -1665,13 +1689,13 @@ async function loadPack(pack) {
     // Broker sessions still perform their authorization and download each time.
     let bytes = !pack.broker && pack.retainedSource?.owner.deref() === owner && pack.retainedSource.generation === generation
       ? pack.retainedSource.bytes : null;
-    if (!bytes && /\.vpk3$/.test(pack.url)) {
-      // A range-addressable pack: the reactor admits each page; this path takes the whole image.
-      pack.retainedSource = null;packHost ??= await openPackHost();let told = 0;
-      const result = await packHost.loadPaged(pack, { image: true, owner: pack, current: () => engine === owner && wanted === generation,
-        progress: (loaded, total) => { loading.bytes(pack.url, loaded, total); if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); } } });
-      try { await result.complete; bytes = result.source.slice(); } finally { result.close(); }
-      send(PACK_KIND, `${result.stored} ${result.stored}`);
+    if (!bytes && !pack.broker && !pack.urls) {
+      // A public pack, whole or range-addressable (.vpk3, each page admitted by the reactor): its
+      // bytes come from a worker, begun before the GPU was up (packBytes, pack-fetch.js).
+      pack.retainedSource = null;
+      const incoming = packIncoming.get(pack.url) || packBytes(pack);packIncoming.delete(pack.url);
+      const got = await incoming.promise;bytes = got.bytes;
+      loadMark("pack-decoded");send(PACK_KIND, `${got.loaded} ${got.loaded}`);
     }
     else if (!bytes) {
       pack.retainedSource = null;
@@ -1688,22 +1712,22 @@ async function loadPack(pack) {
         if (r.ok && r.body) { pack.url = url; break; }
       }
       if (!r || !r.ok || !r.body) throw new Error(`${pack.url}: ${r ? r.status : 0}`);
+      loadMark("pack-response");
       const reader = r.body.getReader(), chunks = [];
       let loaded = 0, total = session ? session.size : Number(r.headers.get("content-length")) || 0, told = 0;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         chunks.push(value); loaded += value.length;
-        if (!session && !pack.url.endsWith(".pack.gz") && loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
+        if (!session && loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
         loading.bytes(pack.url, loaded, total);
         if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); }
       }
       bytes = new Uint8Array(loaded);
       let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
-      chunks.length = 0;
+      chunks.length = 0;loadMark("pack-downloaded");
       if (session) bytes = await privatePack(session, bytes);
-      else if (pack.url.endsWith(".pack.gz")) bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
-      send(PACK_KIND, `${loaded} ${loaded}`);
+      loadMark("pack-decoded");send(PACK_KIND, `${loaded} ${loaded}`);
     }
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     // Optional pack gate v1: SHA256 is a platform effect; acceptance stays in the realm's Coax.
@@ -1718,7 +1742,7 @@ async function loadPack(pack) {
       new Uint8Array(memory.buffer, address, capacity).set(digest);
       if (packGate.coaxial_pack_admit(arena.state, bytes.length) !== 1) throw new Error("asset pack SHA256 refused by Coax");
     }
-    entries = unpack(bytes);
+    loadMark("pack-admitted");entries = unpack(bytes);
     const { device } = gpu, of = (kind) => entries.filter((e) => e.kind === kind);
     const [catalog, vertices, indices, layers] = parts;
     catalog.bytes = of(PACK_CATALOG)[0].bytes; catalog.size = catalog.bytes.length;
@@ -1731,23 +1755,23 @@ async function loadPack(pack) {
       a.buffer = device.createBuffer({ size: whole.length, usage: (a.kind === "index" ? GPUBufferUsage.INDEX | (wantsCull() ? GPUBufferUsage.STORAGE : 0) : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
       device.queue.writeBuffer(a.buffer, 0, whole); a.size = e.bytes.length;
     }
-    loading.textures(0, 2 * of(PACK_LAYER).length);   // each layer decoded, then on the GPU
+    loadMark("pack-buffers");loading.textures(0, 2 * of(PACK_LAYER).length);   // each layer decoded, then on the GPU
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     const images = !gpu.renderer || gpu.renderer.canonicalLayers ? of(PACK_LAYER).map(e=>e.bytes)
       : await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
     if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
-    if (wantsDataLayers()) loading.textures(0, 2 * of(PACK_DATA_LAYER).length);
+    loadMark("pack-layers");if (wantsDataLayers()) loading.textures(0, 2 * of(PACK_DATA_LAYER).length);
     layers.dataTexture = wantsDataLayers() && of(PACK_DATA_LAYER).length ? await layerTexture(of(PACK_DATA_LAYER).map((e) => e.bytes), "rgba8unorm") : null;
     if (!parts.every(currentAsset)) return;
     for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
     if (!pack.broker && typeof WeakRef === "function" && engine === owner && wanted === generation && parts.every(a => !a.failed))
       pack.retainedSource = { owner: new WeakRef(owner), generation, bytes };
   } catch (e) { pack.retainedSource = null;for (const a of parts) a.failed = true; if (dev) console.error(`${app} asset pack: ${e.message}`); if (!pack.quiet) say(`${app}: ${e.message}`, true); }
-  pack.fetching = false;pack.done = true;
+  pack.fetching = false;pack.done = true;loadMark("pack-done");
   if (!parts.every(currentAsset)) return;
   for (const a of parts) { a.done = true; deliver(a); }
-  bindScene();
+  bindScene();loadMark("pack-delivered");
   loading.assetDone(parts[0].failed && !pack.quiet && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
 }
 // The Coax companion admits complete bytes before entry views reach the renderer.
@@ -1950,19 +1974,6 @@ function fetchedOnce(url) {
 }
 // A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size). Data
 // layers (format "rgba8unorm") are linear and keep their own size, under the same phone policy.
-async function layerBitmap(bytes, options) {
-  // WebCodecs exposes an explicit decoder lifetime. Close it before the next
-  // large atlas, instead of leaving encoded-image decoder caches to GC.
-  if (globalThis.ImageDecoder && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) {
-    const decoder = new ImageDecoder({ data: bytes, type: "image/png", ...(options?.colorSpaceConversion === "none" ? { colorSpaceConversion: "none", premultiplyAlpha: "none" } : {}) });
-    try {
-      const { image } = await decoder.decode({ frameIndex: 0 });
-      try { return await createImageBitmap(image, options); }
-      finally { image.close(); }
-    } finally { decoder.close(); }
-  }
-  return createImageBitmap(new Blob([bytes]), options);
-}
 async function layerTexture(images, dataFormat = "") {   // the loading screen counts each layer as it goes up
   if (gpu.renderer) { const renderer=gpu.renderer,texture = await renderer.makeLayers(images);loading.textures(images.length*(renderer.canonicalLayers?2:1), 0);return texture; }
   // Pipeline two original atlases at most, overlapping decode with upload/mips.
@@ -1986,32 +1997,41 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
   const texture = device.createTexture({ size: [w, h, images.length], format, mipLevelCount: levels,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+  // Every level is resized from the layer's own image. The first layer's image is already here; the
+  // rest are decoded and resized in workers (layer-pool.js), several at once.
+  const sizes = Array.from({ length: levels }, (_, level) => [Math.max(1, w >> level), Math.max(1, h >> level)]);
+  const width = layerPoolWidth(w, h, images.length);
+  async function levelsOf(layer) {
+    if (encoded && layer !== 0) return poolLayerLevels(images[layer], !!dataFormat, sizes, width);
+    const image = layer === 0 ? first : images[layer], made = [];
+    const rest = await Promise.allSettled(sizes.map(([lw, lh], level) => level === 0 && image.width === w && image.height === h ? image
+      : createImageBitmap(image, { ...raw, resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" })));
+    for (const row of rest) if (row.status === "fulfilled") made.push(row.value);
+    if (!made.includes(image)) image.close();
+    for (const row of rest) if (row.status === "rejected") { for (const bitmap of made) bitmap.close(); throw row.reason; }
+    return made;
+  }
   try {
     let nextLayer = 0, failure = null;
     async function uploadLayers() {
       while (nextLayer < images.length && !failure) {
         const layer = nextLayer++;
-        let image;
-        try { image = layer === 0 ? first : encoded ? await layerBitmap(images[layer], { ...raw, resizeWidth: w, resizeHeight: h, resizeQuality: "high" }) : images[layer]; }
+        let made;
+        try { made = await levelsOf(layer); }
         catch (error) { failure ||= new Error(`texture layer ${layer}: ${error.message}`);return; }
         if (encoded && layer !== 0) loading.textures(1, 0);
         try {
-          for (let level = 0; level < levels && !failure; level++) {
-            const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
-            const source = level === 0 && image.width === w && image.height === h ? image
-              : await createImageBitmap(image, { ...raw, resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
-            try { device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]); }
-            finally { if (source !== image) source.close(); }
-          }
-          await device.queue.onSubmittedWorkDone();
-        } catch (error) { failure ||= error; } finally { image.close(); }
+          if (!failure) made.forEach((source, level) => device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, sizes[level]));
+        } catch (error) { failure ||= error; } finally { for (const bitmap of made) bitmap.close(); }
+        // Each maker waits for its own layer to reach the GPU before it takes the next.
+        if (!failure) await device.queue.onSubmittedWorkDone().catch((error) => { failure ||= error; });
         loading.textures(1, 0);
       }
     }
-    // Join both workers even on refusal, before destroying their shared texture.
-    await Promise.all([uploadLayers(), uploadLayers()]);
+    // Join every maker even on refusal, before destroying their shared texture.
+    await Promise.all(Array.from({ length: width }, uploadLayers));
     if (failure) throw failure;
-  } catch (error) { first.close();texture.destroy();throw error; }
+  } catch (error) { texture.destroy();throw error; }
   return texture;
 }
 function flatDataTexture(device) {
@@ -3136,9 +3156,9 @@ function draw(now) {
     for (let i = 0; i < draws; i++) if (list[i * 4 + 1] && list[i * 4 + 3]) { nonempty = true; break; }
     if (nonempty) {
       const epoch = sceneEpoch, generation = installedGeneration, frameEngine = engine, frameGpu = gpu, frameScene = gpu.scene;
-      pendingSceneEpoch = epoch;
+      pendingSceneEpoch = epoch;loadMark("scene-first-draw");
       device.queue.onSubmittedWorkDone().then(() => {
-        if (epoch === sceneEpoch && generation === wanted && shaderLoads === 0 && engine === frameEngine && gpu === frameGpu && gpu.scene === frameScene) globalThis.coaxial.sceneReady = true;
+        if (epoch === sceneEpoch && generation === wanted && shaderLoads === 0 && engine === frameEngine && gpu === frameGpu && gpu.scene === frameScene) { globalThis.coaxial.sceneReady = true;loadMark("scene-ready"); }
       }, (error) => { if (epoch === sceneEpoch) say(`scene frame: ${error?.message || error}`, true); });
     }
   }
@@ -3298,7 +3318,7 @@ function send(kind, text = "") {
   }
   after(false);
 }
-globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => loadMarks.map((row) => row.slice()), facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
   setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [], takePassTimes: () => passTimes?.splice(0) ?? [],
@@ -3822,12 +3842,18 @@ function live() {
 
 async function main() {
   try {
+    loadMark("main");
     await fetchEngine(beginEngine());
+    loadMark("engine-installed");
+    // The world's public packs start coming in now, beside the font, the GPU and the shaders.
+    if (!hostTransport && navigator.gpu) for (const pack of firstPacks) if (!pack.broker && !pack.urls && !pack.away && !packIncoming.has(pack.url)) packIncoming.set(pack.url, packBytes(pack));
     await loadPageFont();
     // No usable WebGPU after all: show the page's text, as written (a realm's loader says so).
     loading.step("gpu");
     const started = await startGpu();
+    loadMark("gpu-started");
     if (!started) {
+      for (const incoming of packIncoming.values()) incoming.cancel();packIncoming.clear();
       document.documentElement.classList.remove("gpu"); loading.fail("SHADERS FAILED TO COMPILE", !gpu);
       lifeBeacon("load-fail", !navigator.gpu ? "no WebGPU" : !gpu ? "no GPU adapter" : "shaders failed to compile");
       return;
