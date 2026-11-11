@@ -1,0 +1,38 @@
+== before low
+6  121  16.7  16.7  4193  390x844  2  45  89  8  240  1199  8  18
+summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 4622 us
+== after low
+6  121  16.7  16.7  3851  390x844  2  45  89  8  186  725  8  18
+summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 3839 us
+== before medium
+6  121  16.7  16.7  6396  585x1266  8  100  89  8  350  1934  8  18
+summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 6482 us
+== after medium
+6  121  16.7  16.7  4255  585x1266  8  100  51  8  327  1683  8  18
+summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 7275 us
+== before high
+6  121  16.7  16.7  8329  1170x2532  11  100  83  8  350  1934  8  18
+summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 8329 us
+== after high
+6  121  16.7  16.7  5575  1170x2532  11  100  35  8  350  1934  8  18
+summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 5551 us
+1 before low: 5  121  16.7  16.7  2509  390x844  2  45  82  8  240  1199  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 2493 us 
+1 after low: 5  121  16.7  16.7  4996  390x844  2  45  43  8  173  564  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 5163 us 
+1 before medium: 5  121  16.7  16.7  3698  585x1266  8  100  90  8  350  1934  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 4050 us 
+1 after medium: 5  121  16.7  16.7  3563  585x1266  8  100  64  8  327  1617  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 4370 us 
+2 before low: 5  121  16.7  16.7  5707  390x844  2  45  90  8  240  1199  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 4004 us 
+2 after low: 5  121  16.7  16.7  3441  390x844  2  45  90  8  173  564  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 3431 us 
+2 before medium: 5  121  16.7  16.7  5568  585x1266  8  100  69  8  350  1934  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 5513 us 
+2 after medium: 5  121  16.7  16.7  6155  585x1266  8  100  86  8  327  1617  8  18 summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 6152 us 
+1 before low: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 1830 us (p10 1724 us: the least shared)
+1 after low: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 3257 us (p10 1886 us: the least shared)
+1 before medium: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 4396 us (p10 2927 us: the least shared)
+1 after medium: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 5220 us (p10 4861 us: the least shared)
+2 before low: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 5845 us (p10 4519 us: the least shared)
+2 after low: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 1092 us (p10 888 us: the least shared)
+2 before medium: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 5843 us (p10 5247 us: the least shared)
+2 after medium: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 5736 us (p10 4798 us: the least shared)
+3 before low: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 2331 us (p10 1311 us: the least shared)
+3 after low: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 3346 us (p10 1324 us: the least shared)
+3 before medium: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 4133 us (p10 2871 us: the least shared)
+3 after medium: summary (last 3 windows): median frame 16.7 ms, p95 16.7 ms, GPU 3998 us (p10 2424 us: the least shared)
