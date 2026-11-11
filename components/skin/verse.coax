@@ -18,7 +18,7 @@ verse_skin :: () -> UiSkin {
   dim := rgba(0.6, 0.6, 0.6, 1);
   s.canvas = rgba(0, 0, 0, 1);
   s.surface = rgba(0, 0, 0, 0.55);              // frame_dark
-  s.raised = rgba(1, 1, 1, 0.06);
+  s.raised = opacity(text, 0.06);
   s.sunk = rgba(0, 0, 0, 0.40);
   s.hairline = rgba(0.42, 0.42, 0.42, 0.8);
   s.hover = opacity(cyan, 0.14);
@@ -30,7 +30,7 @@ verse_skin :: () -> UiSkin {
   s.syntax[0] = dim; s.syntax[1] = cyan; s.syntax[2] = s.success; s.syntax[3] = s.warning;
   s.syntax[4] = rgba(0.78, 0.78, 0.78, 1); s.syntax[5] = rgba(0.55, 0.92, 0.92, 1); s.syntax[6] = rgba(0.5, 0.95, 0.55, 1);
   s.syntax[7] = text; s.syntax[8] = dim; s.syntax[9] = s.danger; s.syntax[10] = cyan; s.syntax[11] = s.danger;
-  s.chip = rgba(1, 1, 1, 0.06); s.well = rgba(0, 0, 0, 0.40); s.rail = rgba(0.42, 0.42, 0.42, 0.6);
+  s.chip = opacity(text, 0.06); s.well = rgba(0, 0, 0, 0.40); s.rail = rgba(0.42, 0.42, 0.42, 0.6);
   s.hunk_wash = opacity(cyan, 0.08);
   s.add_wash = opacity(s.success, 0.07); s.add_bar = opacity(s.success, 0.6); s.del_wash = opacity(s.danger, 0.07); s.del_bar = opacity(s.danger, 0.6);
   s.danger_muted = rgba(1, 0.62, 0.58, 1); s.warning_muted = rgba(1, 0.80, 0.66, 1); s.file_tint = cyan;
@@ -39,10 +39,10 @@ verse_skin :: () -> UiSkin {
   s.clear = rgba(0, 0, 0, 0);
   s.sidebar = rgba(0.03, 0.03, 0.03, 1); s.action_hover = opacity(cyan, 0.10); s.row_hover = opacity(cyan, 0.07); s.row_shown = opacity(cyan, 0.14); s.tab_hover = opacity(cyan, 0.05); s.accent_light = rgba(0.8, 1, 1, 0.2);
   s.brand = rgba(0.85, 0.47, 0.34, 1); s.field_edge = rgba(0.42, 0.42, 0.42, 0.9); s.lift = rgba(0, 0, 0, 0.25); s.hover_chip = opacity(cyan, 0.12);
-  s.menu_hover = rgba(1, 1, 1, 0.05); s.menu_selected = opacity(cyan, 0.14); s.menu_ring = opacity(cyan, 0.4);
+  s.menu_hover = opacity(text, 0.05); s.menu_selected = opacity(cyan, 0.14); s.menu_ring = opacity(cyan, 0.4);
   s.menu_rule = rgba(0.42, 0.42, 0.42, 0.7); s.menu_divider = rgba(0.42, 0.42, 0.42, 0.5); s.list_wash = rgba(0, 0, 0, 0.2);
   s.stop_on = opacity(text, 0.5);
-  s.track = UiPlate.{top = rgba(0.12, 0.12, 0.12, 1), bottom = rgba(0.08, 0.08, 0.08, 1), rim = rgba(0.42, 0.42, 0.42, 1), inset = rgba(1, 1, 1, 0.05), inset_dy = 1, drop = rgba(0, 0, 0, 0), drop_dy = 0, drop_blur = 0};
+  s.track = UiPlate.{top = rgba(0.12, 0.12, 0.12, 1), bottom = rgba(0.08, 0.08, 0.08, 1), rim = rgba(0.42, 0.42, 0.42, 1), inset = opacity(text, 0.05), inset_dy = 1, drop = rgba(0, 0, 0, 0), drop_dy = 0, drop_blur = 0};
   s.thumb = UiPlate.{top = text, bottom = rgba(0.78, 0.78, 0.78, 1), rim = cyan, inset = rgba(1, 1, 1, 0.5), inset_dy = 1, drop = rgba(0, 0, 0, 0), drop_dy = 0, drop_blur = 0};
   s.switch_shade = rgba(0, 0, 0, 0.2); s.switch_wash = rgba(1, 1, 1, 0.12); s.switch_rim = opacity(cyan, 0.6);
   s.switch_mark = text; s.switch_ring = text; s.switch_knob = text; s.switch_knob_rim = rgba(0, 0, 0, 0.2);

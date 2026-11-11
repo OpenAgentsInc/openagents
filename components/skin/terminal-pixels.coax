@@ -1,0 +1,89 @@
+// The terminal skin on a pixel target (GitHub #13230): terminal_skin()'s
+// palette and faces, laid out in pixels. A page that draws in pixels and
+// offers every skin (openagents.com/chat) wears this for "terminal": the
+// terminal's colours, monospace type from the atlas, square corners, no
+// shadows, a one-pixel line where the terminal draws a one-cell border.
+// Its measures are the pixel chat set's (Zeron's), squared off, because a
+// cell skin leaves the chat set's measures at 0.
+//
+// Where the terminal leaves a colour at alpha 0 (the terminal's own
+// background or foreground), a pixel target has to say it: the screen is
+// black, the ink is the terminal's light grey. Washes the terminal draws
+// as white at an alpha are the terminal's dim grey here, so they read as the
+// terminal's and not another skin's.
+//   coax/bin/coax test components/skin/terminal-pixels.coax
+
+#load "zeron.coax";
+#load "terminal.coax";
+
+// The screen and the ink a terminal's "default" colours stand for.
+TERMINAL_SCREEN :: Rgba.{r = 0, g = 0, b = 0, a = 1};
+TERMINAL_INK :: Rgba.{r = 0.84, g = 0.84, b = 0.84, a = 1};
+
+// A colour the terminal leaves to the screen (alpha 0), else itself.
+terminal_or :: (c: Rgba, fallback: Rgba) -> Rgba { return ifx c.a <= 0 then fallback else c; }
+
+terminal_pixel_skin :: () -> UiSkin {
+  t := terminal_skin(); z := zeron_skin();
+  s := t;
+  dim := t.muted;
+  // the grounds and the ink: black screen, light-grey type
+  s.canvas = TERMINAL_SCREEN; s.surface = TERMINAL_SCREEN; s.sidebar = TERMINAL_SCREEN;
+  s.ink = TERMINAL_INK;
+  s.raised = opacity(dim, 0.22);          // a user's message: a dim band, as a terminal highlights a line
+  s.sunk = opacity(dim, 0.10);            // a code block's ground
+  s.hover = opacity(dim, 0.30); s.action_hover = s.hover; s.row_hover = opacity(dim, 0.18); s.row_shown = opacity(dim, 0.34);
+  s.tab_hover = opacity(dim, 0.18); s.hover_chip = opacity(dim, 0.30); s.menu_hover = opacity(dim, 0.20); s.menu_selected = opacity(dim, 0.34);
+  s.selection = opacity(t.accent, 0.32);
+  s.code_wash = opacity(t.accent, 0.14); s.header_wash = opacity(dim, 0.12); s.quote_wash = opacity(dim, 0.08);
+  s.chip = opacity(dim, 0.14); s.well = opacity(dim, 0.10); s.hunk_wash = opacity(t.accent, 0.10);
+  s.add_wash = opacity(t.success, 0.10); s.del_wash = opacity(t.danger, 0.10);
+  s.list_wash = opacity(dim, 0.06);
+  for k: 0..<UISKIN_SYNTAX { s.syntax[k] = terminal_or(s.syntax[k], TERMINAL_INK); }
+  s.track = UiPlate.{top = opacity(dim, 0.16), bottom = opacity(dim, 0.16), rim = dim, inset = s.clear, drop = s.clear};
+  s.switch_wash = opacity(dim, 0.30); s.switch_shade = rgba(0, 0, 0, 0.25); s.switch_knob_rim = rgba(0, 0, 0, 0.25);
+  // the faces: monospace slots of the atlas, at the chat set's sizes
+  s.body = UiType.{face = FONT_MONO_14, size = 14, line = z.body.line};
+  s.strong = s.body; s.code = s.body; s.title = s.body; s.search = UiType.{face = FONT_MONO_14, size = 14, line = z.search.line};
+  s.mono = z.mono;
+  s.small = UiType.{face = FONT_MONO_11, size = 11, line = z.small.line};
+  s.label = UiType.{face = FONT_MONO_12, size = 12, line = z.label.line};
+  s.tool = UiType.{face = FONT_MONO_12, size = 12, line = z.tool.line};
+  s.mono_small = z.mono_small; s.mono_tiny = z.mono_tiny;
+  s.menu = UiType.{face = FONT_MONO_12, size = 12, line = z.menu.line};
+  s.menu_small = UiType.{face = FONT_MONO_11, size = 11, line = z.menu_small.line};
+  // the measures: the pixel chat set's, every corner square
+  s.space = z.space; s.pad = z.pad; s.border = z.border; s.control_h = z.control_h; s.control_pad = z.control_pad;
+  s.slider_track = z.slider_track; s.knob = z.knob; s.bar_h = z.bar_h;
+  s.radius = 0; s.radius_control = 0;
+  s.frame = UIFRAME_PLATE; s.shadow = 0; s.stud = 0;   // a plate with no corner and no shadow: a box in a one-pixel line
+  s.icon_copy = z.icon_copy; s.icon_wrap = z.icon_wrap; s.icon_chevron = z.icon_chevron; s.icon_check = z.icon_check;
+  s.md = z.md;
+  s.md.code_radius = 0; s.md.block_radius = 0; s.md.wrap_radius = 0; s.md.copy_radius = 0; s.md.task_radius = 0;
+  s.tr = z.tr;
+  s.tr.bubble_radius = 0; s.tr.notice_radius = 0; s.tr.notice_tile_radius = 0; s.tr.badge_radius = 0; s.tr.badge_well_radius = 0;
+  s.cmp = z.cmp;
+  s.cmp.radius = 0; s.cmp.chip_radius = 0; s.cmp.stop_radius = 0;
+  s.menus = z.menus;
+  s.menus.card_radius = 0; s.menus.item_radius = 0;
+  s.desk = z.desk; s.desk.row_radius = 0;
+  s.chrome = z.chrome; s.chrome.field_radius = 0;
+  s.lifted = z.lifted;            // its colour, the terminal's lift, is none: no shadow is drawn
+  return s;
+}
+
+#test "the terminal in pixels: the terminal's palette on a black screen, monospace faces, square corners, pixel measures" {
+  s := terminal_pixel_skin(); t := terminal_skin(); z := zeron_skin();
+  #assert s.id == UISKIN_TERMINAL && s.name == "terminal" && s.frame == UIFRAME_PLATE && s.shadow == 0 && s.lift.a == 0;
+  #assert s.canvas.a == 1 && s.surface.a == 1 && s.ink.a == 1 && s.canvas.r == 0 && s.ink.r > 0.8;
+  #assert s.accent.r == t.accent.r && s.accent.g == t.accent.g && s.muted.r == t.muted.r && s.danger.r == t.danger.r && s.syntax[1].b == t.syntax[1].b;
+  for k: 0..<UISKIN_SYNTAX { #assert s.syntax[k].a > 0; }
+  for f: [6] int.[s.body.face, s.strong.face, s.code.face, s.tool.face, s.label.face, s.menu.face] {
+    #assert f == FONT_MONO_14 || f == FONT_MONO_12;
+  }
+  #assert s.radius == 0 && s.cmp.radius == 0 && s.tr.bubble_radius == 0 && s.menus.card_radius == 0 && s.md.block_radius == 0;
+  #assert s.tr.column == z.tr.column && s.cmp.chip_h == z.cmp.chip_h && s.md.line == z.md.line && s.chrome.button_h == z.chrome.button_h;
+  // a panel is a box in a one-pixel line, with no corner
+  list: [4] Prim;
+  #assert uiskin_panel(list[..], 0, s, 0, 0, 100, 50) == 1 && list[0].radius == 0 && list[0].border == 1 && list[0].fill.a == 1;
+}

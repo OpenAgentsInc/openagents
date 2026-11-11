@@ -420,7 +420,8 @@ pk_keep :: (p: [] Picker, s: string) -> string {
 // popover_card: shadow-lg (Tailwind's two drops), the surface, the hairline border.
 pk_card :: (list: [] Prim, n: int, sk: UiSkin, x: f32, y: f32, w: f32, h: f32) -> int {
   k := uiskin_float(list, n, sk, x, y, w, h, sk.menus.card_radius);
-  return prim_box(list, k, x, y, w, h, sk.menus.card_radius, 1, sk.surface, sk.field_edge);
+  // a card floats over what it covers: a see-through surface (Everglade's) is laid on the canvas first
+  return prim_box(list, k, x, y, w, h, sk.menus.card_radius, 1, flatten(sk.surface, sk.canvas), sk.field_edge);
 }
 
 // Text cut to a width with an ellipsis (GPUI truncate), into buf.
