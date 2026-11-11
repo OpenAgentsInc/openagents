@@ -32,7 +32,7 @@ GL_TERM_ROW :: 18.0;        // a terminal row on the page
 // The hits the page's controls leave: a = the skin, b = which one.
 GL_HIT_BUTTON :: 10; GL_HIT_TOGGLE :: 11; GL_HIT_SLIDER :: 12; GL_HIT_TAB :: 13; GL_HIT_ROW :: 14;
 
-GL_MD :: "Markdown is **one component**: `kit/markdown.coax` paints a [parsed document](components/core/markdown.coax) in *any* skin.\n\n- [x] parsed once, in `core/`\n- [ ] wrapped once, in `layout/`\n  - measured in pixels or in cells\n\n> The component asks its skin for a panel. It doesn't draw one.\n\n```rust\nfn paint(sheet: &mut Sheet, skin: &Skin) {\n    sheet.fill(skin.surface); // a role, never a colour\n}\n```\n\n| Target | Measure | Backend |\n|:--|:-:|--:|\n| the web | pixels | `gpu.coax` |\n| a terminal | cells | `terminal.coax` |";
+GL_MD :: "Markdown is **one component**: `kit/markdown.coax` paints a [parsed document](components/core/markdown.coax) in *any* skin.\n\n- [x] parsed once, in `core/`\n- [ ] wrapped once, in `layout/`\n  - measured in pixels or in cells\n\n> The component asks its skin for a panel. It doesn't draw one.\n\n```rust\nfn paint(sheet: &mut Sheet, skin: &Skin) {\n    sheet.fill(skin.surface); // a role\n}\n```\n\n| Target | Measure | Backend |\n|:--|:-:|--:|\n| the web | pixels | `gpu.coax` |\n| a terminal | cells | `terminal.coax` |";
 GL_ABOUT :: [4] string.["Zeron Dark: the chat's look.", "Iron and gold: Everglade and the Workshop.", "The Verse's instruments: grey lines, cyan.", "Cells: the same components in a terminal."];
 GL_TABS :: [3] string.["Chat", "Files", "Runs"];
 GL_ROWS :: [3] string.["Fix the tool group header", "Draft the release notes", "Port the wrapper"];
@@ -169,8 +169,8 @@ gl_terminal :: (g: [] GalleryState, sh: [] Sheet, x: f32, y: f32, w: f32) -> f32
       if at + cell.n > g[0].glyphs.count { continue; }
       for k: 0..<cell.n { g[0].glyphs[at + k] = cell.bytes[k]; }
       g[0].ng += cell.n;
-      ink := ifx cell.fg.a > 0 then cell.fg else z.ink;
-      face := ifx cell.face == TERM_FACE_BOLD then FONT_MONO_14 else mono;
+      ink := ifx cell.fg.a > 0 then cell.fg else ifx cell.face == TERM_FACE_DIM then z.muted else z.ink;
+      face := mono;                           // one cell size: the atlas has no bold monospace at it
       // a glyph the monospace face lacks (a box-drawing line, a wide glyph) is centred in its cell or cells
       text := cast(string) g[0].glyphs[at..<at + cell.n];
       gw := text_width(a, face, text);

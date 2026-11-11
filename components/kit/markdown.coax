@@ -280,8 +280,15 @@ markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
     ix_x := x + cast(f32) doc[0].items[ix].depth * col;
     if doc[0].items[ix].ordered {
       q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, markdown_ordinal(sh, doc[0].items[ix].number));
+    } else if doc[0].items[ix].task != MD_TASK_NONE && s.md.disc > 0 {
+      // a task's box, drawn: an outline when it is open; filled, with the skin's check, when it is done
+      done := doc[0].items[ix].task == MD_TASK_DONE;
+      side := s.md.disc * 2 + 4;
+      by := y + h + (lh - side) / 2;
+      tb := sheet_box(sh, ix_x, by, side, side, 3, s.border, ifx done then s.accent else opacity(s.accent, 0), ifx done then s.accent else s.muted);
+      if done && s.icon_check >= 0 { sheet_icon(sh, s.icon_check, ix_x, by, side, s.on_accent); }
     } else if doc[0].items[ix].task != MD_TASK_NONE {
-      q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, ifx doc[0].items[ix].task == MD_TASK_DONE then "☑" else "☐");
+      q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, ifx doc[0].items[ix].task == MD_TASK_DONE then s.md.task_done else s.md.task_open);
     } else if s.md.disc > 0 {
       sheet_fill(sh, ix_x + 1, y + h + (lh - s.md.disc) / 2, s.md.disc, s.md.disc, s.md.disc / 2, s.accent);
     } else {

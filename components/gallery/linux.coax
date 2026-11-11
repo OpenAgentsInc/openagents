@@ -1,0 +1,9 @@
+// The component library as a Linux program (components/spec.md, GitHub
+// #13153): the same page openagents.com/components shows
+// (components/gallery/page.coax), with the atlas built in Coax
+// (components/raster/atlas.coax) and drawn by the shared Wayland and Vulkan
+// host (apps/shared/host/linux/). linux/build.sh compiles this file;
+// linux/main.c is its host. Its --shot writes a picture with no window,
+// which is how the page is looked at on a machine with no WebGPU capture.
+#load "page.coax";
+#load "../raster/atlas.coax";

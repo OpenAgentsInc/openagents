@@ -48,6 +48,7 @@ UiMarkdown :: struct {
   cell_pad: f32; cell_pad_y: f32; divider: f32;      // a table's cell padding (sideways, then above and below), its row divider
   col_min_content: f32; col_min: f32;                // and its columns' floors
   bullet: string;           // a terminal's bullet (a pixel target draws a disc)
+  task_open: string; task_done: string;             // and its task boxes (a pixel target draws them)
 }
 
 UiSkin :: struct {

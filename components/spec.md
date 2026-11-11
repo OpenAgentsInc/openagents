@@ -43,7 +43,8 @@ components/
   backend/         display list to a target: gpu.coax, gpu-shader.coax, terminal.coax
   kit/             the components themselves (markdown; controls: panel, button,
                    toggle, slider, tabs, list, bar)
-  gallery/         page.coax, the /components page; md-term.coax (Markdown
+  gallery/         page.coax, the /components page; linux.coax and linux/ (the same
+                   page as a Linux program, for pictures); md-term.coax (Markdown
                    in a terminal through the whole stack); skin-parity.coax
   fonts/, icons/   with their licences and NOTICE
   zeron/           the chat components as moved from apps/shared/zeron/ (Phase 1, done),
@@ -281,10 +282,15 @@ Each phase ends with every existing check and golden unchanged.
    list, bar; `kit/markdown.coax`), all of them working under the pointer.
    The terminal card is laid out in cells, painted into a cell grid by
    `backend/terminal.coax`, and the grid is shown. Its checks lay the page
-   out, read the terminal grid's rows and drive the pointer. Not done: the
-   page has not been seen in a browser (no headless WebGPU capture on the
-   Linux machine it was written on), and there are no picture goldens
-   (`gallery/check.coax`) yet.
+   out, read the terminal grid's rows and drive the pointer. The same page
+   is a Linux program on the shared Wayland and Vulkan host
+   (`components/gallery/linux/build.sh`, then
+   `components/gallery/build/linux/Components --shot OUT.png`, which opens
+   no window): that is how it was looked at, at two widths. Not done: it
+   has not been seen in a browser (no headless WebGPU capture on the Linux
+   machine it was written on; a browser's own fonts will draw the terminal
+   card's task boxes, which Geist Mono lacks), and there are no picture
+   goldens (`gallery/check.coax`) yet.
 4. **Chat in Everglade for desktop.** The Workshop gets the same transcript
    and composer in the `everglade` skin, on the shared engines. Its boards
    (`golem-board.coax`) move onto the list and panel components. Not

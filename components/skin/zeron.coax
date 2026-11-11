@@ -128,7 +128,7 @@ zeron_skin :: () -> UiSkin {
       block_radius = CODE_RADIUS, block_border = 1, block_header = CODE_HEADER_HEIGHT,
       block_pad_x = CODE_PADDING_X, block_pad_y = CODE_PADDING_Y, block_line = CODE_LINE_HEIGHT, action = CODE_ACTION_SIZE,
       cell_pad = TABLE_CELL_PADDING, cell_pad_y = TABLE_CELL_PADDING, divider = TABLE_DIVIDER, col_min_content = TABLE_MIN_COLUMN_CONTENT, col_min = TABLE_MIN_COLUMN_WIDTH,
-      bullet = "•"}};
+      bullet = "•", task_open = "☐", task_done = "☑"}};
   palette := SYNTAX_DARK;
   for k: 0..<UISKIN_SYNTAX { s.syntax[k] = hex(palette[k], 1); }
   return s;
