@@ -110,11 +110,11 @@ Today the same job is done several ways:
 | Where | What it does | How |
 | --- | --- | --- |
 | `coax/lib/agent/claude`, `coax/lib/agent/codex` | The SDKs: transport, control protocol, messages | The shared base. Keep |
-| `apps/openagents-desktop/zeron/claude.coax`, `codex.coax`, `psionic.coax`, `lab.coax`, `microcoder.coax` (about 4,700 lines) | Sessions, parts, tool chips, approvals, routing | Its own engine layer over the SDKs |
+| `coax/lib/agent/engine/` (moved 2026-11-10 from `apps/openagents-desktop/zeron/`, about 4,700 lines) | Sessions, parts, tool chips, approvals, routing | The shared engine layer over the SDKs; the desktop app is its first user |
 | `coder/tui/` (`coder.coax`, `codex.coax`, `session.coax`) | Coder's terminal: the same engines, its own session log | A second engine layer over the SDKs |
 | `apps/aethyrforge-desktop/chat.coax` | The Forge's chat | Runs Coder as a child and reads its JSONL |
 | `apps/everglade-desktop/next.coax`, `tiers.coax` | Next issue, and Golemancy's issue rating | Calls the Claude SDK directly |
-| `apps/everglade-desktop/golems.coax`, `os/verse-agents.coax`, `coax/lib/agent/local-agents.coax` | Which agents are working on this machine | Three readers of the same transcripts |
+| `apps/everglade-desktop/golems.coax`, `os/verse-agents.coax`, `coax/lib/agent/observe/processes.coax` | Which agents are working on this machine | One walker, `coax/lib/agent/observe/transcripts.coax` (2026-11-10); the third lists processes |
 | `coax/web/agent/chat.coax`, `turn.coax` | `/chat` and the project agent on the server | Calls the Claude SDK directly |
 
 The target is three shared layers under `coax/lib/agent/`, and nothing above
@@ -161,7 +161,56 @@ Status (2026-11-10, GitHub #13153):
 - **Built: move 5.** The Golems board's reader and Verse OS find transcripts
   through `observe/transcripts.coax`. `local-agents` never read transcripts
   (it lists processes); it moved beside the walker.
-- **Not built yet:** moves 2, 3, 4 and 6.
+- **Checked end to end on Linux** (`coderos-4080`, 2026-11-10): the Linux
+  build of OpenAgents for desktop, run offscreen (`--shot`, `--do`) against
+  the stand-in Claude Code in `zeron/fixtures/stream/`, sends a message
+  through `engine.coax`, writes
+  `~/.openagents/desktop/sessions/<id>.jsonl` in the shared log format,
+  and on the next launch restores the conversation from it and resumes the
+  harness session. `coder ls`, `coder status` and `coder log` read that same
+  file when it is put in Coder's sessions folder.
+- **Not built: moves 2, 3, 4 and 6.** Each one changes how a program starts
+  and reads its engine, and none can be checked here without a real model
+  turn or a stand-in that does not exist yet. What each needs:
+  - **The shared Claude engine takes its owner's options.** `e_launch` builds
+    the desktop app's options itself (its access levels, the room's tools).
+    Coder (bypass or `--ask` with "yes, from now on", the PreToolUse hook for
+    its policy and plugins, its own MCP tools, realm servers, an API key,
+    fork and resume), Everglade (`next.coax` and `tiers.coax`: their own
+    system prompt, tool lists and one in-process tool each) and the server
+    (`coax/web/agent/`: confinement hooks, budgets) each need their own.
+    The engine has to accept a prepared `ClOptions`, hand hook events and
+    permission requests with their suggestions to its owner, and answer any
+    in-process tool, not only the room's.
+  - **The record keeps what those programs print.** A tool part keeps its
+    kind but not the tool's own name (Coder labels a call by it), and text
+    is folded only from stream deltas (the server engines run without
+    partial messages and read whole assistant frames).
+  - **Move 2, Coder's terminal.** Its Claude and Codex paths
+    (`coder/tui/coder.coax` `cd_claude_*`, `coder/tui/codex.coax`) print to
+    the scrollback straight from SDK messages. On the shared engines they
+    would print from the record's new parts. Its checks are 428 unit checks
+    that do not run an engine, and the smoke test's engine runs are live.
+    Needs: the two engine changes above, then a stand-in run of `coder run
+    --json` before and after (the desktop app's stand-ins speak enough of the
+    protocol for a plain turn and an approval; `coder/tui/claude_standin.coax`
+    covers hooks and tools).
+  - **Move 3, Everglade.** `next.coax` and `tiers.coax` call the SDK with
+    their own tools. Everglade for desktop is Mac only, so its app cannot be
+    run here; its Coax checks can.
+  - **Move 4, Aethyrforge.** Its chat runs `coder run --engine auto
+    --stream-json` and so uses Coder's router and all six of Coder's engines.
+    It can drop the child only after move 2.
+  - **Move 6, the server.** `chat.coax` and `turn.coax` each run one turn
+    and write the runner's wire events straight from SDK messages. They need
+    the whole-frame text fold above, and a deploy to check.
+- **Also left.** On the Mac the desktop app's session files are still beside
+  `settings.json` in Application Support (the Swift host picks the folder);
+  on Linux they are under `~/.openagents/desktop/`. Coder writes the log's
+  base lines only, so a Coder session loads into a record with each call's
+  label but not its kind or id. The engines call host functions named
+  `zr_*` (the clock, random bytes, the Lab's signer), which any new host
+  must supply as `apps/openagents-desktop/zeron-face.c` does.
 
 Done when: a grep for the Claude or Codex SDK outside `coax/lib/agent/` finds
 only tests.
