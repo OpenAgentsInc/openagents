@@ -181,8 +181,11 @@ hc_layout :: (h: [] HudCards, sh: [] Sheet, m: TextMeasure, gutter: f32, y: f32,
   yy := y;
   tw := sheet_text(sh, m, -1, gutter, yy, z.title.line, z.title.face, z.ink, "Game HUD");
   yy += z.title.line + 2;
-  lw := sheet_text(sh, m, -1, gutter, yy, z.body.line, z.body.face, z.muted, "Bars, slots, frames, the map ring, plates, rising numbers, a banner and a talk window. Press a slot, strike the wolf, answer Mira.");
-  yy += z.body.line + gutter;
+  lead := "Bars, slots, frames, the map ring, plates, rising numbers, a banner and a talk window. Press a slot, strike the wolf, answer Mira.";
+  lines: [8] TextLine;
+  nl := text_wrap_lines(m, uiskin_faces(z), lead, w - gutter * 2, lines[..]);
+  for k: 0..<nl { lw := sheet_text(sh, m, -1, gutter, yy, z.body.line, z.body.face, z.muted, cast(string) lead[lines[k].from..<lines[k].to]); yy += z.body.line; }
+  yy += gutter;
   cols := ifx w - gutter * 3 >= HC_CARD_MIN * 2 then 2 else 1;
   card_w := floor((w - gutter * cast(f32) (cols + 1)) / cast(f32) cols);
   ids := HC_SKINS;
