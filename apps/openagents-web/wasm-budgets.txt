@@ -20,7 +20,7 @@ builder 100000
 changelog 180000
 characters 100000
 chat 200000
-components 100000
+components 150000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)
 connect-pylon 86000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 451,253 measured; about 5% room
