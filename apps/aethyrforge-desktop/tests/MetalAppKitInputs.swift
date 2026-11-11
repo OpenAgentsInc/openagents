@@ -2,7 +2,6 @@
 import AppKit
 import Foundation
 
-enum ShellError: Error { case failed(String) }
 @main
 struct MetalAppKitInputs {
     @MainActor static func main() throws {

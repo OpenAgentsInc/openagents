@@ -6,6 +6,7 @@
 #load "../../coax/lib/sys/proc-raw.coax";
 #load "../../coax/lib/json/json.coax";
 #load "linux-build.coax";
+#load "shell-link.coax";
 
 AfPaths :: struct { b: [65536] u8; n: int; }
 af_path :: (p: [] AfPaths, root: string, name: string) -> string {
@@ -224,9 +225,14 @@ tool_main :: () -> int #export_c #effects(all) {
   if af_run(cbc[..],out[..],deadline)<0 {return 1;}
   hud_copy := [3]string.["ditto",af_path(p[..],here,"HUD.metal"),af_path(p[..],res,"HUD.metal")];
   if af_run(hud_copy[..],out[..],deadline)<0 {return 1;}
-  sw := [44] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
-    af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],here,"Sources/Benchmark.swift"), af_path(p[..],root,"components/zeron/MetalUI.swift"),af_path(p[..],here,"Sources/MetalWorld.swift"),af_path(p[..],here,"Sources/MetalNetwork.swift"),af_path(p[..],here,"Sources/MetalAudio.swift"),af_path(p[..],here,"Sources/MetalBridge.swift"),object,bridge,chat_o,chat_face,af_path(p[..],work,"metal/MetalRealm.o"),af_path(p[..],work,"metal/MetalRender.o"),af_path(p[..],work,"metal/RenderTexture.o"),af_path(p[..],work,"metal/AppKitInput.o"),"-Xlinker","-export_dynamic","-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation","-framework","QuartzCore","-framework","ImageIO","-framework","CoreGraphics", "-o", af_path(p[..], mac, "Aethyrforge")];
-  if af_run(sw[..], out[..], deadline) < 0 { return 1; }
+  // The shell (shell-link.coax): the realm's Swift, the app's Objective-C on the shared Mac host, linked.
+  shell := af_path(p[..], work, "shell"); if !fs_mkdir(shell) { return 1; }
+  sdk := af_path(p[..], work, "metal"); binary := af_path(p[..], mac, "Aethyrforge");
+  for step: 0..<SL_UNITS+1 {
+    sl_paths: [32][4096] u8; argv: [64] string;
+    an := sl_step(root, work, sdk, shell, binary, step, argv[..], sl_paths[..]);
+    if an == 0 || af_run(argv[0..<an], out[..], deadline) < 0 { return 1; }
+  }
   // The component shader (components/backend/gpu-shader.coax) emitted as Metal; Setup compiles it at launch.
   emit:=[9]string.[coax,"metal",af_path(p[..],root,"components/backend/gpu-shader.coax"),"--vertex","chat_fx_vs","--fragment","chat_fx_fs","-o",af_path(p[..],res,"Component.metal")];
   if af_run(emit[..],out[..],deadline)<0 {return 1;}

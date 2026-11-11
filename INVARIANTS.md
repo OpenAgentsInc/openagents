@@ -6069,12 +6069,16 @@ matrix. The visible `--setup-profile` measures process CPU, GPU submissions,
 room delivery and idle panel draws through setup, status, reload, minimize,
 hide and resume.
 
-Setup and status paint through `components/zeron/gpui.coax` and the shared
-`MetalUI.swift` effects (OpenAgents desktop now draws on the shared Mac host,
-`apps/shared/host/apple/`, with the same CoreText atlas in `ct-atlas.m`). Coax owns
-labels, geometry, readiness and button rectangles. AppKit's transparent buttons
-supply input/accessibility only. The surfaces redraw on changes, with no idle
-animation loop. The game's own HUD is unchanged. CPU measurement converts
+Setup and status paint through `components/zeron/gpui.coax` on the shared Mac
+host (`apps/shared/host/apple/ui-host.m`, with the CoreText atlas in `ct-atlas.m`;
+since 2026-11-11, GitHub #13156, Aethyrforge runs on that host as OpenAgents and
+Everglade do). Coax owns labels, geometry, readiness and button rectangles, and
+`fgu_hit` decides which button a press and its release land on; the host's
+`UiApp.hit` hands every other point to the world view under the panel. The
+`--shot` pictures of the setup and status panels and of the message feed match
+the former Swift host's own drawing pixel for pixel. The setup buttons are no
+longer AppKit buttons, so VoiceOver does not reach them until the shared host has
+accessibility. The surfaces redraw on changes, with no idle animation loop. The game's own HUD is unchanged. CPU measurement converts
 `proc_pid_rusage` Mach ticks to nanoseconds and is checked against the independent
 POSIX process CPU clock before any numbers are recorded.
 

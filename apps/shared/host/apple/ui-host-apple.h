@@ -12,7 +12,7 @@ void *ui_view(UiHost *h);
 void ui_atlas_rows(UiHost *h, const uint8_t *mono, uint32_t y0, uint32_t y1, const uint8_t *color, uint32_t cy0, uint32_t cy1);
 
 // A layer of the app's own Metal under the components (Everglade's place, model and realms). With
-// one, every frame is drawn (nothing is skipped as unchanged). prepare gets the frame's command
+// one, every frame is drawn (nothing is skipped as unchanged) unless it has changed, below. prepare gets the frame's command
 // buffer (id<MTLCommandBuffer>) before its pass, for passes of the app's own; encode gets the
 // pass's encoder (id<MTLRenderCommandEncoder>) before the components are drawn. depth 1 gives the
 // pass a depth32Float attachment cleared to 1. Offscreen, ui_shot_frame waits for the GPU as before.
@@ -21,6 +21,10 @@ typedef struct {
   int depth;
   void (*prepare)(void *user, void *cmd, uint32_t w, uint32_t h, float dpr);
   void (*encode)(void *user, void *enc, uint32_t w, uint32_t h, float dpr);
+  // Optional: whether the layer's picture changed since the last frame (1) or not (0). With it,
+  // a frame is drawn only when this or the components changed, and ui_frame waits for events as
+  // it does without a layer (an app's overlay that is still most of the time: Aethyrforge's chat).
+  int (*changed)(void *user);
 } UiLayer;
 void ui_layer(UiHost *h, const UiLayer *layer);
 void *ui_device(UiHost *h);   // id<MTLDevice>
@@ -63,4 +67,15 @@ void ui_terminal(const char *command);
 // "N of M pixels differ by more than 48 (P%, at most D)"; 0 when within limit percent, 1 when not
 // or when they cannot be read or their sizes differ. Works without a window.
 int ui_compare(const char *a, const char *b, double limit);
+
+// A native view of the app's own in the window (an NSView *: a WKWebView, a Metal view, a text
+// view). above 0 puts it under the components: the host's layer is then clear where nothing is
+// drawn, and a pointer event UiApp.hit leaves goes to the views under it. above 1 puts it over
+// them. Its frame and autoresizing are the app's, in ui_view's coordinates. Nothing offscreen.
+void ui_child(UiHost *h, void *view, int above);
+void *ui_window(UiHost *h);   // the NSWindow *; NULL offscreen
+// A menu item's title now (an item made by ui_menus, by its id).
+void ui_menu_title(UiHost *h, int id, const char *title);
+// UiApp.life's events.
+enum { UI_LIFE_ACTIVE, UI_LIFE_INACTIVE, UI_LIFE_HIDDEN, UI_LIFE_SHOWN, UI_LIFE_MINIMIZED, UI_LIFE_RESTORED, UI_LIFE_OCCLUSION, UI_LIFE_QUIT };
 #endif

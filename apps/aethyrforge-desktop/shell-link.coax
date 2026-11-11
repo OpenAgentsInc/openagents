@@ -1,0 +1,48 @@
+// Firm reason: 5 (the compiler and linker lines; what the shell is, is in Sources/).
+// How the Mac shell is compiled and linked, for both builds that make it (aethyrforge-build.coax
+// and metal-shell.coax; GitHub #13156). Aethyrforge runs on the shared Mac host
+// (apps/shared/host/apple/ui-host.m): the app is Objective-C (Sources/app.m, chat.m, checks.m),
+// and the native realm's runtime (MetalWorld, MetalNetwork, MetalAudio) stays Swift, reaching the
+// app through the header swiftc writes (Aethyrforge-Swift.h).
+//
+// sl_step fills argv with step `step`'s command and returns its length, or 0 when there are no
+// more steps; each caller runs the steps in order with its own runner. objects is the folder with
+// session.o, setup-face.o, chat.o and chat-face.o; sdk the native Metal units' (build/metal);
+// work a folder for this build's own objects; binary the program to write.
+SL_UNITS :: 6;
+sl_step :: (root:string,objects:string,sdk:string,work:string,binary:string,step:int,argv:[]string,paths:[][4096]u8)->int {
+ n:=0;p:=0;
+ here:=fs_join(root,"apps/aethyrforge-desktop",paths[p][..]);p+=1;
+ face:=fs_join(here,"face.h",paths[p][..]);p+=1;
+ if step==0 {
+  for s:[10]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","-parse-as-library","-wmo","-module-name","Aethyrforge","-import-objc-header"] {argv[n]=s;n+=1;}
+  argv[n]=face;n+=1;argv[n]="-I";argv[n+1]=sdk;n+=2;
+  for source:[3]string.["Sources/MetalWorld.swift","Sources/MetalNetwork.swift","Sources/MetalAudio.swift"] {argv[n]=fs_join(here,source,paths[p][..]);n+=1;p+=1;}
+  argv[n]="-emit-objc-header-path";argv[n+1]=fs_join(work,"Aethyrforge-Swift.h",paths[p][..]);n+=2;p+=1;
+  // the module swiftc writes beside the header, kept in the work folder, not wherever the build runs
+  argv[n]="-emit-module-path";argv[n+1]=fs_join(work,"Aethyrforge.swiftmodule",paths[p][..]);n+=2;p+=1;
+  argv[n]="-c";argv[n+1]="-o";argv[n+2]=fs_join(work,"realm.o",paths[p][..]);n+=3;p+=1;
+  return n;
+ }
+ if step>=1 && step<=5 {
+  sources:=[5]string.["Sources/app.m","Sources/chat.m","Sources/checks.m","../shared/host/apple/ui-host.m","../shared/host/apple/ct-atlas.m"];
+  objects_out:=[5]string.["app.o","chatview.o","checks.o","ui-host.o","ct-atlas.o"];
+  for s:[8]string.["/usr/bin/clang","-fobjc-arc","-O2","-mmacosx-version-min=26.0","-Wall","-Wno-unused-function","-I",work] {argv[n]=s;n+=1;}
+  argv[n]="-I";argv[n+1]=sdk;n+=2;
+  argv[n]="-c";argv[n+1]=fs_join(here,sources[step-1],paths[p][..]);n+=2;p+=1;
+  argv[n]="-o";argv[n+1]=fs_join(work,objects_out[step-1],paths[p][..]);n+=2;p+=1;
+  return n;
+ }
+ if step==SL_UNITS {
+  for s:[3]string.["xcrun","swiftc","-target"] {argv[n]=s;n+=1;}
+  argv[n]="arm64-apple-macos26.0";n+=1;
+  for object:[6]string.["app.o","chatview.o","checks.o","ui-host.o","ct-atlas.o","realm.o"] {argv[n]=fs_join(work,object,paths[p][..]);n+=1;p+=1;}
+  for object:[4]string.["session.o","setup-face.o","chat.o","chat-face.o"] {argv[n]=fs_join(objects,object,paths[p][..]);n+=1;p+=1;}
+  for object:[4]string.["MetalRealm.o","MetalRender.o","RenderTexture.o","AppKitInput.o"] {argv[n]=fs_join(sdk,object,paths[p][..]);n+=1;p+=1;}
+  argv[n]="-Xlinker";argv[n+1]="-export_dynamic";n+=2;
+  for framework:[11]string.["MetalKit","AppKit","WebKit","AVFoundation","QuartzCore","ImageIO","CoreGraphics","CoreText","IOKit","UniformTypeIdentifiers","Metal"] {argv[n]="-framework";argv[n+1]=framework;n+=2;}
+  argv[n]="-o";argv[n+1]=binary;n+=2;
+  return n;
+ }
+ return 0;
+}

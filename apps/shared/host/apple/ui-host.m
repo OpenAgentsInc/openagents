@@ -62,6 +62,9 @@ struct UiHost {
   NSPasteboard *pasteboard;   // the general one; offscreen, the app's own
   id menu_target;             // the menus' items send their ids through it
   NSEventModifierFlags flags; // the modifiers last reported as keys (UiApp.modifier_keys)
+  NSView *root;               // with native children (ui_child): the content view holding them and the host's view
+  int under;                  // children under the components: the layer is clear where nothing is drawn
+  NSMutableArray *observers;  // UiApp.life's notifications
 #endif
   int looking;                // ui_hold_pointer
   // the app's own layer (ui_layer)
@@ -101,6 +104,14 @@ static int ui_paste_from(UiHost *h, NSPasteboard *pb);
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)wantsUpdateLayer { return YES; }
 - (CALayer *)makeBackingLayer { return self.host->layer; }
+// With native views under the components, a point the app leaves goes on to them.
+- (NSView *)hitTest:(NSPoint)p {
+  UiHost *h = self.host;
+  NSView *hit = [super hitTest:p];
+  if (hit != self || !h->under || !h->app.hit) return hit;
+  NSPoint q = [self convertPoint:p fromView:self.superview];
+  return h->app.hit(h->app.user, (float)(q.x * h->dpr), (float)((self.bounds.size.height - q.y) * h->dpr)) ? self : nil;
+}
 - (NSPoint)devicePoint:(NSEvent *)e {
   NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
   return NSMakePoint(p.x * self.host->dpr, (self.bounds.size.height - p.y) * self.host->dpr);
@@ -270,6 +281,19 @@ static int ui_to(NSRange r) { return r.location == NSNotFound ? -1 : (int)(r.loc
 }
 @end
 
+// The window: every event goes to UiApp.event first.
+@interface UiWindow : NSWindow
+@property(nonatomic, assign) UiHost *host;
+@end
+@implementation UiWindow
+- (void)sendEvent:(NSEvent *)e {
+  UiHost *h = self.host;
+  if (h && h->app.event && h->app.event(h->app.user, (__bridge void *)e)) return;
+  [super sendEvent:e];
+}
+- (BOOL)canBecomeKeyWindow { return self.host && self.host->app.hidden ? NO : [super canBecomeKeyWindow]; }
+@end
+
 @interface UiWindowDelegate : NSObject <NSWindowDelegate>
 @property(nonatomic, assign) UiHost *host;
 @end
@@ -281,6 +305,10 @@ static int ui_to(NSRange r) { return r.location == NSNotFound ? -1 : (int)(r.loc
   ui_hold_pointer(h, 0);
   if (h->app.focus) h->app.focus(h->app.user, 0);
 }
+- (void)life:(int)event { UiHost *h = self.host; if (h->app.life) h->app.life(h->app.user, event); }
+- (void)windowDidMiniaturize:(NSNotification *)n { (void)n; [self life:UI_LIFE_MINIMIZED]; }
+- (void)windowDidDeminiaturize:(NSNotification *)n { (void)n; [self life:UI_LIFE_RESTORED]; }
+- (void)windowDidChangeOcclusionState:(NSNotification *)n { (void)n; [self life:UI_LIFE_OCCLUSION]; }
 @end
 #else
 // iOS: the view the app puts in its window. Its layer is the CAMetalLayer frames are presented to.
@@ -399,7 +427,11 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
   rp.colorAttachments[0].texture = into;
   rp.colorAttachments[0].loadAction = MTLLoadActionClear;
   rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+#if TARGET_OS_OSX
+  rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, h->under ? 0 : 1);
+#else
   rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
+#endif
   if (depth) {
     if (!h->depth || h->depth.width != into.width || h->depth.height != into.height) {
       MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float width:into.width height:into.height mipmapped:NO];
@@ -559,6 +591,28 @@ int ui_window_frame(UiHost *h, float f[4]) {
   return 1;
 }
 void ui_quit(UiHost *h) { h->closed = 1; }
+void ui_child(UiHost *h, void *view, int above) {
+  if (h->offscreen || !view) return;
+  NSView *v = (__bridge NSView *)view;
+  if (!h->root) {
+    // the content view becomes a plain view holding the host's and the app's
+    h->root = [[NSView alloc] initWithFrame:h->view.frame];
+    h->root.autoresizesSubviews = YES;
+    h->window.contentView = h->root;
+    h->view.frame = h->root.bounds; h->view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [h->root addSubview:h->view];
+    [h->window makeFirstResponder:h->view];
+  }
+  [h->root addSubview:v positioned:above ? NSWindowAbove : NSWindowBelow relativeTo:above ? nil : h->view];
+  if (!above && !h->under) { h->under = 1; h->layer.opaque = NO; h->stale = 1; }
+}
+void *ui_window(UiHost *h) { return (__bridge void *)h->window; }
+void ui_menu_title(UiHost *h, int id, const char *title) {
+  if (h->offscreen || !title) return;
+  for (NSMenuItem *top in NSApp.mainMenu.itemArray)
+    for (NSMenuItem *it in top.submenu.itemArray)
+      if (it.target == h->menu_target && it.tag == id) it.title = [NSString stringWithUTF8String:title];
+}
 void ui_open_url(const char *url) {
   NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
   if (u) [NSWorkspace.sharedWorkspace openURL:u];
@@ -591,6 +645,9 @@ void ui_open_url(const char *url) {
   if (u) [UIApplication.sharedApplication openURL:u options:@{} completionHandler:nil];
 }
 void ui_terminal(const char *command) { (void)command; }
+void ui_child(UiHost *h, void *view, int above) { (void)h; (void)view; (void)above; }
+void *ui_window(UiHost *h) { (void)h; return NULL; }
+void ui_menu_title(UiHost *h, int id, const char *title) { (void)h; (void)id; (void)title; }
 void ui_cursor(UiHost *h, int kind) { h->cursor_kind = kind; }   // a touch screen has no pointer to shape
 void ui_hold_pointer(UiHost *h, int on) { h->looking = on ? 1 : 0; }
 int ui_copy(UiHost *h, const char *bytes, size_t n) {
@@ -664,11 +721,12 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   UiMenuTarget *target = [UiMenuTarget new]; target.host = h; h->menu_target = target;
   if (!offscreen) {
     [NSApplication sharedApplication];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    [NSApp setActivationPolicy:app->hidden ? NSApplicationActivationPolicyProhibited : NSApplicationActivationPolicyRegular];
     NSRect r = NSMakeRect(0, 0, app->width, app->height);
     NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
     if (app->chrome) style |= NSWindowStyleMaskFullSizeContentView;
-    h->window = [[NSWindow alloc] initWithContentRect:r styleMask:style backing:NSBackingStoreBuffered defer:NO];
+    UiWindow *win = [[UiWindow alloc] initWithContentRect:r styleMask:style backing:NSBackingStoreBuffered defer:NO];
+    win.host = h; h->window = win;
     h->window.title = [NSString stringWithUTF8String:app->title ? app->title : ""];
     if (app->chrome) { h->window.titlebarAppearsTransparent = YES; h->window.titleVisibility = NSWindowTitleHidden; }
     h->window.backgroundColor = [NSColor colorWithRed:13 / 255.0 green:13 / 255.0 blue:13 / 255.0 alpha:1];
@@ -689,9 +747,20 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
     // the frame it had at quit, kept on a screen
     if (app->place[2] >= (app->min_width ? app->min_width : 1) && app->place[3] >= (app->min_height ? app->min_height : 1))
       [h->window setFrame:[h->window constrainFrameRect:NSMakeRect(app->place[0], app->place[1], app->place[2], app->place[3]) toScreen:NSScreen.mainScreen] display:NO];
-    [h->window makeKeyAndOrderFront:nil];
+    if (!app->hidden) [h->window makeKeyAndOrderFront:nil];
     [NSApp finishLaunching];
-    [NSApp activateIgnoringOtherApps:YES];
+    if (!app->hidden) [NSApp activateIgnoringOtherApps:YES];
+    if (app->life) {
+      h->observers = [NSMutableArray array];
+      NSString *names[5] = {NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification, NSApplicationDidHideNotification, NSApplicationDidUnhideNotification, NSApplicationWillTerminateNotification};
+      const int events[5] = {UI_LIFE_ACTIVE, UI_LIFE_INACTIVE, UI_LIFE_HIDDEN, UI_LIFE_SHOWN, UI_LIFE_QUIT};
+      for (int i = 0; i < 5; i++) {
+        int event = events[i];
+        [h->observers addObject:[NSNotificationCenter.defaultCenter addObserverForName:names[i] object:nil queue:nil usingBlock:^(NSNotification *n) {
+          (void)n; if (h->app.life) h->app.life(h->app.user, event);
+        }]];
+      }
+    }
     h->dpr = (float)h->window.backingScaleFactor;
   }
 #else
@@ -712,7 +781,8 @@ int ui_frame(UiHost *h) {
   @autoreleasepool {
 #if TARGET_OS_OSX
     // the seat's events, without waiting: a frame's time at most when nothing changed
-    NSDate *until = h->stale || h->layered ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
+    int every = h->layered && !h->layer_of.changed;   // a layer that changes every frame (a world)
+    NSDate *until = h->stale || every ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
     NSEvent *e;
     while ((e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES])) {
       [NSApp sendEvent:e];
@@ -733,7 +803,12 @@ int ui_frame(UiHost *h) {
     if (dt > 0.1f) dt = 0.1f;
     ui_fill(h, dt);
     uint64_t digest = ui_digest(h);
-    if (!h->stale && !h->layered && digest == h->shown) return 1;
+#if TARGET_OS_OSX
+    int moved = every || (h->layered && h->layer_of.changed(h->layer_of.user));
+#else
+    int moved = h->layered && (!h->layer_of.changed || h->layer_of.changed(h->layer_of.user));
+#endif
+    if (!h->stale && !moved && digest == h->shown) return 1;
     id<CAMetalDrawable> d = [h->layer nextDrawable];
     if (!d) return 1;
     h->shown = digest; h->stale = 0;
@@ -788,8 +863,10 @@ void ui_close(UiHost *h) {
   if (!h) return;
   ui_hold_pointer(h, 0);
 #if TARGET_OS_OSX
-  if (h->window) { h->window.delegate = nil; [h->window close]; }
-  h->window = nil;
+  for (id o in h->observers) [NSNotificationCenter.defaultCenter removeObserver:o];
+  h->observers = nil;
+  if (h->window) { h->window.delegate = nil; ((UiWindow *)h->window).host = NULL; [h->window close]; }
+  h->window = nil; h->root = nil;
 #else
   [h->view removeFromSuperview];
 #endif

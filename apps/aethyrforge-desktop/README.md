@@ -64,9 +64,24 @@ process launch/stop decisions and Coder event interpretation stay in Coax.
 
 ## Mac: AppKit and Metal
 
-An AppKit shell around the shared Everglade 5e Coax engine, with a native Metal
-world, web preview, local room, page server and local Parakeet voice service. Requires an Apple Silicon Mac running
-macOS 26 or later, Xcode and the existing Coax web build toolchain.
+An app on the shared Mac host (`apps/shared/host/apple/ui-host.m`, the host
+OpenAgents and Everglade use) around the shared Everglade 5e Coax engine, with a
+native Metal world, web preview, local room, page server and local Parakeet voice
+service. Requires an Apple Silicon Mac running macOS 26 or later, Xcode and the
+existing Coax web build toolchain.
+
+The host owns the window, the event loop and the menus, and draws the setup panel
+(`chrome.coax`) and the Coder HUD on its layer. The world (the native Metal view
+or the WKWebView), the notice and the chat's text views are native views under
+that layer (`ui_child`). The app is Objective-C in `Sources/app.m`, `chat.m` and
+`checks.m`. The native realm's runtime (`MetalWorld`, `MetalNetwork` and
+`MetalAudio`) is still Swift. `shell-link.coax` holds the compile and link steps.
+
+To draw one frame offscreen and exit, with no window, world or child process:
+
+```sh
+Aethyrforge.app/Contents/MacOS/Aethyrforge --shot setup.png --scene setup   # or status, feed, composer
+```
 
 The default (or `--world metal`) selects the native AppKit/CAMetalLayer realm host with the
 same Coax Everglade producer and renderer. It uses the shared canonical assets,
@@ -211,8 +226,8 @@ The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
 composer and shared layout. Floating messages use `aethyr/ui/feed.coax` and
 `feed-draw.coax`: Coax owns the bounded UTF-8 ring, wrapping, newest visible rows
 and five-second completion lifetime; Aethyr's font/stroke components emit their
-Metal vertices. Swift supplies clock observations and submits those buffers.
-The floating messages have no AppKit text view or Swift deadline/hide task.
+Metal vertices, drawn on the shared host's layer. The app supplies clock
+observations. The floating messages have no AppKit text view or deadline/hide task.
 AppKit still supplies editable input/IME and selectable conversation history. There
 is no frame or label around the whole window. Coder is hidden at rest. Enter
 or Cmd+L opens its composer and conversation; native Return/keypad Enter never
@@ -482,7 +497,7 @@ The routed conversation also controls the live local scene. Say or type
 scene tool to create saved catalogue objects, including player collision and NPC
 avoidance. It can move or remove a whole group. Stacks include their base, and
 rows leave walkable gaps. Placement admission and planning live in
-`scene-policy.coax`; Swift observes player position and supplies the local
+`scene-policy.coax`; the app observes player position and supplies the local
 session address. See [the command contract](../../docs/protocol/aethyrforge-scene-v1.md).
 
 The same tool works programmatically while the app is running:

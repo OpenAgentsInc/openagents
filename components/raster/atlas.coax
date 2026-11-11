@@ -1,5 +1,5 @@
 // The glyph and icon atlas, built in Coax (components/spec.md, GitHub #13153).
-// On the Mac CoreText and AppKit rasterize the atlas (components/zeron/MetalUI.swift)
+// On the Mac CoreText and AppKit rasterize the atlas (apps/shared/host/apple/ct-atlas.m)
 // and in a browser a canvas does (coax/web/gpui.js). A host with neither, Linux
 // first, builds it here: the fonts' outlines through coax/lib/text/ttf.coax and
 // the icons through svg.coax, so those hosts draw the same glyphs from the same

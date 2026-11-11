@@ -1,27 +1,40 @@
 // Firm reason: 6 (AppKit events, CADisplayLink and CAMetalLayer effects).
+// The native Metal realm's view. The app (Sources/app.m, on the shared Mac host) holds it as a
+// native child (ui-host-apple.h ui_child) and uses the @objc members below.
 import AppKit
 import QuartzCore
 
 @MainActor
+@objc(ForgeMetalWorld)
 final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
-    var host: UnsafeMutableRawPointer?
+    @objc var host: UnsafeMutableRawPointer?
     var network: ForgeMetalNetwork?
     var audio: ForgeMetalAudio?
     var display: CADisplayLink?
     var lastTime = 0.0
-    var paused = false
-    var completed = false
+    @objc var paused = false
+    @objc var completed = false
     var resources: URL!
     var storage: URL!
-    var action: ((Int32, String) -> Void)?
-    var failed: ((String) -> Void)?
+    @objc var action: ((Int32, String) -> Void)?
+    @objc var failed: ((String) -> Void)?
     var ready: (() -> Void)?
     var held: [UInt16: Int32] = [:]
     var marked = NSAttributedString(string: "")
     var tracking: NSTrackingArea?
-    var captured = false
+    @objc var captured = false
     var drawScale: Float = 1
-    var preferredHz: Float = 60
+    @objc var preferredHz: Float = 60
+    // The last closed realm's sound, observed as it closed (the app's reload and preview checks).
+    @objc var closedAudio: [String: Any] = [:]
+    @objc var delivered: Int { network?.delivered ?? 0 }
+    @objc func audioObservations() -> [String: Any] { audio?.source.observations() ?? [:] }
+    @objc func startAudio() { audio?.start() }
+    @objc func setPlayerKey(_ key: String) { network?.playerKey = key }
+    @objc func setPresentationHz(_ hz: Float) {
+        preferredHz = hz
+        display?.preferredFrameRateRange = CAFrameRateRange(minimum: hz, maximum: hz, preferred: hz)
+    }
     var quality = ""
     var virtualPoint = NSPoint.zero
     let tab = UUID().uuidString
@@ -32,13 +45,14 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
     override func makeBackingLayer() -> CALayer { CAMetalLayer() }
     override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true }
     required init?(coder: NSCoder) { fatalError() }
+    @objc(openResources:storage:page:local:muted:error:)
     func open(resources: URL, storage: URL, page: URL, local: String, muted: Bool) throws {
         close()
         self.resources = resources; self.storage = storage
         preferredHz = Float(window?.screen?.maximumFramesPerSecond ?? 60)
         quality = (try? String(contentsOf: storage.appendingPathComponent("metal-quality.txt"), encoding: .utf8)) ?? ""
         guard let h = mf_open(resources.path, resources.appendingPathComponent("metal/libeverglade.dylib").path, false, false) else {
-            throw ShellError.failed(mf_error(nil).map { String(cString: $0) } ?? "Metal host failed.")
+            throw NSError(domain: "Aethyrforge", code: 1, userInfo: [NSLocalizedDescriptionKey: mf_error(nil).map { String(cString: $0) } ?? "Metal host failed."])
         }
         host = h; mf_layer(h, Unmanaged.passUnretained(layer!).toOpaque())
         let origin = "\(page.scheme!)://\(page.host!):\(page.port!)"
@@ -70,12 +84,14 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
         display?.add(to: .main, forMode: .common)
         drain()
     }
+    @objc var ticks = 0, surfaceless = 0   // display-link callbacks, and those with no surface to draw on (a check's diagnosis)
     @objc func tick(_ link: CADisplayLink) {
+        ticks += 1
         guard let h = host, !paused else { return }
         let now = link.targetTimestamp
         let pixels = convertToBacking(bounds).size
         var surface = MFSurface()
-        guard mf_surface(h, Int64(bounds.width), Int64(bounds.height), Int64(pixels.width), Int64(pixels.height), quality, &surface) else { return }
+        guard mf_surface(h, Int64(bounds.width), Int64(bounds.height), Int64(pixels.width), Int64(pixels.height), quality, &surface) else { surfaceless += 1; return }
         let before = mf_info(h, 0)
         guard mf_frame_at(h, Float(surface.width), Float(surface.height), surface.scale, Int64(now*1_000_000)) else {
             display?.isPaused = true; failed?(mf_error(h).map { String(cString: $0) } ?? "Metal frame failed."); return
@@ -91,7 +107,7 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
         if !completed && mf_info(h, 10) > 0 { completed = true; ready?() }
         drain()
     }
-    func setPaused(_ value: Bool) {
+    @objc(pauseWorld:) func setPaused(_ value: Bool) {
         guard value != paused else { return }
         paused = value; display?.isPaused = value; lastTime = 0
         if let h = host { mf_shown(h,!value) }
@@ -99,7 +115,7 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
         message(value ? 601:602, "")
         if value { focus(false) } else { focus(window?.isKeyWindow ?? true) }
     }
-    func message(_ kind: Int32, _ text: String) {
+    @objc(message:text:) func message(_ kind: Int32, _ text: String) {
         guard let h = host else { return }
         Data(text.utf8).withUnsafeBytes { mf_message(h, kind, $0.bindMemory(to: UInt8.self).baseAddress, $0.count) }
         drain()
@@ -122,11 +138,12 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
             else { action?(code, text) }
         }
     }
-    func focus(_ focused: Bool) {
+    @objc func focus(_ focused: Bool) {
         if !focused { held.removeAll(); setCaptured(false); marked = NSAttributedString(string: "") }
         if let h = host { mf_focus(h, focused); drain() }
     }
-    func close() {
+    @objc func close() {
+        let source = audio?.source
         let captures = frameCaptures; frameCaptures.removeAll()
         for capture in captures.values { capture.resume(returning:nil) }
         display?.invalidate(); display = nil
@@ -134,6 +151,7 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
         network?.close(); network = nil; audio?.close(); audio = nil
         setCaptured(false)
         if let h = host { mf_layer(h, nil); mf_close(h) }; host = nil
+        if let source { closedAudio = source.observations() }
     }
     func frameJpeg() async -> String? {
         await withCheckedContinuation { continuation in

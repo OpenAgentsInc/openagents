@@ -62,6 +62,17 @@ typedef struct {
   void (*scroll)(void *user, float dy, int precise);
   void (*focus)(void *user, int on);
   int modifier_keys;
+  // Native views of the app's own in the window (ui-host-apple.h ui_child; the Mac's so far): with
+  // views under the components, whether the point (device pixels) is the components' (1) or goes
+  // to the view under it (0). Without hit, every point is the components'.
+  int (*hit)(void *user, float x, float y);
+  // The app's life (UI_LIFE_* in ui-host-apple.h: active, inactive, hidden, shown, minimized,
+  // restored, occlusion changed, quitting). The Linux host sends none yet.
+  void (*life)(void *user, int event);
+  // Every event the window gets, before AppKit handles it (an NSEvent *): 1 when the app took it.
+  int (*event)(void *user, void *native);
+  // A window made but never shown: no Dock icon, no menu bar, never key (a check's; the Mac's).
+  int hidden;
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,
