@@ -1,44 +1,36 @@
 # Bitcoin Lab
 
-An unlisted learning workbench at https://openagents.com/worlds/bitcoin-lab.
-**RECORDED REGTEST / VALIDATED-V1:** the slabs represent actual retained
+An unlisted learning world at https://openagents.com/worlds/bitcoin-lab.
+You walk your Everglade character down a lit lane on a dark grid. Seven
+stations stand beside it, in order:
+
+1. **A byte**: eight bits, the number they make, its hex and its character.
+2. **Hex**: the genesis block's 80 header bytes, coloured by field, with one
+   byte split into its two nibbles.
+3. **Base64**: three bytes regrouped into four six-bit values and their letters.
+4. **Byte order**: the little-endian time field, its bytes reversed into the
+   number and the date it means.
+5. **SHA-256**: 80 bytes in, 32 bytes out.
+6. **SHA-256d**: the hash of the hash, its leading zeros, and the target it
+   must be under.
+7. **The chain**: recorded regtest blocks 95 to 102 as cubes, each joined to
+   the one before by its previous-block hash.
+
+Every hash, digit and date is computed in Coax as the page runs, from the
+genesis header and the recorded blocks.
+
+**RECORDED REGTEST / VALIDATED-V1:** the cubes represent actual retained
 Bitcoin Core regtest blocks, rebuilt from genesis through our complete
 validator and atomically indexed with coins and undo. This is a bounded
-recording, with unknown observation time. It is not a live node. The
-existing explorer retains its separate pow-only contract. The lab has no
-secrets, wallet ownership inference, signing or spending controls.
+recording, with unknown observation time. It is not a live node. The lab has
+no secrets, wallet ownership inference, signing or spending controls.
 
-Select a block slab or use the block arrows. TXS opens transaction tiles;
-I/T/O labels mean input outpoints, transactions and outputs. Select an input
-to inspect its creating transaction, or an output to see its exact amount,
-script and status. SPEND follows the exact spending occurrence. FIND (or /)
-accepts a height, full block hash, txid, address or script. LINK puts the
-selected phase, block and transaction into a shareable URL fragment.
+Use WASD or the arrow keys to walk, Shift to walk slowly and Space to jump;
+drag to turn the follow camera. On touch, drag the left side to walk and the
+right side to look. WORLDS (top right) goes back to [Worlds](/worlds).
 
-A/B/C select acknowledged snapshots at heights 102/103/104. STEP (or R)
-advances the recording and PLAY advances every six seconds. A selected block
-remains visibly stale when B detaches it; C restores A's branch. Blue slabs
-are active, brown slabs stale, orange selected. Each equal-sized slab is one
-block; transaction tile width is relative weight with a 12% visibility floor.
-Exact bytes, weight, chainwork, header time and amounts remain in the inspector.
-
-Walk from spawn at (0, -7) to the Chain plinth at (0, 0) and back. Seven
-stations surround the walkway: Chain; Transactions/UTXOs; Proof/Script; Node;
-Mempool/Mining; Wallets; Lightning. Plinth outlines are floor markers, not
-solid obstacles. All seven stations can be selected from the control bar,
-their visible world labels, or keys 1–7. N selects the next station.
-
-Use WASD to walk, Shift to walk slowly, Space to jump, and left/right arrows
-to turn the shared follow camera. On touch, drag the left side to walk and
-the right side to look. Selecting a control releases walking. Tab and Enter
-reach the same controls; Escape releases focus, then exits to [Worlds](/worlds).
-M hides or shows the chapter map. Previous/Next and PageUp/PageDown browse all 125
-chapters, wrapping at either end. Source opens the selected source chapter.
-
-The map separates the book's exact registry status from the availability of
-a visual exercise. **No chapter has a visual exercise in this first slice.**
-Selecting a station starts at its first chapter. Chapters may cover multiple
-subjects; each has one primary station below. This table is the text fallback.
+The chapter map below lists the book's chapters. Chapters 1, 4 and 5 are
+taught at the stations; the rest are in the book.
 
 This realm stays out of normal Worlds, galaxy, Start, sitemap and agent
 discovery. A deliberate `?realms=all` diagnostic may show it. Unlisted is not
@@ -48,11 +40,11 @@ authentication; direct links are accessible. No public listing is authorized.
 
 | Chapter | Station | Book status | Visual exercise |
 | --- | --- | --- | --- |
-| [1. Bytes, hex and base64](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch001-bytes-hex-and-base64.md) | Proof/Script | implemented | not available |
+| [1. Bytes, hex and base64](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch001-bytes-hex-and-base64.md) | Proof/Script | implemented | at the stations |
 | [2. Big integers in fixed limbs](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch002-big-integers-in-fixed-limbs.md) | Proof/Script | implemented | not available |
 | [3. Constant-time rules and secrets](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch003-constant-time-rules.md) | Proof/Script | implemented | not available |
-| [4. SHA-256](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch004-sha-256.md) | Proof/Script | implemented | not available |
-| [5. SHA-256d and tagged hashes](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch005-sha-256d-and-tagged-hashes.md) | Proof/Script | implemented | not available |
+| [4. SHA-256](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch004-sha-256.md) | Proof/Script | implemented | at the stations |
+| [5. SHA-256d and tagged hashes](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch005-sha-256d-and-tagged-hashes.md) | Proof/Script | implemented | at the stations |
 | [6. RIPEMD-160 and HASH160](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch006-ripemd-160-and-hash160.md) | Proof/Script | implemented | not available |
 | [7. SHA-512](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch007-sha-512.md) | Proof/Script | implemented | not available |
 | [8. HMAC-SHA256](https://github.com/OpenAgentsInc/openagents/blob/main/bitcoin/book/ch008-hmac-sha256.md) | Proof/Script | implemented | not available |

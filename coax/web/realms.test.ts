@@ -200,7 +200,7 @@ test("unlisted realms keep direct routes and noindex, outside the public catalog
   expect(w.listed).toBe(false)
   const html = page(w.realm!, false)
   expect(html).toContain('<meta name="robots" content="noindex, nofollow">')
-  expect(html).toContain('data-app="bitcoin-lab"')
+  expect(html).toContain('data-app="bitcoin-lab-walk"')
   expect(html).toContain('data-slot="bitcoin-lab"')
   expect(html).toContain('<caption>All 125 chapters</caption>')
   expect(listMarkdown(worlds())).not.toContain("bitcoin-lab")

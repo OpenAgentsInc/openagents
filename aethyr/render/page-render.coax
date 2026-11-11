@@ -16,11 +16,13 @@ render_page_memory :: (slug:string,app:string)->int {return render_memory_pages(
  #assert render_page_shader("druid","fivelab")=="/charactercreator.wgsl";
  #assert render_page_shader("archery-range","archery-range")=="/charactercreator.wgsl" && render_page_shader("archery-range","fivelab")=="";
  #assert render_page_memory("archery-range","archery-range")==4096;
+ #assert render_page_shader("bitcoin-lab","bitcoin-lab-walk")=="/charactercreator.wgsl" && render_page_shader("bitcoin-lab","bitcoin-lab")=="" && render_page_memory("bitcoin-lab","bitcoin-lab-walk")==4096;
  #assert render_page_shader("5e-lab","fivelab")=="" && render_page_shader("character-creator","other")=="";
  #assert render_page_shader("character-creators","fivelab")=="";
 }
-// The Archery Range is a module of its own on the same scene (apps/openagents-web/archery-range.coax, everglade/zone.coax).
-render_page_shader :: (slug:string,app:string)->string {return ifx ((slug=="character-creator" || slug=="everglade-experimental" || slug=="druid") && app=="fivelab") || (slug=="archery-range" && app=="archery-range") then "/charactercreator.wgsl" else "";}
+// The Archery Range and Bitcoin Lab's walk are modules of their own on the same scene (apps/openagents-web/archery-range.coax,
+// bitcoin-lab-walk.coax, everglade/zone.coax).
+render_page_shader :: (slug:string,app:string)->string {return ifx ((slug=="character-creator" || slug=="everglade-experimental" || slug=="druid") && app=="fivelab") || (slug=="archery-range" && app=="archery-range") || (slug=="bitcoin-lab" && app=="bitcoin-lab-walk") then "/charactercreator.wgsl" else "";}
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) != 2 { return 2; }

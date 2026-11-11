@@ -332,6 +332,11 @@ fivelab=$!
 timed archery-range "$here/../../coax/web/wasm.sh" "$here/archery-range.coax" "$here/archery-range-face.c" "$here/build/archery-range.wasm" \
   "$here/everglade-step.coax" "$a/sticks.coax" &
 archery_range=$!
+# /worlds/bitcoin-lab (unlisted): Bitcoin Lab, the Bitcoin book's first chapter as a walk on the Grid: an Everglade
+# zone (everglade/zone.coax) with your character, its stations drawn as quads by bitcoin-lab-fx.wgsl (aethyr/fx/gpu-quads.coax).
+timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab-walk.coax" "$here/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
+  "$here/everglade-step.coax" "$a/sticks.coax" &
+bitcoin_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
@@ -451,6 +456,7 @@ wait "$painted"
 wait "$watchtower"
 wait "$fivelab"
 wait "$archery_range"
+wait "$bitcoin_lab_walk"
 wait "$everglade2"
 # Everglade II's admin mode is a dev build's only (everglade2-admin.coax, wasm.sh's --build-profile):
 # a release everglade2.wasm holding its panel's words or its room lines is refused.

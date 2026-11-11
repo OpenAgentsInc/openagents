@@ -1,0 +1,3 @@
+--vertices qfx_particle_vs,qfx_particle_over_vs
+--fragments qfx_particle_fs,qfx_particle_over_fs
+--bindings apps/openagents-web/gpu/bitcoin-lab-fx.bindings --strip qfx_
