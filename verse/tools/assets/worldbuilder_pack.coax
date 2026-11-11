@@ -179,6 +179,10 @@ Wb :: struct {
   imgl: [GL_ARR] int;   // this glTF's images' layers, -2 not yet looked up
   txt: [1] Txt; enc: [1] Txt;
   jtext: [4194304] u8; jd: [1] Jv; jn: [262144] JvNode;
+  // the static animals' material colours, from their animated glTF exports (by animal, then by name)
+  anim_name: [64] string; anim_gltf: [64] string; nanim: int;
+  ctext: [8388608] u8; cd: [1] Jv; cn: [262144] JvNode;
+  col: [1] Cols;
   skipped: int;
 }
 wb_less :: (a: string, b: string) -> bool {
@@ -201,6 +205,24 @@ wb_artifact :: (w: []Wb, name: string) -> string {
 
 // The registry's placeable Quaternius models, sorted by name.
 wb_registry :: (w: []Wb) {
+  // The static animals' GLBs (the ultimate-animals-static recipe) carry the materials' names but
+  // not their colours; the same animals' glTF exports (ultimate-animals) carry both.
+  an := fs_read("assets/registry/assets/ultimate-animals.jsonl", w[0].jtext[..]);
+  if an < 0 || an >= w[0].jtext.count { ph_die("worldbuilder pack: can't read the ultimate-animals registry"); }
+  aat := 0;
+  while aat < an {
+    e := aat; while e < an && w[0].jtext[e] != '\n' { e += 1; }
+    line := cast(string) w[0].jtext[aat..<e]; aat = e + 1;
+    if line.count == 0 || !jv_parse(w[0].jd[..], line, w[0].jn[..]) { continue; }
+    d := w[0].jd[0]; id := jv_raw(d, jv_get(d, 0, "id")); arts := jv_path(d, 0, "definition.artifacts");
+    for k: 0..<jv_len(d, arts) {
+      a := jv_at(d, arts, k);
+      if jv_raw(d, jv_get(d, a, "format")) == "gltf" && w[0].nanim < 64 && starts(id, "quaternius/ultimate-animals/") {
+        w[0].anim_name[w[0].nanim] = txt_keep(w[0].txt[..], id["quaternius/ultimate-animals/".count..<id.count]);
+        w[0].anim_gltf[w[0].nanim] = txt_keep(w[0].txt[..], jv_raw(d, jv_get(d, a, "sha256"))); w[0].nanim += 1;
+      }
+    }
+  }
   for c: WB_COLLECTIONS {
     pb: [512] u8; s: [1] Sb; s[0] = sb(pb[..]); sb_put(s[..], "assets/registry/assets/"); sb_put(s[..], c); sb_put(s[..], ".jsonl");
     n := fs_read(sb_text(s[..]), w[0].jtext[..]);
@@ -309,6 +331,7 @@ wb_primitive :: (w: []Wb, g: []Gltf, iw: []ImgWork, objects: string, scratch: st
   if mi >= 0 {
     mat := gl_at(g, GA_MAT, mi); pbr := gl_get(g, mat, "pbrMetallicRoughness");
     v: [16] f64; if gl_nums(g, pbr, "baseColorFactor", v[..]) == 4 { factor = [4] f64.[v[0], v[1], v[2], v[3]]; }
+    else { c: [1] [4] f64; if wb_colour_of(w[0].col[..], gl_str(g, mat, "name"), c[..]) { factor = c[0]; } }
     tex := gl_get(g, pbr, "baseColorTexture");
     if tex >= 0 {
       t := gl_int(g, tex, "index", -1);
@@ -377,15 +400,103 @@ wb_scene :: (w: []Wb, g: []Gltf, iw: []ImgWork, objects: string, scratch: string
   }
 }
 // The size a kit is packed at: the Ultimate Animals are made about three times life size (a horse
-// 4.8 m tall), so they shrink to 0.35 (a horse 1.7 m, a cow 2.8 m long); everything else as made.
-// Uniform, so normals keep their direction; applied before the bounds, so the pack and both
-// catalogues agree.
-WB_ANIMAL_SCALE :: 0.35;
-wb_scale :: (name: string) -> f64 { return ifx starts(name, "ultimate-animals-static/") then WB_ANIMAL_SCALE else 1.0; }
-#test "the animals shrink to life size; nothing else is scaled" {
-  #assert wb_scale("ultimate-animals-static/horse") == 0.35 && wb_scale("bestiary-dungeon/imp") == 1.0 && wb_scale("nature/birch-1") == 1.0;
+// 4.8 m tall), so they shrink to 0.35 (a horse 1.7 m, a cow 2.8 m long); Stylized Nature is made
+// about twice the village's scale (grass 1.3 m, flowers 1.5 m), so it shrinks to 0.6; everything
+// else as made. Uniform, so normals keep their direction; applied before the bounds, so the pack
+// and both catalogues agree.
+WB_ANIMAL_SCALE :: 0.35; WB_NATURE_SCALE :: 0.6;
+wb_scale :: (name: string) -> f64 {
+  if starts(name, "ultimate-animals-static/") { return WB_ANIMAL_SCALE; }
+  if starts(name, "nature/") { return WB_NATURE_SCALE; }
+  return 1.0;
+}
+#test "the animals and the nature kit shrink to the village scale; nothing else is scaled" {
+  #assert wb_scale("ultimate-animals-static/horse") == 0.35 && wb_scale("bestiary-dungeon/imp") == 1.0 && wb_scale("nature/birch-1") == 0.6;
+  #assert wb_scale("village/door-1-flat") == 1.0 && wb_scale("ultimate-food/apple") == 1.0 && wb_scale("naturex/a") == 1.0;
   r := wb_recentre([6] f64.[-0.705 * wb_scale("ultimate-animals-static/horse"), 0.0, -2.84 * 0.35, 0.705 * 0.35, 4.82 * 0.35, 2.84 * 0.35]);
   #assert abs(r[4] - 1.687) < 0.001 && abs(r[5] - r[2] - 1.988) < 0.001;
+}
+// A model's material colours by name, when its own glTF has none
+Cols :: struct { n: int; name: [64] string; factor: [64] [4] f64; b: [8192] u8; nb: int; }
+cols_add :: (c: []Cols, name: string, f: [4] f64) {
+  if c[0].n >= 64 || c[0].nb + name.count > c[0].b.count { return; }
+  for k: 0..<name.count { c[0].b[c[0].nb + k] = name[k]; }
+  c[0].name[c[0].n] = cast(string) c[0].b[c[0].nb..<c[0].nb + name.count]; c[0].nb += name.count;
+  c[0].factor[c[0].n] = f; c[0].n += 1;
+}
+// For a static animal, its animated export's material colours (name and baseColorFactor); none else.
+wb_animal_colours :: (w: []Wb, objects: string, name: string) {
+  if !starts(name, "ultimate-animals-static/") { return; }
+  animal := name["ultimate-animals-static/".count..<name.count]; sha := "";
+  for k: 0..<w[0].nanim { if w[0].anim_name[k] == animal { sha = w[0].anim_gltf[k]; } }
+  if sha.count == 0 { ph_die2("worldbuilder pack: no ultimate-animals glTF for ", name); }
+  n := fs_read(wb_path(w, objects, sha), w[0].ctext[..]);
+  if n < 0 || n >= w[0].ctext.count { ph_die2("worldbuilder pack: can't read the glTF export of ", name); }
+  if !jv_parse(w[0].cd[..], cast(string) w[0].ctext[0..<n], w[0].cn[..]) { ph_die2("worldbuilder pack: bad JSON in the glTF export of ", name); }
+  wb_colours_from(w[0].col[..], w[0].cd[0]);
+}
+wb_colours_from :: (cl: []Cols, d: Jv) {
+  mats := jv_get(d, 0, "materials");
+  for k: 0..<jv_len(d, mats) {
+    mt := jv_at(d, mats, k); f := jv_get(d, jv_get(d, mt, "pbrMetallicRoughness"), "baseColorFactor");
+    if f < 0 || jv_len(d, f) != 4 { continue; }
+    c: [4] f64; for q: 0..<4 { c[q] = pf(jv_raw(d, jv_at(d, f, q))); }
+    cols_add(cl, jv_raw(d, jv_get(d, mt, "name")), c);
+  }
+}
+// The Modular Dungeon, Ultimate Food and Ultimate RPG GLBs (observed from their Blender files) lose
+// their materials' colours too; the kits' own OBJ exports keep them in an .mtl beside the model,
+// in the package's original snapshot: `newmtl NAME` then `Kd R G B`, linear as glTF's factors.
+// Nothing when there is no such file, or when the table is already filled.
+wb_mtl_colours :: (w: []Wb, objects: string, revision: string, model: string) {
+  if w[0].col[0].n > 0 || revision.count == 0 || model.count == 0 { return; }
+  pb: [2048] u8; o: [1] Sb; o[0] = sb(pb[..]);
+  sb_put(o[..], dir_name(objects)); sb_put(o[..], "/originals/"); sb_put(o[..], revision); sb_put(o[..], "/source/OBJ/"); sb_put(o[..], model); sb_put(o[..], ".mtl");
+  if !fs_exists(sb_text(o[..])) { return; }
+  n := fs_read(sb_text(o[..]), w[0].ctext[..]);
+  if n < 0 || n >= w[0].ctext.count { ph_die2("worldbuilder pack: can't read ", sb_text(o[..])); }
+  wb_mtl_parse(w[0].col[..], cast(string) w[0].ctext[0..<n]);
+}
+wb_mtl_parse :: (cl: []Cols, text: string) {
+  at := 0; current := "";
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[at..<e]; at = e + 1;
+    if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    if starts(line, "newmtl ") { current = line[7..<line.count]; continue; }
+    if starts(line, "Kd ") && current.count > 0 {
+      c := [4] f64.[1.0, 1.0, 1.0, 1.0]; k := 0; i := 3;
+      while i < line.count && k < 3 {
+        while i < line.count && line[i] == ' ' { i += 1; }
+        j := i; while j < line.count && line[j] != ' ' { j += 1; }
+        if j > i { c[k] = pf(line[i..<j]); k += 1; }
+        i = j;
+      }
+      if k == 3 { cols_add(cl, current, c); }
+      current = "";
+    }
+  }
+}
+#test "an OBJ export's .mtl gives each material its Kd" {
+  w: [1] Cols;
+  wb_mtl_parse(w[..], "# Blender MTL\nnewmtl DarkRed\nNs 96.0\nKd 0.106287 0.022293 0.015061\nd 1.0\n\nnewmtl Leaf\r\nKd 0.25 0.5 0.125\r\n");
+  c: [1] [4] f64;
+  #assert w[0].n == 2 && wb_colour_of(w[..], "DarkRed", c[..]) && abs(c[0][0] - 0.106287) < 0.0000001 && abs(c[0][2] - 0.015061) < 0.0000001;
+  #assert wb_colour_of(w[..], "Leaf", c[..]) && c[0][1] == 0.5 && !wb_colour_of(w[..], "Ns", c[..]);
+}
+// a material's colour from that table, by name (false when it names none)
+wb_colour_of :: (cl: []Cols, name: string, out: [][4] f64) -> bool {
+  for k: 0..<cl[0].n { if cl[0].name[k] == name { out[0] = cl[0].factor[k]; return true; } }
+  return false;
+}
+#test "a static animal's materials take their colours from its export, by name" {
+  w: [1] Cols; d: [1] Jv; nodes: [64] JvNode;
+  text := "{\"materials\":[{\"name\":\"Main\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.25,0.5,0.125,1]}},{\"name\":\"Eyes\"}]}";
+  #assert jv_parse(d[..], text, nodes[..]);
+  wb_colours_from(w[..], d[0]);
+  c: [1] [4] f64;
+  #assert w[0].n == 1 && wb_colour_of(w[..], "Main", c[..]) && c[0][0] == 0.25 && c[0][1] == 0.5 && c[0][2] == 0.125;
+  #assert !wb_colour_of(w[..], "Eyes", c[..]) && !wb_colour_of(w[..], "Hooves", c[..]);
 }
 // Model m: loaded, staged, recentred and written to the pack's vertices and indices.
 wb_model :: (w: []Wb, g: []Gltf, iw: []ImgWork, objects: string, scratch: string, m: int) {
@@ -409,6 +520,9 @@ wb_model :: (w: []Wb, g: []Gltf, iw: []ImgWork, objects: string, scratch: string
     }
   }
   if path.count == 0 { ph_die2("worldbuilder pack: no glTF for ", w[0].name[m]); }
+  w[0].col[0].n = 0; w[0].col[0].nb = 0;
+  wb_animal_colours(w, objects, w[0].name[m]);
+  wb_mtl_colours(w, objects, jv_raw(d, jv_path(d, 0, "definition.package_revision")), jv_raw(d, jv_path(d, 0, "definition.name")));
   gl_load(g, path);
   for k: 0..<g[0].nx[GA_IMG] { w[0].imgl[k] = -2; }
   w[0].ns = 0; w[0].nsi = 0;
