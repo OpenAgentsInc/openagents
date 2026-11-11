@@ -48,6 +48,9 @@
 // still reach the realm and never pile up.
 - (void)shown:(BOOL)shown;
 - (void)idle;
+// A command for the realm's agent driver (aethyr/agent/drive.coax: tree, walk-to ID, face ID,
+// use ABILITY on ID, status ...), and its answer; nil when the realm has no driver.
+- (NSString *)drive:(NSString *)command;
 // 2 while the page wants the pointer held (mouselook). The host says what it did: 1 held, 0 let go, 2 couldn't.
 - (int32_t)mouselook;
 - (void)pointerLock:(int32_t)status;

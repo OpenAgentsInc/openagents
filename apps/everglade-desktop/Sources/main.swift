@@ -14,7 +14,7 @@
 //       browser would join it), nothing of yours is kept, and --do STEPS plays input first: `key:w:2` holds a key two seconds,
 //       `tap:640,400` clicks a point, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
 //       mouselook asks, `press:2:1` holds a mouse button a second at the middle, `turn:40,0` moves
-//       the held mouse; steps are split by `;`. --frames DIR writes every sixth frame after `record`
+//       the held mouse, `drive:walk-to guard` asks the realm's agent driver; steps are split by `;`. --frames DIR writes every sixth frame after `record`
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
 //       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
@@ -407,6 +407,10 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       }
       else if verb == "text", part.count > 1 { page.text(part[1]); run(0.1) }
       else if verb == "look" { shotLooks = true; run(0.2) }
+      else if verb == "drive", part.count > 1 {   // the realm's agent driver; its answer goes to stderr
+        let said = page.drive(part[1...].joined(separator: ":")) ?? "this realm has no driver"
+        FileHandle.standardError.write(Data("drive \(part[1]): \(said)\n".utf8)); run(1.0 / 60)
+      }
       else if verb == "turn", part.count > 1 { let xy = part[1].split(separator: ",").compactMap { Double($0) }; if xy.count == 2 { page.look(CGPoint(x: xy[0], y: xy[1])); run(0.1) } }
       else if verb == "record" { recording = true }
       else if verb == "press", part.count > 1, let b = Int32(part[1]) {   // a mouse button at the middle of the view, held SECONDS

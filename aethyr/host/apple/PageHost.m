@@ -32,7 +32,7 @@ typedef uintptr_t A;
  F(uint32_t,frame_store_cap,(void)) F(A,frame_store,(A)) F(uint32_t,frame_store_bytes,(A)) \
  F(uint32_t,particle_cap,(void)) F(A,particles,(A)) F(uint32_t,particle_bytes,(A)) F(uint32_t,particle_instances,(A)) \
  F(int32_t,action,(A)) F(A,outbox,(A)) F(uint32_t,outbox_len,(A)) F(uint32_t,outbox_capacity,(A)) F(void,action_done,(A)) \
- F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void))
+ F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void))
 typedef struct {
 #define PH_FN(result,name,args) result (*name) args;
  PH_FACE(PH_FN)
@@ -919,6 +919,14 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  if (shown && x.focus) x.focus(state);
 }
 - (void)idle { if (closed) return; phCurrent = self; [self drain]; }
+// The agent driver (aethyr/agent/drive.coax), as host.js's coaxial.drive: a command in as message
+// 700, the realm's answer out. nil for a realm that has no driver.
+- (NSString *)drive:(NSString *)command {
+ if (closed || !x.drive_out || !x.drive_out_len) return nil;
+ phCurrent = self; [self message:700 text:command];
+ A p = x.drive_out(state); size_t n = x.drive_out_len(state);
+ return p && n ? [[NSString alloc] initWithBytes:(void *)p length:n encoding:NSUTF8StringEncoding] : @"";
+}
 - (int32_t)mouselook { return !closed && x.mouselook ? x.mouselook(state) : 0; }
 - (void)pointerLock:(int32_t)status { if (!closed && x.pointer_lock) x.pointer_lock(state, status); }
 - (void)look:(CGPoint)travel { if (!closed && x.look_delta) x.look_delta(state, (float)travel.x, (float)travel.y); }
