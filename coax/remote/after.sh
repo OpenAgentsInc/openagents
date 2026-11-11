@@ -161,7 +161,7 @@ args_for() {   # item job-args...
     module\ *) echo "module ${item#module }" ;;
     compiler\ *) echo "unit ${item#compiler }" ;;
     job\ *) echo "${item#job }" ;;
-    step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page) echo "reports" ;;
+    step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
     *) echo "$*" ;;   # the whole job again
   esac

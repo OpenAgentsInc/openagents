@@ -26,9 +26,9 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, everglade-parity, and the committed
+#   coax/remote/check.sh reports          tools-check, everglade-parity, the committed
 #                                         shaders, realm pages and changelog page against
-#                                         their sources
+#                                         their sources, and every realm's link-preview card
 #   coax/remote/check.sh room             the room build
 #   coax/remote/check.sh tools            reports and room
 #
@@ -202,6 +202,7 @@ reports() {
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
   generated
+  cards
 }
 # The other committed files the web build writes (#13117): each realm's page
 # from realms.json, and the changelog page from coax/CHANGELOG.md.
@@ -209,6 +210,9 @@ generated() {
   step realm-pages bun coax/web/realms.ts --check || status=1
   step changelog-page coax/web/tool.sh coax/web/changelog-page.coax --check || status=1
 }
+# Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
+# one, so it shows at landing, not at release.
+cards() { step realm-cards bun coax/web/og.ts --cards apps/openagents-web || status=1; }
 room() { step room-build coax/web/room/build.sh || status=1; }
 # The web build for a change: all of it, its touched modules, or nothing.
 web_since() {
@@ -234,6 +238,9 @@ reports_since() {
   # Their sources: the realm table and its generator, and the compiler's changelog.
   if grep -Eq '^(apps/openagents-web/realms|coax/web/realms\.ts|coax/CHANGELOG\.md|coax/web/changelog-page\.coax|apps/openagents-web/(changelog-content\.coax|coax/changelog/))' "$out/changed"; then
     generated
+  fi
+  if grep -Eq '^(apps/openagents-web/(realms|og/)|coax/web/og\.ts)' "$out/changed"; then
+    cards
   fi
 }
 run() {   # mode arg: one check

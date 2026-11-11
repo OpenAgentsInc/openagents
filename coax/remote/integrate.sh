@@ -122,7 +122,7 @@ also_for() {   # item
     module\ *) echo "module ${1#module }" ;;
     compiler\ *) echo "unit ${1#compiler }" ;;
     step\ wasm) echo "wasm" ;;
-    step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page) echo "reports" ;;
+    step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
   esac
 }

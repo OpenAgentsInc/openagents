@@ -43,7 +43,9 @@ const realms: Record<string, any> = Object.fromEntries(JSON.parse(readFileSync(j
 // (?stage=highlight, docs/verse/clips.md) is stepped `skip` seconds of game time in; ?card=1 asks
 // the game to leave its HUD out. A realm without it is shot big (its HUD small at the edges)
 // and cropped to [x, y, w, h] clear of it. Anything not listed: golden mode at 1680x638.
-const STILLS: Record<string, { query?: string; skip?: number; size?: string; crop?: number[] }> = {
+// `path`: the page to shoot when the realm's own page isn't its world (fivelab picks its page by
+// the /worlds/ path: at /realms/x it shows the Lab's battle).
+const STILLS: Record<string, { path?: string; query?: string; skip?: number; size?: string; crop?: number[] }> = {
   "hold-the-stair": { query: "?stage=highlight&card=1", skip: 10 },
   "orbit-league": { query: "?stage=highlight&card=1", skip: 1.65 },
   "belt-2200": { query: "?stage=highlight&card=1", skip: 2.5 },
@@ -53,6 +55,9 @@ const STILLS: Record<string, { query?: string; skip?: number; size?: string; cro
   "drop": { size: "2520x957", crop: [500, 200, 1520, 578] },
   "built": { size: "2520x957", crop: [260, 70, 2000, 760] },
   "sandbox": { size: "2520x957", crop: [220, 0, 2000, 760] },
+  "archery-range": { path: "/worlds/archery-range", query: "", crop: [300, 80, 1000, 380] },
+  "everglade-experimental": { path: "/worlds/everglade-experimental", query: "", crop: [480, 80, 850, 323] },
+  "painted-village": { crop: [100, 50, 1380, 525] },
 }
 const dirOf = (path: string) => path.replace(/^\//, "")
 // A page's card is ours to render when it isn't hand-made: its image is the default or its rendered card.
@@ -108,11 +113,11 @@ try {
       if (how.skip !== undefined) {
         // a staged moment, stepped in fixed game time (clip.ts): the same frame every render
         const frames = join(work, `${slug}-frames`)
-        run(["bun", join(here, "clip.ts"), `${base}${path}${how.query}`, join(work, `${slug}.mp4`), "--size", how.size ?? "1680x638",
+        run(["bun", join(here, "clip.ts"), `${base}${how.path ?? path}${how.query}`, join(work, `${slug}.mp4`), "--size", how.size ?? "1680x638",
           "--seconds", "0.034", "--fps", "30", "--skip", String(how.skip), "--frames", frames])
         run(["cp", join(frames, "f00000.png"), png])
       } else {
-        shot(`${path}${how.query ?? "?golden"}`, png, `${w}x${h}`, Math.max(6000, (realm?.golden?.settle ?? 0) + 5000))
+        shot(`${how.path ?? path}${how.query ?? "?golden"}`, png, `${w}x${h}`, Math.max(6000, (realm?.golden?.settle ?? 0) + 5000))
       }
       // the part of the shot clear of the realm's HUD, then fitted to the card's 1200x456 band
       if (how.crop) { const f = how.skip === undefined ? fit(w) : 1; crop(png, how.crop.map((v) => Math.round(v * f))) }

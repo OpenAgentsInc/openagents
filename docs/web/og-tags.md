@@ -105,6 +105,11 @@ tag above:
 - **A project**: the same command renders its card. `--all` renders every
   rendered card again, which moves the projects' done bars along.
 
+The green-main reports (`coax/remote/check.sh reports`, step `realm-cards`)
+run `bun coax/web/og.ts --cards apps/openagents-web`, which fails when a realm
+in `realms.json`, listed or not, has no card of its own. A realm that lands
+without its card shows there, not at the next release (#13144).
+
 `COAXIAL_OG_DRAFT=1` stages a site with the refusals as warnings (og-render
 uses it). `bun coax/web/og.ts --report apps/openagents-web` prints every
 page's preview from the sources, without a build.

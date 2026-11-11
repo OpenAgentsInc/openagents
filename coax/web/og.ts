@@ -22,6 +22,8 @@
 //
 //   bun coax/web/og.ts SITE_DIR APP_DIR   fill and check a staged site
 //   bun coax/web/og.ts --report APP_DIR   what each page's preview would be, from the sources
+//   bun coax/web/og.ts --cards APP_DIR    exit 1 when a realm in realms.json has no card of its own
+//                                          (the green-main reports run it, so a realm lands with its card)
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from "node:fs"
 import { dirname, join, relative, sep } from "node:path"
 
@@ -225,6 +227,20 @@ if (import.meta.main) {
     const list = pages(app).filter(({ dir }) => !dir || !existsSync(join(app, dir, "UNLISTED"))).map(({ dir, file }) => preview(readFileSync(file, "utf8"), dir, app, app))
     shared(list)
     process.stdout.write(table(list))
+    process.exit(0)
+  }
+  if (args[0] === "--cards") {
+    // The release's realm refusals, from the sources: a realm's page (realms.json, listed or not)
+    // whose image is missing, broken or the branded default. Its card is og/realms/SLUG.jpg
+    // (bun coax/web/og-render.ts /realms/SLUG) or a hand-made card.
+    const app = args[1]
+    const realms = realmSlugs(app)
+    const bad = pages(app).filter(({ dir }) => kindOf(app, dir, realms) === "realm")
+      .map(({ dir, file }) => preview(readFileSync(file, "utf8"), dir, app, app, realms))
+      .filter((p) => p.errors.some((e) => e.startsWith("image") || e.includes("without its own card")))
+    for (const p of bad) console.error(`og: ${p.path}: ${p.errors.join("; ")}`)
+    if (bad.length) { console.error("og: a realm without its card: bun coax/web/og-render.ts " + bad.map((p) => p.path).join(" ") + " (docs/web/og-tags.md)"); process.exit(1) }
+    console.log(`og: every realm has its card (${realms.size} realms)`)
     process.exit(0)
   }
   const [site, app] = args
