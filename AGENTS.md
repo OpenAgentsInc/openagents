@@ -160,6 +160,21 @@ with the Monitor tool on an until-loop over its log. Never loop on `sleep N`: in
 the 36 hours to 2026-11-10, agents spent 32 hours in sleep polls, more than half
 their tool time.
 
+**Several small issues at once.** Write the code for all of them first, then
+verify once. Five issues and an extra request took 2 h 15 min this way on
+2026-11-10, against an hour or more each one at a time. To make that one
+verification pass work:
+1. Rebase onto `origin/main` before you verify, not after. Verifying an old base
+   and then rebasing cost two extra rounds.
+2. Fetch main's built pages (`coax/remote/pages.sh origin/main`) before you build
+   modules, because `pages.sh` overwrites them.
+3. Run suites through `coax/remote/check.sh only PATH`, never `tool.sh suites`
+   directly on a host.
+4. Group small suites into a few host jobs. Each job's snapshot and send can take
+   minutes on busy hosts.
+5. Fix what fails and rerun only that.
+6. Commit one commit per issue, so each one reverts alone.
+
 **Getting the compiler.** Never wait on a bootstrap you don't need.
 `coax/build.sh` installs the published build of your tree's compiler in
 seconds: it reads the release bucket, then the GitHub mirror (release tags
