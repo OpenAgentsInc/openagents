@@ -61,7 +61,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy; do
+for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy auth-policy auth-seal; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
@@ -118,7 +118,16 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   if gcloud secrets describe openagents-resend-api-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_RESEND_API_KEY=openagents-resend-api-key:latest"; fi
   # Seat tickets (player.c room_ticket): the key oa-room checks them with (coax/web/room/room-ticket.coax).
   if gcloud secrets describe oa-room-ticket-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest"; fi
-  [[ "$6" == staging ]] && env+="~OA_EMAIL_ALLOW=chris@openagents.com"
+  # Staging's allowlist: the owner and the login checks' test inbox (secret oa-email-allow-staging), else the owner.
+  if [[ "$6" == staging ]]; then
+    if gcloud secrets describe oa-email-allow-staging --project "$project" >/dev/null 2>&1; then secrets+=",OA_EMAIL_ALLOW=oa-email-allow-staging:latest"
+    else env+="~OA_EMAIL_ALLOW=chris@openagents.com"; fi
+  fi
+  # Our own login (auth.c, docs/auth/data-and-backups.md): the key that seals emails and the pepper
+  # of their lookups, one pair per environment. Without them, email login says it isn't set up.
+  local sfx=""; [[ "$6" == staging ]] && sfx="-staging"
+  if gcloud secrets describe "oa-auth-seal-key$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_SEAL_KEY=oa-auth-seal-key$sfx:latest"; fi
+  if gcloud secrets describe "oa-auth-lookup-pepper$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_LOOKUP_PEPPER=oa-auth-lookup-pepper$sfx:latest"; fi
   local spark
   spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$spark" ]] && env+="~OA_SPARK_URL=$spark"

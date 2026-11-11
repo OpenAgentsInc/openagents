@@ -107,6 +107,14 @@ bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req,
     memcpy(who, ev.pubkey, 65);
     return true;
   }
+  // A session of our own (auth.c, __Host-oa_session or an app's token): its account's Nostr key.
+  // An account with no key yet is not a signer here: these routes name people by key.
+  const auth_principal *p = auth_principal_of(q);
+  if (p && p->session[0]) {
+    if (!p->pubkey[0]) return false;
+    memcpy(who, p->pubkey, 65);
+    return true;
+  }
   char token[65]; cookie_named(q, SITE_COOKIE, token);
   if (!token[0]) return false;
   const char *v[1] = {token};

@@ -7,6 +7,7 @@
 #   coax/web/api/backup/deploy.sh --run dump   # then run one: dump or drill, and wait
 #
 #   oa-db-dump   nightly 09:30 UTC (scheduler oa-db-dump-nightly): backup dump (backup.coax)
+#   oa-db-dump-auth  every six hours (scheduler oa-db-dump-auth-6h): the auth schema alone, #13200
 #   oa-db-drill  the 3rd of each month 12:00 UTC (scheduler oa-db-drill-monthly): backup drill
 #
 # Both run as the API's runtime account, read the database as oa_dump
@@ -53,16 +54,17 @@ gcloud storage buckets add-iam-policy-binding "gs://$bucket" --member "serviceAc
 gcloud secrets add-iam-policy-binding oa-db-backup-drill-age-key --project "$project" --member "serviceAccount:$sa" \
   --role roles/secretmanager.secretAccessor --condition=None > /dev/null
 
-job() {  # name mode cpu memory timeout retries secrets
+job() {  # name mode cpu memory timeout retries secrets [prefix schema]
   gcloud run jobs deploy "$1" --image "$tag" --project "$project" --region "$region" --args "$2" \
     --service-account "$sa" --set-cloudsql-instances "$instance" --cpu "$3" --memory "$4" \
     --task-timeout "$5" --max-retries "$6" --set-secrets "$7" \
-    --set-env-vars "OA_BACKUP_BUCKET=$bucket,OA_BACKUP_PREFIX=oa_analytics" --quiet > /dev/null
+    --set-env-vars "OA_BACKUP_BUCKET=$bucket,OA_BACKUP_PREFIX=${8:-oa_analytics},OA_BACKUP_SCHEMA=${9:-}" --quiet > /dev/null
   gcloud run jobs add-iam-policy-binding "$1" --project "$project" --region "$region" \
     --member "serviceAccount:$sa" --role roles/run.invoker > /dev/null
   echo "backup: job $1"
 }
 job oa-db-dump dump 1 1Gi 1800s 1 "OA_DUMP_DATABASE=oa-db-dump-database-url:latest"
+job oa-db-dump-auth dump 1 512Mi 900s 1 "OA_DUMP_DATABASE=oa-db-dump-database-url:latest" oa_analytics-auth auth
 job oa-db-drill drill 2 4Gi 3600s 0 "OA_DUMP_DATABASE=oa-db-dump-database-url:latest,OA_DRILL_AGE_KEY=oa-db-backup-drill-age-key:latest"
 
 schedule() {  # name cron job
@@ -74,8 +76,9 @@ schedule() {  # name cron job
   echo "backup: schedule $1 ($2 UTC)"
 }
 schedule oa-db-dump-nightly "30 9 * * *" oa-db-dump
+schedule oa-db-dump-auth-6h "15 */6 * * *" oa-db-dump-auth
 schedule oa-db-drill-monthly "0 12 3 * *" oa-db-drill
 
 if [[ "${1:-}" == --run ]]; then
-  gcloud run jobs execute "oa-db-${2:?dump or drill}" --project "$project" --region "$region" --wait --quiet
+  gcloud run jobs execute "oa-db-${2:?dump, dump-auth or drill}" --project "$project" --region "$region" --wait --quiet
 fi

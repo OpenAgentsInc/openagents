@@ -72,8 +72,23 @@ static char *job_heartbeat(PGconn *db, const char *day) {
   char *out = malloc(64); if (out) snprintf(out, 64, "{\"day\":\"%s\"}", day);
   return out;
 }
+// Our own login's housekeeping (auth.c, #13202, #13203): old rate-limit windows, ended
+// sessions and spent logins go; audit rows older than two years lose their account.
+static char *job_auth_sweep(PGconn *db, const char *day) {
+  PGresult *r = PQexec(db, "SELECT auth.limit_sweep(), auth.audit_age(), "
+                           "(WITH d AS (DELETE FROM auth.pending WHERE expires_at < now() - interval '1 day' RETURNING 1) SELECT count(*) FROM d), "
+                           "(WITH d AS (DELETE FROM auth.nip98_seen WHERE expires_at < now() RETURNING 1) SELECT count(*) FROM d)");
+  char *out = NULL;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && (out = malloc(200)))
+    snprintf(out, 200, "{\"day\":\"%s\",\"limits\":%s,\"audit_aged\":%s,\"pending\":%s,\"signatures\":%s}", day,
+             PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 2), PQgetvalue(r, 0, 3));
+  else api_log("job auth-sweep: %s", PQerrorMessage(db));
+  PQclear(r);
+  return out;
+}
 static const struct { const char *name; char *(*run)(PGconn *db, const char *day); } JOBS[] = {
   {"heartbeat", job_heartbeat},   // proves the schedule: one run each morning
+  {"auth-sweep", job_auth_sweep},
 };
 
 bool jobs_route(const request *q) {

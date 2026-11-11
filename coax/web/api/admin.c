@@ -87,6 +87,29 @@ static bool is_admin(const char *pubkey) {
   return yes;
 }
 bool admin_is(const char *pubkey) { return is_admin(pubkey); }
+
+// The admin page's own cookie (oa_admin, until #13207 moves /admin to our sessions): its admin's
+// key in who, or false. auth.c reads it so the gate knows an admin logged in that way.
+bool admin_cookie_who(const request *q, PGconn *db, char who[65]) {
+  char cookies[4096];
+  who[0] = 0;
+  if (!api_header(q, "Cookie", cookies, sizeof cookies)) return false;
+  const char *c = strstr(cookies, "oa_admin=");
+  if (!c || (c != cookies && c[-1] != ' ' && c[-1] != ';')) return false;
+  c += 9;
+  char token[65]; size_t n = 0;
+  while (n < 64 && isxdigit((unsigned char)c[n])) { token[n] = c[n]; n++; }
+  token[n] = 0;
+  if (n != 64) return false;
+  char ms[32]; snprintf(ms, sizeof ms, "%lld", (long long)api_now_ms());
+  const char *v[2] = {token, ms};
+  PGresult *r = PQexecParams(db, "SELECT pubkey FROM analytics.admin_sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') "
+                                 "AND expires_ms > $2::bigint", 2, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  if (ok) snprintf(who, 65, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  return ok && is_admin(who);
+}
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
 
 // A signed event used once only: false when it was seen before.
@@ -113,6 +136,12 @@ static int who_is(const request *q, PGconn *db, char who[65]) {
     if (!first_use(db, &ev)) return 401;
     memcpy(who, ev.pubkey, 65);
     return 0;
+  }
+  // A session of our own (auth.c): its account's key, if an admin's.
+  const auth_principal *p = auth_principal_of(q);
+  if (p && p->session[0] && p->pubkey[0]) {
+    memcpy(who, p->pubkey, 65);
+    return is_admin(who) ? 0 : 403;
   }
   if (!api_header(q, "Cookie", cookies, sizeof cookies)) return 401;
   const char *c = strstr(cookies, "oa_admin=");
@@ -224,7 +253,10 @@ static void logout(const request *q, PGconn *db) {
                            1, NULL, v, NULL, NULL, 0));
     }
   }
-  api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: oa_admin=; Path=/api/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
+  const auth_principal *p = auth_principal_of(q);   // and our own session (auth.c)
+  if (p && p->session[0]) { const char *v[1] = {p->session}; PQclear(PQexecParams(db, "SELECT auth.session_end($1)", 1, NULL, v, NULL, NULL, 0)); }
+  api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: __Host-oa_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n"
+              "Set-Cookie: oa_admin=; Path=/api/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
               "Set-Cookie: oa_admin=; Path=/api/drops; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
               "Set-Cookie: oa_admin=; Path=/api/chat; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
               "Set-Cookie: oa_admin=; Path=/api/playtest; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);

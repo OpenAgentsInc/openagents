@@ -3,6 +3,7 @@
 #include <libpq-fe.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 typedef struct {
   int fd;
@@ -33,6 +34,7 @@ void analytics_team_init(PGconn *db);     // the team (OA_TEAM, OA_ADMIN_PUBKEYS
 void admin_init(void);                    // admin.c
 bool admin_route(const request *q);
 bool admin_is(const char *pubkey);        // a site admin: a root (OA_ADMIN_PUBKEYS) or a database admin (0100)
+bool admin_cookie_who(const request *q, PGconn *db, char who[65]);   // the oa_admin cookie's admin, until #13207
 bool admin_is_root(const char *pubkey);   // a pubkey in OA_ADMIN_PUBKEYS (admins.conf)
 void admin_roots(char *out, size_t cap);  // the roots as a Postgres text array literal
 int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cookie or NIP-98), else 401/403
@@ -90,3 +92,37 @@ bool access_refused(const request *q, PGconn *db, const char *key, const char *s
 int access_signed(const request *q, PGconn *db, char pk[65]);
 // The player key a signer's account acts with on realm routes (auth.caller_key): false on a database error.
 bool access_caller_key(PGconn *db, const char *pk, char key[160]);
+
+// Our own authentication (auth.c, docs/auth/): the gate every request passes, and who is asking.
+// The rule and verdict numbers are auth-policy.coax's (AP_*), checked against it at start.
+enum { AP_PUBLIC = 0, AP_GUEST = 1, AP_ACCOUNT = 2, AP_HUMAN = 3, AP_L2 = 4, AP_L2_FRESH = 5, AP_SCOPE = 6, AP_ADMIN = 7 };
+enum { AP_NOBODY = 0, AP_KIND_GUEST = 1, AP_PERSON = 2, AP_AGENT = 3, AP_SERVICE = 4 };
+enum { AP_OK = 0, AP_LOG_IN = 1, AP_HUMAN_ONLY = 2, AP_STEP_UP = 3, AP_NOT_ADMIN = 4, AP_NO_SCOPE = 5, AP_BAD_RULE = 6, AP_TWO_CREDENTIALS = 7 };
+enum { AP_SESSION_GOOD = 0, AP_SESSION_ROTATE = 1, AP_SESSION_ENDED = 2 };
+enum { AUTH_NONE = 0, AUTH_NOSTR = 1, AUTH_BEARER = 2, AUTH_COOKIE = 3 };
+typedef struct {
+  int kind;               // AP_NOBODY .. AP_SERVICE
+  int credential;         // AUTH_*
+  int level;              // 1 or 2 (0 nobody)
+  long long l2_age_ms;    // since the session last proved L2, or -1
+  bool admin, team, payload;
+  int refused;            // the credential's refusal (400 two, 401 bad), when auth_principal_of gave NULL
+  char account[40];       // acct_..., or "" (a key no account holds, a guest, nobody)
+  char verse_account[160];   // the game account it plays as (n-<pk>, g-..., e-...)
+  char session[32];       // ses_..., or ""
+  char pubkey[65];        // the signer, or the session's Nostr key, or ""
+  char event_id[65];      // a NIP-98 event's id
+  char player[160];       // X-Verse-Player
+  char via[16];           // nostr, email, phone, ...
+} auth_principal;
+void auth_init(void);                     // checks the AP_* numbers against auth-policy.coax
+void auth_reset(void);                    // start of each request
+bool auth_gate(const request *q);         // true when it answered a refusal (no rule: 404)
+const auth_principal *auth_principal_of(const request *q);   // NULL: the credential was refused
+const char *auth_extra_headers(void);     // a rotated or cleared session cookie, for this answer
+bool auth_api_route(const request *q);    // /api/auth/{me,limits,email/*,nostr*,phone/*,refresh,logout*,sessions*,freeze}
+void auth_print_rules(FILE *out);         // api --rules
+void auth_print_limits(FILE *out);        // api --limits
+const char *auth_rule_of(const char *method, const char *path);   // api --rule METHOD PATH
+bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const char *location);
+bool auth_freeze_link(PGconn *db, const char *acct, char token[65]);

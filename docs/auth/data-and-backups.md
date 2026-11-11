@@ -60,8 +60,13 @@ dump or a read-only agent sees ciphertext.
 `oa-auth-lookup-pepper` (and `-staging`), read only by the API's runtime
 service account. Each sealed value carries a key version byte, so we
 rotate by adding a version and re-sealing in the background. The keys
-are also backed up offline (below): losing them would turn every email
-into noise.
+are also backed up offline: losing them would turn every email into
+noise. Each version is sealed with age to the same two keys as the dumps
+(`coax/web/api/backup/recipients.txt`) and kept in
+`gs://openagentsgemini-db-backups/keys/`, which the lifecycle rule leaves
+alone (it deletes only under `oa_analytics/`, `oa_analytics-auth/` and
+`drills/`); the offline key that opens the dumps opens it too. A new key
+version gets a new file there.
 
 ## Audit log
 
@@ -69,10 +74,13 @@ into noise.
 end, recovery step, grant change, freeze, admin action and spend
 step-up: time, account, actor (session or agent), action, result, and a
 small JSON detail with no secrets and no plaintext PII. The API's role
-can `INSERT` and `SELECT` it, never `UPDATE` or `DELETE`. A nightly job
-copies the day's rows to the locked bucket, so even a database owner
-can't rewrite history after the fact. Kept two years; then rows lose
-their account id.
+can `INSERT` and `SELECT` it, never `UPDATE` or `DELETE`, and a trigger
+refuses both to anyone but the table's owner. The six-hourly dump of the
+`auth` schema (below) copies it to the locked bucket, so even a database
+owner can't rewrite history after the fact. Kept two years; then the
+daily `auth-sweep` job (`coax/web/api/jobs.c`) clears rows' account id.
+Built in `migrations/0144_auth_audit.sql` (#13202); `test.sh` checks the
+runtime role can't change a row.
 
 ## Backups
 
@@ -86,8 +94,9 @@ their account id.
 | Availability | Zonal (one zone) |
 | Backups kept if the instance is deleted | On (`--retain-backups-on-delete`) |
 | Logical dumps outside Cloud SQL | Nightly at 09:30 UTC: Cloud Run job `oa-db-dump`, scheduler `oa-db-dump-nightly` |
-| Locked retention | `gs://openagentsgemini-db-backups`: 35 days, **locked**. Nobody, us included, can delete or overwrite a dump before it is 35 days old; a lifecycle rule deletes it at 40 days |
+| Locked retention | `gs://openagentsgemini-db-backups`: 35 days, **locked**. Nobody, us included, can delete or overwrite a dump before it is 35 days old; a lifecycle rule deletes dumps and drills at 40 days; `keys/` (the sealed auth keys) is kept |
 | Encryption of dumps | [age](https://age-encryption.org), to two keys in `coax/web/api/backup/recipients.txt`: the offline key (the owner holds the private half, on paper) and the drill key (Secret Manager `oa-db-backup-drill-age-key`). The job can encrypt but can't decrypt |
+| The `auth` schema alone | Every six hours at :15 UTC: Cloud Run job `oa-db-dump-auth`, scheduler `oa-db-dump-auth-6h`, into `oa_analytics-auth/` in the same locked bucket, encrypted the same way (#13200) |
 | Restore drill | Monthly, the 3rd at 12:00 UTC: Cloud Run job `oa-db-drill`, scheduler `oa-db-drill-monthly`. Results in `gs://openagentsgemini-db-backups/drills/` |
 | Who can drop tables | Nobody outside a migration. The API serves as `oa_api`, which has no DDL, no `TRUNCATE` and owns nothing. Migrations run as `oa_analytics` in the job `oa-api-migrate-production`, which `deploy.sh` runs before each rollout. An event trigger refuses `DROP` and a trigger on every table refuses `TRUNCATE` unless the transaction set `oa.allow_ddl` |
 | Who can read the owner's connection string | The migration jobs, and still the automation account until the owner's step in `NEEDS_OWNER.md` (D9) |

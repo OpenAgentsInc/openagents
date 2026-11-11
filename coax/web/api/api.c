@@ -5,6 +5,7 @@
 // read whole, answered and closed.
 //
 //   api [--listen HOST:PORT] [--migrations DIR] [--migrate-only]
+//   api --rules | --limits | --rule METHOD PATH   (auth.c's tables; no database)
 //   OA_API_DATABASE   a libpq connection string (Secret Manager on Cloud Run)
 //   OA_TEAM           our team (team.conf as kind:value,...): its visits are testing, not usage (analytics.c)
 //   PORT              0.0.0.0:$PORT when set (Cloud Run)
@@ -94,11 +95,13 @@ static const char *reason(int status) {
 }
 
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n) {
-  char head[2048];
+  char head[4096];
+  // auth.c's rotated or cleared session cookie rides on whatever this request answers.
   int h = snprintf(head, sizeof head,
                    "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store, private\r\n"
-                   "X-Content-Type-Options: nosniff\r\n%sConnection: close\r\n\r\n",
-                   status, reason(status), type, n, extra_headers ? extra_headers : "");
+                   "X-Content-Type-Options: nosniff\r\n%s%sConnection: close\r\n\r\n",
+                   status, reason(status), type, n, extra_headers ? extra_headers : "", auth_extra_headers());
+  if (h < 0 || h >= (int)sizeof head) { api_log("response head too long (%d)", h); return; }
   send_all(fd, head, (size_t)h);
   if (n) send_all(fd, body, n);
 }
@@ -291,7 +294,10 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   char *mark = strchr(q.path, '?');
   if (mark) { *mark = 0; q.query = q.target + (mark - q.path) + 1; }
   else q.query = "";
+  auth_reset();
+  if (auth_gate(&q)) return;   // the route's rule (auth.c); a route with no rule is 404
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
+  if (auth_api_route(&q)) return;
   if (!strcmp(q.path, "/api/playtest/old-link") && !strcmp(q.method, "GET")) { old_link(&q); return; }
   if (analytics_route(&q)) return;
   if (access_route(&q)) return;   // before the admin routes and /api/auth (access.c)
@@ -345,7 +351,11 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_at = argv[++i];
     else if (!strcmp(argv[i], "--migrations") && i + 1 < argc) { snprintf(migrations_dir, sizeof migrations_dir, "%s", argv[++i]); migrations = true; }
     else if (!strcmp(argv[i], "--migrate-only")) migrate_only = true;
+    else if (!strcmp(argv[i], "--rules")) { auth_print_rules(stdout); return 0; }    // every route's rule
+    else if (!strcmp(argv[i], "--limits")) { auth_print_limits(stdout); return 0; }  // docs/limits/index.md
+    else if (!strcmp(argv[i], "--rule") && i + 2 < argc) { const char *r = auth_rule_of(argv[i + 1], argv[i + 2]); printf("%s\n", r ? r : "none"); return r ? 0 : 1; }
   }
+  auth_init();
   const char *dsn = getenv("OA_API_DATABASE");
   if (!dsn || !*dsn) { fprintf(stderr, "api: OA_API_DATABASE is not set\n"); return 2; }
   snprintf(conninfo, sizeof conninfo, "%s", dsn);

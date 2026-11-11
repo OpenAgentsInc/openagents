@@ -1,0 +1,202 @@
+// Who may do what, and for how long (docs/auth/sessions-and-tokens.md, #13201, #13203). auth.c
+// gathers the facts (the request's credentials, the session row's times, a limit's window) and
+// moves them in; this file decides; auth.c moves the answer out and never decides on its own.
+//
+//   ap_credentials   one credential per request: Authorization: Nostr, Authorization: Bearer and
+//                    the session cookie are each a credential, and two at once is refused
+//   ap_admit         a route's rule (public, guest, account, human, L2, L2-fresh, scope, admin)
+//                    against the principal: admitted, or why not
+//   ap_session       a session's clocks: good, due for a new token, or ended
+//   ap_limit_ok      a rate limit's window: allowed while the count is within the limit
+//   ap_code_ok       an email code's shape: exactly six digits
+#authority;
+
+// Route rules (auth.c's table names one for every route).
+AP_PUBLIC :: 0; AP_GUEST :: 1; AP_ACCOUNT :: 2; AP_HUMAN :: 3; AP_L2 :: 4; AP_L2_FRESH :: 5; AP_SCOPE :: 6; AP_ADMIN :: 7;
+// Principal kinds: nobody, a guest's player key, a person, an agent, a service.
+AP_NOBODY :: 0; AP_KIND_GUEST :: 1; AP_PERSON :: 2; AP_AGENT :: 3; AP_SERVICE :: 4;
+// Verdicts.
+AP_OK :: 0; AP_LOG_IN :: 1; AP_HUMAN_ONLY :: 2; AP_STEP_UP :: 3; AP_NOT_ADMIN :: 4; AP_NO_SCOPE :: 5; AP_BAD_RULE :: 6;
+AP_TWO_CREDENTIALS :: 7;
+// Session states.
+AP_SESSION_GOOD :: 0; AP_SESSION_ROTATE :: 1; AP_SESSION_ENDED :: 2;
+
+AP_MINUTE_MS :: 60000;
+AP_DAY_MS :: 86400000;
+AP_FRESH_MS :: 5 * AP_MINUTE_MS;          // L2-fresh: L2 within the last 5 minutes
+AP_WEB_IDLE_MS :: 30 * AP_DAY_MS;         // a web session unused this long has ended
+AP_WEB_ABSOLUTE_MS :: 180 * AP_DAY_MS;    // and every web session ends this long after it began
+AP_ROTATE_MS :: AP_DAY_MS;                // a new web token every 24 hours of use
+AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has ended
+
+#test "one credential per request" {
+  #assert ap_credentials(false, false, false) == AP_OK;
+  #assert ap_credentials(true, false, false) == AP_OK && ap_credentials(false, true, false) == AP_OK && ap_credentials(false, false, true) == AP_OK;
+  #assert ap_credentials(true, true, false) == AP_TWO_CREDENTIALS && ap_credentials(true, false, true) == AP_TWO_CREDENTIALS;
+  #assert ap_credentials(false, true, true) == AP_TWO_CREDENTIALS && ap_credentials(true, true, true) == AP_TWO_CREDENTIALS;
+}
+#test "public and guest routes admit anyone" {
+  for kind: 0..<5 {
+    #assert ap_admit(AP_PUBLIC, kind, 0, 0, false, false) == AP_OK;
+    #assert ap_admit(AP_GUEST, kind, 0, 0, false, false) == AP_OK;
+  }
+}
+#test "account routes need an account; a guest key is not one" {
+  #assert ap_admit(AP_ACCOUNT, AP_NOBODY, 0, 0, false, false) == AP_LOG_IN;
+  #assert ap_admit(AP_ACCOUNT, AP_KIND_GUEST, 0, 0, false, false) == AP_LOG_IN;
+  #assert ap_admit(AP_ACCOUNT, AP_PERSON, 1, 0, false, false) == AP_OK;
+  #assert ap_admit(AP_ACCOUNT, AP_AGENT, 2, 0, false, false) == AP_OK;
+  #assert ap_admit(AP_ACCOUNT, AP_SERVICE, 2, 0, false, false) == AP_OK;
+}
+#test "human routes refuse agents and services" {
+  #assert ap_admit(AP_HUMAN, AP_PERSON, 1, 0, false, false) == AP_OK;
+  #assert ap_admit(AP_HUMAN, AP_AGENT, 2, 0, false, true) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_HUMAN, AP_SERVICE, 2, 0, true, true) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_HUMAN, AP_NOBODY, 0, 0, false, false) == AP_LOG_IN;
+  #assert ap_admit(AP_HUMAN, AP_KIND_GUEST, 0, 0, false, false) == AP_LOG_IN;
+}
+#test "L2 needs a strong login; L2-fresh one within five minutes" {
+  #assert ap_admit(AP_L2, AP_PERSON, 1, 0, false, false) == AP_STEP_UP;
+  #assert ap_admit(AP_L2, AP_PERSON, 2, 3 * AP_DAY_MS, false, false) == AP_OK;
+  #assert ap_admit(AP_L2, AP_NOBODY, 0, 0, false, false) == AP_LOG_IN;
+  #assert ap_admit(AP_L2, AP_AGENT, 2, 0, false, false) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_L2_FRESH, AP_PERSON, 2, AP_FRESH_MS, false, false) == AP_OK;
+  #assert ap_admit(AP_L2_FRESH, AP_PERSON, 2, AP_FRESH_MS + 1, false, false) == AP_STEP_UP;
+  #assert ap_admit(AP_L2_FRESH, AP_PERSON, 2, 0, false, false) == AP_OK;
+  #assert ap_admit(AP_L2_FRESH, AP_PERSON, 1, 0, false, false) == AP_STEP_UP;
+  #assert ap_admit(AP_L2_FRESH, AP_PERSON, 2, -1, false, false) == AP_STEP_UP;
+  #assert ap_admit(AP_L2_FRESH, AP_AGENT, 2, 0, false, false) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_L2_FRESH, AP_KIND_GUEST, 0, 0, false, false) == AP_LOG_IN;
+}
+#test "scope routes need the scope; agents may hold one" {
+  #assert ap_admit(AP_SCOPE, AP_AGENT, 2, 0, false, true) == AP_OK;
+  #assert ap_admit(AP_SCOPE, AP_AGENT, 2, 0, false, false) == AP_NO_SCOPE;
+  #assert ap_admit(AP_SCOPE, AP_PERSON, 1, 0, false, true) == AP_OK;
+  #assert ap_admit(AP_SCOPE, AP_NOBODY, 0, 0, false, true) == AP_LOG_IN;
+}
+#test "admin routes need an admin who is a person at L2" {
+  #assert ap_admit(AP_ADMIN, AP_PERSON, 2, 0, true, false) == AP_OK;
+  #assert ap_admit(AP_ADMIN, AP_PERSON, 2, 0, false, false) == AP_NOT_ADMIN;
+  #assert ap_admit(AP_ADMIN, AP_PERSON, 1, 0, true, false) == AP_STEP_UP;
+  #assert ap_admit(AP_ADMIN, AP_AGENT, 2, 0, true, false) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_ADMIN, AP_NOBODY, 0, 0, true, false) == AP_LOG_IN;
+}
+#test "a rule this file doesn't know refuses" {
+  #assert ap_admit(8, AP_PERSON, 2, 0, true, true) == AP_BAD_RULE;
+  #assert ap_admit(-1, AP_PERSON, 2, 0, true, true) == AP_BAD_RULE;
+}
+#test "each verdict has its status and words" {
+  #assert ap_status(AP_OK) == 200 && ap_status(AP_LOG_IN) == 401 && ap_status(AP_STEP_UP) == 401;
+  #assert ap_status(AP_HUMAN_ONLY) == 403 && ap_status(AP_NOT_ADMIN) == 403 && ap_status(AP_NO_SCOPE) == 403;
+  #assert ap_status(AP_BAD_RULE) == 404 && ap_status(AP_TWO_CREDENTIALS) == 400 && ap_status(99) == 500;
+  #assert ap_words(AP_LOG_IN) == "Log in first.";
+  #assert ap_words(AP_STEP_UP) == "Log in again with your key or passkey to do this.";
+  #assert ap_words(AP_HUMAN_ONLY) == "Only a person can do this, not an agent.";
+  #assert ap_words(AP_NOT_ADMIN) == "Admins only.";
+  #assert ap_words(AP_NO_SCOPE) == "This key isn't allowed to do this.";
+  #assert ap_words(AP_BAD_RULE) == "Not found.";
+  #assert ap_words(AP_TWO_CREDENTIALS) == "Send one credential: a signature, a token or the session cookie, not two.";
+  #assert ap_words(AP_OK) == "" && ap_words(99) == "";
+}
+#test "a web session: good, then due for a new token, then ended when idle or old" {
+  t0 := 1000 * AP_DAY_MS;
+  #assert ap_session(false, t0, t0, t0, t0) == AP_SESSION_GOOD;
+  #assert ap_session(false, t0 + AP_ROTATE_MS - 1, t0, t0, t0) == AP_SESSION_GOOD;
+  #assert ap_session(false, t0 + AP_ROTATE_MS, t0, t0 + AP_ROTATE_MS - 5, t0) == AP_SESSION_ROTATE;
+  #assert ap_session(false, t0 + AP_WEB_IDLE_MS, t0, t0, t0) == AP_SESSION_ENDED;
+  #assert ap_session(false, t0 + AP_WEB_IDLE_MS - 1, t0, t0, t0 + AP_WEB_IDLE_MS - 2) == AP_SESSION_GOOD;
+  #assert ap_session(false, t0 + AP_WEB_ABSOLUTE_MS, t0, t0 + AP_WEB_ABSOLUTE_MS - 1, t0 + AP_WEB_ABSOLUTE_MS - 1) == AP_SESSION_ENDED;
+  #assert ap_session(false, t0 + AP_WEB_ABSOLUTE_MS - 1, t0, t0 + AP_WEB_ABSOLUTE_MS - 2, t0 + AP_WEB_ABSOLUTE_MS - 2) == AP_SESSION_GOOD;
+  #assert ap_session(false, t0 - 1, t0, t0, t0) == AP_SESSION_GOOD;
+}
+#test "an app's login: no web rotation, ended after 90 idle days" {
+  t0 := 1000 * AP_DAY_MS;
+  #assert ap_session(true, t0 + AP_ROTATE_MS * 2, t0, t0 + AP_ROTATE_MS, t0) == AP_SESSION_GOOD;
+  #assert ap_session(true, t0 + AP_APP_IDLE_MS, t0, t0, t0) == AP_SESSION_ENDED;
+  #assert ap_session(true, t0 + AP_APP_IDLE_MS - 1, t0, t0, t0) == AP_SESSION_GOOD;
+  #assert ap_session(true, t0 + AP_WEB_ABSOLUTE_MS + AP_DAY_MS, t0, t0 + AP_WEB_ABSOLUTE_MS, t0) == AP_SESSION_GOOD;
+}
+#test "a limit allows up to its count in a window" {
+  #assert ap_limit_ok(1, 5) && ap_limit_ok(5, 5);
+  #assert !ap_limit_ok(6, 5) && !ap_limit_ok(100, 5);
+  #assert !ap_limit_ok(1, 0) && !ap_limit_ok(0, 0);
+  #assert ap_limit_ok(0, 1);
+}
+#test "an email code is six digits, nothing else" {
+  #assert ap_code_ok("482913") && ap_code_ok("000000") && ap_code_ok("999999");
+  #assert !ap_code_ok("48291") && !ap_code_ok("4829134") && !ap_code_ok("") && !ap_code_ok("48291a");
+  #assert !ap_code_ok("/82913") && !ap_code_ok(":82913") && !ap_code_ok("48291:") && !ap_code_ok(" 82913");
+}
+
+ap_credentials :: (nostr: bool, bearer: bool, cookie: bool) -> int #export_c #effects(all) {
+  n := 0;
+  if nostr { n += 1; }
+  if bearer { n += 1; }
+  if cookie { n += 1; }
+  if n > 1 { return AP_TWO_CREDENTIALS; }
+  return AP_OK;
+}
+
+// l2_age_ms: how long ago the principal last proved L2 (a NIP-98 signature is now: 0).
+ap_admit :: (rule: int, kind: int, level: int, l2_age_ms: int, admin: bool, scope: bool) -> int #export_c #effects(all) {
+  if rule < AP_PUBLIC || rule > AP_ADMIN { return AP_BAD_RULE; }
+  if rule == AP_PUBLIC || rule == AP_GUEST { return AP_OK; }
+  if kind != AP_PERSON && kind != AP_AGENT && kind != AP_SERVICE { return AP_LOG_IN; }
+  if rule == AP_ACCOUNT { return AP_OK; }
+  if rule == AP_SCOPE {
+    if scope { return AP_OK; }
+    return AP_NO_SCOPE;
+  }
+  // human, L2, L2-fresh and admin: people only
+  if kind != AP_PERSON { return AP_HUMAN_ONLY; }
+  if rule == AP_HUMAN { return AP_OK; }
+  if rule == AP_ADMIN && !admin { return AP_NOT_ADMIN; }
+  if level < 2 { return AP_STEP_UP; }
+  if rule == AP_L2_FRESH && (l2_age_ms < 0 || l2_age_ms > AP_FRESH_MS) { return AP_STEP_UP; }
+  return AP_OK;
+}
+
+ap_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == AP_OK { return 200; }
+  if verdict == AP_LOG_IN || verdict == AP_STEP_UP { return 401; }
+  if verdict == AP_HUMAN_ONLY || verdict == AP_NOT_ADMIN || verdict == AP_NO_SCOPE { return 403; }
+  if verdict == AP_BAD_RULE { return 404; }
+  if verdict == AP_TWO_CREDENTIALS { return 400; }
+  return 500;
+}
+ap_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == AP_LOG_IN { return "Log in first."; }
+  if verdict == AP_STEP_UP { return "Log in again with your key or passkey to do this."; }
+  if verdict == AP_HUMAN_ONLY { return "Only a person can do this, not an agent."; }
+  if verdict == AP_NOT_ADMIN { return "Admins only."; }
+  if verdict == AP_NO_SCOPE { return "This key isn't allowed to do this."; }
+  if verdict == AP_BAD_RULE { return "Not found."; }
+  if verdict == AP_TWO_CREDENTIALS { return "Send one credential: a signature, a token or the session cookie, not two."; }
+  return "";
+}
+
+// A session's state now. Times are milliseconds since 1970; app logins (refresh tokens) don't rotate
+// here and end only when idle.
+ap_session :: (app: bool, now_ms: int, created_ms: int, last_seen_ms: int, rotated_ms: int) -> int #export_c #effects(all) {
+  if app {
+    if now_ms - last_seen_ms >= AP_APP_IDLE_MS { return AP_SESSION_ENDED; }
+    return AP_SESSION_GOOD;
+  }
+  if now_ms - last_seen_ms >= AP_WEB_IDLE_MS { return AP_SESSION_ENDED; }
+  if now_ms - created_ms >= AP_WEB_ABSOLUTE_MS { return AP_SESSION_ENDED; }
+  if now_ms - rotated_ms >= AP_ROTATE_MS { return AP_SESSION_ROTATE; }
+  return AP_SESSION_GOOD;
+}
+
+// count: hits in this window, this one included.
+ap_limit_ok :: (count: int, limit: int) -> bool #export_c #effects(all) {
+  return limit > 0 && count <= limit;
+}
+
+ap_code_ok :: (code: string) -> bool #export_c #effects(all) {
+  if code.count != 6 { return false; }
+  for i: 0..<6 {
+    if code[i] < '0' || code[i] > '9' { return false; }
+  }
+  return true;
+}

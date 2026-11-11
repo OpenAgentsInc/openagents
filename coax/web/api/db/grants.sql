@@ -38,3 +38,9 @@ SELECT format('SELECT oa_guard.attach(%L::regclass)', c.oid::regclass::text)
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r', 'p') AND c.relowner = 'oa_analytics'::regrole
   AND NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = c.oid AND t.tgname = 'oa_guard_no_truncate') \gexec
+
+-- The audit log is append-only (0144_auth_audit.sql, #13202): the runtime role inserts and
+-- reads, never changes or deletes a row. Taken back here because the grants above give every
+-- table UPDATE and DELETE; its trigger refuses them anyway.
+SELECT format('REVOKE UPDATE, DELETE, TRUNCATE ON auth.audit FROM %I', :'runtime')
+WHERE to_regclass('auth.audit') IS NOT NULL \gexec

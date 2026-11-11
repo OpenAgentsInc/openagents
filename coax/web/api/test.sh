@@ -32,10 +32,15 @@ secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 "$cli_coax" c "$here/seat-policy.coax" --library --header "$work/seat-policy.generated.h" > "$work/seat-policy.generated.c"
 "$cli_coax" c "$here/progress-policy.coax" --library --header "$work/progress-policy.generated.h" > "$work/progress-policy.generated.c"
 "$cli_coax" c "$here/worldbuilder-policy.coax" --library --header "$work/worldbuilder-policy.generated.h" > "$work/worldbuilder-policy.generated.c"
+"$cli_coax" c "$here/auth-policy.coax" --library --header "$work/auth-policy.generated.h" > "$work/auth-policy.generated.c"
+"$cli_coax" c "$here/auth-seal.coax" --run-steps 250000000 --library --header "$work/auth-seal.generated.h" > "$work/auth-seal.generated.c"
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -I"$work" -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c "$here"/worldbuilder.c "$work"/worldbuilder-policy.generated.c \
+  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c "$here"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "$here"/auth.c "$work"/auth-policy.generated.c "$here"/auth-seal-unit.c \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
+# The gate's table (auth.c): an unknown route has no rule, and /docs/limits is the API's own limits table.
+[[ "$("$work/api" --rule GET /api/no-such-route || true)" == none && "$("$work/api" --rule POST /api/auth/logout-everywhere)" == L2 ]] || { echo "api --rule: the gate's table is wrong" >&2; exit 1; }
+"$work/api" --limits | diff - "$repo_root/apps/openagents-web/docs/limits/index.md" > /dev/null || { echo "apps/openagents-web/docs/limits/index.md is stale: run api --limits > it" >&2; exit 1; }
 # The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" -o "$work/nip98_diff" \
@@ -128,7 +133,8 @@ OA_DROPS_GCS="http://127.0.0.1:$GCS_PORT" OA_DROPS_TOKEN=test-gcs OA_DROPS_BUCKE
 OA_INFERENCE_URL="http://127.0.0.1:$INFER_PORT/chat/completions" OA_INFERENCE_TOKEN=test-token OA_INFERENCE_DAILY_REQUESTS=5 \
 OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark \
 OA_WORKOS_CLIENT_ID=client_test \
-OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=owner@example.com OA_EMAIL_BACKOFF_MS=10 \
+OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=owner@example.com,ada@example.com,frozen@example.com,app@example.com OA_EMAIL_BACKOFF_MS=10 \
+OA_AUTH_SEAL_KEY="1:$(openssl rand -hex 32),2:$(openssl rand -hex 32)" OA_AUTH_LOOKUP_PEPPER="1:$(openssl rand -hex 32)" \
 OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com OA_DEVICE_TTL_MS=4000 \
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
 OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
@@ -147,9 +153,9 @@ if [[ -x "$cli_coax" ]]; then
   # the vitals fault check and the owner and travel checks. API_TESTS_ONLY runs them when it names them (room_checks.coax).
   # API_BIN: the region check starts a second API on a promoted replica of this database.
   coax_failed=0
-  for f in room_checks checkpoint2_checks verse_packs; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
-    (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" COAX="$cli_coax" API_BIN="$work/api" \
+    (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" \
       coax/web/tool.sh "coax/web/api/tests/$f.coax") || coax_failed=1
   done
   [[ $coax_failed == 0 ]] || { cat "$work/api.log"; exit 1; }
@@ -183,5 +189,17 @@ if [[ -x "$cli_coax" ]]; then
 else
   echo 'cli-auth: skipped, no Coax compiler (build coax/bin/coax, or set COAX)' >&2
 fi
+# The audit log is append-only (0144_auth_audit.sql, #13202): with db/grants.sql's grants (its guard
+# step aside), the API's role inserts and reads but can't change or delete a row, and a role
+# given UPDATE anyway is stopped by the table's trigger.
+asu() { "$pg/bin/psql" -h "$work" -p "$port" -d oa_analytics -XAtq -v ON_ERROR_STOP=1 "$@"; }
+asu -U postgres -c "CREATE ROLE oa_api_check; CREATE ROLE oa_api_loose; GRANT oa_api_check, oa_api_loose TO postgres"
+sed '/oa_guard.attach/,/\\gexec/d' "$here/db/grants.sql" | asu -U oa_analytics -v runtime=oa_api_check -v readers= -f - > /dev/null
+asu -U postgres -c "SET ROLE oa_api_check; SELECT auth.log(NULL, NULL, 'check.append', 'ok', '{}')" > /dev/null || { echo "audit: the API's role can't append" >&2; exit 1; }
+if asu -U postgres -c "SET ROLE oa_api_check; UPDATE auth.audit SET result = 'failed'" 2>/dev/null; then echo "audit: the API's role changed a row" >&2; exit 1; fi
+if asu -U postgres -c "SET ROLE oa_api_check; DELETE FROM auth.audit" 2>/dev/null; then echo "audit: the API's role deleted a row" >&2; exit 1; fi
+asu -U oa_analytics -c "GRANT USAGE ON SCHEMA auth TO oa_api_loose; GRANT SELECT, UPDATE, DELETE ON auth.audit TO oa_api_loose"
+if asu -U postgres -c "SET ROLE oa_api_loose; UPDATE auth.audit SET result = 'failed'" 2>/dev/null; then echo "audit: the trigger let an update through" >&2; exit 1; fi
+echo "  ok    the audit log is append-only for the API's role, and its trigger stops anyone else"
 if grep -q "ERROR: AddressSanitizer\|runtime error" "$work/api.log"; then cat "$work/api.log"; exit 1; fi
 echo "api: checks passed"

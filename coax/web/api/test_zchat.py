@@ -137,9 +137,9 @@ def until_turn(c, tid, statuses, seconds=30):
 
 # ---- who gets in
 s, b, _ = call("GET", "/api/chat/state")
-check("chat: signed out, a 401 like the dashboard's", s == 401 and json.loads(b) == {"error": "log in as an admin"}, (s, b))
+check("chat: signed out, a 401 from the gate (auth.c)", s == 401 and json.loads(b) == {"error": "Log in first."}, (s, b))
 s, b, _ = call("GET", "/api/chat/state", headers={"Authorization": chat_signed(os.environ["OTHER_KEY"], "GET", "/api/chat/state")})
-check("chat: someone not an admin, a 403 and nothing else", s == 403 and json.loads(b) == {"error": "admins only"}, (s, b))
+check("chat: someone not an admin, a 403 from the gate and nothing else", s == 403 and json.loads(b) == {"error": "Admins only."}, (s, b))
 s, b = cpage("POST", "send", {"text": "hi"}, cookie="0" * 64)
 check("chat: a made-up session can't send", s == 401, (s, b))
 s, b = cpage("POST", "send", {"text": "hi"}, origin="https://evil.example")

@@ -1,0 +1,155 @@
+// Sealing and finding the fields that identify a person (docs/auth/data-and-backups.md,
+// "Encryption at rest"; #13200), for the API (auth.c), as C.
+//
+//   as_email_normalize  the address as we keep and look it up: no surrounding spaces, all lower
+//                       case (mail providers treat Ada@ and ada@ as one inbox, and so do we);
+//                       refuses anything that isn't one address
+//   as_lookup           HMAC-SHA256 under the lookup pepper: the address's lookup, unique per
+//                       address, useless without the pepper
+//   as_sha256           SHA-256, for the digests we keep of codes, links and cookies
+//   as_seal, as_open    XChaCha20-Poly1305 under the seal key; the associated data names the table,
+//                       column and row (auth.emails|sealed|<account>), so a sealed value moved to
+//                       another row doesn't open
+//
+// auth.c brings the keys (Secret Manager oa-auth-seal-key, oa-auth-lookup-pepper), the random
+// nonce and the key version byte it writes in front; this file never keeps a key.
+#load "../../lib/crypto/xchacha20_poly1305.coax";
+#load "../../lib/crypto/hmac.coax";
+#load "../../lib/crypto/token.coax";   // the token codec (#13197): token_make, token_check, token_digest
+
+AS_EMAIL_MAX :: 254;
+
+as_text :: (s: string, out: [] u8) -> [] u8 { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+as_same :: (a: [] u8, s: string) -> bool {
+  if a.count != s.count { return false; }
+  for i: 0..<a.count { if a[i] != s[i] { return false; } }
+  return true;
+}
+
+#test "an address is trimmed and lowered" {
+  inb: [64] u8; out: [AS_EMAIL_MAX] u8;
+  n := as_email_normalize(as_text("  Ada.Lovelace@Example.COM \n", inb[..]), out[..]);
+  #assert n == 24 && as_same(out[0..<n], "ada.lovelace@example.com");
+  n = as_email_normalize(as_text("a@b.co", inb[..]), out[..]);
+  #assert n == 6 && as_same(out[0..<n], "a@b.co");
+  n = as_email_normalize(as_text("\tx+tag@Mail.Example.org", inb[..]), out[..]);
+  #assert n == 22 && as_same(out[0..<n], "x+tag@mail.example.org");
+}
+#test "anything that isn't one address is refused" {
+  inb: [300] u8; out: [AS_EMAIL_MAX] u8;
+  #assert as_email_normalize(as_text("", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("   ", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("no-at.example.com", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("@example.com", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@b", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@b.", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@.b", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@@b.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a b@c.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@c.co, d@e.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("<a@c.co>", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a\"@c.co", inb[..]), out[..]) == -1;
+  #assert as_email_normalize(as_text("a@c.co\0", inb[..]), out[..]) == -1;
+  long: [300] u8;
+  for i: 0..<300 { long[i] = 'a'; }
+  long[200] = '@'; long[250] = '.';
+  #assert as_email_normalize(long[0..<255], out[..]) == -1;
+  #assert as_email_normalize(long[0..<254], out[..]) == 254;
+  small: [5] u8;
+  #assert as_email_normalize(as_text("a@b.co", inb[..]), small[..]) == -1;
+}
+#test "the lookup is HMAC-SHA256 (RFC 4231 case 2)" {
+  key := "Jefe"; kb: [4] u8;
+  msg := "what do ya want for nothing?"; mb: [28] u8;
+  out: [32] u8;
+  #assert as_lookup(as_text(key, kb[..]), as_text(msg, mb[..]), out[..]);
+  want := [32] u8.[0x5b,0xdc,0xc1,0x46,0xbf,0x60,0x75,0x4e,0x6a,0x04,0x24,0x26,0x08,0x95,0x75,0xc7,0x5a,0x00,0x3f,0x08,0x9d,0x27,0x39,0x83,0x9d,0xec,0x58,0xb9,0x64,0xec,0x38,0x43];
+  for i: 0..<32 { #assert out[i] == want[i]; }
+  #assert !as_lookup(as_text(key, kb[..]), as_text(msg, mb[..]), out[0..<31]);
+}
+#test "a sealed value opens only with its key and its row" {
+  key: [32] u8; nonce: [24] u8;
+  for i: 0..<32 { key[i] = cast(u8) (7 * i + 1); }
+  for i: 0..<24 { nonce[i] = cast(u8) (3 * i); }
+  ad := "auth.emails|sealed|acct_aaaaaaaaaaaaaaaaaaaaaaaaaa"; adb: [64] u8;
+  msg := "ada@example.com"; mb: [15] u8;
+  box: [31] u8; plain: [15] u8;
+  #assert as_seal(key[..], nonce[..], as_text(ad, adb[..]), as_text(msg, mb[..]), box[..]);
+  #assert as_open(key[..], nonce[..], as_text(ad, adb[..]), box[..], plain[..]);
+  #assert as_same(plain[..], "ada@example.com");
+  other := "auth.emails|sealed|acct_bbbbbbbbbbbbbbbbbbbbbbbbbb"; ob: [64] u8;
+  #assert !as_open(key[..], nonce[..], as_text(other, ob[..]), box[..], plain[..]);
+  key[0] ^= 1;
+  #assert !as_open(key[..], nonce[..], as_text(ad, adb[..]), box[..], plain[..]);
+  key[0] ^= 1; box[3] ^= 1;
+  #assert !as_open(key[..], nonce[..], as_text(ad, adb[..]), box[..], plain[..]);
+  box[3] ^= 1;
+  #assert !as_seal(key[0..<31], nonce[..], as_text(ad, adb[..]), as_text(msg, mb[..]), box[..]);
+  #assert !as_seal(key[..], nonce[..], as_text(ad, adb[..]), as_text(msg, mb[..]), box[0..<30]);
+}
+
+#test "SHA-256 of abc (FIPS 180-2)" {
+  b: [3] u8; out: [32] u8;
+  #assert as_sha256(as_text("abc", b[..]), out[..]);
+  want := [4] u8.[0xba, 0x78, 0x16, 0xbf];
+  for i: 0..<4 { #assert out[i] == want[i]; }
+  #assert out[31] == 0xad;
+  #assert !as_sha256(b[..], out[0..<31]);
+}
+
+as_sha256 :: (data: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if out.count != 32 { return false; }
+  return sha256_hash_checked(data, out, false) == SHA_OK;
+}
+
+// The address in out, and its length; -1 when it isn't one address or doesn't fit.
+as_email_normalize :: (text: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  a := 0; b := text.count;
+  while a < b && (text[a] == ' ' || text[a] == '\t' || text[a] == '\n' || text[a] == '\r') { a += 1; }
+  while b > a && (text[b - 1] == ' ' || text[b - 1] == '\t' || text[b - 1] == '\n' || text[b - 1] == '\r') { b -= 1; }
+  n := b - a;
+  if n < 6 || n > AS_EMAIL_MAX || n > out.count { return -1; }
+  at := -1;
+  for i: a..<b {
+    c := text[i];
+    if c <= ' ' || c == 127 || c == '"' || c == ',' || c == '<' || c == '>' || c == '(' || c == ')' || c == ';' || c == '\\' { return -1; }
+    if c == '@' {
+      if at >= 0 { return -1; }
+      at = i;
+    }
+  }
+  if at <= a || at >= b - 1 { return -1; }
+  // the domain: a dot inside it, not at either end, never two together
+  dot := false;
+  if text[at + 1] == '.' || text[b - 1] == '.' { return -1; }
+  for i: at + 1..<b {
+    if text[i] == '.' {
+      dot = true;
+      if text[i - 1] == '.' { return -1; }
+    }
+  }
+  if !dot { return -1; }
+  for i: 0..<n {
+    c := text[a + i];
+    if c >= 'A' && c <= 'Z' { c = c + 32; }
+    out[i] = c;
+  }
+  return n;
+}
+
+as_lookup :: (pepper: [] u8, text: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if out.count != 32 { return false; }
+  return hmac_sha256_checked(pepper, text, out, false) == SHA_OK;
+}
+
+// out: the box, msg.count + 16 bytes.
+as_seal :: (key: [] u8, nonce: [] u8, ad: [] u8, msg: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if key.count != 32 || nonce.count != 24 || out.count != msg.count + 16 { return false; }
+  return xcp_seal(key, nonce, ad, msg, out, false);
+}
+// out: the message, box.count - 16 bytes.
+as_open :: (key: [] u8, nonce: [] u8, ad: [] u8, box: [] u8, out: [] u8) -> bool #export_c #effects(all) {
+  if key.count != 32 || nonce.count != 24 || box.count < 16 || out.count != box.count - 16 { return false; }
+  return xcp_open(key, nonce, ad, box, out, false);
+}

@@ -1,7 +1,7 @@
 // The API database's logical backups (docs/auth/data-and-backups.md, #13194, #13219).
 //
-//   backup dump    pg_dump of the whole database, encrypted to recipients.txt,
-//                  into the locked bucket, with its row counts
+//   backup dump    pg_dump of the whole database (or of one schema, OA_BACKUP_SCHEMA),
+//                  encrypted to recipients.txt, into the locked bucket, with its row counts
 //   backup drill   the newest dump, decrypted with the drill key, restored into
 //                  a throwaway Postgres in this container, its row counts checked
 //                  against the dump's and against production; the result goes
@@ -11,7 +11,8 @@
 // OA_BACKUP_BUCKET, OA_BACKUP_PREFIX (default oa_analytics), and for the drill
 // OA_DRILL_AGE_KEY (the drill key's private half). The entrypoint of the
 // postgres:18-alpine job image (Dockerfile, built for Linux by deploy.sh), run
-// as Cloud Run jobs oa-db-dump (nightly) and oa-db-drill (monthly). It runs
+// as Cloud Run jobs oa-db-dump (nightly), oa-db-dump-auth (the auth schema every
+// six hours, prefix oa_analytics-auth, #13200) and oa-db-drill (monthly). It runs
 // psql, pg_dump, pg_restore, initdb, pg_ctl, createdb, su-exec, age, chown,
 // chmod and curl (the bucket's JSON API with the job account's metadata token).
 #import "Basic";
@@ -31,6 +32,19 @@ BK_TABLES :: 16384;
 
 // Every table's exact row count, as "schema.table<TAB>count", sorted.
 BK_COUNTS_SQL :: "SELECT format('%s.%s', n.nspname, c.relname) || E'\\t' ||\n  (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', n.nspname, c.relname), false, true, '')))[1]::text\nFROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%'\nORDER BY 1;";
+// The same with room for one schema's filter before its ORDER BY (BK_COUNTS_END).
+BK_COUNTS_HEAD :: "SELECT format('%s.%s', n.nspname, c.relname) || E'\\t' ||\n  (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', n.nspname, c.relname), false, true, '')))[1]::text\nFROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%'\n";
+BK_COUNTS_END :: "ORDER BY 1;";
+
+// OA_BACKUP_SCHEMA: empty (the whole database) or one schema's plain name.
+bk_schema_ok :: (s: string) -> bool {
+  for c: s { if !((c >= 'a' && c <= 'z') || c == '_') { return false; } }
+  return true;
+}
+#test "a schema is a plain lower-case name" {
+  #assert bk_schema_ok("") && bk_schema_ok("auth") && bk_schema_ok("verse_x");
+  #assert !bk_schema_ok("auth;drop") && !bk_schema_ok("Auth") && !bk_schema_ok("a b") && !bk_schema_ok("a'");
+}
 
 // A text being built.
 Bt :: struct { b: [8192] u8; n: int; }
@@ -244,7 +258,7 @@ bk_run :: (argv: [] string, input: string, mode: int, out: [] u8) -> Br {
 }
 bk_ok :: (argv: [] string, mode: int) -> bool { no: [1] u8; return bk_run(argv, "", mode, no[0..<0]).status == 0; }
 
-Bk :: struct { bucket: string; prefix: string; dsn: string; work: string; }
+Bk :: struct { bucket: string; prefix: string; dsn: string; work: string; schema: string; }
 
 // The job account's access token, from the metadata server.
 bk_token :: (t: [] Bt) -> bool {
@@ -295,7 +309,10 @@ bk_dump :: (b: Bk) -> int {
   snap := ifx k >= 0 then cast(string) line[0..<k] else "";
   if !bk_snapshot_ok(snap) { tool_err("dump: no snapshot: "); tool_errln(snap); r := proc_release(h); return 1; }
   sn: [1] Bt; bt_s(sn[..], "--snapshot="); bt_s(sn[..], snap);
-  sent = proc_send(h, BK_COUNTS_SQL) && proc_send(h, "\nSELECT '--end--';\n");
+  cq: [1] Bt; bt_s(cq[..], BK_COUNTS_HEAD);
+  if b.schema.count > 0 { bt_s(cq[..], "  AND n.nspname = '"); bt_s(cq[..], b.schema); bt_s(cq[..], "'\n"); }
+  bt_s(cq[..], BK_COUNTS_END);
+  sent = proc_send(h, bt_text(cq[..])) && proc_send(h, "\nSELECT '--end--';\n");
   tsv: [BK_BIG] u8; tn := 0; tables := 0;
   while true {
     k = proc_line(h, -1, line[..]);
@@ -310,9 +327,11 @@ bk_dump :: (b: Bk) -> int {
   dp: [1] Bt; dump_path := bk_path(b, "db.dump", dp[..]);
   ap: [1] Bt; age_path := bk_path(b, "db.dump.age", ap[..]);
   if !fs_write(counts_path, cast(string) tsv[0..<tn]) { tool_errln("dump: can't write the counts"); r := proc_release(h); return 1; }
+  sc: [1] Bt; bt_s(sc[..], "--schema="); bt_s(sc[..], b.schema);
   pd := [7] string.["pg_dump", b.dsn, bt_text(sn[..]), "-Fc", "-Z", "6", "-f"];
-  pdv: [8] string; for a, i: pd { pdv[i] = a; } pdv[7] = dump_path;
-  if !bk_ok(pdv[..], BK_OURS) { r := proc_release(h); return 1; }
+  pdv: [9] string; for a, i: pd { pdv[i] = a; } pdv[7] = dump_path;
+  pn := 8; if b.schema.count > 0 { pdv[8] = bt_text(sc[..]); pn = 9; }
+  if !bk_ok(pdv[0..<pn], BK_OURS) { r := proc_release(h); return 1; }
   sent = proc_send(h, "COMMIT;\n");
   closed := proc_close_stdin(h);
   while true { k = proc_line(h, -1, line[..]); if k == PROC_EOF || k == PROC_ERROR { break; } }
@@ -453,10 +472,12 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("usage: backup dump|drill"); return 2; }
   mode := ifx args_count(a[..]) >= 1 then args_at(a[..], 0) else "";
-  bb: [4096] u8; pb: [4096] u8; db: [65536] u8; kb: [65536] u8; wb: [4096] u8;
+  bb: [4096] u8; pb: [4096] u8; sb: [256] u8; db: [65536] u8; kb: [65536] u8; wb: [4096] u8;
   b: Bk;
   b.bucket = bk_env("OA_BACKUP_BUCKET", bb[..]); if b.bucket.count == 0 { return 1; }
   b.prefix = proc_getenv("OA_BACKUP_PREFIX", pb[..]); if b.prefix.count == 0 { b.prefix = "oa_analytics"; }
+  b.schema = proc_getenv("OA_BACKUP_SCHEMA", sb[..]);
+  if !bk_schema_ok(b.schema) { tool_errln("OA_BACKUP_SCHEMA: a schema name"); return 2; }
   b.dsn = bk_env("OA_DUMP_DATABASE", db[..]); if b.dsn.count == 0 { return 1; }
   if mode != "dump" && mode != "drill" { tool_errln("usage: backup dump|drill"); return 2; }
   key := "";

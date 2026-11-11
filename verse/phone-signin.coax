@@ -249,7 +249,7 @@ verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int 
   if status == 404 { return si_put(out, 0, "That code was used or has expired."); }
   if status == 429 { return si_put(out, 0, "Too many tries; wait a minute."); }
   if status == 0 { return si_put(out, 0, "Couldn't reach openagents.com. Check the connection and try again."); }
-  o := si_put(out, 0, "Not signed in: the server answered ");
+  o := si_put(out, 0, "Not logged in: the server answered ");
   o = si_num(out, o, status);
   return si_put(out, o, ".");
 }
@@ -427,7 +427,7 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   n = verse_signin_result(SIGNIN_SIGNIN, 429, a.b[0..<0], buf[..]);
   #assert cast(string) buf[0..<n] == "Too many tries; wait a minute.";
   n = verse_signin_result(SIGNIN_SIGNIN, 500, a.b[0..<0], buf[..]);
-  #assert cast(string) buf[0..<n] == "Not signed in: the server answered 500.";
+  #assert cast(string) buf[0..<n] == "Not logged in: the server answered 500.";
   n = verse_signin_result(SIGNIN_SIGNIN, 0, a.b[0..<0], buf[..]);
   #assert cast(string) buf[0..<n] == "Couldn't reach openagents.com. Check the connection and try again.";
 }

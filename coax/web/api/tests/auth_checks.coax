@@ -1,0 +1,338 @@
+// Our own login's API checks (auth.c, migrations 0142 to 0146, docs/auth/; #13200 to #13205), run
+// by test.sh after test.py: the gate (a route with no rule is 404; one credential at a time; L2
+// and human-only rules), email codes and links (the browser that asked; tries; nothing kept in the
+// clear), Nostr login (NIP-98 over a challenge, once), sessions (rotation, idle end, logout
+// everywhere, freeze), app tokens (refresh, a reused one ends the login) and the limits, shown.
+// Email goes to a fake Resend on RESEND_PORT: this program in its `mail` mode.
+//   API=... PGURL=... PSQL=... SIGN=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/auth_checks.coax
+//   coax/web/tool.sh coax/web/api/tests/auth_checks.coax mail PORT DIR   (the fake Resend)
+#load "api_harness.coax";
+
+// The fake Resend: every POST's body goes to DIR/last (and DIR/all); it answers 200 with an id.
+// It stops when DIR/stop exists.
+am_main :: (port: int, dir: string) -> int {
+  listener := cxsock_listen(port);
+  if listener < 0 { tool_errln("auth_checks mail: can't listen"); return 1; }
+  pb: [1100] u8; ready := fs_write(fs_join(dir, "ready", pb[..]), "1");
+  lb: [1100] u8; last := fs_join(dir, "last", lb[..]);
+  ab: [1100] u8; all := fs_join(dir, "all", ab[..]);
+  sp: [1100] u8; stop := fs_join(dir, "stop", sp[..]);
+  req: [65536] u8; sent := 0;
+  while !fs_exists(stop) {
+    h := cxsock_accept(listener, 50);
+    if h < 0 { continue; }
+    used := 0; end := -1; want := -1; deadline := proc_now_ms() + 5000;
+    while (end < 0 || used < end + want) && proc_now_ms() < deadline {
+      n := cxsock_read(h, 100);
+      if n == -2 { continue; }
+      if n <= 0 || used + n > req.count { break; }
+      for i: 0..<n { req[used + i] = cast,trunc(u8) cxsock_byte(h, i); }
+      used += n;
+      if end < 0 && used >= 4 {
+        for i: 0..<used - 3 { if end < 0 && req[i] == '\r' && req[i + 1] == '\n' && req[i + 2] == '\r' && req[i + 3] == '\n' { end = i + 4; } }
+        if end >= 0 { want = ap_whole(am_header(cast(string) req[0..<end], "Content-Length")); if want < 0 { want = 0; } }
+      }
+    }
+    if end < 0 { c := cxsock_close(h); continue; }
+    body := cast(string) req[end..<ifx used < end + want then used else end + want];
+    w1 := fs_write(last, body); w2 := fs_append(all, body); w3 := fs_append(all, "\n");
+    sent += 1;
+    reply: [1] Sb; sb(reply[..], "{\"id\":\"re_test_"); sb_int(reply[..], sent); sb(reply[..], "\"}");
+    s: [1] Sb;
+    sb(s[..], "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: "); sb_int(s[..], reply[0].n); sb(s[..], "\r\n\r\n");
+    sb(s[..], sb_text(reply[..]));
+    good := true;
+    for c: sb_text(s[..]) { if good && cxsock_write(h, cast(int) c) != 0 { good = false; } }
+    if good { f := cxsock_flush(h, 5000); }
+    c := cxsock_close(h);
+  }
+  c := cxsock_close(listener);
+  return 0;
+}
+am_header :: (head: string, name: string) -> string {
+  at := 0;
+  for i: 0..<head.count {
+    if head[i] != '\n' { continue; }
+    line := head[at..<i]; at = i + 1;
+    if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    if line.count > name.count && line[name.count] == ':' && http_same(line[0..<name.count], name) { return http_trim(line[name.count + 1..<line.count]); }
+  }
+  return "";
+}
+
+// Where part starts in s, or -1.
+ac_find :: (s: string, part: string) -> int {
+  if part.count == 0 || part.count > s.count { return -1; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+// The response head as text.
+ac_head :: (t: [] Ap) -> string { return cast(string) t[0].w[0].head[0..<t[0].w[0].head_n]; }
+// A Set-Cookie's value for name in the last response (the first one), copied into out; "" when none.
+ac_cookie :: (t: [] Ap, name: string, out: [] u8) -> string {
+  head := ac_head(t);
+  want: [1] Sb; sb(want[..], "Set-Cookie: "); sb(want[..], name); sb(want[..], "=");
+  at := ac_find(head, sb_text(want[..]));
+  if at < 0 { return ""; }
+  at += want[0].n;
+  n := 0;
+  while at + n < head.count && head[at + n] != ';' && head[at + n] != '\r' && n < out.count { out[n] = head[at + n]; n += 1; }
+  return cast(string) out[0..<n];
+}
+// The last mail's code (6 digits) and link token (64 hex).
+ac_mail :: (dir: string, code: [] u8, link: [] u8) -> bool {
+  lb: [1100] u8; m: [16384] u8; n := fs_read(fs_join(dir, "last", lb[..]), m[..]);
+  if n <= 0 { return false; }
+  text := cast(string) m[0..<n];
+  at := ac_find(text, "Your code is ");
+  if at < 0 { return false; }
+  at += 13;
+  k := 0;
+  while at < text.count && k < 6 { c := text[at]; if c >= '0' && c <= '9' { code[k] = c; k += 1; } else if c != ' ' { return false; } at += 1; }
+  lt := ac_find(text, "#t=");
+  if k != 6 || lt < 0 || lt + 3 + 64 > text.count { return false; }
+  for i: 0..<64 { link[i] = text[lt + 3 + i]; }
+  return true;
+}
+// One request with these headers (up to four), its status.
+ac_call :: (t: [] Ap, method: string, path: string, body: string, h1: string, h2: string, h3: string) -> int {
+  h: [4] string; n := 0;
+  h[n] = "Content-Type: application/json"; n += 1;
+  if h1 != "" { h[n] = h1; n += 1; }
+  if h2 != "" { h[n] = h2; n += 1; }
+  if h3 != "" { h[n] = h3; n += 1; }
+  return ap_call(t, method, path, body, h[0..<n]);
+}
+ac_cookie_header :: (name: string, value: string, out: [] Sb) -> string {
+  sb_clear(out); sb(out, "Cookie: "); sb(out, name); sb(out, "="); sb(out, value);
+  return sb_text(out);
+}
+ac_ip :: (ip: string, out: [] Sb) -> string { sb_clear(out); sb(out, "X-Forwarded-For: "); sb(out, ip); sb(out, ", 130.211.0.1"); return sb_text(out); }
+// Asks for an email code for address from ip; the status, the pending cookie (web) in pend.
+ac_start :: (t: [] Ap, address: string, ip: string, app: bool, pend: [] u8) -> int {
+  b: [1] Sb; sb(b[..], "{\"email\":\""); sb(b[..], address); sb(b[..], "\""); if app { sb(b[..], ",\"client\":\"app\""); } sb(b[..], "}");
+  x: [1] Sb;
+  st := ac_call(t, "POST", "/api/auth/email/start", sb_text(b[..]), ac_ip(ip, x[..]), "", "");
+  return st;
+}
+
+ac_checks :: (t: [] Ap, dir: string) {
+  out: [8192] u8; eb: [1024] u8;
+  c1: [1] Sb; c2: [1] Sb; c3: [1] Sb;
+  code: [6] u8; link: [64] u8;
+
+  // ---- the gate
+  ap_check(t, "a route with no rule is a 404", ac_call(t, "GET", "/api/no-such-route", "", "", "", "") == 404, ap_body(t));
+  ap_check(t, "nobody: /api/auth/account says not logged in", ac_call(t, "GET", "/api/auth/account", "", "", "", "") == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "false", ap_body(t));
+  ap_check(t, "nobody: the devices list asks you to log in", ac_call(t, "GET", "/api/auth/sessions", "", "", "", "") == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "Log in first.", ap_body(t));
+  ap_check(t, "the limits are listed, every one with its number", ac_call(t, "GET", "/api/auth/limits", "", "", "", "") == 200
+           && ap_has(ap_body(t), "\"email_hour\"") && ap_has(ap_body(t), "\"max\":5"), ap_body(t));
+
+  // ---- email: a code, in the browser that asked
+  pb: [128] u8; pend: [128] u8; pn := 0;
+  st := ac_start(t, "Ada@Example.com", "203.0.113.20", false, pb[..]);
+  p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  ap_check(t, "an email code is sent, and the browser gets a pending cookie", st == 200 && p.count == 64 && ap_member(ap_body(t), "state", eb[..]) == "sent", ap_body(t));
+  for i: 0..<p.count { pend[i] = p[i]; } pn = p.count;
+  P := cast(string) pend[0..<pn];
+  got := ac_mail(dir, code[..], link[..]);
+  ap_check(t, "the mail holds a 6-digit code and a link", got, "");
+  C := cast(string) code[..]; L := cast(string) link[..];
+  ap_check(t, "nothing of the address is kept in the clear",
+           ap_sql(t, "SELECT count(*) FROM auth.pending WHERE target_sealed ILIKE '%example%' OR target_lookup ILIKE '%example%'", out[..]) == "0"
+           && ap_sql(t, "SELECT count(*) FROM auth.audit WHERE detail::text ILIKE '%example%'", out[..]) == "0", "");
+  wrong := ifx C == "000000" then "111111" else "000000";
+  wb: [1] Sb; sb(wb[..], "{\"code\":\""); sb(wb[..], wrong); sb(wb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(wb[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]), "", "");
+  ap_check(t, "a wrong code says how many tries are left", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "That code isn't right. 4 tries left.", ap_body(t));
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], C[0..<3]); sb(vb[..], " "); sb(vb[..], C[3..<6]); sb(vb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), "", "", "");
+  ap_check(t, "the right code in another browser is refused", st == 409, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]), "", "");
+  sesb: [160] u8; ses := ac_cookie(t, "__Host-oa_session", sesb[..]);
+  acb: [64] u8; acct := ap_member(ap_body(t), "account", acb[..]);
+  ap_check(t, "the right code (typed with its space) logs in a new account", st == 200 && ap_starts(ses, "oas_") && ses.count == 62
+           && ap_starts(acct, "acct_") && ap_member(ap_body(t), "new", eb[..]) == "true", ap_body(t));
+  ap_check(t, "the session cookie is __Host-, HttpOnly, Secure", ap_has(ac_head(t), "__Host-oa_session=oas_") && ap_has(ac_head(t), "HttpOnly; Secure"), ac_head(t));
+  S := ses;
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", P, c1[..]), "", "");
+  ap_check(t, "a code logs in once", st == 409 || st == 410, ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
+  ap_check(t, "/api/auth/account knows the account at L1, the email masked", st == 200 && ap_member(ap_body(t), "account", eb[..]) == acct
+           && ap_has(ap_body(t), "\"level\":\"L1\"") && ap_has(ap_body(t), "a•••@example.com") && !ap_has(ap_body(t), "ada@"), ap_body(t));
+  q: [1] Sb; sb(q[..], "SELECT count(*) FROM auth.emails WHERE account = '"); sb(q[..], acct); sb(q[..], "' AND sealed ~ '^0[12][0-9a-f]+$' AND verified_at IS NOT NULL");
+  ap_check(t, "the email is kept sealed under a key version", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
+  st = ac_call(t, "GET", "/api/auth/sessions", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
+  ap_check(t, "the devices list shows this session as current", st == 200 && ap_has(ap_body(t), "\"this\": true"), ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/logout-everywhere", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
+  ap_check(t, "logging out everywhere asks for a key (L2) after an email login", st == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "Log in again with your key or passkey to do this.", ap_body(t));
+
+  // the link: in the browser that asked it logs in; elsewhere it shows the code to type
+  st = ac_start(t, "ada@example.com", "203.0.113.20", false, pb[..]);
+  p2b: [128] u8; p2 := ac_cookie(t, "__Host-oa_pending", p2b[..]);
+  got = ac_mail(dir, code[..], link[..]);
+  lb: [1] Sb; sb(lb[..], "{\"t\":\""); sb(lb[..], cast(string) link[..]); sb(lb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/link", sb_text(lb[..]), "", "", "");
+  ap_check(t, "the link in another browser shows the code to type where you asked", st == 409 && ap_member(ap_body(t), "state", eb[..]) == "elsewhere"
+           && ap_has(ap_body(t), cast(string) code[0..<3]), ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/email/link", sb_text(lb[..]), ac_cookie_header("__Host-oa_pending", p2, c1[..]), "", "");
+  ap_check(t, "the link in the browser that asked logs in to the same account", st == 200 && ap_member(ap_body(t), "account", eb[..]) == acct
+           && ap_member(ap_body(t), "new", eb[..]) == "false", ap_body(t));
+  l2b: [160] u8; L2 := ac_cookie(t, "__Host-oa_session", l2b[..]);
+  st = ac_call(t, "POST", "/api/auth/logout", "", ac_cookie_header("__Host-oa_session", L2, c1[..]), "", "");
+  ap_check(t, "logging out ends the session and clears its cookie", st == 200 && ap_has(ac_head(t), "__Host-oa_session=; Path=/; Max-Age=0"), ac_head(t));
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", L2, c1[..]), "", "");
+  ap_check(t, "a copied cookie replayed after logout is nobody", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "false", ap_body(t));
+
+  // ---- the limits: shown, with when they lift
+  i := 0; last := 0;
+  while i < 8 { last = ac_start(t, "ada@example.com", "203.0.113.21", false, pb[..]); if last == 429 { break; } i += 1; }
+  ap_check(t, "the sixth code this hour for one address is refused, and says when it lifts", last == 429
+           && ap_member(ap_body(t), "limit", eb[..]) == "email_hour" && ap_has(ap_body(t), "Try again in ") && ap_header(t, "Retry-After") != "", ap_body(t));
+  ap_check(t, "every refusal is in the audit log, with no address",
+           ap_sql(t, "SELECT count(*) FROM auth.audit WHERE action = 'login.email' AND result = 'refused'", out[..]) != "0"
+           && ap_sql(t, "SELECT count(*) FROM auth.audit WHERE detail::text ILIKE '%@%'", out[..]) == "0", "");
+
+  // ---- Nostr: sign the challenge (NIP-98 over the route and its body), once
+  kb: [2048] u8; other := proc_getenv("OTHER_KEY", kb[..]);
+  st = ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "", "", "");
+  chb: [128] u8; ch := ap_member(ap_body(t), "challenge", chb[..]);
+  ap_check(t, "a challenge is given", st == 200 && ch.count == 64, ap_body(t));
+  body: [1] Sb; sb(body[..], "{\"challenge\":\""); sb(body[..], ch); sb(body[..], "\",\"label\":\"extension\"}");
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/auth/nostr");
+  sigb: [4096] u8; sig := ap_nostr(t, other, "POST", sb_text(url[..]), sb_text(body[..]), true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  st = ac_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), sb_text(ah[..]), "", "");
+  kses: [160] u8; K := ac_cookie(t, "__Host-oa_session", kses[..]);
+  kab: [64] u8; kacct := ap_member(ap_body(t), "account", kab[..]);
+  ap_check(t, "a signed challenge logs in a new account at L2", st == 200 && ap_starts(K, "oas_") && ap_starts(kacct, "acct_") && kacct != acct, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), sb_text(ah[..]), "", "");
+  ap_check(t, "the same signature logs in once", st == 401, ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/sessions", "", sb_text(ah[..]), ac_cookie_header("__Host-oa_session", K, c1[..]), "");
+  ap_check(t, "two credentials at once are refused", st == 400, ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", K, c1[..]), "", "");
+  ap_check(t, "the key's session is L2 and names its key", st == 200 && ap_has(ap_body(t), "\"level\":\"L2\"") && ap_has(ap_body(t), "\"pubkey\""), ap_body(t));
+
+  // ---- sessions: a new token each day of use, the old one 60 seconds more; idle ends them
+  sb_clear(q[..]); sb(q[..], "UPDATE auth.sessions SET rotated_at = now() - interval '25 hours', created_at = now() - interval '25 hours' WHERE account = '"); sb(q[..], kacct); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", K, c1[..]), "", "");
+  rb: [160] u8; R := ac_cookie(t, "__Host-oa_session", rb[..]);
+  ap_check(t, "a day-old session gets a new token", st == 200 && ap_starts(R, "oas_") && R != K, ac_head(t));
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", K, c1[..]), "", "");
+  ap_check(t, "the old token still works for a moment (other tabs)", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/logout-everywhere", "", ac_cookie_header("__Host-oa_session", R, c1[..]), "", "");
+  ap_check(t, "a key's session logs out everywhere", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "logged-out", ap_body(t));
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", R, c1[..]), "", "");
+  ap_check(t, "after that, the session is nobody and its cookie is cleared", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "false"
+           && ap_has(ac_head(t), "__Host-oa_session=; Path=/; Max-Age=0"), ac_head(t));
+  sb_clear(q[..]); sb(q[..], "UPDATE auth.sessions SET last_seen_at = now() - interval '31 days' WHERE account = '"); sb(q[..], acct); sb(q[..], "'");
+  ap_do(t, sb_text(q[..]));
+  st = ac_call(t, "GET", "/api/auth/account", "", ac_cookie_header("__Host-oa_session", S, c1[..]), "", "");
+  ap_check(t, "a session unused 30 days has ended", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "false", ap_body(t));
+
+  // ---- an agent's key can't do what only a person can
+  nb: [128] u8; np := ap_sql(t, "SELECT auth.new_person(NULL)", nb[..]);
+  agb: [1100] u8; ak := fs_join(dir, "agent.key", agb[..]);   // a key of its own: test.sh's keys stay people's
+  pkb: [256] u8; pk := ac_newkey(t, ak, pkb[..]);
+  sb_clear(q[..]); sb(q[..], "WITH a AS (UPDATE auth.accounts SET kind = 'agent', owner = '"); sb(q[..], kacct); sb(q[..], "' WHERE id = '"); sb(q[..], np);
+  sb(q[..], "' RETURNING id) INSERT INTO auth.nostr_keys (account, pubkey) SELECT id, '");
+  sb(q[..], pk); sb(q[..], "' FROM a RETURNING account");
+  made := ap_sql(t, sb_text(q[..]), out[..]);
+  ab2: [1] Sb; sb(ab2[..], "{\"challenge\":\""); for k: 0..<64 { sb(ab2[..], "a"); } sb(ab2[..], "\"}");
+  u2: [1] Sb; sb(u2[..], t[0].api); sb(u2[..], "/api/auth/phone/approve");
+  s2b: [4096] u8; s2 := ap_nostr(t, ak, "POST", sb_text(u2[..]), sb_text(ab2[..]), true, s2b[..]);
+  a2: [1] Sb; sb(a2[..], "Authorization: Nostr "); sb(a2[..], s2);
+  st = ac_call(t, "POST", "/api/auth/phone/approve", sb_text(ab2[..]), sb_text(a2[..]), "", "");
+  ap_check(t, "an agent's key is refused where only a person may act", made != "" && st == 403
+           && ap_member(ap_body(t), "error", eb[..]) == "Only a person can do this, not an agent.", ap_body(t));
+
+  // ---- app tokens: a pair, a refresh, and a reused refresh token ends the login
+  st = ac_start(t, "app@example.com", "203.0.113.30", true, pb[..]);
+  apb: [128] u8; ap_pend := ap_member(ap_body(t), "pending", apb[..]);
+  got = ac_mail(dir, code[..], link[..]);
+  vb2: [1] Sb; sb(vb2[..], "{\"code\":\""); sb(vb2[..], cast(string) code[..]); sb(vb2[..], "\",\"pending\":\""); sb(vb2[..], ap_pend); sb(vb2[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb2[..]), "", "", "");
+  atb: [160] u8; AT := ap_member(ap_body(t), "access_token", atb[..]);
+  rtb: [160] u8; RT := ap_member(ap_body(t), "refresh_token", rtb[..]);
+  ap_check(t, "an app's login gets an access and a refresh token, no cookie", st == 200 && ap_starts(AT, "oa_at_") && ap_starts(RT, "oa_rt_")
+           && !ap_has(ac_head(t), "__Host-oa_session=oas_"), ap_body(t));
+  bh: [1] Sb; sb(bh[..], "Authorization: Bearer "); sb(bh[..], AT);
+  st = ac_call(t, "GET", "/api/auth/account", "", sb_text(bh[..]), "", "");
+  ap_check(t, "the access token is the account", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
+  rq: [1] Sb; sb(rq[..], "{\"refresh_token\":\""); sb(rq[..], RT); sb(rq[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/refresh", sb_text(rq[..]), "", "", "");
+  nrb: [160] u8; NRT := ap_member(ap_body(t), "refresh_token", nrb[..]);
+  ap_check(t, "a refresh gives a new pair", st == 200 && ap_starts(NRT, "oa_rt_") && NRT != RT, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/refresh", sb_text(rq[..]), "", "", "");
+  ap_check(t, "a reused refresh token ends the whole login", st == 401 && ap_has(ap_body(t), "used twice"), ap_body(t));
+  nq: [1] Sb; sb(nq[..], "{\"refresh_token\":\""); sb(nq[..], NRT); sb(nq[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/refresh", sb_text(nq[..]), "", "", "");
+  ap_check(t, "after that, its newest refresh token is dead too", st == 401, ap_body(t));
+  ap_check(t, "a token with a wrong checksum is refused before any lookup", ac_call(t, "GET", "/api/auth/sessions", "", "Authorization: Bearer oa_at_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "", "") == 401, ap_body(t));
+
+  // ---- freeze: "This wasn't me" ends every session, and email can't log in until a key unfreezes
+  st = ac_start(t, "frozen@example.com", "203.0.113.40", false, pb[..]);
+  f1b: [128] u8; f1 := ac_cookie(t, "__Host-oa_pending", f1b[..]);
+  got = ac_mail(dir, code[..], link[..]);
+  fv: [1] Sb; sb(fv[..], "{\"code\":\""); sb(fv[..], cast(string) code[..]); sb(fv[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(fv[..]), ac_cookie_header("__Host-oa_pending", f1, c1[..]), "", "");
+  fsb: [160] u8; FS := ac_cookie(t, "__Host-oa_session", fsb[..]);
+  st = ac_call(t, "POST", "/api/auth/freeze", "{}", ac_cookie_header("__Host-oa_session", FS, c1[..]), "", "");
+  ap_check(t, "freezing ends the session", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "frozen", ap_body(t));
+  st = ac_start(t, "frozen@example.com", "203.0.113.40", false, pb[..]);
+  f2b: [128] u8; f2 := ac_cookie(t, "__Host-oa_pending", f2b[..]);
+  got = ac_mail(dir, code[..], link[..]);
+  sb_clear(fv[..]); sb(fv[..], "{\"code\":\""); sb(fv[..], cast(string) code[..]); sb(fv[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(fv[..]), ac_cookie_header("__Host-oa_pending", f2, c1[..]), "", "");
+  ap_check(t, "a frozen account's email login is refused, and says how to unfreeze", st == 403 && ap_has(ap_body(t), "frozen"), ap_body(t));
+
+  // ---- every rule the gate keeps is on a route that exists; Origin is checked on writes
+  st = ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "Origin: https://evil.example", "", "");
+  ap_check(t, "a write from another site's page is refused", st == 403, ap_body(t));
+}
+// A new key in keyfile (sign --new): its public key.
+ac_newkey :: (t: [] Ap, keyfile: string, out: [] u8) -> string {
+  a := [3] string.[t[0].sign, "--new", keyfile];
+  err: [1024] u8;
+  got := proc_run(a[..], 30000, out, err[..]);
+  if got.status != 0 { return ""; }
+  return ap_trim(cast(string) out[0..<got.out_n]);
+}
+// The public key of a test.sh key file (sign --pubkey).
+ac_pubkey :: (t: [] Ap, keyfile: string, out: [] u8) -> string {
+  a := [4] string.[t[0].sign, "--key", keyfile, "--pubkey"];
+  err: [1024] u8;
+  got := proc_run(a[..], 30000, out, err[..]);
+  if got.status != 0 { return ""; }
+  return ap_trim(cast(string) out[0..<got.out_n]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "mail" {
+    if args_count(a[..]) != 3 { tool_errln("auth_checks mail PORT DIR"); return 2; }
+    return am_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  rp: [32] u8; port := proc_getenv("RESEND_PORT", rp[..]);
+  if port == "" { tool_errln("auth_checks: RESEND_PORT comes from test.sh"); return 2; }
+  wb: [4096] u8; work := fs_temp("auth-mail", wb[..]);
+  ba := [5] string.["coax/web/tool.sh", "coax/web/api/tests/auth_checks.coax", "mail", port, work];
+  h := proc_new(); ok := h >= 0;
+  for x: ba { ok = ok && proc_arg(h, x); }
+  started := ok && proc_start(h) == 0;
+  rb: [4200] u8; ready := fs_join(work, "ready", rb[..]);
+  deadline := proc_now_ms() + 300000;
+  while started && !fs_exists(ready) && proc_now_ms() < deadline && proc_wait(h, 0) == PROC_RUNNING { proc_sleep(50); }
+  if !started || !fs_exists(ready) { ap_check(t[..], "the fake Resend listens", false, port); return ap_done(t[..], "auth checks"); }
+  ac_checks(t[..], work);
+  sb_: [4200] u8; stopped := fs_write(fs_join(work, "stop", sb_[..]), "1");
+  w := proc_wait(h, 5000); r := proc_release(h);
+  gone := fs_remove(work);
+  return ap_done(t[..], "auth checks");
+}
