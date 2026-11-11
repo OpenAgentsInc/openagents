@@ -168,7 +168,7 @@ For images, meshes, tool output and uploads.
    worlds. Catching up pages through changes by number, at most a fixed
    batch at a time.
 
-The wire frames follow the pre-Nuke registry, as binary frames (a type byte,
+The frames are defined as protobuf in `proto/openagents/sync/v1alpha1/`, with generated Coax codecs, like every other wire in `proto/`. They follow the pre-Nuke registry, as binary frames (a type byte,
 a small header, raw bytes) rather than base64 JSON, because base64 costs a
 third more on slow links:
 

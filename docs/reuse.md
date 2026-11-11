@@ -42,6 +42,7 @@ undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |
 | Nostr events, NIPs, NIP-98, zaps | Coax Nostr | `coax/lib/nostr/` |
 | Bitcoin and Lightning | Coax Bitcoin and Lightning | `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` |
+| A wire format: messages between apps, the API, rooms or devices | The protocol's schemas, with generated Coax codecs | `proto/` (read its README); add a new package there rather than inventing JSON shapes in a page |
 | JSON, protobuf, base64, Unicode, regex | Coax formats | `coax/lib/json/`, `coax/lib/proto/`, `coax/lib/text/` |
 | HTTP, sockets, processes, files, time | Coax system | `coax/lib/net/`, `coax/lib/sys/`, `coax/lib/clock.coax` |
 | Browser storage | The host's byte storage | `coax/web/STORAGE.md` |
