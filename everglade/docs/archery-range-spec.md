@@ -205,8 +205,8 @@ turns, siege, Warlock, film or sliders. It draws with Character Create's passes
 page) and the glade's effects (`fivelab-fx.wgsl`), and loads the glade pack, as
 Experimental does.
 
-`wasm.sh` runs the module's checks as native code (`native_check_units`,
-[native checks](../../coax/docs/native-checks.md)). They are the zone's checks,
+The module's checks run as native code, as every unit's do
+([native checks](../../coax/docs/native-checks.md)). They are the zone's checks,
 which fivelab also runs, and the range's four.
 
 In the Mac app the world list's row for the Archery Range opens this realm

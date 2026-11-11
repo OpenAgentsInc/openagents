@@ -31,7 +31,8 @@ check reaches much of its unit: a library with five small checks takes
 0.06 s in the evaluator and 0.45 s natively (a Mac, 2026-11-10). A check
 without `#steps` can't spend more than the default 20 million steps, a few
 seconds at most, and most single checks spend far less: measured below,
-leaving runs of one check to the evaluator was faster on every unit. So a
+leaving runs of one check to the evaluator was faster on every unit than
+sending them native. So a
 run of one such check stays in the evaluator. That is also the usual run
 after an edit that adds or changes one check.
 
@@ -188,3 +189,59 @@ Both give the same C and the same module bytes. `compare` on the compile
 found 1,662 `agree` rows and no other; `coax test` of the unit passed all
 1,662 checks natively in 15.4 s; the module build ran 3,785 checks natively
 in 98 runs, and all passed.
+
+## On by default (#13143)
+
+Cold compiles to C with `--library` on one build host, each with a fresh
+check cache, two runs each way, 2026-11-10. The check phase is the
+`#authority` checks and the loaded units' library checks together:
+
+| Unit | Compile to C, evaluator | Compile to C, default | Check phase, evaluator | Check phase, default |
+| --- | --- | --- | --- | --- |
+| status | 13.6 s, 13.3 s | 2.1 s, 2.2 s | 12.9 s, 12.9 s | 1.7 s, 1.7 s |
+| charactercreator | 80.6 s, 65.6 s | 10.1 s, 5.8 s | 74.8 s, 63.7 s | 8.5 s, 4.2 s |
+| fivelab | 150.8 s, 187.9 s | 14.7 s, 15.2 s | 146.8 s, 184.1 s | 11.2 s, 11.5 s |
+| everglade2 | 248.8 s, 220.5 s | 23.7 s, 23.8 s | 244.9 s, 216.9 s | 20.3 s, 20.3 s |
+
+An edit that adds one check, compiled with the same check cache, reruns
+only that check either way, except in everglade2: there the evaluator's
+records miss 8 checks, so it reruns 9, while native passes are all
+recorded and it reruns 1.
+
+| Unit | Edit, evaluator | Edit, default |
+| --- | --- | --- |
+| status | 0.62 s | 0.60 s |
+| charactercreator | 2.6 s | 2.1 s |
+| fivelab | 5.0 s | 5.0 s |
+| everglade2 | 19.7 s (9 checks run) | 4.6 s (1 check run) |
+
+Both ways give the same C.
+
+### The whole-tree compare
+
+`COAX_NATIVE_CHECKS=compare coax test` on every `.coax` file in the tree
+(6,909 files, 16 build hosts), then `coax test --library` on the 1,640 files
+with no `main`, the 24 files that ran past 15 minutes again with 50, and the
+262 files that hit `E0400` again with `--steps 2000000000 --run-steps
+250000000`:
+
+| Run | Files | `agree` | `disagree` | `native-only-budget` | `fallback` | `evaluator-only` |
+| --- | --- | --- | --- | --- | --- | --- |
+| every file, `coax test` | 6,909 | 479,316 | 0 | 59 | 0 | 0 |
+| no `main`, `--library` | 1,640 | 59,272 | 0 | 3 | 2 | 7 |
+| the 24 that ran long | 24 | 31,914 | 0 | 0 | 0 | 0 |
+| the 262 with `E0400`, larger budgets | 262 | 117,596 | 0 | 5 | 0 | 0 |
+
+`agree` is both passed or both failed (32 rows, all checks that fail on
+purpose, failed both ways). `native-only-budget` is a check that passed
+natively while the evaluator ran out of steps. `fallback` is native code
+refusing output or a host procedure, where the evaluator fails with
+`E0404`; `evaluator-only` is a check the plan left out. No native run was
+refused, crashed or timed out.
+
+Every `fallback` and `evaluator-only` row is a fixture in
+`coax/tests/native-check-forall/`, `coax/tests/native-check-emission/` or
+`coax/tests/steps/` that tests that case. With the larger budgets, 255 of
+the 262 `E0400` files pass in the evaluator too; five still run out of
+steps there, and two (`bitcoin/examples/frost.coax` and its checks) ran
+past 30 minutes. No unit needed native checks turned off.
