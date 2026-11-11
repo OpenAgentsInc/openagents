@@ -168,7 +168,7 @@ production continuation uses the same sequence across these chapters:
 | 24 | The actual Lab validates a decision, routes it and copies the displayed transcript |
 
 The consumer is
-[lab.coax](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-desktop/zeron/lab.coax),
+[lab.coax](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/agent/engine/lab.coax),
 using the shared
 [typed adapter](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/systemone/outcomes.coax).
 The checks use offline process observations and a fixed answer; no live model,
