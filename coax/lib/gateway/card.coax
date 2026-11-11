@@ -25,13 +25,23 @@ GwRate :: struct {
 // $4.00, C3FF-AD89-C218 cached input $0.20, 1B77-85A0-B300 text output $20.00 per million, reasoning
 // included). The Gemini API lists the same from 2026-12-01 and half that through 2026-11-30
 // (aistudio.google.com/docs/pricing); the card keeps the standing price, as it keeps no promotions.
-GW_RATES :: [16] GwRate.[
-  GwRate.{gateway = "vertex", model = "google/gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
-  GwRate.{gateway = "vertex", model = "gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
+// Gemini 4 Argon on Vertex, the same catalog read 2026-11-11: 3BAE-62B7-C9B9 text input $4.00,
+// 3B3E-7322-E883 cached input $0.20, 1E84-F91D-8B95 text output $20.00 per million.
+// Gemini 3.8 Flash on Vertex, corrected from the same catalog read 2026-11-11: on-demand is
+// 2A35-AC68-14D6 text input $1.50, 8658-6939-8BEC cached input $0.15, 90FD-DC5F-DC55 text output
+// $7.50 per million. The card held $0.75, $0.075 and $3.75, which are Vertex's batch and flex rates
+// (040C-CF2F-2F36, 0751-33AC-0D5E), so every on-demand Flash call was priced at half (found by the
+// task-fit experiments, docs/research/2026-11-11-antigravity-task-fit.md). The Gemini API,
+// OpenRouter and Vercel rows keep their own providers' prices.
+GW_RATES :: [18] GwRate.[
+  GwRate.{gateway = "vertex", model = "google/gemini-3.8-flash", input = 1500000, cached_input = 150000, output = 7500000},
+  GwRate.{gateway = "vertex", model = "gemini-3.8-flash", input = 1500000, cached_input = 150000, output = 7500000},
   GwRate.{gateway = "vertex", model = "google/gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
   GwRate.{gateway = "vertex", model = "gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
   GwRate.{gateway = "vertex", model = "google/gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
   GwRate.{gateway = "vertex", model = "gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
+  GwRate.{gateway = "vertex", model = "google/gemini-4-argon", input = 4000000, cached_input = 200000, output = 20000000},
+  GwRate.{gateway = "vertex", model = "gemini-4-argon", input = 4000000, cached_input = 200000, output = 20000000},
   GwRate.{gateway = "gemini", model = "gemini-4-carbon", input = 4000000, cached_input = 200000, output = 20000000},
   GwRate.{gateway = "gemini", model = "gemini-3.8-flash", input = 750000, cached_input = 75000, output = 3750000},
   GwRate.{gateway = "gemini", model = "gemini-2.5-flash-lite", input = 100000, cached_input = 10000, output = 400000},
@@ -75,5 +85,6 @@ gw_card_cost :: (rate: GwRate, input: int, cached_in: int, cache_write: int, out
   #assert f.ok && f.rate.input == 4000000 && f.rate.cached_input == 200000 && f.rate.output == 20000000;
   // 61 in and 13 out: 244 + 260 micro-USD; a million in, all cached: $0.20
   #assert gw_card_cost(f.rate, 61, 0, 0, 13) == 504 && gw_card_cost(f.rate, 1000000, 1000000, 0, 0) == 200000;
-  #assert !gw_rate("vertex", "gemini-4-argon").ok;
+  #assert gw_rate("vertex", "gemini-4-argon").ok && gw_rate("vertex", "gemini-4-argon").rate.output == 20000000;
+  #assert gw_rate("vertex", "gemini-3.8-flash").rate.input == 1500000 && gw_rate("vertex", "google/gemini-3.8-flash").rate.output == 7500000;
 }

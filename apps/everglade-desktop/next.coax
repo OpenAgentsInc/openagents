@@ -1242,9 +1242,11 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   // Priced from the card: Flash's row without its level; a model the card lacks at Carbon's.
   #assert np_agy_rate_model("gemini-3.8-flash-low") == "gemini-3.8-flash" && np_agy_rate_model("gemini-4-carbon-high") == "gemini-4-carbon" && np_agy_rate_model("gemini-3.5-flash") == "gemini-3.5-flash";
   p := np_agy_price("gemini-3.8-flash-low", 120, 64, 0, 12, 8);
-  #assert p.row == "gemini-3.8-flash" && p.e6 == 170;     // 120 at $0.75, 64 cached at $0.075, 20 out at $3.75 a million
+  #assert p.row == "gemini-3.8-flash" && p.e6 == 340;     // 120 at $1.50, 64 cached at $0.15, 20 out at $7.50 a million (Vertex on-demand)
   q := np_agy_price("gemini-4-argon-high", 1000000, 0, 0, 0, 0);
-  #assert q.row == NP_AGY_PRICE_FALLBACK && q.e6 == 4000000;
+  #assert q.row == "gemini-4-argon" && q.e6 == 4000000;   // Argon has its own row on the card
+  z := np_agy_price("gemini-3.5-flash", 1000000, 0, 0, 0, 0);
+  #assert z.row == NP_AGY_PRICE_FALLBACK && z.e6 == 4000000;   // a model the card lacks is priced at Carbon's, never free
 }
 #test "antigravity coder: a turn that reports done is written down and Autopilot goes round" {
   s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low");
@@ -1264,8 +1266,8 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert s[0].state == NP_CONTEXT_WAIT && s[0].request == 2 && !s[0].agy && !s[0].started;   // Autopilot asks the picker again
   #assert np_usage_has(s[..], "\"harness\":\"antigravity\"") && np_usage_has(s[..], "\"purpose\":\"issue.code\"") && np_usage_has(s[..], "\"model\":\"gemini-3.8-flash-low\"");
   #assert np_usage_has(s[..], "\"session\":\"agy-standin-1\"") && np_usage_has(s[..], "\"input_tokens\":120") && np_usage_has(s[..], "\"cache_read_input_tokens\":64");
-  #assert np_usage_has(s[..], "\"output_tokens\":12") && np_usage_has(s[..], "\"thought_tokens\":8") && np_usage_has(s[..], "\"cost_priced_as\":\"gemini-3.8-flash\"") && np_usage_has(s[..], "\"cost_usd_e6\":170");
-  #assert s[0].run_cost_e6 == 170;
+  #assert np_usage_has(s[..], "\"output_tokens\":12") && np_usage_has(s[..], "\"thought_tokens\":8") && np_usage_has(s[..], "\"cost_priced_as\":\"gemini-3.8-flash\"") && np_usage_has(s[..], "\"cost_usd_e6\":340");
+  #assert s[0].run_cost_e6 == 340;
 }
 #test "antigravity coder: a turn that reports blocked ends the issue too, and one without a report is told to finish" {
   s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]);
@@ -1312,7 +1314,7 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   s[0].run_cost_e6 = NP_BUDGET_E6 - 100;
   np_agy_says(s[..], "REPORT: done abc123");
   np_agy_ends(s[..], 4, "end_turn");
-  #assert s[0].run_cost_e6 == NP_BUDGET_E6 + 70 && s[0].runs == 1 && s[0].state == NP_YOURS && s[0].request == 0;
+  #assert s[0].run_cost_e6 == NP_BUDGET_E6 + 240 && s[0].runs == 1 && s[0].state == NP_YOURS && s[0].request == 0;
   #assert np_text_has(s[..], "> Autopilot stopped: this run has spent its budget.");
 
   t: [1] NextPanel; np_agy_test(t[..], false, "gemini-9-nope");
