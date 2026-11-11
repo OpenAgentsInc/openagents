@@ -26,6 +26,7 @@ WB_NAME :: 48;
 WB_PER_EDIT :: 200;     // things one edit places at most
 WB_NAMES :: 16;         // names one edit lists
 WB_LAST :: 512;         // ids "last" remembers
+WB_PARTS :: 256;        // pieces all the buildings hold
 
 OP_NONE :: 0; OP_PLACE :: 1; OP_MOVE :: 2; OP_ROTATE :: 3; OP_SCALE :: 4; OP_DELETE :: 5; OP_DUPLICATE :: 6; OP_UNDO :: 7; OP_CLEAR :: 8;
 T_LAST :: 0; T_NAMES :: 1; T_NEAREST :: 2; T_ALL :: 3;
@@ -38,7 +39,13 @@ WbCat :: struct {
   name: [WB_MESHES * WB_NAME] u8; name_n: [WB_MESHES] int;
   first: [WB_MESHES] int; count: [WB_MESHES] int;
   box: [WB_MESHES * 6] f32;      // x0 y0 z0 x1 y1 z1, metres
+  // the pack's own meshes are the first real_n; after them come the buildings (WB_PREFABS), each a
+  // list of the pack's pieces where they stand in it
+  real_n: int;
+  part_first: [WB_MESHES] int; part_n: [WB_MESHES] int;
+  parts: [WB_PARTS] WbPart; parts_n: int;
 }
+WbPart :: struct { mesh: int; x: f32; y: f32; z: f32; yaw: f32; }
 WbAct :: struct {
   op: int; asset: int = -1; count: int = 1;
   targets: int; names: [WB_NAMES] int; names_n: int;
@@ -118,10 +125,68 @@ wb_cat_line :: (c: [] WbCat, line: string) {
   c[0].n = m + 1;
 }
 wb_catalog :: (c: [] WbCat, text: string) {
-  c[0].n = 0;
+  c[0].n = 0; c[0].parts_n = 0;
   i := 0;
   while i < text.count { e := i; while e < text.count && text[e] != '\n' { e += 1; } wb_cat_line(c, text[i..<e]); i = e + 1; }
+  c[0].real_n = c[0].n;
+  for m: 0..<c[0].n { c[0].part_first[m] = -1; c[0].part_n[m] = 0; }
+  wb_prefabs(c, WB_PREFABS);
 }
+
+// ---- buildings: the village kit is pieces (walls 2 m wide, 3.12 m high; corners; roofs), so a
+// house is pieces put together. A building is "B NAME" and then a piece a line,
+// "PIECE X Y Z DEGREES": where its middle stands in the building and its turn (a wall's outer face is
+// its -z, so the front wall, at +z, is turned 180).
+// The API's catalogue lists the same names (coax/web/api/worldbuilder.c WB_BUILDINGS).
+WB_PREFABS :: "B house/cottage\nvillage/wall-plaster-door-round -1 0 2 180\nvillage/wall-plaster-window-wide-round 1 0 2 180\nvillage/wall-plaster-window-thin-round -1 0 -2 0\nvillage/wall-plaster-straight 1 0 -2 0\nvillage/wall-plaster-window-wide-flat 2 0 -1 -90\nvillage/wall-plaster-straight 2 0 1 -90\nvillage/wall-plaster-straight -2 0 -1 90\nvillage/wall-plaster-window-wide-flat -2 0 1 90\nvillage/corner-exterior-wood 2 0 2 0\nvillage/corner-exterior-wood -2 0 2 0\nvillage/corner-exterior-wood 2 0 -2 0\nvillage/corner-exterior-wood -2 0 -2 0\nvillage/roof-roundtiles-4x4 0 3 0 0\nB house/timber-house\nvillage/wall-woodwear-door-round 1 0 2 180\nvillage/wall-woodwear-window-wide-flat -1 0 2 180\nvillage/wall-woodwear-straight -1 0 -2 0\nvillage/wall-woodwear-window-thin-round 1 0 -2 0\nvillage/wall-woodwear-straight 2 0 -1 -90\nvillage/wall-woodwear-window-wide-round 2 0 1 -90\nvillage/wall-woodwear-window-wide-round -2 0 -1 90\nvillage/wall-woodwear-straight -2 0 1 90\nvillage/corner-exterior-wood 2 0 2 0\nvillage/corner-exterior-wood -2 0 2 0\nvillage/corner-exterior-wood 2 0 -2 0\nvillage/corner-exterior-wood -2 0 -2 0\nvillage/roof-flattiles-4x4 0 3 0 0\nB house/long-house\nvillage/wall-unevenbrick-door-round -1 0 3 180\nvillage/wall-unevenbrick-window-wide-round 1 0 3 180\nvillage/wall-unevenbrick-straight -1 0 -3 0\nvillage/wall-unevenbrick-window-thin-round 1 0 -3 0\nvillage/wall-unevenbrick-window-wide-flat 2 0 -2 -90\nvillage/wall-unevenbrick-straight 2 0 0 -90\nvillage/wall-unevenbrick-window-wide-flat 2 0 2 -90\nvillage/wall-unevenbrick-window-wide-flat -2 0 -2 90\nvillage/wall-unevenbrick-straight -2 0 0 90\nvillage/wall-unevenbrick-window-wide-flat -2 0 2 90\nvillage/corner-exteriorwide-brick 2 0 3 0\nvillage/corner-exteriorwide-brick -2 0 3 0\nvillage/corner-exteriorwide-brick 2 0 -3 0\nvillage/corner-exteriorwide-brick -2 0 -3 0\nvillage/roof-roundtiles-4x6 0 3 0 0\n";
+// A building a mesh after the pack's: its box the union of its pieces' boxes as they stand. One
+// whose pieces the catalogue lacks isn't added.
+wb_prefabs :: (c: [] WbCat, text: string) {
+  i := 0; m := -1;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    if line.count > 2 && line[0] == 'B' && line[1] == ' ' {
+      m = -1;
+      name := line[2..<line.count];
+      if c[0].n >= WB_MESHES || name.count > WB_NAME || wb_find(c, name) >= 0 { continue; }
+      m = c[0].n;
+      for k: 0..<name.count { c[0].name[m * WB_NAME + k] = name[k]; }
+      c[0].name_n[m] = name.count; c[0].first[m] = 0; c[0].count[m] = 0;
+      c[0].part_first[m] = c[0].parts_n; c[0].part_n[m] = 0;
+      for j: 0..<3 { c[0].box[m * 6 + j] = 1000000; c[0].box[m * 6 + 3 + j] = -1000000; }
+      c[0].n = m + 1;
+      continue;
+    }
+    if m < 0 || line.count == 0 { continue; }
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    piece := wb_find(c, line[0..<sp]);
+    at: [1] int; at[0] = sp;
+    x := wb_num_at(line, at[..]); ok := at[0] >= 0;
+    y := wb_num_at(line, at[..]); ok = ok && at[0] >= 0;
+    z := wb_num_at(line, at[..]); ok = ok && at[0] >= 0;
+    deg := wb_num_at(line, at[..]); ok = ok && at[0] >= 0;
+    if !ok || piece < 0 || piece >= c[0].real_n || c[0].parts_n >= WB_PARTS {
+      // a building with a piece missing is no building: take it back out
+      c[0].parts_n = c[0].part_first[m]; c[0].n = m; m = -1;
+      continue;
+    }
+    yaw := deg * 0.017453292;
+    c[0].parts[c[0].parts_n] = WbPart.{mesh = piece, x = x, y = y, z = z, yaw = yaw};
+    c[0].parts_n += 1; c[0].part_n[m] += 1;
+    b := c[0].box[piece * 6..<piece * 6 + 6];
+    co := cos(yaw); sn := sin(yaw);
+    for q: 0..<4 {
+      lx := ifx q % 2 == 0 then b[0] else b[3]; lz := ifx q < 2 then b[2] else b[5];
+      wx := x + co * lx + sn * lz; wz := z - sn * lx + co * lz;
+      c[0].box[m * 6] = wb_lo(c[0].box[m * 6], wx); c[0].box[m * 6 + 3] = wb_hi(c[0].box[m * 6 + 3], wx);
+      c[0].box[m * 6 + 2] = wb_lo(c[0].box[m * 6 + 2], wz); c[0].box[m * 6 + 5] = wb_hi(c[0].box[m * 6 + 5], wz);
+    }
+    c[0].box[m * 6 + 1] = wb_lo(c[0].box[m * 6 + 1], y + b[1]); c[0].box[m * 6 + 4] = wb_hi(c[0].box[m * 6 + 4], y + b[4]);
+  }
+}
+wb_is_building :: (c: [] WbCat, m: int) -> bool { return m >= c[0].real_n && m < c[0].n; }
 
 // ---- the model's lines: "A op|asset|count|targets|names|anchor|anchor_names|side|distance|spread|size|factor|degrees"
 
@@ -638,6 +703,21 @@ wb_count :: (w: [] WbWorld, c: [] WbCat, name: string) -> int { m := wb_find(c, 
   w[0].undo_count = 0;
   s := wb_one(w[..], c[..], v, "A delete|||names|nature/rock-1|||||||\n");
   #assert s.edits == 0 && w[0].undo_count == 0;
+}
+WB_PIECES_CAT :: "M village/wall-plaster-door-round 0 9 1 -1 0 -0.205 1 3.12 0.205\nM village/wall-plaster-window-wide-round 9 9 1 -1 0 -0.205 1 3.12 0.205\nM village/wall-plaster-window-thin-round 18 9 1 -1 0 -0.205 1 3.12 0.205\nM village/wall-plaster-straight 27 9 1 -1 0 -0.205 1 3.12 0.205\nM village/wall-plaster-window-wide-flat 36 9 1 -1 0 -0.205 1 3.12 0.205\nM village/corner-exterior-wood 45 9 1 -0.1 0 -0.1 0.1 3 0.1\nM village/roof-roundtiles-4x4 54 9 1 -2.75 0 -2.78 2.75 4.25 2.78\n";
+#test "a building is the kit's pieces put together: one thing, its box round them all; one missing a piece isn't there" {
+  c: [1] WbCat; wb_catalog(c[..], WB_PIECES_CAT);
+  m := wb_find(c[..], "house/cottage");
+  #assert c[0].real_n == 7 && m == 7 && c[0].n == 8 && wb_is_building(c[..], m) && !wb_is_building(c[..], 0);
+  #assert c[0].part_n[m] == 13 && c[0].parts[c[0].part_first[m] + 12].mesh == 6 && c[0].parts[c[0].part_first[m] + 12].y == 3;
+  b := c[0].box[m * 6..<m * 6 + 6];
+  #assert wb_near(b[0], -2.75, 0.001) && wb_near(b[3], 2.75, 0.001) && wb_near(b[2], -2.78, 0.001) && wb_near(b[5], 2.78, 0.001);
+  #assert b[1] == 0 && wb_near(b[4], 7.25, 0.001);
+  // the timber house and the long house need pieces this catalogue lacks
+  #assert wb_find(c[..], "house/timber-house") == -1 && wb_find(c[..], "house/long-house") == -1 && c[0].parts_n == 13;
+  w: [1] WbWorld; v := wb_test_view();
+  s := wb_one(w[..], c[..], v, "A place|house/cottage|1|||here||at||||||\n");
+  #assert s.placed == 1 && w[0].objs[0].mesh == m;
 }
 #test "a world kept as lines comes back the same" {
   c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);

@@ -28,6 +28,7 @@ MSG_PACK :: 605;
 MSG_HTTP :: 512;        // host.js: answer to request id as message 512 + id
 ACT_KEEP :: 4;
 INSTANCE_FLOATS :: 16;
+WB_INSTANCES :: 12288;  // pieces drawn: a building is a dozen or so
 TYPED :: 300;
 REPLY :: 200;
 BODY :: 15000;
@@ -47,7 +48,7 @@ WorldBuilder :: struct {
   started: bool;
   time: f32; width: f32; height: f32; dpr: f32; still: bool; golden: bool;
   // the camera: it looks at (tx, tz) from dist away, turned yaw (0 looks along -z), pitch down
-  tx: f32; tz: f32; gx: f32; gz: f32; yaw: f32; pitch: f32 = 0.72; dist: f32 = 24;
+  tx: f32; tz: f32; gx: f32; gz: f32; yaw: f32; pitch: f32 = 0.6; dist: f32 = 26;
   // pointers: one drags the view, two pinch it nearer
   down: bool; down_id: int; down_x: f32; down_y: f32; last_x: f32; last_y: f32; moved: bool; on_ui: int = -1;
   two: bool; two_id: int; two_x: f32; two_y: f32; pinch: f32;
@@ -68,7 +69,7 @@ WorldBuilder :: struct {
   outbox: [SAVE_CAP] u8; out_n: int; action: int;
   drawn_version: int = -1;
   draws: [WB_MESHES * 4] u32; draw_n: int;
-  objects: [WB_OBJECTS * INSTANCE_FLOATS] f32;
+  objects: [WB_INSTANCES * INSTANCE_FLOATS] f32; inst_n: int;
   view: [16] f32; eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32;
   plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
   boxes: [BUTTONS] Box; shown: [BUTTONS] bool; press: int = -1; hover: int = -1;
@@ -446,39 +447,66 @@ view_rows :: (s: [] WorldBuilder) {
 
 // ---- the scene: one draw a mesh, its instances' rows
 
-// Each thing's rows: rotation about y by yaw, its scale, and its mesh's box folded in, so the
-// shader's unorm16 position (0..1 in the box) lands where the thing stands.
-rows_of :: (s: [] WorldBuilder, o: WbObj, at: int) {
-  b := s[0].cat[0].box[o.mesh * 6..<o.mesh * 6 + 6];
+// One piece's rows: rotation about y by yaw, its scale, and its mesh's box folded in, so the
+// shader's unorm16 position (0..1 in the box) lands where the piece stands.
+rows_of :: (s: [] WorldBuilder, mesh: int, x: f32, y: f32, z: f32, yaw: f32, k: f32, at: int) {
+  b := s[0].cat[0].box[mesh * 6..<mesh * 6 + 6];
   ex := b[3] - b[0]; ey := b[4] - b[1]; ez := b[5] - b[2];
-  c := cos(o.yaw); sn := sin(o.yaw); k := o.scale;
+  c := cos(yaw); sn := sin(yaw);
   r := s[0].objects[..];
-  r[at] = c * k * ex; r[at + 1] = 0; r[at + 2] = sn * k * ez; r[at + 3] = o.x + k * (c * b[0] + sn * b[2]);
-  r[at + 4] = 0; r[at + 5] = k * ey; r[at + 6] = 0; r[at + 7] = k * b[1];
-  r[at + 8] = -sn * k * ex; r[at + 9] = 0; r[at + 10] = c * k * ez; r[at + 11] = o.z + k * (-sn * b[0] + c * b[2]);
+  r[at] = c * k * ex; r[at + 1] = 0; r[at + 2] = sn * k * ez; r[at + 3] = x + k * (c * b[0] + sn * b[2]);
+  r[at + 4] = 0; r[at + 5] = k * ey; r[at + 6] = 0; r[at + 7] = y + k * b[1];
+  r[at + 8] = -sn * k * ex; r[at + 9] = 0; r[at + 10] = c * k * ez; r[at + 11] = z + k * (-sn * b[0] + c * b[2]);
   r[at + 12] = 1; r[at + 13] = 1; r[at + 14] = 1; r[at + 15] = 0;
 }
+// How many pieces a thing draws: a building its pieces, anything else itself.
+pieces_of :: (s: [] WorldBuilder, m: int) -> int { return ifx wb_is_building(s[0].cat[..], m) then s[0].cat[0].part_n[m] else 1; }
+// The scene: one draw a mesh of the pack, its instances' rows, rebuilt when the world changes.
 scene :: (s: [] WorldBuilder) {
-  w := s[0].world[..];
+  w := s[0].world[..]; c := s[0].cat[..];
   if !s[0].cat_ready || s[0].drawn_version == w[0].version { return; }
   s[0].drawn_version = w[0].version;
   counts: [WB_MESHES] int; start: [WB_MESHES] int;
-  for i: 0..<w[0].n { counts[w[0].objs[i].mesh] += 1; }
+  // the things that fit, in order (every thing but past WB_INSTANCES pieces)
+  total := 0; upto := 0;
+  while upto < w[0].n {
+    m := w[0].objs[upto].mesh;
+    if total + pieces_of(s, m) > WB_INSTANCES { break; }
+    total += pieces_of(s, m);
+    if wb_is_building(c, m) { for p: 0..<c[0].part_n[m] { counts[c[0].parts[c[0].part_first[m] + p].mesh] += 1; } }
+    else { counts[m] += 1; }
+    upto += 1;
+  }
   s[0].draw_n = 0;
   at := 0;
-  for m: 0..<s[0].cat[0].n {
+  for m: 0..<c[0].real_n {
     start[m] = at;
     if counts[m] == 0 { continue; }
     d := s[0].draw_n * 4;
-    s[0].draws[d] = cast(u32) s[0].cat[0].first[m]; s[0].draws[d + 1] = cast(u32) s[0].cat[0].count[m];
+    s[0].draws[d] = cast(u32) c[0].first[m]; s[0].draws[d + 1] = cast(u32) c[0].count[m];
     s[0].draws[d + 2] = cast(u32) at; s[0].draws[d + 3] = cast(u32) counts[m];
     s[0].draw_n += 1;
     at += counts[m];
   }
-  for i: 0..<w[0].n { o := w[0].objs[i]; rows_of(s, o, start[o.mesh] * INSTANCE_FLOATS); start[o.mesh] += 1; }
+  s[0].inst_n = at;
+  for i: 0..<upto {
+    o := w[0].objs[i];
+    if wb_is_building(c, o.mesh) {
+      co := cos(o.yaw); sn := sin(o.yaw); k := o.scale;
+      for p: 0..<c[0].part_n[o.mesh] {
+        q := c[0].parts[c[0].part_first[o.mesh] + p];
+        x := o.x + k * (co * q.x + sn * q.z); z := o.z + k * (-sn * q.x + co * q.z);
+        rows_of(s, q.mesh, x, k * q.y, z, o.yaw + q.yaw, k, start[q.mesh] * INSTANCE_FLOATS);
+        start[q.mesh] += 1;
+      }
+    } else {
+      rows_of(s, o.mesh, o.x, 0, o.z, o.yaw, o.scale, start[o.mesh] * INSTANCE_FLOATS);
+      start[o.mesh] += 1;
+    }
+  }
 }
 worldbuilder_draw_count :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return ifx s[0].cat_ready then s[0].draw_n else 0; }
-worldbuilder_store_bytes :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return s[0].world[0].n * INSTANCE_FLOATS * 4; }
+worldbuilder_store_bytes :: (s: [] WorldBuilder) -> int #export_c #effects(all) { return s[0].inst_n * INSTANCE_FLOATS * 4; }
 
 // ---- the look
 
@@ -752,6 +780,17 @@ has :: (t: string, part: string) -> bool {
   o := s[0].world[0].objs[0];
   #assert abs(s[0].objects[2 * INSTANCE_FLOATS + 5] - 0.6 * o.scale) < 0.001;
   #assert worldbuilder_store_bytes(s[..]) == 8 * 64;
+}
+#test "a building draws as its pieces, each turned and placed with it" {
+  s: [1] WorldBuilder;
+  worldbuilder_catalog(s[..], WB_PIECES_CAT);
+  sum := wb_answer(s[0].world[..], s[0].cat[..], wb_view(s[..]), "A place|house/cottage|1|||origin||at||||||\nA place|village/roof-roundtiles-4x4|1|||origin||right||||||\n");
+  scene(s[..]);
+  // seven meshes: five walls (the straight one three times), the corner (four) and the roof (two: the cottage's and the one alone)
+  #assert s[0].draw_n == 7 && s[0].inst_n == 14 && worldbuilder_store_bytes(s[..]) == 14 * 64;
+  #assert s[0].draws[5 * 4 + 3] == 4 && s[0].draws[6 * 4 + 3] == 2;
+  // the cottage's roof stands 3 m up
+  #assert abs(s[0].objects[s[0].draws[6 * 4 + 2] * INSTANCE_FLOATS + 7] - 3) < 0.001;
 }
 #test "UNDO takes back the last edit without asking the model; a drag turns the view and is no tap" {
   s: [1] WorldBuilder;

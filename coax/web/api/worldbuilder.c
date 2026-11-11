@@ -65,7 +65,14 @@ static const char WB_SYSTEM[] =
   "last (the asset names the last edit touched).\n"
   "Prefer assets whose name and tags fit the words. If nothing fits, place the closest thing and say so. "
   "If the text isn't about the world, make no edits and answer in `say`.\n"
+  "For a house, home or building use a whole building (house/...); the village/ pieces are parts of buildings.\n"
   "Catalogue (name|width,height,depth in metres|tags):\n";
+// The whole buildings: the village kit's pieces put together by the page
+// (apps/openagents-web/worldbuilder-plan.coax WB_PREFABS, the same names and sizes).
+static const char WB_BUILDINGS[] =
+  "house/cottage|5.51,7.25,5.56|house home cottage building plaster\n"
+  "house/timber-house|5.53,7.09,5.56|house home building timber wood\n"
+  "house/long-house|5.51,7.23,7.57|house home building long hall brick\n";
 
 static const char WB_SCHEMA[] =
   "{\"type\":\"object\",\"properties\":{\"say\":{\"type\":\"string\"},\"actions\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{"
@@ -228,11 +235,12 @@ static void wb_act(const request *q) {
   // the request: the system turn with the catalogue, the page's JSON as the user's turn, the schema
   sb s = {0};
   sb_str(&s, "{\"systemInstruction\":{\"parts\":[{\"text\":");
-  size_t sys_n = strlen(WB_SYSTEM), cat_n = strlen(WB_ASSETS);
-  char *sys = malloc(sys_n + cat_n + 1);
+  size_t sys_n = strlen(WB_SYSTEM), cat_n = strlen(WB_ASSETS), bld_n = strlen(WB_BUILDINGS);
+  char *sys = malloc(sys_n + bld_n + cat_n + 1);
   if (!sys) { wb_text(q->fd, 503, "busy"); return; }
-  memcpy(sys, WB_SYSTEM, sys_n); memcpy(sys + sys_n, WB_ASSETS, cat_n); sys[sys_n + cat_n] = 0;
-  sb_json(&s, sys, sys_n + cat_n);
+  memcpy(sys, WB_SYSTEM, sys_n); memcpy(sys + sys_n, WB_BUILDINGS, bld_n); memcpy(sys + sys_n + bld_n, WB_ASSETS, cat_n);
+  sys[sys_n + bld_n + cat_n] = 0;
+  sb_json(&s, sys, sys_n + bld_n + cat_n);
   free(sys);
   sb_str(&s, "}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":");
   sb_json(&s, q->body, q->body_len);
