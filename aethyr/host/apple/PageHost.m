@@ -411,8 +411,12 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
     uint32_t code = i < 95 ? 32 + i : extra[i - 95];
     NSString *one = [[NSString alloc] initWithBytes:&code length:4 encoding:NSUTF32LittleEndianStringEncoding];
     CTLineRef line = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)[[NSAttributedString alloc] initWithString:one attributes:attrs]);
+    // cut at its own cell: a glyph that ends past the cell's room after the pen (Cinzel's Q, 1.33 em
+    // out of 1.25) would leave a mark in the next glyph's cell (#13116)
+    CGContextSaveGState(g); CGContextClipToRect(g, CGRectMake((i % cols) * c, h - (i / cols + 1) * c, c, c));
     CGContextSetTextPosition(g, (i % cols) * c + 16 / scale, h - ((i / cols) * c + 72 / scale));
     CTLineDraw(line, g); CFRelease(line);
+    CGContextRestoreGState(g);
    }
    const uint8_t *drawn = CGBitmapContextGetData(g);
    for (int p = 0; p < w * h; p++) out[p * 4 + f] = drawn[p];

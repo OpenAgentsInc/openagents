@@ -28,6 +28,33 @@ hud_word_ink :: (ws: [] HudWords, t: string, x: f32, y: f32, cap: f32, role: int
 hud_word :: (ws: [] HudWords, t: string, x: f32, y: f32, cap: f32, role: int, centre: bool) { hud_word_ink(ws, t, x, y, cap, role, centre, false, HudRgba.{}); }
 hud_word_text :: (ws: [] HudWords, i: int) -> string { w := ws[0].w[i]; return cast(string) ws[0].text[w.at..<w.at + w.len]; }
 
+// A word's glyphs come from an atlas the realm's host draws: one cell a glyph, the pen `left` ems
+// inside the cell and `right` ems of room after it. A glyph whose ink ends past that room (a title
+// face's Q, its tail 1.33 em out) lands in the next cell unless the host cuts each glyph at its
+// cell, and the next glyph's quad then draws that end before itself: a mark in the space before a
+// word (#13116). hud_cell_stray is what a glyph's quad draws that isn't its own, px from its pen at
+// em: the end of the glyph one cell before it (before_x1, ems from that glyph's pen), none when cut.
+HudSpan :: struct { x0: f32; x1: f32; }
+hud_cell_stray :: (before_x1: f32, left: f32, right: f32, em: f32, cut: bool) -> HudSpan {
+  if cut || before_x1 <= right { return HudSpan.{}; }
+  return HudSpan.{x0 = -left * em, x1 = (before_x1 - right - left) * em};
+}
+// How many of t's spaces have a mark drawn in them, given each byte's advance (adv) and what its
+// quad draws that isn't its own (stray). A HUD's titles need none: a space reads as a space.
+hud_space_marks :: (t: string, adv: [] f32, stray: [] HudSpan) -> int {
+  count := t.count; if adv.count < count { count = adv.count; } if stray.count < count { count = stray.count; }
+  marks := 0; pen := 0.0f32;
+  for i: 0..<count {
+    if t[i] == ' ' {
+      hit := false; at := 0.0f32;
+      for j: 0..<count { s := stray[j]; if t[j] != ' ' && s.x1 > s.x0 && at + s.x0 < pen + adv[i] && at + s.x1 > pen { hit = true; } at += adv[j]; }
+      if hit { marks += 1; }
+    }
+    pen += adv[i];
+  }
+  return marks;
+}
+
 HUD_TAP :: 44.0;   // CSS px: the least a button is either way on a touch screen
 HUD_ROW :: 30.0;   // CSS px: a row for a mouse
 // A side-bar or menu row's height, device px: a finger's on a touch screen, smaller with a mouse.
@@ -266,4 +293,25 @@ hud_tip :: (l: [] HudList, ws: [] HudWords, t: HudTokens, line: string, adv: [] 
   #assert tr[0].n == 7 && ws[0].w[ws[0].n - 1].parent == 6;
   // with none attached nothing is kept
   bare: [1] HudWords; hud_tip(l[..], bare[..], t, "Rest", adv[..], anchor, 9, 0, 1000, 1); #assert bare[0].w[0].parent == UIT_NONE;
+}
+#test "a two-word title: no glyph is drawn at the space once the atlas cuts each glyph at its cell" {
+  // SHORT REST at a 20 px em in a title face: each letter 0.7 em wide and the space 0.25, the atlas
+  // cell's pen 0.25 em in with 1.25 em after it (the sans atlas: 16, 64 and 96 px), and the glyph one
+  // cell before R (Q) ending 1.328 em from its pen, as Cinzel's does
+  title := "SHORT REST"; em := 20.0f32; adv: [10] f32; stray: [10] HudSpan;
+  for q: 0..<10 { adv[q] = ifx title[q] == ' ' then 0.25 * em else 0.7 * em; }
+  for cut: 0..<2 {
+    for q: 0..<10 { stray[q] = ifx title[q] == 'R' then hud_cell_stray(1.328, 0.25, 1.25, em, cut == 1) else HudSpan.{}; }
+    // uncut, Q's end is in R's cell: the R after the space draws it in the space, the R of SHORT over its O
+    #assert hud_space_marks(title, adv[..], stray[..]) == ifx cut == 1 then 0 else 1;
+  }
+  s := hud_cell_stray(1.328, 0.25, 1.25, em, false); #assert s.x0 == -5 && abs(s.x1 - -3.44) < 0.001;
+  // a glyph that ends inside its cell leaves nothing, and a title with no space has no space to mark
+  f := hud_cell_stray(1.25, 0.25, 1.25, em, false); #assert f.x1 <= f.x0;
+  #assert hud_space_marks("REST", adv[..], stray[..]) == 0;
+  // a mark that ends where the space starts, or starts where it ends, is not in it
+  two := "A B"; a2 := [3] f32.[10, 5, 10]; s2: [3] HudSpan;
+  s2[2] = HudSpan.{x0 = -9, x1 = -5}; #assert hud_space_marks(two, a2[..], s2[..]) == 0;
+  s2[2] = HudSpan.{x0 = -9, x1 = -4}; #assert hud_space_marks(two, a2[..], s2[..]) == 1;
+  s2[2] = HudSpan.{}; s2[0] = HudSpan.{x0 = 15, x1 = 18}; #assert hud_space_marks(two, a2[..], s2[..]) == 0;
 }

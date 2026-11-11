@@ -1,8 +1,8 @@
 // Firm reason: 6 (CoreText has no C API; this holds no product logic).
 // The faces' atlas (text.coax), drawn: ASCII 32..126 of Spectral Medium in the first byte and of
 // Cinzel at weight 600 in the second, 16 columns of 96-texel cells, the pen at x 16 and the
-// baseline at y 72 at 64 px, as the sans atlas (aethyr/render/sans-profile.coax). Each mip is
-// drawn at its own size. The Mac and iOS hosts upload these (Engine.swift); the Android build
+// baseline at y 72 at 64 px, as the sans atlas (aethyr/render/sans-profile.coax), each glyph cut at
+// its cell. Each mip is drawn at its own size. The Mac and iOS hosts upload these (Engine.swift); the Android build
 // writes them to a file (apps/everglade-mobile/android/bake-faces.swift), since CoreText is
 // not on a phone that isn't Apple's.
 import Foundation
@@ -33,8 +33,12 @@ func faceLevels(fonts: URL) -> [FaceLevel]? {
       let attrs: [NSAttributedString.Key: Any] = [NSAttributedString.Key(kCTFontAttributeName as String): font, NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1)]
       for i in 0..<95 {
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: String(Character(Unicode.Scalar(UInt8(32 + i)))), attributes: attrs))
+        // Cut at its own cell: Cinzel's Q ends 1.33 em after its pen, past the cell's 1.25, and would
+        // leave a mark in R's cell (#13116).
+        g.saveGState(); g.clip(to: CGRect(x: (i % cols) * c, y: h - (i / cols + 1) * c, width: c, height: c))
         g.textPosition = CGPoint(x: CGFloat((i % cols) * c) + 16 / scale, y: CGFloat(h) - (CGFloat((i / cols) * c) + 72 / scale))
         CTLineDraw(line, g)
+        g.restoreGState()
       }
       let gray = g.data!.assumingMemoryBound(to: UInt8.self)
       for p in 0..<w * h { both[p * 2 + channel] = gray[p] }

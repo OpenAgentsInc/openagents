@@ -1182,7 +1182,7 @@ function frameUpload(x) {
 // sans_sampler (binding 2) gets the system sans rasterized here, so small text
 // reads like the rest of the web. Characters: ASCII 32..126, then SANS_EXTRA;
 // 16 columns of 96-texel cells, the pen at x 16 and the baseline at y 72 of
-// each, drawn at 64 px; every mip level is drawn at its own size rather than
+// each, drawn at 64 px and cut at its cell; every mip level is drawn at its own size rather than
 // downsampled. Coax lays the text out with the same fonts' widths
 // (apps/openagents-web/font.coax, "the system sans"), so this list, the cell
 // and the font must match it.
@@ -1216,12 +1216,20 @@ function sansAtlas(device) {
     const c = cell >> level, w = cols * c, h = rows * c;
     const canvas = new OffscreenCanvas(w, h), g = canvas.getContext("2d");
     g.fillStyle = pageTitleFont ? "#f00" : "#fff"; g.textBaseline = "alphabetic";
+    // Each glyph is cut at its own cell: a glyph wider than the room after its pen (Cinzel's Q, whose
+    // tail ends 1.33 em out) otherwise leaves its end in the next glyph's cell, a mark before every R (#13116).
+    const glyph = (code, i) => {
+      const x = (i % cols) * c, y = Math.floor(i / cols) * c;
+      g.save(); g.beginPath(); g.rect(x, y, c, c); g.clip();
+      g.fillText(String.fromCodePoint(code), x + 16 / (1 << level), y + 72 / (1 << level));
+      g.restore();
+    };
     g.font = `${64 / (1 << level)}px ${pageFontFamily || SANS_FONT}`;
-    codes.forEach((code, i) => g.fillText(String.fromCodePoint(code), (i % cols) * c + 16 / (1 << level), Math.floor(i / cols) * c + 72 / (1 << level)));
+    codes.forEach(glyph);
     if (pageTitleFont) {
       g.globalCompositeOperation = "lighter"; g.fillStyle = "#0f0";
       g.font = `${pageTitleFont.weight} ${64 / (1 << level)}px ${pageTitleFont.family}`;
-      codes.forEach((code, i) => g.fillText(String.fromCodePoint(code), (i % cols) * c + 16 / (1 << level), Math.floor(i / cols) * c + 72 / (1 << level)));
+      codes.forEach(glyph);
     }
     device.queue.copyExternalImageToTexture({ source: canvas }, { texture, mipLevel: level, premultipliedAlpha: true }, [w, h]);
   }
