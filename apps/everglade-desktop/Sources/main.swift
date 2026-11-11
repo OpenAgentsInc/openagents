@@ -14,7 +14,8 @@
 //       browser would join it), nothing of yours is kept, and --do STEPS plays input first: `key:w:2` holds a key two seconds,
 //       `tap:640,400` clicks a point, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
 //       mouselook asks, `press:2:1` holds a mouse button a second at the middle, `turn:40,0` moves
-//       the held mouse, `drive:walk-to guard` asks the realm's agent driver; steps are split by `;`. --frames DIR writes every sixth frame after `record`
+//       the held mouse, `drive:walk-to guard` asks the realm's agent driver, `near:guard:20:60` waits until the driver lists ID within METRES (SECONDS at most); steps are split by `;`.
+//       --scale S draws S pixels a point (2 unless given); --realtime gives each frame the time it took. --frames DIR writes every sixth frame after `record` (--every N: every Nth)
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
 //       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
@@ -127,7 +128,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     // A shot keeps nothing of yours: its storage is a folder of its own, gone when it ends.
     c.store = pageShot ? shotStore : FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/everglade/realm").path
     // The page the web opens Character Create on; the room is the site's (wss://openagents.com/api/room/).
-    c.origin = "https://openagents.com"; c.path = "/worlds/character-creator"
+    c.origin = "https://openagents.com"; c.path = "/worlds/character-creator" + (shotRoom.isEmpty ? "" : "?room=" + shotRoom)
     c.realm = "everglade2"; c.slot = "everglade2"; c.style = "painterly"; c.clock = "fixed:0.5"
     c.offline = pageOffline
     // This app is built from a checkout, so who runs it is the team: its sessions are marked as a
@@ -335,6 +336,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var golemsWait: Double = 0   // --golems in a shot: seconds to let the board read the agents first
   var nextReply = ""
   var nextRuns: Int32 = 0
+  var framesEvery = 6
+  var shotRoom = ""   // --room CODE: a shot's own room on the site (a check's pair-e2-NAME), apart from everyone's
+  var shotScale: Float = 2, shotRealtime = false, lastShotFrame = CACurrentMediaTime()
   var doSteps = "", framesDir = "", shotLooks = false, recording = false
   func shot(to path: String, width: Int, height: Int, seconds: Float) -> Bool {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
@@ -356,11 +360,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       func wait() {
         let until = CACurrentMediaTime() + Double(nextWait)
         repeat {
-          render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }
+          render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0.05) { _ in }
           RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         } while CACurrentMediaTime() < until && (nxp_state(next) == 1 || nxp_state(next) == 2) && (nextRuns == 0 || nxp_runs(next) < nextRuns)
       }
-      render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0) { _ in }
+      render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0) { _ in }
       _ = nxp_pointer(next, bx, by, 0, w, h); _ = nxp_pointer(next, bx, by, 2, w, h)
       wait()
       if !nextReply.isEmpty && nxp_state(next) == 3 {
@@ -373,9 +377,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     if golemsWait > 0 {
       let until = CACurrentMediaTime() + golemsWait
       // The issues and hosts first (a fresh copy is a few seconds; an old one is left), then the agents.
-      repeat { render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < until + 24 && refreshingGolems
+      repeat { render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < until + 24 && refreshingGolems
       let read = CACurrentMediaTime()
-      repeat { render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < read + golemsWait && readingGolems || CACurrentMediaTime() < read + 4.5
+      repeat { render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < read + golemsWait && readingGolems || CACurrentMediaTime() < read + 4.5
       if golemsView != 0 { nxp_golems_view(next, golemsView) }
     }
     // In a shot nobody holds the pointer, so the harness answers the realm's mouselook as a held
@@ -384,10 +388,12 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     func run(_ time: Float) {
       var left = time
       while left > 0 {
-        let step = min(left, inRealm ? 1.0 / 60 : 0.05); render(pass, size: CGSize(width: width, height: height), scale: 2, dt: step) { _ in }; left -= step
+        // --realtime: a frame takes the time it really took, so the realm keeps pace with the site's room
+        let since = Float(CACurrentMediaTime() - lastShotFrame); lastShotFrame = CACurrentMediaTime()
+        let step = shotRealtime && inRealm ? min(max(since, 1.0 / 240), 0.1) : min(left, inRealm ? 1.0 / 60 : 0.05); render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: step) { _ in }; left -= step
         if let page, inRealm, shotLooks { let want = page.mouselook(); if want == 2 && !lookHeld { lookHeld = true; page.pointerLock(1) } else if want != 2 && lookHeld { lookHeld = false; page.pointerLock(0) } }
         frameCount += 1
-        if !framesDir.isEmpty && recording && frameCount % 6 == 0 { _ = save(texture, width, height, framesDir + String(format: "/f%04d.png", frameCount)) }
+        if !framesDir.isEmpty && recording && frameCount % framesEvery == 0 { _ = save(texture, width, height, framesDir + String(format: "/f%04d.png", frameCount)) }
       }
     }
     run(seconds)
@@ -411,14 +417,24 @@ final class WorkshopView: MTKView, MTKViewDelegate {
         let said = page.drive(part[1...].joined(separator: ":")) ?? "this realm has no driver"
         FileHandle.standardError.write(Data("drive \(part[1]): \(said)\n".utf8)); run(1.0 / 60)
       }
+      else if verb == "near", part.count > 2, case let rest = part[2].split(separator: ":"), rest.count == 2, let metres = Double(rest[0]), let most = Float(rest[1]) {   // waits until the driver's tree has ID within METRES, SECONDS at most
+        var waited: Float = 0, found = false
+        while waited < most && !found {
+          for line in (page.drive("tree") ?? "").split(separator: "\n") where line.hasPrefix(part[1] + " ") {
+            if let m = line.range(of: #", ([0-9.]+) m"#, options: .regularExpression), let d = Double(line[m].dropFirst(2).dropLast(2)), d <= metres { found = true; FileHandle.standardError.write(Data("near: \(line)\n".utf8)) }
+          }
+          if !found { run(0.25); waited += 0.25 }
+        }
+        if !found { FileHandle.standardError.write(Data("near: \(part[1]) never came within \(metres) m\n".utf8)) }
+      }
       else if verb == "turn", part.count > 1 { let xy = part[1].split(separator: ",").compactMap { Double($0) }; if xy.count == 2 { page.look(CGPoint(x: xy[0], y: xy[1])); run(0.1) } }
       else if verb == "record" { recording = true }
       else if verb == "press", part.count > 1, let b = Int32(part[1]) {   // a mouse button at the middle of the view, held SECONDS
-        let mid = CGPoint(x: CGFloat(width) / 4, y: CGFloat(height) / 4)
+        let mid = CGPoint(x: CGFloat(width) / CGFloat(shotScale * 2), y: CGFloat(height) / CGFloat(shotScale * 2))
         page.pointer(mid, phase: 0, button: b); run(part.count > 2 ? Float(part[2]) ?? 0.05 : 0.05); page.pointer(mid, phase: 2, button: b); run(1.0 / 60)
       }
     }
-    render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0) { _ in }
+    render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0) { _ in }
     nxp_close(next)
     page?.close(); try? FileManager.default.removeItem(atPath: shotStore)
     return save(texture, width, height, path)
@@ -583,7 +599,12 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
     if parts.count == 2, parts[0] > 0, parts[1] > 0, parts[0] <= 8192, parts[1] <= 8192 { width = parts[0]; height = parts[1] }
   }
   if let t = args.firstIndex(of: "--at"), t + 1 < args.count, let v = Float(args[t + 1]), v >= 0, v <= 600 { seconds = v }
-  let view = WorkshopView(frame: NSRect(x: 0, y: 0, width: width / 2, height: height / 2))
+  var shotScale: Float = 2
+  if let c = args.firstIndex(of: "--scale"), c + 1 < args.count, let v = Float(args[c + 1]), v >= 1, v <= 3 { shotScale = v }
+  let view = WorkshopView(frame: NSRect(x: 0, y: 0, width: CGFloat(width) / CGFloat(shotScale), height: CGFloat(height) / CGFloat(shotScale)))
+  if let r = args.firstIndex(of: "--room"), r + 1 < args.count, args[r + 1].allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) { view.shotRoom = args[r + 1] }
+  if let r = args.firstIndex(of: "--every"), r + 1 < args.count, let v = Int(args[r + 1]), v >= 1, v <= 60 { view.framesEvery = v }
+  view.shotScale = shotScale; view.shotRealtime = args.contains("--realtime")
   if let w = args.firstIndex(of: "--next"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 86400 { view.nextWait = v }
   if let r = args.firstIndex(of: "--reply"), r + 1 < args.count { view.nextReply = args[r + 1] }
   if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { view.nextRuns = v }
