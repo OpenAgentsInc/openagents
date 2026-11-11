@@ -56,6 +56,7 @@ everglade_skin :: () -> UiSkin {
   s.frame_mid = rgba(0.32, 0.24, 0.15, 1); s.frame_light = rgba(0.62, 0.48, 0.30, 1); s.trim = trim;
   s.shadow = 10; s.shade = rgba(0, 0, 0, 0.5); s.stud = 4;
   s.md.block_radius = 6; s.md.code_radius = 3;
+  s.hud = everglade_hud();
   return s;
 }
 

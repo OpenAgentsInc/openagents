@@ -7,7 +7,8 @@
 // in cells, painted into a cell grid by the terminal backend, and the grid
 // is shown as it would look in a terminal. The GPU backend draws the lot
 // with the one shader. Everything works: buttons light, toggles flip,
-// sliders drag, tabs and rows pick.
+// sliders drag, tabs and rows pick. Under the cards, the game HUD set in
+// the Everglade and Verse skins (hud-cards.coax).
 //
 // The host hands over the glyph and icon atlas (coax/web/gpui.js, as for
 // /chat); apps/openagents-web/components.coax and components-face.c are the
@@ -19,6 +20,7 @@
 #load "../skin/all.coax";
 #load "../backend/gpu.coax";
 #load "../backend/terminal.coax";
+#load "hud-cards.coax";           // the game HUD set's cards, under the skins'
 
 GL_MAX_VERTICES :: 90000;
 GL_UNDER :: 4096; GL_OVER :: 12288; GL_LINES :: 1024; GL_HITS :: 256; GL_POOL :: 4096;
@@ -60,6 +62,7 @@ GalleryState :: struct {
   drag: int;                                // the skin whose slider is held, or -1
   drag_x: f32; drag_w: f32;
   cursor: int;
+  hud: [1] HudCards;                        // the game HUD set's cards (hud-cards.coax)
 }
 
 gl_init :: (g: [] GalleryState) {
@@ -236,6 +239,7 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     y += row_h + gutter;
     if id == first { break; }
   }
+  y = hc_layout(g[0].hud[..], sh[..], m, gutter, y, w, g[0].hot_kind, g[0].hot_a, g[0].hot_b);
   g[0].nu = sh[0].nu; g[0].no = sh[0].no; g[0].nh = sh[0].nh;
   return y + 8;
 }
@@ -261,6 +265,7 @@ gl_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, heig
   g[0].width = width; g[0].height = height; g[0].d = d;
   if uniforms.count >= 2 { uniforms[0] = width; uniforms[1] = height; }
   g[0].time += ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  hc_step(g[0].hud[..], dt);
   a[0].frame += 1;
   z := zeron_skin();
   w := width / d; h := height / d;
@@ -294,6 +299,7 @@ gl_pointer :: (g: [] GalleryState, x: f32, y: f32, phase: int) -> bool {
   if hit.a < 0 || hit.a >= UISKINS { return false; }
   g[0].hot_kind = hit.kind; g[0].hot_a = hit.a; g[0].hot_b = hit.b; g[0].cursor = 1;
   if phase != 0 { return true; }
+  if hit.kind >= HC_HIT_FIRST && hit.kind <= HC_HIT_LAST { return hc_press(g[0].hud[..], hit.kind, hit.a, hit.b); }
   if hit.kind == GL_HIT_TOGGLE && hit.b >= 0 && hit.b < 2 { g[0].cards[hit.a].toggles[hit.b] = !g[0].cards[hit.a].toggles[hit.b]; }
   else if hit.kind == GL_HIT_TAB { g[0].cards[hit.a].tab = hit.b; }
   else if hit.kind == GL_HIT_ROW { g[0].cards[hit.a].row = hit.b; }
@@ -382,8 +388,9 @@ GlOut :: struct { v: [1400000] f32; }       // 50000 vertices
   row_h := g[0].under[g[0].grounds[0]].h;
   for id: 0..<UISKINS { #assert g[0].grounds[id] >= 0 && g[0].under[g[0].grounds[id]].h == row_h; }
   #assert row_h > 400;
-  // every control left its hit: per skin 2 buttons, 2 toggles, a slider, 3 tabs, 3 rows; the pixel skins' code block 2 more
-  #assert g[0].nh == 4 * 11 + 3 * 2;
+  // every control left its hit: per skin 2 buttons, 2 toggles, a slider, 3 tabs, 3 rows; the pixel skins' code block 2 more;
+  // per HUD card 6 slots, 3 answers, 2 unit frames and 2 plates
+  #assert g[0].nh == 4 * 11 + 3 * 2 + HC_CARDS * 13;
 }
 #test "gallery: the terminal card is the terminal backend's grid: box glyphs, a bullet, the table's rule" #steps 200000000 {
   g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
@@ -431,4 +438,46 @@ GlOut :: struct { v: [1400000] f32; }       // 50000 vertices
   #assert g[0].scroll == gl_max_scroll(g[..]);
   coaxial_components_wheel(g[..], -200000);
   #assert g[0].scroll == 0;
+}
+// The hit of a kind for a skin and an index, or one of kind -1.
+gl_test_hit :: (g: [] GalleryState, kind: int, a: int, b: int) -> SheetHit {
+  for k: 0..<g[0].nh { h := g[0].hits[k]; if h.kind == kind && h.a == a && h.b == b { return h; } }
+  return SheetHit.{kind = -1};
+}
+#test "gallery hud: an Everglade card and a Verse card, each with every HUD part; a slot cools, a strike drops the wolf's bar and its trail follows, an answer is picked" #steps 600000000 {
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  n := gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  // both cards, side by side, with every part's words
+  for c: 0..<HC_CARDS {
+    ids := HC_SKINS; s := uiskin(ids[c]);
+    seen := 0;
+    for k: 0..<g[0].no {
+      p := g[0].over[k];
+      if p.fill.r != s.hud.name.r && p.fill.r != s.hud.foe.r && p.fill.r != s.ink.r && p.fill.r != s.muted.r && p.fill.r != s.on_accent.r { continue; }
+      if p.text == "Ash" || p.text == "Grey Wolf" || p.text == "The Glade" || p.text == "Mira" || p.text == "1. What is out there?" || p.text == "S" { seen += 1; }
+    }
+    #assert seen >= 6;
+  }
+  e := UISKIN_EVERGLADE; v := UISKIN_VERSE;
+  s0 := gl_test_hit(g[..], HC_HIT_SLOT, e, 1); sv := gl_test_hit(g[..], HC_HIT_SLOT, v, 1);
+  #assert s0.kind == HC_HIT_SLOT && sv.kind == HC_HIT_SLOT && sv.x > s0.x + HC_CARD_MIN;
+  // a slot pressed starts its wait, in its own card only
+  #assert gl_pointer(g[..], s0.x + 2, s0.y + 2 - g[0].scroll, 0) && g[0].hud[0].cards[0].cool[1] == 6 && g[0].hud[0].cards[1].cool[1] == 0;
+  n = gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.1);
+  #assert g[0].hud[0].cards[0].cool[1] < 6;
+  shade := false; for k: 0..<g[0].nu { p := g[0].under[k]; if p.x == s0.x && p.y == s0.y && p.fill.r == uiskin(e).hud.cooldown.r && p.fill.a == uiskin(e).hud.cooldown.a && p.h < p.w { shade = true; } }
+  #assert shade;
+  // a strike on the wolf: its hp drops at once, a number rises, the trail stays behind a while
+  wolf := gl_test_hit(g[..], HC_HIT_FOE, e, 0);
+  hp0 := g[0].hud[0].cards[0].foe_hp;
+  #assert wolf.kind == HC_HIT_FOE && gl_pointer(g[..], wolf.x + 2, wolf.y + 2 - g[0].scroll, 0) && g[0].hud[0].cards[0].foe_hp == hp0 - 7;
+  for i: 0..<10 { n = gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016); }
+  tr := g[0].hud[0].cards[0].foe[0];
+  #assert tr.trail > tr.fill && abs(tr.fill - cast(f32) (hp0 - 7) / cast(f32) HC_FOE_MAX) < 0.01;
+  rose := false; for k: 0..<g[0].no { if g[0].over[k].text == "-7" && g[0].over[k].fill.r == uiskin(e).hud.damage.r { rose = true; } }
+  #assert rose;
+  // an answer picked
+  ans := gl_test_hit(g[..], HC_HIT_CHOICE, v, 2);
+  #assert ans.kind == HC_HIT_CHOICE && gl_pointer(g[..], ans.x + 2, ans.y + 2 - g[0].scroll, 0) && g[0].hud[0].cards[1].answer == 2 && g[0].hud[0].cards[0].answer == -1;
 }

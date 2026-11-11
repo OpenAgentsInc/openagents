@@ -1,0 +1,205 @@
+// The game HUD set on the component library's page (components/spec.md,
+// "The second set: game HUD"; GitHub #13153): a card for the Everglade skin
+// and one for the Verse's, each a small scene drawn by components/kit/hud.coax
+// and laid out with flex: your unit frame and the map ring, a target's frame,
+// plates over two creatures with numbers rising off one, a place's banner, a
+// talk window and the action bar. It works: press a slot and it cools down,
+// strike the wolf (its plate, its frame or the first slot) and its bar drops
+// with the trail catching up, answer Mira. The page (page.coax) lays this out
+// under the skins' cards and passes its pointer and its time here.
+//   coax/bin/coax test components/gallery/page.coax --only "gallery hud"
+
+#load "../kit/hud.coax";
+#load "../skin/all.coax";
+
+HC_CARDS :: 2;
+HC_SKINS :: [2] int.[UISKIN_EVERGLADE, UISKIN_VERSE];
+HC_SLOTS :: 6;
+HC_FLOATS :: 6;
+HC_CARD_MIN :: 600.0;       // a card is at least this wide; two side by side when they fit
+HC_GAP :: 16.0;             // between the card's rows
+HC_INSET :: 20.0;           // the card's content from its edge
+HC_SCENE :: 96.0;           // the room the creatures' plates and their numbers take
+HC_BANNER_REST :: 1.4;      // seconds between two showings of the banner
+HC_FOE_MAX :: 21;
+HC_BLOWS :: [4] int.[7, 4, 0, 11];   // the blows a strike deals in turn (0: a miss)
+
+// The hits the HUD cards leave: a = the skin, b = which.
+HC_HIT_SLOT :: 20; HC_HIT_FOE :: 21; HC_HIT_CHOICE :: 22; HC_HIT_YOU :: 23;
+HC_HIT_FIRST :: 20; HC_HIT_LAST :: 23;
+
+HC_GLYPHS :: [6] string.["S", "H", "W", "B", "R", "P"];
+HC_KEYS :: [6] string.["1", "2", "3", "4", "5", "6"];
+HC_WAITS :: [6] f32.[1.5, 6, 3, 12, 20, 8];   // each slot's cooldown, seconds
+HC_ANSWERS :: [3] string.["What is out there?", "I'll look around.", "Goodbye."];
+HC_LINE :: "The glade is quiet tonight. Too quiet: the wolves came down from the ridge at dusk, and nobody has seen the warden since.";
+
+HcFloat :: struct { text: string; kind: int; age: f32; on: bool; }
+HcCard :: struct {
+  cool: [HC_SLOTS] f32;               // seconds of each slot's wait left
+  foe_hp: int; foe: [1] HudTrail;     // the wolf, its bar as it eases
+  blows: int;
+  floats: [HC_FLOATS] HcFloat; next: int;
+  answer: int;                        // the answer picked (-1: none)
+}
+HudCards :: struct {
+  ready: bool; time: f32;
+  cards: [HC_CARDS] HcCard;
+  fx: [1] FxTree; tree: [1] FxTree;   // a part's tree, and the card's
+}
+
+hc_init :: (h: [] HudCards) {
+  h[0].ready = true;
+  for c: 0..<HC_CARDS {
+    h[0].cards[c] = HcCard.{foe_hp = HC_FOE_MAX - 8, answer = -1};
+    hud_trail_snap(h[0].cards[c].foe[..], cast(f32) h[0].cards[c].foe_hp / cast(f32) HC_FOE_MAX);
+    h[0].cards[c].cool[2] = 1.6;    // one slot cooling when the page opens
+  }
+}
+hc_card_of :: (skin: int) -> int {
+  ids := HC_SKINS;
+  for c: 0..<HC_CARDS { if ids[c] == skin { return c; } }
+  return -1;
+}
+
+// Time passes: waits run out, bars ease, numbers rise.
+hc_step :: (h: [] HudCards, dt: f32) {
+  if !h[0].ready { hc_init(h); }
+  d := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  h[0].time += d;
+  for c: 0..<HC_CARDS {
+    for k: 0..<HC_SLOTS { if h[0].cards[c].cool[k] > 0 { h[0].cards[c].cool[k] -= d; if h[0].cards[c].cool[k] < 0 { h[0].cards[c].cool[k] = 0; } } }
+    hud_trail_step(h[0].cards[c].foe[..], cast(f32) h[0].cards[c].foe_hp / cast(f32) HC_FOE_MAX, d);
+    for k: 0..<HC_FLOATS { if h[0].cards[c].floats[k].on { h[0].cards[c].floats[k].age += d; } }
+  }
+}
+
+// A strike on the wolf: the next blow, a number rising off it; at 0 it is back at full.
+hc_strike :: (h: [] HudCards, c: int) {
+  blows := HC_BLOWS;
+  b := blows[h[0].cards[c].blows % blows.count]; h[0].cards[c].blows += 1;
+  texts := [4] string.["-7", "-4", "Miss", "-11"];
+  f := h[0].cards[c].next % HC_FLOATS; h[0].cards[c].next += 1;
+  h[0].cards[c].floats[f] = HcFloat.{text = texts[(h[0].cards[c].blows - 1) % 4], kind = ifx b == 0 then HK_MISS else HK_DEALT, on = true};
+  h[0].cards[c].foe_hp -= b;
+  if h[0].cards[c].foe_hp <= 0 { h[0].cards[c].foe_hp = HC_FOE_MAX; hud_trail_snap(h[0].cards[c].foe[..], 1); }
+}
+
+// A press on one of the cards' hits.
+hc_press :: (h: [] HudCards, kind: int, skin: int, b: int) -> bool {
+  if !h[0].ready { hc_init(h); }
+  c := hc_card_of(skin);
+  if c < 0 { return false; }
+  waits := HC_WAITS;
+  if kind == HC_HIT_SLOT && b >= 0 && b < HC_SLOTS {
+    if h[0].cards[c].cool[b] > 0 { return true; }
+    h[0].cards[c].cool[b] = waits[b];
+    if b == 0 { hc_strike(h, c); }
+    return true;
+  }
+  if kind == HC_HIT_FOE { hc_strike(h, c); return true; }
+  if kind == HC_HIT_CHOICE { h[0].cards[c].answer = b; return true; }
+  return kind == HC_HIT_YOU;
+}
+
+// One card's scene at (x, y), w wide, in skin s. Returns its height.
+hc_card :: (h: [] HudCards, sh: [] Sheet, m: TextMeasure, s: UiSkin, c: int, x: f32, y: f32, w: f32, hot_kind: int, hot_a: int, hot_b: int) -> f32 {
+  hd := s.hud; fx := h[0].fx[..]; tr := h[0].tree[..]; card := h[0].cards[c];
+  inner := w - HC_INSET * 2;
+  // what each part says
+  you := HkUnit.{name = "Ash", klass = "Druid", level = 3, hp = 14, max = 18, ac = 13, gems = 4, gems_left = 3, conds = "Blessed"};
+  foe := HkUnit.{name = "Grey Wolf", level = 2, hp = card.foe_hp, max = HC_FOE_MAX, fill = card.foe[0].fill, trail = card.foe[0].trail, foe = true, mirror = true};
+  dots := [5] HkDot.[HkDot.{x = 4, z = -22, kind = HK_DOT_FOE}, HkDot.{x = -26, z = -8, kind = HK_DOT_ALLY}, HkDot.{x = 18, z = 30, kind = HK_DOT_GUARD},
+                     HkDot.{x = -6, z = -40, kind = HK_DOT_PATH}, HkDot.{x = -10, z = -52, kind = HK_DOT_PATH}];
+  mp := HkMap.{you_x = 0, you_z = 0, face_x = 0, face_z = -1, reach = hd.map_reach, place = "The Glade", clock = "21:40"};
+  talk := HkTalk.{speaker = "Mira", title = "Herbalist", line = HC_LINE};
+  waits := HC_WAITS; glyphs := HC_GLYPHS; keys := HC_KEYS;
+  slots: [HC_SLOTS] HkSlot;
+  secs: [HC_SLOTS] string;
+  for k: 0..<HC_SLOTS {
+    left := card.cool[k];
+    secs[k] = ifx left > 0 then hk_int(sh, cast(int) ceil(left)) else "";
+    slots[k] = HkSlot.{glyph = glyphs[k], key = keys[k], cool = ifx left > 0 then left / waits[k] else 0.0f32, secs = secs[k], ready = left <= 0 && k == 0, held = k == 3, count = ifx k == 5 then 4 else -1};
+  }
+  answers := HC_ANSWERS;
+  // sizes, then the card's own tree: a column of rows
+  map_size := hk_map_size(fx, m, s, mp);
+  pw := inner - map_size.w - HC_GAP; if pw > hd.portrait_w { pw = hd.portrait_w; }
+  you_size := hk_portrait_size(fx, m, s, pw, you, sh);
+  foe_size := hk_portrait_size(fx, m, s, pw, foe, sh);
+  talk_w := ifx inner < hd.talk_w then inner else hd.talk_w;
+  talk_size := hk_talk_size(fx, m, s, talk_w, talk, answers.count);
+  bar_size := hk_action_bar_size(fx, s, HC_SLOTS);
+  fx_reset(tr);
+  root := fx_add(tr, -1); tr[0].nodes[root].direction = FX_COLUMN; tr[0].nodes[root].gap = HC_GAP;
+  top := fx_add(tr, root); tr[0].nodes[top].justify = FX_BETWEEN; tr[0].nodes[top].align = FX_START;
+  you_n := hk_leaf(tr, top, you_size.w, you_size.h);
+  map_n := hk_leaf(tr, top, map_size.w, map_size.h);
+  foe_row := fx_add(tr, root); tr[0].nodes[foe_row].justify = FX_END;
+  foe_n := hk_leaf(tr, foe_row, foe_size.w, foe_size.h);
+  scene := fx_add(tr, root); tr[0].nodes[scene].height = HC_SCENE;
+  banner := fx_add(tr, root); tr[0].nodes[banner].height = hd.banner_h;
+  talk_row := fx_add(tr, root); tr[0].nodes[talk_row].justify = FX_CENTER;
+  talk_n := hk_leaf(tr, talk_row, talk_size.w, talk_size.h);
+  bar_row := fx_add(tr, root); tr[0].nodes[bar_row].justify = FX_CENTER;
+  bar_n := hk_leaf(tr, bar_row, bar_size.w, bar_size.h);
+  fx_layout(tr, inner, FX_AUTO);
+  ox := x + HC_INSET; oy := y + HC_INSET;
+  // each part where the card put it (its tree is read before the next part reuses fx)
+  b := hk_box(tr, you_n, ox, oy);
+  q := hk_portrait(sh, m, s, fx, b.x, b.y, b.w, you, HC_HIT_YOU, s.id);
+  b = hk_box(tr, map_n, ox, oy);
+  q = hk_map(sh, m, s, fx, b.x, b.y, mp, dots[..]);
+  b = hk_box(tr, foe_n, ox, oy);
+  q = hk_portrait(sh, m, s, fx, b.x, b.y, b.w, foe, HC_HIT_FOE, s.id);
+  // the scene: the wolf, your target, and Mira, with what rises off the wolf
+  b = hk_box(tr, scene, ox, oy);
+  wolf_x := b.x + b.w / 3; plate_y := b.y + b.h - hd.plate_bar - s.title.line - hd.plate_gap;
+  q = hk_nameplate(sh, m, s, fx, wolf_x, plate_y, "Grey Wolf", card.foe[0].fill, card.foe[0].trail, true, true, 1, HC_HIT_FOE, s.id, 0);
+  q = hk_nameplate(sh, m, s, fx, b.x + b.w * 2 / 3, plate_y, "Mira", 1, 1, false, false, 1, HC_HIT_YOU, s.id, 1);
+  for k: 0..<HC_FLOATS {
+    f := card.floats[k];
+    if f.on { shown := hk_damage(sh, m, s, wolf_x, plate_y, f.text, f.kind, f.age); }
+  }
+  // the banner comes and goes
+  b = hk_box(tr, banner, ox, oy);
+  period := hd.banner_life + HC_BANNER_REST;
+  age := h[0].time - floor(h[0].time / period) * period;
+  shown := hk_banner(sh, m, s, b.x + b.w / 2, b.y + b.h / 2, "The Glade", age);
+  b = hk_box(tr, talk_n, ox, oy);
+  q = hk_talk(sh, m, s, fx, b.x, b.y, b.w, talk, answers[..], ifx hot_kind == HC_HIT_CHOICE && hot_a == s.id then hot_b else -1, card.answer, HC_HIT_CHOICE, s.id);
+  b = hk_box(tr, bar_n, ox, oy);
+  q = hk_action_bar(sh, m, s, fx, b.x, b.y, slots[..], ifx hot_kind == HC_HIT_SLOT && hot_a == s.id then hot_b else -1, HC_HIT_SLOT, s.id);
+  return tr[0].nodes[0].h + HC_INSET * 2;
+}
+
+// The HUD section at y on a page w wide (gutter its margin): a heading, a line, and the cards.
+// Returns the y under it.
+hc_layout :: (h: [] HudCards, sh: [] Sheet, m: TextMeasure, gutter: f32, y: f32, w: f32, hot_kind: int, hot_a: int, hot_b: int) -> f32 {
+  if !h[0].ready { hc_init(h); }
+  z := zeron_skin();
+  yy := y;
+  tw := sheet_text(sh, m, -1, gutter, yy, z.title.line, z.title.face, z.ink, "Game HUD");
+  yy += z.title.line + 2;
+  lw := sheet_text(sh, m, -1, gutter, yy, z.body.line, z.body.face, z.muted, "Bars, slots, frames, the map ring, plates, rising numbers, a banner and a talk window. Press a slot, strike the wolf, answer Mira.");
+  yy += z.body.line + gutter;
+  cols := ifx w - gutter * 3 >= HC_CARD_MIN * 2 then 2 else 1;
+  card_w := floor((w - gutter * cast(f32) (cols + 1)) / cast(f32) cols);
+  ids := HC_SKINS;
+  c := 0;
+  while c < HC_CARDS {
+    row_h: f32 = 0; grounds: [2] int;
+    for k: 0..<cols {
+      if c + k >= HC_CARDS { grounds[k] = -1; continue; }
+      s := uiskin(ids[c + k]);
+      x := gutter + cast(f32) k * (card_w + gutter);
+      grounds[k] = sheet_box(sh, x, yy, card_w, 0, 12, 1, s.canvas, z.hairline);
+      ch := hc_card(h, sh, m, s, c + k, x, yy, card_w, hot_kind, hot_a, hot_b);
+      if ch > row_h { row_h = ch; }
+    }
+    for k: 0..<cols { if grounds[k] >= 0 { sh[0].under[grounds[k]].h = row_h; } }
+    c += cols;
+    yy += row_h + gutter;
+  }
+  return yy;
+}

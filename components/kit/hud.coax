@@ -1,0 +1,456 @@
+// The game HUD set (components/spec.md, "The second set: game HUD"; GitHub
+// #13153): a vital bar with its damage trail, an action bar's slots, a unit
+// frame (portrait plate), a map ring, a plate over a creature, a number
+// rising off one, a place's banner and a talk window. Each is laid out with
+// flex (layout/flex.coax), painted onto a sheet in its skin's roles
+// (skin/hud.coax's UiHud, and the frames and type roles of UiSkin), and
+// leaves hits for what can be pressed. The rules they follow (the trail's
+// easing, the banner's fade, the map's projection) are core/hud.coax's,
+// which the realm HUDs use too.
+//
+// A part that is boxes inside boxes builds a flex tree in a scratch the
+// caller lends it (fx), so the same tree answers its size (hk_*_size) and
+// places what it paints. Everything is in the sheet's content coordinates.
+//   coax/bin/coax test components/kit/hud-checks.coax
+
+#load "../paint/sheet.coax";
+#load "../skin/skin.coax";
+#load "../layout/flex.coax";
+#load "../core/hud.coax";
+
+HkSize :: struct { w: f32; h: f32; }
+
+// A whole number as text, kept in the sheet's pool ("" when the pool is full).
+hk_int :: (sh: [] Sheet, v: int) -> string {
+  b: [24] u8; n := 0; x := v;
+  if x < 0 { b[n] = '-'; n += 1; x = -x; }
+  d: [16] u8; c := 0;
+  while true { d[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 || c >= d.count { break; } }
+  while c > 0 { c -= 1; b[n] = d[c]; n += 1; }
+  return sheet_pool(sh, cast(string) b[0..<n]);
+}
+// Two texts joined, kept in the sheet's pool.
+hk_join :: (sh: [] Sheet, a: string, b: string) -> string {
+  at := sh[0].np;
+  x := sheet_pool(sh, a); y := sheet_pool(sh, b);
+  if x.count != a.count || y.count != b.count { return a; }
+  return cast(string) sh[0].pool[at..<at + a.count + b.count];
+}
+hk_min :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+// Lays a tree out at its content's size. Returns that size.
+hk_fit :: (fx: [] FxTree) -> HkSize {
+  fx_layout(fx, 0, FX_AUTO);
+  w := fx[0].nodes[0].cw;
+  fx_layout(fx, w, FX_AUTO);
+  return HkSize.{w = fx[0].nodes[0].w, h = fx[0].nodes[0].h};
+}
+// A leaf of a fixed size that neither grows nor shrinks.
+hk_leaf :: (fx: [] FxTree, parent: int, w: f32, h: f32) -> int {
+  i := fx_add(fx, parent);
+  if i < 0 { return i; }
+  fx[0].nodes[i].width = w; fx[0].nodes[i].height = h; fx[0].nodes[i].shrink = 0;
+  return i;
+}
+// A text's leaf: its measured width, a line tall.
+hk_text_leaf :: (fx: [] FxTree, parent: int, m: TextMeasure, t: UiType, text: string) -> int {
+  return hk_leaf(fx, parent, ceil(measure_width(m, t.face, text)), t.line);
+}
+// A node's box, offset by (x, y).
+HkBox :: struct { x: f32; y: f32; w: f32; h: f32; }
+hk_box :: (fx: [] FxTree, i: int, x: f32, y: f32) -> HkBox {
+  if i < 0 { return HkBox.{}; }
+  b := fx[0].nodes[i];
+  return HkBox.{x = x + b.x, y = y + b.y, w = b.w, h = b.h};
+}
+// A run of text centred in a box.
+hk_centred :: (sh: [] Sheet, m: TextMeasure, b: HkBox, t: UiType, color: Rgba, text: string) {
+  tw := measure_width(m, t.face, text);
+  w := sheet_text(sh, m, -1, b.x + (b.w - tw) / 2, b.y + (b.h - t.line) / 2, t.line, t.face, color, text);
+}
+// Whether a skin draws round things round (a cut or a cell skin draws them square).
+hk_round :: (s: UiSkin) -> bool { return s.frame == UIFRAME_PLATE || s.frame == UIFRAME_IRON; }
+
+// ---------------------------------------------------------------- the vital bar
+
+// A health bar w by h at (x, y): the hairline round it, its groove, the pale trail from the fill's
+// end to where the bar stood, the fill (light at its top, the skin's shade at its foot) and a gloss.
+// fill and trail are shares (core/hud.coax's HudTrail); color the fill's role; alpha its fade.
+hk_vital :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, h: f32, fill: f32, trail: f32, color: Rgba, alpha: f32) {
+  if !(alpha > 0) || !(w > 0) { return; }
+  hd := s.hud;
+  fv := hud_share(fill); tv := hud_share(trail);
+  r := ifx hk_round(s) then hk_min(hd.bar_radius, h / 2) else 0.0f32;
+  e := hd.edge;
+  if e > 0 { sheet_fill(sh, x - e, y - e, w + e * 2, h + e * 2, r + e, opacity(hd.groove_edge, alpha)); }
+  sheet_fill(sh, x, y, w, h, r, opacity(hd.groove, alpha));
+  if tv > fv { sheet_fill(sh, x + w * fv, y, w * (tv - fv), h, r, opacity(hd.trail, alpha)); }
+  if fv > 0 {
+    fw := w * fv; if fw < r * 2 { fw = r * 2; }
+    sh[0].nu = prim_gradient(sh[0].under, sh[0].nu, x, y, fw, h, r, opacity(color, alpha), opacity(flatten(hd.fill_shade, color), alpha));
+  }
+  if hd.gloss_share > 0 { sheet_fill(sh, x, y, w, h * hd.gloss_share, r, opacity(hd.gloss, alpha)); }
+}
+
+// ---------------------------------------------------------------- slots and the action bar
+
+// What a slot shows: its picture (a glyph until the target has pictures), its key, a count (-1: none),
+// how much of its cooldown is left (0..1, 0: ready) and the seconds left as text, and whether it is
+// ready to use (a lit edge) or held (its effect lasts: the trim).
+HkSlot :: struct { glyph: string; key: string; count: int = -1; cool: f32; secs: string; ready: bool; held: bool; }
+
+// A slot at (x, y), the skin's slot size square. hot: the pointer is over it. Leaves a hit (kind, a, b).
+hk_slot :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, sl: HkSlot, hot: bool, hit_kind: int, hit_a: int, hit_b: int) {
+  hd := s.hud; z := hd.slot; r := hd.slot_radius;
+  sh[0].nu = uiskin_slot(sh[0].under, sh[0].nu, s, x, y, z, z, r);
+  b := HkBox.{x = x, y = y, w = z, h = z};
+  cooling := sl.cool > 0;
+  if !cooling { hk_centred(sh, m, b, s.title, s.ink, sl.glyph); }
+  else {
+    // the shade closes from the top as the wait runs out
+    sheet_fill(sh, x, y, z, z * hud_share(sl.cool), r, hd.cooldown);
+    hk_centred(sh, m, b, s.label, s.ink, sl.secs);
+  }
+  if hot { sheet_fill(sh, x, y, z, z, r, s.hover); }
+  if sl.held || (sl.ready && !cooling) { e := sheet_box(sh, x, y, z, z, r, s.border, s.clear, ifx sl.held then s.trim else s.frame_light); }
+  if sl.key.count > 0 { kw := sheet_text(sh, m, -1, x + hd.key_pad, y + hd.key_pad, s.small.line, s.small.face, s.muted, sl.key); }
+  if sl.count >= 0 {
+    c := hk_int(sh, sl.count);
+    cw := measure_width(m, s.small.face, c);
+    q := sheet_text(sh, m, -1, x + z - hd.key_pad - cw, y + z - hd.key_pad - s.small.line, s.small.line, s.small.face, s.ink, c);
+  }
+  sheet_hit(sh, hit_kind, hit_a, hit_b, x, y, z, z);
+}
+
+// The action bar's tree: a row of slots with the tray's padding round them.
+hk_bar_tree :: (fx: [] FxTree, s: UiSkin, n: int) -> HkSize {
+  fx_reset(fx);
+  root := fx_add(fx, -1);
+  fx[0].nodes[root].gap = s.hud.slot_gap; fx[0].nodes[root].align = FX_CENTER;
+  p := s.hud.tray_pad; fx_pad(fx, root, p, p, p, p);
+  for k: 0..<n { c := hk_leaf(fx, root, s.hud.slot, s.hud.slot); }
+  return hk_fit(fx);
+}
+hk_action_bar_size :: (fx: [] FxTree, s: UiSkin, n: int) -> HkSize { return hk_bar_tree(fx, s, n); }
+// The action bar at (x, y): the skin's panel as its tray, then each slot (hit b = its index).
+hk_action_bar :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, y: f32, slots: [] HkSlot, hot: int, hit_kind: int, hit_a: int) -> HkSize {
+  size := hk_bar_tree(fx, s, slots.count);
+  sh[0].nu = uiskin_panel(sh[0].under, sh[0].nu, s, x, y, size.w, size.h);
+  for k: 0..<slots.count {
+    b := hk_box(fx, k + 1, x, y);
+    hk_slot(sh, m, s, b.x, b.y, slots[k], k == hot, hit_kind, hit_a, k);
+  }
+  return size;
+}
+
+// ---------------------------------------------------------------- the unit frame (portrait plate)
+
+// What a unit frame says. A number the HUD does not know is left out, never guessed: max 0 draws no
+// bar, ac 0 no badge for it, level 0 no level badge, gems 0 no gems.
+HkUnit :: struct {
+  name: string; klass: string; level: int;
+  hp: int; max: int; ac: int;
+  fill: f32 = -1; trail: f32 = -1;   // the bar as it stands (a HudTrail's); -1: at hp / max, no trail
+  gems: int; gems_left: int;          // spell slots, and how many are left
+  conds: string;                      // conditions held; "" none
+  foe: bool;                          // a creature's frame: its foe colour
+  mirror: bool;                       // the medallion on the right (a target faces yours)
+}
+// The node indices of a unit frame's tree.
+HkUnitTree :: struct { size: HkSize; med: int; body: int; name: int; klass: int; bar: int; hp: int; ac: int; gem0: int; conds: int; }
+
+hk_unit_tree :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, w: f32, u: HkUnit, sh: [] Sheet) -> HkUnitTree {
+  hd := s.hud;
+  t := HkUnitTree.{med = -1, body = -1, name = -1, klass = -1, bar = -1, hp = -1, ac = -1, gem0 = -1, conds = -1};
+  fx_reset(fx);
+  root := fx_add(fx, -1);
+  fx[0].nodes[root].gap = hd.unit_gap; fx[0].nodes[root].align = FX_CENTER;
+  d := hd.medallion * 2;
+  for side: 0..<2 {
+    med_now := (side == 0) != u.mirror;
+    if med_now { t.med = hk_leaf(fx, root, d, d); continue; }
+    body := fx_add(fx, root); t.body = body;
+    fx_flex(fx, body, 1, 1, 0);
+    fx[0].nodes[body].direction = FX_COLUMN; fx[0].nodes[body].gap = s.space / 2;
+    p := hd.unit_pad; fx_pad(fx, body, p, p, p, p);
+    head := fx_add(fx, body);
+    fx[0].nodes[head].gap = s.space; fx[0].nodes[head].align = FX_END;
+    t.name = hk_text_leaf(fx, head, m, s.title, u.name); fx_flex(fx, t.name, 0, 1, FX_AUTO);
+    if u.klass.count > 0 && u.klass != u.name {
+      gap := fx_add(fx, head); fx_flex(fx, gap, 1, 1, 0);
+      t.klass = hk_text_leaf(fx, head, m, s.small, u.klass);
+    }
+    if u.max > 0 || u.ac > 0 {
+      row := fx_add(fx, body);
+      fx[0].nodes[row].gap = s.space; fx[0].nodes[row].align = FX_CENTER;
+      if u.max > 0 {
+        t.bar = fx_add(fx, row); fx_flex(fx, t.bar, 1, 1, 0); fx[0].nodes[t.bar].height = hd.unit_bar;
+        t.hp = hk_text_leaf(fx, row, m, s.small, hk_unit_hp(sh, u));
+      }
+      if u.ac > 0 {
+        ac := hk_join(sh, "AC ", hk_int(sh, u.ac));
+        t.ac = hk_leaf(fx, row, ceil(measure_width(m, s.small.face, ac)) + s.control_pad, hk_max_f(s.small.line, hd.unit_bar));
+      }
+    }
+    if u.gems > 0 {
+      gems := fx_add(fx, body); fx[0].nodes[gems].gap = hd.gem_gap;
+      for g: 0..<u.gems { c := hk_leaf(fx, gems, hd.gem * 2, hd.gem * 2); if g == 0 { t.gem0 = c; } }
+    }
+    if u.conds.count > 0 { t.conds = hk_text_leaf(fx, body, m, s.small, u.conds); fx_flex(fx, t.conds, 0, 1, FX_AUTO); }
+  }
+  fx_layout(fx, w, FX_AUTO);
+  t.size = HkSize.{w = fx[0].nodes[0].w, h = fx[0].nodes[0].h};
+  return t;
+}
+hk_max_f :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+// "9 / 18", kept in the sheet's pool.
+hk_unit_hp :: (sh: [] Sheet, u: HkUnit) -> string { return hk_join(sh, hk_join(sh, hk_int(sh, u.hp), " / "), hk_int(sh, u.max)); }
+hk_portrait_size :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, w: f32, u: HkUnit, sh: [] Sheet) -> HkSize {
+  np := sh[0].np;
+  t := hk_unit_tree(fx, m, s, w, u, sh);
+  sh[0].np = np;
+  return t.size;
+}
+// A unit frame w wide at (x, y): a plate (the skin's panel) from under the medallion's middle to the
+// frame's far end; on it the name (the class at the far end), the health bar, its numbers and
+// the AC, the gems and the conditions; the medallion over the plate's end with the initial and the
+// level badge. Leaves a hit over the whole frame (kind, a, 0). Returns its size.
+hk_portrait :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, y: f32, w: f32, u: HkUnit, hit_kind: int, hit_a: int) -> HkSize {
+  hd := s.hud;
+  t := hk_unit_tree(fx, m, s, w, u, sh);
+  med := hk_box(fx, t.med, x, y); body := hk_box(fx, t.body, x, y);
+  r := hd.medallion; mx := med.x + r; my := med.y + r;
+  px := ifx u.mirror then body.x else mx; pw := ifx u.mirror then mx - body.x else body.x + body.w - mx;
+  sh[0].nu = uiskin_panel(sh[0].under, sh[0].nu, s, px, body.y, pw, body.h);
+  // the medallion: its face tinted with the accent, its rim, an inner line of trim
+  rr := ifx hk_round(s) then r else 0.0f32;
+  e := sheet_box(sh, med.x, med.y, med.w, med.h, rr, hd.rim, hd.face, s.frame_light);
+  if hk_round(s) { sh[0].nu = prim_ring(sh[0].under, sh[0].nu, med.x + hd.rim * 2, med.y + hd.rim * 2, med.w - hd.rim * 4, med.h - hd.rim * 4, s.border, hd.inner); }
+  ini: [1] u8; ini[0] = ifx u.klass.count > 0 then u.klass[0] else ifx u.name.count > 0 then u.name[0] else '?';
+  if ini[0] >= 'a' && ini[0] <= 'z' { ini[0] -= 32; }
+  hk_centred(sh, m, med, s.title, ifx u.foe then hd.foe else hd.name, sheet_pool(sh, cast(string) ini[..]));
+  if u.level > 0 {
+    bd := hd.badge * 2;
+    bx := ifx u.mirror then med.x + med.w - bd else med.x;
+    bb := HkBox.{x = bx, y = med.y + med.h - bd, w = bd, h = bd};
+    f := sheet_box(sh, bb.x, bb.y, bd, bd, ifx hk_round(s) then hd.badge else 0.0f32, s.border, s.sunk, s.trim);
+    hk_centred(sh, m, bb, s.small, s.ink, hk_int(sh, u.level));
+  }
+  // the name and the class
+  nb := hk_box(fx, t.name, x, y);
+  nw := sheet_text(sh, m, -1, nb.x, nb.y, s.title.line, s.title.face, ifx u.foe then hd.foe else hd.name, u.name);
+  if t.klass >= 0 { kb := hk_box(fx, t.klass, x, y); kw := sheet_text(sh, m, -1, kb.x, kb.y, s.small.line, s.small.face, s.muted, u.klass); }
+  // the bar, its numbers over it
+  if t.bar >= 0 {
+    bb := hk_box(fx, t.bar, x, y);
+    share := cast(f32) u.hp / cast(f32) u.max;
+    fill := ifx u.fill >= 0 then u.fill else share; trail := ifx u.trail >= 0 then u.trail else fill;
+    low := share < hd.low && !u.foe;
+    hk_vital(sh, s, bb.x, bb.y, bb.w, bb.h, fill, trail, ifx u.foe then hd.foe else ifx low then hd.hp_low else hd.hp, 1);
+    hb := hk_box(fx, t.hp, x, y);
+    hw := sheet_text(sh, m, -1, hb.x, hb.y, s.small.line, s.small.face, s.ink, hk_unit_hp(sh, u));
+  }
+  if t.ac >= 0 {
+    ab := hk_box(fx, t.ac, x, y);
+    sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, ab.x, ab.y, ab.w, ab.h, UISKIN_REST);
+    hk_centred(sh, m, ab, s.small, s.ink, hk_join(sh, "AC ", hk_int(sh, u.ac)));
+  }
+  if t.gem0 >= 0 {
+    for g: 0..<u.gems {
+      gb := hk_box(fx, t.gem0 + g, x, y);
+      left := g < u.gems_left;
+      q := sheet_box(sh, gb.x, gb.y, gb.w, gb.h, ifx hk_round(s) then hd.gem else 0.0f32, s.border, ifx left then hd.magic else hd.gem_empty, hd.magic);
+    }
+  }
+  if t.conds >= 0 { cb := hk_box(fx, t.conds, x, y); cw := sheet_text(sh, m, -1, cb.x, cb.y, s.small.line, s.small.face, s.warning, u.conds); }
+  sheet_hit(sh, hit_kind, hit_a, 0, x, y, t.size.w, t.size.h);
+  return t.size;
+}
+
+// ---------------------------------------------------------------- the map ring
+
+// A thing on the map: where it is (metres) and what it is.
+HK_DOT_ALLY :: 0; HK_DOT_FOE :: 1; HK_DOT_GUARD :: 2; HK_DOT_PATH :: 3;
+HkDot :: struct { x: f32; z: f32; kind: int; }
+// The map: you, the way you face (fx, fz on the ground), how many metres the ring shows, what is on
+// it, the place's name and the time of day.
+HkMap :: struct { you_x: f32; you_z: f32; face_x: f32; face_z: f32 = -1; reach: f32; place: string; clock: string; }
+
+hk_map_tree :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, mp: HkMap) -> HkSize {
+  fx_reset(fx);
+  root := fx_add(fx, -1);
+  fx[0].nodes[root].direction = FX_COLUMN; fx[0].nodes[root].align = FX_CENTER; fx[0].nodes[root].gap = s.space / 2;
+  d := s.hud.map_r * 2;
+  ring := hk_leaf(fx, root, d, d);
+  place := hk_leaf(fx, root, ceil(measure_width(m, s.label.face, mp.place)) + s.control_pad * 2, s.label.line + s.space);
+  if mp.clock.count > 0 { clock := hk_text_leaf(fx, root, m, s.small, mp.clock); }
+  return hk_fit(fx);
+}
+hk_map_size :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, mp: HkMap) -> HkSize { return hk_map_tree(fx, m, s, mp); }
+// The map ring at (x, y): its ground, its rim and an inner line of trim; each thing as a dot (a shade
+// under it), you in the middle, north on its edge, then the place on a plate and the clock under it.
+hk_map :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, y: f32, mp: HkMap, dots: [] HkDot) -> HkSize {
+  hd := s.hud;
+  size := hk_map_tree(fx, m, s, mp);
+  ring := hk_box(fx, 1, x, y);
+  r := hd.map_r; cx := ring.x + r; cy := ring.y + r;
+  e := sheet_box(sh, ring.x, ring.y, ring.w, ring.h, r, hd.rim, hd.map_ground, s.frame_light);
+  sh[0].nu = prim_ring(sh[0].under, sh[0].nu, ring.x + hd.rim * 2, ring.y + hd.rim * 2, ring.w - hd.rim * 4, ring.h - hd.rim * 4, s.border, hd.inner);
+  fl := sqrt(mp.face_x * mp.face_x + mp.face_z * mp.face_z);
+  fwx := ifx fl > 0 then mp.face_x / fl else 0.0f32; fwz := ifx fl > 0 then mp.face_z / fl else -1.0f32;
+  rx := -fwz; rz := fwx;
+  reach := ifx mp.reach > 0 then mp.reach else hd.map_reach;
+  for i: 0..<dots.count {
+    dt := dots[i];
+    q := hud_map_project(cx, cy, r, dt.x - mp.you_x, dt.z - mp.you_z, fwx, fwz, rx, rz, reach);
+    c := ifx dt.kind == HK_DOT_FOE then hd.foe else ifx dt.kind == HK_DOT_GUARD then s.trim else ifx dt.kind == HK_DOT_PATH then s.muted else hd.ally;
+    k := ifx dt.kind == HK_DOT_PATH then hd.dot / 2 else hd.dot;
+    if dt.kind != HK_DOT_PATH { sheet_fill(sh, q.x - k - s.border, q.y - k - s.border, (k + s.border) * 2, (k + s.border) * 2, k + s.border, hd.dot_shade); }
+    sheet_fill(sh, q.x - k, q.y - k, k * 2, k * 2, ifx hk_round(s) then k else 0.0f32, c);
+  }
+  // you: a mark in the middle, ahead up
+  y2 := hd.you_size / 2;
+  sheet_fill(sh, cx - y2, cy - y2, hd.you_size, hd.you_size, ifx hk_round(s) then y2 else 0.0f32, hd.you);
+  // north, on the ring's edge
+  nq := hud_map_project(cx, cy, r, 0, -reach * 2, fwx, fwz, rx, rz, reach);   // far to the north: on the edge
+  nb := HkBox.{x = nq.x - hd.north, y = nq.y - hd.north, w = hd.north * 2, h = hd.north * 2};
+  f := sheet_box(sh, nb.x, nb.y, nb.w, nb.h, ifx hk_round(s) then hd.north else 0.0f32, s.border, s.sunk, s.trim);
+  hk_centred(sh, m, nb, s.small, s.ink, "N");
+  // the place, and the time of day
+  pb := hk_box(fx, 2, x, y);
+  sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, pb.x, pb.y, pb.w, pb.h, UISKIN_REST);
+  hk_centred(sh, m, pb, s.label, hd.name, mp.place);
+  if mp.clock.count > 0 { cb := hk_box(fx, 3, x, y); cw := sheet_text(sh, m, -1, cb.x, cb.y, s.small.line, s.small.face, s.muted, mp.clock); }
+  return size;
+}
+
+// ---------------------------------------------------------------- a plate over a creature
+
+// Its size: as wide as its name or its bar, the name over the bar.
+hk_plate_tree :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, name: string) -> HkSize {
+  fx_reset(fx);
+  root := fx_add(fx, -1);
+  fx[0].nodes[root].direction = FX_COLUMN; fx[0].nodes[root].align = FX_CENTER; fx[0].nodes[root].gap = s.hud.plate_gap;
+  n := hk_text_leaf(fx, root, m, s.title, name);
+  b := hk_leaf(fx, root, s.hud.plate_half * 2, s.hud.plate_bar);
+  return hk_fit(fx);
+}
+// A plate centred on cx, its top at y: the name in the foe's or a friend's colour (your target's in
+// the name's), over its bar with the trail; your target's bar glows. Leaves a hit (kind, a, b).
+hk_nameplate :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, cx: f32, y: f32, name: string, fill: f32, trail: f32, foe: bool, target: bool, alpha: f32, hit_kind: int, hit_a: int, hit_b: int) -> HkSize {
+  hd := s.hud;
+  size := hk_plate_tree(fx, m, s, name);
+  x := cx - size.w / 2;
+  nb := hk_box(fx, 1, x, y); bb := hk_box(fx, 2, x, y);
+  c := ifx foe then hd.foe else hd.ally;
+  if target {
+    g := hd.edge + s.border * 2;
+    sh[0].nu = prim_shadow(sh[0].under, sh[0].nu, bb.x - g, bb.y - g, bb.w + g * 2, bb.h + g * 2, g, 0, 0, s.hud.plate_bar, 0, opacity(hd.target, alpha));
+    q := sheet_box(sh, bb.x - g, bb.y - g, bb.w + g * 2, bb.h + g * 2, ifx hk_round(s) then g + hd.bar_radius else 0.0f32, s.border, s.clear, opacity(s.trim, alpha));
+  }
+  hk_vital(sh, s, bb.x, bb.y, bb.w, bb.h, fill, trail, c, alpha);
+  w := sheet_text(sh, m, -1, nb.x, nb.y, s.title.line, s.title.face, opacity(ifx target then hd.name else c, alpha), name);
+  sheet_hit(sh, hit_kind, hit_a, hit_b, x, y, size.w, size.h);
+  return size;
+}
+
+// ---------------------------------------------------------------- a number rising
+
+HK_DEALT :: 0; HK_HARM :: 1; HK_MISS :: 2; HK_HEAL :: 3;
+// A number rising off a creature from (cx, y), age seconds into its life: it rises and fades. With an
+// outline in the skin it is drawn on a dark edge. Returns whether it is still there.
+hk_damage :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, cx: f32, y: f32, text: string, kind: int, age: f32) -> bool {
+  hd := s.hud;
+  if age < 0 || !(age < hd.float_life) { return false; }
+  u := age / hd.float_life; a := 1 - u * u;
+  ink := ifx kind == HK_MISS then hd.miss else ifx kind == HK_HARM then hd.harm else ifx kind == HK_HEAL then hd.heal else hd.damage;
+  t := s.strong;
+  tw := measure_width(m, t.face, text);
+  x := cx - tw / 2; yy := y - hd.float_rise * u - t.line;
+  if hd.outline_w > 0 {
+    o := hd.outline_w;
+    for i: 0..<2 { for j: 0..<2 {
+      dx := ifx i == 0 then -o else o; dy := ifx j == 0 then -o else o;
+      q := sheet_text(sh, m, -1, x + dx, yy + dy, t.line, t.face, opacity(hd.outline, a), text);
+    } }
+  }
+  w := sheet_text(sh, m, -1, x, yy, t.line, t.face, opacity(ink, a), text);
+  return true;
+}
+
+// ---------------------------------------------------------------- a banner
+
+// A place's banner centred on cx, its middle at y, age seconds into its life (core/hud.coax's fade).
+// A ribbon fading toward its ends (where the skin has steps for it), a rule above and below, and the
+// title. Returns whether it shows.
+hk_banner :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, cx: f32, y: f32, title: string, age: f32) -> bool {
+  hd := s.hud;
+  a := hud_banner_alpha(age, hd.banner_life);
+  if !(a > 0) { return false; }
+  t := s.title;
+  half := measure_width(m, t.face, title) / 2 + hd.banner_pad;
+  h := hd.banner_h; top := y - h / 2;
+  n := hd.banner_steps;
+  for q: 0..<n {
+    f0 := cast(f32) q / cast(f32) n; f1 := cast(f32) (q + 1) / cast(f32) n;
+    c := opacity(hd.ribbon, a * (1 - f0 * f0));
+    sheet_fill(sh, cx + half * f0, top, half * (f1 - f0), h, 0, c);
+    sheet_fill(sh, cx - half * f1, top, half * (f1 - f0), h, 0, c);
+  }
+  rule := half - hd.banner_pad / 2;
+  if s.frame != UIFRAME_CELLS {
+    sheet_rule(sh, cx - rule, top, rule * 2, s.border, opacity(s.trim, a));
+    sheet_rule(sh, cx - rule, top + h - s.border, rule * 2, s.border, opacity(s.trim, a));
+  }
+  hk_centred(sh, m, HkBox.{x = cx - half, y = top, w = half * 2, h = h}, t, opacity(hd.name, a), title);
+  return true;
+}
+
+// ---------------------------------------------------------------- a talk window
+
+// What a character says: who, what they are, the line, and your answers.
+HkTalk :: struct { speaker: string; title: string; line: string; }
+HK_TALK_LINES :: 16;
+
+hk_talk_tree :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, w: f32, t: HkTalk, choices: int, lines: [] TextLine) -> int {
+  fx_reset(fx);
+  root := fx_add(fx, -1);
+  fx[0].nodes[root].direction = FX_COLUMN; fx[0].nodes[root].gap = s.space;
+  fx_pad(fx, root, s.pad, s.pad, s.pad, s.pad);
+  head := fx_add(fx, root); fx[0].nodes[head].gap = s.space; fx[0].nodes[head].align = FX_END;
+  sp := hk_text_leaf(fx, head, m, s.title, t.speaker);
+  ti := hk_text_leaf(fx, head, m, s.small, t.title); fx_flex(fx, ti, 0, 1, FX_AUTO);
+  n := text_wrap_lines(m, uiskin_faces(s), t.line, w - s.pad * 2, lines);
+  say := fx_add(fx, root); fx[0].nodes[say].height = cast(f32) n * s.body.line;
+  list := fx_add(fx, root); fx[0].nodes[list].direction = FX_COLUMN; fx[0].nodes[list].gap = s.space / 2;
+  for k: 0..<choices { c := fx_add(fx, list); fx[0].nodes[c].height = s.control_h; }
+  fx_layout(fx, w, FX_AUTO);
+  return n;
+}
+hk_talk_size :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, w: f32, t: HkTalk, choices: int) -> HkSize {
+  lines: [HK_TALK_LINES] TextLine;
+  n := hk_talk_tree(fx, m, s, w, t, choices, lines[..]);
+  return HkSize.{w = fx[0].nodes[0].w, h = fx[0].nodes[0].h};
+}
+// The talk open at (x, y), w wide: the skin's panel, who speaks and what they are, the line wrapped,
+// and each answer numbered on a control (the hovered one lit, the picked one the primary; hit b = its
+// index).
+hk_talk :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, y: f32, w: f32, t: HkTalk, choices: [] string, hot: int, picked: int, hit_kind: int, hit_a: int) -> HkSize {
+  lines: [HK_TALK_LINES] TextLine;
+  n := hk_talk_tree(fx, m, s, w, t, choices.count, lines[..]);
+  size := HkSize.{w = fx[0].nodes[0].w, h = fx[0].nodes[0].h};
+  sh[0].nu = uiskin_panel(sh[0].under, sh[0].nu, s, x, y, size.w, size.h);
+  sb := hk_box(fx, 2, x, y); tb := hk_box(fx, 3, x, y);
+  sw := sheet_text(sh, m, -1, sb.x, sb.y, s.title.line, s.title.face, s.hud.name, t.speaker);
+  tw := sheet_text(sh, m, -1, tb.x, tb.y, s.small.line, s.small.face, s.muted, t.title);
+  lb := hk_box(fx, 4, x, y);
+  for k: 0..<n { q := sheet_plain(sh, m, lb.x, lb.y + cast(f32) k * s.body.line, s.body.line, s.body.face, s.ink, cast(string) t.line[lines[k].from..<lines[k].to], true); }
+  for k: 0..<choices.count {
+    cb := hk_box(fx, 6 + k, x, y);
+    state := ifx k == picked then UISKIN_PRIMARY else ifx k == hot then UISKIN_HOVER else UISKIN_REST;
+    sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, cb.x, cb.y, cb.w, cb.h, state);
+    label := hk_join(sh, hk_join(sh, hk_int(sh, k + 1), ". "), choices[k]);
+    q := sheet_text(sh, m, -1, cb.x + s.control_pad, cb.y + (cb.h - s.label.line) / 2, s.label.line, s.label.face, ifx state == UISKIN_PRIMARY then s.on_accent else s.ink, label);
+    sheet_hit(sh, hit_kind, hit_a, k, cb.x, cb.y, cb.w, cb.h);
+  }
+  return size;
+}

@@ -1,0 +1,160 @@
+// The game HUD set's checks: each part in every skin, on pixels and in cells,
+// by the same code (components/spec.md, GitHub #13153).
+//   coax/bin/coax test components/kit/hud-checks.coax
+
+#load "hud.coax";
+#load "../skin/all.coax";
+
+HkStore :: struct { under: [512] Prim; over: [512] Prim; lines: [32] SheetLine; hits: [32] SheetHit; pool: [1024] u8; fx: [1] FxTree; }
+hk_sheet :: (st: [] HkStore) -> Sheet {
+  return Sheet.{under = st[0].under[..], over = st[0].over[..], lines = st[0].lines[..], hits = st[0].hits[..], pool = st[0].pool[..]};
+}
+hk_measure :: (id: int, a: [] Atlas) -> TextMeasure { return ifx id == UISKIN_TERMINAL then measure_cells() else measure_font(a); }
+// Whether every primitive from..<to lies inside (x, y, w, h), give or take e.
+hk_inside :: (list: [] Prim, from: int, to: int, x: f32, y: f32, w: f32, h: f32, e: f32) -> bool {
+  for k: from..<to {
+    p := list[k];
+    if p.kind == PRIM_CLIP || p.kind == PRIM_FADE { continue; }
+    if p.x < x - e || p.y < y - e || p.x + p.w > x + w + e || p.y + p.h > y + h + e { return false; }
+  }
+  return true;
+}
+
+#test "a vital bar: groove, the trail only past the fill, the fill from its root; a faded or empty bar draws nothing extra" {
+  st: [1] HkStore;
+  for id: 0..<UISKINS {
+    s := uiskin(id); sh: [1] Sheet; sh[0] = hk_sheet(st[..]);
+    hk_vital(sh[..], s, 100, 50, 200, 16, 0.5, 0.5, s.hud.hp, 1); plain := sh[0].nu;
+    sh[0] = hk_sheet(st[..]);
+    hk_vital(sh[..], s, 100, 50, 200, 16, 0.5, 0.8, s.hud.hp, 1);
+    #assert sh[0].nu == plain + 1;
+    // the trail runs from the fill's end to 0.8 of the bar, in the trail's colour
+    tr := -1; for k: 0..<sh[0].nu { if sh[0].under[k].fill.r == s.hud.trail.r && sh[0].under[k].fill.a == s.hud.trail.a && sh[0].under[k].x == 200 { tr = k; } }
+    #assert tr >= 0 && abs(sh[0].under[tr].w - 60) < 0.01;
+    // the fill starts at the root and is the colour at its top
+    fill := -1; for k: 0..<sh[0].nu { if sh[0].under[k].kind == PRIM_GRADIENT { fill = k; } }
+    #assert fill >= 0 && sh[0].under[fill].x == 100 && sh[0].under[fill].w == 100 && sh[0].under[fill].fill.r == s.hud.hp.r;
+    #assert hk_inside(sh[0].under, 0, sh[0].nu, 100, 50, 200, 16, s.hud.edge + 0.01);
+    sh[0] = hk_sheet(st[..]); hk_vital(sh[..], s, 100, 50, 200, 16, 0.5, 0.2, s.hud.hp, 1); #assert sh[0].nu == plain;   // a trail under the fill is never drawn
+    sh[0] = hk_sheet(st[..]); hk_vital(sh[..], s, 100, 50, 200, 16, 0.5, 0.8, s.hud.hp, 0); #assert sh[0].nu == 0;
+    sh[0] = hk_sheet(st[..]); hk_vital(sh[..], s, 100, 50, 200, 16, 0, 0, s.hud.hp, 1); #assert sh[0].nu == plain - 1;   // empty: no fill
+  }
+}
+
+#test "the action bar: a tray round a row of slots, a hit each; a slot cooling is shaded by what is left and says the seconds" {
+  st: [1] HkStore; a: [1] Atlas; text_test_atlas(a[..]);
+  slots := [3] HkSlot.[HkSlot.{glyph = "F", key = "1", ready = true}, HkSlot.{glyph = "H", key = "2", cool = 0.25, secs = "3"}, HkSlot.{glyph = "P", key = "3", count = 4}];
+  for id: 0..<UISKINS {
+    s := uiskin(id); m := hk_measure(id, a[..]); sh: [1] Sheet; sh[0] = hk_sheet(st[..]);
+    size := hk_action_bar(sh[..], m, s, st[0].fx[..], 10, 20, slots[..], 2, 9, id);
+    z := s.hud.slot;
+    #assert size.w == z * 3 + s.hud.slot_gap * 2 + s.hud.tray_pad * 2 && size.h == z + s.hud.tray_pad * 2;
+    #assert size.w == hk_action_bar_size(st[0].fx[..], s, 3).w;
+    #assert sh[0].nh == 3 && sh[0].hits[1].kind == 9 && sh[0].hits[1].a == id && sh[0].hits[1].b == 1 && sh[0].hits[1].x == 10 + s.hud.tray_pad + z + s.hud.slot_gap && sh[0].hits[1].w == z;
+    // the cooling slot's shade covers a quarter of it, from its top
+    shade := -1; for k: 0..<sh[0].nu { if shade < 0 && sh[0].under[k].fill.a == s.hud.cooldown.a && sh[0].under[k].fill.r == s.hud.cooldown.r && sh[0].under[k].w == z { shade = k; } }
+    #assert shade >= 0 && sh[0].under[shade].h == z / 4 && sh[0].under[shade].y == 20 + s.hud.tray_pad;
+    secs := false; count := false; for k: 0..<sh[0].no { if sh[0].over[k].text == "3" && sh[0].over[k].id == s.label.face { secs = true; } if sh[0].over[k].text == "4" { count = true; } }
+    #assert secs && count;
+    #assert hk_inside(sh[0].under, 0, sh[0].nu, 10, 20, size.w, size.h, s.shadow + s.stud);
+  }
+}
+
+#test "a unit frame: medallion, name, bar with its numbers, AC, gems; a mirror puts the medallion on the right; what it doesn't know is left out" #steps 200000000 {
+  st: [1] HkStore; a: [1] Atlas; text_test_atlas(a[..]);
+  u := HkUnit.{name = "Ash", klass = "Druid", level = 2, hp = 9, max = 18, ac = 13, gems = 3, gems_left = 2, conds = "Blessed"};
+  for id: 0..<UISKINS {
+    s := uiskin(id); m := hk_measure(id, a[..]); sh: [1] Sheet; sh[0] = hk_sheet(st[..]);
+    w := s.hud.portrait_w;
+    size := hk_portrait(sh[..], m, s, st[0].fx[..], 12, 12, w, u, 5, id);
+    #assert size.w == w && size.h >= s.hud.medallion * 2 && sh[0].nh == 1 && sh[0].hits[0].w == w;
+    #assert size.h == hk_portrait_size(st[0].fx[..], m, s, w, u, sh[..]).h;
+    seen := 0;
+    for k: 0..<sh[0].no {
+      t := sh[0].over[k].text;
+      if t == "Ash" || t == "Druid" || t == "D" || t == "2" || t == "9 / 18" || t == "AC 13" || t == "Blessed" { seen += 1; }
+    }
+    #assert seen == 7;
+    // the medallion is the frame's first box after the plate, at the left; the name sits right of it
+    name_x: f32 = 0; for k: 0..<sh[0].no { if sh[0].over[k].text == "Ash" { name_x = sh[0].over[k].x; } }
+    #assert name_x >= 12 + s.hud.medallion * 2;
+    // two gems left of three
+    left := 0; for k: 0..<sh[0].nu { if sh[0].under[k].fill.r == s.hud.magic.r && sh[0].under[k].fill.a == s.hud.magic.a && sh[0].under[k].w == s.hud.gem * 2 { left += 1; } }
+    #assert left == 2 || s.hud.magic.r == s.hud.gem_empty.r;
+    // mirrored, the name is at the left and the medallion at the right
+    sh[0] = hk_sheet(st[..]);
+    f := HkUnit.{name = "Imp", hp = 13, max = 21, foe = true, mirror = true};
+    fs := hk_portrait(sh[..], m, s, st[0].fx[..], 12, 12, w, f, 5, id);
+    imp_x: f32 = 0; for k: 0..<sh[0].no { if sh[0].over[k].text == "Imp" { imp_x = sh[0].over[k].x; } }
+    #assert imp_x < 12 + w - s.hud.medallion * 2 && imp_x >= 12;
+    // nothing known: a name and its medallion, no bar, no numbers
+    sh[0] = hk_sheet(st[..]);
+    bare := hk_portrait(sh[..], m, s, st[0].fx[..], 12, 12, w, HkUnit.{name = "Wren"}, 5, id);
+    for k: 0..<sh[0].nu { #assert sh[0].under[k].kind != PRIM_GRADIENT; }
+    for k: 0..<sh[0].no { #assert sh[0].over[k].text != "AC 0" && sh[0].over[k].text != "0 / 0"; }
+  }
+}
+
+#test "a map ring: you in the middle, a thing ahead above you, the place and the clock under it" {
+  st: [1] HkStore; a: [1] Atlas; text_test_atlas(a[..]);
+  dots := [2] HkDot.[HkDot.{x = 0, z = -20, kind = HK_DOT_FOE}, HkDot.{x = 20, z = 0, kind = HK_DOT_ALLY}];
+  mp := HkMap.{place = "The Glade", clock = "12:00", reach = 60};
+  for id: 0..<3 {
+    s := uiskin(id); m := measure_font(a[..]); sh: [1] Sheet; sh[0] = hk_sheet(st[..]);
+    size := hk_map(sh[..], m, s, st[0].fx[..], 100, 50, mp, dots[..]);
+    r := s.hud.map_r; cx := 100 + (size.w / 2); cy := 50 + r;
+    #assert size.w >= r * 2 && size.h > r * 2 && size.w == hk_map_size(st[0].fx[..], m, s, mp).w;
+    foe := -1; ally := -1;
+    for k: 0..<sh[0].nu { p := sh[0].under[k]; if p.w == s.hud.dot * 2 && p.fill.r == s.hud.foe.r { foe = k; } if p.w == s.hud.dot * 2 && p.fill.r == s.hud.ally.r && p.fill.g == s.hud.ally.g { ally = k; } }
+    #assert foe >= 0 && ally >= 0;
+    // facing -z: the foe 20 m ahead is above the middle, the friend 20 m along +x is to the right
+    #assert abs(sh[0].under[foe].x + s.hud.dot - cx) < 0.01 && sh[0].under[foe].y + s.hud.dot < cy - r / 4;
+    #assert sh[0].under[ally].x > cx + r / 4 && abs(sh[0].under[ally].y + s.hud.dot - cy) < 0.01;
+    place := false; clock := false; north := false;
+    for k: 0..<sh[0].no { if sh[0].over[k].text == "The Glade" { place = sh[0].over[k].y > cy + r; } if sh[0].over[k].text == "12:00" { clock = true; } if sh[0].over[k].text == "N" { north = sh[0].over[k].y < cy - r / 2; } }
+    #assert place && clock && north;
+  }
+}
+
+#test "plates, rising numbers and a banner: drawn while they live, faded at their ends, gone after" {
+  st: [1] HkStore; a: [1] Atlas; text_test_atlas(a[..]);
+  for id: 0..<3 {
+    s := uiskin(id); m := measure_font(a[..]); sh: [1] Sheet; sh[0] = hk_sheet(st[..]);
+    ps := hk_nameplate(sh[..], m, s, st[0].fx[..], 400, 300, "Wolf", 0.5, 0.7, true, false, 1, 3, id, 0);
+    plain := sh[0].nu;
+    #assert ps.w >= s.hud.plate_half * 2 && sh[0].no == 1 && sh[0].over[0].fill.r == s.hud.foe.r && sh[0].nh == 1;
+    tg := hk_nameplate(sh[..], m, s, st[0].fx[..], 400, 300, "Wolf", 0.5, 0.7, true, true, 1, 3, id, 1);
+    #assert sh[0].nu - plain >= plain + 2 && sh[0].over[1].fill.r == s.hud.name.r;   // a target's glow and ring, its name in the name's colour
+    sh[0] = hk_sheet(st[..]);
+    #assert hk_damage(sh[..], m, s, 400, 300, "-7", HK_DEALT, 0) && !hk_damage(sh[..], m, s, 400, 300, "-7", HK_DEALT, s.hud.float_life);
+    #assert !hk_damage(sh[..], m, s, 400, 300, "-7", HK_DEALT, -1);
+    copies := ifx s.hud.outline_w > 0 then 5 else 1;
+    #assert sh[0].no == copies && sh[0].over[copies - 1].fill.r == s.hud.damage.r;
+    // later it is higher and fainter
+    h0 := sh[0].over[copies - 1];
+    q := hk_damage(sh[..], m, s, 400, 300, "-7", HK_DEALT, s.hud.float_life / 2);
+    h1 := sh[0].over[sh[0].no - 1];
+    #assert h1.y < h0.y && h1.fill.a < h0.fill.a;
+    sh[0] = hk_sheet(st[..]);
+    #assert hk_banner(sh[..], m, s, 960, 200, "The Glade", 1) && !hk_banner(sh[..], m, s, 960, 200, "The Glade", s.hud.banner_life + 1);
+    #assert sh[0].no == 1 && sh[0].over[0].text == "The Glade" && sh[0].nu == s.hud.banner_steps * 2 + 2;
+  }
+}
+
+#test "a talk window: the speaker, the line wrapped to its width, an answer a control with its hit; picked and hovered show" {
+  st: [1] HkStore; a: [1] Atlas; text_test_atlas(a[..]);
+  t := HkTalk.{speaker = "Mira", title = "Herbalist", line = "The glade is quiet tonight. Too quiet, if you ask me, and nobody ever does."};
+  answers := [3] string.["Why?", "I'll look around.", "Goodbye."];
+  for id: 0..<UISKINS {
+    s := uiskin(id); m := hk_measure(id, a[..]); sh: [1] Sheet; sh[0] = hk_sheet(st[..]);
+    w := ifx id == UISKIN_TERMINAL then 30.0f32 else s.hud.talk_w / 2;
+    size := hk_talk(sh[..], m, s, st[0].fx[..], 10, 10, w, t, answers[..], 1, 2, 4, id);
+    #assert size.w == w && size.h == hk_talk_size(st[0].fx[..], m, s, w, t, 3).h;
+    #assert sh[0].nh == 3 && sh[0].hits[2].b == 2 && sh[0].hits[2].w == w - s.pad * 2 && sh[0].hits[2].h == s.control_h;
+    #assert sh[0].nl >= 2;     // the line wraps
+    for k: 0..<sh[0].nl { #assert sh[0].lines[k].x == 10 + s.pad; }
+    seen := 0; for k: 0..<sh[0].no { tx := sh[0].over[k].text; if tx == "Mira" || tx == "Herbalist" || tx == "1. Why?" || tx == "3. Goodbye." { seen += 1; } if tx == "3. Goodbye." { #assert sh[0].over[k].fill.r == s.on_accent.r; } }
+    #assert seen == 4;
+    #assert sh[0].hits[0].y + sh[0].hits[0].h <= sh[0].hits[1].y;
+  }
+}

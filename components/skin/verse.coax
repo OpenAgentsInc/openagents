@@ -51,6 +51,7 @@ verse_skin :: () -> UiSkin {
   s.frame_mid = rgba(0.42, 0.42, 0.42, 1); s.frame_light = rgba(0.78, 0.78, 0.78, 1); s.trim = cyan;
   s.shadow = 0; s.stud = 0;
   s.md.block_radius = 0; s.md.code_radius = 0;
+  s.hud = verse_hud();
   return s;
 }
 

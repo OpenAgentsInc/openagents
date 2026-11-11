@@ -161,6 +161,7 @@ zeron_skin :: () -> UiSkin {
   s.thumb = UiPlate.{top = ink(1), bottom = rgba(0.965, 0.965, 0.965, 1), rim = rgba(0, 0, 0, 0.12), inset = ink(0.8), inset_dy = 1, drop = rgba(0, 0, 0, 0.22), drop_dy = 1, drop_blur = 2};
   s.switch_shade = rgba(0, 0, 0, 0.14); s.switch_wash = ink(0.18); s.switch_rim = ink(0.12);
   s.switch_mark = ink(0.96); s.switch_ring = ink(0.92); s.switch_knob = ink(0.96); s.switch_knob_rim = rgba(0, 0, 0, 0.10);
+  s.hud = zeron_hud();
   return s;
 }
 

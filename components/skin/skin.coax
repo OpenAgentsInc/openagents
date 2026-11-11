@@ -18,6 +18,7 @@
 
 #load "../layout/text.coax";
 #load "../paint/list.coax";
+#load "hud.coax";           // the game HUD's roles (UiHud)
 
 UISKIN_ZERON :: 0; UISKIN_EVERGLADE :: 1; UISKIN_VERSE :: 2; UISKIN_TERMINAL :: 3;
 UISKINS :: 4;
@@ -134,6 +135,7 @@ UiSkin :: struct {
   // icons a component asks for by role (slots in the target's icons; -1: the skin has none)
   icon_copy: int; icon_wrap: int; icon_chevron: int; icon_check: int;
   md: UiMarkdown;
+  hud: UiHud;               // the game HUD's colours and measures (skin/hud.coax)
 }
 
 // A skin's faces for styled text (layout/text.coax).

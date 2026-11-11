@@ -57,6 +57,7 @@ terminal_skin :: () -> UiSkin {
   s.syntax[0] = dim; s.syntax[1] = rgba(0.78, 0.57, 0.92, 1); s.syntax[2] = rgba(0.60, 0.80, 0.50, 1); s.syntax[3] = rgba(0.90, 0.75, 0.35, 1);
   s.syntax[4] = rgba(0.50, 0.80, 0.90, 1); s.syntax[5] = link; s.syntax[6] = rgba(0.90, 0.60, 0.70, 1);
   s.syntax[7] = none; s.syntax[8] = dim; s.syntax[9] = s.danger; s.syntax[10] = code; s.syntax[11] = s.danger;
+  s.hud = terminal_hud();
   return s;
 }
 

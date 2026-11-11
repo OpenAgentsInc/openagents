@@ -1,0 +1,141 @@
+// The game HUD's roles in a skin (components/spec.md, "The second set: game
+// HUD"; GitHub #13153): the colours and measures the HUD components
+// (components/kit/hud.coax) read: a health bar's fill, groove and trail, a
+// slot's size, a portrait's medallion, a map ring, a banner, a number that
+// rises off a creature. Each skin has one UiHud (UiSkin.hud). Everglade's and
+// the Verse's colours are the realm HUD's FANTASY and SCIFI tokens
+// (aethyr/ui/hud-style.coax), and components/gallery/skin-parity.coax holds
+// them equal; their measures are everglade/hud/parts.coax's in CSS px.
+// Sizes are the target's units: logical pixels, or cells in a terminal.
+//   coax/bin/coax test components/skin/all.coax
+
+#load "../core/color.coax";
+
+UiHud :: struct {
+  // a health bar
+  hp: Rgba; hp_low: Rgba;            // its fill, and yours when you are low
+  low: f32;                          // the share under which your bar is low
+  groove: Rgba; groove_edge: Rgba;   // the dark groove it runs in, and the hairline round it
+  trail: Rgba;                       // the pale strip where a blow took it down
+  fill_shade: Rgba;                  // laid over the fill's foot: the fill runs light to dark
+  gloss: Rgba;                       // the light over the bar's top
+  gloss_share: f32;                  // how much of the bar the gloss covers, from its top
+  unit_bar: f32; bar_radius: f32; edge: f32;     // a unit frame's bar: its height, rounding, and the hairline's reach
+  // creatures and what happens to them
+  name: Rgba;                        // your name, a place's
+  ally: Rgba; foe: Rgba;             // a friend's and a foe's bar and name
+  target: Rgba;                      // the glow round your target's plate
+  damage: Rgba; harm: Rgba; heal: Rgba; miss: Rgba;   // a number rising: damage dealt, harm to you, healing, a miss
+  outline: Rgba; outline_w: f32;     // the dark edge round a rising number (0: none)
+  float_rise: f32; float_life: f32;  // how far it rises, and in how many seconds it is gone
+  // a unit frame: a medallion beside a plate
+  face: Rgba;                        // the medallion's face
+  inner: Rgba;                       // the line of trim inside a medallion's or the map's rim
+  medallion: f32; rim: f32;          // its radius and its rim's width
+  badge: f32;                        // the level badge's radius
+  portrait_w: f32;                   // a unit frame's width at its widest
+  unit_gap: f32; unit_pad: f32;      // between the medallion and the plate; inside the plate
+  magic: Rgba; gem_empty: Rgba;      // a spell slot's gem, left and spent
+  gem: f32; gem_gap: f32;            // its radius, and between two
+  // the action bar
+  slot: f32; slot_gap: f32; slot_radius: f32;    // a slot's side, between two, its rounding
+  tray_pad: f32;                     // the tray round the slots
+  key_pad: f32;                      // a slot's key and count from its corners
+  cooldown: Rgba;                    // the shade over a slot that is cooling down
+  // a plate over a creature
+  plate_half: f32; plate_bar: f32; plate_gap: f32;   // half its bar's width, the bar's height, between the name and the bar
+  // the map ring
+  map_ground: Rgba; you: Rgba; dot_shade: Rgba;
+  map_r: f32; dot: f32; you_size: f32; north: f32;   // the ring's radius, a thing's dot, your mark, north's disc
+  map_reach: f32;                    // metres the ring shows by default
+  // a banner (a place reached)
+  ribbon: Rgba;                      // its ground, strongest in the middle
+  banner_h: f32; banner_pad: f32;    // its height, and how far it runs past its title either side
+  banner_life: f32;                  // seconds it shows
+  banner_steps: int;                 // the ribbon fades out toward each end in this many steps
+  // a talk window
+  talk_w: f32;
+}
+
+// Zeron Dark's HUD: the chat's colours on a game's measures (no realm wears it yet).
+zeron_hud :: () -> UiHud {
+  return UiHud.{
+    hp = hex(0xf87171, 1), hp_low = hex(0xfbbf24, 1), low = 0.34,
+    groove = rgba(0, 0, 0, 0.5), groove_edge = rgba(1, 1, 1, 0.10), trail = rgba(1, 1, 1, 0.55),
+    fill_shade = rgba(0, 0, 0, 0.3), gloss = rgba(1, 1, 1, 0.08), gloss_share = 0.46,
+    unit_bar = 16, bar_radius = 4, edge = 1,
+    name = hex(0xe8e8ea, 1), ally = hex(0x34d399, 1), foe = hex(0xf87171, 1), target = rgba(0.545, 0.486, 0.965, 0.5),
+    damage = hex(0xfbbf24, 1), harm = hex(0xf87171, 1), heal = hex(0x34d399, 1), miss = hex(0xa9a9ae, 1),
+    outline = rgba(0, 0, 0, 0.8), outline_w = 0, float_rise = 40, float_life = 1.2,
+    face = hex(0x27272a, 1), inner = rgba(0.545, 0.486, 0.965, 0.35), medallion = 34, rim = 1, badge = 12, portrait_w = 330, unit_gap = 8, unit_pad = 10,
+    magic = hex(0x8b7cf6, 1), gem_empty = rgba(1, 1, 1, 0.06), gem = 5.5, gem_gap = 4,
+    slot = 48, slot_gap = 8, slot_radius = 8, tray_pad = 9, key_pad = 4, cooldown = rgba(0, 0, 0, 0.6),
+    plate_half = 32, plate_bar = 4, plate_gap = 4,
+    map_ground = hex(0x27272a, 1), you = hex(0xe8e8ea, 1), dot_shade = rgba(0, 0, 0, 0.55),
+    map_r = 70, dot = 3, you_size = 8, north = 8, map_reach = 60,
+    ribbon = rgba(0, 0, 0, 0.55), banner_h = 42, banner_pad = 60, banner_life = 3.6, banner_steps = 8,
+    talk_w = 440};
+}
+
+// Everglade's: FANTASY's colours (hud_tokens(HUD_FANTASY)) and everglade/hud/parts.coax's measures.
+everglade_hud :: () -> UiHud {
+  trim := rgba(0.86, 0.68, 0.36, 1);
+  return UiHud.{
+    hp = rgba(0.72, 0.12, 0.09, 1), hp_low = rgba(0.95, 0.30, 0.16, 1), low = 0.34,
+    groove = rgba(0.13, 0.05, 0.04, 0.92), groove_edge = opacity(trim, 0.36), trail = rgba(1, 0.914, 0.72, 0.9),
+    fill_shade = rgba(0, 0, 0, 0.35), gloss = rgba(1, 1, 1, 0.1), gloss_share = 0.46,
+    unit_bar = 16, bar_radius = 2, edge = 1.8,
+    name = rgba(0.98, 0.84, 0.52, 1), ally = rgba(0.42, 0.80, 0.36, 1), foe = rgba(0.92, 0.32, 0.22, 1), target = opacity(trim, 0.5),
+    damage = rgba(1.0, 0.62, 0.26, 1), harm = rgba(0.92, 0.32, 0.22, 1), heal = rgba(0.55, 0.95, 0.45, 1), miss = rgba(0.72, 0.64, 0.52, 1),
+    outline = rgba(0.05, 0.03, 0.02, 0.9), outline_w = 1, float_rise = 40, float_life = 1.2,
+    face = rgba(0.11, 0.086, 0.07, 1), inner = opacity(trim, 0.6), medallion = 34, rim = 3, badge = 12, portrait_w = 330, unit_gap = 10, unit_pad = 12,
+    magic = rgba(0.42, 0.62, 0.98, 1), gem_empty = rgba(0.05, 0.05, 0.08, 0.85), gem = 5.5, gem_gap = 2,
+    slot = 52, slot_gap = 8, slot_radius = 4, tray_pad = 9, key_pad = 4, cooldown = rgba(0.02, 0.015, 0.01, 0.68),
+    plate_half = 32, plate_bar = 6.5, plate_gap = 4,
+    map_ground = rgba(0.70, 0.60, 0.43, 0.94), you = rgba(1.0, 0.92, 0.70, 1), dot_shade = rgba(0, 0, 0, 0.55),
+    map_r = 70, dot = 3, you_size = 10, north = 8, map_reach = 60,
+    ribbon = rgba(0.06, 0.04, 0.03, 0.62), banner_h = 42, banner_pad = 60, banner_life = 3.6, banner_steps = 8,
+    talk_w = 440};
+}
+
+// The Verse's: SCIFI's colours (hud_tokens(HUD_SCIFI)): thin bars and lines, no outline.
+verse_hud :: () -> UiHud {
+  cyan := rgba(0.216, 0.851, 0.851, 1);
+  return UiHud.{
+    hp = rgba(0.85, 0.13, 0.10, 1), hp_low = rgba(1, 0.3, 0.25, 1), low = 0.34,
+    groove = rgba(0.35, 0.22, 0.20, 1), groove_edge = rgba(0, 0, 0, 0), trail = rgba(0.94, 0.65, 0.64, 1),
+    fill_shade = rgba(0, 0, 0, 0), gloss = rgba(0, 0, 0, 0), gloss_share = 0,
+    unit_bar = 6, bar_radius = 0, edge = 0,
+    name = rgba(0.94, 0.94, 0.94, 1), ally = rgba(0.3, 0.9, 0.2, 1), foe = rgba(0.95, 0.2, 0.15, 1), target = opacity(cyan, 0.5),
+    damage = rgba(1, 0.55, 0.35, 1), harm = rgba(0.95, 0.2, 0.15, 1), heal = rgba(0.5, 0.95, 0.55, 1), miss = rgba(0.6, 0.6, 0.6, 1),
+    outline = rgba(0, 0, 0, 0), outline_w = 0, float_rise = 32, float_life = 1.2,
+    face = rgba(0, 0, 0, 0.55), inner = opacity(cyan, 0.5), medallion = 30, rim = 1, badge = 10, portrait_w = 330, unit_gap = 10, unit_pad = 10,
+    magic = cyan, gem_empty = rgba(0, 0, 0, 0.55), gem = 4, gem_gap = 3,
+    slot = 48, slot_gap = 6, slot_radius = 0, tray_pad = 8, key_pad = 3, cooldown = rgba(0, 0, 0, 0.6),
+    plate_half = 32, plate_bar = 2.5, plate_gap = 4,
+    map_ground = rgba(0, 0, 0, 0.55), you = cyan, dot_shade = rgba(0, 0, 0, 0),
+    map_r = 64, dot = 2.5, you_size = 8, north = 7, map_reach = 60,
+    ribbon = rgba(0, 0, 0, 0), banner_h = 36, banner_pad = 60, banner_life = 3.6, banner_steps = 0,
+    talk_w = 440};
+}
+
+// A terminal's: cells, the terminal's own colours, no shades.
+terminal_hud :: () -> UiHud {
+  none := rgba(0, 0, 0, 0);
+  dim := rgba(129.0 / 255.0, 129.0 / 255.0, 129.0 / 255.0, 1);
+  return UiHud.{
+    hp = rgba(0.95, 0.33, 0.31, 1), hp_low = rgba(0.90, 0.75, 0.35, 1), low = 0.34,
+    groove = rgba(1, 1, 1, 0.12), groove_edge = none, trail = dim, fill_shade = none, gloss = none, gloss_share = 0,
+    unit_bar = 1, bar_radius = 0, edge = 0,
+    name = none, ally = rgba(0.45, 0.80, 0.45, 1), foe = rgba(0.95, 0.33, 0.31, 1), target = none,
+    damage = rgba(0.90, 0.75, 0.35, 1), harm = rgba(0.95, 0.33, 0.31, 1), heal = rgba(0.45, 0.80, 0.45, 1), miss = dim,
+    outline = none, outline_w = 0, float_rise = 1, float_life = 1.2,
+    face = none, inner = none, medallion = 1, rim = 1, badge = 1, portrait_w = 40, unit_gap = 1, unit_pad = 0,
+    magic = rgba(116.0 / 255.0, 207.0 / 255.0, 209.0 / 255.0, 1), gem_empty = dim, gem = 0.5, gem_gap = 0,
+    slot = 3, slot_gap = 1, slot_radius = 0, tray_pad = 1, key_pad = 0, cooldown = rgba(1, 1, 1, 0.12),
+    plate_half = 6, plate_bar = 1, plate_gap = 0,
+    map_ground = none, you = rgba(116.0 / 255.0, 207.0 / 255.0, 209.0 / 255.0, 1), dot_shade = none,
+    map_r = 4, dot = 0.5, you_size = 1, north = 0.5, map_reach = 60,
+    ribbon = none, banner_h = 1, banner_pad = 2, banner_life = 3.6, banner_steps = 0,
+    talk_w = 48};
+}

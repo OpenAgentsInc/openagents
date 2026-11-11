@@ -13,6 +13,9 @@
 // colour and size each text role takes (hud_text), never how glyphs are drawn.
 // coax/bin/coax test aethyr/ui/hud-style.coax --library
 #load "hud.coax";
+// The HUD's rules (a bar's trail, a banner's fade, the map's projection) are the components'
+// (components/spec.md Phase 5): one implementation for the realms and the HUD components.
+#load "../../components/core/hud.coax";
 
 HUD_SCIFI :: 0; HUD_FANTASY :: 1; HUD_STYLES :: 2;
 
@@ -293,48 +296,8 @@ hud_bar :: (l: [] HudList, t: HudTokens, b: HudPrim, share: f32, c: HudRgba, k: 
 // leaves a pale trail from where it stood, which waits a moment and then catches up. Healing takes
 // the trail with it at once. A realm keeps one HudTrail a bar (yours, your target's, each plate's),
 // steps it each frame with the true share, and draws its fill and trail (hud_vital).
-HUD_TRAIL_FILL :: 20.0;    // a second: the fill closes this share of what is left (most of it in 0.14 s)
-HUD_TRAIL_HOLD :: 0.30;    // seconds the trail waits after a blow
-HUD_TRAIL_EASE :: 4.5;     // a second: the trail then closes this share of what is left,
-HUD_TRAIL_LEAST :: 0.06;   // and never less than this much of the bar (so it ends, in about 0.75 s)
-HudTrail :: struct { fill: f32; trail: f32; goal: f32; hold: f32; on: bool; }
-hud_share :: (v: f32) -> f32 { return ifx !(v > 0) then 0.0f32 else ifx v > 1 then 1.0f32 else v; }
-// The bar at `share` now, nothing eased: a new target, a respawn, the first frame.
-hud_trail_snap :: (tr: [] HudTrail, share: f32) { v := hud_share(share); tr[0] = HudTrail.{fill = v, trail = v, goal = v, on = true}; }
-// One frame of dt seconds toward `share`.
-hud_trail_step :: (tr: [] HudTrail, share: f32, dt: f32) {
-  v := hud_share(share);
-  if !tr[0].on { hud_trail_snap(tr, v); return; }
-  d := ifx !(dt > 0) then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
-  a := d * f32(HUD_TRAIL_FILL); if a > 1 { a = 1; }
-  tr[0].fill += (v - tr[0].fill) * a;
-  if tr[0].fill - v < 0.002 && v - tr[0].fill < 0.002 { tr[0].fill = v; }
-  if v >= tr[0].trail { tr[0].trail = v; tr[0].hold = 0; }   // healing: no trail
-  else {
-    if v < tr[0].goal { tr[0].hold = f32(HUD_TRAIL_HOLD); }   // a new blow: it waits again
-    if tr[0].hold > 0 { tr[0].hold -= d; }
-    else { tr[0].trail -= ((tr[0].trail - v) * f32(HUD_TRAIL_EASE) + f32(HUD_TRAIL_LEAST)) * d; if tr[0].trail < v { tr[0].trail = v; } }
-  }
-  tr[0].goal = v;
-}
-// Whether the bar is still moving (a realm that draws only on change asks).
-hud_trail_busy :: (tr: HudTrail) -> bool { return tr.on && (tr.fill != tr.goal || tr.trail != tr.goal); }
-#test "a health bar's trail: a blow drops the fill at once, the trail waits 0.3 s and catches up in under a second; healing takes it along" {
-  tr: [1] HudTrail; hud_trail_step(tr[..], 0.8, 0.016); #assert tr[0].fill == 0.8 && tr[0].trail == 0.8 && !hud_trail_busy(tr[0]);
-  for i: 0..<9 { hud_trail_step(tr[..], 0.5, 1.0f32 / 60); }                   // 0.15 s after a blow
-  #assert tr[0].fill < 0.52 && tr[0].fill >= 0.5 && tr[0].trail == 0.8 && hud_trail_busy(tr[0]);
-  for i: 0..<12 { hud_trail_step(tr[..], 0.5, 1.0f32 / 60); }                  // 0.35 s: it has begun to close
-  #assert tr[0].fill == 0.5 && tr[0].trail < 0.8 && tr[0].trail > 0.7;
-  hud_trail_step(tr[..], 0.4, 1.0f32 / 60); held := tr[0].trail;               // a second blow: it waits again
-  for i: 0..<12 { hud_trail_step(tr[..], 0.4, 1.0f32 / 60); } #assert tr[0].trail == held;
-  for i: 0..<60 { hud_trail_step(tr[..], 0.4, 1.0f32 / 60); #assert tr[0].trail >= tr[0].fill && tr[0].trail <= held; }
-  #assert tr[0].trail == 0.4 && tr[0].fill == 0.4 && !hud_trail_busy(tr[0]);   // caught up within a second of the wait's end
-  hud_trail_step(tr[..], 0.9, 1.0f32 / 60); #assert tr[0].trail == 0.9 && tr[0].fill > 0.4 && tr[0].fill < 0.9;   // a heal: the trail goes with it
-  // a share out of range or not a number is held to 0..1; a stalled frame never overshoots
-  hud_trail_step(tr[..], 7, 5); #assert tr[0].fill == 1 && tr[0].trail == 1;
-  hud_trail_step(tr[..], 0.0f32 / 0.0f32, 0.016); #assert tr[0].goal == 0 && tr[0].fill >= 0 && tr[0].fill <= 1;
-  hud_trail_snap(tr[..], 0.3); #assert tr[0].fill == 0.3 && tr[0].trail == 0.3;
-}
+// The trail's rules (HudTrail, hud_trail_step, hud_trail_snap, hud_trail_busy, hud_share) and their
+// checks are components/core/hud.coax's.
 // A box whose colour runs from `left` to `right` across it: a fill turned a quarter, since a fill's
 // own colours run top to bottom.
 hud_fill_across :: (l: [] HudList, b: HudPrim, left: HudRgba, right: HudRgba) {
@@ -608,18 +571,12 @@ hud_gem :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, r: f32, full: bool, k
   }
 }
 
-#test "a banner fades in, holds and fades out over its life; FANTASY gives it a ribbon and diamonds" {
-  #assert hud_banner_alpha(-0.1, 3) == 0 && hud_banner_alpha(0, 3) == 0 && hud_banner_alpha(1, 3) == 1 && hud_banner_alpha(3, 3) == 0;
-  #assert hud_banner_alpha(0.15, 3) > 0.4 && hud_banner_alpha(0.15, 3) < 0.6 && hud_banner_alpha(2.85, 3) < 0.6;
+#test "a banner: FANTASY gives it a ribbon and diamonds, SCIFI two rules (its fade is components/core/hud.coax's)" {
   l: [1] HudList; hud_banner(l[..], hud_tokens(HUD_FANTASY), 960, 300, 300, 40, 1, 1);
   d := 0; for i: 0..<l[0].n { if l[0].p[i].turn != 0 { d += 1; } } #assert d == 2 && l[0].n >= 6;
   hud_clear(l[..]); hud_banner(l[..], hud_tokens(HUD_SCIFI), 960, 300, 300, 40, 1, 1); #assert l[0].n == 2;
 }
-hud_banner_alpha :: (age: f32, life: f32) -> f32 {
-  if !(age > 0) || age >= life { return 0; }
-  a := ifx age < 0.3 then age / 0.3 else ifx age > life - 0.3 then (life - age) / 0.3 else 1.0f32;
-  return a;
-}
+// hud_banner_alpha is components/core/hud.coax's.
 // A banner centred at cx, cy, half as wide as half_w, h tall.
 hud_banner :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, half_w: f32, h: f32, alpha: f32, k: f32) {
   if !(alpha > 0) { return; }
@@ -683,18 +640,7 @@ hud_map_ring :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, r: f32, k: f32) 
 // fx, fz its forward and rx, rz its right on the ground, so ahead is up; reach metres fill the ring.
 // A thing beyond the ring waits on its edge.
 hud_map_point :: (cx: f32, cy: f32, r: f32, dx: f32, dz: f32, fx: f32, fz: f32, rx: f32, rz: f32, reach: f32) -> HudCoord {
-  side := dx * rx + dz * rz; fwd := dx * fx + dz * fz;
-  d := sqrt(side * side + fwd * fwd); scale := r / reach;
-  if d * scale > r * 0.9 && d > 0.0001 { scale = r * 0.9 / d; }
-  return HudCoord.{x = cx + side * scale, y = cy - fwd * scale};
+  p := hud_map_project(cx, cy, r, dx, dz, fx, fz, rx, rz, reach);
+  return HudCoord.{x = p.x, y = p.y};
 }
-#test "the map turns with you: ahead is up, your right is right, far things wait on the edge" {
-  p := hud_map_point(100, 100, 50, 0, 10, 0, 1, 1, 0, 20);   // 10 m ahead
-  #assert abs(p.x - 100) < 0.001 && abs(p.y - 75) < 0.001;
-  q := hud_map_point(100, 100, 50, 10, 0, 0, 1, 1, 0, 20);   // 10 m to your right
-  #assert abs(q.x - 125) < 0.001 && abs(q.y - 100) < 0.001;
-  e := hud_map_point(100, 100, 50, 0, 400, 0, 1, 1, 0, 20);  // far ahead: on the ring's edge
-  #assert abs(e.y - 55) < 0.01;
-  r := hud_map_point(100, 100, 50, 0, 10, 1, 0, 0, -1, 20);  // facing +x with -z on your right: +z is left
-  #assert r.x < 90 && abs(r.y - 100) < 0.01;
-}
+// (its checks are components/core/hud.coax's; this is the realm's spelling of the same point)

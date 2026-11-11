@@ -36,17 +36,18 @@ components/
   spec.md          this file
   README.md        how to use a component and add one (not written yet)
   core/            what a component is: state and rules, no pixels
-                   (color, text, markdown, syntax)
+                   (color, text, markdown, syntax, hud: the game HUD's rules)
   layout/          sizes and positions from state, a width and a skin
                    (round, font, measure, text)
   paint/           the display list: the primitives a frame is made of (list),
                    and a sheet: two lists, selectable lines and hit regions (sheet)
-  skin/            tokens and frames: skin.coax (what a skin is), zeron.coax, verse.coax,
+  skin/            tokens and frames: skin.coax (what a skin is), hud.coax (the HUD set's roles), zeron.coax, verse.coax,
                    everglade.coax, terminal.coax, all.coax (pick one by id or name)
   backend/         display list to a target: gpu.coax, gpu-shader.coax, terminal.coax
   kit/             the components themselves (markdown; controls: panel, button,
-                   toggle, slider, tabs, list, bar)
-  gallery/         page.coax, the /components page; linux.coax and linux/ (the same
+                   toggle, slider, tabs, list, bar; hud: the game HUD set)
+  gallery/         page.coax, the /components page (hud-cards.coax: its HUD cards);
+                   linux.coax and linux/ (the same
                    page as a Linux program, for pictures); md-term.coax (Markdown
                    in a terminal through the whole stack); skin-parity.coax
   fonts/, icons/   with their licences and NOTICE
@@ -146,10 +147,12 @@ shrinks; a row's content width counts each item as its content, held to its
 base size when it cannot grow or cannot shrink, while a column's content
 height counts base sizes). Both are in the file's checks now.
 
-Who uses it: nothing yet. The chat set keeps its arithmetic, which is one
-column and matches Zeron to the pixel. New components use flex from the
-start: the game HUD set (Phase 5), and the gallery's cards when they are next
-touched. A component moves to flex only with its pictures unchanged.
+Who uses it: the game HUD set (`kit/hud.coax`: the action bar, the unit
+frame, the map ring, a plate, the talk window) and the page's HUD cards
+(`gallery/hud-cards.coax`). The chat set keeps its arithmetic, which is one
+column and matches Zeron to the pixel; the gallery's skin cards keep theirs
+until they are next touched. A component moves to flex only with its
+pictures unchanged.
 
 ### 3. Paint: the display list
 
@@ -247,8 +250,29 @@ Everything in `components/zeron/` maps onto this list.
 ### The second set: game HUD
 
 Bars, slots and the action bar, portrait plate, map ring, nameplate, damage
-number, banner, talk window. These are `everglade/hud/` and
-`aethyr/ui/draw.coax`, moved onto the same layers.
+number, banner, talk window: `kit/hud.coax` (`hk_vital`, `hk_slot`,
+`hk_action_bar`, `hk_portrait`, `hk_map`, `hk_nameplate`, `hk_damage`,
+`hk_banner`, `hk_talk`), checked in every skin by `kit/hud-checks.coax`. They
+read the skin's `UiHud` roles (`skin/hud.coax`: the bar's fill, groove and
+trail, a slot's size, the medallion, the map ring, the banner; Everglade's and
+the Verse's are the realm HUD's FANTASY and SCIFI tokens, held equal by
+`gallery/skin-parity.coax`) and are laid out with flex. The page shows them in
+the `everglade` and `verse` skins (`gallery/hud-cards.coax`): press a slot,
+strike the wolf, answer Mira.
+
+The rules both HUDs follow are one file, `core/hud.coax`: a bar's fill and
+damage trail over time (`HudTrail`, `hud_trail_step`), a banner's fade
+(`hud_banner_alpha`) and the map ring's projection (`hud_map_project`).
+`aethyr/ui/hud-style.coax` loads it, so every realm's HUD uses the same code.
+
+The realms' drawing has not moved. Everglade's and the Verse's HUDs write the
+realm pass's 12-float vertices (`hud_emit`, `aethyr/ui/draw.coax`'s strokes),
+set their words in the realm's own faces (Spectral and Cinzel, the Verse's
+Filament strokes), and draw pie sweeps, turned diamonds and soft rings that
+the component shader has no path for yet (an arc, a slanted line). Drawing a
+realm's HUD with these components would change its pictures, so each realm
+keeps its own drawers until the component pass has those paths and the
+realm's faces.
 
 ## Checks
 
