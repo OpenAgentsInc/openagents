@@ -1,6 +1,6 @@
 // The terminal skin: the same components in cells (components/spec.md,
 // GitHub #13153). Sizes are columns and rows: a line is one row, a list's
-// marker column is two cells, there are no radii, shadows or icons, and a
+// marker column is two cells and a gap, there are no radii, shadows or icons, and a
 // code block has no frame. Colours are what Coder's terminal has always set
 // Markdown in on a dark screen (coax/lib/tui/tui.coax's dark theme); an
 // alpha of 0 means the terminal's own default colour. Faces are text
@@ -31,11 +31,11 @@ terminal_skin :: () -> UiSkin {
     shadow = 0, shade = none, stud = 0,
     icon_copy = -1, icon_wrap = -1, icon_chevron = -1, icon_check = -1,
     md = UiMarkdown.{line = 1, block_gap = 1, item_gap = 0,
-      marker_w = 1, marker_gap = 1, disc = 0,
+      marker_w = 2, marker_gap = 1, disc = 0,
       quote_rail = 1, quote_pad_l = 2, quote_pad_r = 0, quote_pad_y = 0, quote_gap = 1,
       code_pad_x = 0, code_inset_y = 0, code_radius = 0,
       block_radius = 0, block_border = 0, block_header = 0, block_pad_x = 0, block_pad_y = 0, block_line = 1, action = 0,
-      cell_pad = 1, divider = 1, col_min_content = 3, col_min = 8,
+      cell_pad = 1, cell_pad_y = 0, divider = 1, col_min_content = 3, col_min = 8,
       bullet = "•"}};
   // comment, keyword, string, number, type, function, property, variable, punctuation, tag, attribute, invalid
   s.syntax[0] = dim; s.syntax[1] = rgba(0.78, 0.57, 0.92, 1); s.syntax[2] = rgba(0.60, 0.80, 0.50, 1); s.syntax[3] = rgba(0.90, 0.75, 0.35, 1);

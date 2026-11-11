@@ -1,0 +1,85 @@
+// Markdown in a terminal, drawn by the component system end to end
+// (components/spec.md, GitHub #13153): the one parser
+// (core/markdown.coax), the Markdown component (kit/markdown.coax) laid out
+// in cells in the terminal skin, and the terminal backend
+// (backend/terminal.coax) writing the rows. The same component draws /chat
+// on the GPU.
+//   coax/web/tool.sh components/gallery/md-term.coax FILE.md [--cols N] [--plain]
+// --plain writes the rows with no style sequences.
+#import "Basic";
+#load "../kit/markdown.coax";
+#load "../skin/terminal.coax";
+#load "../backend/terminal.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+MT_ROWS :: 4096; MT_COLS :: 240;
+MdTerm :: struct {
+  src: [1048576] u8;
+  doc: [1] MdDoc;
+  under: [8192] Prim; over: [32768] Prim; lines: [8192] SheetLine; hits: [16] SheetHit; pool: [16384] u8;
+  cells: [983040] TermCell;       // MT_ROWS * MT_COLS
+  row: [8192] u8;
+}
+
+// Lays a document's blocks out down a sheet at a width in cells; the rows it took.
+mt_layout :: (sh: [] Sheet, doc: [] MdDoc, blocks: int, cols: int) -> int {
+  m := measure_cells(); s := terminal_skin();
+  y: f32 = 0;
+  for b: 0..<blocks {
+    if b > 0 { y += s.md.block_gap; }
+    y += markdown_block(sh, m, s, doc, b, 0, y, cast(f32) cols);
+  }
+  return cast(int) y;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  av: [1] Args;
+  if !args_load(av[..]) || args_count(av[..]) < 1 || args_has(av[..], "--help") {
+    tool_errln("usage: coax/web/tool.sh components/gallery/md-term.coax FILE.md [--cols N] [--plain]");
+    return 2;
+  }
+  st: [1] MdTerm;
+  n := fs_read(args_at(av[..], 0), st[0].src[..]);
+  if n < 0 { tool_errln("md-term: can't read the file"); return 1; }
+  cols := args_whole(args_value(av[..], "--cols", "80"));
+  if cols < 8 { cols = 8; }
+  if cols > MT_COLS { cols = MT_COLS; }
+  doc := st[0].doc[..];
+  blocks := md_parse(doc, cast(string) st[0].src[0..<n], 0);
+  sh: [1] Sheet;
+  sh[0] = Sheet.{under = st[0].under[..], over = st[0].over[..], lines = st[0].lines[..], hits = st[0].hits[..], pool = st[0].pool[..]};
+  rows := mt_layout(sh[..], doc, blocks, cols);
+  if rows > MT_ROWS { rows = MT_ROWS; }
+  g := term_grid(st[0].cells[..], cols, rows);
+  term_draw(g, st[0].under[0..<sh[0].nu], 0, 0);
+  term_draw(g, st[0].over[0..<sh[0].no], 0, 0);
+  plain := args_has(av[..], "--plain");
+  for r: 0..<g.rows {
+    k := ifx plain then term_row_text(g, r, st[0].row[..]) else term_row(g, r, st[0].row[..]);
+    print("%\n", cast(string) st[0].row[0..<k]);
+  }
+  return 0;
+}
+
+// A check's own small store (the tool's is too large for a check to make).
+MtSmall :: struct { doc: [1] MdDoc; under: [64] Prim; over: [128] Prim; lines: [64] SheetLine; hits: [4] SheetHit; pool: [64] u8; cells: [400] TermCell; }
+
+#test "a document down a sheet: its blocks one gap apart, in rows" {
+  st: [1] MtSmall;
+  doc := st[0].doc[..];
+  blocks := md_parse(doc, "# Title\n\nSome **bold** text.\n\n- one\n- two\n\n> quoted", 0);
+  sh: [1] Sheet;
+  sh[0] = Sheet.{under = st[0].under[..], over = st[0].over[..], lines = st[0].lines[..], hits = st[0].hits[..], pool = st[0].pool[..]};
+  rows := mt_layout(sh[..], doc, blocks, 40);
+  #assert blocks == 4 && rows == 1 + 1 + 1 + 1 + 2 + 1 + 1;
+  g := term_grid(st[0].cells[..], 40, rows);
+  term_draw(g, st[0].under[0..<sh[0].nu], 0, 0);
+  term_draw(g, st[0].over[0..<sh[0].no], 0, 0);
+  buf: [128] u8;
+  #assert cast(string) buf[0..<term_row_text(g, 0, buf[..])] == "Title" && g.cells[0].face == TERM_FACE_BOLD;
+  #assert cast(string) buf[0..<term_row_text(g, 2, buf[..])] == "Some bold text.";
+  #assert cast(string) buf[0..<term_row_text(g, 4, buf[..])] == "•  one" && cast(string) buf[0..<term_row_text(g, 5, buf[..])] == "•  two";
+  #assert cast(string) buf[0..<term_row_text(g, 7, buf[..])] == "│ quoted";
+}

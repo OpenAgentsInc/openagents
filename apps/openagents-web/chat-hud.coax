@@ -24,6 +24,7 @@
 //   T|turn|tool|detail
 
 #load "projects.coax";
+#load "../../components/core/markdown.coax";   // the one Markdown parser (GitHub #13153)
 
 CH_MAX_VERTICES :: 240000;
 CH_INBOX :: 1048576;
@@ -426,45 +427,29 @@ ch_upper :: (buf: [] u8, at: int, text: string) -> int {
 ch_starts :: (t: string, with: string) -> bool { return t.count >= with.count && t[0..<with.count] == with; }
 ch_lead :: (t: string) -> int { i := 0; while i < t.count && (t[i] == ' ' || t[i] == '\t') { i += 1; } return i; }
 
-// A Markdown line's inline marks taken out: ** __ ` go, a link [text](url) is "text (url)".
+// A Markdown line's inline marks taken out, as the one Markdown parser reads
+// them (components/core/markdown.coax md_inline_text: bold, italic, strike,
+// code, escapes); a link [text](url) is "text (url)" when the url is a web
+// address and isn't the text itself.
 ch_inline :: (line: string, buf: [] u8) -> string {
-  n := 0; i := 0;
-  while i < line.count && n < buf.count {
-    c := line[i];
-    if (c == '*' || c == '_') && i + 1 < line.count && line[i + 1] == c { i += 2; continue; }
-    if c == '`' { i += 1; continue; }
-    if c == '[' {
-      close := i + 1;
-      while close < line.count && line[close] != ']' { close += 1; }
-      if close + 1 < line.count && line[close + 1] == '(' {
-        end := close + 2;
-        while end < line.count && line[end] != ')' { end += 1; }
-        if end < line.count {
-          n = ch_put(buf, n, ch_inline_plain(line[i + 1..<close]));
-          url := line[close + 2..<end];
-          if url != line[i + 1..<close] && ch_starts(url, "http") { n = ch_put(buf, n, " ("); n = ch_put(buf, n, url); n = ch_put(buf, n, ")"); }
-          i = end + 1; continue;
-        }
-      }
+  doc_b: [1] MdDoc = ---; doc := doc_b[..];
+  md_inline_text(doc, line);
+  text := md_str(doc, 0, doc[0].n);
+  n := 0;
+  for k: 0..<doc[0].nr {
+    r := doc[0].runs[k];
+    shown := cast(string) text[r.from..<r.to];
+    n = ch_put(buf, n, shown);
+    if (r.marks & MD_LINK) != 0 {
+      url := md_link(doc, r);
+      if url != shown && ch_starts(url, "http") { n = ch_put(buf, n, " ("); n = ch_put(buf, n, url); n = ch_put(buf, n, ")"); }
     }
-    buf[n] = c; n += 1; i += 1;
   }
   return cast(string) buf[0..<n];
 }
-ch_inline_plain :: (t: string) -> string { return t; }
-ch_is_rule :: (t: string) -> bool {
-  if t.count < 3 { return false; }
-  c := t[0];
-  if c != '-' && c != '*' && c != '_' { return false; }
-  for x: t { if x != c && x != ' ' { return false; } }
-  return true;
-}
-// A table's |---|---| line.
-ch_is_sep :: (t: string) -> bool {
-  if t.count < 3 || t[0] != '|' { return false; }
-  for x: t { if x != '|' && x != '-' && x != ':' && x != ' ' { return false; } }
-  return true;
-}
+// A rule, and a table's |---|---| line, are the parser's to tell (md_rule, md_delim).
+ch_is_rule :: (t: string) -> bool { return md_rule(t); }
+ch_is_sep :: (t: string) -> bool { al: [MD_TABLE_COLS] int; return t.count > 0 && t[0] == '|' && md_delim(t, al[..]) > 0; }
 
 // An answer's Markdown, drawn cleanly.
 ch_markdown :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x0: f32, x1: f32, p: Pen, draw: bool) -> ChFlow {
@@ -480,7 +465,7 @@ ch_markdown :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x0: f32, 
     i = j + 1;
     lead := ch_lead(raw);
     line := raw[lead..<raw.count];
-    if ch_starts(line, "```") {
+    if md_fence_char(line) != 0 {
       if !code { code = true; r.y += 3 * d; code_y = r.y; }
       else {
         code = false;
@@ -502,33 +487,32 @@ ch_markdown :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x0: f32, 
       if draw && ch_shows(s, r.y + 8 * d, 8 * d) { r.v = rule(out, r.v, x0, r.y + 6 * d, x1, r.y + 6 * d, dim, 0.3 * p.fade); }
       r.y += 12 * d; continue;
     }
-    hashes := 0;
-    while hashes < line.count && hashes < 6 && line[hashes] == '#' { hashes += 1; }
-    if hashes > 0 && hashes < line.count && line[hashes] == ' ' {
+    hashes := md_heading(line) - 1;
+    if hashes > 0 {
       r.y += 5 * d;
       cap := ifx hashes == 1 then 10.0f32 else ifx hashes == 2 then 9.0f32 else 8.0f32;
       r = ch_text(s, out, r, ch_inline(line[hashes + 1..<line.count], buf[..]), x0, x1 - x0, cap, white, 4, draw);
       r.y += 2 * d;
       continue;
     }
-    if ch_starts(line, "> ") || line == ">" {
+    quote := md_quote_at(line);
+    if quote >= 0 {
       y0 := r.y;
-      body := ifx line.count > 2 then line[2..<line.count] else "";
+      body := line[quote..<line.count];
       r = ch_text(s, out, r, ch_inline(body, buf[..]), x0 + 12 * d, x1 - x0 - 12 * d, BODY, dim, 40, draw);
       if draw && r.y > s[0].clip0 && y0 < s[0].clip1 { r.v = rule(out, r.v, x0 + 3 * d, hi(y0 + 3 * d, s[0].clip0), x0 + 3 * d, lo(r.y - 2 * d, s[0].clip1), dim, 0.4 * p.fade); }
       continue;
     }
     indent := cast(f32) (lead / 2) * 12 * d;
     if indent > 48 * d { indent = 48 * d; }
-    if (ch_starts(line, "- ") || ch_starts(line, "* ") || ch_starts(line, "+ ")) {
+    if md_bullet(line) > 0 {
       by := r.y + STEP * d * 0.8 - 3.5 * d;
       if draw && ch_shows(s, by + 3 * d, STEP * d) { r.v = diamond(out, r.v, x0 + indent + 4 * d, by, 2.2 * d, ink(p, INK_LIT), 0.8 * p.fade); }
       r = ch_text(s, out, r, ch_inline(line[2..<line.count], buf[..]), x0 + indent + 14 * d, x1 - x0 - indent - 14 * d, BODY, pale, 40, draw);
       continue;
     }
-    digits := 0;
-    while digits < line.count && digits < 3 && line[digits] >= '0' && line[digits] <= '9' { digits += 1; }
-    if digits > 0 && digits + 1 < line.count && (line[digits] == '.' || line[digits] == ')') && line[digits + 1] == ' ' {
+    digits := md_ordinal(line) - 2;
+    if digits > 0 {
       base := r.y + STEP * d * 0.8;
       if draw && ch_shows(s, base, STEP * d) { r.v = put(out, r.v, line[0..<digits + 1], x0 + indent, base, 6.5 * d, ch_chrome(p, INK_LIT)); }
       r = ch_text(s, out, r, ch_inline(line[digits + 2..<line.count], buf[..]), x0 + indent + 18 * d, x1 - x0 - indent - 18 * d, BODY, pale, 40, draw);

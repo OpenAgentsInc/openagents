@@ -45,7 +45,8 @@ UiMarkdown :: struct {
   block_radius: f32; block_border: f32; block_header: f32;  // a code block's frame and its header's height (0: no header)
   block_pad_x: f32; block_pad_y: f32; block_line: f32;
   action: f32;              // a header action's size (copy, wrap); 0: none
-  cell_pad: f32; divider: f32; col_min_content: f32; col_min: f32;   // a table's cell padding, row divider, column floors
+  cell_pad: f32; cell_pad_y: f32; divider: f32;      // a table's cell padding (sideways, then above and below), its row divider
+  col_min_content: f32; col_min: f32;                // and its columns' floors
   bullet: string;           // a terminal's bullet (a pixel target draws a disc)
 }
 

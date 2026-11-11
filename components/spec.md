@@ -40,9 +40,10 @@ components/
                    and a sheet: two lists, selectable lines and hit regions (sheet)
   skin/            tokens and frames: skin.coax (what a skin is), zeron.coax, verse.coax,
                    everglade.coax, terminal.coax, all.coax (pick one by id or name)
-  backend/         display list to a target: gpu.coax (and its shader), terminal.coax
+  backend/         display list to a target: gpu.coax, gpu-shader.coax, terminal.coax
   kit/             the components themselves, one file each (markdown, so far)
-  gallery/         the /components page and the picture checks
+  gallery/         the /components page and the picture checks; md-term.coax (Markdown
+                   in a terminal through the whole stack); skin-parity.coax
   fonts/, icons/   with their licences and NOTICE
   zeron/           the chat components as moved from apps/shared/zeron/ (Phase 1, done),
                    emptied as Phase 2 splits each file into the layers above
@@ -50,15 +51,16 @@ components/
 
 ## What exists today
 
-Three drawing stacks and four Markdown implementations:
+Three drawing stacks and, when this was written, three Markdown
+implementations beside the chat's (there is one now: see Phase 5):
 
 | Code | Draws | Problem |
 | --- | --- | --- |
 | `components/zeron/` (gpui, composer, markdown, tools, transcript, picker, attachments; about 5,700 lines) | Chat on the web and the Mac app | Parsing, layout, Zeron's colours and vertex output are in the same functions. `markdown.coax` loads `composer.coax` to get the atlas |
 | `aethyr/ui/` (hud, draw, tree, feed, hud-style, arwes; 4,130 lines) | Realm HUDs | A second vertex format (12 floats, strokes) and its own text. It has the right ideas: `hud-style.coax` separates tokens from drawers, and `tree.coax` is one table for drawing, hit tests, focus and accessibility |
 | `everglade/hud/`, `apps/everglade-desktop/text.coax`, `golem-board.coax` | Everglade's HUD and the Workshop's boards | A third text path with its own atlas layout |
-| `coax/lib/tui/tui.coax` | Coder's terminal | Its own Markdown and composer |
-| `apps/openagents-web/chat-hud.coax`, `apps/openagents-cli/project-page.coax` | The old HUD chat, a CLI page | Two more Markdown parsers |
+| `coax/lib/tui/tui.coax` | Coder's terminal | Its own composer. Its Markdown reading is `core/markdown.coax`'s since 2026-11-10; it still writes the style sequences itself |
+| `apps/openagents-web/chat-hud.coax` | The old HUD chat (the Mac app still builds it) | Its Markdown reading is `core/markdown.coax`'s since 2026-11-10. `apps/openagents-cli/project-page.coax`, listed here at first, writes Markdown and never parsed it |
 
 ## The five layers
 
@@ -166,9 +168,13 @@ defect, and a check finds it.
   line and an image (`gpu_draws` says so); they need a path in the shader.
   The hand-written `Zeron.metal` goes away when the Mac app builds the
   emitted Metal; that needs a Mac, and hasn't been done.
-- **`backend/terminal.coax`**: the display list to terminal cells, through
-  `coax/lib/tui`'s output. Boxes become borders or nothing, colours map to
-  the terminal's.
+- **`backend/terminal.coax`**: the display list to a grid of cells
+  (`term_draw`), and a row of the grid to the bytes a terminal reads
+  (`term_row`: SGR with 24-bit colour). Text lands in its cells, a rule
+  becomes a line glyph, a box's border becomes box-drawing glyphs and its
+  fill a background; shadows, gradients, icons and the rest are left out.
+  `components/gallery/md-term.coax FILE.md` prints a Markdown file through
+  the whole stack in the terminal skin.
 
 A realm draws components in a pass of its own after the scene, with the
 component shader. Existing HUD parts keep their own pass until they move
@@ -261,9 +267,23 @@ Each phase ends with every existing check and golden unchanged.
 4. **Chat in Everglade for desktop.** The Workshop gets the same transcript
    and composer in the `everglade` skin, on the shared engines. Its boards
    (`golem-board.coax`) move onto the list and panel components.
-5. **The terminal and the leftovers.** Coder's terminal and the CLI take
-   Markdown and the edit buffer from `core/`. `chat-hud.coax`'s and
-   `project-page.coax`'s parsers are deleted. The HUD set moves.
+5. **The terminal and the leftovers.** Done 2026-11-10: there is one
+   Markdown parser. `core/markdown.coax` grew what the others read that it
+   didn't (italic, strike, links with their targets, backslash escapes,
+   task boxes, tilde fences, and a mode for a finished line where an
+   unclosed mark stays as written); Coder's terminal (`coax/lib/tui/tui.coax`)
+   and the old HUD chat (`chat-hud.coax`) take what a line is and where its
+   spans are from it, and their own span, cell and delimiter parsers are
+   deleted. `project-page.coax` writes Markdown and had no parser.
+   `backend/terminal.coax` exists and `md-term.coax` uses it. Two things
+   changed for Coder's terminal with the one parser: a table needs its
+   delimiter row (rows without one are shown as lines), and a pipe inside
+   backticks in a table cell splits the cell unless it is written `\|`, as
+   GFM and the chat read it. Not done: Coder's terminal still writes its
+   style sequences itself, line by line as a reply streams, instead of
+   painting through `kit/markdown.coax` and `backend/terminal.coax`; its
+   composer's edit buffer and the chat composer's are still two; the HUD
+   set has not moved.
 
 ## Decisions for the owner
 

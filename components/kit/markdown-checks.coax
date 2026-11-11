@@ -20,7 +20,7 @@ mdk_line :: (sh: [] Sheet, k: int, buf: [] u8) -> string {
 
 MDK_SRC :: "Done — the header keeps `text_muted`:\n\n- the header reads the **summary**\n  - nested\n3. third\n\n> quoted\n\n```rust\nfn a() {\n    b\n}\n```\n\n| a | b |\n|---|--:|\n| one | two words |";
 
-#test "in a terminal: one row a line, a bullet in a one-cell column, nested items two cells in, code with no frame" {
+#test "in a terminal: one row a line, a bullet in a two-cell column, nested items three cells in, code with no frame" {
   st: [1] MdkStore; sh: [1] Sheet; sh[0] = mdk_sheet(st[..]);
   doc := st[0].doc[..];
   n := md_parse(doc, MDK_SRC, 0);
@@ -33,12 +33,12 @@ MDK_SRC :: "Done — the header keeps `text_muted`:\n\n- the header reads the **
   #assert sh[0].over[1].id == TERM_FACE_CODE && sh[0].over[1].y == 1 && sh[0].over[1].x == 0 && !sh[0].lines[0].hard && sh[0].lines[1].hard;
   // inline code has no wash in a terminal
   for k: 0..<sh[0].nu { #assert sh[0].under[k].fill.a == 0; }
-  // the list: a bullet at column 0, the text at 2; the nested item's bullet at 2, its text at 4; a number where a number is
+  // the list: a bullet at column 0, the text at 3; the nested item's bullet at 3, its text at 6; a number where a number is
   sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
   #assert markdown_block(sh[..], m, s, doc, 1, 0, 0, 40) == 2 && markdown_block(sh[..], m, s, doc, 2, 0, 2, 40) == 1;
-  #assert sh[0].over[0].text == "•" && sh[0].over[0].x == 0 && sh[0].over[1].x == 2 && sh[0].over[1].text == "the header reads the ";
+  #assert sh[0].over[0].text == "•" && sh[0].over[0].x == 0 && sh[0].over[1].x == 3 && sh[0].over[1].text == "the header reads the ";
   #assert sh[0].over[2].id == TERM_FACE_BOLD && sh[0].over[2].text == "summary";
-  #assert sh[0].over[3].text == "•" && sh[0].over[3].x == 2 && sh[0].over[3].y == 1 && sh[0].over[4].x == 4;
+  #assert sh[0].over[3].text == "•" && sh[0].over[3].x == 3 && sh[0].over[3].y == 1 && sh[0].over[4].x == 6;
   #assert sh[0].over[5].text == "3." && sh[0].over[5].y == 2 && sh[0].over[6].text == "third";
   // the quote: a one-cell rail, the text two cells in, muted
   sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
@@ -59,10 +59,10 @@ MDK_SRC :: "Done — the header keeps `text_muted`:\n\n- the header reads the **
   // naturals: 3 + 2 and 9 + 2 cells; they share 30 as 5 : 11, none under its minimum (5 and 8)
   #assert L.cols == 2 && L.rows == 2 && L.total == 30 && L.x[2] == 30 && L.x[1] == round_layout(30.0 * 5.0 / 16.0);
   h := markdown_block(sh[..], m, s, doc, 5, 0, 0, 30);
-  #assert h == 1 + 2 + 1 + 1 + 2;                 // a row and its padding, the rule, a row and its padding
+  #assert h == 1 + 1 + 1;                         // a row, the rule, a row
   found := false;
   for k: 0..<sh[0].no { if sh[0].over[k].text == "two words" { found = true; #assert sh[0].over[k].x + sh[0].over[k].w == 29; } }
-  #assert found && sh[0].under[0].h == 1 && sh[0].under[0].w == 30;
+  #assert found && sh[0].under[0].h == 1 && sh[0].under[0].w == 30 && sh[0].under[0].on;
   // too narrow: each column its minimum, cut at the width
   sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
   h = markdown_block(sh[..], m, s, doc, 5, 0, 0, 10);

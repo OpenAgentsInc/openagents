@@ -12,7 +12,9 @@
 // (aethyr/ui/hud-style.coax's HudPrim: bars, rings, arcs, lines).
 //
 //   kind        bounds (x, y, w, h)        the rest
-//   PRIM_BOX       the box                    radius, border, fill, edge (the border's colour)
+//   PRIM_BOX       the box                    radius, border, fill, edge (the border's colour); on: it is a
+//                                             rule (a filled box one hairline thick, which a target with no
+//                                             hairlines, a terminal, draws as a line of its own)
 //   PRIM_SHADOW    the box it falls from      radius, fill; a, b its offset, c its blur, d its spread
 //   PRIM_INSET     the box it lights          radius, fill; b its offset down (no blur)
 //   PRIM_GRADIENT  the box                    radius, fill at the top, edge at the bottom
@@ -60,6 +62,11 @@ prim_box :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32,
 // A box with no border.
 prim_fill :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba) -> int {
   return prim_box(list, n, x, y, w, h, radius, 0, fill, fill);
+}
+// A rule: a filled box one hairline thick, level or upright. A pixel target
+// fills it; a terminal draws a line glyph along it.
+prim_rule :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, color: Rgba) -> int {
+  return prim_put(list, n, Prim.{kind = PRIM_BOX, x = x, y = y, w = w, h = h, fill = color, edge = color, on = true, id = -1, line = -1});
 }
 prim_shadow :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, dx: f32, dy: f32, blur: f32, spread: f32, color: Rgba) -> int {
   return prim_put(list, n, Prim.{kind = PRIM_SHADOW, x = x, y = y, w = w, h = h, radius = radius, fill = color, edge = color, a = dx, b = dy, c = blur, d = spread, id = -1, line = -1});
@@ -147,6 +154,9 @@ prim_extent :: (p: Prim) -> f32 {
   #assert n == 3 && list[2].id == 7;
   #assert prim_fill(list[..], n, 0, 0, 1, 1, 0, hex(0, 1)) == 3 && list[2].kind == PRIM_ICON;   // full
   #assert prim_fill(list[..], -1, 0, 0, 1, 1, 0, hex(0, 1)) == -1;
+  // a rule is a filled box, marked
+  one: [1] Prim;
+  #assert prim_rule(one[..], 0, 0, 5, 40, 1, hex(0x808080, 1)) == 1 && one[0].kind == PRIM_BOX && one[0].on && one[0].border == 0 && one[0].w == 40;
 }
 #test "each kind carries what its row in the table says" {
   list: [12] Prim; n := 0;

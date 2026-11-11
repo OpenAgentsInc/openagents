@@ -6,16 +6,25 @@
 // components/layout/text.coax and painting is the components' own.
 //
 // It reads what an assistant's reply uses: paragraphs, headings, bullet and
-// numbered lists with nesting, fenced code with its language, quotes, rules
-// and GFM tables, with **bold** and `inline code` inside them. A block is a
+// numbered lists with nesting and task boxes, fenced code with its language,
+// quotes, rules and GFM tables, with **bold**, *italic*, ~~strike~~, `inline
+// code`, [links](url) and backslash escapes inside them. A consumer that
+// shows a reply a line at a time (a terminal) uses the same line rules
+// (md_heading, md_rule, md_quote_at, md_bullet, md_ordinal, md_task,
+// md_fence_char, md_delim) and md_inline_text for a line's spans. A block is a
 // transcript row, as Zeron splits a text part (crates/ui/src/markdown/render.rs,
 // parser.rs). An unfinished reply parses, so a streaming answer can be shown
 // as it arrives. Based on Zeron by Wing, MIT.
 //   coax/bin/coax test components/core/markdown.coax --library
 
 
-// Inline styles of a run.
+// Inline styles of a run: what picks its face.
 MD_PLAIN :: 0; MD_BOLD :: 1; MD_CODE :: 2;
+// Marks a run carries beside its style. MD_STRONG: bold too (a code run inside bold).
+MD_ITALIC :: 1; MD_STRIKE :: 2; MD_LINK :: 4; MD_STRONG :: 8;
+// A list item's task box.
+MD_TASK_NONE :: 0; MD_TASK_OPEN :: 1; MD_TASK_DONE :: 2;
+MD_LINKS :: 8192;             // bytes of link targets kept
 // Block kinds.
 MB_PARA :: 0; MB_LIST :: 1; MB_CODE :: 2; MB_QUOTE :: 3; MB_TABLE :: 4;
 // A table's column alignment (parser.rs TableAlign; none reads as left).
@@ -30,11 +39,12 @@ MD_RUNS :: 2048;
 MD_ITEMS :: 256;
 
 // A styled stretch of a block's (or an item's) display text, in bytes.
-MdRun :: struct { from: int; to: int; style: int; }
+// A link's run names its target: doc.links[link_at..<link_at+link_n] (md_link).
+MdRun :: struct { from: int; to: int; style: int; marks: int; link_at: int; link_n: int; }
 // One list item (or one paragraph of a quote, or one table cell): its display
 // text (doc.text[at..<at+n]) and runs, its nesting depth and whether it's
 // numbered; a cell's number is its column's alignment (MA_*).
-MdItem :: struct { at: int; n: int; run0: int; runs: int; number: int; depth: int; ordered: bool; }
+MdItem :: struct { at: int; n: int; run0: int; runs: int; number: int; depth: int; ordered: bool; task: int; }
 // A block: a paragraph (text and runs), a list (items, numbered or not, each
 // at its depth), a quote (its paragraphs as items), a table (its cells as
 // items, row by row, the header row first, cols to a row) or fenced code
@@ -52,6 +62,7 @@ MdDoc :: struct {
   blocks: [MD_BLOCKS] MdBlock; nb: int;
   runs: [MD_RUNS] MdRun; nr: int;
   items: [MD_ITEMS] MdItem; ni: int;
+  links: [MD_LINKS] u8; nlink: int;
 }
 
 md_str :: (doc: [] MdDoc, at: int, n: int) -> string { return cast(string) doc[0].text[at..<at + n]; }
@@ -61,6 +72,12 @@ md_lang :: (doc: [] MdDoc, b: int) -> string { return md_str(doc, doc[0].blocks[
 md_block_runs :: (doc: [] MdDoc, b: int) -> [] MdRun { r := doc[0].blocks[b].run0; return doc[0].runs[r..<r + doc[0].blocks[b].runs]; }
 md_item_runs :: (doc: [] MdDoc, k: int) -> [] MdRun { r := doc[0].items[k].run0; return doc[0].runs[r..<r + doc[0].items[k].runs]; }
 
+md_link :: (doc: [] MdDoc, r: MdRun) -> string { return cast(string) doc[0].links[r.link_at..<r.link_at + r.link_n]; }
+// The marks of the run holding byte i (none outside every run).
+md_marks_at :: (runs: [] MdRun, i: int) -> int {
+  for k: 0..<runs.count { if i >= runs[k].from && i < runs[k].to { return runs[k].marks; } }
+  return 0;
+}
 // The style of the run holding byte i (MD_PLAIN outside every run).
 md_style_at :: (runs: [] MdRun, i: int) -> int {
   for k: 0..<runs.count { if i >= runs[k].from && i < runs[k].to { return runs[k].style; } }
@@ -70,24 +87,62 @@ md_style_at :: (runs: [] MdRun, i: int) -> int {
 md_put :: (doc: [] MdDoc, c: u8) {
   if doc[0].n < MD_TEXT { doc[0].text[doc[0].n] = c; doc[0].n += 1; }
 }
-md_run :: (doc: [] MdDoc, from: int, to: int, style: int) {
+md_run :: (doc: [] MdDoc, from: int, to: int, style: int) { md_run_marked(doc, from, to, style, 0, 0, 0); }
+md_run_marked :: (doc: [] MdDoc, from: int, to: int, style: int, marks: int, link_at: int, link_n: int) {
   if to <= from || doc[0].nr >= MD_RUNS { return; }
-  // a run continuing the one before in the same style merges with it
-  if doc[0].nr > 0 && doc[0].runs[doc[0].nr - 1].to == from && doc[0].runs[doc[0].nr - 1].style == style {
-    doc[0].runs[doc[0].nr - 1].to = to; return;
+  // a run continuing the one before in the same style and marks merges with it (a link never does)
+  if doc[0].nr > 0 && (marks & MD_LINK) == 0 {
+    last := doc[0].runs[doc[0].nr - 1];
+    if last.to == from && last.style == style && last.marks == marks { doc[0].runs[doc[0].nr - 1].to = to; return; }
   }
-  doc[0].runs[doc[0].nr] = MdRun.{from = from, to = to, style = style};
+  doc[0].runs[doc[0].nr] = MdRun.{from = from, to = to, style = style, marks = marks, link_at = link_at, link_n = link_n};
   doc[0].nr += 1;
 }
 
-// Appends the inline text src (markers in it) as display text with runs:
-// `code` (backtick runs of one length close each other), **bold**. Returns
-// the first run's index; runs are relative to `base` (the text's start).
-md_inline :: (doc: [] MdDoc, src: string, base: int) -> int {
+// A byte that is part of a word: a letter, a digit or any non-ASCII byte.
+md_word :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80; }
+
+// Where the closing mark for a span opened at s[at] is, or -1: it must come
+// later in the text, after something that isn't a space; a closing _ is not
+// followed by a word (snake_case_name has none).
+md_close :: (s: string, at: int, mark: string) -> int {
+  j := at + mark.count + 1;
+  while j + mark.count <= s.count {
+    if s[j] == '\\' { j += 2; continue; }
+    if cast(string) s[j..<j + mark.count] == mark && s[j - 1] != ' ' {
+      if mark[0] != '_' || j + mark.count >= s.count || !md_word(s[j + mark.count]) { return j; }
+    }
+    j += 1;
+  }
+  return -1;
+}
+
+// The run for display text start..<now under the open spans.
+md_span :: (doc: [] MdDoc, start: int, base: int, bold: bool, italic: bool, strike: bool) {
+  marks := (ifx italic then MD_ITALIC else 0) | (ifx strike then MD_STRIKE else 0);
+  md_run_marked(doc, start - base, doc[0].n - base, ifx bold then MD_BOLD else MD_PLAIN, marks, 0, 0);
+}
+
+// Appends the inline text src (markers in it) as display text with runs.
+// Returns the first run's index; runs are relative to `base` (the text's
+// start). The spans: `code` (backtick runs of one length close each other),
+// **bold** and __bold__, *italic* and _italic_ (opened at a word's start,
+// closed after one), ~~strike~~, [text](target), and a backslash before
+// punctuation, which keeps the punctuation. finished: the text is whole (a
+// line a terminal shows once it has ended), so a span with no closing mark
+// stays as written. Not finished (a reply still arriving): every ** turns
+// bold on or off, so bold shows before its closing mark has come.
+md_inline_mode :: (doc: [] MdDoc, src: string, base: int, finished: bool) -> int {
   first := doc[0].nr;
-  i := 0; bold := false; start := doc[0].n;
+  i := 0; start := doc[0].n;
+  bold := false; italic := false; strike := false;
+  bold_close := -1; italic_close := -1; strike_close := -1;
   while i < src.count {
     c := src[i];
+    if bold && i == bold_close { md_span(doc, start, base, bold, italic, strike); bold = false; bold_close = -1; start = doc[0].n; i += 2; continue; }
+    if italic && i == italic_close { md_span(doc, start, base, bold, italic, strike); italic = false; italic_close = -1; start = doc[0].n; i += 1; continue; }
+    if strike && i == strike_close { md_span(doc, start, base, bold, italic, strike); strike = false; strike_close = -1; start = doc[0].n; i += 2; continue; }
+    if c == '\\' && i + 1 < src.count && !md_word(src[i + 1]) && src[i + 1] != ' ' { md_put(doc, src[i + 1]); i += 2; continue; }
     if c == '`' {
       // the fence: a run of backticks, closed by the same run
       k := i; while k < src.count && src[k] == '`' { k += 1; }
@@ -101,23 +156,64 @@ md_inline :: (doc: [] MdDoc, src: string, base: int) -> int {
         } else { j += 1; }
       }
       if close >= 0 {
-        md_run(doc, start - base, doc[0].n - base, ifx bold then MD_BOLD else MD_PLAIN);
+        md_span(doc, start, base, bold, italic, strike);
         cs := doc[0].n;
         for q: k..<close { md_put(doc, src[q]); }
-        md_run(doc, cs - base, doc[0].n - base, MD_CODE);
+        cm := (ifx italic then MD_ITALIC else 0) | (ifx strike then MD_STRIKE else 0) | (ifx bold then MD_STRONG else 0);
+        md_run_marked(doc, cs - base, doc[0].n - base, MD_CODE, cm, 0, 0);
         start = doc[0].n; i = close + tick;
         continue;
       }
     }
-    if c == '*' && i + 1 < src.count && src[i + 1] == '*' {
-      md_run(doc, start - base, doc[0].n - base, ifx bold then MD_BOLD else MD_PLAIN);
-      bold = !bold; start = doc[0].n; i += 2;
+    two := i + 1 < src.count && src[i + 1] == c;
+    if c == '*' && two && !finished {
+      md_span(doc, start, base, bold, italic, strike);
+      bold = !bold; bold_close = -1; start = doc[0].n; i += 2;
       continue;
+    }
+    if (c == '*' || c == '_') && two && !bold && i + 2 < src.count && src[i + 2] != ' ' {
+      e := md_close(src, i, ifx c == '*' then "**" else "__");
+      if e > 0 { md_span(doc, start, base, bold, italic, strike); bold = true; bold_close = e; start = doc[0].n; i += 2; continue; }
+    }
+    if (c == '*' || c == '_') && !italic && i + 1 < src.count && src[i + 1] != ' ' && src[i + 1] != c && (i == 0 || !md_word(src[i - 1])) {
+      e := md_close(src, i, ifx c == '*' then "*" else "_");
+      if e > 0 { md_span(doc, start, base, bold, italic, strike); italic = true; italic_close = e; start = doc[0].n; i += 1; continue; }
+    }
+    if c == '~' && two && !strike {
+      e := md_close(src, i, "~~");
+      if e > 0 { md_span(doc, start, base, bold, italic, strike); strike = true; strike_close = e; start = doc[0].n; i += 2; continue; }
+    }
+    if c == '[' {
+      e := i + 1; while e < src.count && src[e] != ']' { e += 1; }
+      if e + 1 < src.count && src[e + 1] == '(' {
+        u := e + 2; while u < src.count && src[u] != ')' { u += 1; }
+        if u < src.count && e > i + 1 {
+          md_span(doc, start, base, bold, italic, strike);
+          ls := doc[0].n;
+          for q: i + 1..<e { md_put(doc, src[q]); }
+          la := doc[0].nlink;
+          for q: e + 2..<u { if doc[0].nlink < MD_LINKS { doc[0].links[doc[0].nlink] = src[q]; doc[0].nlink += 1; } }
+          lm := MD_LINK | (ifx italic then MD_ITALIC else 0) | (ifx strike then MD_STRIKE else 0);
+          md_run_marked(doc, ls - base, doc[0].n - base, ifx bold then MD_BOLD else MD_PLAIN, lm, la, doc[0].nlink - la);
+          start = doc[0].n; i = u + 1;
+          continue;
+        }
+      }
     }
     md_put(doc, c); i += 1;
   }
-  md_run(doc, start - base, doc[0].n - base, ifx bold then MD_BOLD else MD_PLAIN);
+  md_span(doc, start, base, bold, italic, strike);
   return first;
+}
+// A reply's inline text (it may still be arriving).
+md_inline :: (doc: [] MdDoc, src: string, base: int) -> int { return md_inline_mode(doc, src, base, false); }
+
+// One finished line's inline text into an emptied doc: its display text is
+// doc.text[0..<doc.n] and its runs doc.runs[0..<doc.nr]. What a consumer
+// that shows a line at a time calls.
+md_inline_text :: (doc: [] MdDoc, src: string) {
+  doc[0].n = 0; doc[0].nr = 0; doc[0].nb = 0; doc[0].ni = 0; doc[0].nlink = 0;
+  r := md_inline_mode(doc, src, 0, true);
 }
 
 // A list item's marker: "- ", "* ", "+ " or "12. " at line start; its length, 0 if none.
@@ -174,7 +270,18 @@ md_quote_at :: (line: string) -> int {
   k += 1; if k < line.count && line[k] == ' ' { k += 1; }
   return k;
 }
-md_fence :: (line: string) -> bool { t := md_trim_left(line); return t.count >= 3 && t[0] == '`' && t[1] == '`' && t[2] == '`'; }
+// The character a code fence line opens or closes with (three backticks or three tildes), 0 if it is none.
+md_fence_char :: (line: string) -> u8 {
+  if line.count >= 3 && (line[0] == '`' || line[0] == '~') && line[1] == line[0] && line[2] == line[0] { return line[0]; }
+  return 0;
+}
+md_fence :: (line: string) -> bool { return md_fence_char(md_trim_left(line)) != 0; }
+// A list item's task box at its text's start ("[ ] " or "[x] "): MD_TASK_*; the box is four bytes.
+md_task :: (body: string) -> int {
+  if body.count < 4 || body[0] != '[' || body[2] != ']' || body[3] != ' ' { return MD_TASK_NONE; }
+  if body[1] == 'x' || body[1] == 'X' { return MD_TASK_DONE; }
+  return ifx body[1] == ' ' then MD_TASK_OPEN else MD_TASK_NONE;
+}
 md_blank :: (line: string) -> bool {
   for k: 0..<line.count { if line[k] != ' ' && line[k] != '\t' && line[k] != '\r' { return false; } }
   return true;
@@ -344,8 +451,9 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
     e := md_line_end(src, i);
     line := cast(string) src[i..<e];
     if md_blank(line) { i = e + 1; continue; }
-    if line.count >= 3 && line[0] == '`' && line[1] == '`' && line[2] == '`' {
-      // fenced code: the raw lines up to the closing fence
+    fc := md_fence_char(line);
+    if fc != 0 {
+      // fenced code: the raw lines up to the closing fence (the opening one's character)
       b := md_new_block(doc, MB_CODE, part);
       if b < 0 { return doc[0].nb - before; }
       la := doc[0].n;
@@ -357,7 +465,7 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
         e2 := md_line_end(src, i);
         l2 := cast(string) src[i..<e2];
         i = e2 + 1;
-        if l2.count >= 3 && l2[0] == '`' && l2[1] == '`' && l2[2] == '`' { break; }
+        if md_fence_char(l2) == fc { break; }
         if !first { md_put(doc, '\n'); }
         for q: 0..<l2.count { md_put(doc, l2[q]); }
         first = false;
@@ -403,8 +511,11 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
         k := doc[0].ni; doc[0].ni += 1;
         at := doc[0].n;
         ord := md_ordinal(t2) > 0;
-        r := md_inline(doc, cast(string) t2[skip..<t2.count], at);
-        doc[0].items[k] = MdItem.{at = at, n = doc[0].n - at, run0 = r, runs = doc[0].nr - r, number = ifx ord then md_number(t2) else 0, depth = nl - 1, ordered = ord};
+        body := cast(string) t2[skip..<t2.count];
+        task := ifx ord then MD_TASK_NONE else md_task(body);
+        if task != MD_TASK_NONE { body = cast(string) body[4..<body.count]; }
+        r := md_inline(doc, body, at);
+        doc[0].items[k] = MdItem.{at = at, n = doc[0].n - at, run0 = r, runs = doc[0].nr - r, number = ifx ord then md_number(t2) else 0, depth = nl - 1, ordered = ord, task = task};
         i = e2 + 1;
       }
       doc[0].blocks[b].items = doc[0].ni - doc[0].blocks[b].item0;
@@ -581,4 +692,36 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
   al: [4] int;
   #assert md_delim("|---|:-:|", al[..]) == 2 && al[1] == MA_CENTER && md_delim("| -- || -- |", al[..]) == 0 && md_delim("---", al[..]) == 0;
   #assert md_table_cols("| a | b |") == 2 && md_table_cols("a | b") == 2 && md_table_cols("| a \\| b |") == 1;
+}
+
+#test "inline spans: italic at a word's start, strike, escapes, links with their targets; code inside bold stays strong" {
+  doc: [1] MdDoc;
+  md_inline_text(doc[..], "an *italic* and _this_ but not snake_case_name or 2*3*4");
+  #assert md_str(doc[..], 0, doc[0].n) == "an italic and this but not snake_case_name or 2*3*4";
+  #assert doc[0].nr == 5 && doc[0].runs[1].marks == MD_ITALIC && doc[0].runs[3].marks == MD_ITALIC && doc[0].runs[4].marks == 0;
+  md_inline_text(doc[..], "~~gone~~ \\*star\\* and C:\\Users");
+  #assert md_str(doc[..], 0, doc[0].n) == "gone *star* and C:\\Users" && doc[0].runs[0].marks == MD_STRIKE && doc[0].nr == 2;
+  md_inline_text(doc[..], "see [the docs](https://x.y/z) and [x](#a), not [this] (that)");
+  #assert md_str(doc[..], 0, doc[0].n) == "see the docs and x, not [this] (that)";
+  #assert doc[0].runs[1].marks == MD_LINK && md_link(doc[..], doc[0].runs[1]) == "https://x.y/z" && md_link(doc[..], doc[0].runs[3]) == "#a";
+  md_inline_text(doc[..], "**bold `code` more** and __also__");
+  #assert md_str(doc[..], 0, doc[0].n) == "bold code more and also";
+  #assert doc[0].runs[0].style == MD_BOLD && doc[0].runs[1].style == MD_CODE && doc[0].runs[1].marks == MD_STRONG && doc[0].runs[2].style == MD_BOLD && doc[0].runs[4].style == MD_BOLD;
+  #assert md_marks_at(doc[0].runs[0..<doc[0].nr], 5) == MD_STRONG && md_marks_at(doc[0].runs[0..<doc[0].nr], 0) == 0;
+}
+#test "a finished line leaves an unclosed ** as written; a reply still arriving shows it bold already" {
+  doc: [1] MdDoc;
+  md_inline_text(doc[..], "**unclosed bold");
+  #assert md_str(doc[..], 0, doc[0].n) == "**unclosed bold" && doc[0].runs[0].style == MD_PLAIN;
+  doc[0].n = 0; doc[0].nr = 0;
+  r := md_inline(doc[..], "**unclosed bold", 0);
+  #assert md_str(doc[..], 0, doc[0].n) == "unclosed bold" && doc[0].runs[0].style == MD_BOLD;
+}
+#test "task boxes are their item's, not its text; a tilde fence is a fence and closes with tildes" {
+  doc: [1] MdDoc;
+  n := md_parse(doc[..], "- [x] done\n- [ ] to do\n- [y] not a box\n\n~~~sh\nls\n```\n~~~\nafter", 0);
+  #assert n == 3 && doc[0].items[0].task == MD_TASK_DONE && md_item_text(doc[..], 0) == "done";
+  #assert doc[0].items[1].task == MD_TASK_OPEN && md_item_text(doc[..], 1) == "to do" && doc[0].items[2].task == MD_TASK_NONE && md_item_text(doc[..], 2) == "[y] not a box";
+  #assert doc[0].blocks[1].kind == MB_CODE && md_lang(doc[..], 1) == "sh" && md_block_text(doc[..], 1) == "ls\n```" && md_block_text(doc[..], 2) == "after";
+  #assert md_task("[X] a") == MD_TASK_DONE && md_task("[x]") == MD_TASK_NONE && md_fence_char("~~~") == '~' && md_fence_char("``x") == 0;
 }

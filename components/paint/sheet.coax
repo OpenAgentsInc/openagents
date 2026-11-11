@@ -50,6 +50,11 @@ sheet_box :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, radius: f32, border:
 sheet_fill :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba) {
   sh[0].nu = prim_box(sh[0].under, sh[0].nu, x, y, w, h, radius, 0, fill, fill);
 }
+// A rule: a line as thick as a hairline, level or upright (a table's
+// divider, a quote's rail, a strike through text).
+sheet_rule :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, color: Rgba) {
+  sh[0].nu = prim_rule(sh[0].under, sh[0].nu, x, y, w, h, color);
+}
 sheet_icon :: (sh: [] Sheet, icon: int, x: f32, y: f32, size: f32, color: Rgba) {
   sh[0].nu = prim_icon(sh[0].under, sh[0].nu, icon, x, y, size, size, color);
 }

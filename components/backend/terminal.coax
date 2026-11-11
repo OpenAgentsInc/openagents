@@ -1,0 +1,248 @@
+// The terminal backend: a display list to a grid of cells, and the grid's
+// rows to the bytes a terminal reads (components/spec.md, GitHub #13153).
+// The list is in cells (a component laid out with measure_cells and the
+// terminal skin): text lands in its cells in its face's attribute and
+// colour, a rule becomes a line glyph, a box's border becomes box-drawing
+// glyphs and its fill a background, and everything a terminal has no way to
+// show (shadows, gradients, icons, images, elbows, rings, arcs, fades) is
+// left out. A colour with no alpha is the terminal's own.
+//
+// The grid is the caller's array of cells: term_grid clears it, term_draw
+// paints a list into it, term_row writes one row with its style sequences
+// (SGR, 24-bit colour), and term_row_text writes it bare for checks.
+//   coax/bin/coax test components/backend/terminal.coax
+
+#load "../paint/list.coax";
+#load "../layout/measure.coax";
+#load "../skin/terminal.coax";
+
+TERM_CELL_BYTES :: 16;      // a grapheme longer than this shows as ?
+TERM_ONE :: 0; TERM_WIDE :: 1; TERM_REST :: 2;    // a cell, the first cell of a two-column glyph, its second
+
+TermCell :: struct {
+  n: int; bytes: [TERM_CELL_BYTES] u8;
+  fg: Rgba; bg: Rgba; face: int; span: int;
+}
+TermGrid :: struct { cols: int; rows: int; cells: [] TermCell; }
+
+// A cleared grid of cols by rows over the caller's cells (rows cut to what the cells hold).
+term_grid :: (cells: [] TermCell, cols: int, rows: int) -> TermGrid {
+  r := ifx cols > 0 && rows * cols > cells.count then cells.count / cols else rows;
+  if cols <= 0 || r < 0 { r = 0; }
+  blank: TermCell;
+  for k: 0..<r * cols { cells[k] = blank; }
+  return TermGrid.{cols = cols, rows = r, cells = cells};
+}
+
+TermClip :: struct { on: bool; left: int; top: int; right: int; bottom: int; }
+term_inside :: (g: TermGrid, c: TermClip, col: int, row: int) -> bool {
+  if col < 0 || row < 0 || col >= g.cols || row >= g.rows { return false; }
+  return !c.on || (col >= c.left && col < c.right && row >= c.top && row < c.bottom);
+}
+term_cell :: (v: f32) -> int { return cast(int) round_layout(v); }
+
+// One glyph (its bytes) into a cell, in a colour and face; a background already there stays.
+term_put :: (g: TermGrid, c: TermClip, col: int, row: int, glyph: string, fg: Rgba, face: int) {
+  if !term_inside(g, c, col, row) { return; }
+  k := row * g.cols + col;
+  n := ifx glyph.count <= TERM_CELL_BYTES then glyph.count else 0;
+  for i: 0..<n { g.cells[k].bytes[i] = glyph[i]; }
+  if n == 0 { g.cells[k].bytes[0] = '?'; n = 1; }
+  g.cells[k].n = n; g.cells[k].fg = fg; g.cells[k].face = face; g.cells[k].span = TERM_ONE;
+}
+
+// Paints a display list into the grid, the list's (0, 0) at cell (ox, oy).
+term_draw :: (g: TermGrid, list: [] Prim, ox: int, oy: int) {
+  clip := TermClip.{};
+  for k: 0..<list.count {
+    p := list[k];
+    if p.kind == PRIM_CLIP {
+      clip.on = p.on;
+      clip.left = ifx p.x > -PRIM_OPEN then term_cell(p.x) + ox else 0;
+      clip.top = ifx p.y > -PRIM_OPEN then term_cell(p.y) + oy else 0;
+      clip.right = ifx p.a < PRIM_OPEN then term_cell(p.a) + ox else g.cols;
+      clip.bottom = ifx p.b < PRIM_OPEN then term_cell(p.b) + oy else g.rows;
+      continue;
+    }
+    col := term_cell(p.x) + ox; row := term_cell(p.y) + oy;
+    if p.kind == PRIM_TEXT {
+      i := 0; x := col;
+      while i < p.text.count {
+        n := cluster_len(p.text, i);
+        w := cells_of(p.text, i, n);
+        if w > 0 {
+          term_put(g, clip, x, row, cast(string) p.text[i..<i + n], p.fill, p.id);
+          if w == 2 && term_inside(g, clip, x, row) {
+            g.cells[row * g.cols + x].span = TERM_WIDE;
+            if term_inside(g, clip, x + 1, row) { g.cells[row * g.cols + x + 1].n = 0; g.cells[row * g.cols + x + 1].span = TERM_REST; }
+          }
+        }
+        x += w; i += n;
+      }
+      continue;
+    }
+    if p.kind != PRIM_BOX { continue; }
+    w := term_cell(p.w); h := term_cell(p.h);
+    if p.on {
+      // a rule: a level line along its length, or an upright one down its height
+      if w > 1 && w >= h { for c: 0..<w { term_put(g, clip, col + c, row, "─", p.fill, TERM_FACE_PLAIN); } }
+      else { for r: 0..<(ifx h < 1 then 1 else h) { term_put(g, clip, col, row + r, "│", p.fill, TERM_FACE_PLAIN); } }
+      continue;
+    }
+    if p.fill.a > 0 {
+      for r: 0..<h { for c: 0..<w { if term_inside(g, clip, col + c, row + r) { g.cells[(row + r) * g.cols + col + c].bg = flatten(p.fill, rgba(0, 0, 0, 1)); } } }
+    }
+    if p.border > 0 && p.edge.a > 0 && w >= 2 && h >= 2 {
+      round := p.radius > 0;
+      for c: 1..<w - 1 { term_put(g, clip, col + c, row, "─", p.edge, TERM_FACE_PLAIN); term_put(g, clip, col + c, row + h - 1, "─", p.edge, TERM_FACE_PLAIN); }
+      for r: 1..<h - 1 { term_put(g, clip, col, row + r, "│", p.edge, TERM_FACE_PLAIN); term_put(g, clip, col + w - 1, row + r, "│", p.edge, TERM_FACE_PLAIN); }
+      term_put(g, clip, col, row, ifx round then "╭" else "┌", p.edge, TERM_FACE_PLAIN);
+      term_put(g, clip, col + w - 1, row, ifx round then "╮" else "┐", p.edge, TERM_FACE_PLAIN);
+      term_put(g, clip, col, row + h - 1, ifx round then "╰" else "└", p.edge, TERM_FACE_PLAIN);
+      term_put(g, clip, col + w - 1, row + h - 1, ifx round then "╯" else "┘", p.edge, TERM_FACE_PLAIN);
+    }
+  }
+}
+
+// The last column of a row that shows anything, or -1.
+term_row_end :: (g: TermGrid, row: int) -> int {
+  if row < 0 || row >= g.rows { return -1; }
+  last := -1;
+  for c: 0..<g.cols { cell := g.cells[row * g.cols + c]; if cell.n > 0 || cell.bg.a > 0 || cell.span == TERM_REST { last = c; } }
+  return last;
+}
+
+// A row's text with no styles, trailing blanks dropped. Returns the bytes written.
+term_row_text :: (g: TermGrid, row: int, out: [] u8) -> int {
+  n := 0; last := term_row_end(g, row);
+  for c: 0..<last + 1 {
+    cell := g.cells[row * g.cols + c];
+    if cell.span == TERM_REST { continue; }
+    if cell.n == 0 { if n < out.count { out[n] = ' '; n += 1; } continue; }
+    for i: 0..<cell.n { if n < out.count { out[n] = cell.bytes[i]; n += 1; } }
+  }
+  return n;
+}
+
+term_bytes :: (out: [] u8, n: int, s: string) -> int {
+  k := n;
+  for c: s { if k < out.count { out[k] = c; k += 1; } }
+  return k;
+}
+term_number :: (out: [] u8, n: int, v: int) -> int {
+  d: [4] u8; nd := 0; x := ifx v < 0 then 0 else ifx v > 255 then 255 else v;
+  if x == 0 { d[0] = '0'; nd = 1; }
+  while x > 0 { d[nd] = cast(u8) ('0' + x % 10); x /= 10; nd += 1; }
+  k := n;
+  for i: 0..<nd { if k < out.count { out[k] = d[nd - 1 - i]; k += 1; } }
+  return k;
+}
+term_colour :: (out: [] u8, n: int, lead: string, c: Rgba) -> int {
+  k := term_bytes(out, n, lead);
+  k = term_number(out, k, cast(int) floor(c.r * 255 + 0.5)); k = term_bytes(out, k, ";");
+  k = term_number(out, k, cast(int) floor(c.g * 255 + 0.5)); k = term_bytes(out, k, ";");
+  return term_number(out, k, cast(int) floor(c.b * 255 + 0.5));
+}
+// A cell's style after a reset: its face's attribute, then its colours.
+term_style :: (out: [] u8, n: int, cell: TermCell) -> int {
+  k := n;
+  if k < out.count { out[k] = 27; k += 1; }
+  k = term_bytes(out, k, "[0");
+  if cell.face == TERM_FACE_BOLD { k = term_bytes(out, k, ";1"); }
+  if cell.face == TERM_FACE_ITALIC { k = term_bytes(out, k, ";3"); }
+  if cell.face == TERM_FACE_DIM { k = term_bytes(out, k, ";2"); }
+  if cell.fg.a > 0 { k = term_colour(out, k, ";38;2;", cell.fg); }
+  if cell.bg.a > 0 { k = term_colour(out, k, ";48;2;", cell.bg); }
+  return term_bytes(out, k, "m");
+}
+term_same_style :: (p: TermCell, q: TermCell) -> bool {
+  return p.face == q.face && p.fg.r == q.fg.r && p.fg.g == q.fg.g && p.fg.b == q.fg.b && p.fg.a == q.fg.a
+      && p.bg.r == q.bg.r && p.bg.g == q.bg.g && p.bg.b == q.bg.b && p.bg.a == q.bg.a;
+}
+
+// A row as a terminal reads it: text with a style sequence wherever the
+// style changes, a reset at its end if one is still set, trailing blanks
+// dropped, no newline. Returns the bytes written.
+term_row :: (g: TermGrid, row: int, out: [] u8) -> int {
+  n := 0; last := term_row_end(g, row);
+  plain: TermCell; cur := plain; styled := false;
+  for c: 0..<last + 1 {
+    cell := g.cells[row * g.cols + c];
+    if cell.span == TERM_REST { continue; }
+    look := cell;
+    if cell.n == 0 { look.face = TERM_FACE_PLAIN; look.fg = plain.fg; }    // a blank shows only its background
+    if !term_same_style(look, cur) { n = term_style(out, n, look); cur = look; styled = true; }
+    if cell.n == 0 { if n < out.count { out[n] = ' '; n += 1; } continue; }
+    for i: 0..<cell.n { if n < out.count { out[n] = cell.bytes[i]; n += 1; } }
+  }
+  if styled && !term_same_style(cur, plain) { if n < out.count { out[n] = 27; n += 1; } n = term_bytes(out, n, "[0m"); }
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+term_test_text :: (g: TermGrid, row: int, buf: [] u8) -> string { return cast(string) buf[0..<term_row_text(g, row, buf)]; }
+
+#test "text lands in its cells; a wide glyph takes two; a grapheme with its marks takes one" {
+  cells: [80] TermCell; g := term_grid(cells[..], 20, 4);
+  list: [4] Prim; n := 0;
+  n = prim_text(list[..], n, 2, 1, 5, 1, TERM_FACE_BOLD, rgba(1, 0, 0, 1), "héllo");
+  n = prim_text(list[..], n, 0, 2, 6, 1, TERM_FACE_PLAIN, rgba(0, 0, 0, 0), "a日本b");
+  term_draw(g, list[0..<n], 0, 0);
+  buf: [128] u8;
+  #assert term_test_text(g, 0, buf[..]) == "" && term_test_text(g, 1, buf[..]) == "  héllo" && term_test_text(g, 2, buf[..]) == "a日本b";
+  #assert g.cells[20 + 2].face == TERM_FACE_BOLD && g.cells[20 + 3].n >= 2 && g.cells[40 + 1].span == TERM_WIDE && g.cells[40 + 2].span == TERM_REST && g.cells[40 + 5].bytes[0] == 'b';
+  #assert term_row_end(g, 2) == 5 && term_row_end(g, 3) == -1 && term_row_end(g, 9) == -1;
+}
+#test "a box's border is box-drawing glyphs, rounded when it has a radius; a rule is a line; a fill is a background" {
+  cells: [120] TermCell; g := term_grid(cells[..], 20, 6);
+  list: [6] Prim; n := 0;
+  dim := rgba(0.5, 0.5, 0.5, 1);
+  n = prim_box(list[..], n, 0, 0, 6, 3, 0, 1, rgba(0, 0, 0, 0), dim);
+  n = prim_box(list[..], n, 8, 0, 5, 3, 4, 1, rgba(0, 0, 0, 0), dim);
+  n = prim_rule(list[..], n, 0, 4, 8, 1, dim);
+  n = prim_rule(list[..], n, 10, 3, 1, 3, dim);
+  n = prim_fill(list[..], n, 14, 4, 3, 1, 0, rgba(1, 1, 1, 0.5));
+  n = prim_text(list[..], n, 1, 1, 2, 1, TERM_FACE_PLAIN, rgba(0, 0, 0, 0), "ok");
+  term_draw(g, list[0..<n], 0, 0);
+  buf: [256] u8;
+  #assert term_test_text(g, 0, buf[..]) == "┌────┐  ╭───╮";
+  #assert term_test_text(g, 1, buf[..]) == "│ok  │  │   │";
+  #assert term_test_text(g, 2, buf[..]) == "└────┘  ╰───╯";
+  #assert term_test_text(g, 3, buf[..]) == "          │";
+  #assert term_test_text(g, 4, buf[..]) == "────────  │      ";       // the fill's cells are blank but shown
+  #assert g.cells[4 * 20 + 14].bg.a == 1 && abs(g.cells[4 * 20 + 14].bg.r - 0.5) < 0.001 && g.cells[4 * 20 + 13].bg.a == 0;
+}
+#test "a clip cuts what follows it; drawing off the grid is dropped; the offset moves the list" {
+  cells: [60] TermCell; g := term_grid(cells[..], 10, 6);
+  list: [4] Prim; n := 0;
+  n = prim_clip(list[..], n, -PRIM_OPEN, -PRIM_OPEN, 4, PRIM_OPEN);
+  n = prim_text(list[..], n, 0, 0, 8, 1, 0, rgba(0, 0, 0, 0), "abcdefgh");
+  n = prim_unclip(list[..], n);
+  n = prim_text(list[..], n, 6, 1, 8, 1, 0, rgba(0, 0, 0, 0), "abcdefgh");
+  term_draw(g, list[0..<n], 1, 2);
+  buf: [64] u8;
+  #assert term_test_text(g, 2, buf[..]) == " abcd" && term_test_text(g, 3, buf[..]) == "       abc" && term_test_text(g, 0, buf[..]) == "";
+  small := term_grid(cells[..], 10, 100);
+  #assert small.rows == 6;
+}
+#test "a row's bytes: a style sequence where the style changes, a reset at the end, nothing for plain text" {
+  cells: [40] TermCell; g := term_grid(cells[..], 20, 2);
+  list: [3] Prim; n := 0;
+  n = prim_text(list[..], n, 0, 0, 2, 1, TERM_FACE_PLAIN, rgba(0, 0, 0, 0), "a ");
+  n = prim_text(list[..], n, 2, 0, 1, 1, TERM_FACE_BOLD, rgba(0, 0, 0, 0), "b");
+  n = prim_text(list[..], n, 3, 0, 1, 1, TERM_FACE_CODE, rgba(1, 0.5, 0, 1), "c");
+  term_draw(g, list[0..<n], 0, 0);
+  out: [128] u8;
+  k := term_row(g, 0, out[..]);
+  want: [64] u8; w := 0;
+  w = term_bytes(want[..], w, "a "); want[w] = 27; w += 1; w = term_bytes(want[..], w, "[0;1mb"); want[w] = 27; w += 1;
+  w = term_bytes(want[..], w, "[0;38;2;255;128;0mc"); want[w] = 27; w += 1; w = term_bytes(want[..], w, "[0m");
+  #assert cast(string) out[0..<k] == cast(string) want[0..<w];
+  list2: [1] Prim;
+  g2 := term_grid(cells[..], 20, 2);
+  m := prim_text(list2[..], 0, 0, 0, 5, 1, TERM_FACE_PLAIN, rgba(0, 0, 0, 0), "plain");
+  term_draw(g2, list2[0..<m], 0, 0);
+  k = term_row(g2, 0, out[..]);
+  #assert cast(string) out[0..<k] == "plain" && term_row(g2, 1, out[..]) == 0;
+}

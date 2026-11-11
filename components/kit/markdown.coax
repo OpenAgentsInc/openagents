@@ -28,18 +28,22 @@ markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, tex
   ln := sheet_line(sh, x, y, lh, hard);
   i := from; pen := x;
   while i < to {
-    style := md_style_at(runs, i);
+    style := md_style_at(runs, i); marks := md_marks_at(runs, i);
     j := i;
-    while j < to && md_style_at(runs, j) == style { j += 1; }
+    while j < to && md_style_at(runs, j) == style && md_marks_at(runs, j) == marks { j += 1; }
     seg := cast(string) text[i..<j];
     face := text_face(faces, style);
+    w: f32 = 0;
     if style == MD_CODE {
-      w := measure_width(m, face, seg);
+      w = measure_width(m, face, seg);
       sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, w + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, s.code_wash);
-      pen += sheet_text(sh, m, ln, pen, y, lh, face, s.accent, seg);
+      w = sheet_text(sh, m, ln, pen, y, lh, face, s.accent, seg);
     } else {
-      pen += sheet_text(sh, m, ln, pen, y, lh, face, color, seg);
+      // a link reads in the accent; struck text keeps its colour under a rule through its middle
+      w = sheet_text(sh, m, ln, pen, y, lh, face, ifx (marks & MD_LINK) != 0 then s.accent else color, seg);
     }
+    if (marks & MD_STRIKE) != 0 { sheet_rule(sh, pen, y + (lh - s.border) / 2, w, s.border, color); }
+    pen += w;
     i = j;
   }
 }
@@ -188,13 +192,13 @@ markdown_table :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
   if L.cols == 0 || L.rows == 0 { return 0; }
   i0 := doc[0].blocks[b].item0;
   faces := uiskin_faces(s);
-  pad := s.md.cell_pad; lh := s.md.line;
+  pad := s.md.cell_pad; pad_y := s.md.cell_pad_y; lh := s.md.line;
   wider := L.total > w + 0.5;
   if wider { sheet_clip_right(sh, x + w); }
   h: f32 = 0;
   lines: [64] TextLine;
   for r: 0..<L.rows {
-    if r > 0 { sheet_fill(sh, x, y + h, L.total, s.md.divider, 0, s.hairline); h += s.md.divider; }
+    if r > 0 { sheet_rule(sh, x, y + h, L.total, s.md.divider, s.hairline); h += s.md.divider; }
     // the row's height: its tallest cell
     tall := 1;
     for c: 0..<L.cols {
@@ -219,10 +223,10 @@ markdown_table :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
           if lines[q].to > lines[q].from && text[lines[q].to - 1] == ' ' { lw -= text_run_width(m, faces, text, runs, lines[q].to - 1, lines[q].to); }
           lx = ifx al == MA_CENTER then cx + (iw - lw) / 2 else cx + iw - lw;
         }
-        markdown_line(sh, m, s, faces, text, runs, lines[q].from, lines[q].to, lx, y + h + pad + cast(f32) q * lh, lh, s.ink, q + 1 == n);
+        markdown_line(sh, m, s, faces, text, runs, lines[q].from, lines[q].to, lx, y + h + pad_y + cast(f32) q * lh, lh, s.ink, q + 1 == n);
       }
     }
-    h += cast(f32) tall * lh + 2 * pad;
+    h += cast(f32) tall * lh + 2 * pad_y;
   }
   if wider { sheet_unclip(sh); }
   return h;
@@ -260,7 +264,7 @@ markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
       th_ += cast(f32) text_wrap(m, faces, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), iw, lines[..]) * lh;
     }
     sheet_fill(sh, x, y, w, th_, 0, s.quote_wash);
-    sheet_fill(sh, x, y, s.md.quote_rail, th_, 0, s.quote_rail);
+    sheet_rule(sh, x, y, s.md.quote_rail, th_, s.quote_rail);
     h: f32 = s.md.quote_pad_y;
     for k: 0..<doc[0].blocks[b].items {
       if k > 0 { h += s.md.quote_gap; }
@@ -276,6 +280,8 @@ markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
     ix_x := x + cast(f32) doc[0].items[ix].depth * col;
     if doc[0].items[ix].ordered {
       q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, markdown_ordinal(sh, doc[0].items[ix].number));
+    } else if doc[0].items[ix].task != MD_TASK_NONE {
+      q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, ifx doc[0].items[ix].task == MD_TASK_DONE then "☑" else "☐");
     } else if s.md.disc > 0 {
       sheet_fill(sh, ix_x + 1, y + h + (lh - s.md.disc) / 2, s.md.disc, s.md.disc, s.md.disc / 2, s.accent);
     } else {
