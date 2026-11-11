@@ -11,6 +11,7 @@
 // Who (auth_principal): one credential per request, never two:
 //   Authorization: Nostr <NIP-98>     the signer, at L2 (an agent's key is its agent account)
 //   Authorization: Bearer oa_at_...   an app's access token (1 hour)
+//   Authorization: Bearer oa_key_...  an agent's API key (agents.c; its SHA-256 only is kept)
 //   Cookie __Host-oa_session=oas_...  a web session (30 days idle, 180 absolute, new token daily)
 //   X-Verse-Player                    a guest's player key: never an account
 //
@@ -38,6 +39,10 @@
 //   OA_API_ORIGIN           this site, for NIP-98 URLs and the email link
 //   OA_EMAIL_ALLOW          (email.c) staging's allowlist of addresses mail may go to
 //
+// An agent (agents.c, agent-policy.coax, #13211) is refused on every human, L2, L2-fresh and admin
+// route, and passes no request at all unless its grant is active now, from an address it allows;
+// scope routes need the grant's scope. Every admitted agent request is in the audit log.
+//
 // Nothing secret is ever logged: no token, code, cookie, email or key material. Refusals log the
 // route, the rule and the principal's kind.
 #include "api.h"
@@ -60,8 +65,9 @@ static const char *env_or(const char *name, const char *fallback) { const char *
 static const char *origin(void) { return env_or("OA_API_ORIGIN", "https://openagents.com"); }
 
 // ---------------------------------------------------------------- the rule table
-typedef struct { const char *method, *path; bool prefix; int rule; const char *note; } auth_rule;
-#define R(m, p, pre, rule, note) {m, p, pre, rule, note}
+typedef struct { const char *method, *path; bool prefix; int rule; const char *note; int scope; } auth_rule;
+#define R(m, p, pre, rule, note) {m, p, pre, rule, note, 0}
+#define S(m, p, pre, scope, note) {m, p, pre, AP_SCOPE, note, scope}   // an agent whose grant has this scope (AG_* bit number)
 // First match wins: specific paths before their families. "*" is any method.
 static const auth_rule RULES[] = {
   R("GET",  "/api/playtest/health", false, AP_PUBLIC, "a database round trip"),
@@ -83,6 +89,28 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/auth/sessions", false, AP_ACCOUNT, "the devices list"),
   R("POST", "/api/auth/sessions/", true, AP_ACCOUNT, "remove one device's session"),
   R("POST", "/api/auth/freeze", false, AP_PUBLIC, "a notice's link token, or the session's account"),
+  // ---- `openagents login` (agents.c): the CLI's new key asks, a person approves it
+  R("POST", "/api/auth/device/start", false, AP_PUBLIC, "the CLI's new key, NIP-98 signed, checked there"),
+  R("POST", "/api/auth/device/look", false, AP_PUBLIC, "what /login/device shows: the computer's name"),
+  R("POST", "/api/auth/device/approve", false, AP_HUMAN, "a person links the CLI's key (a strong login when the account has one)"),
+  R("GET",  "/api/auth/device/", true, AP_PUBLIC, "the CLI's key polls its request, NIP-98 signed, checked there"),
+  // ---- agents and their grants (agents.c, agent-policy.coax): people manage, agents use
+  R("GET",  "/api/agents", false, AP_HUMAN, "your agents and their grants"),
+  R("POST", "/api/agents", false, AP_L2, "a new agent and its grant (spending: L2 in the last five minutes)"),
+  R("POST", "/api/agents/request", false, AP_PUBLIC, "an agent's new key asks its owner, NIP-98 signed, checked there"),
+  R("POST", "/api/agents/request/poll", false, AP_PUBLIC, "that key asks how its request went, NIP-98 signed, checked there"),
+  R("GET",  "/api/agents/request/", true, AP_HUMAN, "what an agent asked for, by its code"),
+  R("POST", "/api/agents/approve/", true, AP_L2, "approve an agent's request (spending: L2 in the last five minutes)"),
+  R("POST", "/api/agents/deny/", true, AP_HUMAN, "deny an agent's request"),
+  R("POST", "/api/agents/revoke-all", false, AP_HUMAN, "end every agent's grant now"),
+  R("POST", "/api/agents/revoke/", true, AP_HUMAN, "end one agent's grant now"),
+  R("POST", "/api/agents/rotate/", true, AP_L2, "a new API key for an agent; its old ones end"),
+  R("POST", "/api/agents/grant/", true, AP_L2, "change a grant (more than before: L2 in the last five minutes)"),
+  R("POST", "/api/agents/resume/", true, AP_L2, "resume an agent paused by logging out everywhere"),
+  R("GET",  "/api/agent-keys/", true, AP_PUBLIC, "an agent key's NIP-OA owner attestation, published"),
+  R("GET",  "/api/agent/me", false, AP_ACCOUNT, "an agent's own grant (agents only)"),
+  S("GET",  "/api/agent/owner", false, 1, "the owner's name (scope profile:read)"),
+  S("POST", "/api/agent/spend", false, 2, "a payment against the spend caps (scope wallet:spend)"),
   // ---- the old groundwork, until #13207 deletes it (each checks its own caller)
   R("*",    "/api/auth/v2/", true, AP_PUBLIC, "device login and links (access.c): NIP-98 or session, checked there"),
   R("*",    "/api/auth/", true, AP_PUBLIC, "the phone sign-in and words account (private.c), until deleted"),
@@ -154,7 +182,7 @@ const char *auth_rule_of(const char *method, const char *path) {
 // this table (api --limits), so the page and the server can't drift. The words name the limit;
 // the answer adds when it lifts.
 typedef struct { const char *name, *what, *per, *words; int max; long long window_ms; } auth_limit;
-enum { L_EMAIL_HOUR, L_EMAIL_DAY, L_EMAIL_IP, L_CODE_TRIES, L_KEY_LOGIN, L_REFRESH, L_NEW_ACCOUNT, L_COUNT };
+enum { L_EMAIL_HOUR, L_EMAIL_DAY, L_EMAIL_IP, L_CODE_TRIES, L_KEY_LOGIN, L_REFRESH, L_NEW_ACCOUNT, L_AGENT_ASK, L_COUNT };
 static const auth_limit LIMITS[L_COUNT] = {
   [L_EMAIL_HOUR]  = {"email_hour", "Email codes sent to one address", "an hour", "Too many codes for this address.", 5, 3600000LL},
   [L_EMAIL_DAY]   = {"email_day", "Email codes sent to one address", "a day", "Too many codes for this address today.", 20, 86400000LL},
@@ -163,6 +191,7 @@ static const auth_limit LIMITS[L_COUNT] = {
   [L_KEY_LOGIN]   = {"key_login", "Logins with a key from one network address", "a minute", "Too many logins from your network.", 30, 60000LL},
   [L_REFRESH]     = {"refresh", "App token refreshes for one login", "an hour", "Too many refreshes.", 60, 3600000LL},
   [L_NEW_ACCOUNT] = {"new_account", "New accounts from one network address", "an hour", "Too many new accounts from your network.", 10, 3600000LL},
+  [L_AGENT_ASK]   = {"agent_ask", "Agent and computer login requests from one network address", "an hour", "Too many requests from your network.", 30, 3600000LL},
 };
 
 void auth_print_limits(FILE *out) {   // api --limits: the Markdown /docs/limits is
@@ -230,7 +259,7 @@ static bool token_ok(const char *text, int64_t kind, char digest[65]) {
   hex_of(d, 32, digest);
   return true;
 }
-enum { TOKEN_SESSION = 1, TOKEN_ACCESS = 2, TOKEN_REFRESH = 3 };
+enum { TOKEN_SESSION = 1, TOKEN_ACCESS = 2, TOKEN_REFRESH = 3, TOKEN_KEY = 4 };
 
 // A cookie's value (letters, digits, _ and -), or "".
 static void cookie(const request *q, const char *name, char *out, size_t cap) {
@@ -361,6 +390,30 @@ static void refuse_limit(const request *q, int which, long long until_ms) {
   char retry[64]; snprintf(retry, sizeof retry, "Retry-After: %lld\r\n", (left + 999) / 1000);
   answer(q, 429, retry, json, lines);
 }
+
+// ---- for agents.c: the same answers, audit rows, tokens, addresses and limits as this file's
+void auth_answer(const request *q, int status, const char *headers, const char *json, const char *lines) { answer(q, status, headers, json, lines); }
+void auth_refuse(const request *q, int status, const char *words) { refuse(q, status, words); }
+void auth_audit(PGconn *db, const char *acct, const char *actor, const char *action, const char *result, const char *detail) { audit(db, acct, actor, action, result, detail); }
+// A new agent API key: oa_key_ + its id (8 base32 characters, shown in lists; not secret) + _ + the
+// secret part. id gets the id; the digest is what auth.agent_keys keeps.
+bool auth_new_key(char id[9], char *out, size_t cap, char digest[65]) {
+  unsigned char r[8];
+  if (!random_bytes(r, sizeof r)) return false;
+  for (int i = 0; i < 8; i++) id[i] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[r[i] & 31];
+  id[8] = 0;
+  char prefix[20]; snprintf(prefix, sizeof prefix, "oa_key_%s_", id);
+  return new_token(prefix, out, cap, digest);
+}
+void auth_visitor(const request *q, char ip[128]) { visitor(q, ip); }
+bool auth_limited(const request *q, PGconn *db) {   // true when it refused: agent and device requests from this address
+  long long until = 0; char ipk[65]; visitor_key(q, ipk);
+  if (limit_hit(db, L_AGENT_ASK, ipk, &until)) return false;
+  refuse_limit(q, L_AGENT_ASK, until);
+  return true;
+}
+bool auth_same_site(const request *q) { char from[256]; if (!api_header(q, "Origin", from, sizeof from)) return true; return !strcmp(from, origin()); }
+const char *auth_origin(void) { return origin(); }
 
 // ---------------------------------------------------------------- keys for sealing and lookup
 typedef struct { int version; unsigned char key[32]; } versioned_key;
@@ -545,6 +598,13 @@ static bool resolve(const request *q, PGconn *db, auth_principal *p, int *status
     snprintf(p->via, sizeof p->via, "nostr");
     return true;
   }
+  if (bearer && !strncmp(auth, "Bearer oa_key_", 14)) {   // an agent's API key
+    char t[256], dig[65];
+    snprintf(t, sizeof t, "%s", auth + 7);
+    if (!token_ok(t, TOKEN_KEY, dig) || !agents_key(db, dig, p)) { *status = 401; return false; }
+    api_header(q, "X-Verse-Player", p->player, sizeof p->player);
+    return true;
+  }
   if (bearer) {
     char t[256], dig[65];
     snprintf(t, sizeof t, "%s", auth + 7);
@@ -610,7 +670,7 @@ void auth_init(void) {
          && ap_admit(AP_ACCOUNT, AP_NOBODY, 0, -1, false, false) == AP_LOG_IN && ap_admit(AP_HUMAN, AP_AGENT, 2, 0, false, false) == AP_HUMAN_ONLY
          && ap_admit(AP_L2, AP_PERSON, 1, -1, false, false) == AP_STEP_UP && ap_admit(AP_GUEST, AP_KIND_GUEST, 0, -1, false, false) == AP_OK
          && ap_credentials(true, false, true) == AP_TWO_CREDENTIALS && ap_status(AP_LOG_IN) == 401
-         && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED;
+         && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init();
   if (!ok) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
@@ -626,12 +686,37 @@ bool auth_gate(const request *q) {
     api_json(q->fd, 404, "{\"error\":\"not found\"}");
     return true;
   }
-  if (rule->rule == AP_PUBLIC || rule->rule == AP_GUEST) return false;
+  // A request with an Authorization header is resolved on every route, public ones too, so an
+  // agent whose grant ended is refused everywhere, not only where a rule asks who it is.
+  char authz[16] = {0};
+  bool signed_in = api_header(q, "Authorization", authz, sizeof authz) != NULL;
+  if ((rule->rule == AP_PUBLIC || rule->rule == AP_GUEST) && !signed_in) return false;
   const auth_principal *p = auth_principal_of(q);
+  // A bearer token of ours that is revoked, rotated or unknown is refused on public routes too.
+  if (!p && (rule->rule == AP_PUBLIC || rule->rule == AP_GUEST) && !strncmp(authz, "Bearer oa_", 10)) {
+    api_log("auth: refused %s %s: a refused bearer token", q->method, q->path);
+    refuse(q, 401, "That key isn't good any more. Ask its owner for a new one.");
+    return true;
+  }
+  if (!p && (rule->rule == AP_PUBLIC || rule->rule == AP_GUEST)) return false;   // the route reads its own signature
+  // An agent on a human, L2, L2-fresh or admin route: 403 whatever its grant says.
+  if (p && p->kind == AP_AGENT && ap_admit(rule->rule, p->kind, p->level, p->l2_age_ms, p->admin, true) == AP_HUMAN_ONLY) {
+    api_log("auth: refused %s %s: rule %s, agent", q->method, q->path, rule_name(rule->rule));
+    coax_string w = ap_words(AP_HUMAN_ONLY);
+    char hw[200]; snprintf(hw, sizeof hw, "%.*s", (int)w.count, w.data);
+    refuse(q, (int)ap_status(AP_HUMAN_ONLY), hw);
+    return true;
+  }
+  if (p && p->kind == AP_AGENT) {
+    char words[200];
+    int status = agents_admit(q, api_db(), &current, words);
+    if (status) { api_log("auth: refused agent %s %s: its grant", q->method, q->path); refuse(q, status, words); return true; }
+  }
+  if (rule->rule == AP_PUBLIC || rule->rule == AP_GUEST) { if (p && p->kind == AP_AGENT) agents_used(q, api_db(), p); return false; }
   int verdict;
   if (!p) verdict = current.refused == 400 ? AP_TWO_CREDENTIALS : AP_LOG_IN;
-  else verdict = (int)ap_admit(rule->rule, p->kind, p->level, p->l2_age_ms, p->admin, false);
-  if (verdict == AP_OK) return false;
+  else verdict = (int)ap_admit(rule->rule, p->kind, p->level, p->l2_age_ms, p->admin, p->kind == AP_AGENT && agents_scoped(p, rule->scope));
+  if (verdict == AP_OK) { if (p->kind == AP_AGENT) agents_used(q, api_db(), p); return false; }
   api_log("auth: refused %s %s: rule %s, %s", q->method, q->path, rule_name(rule->rule),
           !p ? "a refused credential" : p->kind == AP_PERSON ? "person" : p->kind == AP_AGENT ? "agent" : p->kind == AP_SERVICE ? "service" : p->kind == AP_KIND_GUEST ? "guest" : "nobody");
   coax_string w = ap_words(verdict);
@@ -972,6 +1057,7 @@ static void nostr_login(const request *q, PGconn *db, const char *body) {
   if (!p) { refuse(q, current.refused == 400 ? 400 : 401, current.refused == 400 ? "Log out first, or send only the signature." : "That signature isn't good for this request."); return; }
   if (p->credential != AUTH_NOSTR) { refuse(q, 401, "Sign the challenge with your key (NIP-98)."); return; }
   if (!p->payload) { refuse(q, 401, "Sign the body too (a payload tag)."); return; }
+  if (p->kind == AP_AGENT) { refuse(q, 403, "An agent signs each request with its key; it doesn't log in."); return; }
   if (!json_str(body, strlen(body), "challenge", ch, sizeof ch) || strlen(ch) != 64) { refuse(q, 400, "Ask for a challenge first."); return; }
   sha_hex(ch, chsha);
   const char *v[2] = {chsha, p->event_id};
@@ -1086,13 +1172,15 @@ static void logout(const request *q, PGconn *db) {
   set_cookie[0] = 0;
   answer(q, 200, headers, "{\"state\":\"logged-out\"}", "state logged-out\n");
 }
-static void logout_everywhere(const request *q, PGconn *db) {
+static void logout_everywhere(const request *q, PGconn *db, const char *body) {
   const auth_principal *p = auth_principal_of(q);
   const char *v[1] = {p->account};
   PGresult *r = PQexecParams(db, "SELECT auth.sessions_end_all($1)", 1, NULL, v, NULL, NULL, 0);
   int n = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? atoi(PQgetvalue(r, 0, 0)) : 0;
   PQclear(r);
-  char d[64]; snprintf(d, sizeof d, "{\"ended\":%d}", n);
+  // {"agents": true}: every agent of the account is paused too, until resumed (agents.c).
+  int paused = json_true(body, strlen(body), "agents") ? agents_pause_all(db, p->account) : 0;
+  char d[64]; snprintf(d, sizeof d, "{\"ended\":%d,\"agents_paused\":%d}", n, paused);
   audit(db, p->account, p->session, "logout.everywhere", "ok", d);
   char headers[200], json[80], lines[80]; cookie_header(headers, sizeof headers, SESSION_COOKIE, "", 0);
   set_cookie[0] = 0;
@@ -1265,7 +1353,7 @@ bool auth_api_route(const request *q) {
   else if (!strcmp(op, "phone/poll")) phone_poll(q, db, body);
   else if (!strcmp(op, "refresh")) refresh(q, db, body);
   else if (!strcmp(op, "logout")) logout(q, db);
-  else if (!strcmp(op, "logout-everywhere")) logout_everywhere(q, db);
+  else if (!strcmp(op, "logout-everywhere")) logout_everywhere(q, db, body);
   else if (!strcmp(op, "freeze")) freeze(q, db, body);
   free(body);
   return true;

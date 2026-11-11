@@ -1,0 +1,37 @@
+// An agent key's NIP-OA owner attestation (GitHub #13211), checked by the API before a grant that
+// carries one is approved, and before GET /api/agent-keys/<pubkey> publishes it. The owner signs
+// sha256("nostr:agent-auth:" + agent hex + ":" + conditions) with their Nostr key (the `openagents`
+// CLI's key, or a NIP-07 signer); coax/lib/nostr/nipoa.coax owns that message and its conditions,
+// and coax/lib/crypto's BIP-340 verify checks the signature. Nothing here is written twice.
+//   coax/bin/coax test coax/web/api/agent-attest.coax
+#load "../../lib/nostr/nipoa.coax";
+
+// 0 when owner signed agent's attestation with these conditions; else the NOA_* refusal (NOA_HEX,
+// NOA_SELF, NOA_CONDITIONS, NOA_SIGNATURE).
+aa_verify :: (owner_hex: string, agent_hex: string, conditions: string, sig_hex: string) -> int #export_c #effects(all) {
+  owner: [32] u8; agent: [32] u8; sig: [64] u8; hash: [32] u8;
+  if !ne_lower_hex(owner_hex, owner[..]) || !ne_lower_hex(agent_hex, agent[..]) || !ne_lower_hex(sig_hex, sig[..]) { return NOA_HEX; }
+  if owner_hex == agent_hex { return NOA_SELF; }
+  if !noa_conditions(conditions, NoaFacts.{}).read { return NOA_CONDITIONS; }
+  if !noa_hash(agent, conditions, hash[..]) { return NOA_CONDITIONS; }
+  if !nostr_verify_vartime(hash[..], owner[..], sig[..]) { return NOA_SIGNATURE; }
+  return NOA_OK;
+}
+// The 32-byte message an owner signs for agent_hex under conditions, into out (the CLI signs it).
+aa_message :: (agent_hex: string, conditions: string, out: [] u8) -> bool #export_c #effects(all) {
+  agent: [32] u8;
+  if out.count < 32 || !ne_lower_hex(agent_hex, agent[..]) || !noa_conditions(conditions, NoaFacts.{}).read { return false; }
+  return noa_hash(agent, conditions, out);
+}
+
+#test "the pinned NIP-OA vector verifies, and every changed part refuses" {
+  #assert aa_verify(NOA_T_OWNER, NOA_T_AGENT, NOA_T_CONDS, NOA_T_SIG) == NOA_OK;
+  #assert aa_verify(NOA_T_OWNER, NOA_T_AGENT, "kind=1&created_at<1713957001", NOA_T_SIG) == NOA_SIGNATURE;
+  #assert aa_verify(NOA_T_AGENT, NOA_T_OWNER, NOA_T_CONDS, NOA_T_SIG) == NOA_SIGNATURE;
+  #assert aa_verify(NOA_T_OWNER, NOA_T_OWNER, NOA_T_CONDS, NOA_T_SIG) == NOA_SELF;
+  #assert aa_verify(NOA_T_OWNER, NOA_T_AGENT, "kind=x", NOA_T_SIG) == NOA_CONDITIONS;
+  #assert aa_verify(NOA_T_OWNER, NOA_T_AGENT, NOA_T_CONDS, NOA_T_SIG[0..<126]) == NOA_HEX;
+  #assert aa_verify("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798", NOA_T_AGENT, NOA_T_CONDS, NOA_T_SIG) == NOA_HEX;
+  m: [32] u8;
+  #assert aa_message(NOA_T_AGENT, NOA_T_CONDS, m[..]) && !aa_message(NOA_T_AGENT, "kind=", m[..]) && !aa_message("zz", "", m[..]);
+}

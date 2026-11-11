@@ -288,7 +288,7 @@ cli_login :: (a: [] Args, r: [] Rep, profile: string) -> int {
   body: [200] u8; bn := copy("{\"machine\":", body[..]);
   jn := ar_json_str(machine, body[bn..<body.count]); bn += jn;
   body[bn] = '}'; bn += 1;
-  st = acct_call(c[..], k[0].secret[..], origin, "POST", "/api/auth/v2/device/start?as=lines", cast(string) body[0..<bn]);
+  st = acct_call(c[..], k[0].secret[..], origin, "POST", "/api/auth/device/start?as=lines", cast(string) body[0..<bn]);
   if st != 200 { wipe(k[0].secret[..]); return acct_fail(r, c[..], "asking to log in"); }
   idb: [32] u8; cb: [32] u8; lb: [400] u8;
   idn := copy(ar_line(acct_body(c[..]), "id"), idb[..]); cn := copy(ar_line(acct_body(c[..]), "code"), cb[..]);
@@ -311,7 +311,7 @@ cli_login :: (a: [] Args, r: [] Rep, profile: string) -> int {
   limit := text_int(args_value(a, "--poll", "600"));
   if limit < 1 { limit = 600; }
   deadline := ifx now + limit * 1000 < expires then now + limit * 1000 else expires;
-  pp: [64] u8; pn := copy("/api/auth/v2/device/", pp[..]); pn += copy(id, pp[pn..<pp.count]); pn += copy("?as=lines", pp[pn..<pp.count]);
+  pp: [64] u8; pn := copy("/api/auth/device/", pp[..]); pn += copy(id, pp[pn..<pp.count]); pn += copy("?as=lines", pp[pn..<pp.count]);
   state := AR_WAIT;
   while state == AR_WAIT {
     proc_sleep(2000);

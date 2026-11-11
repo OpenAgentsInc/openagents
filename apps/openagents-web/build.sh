@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/agents.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm, build/login.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -423,6 +423,9 @@ python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.j
 # every skin, drawn by the library (components/gallery/page.coax) with the atlas assets above.
 timed components "$here/../../coax/web/wasm.sh" "$here/components.coax" "$here/components-face.c" "$here/build/components.wasm" &
 components_page=$!
+# /settings/agents: an owner's agents and grants (#13211), the same components, atlas and shader.
+timed agents "$here/../../coax/web/wasm.sh" "$here/agents.coax" "$here/agents-face.c" "$here/build/agents.wasm" &
+agents_page=$!
 wait "$visuals"
 wait "$isolation"
 wait "$vpk3"
@@ -432,6 +435,7 @@ wait "$realmlist"
 wait "$memorial"
 wait "$chat"
 wait "$components_page"
+wait "$agents_page"
 wait "$nip01"
 wait "$nip_guide"
 wait "$pylon"

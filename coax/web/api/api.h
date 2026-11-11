@@ -113,7 +113,10 @@ typedef struct {
   char pubkey[65];        // the signer, or the session's Nostr key, or ""
   char event_id[65];      // a NIP-98 event's id
   char player[160];       // X-Verse-Player
-  char via[16];           // nostr, email, phone, ...
+  char via[16];           // nostr, email, phone, key (an agent's oa_key_), ...
+  // An agent's grant (agents.c), filled by agents_admit: what agent-policy.coax decides on.
+  char grant[40], owner[40], key_id[16];
+  long long scopes, per_day, per_payment;
 } auth_principal;
 void auth_init(void);                     // checks the AP_* numbers against auth-policy.coax
 void auth_reset(void);                    // start of each request
@@ -126,3 +129,21 @@ void auth_print_limits(FILE *out);        // api --limits
 const char *auth_rule_of(const char *method, const char *path);   // api --rule METHOD PATH
 bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const char *location);
 bool auth_freeze_link(PGconn *db, const char *acct, char token[65]);
+// For agents.c: auth.c's answers, audit rows, tokens, addresses and limits.
+void auth_answer(const request *q, int status, const char *headers, const char *json, const char *lines);
+void auth_refuse(const request *q, int status, const char *words);
+void auth_audit(PGconn *db, const char *acct, const char *actor, const char *action, const char *result, const char *detail);
+bool auth_new_key(char id[9], char *out, size_t cap, char digest[65]);   // a new oa_key_, its id and digest
+void auth_visitor(const request *q, char ip[128]);
+bool auth_limited(const request *q, PGconn *db);             // true when it refused (agent_ask)
+bool auth_same_site(const request *q);
+const char *auth_origin(void);
+
+// Agents, their grants and keys, and `openagents login` (agents.c, agent-policy.coax, #13211).
+bool agents_init(void);                                      // its numbers against agent-policy.coax
+bool agents_key(PGconn *db, const char *digest, auth_principal *p);   // an oa_key_'s agent, or false
+int agents_admit(const request *q, PGconn *db, auth_principal *p, char words[200]);   // 0, or the refusal's status
+bool agents_scoped(const auth_principal *p, int scope);     // the grant holds this scope
+void agents_used(const request *q, PGconn *db, const auth_principal *p);   // the audit row of an admitted request
+int agents_pause_all(PGconn *db, const char *owner);        // logout everywhere with agents: how many paused
+bool agents_route(const request *q);                        // /api/agents*, /api/agent/*, /api/agent-keys/*, /api/auth/device/*

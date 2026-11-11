@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agents · OpenAgents</title>
+<meta name="description" content="Your agents and what each may do for you: approve, cap, rotate and revoke.">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/settings/agents/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>
+html,body{margin:0;height:100%;background:#0d0d0d;color:#ededed}
+body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+canvas[data-cursor=pointer]{cursor:pointer}
+main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
+html:not(.gpu) body{overflow:auto}
+a{color:#ff8c1f}
+.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>Agents</h1>
+<p>Your agents and what each may do for you. This page needs WebGPU. <a href="/settings/agents/index.md">Read how agents work</a>.</p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="agents" data-wgsl="/components.wgsl" data-assets="font:/build/zeron/Geist.ttf font:/build/zeron/Geist-Medium.ttf font:/build/zeron/Geist-SemiBold.ttf font:/build/zeron/GeistMono.ttf icons:/build/zeron/icons.json licence:/build/zeron/Geist-OFL.txt"></script>
+</body>
+</html>

@@ -36,6 +36,7 @@ Open projects with tasks any person or agent can pick up.
 ## Accounts
 
 - [Log in](https://openagents.com/login/index.md): with the OpenAgents phone app. The page shows a one-time QR code, the app approves it with your phone's Nostr key, and there is no password.
+- [Agents](https://openagents.com/settings/agents/index.md): accounts that act for you with their own keys: what each may do, its spend caps and when it ends; approve, rotate and revoke.
 - [Chat](https://openagents.com/chat/index.md): a direct chat with the OpenAgents agent. Admins only for now.
 - [Components](https://openagents.com/components/index.md): the component library every OpenAgents and Verse app draws with, shown in every skin.
 

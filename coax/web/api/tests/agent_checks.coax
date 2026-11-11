@@ -1,0 +1,319 @@
+// Agents' API checks (agents.c, agent-policy.coax, migration 0147; GitHub #13211), run by test.sh
+// after test.py with test agent keys:
+//   - the rule table, generated: `api --rules` lists every route, and an agent (by its oa_key_ and
+//     by its own Nostr key, NIP-98) gets 403 on every human, L2, L2-fresh and admin one;
+//   - an owner makes an agent (an oa_key_), and an agent's new key asks its owner (a code), who
+//     approves it; scopes are enforced (deny by default), spends stay under the caps the owner set
+//     and a payment id counts once; an address limit; revoke, rotate, pause with "log out
+//     everywhere" and resume; an agent can't log in;
+//   - the owner's NIP-OA attestation (the pinned vector's keys) is checked and published;
+//   - `openagents login`: the CLI's key asks, the owner approves, the key is the owner's as cli:<machine>;
+//   - the audit log has every grant and every use.
+// The messages are agent-wire.coax's (their writers run natively here; the readers' #tests run
+// against protoc's bytes).
+//   API=... PGURL=... PSQL=... SIGN=... API_BIN=... coax/web/tool.sh coax/web/api/tests/agent_checks.coax
+#load "api_harness.coax";
+#load "../agent-wire.coax";
+
+Gk :: struct { dir: [1100] u8; dir_n: int; }
+gk_dir :: (g: [] Gk) -> string { return cast(string) g[0].dir[0..<g[0].dir_n]; }
+// A key file in the work directory: secret is 64 hex, or "" for a new random one (sign --new).
+gk_key :: (t: [] Ap, g: [] Gk, name: string, secret: string, out: [] u8) -> string {
+  path := fs_join(gk_dir(g), name, out);
+  if secret != "" {
+    if !fs_write(path, secret) { return ""; }
+    c := [3] string.["/bin/chmod", "600", path];   // the signer reads only a private key file
+    co: [64] u8; ce: [256] u8;
+    if proc_run(c[..], 30000, co[..], ce[..]).status != 0 { return ""; }
+    return path;
+  }
+  a := [3] string.[t[0].sign, "--new", path];
+  o: [256] u8; err: [512] u8;
+  got := proc_run(a[..], 30000, o[..], err[..]);
+  if got.status != 0 { return ""; }
+  return path;
+}
+gk_pub :: (t: [] Ap, keyfile: string, out: [] u8) -> string {
+  a := [4] string.[t[0].sign, "--key", keyfile, "--pubkey"];
+  err: [512] u8;
+  got := proc_run(a[..], 30000, out, err[..]);
+  if got.status != 0 { return ""; }
+  return ap_trim(cast(string) out[0..<got.out_n]);
+}
+// A request signed by keyfile (NIP-98 over the URL, and the body when there is one), with an
+// extra header ("" for none). Its status.
+gk_signed :: (t: [] Ap, keyfile: string, method: string, path: string, body: string, extra: string) -> int {
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], path);
+  sig: [4096] u8;
+  auth := ap_nostr(t, keyfile, method, sb_text(url[..]), body, body.count > 0, sig[..]);
+  h: [1] Sb; sb(h[..], "Authorization: Nostr "); sb(h[..], auth);
+  hs := [3] string.[sb_text(h[..]), "Content-Type: application/x-protobuf", extra];
+  return ap_call(t, method, path, body, hs[0..<ifx extra == "" then 2 else 3]);
+}
+// A request with an agent's oa_key_.
+gk_keyed :: (t: [] Ap, key: string, method: string, path: string, body: string, extra: string) -> int {
+  h: [1] Sb; sb(h[..], "Authorization: Bearer "); sb(h[..], key);
+  hs := [3] string.[sb_text(h[..]), "Content-Type: application/x-protobuf", extra];
+  return ap_call(t, method, path, body, hs[0..<ifx extra == "" then 2 else 3]);
+}
+gk_bytes :: (t: [] Ap) -> [] u8 { return t[0].out[0..<t[0].n]; }
+gk_req :: (name: string, mask: int, day: int, pay: int, days: int) -> AwRequest {
+  r: AwRequest; r.name_n = aw_text(r.name[..], name); r.mask = mask; r.per_day = day; r.per_payment = pay; r.days = days;
+  return r;
+}
+gk_body :: (r: AwRequest, out: [] u8) -> string { n := aw_request_write(r, out); if n < 0 { return ""; } return cast(string) out[0..<n]; }
+gk_ticket :: (code: string, out: [] u8) -> string {
+  t: AwTicket; t.code_n = aw_text(t.code[..], code);
+  n := aw_ticket_write(t, out); if n < 0 { return ""; } return cast(string) out[0..<n];
+}
+gk_spend :: (t: [] Ap, keyfile: string, id: string, sats: int) -> AwSpendAnswer {
+  b: [256] u8; n := aw_spend_write(id, sats, b[..]);
+  code := gk_signed(t, keyfile, "POST", "/api/agent/spend", cast(string) b[0..<n], "");
+  a := aw_answer_read(gk_bytes(t));
+  if code != 200 && code != 403 { a.error = code; }
+  return a;
+}
+gk_count :: (t: [] Ap, q: string) -> int { o: [64] u8; return ap_whole(ap_sql(t, q, o[..])); }
+gk_has :: (s: string, part: string) -> bool { return ap_has(s, part); }
+
+// ---------------------------------------------------------------- the rule table
+// Every human, L2, L2-fresh and admin route refuses an agent, by key and by signature: 403.
+gk_rules :: (t: [] Ap, key: string, agent_key: string) {
+  bin: [1] string; bb: [1100] u8; bin[0] = proc_getenv("API_BIN", bb[..]);
+  if bin[0] == "" { ap_check(t, "api --rules runs (API_BIN)", false, "no API_BIN"); return; }
+  a := [2] string.[bin[0], "--rules"];
+  out: [32768] u8; err: [1024] u8;
+  got := proc_run(a[..], 30000, out[..], err[..]);
+  ap_check(t, "api --rules lists the table", got.status == 0 && got.out_n > 100, cast(string) err[0..<got.err_n]);
+  text := cast(string) out[0..<got.out_n];
+  checked := 0; bad: [1] Sb;
+  at := 0;
+  for i: 0..<text.count {
+    if text[i] != '\n' { continue; }
+    line := text[at..<i]; at = i + 1;
+    f: [4] string; nf := 0; s := 0;
+    for k: 0..<line.count + 1 {
+      if (k == line.count || line[k] == '\t') && nf < 4 { f[nf] = line[s..<k]; nf += 1; s = k + 1; }
+    }
+    if nf < 3 { continue; }
+    rule := f[2];
+    if rule != "human" && rule != "L2" && rule != "L2-fresh" && rule != "admin" { continue; }
+    method := ifx f[0] == "*" then "GET" else f[0];
+    p: [1] Sb;
+    if ap_ends(f[1], "*") { sb(p[..], f[1][0..<f[1].count - 1]); sb(p[..], "x"); } else { sb(p[..], f[1]); }
+    path := sb_text(p[..]);
+    body := ifx method == "GET" then "" else "{}";
+    k1 := gk_keyed(t, key, method, path, body, "");
+    k2 := gk_signed(t, agent_key, method, path, body, "");
+    if k1 != 403 || k2 != 403 { sb(bad[..], method); sb(bad[..], " "); sb(bad[..], path); sb(bad[..], " "); sb_int(bad[..], k1); sb(bad[..], "/"); sb_int(bad[..], k2); sb(bad[..], "; "); }
+    checked += 1;
+  }
+  ap_check(t, "an agent gets 403 on every human, L2, L2-fresh and admin route (by key and by signature)", checked >= 10 && bad[0].n == 0, sb_text(bad[..]));
+  n: [1] Sb; sb(n[..], "rules checked: "); sb_int(n[..], checked);
+  ap_check(t, sb_text(n[..]), checked >= 10, "");
+}
+
+gk_checks :: (t: [] Ap, g: [] Gk) {
+  // Keys: the owner and the attested agent are NIP-OA's pinned vector (secret keys 1 and 2).
+  ob: [1200] u8; owner_key := gk_key(t, g, "owner.key", "0000000000000000000000000000000000000000000000000000000000000001", ob[..]);
+  ab: [1200] u8; attested_key := gk_key(t, g, "attested.key", "0000000000000000000000000000000000000000000000000000000000000002", ab[..]);
+  sb_: [1200] u8; spender_key := gk_key(t, g, "spender.key", "", sb_[..]);
+  cb: [1200] u8; cli_key := gk_key(t, g, "cli.key", "", cb[..]);
+  sp: [80] u8; spender_pk := gk_pub(t, spender_key, sp[..]);
+  cp: [80] u8; cli_pk := gk_pub(t, cli_key, cp[..]);
+  ap_check(t, "test keys", owner_key != "" && attested_key != "" && spender_pk.count == 64 && cli_pk.count == 64, "");
+  q: [1] Sb; sb(q[..], "SELECT acct FROM auth.account_for_key('"); sb(q[..], NOA_T_OWNER_PK); sb(q[..], "', 'extension')");
+  oa: [64] u8; owner := ap_sql(t, sb_text(q[..]), oa[..]);
+  ap_check(t, "the owner has an account", owner.count == 31, owner);
+
+  // ---- the owner makes an agent with an API key (profile:read only)
+  wb: [AW_MAX] u8;
+  code := gk_signed(t, owner_key, "POST", "/api/agents", gk_body(gk_req("Builder", 1, 0, 0, 0), wb[..]), "");
+  s := aw_secret_read(gk_bytes(t));
+  key: [96] u8; for i: 0..<s.secret_n { key[i] = s.secret[i]; }
+  builder_key := cast(string) key[0..<s.secret_n];
+  builder: [40] u8; for i: 0..<s.account_n { builder[i] = s.account[i]; }
+  builder_acct := cast(string) builder[0..<s.account_n];
+  ap_check(t, "an owner makes an agent and gets its oa_key_ once", code == 200 && ap_starts(builder_key, "oa_key_") && builder_key.count == 74 && s.key_id_n == 8, ap_body(t));
+  sq: [1] Sb; sb(sq[..], "SELECT count(*) FROM auth.agent_keys WHERE agent = '"); sb(sq[..], builder_acct); sb(sq[..], "' AND token_sha256 ~ '^[0-9a-f]{64}$'");
+  ap_check(t, "only the key's SHA-256 is kept", gk_count(t, sb_text(sq[..])) == 1, "");
+  code = gk_keyed(t, builder_key, "GET", "/api/agent/me", "", "");
+  me := aw_agent_read(gk_bytes(t));
+  ap_check(t, "the agent reads its own grant", code == 200 && me.error == 0 && cast(string) me.name[0..<me.name_n] == "Builder" && me.mask == 1 && me.state == AG_ACTIVE, ap_body(t));
+  ap_check(t, "a grant ends in 90 days when the owner picks no end", me.expires_ms - me.created_ms >= 89 * AG_DAY_MS && me.expires_ms - me.created_ms <= 91 * AG_DAY_MS, "");
+  code = gk_keyed(t, builder_key, "GET", "/api/agent/owner", "", "");
+  o := aw_owner_read(gk_bytes(t));
+  ap_check(t, "profile:read reads the owner's profile", code == 200 && cast(string) o.account[0..<o.account_n] == owner, ap_body(t));
+  b: [256] u8; n := aw_spend_write("p-1", 10, b[..]);
+  code = gk_keyed(t, builder_key, "POST", "/api/agent/spend", cast(string) b[0..<n], "");
+  ap_check(t, "without wallet:spend, spending is 403 (deny by default)", code == 403, ap_body(t));
+  code = gk_signed(t, owner_key, "GET", "/api/agent/me", "", "");
+  ap_check(t, "a person on an agent route is 403", code == 403, ap_body(t));
+  code = gk_keyed(t, "oa_key_ABCDEFGH_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "GET", "/api/agent/me", "", "");
+  ap_check(t, "a made-up oa_key_ is 401", code == 401, ap_body(t));
+
+  // ---- an agent's new key asks its owner; the owner approves at L2
+  code = gk_signed(t, spender_key, "POST", "/api/agents/request", gk_body(gk_req("Spender", 2, 1000, 400, 30), wb[..]), "");
+  tk := aw_ticket_read(gk_bytes(t));
+  cd: [8] u8; for i: 0..<8 { cd[i] = tk.code[i]; }
+  ask := cast(string) cd[..];
+  ap_check(t, "an agent's key asks: a code and the owner's link", code == 200 && tk.code_n == 8 && ap_has(cast(string) tk.url[0..<tk.url_n], "/settings/agents#request="), ap_body(t));
+  tb: [256] u8;
+  code = gk_signed(t, spender_key, "POST", "/api/agents/request/poll", gk_ticket(ask, tb[..]), "");
+  wt := aw_ticket_read(gk_bytes(t));
+  ap_check(t, "it waits", code == 200 && cast(string) wt.state[0..<wt.state_n] == "waiting", ap_body(t));
+  pa: [1] Sb; sb(pa[..], "/api/agents/request/"); sb(pa[..], ask);
+  code = gk_signed(t, owner_key, "GET", sb_text(pa[..]), "", "");
+  shown := aw_ticket_read(gk_bytes(t));
+  ap_check(t, "the owner sees what it asks for", code == 200 && shown.has_request && shown.request.mask == 2 && shown.request.per_day == 1000, ap_body(t));
+  code = gk_keyed(t, builder_key, "GET", sb_text(pa[..]), "", "");
+  ap_check(t, "another agent can't see it (human only)", code == 403, ap_body(t));
+  pv: [1] Sb; sb(pv[..], "/api/agents/approve/"); sb(pv[..], ask);
+  code = gk_signed(t, owner_key, "POST", sb_text(pv[..]), "", "");
+  sa := aw_agent_read(gk_bytes(t));
+  spender: [40] u8; for i: 0..<sa.account_n { spender[i] = sa.account[i]; }
+  spender_acct := cast(string) spender[0..<sa.account_n];
+  ap_check(t, "the owner approves: the agent's account, with the caps", code == 200 && sa.mask == 2 && sa.per_day == 1000 && sa.per_payment == 400 && sa.nkeys == 1, ap_body(t));
+  code = gk_signed(t, owner_key, "POST", sb_text(pv[..]), "", "");
+  ap_check(t, "a request is approved once", code == 409, ap_body(t));
+  code = gk_signed(t, spender_key, "POST", "/api/agents/request/poll", gk_ticket(ask, tb[..]), "");
+  pt := aw_ticket_read(gk_bytes(t));
+  ap_check(t, "its key hears it was approved, and its account", code == 200 && cast(string) pt.state[0..<pt.state_n] == "approved" && cast(string) pt.label[0..<pt.label_n] == spender_acct, ap_body(t));
+
+  // ---- spending, under the owner's caps; each payment id once
+  a1 := gk_spend(t, spender_key, "pay-1", 300);
+  ap_check(t, "a spend under the caps", a1.error == 0 && a1.allowed && a1.left == 700, ap_body(t));
+  a2 := gk_spend(t, spender_key, "pay-1", 300);
+  ap_check(t, "the same payment again counts once", a2.allowed && a2.left == 700, ap_body(t));
+  a3 := gk_spend(t, spender_key, "pay-2", 500);
+  ap_check(t, "over the per-payment cap is refused, in words", !a3.allowed && a3.words_n > 0 && a3.left == 700, ap_body(t));
+  a4 := gk_spend(t, spender_key, "pay-3", 400);
+  a5 := gk_spend(t, spender_key, "pay-4", 400);
+  ap_check(t, "over the day's cap is refused", a4.allowed && a4.left == 300 && !a5.allowed && a5.left == 300, ap_body(t));
+  code = gk_signed(t, spender_key, "GET", "/api/agent/owner", "", "");
+  ap_check(t, "without profile:read, the owner's profile is 403", code == 403, ap_body(t));
+
+  // ---- an agent never logs in, and an agent can't ask for another agent
+  code = gk_signed(t, spender_key, "POST", "/api/auth/nostr", "{\"challenge\":\"x\"}", "");
+  ap_check(t, "an agent can't log in (it signs each request)", code == 403, ap_body(t));
+  code = gk_signed(t, spender_key, "POST", "/api/agents/request", gk_body(gk_req("Again", 1, 0, 0, 0), wb[..]), "");
+  ap_check(t, "a key that is an account's can't ask again", code == 409, ap_body(t));
+
+  // ---- the generated rule-table check
+  gk_rules(t, builder_key, spender_key);
+
+  // ---- addresses
+  gp: [1] Sb; sb(gp[..], "/api/agents/grant/"); sb(gp[..], builder_acct);
+  narrow := gk_req("Builder", 1, 0, 0, 30); narrow.hosts[0].n = aw_text(narrow.hosts[0].b[..], "203.0.113.0/24"); narrow.nhosts = 1;
+  code = gk_signed(t, owner_key, "POST", sb_text(gp[..]), gk_body(narrow, wb[..]), "");
+  ap_check(t, "the owner limits an agent to addresses", code == 200 && aw_agent_read(gk_bytes(t)).nhosts == 1, ap_body(t));
+  code = gk_keyed(t, builder_key, "GET", "/api/agent/me", "", "X-Forwarded-For: 198.51.100.9, 10.0.0.1");
+  ap_check(t, "from another address it is refused", code == 401, ap_body(t));
+  code = gk_keyed(t, builder_key, "GET", "/api/agent/me", "", "X-Forwarded-For: 203.0.113.7, 10.0.0.1");
+  ap_check(t, "from a listed address it passes", code == 200, ap_body(t));
+  bad := gk_req("Builder", 1, 0, 0, 400);
+  code = gk_signed(t, owner_key, "POST", sb_text(gp[..]), gk_body(bad, wb[..]), "");
+  ap_check(t, "a grant longer than a year is refused", code == 400, ap_body(t));
+
+  // ---- log out everywhere pauses agents; resume
+  code = gk_signed(t, owner_key, "POST", "/api/auth/logout-everywhere", "{\"agents\":true}", "");
+  ap_check(t, "log out everywhere, with agents", code == 200, ap_body(t));
+  code = gk_signed(t, spender_key, "GET", "/api/agent/me", "", "");
+  ap_check(t, "a paused agent is refused", code == 401, ap_body(t));
+  rp: [1] Sb; sb(rp[..], "/api/agents/resume/"); sb(rp[..], spender_acct);
+  code = gk_signed(t, owner_key, "POST", sb_text(rp[..]), "", "");
+  rb: [1] Sb; sb(rb[..], "/api/agents/resume/"); sb(rb[..], builder_acct);
+  c_rb := gk_signed(t, owner_key, "POST", sb_text(rb[..]), "", "");
+  c2 := gk_signed(t, spender_key, "GET", "/api/agent/me", "", "");
+  ap_check(t, "resumed, it works again", code == 200 && c_rb == 200 && c2 == 200, ap_body(t));
+
+  // ---- rotate: a new API key; the old one ends
+  rt: [1] Sb; sb(rt[..], "/api/agents/rotate/"); sb(rt[..], builder_acct);
+  code = gk_signed(t, owner_key, "POST", sb_text(rt[..]), "", "");
+  s2 := aw_secret_read(gk_bytes(t));
+  nk: [96] u8; for i: 0..<s2.secret_n { nk[i] = s2.secret[i]; }
+  new_key := cast(string) nk[0..<s2.secret_n];
+  c_old := gk_keyed(t, builder_key, "GET", "/api/agent/me", "", "X-Forwarded-For: 203.0.113.7, 10.0.0.1");
+  c_new := gk_keyed(t, new_key, "GET", "/api/agent/me", "", "X-Forwarded-For: 203.0.113.7, 10.0.0.1");
+  ap_check(t, "rotate: the new key works, the old one is 401", code == 200 && c_old == 401 && c_new == 200 && new_key != builder_key, ap_body(t));
+
+  // ---- the owner's list
+  code = gk_signed(t, owner_key, "GET", "/api/agents", "", "");
+  ap_check(t, "the owner's list has both agents", code == 200 && aw_list_count(gk_bytes(t)) == 2, ap_body(t));
+
+  // ---- revoke: at once, everywhere (a public route too)
+  rv: [1] Sb; sb(rv[..], "/api/agents/revoke/"); sb(rv[..], builder_acct);
+  code = gk_signed(t, owner_key, "POST", sb_text(rv[..]), "", "");
+  c3 := gk_keyed(t, new_key, "GET", "/api/agent/me", "", "X-Forwarded-For: 203.0.113.7, 10.0.0.1");
+  c4 := gk_keyed(t, new_key, "GET", "/api/playtest/health", "", "X-Forwarded-For: 203.0.113.7, 10.0.0.1");
+  ap_check(t, "revoked: refused at once, on every route", code == 200 && c3 == 401 && c4 == 401, ap_body(t));
+  code = gk_signed(t, owner_key, "POST", "/api/agents/revoke-all", "", "");
+  c5 := gk_signed(t, spender_key, "GET", "/api/agent/me", "", "");
+  ap_check(t, "revoke all", code == 200 && c5 == 401, ap_body(t));
+
+  // ---- NIP-OA: the owner's attestation for an agent key, checked and published
+  att := gk_req("Attested", 1, 0, 0, 0);
+  att.pubkey_n = aw_text(att.pubkey[..], NOA_T_AGENT_PK);
+  att.owner_n = aw_text(att.owner[..], NOA_T_OWNER_PK);
+  att.conditions_n = aw_text(att.conditions[..], "kind=1&created_at<1713957000");
+  att.sig_n = aw_text(att.sig[..], NOA_T_SIG_HEX);
+  forged := att; forged.conditions_n = aw_text(forged.conditions[..], "kind=1&created_at<1713957001");
+  code = gk_signed(t, attested_key, "POST", "/api/agents/request", gk_body(forged, wb[..]), "");
+  ap_check(t, "a forged attestation is refused", code == 400, ap_body(t));
+  code = gk_signed(t, attested_key, "POST", "/api/agents/request", gk_body(att, wb[..]), "");
+  at2 := aw_ticket_read(gk_bytes(t));
+  ac: [8] u8; for i: 0..<8 { ac[i] = at2.code[i]; }
+  av: [1] Sb; sb(av[..], "/api/agents/approve/"); sb(av[..], cast(string) ac[..]);
+  c6 := gk_signed(t, owner_key, "POST", sb_text(av[..]), "", "");
+  attested := aw_agent_read(gk_bytes(t));
+  ap_check(t, "an attested agent is approved by the key that signed it", code == 200 && c6 == 200 && attested.att_owner_n == 64, ap_body(t));
+  kp: [1] Sb; sb(kp[..], "/api/agent-keys/"); sb(kp[..], NOA_T_AGENT_PK);
+  code = ap_call(t, "GET", sb_text(kp[..]), "", t[0].no[0..<0]);
+  ap_check(t, "the attestation is published as a NIP-OA tag", code == 200 && ap_has(ap_body(t), "[\"auth\",\"79be667e") && ap_has(ap_body(t), NOA_T_SIG_HEX), ap_body(t));
+
+  // ---- `openagents login`: the CLI's key asks, the owner approves, the key is the owner's
+  code = gk_signed(t, cli_key, "POST", "/api/auth/device/start", "{\"machine\":\"testbox\"}", "");
+  dc: [64] u8; dcode := ap_member(ap_body(t), "code", dc[..]);
+  di: [32] u8; did := ap_member(ap_body(t), "id", di[..]);
+  ap_check(t, "the CLI asks: a code", code == 200 && dcode.count == 32 && did.count == 16, ap_body(t));
+  lb: [1] Sb; sb(lb[..], "{\"code\":\""); sb(lb[..], dcode); sb(lb[..], "\"}");
+  code = ap_json(t, "POST", "/api/auth/device/look", sb_text(lb[..]));
+  ap_check(t, "the page shows the computer's name", code == 200 && ap_has(ap_body(t), "testbox"), ap_body(t));
+  code = gk_signed(t, spender_key, "POST", "/api/auth/device/approve", sb_text(lb[..]), "");
+  ap_check(t, "an agent can't approve a computer", code == 403 || code == 401, ap_body(t));
+  code = gk_signed(t, owner_key, "POST", "/api/auth/device/approve", sb_text(lb[..]), "");
+  ap_check(t, "the owner approves", code == 200 && ap_has(ap_body(t), "testbox"), ap_body(t));
+  pp: [1] Sb; sb(pp[..], "/api/auth/device/"); sb(pp[..], did);
+  code = gk_signed(t, cli_key, "GET", sb_text(pp[..]), "", "");
+  ap_check(t, "the CLI hears it was approved", code == 200 && ap_has(ap_body(t), "approved"), ap_body(t));
+  code = gk_signed(t, cli_key, "GET", "/api/auth/account", "", "");
+  ap_check(t, "the CLI's key acts as the owner", code == 200 && ap_has(ap_body(t), owner), ap_body(t));
+  lq: [1] Sb; sb(lq[..], "SELECT label FROM auth.nostr_keys WHERE pubkey = '"); sb(lq[..], cli_pk); sb(lq[..], "'");
+  lo: [96] u8;
+  ap_check(t, "linked as cli:<machine>", ap_sql(t, sb_text(lq[..]), lo[..]) == "cli:testbox", "");
+
+  // ---- the audit log: every grant and every use
+  aq: [1] Sb; sb(aq[..], "SELECT count(DISTINCT action) FROM auth.audit WHERE account = '"); sb(aq[..], owner);
+  sb(aq[..], "' AND action IN ('agent.grant', 'agent.use', 'agent.spend', 'agent.revoke', 'agent.rotate', 'agent.pause', 'agent.resume', 'agent.owner', 'device.link')");
+  ap_check(t, "the audit log has every kind of grant, change and use", gk_count(t, sb_text(aq[..])) == 9, "");
+  uq: [1] Sb; sb(uq[..], "SELECT count(*) FROM auth.audit WHERE action = 'agent.use' AND result = 'refused' AND actor = '"); sb(uq[..], builder_acct); sb(uq[..], "'");
+  ap_check(t, "refused uses are logged too", gk_count(t, sb_text(uq[..])) > 0, "");
+  sq2: [1] Sb; sb(sq2[..], "SELECT count(*) FROM auth.audit WHERE detail::text ~ 'oa_key_[A-Z2-7]{8}_'");
+  ap_check(t, "no key is in the audit log", gk_count(t, sb_text(sq2[..])) == 0, "");
+}
+
+// The pinned NIP-OA vector (coax/tests/nostr/nipoa_fixtures.coax): secret keys 1 and 2.
+NOA_T_OWNER_PK :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+NOA_T_AGENT_PK :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+NOA_T_SIG_HEX :: "8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369";
+
+tool_main :: () -> int #export_c #effects(all) {
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  g: [1] Gk;
+  d := fs_temp("agent-checks", g[0].dir[..]); g[0].dir_n = d.count;
+  if d == "" { tool_errln("agent_checks: no temp directory"); return 2; }
+  gk_checks(t[..], g[..]);
+  gone := fs_remove(d);
+  return ap_done(t[..], "agent checks");
+}

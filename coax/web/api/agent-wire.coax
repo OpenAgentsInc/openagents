@@ -1,0 +1,463 @@
+// The one codec for agent accounts and their grants (GitHub #13211): the messages of
+// proto/openagents/account/v1alpha1/agents.proto, read and written with the codec Coax generates
+// from proto/descriptors/account-agents.pb, never by hand. The API (agents.c, through C), the
+// /settings/agents and /login/device page (apps/openagents-web/agents.coax) and the `openagents`
+// CLI all use these functions, so the three can't drift.
+//
+// Reading a GrantRequest also checks it against agent-policy.coax (the scopes, caps, expiry,
+// addresses, the agent's key and the owner's attestation shape): AwRequest.verdict is AG_OK or
+// the first refusal. Writing never decides anything.
+//   coax/bin/coax test coax/web/api/agent-wire.coax
+#load "agent-policy.coax";
+#import_proto "../../../proto/descriptors/account-agents.pb" as AW;
+
+AW_HOSTS :: 8;
+AW_KEYS :: 16;
+AW_MAX :: 4096;            // one message, at most (an Agent with sixteen keys and eight addresses fits)
+
+AwText :: struct { b: [64] u8; n: int; }
+AwRequest :: struct {
+  verdict: int;
+  name: [80] u8; name_n: int;
+  mask: int; per_day: int; per_payment: int; days: int;
+  hosts: [AW_HOSTS] AwText; nhosts: int;
+  pubkey: [64] u8; pubkey_n: int;                        // 0, or the agent's Nostr key in hex
+  owner: [64] u8; owner_n: int;                          // the attestation: 0, or the owner's key in hex
+  conditions: [256] u8; conditions_n: int;
+  sig: [128] u8; sig_n: int;
+}
+AwKey :: struct { id: [80] u8; id_n: int; api: bool; created_ms: int; last_used_ms: int; revoked_ms: int; }
+AwAgent :: struct {
+  error: int;                                             // 0, or AG_BAD_WIRE
+  account: [40] u8; account_n: int; name: [80] u8; name_n: int;
+  grant_id: [40] u8; grant_n: int; owner: [40] u8; owner_n: int;
+  mask: int; per_day: int; per_payment: int;
+  hosts: [AW_HOSTS] AwText; nhosts: int;
+  created_ms: int; expires_ms: int; state: int; spent: int; last_used_ms: int;
+  keys: [AW_KEYS] AwKey; nkeys: int;
+  att_owner: [64] u8; att_owner_n: int; att_conditions: [256] u8; att_conditions_n: int; att_sig: [128] u8; att_sig_n: int;
+}
+AwTicket :: struct {
+  error: int;
+  code: [8] u8; code_n: int; url: [200] u8; url_n: int; expires_ms: int;
+  state: [16] u8; state_n: int; label: [80] u8; label_n: int;
+  has_request: bool; request: AwRequest;
+}
+AwSecret :: struct { error: int; account: [40] u8; account_n: int; key_id: [80] u8; key_id_n: int; secret: [80] u8; secret_n: int; }
+AwSpendAsk :: struct { verdict: int; payment_id: [64] u8; payment_n: int; sats: int; }
+AwSpendAnswer :: struct { error: int; allowed: bool; words: [200] u8; words_n: int; left: int; }
+AwOwner :: struct { error: int; account: [40] u8; account_n: int; name: [80] u8; name_n: int; kind: [16] u8; kind_n: int; }
+
+// ---------------------------------------------------------------- small pieces
+// One of two buffers by step, so a setter never writes where it reads.
+aw_b :: (a: [] u8, b: [] u8, step: int) -> [] u8 { if step % 2 == 0 { return a; } return b; }
+aw_text :: (dst: [] u8, src: string) -> int { n := 0; for i: 0..<src.count { if n < dst.count { dst[n] = src[i]; n += 1; } } return n; }
+aw_hex :: (s: string, n: int) -> bool #effects(all) {
+  if s.count != n { return false; }
+  for i: 0..<n { c := s[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// Sats from the wire: over every bitcoin there will be reads as -1, which ag_request refuses.
+aw_sats :: (v: u64) -> int #effects(all) { if v > cast(u64) AG_MAX_SATS { return -1; } return cast(int) v; }
+aw_copy :: (out: [] u8, view: AW__pb_View) -> int {
+  if view.error != 0 { return -1; }
+  return view.wire.count;
+}
+
+// ---------------------------------------------------------------- GrantRequest
+aw_request_from :: (m: AW_GrantRequest) -> AwRequest {
+  r: AwRequest;
+  if m.error != 0 { r.verdict = AG_BAD_WIRE; return r; }
+  name := AW_GrantRequest_get_agent_name(m);
+  if !name.present || !ag_name_ok(name.value) { r.verdict = AG_BAD_NAME; return r; }
+  r.name_n = aw_text(r.name[..], name.value);
+  itr := AW_GrantRequest_iter_scopes(m);
+  while itr.has_value {
+    bit := ag_bit(cast(int) itr.value);
+    if bit == 0 { r.mask = -1; break; }
+    r.mask = r.mask | bit;
+    itr = AW_GrantRequest_next_scopes(itr);
+  }
+  if itr.error != 0 { r.verdict = AG_BAD_WIRE; return r; }
+  caps := AW_GrantRequest_get_caps(m);
+  if caps.present {
+    d := AW_SpendCaps_get_sats_per_day(caps.value); p := AW_SpendCaps_get_sats_per_payment(caps.value);
+    r.per_day = aw_sats(d.value); r.per_payment = aw_sats(p.value);
+  }
+  r.days = cast(int) AW_GrantRequest_get_days(m).value;
+  hosts := AW_GrantRequest_iter_hosts(m);
+  while hosts.has_value {
+    if r.nhosts == AW_HOSTS { r.nhosts = AW_HOSTS + 1; break; }
+    if !ag_host_ok(hosts.value) { r.verdict = AG_BAD_HOST; return r; }
+    r.hosts[r.nhosts].n = aw_text(r.hosts[r.nhosts].b[..], hosts.value);
+    r.nhosts += 1;
+    hosts = AW_GrantRequest_next_hosts(hosts);
+  }
+  if hosts.error != 0 { r.verdict = AG_BAD_WIRE; return r; }
+  r.verdict = ag_request(r.mask, r.per_day, r.per_payment, r.days, r.nhosts);
+  if r.verdict != AG_OK { return r; }
+  key := AW_GrantRequest_get_agent_pubkey(m);
+  if key.present {
+    if !aw_hex(key.value, 64) { r.verdict = AG_BAD_KEY; return r; }
+    r.pubkey_n = aw_text(r.pubkey[..], key.value);
+  }
+  att := AW_GrantRequest_get_attestation(m);
+  if att.present {
+    o := AW_OwnerAttestation_get_owner_pubkey(att.value); a := AW_OwnerAttestation_get_agent_pubkey(att.value);
+    c := AW_OwnerAttestation_get_conditions(att.value); s := AW_OwnerAttestation_get_sig(att.value);
+    if r.pubkey_n != 64 || !aw_hex(o.value, 64) || a.value != key.value || !aw_hex(s.value, 128) || c.value.count > 256 || o.value == key.value {
+      r.verdict = AG_BAD_ATTESTATION; return r;
+    }
+    r.owner_n = aw_text(r.owner[..], o.value); r.conditions_n = aw_text(r.conditions[..], c.value); r.sig_n = aw_text(r.sig[..], s.value);
+  }
+  return r;
+}
+// A GrantRequest's bytes, read and checked.
+aw_request_read :: (wire: [] u8) -> AwRequest #export_c #effects(all) { return aw_request_from(AW_GrantRequest_decode(wire)); }
+
+aw_request_build :: (q: AwRequest, a: [] u8, b: [] u8) -> AW_GrantRequest {
+  r := q; m := AW_GrantRequest_new(); step := 0;
+  ca: [64] u8; cb: [64] u8; aa: [600] u8; ab: [600] u8;
+  m = AW_GrantRequest_set_agent_name(m, cast(string) r.name[0..<r.name_n], aw_b(a, b, step)); step += 1;
+  for s: 1..<AG_SCOPES + 1 {
+    if ag_holds(r.mask, s) { m = AW_GrantRequest_append_scopes(m, cast(s32) s, aw_b(a, b, step)); step += 1; }
+  }
+  caps := AW_SpendCaps_new();
+  caps = AW_SpendCaps_set_sats_per_day(caps, cast(u64) r.per_day, ca[..]);
+  caps = AW_SpendCaps_set_sats_per_payment(caps, cast(u64) r.per_payment, cb[..]);
+  m = AW_GrantRequest_set_caps(m, caps, aw_b(a, b, step)); step += 1;
+  m = AW_GrantRequest_set_days(m, cast(u32) r.days, aw_b(a, b, step)); step += 1;
+  for i: 0..<r.nhosts {
+    m = AW_GrantRequest_append_hosts(m, cast(string) r.hosts[i].b[0..<r.hosts[i].n], aw_b(a, b, step)); step += 1;
+  }
+  if r.pubkey_n > 0 { m = AW_GrantRequest_set_agent_pubkey(m, cast(string) r.pubkey[0..<r.pubkey_n], aw_b(a, b, step)); step += 1; }
+  if r.owner_n > 0 {
+    t := AW_OwnerAttestation_new();
+    t = AW_OwnerAttestation_set_owner_pubkey(t, cast(string) r.owner[0..<r.owner_n], aa[..]);
+    t = AW_OwnerAttestation_set_agent_pubkey(t, cast(string) r.pubkey[0..<r.pubkey_n], ab[..]);
+    t = AW_OwnerAttestation_set_conditions(t, cast(string) r.conditions[0..<r.conditions_n], aa[..]);
+    t = AW_OwnerAttestation_set_sig(t, cast(string) r.sig[0..<r.sig_n], ab[..]);
+    m = AW_GrantRequest_set_attestation(m, t, aw_b(a, b, step)); step += 1;
+  }
+  return m;
+}
+// A GrantRequest's bytes into out: their length, or -1.
+aw_request_write :: (r: AwRequest, out: [] u8) -> int #export_c #effects(all) {
+  a: [AW_MAX] u8; b: [AW_MAX] u8;
+  m := aw_request_build(r, a[..], b[..]);
+  return aw_copy(out, AW_GrantRequest_encode(m, out));
+}
+
+// ---------------------------------------------------------------- Agent and AgentList
+aw_agent_build :: (g: AwAgent, a: [] u8, b: [] u8) -> AW_Agent {
+  x := g;
+  ga: [AW_MAX] u8; gb: [AW_MAX] u8; ca: [64] u8; cb: [64] u8; ka: [256] u8; kb: [256] u8; ta: [600] u8; tb: [600] u8;
+  gr := AW_Grant_new(); gs := 0;
+  gr = AW_Grant_set_grant_id(gr, cast(string) x.grant_id[0..<x.grant_n], aw_b(ga[..], gb[..], gs)); gs += 1;
+  gr = AW_Grant_set_agent_account(gr, cast(string) x.account[0..<x.account_n], aw_b(ga[..], gb[..], gs)); gs += 1;
+  gr = AW_Grant_set_owner_account(gr, cast(string) x.owner[0..<x.owner_n], aw_b(ga[..], gb[..], gs)); gs += 1;
+  for s: 1..<AG_SCOPES + 1 {
+    if ag_holds(x.mask, s) { gr = AW_Grant_append_scopes(gr, cast(s32) s, aw_b(ga[..], gb[..], gs)); gs += 1; }
+  }
+  caps := AW_SpendCaps_new();
+  caps = AW_SpendCaps_set_sats_per_day(caps, cast(u64) x.per_day, ca[..]);
+  caps = AW_SpendCaps_set_sats_per_payment(caps, cast(u64) x.per_payment, cb[..]);
+  gr = AW_Grant_set_caps(gr, caps, aw_b(ga[..], gb[..], gs)); gs += 1;
+  for i: 0..<x.nhosts { gr = AW_Grant_append_hosts(gr, cast(string) x.hosts[i].b[0..<x.hosts[i].n], aw_b(ga[..], gb[..], gs)); gs += 1; }
+  gr = AW_Grant_set_created_ms(gr, cast(s64) x.created_ms, aw_b(ga[..], gb[..], gs)); gs += 1;
+  gr = AW_Grant_set_expires_ms(gr, cast(s64) x.expires_ms, aw_b(ga[..], gb[..], gs)); gs += 1;
+  gr = AW_Grant_set_state(gr, cast(s32) x.state, aw_b(ga[..], gb[..], gs)); gs += 1;
+  gr = AW_Grant_set_spent_sats_24h(gr, cast(u64) x.spent, aw_b(ga[..], gb[..], gs)); gs += 1;
+  gr = AW_Grant_set_last_used_ms(gr, cast(s64) x.last_used_ms, aw_b(ga[..], gb[..], gs)); gs += 1;
+  m := AW_Agent_new(); step := 0;
+  m = AW_Agent_set_account(m, cast(string) x.account[0..<x.account_n], aw_b(a, b, step)); step += 1;
+  m = AW_Agent_set_name(m, cast(string) x.name[0..<x.name_n], aw_b(a, b, step)); step += 1;
+  m = AW_Agent_set_grant(m, gr, aw_b(a, b, step)); step += 1;
+  for i: 0..<x.nkeys {
+    k := AW_AgentKey_new(); ks := 0;
+    k = AW_AgentKey_set_key_id(k, cast(string) x.keys[i].id[0..<x.keys[i].id_n], aw_b(ka[..], kb[..], ks)); ks += 1;
+    k = AW_AgentKey_set_api_key(k, x.keys[i].api, aw_b(ka[..], kb[..], ks)); ks += 1;
+    k = AW_AgentKey_set_created_ms(k, cast(s64) x.keys[i].created_ms, aw_b(ka[..], kb[..], ks)); ks += 1;
+    k = AW_AgentKey_set_last_used_ms(k, cast(s64) x.keys[i].last_used_ms, aw_b(ka[..], kb[..], ks)); ks += 1;
+    k = AW_AgentKey_set_revoked_ms(k, cast(s64) x.keys[i].revoked_ms, aw_b(ka[..], kb[..], ks)); ks += 1;
+    m = AW_Agent_append_keys(m, k, aw_b(a, b, step)); step += 1;
+  }
+  if x.att_owner_n > 0 {
+    t := AW_OwnerAttestation_new();
+    t = AW_OwnerAttestation_set_owner_pubkey(t, cast(string) x.att_owner[0..<x.att_owner_n], ta[..]);
+    t = AW_OwnerAttestation_set_conditions(t, cast(string) x.att_conditions[0..<x.att_conditions_n], tb[..]);
+    t = AW_OwnerAttestation_set_sig(t, cast(string) x.att_sig[0..<x.att_sig_n], ta[..]);
+    m = AW_Agent_set_attestation(m, t, aw_b(a, b, step)); step += 1;
+  }
+  return m;
+}
+// One Agent's bytes into out: their length, or -1.
+aw_agent_write :: (g: AwAgent, out: [] u8) -> int #export_c #effects(all) {
+  a: [AW_MAX] u8; b: [AW_MAX] u8;
+  return aw_copy(out, AW_Agent_encode(aw_agent_build(g, a[..], b[..]), out));
+}
+// The AgentList list (list_n bytes; 0 for a new one) with one more Agent, into out: the length, or -1.
+aw_list_append :: (list: [] u8, agent: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  l := AW_AgentList_decode(list);
+  g := AW_Agent_decode(agent);
+  if g.error != 0 { return -1; }
+  m := AW_AgentList_append_agents(l, g, out);
+  if m.error != 0 { return -1; }
+  return m.wire.count;
+}
+aw_agent_from :: (m: AW_Agent) -> AwAgent {
+  g: AwAgent;
+  if m.error != 0 { g.error = AG_BAD_WIRE; return g; }
+  g.account_n = aw_text(g.account[..], AW_Agent_get_account(m).value);
+  g.name_n = aw_text(g.name[..], AW_Agent_get_name(m).value);
+  gr := AW_Agent_get_grant(m);
+  if gr.present {
+    x := gr.value;
+    g.grant_n = aw_text(g.grant_id[..], AW_Grant_get_grant_id(x).value);
+    g.owner_n = aw_text(g.owner[..], AW_Grant_get_owner_account(x).value);
+    itr := AW_Grant_iter_scopes(x);
+    while itr.has_value { g.mask = g.mask | ag_bit(cast(int) itr.value); itr = AW_Grant_next_scopes(itr); }
+    caps := AW_Grant_get_caps(x);
+    if caps.present {
+      g.per_day = cast(int) AW_SpendCaps_get_sats_per_day(caps.value).value;
+      g.per_payment = cast(int) AW_SpendCaps_get_sats_per_payment(caps.value).value;
+    }
+    hs := AW_Grant_iter_hosts(x);
+    while hs.has_value && g.nhosts < AW_HOSTS { g.hosts[g.nhosts].n = aw_text(g.hosts[g.nhosts].b[..], hs.value); g.nhosts += 1; hs = AW_Grant_next_hosts(hs); }
+    g.created_ms = cast(int) AW_Grant_get_created_ms(x).value;
+    g.expires_ms = cast(int) AW_Grant_get_expires_ms(x).value;
+    g.state = cast(int) AW_Grant_get_state(x).value;
+    g.spent = cast(int) AW_Grant_get_spent_sats_24h(x).value;
+    g.last_used_ms = cast(int) AW_Grant_get_last_used_ms(x).value;
+  }
+  ks := AW_Agent_iter_keys(m);
+  while ks.has_value && g.nkeys < AW_KEYS {
+    k := ks.value;
+    g.keys[g.nkeys].id_n = aw_text(g.keys[g.nkeys].id[..], AW_AgentKey_get_key_id(k).value);
+    g.keys[g.nkeys].api = AW_AgentKey_get_api_key(k).value;
+    g.keys[g.nkeys].created_ms = cast(int) AW_AgentKey_get_created_ms(k).value;
+    g.keys[g.nkeys].last_used_ms = cast(int) AW_AgentKey_get_last_used_ms(k).value;
+    g.keys[g.nkeys].revoked_ms = cast(int) AW_AgentKey_get_revoked_ms(k).value;
+    g.nkeys += 1;
+    ks = AW_Agent_next_keys(ks);
+  }
+  att := AW_Agent_get_attestation(m);
+  if att.present {
+    g.att_owner_n = aw_text(g.att_owner[..], AW_OwnerAttestation_get_owner_pubkey(att.value).value);
+    g.att_conditions_n = aw_text(g.att_conditions[..], AW_OwnerAttestation_get_conditions(att.value).value);
+    g.att_sig_n = aw_text(g.att_sig[..], AW_OwnerAttestation_get_sig(att.value).value);
+  }
+  return g;
+}
+aw_agent_read :: (wire: [] u8) -> AwAgent #export_c #effects(all) { return aw_agent_from(AW_Agent_decode(wire)); }
+// How many agents an AgentList holds, or -1 when it doesn't read.
+aw_list_count :: (list: [] u8) -> int #export_c #effects(all) {
+  l := AW_AgentList_decode(list);
+  if l.error != 0 { return -1; }
+  n := 0; itr := AW_AgentList_iter_agents(l);
+  while itr.has_value { n += 1; itr = AW_AgentList_next_agents(itr); }
+  return n;
+}
+// The index-th agent of an AgentList.
+aw_list_at :: (list: [] u8, index: int) -> AwAgent #export_c #effects(all) {
+  g: AwAgent; g.error = AG_BAD_WIRE;
+  l := AW_AgentList_decode(list);
+  if l.error != 0 { return g; }
+  n := 0; itr := AW_AgentList_iter_agents(l);
+  while itr.has_value {
+    if n == index { return aw_agent_from(itr.value); }
+    n += 1; itr = AW_AgentList_next_agents(itr);
+  }
+  return g;
+}
+
+// ---------------------------------------------------------------- the small messages
+aw_secret_write :: (account: string, key_id: string, secret: string, out: [] u8) -> int #export_c #effects(all) {
+  a: [256] u8; b: [256] u8;
+  m := AW_KeySecret_new();
+  m = AW_KeySecret_set_agent_account(m, account, a[..]);
+  m = AW_KeySecret_set_key_id(m, key_id, b[..]);
+  if secret.count > 0 { m = AW_KeySecret_set_secret(m, secret, a[..]); }
+  return aw_copy(out, AW_KeySecret_encode(m, out));
+}
+aw_secret_read :: (wire: [] u8) -> AwSecret #export_c #effects(all) {
+  s: AwSecret; m := AW_KeySecret_decode(wire);
+  if m.error != 0 { s.error = AG_BAD_WIRE; return s; }
+  s.account_n = aw_text(s.account[..], AW_KeySecret_get_agent_account(m).value);
+  s.key_id_n = aw_text(s.key_id[..], AW_KeySecret_get_key_id(m).value);
+  s.secret_n = aw_text(s.secret[..], AW_KeySecret_get_secret(m).value);
+  return s;
+}
+// A payment id is letters, digits and _ . : - (1 to 64): the ledger's key.
+aw_payment_ok :: (id: string) -> bool #effects(all) {
+  if id.count < 1 || id.count > 64 { return false; }
+  for i: 0..<id.count {
+    c := id[i];
+    if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == ':' || c == '-') { return false; }
+  }
+  return true;
+}
+aw_spend_read :: (wire: [] u8) -> AwSpendAsk #export_c #effects(all) {
+  s: AwSpendAsk; m := AW_SpendAsk_decode(wire);
+  if m.error != 0 { s.verdict = AG_BAD_WIRE; return s; }
+  id := AW_SpendAsk_get_payment_id(m);
+  if !aw_payment_ok(id.value) { s.verdict = AG_BAD_WIRE; return s; }
+  s.payment_n = aw_text(s.payment_id[..], id.value);
+  s.sats = aw_sats(AW_SpendAsk_get_sats(m).value);
+  return s;
+}
+aw_spend_write :: (payment_id: string, sats: int, out: [] u8) -> int #export_c #effects(all) {
+  a: [128] u8; b: [128] u8;
+  m := AW_SpendAsk_new();
+  m = AW_SpendAsk_set_payment_id(m, payment_id, a[..]);
+  m = AW_SpendAsk_set_sats(m, cast(u64) sats, b[..]);
+  return aw_copy(out, AW_SpendAsk_encode(m, out));
+}
+aw_answer_write :: (allowed: bool, words: string, left: int, out: [] u8) -> int #export_c #effects(all) {
+  a: [320] u8; b: [320] u8;
+  m := AW_SpendAnswer_new();
+  m = AW_SpendAnswer_set_allowed(m, allowed, a[..]);
+  if words.count > 0 { m = AW_SpendAnswer_set_words(m, words, b[..]); m = AW_SpendAnswer_set_left_today_sats(m, cast(u64) left, a[..]); }
+  else { m = AW_SpendAnswer_set_left_today_sats(m, cast(u64) left, b[..]); }
+  return aw_copy(out, AW_SpendAnswer_encode(m, out));
+}
+aw_answer_read :: (wire: [] u8) -> AwSpendAnswer #export_c #effects(all) {
+  s: AwSpendAnswer; m := AW_SpendAnswer_decode(wire);
+  if m.error != 0 { s.error = AG_BAD_WIRE; return s; }
+  s.allowed = AW_SpendAnswer_get_allowed(m).value;
+  s.words_n = aw_text(s.words[..], AW_SpendAnswer_get_words(m).value);
+  s.left = cast(int) AW_SpendAnswer_get_left_today_sats(m).value;
+  return s;
+}
+aw_owner_write :: (account: string, name: string, kind: string, out: [] u8) -> int #export_c #effects(all) {
+  a: [256] u8; b: [256] u8;
+  m := AW_OwnerProfile_new();
+  m = AW_OwnerProfile_set_account(m, account, a[..]);
+  m = AW_OwnerProfile_set_name(m, name, b[..]);
+  m = AW_OwnerProfile_set_kind(m, kind, a[..]);
+  return aw_copy(out, AW_OwnerProfile_encode(m, out));
+}
+aw_owner_read :: (wire: [] u8) -> AwOwner #export_c #effects(all) {
+  s: AwOwner; m := AW_OwnerProfile_decode(wire);
+  if m.error != 0 { s.error = AG_BAD_WIRE; return s; }
+  s.account_n = aw_text(s.account[..], AW_OwnerProfile_get_account(m).value);
+  s.name_n = aw_text(s.name[..], AW_OwnerProfile_get_name(m).value);
+  s.kind_n = aw_text(s.kind[..], AW_OwnerProfile_get_kind(m).value);
+  return s;
+}
+aw_ticket_write :: (t: AwTicket, out: [] u8) -> int #export_c #effects(all) {
+  x := t;
+  a: [AW_MAX] u8; b: [AW_MAX] u8; ra: [AW_MAX] u8; rb: [AW_MAX] u8;
+  m := AW_RequestTicket_new(); step := 0;
+  m = AW_RequestTicket_set_code(m, cast(string) x.code[0..<x.code_n], aw_b(a[..], b[..], step)); step += 1;
+  if x.url_n > 0 { m = AW_RequestTicket_set_url(m, cast(string) x.url[0..<x.url_n], aw_b(a[..], b[..], step)); step += 1; }
+  if x.expires_ms > 0 { m = AW_RequestTicket_set_expires_ms(m, cast(s64) x.expires_ms, aw_b(a[..], b[..], step)); step += 1; }
+  if x.state_n > 0 { m = AW_RequestTicket_set_state(m, cast(string) x.state[0..<x.state_n], aw_b(a[..], b[..], step)); step += 1; }
+  if x.label_n > 0 { m = AW_RequestTicket_set_label(m, cast(string) x.label[0..<x.label_n], aw_b(a[..], b[..], step)); step += 1; }
+  if x.has_request { m = AW_RequestTicket_set_request(m, aw_request_build(x.request, ra[..], rb[..]), aw_b(a[..], b[..], step)); step += 1; }
+  return aw_copy(out, AW_RequestTicket_encode(m, out));
+}
+aw_ticket_read :: (wire: [] u8) -> AwTicket #export_c #effects(all) {
+  t: AwTicket; m := AW_RequestTicket_decode(wire);
+  if m.error != 0 { t.error = AG_BAD_WIRE; return t; }
+  t.code_n = aw_text(t.code[..], AW_RequestTicket_get_code(m).value);
+  t.url_n = aw_text(t.url[..], AW_RequestTicket_get_url(m).value);
+  t.expires_ms = cast(int) AW_RequestTicket_get_expires_ms(m).value;
+  t.state_n = aw_text(t.state[..], AW_RequestTicket_get_state(m).value);
+  t.label_n = aw_text(t.label[..], AW_RequestTicket_get_label(m).value);
+  r := AW_RequestTicket_get_request(m);
+  if r.present { t.has_request = true; t.request = aw_request_from(r.value); }
+  return t;
+}
+
+// ---------------------------------------------------------------- checks
+// The readers against bytes protoc 29.3 wrote from text (an independent encoder). The writers
+// need native memory for their overlap checks, so tests/agent_checks.coax round-trips them
+// through the API.
+AWT_GOOD :: [104] u8.[10,7,66,117,105,108,100,101,114,18,2,1,2,26,5,8,232,7,16,100,32,30,42,14,50,48,51,46,48,46,49,49,51,46,48,47,50,52,50,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53];
+AWT_CAPS :: [12] u8.[10,1,120,18,1,1,26,4,8,5,16,5];
+AWT_EMPTY :: [3] u8.[10,1,120];
+AWT_NONAME :: [3] u8.[18,1,1];
+AWT_DAYS :: [9] u8.[10,1,120,18,1,1,32,144,3];
+AWT_UPPER :: [72] u8.[10,1,120,18,1,1,50,64,67,54,48,52,55,70,57,52,52,49,69,68,55,68,54,68,51,48,52,53,52,48,54,69,57,53,67,48,55,67,68,56,53,67,55,55,56,69,52,66,56,67,69,70,51,67,65,55,65,66,65,67,48,57,66,57,53,67,55,48,57,69,69,53];
+AWT_UNKNOWN :: [7] u8.[10,1,120,18,2,1,9];
+AWT_HOST :: [19] u8.[10,1,120,18,1,1,42,11,101,120,97,109,112,108,101,46,99,111,109];
+AWT_NINE :: [96] u8.[10,1,120,18,1,1,42,8,49,48,46,48,46,48,46,48,42,8,49,48,46,48,46,48,46,49,42,8,49,48,46,48,46,48,46,50,42,8,49,48,46,48,46,48,46,51,42,8,49,48,46,48,46,48,46,52,42,8,49,48,46,48,46,48,46,53,42,8,49,48,46,48,46,48,46,54,42,8,49,48,46,48,46,48,46,55,42,8,49,48,46,48,46,48,46,56];
+AWT_HUGE :: [21] u8.[10,1,120,18,1,2,26,13,8,255,255,255,255,255,255,255,255,255,1,16,1];
+AWT_ATTEST :: [361] u8.[10,1,120,18,1,1,50,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53,58,158,2,10,64,55,57,98,101,54,54,55,101,102,57,100,99,98,98,97,99,53,53,97,48,54,50,57,53,99,101,56,55,48,98,48,55,48,50,57,98,102,99,100,98,50,100,99,101,50,56,100,57,53,57,102,50,56,49,53,98,49,54,102,56,49,55,57,56,18,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53,26,21,99,114,101,97,116,101,100,95,97,116,60,49,56,48,48,48,48,48,48,48,48,34,128,1,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97];
+AWT_SELF :: [340] u8.[10,1,120,18,1,1,50,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53,58,137,2,10,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53,18,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53,26,0,34,128,1,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97];
+AWT_OTHER :: [340] u8.[10,1,120,18,1,1,50,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53,58,137,2,10,64,55,57,98,101,54,54,55,101,102,57,100,99,98,98,97,99,53,53,97,48,54,50,57,53,99,101,56,55,48,98,48,55,48,50,57,98,102,99,100,98,50,100,99,101,50,56,100,57,53,57,102,50,56,49,53,98,49,54,102,56,49,55,57,56,18,64,55,57,98,101,54,54,55,101,102,57,100,99,98,98,97,99,53,53,97,48,54,50,57,53,99,101,56,55,48,98,48,55,48,50,57,98,102,99,100,98,50,100,99,101,50,56,100,57,53,57,102,50,56,49,53,98,49,54,102,56,49,55,57,56,26,0,34,128,1,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97];
+AWT_NOKEY :: [274] u8.[10,1,120,18,1,1,58,137,2,10,64,55,57,98,101,54,54,55,101,102,57,100,99,98,98,97,99,53,53,97,48,54,50,57,53,99,101,56,55,48,98,48,55,48,50,57,98,102,99,100,98,50,100,99,101,50,56,100,57,53,57,102,50,56,49,53,98,49,54,102,56,49,55,57,56,18,64,99,54,48,52,55,102,57,52,52,49,101,100,55,100,54,100,51,48,52,53,52,48,54,101,57,53,99,48,55,99,100,56,53,99,55,55,56,101,52,98,56,99,101,102,51,99,97,55,97,98,97,99,48,57,98,57,53,99,55,48,57,101,101,53,26,0,34,128,1,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97];
+AWT_AGENT :: [407] u8.[10,31,97,99,99,116,95,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,18,7,66,117,105,108,100,101,114,26,142,1,10,30,103,114,116,95,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,18,31,97,99,99,116,95,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,26,31,97,99,99,116,95,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,34,1,2,42,6,8,136,39,16,244,3,50,10,49,48,46,48,46,48,46,48,47,56,56,128,208,149,255,188,49,64,128,128,135,251,217,49,72,1,80,188,5,88,3,34,16,10,8,65,66,67,68,69,70,71,72,16,1,24,5,40,9,42,199,1,10,64,55,57,98,101,54,54,55,101,102,57,100,99,98,98,97,99,53,53,97,48,54,50,57,53,99,101,56,55,48,98,48,55,48,50,57,98,102,99,100,98,50,100,99,101,50,56,100,57,53,57,102,50,56,49,53,98,49,54,102,56,49,55,57,56,26,0,34,128,1,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98,98];
+AWT_LIST :: [95] u8.[10,44,10,31,97,99,99,116,95,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,18,3,79,110,101,26,4,42,2,8,5,10,47,10,31,97,99,99,116,95,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,18,3,84,119,111,26,7,42,3,8,240,46,72,5];
+AWT_SECRET :: [62] u8.[10,31,97,99,99,116,95,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,18,8,65,66,67,68,69,70,71,72,26,17,111,97,95,107,101,121,95,65,66,67,68,69,70,71,72,95,120];
+AWT_SPEND :: [13] u8.[10,5,112,97,121,45,49,16,250,1,26,1,109];
+AWT_SPEND_BAD :: [13] u8.[10,9,110,111,32,115,112,97,99,101,115,16,1];
+AWT_SPEND_HUGE :: [14] u8.[10,1,112,16,255,255,255,255,255,255,255,255,255,1];
+AWT_ANSWER :: [11] u8.[8,0,18,5,79,118,101,114,46,24,30];
+AWT_OWNER :: [46] u8.[10,31,97,99,99,116,95,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,18,3,65,100,97,26,6,112,101,114,115,111,110];
+AWT_TICKET :: [96] u8.[10,8,65,66,67,68,69,70,71,72,18,49,104,116,116,112,115,58,47,47,111,112,101,110,97,103,101,110,116,115,46,99,111,109,47,108,111,103,105,110,47,100,101,118,105,99,101,35,99,111,100,101,61,65,66,67,68,69,70,71,72,24,99,34,7,119,97,105,116,105,110,103,42,7,99,108,105,58,109,97,99,50,13,10,6,72,101,108,112,101,114,18,1,1,32,7];
+
+// A constant's bytes in a buffer a reader may view.
+aw_m :: (src: [] const u8, buf: [] u8) -> [] u8 { for i: 0..<src.count { buf[i] = src[i]; } return buf[0..<src.count]; }
+#test "a request reads, and is checked as it is read" {
+  tb: [4096] u8;
+  r := aw_request_read(aw_m(AWT_GOOD[..], tb[..]));
+  #assert r.verdict == AG_OK && r.mask == 3 && r.per_day == 1000 && r.per_payment == 100 && r.days == 30;
+  #assert cast(string) r.name[0..<r.name_n] == "Builder" && r.nhosts == 1 && cast(string) r.hosts[0].b[0..<r.hosts[0].n] == "203.0.113.0/24";
+  #assert cast(string) r.pubkey[0..<r.pubkey_n] == "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5" && r.owner_n == 0;
+}
+#test "a request that breaks a rule is refused with that rule's verdict" {
+  tb: [4096] u8;
+  #assert aw_request_read(aw_m(AWT_CAPS[..], tb[..])).verdict == AG_CAPS_WITHOUT_SPEND;
+  #assert aw_request_read(aw_m(AWT_EMPTY[..], tb[..])).verdict == AG_NO_SCOPES;
+  #assert aw_request_read(aw_m(AWT_NONAME[..], tb[..])).verdict == AG_BAD_NAME;
+  #assert aw_request_read(aw_m(AWT_DAYS[..], tb[..])).verdict == AG_BAD_DAYS;
+  #assert aw_request_read(aw_m(AWT_UPPER[..], tb[..])).verdict == AG_BAD_KEY;
+  #assert aw_request_read(aw_m(AWT_UNKNOWN[..], tb[..])).verdict == AG_BAD_SCOPE;
+  #assert aw_request_read(aw_m(AWT_HOST[..], tb[..])).verdict == AG_BAD_HOST;
+  #assert aw_request_read(aw_m(AWT_NINE[..], tb[..])).verdict == AG_BAD_WIRE;   // the schema says at most 8: the codec refuses a ninth
+  #assert aw_request_read(aw_m(AWT_HUGE[..], tb[..])).verdict == AG_BAD_CAPS;
+  junk := [3] u8.[0x0a, 0x05, 0x41];   // field 1, length 5, one byte
+  #assert aw_request_read(junk[..]).verdict == AG_BAD_WIRE;
+}
+#test "an attestation names the agent's own key and is someone else's" {
+  tb: [4096] u8;
+  r := aw_request_read(aw_m(AWT_ATTEST[..], tb[..]));
+  #assert r.verdict == AG_OK && cast(string) r.owner[0..<r.owner_n] == "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  #assert cast(string) r.conditions[0..<r.conditions_n] == "created_at<1800000000" && r.sig_n == 128;
+  #assert aw_request_read(aw_m(AWT_SELF[..], tb[..])).verdict == AG_BAD_ATTESTATION;
+  #assert aw_request_read(aw_m(AWT_OTHER[..], tb[..])).verdict == AG_BAD_ATTESTATION;
+  #assert aw_request_read(aw_m(AWT_NOKEY[..], tb[..])).verdict == AG_BAD_ATTESTATION;
+}
+#test "an agent and a list of agents read" {
+  tb: [4096] u8;
+  b := aw_agent_read(aw_m(AWT_AGENT[..], tb[..]));
+  #assert b.error == 0 && cast(string) b.name[0..<b.name_n] == "Builder" && b.mask == 2 && b.per_day == 5000 && b.per_payment == 500;
+  #assert b.state == AG_ACTIVE && b.spent == 700 && b.expires_ms == 1707776000000 && b.created_ms == 1700000000000 && b.last_used_ms == 3;
+  #assert b.nhosts == 1 && b.nkeys == 1 && b.keys[0].api && b.keys[0].revoked_ms == 9 && b.keys[0].created_ms == 5;
+  #assert cast(string) b.grant_id[0..<b.grant_n] == "grt_bbbbbbbbbbbbbbbbbbbbbbbbbb" && cast(string) b.keys[0].id[0..<b.keys[0].id_n] == "ABCDEFGH";
+  #assert cast(string) b.owner[0..<b.owner_n] == "acct_cccccccccccccccccccccccccc" && b.att_owner_n == 64 && b.att_sig_n == 128;
+  #assert aw_list_count(aw_m(AWT_LIST[..], tb[..])) == 2 && aw_list_at(aw_m(AWT_LIST[..], tb[..]), 1).per_day == 6000 && aw_list_at(aw_m(AWT_LIST[..], tb[..]), 1).state == AG_PENDING;
+  first := aw_list_at(aw_m(AWT_LIST[..], tb[..]), 0);
+  #assert cast(string) first.name[0..<3] == "One" && aw_list_at(aw_m(AWT_LIST[..], tb[..]), 2).error == AG_BAD_WIRE;
+  #assert aw_list_count(aw_m(AWT_LIST[0..<0], tb[..])) == 0;
+  junk := [2] u8.[0x0a, 0x05];
+  #assert aw_list_count(junk[..]) == -1 && aw_agent_read(junk[..]).error == AG_BAD_WIRE;
+}
+#test "the small messages read" {
+  tb: [4096] u8;
+  s := aw_secret_read(aw_m(AWT_SECRET[..], tb[..]));
+  #assert s.error == 0 && cast(string) s.secret[0..<s.secret_n] == "oa_key_ABCDEFGH_x" && cast(string) s.key_id[0..<s.key_id_n] == "ABCDEFGH";
+  a := aw_spend_read(aw_m(AWT_SPEND[..], tb[..]));
+  #assert a.verdict == 0 && a.sats == 250 && cast(string) a.payment_id[0..<a.payment_n] == "pay-1";
+  #assert aw_spend_read(aw_m(AWT_SPEND_BAD[..], tb[..])).verdict == AG_BAD_WIRE && aw_spend_read(aw_m(AWT_SPEND_HUGE[..], tb[..])).sats == -1;
+  w := aw_answer_read(aw_m(AWT_ANSWER[..], tb[..]));
+  #assert !w.allowed && w.left == 30 && cast(string) w.words[0..<w.words_n] == "Over.";
+  o := aw_owner_read(aw_m(AWT_OWNER[..], tb[..]));
+  #assert cast(string) o.name[0..<o.name_n] == "Ada" && cast(string) o.kind[0..<o.kind_n] == "person";
+  t := aw_ticket_read(aw_m(AWT_TICKET[..], tb[..]));
+  #assert t.error == 0 && cast(string) t.code[0..<t.code_n] == "ABCDEFGH" && t.expires_ms == 99 && cast(string) t.label[0..<t.label_n] == "cli:mac";
+  #assert t.has_request && t.request.verdict == AG_OK && t.request.days == 7 && cast(string) t.request.name[0..<t.request.name_n] == "Helper";
+  #assert aw_payment_ok("a.b:c-d_9") && !aw_payment_ok("") && !aw_payment_ok("a/b");
+}

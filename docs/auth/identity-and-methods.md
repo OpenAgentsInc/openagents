@@ -167,6 +167,35 @@ owner makes it, sees it, and can stop it at any time.
   `oa_key_` keys have a fixed prefix and checksum so GitHub secret scanning
   can find and report them ([sessions](sessions-and-tokens.md#token-formats)).
 
+#### How agents work today (#13211)
+
+- **Scopes** are `profile:read` (the owner's name and kind, at
+  `GET /api/agent/owner`) and `wallet:spend` (`POST /api/agent/spend`,
+  checked against the caps). Every other route that needs an account is
+  closed to agents; a route opens to them only when it names a scope in
+  the rule table (`coax/web/api/auth.c`). An agent gets 403 on every human,
+  L2, L2-fresh and admin route; a generated check walks the whole table.
+- **Making one:** `openagents agent create NAME --scope S` (prints an
+  `oa_key_` key once), the owner's page `/settings/agents`, or the agent
+  asks: its new key signs `POST /api/agents/request` and the owner opens
+  `/settings/agents#request=CODE`, sets the caps and approves. Approving a
+  grant that can spend, or widening one, needs an L2 login in the last five
+  minutes. An account has at most 32 agents that aren't revoked.
+- **Caps** are sats a day (a rolling 24 hours) and sats a payment, both
+  set by the owner; a spend's `payment_id` counts once.
+- **Ending one:** revoke (at once, on every route, public ones too),
+  revoke all, rotate (a new `oa_key_`, the old keys end), and "log out
+  everywhere" with agents pauses them until the owner resumes each.
+- **Records:** grants are `GrantRequest`/`Grant` in
+  `proto/openagents/account/v1alpha1/agents.proto`, written by the
+  generated codec (`coax/web/api/agent-wire.coax`); every decision is
+  `coax/web/api/agent-policy.coax` (`#authority`); the tables are
+  `migrations/0147_auth_agents.sql`. The audit log records every grant,
+  change and use, refused ones too, never a key.
+- **NIP-OA:** a request may carry the owner's attestation of the agent
+  key; the API checks it (`agent-attest.coax`) and publishes the tag at
+  `GET /api/agent-keys/<pubkey>`.
+
 A service (the Pylon checker, the room servers, the publish job) is the
 same shape with `kind = service` and owner `acct_openagents`.
 

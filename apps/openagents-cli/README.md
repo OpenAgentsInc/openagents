@@ -96,6 +96,11 @@ openagents access                            # may this account make realms (inv
 openagents access redeem CODE                # the 32 characters after #code= in an invite link
 openagents access request "what I'd make" [--contact C]
 openagents logout                            # unlink this key, then delete it here
+openagents agent create NAME --scope profile:read [--scope wallet:spend --per-day SATS --per-payment SATS] [--days N] [--host RANGE]
+                                             # an agent account; prints its oa_key_ once
+openagents agent list                        # your agents, scopes, caps and state
+openagents agent rotate ACCOUNT              # a new oa_key_, shown once; the old keys end
+openagents agent revoke ACCOUNT              # or revoke-all; resume ACCOUNT after "log out everywhere"
 openagents --origin https://staging.openagents.com login   # a profile keeps the origin it logged in to
 ```
 
@@ -557,6 +562,7 @@ ffmpeg, whisper-cli, pw-record) is missing. `dictate` adds 9 no speech and
 | `nostr.coax` | the `nostr` domain: identity, signing, NIP-98, publish and req |
 | `relay.coax` | the relay client: connect, NIP-42 AUTH, one REQ to EOSE, publish and OK |
 | `pylon.coax` | the `pylon` domain: start, stop, status, logs; claim, unclaim and list over the relay ([xp_keys.coax](../../coax/lib/nostr/xp_keys.coax) and [beacon.coax](../../psionic/lib/pylon/beacon.coax) decide) |
+| `agent.coax` | agent create, list, rotate, revoke, revoke-all, resume: the owner's agents and grants (`/api/agents`, agent-wire.coax) |
 | `account.coax` | login, logout, whoami, account keys, access: signed HTTPS calls through `coax/lib/net/http.coax`; the hidden `http METHOD URL` check |
 | `account_rules.coax` | `#authority`: origins, machine names, a device login's poll states, logout's plan, JSON strings, the terminal QR text |
 | `project.coax` | the `project` domain: the config, the key, reading and folding the relay, `list` and `show` |

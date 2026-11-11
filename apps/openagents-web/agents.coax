@@ -1,0 +1,558 @@
+// /settings/agents: your agents and what each may do (GitHub #13211, docs/auth/identity-and-methods.md#agents).
+// Drawn with the component library (components/kit/controls.coax) in the Zeron skin, on the atlas
+// coax/web/gpui.js fills, as /components is. Every message is agent-wire.coax's, the one codec the
+// API and the `openagents` CLI use too; the words for a grant are agent-policy.coax's.
+//
+// Two views:
+//   - the list (GET /api/agents): each agent's name, what it may do in plain words, its spend caps
+//     and what it spent today, when it ends, when it was last used and its keys; REVOKE ends it at
+//     once, NEW API KEY shows a new key once (COPY puts it on the clipboard), RESUME after "log out
+//     everywhere" paused it, and REVOKE ALL.
+//   - an agent's request (#request=CODE, the link an agent shows its owner): what it asks for, the
+//     caps and the end the person sets with − and + (the API checks them again), APPROVE or DENY.
+// Answers come as ?as=b64 (the host's fetch reads text); a refusal is its words, shown as given.
+//   coax/bin/coax test apps/openagents-web/agents.coax
+#load "../../components/kit/controls.coax";
+#load "../../components/skin/zeron.coax";
+#load "../../components/backend/gpu.coax";
+#load "../../coax/lib/text/base64.coax";
+#load "../../coax/web/api/agent-wire.coax";
+
+AP_MAX_VERTICES :: 120000;
+AP_UNDER :: 2048; AP_OVER :: 6144; AP_LINES :: 512; AP_HITS :: 128; AP_POOL :: 32768;
+AP_LIST :: 32;                // the most agents an account has (agent-policy.coax's AG_MAX_AGENTS)
+AP_WIDTH :: 720.0;            // the column, at most
+AP_MSG_HTTP :: 512;           // + id: an HTTP answer, "STATUS\nBODY"
+AP_HTTP_POST :: 1; AP_HTTP_WANTED :: 4;
+AP_ACT_GO :: 1; AP_ACT_COPY :: 2; AP_ACT_HASH :: 3;
+// What the page shows.
+AP_LOADING :: 0; AP_OUT :: 1; AP_LIST_VIEW :: 2; AP_ASK :: 3; AP_GONE :: 4;
+// The one request in flight.
+RQ_NONE :: 0; RQ_LIST :: 1; RQ_TICKET :: 2; RQ_APPROVE :: 3; RQ_DENY :: 4; RQ_REVOKE :: 5; RQ_REVOKE_ALL :: 6; RQ_ROTATE :: 7; RQ_RESUME :: 8;
+// What can be pressed (a hit's kind; its a is the agent's row).
+HT_REVOKE :: 1; HT_ROTATE :: 2; HT_RESUME :: 3; HT_REVOKE_ALL :: 4; HT_APPROVE :: 5; HT_DENY :: 6; HT_COPY :: 7; HT_LOGIN :: 8;
+HT_STEP :: 9;                 // a: which (0 per day, 1 per payment, 2 days), b: 0 less, 1 more
+HT_LIST :: 10;                // back to the list from a request that's done
+// The steps − and + take (sats; days).
+AP_SATS :: [10] int.[0, 100, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000];
+AP_DAYS :: [5] int.[7, 30, 90, 180, 365];
+
+AgentsPage :: struct {
+  ready: bool; time: f32; width: f32; height: f32; d: f32;
+  atlas: [1] Atlas; scratch: [9800] f32; sbytes: [64] u8;
+  under: [AP_UNDER] Prim; over: [AP_OVER] Prim; lines: [AP_LINES] SheetLine; hits: [AP_HITS] SheetHit; pool: [AP_POOL] u8;
+  nu: int; no: int; nh: int;
+  scroll: f32; content_h: f32; px: f32; py: f32; hot: int; cursor: int;
+  action: int; outbox: [256] u8; out_n: int;
+  // the request the face sends (coaxial_http), and which one is in flight
+  want: bool; req: int; req_id: int; url: [200] u8; url_n: int; body: [AW_MAX * 2] u8; body_n: int; flags: int;
+  // what it shows
+  view: int; error: [240] u8; error_n: int; note: [240] u8; note_n: int; login_again: bool;
+  agents: [AP_LIST] AwAgent; nagents: int; target: int;
+  code: [8] u8; asked: AwRequest; set: AwRequest; asked_state: [16] u8; asked_state_n: int;
+  secret: [80] u8; secret_n: int; secret_for: [80] u8; secret_for_n: int;
+  now_ms: int;                  // the newest time an answer carried (expires and last used are shown from it)
+}
+
+ap_put :: (b: [] u8, t: string) -> int { n := 0; for i: 0..<t.count { if n < b.count { b[n] = t[i]; n += 1; } } return n; }
+ap_add :: (b: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < b.count { b[n] = t[i]; n += 1; } } return n; }
+ap_add_int :: (b: [] u8, at: int, v: int) -> int {
+  if v < 0 { return ap_add_int(b, ap_add(b, at, "-"), -v); }
+  d: [24] u8; k := 0; x := v;
+  while true { d[k] = cast(u8) (48 + x % 10); k += 1; x = x / 10; if x == 0 { break; } }
+  n := at; while k > 0 { k -= 1; if n < b.count { b[n] = d[k]; n += 1; } }
+  return n;
+}
+// Sats with thousands commas: 1,000,000.
+ap_add_sats :: (b: [] u8, at: int, v: int) -> int {
+  d: [24] u8; k := 0; x := ifx v < 0 then 0 else v;
+  while true { if k == 3 || k == 7 || k == 11 || k == 15 { d[k] = ','; k += 1; } d[k] = cast(u8) (48 + x % 10); k += 1; x = x / 10; if x == 0 { break; } }
+  n := at; while k > 0 { k -= 1; if n < b.count { b[n] = d[k]; n += 1; } }
+  return n;
+}
+// How long ms is, in the largest whole unit: "3 days", "5 hours", "a minute".
+ap_add_span :: (b: [] u8, at: int, ms: int) -> int {
+  m := ifx ms < 0 then -ms else ms;
+  units := [4] string.["day", "hour", "minute", "second"]; sizes := [4] int.[86400000, 3600000, 60000, 1000];
+  for k: 0..<4 {
+    c := m / sizes[k];
+    if c >= 1 || k == 3 {
+      if c <= 1 { return ap_add(b, ap_add(b, at, ifx k == 1 then "an " else "a "), units[k]); }
+      n := ap_add_int(b, at, c); n = ap_add(b, n, " "); n = ap_add(b, n, units[k]); return ap_add(b, n, "s");
+    }
+  }
+  return at;
+}
+ap_err :: (s: [] AgentsPage, t: string) { s[0].error_n = ap_put(s[0].error[..], t); }
+ap_say :: (s: [] AgentsPage, t: string) { s[0].note_n = ap_put(s[0].note[..], t); }
+
+// ---------------------------------------------------------------- requests
+ap_ask :: (s: [] AgentsPage, req: int, url: string, body: [] u8, flags: int) {
+  s[0].req = req; s[0].req_id = -1; s[0].want = true; s[0].flags = flags | AP_HTTP_WANTED;
+  s[0].url_n = ap_put(s[0].url[..], url);
+  s[0].body_n = ifx body.count > 0 then b64_encode(cast(string) body, s[0].body[..]) else 0;
+  if s[0].body_n < 0 { s[0].body_n = 0; }
+}
+ap_sent :: (s: [] AgentsPage, id: int) #export_c #effects(all) { if s.count < 1 { return; } if id >= 0 { s[0].want = false; s[0].req_id = id; } }
+ap_list :: (s: [] AgentsPage) { no: [1] u8; ap_ask(s, RQ_LIST, "/api/agents?as=b64", no[0..<0], 0); }
+ap_path :: (s: [] AgentsPage, req: int, front: string, tail: string, body: [] u8) {
+  u: [200] u8; n := ap_add(u[..], 0, front); n = ap_add(u[..], n, tail); n = ap_add(u[..], n, "?as=b64");
+  ap_ask(s, req, cast(string) u[0..<n], body, AP_HTTP_POST);
+}
+ap_account :: (s: [] AgentsPage, row: int) -> string { return cast(string) s[0].agents[row].account[0..<s[0].agents[row].account_n]; }
+ap_code :: (s: [] AgentsPage) -> string { return cast(string) s[0].code[..]; }
+
+// The hash: "request=CODE" opens an agent's request; anything else, the list.
+ap_hash :: (s: [] AgentsPage, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].error_n = 0; s[0].note_n = 0;
+  if text.count == 16 && text[0..<8] == "request=" && ag_code_ok(text[8..<16]) {
+    for i: 0..<8 { s[0].code[i] = text[8 + i]; }
+    s[0].view = AP_LOADING;
+    u: [80] u8; n := ap_add(u[..], 0, "/api/agents/request/"); n = ap_add(u[..], n, text[8..<16]); n = ap_add(u[..], n, "?as=b64");
+    no: [1] u8; ap_ask(s, RQ_TICKET, cast(string) u[0..<n], no[0..<0], 0);
+    return;
+  }
+  if text.count > 0 { ap_err(s, "That link isn't whole. Ask the agent for its link again."); }
+  s[0].view = AP_LOADING; ap_list(s);
+}
+
+// ---------------------------------------------------------------- answers
+ap_answer :: (s: [] AgentsPage, text: string) {
+  nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+  status := 0; for i: 0..<nl { c := cast(int) text[i]; if c >= 48 && c <= 57 { status = status * 10 + c - 48; } }
+  rest := ifx nl < text.count then text[nl + 1..<text.count] else text[0..<0];
+  req := s[0].req; s[0].req = RQ_NONE; s[0].req_id = -1;
+  if status == 0 { ap_err(s, "We couldn't reach openagents.com. Check your connection and try again."); return; }
+  if status < 200 || status >= 300 {
+    if status == 401 && (req == RQ_LIST || req == RQ_TICKET) { s[0].view = AP_OUT; return; }
+    if status == 401 { s[0].login_again = true; }
+    ap_err(s, ifx rest.count > 0 && rest.count < 240 then rest else "That didn't work. Try again.");
+    if req == RQ_TICKET { s[0].view = AP_GONE; }
+    return;
+  }
+  bytes: [AP_LIST * AW_MAX] u8;
+  n := b64_decode(rest, bytes[..]);
+  if n < 0 { ap_err(s, "That answer didn't read. Try again."); return; }
+  wire := bytes[0..<n];
+  s[0].error_n = 0; s[0].login_again = false;
+  if req == RQ_LIST {
+    c := aw_list_count(wire);
+    s[0].nagents = 0;
+    for i: 0..<ifx c > AP_LIST then AP_LIST else c {
+      g := aw_list_at(wire, i);
+      if g.error == 0 { s[0].agents[s[0].nagents] = g; s[0].nagents += 1; if g.created_ms > s[0].now_ms { s[0].now_ms = g.created_ms; } }
+    }
+    s[0].view = AP_LIST_VIEW;
+    return;
+  }
+  if req == RQ_TICKET {
+    t := aw_ticket_read(wire);
+    if t.error != 0 || !t.has_request { s[0].view = AP_GONE; ap_err(s, "That request didn't read. Ask the agent for its link again."); return; }
+    s[0].asked = t.request; s[0].set = t.request; s[0].set.days = ag_days(t.request.days);
+    s[0].asked_state_n = ap_put(s[0].asked_state[..], cast(string) t.state[0..<t.state_n]);
+    s[0].view = ifx cast(string) t.state[0..<t.state_n] == "waiting" then AP_ASK else AP_GONE;
+    if s[0].view == AP_GONE { ap_err(s, ifx cast(string) t.state[0..<t.state_n] == "expired" then "That request expired. Ask the agent for a new one." else "That request was answered already."); }
+    return;
+  }
+  if req == RQ_ROTATE {
+    k := aw_secret_read(wire);
+    s[0].secret_n = ap_put(s[0].secret[..], cast(string) k.secret[0..<k.secret_n]);
+    s[0].secret_for_n = 0;
+    for i: 0..<s[0].nagents { if ap_account(s, i) == cast(string) k.account[0..<k.account_n] { s[0].secret_for_n = ap_put(s[0].secret_for[..], cast(string) s[0].agents[i].name[0..<s[0].agents[i].name_n]); } }
+  }
+  if req == RQ_APPROVE { ap_say(s, "Approved. The agent can act for you now, as shown below."); }
+  if req == RQ_DENY { ap_say(s, "Denied. The agent can't act for you."); }
+  if req == RQ_REVOKE { ap_say(s, "Revoked. That agent can't act for you any more."); }
+  if req == RQ_REVOKE_ALL { ap_say(s, "Revoked every agent."); }
+  if req == RQ_APPROVE || req == RQ_DENY { s[0].out_n = 0; s[0].action = AP_ACT_HASH; }   // the code leaves the address bar
+  s[0].view = AP_LOADING; ap_list(s);
+}
+ap_message :: (s: [] AgentsPage, kind: int, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if kind >= AP_MSG_HTTP && kind < AP_MSG_HTTP + 64 && kind - AP_MSG_HTTP == s[0].req_id && s[0].req != RQ_NONE { ap_answer(s, text); }
+}
+
+// ---------------------------------------------------------------- pressing
+ap_step :: (ladder: [] int, v: int, more: bool) -> int {
+  if more { for k: 0..<ladder.count { if ladder[k] > v { return ladder[k]; } } return v; }
+  k := ladder.count - 1;
+  while k >= 0 { if ladder[k] < v { return ladder[k]; } k -= 1; }
+  return v;
+}
+ap_press :: (s: [] AgentsPage, hit: SheetHit) {
+  if s[0].req != RQ_NONE && hit.kind != HT_COPY && hit.kind != HT_LOGIN { return; }
+  no: [1] u8;
+  if hit.kind == HT_LOGIN { s[0].out_n = ap_put(s[0].outbox[..], "/login?next=/settings/agents"); s[0].action = AP_ACT_GO; return; }
+  if hit.kind == HT_COPY { s[0].out_n = ap_put(s[0].outbox[..], cast(string) s[0].secret[0..<s[0].secret_n]); s[0].action = AP_ACT_COPY; ap_say(s, "Copied. Keep it somewhere safe; we can't show it again."); return; }
+  if hit.kind == HT_LIST { s[0].view = AP_LOADING; s[0].out_n = 0; s[0].action = AP_ACT_HASH; ap_list(s); return; }
+  s[0].note_n = 0; s[0].error_n = 0; s[0].secret_n = 0;
+  if hit.kind == HT_REVOKE_ALL { ap_path(s, RQ_REVOKE_ALL, "/api/agents/revoke-all", "", no[0..<0]); return; }
+  if hit.kind == HT_APPROVE {
+    w: [AW_MAX] u8; n := aw_request_write(s[0].set, w[..]);
+    if n < 0 { ap_err(s, "That grant didn't write. Try again."); return; }
+    ap_path(s, RQ_APPROVE, "/api/agents/approve/", ap_code(s), w[0..<n]); return;
+  }
+  if hit.kind == HT_DENY { ap_path(s, RQ_DENY, "/api/agents/deny/", ap_code(s), no[0..<0]); return; }
+  if hit.kind == HT_STEP {
+    sats := AP_SATS; days := AP_DAYS; more := hit.b == 1;
+    if hit.a == 0 { s[0].set.per_day = ap_step(sats[..], s[0].set.per_day, more); if s[0].set.per_payment > s[0].set.per_day { s[0].set.per_payment = s[0].set.per_day; } }
+    if hit.a == 1 { v := ap_step(sats[..], s[0].set.per_payment, more); if v <= s[0].set.per_day { s[0].set.per_payment = v; } }
+    if hit.a == 2 { s[0].set.days = ap_step(days[..], s[0].set.days, more); }
+    return;
+  }
+  if hit.a < 0 || hit.a >= s[0].nagents { return; }
+  s[0].target = hit.a;
+  if hit.kind == HT_REVOKE { ap_path(s, RQ_REVOKE, "/api/agents/revoke/", ap_account(s, hit.a), no[0..<0]); }
+  else if hit.kind == HT_ROTATE { ap_path(s, RQ_ROTATE, "/api/agents/rotate/", ap_account(s, hit.a), no[0..<0]); }
+  else if hit.kind == HT_RESUME { ap_path(s, RQ_RESUME, "/api/agents/resume/", ap_account(s, hit.a), no[0..<0]); }
+}
+
+// ---------------------------------------------------------------- drawing
+ap_sheet :: (s: [] AgentsPage) -> Sheet {
+  return Sheet.{under = s[0].under[..], nu = s[0].nu, over = s[0].over[..], no = s[0].no, lines = s[0].lines[..], hits = s[0].hits[..], nh = s[0].nh, pool = s[0].pool[..]};
+}
+// Text wrapped to w, each line drawn; its height.
+ap_para :: (sh: [] Sheet, m: TextMeasure, z: UiSkin, x: f32, y: f32, w: f32, text: string, color: Rgba) -> f32 {
+  t := sheet_pool(sh, text);   // the sheet keeps what it draws; the text may be the caller's
+  lines: [16] TextLine; no_runs: [1] MdRun;
+  nl := text_wrap(m, uiskin_faces(z), t, no_runs[0..<0], w, lines[..]);
+  for k: 0..<nl { lw := sheet_text(sh, m, -1, x, y + cast(f32) k * z.body.line, z.body.line, z.body.face, color, cast(string) t[lines[k].from..<lines[k].to]); }
+  return cast(f32) nl * z.body.line;
+}
+ap_state :: (s: [] AgentsPage, h: int) -> int { return ifx s[0].hot == h then UISKIN_HOVER else UISKIN_REST; }
+// A button that leaves its own hit (kind, a, b); its width.
+ap_button :: (s: [] AgentsPage, sh: [] Sheet, m: TextMeasure, z: UiSkin, x: f32, y: f32, label: string, kind: int, a: int, b: int, main: bool) -> f32 {
+  hot := s[0].hot >= 0 && s[0].hot < s[0].nh && s[0].hits[s[0].hot].kind == kind && s[0].hits[s[0].hot].a == a && s[0].hits[s[0].hot].b == b;
+  w := button(sh, m, z, x, y, label, ifx main then UISKIN_PRIMARY else ifx hot then UISKIN_HOVER else UISKIN_REST, kind, a);
+  sh[0].hits[sh[0].nh - 1].b = b;
+  return w;
+}
+// What a grant allows, a line each, in plain words (agent-policy.coax's).
+ap_grant_lines :: (out: [] [160] u8, ns: [] int, mask: int, day: int, pay: int, spent: int, hosts: int, show_spent: bool) -> int {
+  k := 0;
+  for sc: 1..<AG_SCOPES + 1 {
+    if ag_holds(mask, sc) && k < out.count { ns[k] = ap_put(out[k][..], ag_scope_words(sc)); k += 1; }
+  }
+  if ag_holds(mask, AG_WALLET_SPEND) && k < out.count {
+    n := ap_add(out[k][..], 0, "Up to "); n = ap_add_sats(out[k][..], n, day); n = ap_add(out[k][..], n, " sats a day, ");
+    n = ap_add_sats(out[k][..], n, pay); n = ap_add(out[k][..], n, " at most in one payment");
+    if show_spent { n = ap_add(out[k][..], n, "; "); n = ap_add_sats(out[k][..], n, spent); n = ap_add(out[k][..], n, " spent in the last 24 hours"); }
+    ns[k] = n; k += 1;
+  }
+  if k < out.count {
+    ns[k] = ifx hosts == 0 then ap_put(out[k][..], "From any network address") else ap_put(out[k][..], "Only from the addresses listed");
+    k += 1;
+  }
+  return k;
+}
+ap_layout :: (s: [] AgentsPage, w: f32) -> f32 {
+  a := s[0].atlas[..];
+  s[0].nu = 0; s[0].no = 0; s[0].nh = 0;
+  sh: [1] Sheet; sh[0] = ap_sheet(s);
+  z := zeron_skin(); m := measure_font(a);
+  gutter: f32 = ifx w < 480 then 16.0f32 else 24.0f32;
+  cw := ifx w - 2 * gutter > AP_WIDTH then AP_WIDTH else w - 2 * gutter;
+  x := floor((w - cw) / 2);
+  y: f32 = 28;
+  tw := sheet_text(sh[..], m, -1, x, y, z.title.line, z.title.face, z.ink, ifx s[0].view == AP_ASK then "An agent asks to act for you" else "Agents");
+  y += z.title.line + 8;
+  if s[0].view != AP_ASK {
+    y += ap_para(sh[..], m, z, x, y, cw, "Agents act for you with their own keys, never yours. Each can do only what you allow here, until the end shown. Revoke one and it stops at once.", z.muted) + 16;
+  }
+  if s[0].note_n > 0 { y += ap_para(sh[..], m, z, x, y, cw, cast(string) s[0].note[0..<s[0].note_n], z.success) + 12; }
+  if s[0].error_n > 0 {
+    y += ap_para(sh[..], m, z, x, y, cw, cast(string) s[0].error[0..<s[0].error_n], z.danger) + 8;
+    if s[0].login_again { bw := ap_button(s, sh[..], m, z, x, y, "LOG IN AGAIN", HT_LOGIN, 0, 0, false); y += z.control_h + 8; }
+    y += 8;
+  }
+  if s[0].secret_n > 0 {
+    ph := panel_height(z, z.body.line * 3 + z.control_h + 16, true);
+    inside := panel(sh[..], m, z, x, y, cw, ph, "New API key");
+    who: [200] u8; n := ap_add(who[..], 0, "For "); n = ap_add(who[..], n, cast(string) s[0].secret_for[0..<s[0].secret_for_n]); n = ap_add(who[..], n, ". We show it once; its old keys stopped working.");
+    yy := inside.y + ap_para(sh[..], m, z, inside.x, inside.y, inside.w, cast(string) who[0..<n], z.muted);
+    kw := sheet_text(sh[..], m, -1, inside.x, yy + 4, z.code.line, z.code.face, z.ink, sheet_pool(sh[..], cast(string) s[0].secret[0..<s[0].secret_n]));
+    bw := ap_button(s, sh[..], m, z, inside.x, yy + z.code.line + 12, "COPY", HT_COPY, 0, 0, true);
+    y += ph + 16;
+  }
+  if s[0].view == AP_LOADING { y += ap_para(sh[..], m, z, x, y, cw, "Loading…", z.faint); }
+  else if s[0].view == AP_OUT {
+    y += ap_para(sh[..], m, z, x, y, cw, "Log in to see your agents and what they may do.", z.ink) + 12;
+    bw := ap_button(s, sh[..], m, z, x, y, "LOG IN", HT_LOGIN, 0, 0, true); y += z.control_h;
+  }
+  else if s[0].view == AP_GONE { bw := ap_button(s, sh[..], m, z, x, y, "SEE YOUR AGENTS", HT_LIST, 0, 0, false); y += z.control_h; }
+  else if s[0].view == AP_ASK { y = ap_ask_view(s, sh[..], m, z, x, y, cw); }
+  else {
+    if s[0].nagents == 0 {
+      y += ap_para(sh[..], m, z, x, y, cw, "No agents yet. Make one with `openagents agent create`, or open the link an agent shows you when it asks.", z.ink);
+    }
+    for i: 0..<s[0].nagents { y = ap_card(s, sh[..], m, z, i, x, y, cw) + 12; }
+    if s[0].nagents > 0 {
+      y += 4;
+      count: [120] u8; n := ap_add_int(count[..], 0, s[0].nagents); n = ap_add(count[..], n, " of the 32 agents an account may have. Revoked agents leave this list.");
+      y += ap_para(sh[..], m, z, x, y, cw, cast(string) count[0..<n], z.faint) + 12;
+      bw := ap_button(s, sh[..], m, z, x, y, "REVOKE ALL", HT_REVOKE_ALL, 0, 0, false); y += z.control_h;
+    }
+  }
+  s[0].nu = sh[0].nu; s[0].no = sh[0].no; s[0].nh = sh[0].nh;
+  return y + 32;
+}
+// One agent's card; returns the y under it.
+ap_card :: (s: [] AgentsPage, sh: [] Sheet, m: TextMeasure, z: UiSkin, i: int, x: f32, y: f32, w: f32) -> f32 {
+  g := s[0].agents[i];
+  lines: [6] [160] u8; ns: [6] int;
+  nl := ap_grant_lines(lines[..], ns[..], g.mask, g.per_day, g.per_payment, g.spent, g.nhosts, true);
+  when: [160] u8; wn := 0;
+  state := cast(string) ag_state_name(g.state);
+  if g.state == AG_ACTIVE { wn = ap_add(when[..], 0, "Ends in "); wn = ap_add_span(when[..], wn, g.expires_ms - s[0].now_ms); }
+  else if g.state == AG_SUSPENDED { wn = ap_add(when[..], 0, "Paused when you logged out everywhere"); }
+  else { wn = ap_add(when[..], 0, "Ended"); }
+  wn = ap_add(when[..], wn, ifx g.last_used_ms > 0 then ". Last used " else ". Never used");
+  if g.last_used_ms > 0 { wn = ap_add_span(when[..], wn, s[0].now_ms - g.last_used_ms); wn = ap_add(when[..], wn, " ago"); }
+  wn = ap_add(when[..], wn, ".");
+  keys: [4] [120] u8; kn: [4] int; nk := 0;
+  for k: 0..<g.nkeys {
+    if nk >= 4 || g.keys[k].revoked_ms > 0 { continue; }
+    id := cast(string) g.keys[k].id[0..<g.keys[k].id_n];
+    n := ap_add(keys[nk][..], 0, ifx g.keys[k].api then "API key oa_key_" else "Nostr key ");
+    n = ap_add(keys[nk][..], n, ifx g.keys[k].api then id else id[0..<ifx id.count > 16 then 16 else id.count]);
+    if !g.keys[k].api { n = ap_add(keys[nk][..], n, "…"); }
+    if g.att_owner_n > 0 && !g.keys[k].api { n = ap_add(keys[nk][..], n, ", attested by your key (NIP-OA)"); }
+    kn[nk] = n; nk += 1;
+  }
+  content := z.body.line * cast(f32) (1 + nl + 1 + nk) + z.control_h + 24;
+  inside := panel(sh, m, z, x, y, w, panel_height(z, content, true), sheet_pool(sh, cast(string) g.name[0..<g.name_n]));
+  yy := inside.y;
+  sw := sheet_text(sh, m, -1, inside.x, yy, z.body.line, z.body.face, ifx g.state == AG_ACTIVE then z.success else z.warning, state);
+  yy += z.body.line + 4;
+  for k: 0..<nl { lw := sheet_text(sh, m, -1, inside.x, yy, z.body.line, z.body.face, z.ink, sheet_pool(sh, cast(string) lines[k][0..<ns[k]])); yy += z.body.line; }
+  ww := sheet_text(sh, m, -1, inside.x, yy, z.body.line, z.body.face, z.muted, sheet_pool(sh, cast(string) when[0..<wn])); yy += z.body.line;
+  for k: 0..<nk { kw := sheet_text(sh, m, -1, inside.x, yy, z.body.line, z.code.face, z.muted, sheet_pool(sh, cast(string) keys[k][0..<kn[k]])); yy += z.body.line; }
+  yy += 12;
+  bx := inside.x;
+  bx += ap_button(s, sh, m, z, bx, yy, "REVOKE", HT_REVOKE, i, 0, false) + 8;
+  if g.state == AG_ACTIVE { bx += ap_button(s, sh, m, z, bx, yy, "NEW API KEY", HT_ROTATE, i, 0, false) + 8; }
+  if g.state == AG_SUSPENDED { bx += ap_button(s, sh, m, z, bx, yy, "RESUME", HT_RESUME, i, 0, false) + 8; }
+  return y + panel_height(z, content, true);
+}
+// A − value + row; returns its height.
+ap_stepper :: (s: [] AgentsPage, sh: [] Sheet, m: TextMeasure, z: UiSkin, x: f32, y: f32, label: string, value: string, which: int) -> f32 {
+  lw := sheet_text(sh, m, -1, x, y + (z.control_h - z.body.line) / 2, z.body.line, z.body.face, z.muted, label);
+  bx := x + 170;
+  bx += ap_button(s, sh, m, z, bx, y, "−", HT_STEP, which, 0, false) + 8;
+  vw := sheet_text(sh, m, -1, bx, y + (z.control_h - z.body.line) / 2, z.body.line, z.body.face, z.ink, sheet_pool(sh, value));
+  bx += 130;
+  pw := ap_button(s, sh, m, z, bx, y, "+", HT_STEP, which, 1, false);
+  return z.control_h + 8;
+}
+ap_ask_view :: (s: [] AgentsPage, sh: [] Sheet, m: TextMeasure, z: UiSkin, x: f32, y0: f32, w: f32) -> f32 {
+  r := s[0].set; y := y0;
+  head: [200] u8; n := ap_add(head[..], 0, cast(string) r.name[0..<r.name_n]); n = ap_add(head[..], n, " asks to:");
+  y += ap_para(sh, m, z, x, y, w, cast(string) head[0..<n], z.ink) + 6;
+  lines: [6] [160] u8; ns: [6] int;
+  nl := ap_grant_lines(lines[..], ns[..], r.mask, r.per_day, r.per_payment, 0, r.nhosts, false);
+  for k: 0..<nl { dot: [170] u8; dn := ap_add(dot[..], 0, "• "); dn = ap_add(dot[..], dn, cast(string) lines[k][0..<ns[k]]); y += ap_para(sh, m, z, x, y, w, cast(string) dot[0..<dn], z.ink); }
+  if r.owner_n > 0 { y += ap_para(sh, m, z, x, y, w, "• Its key carries your key's signature (NIP-OA)", z.muted); }
+  y += 14;
+  y += ap_para(sh, m, z, x, y, w, "You choose:", z.muted) + 6;
+  v: [40] u8;
+  if ag_holds(r.mask, AG_WALLET_SPEND) {
+    vn := ap_add(v[..], ap_add_sats(v[..], 0, r.per_day), " sats");
+    y += ap_stepper(s, sh, m, z, x, y, "A day, at most", cast(string) v[0..<vn], 0);
+    vn = ap_add(v[..], ap_add_sats(v[..], 0, r.per_payment), " sats");
+    y += ap_stepper(s, sh, m, z, x, y, "One payment, at most", cast(string) v[0..<vn], 1);
+  }
+  vn := ap_add(v[..], ap_add_int(v[..], 0, r.days), " days");
+  y += ap_stepper(s, sh, m, z, x, y, "It ends after", cast(string) vn_text(v[..], vn), 2) + 8;
+  check := ag_request(r.mask, r.per_day, r.per_payment, r.days, r.nhosts);
+  if check != AG_OK { y += ap_para(sh, m, z, x, y, w, ag_words(check), z.danger) + 8; }
+  bx := x;
+  if check == AG_OK { bx += ap_button(s, sh, m, z, bx, y, "APPROVE", HT_APPROVE, 0, 0, true) + 8; }
+  bx += ap_button(s, sh, m, z, bx, y, "DENY", HT_DENY, 0, 0, false);
+  y += z.control_h + 14;
+  y += ap_para(sh, m, z, x, y, w, ifx ag_holds(r.mask, AG_WALLET_SPEND) then "Approving needs a login with your key or passkey in the last five minutes, since it can spend. You can revoke it at any time." else "You can revoke it at any time.", z.faint);
+  return y;
+}
+vn_text :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+
+ap_max_scroll :: (s: [] AgentsPage) -> f32 {
+  d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  m := s[0].content_h - s[0].height / d;
+  return ifx m < 0 then 0.0f32 else m;
+}
+ap_hit_at :: (s: [] AgentsPage, x: f32, y: f32) -> int {
+  cy := y + s[0].scroll; best := -1;
+  for k: 0..<s[0].nh { h := s[0].hits[k]; if x >= h.x && x < h.x + h.w && cy >= h.y && cy < h.y + h.h { best = k; } }
+  return best;
+}
+ap_frame :: (s: [] AgentsPage, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
+  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].req_id = -1; }
+  a := s[0].atlas[..];
+  d := ifx dpr < 1 then 1.0f32 else dpr;
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  if uniforms.count >= 2 { uniforms[0] = width; uniforms[1] = height; }
+  s[0].time += ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  a[0].frame += 1;
+  z := zeron_skin();
+  w := width / d; h := height / d;
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, z.canvas, z.canvas);
+  if !a[0].ready { return v; }
+  s[0].content_h = ap_layout(s, w);
+  if s[0].scroll > ap_max_scroll(s) { s[0].scroll = ap_max_scroll(s); }
+  if s[0].scroll < 0 { s[0].scroll = 0; }
+  v = gpu_draw(out, v, a, d, s[0].under[0..<s[0].nu], 0, -s[0].scroll, -8, h + 8);
+  v = gpu_draw(out, v, a, d, s[0].over[0..<s[0].no], 0, -s[0].scroll, -8, h + 8);
+  return v;
+}
+ap_pointer :: (s: [] AgentsPage, x: f32, y: f32, phase: int) -> bool {
+  d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  lx := x / d; ly := y / d; s[0].px = lx; s[0].py = ly;
+  k := ap_hit_at(s, lx, ly);
+  s[0].hot = k; s[0].cursor = ifx k >= 0 then 1 else 0;
+  if k < 0 || phase != 0 { return k >= 0; }
+  ap_press(s, s[0].hits[k]);
+  return true;
+}
+
+// ---------------------------------------------------------------- the page's exports (components-face.c's contract)
+coaxial_agents_frame :: (s: [] AgentsPage, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; } return ap_frame(s, out, uniforms, width, height, dpr, dt);
+}
+coaxial_agents_pointer :: (s: [] AgentsPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return ap_pointer(s, x, y, phase); }
+coaxial_agents_wheel :: (s: [] AgentsPage, dy: f32) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].scroll += dy;
+  if s[0].scroll > ap_max_scroll(s) { s[0].scroll = ap_max_scroll(s); }
+  if s[0].scroll < 0 { s[0].scroll = 0; }
+}
+coaxial_agents_cursor :: (s: [] AgentsPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].cursor; }
+coaxial_agents_action :: (s: [] AgentsPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_agents_action_done :: (s: [] AgentsPage) #export_c #effects(all) { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_agents_max_vertices :: () -> int #export_c #effects(all) { return AP_MAX_VERTICES; }
+coaxial_agents_vertex_floats :: () -> int #export_c #effects(all) { return GP_VERTEX_FLOATS; }
+coaxial_agents_glyph_count :: () -> int #export_c #effects(all) { return GP_GLYPHS; }
+coaxial_agents_glyph_code :: (k: int) -> int #export_c #effects(all) {
+  if k < 95 { return k + 32; }
+  extra := GP_EXTRA;
+  return ifx k - 95 < 3 then cast(int) extra[k - 95] else 63;
+}
+coaxial_agents_font_count :: () -> int #export_c #effects(all) { return GP_FONTS; }
+coaxial_agents_font_size :: (k: int) -> f32 #export_c #effects(all) { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+coaxial_agents_font_weight :: (k: int) -> int #export_c #effects(all) { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+coaxial_agents_icon_count :: () -> int #export_c #effects(all) { return ICON_COUNT; }
+coaxial_agents_icon_size :: (i: int) -> f32 #export_c #effects(all) { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
+coaxial_agents_icon_name :: (s: [] AgentsPage, i: int) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= ICON_COUNT { return 0; }
+  names := ICON_NAMES;
+  n := ifx names[i].count < 64 then names[i].count else 64;
+  for k: 0..<n { s[0].sbytes[k] = names[i][k]; }
+  return n;
+}
+coaxial_agents_set_font :: (s: [] AgentsPage, slot: int) #export_c #effects(all) {
+  if s.count < 1 || slot < 0 || slot >= GP_FONTS { return; }
+  sizes := FONT_SIZES;
+  gp_set_font(s[0].atlas[..], slot, sizes[slot], s[0].scratch[0..<7], s[0].scratch[7..<7 + GP_GLYPHS], s[0].scratch[7 + GP_GLYPHS..<7 + GP_GLYPHS + GP_GLYPHS * GP_GLYPHS]);
+}
+coaxial_agents_set_icon :: (s: [] AgentsPage, i: int, x: f32, y: f32, w: f32, h: f32) #export_c #effects(all) { if s.count > 0 { gp_set_icon(s[0].atlas[..], i, x, y, w, h); } }
+coaxial_agents_set_atlas :: (s: [] AgentsPage, width: f32, height: f32, levels: int) #export_c #effects(all) { if s.count > 0 { gp_set_atlas(s[0].atlas[..], width, height, levels); } }
+coaxial_agents_set_dynamic :: (s: [] AgentsPage, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c #effects(all) {
+  if s.count > 0 { gp_set_dynamic(s[0].atlas[..], size, pen_x, pen_y, y0, cols, color_cols, color_width, color_height); }
+}
+coaxial_agents_next_cluster :: (s: [] AgentsPage) -> int #export_c #effects(all) { if s.count < 1 { return -1; } return gp_next_cluster(s[0].atlas[..]); }
+coaxial_agents_cluster :: (s: [] AgentsPage, slot: int) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return gp_cluster(s[0].atlas[..], slot, s[0].sbytes[..]); }
+coaxial_agents_measured :: (s: [] AgentsPage, slot: int, advance: f32, color: bool) #export_c #effects(all) { if s.count > 0 { gp_measured(s[0].atlas[..], slot, advance, color); } }
+coaxial_agents_next_cell :: (s: [] AgentsPage) -> int #export_c #effects(all) { if s.count < 1 { return -1; } return gp_next_cell(s[0].atlas[..]); }
+coaxial_agents_cell :: (s: [] AgentsPage, cell: int) -> bool #export_c #effects(all) { if s.count < 1 { return false; } return gp_cell(s[0].atlas[..], cell, s[0].scratch[0..<6]); }
+coaxial_agents_cell_ready :: (s: [] AgentsPage, cell: int) #export_c #effects(all) { if s.count > 0 { gp_cell_ready(s[0].atlas[..], cell); } }
+
+// ---------------------------------------------------------------- checks
+ap_test_page :: (s: [] AgentsPage) {
+  text_test_atlas(s[0].atlas[..]);
+  gp_set_atlas(s[0].atlas[..], 4096, 4096, 2);
+  for k: 0..<ICON_COUNT { gp_set_icon(s[0].atlas[..], k, 0, 0, 32, 32); }
+  s[0].ready = true; s[0].hot = -1; s[0].req_id = -1; s[0].d = 1; s[0].width = 800; s[0].height = 900;
+}
+// A hit of a kind (and a), or kind -1.
+ap_test_hit :: (s: [] AgentsPage, kind: int, a: int, b: int) -> SheetHit {
+  for k: 0..<s[0].nh { h := s[0].hits[k]; if h.kind == kind && h.a == a && h.b == b { return h; } }
+  return SheetHit.{kind = -1};
+}
+// Fixtures made with protoc from proto/openagents/account/v1alpha1/agents.proto (generated writers
+// don't run in compile-time checks; the API's checks, coax/web/api/tests/agent_checks.coax, write them).
+APT_TICKET :: [42] u8.[10,8,65,66,67,68,69,70,71,72,34,7,119,97,105,116,105,110,103,50,21,10,7,83,112,101,110,100,101,114,18,2,1,2,26,6,8,232,7,16,144,3];
+APT_LIST :: [86] u8.[10,84,10,31,97,99,99,116,95,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,97,18,7,66,117,105,108,100,101,114,26,24,34,1,2,42,6,8,136,39,16,244,3,56,232,7,64,232,175,204,123,72,1,80,188,5,34,14,10,8,65,66,67,68,69,70,71,72,16,1,24,5];
+ap_test_answer :: (s: [] AgentsPage, id: int, wire: [] u8) {
+  ans: [AW_MAX * 2] u8; k := ap_add(ans[..], 0, "200\n"); k += b64_encode(cast(string) wire, ans[k..<ans.count]);
+  ap_message(s, AP_MSG_HTTP + id, cast(string) ans[0..<k]);
+}
+#test "an agent's request: shown in words, the caps stepped by the person" {
+  s: [1] AgentsPage; ap_test_page(s[..]);
+  ap_hash(s[..], "request=ABCDEFGH");
+  #assert s[0].want && s[0].req == RQ_TICKET && cast(string) s[0].url[0..<s[0].url_n] == "/api/agents/request/ABCDEFGH?as=b64";
+  ap_sent(s[..], 3);
+  #assert !s[0].want;
+  t := APT_TICKET; tw: [64] u8; for i: 0..<t.count { tw[i] = t[i]; }
+  ap_test_answer(s[..], 3, tw[0..<t.count]);
+  #assert s[0].view == AP_ASK && s[0].set.days == 90 && s[0].set.per_day == 1000 && s[0].set.per_payment == 400 && s[0].set.mask == 3;
+  h := ap_layout(s[..], 800);
+  #assert h > 200 && ap_test_hit(s[..], HT_APPROVE, 0, 0).kind == HT_APPROVE && ap_test_hit(s[..], HT_DENY, 0, 0).kind == HT_DENY;
+  ap_press(s[..], ap_test_hit(s[..], HT_STEP, 0, 1));
+  #assert s[0].set.per_day == 5000;
+  ap_press(s[..], ap_test_hit(s[..], HT_STEP, 1, 0));
+  #assert s[0].set.per_payment == 100;
+  ap_press(s[..], ap_test_hit(s[..], HT_STEP, 0, 0)); ap_press(s[..], ap_test_hit(s[..], HT_STEP, 0, 0)); ap_press(s[..], ap_test_hit(s[..], HT_STEP, 0, 0));
+  #assert s[0].set.per_day == 100 && s[0].set.per_payment == 100;   // a payment never above the day
+  ap_press(s[..], ap_test_hit(s[..], HT_STEP, 1, 1));
+  #assert s[0].set.per_payment == 100;
+  ap_press(s[..], ap_test_hit(s[..], HT_STEP, 2, 1)); ap_press(s[..], ap_test_hit(s[..], HT_STEP, 2, 1)); ap_press(s[..], ap_test_hit(s[..], HT_STEP, 2, 1));
+  #assert s[0].set.days == 365;
+  ap_press(s[..], ap_test_hit(s[..], HT_DENY, 0, 0));
+  #assert s[0].req == RQ_DENY && cast(string) s[0].url[0..<s[0].url_n] == "/api/agents/deny/ABCDEFGH?as=b64";
+  ap_hash(s[..], "request=abc");
+  #assert s[0].req == RQ_LIST && s[0].error_n > 0;
+}
+#test "a refusal shows its words; a step-up asks to log in again" {
+  s: [1] AgentsPage; ap_test_page(s[..]);
+  s[0].req = RQ_APPROVE; s[0].req_id = 1;
+  ap_message(s[..], AP_MSG_HTTP + 1, "401\nLog in again with your key or passkey to give an agent more.");
+  #assert s[0].login_again && cast(string) s[0].error[0..<s[0].error_n] == "Log in again with your key or passkey to give an agent more.";
+  h := ap_layout(s[..], 800);
+  #assert ap_test_hit(s[..], HT_LOGIN, 0, 0).kind == HT_LOGIN;
+  s[0].req = RQ_LIST; s[0].req_id = 2;
+  ap_message(s[..], AP_MSG_HTTP + 2, "401\nLog in first.");
+  #assert s[0].view == AP_OUT;
+  s[0].req = RQ_LIST; s[0].req_id = 2;
+  ap_message(s[..], AP_MSG_HTTP + 2, "0\n");
+  #assert cast(string) s[0].error[0..<11] == "We couldn't";
+}
+#test "the list: words for each grant, and every button does something" {
+  s: [1] AgentsPage; ap_test_page(s[..]);
+  s[0].req = RQ_LIST; s[0].req_id = 0;
+  l := APT_LIST; lw: [128] u8; for i: 0..<l.count { lw[i] = l[i]; }
+  ap_test_answer(s[..], 0, lw[0..<l.count]);
+  #assert s[0].view == AP_LIST_VIEW && s[0].nagents == 1 && s[0].agents[0].state == AG_ACTIVE;
+  lines: [6] [160] u8; ns: [6] int;
+  nl := ap_grant_lines(lines[..], ns[..], 2, 5000, 500, 700, 0, true);
+  #assert nl == 3 && cast(string) lines[1][0..<ns[1]] == "Up to 5,000 sats a day, 500 at most in one payment; 700 spent in the last 24 hours";
+  #assert cast(string) lines[2][0..<ns[2]] == "From any network address";
+  span: [40] u8;
+  #assert cast(string) span[0..<ap_add_span(span[..], 0, 3 * AG_DAY_MS)] == "3 days" && cast(string) span[0..<ap_add_span(span[..], 0, 3600000)] == "an hour";
+  big: [40] u8;
+  #assert cast(string) big[0..<ap_add_sats(big[..], 0, 1000000)] == "1,000,000" && cast(string) big[0..<ap_add_sats(big[..], 0, 0)] == "0";
+  h := ap_layout(s[..], 800);
+  for kind: [3] int.[HT_REVOKE, HT_ROTATE, HT_REVOKE_ALL] { #assert ap_test_hit(s[..], kind, 0, 0).kind == kind; }
+  #assert ap_test_hit(s[..], HT_RESUME, 0, 0).kind == -1;
+  ap_press(s[..], ap_test_hit(s[..], HT_ROTATE, 0, 0));
+  #assert s[0].req == RQ_ROTATE && cast(string) s[0].url[0..<s[0].url_n] == "/api/agents/rotate/acct_aaaaaaaaaaaaaaaaaaaaaaaaaa?as=b64";
+  sec := AWT_SECRET; sw: [64] u8; for i: 0..<sec.count { sw[i] = sec[i]; }
+  s[0].req_id = 4;
+  ap_test_answer(s[..], 4, sw[0..<sec.count]);
+  #assert cast(string) s[0].secret[0..<s[0].secret_n] == "oa_key_ABCDEFGH_x" && cast(string) s[0].secret_for[0..<7] == "Builder";
+  #assert s[0].req == RQ_LIST;   // the list loads again under the new key
+  s[0].req = RQ_NONE; s[0].view = AP_LIST_VIEW;   // as the reloaded list answers
+  h = ap_layout(s[..], 800);
+  ap_press(s[..], ap_test_hit(s[..], HT_COPY, 0, 0));
+  #assert s[0].action == AP_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "oa_key_ABCDEFGH_x";
+  ap_press(s[..], ap_test_hit(s[..], HT_REVOKE, 0, 0));
+  #assert s[0].req == RQ_REVOKE && cast(string) s[0].url[0..<s[0].url_n] == "/api/agents/revoke/acct_aaaaaaaaaaaaaaaaaaaaaaaaaa?as=b64" && s[0].secret_n == 0;
+}

@@ -1,0 +1,168 @@
+// openagents agent: an owner's agents and their grants (GitHub #13211, docs/auth/identity-and-methods.md#agents),
+// the same routes and messages as openagents.com/settings/agents. Each call is signed with this
+// computer's key (NIP-98), linked to the owner's account by `openagents login`. The messages are
+// agent-wire.coax's (proto/openagents/account/v1alpha1/agents.proto), sent and read as ?as=b64;
+// the words for a grant and the refusals are agent-policy.coax's and the server's.
+//   create NAME [--scope profile:read] [--scope wallet:spend] [--per-day SATS] [--per-payment SATS] [--days N] [--host RANGE]...
+//   list | rotate ACCOUNT | revoke ACCOUNT | revoke-all | resume ACCOUNT
+#load "../../coax/web/api/agent-wire.coax";
+
+agent_usage :: () {
+  print("%\n", "Agents (accounts that act for you with their own keys; https://openagents.com/settings/agents):");
+  print("%\n", "  agent create NAME --scope S [--scope S] [--per-day SATS --per-payment SATS] [--days N] [--host RANGE]");
+  print("%\n", "                     S: profile:read or wallet:spend; ends in 90 days unless --days (1 to 365);");
+  print("%\n", "                     prints the agent's oa_key_ API key once");
+  print("%\n", "  agent list                 your agents, what each may do, its caps and when it ends");
+  print("%\n", "  agent rotate ACCOUNT       a new API key, shown once; its old keys stop working");
+  print("%\n", "  agent revoke ACCOUNT       stops it at once | agent revoke-all | agent resume ACCOUNT");
+  print("%\n", "");
+}
+
+// The grant asked for on the command line; its verdict is AG_OK or the first thing wrong with it.
+agent_ask_of :: (a: [] Args, name: string) -> AwRequest {
+  q: AwRequest;
+  q.name_n = aw_text(q.name[..], name);
+  q.days = AG_DEFAULT_DAYS; q.verdict = AG_OK;
+  if !ag_name_ok(name) { q.verdict = AG_BAD_NAME; return q; }
+  for i: 0..<a[0].n - 1 {
+    flag := a[0].v[i]; v := a[0].v[i + 1];
+    if flag == "--scope" { s := ag_named(v); if s == 0 { q.verdict = AG_BAD_SCOPE; return q; } q.mask |= ag_bit(s); }
+    else if flag == "--host" {
+      if q.nhosts >= AW_HOSTS || !ag_host_ok(v) { q.verdict = ifx q.nhosts >= AW_HOSTS then AG_TOO_MANY_HOSTS else AG_BAD_HOST; return q; }
+      q.hosts[q.nhosts].n = aw_text(q.hosts[q.nhosts].b[..], v); q.nhosts += 1;
+    }
+    else if flag == "--per-day" || flag == "--per-payment" || flag == "--days" {
+      n := args_number(v);
+      if !n.ok || n.value < 0 || n.value > 2100000000000000.0 || n.value != floor(n.value) { q.verdict = ifx flag == "--days" then AG_BAD_DAYS else AG_BAD_CAPS; return q; }
+      x := cast(int) n.value;
+      if flag == "--per-day" { q.per_day = x; } else if flag == "--per-payment" { q.per_payment = x; } else { q.days = x; }
+    }
+  }
+  q.verdict = ag_request(q.mask, q.per_day, q.per_payment, q.days, q.nhosts);
+  return q;
+}
+
+AgentCall :: struct { c: [1] AcctCall; wire: [HTTP_BODY_MAX] u8; n: int; }
+// One signed call; the answer's message bytes in g.wire[0..<g.n] on a 2xx. The status.
+agent_call :: (g: [] AgentCall, secret: [] u8, origin: string, method: string, path: string, body: [] u8) -> int {
+  b: [AW_MAX * 2] u8; bn := 0;
+  if body.count > 0 { bn = b64_encode(cast(string) body, b[..]); if bn < 0 { return 0; } }
+  st := acct_call(g[0].c[..], secret, origin, method, path, cast(string) b[0..<bn]);
+  g[0].n = 0;
+  if st >= 200 && st < 300 {
+    text := acct_body(g[0].c[..]);
+    while text.count > 0 && (text[text.count - 1] == '\n' || text[text.count - 1] == '\r') { text = text[0..<text.count - 1]; }
+    n := b64_decode(text, g[0].wire[..]);
+    if n < 0 { return 0; }
+    g[0].n = n;
+  }
+  return st;
+}
+agent_wire :: (g: [] AgentCall) -> [] u8 { return g[0].wire[0..<g[0].n]; }
+
+agent_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb != "create" && verb != "list" && verb != "rotate" && verb != "revoke" && verb != "revoke-all" && verb != "resume" {
+    return fail(r, EXIT_USAGE, "agent create | list | rotate | revoke | revoke-all | resume (openagents help)");
+  }
+  ob: [300] u8;
+  origin := acct_origin(a, profile, ob[..]);
+  if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
+  target := positional(a, 2);
+  if (verb == "create" || verb == "rotate" || verb == "revoke" || verb == "resume") && target == "" {
+    return fail(r, EXIT_USAGE, ifx verb == "create" then "agent create NAME --scope profile:read|wallet:spend" else "name the agent's account (acct_...): see `openagents agent list`");
+  }
+  if verb != "create" && verb != "list" && verb != "revoke-all" && (target.count > 40 || target.count < 6 || target[0..<5] != "acct_") {
+    return fail(r, EXIT_USAGE, "an agent's account starts acct_: see `openagents agent list`");
+  }
+  ask: AwRequest;
+  out: [AW_MAX] u8; on := 0;
+  if verb == "create" {
+    ask = agent_ask_of(a, target);
+    if ask.verdict != AG_OK { return fail(r, EXIT_USAGE, ag_words(ask.verdict)); }
+    on = aw_request_write(ask, out[..]);
+    if on < 0 { return fail(r, EXIT_FAIL, "that grant didn't write"); }
+  }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "not logged in on this profile: run `openagents login`"); }
+  g: [1] AgentCall;
+  path: [160] u8; pn := 0;
+  if verb == "create" { pn = copy("/api/agents?as=b64", path[..]); }
+  else if verb == "list" { pn = copy("/api/agents?as=b64", path[..]); }
+  else if verb == "revoke-all" { pn = copy("/api/agents/revoke-all?as=b64", path[..]); }
+  else { pn = copy("/api/agents/", path[..]); pn += copy(verb, path[pn..<path.count]); pn += copy("/", path[pn..<path.count]); pn += copy(target, path[pn..<path.count]); pn += copy("?as=b64", path[pn..<path.count]); }
+  st := agent_call(g[..], k[0].secret[..], origin, ifx verb == "list" then "GET" else "POST", cast(string) path[0..<pn], out[0..<on]);
+  wipe(k[0].secret[..]);
+  if st < 200 || st >= 300 { return acct_fail(r, g[0].c[..], "asking about agents"); }
+  rep_str(r, "origin", origin);
+  if verb == "create" || verb == "rotate" {
+    s := aw_secret_read(agent_wire(g[..]));
+    if s.error != 0 || s.secret_n == 0 { return fail(r, EXIT_FAIL, "the answer didn't read"); }
+    rep_str(r, "account", cast(string) s.account[0..<s.account_n]);
+    rep_str(r, "key", cast(string) s.secret[0..<s.secret_n]);
+    if !r[0].json { tool_errln("openagents: this is the agent's API key, shown once. Keep it somewhere safe; revoke the agent at /settings/agents."); }
+    return rep_done(r, EXIT_OK);
+  }
+  if verb == "list" {
+    wire := agent_wire(g[..]);
+    count := aw_list_count(wire);
+    rep_int(r, "agents", count);
+    for i: 0..<count {
+      one := aw_list_at(wire, i);
+      if one.error != 0 { continue; }
+      line: [600] u8; n := 0;
+      n += copy(cast(string) one.account[0..<one.account_n], line[n..<line.count]); n += copy("  ", line[n..<line.count]);
+      n += copy(cast(string) one.name[0..<one.name_n], line[n..<line.count]); n += copy("  ", line[n..<line.count]);
+      n += copy(ag_state_name(one.state), line[n..<line.count]);
+      for sc: 1..<AG_SCOPES + 1 { if ag_holds(one.mask, sc) { n += copy("  ", line[n..<line.count]); n += copy(ag_name_of(sc), line[n..<line.count]); } }
+      if ag_holds(one.mask, AG_WALLET_SPEND) {
+        d: [80] u8; dn := agent_caps(one.per_day, one.per_payment, one.spent, d[..]);
+        n += copy("  ", line[n..<line.count]); n += copy(cast(string) d[0..<dn], line[n..<line.count]);
+      }
+      if r[0].json { rep_str(r, cast(string) one.account[0..<one.account_n], cast(string) line[0..<n]); }
+      else { print("%\n", cast(string) line[0..<n]); }
+    }
+    return rep_done(r, EXIT_OK);
+  }
+  rep_str(r, "done", verb);
+  return rep_done(r, EXIT_OK);
+}
+// "SPENT/DAY a day, PAY a payment" (sats).
+agent_caps :: (day: int, pay: int, spent: int, out: [] u8) -> int {
+  n := agent_num(spent, out, 0); n += copy("/", out[n..<out.count]); n = agent_num(day, out, n);
+  n += copy(" sats a day, ", out[n..<out.count]); n = agent_num(pay, out, n); n += copy(" a payment", out[n..<out.count]);
+  return n;
+}
+agent_num :: (v: int, out: [] u8, at: int) -> int {
+  d: [24] u8; k := 0; x := ifx v < 0 then 0 else v;
+  while true { d[k] = cast(u8) (48 + x % 10); k += 1; x = x / 10; if x == 0 { break; } }
+  n := at; while k > 0 { k -= 1; if n < out.count { out[n] = d[k]; n += 1; } }
+  return n;
+}
+
+agent_test_args :: (a: [] Args, words: [] string) { a[0].n = 0; for w: words { a[0].v[a[0].n] = w; a[0].n += 1; } }
+#test "a grant asked for on the command line is checked before anything is sent" {
+  a: [1] Args;
+  w1 := [6] string.["agent", "create", "Builder", "--scope", "profile:read", "--days"]; agent_test_args(a[..], w1[..]);
+  q := agent_ask_of(a[..], "Builder");
+  #assert q.verdict == AG_OK && q.mask == 1 && q.days == 90 && cast(string) q.name[0..<q.name_n] == "Builder";
+  w2 := [9] string.["agent", "create", "B", "--scope", "wallet:spend", "--per-day", "1000", "--per-payment", "100"]; agent_test_args(a[..], w2[..]);
+  q = agent_ask_of(a[..], "B");
+  #assert q.verdict == AG_OK && q.mask == 2 && q.per_day == 1000 && q.per_payment == 100;
+  w3 := [5] string.["agent", "create", "B", "--scope", "wallet:spend"]; agent_test_args(a[..], w3[..]);
+  #assert agent_ask_of(a[..], "B").verdict == AG_SPEND_WITHOUT_CAPS;
+  w4 := [5] string.["agent", "create", "B", "--scope", "admin"]; agent_test_args(a[..], w4[..]);
+  #assert agent_ask_of(a[..], "B").verdict == AG_BAD_SCOPE;
+  w5 := [3] string.["agent", "create", "B"]; agent_test_args(a[..], w5[..]);
+  #assert agent_ask_of(a[..], "B").verdict == AG_NO_SCOPES;
+  w6 := [7] string.["agent", "create", "B", "--scope", "profile:read", "--days", "400"]; agent_test_args(a[..], w6[..]);
+  #assert agent_ask_of(a[..], "B").verdict == AG_BAD_DAYS;
+  w7 := [7] string.["agent", "create", "B", "--scope", "profile:read", "--days", "1.5"]; agent_test_args(a[..], w7[..]);
+  #assert agent_ask_of(a[..], "B").verdict == AG_BAD_DAYS;
+  w8 := [7] string.["agent", "create", "B", "--scope", "profile:read", "--host", "example.com"]; agent_test_args(a[..], w8[..]);
+  #assert agent_ask_of(a[..], "B").verdict == AG_BAD_HOST;
+  w9 := [7] string.["agent", "create", "B", "--scope", "profile:read", "--host", "203.0.113.0/24"]; agent_test_args(a[..], w9[..]);
+  q = agent_ask_of(a[..], "B");
+  #assert q.verdict == AG_OK && q.nhosts == 1;
+  c: [80] u8;
+  #assert cast(string) c[0..<agent_caps(5000, 500, 700, c[..])] == "700/5000 sats a day, 500 a payment";
+}

@@ -1,0 +1,460 @@
+// What an agent may do in its owner's name (docs/auth/identity-and-methods.md#agents, GitHub
+// #13211). auth.c and agents.c gather the facts (the grant's row, the clock, the caller's address,
+// what it spent in the last 24 hours) and move them in; this file decides; they move the answer
+// out and never decide on their own. The grant's wire shape is
+// proto/openagents/account/v1alpha1/agents.proto (agent-wire.coax is its codec).
+//
+//   scopes        a closed set, deny by default: a scope this file doesn't name is refused, and a
+//                 grant holds only the scopes its owner approved
+//   ag_request    a proposed grant: at least one scope, caps that make sense, an expiry of at most
+//                 a year (90 days when none is given), at most eight addresses to call from
+//   ag_state      a grant's state now: pending, active, expired, revoked or suspended
+//   ag_agent      may this agent's credential be used at all (an active grant, an allowed address)
+//   ag_scope      may it use a scope route (it holds the scope)
+//   ag_spend      may it spend this many sats (per payment, and over any 24 hours)
+//   ag_link       may a logged-in person link a new key (the CLI's) to their account
+//
+// The caps are the owner's: we set none of our own (AG_MAX_SATS is every bitcoin there will ever
+// be, so only the owner's number limits an agent). Every verdict has plain words (ag_words).
+//   coax/bin/coax test coax/web/api/agent-policy.coax
+//   coax/bin/coax mutate coax/web/api/agent-policy.coax
+#authority;
+
+// Scopes: the proto's Scope numbers.
+AG_PROFILE_READ :: 1;      // "profile:read"
+AG_WALLET_SPEND :: 2;      // "wallet:spend"
+AG_SCOPES :: 2;            // the highest scope number; each scope is one bit, 1 << (scope - 1)
+AG_ALL :: 3;               // every known scope's bit
+
+// The proto's GrantState numbers.
+AG_ACTIVE :: 1; AG_EXPIRED :: 2; AG_REVOKED :: 3; AG_SUSPENDED :: 4; AG_PENDING :: 5;
+
+// Verdicts.
+AG_OK :: 0;
+AG_NO_SCOPES :: 1;          // a grant with nothing in it
+AG_BAD_SCOPE :: 2;          // a scope this file doesn't name
+AG_BAD_DAYS :: 3;           // an expiry under a day or over a year
+AG_BAD_CAPS :: 4;           // a negative cap, a per-payment cap over the daily one
+AG_CAPS_WITHOUT_SPEND :: 5; // caps on a grant that may not spend
+AG_SPEND_WITHOUT_CAPS :: 6; // may spend, with nothing to spend
+AG_BAD_HOST :: 7;           // an address that isn't one
+AG_TOO_MANY_HOSTS :: 8;
+AG_BAD_NAME :: 9;
+AG_NOT_ACTIVE :: 10;        // the grant expired, was revoked or is suspended, or isn't approved yet
+AG_WRONG_HOST :: 11;        // called from an address the grant doesn't list
+AG_NO_SCOPE :: 12;          // the grant doesn't hold the route's scope
+AG_BAD_AMOUNT :: 13;        // a spend of no sats
+AG_OVER_PAYMENT :: 14;
+AG_OVER_DAY :: 15;
+AG_STEP_UP :: 16;           // linking a key needs a strong login on an account that has one
+AG_BAD_WIRE :: 17;          // bytes that aren't the message (agent-wire.coax)
+AG_BAD_KEY :: 18;           // an agent key that isn't 64 lower-case hex
+AG_BAD_ATTESTATION :: 19;   // an owner attestation (NIP-OA) that doesn't read or doesn't verify
+AG_FRESH :: 20;             // widening a grant needs a login within the last five minutes
+AG_FRESH_MS :: 300000;      // auth-policy.coax's AP_FRESH_MS
+AG_TOO_MANY_AGENTS :: 21;   // an account has AG_MAX_AGENTS agents already
+AG_MAX_AGENTS :: 32;        // agents an account may have at once (revoked ones don't count); said on the page
+
+AG_DAY_MS :: 86400000;
+AG_DEFAULT_DAYS :: 90;
+AG_MAX_DAYS :: 365;
+AG_MAX_HOSTS :: 8;
+AG_NAME_MAX :: 80;
+AG_MAX_SATS :: 2100000000000000;   // 21 million bitcoin in sats: no cap of ours, only the owner's
+
+// ---------------------------------------------------------------- checks
+#test "scopes: two, each its own bit, named and worded" {
+  #assert ag_bit(AG_PROFILE_READ) == 1 && ag_bit(AG_WALLET_SPEND) == 2;
+  #assert ag_bit(0) == 0 && ag_bit(3) == 0 && ag_bit(-1) == 0 && ag_bit(64) == 0;
+  #assert ag_named("profile:read") == AG_PROFILE_READ && ag_named("wallet:spend") == AG_WALLET_SPEND;
+  #assert ag_named("") == 0 && ag_named("profile:write") == 0 && ag_named("wallet:spend ") == 0 && ag_named("Profile:read") == 0;
+  #assert ag_name_of(AG_PROFILE_READ) == "profile:read" && ag_name_of(AG_WALLET_SPEND) == "wallet:spend" && ag_name_of(0) == "" && ag_name_of(3) == "";
+  #assert ag_scope_words(AG_PROFILE_READ) == "See your name and account type";
+  #assert ag_scope_words(AG_WALLET_SPEND) == "Spend sats, within the limits below";
+  #assert ag_scope_words(0) == "" && ag_scope_words(3) == "";
+  #assert AG_ALL == ag_bit(AG_PROFILE_READ) | ag_bit(AG_WALLET_SPEND);
+}
+#test "holding a scope: only a known scope's bit, deny by default" {
+  #assert ag_holds(1, AG_PROFILE_READ) && !ag_holds(1, AG_WALLET_SPEND);
+  #assert ag_holds(2, AG_WALLET_SPEND) && !ag_holds(2, AG_PROFILE_READ);
+  #assert ag_holds(3, AG_PROFILE_READ) && ag_holds(3, AG_WALLET_SPEND);
+  #assert !ag_holds(0, AG_PROFILE_READ) && !ag_holds(-1, 0) && !ag_holds(7, 0) && !ag_holds(7, 3) && !ag_holds(4, 3);
+}
+#test "an expiry: 90 days when none, a day to a year, nothing else" {
+  #assert ag_days(0) == 90 && ag_days(1) == 1 && ag_days(90) == 90 && ag_days(365) == 365;
+  #assert ag_days(366) == 0 && ag_days(-1) == 0 && ag_days(100000) == 0;
+  #assert ag_expires(1000, 1) == 1000 + AG_DAY_MS && ag_expires(0, 0) == 90 * AG_DAY_MS && ag_expires(5, 366) == -1;
+}
+#test "a name: one to eighty bytes, no control characters" {
+  #assert ag_name_ok("Builder") && ag_name_ok("a") && ag_name_ok("café bot");
+  #assert !ag_name_ok("") && !ag_name_ok("a\nb") && !ag_name_ok("tab\there");
+  del: [1] u8; del[0] = 127; #assert !ag_name_ok(cast(string) del[..]);
+  long: [81] u8; for i: 0..<81 { long[i] = 'x'; }
+  #assert !ag_name_ok(cast(string) long[..]) && ag_name_ok(cast(string) long[0..<80]);
+  #assert ag_name_ok(" ") && ag_name_ok("~");
+}
+#test "a proposed grant: scopes, caps, expiry and addresses checked in that order" {
+  #assert ag_request(1, 0, 0, 0, 0) == AG_OK;
+  #assert ag_request(2, 1000, 100, 30, 0) == AG_OK;
+  #assert ag_request(3, 1000, 1000, 365, 8) == AG_OK;
+  #assert ag_request(0, 0, 0, 0, 0) == AG_NO_SCOPES;
+  #assert ag_request(4, 0, 0, 0, 0) == AG_BAD_SCOPE && ag_request(5, 0, 0, 0, 0) == AG_BAD_SCOPE && ag_request(-1, 0, 0, 0, 0) == AG_BAD_SCOPE;
+  #assert ag_request(1, 0, 0, 366, 0) == AG_BAD_DAYS && ag_request(1, 0, 0, -1, 0) == AG_BAD_DAYS;
+  #assert ag_request(1, 0, 0, 0, 9) == AG_TOO_MANY_HOSTS && ag_request(1, 0, 0, 0, -1) == AG_TOO_MANY_HOSTS;
+  #assert ag_request(2, 100, 101, 0, 0) == AG_BAD_CAPS && ag_request(2, -1, 0, 0, 0) == AG_BAD_CAPS && ag_request(2, 10, -1, 0, 0) == AG_BAD_CAPS;
+  #assert ag_request(2, AG_MAX_SATS, AG_MAX_SATS, 0, 0) == AG_OK && ag_request(2, AG_MAX_SATS + 1, 1, 0, 0) == AG_BAD_CAPS;
+  #assert ag_request(1, 1, 0, 0, 0) == AG_CAPS_WITHOUT_SPEND && ag_request(1, 0, 1, 0, 0) == AG_BAD_CAPS;
+  #assert ag_request(1, 5, 5, 0, 0) == AG_CAPS_WITHOUT_SPEND;
+  #assert ag_request(2, 0, 0, 0, 0) == AG_SPEND_WITHOUT_CAPS && ag_request(2, 10, 0, 0, 0) == AG_SPEND_WITHOUT_CAPS;
+  #assert ag_request(2, 1, 1, 0, 0) == AG_OK && ag_request(1, 0, 0, 1, 0) == AG_OK && ag_request(1, 0, 0, 365, 0) == AG_OK;
+}
+#test "a grant's state: revoked first, then waiting, then suspended, then expired" {
+  #assert ag_state(100, 200, 0, false, false) == AG_ACTIVE;
+  #assert ag_state(199, 200, 0, false, false) == AG_ACTIVE && ag_state(200, 200, 0, false, false) == AG_EXPIRED;
+  #assert ag_state(100, 200, 50, false, false) == AG_REVOKED && ag_state(300, 200, 50, true, true) == AG_REVOKED;
+  #assert ag_state(100, 200, 0, true, false) == AG_PENDING && ag_state(300, 200, 0, true, true) == AG_PENDING;
+  #assert ag_state(100, 200, 0, false, true) == AG_SUSPENDED && ag_state(300, 200, 0, false, true) == AG_SUSPENDED;
+  #assert ag_state(100, 200, -1, false, false) == AG_ACTIVE && ag_state(100, 200, 1, false, false) == AG_REVOKED;
+}
+#test "an agent's credential works only with an active grant, from a listed address" {
+  #assert ag_agent(AG_ACTIVE, 0, false) == AG_OK && ag_agent(AG_ACTIVE, 2, true) == AG_OK;
+  #assert ag_agent(AG_ACTIVE, 2, false) == AG_WRONG_HOST && ag_agent(AG_ACTIVE, 1, false) == AG_WRONG_HOST;
+  for s: 2..<6 { #assert ag_agent(s, 0, true) == AG_NOT_ACTIVE; }
+  #assert ag_agent(0, 0, true) == AG_NOT_ACTIVE && ag_agent(6, 0, true) == AG_NOT_ACTIVE;
+}
+#test "a scope route: the grant must hold that scope" {
+  #assert ag_scope(1, AG_PROFILE_READ) == AG_OK && ag_scope(2, AG_PROFILE_READ) == AG_NO_SCOPE;
+  #assert ag_scope(3, AG_WALLET_SPEND) == AG_OK && ag_scope(1, AG_WALLET_SPEND) == AG_NO_SCOPE;
+  #assert ag_scope(3, 0) == AG_NO_SCOPE && ag_scope(3, 3) == AG_NO_SCOPE;
+}
+#test "a spend: an amount, under the per-payment cap and the last 24 hours' cap" {
+  #assert ag_spend(3, 100, 100, 1000, 0) == AG_OK;
+  #assert ag_spend(2, 100, 100, 1000, 900) == AG_OK && ag_spend(2, 100, 100, 1000, 901) == AG_OVER_DAY;
+  #assert ag_spend(2, 101, 100, 1000, 0) == AG_OVER_PAYMENT;
+  #assert ag_spend(2, 0, 100, 1000, 0) == AG_BAD_AMOUNT && ag_spend(2, -5, 100, 1000, 0) == AG_BAD_AMOUNT;
+  #assert ag_spend(1, 10, 100, 1000, 0) == AG_NO_SCOPE;
+  #assert ag_spend(2, 1, 1, 1, 0) == AG_OK && ag_spend(2, 1, 1, 1, 1) == AG_OVER_DAY;
+}
+#test "approving: spending, or giving an existing agent more, needs a login within five minutes" {
+  #assert ag_approve(1, false, 0) == AG_OK && ag_approve(1, false, AG_FRESH_MS + 1) == AG_OK && ag_approve(1, false, -1) == AG_OK;
+  #assert ag_approve(2, false, 0) == AG_OK && ag_approve(2, false, AG_FRESH_MS) == AG_OK;
+  #assert ag_approve(2, false, AG_FRESH_MS + 1) == AG_FRESH && ag_approve(2, false, -1) == AG_FRESH && ag_approve(3, false, -1) == AG_FRESH;
+  #assert ag_approve(1, true, 0) == AG_OK && ag_approve(1, true, AG_FRESH_MS + 1) == AG_FRESH && ag_approve(1, true, -1) == AG_FRESH;
+}
+#test "widening: a new scope, a higher cap, a later end or fewer address limits" {
+  #assert !ag_widens(1, 1, 0, 0, 0, 0, 100, 100, true);
+  #assert ag_widens(1, 3, 0, 0, 0, 0, 100, 100, true) && !ag_widens(3, 1, 0, 0, 0, 0, 100, 100, true);
+  #assert ag_widens(2, 2, 10, 11, 5, 5, 100, 100, true) && !ag_widens(2, 2, 10, 9, 5, 5, 100, 100, true);
+  #assert ag_widens(2, 2, 10, 10, 5, 6, 100, 100, true) && !ag_widens(2, 2, 10, 10, 5, 4, 100, 100, true);
+  #assert ag_widens(1, 1, 0, 0, 0, 0, 100, 101, true) && !ag_widens(1, 1, 0, 0, 0, 0, 100, 99, true);
+  #assert ag_widens(1, 1, 0, 0, 0, 0, 100, 100, false) && !ag_widens(1, 1, 0, 0, 0, 0, 100, 100, true);
+  #assert ag_widens(1, 2, 0, 0, 0, 0, 100, 100, true);
+}
+#test "an account has at most 32 agents at once" {
+  #assert ag_room(0) == AG_OK && ag_room(31) == AG_OK && ag_room(32) == AG_TOO_MANY_AGENTS && ag_room(33) == AG_TOO_MANY_AGENTS;
+}
+#test "linking a key: a strong login, unless the account has no strong way in" {
+  #assert ag_link(2, true) == AG_OK && ag_link(2, false) == AG_OK && ag_link(1, false) == AG_OK;
+  #assert ag_link(1, true) == AG_STEP_UP && ag_link(0, true) == AG_STEP_UP;
+}
+#test "IPv4: four canonical numbers, ranges with a prefix length" {
+  #assert ag_ipv4("0.0.0.0") == 0 && ag_ipv4("255.255.255.255") == 4294967295 && ag_ipv4("203.0.113.7") == 3405803783;
+  #assert ag_ipv4("1.2.3.4") == 16909060 && ag_ipv4("10.0.0.1") == 167772161 && ag_ipv4("9.9.9.9") == 151587081;
+  bad := [17] string.["", "1.2.3", "1.2.3.4.5", "256.0.0.1", "01.2.3.4", "1..3.4", "1.2.3.", ".1.2.3", "a.b.c.d", "1.2.3.4 ", "1.2.3.-4", "1.2.3.4/8", "1.2.3.1000", "9999999999.1.1.1", "1.2.3.:", "1.2.3./", "1.2.3/8"];
+  for i: 0..<17 { #assert ag_ipv4(bad[i]) == -1; }
+  #assert ag_host_ok("203.0.113.0/24") && ag_host_ok("1.2.3.4") && ag_host_ok("0.0.0.0/0") && ag_host_ok("1.2.3.4/32") && ag_host_ok("0.0.0.0");
+  #assert ag_host_ok("2001:db8::1") && ag_host_ok("::1") && ag_host_ok("1.2.3.4/9") && ag_host_ok("1.2.3.4/29");
+  #assert !ag_host_ok("") && !ag_host_ok("1.2.3.4/33") && !ag_host_ok("1.2.3.4/") && !ag_host_ok("1.2.3.4/-1") && !ag_host_ok("1.2.3.4/08");
+  #assert !ag_host_ok("example.com") && !ag_host_ok("2001:DB8::1") && !ag_host_ok(":") && !ag_host_ok("1.2.3/8") && !ag_host_ok("::1/128");
+  #assert !ag_host_ok("1.2.3.4/3a") && !ag_host_ok("/8") && !ag_host_ok("1.2.3./8") && !ag_host_ok("1.2.3.4/:") && !ag_host_ok("1.2.3.4/000");
+  #assert !ag_host_ok("1.2.3.4/100") && !ag_host_ok("1.2.3.4/1/2") && !ag_host_ok("1.2.3.4/00");
+}
+#test "IPv6: an exact address in lower case" {
+  #assert ag_ipv6("2001:db8::9") && ag_ipv6("::a") && ag_ipv6("::f") && ag_ipv6("::0") && ag_ipv6("1111:2222:3333:4444:5555:6666:7777:8888");
+  #assert !ag_ipv6("1111:2222:3333:4444:5555:6666:7777:88889") && !ag_ipv6("1:2") && !ag_ipv6("::g") && !ag_ipv6("::/") && !ag_ipv6("") && !ag_ipv6("::G");
+}
+#test "an address against a range" {
+  #assert ag_host_match("203.0.113.7", "203.0.113.0/24") && !ag_host_match("203.0.114.7", "203.0.113.0/24");
+  #assert ag_host_match("203.0.113.7", "203.0.113.7") && !ag_host_match("203.0.113.8", "203.0.113.7");
+  #assert ag_host_match("8.8.8.8", "0.0.0.0/0") && ag_host_match("10.1.2.3", "10.0.0.0/8") && !ag_host_match("11.1.2.3", "10.0.0.0/8");
+  #assert ag_host_match("1.2.3.4", "1.2.3.4/32") && !ag_host_match("1.2.3.5", "1.2.3.4/32") && ag_host_match("0.0.0.0", "0.0.0.0/8");
+  #assert ag_host_match("1.2.3.5", "1.2.3.4/31") && !ag_host_match("1.2.3.6", "1.2.3.4/31");
+  #assert ag_host_match("128.0.0.1", "128.0.0.0/1") && !ag_host_match("127.0.0.1", "128.0.0.0/1");
+  #assert ag_host_match("2001:db8::1", "2001:db8::1") && !ag_host_match("2001:db8::2", "2001:db8::1");
+  #assert !ag_host_match("2001:db8::1", "10.0.0.0/8") && !ag_host_match("10.0.0.1", "2001:db8::1");
+  #assert !ag_host_match("local", "0.0.0.0/0") && !ag_host_match("1.2.3.4", "bad") && !ag_host_match("", "");
+  #assert !ag_host_match("1.2.3.4/32", "1.2.3.4/32") && !ag_host_match("1.2.3.4", "1.2.3.4/33");
+}
+#test "a user code: eight letters and digits from the base32 alphabet" {
+  #assert ag_code_ok("ABCDEFGH") && ag_code_ok("23456777") && ag_code_ok("ZZZZZZZZ");
+  #assert !ag_code_ok("ABCDEFG") && !ag_code_ok("ABCDEFGHI") && !ag_code_ok("abcdefgh") && !ag_code_ok("ABCD1FGH");
+  #assert !ag_code_ok("ABCD8FGH") && !ag_code_ok("ABCD-FGH") && !ag_code_ok("") && !ag_code_ok("@BCDEFGH") && !ag_code_ok("[BCDEFGH");
+}
+#test "every verdict has its status and its words" {
+  #assert ag_status(AG_OK) == 200;
+  for v: 1..<10 { #assert ag_status(v) == 400; }
+  #assert ag_status(AG_NOT_ACTIVE) == 401 && ag_status(AG_WRONG_HOST) == 401 && ag_status(AG_STEP_UP) == 401;
+  #assert ag_status(AG_NO_SCOPE) == 403 && ag_status(AG_OVER_PAYMENT) == 403 && ag_status(AG_OVER_DAY) == 403;
+  #assert ag_status(AG_BAD_AMOUNT) == 400 && ag_status(22) == 500 && ag_status(-1) == 500 && ag_status(AG_TOO_MANY_AGENTS) == 409;
+  #assert ag_status(AG_BAD_WIRE) == 400 && ag_status(AG_BAD_KEY) == 400 && ag_status(AG_BAD_ATTESTATION) == 400 && ag_status(AG_FRESH) == 401;
+  #assert ag_words(AG_OK) == "" && ag_words(22) == "";
+  #assert ag_words(AG_TOO_MANY_AGENTS) == "You have 32 agents, the most an account may have. Revoke one first.";
+  #assert ag_words(AG_BAD_WIRE) == "That request didn't read.";
+  #assert ag_words(AG_BAD_KEY) == "An agent's key is 64 lower-case hex characters.";
+  #assert ag_words(AG_BAD_ATTESTATION) == "The owner's signature for this agent's key doesn't check out.";
+  #assert ag_words(AG_FRESH) == "Log in again with your key or passkey to give an agent more.";
+  #assert ag_words(AG_NO_SCOPES) == "Choose at least one thing this agent may do.";
+  #assert ag_words(AG_BAD_SCOPE) == "That isn't something an agent can be allowed to do.";
+  #assert ag_words(AG_BAD_DAYS) == "A grant lasts from 1 to 365 days.";
+  #assert ag_words(AG_BAD_CAPS) == "The limit per payment can't be more than the limit per day.";
+  #assert ag_words(AG_CAPS_WITHOUT_SPEND) == "Spending limits need the spend permission.";
+  #assert ag_words(AG_SPEND_WITHOUT_CAPS) == "Set how much this agent may spend.";
+  #assert ag_words(AG_BAD_HOST) == "Addresses are IPv4 like 203.0.113.0/24, or an exact IPv6 address.";
+  #assert ag_words(AG_TOO_MANY_HOSTS) == "At most 8 addresses.";
+  #assert ag_words(AG_BAD_NAME) == "Give the agent a name of up to 80 characters.";
+  #assert ag_words(AG_NOT_ACTIVE) == "This agent's grant has expired, was revoked or is paused.";
+  #assert ag_words(AG_WRONG_HOST) == "This agent may not call from this address.";
+  #assert ag_words(AG_NO_SCOPE) == "This agent isn't allowed to do this.";
+  #assert ag_words(AG_BAD_AMOUNT) == "Ask for at least 1 sat.";
+  #assert ag_words(AG_OVER_PAYMENT) == "That's more than this agent may spend in one payment.";
+  #assert ag_words(AG_OVER_DAY) == "That's more than this agent may spend in 24 hours.";
+  #assert ag_words(AG_STEP_UP) == "Log in again with your key or passkey to do this.";
+}
+#test "state names, for the lines the pages read" {
+  #assert ag_state_name(AG_ACTIVE) == "active" && ag_state_name(AG_EXPIRED) == "expired" && ag_state_name(AG_REVOKED) == "revoked";
+  #assert ag_state_name(AG_SUSPENDED) == "paused" && ag_state_name(AG_PENDING) == "waiting" && ag_state_name(0) == "" && ag_state_name(6) == "";
+}
+
+// ---------------------------------------------------------------- scopes
+ag_bit :: (scope: int) -> int #export_c #effects(all) {
+  if scope < 1 || scope > AG_SCOPES { return 0; }
+  return 1 << (scope - 1);
+}
+ag_named :: (name: string) -> int #export_c #effects(all) {
+  if name == "profile:read" { return AG_PROFILE_READ; }
+  if name == "wallet:spend" { return AG_WALLET_SPEND; }
+  return 0;
+}
+ag_name_of :: (scope: int) -> string #export_c #effects(all) {
+  if scope == AG_PROFILE_READ { return "profile:read"; }
+  if scope == AG_WALLET_SPEND { return "wallet:spend"; }
+  return "";
+}
+// What a scope lets an agent do, as the owner reads it before approving.
+ag_scope_words :: (scope: int) -> string #export_c #effects(all) {
+  if scope == AG_PROFILE_READ { return "See your name and account type"; }
+  if scope == AG_WALLET_SPEND { return "Spend sats, within the limits below"; }
+  return "";
+}
+ag_holds :: (mask: int, scope: int) -> bool #export_c #effects(all) {
+  bit := ag_bit(scope);
+  return bit != 0 && (mask & bit) != 0;
+}
+
+// ---------------------------------------------------------------- a proposed grant
+ag_days :: (days: int) -> int #export_c #effects(all) {   // 0: not an expiry a grant may have
+  if days == 0 { return AG_DEFAULT_DAYS; }
+  if days < 1 || days > AG_MAX_DAYS { return 0; }
+  return days;
+}
+// When a grant made at created_ms for days (0: the default) ends, or -1.
+ag_expires :: (created_ms: int, days: int) -> int #export_c #effects(all) {
+  d := ag_days(days);
+  if d == 0 { return -1; }
+  return created_ms + d * AG_DAY_MS;
+}
+ag_name_ok :: (name: string) -> bool #export_c #effects(all) {
+  if name.count < 1 || name.count > AG_NAME_MAX { return false; }
+  for i: 0..<name.count {
+    if name[i] < 32 || name[i] == 127 { return false; }
+  }
+  return true;
+}
+// mask: the scopes' bits (a scope this file doesn't know sets a bit above AG_ALL, or -1);
+// per_day and per_payment in sats; days 0 for the default; hosts: how many addresses.
+ag_request :: (mask: int, per_day: int, per_payment: int, days: int, hosts: int) -> int #export_c #effects(all) {
+  if mask < 0 || mask > AG_ALL { return AG_BAD_SCOPE; }
+  if mask == 0 { return AG_NO_SCOPES; }
+  if ag_days(days) == 0 { return AG_BAD_DAYS; }
+  if hosts < 0 || hosts > AG_MAX_HOSTS { return AG_TOO_MANY_HOSTS; }
+  if per_day < 0 || per_payment < 0 || per_day > AG_MAX_SATS || per_payment > per_day { return AG_BAD_CAPS; }
+  spend := ag_holds(mask, AG_WALLET_SPEND);
+  if !spend && per_day > 0 { return AG_CAPS_WITHOUT_SPEND; }
+  if spend && per_payment == 0 { return AG_SPEND_WITHOUT_CAPS; }
+  return AG_OK;
+}
+
+// ---------------------------------------------------------------- a grant in use
+// revoked_ms: when it was revoked (0 or less: never); pending: its owner hasn't approved it;
+// suspended: its owner paused every agent, or the agent's or owner's account is frozen.
+ag_state :: (now_ms: int, expires_ms: int, revoked_ms: int, pending: bool, suspended: bool) -> int #export_c #effects(all) {
+  if revoked_ms > 0 { return AG_REVOKED; }
+  if pending { return AG_PENDING; }
+  if suspended { return AG_SUSPENDED; }
+  if now_ms >= expires_ms { return AG_EXPIRED; }
+  return AG_ACTIVE;
+}
+ag_state_name :: (state: int) -> string #export_c #effects(all) {
+  if state == AG_ACTIVE { return "active"; }
+  if state == AG_EXPIRED { return "expired"; }
+  if state == AG_REVOKED { return "revoked"; }
+  if state == AG_SUSPENDED { return "paused"; }
+  if state == AG_PENDING { return "waiting"; }
+  return "";
+}
+// Every request an agent's credential makes: its grant's state, how many addresses the grant
+// lists and whether the caller's address matched one of them.
+ag_agent :: (state: int, hosts: int, host_matched: bool) -> int #export_c #effects(all) {
+  if state != AG_ACTIVE { return AG_NOT_ACTIVE; }
+  if hosts > 0 && !host_matched { return AG_WRONG_HOST; }
+  return AG_OK;
+}
+ag_scope :: (mask: int, needed: int) -> int #export_c #effects(all) {
+  if ag_holds(mask, needed) { return AG_OK; }
+  return AG_NO_SCOPE;
+}
+// A spend of sats, with spent_24h already spent in the last 24 hours.
+ag_spend :: (mask: int, sats: int, per_payment: int, per_day: int, spent_24h: int) -> int #export_c #effects(all) {
+  if !ag_holds(mask, AG_WALLET_SPEND) { return AG_NO_SCOPE; }
+  if sats < 1 { return AG_BAD_AMOUNT; }
+  if sats > per_payment { return AG_OVER_PAYMENT; }
+  if spent_24h + sats > per_day { return AG_OVER_DAY; }
+  return AG_OK;
+}
+// One more agent for an account that has count of them (not revoked).
+ag_room :: (count: int) -> int #export_c #effects(all) {
+  if count < AG_MAX_AGENTS { return AG_OK; }
+  return AG_TOO_MANY_AGENTS;
+}
+// An owner approves (or changes) a grant at L2 (the route's rule). Spending, and giving an agent
+// that already has a grant more than it had, also need L2 within the last five minutes: l2_age_ms
+// since the owner last proved L2 (-1: never in this session; a NIP-98 signature is 0).
+ag_approve :: (mask: int, widens: bool, l2_age_ms: int) -> int #export_c #effects(all) {
+  if !ag_holds(mask, AG_WALLET_SPEND) && !widens { return AG_OK; }
+  if l2_age_ms < 0 || l2_age_ms > AG_FRESH_MS { return AG_FRESH; }
+  return AG_OK;
+}
+// Does a new grant give more than the old one? narrower_hosts: every new address limit is within
+// the old ones (the host checks each against ag_host_match; no limits at all is the widest).
+ag_widens :: (old_mask: int, new_mask: int, old_day: int, new_day: int, old_pay: int, new_pay: int, old_end: int, new_end: int,
+              narrower_hosts: bool) -> bool #export_c #effects(all) {
+  if (new_mask | old_mask) != old_mask { return true; }
+  if new_day > old_day || new_pay > old_pay || new_end > old_end { return true; }
+  return !narrower_hosts;
+}
+// A logged-in person links a key that proved itself (the CLI's): at L2, or at L1 when the account
+// has no stronger way in to protect.
+ag_link :: (level: int, strong: bool) -> int #export_c #effects(all) {
+  if level < 2 && strong { return AG_STEP_UP; }
+  return AG_OK;
+}
+
+// ---------------------------------------------------------------- addresses
+// An IPv4 address (addr -1 when it isn't one) and its prefix length (32 without one).
+AgV4 :: struct { addr: int = -1; bits: int; }
+// Reads a canonical dotted address ("203.0.113.7"), and when ranged, an optional "/n" after it.
+ag_v4 :: (s: string, ranged: bool) -> AgV4 #effects(all) {
+  value := 0; part := 0; digits := 0; parts := 0;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '/' && ranged {
+      if digits == 0 || parts < 3 { return AgV4.{}; }
+      bits := ag_prefix(s[i + 1..<s.count]);
+      if bits < 0 { return AgV4.{}; }
+      return AgV4.{addr = value * 256 + part, bits = bits};
+    }
+    if c == '.' {
+      if digits == 0 || parts == 3 { return AgV4.{}; }
+      value = value * 256 + part; parts += 1; part = 0; digits = 0;
+    } else {
+      if c < '0' || c > '9' { return AgV4.{}; }
+      if digits == 1 && part == 0 { return AgV4.{}; }   // a leading zero
+      part = part * 10 + cast(int) (c - '0'); digits += 1;
+      if part > 255 { return AgV4.{}; }
+    }
+  }
+  if digits == 0 || parts < 3 { return AgV4.{}; }
+  return AgV4.{addr = value * 256 + part, bits = 32};
+}
+ag_ipv4 :: (s: string) -> int #export_c #effects(all) { return ag_v4(s, false).addr; }
+// The prefix length after a '/' (0 to 32, no leading zero), or -1.
+ag_prefix :: (s: string) -> int #effects(all) {
+  if s.count < 1 { return -1; }
+  if s.count >= 2 && s[0] == '0' { return -1; }
+  n := 0;
+  for i: 0..<s.count {
+    if s[i] < '0' || s[i] > '9' { return -1; }
+    n = n * 10 + cast(int) (s[i] - '0');
+    if n > 32 { return -1; }
+  }
+  return n;
+}
+// An exact IPv6 address as written: lower-case hex digits and colons, at least two colons.
+ag_ipv6 :: (s: string) -> bool #effects(all) {
+  if s.count > 39 { return false; }
+  colons := 0;
+  for i: 0..<s.count {
+    c := s[i];
+    if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') { }
+    else if c == ':' { colons += 1; }
+    else { return false; }
+  }
+  return colons >= 2;
+}
+// Is range something a grant may list: "a.b.c.d", "a.b.c.d/n" or an exact IPv6 address?
+ag_host_ok :: (range: string) -> bool #export_c #effects(all) {
+  return ag_v4(range, true).addr >= 0 || ag_ipv6(range);
+}
+// Is the caller's address ip inside range?
+ag_host_match :: (ip: string, range: string) -> bool #export_c #effects(all) {
+  if ag_ipv6(range) { return ip == range; }
+  r := ag_v4(range, true);
+  a := ag_v4(ip, false);
+  if a.addr < 0 { return false; }   // a range that isn't one has addr -1 and shift 32: nothing matches it
+  shift := 32 - r.bits;
+  return (a.addr >> shift) == (r.addr >> shift);
+}
+// A user code (the CLI's device login, an agent's request): eight characters of A-Z and 2-7.
+ag_code_ok :: (code: string) -> bool #export_c #effects(all) {
+  if code.count != 8 { return false; }
+  for i: 0..<8 {
+    c := code[i];
+    if !((c >= 'A' && c <= 'Z') || (c >= '2' && c <= '7')) { return false; }
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- answers
+ag_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == AG_OK { return 200; }
+  if verdict >= AG_NO_SCOPES && verdict <= AG_BAD_NAME { return 400; }
+  if verdict == AG_BAD_AMOUNT || (verdict >= AG_BAD_WIRE && verdict <= AG_BAD_ATTESTATION) { return 400; }
+  if verdict == AG_NOT_ACTIVE || verdict == AG_WRONG_HOST || verdict == AG_STEP_UP || verdict == AG_FRESH { return 401; }
+  if verdict == AG_NO_SCOPE || verdict == AG_OVER_PAYMENT || verdict == AG_OVER_DAY { return 403; }
+  if verdict == AG_TOO_MANY_AGENTS { return 409; }
+  return 500;
+}
+ag_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == AG_NO_SCOPES { return "Choose at least one thing this agent may do."; }
+  if verdict == AG_BAD_SCOPE { return "That isn't something an agent can be allowed to do."; }
+  if verdict == AG_BAD_DAYS { return "A grant lasts from 1 to 365 days."; }
+  if verdict == AG_BAD_CAPS { return "The limit per payment can't be more than the limit per day."; }
+  if verdict == AG_CAPS_WITHOUT_SPEND { return "Spending limits need the spend permission."; }
+  if verdict == AG_SPEND_WITHOUT_CAPS { return "Set how much this agent may spend."; }
+  if verdict == AG_BAD_HOST { return "Addresses are IPv4 like 203.0.113.0/24, or an exact IPv6 address."; }
+  if verdict == AG_TOO_MANY_HOSTS { return "At most 8 addresses."; }
+  if verdict == AG_BAD_NAME { return "Give the agent a name of up to 80 characters."; }
+  if verdict == AG_NOT_ACTIVE { return "This agent's grant has expired, was revoked or is paused."; }
+  if verdict == AG_WRONG_HOST { return "This agent may not call from this address."; }
+  if verdict == AG_NO_SCOPE { return "This agent isn't allowed to do this."; }
+  if verdict == AG_BAD_AMOUNT { return "Ask for at least 1 sat."; }
+  if verdict == AG_OVER_PAYMENT { return "That's more than this agent may spend in one payment."; }
+  if verdict == AG_OVER_DAY { return "That's more than this agent may spend in 24 hours."; }
+  if verdict == AG_STEP_UP { return "Log in again with your key or passkey to do this."; }
+  if verdict == AG_BAD_WIRE { return "That request didn't read."; }
+  if verdict == AG_BAD_KEY { return "An agent's key is 64 lower-case hex characters."; }
+  if verdict == AG_BAD_ATTESTATION { return "The owner's signature for this agent's key doesn't check out."; }
+  if verdict == AG_FRESH { return "Log in again with your key or passkey to give an agent more."; }
+  if verdict == AG_TOO_MANY_AGENTS { return "You have 32 agents, the most an account may have. Revoke one first."; }
+  return "";
+}

@@ -153,6 +153,9 @@
     ],
     "block-read-state": [
       "nostr/block/rs/v1alpha1/read_state.proto"
+    ],
+    "account-agents": [
+      "openagents/account/v1alpha1/agents.proto"
     ]
   },
   "profile_namespaces": {
@@ -263,6 +266,10 @@
       "nostr.event.",
       "nostr.block.rs.",
       "openagents.options."
+    ],
+    "account-agents": [
+      "openagents.account.v1alpha1",
+      "openagents.options.v1alpha1"
     ]
   }
 }

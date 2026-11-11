@@ -51,8 +51,8 @@
 // /login/device#code=... is page 7 (docs/cli/2026-11-01-openagents-cli-v1.md, "Log in"): a computer's
 // `openagents login` asks to join your account. As page 6 does, the page takes the code from the hash
 // and clears it, logs in the way /login does, then asks what the code is for
-// (/api/auth/v2/device/look) and shows the computer's name. Nothing is approved until APPROVE is
-// pressed (/api/auth/v2/device/approve): the computer's key then is this account's, until
+// (/api/auth/device/look) and shows the computer's name. Nothing is approved until APPROVE is
+// pressed (/api/auth/device/approve): the computer's key then is this account's, until
 // `openagents logout` (or the account) unlinks it.
 
 #load "projects.coax";
@@ -99,8 +99,8 @@ CLAIM_REFUSED :: 3;        // page 6: the server said no to the code; it isn't s
 POST_INVITE :: 18;         // page 6: /api/playtest/access/redeem {code}
 H_IMAKE :: 50;             // page 6: MAKE A REALM
 PV_INVITE_TRIES :: 2;      // a lapsed session logs in again and sends the code once more
-POST_DLOOK :: 19;          // page 7: /api/auth/v2/device/look {code}
-POST_DAPPROVE :: 20;       // page 7: /api/auth/v2/device/approve {code}
+POST_DLOOK :: 19;          // page 7: /api/auth/device/look {code}
+POST_DAPPROVE :: 20;       // page 7: /api/auth/device/approve {code}
 H_DAPPROVE :: 51;          // page 7: APPROVE
 PV_MACHINE :: 64;          // a computer's name, as the server keeps it
 // page 5: a tip for a realm's maker (ev-maker-tips): pick the sats, pay our wallet's invoice, see it reach them
@@ -1081,11 +1081,11 @@ pv_device_post :: (s: [] PrivateState, path: string, kind: int) {
 }
 pv_device_due :: (s: [] PrivateState) {
   if s[0].post_kind != 0 || s[0].claim_code_n != 32 || s[0].me_status != 200 || s[0].claim_state != CLAIM_FORM || s[0].dev_looked { return; }
-  pv_device_post(s, "/api/auth/v2/device/look", POST_DLOOK);
+  pv_device_post(s, "/api/auth/device/look", POST_DLOOK);
 }
 pv_device_approve :: (s: [] PrivateState) {
   if s[0].post_kind != 0 || s[0].claim_code_n != 32 || s[0].me_status != 200 || s[0].claim_state != CLAIM_FORM || !s[0].dev_looked { return; }
-  pv_device_post(s, "/api/auth/v2/device/approve", POST_DAPPROVE);
+  pv_device_post(s, "/api/auth/device/approve", POST_DAPPROVE);
 }
 pv_device :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width;
@@ -3028,7 +3028,7 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   #assert s[0].post_kind == 0;   // nothing before the login and the look
   s[0].me_status = 200;
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/v2/device/look" && s[0].post_kind == POST_DLOOK;
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/device/look" && s[0].post_kind == POST_DLOOK;
   #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"code\":\"00112233445566778899aabbccddeeff\"}" && coaxial_private_post_flags(s[..]) == 5;
   coaxial_private_posted(s[..], 2);
   pv_answer(s[..], 2, "200\n{\"state\": \"waiting\", \"machine\": \"ci-box\"}");
@@ -3038,7 +3038,7 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   n = pv_fresh(s[..], out[..], u[..], 1440, 900);
   #assert s[0].post_kind == 0;
   pv_act(s[..], H_DAPPROVE);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/v2/device/approve" && s[0].post_kind == POST_DAPPROVE && s[0].claim_state == CLAIM_SENDING;
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/device/approve" && s[0].post_kind == POST_DAPPROVE && s[0].claim_state == CLAIM_SENDING;
   coaxial_private_posted(s[..], 3);
   pv_answer(s[..], 3, "401\n{\"error\": \"log in first\"}");
   #assert s[0].claim_state == CLAIM_FORM && s[0].me_status == -1 && s[0].claim_code_n == 32;

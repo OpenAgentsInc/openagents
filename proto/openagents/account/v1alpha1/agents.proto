@@ -1,0 +1,144 @@
+syntax = "proto3";
+package openagents.account.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Agent accounts and what their owners let them do (docs/auth/identity-and-methods.md#agents,
+// GitHub #13211). An agent is an account of its own (kind agent) with a person as its owner. It
+// proves who it is with its own Nostr key (NIP-98 on every request) or an oa_key_ API key, never
+// its owner's. A grant says what it may do in its owner's name: the scopes, the spend caps, the
+// expiry and the network addresses it may call from. Everything not granted is refused.
+//
+// The API carries these as binary protobuf (application/x-protobuf; ?as=b64 answers the same
+// bytes in base64 for a page whose host reads text). coax/web/api/agent-wire.coax is the one
+// codec, generated from this file; the rules are coax/web/api/agent-policy.coax (#authority).
+
+// What an agent may do in its owner's name. A closed set: a value this list doesn't name is
+// refused, and a scope is added here only together with the route that enforces it.
+enum Scope {
+  SCOPE_UNSPECIFIED = 0;
+  SCOPE_PROFILE_READ = 1;    // "profile:read": read its owner's name and account kind
+  SCOPE_WALLET_SPEND = 2;    // "wallet:spend": spend within the grant's caps (each spend is asked of POST /api/agent/spend)
+}
+
+// Spend caps in sats, set and seen by the owner. Both zero without SCOPE_WALLET_SPEND.
+message SpendCaps {
+  optional uint64 sats_per_day = 1 [(openagents.options.v1alpha1.unit) = "sat"];       // over any 24 hours
+  optional uint64 sats_per_payment = 2 [(openagents.options.v1alpha1.unit) = "sat"];   // at most sats_per_day
+}
+
+// What an owner (or an agent asking its owner) proposes. The owner approves it at L2, and may
+// change any part of it before approving.
+message GrantRequest {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_GRANT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 2048;
+  optional string agent_name = 1 [(openagents.options.v1alpha1.max_bytes) = 80];
+  repeated Scope scopes = 2 [(openagents.options.v1alpha1.max_count) = 8];
+  SpendCaps caps = 3;
+  optional uint32 days = 4 [(openagents.options.v1alpha1.unit) = "day"];   // 0: 90; at most 365
+  // IPv4 ranges ("203.0.113.0/24") or exact addresses the agent may call from; none: anywhere.
+  repeated string hosts = 5 [(openagents.options.v1alpha1.max_count) = 8, (openagents.options.v1alpha1.max_bytes) = 64];
+  // The agent's Nostr key (64 hex), when it signs its own requests; else an oa_key_ is made.
+  optional string agent_pubkey = 6 [(openagents.options.v1alpha1.max_bytes) = 64];
+  // The owner's NIP-OA attestation of the agent key (nostr/nips/block/NIP-OA.md), when the owner
+  // signed one: the owner's key, the conditions as signed, and the 64-byte signature in hex.
+  OwnerAttestation attestation = 7;
+}
+
+// NIP-OA: the owner key authorizes the agent key under conditions (spec 15.4 OwnerAttestation).
+message OwnerAttestation {
+  optional string owner_pubkey = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string agent_pubkey = 2 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional string conditions = 3 [(openagents.options.v1alpha1.max_bytes) = 256];
+  optional string sig = 4 [(openagents.options.v1alpha1.max_bytes) = 128];
+}
+
+enum GrantState {
+  GRANT_STATE_UNSPECIFIED = 0;
+  GRANT_STATE_ACTIVE = 1;
+  GRANT_STATE_EXPIRED = 2;
+  GRANT_STATE_REVOKED = 3;
+  GRANT_STATE_SUSPENDED = 4;   // the owner's "log out everywhere" with agents, or a frozen account
+  GRANT_STATE_PENDING = 5;     // an agent asked; its owner hasn't approved yet
+}
+
+// A grant as the owner and the agent see it.
+message Grant {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_GRANT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 2048;
+  optional string grant_id = 1 [(openagents.options.v1alpha1.max_bytes) = 40];   // grt_...
+  optional string agent_account = 2 [(openagents.options.v1alpha1.max_bytes) = 40];   // acct_...
+  optional string owner_account = 3 [(openagents.options.v1alpha1.max_bytes) = 40];
+  repeated Scope scopes = 4 [(openagents.options.v1alpha1.max_count) = 8];
+  SpendCaps caps = 5;
+  repeated string hosts = 6 [(openagents.options.v1alpha1.max_count) = 8, (openagents.options.v1alpha1.max_bytes) = 64];
+  optional int64 created_ms = 7 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional int64 expires_ms = 8 [(openagents.options.v1alpha1.unit) = "ms"];
+  GrantState state = 9;
+  optional uint64 spent_sats_24h = 10 [(openagents.options.v1alpha1.unit) = "sat"];   // what it spent in the last 24 hours
+  optional int64 last_used_ms = 11 [(openagents.options.v1alpha1.unit) = "ms"];
+}
+
+// One way an agent proves who it is. An API key's secret is shown once (KeySecret), never listed.
+message AgentKey {
+  optional string key_id = 1 [(openagents.options.v1alpha1.max_bytes) = 80];   // the oa_key_ id, or the Nostr key's hex
+  optional bool api_key = 2;                                                    // false: a Nostr key
+  optional int64 created_ms = 3 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional int64 last_used_ms = 4 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional int64 revoked_ms = 5 [(openagents.options.v1alpha1.unit) = "ms"];
+}
+
+message Agent {
+  optional string account = 1 [(openagents.options.v1alpha1.max_bytes) = 40];
+  optional string name = 2 [(openagents.options.v1alpha1.max_bytes) = 80];
+  Grant grant = 3;
+  repeated AgentKey keys = 4 [(openagents.options.v1alpha1.max_count) = 16];
+  OwnerAttestation attestation = 5;
+}
+
+// GET /api/agents: an owner's agents, and the requests waiting for the owner.
+message AgentList {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_GRANT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 65536;
+  repeated Agent agents = 1 [(openagents.options.v1alpha1.max_count) = 32];
+}
+
+// A new oa_key_, in the one answer that made it. Never stored or shown again.
+message KeySecret {
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_GRANT;
+  optional string agent_account = 1 [(openagents.options.v1alpha1.max_bytes) = 40];
+  optional string key_id = 2 [(openagents.options.v1alpha1.max_bytes) = 80];
+  optional string secret = 3 [(openagents.options.v1alpha1.max_bytes) = 80];
+}
+
+// POST /api/agent/spend: an agent asks before it pays. payment_id makes asking twice harmless.
+message SpendAsk {
+  optional string payment_id = 1 [(openagents.options.v1alpha1.max_bytes) = 64];
+  optional uint64 sats = 2 [(openagents.options.v1alpha1.unit) = "sat"];
+  optional string memo = 3 [(openagents.options.v1alpha1.max_bytes) = 140];
+}
+message SpendAnswer {
+  optional bool allowed = 1;
+  optional string words = 2 [(openagents.options.v1alpha1.max_bytes) = 200];   // why not, in plain words
+  optional uint64 left_today_sats = 3 [(openagents.options.v1alpha1.unit) = "sat"];
+}
+
+// GET /api/agent/owner (scope profile:read): who the agent works for.
+message OwnerProfile {
+  optional string account = 1 [(openagents.options.v1alpha1.max_bytes) = 40];
+  optional string name = 2 [(openagents.options.v1alpha1.max_bytes) = 80];
+  optional string kind = 3 [(openagents.options.v1alpha1.max_bytes) = 16];   // "person"
+}
+
+// A request a person approves in a browser: the CLI's `openagents login` (POST /api/auth/device/start)
+// or an agent asking its owner for a grant (POST /api/agents/request). The person opens url and
+// sees code; the asker polls (POST /api/auth/device/poll, or GET /api/agent/me once approved).
+// POST /api/auth/device/approve and the approve and deny routes take it back with only code set.
+message RequestTicket {
+  optional string code = 1 [(openagents.options.v1alpha1.max_bytes) = 8];
+  optional string url = 2 [(openagents.options.v1alpha1.max_bytes) = 200];
+  optional int64 expires_ms = 3 [(openagents.options.v1alpha1.unit) = "ms"];
+  optional string state = 4 [(openagents.options.v1alpha1.max_bytes) = 16];    // waiting, approved, denied, expired
+  optional string label = 5 [(openagents.options.v1alpha1.max_bytes) = 80];    // cli:<machine>, or the agent's name
+  GrantRequest request = 6;                                                     // an agent's: what it asks for
+}
