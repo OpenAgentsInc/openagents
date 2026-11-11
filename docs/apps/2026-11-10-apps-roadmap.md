@@ -257,19 +257,42 @@ Status (2026-11-10, GitHub #13153):
   from the record. Checked by building both as the Dockerfile does and
   running a turn against stand-ins before and after: the same wire lines
   for a plain answer and for a refused tool call. Not deployed.
-- **Not built: move 4.** Aethyrforge's chat still runs Coder as a child
-  (`apps/aethyrforge-desktop/linux-native.coax` `fgn_launch`, and
-  `Sources/Chat.swift` on the Mac). Through that child every engine it uses
-  now runs on the shared engines. Dropping the child means running in
-  process what `coder run` does for it, which no shared layer has yet: the
-  routing decision (`coder/tui/route.coax` and `route-policy.coax`, which
-  hold no Coder state and can move to `agent/engine/` as they are, but
-  `cd_auto_route` and the availability cooldowns in `availability.coax` are
-  Coder's), the echo engine, `fork SESSION` (Coder's session log and each
-  engine's resume: Claude `resume`, Cursor `cue_resume`, the Microcoder
-  worker's conversation), `--context FILE`, and the stream-json lines
-  `fgl_event` reads (Coder's `session.coax`, written from `App`). Its launch
-  options are an `#authority` file (`chat-launch.coax`) and change with it.
+- **Move 4, first part built: what Aethyrforge's child does, as shared
+  operations.** `coax/lib/agent/engine/route.coax` is the System One router
+  (`agr_begin`, `agr_needs_grant`, `agr_ask`, `agr_pick`, `agr_json`; two
+  steps so an owner keeps its consent ledger), `availability.coax` the
+  allowlist, installed CLIs and provider cooldowns (`ca_eligible`,
+  `ca_record`), with `route-policy.coax` and `availability-policy.coax`
+  (`#authority`) moved as they were; `echo.coax` is the echo engine
+  (`ech_*`); `coax/lib/agent/session/fork.coax` is a fork of a session log
+  (its turns as text, or Claude Code's resume or Cursor's session/load) and
+  a context file ahead of the first turn (`sf_*`). Coder runs on all of it:
+  32 `coder run`, `fork`, `route` and `replay` runs against stand-ins print
+  and write the same before and after.
+- **Not built: move 4, the child itself.** Aethyrforge's chat still starts
+  `coder run|fork ... --engine auto --stream-json` (`linux-native.coax`
+  `fgn_launch` and `fgn_tick`'s line reader; `Sources/Chat.swift` on the
+  Mac). What is left is one headless turn runner in `agent/engine/` (say
+  `run.coax`) that does per turn what `coder run` does in its plain
+  `--stream-json` mode, and that both Coder's plain runs and Aethyrforge
+  call: route (a remote or hosted door needs the consent gate, which is
+  Coder's `gate.coax` `gt_session_to_so` today and moves with it), start the
+  picked engine with the options Coder gives it (Claude `cd_claude_options`
+  through `e_own`; Codex Coder's `CxSettings` through `cxe_own`; Cursor
+  `cue_launch`, `cue_resume`, `cue_send`; Microcoder and Psionic `mcw_start`
+  and Coder's `McTask`), answer approvals as an unattended run does (deny,
+  or an owner's answer), write each engine's events as the lines `fc_read`
+  reads (`session`, `route`, `model`, `user`, `reply_delta`/`reply_end`,
+  `reply`, `tool`, `result`, `ask`, `diff`, `end`) and the session log with
+  its `engine_session` lines (so `sf_fork` resumes). That glue is App-bound
+  in Coder today: `coder.coax` `cd_claude_*`, `codex.coax`, `cursor.coax`,
+  `microcoder.coax` and `session.coax` `cs_*`. Then `fgn_launch` and the
+  reader become runner calls, `chat-launch.coax` (`#authority`) names the
+  runner's options instead of argv and is mutated, `linux-native-check.coax`
+  reads the fork's parent from the shared log, and `Chat.swift` calls the
+  runner through the face (Mac build owed, #13156). Check: Aethyrforge's
+  checks and `linux-native-check` with echo and the stand-ins, before and
+  after.
 - **Also left.** On the Mac the desktop app's session files are still beside
   `settings.json` in Application Support (the Swift host picks the folder);
   on Linux they are under `~/.openagents/desktop/`. Coder writes the log's
