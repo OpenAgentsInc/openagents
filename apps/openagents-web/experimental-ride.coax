@@ -424,6 +424,36 @@ lab_ride_prompt :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> 
   for j: 0..<60 { cr[0].clock += 1.0 / 60; b = lab_keep_body(s[..], b, b); }
   #assert !lab_riding(s[..]);
 }
+// Counts the footstep packets in the frame's sound lines.
+lab_test_steps :: (s: [] Lab) -> int {
+  a := s[0].experimental_audio[..]; t := cast(string) a[0].lines[0..<a[0].n]; n := 0;
+  for i: 0..<t.count - 4 { if t[i..<i + 5] == "step-" { n += 1; } }
+  return n;
+}
+#test "five seconds of flight on the dragon play no footstep of yours; on foot your steps are heard (mounts)" #steps 2000000000 {
+  s: [1]Lab; cr := s[0].creator[..]; cr[0].experimental = true; cr[0].on = true; cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  cc.xh_place(cr); k := cc.xh_dragon(cr); d := cr[0].mounts[0].mounts[k];
+  // on foot: ten metres of walking are heard
+  steps := 0; lab_sounds(s[..], 1.0 / 60, false);
+  for j: 0..<120 { cr[0].player_x = f32(j) * 0.1; s[0].experimental_audio[0].n = 0; lab_sounds(s[..], 1.0 / 60, false); steps += lab_test_steps(s[..]); }
+  #assert steps >= 5;
+  // the dragon: mounted (the mount's own footfall is the deed's cue, not a step of yours), up, and five seconds of flight
+  cr[0].player_x = d.x + cos(d.face) * 3.5; cr[0].player_z = d.z - sin(d.face) * 3.5;
+  #assert lab_mount_key(s[..]) && egm.eg_on_dragon(cr[0].mounts[0]);
+  b := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true}; f := 0;
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); cr[0].player_x = b.x; cr[0].player_z = b.z; lab_sounds(s[..], 1.0 / 60, false); }
+  s[0].held = HOLD_W | HOLD_JUMP;
+  for j: 0..<120 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); cr[0].player_x = b.x; cr[0].player_z = b.z; lab_sounds(s[..], 1.0 / 60, false); }
+  #assert egm.eg_aloft(cr[0].mounts[0]);
+  steps = 0; x0 := b.x; z0 := b.z;
+  for j: 0..<300 {
+    f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); cr[0].player_x = b.x; cr[0].player_z = b.z;
+    s[0].experimental_audio[0].n = 0; lab_sounds(s[..], 1.0 / 60, false); steps += lab_test_steps(s[..]);
+  }
+  #assert egm.eg_aloft(cr[0].mounts[0]) && abs(b.x - x0) + abs(b.z - z0) > 20 && steps == 0;
+}
 #test "the dragonback stage mounts the dragon and rides it up over the treeline (mounts)" #steps 900000000 {
   s: [1]Lab; cr := s[0].creator[..]; cr[0].experimental = true; cr[0].hostiles[0].hp = 44;
   for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;

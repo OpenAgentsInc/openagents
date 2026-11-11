@@ -56,6 +56,16 @@ experimental_sound_play :: (s:[]ExperimentalSound,name:string,gain:f32,pan:f32,r
  n=xs_put(b[..],n," 0 0 ");n=xs_fixed(b[..],n,r);n=xs_put(b[..],n," 0 x");n=xs_int(b[..],n,s[0].voice);n=xs_put(b[..],n,"\n");
  experimental_sound_add(s,cast(string)b[0..<n]);
 }
+// Whether your own feet are off the ground for the footsteps: in the air, or carried by a mount
+// (riding: the mount's index, -1 on foot). A rider's body moves with the mount, on the ground or in
+// flight, and makes no steps of its own.
+experimental_sound_feet_off :: (air:bool,riding:int)->bool {return air || riding>=0;}
+#test "a rider's own feet make no footsteps, on a mount's back on the ground or in flight" {
+ #assert !experimental_sound_feet_off(false,-1) && experimental_sound_feet_off(true,-1) && experimental_sound_feet_off(false,0) && experimental_sound_feet_off(false,1);
+ s:[1]ExperimentalSound;experimental_sound_tick(s[..],true,0,0,experimental_sound_feet_off(false,1),44,0,0.016);s[0].n=0;
+ for i:0..<300 {experimental_sound_tick(s[..],true,f32(i)*0.2,0,experimental_sound_feet_off(false,1),44,0,0.016);}
+ t:=xs_text(s[..]);for i:0..<t.count-4 {#assert t[i..<i+5]!="step-";}
+}
 // Ambience, your footsteps, the blows you take, your fall and standing back up. The host drains
 // the lines (coaxial_sounds_len), so combat's cues from earlier in the frame are kept.
 experimental_sound_tick :: (s:[]ExperimentalSound,on:bool,x:f32,z:f32,air:bool,hp:int,hits:int,dt:f32) {
