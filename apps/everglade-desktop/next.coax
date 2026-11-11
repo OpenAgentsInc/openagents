@@ -813,10 +813,19 @@ np_agy_end :: (s: []NextPanel, result: string) {
   }
   np_turn_over(s);
 }
+// The usage of a turn's part the watchdog cancelled and continued, priced into the session's and the run's cost.
+np_agy_spent :: (s: []NextPanel, u: string) {
+  if u.count == 0 { return; }
+  v: [5] int; i := 0;
+  for key: [5] string.["inputTokens", "cachedReadTokens", "cachedWriteTokens", "outputTokens", "thoughtTokens"] { n := cl_int(u, key).value; v[i] = ifx n > 0 then n else 0; i += 1; }
+  price := np_agy_price(cast(string) s[0].model[0..<s[0].model_n], v[0], v[1], v[2], v[3], v[4]);
+  s[0].session_cost_e6 += price.e6; s[0].run_cost_e6 += price.e6;
+}
 // One event from the Antigravity coder, after the shared engine's part of it (cue_take).
 np_agy_event :: (s: []NextPanel, ev: CuEvent) {
   x := s[0].ag[0].cue[..]; c := x[0].c; ar := c[0].ar[..];
   k := ev.kind;
+  if k == CuEventKind.none { np_agy_spent(s, cue_spent(x)); return; }
   if k == CuEventKind.end || k == CuEventKind.failed {
     np_break(s); why := cue_why(x); np_append(s, ifx why.count > 0 then why else "Antigravity closed before it answered."); np_end(s, NP_FAILED); return;
   }
@@ -1316,6 +1325,7 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert np_text_has(s[..], "> Antigravity sent nothing for 2 s. The turn was cancelled and asked to continue (recovery 1 of 1).") && np_agy_sent(s[..], "\"method\":\"session/cancel\"");
   np_agy_ends(s[..], 4, "cancelled");
   #assert s[0].state == NP_RUNNING && np_agy_sent(s[..], "\"method\":\"session/prompt\"") && np_agy_sent(s[..], "Continue where you left off.");
+  #assert s[0].run_cost_e6 == 340;                              // the cancelled part's tokens are counted
   np_agy_says(s[..], "Back at it.");
   s[0].now = 103; np_agy_watch(s[..]);
   s[0].now = 105; np_agy_watch(s[..]);

@@ -254,6 +254,7 @@ cd_cursor_poll :: (a: [] App) -> bool {
       else if a[0].engine == own { cd_commit_prefixed(a, TUI_RED, prefix, "  ", cast(string) wb[0..<wn]); }
       return true;
     }
+    if ev.kind == CuEventKind.none && agy_is(x) { u := cue_spent(x); if u.count > 0 { cs_acp_usage(a, "antigravity", u); } }   // a part the watchdog continued
     if ev.kind == CuEventKind.none || ev.kind == CuEventKind.initialized { continue; }
     if ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE { a[0].ncursor_resume = 0; continue; }
     if ev.kind == CuEventKind.refused && ev.of == CU_AUTHENTICATE {

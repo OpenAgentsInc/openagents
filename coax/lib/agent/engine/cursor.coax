@@ -61,6 +61,7 @@ CuEngine :: struct {
   recovering: int;                // CUE_RECOVER_CANCELLED or CUE_RECOVER_GAVE_UP: the watchdog's cancel is out
   stalled: bool;                  // the watchdog gave up on this turn (cue_stalled)
   silent_ms: int;                 // the last silence the watchdog acted on
+  spent: [512] u8; spent_n: int;  // the usage of a turn's part the watchdog cancelled and continued (cue_spent)
 }
 
 cue_attach :: (x: [] CuEngine, c: [] CuClient, p: [] ClProcess, line: [] u8, arena: [] u8, out: [] u8) {
@@ -200,6 +201,9 @@ cue_watch_set :: (x: [] CuEngine, stall_ms: int, recover_max: int) {
   x[0].heard = false; x[0].watching = false; x[0].ntools = 0;
   x[0].recovered = 0; x[0].recovering = 0; x[0].stalled = false; x[0].silent_ms = 0;
 }
+// The usage of a turn's part the watchdog cancelled and continued, once ("" when none): the owner
+// counts it, since that cancelled answer never reaches the owner.
+cue_spent :: (x: [] CuEngine) -> string { n := x[0].spent_n; x[0].spent_n = 0; return cast(string) x[0].spent[0..<n]; }
 // Whether the watchdog gave up on the turn that just ended (its answer is a cancelled one).
 cue_stalled :: (x: [] CuEngine) -> bool { return x[0].stalled; }
 // The owner's stop: the turn is cancelled, and no recovery follows its end.
@@ -248,6 +252,8 @@ cue_heard :: (x: [] CuEngine, ev: CuEvent) -> CuEventKind {
   if (k != CuEventKind.answered && k != CuEventKind.refused) || ev.of != CU_SESSION_PROMPT { return k; }
   x[0].ntools = 0;
   if k == CuEventKind.answered && x[0].recovering == CUE_RECOVER_CANCELLED && cl_str(ar, ev.result, "stopReason") == "cancelled" {
+    u := cl_raw(ev.result, "usage");
+    x[0].spent_n = ifx u.count <= x[0].spent.count then e_set(x[0].spent[..], 0, u) else 0;
     r := cu_session_prompt(x[0].c, CUE_CONTINUE);
     x[0].recovering = 0;
     return CuEventKind.none;
@@ -387,9 +393,10 @@ cue_t_answer :: (id: int, reason: string, out: [] u8) -> string {
   #assert cue_watch(x, 1499) == CUE_WATCH_NONE && !cue_out_has(x, "session/cancel");     // 999 ms silent: not yet
   #assert cue_watch(x, 1500) == CUE_WATCH_RECOVERING && x[0].silent_ms == 1000 && x[0].recovered == 1;
   #assert cue_out_has(x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/cancel\",\"params\":{\"sessionid\":\"s-1\"}}");   // (cue_out_has lowercases what it reads)
-  ab: [256] u8;
-  ev = cue_feed(x, cue_t_answer(4, "cancelled", ab[..]));
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"stopReason\":\"cancelled\",\"usage\":{\"inputTokens\":7426,\"outputTokens\":115}}}");
   #assert ev.kind == CuEventKind.none && x[0].recovering == 0;                              // the owner sees no end
+  #assert cue_spent(x) == "{\"inputTokens\":7426,\"outputTokens\":115}" && cue_spent(x) == "";   // its usage, once
+  ab: [256] u8;
   #assert cue_out_has(x, "\"id\":5,\"method\":\"session/prompt\"") && cue_out_has(x, "continue where you left off.");
   #assert cue_watch(x, 1600) == CUE_WATCH_NONE && cue_prompting(x);
   ev = cue_feed(x, CUE_T_SAYS);

@@ -1074,6 +1074,7 @@ tr_cursor_poll :: (r: [] TrRun) -> bool {
       if r[0].running && r[0].engine == own { tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]); }
       return true;
     }
+    if ev.kind == CuEventKind.none && agy_is(x) { sw_acp_usage(r[0].log, "antigravity", cue_spent(x)); }   // a part the watchdog continued
     if ev.kind == CuEventKind.none || ev.kind == CuEventKind.initialized { continue; }
     if ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE { r[0].ncursor_resume = 0; continue; }
     if ev.kind == CuEventKind.refused && ev.of == CU_AUTHENTICATE {
