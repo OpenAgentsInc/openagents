@@ -119,18 +119,18 @@ live, so don't promise them as live.
 Record it in the browser at full screen, so viewers see exactly what they'll
 get from the link.
 
-What the redesign puts in the world (confirm each on the live build):
+What's in the world:
 
 | Where you walk | What you see | What to say |
 | --- | --- | --- |
-| Spawn on the Grid | Your Everglade character on the Grid, the same as in Everglade. A path ahead. | "Same character, same controls as Everglade. WASD, mouse to look." |
-| A byte | Eight bits that light up, with their value as a number, as hex and as a letter. | "Everything in Bitcoin is bytes. This is one of them." |
-| Hex | The real bytes of a block header, two hex digits per byte. | "This is what a block header actually looks like on the wire. Eighty bytes." |
-| Base64 | Three bytes regrouped into four letters, animated as you walk up. | "Same bytes, different way of writing them down." |
-| Byte order | A header field as it's stored, backwards, and the number it really means. | "Bitcoin stores numbers backwards. This trips up everybody once." |
-| The hash | The 80 bytes go into SHA-256, then into SHA-256 again, and come out as the block's hash. | "Our own SHA-256, written in Coax, running live in your browser. Not a JavaScript library." |
-| The target | The hash's leading zeros against the target. | "That's mining. Find a hash under the target. That's the whole game." |
-| The chain | Solid blocks along the path, each linked to the one before by its previous-block hash. | "Every block points back at the one before it. Change one, and every link after it breaks." |
+| Spawn on the Grid | Your Everglade character on a dark grid, a lit lane straight ahead, glass panels along it. Top left, the station you're at and one line about it. | "Same character, same controls as Everglade. WASD to walk, drag to look." |
+| 1. A byte | Eight bits that light up, with their value as a number, as hex and as a letter. | "Everything in Bitcoin is bytes. This is one of them." |
+| 2. Hex | The genesis block's 80 header bytes, two hex digits each, coloured by field, with one byte split into its two halves. | "This is what a block header actually looks like on the wire. Eighty bytes." |
+| 3. Base64 | Three bytes regrouped into four six-bit values and their letters, animated. | "Same bytes, different way of writing them down." |
+| 4. Byte order | The header's time field as it's stored, its bytes reversed into the number, and the date it means: 3 Jan 2009. | "Bitcoin stores numbers backwards. This trips up everybody once." |
+| 5. SHA-256 | The 80 header bytes flow into SHA-256 and 32 bytes come out. | "Our own SHA-256, written in Coax, running live in your browser. Not a JavaScript library." |
+| 6. SHA-256d | The hash of the hash, its leading zeros lit green, and the target under it. | "That's mining. Find a hash under the target. That's the whole game." |
+| 7. The chain | Recorded regtest blocks 95 to 102 as solid cubes along the lane, each face showing its height and hash, each joined to the one before by its previous-block hash. | "Every block points back at the one before it. Change one, and every link after it breaks." |
 
 The stations follow chapter 1 of the book (bytes, hex and base64), then
 chapters 4 and 5 (SHA-256 and double SHA-256). Say so, and show the book's
