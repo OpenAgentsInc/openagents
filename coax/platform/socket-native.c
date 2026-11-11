@@ -277,3 +277,75 @@ int64_t cxsock_close(int64_t h) {
   s->fd = -1; s->in_count = 0; s->out_count = 0; s->port = 0;
   return 0;
 }
+
+/* UDP on the loopback; see socket-native.h. */
+typedef struct {
+  int used, fd, from;
+  int64_t in_count, out_count;
+  unsigned char in[CXUDP_MAX_BYTES], out[CXUDP_MAX_BYTES];
+} cxudp_slot;
+static cxudp_slot cxudp_slots[CXUDP_MAX];
+static cxudp_slot *cxudp_get(int64_t h) {
+  if (h < 0 || h >= CXUDP_MAX || !cxudp_slots[h].used) return NULL;
+  return &cxudp_slots[h];
+}
+int64_t cxudp_bind(int64_t port) {
+  int h = -1;
+  for (int i = 0; i < CXUDP_MAX; i++) if (!cxudp_slots[i].used) { h = i; break; }
+  if (h < 0) return CXSOCK_FULL;
+  if (port < 0 || port > 65535) return CXSOCK_ERROR;
+  int fd = socket(AF_INET, SOCK_DGRAM, 0);
+  if (fd < 0) return CXSOCK_ERROR;
+  struct sockaddr_in a; memset(&a, 0, sizeof a);
+  a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (bind(fd, (struct sockaddr *)&a, sizeof a)) { close(fd); return CXSOCK_REFUSED; }
+  fcntl(fd, F_SETFL, O_NONBLOCK); fcntl(fd, F_SETFD, FD_CLOEXEC);
+  int big = 4 << 20; setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &big, sizeof big); setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &big, sizeof big);
+  cxudp_slot *s = &cxudp_slots[h];
+  s->used = 1; s->fd = fd; s->from = 0; s->in_count = 0; s->out_count = 0;
+  return h;
+}
+int64_t cxudp_port(int64_t h) {
+  cxudp_slot *s = cxudp_get(h);
+  if (!s) return CXSOCK_ERROR;
+  struct sockaddr_in a; socklen_t n = sizeof a;
+  if (getsockname(s->fd, (struct sockaddr *)&a, &n)) return CXSOCK_ERROR;
+  return ntohs(a.sin_port);
+}
+int64_t cxudp_recv(int64_t h) {
+  cxudp_slot *s = cxudp_get(h);
+  if (!s) return CXSOCK_ERROR;
+  struct sockaddr_in a; socklen_t n = sizeof a;
+  ssize_t r = recvfrom(s->fd, s->in, sizeof s->in, 0, (struct sockaddr *)&a, &n);
+  if (r < 0) return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? CXSOCK_TIMEOUT : CXSOCK_ERROR;
+  s->in_count = r; s->from = ntohs(a.sin_port);
+  return r;
+}
+int64_t cxudp_byte(int64_t h, int64_t i) {
+  cxudp_slot *s = cxudp_get(h);
+  if (!s || i < 0 || i >= s->in_count) return -1;
+  return s->in[i];
+}
+int64_t cxudp_from(int64_t h) { cxudp_slot *s = cxudp_get(h); return s ? s->from : CXSOCK_ERROR; }
+int64_t cxudp_put(int64_t h, int64_t byte) {
+  cxudp_slot *s = cxudp_get(h);
+  if (!s) return CXSOCK_ERROR;
+  if (s->out_count >= CXUDP_MAX_BYTES) return CXSOCK_FULL;
+  s->out[s->out_count++] = (unsigned char)byte;
+  return 0;
+}
+int64_t cxudp_send(int64_t h, int64_t port) {
+  cxudp_slot *s = cxudp_get(h);
+  if (!s) return CXSOCK_ERROR;
+  struct sockaddr_in a; memset(&a, 0, sizeof a);
+  a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  ssize_t r = sendto(s->fd, s->out, (size_t)s->out_count, 0, (struct sockaddr *)&a, sizeof a);
+  s->out_count = 0;
+  return r < 0 ? CXSOCK_ERROR : 0;
+}
+int64_t cxudp_close(int64_t h) {
+  cxudp_slot *s = cxudp_get(h);
+  if (!s) return CXSOCK_ERROR;
+  close(s->fd); s->used = 0; s->fd = -1;
+  return 0;
+}

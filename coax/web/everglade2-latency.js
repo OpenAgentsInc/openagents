@@ -17,21 +17,29 @@
   E.now = now;
   // the room's refusals and casts heard (r SEQ WHY, e cast ...), the first few, for the report
   E.heard = [];
+  // what the room says and what the page sends, on either transport: a WebSocket's frames (wrapped
+  // here) or WebTransport's (coax/web/room-wt.js calls globalThis.__netTap), payload bytes alike
+  const net = () => (E.net = E.net || { in_b: 0, in_n: 0, out_b: 0, out_n: 0, keys: 0, t0: performance.now() });
+  const heard = (data) => {
+    const n = net(); n.in_b += (data.length || data.byteLength || 0); n.in_n += 1;
+    if (typeof data !== 'string') return;
+    for (const f of data.split('|')) {
+      if (!f.startsWith('D ')) continue;
+      // a keyframe: a D whose F has bit 1 (a snapshot), counted at its first part
+      const h = f.split(' '); if ((+h[3] & 1) && h[4] === '0') n.keys += 1;
+      // the state's rows (D's s and S entries, #13165): their bytes and count, for bytes a row
+      for (const en of f.split(';')) { const t = en.replace(/^D( \S+){4} /, ''); if (/^(s |S)/.test(t)) { n.row_b = (n.row_b || 0) + t.length + 1; n.row_n = (n.row_n || 0) + 1; } }
+    }
+    if (E.heard.length < 40) for (const l of data.split(/[|\n]/)) if (/^(r \d|e cast|a \d|d \d)/.test(l) && E.heard.length < 40) E.heard.push(l.slice(0, 80));
+  };
+  const sent = (bytes) => { const n = net(); n.out_b += bytes; n.out_n += 1; };
+  globalThis.__netTap = (way, data) => (way === 'in' ? heard(data) : sent(data));
   const WS = window.WebSocket;
   window.WebSocket = function (...a) {
     const w = new WS(...a);
-    E.net = E.net || { in_b: 0, in_n: 0, out_b: 0, out_n: 0, t0: performance.now() };
-    const send = w.send.bind(w); w.send = (d) => { E.net.out_b += (d.length || d.byteLength || 0); E.net.out_n += 1; return send(d); };
-    w.addEventListener('message', (m) => { E.net.in_b += (m.data.length || m.data.byteLength || 0); E.net.in_n += 1; });
-    // the state's rows (D's s and S entries, #13165): their bytes and count, for bytes a row
-    w.addEventListener('message', (m) => {
-      if (typeof m.data !== 'string') return;
-      for (const f of m.data.split('|')) {
-        if (!f.startsWith('D ')) continue;
-        for (const en of f.split(';')) { const t = en.replace(/^D( \S+){4} /, ''); if (/^(s |S)/.test(t)) { E.net.row_b = (E.net.row_b || 0) + t.length + 1; E.net.row_n = (E.net.row_n || 0) + 1; } }
-      }
-    });
-    w.addEventListener('message', (m) => { if (typeof m.data === 'string' && E.heard.length < 40) for (const l of m.data.split(/[|\n]/)) if (/^(r \d|e cast|a \d|d \d)/.test(l) && E.heard.length < 40) E.heard.push(l.slice(0, 80)); });
+    net();
+    const send = w.send.bind(w); w.send = (d) => { sent(d.length || d.byteLength || 0); return send(d); };
+    w.addEventListener('message', (m) => heard(m.data));
     return w;
   };
   window.WebSocket.prototype = WS.prototype; Object.assign(window.WebSocket, WS);
@@ -74,6 +82,8 @@
   E.look = (dx, dy) => { E.x.coaxial_look_delta(E.state, dx, dy); return 1; };
   E.button = (button, phase) => { E.x.coaxial_pointer_buttons_v1(E.state, innerWidth * devicePixelRatio / 2, innerHeight * devicePixelRatio / 2, phase, 0, 1, button); return 1; };
   E.rate = () => { const n = E.net; if (!n) return '-'; const t = (performance.now() - n.t0) / 1000; return `in ${(n.in_b / t / 1000).toFixed(1)} KB/s ${Math.round(n.in_n / t)} frames/s, out ${(n.out_b / t / 1000).toFixed(1)} KB/s ${Math.round(n.out_n / t)} frames/s over ${Math.round(t)} s; rows ${((n.row_b || 0) / t / 1000).toFixed(2)} KB/s, ${Math.round((n.row_n || 0) / t)} a second, ${n.row_n ? ((n.row_b || 0) / n.row_n).toFixed(1) : 0} bytes each`; };
+  // bytes a second each way and keyframes heard, for the matrix (coax/web/room/net-matrix.coax)
+  E.bytes = () => { const n = E.net; if (!n) return '{}'; const t = (performance.now() - n.t0) / 1000; return JSON.stringify({ in_bps: Math.round(n.in_b / t), out_bps: Math.round(n.out_b / t), keyframes: n.keys, wt: !!(globalThis.coaxial && coaxial.wt && coaxial.wt.sessions) }); };
   E.mark = () => now();
   // One step of turning your body toward (x, z) m, by the mouse's travel (it faces where the camera
   // looks): returns how far off it still is (mrad). The first steps learn which way the travel turns.

@@ -16,7 +16,8 @@
 //     above. Every frame reaches the app as a text message.
 //   - ?wthash=HEX (a local room's self-signed certificate, coax/web/room/wt-cert.sh) is passed as
 //     serverCertificateHashes; a room with a CA certificate needs none.
-// globalThis.coaxial.wt counts what went each way, for the latency and matrix checks.
+// globalThis.coaxial.wt counts what went each way; a check's globalThis.__netTap(way, data) sees each frame
+// (coax/web/everglade2-latency.js).
 const WT_OPEN_MS = 2500, WT_MARK = 1, WT_CHANNELS = 5;
 const enc = new TextEncoder(), dec = new TextDecoder();
 let wtFailed = false;
@@ -30,7 +31,7 @@ export function wtSocket(url) {
   const s = { readyState: 0, __wt: false, onopen: null, onmessage: null, onerror: null, onclose: null };
   let ws = null, wt = null, dg = null, out = null, closed = false;
   const done = () => { if (s.readyState === 3) return; s.readyState = 3; s.onclose?.({}); };
-  const message = (bytes) => { c.framesIn++; c.bytesIn += bytes.length; s.onmessage?.({ data: dec.decode(bytes) }); };
+  const message = (bytes) => { c.framesIn++; c.bytesIn += bytes.length; const data = dec.decode(bytes); globalThis.__netTap?.('in', data); s.onmessage?.({ data }); };
   const useWs = () => {
     if (closed) return;
     c.fallbacks++;
@@ -45,7 +46,7 @@ export function wtSocket(url) {
     if (ws) { if (ws.readyState === 1) { const t = marked ? text.slice(1) : text; c.framesOut++; c.bytesOut += t.length; ws.send(t); } return; }
     if (!wt || s.readyState !== 1) return;
     const body = enc.encode(marked ? text.slice(1) : text);
-    c.framesOut++; c.bytesOut += body.length;
+    c.framesOut++; c.bytesOut += body.length; globalThis.__netTap?.('out', body.length);
     if (marked && mark === 0) { c.dgOut++; dg.write(body).catch(() => {}); return; }
     if (body.length > 65535) return;
     const b = new Uint8Array(body.length + 2); b[0] = body.length >> 8; b[1] = body.length & 255; b.set(body, 2);

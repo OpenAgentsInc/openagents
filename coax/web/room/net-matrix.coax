@@ -1,0 +1,205 @@
+// The room's loss matrix (#13177): Everglade II's latency check (coax/web/everglade2-latency.coax,
+// two headless Chromes) through a bad network (net-proxy.coax: TCP and UDP, seeded), on each
+// transport, for each loss and round trip. One JSON line per cell into OUT, and a table.
+//   coax/web/tool.sh coax/web/room/net-matrix.coax --page URL --room PORT --hash HEX --out FILE
+//       [--proxy PORT] [--trials N] [--seed S] [--quick] [--check BASELINE]
+// --page is a local page server's origin and --room its room's port (coax/web/room/local.coax, the
+// room started with OA_ROOM_WT_CERT and OA_ROOM_WT_KEY; --hash the certificate's SHA-256, wt-cert.sh).
+// The cells: loss 0, 2, 5 and 10%; round trip 50, 100 and 150 ms; jitter ±30 ms; WebSocket and
+// WebTransport. --quick runs 2% at 120 ms on both (the pipeline's subset). Each cell's line:
+//   {"transport":"wt","loss_permille":20,"rtt_ms":120,"jitter_ms":60,"tick_p50_us":..,"tick_p95_us":..,"latency":{...}}
+// with everglade2-latency's own JSON (arrow_remote is "A looses, B sees it"; walk is input to
+// response; lag_a the others' delay as drawn; bytes the payload bytes a second each way and the
+// keyframes heard). --check BASELINE fails (exit 1) when a cell's remote arrow p95 is over 1.5 times
+// BASELINE's same cell plus 50 ms, or it answered under half its trials.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/proc.coax";
+
+cxtool_out_flush :: () -> int #foreign #effects(all);
+
+NM_LOSS :: [4] int.[0, 20, 50, 100];   // per thousand
+NM_RTT :: [3] int.[50, 100, 150];      // ms
+NM_JITTER :: 60;                       // ms end to end: ±30 ms
+NM_TRANSPORTS :: [2] string.["ws", "wt"];
+
+Nb :: struct { b: [8192] u8; n: int; }
+nb_s :: (t: [] Nb, s: string) { for c: s { if t[0].n < t[0].b.count { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+nb_i :: (t: [] Nb, v: int) {
+  if v < 0 { nb_s(t, "-"); nb_i(t, -v); return; }
+  d: [20] u8; k := 0; x := v;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[k - 1 - i]; t[0].n += 1; } }
+}
+nb_text :: (t: [] Nb) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+// Where `key` starts in t at or after `from`, its first byte past it; -1 when absent.
+nm_find :: (t: string, key: string, from: int) -> int {
+  i := from;
+  while i + key.count <= t.count {
+    if t[i..<i + key.count] == key { return i + key.count; }
+    i += 1;
+  }
+  return -1;
+}
+// The whole number after key (in object `obj` when given: "arrow_remote"), or -1.
+nm_num :: (t: string, obj: string, key: string) -> int {
+  at := 0;
+  if obj.count > 0 {
+    q: [1] Nb; nb_s(q[..], "\""); nb_s(q[..], obj); nb_s(q[..], "\":");
+    at = nm_find(t, nb_text(q[..]), 0);
+    if at < 0 { return -1; }
+  }
+  k: [1] Nb; nb_s(k[..], "\""); nb_s(k[..], key); nb_s(k[..], "\":");
+  i := nm_find(t, nb_text(k[..]), at);
+  if i < 0 { return -1; }
+  neg := i < t.count && t[i] == '-'; if neg { i += 1; }
+  if i >= t.count || t[i] < '0' || t[i] > '9' { return -1; }
+  v := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  return ifx neg then -v else v;
+}
+#test "numbers out of a JSON line, inside an object or not" {
+  t := "{\"walk\":{\"n\":8,\"p95\":14},\"arrow_remote\":{\"n\":8,\"answered\":7,\"p95\":231,\"max\":-1},\"lag_a\":100}";
+  #assert nm_num(t, "arrow_remote", "p95") == 231 && nm_num(t, "walk", "p95") == 14 && nm_num(t, "", "lag_a") == 100;
+  #assert nm_num(t, "arrow_remote", "max") == -1 && nm_num(t, "arrow_remote", "p99") == -1 && nm_num(t, "nothing", "n") == -1;
+}
+// The health line's "everglade tick p50 X us at the 95th Y us": X when p95 is false, else Y.
+nm_tick :: (health: string, p95: bool) -> int {
+  i := nm_find(health, "everglade tick p50 ", 0);
+  if i < 0 { return -1; }
+  if p95 { i = nm_find(health, " at the 95th ", i); if i < 0 { return -1; } }
+  v := 0; any := false;
+  while i < health.count && health[i] >= '0' && health[i] <= '9' { v = v * 10 + cast(int) (health[i] - '0'); i += 1; any = true; }
+  return ifx any then v else -1;
+}
+#test "the room's tick from its health" {
+  h := "ok 2 players, shard 1, everglade tick p50 120 us at the 95th 340 us over 1491 ticks";
+  #assert nm_tick(h, false) == 120 && nm_tick(h, true) == 340 && nm_tick("ok", false) == -1;
+}
+// Whether a cell's remote arrow is a regression on the baseline's: p95 over 1.5 times plus 50 ms,
+// or under half the trials answered.
+nm_regressed :: (now_p95: int, now_answered: int, n: int, base_p95: int) -> bool {
+  if n <= 0 || now_answered * 2 < n || now_p95 < 0 { return true; }
+  if base_p95 < 0 { return false; }
+  return now_p95 * 2 > base_p95 * 3 + 100;
+}
+#test "a regression is a p95 past 1.5 times and 50 ms, or half the arrows missing" {
+  #assert !nm_regressed(200, 8, 8, 200) && !nm_regressed(350, 8, 8, 200) && nm_regressed(351, 8, 8, 200);
+  #assert nm_regressed(100, 3, 8, 200) && !nm_regressed(100, 4, 8, 200) && nm_regressed(-1, 8, 8, 200) && !nm_regressed(900, 8, 8, -1);
+}
+
+nm_usage :: () -> int { tool_errln("usage: net-matrix.coax --page URL --room PORT --hash HEX --out FILE [--proxy PORT] [--trials N] [--seed S] [--quick] [--check BASELINE]"); return 2; }
+
+// One cell: the proxy up, the latency check through it, the room's health; its JSON line (or "").
+nm_cell :: (root: string, page: string, room: int, proxy: int, hash: string, transport: string, loss: int, rtt: int, trials: int, seed: int, line: [] Nb) -> bool {
+  line[0].n = 0;
+  tool: [1] Nb; nb_s(tool[..], root); nb_s(tool[..], "/coax/web/tool.sh");
+  np: [1] Nb; nb_s(np[..], root); nb_s(np[..], "/coax/web/room/net-proxy.coax");
+  a: [10] [1] Nb;
+  nb_i(a[0][..], proxy); nb_i(a[1][..], room); nb_i(a[2][..], rtt); nb_i(a[3][..], NM_JITTER); nb_i(a[4][..], loss); nb_i(a[5][..], seed);
+  h := proc_new();
+  if h < 0 { return false; }
+  ok := proc_err_ours(h) && proc_gentle(h);
+  for x: [11] string.[nb_text(tool[..]), nb_text(np[..]), nb_text(a[0][..]), nb_text(a[1][..]), nb_text(a[2][..]), nb_text(a[3][..]), nb_text(a[4][..]), "900", "0", "", nb_text(a[5][..])] { ok = ok && proc_arg(h, x); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return false; }
+  ready := false; got: [4096] u8;
+  for k: 0..<120 {
+    n := proc_line(h, 1000, got[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n > 0 && nm_find(cast(string) got[0..<n], "seed=", 0) >= 0 { ready = true; break; }
+  }
+  if !ready { k := proc_kill(h, 15); w := proc_wait(h, 3000); r := proc_release(h); tool_errln("net-matrix: the proxy didn't start"); return false; }
+  url: [1] Nb;
+  nb_s(url[..], page); nb_s(url[..], "/worlds/character-creator?relay=ws://localhost:"); nb_i(url[..], proxy);
+  nb_s(url[..], "&transport="); nb_s(url[..], transport);
+  if transport == "wt" { nb_s(url[..], "&wthash="); nb_s(url[..], hash); }
+  tr: [1] Nb; nb_i(tr[..], trials);
+  lab: [1] Nb; nb_s(lab[..], transport); nb_s(lab[..], "-"); nb_i(lab[..], loss); nb_s(lab[..], "-"); nb_i(lab[..], rtt);
+  out: [262144] u8; err: [4096] u8;
+  la := [7] string.[nb_text(tool[..]), "everglade2-latency", nb_text(url[..]), "--trials", nb_text(tr[..]), "--label", nb_text(lab[..])];
+  run := proc_run(la[..], 900000, out[..], err[..]);
+  text := cast(string) out[0..<run.out_n];
+  health: [4096] u8; hp: [1] Nb; nb_s(hp[..], "http://127.0.0.1:"); nb_i(hp[..], room); nb_s(hp[..], "/health");
+  ca := [4] string.["curl", "-s", "-m5", nb_text(hp[..])];
+  hr := proc_run(ca[..], 10000, health[..], err[..]);
+  ht := cast(string) health[0..<hr.out_n];
+  k := proc_kill(h, 15); w := proc_wait(h, 5000); r := proc_release(h);
+  j := nm_find(text, "{\"label\":", 0);
+  if j < 0 { tool_errln("net-matrix: the latency check gave no JSON"); print("%\n", text); return false; }
+  e := j; while e < text.count && text[e] != '\n' { e += 1; }
+  nb_s(line, "{\"transport\":\""); nb_s(line, transport); nb_s(line, "\",\"loss_permille\":"); nb_i(line, loss);
+  nb_s(line, ",\"rtt_ms\":"); nb_i(line, rtt); nb_s(line, ",\"jitter_ms\":"); nb_i(line, NM_JITTER); nb_s(line, ",\"seed\":"); nb_i(line, seed);
+  nb_s(line, ",\"tick_p50_us\":"); nb_i(line, nm_tick(ht, false)); nb_s(line, ",\"tick_p95_us\":"); nb_i(line, nm_tick(ht, true));
+  nb_s(line, ",\"latency\":"); nb_s(line, text[j - 9..<e]); nb_s(line, "}");
+  return true;
+}
+// The table's row for a cell's line.
+nm_row :: (t: string, row: [] Nb) {
+  row[0].n = 0;
+  nb_s(row, "| "); nb_s(row, ifx nm_find(t, "\"transport\":\"wt\"", 0) >= 0 then "WT" else "WS");
+  nb_s(row, " | "); l := nm_num(t, "", "loss_permille"); nb_i(row, l / 10); nb_s(row, "."); nb_i(row, l % 10); nb_s(row, "% | "); nb_i(row, nm_num(t, "", "rtt_ms"));
+  nb_s(row, " | "); nb_i(row, nm_num(t, "arrow_remote", "answered")); nb_s(row, "/"); nb_i(row, nm_num(t, "arrow_remote", "n"));
+  for f: [3] string.["p50", "p95", "max"] { nb_s(row, " | "); nb_i(row, nm_num(t, "arrow_remote", f)); }
+  for f: [3] string.["p50", "p95", "max"] { nb_s(row, " | "); nb_i(row, nm_num(t, "walk", f)); }
+  nb_s(row, " | "); nb_i(row, nm_num(t, "", "lag_a"));
+  nb_s(row, " | "); nb_i(row, nm_num(t, "bytes", "in_bps")); nb_s(row, " / "); nb_i(row, nm_num(t, "bytes", "out_bps"));
+  nb_s(row, " | "); nb_i(row, nm_num(t, "", "tick_p50_us")); nb_s(row, " / "); nb_i(row, nm_num(t, "", "tick_p95_us"));
+  nb_s(row, " | "); nb_i(row, nm_num(t, "bytes", "keyframes")); nb_s(row, " |");
+}
+NM_HEAD :: "| Transport | Loss | RTT ms | Arrows seen | Remote arrow p50 | p95 | p99 (max) | Walk p50 | p95 | p99 (max) | Others drawn behind ms | Bytes/s in / out (A) | Room tick p50 / p95 us | Keyframes |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |";
+
+// The baseline's line for the same cell, into out; false when it has none.
+nm_baseline :: (base: string, transport: string, loss: int, rtt: int, out: [] Nb) -> bool {
+  at := 0;
+  while at < base.count {
+    e := at; while e < base.count && base[e] != '\n' { e += 1; }
+    l := base[at..<e];
+    q: [1] Nb; nb_s(q[..], "\"transport\":\""); nb_s(q[..], transport); nb_s(q[..], "\"");
+    if nm_find(l, nb_text(q[..]), 0) >= 0 && nm_num(l, "", "loss_permille") == loss && nm_num(l, "", "rtt_ms") == rtt { out[0].n = 0; nb_s(out, l); return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return nm_usage(); }
+  page := args_value(a[..], "--page", ""); room := args_whole(args_value(a[..], "--room", ""));
+  hash := args_value(a[..], "--hash", ""); out_file := args_value(a[..], "--out", "");
+  proxy := args_whole(args_value(a[..], "--proxy", "9467")); trials := args_whole(args_value(a[..], "--trials", "12"));
+  seed := args_whole(args_value(a[..], "--seed", "13177")); quick := args_has(a[..], "--quick");
+  check := args_value(a[..], "--check", "");
+  if page.count == 0 || room <= 0 || out_file.count == 0 || proxy <= 0 || trials < 1 || trials > 16 || seed < 0 { return nm_usage(); }
+  rb: [4096] u8; root := proc_getenv("COAX_TOOL_REPO", rb[..]);
+  if root.count == 0 { root = "."; }
+  base: [262144] u8; bn := 0;
+  if check.count > 0 { bn = fs_read(check, base[..]); if bn < 0 { tool_errln("net-matrix: can't read the baseline"); return 2; } }
+  print("%\n", NM_HEAD); f := cxtool_out_flush();
+  bad := 0;
+  losses := ifx quick then [4] int.[20, -1, -1, -1] else NM_LOSS;
+  rtts := ifx quick then [3] int.[120, -1, -1] else NM_RTT;
+  for loss: losses { if loss < 0 { continue; }
+    for rtt: rtts { if rtt < 0 { continue; }
+      for transport: NM_TRANSPORTS {
+        line: [1] Nb;
+        if !nm_cell(root, page, room, proxy, hash, transport, loss, rtt, trials, seed, line[..]) { bad += 1; print("| % | % | % | no result |\n", transport, loss, rtt); continue; }
+        if !fs_append(out_file, nb_text(line[..])) || !fs_append(out_file, "\n") { tool_errln("net-matrix: can't write OUT"); return 1; }
+        row: [1] Nb; nm_row(nb_text(line[..]), row[..]); print("%\n", nb_text(row[..])); f = cxtool_out_flush();
+        if check.count > 0 {
+          b: [1] Nb; have := nm_baseline(cast(string) base[0..<bn], transport, loss, rtt, b[..]);
+          t := nb_text(line[..]);
+          if nm_regressed(nm_num(t, "arrow_remote", "p95"), nm_num(t, "arrow_remote", "answered"), nm_num(t, "arrow_remote", "n"), ifx have then nm_num(nb_text(b[..]), "arrow_remote", "p95") else -1) {
+            print("REGRESSION % % ‰ % ms: remote arrow p95 % ms (baseline %)\n", transport, loss, rtt, nm_num(t, "arrow_remote", "p95"), ifx have then nm_num(nb_text(b[..]), "arrow_remote", "p95") else -1);
+            bad += 1;
+          }
+        }
+      }
+    }
+  }
+  print("%\n", ifx bad == 0 then "holds" else "fails");
+  return ifx bad == 0 then 0 else 1;
+}

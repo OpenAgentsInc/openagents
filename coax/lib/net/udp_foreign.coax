@@ -1,0 +1,10 @@
+// UDP on the loopback (coax/platform/socket-native.c, its contract in socket-native.h): a test
+// network's effects (coax/web/room/net-proxy.coax).
+cxudp_bind :: (port: int) -> int #foreign #effects(all);
+cxudp_port :: (h: int) -> int #foreign #effects(all);
+cxudp_recv :: (h: int) -> int #foreign #effects(all);
+cxudp_byte :: (h: int, i: int) -> int #foreign #effects(all);
+cxudp_from :: (h: int) -> int #foreign #effects(all);
+cxudp_put :: (h: int, byte: int) -> int #foreign #effects(all);
+cxudp_send :: (h: int, port: int) -> int #foreign #effects(all);
+cxudp_close :: (h: int) -> int #foreign #effects(all);

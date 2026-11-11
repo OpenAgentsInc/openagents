@@ -329,6 +329,8 @@ el_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   el_json("walk", walk[..], false); el_json("turn_camera", cam[..], false); el_json("turn_body", body[..], false);
   el_json("attack", attack[..], false); el_json("draw", draw[..], false);
   el_json("loose", loose[..], false); el_json("arrow", arrow[..], false); el_json("loose_remote", loose_b[..], false); el_json("arrow_remote", arrow_b[..], false);
+  bb: [256] u8; bytes := el_str(A, "__lat.bytes()", bb[..]);
+  print("\"bytes\":%,", ifx bytes.count > 1 then bytes else "{}");
   print("\"arrows_loosed\":%,\"arrows_landed_a\":%,\"arrows_landed_b\":%,\"arrows_confirmed\":%,\"motion\":%}\n%\n", el_probe(A, 194), stuck_a, stuck_b, el_probe(A, 198), ifx motion.count > 0 then motion else "null", ifx all then "holds" else "fails");
   return ifx all then 0 else 1;
 }

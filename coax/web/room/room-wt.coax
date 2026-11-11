@@ -35,7 +35,8 @@ rm_wt_conn :: (v: [] RmServer, conn: int, on: bool) #export_c #effects(all) {
 }
 rm_wt_on :: (v: [] RmServer, conn: int) -> bool { return conn >= 0 && conn < CONNS && v[0].wt[conn].on; }
 // The channel a frame goes on to a WebTransport session (aethyr/net/transport.coax NET_*).
-rm_wt_channel :: (v: [] RmServer, text: string) -> int #export_c #effects(all) {
+rm_wt_channel :: (v: [] RmServer, text: string) -> int #export_c #effects(all) { return rm_wt_channel_of(text); }
+rm_wt_channel_of :: (text: string) -> int {
   if text.count > 1 && text[0] == 'D' && text[1] == ' ' {
     r: [1] WireRd; r[0] = wire_rd(text, 1);
     d := wire_read_d(text, r[..]);
@@ -138,4 +139,95 @@ wt_test_live :: (m: [] WireMirror) -> int { n := 0; for e: 0..<WIRE_MIRROR { if 
   for t: 91..<94 { for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, heard = box[0].m[c].heard}); rm_heard(v[..], c, cast(string) b[0..<n]); } eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); wt_test_seen(box[..], 0, seen[0..<1]); }
   #assert seen[0].oob >= 1 && rm_wt_stat(v[..], 0, 2) == seen[0].oob && rm_wt_stat(v[..], 0, 0) == seen[0].dgrams;
   #assert v[0].eg[k].seat[0].town_end == false && v[0].eg[k].seat[1].town_end == false;
+}
+
+// ---- the pipeline's loss check (#13177): the room's own frames through a seeded bad network
+// A model of the two transports at LOSS per thousand, RTT ms and ±JITTER/2 ms, per frame, 30 Hz:
+//   WebTransport: a datagram (a seat's tick of state) is lost, or arrives in its own time, out of order
+//     as may be; a reliable frame (out of band, on its domain's stream) that is lost comes a resend
+//     later (1.5 RTT: QUIC's loss detection), and holds the frames after it on its stream.
+//   WebSocket: every frame is one TCP stream; a lost one comes TCP's resend later (the larger of
+//     200 ms and 2 RTT, as net-proxy.coax) and holds every frame after it.
+// The number: how old the newest state a page holds is, each tick (its mirror's HEARD), at the 95th
+// percentile: what the other players are drawn from. coax/web/room/net-matrix.coax measures the
+// same in two Chromes; this runs in the room's own checks on every build host.
+WT_SIM_PEND :: 96;
+WtPend :: struct { due: int; n: int; s: int; b: [RELAY_FRAME] u8; }
+WtSim :: struct { seed: int; loss: int; rtt: int; jitter: int; pend: [2] [WT_SIM_PEND] WtPend; last: [2] [2] int; lost: int; full: int; }
+wt_sim_rand :: (s: [] WtSim, n: int) -> int { s[0].seed = (s[0].seed % 2147483648 * 1103515245 + 12345) % 2147483648; return (s[0].seed / 32768) % n; }
+// Frame f to conn c (0 WebTransport, 1 WebSocket) at `now` ms, held for its time.
+wt_sim_send :: (s: [] WtSim, c: int, f: string, now: int) {
+  dg := c == 0 && f.count > 1 && rm_wt_channel_of(f) == NET_DATAGRAM;
+  lost := s[0].loss > 0 && wt_sim_rand(s, 1000) < s[0].loss;
+  if dg && lost { s[0].lost += 1; return; }
+  d := s[0].rtt / 2 + ifx s[0].jitter > 0 then wt_sim_rand(s, s[0].jitter + 1) - s[0].jitter / 2 else 0;
+  if lost { d += ifx c == 0 then s[0].rtt * 3 / 2 else (ifx 2 * s[0].rtt > 200 then 2 * s[0].rtt else 200); }
+  due := now + d;
+  // ordered: a stream's frame never before the one ahead of it (WebSocket: the one stream; WebTransport: its domain's)
+  st := ifx dg then -1 else ifx c == 0 && rm_wt_channel_of(f) != NET_COMBAT then 1 else 0;
+  if st >= 0 { if due < s[0].last[c][st] { due = s[0].last[c][st]; } s[0].last[c][st] = due; }
+  for k: 0..<WT_SIM_PEND {
+    p := s[0].pend[c][k..<k + 1];
+    if p[0].n != 0 { continue; }
+    p[0].due = due; p[0].n = f.count; for i: 0..<f.count { p[0].b[i] = f[i]; }
+    return;
+  }
+  s[0].full += 1;
+}
+// Every frame due by `now`, into conn c's page.
+wt_sim_give :: (s: [] WtSim, c: int, now: int, m: [] WireMirror) {
+  // in the order they were due (a WebSocket's in its stream's order)
+  while true {
+    best := -1;
+    for k: 0..<WT_SIM_PEND { p := s[0].pend[c][k..<k + 1]; if p[0].n != 0 && p[0].due <= now && (best < 0 || p[0].due < s[0].pend[c][best].due) { best = k; } }
+    if best < 0 { return; }
+    p := s[0].pend[c][best..<best + 1];
+    _ := wire_mirror_frame(m, cast(string) p[0].b[0..<p[0].n]);
+    p[0].n = 0;
+  }
+}
+// The p-th percentile of v's first n.
+wt_sim_pct :: (v: [] int, n: int, p: int) -> int {
+  if n <= 0 { return -1; }
+  for i: 1..<n { x := v[i]; j := i; while j > 0 && v[j - 1] > x { v[j] = v[j - 1]; j -= 1; } v[j] = x; }
+  k := n * p / 100; if k >= n { k = n - 1; }
+  return v[k];
+}
+// The two pages' state age (ms) at the 95th percentile, [0] on WebTransport and [1] on a WebSocket.
+wt_sim_run :: (loss: int, rtt: int, jitter: int, seed: int, ticks: int, out: [] int) {
+  v: [1] RmServer; m: [2] WireMirror; sim: [1] WtSim;
+  sim[0].seed = seed; sim[0].loss = loss; sim[0].rtt = rtt; sim[0].jitter = jitter;
+  rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  rm_wt_conn(v[..], 0, true);
+  _ := rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-wt-sim HTTP/1.1\r\n\r\n"); _2 := rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-wt-sim HTTP/1.1\r\n\r\n");
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  b: [96] u8; age: [2] [1200] int; an := 0;
+  for t: 1..<ticks + 1 {
+    now := t * 1000 / EG_HZ;
+    for i: 0..<12 { f := [7] f32.[f32(i % 4) * 3 - 6 + f32(t) * 0.05, 0, f32(i / 4) * 3 - 3, 0, 1, 0, 1]; rm_eg_folk(v[..], k, i, f[..]); }
+    // the pages' inputs reach the room at once (the model is the room's sending)
+    for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, px = 40, heard = m[c].heard}); rm_heard(v[..], c, cast(string) b[0..<n]); }
+    eg_test_tick(v[..], k);
+    while true {
+      got := rm_relay_next(v[..]);
+      if got == 0 { break; }
+      for c: 0..<2 { if v[0].rto[c] && got > 0 { wt_sim_send(sim[..], c, cast(string) v[0].rout[0..<got], now); } }
+    }
+    for c: 0..<2 { wt_sim_give(sim[..], c, now, m[c..<c + 1]); }
+    if t > 60 && an < 1200 { for c: 0..<2 { age[c][an] = (v[0].eg[k].tick - m[c].heard) * 1000 / EG_HZ; } an += 1; }
+  }
+  for c: 0..<2 { out[c] = wt_sim_pct(age[c][..], an, 95); }
+  if out.count > 3 { out[2] = sim[0].lost; out[3] = sim[0].full; }
+}
+#test "webtransport under loss: at 2% and 10% with 120 ms ±30 ms the state a page holds is under 2 RTT old at the 95th percentile, and no older than a WebSocket page's (#13177)" #steps 40000000000 {
+  for seed: [2] int.[1, 7] {
+    a: [2] int; wt_sim_run(20, 120, 60, seed, 450, a[..]);
+    #assert a[0] > 0 && a[0] < 240 && a[0] <= a[1];
+  }
+  // at 10% a WebSocket's page waits on TCP's resends; WebTransport's doesn't
+  bad: [2] int; wt_sim_run(100, 120, 60, 1, 450, bad[..]);
+  #assert bad[0] < 240 && bad[0] < bad[1];
+  clean: [2] int; wt_sim_run(0, 120, 60, 3, 240, clean[..]);
+  #assert clean[0] <= clean[1] + 34;   // with no loss the two are a tick apart at most
 }

@@ -11,8 +11,16 @@
 // socket as they would behind a slow link, and the page hears them that late. A line says each change.
 // Optional final SEED fixes the read-hold generator. It reproduces random
 // choices for the same read sequence, not operating-system TCP read boundaries.
+// UDP too (#13177), for a room's WebTransport: it listens on UDP 127.0.0.1:LISTEN and sends to UDP
+// 127.0.0.1:ROOM, one socket of its own for each page (up to NP_UDP_PAGES). Each datagram is lost
+// LOSS_PERMILLE times in a thousand (never resent: QUIC resends what it must itself), else held half
+// the round trip plus or minus half the jitter, each way, so datagrams can pass each other as on a
+// real network. Its generator is its own, from SEED, so the same datagrams meet the same fate.
 #import "Basic";
 #load "../../lib/net/socket_foreign.coax";
+#load "../../lib/net/udp_foreign.coax";
+
+cxtool_out_flush :: () -> int #foreign #effects(all);
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/proc.coax";
 #load "../../lib/sys/fs.coax";
@@ -91,6 +99,82 @@ np_due :: (net: [] NpNet, now: int, last: int) -> int {
   #assert np_due(quiet[..], 777, 0) == 777;
 }
 
+// ---- UDP
+NP_UDP_PAGES :: 6;          // pages through it at once (socket-native.h CXUDP_MAX less the listener)
+NP_UDP_HELD :: 4096;        // datagrams held at once, both ways
+NP_UDP_MTU :: 1500;
+NpDgram :: struct { due: int; n: int; up: bool; page: int; b: [NP_UDP_MTU] u8; }
+NpUdp :: struct {
+  listen: int; room: int;
+  page_port: [NP_UDP_PAGES] int; page_up: [NP_UDP_PAGES] int;   // a page's port, and its socket to the room (-1 none)
+  held: [NP_UDP_HELD] NpDgram; n: int;
+  sent: [2] int; lost: [2] int; full: int;   // datagrams each way (0 up, 1 down) delivered and lost; dropped for room
+}
+// When a datagram taken at `now` arrives, or -1 when it is lost on the way.
+np_udp_due :: (net: [] NpNet, now: int) -> int {
+  if net[0].loss > 0 && np_rand(net, 1000) < net[0].loss { return -1; }
+  d := net[0].latency / 2;
+  if net[0].jitter > 0 { d += np_rand(net, net[0].jitter + 1) - net[0].jitter / 2; }
+  return now + ifx d < 0 then 0 else d;
+}
+#test "a datagram is lost its share of the time, else held half the round trip, give or take half the jitter" {
+  net: [1] NpNet; net[0].latency = 120; net[0].jitter = 60; net[0].loss = 20; net[0].seed = 9;
+  lost := 0; lo := 1000000; hi := 0;
+  for k: 0..<10000 { d := np_udp_due(net[..], 1000); if d < 0 { lost += 1; } else { if d < lo { lo = d; } if d > hi { hi = d; } } }
+  #assert lost > 150 && lost < 250 && lo >= 1000 + 30 && hi <= 1000 + 90 && lo < 1000 + 35 && hi > 1000 + 85;
+  again: [1] NpNet; again[0] = net[0]; again[0].seed = 9;
+  first: [1] NpNet; first[0] = again[0];
+  #assert np_udp_due(first[..], 5) == np_udp_due(again[..], 5);   // the same seed, the same fate
+  quiet: [1] NpNet; #assert np_udp_due(quiet[..], 77) == 77;
+}
+// The page sending from `port`: its index, a new one (with its own socket to the room), or -1 when full.
+np_udp_page :: (u: [] NpUdp, port: int) -> int {
+  for k: 0..<NP_UDP_PAGES { if u[0].page_up[k] >= 0 && u[0].page_port[k] == port { return k; } }
+  for k: 0..<NP_UDP_PAGES {
+    if u[0].page_up[k] >= 0 { continue; }
+    h := cxudp_bind(0);
+    if h < 0 { return -1; }
+    u[0].page_up[k] = h; u[0].page_port[k] = port;
+    return k;
+  }
+  return -1;
+}
+// What h has waiting, each datagram held for its time (or lost); true when it had any.
+np_udp_take :: (net: [] NpNet, u: [] NpUdp, h: int, up: bool, page: int, now: int) -> bool {
+  any := false;
+  for i: 0..<256 {
+    r := cxudp_recv(h);
+    if r < 0 { break; }
+    any = true;
+    p := page;
+    if up { p = np_udp_page(u, cxudp_from(h)); if p < 0 { continue; } }
+    w := ifx up then 0 else 1;
+    due := np_udp_due(net, now);
+    if due < 0 { u[0].lost[w] += 1; continue; }
+    if r > NP_UDP_MTU || u[0].n >= NP_UDP_HELD { u[0].full += 1; continue; }
+    slot := -1;
+    for q: 0..<NP_UDP_HELD { if u[0].held[q].n == 0 { slot = q; break; } }
+    d := u[0].held[slot..<slot + 1];
+    d[0].due = due; d[0].n = r; d[0].up = up; d[0].page = p;
+    for b: 0..<r { d[0].b[b] = cast(u8) cxudp_byte(h, b); }
+    u[0].n += 1;
+  }
+  return any;
+}
+// Every held datagram that is due, sent on.
+np_udp_give :: (u: [] NpUdp, now: int) {
+  if u[0].n == 0 { return; }
+  for q: 0..<NP_UDP_HELD {
+    d := u[0].held[q..<q + 1];
+    if d[0].n == 0 || d[0].due > now { continue; }
+    h := ifx d[0].up then u[0].page_up[d[0].page] else u[0].listen;
+    to := ifx d[0].up then u[0].room else u[0].page_port[d[0].page];
+    for b: 0..<d[0].n { r := cxudp_put(h, cast(int) d[0].b[b]); }
+    if cxudp_send(h, to) == 0 { u[0].sent[ifx d[0].up then 0 else 1] += 1; }
+    d[0].n = 0; u[0].n -= 1;
+  }
+}
+
 np_connect_room :: (port: int) -> int {
   host := "127.0.0.1";
   for b: host { r := cxsock_host_push(cast(int) b); }
@@ -163,6 +247,12 @@ tool_main :: () -> int #export_c #effects(all) {
   if l < 0 { tool_errln("net-proxy: can't listen there"); return 1; }
   print("net-proxy: 127.0.0.1:% to 127.0.0.1:%, round trip % ms, jitter % ms, loss % in 1000\n", listen, room, net[0].latency, net[0].jitter, net[0].loss);
   print("net-proxy: seed=% rate=% bytes/s; random choices follow observed TCP reads\n",net[0].seed,net[0].rate);
+  fl := cxtool_out_flush();   // (a harness waits for these lines before it connects)
+  // UDP: its own generator from the seed, so its datagrams' fates don't hang on TCP's reads
+  unet: [1] NpNet; unet[0] = net[0]; unet[0].seed = (net[0].seed * 7 + 1) % 2147483648;
+  udp: [1] NpUdp; udp[0].listen = cxudp_bind(listen); udp[0].room = room;
+  for k: 0..<NP_UDP_PAGES { udp[0].page_up[k] = -1; }
+  if udp[0].listen < 0 { tool_errln("net-proxy: no UDP on that port; TCP only"); }
   pairs: [NP_PAIRS] NpPair;
   for k: 0..<NP_PAIRS { pairs[k].down = -1; pairs[k].up = -1; }
   start := cxsock_now_ms(); said := start;
@@ -195,6 +285,11 @@ tool_main :: () -> int #export_c #effects(all) {
       // a closed side closes the other once what it sent before has arrived
       if p[0].closing && p[0].ways[0].c_n == 0 && p[0].ways[1].c_n == 0 { np_shut(p); }
     }
+    if udp[0].listen >= 0 {
+      if np_udp_take(unet[..], udp[..], udp[0].listen, true, -1, now) { busy = true; }
+      for k: 0..<NP_UDP_PAGES { if udp[0].page_up[k] >= 0 && np_udp_take(unet[..], udp[..], udp[0].page_up[k], false, k, now) { busy = true; } }
+      np_udp_give(udp[..], now);
+    }
     if now - said >= 60000 {
       said = now;
       print("net-proxy: % reads up, % down, % lost, the longest hold % ms\n", net[0].reads[0], net[0].reads[1], net[0].lost, net[0].most);
@@ -202,5 +297,6 @@ tool_main :: () -> int #export_c #effects(all) {
     if !busy { proc_sleep(1); }
   }
   print("net-proxy final: % reads up, % down, % lost, the longest hold % ms, elapsed % ms\n",net[0].reads[0],net[0].reads[1],net[0].lost,net[0].most,cxsock_now_ms()-start);
+  print("net-proxy udp: % datagrams up, % down; lost % up, % down; % dropped for room\n", udp[0].sent[0], udp[0].sent[1], udp[0].lost[0], udp[0].lost[1], udp[0].full);
   return 0;
 }

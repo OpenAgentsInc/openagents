@@ -1,0 +1,52 @@
+// A room over WebTransport on a real network (#13176): a headless Chrome opens ORIGIN (any secure
+// origin) and from it a WebTransport session to a room's relay URL, with a seat ticket signed with
+// OA_ROOM_TICKET_KEY (room-ticket.coax, as load.coax's bots), says its hello and plays inputs for
+// SECONDS (wt-room-check.js). One JSON line, then holds or fails: the session opened, and the room's
+// state came at 25 ticks a second or more, with frames on its streams.
+//   OA_ROOM_TICKET_KEY=... coax/web/tool.sh coax/web/room/wt-room-check.coax ORIGIN URL HASH|- [--seconds N]
+// URL: https://room-staging.openagents.com/api/room/relay/everglade/pair-e2-wtnet-STAMP (the room VM's
+// staging unit on UDP 443, a CA certificate: HASH -).
+#load "../../lib/net/cdp.coax";
+#load "room-socket.coax";
+Rb :: struct { b: [65536] u8; n: int; bad: bool; }
+rput :: (o: [] Rb, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+rtext :: (o: [] Rb) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  origin := args_at(a[..], 0); url := args_at(a[..], 1); hash := args_at(a[..], 2);
+  seconds := args_whole(args_value(a[..], "--seconds", "15"));
+  if !ok || !wc_ok(origin) || !wc_ok(url) || hash.count == 0 || seconds < 1 || seconds > 600 {
+    tool_errln("usage: coax/web/tool.sh coax/web/room/wt-room-check.coax ORIGIN URL HASH|- [--seconds N]"); return 2;
+  }
+  tb: [8192] u8; tu := rs_ticketed_on(tb[..], url, "p-wtnet-1", "Net check", 0);
+  if tu.count == 0 || tu == url { tool_errln("wt-room-check: no seat ticket (OA_ROOM_TICKET_KEY)"); return 2; }
+  js: [16384] u8;
+  jn := fs_read("coax/web/room/wt-room-check.js", js[..]);
+  if jn <= 0 { tool_errln("wt-room-check: can't read coax/web/room/wt-room-check.js (run it from the repository's root)"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 800, 600, "coax-wtroom-") { tool_err("wt-room-check: "); tool_errln(cdp_error(c[..])); return 1; }
+  nav: [1] Rb; rput(nav[..], "{\"url\":\""); rput(nav[..], origin); rput(nav[..], "\"}");
+  status := 1;
+  if cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) >= 0 && cdp_call(c[..], "Page.navigate", rtext(nav[..]), CDP_CALL_MS) >= 0 {
+    for k: 0..<100 { v := cdp_evaluate(c[..], "document.readyState === 'complete' ? 1 : 0"); if v >= 0 && jv_int(cdp_doc(c[..]), v, 0) == 1 { break; } proc_sleep(100); }
+    e: [1] Rb; sb: [24] u8;
+    rput(e[..], "window.__wtArgs = {url: '"); rput(e[..], tu); rput(e[..], "', hash: '"); rput(e[..], ifx hash == "-" then "" else hash);
+    k := rs_int(sb[..], 0, seconds); rput(e[..], "', seconds: "); rput(e[..], cast(string) sb[0..<k]); rput(e[..], "};\n");
+    rput(e[..], cast(string) js[0..<jn]);
+    v := cdp_evaluate(c[..], rtext(e[..]));
+    out: [8192] u8; n := ifx v >= 0 then jv_str(cdp_doc(c[..]), v, out[..]) else 0;
+    line := ifx n > 0 then cast(string) out[0..<n] else "{\"ok\":false,\"error\":\"no answer from the page\"}";
+    print("%\n", line);
+    d: [1] Jv; nodes: [256] JvNode;
+    if jv_parse(d[..], line, nodes[..]) && jv_bool(d[0], jv_get(d[0], 0, "ok")) { status = 0; }
+  }
+  cdp_close(c[..]);
+  print("%\n", ifx status == 0 then "holds" else "fails");
+  return status;
+}
+wc_ok :: (u: string) -> bool { if u.count == 0 { return false; } for c: u { if c == '\'' || c == '\\' || c < 32 { return false; } } return true; }

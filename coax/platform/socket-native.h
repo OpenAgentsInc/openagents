@@ -57,6 +57,23 @@ int64_t cxsock_listen(int64_t port);
 int64_t cxsock_port(int64_t h);
 int64_t cxsock_accept(int64_t h, int64_t timeout_ms);
 int64_t cxsock_now_ms(void);
+/* UDP on the loopback (a test network's, coax/web/room/net-proxy.coax): cxudp_bind(port) binds
+   127.0.0.1:port (0 picks one) and returns a handle (of CXUDP_MAX), or CXSOCK_REFUSED / CXSOCK_FULL;
+   cxudp_port(h) the port it bound. cxudp_recv(h) takes one waiting datagram without waiting: its
+   bytes (cxudp_byte, until the next recv) and the sender's port (cxudp_from), or CXSOCK_TIMEOUT.
+   cxudp_put(h, byte) adds a byte to the datagram being built (CXSOCK_FULL past CXUDP_MAX_BYTES);
+   cxudp_send(h, port) sends it to 127.0.0.1:port and starts the next (0, or CXSOCK_ERROR: dropped,
+   as the network may). cxudp_close releases the handle. */
+#define CXUDP_MAX (8)
+#define CXUDP_MAX_BYTES (65536)
+int64_t cxudp_bind(int64_t port);
+int64_t cxudp_port(int64_t h);
+int64_t cxudp_recv(int64_t h);
+int64_t cxudp_byte(int64_t h, int64_t i);
+int64_t cxudp_from(int64_t h);
+int64_t cxudp_put(int64_t h, int64_t byte);
+int64_t cxudp_send(int64_t h, int64_t port);
+int64_t cxudp_close(int64_t h);
 /* For coax/platform/tls-native.c only (not a #foreign import): the handle's
    file descriptor, or -1. TLS reads and writes the descriptor directly and
    leaves these buffers unused; cxsock_close still releases it. */
