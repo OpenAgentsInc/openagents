@@ -16,6 +16,7 @@
 #load "experimental-sound.coax" as exsound;
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: class features and rest, every zone's (the game)
 #load "../../everglade/hud/windows.coax";   // Everglade's HUD windows and marks: talk, the workbench, the bar's marks, the wedge (#13083)
+#load "../../everglade/hud/class-resource.coax";   // Everglade's class resource bar: Rages, Focus (#13084)
 #load "../../everglade/hud/create.coax";    // Everglade's Character Create panel and the world's menu (#13083)
 #load "everglade2-sight.coax";   // ... from this zone's land, trunks, rocks and camp
 #load "../../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
@@ -1017,7 +1018,7 @@ e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
 // ---- the world's HUD (Everglade's FANTASY style, everglade/hud/parts.coax): your portrait plate top left,
 // the map ring top right with the place and the time of day, and a place's banner as you come to it.
 // All from what the page knows: the room's word on your health (e2n_vitals), the rules' AC and slots
-// for your class and level (fb_cl_hero), the room's counts on your bar (e2n_kit).
+// for your class and level (fb_cl_hero), the room's counts on your bar (e2n_slot).
 E2_ZONES :: [5] string.["The Glade", "The Sunlit Path", "The Deep Canopy", "The Clearing", "Goblin Camp"];
 e2_zone :: (x: f32, z: f32) -> int {
   cx := e2_camp_x() - x; cz := f32(E2_CAMP_Z) - z;
@@ -1051,7 +1052,7 @@ e2_portrait :: (s: [] E2, conds: [] u8) -> cc.EgPortrait {
   for lv: 0..<10 { p.slot_max[lv] = s[0].hero_slots[lv]; p.slot_left[lv] = -1; }
   for i: 0..<k[0].bar_n {
     a := k[0].bar[i]; if a.kind != FB_SPELL || a.lvl < 1 || a.lvl > 9 { continue; }
-    kit := e2n_kit(s[0].net[..], i, k[0].bar_n); if kit.ok && kit.left >= 0 { p.slot_left[a.lvl] = ifx kit.left > p.slot_max[a.lvl] then p.slot_max[a.lvl] else kit.left; }
+    kit := e2n_slot(s[0].net[..], i, k[0].bar_n); if kit.ok && kit.left >= 0 { p.slot_left[a.lvl] = ifx kit.left > p.slot_max[a.lvl] then p.slot_max[a.lvl] else kit.left; }
   }
   // what holds you: the health line's words after its numbers (e2k_vitals_text)
   h: [E2K_HEALTH] u8; hn := e2k_vitals_text(s, h[..]); from := 0; i := 0;
@@ -1649,9 +1650,9 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
     if field < 104 { b := s[0].cz[0].boxes[ifx field < 102 then E2C_LEVEL_BOX else E2C_CLASS_BOX];
       return cast(int)(ifx field % 2 == 0 then b.x0 + (b.x1 - b.x0) * 0.8 else (b.y0 + b.y1) / 2); }
     if field == 104 { return e2c_level_of(s); } if field == 105 { return k[0].bar_n; }
-    if field == 106 { return ifx e2n_kit(s[0].net[..], 0, k[0].bar_n).ok then 1 else 0; } if field == 107 { return k[0].undone; }
+    if field == 106 { return ifx e2n_slot(s[0].net[..], 0, k[0].bar_n).ok then 1 else 0; } if field == 107 { return k[0].undone; }
     if field == 108 { m := 0; for f: 0..<E2K_FADES { if k[0].fades[f].slot >= 0 && s[0].clock - k[0].fades[f].at <= f32(E2K_FADE) { m += 1; } } return m; }
-    w := e2n_kit(s[0].net[..], field % 10, k[0].bar_n); if field >= 110 && field < 120 { return w.left; } if field >= 120 { return ifx w.on then 1 else 0; }
+    w := e2n_slot(s[0].net[..], field % 10, k[0].bar_n); if field >= 110 && field < 120 { return w.left; } if field >= 120 { return ifx w.on then 1 else 0; }
     return -1; }
   // the ground (#13059): 90 its route (1 the pack's record, 2 converted here), 91 its tiles, 92 sets
   // published, 93 refusals, 94 the first refusal's code, 95 KiB resident, 96 and 97 the set's and the
@@ -2371,7 +2372,7 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
   m:[128] u8; c:=wire_put(m[..],0,"b"); c=wire_int(m[..],c,k[0].bar_n);
   for i:0..<k[0].bar_n { c=wire_int(m[..],c,ifx i==0 then wire_kit_v(1,true) else wire_kit_v(-1,false)); }
   e2n_record(n,cast(string)m[0..<c]);
-  #assert e2n_kit(n,0,k[0].bar_n).ok && e2n_kit(n,0,k[0].bar_n).left==1 && e2n_kit(n,0,k[0].bar_n).on;
+  #assert e2n_slot(n,0,k[0].bar_n).ok && e2n_slot(n,0,k[0].bar_n).left==1 && e2n_slot(n,0,k[0].bar_n).on;
   drawn:=e2k_bar_draw(s[..],out[..],0); #assert drawn>plain+4*6;   // a count and four frame lines
   // no longer raging, none left: the count only
   c=wire_put(m[..],0,"b"); c=wire_int(m[..],c,k[0].bar_n);

@@ -551,3 +551,21 @@ xk_entry_at :: (c: int, level: int, slot: int) -> XkEntry {
   #assert b3[0].kind == FB_RAGE; #assert xk_wire(FB_CL_BARBARIAN, b3[0]) == 128;
   for i: 0..<3 { #assert f1[i].kind != FB_SURGE; }
 }
+
+// ---- the room's word on a bar's slots (#13084): every zone reads it here
+// What the room counts for slot i of your bar of `count` slots: ok false until it has said a bar of
+// that size (open: you are seated; known: it has sent one; n, v: its slots, wire V = (LEFT + 1) * 2 + ON,
+// everglade-wire.coax wire_kit_v). left: what the slot has left (slots at its level, uses, Rages,
+// Focus; -1 nothing to count); on: its own effect holds (a Rage, Wild Shape's form).
+XkSlot :: struct { ok: bool; left: int = -1; on: bool; }
+xk_room_slot :: (open: bool, known: bool, n: int, v: [] int, i: int, count: int) -> XkSlot {
+  if !open || !known || n != count || i < 0 || i >= count || i >= v.count { return XkSlot.{}; }
+  return XkSlot.{ok = true, left = v[i] / 2 - 1, on = v[i] % 2 == 1};
+}
+#test "xk room slot: the room's count and held effect, only for a bar of the size it said" {
+  v := [3] int.[0, 7, 4];
+  #assert !xk_room_slot(false, true, 3, v[..], 1, 3).ok && !xk_room_slot(true, false, 3, v[..], 1, 3).ok;
+  a := xk_room_slot(true, true, 3, v[..], 1, 3);
+  #assert a.ok && a.left == 2 && a.on && xk_room_slot(true, true, 3, v[..], 0, 3).left == -1 && xk_room_slot(true, true, 3, v[..], 2, 3).left == 1;
+  #assert !xk_room_slot(true, true, 3, v[..], 1, 4).ok && !xk_room_slot(true, true, 3, v[..], 3, 3).ok && !xk_room_slot(true, true, 3, v[..], -1, 3).ok;
+}

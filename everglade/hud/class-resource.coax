@@ -1,0 +1,56 @@
+// Everglade's class resource bar, for every Everglade zone (#13084): the Barbarian's Rages or the
+// Monk's Focus as one filled bar over the action bar, with its count. Plain facts in, vertices out.
+// The bar's slots come from the shared kit (apps/openagents-web/class-kit.coax xk_bar_at), the
+// counts from the room's word on them (xk_room_slot), the most from the rules (fb_cl_hero). A zone
+// loads this beside windows.coax, fills EgResource with eg_resource_of and draws it.
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "eg resource"
+// Spell slots are on the portrait plate (everglade/hud/parts.coax); this is the other resources.
+
+EgResource :: struct { name: string; left: int; max: int; on: bool; }
+
+// Class resource of a bar of n slots: the first of Rage (Rages), or of Flurry of Blows, Patient
+// Defense and Step of the Wind (Focus). left[i] is what the room counts on slot i (-1 not said), on[i]
+// whether its effect holds. name "" when the class's bar has none, or the room has not said.
+eg_resource_of :: (hero: RsCreature, bar: [] FbAb, n: int, left: [] int, on: [] bool) -> EgResource {
+  for i: 0..<n {
+    if i >= left.count || i >= on.count { break; }
+    a := bar[i];
+    if a.kind == FB_RAGE && hero.rages_max > 0 && left[i] >= 0 {
+      return EgResource.{name = "RAGE", left = ifx left[i] > hero.rages_max then hero.rages_max else left[i], max = hero.rages_max, on = on[i]};
+    }
+    if (a.kind == FB_FLURRY || a.kind == FB_PATIENT || a.kind == FB_WIND) && hero.focus_max > 0 && left[i] >= 0 {
+      return EgResource.{name = "FOCUS", left = ifx left[i] > hero.focus_max then hero.focus_max else left[i], max = hero.focus_max, on = on[i]};
+    }
+  }
+  return EgResource.{};
+}
+// The bar, centred on cx with its bottom edge at `bottom`: a dark track, the filled share, the name
+// and the count. Gold while its effect holds (a Rage).
+eg_resource_draw :: (ui: [] cc.UitTrace, out: [] f32, at: int, r: EgResource, cx: f32, bottom: f32, wide: f32, k: f32) -> int {
+  if r.name.count == 0 || r.max <= 0 { return at; }
+  h := 7 * k; x0 := cx - wide / 2; y := bottom - h / 2;
+  n := eg_win_line(out, at, x0, y, x0 + wide, y, h, 0.1, 0.08, 0.07);
+  share := f32(r.left) / f32(r.max);
+  if share > 0 {
+    n = eg_win_line(out, n, x0, y, x0 + wide * share, y, h - 2 * k, ifx r.on then 1.0f32 else 0.8f32, ifx r.on then 0.75f32 else 0.45f32, ifx r.on then 0.3f32 else 0.2f32);
+  }
+  d: [24] u8; dn := eg_caps_s(d[..], 0, r.name); dn = eg_put_s(d[..], dn, " "); dn = eg_int_s(d[..], dn, r.left); dn = eg_put_s(d[..], dn, "/"); dn = eg_int_s(d[..], dn, r.max);
+  cc.uit_part(ui, "resource");
+  return cc.ttext(ui, cc.UIT_NONE, out, n, cast(string) d[0..<dn], x0, y - h, 9 * k, cc.ink(k, 0.98, 0.9, 0.7), "resource");
+}
+#test "eg resource: Rages and Focus from the shared bar and the room's counts" #steps 100000000 {
+  hero := fb_cl_hero(FB_CL_BARBARIAN, "You", 0, 5);
+  bar: [24] FbAb; n := 0; bar[0] = fb_feature(FB_RAGE, "Rage", "rage"); n = 1;
+  left := [1] int.[2]; on := [1] bool.[true];
+  r := eg_resource_of(hero, bar[..], n, left[..], on[..]);
+  #assert r.name == "RAGE" && r.left == 2 && r.max == hero.rages_max && r.on;
+  left[0] = -1;
+  #assert eg_resource_of(hero, bar[..], n, left[..], on[..]).name == "";   // the room has not said
+  mk := fb_cl_hero(FB_CL_MONK, "You", 0, 5);
+  bar[0] = fb_feature(FB_FLURRY, "Flurry", "flurry-of-blows"); left[0] = 3; on[0] = false;
+  f := eg_resource_of(mk, bar[..], n, left[..], on[..]);
+  #assert f.name == "FOCUS" && f.left == (ifx 3 > mk.focus_max then mk.focus_max else 3) && !f.on;
+  out: [4000 * 16] f32; nt: [] cc.UitTrace;
+  #assert eg_resource_draw(nt, out[..], 0, EgResource.{}, 100, 600, 120, 1) == 0;
+  #assert eg_resource_draw(nt, out[..], 0, r, 100, 600, 120, 1) > 0;
+}

@@ -423,13 +423,21 @@ e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
     }
     // the room's count for it (slots at its level, uses, Rages, Focus) and a gold frame while its
     // effect holds (a Rage, Wild Shape's form): the room's word only (#13046)
-    kit := e2n_kit(s[0].net[..], i, k[0].bar_n);
+    kit := e2n_slot(s[0].net[..], i, k[0].bar_n);
     m: EgSlotMarks;
     if i < 9 && xc_draw_slot_key(i, art) { m.key = cast(u8)(49 + i); }
     m.used = i == k[0].used && left > 0;
     if kit.ok && kit.left >= 0 { m.count = kit.left; }
     m.held = kit.ok && kit.on;
     n = eg_slot_marks(ui, cc.eg_bar_slot_at(ui, tray, i), out, n, b[..], m, kk);
+  }
+  // the class resource bar (Rages, Focus) over the tray, from the room's counts (everglade/hud/class-resource.coax)
+  lefts: [XC_SLOTS] int; ons: [XC_SLOTS] bool;
+  for i: 0..<k[0].bar_n { w2 := e2n_slot(s[0].net[..], i, k[0].bar_n); lefts[i] = ifx w2.ok then w2.left else -1; ons[i] = w2.ok && w2.on; }
+  res := eg_resource_of(fb_cl_hero(e2c_class_of(s), "You", 0, e2c_level_of(s)), k[0].bar[..], k[0].bar_n, lefts[..], ons[..]);
+  if k[0].bar_n > 0 {
+    top := h; for i: 0..<k[0].bar_n { b := e2k_box(k, i, w, h, kk); if b[1] < top { top = b[1]; } }
+    n = eg_resource_draw(ui, out, n, res, w / 2, top - 22 * kk, 160 * kk, kk);
   }
   if k[0].hover >= 0 && k[0].hover < k[0].bar_n {
     a := k[0].bar[k[0].hover]; c := e2k_card_box(k, k[0].hover, w, h, kk);

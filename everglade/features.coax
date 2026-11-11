@@ -89,9 +89,7 @@ EF_ZONES :: [3] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [132] string.[
-  "class-bars apps/openagents-web/everglade2-net.coax E2nKit",
-  "class-bars apps/openagents-web/everglade2-net.coax e2n_kit",
+EF_KNOWN :: [130] string.[
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_from",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_int",
