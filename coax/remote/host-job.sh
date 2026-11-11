@@ -19,6 +19,17 @@ infra() { echo "remote: $*" >&2; rm -rf "$in"; exit 97; }
 # shellcheck disable=SC1091
 source ~/.nix-profile/etc/profile.d/nix.sh 2> /dev/null || true
 export PATH="$HOME/.bun/bin:$PATH"
+# What the CLI's build needs (the web build builds the CLI) and a host set up
+# before #13117 lacks: xxd (the Parakeet build embeds its shader source with
+# it) and the system's OpenSSL headers (without them tls-env.sh takes Nix's
+# OpenSSL, which doesn't link with Debian's gcc and glibc). Once a host;
+# host-startup.sh installs both on a new one.
+if ! command -v xxd > /dev/null 2>&1 || [[ ! -f /usr/include/openssl/ssl.h ]]; then
+  ( flock 9
+    command -v xxd > /dev/null 2>&1 && [[ -f /usr/include/openssl/ssl.h ]] ||
+      { sudo -n apt-get update -q; sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -yq xxd libssl-dev; } > /dev/null 2>&1
+  ) 9> ~/.oa-tools.lock || true
+fi
 # spec sets: key commit relcwd argv=(...) env_vars=(...), and shared_token: a
 # token for the shared build cache's bucket alone (shared-cache.sh), never part
 # of the key

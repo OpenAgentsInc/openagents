@@ -18,7 +18,7 @@ home=/home/$user
 meta() { curl -fsS -H 'Metadata-Flavor: Google' "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" 2> /dev/null; }
 if [[ ! -f /var/lib/oa-remote-ready ]]; then
   apt-get update -q
-  DEBIAN_FRONTEND=noninteractive apt-get install -yq git curl xz-utils ca-certificates build-essential python3 rsync unzip jq util-linux
+  DEBIAN_FRONTEND=noninteractive apt-get install -yq git curl xz-utils ca-certificates build-essential python3 rsync unzip jq util-linux xxd libssl-dev
   id "$user" > /dev/null 2>&1 || useradd -m -s /bin/bash "$user"
   mkdir -p /nix && chown "$user" /nix
   su - "$user" -c '[ -e ~/.nix-profile ] || curl -fsSL https://nixos.org/nix/install | sh -s -- --no-daemon'

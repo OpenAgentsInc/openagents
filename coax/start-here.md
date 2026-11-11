@@ -30,7 +30,12 @@ CODE` for a diagnostic, [LIBRARIES.md](LIBRARIES.md) for shared code, and the
 
    A small tool file (`coax/bin/coax test coax/web/vocab.coax`) is fine on
    the Mac. See [remote builds](../docs/verse/remote-builds.md).
-5. **Serve.** `coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9123`
+5. **Get the built pages, then serve.** `coax/remote/pages.sh origin/main`
+   puts main's built pages (every module and render package) into your
+   worktree in about 10 seconds; a fresh worktree has none, and a page without
+   them never draws a frame. Then rebuild only the module you changed with
+   `wasm.sh`. Don't run a full `apps/openagents-web/build.sh` for this.
+   `coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9123`
    serves the site with hot reload. Pick a port above 9000 that no one else
    uses.
 6. **Test the page the way a player uses it.** Drive it (next section), and

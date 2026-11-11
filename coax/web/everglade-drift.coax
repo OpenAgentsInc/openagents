@@ -11,7 +11,8 @@
 // --offline: the offline page on the room server's local host (worker, the default: ?offline=worker,
 // #12784), or the native local room (native). The page's own offline game is gone (#12882).
 // Before it: coax/web/room/build.sh (the room server, coax/web/room/bin/room) and the page
-// (apps/openagents-web/build.sh, or coax/web/wasm.sh for build/everglade5e.wasm alone).
+// (coax/remote/pages.sh origin/main for main's built pages, then coax/web/wasm.sh for
+// build/everglade5e.wasm alone; it says so when the checkout has no built pages).
 //
 // What it starts (and stops), on PORT and the three after it, all on 127.0.0.1:
 //   - the room server (coax/web/room/bin/room --dev coax/web/room/dev: the world the page reads too),
@@ -1604,6 +1605,15 @@ tool_main :: () -> int #export_c #effects(all) {
   jn := fs_read("coax/web/everglade-drift.js", js[..]);
   if jn <= 0 { tool_errln("everglade-drift: can't read coax/web/everglade-drift.js (run it from the repository's root)"); return 2; }
   if !fs_exists("coax/web/room/bin/room") { tool_errln("everglade-drift: no coax/web/room/bin/room (coax/web/room/build.sh)"); return 2; }
+  // A fresh worktree has no built pages: without them the page never draws a frame, and the
+  // run would end, minutes later, with "the pages didn't come up" (#13117).
+  for need: [3]string.["apps/openagents-web/build/everglade5e.wasm", "apps/openagents-web/build/everglade-room.wasm", "apps/openagents-web/build/render/everglade/render.json"] {
+    if !fs_exists(need) {
+      mq: [1] Buf; bput(mq[..], "everglade-drift: no "); bput(mq[..], need);
+      bput(mq[..], ": this checkout has no built pages. Run coax/remote/pages.sh origin/main (main's build, about 10 seconds), then coax/web/wasm.sh for the module you changed");
+      tool_errln(btext(mq[..])); return 2;
+    }
+  }
   // Build helpers with explicit help before starting servers. The raid helper has a live default
   // when invoked without arguments; warming it must not connect to that relay.
   for hk: 0..<3 {

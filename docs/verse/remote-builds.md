@@ -127,10 +127,55 @@ remote: oa-build-2: 31 s in all (...; cache 4/4 hit (100%: disk 0, shared 4), 0 
 ```
 
 `disk` is the host's own cache, `shared` the bucket, `compiled` the steps that
-ran, and `duplicates` the compiles whose result another host wrote first (two
-hosts compiling the same unit at once). Each compile also leaves an empty
-object under `log/DAY/KEY/`; `coax/remote/shared-cache.sh report [DAY]` counts
-the keys compiled more than once that day across every host.
+ran, and `duplicates` the compiles whose result another host wrote first. Each
+compile also leaves an empty object under `log/DAY/KEY/`;
+`coax/remote/shared-cache.sh report [DAY]` counts the keys compiled more than
+once that day across every host.
+
+### One compile per key
+
+A cache alone doesn't stop two builds that start together: both miss, and both
+compile. `build.sh` starts about 60 `wasm.sh` runs side by side, and many of
+them share a unit (Everglade's controller, the thumbs, the Grid). On
+2026-11-10, 27 of 783 keys compiled more than once (37 extra compiles), all
+but one of them on one host in the same second.
+
+So before a compile, `wasm.sh` takes the right to make that key (`once` in
+`coax/web/wasm.sh`):
+
+- **On one machine,** a lock folder in the disk cache (`.once.KEY`, holding its
+  holder's process ID). A run that finds it waits for the holder's result and
+  reads it from the disk. A lock whose holder is gone is taken over.
+- **Across hosts,** a claim object in the bucket (`claim/wasm/KEY`, written
+  only when absent). A host that finds a claim polls the bucket for the result
+  every 3 seconds and says `another host is compiling KEY; waiting for its
+  result`. The holder rewrites its claim every 30 seconds and deletes it when
+  the compile ends. A claim that is 150 seconds old belongs to a holder that is
+  gone (a failed build, a preempted host), and the next host takes it.
+
+The Mac's builds use the lock folder too, so a local `build.sh` also compiles
+each shared unit once.
+
+The offline room's build (`coax/web/room/worker.coax`, `everglade-room.wasm`)
+keeps its units' C in the same disk cache under its own keys. It now reads and
+writes the bucket and takes the same claims. Its `room.coax` unit ran for more
+than 24 minutes on a host that had not compiled it (oa-build-2, 2026-11-10),
+which every host used to repeat after each change to the room's sources.
+
+Measured on 2026-11-10 (`shared-cache.sh report`, and the report line of a
+full `apps/openagents-web/build.sh` job):
+
+| | Before | After |
+| --- | --- | --- |
+| Keys compiled more than once in a day, all hosts | 27 of 783 (37 extra compiles); 6 of 121 the day before | |
+| Duplicates in one full `build.sh` job | 2 of 15 compiles | 0 of 41, 0 of 14 and 0 of 44 compiles (three jobs, three hosts) |
+| Two builds of one new key started together, two disk caches | both compile | one compiles, the other waits 3 s and reads it; same bytes |
+| The same, one disk cache and no bucket | both compile | one compiles 9 steps, the other reads all 9 |
+
+The hosts ran 414,746 job-seconds on 2026-11-09 (591 jobs, $31.68 in the
+ledger) and 215,836 on 2026-11-10 (268 jobs, $16.49). The ledger counts a
+job's whole wall time, so it shows how busy the hosts are, not what the cache
+saved; the report line of each job does.
 
 ### One page build per commit
 
@@ -158,6 +203,15 @@ Don't run a full `apps/openagents-web/build.sh` for this.
 
 `after.sh` (the green-main pipeline) runs `pages.sh build` on each new
 main-green in the background, so the release finds its commit's pages built.
+
+Until 2026-11-10 no commit's pages reached the store: `build.sh` exited 1 on
+every host (#13117), so each `pages.sh` build failed after its 15 to 35
+minutes and the release built everything on the Mac. The causes were in the
+CLI's build, which the web build runs for the homepage's warm start: a second
+`#import "Basic"` (E0332), no `xxd` and no OpenSSL headers on the hosts, and a
+missing `#load` in the Linux-only stream host. `build.sh` now ends with
+`build.sh: FAILED (status N) at line L: COMMAND` when a step fails, and stops
+the modules still building.
 
 ### The release reuses them
 

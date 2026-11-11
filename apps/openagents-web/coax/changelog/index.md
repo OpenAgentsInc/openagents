@@ -13,6 +13,88 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.52.0 — Checked State Changes — 2026-11-06
+
+Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgentsInc/openagents/commit/09101c58f972b76c8fcdd6f9315d1026b6a95837)
+
+- Add nominal `Handle(T)` and caller-backed `Store(T)` with optional stale
+  lookups and generation retirement. Adopt typed lifetimes in Aethyr and in
+  Everglade's seats, casts, fire attribution and shouts.
+- Enforce declared procedure effects through calls and deferred cleanup. Require
+  declarations on authority procedures, C exports and foreign declarations;
+  Everglade's shared rules exclude clock, I/O and foreign effects.
+- Add `#transaction` rollback for escaping errors and optional absence, with
+  transitive effect restrictions and owned refusal payloads. Use it for room
+  actions, repairs, fire batches and the in-memory ledger.
+- Add owned `#persisted` records and `coax compat` for concrete published
+  signatures, native LP64 C ABI, effects and saved defaults. Page and room
+  release gates compare production and block new incompatibilities. See
+  [checked-state.md](checked-state.md) for bounds and remaining lifetime work.
+
+## 0.51.2 — Phase Storage Accounting — 2026-11-05
+
+Commit: [`eae6049b87d31768a341397296a9a085c9db14ab`](https://github.com/OpenAgentsInc/openagents/commit/eae6049b87d31768a341397296a9a085c9db14ab)
+
+- Measure storage peaks against the limits that govern each evaluation
+  phase. Clear earlier transient peaks and holder snapshots when entering
+  checks, and retain live constants in the new phase's baseline.
+- Keep real compile and check pressure visible, with matching sequential,
+  parallel and cached diagnostics. Restore measurements with compile limits
+  after authority checks, including failures.
+
+## 0.51.1 — Preserved Capacity Diagnostics — 2026-11-05
+
+Commit: [`b08d3a16a467d0f6c84a9c60ac885a2f65dc6394`](https://github.com/OpenAgentsInc/openagents/commit/b08d3a16a467d0f6c84a9c60ac885a2f65dc6394)
+
+- Preserve near-limit capacity facts in whole-program authority cache records
+  and render the same text or JSON notes on a cache hit. The near-limit
+  threshold participates in cache identity.
+- Rerun checks that produce notes after source edits so consumers and source
+  locations stay current. Quiet checks still use per-check reuse. Corrupt or
+  incomplete private diagnostic records fall back to fresh checks.
+
+## 0.51.0 — Nominal integer identities — 2026-11-05
+
+Commit: [`0265cd16df9f86dc8ca9bcbc670f51d782e3eec6`](https://github.com/OpenAgentsInc/openagents/commit/0265cd16df9f86dc8ca9bcbc670f51d782e3eec6)
+
+- Add `struct @id { value: INTEGER; }` for nominal integer domains and
+  `@id(ordered)` for explicit ordering. Construction and extraction stay
+  explicit; generic keys and read-only views preserve the declaration.
+- Keep arithmetic on extracted integers. The evaluator and C backend use
+  checked field projections; C headers preserve distinct wrapper types and
+  ordering metadata. Device output refuses with E0962. Shape and operation
+  refusals use E0960 and E0961. Aethyr retains liveness and generation checks.
+
+
+## 0.50.0 — Observable Secret Erasure — 2026-11-05
+
+Commit: [`3266aa2d5c9a14a43ab478a28be4c889a55415f7`](https://github.com/OpenAgentsInc/openagents/commit/3266aa2d5c9a14a43ab478a28be4c889a55415f7)
+
+- Add `secure_zero(view)` for writable borrowed numeric/bool storage. Emit volatile byte
+  stores on native C and Wasm, retaining cleanup even for dead local buffers;
+  compile-time evaluation performs the same selected-view mutation.
+- Refuse read-only views, strings, descriptors, aggregates and wrong arity. Count the operation
+  as a borrowed write in effect inspection and reject it from device compute.
+- Use lexical `defer` to make explicit secret-buffer cleanup cover normal and
+  refused returns. Hidden register/spill and operating-system copies remain
+  outside this primitive's contract.
+- Follow-up (#12927): `add_checked`, `sub_checked`, `mul_checked` return `T?`
+  and `add_sat`, `sub_sat`, `mul_sat` clamp, on every integer width, with
+  `add_wrap`, `sub_wrap`, `mul_wrap` widened to all of them; one result in debug,
+  release, `#run` and native C. A `#counter` field refuses plain `+ - *` (E0840).
+
+## 0.49.0 — Read-only Borrowed Views — 2026-11-05
+
+Commit: [`2cebf7d8fe9c8501525a14abf51204484be501da`](https://github.com/OpenAgentsInc/openagents/commit/2cebf7d8fe9c8501525a14abf51204484be501da)
+
+- Add `[] const T` with one-way access restriction, immutable-array borrowing
+  in read-only contexts, generic readers and preserved borrow lifetimes.
+- Emit distinct const-element C descriptors without changing existing writable
+  descriptor identities. Reject capability upgrades and writable descriptor
+  containment; device outputs retain an explicit unqualified-profile refusal.
+- Use immutable normalization tables directly and teach read-only borrowing
+  through runnable chapter-6 examples. See [the contract](readonly-views.md).
+
 ## 0.48.0 — Tagged Results and Cleanup — 2026-11-02
 
 Commit: [`1a11ccb6801a146741a7403e906489eeafb63ab1`](https://github.com/OpenAgentsInc/openagents/commit/1a11ccb6801a146741a7403e906489eeafb63ab1)
@@ -40,6 +122,17 @@ Commit: [`1a11ccb6801a146741a7403e906489eeafb63ab1`](https://github.com/OpenAgen
   cancel a newer request. This is a serialized canonical-owner protocol,
   not general linear ownership or remote exactly-once effects. Join chapters
   6, 7, 15, 20 and 24 through the actual adapters and offline native checks.
+- Follow-up (`ax-job-budget`): every coax process on a machine shares one
+  build-worker budget for parallel `#authority` checks, library checks and
+  `coax mutate` workers, instead of each forking one worker per core. The
+  budget defaults to the performance cores less a third left for the person
+  at the machine (`COAX_JOBS_RESERVE`, `COAX_JOBS_BUDGET`). Workers are
+  `flock` tokens in `~/.cache/coax/jobs/`, freed when a process dies. A
+  process always runs one worker, adds more as tokens free up, starts none
+  while the load average is at the budget (`COAX_JOBS_LOAD`), and says
+  once on stderr when it waits. `--jobs N` and `COAX_JOBS` cap one process;
+  `COAX_CHECK_JOBS` and `COAX_MUTATE_JOBS` still work. `coax status` shows
+  the budget and who holds it; output is the same for every worker count.
 
 ## 0.47.0 — Versioned Shader Operations — 2026-11-01
 

@@ -13,7 +13,7 @@ pkb_path :: (p:[]PkbPaths,dir:string,name:string)->string {
 }
 pkb_run :: (argv:[]string,output:[]u8,deadline:int)->int {
  left:=deadline-proc_now_ms();if left<=0 {tool_errln("Parakeet build exceeded its fourteen-minute limit");return -1;}
- err:[65536]u8;r:=proc_run(argv,ifx left<180000 then left else 180000,output,err[..]);if r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)output[0..<r.out_n]);return -1;}return r.out_n;
+ err:[65536]u8;r:=proc_run(argv,ifx left<180000 then left else 180000,output,err[..]);if r.started!=0 || r.status!=0 || r.timed_out {tool_err("parakeet-build: ");tool_err(argv[0]);tool_errln(ifx r.started!=0 || r.status==127 then ": can't run it (is it installed?)" else ifx r.timed_out then ": timed out" else ": failed");tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)output[0..<r.out_n]);return -1;}return r.out_n;
 }
 tool_main :: ()->int #export_c #effects(all) {
  deadline:=proc_now_ms()+840000;args:[1]Args;if !args_load(args[..]) || args_count(args[..])>2 {tool_errln("usage: parakeet-build [OUTPUT_DIRECTORY [SOURCE_ROOT]]");return 2;}

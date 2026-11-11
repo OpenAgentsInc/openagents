@@ -154,7 +154,7 @@ args_for() {   # item job-args...
     step\ wasm) echo "wasm" ;;
     module\ *) echo "module ${item#module }" ;;
     compiler\ *) echo "unit ${item#compiler }" ;;
-    step\ tools-check|step\ everglade-parity|step\ wgsl) echo "reports" ;;
+    step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page) echo "reports" ;;
     step\ room-build) echo "room" ;;
     *) echo "$*" ;;   # the whole job again
   esac

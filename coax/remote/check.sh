@@ -24,8 +24,9 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, everglade-parity and the committed
-#                                         shaders against their Coax
+#   coax/remote/check.sh reports          tools-check, everglade-parity, and the committed
+#                                         shaders, realm pages and changelog page against
+#                                         their sources
 #   coax/remote/check.sh room             the room build
 #   coax/remote/check.sh tools            reports and room
 #
@@ -198,6 +199,13 @@ reports() {
   step tools-check coax/web/tool.sh tools-check || status=1
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
+  generated
+}
+# The other committed files the web build writes (#13117): each realm's page
+# from realms.json, and the changelog page from coax/CHANGELOG.md.
+generated() {
+  step realm-pages bun coax/web/realms.ts --check || status=1
+  step changelog-page coax/web/tool.sh coax/web/changelog-page.coax --check || status=1
 }
 room() { step room-build coax/web/room/build.sh || status=1; }
 # The web build for a change: all of it, its touched modules, or nothing.
@@ -220,6 +228,10 @@ reports_since() {
   fi
   if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then
     step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
+  fi
+  # Their sources: the realm table and its generator, and the compiler's changelog.
+  if grep -Eq '^(apps/openagents-web/realms|coax/web/realms\.ts|coax/CHANGELOG\.md|coax/web/changelog-page\.coax|apps/openagents-web/(changelog-content\.coax|coax/changelog/))' "$out/changed"; then
+    generated
   fi
 }
 run() {   # mode arg: one check
@@ -273,7 +285,7 @@ case "$mode" in
     reports_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,31p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 echo "$status" > "$out/status"
