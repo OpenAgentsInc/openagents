@@ -418,6 +418,22 @@ bw_track :: (w: [] BitcoinWalk) {
   }
 }
 
+// On an upright phone the view is narrow and the stations stand beside the lane, out of it: the
+// camera turns round you, gently, toward the station ahead, and back to the lane past it.
+BW_TURN_MAX :: 0.55f32; BW_TURN_SIGN :: -1.0f32;
+bw_turn_to :: (x: f32, z: f32, st: int) -> f32 {
+  if st < 0 || st >= BW_STATIONS { return 0; }
+  ahead := z - BW_STATION_Z[st]; if ahead < -1 { return 0; }
+  dx := bw_left(st) + BW_PANEL_W * 0.5 - x;
+  return bw_clamp(BW_TURN_SIGN * 0.9 * dx / hi(ahead + 4, 4), -BW_TURN_MAX, BW_TURN_MAX);
+}
+bw_turn :: (w: [] BitcoinWalk, upright: bool, dt: f32) {
+  cr := w[0].z[0].creator[..];
+  want := ifx upright then bw_turn_to(cr[0].player_x, cr[0].player_z, w[0].station) else 0.0f32;
+  k := bw_clamp(dt * 1.5, 0, 1);
+  cr[0].orbit += (want - cr[0].orbit) * k;
+}
+
 // ---- standing the world: the slabs and the cubes are things you walk round (aethyr/world/props.coax)
 bw_stand :: (w: [] BitcoinWalk) {
   _ := bl_ready(w[0].lesson[..]);
@@ -507,7 +523,7 @@ btc_frame :: (w: [] BitcoinWalk, out: [] f32, u: [] f32, width: f32, height: f32
   if !w[0].framed && width > 0 && height > 0 { w[0].framed = true; if width < height { s[0].creator[0].dist = 7; s[0].creator[0].pitch = 0.3; } }
   zone_begin(s);
   n := zone_draw(s, out, u, width, height, dpr, dt, still);
-  if zone_world(s) { bw_track(w); n = bw_hud(w, out, n, width, height, hi(dpr, 0.5)); }
+  if zone_world(s) { bw_track(w); bw_turn(w, width < height, dt); n = bw_hud(w, out, n, width, height, hi(dpr, 0.5)); }
   n = zone_finish(s, out, u, n, dt, still);
   if u.count >= 32 { bw_list(w, u); }
   return n;
