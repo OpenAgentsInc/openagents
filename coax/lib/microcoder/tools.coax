@@ -142,6 +142,14 @@ McViewResult :: struct {
   content: string;               // the file, or why it isn't shown
 }
 
+// head(1) for a view. Inside a sandbox profile /usr/bin/head is there (bubblewrap links /usr/bin
+// on NixOS); outside one, NixOS has no /usr/bin/head, so its system profile's (GitHub #13231:
+// every view on this machine came back "not found").
+mc_head :: (profile: string, usr_bin_head: bool) -> string {
+  if profile != "danger-full-access" || usr_bin_head { return "/usr/bin/head"; }
+  return "/run/current-system/sw/bin/head";
+}
+
 // Reads path under cwd (64 KB at most) into buf, through head(1).
 mc_view_file :: (cwd:string,path:string,buf:[]u8)->McViewResult {
   return mc_view_file_profile(cwd,path,buf,"danger-full-access");
@@ -152,7 +160,7 @@ mc_view_file_profile :: (cwd: string, path: string, buf: [] u8, profile:string) 
   if h < 0 { return McViewResult.{content = "not shown: no process slot is free"}; }
   num: [24] u8;
   nn := json_write_int(num[..], 0, MC_VIEW_BYTES + 1);
-  ok := mc_profile_args(h,cwd,profile) && mc_proc_arg(h, CL_FIELD_ARG, "/usr/bin/head") && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, cast(string) num[0..<nn]);
+  ok := mc_profile_args(h,cwd,profile) && mc_proc_arg(h, CL_FIELD_ARG, mc_head(profile, fs_exists("/usr/bin/head"))) && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, cast(string) num[0..<nn]);
   ok = ok && mc_proc_arg(h, CL_FIELD_ARG, "--") && mc_proc_arg(h, CL_FIELD_ARG, path);
   if cwd.count > 0 { ok = ok && mc_proc_arg(h, CL_FIELD_CWD, cwd); }
   if !ok || cxproc_spawn(h) != 0 { x := cxproc_release(h); return McViewResult.{content = "not shown: could not read it"}; }
@@ -211,6 +219,11 @@ mc_run_tools :: (l: [] McLoop, cwd: string, b: [] McToolBuffers) -> int {
   o[0] = McOutput.{};
   for c: "short\n" { mc_output_byte(o[..], c); }
   #assert mc_output_text(o[..]) == "short\n";
+}
+
+#test "a view's head(1): /usr/bin/head where there is one or a sandbox links it, else NixOS's" {
+  #assert mc_head("danger-full-access", true) == "/usr/bin/head" && mc_head("workspace-write", false) == "/usr/bin/head" && mc_head("read-only", false) == "/usr/bin/head";
+  #assert mc_head("danger-full-access", false) == "/run/current-system/sw/bin/head";
 }
 
 #test "paths stay under the working directory" {
