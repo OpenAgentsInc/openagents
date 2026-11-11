@@ -1,0 +1,75 @@
+# 29. A two-arm run
+
+> **Status: design draft, for the owner to edit.** This chapter is a plan.
+> It ships no code yet, and paths marked planned do not exist.
+
+## Premise
+
+With a test set in hand, this chapter runs it twice: once with the member
+admitted and once without, on the same baseline agent. The difference is the
+first piece of evidence.
+
+## Draft
+
+The question is never "is this plugin good?". The question is what admitting
+it changed. To answer, you need two runs that differ in exactly one thing.
+
+The baseline arm runs the agent as it is, on every case. The subject arm runs
+the same agent, on the same cases, with the member admitted. Everything else
+is locked: the model and its version, the instructions, the defaults already
+in place, the environment and the grant. Both arms write full records (chapter
+8), so anyone can read what happened in each case.
+
+The report gives, for each arm, how many cases passed, the score, the cost and
+the time. It gives the change between arms with its uncertainty. Six cases
+can't support a strong statement, and the report says so and does not hide it.
+
+A written gate reads the report and gives a verdict. The gate names one
+primary outcome ahead of time, so a result can't be rescued after the fact by
+picking a better-looking number. A member with no good effect on its primary
+outcome is rejected, however safe it is.
+
+Cost is part of the result. In the old tree's hosted runs, the repository map
+passed more cases and also finished faster: 10.7 seconds against 24.9. A
+member can stand in for compute.
+
+The run happens in the evaluation sandbox from chapter 24, on your computer or
+on a hosted runner.
+
+## What we build
+
+A plan for what this chapter ships once the draft is approved:
+
+- A two-arm runner: the same cases with and without the subject, everything
+  else locked.
+- A report with both arms, the change, its uncertainty, cost and time, and the
+  gate's verdict.
+- A gate file with a primary outcome named ahead of time, pinned by digest in
+  the report.
+
+It builds on what exists today:
+
+- [`coax/lib/nostr/eval`](../../coax/lib/nostr/eval)
+- [`coax/lib/nostr/run`](../../coax/lib/nostr/run)
+- [`coax/lib/agent/journal.coax`](../../coax/lib/agent/journal.coax)
+- [`coax/remote`](../../coax/remote)
+
+Planned paths: `openagents/eval/run.coax`.
+
+## Sources
+
+- **Episodes:**
+  - [Episode 287, *Building a System One Coding Agent*](../../docs/transcripts/287.md): comparing configurations on a benchmark
+  - [Episode 289, *OpenAgents*](../../docs/transcripts/289.md): 1:30, "Run it"
+  - [Episode 120, *Exploring SWE-bench Verified*](../../docs/transcripts/120.md): with-and-without thinking
+- **Old code at `coder-v1.0.0`, crates:** `eval-runner`, `ext-eval`, `gym`, `workflow-run`
+- **NIPs:** [NIP-EVAL](../../nostr/nips/openagents/NIP-EVAL.md), [NIP-RUN](../../nostr/nips/openagents/NIP-RUN.md), [NIP-ATIF](../../nostr/nips/openagents/NIP-ATIF.md)
+- **Also:**
+  - *Test-Time Capabilities* (`git show coder-v1.0.0:docs/essays/2026-09-29-test-time-capabilities.md`), "Capability delta"
+  - [Coder book, chapter 21: Measure the harness](../../coder/book/ch021-measure-the-harness.md)
+- **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P5, P15
+
+## Open questions for the owner
+
+1. How many cases does a test set need before its result may be published? The
+   first adoption used six.
