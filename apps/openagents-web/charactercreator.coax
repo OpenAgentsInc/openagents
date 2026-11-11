@@ -529,19 +529,26 @@ cc_body_capsules :: (pal:[]f32,bind:[][3]f32,out:[]overlap.OverlapCapsule)->int 
  }
  return CC_BODY_N;
 }
+// The grip is in the fist (#13073): a limb's piece starts CC_GRIP_HALF along it from the grip, where it
+// leaves the hand; the riser inside the fist is the hand's own.
+CC_GRIP_HALF :: 0.08;    // metres
+cc_past_fist :: (grip:[3]f32,tip:[3]f32)->[3]f32 {
+ d:=cc_unit([3]f32.[tip[0]-grip[0],tip[1]-grip[1],tip[2]-grip[2]]);h:=f32(CC_GRIP_HALF);
+ return [3]f32.[grip[0]+d[0]*h,grip[1]+d[1]*h,grip[2]+d[2]*h];
+}
 // The bow's pieces in pose pal, its string pulled k of the way to the draw fist (nocked: the arrow too):
 // 0 and 1 the limbs, grip to tip; 2 and 3 the string's halves, tip to nock; 4 the arrow.
-cc_bow_pieces :: (pal:[]f32,bind:[][3]f32,k:f32,nocked:bool,splay:f32,hold:f32,out:[]overlap.OverlapPiece)->int {
+cc_bow_pieces :: (pal:[]f32,bind:[][3]f32,k:f32,nocked:bool,splay:f32,hold:f32,move:f32,out:[]overlap.OverlapPiece)->int {
  hl:[12]f32;hr:[12]f32;for i:0..<12 {hl[i]=pal[figs.BD_HAND_L*12+i];hr[i]=pal[figs.BD_HAND*12+i];}
- return cc_bow_pieces_w(pal,bind,bow_matrix_turned(hl,bind[figs.BD_HAND_L],k,splay,hold,0,[3]f32.[0,0,0]),k,nocked,out);
+ return cc_bow_pieces_w(pal,bind,bow_matrix_turned(hl,bind[figs.BD_HAND_L],k,splay,hold,move,0,[3]f32.[0,0,0]),k,nocked,out);
 }
 cc_bow_pieces_w :: (pal:[]f32,bind:[][3]f32,w:[12]f32,k:f32,nocked:bool,out:[]overlap.OverlapPiece)->int {
  hr:[12]f32;for i:0..<12 {hr[i]=pal[figs.BD_HAND*12+i];}
  hand:=bind[figs.BD_HAND];fist:=cc_pose_point(hr,[3]f32.[hand[0]+CC_FIST[0],hand[1]+CC_FIST[1],hand[2]+CC_FIST[2]]);
  pts:=bow_string_points(w,fist,ifx nocked then k else 0.0f32);
  g:=f32(CC_BOW_GRIP_X);grip:=[3]f32.[w[0]+w[3]*g,w[1]+w[4]*g,w[2]+w[5]*g];
- out[0]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=0,a=cc_wp(grip),b=cc_wp(pts[0]),radius=f32(CC_LIMB_R)}};
- out[1]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=1,a=cc_wp(grip),b=cc_wp(pts[1]),radius=f32(CC_LIMB_R)}};
+ out[0]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=0,a=cc_wp(cc_past_fist(grip,pts[0])),b=cc_wp(pts[0]),radius=f32(CC_LIMB_R)}};
+ out[1]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=1,a=cc_wp(cc_past_fist(grip,pts[1])),b=cc_wp(pts[1]),radius=f32(CC_LIMB_R)}};
  out[2]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=2,a=cc_wp(pts[0]),b=cc_wp(pts[2]),radius=f32(CC_STRING_R)}};
  out[3]=overlap.OverlapPiece.{capsule=overlap.OverlapCapsule.{id=3,a=cc_wp(pts[1]),b=cc_wp(pts[2]),radius=f32(CC_STRING_R)}};
  if !nocked || k<=0.05 {return 4;}
@@ -562,7 +569,7 @@ cc_bow_sweep :: (c0:int,c1:int)->overlap.OverlapHit {
     nocked:=c==figs.BD_BOW && f<figs.BOW_POSE_DRAWS;k:=ifx nocked then f32(f)/f32(figs.BOW_POSE_DRAWS-1) else 0.0f32;
     bones:[CC_BODY_N]overlap.OverlapCapsule;nb:=cc_body_capsules(pal[..],bind[..],bones[..]);
     age:=f32(f)/f32(figs.BD_FPS);   // the bow swings as you fall or reel, and is held in the fist (bow_hold)
-    pieces:[5]overlap.OverlapPiece;np:=cc_bow_pieces(pal[..],bind[..],k,nocked,bow_fall(c,age),bow_hold(c),pieces[..]);
+    pieces:[5]overlap.OverlapPiece;np:=cc_bow_pieces(pal[..],bind[..],k,nocked,bow_fall(c,age),bow_hold(c),bow_move(c),pieces[..]);
     sweep=overlap.overlap_keep(sweep,overlap.overlap_pose(bones[0..<nb],pieces[0..<np],0),c+body*1000,f);
    }}
  }
@@ -591,7 +598,7 @@ cc_bow_side_sweep :: (c0:int,c1:int)->f32 {
    cc_pose(own[..],ppl[..],sk[..],female,c,f,pal[..]);cc_bow_arm(pal[..],female,c,f);
    hl:[12]f32;for i:0..<12 {hl[i]=pal[figs.BD_HAND_L*12+i];}
    mid:=cc_joint_at(pal[..],1,bind[1]);
-   side:=bow_string_medial(bow_matrix_turned(hl,bind[figs.BD_HAND_L],0,0,0,0,[3]f32.[0,0,0]),0,[3]f32.[mid[0],0,mid[2]]);
+   side:=bow_string_medial(bow_matrix_turned(hl,bind[figs.BD_HAND_L],0,0,0,bow_move(c),0,[3]f32.[0,0,0]),0,[3]f32.[mid[0],0,mid[2]]);
    if side<least {least=side;}
    // the frame's hand rows where a zone's bake keeps them (figs.bd_keep_hands: the bow hand's with the
    // arm out), then the bow as a zone places it
@@ -609,6 +616,33 @@ cc_bow_side_sweep :: (c0:int,c1:int)->f32 {
  #assert cc_bow_side_sweep(figs.BD_WALK,figs.BD_RUN)>CC_BOW_MEDIAL_MIN;
 }
 CC_BOW_MEDIAL_MIN :: 0.08;   // metres: the string nearer the body's middle than the bow's back
+// Carried standing (#13073, the owner's reference: an archer at rest, the bow in the left fist at his
+// side), over the idle's every frame on both bodies: [0] the farthest the bow's grip lies from the fist's
+// middle, [1] and [2] the least and most the upper limb (grip to tip) leans out from upright, toward the
+// bow hand's side, in degrees, and [3] the least its tip lies out past the shoulder.
+cc_bow_carry_shape :: ()->[4]f32 {
+ own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
+ pal:[figs.BD_ROWS*4]f32;sk:[1]figs.Skin;o:=[4]f32.[0,1000,-1000,1000];
+ for body:0..<2 {female:=body==1;rig:=figs.people_rig(ppl[..],female);
+  bind:[figs.PEOPLE_JOINTS][3]f32;for j:0..<figs.PEOPLE_JOINTS {bind[j]=figs.bd_bind_at(rig.bind[j*12..<j*12+12]);}
+  for f:0..<figs.BD_FRAMES[figs.BD_IDLE] {
+   cc_pose(own[..],ppl[..],sk[..],female,figs.BD_IDLE,f,pal[..]);cc_bow_arm(pal[..],female,figs.BD_IDLE,f);
+   hl:[12]f32;for i:0..<12 {hl[i]=pal[figs.BD_HAND_L*12+i];}
+   w:=bow_matrix_turned(hl,bind[figs.BD_HAND_L],0,0,0,0,0,[3]f32.[0,0,0]);
+   h:=bind[figs.BD_HAND_L];fist:=cc_pose_point(hl,[3]f32.[h[0]+CC_FIST_L[0],h[1]+CC_FIST_L[1],h[2]+CC_FIST_L[2]]);
+   g:=f32(CC_BOW_GRIP_X);grip:=[3]f32.[w[0]+w[3]*g,w[1]+w[4]*g,w[2]+w[5]*g];
+   d:=[3]f32.[grip[0]-fist[0],grip[1]-fist[1],grip[2]-fist[2]];n:=sqrt(cc_dot(d,d));if n>o[0] {o[0]=n;}
+   up:=bow_string_points(w,fist,0)[0];
+   a:=figs.atan2(up[0]-grip[0],up[1]-grip[1])*57.29578;if a<o[1] {o[1]=a;}if a>o[2] {o[2]=a;}
+   sh:=cc_joint_at(pal[..],figs.BD_SHOULDER_L,bind[figs.BD_SHOULDER_L]);if up[0]-sh[0]<o[3] {o[3]=up[0]-sh[0];}
+  }
+ }
+ return o;
+}
+#test "standing, the carried bow's grip is in the fist and its top leans out past the shoulder, as the reference" #steps 2000000000 {
+ s:=cc_bow_carry_shape();
+ #assert s[0]<0.001 && s[1]>20 && s[2]<40 && s[3]>0.1;
+}
 #test "the drawn bow's limbs, string and arrow stay out of the body, both bodies, every frame" #steps 2000000000 {
  h:=cc_bow_sweep(figs.BD_BOW,figs.BD_BOW);#assert h.status==overlap.OverlapStatus.clear && h.poses==2*figs.BOW_POSE_FRAMES;
 }

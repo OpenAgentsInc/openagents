@@ -52,7 +52,7 @@ held_put :: (h:[]HeldPieces,m:int,w:[12]f32) { if h[0].n<CC_HELD {h[0].mesh[h[0]
 held_matrix :: (weapon:int,female:bool,aim:f32,b:[]figs.Bodies,body:[]f32)->[12]f32 {
  o:=ifx female then 3 else 0;
  hr:=figs.bd_hand(b,body[4],body[5],body[6],false);hand:=[3]f32.[b[0].hand_at[o],b[0].hand_at[o+1],b[0].hand_at[o+2]];
- return ifx weapon==CC_KIT_BOW then bow_matrix_turned(figs.bd_hand_out(b,body[4],body[5],body[6]),[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],aim,bow_fall_row(body[4]),bow_hold_body(body),body[3],[3]f32.[body[0],body[1],body[2]])
+ return ifx weapon==CC_KIT_BOW then bow_matrix_turned(figs.bd_hand_out(b,body[4],body[5],body[6]),[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],aim,bow_fall_row(body[4]),bow_hold_body(body),bow_move_body(body),body[3],[3]f32.[body[0],body[1],body[2]])
   else ifx CC_KIT_TWO[weapon] then two_hand_matrix(hr,figs.bd_hand(b,body[4],body[5],body[6],true),hand,[3]f32.[b[0].hand_at[6+o],b[0].hand_at[7+o],b[0].hand_at[8+o]],weapon,body[3],[3]f32.[body[0],body[1],body[2]])
   else weapon_matrix(hr,hand,weapon,body[3],[3]f32.[body[0],body[1],body[2]]);
 }
@@ -177,7 +177,7 @@ cc_turn_about :: (v:[3]f32,k:[3]f32,angle:f32)->[3]f32 {
 }
 cc_clamp01 :: (v:f32)->f32 {return ifx v<0 then 0.0f32 else ifx v>1 then 1.0f32 else v;}
 // The bow's place: its grip in the left fist (hl the hand's pose, hand_l its bind position), on bow_basis.
-bow_matrix :: (hl:[12]f32,hand_l:[3]f32,aim:f32,yaw:f32,at:[3]f32)->[12]f32 {return bow_matrix_turned(hl,hand_l,aim,0,0,yaw,at);}
+bow_matrix :: (hl:[12]f32,hand_l:[3]f32,aim:f32,yaw:f32,at:[3]f32)->[12]f32 {return bow_matrix_turned(hl,hand_l,aim,0,0,0,yaw,at);}
 // As you fall or reel the bow swings about the bow arm so its limbs stay out of your legs and head (#13073):
 // falling (the die clip), CC_BOW_FALL eased in over CC_BOW_FALL_IN seconds, so the lower limb clears the thigh
 // as you crumple, then back to CC_BOW_LIE from CC_BOW_LIE_FROM over CC_BOW_LIE_IN, so the upper limb clears
@@ -224,6 +224,15 @@ bow_hold_body :: (body:[]f32)->f32 {
  m:=figs.bd_gait_share(body[6],figs.BD_HAND_L);
  return bow_hold(cast(int)bow_row_clip(body[4])[0])*(1-m)+bow_hold(cast(int)bow_row_clip(body[5])[0])*m;
 }
+// On the move (walking, running and through a jump: 1) the bow is carried on the move's carry, else (0)
+// on the standing one (bow_matrix_turned); the share for a body's first record mixed as bow_hold_body's.
+bow_move :: (clip:int)->f32 {
+ return ifx clip==figs.BD_WALK || clip==figs.BD_RUN || clip==figs.BD_JUMP_START || clip==figs.BD_JUMP_LOOP || clip==figs.BD_JUMP_LAND then 1.0f32 else 0.0f32;
+}
+bow_move_body :: (body:[]f32)->f32 {
+ m:=figs.bd_gait_share(body[6],figs.BD_HAND_L);
+ return bow_move(cast(int)bow_row_clip(body[4])[0])*(1-m)+bow_move(cast(int)bow_row_clip(body[5])[0])*m;
+}
 #test "the bow's swing follows the die and knock back frames a body's pose row shows, in either body" {
  r:=f32(figs.BD_ROWS);
  #assert bow_fall_row(f32(figs.BD_FIRST[figs.BD_DIE]+30)*r)==bow_fall(figs.BD_DIE,1.0) && bow_fall(figs.BD_DIE,1.0)==f32(CC_BOW_FALL);
@@ -248,9 +257,13 @@ bow_hold_body :: (body:[]f32)->f32 {
  from:=[7]f32.[0,0,0,0,idle,knock,0.75];to:=[7]f32.[0,0,0,0,knock,idle,0.75];
  #assert abs(bow_hold_body(from[..])-0.75)<0.0001 && bow_hold_body(to[..])==0.25;
 }
-#test "carried, the bow hangs nearly upright, its string in toward you and its back out" {
- b:=bow_carry_basis(f32(CC_BOW_CARRY_TILT),f32(CC_BOW_CARRY_TURN),f32(CC_BOW_CARRY_LEAN));
- #assert b[0][0]< -0.99 && b[1][1]>0.95 && b[1][2]>0;   // the string side in (-X), the limbs up, the top a little ahead
+#test "carried, the bow's long axis leans its top out, its string in toward you and its back out" {
+ for m:[2]f32.[0,1] {
+  b:=bow_carry_basis(bow_carry_mix(f32(CC_BOW_CARRY_TILT),f32(CC_BOW_WALK_TILT),m),bow_carry_mix(f32(CC_BOW_CARRY_TURN),f32(CC_BOW_WALK_TURN),m),bow_carry_mix(f32(CC_BOW_CARRY_LEAN),f32(CC_BOW_WALK_LEAN),m));
+  #assert b[0][0]< -0.5 && b[1][1]>0.6 && b[1][2]>0;   // the string side in (-X), the top up and a little ahead
+ }
+ // standing, the top leans out (+X, the bow hand's side), 46 degrees on the limbs' axis
+ s:=bow_carry_basis(f32(CC_BOW_CARRY_TILT),f32(CC_BOW_CARRY_TURN),f32(CC_BOW_CARRY_LEAN));#assert s[1][0]>0.6;
 }
 // Drawn, the bow turns about its limbs until its string faces CC_BOW_ANCHOR, a point at your chin (the
 // figure's space, before its turn): the string comes back toward your face, inside the bow arm, not
@@ -258,21 +271,28 @@ bow_hold_body :: (body:[]f32)->f32 {
 CC_BOW_ANCHOR :: [3]f32.[-0.15,1.5,0.15];   // metres: a little toward the draw side, chin high, just ahead
 CC_BOW_FACE_MAX :: 1.6;    // radians
 // The bow's place, facing CC_BOW_ANCHOR as you draw, swung `splay` about the bow arm (bow_fall), held
-// `hold` of the way into the fist (bow_hold_body).
-bow_matrix_turned :: (hl:[12]f32,hand_l:[3]f32,aim:f32,splay:f32,hold:f32,yaw:f32,at:[3]f32)->[12]f32 {
- return bow_matrix_held(hl,hand_l,aim,splay,hold,yaw,at,f32(CC_BOW_CARRY_TILT),f32(CC_BOW_CARRY_TURN),f32(CC_BOW_CARRY_LEAN),f32(CC_BOW_CARRY_TO));
+// `hold` of the way into the fist (bow_hold_body), `move` of the way to the move's carry (bow_move_body).
+bow_matrix_turned :: (hl:[12]f32,hand_l:[3]f32,aim:f32,splay:f32,hold:f32,move:f32,yaw:f32,at:[3]f32)->[12]f32 {
+ m:=cc_clamp01(move);
+ return bow_matrix_held(hl,hand_l,aim,splay,hold,yaw,at,bow_carry_mix(f32(CC_BOW_CARRY_TILT),f32(CC_BOW_WALK_TILT),m),bow_carry_mix(f32(CC_BOW_CARRY_TURN),f32(CC_BOW_WALK_TURN),m),bow_carry_mix(f32(CC_BOW_CARRY_LEAN),f32(CC_BOW_WALK_LEAN),m),f32(CC_BOW_CARRY_TO));
 }
-// Carried (an aim of 0), standing, walking and running, the bow hangs from the relaxed bow hand as an
-// archer carries one (#13073): held at the grip, nearly upright (its top tilted CC_BOW_CARRY_TILT ahead),
-// its string in toward you, up under the arm, and its back out, away from the body. The bow arm hangs a
-// little out from the body meanwhile (fivelab-bodies.coax bd_arm_out, on the GPU fivelab_arm), and the
-// bow sits CC_BOW_CARRY_OUT out from the fist and a little ahead, so the string clears the leg and the
-// upper limb the forearm. The bow turns from the carry to the drawn hold as the aim comes in to
-// CC_BOW_CARRY_TO, and the offset goes as it does, or as the bow is held in the fist.
-CC_BOW_CARRY_TILT :: 0.25;   // radians
-CC_BOW_CARRY_TURN :: 0.0;    // radians: the string straight in
-CC_BOW_CARRY_LEAN :: 0.0;    // radians
-CC_BOW_CARRY_OUT :: [3]f32.[0.09,0,0.02];   // metres, the figure's space: out (the bow hand's side) and ahead
+bow_carry_mix :: (a:f32,b:f32,m:f32)->f32 {return a+(b-a)*m;}
+// Carried (an aim of 0), the bow is in the relaxed bow hand as an archer carries one (#13073): the grip in
+// the fist, the bow's plane side to side, its string in toward you and its back out, away from the body.
+// Standing, the top limb leans out past the shoulder and a little ahead, the lower limb back in, in front
+// of the knee: CC_BOW_CARRY_LEAN out on the limbs' axis (the upper limb, grip to tip, about 30 degrees
+// from upright: the tips lie on the string's side), CC_BOW_CARRY_TILT ahead, the string turned
+// CC_BOW_CARRY_TURN toward ahead. On the move (bow_move) the legs swing through where the standing lower
+// limb hangs, so the bow comes more upright, its top a little ahead and its string a little more ahead
+// (the CC_BOW_WALK_ values), and the arm's swing carries it fore and aft. The bow arm hangs out from
+// the body and a little ahead meanwhile (fivelab-bodies.coax bd_arm_out, on the GPU fivelab_arm). The
+// bow turns from the carry to the drawn hold as the aim comes in to CC_BOW_CARRY_TO.
+CC_BOW_CARRY_TILT :: 0.2;    // radians
+CC_BOW_CARRY_TURN :: 0.25;   // radians
+CC_BOW_CARRY_LEAN :: -0.8;   // radians: the top out (+X)
+CC_BOW_WALK_TILT :: 0.3;     // radians
+CC_BOW_WALK_TURN :: 0.6;     // radians
+CC_BOW_WALK_LEAN :: 0.0;     // radians
 CC_BOW_CARRY_TO :: 0.1;
 // The packed Bow_Wooden is too deep: its braced string stands 0.37 of its units from the grip, 29 cm at
 // CC_KIT_SCALE. The bow is placed CC_BOW_DEPTH as deep along its string side (X), everywhere it is
@@ -338,9 +358,6 @@ bow_matrix_held :: (hl:[12]f32,hand_l:[3]f32,aim:f32,splay:f32,hold:f32,yaw:f32,
  f:=[3][3]f32.[cc_turn_about(mm[0],arm,splay),cc_turn_about(mm[1],arm,splay),cc_turn_about(mm[2],arm,splay)];
  dp:=f32(CC_BOW_DEPTH);xc:=[3]f32.[f[0][0]*dp,f[0][1]*dp,f[0][2]*dp];y:=f[1];z:=f[2];
  g:=f32(CC_BOW_GRIP_X);
- // carried, the bow sits out from the fist and a little ahead; held in the fist or drawn, in it
- off:=(1-cc_clamp01(hold))*(1-cc_clamp01(aim/to));co:=CC_BOW_CARRY_OUT;
- l=[3]f32.[l[0]+f32(co[0])*off,l[1]+f32(co[1])*off,l[2]+f32(co[2])*off];
  v:=[4][3]f32.[[3]f32.[l[0]-sc*g*xc[0],l[1]-sc*g*xc[1],l[2]-sc*g*xc[2]],[3]f32.[sc*xc[0],sc*xc[1],sc*xc[2]],[3]f32.[sc*y[0],sc*y[1],sc*y[2]],[3]f32.[sc*z[0],sc*z[1],sc*z[2]]];
  c:=cos(yaw);sn:=sin(yaw);w:[12]f32;
  for i:0..<4 {w[i*3]=v[i][0]*c+v[i][2]*sn;w[i*3+1]=v[i][1];w[i*3+2]= -v[i][0]*sn+v[i][2]*c;}

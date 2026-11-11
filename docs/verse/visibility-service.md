@@ -124,8 +124,10 @@ shins, the torso, the neck and the skull. A check fails on any overlap.
 Standing, walking and running, a second check (`cc_bow_side_sweep`) needs the
 string's middle at least 8 cm nearer the body's middle line than the bow's
 grip, both in the figure's space and as every zone places the bow from a body
-record. Both sweeps pose a bow carrier with the bow arm out, as the GPU draws
-it.
+record. A third (`cc_bow_carry_shape`) keeps the carried bow's grip in the
+fist, with its upper limb leaning out past the shoulder. The sweeps pose a bow
+carrier with the bow arm out and forward, as the GPU draws it. A limb's piece
+starts where it leaves the fist, 8 cm from the grip.
 
 ## Rules
 

@@ -485,9 +485,10 @@ fivelab_gait_share :: (code:f32,j:u32)->f32 {
 fivelab_mix4 :: (a:V4,b:V4,t:f32)->V4 { return v4(a.x+((b.x-a.x)*t),a.y+((b.y-a.y)*t),a.z+((b.z-a.z)*t),a.w+((b.w-a.w)*t)); }
 // The bow arm (fivelab-bodies.coax bd_arm_out, #13073): on a bow carrier's records (flag bit 8), on the
 // idle, walk, run and jump loop frames, the left arm's joints (8 to 30) turned FIVELAB_ARM_OUT about
-// the figure's forward axis through the shoulder where the frame has it. The constants are the bodies'
+// the figure's forward axis, then FIVELAB_ARM_FWD ahead, through the shoulder where the frame has it. The constants are the bodies'
 // (BD_ARM_OUT, BD_SHOULDER_BIND, BD_ROWS, BD_TOTAL, BD_FIRST of the idle to the run and the jump loop).
 FIVELAB_ARM_OUT :: 0.35f32;
+FIVELAB_ARM_FWD :: 0.35f32;
 FivelabRows :: struct {a:V4; c:V4; e:V4; }
 fivelab_arm_frame :: (row:u32)->bool {
   f:u32=(row/cast(u32)195)%cast(u32)4137;
@@ -500,11 +501,14 @@ fivelab_arm :: (row:u32,j:u32,m:FivelabRows,bake:[]V4)->FivelabRows {
   r:u32=add_wrap(row,cast(u32)24);
   px:f32=wg_dot4(bake[cast(int)r],q);
   py:f32=wg_dot4(bake[cast(int)add_wrap(r,1)],q);
-  c:f32=cos(FIVELAB_ARM_OUT); sn:f32=sin(FIVELAB_ARM_OUT);
+  pz:f32=wg_dot4(bake[cast(int)add_wrap(r,2)],q);
+  ca:f32=cos(FIVELAB_ARM_OUT); sa:f32=sin(FIVELAB_ARM_OUT); cf:f32=cos(FIVELAB_ARM_FWD); sf:f32=sin(FIVELAB_ARM_FWD);
+  // the turn's rows (fivelab-bodies.coax bd_arm_turn): out about +Z, then ahead about the side axis
+  r1y:f32=cf*sa; r1x:f32=cf*ca; r2x:f32= -sf*sa; r2y:f32= -sf*ca;
   o:FivelabRows;
-  o.a=v4((c*m.a.x)-(sn*m.c.x),(c*m.a.y)-(sn*m.c.y),(c*m.a.z)-(sn*m.c.z),(c*m.a.w)-(sn*m.c.w)+px-((c*px)-(sn*py)));
-  o.c=v4((sn*m.a.x)+(c*m.c.x),(sn*m.a.y)+(c*m.c.y),(sn*m.a.z)+(c*m.c.z),(sn*m.a.w)+(c*m.c.w)+py-((sn*px)+(c*py)));
-  o.e=m.e;
+  o.a=v4((ca*m.a.x)-(sa*m.c.x),(ca*m.a.y)-(sa*m.c.y),(ca*m.a.z)-(sa*m.c.z),(ca*m.a.w)-(sa*m.c.w)+px-((ca*px)-(sa*py)));
+  o.c=v4((r1y*m.a.x)+(r1x*m.c.x)+(sf*m.e.x),(r1y*m.a.y)+(r1x*m.c.y)+(sf*m.e.y),(r1y*m.a.z)+(r1x*m.c.z)+(sf*m.e.z),(r1y*m.a.w)+(r1x*m.c.w)+(sf*m.e.w)+py-((r1y*px)+(r1x*py)+(sf*pz)));
+  o.e=v4((r2x*m.a.x)+(r2y*m.c.x)+(cf*m.e.x),(r2x*m.a.y)+(r2y*m.c.y)+(cf*m.e.y),(r2x*m.a.z)+(r2y*m.c.z)+(cf*m.e.z),(r2x*m.a.w)+(r2y*m.c.w)+(cf*m.e.w)+pz-((r2x*px)+(r2y*py)+(cf*pz)));
   return o;
 }
 #test "the shader's bow arm turns as the bodies' does (fivelab-bodies.coax bd_arm_out)" {
@@ -513,7 +517,8 @@ fivelab_arm :: (row:u32,j:u32,m:FivelabRows,bake:[]V4)->FivelabRows {
   id:=FivelabRows.{a=bake[0],c=bake[1],e=bake[2]};
   #assert fivelab_arm_frame(0) && fivelab_arm_frame(cast(u32)(142*195)) && !fivelab_arm_frame(cast(u32)(143*195)) && fivelab_arm_frame(cast(u32)((4137+400)*195)) && !fivelab_arm_frame(cast(u32)(4137*195+252*195));
   h:=fivelab_arm(0,10,id,bake[..]);q:=v4(0.1919f32,1.4555f32-0.55f32,-0.0654f32,1.0f32);
-  #assert abs(wg_dot4(h.a,q)-(0.1919f32+0.55f32*sin(FIVELAB_ARM_OUT)))<0.0001 && wg_dot4(h.c,q)>1.4555f32-0.55f32 && wg_dot4(h.e,q)== -0.0654f32;
+  #assert abs(wg_dot4(h.a,q)-(0.1919f32+0.55f32*sin(FIVELAB_ARM_OUT)))<0.0001 && wg_dot4(h.c,q)>1.4555f32-0.55f32;
+  #assert abs(wg_dot4(h.e,q)-(-0.0654f32+0.55f32*cos(FIVELAB_ARM_OUT)*sin(FIVELAB_ARM_FWD)))<0.0001;   // and ahead
   n:=fivelab_arm(0,31,id,bake[..]);#assert n.a.x==1 && n.a.w==0 && n.c.y==1;   // the right arm stays
   s:=fivelab_arm(cast(u32)(143*195),10,id,bake[..]);#assert s.a.x==1 && s.a.w==0;   // a blow's frame stays
 }
