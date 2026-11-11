@@ -15,6 +15,7 @@ One key (the default engine, with the reason in the log).
     python3 coder/tui/smoke.py --live codex   # the same on the codex engine (your Codex login)
     python3 coder/tui/smoke.py --live microcoder   # ... on Microcoder (keys under ~/work/.secrets)
     python3 coder/tui/smoke.py --live cursor  # the same on the cursor engine (your Cursor login)
+    python3 coder/tui/smoke.py --live antigravity  # the same on the antigravity engine (agy's sign-in)
 
 Test-only harness; the program under test is Coax.
 """
@@ -66,7 +67,7 @@ def live(engine):
         read_until("\x00never", 0.2)
     steps.append(("second turn ended", out.count("└ finished".encode()) >= 2))
     os.write(fd, b"\x1b[Z")                 # Shift-Tab: the other agent
-    after = {"claude": "Agent: Codex", "codex": "Agent: Cursor", "cursor": "Agent: Microcoder", "microcoder": "Agent: Claude Code"}[engine]
+    after = {"claude": "Agent: Codex", "codex": "Agent: Cursor", "cursor": "Agent: Antigravity", "antigravity": "Agent: Microcoder", "microcoder": "Agent: Claude Code"}[engine]
     steps.append(("Shift-Tab switches agent", read_until(after, 5)))
     for _ in range(3):                      # stop, clear, quit: whichever applies
         os.write(fd, b"\x03")
@@ -1473,6 +1474,8 @@ def main():
     check("hint names the agent", read_until("codex · ", 5))
     send(b"\x1b[Z")
     check("Shift-Tab to Cursor", read_until("Agent: Cursor", 5) and read_until("cursor · ", 5))
+    send(b"\x1b[Z")
+    check("Shift-Tab to Antigravity", read_until("Agent: Antigravity", 5) and read_until("antigravity · ", 5))
     send(b"\x1b[Z")
     check("Shift-Tab to Microcoder", read_until("Agent: Microcoder", 5) and read_until("microcoder · ", 5))
     send(b"\x1b[A")
