@@ -568,6 +568,7 @@ np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, 
   n = hd_rect(out, n, b, pen, 2, 1);
   label := ifx np_busy(s) && s[0].open then "Stop" else "Next issue";
   n = eg_text(out, n, label, b.x + (b.width - eg_width(label, 16, EG_TITLE)) * 0.5, b.y + 23, 16, d, EG_TITLE, EG_WHITE);
+  s[0].board[0].reserve = ifx s[0].open then f32(NP_PANEL_W) + 12 else 0;
   n = gb_frame(s[0].board[..], out, n, width, height, d, pen, now, panel);
   if !s[0].open { return n; }
   box := np_panel(width, height);
@@ -630,7 +631,7 @@ np_frame :: (s: []NextPanel, out: []f32, panel: []f32, width: f32, height: f32, 
 // A press on the panel gives it the keys; a press on the world takes them back.
 np_pointer :: (s: []NextPanel, x: f32, y: f32, phase: int, width: f32, height: f32) -> bool #export_c #effects(all) {
   // The Golems board first, unless a press that began on Next issue is still held.
-  if !(phase != 0 && s[0].down) && gb_pointer(s[0].board[..], x, y, phase, width, height) { return true; }
+  if !(phase != 0 && s[0].down) && gb_pointer(s[0].board[..], x, y, phase, width, height, s[0].now) { return true; }
   b := np_button(width); box := np_panel(width, height);
   over_panel := s[0].open && np_in(box, x, y);
   if phase == 0 {
@@ -693,8 +694,17 @@ np_state :: (s: []NextPanel) -> int #export_c #effects(all) { return s[0].state;
 np_golems_due :: (s: []NextPanel, now: int) -> bool #export_c #effects(all) { return gb_due(s[0].board[..], now); }
 np_golems :: (s: []NextPanel, text: string, now: int) #export_c #effects(all) { gb_take(s[0].board[..], text, now); }
 np_golems_open :: (s: []NextPanel) #export_c #effects(all) { s[0].board[0].open = true; s[0].board[0].asked = 0; }
+// Whether the host should run `everglade-golems refresh` now (the issues from GitHub, the build
+// hosts), and a line the board hands the host, once: `open URL` or `copy TEXT`, a tab between.
+np_golems_refresh_due :: (s: []NextPanel, now: int) -> bool #export_c #effects(all) { return gb_refresh_due(s[0].board[..], now); }
+np_golems_action :: (s: []NextPanel, out: []u8) -> int #export_c #effects(all) { return gb_take_action(s[0].board[..], out); }
+// The board's views, for a shot: 1 the first agent, 2 narrow, 3 narrow with the queue.
+np_golems_view :: (s: []NextPanel, view: int) #export_c #effects(all) {
+  if view == 1 && s[0].board[0].count > 0 { s[0].board[0].sel = 0; }
+  if view == 2 || view == 3 { s[0].board[0].wide = false; s[0].board[0].queue = view == 3; }
+}
 np_size :: () -> int #export_c #effects(all) { return size_of(NextPanel); }
-np_init :: (s: []NextPanel) #export_c #effects(all) { s[0].board[0].sel = -1; s[0].autopilot = true; s[0].state = NP_IDLE; s[0].cost_e6 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL); }
+np_init :: (s: []NextPanel) #export_c #effects(all) { s[0].board[0].sel = -1; s[0].board[0].wide = true; s[0].autopilot = true; s[0].state = NP_IDLE; s[0].cost_e6 = -1; s[0].open = false; s[0].text_n = 0; s[0].started = false; s[0].model_n = np_put(s[0].model[..], 0, NP_MODEL); }
 np_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 np_max_vertices :: () -> int #export_c #effects(all) { return NP_MAX_VERTICES; }
 

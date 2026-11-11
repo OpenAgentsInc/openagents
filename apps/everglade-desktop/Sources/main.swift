@@ -275,7 +275,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/everglade-golems")
       DispatchQueue.global().async { [weak self] in
         let process = Process(), out = Pipe()
-        process.executableURL = tool; process.arguments = ["snapshot", "--now", String(now)]
+        process.executableURL = tool; process.arguments = ["snapshot", "--now", String(now), "--tz", String(TimeZone.current.secondsFromGMT())]
         process.standardOutput = out; process.standardError = FileHandle.nullDevice
         var text = Data()
         if (try? process.run()) != nil { text = out.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit() }
@@ -286,7 +286,29 @@ final class WorkshopView: MTKView, MTKViewDelegate {
         }
       }
     }
+    // The slow things the board shows (GitHub's issues, the build hosts) are fetched into files by
+    // the same program, at most every two minutes while the board is open.
+    if !refreshingGolems && nxp_golems_refresh_due(next, now) != 0 {
+      refreshingGolems = true
+      let tool = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/everglade-golems")
+      let checkout = (Bundle.main.url(forResource: "repo", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      DispatchQueue.global().async { [weak self] in
+        let process = Process()
+        process.executableURL = tool
+        process.arguments = ["refresh", "--now", String(now), "--tz", String(TimeZone.current.secondsFromGMT()), "--repo-dir", checkout]
+        process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+        if (try? process.run()) != nil { process.waitUntilExit() }
+        DispatchQueue.main.async { self?.refreshingGolems = false }
+      }
+    }
     var line = [UInt8](repeating: 0, count: 4096)
+    // What a press on the board asked of the Mac: a page in the browser, or text on the clipboard.
+    let asked = Int(nxp_golems_action(next, &line, Int32(line.count)))
+    if asked > 0, let text = String(bytes: line[0..<asked], encoding: .utf8), let tab = text.firstIndex(of: "\t") {
+      let verb = text[..<tab], rest = String(text[text.index(after: tab)...])
+      if verb == "open", let url = URL(string: rest), url.scheme == "https" { NSWorkspace.shared.open(url) }
+      if verb == "copy" { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(rest, forType: .string) }
+    }
     let home = FileManager.default.homeDirectoryForCurrentUser
     var n = Int(nxp_take_usage(next, &line, Int32(line.count)))
     if n > 0 { append(Data(line[0..<n]), to: home.appendingPathComponent(".openagents/usage/ai-calls.jsonl")) }
@@ -306,6 +328,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // One frame offscreen, after `seconds` of the scene's own time, as a PNG.
   var nextWait: Float = 0
   var readingGolems = false
+  var refreshingGolems = false
+  var golemsView: Int32 = 0    // --golems-view in a shot: 1 the first agent, 2 narrow, 3 narrow with the queue
   var golemsWait: Double = 0   // --golems in a shot: seconds to let the board read the agents first
   var nextReply = ""
   var nextRuns: Int32 = 0
@@ -346,7 +370,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     }
     if golemsWait > 0 {
       let until = CACurrentMediaTime() + golemsWait
-      repeat { render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < until && readingGolems || CACurrentMediaTime() < until - golemsWait + 0.5
+      // The issues and hosts first (a fresh copy is a few seconds; an old one is left), then the agents.
+      repeat { render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < until + 24 && refreshingGolems
+      let read = CACurrentMediaTime()
+      repeat { render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < read + golemsWait && readingGolems || CACurrentMediaTime() < read + 4.5
+      if golemsView != 0 { nxp_golems_view(next, golemsView) }
     }
     func run(_ time: Float) { var left = time; while left > 0 { let step = min(left, inRealm ? 1.0 / 60 : 0.05); render(pass, size: CGSize(width: width, height: height), scale: 2, dt: step) { _ in }; left -= step } }
     run(seconds)
@@ -539,6 +567,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
   }
   if args.contains("--golems") { nxp_golems_open(view.next); view.golemsWait = 6 }
+  if let g = args.firstIndex(of: "--golems-view"), g + 1 < args.count, let v = Int32(args[g + 1]) { view.golemsView = v }
   exit(view.shot(to: args[i + 1], width: width, height: height, seconds: seconds) ? 0 : 1)
 }
 let app = NSApplication.shared

@@ -41,3 +41,6 @@ void nxp_golems(void *panel, const uint8_t *text, int32_t length, int64_t now) {
   np_golems(nat(panel), (coax_string){(const char *)text, length}, now);
 }
 void nxp_golems_open(void *panel) { np_golems_open(nat(panel)); }
+int32_t nxp_golems_refresh_due(void *panel, int64_t now) { return np_golems_refresh_due(nat(panel), now) ? 1 : 0; }
+int32_t nxp_golems_action(void *panel, uint8_t *out, int32_t cap) { return cap <= 0 ? 0 : (int32_t)np_golems_action(nat(panel), (coax_v_u8){out, cap}); }
+void nxp_golems_view(void *panel, int32_t view) { np_golems_view(nat(panel), view); }

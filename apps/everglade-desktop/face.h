@@ -94,10 +94,17 @@ int32_t nxp_state(void *panel);
 void nxp_close(void *panel);
 // The Golems board (golem-board.coax): every agent on this Mac. nxp_frame's panel4 holds 8 floats:
 // Next issue's box, then the board's. When nxp_golems_due says so, run everglade-golems snapshot
-// --now NOW and hand its stdout to nxp_golems. nxp_golems_open opens the board (--golems).
+// --now NOW --tz SECONDS and hand its stdout to nxp_golems. nxp_golems_open opens the board (--golems).
 int32_t nxp_golems_due(void *panel, int64_t now);
 void nxp_golems(void *panel, const uint8_t *text, int32_t length, int64_t now);
 void nxp_golems_open(void *panel);
+// When nxp_golems_refresh_due says so, run everglade-golems refresh --now NOW --tz SECONDS
+// --repo-dir CHECKOUT (GitHub's issues and the build hosts, into files the snapshot reads).
+// nxp_golems_action hands over one line at a time: `open URL` for the default browser or
+// `copy TEXT` for the clipboard, a tab between. nxp_golems_view picks a view for a shot.
+int32_t nxp_golems_refresh_due(void *panel, int64_t now);
+int32_t nxp_golems_action(void *panel, uint8_t *out, int32_t cap);
+void nxp_golems_view(void *panel, int32_t view);
 
 // The place (everglade/workshop/temple.coax, place-face.c): the temple's parts as one mesh, the
 // records that stand them, and the draws, built once from Aethyr's architecture kit.

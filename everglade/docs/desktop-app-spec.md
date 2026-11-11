@@ -724,34 +724,108 @@ Everglade II fixes (#13104, #13117, #13129, #13130). State carry on reload
 
 ## The Golems board (built 2026-11-10)
 
-**Golems N/M**, left of Autopilot, opens a board over the left of the window: every
-agent working on this Mac, live, wherever it was started. That includes the Autopilot
-coders, Claude Code sessions run in a terminal, and the subagents they start. N agents
-are working now, out of M seen in the last 12 hours.
+**Golems N/M**, left of Autopilot, opens the board you steer many agents from: every agent
+working on this Mac, live, wherever it was started. That includes the Autopilot coders,
+Claude Code sessions run in a terminal, and the subagents they start. N agents are at work
+now, out of M seen since the day began (or in the last 12 hours, whichever is longer). The
+button turns red when an agent needs you.
 
-- **Where the data comes from.** `everglade-golems` (`apps/everglade-desktop/golems.coax`)
-  reads the end of each Claude Code transcript under `~/.claude/projects/` changed in
-  the last 12 hours. It reads `PROJECT/SESSION/subagents/` too. It asks no model and
-  sends nothing anywhere. The app runs it off the main thread every 3 seconds while
-  the board is open, and every 30 seconds while it is shut, to keep the count current.
-  Run it yourself with
-  `coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now $(date +%s)`.
-- **A card.** Each card shows:
-  - where the agent works (`#N` for an issue's worktree);
-  - its model;
-  - working, waiting or idle (its transcript changed in the last 2 minutes, in the
-    last 30 minutes, or longer ago), and when;
-  - its latest message (what it was asked, until it has said anything);
-  - its latest tool call;
-  - seven step boxes: read, edited, built, tested, committed, pushed, closed. A step
-    counts only from the agent's own tool calls (the tool's name, and the first
-    words of a Bash command), never from anything it wrote.
-- **Click a card** to see that agent's latest messages, tool calls and what it was
-  asked. **All** goes back, and **Close** shuts the board.
-- `--golems` opens the board at launch, and in `--shot` it waits for the first read.
+**Wide** (the default) fills the window under the buttons: the totals, two columns of cards,
+and the queue beside them. **Narrow** keeps the board on the left; there **Queue** and
+**Agents** switch what it shows. When Next issue is open, a wide board leaves it room.
+
+### The totals
+
+Four boxes across the top:
+
+- **Agents**: how many need you, are working, wait for you, and are idle.
+- **Spend today, at list prices**: what today's tokens cost at the API's list prices. It adds
+  every transcript's usage since midnight to the calls in the AI call ledger
+  (`~/.openagents/usage/ai-calls.jsonl`) that no transcript accounts for. On a subscription
+  you pay less; the number is for comparing agents and days.
+- **Issues**: closed today, and open.
+- **Build hosts**: busy out of all, and what they cost in the last 24 hours
+  (`coax/remote/remote.sh status`).
+
+### A card
+
+The cards come most urgent first and fill a row before the next, so the top row is what
+needs you. The order is: blocked and quiet too long; working; waiting for you; done and idle.
+
+| State | What it means | Colour |
+| --- | --- | --- |
+| blocked | A coder called its report tool with blocked | red |
+| quiet for N | Mid-turn, and nothing written for 5 minutes | amber, red at 15 |
+| waiting on a build, N | Its open tool call is a build, a test, a remote job or a sleep | amber at 5 minutes, red at 15 |
+| working | Mid-turn and writing | cyan |
+| your turn, N | A session whose turn ended in the last half hour | white |
+| done N ago | A subagent whose turn ended, or a coder that reported done | green |
+| idle N | Everything older | grey |
+
+A card shows:
+
+- its issue number and title (click the number to open it on GitHub), or the name the
+  session that started it gave it;
+- its state, with how long;
+- its model, how long it has run, its tokens and their cost at list prices;
+- the latest commit it pushed and how many came before, read from its `git push` output;
+- its latest message (what it was asked, until it has said anything);
+- seven step boxes (read, edited, built, tested, committed, pushed, closed) and its latest
+  tool call. While it waits on a build, that is the call it waits on;
+- a strip of where its time went: thinking, reading, editing, builds, other. Builds are amber.
+
+A state, a step and a time come only from the agent's own records (which tool it called, a
+Bash command's leading words, when a turn ended), never from anything it wrote.
+
+The time between a tool call and its result goes to that call's kind. The time before each
+of the agent's messages goes to thinking. The time after a turn ends goes to no one.
+
+### The queue
+
+The open issues, the ones nobody has first, with which agent has each of the others. Click
+a line to open the issue on GitHub. An agent has an issue when its worktree is the issue's
+(`...-issue-N`), when the ledger says so, when it closed it, or when it was asked about `#N`.
+
+### One agent
+
+Click a card to see that agent: its card, then
+
+- **Open #N** opens its issue on GitHub;
+- **Copy a message** puts a message for it on the clipboard, written for its state (quiet
+  too long, waiting on a build, blocked, or a plain status request). Paste it where the
+  agent reads: its terminal, or the session that started it;
+- its folder, what it was asked, its commits and the files it changed;
+- its time use as a strip and in numbers;
+- its latest messages and tool calls with their times, the newest at the bottom. The wheel
+  scrolls them.
+
+**All** goes back, and **Close** shuts the board.
+
+### Where the data comes from
+
+`everglade-golems` (`apps/everglade-desktop/golems.coax`) has two commands. It asks no model.
+
+- `snapshot --now SECONDS --tz SECONDS` prints the board's lines. It reads each Claude Code
+  transcript under `~/.claude/projects/` (and `PROJECT/SESSION/subagents/`) once: what it
+  counted for an agent is kept in `~/.openagents/everglade/golems/cache/` with the byte it
+  read up to, so the next snapshot reads only what was written since. A snapshot takes about
+  0.2 s. The first one after an update reads for at most 1.2 s and finishes over the next
+  few; until then a card says **still counting**. The app runs it off the main thread every
+  3 seconds while the board is open and every 30 seconds while it is shut.
+- `refresh --now SECONDS --tz SECONDS --repo-dir DIR` fetches the slow things into files the
+  snapshot reads: the open issues and the ones closed today (`gh`), and the build hosts
+  (`coax/remote/remote.sh status`). The app runs it at most every 2 minutes while the board
+  is open, and it does nothing when its files are under 110 seconds old.
+
+Run them yourself with
+`coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now $(date +%s)`.
+
+`--golems` opens the board at launch, and in `--shot` it waits for the first read.
+`--golems-view N` picks a view for a shot: 1 the first agent, 2 narrow, 3 narrow with the
+queue.
 
 Not built yet:
-- Codex sessions (`~/.codex/sessions`) and the Coder and Foreman agents running on
-  other hosts.
+- Codex sessions (`~/.codex/sessions`) and the Coder and Foreman agents running on other
+  hosts.
 - Golems standing in the world for each agent.
-- A cost for each agent from the AI call ledger.
+- Sending a message to an agent from the board. Today it copies one for you to paste.

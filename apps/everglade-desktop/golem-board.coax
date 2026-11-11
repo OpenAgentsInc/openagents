@@ -1,29 +1,62 @@
-// golem-board.coax: the Golems board in the Workshop. Every agent working on this Mac, live:
-// the Autopilot coders, the Claude Code sessions you run in a terminal and the subagents they
-// start, wherever they were started. The host runs everglade-golems (golems.coax) every few
-// seconds and hands its lines to gb_take; the board draws them over the left of the window.
+// golem-board.coax: the Golems board in the Workshop, the place you steer many agents from. Every
+// agent working on this Mac, live: the Autopilot coders, the Claude Code sessions you run in a
+// terminal and the subagents they start. The host runs everglade-golems (golems.coax) every few
+// seconds and hands its lines to gb_take; the board draws them.
 //
-// A card a golem: where it works (#ISSUE for an Autopilot worktree), its model, how long since it
-// last did anything, its latest words, its coding steps as seven pips (read, edited, built,
-// tested, committed, pushed, closed) and its latest tool call. Click a card for its latest
-// messages; All goes back. Loaded into next.coax's unit; drawn by np_frame.
+//   The totals   agents that need you, are working, wait for you and are idle; what today's
+//                tokens cost at list prices; issues closed today and open; build hosts busy.
+//   The cards    most urgent first (blocked, quiet too long; then working; then waiting for you;
+//                then done), two columns when there is room. A card: its issue (click the number
+//                for GitHub) or its name, its state, its model, how long it has run, its tokens
+//                and cost, what it pushed, its latest words, its steps and latest tool call, and
+//                a strip of where its time went.
+//   The queue    the open issues, the ones nobody has first. Click one for GitHub.
+//   One agent    click a card: its messages and tool calls with their times, its folder, the
+//                files it changed, its commits, its time use in numbers, a button for its issue
+//                and one that copies a message to send it.
+//
+// Wide fills the window under the buttons; Narrow keeps the board on the left. The board holds
+// no clock of its own: a duration is the snapshot's number plus the seconds since it came.
+// Loaded into next.coax's unit; drawn by np_frame.
 
-GB_RAW :: 65536;
-GB_MAX :: 32;
-GB_W :: 540.0; GB_CARD :: 86.0; GB_PAD :: 16.0;
+GB_RAW :: 524288;
+GB_MAX :: 96;
+GB_QMAX :: 96;
+GB_NARROW :: 792.0; GB_CARD :: 102.0; GB_GAP :: 8.0; GB_PAD :: 16.0;
+GB_HEAD :: 46.0; GB_TOTALS :: 52.0; GB_QUEUE_W :: 380.0; GB_QROW :: 22.0;
 GB_EVERY_OPEN :: 3;      // seconds between snapshots while the board is open
 GB_EVERY_SHUT :: 30;     // and while it is shut, for the count on its button
+GB_REFRESH :: 120;       // seconds between asking GitHub and the build hosts
+GB_STALLED :: 300; GB_STUCK :: 900;
 GB_STEPS :: [7] string.["read", "edited", "built", "tested", "committed", "pushed", "closed"];
+GB_USES :: [5] string.["thinking", "reading", "editing", "builds", "other"];
+GB_ISSUES :: "https://github.com/OpenAgentsInc/openagents/issues/";
+
+// A G line's fields (golems.coax).
+GF_KEY :: 1; GF_STATE :: 2; GF_QUIET :: 3; GF_MODEL :: 4; GF_TITLE :: 5; GF_PLACE :: 6; GF_TOOLS :: 7; GF_STEPS :: 8; GF_PARENT :: 9;
+GF_LAST :: 10; GF_SAID :: 11; GF_TOOL :: 12; GF_ISSUE :: 13; GF_ISSUE_TITLE :: 14; GF_STARTED :: 15; GF_TOKENS :: 16; GF_COST :: 17;
+GF_COMMITS :: 18; GF_WAIT :: 19; GF_SPENT :: 20; GF_FOLDER :: 25; GF_FILES :: 26; GF_WHOLE :: 27; GF_ENDED :: 28; GF_NAME :: 29;
+
+// A colour: the HUD's four inks (hd_ink's kinds), then amber, red and green.
+GB_AMBER :: 4; GB_RED :: 5; GB_GREEN :: 6;
+// The time-use strip's colours, in GB_USES' order: builds are amber, the waste to see.
+GB_USE_TONE :: [5] int.[EG_ACCENT, EG_WHITE, GB_GREEN, GB_AMBER, EG_DIM];
 
 GolemBoard :: struct {
-  open: bool;
+  open: bool; wide: bool = true; queue: bool;   // queue: a narrow board shows the queue, not the cards
+  reserve: f32;                        // points on the right a wide board leaves (Next issue, open)
   raw: [GB_RAW] u8; n: int;            // the last snapshot, as everglade-golems printed it
   at: int;                             // when it came
   asked: int; pending: bool;           // when the host was last asked, and whether it is still out
+  refreshed: int;                      // when the host was last asked to refresh the issues and hosts
   line: [GB_MAX] int; count: int;      // where each G line starts
-  working: int; waiting: int;
-  sel: int = -1; scroll: int;
-  down: int;                           // what a press began on: 1 the button, 2 Close or All, 10+i a card
+  qline: [GB_QMAX] int; qcount: int; nobody: int;   // each Q line, and how many have no agent
+  totals: [10] int; spend: [16] u8; spend_n: int; have_totals: bool;
+  attention: int; working: int; waiting: int;
+  sel: int = -1; scroll: int; qscroll: int; dscroll: int;
+  down: int;                           // what a press began on (gb_hit)
+  action: [1024] u8; action_n: int;    // a line for the host: `open URL` or `copy TEXT`
+  copied: int;                         // when a message was last copied
 }
 
 gb_field :: (line: string, i: int) -> string {
@@ -33,21 +66,41 @@ gb_field :: (line: string, i: int) -> string {
 }
 gb_line_at :: (raw: string, at: int) -> string { end := at; while end < raw.count && raw[end] != '\n' { end += 1; } return raw[at..<end]; }
 gb_num :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return v; } v = v * 10 + cast(int) (c - '0'); } return v; }
+// 0 needs you (blocked, quiet too long), 1 working, 2 waits for you, 3 done or idle.
+gb_group :: (state: string) -> int {
+  if state == "blocked" || state == "stuck" || state == "stalled" { return 0; }
+  if state == "working" || state == "build" { return 1; }
+  return ifx state == "yours" || state == "waiting" then 2 else 3;
+}
 
-// A snapshot arrives: the G lines are indexed and counted.
+// A snapshot arrives: its lines are indexed and its agents counted.
 gb_take :: (b: []GolemBoard, text: string, now: int) {
   b[0].pending = false;
+  // A snapshot that failed (nothing printed) leaves the last one in place.
+  if text.count == 0 && b[0].n > 0 { return; }
+  key: [80] u8; key_n := 0;
+  if b[0].sel >= 0 && b[0].sel < b[0].count { key_n = np_put(key[..], 0, gb_field(gb_golem(b, b[0].sel), GF_KEY)); }
   m := 0; for c: text { if m >= GB_RAW { break; } b[0].raw[m] = c; m += 1; }
-  b[0].n = m; b[0].at = now; b[0].count = 0; b[0].working = 0; b[0].waiting = 0;
+  b[0].n = m; b[0].at = now; b[0].count = 0; b[0].qcount = 0; b[0].nobody = 0; b[0].attention = 0; b[0].working = 0; b[0].waiting = 0; b[0].have_totals = false;
   raw := cast(string) b[0].raw[0..<b[0].n];
   at := 0;
   while at < raw.count {
     l := gb_line_at(raw, at);
-    if l.count > 2 && l[0] == 'G' && l[1] == '\t' && b[0].count < GB_MAX {
-      b[0].line[b[0].count] = at; b[0].count += 1;
-      st := gb_field(l, 2); if st == "working" { b[0].working += 1; } else if st == "waiting" { b[0].waiting += 1; }
+    if l.count > 2 && l[1] == '\t' {
+      if l[0] == 'G' && b[0].count < GB_MAX {
+        b[0].line[b[0].count] = at; b[0].count += 1;
+        group := gb_group(gb_field(l, GF_STATE));
+        if group == 0 { b[0].attention += 1; } else if group == 1 { b[0].working += 1; } else if group == 2 { b[0].waiting += 1; }
+      }
+      if l[0] == 'Q' && b[0].qcount < GB_QMAX { b[0].qline[b[0].qcount] = at; b[0].qcount += 1; if gb_field(l, 3).count == 0 { b[0].nobody += 1; } }
+      if l[0] == 'T' { for i: 0..<10 { f := gb_field(l, i + 1); b[0].totals[i] = ifx f.count > 0 && f[0] == '-' then -1 else gb_num(f); } b[0].spend_n = np_put(b[0].spend[..], 0, gb_field(l, 11)); b[0].have_totals = true; }
     }
     at += l.count + 1;
+  }
+  // The agent you were looking at stays the one shown, wherever the new order puts it.
+  if key_n > 0 {
+    b[0].sel = -1;
+    for i: 0..<b[0].count { if gb_field(gb_golem(b, i), GF_KEY) == cast(string) key[0..<key_n] { b[0].sel = i; } }
   }
   if b[0].sel >= b[0].count { b[0].sel = -1; }
 }
@@ -59,36 +112,40 @@ gb_due :: (b: []GolemBoard, now: int) -> bool {
   b[0].asked = now; b[0].pending = true;
   return true;
 }
+// Whether the host should run `everglade-golems refresh` now: while the board is open, every GB_REFRESH seconds.
+gb_refresh_due :: (b: []GolemBoard, now: int) -> bool {
+  if !b[0].open || (b[0].refreshed > 0 && now - b[0].refreshed < GB_REFRESH) { return false; }
+  b[0].refreshed = now;
+  return true;
+}
 gb_golem :: (b: []GolemBoard, i: int) -> string { return gb_line_at(cast(string) b[0].raw[0..<b[0].n], b[0].line[i]); }
+gb_queued :: (b: []GolemBoard, i: int) -> string { return gb_line_at(cast(string) b[0].raw[0..<b[0].n], b[0].qline[i]); }
 
-gb_button :: (width: f32) -> HudBox { a := np_auto_box(width); return HudBox.{x = a.x - 12 - 150, y = a.y, width = 150, height = a.height}; }
-gb_panel :: (width: f32, height: f32) -> HudBox {
-  w := f32(GB_W); if w > width - 2 * f32(NP_MARGIN) { w = width - 2 * f32(NP_MARGIN); }
-  return HudBox.{x = f32(NP_MARGIN), y = f32(NP_MARGIN), width = w, height = height - 2 * f32(NP_MARGIN)};
-}
-gb_close_box :: (p: HudBox) -> HudBox { return HudBox.{x = p.x + p.width - 76, y = p.y + 10, width = 64, height = 26}; }
-gb_list_top :: (p: HudBox) -> f32 { return p.y + 56; }
-gb_card :: (p: HudBox, row: int) -> HudBox { return HudBox.{x = p.x + f32(GB_PAD), y = gb_list_top(p) + f32(row) * (GB_CARD + 8), width = p.width - 2 * f32(GB_PAD), height = f32(GB_CARD)}; }
-gb_rows :: (p: HudBox) -> int { r := cast(int) ((p.y + p.height - 12 - gb_list_top(p)) / (GB_CARD + 8)); return ifx r < 1 then 1 else r; }
+// ---- words and numbers
 
-// The longest start of text that fits in width, as a string over text's bytes.
-gb_fit :: (text: string, width: f32, size: f32, face: int) -> string {
-  if eg_width(text, size, face) <= width { return text; }
-  lo := 0; hi := text.count;
-  while lo < hi { mid := (lo + hi + 1) / 2; if eg_width(text[0..<mid], size, face) <= width - eg_width("...", size, face) { lo = mid; } else { hi = mid - 1; } }
-  return text[0..<lo];
+// 42s, 7m, 1h 12m, 2d 3h.
+gb_span :: (seconds: int, out: []u8) -> string {
+  s := ifx seconds < 0 then 0 else seconds; k := 0;
+  if s < 60 { k = np_put_int(out, 0, s); k = np_put(out, k, "s"); }
+  else if s < 3600 { k = np_put_int(out, 0, s / 60); k = np_put(out, k, "m"); }
+  else if s < 86400 { k = np_put_int(out, 0, s / 3600); k = np_put(out, k, "h"); if s / 60 % 60 > 0 { k = np_put(out, k, " "); k = np_put_int(out, k, s / 60 % 60); k = np_put(out, k, "m"); } }
+  else { k = np_put_int(out, 0, s / 86400); k = np_put(out, k, "d"); if s / 3600 % 24 > 0 { k = np_put(out, k, " "); k = np_put_int(out, k, s / 3600 % 24); k = np_put(out, k, "h"); } }
+  return cast(string) out[0..<k];
 }
-gb_text_fit :: (out: []f32, n: int, text: string, x: f32, base: f32, width: f32, size: f32, d: f32, face: int, kind: int) -> int {
-  shown := gb_fit(text, width, size, face);
-  m := eg_text(out, n, shown, x, base, size, d, face, kind);
-  if shown.count < text.count { m = eg_text(out, m, "...", x + eg_width(shown, size, face), base, size, d, face, kind); }
-  return m;
-}
-gb_age :: (seconds: int, out: []u8) -> string {
+// 950, 12k, 1.2M, 709M.
+gb_count :: (v: int, out: []u8) -> string {
   k := 0;
-  if seconds < 60 { k = np_put_int(out, 0, seconds); k = np_put(out, k, "s ago"); }
-  else if seconds < 3600 { k = np_put_int(out, 0, seconds / 60); k = np_put(out, k, "m ago"); }
-  else { k = np_put_int(out, 0, seconds / 3600); k = np_put(out, k, "h ago"); }
+  if v < 1000 { k = np_put_int(out, 0, v); }
+  else if v < 1000000 { k = np_put_int(out, 0, v / 1000); k = np_put(out, k, "k"); }
+  else if v < 100000000 { k = np_put_int(out, 0, v / 1000000); k = np_put(out, k, "."); k = np_put_int(out, k, v / 100000 % 10); k = np_put(out, k, "M"); }
+  else { k = np_put_int(out, 0, v / 1000000); k = np_put(out, k, "M"); }
+  return cast(string) out[0..<k];
+}
+// Millionths of a dollar as $0.58, $12.40, $213.
+gb_money :: (e6: int, out: []u8) -> string {
+  cents := (e6 + 5000) / 10000; k := np_put(out, 0, "$");
+  if cents >= 10000 { k = np_put_int(out, k, (cents + 50) / 100); return cast(string) out[0..<k]; }
+  k = np_put_int(out, k, cents / 100); k = np_put(out, k, "."); k = np_put_int(out, k, cents / 10 % 10); k = np_put_int(out, k, cents % 10);
   return cast(string) out[0..<k];
 }
 // claude-sonnet-5-5 reads as Sonnet 5.5.
@@ -101,167 +158,574 @@ gb_model :: (model: string, out: []u8) -> string {
   }
   return cast(string) out[0..<k];
 }
-gb_status_kind :: (status: string) -> int { return ifx status == "working" then EG_ACCENT else ifx status == "waiting" then EG_WHITE else EG_DIM; }
 
+// What an agent's state reads as and its colour. `quiet` and `waited` are seconds, as of now.
+GbLook :: struct { tone: int; n: int; }
+gb_look :: (state: string, quiet: int, waited: int, out: []u8) -> GbLook {
+  sb: [24] u8; k := 0; tone := EG_DIM;
+  if state == "blocked" { k = np_put(out, 0, "blocked"); tone = GB_RED; }
+  else if state == "stuck" || state == "stalled" { k = np_put(out, 0, "quiet for "); k = np_put(out, k, gb_span(quiet, sb[..])); tone = ifx quiet >= GB_STUCK then GB_RED else GB_AMBER; }
+  else if state == "build" { k = np_put(out, 0, "waiting on a build, "); k = np_put(out, k, gb_span(waited, sb[..])); tone = ifx waited >= GB_STUCK then GB_RED else ifx waited >= GB_STALLED then GB_AMBER else EG_ACCENT; }
+  else if state == "working" { k = np_put(out, 0, "working"); tone = EG_ACCENT; }
+  else if state == "yours" || state == "waiting" { k = np_put(out, 0, "your turn, "); k = np_put(out, k, gb_span(quiet, sb[..])); tone = EG_WHITE; }
+  else if state == "done" { k = np_put(out, 0, "done "); k = np_put(out, k, gb_span(quiet, sb[..])); k = np_put(out, k, " ago"); tone = GB_GREEN; }
+  else { k = np_put(out, 0, "idle "); k = np_put(out, k, gb_span(quiet, sb[..])); }
+  return GbLook.{tone = tone, n = k};
+}
+// The message the Copy button puts on the clipboard for an agent, to paste where it reads.
+gb_message :: (l: string, quiet: int, waited: int, out: []u8) -> int {
+  state := gb_field(l, GF_STATE); sb: [24] u8; k := 0;
+  if gb_field(l, GF_PARENT).count > 0 {
+    k = np_put(out, 0, "For the subagent ");
+    name := gb_field(l, GF_NAME); if name.count > 0 { k = np_put(out, k, "\""); k = np_put(out, k, name); k = np_put(out, k, "\" "); }
+    k = np_put(out, k, "("); k = np_put(out, k, gb_field(l, GF_KEY)); k = np_put(out, k, "): ");
+  }
+  if state == "stuck" || state == "stalled" { k = np_put(out, k, "You have written nothing for "); k = np_put(out, k, gb_span(quiet, sb[..])); k = np_put(out, k, ". Say in one line what you are waiting on, then carry on, or report done or blocked."); }
+  else if state == "build" { k = np_put(out, k, "You have waited "); k = np_put(out, k, gb_span(waited, sb[..])); k = np_put(out, k, " on: "); k = np_put(out, k, gb_field(l, GF_TOOL)); k = np_put(out, k, " -- Check its output now. If it is stuck, stop it and say why."); }
+  else if state == "blocked" { k = np_put(out, k, "You reported blocked. Say exactly what you need from me to continue."); }
+  else { k = np_put(out, k, "Status in three lines: what is done, what is left, and anything blocking you."); }
+  return k;
+}
+
+// ---- the boxes
+
+gb_button :: (width: f32) -> HudBox { a := np_auto_box(width); return HudBox.{x = a.x - 12 - 150, y = a.y, width = 150, height = a.height}; }
+// The board: wide, the window under the buttons (less what Next issue takes when it is open);
+// narrow, the left of the window up to the buttons.
+gb_panel :: (b: []GolemBoard, width: f32, height: f32) -> HudBox {
+  m := f32(NP_MARGIN);
+  if b[0].wide { top := m + f32(NP_BUTTON_H) + 12; return HudBox.{x = m, y = top, width = width - 2 * m - b[0].reserve, height = height - top - m}; }
+  w := f32(GB_NARROW); most := gb_button(width).x - 12 - m; if w > most { w = most; }
+  return HudBox.{x = m, y = m, width = w, height = height - 2 * m};
+}
+gb_usable :: (p: HudBox) -> bool { return p.height >= 300 && p.width >= 340; }
+gb_close_box :: (p: HudBox) -> HudBox { return HudBox.{x = p.x + p.width - 76, y = p.y + 10, width = 64, height = 26}; }
+gb_wide_box :: (p: HudBox) -> HudBox { return HudBox.{x = p.x + p.width - 76 - 84, y = p.y + 10, width = 76, height = 26}; }
+gb_tab_box :: (p: HudBox) -> HudBox { return HudBox.{x = p.x + p.width - 76 - 84 - 84, y = p.y + 10, width = 76, height = 26}; }
+// The queue has its own column when the board is wide enough; otherwise it shares the body with the cards.
+gb_split :: (p: HudBox) -> bool { return p.width >= 1100; }
+gb_body_top :: (p: HudBox) -> f32 { return p.y + f32(GB_HEAD) + 10 + f32(GB_TOTALS) + 10; }
+gb_cards_box :: (p: HudBox) -> HudBox {
+  w := p.width - 2 * f32(GB_PAD); if gb_split(p) { w -= f32(GB_QUEUE_W) + 16; }
+  top := gb_body_top(p);
+  return HudBox.{x = p.x + f32(GB_PAD), y = top, width = w, height = p.y + p.height - 12 - top};
+}
+gb_queue_box :: (p: HudBox) -> HudBox {
+  c := gb_cards_box(p);
+  if !gb_split(p) { return c; }
+  return HudBox.{x = c.x + c.width + 16, y = c.y, width = f32(GB_QUEUE_W), height = c.height};
+}
+gb_cols :: (p: HudBox) -> int { return ifx gb_cards_box(p).width >= 700 then 2 else 1; }
+gb_rows :: (p: HudBox) -> int { r := cast(int) ((gb_cards_box(p).height + f32(GB_GAP)) / (GB_CARD + GB_GAP)); return ifx r < 1 then 1 else r; }
+// The card in the grid at row, col: the cards fill a row before the next, so the top row is the most urgent.
+gb_card :: (p: HudBox, row: int, col: int) -> HudBox {
+  c := gb_cards_box(p); cols := gb_cols(p);
+  w := (c.width - f32(cols - 1) * 12) / f32(cols);
+  return HudBox.{x = c.x + f32(col) * (w + 12), y = c.y + f32(row) * (GB_CARD + GB_GAP), width = w, height = f32(GB_CARD)};
+}
+// The one agent's view: its card across the cards' width, its two buttons under it.
+gb_one_card :: (p: HudBox) -> HudBox { c := gb_cards_box(p); return HudBox.{x = c.x, y = c.y, width = c.width, height = f32(GB_CARD)}; }
+gb_issue_box :: (p: HudBox) -> HudBox { c := gb_one_card(p); return HudBox.{x = c.x, y = c.y + c.height + 10, width = 150, height = 26}; }
+gb_copy_box :: (p: HudBox, issue: bool) -> HudBox { c := gb_issue_box(p); return HudBox.{x = ifx issue then c.x + c.width + 10 else c.x, y = c.y, width = 150, height = 26}; }
+gb_qrows :: (p: HudBox) -> int { r := cast(int) ((gb_queue_box(p).height - 30) / f32(GB_QROW)); return ifx r < 1 then 1 else r; }
+gb_qrow :: (p: HudBox, row: int) -> HudBox { q := gb_queue_box(p); return HudBox.{x = q.x, y = q.y + 30 + f32(row) * f32(GB_QROW), width = q.width, height = f32(GB_QROW)}; }
+// A card's issue number, which opens GitHub: the start of its first line.
+gb_link_box :: (card: HudBox, issue: string) -> HudBox { return HudBox.{x = card.x + 10, y = card.y + 4, width = eg_width(issue, 15, EG_TITLE) + 14, height = 24}; }
+
+// ---- drawing
+
+GbRgb :: struct { r: f32; g: f32; b: f32; }
+gb_rgb :: (tone: int) -> GbRgb {
+  if tone == GB_AMBER { return GbRgb.{r = 1.0, g = 0.72, b = 0.22}; }
+  if tone == GB_RED { return GbRgb.{r = 1.0, g = 0.38, b = 0.34}; }
+  if tone == GB_GREEN { return GbRgb.{r = 0.46, g = 0.86, b = 0.54}; }
+  if tone == EG_ACCENT { return GbRgb.{r = f32(HUD_ACCENT_R), g = f32(HUD_ACCENT_G), b = f32(HUD_ACCENT_B)}; }
+  v := ifx tone == EG_MID then f32(HUD_GREY_MID) else ifx tone == EG_DIM then f32(HUD_GREY_DIM) else f32(HUD_GREY_WHITE);
+  return GbRgb.{r = v, g = v, b = v};
+}
+// Recolours the vertices from..to.
+gb_tint :: (out: []f32, from: int, to: int, tone: int) {
+  c := gb_rgb(tone);
+  for v: from..<to { o := v * VERTEX_FLOATS; if o + 10 < out.count { out[o + 8] = c.r; out[o + 9] = c.g; out[o + 10] = c.b; } }
+}
+gb_text :: (out: []f32, n: int, text: string, x: f32, base: f32, size: f32, d: f32, face: int, tone: int) -> int {
+  m := eg_text(out, n, text, x, base, size, d, face, ifx tone <= EG_DIM then tone else EG_WHITE);
+  if tone > EG_DIM { gb_tint(out, n, m, tone); }
+  return m;
+}
+// The longest start of text that fits in width, as a string over text's bytes.
+gb_fit :: (text: string, width: f32, size: f32, face: int) -> string {
+  if eg_width(text, size, face) <= width { return text; }
+  lo := 0; hi := text.count;
+  while lo < hi { mid := (lo + hi + 1) / 2; if eg_width(text[0..<mid], size, face) <= width - eg_width("...", size, face) { lo = mid; } else { hi = mid - 1; } }
+  return text[0..<lo];
+}
+gb_text_fit :: (out: []f32, n: int, text: string, x: f32, base: f32, width: f32, size: f32, d: f32, face: int, tone: int) -> int {
+  if !(width > 0) { return n; }
+  shown := gb_fit(text, width, size, face);
+  m := gb_text(out, n, shown, x, base, size, d, face, tone);
+  if shown.count < text.count { m = gb_text(out, m, "...", x + eg_width(shown, size, face), base, size, d, face, tone); }
+  return m;
+}
+gb_box :: (out: []f32, n: int, box: HudBox, pen: HdPen, tone: int, light: f32) -> int {
+  m := hd_rect(out, n, box, pen, ifx tone == EG_ACCENT then 2 else 1, light);
+  if tone > EG_DIM { gb_tint(out, n, m, tone); }
+  return m;
+}
+// A filled bar: one thick stroke along its longer side.
+gb_fill :: (out: []f32, n: int, x: f32, y: f32, w: f32, h: f32, d: f32, tone: int, light: f32) -> int {
+  if !(w > 0.5) || !(h > 0.5) { return n; }
+  c := gb_rgb(tone);
+  if w >= h {
+    r := h * 0.5 * d; cy := (y + h * 0.5) * d;
+    if lit(out, n, x * d + r, cy, (x + w) * d - r + 0.01, cy, r * 0.75, light, r * 0.25, c.r, c.g, c.b, 0) { return n + 6; }
+    return n;
+  }
+  r := w * 0.5 * d; cx := (x + w * 0.5) * d;
+  if lit(out, n, cx, y * d + r, cx, (y + h) * d - r + 0.01, r * 0.75, light, r * 0.25, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+// A button: its box and its label in the middle.
+gb_press :: (out: []f32, n: int, box: HudBox, label: string, d: f32, pen: HdPen, tone: int) -> int {
+  m := gb_box(out, n, box, pen, ifx tone == EG_WHITE then EG_MID else tone, 0.7);
+  return gb_text(out, m, label, box.x + (box.width - eg_width(label, 14, EG_BODY)) * 0.5, box.y + 18, 14, d, EG_BODY, tone);
+}
 // The steps as pips; the latest reached is named.
 gb_pips :: (out: []f32, n: int, steps: int, x: f32, y: f32, pen: HdPen, d: f32) -> int {
   m := n; last := -1;
   for i: 0..<7 {
     on := (steps & (1 << i)) != 0; if on { last = i; }
-    m = hd_rect(out, m, HudBox.{x = x + f32(i) * 16, y = y, width = 10, height = 10}, pen, ifx on then 2 else 1, ifx on then 1.0f32 else 0.35f32);
+    m = hd_rect(out, m, HudBox.{x = x + f32(i) * 13, y = y, width = 8, height = 8}, pen, ifx on then 2 else 1, ifx on then 1.0f32 else 0.35f32);
   }
-  if last >= 0 { m = eg_text(out, m, GB_STEPS[last], x + 7 * 16 + 6, y + 10, 13, d, EG_BODY, EG_MID); }
+  if last >= 0 { m = eg_text(out, m, GB_STEPS[last], x + 7 * 13 + 4, y + 9, 12, d, EG_BODY, EG_MID); }
+  return m;
+}
+// Where an agent's time went, as one strip: thinking, reading, editing, builds, other.
+gb_strip :: (out: []f32, n: int, l: string, x: f32, y: f32, w: f32, h: f32, d: f32) -> int {
+  spent: [5] int; total := 0;
+  for i: 0..<5 { spent[i] = gb_num(gb_field(l, GF_SPENT + i)); total += spent[i]; }
+  if total <= 0 { return n; }
+  m := n; at := x;
+  for i: 0..<5 {
+    part := w * f32(spent[i]) / f32(total);
+    if part >= 1.5 { m = gb_fill(out, m, at, y, part - 1, h, d, GB_USE_TONE[i], ifx i == 4 then 0.6f32 else 0.95f32); }
+    at += part;
+  }
+  return m;
+}
+gb_legend :: (out: []f32, n: int, x: f32, base: f32, d: f32) -> int {
+  m := n; at := x;
+  for name, i: GB_USES {
+    m = gb_fill(out, m, at, base - 8, 10, 6, d, GB_USE_TONE[i], 0.95);
+    m = eg_text(out, m, name, at + 14, base, 12, d, EG_BODY, EG_MID);
+    at += 14 + eg_width(name, 12, EG_BODY) + 12;
+  }
+  return m;
+}
+gb_legend_width :: () -> f32 { w: f32 = 0; for name: GB_USES { w += 14 + eg_width(name, 12, EG_BODY) + 12; } return w; }
+
+// One word of a run of differently coloured words on one line.
+GbRun :: struct { n: int; x: f32; }
+gb_word :: (out: []f32, r: GbRun, text: string, base: f32, size: f32, d: f32, tone: int) -> GbRun {
+  return GbRun.{n = gb_text(out, r.n, text, r.x, base, size, d, EG_BODY, tone), x = r.x + eg_width(text, size, EG_BODY) + 10};
+}
+gb_counted :: (v: int, word: string, out: []u8) -> string { k := np_put_int(out, 0, v); k = np_put(out, k, " "); k = np_put(out, k, word); return cast(string) out[0..<k]; }
+
+// The totals: four boxes across the board.
+gb_totals :: (b: []GolemBoard, out: []f32, n: int, p: HudBox, d: f32, pen: HdPen) -> int {
+  m := n; x := p.x + f32(GB_PAD); y := p.y + f32(GB_HEAD) + 10; w := p.width - 2 * f32(GB_PAD) - 24;
+  share := [4] f32.[0.36, 0.16, 0.24, 0.24];
+  names := [4] string.["Agents", "Spend today, at list prices", "Issues", "Build hosts"];
+  tb: [48] u8;
+  for i: 0..<4 {
+    box := HudBox.{x = x, y = y, width = w * share[i], height = f32(GB_TOTALS)};
+    m = hd_rect(out, m, box, pen, 1, 0.4);
+    m = gb_text_fit(out, m, ifx i == 1 && box.width < 200 then "Spend today" else names[i], box.x + 10, box.y + 18, box.width - 16, 12, d, EG_BODY, EG_DIM);
+    r := GbRun.{n = m, x = box.x + 10}; base := box.y + 40;
+    idle := b[0].count - b[0].attention - b[0].working - b[0].waiting;
+    if i == 0 {
+      if b[0].attention > 0 { r = gb_word(out, r, gb_counted(b[0].attention, ifx b[0].attention == 1 then "needs you" else "need you", tb[..]), base, 15, d, GB_RED); }
+      r = gb_word(out, r, gb_counted(b[0].working, "working", tb[..]), base, 15, d, EG_ACCENT);
+      r = gb_word(out, r, gb_counted(b[0].waiting, "waiting", tb[..]), base, 15, d, EG_WHITE);
+      if r.x + eg_width("00 idle", 15, EG_BODY) < box.x + box.width { r = gb_word(out, r, gb_counted(idle, "idle", tb[..]), base, 15, d, EG_DIM); }
+    } else if !b[0].have_totals { r = gb_word(out, r, "...", base, 15, d, EG_DIM); }
+    else if i == 1 { r = gb_word(out, r, gb_money(b[0].totals[4], tb[..]), base, 15, d, EG_WHITE); }
+    else if i == 2 {
+      if b[0].totals[6] < 0 { r = gb_word(out, r, "not read yet", base, 14, d, EG_DIM); }
+      else {
+        r = gb_word(out, r, gb_counted(b[0].totals[5], "closed today", tb[..]), base, 15, d, GB_GREEN);
+        r = gb_word(out, r, gb_counted(b[0].totals[6], "open", tb[..]), base, 15, d, EG_WHITE);
+      }
+    } else {
+      if b[0].totals[9] < 0 { r = gb_word(out, r, "not read yet", base, 14, d, EG_DIM); }
+      else {
+        k := np_put_int(tb[..], 0, b[0].totals[7]); k = np_put(tb[..], k, " of "); k = np_put_int(tb[..], k, b[0].totals[9]); k = np_put(tb[..], k, " busy");
+        r = gb_word(out, r, cast(string) tb[0..<k], base, 15, d, ifx b[0].totals[7] > 0 then EG_ACCENT else EG_WHITE);
+        if b[0].spend_n > 0 && r.x + 90 < box.x + box.width { k = np_put(tb[..], 0, cast(string) b[0].spend[0..<b[0].spend_n]); k = np_put(tb[..], k, " in 24h"); r = gb_word(out, r, cast(string) tb[0..<k], base, 13, d, EG_MID); }
+      }
+    }
+    m = r.n; x += box.width + 8;
+  }
+  return m;
+}
+
+// Seconds since the snapshot came, added to what it measured.
+gb_since :: (b: []GolemBoard, now: int) -> int { s := now - b[0].at; return ifx s < 0 || b[0].at == 0 then 0 else s; }
+gb_waited :: (b: []GolemBoard, l: string, now: int) -> int { since := gb_num(gb_field(l, GF_WAIT)); return ifx since > 0 && now > since then now - since else 0; }
+
+gb_card_draw :: (b: []GolemBoard, out: []f32, n: int, l: string, card: HudBox, d: f32, pen: HdPen, now: int) -> int {
+  state := gb_field(l, GF_STATE); quiet := gb_num(gb_field(l, GF_QUIET)) + gb_since(b, now); waited := gb_waited(b, l, now);
+  lb: [64] u8; look := gb_look(state, quiet, waited, lb[..]); label := cast(string) lb[0..<look.n];
+  m := gb_box(out, n, card, pen, ifx gb_group(state) == 0 || look.tone == GB_AMBER || look.tone == GB_RED then look.tone else EG_MID, ifx gb_group(state) == 0 then 0.8f32 else 0.42f32);
+  m = gb_fill(out, m, card.x + 2, card.y + 5, 3, card.height - 10, d, look.tone, 0.95);
+  x := card.x + 14; w := card.width - 26;
+  // Line 1: its issue or its name, and its state.
+  lw := eg_width(label, 13, EG_BODY);
+  m = gb_text(out, m, label, card.x + card.width - 12 - lw, card.y + 21, 13, d, EG_BODY, look.tone);
+  room := w - lw - 14;
+  issue := gb_num(gb_field(l, GF_ISSUE)); sub := gb_field(l, GF_PARENT).count > 0;
+  ib: [16] u8; ik := np_put(ib[..], 0, "#"); ik = np_put_int(ib[..], ik, issue);
+  head := ifx issue > 0 then cast(string) ib[0..<ik] else gb_field(l, GF_PLACE);
+  m = gb_text(out, m, head, x, card.y + 21, 15, d, EG_TITLE, ifx issue > 0 then EG_ACCENT else EG_WHITE);
+  hx := x + eg_width(head, 15, EG_TITLE) + 8;
+  rest := ifx issue > 0 && gb_field(l, GF_ISSUE_TITLE).count > 0 then gb_field(l, GF_ISSUE_TITLE) else ifx gb_field(l, GF_NAME).count > 0 then gb_field(l, GF_NAME) else gb_field(l, GF_TITLE);
+  m = gb_text_fit(out, m, rest, hx, card.y + 21, room - (hx - x), 14, d, EG_BODY, EG_WHITE);
+  // Line 2: its model, how long it has run, its tokens and cost; what it pushed, on the right.
+  mb: [48] u8; tb: [320] u8; sb: [24] u8;
+  k := np_put(tb[..], 0, gb_model(gb_field(l, GF_MODEL), mb[..]));
+  if sub { k = np_put(tb[..], k, ", subagent"); }
+  started := gb_num(gb_field(l, GF_STARTED)); ended := gb_num(gb_field(l, GF_ENDED));
+  if started > 0 { k = np_put(tb[..], k, "   "); k = np_put(tb[..], k, gb_span((ifx ended > started then ended else now) - started, sb[..])); }
+  tokens := gb_num(gb_field(l, GF_TOKENS));
+  if tokens > 0 { k = np_put(tb[..], k, "   "); k = np_put(tb[..], k, gb_count(tokens, sb[..])); k = np_put(tb[..], k, " tokens"); }
+  cost := gb_field(l, GF_COST);
+  if cost.count > 0 && cost[0] != '-' && tokens > 0 { k = np_put(tb[..], k, "   "); k = np_put(tb[..], k, gb_money(gb_num(cost), sb[..])); }
+  if gb_field(l, GF_WHOLE) == "0" { k = np_put(tb[..], k, "   still counting"); }
+  commits := gb_field(l, GF_COMMITS); cw: f32 = 0;
+  if commits.count > 0 {
+    // The latest commit, and how many came before it.
+    from := commits.count; while from > 0 && commits[from - 1] != ' ' { from -= 1; }
+    more := 0; for c: commits { if c == ' ' { more += 1; } }
+    cb: [48] u8; ck := np_put(cb[..], 0, "pushed "); ck = np_put(cb[..], ck, commits[from..<commits.count]);
+    if more > 0 { ck = np_put(cb[..], ck, " +"); ck = np_put_int(cb[..], ck, more); }
+    cw = eg_width(cast(string) cb[0..<ck], 12.5, EG_BODY);
+    m = gb_text(out, m, cast(string) cb[0..<ck], card.x + card.width - 12 - cw, card.y + 39, 12.5, d, EG_BODY, GB_GREEN);
+    cw += 12;
+  }
+  m = gb_text_fit(out, m, cast(string) tb[0..<k], x, card.y + 39, w - cw, 12.5, d, EG_BODY, EG_MID);
+  // Line 3: its latest words (what it was asked, until it has said something).
+  said := gb_field(l, GF_SAID); if said.count == 0 { said = gb_field(l, GF_TITLE); }
+  m = gb_text_fit(out, m, said, x, card.y + 58, w, 14, d, EG_BODY, EG_WHITE);
+  // Line 4: its steps, then its latest tool call: the one it waits on, when it waits on a build.
+  tool := gb_field(l, GF_TOOL); if tool.count == 0 { tool = gb_field(l, GF_LAST); }
+  m = gb_pips(out, m, gb_num(gb_field(l, GF_STEPS)), x, card.y + 67, pen, d);
+  m = gb_text_fit(out, m, tool, x + 160, card.y + 76, w - 160, 12.5, d, EG_BODY, ifx state == "build" && look.tone != EG_ACCENT then look.tone else EG_DIM);
+  // Line 5: where its time went.
+  return gb_strip(out, m, l, x, card.y + 88, w, 6, d);
+}
+
+// The queue: the open issues, the ones nobody has first.
+gb_queue_draw :: (b: []GolemBoard, out: []f32, n: int, p: HudBox, d: f32, pen: HdPen) -> int {
+  q := gb_queue_box(p); m := n;
+  m = eg_text(out, m, "Queue", q.x, q.y + 16, 16, d, EG_TITLE, EG_WHITE);
+  tb: [64] u8;
+  if b[0].qcount == 0 { return eg_text(out, m, ifx b[0].have_totals && b[0].totals[6] == 0 then "No issue is open." else "The open issues are not read yet.", q.x, q.y + 46, 14, d, EG_BODY, EG_MID); }
+  k := np_put_int(tb[..], 0, b[0].qcount); k = np_put(tb[..], k, " open, "); k = np_put_int(tb[..], k, b[0].nobody); k = np_put(tb[..], k, " with nobody on them");
+  m = gb_text(out, m, cast(string) tb[0..<k], q.x + eg_width("Queue", 16, EG_TITLE) + 12, q.y + 16, 13, d, EG_BODY, ifx b[0].nobody > 0 then GB_AMBER else EG_MID);
+  rows := gb_qrows(p); most := b[0].qcount - rows; if most < 0 { most = 0; }
+  if b[0].qscroll > most { b[0].qscroll = most; } if b[0].qscroll < 0 { b[0].qscroll = 0; }
+  for row: 0..<rows {
+    i := b[0].qscroll + row; if i >= b[0].qcount { break; }
+    l := gb_queued(b, i); box := gb_qrow(p, row); base := box.y + 16;
+    k = np_put(tb[..], 0, "#"); k = np_put(tb[..], k, gb_field(l, 1));
+    who := gb_field(l, 3); state := gb_field(l, 4);
+    m = eg_text(out, m, cast(string) tb[0..<k], box.x, base, 13, d, EG_BODY, EG_ACCENT);
+    right := ifx who.count == 0 then "nobody" else who;
+    if who.count > 0 { k = np_put(tb[..], 0, who); k = np_put(tb[..], k, ", "); k = np_put(tb[..], k, ifx state == "build" then "on a build" else ifx state == "yours" then "your turn" else ifx state == "stuck" || state == "stalled" then "quiet" else state); right = cast(string) tb[0..<k]; }
+    right = gb_fit(right, 190, 12.5, EG_BODY);
+    rw := eg_width(right, 12.5, EG_BODY);
+    tone := ifx who.count == 0 then GB_AMBER else ifx gb_group(state) == 0 then GB_RED else EG_MID;
+    m = gb_text(out, m, right, box.x + box.width - rw, base, 12.5, d, EG_BODY, tone);
+    m = gb_text_fit(out, m, gb_field(l, 2), box.x + 54, base, box.width - 54 - rw - 12, 13, d, EG_BODY, ifx who.count == 0 then EG_WHITE else EG_MID);
+  }
+  return m;
+}
+
+// One labelled line of the one-agent view.
+gb_fact :: (out: []f32, n: int, name: string, value: string, x: f32, base: f32, w: f32, d: f32, tone: int) -> int {
+  m := eg_text(out, n, name, x, base, 13, d, EG_BODY, EG_DIM);
+  return gb_text_fit(out, m, value, x + 74, base, w - 74, 13, d, EG_BODY, tone);
+}
+// One agent: its card, its buttons, what it has done, where its time went, and its messages
+// and tool calls with their times, the newest at the bottom.
+gb_one_draw :: (b: []GolemBoard, out: []f32, n: int, p: HudBox, d: f32, pen: HdPen, now: int) -> int {
+  l := gb_golem(b, b[0].sel); card := gb_one_card(p); area := gb_cards_box(p);
+  m := gb_card_draw(b, out, n, l, card, d, pen, now);
+  issue := gb_num(gb_field(l, GF_ISSUE));
+  tb: [96] u8; sb: [24] u8;
+  if issue > 0 { k := np_put(tb[..], 0, "Open #"); k = np_put_int(tb[..], k, issue); m = gb_press(out, m, gb_issue_box(p), cast(string) tb[0..<k], d, pen, EG_ACCENT); }
+  copied := b[0].copied > 0 && now - b[0].copied < 3;
+  m = gb_press(out, m, gb_copy_box(p, issue > 0), ifx copied then "Copied" else "Copy a message", d, pen, ifx copied then GB_GREEN else EG_WHITE);
+  cbox := gb_copy_box(p, issue > 0);
+  m = gb_text_fit(out, m, "Paste it where the agent reads: its terminal, or the session that started it.", cbox.x + cbox.width + 12, cbox.y + 18, area.x + area.width - (cbox.x + cbox.width + 12), 12.5, d, EG_BODY, EG_DIM);
+  y := card.y + card.height + 10 + 26 + 24; x := area.x; w := area.width;
+  m = gb_fact(out, m, "Folder", ifx gb_field(l, GF_FOLDER).count > 0 then gb_field(l, GF_FOLDER) else "not known", x, y, w, d, EG_WHITE); y += 19;
+  m = gb_fact(out, m, "Asked", gb_field(l, GF_TITLE), x, y, w, d, EG_MID); y += 19;
+  commits := gb_field(l, GF_COMMITS);
+  m = gb_fact(out, m, "Pushed", ifx commits.count > 0 then commits else "nothing yet", x, y, w, d, ifx commits.count > 0 then GB_GREEN else EG_DIM); y += 19;
+  files := gb_field(l, GF_FILES);
+  m = gb_fact(out, m, "Changed", ifx files.count > 0 then files else "no file yet", x, y, w, d, ifx files.count > 0 then EG_WHITE else EG_DIM); y += 26;
+  // Where its time went: the strip again, larger, then each share in words.
+  spent: [5] int; total := 0;
+  for i: 0..<5 { spent[i] = gb_num(gb_field(l, GF_SPENT + i)); total += spent[i]; }
+  if total > 0 {
+    m = eg_text(out, m, "Time", x, y, 13, d, EG_BODY, EG_DIM);
+    m = gb_strip(out, m, l, x + 74, y - 9, w - 74, 10, d); y += 19;
+    r := GbRun.{n = m, x = x + 74};
+    for i: 0..<5 {
+      if spent[i] == 0 { continue; }
+      k := np_put(tb[..], 0, GB_USES[i]); k = np_put(tb[..], k, " "); k = np_put_int(tb[..], k, (spent[i] * 100 + total / 2) / total); k = np_put(tb[..], k, "% ("); k = np_put(tb[..], k, gb_span(spent[i], sb[..])); k = np_put(tb[..], k, ")");
+      if r.x + eg_width(cast(string) tb[0..<k], 13, EG_BODY) > x + w { break; }
+      r = gb_word(out, r, cast(string) tb[0..<k], y, 13, d, GB_USE_TONE[i]);
+    }
+    m = r.n; y += 14;
+  }
+  m = hd_line(out, m, x, y, x + w, y, pen, 1, 0.4);
+  top := y + 12; bottom := area.y + area.height;
+  // Its M lines follow its G line.
+  raw := cast(string) b[0].raw[0..<b[0].n];
+  at := b[0].line[b[0].sel] + l.count + 1;
+  ms: [32] int; count := 0;
+  while at < raw.count && count < 32 { ml := gb_line_at(raw, at); if ml.count < 2 || ml[0] != 'M' { break; } ms[count] = at; count += 1; at += ml.count + 1; }
+  if b[0].dscroll > count - 1 { b[0].dscroll = count - 1; } if b[0].dscroll < 0 { b[0].dscroll = 0; }
+  if count == 0 { return eg_text(out, m, "It has said nothing yet.", x, top + 14, 14, d, EG_BODY, EG_MID); }
+  // From the newest in view upward, each at most two lines.
+  yy := bottom; i := count - 1 - b[0].dscroll;
+  while i >= 0 {
+    ml := gb_line_at(raw, ms[i]); kind := gb_field(ml, 1); text := gb_field(ml, 3);
+    lead := ifx kind == "t" then "$ " else ifx kind == "u" then "Asked: " else "";
+    tone := ifx kind == "t" then EG_ACCENT else ifx kind == "u" then EG_MID else EG_WHITE;
+    tw := w - 52; first := np_line(text, 0, tw - eg_width(lead, 14, EG_BODY));
+    lines := ifx first.next < text.count && first.next > 0 then 2 else 1;
+    yy -= f32(lines) * 19 + 5;
+    if yy < top { break; }
+    m = eg_text(out, m, gb_field(ml, 2), x, yy + 14, 12.5, d, EG_BODY, EG_DIM);
+    tx := x + 52;
+    if lead.count > 0 { m = eg_text(out, m, lead, tx, yy + 14, 14, d, EG_BODY, tone); }
+    m = eg_text(out, m, text[0..<first.end], tx + eg_width(lead, 14, EG_BODY), yy + 14, 14, d, EG_BODY, tone);
+    if lines == 2 { m = gb_text_fit(out, m, text[first.next..<text.count], tx, yy + 33, tw, 14, d, EG_BODY, tone); }
+    i -= 1;
+  }
   return m;
 }
 
 gb_frame :: (b: []GolemBoard, out: []f32, n: int, width: f32, height: f32, d: f32, pen: HdPen, now: int, panel: []f32) -> int {
   m := n;
   bb := gb_button(width);
-  m = hd_rect(out, m, bb, pen, ifx b[0].open then 2 else 1, ifx b[0].open then 1.0f32 else 0.7f32);
-  lb: [32] u8; k := np_put(lb[..], 0, "Golems "); k = np_put_int(lb[..], k, b[0].working); if b[0].count > b[0].working { k = np_put(lb[..], k, "/"); k = np_put_int(lb[..], k, b[0].count); }
+  m = gb_box(out, m, bb, pen, ifx b[0].attention > 0 then GB_RED else ifx b[0].open then EG_ACCENT else EG_MID, ifx b[0].open || b[0].attention > 0 then 1.0f32 else 0.7f32);
+  lb: [32] u8; k := np_put(lb[..], 0, "Golems "); k = np_put_int(lb[..], k, b[0].working + b[0].attention); if b[0].count > b[0].working + b[0].attention { k = np_put(lb[..], k, "/"); k = np_put_int(lb[..], k, b[0].count); }
   label := cast(string) lb[0..<k];
-  m = eg_text(out, m, label, bb.x + (bb.width - eg_width(label, 16, EG_TITLE)) * 0.5, bb.y + 23, 16, d, EG_TITLE, ifx b[0].working > 0 then EG_WHITE else EG_MID);
+  m = gb_text(out, m, label, bb.x + (bb.width - eg_width(label, 16, EG_TITLE)) * 0.5, bb.y + 23, 16, d, EG_TITLE, ifx b[0].attention > 0 then GB_RED else ifx b[0].working > 0 then EG_WHITE else EG_MID);
   if !b[0].open { return m; }
-  p := gb_panel(width, height);
-  if p.height < 240 || p.width < 280 { return m; }
+  p := gb_panel(b, width, height);
+  if !gb_usable(p) { return m; }
   if panel.count >= 8 { panel[4] = p.x; panel[5] = p.y; panel[6] = p.width; panel[7] = p.height; }
   m = hd_rect(out, m, p, pen, 1, 0.8);
-  c := gb_close_box(p);
-  m = hd_rect(out, m, c, pen, 1, 0.7);
-  back := b[0].sel >= 0;
-  cl := ifx back then "All" else "Close";
-  m = eg_text(out, m, cl, c.x + (c.width - eg_width(cl, 14, EG_BODY)) * 0.5, c.y + 18, 14, d, EG_BODY, EG_WHITE);
+  one := b[0].sel >= 0; split := gb_split(p);
+  m = gb_press(out, m, gb_close_box(p), ifx one then "All" else "Close", d, pen, EG_WHITE);
+  m = gb_press(out, m, gb_wide_box(p), ifx b[0].wide then "Narrow" else "Wide", d, pen, EG_WHITE);
+  if !split && !one { m = gb_press(out, m, gb_tab_box(p), ifx b[0].queue then "Agents" else "Queue", d, pen, ifx !b[0].queue && b[0].nobody > 0 then GB_AMBER else EG_WHITE); }
   m = eg_text(out, m, "Golems", p.x + f32(GB_PAD), p.y + 30, 19, d, EG_TITLE, EG_WHITE);
-  sb: [96] u8; sk := np_put_int(sb[..], 0, b[0].working); sk = np_put(sb[..], sk, " working, "); sk = np_put_int(sb[..], sk, b[0].waiting); sk = np_put(sb[..], sk, " waiting, ");
-  sk = np_put_int(sb[..], sk, b[0].count - b[0].working - b[0].waiting); sk = np_put(sb[..], sk, " idle");
-  m = eg_text(out, m, cast(string) sb[0..<sk], p.x + f32(GB_PAD) + eg_width("Golems", 19, EG_TITLE) + 14, p.y + 30, 13, d, EG_BODY, EG_DIM);
-  m = hd_line(out, m, p.x, p.y + 46, p.x + p.width, p.y + 46, pen, 1, 0.5);
-  inner := p.width - 2 * f32(GB_PAD) - 20;
+  lx := p.x + f32(GB_PAD) + eg_width("Golems", 19, EG_TITLE) + 20;
+  if lx + gb_legend_width() + 20 < gb_tab_box(p).x { m = eg_text(out, m, "Time:", lx, p.y + 29, 12, d, EG_BODY, EG_DIM); m = gb_legend(out, m, lx + 40, p.y + 29, d); }
+  m = hd_line(out, m, p.x, p.y + f32(GB_HEAD), p.x + p.width, p.y + f32(GB_HEAD), pen, 1, 0.5);
+  m = gb_totals(b, out, m, p, d, pen);
+  if split || (b[0].queue && !one) { m = gb_queue_draw(b, out, m, p, d, pen); }
+  if split { q := gb_queue_box(p); m = hd_line(out, m, q.x - 8, q.y, q.x - 8, q.y + q.height, pen, 1, 0.35); }
+  if b[0].queue && !split && !one { return m; }
+  area := gb_cards_box(p);
   if b[0].count == 0 {
-    return eg_text(out, m, ifx b[0].at == 0 then "Looking for agents..." else "No agent has worked in the last 12 hours.", p.x + f32(GB_PAD), gb_list_top(p) + 20, f32(NP_SIZE), d, EG_BODY, EG_MID);
+    return eg_text(out, m, ifx b[0].at == 0 then "Looking for agents..." else "No agent has worked in the last 12 hours.", area.x, area.y + 20, f32(NP_SIZE), d, EG_BODY, EG_MID);
   }
-  if !back {
-    rows := gb_rows(p);
-    most := b[0].count - rows; if most < 0 { most = 0; }
-    if b[0].scroll > most { b[0].scroll = most; } if b[0].scroll < 0 { b[0].scroll = 0; }
-    for row: 0..<rows {
-      i := b[0].scroll + row; if i >= b[0].count { break; }
-      m = gb_card_draw(b, out, m, gb_golem(b, i), gb_card(p, row), d, pen, inner);
-    }
-    return m;
-  }
-  // One golem: its card, then its latest messages, newest last.
-  l := gb_golem(b, b[0].sel);
-  card := gb_card(p, 0);
-  m = gb_card_draw(b, out, m, l, card, d, pen, inner);
-  y := card.y + card.height + 26;
-  raw := cast(string) b[0].raw[0..<b[0].n];
-  at := b[0].line[b[0].sel] + l.count + 1;
-  while at < raw.count && y < p.y + p.height - 16 {
-    ml := gb_line_at(raw, at);
-    if ml.count < 2 || ml[0] != 'M' { break; }
-    kind := gb_field(ml, 1); text := gb_field(ml, 2);
-    lead := ifx kind == "t" then "> " else ifx kind == "u" then "Asked: " else "";
-    ink := ifx kind == "t" then EG_ACCENT else ifx kind == "u" then EG_MID else EG_WHITE;
-    // A message wraps to at most three lines.
-    from := 0; lines := 0; first := true;
-    while from < text.count && lines < 3 && y < p.y + p.height - 16 {
-      x := p.x + f32(GB_PAD); w := inner;
-      if first && lead.count > 0 { m = eg_text(out, m, lead, x, y, 14, d, EG_BODY, ink); x += eg_width(lead, 14, EG_BODY); w -= eg_width(lead, 14, EG_BODY); }
-      part := np_line(text[from..<text.count], 0, w);
-      seg := text[from..<from + part.end];
-      if lines == 2 && from + part.end < text.count { m = gb_text_fit(out, m, text[from..<text.count], x, y, w, 14, d, EG_BODY, ink); }
-      else { m = eg_text(out, m, seg, x, y, 14, d, EG_BODY, ink); }
-      if part.next <= 0 { break; }
-      from += part.next; lines += 1; y += 19; first = false;
-    }
-    y += 8;
-    at += ml.count + 1;
-  }
+  if one { return gb_one_draw(b, out, m, p, d, pen, now); }
+  rows := gb_rows(p); cols := gb_cols(p);
+  most := (b[0].count + cols - 1) / cols - rows; if most < 0 { most = 0; }
+  if b[0].scroll > most { b[0].scroll = most; } if b[0].scroll < 0 { b[0].scroll = 0; }
+  for row: 0..<rows { for col: 0..<cols {
+    i := (b[0].scroll + row) * cols + col; if i >= b[0].count { break; }
+    m = gb_card_draw(b, out, m, gb_golem(b, i), gb_card(p, row, col), d, pen, now);
+  } }
   return m;
 }
 
-gb_card_draw :: (b: []GolemBoard, out: []f32, n: int, l: string, card: HudBox, d: f32, pen: HdPen, inner: f32) -> int {
-  m := hd_rect(out, n, card, pen, 1, 0.45);
-  status := gb_field(l, 2); age := gb_num(gb_field(l, 3));
-  x := card.x + 12; w := card.width - 24;
-  // Line 1: where, the model, and since when.
-  place := gb_field(l, 6); sub := gb_field(l, 9).count > 0;
-  m = eg_text(out, m, place, x, card.y + 22, 16, d, EG_TITLE, gb_status_kind(status));
-  px := x + eg_width(place, 16, EG_TITLE) + 10;
-  mb: [48] u8; model := gb_model(gb_field(l, 4), mb[..]);
-  tag: [80] u8; tk := np_put(tag[..], 0, model); if sub { tk = np_put(tag[..], tk, ", subagent"); }
-  m = eg_text(out, m, cast(string) tag[0..<tk], px, card.y + 22, 13, d, EG_BODY, EG_MID);
-  ab: [32] u8; ag := gb_age(age, ab[..]);
-  st: [48] u8; sk := np_put(st[..], 0, status); sk = np_put(st[..], sk, ", "); sk = np_put(st[..], sk, ag);
-  right := cast(string) st[0..<sk];
-  m = eg_text(out, m, right, card.x + card.width - 12 - eg_width(right, 13, EG_BODY), card.y + 22, 13, d, EG_BODY, gb_status_kind(status));
-  // Line 2: its latest words (what it was asked, until it has said something).
-  said := gb_field(l, 11); if said.count == 0 { said = gb_field(l, 5); }
-  m = gb_text_fit(out, m, said, x, card.y + 44, w, 14, d, EG_BODY, EG_WHITE);
-  // Line 3: its steps, then its latest tool call.
-  tool := gb_field(l, 12); if tool.count == 0 { tool = gb_field(l, 10); }
-  m = gb_pips(out, m, gb_num(gb_field(l, 8)), x, card.y + 56, pen, d);
-  m = gb_text_fit(out, m, tool, x + 210, card.y + 66, w - 210, 13, d, EG_BODY, EG_DIM);
-  return m;
-}
-
-// A press, a drag or a release (phase 0, 1, 2); true when the board took it.
-gb_pointer :: (b: []GolemBoard, x: f32, y: f32, phase: int, width: f32, height: f32) -> bool {
-  bb := gb_button(width); p := gb_panel(width, height);
-  over := b[0].open && np_in(p, x, y);
-  if phase == 0 {
-    b[0].down = 0;
-    if np_in(bb, x, y) { b[0].down = 1; }
-    else if over && np_in(gb_close_box(p), x, y) { b[0].down = 2; }
-    else if over && b[0].sel < 0 {
-      for row: 0..<gb_rows(p) { if b[0].scroll + row < b[0].count && np_in(gb_card(p, row), x, y) { b[0].down = 10 + b[0].scroll + row; } }
-    }
-    return b[0].down != 0 || over;
+// What is under a point on an open board: 0 nothing, 2 Close or All, 3 Wide or Narrow, 4 Queue
+// or Agents, 5 the one agent's issue button, 6 its Copy button, 100+i agent i's card, 300+i its
+// issue number, 500+i queue line i.
+gb_hit :: (b: []GolemBoard, x: f32, y: f32, p: HudBox) -> int {
+  one := b[0].sel >= 0 && b[0].sel < b[0].count; split := gb_split(p);
+  if np_in(gb_close_box(p), x, y) { return 2; }
+  if np_in(gb_wide_box(p), x, y) { return 3; }
+  if !split && !one && np_in(gb_tab_box(p), x, y) { return 4; }
+  if split || (b[0].queue && !one) {
+    for row: 0..<gb_qrows(p) { if b[0].qscroll + row < b[0].qcount && np_in(gb_qrow(p, row), x, y) { return 500 + b[0].qscroll + row; } }
   }
+  if b[0].queue && !split && !one { return 0; }
+  if one {
+    issue := gb_num(gb_field(gb_golem(b, b[0].sel), GF_ISSUE)) > 0;
+    if issue && np_in(gb_issue_box(p), x, y) { return 5; }
+    if np_in(gb_copy_box(p, issue), x, y) { return 6; }
+    return 0;
+  }
+  cols := gb_cols(p);
+  for row: 0..<gb_rows(p) { for col: 0..<cols {
+    i := (b[0].scroll + row) * cols + col; if i >= b[0].count { break; }
+    card := gb_card(p, row, col);
+    if !np_in(card, x, y) { continue; }
+    issue := gb_num(gb_field(gb_golem(b, i), GF_ISSUE));
+    ib: [16] u8; k := np_put(ib[..], 0, "#"); k = np_put_int(ib[..], k, issue);
+    if issue > 0 && np_in(gb_link_box(card, cast(string) ib[0..<k]), x, y) { return 300 + i; }
+    return 100 + i;
+  } }
+  return 0;
+}
+gb_open_issue :: (b: []GolemBoard, issue: int) {
+  if issue <= 0 { return; }
+  k := np_put(b[0].action[..], 0, "open\t"); k = np_put(b[0].action[..], k, GB_ISSUES); b[0].action_n = np_put_int(b[0].action[..], k, issue);
+}
+// A press, a drag or a release (phase 0, 1, 2); true when the board took it. A thing acts when
+// the press began and ended on it.
+gb_pointer :: (b: []GolemBoard, x: f32, y: f32, phase: int, width: f32, height: f32, now: int) -> bool {
+  bb := gb_button(width); p := gb_panel(b, width, height);
+  over := b[0].open && gb_usable(p) && np_in(p, x, y);
+  hit := ifx np_in(bb, x, y) then 1 else ifx over then gb_hit(b, x, y, p) else 0;
+  if phase == 0 { b[0].down = hit; return hit != 0 || over; }
   if phase == 1 { return b[0].down != 0 || over; }
-  took := b[0].down != 0 || over;
-  if b[0].down == 1 && np_in(bb, x, y) { b[0].open = !b[0].open; if b[0].open { b[0].asked = 0; } }
-  if b[0].down == 2 && np_in(gb_close_box(p), x, y) { if b[0].sel >= 0 { b[0].sel = -1; } else { b[0].open = false; } }
-  if b[0].down >= 10 { row := b[0].down - 10 - b[0].scroll; if row >= 0 && np_in(gb_card(p, row), x, y) { b[0].sel = b[0].down - 10; } }
-  b[0].down = 0;
+  took := b[0].down != 0 || over; down := b[0].down; b[0].down = 0;
+  if down == 0 || down != hit { return took; }
+  if down == 1 { b[0].open = !b[0].open; if b[0].open { b[0].asked = 0; } }
+  if down == 2 { if b[0].sel >= 0 { b[0].sel = -1; } else { b[0].open = false; } }
+  if down == 3 { b[0].wide = !b[0].wide; }
+  if down == 4 { b[0].queue = !b[0].queue; }
+  if down == 5 && b[0].sel >= 0 { gb_open_issue(b, gb_num(gb_field(gb_golem(b, b[0].sel), GF_ISSUE))); }
+  if down == 6 && b[0].sel >= 0 {
+    l := gb_golem(b, b[0].sel);
+    k := np_put(b[0].action[..], 0, "copy\t");
+    b[0].action_n = k + gb_message(l, gb_num(gb_field(l, GF_QUIET)) + gb_since(b, now), gb_waited(b, l, now), b[0].action[k..<b[0].action.count]);
+    b[0].copied = now;
+  }
+  if down >= 100 && down < 300 && down - 100 < b[0].count { b[0].sel = down - 100; b[0].dscroll = 0; }
+  if down >= 300 && down < 500 && down - 300 < b[0].count { gb_open_issue(b, gb_num(gb_field(gb_golem(b, down - 300), GF_ISSUE))); }
+  if down >= 500 && down - 500 < b[0].qcount { gb_open_issue(b, gb_num(gb_field(gb_queued(b, down - 500), 1))); }
   return took;
 }
+// The wheel scrolls what it is over: the queue, the one agent's messages, or the cards.
 gb_wheel :: (b: []GolemBoard, x: f32, y: f32, dy: f32, width: f32, height: f32) -> bool {
-  if !b[0].open || !np_in(gb_panel(width, height), x, y) { return false; }
-  if dy > 0 { b[0].scroll += 1; } else if dy < 0 { b[0].scroll -= 1; }
+  p := gb_panel(b, width, height);
+  if !b[0].open || !gb_usable(p) || !np_in(p, x, y) { return false; }
+  step := ifx dy > 0 then 1 else ifx dy < 0 then -1 else 0;
+  one := b[0].sel >= 0;
+  if (gb_split(p) && np_in(gb_queue_box(p), x, y)) || (!gb_split(p) && b[0].queue && !one) { b[0].qscroll += step; }
+  else if one { b[0].dscroll -= step; }
+  else { b[0].scroll += step; }
   return true;
 }
-
-#test "golems board: a snapshot's agents are indexed and counted" {
-  b: [1] GolemBoard;
-  snap := "G\tk1\tworking\t2\tclaude-sonnet-5-5\tFix the comma\t#13116\t16\t4\t\tBash coax/build.sh\nM\tt\tBash coax/build.sh\nM\ta\tBuilding.\nG\tk2\tidle\t9000\tclaude-opus-5-5\tGreen main\t#13134\t31\t124\t\tdone\n";
-  gb_take(b[..], snap, 100);
-  #assert b[0].count == 2 && b[0].working == 1 && b[0].waiting == 0;
-  #assert gb_field(gb_golem(b[..], 0), 11) == "" && gb_field(gb_golem(b[..], 0), 6) == "#13116" && gb_num(gb_field(gb_golem(b[..], 1), 8)) == 124;
-  mb: [48] u8; #assert gb_model("claude-sonnet-5-5", mb[..]) == "Sonnet 5.5";
-  ab: [32] u8; #assert gb_age(9000, ab[..]) == "2h ago" && gb_age(42, ab[..]) == "42s ago";
+// A line for the host, once: `open URL` (the default browser) or `copy TEXT` (the clipboard), tab between.
+gb_take_action :: (b: []GolemBoard, out: []u8) -> int {
+  n := b[0].action_n; if n == 0 || n > out.count { return 0; }
+  for i: 0..<n { out[i] = b[0].action[i]; } b[0].action_n = 0; return n;
 }
-#test "golems board: it asks every 30 s shut and every 3 s open, never twice at once" {
+
+GB_TEST :: "T\t1\t1\t1\t0\t51118005\t12\t19\t7\t7\t8\t$19.68\nG\tk1\tstuck\t1000\tclaude-sonnet-5-5\tFix the comma\t#13116\t16\t4\t\tBash coax/build.sh\t\tBash coax/build.sh\t13116\tThe comma\t100\t1200000\t585845\tabc1234 def5678\t0\t40\t10\t10\t30\t10\t/w/openagents-issue-13116\ta.coax\t1\t0\t\nM\tt\t17:10\tBash coax/build.sh\nM\ta\t17:11\tBuilding.\nG\tk2\tbuild\t9\tclaude-opus-5-5\tGreen main\topenagents\t31\t124\tp1\tdone\tdone\tBash sleep 240\t0\t\t100\t10\t-1\t\t940\t1\t0\t0\t9\t0\t/w\t\t1\t0\tGreen main helper\nG\tk3\tyours\t60\tclaude-opus-5-5\tHello\topenagents\t1\t1\t\tHi\tHi\t\t0\t\t100\t10\t20\t\t0\t1\t0\t0\t0\t0\t/w\t\t1\t900\t\nQ\t13140\tNobody's issue\t\t\nQ\t13116\tThe comma\t#13116\tstuck\n";
+
+#test "golems board: a snapshot's agents, queue and totals are indexed and counted" {
+  b: [1] GolemBoard;
+  gb_take(b[..], GB_TEST, 1000);
+  #assert b[0].count == 3 && b[0].attention == 1 && b[0].working == 1 && b[0].waiting == 1 && b[0].qcount == 2 && b[0].nobody == 1;
+  #assert b[0].have_totals && b[0].totals[4] == 51118005 && b[0].totals[5] == 12 && b[0].totals[9] == 8 && cast(string) b[0].spend[0..<b[0].spend_n] == "$19.68";
+  #assert gb_field(gb_golem(b[..], 0), GF_SAID) == "" && gb_field(gb_golem(b[..], 0), GF_PLACE) == "#13116" && gb_num(gb_field(gb_golem(b[..], 1), GF_STEPS)) == 124 && gb_field(gb_golem(b[..], 1), GF_NAME) == "Green main helper";
+  #assert gb_field(gb_queued(b[..], 0), 1) == "13140" && gb_field(gb_queued(b[..], 1), 4) == "stuck";
+  // The agent in view stays in view when the order changes, and a failed snapshot changes nothing.
+  b[0].sel = 2; gb_take(b[..], "G\tk3\tyours\t60\tm\tHello\topenagents\nG\tk1\tstuck\t1\tm\tx\t#13116\n", 1003); #assert b[0].sel == 0 && b[0].count == 2;
+  gb_take(b[..], "", 1006); #assert b[0].count == 2 && b[0].at == 1003;
+}
+#test "golems board: durations, counts, money and models read plainly" {
+  s: [24] u8;
+  #assert gb_span(42, s[..]) == "42s" && gb_span(420, s[..]) == "7m" && gb_span(4320, s[..]) == "1h 12m" && gb_span(7200, s[..]) == "2h" && gb_span(183600, s[..]) == "2d 3h";
+  #assert gb_count(950, s[..]) == "950" && gb_count(12400, s[..]) == "12k" && gb_count(1250000, s[..]) == "1.2M" && gb_count(709238656, s[..]) == "709M";
+  #assert gb_money(585845, s[..]) == "$0.59" && gb_money(12400000, s[..]) == "$12.40" && gb_money(213612725, s[..]) == "$214" && gb_money(0, s[..]) == "$0.00";
+  mb: [48] u8; #assert gb_model("claude-sonnet-5-5", mb[..]) == "Sonnet 5.5";
+}
+#test "golems board: an agent's state reads as words, amber after five quiet minutes and red after fifteen" {
+  o: [64] u8;
+  a := gb_look("stalled", 400, 0, o[..]); #assert cast(string) o[0..<a.n] == "quiet for 6m" && a.tone == GB_AMBER;
+  r := gb_look("stuck", 1000, 0, o[..]); #assert cast(string) o[0..<r.n] == "quiet for 16m" && r.tone == GB_RED;
+  w := gb_look("build", 30, 240, o[..]); #assert cast(string) o[0..<w.n] == "waiting on a build, 4m" && w.tone == EG_ACCENT;
+  #assert gb_look("build", 30, 400, o[..]).tone == GB_AMBER && gb_look("build", 30, 1000, o[..]).tone == GB_RED && gb_look("blocked", 5, 0, o[..]).tone == GB_RED;
+  y := gb_look("yours", 180, 0, o[..]); #assert cast(string) o[0..<y.n] == "your turn, 3m";
+  #assert gb_group("blocked") == 0 && gb_group("stuck") == 0 && gb_group("build") == 1 && gb_group("yours") == 2 && gb_group("done") == 3 && gb_group("idle") == 3;
+}
+#test "golems board: it asks for agents every 30 s shut and every 3 s open, never twice at once, and for the issues every two minutes while open" {
   b: [1] GolemBoard;
   #assert gb_due(b[..], 1000) && !gb_due(b[..], 1001);
   gb_take(b[..], "", 1002); #assert !gb_due(b[..], 1010) && gb_due(b[..], 1031);
+  #assert !gb_refresh_due(b[..], 1031);
   b[0].open = true; gb_take(b[..], "", 1032); #assert gb_due(b[..], 1034);
+  #assert gb_refresh_due(b[..], 1034) && !gb_refresh_due(b[..], 1100) && gb_refresh_due(b[..], 1154);
 }
-#test "golems board: its button sits left of Autopilot, its panel on the left" {
-  g := gb_button(1320); a := np_auto_box(1320);
+#test "golems board: wide it fills the window under the buttons with two columns and the queue beside; narrow it keeps left" {
+  b: [1] GolemBoard; g := gb_button(1320); a := np_auto_box(1320);
   #assert g.x + g.width < a.x && g.y == a.y && g.x > 0;
-  p := gb_panel(1320, 880); #assert p.x == NP_MARGIN && p.width == f32(GB_W) && gb_rows(p) >= 6;
+  p := gb_panel(b[..], 1320, 880);
+  #assert b[0].wide && p.x == NP_MARGIN && p.y > g.y + g.height && p.width == 1320 - 2 * NP_MARGIN && gb_split(p) && gb_cols(p) == 2 && gb_rows(p) >= 5;
+  c0 := gb_card(p, 0, 0); c1 := gb_card(p, 0, 1); q := gb_queue_box(p);
+  #assert c1.x > c0.x + c0.width && c1.x + c1.width < q.x && q.x + q.width <= p.x + p.width && gb_card(p, 1, 0).y > c0.y + c0.height;
+  // Next issue open: the board gives it its room, and the queue goes behind its button.
+  b[0].reserve = NP_PANEL_W + 12; r := gb_panel(b[..], 1320, 880); #assert r.x + r.width < np_panel(1320, 880).x && !gb_split(r) && gb_cols(r) == 2;
+  b[0].reserve = 0; b[0].wide = false; n := gb_panel(b[..], 1320, 880);
+  #assert n.y == NP_MARGIN && n.x + n.width < g.x && !gb_split(n) && gb_cols(n) == 2 && n.width <= GB_NARROW;
 }
-#test "golems board: a click on a card shows that golem; All goes back; Close shuts it" {
+#test "golems board: a card shows its agent, its issue number opens GitHub, the buttons copy a message and go back" {
   b: [1] GolemBoard; b[0].sel = -1;
-  gb_take(b[..], "G\tk1\tworking\t2\tclaude-sonnet-5-5\tFix\t#13116\t1\t4\t\tx\nM\ta\thi\nG\tk2\tidle\t9\tclaude-opus-5-5\tGreen\t#13134\t1\t1\t\ty\n", 1);
+  gb_take(b[..], GB_TEST, 1000);
   bb := gb_button(1320);
-  #assert gb_pointer(b[..], bb.x + 5, bb.y + 5, 0, 1320, 880) && gb_pointer(b[..], bb.x + 5, bb.y + 5, 2, 1320, 880) && b[0].open;
-  c := gb_card(gb_panel(1320, 880), 1);
-  #assert gb_pointer(b[..], c.x + 5, c.y + 5, 0, 1320, 880) && gb_pointer(b[..], c.x + 5, c.y + 5, 2, 1320, 880) && b[0].sel == 1;
-  x := gb_close_box(gb_panel(1320, 880));
-  #assert gb_pointer(b[..], x.x + 5, x.y + 5, 0, 1320, 880) && gb_pointer(b[..], x.x + 5, x.y + 5, 2, 1320, 880) && b[0].sel == -1 && b[0].open;
-  #assert gb_pointer(b[..], x.x + 5, x.y + 5, 0, 1320, 880) && gb_pointer(b[..], x.x + 5, x.y + 5, 2, 1320, 880) && !b[0].open;
-  #assert !gb_pointer(b[..], 1000, 600, 0, 1320, 880);   // off the board, shut: the world gets it
+  #assert gb_pointer(b[..], bb.x + 5, bb.y + 5, 0, 1320, 880, 1000) && gb_pointer(b[..], bb.x + 5, bb.y + 5, 2, 1320, 880, 1000) && b[0].open;
+  p := gb_panel(b[..], 1320, 880);
+  // The issue number on the first card.
+  c := gb_card(p, 0, 0); out: [256] u8;
+  #assert gb_pointer(b[..], c.x + 16, c.y + 12, 0, 1320, 880, 1000) && gb_pointer(b[..], c.x + 16, c.y + 12, 2, 1320, 880, 1000) && b[0].sel == -1;
+  n := gb_take_action(b[..], out[..]); #assert cast(string) out[0..<n] == "open\thttps://github.com/OpenAgentsInc/openagents/issues/13116" && gb_take_action(b[..], out[..]) == 0;
+  // The rest of the second card: that agent.
+  c = gb_card(p, 0, 1);
+  #assert gb_pointer(b[..], c.x + 200, c.y + 60, 0, 1320, 880, 1000) && gb_pointer(b[..], c.x + 200, c.y + 60, 2, 1320, 880, 1000) && b[0].sel == 1;
+  // It has no issue, so Copy is its first button; it waits on a build, and the message says so.
+  k := gb_copy_box(p, false);
+  #assert gb_pointer(b[..], k.x + 5, k.y + 5, 0, 1320, 880, 1010) && gb_pointer(b[..], k.x + 5, k.y + 5, 2, 1320, 880, 1010) && b[0].copied == 1010;
+  n = gb_take_action(b[..], out[..]);
+  #assert cast(string) out[0..<n] == "copy\tFor the subagent \"Green main helper\" (k2): You have waited 1m on: Bash sleep 240 -- Check its output now. If it is stuck, stop it and say why.";
+  // A queue line opens its issue; All goes back; Narrow; Queue; Close.
+  q := gb_qrow(p, 0);
+  #assert gb_pointer(b[..], q.x + 5, q.y + 5, 0, 1320, 880, 1010) && gb_pointer(b[..], q.x + 5, q.y + 5, 2, 1320, 880, 1010);
+  n = gb_take_action(b[..], out[..]); #assert cast(string) out[0..<n] == "open\thttps://github.com/OpenAgentsInc/openagents/issues/13140";
+  x := gb_close_box(p);
+  #assert gb_pointer(b[..], x.x + 5, x.y + 5, 0, 1320, 880, 1010) && gb_pointer(b[..], x.x + 5, x.y + 5, 2, 1320, 880, 1010) && b[0].sel == -1 && b[0].open;
+  w := gb_wide_box(p);
+  #assert gb_pointer(b[..], w.x + 5, w.y + 5, 0, 1320, 880, 1010) && gb_pointer(b[..], w.x + 5, w.y + 5, 2, 1320, 880, 1010) && !b[0].wide;
+  p = gb_panel(b[..], 1320, 880); t := gb_tab_box(p);
+  #assert gb_pointer(b[..], t.x + 5, t.y + 5, 0, 1320, 880, 1010) && gb_pointer(b[..], t.x + 5, t.y + 5, 2, 1320, 880, 1010) && b[0].queue;
+  x = gb_close_box(p);
+  #assert gb_pointer(b[..], x.x + 5, x.y + 5, 0, 1320, 880, 1010) && gb_pointer(b[..], x.x + 5, x.y + 5, 2, 1320, 880, 1010) && !b[0].open;
+  #assert !gb_pointer(b[..], 1000, 600, 0, 1320, 880, 1010);   // off the board, shut: the world gets it
+}
+#test "golems board: every view draws inside its buffer, and the wheel scrolls what it is over" {
+  b: [1] GolemBoard; b[0].sel = -1; b[0].open = true;
+  gb_take(b[..], GB_TEST, 1000);
+  out: [12 * 6 * 6000] f32; panel: [8] f32; pen := HdPen.{d = 2, cyan = true, top = 0, bottom = 880, sans = false};
+  all := gb_frame(b[..], out[..], 0, 1320, 880, 2, pen, 1005, panel[..]);
+  #assert all > 600 && all % 6 == 0 && panel[6] == 1320 - 2 * NP_MARGIN;
+  b[0].sel = 0; one := gb_frame(b[..], out[..], 0, 1320, 880, 2, pen, 1005, panel[..]); #assert one > 600 && one != all;
+  b[0].sel = -1; b[0].wide = false; b[0].queue = true; q := gb_frame(b[..], out[..], 0, 1320, 880, 2, pen, 1005, panel[..]); #assert q > 300 && panel[6] <= GB_NARROW;
+  // A short buffer stops it at a whole glyph.
+  #assert gb_frame(b[..], out[0..<1200], 0, 1320, 880, 2, pen, 1005, panel[..]) <= 100;
+  p := gb_panel(b[..], 1320, 880);
+  #assert gb_wheel(b[..], p.x + 20, p.y + 300, 5, 1320, 880) && b[0].qscroll == 1 && !gb_wheel(b[..], 1300, 870, 5, 1320, 880);
 }
