@@ -13,6 +13,9 @@
 #
 # Services: oa-api-staging (database oa_analytics_staging) and oa-api
 # (oa_analytics), both on the Cloud SQL instance openagents-production-pg,
+# serving as the roles oa_api_staging and oa_api (rows only, no DDL), after the
+# jobs oa-api-migrate-staging and oa-api-migrate-production apply migrations as
+# the owner role oa_analytics (coax/web/api/db/roles.sh). Both on the instance,
 # reachable only through the openagents.com load balancer (path rule /api/
 # on hosts staging.openagents.com and openagents.com; coax/web/api/lb.sh).
 #
@@ -74,7 +77,19 @@ runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64
 # Our team (team.conf): kind:value,... ; its visits are our own testing, not usage.
 team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "player" || $1 == "email_sha256") { print $1 ":" $2 }' | paste -sd, - || true)"
 
-deploy() {  # service secret host agent-projects-secret runner-service drops-folder
+deploy() {  # service runtime-secret host agent-projects-secret runner-service drops-folder owner-secret
+  # Migrations first, as the owner role, in a job with this image; the service's own role has no
+  # DDL and owns nothing (coax/web/api/db/roles.sh, docs/auth/data-and-backups.md). A failed
+  # migration stops the deploy before the service changes.
+  mkdir -p "$work/$1"
+  if ! gcloud run jobs deploy "oa-api-migrate-$6" --image "$image" --project "$project" --region "$region" \
+      --command api --args=--migrations,/migrations,--migrate-only \
+      --set-secrets "OA_API_DATABASE=$7:latest" --set-cloudsql-instances "$instance" \
+      --service-account "oa-mvp-automation@$project.iam.gserviceaccount.com" \
+      --cpu 1 --memory 512Mi --max-retries 0 --task-timeout 900s --execute-now --wait --quiet > "$work/$1/migrate.log" 2>&1; then
+    tail -20 "$work/$1/migrate.log" >&2; echo "api: migrations failed on $6; $1 not deployed" >&2; return 1
+  fi
+  echo "  ok    migrations ($6)"
   local secrets="OA_API_DATABASE=$2:latest" env="^~^OA_ADMIN_PUBKEYS=$admins~OA_AGENT_RUNNER_PUBKEYS=$runners~OA_TEAM=$team~OA_API_ORIGIN=https://$3~OA_DROPS_BUCKET=openagentsgemini-project-drops~OA_DROPS_PREFIX=$6" wake
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   # Publishing a project from a drop (drops.c, rc-publish): the key that seals project keys, the relay,
@@ -109,14 +124,13 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
   local release
   release="$(python3 -c 'import uuid; print(uuid.uuid4())')"
   env+="~OA_BUILD_SHA=$commit~OA_RELEASE_ID=$release"
-  mkdir -p "$work/$1"
   api_verified_rollout "$1" "$3" "$image" "$commit" "$release" "$work/$1" \
     --allow-unauthenticated --ingress internal-and-cloud-load-balancing \
     --port 8080 --cpu 1 --memory 256Mi --min-instances 0 --max-instances 4 --concurrency 40 \
     --add-cloudsql-instances "$instance" --set-secrets "$secrets" --set-env-vars "$env"
 }
-deploy oa-api-staging oa-analytics-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging
-$prod && deploy oa-api oa-analytics-database-url openagents.com oa-agent-projects oa-agent production
+deploy oa-api-staging oa-api-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging oa-analytics-staging-database-url
+$prod && deploy oa-api oa-api-database-url openagents.com oa-agent-projects oa-agent production oa-analytics-database-url
 echo "api: deployed $image"
 if [[ -z "${OA_API_DEPLOY_TESTS:-}" ]]; then
   report="${TMPDIR:-/tmp}/api-tests-${commit:0:12}.log"

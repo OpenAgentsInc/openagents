@@ -25,6 +25,7 @@ elif args[:3]==['run','services','describe']:
 elif args[:3]==['run','revisions','describe']:
  rev=args[3];name=rev.rsplit('-00002-new',1)[0];print(json.dumps({'apiVersion':'serving.knative.dev/v1','kind':'Revision','metadata':{'name':rev,'generation':1,'namespace':'157437760789','labels':{'serving.knative.dev/service':name,'cloud.googleapis.com/location':'us-central1'}},'status':{'observedGeneration':1,'conditions':[{'type':'Ready','status':'True'}],'imageDigest':image},'spec':{'containers':[{'image':image}]}}))
 elif args[:2]==['secrets','describe']:sys.exit(1)
+elif args[:3]==['run','jobs','deploy']:print('migrations applied')
 elif args[:2]==['run','deploy']:
  name=args[2];assert args[args.index('--image')+1]==image
  if mode=='fail' and name=='oa-api-staging':print('intentional staging refusal',file=sys.stderr);sys.exit(42)

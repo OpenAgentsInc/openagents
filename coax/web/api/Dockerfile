@@ -13,4 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq5 libsecp2
 COPY --from=build /api /usr/local/bin/api
 COPY migrations/ /migrations/
 USER nobody
-CMD ["api", "--migrations", "/migrations"]
+# The service runs without migrating (its role has no DDL); deploy.sh runs
+# `api --migrations /migrations --migrate-only` first, as a job with the owner role.
+CMD ["api"]

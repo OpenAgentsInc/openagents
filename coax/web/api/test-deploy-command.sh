@@ -65,6 +65,7 @@ if [[ ${1:-} == builds && ${2:-} == submit ]]; then
   exit 0
 fi
 if [[ ${1:-} == secrets && ${2:-} == describe ]]; then exit 1; fi
+if [[ ${1:-} == run && ${2:-} == jobs && ${3:-} == deploy ]]; then exit 0; fi
 if [[ ${1:-} == run && ${2:-} == services && ${3:-} == describe ]]; then
   if [[ ${4:-} == oa-api-staging ]]; then printf '{}\n'; exit 0; fi
   exit 1

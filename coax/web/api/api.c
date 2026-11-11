@@ -4,15 +4,19 @@
 // coax/web/serve.c: one process, one thread, a poll loop; each request is
 // read whole, answered and closed.
 //
-//   api [--listen HOST:PORT] [--migrations DIR]
+//   api [--listen HOST:PORT] [--migrations DIR] [--migrate-only]
 //   OA_API_DATABASE   a libpq connection string (Secret Manager on Cloud Run)
 //   OA_TEAM           our team (team.conf as kind:value,...): its visits are testing, not usage (analytics.c)
 //   PORT              0.0.0.0:$PORT when set (Cloud Run)
 //
-// On start it applies the migrations it was shipped with (DIR/*.sql, in name
-// order, each once, in a transaction, under an advisory lock so two
-// instances never race) and records them in schema_migrations; then it
-// writes the team into analytics.team and marks its sessions (analytics.c).
+// With --migrations DIR it applies DIR/*.sql that schema_migrations doesn't
+// list (in name order, each once, in a transaction that sets oa.allow_ddl so
+// the database's DROP/TRUNCATE guard lets it through, under an advisory lock
+// so two instances never race). On Cloud Run the service doesn't: it runs as
+// a role with no DDL (coax/web/api/db/), and deploy.sh runs the migrations
+// first as a job, `api --migrations /migrations --migrate-only`, with the
+// owner role (docs/auth/data-and-backups.md). Then it writes the team into
+// analytics.team and marks its sessions (analytics.c).
 //
 // Routes:
 //   GET  /api/playtest/health      a database round trip
@@ -158,7 +162,14 @@ static bool migrate(void) {
       FILE *f = fopen(path, "rb");
       char *sql = NULL; size_t len = 0;
       if (f) { fseek(f, 0, SEEK_END); len = (size_t)ftell(f); fseek(f, 0, SEEK_SET); sql = calloc(len + 1, 1); if (fread(sql, 1, len, f) != len) len = 0; fclose(f); }
-      ok = sql && len && exec_ok(c, "BEGIN") && exec_ok(c, sql);
+      // oa.allow_ddl names the migration: the guard in db/guard.sql refuses DROP and TRUNCATE without it.
+      ok = sql && len && exec_ok(c, "BEGIN");
+      if (ok) {
+        r = PQexecParams(c, "SELECT set_config('oa.allow_ddl', $1, true)", 1, NULL, p, NULL, NULL, 0);
+        ok = PQresultStatus(r) == PGRES_TUPLES_OK;
+        PQclear(r);
+      }
+      ok = ok && exec_ok(c, sql);
       if (ok) {
         r = PQexecParams(c, "INSERT INTO schema_migrations (name) VALUES ($1)", 1, NULL, p, NULL, NULL, 0);
         ok = PQresultStatus(r) == PGRES_COMMAND_OK;
@@ -171,9 +182,16 @@ static bool migrate(void) {
     }
     free(names[i]);
   }
-  if (ok) analytics_team_init(c);   // under the same lock: two instances never backfill at once
   exec_ok(c, "SELECT pg_advisory_unlock(7731001)");
   return ok;
+}
+
+// The team into analytics.team, under the migrations' lock: two instances never backfill at once.
+static void team_init(void) {
+  PGconn *c = api_db();
+  if (!c || !exec_ok(c, "SELECT pg_advisory_lock(7731001)")) return;
+  analytics_team_init(c);
+  exec_ok(c, "SELECT pg_advisory_unlock(7731001)");
 }
 
 // ---- requests
@@ -321,16 +339,24 @@ static void on_readable(client *c) {
 
 int main(int argc, char **argv) {
   const char *listen_at = NULL;
+  bool migrations = false, migrate_only = false;
   for (int i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) listen_at = argv[++i];
-    else if (!strcmp(argv[i], "--migrations") && i + 1 < argc) snprintf(migrations_dir, sizeof migrations_dir, "%s", argv[++i]);
+    else if (!strcmp(argv[i], "--migrations") && i + 1 < argc) { snprintf(migrations_dir, sizeof migrations_dir, "%s", argv[++i]); migrations = true; }
+    else if (!strcmp(argv[i], "--migrate-only")) migrate_only = true;
   }
   const char *dsn = getenv("OA_API_DATABASE");
   if (!dsn || !*dsn) { fprintf(stderr, "api: OA_API_DATABASE is not set\n"); return 2; }
   snprintf(conninfo, sizeof conninfo, "%s", dsn);
   signal(SIGPIPE, SIG_IGN);
+  if (migrate_only) {   // the deploy's migration job: apply and exit, nonzero when one failed
+    bool ok = migrations && migrate();
+    api_log("migrations: %s", ok ? "all applied" : "FAILED");
+    return ok ? 0 : 1;
+  }
   admin_init();
-  if (!migrate()) api_log("migrations did not all apply; serving anyway (health shows the last applied)");
+  if (migrations && !migrate()) api_log("migrations did not all apply; serving anyway (health shows the last applied)");
+  team_init();
   realms_refresh_pages();
 
   char host[256] = "127.0.0.1"; int port = 8810;
