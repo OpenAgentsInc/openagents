@@ -196,13 +196,28 @@ int ui_frame(UiHost *h) {
   if (h->win.closed) return 0;
   if (h->win.want_w > 0 && h->win.want_h > 0 && ((uint32_t)h->win.want_w != h->p.w || (uint32_t)h->win.want_h != h->p.h))
     vkp_resize(&h->v, &h->p, (uint32_t)h->win.want_w, (uint32_t)h->win.want_h);
-  vkp_wait(&h->v, &h->p);
+  // A swapchain image without waiting for one: while the compositor holds them all (the window is
+  // hidden, or it is waiting for this client to take a new size) the loop keeps reading the seat
+  // and the compositor's events. Waiting in the acquire instead stopped the app for good on a resize.
+  int slot = vkp_reserve(&h->v, &h->p);
+  double now = ui_now();
+  if (slot < 0) { vkp_resize(&h->v, &h->p, h->p.w, h->p.h); return 1; }
+  if (slot == 0) {
+    // no image: the app still gets a frame's worth of time ten times a second, so a turn goes on while hidden
+    if (now - h->last >= 0.1) { float dt = (float)(now - h->last); h->last = now; ui_target(h, h->p.w, h->p.h); ui_fill(h, dt > 0.1f ? 0.1f : dt); }
+    struct timespec nap = {0, 2000000}; nanosleep(&nap, NULL);
+    return 1;
+  }
   ui_target(h, h->p.w, h->p.h);
-  double now = ui_now(); float dt = (float)(now - h->last); h->last = now;
+  float dt = (float)(now - h->last); h->last = now;
   if (dt > 0.1f) dt = 0.1f;
   ui_fill(h, dt);
   if (!h->has_pipe) return 1;   // no atlas yet: the app gives one from its first frame
   if (vkp_present(&h->v, &h->p, ui_record, h, h->target.image, h->w, h->rows, NULL, NULL)) vkp_resize(&h->v, &h->p, h->p.w, h->p.h);
+  // UI_HOST_TRACE=1: frames presented each second, on stderr
+  static int trace = -1, frames; static double since;
+  if (trace < 0) trace = getenv("UI_HOST_TRACE") != NULL;
+  if (trace) { frames++; if (now - since >= 1) { fprintf(stderr, "ui-host: %d frames, %ux%u\n", frames, h->w, h->rows); frames = 0; since = now; } }
   return 1;
 }
 int ui_shot_frame(UiHost *h, uint32_t w, uint32_t rows, float dt) {
