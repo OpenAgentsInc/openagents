@@ -13,6 +13,7 @@ The reference clone is at `projects/repos/exact` in the workspace root
 | [01-what-exact-is.md](01-what-exact-is.md) | Every point in the announcement thread, checked against the source |
 | [02-coax-comparison.md](02-coax-comparison.md) | Each Exact capability set against what Coax and Coaxial have today |
 | [03-what-to-adapt.md](03-what-to-adapt.md) | What to build in Coax, in order, and what to leave out |
+| [04-apps-audit-2026-11-10.md](04-apps-audit-2026-11-10.md) | The apps work of 2026-11-10 (component system, Linux host, agent stack) checked against this research |
 
 ## Summary
 
