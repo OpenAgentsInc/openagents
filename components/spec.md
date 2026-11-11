@@ -36,7 +36,7 @@ components/
   spec.md          this file
   README.md        how to use a component and add one (not written yet)
   core/            what a component is: state and rules, no pixels
-                   (color, text, markdown, syntax, hud: the game HUD's rules)
+                   (color, text, edit, markdown, syntax, hud: the game HUD's rules)
   layout/          sizes and positions from state, a width and a skin
                    (round, font, measure, text)
   paint/           the display list: the primitives a frame is made of (list),
@@ -81,8 +81,11 @@ it) is core, because layout, paint, skins and backends all carry colours;
 which colour a component wears is its skin's to say.
 
 - **Text** (`core/text.coax`): UTF-8 and grapheme clusters. The edit buffer
-  (selection, undo, marked text for an IME, UTF-16 offsets for hosts that
-  need them) is still inside `zeron/composer.coax`.
+  is `core/edit.coax` (`EditBuf`: selection, undo in typed bursts, marked
+  text for an IME, UTF-16 offsets for hosts that need them, UAX #29 word
+  moves). The chat composer (`zeron/composer.coax`) and Coder's terminal
+  (`coax/lib/tui/tui.coax`) both keep their text in one and edit it with
+  its procedures; each keeps its own key bindings, layout and pointer.
 - **Markdown** (`core/markdown.coax`): source to a document (`MdDoc`: blocks,
   items, styled runs, tables, code with its language). Streaming-safe: an
   unfinished reply parses. `core/syntax.coax` gives a line of code its

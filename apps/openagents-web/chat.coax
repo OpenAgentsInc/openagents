@@ -593,7 +593,7 @@ wc_stop :: (s: [] WcState) {
 wc_chip :: (s: [] WcState, which: int) {
   c := s[0].composer[..];
   if which == CH_SEND {
-    if c[0].running && c[0].n == 0 { wc_stop(s); } else { composer_submit(c); }
+    if c[0].running && c[0].ed[0].n == 0 { wc_stop(s); } else { composer_submit(c); }
   } else if which == CH_MODEL && !s[0].demo { wc_open_menu(s); }
   wc_labels(s);
 }
@@ -911,7 +911,7 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
   if uniforms.count >= 2 { uniforms[0] = width; uniforms[1] = height; }
   dt1 := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].time += dt1;
-  c[0].since += dt1; c[0].clock += dt1;
+  c[0].since += dt1; c[0].ed[0].clock += dt1;
   if s[0].golden { c[0].since = 0; }
   s[0].picker[0].since += dt1;
   a[0].frame += 1;

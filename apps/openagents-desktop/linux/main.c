@@ -506,7 +506,7 @@ static int on_key(void *user, int key, int mods, int down) {
   int code = key == 'd' || key == 'D' ? 2 : key == -1 ? 53 : -1;
   int repeated = down && code == 2 && a->dictation_key;
   if (code == 2) a->dictation_key = down;
-  int action = zr_dictation_key(state, code, m, down, repeated, ((coax_t_ZeronState *)state)->composer.e[0].marked, dsk_room_shown(a->desk));
+  int action = zr_dictation_key(state, code, m, down, repeated, ((coax_t_ZeronState *)state)->composer.e[0].ed.e[0].marked, dsk_room_shown(a->desk));
   if (!down) {   // a release: nothing else takes one
     if (action == 2 && a->dictation) dn_end(a->dictation);
     return action == 2;

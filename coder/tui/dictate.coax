@@ -45,7 +45,7 @@ cd_dct_trace :: (a: [] App, event: string) {
   n = cd_cat(ob[..], n, ",\"enters\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].enters, nb[..]));
   n = cd_cat(ob[..], n, ",\"starts\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].starts, nb[..]));
   n = cd_cat(ob[..], n, ",\"turns\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].turns, nb[..]));
-  n = cd_cat(ob[..], n, ",\"draft_bytes\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].ed[0].n, nb[..]));
+  n = cd_cat(ob[..], n, ",\"draft_bytes\":"); n = cd_cat(ob[..], n, cd_itoa(tui_ed_n(a[0].ed[..]), nb[..]));
   n = cd_cat(ob[..], n, ",\"running\":"); n = cd_cat(ob[..], n, ifx a[0].running then "true" else "false");
   n = cd_cat(ob[..], n, "}\n");
   x := fs_append(path, cast(string) ob[0..<n]);

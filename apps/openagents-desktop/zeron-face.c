@@ -209,7 +209,7 @@ void zr_dictation_status(void *state,int32_t enabled,int32_t phase,int32_t outco
 void zr_dictation_chord(void *state,int32_t ctrl){coaxial_zeron_dictation_chord(at(state),ctrl!=0);}
 int32_t zr_dictation_source(void *state){return (int32_t)coaxial_zeron_dictation_source(at(state));}
 int32_t zr_dictation_key(void *state,int32_t key,int32_t mods,int32_t down,int32_t repeated,int32_t marked,int32_t room){return (int32_t)coaxial_zeron_dictation_key(at(state),key,mods,down!=0,repeated!=0,marked!=0,room!=0);}
-int32_t zr_dictation_draft(void *state,uint8_t *out,int32_t cap){coax_t_ZeronState*s=state;int64_t n=s->composer.e[0].n;if(n>cap)return -1;memcpy(out,s->composer.e[0].text.e,(size_t)n);return (int32_t)n;}
+int32_t zr_dictation_draft(void *state,uint8_t *out,int32_t cap){coax_t_ZeronState*s=state;int64_t n=s->composer.e[0].ed.e[0].n;if(n>cap)return -1;memcpy(out,s->composer.e[0].ed.e[0].text.e,(size_t)n);return (int32_t)n;}
 int32_t zr_dictation_sent(void *state){return (int32_t)((coax_t_ZeronState*)state)->composer.e[0].sent;}
 int32_t zr_dictation_parts(void *state){return (int32_t)((coax_t_ZeronState*)state)->session.e[0].n;}
 

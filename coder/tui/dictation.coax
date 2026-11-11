@@ -224,9 +224,9 @@ CddGuard :: struct {
 // Opens a request's guard on the composer as it is now.
 cdd_begin :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool #effects(all) {
   g[0].active = false;
-  if ticket <= 0 || !focused || !consent || e[0].n < 0 || e[0].n > TUI_EDIT_BYTES || e[0].cur < 0 || e[0].cur > e[0].n { return false; }
-  g[0].ticket = ticket; g[0].sent = sent; g[0].nav = nav; g[0].gen = e[0].gen; g[0].n = e[0].n; g[0].cur = e[0].cur;
-  for i: 0..<e[0].n { g[0].snapshot[i] = e[0].buf[i]; }
+  if ticket <= 0 || !focused || !consent || e[0].eb[0].n < 0 || e[0].eb[0].n > TUI_EDIT_BYTES || e[0].eb[0].caret < 0 || e[0].eb[0].caret > e[0].eb[0].n { return false; }
+  g[0].ticket = ticket; g[0].sent = sent; g[0].nav = nav; g[0].gen = e[0].gen; g[0].n = e[0].eb[0].n; g[0].cur = e[0].eb[0].caret;
+  for i: 0..<e[0].eb[0].n { g[0].snapshot[i] = e[0].eb[0].text[i]; }
   g[0].active = true;
   return true;
 }
@@ -236,8 +236,8 @@ cdd_cancel :: (g: [] CddGuard) #effects(all) { g[0].active = false; }
 // exactly as they were when ticket began.
 cdd_current :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool #effects(all) {
   if !g[0].active || ticket != g[0].ticket || !focused || !consent || sent != g[0].sent || nav != g[0].nav { return false; }
-  if e[0].gen != g[0].gen || e[0].n != g[0].n || e[0].cur != g[0].cur { return false; }
-  for i: 0..<g[0].n { if e[0].buf[i] != g[0].snapshot[i] { return false; } }
+  if e[0].gen != g[0].gen || e[0].eb[0].n != g[0].n || e[0].eb[0].caret != g[0].cur { return false; }
+  for i: 0..<g[0].n { if e[0].eb[0].text[i] != g[0].snapshot[i] { return false; } }
   return true;
 }
 
@@ -277,9 +277,9 @@ cdd_apply :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int,
   g[0].active = false;
   if !current { return CDD_A_STALE; }
   if !cdd_text_ok(text) { return CDD_A_TEXT; }
-  at := e[0].cur; left := 0; right := 0;
-  if at > 0 && dj_gap(e[0].buf[at - 1], text[0]) { left = 1; }
-  if at < e[0].n && dj_gap(text[text.count - 1], e[0].buf[at]) { right = 1; }
+  at := e[0].eb[0].caret; left := 0; right := 0;
+  if at > 0 && dj_gap(e[0].eb[0].text[at - 1], text[0]) { left = 1; }
+  if at < e[0].eb[0].n && dj_gap(text[text.count - 1], e[0].eb[0].text[at]) { right = 1; }
   d: [CDD_TEXT_MAX + 2] u8; n := 0;
   if left == 1 { d[n] = ' '; n += 1; }
   for b: text { d[n] = b; n += 1; }
@@ -288,19 +288,19 @@ cdd_apply :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int,
   return CDD_A_OK;
 }
 
-cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s); e[0].cur = cur; }
+cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s); tui_ed_move(e, cur); }
 
 #test "the guard: words go in at the cursor as one undoable edit and nothing is sent" {
   e: [1] TuiEditor; g: [1] CddGuard;
   cdd_ed(e[..], "Please inspect", 14);
   #assert cdd_begin(g[..], e[..], 1, 3, 2, true, true) && cdd_current(g[..], e[..], 1, 3, 2, true, true);
   #assert cdd_apply(g[..], e[..], 1, 3, 2, true, true, "the code.") == CDD_A_OK && tui_ed_text(e[..]) == "Please inspect the code.";
-  #assert e[0].cur == 24 && !g[0].active && e[0].browse == 0;
+  #assert e[0].eb[0].caret == 24 && !g[0].active && e[0].browse == 0;
   #assert cdd_apply(g[..], e[..], 1, 3, 2, true, true, "again") == CDD_A_STALE && tui_ed_text(e[..]) == "Please inspect the code.";
-  #assert tui_ed_key(e[..], TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_KEPT && tui_ed_text(e[..]) == "Please inspect" && e[0].cur == 14;
+  #assert tui_ed_key(e[..], TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_KEPT && tui_ed_text(e[..]) == "Please inspect" && e[0].eb[0].caret == 14;
   // inside a word's gap both sides join; at the very start only the right
   cdd_ed(e[..], "ab", 1);
-  #assert cdd_begin(g[..], e[..], 2, 0, 0, true, true) && cdd_apply(g[..], e[..], 2, 0, 0, true, true, "x") == CDD_A_OK && tui_ed_text(e[..]) == "a x b" && e[0].cur == 4;
+  #assert cdd_begin(g[..], e[..], 2, 0, 0, true, true) && cdd_apply(g[..], e[..], 2, 0, 0, true, true, "x") == CDD_A_OK && tui_ed_text(e[..]) == "a x b" && e[0].eb[0].caret == 4;
   cdd_ed(e[..], "tail", 0);
   #assert cdd_begin(g[..], e[..], 3, 0, 0, true, true) && cdd_apply(g[..], e[..], 3, 0, 0, true, true, "head") == CDD_A_OK && tui_ed_text(e[..]) == "head tail";
   cdd_ed(e[..], "", 0);
@@ -313,7 +313,7 @@ cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s
   #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true);
   #assert cdd_apply(g[..], e[..], 1, 0, 0, true, true, "Écouter 👋\nrm -rf /\nsend\n") == CDD_A_OK && tui_ed_text(e[..]) == "Écouter 👋\nrm -rf /\nsend\n";
   #assert e[0].nh == 0 && e[0].browse == 0;      // nothing was remembered as sent
-  #assert tui_ed_undo(e[..]) && e[0].n == 0;
+  #assert tui_ed_undo(e[..]) && e[0].eb[0].n == 0;
 }
 #test "the guard: a changed draft, cursor, key, send, navigation, focus or consent refuses without a change" {
   for fault: 0..<11 {
@@ -321,10 +321,10 @@ cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s
     cdd_ed(e[..], "draft", 5);
     #assert cdd_begin(g[..], e[..], 5, 2, 1, true, true);
     sent := 2; nav := 1; focused := true; consent := true;
-    if fault == 0 { e[0].buf[0] = 'D'; }
-    if fault == 1 { e[0].buf[4] = 'T'; }
+    if fault == 0 { e[0].eb[0].text[0] = 'D'; }
+    if fault == 1 { e[0].eb[0].text[4] = 'T'; }
     if fault == 2 { tui_ed_insert(e[..], "x"); }
-    if fault == 3 { e[0].cur = 0; }
+    if fault == 3 { e[0].eb[0].caret = 0; }
     if fault == 4 { e[0].gen += 1; }
     if fault == 5 { sent = 3; }
     if fault == 6 { nav = 2; }
@@ -335,7 +335,7 @@ cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s
     before := e[0];
     #assert !cdd_current(g[..], e[..], 5, sent, nav, focused, consent);
     #assert cdd_apply(g[..], e[..], 5, sent, nav, focused, consent, "late") == CDD_A_STALE && !g[0].active;
-    #assert tui_ed_text(e[..]) == cast(string) before.buf[0..<before.n] && e[0].cur == before.cur && e[0].gen == before.gen && e[0].undo_on == before.undo_on;
+    #assert tui_ed_text(e[..]) == cast(string) before.eb[0].text[0..<before.eb[0].n] && e[0].eb[0].caret == before.eb[0].caret && e[0].gen == before.gen && e[0].eb[0].hist[EB_UNDO].count == before.eb[0].hist[EB_UNDO].count;
   }
 }
 #test "the guard: stale tickets and cancellation cannot insert, and begin needs a sane composer" {
@@ -349,7 +349,7 @@ cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s
     f: [1] TuiEditor; h: [1] CddGuard; cdd_ed(f[..], "draft", 2); ticket := 3; focused := true; consent := true;
     #assert cdd_begin(h[..], f[..], 1, 0, 0, true, true);
     if fault == 0 { ticket = 0; } if fault == 1 { ticket = -1; } if fault == 2 { focused = false; } if fault == 3 { consent = false; }
-    if fault == 4 { f[0].n = -1; } if fault == 5 { f[0].n = TUI_EDIT_BYTES + 1; } if fault == 6 { f[0].cur = -1; } if fault == 7 { f[0].cur = 6; }
+    if fault == 4 { f[0].eb[0].n = -1; } if fault == 5 { f[0].eb[0].n = TUI_EDIT_BYTES + 1; } if fault == 6 { f[0].eb[0].caret = -1; } if fault == 7 { f[0].eb[0].caret = 6; }
     #assert !cdd_begin(h[..], f[..], ticket, 0, 0, focused, consent) && !h[0].active;
   }
   f: [1] TuiEditor; h: [1] CddGuard; cdd_ed(f[..], "ab", 2);
@@ -381,7 +381,7 @@ cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s
   for t: bad {
     e: [1] TuiEditor; g: [1] CddGuard; cdd_ed(e[..], "draft", 5); before := e[0].gen;
     #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true) && cdd_apply(g[..], e[..], 1, 0, 0, true, true, t) == CDD_A_TEXT;
-    #assert tui_ed_text(e[..]) == "draft" && e[0].gen == before && !e[0].undo_on && !g[0].active;
+    #assert tui_ed_text(e[..]) == "draft" && e[0].gen == before && !eb_can_undo(e[0].eb[..]) && !g[0].active;
   }
 }
 #test "the guard: an insertion that does not fit, join spaces counted, leaves the draft whole" {
@@ -392,9 +392,9 @@ cdd_ed :: (e: [] TuiEditor, s: string, cur: int) #effects(all) { tui_ed_set(e, s
     #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true);
     r := cdd_apply(g[..], e[..], 1, 0, 0, true, true, "x");
     #assert (r == CDD_A_OK) == (n <= TUI_EDIT_BYTES - 3);
-    if r == CDD_A_OK { #assert e[0].n == n + 3 && cast(string) e[0].buf[0..<5] == "a x a"; }
-    else { #assert r == CDD_A_FULL && e[0].n == n && e[0].gen == before && e[0].buf[1] == 'a' && e[0].cur == 1; }
+    if r == CDD_A_OK { #assert e[0].eb[0].n == n + 3 && cast(string) e[0].eb[0].text[0..<5] == "a x a"; }
+    else { #assert r == CDD_A_FULL && e[0].eb[0].n == n && e[0].gen == before && e[0].eb[0].text[1] == 'a' && e[0].eb[0].caret == 1; }
   }
   e: [1] TuiEditor; g: [1] CddGuard; cdd_ed(e[..], cast(string) big[0..<TUI_EDIT_BYTES - 1], TUI_EDIT_BYTES - 1);
-  #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true) && cdd_apply(g[..], e[..], 1, 0, 0, true, true, ".") == CDD_A_OK && e[0].n == TUI_EDIT_BYTES;
+  #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true) && cdd_apply(g[..], e[..], 1, 0, 0, true, true, ".") == CDD_A_OK && e[0].eb[0].n == TUI_EDIT_BYTES;
 }

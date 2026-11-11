@@ -1701,11 +1701,11 @@ cd_key :: (a: [] App, k: TuiKey) {
   }
   if k.kind == TUI_K_CTRL_C {
     if a[0].running { cd_stop(a); return; }
-    if a[0].ed[0].n > 0 { tui_ed_clear(a[0].ed[..]); return; }
+    if tui_ed_n(a[0].ed[..]) > 0 { tui_ed_clear(a[0].ed[..]); return; }
     a[0].quit = true; return;
   }
-  if k.kind == TUI_K_CTRL_D && a[0].running && a[0].cmd_h >= 0 && a[0].ed[0].n == 0 { eot: [1] u8; eot[0] = 4; cd_command_keys(a, cast(string) eot[..]); return; }
-  if k.kind == TUI_K_CTRL_D { if a[0].ed[0].n == 0 && !a[0].running { a[0].quit = true; } else { x := tui_ed_key(a[0].ed[..], TuiKey.{kind = TUI_K_DELETE}); } return; }
+  if k.kind == TUI_K_CTRL_D && a[0].running && a[0].cmd_h >= 0 && tui_ed_n(a[0].ed[..]) == 0 { eot: [1] u8; eot[0] = 4; cd_command_keys(a, cast(string) eot[..]); return; }
+  if k.kind == TUI_K_CTRL_D { if tui_ed_n(a[0].ed[..]) == 0 && !a[0].running { a[0].quit = true; } else { x := tui_ed_key(a[0].ed[..], TuiKey.{kind = TUI_K_DELETE}); } return; }
   if k.kind == TUI_K_ESC { if a[0].running { cd_stop(a); } return; }
   if k.kind == TUI_K_CLEAR { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); return; }
   r := tui_ed_key(a[0].ed[..], k);
@@ -2892,7 +2892,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if jn != a[0].jobs { a[0].jobs = jn; dirty = true; }
     }
     // a job this session started reports back (--report-to): its message is the next turn
-    if !a[0].running && a[0].dct_phase == CDD_IDLE && a[0].log[0].nid > 0 && a[0].ed[0].n == 0 && cd_now(a) >= a[0].next_inbox_ms {
+    if !a[0].running && a[0].dct_phase == CDD_IDLE && a[0].log[0].nid > 0 && tui_ed_n(a[0].ed[..]) == 0 && cd_now(a) >= a[0].next_inbox_ms {
       a[0].next_inbox_ms = cd_now(a) + 1000;
       ib2: [65536] u8; im := cd_msg_next(cs_id(a[0].log), ib2[..]);
       if im.count > 0 { tui_ed_set(a[0].ed[..], im); cd_submit(a); dirty = true; }

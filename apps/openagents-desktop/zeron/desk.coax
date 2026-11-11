@@ -880,7 +880,7 @@ dsk_key :: (k: [] Desk, key: int, mods: int) -> bool {
   if side.ok && mods == side.mods && lower == cast(int) side.key { dsk_toggle(k); return true; }
   if mods == MOD_SHIFT && (key == KEY_UP || key == KEY_DOWN) {
     s := dsk_chat(k);
-    if s[0].composer[0].n > 0 || pk_is_open(s[0].picker[..]) { return false; }
+    if s[0].composer[0].ed[0].n > 0 || pk_is_open(s[0].picker[..]) { return false; }
     return dsk_step(k, ifx key == KEY_UP then -1 else 1);
   }
   return false;

@@ -1,0 +1,466 @@
+// The edit buffer: text being written, with its selection, undo and redo,
+// IME marked text and UTF-16 offsets (components/spec.md, "Core"; GitHub
+// #13153). One buffer for every surface that takes typed text: the chat
+// composer (components/zeron/composer.coax) and Coder's terminal
+// (coax/lib/tui/tui.coax) keep their text here and edit it with these
+// procedures. A surface keeps its own key bindings, layout and pointer; what
+// a key does to the text is this file's.
+//
+// The model is Zeron's input (composer.rs ComposerInput, "adapted from gpui
+// examples/input.rs"): a selection between an anchor and a caret on
+// grapheme boundaries, edits that replace it, undo in the bursts the user
+// typed (EB_COALESCE seconds of one-character edits, never across a space,
+// a newline, a paste or a caret jump), IME marked text that undoes as one
+// step, and word moves by UAX #29 segments. gen counts every change of the
+// text or of the selection, so a surface knows when to reset what it keeps
+// about the caret (a preferred column, a scroll to follow it).
+// Based on Zeron by Wing, MIT.
+//   coax/bin/coax test components/core/edit.coax
+
+#load "text.coax";
+
+EB_TEXT :: 16384;            // bytes a buffer holds
+EB_UNDO_LIMIT :: 200;        // undo steps kept (the oldest go first)
+EB_POOL :: 131072;           // bytes of snapshots per stack
+EB_COALESCE :: 0.7;          // seconds a run of one-character edits keeps merging
+
+// Snapshots of the text and selection, newest last, their bytes in one pool.
+EbHistory :: struct {
+  count: int; used: int;
+  at: [EB_UNDO_LIMIT] int; len: [EB_UNDO_LIMIT] int;
+  anchor: [EB_UNDO_LIMIT] int; caret: [EB_UNDO_LIMIT] int;
+  pool: [EB_POOL] u8;
+}
+EB_UNDO :: 0; EB_REDO :: 1;
+EB_EDIT_NONE :: 0; EB_EDIT_INSERT :: 1; EB_EDIT_DELETE :: 2;
+
+EditBuf :: struct {
+  text: [EB_TEXT] u8; n: int;
+  anchor: int; caret: int;      // byte offsets on grapheme boundaries; the selection runs between
+  marked: bool; marked_at: int; marked_end: int;   // IME composition
+  clock: f32;                   // seconds, for undo coalescing (the surface advances it)
+  last_kind: int; last_at: int; last_time: f32;    // the edit a typing run merges into
+  hist: [2] EbHistory;
+  gen: int;                     // counts every change of the text or the selection
+}
+
+eb_text :: (e: [] EditBuf) -> string { return cast(string) e[0].text[0..<e[0].n]; }
+eb_sel_lo :: (e: [] EditBuf) -> int { return ifx e[0].anchor < e[0].caret then e[0].anchor else e[0].caret; }
+eb_sel_hi :: (e: [] EditBuf) -> int { return ifx e[0].anchor > e[0].caret then e[0].anchor else e[0].caret; }
+eb_selected :: (e: [] EditBuf) -> string { return cast(string) e[0].text[eb_sel_lo(e)..<eb_sel_hi(e)]; }
+
+// ---------------------------------------------------------------- boundaries
+
+// The grapheme boundary before / after byte i.
+eb_prev_boundary :: (e: [] EditBuf, i: int) -> int {
+  t := eb_text(e);
+  k := 0; last := 0;
+  while k < t.count && k < i { last = k; k += cluster_len(t, k); }
+  return ifx i <= 0 then 0 else last;
+}
+eb_next_boundary :: (e: [] EditBuf, i: int) -> int {
+  t := eb_text(e);
+  if i >= t.count { return t.count; }
+  return i + cluster_len(t, i);
+}
+
+// Word segmentation, UAX #29 as unicode-segmentation's split_word_bounds
+// does it for the scripts a composer meets: runs of letters and digits (with
+// _ and the apostrophe, colon or point between letters, the comma or point
+// between digits), runs of katakana, runs of spaces; every other grapheme
+// (punctuation, symbols, emoji, each ideograph and hiragana) alone.
+EB_WB_OTHER :: 0; EB_WB_LETTER :: 1; EB_WB_NUMERIC :: 2; EB_WB_KATAKANA :: 3; EB_WB_EXTNUM :: 4;
+EB_WB_MIDLETTER :: 5; EB_WB_MIDNUM :: 6; EB_WB_MIDNUMLET :: 7; EB_WB_SPACE :: 8; EB_WB_NEWLINE :: 9;
+
+eb_word_class :: (t: string, i: int) -> int {
+  c := rune_at(t, i).code;
+  if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') { return EB_WB_LETTER; }
+  if c >= '0' && c <= '9' { return EB_WB_NUMERIC; }
+  if c == ' ' || c == 0x1680 || (c >= 0x2000 && c <= 0x200A && c != 0x2007) || c == 0x205F || c == 0x3000 { return EB_WB_SPACE; }
+  if c == '\n' || c == '\r' || c == 0x85 || c == 0x2028 || c == 0x2029 || c == 0x0B || c == 0x0C { return EB_WB_NEWLINE; }
+  if c == '_' || c == 0x203F || c == 0x2040 || c == 0x2054 || c == 0xFE33 || c == 0xFE34 || c == 0xFF3F { return EB_WB_EXTNUM; }
+  if c == '.' || c == '\'' || c == 0x2018 || c == 0x2019 || c == 0x2024 || c == 0xFE52 || c == 0xFF07 || c == 0xFF0E { return EB_WB_MIDNUMLET; }
+  if c == ':' || c == 0xB7 || c == 0x387 || c == 0x5F4 || c == 0x2027 || c == 0xFE13 || c == 0xFE55 || c == 0xFF1A { return EB_WB_MIDLETTER; }
+  if c == ',' || c == ';' || c == 0x37E || c == 0x589 || c == 0x60C || c == 0x60D || c == 0x66C || c == 0x7F8 || c == 0x2044 ||
+     c == 0xFE10 || c == 0xFE14 || c == 0xFE50 || c == 0xFE54 || c == 0xFF0C || c == 0xFF1B { return EB_WB_MIDNUM; }
+  if (c >= 0x30A1 && c <= 0x30FA) || (c >= 0x30FC && c <= 0x30FF) || (c >= 0x31F0 && c <= 0x31FF) || (c >= 0xFF66 && c <= 0xFF9D) { return EB_WB_KATAKANA; }
+  if (c >= 0xFF10 && c <= 0xFF19) || (c >= 0x660 && c <= 0x669) || (c >= 0x966 && c <= 0x96F) { return EB_WB_NUMERIC; }
+  // letters: Latin, IPA, Greek, Cyrillic, Armenian, Hebrew, Arabic, Devanagari, Thai's neighbours, Hangul, fullwidth Latin
+  if (c >= 0xC0 && c <= 0x24F && c != 0xD7 && c != 0xF7) || c == 0xAA || c == 0xB5 || c == 0xBA ||
+     (c >= 0x250 && c <= 0x2C1) || (c >= 0x370 && c <= 0x3FF && c != 0x37E && c != 0x387) || (c >= 0x400 && c <= 0x52F) ||
+     (c >= 0x531 && c <= 0x587) || (c >= 0x5D0 && c <= 0x5F2) || (c >= 0x620 && c <= 0x64A) || (c >= 0x671 && c <= 0x6D3) ||
+     (c >= 0x904 && c <= 0x939) || (c >= 0x1E00 && c <= 0x1FFF) || (c >= 0x1100 && c <= 0x11FF) || (c >= 0xAC00 && c <= 0xD7A3) ||
+     (c >= 0xFF21 && c <= 0xFF3A) || (c >= 0xFF41 && c <= 0xFF5A) { return EB_WB_LETTER; }
+  return EB_WB_OTHER;
+}
+eb_wb_joins :: (prev: int, next: int) -> bool {
+  if prev == EB_WB_LETTER || prev == EB_WB_NUMERIC { return next == EB_WB_LETTER || next == EB_WB_NUMERIC || next == EB_WB_EXTNUM; }
+  if prev == EB_WB_KATAKANA { return next == EB_WB_KATAKANA || next == EB_WB_EXTNUM; }
+  if prev == EB_WB_EXTNUM { return next == EB_WB_LETTER || next == EB_WB_NUMERIC || next == EB_WB_KATAKANA || next == EB_WB_EXTNUM; }
+  return false;
+}
+// The end of the word segment starting at byte i.
+eb_word_seg_end :: (t: string, i: int) -> int {
+  if i >= t.count { return t.count; }
+  first := eb_word_class(t, i);
+  j := i + cluster_len(t, i);
+  if first == EB_WB_SPACE {
+    while j < t.count && eb_word_class(t, j) == EB_WB_SPACE { j += cluster_len(t, j); }
+    return j;
+  }
+  if first != EB_WB_LETTER && first != EB_WB_NUMERIC && first != EB_WB_KATAKANA && first != EB_WB_EXTNUM { return j; }
+  prev := first;
+  while j < t.count {
+    next := eb_word_class(t, j);
+    if eb_wb_joins(prev, next) { prev = next; j += cluster_len(t, j); continue; }
+    // a letter, then ' : . and a letter; a digit, then , ; . ' and a digit
+    mid := (prev == EB_WB_LETTER && (next == EB_WB_MIDLETTER || next == EB_WB_MIDNUMLET)) ||
+           (prev == EB_WB_NUMERIC && (next == EB_WB_MIDNUM || next == EB_WB_MIDNUMLET));
+    if mid {
+      k := j + cluster_len(t, j);
+      if k < t.count && eb_word_class(t, k) == prev { j = k + cluster_len(t, k); continue; }
+    }
+    break;
+  }
+  return j;
+}
+eb_blank_segment :: (t: string, from: int, to: int) -> bool {
+  for k: from..<to { if t[k] != ' ' && t[k] != '\t' && t[k] != '\n' && t[k] != '\r' { return false; } }
+  return true;
+}
+// previous_word_boundary: the start of the last non-blank segment before i.
+eb_prev_word :: (e: [] EditBuf, i: int) -> int {
+  t := eb_text(e);
+  k := 0; best := 0;
+  while k < t.count && k < i {
+    s := eb_word_seg_end(t, k);
+    if !eb_blank_segment(t, k, s) { best = k; }
+    k = s;
+  }
+  return best;
+}
+// next_word_boundary: the end of the first non-blank segment ending after i.
+eb_next_word :: (e: [] EditBuf, i: int) -> int {
+  t := eb_text(e);
+  k := 0;
+  while k < t.count {
+    s := eb_word_seg_end(t, k);
+    if s > i && !eb_blank_segment(t, k, s) { return s; }
+    k = s;
+  }
+  return t.count;
+}
+// word_range: the segment holding byte i (a double click's word); empty at the end.
+eb_word_from :: (e: [] EditBuf, i: int) -> int {
+  t := eb_text(e);
+  k := 0;
+  while k < t.count {
+    s := eb_word_seg_end(t, k);
+    if k <= i && i < s { return k; }
+    k = s;
+  }
+  return i;
+}
+eb_word_to :: (e: [] EditBuf, i: int) -> int {
+  t := eb_text(e);
+  k := 0;
+  while k < t.count {
+    s := eb_word_seg_end(t, k);
+    if k <= i && i < s { return s; }
+    k = s;
+  }
+  return i;
+}
+// The logical line (between newlines) holding byte i, and where its text ends (before a CR).
+eb_line_start :: (e: [] EditBuf, i: int) -> int {
+  k := ifx i < e[0].n then i else e[0].n;
+  while k > 0 && e[0].text[k - 1] != '\n' { k -= 1; }
+  return k;
+}
+eb_line_stop :: (e: [] EditBuf, i: int) -> int {
+  k := ifx i < e[0].n then i else e[0].n;
+  while k < e[0].n && e[0].text[k] != '\n' { k += 1; }
+  return k;
+}
+eb_line_content_end :: (e: [] EditBuf, i: int) -> int {
+  s := eb_line_stop(e, i);
+  if s < e[0].n && s > 0 && e[0].text[s - 1] == '\r' { return s - 1; }
+  return s;
+}
+
+// ---------------------------------------------------------------- history
+
+eb_hist_drop_oldest :: (e: [] EditBuf, w: int) {
+  if e[0].hist[w].count == 0 { return; }
+  k := e[0].hist[w].len[0];
+  for i: k..<e[0].hist[w].used { e[0].hist[w].pool[i - k] = e[0].hist[w].pool[i]; }
+  e[0].hist[w].used -= k;
+  for j: 1..<e[0].hist[w].count {
+    e[0].hist[w].at[j - 1] = e[0].hist[w].at[j] - k; e[0].hist[w].len[j - 1] = e[0].hist[w].len[j];
+    e[0].hist[w].anchor[j - 1] = e[0].hist[w].anchor[j]; e[0].hist[w].caret[j - 1] = e[0].hist[w].caret[j];
+  }
+  e[0].hist[w].count -= 1;
+}
+// Pushes the text and selection as they stand.
+eb_hist_push :: (e: [] EditBuf, w: int) {
+  n := e[0].n;
+  if n > EB_POOL { return; }
+  while e[0].hist[w].count > 0 && (e[0].hist[w].count >= EB_UNDO_LIMIT || e[0].hist[w].used + n > EB_POOL) { eb_hist_drop_oldest(e, w); }
+  k := e[0].hist[w].count; at := e[0].hist[w].used;
+  for i: 0..<n { e[0].hist[w].pool[at + i] = e[0].text[i]; }
+  e[0].hist[w].at[k] = at; e[0].hist[w].len[k] = n;
+  e[0].hist[w].anchor[k] = e[0].anchor; e[0].hist[w].caret[k] = e[0].caret;
+  e[0].hist[w].used += n; e[0].hist[w].count += 1;
+}
+// Pops the newest snapshot into the text (restore).
+eb_hist_pop :: (e: [] EditBuf, w: int) {
+  k := e[0].hist[w].count - 1;
+  if k < 0 { return; }
+  at := e[0].hist[w].at[k]; n := e[0].hist[w].len[k];
+  for i: 0..<n { e[0].text[i] = e[0].hist[w].pool[at + i]; }
+  e[0].n = n; e[0].anchor = e[0].hist[w].anchor[k]; e[0].caret = e[0].hist[w].caret[k];
+  e[0].hist[w].used = at; e[0].hist[w].count = k;
+  e[0].marked = false;
+  e[0].last_kind = EB_EDIT_NONE;   // never merge a later edit into a step undo just crossed
+  e[0].gen += 1;
+}
+eb_clear_history :: (e: [] EditBuf) { for w: 0..<2 { e[0].hist[w].count = 0; e[0].hist[w].used = 0; } }
+// Undo and redo; false when there was nothing to take back or replay.
+eb_undo :: (e: [] EditBuf) -> bool {
+  if e[0].hist[EB_UNDO].count == 0 { return false; }
+  eb_hist_push(e, EB_REDO); eb_hist_pop(e, EB_UNDO);
+  return true;
+}
+eb_redo :: (e: [] EditBuf) -> bool {
+  if e[0].hist[EB_REDO].count == 0 { return false; }
+  eb_hist_push(e, EB_UNDO); eb_hist_pop(e, EB_REDO);
+  return true;
+}
+eb_can_undo :: (e: [] EditBuf) -> bool { return e[0].hist[EB_UNDO].count > 0; }
+eb_can_redo :: (e: [] EditBuf) -> bool { return e[0].hist[EB_REDO].count > 0; }
+
+// record_edit: before bytes [from, to) become s. A run merges only while it
+// stays one character at a time, contiguous, of one kind, and within the
+// idle window; a space or newline, a paste, a pause or a caret jump starts
+// a new step.
+eb_one_char :: (s: string) -> bool { return s.count > 0 && rune_at(s, 0).len == s.count; }
+eb_record_edit :: (e: [] EditBuf, from: int, to: int, s: string) {
+  kind := ifx s.count == 0 then EB_EDIT_DELETE else EB_EDIT_INSERT;
+  coalescible := ifx kind == EB_EDIT_INSERT then from == to && eb_one_char(s)
+                 else to > from && from + cluster_len(eb_text(e), from) == to;
+  recent := e[0].clock - e[0].last_time < EB_COALESCE;
+  mergeable := false;
+  if coalescible && kind == EB_EDIT_INSERT && e[0].last_kind == EB_EDIT_INSERT {
+    mergeable = from == e[0].last_at && s[0] != '\n' && s[0] != ' ' && s[0] != '\t' && recent;
+  }
+  if coalescible && kind == EB_EDIT_DELETE && e[0].last_kind == EB_EDIT_DELETE { mergeable = to == e[0].last_at && recent; }
+  if !mergeable { eb_hist_push(e, EB_UNDO); }
+  e[0].hist[EB_REDO].count = 0; e[0].hist[EB_REDO].used = 0;   // a fresh edit drops the redo branch
+  if coalescible {
+    e[0].last_kind = kind; e[0].last_at = ifx kind == EB_EDIT_INSERT then from + s.count else from; e[0].last_time = e[0].clock;
+  } else {
+    e[0].last_kind = EB_EDIT_NONE;
+  }
+}
+
+// ---------------------------------------------------------------- editing
+
+// Whether bytes [from, to) can become s: in range, and the result fits.
+eb_fits :: (e: [] EditBuf, from: int, to: int, s: string) -> bool {
+  return from >= 0 && to <= e[0].n && from <= to && e[0].n + s.count - (to - from) <= EB_TEXT;
+}
+// Bytes [from, to) become s. Whether it fit.
+eb_splice :: (e: [] EditBuf, from: int, to: int, s: string) -> bool {
+  if !eb_fits(e, from, to, s) { return false; }
+  grow := s.count - (to - from);
+  if grow > 0 {
+    k := e[0].n;
+    while k > to { k -= 1; e[0].text[k + grow] = e[0].text[k]; }
+  } else if grow < 0 {
+    for k: to..<e[0].n { e[0].text[k + grow] = e[0].text[k]; }
+  }
+  for i: 0..<s.count { e[0].text[from + i] = s[i]; }
+  e[0].n += grow;
+  return true;
+}
+// replace_text_in_range: the given range (from < 0: the composition, else
+// the selection) becomes s, the caret after it. Whether the text changed.
+eb_replace :: (e: [] EditBuf, from_in: int, to_in: int, s: string) -> bool {
+  from := from_in; to := to_in;
+  if from < 0 {
+    if e[0].marked { from = e[0].marked_at; to = e[0].marked_end; } else { from = eb_sel_lo(e); to = eb_sel_hi(e); }
+  }
+  if from > e[0].n || to > e[0].n || from > to { return false; }
+  // an IME commit is the tail of a composition whose snapshot was taken when it began
+  if !e[0].marked { eb_record_edit(e, from, to, s); }
+  if !eb_splice(e, from, to, s) { return false; }
+  e[0].anchor = from + s.count; e[0].caret = e[0].anchor;
+  e[0].marked = false;
+  e[0].gen += 1;
+  return true;
+}
+// replace_and_mark_text_in_range: the composition so far; the selection
+// inside it (sel_from < 0: the caret at its end).
+eb_mark :: (e: [] EditBuf, from_in: int, to_in: int, s: string, sel_from: int, sel_to: int) -> bool {
+  from := from_in; to := to_in;
+  if from < 0 {
+    if e[0].marked { from = e[0].marked_at; to = e[0].marked_end; } else { from = eb_sel_lo(e); to = eb_sel_hi(e); }
+  }
+  if from > e[0].n || to > e[0].n || from > to { return false; }
+  if !e[0].marked {
+    // the composition's first keystroke: one undo drops all of it
+    eb_hist_push(e, EB_UNDO);
+    e[0].hist[EB_REDO].count = 0; e[0].hist[EB_REDO].used = 0;
+    e[0].last_kind = EB_EDIT_NONE;
+  }
+  if !eb_splice(e, from, to, s) { return false; }
+  e[0].marked = s.count > 0; e[0].marked_at = from; e[0].marked_end = from + s.count;
+  if sel_from >= 0 && sel_from <= s.count && sel_to >= sel_from && sel_to <= s.count {
+    e[0].anchor = from + sel_from; e[0].caret = from + sel_to;
+  } else {
+    e[0].anchor = from + s.count; e[0].caret = e[0].anchor;
+  }
+  e[0].gen += 1;
+  return true;
+}
+eb_unmark :: (e: [] EditBuf) {
+  if e[0].marked { e[0].marked = false; e[0].last_kind = EB_EDIT_NONE; }
+}
+// Typing (an IME commit with no range).
+eb_insert :: (e: [] EditBuf, s: string) -> bool { return eb_replace(e, -1, -1, s); }
+// Paste: always its own undo step, even one character. Nothing changes when
+// it does not fit.
+eb_paste :: (e: [] EditBuf, s: string) -> bool {
+  if s.count == 0 { return false; }
+  from := ifx e[0].marked then e[0].marked_at else eb_sel_lo(e);
+  to := ifx e[0].marked then e[0].marked_end else eb_sel_hi(e);
+  if !eb_fits(e, from, to, s) { return false; }
+  e[0].last_kind = EB_EDIT_NONE;
+  done := eb_replace(e, -1, -1, s);
+  e[0].last_kind = EB_EDIT_NONE;
+  return done;
+}
+// Cut (after the host copied the selection): the selection goes, as its own step.
+eb_cut_selection :: (e: [] EditBuf) {
+  if e[0].anchor == e[0].caret { return; }
+  e[0].last_kind = EB_EDIT_NONE;
+  _ = eb_replace(e, -1, -1, "");
+  e[0].last_kind = EB_EDIT_NONE;
+}
+
+eb_move_to :: (e: [] EditBuf, i: int) {
+  k := ifx i < 0 then 0 else ifx i > e[0].n then e[0].n else i;
+  e[0].anchor = k; e[0].caret = k;
+  e[0].last_kind = EB_EDIT_NONE;
+  e[0].gen += 1;
+}
+// Deletion extends the selection without breaking a typing run.
+eb_extend_to :: (e: [] EditBuf, i: int) {
+  k := ifx i < 0 then 0 else ifx i > e[0].n then e[0].n else i;
+  e[0].caret = k;
+  e[0].gen += 1;
+}
+eb_select_to :: (e: [] EditBuf, i: int) {
+  e[0].last_kind = EB_EDIT_NONE;
+  eb_extend_to(e, i);
+}
+// Backspace, Delete and the word and line deletes: with a selection they take only it.
+eb_delete_to :: (e: [] EditBuf, i: int) {
+  if e[0].anchor == e[0].caret {
+    if e[0].caret == i { return; }
+    eb_extend_to(e, i);
+  }
+  _ = eb_replace(e, -1, -1, "");
+}
+eb_select_all :: (e: [] EditBuf) { eb_move_to(e, 0); eb_select_to(e, e[0].n); }
+
+// The text cleared as a new document: no selection, no composition, no history.
+eb_clear :: (e: [] EditBuf) {
+  e[0].n = 0;
+  eb_move_to(e, 0);
+  e[0].marked = false;
+  eb_clear_history(e);
+}
+// The text set as a new document (as much of s as fits), the caret at its end.
+eb_set :: (e: [] EditBuf, s: string) {
+  n := ifx s.count < EB_TEXT then s.count else EB_TEXT;
+  for i: 0..<n { e[0].text[i] = s[i]; }
+  e[0].n = n;
+  eb_move_to(e, n);
+  e[0].marked = false;
+  eb_clear_history(e);
+}
+
+// ---------------------------------------------------------------- UTF-16 (an IME's offsets)
+
+eb_u16_of :: (e: [] EditBuf, byte: int) -> int {
+  t := eb_text(e);
+  k := 0; u := 0;
+  while k < t.count && k < byte {
+    r := rune_at(t, k);
+    u += ifx r.code >= 0x10000 then 2 else 1;
+    k += r.len;
+  }
+  return u;
+}
+eb_byte_of :: (e: [] EditBuf, u16: int) -> int { return eb_byte_in(eb_text(e), u16); }
+// The same within a string (the IME's selection inside its marked text).
+eb_byte_in :: (s: string, u16: int) -> int {
+  k := 0; u := 0;
+  while k < s.count && u < u16 {
+    r := rune_at(s, k);
+    u += ifx r.code >= 0x10000 then 2 else 1;
+    k += r.len;
+  }
+  return k;
+}
+
+// ---------------------------------------------------------------- checks
+
+eb_typed :: (e: [] EditBuf, s: string) { for ch: 0..<s.count { _ = eb_insert(e, cast(string) s[ch..<ch + 1]); } }
+
+#test "an edit buffer: typing at the caret, a selection replaced, graphemes stepped over whole" {
+  e: [1] EditBuf;
+  #assert eb_insert(e[..], "hello world") && eb_text(e[..]) == "hello world" && e[0].caret == 11 && e[0].anchor == 11;
+  g := e[0].gen;
+  eb_move_to(e[..], 6); eb_select_to(e[..], 11);
+  #assert eb_selected(e[..]) == "world" && e[0].gen > g && eb_sel_lo(e[..]) == 6 && eb_sel_hi(e[..]) == 11;
+  #assert eb_insert(e[..], "there") && eb_text(e[..]) == "hello there" && e[0].caret == 11 && e[0].anchor == 11;
+  eb_set(e[..], "éx👍🏽");
+  #assert e[0].caret == e[0].n && eb_prev_boundary(e[..], e[0].n) == 4 && eb_prev_boundary(e[..], 4) == 3 && eb_prev_boundary(e[..], 3) == 0;
+  #assert eb_next_boundary(e[..], 0) == 3 && eb_next_boundary(e[..], 4) == e[0].n && !eb_can_undo(e[..]);
+  eb_move_to(e[..], 3); eb_delete_to(e[..], eb_prev_boundary(e[..], 3));
+  #assert eb_text(e[..]) == "x👍🏽" && e[0].caret == 0;
+}
+#test "an edit buffer: words are UAX 29 segments; lines end before a CR" {
+  e: [1] EditBuf;
+  eb_set(e[..], "don't stop, 3.14 foo_bar\r\nnext");
+  t := eb_text(e[..]);
+  #assert eb_word_seg_end(t, 0) == 5 && eb_word_seg_end(t, 6) == 10 && eb_word_seg_end(t, 10) == 11 && eb_word_seg_end(t, 12) == 16 && eb_word_seg_end(t, 17) == 24;
+  #assert eb_prev_word(e[..], 11) == 10 && eb_prev_word(e[..], 10) == 6 && eb_next_word(e[..], 5) == 10 && eb_word_from(e[..], 7) == 6 && eb_word_to(e[..], 7) == 10;
+  #assert eb_line_start(e[..], 28) == 26 && eb_line_stop(e[..], 3) == 25 && eb_line_content_end(e[..], 3) == 24;
+}
+#test "an edit buffer: undo in typed bursts, redo, a paste its own step, a new document forgets" {
+  e: [1] EditBuf;
+  eb_typed(e[..], "aaa b");
+  e[0].clock += 2;
+  eb_typed(e[..], "c");
+  #assert eb_undo(e[..]) && eb_text(e[..]) == "aaa b" && eb_undo(e[..]) && eb_text(e[..]) == "aaa" && eb_undo(e[..]) && eb_text(e[..]) == "" && !eb_undo(e[..]);
+  #assert eb_redo(e[..]) && eb_text(e[..]) == "aaa" && e[0].caret == 3;
+  #assert eb_paste(e[..], "x") && eb_paste(e[..], "y") && !eb_can_redo(e[..]) && eb_undo(e[..]) && eb_text(e[..]) == "aaax";
+  big: [EB_TEXT] u8; for i: 0..<big.count { big[i] = 'q'; }
+  h := e[0].hist[EB_UNDO].count; g := e[0].gen;
+  #assert !eb_paste(e[..], cast(string) big[..]) && eb_text(e[..]) == "aaax" && e[0].hist[EB_UNDO].count == h && e[0].gen == g;
+  eb_clear(e[..]);
+  #assert e[0].n == 0 && e[0].caret == 0 && !eb_can_undo(e[..]) && !eb_can_redo(e[..]);
+}
+#test "an edit buffer: IME marked text replaces itself, commits once, undoes as one step; UTF-16 offsets" {
+  e: [1] EditBuf;
+  eb_set(e[..], "x ");
+  #assert eb_mark(e[..], -1, -1, "n", -1, -1) && eb_mark(e[..], -1, -1, "にh", -1, -1) && eb_mark(e[..], -1, -1, "にほ", 0, 6);
+  #assert eb_text(e[..]) == "x にほ" && e[0].marked && e[0].marked_at == 2 && e[0].marked_end == 8 && eb_sel_lo(e[..]) == 2 && eb_sel_hi(e[..]) == 8;
+  #assert eb_u16_of(e[..], 8) == 4 && eb_byte_of(e[..], 3) == 5 && eb_byte_in("にほ", 1) == 3;
+  #assert eb_replace(e[..], -1, -1, "日本") && eb_text(e[..]) == "x 日本" && !e[0].marked && e[0].caret == 8;
+  #assert eb_undo(e[..]) && eb_text(e[..]) == "x ";
+  #assert eb_insert(e[..], "😀") && eb_u16_of(e[..], e[0].n) == 4 && eb_byte_of(e[..], 4) == e[0].n && eb_byte_of(e[..], 3) == e[0].n;
+}

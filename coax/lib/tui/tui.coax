@@ -10,6 +10,7 @@
 // style sequences.
 
 #load "../../../components/core/markdown.coax";
+#load "../../../components/core/edit.coax";   // the composer's text: the one edit buffer
 
 // ---------------------------------------------------------------- output
 
@@ -291,57 +292,56 @@ tui_key :: (k: [] TuiKeys, b: string, at: int, more: bool) -> TuiKeyRead {
 
 // ---------------------------------------------------------------- the composer
 
-TUI_EDIT_BYTES :: 16384;
+// The composer's text, its cursor and its undo are the one edit buffer
+// (components/core/edit.coax), the chat composer's too: a key moves a
+// grapheme or a UAX #29 word, and Undo takes back typed bursts, a paste or a
+// dictated insertion as the chat's composer does. What is the terminal's
+// own stays here: the key bindings (readline's), the sent-message history
+// Up and Down walk, and columns. There is no selection: the anchor follows
+// the caret.
+TUI_EDIT_BYTES :: EB_TEXT;
 TUI_HISTORY :: 64;
 TUI_HISTORY_BYTES :: 4096;
 
 TuiEditor :: struct {
-  buf: [TUI_EDIT_BYTES] u8; n: int;
-  cur: int;                      // a byte offset on a character boundary
+  eb: [1] EditBuf;               // the text; eb[0].caret is the cursor, a byte offset on a grapheme boundary
   hist: [TUI_HISTORY] [TUI_HISTORY_BYTES] u8; hlen: [TUI_HISTORY] int;
   nh: int;                       // entries held (newest at (top - 1) mod TUI_HISTORY)
   top: int;
   browse: int;                   // 0: editing; k: showing the k-th newest entry
   gen: int;                      // counts every change of the text or the cursor, and every key
-  // one undoable insertion (tui_ed_insert_undoable): its bytes at undo_at, and the cursor before
-  undo_on: bool; undo_at: int; undo_n: int; undo_cur: int; undo_gen: int;
 }
 
-tui_ed_text :: (e: [] TuiEditor) -> string { return cast(string) e[0].buf[0..<e[0].n]; }
+tui_ed_text :: (e: [] TuiEditor) -> string { return eb_text(e[0].eb[..]); }
+tui_ed_n :: (e: [] TuiEditor) -> int { return e[0].eb[0].n; }
+tui_ed_cur :: (e: [] TuiEditor) -> int { return e[0].eb[0].caret; }
+// Puts the cursor at byte at (held to the text).
+tui_ed_move :: (e: [] TuiEditor, at: int) { eb_move_to(e[0].eb[..], at); e[0].gen += 1; }
 
-tui_ed_set :: (e: [] TuiEditor, s: string) {
-  n := ifx s.count < TUI_EDIT_BYTES then s.count else TUI_EDIT_BYTES;
-  for i: 0..<n { e[0].buf[i] = s[i]; }
-  e[0].n = n; e[0].cur = n; e[0].gen += 1;
-}
+// The text as a new document (as much of s as fits), the cursor at its end.
+tui_ed_set :: (e: [] TuiEditor, s: string) { eb_set(e[0].eb[..], s); e[0].gen += 1; }
 
-tui_ed_clear :: (e: [] TuiEditor) { e[0].n = 0; e[0].cur = 0; e[0].browse = 0; e[0].gen += 1; }
+tui_ed_clear :: (e: [] TuiEditor) { eb_clear(e[0].eb[..]); e[0].browse = 0; e[0].gen += 1; }
 
+// Types s at the cursor; nothing changes when it does not fit.
 tui_ed_insert :: (e: [] TuiEditor, s: string) {
-  if e[0].n + s.count > TUI_EDIT_BYTES { return; }
-  i := e[0].n - 1;
-  while i >= e[0].cur { e[0].buf[i + s.count] = e[0].buf[i]; i -= 1; }
-  for j: 0..<s.count { e[0].buf[e[0].cur + j] = s[j]; }
-  e[0].n += s.count; e[0].cur += s.count; e[0].gen += 1;
+  at := e[0].eb[0].caret;
+  if s.count == 0 || !eb_fits(e[0].eb[..], at, at, s) { return; }
+  if eb_replace(e[0].eb[..], at, at, s) { e[0].gen += 1; }
 }
 
-// Inserts s at the cursor as one edit that Undo takes back while nothing
-// else has changed; false, and nothing changed, when it does not fit.
+// Inserts s at the cursor as its own undo step (a paste, a dictation);
+// false, and nothing changed, when it does not fit.
 tui_ed_insert_undoable :: (e: [] TuiEditor, s: string) -> bool {
-  if s.count == 0 || e[0].n + s.count > TUI_EDIT_BYTES { return false; }
-  at := e[0].cur;
-  tui_ed_insert(e, s);
-  e[0].undo_on = true; e[0].undo_at = at; e[0].undo_n = s.count; e[0].undo_cur = at; e[0].undo_gen = e[0].gen;
+  if !eb_paste(e[0].eb[..], s) { return false; }
+  e[0].gen += 1;
   return true;
 }
 
-// Takes back the last undoable insertion; false when there is none, or the
-// text or cursor changed after it.
+// Takes back the last undo step; false when there is none.
 tui_ed_undo :: (e: [] TuiEditor) -> bool {
-  if !e[0].undo_on || e[0].undo_gen != e[0].gen { e[0].undo_on = false; return false; }
-  e[0].undo_on = false;
-  tui_ed_delete(e, e[0].undo_at, e[0].undo_at + e[0].undo_n);
-  e[0].cur = e[0].undo_cur;
+  if !eb_undo(e[0].eb[..]) { return false; }
+  e[0].gen += 1;
   return true;
 }
 
@@ -354,46 +354,32 @@ tui_ed_insert_cp :: (e: [] TuiEditor, cp: int) {
   tui_ed_insert(e, cast(string) b[0..<k]);
 }
 
+// Deletes bytes [from, to); the cursor keeps its place in what stays.
 tui_ed_delete :: (e: [] TuiEditor, from: int, to: int) {
   if from >= to { return; }
-  d := to - from;
-  for i: to..<e[0].n { e[0].buf[i - d] = e[0].buf[i]; }
-  e[0].n -= d; e[0].gen += 1;
-  if e[0].cur >= to { e[0].cur -= d; } else if e[0].cur > from { e[0].cur = from; }
+  cur := e[0].eb[0].caret; d := to - from;
+  if !eb_replace(e[0].eb[..], from, to, "") { return; }
+  keep := ifx cur >= to then cur - d else ifx cur > from then from else cur;
+  if keep != from { eb_move_to(e[0].eb[..], keep); }
+  e[0].gen += 1;
+}
+// Deletes from the cursor to at, either side of it.
+tui_ed_delete_to :: (e: [] TuiEditor, at: int) {
+  cur := e[0].eb[0].caret;
+  if at < cur { tui_ed_delete(e, at, cur); } else { tui_ed_delete(e, cur, at); }
 }
 
-tui_ed_prev :: (e: [] TuiEditor, at: int) -> int {
-  i := at - 1;
-  while i > 0 && (e[0].buf[i] & 0xc0) == 0x80 { i -= 1; }
-  return ifx i < 0 then 0 else i;
-}
-tui_ed_next :: (e: [] TuiEditor, at: int) -> int {
-  if at >= e[0].n { return e[0].n; }
-  return at + tui_rune(tui_ed_text(e), at).len;
-}
-tui_ed_line_start :: (e: [] TuiEditor, at: int) -> int { i := at; while i > 0 && e[0].buf[i - 1] != 10 { i -= 1; } return i; }
-tui_ed_line_end :: (e: [] TuiEditor, at: int) -> int { i := at; while i < e[0].n && e[0].buf[i] != 10 { i += 1; } return i; }
-tui_ed_is_space :: (c: u8) -> bool { return c == ' ' || c == 10 || c == 9; }
-
-tui_ed_word_left :: (e: [] TuiEditor, at: int) -> int {
-  i := at;
-  while i > 0 && tui_ed_is_space(e[0].buf[i - 1]) { i -= 1; }
-  while i > 0 && !tui_ed_is_space(e[0].buf[i - 1]) { i -= 1; }
-  return i;
-}
-tui_ed_word_right :: (e: [] TuiEditor, at: int) -> int {
-  i := at;
-  while i < e[0].n && tui_ed_is_space(e[0].buf[i]) { i += 1; }
-  while i < e[0].n && !tui_ed_is_space(e[0].buf[i]) { i += 1; }
-  return i;
-}
+tui_ed_prev :: (e: [] TuiEditor, at: int) -> int { return eb_prev_boundary(e[0].eb[..], at); }
+tui_ed_next :: (e: [] TuiEditor, at: int) -> int { return eb_next_boundary(e[0].eb[..], at); }
+tui_ed_line_start :: (e: [] TuiEditor, at: int) -> int { return eb_line_start(e[0].eb[..], at); }
+tui_ed_line_end :: (e: [] TuiEditor, at: int) -> int { return eb_line_stop(e[0].eb[..], at); }
 
 // Columns from the start of the line to at.
-tui_ed_col :: (e: [] TuiEditor, at: int) -> int { s := tui_ed_line_start(e, at); return tui_text_width(cast(string) e[0].buf[s..<at]); }
+tui_ed_col :: (e: [] TuiEditor, at: int) -> int { s := tui_ed_line_start(e, at); return tui_text_width(cast(string) e[0].eb[0].text[s..<at]); }
 // The offset in the line starting at s whose column is nearest col, not past it.
 tui_ed_at_col :: (e: [] TuiEditor, s: int, col: int) -> int {
   end := tui_ed_line_end(e, s);
-  return s + tui_fit(cast(string) e[0].buf[s..<end], col);
+  return s + tui_fit(cast(string) e[0].eb[0].text[s..<end], col);
 }
 
 tui_ed_remember :: (e: [] TuiEditor, s: string) {
@@ -421,32 +407,33 @@ TUI_ED_KEPT :: 0; TUI_ED_SUBMIT :: 1; TUI_ED_IGNORED :: 2;
 tui_ed_key :: (e: [] TuiEditor, k: TuiKey) -> int {
   kd := k.kind;
   if kd == TUI_K_UNDO { return ifx tui_ed_undo(e) then TUI_ED_KEPT else TUI_ED_IGNORED; }
-  e[0].gen += 1;          // any other key may move the cursor: an older insertion is no longer Undo's
+  e[0].gen += 1;          // any other key may move the cursor
+  b := e[0].eb[..]; cur := b[0].caret;
   if kd == TUI_K_CHAR { tui_ed_insert_cp(e, k.cp); return TUI_ED_KEPT; }
-  if kd == TUI_K_PASTE { tui_ed_insert(e, k.text); return TUI_ED_KEPT; }
+  if kd == TUI_K_PASTE { x := tui_ed_insert_undoable(e, k.text); return TUI_ED_KEPT; }
   if kd == TUI_K_NEWLINE { tui_ed_insert(e, "\n"); return TUI_ED_KEPT; }
   if kd == TUI_K_ENTER {
     // a line ending in a backslash continues instead of sending
-    if e[0].cur > 0 && e[0].cur == e[0].n && e[0].buf[e[0].cur - 1] == '\\' { e[0].buf[e[0].cur - 1] = 10; return TUI_ED_KEPT; }
+    if cur > 0 && cur == b[0].n && b[0].text[cur - 1] == '\\' { x := eb_replace(b, cur - 1, cur, "\n"); return TUI_ED_KEPT; }
     return TUI_ED_SUBMIT;
   }
-  if kd == TUI_K_BACKSPACE { tui_ed_delete(e, tui_ed_prev(e, e[0].cur), e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_DELETE { tui_ed_delete(e, e[0].cur, tui_ed_next(e, e[0].cur)); return TUI_ED_KEPT; }
-  if kd == TUI_K_LEFT { e[0].cur = tui_ed_prev(e, e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_RIGHT { e[0].cur = tui_ed_next(e, e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_WORD_LEFT { e[0].cur = tui_ed_word_left(e, e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_WORD_RIGHT { e[0].cur = tui_ed_word_right(e, e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_HOME { e[0].cur = tui_ed_line_start(e, e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_END { e[0].cur = tui_ed_line_end(e, e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_KILL_LINE { tui_ed_delete(e, tui_ed_line_start(e, e[0].cur), e[0].cur); return TUI_ED_KEPT; }
-  if kd == TUI_K_KILL_END { tui_ed_delete(e, e[0].cur, tui_ed_line_end(e, e[0].cur)); return TUI_ED_KEPT; }
-  if kd == TUI_K_KILL_WORD { tui_ed_delete(e, tui_ed_word_left(e, e[0].cur), e[0].cur); return TUI_ED_KEPT; }
+  if kd == TUI_K_BACKSPACE { tui_ed_delete_to(e, eb_prev_boundary(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_DELETE { tui_ed_delete_to(e, eb_next_boundary(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_LEFT { eb_move_to(b, eb_prev_boundary(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_RIGHT { eb_move_to(b, eb_next_boundary(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_WORD_LEFT { eb_move_to(b, eb_prev_word(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_WORD_RIGHT { eb_move_to(b, eb_next_word(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_HOME { eb_move_to(b, eb_line_start(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_END { eb_move_to(b, eb_line_stop(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_KILL_LINE { tui_ed_delete_to(e, eb_line_start(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_KILL_END { tui_ed_delete_to(e, eb_line_stop(b, cur)); return TUI_ED_KEPT; }
+  if kd == TUI_K_KILL_WORD { tui_ed_delete_to(e, eb_prev_word(b, cur)); return TUI_ED_KEPT; }
   if kd == TUI_K_UP || kd == TUI_K_DOWN {
-    s := tui_ed_line_start(e, e[0].cur);
-    multi := false; for i: 0..<e[0].n { if e[0].buf[i] == 10 { multi = true; } }
-    if multi && kd == TUI_K_UP && s > 0 { col := tui_ed_col(e, e[0].cur); e[0].cur = tui_ed_at_col(e, tui_ed_line_start(e, s - 1), col); return TUI_ED_KEPT; }
-    en := tui_ed_line_end(e, e[0].cur);
-    if multi && kd == TUI_K_DOWN && en < e[0].n { col := tui_ed_col(e, e[0].cur); e[0].cur = tui_ed_at_col(e, en + 1, col); return TUI_ED_KEPT; }
+    s := eb_line_start(b, cur);
+    multi := false; for i: 0..<b[0].n { if b[0].text[i] == 10 { multi = true; } }
+    if multi && kd == TUI_K_UP && s > 0 { col := tui_ed_col(e, cur); eb_move_to(b, tui_ed_at_col(e, eb_line_start(b, s - 1), col)); return TUI_ED_KEPT; }
+    en := eb_line_stop(b, cur);
+    if multi && kd == TUI_K_DOWN && en < b[0].n { col := tui_ed_col(e, cur); eb_move_to(b, tui_ed_at_col(e, en + 1, col)); return TUI_ED_KEPT; }
     if multi && e[0].browse == 0 { return TUI_ED_KEPT; }
     // history
     if kd == TUI_K_UP && e[0].browse < e[0].nh { tui_ed_show_history(e, e[0].browse + 1); }
@@ -544,8 +531,9 @@ tui_rows_editor :: (r: [] TuiRows, e: [] TuiEditor, prompt: string, cont: string
       if take == 0 && pos < nl { take = tui_rune(text, pos).len; }
       if nrow < TUI_MAX_ROWS { starts[nrow] = pos; ends[nrow] = pos + take; }
       last := pos + take >= nl;
-      if e[0].cur >= pos && (e[0].cur < pos + take || (last && e[0].cur <= nl)) {
-        crow = nrow; ccol = tui_text_width(cast(string) text[pos..<e[0].cur]);
+      cur := tui_ed_cur(e);
+      if cur >= pos && (cur < pos + take || (last && cur <= nl)) {
+        crow = nrow; ccol = tui_text_width(cast(string) text[pos..<cur]);
         if ccol >= room { crow = nrow + 1; ccol = 0; }   // the cursor sits past a full row
       }
       nrow += 1; pos += take;
@@ -1206,24 +1194,25 @@ tui_tb :: (s: string, out: [] u8) -> string {
   #assert tui_key(k, tui_tb("`[1O", ku[..]), 0, false).key.kind == TUI_K_NONE && tui_key(k, tui_tb("`OI", ku[..]), 0, false).key.kind == TUI_K_NONE;
 }
 
-#test "the composer: an undoable insertion, taken back only while nothing else changed" {
+#test "the composer: Undo takes back a paste or a dictated insertion, then typed bursts, as the chat's composer does" {
   e_b: [1] TuiEditor; e := e_b[..];
   tui_ed_set(e, "ab"); x := tui_ed_key(e, TuiKey.{kind = TUI_K_LEFT});
-  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_IGNORED && tui_ed_text(e) == "ab";
-  #assert tui_ed_insert_undoable(e, "x\ny") && tui_ed_text(e) == "ax\nyb" && e[0].cur == 4;
-  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_KEPT && tui_ed_text(e) == "ab" && e[0].cur == 1;
+  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_IGNORED && tui_ed_text(e) == "ab";   // a new document has nothing to undo
+  #assert tui_ed_insert_undoable(e, "x\ny") && tui_ed_text(e) == "ax\nyb" && tui_ed_cur(e) == 4;
+  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_KEPT && tui_ed_text(e) == "ab" && tui_ed_cur(e) == 1;
   #assert !tui_ed_undo(e) && tui_ed_text(e) == "ab";
-  // any later key, typed text or a cursor move, ends it
+  // a cursor move after it does not lose it; typed text after it is a step of its own
   #assert tui_ed_insert_undoable(e, "z"); x = tui_ed_key(e, TuiKey.{kind = TUI_K_RIGHT});
-  #assert !tui_ed_undo(e) && tui_ed_text(e) == "azb";
-  #assert tui_ed_insert_undoable(e, "q"); tui_ed_insert(e, "r"); #assert !tui_ed_undo(e) && tui_ed_text(e) == "azbqr";
-  #assert tui_ed_insert_undoable(e, "s"); tui_ed_clear(e); #assert !tui_ed_undo(e) && e[0].n == 0;
+  #assert tui_ed_undo(e) && tui_ed_text(e) == "ab";
+  #assert tui_ed_insert_undoable(e, "q"); x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = 'r'}); x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = 's'});
+  #assert tui_ed_text(e) == "aqrsb" && tui_ed_undo(e) && tui_ed_text(e) == "aqb" && tui_ed_undo(e) && tui_ed_text(e) == "ab";
+  #assert tui_ed_insert_undoable(e, "s"); tui_ed_clear(e); #assert !tui_ed_undo(e) && tui_ed_n(e) == 0;
   // nothing, or too much, changes nothing
-  g := e[0].gen; #assert !tui_ed_insert_undoable(e, "") && e[0].gen == g && !e[0].undo_on;
+  g := e[0].gen; #assert !tui_ed_insert_undoable(e, "") && e[0].gen == g && !eb_can_undo(e[0].eb[..]);
   big: [TUI_EDIT_BYTES] u8; for i: 0..<big.count { big[i] = 'a'; }
   tui_ed_set(e, cast(string) big[0..<TUI_EDIT_BYTES - 1]); g = e[0].gen;
-  #assert !tui_ed_insert_undoable(e, "bc") && e[0].n == TUI_EDIT_BYTES - 1 && e[0].gen == g;
-  #assert tui_ed_insert_undoable(e, "b") && e[0].n == TUI_EDIT_BYTES && tui_ed_undo(e) && e[0].n == TUI_EDIT_BYTES - 1;
+  #assert !tui_ed_insert_undoable(e, "bc") && tui_ed_n(e) == TUI_EDIT_BYTES - 1 && e[0].gen == g;
+  #assert tui_ed_insert_undoable(e, "b") && tui_ed_n(e) == TUI_EDIT_BYTES && tui_ed_undo(e) && tui_ed_n(e) == TUI_EDIT_BYTES - 1;
 }
 
 #test "bracketed paste arrives as one key, newlines kept, even split across reads" {
@@ -1246,17 +1235,24 @@ tui_tb :: (s: string, out: [] u8) -> string {
 #test "the composer: insert, move, delete words, continue with a backslash, submit" {
   e_b: [1] TuiEditor; e := e_b[..];
   for c: "hello world" { x := tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = cast(int) c}); }
-  #assert tui_ed_text(e) == "hello world" && e[0].cur == 11;
+  #assert tui_ed_text(e) == "hello world" && tui_ed_cur(e) == 11;
   x := tui_ed_key(e, TuiKey.{kind = TUI_K_KILL_WORD}); #assert tui_ed_text(e) == "hello ";
-  x = tui_ed_key(e, TuiKey.{kind = TUI_K_HOME}); #assert e[0].cur == 0;
-  x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = 0xe9}); #assert tui_ed_text(e) == "éhello " && e[0].cur == 2;
-  x = tui_ed_key(e, TuiKey.{kind = TUI_K_LEFT}); #assert e[0].cur == 0;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_HOME}); #assert tui_ed_cur(e) == 0;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = 0xe9}); #assert tui_ed_text(e) == "éhello " && tui_ed_cur(e) == 2;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_LEFT}); #assert tui_ed_cur(e) == 0;
   x = tui_ed_key(e, TuiKey.{kind = TUI_K_DELETE}); #assert tui_ed_text(e) == "hello ";
   x = tui_ed_key(e, TuiKey.{kind = TUI_K_END});
   x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = '\\'});
   #assert tui_ed_key(e, TuiKey.{kind = TUI_K_ENTER}) == TUI_ED_KEPT && tui_ed_text(e) == "hello \n";
   x = tui_ed_key(e, TuiKey.{kind = TUI_K_CHAR, cp = 'x'});
   #assert tui_ed_key(e, TuiKey.{kind = TUI_K_ENTER}) == TUI_ED_SUBMIT;
+  // words are the chat composer's (UAX #29): punctuation stops a word move and Ctrl-W; a grapheme moves whole
+  tui_ed_set(e, "rm -rf /tmp/a.b é");
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_LEFT}); #assert tui_ed_cur(e) == 16;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_WORD_LEFT}); #assert tui_ed_cur(e) == 12;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_KILL_WORD}); #assert tui_ed_text(e) == "rm -rf /tmpa.b é" && tui_ed_cur(e) == 11;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_WORD_RIGHT}); #assert tui_ed_cur(e) == 14;
+  x = tui_ed_key(e, TuiKey.{kind = TUI_K_UNDO}); #assert tui_ed_text(e) == "rm -rf /tmp/a.b é";
 }
 
 #test "history: Up and Down walk sent entries newest first and back to empty" {
@@ -1278,7 +1274,7 @@ tui_tb :: (s: string, out: [] u8) -> string {
   tui_rows_editor(r, e, "› ", "  ", 6, 10, TUI_PLAIN);
   #assert r[0].n == 3 && cast(string) r[0].text[1][0..<r[0].len[1]] == "  efgh";
   #assert r[0].cur_row == 2 && r[0].cur_col == 4;
-  e[0].cur = 4; tui_rows_reset(r); tui_rows_editor(r, e, "› ", "  ", 6, 10, TUI_PLAIN);
+  tui_ed_move(e, 4); tui_rows_reset(r); tui_rows_editor(r, e, "› ", "  ", 6, 10, TUI_PLAIN);
   #assert r[0].cur_row == 1 && r[0].cur_col == 2;
   // a full row puts the cursor on a fresh row below it
   tui_ed_set(e, "abcd"); tui_rows_reset(r); tui_rows_editor(r, e, "› ", "  ", 6, 10, TUI_PLAIN);

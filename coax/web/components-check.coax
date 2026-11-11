@@ -61,7 +61,7 @@ CC_TO_MOVE :: [22] CcMove.[
   CcMove.{path = "apps/openagents-web/ui.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/villapet.coax", does = CC_WRAP},
   CcMove.{path = "coax/lib/media/media.coax", does = CC_WRAP},
-  CcMove.{path = "coax/lib/tui/tui.coax", does = CC_WRAP | CC_EDIT},
+  CcMove.{path = "coax/lib/tui/tui.coax", does = CC_WRAP},
   CcMove.{path = "coax/web/changelog-page.coax", does = CC_MARKDOWN},
   CcMove.{path = "coder/tui/router.coax", does = CC_MARKDOWN | CC_WRAP},
   CcMove.{path = "psionic/lib/book-search/corpus.coax", does = CC_MARKDOWN},
