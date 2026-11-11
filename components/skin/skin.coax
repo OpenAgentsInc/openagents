@@ -86,6 +86,7 @@ UiSkin :: struct {
   danger_muted: Rgba; warning_muted: Rgba;          // a notice's text on its tinted ground
   file_tint: Rgba;          // a source file's icon
   spinner: [3] Rgba;        // the working spinner's three rows
+  clear: Rgba;              // nothing: the fill under a ring or a rim
   brand: Rgba;              // Claude's mark, in its own tone
   field_edge: Rgba;         // a field's or a floating card's border: the composer's pill, a menu
   lift: Rgba;               // a floating card's soft shadow (two layers of it)
@@ -96,6 +97,7 @@ UiSkin :: struct {
   list_wash: Rgba;          // a menu's list, set into the card
   stop_on: Rgba;            // a slider's stop at or under the thumb (one past it is the muted ink, faint)
   track: UiPlate; thumb: UiPlate;                   // a slider's track and thumb (the fill is the accent's plate)
+  accent_light: Rgba;       // the lit edge inside the accent's plate
   switch_shade: Rgba; switch_wash: Rgba; switch_rim: Rgba;   // a switch's track, on (over the accent) and off (over the surface), and its rim on
   switch_mark: Rgba; switch_ring: Rgba;             // the on mark and the off ring
   switch_knob: Rgba; switch_knob_rim: Rgba;         // the knob (over the surface) and its rim (over the knob)
@@ -150,7 +152,7 @@ uiskin_lift :: (c: Rgba, amount: f32) -> Rgba { return Rgba.{r = c.r + (1 - c.r)
 uiskin_accent_plate :: (s: UiSkin) -> UiPlate {
   base := s.accent;
   return UiPlate.{top = uiskin_lift(base, 0.06), bottom = base, rim = opacity(uiskin_lift(base, 0.35), 0.35),
-                  inset = rgba(1, 1, 1, 0.12), inset_dy = 1, drop = rgba(0, 0, 0, 0), drop_dy = 0, drop_blur = 0};
+                  inset = s.accent_light, inset_dy = 1, drop = s.clear, drop_dy = 0, drop_blur = 0};
 }
 
 // A syntax role's colour; anything outside the roles is the plain colour.

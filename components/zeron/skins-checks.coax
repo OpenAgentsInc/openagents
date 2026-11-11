@@ -6,7 +6,7 @@
 // apps/openagents-web/chat-frames.coax.
 //   coax/bin/coax test components/zeron/skins-checks.coax
 
-#load "transcript.coax";
+#load "picker.coax";       // the transcript, the composer and the menus
 #load "../skin/all.coax";
 
 SC_MAX :: 4096;
@@ -54,7 +54,7 @@ sc_transcript :: (sk: UiSkin, out: [] Rgba) -> int {
   ne := sc_transcript(everglade_skin(), e[..]);
   #assert nz > 10 && ne > 10;
   shared := 0;
-  for j: 0..<ne { if sc_has(z[..], nz, e[j]) { shared += 1; print("a Zeron colour in Everglade: % % % %\n", e[j].r, e[j].g, e[j].b, e[j].a); } }
+  for j: 0..<ne { if sc_has(z[..], nz, e[j]) { shared += 1; } }
   #assert shared == 0;
 }
 
@@ -102,6 +102,38 @@ sc_composer :: (sk: UiSkin, out: [] Rgba) -> int {
   ne := sc_composer(everglade_skin(), e[..]);
   #assert nz > 8 && ne > 8;
   shared := 0;
-  for j: 0..<ne { if sc_has(z[..], nz, e[j]) { shared += 1; print("a Zeron colour in Everglade's composer: % % % %\n", e[j].r, e[j].g, e[j].b, e[j].a); } }
+  for j: 0..<ne { if sc_has(z[..], nz, e[j]) { shared += 1; } }
+  #assert shared == 0;
+}
+
+// The menus: the model panel with its slider, the model list (a selected
+// row, an active one, a place, the search caret), the access menu with Plan
+// mode on and off. Returns their colours.
+sc_menus :: (sk: UiSkin, out: [] Rgba) -> int {
+  a: [1] Atlas; test_atlas(a[..]);
+  cat: [1] PkCatalog; test_catalog(cat[..]);
+  cat[0].place = "coderos-4080"; cat[0].place_model = 1; cat[0].tint = sk.brand;   // the catalog's tint is the app's
+  p: [1] Picker; pk_set_skin(p[..], sk);
+  list: [PK_PRIMS] Prim;
+  sel := PkSel.{model = 1, level = 2, access = 1, plan = true};
+  pk_open(p[..], PK_MODEL, cat[..], sel, 781, 447, 198, 32, 880, true);
+  p[0].title_hover = true;
+  m := sc_colours(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), out, 0);
+  _ = pk_press(p[..], cat[..], sel, 800, 500);
+  p[0].active = 2; p[0].back_hover = true; p[0].tabs = 1; p[0].tab_icon[0] = ICON_CLAUDE_14; p[0].tab_tint[0] = sk.brand;
+  m = sc_colours(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), out, m);
+  pk_open(p[..], PK_ACCESS_MENU, cat[..], sel, 694, 447, 83, 32, 880, true);
+  m = sc_colours(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), out, m);
+  sel.plan = false;
+  return sc_colours(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), out, m);
+}
+
+#test "the menus in Everglade wear none of Zeron's colours" #steps 400000000 {
+  z: [SC_MAX] Rgba; e: [SC_MAX] Rgba;
+  nz := sc_menus(zeron_skin(), z[..]);
+  ne := sc_menus(everglade_skin(), e[..]);
+  #assert nz > 12 && ne > 12;
+  shared := 0;
+  for j: 0..<ne { if sc_has(z[..], nz, e[j]) { shared += 1; } }
   #assert shared == 0;
 }
