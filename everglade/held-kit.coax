@@ -262,8 +262,8 @@ bow_move_body :: (body:[]f32)->f32 {
   b:=bow_carry_basis(bow_carry_mix(f32(CC_BOW_CARRY_TILT),f32(CC_BOW_WALK_TILT),m),bow_carry_mix(f32(CC_BOW_CARRY_TURN),f32(CC_BOW_WALK_TURN),m),bow_carry_mix(f32(CC_BOW_CARRY_LEAN),f32(CC_BOW_WALK_LEAN),m));
   #assert b[0][0]< -0.5 && b[1][1]>0.6 && b[1][2]>0;   // the string side in (-X), the top up and a little ahead
  }
- // standing, the top leans out (+X, the bow hand's side), 46 degrees on the limbs' axis
- s:=bow_carry_basis(f32(CC_BOW_CARRY_TILT),f32(CC_BOW_CARRY_TURN),f32(CC_BOW_CARRY_LEAN));#assert s[1][0]>0.6;
+ // standing, the top leans out (+X, the bow hand's side), about 28 degrees tip to tip
+ s:=bow_carry_basis(f32(CC_BOW_CARRY_TILT),f32(CC_BOW_CARRY_TURN),f32(CC_BOW_CARRY_LEAN));#assert s[1][0]>0.4;
 }
 // Drawn, the bow turns about its limbs until its string faces CC_BOW_ANCHOR, a point at your chin (the
 // figure's space, before its turn): the string comes back toward your face, inside the bow arm, not
@@ -280,16 +280,15 @@ bow_carry_mix :: (a:f32,b:f32,m:f32)->f32 {return a+(b-a)*m;}
 // Carried (an aim of 0), the bow is in the relaxed bow hand as an archer carries one (#13073): the grip in
 // the fist, the bow's plane side to side, its string in toward you and its back out, away from the body.
 // Standing, the top limb leans out past the shoulder and a little ahead, the lower limb back in, in front
-// of the knee: CC_BOW_CARRY_LEAN out on the limbs' axis (the upper limb, grip to tip, about 30 degrees
-// from upright: the tips lie on the string's side), CC_BOW_CARRY_TILT ahead, the string turned
+// of the knee: CC_BOW_CARRY_LEAN out, tip to tip about 28 degrees from upright, CC_BOW_CARRY_TILT ahead, the string turned
 // CC_BOW_CARRY_TURN toward ahead. On the move (bow_move) the legs swing through where the standing lower
 // limb hangs, so the bow comes more upright, its top a little ahead and its string a little more ahead
 // (the CC_BOW_WALK_ values), and the arm's swing carries it fore and aft. The bow arm hangs out from
 // the body and a little ahead meanwhile (fivelab-bodies.coax bd_arm_out, on the GPU fivelab_arm). The
 // bow turns from the carry to the drawn hold as the aim comes in to CC_BOW_CARRY_TO.
 CC_BOW_CARRY_TILT :: 0.2;    // radians
-CC_BOW_CARRY_TURN :: 0.25;   // radians
-CC_BOW_CARRY_LEAN :: -0.8;   // radians: the top out (+X)
+CC_BOW_CARRY_TURN :: 0.5;    // radians
+CC_BOW_CARRY_LEAN :: -0.5;   // radians: the top out (+X)
 CC_BOW_WALK_TILT :: 0.3;     // radians
 CC_BOW_WALK_TURN :: 0.6;     // radians
 CC_BOW_WALK_LEAN :: 0.0;     // radians

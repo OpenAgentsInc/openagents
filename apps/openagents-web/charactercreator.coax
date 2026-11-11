@@ -618,8 +618,8 @@ cc_bow_side_sweep :: (c0:int,c1:int)->f32 {
 CC_BOW_MEDIAL_MIN :: 0.08;   // metres: the string nearer the body's middle than the bow's back
 // Carried standing (#13073, the owner's reference: an archer at rest, the bow in the left fist at his
 // side), over the idle's every frame on both bodies: [0] the farthest the bow's grip lies from the fist's
-// middle, [1] and [2] the least and most the upper limb (grip to tip) leans out from upright, toward the
-// bow hand's side, in degrees, and [3] the least its tip lies out past the shoulder.
+// middle, [1] and [2] the least and most the bow's long axis (tip to tip) leans its top out from upright,
+// toward the bow hand's side, in degrees, and [3] the least its tip lies out past the shoulder.
 cc_bow_carry_shape :: ()->[4]f32 {
  own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
  pal:[figs.BD_ROWS*4]f32;sk:[1]figs.Skin;o:=[4]f32.[0,1000,-1000,1000];
@@ -632,8 +632,8 @@ cc_bow_carry_shape :: ()->[4]f32 {
    h:=bind[figs.BD_HAND_L];fist:=cc_pose_point(hl,[3]f32.[h[0]+CC_FIST_L[0],h[1]+CC_FIST_L[1],h[2]+CC_FIST_L[2]]);
    g:=f32(CC_BOW_GRIP_X);grip:=[3]f32.[w[0]+w[3]*g,w[1]+w[4]*g,w[2]+w[5]*g];
    d:=[3]f32.[grip[0]-fist[0],grip[1]-fist[1],grip[2]-fist[2]];n:=sqrt(cc_dot(d,d));if n>o[0] {o[0]=n;}
-   up:=bow_string_points(w,fist,0)[0];
-   a:=figs.atan2(up[0]-grip[0],up[1]-grip[1])*57.29578;if a<o[1] {o[1]=a;}if a>o[2] {o[2]=a;}
+   tips:=bow_string_points(w,fist,0);up:=tips[0];dn:=tips[1];
+   a:=figs.atan2(up[0]-dn[0],up[1]-dn[1])*57.29578;if a<o[1] {o[1]=a;}if a>o[2] {o[2]=a;}
    sh:=cc_joint_at(pal[..],figs.BD_SHOULDER_L,bind[figs.BD_SHOULDER_L]);if up[0]-sh[0]<o[3] {o[3]=up[0]-sh[0];}
   }
  }

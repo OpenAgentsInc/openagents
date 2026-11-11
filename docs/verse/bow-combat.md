@@ -36,8 +36,8 @@ The grip is in the bow fist, with no gap between them. The bow's plane runs
 side to side, its string is in toward the body, and its back faces out, away
 from the body.
 
-Standing, the bow is not upright. The upper limb leans out past the shoulder
-and a little forward, about 30 degrees from upright from the grip to its tip
+Standing, the bow is not upright. Its top leans out past the shoulder and a
+little forward, the bow about 28 degrees from upright tip to tip
 (`CC_BOW_CARRY_LEAN`, `CC_BOW_CARRY_TILT`, `CC_BOW_CARRY_TURN`). The lower limb
 angles back in, in front of the knee.
 
@@ -59,7 +59,7 @@ drawn hold.
 Checks:
 
 - `cc_bow_carry_shape` keeps the grip in the fist in every idle frame, on
-  both bodies. It keeps the upper limb leaning 20 to 40 degrees out and its tip
+  both bodies. It keeps the bow leaning its top 20 to 40 degrees out, tip to tip, and the top tip
   at least 10 cm out past the shoulder.
 - `cc_bow_side_sweep` keeps the string's middle at least 8 cm nearer the
   body's middle line than the grip, in every standing, walking and running
