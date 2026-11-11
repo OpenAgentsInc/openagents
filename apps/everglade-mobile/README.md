@@ -88,7 +88,8 @@ apps/everglade-mobile/ios/release.sh BUILD_NUMBER
 
 That builds for iPhone, signs with the team's Apple Distribution identity,
 and uploads to the App Store Connect app "Everglade". The build number must
-be higher than the last one uploaded (2 went up on 2026-11-10). It needs
+be higher than the last one uploaded (3 went up on 2026-11-10, the first with
+the web's realms). It needs
 `~/work/.secrets/appstoreconnect.env`. Apple then processes the build:
 
 ```sh
@@ -161,7 +162,7 @@ them again are in [`icon/`](icon/README.md).
 
 ## Not done
 
-- **A real phone has not run it.** Build 1 went to TestFlight without one.
+- **A real phone has not run it.** Builds 1 to 3 went to TestFlight without one.
 - **Android's own list** is in [`android/README.md`](android/README.md).
 - **App size.** The bundle carries Everglade II's 59 MB pack, Experimental's
   92 MB pack and 28 MB of the bars' pictures.
