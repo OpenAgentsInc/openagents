@@ -3,7 +3,7 @@
 main :: () {}
 
 #test "Microcoder attempts reach the durable event writer with engine and presence" {
-  a:[1]App;logs:[1]CsLog;a[0].log=logs[..];a[0].running=true;a[0].engine=ENGINE_MICRO;
+  a:[1]App;logs:[1]SwLog;a[0].log=logs[..];a[0].running=true;a[0].engine=ENGINE_MICRO;
   buf:[4096]u8;a[0].mcw[0].ar[0].buf=buf[..];
   line:="{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"gateway\":\"vertex\",\"model\":\"test\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":12,\"output_tokens\":2,\"cached_tokens\":0,\"usd_micros\":3,\"card_estimate_usd_micros\":3}";
   cd_micro_line(a[..],line);
@@ -50,7 +50,7 @@ main :: () {}
 }
 
 #test "live stdout emits safe suffixes while durable replies remain canonical" {
-  l:[1]CsLog;out:[262144]u8;ab:[65536]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  l:[1]SwLog;out:[262144]u8;ab:[65536]u8;ar:[1]ClArena;ar[0].buf=ab[..];
   cs_secret_add(l[..],"TOKEN-12345");
   l[0].nreply=cd_cat(l[0].reply[..],0,"hello TOK");
   line:=cs_live_line(l[..],false,out[..]);
@@ -66,7 +66,7 @@ main :: () {}
   #assert l[0].live_sent==0 && l[0].live_segment==1;
 }
 #test "live records bound escaping and preserve multibyte chunk boundaries" {
-  l:[1]CsLog;out:[65536]u8;ab:[65536]u8;ar:[1]ClArena;ar[0].buf=ab[..];
+  l:[1]SwLog;out:[65536]u8;ab:[65536]u8;ar:[1]ClArena;ar[0].buf=ab[..];
   for i:0..<8191 {l[0].reply[i]='x';}l[0].nreply=cd_cat(l[0].reply[..],8191,"é!");
   line:=cs_live_line(l[..],false,out[..]);#assert cl_str(ar[..],line,"text").count==8191;
   line=cs_live_line(l[..],false,out[..]);#assert cl_str(ar[..],line,"text")=="é!";
@@ -82,7 +82,7 @@ main :: () {}
 }
 
 #test "Codex tool starts persist before their results" {
-  a: [1] App; logs: [1] CsLog; a[0].log = logs[..]; a[0].plain = true; a[0].cols = 100;
+  a: [1] App; logs: [1] SwLog; a[0].log = logs[..]; a[0].plain = true; a[0].cols = 100;
   c: [1] CxClient; line: [4096] u8; arena: [4096] u8; out: [8192] u8;
   cx_init(c[..], line[..], arena[..], out[..]); a[0].cx = c[..];
   cd_codex_started(a[..], "{\"type\":\"commandExecution\",\"command\":\"pwd\"}");
@@ -93,7 +93,7 @@ main :: () {}
   #assert cd_holds(cast(string) a[0].log[0].line[..], "\"kind\":\"result\"");
 }
 #test "usage snapshots preserve unknowns and are never summed" {
-  a: [1] App; logs: [1] CsLog; a[0].log = logs[..];
+  a: [1] App; logs: [1] SwLog; a[0].log = logs[..];
   cs_cx_usage(a[..], "{\"total\":{\"inputTokens\":100,\"cachedInputTokens\":20,\"outputTokens\":7,\"reasoningOutputTokens\":3}}");
   s := cast(string) a[0].log[0].line[..];
   #assert cd_holds(s, "\"inputTokens\":100");
@@ -106,7 +106,7 @@ main :: () {}
   #assert cd_holds(s, "\"outputTokens\":null");
 }
 #test "resolved model metadata owns actual values and leaves unobserved cost null" {
-  a: [1] App; logs: [1] CsLog; a[0].log = logs[..]; ar: [1] ClArena; b: [4096] u8; ar[0].buf = b[..];
+  a: [1] App; logs: [1] SwLog; a[0].log = logs[..]; ar: [1] ClArena; b: [4096] u8; ar[0].buf = b[..];
   ccx_resolved(a[0].cx_options[..], ar[..], "{\"model\":\"test-model\",\"reasoningEffort\":\"high\"}");
   cs_cx_model(a[..]);
   s := cast(string) a[0].log[0].line[..];

@@ -29,7 +29,7 @@ main :: () {}
 }
 
 #test "Codex terminal: slash commands change the next wire request and preserve each engine's model" {
-  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a: [1] App; logs: [1] SwLog; pl: [1] PlRegistry;
   a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true;
   a[0].plain = true; a[0].cols = 80; a[0].engine = ENGINE_CODEX;
   a[0].cx_live = true; a[0].cx_ready = true;

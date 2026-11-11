@@ -207,7 +207,7 @@ App :: struct {
   // microcoder engine: its worker process (mcworker.coax), a run per message, through the shared
   // engine's worker client (coax/lib/agent/engine/microcoder.coax McWorker)
   mcw: [1] McWorker;
-  log: [] CsLog;                  // the session's log file (session.coax)
+  log: [] SwLog;                  // the session's log file (session.coax)
   exit: int;                      // coder run's exit code: the last turn's ending
   turns: int;
   cost: f64;
@@ -2206,14 +2206,7 @@ cd_cmd_bench :: (suite: string, json: bool) -> int {
 // ---------------------------------------------------------------- coder replay
 
 // SHA-256 of s as 64 lowercase hex digits.
-cd_sha256_hex :: (s: string, out: [] u8) -> string {
-  ib: [65536] u8; n := ifx s.count <= ib.count then s.count else ib.count;
-  for i: 0..<n { ib[i] = s[i]; }
-  d: [32] u8; x := sha256_hash_checked(ib[0..<n], d[..], false);
-  digits := "0123456789abcdef";
-  for i: 0..<32 { out[2 * i] = digits[cast(int) (d[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (d[i] & 15)]; }
-  return cast(string) out[0..<64];
-}
+cd_sha256_hex :: (s: string, out: [] u8) -> string { return sw_sha256_hex(s, out); }
 
 // The message a turn sent its engine, rebuilt from the log: the user's text,
 // and for a fork's first turn, the parent's first `at` turns ahead of it.
@@ -2654,7 +2647,8 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   a[0].model_engine = a[0].engine;
 
-  log_b: [1] CsLog; a[0].log = log_b[..];
+  log_b: [1] SwLog; a[0].log = log_b[..];
+  lout_b: [CS_OUT] u8; log_b[0].out = lout_b[..];      // what --json owes stdout (cs_after)
   if dl.count > 0 { a[0].log[0].deadline_s = dv; }
   if rto.count > 0 { a[0].log[0].nreport = cd_cat(a[0].log[0].report[..], 0, rto); }
   a[0].pl = pl_b[..];
@@ -2849,7 +2843,7 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert cd_claude_model_name_ok("claude-fable-5-2") && cd_claude_model_name_ok("fable");
   #assert !cd_claude_model_name_ok("") && !cd_claude_model_name_ok("fable 5.2") && !cd_claude_model_name_ok("a/b");
   #assert cd_claude_effort_ok("xhigh") && !cd_claude_effort_ok("ultra");
-  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a: [1] App; logs: [1] SwLog; pl: [1] PlRegistry;
   a[0].log = logs[..]; logs[0].json = true; a[0].pl = pl[..]; a[0].plain = true; a[0].cols = 80;
   a[0].engine = ENGINE_CLAUDE; a[0].api_key = true;
   #assert cd_claude_model_keep(a[..], "claude-fable-5-2") == "";

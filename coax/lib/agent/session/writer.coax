@@ -1,0 +1,479 @@
+// The session log as a turn writes it, one JSON object a line, for any owner
+// (docs/apps/2026-11-10-apps-roadmap.md, Step 2): Coder's terminal and its
+// runs, and the turn runner (coax/lib/agent/engine/run.coax) that Aethyrforge
+// calls. The file is ~/.openagents/coder/sessions/ID.jsonl ($CODER_HOME
+// before $HOME); `coder ls`, `coder status`, `coder log`, a fork (fork.coax)
+// and the shared reader (log.coax) read it. Moved from coder/tui/session.coax
+// without a change in what is written.
+//
+// The lines:
+//   {"kind":"session","id":ID,"version":V,"engine":E,"cwd":DIR,"started_us":T[,"parent":P,"at":N]...}
+//   {"kind":"user","text":T}                  a message the person sent
+//   {"kind":"agent","engine":E}               the person switched agent
+//   {"kind":"tool","label":"Bash(ls)"}        a tool call, as the transcript shows it
+//   {"kind":"result","text":T,"error":B}      its result's first 4000 bytes (and its size when longer)
+//   {"kind":"diff","path":P,"adds":N,"dels":N[,"old":T,"new":T]}   an edit's own text when both fit in 8 KiB
+//   {"kind":"reply","text":T}                 the turn's reply, whole
+//   {"kind":"engine_session","engine":E,"id":ID}   the engine's own session, for a fork that resumes it
+//   {"kind":"end","ending":E,"ms":N,"steps":N[,"text":T][,"cause":C]}   E: finished, stopped, failed, expired or redirected
+//
+// With json on, each line also goes to the owner's outbox (sw_take), and
+// with live on the reply streams there as reply_delta and reply_end lines
+// (coder.reply-stream.v1) in place of its whole line, which only the file keeps.
+// The values of the variables CODER_SECRET_VARS names become [credential]
+// in every line. A line that cannot be stored stops the session: failed
+// is set, and lost tells the owner once (sw_lost) to stop its engines.
+
+#load "../claude/fields.coax";
+#load "../claude/transport.coax";       // cl_getenv
+#load "../../sys/fs.coax";
+#load "../../crypto/sha256.coax";
+#load "../engine/route.coax";           // cxproc_wall_us (availability.coax)
+#load "reply-stream-policy.coax";
+
+SW_DIR :: "/.openagents/coder/sessions";      // under $CODER_HOME, else $HOME
+SW_LINE :: 262144;
+SW_RESULT_TEXT :: 4000;     // a result's text is cut here, on a character
+SW_DIFF_TEXT :: 8192;       // an edit's old and new text go in its diff line up to this many bytes each
+
+SwLog :: struct {
+  failed:bool;                   // permanent storage failure for this process
+  lost: bool;                    // ... not yet handed to the owner (sw_lost)
+  on: bool;                      // the session has a file
+  json: bool;                    // also hand each line to the owner (coder run --json)
+  live: bool; live_sent:int; live_segment:int; // --stream-json; durable replies remain whole
+  id: [32] u8; nid: int;
+  path: [1200] u8; npath: int;
+  line: [SW_LINE] u8;
+  reply: [65536] u8; nreply: int;   // the turn's reply so far
+  want: [32] u8; nwant: int;        // the ID the session is to have ("" makes one from the time)
+  parent: [32] u8; nparent: int;    // a fork's parent session
+  at: int;                          // and the turns it kept
+  pid: int;                         // a detached run's process
+  report: [32] u8; nreport: int;    // --report-to: the session a job's result goes to
+  deadline_s: int;                  // --deadline: seconds the job may run before it expires
+  last: [8192] u8; nlast: int;      // the last reply, for the report
+  ending: [16] u8; nending: int;    // the last turn's ending
+  sec: [8192] u8;                   // credential values to hide, from CODER_SECRET_VARS
+  secat: [32] int; seclen: [32] int; nsec: int;
+  out: [] u8; nout: int;            // the owner's outbox for json lines (sw_take empties it)
+}
+
+sw_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+sw_id :: (l: [] SwLog) -> string { return cast(string) l[0].id[0..<l[0].nid]; }
+
+// The lines handed to the owner since the last call, and the outbox emptied.
+sw_take :: (l: [] SwLog, out: [] u8) -> int {
+  n := ifx l[0].nout < out.count then l[0].nout else out.count;
+  for i: 0..<n { out[i] = l[0].out[i]; }
+  l[0].nout = 0;
+  return n;
+}
+// True once after a line could not be stored: the owner stops its engines and says so.
+sw_lost :: (l: [] SwLog) -> bool { if !l[0].lost { return false; } l[0].lost = false; return true; }
+
+sw_emit :: (l: [] SwLog, text: string) {
+  if l[0].nout + text.count > l[0].out.count { return; }      // the file keeps it; the outbox is the owner's to empty
+  for i: 0..<text.count { l[0].out[l[0].nout + i] = text[i]; }
+  l[0].nout += text.count;
+}
+
+// Where the session files live: $CODER_HOME when set, else $HOME. Engines
+// still run with the real $HOME, so a lab can drive them on the person's
+// own logins without touching the person's sessions, Router or memory.
+sw_state_home :: (out: [] u8) -> string {
+  h := cl_getenv("CODER_HOME", out);
+  if h.count > 0 { return h; }
+  return cl_getenv("HOME", out);
+}
+
+// The sessions directory, made when missing: "" when there is no home.
+sw_dir :: (out: [] u8) -> string {
+  hb: [1024] u8; home := sw_state_home(hb[..]);
+  if home.count == 0 { return ""; }
+  n := sw_cat(out, 0, home);
+  n = sw_cat(out, n, "/.openagents"); m := fs_mkdir(cast(string) out[0..<n]);
+  n = sw_cat(out, n, "/coder"); m = fs_mkdir(cast(string) out[0..<n]);
+  n = sw_cat(out, n, "/sessions"); m = fs_mkdir(cast(string) out[0..<n]);
+  return cast(string) out[0..<n];
+}
+
+// The civil date of a day count since 1970-01-01, as y*10000 + m*100 + d (Howard Hinnant's algorithm).
+sw_civil :: (days: int) -> int {
+  z := days + 719468;
+  era := (ifx z >= 0 then z else z - 146096) / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1;
+  m := ifx mp < 10 then mp + 3 else mp - 9;
+  return (ifx m <= 2 then y + 1 else y) * 10000 + m * 100 + d;
+}
+
+sw_digits :: (out: [] u8, n: int, v: int, width: int) -> int {
+  t: [24] u8; k := 0; x := v;
+  while x > 0 || k == 0 { t[k] = cast(u8) (48 + x % 10); x /= 10; k += 1; }
+  m := n;
+  for i: k..<width { if m < out.count { out[m] = '0'; m += 1; } }
+  while k > 0 { k -= 1; if m < out.count { out[m] = t[k]; m += 1; } }
+  return m;
+}
+
+// An ID for a session started at us (microseconds since the epoch): the UTC
+// date, time and milliseconds (20261102-153012-417), so IDs sort by time.
+sw_make_id :: (us: int, out: [] u8) -> string {
+  s := us / 1000000; ms := (us / 1000) % 1000;
+  ymd := sw_civil(s / 86400); y := ymd / 10000; mo := (ymd / 100) % 100; d := ymd % 100;
+  t := s % 86400;
+  n := sw_digits(out, 0, y, 1);
+  n = sw_digits(out, n, mo, 2); n = sw_digits(out, n, d, 2); n = sw_cat(out, n, "-");
+  n = sw_digits(out, n, t / 3600, 2); n = sw_digits(out, n, (t / 60) % 60, 2); n = sw_digits(out, n, t % 60, 2); n = sw_cat(out, n, "-");
+  n = sw_digits(out, n, ms, 3);
+  return cast(string) out[0..<n];
+}
+
+// Starts the session's file with its header line. allow and ceiling are the
+// owner's approval policy ("" when it has none), resume the engine session a
+// fork resumes, version the writer's.
+sw_open :: (l: [] SwLog, engine: string, cwd: string, version: string, resume: string, allow: string, ceiling: string) {
+  sw_secrets(l);
+  db: [1100] u8; dir := sw_dir(db[..]);
+  us := cxproc_wall_us();
+  ib: [32] u8; id := ifx l[0].nwant > 0 then cast(string) l[0].want[0..<l[0].nwant] else sw_make_id(us, ib[..]);
+  l[0].nid = sw_cat(l[0].id[..], 0, id);
+  if dir.count > 0 {
+    l[0].npath = sw_cat(l[0].path[..], 0, dir); l[0].npath = sw_cat(l[0].path[..], l[0].npath, "/");
+    l[0].npath = sw_cat(l[0].path[..], l[0].npath, id); l[0].npath = sw_cat(l[0].path[..], l[0].npath, ".jsonl");
+    l[0].on = true;
+  }
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"session\",\"id\":"); n = json_write_string(o, n, id);
+  n = json_raw(o, n, ",\"version\":"); n = json_write_string(o, n, version);
+  n = json_raw(o, n, ",\"engine\":"); n = json_write_string(o, n, engine);
+  n = json_raw(o, n, ",\"cwd\":"); n = json_write_string(o, n, cwd);
+  n = json_raw(o, n, ",\"started_us\":"); n = json_write_int(o, n, us);
+  if l[0].nparent > 0 {
+    n = json_raw(o, n, ",\"parent\":"); n = json_write_string(o, n, cast(string) l[0].parent[0..<l[0].nparent]);
+    n = json_raw(o, n, ",\"at\":"); n = json_write_int(o, n, l[0].at);
+  }
+  if l[0].pid > 0 { n = json_raw(o, n, ",\"pid\":"); n = json_write_int(o, n, l[0].pid); }
+  if l[0].nreport > 0 { n = json_raw(o, n, ",\"report_to\":"); n = json_write_string(o, n, cast(string) l[0].report[0..<l[0].nreport]); }
+  if resume.count > 0 { n = json_raw(o, n, ",\"resume\":"); n = json_write_string(o, n, resume); }
+  if allow.count > 0 {
+    n = json_raw(o, n, ",\"allow\":"); n = json_write_string(o, n, allow);
+    n = json_raw(o, n, ",\"ceiling\":"); n = json_write_string(o, n, ceiling);
+  }
+  if l[0].deadline_s > 0 { n = json_raw(o, n, ",\"deadline_s\":"); n = json_write_int(o, n, l[0].deadline_s); }
+  n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+// A sibling of the session's file: ID.stop, the file `coder stop` leaves for a detached run.
+sw_sibling :: (l: [] SwLog, ext: string, out: [] u8) -> string {
+  if !l[0].on || l[0].npath < 6 { return ""; }
+  n := sw_cat(out, 0, cast(string) l[0].path[0..<l[0].npath - 6]); n = sw_cat(out, n, ext);
+  return cast(string) out[0..<n];
+}
+
+sw_storage_failed :: (l: [] SwLog) { l[0].failed = true; l[0].lost = true; }
+
+// Appends the line built in l.line[0..<n] (and hands it to the owner with json).
+sw_put :: (l: [] SwLog, n0: int) {
+  if l[0].failed {return;}
+  if n0 < 0 || n0 >= l[0].line.count { sw_storage_failed(l);return; }
+  n := sw_hide(l, l[0].line[0..<l[0].line.count - 1], n0);
+  l[0].line[n] = 10;
+  line := cast(string) l[0].line[0..<n + 1];
+  if l[0].on && !fs_append_durable(cast(string) l[0].path[0..<l[0].npath], line) {sw_storage_failed(l);return;}   // on storage before the line is shown or its effect reported
+  if l[0].json { sw_emit(l, line); }
+}
+
+// ---------------------------------------------------------------- credentials
+
+// The values of the variables CODER_SECRET_VARS names, as typed and as JSON
+// writes them, so a log line, --json output or a report never holds them.
+sw_secrets :: (l: [] SwLog) {
+  l[0].nsec = 0;
+  vb: [1024] u8; vars := cl_getenv("CODER_SECRET_VARS", vb[..]);
+  at := 0;
+  while at <= vars.count {
+    e := at; while e < vars.count && vars[e] != ',' { e += 1; }
+    nm := cast(string) vars[at..<e];
+    if nm.count > 0 {
+      xb: [4200] u8; v := cl_getenv(nm, xb[..]);
+      if v.count >= 8 {
+        sw_secret_add(l, v);
+        jb: [8500] u8; k := json_write_string(jb[..], 0, v);
+        if k > 2 && k - 2 != v.count { sw_secret_add(l, cast(string) jb[1..<k - 1]); }
+        for z: 0..<jb.count { jb[z] = 0; }
+      }
+      for z: 0..<xb.count { xb[z] = 0; }
+    }
+    at = e + 1;
+  }
+}
+
+sw_secret_add :: (l: [] SwLog, v: string) {
+  k := l[0].nsec;
+  used := ifx k > 0 then l[0].secat[k - 1] + l[0].seclen[k - 1] else 0;
+  if k >= l[0].secat.count || used + v.count > l[0].sec.count { return; }
+  for i: 0..<v.count { l[0].sec[used + i] = v[i]; }
+  l[0].secat[k] = used; l[0].seclen[k] = v.count; l[0].nsec = k + 1;
+}
+
+// Replaces each credential value in buf[0..<n] with [credential]; the new length.
+sw_hide :: (l: [] SwLog, buf: [] u8, n0: int) -> int {
+  n := n0;
+  rep := "[credential]";
+  for s: 0..<l[0].nsec {
+    at := l[0].secat[s]; sl := l[0].seclen[s];
+    i := 0;
+    while sl > 0 && i + sl <= n {
+      same := true;
+      for j: 0..<sl { if buf[i + j] != l[0].sec[at + j] { same = false; break; } }
+      if !same { i += 1; continue; }
+      d := rep.count - sl;
+      if n + d > buf.count { for q: 0..<sl { buf[i + q] = '*'; } i += sl; continue; }
+      if d < 0 { for q: i + sl..<n { buf[q + d] = buf[q]; } }
+      if d > 0 { r := n - 1; while r >= i + sl { buf[r + d] = buf[r]; r -= 1; } }
+      for q: 0..<rep.count { buf[i + q] = rep[q]; }
+      n += d; i += rep.count;
+    }
+  }
+  return n;
+}
+
+// The length of text's complete lines: up to and including its last newline.
+sw_complete :: (text: string) -> int {
+  k := text.count; while k > 0 && text[k - 1] != 10 { k -= 1; }
+  return k;
+}
+
+// Another process's line for a log whose writer is gone (the watchdog's lost,
+// coder stop's stopped). A partial last line that writer left is moved to
+// PATH.cut first, so the new line starts on its own line.
+sw_append_after :: (path: string, line: string) -> bool {
+  fb: [4194304] u8; m := fs_read(path, fb[..]);
+  if m > 0 && fb[m - 1] != 10 {
+    k := sw_complete(cast(string) fb[0..<m]);
+    cb: [1400] u8; cn := sw_cat(cb[..], sw_cat(cb[..], 0, path), ".cut");
+    nb: [1400] u8; nn := sw_cat(nb[..], sw_cat(nb[..], 0, path), ".new");
+    x := fs_append(cast(string) cb[0..<cn], cast(string) fb[k..<m]); y := fs_append(cast(string) cb[0..<cn], "\n");
+    if !fs_write(cast(string) nb[0..<nn], cast(string) fb[0..<k]) || !fs_rename(cast(string) nb[0..<nn], path) { return false; }
+  }
+  return fs_append_durable(path, line);
+}
+
+// ---------------------------------------------------------------- the lines
+
+sw_text :: (l: [] SwLog, kind: string, key: string, text: string) {
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":"); n = json_write_string(o, n, kind);
+  n = json_raw(o, n, ",\""); n = json_raw(o, n, key); n = json_raw(o, n, "\":"); n = json_write_string(o, n, text);
+  n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+// The remembered facts a first message carried, and how many the consent gate held back.
+sw_memory :: (l: [] SwLog, text: string, held: int) {
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"memory\",\"text\":"); n = json_write_string(o, n, text);
+  if held > 0 { n = json_raw(o, n, ",\"withheld\":"); n = json_write_int(o, n, held); }
+  n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+// SHA-256 of s (its first 64 KiB) as 64 lowercase hex digits.
+sw_sha256_hex :: (s: string, out: [] u8) -> string {
+  ib: [65536] u8; n := ifx s.count <= ib.count then s.count else ib.count;
+  for i: 0..<n { ib[i] = s[i]; }
+  d: [32] u8; x := sha256_hash_checked(ib[0..<n], d[..], false);
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = digits[cast(int) (d[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (d[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+
+// The digest and length of what a turn sent its engine (`coder replay` rebuilds it).
+sw_request :: (l: [] SwLog, sent: string) {
+  hb: [64] u8; h := sw_sha256_hex(sent, hb[..]);
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"request\",\"sha256\":"); n = json_write_string(o, n, h);
+  n = json_raw(o, n, ",\"bytes\":"); n = json_write_int(o, n, sent.count);
+  n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+sw_user :: (l: [] SwLog, text: string) { l[0].nreply = 0; sw_text(l, "user", "text", text); }
+sw_tool :: (l: [] SwLog, label: string) { sw_reply_flush(l); sw_text(l, "tool", "label", label); }
+
+sw_result :: (l: [] SwLog, text: string, bad: bool) {
+  o := l[0].line[..];
+  cut := ifx text.count > SW_RESULT_TEXT then SW_RESULT_TEXT else text.count;
+  while cut > 0 && cut < text.count && (text[cut] & 0xC0) == 0x80 { cut -= 1; }
+  n := json_raw(o, 0, "{\"kind\":\"result\",\"text\":"); n = json_write_string(o, n, cast(string) text[0..<cut]);
+  n = json_raw(o, n, ifx bad then ",\"error\":true" else ",\"error\":false");
+  if cut < text.count { n = json_raw(o, n, ",\"bytes\":"); n = json_write_int(o, n, text.count); }
+  n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+// The engine's own session ID: {"kind":"engine_session","engine":"claude","id":ID}.
+sw_engine_session :: (l: [] SwLog, engine: string, id: string) {
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"engine_session\",\"engine\":"); n = json_write_string(o, n, engine);
+  n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id); n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+// texts: whether old and next are the edit's own text (an Edit's old and new, a Write's new); they are logged when both fit.
+sw_diff :: (l: [] SwLog, path: string, adds: int, dels: int, texts: bool, old: string, next: string) {
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"diff\",\"path\":"); n = json_write_string(o, n, path);
+  n = json_raw(o, n, ",\"adds\":"); n = json_write_int(o, n, adds);
+  n = json_raw(o, n, ",\"dels\":"); n = json_write_int(o, n, dels);
+  if texts && old.count <= SW_DIFF_TEXT && next.count <= SW_DIFF_TEXT {
+    n = json_raw(o, n, ",\"old\":"); n = json_write_string(o, n, old);
+    n = json_raw(o, n, ",\"new\":"); n = json_write_string(o, n, next);
+  }
+  n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+// The reply streams in pieces; it is logged whole, before the next tool and at the end.
+sw_reply_add :: (l: [] SwLog, s: string) {
+  for c: s { if l[0].nreply < l[0].reply.count { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; } }
+  if l[0].live && l[0].json {sw_live_emit(l,false);}
+}
+// Only the safe suffix is emitted, after full-credential redaction. Streaming
+// lines go to the owner only; a replay or fork reads the whole reply's line.
+sw_live_line :: (l:[]SwLog,final:bool,out:[]u8)->string {
+  secrets:[32]string;
+  for i:0..<l[0].nsec {secrets[i]=cast(string)l[0].sec[l[0].secat[i]..<l[0].secat[i]+l[0].seclen[i]];}
+  safe:=crs_visible(cast(string)l[0].reply[0..<l[0].nreply],secrets[0..<l[0].nsec],final);
+  clean:[131072]u8;for i:0..<safe {clean[i]=l[0].reply[i];}
+  n:=sw_hide(l,clean[..],safe);
+  if n<=l[0].live_sent {return "";}
+  end:=ifx n-l[0].live_sent>8192 then l[0].live_sent+8192 else n;
+  while end>l[0].live_sent && end<n && (clean[end] & 0xc0)==0x80 {end-=1;}
+  k:=json_raw(out,0,"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
+  k=json_write_int(out,k,l[0].live_segment);k=json_raw(out,k,",\"text\":");
+  k=json_write_string(out,k,cast(string)clean[l[0].live_sent..<end]);k=json_raw(out,k,"}\n");
+  if k<0 {return "";}l[0].live_sent=end;return cast(string)out[0..<k];
+}
+sw_live_emit :: (l:[]SwLog,final:bool) {
+  for guard:0..<32 {
+    line:=sw_live_line(l,final,l[0].line[..]);if line.count==0 {break;}
+    sw_emit(l,line);
+  }
+}
+sw_reply_flush :: (l: [] SwLog) {
+  if l[0].nreply == 0 { return; }
+  live:=l[0].live && l[0].json;
+  if live {
+    sw_live_emit(l,true);
+    o:=l[0].line[..];n:=json_raw(o,0,"{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
+    n=json_write_int(o,n,l[0].live_segment);n=json_raw(o,n,"}\n");
+    if n>0 {sw_emit(l,cast(string)o[0..<n]);}
+    l[0].json=false;
+  }
+  sw_text(l, "reply", "text", cast(string) l[0].reply[0..<l[0].nreply]);
+  if live {l[0].json=true;}
+  l[0].nlast = sw_cat(l[0].last[..], 0, cast(string) l[0].reply[0..<ifx l[0].nreply < l[0].last.count then l[0].nreply else l[0].last.count]);
+  l[0].nlast = sw_hide(l, l[0].last[..], l[0].nlast);
+  l[0].nreply = 0;
+  l[0].live_sent=0;l[0].live_segment+=1;
+}
+
+// The turn's end; cause says why a failed turn failed ("" when not known).
+sw_end :: (l: [] SwLog, ending: string, ms: int, steps: int, text: string, cause: string) {
+  sw_reply_flush(l);
+  o := l[0].line[..];
+  l[0].nending = sw_cat(l[0].ending[..], 0, ending);
+  n := json_raw(o, 0, "{\"kind\":\"end\",\"ending\":"); n = json_write_string(o, n, ending);
+  n = json_raw(o, n, ",\"ms\":"); n = json_write_int(o, n, ms);
+  n = json_raw(o, n, ",\"steps\":"); n = json_write_int(o, n, steps);
+  if text.count > 0 { n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); }
+  if ending == "failed" && cause.count > 0 { n = json_raw(o, n, ",\"cause\":"); n = json_write_string(o, n, cause); }
+  n = json_raw(o, n, "}");
+  sw_put(l, n);
+}
+
+// A line built elsewhere into l.line (the route line, agr_json): appended as it is.
+sw_line :: (l: [] SwLog, line: string) { sw_put(l, line.count); }
+
+// Observability v1 for Codex: snapshots, not estimates or additive accounting.
+sw_cx_model :: (l: [] SwLog, model: string, effort: string) {
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":");
+  n = ifx model.count > 0 then json_write_string(o, n, model) else json_raw(o, n, "null");
+  n = json_raw(o, n, ",\"effort\":"); n = ifx effort.count > 0 then json_write_string(o, n, effort) else json_raw(o, n, "null");
+  n = json_raw(o, n, ",\"cost_usd\":null}"); sw_put(l, n);
+}
+// thread and turn: "" when there is no Codex client (null).
+sw_cx_usage :: (l: [] SwLog, usage: string, client: bool, thread: string, turn: string) {
+  o := l[0].line[..]; total := cl_raw(usage, "total");
+  n := json_raw(o, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"scope\":\"thread_total\"");
+  n = json_raw(o, n, ",\"thread_id\":");
+  n = ifx client then json_write_string(o, n, thread) else json_raw(o, n, "null");
+  n = json_raw(o, n, ",\"turn_id\":");
+  n = ifx client then json_write_string(o, n, turn) else json_raw(o, n, "null");
+  for key: [6] string.["totalTokens", "inputTokens", "cachedInputTokens", "cacheWriteInputTokens", "outputTokens", "reasoningOutputTokens"] {
+    n = json_raw(o, n, ","); n = json_write_string(o, n, key); n = json_raw(o, n, ":");
+    v := cl_int(total, key); n = ifx v.ok && v.value >= 0 then json_write_int(o, n, v.value) else json_raw(o, n, "null");
+  }
+  n = json_raw(o, n, "}"); sw_put(l, n);
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "session IDs sort by time: UTC date, time and milliseconds" {
+  b: [32] u8;
+  #assert sw_make_id(0, b[..]) == "19700101-000000-000";
+  #assert sw_make_id(1793630412417000, b[..]) == "20261102-144012-417";
+  #assert sw_make_id(951782400005000, b[..]) == "20000229-000000-005";
+  #assert sw_make_id(253402300799999000, b[..]) == "99991231-235959-999";
+}
+
+#test "credential values become [credential], shorter or longer than the mark" {
+  l: [1] SwLog;
+  sw_secret_add(l[..], "ghp_ABCDEFGHIJKLMNOPQRSTUVWX");
+  sw_secret_add(l[..], "pw123456");
+  b: [128] u8; t := "token ghp_ABCDEFGHIJKLMNOPQRSTUVWX and pw123456.";
+  for i: 0..<t.count { b[i] = t[i]; }
+  n := sw_hide(l[..], b[..], t.count);
+  #assert cast(string) b[0..<n] == "token [credential] and [credential].";
+}
+
+#test "a log's complete part ends at its last newline" {
+  #assert sw_complete("{\"a\":1}\n{\"b\":") == 8;
+  #assert sw_complete("{\"a\":1}\n") == 8;
+  #assert sw_complete("{\"a") == 0;
+  #assert sw_complete("") == 0;
+}
+
+#test "with json the owner takes each line; live streams the reply and the file keeps it whole" {
+  l: [1] SwLog; ob: [65536] u8; l[0].out = ob[..]; l[0].json = true; l[0].live = true;
+  sw_user(l[..], "hi");
+  sw_reply_add(l[..], "Hello ");
+  sw_reply_add(l[..], "there");
+  sw_end(l[..], "failed", 5, 1, "it broke", "provider");
+  got: [65536] u8; n := sw_take(l[..], got[..]);
+  want := "{\"kind\":\"user\",\"text\":\"hi\"}\n{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0,\"text\":\"Hello \"}\n{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0,\"text\":\"there\"}\n{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":0}\n{\"kind\":\"end\",\"ending\":\"failed\",\"ms\":5,\"steps\":1,\"text\":\"it broke\",\"cause\":\"provider\"}\n";
+  #assert cast(string) got[0..<n] == want;
+  #assert sw_take(l[..], got[..]) == 0 && cast(string) l[0].last[0..<l[0].nlast] == "Hello there";
+  #assert cast(string) l[0].ending[0..<l[0].nending] == "failed" && l[0].live_segment == 1;
+  l[0].json = false; sw_user(l[..], "again");
+  #assert sw_take(l[..], got[..]) == 0;
+}
+
+#test "a line that cannot be stored stops the log and tells the owner once" {
+  l: [1] SwLog;
+  sw_put(l[..], -1);
+  #assert l[0].failed && sw_lost(l[..]) && !sw_lost(l[..]);
+  ob: [256] u8; l[0].out = ob[..]; l[0].json = true;
+  sw_user(l[..], "after");
+  #assert l[0].nout == 0;
+}

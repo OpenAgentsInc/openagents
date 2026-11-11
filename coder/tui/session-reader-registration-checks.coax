@@ -21,7 +21,7 @@
 }
 
 #test "session reader: Codex dispatch returns typed errors and refuses unknown or inactive calls" {
-  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a: [1] App; logs: [1] SwLog; pl: [1] PlRegistry;
   a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true;
   a[0].plain = true; a[0].cols = 80; a[0].engine = ENGINE_CODEX; a[0].running = true;
   x: [1] CxEngine; line: [4096] u8; arena: [8192] u8; out: [16384] u8;
@@ -41,7 +41,7 @@
 }
 
 #test "session reader: Codex calls keep the existing ceiling and explicit ask behavior" {
-  a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
+  a: [1] App; logs: [1] SwLog; pl: [1] PlRegistry;
   a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true;
   a[0].plain = true; a[0].cols = 80; a[0].engine = ENGINE_CODEX; a[0].running = true;
   x: [1] CxEngine; line: [4096] u8; arena: [8192] u8; out: [16384] u8;

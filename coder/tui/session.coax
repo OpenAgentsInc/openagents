@@ -17,340 +17,64 @@
 //
 // The ID is the UTC start time and milliseconds (20261102-153012-417): it
 // sorts by time. Nothing here leaves the machine (chapter 18's rule).
-#load "reply-stream-policy.coax";
+#load "../../coax/lib/agent/session/writer.coax";   // the writer: every line below is written there
 
+CS_OUT :: 1048576;     // the lines --json owes stdout between two writes (a reply's last stream is the most)
 
-CS_DIR :: "/.openagents/coder/sessions";      // under $HOME
-CS_LINE :: 262144;
+cs_id :: (l: [] SwLog) -> string { return sw_id(l); }
 
-CsLog :: struct {
-  failed:bool;                   // permanent storage failure for this process
-  on: bool;                      // the session has a file
-  json: bool;                    // also print each line to stdout (coder run --json)
-  live: bool; live_sent:int; live_segment:int; // --stream-json; durable replies remain whole
-  id: [32] u8; nid: int;
-  path: [1200] u8; npath: int;
-  line: [CS_LINE] u8;
-  reply: [65536] u8; nreply: int;   // the turn's reply so far
-  want: [32] u8; nwant: int;        // --session: the ID a detached run was given
-  parent: [32] u8; nparent: int;    // a fork's parent session
-  at: int;                          // and the turns it kept
-  pid: int;                         // a detached run's process
-  report: [32] u8; nreport: int;    // --report-to: the session a job's result goes to (chapter 14)
-  deadline_s: int;                  // --deadline: seconds the job may run before it expires
-  last: [8192] u8; nlast: int;      // the last reply, for the report
-  ending: [16] u8; nending: int;    // the last turn's ending
-  sec: [8192] u8;                   // credential values to hide (chapter 20), from CODER_SECRET_VARS
-  secat: [32] int; seclen: [32] int; nsec: int;
-}
+// Where Coder keeps its state: $CODER_HOME when set, else $HOME (writer.coax).
+cd_state_home :: (out: [] u8) -> string { return sw_state_home(out); }
+cs_dir :: (out: [] u8) -> string { return sw_dir(out); }
+cs_civil :: (days: int) -> int { return sw_civil(days); }
+cs_make_id :: (us: int, out: [] u8) -> string { return sw_make_id(us, out); }
+cs_sibling :: (l: [] SwLog, ext: string, out: [] u8) -> string { return sw_sibling(l, ext, out); }
+cs_secrets :: (l: [] SwLog) { sw_secrets(l); }
+cs_secret_add :: (l: [] SwLog, v: string) { sw_secret_add(l, v); }
+cs_hide :: (l: [] SwLog, buf: [] u8, n0: int) -> int { return sw_hide(l, buf, n0); }
+cs_complete :: (text: string) -> int { return sw_complete(text); }
+cs_append_after :: (path: string, line: string) -> bool { return sw_append_after(path, line); }
+cs_live_line :: (l:[]SwLog,final:bool,out:[]u8)->string { return sw_live_line(l, final, out); }
 
-cs_id :: (l: [] CsLog) -> string { return cast(string) l[0].id[0..<l[0].nid]; }
-
-// The sessions directory under $HOME, made when missing: "" when there is no $HOME.
-// Where Coder keeps its state: $CODER_HOME when set, else $HOME. Engines
-// still run with the real $HOME, so a lab can drive them on the person's
-// own logins without touching the person's sessions, Router or memory.
-cd_state_home :: (out: [] u8) -> string {
-  h := cl_getenv("CODER_HOME", out);
-  if h.count > 0 { return h; }
-  return cl_getenv("HOME", out);
-}
-
-cs_dir :: (out: [] u8) -> string {
-  hb: [1024] u8; home := cd_state_home(hb[..]);
-  if home.count == 0 { return ""; }
-  n := cd_cat(out, 0, home);
-  n = cd_cat(out, n, "/.openagents"); m := fs_mkdir(cast(string) out[0..<n]);
-  n = cd_cat(out, n, "/coder"); m = fs_mkdir(cast(string) out[0..<n]);
-  n = cd_cat(out, n, "/sessions"); m = fs_mkdir(cast(string) out[0..<n]);
-  return cast(string) out[0..<n];
-}
-
-// Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm).
-// The civil date of a day count, as y*10000 + m*100 + d.
-cs_civil :: (days: int) -> int {
-  z := days + 719468;
-  era := (ifx z >= 0 then z else z - 146096) / 146097;
-  doe := z - era * 146097;
-  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-  y := yoe + era * 400;
-  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
-  mp := (5 * doy + 2) / 153;
-  d := doy - (153 * mp + 2) / 5 + 1;
-  m := ifx mp < 10 then mp + 3 else mp - 9;
-  return (ifx m <= 2 then y + 1 else y) * 10000 + m * 100 + d;
-}
-
-cs_two :: (out: [] u8, n: int, v: int) -> int { k := cd_cat(out, n, ifx v < 10 then "0" else ""); tb: [16] u8; return cd_cat(out, k, cd_itoa(v, tb[..])); }
-
-// An ID for a session started at us (microseconds since the epoch).
-cs_make_id :: (us: int, out: [] u8) -> string {
-  s := us / 1000000; ms := (us / 1000) % 1000;
-  ymd := cs_civil(s / 86400); y := ymd / 10000; mo := (ymd / 100) % 100; d := ymd % 100;
-  t := s % 86400;
-  tb: [16] u8;
-  n := cd_cat(out, 0, cd_itoa(y, tb[..]));
-  n = cs_two(out, n, mo); n = cs_two(out, n, d); n = cd_cat(out, n, "-");
-  n = cs_two(out, n, t / 3600); n = cs_two(out, n, (t / 60) % 60); n = cs_two(out, n, t % 60); n = cd_cat(out, n, "-");
-  n = cd_cat(out, n, ifx ms < 100 then (ifx ms < 10 then "00" else "0") else ""); n = cd_cat(out, n, cd_itoa(ms, tb[..]));
-  return cast(string) out[0..<n];
+// After each write: the lines --json owes stdout, and a line that could not be stored stops the session.
+cs_after :: (a: [] App) {
+  l := a[0].log;
+  if l[0].nout > 0 { r := cxterm_write(l[0].out[0..<l[0].nout]); l[0].nout = 0; }
+  if sw_lost(l) { cs_storage_failed(a); }
 }
 
 // Starts the session's file with its header line.
 cs_open :: (a: [] App) {
-  l := a[0].log;
-  cs_secrets(l);
-  db: [1100] u8; dir := cs_dir(db[..]);
-  us := cxproc_wall_us();
-  ib: [32] u8; id := ifx l[0].nwant > 0 then cast(string) l[0].want[0..<l[0].nwant] else cs_make_id(us, ib[..]);
-  l[0].nid = cd_cat(l[0].id[..], 0, id);
-  if dir.count > 0 {
-    l[0].npath = cd_cat(l[0].path[..], 0, dir); l[0].npath = cd_cat(l[0].path[..], l[0].npath, "/");
-    l[0].npath = cd_cat(l[0].path[..], l[0].npath, id); l[0].npath = cd_cat(l[0].path[..], l[0].npath, ".jsonl");
-    l[0].on = true;
-  }
-  o := l[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"session\",\"id\":"); n = json_write_string(o, n, id);
-  n = json_raw(o, n, ",\"version\":"); n = json_write_string(o, n, CODER_VERSION);
-  n = json_raw(o, n, ",\"engine\":"); n = json_write_string(o, n, cd_engine_name(a[0].engine));
-  n = json_raw(o, n, ",\"cwd\":"); n = json_write_string(o, n, a[0].cwd);
-  n = json_raw(o, n, ",\"started_us\":"); n = json_write_int(o, n, us);
-  if l[0].nparent > 0 {
-    n = json_raw(o, n, ",\"parent\":"); n = json_write_string(o, n, cast(string) l[0].parent[0..<l[0].nparent]);
-    n = json_raw(o, n, ",\"at\":"); n = json_write_int(o, n, l[0].at);
-  }
-  if l[0].pid > 0 { n = json_raw(o, n, ",\"pid\":"); n = json_write_int(o, n, l[0].pid); }
-  if l[0].nreport > 0 { n = json_raw(o, n, ",\"report_to\":"); n = json_write_string(o, n, cast(string) l[0].report[0..<l[0].nreport]); }
-  if a[0].nresume > 0 { n = json_raw(o, n, ",\"resume\":"); n = json_write_string(o, n, cast(string) a[0].resume[0..<a[0].nresume]); }
-  if a[0].pol[0].on {
-    effects := CD_EFFECTS;
-    n = json_raw(o, n, ",\"allow\":"); n = json_write_string(o, n, effects[a[0].pol[0].allow]);
-    n = json_raw(o, n, ",\"ceiling\":"); n = json_write_string(o, n, effects[a[0].pol[0].ceiling]);
-  }
-  if l[0].deadline_s > 0 { n = json_raw(o, n, ",\"deadline_s\":"); n = json_write_int(o, n, l[0].deadline_s); }
-  n = json_raw(o, n, "}");
-  cs_put(a, n);
-}
-
-// A sibling of the session's file: ID.stop, the file `coder stop` leaves for a detached run.
-cs_sibling :: (l: [] CsLog, ext: string, out: [] u8) -> string {
-  if !l[0].on || l[0].npath < 6 { return ""; }
-  n := cd_cat(out, 0, cast(string) l[0].path[0..<l[0].npath - 6]); n = cd_cat(out, n, ext);
-  return cast(string) out[0..<n];
+  effects := CD_EFFECTS;
+  allow := ifx a[0].pol[0].on then effects[a[0].pol[0].allow] else "";
+  ceiling := ifx a[0].pol[0].on then effects[a[0].pol[0].ceiling] else "";
+  sw_open(a[0].log, cd_engine_name(a[0].engine), a[0].cwd, CODER_VERSION, cast(string) a[0].resume[0..<a[0].nresume], allow, ceiling);
+  cs_after(a);
 }
 
 // Appends the line built in l.line[0..<n] (and prints it with --json).
-cs_put :: (a: [] App, n0: int) {
-  l := a[0].log;
-  if l[0].failed {return;}
-  if n0 < 0 || n0 >= l[0].line.count { cs_storage_failed(a);return; }
-  n := cs_hide(l, l[0].line[0..<l[0].line.count - 1], n0);
-  l[0].line[n] = 10;
-  line := cast(string) l[0].line[0..<n + 1];
-  if l[0].on && !fs_append_durable(cast(string) l[0].path[0..<l[0].npath], line) {cs_storage_failed(a);return;}   // on storage before the line is printed or its effect reported (chapter 2)
-  if l[0].json { r := cxterm_write(l[0].line[0..<n + 1]); }
-}
+cs_put :: (a: [] App, n0: int) { sw_put(a[0].log, n0); cs_after(a); }
 
-// ---------------------------------------------------------------- credentials (chapter 20)
-
-// The values of the variables CODER_SECRET_VARS names, as typed and as JSON
-// writes them, so a log line, --json output or a report never holds them.
-cs_secrets :: (l: [] CsLog) {
-  l[0].nsec = 0;
-  vb: [1024] u8; vars := cl_getenv("CODER_SECRET_VARS", vb[..]);
-  at := 0;
-  while at <= vars.count {
-    e := at; while e < vars.count && vars[e] != ',' { e += 1; }
-    nm := cast(string) vars[at..<e];
-    if nm.count > 0 {
-      xb: [4200] u8; v := cl_getenv(nm, xb[..]);
-      if v.count >= 8 {
-        cs_secret_add(l, v);
-        jb: [8500] u8; k := json_write_string(jb[..], 0, v);
-        if k > 2 && k - 2 != v.count { cs_secret_add(l, cast(string) jb[1..<k - 1]); }
-        for z: 0..<jb.count { jb[z] = 0; }
-      }
-      for z: 0..<xb.count { xb[z] = 0; }
-    }
-    at = e + 1;
-  }
-}
-
-cs_secret_add :: (l: [] CsLog, v: string) {
-  k := l[0].nsec;
-  used := ifx k > 0 then l[0].secat[k - 1] + l[0].seclen[k - 1] else 0;
-  if k >= l[0].secat.count || used + v.count > l[0].sec.count { return; }
-  for i: 0..<v.count { l[0].sec[used + i] = v[i]; }
-  l[0].secat[k] = used; l[0].seclen[k] = v.count; l[0].nsec = k + 1;
-}
-
-// Replaces each credential value in buf[0..<n] with [credential]; the new length.
-cs_hide :: (l: [] CsLog, buf: [] u8, n0: int) -> int {
-  n := n0;
-  rep := "[credential]";
-  for s: 0..<l[0].nsec {
-    at := l[0].secat[s]; sl := l[0].seclen[s];
-    i := 0;
-    while sl > 0 && i + sl <= n {
-      same := true;
-      for j: 0..<sl { if buf[i + j] != l[0].sec[at + j] { same = false; break; } }
-      if !same { i += 1; continue; }
-      d := rep.count - sl;
-      if n + d > buf.count { for q: 0..<sl { buf[i + q] = '*'; } i += sl; continue; }
-      if d < 0 { for q: i + sl..<n { buf[q + d] = buf[q]; } }
-      if d > 0 { r := n - 1; while r >= i + sl { buf[r + d] = buf[r]; r -= 1; } }
-      for q: 0..<rep.count { buf[i + q] = rep[q]; }
-      n += d; i += rep.count;
-    }
-  }
-  return n;
-}
-
-// Another process's line for a log whose writer is gone (the watchdog's lost,
-// coder stop's stopped). A partial last line that writer left is moved to
-// PATH.cut first, so the new line starts on its own line.
-// The length of text's complete lines: up to and including its last newline.
-cs_complete :: (text: string) -> int {
-  k := text.count; while k > 0 && text[k - 1] != 10 { k -= 1; }
-  return k;
-}
-
-cs_append_after :: (path: string, line: string) -> bool {
-  fb: [4194304] u8; m := fs_read(path, fb[..]);
-  if m > 0 && fb[m - 1] != 10 {
-    k := cs_complete(cast(string) fb[0..<m]);
-    cb: [1400] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, path), ".cut");
-    nb: [1400] u8; nn := cd_cat(nb[..], cd_cat(nb[..], 0, path), ".new");
-    x := fs_append(cast(string) cb[0..<cn], cast(string) fb[k..<m]); y := fs_append(cast(string) cb[0..<cn], "\n");
-    if !fs_write(cast(string) nb[0..<nn], cast(string) fb[0..<k]) || !fs_rename(cast(string) nb[0..<nn], path) { return false; }
-  }
-  return fs_append_durable(path, line);
-}
-
-cs_text :: (a: [] App, kind: string, key: string, text: string) {
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":"); n = json_write_string(o, n, kind);
-  n = json_raw(o, n, ",\""); n = json_raw(o, n, key); n = json_raw(o, n, "\":"); n = json_write_string(o, n, text);
-  n = json_raw(o, n, "}");
-  cs_put(a, n);
-}
-
+cs_text :: (a: [] App, kind: string, key: string, text: string) { sw_text(a[0].log, kind, key, text); cs_after(a); }
 // The remembered facts a first message carried, and how many the consent gate held back (chapters 18 and 19).
-cs_memory :: (a: [] App, text: string, held: int) {
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"memory\",\"text\":"); n = json_write_string(o, n, text);
-  if held > 0 { n = json_raw(o, n, ",\"withheld\":"); n = json_write_int(o, n, held); }
-  n = json_raw(o, n, "}");
-  cs_put(a, n);
-}
-
+cs_memory :: (a: [] App, text: string, held: int) { sw_memory(a[0].log, text, held); cs_after(a); }
 // The digest and length of what a turn sent its engine.
-cs_request :: (a: [] App, sent: string) {
-  hb: [64] u8; h := cd_sha256_hex(sent, hb[..]);
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"request\",\"sha256\":"); n = json_write_string(o, n, h);
-  n = json_raw(o, n, ",\"bytes\":"); n = json_write_int(o, n, sent.count);
-  n = json_raw(o, n, "}");
-  cs_put(a, n);
-}
-
-cs_user :: (a: [] App, text: string) { a[0].log[0].nreply = 0; cs_text(a, "user", "text", text); }
+cs_request :: (a: [] App, sent: string) { sw_request(a[0].log, sent); cs_after(a); }
+cs_user :: (a: [] App, text: string) { sw_user(a[0].log, text); cs_after(a); }
 cs_agent :: (a: [] App, engine: int) { cs_text(a, "agent", "engine", cd_engine_name(engine)); }
-cs_tool :: (a: [] App, label: string) { cs_reply_flush(a); cs_text(a, "tool", "label", label); cd_recap_note(a, label); }
-
-cs_result :: (a: [] App, text: string, bad: bool) {
-  o := a[0].log[0].line[..];
-  cut := ifx text.count > 4000 then 4000 else text.count;
-  while cut > 0 && cut < text.count && (text[cut] & 0xC0) == 0x80 { cut -= 1; }
-  n := json_raw(o, 0, "{\"kind\":\"result\",\"text\":"); n = json_write_string(o, n, cast(string) text[0..<cut]);
-  n = json_raw(o, n, ifx bad then ",\"error\":true" else ",\"error\":false");
-  if cut < text.count { n = json_raw(o, n, ",\"bytes\":"); n = json_write_int(o, n, text.count); }
-  n = json_raw(o, n, "}");
-  cs_put(a, n);
-}
-
-CS_DIFF_TEXT :: 8192;     // an edit's old and new text go in its diff line up to this many bytes each
-
-// texts: whether old and next are the edit's own text (an Edit's old and new, a Write's new); they are logged when both fit.
+cs_tool :: (a: [] App, label: string) { sw_tool(a[0].log, label); cs_after(a); cd_recap_note(a, label); }
+cs_result :: (a: [] App, text: string, bad: bool) { sw_result(a[0].log, text, bad); cs_after(a); }
 // The engine's own session ID: {"kind":"engine_session","engine":"claude","id":ID}.
-cs_engine_session :: (a: [] App, engine: string, id: string) {
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"engine_session\",\"engine\":"); n = json_write_string(o, n, engine);
-  n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id); n = json_raw(o, n, "}");
-  cs_put(a, n);
-}
-
-cs_diff :: (a: [] App, path: string, adds: int, dels: int, texts: bool, old: string, next: string) {
-  o := a[0].log[0].line[..];
-  n := json_raw(o, 0, "{\"kind\":\"diff\",\"path\":"); n = json_write_string(o, n, path);
-  n = json_raw(o, n, ",\"adds\":"); n = json_write_int(o, n, adds);
-  n = json_raw(o, n, ",\"dels\":"); n = json_write_int(o, n, dels);
-  if texts && old.count <= CS_DIFF_TEXT && next.count <= CS_DIFF_TEXT {
-    n = json_raw(o, n, ",\"old\":"); n = json_write_string(o, n, old);
-    n = json_raw(o, n, ",\"new\":"); n = json_write_string(o, n, next);
-  }
-  n = json_raw(o, n, "}");
-  cs_put(a, n);
-}
-
+cs_engine_session :: (a: [] App, engine: string, id: string) { sw_engine_session(a[0].log, engine, id); cs_after(a); }
+// texts: whether old and next are the edit's own text (an Edit's old and new, a Write's new); they are logged when both fit.
+cs_diff :: (a: [] App, path: string, adds: int, dels: int, texts: bool, old: string, next: string) { sw_diff(a[0].log, path, adds, dels, texts, old, next); cs_after(a); }
 // The reply streams in pieces; it is logged whole, before the next tool and at the end.
-cs_reply_add :: (a: [] App, s: string) {
-  l := a[0].log; for c: s { if l[0].nreply < l[0].reply.count { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; } }
-  if l[0].live && l[0].json {cs_live_emit(l,false);}
-}
-// Only the safe suffix is emitted, after full-credential redaction. Streaming
-// events are stdout-only; a replay/fork reads the original whole-reply log.
-cs_live_line :: (l:[]CsLog,final:bool,out:[]u8)->string {
-  secrets:[32]string;
-  for i:0..<l[0].nsec {secrets[i]=cast(string)l[0].sec[l[0].secat[i]..<l[0].secat[i]+l[0].seclen[i]];}
-  safe:=crs_visible(cast(string)l[0].reply[0..<l[0].nreply],secrets[0..<l[0].nsec],final);
-  clean:[131072]u8;for i:0..<safe {clean[i]=l[0].reply[i];}
-  n:=cs_hide(l,clean[..],safe);
-  if n<=l[0].live_sent {return "";}
-  end:=ifx n-l[0].live_sent>8192 then l[0].live_sent+8192 else n;
-  while end>l[0].live_sent && end<n && (clean[end] & 0xc0)==0x80 {end-=1;}
-  k:=json_raw(out,0,"{\"kind\":\"reply_delta\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
-  k=json_write_int(out,k,l[0].live_segment);k=json_raw(out,k,",\"text\":");
-  k=json_write_string(out,k,cast(string)clean[l[0].live_sent..<end]);k=json_raw(out,k,"}\n");
-  if k<0 {return "";}l[0].live_sent=end;return cast(string)out[0..<k];
-}
-cs_live_emit :: (l:[]CsLog,final:bool) {
-  for guard:0..<32 {
-    line:=cs_live_line(l,final,l[0].line[..]);if line.count==0 {break;}
-    r:=cxterm_write(l[0].line[0..<line.count]);
-  }
-}
-cs_reply_flush :: (a: [] App) {
-  l := a[0].log;
-  if l[0].nreply == 0 { return; }
-  live:=l[0].live && l[0].json;
-  if live {
-    cs_live_emit(l,true);
-    o:=l[0].line[..];n:=json_raw(o,0,"{\"kind\":\"reply_end\",\"schema\":\"coder.reply-stream.v1\",\"segment\":");
-    n=json_write_int(o,n,l[0].live_segment);n=json_raw(o,n,"}\n");
-    if n>0 {r:=cxterm_write(o[0..<n]);}
-    l[0].json=false;
-  }
-  cs_text(a, "reply", "text", cast(string) l[0].reply[0..<l[0].nreply]);
-  if live {l[0].json=true;}
-  l[0].nlast = cd_cat(l[0].last[..], 0, cast(string) l[0].reply[0..<ifx l[0].nreply < l[0].last.count then l[0].nreply else l[0].last.count]);
-  l[0].nlast = cs_hide(l, l[0].last[..], l[0].nlast);
-  l[0].nreply = 0;
-  l[0].live_sent=0;l[0].live_segment+=1;
-}
-
+cs_reply_add :: (a: [] App, s: string) { sw_reply_add(a[0].log, s); cs_after(a); }
+cs_reply_flush :: (a: [] App) { sw_reply_flush(a[0].log); cs_after(a); }
 cs_end :: (a: [] App, ending: string, ms: int, steps: int, text: string) {
-  cs_reply_flush(a);
-  o := a[0].log[0].line[..];
-  a[0].log[0].nending = cd_cat(a[0].log[0].ending[..], 0, ending);
-  n := json_raw(o, 0, "{\"kind\":\"end\",\"ending\":"); n = json_write_string(o, n, ending);
-  n = json_raw(o, n, ",\"ms\":"); n = json_write_int(o, n, ms);
-  n = json_raw(o, n, ",\"steps\":"); n = json_write_int(o, n, steps);
-  if text.count > 0 { n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); }
-  if ending == "failed" && a[0].ncause > 0 { n = json_raw(o, n, ",\"cause\":"); n = json_write_string(o, n, cast(string) a[0].cause[0..<a[0].ncause]); }
+  sw_end(a[0].log, ending, ms, steps, text, cast(string) a[0].cause[0..<a[0].ncause]);
   a[0].ncause = 0;
-  n = json_raw(o, n, "}");
-  cs_put(a, n);
+  cs_after(a);
 }
 
 // ---------------------------------------------------------------- reading sessions back
@@ -408,13 +132,6 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
   if open || (s[0].ok && s[0].turns == 0) { s[0].nending = cd_cat(s[0].ending[..], 0, "running"); }
 }
 
-#test "session IDs sort by time: UTC date, time and milliseconds" {
-  b: [32] u8;
-  #assert cs_make_id(0, b[..]) == "19700101-000000-000";
-  #assert cs_make_id(1793630412417000, b[..]) == "20261102-144012-417";
-  #assert cs_make_id(951782400005000, b[..]) == "20000229-000000-005";
-}
-
 #test "a session file reads back as its engine, first message, turns, steps and ending" {
   text := "{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":5}\n{\"kind\":\"user\",\"text\":\"fix it\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":10,\"steps\":2}\n{\"kind\":\"agent\",\"engine\":\"codex\"}\n{\"kind\":\"user\",\"text\":\"again\"}\n";
   s: [1] CsSummary; ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
@@ -427,44 +144,14 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
   #assert s[0].turns == 0 && cast(string) s[0].ending[0..<s[0].nending] == "running";
 }
 
-#test "session: credential values become [credential], shorter or longer than the mark" {
-  l: [1] CsLog;
-  cs_secret_add(l[..], "ghp_ABCDEFGHIJKLMNOPQRSTUVWX");
-  cs_secret_add(l[..], "pw123456");
-  b: [128] u8; t := "token ghp_ABCDEFGHIJKLMNOPQRSTUVWX and pw123456.";
-  for i: 0..<t.count { b[i] = t[i]; }
-  n := cs_hide(l[..], b[..], t.count);
-  #assert cast(string) b[0..<n] == "token [credential] and [credential].";
-}
-
-#test "session: a log's complete part ends at its last newline" {
-  #assert cs_complete("{\"a\":1}\n{\"b\":") == 8;
-  #assert cs_complete("{\"a\":1}\n") == 8;
-  #assert cs_complete("{\"a") == 0;
-  #assert cs_complete("") == 0;
-}
-
 // Observability v1: snapshots, not estimates or additive accounting.
 cs_cx_model :: (a: [] App) {
-  o := a[0].log[0].line[..]; opt := a[0].cx_options[..];
-  model := ccx_text(opt[0].actual_model[..]); effort := ccx_text(opt[0].actual_effort[..]);
-  n := json_raw(o, 0, "{\"kind\":\"model\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"source\":\"thread/start\",\"model\":");
-  n = ifx model.count > 0 then json_write_string(o, n, model) else json_raw(o, n, "null");
-  n = json_raw(o, n, ",\"effort\":"); n = ifx effort.count > 0 then json_write_string(o, n, effort) else json_raw(o, n, "null");
-  n = json_raw(o, n, ",\"cost_usd\":null}"); cs_put(a, n);
+  opt := a[0].cx_options[..];
+  sw_cx_model(a[0].log, ccx_text(opt[0].actual_model[..]), ccx_text(opt[0].actual_effort[..])); cs_after(a);
 }
 cs_cx_usage :: (a: [] App, usage: string) {
-  o := a[0].log[0].line[..]; total := cl_raw(usage, "total");
-  n := json_raw(o, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"codex\",\"scope\":\"thread_total\"");
-  n = json_raw(o, n, ",\"thread_id\":");
-  n = ifx a[0].cx.count > 0 then json_write_string(o, n, cx_thread_id(a[0].cx)) else json_raw(o, n, "null");
-  n = json_raw(o, n, ",\"turn_id\":");
-  n = ifx a[0].cx.count > 0 then json_write_string(o, n, cx_turn_id(a[0].cx)) else json_raw(o, n, "null");
-  for key: [6] string.["totalTokens", "inputTokens", "cachedInputTokens", "cacheWriteInputTokens", "outputTokens", "reasoningOutputTokens"] {
-    n = json_raw(o, n, ","); n = json_write_string(o, n, key); n = json_raw(o, n, ":");
-    v := cl_int(total, key); n = ifx v.ok && v.value >= 0 then json_write_int(o, n, v.value) else json_raw(o, n, "null");
-  }
-  n = json_raw(o, n, "}"); cs_put(a, n);
+  c := a[0].cx.count > 0;
+  sw_cx_usage(a[0].log, usage, c, ifx c then cx_thread_id(a[0].cx) else "", ifx c then cx_turn_id(a[0].cx) else ""); cs_after(a);
 }
 
 // Poison before closing concrete owners: callbacks cannot publish a success

@@ -20,7 +20,7 @@ main :: () {}
   #assert !cd_is_slash_command(pl[..], "/help.coax");
   #assert !cd_is_slash_command(pl[..], "");
   #assert !cd_is_slash_command(pl[..], "plain text");
-  a: [1] App; logs: [1] CsLog;
+  a: [1] App; logs: [1] SwLog;
   a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true; a[0].plain = true; a[0].cols = 80;
   tui_ed_set(a[0].ed[..], "/help"); cd_submit(a[..]);
   #assert a[0].starts == 0 && cd_holds(cast(string) a[0].hist[0..<a[0].nhist], "/help      this list");
