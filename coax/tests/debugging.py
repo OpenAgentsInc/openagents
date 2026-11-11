@@ -22,7 +22,8 @@ class Debugging(unittest.TestCase):
   f=next(x for x in data['functions'] if x['name']=='main')
   self.assertEqual(f['file'],str(source));self.assertIn({'name':'n','c_name':'l_n','type':'int','role':'local','line':1},f['variables'])
   t=json.loads(timing.read_text());self.assertTrue(t['success']);self.assertGreater(t['generated_bytes'],0)
-  for phase in ['load','lex','imports','parse','check','evaluate','authority','emit']:
+  # No 'lex': load's tokens are the composed text's, so it isn't lexed again (#13131).
+  for phase in ['load','imports','parse','check','evaluate','authority','emit']:
    self.assertIn(phase,t['seconds']);self.assertGreaterEqual(t['seconds'][phase],0)
  def test_timing_report_parts_checks_and_table(self):
   source=self.d/'checked.coax';source.write_text('#authority;\ntwice :: (x:int)->int #effects(all) {return x*2;}\n#test "doubles" {#assert twice(21)==42;}\nmain :: () {}\n')
