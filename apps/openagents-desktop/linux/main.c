@@ -8,8 +8,11 @@
 //
 //   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N]
 //   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "STEP ; STEP"]
-// Steps: wait SECONDS, fixture open|closed|table, newchat, sidebar, type TEXT,
-// send TEXT, click X,Y[,N], move X,Y, wheel DY, key NAME, status, last, desk.
+// Steps, as the Mac's (Sources/Zeron.swift step): wait SECONDS, waitidle [SECONDS], fixture
+// open|closed|table, newchat, sidebar, room, folder PATH, closetab, type TEXT, send TEXT, stop,
+// mode|model|effort|access NAME, plan on|off, open model|access, answer allow|deny, click X,Y[,N],
+// move X,Y, wheel DY, scroll PX, key CHORD (cmd+1, shift+down, enter), status, last, desk.
+//   OpenAgents --mcp-room SOCKET AGENT    the room's MCP server, which Codex starts
 #define _GNU_SOURCE
 #include "zeron.h"
 #include "face.h"
@@ -21,7 +24,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -47,6 +53,11 @@ typedef struct {
   // settings.json (zeron/settings.coax) and sessions/<id>.jsonl beside it (zeron/store.coax); empty: nothing is saved
   char settings_path[PATH_MAX];
   uint32_t w, h;
+  // the room's socket (zeron/room.coax): the listener, and each connection with the bytes of its unfinished line
+  char room_path[108];
+  int room_fd, room_conns[16], room_n[16];
+  char room_buf[16][65536];
+  int wait_idle;      // --do: the wait ends when the running turn does
 } App;
 
 static uint8_t *slurp(const char *dir, const char *sub, const char *name, const char *ext, size_t *n) {
@@ -213,6 +224,100 @@ static void new_session(App *a, const char *cwd) {
   save_settings(a);
 }
 
+// ---- the room (Sources/RoomSocket.swift): the app listens on a Unix socket; each Codex session's MCP
+// server (this program run with --mcp-room) connects, sends one JSON line a tool call and reads one back.
+// Only bytes move here; the desk (zeron/desk.coax) does the rest.
+
+static int room_address(const char *path, struct sockaddr_un *a) {
+  memset(a, 0, sizeof *a); a->sun_family = AF_UNIX;
+  if (strlen(path) >= sizeof a->sun_path) return 0;
+  strcpy(a->sun_path, path);
+  return 1;
+}
+static void room_open(App *a) {
+  const char *dir = getenv("XDG_RUNTIME_DIR");
+  struct sockaddr_un addr;
+  a->room_fd = -1;
+  for (int i = 0; i < 16; i++) a->room_conns[i] = -1;
+  snprintf(a->room_path, sizeof a->room_path, "%s/oa-room-%d.sock", dir && *dir ? dir : "/tmp", (int)getpid());
+  unlink(a->room_path);
+  int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+  if (fd < 0 || !room_address(a->room_path, &addr) || bind(fd, (struct sockaddr *)&addr, sizeof addr) || listen(fd, 16)) { if (fd >= 0) close(fd); return; }
+  chmod(a->room_path, 0600);
+  a->room_fd = fd;
+  char exe[PATH_MAX]; ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+  if (n > 0) dsk_set_room(a->desk, (const uint8_t *)exe, (int32_t)n, (const uint8_t *)a->room_path, (int32_t)strlen(a->room_path));
+}
+static void room_pump(App *a) {
+  if (a->room_fd < 0) return;
+  for (;;) {
+    int c = accept4(a->room_fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    if (c < 0) break;
+    int slot = -1;
+    for (int i = 0; i < 16; i++) if (a->room_conns[i] < 0) { slot = i; break; }
+    if (slot < 0) { close(c); continue; }
+    a->room_conns[slot] = c; a->room_n[slot] = 0;
+  }
+  for (int i = 0; i < 16; i++) {
+    int c = a->room_conns[i];
+    if (c < 0) continue;
+    for (;;) {
+      ssize_t n = read(c, a->room_buf[i] + a->room_n[i], sizeof a->room_buf[i] - (size_t)a->room_n[i]);
+      if (n == 0 || a->room_n[i] == (int)sizeof a->room_buf[i]) { close(c); a->room_conns[i] = -1; break; }
+      if (n < 0) break;
+      a->room_n[i] += (int)n;
+    }
+    for (char *nl; a->room_conns[i] >= 0 && (nl = memchr(a->room_buf[i], 10, (size_t)a->room_n[i]));) {
+      int len = (int)(nl - a->room_buf[i]);
+      dsk_room_line(a->desk, c, (const uint8_t *)a->room_buf[i], len);
+      memmove(a->room_buf[i], nl + 1, (size_t)(a->room_n[i] - len - 1)); a->room_n[i] -= len + 1;
+    }
+  }
+  static uint8_t out[16384];
+  for (int32_t conn = -1;;) {
+    int n = dsk_room_out(a->desk, &conn, out, sizeof out - 1);
+    if (n <= 0) break;
+    int known = 0;
+    for (int i = 0; i < 16; i++) if (a->room_conns[i] == conn) known = 1;
+    if (!known) continue;
+    out[n] = 10;
+    for (int at = 0; at <= n;) {
+      ssize_t k = send(conn, out + at, (size_t)(n + 1 - at), MSG_NOSIGNAL);
+      if (k > 0) { at += (int)k; continue; }
+      if (k < 0 && errno == EAGAIN) { struct timespec nap = {0, 1000000}; nanosleep(&nap, NULL); continue; }
+      break;
+    }
+  }
+}
+// --mcp-room SOCKET AGENT: Codex's MCP server for the room. Codex writes JSON-RPC on stdin; room_mcp
+// (zeron/desk.coax) answers it, or turns a tools/call into a line for the app's socket, whose one-line
+// answer room_mcp_result turns into the result Codex reads.
+static int mcp_room(const char *path, int agent) {
+  static uint8_t out[1 << 20]; static char line[1 << 20], reply[1 << 20];
+  struct sockaddr_un addr;
+  int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (fd >= 0 && (!room_address(path, &addr) || connect(fd, (struct sockaddr *)&addr, sizeof addr))) { close(fd); fd = -1; }
+  FILE *app = fd >= 0 ? fdopen(fd, "r+") : NULL;
+  while (fgets(line, sizeof line, stdin)) {
+    size_t n = strlen(line);
+    while (n && (line[n - 1] == 10 || line[n - 1] == 13)) n--;
+    int32_t len = 0;
+    int kind = room_mcp((const uint8_t *)line, (int32_t)n, agent, out, sizeof out, &len);
+    if (kind == 1) { fwrite(out, 1, (size_t)len, stdout); fputc(10, stdout); fflush(stdout); }
+    if (kind != 2) continue;
+    const char *answer = "{\"rpc\":null,\"text\":\"The OpenAgents app is not running.\",\"error\":true}";
+    if (app) {
+      fwrite(out, 1, (size_t)len, app); fputc(10, app); fflush(app);
+      answer = fgets(reply, sizeof reply, app) ? reply : "{\"rpc\":null,\"text\":\"The OpenAgents app closed.\",\"error\":true}";
+    }
+    size_t rn = strlen(answer);
+    while (rn && (answer[rn - 1] == 10 || answer[rn - 1] == 13)) rn--;
+    int m = room_mcp_result((const uint8_t *)answer, (int32_t)rn, out, sizeof out);
+    fwrite(out, 1, (size_t)(m > 0 ? m : 0), stdout); fputc(10, stdout); fflush(stdout);
+  }
+  return 0;
+}
+
 static int on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   App *a = user;
   void *shown = active(a);
@@ -220,6 +325,7 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
   if (!c) return 0;
   if (a->bound != shown) atlas_upload(a, c);
   a->w = (uint32_t)w; a->h = (uint32_t)h;
+  room_pump(a);
   flush_store(a, 0);
   int n = dsk_frame(a->desk, vertices, w, h, dpr, dt);
   // the graphemes and cells this frame wanted, for the next
@@ -297,14 +403,34 @@ static double step(App *a, char *line) {
   else if (!strcmp(line, "click") && count >= 2) { int k = count > 2 ? (int)n[2] : 1; dsk_pointer(a->desk, n[0], n[1], 0, k, 0); dsk_pointer(a->desk, n[0], n[1], 2, k, 0); }
   else if (!strcmp(line, "move") && count >= 2) dsk_pointer(a->desk, n[0], n[1], 1, 1, 0);
   else if (!strcmp(line, "wheel") && count >= 1) dsk_wheel(a->desk, n[0]);
-  else if (!strcmp(line, "key")) {
+  else if (!strcmp(line, "key") || !strcmp(line, "keyevent")) {   // a chord as the Mac's steps write it: cmd+1, shift+down, enter
     static const char *const names[] = {"escape", "enter", "backspace", "left", "right", "up", "down", "home", "end", NULL};
-    for (int i = 0; names[i]; i++) if (!strcmp(arg, names[i])) { if (!dsk_key(a->desk, -1 - i, 0)) zr_key(state, -1 - i, 0); }
+    int mods = 0, key = 0;
+    for (char *part = strtok(arg, "+"); part; part = strtok(NULL, "+")) {
+      if (!strcmp(part, "shift")) mods |= 1; else if (!strcmp(part, "ctrl")) mods |= 2; else if (!strcmp(part, "alt")) mods |= 4; else if (!strcmp(part, "cmd")) mods |= 8;
+      else if (!strcmp(part, "delete")) key = -12;
+      else { key = (unsigned char)part[0]; for (int i = 0; names[i]; i++) if (!strcmp(part, names[i])) key = -1 - i; }
+    }
+    if (key) on_key(a, key, mods, 1);
   }
+  else if (!strcmp(line, "mode")) { static const char *const modes[] = {"claude", "psionic", "lab", "codex"}; for (int i = 0; i < 4; i++) if (!strcasecmp(arg, modes[i])) zr_choose(state, 4, i); }
+  else if (!strcmp(line, "access")) { static const char *const levels[] = {"full", "edits", "supervised"}; for (int i = 0; i < 3; i++) if (!strcasecmp(arg, levels[i])) zr_choose(state, 3, i); }
+  else if (!strcmp(line, "model") || !strcmp(line, "effort")) { if (!zr_choose_named(state, line[0] == 'm' ? 1 : 2, (const uint8_t *)arg, (int32_t)strlen(arg))) printf("no %s named %s\n", line, arg); }
+  else if (!strcmp(line, "plan")) zr_choose(state, 5, strcmp(arg, "off") != 0);
+  else if (!strcmp(line, "open")) zr_open_menu(state, !strcmp(arg, "access") ? 3 : 1);
+  else if (!strcmp(line, "folder")) new_session(a, arg);   // a new session in that folder, as the folder picker makes it
+  else if (!strcmp(line, "room")) dsk_show_room(a->desk);
+  else if (!strcmp(line, "closetab")) { if (!dsk_close_tab(a->desk)) printf("closetab: the last tab stays\n"); }
+  else if (!strcmp(line, "stop")) zr_key(state, -1, 0);
+  else if (!strcmp(line, "scroll") && count >= 1) zr_scroll_to(state, n[0]);
+  else if (!strcmp(line, "answer")) { if (!zr_answer(state, !strcmp(arg, "allow"))) printf("answer: nothing is asking\n"); }
+  else if (!strcmp(line, "waitidle")) { a->wait_idle = 1; return count >= 1 ? n[0] : 300; }   // until the running turn ends
   else if (!strcmp(line, "status")) say("status", state, zr_status_text);
   else if (!strcmp(line, "last")) say("last", state, zr_last_text);
   else if (!strcmp(line, "desk")) {
-    printf("desk: active=%d tabs=", (int)(dsk_active(a->desk) ? 0 : -1));
+    int shown = -1;
+    for (int i = 0; i < dsk_count(a->desk); i++) if (dsk_chat(a->desk, i) == dsk_active(a->desk)) shown = i;
+    printf("desk: active=%d tabs=", shown);
     for (int t = 0; t < dsk_tabs(a->desk); t++) printf("%s%d", t ? "," : "", dsk_tab(a->desk, t));
     printf(" sessions=%d collapsed=%d\n", dsk_count(a->desk), dsk_collapsed(a->desk));
   }
@@ -331,6 +457,7 @@ int main(int argc, char **argv) {
   if (slash) *slash = 0;
   char shader[PATH_MAX + 16]; snprintf(shader, sizeof shader, "%s/zeron.spv", a.resources);
 
+  for (int i = 1; i + 2 < argc; i++) if (!strcmp(argv[i], "--mcp-room")) return mcp_room(argv[i + 1], atoi(argv[i + 2]));
   const char *shot = value(argc, argv, "--shot"), *size = value(argc, argv, "--size"), *dpr = value(argc, argv, "--dpr");
   unsigned w = shot ? 2640 : 1320, h = shot ? 1760 : 880;
   if (size && sscanf(size, "%u%*[x,]%u", &w, &h) != 2) { fprintf(stderr, "OpenAgents: --size WxH\n"); return 2; }
@@ -342,6 +469,7 @@ int main(int argc, char **argv) {
   // the sessions first: the seat's first events come while the window opens
   a.desk = dsk_new(); a.settings = ds_new(); a.first = zr_new();
   if (!a.desk || !a.settings || !a.first) return 1;
+  room_open(&a);
   a.host = ui_open(&app, shot != NULL);
   if (!a.host) return 1;
   ui_set_dpr(a.host, a.dpr);
@@ -372,7 +500,11 @@ int main(int argc, char **argv) {
       double wait = step(&a, s);
       // an engine's answer comes in real time: frames a sixtieth apart until the wait is over
       struct timespec nap = {0, 16000000};
-      for (double t = 0; t < wait; t += 1 / 60.0) { ui_shot_frame(a.host, w, h, 1 / 60.0f); nanosleep(&nap, NULL); }
+      for (double t = 0; t < wait; t += 1 / 60.0) {
+        ui_shot_frame(a.host, w, h, 1 / 60.0f); nanosleep(&nap, NULL);
+        if (a.wait_idle && t > 0.2 && !zr_live(active(&a))) break;
+      }
+      a.wait_idle = 0;
       for (int i = 0; i < 3; i++) ui_shot_frame(a.host, w, h, 1 / 60.0f);
       s = next;
     }
@@ -390,6 +522,7 @@ int main(int argc, char **argv) {
   flush_store(&a, 1);
   save_settings(&a);
   dsk_quit(a.desk);
+  if (a.room_fd >= 0) { close(a.room_fd); unlink(a.room_path); }
   ui_close(a.host);
   return status;
 }

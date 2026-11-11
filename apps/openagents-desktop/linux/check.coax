@@ -2,8 +2,8 @@
 // build/linux/OpenAgents offscreen for each case, compare what it prints with what the case
 // expects, and compare its picture with the golden in goldens/linux/. Nothing reaches Claude
 // Code, Codex or Psionic: a case is the demo conversation, an empty home with no claude on
-// PATH, or the stand-in Claude Code the Mac's checks use (zeron/fixtures/stream/claude),
-// started through python3 since NixOS has no /usr/bin/python3.
+// PATH, or the stand-in Claude Code and Codex the Mac's checks use (zeron/fixtures/),
+// started through python3 or bash from PATH, since NixOS has neither /usr/bin/python3 nor /bin/bash.
 //   apps/openagents-desktop/linux/build.sh                              first
 //   coax/web/tool.sh apps/openagents-desktop/linux/check.coax           from the repo root
 //   coax/web/tool.sh apps/openagents-desktop/linux/check.coax --update  rewrite the goldens (look at them before committing)
@@ -19,23 +19,42 @@
 LC_APP :: "apps/openagents-desktop/build/linux/OpenAgents";
 LC_GOLDENS :: "apps/openagents-desktop/goldens/linux/";
 LC_WORK :: "apps/openagents-desktop/build/linux/check";
-LC_STANDIN :: "apps/openagents-desktop/zeron/fixtures/stream/claude";
+LC_FIXTURES :: "apps/openagents-desktop/zeron/fixtures/";
 // At most this many pixels in a thousand may differ from the golden.
 LC_PIXELS :: 2;
-// A case's engine: the demo conversation, no Claude Code at all, or the stand-in.
-LC_DEMO :: 0; LC_NONE :: 1; LC_STANDIN_ENGINE :: 2;
 
-LcCase :: struct { name: string; size: string; engine: int; steps: string; expect: string; picture: bool; settings: bool; }
-LC_CASES :: [8] LcCase.[
-  LcCase.{name = "chat-1320x880", size = "1320,880", engine = LC_DEMO, steps = "fixture open", expect = "", picture = true, settings = false},
-  LcCase.{name = "chat-900x600", size = "900,600", engine = LC_DEMO, steps = "fixture open", expect = "", picture = true, settings = false},
-  LcCase.{name = "chat-table", size = "1320,880", engine = LC_DEMO, steps = "fixture table", expect = "", picture = true, settings = false},
-  LcCase.{name = "sidebar-closed", size = "1320,880", engine = LC_DEMO, steps = "fixture open ; sidebar", expect = "", picture = true, settings = false},
-  LcCase.{name = "claude-missing", size = "1320,880", engine = LC_NONE, steps = "wait 2 ; type Hello from Coax", expect = "", picture = true, settings = false},
-  LcCase.{name = "turn", size = "1320,880", engine = LC_STANDIN_ENGINE, steps = "wait 1 ; send What is two plus two? ; wait 4 ; last", expect = "last: Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = false},
-  LcCase.{name = "store-quit", size = "1320,880", engine = LC_STANDIN_ENGINE, steps = "wait 1 ; send What is two plus two? ; wait 4 ; desk", expect = "desk: active=0 tabs=0 sessions=1 collapsed=0", picture = false, settings = true},
-  LcCase.{name = "store-reopen", size = "1320,880", engine = LC_STANDIN_ENGINE, steps = "wait 1 ; send One more? ; wait 4 ; last", expect = "last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = true}
+// A case's engine: "demo" (the demo conversation), "" (an empty home with no Claude Code on PATH), or a
+// folder of zeron/fixtures/ whose stand-in claude and codex are on PATH. `@H` in its steps is the case's home.
+LcCase :: struct { name: string; size: string; engine: string; steps: string; expect: string; picture: bool; settings: bool; }
+LC_CASES :: [12] LcCase.[
+  LcCase.{name = "chat-1320x880", size = "1320,880", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
+  LcCase.{name = "chat-900x600", size = "900,600", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false},
+  LcCase.{name = "chat-table", size = "1320,880", engine = "demo", steps = "fixture table", expect = "", picture = true, settings = false},
+  LcCase.{name = "sidebar-closed", size = "1320,880", engine = "demo", steps = "fixture open ; sidebar", expect = "", picture = true, settings = false},
+  LcCase.{name = "claude-missing", size = "1320,880", engine = "", steps = "wait 2 ; type Hello from Coax", expect = "", picture = true, settings = false},
+  LcCase.{name = "turn", size = "1320,880", engine = "stream", steps = "wait 1 ; send What is two plus two? ; waitidle 10 ; last", expect = "last: Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = false},
+  LcCase.{name = "approval-allow", size = "1320,880", engine = "asks", steps = "wait 1 ; access supervised ; send list the files ; wait 3 ; answer allow ; waitidle 10 ; last", expect = "last: Allowed: ls found a.txt and b.txt.", picture = false, settings = false},
+  LcCase.{name = "approval-deny", size = "1320,880", engine = "asks", steps = "wait 1 ; access supervised ; send list the files ; wait 3 ; answer deny ; waitidle 10 ; last", expect = "last: Refused: The user denied this.", picture = false, settings = false},
+  LcCase.{name = "room-ask", size = "1320,880", engine = "room", steps = "wait 1 ; folder @H/work/zeron ; mode codex ; wait 1 ; keyevent cmd+1 ; send Ask Codex to review the diff ; waitidle 15 ; wait 1 ; last", expect = "last: Codex reviewed it: Review: the diff renames a to b; it reads well. (80 chars read)", picture = false, settings = false},
+  LcCase.{name = "room-codex-asks", size = "1320,880", engine = "room", steps = "wait 1 ; folder @H/work/zeron ; mode codex ; wait 1 ; send Ask Claude whether the build is green ; waitidle 20 ; wait 1 ; last", expect = "last: Claude says: The build is green. (tools: agents_list, ask_agent, tell_agent, room_read)", picture = false, settings = false},
+  LcCase.{name = "store-quit", size = "1320,880", engine = "stream", steps = "wait 1 ; send What is two plus two? ; waitidle 10 ; desk", expect = "desk: active=0 tabs=0 sessions=1 collapsed=0", picture = false, settings = true},
+  LcCase.{name = "store-reopen", size = "1320,880", engine = "stream", steps = "wait 1 ; send One more? ; waitidle 10 ; last", expect = "last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = true}
 ];
+
+// A case's steps with `@H` replaced by the home's path.
+lc_steps :: (steps: string, home: string, b: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], b); from := 0;
+  for i: 0..<steps.count {
+    if i + 1 < steps.count && steps[i] == '@' && steps[i + 1] == 'H' && i >= from { jo_put(o[..], steps[from..<i]); jo_put(o[..], home); from = i + 2; }
+  }
+  jo_put(o[..], steps[from..<steps.count]);
+  return jo_text(o[..]);
+}
+#test "a case's home is put into its steps" {
+  b: [256] u8;
+  #assert lc_steps("wait 1 ; folder @H/work ; last", "/tmp/h", b[..]) == "wait 1 ; folder /tmp/h/work ; last";
+  #assert lc_steps("fixture open", "/tmp/h", b[..]) == "fixture open" && lc_steps("@H", "/x", b[..]) == "/x";
+}
 
 lc_has :: (text: string, part: string) -> bool {
   if part.count == 0 { return true; }
@@ -80,13 +99,29 @@ tool_main :: () -> int #export_c #effects(all) {
   home := lc_path(pb[2][..], work, "/home"); bin := lc_path(pb[3][..], work, "/bin");
   mk := [5] string.["mkdir", "-p", lc_path(pb[4][..], home, "/work"), bin, lc_path(pb[5][..], root, lc_path(pb[6][..], "/", LC_GOLDENS))];
   r = proc_run(mk[..], 20000, out[..], err[..]);
-  // the stand-in Claude Code, started by python3 wherever the session has it
-  script: [8192] u8; so: [1] Jo; jo_start(so[..], script[..]);
-  jo_put(so[..], "#!/bin/sh\nexec python3 "); jo_put(so[..], root); jo_put(so[..], "/"); jo_put(so[..], LC_STANDIN); jo_put(so[..], " \"$@\"\n");
-  standin := lc_path(pb[7][..], bin, "/claude");
-  if !fs_write(standin, jo_text(so[..])) { tool_errln("check: could not write the stand-in"); return 2; }
-  ch := [3] string.["chmod", "755", standin];
-  r = proc_run(ch[..], 20000, out[..], err[..]);
+  // the stand-ins, each started by python3 wherever the session has it: bin/FIXTURE/claude and codex
+  for fixture: [3] string.["stream", "asks", "room"] {
+    dir := lc_path(pb[7][..], bin, lc_path(pb[8][..], "/", fixture));
+    md := [3] string.["mkdir", "-p", dir];
+    r = proc_run(md[..], 20000, out[..], err[..]);
+    for tool: [2] string.["claude", "codex"] {
+      from := lc_path(pb[9][..], root, lc_path(pb[10][..], "/", lc_path(pb[11][..], LC_FIXTURES, lc_path(pb[12][..], fixture, lc_path(pb[13][..], "/", tool)))));
+      if !fs_exists(from) { continue; }
+      script: [8192] u8; so: [1] Jo; jo_start(so[..], script[..]);
+      // by the interpreter its first line names, found on PATH: the fixtures name /usr/bin/python3 and /bin/bash
+      head: [64] u8; hn := fs_read_at(from, 0, head[..]);
+      python := hn > 0 && lc_has(cast(string) head[0..<hn], "python");
+      jo_put(so[..], "#!/bin/sh\nexec "); jo_put(so[..], ifx python then "python3 " else "bash "); jo_put(so[..], from); jo_put(so[..], " \"$@\"\n");
+      to := lc_path(pb[14][..], dir, lc_path(pb[15][..], "/", tool));
+      if !fs_write(to, jo_text(so[..])) { tool_errln("check: could not write a stand-in"); return 2; }
+      ch := [3] string.["chmod", "755", to];
+      r = proc_run(ch[..], 20000, out[..], err[..]);
+    }
+  }
+  // Codex's login on disk, for the stand-in codex; and the folders the room cases open
+  mk2 := [4] string.["mkdir", "-p", lc_path(pb[7][..], home, "/.codex"), lc_path(pb[8][..], home, "/work/zeron")];
+  r = proc_run(mk2[..], 20000, out[..], err[..]);
+  if !fs_write(lc_path(pb[7][..], home, "/.codex/auth.json"), "{}\n") { return 2; }
   path := proc_getenv("PATH", env_b[..]);
   failed := 0;
   cases := LC_CASES;
@@ -95,14 +130,16 @@ tool_main :: () -> int #export_c #effects(all) {
     // an engine is the PATH the app starts with, in an empty home
     eb: [3] [16384] u8;
     env_home := lc_path(eb[0][..], "HOME=", home);
-    env_path := ifx c.engine == LC_STANDIN_ENGINE then lc_path(eb[1][..], "PATH=", lc_path(eb[2][..], bin, lc_path(pb[11][..], ":", path))) else lc_path(eb[1][..], "PATH=", "/run/current-system/sw/bin:/usr/bin:/bin");
+    standin := c.engine != "demo" && c.engine != "";
+    env_path := ifx standin then lc_path(eb[1][..], "PATH=", lc_path(eb[2][..], bin, lc_path(pb[11][..], "/", lc_path(pb[7][..], c.engine, lc_path(pb[5][..], ":", path))))) else lc_path(eb[1][..], "PATH=", "/run/current-system/sw/bin:/usr/bin:/bin");
     argv: [24] string; n := 0;
     for s: [5] string.["env", env_home, env_path, "BROWSER=true", "PSIONIC_HOST=none"] { argv[n] = s; n += 1; }
     argv[n] = lc_path(pb[12][..], root, lc_path(pb[13][..], "/", LC_APP)); n += 1;
     for s: [8] string.["--shot", shot, "--size", c.size, "--dpr", "1", "--cwd", lc_path(pb[4][..], home, "/work")] { argv[n] = s; n += 1; }
-    if c.engine == LC_DEMO { argv[n] = "--demo"; n += 1; }
+    if c.engine == "demo" { argv[n] = "--demo"; n += 1; }
     if c.settings { argv[n] = "--settings"; argv[n + 1] = lc_path(pb[14][..], work, "/store/settings.json"); n += 2; }
-    argv[n] = "--do"; argv[n + 1] = c.steps; n += 2;
+    sb: [8192] u8;
+    argv[n] = "--do"; argv[n + 1] = lc_steps(c.steps, home, sb[..]); n += 2;
     r = proc_run(argv[0..<n], 120000, out[..], err[..]);
     said := cast(string) out[0..<r.out_n];
     if r.started != 0 || r.status != 0 || r.timed_out { print("FAIL %: the app ended with status %: %\n", c.name, r.status, cast(string) err[0..<r.err_n]); failed += 1; continue; }
