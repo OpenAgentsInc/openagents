@@ -20,12 +20,42 @@ ArchPen :: struct {
   full: bool;           // a triangle did not fit, and was left out
   material: f32;        // what the next triangles are made of
   tint: [3] f32;        // their own colour (red, green, blue), written to a vertex's three spare floats; 0, 0, 0 leaves the material's
+  solids: [] f32;       // the solids of the parts written (arch_pen_solids): none are kept when it is empty
+  sn: int;              // solids written
 }
 ArchPoint :: struct { x: f32; y: f32; z: f32; nx: f32; ny: f32; nz: f32; u: f32; v: f32; }
-// A span of a pen's vertices: one part.
-ArchPart :: struct { first: int; count: int; }
+// A span of a pen's vertices: one part, and the span of the pen's solids that are its own.
+ArchPart :: struct { first: int; count: int; solid: int; solids: int; }
 
-arch_pen :: (p: [] ArchPen, out: [] f32) { p[0].out = out; p[0].n = 0; p[0].full = false; p[0].material = 0; p[0].tint = [3] f32.[0, 0, 0]; }
+// A solid: a shape of a part that a walker can't pass through, and can stand on when its top is
+// low enough to step onto. It is ARCH_SOLID_FLOATS floats in the part's own space: its kind, its
+// middle on the ground (x, z), its two half sizes (a round one: its radius, twice), its turn about
+// y, its foot and its top (y), and the pen's vertex count when it was written. A generator writes
+// its solids after the geometry they cover, so they match what is seen: no solid without a
+// surface, and no thick surface without a solid.
+ARCH_SOLID_FLOATS :: 9;
+ARCH_SOLID_BOX :: 1;       // a box, turned about y: its own +x runs along (cos turn, -sin turn)
+ARCH_SOLID_ROUND :: 2;     // an upright cylinder
+// Where the pen keeps its parts' solids. Without this no solid is kept.
+arch_pen_solids :: (p: [] ArchPen, solids: [] f32) { p[0].solids = solids; p[0].sn = 0; }
+arch_solid :: (p: [] ArchPen, kind: int, cx: f32, cz: f32, hx: f32, hz: f32, turn: f32, y0: f32, y1: f32) {
+  if p[0].solids.count == 0 { return; }
+  if (p[0].sn + 1) * ARCH_SOLID_FLOATS > p[0].solids.count { p[0].full = true; return; }
+  o := p[0].sn * ARCH_SOLID_FLOATS;
+  p[0].solids[o] = cast(f32) kind; p[0].solids[o + 1] = cx; p[0].solids[o + 2] = cz; p[0].solids[o + 3] = hx; p[0].solids[o + 4] = hz;
+  p[0].solids[o + 5] = turn; p[0].solids[o + 6] = y0; p[0].solids[o + 7] = y1; p[0].solids[o + 8] = cast(f32) p[0].n;
+  p[0].sn += 1;
+}
+// A solid box by its low and high corners, square to the part's axes.
+arch_solid_box :: (p: [] ArchPen, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  arch_solid(p, ARCH_SOLID_BOX, (x0 + x1) * 0.5, (z0 + z1) * 0.5, abs(x1 - x0) * 0.5, abs(z1 - z0) * 0.5, 0, y0, y1);
+}
+// A solid box turned about y: its middle, its half sizes and its turn.
+arch_solid_turned :: (p: [] ArchPen, cx: f32, cz: f32, hx: f32, hz: f32, turn: f32, y0: f32, y1: f32) { arch_solid(p, ARCH_SOLID_BOX, cx, cz, hx, hz, turn, y0, y1); }
+// A solid upright cylinder: a trunk, a post, a round tower.
+arch_solid_round :: (p: [] ArchPen, cx: f32, cz: f32, r: f32, y0: f32, y1: f32) { arch_solid(p, ARCH_SOLID_ROUND, cx, cz, r, r, 0, y0, y1); }
+
+arch_pen :: (p: [] ArchPen, out: [] f32) { p[0].out = out; p[0].n = 0; p[0].full = false; p[0].material = 0; p[0].tint = [3] f32.[0, 0, 0]; p[0].sn = 0; }
 // The colour of the next triangles (0, 0, 0: the material's own).
 arch_tint :: (p: [] ArchPen, r: f32, g: f32, b: f32) { p[0].tint = [3] f32.[r, g, b]; }
 arch_at :: (x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) -> ArchPoint {
@@ -46,7 +76,14 @@ arch_tri :: (p: [] ArchPen, a: ArchPoint, b: ArchPoint, c: ArchPoint) {
 // A four-sided face, its corners in order round it.
 arch_quad :: (p: [] ArchPen, a: ArchPoint, b: ArchPoint, c: ArchPoint, d: ArchPoint) { arch_tri(p, a, b, c); arch_tri(p, a, c, d); }
 // The part written since `from`.
-arch_part :: (p: [] ArchPen, from: int) -> ArchPart { return ArchPart.{first = from, count = p[0].n - from}; }
+// Its solids are those written after its first vertex.
+arch_part :: (p: [] ArchPen, from: int) -> ArchPart {
+  part := ArchPart.{first = from, count = p[0].n - from};
+  k := p[0].sn;
+  while k > 0 && p[0].solids[(k - 1) * ARCH_SOLID_FLOATS + 8] > cast(f32) from { k -= 1; }
+  part.solid = k; part.solids = p[0].sn - k;
+  return part;
+}
 
 // A box: its middle and half its size each way. Flat faces; u and v run 0 to 1 across each.
 arch_box :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32) {

@@ -1,0 +1,284 @@
+// Aethyr's architecture kit, its solids as colliders: every part a generator writes carries the
+// shapes that block a walker (aethyr/arch/mesh.coax arch_solid_box, arch_solid_round), a scene
+// stands them with its records (aethyr/arch/place.coax), and this hands them to Aethyr's queries
+// (aethyr/query.coax Colliders) and walks among them with Aethyr's walking capsule
+// (aethyr/collide.coax). So a world built from the kit can't be walked through, and whatever is
+// low enough to step onto (a stair, a kerb, a terrace reached by its steps) is ground.
+//
+//   arch_colliders     the placed solids as boxes, capsules and hulls
+//   arch_heights       the ground table's heights as a height field
+//   arch_walk          one move of a walker: slid along what blocks it, stood on what holds it
+//   arch_walk_among    the same among a scene's placed solids, asking only about those near the walker
+//   arch_solid_mesh    the placed solids as a mesh, to see that they match what is drawn
+//
+// A box square to the world is a box; a box turned any other way is a hull of six faces; a slim
+// upright cylinder is a capsule and a broad one a hull of twelve sides.
+//   coax/bin/coax test --library aethyr/arch/solids.coax
+#module "aethyr.arch.solids";
+#load "place.coax";
+#load "solid.coax";
+#load "flora.coax";
+#load "../collide.coax";
+
+ARCH_HULL_BOX :: QUERY_HULL_HEAD + 6 * QUERY_HULL_FACE;        // floats a turned box takes
+ARCH_ROUND_SIDES :: 12;
+ARCH_HULL_ROUND :: QUERY_HULL_HEAD + (ARCH_ROUND_SIDES + 2) * QUERY_HULL_FACE;
+ARCH_SQUARE :: 0.0005;     // a turn this near a quarter turn is square to the world
+
+// Where the colliders go: three arrays the caller owns, and how much of each is written.
+ArchColliders :: struct {
+  boxes: [] f32; box_n: int;         // boxes written
+  capsules: [] f32; capsule_n: int;  // capsules written
+  hulls: [] f32; hull_floats: int;   // floats of hulls written
+  full: bool;                        // one did not fit, and was left out
+}
+
+arch_hull_face :: (h: [] f32, at: int, nx: f32, ny: f32, nz: f32, d: f32) { h[at] = nx; h[at + 1] = ny; h[at + 2] = nz; h[at + 3] = d; }
+// One placed solid (ARCH_PLACED_FLOATS floats at `o`) as a collider.
+arch_collider :: (c: [] ArchColliders, placed: [] f32, o: int) {
+  kind := cast(int) placed[o]; x := placed[o + 1]; z := placed[o + 2]; hx := placed[o + 3]; hz := placed[o + 4];
+  turn := placed[o + 5]; y0 := placed[o + 6]; y1 := placed[o + 7];
+  if y1 <= y0 || hx <= 0 || hz <= 0 { return; }
+  if kind == ARCH_SOLID_ROUND {
+    if hx <= 0.5 && y1 - y0 >= 2 * hx + 0.5 {
+      if (c[0].capsule_n + 1) * QUERY_CAPSULE > c[0].capsules.count { c[0].full = true; return; }
+      k := c[0].capsule_n * QUERY_CAPSULE;
+      c[0].capsules[k] = x; c[0].capsules[k + 1] = y0 + hx; c[0].capsules[k + 2] = z;
+      c[0].capsules[k + 3] = x; c[0].capsules[k + 4] = y1 - hx; c[0].capsules[k + 5] = z; c[0].capsules[k + 6] = hx;
+      c[0].capsule_n += 1;
+      return;
+    }
+    if c[0].hull_floats + ARCH_HULL_ROUND > c[0].hulls.count { c[0].full = true; return; }
+    k := c[0].hull_floats;
+    c[0].hulls[k] = ARCH_ROUND_SIDES + 2; c[0].hulls[k + 1] = y0; c[0].hulls[k + 2] = y1;
+    // The sides touch the circle at their middles, so the hull is never inside what is drawn.
+    for i: 0..<ARCH_ROUND_SIDES {
+      a := f32(ARCH_TAU) * (cast(f32) i + 0.5) / cast(f32) ARCH_ROUND_SIDES; nx := cos(a); nz := sin(a);
+      arch_hull_face(c[0].hulls, k + QUERY_HULL_HEAD + i * QUERY_HULL_FACE, nx, 0, nz, nx * x + nz * z + hx);
+    }
+    arch_hull_face(c[0].hulls, k + QUERY_HULL_HEAD + ARCH_ROUND_SIDES * QUERY_HULL_FACE, 0, 1, 0, y1);
+    arch_hull_face(c[0].hulls, k + QUERY_HULL_HEAD + (ARCH_ROUND_SIDES + 1) * QUERY_HULL_FACE, 0, -1, 0, -y0);
+    c[0].hull_floats += ARCH_HULL_ROUND;
+    return;
+  }
+  cs := cos(turn); sn := sin(turn);
+  if abs(sn) < ARCH_SQUARE || abs(cs) < ARCH_SQUARE {
+    // Square to the world: a quarter turn swaps its sides.
+    ex := ifx abs(sn) < ARCH_SQUARE then hx else hz; ez := ifx abs(sn) < ARCH_SQUARE then hz else hx;
+    if (c[0].box_n + 1) * QUERY_BOX > c[0].boxes.count { c[0].full = true; return; }
+    k := c[0].box_n * QUERY_BOX;
+    c[0].boxes[k] = x - ex; c[0].boxes[k + 1] = y0; c[0].boxes[k + 2] = z - ez; c[0].boxes[k + 3] = x + ex; c[0].boxes[k + 4] = y1; c[0].boxes[k + 5] = z + ez;
+    c[0].box_n += 1;
+    return;
+  }
+  if c[0].hull_floats + ARCH_HULL_BOX > c[0].hulls.count { c[0].full = true; return; }
+  k := c[0].hull_floats;
+  c[0].hulls[k] = 6; c[0].hulls[k + 1] = y0; c[0].hulls[k + 2] = y1;
+  // Its own +x runs along (cos, -sin) and its +z along (sin, cos).
+  at := k + QUERY_HULL_HEAD;
+  arch_hull_face(c[0].hulls, at, cs, 0, -sn, cs * x - sn * z + hx);
+  arch_hull_face(c[0].hulls, at + 4, -cs, 0, sn, -(cs * x - sn * z) + hx);
+  arch_hull_face(c[0].hulls, at + 8, sn, 0, cs, sn * x + cs * z + hz);
+  arch_hull_face(c[0].hulls, at + 12, -sn, 0, -cs, -(sn * x + cs * z) + hz);
+  arch_hull_face(c[0].hulls, at + 16, 0, 1, 0, y1);
+  arch_hull_face(c[0].hulls, at + 20, 0, -1, 0, -y0);
+  c[0].hull_floats += ARCH_HULL_BOX;
+}
+// Every placed solid as a collider. `count` placed solids are read.
+arch_colliders :: (c: [] ArchColliders, boxes: [] f32, capsules: [] f32, hulls: [] f32, placed: [] f32, count: int) {
+  c[0].boxes = boxes; c[0].capsules = capsules; c[0].hulls = hulls; c[0].box_n = 0; c[0].capsule_n = 0; c[0].hull_floats = 0; c[0].full = false;
+  for i: 0..<count { if (i + 1) * ARCH_PLACED_FLOATS <= placed.count { arch_collider(c, placed, i * ARCH_PLACED_FLOATS); } }
+}
+// The ground table's heights alone, a float a node, as Aethyr's height field reads them. False
+// when `out` is too short.
+arch_heights :: (out: [] f32, g: ArchGround, table: [] f32) -> bool {
+  nodes := (g.n + 1) * (g.n + 1);
+  if out.count < nodes || table.count < nodes * ARCH_GROUND_FLOATS { return false; }
+  for i: 0..<nodes { out[i] = table[i * ARCH_GROUND_FLOATS]; }
+  return true;
+}
+// A realm's colliders for Aethyr's queries: the ground's height field and what arch_colliders wrote.
+arch_query :: (c: [] ArchColliders, field: [] QueryHeightfield) -> Colliders {
+  q: Colliders;
+  q.ground = -1000; q.ground_enabled = field.count == 0;
+  q.boxes = c[0].boxes[0..<c[0].box_n * QUERY_BOX]; q.capsules = c[0].capsules[0..<c[0].capsule_n * QUERY_CAPSULE];
+  q.hulls = c[0].hulls[0..<c[0].hull_floats]; q.heightfields = field;
+  return q;
+}
+arch_field :: (g: ArchGround, heights: [] f32) -> QueryHeightfield {
+  f: QueryHeightfield;
+  f.ground.n = g.n; f.ground.cell = g.cell; f.ground.west = g.x0; f.ground.south = g.z0; f.ground.rim = 0; f.ground.rows = 0;
+  f.heights = heights;
+  return f;
+}
+
+// A walker: Aethyr's walking capsule (0.3 m round, 1.8 m tall, stepping up 0.55 m).
+ARCH_WALK_STRIDE :: 0.14;      // the most one pass moves: under the capsule's own limit
+// One move of feet at `feet` by (dx, dz) along the ground: in strides, each slid along what
+// blocks it (first the whole stride, then each axis of it alone), then stood on the highest
+// surface the feet can step onto. Where nothing can be done the walker stays.
+arch_walk :: (q: Colliders, feet: WorldPoint, dx: f32, dz: f32) -> WorldPoint {
+  profile: CollideProfile;
+  far := sqrt(dx * dx + dz * dz);
+  strides := cast(int) floor(far / ARCH_WALK_STRIDE) + 1; if strides > 64 { strides = 64; }
+  sx := dx / cast(f32) strides; sz := dz / cast(f32) strides;
+  state := CollideState.{feet = feet};
+  for i: 0..<strides {
+    r := collide_move(q, profile, state, sx, sz);
+    if r.status != CollideStatus.ok { r = collide_move(q, profile, state, sx, 0); }
+    if r.status != CollideStatus.ok { r = collide_move(q, profile, state, 0, sz); }
+    if r.status != CollideStatus.ok { break; }
+    state.feet = r.state.feet;
+    g := query_stand(q, state.feet.x, state.feet.z, state.feet.y, profile.radius);
+    if g.shape != QueryShape.none { state.feet.y = g.y; }
+  }
+  return state.feet;
+}
+// A walker's neighbourhood: the placed solids within reach of it, as colliders. A scene of
+// hundreds of solids is asked about the handful a step could touch.
+ARCH_NEAR :: 48;
+ArchNear :: struct {
+  placed: [ARCH_NEAR * ARCH_PLACED_FLOATS] f32; n: int;
+  boxes: [ARCH_NEAR * QUERY_BOX] f32; capsules: [ARCH_NEAR * QUERY_CAPSULE] f32; hulls: [ARCH_NEAR * ARCH_HULL_ROUND] f32;
+  colliders: [1] ArchColliders;
+  crowded: bool;                     // more than ARCH_NEAR were near: the farthest-listed were left out
+}
+// The placed solids whose footprints come within `reach` of (x, z), gathered into `near`.
+arch_near :: (near: [] ArchNear, placed: [] f32, count: int, x: f32, z: f32, reach: f32) {
+  near[0].n = 0; near[0].crowded = false;
+  for i: 0..<count {
+    o := i * ARCH_PLACED_FLOATS;
+    if o + ARCH_PLACED_FLOATS > placed.count { break; }
+    dx := placed[o + 1] - x; dz := placed[o + 2] - z; hx := placed[o + 3]; hz := placed[o + 4];
+    round := sqrt(hx * hx + hz * hz) + reach;
+    if dx * dx + dz * dz > round * round { continue; }
+    if near[0].n >= ARCH_NEAR { near[0].crowded = true; break; }
+    for k: 0..<ARCH_PLACED_FLOATS { near[0].placed[near[0].n * ARCH_PLACED_FLOATS + k] = placed[o + k]; }
+    near[0].n += 1;
+  }
+  arch_colliders(near[0].colliders[..], near[0].boxes[..], near[0].capsules[..], near[0].hulls[..], near[0].placed[..], near[0].n);
+}
+// One move of a walker among a scene's placed solids, on the ground `field` gives (none: flat at
+// y 0): arch_walk, asked only about what is near.
+arch_walk_among :: (placed: [] f32, count: int, field: [] QueryHeightfield, feet: WorldPoint, dx: f32, dz: f32) -> WorldPoint {
+  near: [1] ArchNear;
+  arch_near(near[..], placed, count, feet.x, feet.z, sqrt(dx * dx + dz * dz) + 1.2);
+  q := arch_query(near[0].colliders[..], field);
+  if field.count == 0 { q.ground = 0; }
+  return arch_walk(q, feet, dx, dz);
+}
+// Where feet stand at (x, z) when they come from height `from`.
+arch_stand_at :: (q: Colliders, x: f32, z: f32, from: f32) -> f32 {
+  profile: CollideProfile;
+  g := query_stand(q, x, z, from, profile.radius);
+  if g.shape == QueryShape.none { return from; }
+  return g.y;
+}
+
+// The placed solids as a mesh, each a hand's breadth larger than itself so it shows over what it
+// covers: boxes as boxes, cylinders as twelve-sided drums, in the pen's material. For a debug
+// view: what blocks you is what you see.
+arch_solid_mesh :: (p: [] ArchPen, placed: [] f32, count: int, grow: f32) -> ArchPart {
+  from := p[0].n;
+  for i: 0..<count {
+    o := i * ARCH_PLACED_FLOATS;
+    if o + ARCH_PLACED_FLOATS > placed.count { break; }
+    x := placed[o + 1]; z := placed[o + 2]; hx := placed[o + 3] + grow; hz := placed[o + 4] + grow; y0 := placed[o + 6]; y1 := placed[o + 7] + grow;
+    if cast(int) placed[o] == ARCH_SOLID_ROUND {
+      for k: 0..<ARCH_ROUND_SIDES {
+        a := f32(ARCH_TAU) * cast(f32) k / cast(f32) ARCH_ROUND_SIDES; b := f32(ARCH_TAU) * cast(f32) (k + 1) / cast(f32) ARCH_ROUND_SIDES;
+        arch_face(p, arch_v(x + cos(b) * hx, y0, z + sin(b) * hx), arch_v(x + cos(a) * hx, y0, z + sin(a) * hx), arch_v(x + cos(a) * hx, y1, z + sin(a) * hx), arch_v(x + cos(b) * hx, y1, z + sin(b) * hx));
+        arch_face(p, arch_v(x, y1, z), arch_v(x + cos(b) * hx, y1, z + sin(b) * hx), arch_v(x + cos(a) * hx, y1, z + sin(a) * hx), arch_v(x + cos(a) * hx, y1, z + sin(a) * hx));
+      }
+    } else {
+      arch_block(p, x, (y0 + y1) * 0.5, z, hx, (y1 - y0) * 0.5, hz, placed[o + 5]);
+    }
+  }
+  return arch_part(p, from);
+}
+
+#test "a square box is a box, a turned one a hull, a post a capsule and a drum a hull; a full array says so" {
+  placed := [5 * ARCH_PLACED_FLOATS] f32.[
+    ARCH_SOLID_BOX, 10, 20, 2, 1, 0, 0, 3,
+    ARCH_SOLID_BOX, 10, 20, 2, 1, 1.5707963, 0, 3,
+    ARCH_SOLID_BOX, 0, 0, 2, 1, 0.5, 1, 4,
+    ARCH_SOLID_ROUND, 5, 5, 0.2, 0.2, 0, 0, 3,
+    ARCH_SOLID_ROUND, -5, 5, 1.5, 1.5, 0, 0, 1];
+  boxes: [2 * QUERY_BOX] f32; capsules: [1 * QUERY_CAPSULE] f32; hulls: [ARCH_HULL_BOX + ARCH_HULL_ROUND] f32;
+  c: [1] ArchColliders; arch_colliders(c[..], boxes[..], capsules[..], hulls[..], placed[..], 5);
+  #assert !c[0].full && c[0].box_n == 2 && c[0].capsule_n == 1 && c[0].hull_floats == ARCH_HULL_BOX + ARCH_HULL_ROUND;
+  #assert boxes[0] == 8 && boxes[2] == 19 && boxes[3] == 12 && boxes[4] == 3 && boxes[5] == 21;
+  // The quarter turn swaps its sides.
+  #assert boxes[6] == 9 && boxes[8] == 18 && boxes[9] == 11 && boxes[11] == 22;
+  #assert capsules[1] == 0.2 && capsules[4] == 2.8 && capsules[6] == 0.2 && capsules[0] == 5;
+  none: [1] QueryHeightfield; q := arch_query(c[..], none[0..<0]);
+  k := query_hull(q.hulls, 0); #assert k.ok && k.faces == 6;
+  // The turned box holds its middle and its own corner, and not a point past its end.
+  top := query_hull_top(q.hulls, k, 0, 0); #assert top.over && top.y == 4;
+  cs := cos(0.5f32); sn := sin(0.5f32);
+  in_x := 1.9 * cs + 0.9 * sn; in_z := -1.9 * sn + 0.9 * cs; out_x := 2.1 * cs; out_z := -2.1 * sn;
+  #assert query_hull_top(q.hulls, k, in_x, in_z).over && !query_hull_top(q.hulls, k, out_x, out_z).over;
+  drum := query_hull(q.hulls, k.next); #assert drum.ok && drum.faces == ARCH_ROUND_SIDES + 2;
+  #assert query_hull_top(q.hulls, drum, -5, 5).y == 1 && query_hull_top(q.hulls, drum, -6.4, 5).over && !query_hull_top(q.hulls, drum, -6.7, 5).over;
+  short: [1 * QUERY_BOX] f32; arch_colliders(c[..], short[..], capsules[..], hulls[..], placed[..], 5); #assert c[0].full && c[0].box_n == 1;
+}
+#test "a walker stops at a wall and slides along it, climbs steps onto a terrace, and walks round a post" {
+  // A wall across the way at z -5, three steps up to a terrace beyond x 10, a post at (-5, -2).
+  placed := [6 * ARCH_PLACED_FLOATS] f32.[
+    ARCH_SOLID_BOX, 0, -5.25, 4, 0.25, 0, 0, 2,
+    ARCH_SOLID_BOX, 10.25, 0, 0.25, 2, 0, 0, 0.2,
+    ARCH_SOLID_BOX, 10.75, 0, 0.25, 2, 0, 0, 0.4,
+    ARCH_SOLID_BOX, 11.25, 0, 0.25, 2, 0, 0, 0.6,
+    ARCH_SOLID_BOX, 14, 0, 2.5, 2, 0, 0, 0.8,
+    ARCH_SOLID_ROUND, -5, -2, 0.2, 0.2, 0, 0, 3];
+  boxes: [5 * QUERY_BOX] f32; capsules: [1 * QUERY_CAPSULE] f32; hulls: [4] f32;
+  c: [1] ArchColliders; arch_colliders(c[..], boxes[..], capsules[..], hulls[..], placed[..], 6);
+  #assert !c[0].full && c[0].box_n == 5 && c[0].capsule_n == 1;
+  g := ArchGround.{n = 2, cell = 40, x0 = -40, z0 = -40}; heights: [9] f32;
+  field: [1] QueryHeightfield; field[0] = arch_field(g, heights[..]); q := arch_query(c[..], field[..]);
+  // Into the wall: stopped a radius short of its face, however long you push.
+  at := world_point(0, 0, 0);
+  for i: 0..<200 { at = arch_walk(q, at, 0, -0.1); }
+  #assert abs(at.z + 4.7) < 0.01 && at.x == 0 && at.y == 0;
+  // Aslant into it: you slide along it, and past its end you go on.
+  for i: 0..<200 { at = arch_walk(q, at, 0.1, -0.1); }
+  #assert at.x > 4.2 && at.z < -6;
+  // Up the steps onto the terrace: each is a step, and the terrace's top is ground.
+  at = world_point(8, 0, 0);
+  for i: 0..<70 { at = arch_walk(q, at, 0.1, 0); }
+  #assert abs(at.y - 0.8) < 0.001 && at.x > 14.5;
+  // Its side is a wall: 0.8 m is more than a step.
+  at = world_point(14, 0, 5);
+  for i: 0..<100 { at = arch_walk(q, at, 0, -0.1); }
+  #assert at.y == 0 && abs(at.z - 2.3) < 0.01;
+  // Straight at the post: you never pass through it.
+  at = world_point(-5, 0, 2);
+  for i: 0..<80 { at = arch_walk(q, at, 0, -0.1); d := sqrt((at.x + 5) * (at.x + 5) + (at.z + 2) * (at.z + 2)); #assert d > 0.49; }
+  #assert arch_stand_at(q, 14, 0, 2) == 0.8 && arch_stand_at(q, 14, 0, 0) == 0 && arch_stand_at(q, 0, 20, 0.2) == 0;
+}
+#test "a walker among a scene's solids is asked only about those near it, and walks the same" {
+  placed: [60 * ARCH_PLACED_FLOATS] f32;
+  // A row of sixty posts a metre apart along x, and you walk at the third.
+  for i: 0..<60 { o := i * ARCH_PLACED_FLOATS; placed[o] = ARCH_SOLID_ROUND; placed[o + 1] = cast(f32) i; placed[o + 2] = -3; placed[o + 3] = 0.2; placed[o + 4] = 0.2; placed[o + 6] = 0; placed[o + 7] = 3; }
+  near: [1] ArchNear; arch_near(near[..], placed[..], 60, 2, 0, 3.2);
+  #assert near[0].n == 3 && !near[0].crowded && near[0].colliders[0].capsule_n == 3 && near[0].placed[1] == 1;
+  arch_near(near[..], placed[..], 60, 30, 0, 100); #assert near[0].n == ARCH_NEAR && near[0].crowded;
+  none: [1] QueryHeightfield; at := world_point(2, 0, 0);
+  for i: 0..<60 { at = arch_walk_among(placed[..], 60, none[0..<0], at, 0, -0.1); d := sqrt((at.x - 2) * (at.x - 2) + (at.z + 3) * (at.z + 3)); #assert d > 0.49; }
+  #assert at.y == 0 && at.z < -2.4;
+  // Between two posts there is room: you pass.
+  at = world_point(2.5, 0, 0);
+  for i: 0..<60 { at = arch_walk_among(placed[..], 60, none[0..<0], at, 0, -0.1); }
+  #assert abs(at.z + 6) < 0.01 && abs(at.x - 2.5) < 0.01;
+}
+#test "the solids' mesh covers each solid and no more, and the heights are the table's" {
+  placed := [2 * ARCH_PLACED_FLOATS] f32.[ARCH_SOLID_BOX, 10, 20, 2, 1, 0.3, 0, 3, ARCH_SOLID_ROUND, 0, 0, 1, 1, 0, 1, 2];
+  buf: [200 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  part := arch_solid_mesh(p[..], placed[..], 2, 0.02);
+  #assert !p[0].full && part.count == 36 + ARCH_ROUND_SIDES * 9;
+  for i: 0..<36 { o := i * ARCH_VERTEX_FLOATS; #assert buf[o + 1] >= 0 && buf[o + 1] <= 3.021 && abs(buf[o] - 10) < 2.4 && abs(buf[o + 2] - 20) < 1.7; }
+  for i: 36..<part.count { o := i * ARCH_VERTEX_FLOATS; #assert buf[o + 1] >= 1 && buf[o + 1] <= 2.021 && buf[o] * buf[o] + buf[o + 2] * buf[o + 2] < 1.05; }
+  g := ArchGround.{n = 1, cell = 2, x0 = 0, z0 = 0}; table := [16] f32.[1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0];
+  heights: [4] f32; #assert arch_heights(heights[..], g, table[..]) && heights[0] == 1 && heights[3] == 4;
+  short: [3] f32; #assert !arch_heights(short[..], g, table[..]);
+}

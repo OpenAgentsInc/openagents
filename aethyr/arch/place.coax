@@ -17,9 +17,39 @@ ARCH_STILL :: 0; ARCH_FLOAT :: 1;
 ArchScene :: struct {
   records: [] f32; rn: int;
   draws: [] u32; dn: int;
-  full: bool;           // a record or a draw did not fit, and was left out
+  full: bool;           // a record, a draw or a solid did not fit, and was left out
+  local: [] f32;        // the pen's solids (aethyr/arch/mesh.coax), in each part's own space
+  placed: [] f32; pn: int;   // every drawn part's solids where its records stand them, in the world
 }
-arch_scene :: (s: [] ArchScene, records: [] f32, draws: [] u32) { s[0].records = records; s[0].rn = 0; s[0].draws = draws; s[0].dn = 0; s[0].full = false; }
+// A placed solid is ARCH_PLACED_FLOATS floats in the world: its kind (ARCH_SOLID_BOX,
+// ARCH_SOLID_ROUND), its middle on the ground (x, z), its half sizes, its turn about y, its foot
+// and its top. aethyr/arch/solids.coax hands them to Aethyr's queries and its walker.
+ARCH_PLACED_FLOATS :: 8;
+// Keep solids: `local` is the pen's (arch_pen_solids), `placed` is where the scene's go. Every
+// draw after this stands its part's solids with its records.
+arch_scene_solids :: (s: [] ArchScene, local: [] f32, placed: [] f32) { s[0].local = local; s[0].placed = placed; s[0].pn = 0; }
+arch_place_solids :: (s: [] ArchScene, part: ArchPart, first: int, count: int) {
+  if part.solids <= 0 || s[0].placed.count == 0 { return; }
+  for r: first..<first + count {
+    ro := r * ARCH_RECORD_FLOATS;
+    x := s[0].records[ro]; y := s[0].records[ro + 1]; z := s[0].records[ro + 2]; yaw := s[0].records[ro + 3]; scale := s[0].records[ro + 4];
+    c := cos(yaw); sn := sin(yaw);
+    for k: 0..<part.solids {
+      lo := (part.solid + k) * ARCH_SOLID_FLOATS;
+      if lo + ARCH_SOLID_FLOATS > s[0].local.count { return; }
+      if (s[0].pn + 1) * ARCH_PLACED_FLOATS > s[0].placed.count { s[0].full = true; return; }
+      o := s[0].pn * ARCH_PLACED_FLOATS;
+      lx := s[0].local[lo + 1] * scale; lz := s[0].local[lo + 2] * scale;
+      s[0].placed[o] = s[0].local[lo];
+      s[0].placed[o + 1] = x + lx * c + lz * sn; s[0].placed[o + 2] = z - lx * sn + lz * c;
+      s[0].placed[o + 3] = s[0].local[lo + 3] * scale; s[0].placed[o + 4] = s[0].local[lo + 4] * scale;
+      s[0].placed[o + 5] = s[0].local[lo + 5] + yaw;
+      s[0].placed[o + 6] = y + s[0].local[lo + 6] * scale; s[0].placed[o + 7] = y + s[0].local[lo + 7] * scale;
+      s[0].pn += 1;
+    }
+  }
+}
+arch_scene :: (s: [] ArchScene, records: [] f32, draws: [] u32) { s[0].records = records; s[0].rn = 0; s[0].draws = draws; s[0].dn = 0; s[0].full = false; s[0].pn = 0; }
 
 // One record; its index, or -1 when there is no room.
 arch_stand :: (s: [] ArchScene, x: f32, y: f32, z: f32, yaw: f32, scale: f32) -> int {
@@ -48,6 +78,7 @@ arch_draw :: (s: [] ArchScene, part: ArchPart, first: int, count: int) {
   o := s[0].dn * 4;
   s[0].draws[o] = cast(u32) part.first; s[0].draws[o + 1] = cast(u32) part.count; s[0].draws[o + 2] = cast(u32) first; s[0].draws[o + 3] = cast(u32) count;
   s[0].dn += 1;
+  arch_place_solids(s, part, first, count);
 }
 // One part once, where it was built.
 arch_once :: (s: [] ArchScene, part: ArchPart) { r := arch_stand(s, 0, 0, 0, 0, 1); arch_draw(s, part, r, 1); }
@@ -82,4 +113,22 @@ arch_round :: (s: [] ArchScene, part: ArchPart, count: int, radius: f32, angle: 
   for i: 0..<40 { r := arch_stand(s[..], 0, 0, 0, 0, 1); }
   #assert s[0].full && s[0].rn == 40;
   arch_draw(s[..], part, 0, 0); #assert s[0].dn == 2;
+}
+#test "a draw stands its part's solids with each record: moved, turned, scaled and lifted" {
+  records: [4 * ARCH_RECORD_FLOATS] f32; draws: [8] u32; s: [1] ArchScene; arch_scene(s[..], records[..], draws[..]);
+  buf: [36 * ARCH_VERTEX_FLOATS] f32; local: [4 * ARCH_SOLID_FLOATS] f32; placed: [8 * ARCH_PLACED_FLOATS] f32;
+  p: [1] ArchPen; arch_pen(p[..], buf[..]); arch_pen_solids(p[..], local[..]); arch_scene_solids(s[..], local[..], placed[..]);
+  arch_box(p[..], 2, 1, 0, 1, 1, 0.5); arch_solid_box(p[..], 1, 0, -0.5, 3, 2, 0.5); arch_solid_round(p[..], 2, 0, 0.25, 2, 3);
+  part := arch_part(p[..], 0); #assert part.solids == 2 && part.solid == 0 && !p[0].full;
+  // A second part claims none of the first's.
+  none := arch_part(p[..], p[0].n); #assert none.solids == 0;
+  a := arch_stand(s[..], 10, 5, 20, 0, 1); b := arch_stand(s[..], 0, 0, 0, ARCH_TAU / 4, 2);
+  arch_draw(s[..], part, a, 2);
+  #assert s[0].pn == 4 && !s[0].full && placed[0] == ARCH_SOLID_BOX && placed[1] == 12 && placed[2] == 20 && placed[3] == 1 && placed[4] == 0.5 && placed[6] == 5 && placed[7] == 7;
+  #assert placed[8] == ARCH_SOLID_ROUND && placed[9] == 12 && placed[11] == 0.25 && placed[14] == 7 && placed[15] == 8;
+  // A quarter turn takes the part's +x to the world's -z; twice the size is twice as far and as big.
+  o := 2 * ARCH_PLACED_FLOATS;
+  #assert abs(placed[o + 1]) < 0.001 && abs(placed[o + 2] + 4) < 0.001 && placed[o + 3] == 2 && placed[o + 4] == 1 && abs(placed[o + 5] - ARCH_TAU / 4) < 0.0001 && placed[o + 7] == 4;
+  // No room: the scene says so.
+  for i: 0..<3 { arch_draw(s[..], part, a, 2); } #assert s[0].full && s[0].pn == 8;
 }
