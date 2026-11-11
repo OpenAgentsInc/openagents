@@ -270,12 +270,13 @@ $ coax check ports.coax
 ports.coax:24:3: error[E0323]: the result of 'parse_port' (Parsed_Port) is not used
     parse_port("8080");
     ^
-  fix: use it: result := parse_port(...);
+  fix: use it: result := parse_port(...); or drop it: _ = parse_port(...);
 1 error
 ```
 
 A procedure that returns a value must have that value used, so the
-error inside it can't be thrown away silently. Be clear about what this
+error inside it can't be thrown away silently. Dropping it on purpose
+is spelled out, `_ = parse_port("8080");`, so a reader sees the choice. Be clear about what this
 does and doesn't promise. `coax0` makes sure you *received* the result.
 It doesn't yet make sure you looked at `error` before reading `value`;
 `p := parse_port(text); print("%\n", p.value);` compiles for this ordinary

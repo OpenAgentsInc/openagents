@@ -339,7 +339,7 @@ $ coax metal ch17_glow.coax
 ch17_glow.coax:27:30: error[E0309]: '*' needs two numbers of one type, found f32 and f64
     return 1.0f32 - exp(-light * 1.35f64);
                                ^
-  fix: convert one: cast(f32) x
+  fix: convert the right side: cast(f32) (that side)
 1 error
 ```
 

@@ -28,7 +28,8 @@ add :: (a: int, b: int) -> int {
 }
 ```
 
-`#import "Basic";` works the same way (and `Basic` is the only module
+`#import "Basic";` works the same way, except that Coax imports `Basic`
+by default, so the line is optional (and `Basic` is the only module
 `coax0` has), `ifx c then a else b` is the same expression, and `defer`
 runs at scope exit in reverse order. The three array forms are the same
 too: `[N] T` for fixed arrays, `[] T` for views and `[..] T` for dynamic

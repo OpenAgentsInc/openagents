@@ -566,7 +566,8 @@ next query check the program again; `--fresh` requests that check explicitly.
 The cache is trusted local state, and its private format is separate from the
 public `coax.query.v1` answer.
 
-Pass `--library` for a unit without `main` or an exported C entry point.
+A unit without `main` is taken as a library; `--library` says so explicitly
+and is never required.
 Changing the build profile can change `#if BUILD_DEBUG` declarations, so a
 cached development answer cannot replace a release check. Shared expression
 nodes are visited once per owner. The local query fixture records the best of
