@@ -1,24 +1,25 @@
 # Painted Village
 
-A Verse world at https://openagents.com/worlds/painted-village: a showcase of Aethyr's hand-painted look. Scene 1 is the village road: a dirt road climbs between a timber-frame cottage and a stone house, past stone walls and grass verges, under bunting, to a cobbled plaza with stalls, lamps and a well, a church beyond it, trees all round and pale mountains under a sky of big clouds.
+A Verse world at https://openagents.com/worlds/painted-village: a showcase of Aethyr's hand-painted look. Scene 1 is the village road: a broad dirt road climbs between a timber-frame cottage and a stone house, past stone walls and grass verges. Scene 2 is the plaza it leads into: flagstones, market stalls, lamps, banners, benches and bunting, and a flight of steps up to a terrace with a fountain and the church, trees all round and pale mountains under a sky with one great heap of cloud. You walk from one scene into the other.
 
 Every asset is generated from code. Nothing is imported: the meshes are written by generators with parameters, and the materials are painted by a shader from each surface's own metres.
 
 ## How to look around
 
 - W A S D or the arrow keys walk; hold Shift to run. Drag with the mouse to look.
-- 1 puts you back where the shot is taken. H hides and shows the HUD.
+- 1 puts you on the road and 2 in the plaza, where the two shots are taken. H hides and shows the HUD.
+- C shows what blocks you, in pink over the scene.
 - On a phone, the left half of the screen is a walking stick and the right half looks.
 - WORLDS at the top left (or Escape) goes to the [worlds list](https://openagents.com/worlds).
-- `#shot` on the address opens the shot with no HUD: https://openagents.com/worlds/painted-village#shot
+- `#shot` and `#shot2` on the address open a shot with no HUD: https://openagents.com/worlds/painted-village#shot2
 
-There are no walls to stop you yet: you can walk through buildings.
+Houses, walls, trees, stalls and lamps block you, and the steps take you up to the terrace. Doors don't open: buildings have no insides.
 
 ## How it is made
 
-- `aethyr/arch/village.coax` and `aethyr/arch/flora.coax` are the asset library: generators for a cottage, a stone house, a round tower, a church, a dry-stone wall, a coped wall, a gate pier, a lamp post, a banner pole, a signpost, bunting, a market stall, a crate, trees by species and season, far hills and the ground. Each takes a record of sizes and colours. `aethyr/arch/README.md` lists every parameter.
-- `aethyr/render/stylized.coax` is the look, an engine feature any world can use: materials painted from metres (courses of stone, scalloped roof tiles, boards, plaster, leaded lit windows, leaves), sunlight in soft bands, soft shadows from a shadow map, aerial haze, painterly grass, dirt paths with soft edges, and a sky with big clouds. `aethyr/render/stylized-frame.coax` writes a frame's numbers for it.
-- `verse/painted/village-road.coax` is the scene. It only says which generators, with what parameters, and where.
+- `aethyr/arch/village.coax`, `aethyr/arch/plaza.coax` and `aethyr/arch/flora.coax` are the asset library: generators for a cottage, a stone house, a round tower, a church, a dry-stone wall, a coped wall, a gate pier, a lamp post, a banner pole, a signpost, bunting, a market stall, a crate, steps, a terrace, a fountain, a bench, banners, trees by species and season, bushes, far hills and the ground. Each takes a record of sizes and colours, and writes the solids that block you with its triangles (`aethyr/arch/solids.coax`). `aethyr/arch/README.md` lists every parameter.
+- `aethyr/render/stylized.coax` is the look, an engine feature any world can use: materials painted from metres (courses of stone, scalloped roof tiles, boards, plaster, leaded lit windows, stained glass, banners, flagstones, leaves in four tones), sunlight in soft bands, soft shadows from a shadow map, aerial haze, painterly grass, dirt paths with soft edges, and a sky with heaped clouds placed by hand. `aethyr/render/stylized-frame.coax` writes a frame's numbers for it.
+- `verse/painted/village-road.coax` is the village, both scenes. It only says which generators, with what parameters, and where.
 - `apps/openagents-web/painted.coax` is the page: the camera you walk and the HUD. `painted-face.c` binds it for the browser, and `gpu/painted.coax` names the engine's shaders (`build.sh` writes `painted.wgsl` from it).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 

@@ -4,13 +4,16 @@
 //
 //   arch_tree_spec  a tree's sizes and colours from its species, its season and a seed
 //   arch_tree       a tree from a spec: a broadleaf is a thick trunk and boughs under a crown of
-//                   clumped, faceted lumps of leaves; a conifer is tiers of cones
-//   arch_clump      one faceted lump of leaves
+//                   leafy masses, each a dark heart under layers of pointed leaves; a conifer is
+//                   tiers of drooping boughs
+//   arch_bush       a low bush of the same leaves
+//   arch_clump      one lump of leaves;  arch_leaves  the leaves that clothe one
 //   arch_peak       a far hill or a mountain: a dome or a peak with a ragged outline
 //   arch_ground     the ground as a grid over a table of heights, grass cover and paving
 //
 // A leaf's u is how high it sits in its crown (0 the underside, 1 the top), which the stylized
-// shading darkens toward the underside; its v is a number of the facet's own, for brushwork.
+// shading darkens toward the underside; its v is a number of its tuft's own (0 to 1), which
+// breaks the bands of light into leaf shapes, or -1 for a mass's dark heart.
 //   coax/bin/coax test --library aethyr/arch/flora.coax
 #module "aethyr.arch.flora";
 #load "solid.coax";
@@ -30,10 +33,12 @@ ArchTree :: struct {
   crown: f32 = 4.0;                  // the crown's radius
   squash: f32 = 0.72;                // the crown's height as a share of its width
   trunk: f32 = 0.38;                 // the trunk's radius at the ground
-  clumps: int = 22;                  // lumps of leaves in the crown
+  clumps: int = 22;                  // masses of leaves in the crown (a pine's tiers)
+  tufts: int = 34;                   // tufts of three leaves on each mass: 0 leaves bare lumps
+  leaf: f32 = 0.42;                  // a leaf's length as a share of its mass's radius
   // Two leaf colours: each clump takes its own mix of them.
-  leaf_r: f32 = 0.16; leaf_g: f32 = 0.36; leaf_b: f32 = 0.13;
-  leaf2_r: f32 = 0.26; leaf2_g: f32 = 0.47; leaf2_b: f32 = 0.15;
+  leaf_r: f32 = 0.2; leaf_g: f32 = 0.42; leaf_b: f32 = 0.15;
+  leaf2_r: f32 = 0.28; leaf2_g: f32 = 0.5; leaf2_b: f32 = 0.18;
   seed: int = 1;
 }
 
@@ -43,7 +48,7 @@ arch_tree_spec :: (species: int, season: int, seed: int) -> ArchTree {
   k := arch_vary(seed, 1, 0.88, 1.14);
   if species == ARCH_MAPLE { t.height = 10.5 * k; t.crown = 4.2 * k; t.squash = 0.85; t.trunk = 0.4 * k; t.clumps = 24; }
   else if species == ARCH_POPLAR { t.height = 12 * k; t.crown = 2.2 * k; t.squash = 1.9; t.trunk = 0.28 * k; t.clumps = 16; }
-  else if species == ARCH_PINE { t.height = 11 * k; t.crown = 2.4 * k; t.trunk = 0.24 * k; t.clumps = 5; }
+  else if species == ARCH_PINE { t.height = 11 * k; t.crown = 2.4 * k; t.trunk = 0.24 * k; t.clumps = 7; }
   else { t.height = 9 * k; t.crown = 4.3 * k; t.squash = 0.7; t.trunk = 0.42 * k; t.clumps = 22; }
   if season == ARCH_AUTUMN { t.leaf_r = 0.66; t.leaf_g = 0.27; t.leaf_b = 0.10; t.leaf2_r = 0.80; t.leaf2_g = 0.41; t.leaf2_b = 0.13; }
   else if season == ARCH_GOLD { t.leaf_r = 0.86; t.leaf_g = 0.62; t.leaf_b = 0.14; t.leaf2_r = 0.93; t.leaf2_g = 0.78; t.leaf2_b = 0.25; }
@@ -57,7 +62,11 @@ arch_tree_spec :: (species: int, season: int, seed: int) -> ArchTree {
 // (from `heart`, the crown's middle), so the whole crown takes light as one mass with a faceted
 // surface. u is `low` to `high`: how high the facet sits in the crown.
 arch_clump :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32, rz: f32, heart: [3] f32, crown_low: f32, crown_high: f32, rough: f32, seed: int) {
-  segments := 9; rings := 6;
+  arch_clump_of(p, cx, cy, cz, rx, ry, rz, heart, crown_low, crown_high, rough, seed, false);
+}
+// The same lump as a mass's dark heart when `core`: its v is -1, and leaves are laid over it.
+arch_clump_of :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32, rz: f32, heart: [3] f32, crown_low: f32, crown_high: f32, rough: f32, seed: int, core: bool) {
+  segments := ifx core then 7 else 9; rings := ifx core then 4 else 6;
   pts: [70] [3] f32;   // (segments + 1) * (rings + 1)
   for j: 0..<rings + 1 {
     for i: 0..<segments + 1 {
@@ -86,39 +95,105 @@ arch_clump :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32, rz: f
         out := arch_vnorm(arch_vsub(m, heart));
         n := arch_vnorm(arch_vadd(arch_vadd(arch_vmul(face, 0.5), arch_vmul(out, 0.5)), arch_v(0, 0.12, 0)));
         u := (m[1] - crown_low) / span; u = arch_lowf(arch_highf(u, 0), 1);
-        v := arch_hash(seed, 7000 + j * 40 + i * 2 + half);
+        v := ifx core then -1.0f32 else arch_hash(seed, 7000 + j * 40 + i * 2 + half);
         arch_tri(p, arch_at(a[0], a[1], a[2], n[0], n[1], n[2], u, v), arch_at(b[0], b[1], b[2], n[0], n[1], n[2], u, v), arch_at(c[0], c[1], c[2], n[0], n[1], n[2], u, v));
       }
     }
   }
+}
+// The leaves that clothe a mass about (cx, cy, cz): `tufts` tufts spread over its top and sides,
+// each three pointed leaves `leaf` long that lie along its surface and stand a little off it, so
+// the mass's outline is leaves, not facets. A leaf's normal is the way out of the mass (and a
+// little the way out of the crown, from `heart`), so a mass takes light as one rounded thing;
+// a tuft's leaves share one v, so light breaks along tufts.
+arch_leaves :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32, rz: f32, heart: [3] f32, crown_low: f32, crown_high: f32, tufts: int, leaf: f32, seed: int) {
+  span := arch_highf(crown_high - crown_low, 0.001);
+  for t: 0..<tufts {
+    up := 1.0 - 1.72 * (cast(f32) t + 0.5) / cast(f32) tufts;            // from the top down past the middle
+    flat := sqrt(arch_highf(1 - up * up, 0.0)); az := cast(f32) t * 2.39996 + arch_hash(seed, 3000 + t) * 0.9;
+    d := arch_v(cos(az) * flat, up, sin(az) * flat);
+    at := arch_v(cx + d[0] * rx * 0.9, cy + d[1] * ry * 0.9, cz + d[2] * rz * 0.9);
+    // Leaves that would face into the crown are never seen.
+    away := arch_vsub(at, heart);
+    if arch_vdot(away, d) < -0.25 * arch_vlen(away) { continue; }
+    t1 := arch_vcross(d, arch_v(0, 1, 0));
+    if arch_vlen(t1) < 0.05 { t1 = arch_v(1, 0, 0); }
+    t1 = arch_vnorm(t1); t2 := arch_vcross(d, t1);
+    n := arch_vnorm(arch_vadd(arch_vadd(arch_vmul(d, 0.75), arch_vmul(arch_vnorm(away), 0.35)), arch_v(0, 0.15, 0)));
+    v := arch_hash(seed, 3500 + t);
+    turn := arch_hash(seed, 4000 + t) * f32(ARCH_TAU);
+    for k: 0..<3 {
+      a := turn + f32(ARCH_TAU) * cast(f32) k / 3.0 + arch_vary(seed, 4500 + t * 3 + k, -0.4, 0.4);
+      along := arch_vadd(arch_vmul(t1, cos(a)), arch_vmul(t2, sin(a)));
+      long := leaf * arch_vary(seed, 5000 + t * 3 + k, 0.78, 1.25);
+      base := arch_vsub(at, arch_vmul(d, long * 0.12));
+      tip := arch_vadd(arch_vadd(at, arch_vmul(along, long * 0.92)), arch_vmul(d, long * 0.2)); tip[1] -= long * 0.12;
+      mid := arch_vadd(arch_vadd(at, arch_vmul(along, long * 0.4)), arch_vmul(d, long * 0.2));
+      side := arch_vmul(arch_vcross(d, along), long * 0.36);
+      l := arch_vadd(mid, side); r := arch_vsub(mid, side);
+      ub := arch_lowf(arch_highf((base[1] - crown_low) / span, 0), 1); ut := arch_lowf(arch_highf((tip[1] - crown_low) / span, 0), 1);
+      um := (ub + ut) * 0.5; vk := v;
+      qb := arch_at(base[0], base[1], base[2], n[0], n[1], n[2], ub, vk); qt := arch_at(tip[0], tip[1], tip[2], n[0], n[1], n[2], ut, vk);
+      arch_tri(p, qb, arch_at(l[0], l[1], l[2], n[0], n[1], n[2], um, vk), qt);
+      arch_tri(p, qb, qt, arch_at(r[0], r[1], r[2], n[0], n[1], n[2], um, vk));
+    }
+  }
+}
+// One mass of leaves: its dark heart and the leaves over it; with no tufts, a bare lump.
+arch_leaf_mass :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32, rz: f32, heart: [3] f32, low: f32, high: f32, tufts: int, leaf: f32, seed: int) {
+  if tufts <= 0 { arch_clump(p, cx, cy, cz, rx, ry, rz, heart, low, high, 0.3, seed); return; }
+  arch_clump_of(p, cx, cy, cz, rx * 0.9, ry * 0.9, rz * 0.9, heart, low, high, 0.14, seed, true);
+  arch_leaves(p, cx, cy, cz, rx, ry, rz, heart, low, high, tufts, arch_lowf(arch_highf(leaf * (rx + rz) * 0.5, 0.26), 1.2), seed);
+}
+// A low bush: `r` across and `h` high, of leaves in two mixed colours.
+arch_bush :: (p: [] ArchPen, r: f32, h: f32, lr: f32, lg: f32, lb: f32, seed: int) -> ArchPart {
+  from := p[0].n; heart := arch_v(0, h * 0.35, 0);
+  p[0].material = ARCH_M_LEAF;
+  for k: 0..<5 {
+    shade := arch_vary(seed, 60 + k, 0.86, 1.12);
+    p[0].tint = [3] f32.[lr * shade, lg * shade, lb * shade];
+    a := f32(ARCH_TAU) * cast(f32) k / 4.0 + arch_hash(seed, k); out: f32 = ifx k == 4 then 0 else r * 0.42;
+    size := r * (ifx k == 4 then 0.72f32 else 0.58f32);
+    arch_leaf_mass(p, cos(a) * out, h * (ifx k == 4 then 0.62f32 else 0.42f32), sin(a) * out, size, h * 0.4, size, heart, 0, h, 12, 0.6, seed * 13 + k);
+  }
+  arch_solid_round(p, 0, 0, r * 0.72, 0, h * 0.75);
+  return arch_part(p, from);
 }
 
 arch_tree :: (p: [] ArchPen, t: ArchTree) -> ArchPart {
   from := p[0].n; seed := t.seed;
   p[0].material = ARCH_M_BARK; p[0].tint = [3] f32.[0, 0, 0];
   if t.species == ARCH_PINE {
-    arch_limb(p, 0, 0, 0, 0, t.height * 0.5, 0, t.trunk, t.trunk * 0.5, 7);
+    arch_limb(p, 0, 0, 0, 0, t.height * 0.55, 0, t.trunk, t.trunk * 0.45, 7);
     tiers := ifx t.clumps < 3 then 3 else t.clumps;
     p[0].material = ARCH_M_LEAF;
+    // Tiers of boughs: each a ring of pointed boughs that droop at their tips, so the outline is
+    // a saw's edge and each tier shades the one under it.
     for k: 0..<tiers {
       s := cast(f32) k / cast(f32) tiers;
-      y0 := t.height * (0.16 + 0.68 * s); y1 := y0 + t.height * (0.3 - 0.08 * s); r := t.crown * (1 - 0.72 * s);
+      y0 := t.height * (0.2 + 0.66 * s); y1 := y0 + t.height * (0.3 - 0.1 * s); r := t.crown * (1 - 0.8 * s);
       mix := arch_hash(seed, 300 + k);
       p[0].tint = [3] f32.[t.leaf_r + (t.leaf2_r - t.leaf_r) * mix, t.leaf_g + (t.leaf2_g - t.leaf_g) * mix, t.leaf_b + (t.leaf2_b - t.leaf_b) * mix];
-      sides := 9; turn := arch_hash(seed, 400 + k) * 6;
+      sides := 9; turn := arch_hash(seed, 400 + k) * 6; half := f32(ARCH_TAU) * 0.5 / cast(f32) sides;
+      top := arch_v(0, y1, 0);
       for i: 0..<sides {
-        a := turn + f32(ARCH_TAU) * cast(f32) i / cast(f32) sides; b := turn + f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) sides;
-        ra := r * arch_vary(seed, k * 31 + i, 0.86, 1.1); rb := r * arch_vary(seed, k * 31 + (i + 1) % sides, 0.86, 1.1);
-        qa := arch_v(cos(a) * ra, y0, sin(a) * ra); qb := arch_v(cos(b) * rb, y0, sin(b) * rb); tip := arch_v(0, y1, 0);
-        n := arch_vnorm(arch_vcross(arch_vsub(qa, qb), arch_vsub(tip, qb)));
-        if n[1] < 0 { n = arch_vmul(n, -1); }
+        a := turn + f32(ARCH_TAU) * cast(f32) i / cast(f32) sides;
+        reach := r * arch_vary(seed, k * 31 + i, 0.84, 1.14);
+        tip := arch_v(cos(a) * reach, y0 - reach * 0.16, sin(a) * reach);
+        l := arch_v(cos(a - half) * reach * 0.56, y0 + reach * 0.1, sin(a - half) * reach * 0.56);
+        g := arch_v(cos(a + half) * reach * 0.56, y0 + reach * 0.1, sin(a + half) * reach * 0.56);
+        n := arch_vnorm(arch_v(cos(a) * 0.75, 0.66, sin(a) * 0.75));
         v := arch_hash(seed, 900 + k * 20 + i);
-        arch_tri(p, arch_at(qb[0], qb[1], qb[2], n[0], n[1], n[2], 0.25 + 0.5 * s, v), arch_at(qa[0], qa[1], qa[2], n[0], n[1], n[2], 0.25 + 0.5 * s, v),
-                 arch_at(tip[0], tip[1], tip[2], n[0], n[1], n[2], 0.6 + 0.4 * s, v));
-        // the tier's underside, in shade
-        arch_tri(p, arch_at(qa[0], qa[1], qa[2], 0, -1, 0, 0, v), arch_at(qb[0], qb[1], qb[2], 0, -1, 0, 0, v), arch_at(0, y0 + 0.2, 0, 0, -1, 0, 0, v));
+        ua := 0.3 + 0.45 * s; ue := 0.72 + 0.28 * s;
+        qt := arch_at(top[0], top[1], top[2], n[0], n[1], n[2], ua, v); qe := arch_at(tip[0], tip[1], tip[2], n[0], n[1], n[2], ue, v);
+        arch_tri(p, qt, arch_at(g[0], g[1], g[2], n[0], n[1], n[2], ua, v), qe);
+        arch_tri(p, qt, qe, arch_at(l[0], l[1], l[2], n[0], n[1], n[2], ua, v));
+        // the bough's underside, in shade
+        arch_tri(p, arch_at(tip[0], tip[1], tip[2], 0, -1, 0, 0, -1), arch_at(g[0], g[1], g[2], 0, -1, 0, 0, -1), arch_at(0, y0 + 0.25, 0, 0, -1, 0, 0, -1));
+        arch_tri(p, arch_at(tip[0], tip[1], tip[2], 0, -1, 0, 0, -1), arch_at(0, y0 + 0.25, 0, 0, -1, 0, 0, -1), arch_at(l[0], l[1], l[2], 0, -1, 0, 0, -1));
       }
     }
+    arch_solid_round(p, 0, 0, t.trunk, 0, t.height * 0.5);
     return arch_part(p, from);
   }
   // A broadleaf: the crown's middle and its radii.
@@ -142,15 +217,16 @@ arch_tree :: (p: [] ArchPen, t: ArchTree) -> ArchPart {
   for k: 0..<n {
     mix := arch_hash(seed, 100 + k); shade := arch_vary(seed, 150 + k, 0.92, 1.08);
     p[0].tint = [3] f32.[(t.leaf_r + (t.leaf2_r - t.leaf_r) * mix) * shade, (t.leaf_g + (t.leaf2_g - t.leaf_g) * mix) * shade, (t.leaf_b + (t.leaf2_b - t.leaf_b) * mix) * shade];
-    if k == 0 { arch_clump(p, heart[0], heart[1] + ry * 0.1, heart[2], t.crown * 0.62, ry * 0.66, t.crown * 0.62, heart, low, high, 0.22, seed * 31 + 7); continue; }
+    if k == 0 { arch_leaf_mass(p, heart[0], heart[1] + ry * 0.1, heart[2], t.crown * 0.62, ry * 0.66, t.crown * 0.62, heart, low, high, t.tufts, t.leaf, seed * 31 + 7); continue; }
     s := (cast(f32) k - 0.5) / cast(f32) (n - 1);        // 0 the top, 1 the underside
     up := 1 - 1.75 * s;                                  // from 1 down to -0.75
     flat := sqrt(arch_highf(1 - up * up, 0.05)); a := cast(f32) k * 2.39996 + arch_hash(seed, 200 + k);
     reach := arch_vary(seed, 250 + k, 0.56, 0.72);
     size := t.crown * arch_vary(seed, 300 + k, 0.28, 0.4) * (1 - 0.25 * s);
-    arch_clump(p, heart[0] + cos(a) * flat * t.crown * reach, heart[1] + up * ry * reach, heart[2] + sin(a) * flat * t.crown * reach,
-               size, size * arch_vary(seed, 350 + k, 0.72, 0.9), size, heart, low, high, 0.3, seed * 31 + k * 17);
+    arch_leaf_mass(p, heart[0] + cos(a) * flat * t.crown * reach, heart[1] + up * ry * reach, heart[2] + sin(a) * flat * t.crown * reach,
+                   size, size * arch_vary(seed, 350 + k, 0.72, 0.9), size, heart, low, high, t.tufts, t.leaf, seed * 31 + k * 17);
   }
+  arch_solid_round(p, lean_x * 0.5, lean_z * 0.5, t.trunk * 1.05, 0, fork_y);
   return arch_part(p, from);
 }
 
@@ -232,8 +308,9 @@ arch_ground :: (p: [] ArchPen, g: ArchGround, table: [] f32) -> ArchPart {
   return arch_part(p, from);
 }
 
-#test "a broadleaf is a trunk under a crown of its size, and species, season and seed each change it" {
-  buf: [60000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+#test "a broadleaf is a trunk under a crown of its size, and species, season and seed each change it" #steps 400000000 {
+  buf: [90000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  solids: [8 * ARCH_SOLID_FLOATS] f32; arch_pen_solids(p[..], solids[..]);
   spec := arch_tree_spec(ARCH_OAK, ARCH_SUMMER, 5);
   oak := arch_tree(p[..], spec);
   #assert !p[0].full && oak.count % 3 == 0 && oak.count > 2000;
@@ -243,17 +320,24 @@ arch_ground :: (p: [] ArchPen, g: ArchGround, table: [] f32) -> ArchPart {
     l := buf[o + 3] * buf[o + 3] + buf[o + 4] * buf[o + 4] + buf[o + 5] * buf[o + 5]; #assert abs(l - 1) < 0.01;
     if buf[o + 6] == ARCH_M_LEAF {
       leaves += 1; low = arch_lowf(low, buf[o + 1]); high = arch_highf(high, buf[o + 1]); wide = arch_highf(wide, sqrt(buf[o] * buf[o] + buf[o + 2] * buf[o + 2]));
-      #assert buf[o + 7] >= 0 && buf[o + 7] <= 1 && buf[o + 8] >= 0 && buf[o + 8] < 1 && buf[o + 10] > buf[o + 9] && buf[o + 10] > buf[o + 11];
+      #assert buf[o + 7] >= 0 && buf[o + 7] <= 1 && (buf[o + 8] == -1 || (buf[o + 8] >= 0 && buf[o + 8] < 1)) && buf[o + 10] > buf[o + 9] && buf[o + 10] > buf[o + 11];
     } else { bark += 1; #assert buf[o + 6] == ARCH_M_BARK; }
   }
-  #assert leaves > bark && low > spec.height * 0.15 && high > spec.height * 0.85 && high < spec.height * 1.25 && wide > spec.crown * 0.75 && wide < spec.crown * 1.6;
+  #assert leaves > bark && low > spec.height * 0.15 && high > spec.height * 0.85 && high < spec.height * 1.3 && wide > spec.crown * 0.75 && wide < spec.crown * 1.7;
+  // Its trunk is its one solid: as thick as the trunk, from the ground to the fork, under the leaves.
+  #assert oak.solids == 1 && solids[0] == ARCH_SOLID_ROUND && abs(solids[3] - spec.trunk * 1.05) < 0.001 && solids[6] == 0 && solids[7] > 1.8 && solids[7] < low + 1.5;
+  // Leaves over a dark heart: far more triangles than bare lumps, and bare lumps when asked.
+  bare_spec := spec; bare_spec.tufts = 0; bare := arch_tree(p[..], bare_spec); #assert bare.count < oak.count && bare.count > 2000;
   autumn := arch_tree(p[..], arch_tree_spec(ARCH_OAK, ARCH_AUTUMN, 5));
   #assert autumn.count == oak.count;
   for i: 0..<autumn.count { o := (autumn.first + i) * ARCH_VERTEX_FLOATS; if buf[o + 6] == ARCH_M_LEAF { #assert buf[o + 9] > buf[o + 10] && buf[o + 10] > buf[o + 11]; } }
   other := arch_tree(p[..], arch_tree_spec(ARCH_OAK, ARCH_SUMMER, 6));
   #assert buf[(other.first + other.count - 1) * ARCH_VERTEX_FLOATS] != buf[(oak.first + oak.count - 1) * ARCH_VERTEX_FLOATS];
   pine := arch_tree(p[..], arch_tree_spec(ARCH_PINE, ARCH_SUMMER, 5));
-  #assert !p[0].full && pine.count != oak.count && pine.count == 42 + 5 * 9 * 6;
+  #assert !p[0].full && pine.count != oak.count && pine.count == 42 + 7 * 9 * 12 && pine.solids == 1;
+  bush := arch_bush(p[..], 0.9, 1.1, 0.2, 0.4, 0.15, 3); bb: [2] f32;
+  for i: 0..<bush.count { o := (bush.first + i) * ARCH_VERTEX_FLOATS; #assert buf[o + 6] == ARCH_M_LEAF; bb[0] = arch_highf(bb[0], buf[o + 1]); bb[1] = arch_highf(bb[1], sqrt(buf[o] * buf[o] + buf[o + 2] * buf[o + 2])); }
+  #assert !p[0].full && bush.solids == 1 && bb[0] > 0.9 && bb[0] < 1.7 && bb[1] > 0.8 && bb[1] < 1.9;
 }
 #test "a peak rises from its foot to its top, a dome wider than a peak half way up" {
   buf: [4000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);

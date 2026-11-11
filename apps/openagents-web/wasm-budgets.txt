@@ -239,5 +239,6 @@ nights 180000
 # Portal Lab (9b89fc02a4): an owner-local baked portal scene; 73,068 bytes as the dev build writes it; about 10% room.
 portallab 80000
 
-# Painted Village: the page, the scene and Aethyr's village and flora generators; 110,014 bytes as the dev build writes it; about 25% room for the next scenes.
-painted 140000
+# Painted Village: the page, the village (road and plaza) and Aethyr's village, plaza and flora generators, with their solids
+# and Aethyr's walking capsule (aethyr/collide.coax); 161,781 bytes as the dev build writes it; about 25% room for the next scenes.
+painted 200000
