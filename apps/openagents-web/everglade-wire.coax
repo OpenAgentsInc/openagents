@@ -58,6 +58,7 @@
 //     w SS LEVEL                   a seat's WANTED level
 //     e town                       the town's pieces sent again from the start have all come: what the page has
 //                                  broken, burning or gone that they didn't name stands again (#12902)
+//     k RATE USED DROPPED EVERY    your link, once a second, to a page that reads packed rows (#13178)
 //     o N                          the outcomes (WIRE_OUTCOMES) the room has sent this seat, this entry's
 //                                  frame's among them: a page that heard fewer missed a frame and says O
 //   r SEQ REASON                   an intent of yours refused (a cast: everglade-cast-rules.coax CR_WORDS; R: breaking;
@@ -82,6 +83,8 @@
 #load "everglade-forest-profile.coax";
 #load "../../aethyr/net/replication.coax";
 #load "../../aethyr/net/row.coax";
+#load "../../aethyr/net/spawn.coax";    // reliable spawn and despawn (#13178)
+#load "../../aethyr/net/budget.coax";   // priority and the order rows go in (#13178)
 
 WIRE_F_OOB :: 4;      // a D's F bit: out of band, a WebTransport seat's outcomes on a reliable stream (coax/web/room/room-wt.coax)
 WIRE_VERSION :: 5;   // 5: authoritative forest rows; 4: I's THETA in 0.1 mrad (WIRE_FINE)
@@ -385,6 +388,19 @@ wire_outcome :: (t: string) -> bool {
 wire_put_town :: (out: [] u8, at: int) -> int { return wire_put(out, at, "e town"); }
 wire_put_outcomes :: (out: [] u8, at: int, n: int) -> int { return wire_int(out, wire_put(out, at, "o"), n); }
 wire_put_missed :: (out: [] u8, at: int, n: int) -> int { return wire_int(out, wire_put(out, at, "O"), n); }
+// k RATE USED DROPPED EVERY: your link (#13178), once a second, to a page that reads packed rows: the
+// bytes of rows a second it may be sent now, those it was sent and the rows that waited for want of
+// them in the last second, and one tick in how many its rows go (1 every tick; more while it lags)
+WireLink :: struct { rate: int; used: int; dropped: int; every: int; }
+wire_put_link :: (out: [] u8, at: int, l: WireLink) -> int { return wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, at, "k"), l.rate), l.used), l.dropped), l.every); }
+wire_read_link :: (t: string, r: [] WireRd) -> WireLink { l: WireLink; l.rate = wire_num(t, r); l.used = wire_num(t, r); l.dropped = wire_num(t, r); l.every = wire_num(t, r); return l; }
+#test "k says a seat's link: its rate, the bytes and rows of the last second, and its spacing" {
+  b: [64] u8; n := wire_put_link(b[..], 0, WireLink.{rate = 15000, used = 4210, dropped = 3, every = 2});
+  #assert cast(string) b[0..<n] == "k 15000 4210 3 2";
+  r: [1] WireRd; r[0] = wire_rd(cast(string) b[0..<n], 1);
+  l := wire_read_link(cast(string) b[0..<n], r[..]);
+  #assert r[0].ok && l.rate == 15000 && l.used == 4210 && l.dropped == 3 && l.every == 2;
+}
 // A X Y Z YAW: where you stand as you sit again (#13057).
 WireAt :: struct { x: f32; y: f32; z: f32; yaw: f32; }
 wire_put_at :: (out: [] u8, at: int, p: WireAt) -> int { return wire_yaw(out, wire_m(out, wire_m(out, wire_m(out, wire_put(out, at, "A"), p.x), p.y), p.z), p.yaw); }
@@ -943,6 +959,11 @@ WireSeat :: struct {
   oldest: int;                // ticks the oldest row still waiting has waited, after this tick
   spaced: int;                // rows held back for their tier (wire_every), all so far
   packed: bool;               // its page reads packed rows (WIRE_HELLO_PACKED): its rows go as S (kept through wire_seat_reset)
+  // its updates are datagrams that can pass the reliable stream (a WebTransport seat, #13176): an
+  // unacknowledged spawn's updates wait (aethyr/net/spawn.coax); false, one ordered stream (kept through wire_seat_reset)
+  datagrams: bool;
+  rel: int;                   // this tick's frame's reliable lane: its first bytes (the x's and the spawns)
+  spawn_wait: int;            // spawns this tick left for a later one (the budget spent), not dropped
 }
 // The codec retains its packed arrays; shared lifecycle decisions operate on one recipient/row.
 wire_replica :: (st: [] WireSeat,q:int)->NetReplica {
@@ -1000,7 +1021,6 @@ wire_every :: (d2: f32, w: f32) -> int {
   d := sqrt(ifx d2 > 0 then d2 else 0.0f32) * 2 / (ifx w > 0.5 then w else 0.5f32);
   return ifx d < f32(WIRE_EVERY_NEAR) then 1 else ifx d < f32(WIRE_EVERY_MID) then 2 else 3;
 }
-wire_bucket :: (a: f32) -> int { b := 0; v := a * 64; while v >= 2 && b < 31 { v = v * 0.5; b += 1; } return b; }
 // Seat st's rows for this tick (h's newest) into out, ';' apart as D's entries: the x's it owes, its
 // own player's row (slot me), then the rest by priority until `budget` bytes of rows are spent. Who
 // sits at (px, pz) hears what is within `view` m, and every entity marked all. The bytes written.
@@ -1023,11 +1043,33 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
   return wire_seat_frame_fields(st,h,me,px,pz,pick,fields[..],budget,out);
 }
 wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]f32,fields:[]int,budget:int,out:[]u8)->int {
+  none: [1] int;
+  return wire_seat_frame_look(st, h, me, px, pz, pick, fields, WireLook.{}, none[0..<0], budget, out);
+}
+// What a seat's client says it looks at (#13178): its camera's forward on the ground (0, 0 not said:
+// everything counts as in view). Each slot's combat with the seat (aethyr/net/budget.coax
+// NET_COMBAT_*) comes beside it, -1 or missing none.
+WireLook :: struct { fx: f32; fz: f32; }
+// The same, with the seat's view and each slot's combat weighing what waits (aethyr/net/budget.coax
+// net_priority). The frame is two lanes, the reliable first: the x's the seat owes and the spawns
+// (aethyr/net/spawn.coax: a row of an entity whose spawn the page hasn't acknowledged, absolute,
+// carrying its identity); st's rel holds that lane's bytes, the start of out. Then the updates: its
+// own player's row, what is on it, those that waited WIRE_MAX_AGE ticks, and the rest by priority.
+// On a seat whose updates are datagrams (st's datagrams), nothing of an unacknowledged spawn goes but
+// the spawn again, every WIRE_RESEND ticks; on one ordered stream (a WebSocket) a changed row of it
+// goes at once, as a spawn. Spawns and updates share `budget`, spawns first; on a tick with no budget
+// (behind, or a tick the link skips) only the x's, its own row and what is on it go, and the rest
+// wait with their priority and age, never queued.
+// The lesser of a row's budget and what out still holds: a row is noted sent only when it is written.
+wire_fit :: (budget: int, left: int) -> int { return ifx budget < left then budget else left; }
+wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]f32,fields:[]int,look:WireLook,combat:[]int,budget:int,out:[]u8)->int {
   now := h[0].now; row := now % WIRE_BASES;
   n := 0; e: [WIRE_ROW] u8;
   life := 0;   // this tick's x bytes (WIRE_LIFE_BUDGET)
   cand: [WIRE_SLOTS] int; cn := 0;
+  spawn: [WIRE_SLOTS] int; sn := 0;
   mine: [WIRE_SLOTS] int; mn := 0;
+  ordered := !st[0].datagrams;
   for q: 0..<WIRE_SLOTS {
     id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
     if id1!=0 || st[0].held[q]!=0 {st[0].wanted[q]=ifx q<fields.count then fields[q] else 0;}
@@ -1037,7 +1079,8 @@ wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:
     if st[0].held[q]!=0 || st[0].sent[q]!=0 {
       wire_replica_set(st,q,net_replica_observe(wire_replica(st,q),id1,seen,now,WIRE_ACKS));
     }
-    if st[0].gone2[q] != 0 && now - st[0].gone2_t[q] >= WIRE_RESEND {
+    // the despawns owed, on the reliable lane, again until a tick that held them is acknowledged
+    if net_despawn_due(cast(int) st[0].gone2[q], st[0].gone2_t[q], now, WIRE_RESEND) {
       m := wire_put_x(e[..], 0, cast(int) st[0].gone2[q] - 1) + 1;
       if life + m <= WIRE_LIFE_BUDGET && n + m < out.count {
         if n > 0 { n = wire_sep(out, n); }
@@ -1045,7 +1088,7 @@ wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:
         st[0].gone2_t[q] = now; life += m;
       }
     }
-    if st[0].gone[q] != 0 && (st[0].gone_t[q] == 0 || now - st[0].gone_t[q] >= WIRE_RESEND) {
+    if net_despawn_due(cast(int) st[0].gone[q], st[0].gone_t[q], now, WIRE_RESEND) {
       m := wire_put_x(e[..], 0, cast(int) st[0].gone[q] - 1) + 1;
       if life + m <= WIRE_LIFE_BUDGET && n + m < out.count {
         if n > 0 { n = wire_sep(out, n); }
@@ -1054,7 +1097,8 @@ wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:
       }
     }
     if !seen || q == me { st[0].since[q] = 0; continue; }
-    if !net_replica_ready(wire_replica(st,q)) { continue; }
+    r := wire_replica(st,q);
+    if !net_replica_ready(r) { continue; }
     cur := (row * WIRE_SLOTS + q) * WIRE_SF;
     // the page has it as it is now: nothing to send
     if cast(int) st[0].held[q] == id1 && st[0].allowed[q]==st[0].wanted[q] {
@@ -1064,71 +1108,101 @@ wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:
       l := wire_hist_at(h, st[0].last[q], q, id1);
       if l >= 0 && now - st[0].last[q] < WIRE_RESEND && wire_rows_same_fields(h[0].f[..],l,cur,st[0].wanted[q]) { continue; }
     }
+    // an unacknowledged spawn on datagrams: only the spawn again, each WIRE_RESEND ticks
+    if !net_row_may_go(r, id1, now, WIRE_RESEND, ordered) { if st[0].since[q] == 0 { st[0].since[q] = now; } continue; }
     if pk >= f32(WIRE_PICK_OWN) { mine[mn] = q; mn += 1; continue; }
+    is_spawn := net_spawn_row(r, id1) || st[0].allowed[q] != st[0].wanted[q];
     // a far one the page holds, whose only change since its last row is where it is and how it moves,
     // goes less often (#13165): it waits out its tier's ticks since that row. Anything else (its HP, a
     // condition, a fire, its clip, a new life) goes at once. Its age still counts toward WIRE_MAX_AGE,
     // and its next row goes against what the page acknowledged.
-    if cast(int) st[0].held[q] == id1 && st[0].allowed[q] == st[0].wanted[q] && st[0].last[q] > 0 && now - st[0].last[q] < wire_every(d2, h[0].w[q]) {
+    if !is_spawn && cast(int) st[0].held[q] == id1 && st[0].last[q] > 0 && now - st[0].last[q] < wire_every(d2, h[0].w[q]) {
       l := wire_hist_at(h, st[0].last[q], q, id1);
       if l >= 0 && (net_row_delta(WIRE_SF, (1 << WIRE_SF) - 1, h[0].f[l..<l + WIRE_SF], h[0].f[cur..<cur + WIRE_SF]).mask & (((1 << WIRE_SF) - 1) ^ WIRE_MOTION)) == 0 {
         if st[0].since[q] == 0 { st[0].since[q] = now; }
         st[0].spaced += 1; continue;
       }
     }
-    st[0].acc[q] += h[0].w[q] / (1 + sqrt(d2) / f32(WIRE_NEAR)) + (ifx pk >= f32(WIRE_PICK_ROOM) then pk else 0.0f32);
+    vx := f32(cast(int) h[0].f[cur + WS_VX]) / 100; vz := f32(cast(int) h[0].f[cur + WS_VZ]) / 100;
+    st[0].acc[q] += net_priority(NetPrio.{weight = h[0].w[q], d2 = d2, view = net_in_view(look.fx, look.fz, dx, dz),
+                                          combat = ifx q < combat.count && combat[q] > 0 then combat[q] else 0,
+                                          speed = sqrt(vx * vx + vz * vz), age = ifx st[0].last[q] > 0 then now - st[0].last[q] else 0})
+                    + (ifx pk >= f32(WIRE_PICK_ROOM) then pk else 0.0f32);
     if st[0].since[q] == 0 { st[0].since[q] = now; }
-    cand[cn] = q; cn += 1;
+    if is_spawn { spawn[sn] = q; sn += 1; } else { cand[cn] = q; cn += 1; }
   }
-  // your own player first, every tick: its row with the ACK is where your page re-runs from
-  wrote := 0;
-  // (behind its slot's x, as every row is: in the life of a seat its slot is someone else's at most once)
-  if me >= 0 && me < WIRE_SLOTS && st[0].wanted[me]!=0 && h[0].id[row * WIRE_SLOTS + me] != 0 && net_replica_ready(wire_replica(st,me)) {
+  wrote := 0; spent := 0; left := 0; oldest := 0;
+  st[0].spawn_wait = 0;
+  // the reliable lane: the spawns. Your own player's (and what is on you) whatever the budget, then
+  // the others', the aged first, from the budget; one that doesn't fit waits with its age
+  own_live := me >= 0 && me < WIRE_SLOTS && st[0].wanted[me]!=0 && h[0].id[row * WIRE_SLOTS + me] != 0 && net_replica_ready(wire_replica(st,me));
+  own_spawn := own_live && net_spawn_row(wire_replica(st,me), cast(int) h[0].id[row * WIRE_SLOTS + me]);
+  if own_spawn {
     if n > 0 { n = wire_sep(out, n); }
     was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
   }
-  // then what is on you (your effects), budget or not
   for c: 0..<mn {
-    m := wire_seat_put_try(st, h, mine[c], e[..], out.count - n - 1);   // (never noted sent when out can't hold it)
+    q := mine[c];
+    if !net_spawn_row(wire_replica(st,q), cast(int) h[0].id[row * WIRE_SLOTS + q]) { continue; }
+    m := wire_seat_put_try(st, h, q, e[..], out.count - n - 1);   // (never noted sent when out can't hold it)
     if m <= 0 || n + m + 1 > out.count { continue; }
     if n > 0 { n = wire_sep(out, n); }
     for i: 0..<m { out[n + i] = e[i]; }
     n += m; wrote += m;
   }
-  // those that waited WIRE_MAX_AGE ticks, the oldest first, from their own bytes
-  pre := wrote;   // the ordinary budget's: your own row and what is on you, as before
+  order: [WIRE_SLOTS] int;
+  room := WIRE_AGED_BUDGET;   // the aged rows' own bytes, spawns' and updates' alike
   st[0].aged = 0;
-  if budget > 0 {
-    // (the aged to the front of cand, the oldest first: its order is the priority pass's own after)
-    on := 0;
-    for c: 0..<cn {
-      q := cand[c];
-      if now - st[0].since[q] < WIRE_MAX_AGE { continue; }
-      cand[c] = cand[on];
-      j := on; while j > 0 && st[0].since[cand[j - 1]] > st[0].since[q] { cand[j] = cand[j - 1]; j -= 1; }
-      cand[j] = q; on += 1;
+  if budget > 0 && sn > 0 {
+    sa := net_order(st[0].acc[..], st[0].since[..], spawn[..], sn, now, WIRE_MAX_AGE, order[..]);
+    for c: 0..<sn {
+      q := order[c];
+      m := ifx c < sa then wire_seat_put_try(st, h, q, e[..], wire_fit(room, out.count - n - 1)) else 0;
+      if m > 0 { room -= m; st[0].aged += 1; }
+      else { m = wire_seat_put_try(st, h, q, e[..], wire_fit(budget - spent, out.count - n - 1)); spent += m; }
+      if m <= 0 || n + m + 1 > out.count { st[0].spawn_wait += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
+      if n > 0 { n = wire_sep(out, n); }
+      for i: 0..<m { out[n + i] = e[i]; }
+      n += m; wrote += m;
     }
-    room := WIRE_AGED_BUDGET;
-    for c: 0..<on {
-      m := wire_seat_put_try(st, h, cand[c], e[..], ifx room < out.count - n - 1 then room else out.count - n - 1);
+  } else {
+    st[0].spawn_wait = sn;
+    for c: 0..<sn { if now - st[0].since[spawn[c]] > oldest { oldest = now - st[0].since[spawn[c]]; } }
+  }
+  st[0].rel = n;
+  // the updates: your own player first, every tick: its row with the ACK is where your page re-runs from
+  if own_live && !own_spawn {
+    if n > 0 { n = wire_sep(out, n); }
+    was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
+  }
+  // then what is on you (your effects), budget or not
+  for c: 0..<mn {
+    q := mine[c];
+    if st[0].last[q] == now { continue; }   // gone as a spawn
+    m := wire_seat_put_try(st, h, q, e[..], out.count - n - 1);
+    if m <= 0 || n + m + 1 > out.count { continue; }
+    if n > 0 { n = wire_sep(out, n); }
+    for i: 0..<m { out[n + i] = e[i]; }
+    n += m; wrote += m;
+  }
+  // those that waited WIRE_MAX_AGE ticks, the oldest first, from their own bytes; then the rest by
+  // priority, as long as each fits what the spawns, your own row and what is on you left of the budget
+  pre := wrote - spent - (WIRE_AGED_BUDGET - room);
+  aged := ifx budget > 0 then net_order(st[0].acc[..], st[0].since[..], cand[..], cn, now, WIRE_MAX_AGE, order[..]) else 0;
+  if budget > 0 {
+    for c: 0..<aged {
+      m := wire_seat_put_try(st, h, order[c], e[..], wire_fit(room, out.count - n - 1));
       if m <= 0 || n + m + 1 > out.count { continue; }
       if n > 0 { n = wire_sep(out, n); }
       for i: 0..<m { out[n + i] = e[i]; }
-      n += m; room -= m; st[0].aged += 1;
+      n += m; wrote += m; room -= m; st[0].aged += 1;
     }
-    st[0].aged_all += st[0].aged; wrote += WIRE_AGED_BUDGET - room;
+    st[0].aged_all += st[0].aged;
   }
-  // the rest, the highest priority first (by its power of two), as long as each fits the budget
-  count: [32] int; start: [32] int; order: [WIRE_SLOTS] int;
-  for c: 0..<cn { count[wire_bucket(st[0].acc[cand[c]])] += 1; }
-  at := 0;
-  for b: 0..<32 { k := 31 - b; start[k] = at; at += count[k]; }
-  for c: 0..<cn { k := wire_bucket(st[0].acc[cand[c]]); order[start[k]] = cand[c]; start[k] += 1; }
-  left := 0; spent := 0; oldest := 0;
   for c: 0..<cn {
-    q := order[c];
+    q := ifx budget > 0 then order[c] else cand[c];
     if st[0].last[q] == now { continue; }   // gone for its age
-    m := wire_seat_put_try(st, h, q, e[..], ifx budget - pre - spent < out.count - n - 1 then budget - pre - spent else out.count - n - 1);
+    m := wire_seat_put_try(st, h, q, e[..], wire_fit(budget - pre - spent, out.count - n - 1));
     if m <= 0 || n + m + 1 > out.count { left += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
     if n > 0 { n = wire_sep(out, n); }
     for i: 0..<m { out[n + i] = e[i]; }
@@ -1166,6 +1240,32 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   return n - m0;
 }
 
+#test "wire (#13178): spawns lead the frame on the reliable lane; on datagrams an unheard spawn's updates wait and it goes again each WIRE_RESEND ticks" {
+  pick: [WIRE_SLOTS] f32; buf: [4096] u8;
+  for dg: 0..<2 {
+    h: [1] WireHist; st: [1] WireSeat; st[0].datagrams = dg == 1;
+    for q: 0..<WIRE_SLOTS { pick[q] = -1; }
+    pick[20] = 0; pick[21] = 0;
+    sent: [16] bool;
+    for t: 1..<16 {
+      wire_hist_begin(h[..], t);
+      wire_test_put(h[..], 20, WireS.{id = WIRE_ID_FOLK + 1, kind = WK_FOLK, x = 3, z = f32(t) * 0.1, clip = 1, p1 = 1});
+      if t >= 3 { wire_test_put(h[..], 21, WireS.{id = WIRE_ID_FOLK + 2, kind = WK_FOLK, x = 4, z = 1, clip = 1, p1 = 2}); }
+      if t == 14 { wire_seat_ack(st[..], h[..], 11); }   // the page heard tick 11 whole
+      n := wire_seat_frame_in(st[..], h[..], -1, 0, 0, pick[..], 1000, buf[..]);
+      sent[t] = st[0].last[20] == t;
+      if t == 3 { #assert st[0].last[21] == 3 && st[0].rel > 0; }   // a new one: its spawn, on the reliable lane
+      if t < 14 { #assert st[0].rel == n; }   // nothing heard yet: every row is a spawn
+      if t == 15 { #assert sent[t]; #assert st[0].rel < n; u := ifx st[0].rel == 0 then 0 else st[0].rel + 1; #assert cast(string) buf[u..<u + 8] == "s 100001"; }   // heard: an update after the lane
+    }
+    if dg == 1 {
+      // the spawn at 1, again at 11, then (11 heard at 14) updates
+      #assert sent[1] && !sent[2] && !sent[10] && sent[11] && !sent[12] && !sent[13] && sent[14] && sent[15];
+    } else {
+      for t: 1..<16 { #assert sent[t]; }   // one ordered stream: each change goes, as a spawn until heard
+    }
+  }
+}
 #test "wire (#12845): recipient field changes reset baselines and a refused row retains its earlier send state" {
   h:[1]WireHist;st:[1]WireSeat;m:[1]WireMirror;
   pick:[WIRE_SLOTS]f32;fields:[WIRE_SLOTS]int;

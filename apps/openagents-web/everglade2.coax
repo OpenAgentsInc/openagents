@@ -140,7 +140,7 @@ E2 :: struct {
   cy: f32;                                       // the picture's centre row (e2c_view_lens: the studio frames you off centre)
   env: [1] envf.EnvFrame;                        // the light: the world's environment set, its clock and the record each frame writes (e2_light)
   light_view: int; light_text: [1] envd.EnvDebugText;   // ?light=VIEW (developer-only, off by default) and its readout (e2_light_readout)
-  net_view: bool; net_text: [1] NetStatsText; link_text: [1] NetLinkText;   // ?net: the netcode readout (e2_net_readout, aethyr/net/stats.coax)
+  net_view: bool; net_text: [1] NetStatsText; link_text: [1] NetConnText;   // ?net: the netcode readout (e2_net_readout, aethyr/net/stats.coax)
   guard: [1] E2GuardLook;                        // the path's guard as drawn (everglade2-guard.coax)
   mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade2-mouse.coax)
   bows: [1] E2Bow;                               // the arrows in the air and stuck (everglade2-arrows.coax)
@@ -1235,12 +1235,12 @@ e2_net_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   rtt := ifx n[0].pings > 0 then n[0].ping_rtt[net_ping_best(n[0].ping_rtt[..], n[0].pings)] else -1;
   net_stats_roll(n[0].stats[..], n[0].mono);
   net_stats_text(n[0].stats[0], NetStatsView.{rtt_ms = rtt, hz = n[0].hz, delay_ms = n[0].delay}, s[0].net_text[..]);
-  t := s[0].net_text[..]; lines: [NET_STATS_LINES + NET_LINK_LINES] string;
+  t := s[0].net_text[..]; lines: [NET_STATS_LINES + NET_CONN_LINES] string;
   for l: 0..<t[0].count { lines[l] = net_stats_line(t, l); }
   // the transport, its loss, keyframes and stale drops (aethyr/net/transport.coax, #13176)
-  net_link_text(n[0].link[0], s[0].link_text[..]);
-  for l: 0..<NET_LINK_LINES { lines[t[0].count + l] = net_link_line(s[0].link_text[..], l); }
-  return eg_readout(s[0].creator[0].ui, out, at, "net", "NET", ifx e2n_open(n) then "ROOM" else "OFFLINE", lines[0..<t[0].count + NET_LINK_LINES], s[0].k);
+  net_conn_text(n[0].link[0], s[0].link_text[..]);
+  for l: 0..<NET_CONN_LINES { lines[t[0].count + l] = net_conn_line(s[0].link_text[..], l); }
+  return eg_readout(s[0].creator[0].ui, out, at, "net", "NET", ifx e2n_open(n) then "ROOM" else "OFFLINE", lines[0..<t[0].count + NET_CONN_LINES], s[0].k);
 }
 #test "?net turns on the netcode readout; without it nothing is drawn" {
   #assert e2_net_query("url=/worlds/everglade2?net\n") && e2_net_query("url=/worlds/everglade2?at=60&net=1\n") && e2_net_query("url=/x?net&y=1");

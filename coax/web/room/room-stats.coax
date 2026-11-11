@@ -46,7 +46,8 @@ rm_st_pin :: (i: int) -> int #export_c #effects(all) {
 
 RmStats :: struct {
   frames:[1]FrameObserved; // exact accepted application frames for the current report window
-  rows:int;row_bytes:int;rows_deferred:int;rows_last:[EG_ROOMS*EG_SEATS]int;left_last:[EG_ROOMS*EG_SEATS]int;
+  rows:int;row_bytes:int;rows_deferred:int;link_cuts:int;   // link_cuts: seat ticks its link was congested (#13178)
+  rows_last:[EG_ROOMS*EG_SEATS]int;left_last:[EG_ROOMS*EG_SEATS]int;
   refused: [ST_REASONS] int;
   re_tries: int; re_ok: int;      // joins with re=1, and those seated
   re_seat: int;                   // joins that took back their player's held seat (room-relay.coax rl_take_back, #12792)

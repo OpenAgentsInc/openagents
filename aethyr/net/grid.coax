@@ -1,0 +1,235 @@
+// A uniform spatial grid for relevance queries (#13178), engine-wide: which of a world's entities
+// stand within the relevance radius of a point, without looking at every entity. A realm makes the
+// grid for its relevance radius (cells NET_GRID_RINGS to the radius), puts each entity's slot where
+// it stands once a tick, and asks once per client. A query looks only at the cells the radius
+// overlaps and returns exactly the slots within it, as a scan of every entity would (the
+// brute-force check below).
+//
+// Cells hash into NET_GRID_BUCKETS lists. An entity moves between lists only when it changes cell,
+// and a query skips a list's entries of other cells, so two cells sharing a list never return an
+// entity twice. Slots are the caller's (0 to NET_GRID_CAP - 1): the realm's table index.
+//
+// Every link is stored plus one, so a grid of zeros is empty (the C host's memory starts so).
+//   coax/bin/coax test aethyr/net/grid.coax
+#module "aethyr.net.grid";
+#authority;
+
+NET_GRID_CAP :: 1024;         // slots at most
+NET_GRID_BUCKETS :: 1024;     // the lists cells hash into (a power of two)
+NET_GRID_RINGS :: 2;          // cells to the radius: a query looks at (2 * RINGS + 1)^2 cells or (2 * RINGS + 2)^2
+NET_GRID_FAR :: 1000000;      // cells: a coordinate this many cells out or more (or NaN) is in cell NET_GRID_FAR + 1
+
+NetGrid :: struct {
+  radius: f32;                          // m: what a query returns, within this of its point
+  cell: f32;                            // m: a cell's side
+  head: [NET_GRID_BUCKETS] int;         // each list's first slot, plus one (0 empty)
+  next: [NET_GRID_CAP] int; prev: [NET_GRID_CAP] int;   // each slot's neighbours in its list, plus one
+  at: [NET_GRID_CAP] int;               // the list each slot is in, plus one (0 not in the grid)
+  cx: [NET_GRID_CAP] int; cz: [NET_GRID_CAP] int;       // its cell
+  x: [NET_GRID_CAP] f32; z: [NET_GRID_CAP] f32;         // where it stands
+  n: int;                               // slots in the grid
+  visits: int;                          // slots queries have looked at (the cost), since init
+}
+
+// An empty grid for relevance radius `radius` (m). A radius of 0 or less puts every slot in one cell.
+net_grid_init :: (g: [] NetGrid, radius: f32) #effects(all) {
+  g[0] = NetGrid.{radius = radius, cell = radius / f32(NET_GRID_RINGS)};
+}
+net_grid_coord :: (g: [] NetGrid, v: f32) -> int #effects(all) {
+  q := v / g[0].cell;
+  if !(q == q) || q >= f32(NET_GRID_FAR) || q <= -f32(NET_GRID_FAR) { return NET_GRID_FAR + 1; }
+  return cast(int) floor(q);
+}
+net_grid_bucket :: (cx: int, cz: int) -> int #effects(all) {
+  return (cx * 73856093 + cz * 19349663) & (NET_GRID_BUCKETS - 1);
+}
+net_grid_has :: (g: [] NetGrid, i: int) -> bool #effects(all) { return i >= 0 && i < NET_GRID_CAP && g[0].at[i] != 0; }
+
+net_grid_unlink :: (g: [] NetGrid, i: int) #effects(all) {
+  p := g[0].prev[i] - 1; n := g[0].next[i] - 1;
+  if p >= 0 { g[0].next[p] = n + 1; } else { g[0].head[g[0].at[i] - 1] = n + 1; }
+  if n >= 0 { g[0].prev[n] = p + 1; }
+  g[0].at[i] = 0;
+  g[0].n -= 1;
+}
+
+// Slot i stands at (x, z). False (and nothing changed) for a slot outside 0 to NET_GRID_CAP - 1.
+net_grid_put :: (g: [] NetGrid, i: int, x: f32, z: f32) -> bool #effects(all) {
+  if i < 0 || i >= NET_GRID_CAP { return false; }
+  cx := net_grid_coord(g, x); cz := net_grid_coord(g, z);
+  g[0].x[i] = x; g[0].z[i] = z;
+  if g[0].at[i] != 0 {
+    if g[0].cx[i] == cx && g[0].cz[i] == cz { return true; }
+    net_grid_unlink(g, i);
+  }
+  b := net_grid_bucket(cx, cz);
+  first := g[0].head[b];
+  g[0].cx[i] = cx; g[0].cz[i] = cz; g[0].at[i] = b + 1; g[0].prev[i] = 0; g[0].next[i] = first;
+  if first > 0 { g[0].prev[first - 1] = i + 1; }
+  g[0].head[b] = i + 1;
+  g[0].n += 1;
+  return true;
+}
+// Slot i leaves the grid.
+net_grid_drop :: (g: [] NetGrid, i: int) #effects(all) {
+  if net_grid_has(g, i) { net_grid_unlink(g, i); }
+}
+
+// The slots within the grid's radius of (x, z), into out (as many as fit); how many there are.
+net_grid_query :: (g: [] NetGrid, x: f32, z: f32, out: [] int) -> int #effects(all) {
+  r := g[0].radius;
+  x0 := net_grid_coord(g, x - r); x1 := net_grid_coord(g, x + r);
+  z0 := net_grid_coord(g, z - r); z1 := net_grid_coord(g, z + r);
+  n := 0;
+  for cx: x0..<x1 + 1 {
+    for cz: z0..<z1 + 1 {
+      i := g[0].head[net_grid_bucket(cx, cz)] - 1;
+      while i >= 0 {
+        if g[0].cx[i] == cx && g[0].cz[i] == cz {
+          g[0].visits += 1;
+          dx := g[0].x[i] - x; dz := g[0].z[i] - z;
+          if dx * dx + dz * dz <= r * r { if n < out.count { out[n] = i; } n += 1; }
+        }
+        i = g[0].next[i] - 1;
+      }
+    }
+  }
+  return n;
+}
+
+// ---- checks
+
+#test "grid: a cell is the radius over its rings; coordinates past the far cell share one" {
+  g: [1] NetGrid;
+  #assert g[0].n == 0 && !net_grid_has(g[..], 0);
+  net_grid_init(g[..], 40); #assert g[0].cell == 20 && g[0].radius == 40;
+  #assert net_grid_coord(g[..], 19.9) == 0 && net_grid_coord(g[..], 20) == 1 && net_grid_coord(g[..], -0.1) == -1 && net_grid_coord(g[..], -20) == -1 && net_grid_coord(g[..], -20.5) == -2;
+  zero := 0.0f32; nan := zero / zero;
+  #assert net_grid_coord(g[..], nan) == NET_GRID_FAR + 1 && net_grid_coord(g[..], 1.0e30) == NET_GRID_FAR + 1 && net_grid_coord(g[..], -1.0e30) == NET_GRID_FAR + 1;
+  #assert net_grid_coord(g[..], f32(NET_GRID_FAR) * 20) == NET_GRID_FAR + 1 && net_grid_coord(g[..], -f32(NET_GRID_FAR) * 20) == NET_GRID_FAR + 1;
+  #assert net_grid_coord(g[..], f32(NET_GRID_FAR) * 20 - 40) == NET_GRID_FAR - 2 && net_grid_coord(g[..], 40 - f32(NET_GRID_FAR) * 20) == 2 - NET_GRID_FAR;
+  // the lists cells hash into, as the layout has them
+  #assert net_grid_bucket(0, 0) == 0 && net_grid_bucket(1, 0) == (73856093 & 1023) && net_grid_bucket(0, 1) == (19349663 & 1023);
+  #assert net_grid_bucket(2, 3) == ((2 * 73856093 + 3 * 19349663) & 1023) && net_grid_bucket(-1, 0) == ((-73856093) & 1023);
+  // no radius: every slot in one cell, and a query finds those exactly where it asks
+  h: [1] NetGrid; net_grid_init(h[..], 0); out: [4] int;
+  #assert net_grid_put(h[..], 1, 5, 5) && net_grid_put(h[..], 2, -7, 3);
+  #assert net_grid_query(h[..], 5, 5, out[..]) == 1 && out[0] == 1 && h[0].visits == 2;
+  // a negative radius is its size
+  m: [1] NetGrid; net_grid_init(m[..], -10);
+  #assert net_grid_put(m[..], 1, 3, 4) && net_grid_put(m[..], 2, 30, 0) && net_grid_query(m[..], 0, 0, out[..]) == 1 && out[0] == 1;
+}
+#test "grid: put, move, drop; the edge of the radius is in; slots outside the grid are refused" {
+  g: [1] NetGrid; net_grid_init(g[..], 5);
+  out: [16] int;
+  #assert net_grid_put(g[..], 3, 3, 4) && net_grid_put(g[..], 7, 30, 0) && net_grid_put(g[..], 0, -3, -4) && g[0].n == 3;
+  #assert !net_grid_put(g[..], -1, 0, 0) && !net_grid_put(g[..], NET_GRID_CAP, 0, 0) && g[0].n == 3;
+  #assert net_grid_has(g[..], 3) && !net_grid_has(g[..], 4) && !net_grid_has(g[..], -1) && !net_grid_has(g[..], NET_GRID_CAP);
+  n := net_grid_query(g[..], 0, 0, out[..]);   // (3, 4) and (-3, -4) are exactly 5 m off
+  #assert n == 2 && ((out[0] == 3 && out[1] == 0) || (out[0] == 0 && out[1] == 3));
+  #assert net_grid_query(g[..], 0.01, 0, out[..]) == 1 && out[0] == 3;
+  // a move within its cell, and across cells: found where it stands now
+  #assert net_grid_put(g[..], 7, 31, 1) && g[0].n == 3 && net_grid_query(g[..], 31, 1, out[..]) == 1;
+  #assert net_grid_put(g[..], 7, 1, 1) && g[0].n == 3;
+  n = net_grid_query(g[..], 3, 3, out[..]); #assert n == 2;
+  #assert net_grid_query(g[..], 30, 0, out[..]) == 0;
+  net_grid_drop(g[..], 7); #assert g[0].n == 2 && !net_grid_has(g[..], 7) && net_grid_query(g[..], 3, 3, out[..]) == 1;
+  net_grid_drop(g[..], 7); net_grid_drop(g[..], -1); net_grid_drop(g[..], NET_GRID_CAP); #assert g[0].n == 2;
+  // more than out holds: the count is all of them, out the first
+  for i: 20..<40 { _ := net_grid_put(g[..], i, 100, 100); }
+  small: [4] int; #assert net_grid_query(g[..], 100, 100, small[..]) == 20 && small[3] >= 20;
+}
+#test "grid: a list's head, middle and tail each leave and come back; slot 0 too; nothing is found that left" {
+  g: [1] NetGrid; net_grid_init(g[..], 2);   // 1 m cells
+  out: [8] int;
+  // slots 0, 1, 2 in one cell: the list is 2, 1, 0
+  for i: 0..<3 { #assert net_grid_put(g[..], i, 0.5, 0.5); }
+  net_grid_drop(g[..], 1);   // the middle
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 2;
+  net_grid_drop(g[..], 2);   // the head: 0 is the head now
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 0;
+  net_grid_drop(g[..], 0);   // slot 0, the last
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 0 && g[0].n == 0;
+  // 1 and 0 again (0 the head); 0 moves to another cell as its list's head, then leaves
+  #assert net_grid_put(g[..], 1, 0.5, 0.5) && net_grid_put(g[..], 0, 0.5, 0.5);
+  #assert net_grid_put(g[..], 0, 9.5, 9.5);
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 1;
+  net_grid_drop(g[..], 0);
+  #assert net_grid_query(g[..], 9.5, 9.5, out[..]) == 0 && net_grid_query(g[..], 0.5, 0.5, out[..]) == 1;
+  // the tail moves away and back, then the head leaves: both lists stay whole
+  #assert net_grid_put(g[..], 4, 0.5, 0.5) && net_grid_put(g[..], 5, 0.5, 0.5);   // list 5, 4, 1
+  #assert net_grid_put(g[..], 1, 9.5, 9.5);   // 1 leaves the tail, for an empty list, then leaves
+  net_grid_drop(g[..], 1);
+  #assert net_grid_query(g[..], 9.5, 9.5, out[..]) == 0 && net_grid_query(g[..], 0.5, 0.5, out[..]) == 2;
+  #assert net_grid_put(g[..], 1, 9.5, 9.5) && net_grid_put(g[..], 3, 9.5, 9.5);   // 9.5's list 3, 1
+  net_grid_drop(g[..], 3);
+  #assert net_grid_query(g[..], 9.5, 9.5, out[..]) == 1 && out[0] == 1;
+  net_grid_drop(g[..], 1);
+  #assert net_grid_query(g[..], 9.5, 9.5, out[..]) == 0;
+  net_grid_drop(g[..], 5);
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 4 && g[0].n == 1;
+  // slot 0 ahead of the one that leaves: the list goes on from it
+  #assert net_grid_put(g[..], 0, 0.5, 0.5);   // list 0, 4
+  net_grid_drop(g[..], 4);
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 0;
+}
+#test "grid: a query looks at its cells' slots only, once each, though other cells share their lists" {
+  g: [1] NetGrid; net_grid_init(g[..], 2);   // 1 m cells: a query near a cell's middle covers 5 x 5 cells
+  out: [8] int;
+  // a cell far off whose list is (0, 0)'s, in the same row and in the same column
+  c := 1; while c < 4096 && net_grid_bucket(c, 0) != net_grid_bucket(0, 0) { c += 1; }
+  d := 1; while d < 4096 && net_grid_bucket(0, d) != net_grid_bucket(0, 0) { d += 1; }
+  #assert c > 4 && c < 4096 && d > 4 && d < 4096;
+  #assert net_grid_put(g[..], 1, 0.5, 0.5) && net_grid_put(g[..], 2, f32(c) + 0.5, 0.5) && net_grid_put(g[..], 3, 0.5, f32(d) + 0.5);
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 1 && out[0] == 1 && g[0].visits == 1;
+  #assert net_grid_query(g[..], f32(c) + 0.5, 0.5, out[..]) == 1 && out[0] == 2 && g[0].visits == 2;
+  #assert net_grid_query(g[..], 0.5, f32(d) + 0.5, out[..]) == 1 && out[0] == 3 && g[0].visits == 3;
+  // the window is the cells the radius's square overlaps: 2 m around (0.5, 0.5) is cells -2 to 2
+  #assert net_grid_put(g[..], 4, 2.6, 0.5) && net_grid_put(g[..], 5, -1.6, 0.5) && net_grid_put(g[..], 6, 3.1, 0.5);
+  v := g[0].visits;
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 1 && g[0].visits == v + 3;   // 1, and 4 and 5 just past 2 m; never 6
+  #assert net_grid_put(g[..], 7, 0.5, 2.6) && net_grid_put(g[..], 8, 0.5, 3.1);
+  v = g[0].visits;
+  #assert net_grid_query(g[..], 0.5, 0.5, out[..]) == 1 && g[0].visits == v + 4;
+}
+NET_GRID_WALK :: 300;
+#forall "grid: through a random walk of puts, moves and drops, every query is the brute-force scan's answer" seed: 1..<6 #steps 200000000 {
+  g: [1] NetGrid;
+  s := seed * 7919;
+  on: [NET_GRID_WALK] bool; x: [NET_GRID_WALK] f32; z: [NET_GRID_WALK] f32; want: [NET_GRID_WALK] bool; got: [NET_GRID_WALK] int;
+  for t: 0..<8 {
+    if t % 4 == 0 { s = (s * 1103515245 + 12345) & 0x7fffffff; net_grid_init(g[..], f32(10 + (s >> 8) % 140)); for i: 0..<NET_GRID_WALK { on[i] = false; } }
+    for i: 0..<NET_GRID_WALK {
+      s = (s * 1103515245 + 12345) & 0x7fffffff; r := (s >> 8) % 10;
+      if r == 0 { net_grid_drop(g[..], i); on[i] = false; continue; }
+      s = (s * 1103515245 + 12345) & 0x7fffffff; a := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      s = (s * 1103515245 + 12345) & 0x7fffffff; b := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      if !on[i] || r < 4 { x[i] = a; z[i] = b; } else { x[i] += a / 40; z[i] += b / 40; }
+      #assert net_grid_put(g[..], i, x[i], z[i]); on[i] = true;
+    }
+    count := 0; for i: 0..<NET_GRID_WALK { if on[i] { count += 1; } }
+    #assert g[0].n == count;
+    for q: 0..<4 {
+      s = (s * 1103515245 + 12345) & 0x7fffffff; px := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      s = (s * 1103515245 + 12345) & 0x7fffffff; pz := f32((s >> 8) % 80000) / 100.0 - 400.0;
+      m := 0; r2 := g[0].radius * g[0].radius;
+      for i: 0..<NET_GRID_WALK { dx := x[i] - px; dz := z[i] - pz; want[i] = on[i] && dx * dx + dz * dz <= r2; if want[i] { m += 1; } }
+      n := net_grid_query(g[..], px, pz, got[..]);
+      #assert n == m;
+      for k: 0..<n { #assert want[got[k]]; want[got[k]] = false; }   // each once
+    }
+  }
+}
+#test "grid: a query at 1,000 entities over a kilometre looks at a small part of them" {
+  g: [1] NetGrid; net_grid_init(g[..], 110);
+  s := 13178;
+  for i: 0..<1000 {
+    s = (s * 1103515245 + 12345) & 0x7fffffff; a := f32((s >> 8) % 100000) / 100.0 - 500.0;
+    s = (s * 1103515245 + 12345) & 0x7fffffff; b := f32((s >> 8) % 100000) / 100.0 - 500.0;
+    _ := net_grid_put(g[..], i, a, b);
+  }
+  out: [1000] int; found := 0;
+  for q: 0..<100 { found += net_grid_query(g[..], g[0].x[q], g[0].z[q], out[..]); }
+  // a scan looks at 1,000 a query; the grid at the cells around 110 m (about a fifth of the square)
+  #assert g[0].visits < 100 * 1000 / 4 && found > 100 && found < 100 * 1000 / 8;
+}

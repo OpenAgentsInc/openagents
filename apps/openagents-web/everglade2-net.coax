@@ -87,9 +87,9 @@ E2Net :: struct {
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
   stats: [1] NetStats;           // the netcode readout's counts (aethyr/net/stats.coax): bytes, frames, state gaps, corrections
-  link: [1] NetLink;             // the transport the socket runs on, its owed inputs and counts (aethyr/net/transport.coax)
+  link: [1] NetConn;             // the transport the socket runs on, its owed inputs and counts (aethyr/net/transport.coax)
   wt: bool;                      // open the room as WebTransport first (?transport=wt, E2N_WT_DEFAULT)
-  wout: [NET_DATAGRAM_MAX] u8;   // a frame as the pipe carries it (net_link_frame, net_link_input)
+  wout: [NET_DATAGRAM_MAX] u8;   // a frame as the pipe carries it (net_conn_frame, net_conn_input)
   said: [E2N_SAY] u8; said_n: int; said_at: int;
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
@@ -135,7 +135,7 @@ e2n_now :: (n: [] E2Net) -> int { return n[0].mono + n[0].offset; }
 e2n_send :: (n: [] E2Net, count: int) {
   if n[0].state != E2N_OPEN || n[0].sock < 0 || count <= 0 { return; }
   f := cast(string) n[0].out[0..<count];
-  e2n_pipe(n, net_link_frame(n[0].link[..], ifx f[0] == 'C' || f[0] == 'F' || f[0] == 'E' then NET_COMBAT else NET_SESSION, f, n[0].wout[..]));
+  e2n_pipe(n, net_conn_frame(n[0].link[..], ifx f[0] == 'C' || f[0] == 'F' || f[0] == 'E' then NET_COMBAT else NET_SESSION, f, n[0].wout[..]));
 }
 e2n_pipe :: (n: [] E2Net, d: string) {
   if d.count > 0 && pipe_send(n[0].pipe[..], n[0].sock, d) { n[0].frames_out += 1; net_stats_out(n[0].stats[..], d.count, n[0].mono); }
@@ -319,7 +319,7 @@ e2n_down :: (n: [] E2Net) {
 e2n_event :: (n: [] E2Net, kind: int, text: string) -> bool {
   ev := socket_event(kind);
   if ev.id < 0 || ev.id != n[0].sock { return false; }
-  if ev.event == SOCKET_OPENED { n[0].state = E2N_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; _ := net_link_opened(n[0].link[..], ev.id, text); return true; }
+  if ev.event == SOCKET_OPENED { n[0].state = E2N_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; _ := net_conn_opened(n[0].link[..], ev.id, text); return true; }
   if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == E2N_OPEN { return true; }   // a frame over the inbox: dropped
   if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
     if n[0].seat >= 0 { n[0].lost = true; e2n_tell(n, "LOST THE ROOM · REJOINING"); }
@@ -346,7 +346,7 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 // One frame from the room.
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
-  if net_link_note(n[0].link[..], t) { return; }   // the room's word on a WebTransport link (?net)
+  if net_conn_note(n[0].link[..], t) { return; }   // the room's word on a WebTransport link (?net)
   if t.count > 2 && t[1] == ' ' && (t[0] == 'a' || t[0] == 'd') { e2n_shot_word(n, t); return; }   // an arrow loosed or ended
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
   if wire_is(t,"g2") { e2n_guard_row(n,t); return; }
@@ -431,7 +431,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     if !r[0].ok { return; }
     // out of band (a WebTransport seat's outcomes on the combat stream): its entries, nothing of the tick
     if (d.f & WIRE_F_OOB) != 0 { for k: 0..<wire_entries(t, r[0].at) { e2n_entry(n, wire_entry(t, r[0].at, k), d); } return; }
-    net_link_ack(n[0].link[..], d.ack); net_link_tick(n[0].link[..], d.tick, (d.f & 1) != 0);
+    net_conn_ack(n[0].link[..], d.ack); net_conn_tick(n[0].link[..], d.tick, (d.f & 1) != 0);
     clock := e2n_tick_t(n, d.tick);
     if d.part == 0 && (d.tick != n[0].tick || n[0].ticks == 0) {
       j := net_jitter_heard(NetJitter.{late_mean = n[0].late_mean, jitter = n[0].jitter, interval = n[0].interval}, n[0].ticks, e2n_now(n), clock, n[0].tick_t);
@@ -493,7 +493,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     return;
   }
 }
-// One entry of a state (D): a row (s), who a seat is (n), one gone (x).
+// One entry of a state (D): a row (s), who a seat is (n), your link (k), one gone (x).
 e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if t.count < 1 { return; }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
@@ -542,6 +542,11 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     n[0].casts[q] = E2nCast.{live = true, ss = ce.ss, slot = ce.slot, ax = ce.ax, ay = ce.ay, az = ce.az, seed = ce.seed, t = n[0].tick_t};
     return;
   }
+  if c == 'k' {   // the room's word on your link: the ?net overlay's BUDGET and DROP (#13178)
+    l := wire_read_link(t, r[..]);
+    if r[0].ok { net_stats_link(n[0].stats[..], l.rate, l.used, l.dropped, l.every); }
+    return;
+  }
   if c == 'x' {
     id := wire_num(t, r[..]);
     if !r[0].ok { return; }
@@ -586,7 +591,7 @@ e2n_input :: (n: [] E2Net, input: EgMoveIn) -> int {
   b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0);
   m := wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard});
   // a datagram that repeats what the room hasn't acknowledged (on a WebSocket, the frame alone)
-  if n[0].state == E2N_OPEN && n[0].sock >= 0 { e2n_pipe(n, net_link_input(n[0].link[..], n[0].seq, cast(string) n[0].out[0..<m], n[0].wout[..])); }
+  if n[0].state == E2N_OPEN && n[0].sock >= 0 { e2n_pipe(n, net_conn_input(n[0].link[..], n[0].seq, cast(string) n[0].out[0..<m], n[0].wout[..])); }
   return n[0].seq;
 }
 e2n_fix_due :: (n: [] E2Net) -> bool { return e2n_open(n) && n[0].fix_due && n[0].fix.ok; }
@@ -675,7 +680,7 @@ e2n_step :: (n: [] E2Net, mono: int) {
       k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
       if n[0].lost { k = wire_put(u[..], k, "&re=1"); }
       w: [NET_URL + NET_TICKET + 12] u8;
-      if pipe_open(n[0].pipe[..], net_link_url(w[..], cast(string) u[0..<k], n[0].wt)) { n[0].state = E2N_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
+      if pipe_open(n[0].pipe[..], net_conn_url(w[..], cast(string) u[0..<k], n[0].wt)) { n[0].state = E2N_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
     } else if !n[0].ticket_asked && !n[0].naming { e2n_ask_ticket(n); }
   }
   if e2n_open(n) {
