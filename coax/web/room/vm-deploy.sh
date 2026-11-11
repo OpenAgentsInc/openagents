@@ -20,6 +20,8 @@
 #   coax/web/room/vm-deploy.sh switch staging-vm|staging-run    the same for staging.openagents.com
 #   coax/web/room/vm-deploy.sh drain K [SECONDS]  drain production shard K on the VM
 #   coax/web/room/vm-deploy.sh status
+#   coax/web/room/vm-deploy.sh wt                 the staging unit's WebTransport on UDP 443: Caddy's
+#                                                 certificate for room-staging, renewed daily (vm/wt-cert.sh)
 #
 # Player state lives in the API, not on the VM: each room posts its seats' HP, XP, WANTED and
 # checkpoints to openagents.com (room-host.c vitals_post, checkpoint_post), as Cloud Run's do, so a
@@ -294,11 +296,13 @@ for pm in m["pathMatchers"]:
 
 case "${1:-}" in
   provision) provision ;;
+  wt) COPYFILE_DISABLE=1 tar -C "$here/vm" -czf - wt-cert.sh |
+      on_vm 'd=$(mktemp -d) && tar -xzf - -C "$d" 2>/dev/null && cd "$d" && sudo sh wt-cert.sh --install' ;;
   secret) secret ;;
   deploy) shift; deploy "$@" ;;
   rollback) rollback ;;
   switch) shift; switch "$@" ;;
   drain) shift; drain "${1:?usage: vm-deploy.sh drain K [SECONDS]}" "${2:-$drain_wait}" ;;
   status) status ;;
-  *) sed -n '2,24p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,26p' "$0" >&2; exit 2 ;;
 esac

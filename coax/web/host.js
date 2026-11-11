@@ -242,6 +242,7 @@ import { startDocs } from "./docs.js";
 import { startCard } from "./card.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { localRoomSocket } from "./room-worker.js";
+import { wtSocket } from "./room-wt.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
 import { layerFeatures, layerPolicy, warmLayerPolicy } from "./layers-host.js";
@@ -685,13 +686,13 @@ const socketImports = {
     try {
       url=policy ? new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(memory.buffer,ptr,len)) : utf8(ptr,len);
       if(policy && url.startsWith("local:") && !policy.localUri(url))throw Error("local route refused");
-      ws = url.startsWith("local:") ? localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm") : new WebSocket(url);
+      ws = url.startsWith("local:") ? localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm") : url.startsWith("wt+") ? wtSocket(url) : new WebSocket(url);   // wt+: WebTransport first (room-wt.js, #13176)
     } catch { if(owner)policy.socketClose(owner);return -1; }
     ws.__coaxialPolicy=policy;ws.__coaxialOwner=owner;ws.__coaxialEngine=wanted;
     sockets[id] = ws;
     if(roomTraceModule)roomTraceModule.then(m=>m.openLatencyObserver()).then(observer=>{if(sockets[id]===ws&&ws.__coaxialEngine===wanted&&ws.readyState<2)ws.__roomTrace=observer;else observer.retire();}).catch(error=>{globalThis.coaxial.roomTraceError=String(error);});
     const mine = () => sockets[id] === ws && ws.__coaxialEngine===wanted;   // a closed socket says nothing more
-    ws.onopen = () => mine() && socketQueued(ws, id, SOCKET_OPENED);
+    ws.onopen = () => mine() && socketQueued(ws, id, SOCKET_OPENED, ws.__wt ? "wt" : "");   // "wt": the room runs on WebTransport
     ws.onmessage = (m) => mine() && typeof m.data === "string" && socketQueued(ws, id, SOCKET_FRAME, m.data);
     ws.onerror = () => mine() && socketQueued(ws, id, SOCKET_ERROR);
     ws.onclose = () => mine() && socketQueued(ws, id, SOCKET_CLOSED);   // the slot frees when the app hears it

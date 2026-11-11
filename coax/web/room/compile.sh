@@ -24,4 +24,7 @@ done
 gcc -std=c11 -O2 $STRICT -w -I. -c room-world.c -o room-world.o
 gcc -std=c11 -O2 $STRICT -w -c room-math.c -o room-math.o
 gcc -std=c11 -O2 -w -c room-catalog.c -o room-catalog.o
-gcc -std=c11 -O2 $STRICT -D_DEFAULT_SOURCE -Wall -I. -o "$out" room-host.c ws.c room-world.o room-catalog.o room-math.o room-own.o everglade-own.o everglade-step-own.o grid-own.o river-own.o guard-guide-policy-own.o -lm
+# WebTransport (#13176): the vendored QUIC stack (third_party/build.sh, into quic/libquic.a) and wt.c
+CC=gcc bash third_party/build.sh quic
+gcc -std=c11 -O2 -Wall -D_DEFAULT_SOURCE -DNGTCP2_STATICLIB -DNGHTTP3_STATICLIB -Ithird_party/ngtcp2/lib/includes -Ithird_party/ngtcp2/crypto/includes -Ithird_party/nghttp3/lib/includes -Ithird_party/picotls/include -c wt.c -o wt.o
+gcc -std=c11 -O2 $STRICT -D_DEFAULT_SOURCE -Wall -I. -o "$out" room-host.c ws.c room-world.o room-catalog.o room-math.o wt.o quic/libquic.a room-own.o everglade-own.o everglade-step-own.o grid-own.o river-own.o guard-guide-policy-own.o -lm

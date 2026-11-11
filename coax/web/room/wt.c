@@ -56,6 +56,7 @@ struct qconn {
   struct sockaddr_storage local, remote; socklen_t local_len, remote_len;
   wt_strm *streams;
   dgram *dq; int dq_head, dq_n; uint64_t dgram_id;
+  int64_t lost;                            /* datagrams the peer never acknowledged */
   bool dead;
 };
 typedef struct {
@@ -369,7 +370,7 @@ static int q_datagram(ngtcp2_conn *qc, uint32_t flags, const uint8_t *d, size_t 
 }
 #include <stdarg.h>
 static void q_log(void *u, const char *fmt, ...) { (void)u; va_list a; va_start(a, fmt); vfprintf(stderr, fmt, a); va_end(a); fputc('\n', stderr); }
-static int q_lost_datagram(ngtcp2_conn *qc, uint64_t id, void *u) { (void)qc; (void)id; ((qconn *)u)->s->st.datagrams_lost++; return 0; }
+static int q_lost_datagram(ngtcp2_conn *qc, uint64_t id, void *u) { (void)qc; (void)id; ((qconn *)u)->s->st.datagrams_lost++; ((qconn *)u)->lost++; return 0; }
 
 static int on_client_hello(ptls_on_client_hello_t *self, ptls_t *tls, ptls_on_client_hello_parameters_t *p) {
   (void)self;
@@ -595,7 +596,8 @@ void wt_flush(wt_server *s) {
 int wt_timeout_ms(const wt_server *s) {
   ngtcp2_tstamp now = ts_now(), soon = now + 1000 * NGTCP2_MILLISECONDS;
   for (int i = 0; i < s->nconns; i++) {
-    if (s->conns[i]->dead || s->conns[i]->dq_n) return 0;
+    if (s->conns[i]->dead) return 0;
+    if (s->conns[i]->dq_n && now + NGTCP2_MILLISECONDS < soon) soon = now + NGTCP2_MILLISECONDS;   /* datagrams waiting on the window: look again soon, never spin */
     ngtcp2_tstamp e = ngtcp2_conn_get_expiry(s->conns[i]->conn);
     if (e < soon) soon = e;
   }
@@ -690,6 +692,10 @@ int wt_rtt_ms(const wt_server *s, int sid) {
   if (!x) return -1;
   ngtcp2_conn_info ci; ngtcp2_conn_get_conn_info(x->c->conn, &ci);
   return (int)(ci.smoothed_rtt / NGTCP2_MILLISECONDS);
+}
+int64_t wt_session_lost(const wt_server *s, int sid) {
+  session *x = live_session(s, sid);
+  return x ? x->c->lost : -1;
 }
 wt_stats wt_get_stats(const wt_server *s) { return s->st; }
 void wt_free(wt_server *s) {

@@ -43,7 +43,7 @@ int wt_fd(const wt_server *s);
 void wt_read(wt_server *s);
 /* Every connection's timers and waiting bytes: call after wt_read and after sending. */
 void wt_flush(wt_server *s);
-/* Milliseconds until the next timer (0: now; capped at 1000). */
+/* Milliseconds until the next timer (0: now; capped at 1000; 1 while datagrams wait on the window). */
 int wt_timeout_ms(const wt_server *s);
 /* One datagram to session sid, sent at the next flush: 0, or -1 (no such session, over
    WT_DATAGRAM_MAX, or the session's queue full; counted as dropped). */
@@ -62,6 +62,8 @@ size_t wt_stream_waiting(const wt_server *s, int sid);
 void wt_close(wt_server *s, int sid, uint32_t code);
 /* Session sid's smoothed round trip (ms), or -1. */
 int wt_rtt_ms(const wt_server *s, int sid);
+/* Datagrams session sid's connection sent that the peer never acknowledged (lost), or -1. */
+int64_t wt_session_lost(const wt_server *s, int sid);
 wt_stats wt_get_stats(const wt_server *s);
 void wt_free(wt_server *s);
 #endif

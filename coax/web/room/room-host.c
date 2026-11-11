@@ -30,6 +30,7 @@
 #endif
 #include "room-world.h"
 #include "ws.h"
+#include "wt.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -57,6 +58,9 @@ typedef struct {
   uint8_t *out; size_t on, ocap;   // bytes waiting to go out (sent as the socket takes them)
   int64_t since;                   // when out last went from empty to waiting (ms), 0 empty
   bool doomed;                     // to close once the frame being sent is out to everyone
+  // a WebTransport session's (room-wt.c, #13176): its id + 1 (0 a WebSocket), whether it already ended,
+  // its streams by channel (id + 1), the page's stream (id + 1), datagrams sent, and state dropped stale
+  int wt; bool wt_gone; int64_t wt_stream[5]; int64_t wt_in, wt_dg, wt_stale;
 } conn;
 static conn conns[CONNS];
 static coax_t_RmServer *server;
@@ -291,10 +295,12 @@ static void pump_all(void) {
     if (conns[j].on && now - conns[j].since >= OUT_AGE_MS) { conns[j].doomed = true; slow_closed++; }
   }
 }
+static void wt_out(int i, const uint8_t *text, size_t n);   /* room-wt.c */
 // Optional observation bytes use the same bounded socket queue and byte
 // observer. This reports encoding/queue acceptance, never delivery.
 static void latency_out(int i,const uint8_t *text,int64_t n) {
   if(n<=0)return;
+  if(conns[i].wt){wt_out(i,text,(size_t)n);return;}
   uint8_t out[300];size_t k=ws_build(out,sizeof out,WS_TEXT,text,(size_t)n,false);
   if(k&&put_out(i,out,k))st_frame_out(text,(size_t)n,1,k);
   else if(k)fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);
@@ -307,7 +313,7 @@ static void relay_flush(void) {
     size_t k = ws_build(out, sizeof out, WS_TEXT, server->rout.e, (size_t)len, false);
     if (!k) continue;
     int to = 0, last = -1;
-    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) { if(put_out(j,out,k)){to++;last=j;}else{fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);} }
+    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) { if(conns[j].wt){wt_out(j,server->rout.e,(size_t)len);to++;last=j;continue;} if(put_out(j,out,k)){to++;last=j;}else{fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);} }
     /* counted by type (room-stats.h); a D frame (one seat's) with no more parts ends a joiner's first snapshot */
     int64_t t0 = now_us();
     int f = st_frame_out(server->rout.e, (size_t)len, to, k);
@@ -330,10 +336,12 @@ static void warm_rooms(void) {
   rooms_warmed=world_ready();
   rooms_warm_us=now_us()-preparing;
 }
+#include "room-wt.c"   /* WebTransport sessions as conns (#13176) */
 static void everglade_tick(void) {
   int64_t was[PARTS]; memcpy(was, part_us, sizeof was);
   pump_held = true;
   for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws) rm_conn_waiting(view(), j, (int64_t)conns[j].on);
+  wt_tick_begin();   /* a WebTransport session's state of the last tick, still waiting, is stale */
   for (int k = 0; k < WORLD_ROOMS; k++) {
     if (!everglade_room_tick(k)) continue;
     int64_t tf = now_us();
@@ -374,6 +382,7 @@ static void shut(int i) {
   bool was = conns[i].ws;
   if (was) rm_left(view(), i);
   if(was)st_discarded_bytes+=(int64_t)conns[i].on;
+  wt_forget(i);
   close(conns[i].fd);
   free(conns[i].out);
   conns[i] = (conn){.fd = -1};
@@ -854,7 +863,7 @@ static void stats_sample(void) {
   for (int i = 0; i < CONNS; i++) {
     if (conns[i].fd < 0 || !conns[i].ws || !rm_st_conn(view(), i, (coax_v_s64){ks, 2})) continue;
     st_c[i].relevant = (int)rm_st_relevant(view(), ks[0], (coax_t_SeatId){ ks[1]});
-    st_c[i].rtt_ms = st_rtt(conns[i].fd);
+    st_c[i].rtt_ms = conns[i].wt ? wt_rtt(i) : st_rtt(conns[i].fd);
     int64_t w[4];
     if (rm_st_wire(view(), ks[0], (coax_t_SeatId){ ks[1]}, (coax_v_s64){w, 4})) {
       st_c[i].aged += w[0] >= st_c[i].aged_was ? w[0] - st_c[i].aged_was : w[0];   /* a new seat counts from 0 */
@@ -940,7 +949,9 @@ static int start_check(void) {
 
 int main(int argc, char **argv) {
   const char *address = "127.0.0.1"; int port = 8830; bool native_local = false;
+  const char *wt_cert = getenv("OA_ROOM_WT_CERT"), *wt_key = getenv("OA_ROOM_WT_KEY");
   for (int i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "--wt") && i + 2 < argc) { wt_cert = argv[++i]; wt_key = argv[++i]; continue; }
     if (!strcmp(argv[i], "--listen") && i + 1 < argc) address = argv[++i];
     else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--dev") && i + 1 < argc) dev_dir = argv[++i];
@@ -999,6 +1010,10 @@ int main(int argc, char **argv) {
   fcntl(lfd, F_SETFL, O_NONBLOCK); fcntl(lfd, F_SETFD, FD_CLOEXEC);
   for (int i = 0; i < CONNS; i++) conns[i].fd = -1;
   printf("room: listening on %s:%d\n", address, port);
+  if (wt_cert && *wt_cert && wt_key && *wt_key) {
+    const char *wp = getenv("OA_ROOM_WT_PORT");
+    if (!wt_start(address, wp && *wp ? atoi(wp) : port, wt_cert, wt_key)) return 1;
+  }
   const double tick = 1000.0 / 60.0;
   double next = (double)now_ms();
   int64_t ticks = 0, last_report = now_ms(), last_vitals = now_ms(), last_stats = now_ms(), drain_at = 0;
@@ -1024,16 +1039,19 @@ int main(int argc, char **argv) {
         return rm_checkpoint_clean(view()) ? 0 : 1;
       }
     }
-    struct pollfd fds[CONNS + 1]; int map[CONNS + 1], n = 0;
+    struct pollfd fds[CONNS + 2]; int map[CONNS + 2], n = 0;
     fds[n] = (struct pollfd){lfd, POLLIN, 0}; map[n++] = -1;
-    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0) { fds[n] = (struct pollfd){conns[i].fd, (short)(POLLIN | (conns[i].on ? POLLOUT : 0)), 0}; map[n++] = i; }
+    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && !conns[i].wt) { fds[n] = (struct pollfd){conns[i].fd, (short)(POLLIN | (conns[i].on ? POLLOUT : 0)), 0}; map[n++] = i; }
+    if (wts) { fds[n] = (struct pollfd){wt_fd(wts), POLLIN, 0}; map[n++] = -2; }
     int wait = (int)(next - (double)now_ms());
+    if (wts) { int wto = wt_timeout_ms(wts); if (wto < wait) wait = wto; }
     if (poll(fds, (nfds_t)n, wait > 0 ? wait : 0) < 0 && errno != EINTR) { perror("room: poll"); return 1; }
     int64_t now = now_ms();
     clock_in();
     for (int k = 0; k < n; k++) {
       if (map[k] >= 0 && (fds[k].revents & POLLOUT) && conns[map[k]].fd >= 0 && !pump(map[k])) conns[map[k]].doomed = true;
       if (!(fds[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+      if (map[k] == -2) { wt_read(wts); relay_flush(); continue; }   /* WebTransport: every datagram waiting (room-wt.c) */
       if (map[k] < 0) {
         for (;;) {
           int fd = accept(lfd, NULL, NULL);
@@ -1069,7 +1087,7 @@ int main(int argc, char **argv) {
       if (rm_realm_due(view(), 0, ticks)) rm_tick(view());
       if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; }
       for (int i = 0; i < CONNS; i++) {
-        if (conns[i].fd < 0 || !conns[i].ws) continue;
+        if (conns[i].fd < 0 || !conns[i].ws || conns[i].wt) continue;
         int64_t len = rm_state(view(), i);
         if (len <= 0) continue;
         uint8_t out[2100]; size_t k = ws_build(out, sizeof out, WS_TEXT, server->out.e, (size_t)len, false);
@@ -1082,7 +1100,7 @@ int main(int argc, char **argv) {
         printf("room: a stall of %.0f ms, the beat started again\n", (double)now - next);
         next = (double)now + tick;
       }
-      if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); }
+      if (now - last_vitals >= 1000) { last_vitals = now; vitals_post(); directory_post(); stats_sample(); wt_note(); }
       if (now - last_stats >= ST_WINDOW_MS) { stats_window((now - last_stats) / 1000.0); last_stats = now; }
       control_ask();poster_hear();if(!dev_dir)world_ask();checkpoint_post();
       if (now - last_report >= 60000) { printf("room: %lld ticks in %.1f s, %lld players, %lld frames over the rate limits, %lld queue full, %lld slow sockets closed, %lld bytes the most waiting\n", (long long)ticks, (now - last_report) / 1000.0, (long long)rm_players(view()), (long long)rm_relay_dropped(view()), (long long)rm_relay_queue_full(view()), (long long)slow_closed, (long long)out_peak);
@@ -1099,5 +1117,6 @@ int main(int argc, char **argv) {
                  (long long)rm_travel_stat(w, 4), (long long)rm_travel_stat(w, 5), (long long)rm_travel_stat(w, 6)); }
         ticks = 0; last_report = now; memcpy(fan_last, fan_now, sizeof fan_now); memset(fan_now, 0, sizeof fan_now); memcpy(tick_last, tick_now, sizeof tick_now); memset(tick_now, 0, sizeof tick_now); }
     }
+    if (wts) { reap(); wt_flush(wts); }   /* every session's timers and waiting bytes (room-wt.c) */
   }
 }

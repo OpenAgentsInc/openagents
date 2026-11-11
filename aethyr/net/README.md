@@ -15,9 +15,6 @@ effects. An interface does not create a second model world for the consumer.
 | Replication and body lifetime | `replication.coax` | Per-recipient receipt ring, baselines, replacement/removal and complete-tick ACK | Complete absolute snapshots, complete-tick ACK and absence removal; no unused delta/removal queue |
 | Recipient fields | `realm.coax`, `row.coax` | Owner/public body fields; distant party HP/MAX only; blocks deny fields | Public pose, paint and life; fuel only for the owner; no party fields |
 | Persistence | `net_session_saved`; existing checkpoint flow | Schema 2 requires an accepted capture within the existing bound; old schemas keep their existing policy | Explicit `NET_DURABLE_NONE`; no implied checkpoint or resume promise |
-| Relevance at scale | `grid.coax` (#13178) | The room's interest grid: uniform cells of half the relevance radius, queries by neighbourhood | — |
-| Priority, budget and backpressure | `budget.coax` (#13178) | Per-seat link (15 KB/s of rows, halved and spaced while its socket queues or HEARD lags), priority by distance, view, combat, speed and age, starved rows first | — |
-| Reliable spawn and despawn | `spawn.coax` (#13178) | Spawns and x's lead each frame (the reliable lane); on datagrams an unheard spawn's updates wait | — |
 | Diagnostics | `diagnostics.coax` | Readiness, selected profile, world tick, live/held seats; unavailable counters are −1 | Readiness, selected profile, world tick, admitted humans and bots, consumed controls, refusals and snapshots |
 
 `coax/web/room/room.coax` selects profiles and exports
@@ -31,6 +28,41 @@ humans and the quick match's bot seats.
 The native host reads this interface for its local per-room diagnostic log.
 The published signed room-stats body keeps its existing format.
 
+## The transport
+
+`transport.coax` (#13176) is the one interface between a page and its room,
+with two implementations: the WebSocket, and WebTransport (the room's
+`coax/web/room/wt.c` and `room-wt.c`, the page host's `coax/web/room-wt.js`).
+A realm sends each frame one of five ways:
+
+| Channel | Delivery | Everglade's frames |
+| --- | --- | --- |
+| `NET_DATAGRAM` | Unreliable, unordered, at most 1,200 bytes, each one decodes alone | A seat's state each tick (`D`, part 0 only), inputs (`I`, `J1`), anchors (`g2`, `h2`, `m2`) |
+| `NET_COMBAT` | Reliable, ordered | Casts and their outcomes (`C`, `F`, `E`, `a`, `d`, `g3`, `h3`, `r`), and out-of-band `D` frames (flag 4) |
+| `NET_LOOT` | Reliable, ordered | Inventory and loot (`b`, `z`, `u1`) |
+| `NET_CHAT` | Reliable, ordered | Chat |
+| `NET_SESSION` | Reliable, ordered | Everything else: joins, seats, keyframes too large for a datagram, `nq` |
+
+On a WebSocket every channel is the socket's one ordered stream, and every
+byte is the same as before the interface. On WebTransport each reliable
+channel is its own stream, so a resend in one never holds up another.
+
+- **Open.** `net_link_url` prefixes `wt+`. The host tries WebTransport for
+  2.5 seconds, then opens the WebSocket; its opened event says `wt` when
+  WebTransport won. `?transport=wt|ws` on the page picks one;
+  `E2N_WT_DEFAULT` is the default.
+- **Inputs.** `net_link_input` sends each input in a datagram that repeats
+  every input the room hasn't acknowledged, oldest first (32 kept, up to
+  1,200 bytes). The room's `net_gate_fresh` lets each through once.
+- **State.** The room writes one datagram of state per tick per seat, by
+  priority, and leaves the rest for the next tick. What doesn't fit, and
+  every cue and outcome, goes out of band on the combat stream. A tick's
+  state replaces the last tick's if it still waits for the congestion window
+  (dropped stale, at the sender).
+- **The overlay.** `?net` shows `LINK WT LOSS 1.2%` (state ticks lost on the
+  way) and `KEY 3 STALE 7 WAIT 0` (snapshots, and the room's word each
+  second: datagrams dropped stale and waiting now).
+
 ## Adoption points
 
 - `coax/web/room/room-everglade.coax` calls the shared initialized-step,
@@ -42,10 +74,6 @@ The published signed room-stats body keeps its existing format.
   It copies only occupied slots. Its former local copies of those decisions
   are removed. `net_row_delta` supplies the explicit field mask.
 - `room-blocks.coax` passes selected fields through `wire_seat_frame_fields`.
-- `room-everglade.coax` steps each seat's `NetLink` and passes its limit, the
-  seat's camera and each slot's combat to `wire_seat_frame_look`; a packed page
-  hears its link once a second (`k`) for the `?net` overlay's BUDGET and DROP.
-  `coax/web/tool.sh coax/web/room/repl-bench.coax` measures the layer.
   Party health does not create a visible body in `everglade-net.coax`.
   Widening permissions invalidates a baseline and sends an absolute row.
   Narrowing permissions cannot expose a previously private field.

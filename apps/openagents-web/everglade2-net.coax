@@ -18,6 +18,7 @@
 #load "analytics.coax";   // fact_of; and the page's Track (everglade2-track.coax)
 #load "../../aethyr/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
 #load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)
+#load "../../aethyr/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
@@ -29,6 +30,9 @@ E2N_HOLD_MS :: 4000;            // the run waits this long at most for its seat 
 E2N_SAY :: 48;
 E2N_CASTS :: 16;                // the others' casts heard and not yet played (e2n_cast_due)
 E2N_SHOTS :: 16;                // the room's words on arrows heard and not yet drawn (everglade2-arrows.coax e2bw_step)
+// The room over WebTransport (#13176): ?transport=wt asks for it, ?transport=ws keeps the WebSocket;
+// with neither, E2N_WT_DEFAULT. The host falls back to the WebSocket where WebTransport fails.
+E2N_WT_DEFAULT :: false;
 
 // One cast the room said (e cast SS SLOT AX AY AZ SEED, #13058): another player's, played when the
 // drawn picture reaches the tick it came with (t, the room's clock), at that player as drawn.
@@ -83,6 +87,9 @@ E2Net :: struct {
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; bytes_in: int; replays: int; fix_sq: f32;
   stats: [1] NetStats;           // the netcode readout's counts (aethyr/net/stats.coax): bytes, frames, state gaps, corrections
+  link: [1] NetLink;             // the transport the socket runs on, its owed inputs and counts (aethyr/net/transport.coax)
+  wt: bool;                      // open the room as WebTransport first (?transport=wt, E2N_WT_DEFAULT)
+  wout: [NET_DATAGRAM_MAX] u8;   // a frame as the pipe carries it (net_link_frame, net_link_input)
   said: [E2N_SAY] u8; said_n: int; said_at: int;
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
@@ -123,9 +130,15 @@ e2n_mon_kind :: (n: [] E2Net, m: int) -> int {
 
 e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >= 0; }
 e2n_now :: (n: [] E2Net) -> int { return n[0].mono + n[0].offset; }
+// A frame to the room on its channel: a cast, its launch and an interaction on the combat stream, the
+// rest on the session's (aethyr/net/transport.coax). On a WebSocket the bytes are the frame's own.
 e2n_send :: (n: [] E2Net, count: int) {
   if n[0].state != E2N_OPEN || n[0].sock < 0 || count <= 0 { return; }
-  if pipe_send(n[0].pipe[..], n[0].sock, cast(string) n[0].out[0..<count]) { n[0].frames_out += 1; net_stats_out(n[0].stats[..], count, n[0].mono); }
+  f := cast(string) n[0].out[0..<count];
+  e2n_pipe(n, net_link_frame(n[0].link[..], ifx f[0] == 'C' || f[0] == 'F' || f[0] == 'E' then NET_COMBAT else NET_SESSION, f, n[0].wout[..]));
+}
+e2n_pipe :: (n: [] E2Net, d: string) {
+  if d.count > 0 && pipe_send(n[0].pipe[..], n[0].sock, d) { n[0].frames_out += 1; net_stats_out(n[0].stats[..], d.count, n[0].mono); }
 }
 e2n_tell :: (n: [] E2Net, t: string) {
   n[0].said_n = 0;
@@ -162,6 +175,7 @@ e2n_facts :: (n: [] E2Net, facts: string, alone: bool) {
   pid := fact_of(facts, "player");
   if pid.count > 0 { n[0].pid_n = net_copy(n[0].pid[..], pid); }
   n[0].account = fact_of(facts, "account").count > 0;
+  tr := net_query(url, "transport"); n[0].wt = ifx tr == "wt" then true else ifx tr == "ws" then false else E2N_WT_DEFAULT;
   wall := net_number(fact_of(facts, "now")); nav := net_number(fact_of(facts, "nav"));
   if wall > 0 && nav >= 0 && n[0].synced == 0 { n[0].offset = wall - nav; }
 }
@@ -305,7 +319,7 @@ e2n_down :: (n: [] E2Net) {
 e2n_event :: (n: [] E2Net, kind: int, text: string) -> bool {
   ev := socket_event(kind);
   if ev.id < 0 || ev.id != n[0].sock { return false; }
-  if ev.event == SOCKET_OPENED { n[0].state = E2N_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; return true; }
+  if ev.event == SOCKET_OPENED { n[0].state = E2N_OPEN; n[0].tries = 0; n[0].ping_n = 0; n[0].ping_at = 0; _ := net_link_opened(n[0].link[..], ev.id, text); return true; }
   if ev.event == SOCKET_ERROR && text.count > 0 && n[0].state == E2N_OPEN { return true; }   // a frame over the inbox: dropped
   if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
     if n[0].seat >= 0 { n[0].lost = true; e2n_tell(n, "LOST THE ROOM · REJOINING"); }
@@ -332,6 +346,7 @@ e2n_tick_t :: (n: [] E2Net, tick: int) -> int {
 // One frame from the room.
 e2n_record :: (n: [] E2Net, t: string) {
   if t.count < 1 { return; }
+  if net_link_note(n[0].link[..], t) { return; }   // the room's word on a WebTransport link (?net)
   if t.count > 2 && t[1] == ' ' && (t[0] == 'a' || t[0] == 'd') { e2n_shot_word(n, t); return; }   // an arrow loosed or ended
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
   if wire_is(t,"g2") { e2n_guard_row(n,t); return; }
@@ -414,6 +429,9 @@ e2n_record :: (n: [] E2Net, t: string) {
   if c == 'D' {
     d := wire_read_d(t, r[..]);
     if !r[0].ok { return; }
+    // out of band (a WebTransport seat's outcomes on the combat stream): its entries, nothing of the tick
+    if (d.f & WIRE_F_OOB) != 0 { for k: 0..<wire_entries(t, r[0].at) { e2n_entry(n, wire_entry(t, r[0].at, k), d); } return; }
+    net_link_ack(n[0].link[..], d.ack); net_link_tick(n[0].link[..], d.tick, (d.f & 1) != 0);
     clock := e2n_tick_t(n, d.tick);
     if d.part == 0 && (d.tick != n[0].tick || n[0].ticks == 0) {
       j := net_jitter_heard(NetJitter.{late_mean = n[0].late_mean, jitter = n[0].jitter, interval = n[0].interval}, n[0].ticks, e2n_now(n), clock, n[0].tick_t);
@@ -475,7 +493,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     return;
   }
 }
-// One entry of a state (D): a row (s), who a seat is (n), your link (k), one gone (x).
+// One entry of a state (D): a row (s), who a seat is (n), one gone (x).
 e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if t.count < 1 { return; }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
@@ -524,11 +542,6 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     n[0].casts[q] = E2nCast.{live = true, ss = ce.ss, slot = ce.slot, ax = ce.ax, ay = ce.ay, az = ce.az, seed = ce.seed, t = n[0].tick_t};
     return;
   }
-  if c == 'k' {   // the room's word on your link: the ?net overlay's BUDGET and DROP (#13178)
-    l := wire_read_link(t, r[..]);
-    if r[0].ok { net_stats_link(n[0].stats[..], l.rate, l.used, l.dropped, l.every); }
-    return;
-  }
   if c == 'x' {
     id := wire_num(t, r[..]);
     if !r[0].ok { return; }
@@ -571,7 +584,9 @@ e2n_input :: (n: [] E2Net, input: EgMoveIn) -> int {
   n[0].seq += 1;
   n[0].inputs[n[0].seq % NET_HIST] = NetInput.{seq = n[0].seq, input = input};
   b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0);
-  e2n_send(n, wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard}));
+  m := wire_put_in(n[0].out[..], 0, WireIn.{seq = n[0].seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard});
+  // a datagram that repeats what the room hasn't acknowledged (on a WebSocket, the frame alone)
+  if n[0].state == E2N_OPEN && n[0].sock >= 0 { e2n_pipe(n, net_link_input(n[0].link[..], n[0].seq, cast(string) n[0].out[0..<m], n[0].wout[..])); }
   return n[0].seq;
 }
 e2n_fix_due :: (n: [] E2Net) -> bool { return e2n_open(n) && n[0].fix_due && n[0].fix.ok; }
@@ -617,6 +632,35 @@ e2n_offset :: (n: [] E2Net, dt: f32) -> [3] f32 {
   e2n_fixed(n[..], 0.1, 0, 0); #assert !n[0].fix_due && abs(n[0].off_x + 0.1) < 0.0001;
   e2n_fixed(n[..], 5, 0, 0); #assert n[0].off_x == 0;   // a jump of metres is taken at once
 }
+#test "on WebTransport your inputs go as datagrams that repeat the unacknowledged, casts on the combat stream, outcomes out of band; on a WebSocket every byte is as before (#13176)" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
+  #assert e2n_event(n[..], SOCKET_KIND + 4 + SOCKET_OPENED, "wt") && n[0].link[0].kind == NET_WT;
+  n[0].seat = 2;
+  for i: 0..<3 { _ := e2n_input(n[..], EgMoveIn.{key_y = 1}); }
+  d := pipe_bytes(n[0].pipe[..], 2);
+  #assert d[0] == NET_MARK + NET_DATAGRAM && net_bundle_count(d[1..<d.count]) == 3 && net_bundle_frame(d[1..<d.count], 0)[0..<4] == "I 1 " && net_bundle_frame(d[1..<d.count], 2)[0..<4] == "I 3 ";
+  // the room stepped 2: the next datagram repeats only 3
+  e2n_record(n[..], "D 40 2 0 0 ");
+  _2 := e2n_input(n[..], EgMoveIn.{key_y = 1});
+  d = pipe_bytes(n[0].pipe[..], 3);
+  #assert net_bundle_count(d[1..<d.count]) == 2 && net_bundle_frame(d[1..<d.count], 0)[0..<4] == "I 3 " && n[0].link[0].ticks == 1;
+  #assert e2n_cast(n[..], 128, 0, 1, -40) && pipe_bytes(n[0].pipe[..], 4)[0] == NET_MARK + NET_COMBAT && pipe_bytes(n[0].pipe[..], 4)[1] == 'C';
+  // an out-of-band D: its entries, nothing of the tick (not heard, not a gap)
+  e2n_record(n[..], "D 45 2 4 0 n 3 - ranger.0.0.0 druid 0 Ash");
+  #assert n[0].tick == 40 && n[0].link[0].ticks == 1 && n[0].mir[0].heard == 40;
+  e2n_record(n[..], "nq 5 1 2"); #assert n[0].link[0].stale == 5 && n[0].link[0].lost == 2;
+  // a WebSocket's: the frames themselves
+  w: [1] E2Net; w[0].state = E2N_OPEN; w[0].sock = 1; w[0].seat = 2;
+  #assert e2n_event(w[..], SOCKET_KIND + 4 + SOCKET_OPENED, "") && w[0].link[0].kind == NET_WS;
+  w[0].seat = 2;
+  _3 := e2n_input(w[..], EgMoveIn.{key_y = 1}); _4 := e2n_input(w[..], EgMoveIn.{key_y = 1});
+  #assert pipe_bytes(w[0].pipe[..], 1)[0..<4] == "I 2 " && net_bundle_count(pipe_bytes(w[0].pipe[..], 1)) == 1;
+  #assert e2n_cast(w[..], 128, 0, 1, -40) && pipe_bytes(w[0].pipe[..], 2)[0] == 'C';
+  // ?transport= picks it; the URL the host opens says so
+  q: [1] E2Net; e2n_facts(q[..], "url=http://127.0.0.1:8863/worlds/everglade2?relay=ws://localhost:8930&transport=wt\n", false); #assert q[0].wt;
+  e2n_facts(q[..], "url=http://127.0.0.1:8863/worlds/everglade2?relay=ws://localhost:8930&transport=ws\n", false); #assert !q[0].wt;
+  e2n_facts(q[..], "url=http://127.0.0.1:8863/worlds/everglade2?relay=ws://localhost:8930\n", false); #assert q[0].wt == E2N_WT_DEFAULT;
+}
 
 // ---- each frame
 
@@ -630,7 +674,8 @@ e2n_step :: (n: [] E2Net, mono: int) {
       k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]);
       k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
       if n[0].lost { k = wire_put(u[..], k, "&re=1"); }
-      if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = E2N_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
+      w: [NET_URL + NET_TICKET + 12] u8;
+      if pipe_open(n[0].pipe[..], net_link_url(w[..], cast(string) u[0..<k], n[0].wt)) { n[0].state = E2N_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
     } else if !n[0].ticket_asked && !n[0].naming { e2n_ask_ticket(n); }
   }
   if e2n_open(n) {

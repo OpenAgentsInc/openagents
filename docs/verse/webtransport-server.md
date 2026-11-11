@@ -133,5 +133,43 @@ Local, 2026-11-11, Apple Silicon Mac, Chrome 157 headless, no loss injected:
   1,200 bytes (`WT_DATAGRAM_MAX`) fits in one packet.
 - The same build compiles and serves on a Linux build host (Debian, gcc).
 
-Against the room VM's staging port: see #13176's record, once #13174's VM is
-up.
+## The room on WebTransport (#13176)
+
+The room server takes WebTransport sessions next to its WebSockets
+(`room-wt.c`, included by `room-host.c`). It starts when it has a
+certificate: `--wt CERT KEY`, or `OA_ROOM_WT_CERT` and `OA_ROOM_WT_KEY`. The
+UDP port has the TCP port's number unless `OA_ROOM_WT_PORT` says otherwise.
+
+- A session's CONNECT path is the WebSocket's request path (`/api/room/...`),
+  so a session joins, seats and plays through the same `rm_join`, and is one
+  of the room's connections.
+- The page sends inputs as datagrams and everything else on one stream, each
+  frame its length (2 bytes) and its bytes. The room sends each frame on the
+  channel `room-wt.coax` names: a datagram, or that domain's own stream.
+- At each tick's start the room drops the last tick's datagrams that still
+  wait for the congestion window, and counts them. Each second the page hears
+  `nq STALE WAITING LOST`.
+- The page host (`coax/web/room-wt.js`) opens `https://HOST/PATH` for a
+  `wt+ws://HOST/PATH` URL, and falls back to the WebSocket when WebTransport
+  is missing, refused or not ready in 2.5 seconds. The two are never open at
+  once, since each would take the seat.
+
+Local check, 2026-11-11, Chrome 157 headless, the room with `--wt`, the page
+with `?transport=wt&wthash=HASH`:
+
+- The session opened and the player seated, walked and cast. In a few
+  seconds the page heard 418 datagrams and sent 203.
+- `everglade2-latency` with two players on WebTransport held: every walk,
+  turn, attack and loose answered, 12 casts sent and 12 heard, and B saw A's
+  arrow 19 ms (median) after A loosed it. On WebSocket the same run gave 23 ms.
+- `?net` showed `LINK WT LOSS 0.0%` and `KEY 2 STALE 0 WAIT 2`.
+
+### On the room VM
+
+UDP 443 on the VM has one owner: the staging unit, `oa-room@staging`, for
+`room-staging.openagents.com`. `vm-deploy.sh wt` copies Caddy's certificate
+for that name (the key as PKCS#8), gives the unit the files and UDP 443, and
+installs a daily timer that does it again after Caddy renews
+(`vm/wt-cert.sh`). The production shards stay on WebSocket only. A page
+reaches staging's WebTransport with
+`?relay=wss://room-staging.openagents.com&transport=wt`.

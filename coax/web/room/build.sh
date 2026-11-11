@@ -80,8 +80,14 @@ cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -c "$here/room-math.c" -o "$work/ro
 # the pack's catalog, the bounds the world's pieces break with (room-catalog.coax)
 "$root/coax/web/tool.sh" "$here/room-catalog.coax" "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$work/room-catalog.c"
 cc -std=c11 -O2 -w -c "$work/room-catalog.c" -o "$work/room-catalog.o"
+# WebTransport (room-wt.c, #13176): the vendored QUIC stack (third_party/, built once into build/quic)
+# and the session layer, wt.c
+"$here/third_party/build.sh" "$here/build/quic" >/dev/null
+T="$here/third_party"
+quic=(-DNGTCP2_STATICLIB -DNGHTTP3_STATICLIB -I"$T/ngtcp2/lib/includes" -I"$T/ngtcp2/crypto/includes" -I"$T/nghttp3/lib/includes" -I"$T/picotls/include")
+cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE "${quic[@]}" -c "$here/wt.c" -o "$work/wt.o"
 cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
-  "${fast_flags[@]}" "$work/room-world.o" "$work/room-catalog.o" "$work/room-math.o" "${objs[@]}" "${fast_objects[@]}" -lm "${fast_libs[@]}" -o "$out"
+  "${fast_flags[@]}" "$work/room-world.o" "$work/room-catalog.o" "$work/room-math.o" "$work/wt.o" "$here/build/quic/libquic.a" "${objs[@]}" "${fast_objects[@]}" -lm "${fast_libs[@]}" -o "$out"
 # the simulation calls none of the C library's (room-math.c's in their place)
 if nm -u "$out" | grep -E '^_?_*(sin|cos|tan|exp|log|pow)f?$|sincos'; then echo "build.sh: $out calls the C library's math above (room-math.c, #12893)" >&2; exit 1; fi
 # the started server holds every declared default (room-host.c --start-check, room.coax rm_start_check)

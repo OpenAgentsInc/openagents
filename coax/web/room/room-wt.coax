@@ -1,0 +1,141 @@
+// The room's side of WebTransport (#13176, aethyr/net/transport.coax): which channel each frame of
+// Everglade's wire goes on, a datagram's repeated inputs let through once, and the seats whose state
+// goes as one datagram a tick (room-everglade.coax eg_send). The host (room-host.c, room-wt.c) carries
+// the bytes: a datagram for NET_DATAGRAM, else the reliable stream of the frame's domain.
+//   A seat on WebTransport gets each tick's state as one D datagram that decodes on its own: part 0,
+//   never "more follows" (F 2), at most NET_DATAGRAM_MAX bytes; its TICK is its sequence number and
+//   each row names its baseline (BACK). Rows that don't fit wait for the next tick in priority order
+//   (everglade-wire.coax wire_seat_frame), as a WebSocket seat's past its budget do. Its outcomes
+//   (every e entry, o N, and the town's pieces) go on the combat stream as D frames with F 4: out of
+//   band, read for their entries only, never counted toward a tick's parts.
+//   coax/bin/coax test --library coax/web/room/room.coax --only "webtransport"
+EG_DG_HEAD :: 48;                                   // a D datagram's header at most ("D TICK ACK F 0 "), with room to spare
+EG_DG_ROWS :: NET_DATAGRAM_MAX - EG_DG_HEAD;        // its entries' bytes at most
+// Everglade's frames by their first word; any other is the session's.
+RM_WT_ROUTES :: [12] NetRoute.[
+  NetRoute.{word = "D", channel = NET_DATAGRAM},     // state (F 4: the combat stream's, rm_wt_channel)
+  NetRoute.{word = "g2", channel = NET_DATAGRAM},    // the path guard's row, whole each time
+  NetRoute.{word = "h2", channel = NET_DATAGRAM},    // the monsters in view, whole each time
+  NetRoute.{word = "m2", channel = NET_DATAGRAM},    // your familiar, whole each time
+  NetRoute.{word = "a", channel = NET_COMBAT},       // an arrow loosed
+  NetRoute.{word = "d", channel = NET_COMBAT},       // and where it ended
+  NetRoute.{word = "g3", channel = NET_COMBAT},      // the guard's blows
+  NetRoute.{word = "h3", channel = NET_COMBAT},      // the monsters' blows, arrows and falls
+  NetRoute.{word = "r", channel = NET_COMBAT},       // an intent refused
+  NetRoute.{word = "b", channel = NET_LOOT},         // your bar's counts
+  NetRoute.{word = "z", channel = NET_LOOT},         // your rest
+  NetRoute.{word = "u1", channel = NET_LOOT},        // an aid's count
+];
+RmWt :: struct { on: bool; gate: [1] NetGate; dgrams: int; spilled: int; oob: int; }
+
+// Conn conn is (on) or is no longer a WebTransport session: what it counted starts again.
+rm_wt_conn :: (v: [] RmServer, conn: int, on: bool) #export_c #effects(all) {
+  if conn < 0 || conn >= CONNS { return; }
+  v[0].wt[conn] = RmWt.{on = on};
+}
+rm_wt_on :: (v: [] RmServer, conn: int) -> bool { return conn >= 0 && conn < CONNS && v[0].wt[conn].on; }
+// The channel a frame goes on to a WebTransport session (aethyr/net/transport.coax NET_*).
+rm_wt_channel :: (v: [] RmServer, text: string) -> int #export_c #effects(all) {
+  if text.count > 1 && text[0] == 'D' && text[1] == ' ' {
+    r: [1] WireRd; r[0] = wire_rd(text, 1);
+    d := wire_read_d(text, r[..]);
+    if r[0].ok && (d.f & WIRE_F_OOB) != 0 { return NET_COMBAT; }
+    return NET_DATAGRAM;
+  }
+  return net_route(RM_WT_ROUTES[..], text);
+}
+// A datagram from session conn: its frames, '\n' apart, each heard; an input (I or J1) only the first
+// time its number comes (each datagram repeats the ones the room hasn't acknowledged).
+rm_wt_heard :: (v: [] RmServer, conn: int, text: string) #export_c #effects(all) {
+  if !rm_wt_on(v, conn) { return; }
+  for q: 0..<net_bundle_count(text) {
+    f := net_bundle_frame(text, q);
+    if f.count == 0 { continue; }
+    if wire_is(f, "I") || wire_is(f, "J1") {
+      r: [1] WireRd; r[0] = wire_rd(f, ifx f[0] == 'J' then 2 else 1);
+      seq := wire_num(f, r[..]);
+      if !r[0].ok || !net_gate_fresh(v[0].wt[conn].gate[..], seq) { continue; }
+    }
+    rm_heard(v, conn, f);
+  }
+}
+rm_wt_stat :: (v: [] RmServer, conn: int, what: int) -> int #export_c #effects(all) {
+  if conn < 0 || conn >= CONNS { return -1; }
+  w := v[0].wt[conn];
+  return ifx what == 0 then w.dgrams else ifx what == 1 then w.spilled else ifx what == 2 then w.oob else ifx what == 3 then w.gate[0].repeats else -1;
+}
+// Whether entry goes in a WebTransport seat's state datagram: a row (s, packed S), one gone (x), who a
+// seat is (n) and a WANTED level (w); everything else is an outcome or a cue, the combat stream's.
+eg_dg_state :: (entry: string) -> bool {
+  if entry.count > 1 && entry[0] == 'S' { return true; }
+  return entry.count > 1 && entry[1] == ' ' && (entry[0] == 's' || entry[0] == 'x' || entry[0] == 'n' || entry[0] == 'w');
+}
+
+#test "webtransport: frames by channel, a datagram's repeated inputs once, and the state entries" {
+  v: [1] RmServer;
+  #assert rm_wt_channel(v[..], "D 40 3 0 0 s 1 0 7 1") == NET_DATAGRAM && rm_wt_channel(v[..], "D 40 3 4 0 e hit 1 2 3 0") == NET_COMBAT;
+  #assert rm_wt_channel(v[..], "D 40 3 5 0 e town") == NET_COMBAT && rm_wt_channel(v[..], "D x") == NET_DATAGRAM;
+  #assert rm_wt_channel(v[..], "h2 4 0") == NET_DATAGRAM && rm_wt_channel(v[..], "h3 4 0 1 2 3") == NET_COMBAT && rm_wt_channel(v[..], "a 1 2") == NET_COMBAT;
+  #assert rm_wt_channel(v[..], "b 1 2") == NET_LOOT && rm_wt_channel(v[..], "y 0 2 3") == NET_SESSION && rm_wt_channel(v[..], "W 1 30 1 2 0 1000") == NET_SESSION;
+  #assert eg_dg_state("s 1 0 7 1") && eg_dg_state("SAbc") && eg_dg_state("x 4") && eg_dg_state("n 1 - a b 0 -") && eg_dg_state("w 1 2");
+  #assert !eg_dg_state("e hit 1 2 3 0") && !eg_dg_state("o 4") && !eg_dg_state("e town") && !eg_dg_state("s") && !eg_dg_state("S");
+  rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-wt-gate HTTP/1.1\r\n\r\n") == 0;
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
+  k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
+  rm_wt_heard(v[..], 0, "I 1 100 0 0 0 0 0 0"); #assert v[0].eg[k].seat[0].q_n == 0;   // not a WebTransport session: nothing
+  rm_wt_conn(v[..], 0, true);
+  rm_wt_heard(v[..], 0, "I 1 100 0 0 0 0 0 0");
+  rm_wt_heard(v[..], 0, "I 1 100 0 0 0 0 0 0\nI 2 100 0 0 0 0 0 0");
+  rm_wt_heard(v[..], 0, "I 1 100 0 0 0 0 0 0\nI 2 100 0 0 0 0 0 0\nI 3 100 0 0 0 0 0 0\nnonsense\n");
+  #assert v[0].eg[k].seat[0].q_n == 3 && v[0].eg[k].seat[0].q[0].seq == 1 && v[0].eg[k].seat[0].q[2].seq == 3 && rm_wt_stat(v[..], 0, 3) == 3;
+  #assert v[0].conns[0].dropped == 0;   // the repeats never reach the rate limits
+  rm_wt_conn(v[..], 0, false); #assert rm_wt_stat(v[..], 0, 3) == 0 && rm_wt_stat(v[..], 0, 9) == -1 && rm_wt_stat(v[..], -1, 0) == -1;
+}
+// Each frame of what conn c heard since the last drain ('|' apart) that is a D: the datagrams' bytes
+// most, their count, any with more than part 0 or F 2, and the out-of-band ones.
+WtSeen :: struct { dgrams: int; most: int; bad: int; oob: int; snaps: int; }
+wt_test_seen :: (box: [] EgInbox, c: int, s: [] WtSeen) {
+  t := eg_test_of(box, c); from := 0;
+  for i: 0..<t.count + 1 {
+    if i < t.count && t[i] != '|' { continue; }
+    f := t[from..<i]; from = i + 1;
+    if f.count < 2 || f[0] != 'D' || f[1] != ' ' { continue; }
+    r: [1] WireRd; r[0] = wire_rd(f, 1); d := wire_read_d(f, r[..]);
+    if (d.f & WIRE_F_OOB) != 0 { s[0].oob += 1; continue; }
+    s[0].dgrams += 1; if f.count > s[0].most { s[0].most = f.count; }
+    if d.part != 0 || (d.f & 2) != 0 { s[0].bad += 1; }
+    if (d.f & 1) != 0 { s[0].snaps += 1; }
+  }
+}
+wt_test_live :: (m: [] WireMirror) -> int { n := 0; for e: 0..<WIRE_MIRROR { if m[0].ents[e].live { n += 1; } } return n; }
+#test "webtransport: a seat's state is one datagram a tick within NET_DATAGRAM_MAX, the rest waiting by priority, its outcomes out of band; its page holds what a WebSocket page holds" #steps 8000000000 {
+  v: [1] RmServer; box: [1] EgInbox;
+  rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  rm_wt_conn(v[..], 0, true);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-wt-state HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-wt-state HTTP/1.1\r\n\r\n") == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
+  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  b: [96] u8; seen: [2] WtSeen; ws_most := 0;
+  for t: 1..<91 {
+    // the town's people walking near: more rows a tick than one datagram holds
+    for i: 0..<40 { f := [7] f32.[f32(i % 8) * 3 - 12 + f32(t) * 0.05, 0, f32(i / 8) * 3 - 6, 0, 1, 0, 1]; rm_eg_folk(v[..], k, i, f[..]); }
+    for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, px = 40, heard = box[0].m[c].heard}); rm_heard(v[..], c, cast(string) b[0..<n]); }
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    wt_test_seen(box[..], 0, seen[0..<1]); wt_test_seen(box[..], 1, seen[1..<2]);
+    if seen[1].most > ws_most { ws_most = seen[1].most; }
+  }
+  // one datagram a tick, each whole on its own, never past NET_DATAGRAM_MAX, though the WebSocket's frames were larger
+  #assert seen[0].dgrams == 90 && seen[0].bad == 0 && seen[0].most <= NET_DATAGRAM_MAX && seen[0].snaps >= 1;
+  #assert ws_most > NET_DATAGRAM_MAX && seen[1].oob == 0;
+  // what didn't fit came on later ticks: the page holds every entity the WebSocket page does, and the other player where the room has them
+  #assert wt_test_live(box[0].m[0..<1]) == wt_test_live(box[0].m[1..<2]) && wt_test_live(box[0].m[0..<1]) > 2;
+  o := eg_test_ent(box[..], 0, 1); p := v[0].eg[k].seat[1].pose;
+  #assert o.id == 1 && (o.x - p.x) * (o.x - p.x) + (o.z - p.z) * (o.z - p.z) < 0.01 && box[0].m[0].heard > 80;
+  // an outcome (the town again, after a page said it missed one) goes out of band on the combat stream
+  eg_heard_missed(v[..], k, SeatId.{value = 0}); eg_heard_missed(v[..], k, SeatId.{value = 1});
+  for t: 91..<94 { for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, heard = box[0].m[c].heard}); rm_heard(v[..], c, cast(string) b[0..<n]); } eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); wt_test_seen(box[..], 0, seen[0..<1]); }
+  #assert seen[0].oob >= 1 && rm_wt_stat(v[..], 0, 2) == seen[0].oob && rm_wt_stat(v[..], 0, 0) == seen[0].dgrams;
+  #assert v[0].eg[k].seat[0].town_end == false && v[0].eg[k].seat[1].town_end == false;
+}

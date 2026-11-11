@@ -2,8 +2,8 @@
 # Firm reason: 5 (a thin wrapper: turns the room's Coax units into C and gathers its C sources)
 # Stages the room server's sources in OUT: OUT/src holds the Coax units turned into C (room.c and
 # the everglade world's everglade.c, everglade-step.c, grid.c, river.c, guard-guide-policy.c), the
-# host C (room-host.c and the room-tick.c it includes, room-world.c, room-math.c, ws.c) and the
-# catalog (room-catalog.c); OUT/compat is coax/web/compat. compile.sh turns OUT/src into the
+# host C (room-host.c and the room-tick.c and room-wt.c it includes, room-world.c, room-math.c, ws.c,
+# WebTransport's wt.c and the vendored QUIC stack in third_party/) and the catalog (room-catalog.c); OUT/compat is coax/web/compat. compile.sh turns OUT/src into the
 # `room` binary. Cloud Run's image (deploy.sh, Dockerfile) and the VM (vm-deploy.sh) both start here.
 #   coax/web/room/stage.sh OUT
 # Coax to C runs every check the room's units keep: run it on a build host,
@@ -24,6 +24,7 @@ for u in apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.c
   "$coax" c "$u" --library --header "$out/src/$n.h" > "$out/src/$n.c"
 done
 cp "$here/room-host.c" "$here/room-tick.c" "$here/room-stats.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$here/compile.sh" "$out/src/"
+cp "$here/room-wt.c" "$here/wt.c" "$here/wt.h" "$out/src/"; cp -R "$here/third_party" "$out/src/third_party"   # WebTransport (#13176)
 coax/web/tool.sh "$here/room-catalog.coax" apps/openagents-web/realms/everglade/assets/everglade.pack "$out/src/room-catalog.c"
 cp -R coax/web/compat "$out/compat"
 git rev-parse HEAD > "$out/commit" 2>/dev/null || true

@@ -29,11 +29,13 @@
 #load "../../../aethyr/net/command.coax";
 #load "../../../aethyr/net/session.coax";
 #load "../../../aethyr/net/diagnostics.coax";
+#load "../../../aethyr/net/transport.coax";   // WebSocket or WebTransport: the channel each frame goes on (#13176)
 #load "../../../aethyr/session/party.coax";   // a party's rules: who shows to whom (#12852, #12845)
 #load "room-interest.coax";   // who may receive what, each tick (#12789)
 #load "room-input-policy.coax";
 #load "room-blocks.coax";     // and who each seat blocks
 #load "room-everglade.coax";
+#load "room-wt.coax";   // the seats on WebTransport: state as one datagram a tick, outcomes on streams (#13176)
 #load "room-oldwire.coax";   // pages from before wire 3, for the week after it ships
 #load "room-casts.coax";   // casts under latency: their phases and a tick's order (#12790)
 #load "room-effects.coax"; // physical effects own capacity before cast resources
@@ -104,6 +106,7 @@ RmServer :: struct {
   forge:RmForge;
   quick_n: int;      // quick matches made: each gets its own room name
   conns: [CONNS] RmConn;
+  wt: [CONNS] RmWt;         // which sockets are WebTransport sessions, and their counts (room-wt.coax)
   rooms: [ROOMS] RmRoom;
   out: [2048] u8;    // the last frame written for the host to send
   // the relay's rooms and the frames waiting to go out (room-relay below)

@@ -1,15 +1,14 @@
 #load "../../../aethyr/ids.coax";
-#load "../../../aethyr/net/grid.coax";   // the engine's spatial grid (#13178)
 // Interest management for the Everglade rooms (#12789; docs/research/mmo.md section 7): which of a
 // room's entities each seat may receive this tick, and how much each matters. The send path
 // (room-everglade.coax eg_send, the v3 replication of #12783) asks im_pick once per seat per tick and
 // writes only what it returns, by priority, under its byte budget. Nothing here writes the wire.
 //
 // Each tick the room puts every entity it has (im_put: its wire ID, where it is, the seat it is or
-// rides on, its flags), then im_sweep drops the ones it didn't put. The entities sit in the engine's
-// spatial grid (aethyr/net/grid.coax, #13178), made for IM_EXIT: im_pick asks it for those within
-// IM_EXIT of the seat, then looks at the room-wide list and the seat's own list. It never scans
-// every entity for every seat.
+// rides on, its flags), then im_sweep drops the ones it didn't put. The entities sit in a uniform
+// grid of IM_CELL m cells, hashed into IM_BUCKETS lists, and an entity moves between lists only
+// when it changes cell. im_pick visits the cells within IM_EXIT of the seat, the room-wide list and
+// the seat's own list. It never scans every entity for every seat.
 //
 // The rules, in the order im_pick applies them:
 //   - Your own entities (of == you: your player, the effects on you) are always picked, priority IM_PRIO_OWN,
@@ -35,6 +34,8 @@ IM_SEATS :: 16;                 // EG_SEATS
 IM_ENTS :: 512;                 // original entities plus the separate forest records (#12940)
 IM_PICKS :: IM_ENTS;
 IM_KEYS :: 1024;                // the ID table's lists (a power of two)
+IM_CELL :: 32.0;                // m: a grid cell's side
+IM_BUCKETS :: 1024;             // the grid's lists (a power of two): cells hash into them
 IM_ENTER :: 110.0;              // m: an entity comes into a seat's view within this
 IM_EXIT :: 130.0;               // m: and leaves it only past this
 IM_ROOM :: 1;                   // flag: room-wide, picked at any distance
@@ -46,6 +47,8 @@ IM_WIRE_COND_INVISIBLE :: 128;  // COND's RS_INVISIBLE bit (aethyr/rules/srd/eng
 ImEnt :: struct {
   on: bool; id: int; tag: int = -1; x: f32; z: f32; of: int = -1; flags: int;   // tag: the caller's, handed back in each pick
   put: int;                     // the tick it was last put
+  cx: int; cz: int; cell: int = -1;       // its cell, and that cell's list
+  cnext: int = -1; cprev: int = -1;       // its neighbours in the cell's list
   knext: int = -1;                        // the next in its ID list
   onext: int = -1; oprev: int = -1;       // its neighbours in its seat's list (of >= 0)
   room_at: int = -1;                      // its place in the room-wide list (IM_ROOM)
@@ -56,7 +59,7 @@ Interest :: struct {
   used: int;                              // slots 0 to used - 1 have been handed out; the free ones are on free
   free: [IM_ENTS] int; free_n: int;
   key: [IM_KEYS] int;                     // each ID list's first slot, plus 1 (0 empty)
-  grid: [1] NetGrid;                      // where each slot stands (aethyr/net/grid.coax), made for IM_EXIT
+  cell: [IM_BUCKETS] int;                 // each cell list's first slot, plus 1
   own: [IM_SEATS] int;                    // each seat's list's first slot, plus 1
   room: [IM_ENTS] int; room_n: int;       // the room-wide slots
   // per seat
@@ -74,7 +77,7 @@ Interest :: struct {
 im_clear :: (im: [] Interest) {
   im[0].used = 0; im[0].free_n = 0; im[0].room_n = 0; im[0].mark_n = 0; im[0].visits = 0; im[0].over = 0;
   for q: 0..<IM_KEYS { im[0].key[q] = 0; }
-  net_grid_init(im[0].grid[..], f32(IM_EXIT));
+  for q: 0..<IM_BUCKETS { im[0].cell[q] = 0; }
   for s: 0..<IM_SEATS {
     im[0].own[s] = 0; im[0].blocks[s] = 0; im[0].party[s] = 0; im[0].serial[s] = 0;
     im[0].n_full[s] = 0; im[0].n_health[s] = 0; im[0].n_blocked[s] = 0; im[0].n_hidden[s] = 0;
@@ -84,6 +87,8 @@ im_clear :: (im: [] Interest) {
 }
 
 im_key :: (identity: EntityId) -> int { id := identity.value; h := id * 2654435761; if h < 0 { h = -h; } return (h >> 7) & (IM_KEYS - 1); }
+im_cell_of :: (cx: int, cz: int) -> int { h := cx * 73856093 + cz * 19349663; if h < 0 { h = -h; } return h & (IM_BUCKETS - 1); }
+im_coord :: (v: f32) -> int { if !(v == v) { return 0; } return cast(int) floor(v / f32(IM_CELL)); }
 
 // The slot that holds wire ID id, or -1.
 im_find :: (im: [] Interest, identity: EntityId) -> int { id := identity.value;
@@ -92,6 +97,20 @@ im_find :: (im: [] Interest, identity: EntityId) -> int { id := identity.value;
   return -1;
 }
 
+im_cell_unlink :: (im: [] Interest, i: int) {
+  e := im[0].e[i];
+  if e.cell < 0 { return; }
+  if e.cprev >= 0 { im[0].e[e.cprev].cnext = e.cnext; } else { im[0].cell[e.cell] = e.cnext + 1; }
+  if e.cnext >= 0 { im[0].e[e.cnext].cprev = e.cprev; }
+  im[0].e[i].cell = -1; im[0].e[i].cnext = -1; im[0].e[i].cprev = -1;
+}
+im_cell_link :: (im: [] Interest, i: int, cx: int, cz: int) {
+  c := im_cell_of(cx, cz);
+  head := im[0].cell[c] - 1;
+  im[0].e[i].cell = c; im[0].e[i].cx = cx; im[0].e[i].cz = cz; im[0].e[i].cprev = -1; im[0].e[i].cnext = head;
+  if head >= 0 { im[0].e[head].cprev = i; }
+  im[0].cell[c] = i + 1;
+}
 im_own_unlink :: (im: [] Interest, i: int) {
   e := im[0].e[i];
   if e.of < 0 || e.of >= IM_SEATS { return; }
@@ -138,8 +157,8 @@ im_put_at :: (im: [] Interest, tick: int, identity: EntityId, tag: int, x: f32, 
     im_own_unlink(im, i); im_own_link(im, i, of_id);
   }
   im[0].e[i].x = x; im[0].e[i].z = z; im[0].e[i].put = tick; im[0].e[i].tag = tag;
-  if im[0].grid[0].radius != f32(IM_EXIT) { net_grid_init(im[0].grid[..], f32(IM_EXIT)); for j: 0..<im[0].used { if im[0].e[j].on && j != i { _ := net_grid_put(im[0].grid[..], j, im[0].e[j].x, im[0].e[j].z); } } }   // an Interest never cleared (zeroed memory)
-  _ := net_grid_put(im[0].grid[..], i, x, z);
+  cx := im_coord(x); cz := im_coord(z);
+  if im[0].e[i].cell < 0 || im[0].e[i].cx != cx || im[0].e[i].cz != cz { im_cell_unlink(im, i); im_cell_link(im, i, cx, cz); }
   if (flags & IM_ROOM) != 0 { im_room_add(im, i); } else { im_room_remove(im, i); }
   im[0].e[i].flags = flags;
 }
@@ -152,7 +171,7 @@ im_drop :: (im: [] Interest, identity: EntityId) {
   p := -1; j := im[0].key[k] - 1;
   while j >= 0 && j != i { p = j; j = im[0].e[j].knext; }
   if p >= 0 { im[0].e[p].knext = im[0].e[i].knext; } else { im[0].key[k] = im[0].e[i].knext + 1; }
-  net_grid_drop(im[0].grid[..], i); im_own_unlink(im, i); im_room_remove(im, i);
+  im_cell_unlink(im, i); im_own_unlink(im, i); im_room_remove(im, i);
   im[0].e[i] = ImEnt.{};
   im[0].free[im[0].free_n] = i; im[0].free_n += 1;
 }
@@ -219,22 +238,27 @@ im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] Im
     dx := im[0].e[i].x - x; dz := im[0].e[i].z - z;
     n = im_take(im, s_id, i, f32(IM_PRIO_ROOM) + im_near(dx * dx + dz * dz), IM_FULL, out, n);
   }
-  // those within the exit radius, from the grid (the cells around the seat only)
-  enter2 := f32(IM_ENTER * IM_ENTER);
-  near: [IM_ENTS] int;
-  looked := im[0].grid[0].visits;
-  found := net_grid_query(im[0].grid[..], x, z, near[..]);
-  im[0].visits += im[0].grid[0].visits - looked;
-  for c: 0..<(ifx found < IM_ENTS then found else IM_ENTS) {
-    i = near[c];
-    if im[0].mark[i] == im[0].mark_n { continue; }   // taken: its own, or room-wide
-    e := im[0].e[i];
-    dx := e.x - x; dz := e.z - z; d2 := dx * dx + dz * dz;
-    held := im[0].had[s * IM_ENTS + i] == was && was > 0;
-    if d2 <= enter2 || held {   // (the grid's are within the exit radius)
-      why := im_withheld(im, s_id, i, tick);
-      if why != 0 { im[0].mark[i] = im[0].mark_n; if why == 1 { im[0].n_blocked[s] += 1; } else { im[0].n_hidden[s] += 1; } }
-      else { n = im_take(im, s_id, i, im_near(d2), IM_FULL, out, n); }
+  // the cells within the exit radius
+  enter2 := f32(IM_ENTER * IM_ENTER); exit2 := f32(IM_EXIT * IM_EXIT);
+  x0 := im_coord(x - f32(IM_EXIT)); x1 := im_coord(x + f32(IM_EXIT));
+  z0 := im_coord(z - f32(IM_EXIT)); z1 := im_coord(z + f32(IM_EXIT));
+  for cx: x0..<x1 + 1 {
+    for cz: z0..<z1 + 1 {
+      i = im[0].cell[im_cell_of(cx, cz)] - 1;
+      while i >= 0 {
+        e := im[0].e[i];
+        nx := e.cnext;
+        if e.cx != cx || e.cz != cz || im[0].mark[i] == im[0].mark_n { i = nx; continue; }   // another cell in this list, or taken
+        im[0].visits += 1;
+        dx := e.x - x; dz := e.z - z; d2 := dx * dx + dz * dz;
+        held := im[0].had[s * IM_ENTS + i] == was && was > 0;
+        if d2 <= enter2 || (held && d2 <= exit2) {
+          why := im_withheld(im, s_id, i, tick);
+          if why != 0 { im[0].mark[i] = im[0].mark_n; if why == 1 { im[0].n_blocked[s] += 1; } else { im[0].n_hidden[s] += 1; } }
+          else { n = im_take(im, s_id, i, im_near(d2), IM_FULL, out, n); }
+        }
+        i = nx;
+      }
     }
   }
   // party members out of range: their health only
@@ -435,7 +459,7 @@ im_rand :: (seed: [] int) -> int { seed[0] = (seed[0] * 1103515245 + 12345) & 0x
     for s: 0..<IM_SEATS { picked += im_pick(im[..], SeatId.{value = s}, x[s], z[s], t, p[..]); }
   }
   per := im[0].visits / (ticks * IM_SEATS);
-  // a scan looks at all 96 every pick; the grid at the cells around 130 m of the seat (about a tenth of the square)
+  // a scan looks at all 96 every pick; the grid at the cells within 130 m of the seat (about a ninth of the square)
   #assert per * 4 < 96;
   #assert picked / (ticks * IM_SEATS) < 20;
 }
