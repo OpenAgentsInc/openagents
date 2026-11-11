@@ -3,6 +3,10 @@
 # build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+# A failing step names itself (#13117): the line and the command, last in the
+# output, and the modules still building stop instead of running on unseen.
+trap 'status=$?; trap - ERR; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null || true
+      echo "build.sh: FAILED (status $status) at line $LINENO: $BASH_COMMAND" >&2; exit "$status"' ERR
 mkdir -p "$here/build"
 python3 "$here/../../coax/web/nip-pages.py" --check
 # The quickstart is authored once; stale generated document/shader bytes refuse a release.
