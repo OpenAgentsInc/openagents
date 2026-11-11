@@ -24,22 +24,26 @@ work="$(mktemp -d)";trap 'rm -rf "$work"' EXIT
 browser_unit=coax/web/project/landing-browser.coax; [[ "$render" != 1 ]] || browser_unit=aethyr/render/carriers/landing-browser.coax
 (cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports apps/openagents-web/newland.coax "$browser_unit" \
   coax/web/project/landing-fold.coax verse/gridwalk.coax) || { echo "build-home.sh: the same #export_c symbol in two units" >&2; exit 1; }
-objects=(); units=()
+# The units' C side by side, then every object side by side (#13154): one after another
+# they took the sum of four compiles, and the homepage is the last module a release waits for.
+objects=(); units=(); jobs=()
+all() { local pid; for pid in "$@"; do wait "$pid"; done; }
 for unit in newland landing-browser landing-fold; do
   directory=coax/web/project; [[ "$unit" != newland ]] || directory=apps/openagents-web
   # By repo-relative path, so the module's bytes don't depend on the checkout (wasm.sh).
   source_unit="$directory/$unit.coax"
   if [[ "$render" == 1 && "$unit" == landing-browser ]]; then source_unit=aethyr/render/carriers/landing-browser.coax; fi
-  (cd "$repo" && "$coax_driver" c "$source_unit" --library --header "$work/$unit.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$unit.c"
+  (cd "$repo" && "$coax_driver" c "$source_unit" --library --header "$work/$unit.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$unit.c" & jobs+=($!)
   units+=("$unit")
 done
 # The Grid (/realms/the-grid) is this module walked (newland-walk.coax): its session (you, the
 # phone's thumbs and the record, on Aethyr's engine core) is a library of its own (Gridwalk.h).
 for library in verse/gridwalk.coax; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
-  (cd "$repo" && "$coax_driver" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c"
+  (cd "$repo" && "$coax_driver" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/$base.c" & jobs+=($!)
   units+=("$base")
 done
+all "${jobs[@]}"; jobs=()
 if [[ "$render" == 1 ]]; then cp "$work/landing-browser.h" "$work/Render.h"; fi
 if [[ -n "${COAXIAL_ADMITTED_DIR:-}" ]]; then mkdir -p "$COAXIAL_ADMITTED_DIR";cp "$work/"*.c "$work/"*.h "$COAXIAL_ADMITTED_DIR/";fi
 # A release compiles as wasm.sh does (#12648): -Os bitcode, full LTO at the
@@ -49,19 +53,20 @@ if [[ "${COAXIAL_MODE:-release}" != dev ]]; then level=(-Os -flto); link_level=(
 # Struct defaults come from the compiler (coax_default_T in each unit's header):
 # the Grid's face calls them for its globals.
 for unit in "${units[@]}"; do
-  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o"
+  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o" & jobs+=($!)
   objects+=("$work/$unit.o")
 done
 for unit in newland landing-reader landing-fold landing-cache; do
   directory="$here"; [[ "$unit" != newland ]] || directory="$repo/apps/openagents-web"
   face="$directory/$unit-face.c"
-  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -I"$work" -I"$directory" -c "$face" -o "$work/$unit-face.o"
+  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -I"$work" -I"$directory" -c "$face" -o "$work/$unit-face.o" & jobs+=($!)
   objects+=("$work/$unit-face.o")
 done
 if [[ "$render" == 1 ]]; then
-  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -I"$work" -c "$repo/coax/web/render-face.c" -o "$work/Render-face.o"
+  "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 "${level[@]}" -I"$work" -c "$repo/coax/web/render-face.c" -o "$work/Render-face.o" & jobs+=($!)
   objects+=("$work/Render-face.o")
 fi
+all "${jobs[@]}"
 "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" ${link_level[@]+"${link_level[@]}"} -mexec-model=reactor "${objects[@]}" -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$grid_stack_bytes",--export=__heap_base,--gc-sections,--strip-debug -o "$work/reader.wasm"
 # A release: wasm-opt -O2, then its size budget (apps/openagents-web/wasm-budgets.txt,
 # as wasm.sh checks each module's).

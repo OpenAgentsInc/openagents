@@ -11,6 +11,12 @@
 #   coax/remote/pages.sh fetch COMMIT DIR
 #                                       only from the store (release.sh): exit 1 when COMMIT
 #                                       has none
+#   coax/remote/pages.sh fetch COMMIT DIR built
+#                                       only apps/openagents-web/build/ (the modules, their
+#                                       records, the render packages), for a tree of a later
+#                                       commit: the build there checks each against its inputs
+#   coax/remote/pages.sh nearest COMMIT prints the nearest of COMMIT and its last 200 ancestors
+#                                       with stored pages; exit 1 when none has
 #   coax/remote/pages.sh build COMMIT   build and store COMMIT's pages unless stored (after.sh)
 #   coax/remote/pages.sh has COMMIT     exit 0 when the store has COMMIT's pages
 #
@@ -33,8 +39,18 @@ resolve() {   # rev: the full commit
 }
 has() { gcloud storage ls "gs://$bucket/pages/$1/MANIFEST" > /dev/null 2>&1; }
 
-fetch() {   # commit dir: 0 fetched and checked, 1 none (or it doesn't check)
-  local commit="$1" dir="$2" tmp started=$SECONDS
+nearest() {   # commit: one listing of the store, then Git
+  local stored
+  stored="$(gcloud storage ls "gs://$bucket/pages/*/MANIFEST" 2> /dev/null | sed -n 's|.*/pages/\([0-9a-f]\{40\}\)/MANIFEST$|\1|p')"
+  [[ -n "$stored" ]] || return 1
+  local line; line="$(git rev-list -n 200 "$1")" || return 1
+  grep -m1 -Fxf <(printf '%s\n' "$stored") <<< "$line"
+}
+
+fetch() {   # commit dir [built]: 0 fetched and checked, 1 none (or it doesn't check)
+  local commit="$1" dir="$2" only=() tmp started=$SECONDS
+  # The homepage's seed is this build's own capture, never an earlier commit's.
+  [[ "${3:-}" != built ]] || only=(--exclude 'apps/openagents-web/build/home-seed' apps/openagents-web/build)
   tmp="$(mktemp -d)"
   gcloud storage cp "gs://$bucket/pages/$commit/MANIFEST" "$tmp/MANIFEST" --quiet > /dev/null 2>&1 || { rm -rf "$tmp"; say "none stored for ${commit:0:10}"; return 1; }
   local tree want sum
@@ -47,7 +63,7 @@ fetch() {   # commit dir: 0 fetched and checked, 1 none (or it doesn't check)
   gcloud storage cp "gs://$bucket/pages/$commit/pages.tar.gz" "$tmp/pages.tar.gz" --quiet > /dev/null 2>&1 || { rm -rf "$tmp"; say "could not download ${commit:0:10}'s pages"; return 1; }
   sum="$(shasum -a 256 < "$tmp/pages.tar.gz" | cut -c1-64)"
   [[ "$sum" == "$want" ]] || { say "${commit:0:10}'s pages.tar.gz has SHA-256 $sum, its MANIFEST says $want; not using it"; rm -rf "$tmp"; return 1; }
-  mkdir -p "$dir" && tar -xzf "$tmp/pages.tar.gz" -C "$dir" || { rm -rf "$tmp"; say "could not unpack into $dir"; return 1; }
+  mkdir -p "$dir" && tar -xzf "$tmp/pages.tar.gz" -C "$dir" ${only[@]+"${only[@]}"} || { rm -rf "$tmp"; say "could not unpack into $dir"; return 1; }
   say "${commit:0:10}: $(awk '$1 == "files" { print $2 }' "$tmp/MANIFEST") files ($(( $(wc -c < "$tmp/pages.tar.gz") / 1000000 )) MB, built on $(awk '$1 == "host" { print $2 " at " $3 }' "$tmp/MANIFEST")) into $dir in $((SECONDS - started)) s"
   rm -rf "$tmp"
 }
@@ -81,10 +97,11 @@ build() {   # commit: stored when this returns 0
 }
 
 case "${1:-}" in
-  fetch) c="$(resolve "$2")" || { say "no commit $2"; exit 2; }; fetch "$c" "$3" ;;
+  fetch) c="$(resolve "$2")" || { say "no commit $2"; exit 2; }; fetch "$c" "$3" "${4:-}" ;;
+  nearest) c="$(resolve "$2")" || { say "no commit $2"; exit 2; }; nearest "$c" ;;
   build) c="$(resolve "$2")" || { say "no commit $2"; exit 2; }; build "$c" ;;
   has) c="$(resolve "$2")" || exit 2; has "$c" ;;
-  ""|-h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  ""|-h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
   *)
     c="$(resolve "$1")" || { say "no commit $1"; exit 2; }
     dir="${2:-$(git rev-parse --show-toplevel)}"

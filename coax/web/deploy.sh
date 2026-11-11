@@ -26,25 +26,37 @@ lap() { local d=$(( $(now) - $2 )); printf '  %-8s %4s s\n' "$1" "$(( d / 100000
 
 # INVARIANTS.md: everything visible is Coax. release.sh runs it as a report
 # (COAX_VISUALS=report): only what breaks staging against production stops a release.
+t=$(now)
 if [[ "${COAX_VISUALS:-}" == report ]]; then "$here/check-visuals.sh" "$app" || echo "deploy: check-visuals fails (a report here)" >&2
 else "$here/check-visuals.sh" "$app"; fi
+lap visuals "$t"
 t=$(now); COAXIAL_MODE=release "$app/build.sh"; lap build "$t"
 
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 # Bundle host modules before content naming; deployed pages need one immutable
 # script, while coax serve can load the source modules from /coaxial/ directly.
+t=$(now)
 bun build "$here/host.js" --target browser --format esm --outfile "$stage/host.js" > /dev/null
+lap host "$t"
+t=$(now)
 # The page, index.html at the bucket's root as the CDN serves it. The wasm,
 # shaders and host script are named by their content (cached for good); the
 # page names them (data-wasm, data-wgsl) and is checked on every visit.
 python3 - "$app" "$stage/host.js" "$stage" "$here" <<'PY'
-import hashlib, json, os, re, shutil, subprocess, sys
+import functools, hashlib, json, os, re, shutil, subprocess, sys
 app, host, stage, tools = sys.argv[1:]
 from pathlib import Path
 sys.path.insert(0, tools)
+# Many pages name the same module, shader and render package: each is hashed, staged and
+# asked of its Coax tool once, not once a page (#13154: staging took 18 s of a release).
+@functools.lru_cache(maxsize=None)
 def stage_package(app, url, stage):
     return subprocess.check_output([os.path.join(tools, "tool.sh"), "render-stage", str(app), url, str(stage)], text=True).strip()
 assets, site = os.path.join(stage, "assets"), os.path.join(stage, "site")
+@functools.lru_cache(maxsize=None)
+def shader_path(name, declared):
+    return subprocess.check_output([os.path.join(tools, "tool.sh"), "shader-path", name, declared], text=True).strip().lstrip("/")
+@functools.lru_cache(maxsize=None)
 def put(src, rel):
     h = hashlib.sha256(open(src, "rb").read()).hexdigest()[:12]
     stem, ext = os.path.splitext(rel)
@@ -79,8 +91,7 @@ for f in pages:
         wasm = put(os.path.join(app, "build", name + ".wasm"), f"build/{name}.wasm")
         # Coax selects the repository page's declared shader; this wrapper copies its bytes.
         declared_shader = re.search(r'\bdata-wgsl="([^"]+)"', m.group(0))
-        shader_source = subprocess.check_output([os.path.join(tools, "tool.sh"), "shader-path", name,
-            declared_shader.group(1) if declared_shader else ""], text=True).strip().lstrip("/")
+        shader_source = shader_path(name, declared_shader.group(1) if declared_shader else "")
         wgsl = put(os.path.join(app, shader_source), "build/" + shader_source)
         rest = re.sub(r'\sdata-wgsl="[^"]+"', "", m.group(1))
         # The page's UI font (data-ui-font-src, realms.json ui_font_src): named by its content too, or it isn't on the site.
@@ -168,7 +179,8 @@ PY
 # Link previews (docs/web/og-tags.md): every page gets the Open Graph and Twitter tags it lacks, and
 # og/pages.txt lists them for /og. A page without a title or description, a broken or wrong-size
 # image, or a realm or project without its own card refuses the release (COAXIAL_OG_DRAFT=1 stages anyway).
-bun "$here/og.ts" "$stage/site" "$app"
+lap stage "$t"
+t=$(now); bun "$here/og.ts" "$stage/site" "$app"; lap og "$t"
 
 # Hidden presentations (unlock/), when COAXIAL_UNLOCKS names any: from the
 # environment, or this machine's secrets file. The phrases stay here.
@@ -187,13 +199,13 @@ fi
 
 # No comments reach a browser: the staged pages, scripts and shaders lose them
 # here, after the hidden presentations are in.
-bun "$here/strip.ts" "$stage"
+t=$(now); bun "$here/strip.ts" "$stage"; lap strip "$t"
 # No private pack ships in a release (a MetaHuman reaches a visitor only through the broker,
 # coax/web/api/verse_packs.c): a file under private/ or a pack naming the MetaHuman licence refuses it.
-"$here/tool.sh" private-guard "$stage"
+t=$(now); "$here/tool.sh" private-guard "$stage"; lap guard "$t"
 # The made-realm engine's script gains its served files' own hashes, after the strip changed their
 # bytes (engine-served.coax, #12629): a publish pins them with the script (migration 0107).
-"$here/tool.sh" engine-served write "$stage/site"
+t=$(now); "$here/tool.sh" engine-served write "$stage/site"; lap served "$t"
 if [[ -n "${COAXIAL_STAGE_TO:-}" ]]; then mkdir -p "$COAXIAL_STAGE_TO" && cp -R "$stage/assets" "$stage/site" "$COAXIAL_STAGE_TO/"; exit 0; fi
 
 if $server; then

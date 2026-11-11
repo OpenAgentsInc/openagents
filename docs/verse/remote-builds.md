@@ -279,7 +279,86 @@ same 49 modules prebuilt, the same nine built on the Mac in 4 to 42 s each.
 The run used 224 s of CPU in those 746 s, so what is left is not compiling:
 it is the build's serial steps and waits (the render packages one after
 another, the CLI's build, the project snapshots from Nostr, the Mac's build
-slots). The 2-minute target is not met; #13154 has the numbers.
+slots).
+
+### The build step in under 2 minutes
+
+Issue: [#13154](https://github.com/OpenAgentsInc/openagents/issues/13154).
+
+`build.sh` now ends with a table of every step's wall time: `serial` for a step
+the script waits on, `beside` for one that runs with others. `release.sh
+--build-only` also prints `deploy.sh`'s own steps under `build`.
+
+What changed:
+
+- **Steps side by side.** The CLI, the Nostr reads (homepage capture, project
+  snapshots, the project list) and the modules that load their tables run as one
+  chain, started first, beside everything else. The render packages build side
+  by side, and so do `build-home.sh`'s units and objects. Two steps stay in
+  turn before the modules start: `wgsl-module --site` and the NIP module (each
+  `coax wgsl` has 120 s, and beside sixty module builds two ran out of it).
+- **Render packages are taken prebuilt.** With `COAXIAL_PREBUILT=1`,
+  `aethyr/render/build.coax` takes a package a host made when every source it
+  names and every product has the SHA-256 its manifest names, whatever compiler
+  made it.
+- **The CLI is kept.** `apps/openagents-cli/build.sh --cli` keeps the built CLI
+  in `~/.cache/coax-tools` under the compiler's bytes, every file `main.coax`
+  loads, the native C and the C compiler with its flags. A Linux CLI can't run
+  on the Mac, so this cache is per machine.
+- **No drive files in a release.** `COAXIAL_DRIVE=0` skips `coax drive`'s layout
+  and source list (two more compiler passes for each module built here); in
+  other builds they run beside clang and the link, not after them.
+- **Staging hashes each file once.** `deploy.sh` stages each module, shader and
+  render package once, not once per page that names it (18 s to 5 to 7 s).
+- **Ancestor pages.** A commit without stored pages takes its nearest stored
+  ancestor's `build/` folder (`pages.sh nearest`, `pages.sh fetch COMMIT DIR
+  built`) when the compiler's sources and the build's recipes (`wasm.sh`,
+  `build-home.sh`, `coax/web/room`, `aethyr/render/build.coax`) are the same in
+  both. Each module is still taken only when its record names this tree's
+  inputs.
+- **A stopped release stops its build.** `bounded` runs `deploy.sh` under a
+  supervisor in its own process group. The supervisor stops the group when its
+  time limit passes or when `release.sh` goes, even by SIGKILL. `build.sh`
+  stops every process under it when a step fails or it is stopped, not only
+  its own jobs. Only the compiler's resident server (`coax serve --resident`)
+  stays: it detaches on purpose and exits after 15 idle minutes.
+
+The size budgets and compile-headroom checks are unchanged: each prebuilt
+module is checked against its bytes as before, `build.sh` checks the budget file
+before the modules start, and `build-home.sh` checks the homepage's budget.
+
+Measured on the Mac on 2026-11-11 with `COAXIAL_OG_DRAFT=1 release.sh
+--build-only`. Before: `68fcf1a65e` (the issue's run) and `5efbdf59af`
+(68fcf1a65e with only the step timings). After: `5c69fbdb17` (68fcf1a65e with
+this change), with its pages stored.
+
+| Step | 68fcf1a65e | 5efbdf59af | 5c69fbdb17 |
+| --- | --- | --- | --- |
+| compiler | 63 s | 9 s | 6 s |
+| pages fetch | 25 s | 10 s | 10 s |
+| **build** (deploy.sh) | **746 s** | **348 s** | **113 s** |
+| visuals | | 2 s | 5 s |
+| build.sh | | 320 s (271 s serial) | 93 s (29 s serial) |
+| stage | | 18 s | 7 s |
+| guard, served | | 3 s | 3 s |
+| all | 860 s | 375 s | 145 s |
+
+Inside `build.sh`, before and after:
+
+| Step | 5efbdf59af | 5c69fbdb17 |
+| --- | --- | --- |
+| render packages | 58 s, in turn | 11 s, beside |
+| CLI | 39 s, in turn | 6 s, beside (kept) |
+| homepage capture (Nostr, verifies every event) | 46 s, in turn | 43 s, beside |
+| project list, then bake | 40 s and 8 s, in turn | 33 s and 5 s, beside |
+| homepage, `/status`, `/docs/connect-a-pylon` modules | 117 to 154 s | 38 to 40 s |
+| the 48 prebuilt modules | 4 to 7 s each, side by side | 7 to 12 s each, side by side |
+
+What is left is the homepage chain: the capture (43 s) and the three modules
+that load it (40 s). Their inputs differ on every release because the capture
+is read afresh from Nostr, so they always build on the Mac. Eight modules build
+here in all (`project`, `projects`, `status`, `connect-pylon`, `admin`,
+`audiolab`, `og`, `private`) and 48 are taken prebuilt.
 
 The release then ships the hosts' bytes (Linux, clang 23.1.3), not the Mac's
 (Homebrew clang 23); they differ by a few hundred bytes a module, so the first

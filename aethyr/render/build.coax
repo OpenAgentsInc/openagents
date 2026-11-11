@@ -113,12 +113,16 @@ rb_label :: (path:string,root:string)->string {
   if path.count>root.count && path[0..<root.count]==root && path[root.count]=='/' {return path[root.count+1..<path.count];}
   return path;
 }
-rb_cached :: (outdir:string,profile:int,compiler_hash:string,inputs:[]RenderBuildInputs)->bool {
+// any_compiler (COAXIAL_PREBUILT=1: release.sh, after pages.sh fetched a build host's packages,
+// #13154): a package another machine's compiler built counts when every source it names has the
+// same bytes here and every product has the bytes its manifest names. A host's compiler and the
+// Mac's are built from the same sources but differ in bytes, as wasm.sh's built records allow.
+rb_cached :: (outdir:string,profile:int,compiler_hash:string,inputs:[]RenderBuildInputs,any_compiler:bool)->bool {
   path:[FS_PATH_MAX]u8;manifest:[RB_PACKAGE]u8;n:=fs_read(fs_join(outdir,"render.json",path[..]),manifest[..]);if n<1 {return false;}
   json:=cast(string)manifest[0..<n];entries:[14]RenderPackageEntry;p:=render_package_parse(json,entries[..]);
   if render_package_admit(p,profile,RenderDeviceCapabilities.{backend=RenderBackend.webgpu,helper_enabled=true})!=RenderPackageStatus.ok {return false;}
   nodes:[16384]JvNode;doc:[1]Jv;if !jv_parse(doc[..],json,nodes[..]) {return false;}d:=doc[0];
-  if rpkg_string(d,0,"compiler_sha256")!=compiler_hash {return false;}
+  if !any_compiler && rpkg_string(d,0,"compiler_sha256")!=compiler_hash {return false;}
   sources:=jv_get(d,0,"source_inputs");if jv_kind(d,sources)!=JV_ARRAY || jv_len(d,sources)!=inputs[0].count {return false;}
   cwd:[FS_PATH_MAX]u8;root:=fs_cwd(cwd[..]);
   for i:0..<inputs[0].count {
@@ -286,7 +290,8 @@ tool_main :: ()->int #export_c #effects(all) {
     for i:0..<14 {e:=rb_entry(profile,i);if e.valid && e.binding_set==set {source=e.source;}}
     if source.count>0 && !rb_inputs(inputs[..],compiler,source,temp,deadline) {tool_errln("aethyr render build: cannot snapshot shader inputs");removed:=fs_remove(temp);return 1;}
   }
-  if rb_cached(outdir,profile,cast(string)compiler_hash[..],inputs[..]) {
+  pb:[8]u8;prebuilt:=proc_getenv("COAXIAL_PREBUILT",pb[..])=="1";
+  if rb_cached(outdir,profile,cast(string)compiler_hash[..],inputs[..],prebuilt) {
     again:[64]u8;
     if !rb_file_sha(compiler,RB_COMPILER,again[..]) || cast(string)again[..]!=cast(string)compiler_hash[..] || !rb_inputs_unchanged(inputs[..]) {
       tool_errln("aethyr render build: an input changed while checking cached products");removed:=fs_remove(temp);return 1;

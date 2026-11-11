@@ -14,7 +14,10 @@
 # inputs and bytes (COAXIAL_PREBUILT=1). Every module's compile headroom and
 # size budget is still checked against those bytes; a module the hosts didn't
 # build, or whose sources differ here (the project tables come from Nostr at
-# build time), is built here.
+# build time), is built here. The render packages are taken the same way (each
+# source and product by its SHA-256), and a commit without stored pages takes
+# its nearest ancestor's build/ folder when the compiler's sources are the same
+# (#13154). The build prints each step's time; --build-only prints deploy.sh's too.
 #
 # One rule decides everything (owner, 2026-11-02): a release stops only for a
 # check that FAILS ON STAGING AND PASSES ON PRODUCTION, confirmed by a retry.
@@ -62,14 +65,42 @@ lap() { printf '  %-10s %5s s\n' "$1" "$(secs $(( $(now) - $2 )))"; }
 start=$(now)
 
 # A command in its own process group with a time limit; whatever it leaves (a Chrome) goes with it.
+# A supervisor (Python, in the group) runs it and stops the whole group when the limit passes or
+# when its caller goes, even by SIGKILL, so no compile outlives a stopped release (#13154: a stopped
+# dry run left its build running, and the Mac's load passed 200). It has no watchdog of its own to
+# leave behind.
 group=""
 bounded() {
   local limit=$1; shift
-  python3 -I -c 'import os, sys; os.setpgid(0, 0); os.execvp(sys.argv[1], sys.argv[1:])' "$@" < /dev/null & local pid=$!
+  python3 -I -c '
+import os, signal, sys, time
+limit, caller = float(sys.argv[1]), os.getppid()
+os.setpgid(0, 0)
+child = os.fork()
+if child == 0:
+    os.execvp(sys.argv[2], sys.argv[2:])
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+deadline = time.monotonic() + limit
+while True:
+    done, status = os.waitpid(child, os.WNOHANG)
+    if done == child:
+        code = os.waitstatus_to_exitcode(status)
+        sys.exit(code if code >= 0 else 128 - code)
+    if os.getppid() != caller or time.monotonic() > deadline:
+        why = "its caller is gone" if os.getppid() != caller else "%d s passed" % limit
+        print("bounded: stopping %s: %s" % (sys.argv[2], why), file=sys.stderr)
+        os.killpg(0, signal.SIGTERM)
+        end, done = time.monotonic() + 5, 0
+        while time.monotonic() < end and done == 0:
+            time.sleep(0.2)
+            done, status = os.waitpid(child, os.WNOHANG)
+        if done == 0 or os.getppid() != caller:
+            os.killpg(0, signal.SIGKILL)   # this supervisor too; the caller kills what is left otherwise
+        sys.exit(124)
+    time.sleep(0.5)
+' "$limit" "$@" < /dev/null & local pid=$!
   group=$pid
-  ( sleep "$limit" && kill -TERM -- "-$pid" 2>/dev/null && sleep 5 && kill -KILL -- "-$pid" 2>/dev/null ) & local dog=$!
   local status=0; wait "$pid" || status=$?
-  kill "$dog" 2>/dev/null; wait "$dog" 2>/dev/null || true
   kill -KILL -- "-$pid" 2>/dev/null || true
   group=""
   return "$status"
@@ -106,6 +137,9 @@ cleanup() {
   drop_lock
 }
 trap cleanup EXIT
+# A stopped release takes its build with it: deploy.sh runs in its own process
+# group (bounded), which cleanup kills, so no compile outlives the release (#13154).
+trap 'exit 143' TERM INT HUP
 
 $build_only || take_lock "release ${ref:-origin/main-green}"
 git -C "$repo" fetch -q origin main
@@ -134,19 +168,44 @@ echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 
 t=$(now); compiler "$tree" || exit 1; lap compiler "$t"
 
-# The hosts' build of this commit, if the shared store has it: wasm.sh then
-# builds only the modules it lacks (COAXIAL_PREBUILT).
+# The hosts' build of this commit, if the shared store has it: the build then
+# makes only what it lacks (COAXIAL_PREBUILT). Without one, the nearest
+# ancestor's build (#13154): only its build/ folder, and only when the compiler's
+# sources (the files coax/provenance.sh names a published compiler by) and the
+# build's recipes are the same in both commits: a record names a module's sources,
+# not the compiler or the flags that made it. Every module, render package and room
+# module there is still taken only if its record names this tree's inputs.
+compiler_inputs=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto coax/build.sh coax/bootstrap-build.sh
+  coax/bootstrap-mutation-shards.sh coax/mutation-gate.sh coax/check-proto-cap.sh coax/provenance.sh coax/provenance-bridge.c
+  coax/release.coax coax/release-model.coax coax/changelog.coax coax/changelog-model.coax coax/changelog-bridge.c
+  coax/lib/crypto/sha256-kernel.coax scripts/coax-release.sh
+  coax/web/wasm.sh coax/web/project/build-home.sh coax/web/room aethyr/render/build.coax)
 t=$(now)
-if pages_out="$(cd "$tree" && "$repo/coax/remote/pages.sh" fetch "$full" "$tree" 2>&1)"; then
+from="$(cd "$tree" && "$repo/coax/remote/pages.sh" nearest "$full" 2> /dev/null)" || from=""
+part=()
+if [[ -z "$from" ]]; then
+  echo "  prebuilt   none: every module builds here (no stored pages for $commit or its last 200 ancestors)"
+elif [[ "$from" != "$full" ]] && ! git -C "$repo" diff --quiet "$from" "$full" -- "${compiler_inputs[@]}"; then
+  echo "  prebuilt   none: every module builds here (the compiler or the build changed since ${from:0:10}, the nearest commit with stored pages)"; from=""
+elif [[ "$from" != "$full" ]]; then part=(built)
+fi
+if [[ -z "$from" ]]; then :
+elif pages_out="$(cd "$tree" && "$repo/coax/remote/pages.sh" fetch "$from" "$tree" ${part[@]+"${part[@]}"} 2>&1)"; then
   export COAXIAL_PREBUILT=1
-  echo "  prebuilt   $(tail -1 <<< "$pages_out" | sed 's/^pages: //')"
+  echo "  prebuilt   $(tail -1 <<< "$pages_out" | sed 's/^pages: //')$([[ "$from" == "$full" ]] || echo " ($(git -C "$repo" rev-list --count "$from..$full") commit(s) back: what differs builds here)")"
 else
   echo "  prebuilt   none: every module builds here ($(tail -1 <<< "$pages_out" | sed 's/^pages: //'))"
 fi
 lap pages "$t"
+# deploy.sh's own steps (its "  NAME  N s" lines) under the build's time.
+deploy_laps() { sed -n 's/^  \([a-z-]*\) *\([0-9.]* s\)$/    \1 \2/p' "$1" | awk '{ printf "    %-8s %7s s\n", $1, $2 }'; }
+# Nothing drives the release's own tree (coax drive reads a module's layout and source list from
+# build/.drive/), so the modules built here skip those two compiler passes (wasm.sh).
+export COAXIAL_DRIVE=0
 if $build_only; then
   staged="$(mktemp -d)"
-  t=$(now); COAX_VISUALS=report COAXIAL_STAGE_TO="$staged" "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap build "$t"
+  t=$(now); COAX_VISUALS=report COAXIAL_STAGE_TO="$staged" bounded 3600 "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > "$staged/deploy.log"; lap build "$t"
+  deploy_laps "$staged/deploy.log"; rm -f "$staged/deploy.log"
   echo "release $commit: built and staged in $staged (build only) in $(secs $(( $(now) - start ))) s"
   exit 0
 fi
@@ -177,7 +236,8 @@ base="$(mktemp -d)"
   starts "$production" > "$base/starts" ) &
 baseline_job=$!
 
-t=$(now); COAX_VISUALS=report "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
+t=$(now); COAX_VISUALS=report bounded 3600 "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > "$reports/deploy.log"; lap staging "$t"
+deploy_laps "$reports/deploy.log"
 wait "$baseline_job" || true
 base_smoke="$(fails_of < "$base/smoke")"; base_starts="$(starts_fails < "$base/starts")"
 
