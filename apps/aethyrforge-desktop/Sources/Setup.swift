@@ -70,7 +70,7 @@ final class ForgeSetupPane: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         clearColor = MTLClearColorMake(0,0,0,0)
         isPaused = true; enableSetNeedsDisplay = true; layer?.isOpaque = false
-        let path = Bundle.main.url(forResource: "Zeron", withExtension: "metal")!
+        let path = Bundle.main.url(forResource: "Component", withExtension: "metal")!
         let source = try! String(contentsOf: path, encoding: .utf8)
         renderer = try! ZeronMetalRenderer(device: device, library: device.makeLibrary(source: source, options: nil))
         delegate = self

@@ -3,7 +3,7 @@
 // primitives: quads (a rounded rect with a fill and a border), drop shadows
 // (a gaussian-blurred rounded rect) and monochrome sprites (glyphs and SVG
 // icons, alpha masks in an atlas, tinted). These are the same three, written
-// as vertices for apps/openagents-desktop/Zeron.metal, which ports GPUI's
+// as vertices for components/backend/gpu-shader.coax, which ports GPUI's
 // fragment shaders. Layout is in logical pixels; a primitive's bounds snap to
 // device pixels the way GPUI's window.rs does (snap_bounds, cover_bounds).
 // Two more for the transcript: the activity rail's elbow (paint_elbow, a

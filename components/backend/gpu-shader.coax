@@ -10,19 +10,15 @@
 #load "../../verse/gpu/wgsl.coax";
 
 
-// /chat's passes: GPUI's quad, shadow and sprite shaders, the WebGPU port of
-// apps/openagents-desktop/Zeron.metal (itself zeronsh/zui's
+// GPUI's quad, shadow and sprite shaders (zeronsh/zui's
 // gpui_macos/src/shaders.metal, Apache-2.0, the renderer Zeron draws with),
-// so the page draws the shared Zeron components (components/zeron/,
-// gpui.coax writes the vertices) exactly as the Mac app does. Based on Zeron
+// ported to Coax, so /chat, the Mac apps (emitted as Metal, which replaced the
+// hand-written Zeron.metal on 2026-11-10, #13156) and Linux draw the shared
+// Zeron components (components/zeron/, gpui.coax writes the vertices) alike. Based on Zeron
 // by Wing, MIT. Colors are straight sRGB with alpha, blended source-over into
 // a non-sRGB target, as GPUI does; the host (coax/web/gpui.js) gives this the
 // glyph and icon atlas (gpui_atlas, r8) and the color-glyph atlas
 // (gpui_color, rgba8, straight alpha).
-//
-// Hand-written WGSL, as Zeron.metal is hand-written Metal: GPUI's fragment
-// shaders are not Coax, so coax wgsl (which writes Coax scalar functions
-// as WGSL) has nothing to write. Keep the two files in step.
 //
 // A vertex is 28 floats (gpui.coax GP_VERTEX_FLOATS):
 //   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow, 5 gradient, 6 inset), blur

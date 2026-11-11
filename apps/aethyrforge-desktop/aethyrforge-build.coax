@@ -227,7 +227,10 @@ tool_main :: () -> int #export_c #effects(all) {
   sw := [44] string.["xcrun", "swiftc", "-O", "-target", "arm64-apple-macos26.0", "-import-objc-header", af_path(p[..], here, "face.h"),
     af_path(p[..], here, "Sources/main.swift"), af_path(p[..], here, "Sources/Setup.swift"), af_path(p[..],here,"Sources/Chat.swift"), af_path(p[..],here,"Sources/SetupProfile.swift"), af_path(p[..],here,"Sources/Offline.swift"), af_path(p[..],here,"Sources/Benchmark.swift"), af_path(p[..],root,"components/zeron/MetalUI.swift"),af_path(p[..],here,"Sources/MetalWorld.swift"),af_path(p[..],here,"Sources/MetalNetwork.swift"),af_path(p[..],here,"Sources/MetalAudio.swift"),af_path(p[..],here,"Sources/MetalBridge.swift"),object,bridge,chat_o,chat_face,af_path(p[..],work,"metal/MetalRealm.o"),af_path(p[..],work,"metal/MetalRender.o"),af_path(p[..],work,"metal/RenderTexture.o"),af_path(p[..],work,"metal/AppKitInput.o"),"-Xlinker","-export_dynamic","-framework","MetalKit", "-framework", "AppKit", "-framework", "WebKit", "-framework", "AVFoundation","-framework","QuartzCore","-framework","ImageIO","-framework","CoreGraphics", "-o", af_path(p[..], mac, "Aethyrforge")];
   if af_run(sw[..], out[..], deadline) < 0 { return 1; }
-  for name:[3]string.["Zeron.metal","fonts","NOTICE"] {
+  // The component shader (components/backend/gpu-shader.coax) emitted as Metal; Setup compiles it at launch.
+  emit:=[9]string.[coax,"metal",af_path(p[..],root,"components/backend/gpu-shader.coax"),"--vertex","chat_fx_vs","--fragment","chat_fx_fs","-o",af_path(p[..],res,"Component.metal")];
+  if af_run(emit[..],out[..],deadline)<0 {return 1;}
+  for name:[2]string.["fonts","NOTICE"] {
     copy:=[3]string.["ditto",af_path(p[..],af_path(p[..],root,"components/zeron"),name),af_path(p[..],res,name)];
     if af_run(copy[..],out[..],deadline)<0 {return 1;}
   }

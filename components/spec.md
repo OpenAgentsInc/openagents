@@ -198,8 +198,9 @@ defect, and a check finds it.
   the components not yet on the display list; both ways give the same
   floats, and a check holds them to it. Not drawn yet: an arc, a slanted
   line and an image (`gpu_draws` says so); they need a path in the shader.
-  The hand-written `Zeron.metal` goes away when the Mac app builds the
-  emitted Metal; that needs a Mac, and hasn't been done.
+  The Mac apps (OpenAgents and Aethyrforge) build the emitted Metal; the
+  hand-written `Zeron.metal` is gone (2026-11-10, #13156), and the Mac
+  goldens pass with it (at most 0.05% of pixels off, at glyph edges).
 - **`backend/terminal.coax`**: the display list to a grid of cells
   (`term_draw`), and a row of the grid to the bytes a terminal reads
   (`term_row`: SGR with 24-bit colour). Text lands in its cells, a rule

@@ -1,7 +1,7 @@
 // openagents.com/chat, drawn with the Zeron components the Mac app draws
 // its chat with (components/zeron/: Zeron's composer, transcript,
 // Markdown, tool chips and model menu, GPUI's primitives), on WebGPU by
-// chat.wgsl (Zeron.metal's port) with the atlas coax/web/gpui.js
+// chat.wgsl (components/backend/gpu-shader.coax) with the atlas coax/web/gpui.js
 // rasterizes in the browser. A direct chat with the OpenAgents agent,
 // admins only for now (docs/chat.md): the page holds nothing until oa-api
 // answers /api/chat/state with the admin's session cookie; anyone else sees

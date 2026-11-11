@@ -109,7 +109,7 @@ Mac app uses (`components/zeron/`: `gpui.coax`, `composer.coax`,
 its OFL), compiled to wasm and drawn on WebGPU. The old HUD chat is
 `apps/openagents-web/chat-hud.coax`, kept for the Mac app's unshown HUD.
 
-- **Shaders.** `chat.wgsl` is a WGSL port of `Zeron.metal` (quads, shadows,
+- **Shaders.** `chat.wgsl` is `components/backend/gpu-shader.coax` emitted as WGSL (the Mac apps emit the same file as Metal) (quads, shadows,
   underlines, mono and polychrome sprites).
 - **Glyphs.** `coax/web/gpui.js` rasterizes Geist and Geist Mono in the
   browser (FontFace into an OffscreenCanvas) at the device pixel ratio, four

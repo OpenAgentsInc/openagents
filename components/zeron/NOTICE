@@ -1,4 +1,4 @@
-Third-party material in the Zeron-fork UI (zeron/, Zeron.metal, fonts/, icons/)
+Third-party material in the Zeron-fork UI (zeron/, ../backend/gpu-shader.coax, fonts/, icons/)
 
 1. Zeron (https://github.com/zeronsh/zeron): its composer's and transcript's design
    (messages, Markdown, code blocks, tool groups and their details, diffs), measurements
@@ -27,7 +27,7 @@ Third-party material in the Zeron-fork UI (zeron/, Zeron.metal, fonts/, icons/)
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE.
 
-2. GPUI's shaders (zeronsh/zui, gpui_macos/src/shaders.metal), ported in Zeron.metal:
+2. GPUI's shaders (zeronsh/zui, gpui_macos/src/shaders.metal), ported in ../backend/gpu-shader.coax:
    Apache License 2.0, https://www.apache.org/licenses/LICENSE-2.0
 
 3. Geist and Geist Mono (fonts/Geist.ttf, fonts/Geist-Medium.ttf, fonts/Geist-SemiBold.ttf,

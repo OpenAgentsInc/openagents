@@ -239,10 +239,12 @@ final class ZeronMetalRenderer {
   init(device: MTLDevice, library: MTLLibrary) throws {
     queue = device.makeCommandQueue()!
     let p = MTLRenderPipelineDescriptor()
-    p.vertexFunction = library.makeFunction(name: "zr_vs"); p.fragmentFunction = library.makeFunction(name: "zr_fs")
+    // The component shader, components/backend/gpu-shader.coax emitted by `coax metal --vertex chat_fx_vs
+    // --fragment chat_fx_fs` (its .bind: the vertices at buffer 30, ChatU's floats at 0, the lengths at 29).
+    p.vertexFunction = library.makeFunction(name: "chat_fx_vs"); p.fragmentFunction = library.makeFunction(name: "chat_fx_fs")
     let v = MTLVertexDescriptor()
-    for i in 0..<7 { v.attributes[i].format = .float4; v.attributes[i].offset = 16 * i; v.attributes[i].bufferIndex = 0 }
-    v.layouts[0].stride = 28 * 4; p.vertexDescriptor = v
+    for i in 0..<7 { v.attributes[i].format = .float4; v.attributes[i].offset = 16 * i; v.attributes[i].bufferIndex = 30 }
+    v.layouts[30].stride = 28 * 4; p.vertexDescriptor = v
     let a = p.colorAttachments[0]!
     a.pixelFormat = .bgra8Unorm; a.isBlendingEnabled = true
     a.rgbBlendOperation = .add; a.alphaBlendOperation = .add
@@ -252,10 +254,12 @@ final class ZeronMetalRenderer {
   }
   func encode(_ encoder: MTLRenderCommandEncoder, vertices: MTLBuffer, count: Int, size: CGSize, atlas: ZeronAtlas) {
     guard count > 0 else { return }
-    var viewport = SIMD2<Float>(Float(size.width), Float(size.height))
+    var u: [Float] = [Float(size.width), Float(size.height), 0, 0]   // ChatU: size, pad0, pad1
+    var lengths = [UInt32](repeating: 0, count: 29); lengths[0] = 4
     encoder.setRenderPipelineState(pipeline)
-    encoder.setVertexBuffer(vertices, offset: 0, index: 0)
-    encoder.setVertexBytes(&viewport, length: 8, index: 1)
+    encoder.setVertexBuffer(vertices, offset: 0, index: 30)
+    encoder.setVertexBytes(&u, length: 16, index: 0); encoder.setFragmentBytes(&u, length: 16, index: 0)
+    encoder.setVertexBytes(&lengths, length: 29 * 4, index: 29); encoder.setFragmentBytes(&lengths, length: 29 * 4, index: 29)
     encoder.setFragmentTexture(atlas.mono, index: 0); encoder.setFragmentTexture(atlas.color, index: 1)
     encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: count)
   }

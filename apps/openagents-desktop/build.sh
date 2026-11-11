@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds OpenAgents.app for this Mac (docs/desktop/coax-desktop.md): the
-# Zeron-fork chat screen (zeron/screen.coax, GPUI's shaders in Zeron.metal,
+# Zeron-fork chat screen (zeron/screen.coax, the component shader components/backend/gpu-shader.coax emitted as Metal,
 # Geist and Zeron's icons) it opens on, and, still in the tree, the HUD chat
 # (chat-hud.coax, the old HUD chat /chat drew before the Zeron one) and the Lab's router (router.coax,
 # Mammoth), all compiled to C behind their C faces, with the AppKit host in Swift.
@@ -32,7 +32,9 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 # It carries its own copy of the hashes the app's unit also exports: only its one entry point stays visible (objcopy on Linux).
 ld -r "$work/c/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -o "$work/c/lab-sign.o"
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/dictation-build.coax" "$repo" "$work/c"
-xcrun -sdk macosx metal "$here/Shaders.metal" "$repo/components/zeron/Zeron.metal" -o "$app/Contents/Resources/default.metallib"
+# The component shader (components/backend/gpu-shader.coax) emitted as Metal, the one shader /chat (WGSL) and Linux (SPIR-V) draw with.
+"$coax" metal "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/c/gpu-shader.metal" 2> "$work/c/gpu-shader.bind"
+xcrun -sdk macosx metal "$here/Shaders.metal" "$work/c/gpu-shader.metal" -o "$app/Contents/Resources/default.metallib"
 xcrun -sdk macosx swiftc -O -import-objc-header "$here/face.h" "$here"/Sources/*.swift "$repo/components/zeron/MetalUI.swift" "$work/c/chat.o" "$work/c/face.o" "$work/c/router.o" "$work/c/route-face.o" "$work/c/process.o" "$work/c/store-file.o" "$work/c/zeron.o" "$work/c/zeron-face.o" "$work/c/lab-sign.o" "$work/c/dictation.o" "$work/c/dictation-face.o" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
   -framework AppKit -framework Metal -framework MetalKit -framework CoreText -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -lpthread -lm -o "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
