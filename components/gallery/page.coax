@@ -1,0 +1,434 @@
+// The component library's page, openagents.com/components
+// (components/spec.md, GitHub #13153): every component in every skin, drawn
+// by the library itself. A card for each skin holds the same components
+// from the same calls: a panel, buttons, toggles, a slider, a bar, tabs, a
+// list and Markdown. The pixel skins (Zeron, Everglade, the Verse) are laid
+// out with the atlas's fonts onto one sheet; the terminal skin is laid out
+// in cells, painted into a cell grid by the terminal backend, and the grid
+// is shown as it would look in a terminal. The GPU backend draws the lot
+// with the one shader. Everything works: buttons light, toggles flip,
+// sliders drag, tabs and rows pick.
+//
+// The host hands over the glyph and icon atlas (coax/web/gpui.js, as for
+// /chat); apps/openagents-web/components.coax and components-face.c are the
+// page's module and its C face.
+//   coax/bin/coax test components/gallery/page.coax --only gallery
+
+#load "../kit/markdown.coax";
+#load "../kit/controls.coax";
+#load "../skin/all.coax";
+#load "../backend/gpu.coax";
+#load "../backend/terminal.coax";
+
+GL_MAX_VERTICES :: 90000;
+GL_UNDER :: 4096; GL_OVER :: 12288; GL_LINES :: 1024; GL_HITS :: 256; GL_POOL :: 4096;
+GL_CELL_UNDER :: 512; GL_CELL_OVER :: 1024;
+GL_TERM_COLS :: 96; GL_TERM_ROWS :: 96;
+GL_CARD_MIN :: 420.0;       // a card is at least this wide; the page shows as many columns as fit, four at most
+GL_GAP :: 20.0;
+GL_INSET :: 20.0;           // a card's content from its edge
+GL_TERM_ROW :: 18.0;        // a terminal row on the page
+
+// The hits the page's controls leave: a = the skin, b = which one.
+GL_HIT_BUTTON :: 10; GL_HIT_TOGGLE :: 11; GL_HIT_SLIDER :: 12; GL_HIT_TAB :: 13; GL_HIT_ROW :: 14;
+
+GL_MD :: "Markdown is **one component**: `kit/markdown.coax` paints a [parsed document](components/core/markdown.coax) in *any* skin.\n\n- [x] parsed once, in `core/`\n- [ ] wrapped once, in `layout/`\n  - measured in pixels or in cells\n\n> The component asks its skin for a panel. It doesn't draw one.\n\n```rust\nfn paint(sheet: &mut Sheet, skin: &Skin) {\n    sheet.fill(skin.surface); // a role, never a colour\n}\n```\n\n| Target | Measure | Backend |\n|:--|:-:|--:|\n| the web | pixels | `gpu.coax` |\n| a terminal | cells | `terminal.coax` |";
+GL_ABOUT :: [4] string.["Zeron Dark: the chat's look.", "Iron and gold: Everglade and the Workshop.", "The Verse's instruments: grey lines, cyan.", "Cells: the same components in a terminal."];
+GL_TABS :: [3] string.["Chat", "Files", "Runs"];
+GL_ROWS :: [3] string.["Fix the tool group header", "Draft the release notes", "Port the wrapper"];
+
+// What a viewer has set on a skin's card.
+GlCard :: struct { toggles: [2] bool; slider: f32; tab: int; row: int; }
+
+GalleryState :: struct {
+  ready: bool; time: f32;
+  width: f32; height: f32; d: f32;
+  atlas: [1] Atlas;
+  scratch: [9800] f32; sbytes: [64] u8;     // the host's side of the atlas (coax/web/gpui.js)
+  doc: [1] MdDoc; blocks: int;
+  cards: [UISKINS] GlCard;
+  // the page's sheet, and the terminal card's own in cells
+  under: [GL_UNDER] Prim; over: [GL_OVER] Prim; lines: [GL_LINES] SheetLine; hits: [GL_HITS] SheetHit; pool: [GL_POOL] u8;
+  nu: int; no: int; nh: int;
+  grounds: [UISKINS] int;                   // each card's ground in `under` (-1: not laid out)
+  cunder: [GL_CELL_UNDER] Prim; cover: [GL_CELL_OVER] Prim; clines: [256] SheetLine; chits: [64] SheetHit; cpool: [256] u8;
+  cells: [9216] TermCell;                   // GL_TERM_COLS * GL_TERM_ROWS
+  glyphs: [36864] u8; ng: int;              // the grid's glyphs as text the page's sheet points into
+  scroll: f32; content_h: f32;
+  px: f32; py: f32; inside: bool;
+  hot_kind: int; hot_a: int; hot_b: int;
+  drag: int;                                // the skin whose slider is held, or -1
+  drag_x: f32; drag_w: f32;
+  cursor: int;
+}
+
+gl_init :: (g: [] GalleryState) {
+  g[0].ready = true;
+  g[0].blocks = md_parse(g[0].doc[..], GL_MD, 0);
+  for k: 0..<UISKINS { g[0].cards[k] = GlCard.{slider = 0.25 + cast(f32) k * 0.2, tab = k % 3, row = (k + 1) % 3}; g[0].cards[k].toggles[0] = true; }
+  g[0].drag = -1; g[0].hot_kind = -1;
+}
+
+// A caption over a group of controls: small, faint. Returns the height it took.
+gl_caption :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, text: string) -> f32 {
+  w := sheet_text(sh, m, -1, x, y, s.small.line, s.small.face, s.faint, text);
+  return s.small.line + s.space / 2;
+}
+
+// One skin's card content at (x, y), width w, in its own units (pixels, or
+// cells for the terminal): every component, from the same calls for every
+// skin. card: what the viewer set; hot_*: the hit the pointer is over.
+// Returns its height.
+gl_content :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, blocks: int, card: GlCard, x: f32, y: f32, w: f32, hot_kind: int, hot_a: int, hot_b: int) -> f32 {
+  about := GL_ABOUT; id := s.id;
+  h: f32 = 0;
+  // the skin's name and what it is for
+  nw := sheet_text(sh, m, -1, x, y, s.title.line, s.title.face, s.ink, s.name);
+  h += s.title.line;
+  aw := sheet_text(sh, m, -1, x, y + h, s.body.line, s.body.face, s.muted, about[id]);
+  h += s.body.line + s.space * 2;
+  // a panel
+  h += gl_caption(sh, m, s, x, y + h, "Panel");
+  ph := panel_height(s, s.body.line, true);
+  inside := panel(sh, m, s, x, y + h, w, ph, "A panel");
+  pw := sheet_text(sh, m, -1, inside.x, inside.y, s.body.line, s.body.face, s.muted, "Its frame is the skin's.");
+  h += ph + s.space * 2;
+  // buttons: resting (lit under the pointer) and the primary action
+  h += gl_caption(sh, m, s, x, y + h, "Buttons");
+  pen := x;
+  hot0 := hot_kind == GL_HIT_BUTTON && hot_a == id && hot_b == 0;
+  pen += button(sh, m, s, pen, y + h, "Cancel", ifx hot0 then UISKIN_HOVER else UISKIN_REST, GL_HIT_BUTTON, id) + s.space;
+  sh[0].hits[sh[0].nh - 1].b = 0;
+  pen += button(sh, m, s, pen, y + h, "Send", UISKIN_PRIMARY, GL_HIT_BUTTON, id) + s.space;
+  sh[0].hits[sh[0].nh - 1].b = 1;
+  h += s.control_h + s.space * 2;
+  // toggles
+  h += gl_caption(sh, m, s, x, y + h, "Toggles");
+  tw := toggle(sh, m, s, x, y + h, "Wrap lines", card.toggles[0], GL_HIT_TOGGLE, id);
+  sh[0].hits[sh[0].nh - 1].b = 0;
+  tw2 := toggle(sh, m, s, x + tw + s.space * 3, y + h, "Full access", card.toggles[1], GL_HIT_TOGGLE, id);
+  sh[0].hits[sh[0].nh - 1].b = 1;
+  h += s.control_h + s.space * 2;
+  // a slider and a bar that follows it
+  h += gl_caption(sh, m, s, x, y + h, "Slider and bar");
+  slider(sh, s, x, y + h, w, card.slider, GL_HIT_SLIDER, id);
+  h += s.control_h + s.space;
+  h += bar(sh, s, x, y + h, w, card.slider, ifx card.slider > 0.8 then s.danger else s.success) + s.space * 2;
+  // tabs
+  h += gl_caption(sh, m, s, x, y + h, "Tabs");
+  labels := GL_TABS;
+  tabs_w := tabs(sh, m, s, x, y + h, labels[..], card.tab, ifx hot_kind == GL_HIT_TAB && hot_a == id then hot_b else -1, GL_HIT_TAB, id);
+  h += s.control_h + s.space * 2;
+  // a list with a section
+  h += gl_caption(sh, m, s, x, y + h, "List");
+  rows := GL_ROWS;
+  h += list_rows(sh, m, s, x, y + h, w, "Recent", rows[..], card.row, ifx hot_kind == GL_HIT_ROW && hot_a == id then hot_b else -1, GL_HIT_ROW, id) + s.space * 2;
+  // Markdown
+  h += gl_caption(sh, m, s, x, y + h, "Markdown");
+  for b: 0..<blocks {
+    if b > 0 { h += s.md.block_gap; }
+    h += markdown_block(sh, m, s, doc, b, x, y + h, w);
+  }
+  return h;
+}
+
+gl_sheet :: (g: [] GalleryState) -> Sheet {
+  return Sheet.{under = g[0].under[..], nu = g[0].nu, over = g[0].over[..], no = g[0].no, lines = g[0].lines[..], hits = g[0].hits[..], nh = g[0].nh, pool = g[0].pool[..]};
+}
+
+// The terminal card: the content laid out in cells and painted into a cell
+// grid, then the grid shown on the page's sheet at (x, y): each cell cw
+// wide and GL_TERM_ROW tall, in the monospace face. Returns its height.
+gl_terminal :: (g: [] GalleryState, sh: [] Sheet, x: f32, y: f32, w: f32) -> f32 {
+  a := g[0].atlas[..];
+  mono := FONT_MONO_12;
+  cw := a[0].fonts[mono].advance[glyph_of('M')];
+  if cw <= 0 { return 0; }
+  cols := cast(int) floor(w / cw);
+  if cols > GL_TERM_COLS { cols = GL_TERM_COLS; }
+  if cols < 8 { return 0; }
+  s := terminal_skin();
+  csh: [1] Sheet;
+  csh[0] = Sheet.{under = g[0].cunder[..], over = g[0].cover[..], lines = g[0].clines[..], hits = g[0].chits[..], pool = g[0].cpool[..]};
+  rows_f := gl_content(csh[..], measure_cells(), s, g[0].doc[..], g[0].blocks, g[0].cards[UISKIN_TERMINAL], 0, 0, cast(f32) cols, g[0].hot_kind, g[0].hot_a, g[0].hot_b);
+  rows := cast(int) rows_f;
+  if rows > GL_TERM_ROWS { rows = GL_TERM_ROWS; }
+  grid := term_grid(g[0].cells[..], cols, rows);
+  term_draw(grid, g[0].cunder[0..<csh[0].nu], 0, 0);
+  term_draw(grid, g[0].cover[0..<csh[0].no], 0, 0);
+  // the grid as the page shows it: a background where a cell has one, then its glyph
+  z := zeron_skin();
+  g[0].ng = 0;
+  for r: 0..<grid.rows {
+    for c: 0..<grid.cols {
+      cell := grid.cells[r * grid.cols + c];
+      cx := x + cast(f32) c * cw; cy := y + cast(f32) r * GL_TERM_ROW;
+      if cell.bg.a > 0 { sheet_fill(sh, cx, cy, cw, GL_TERM_ROW, 0, cell.bg); }
+      if cell.n == 0 { continue; }
+      at := g[0].ng;
+      if at + cell.n > g[0].glyphs.count { continue; }
+      for k: 0..<cell.n { g[0].glyphs[at + k] = cell.bytes[k]; }
+      g[0].ng += cell.n;
+      ink := ifx cell.fg.a > 0 then cell.fg else z.ink;
+      face := ifx cell.face == TERM_FACE_BOLD then FONT_MONO_14 else mono;
+      // a glyph the monospace face lacks (a box-drawing line, a wide glyph) is centred in its cell or cells
+      text := cast(string) g[0].glyphs[at..<at + cell.n];
+      gw := text_width(a, face, text);
+      span := ifx cell.span == TERM_WIDE then 2.0f32 else 1.0f32;
+      tw := sheet_text(sh, measure_font(a), -1, cx + (cw * span - gw) / 2, cy, GL_TERM_ROW, face, ink, text);
+    }
+  }
+  // its hits, from cells to the page
+  for k: 0..<csh[0].nh {
+    hit := csh[0].hits[k];
+    if sh[0].nh < sh[0].hits.count {
+      sh[0].hits[sh[0].nh] = SheetHit.{x = x + hit.x * cw, y = y + hit.y * GL_TERM_ROW, w = hit.w * cw, h = hit.h * GL_TERM_ROW, kind = hit.kind, a = hit.a, b = hit.b};
+      sh[0].nh += 1;
+    }
+  }
+  return cast(f32) grid.rows * GL_TERM_ROW;
+}
+
+// How many columns of cards a page w wide shows.
+gl_columns :: (w: f32) -> int {
+  n := cast(int) floor((w - GL_GAP) / (GL_CARD_MIN + GL_GAP));
+  return ifx n < 1 then 1 else ifx n > UISKINS then UISKINS else n;
+}
+
+// Lays the whole page out onto the sheet in content coordinates (logical px). Returns its height.
+gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
+  a := g[0].atlas[..];
+  g[0].nu = 0; g[0].no = 0; g[0].nh = 0;
+  sh: [1] Sheet; sh[0] = gl_sheet(g);
+  z := zeron_skin(); m := measure_font(a);
+  cols := gl_columns(w);
+  gutter: f32 = ifx w < 480 then 12.0f32 else GL_GAP;
+  card_w := floor((w - gutter * cast(f32) (cols + 1)) / cast(f32) cols);
+  y: f32 = 28;
+  tw := sheet_text(sh[..], m, -1, gutter, y, z.title.line, z.title.face, z.ink, "Components");
+  y += z.title.line + 2;
+  lead := "One set of components, written once in Coax and drawn here by the library itself, in every skin.";
+  lines: [8] TextLine; no_runs: [1] MdRun;
+  nl := text_wrap(m, uiskin_faces(z), lead, no_runs[0..<0], w - 2 * gutter, lines[..]);
+  for k: 0..<nl { lw := sheet_text(sh[..], m, -1, gutter, y, z.body.line, z.body.face, z.muted, cast(string) lead[lines[k].from..<lines[k].to]); y += z.body.line; }
+  y += GL_GAP;
+  // the cards, row by row; a row is as tall as its tallest card
+  id := 0;
+  while id < UISKINS {
+    row_h: f32 = 0;
+    first := id;
+    for c: 0..<cols {
+      if id >= UISKINS { break; }
+      x := gutter + cast(f32) c * (card_w + gutter);
+      s := uiskin(id);
+      // the card's ground is laid first, then sized once its content is known
+      ground := sheet_box(sh[..], x, y, card_w, 0, 12, 1, ifx id == UISKIN_TERMINAL then z.canvas else s.canvas, z.hairline);
+      h: f32 = 0;
+      if id == UISKIN_TERMINAL { h = gl_terminal(g, sh[..], x + GL_INSET, y + GL_INSET, card_w - 2 * GL_INSET); }
+      else { h = gl_content(sh[..], m, s, g[0].doc[..], g[0].blocks, g[0].cards[id], x + GL_INSET, y + GL_INSET, card_w - 2 * GL_INSET, g[0].hot_kind, g[0].hot_a, g[0].hot_b); }
+      h += 2 * GL_INSET;
+      g[0].grounds[id] = ground;
+      if h > row_h { row_h = h; }
+      id += 1;
+    }
+    // every card of the row takes the row's height
+    for k: first..<id { if g[0].grounds[k] >= 0 { g[0].under[g[0].grounds[k]].h = row_h; } }
+    y += row_h + gutter;
+    if id == first { break; }
+  }
+  g[0].nu = sh[0].nu; g[0].no = sh[0].no; g[0].nh = sh[0].nh;
+  return y + 8;
+}
+
+gl_max_scroll :: (g: [] GalleryState) -> f32 {
+  d := ifx g[0].d < 1 then 1.0f32 else g[0].d;
+  m := g[0].content_h - g[0].height / d;
+  return ifx m < 0 then 0.0f32 else m;
+}
+
+// The hit under a point of the window (logical px), or -1.
+gl_hit_at :: (g: [] GalleryState, x: f32, y: f32) -> int {
+  cy := y + g[0].scroll;
+  best := -1;
+  for k: 0..<g[0].nh { h := g[0].hits[k]; if x >= h.x && x < h.x + h.w && cy >= h.y && cy < h.y + h.h { best = k; } }
+  return best;
+}
+
+gl_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
+  if !g[0].ready { gl_init(g); }
+  a := g[0].atlas[..];
+  d := ifx dpr < 1 then 1.0f32 else dpr;
+  g[0].width = width; g[0].height = height; g[0].d = d;
+  if uniforms.count >= 2 { uniforms[0] = width; uniforms[1] = height; }
+  g[0].time += ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  a[0].frame += 1;
+  z := zeron_skin();
+  w := width / d; h := height / d;
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, z.canvas, z.canvas);
+  if !a[0].ready { return v; }
+  g[0].content_h = gl_layout(g, w);
+  if g[0].scroll > gl_max_scroll(g) { g[0].scroll = gl_max_scroll(g); }
+  if g[0].scroll < 0 { g[0].scroll = 0; }
+  v = gpu_draw(out, v, a, d, g[0].under[0..<g[0].nu], 0, -g[0].scroll, -8, h + 8);
+  v = gpu_draw(out, v, a, d, g[0].over[0..<g[0].no], 0, -g[0].scroll, -8, h + 8);
+  // the page's scrollbar
+  if g[0].content_h > h {
+    th := h * h / g[0].content_h;
+    ty := (h - th) * g[0].scroll / gl_max_scroll(g);
+    v = paint_quad(out, v, d, w - 7, ty + 2, 4, th - 4, 2, 0, z.hover, z.hover);
+  }
+  return v;
+}
+
+// A pointer on the page: phase 0 down, 1 move, 2 up, 3 cancel (device px).
+gl_pointer :: (g: [] GalleryState, x: f32, y: f32, phase: int) -> bool {
+  d := ifx g[0].d < 1 then 1.0f32 else g[0].d;
+  lx := x / d; ly := y / d;
+  g[0].px = lx; g[0].py = ly;
+  k := gl_hit_at(g, lx, ly);
+  if g[0].drag >= 0 && phase == 1 { g[0].cards[g[0].drag].slider = slider_value(g[0].drag_x, g[0].drag_w, lx); return true; }
+  if phase == 2 || phase == 3 { g[0].drag = -1; }
+  g[0].hot_kind = -1; g[0].cursor = 0;
+  if k < 0 { return false; }
+  hit := g[0].hits[k];
+  if hit.a < 0 || hit.a >= UISKINS { return false; }
+  g[0].hot_kind = hit.kind; g[0].hot_a = hit.a; g[0].hot_b = hit.b; g[0].cursor = 1;
+  if phase != 0 { return true; }
+  if hit.kind == GL_HIT_TOGGLE && hit.b >= 0 && hit.b < 2 { g[0].cards[hit.a].toggles[hit.b] = !g[0].cards[hit.a].toggles[hit.b]; }
+  else if hit.kind == GL_HIT_TAB { g[0].cards[hit.a].tab = hit.b; }
+  else if hit.kind == GL_HIT_ROW { g[0].cards[hit.a].row = hit.b; }
+  else if hit.kind == GL_HIT_SLIDER { g[0].drag = hit.a; g[0].drag_x = hit.x; g[0].drag_w = hit.w; g[0].cards[hit.a].slider = slider_value(hit.x, hit.w, lx); }
+  return true;
+}
+
+// ---------------------------------------------------------------- the page's exports
+
+coaxial_components_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if g.count < 1 { return 0; }
+  return gl_frame(g, out, uniforms, width, height, dpr, dt);
+}
+coaxial_components_pointer :: (g: [] GalleryState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c #effects(all) {
+  if g.count < 1 { return false; }
+  return gl_pointer(g, x, y, phase);
+}
+coaxial_components_wheel :: (g: [] GalleryState, dy: f32) #export_c #effects(all) {
+  if g.count < 1 { return; }
+  g[0].scroll += dy;
+  if g[0].scroll > gl_max_scroll(g) { g[0].scroll = gl_max_scroll(g); }
+  if g[0].scroll < 0 { g[0].scroll = 0; }
+}
+coaxial_components_cursor :: (g: [] GalleryState) -> int #export_c #effects(all) { if g.count < 1 { return 0; } return g[0].cursor; }
+coaxial_components_max_vertices :: () -> int #export_c #effects(all) { return GL_MAX_VERTICES; }
+coaxial_components_vertex_floats :: () -> int #export_c #effects(all) { return GP_VERTEX_FLOATS; }
+// The atlas, as coax/web/gpui.js fills it (the same contract /chat has).
+coaxial_components_glyph_count :: () -> int #export_c #effects(all) { return GP_GLYPHS; }
+coaxial_components_glyph_code :: (k: int) -> int #export_c #effects(all) {
+  if k < 95 { return k + 32; }
+  extra := GP_EXTRA;
+  return ifx k - 95 < 3 then cast(int) extra[k - 95] else 63;
+}
+coaxial_components_font_count :: () -> int #export_c #effects(all) { return GP_FONTS; }
+coaxial_components_font_size :: (k: int) -> f32 #export_c #effects(all) { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+coaxial_components_font_weight :: (k: int) -> int #export_c #effects(all) { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+coaxial_components_icon_count :: () -> int #export_c #effects(all) { return ICON_COUNT; }
+coaxial_components_icon_size :: (i: int) -> f32 #export_c #effects(all) { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
+coaxial_components_icon_name :: (g: [] GalleryState, i: int) -> int #export_c #effects(all) {
+  if g.count < 1 || i < 0 || i >= ICON_COUNT { return 0; }
+  names := ICON_NAMES;
+  n := ifx names[i].count < 64 then names[i].count else 64;
+  for k: 0..<n { g[0].sbytes[k] = names[i][k]; }
+  return n;
+}
+coaxial_components_set_font :: (g: [] GalleryState, slot: int) #export_c #effects(all) {
+  if g.count < 1 { return; }
+  sizes := FONT_SIZES;
+  if slot < 0 || slot >= GP_FONTS { return; }
+  gp_set_font(g[0].atlas[..], slot, sizes[slot], g[0].scratch[0..<7], g[0].scratch[7..<7 + GP_GLYPHS], g[0].scratch[7 + GP_GLYPHS..<7 + GP_GLYPHS + GP_GLYPHS * GP_GLYPHS]);
+}
+coaxial_components_set_icon :: (g: [] GalleryState, i: int, x: f32, y: f32, w: f32, h: f32) #export_c #effects(all) { if g.count > 0 { gp_set_icon(g[0].atlas[..], i, x, y, w, h); } }
+coaxial_components_set_atlas :: (g: [] GalleryState, width: f32, height: f32, levels: int) #export_c #effects(all) { if g.count > 0 { gp_set_atlas(g[0].atlas[..], width, height, levels); } }
+coaxial_components_set_dynamic :: (g: [] GalleryState, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c #effects(all) {
+  if g.count > 0 { gp_set_dynamic(g[0].atlas[..], size, pen_x, pen_y, y0, cols, color_cols, color_width, color_height); }
+}
+coaxial_components_next_cluster :: (g: [] GalleryState) -> int #export_c #effects(all) { if g.count < 1 { return -1; } return gp_next_cluster(g[0].atlas[..]); }
+coaxial_components_cluster :: (g: [] GalleryState, slot: int) -> int #export_c #effects(all) { if g.count < 1 { return 0; } return gp_cluster(g[0].atlas[..], slot, g[0].sbytes[..]); }
+coaxial_components_measured :: (g: [] GalleryState, slot: int, advance: f32, color: bool) #export_c #effects(all) { if g.count > 0 { gp_measured(g[0].atlas[..], slot, advance, color); } }
+coaxial_components_next_cell :: (g: [] GalleryState) -> int #export_c #effects(all) { if g.count < 1 { return -1; } return gp_next_cell(g[0].atlas[..]); }
+coaxial_components_cell :: (g: [] GalleryState, cell: int) -> bool #export_c #effects(all) { if g.count < 1 { return false; } return gp_cell(g[0].atlas[..], cell, g[0].scratch[0..<6]); }
+coaxial_components_cell_ready :: (g: [] GalleryState, cell: int) #export_c #effects(all) { if g.count > 0 { gp_cell_ready(g[0].atlas[..], cell); } }
+
+// ---------------------------------------------------------------- checks
+
+// A fixed atlas: every glyph 8 wide, the monospace faces 7.
+gl_test_atlas :: (a: [] Atlas) {
+  text_test_atlas(a);
+  gp_set_atlas(a, 4096, 4096, 2);
+  for g: 0..<GP_GLYPHS { a[0].fonts[FONT_MONO_12].advance[g] = 7; a[0].fonts[FONT_MONO_14].advance[g] = 7; }
+  for k: 0..<ICON_COUNT { gp_set_icon(a, k, 0, 0, 32, 32); }
+}
+GlOut :: struct { v: [1400000] f32; }       // 50000 vertices
+
+#test "gallery: four cards on a wide page, two on a narrower one, one on a phone; every skin's card is drawn" #steps 200000000 {
+  #assert gl_columns(1920) == 4 && gl_columns(1000) == 2 && gl_columns(390) == 1 && gl_columns(4000) == 4;
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  n := gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  #assert n > 6 && g[0].blocks == 5 && g[0].no > 200 && g[0].content_h > 600 && u[0] == 1920;
+  // each skin's name heads its card, left to right; the terminal's is drawn cell by cell
+  xs: [3] f32;
+  for id: 0..<3 { for k: 0..<g[0].no { if g[0].over[k].text == uiskin(id).name && g[0].over[k].id == uiskin(id).title.face { xs[id] = g[0].over[k].x; } } }
+  #assert xs[0] > 0 && xs[1] > xs[0] + GL_CARD_MIN && xs[2] > xs[1] + GL_CARD_MIN;
+  // the cards share a row, so they share a height
+  row_h := g[0].under[g[0].grounds[0]].h;
+  for id: 0..<UISKINS { #assert g[0].grounds[id] >= 0 && g[0].under[g[0].grounds[id]].h == row_h; }
+  #assert row_h > 400;
+  // every control left its hit: per skin 2 buttons, 2 toggles, a slider, 3 tabs, 3 rows; the pixel skins' code block 2 more
+  #assert g[0].nh == 4 * 11 + 3 * 2;
+}
+#test "gallery: the terminal card is the terminal backend's grid: box glyphs, a bullet, the table's rule" #steps 200000000 {
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  n := gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  seen_box := false; seen_rule := false; seen_toggle := 0; seen_name := false;
+  buf: [512] u8;
+  grid := TermGrid.{cols = cast(int) floor((floor((1920.0 - 100.0) / 4.0) - 40.0) / 7.0), rows = GL_TERM_ROWS, cells = g[0].cells[..]};
+  for r: 0..<40 {
+    row := cast(string) buf[0..<term_row_text(grid, r, buf[..])];
+    if r == 0 { seen_name = row == "terminal"; }
+    if row.count >= 3 && cast(string) row[0..<3] == "┌" { seen_box = true; }
+    if row.count >= 9 && cast(string) row[0..<9] == "[x] Wrap " { seen_toggle += 1; }
+  }
+  for k: 0..<g[0].no { if g[0].over[k].text == "─" { seen_rule = true; } }
+  #assert seen_name && seen_box && seen_toggle == 1 && seen_rule;
+}
+#test "gallery: the pointer lights a button, flips a toggle, picks a tab and a row, and drags a slider" #steps 400000000 {
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  n := gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  // the Everglade card's hits
+  bx: f32 = 0; by: f32 = 0; tx: f32 = 0; ty: f32 = 0; sx: f32 = 0; sy: f32 = 0; sw: f32 = 0; ax: f32 = 0; ay: f32 = 0; rx: f32 = 0; ry: f32 = 0;
+  for k: 0..<g[0].nh {
+    h := g[0].hits[k];
+    if h.a != UISKIN_EVERGLADE { continue; }
+    if h.kind == GL_HIT_BUTTON && h.b == 0 { bx = h.x + 2; by = h.y + 2; }
+    if h.kind == GL_HIT_TOGGLE && h.b == 1 { tx = h.x + 2; ty = h.y + 2; }
+    if h.kind == GL_HIT_SLIDER { sx = h.x; sy = h.y + 2; sw = h.w; }
+    if h.kind == GL_HIT_TAB && h.b == 2 { ax = h.x + 2; ay = h.y + 2; }
+    if h.kind == GL_HIT_ROW && h.b == 0 { rx = h.x + 2; ry = h.y + 2; }
+  }
+  #assert bx > 0 && tx > 0 && sw > 0 && ax > 0 && rx > 0;
+  nu := g[0].nu;
+  #assert gl_pointer(g[..], bx, by, 1) && g[0].hot_kind == GL_HIT_BUTTON && g[0].hot_a == UISKIN_EVERGLADE && g[0].cursor == 1;
+  #assert !g[0].cards[UISKIN_EVERGLADE].toggles[1] && gl_pointer(g[..], tx, ty, 0) && g[0].cards[UISKIN_EVERGLADE].toggles[1] && !g[0].cards[UISKIN_ZERON].toggles[1];
+  #assert gl_pointer(g[..], ax, ay, 0) && g[0].cards[UISKIN_EVERGLADE].tab == 2;
+  #assert gl_pointer(g[..], rx, ry, 0) && g[0].cards[UISKIN_EVERGLADE].row == 0;
+  #assert gl_pointer(g[..], sx + sw * 0.5, sy, 0) && g[0].drag == UISKIN_EVERGLADE && abs(g[0].cards[UISKIN_EVERGLADE].slider - 0.5) < 0.001;
+  #assert gl_pointer(g[..], sx + sw * 2, sy + 300, 1) && g[0].cards[UISKIN_EVERGLADE].slider == 1;       // held: it follows off the track
+  #assert gl_pointer(g[..], sx + sw * 0.9, sy, 2) && g[0].drag == -1;
+  #assert !gl_pointer(g[..], 3, 3, 1) && g[0].hot_kind == -1 && g[0].cursor == 0;
+  // the wheel scrolls within the page
+  coaxial_components_wheel(g[..], 100000);
+  #assert g[0].scroll == gl_max_scroll(g[..]);
+  coaxial_components_wheel(g[..], -200000);
+  #assert g[0].scroll == 0;
+}

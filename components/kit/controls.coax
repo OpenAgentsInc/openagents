@@ -1,0 +1,132 @@
+// The small controls: panel, button, toggle, slider, tabs, list and bar
+// (components/spec.md, GitHub #13153). Each is laid out through a measure
+// and painted onto a sheet in a skin, so the same call draws it in Zeron's
+// glass, Everglade's iron, the Verse's lines or a terminal's cells. A
+// control that can be pressed leaves a hit on the sheet (the caller's kind
+// and number); the caller keeps the state (which tab, how far a slider is)
+// and says how each control looks this frame (resting, hovered, primary).
+//   coax/bin/coax test components/kit/controls-checks.coax
+
+#load "../paint/sheet.coax";
+#load "../skin/skin.coax";
+
+// ---------------------------------------------------------------- panel
+
+// Where a panel's content goes: its left, its top and its width.
+PanelInside :: struct { x: f32; y: f32; w: f32; }
+
+// A panel: the skin's frame around (x, y, w, h), and its title, if it has one.
+panel :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, h: f32, title: string) -> PanelInside {
+  sh[0].nu = uiskin_panel(sh[0].under, sh[0].nu, s, x, y, w, h);
+  cy := y + s.pad;
+  if title.count > 0 {
+    tw := sheet_text(sh, m, -1, x + s.pad, cy, s.title.line, s.title.face, s.ink, title);
+    cy += s.title.line + s.space;
+  }
+  return PanelInside.{x = x + s.pad, y = cy, w = w - 2 * s.pad};
+}
+// The height a panel needs for content h tall.
+panel_height :: (s: UiSkin, content: f32, titled: bool) -> f32 {
+  return content + 2 * s.pad + (ifx titled then s.title.line + s.space else 0.0f32);
+}
+
+// ---------------------------------------------------------------- button
+
+button_width :: (m: TextMeasure, s: UiSkin, label: string) -> f32 {
+  return ceil(measure_width(m, s.label.face, label)) + 2 * s.control_pad;
+}
+// A button at (x, y) in a state (UISKIN_REST, UISKIN_HOVER, UISKIN_PRIMARY). Returns its width.
+button :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, label: string, state: int, hit_kind: int, hit_a: int) -> f32 {
+  w := button_width(m, s, label);
+  sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, x, y, w, s.control_h, state);
+  ty := y + (s.control_h - s.label.line) / 2;
+  tw := sheet_text(sh, m, -1, x + s.control_pad, ty, s.label.line, s.label.face, ifx state == UISKIN_PRIMARY then s.on_accent else s.ink, label);
+  sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, s.control_h);
+  return w;
+}
+
+// ---------------------------------------------------------------- toggle
+
+// A toggle with its label after it. Returns its width.
+toggle :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, label: string, on: bool, hit_kind: int, hit_a: int) -> f32 {
+  sh[0].nu = uiskin_toggle(sh[0].under, sh[0].nu, s, x, y, on);
+  tw := uiskin_toggle_width(s);
+  ty := y + (s.control_h - s.body.line) / 2;
+  lw := sheet_text(sh, m, -1, x + tw + s.space, ty, s.body.line, s.body.face, ifx on then s.ink else s.muted, label);
+  w := tw + s.space + lw;
+  sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, s.control_h);
+  return w;
+}
+
+// ---------------------------------------------------------------- slider
+
+// A slider w wide, filled to value (0..1), with its hit over the whole row;
+// slider_value reads a pointer's x back into a value.
+slider :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, value: f32, hit_kind: int, hit_a: int) {
+  v := ifx value < 0 then 0.0f32 else ifx value > 1 then 1.0f32 else value;
+  th := ifx s.control_h >= 8 then round_layout(s.control_h / 8) else s.control_h;
+  ty := y + (s.control_h - th) / 2;
+  sh[0].nu = uiskin_bar(sh[0].under, sh[0].nu, s, x, ty, w, th, v, s.accent);
+  if s.control_h >= 8 {
+    // the knob, centred on the value
+    k := round_layout(s.control_h * 0.44);
+    kx := x + (w - k) * v;
+    sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, kx, y + (s.control_h - k) / 2, k, k, UISKIN_PRIMARY);
+  }
+  sheet_hit(sh, hit_kind, hit_a, 0, x, y, w, s.control_h);
+}
+slider_value :: (x: f32, w: f32, px: f32) -> f32 {
+  if w <= 0 { return 0; }
+  v := (px - x) / w;
+  return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v;
+}
+
+// ---------------------------------------------------------------- tabs
+
+// A row of tabs, one active (hit b = its index). Returns the row's width.
+tabs :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, labels: [] string, active: int, hot: int, hit_kind: int, hit_a: int) -> f32 {
+  pen := x;
+  for k: 0..<labels.count {
+    w := ceil(measure_width(m, s.label.face, labels[k])) + 2 * s.control_pad;
+    if k == active || k == hot { sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, pen, y, w, s.control_h, UISKIN_HOVER); }
+    ty := y + (s.control_h - s.label.line) / 2;
+    tw := sheet_text(sh, m, -1, pen + s.control_pad, ty, s.label.line, s.label.face, ifx k == active then s.ink else s.muted, labels[k]);
+    // the active tab's mark: a rule in the accent under its label (a terminal has no room under a one-row tab)
+    if k == active && s.control_h > s.label.line { sheet_rule(sh, pen + s.control_pad, y + s.control_h - 2 * s.border, w - 2 * s.control_pad, s.border, s.accent); }
+    if sh[0].nh < sh[0].hits.count { sh[0].hits[sh[0].nh] = SheetHit.{x = pen, y = y, w = w, h = s.control_h, kind = hit_kind, a = hit_a, b = k}; sh[0].nh += 1; }
+    pen += w + s.space / 2;
+  }
+  return pen - x;
+}
+
+// ---------------------------------------------------------------- list
+
+// A list with a section heading: a caption, then a row for each entry, the
+// picked one in the accent's wash and the hovered one lit (hit b = its
+// index). Returns its height.
+list_rows :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, section: string, rows: [] string, picked: int, hot: int, hit_kind: int, hit_a: int) -> f32 {
+  h: f32 = 0;
+  if section.count > 0 {
+    cw := sheet_text(sh, m, -1, x + s.control_pad, y, s.small.line, s.small.face, s.faint, section);
+    h += s.small.line + s.space / 2;
+  }
+  for k: 0..<rows.count {
+    ry := y + h;
+    if k == picked { sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, x, ry, w, s.control_h, UISKIN_HOVER); }
+    else if k == hot { sheet_fill(sh, x, ry, w, s.control_h, s.radius_control, s.hover); }
+    ty := ry + (s.control_h - s.body.line) / 2;
+    tw := sheet_text(sh, m, -1, x + s.control_pad, ty, s.body.line, s.body.face, ifx k == picked then s.ink else s.muted, rows[k]);
+    if sh[0].nh < sh[0].hits.count { sh[0].hits[sh[0].nh] = SheetHit.{x = x, y = ry, w = w, h = s.control_h, kind = hit_kind, a = hit_a, b = k}; sh[0].nh += 1; }
+    h += s.control_h;
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- bar
+
+// A bar filled to a share (0..1) in a colour role the caller picks from the skin. Returns its height.
+bar :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, share: f32, color: Rgba) -> f32 {
+  h := ifx s.control_h >= 8 then round_layout(s.control_h / 4) else s.control_h;
+  sh[0].nu = uiskin_bar(sh[0].under, sh[0].nu, s, x, y, w, h, share, color);
+  return h;
+}

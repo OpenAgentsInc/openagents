@@ -1,0 +1,78 @@
+// The small controls' checks: each control in every skin, on pixels and in
+// cells, by the same code (components/spec.md, GitHub #13153).
+//   coax/bin/coax test components/kit/controls-checks.coax
+
+#load "controls.coax";
+#load "../skin/all.coax";
+
+CtlStore :: struct { under: [128] Prim; over: [128] Prim; lines: [8] SheetLine; hits: [32] SheetHit; pool: [16] u8; }
+ctl_sheet :: (st: [] CtlStore) -> Sheet {
+  return Sheet.{under = st[0].under[..], over = st[0].over[..], lines = st[0].lines[..], hits = st[0].hits[..], pool = st[0].pool[..]};
+}
+// The measure a skin is laid out with: cells for the terminal, the atlas for the rest.
+ctl_measure :: (id: int, a: [] Atlas) -> TextMeasure { return ifx id == UISKIN_TERMINAL then measure_cells() else measure_font(a); }
+
+#test "a button is its label and the padding either side; its hit covers it; primary reads on the accent" {
+  st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
+  for id: 0..<UISKINS {
+    sh: [1] Sheet; sh[0] = ctl_sheet(st[..]);
+    s := uiskin(id); m := ctl_measure(id, a[..]);
+    w := button(sh[..], m, s, 10, 20, "Send", UISKIN_PRIMARY, 7, 3);
+    #assert w == measure_width(m, s.label.face, "Send") + 2 * s.control_pad && w == button_width(m, s, "Send");
+    #assert sh[0].nh == 1 && sh[0].hits[0].kind == 7 && sh[0].hits[0].a == 3 && sh[0].hits[0].w == w && sh[0].hits[0].h == s.control_h;
+    #assert sh[0].no == 1 && sh[0].over[0].text == "Send" && sh[0].over[0].fill.r == s.on_accent.r && sh[0].over[0].x == 10 + s.control_pad;
+    #assert sh[0].nu == 1 && sh[0].under[0].fill.r == s.accent.r;
+  }
+  // in a terminal a resting button is only its label; in pixels it has a ground
+  sh: [1] Sheet; sh[0] = ctl_sheet(st[..]);
+  w := button(sh[..], measure_cells(), terminal_skin(), 0, 0, "Send", UISKIN_REST, 1, 0);
+  #assert w == 6 && sh[0].nu == 0 && sh[0].over[0].x == 1;
+  w = button(sh[..], measure_font(a[..]), zeron_skin(), 0, 0, "Send", UISKIN_REST, 1, 0);
+  #assert w == 32 + 24 && sh[0].nu == 1 && sh[0].under[0].radius == 8 && sh[0].over[1].y == (32 - zeron_skin().label.line) / 2;
+}
+#test "a toggle: a track with its knob at the on or off end; in cells a box with a mark; the label follows" {
+  st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
+  sh: [1] Sheet; sh[0] = ctl_sheet(st[..]);
+  z := zeron_skin();
+  w := toggle(sh[..], measure_font(a[..]), z, 0, 0, "Wrap", true, 2, 0);
+  #assert sh[0].nu == 2 && sh[0].under[0].fill.r == z.accent.r && sh[0].under[1].x > sh[0].under[0].x + sh[0].under[0].w / 2;
+  #assert w == uiskin_toggle_width(z) + z.space + 32 && sh[0].hits[0].w == w;
+  sh[0] = ctl_sheet(st[..]);
+  w = toggle(sh[..], measure_font(a[..]), z, 0, 0, "Wrap", false, 2, 0);
+  #assert sh[0].under[1].x == 2 && sh[0].under[0].fill.r == z.sunk.r && sh[0].over[0].fill.r == z.muted.r;
+  sh[0] = ctl_sheet(st[..]);
+  t := terminal_skin();
+  w = toggle(sh[..], measure_cells(), t, 0, 0, "Wrap", true, 2, 0);
+  #assert w == 3 + 1 + 4 && sh[0].under[0].kind == PRIM_TEXT && sh[0].under[0].text == "[x]" && sh[0].over[0].x == 4;
+}
+#test "a slider fills to its value and reads a pointer back; tabs mark the active one; a list picks a row" {
+  st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
+  for id: 0..<UISKINS {
+    sh: [1] Sheet; sh[0] = ctl_sheet(st[..]);
+    s := uiskin(id); m := ctl_measure(id, a[..]);
+    slider(sh[..], s, 10, 0, 200, 0.25, 4, 1);
+    #assert sh[0].under[1].w == 50 && sh[0].hits[0].w == 200 && sh[0].hits[0].a == 1;
+    labels := [3] string.["Chat", "Files", "Runs"];
+    nu := sh[0].nu;
+    tw := tabs(sh[..], m, s, 0, 40, labels[..], 1, -1, 5, 0);
+    #assert sh[0].nh == 4 && sh[0].hits[2].b == 1 && sh[0].hits[3].b == 2 && sh[0].hits[2].x > sh[0].hits[1].x && tw > 0;
+    #assert sh[0].over[1].fill.r == s.ink.r && sh[0].over[0].fill.r == s.muted.r && sh[0].nu > nu;
+    rows := [3] string.["One", "Two", "Three"];
+    h := list_rows(sh[..], m, s, 0, 100, 120, "Recent", rows[..], 2, 0, 6, 9);
+    #assert h == s.small.line + s.space / 2 + 3 * s.control_h && sh[0].nh == 7 && sh[0].hits[6].b == 2 && sh[0].hits[6].a == 9 && sh[0].hits[6].y == 100 + h - s.control_h;
+    bh := bar(sh[..], s, 0, 300, 100, 0.5, s.success);
+    #assert bh > 0 && sh[0].under[sh[0].nu - 1].w == 50 && sh[0].under[sh[0].nu - 1].fill.g == s.success.g;
+  }
+  #assert slider_value(10, 200, 60) == 0.25 && slider_value(10, 200, 0) == 0 && slider_value(10, 200, 999) == 1 && slider_value(0, 0, 5) == 0;
+}
+#test "a panel frames its content: the title in the title face, the content inside the padding" {
+  st: [1] CtlStore; a: [1] Atlas; text_test_atlas(a[..]);
+  for id: 0..<UISKINS {
+    sh: [1] Sheet; sh[0] = ctl_sheet(st[..]);
+    s := uiskin(id); m := ctl_measure(id, a[..]);
+    inside := panel(sh[..], m, s, 10, 20, 300, panel_height(s, 100, true), "Title");
+    #assert inside.x == 10 + s.pad && inside.w == 300 - 2 * s.pad && inside.y == 20 + s.pad + s.title.line + s.space;
+    #assert sh[0].over[0].text == "Title" && sh[0].over[0].id == s.title.face && sh[0].nu >= 1;
+    #assert panel_height(s, 100, false) == 100 + 2 * s.pad;
+  }
+}

@@ -1,0 +1,6 @@
+// /components' shaders, the source of apps/openagents-web/components.wgsl:
+// the component system's one shader (components/backend/gpu-shader.coax,
+// components/spec.md, GitHub #13153), the same one /chat draws with.
+// build.sh writes the module with coax/web/wgsl-module.coax
+// (components.module, components.bindings beside this).
+#load "../../../components/backend/gpu-shader.coax";

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -332,6 +332,10 @@ mkdir -p "$here/build/zeron"
 cp "$here/../../components/zeron/fonts/"*.ttf "$here/../../components/zeron/fonts/Geist-OFL.txt" "$here/build/zeron/"
 python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.join(d,f)).read() for f in sorted(os.listdir(d)) if f.endswith(".svg")}, open(sys.argv[2],"w"))' \
   "$here/../../components/zeron/icons" "$here/build/zeron/icons.json"
+# /components: the component library's page (components/spec.md, #13153): every component in
+# every skin, drawn by the library (components/gallery/page.coax) with the atlas assets above.
+"$here/../../coax/web/wasm.sh" "$here/components.coax" "$here/components-face.c" "$here/build/components.wasm" &
+components_page=$!
 # A private project's page (/projects/<slug>, served by oa-api to members).
 COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm" \
   "$here/../../coax/lib/qr/qr-memory.coax" "$here/../../coax/lib/nostr/weblogin.coax" "$here/../../coax/lib/crypto/entropy.coax"
@@ -341,6 +345,7 @@ wait "$realmlist"
 wait "$memorial"
 wait "$og"
 wait "$chat"
+wait "$components_page"
 wait "$nip01"
 wait "$nip_guide"
 wait "$pylon"

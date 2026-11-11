@@ -81,6 +81,7 @@ UiSkin :: struct {
   radius_control: f32;      // a button's, a chip's
   border: f32;              // a hairline's weight
   control_h: f32;           // a button's or a tab's height
+  control_pad: f32;         // a control's padding either side of its label
   // frames
   frame: int;
   frame_mid: Rgba; frame_light: Rgba; trim: Rgba;   // a frame's metal, its lit edge, its ornaments
@@ -146,6 +147,24 @@ uiskin_control :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: 
   if s.frame == UIFRAME_IRON { return prim_box(list, n, x, y, w, h, s.radius_control, s.border, fill, ifx state == UISKIN_REST then s.frame_mid else s.trim); }
   if s.frame == UIFRAME_CUT { return prim_box(list, n, x, y, w, h, 0, s.border, fill, ifx state == UISKIN_REST then s.frame_mid else s.trim); }
   return prim_box(list, n, x, y, w, h, s.radius_control, s.border, fill, s.hairline);
+}
+
+// A toggle's width, and the toggle itself in a control's row at (x, y): a
+// track with a knob at its on or off end; in cells, a box with a mark.
+uiskin_toggle_width :: (s: UiSkin) -> f32 {
+  if s.frame == UIFRAME_CELLS { return 3; }
+  return round_layout(s.control_h * 1.1);
+}
+uiskin_toggle :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, on: bool) -> int {
+  w := uiskin_toggle_width(s);
+  if s.frame == UIFRAME_CELLS { return prim_text(list, n, x, y, w, s.body.line, s.body.face, ifx on then s.accent else s.muted, ifx on then "[x]" else "[ ]"); }
+  h := round_layout(s.control_h * 0.56);
+  ty := y + (s.control_h - h) / 2;
+  round := s.frame == UIFRAME_PLATE || s.frame == UIFRAME_IRON;
+  k := prim_box(list, n, x, ty, w, h, ifx round then h / 2 else 0.0f32, s.border, ifx on then s.accent else s.sunk, ifx s.frame == UIFRAME_PLATE then s.hairline else s.frame_mid);
+  knob := h - 4;
+  kx := ifx on then x + w - 2 - knob else x + 2;
+  return prim_fill(list, k, kx, ty + 2, knob, knob, ifx round then knob / 2 else 0.0f32, ifx on then s.on_accent else s.muted);
 }
 
 // A slot: a ground set into a surface (a code block's body, an item slot, a track).

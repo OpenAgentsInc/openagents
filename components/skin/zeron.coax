@@ -117,7 +117,7 @@ zeron_skin :: () -> UiSkin {
     small = UiType.{face = FONT_SMALL, size = 11, line = 11 * PHI},
     label = UiType.{face = FONT_CHIP, size = 12, line = 12 * PHI},
     title = UiType.{face = FONT_BOLD, size = 14, line = MD_LINE_HEIGHT},
-    space = 8, pad = 16, radius = 12, radius_control = 8, border = 1, control_h = 32,
+    space = 8, pad = 16, radius = 12, radius_control = 8, border = 1, control_h = 32, control_pad = 12,
     frame = UIFRAME_PLATE, frame_mid = ink(0.10), frame_light = ink(0.16), trim = th.accent,
     shadow = 15, shade = rgba(0, 0, 0, 0.35), stud = 0,
     icon_copy = ICON_COPY, icon_wrap = ICON_WRAP, icon_chevron = ICON_CHEVRON, icon_check = ICON_CHECK,

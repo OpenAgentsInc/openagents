@@ -41,8 +41,9 @@ components/
   skin/            tokens and frames: skin.coax (what a skin is), zeron.coax, verse.coax,
                    everglade.coax, terminal.coax, all.coax (pick one by id or name)
   backend/         display list to a target: gpu.coax, gpu-shader.coax, terminal.coax
-  kit/             the components themselves, one file each (markdown, so far)
-  gallery/         the /components page and the picture checks; md-term.coax (Markdown
+  kit/             the components themselves (markdown; controls: panel, button,
+                   toggle, slider, tabs, list, bar)
+  gallery/         page.coax, the /components page; md-term.coax (Markdown
                    in a terminal through the whole stack); skin-parity.coax
   fonts/, icons/   with their licences and NOTICE
   zeron/           the chat components as moved from apps/shared/zeron/ (Phase 1, done),
@@ -271,7 +272,19 @@ Each phase ends with every existing check and golden unchanged.
    SCIFI colours; `gallery/skin-parity.coax` holds them equal to
    `aethyr/ui/hud-style.coax`) and `terminal.coax` (cells). The pixel skins
    share the atlas's faces (Geist): a skin's own typefaces need its fonts in
-   the atlas, which no host loads yet. Next: openagents.com/components.
+   the atlas, which no host loads yet. The page is
+   `components/gallery/page.coax` (served as `/components` by
+   `apps/openagents-web/components.coax`, `components-face.c`,
+   `components/index.html` and `components.wgsl`, the same shader module
+   `/chat` has): a card for each skin with the same components from the
+   same calls (`kit/controls.coax`: panel, button, toggle, slider, tabs,
+   list, bar; `kit/markdown.coax`), all of them working under the pointer.
+   The terminal card is laid out in cells, painted into a cell grid by
+   `backend/terminal.coax`, and the grid is shown. Its checks lay the page
+   out, read the terminal grid's rows and drive the pointer. Not done: the
+   page has not been seen in a browser (no headless WebGPU capture on the
+   Linux machine it was written on), and there are no picture goldens
+   (`gallery/check.coax`) yet.
 4. **Chat in Everglade for desktop.** The Workshop gets the same transcript
    and composer in the `everglade` skin, on the shared engines. Its boards
    (`golem-board.coax`) move onto the list and panel components.

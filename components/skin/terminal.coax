@@ -26,7 +26,7 @@ terminal_skin :: () -> UiSkin {
     code_wash = none, quote_wash = none, quote_rail = dim, header_wash = none,
     body = row, strong = UiType.{face = TERM_FACE_BOLD, size = 1, line = 1}, code = UiType.{face = TERM_FACE_CODE, size = 1, line = 1},
     mono = row, small = UiType.{face = TERM_FACE_DIM, size = 1, line = 1}, label = row, title = UiType.{face = TERM_FACE_BOLD, size = 1, line = 1},
-    space = 1, pad = 1, radius = 0, radius_control = 0, border = 1, control_h = 1,
+    space = 1, pad = 1, radius = 0, radius_control = 0, border = 1, control_h = 1, control_pad = 1,
     frame = UIFRAME_CELLS, frame_mid = dim, frame_light = dim, trim = code,
     shadow = 0, shade = none, stud = 0,
     icon_copy = -1, icon_wrap = -1, icon_chevron = -1, icon_check = -1,

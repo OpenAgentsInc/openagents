@@ -1,0 +1,6 @@
+// openagents.com/components, the component library's page (components/spec.md,
+// GitHub #13153): every component in every skin, drawn by the library. The
+// page itself is components/gallery/page.coax; this is its module for
+// coax/web/wasm.sh, with components-face.c and components.wgsl (the
+// component system's one shader, gpu/components.coax).
+#load "../../components/gallery/page.coax";
