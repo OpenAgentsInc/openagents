@@ -18,10 +18,15 @@
 // oa-api runs, and whose Send becomes Stop while a turn runs; KEY, the
 // asker's own Anthropic key or Claude subscription token. A `#demo` hash
 // shows Zeron's demo conversation as the Mac app's --demo does, for
-// comparing the two renders. Based on Zeron by Wing, MIT.
+// comparing the two renders. Theme, beside Key, opens the access menu's
+// card listing every skin openagents.com/components shows (Zeron, the
+// default; Everglade; the Verse; the terminal, drawn in pixels): the whole
+// page wears the one chosen, and this browser keeps it (host.js action 4).
+// Based on Zeron by Wing, MIT.
 
 #load "../../components/zeron/picker.coax";
 #load "../../components/zeron/chrome.coax";   // the page's buttons, field and notice
+#load "../../components/skin/all.coax";       // every skin, in pixels (uiskin_pixels)
 
 WC_MAX_VERTICES :: 120000;
 WC_INBOX :: 1048576;
@@ -34,7 +39,11 @@ WC_BODY :: 24600;          // a post's JSON: a message escaped, or a credential
 WC_NOTE :: 300;
 WC_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
 WC_TYPED :: 1; WC_SHOWN :: 602;
-WC_NAVIGATE :: 1; WC_COPY :: 2;
+WC_KEPT :: 4;              // host.js: what this browser kept for the page (the skin's name), once an engine loads
+WC_NAVIGATE :: 1; WC_COPY :: 2; WC_KEEP :: 4;
+// The skins Theme offers (components/skin/all.coax, by id), and what each looks like.
+WC_SKIN_NAMES :: [4] string.["Zeron", "Everglade", "Verse", "Terminal"];
+WC_SKIN_DESCS :: [4] string.["Dark and quiet, as OpenAgents for desktop draws it", "Iron, bronze and gold, as in Everglade", "Grey glass with a cyan edge, as in the Verse", "Monospace type on black, as in a terminal"];
 WC_BUSY :: 2.0;            // seconds between reads while a turn waits or runs
 WC_REFRESH :: 30.0;        // else
 POST_SEND :: 1; POST_MODEL :: 2; POST_STOP :: 3; POST_KEY :: 4; POST_KEY_REMOVE :: 5; POST_TAB :: 6;
@@ -64,7 +73,7 @@ WC_BUTTON_H :: 28.0;
 WC_INTRO :: "Ask anything about OpenAgents. The agent reads a fresh copy of the public openagents repository (main) and the web, and says which files it read. It can't change anything.";
 // The chrome's presses (WcState.hits): the list's rows are WH_CONV + index.
 WH_NONE :: -1; WH_LOGIN :: 1; WH_NEW :: 2; WH_CHATS :: 3; WH_KEY :: 4; WH_KFIELD :: 5; WH_KSAVE :: 6;
-WH_REPLACE :: 7; WH_REMOVE :: 8; WH_CLOSE :: 9; WH_HOME :: 10; WH_SHADE :: 11;
+WH_REPLACE :: 7; WH_REMOVE :: 8; WH_CLOSE :: 9; WH_HOME :: 10; WH_SHADE :: 11; WH_THEME :: 12;
 WH_CONV :: 100;
 WH_TAB :: 1000; WH_TAB_CLOSE :: 2000;   // + the tab's place, from 0
 WC_HITS :: 256;
@@ -82,6 +91,10 @@ WcState :: struct {
   transcript: [1] Transcript;
   picker: [1] Picker;
   cat: [1] PkCatalog;
+  skins: [1] PkCatalog;          // Theme's menu: every skin (wc_skin_catalog)
+  skin_id: int;                  // the skin chosen here (UISKIN_*; Zeron, 0, until one is)
+  kept: int; kept_set: bool;     // the skin this browser kept, until a frame takes it (never in golden mode)
+  theming: bool;                 // the open menu is Theme's, not the model's
   // the host's side of the atlas: what coax/web/gpui.js hands over (a font's
   // header, advances and kerning; a cluster's bytes; a cell's six numbers)
   scratch: [9800] f32;
@@ -576,6 +589,48 @@ wc_catalog :: (out: [] PkCatalog) {
   out[0] = c;
 }
 wc_sel :: (s: [] WcState) -> PkSel { return PkSel.{model = wc_model(s), level = -1, access = 0, plan = false}; }
+// Theme's menu: each skin over what it looks like, the chosen one checked (the access menu's card).
+wc_skin_catalog :: (out: [] PkCatalog) {
+  c := PkCatalog.{provider = "Theme", icon = -1, tint = WC_CLAUDE_TINT, n = 0, levels = 0, default_level = 0, access = UISKINS, full_access = -1, plan = false};
+  names := WC_SKIN_NAMES; descs := WC_SKIN_DESCS;
+  for k: 0..<UISKINS { c.access_label[k] = names[k]; c.access_desc[k] = descs[k]; c.access_value[k] = k; }
+  out[0] = c;
+}
+// The open menu's catalog and what is chosen in it: Theme's, or the model's.
+wc_menu :: (s: [] WcState) -> [] PkCatalog { return ifx s[0].theming then s[0].skins[..] else s[0].cat[..]; }
+wc_menu_sel :: (s: [] WcState) -> PkSel {
+  if s[0].theming { return PkSel.{model = -1, level = -1, access = s[0].skin_id, plan = false}; }
+  return wc_sel(s);
+}
+// Theme: its menu under (or over) the button, or closed when it is open.
+wc_open_theme :: (s: [] WcState) {
+  p := s[0].picker[..];
+  if pk_is_open(p) && s[0].theming { pk_close(p); s[0].theming = false; return; }
+  k := wc_hit_index(s, WH_THEME);
+  if k < 0 { return; }
+  b := s[0].hits[k];
+  wc_wear(s);   // a kept skin not yet worn is the one the menu checks
+  if pk_is_open(p) { pk_close(p); s[0].composer[0].open = -1; }
+  s[0].theming = true;
+  d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  pk_open(p, PK_ACCESS_MENU, s[0].skins[..], wc_menu_sel(s), b.x, b.y, b.w, b.h, s[0].height / d, false);
+}
+// A skin chosen: the page wears it from the next frame, and this browser keeps its name.
+wc_choose_skin :: (s: [] WcState, id: int) {
+  if id < 0 || id >= UISKINS { return; }
+  s[0].skin_id = id;
+  if !s[0].golden { s[0].out_n = wc_put(s[0].outbox[..], 0, uiskin(id).name); s[0].action = WC_KEEP; }
+}
+// The page wears the chosen skin: the transcript, the composer and the menus (the chrome reads wc_skin).
+// The kept one is taken at the first frame, except in golden mode, which is always Zeron's.
+wc_wear :: (s: [] WcState) {
+  if s[0].kept_set { if !s[0].golden { s[0].skin_id = s[0].kept; } s[0].kept_set = false; }
+  if wc_skin(s).id == s[0].skin_id { return; }
+  sk := uiskin_pixels(s[0].skin_id);
+  t_set_skin(s[0].transcript[..], sk);
+  composer_set_skin(s[0].composer[..], sk);
+  pk_set_skin(s[0].picker[..], sk);
+}
 wc_empty :: (s: [] WcState) -> bool { return !s[0].demo && s[0].pending_n == 0 && (!wc_showing(s) || wc_count(s, 'U') == 0); }
 wc_labels :: (s: [] WcState) {
   c := s[0].composer[..];
@@ -589,8 +644,9 @@ wc_labels :: (s: [] WcState) {
 }
 wc_open_menu :: (s: [] WcState) {
   p := s[0].picker[..]; c := s[0].composer[..];
-  if p[0].kind == PK_MODEL { pk_close(p); c[0].open = -1; return; }
+  if p[0].kind == PK_MODEL && !s[0].theming { pk_close(p); c[0].open = -1; return; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  s[0].theming = false;
   pk_open(p, PK_MODEL, s[0].cat[..], wc_sel(s), c[0].chip_x[CH_MODEL], c[0].chip_y[CH_MODEL], c[0].chip_w[CH_MODEL], c[0].chip_h[CH_MODEL], s[0].height / d, wc_empty(s));
   pk_tabs(p, 1, 0);
   pk_tab(p, 0, ICON_CLAUDE, WC_CLAUDE_TINT);
@@ -601,6 +657,12 @@ wc_open_menu :: (s: [] WcState) {
 // What the menu picked: the model, for the conversation shown (oa-api keeps it) or the next new one.
 wc_take_picks :: (s: [] WcState) {
   p := s[0].picker[..];
+  if s[0].theming {
+    if p[0].pick_access >= 0 { wc_choose_skin(s, p[0].pick_access); }
+    p[0].pick_model = -1; p[0].pick_level = -1; p[0].pick_access = -1; p[0].flip_plan = false;
+    if !pk_is_open(p) { s[0].theming = false; }
+    return;
+  }
   // a pick closes the menu (its panel would hold only the model's name)
   if p[0].pick_model >= 0 { pk_close(p); }
   if p[0].pick_model >= 0 && p[0].pick_model < 3 && p[0].pick_model != wc_model(s) {
@@ -686,6 +748,11 @@ wc_hit :: (s: [] WcState, id: int, x: f32, y: f32, w: f32, h: f32) {
   s[0].hits[s[0].nhit] = WcHit.{x = x, y = y, w = w, h = h, id = id};
   s[0].nhit += 1;
 }
+// Where a chrome target was last painted: its place in hits, or -1.
+wc_hit_index :: (s: [] WcState, id: int) -> int {
+  for k: 0..<s[0].nhit { if s[0].hits[k].id == id { return k; } }
+  return -1;
+}
 wc_hit_at :: (s: [] WcState, x: f32, y: f32) -> int {
   k := s[0].nhit - 1;
   while k >= 0 {
@@ -704,7 +771,7 @@ wc_draw :: (out: [] f32, at: int, s: [] WcState, d: f32, list: [] Prim, n: int) 
   return gpu_draw(out, at, s[0].atlas[..], d, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
 }
 // A text button as Zeron's trigger chips are: the label in the muted tone, the wash under the pointer.
-wc_button :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: string, x: f32, y: f32, id: int, on: bool) -> WcB {
+wc_button :: (out: [] f32, at: int, s: [] WcState, d: f32, label: string, x: f32, y: f32, id: int, on: bool) -> WcB {
   sk := wc_skin(s); a := s[0].atlas[..];
   list: [WC_PRIMS] Prim;
   w := chrome_button_width(sk, a, label);
@@ -713,7 +780,7 @@ wc_button :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: str
   return WcB.{v = v, w = w};
 }
 // A filled button (Zeron's primary: the text tone's pill, the shell's label).
-wc_primary :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: string, x: f32, y: f32, id: int) -> WcB {
+wc_primary :: (out: [] f32, at: int, s: [] WcState, d: f32, label: string, x: f32, y: f32, id: int) -> WcB {
   sk := wc_skin(s); a := s[0].atlas[..];
   list: [WC_PRIMS] Prim;
   w := chrome_primary_width(sk, a, label);
@@ -722,22 +789,22 @@ wc_primary :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: st
   return WcB.{v = v, w = w};
 }
 WcFlow :: struct { v: int; y: f32; }
-// Words wrapped to w (12px, or 14 when not small), a line each lh.
+// Words wrapped to w in the skin's tool face (small) or body face, a line each lh.
 wc_words :: (out: [] f32, f: WcFlow, s: [] WcState, d: f32, text: string, x: f32, w: f32, small: bool, lh: f32, color: Rgba, max: int) -> WcFlow {
-  a := s[0].atlas[..];
+  a := s[0].atlas[..]; sk := wc_skin(s);
   no_runs: [1] MdRun;
   lines: [24] TextLine;
-  nl := md_wrap(a, text, no_runs[0..<0], w, small, lines[..]);
+  nl := text_wrap(measure_font(a), ifx small then uiskin_small_faces(sk) else uiskin_faces(sk), text, no_runs[0..<0], w, lines[..]);
   if nl > max { nl = max; }
   r := f;
   for q: 0..<nl {
-    r.v = paint_text(out, r.v, a, d, ifx small then FONT_TOOL else FONT_INPUT, cast(string) text[lines[q].from..<lines[q].to], x, r.y, lh, color);
+    r.v = paint_text(out, r.v, a, d, ifx small then sk.tool.face else sk.body.face, cast(string) text[lines[q].from..<lines[q].to], x, r.y, lh, color);
     r.y += lh;
   }
   return r;
 }
 // Zeron's failure notice above the composer (screen.coax zr_paint_failure): why a message or Stop didn't go, or the cap.
-wc_paint_failure :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32, composer_y: f32, cw: f32, msg: string) -> int {
+wc_paint_failure :: (out: [] f32, at: int, s: [] WcState, d: f32, x: f32, composer_y: f32, cw: f32, msg: string) -> int {
   c := s[0].composer[..]; a := s[0].atlas[..];
   if msg.count == 0 { c[0].failure_h = 0; return at; }
   list: [WC_PRIMS] Prim; box: [2] f32;
@@ -769,22 +836,22 @@ wc_credential :: (s: [] WcState, buf: [] u8) -> int {
 }
 
 // The conversations: New chat, then each with its model, when and whether it works, the shown one washed.
-wc_paint_list :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32, top: f32, w: f32, bottom: f32) -> int {
-  a := s[0].atlas[..];
+wc_paint_list :: (out: [] f32, at: int, s: [] WcState, d: f32, x: f32, top: f32, w: f32, bottom: f32) -> int {
+  a := s[0].atlas[..]; sk := wc_skin(s);
   v := at;
   // New chat
   ny := top + 8;
   hot := s[0].hot == WH_NEW;
-  if hot || !wc_showing(s) { v = paint_quad(out, v, d, x + 8, ny, w - 16, 32, CHIP_RADIUS, 0, rgba(1, 1, 1, ifx hot then 0.07f32 else 0.05f32), rgba(1, 1, 1, 0)); }
-  v = paint_icon(out, v, a, d, ICON_PEN, x + 18, ny + 8, 16, 16, th.muted);
-  v = paint_text(out, v, a, d, FONT_MENU, "New chat", x + 42, ny, 32, th.text);
+  if hot || !wc_showing(s) { v = paint_quad(out, v, d, x + 8, ny, w - 16, 32, sk.radius_control, 0, ifx hot then sk.row_shown else sk.row_hover, sk.clear); }
+  v = paint_icon(out, v, a, d, ICON_PEN, x + 18, ny + 8, 16, 16, sk.muted);
+  v = paint_text(out, v, a, d, sk.menu.face, "New chat", x + 42, ny, 32, sk.ink);
   wc_hit(s, WH_NEW, x + 8, ny, w - 16, 32);
   // Chats and their count
   hy := ny + 32 + 14;
   n := wc_count(s, 'C');
   cb: [24] u8; cn := wc_number(cb[..], 0, n);
-  v = paint_text(out, v, a, d, FONT_MENU_SMALL, "Chats", x + 18, hy, 20, th.faint);
-  v = paint_text(out, v, a, d, FONT_MENU_SMALL, cast(string) cb[0..<cn], x + w - 18 - text_width(a, FONT_MENU_SMALL, cast(string) cb[0..<cn]), hy, 20, th.faint);
+  v = paint_text(out, v, a, d, sk.menu_small.face, "Chats", x + 18, hy, 20, sk.faint);
+  v = paint_text(out, v, a, d, sk.menu_small.face, cast(string) cb[0..<cn], x + w - 18 - text_width(a, sk.menu_small.face, cast(string) cb[0..<cn]), hy, 20, sk.faint);
   ly := hy + 24;
   room := bottom - ly;
   // the rows: each folder's name, then its conversations, newest first (an oa-api without folders: the conversations alone)
@@ -816,9 +883,9 @@ wc_paint_list :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32
   for j: 0..<nf {
     y := ly + head_y[j] - s[0].side_scroll;
     if y < ly - 1 || y + WC_FOLDER_ROW > bottom + 1 { continue; }
-    v = paint_icon(out, v, a, d, ICON_FOLDER, x + 18, y + 7, 14, 14, th.faint);
+    v = paint_icon(out, v, a, d, ICON_FOLDER, x + 18, y + 7, 14, 14, sk.faint);
     fb: [160] u8;
-    v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, folders[j], w - 60, fb[..]), x + 40, y + 4, 20, th.faint);
+    v = paint_text(out, v, a, d, sk.menu_small.face, pk_fit(a, sk.menu_small.face, folders[j], w - 60, fb[..]), x + 40, y + 4, 20, sk.faint);
   }
   for r: 0..<no {
     k := order[r];
@@ -827,29 +894,29 @@ wc_paint_list :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32
     i := wc_nth(s, 'C', k);
     on := wc_int(wc_cell(s, i, 1)) == s[0].shown;
     h := s[0].hot == WH_CONV + k;
-    if (on || h) && y >= ly - 1 && y + WC_ROW - 4 <= bottom + 1 { v = paint_quad(out, v, d, x + 8, y, w - 16, WC_ROW - 4, CHIP_RADIUS, 0, rgba(1, 1, 1, ifx on then 0.07f32 else 0.04f32), rgba(1, 1, 1, 0)); }
+    if (on || h) && y >= ly - 1 && y + WC_ROW - 4 <= bottom + 1 { v = paint_quad(out, v, d, x + 8, y, w - 16, WC_ROW - 4, sk.radius_control, 0, ifx on then sk.row_shown else sk.row_hover, sk.clear); }
     title := wc_cell(s, i, 2);
     tb: [400] u8;
     title = wc_decode_into(title, tb[..]);
     if title.count == 0 { title = "(no words)"; }
     fb: [400] u8;
-    if y >= ly - 2 { v = paint_text(out, v, a, d, FONT_MENU, pk_fit(a, FONT_MENU, title, w - 36, fb[..]), x + 18, y + 6, 20, ifx on then th.text else th.muted); }
+    if y >= ly - 2 { v = paint_text(out, v, a, d, sk.menu.face, pk_fit(a, sk.menu.face, title, w - 36, fb[..]), x + 18, y + 6, 20, ifx on then sk.ink else sk.muted); }
     mb: [120] u8;
     m := wc_put(mb[..], 0, wc_model_name(wc_cell(s, i, 3)));
     m = wc_put(mb[..], m, " · "); m = wc_put(mb[..], m, wc_cell(s, i, 4));
     if wc_cell(s, i, 5) == "1" { m = wc_put(mb[..], m, " · Working"); }
     gb: [160] u8;
-    if y + 26 + 18 <= bottom + 2 { v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, cast(string) mb[0..<m], w - 36, gb[..]), x + 18, y + 26, 18, th.faint); }
+    if y + 26 + 18 <= bottom + 2 { v = paint_text(out, v, a, d, sk.menu_small.face, pk_fit(a, sk.menu_small.face, cast(string) mb[0..<m], w - 36, gb[..]), x + 18, y + 26, 18, sk.faint); }
     wc_hit(s, WH_CONV + k, x + 8, ifx y < ly then ly else y, w - 16, WC_ROW - 4);
   }
   return v;
 }
 // The open tabs across the top of the conversation (a wide window): each its title, the shown one washed, its x on the right.
-wc_paint_tabs :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f32, w0: f32) -> int {
-  a := s[0].atlas[..];
+wc_paint_tabs :: (out: [] f32, at: int, s: [] WcState, d: f32, x0: f32, w0: f32) -> int {
+  a := s[0].atlas[..]; sk := wc_skin(s);
   tabs: [WC_TABS] int; n := wc_tabs(s, tabs[..]);
   if n == 0 { return at; }
-  v := paint_quad(out, at, d, x0, 0, w0, TITLEBAR_HEIGHT, 0, 0, th.shell, th.shell);
+  v := paint_quad(out, at, d, x0, 0, w0, TITLEBAR_HEIGHT, 0, 0, sk.canvas, sk.canvas);
   avail := w0 - 2 * WC_TAB_PAD;
   tw := (avail - cast(f32) (n - 1) * WC_TAB_GAP) / cast(f32) n;
   if tw > WC_TAB_MAX { tw = WC_TAB_MAX; }
@@ -862,16 +929,16 @@ wc_paint_tabs :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f3
     i := wc_nth(s, 'C', tabs[t]);
     shown := wc_int(wc_cell(s, i, 1)) == s[0].shown;
     hot := s[0].hot == WH_TAB + t || s[0].hot == WH_TAB_CLOSE + t;
-    if shown || hot { v = paint_quad(out, v, d, x, y, tw, WC_TAB_H, CHIP_RADIUS, 0, rgba(1, 1, 1, ifx shown then 0.07f32 else 0.04f32), rgba(1, 1, 1, 0)); }
+    if shown || hot { v = paint_quad(out, v, d, x, y, tw, WC_TAB_H, sk.radius_control, 0, ifx shown then sk.row_shown else sk.tab_hover, sk.clear); }
     tb: [400] u8;
     title := wc_decode_into(wc_cell(s, i, 2), tb[..]);
     if title.count == 0 { title = "New chat"; }
     fb: [400] u8;
-    v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, title, tw - 2 * WC_TAB_PAD - WC_TAB_X, fb[..]), x + WC_TAB_PAD, y + 4, 20, ifx shown then th.text else th.muted);
+    v = paint_text(out, v, a, d, sk.menu_small.face, pk_fit(a, sk.menu_small.face, title, tw - 2 * WC_TAB_PAD - WC_TAB_X, fb[..]), x + WC_TAB_PAD, y + 4, 20, ifx shown then sk.ink else sk.muted);
     wc_hit(s, WH_TAB + t, x, y, tw, WC_TAB_H);
     // the x: always on the shown tab, on another under the pointer
     cx := x + tw - WC_TAB_PAD - WC_TAB_X + 4;
-    if shown || hot { v = paint_text(out, v, a, d, FONT_MENU_SMALL, "×", cx + 3, y + 4, 20, ifx s[0].hot == WH_TAB_CLOSE + t then th.text else th.faint); }
+    if shown || hot { v = paint_text(out, v, a, d, sk.menu_small.face, "×", cx + 3, y + 4, 20, ifx s[0].hot == WH_TAB_CLOSE + t then sk.ink else sk.faint); }
     wc_hit(s, WH_TAB_CLOSE + t, cx, y + 4, WC_TAB_X - 4, WC_TAB_H - 8);
   }
   return v;
@@ -886,61 +953,68 @@ wc_decode_into :: (text: string, buf: [] u8) -> string {
   return cast(string) buf[0..<n];
 }
 // The sidebar (a wide window): the list, then whose key the turns run on and Key.
-wc_paint_sidebar :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, h: f32) -> int {
-  a := s[0].atlas[..];
+wc_paint_sidebar :: (out: [] f32, at: int, s: [] WcState, d: f32, h: f32) -> int {
+  a := s[0].atlas[..]; sk := wc_skin(s);
   w: f32 = WC_SIDEBAR;
-  side := hex(0x121212, 1);
+  side := flatten(sk.list_wash, sk.canvas);   // the canvas under the skin's list wash (#121212 in Zeron)
   v := paint_quad(out, at, d, 0, 0, w, h, 0, 0, side, side);
-  v = paint_quad(out, v, d, w - 1, 0, 1, h, 0, 0, th.border, th.border);
+  v = paint_quad(out, v, d, w - 1, 0, 1, h, 0, 0, sk.field_edge, sk.field_edge);
   // the name, home
-  v = paint_text(out, v, a, d, FONT_MENU, "OpenAgents", 18, 8, 22, ifx s[0].hot == WH_HOME then th.text else th.muted);
-  wc_hit(s, WH_HOME, 10, 8, text_width(a, FONT_MENU, "OpenAgents") + 16, 22);
+  v = paint_text(out, v, a, d, sk.menu.face, "OpenAgents", 18, 8, 22, ifx s[0].hot == WH_HOME then sk.ink else sk.muted);
+  wc_hit(s, WH_HOME, 10, 8, text_width(a, sk.menu.face, "OpenAgents") + 16, 22);
   foot := h - 96;
-  v = wc_paint_list(out, v, s, th, d, 0, TITLEBAR_HEIGHT - 6, w, foot - 8);
-  v = paint_quad(out, v, d, 12, foot, w - 24, 1, 0, 0, th.border, th.border);
+  v = wc_paint_list(out, v, s, d, 0, TITLEBAR_HEIGHT - 6, w, foot - 8);
+  v = paint_quad(out, v, d, 12, foot, w - 24, 1, 0, 0, sk.field_edge, sk.field_edge);
   cb: [200] u8; cn := wc_credential(s, cb[..]);
-  r := wc_words(out, WcFlow.{v = v, y = foot + 10}, s, d, cast(string) cb[0..<cn], 18, w - 36, true, 18, ifx wc_has_key(s) && wc_z(s, 5) == "1" then hex(DANGER_MUTED, 1) else th.faint, 2);
-  return wc_button(out, r.v, s, th, d, "Key", 10, h - 40, WH_KEY, s[0].keying).v;
+  r := wc_words(out, WcFlow.{v = v, y = foot + 10}, s, d, cast(string) cb[0..<cn], 18, w - 36, true, 18, ifx wc_has_key(s) && wc_z(s, 5) == "1" then sk.danger_muted else sk.faint, 2);
+  b := wc_button(out, r.v, s, d, "Key", 10, h - 40, WH_KEY, s[0].keying);
+  return wc_button(out, b.v, s, d, "Theme", 10 + b.w + 4, h - 40, WH_THEME, wc_theming(s)).v;
+}
+// Whether Theme's menu is open (its button stays lit).
+wc_theming :: (s: [] WcState) -> bool { return s[0].theming && pk_is_open(s[0].picker[..]); }
+// A card in the skin's panel frame over the canvas (a skin whose panel is a line alone still hides what is under it).
+wc_panel :: (out: [] f32, at: int, s: [] WcState, d: f32, x: f32, y: f32, w: f32, h: f32) -> int {
+  sk := wc_skin(s);
+  list: [16] Prim;
+  n := prim_fill(list[..], 0, x, y, w, h, sk.radius, sk.canvas);
+  return wc_draw(out, at, s, d, list[..], uiskin_panel(list[..], n, sk, x, y, w, h));
 }
 // KEY: the asker's own Anthropic API key or Claude subscription token, a card over the conversation.
-wc_paint_key :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f32, w0: f32, h: f32) -> int {
-  a := s[0].atlas[..];
-  v := paint_quad(out, at, d, x0, 0, w0, h, 0, 0, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+wc_paint_key :: (out: [] f32, at: int, s: [] WcState, d: f32, x0: f32, w0: f32, h: f32) -> int {
+  a := s[0].atlas[..]; sk := wc_skin(s);
+  v := paint_quad(out, at, d, x0, 0, w0, h, 0, 0, opacity(sk.canvas, 0.55), sk.clear);
   wc_hit(s, WH_SHADE, x0, 0, w0, h);
   cw := ifx w0 - 2 * WC_PAD < 480 then w0 - 2 * WC_PAD else 480.0f32;
   x := round_layout(x0 + (w0 - cw) / 2);
   y := round_layout(ifx h > 640 then h * 0.16 else 56.0f32);
   ix := x + 20; iw := cw - 40;
-  // measure first: the card's height
-  card := flatten(rgba(1, 1, 1, 0.04), th.shell);
   top := y;
-  // the card is drawn under what follows once its height is known: reserve a quad, fill it after
+  // the card is drawn under what follows once its height is known: reserve its vertices, fill them after
   qi := v;
-  v = paint_quad(out, v, d, x, y, cw, 10, 12, 1, card, th.border);
+  v = wc_panel(out, v, s, d, x, y, cw, 10);
   wc_hit(s, WH_KFIELD - 1000, x, y, cw, 10);
   hi := s[0].nhit - 1;
   r := WcFlow.{v = v, y = y + 18};
-  r.v = paint_text(out, r.v, a, d, FONT_BOLD, "Key", ix, r.y, 22, th.text);
-  r.v = paint_text(out, r.v, a, d, FONT_TOOL, "Yours, not ours", ix + text_width(a, FONT_BOLD, "Key") + 10, r.y + 2, 20, th.faint);
-  sk := wc_skin(s);
-  r.v = wc_button(out, r.v, s, th, d, "Close", x + cw - 12 - chrome_button_width(sk, a, "Close"), r.y - 3, WH_CLOSE, false).v;
+  r.v = paint_text(out, r.v, a, d, sk.title.face, "Key", ix, r.y, 22, sk.ink);
+  r.v = paint_text(out, r.v, a, d, sk.tool.face, "Yours, not ours", ix + text_width(a, sk.title.face, "Key") + 10, r.y + 2, 20, sk.faint);
+  r.v = wc_button(out, r.v, s, d, "Close", x + cw - 12 - chrome_button_width(sk, a, "Close"), r.y - 3, WH_CLOSE, false).v;
   r.y += 32;
-  r = wc_words(out, r, s, d, "Use your own Anthropic API key or Claude subscription. Turns on it cost you, not us, and have no daily limit here. It is checked, then kept encrypted; only the agent's runner can open it, and it is never shown again.", ix, iw, true, 19.416408, th.muted, 8);
+  r = wc_words(out, r, s, d, "Use your own Anthropic API key or Claude subscription. Turns on it cost you, not us, and have no daily limit here. It is checked, then kept encrypted; only the agent's runner can open it, and it is never shown again.", ix, iw, true, 19.416408, sk.muted, 8);
   r.y += 12;
   if wc_has_key(s) && !s[0].replacing {
     kind := wc_z(s, 3);
     kb: [120] u8;
     m := wc_put(kb[..], 0, ifx kind == "oauth" then "Claude subscription token" else "Anthropic API key");
     m = wc_put(kb[..], m, " …"); m = wc_put(kb[..], m, wc_z(s, 4));
-    r.v = paint_text(out, r.v, a, d, FONT_INPUT, cast(string) kb[0..<m], ix, r.y, 22, th.text);
+    r.v = paint_text(out, r.v, a, d, sk.body.face, cast(string) kb[0..<m], ix, r.y, 22, sk.ink);
     r.y += 26;
-    if wc_z(s, 5) == "1" { r = wc_words(out, r, s, d, "Expired: make a new one with claude setup-token and replace it.", ix, iw, true, 19.416408, hex(DANGER_MUTED, 1), 2); }
+    if wc_z(s, 5) == "1" { r = wc_words(out, r, s, d, "Expired: make a new one with claude setup-token and replace it.", ix, iw, true, 19.416408, sk.danger_muted, 2); }
     r.y += 6;
-    b1 := wc_button(out, r.v, s, th, d, "Replace", ix - sk.cmp.chip_pad, r.y, WH_REPLACE, false);
-    r.v = wc_button(out, b1.v, s, th, d, "Remove", ix - sk.cmp.chip_pad + b1.w + 4, r.y, WH_REMOVE, false).v;
+    b1 := wc_button(out, r.v, s, d, "Replace", ix - sk.cmp.chip_pad, r.y, WH_REPLACE, false);
+    r.v = wc_button(out, b1.v, s, d, "Remove", ix - sk.cmp.chip_pad + b1.w + 4, r.y, WH_REMOVE, false).v;
     r.y += WC_BUTTON_H + 4;
   } else {
-    r = wc_words(out, r, s, d, "Anthropic API key (sk-ant-api...), or Claude subscription token (from claude setup-token)", ix, iw, true, 19.416408, th.faint, 3);
+    r = wc_words(out, r, s, d, "Anthropic API key (sk-ant-api...), or Claude subscription token (from claude setup-token)", ix, iw, true, 19.416408, sk.faint, 3);
     r.y += 8;
     // the field: the composer's surface, the key as dots (never its characters)
     fh := sk.chrome.field_h;
@@ -953,25 +1027,27 @@ wc_paint_key :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f32
     r.v = wc_draw(out, r.v, s, d, fl[..], chrome_field_prims(fl[..], 0, sk, a, ix, r.y, iw, s[0].key_focus, cast(string) dots[0..<dn], "Paste it here", blink));
     s[0].field[0] = ix * s[0].d; s[0].field[1] = r.y * s[0].d; s[0].field[2] = (ix + iw) * s[0].d; s[0].field[3] = (r.y + fh) * s[0].d;
     r.y += fh + 10;
-    r.v = wc_primary(out, r.v, s, th, d, ifx s[0].post_kind == POST_KEY then "Checking" else "Save", ix, r.y, WH_KSAVE).v;
+    r.v = wc_primary(out, r.v, s, d, ifx s[0].post_kind == POST_KEY then "Checking" else "Save", ix, r.y, WH_KSAVE).v;
     r.y += 32 + 12;
-    r = wc_words(out, r, s, d, "For a subscription: run claude setup-token, approve in the browser, and paste the token it prints here.", ix, iw, true, 19.416408, th.faint, 3);
+    r = wc_words(out, r, s, d, "For a subscription: run claude setup-token, approve in the browser, and paste the token it prints here.", ix, iw, true, 19.416408, sk.faint, 3);
   }
-  if s[0].knote_n > 0 { r.y += 4; r = wc_words(out, r, s, d, cast(string) s[0].knote[0..<s[0].knote_n], ix, iw, true, 19.416408, hex(DANGER_MUTED, 1), 3); }
+  if s[0].knote_n > 0 { r.y += 4; r = wc_words(out, r, s, d, cast(string) s[0].knote[0..<s[0].knote_n], ix, iw, true, 19.416408, sk.danger_muted, 3); }
   ch := r.y + 16 - top;
-  // the card's quad, now its height is known (the same quad, so the same vertices)
-  vq := paint_quad(out, qi, d, x, y, cw, ch, 12, 1, card, th.border);
+  // the card, now its height is known (the same frame, so the same vertices)
+  vq := wc_panel(out, qi, s, d, x, y, cw, ch);
   s[0].hits[hi].h = ch;
   return r.v;
 }
 // Signed out, or not an admin: the name, and Log in (/login).
-wc_paint_login :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, w: f32, h: f32) -> int {
-  a := s[0].atlas[..];
-  v := paint_text(out, at, a, d, FONT_MENU, "OpenAgents", 18, 8, 22, ifx s[0].hot == WH_HOME then th.text else th.muted);
-  wc_hit(s, WH_HOME, 10, 8, text_width(a, FONT_MENU, "OpenAgents") + 16, 22);
-  bw := round_layout(text_width(a, FONT_CHIP, "Log in")) + 28;
+// Signed out, Theme stays at the top right.
+wc_paint_login :: (out: [] f32, at: int, s: [] WcState, d: f32, w: f32, h: f32) -> int {
+  a := s[0].atlas[..]; sk := wc_skin(s);
+  v := paint_text(out, at, a, d, sk.menu.face, "OpenAgents", 18, 8, 22, ifx s[0].hot == WH_HOME then sk.ink else sk.muted);
+  wc_hit(s, WH_HOME, 10, 8, text_width(a, sk.menu.face, "OpenAgents") + 16, 22);
+  v = wc_button(out, v, s, d, "Theme", w - WC_PAD + sk.cmp.chip_pad - 2 - chrome_button_width(sk, a, "Theme"), 5, WH_THEME, wc_theming(s)).v;
+  bw := chrome_primary_width(sk, a, "Log in");
   bx := round_layout((w - bw) / 2); by := round_layout(h / 2 - 16);
-  return wc_primary(out, v, s, th, d, "Log in", bx, by, WH_LOGIN).v;
+  return wc_primary(out, v, s, d, "Log in", bx, by, WH_LOGIN).v;
 }
 
 // ---------------------------------------------------------------- the frame
@@ -981,6 +1057,7 @@ wc_init :: (s: [] WcState) {
   c := s[0].composer[..];
   c[0].focused = true; c[0].clicked = -1; c[0].hover = -1; c[0].open = -1;
   wc_catalog(s[0].cat[..]);
+  wc_skin_catalog(s[0].skins[..]);
   s[0].status = -1; s[0].shown = -1; s[0].model = -1;
   s[0].ask_id = -1; s[0].post_id = -1; s[0].asked_at = -1000;
   s[0].hot = WH_NONE; s[0].press = WH_NONE;
@@ -1001,7 +1078,9 @@ wc_demo :: (s: [] WcState) {
 }
 wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
   if !s[0].ready { wc_init(s); }
+  wc_wear(s);
   t := s[0].transcript[..]; c := s[0].composer[..]; a := s[0].atlas[..];
+  sk := wc_skin(s);
   d := ifx dpr < 1 then 1.0f32 else dpr;
   s[0].width = width; s[0].height = height; s[0].d = d;
   if uniforms.count >= 2 { uniforms[0] = width; uniforms[1] = height; }
@@ -1040,21 +1119,20 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
   th := zeron_dark();
   w := width / d; h := height / d;
   s[0].nhit = 0;
-  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, sk.canvas, sk.canvas);
   if !a[0].ready { return v; }
   signed_out := s[0].status == 401 || s[0].status == 403 || s[0].status == 404;
-  if !s[0].demo && signed_out { s[0].keying = false; s[0].listing = false; return wc_paint_login(out, v, s, th, d, w, h); }
+  if !s[0].demo && signed_out { s[0].keying = false; s[0].listing = false; return wc_paint_login(out, v, s, d, w, h); }
   if !s[0].demo && s[0].status <= 0 {
-    lw := text_width(a, FONT_TOOL, "Loading");
-    return paint_text(out, v, a, d, FONT_TOOL, "Loading", round_layout((w - lw) / 2), round_layout(h / 2 - 9), 18, th.faint);
+    lw := text_width(a, sk.tool.face, "Loading");
+    return paint_text(out, v, a, d, sk.tool.face, "Loading", round_layout((w - lw) / 2), round_layout(h / 2 - 9), 18, sk.faint);
   }
   wide := w >= WC_WIDE;
   side := wide && !s[0].demo;
   mx := ifx side then WC_SIDEBAR else 0.0f32;
   mw := w - mx;
   phone := mw < 640;
-  if side { v = wc_paint_sidebar(out, v, s, th, d, h); }
-  sk := wc_skin(s);
+  if side { v = wc_paint_sidebar(out, v, s, d, h); }
   column := ifx mw < sk.cmp.max_width then mw else sk.cmp.max_width;
   cw := column - 2 * WC_PAD;
   x := round_layout(mx + (mw - cw) / 2);
@@ -1065,9 +1143,9 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
     composer_wrap(c, a, cw - 34);
     y := round_layout((h - composer_height(c, c[0].lines)) / 2 - WC_HERO_LIFT);
     t[0].nr = 0; t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
-    r := wc_words(out, WcFlow.{v = v, y = y - 24 - 3 * 19.416408}, s, d, WC_INTRO, x + 4, cw - 8, true, 19.416408, th.faint, 3);
+    r := wc_words(out, WcFlow.{v = v, y = y - 24 - 3 * 19.416408}, s, d, WC_INTRO, x + 4, cw - 8, true, 19.416408, sk.faint, 3);
     v = paint_composer(out, r.v, c, a, th, d, x, y, cw);
-    v = wc_paint_failure(out, v, s, th, d, x, y, cw, cast(string) fb[0..<fn]);
+    v = wc_paint_failure(out, v, s, d, x, y, cw, cast(string) fb[0..<fn]);
   } else {
     bottom_gap: f32 = ifx phone then WC_DOCK_BOTTOM_PHONE else WC_DOCK_BOTTOM;
     ch := docked_height(c, a, cw);
@@ -1079,35 +1157,36 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
     t_clamp(t);
     v = t_paint(out, v, t, a, th, d, h, stack - sk.tr.status_strip);
     v = paint_composer_docked(out, v, c, a, th, d, x, h - bottom_gap, cw);
-    v = wc_paint_failure(out, v, s, th, d, x, c[0].y, cw, cast(string) fb[0..<fn]);
+    v = wc_paint_failure(out, v, s, d, x, c[0].y, cw, cast(string) fb[0..<fn]);
   }
-  if side { v = wc_paint_tabs(out, v, s, th, d, mx, mw); }
+  if side { v = wc_paint_tabs(out, v, s, d, mx, mw); }
   // the composer's caret: where the keyboard field (the IME's) goes
   if c[0].focused && !s[0].keying {
     s[0].field[0] = c[0].text_x * d; s[0].field[1] = c[0].text_y * d;
     s[0].field[2] = (c[0].text_x + c[0].text_w) * d; s[0].field[3] = (c[0].text_y + c[0].view_h) * d;
   }
   if !s[0].demo {
-    // the titlebar's buttons: Chats and New on a narrow window, Key
+    // the titlebar's buttons on a narrow window: Chats and New, Theme and Key
     if !wide {
       pad := sk.cmp.chip_pad;
-      b1 := wc_button(out, v, s, th, d, "Chats", WC_PAD - pad + 2, 5, WH_CHATS, s[0].listing);
-      b2 := wc_button(out, b1.v, s, th, d, "New", WC_PAD - pad + 2 + b1.w + 2, 5, WH_NEW, false);
-      kw := chrome_button_width(sk, a, "Key");
-      v = wc_button(out, b2.v, s, th, d, "Key", w - WC_PAD + pad - 2 - kw, 5, WH_KEY, s[0].keying).v;
+      b1 := wc_button(out, v, s, d, "Chats", WC_PAD - pad + 2, 5, WH_CHATS, s[0].listing);
+      b2 := wc_button(out, b1.v, s, d, "New", WC_PAD - pad + 2 + b1.w + 2, 5, WH_NEW, false);
+      kx := w - WC_PAD + pad - 2 - chrome_button_width(sk, a, "Key");
+      b3 := wc_button(out, b2.v, s, d, "Theme", kx - 2 - chrome_button_width(sk, a, "Theme"), 5, WH_THEME, wc_theming(s));
+      v = wc_button(out, b3.v, s, d, "Key", kx, 5, WH_KEY, s[0].keying).v;
     }
-    if s[0].keying { v = wc_paint_key(out, v, s, th, d, mx, mw, h); }
+    if s[0].keying { v = wc_paint_key(out, v, s, d, mx, mw, h); }
     if s[0].listing && !wide {
-      v = paint_quad(out, v, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
+      v = paint_quad(out, v, d, 0, 0, w, h, 0, 0, sk.canvas, sk.canvas);
       wc_hit(s, WH_SHADE, 0, 0, w, h);
-      v = wc_button(out, v, s, th, d, "Chats", WC_PAD - sk.cmp.chip_pad + 2, 5, WH_CHATS, true).v;
-      v = wc_paint_list(out, v, s, th, d, WC_PAD - 8, TITLEBAR_HEIGHT, w - 2 * (WC_PAD - 8), h - 70);
+      v = wc_button(out, v, s, d, "Chats", WC_PAD - sk.cmp.chip_pad + 2, 5, WH_CHATS, true).v;
+      v = wc_paint_list(out, v, s, d, WC_PAD - 8, TITLEBAR_HEIGHT, w - 2 * (WC_PAD - 8), h - 70);
       cb: [200] u8; cn := wc_credential(s, cb[..]);
-      r := wc_words(out, WcFlow.{v = v, y = h - 56}, s, d, cast(string) cb[0..<cn], WC_PAD + 10, w - 2 * WC_PAD - 20, true, 18, th.faint, 2);
+      r := wc_words(out, WcFlow.{v = v, y = h - 56}, s, d, cast(string) cb[0..<cn], WC_PAD + 10, w - 2 * WC_PAD - 20, true, 18, sk.faint, 2);
       v = r.v;
     }
   }
-  v = pk_paint(out, v, s[0].picker[..], s[0].cat[..], wc_sel(s), a, th, d, w, h);
+  v = pk_paint(out, v, s[0].picker[..], wc_menu(s), wc_menu_sel(s), a, th, d, w, h);
   wc_update_cursor(s);
   return v;
 }
@@ -1146,6 +1225,7 @@ wc_act :: (s: [] WcState, id: int) {
   if id == WH_HOME { wc_go(s, "/"); return; }
   if id == WH_NEW { wc_new(s); return; }
   if id == WH_CHATS { s[0].listing = !s[0].listing; s[0].keying = false; return; }
+  if id == WH_THEME { wc_open_theme(s); return; }
   if id == WH_KEY { s[0].keying = !s[0].keying; s[0].listing = false; s[0].key_focus = s[0].keying && !wc_has_key(s); s[0].composer[0].focused = !s[0].keying; s[0].knote_n = 0; return; }
   if id == WH_CLOSE || id == WH_SHADE { if s[0].keying { wc_close_key(s); } s[0].listing = false; return; }
   if id == WH_KFIELD { s[0].key_focus = true; return; }
@@ -1176,7 +1256,7 @@ wc_save_key :: (s: [] WcState) {
 }
 // The keyboard field's text: typed or pasted.
 wc_typed :: (s: [] WcState, text: string) {
-  if pk_is_open(s[0].picker[..]) { b := pk_text(s[0].picker[..], s[0].cat[..], text); wc_take_picks(s); return; }
+  if pk_is_open(s[0].picker[..]) { if !s[0].theming { b := pk_text(s[0].picker[..], s[0].cat[..], text); wc_take_picks(s); } return; }   // Theme's menu has no search
   if s[0].keying {
     if !s[0].key_focus { return; }
     for ch: text { if ch >= 32 && ch < 127 && s[0].key_n < WC_KEY { s[0].key[s[0].key_n] = ch; s[0].key_n += 1; } }
@@ -1205,10 +1285,11 @@ coaxial_chat_pointer :: (s: [] WcState, x: f32, y: f32, phase: int, kind: int) -
     s[0].down_at = s[0].time; s[0].down_x = lx; s[0].down_y = ly;
     s[0].swallow = false;
     if pk_is_open(p) {
-      opened := c[0].open;
-      took := pk_press(p, s[0].cat[..], wc_sel(s), lx, ly);
+      opened := c[0].open; theming := s[0].theming;
+      took := pk_press(p, wc_menu(s), wc_menu_sel(s), lx, ly);
       wc_take_picks(s);
       if took { return true; }
+      if theming && wc_hit_at(s, lx, ly) == WH_THEME { s[0].swallow = true; return true; }   // Theme again: closed, not opened again
       if opened >= 0 && composer_chip_hit(c, lx, ly) == opened { s[0].swallow = true; return true; }
     }
     // the failure notice: a press dismisses its note
@@ -1229,7 +1310,7 @@ coaxial_chat_pointer :: (s: [] WcState, x: f32, y: f32, phase: int, kind: int) -
     return took;
   }
   if phase == 1 {
-    if pk_is_open(p) { pk_move(p, s[0].cat[..], wc_sel(s), lx, ly); wc_take_picks(s); }
+    if pk_is_open(p) { pk_move(p, wc_menu(s), wc_menu_sel(s), lx, ly); wc_take_picks(s); }
     s[0].hot = wc_hit_at(s, lx, ly);
     hc := composer_chip_hit(c, lx, ly);
     c[0].hover = ifx (hc == CH_MODEL) && !s[0].keying && !s[0].listing then hc else -1;
@@ -1259,7 +1340,7 @@ coaxial_chat_pointer :: (s: [] WcState, x: f32, y: f32, phase: int, kind: int) -
 // The wheel, CSS pixels down: the open menu's list, the sidebar, the composer's text, else the transcript.
 coaxial_chat_wheel :: (s: [] WcState, dy: f32) #export_c #effects(all) {
   if s.count < 1 { return; }
-  if pk_is_open(s[0].picker[..]) { b := pk_wheel(s[0].picker[..], s[0].cat[..], -dy); return; }
+  if pk_is_open(s[0].picker[..]) { b := pk_wheel(s[0].picker[..], wc_menu(s), -dy); return; }
   d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
   if s[0].listing || (s[0].width / d >= WC_WIDE && s[0].lx < WC_SIDEBAR && !s[0].demo) { s[0].side_scroll += dy; return; }
   if s[0].keying { return; }
@@ -1277,7 +1358,7 @@ coaxial_chat_key :: (s: [] WcState, key: int, mods: int) -> bool #export_c #effe
   // an open menu holds the keyboard
   p := s[0].picker[..];
   if pk_is_open(p) {
-    took := pk_key(p, s[0].cat[..], wc_sel(s), ifx key == WK_TAB then KEY_TAB else key, mods);
+    took := pk_key(p, wc_menu(s), wc_menu_sel(s), ifx key == WK_TAB then KEY_TAB else key, mods);
     wc_take_picks(s);
     return took;
   }
@@ -1328,6 +1409,7 @@ coaxial_chat_message :: (s: [] WcState, kind: int, length: int) #export_c #effec
   text := cast(string) s[0].inbox[0..<length];
   if kind >= WC_HTTP && kind < WC_HTTP + 8 { wc_answer(s, kind - WC_HTTP, text); return; }
   if kind == WC_TYPED { wc_typed(s, text); return; }
+  if kind == WC_KEPT { s[0].kept = uiskin_named(text); s[0].kept_set = true; return; }
   if kind == WC_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
 }
 // The location's hash: #demo shows Zeron's demo conversation.

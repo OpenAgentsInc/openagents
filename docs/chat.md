@@ -59,6 +59,15 @@ counts against a daily cap for /chat of $10 across every model and person
 what's left; over it `send` answers 429 and the page says so. Tests use
 Haiku.
 
+## Theme
+
+Theme, beside Key, lists every skin from `/components` (`components/skin/all.coax`):
+Zeron (the default), Everglade, Verse and Terminal. The terminal skin is drawn in
+pixels by `components/skin/terminal-pixels.coax`. The page keeps the choice in this
+browser (`host.js` action 4, given back as message 4). Golden mode always draws Zeron.
+Checks: `apps/openagents-web/chat-frames.coax --only Theme` and
+`components/zeron/skins-checks.coax` (GitHub #13230).
+
 ## Your own key
 
 Key on the page takes an Anthropic API key (`sk-ant-api...`) or a Claude
