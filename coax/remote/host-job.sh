@@ -39,6 +39,14 @@ source "$in/spec"
 # (COAX_MUTATION=0 skips its mutation gates, as release.sh does).
 for v in ${env_vars[@]+"${env_vars[@]}"}; do export "${v?}"; done
 [[ -z "${shared_token:-}" ]] || export COAX_SHARED_CACHE_TOKEN="$shared_token"
+# The token lasts an hour: remote.sh writes a new one into this file every 15
+# minutes while the job runs, and shared-cache.sh reads the file first.
+if [[ -n "${shared_token:-}" ]]; then
+  mkdir -p ~/tokens && find ~/tokens -type f -mmin +180 -delete 2> /dev/null
+  export COAX_SHARED_CACHE_TOKEN_FILE=~/tokens/$job
+  [[ -s "$COAX_SHARED_CACHE_TOKEN_FILE" ]] || (umask 077; printf '%s\n' "$shared_token" > "$COAX_SHARED_CACHE_TOKEN_FILE")
+  trap 'rm -f "$COAX_SHARED_CACHE_TOKEN_FILE"' EXIT
+fi
 touch ~/busy
 # Results of a passing job are kept under its key (the source tree's hash,
 # the command, its directory and the forwarded environment): the same job

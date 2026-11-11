@@ -29,6 +29,7 @@
 # Settings (environment):
 #   COAX_SHARED_CACHE          the bucket (default openagentsgemini-coax-build-cache); 0 turns the tier off
 #   COAX_SHARED_CACHE_TOKEN    the bearer token; with none, get, put and log do nothing
+#   COAX_SHARED_CACHE_TOKEN_FILE  a file holding a newer token than that one (a host job's)
 #   COAX_SHARED_CACHE_STATS    a file wasm.sh appends each step's result to (host-job.sh sets it)
 #   COAX_SHARED_CACHE_KEY      the service account key token mints from
 #                              (default ~/work/.secrets/gcp-mvp-automation.json)
@@ -37,6 +38,13 @@ export LC_ALL=C
 bucket="${COAX_SHARED_CACHE:-openagentsgemini-coax-build-cache}"
 api="https://storage.googleapis.com"
 token="${COAX_SHARED_CACHE_TOKEN:-}"
+# A token lasts an hour and a job can run longer (or wait half an hour for a
+# slot first), so remote.sh sends its job a new one every 15 minutes, into
+# this file (host-job.sh names it); the newest one wins.
+if [[ -n "${COAX_SHARED_CACHE_TOKEN_FILE:-}" && -s "$COAX_SHARED_CACHE_TOKEN_FILE" ]]; then
+  token="$(cat "$COAX_SHARED_CACHE_TOKEN_FILE" 2> /dev/null)" || token="${COAX_SHARED_CACHE_TOKEN:-}"
+  [[ -n "$token" ]] || token="${COAX_SHARED_CACHE_TOKEN:-}"
+fi
 on() { [[ "$bucket" != 0 && -n "$token" ]]; }
 fetch() {   # curl args...: the HTTP status, or 000
   curl -sS -o /dev/null -w '%{http_code}' --max-time 300 --retry 2 --retry-delay 1 -H "Authorization: Bearer $token" "$@" 2> /dev/null || true
@@ -204,5 +212,5 @@ case "${1:-}" in
   summary) summary "$2" ;;
   report) report "${2:-}" ;;
   publish-pages) publish_pages "$2" "$3" ;;
-  *) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

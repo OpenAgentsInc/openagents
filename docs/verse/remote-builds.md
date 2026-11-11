@@ -113,7 +113,12 @@ host's disk caches, under the same keys:
 `remote.sh` mints a token for each job that can read and write this bucket and
 nothing else (the automation account's token, exchanged at Google's STS for
 one with a credential access boundary on the bucket; it lasts an hour), and
-the host's job passes it to the command. The hosts have no service account,
+the host's job passes it to the command. A job can run longer than that, or
+wait half an hour for a slot first, so `remote.sh` writes a new token to the
+host a minute into the job and every 15 minutes after (`~/tokens/JOB`, which
+`shared-cache.sh` reads first). Before this, a job past its token's hour
+stopped writing to the bucket without a word: the first pages build of
+`68fcf1a65e` ran 59 minutes and could not store its pages. The hosts have no service account,
 so this needs no change to them.
 
 The Mac's own builds leave the tier off. No key can match between the Mac and

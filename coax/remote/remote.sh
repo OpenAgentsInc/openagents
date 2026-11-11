@@ -278,8 +278,23 @@ run() {
     # Every host full: look again every 10 s for the first slot any host frees,
     # for up to OA_REMOTE_WAIT seconds (default 1800), then wait on this host.
     nowait=1; (( $(now) - started < ${OA_REMOTE_WAIT:-1800} )) && [[ -z "${OA_REMOTE_HOST:-}" ]] || nowait=0
+    # The cache token lasts an hour, and the job may run longer or have waited
+    # for a slot: a new one a minute in, then every 15 minutes (host-job.sh
+    # and shared-cache.sh read ~/tokens/JOB first).
+    local refresher=""
+    if [[ -n "$shared_token" ]]; then
+      ( pause=60
+        while sleep "$pause"; do
+          kill -0 $$ 2> /dev/null || exit 0
+          t="$("$here/shared-cache.sh" token 2> /dev/null)" && [[ -n "$t" ]] &&
+            printf '%s\n' "$t" | ssh_to "$name" "$ip" "umask 077; mkdir -p ~/tokens && cat > ~/tokens/$inbox.new && mv -f ~/tokens/$inbox.new ~/tokens/$inbox"
+          pause=900
+        done ) > /dev/null 2>&1 &
+      refresher=$!
+    fi
     ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
     status=$?
+    [[ -z "$refresher" ]] || { kill "$refresher" 2> /dev/null; wait "$refresher" 2> /dev/null; }
     [[ $status == 96 && $nowait == 1 ]] || break
     # A command of its own that exited 96 left its result.
     ssh_to "$name" "$ip" "grep -qx 96 ~/results/$job/status" < /dev/null 2> /dev/null && break
