@@ -1,3 +1,4 @@
+// Firm reason: 1 (the browser's NIP-07 window.nostr extension API, reachable only from page JS)
 // /login's key login: the browser's NIP-07 extension signs the NIP-98 event the API
 // checks (coax/web/api/auth.c, POST /api/auth/nostr). login.coax asks with action 72,
 // "URL\nBODY"; this answers message 72, "Nostr <base64 event>" or "!WORDS", and says
