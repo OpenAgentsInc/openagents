@@ -27,7 +27,7 @@ Some files sit under one zone's paths but serve more than one zone:
 The game layer that the zones already share still lives in
 `apps/openagents-web/`, outside every zone's paths: `class-kit.coax` (the class
 kits and how each ability aims), `class-look.coax` (looks, colours and the
-bar's boxes), `cast-pose.coax` (the cast clip and the bow's aim pose),
+bar's boxes), `cast-pose.coax` (the cast clip),
 `class-menu.coax` (the CLASSES column) and `fivebar.coax` (the hotbar on the
 SRD engine). These files move to `everglade/` as the
 [book's layout](../../everglade/book/README.md#where-everglades-code-lives)
@@ -44,13 +44,16 @@ they start with `aethyr/`, `verse/`, `coax/` or `everglade/`.
 ### Bow carry and draw
 
 The shared modules are `aethyr/action/bow.coax` (the draw, the arrows and the
-aim), `aethyr/action/bow-pose.coax` (the keyed draw pose) and `cast-pose.coax`
-(`cp_bow_layer`, the pose over the upper body).
+aim), `aethyr/action/bow-pose.coax` (the keyed draw pose) and
+`everglade/held-kit.coax` (the bow in the hand, its string and arrow, and
+`held_bow_layer`, the pose over the upper body; moved out of
+`charactercreator.coax` for #13079). The Archery Range realm wires the same
+three, as Experimental does.
 
 | Zone | Draw and arrows | Carry (the bow in hand or on the back) |
 | --- | --- | --- |
-| Everglade II | Shared: `E2Mouse` holds a `bow.BowDraw` (everglade2-mouse.coax:9); `e2m_draw` :26 and `e2m_loose` :36 wire it; `cast-pose.coax` `cp_bow_layer` is used at everglade2-mouse.coax:75. | Absent: no weapon is drawn on the body (cast-pose.coax:10). |
-| Experimental | Shared: `xc_bow_begin` experimental-combat.coax:949, `xc_bow_loose` :1004 and `xc_bow_step` :1040 call `bow.coax`; arrows draw through `aethyr/fx/puff.coax` `fxp_arrow_at` (:1089). | Local: `held_weapon` charactercreator.coax:409, `bow_string` :441, `bow_basis` :503, `bow_matrix` :520. The draw pose inside `experimental_figure` (charactercreator.coax:368-373) repeats `cp_bow_layer`. No bow on the back. |
+| Everglade II | Shared: `E2Mouse` holds a `bow.BowDraw` (everglade2-mouse.coax); `e2m_draw` and `e2m_loose` wire it; `everglade/held-kit.coax` `held_bow_layer` lays the pose (`e2m_figure`). | Shared: `e2_held` places the kit through `held_pieces` (everglade/held-kit.coax). |
+| Experimental | Shared: `xc_bow_begin`, `xc_bow_loose` and `xc_bow_step` (experimental-combat.coax) call `bow.coax`; arrows draw through `aethyr/fx/puff.coax` `fxp_arrow_at`. | Shared: `held_weapon`, `bow_string`, `bow_basis` and `bow_matrix` are `everglade/held-kit.coax`'s; `experimental_figure` calls its `held_bow_layer`. No bow on the back. |
 | Everglade v1 | Absent for players. NPC bows are local sticks (`rp_person_at` everglade-raid-preview.coax:325, `watch_missiles_draw` everglade-watch.coax:451). | Absent. |
 
 ### Damage numbers
@@ -257,7 +260,7 @@ when v1 wires the shared module or retires.
 
 | Feature | Issue | Copies (II / Experimental / v1) | Gaps |
 | --- | --- | --- | --- |
-| Bow carry and draw | #13079 | 0 / 7 / 0 | Everglade v1 |
+| Bow carry and draw | #13079 | 0 / 0 / 0 | Everglade v1 |
 | Damage numbers | #13080 | 7 / 14 / 24 | Everglade II, Experimental, Everglade v1 |
 | Area targeting | #13081 | 0 / 0 / 10 | |
 | Conditions | #13082 | 0 / 0 / 15 | none |
@@ -272,9 +275,8 @@ The rows, by feature (`EF_KNOWN` holds the same list):
 
 ### Bow carry and draw (#13079)
 
-7 zone-local copies.
+No zone-local copies: the held kit moved to `everglade/held-kit.coax`.
 
-- Experimental: `held_weapon` charactercreator.coax:409, `bow_string` charactercreator.coax:441, `bow_basis` charactercreator.coax:503, `bow_matrix` charactercreator.coax:520, and, landed before the check gated `main` (#13135), `bow_string_points` charactercreator.coax:532, `bow_matrix_turned` charactercreator.coax:660, `bow_matrix_held` charactercreator.coax:692.
 
 ### Damage numbers (#13080)
 

@@ -5,7 +5,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// pad: the clock, then the place you are in (1 the temple, 2 the range).
 struct MU { float4 eye; float4 right; float4 up; float4 forward; float2 size; float2 pad; };
 struct Obj { float4 a; float4 b; float4 c; float4 d; float4 e; float4 f; };
 struct MV {
@@ -47,9 +46,7 @@ vertex MV model_vs(uint id [[vertex_id]], uint instance [[instance_id]], constan
   MV o;
   float3 e = w - u.eye.xyz;
   float x = dot(e, u.right.xyz), y = dot(e, u.up.xyz), z = dot(e, u.forward.xyz);
-  // The same depth as the place you stand in writes (gpu/temple.coax temple_project, gpu/range.coax
-  // range_project): the range's far plane is further. pad.y is the place: 1 the temple, 2 the range.
-  const float near = 0.1; float far = u.pad.y > 1.5 ? 600.0 : 200.0;
+  const float near = 0.1, far = 200.0;
   o.pos = float4(x * u.forward.w * 2.0 / u.size.x, y * u.forward.w * 2.0 / u.size.y, far * (z - near) / (far - near), z);
   o.world = w;
   o.normal = float3(sk.n.x * c + sk.n.z * sn, sk.n.y, -sk.n.x * sn + sk.n.z * c);
@@ -94,8 +91,7 @@ fragment float4 model_fs(MV s [[stage_in]], constant MU &u [[buffer(0)]], textur
   // and a broad fill from the camera's side so a face reads.
   float3 key = saturate(dot(n, normalize(float3(0.25, 0.9, 0.3)))) * float3(0.55, 0.72, 1.0) * 1.1;
   float3 toward = normalize(float3(0.0, 1.45, 0.0) - s.world);
-  // The ember is the Workshop's (pad.y is the place: 1 the temple, 2 the range, which has no sphere).
-  float3 ember = saturate(dot(n, toward)) * float3(1.0, 0.5, 0.16) * (2.2 / (1.0 + 0.25 * distance_squared(float3(0.0, 1.45, 0.0), s.world))) * (u.pad.y > 1.5 ? 0.0 : 1.0);
+  float3 ember = saturate(dot(n, toward)) * float3(1.0, 0.5, 0.16) * (2.2 / (1.0 + 0.25 * distance_squared(float3(0.0, 1.45, 0.0), s.world)));
   float3 fill = saturate(dot(n, normalize(view + float3(0.0, 0.35, 0.0)))) * float3(0.85, 0.78, 0.7) * 0.75;
   float3 colour = albedo * (float3(0.1, 0.13, 0.2) + key + ember + fill);
   return float4(encode(colour), 1.0);

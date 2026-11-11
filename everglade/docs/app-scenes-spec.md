@@ -1,8 +1,9 @@
 # Worlds in the Everglade apps (spec)
 
-Written 2026-11-10. Status: **the list and three worlds are built on the Mac
-(Everglade itself, the Workshop and the Archery Range); the phones have two;
-Experimental is specified, not built.**
+Written 2026-11-10. Status: **the list and two worlds are built on the Mac
+(Everglade itself and the Workshop); the phones have the Workshop; the
+Archery Range and Experimental are the web's realms and don't run in the
+apps yet.**
 
 The Everglade apps are an experiment beside the main experience, which is
 the web app. They are where the next work, managing agents from inside a
@@ -23,11 +24,14 @@ them.
 | --- | --- | --- |
 | Everglade | The main flow, as the web has it: make a character, then walk into the glade | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
 | The Golemancers' Workshop | The temple and the unfinished golem | Yes |
-| The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | Yes |
+| The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | No. A card says where it runs on the web: `openagents.com/worlds/archery-range` |
 | Everglade Experimental | Classes, monsters, a horse and a red dragon | No. A card says where it runs on the web |
 
 Nothing stands in for a world that isn't here: there is no web view, as the
-[desktop spec](desktop-app-spec.md) decided.
+[desktop spec](desktop-app-spec.md) decided, and no scene written for the apps
+alone. The first Archery Range was such a scene, with its own bow, aim and
+mounts. It is deleted: a world in the apps is the web's realm, running on the
+game's own systems, as Everglade does on the Mac.
 
 ## 2. How the list works
 
@@ -44,15 +48,14 @@ share.
   at the middle of the top edge, between the realm's own panels, and the
   Mac's menu has **Worlds** (Command 0).
 - Leaving a world lets go of every key and finger, and the world keeps its
-  state: come back to the range and your tally is still there.
+  state.
 - `--scene N` opens the Mac and iOS apps on world N.
 
 ## 3. How a host draws a world
 
-A host asks `eg_place` which place to draw behind the open world: the temple
-or the range. Both are built from Aethyr's architecture kit and drawn by
-shaders emitted from Coax, with the same buffers and bindings, so each host
-draws either with one piece of code. A touch host asks `eg_claims` before it
+A host asks `eg_place` which place to draw behind the open world. Today that
+is always the temple, built from Aethyr's architecture kit and drawn by
+shaders emitted from Coax. A touch host asks `eg_claims` before it
 treats a touch as the movement stick, so the list and every button work
 under the left thumb.
 
@@ -60,8 +63,8 @@ under the left thumb.
 
 The main flow is the web's `everglade2` app
 (`apps/openagents-web/everglade2.coax`, with Character Create inside it).
-Experimental is the web's `fivelab` app
-(`apps/openagents-web/fivelab.coax`).
+Experimental and the Archery Range are the web's `fivelab` app
+(`apps/openagents-web/fivelab.coax`; the range is its `range-scene.coax`).
 
 ### Everglade on the Mac (built 2026-11-10)
 
@@ -126,7 +129,8 @@ What it doesn't do yet:
    Foundation only); its app needs the realm's library, shaders and pack in
    its bundle and its touches sent to the host. Android needs a twin of the
    host on Vulkan (`verse/native/realm-host.c` is the start).
-3. **Experimental.** `fivelab-face.c` needs the same changes
+3. **Experimental and the Archery Range.** They share one module, so one
+   port brings both. `fivelab-face.c` needs the same changes
    `everglade2-face.c` got, its shaders emitted the same way
    (`gpu/fivelab.coax`), and its own pack (`glade.pack`) in the app. The
    page host then opens it with no change.
@@ -136,8 +140,11 @@ What it doesn't do yet:
 
 ## 5. Adding a world
 
-1. Write the scene in Coax with the calls `range.coax` has: a frame, a key,
-   a pointer, a stick, where you stand and the view.
+1. Build the world as a web realm from the engine's and the game's shared
+   modules, and bring it here through the page host. Until then, give its row
+   an address in `sc_address`. A scene of the apps' own (the Workshop is the
+   one) has these calls: a frame, a key, a pointer, a stick, where you stand
+   and the view.
 2. Give it a number, a name and a line in `scenes.coax`, and send its calls.
 3. If it has its own place, build it from the architecture kit with the
    temple's exports, emit its three shader pairs, and add it to `eg_place`.

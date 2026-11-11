@@ -3,31 +3,31 @@
 //
 //   Everglade                  the main flow, as the web has it: make a character, then the glade
 //   The Golemancers' Workshop  workshop.coax
-//   The Archery Range          range.coax
+//   The Archery Range          the web's Archery Range realm (everglade/docs/archery-range-spec.md)
 //   Everglade Experimental     the web's Experimental world
 //
-// The Workshop and the Range run here. Everglade is the web's everglade2 realm: a host that can run
+// The Workshop runs here. Everglade is the web's everglade2 realm: a host that can run
 // a realm's page (aethyr/host/apple/, the Mac app) says so with sc_host_runs, draws the realm
 // itself and sends it the keys; this file then draws only the Worlds button over it. On a host
-// that can't yet, and for Experimental (the web's fivelab app) everywhere, choosing the world
-// says where it runs today. Nothing pretends: there is no web view standing in.
+// that can't yet, and for the Archery Range and Experimental (the web's fivelab app) everywhere,
+// choosing the world says where it runs today. Nothing pretends: there is no web view standing in,
+// and no scene written for the app alone stands in for a realm.
 //
 // This file is the one face every host calls (face.h, face.c): it holds each scene's state, sends
 // a frame, a key, a press and a stick to the scene that is open, and draws what they share: the
 // list, and the Worlds button that brings you back to it (Escape does too, outside a realm).
 //   coax/bin/coax test --library apps/everglade-desktop/scenes.coax --only "scenes"
 #load "workshop.coax";
-#load "range.coax";
 
 SC_LIST :: 0; SC_MAIN :: 1; SC_WORKSHOP :: 2; SC_RANGE :: 3; SC_EXPERIMENTAL :: 4;
 SC_WORLDS :: 4;
-// The place a host draws behind a scene: the temple, or the range. The list and the two cards
-// are shown over the temple, seen from a camera that walks slowly round it.
-SC_PLACE_TEMPLE :: 1; SC_PLACE_RANGE :: 2;
+// The place a host draws behind a scene: the temple. The list and the cards are shown over it,
+// seen from a camera that walks slowly round it.
+SC_PLACE_TEMPLE :: 1;
 
 Scenes :: struct {
   scene: int = SC_LIST;
-  workshop: [1] Workshop; range: [1] Range;
+  workshop: [1] Workshop;
   time: f32; width: f32; height: f32;
   touch: bool; safe_left: f32; safe_top: f32; safe_bottom: f32;
   press_row: int; press_back: bool;   // the row of the list, or the Worlds button, a press began on
@@ -48,7 +48,7 @@ sc_about :: (world: int) -> string {
   return "Classes, monsters, a horse and a red dragon";
 }
 // Whether a world is one of this file's own scenes.
-sc_here :: (world: int) -> bool { return world == SC_WORKSHOP || world == SC_RANGE; }
+sc_here :: (world: int) -> bool { return world == SC_WORKSHOP; }
 // Whether a world runs in this app today: this file's scenes, and a realm the host runs.
 sc_runs :: (s: []Scenes, world: int) -> bool { return sc_here(world) || (world == SC_MAIN && s[0].realm_main); }
 // Whether the host is drawing a realm now, under the Worlds button.
@@ -56,6 +56,7 @@ sc_in_realm :: (s: []Scenes) -> bool { return s[0].scene == SC_MAIN && s[0].real
 // Where a world that doesn't runs meanwhile.
 sc_address :: (world: int) -> string {
   if world == SC_MAIN { return "openagents.com/worlds/character-creator"; }
+  if world == SC_RANGE { return "openagents.com/worlds/archery-range"; }
   if world == SC_EXPERIMENTAL { return "openagents.com/worlds/everglade-experimental"; }
   return "";
 }
@@ -86,8 +87,8 @@ sc_on_back :: (s: []Scenes, x: f32, y: f32) -> bool {
 // Opens a world (SC_LIST: back to the list). Every key and finger is let go on the way.
 sc_open :: (s: []Scenes, world: int) {
   if world < SC_LIST || world > SC_WORLDS { return; }
-  released := ws_key(s[0].workshop[..], -1, true); released = rs_key(s[0].range[..], -1, true);
-  s[0].workshop[0].pad_x = 0; s[0].workshop[0].pad_y = 0; s[0].range[0].pad_x = 0; s[0].range[0].pad_y = 0;
+  released := ws_key(s[0].workshop[..], -1, true);
+  s[0].workshop[0].pad_x = 0; s[0].workshop[0].pad_y = 0;
   s[0].scene = world; s[0].press_row = -1; s[0].press_back = false;
 }
 
@@ -126,7 +127,6 @@ sc_frame :: (s: []Scenes, out: []f32, width: f32, height: f32, d: f32, dt: f32) 
   s[0].time += step; s[0].width = width; s[0].height = height;
   n := 0;
   if s[0].scene == SC_WORKSHOP { n = ws_frame(s[0].workshop[..], out, width, height, d, dt); }
-  else if s[0].scene == SC_RANGE { n = rs_frame(s[0].range[..], out, width, height, d, dt); }
   else if sc_in_realm(s) { n = 0; }   // the host draws the realm; only the Worlds button is ours
   else { if !(width > 0) || !(height > 0) || !(d > 0) { return 0; } n = sc_list(s, out, d); }
   if !(width > 0) || !(height > 0) || !(d > 0) { return n; }
@@ -151,7 +151,7 @@ sc_state_init :: (s: []Scenes) #export_c #effects(all) { s[0] = Scenes.{}; s[0].
 sc_draw :: (s: []Scenes, out: []f32, width: f32, height: f32, d: f32, dt: f32) -> int #export_c #effects(all) { return sc_frame(s, out, width, height, d, dt); }
 // Which world is open (SC_*), and which place the host draws behind it (SC_PLACE_*).
 sc_scene :: (s: []Scenes) -> int #export_c #effects(all) { return s[0].scene; }
-sc_place :: (s: []Scenes) -> int #export_c #effects(all) { return ifx s[0].scene == SC_RANGE then SC_PLACE_RANGE else SC_PLACE_TEMPLE; }
+sc_place :: (s: []Scenes) -> int #export_c #effects(all) { return SC_PLACE_TEMPLE; }
 // Opens a world from outside (a host's own menu or a launch argument): SC_LIST to SC_EXPERIMENTAL.
 sc_go :: (s: []Scenes, world: int) #export_c #effects(all) { sc_open(s, world); }
 // The host says whether it runs a realm itself (SC_MAIN: Everglade, the web's everglade2). It then
@@ -163,10 +163,9 @@ sc_on_worlds :: (s: []Scenes, x: f32, y: f32) -> bool #export_c #effects(all) { 
 // A key (workshop.coax ws_key's codes). Escape (27) is the list from anywhere; on the list 1 to 4
 // open a world.
 sc_key :: (s: []Scenes, key: int, down: bool) -> bool #export_c #effects(all) {
-  if key == -1 { a := ws_key(s[0].workshop[..], -1, true); b := rs_key(s[0].range[..], -1, true); s[0].press_row = -1; s[0].press_back = false; return true; }
+  if key == -1 { a := ws_key(s[0].workshop[..], -1, true); s[0].press_row = -1; s[0].press_back = false; return true; }
   if key == 27 { if down && s[0].scene != SC_LIST { sc_open(s, SC_LIST); } return true; }
   if s[0].scene == SC_WORKSHOP { return ws_key(s[0].workshop[..], key, down); }
-  if s[0].scene == SC_RANGE { return rs_key(s[0].range[..], key, down); }
   if s[0].scene == SC_LIST && down && key >= 49 && key < 49 + SC_WORLDS { sc_open(s, key - 48); return true; }
   return false;
 }
@@ -176,7 +175,7 @@ sc_pointer :: (s: []Scenes, x: f32, y: f32, phase: int) #export_c #effects(all) 
   if phase == 0 {
     s[0].took = false; s[0].press_back = sc_on_back(s, x, y);
     s[0].press_row = ifx s[0].scene == SC_LIST then sc_row_at(s, x, y) else -1;
-    if s[0].press_back || s[0].scene == SC_LIST || s[0].scene == SC_MAIN || s[0].scene == SC_EXPERIMENTAL { return; }
+    if s[0].press_back || s[0].scene != SC_WORKSHOP { return; }
   }
   if phase == 2 && (s[0].press_back || s[0].press_row >= 0) {
     back := s[0].press_back && sc_on_back(s, x, y); row := s[0].press_row;
@@ -186,15 +185,13 @@ sc_pointer :: (s: []Scenes, x: f32, y: f32, phase: int) #export_c #effects(all) 
   }
   if s[0].press_back { return; }
   if s[0].scene == SC_WORKSHOP { ws_pointer(s[0].workshop[..], x, y, phase); }
-  if s[0].scene == SC_RANGE { rs_pointer(s[0].range[..], x, y, phase); if phase == 2 { s[0].took = s[0].range[0].took; } }
-  if phase == 2 && s[0].scene != SC_WORKSHOP && s[0].scene != SC_RANGE { s[0].took = true; }
+  if phase == 2 && s[0].scene != SC_WORKSHOP { s[0].took = true; }
 }
 // Whether a touch that begins at a point is the list's or a button's, so a host doesn't make it
 // the stick that moves you.
 sc_claims :: (s: []Scenes, x: f32, y: f32) -> bool #export_c #effects(all) {
-  if s[0].scene != SC_WORKSHOP && s[0].scene != SC_RANGE { return true; }
+  if s[0].scene != SC_WORKSHOP { return true; }
   if sc_on_back(s, x, y) { return true; }
-  if s[0].scene == SC_RANGE { return rs_box_at(s[0].range[..], x, y) != 0; }
   w := s[0].workshop[..];
   return w[0].turn_can && w[0].bw > 0 && x >= w[0].bx && x <= w[0].bx + w[0].bw && y >= w[0].by && y <= w[0].by + w[0].bh;
 }
@@ -203,45 +200,35 @@ sc_claims :: (s: []Scenes, x: f32, y: f32) -> bool #export_c #effects(all) {
 sc_tap :: (s: []Scenes, x: f32, y: f32) -> bool #export_c #effects(all) {
   if s[0].took { return true; }
   if s[0].scene == SC_WORKSHOP { return ws_tap(s[0].workshop[..], x, y); }
-  return s[0].scene != SC_RANGE;
+  return true;
 }
 sc_wheel :: (s: []Scenes, dy: f32) #export_c #effects(all) {
   if s[0].scene == SC_WORKSHOP { ws_wheel(s[0].workshop[..], dy); }
-  if s[0].scene == SC_RANGE { rs_wheel(s[0].range[..], dy); }
 }
 // A touch stick. It marks the host as a touch screen for every scene.
 sc_pad :: (s: []Scenes, x: f32, y: f32) #export_c #effects(all) {
-  s[0].touch = true; s[0].workshop[0].touch = true; s[0].range[0].touch = true;
+  s[0].touch = true; s[0].workshop[0].touch = true;
   if s[0].scene == SC_WORKSHOP { ws_pad(s[0].workshop[..], x, y); }
-  if s[0].scene == SC_RANGE { rs_pad(s[0].range[..], x, y); }
 }
 sc_safe :: (s: []Scenes, left: f32, top: f32, bottom: f32) #export_c #effects(all) {
   ws_safe(s[0].workshop[..], left, top, bottom);
   w := s[0].workshop[0];
   s[0].safe_left = w.safe_left; s[0].safe_top = w.safe_top; s[0].safe_bottom = w.safe_bottom;
-  s[0].range[0].safe_left = w.safe_left; s[0].range[0].safe_top = w.safe_top; s[0].range[0].safe_bottom = w.safe_bottom;
 }
-// The phone's turn as camera look (workshop.coax): the Workshop draws the Gyro switch, and the
-// Range follows what it is set to.
+// The phone's turn as camera look (workshop.coax): the Workshop draws the Gyro switch.
 sc_turn_offer :: (s: []Scenes) #export_c #effects(all) { ws_turn_offer(s[0].workshop[..]); }
-sc_turns :: (s: []Scenes) -> bool #export_c #effects(all) { return (s[0].scene == SC_WORKSHOP || s[0].scene == SC_RANGE) && ws_turns(s[0].workshop[..]); }
+sc_turns :: (s: []Scenes) -> bool #export_c #effects(all) { return s[0].scene == SC_WORKSHOP && ws_turns(s[0].workshop[..]); }
 sc_turn :: (s: []Scenes, yaw: f32, pitch: f32) #export_c #effects(all) {
   if s[0].scene == SC_WORKSHOP { ws_turn(s[0].workshop[..], yaw, pitch); }
-  if s[0].scene == SC_RANGE && ws_turns(s[0].workshop[..]) {
-    if yaw > -1 && yaw < 1 { s[0].range[0].look_x += yaw; }
-    if pitch > -1 && pitch < 1 { s[0].range[0].look_y += pitch; }
-  }
 }
 // Where you stand, for the host's model: nobody stands on the list or a card.
 sc_you :: (s: []Scenes, out: []f32) -> bool #export_c #effects(all) {
   if s[0].scene == SC_WORKSHOP { return ws_you(s[0].workshop[..], out); }
-  if s[0].scene == SC_RANGE { return rs_you(s[0].range[..], out); }
   return false;
 }
 // The view. Behind the list and the cards: an eye that walks round the temple, looking at the golem.
 sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool #export_c #effects(all) {
   if s[0].scene == SC_WORKSHOP { return ws_camera(s[0].workshop[..], width, height, d, out); }
-  if s[0].scene == SC_RANGE { return rs_camera(s[0].range[..], width, height, d, out); }
   if out.count < 16 { return false; }
   a := s[0].time * 0.07 + 1.2;
   v := ws_view(pc.Vec3.{x = math_cos(a) * 6.2, y = 2.6, z = math_sin(a) * 6.2}, pc.Vec3.{x = 0, y = 1.7, z = 0}, width, height, d);
@@ -259,7 +246,8 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   #assert !sc_you(s[..], you[..]) && sc_camera(s[..], 1280, 800, 2, cam[..]) && cam[15] > 0;
   #assert sc_claims(s[..], 10, 10) && sc_row_at(s[..], 5000, 5000) == -1;
   for i: 0..<SC_WORLDS { b := sc_row(s[..], i); #assert sc_row_at(s[..], b.x + 5, b.y + 5) == i && b.y + b.height < 800; }
-  #assert sc_here(SC_WORKSHOP) && sc_here(SC_RANGE) && !sc_here(SC_MAIN) && !sc_here(SC_EXPERIMENTAL) && sc_address(SC_MAIN).count > 0 && sc_address(SC_EXPERIMENTAL).count > 0;
+  #assert sc_here(SC_WORKSHOP) && !sc_here(SC_RANGE) && !sc_here(SC_MAIN) && !sc_here(SC_EXPERIMENTAL) && sc_address(SC_MAIN).count > 0 && sc_address(SC_EXPERIMENTAL).count > 0;
+  #assert sc_address(SC_RANGE) == "openagents.com/worlds/archery-range" && sc_address(SC_WORKSHOP).count == 0;
   // An upright phone: the four rows fit, inside its width.
   t: [1] Scenes; sc_state_init(t[..]); sc_pad(t[..], 0, 0); sc_safe(t[..], 0, 59, 34);
   n = sc_draw(t[..], out[..], 402, 874, 3, 0.016);
@@ -278,24 +266,24 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   b := sc_back(s[..]); #assert sc_claims(s[..], b.x + 4, b.y + 4);
   sc_pointer(s[..], b.x + 4, b.y + 4, 0); sc_pointer(s[..], b.x + 4, b.y + 4, 2);
   #assert sc_scene(s[..]) == SC_LIST;
-  #assert sc_key(s[..], 51, true) && sc_scene(s[..]) == SC_RANGE && sc_place(s[..]) == SC_PLACE_RANGE;
+  // the Archery Range is the web's realm: its row opens a card over the temple, with nobody in it
+  #assert sc_key(s[..], 51, true) && sc_scene(s[..]) == SC_RANGE && sc_place(s[..]) == SC_PLACE_TEMPLE;
   n = sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
-  #assert sc_you(s[..], you[..]) && you[2] == RG_START_Z;
+  #assert n > 200 && !sc_you(s[..], you[..]) && sc_claims(s[..], 600, 400);
   #assert sc_key(s[..], 27, true) && sc_scene(s[..]) == SC_LIST;
 }
 #test "scenes: keys and drags go to the open world only, and leaving it lets every key go" {
   s: [1] Scenes; sc_state_init(s[..]); out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32;
   #assert sc_key(s[..], 50, true) && sc_scene(s[..]) == SC_WORKSHOP;
-  #assert sc_key(s[..], 119, true) && s[0].workshop[0].keys == 1 && s[0].range[0].keys == 0;
+  #assert sc_key(s[..], 119, true) && s[0].workshop[0].keys == 1;
   n := sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
-  sc_pointer(s[..], 600, 400, 0); sc_pointer(s[..], 660, 400, 1); #assert s[0].workshop[0].look_x < 0 && s[0].range[0].look_x == 0;
+  sc_pointer(s[..], 600, 400, 0); sc_pointer(s[..], 660, 400, 1); #assert s[0].workshop[0].look_x < 0;
   sc_pointer(s[..], 660, 400, 2); #assert !sc_tap(s[..], 660, 400);
   #assert sc_key(s[..], 27, true) && s[0].workshop[0].keys == 0;
-  // In the Range, 2 is the horse, not a world.
+  // On a card, a key is nobody's: 2 doesn't open another world from there.
   sc_go(s[..], SC_RANGE); n = sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
-  #assert sc_key(s[..], 50, true) && sc_scene(s[..]) == SC_RANGE && s[0].range[0].mode == RG_HORSE;
-  #assert sc_key(s[..], 102, true) && (s[0].range[0].keys & RS_KEY_BOW) != 0;
-  sc_go(s[..], SC_LIST); #assert s[0].range[0].keys == 0 && !s[0].range[0].draw[0].on;
+  #assert !sc_key(s[..], 50, true) && sc_scene(s[..]) == SC_RANGE;
+  sc_go(s[..], SC_LIST); #assert sc_scene(s[..]) == SC_LIST;
 }
 #test "scenes: a world that isn't here yet opens a card that says where it runs, and Worlds comes back from it" {
   s: [1] Scenes; sc_state_init(s[..]); out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; you: [5] f32;

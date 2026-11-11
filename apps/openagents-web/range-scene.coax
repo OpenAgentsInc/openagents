@@ -1,0 +1,257 @@
+// The Archery Range (openagents.com/worlds/archery-range, everglade/docs/archery-range-spec.md): a
+// realm of its own on the open meadow, where you shoot the Ranger's Longbow at straw butts for
+// points, on foot, from horseback and from dragonback. Only the range lives here: where it stands,
+// which arrows count, the tally. Nothing about drawing, aiming, flying arrows, hitting or riding is
+// written here:
+//
+//   the bow, its reticle, camera, pose, arrows and sounds are bow combat's (docs/verse/bow-combat.md:
+//   aethyr/action/bow.coax, experimental-combat.coax xc_bow_*), with the controls every realm has;
+//   a face is the engine's static target (aethyr/action/target.coax): the reticle rests on it and the
+//   arrow that crosses it sticks in it;
+//   the butts, poles and posts are the zone's standing things (aethyr/world/props.coax): you walk
+//   into them, a mount goes round them, an arrow sticks in them;
+//   the horse and the red dragon are Everglade's mounts (everglade/mounts.coax), standing where the
+//   range puts them (experimental-horse.coax xh_stand);
+//   the layout, the faces, the points and the tally are the range's (everglade/range/);
+//   the tally is drawn with the game's HUD parts, and an arrow's points rise off its face as a hit's
+//   number does (aethyr/action/floats.coax).
+//   coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "archery range"
+#load "../../everglade/range/score.coax";
+#load "../../everglade/range/place.coax";
+
+XR_PATHS :: [2] string.["/worlds/archery-range", "/worlds/archery-range/"];
+XR_BAND_NAME :: [RG_BANDS] string.["TO 15 M", "TO 25 M", "TO 40 M", "TO 60 M", "PAST 60 M"];
+XR_MODE_NAME :: [RG_MODES] string.["ON FOOT", "FROM HORSEBACK", "FROM DRAGONBACK"];
+
+// An arrow of yours in the air: how you were shooting when it left, where it left from and where
+// it was last seen.
+XrShot :: struct { live: bool; mode: int; from: [3] f32; last: [3] f32; }
+XcRange :: struct {
+  on: bool;
+  stood: bool;                         // the faces, the boxes and the mounts are in place
+  ground: [RG_PIECES] f32;             // the meadow's height under each piece (rg_piece_at)
+  score: [1] RgScore;
+  shot: [bow.ARROWS] XrShot;
+  seen: int;                           // the arrows you have loosed that the tally has taken in
+}
+
+xr_page :: (facts: string) -> bool { for p: XR_PATHS { if cc.page_path(facts, p) { return true; } } return false; }
+
+// The page: the open meadow, a Ranger, standing behind the shooting line and looking downrange.
+xr_enter :: (s: [] Lab) {
+  s[0].creator[0].field = true;
+  x := s[0].xc[..];
+  if x[0].rg.on { return; }
+  x[0].rg.on = true; x[0].klass = FB_CL_RANGER; x[0].open = false;
+  if x[0].started { xc_set_class(x, FB_CL_RANGER); }
+  s[0].put_on = true; s[0].put_x = f32(RG_AT_X) + f32(RG_START_X); s[0].put_y = 0; s[0].put_z = f32(RG_AT_Z) + f32(RG_START_Z); s[0].put_face = 3.1415927;
+}
+// How you are shooting now.
+xr_mode :: (s: [] Lab) -> int {
+  m := s[0].creator[0].mounts[0];
+  return ifx egm.eg_on_dragon(m) then RG_DRAGON else ifx m.riding >= 0 then RG_HORSE else RG_FOOT;
+}
+// Stands the range on the meadow: its faces as the bow's targets, its boxes as the zone's standing
+// things, its mesh in the scene, and the mounts behind the line. No monsters come here.
+xr_stand :: (s: [] Lab) {
+  x := s[0].xc[..]; cr := s[0].creator[..]; r := x[0].rg.ground[..];
+  for i: 0..<RG_PIECES { at := rg_piece_at(i); r[i] = meadow_y(at[0], at[1]); }
+  rg_targets(x[0].targets[..], r);
+  boxes: [RG_BOXES * 6] f32; n := rg_boxes(r, 0, boxes[..], 0);
+  _ := wprops.props_set(cr[0].props[..], boxes[..], n);
+  cr[0].range_on = true;
+  // the horse and the dragon wait looking downrange, so you sit facing the butts
+  cc.xh_stand(cr, f32(RG_AT_X) + f32(RG_HORSE_X), f32(RG_AT_Z) + f32(RG_HORSE_Z), 3.1415927, f32(RG_AT_X) + f32(RG_DRAGON_X), f32(RG_AT_Z) + f32(RG_DRAGON_Z), 3.1415927);
+  x[0].rg.stood = true;
+}
+// The face nearest a point on the ground, for a miss's distance.
+xr_nearest :: (t: tg.Targets, p: [3] f32) -> int {
+  best := 0; near := 1e9f32;
+  for i: 0..<t.n { dx := t.face[i].x - p[0]; dz := t.face[i].z - p[2]; d := dx * dx + dz * dz; if d < near { near = d; best = i; } }
+  return best;
+}
+xr_far :: (f: tg.TargetFace, p: [3] f32) -> f32 { dx := f.x - p[0]; dy := f.y - p[1]; dz := f.z - p[2]; return sqrt(dx * dx + dy * dy + dz * dz); }
+// One arrow has landed (or flown out): into the tally. In a face (mark), its ring's points rise off
+// it; anywhere else, a miss at the distance of the face nearest where it came down.
+xr_land :: (s: [] Lab, sh: XrShot, mark: int, off: f32, at: [3] f32) {
+  x := s[0].xc[..]; now := s[0].creator[0].clock; t := x[0].targets[0];
+  if t.n == 0 { return; }
+  if mark >= 0 && mark < t.n {
+    f := t.face[mark]; points := rg_points(off, f.radius);
+    rg_record(x[0].rg.score[..], sh.mode, xr_far(f, sh.from), points, now);
+    xc_float_int(x, at[0], at[1] - meadow_y(at[0], at[2]) + 0.25, at[2], now, points, false);
+    return;
+  }
+  rg_record(x[0].rg.score[..], sh.mode, xr_far(t.face[xr_nearest(t, at)], sh.from), 0, now);
+}
+// Each frame (xc_frame): the range stands, and every arrow of yours is followed until it lands.
+xr_frame :: (s: [] Lab, dt: f32) {
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
+  if !x[0].rg.on || !x[0].started { return; }
+  if !x[0].rg.stood { xr_stand(s); }
+  for i: 0..<XC_FOES { if !h[0].enemies[i].dead { h[0].enemies[i].dead = true; h[0].enemies[i].died = -100; h[0].enemies[i].awake = false; } }
+  now := cr[0].clock; rg := x[0].rg.shot[..];
+  if x[0].bow_shots != x[0].rg.seen {
+    x[0].rg.seen = x[0].bow_shots; i := x[0].bow_last;
+    if i >= 0 && i < bow.ARROWS {
+      if rg[i].live { xr_land(s, rg[i], -1, 0, rg[i].last); }   // the pool gave its slot to the new arrow
+      a := x[0].arrows[0].a[i]; rg[i] = XrShot.{live = true, mode = xr_mode(s), from = a.from, last = a.from};
+    }
+  }
+  for i: 0..<bow.ARROWS {
+    if !rg[i].live { continue; }
+    a := x[0].arrows[0].a[i];
+    if a.state == bow.ARROW_FLYING { rg[i].last = bow.arrow_pos(a, now - a.t0); continue; }
+    if a.state == bow.ARROW_STUCK { xr_land(s, rg[i], a.mark, a.off, a.at); } else { xr_land(s, rg[i], -1, 0, rg[i].last); }
+    rg[i].live = false;
+  }
+}
+
+// ---- the tally, top left where the CLASSES picker is elsewhere (the range has one class)
+XR_WIDE :: 262.0; XR_ROW :: 17.0; XR_PAD :: 10.0;   // CSS px
+xr_num :: (b: [] u8, n0: int, v: int) -> int { return rs_put_int(b, n0, v); }
+xr_text :: (b: [] u8, n0: int, t: string) -> int { return rs_put(b, n0, t); }
+// A tally's line: "ARROWS 12   HITS 9   75%   64 PTS".
+xr_line :: (b: [] u8, t: RgTally) -> int {
+  n := xr_text(b, 0, "ARROWS "); n = xr_num(b, n, t.shots); n = xr_text(b, n, "   HITS "); n = xr_num(b, n, t.hits);
+  n = xr_text(b, n, "   "); n = xr_num(b, n, rg_accuracy(t)); n = xr_text(b, n, "%   "); n = xr_num(b, n, t.points); n = xr_text(b, n, " PTS");
+  return n;
+}
+// A band's row: "3 / 4   75%   27 PTS".
+xr_row :: (b: [] u8, t: RgTally) -> int {
+  n := xr_num(b, 0, t.hits); n = xr_text(b, n, " / "); n = xr_num(b, n, t.shots); n = xr_text(b, n, "   "); n = xr_num(b, n, rg_accuracy(t));
+  n = xr_text(b, n, "%   "); n = xr_num(b, n, t.points); n = xr_text(b, n, " PTS");
+  return n;
+}
+// The rows the panel shows now: the three lines over all, the way you shoot now, a row for each
+// band you have shot in that way, and the last arrow.
+xr_rows :: (sc: RgScore, mode: int) -> int {
+  n := 5;
+  for b: 0..<RG_BANDS { if rg_sum(sc, mode, b).shots > 0 { n += 1; } }
+  if sc.last_points >= 0 { n += 1; }
+  return n;
+}
+xr_panel :: (sc: RgScore, mode: int, top: f32, k: f32) -> cc.Box {
+  return cc.Box.{x0 = 12 * k, y0 = top, x1 = (12 + f32(XR_WIDE)) * k, y1 = top + (f32(xr_rows(sc, mode)) * f32(XR_ROW) + 2 * f32(XR_PAD)) * k};
+}
+xr_hud :: (s: [] Lab, out: [] f32, n0: int, w: f32, h: f32, k: f32) -> int {
+  x := s[0].xc[..];
+  if !x[0].rg.on || !x[0].started { return n0; }
+  sc := x[0].rg.score[0]; mode := xr_mode(s); now := s[0].creator[0].clock;
+  t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ui := s[0].creator[0].ui;
+  box := xr_panel(sc, mode, ifx x[0].top > 0 then x[0].top else 20 * k, k);   // where the picker's top is (under a developer's ANIMATIONS bar)
+  cc.hud_panel(l[..], t, cc.hud_box(box.x0, box.y0, box.x1, box.y1), k);
+  ws[0].ui = ui; ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, box.x0, box.y0, box.x1, box.y1, "ARCHERY RANGE");
+  left := box.x0 + f32(XR_PAD) * k; y := box.y0 + (f32(XR_PAD) + 11) * k; row := f32(XR_ROW) * k; b: [96] u8;
+  cc.hud_word(ws[..], "ARCHERY RANGE", left, y, 10 * k, cc.HUD_TEXT_TITLE, false); y += row;
+  all := rg_sum(sc, -1, -1);
+  m := xr_line(b[..], all); cc.hud_word(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row;
+  m = xr_text(b[..], 0, "RUN "); m = xr_num(b[..], m, sc.run); m = xr_text(b[..], m, "   BEST "); m = xr_num(b[..], m, sc.best_run); m = xr_text(b[..], m, "   GOLDS "); m = xr_num(b[..], m, all.golds);
+  avg := rg_average_tenths(all); m = xr_text(b[..], m, "   AVG "); m = xr_num(b[..], m, avg / 10); m = xr_text(b[..], m, "."); m = xr_num(b[..], m, avg % 10);
+  cc.hud_word(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row * 1.25;
+  cc.hud_word(ws[..], XR_MODE_NAME[mode], left, y, 9 * k, cc.HUD_TEXT_TITLE, false); y += row;
+  mine := rg_sum(sc, mode, -1);
+  m = xr_line(b[..], mine); cc.hud_word(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row;
+  for band: 0..<RG_BANDS {
+    bt := rg_sum(sc, mode, band); if bt.shots == 0 { continue; }
+    cc.hud_word(ws[..], XR_BAND_NAME[band], left, y, 8 * k, cc.HUD_TEXT_LABEL, false);
+    m = xr_row(b[..], bt); cc.hud_word(ws[..], cast(string) b[0..<m], left + 78 * k, y, 8.5 * k, cc.HUD_TEXT_NUMBER, false); y += row;
+  }
+  if sc.last_points >= 0 {
+    m = xr_text(b[..], 0, ifx sc.last_points > 0 then "LAST ARROW  " else "LAST ARROW  MISS");
+    if sc.last_points > 0 { m = xr_num(b[..], m, sc.last_points); }
+    m = xr_text(b[..], m, "  AT "); m = xr_num(b[..], m, cast(int) (sc.last_distance + 0.5)); m = xr_text(b[..], m, " M");
+    cc.hud_word(ws[..], cast(string) b[0..<m], left, y - row * 0.1, 8.5 * k, ifx now - sc.last_at < 2.5 && sc.last_points >= 9 then cc.HUD_TEXT_HEAL else cc.HUD_TEXT_LABEL, false);
+  }
+  return cc.hud_draw(out, n0, l[..], ws[..], 1, k);
+}
+
+// ---- checks
+xr_test_lab :: (s: [] Lab) {
+  xr_enter(s);
+  cr := s[0].creator[..]; cr[0].experimental = true; hostile.hostile_test_start(cr[0].hostiles[..]);
+  xc_start(s[0].xc[..], s[0].xc[0].klass);
+  w := lab_walk(s); cr[0].player_x = w.x; cr[0].player_z = w.z; cr[0].player_y = 0;
+  cr[0].yaw = 0; cr[0].pitch = 0; s[0].xc[0].seen = true;
+}
+// The camera's eye at your shoulder and its ray toward a world point, as the frame's uniforms give them.
+xr_test_look :: (s: [] Lab, to: [3] f32) {
+  x := s[0].xc[..]; cr := s[0].creator[0];
+  eye := [3] f32.[cr.player_x, meadow_y(cr.player_x, cr.player_z) + cr.player_y + 1.6, cr.player_z + 0.6];
+  d := [3] f32.[to[0] - eye[0], to[1] - eye[1], to[2] - eye[2]]; l := sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+  x[0].u[16] = eye[0]; x[0].u[17] = eye[1]; x[0].u[18] = eye[2]; x[0].u[20] = d[0] / l; x[0].u[21] = d[1] / l; x[0].u[22] = d[2] / l;
+}
+xr_test_fly :: (s: [] Lab, seconds: f32) {
+  for k: 0..<cast(int) (seconds * 60) { s[0].creator[0].clock += 1.0 / 60; xc_bow_step(s, 1.0 / 60); xr_frame(s, 1.0 / 60); }
+}
+#test "archery range: the page is its own, a Ranger arrives behind the line on the open meadow, and no monster is left" #steps 400000000 {
+  #assert xr_page("url=https://openagents.com/worlds/archery-range\n") && xr_page("url=http://127.0.0.1:9431/worlds/archery-range/?x=1\n") && !xr_page("url=https://openagents.com/worlds/everglade-experimental\n");
+  s: [1] Lab; xr_test_lab(s[..]); x := s[0].xc[..]; cr := s[0].creator[..];
+  #assert cr[0].field && x[0].klass == FB_CL_RANGER && xc_has_bow(s[..]) && xc_own_kit(x);
+  #assert cr[0].player_x == RG_AT_X + RG_START_X && cr[0].player_z == RG_AT_Z + RG_START_Z;
+  xr_frame(s[..], 1.0 / 60);
+  #assert x[0].rg.stood && x[0].targets[0].n == RG_TARGETS && cr[0].props[0].n == RG_BOXES && cr[0].range_on;
+  for i: 0..<XC_FOES { #assert cr[0].hostiles[0].enemies[i].dead; }
+  // each face stands on the meadow under it
+  f := x[0].targets[0].face[2]; #assert abs(f.y - meadow_y(f.x, f.z) - RG_FACE_Y) < 0.001;
+  // the zone's boxes are the walker's walls by the butt, and none back at the line
+  w := lab_move_world(s[..], f.x, f.z + 1); #assert w.walls >= 1;
+  w = lab_move_world(s[..], cr[0].player_x, cr[0].player_z); #assert w.walls == 0;
+}
+#test "archery range: a full draw at the 20 m gold sticks in the face and scores it on foot; one into the grass is a miss" #steps 2000000000 {
+  s: [1] Lab; xr_test_lab(s[..]); x := s[0].xc[..]; cr := s[0].creator[..];
+  xr_frame(s[..], 1.0 / 60);
+  f := x[0].targets[0].face[1];
+  xr_test_look(s[..], [3] f32.[f.x, f.y, f.z]);
+  aim := xc_bow_point(s[..]); #assert aim.mark == 1 && aim.foe < 0 && abs(aim.at[2] - f.z) < 0.02;
+  #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]) && x[0].bow_last >= 0;
+  xr_test_fly(s[..], 1.5);
+  a := x[0].arrows[0].a[x[0].bow_last];
+  #assert x[0].bow_marks == 1 && a.state == bow.ARROW_STUCK && a.mark == 1 && abs(a.at[2] - f.z) < 0.05;
+  all := rg_sum(x[0].rg.score[0], -1, -1); foot := rg_sum(x[0].rg.score[0], RG_FOOT, -1);
+  #assert all.shots == 1 && all.hits == 1 && all.points >= 9 && foot.shots == 1 && x[0].rg.score[0].run == 1;
+  #assert rg_sum(x[0].rg.score[0], RG_FOOT, rg_band(xr_far(f, a.from))).hits == 1 && x[0].floats[0].shown >= 1;
+  // the same arrow is never counted twice while it stays stuck
+  xr_test_fly(s[..], 1.0); #assert rg_sum(x[0].rg.score[0], -1, -1).shots == 1;
+  // into the grass short of the butt: a miss, and the run ends
+  x[0].cool_at = -100;
+  xr_test_look(s[..], [3] f32.[f.x + 3, meadow_y(f.x + 3, f.z + 8), f.z + 8]);
+  #assert xc_bow_point(s[..]).mark == -1;
+  #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
+  xr_test_fly(s[..], 1.5);
+  all = rg_sum(x[0].rg.score[0], -1, -1); #assert all.shots == 2 && all.hits == 1 && x[0].rg.score[0].run == 0 && x[0].rg.score[0].last_points == 0;
+}
+#test "archery range: an arrow into the straw beside the face sticks in the butt and misses; a half-drawn one drops short" #steps 2000000000 {
+  s: [1] Lab; xr_test_lab(s[..]); x := s[0].xc[..];
+  xr_frame(s[..], 1.0 / 60);
+  f := x[0].targets[0].face[0]; edge := f.radius + f32(RG_BUTT_MARGIN) * 0.5;
+  xr_test_look(s[..], [3] f32.[f.x + edge * 0.72, f.y + edge * 0.72, f.z]);   // the straw's corner, outside the rim
+  aim := xc_bow_point(s[..]); #assert aim.mark == -1 && abs(aim.at[2] - f.z) < 0.6;
+  #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
+  xr_test_fly(s[..], 1.5);
+  a := x[0].arrows[0].a[x[0].bow_last];
+  #assert a.state == bow.ARROW_STUCK && a.mark == -1 && a.at[2] < f.z + 0.5 && a.at[1] > meadow_y(f.x, f.z) + 1.0;
+  #assert rg_sum(x[0].rg.score[0], -1, -1).shots == 1 && rg_sum(x[0].rg.score[0], -1, -1).hits == 0;
+  // a tap's worth of draw at the 50 m gold comes down in the grass
+  far := x[0].targets[0].face[3]; x[0].cool_at = -100;
+  xr_test_look(s[..], [3] f32.[far.x, far.y, far.z]);
+  #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 0.1); #assert xc_bow_loose(s[..]);
+  xr_test_fly(s[..], 4.0);
+  #assert x[0].bow_marks == 0 && rg_sum(x[0].rg.score[0], -1, -1).shots == 2 && rg_sum(x[0].rg.score[0], -1, -1).hits == 0;
+}
+#test "archery range: from the saddle a shot is tallied from horseback, and the tally's panel grows a row for its band" #steps 2000000000 {
+  s: [1] Lab; xr_test_lab(s[..]); x := s[0].xc[..]; cr := s[0].creator[..];
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  xr_frame(s[..], 1.0 / 60);
+  h := cr[0].mounts[0].mounts[0]; #assert cr[0].mounts[0].n == 1 && h.x == RG_AT_X + RG_HORSE_X && h.z == RG_AT_Z + RG_HORSE_Z;
+  cr[0].player_x = h.x + cos(h.face) * 1.6; cr[0].player_z = h.z - sin(h.face) * 1.6;
+  #assert lab_mount_key(s[..]) && cr[0].mounts[0].riding == 0 && xr_mode(s[..]) == RG_HORSE;
+  rows := xr_rows(x[0].rg.score[0], RG_HORSE);
+  f := x[0].targets[0].face[0];
+  xr_test_look(s[..], [3] f32.[f.x, f.y, f.z]);
+  #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
+  xr_test_fly(s[..], 1.5);
+  #assert rg_sum(x[0].rg.score[0], RG_HORSE, -1).shots == 1 && rg_sum(x[0].rg.score[0], RG_FOOT, -1).shots == 0;
+  #assert xr_rows(x[0].rg.score[0], RG_HORSE) == rows + 2;   // its band's row, and the last arrow
+  p := xr_panel(x[0].rg.score[0], RG_HORSE, 20, 1); #assert p.y1 - p.y0 > 100 && p.x1 - p.x0 == XR_WIDE;
+}

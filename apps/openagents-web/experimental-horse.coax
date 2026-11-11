@@ -14,19 +14,34 @@ XH_DRAGON_X :: 17.0;
 XH_DRAGON_Z :: 18.0;
 XH_DRAGON_FACE :: 3.0;
 
-// Places the zone's horse, then its dragon, once the pack has each one's frames.
+// Places the zone's horse, then its dragon, once the pack has each one's frames: where the Creator
+// says they wait (Experimental's XH_* places, or a zone's own: xh_stand).
 xh_place :: (s: []Creator) {
   m := s[0].mounts[..];
-  if m[0].n == 0 && egm.eg_mounts_ready(m[0]) { _ := egm.eg_mount_add(m, f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE)); }
+  if s[0].field && !s[0].mounts_stood { return; }   // the open field has no mounts but a zone's own: none stands there unseen
+  if m[0].n == 0 && egm.eg_mounts_ready(m[0]) { _ := egm.eg_mount_add(m, s[0].horse_x, s[0].horse_z, s[0].horse_face); }
   if m[0].n == 1 && egm.eg_dragon_ready(m[0]) {
-    _ := egm.eg_dragon_add(m, f32(XH_DRAGON_X), f32(XH_DRAGON_Z), f32(XH_DRAGON_FACE), meadow.exp_height(f32(XH_DRAGON_X), f32(XH_DRAGON_Z)));
+    _ := egm.eg_dragon_add(m, s[0].dragon_x, s[0].dragon_z, s[0].dragon_face, meadow.exp_height(s[0].dragon_x, s[0].dragon_z));
   }
+}
+// A zone's own places for the horse and the dragon: they wait there from now on (set before you
+// ride; mounts already placed move there).
+xh_stand :: (s: []Creator, hx: f32, hz: f32, hface: f32, dx: f32, dz: f32, dface: f32) {
+  s[0].horse_x = hx; s[0].horse_z = hz; s[0].horse_face = hface; s[0].dragon_x = dx; s[0].dragon_z = dz; s[0].dragon_face = dface;
+  s[0].mounts_stood = true;
+  if s[0].mounts[0].riding < 0 { s[0].mounts[0].n = 0; }
+  xh_place(s);
 }
 // The zone's dragon, -1 before it is placed.
 xh_dragon :: (s: []Creator) -> int { for k: 0..<s[0].mounts[0].n { if s[0].mounts[0].kind[k] == egm.EG_DRAGON { return k; } } return -1; }
 // The boxes the walker collides with round (x, z), for the horse (verse/experimental-village.coax
-// ev_near: the castle, the village, the props, the dungeon); the count.
-xh_walls :: (x: f32, z: f32, near: []village.EvNear) -> int { village.ev_near(near, x, z); return near[0].wall_n; }
+// ev_near: the castle, the village, the props, the dungeon); the count. The open field has none of
+// those: only the zone's own standing things (aethyr/world/props.coax), as every zone has.
+xh_walls :: (s: []Creator, x: f32, z: f32, near: []village.EvNear) -> int {
+  if s[0].field { near[0].wall_n = 0; near[0].floor_n = 0; } else { village.ev_near(near, x, z); }
+  near[0].wall_n = wprops.props_near(s[0].props[0], x, z, 12, meadow.exp_height(x, z), near[0].walls[..], near[0].wall_n);
+  return near[0].wall_n;
+}
 // Your pelvis's height standing, for the body you wear (fivelab-bodies.coax BD_RIDE_HIP).
 xh_hip :: (s:[]Creator) -> f32 { return figs.BD_RIDE_HIP[ifx s[0].female then 1 else 0]; }
 // E from where you stand, your conditions as bearing b: what happened (egm.EG_PRESS_*).
@@ -34,7 +49,7 @@ xh_press :: (s: []Creator, now: f32, b: DeedBearing) -> int {
   if !s[0].experimental { return egm.EG_PRESS_NONE; }
   hx := s[0].player_x; hz := s[0].player_z;
   if s[0].mounts[0].riding >= 0 { h := s[0].mounts[0].mounts[s[0].mounts[0].riding]; hx = h.x; hz = h.z; }
-  near: [1]village.EvNear; n := xh_walls(hx, hz, near[..]);
+  near: [1]village.EvNear; n := xh_walls(s, hx, hz, near[..]);
   return egm.eg_mount_press(s[0].mounts[..], 0, s[0].player_x, s[0].player_z, now, b, near[0].walls[..], n);
 }
 // A frame of riding (dt seconds): the horse or dragon steps among the zone's boxes over the ground under
@@ -44,9 +59,9 @@ xh_ride :: (s: []Creator, i: mount.MountIn, dt: f32, now: f32) -> egm.EgRider {
   m := s[0].mounts[..];
   if m[0].n == 0 { return egm.EgRider.{}; }
   k := ifx m[0].riding >= 0 then m[0].riding else 0;
-  h := m[0].mounts[k]; near: [1]village.EvNear; n := xh_walls(h.x, h.z, near[..]);
+  h := m[0].mounts[k]; near: [1]village.EvNear; n := xh_walls(s, h.x, h.z, near[..]);
   _ := egm.eg_mounts_fly(m, i, dt, now, meadow.exp_height(h.x, h.z), near[0].walls[..], n);
-  if !mount.mount_aloft(m[0].mounts[k]) && dungeon.dg_inside(m[0].mounts[k].x, m[0].mounts[k].z, 1.5) { m[0].mounts[k].x = h.x; m[0].mounts[k].z = h.z; m[0].mounts[k].speed = 0; }
+  if !s[0].field && !mount.mount_aloft(m[0].mounts[k]) && dungeon.dg_inside(m[0].mounts[k].x, m[0].mounts[k].z, 1.5) { m[0].mounts[k].x = h.x; m[0].mounts[k].z = h.z; m[0].mounts[k].speed = 0; }
   return xh_rider(s, now);
 }
 xh_rider :: (s:[]Creator, now: f32) -> egm.EgRider {
@@ -83,7 +98,7 @@ xh_records :: (s:[]Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -
 }
 
 #test "the white horse stands clear of every box, its rider room to step down, outside the spawn (mounts)" {
-  near: [1]village.EvNear; n := xh_walls(f32(XH_HORSE_X), f32(XH_HORSE_Z), near[..]);
+  z0: [1]Creator; near: [1]village.EvNear; n := xh_walls(z0[..], f32(XH_HORSE_X), f32(XH_HORSE_Z), near[..]);
   t := egm.EG_RIDING_HORSE;
   #assert mount.mount_body_clear(t, f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE), near[0].walls[..], n);
   h := mount.mount_place(f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE));
@@ -115,7 +130,7 @@ xh_records :: (s:[]Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -
   #assert s[0].mounts[0].mounts[0].blocked && s[0].mounts[0].mounts[0].z > 44;
 }
 #test "the red dragon stands in the open near spawn, with room for its wings and to step down (mounts)" {
-  near: [1]village.EvNear; n := xh_walls(f32(XH_DRAGON_X), f32(XH_DRAGON_Z), near[..]);
+  z0: [1]Creator; near: [1]village.EvNear; n := xh_walls(z0[..], f32(XH_DRAGON_X), f32(XH_DRAGON_Z), near[..]);
   t := egm.EG_RED_DRAGON; wide := t; wide.radius = 6; wide.high = 40;
   #assert mount.mount_body_clear(t, f32(XH_DRAGON_X), f32(XH_DRAGON_Z), f32(XH_DRAGON_FACE), near[0].walls[..], n);
   #assert mount.mount_clear(wide, f32(XH_DRAGON_X), f32(XH_DRAGON_Z), 6, near[0].walls[..], n);
@@ -179,4 +194,17 @@ xh_records :: (s:[]Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -
   m: [1] egm.EgMounts; none: [6] f32;
   _ := egm.eg_mount_add(m[..], 0, 0, 0); _ = egm.eg_dragon_add(m[..], 30, 0, 0, 0);
   #assert egm.eg_mount_press(m[..], 0, 1.5, 0, 0, DeedBearing.{}, none[..], 0) == egm.EG_PRESS_MOUNTED && egm.eg_seat(m[0]) == figs.BD_SEAT_HORSE;
+}
+
+#test "a zone's own places: the horse and the dragon wait where it stands them, among only its own boxes on the open field (mounts)" {
+  s: [1]Creator; s[0].experimental = true; s[0].field = true;
+  for i: 0..<egm.EG_HORSE_FRAMES { s[0].mounts[0].count[i] = 3; } s[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { s[0].mounts[0].dcount[i] = 3; } s[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  xh_place(s[..]); #assert s[0].mounts[0].n == 0;   // none on the field until a zone stands them
+  xh_stand(s[..], -6, 43, 1.5, 10, 50, 3);
+  #assert s[0].mounts[0].n == 2 && s[0].mounts[0].mounts[0].x == -6 && s[0].mounts[0].mounts[0].z == 43 && s[0].mounts[0].mounts[xh_dragon(s[..])].z == 50;
+  // the village's houses are not on the field: no box round one, and the zone's own box is the only wall
+  near: [1]village.EvNear; #assert xh_walls(s[..], -18, -23, near[..]) == 0;
+  g := meadow.exp_height(0, 5); b := [6] f32.[-1, g, 4, 1, g + 2, 5]; _ := wprops.props_set(s[0].props[..], b[..], 1);
+  #assert xh_walls(s[..], 0, 3, near[..]) == 1 && near[0].walls[1] < 0.3 && near[0].walls[4] > 1.5;
 }

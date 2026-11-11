@@ -16,9 +16,9 @@ cloud with a far city's lamps in its gaps.
   light from each crystal to the golem's sphere, and four holographic
   displays hung between the pylons.
 - **A list of worlds.** The app now opens on a list of four worlds
-  ([spec](app-scenes-spec.md)): Everglade itself, the Workshop and the
-  [Archery Range](archery-range-spec.md) run in it; Experimental is a card
-  that says where it runs on the web.
+  ([spec](app-scenes-spec.md)): Everglade itself and the Workshop run in it;
+  the [Archery Range](archery-range-spec.md) and Experimental are cards that
+  say where they run on the web.
 - **Everglade itself.** The Everglade row opens the web's realm natively:
   Character Create, then the run into the glade, in the site's room. Aethyr's
   page host for Metal ([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h))

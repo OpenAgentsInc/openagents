@@ -1,11 +1,11 @@
 # The Archery Range (spec)
 
-Written 2026-11-10. Status: **built, version 1**, in the Everglade apps
-(`apps/everglade-desktop/`, `apps/everglade-mobile/`). It runs on Mac, iOS
-and Android from one set of Coax files. The Coax is checked on Linux. No
-host build has run it yet: see [What is not checked](#9-what-is-not-checked).
+Written 2026-11-10. Status: **built, version 2**, as a realm on the web at
+`/worlds/archery-range`. Version 1 was a scene written for the Everglade apps
+alone, with its own draw key, aim, camera, reticle, hit test and mounts. It
+is deleted. Version 2 is built only from the systems the game already has.
 
-The range is a place to practise the ranger's bow: shoot at faces for
+The range is a place to practise the Ranger's Longbow: shoot at faces for
 points, see how accurate you are, and do it at different distances, on
 foot, from horseback and from dragonback.
 
@@ -14,43 +14,46 @@ foot, from horseback and from dragonback.
 1. [What you do](#1-what-you-do)
 2. [The ground](#2-the-ground)
 3. [Scoring](#3-scoring)
-4. [The aim](#4-the-aim)
+4. [The bow](#4-the-bow)
 5. [Three ways of shooting](#5-three-ways-of-shooting)
-6. [Controls](#6-controls)
-7. [The tally](#7-the-tally)
-8. [What is reused, and where the code is](#8-what-is-reused-and-where-the-code-is)
+6. [The tally](#6-the-tally)
+7. [What it is built from](#7-what-it-is-built-from)
+8. [The realm and the apps](#8-the-realm-and-the-apps)
 9. [What is not checked](#9-what-is-not-checked)
 10. [Next](#10-next)
 
 ## 1. What you do
 
-You arrive at dusk behind a chalk shooting line, facing five straw butts.
-Hold the bow to draw, aim with the reticle, let go to loose. The arrow
-flies a real arc and sticks where it lands. A hit shows its points over the
-reticle with the distance you shot from. Walk anywhere inside the fence:
+You arrive as a Ranger on an open meadow, behind a chalk shooting line,
+facing five straw butts. Hold the right mouse button to draw, aim with the
+crosshair and let go to loose. The arrow flies a real arc and sticks where it
+lands. An arrow in a face shows its points over the face. Walk anywhere:
 closer for an easy shot, further back for a hard one. Take the horse along
-the track and shoot from the saddle, or take the dragon up and shoot from
+the line and shoot from the saddle, or take the dragon up and shoot from
 the air.
 
 ## 2. The ground
 
 All numbers are in [`everglade/range/layout.coax`](../range/layout.coax).
-The rules, the place and its shaders all read that one file.
+The rules, the mesh and the realm all read that one file.
 
 | Thing | Where |
 | --- | --- |
-| The ground you may cover | 60 m wide, from 22 m behind the line to 92 m downrange, fenced |
+| The shooting line | 44 m of chalk dashes, its middle at (0, 35) on the meadow. You shoot toward -z |
 | Five lanes | Butts at 10, 20, 30, 50 and 70 m from the line, 8 m apart |
 | Face size | 122 cm across on the near three, 160 cm at 50 m, 200 cm at 70 m |
 | Two sky faces | On poles 14 m and 20 m up, leaning back, for a shot from dragonback |
-| The riding track | Along the line, 8 m behind it, 52 m long |
+| Distance posts | One at each lane's left, with a red band for each lane out (one to five) |
 | Where you arrive | 3 m behind the line, in the middle |
-| The horse | Waits on the track |
-| The dragon | Waits behind the track |
-| Lanterns | One by each butt and along the line, so the rings read at dusk |
+| The horse | Waits 8 m behind the line |
+| The dragon | Waits 15 m behind the line |
 
-It is dusk, not day, on purpose: the apps draw their text, reticle and
-arrows as light added over the picture, which a bright sky would wash out.
+Every piece stands on the meadow's own ground under it. There is no fence:
+the meadow is open, and its edge is the realm's.
+
+Each butt, pole and post has a collider the size of what you see. You walk
+into it, a mount goes round it, and an arrow sticks in it. The chalk has
+none.
 
 ## 3. Scoring
 
@@ -65,135 +68,121 @@ A face is the standard ten-ring target.
 | The two outermost | White | 2, 1 |
 
 Each ring is a tenth of the face's radius. An arrow on a line scores the
-ring inside it. Off the face scores nothing. An arrow scores only when it
-crosses the face from the front. An arrow into the ground, or one that flies
-for six seconds without landing, is a miss.
+ring inside it. An arrow scores only when it crosses the face from the
+front. An arrow into the straw beside the face, a post, a pole or the
+grass, or one that flies for six seconds without landing, is a miss.
 
-## 4. The aim
+There are no dice. Where the arrow goes is the bow's physics alone.
 
-The arrow is launched to land on the point the reticle is on, so you do not
-aim above a far face by hand. What makes a shot hard is the **spread**: the
-angle an arrow may leave the line of sight by. The reticle's ring is the
-spread, drawn to scale.
+## 4. The bow
 
-| What | Effect on the spread |
+The bow is bow combat's ([`docs/verse/bow-combat.md`](../../docs/verse/bow-combat.md)),
+unchanged: the same controls, crosshair, over-the-shoulder camera, draw
+pose, bow model, string, arrows and sounds as Everglade Experimental.
+
+| Input | What it does |
 | --- | --- |
-| A full draw (0.8 s), held under 2.5 s, standing still | The least: about 25 cm across at 70 m |
-| A bow not fully drawn | Wider, up to eight times, and the arrow is slower and may fall short |
-| A draw held past 2.5 s | Widens as your arm tires |
-| Your own pace, or your mount's | Widens, most at a full gallop or full flight |
+| Hold the right mouse button | Draw. Let go to loose |
+| Left mouse button or Escape while drawing | Let the draw down |
+| The Attack slot, or its number key | A quick shot at full draw |
+| Phone: hold the bow's slot | Draw. Drag to aim, lift to loose. A tap is a quick shot |
 
-So the skill is timing: come to full draw, loose before your arm tires, and
-slow the horse or steady the dragon for a far shot.
-
-The spread's dice are seeded, so the same shots give the same arrows.
+A full draw takes 0.8 s and lands where the crosshair points. A short draw
+leaves slower and drops short. The crosshair rests on a face it points at,
+so a full draw at a face 70 m off or 20 m up lands on it.
 
 ## 5. Three ways of shooting
 
-| Way | How it moves | Fastest |
-| --- | --- | --- |
-| On foot | The shared walking controller, as in every realm | A run |
-| From horseback | Forward walks, Shift gallops, A and D turn, S slows and backs. It carves arcs and stops at the fence | 14 m/s |
-| From dragonback | Space takes off, beats and climbs. Shift dives. X lands. A and D bank it round | 20 m/s, 40 m ceiling |
+Riding is Everglade's mounts ([mounts spec](mounts-spec.md)), unchanged.
 
-Choosing Horse or Dragon puts you in the saddle where the mount stands.
-Choosing Foot steps you down at its left, and it stays where you left it.
-Nobody gets off a dragon in the air.
-
-The camera follows over your right shoulder so the reticle is clear of
-your head, and sits further back when you ride.
-
-## 6. Controls
-
-**Keys (Mac)**
-
-| Key | What it does |
+| Way | How it moves |
 | --- | --- |
-| W A S D | Move, or steer the mount |
-| Hold F | Draw the bow. Let go to loose |
-| 1, 2, 3 | On foot, horse, dragon |
-| Space | Jump. On the dragon: take off, beat, and hold to climb |
-| Shift | Walk. On the horse: gallop. On the dragon: dive |
-| X | Land the dragon |
-| R | Clear the tally |
-| Drag, wheel | Look, zoom |
-| Escape | Back to the list of worlds |
+| On foot | The shared walking controller |
+| From horseback | E mounts. W and S go and slow, A and D turn, Shift gallops at 14 m/s |
+| From dragonback | E mounts. Space takes off and climbs, Shift dives, X lands |
 
-**Touch (iOS, Android)**
+## 6. The tally
 
-| Touch | What it does |
-| --- | --- |
-| Left thumb | Move, or steer the mount. A full push gallops |
-| Hold Draw, drag, let go | Draw, aim with the same thumb, loose |
-| Foot, Horse, Dragon | Change how you shoot |
-| Up, Down (dragon) | Hold Up to take off and climb. Hold Down to dive, and to land when low |
-| Reset | Clear the tally |
+Shown at the top left, where other realms show the class picker. The range
+has one class, so it has no picker. It is kept until you leave the page.
 
-## 7. The tally
-
-Shown at the left, kept until you clear it or close the app.
-
-- **Overall:** arrows, hits, accuracy (hits in a hundred), points, and
-  points an arrow.
-- **Runs:** hits in a row now, the longest run, and golds (9s and 10s).
-- **By distance,** for the way you are shooting now: the same figures for
-  each band you have shot in. The bands are up to 15 m, 25 m, 40 m, 60 m,
-  and beyond. A shot's distance is from your hand to the face you shot at,
-  so walking back from the 30 m butt moves your shots into a further band.
+- **Overall:** arrows, hits, accuracy (hits in a hundred), points, your
+  run of hits in a row and the longest, golds (9s and 10s), and points an
+  arrow.
+- **By distance,** for the way you are shooting now: hits out of arrows,
+  accuracy and points for each band you have shot in. The bands are up to
+  15 m, 25 m, 40 m, 60 m, and beyond. A hit's distance is from where you
+  loosed to the face it struck, so walking back from the 30 m butt moves
+  your shots into a further band. A miss counts at the distance of the face
+  nearest where the arrow came down.
+- **The last arrow:** its points, or MISS, and its distance.
 - Each way of shooting keeps its own figures.
 
-## 8. What is reused, and where the code is
+## 7. What it is built from
 
-Nothing about archery or riding is written twice.
+Nothing about drawing, aiming, flying arrows, hitting or riding is written
+in the range.
 
-| Piece | Where | New? |
+| Piece | Where | Layer |
 | --- | --- | --- |
-| The draw, the arrow's arc, the launch that lands on a point | [`aethyr/action/bow.coax`](../../aethyr/action/bow.coax) | Existing: Experimental's bow |
-| The horse, and a flier's steering | [`aethyr/action/mount.coax`](../../aethyr/action/mount.coax) | Existing |
-| Winged flight | [`aethyr/action/flight.coax`](../../aethyr/action/flight.coax) | Existing |
-| Walking and the follow camera | [`aethyr/walk.coax`](../../aethyr/walk.coax) | Existing |
-| Where things are | [`everglade/range/layout.coax`](../range/layout.coax) | New |
-| Ring points, a strike, the spread, the tally | [`everglade/range/score.coax`](../range/score.coax) | New |
-| The place's mesh, from Aethyr's architecture kit | [`everglade/range/place.coax`](../range/place.coax) | New |
-| Its shaders, emitted for Metal and Vulkan | [`everglade/range/gpu/range.coax`](../range/gpu/range.coax) | New |
-| The scene: input, camera, arrows against faces, what is drawn | [`apps/everglade-desktop/range.coax`](../../apps/everglade-desktop/range.coax) | New |
+| The draw, the arrow's arc, the launch | [`aethyr/action/bow.coax`](../../aethyr/action/bow.coax) | Engine, existing |
+| A static target a projectile strikes | [`aethyr/action/target.coax`](../../aethyr/action/target.coax) | Engine, new: any realm can stand targets |
+| A zone's own colliders | [`aethyr/world/props.coax`](../../aethyr/world/props.coax) | Engine, new |
+| The crosshair, the camera, the walker | `aethyr/cam/`, `aethyr/walk.coax` | Engine, existing |
+| The butts' and faces' meshes | [`aethyr/world/build-site-mesh.coax`](../../aethyr/world/build-site-mesh.coax) | Engine, existing |
+| The bow in the hand, its string, the draw pose | [`everglade/held-kit.coax`](../held-kit.coax) | Game, moved out of Character Create's file |
+| The Ranger and the Longbow's rules | `aethyr/rules/srd/`, `apps/openagents-web/class-kit.coax` | Game, existing |
+| The horse and the red dragon | [`everglade/mounts.coax`](../mounts.coax) | Game, existing |
+| The HUD panel and hit numbers | `aethyr/ui/hud-menu.coax`, `aethyr/action/floats.coax` | Engine, existing |
+| Bow input, the arrows against the world, sounds | `apps/openagents-web/experimental-combat.coax` (`xc_bow_*`) | The shared lab app, existing: it now asks the zone's targets and colliders |
+| Where things are | [`everglade/range/layout.coax`](../range/layout.coax) | The range |
+| Ring points and the tally | [`everglade/range/score.coax`](../range/score.coax) | The range |
+| The pieces' meshes and colliders | [`everglade/range/place.coax`](../range/place.coax) | The range |
+| The realm: arriving, standing the range, following each arrow, the tally's panel | [`apps/openagents-web/range-scene.coax`](../../apps/openagents-web/range-scene.coax) | The range |
+
+The range's mesh is one entry in the glade pack (`C glade/range`), added
+with:
+
+```sh
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-range IN.pack OUT.pack
+```
 
 Check the Coax:
 
 ```sh
+coax/bin/coax test --library aethyr/action/target.coax
+coax/bin/coax test --library aethyr/world/props.coax
 coax/bin/coax test --library everglade/range/score.coax
 coax/bin/coax test --library everglade/range/place.coax
-coax/bin/coax test --library everglade/range/gpu/range.coax
-coax/bin/coax test --library apps/everglade-desktop/scenes.coax --only "range"
+coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "archery range"
 ```
 
-**The horse and the dragon are drawn as strokes of light,** not models.
-Their models and clips are in Experimental's pack, and the apps ship only
-Everglade II's pack. The web's `xh_records`
-(`apps/openagents-web/experimental-horse.coax`) already makes their draw
-records. Once the apps carry that pack, `model.coax` can hand those records
-to the host and the strokes go.
+## 8. The realm and the apps
+
+The Archery Range is a realm of its own in `apps/openagents-web/realms.json`:
+its own page (`/worlds/archery-range`), save slot and row. It is unlisted, as
+Everglade Experimental and Everglade II are. Its page loads the `fivelab`
+module, the same one Everglade Experimental and the Druid realm load, because
+that module holds the player, the bow and the mounts.
+
+In the Everglade apps, the world list's row for the Archery Range says it
+runs on the web for now and gives that address, as the row for
+Experimental does. It comes to the apps when the `fivelab` module runs there
+through the page host, as Everglade's realm already does on the Mac
+([app scenes spec](app-scenes-spec.md), section 4).
 
 ## 9. What is not checked
 
-- **No host build has run.** The Swift, Metal and Vulkan changes were
-  written on Linux without a Mac or the Android SDK. The Coax checks pass,
-  the C compiles, and the compiled scene was driven through `face.h` on
-  Linux (the list, the range, a shot, a dragon flight).
-- **Nobody has seen a frame of the range.** Its brightness and colours were
-  set by arithmetic. Expect to tune them.
-- **Feel.** The spread's numbers, the camera's shoulder offset and the touch
-  boxes' places are first guesses.
-- **Mutation.** `coax mutate` has not been run on the new files.
+- **A second module.** The realm shares the `fivelab` module. Splitting the
+  bow's and the mounts' wiring out of that module's state, so a realm can
+  have a module of its own, is not done.
+- **Phones.** The range was looked at in desktop Chrome sizes only.
+- **Mutation.** `coax mutate` has not been run on the new engine files.
 
 ## 10. Next
 
-1. Build on a Mac, look at it, and tune light, spread and camera.
-2. Mount models from the Experimental pack (section 8).
-3. A bow in your hands and a draw pose: `aethyr/action/bow-pose.coax` exists.
-4. Rounds: a fixed number of arrows at one distance with a final score, and
-   your best kept under `~/.openagents/everglade/`.
-5. Moving faces, and a gallop course along the track with faces on both sides.
-6. Wind, shown by the pennant, that pushes the arrow.
-7. Arrow sounds: the loose, the flight and the thump are in Everglade's bank.
-8. The same range in the web app, as a zone.
+1. Rounds: a fixed number of arrows at one distance with a final score, and
+   your best kept.
+2. The distance on each post as a number.
+3. Moving faces, and a gallop course along the line with faces on both sides.
+4. Wind that pushes the arrow.

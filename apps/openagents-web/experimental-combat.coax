@@ -63,6 +63,8 @@
 #load "../../aethyr/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
 #load "../../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, shared with Everglade II (#13104)
 #load "../../aethyr/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
+#load "../../aethyr/action/target.coax" as tg;   // static targets an arrow strikes: any zone may stand some (the Archery Range does)
+#load "../../aethyr/world/props.coax" as wprops;   // a zone's own standing things' boxes (the Creator keeps them)
 #load "../../aethyr/action/bow.coax" as bow;
 #load "../../aethyr/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
 
@@ -139,10 +141,14 @@ XcCombat :: struct {
   // the bow (docs/verse/bow-combat.md): your draw, every arrow in the air or stuck (yours and the
   // monsters'), a finger drawing on the bow's slot (its id, -100 none, when it went down and how
   // far it dragged), each monster shot's arrow (its pool slot + 1, 0 none) and the counts the checks read
-  draw: [1] bow.BowDraw; arrows: [1] bow.Arrows;
+  draw: [1] bow.BowDraw; show: [1] bow.BowShow; arrows: [1] bow.Arrows;
   bow_touch: int = -100; bow_touch_at: f32; bow_touch_x: f32; bow_touch_y: f32; bow_dragged: f32;
   shot_arrow: [hostile.HS_SHOTS] int;
   dr: XcDruid;                      // the druid's grove (druid-scene.coax), off elsewhere
+  // the zone's static targets (aethyr/action/target.coax): the reticle's point rests on a face and
+  // an arrow of yours that crosses one sticks in it (Arrow.mark); the slot of the arrow you loosed last
+  targets: [1] tg.Targets; bow_last: int = -1; bow_marks: int;
+  rg: XcRange;                      // the Archery Range (range-scene.coax), off elsewhere
   bow_shots: int; bow_hits: int; bow_misses: int; bow_stuck: int; bow_far: int;
 }
 XC_TICK :: 64.0;           // aethyr/loop.coax: ticks a second
@@ -937,10 +943,13 @@ xc_bow_squares :: (s: [] Lab, foe: int) -> int {
   return ifx q < 1 then 1 else q;
 }
 // Whether a point in the air (world metres) is inside a wall, a house or a prop: the boxes round
-// it (experimental-village.coax ev_hostile_near, heights from the ground there), or the dungeon's.
-xc_bow_wall :: (x: f32, y: f32, z: f32) -> bool {
+// it (experimental-village.coax ev_hostile_near, heights from the ground there), the dungeon's, or
+// one of the zone's own standing things (aethyr/world/props.coax).
+xc_bow_wall :: (s: [] Lab, x: f32, y: f32, z: f32) -> bool {
   up := y - meadow_y(x, z);
   if up < 0 { return true; }
+  if wprops.props_inside(s[0].creator[0].props[0], x, y, z) { return true; }   // the zone's own standing things
+  if s[0].creator[0].field { return false; }   // the open field has no village and no dungeon
   if xdungeon.dg_inside(x, z, 1.5) { return up < 3 && xdungeon.dg_blocked(x, z, 0.02); }
   near: [1] village.EvNear; village.ev_hostile_near(near[..], x, z);
   for i: 0..<near[0].wall_n { o := i * 6; w := near[0].walls[o..<o + 6];
@@ -964,9 +973,9 @@ xc_bow_cancel :: (s: [] Lab) -> bool {
   x := s[0].xc[..]; if !x[0].draw[0].on { return false; }
   bow.bow_cancel(x[0].draw[..]); x[0].bow_touch = -100; return true;
 }
-// Where the crosshair points: the first monster or ground its ray meets past you, within
-// XC_BOW_LOOK, else XC_BOW_PAST along it; and that monster, -1 none.
-XcBowAim :: struct { at: [3] f32; foe: int = -1; }
+// Where the crosshair points: the first monster, static target's face or ground its ray meets past
+// you, within XC_BOW_LOOK, else XC_BOW_PAST along it; and that monster or target, -1 none.
+XcBowAim :: struct { at: [3] f32; foe: int = -1; mark: int = -1; }
 xc_bow_point :: (s: [] Lab) -> XcBowAim {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; u := x[0].u;
   eye := [3] f32.[u[16], u[17], u[18]]; f := [3] f32.[u[20], u[21], u[22]];
@@ -978,15 +987,18 @@ xc_bow_point :: (s: [] Lab) -> XcBowAim {
   prev := t0;
   t := t0; while t < best {
     q := [3] f32.[eye[0] + f[0] * t, eye[1] + f[1] * t, eye[2] + f[2] * t];
-    if xc_bow_wall(q[0], q[1], q[2]) {
+    if xc_bow_wall(s, q[0], q[1], q[2]) {
       lo := prev; top := t;
-      for j: 0..<6 { m := (lo + top) * 0.5; if xc_bow_wall(eye[0] + f[0] * m, eye[1] + f[1] * m, eye[2] + f[2] * m) { top = m; } else { lo = m; } }
+      for j: 0..<6 { m := (lo + top) * 0.5; if xc_bow_wall(s, eye[0] + f[0] * m, eye[1] + f[1] * m, eye[2] + f[2] * m) { top = m; } else { lo = m; } }
       best = top; break;
     }
     prev = t; t += 0.5;
   }
   r.at = [3] f32.[eye[0] + f[0] * best, eye[1] + f[1] * best, eye[2] + f[2] * best];
   if best >= f32(XC_BOW_LOOK) { r.at = [3] f32.[eye[0] + f[0] * f32(XC_BOW_PAST), eye[1] + f[1] * f32(XC_BOW_PAST), eye[2] + f[2] * f32(XC_BOW_PAST)]; }
+  // a static target's face nearer than that: the point rests on it (aethyr/action/target.coax)
+  th := tg.targets_sight(x[0].targets[0], [3] f32.[eye[0] + f[0] * t0, eye[1] + f[1] * t0, eye[2] + f[2] * t0], f, best - t0 + 0.05);
+  if th.i >= 0 { best = t0 + th.u; r.at = th.at; r.mark = th.i; }
   // a monster nearer than that
   for i: 0..<XC_FOES {
     e := h[0].enemies[i]; if e.dead { continue; }
@@ -998,7 +1010,7 @@ xc_bow_point :: (s: [] Lab) -> XcBowAim {
     k := bow.arrow_capsule(p0, p1, [3] f32.[e.x, g + 0.25 * sc, e.z], [3] f32.[e.x, g + 1.25 * sc, e.z], f32(XC_BOW_BODY) * sc);
     if k < 0 { continue; }
     d := t0 + (best + 2 - t0) * k;
-    if d < best + 0.01 { best = d; r.foe = i; r.at = [3] f32.[e.x, g + 0.85 * sc, e.z]; }
+    if d < best + 0.01 { best = d; r.foe = i; r.mark = -1; r.at = [3] f32.[e.x, g + 0.85 * sc, e.z]; }
   }
   return r;
 }
@@ -1008,15 +1020,13 @@ xc_bow_loose :: (s: [] Lab) -> bool {
   if !x[0].draw[0].on { return false; }
   if !xc_has_bow(s) || !x[0].seen { _ := xc_bow_cancel(s); return false; }
   strength := bow.bow_release(x[0].draw[..], now);
-  cr[0].loose_at = now; cr[0].nocked = false;
+  bow.bow_show_loosed(x[0].show[..], now); cr[0].loose_at = now; cr[0].nocked = false;
   x[0].bow_touch = -100;
   aim := xc_bow_point(s);
   f := cr[0].yaw + 3.14159265;   // you face where the camera looks
   fx := sin(f); fz := cos(f);
   from := [3] f32.[cr[0].player_x + fx * 0.45 - fz * 0.12, meadow_y(cr[0].player_x, cr[0].player_z) + cr[0].player_y + f32(XC_BOW_HAND), cr[0].player_z + fz * 0.45 + fx * 0.12];
-  v := bow.arrow_aim_velocity(from, aim.at, bow.bow_speed(1));
-  k := bow.bow_speed(strength) / bow.bow_speed(1);
-  _ := bow.arrow_loose(x[0].arrows[..], 0, from, [3] f32.[v[0] * k, v[1] * k, v[2] * k], now, aim.foe, strength);
+  x[0].bow_last = bow.arrow_loose(x[0].arrows[..], 0, from, bow.arrow_launch(from, aim.at, strength), now, aim.foe, strength);
   x[0].bow_shots += 1; x[0].cool_at = now; x[0].used = xc_slot_of(x, FB_ATTACK);
   xc_cue(s, "bow-release", 0.4 + 0.3 * strength, cr[0].player_x, cr[0].player_z, 0.9 + 0.15 * strength);
   xc_cue(s, "arrow-whiz", 0.12 + 0.12 * strength, cr[0].player_x, cr[0].player_z, 1);   // the arrow leaving
@@ -1025,7 +1035,7 @@ xc_bow_loose :: (s: [] Lab) -> bool {
 // An arrow of yours reached monster foe: the SRD Attack with your Longbow on it. Whether it hit.
 xc_bow_strike :: (s: [] Lab, foe: int) -> bool {
   x := s[0].xc[..];
-  shot := fb_feature(FB_SHOOT, "Longbow", "attack");
+  shot := xk_rules(x[0].klass, xc_attack());   // the kit's Attack as the rules take it: the Longbow's shot (class-kit.coax)
   e := s[0].creator[0].hostiles[0].enemies[foe];
   if f32(xc_bow_squares(s, foe)) * 5 > f32(rs_weapon(W_LONGBOW).range_ft) { x[0].bow_far += 1; }
   // the arrow reached it: it wakes and comes after you, whether the rules let the shot count or not
@@ -1051,7 +1061,9 @@ xc_bow_step :: (s: [] Lab, dt: f32) {
   bow.bow_step(x[0].draw[..], dt);
   if bow.bow_due(x[0].draw[0], now) { _ := xc_bow_loose(s); }
   cr[0].aim = ifx xc_has_bow(s) || x[0].draw[0].aim > 0 then bow.bow_aim(x[0].draw[0]) else 0.0f32;
-  cr[0].nocked = x[0].draw[0].on; if x[0].draw[0].on { cr[0].draw = bow.bow_strength(x[0].draw[0], now); } else if now - cr[0].loose_at > 0.3 { cr[0].draw = 0; }
+  // what your body shows of the draw (aethyr/action/bow.coax BowShow), handed to the scene that draws you
+  bow.bow_show_step(x[0].show[..], x[0].draw[0], now);
+  cr[0].nocked = x[0].show[0].nocked; cr[0].draw = x[0].show[0].strength; cr[0].loose_at = x[0].show[0].loose_at;
   p := x[0].arrows[..];
   for i: 0..<bow.ARROWS {
     if p[0].a[i].state != bow.ARROW_FLYING { continue; }
@@ -1063,7 +1075,7 @@ xc_bow_step :: (s: [] Lab, dt: f32) {
     n := cast(int) (sqrt(sx * sx + sy * sy + sz * sz) / 0.4) + 1; if n > 64 { n = 64; }
     for j: 1..<n + 1 {
       u := f32(j) / f32(n); qx := seg.p0[0] + sx * u; qy := seg.p0[1] + sy * u; qz := seg.p0[2] + sz * u;
-      if xc_bow_wall(qx, qy, qz) { stop = u; grass = qy <= meadow_y(qx, qz) + 0.02; break; }
+      if xc_bow_wall(s, qx, qy, qz) { stop = u; grass = qy <= meadow_y(qx, qz) + 0.02; break; }
     }
     if p[0].a[i].owner == 0 {
       for e: 0..<XC_FOES {
@@ -1072,6 +1084,16 @@ xc_bow_step :: (s: [] Lab, dt: f32) {
         g := meadow_y(m.x, m.z);
         u := bow.arrow_capsule(seg.p0, seg.p1, [3] f32.[m.x, g + 0.25 * m.scale, m.z], [3] f32.[m.x, g + 1.25 * m.scale, m.z], f32(XC_BOW_BODY) * m.scale);
         if u >= 0 && u < stop { stop = u; body = e; }
+      }
+    }
+    // a static target's face along it, before the wall or the body behind it: it sticks in the face
+    if p[0].a[i].owner == 0 {
+      th := tg.targets_first(x[0].targets[0], seg.p0, seg.p1);
+      if th.i >= 0 && th.u < stop {
+        bow.arrow_mark(p, i, seg, th.u, th.i, th.off); x[0].bow_marks += 1;
+        fx_start_at(s, FXR_DUST, now, fxp_v(th.at[0], th.at[1], th.at[2]), fxp_v(th.at[0], th.at[1], th.at[2]), fxp_v(0.7, 0.62, 0.42), 0.3, 0.4);
+        xc_cue(s, "arrow-hit", 0.5, th.at[0], th.at[2], 1);   // a thunk into the straw
+        continue;
       }
     }
     if body >= 0 {
@@ -1831,6 +1853,8 @@ xc_card_box :: (x:[]XcCombat,lay:XcLayout)->cc.Box {
 }
 // The picker steps aside while a slot's card covers it, and on a cramped page while the side bar's
 // menu or a tip is up.
+// A page with one class of its own shows no CLASSES picker: the druid's grove, the Archery Range.
+xc_own_kit :: (x:[]XcCombat)->bool { return x[0].dr.on || x[0].rg.on; }
 xc_pick_hidden :: (x:[]XcCombat,lay:XcLayout)->bool {
   c:=xc_card_box(x,lay); pb:=cm_pick_panel(lay.pick);
   if c.x1>c.x0 && c.x0<pb.x1 && c.x1>pb.x0 && c.y0<pb.y1 && c.y1>pb.y0 { return true; }
@@ -1919,6 +1943,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   fl.floats_frame(x[0].floats[..]);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   xd_frame(s, dt);
+  xr_frame(s, dt);
   xc_objects_tick(s);
   xc_rite_step(s); xc_glide_step(s);
   xc_hostile_contacts(s);
@@ -1928,6 +1953,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   xc_bow_step(s, dt);
   n = xc_crosshair(s, out, n, w, h, k);
   n = xd_hud(s, out, n, k);
+  n = xr_hud(s, out, n, w, h, k);
   if observing { n=cc.ttext(cr[0].ui,cc.UIT_NONE,out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1),""); }
   n=xc_portrait(s,out,n,w,k);
   n=cc.combat_hud(cr[0],out,u,n,w,k);
@@ -1952,7 +1978,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   wild_words := [3]string.["", "", "REPLACE"];
   if pick.wild { choice:=xc_wild_options(x); wild_words[0]=rs_monster_block(choice[0]).name; wild_words[1]=rs_monster_block(choice[1]).name; }
   ui := cr[0].ui; cc.uit_part(ui, "class-menu");   // the layout trace, when the overlap check attaches one (#13076)
-  if !x[0].dr.on && !xc_pick_hidden(x, lay) { n = cm_pick_draw(ui, out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
+  if !xc_own_kit(x) && !xc_pick_hidden(x, lay) { n = cm_pick_draw(ui, out, n, pick, x[0].klass, x[0].level, x[0].pick_hover, "REPLACE ONE KNOWN FORM", wild_words); }   // the druid keeps to its own bar   // class-menu.coax
   // Hover the Thunderwave slot to preview its current footprint. A cast keeps
   // its footprint at the place and direction where it was released.
   wave_preview := x[0].hover >= 0 && x[0].hover < x[0].bar_n && !x[0].arranging && x[0].bar[x[0].hover].kind == FB_SPELL && x[0].bar[x[0].hover].sp == SP_THUNDERWAVE;
@@ -2182,7 +2208,7 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   for i: 0..<x[0].bar_n { if xc_in(xc_slot_box(x, i), px, py) { over = i; } }
   x[0].hover = over;
   lay := xc_layout(s); pick := lay.pick;
-  in_col := !x[0].dr.on && !xc_pick_hidden(x, lay) && cm_in(cm_pick_panel(pick), px, py);
+  in_col := !xc_own_kit(x) && !xc_pick_hidden(x, lay) && cm_in(cm_pick_panel(pick), px, py);
   x[0].pick_hover = ifx in_col then cm_pick_hit(pick, px, py) else CmHit.{};
   // the side bar first: its buttons and menu act on the press (everglade/hud/class-bar.coax)
   if x[0].bow_touch != id {

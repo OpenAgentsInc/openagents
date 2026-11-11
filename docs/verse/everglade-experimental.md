@@ -294,6 +294,16 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-build \
 
 The append refuses a pack that already has build parts.
 
+The Archery Range realm ([spec](../../everglade/docs/archery-range-spec.md))
+draws its butts, sky faces, posts and chalk line from the same pack, as one mesh
+(`C glade/range`, built by `everglade/range/place.coax`). Append it the same way,
+then compress the pack again:
+
+```sh
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-range \
+  apps/openagents-web/realms/everglade-experimental/assets/glade.pack /tmp/glade-range.pack
+```
+
 The scene packer also writes the placed assets’ world-space collision bounds to `verse/experimental-scene-colliders.coax`. Tree collision uses trunk geometry, and living hostiles use moving body capsules. Rebuild the bounds whenever the scene pack changes.
 
 A white horse stands just ahead of the spawn at (4, 6). Walk up to it and press

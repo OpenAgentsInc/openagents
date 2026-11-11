@@ -137,6 +137,18 @@
         "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/fivelab-fx.wgsl",
           "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg", "sound:swing-e1=/realms/everglade/sfx/swing-e1.ogg", "sound:hit-e1=/realms/everglade/sfx/hit-e1.ogg", "sound:death-e1=/realms/everglade/sfx/death-e1.ogg", "sound:stand-e1=/realms/everglade/sfx/stand-e1.ogg"]
       } },
+    { "id": "archery-range", "name": "ARCHERY RANGE", "kind": "open", "listed": false, "orbit": { "r": 0.37, "a": 4.5, "size": 0.02 },
+      "realm": {
+        "slug": "archery-range", "title": "Archery Range", "module": "fivelab", "slot": "archery-range",
+        "description": "Shoot the Ranger's Longbow at straw butts from 10 to 70 metres for points, on foot, from horseback and from dragonback, and see your tally by distance.",
+        "share": "Draw the Ranger's Longbow and shoot for points at 10 to 70 metres, on foot, from horseback and from dragonback.",
+        "alt": "A ranger drawing a longbow at a row of straw archery butts on an open meadow",
+        "style": "painterly", "clock": "fixed:0.5",
+        "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
+        "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
+        "assets": ["pack:/realms/everglade-experimental/assets/glade.pack.gz", "particles:/fivelab-fx.wgsl",
+          "sounds:/realms/everglade/sfx/", "sound:step-1-e1=/realms/everglade/sfx/step-1-e1.ogg", "sound:step-2-e1=/realms/everglade/sfx/step-2-e1.ogg", "sound:step-3-e1=/realms/everglade/sfx/step-3-e1.ogg", "sound:swing-e1=/realms/everglade/sfx/swing-e1.ogg", "sound:hit-e1=/realms/everglade/sfx/hit-e1.ogg", "sound:death-e1=/realms/everglade/sfx/death-e1.ogg", "sound:stand-e1=/realms/everglade/sfx/stand-e1.ogg"]
+      } },
     { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
       "realm": {
         "slug": "fairy-forest",

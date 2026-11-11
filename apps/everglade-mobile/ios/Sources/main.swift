@@ -35,9 +35,9 @@ final class Deep {
 
 final class WorkshopView: MTKView, MTKViewDelegate {
   let state = eg_new()!
-  var temple: Place!, range: Place!
+  var temple: Place!
   // The place behind the world that is open (face.h eg_place).
-  var place: Place { eg_place(state) == 2 ? range : temple }
+  var place: Place { temple }
   var model: Model?
   var strokes: MTLRenderPipelineState!
   var vertices: MTLBuffer!
@@ -80,8 +80,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let fd = MTLDepthStencilDescriptor(); fd.depthCompareFunction = .always; fd.isDepthWriteEnabled = false
     flat = device.makeDepthStencilState(descriptor: fd)!
     // The app's own parts. Without one of them there is nothing to show, so say which and stop.
-    guard let pl = Place(device: device, color: colorPixelFormat), let rg = Place(device: device, color: colorPixelFormat, range: true) else { fatalError("Everglade: the temple or the range did not build, or their shaders are missing. Rebuild with apps/everglade-mobile/build.sh.") }
-    temple = pl; range = rg
+    guard let pl = Place(device: device, color: colorPixelFormat) else { fatalError("Everglade: the temple did not build or its shaders are missing. Rebuild with apps/everglade-mobile/build.sh.") }
+    temple = pl
     guard let atlas = faceAtlas(device) else { fatalError("Everglade: the app's fonts are missing. Rebuild with apps/everglade-mobile/build.sh.") }
     faces = atlas
     let fsd = MTLSamplerDescriptor(); fsd.minFilter = .linear; fsd.magFilter = .linear; fsd.mipFilter = .linear

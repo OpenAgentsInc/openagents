@@ -1957,7 +1957,7 @@ e2_remote_body :: (s: [] E2, r: E2Remote, slot: int, at: E2Drawn, bdt: f32) -> E
   s[0].rair[slot] = air;
   fig := e2k_figure(e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[slot], s[0].rland_at[slot]), s[0].casts[0].them[slot], s[0].clock);
   aim := e2_remote_aim(s, slot);   // a Ranger's loose: the drawn bow's pose, then its follow-through
-  if aim > 0 && !air { fig = cp_bow_layer(fig, aim, 1, false, s[0].clock - s[0].casts[0].them[slot].at, s[0].clock); }
+  if aim > 0 && !air { fig = cc.held_bow_layer(fig, aim, 1, false, s[0].clock - s[0].casts[0].them[slot].at, s[0].clock); }
   look := cast(string) s[0].rlook[slot * NET_LOOK..<slot * NET_LOOK + s[0].rlook_n[slot]];
   _ := e2_remote_look(s, look); c := s[0].rtmp[0];
   from := at.rec;

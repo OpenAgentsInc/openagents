@@ -58,7 +58,7 @@ e2r_apply :: (b:[]RsBattle,seats:[]FbSeat,klass:int,slot:int,point:E2rPoint?,tar
     }
   } else if e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY {
     ok=target>=0 && target<b[0].n && fb_cast(b,i,e.ab,-1,b[0].c[i].x,b[0].c[i].y,target);
-  } else { ok=e2r_dispatch_at(b,i,e.ab,e2r_foe(b,i,target)); }
+  } else { ok=e2r_dispatch_at(b,i,xk_rules(klass,e.ab),e2r_foe(b,i,target)); }   // a bow kit's Attack is its Longbow's shot (#13130)
   fb_seat_out(b,seats);
   return ok;
 }
@@ -81,7 +81,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int)->bool #effects(all) {
   }
   // Empty swing: no invented target, hit roll, damage or on-hit benefit. With the Action spent, the
   // shared rules refuse a swing at no one (below).
-  if (a.kind==FB_ATTACK || a.kind==FB_RECKLESS) && !b[0].turn.action { b[0].turn.action=true; return true; }
+  if (a.kind==FB_ATTACK || a.kind==FB_SHOOT || a.kind==FB_RECKLESS) && !b[0].turn.action { b[0].turn.action=true; return true; }
   // Flurry of Blows at the air: its Focus Point and Bonus Action, no strike (SRD 5.2.1 p. 49)
   if a.kind==FB_FLURRY && !b[0].turn.bonus && b[0].c[i].focus>0 && rs_can_act(b[0].c[i]) { b[0].c[i].focus-=1; b[0].turn.bonus=true; return true; }
   // A feature of the caster's own that picks no creature (#13046: Action Surge, Dash, Cunning Action,
@@ -141,6 +141,19 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int)->bool #effects(all) {
   slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
   #assert e2r_use_at(b[..],seats[..],FB_CL_PALADIN,slot,0,0);
   #assert b[0].zone[0].cx==0 && b[0].zone[0].cy==0;
+}
+#test "Everglade II: a Ranger's Attack reaches the guard at the Longbow's range, never only the shortsword's 5 feet (#13130)" {
+  b:[1] RsBattle; b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
+  _:=rs_add(b[..],fb_cl_hero(FB_CL_RANGER,"Ranger",0,3),1,2);
+  g:=rs_add(b[..],rs_guard("Guard",1),25,2);   // 120 feet off
+  b[0].c[g].ac=5; hp:=b[0].c[g].hp;
+  bar:[XC_SLOTS] FbAb; n:=xk_bar_at(FB_CL_RANGER,3,bar[..]); slot:= -1; for k:0..<n { if bar[k].kind==FB_ATTACK { slot=xk_wire(FB_CL_RANGER,bar[k]); } }
+  seats:[1] FbSeat; seats[0].me=0;
+  #assert slot>=0 && e2r_use_on(b[..],seats[..],FB_CL_RANGER,slot,g);
+  #assert b[0].c[g].hp<hp && seats[0].turn.action;
+  // an arrow at no one spends the Action and harms nothing
+  seats[0]=FbSeat.{me=0}; hp=b[0].c[g].hp;
+  #assert e2r_use(b[..],seats[..],FB_CL_RANGER,slot) && seats[0].turn.action && b[0].c[g].hp==hp;
 }
 #test "Everglade II harms only the creature the room names, alive and of another team" {
   b:[1] RsBattle; b[0].w=8; b[0].h=8;

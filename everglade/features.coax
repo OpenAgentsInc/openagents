@@ -18,7 +18,7 @@
 EfFeature :: struct { name: string; title: string; required: bool; issue: int; owners: string; marks: string; files: string; }
 EF_FEATURES :: [11] EfFeature.[
   EfFeature.{name = "bow", title = "bow carry and draw", required = true, issue = 13079,
-    owners = "aethyr/action/bow.coax aethyr/action/bow-pose.coax apps/openagents-web/cast-pose.coax",
+    owners = "aethyr/action/bow.coax aethyr/action/bow-pose.coax everglade/held-kit.coax",
     marks = "BowDraw =Arrows arrow_pos arrow_aim_velocity arrow_timed_velocity bow_strength _bow_layer bow_basis bow_matrix bow_string held_weapon",
     files = "bow"},
   EfFeature.{name = "damage-numbers", title = "damage numbers", required = true, issue = 13080,
@@ -89,7 +89,7 @@ EF_ZONES :: [3] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [161] string.[
+EF_KNOWN :: [154] string.[
   "hud apps/openagents-web/everglade2-bench.coax e2b_hud",
   "hud apps/openagents-web/everglade2-cast.coax e2k_hud",
   "hud apps/openagents-web/everglade2-cast.coax e2k_down_hud",
@@ -105,13 +105,6 @@ EF_KNOWN :: [161] string.[
   "hud apps/openagents-web/everglade2.coax e2_floats_hud",
   "hud apps/openagents-web/charactercreator.coax dev_hud",
   "hud apps/openagents-web/charactercreator.coax combat_hud",
-  "bow apps/openagents-web/charactercreator.coax held_weapon",
-  "bow apps/openagents-web/charactercreator.coax bow_string",
-  "bow apps/openagents-web/charactercreator.coax bow_basis",
-  "bow apps/openagents-web/charactercreator.coax bow_matrix",
-  "bow apps/openagents-web/charactercreator.coax bow_string_points",
-  "bow apps/openagents-web/charactercreator.coax bow_matrix_turned",
-  "bow apps/openagents-web/charactercreator.coax bow_matrix_held",
   "hud apps/openagents-web/charactercreator.coax layout",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float",
   "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_from",

@@ -1,5 +1,5 @@
 // Everglade for desktop: face.h over the C that scenes.coax compiles to (the worlds: the list, the
-// Workshop, the Archery Range).
+// Workshop).
 #include "workshop.h"
 #include "face.h"
 #include <stdlib.h>

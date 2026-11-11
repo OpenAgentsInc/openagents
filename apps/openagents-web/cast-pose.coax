@@ -1,8 +1,7 @@
-// The body clip a cast plays and the drawn bow's aim pose, shared by Everglade Experimental
-// (experimental-combat.coax xc_press) and Everglade II (everglade2-cast.coax e2k_play,
-// everglade2-mouse.coax). A blow is the slash, or with a two-hander held its owned cleave; a spell
-// is the cast; a drawn bow lays its keyed draw (aethyr/action/bow-pose.coax, baked as figs.BD_BOW)
-// over the upper body, standing the whole body. Its loader loads charactercreator.coax as cc and
+// The body clip a cast plays, shared by Everglade Experimental (experimental-combat.coax xc_press)
+// and Everglade II (everglade2-cast.coax e2k_play). A blow is the slash, or with a two-hander held
+// its owned cleave; a spell is the cast. (A drawn bow's aim pose is the held kit's:
+// everglade/held-kit.coax held_bow_layer.) Its loader loads charactercreator.coax as cc and
 // fivelab-bodies.coax as figs.
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "cast pose"
 
@@ -22,21 +21,11 @@ cp_feel_clip :: (role: int, kit: int, held: bool) -> int {
   if role == XF_ANIM_RUN { return figs.BD_RUN; }
   return -1;
 }
-// The bow's aim pose over a0: `aim` how far the aim has come in (bow.bow_aim), `draw` how far the
-// string is back, `nocked` an arrow still on it, `loose_age` seconds since the last loose.
-cp_bow_layer :: (a0: figs.BdAnim, aim: f32, draw: f32, nocked: bool, loose_age: f32, clock: f32) -> figs.BdAnim {
-  if aim <= 0.001 { return a0; }
-  f := figs.bow_pose_frame(draw, ifx nocked then -1.0f32 else loose_age);
-  return figs.bd_layer(a0, figs.BD_BOW, 0, (f32(f) + 0.5) / f32(figs.BOW_POSE_FRAMES), aim, clock);
-}
 
-#test "cast pose: a blow slashes or cleaves, a spell casts, the bow lays its draw" {
+#test "cast pose: a blow slashes or cleaves, a spell casts" {
   #assert cp_cast_clip(-1, false, true) == figs.BD_SPELL && cp_cast_clip(-1, true, true) == figs.BD_SLASH;
   two := -1; for k: 0..<cc.CC_KITS { if cc.CC_KIT_TWO[k] && two < 0 { two = k; } }
   #assert two >= 0 && cp_blow_clip(two, true) == figs.BD_OWN + cc.CC_KIT_HOLD[two] + 2 && cp_blow_clip(two, false) == figs.BD_SLASH;
-  idle: figs.BdAnim; idle.clip = figs.BD_IDLE;
-  #assert cp_bow_layer(idle, 0, 0, true, 5, 1).clip == figs.BD_IDLE;
-  a := cp_bow_layer(idle, 1, 0.5, true, 5, 1); #assert a.clip == figs.BD_BOW && a.prev == figs.BD_IDLE;
 }
 #test "cast pose: every feel role has a clip on every kit" {
   for role: 0..<XF_ANIMS { for kit: -1..<cc.CC_KITS { #assert cp_feel_clip(role, kit, true) >= 0 && cp_feel_clip(role, kit, false) >= 0; } }

@@ -8,8 +8,7 @@
 
 E2Mouse :: struct {
   draw: [1] bow.BowDraw;      // the Longbow's draw, the aim pose's ease
-  loose_at: f32 = -100;       // the last loose, for the pose's follow-through
-  strength: f32;              // how far the string is back, for the pose
+  show: [1] bow.BowShow;      // what your body shows of it: the string, the nocked arrow, the last loose
   casts: int; draws: int; looses: int; cancels: int;   // what the checks count (e2m_probe)
 }
 
@@ -42,7 +41,7 @@ e2m_loose :: (s: [] E2) -> bool {
   if !m[0].draw[0].on { return false; }
   if !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); return false; }
   _ := bow.bow_release(m[0].draw[..], now);
-  m[0].loose_at = now; m[0].looses += 1;
+  bow.bow_show_loosed(m[0].show[..], now); m[0].looses += 1;
   return e2k_press(s, e2m_attack(s[0].casts[..]));
 }
 
@@ -71,12 +70,12 @@ e2m_step :: (s: [] E2, dt: f32) {
   if m[0].draw[0].on && !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); }
   bow.bow_step(m[0].draw[..], dt);
   if bow.bow_due(m[0].draw[0], now) { _ := e2m_loose(s); }
-  if m[0].draw[0].on { m[0].strength = bow.bow_strength(m[0].draw[0], now); } else if now - m[0].loose_at > 0.3 { m[0].strength = 0; }
+  bow.bow_show_step(m[0].show[..], m[0].draw[0], now);
 }
-// Your figure with the bow drawn: its aim pose over what you were doing (cast-pose.coax).
+// Your figure with the bow drawn: its aim pose over what you were doing (everglade/held-kit.coax).
 e2m_figure :: (s: [] E2, a0: figs.BdAnim) -> figs.BdAnim {
   m := s[0].mouse[0]; if s[0].airborne { return a0; }
-  return cp_bow_layer(a0, bow.bow_aim(m.draw[0]), m.strength, m.draw[0].on, s[0].clock - m.loose_at, s[0].clock);
+  return cc.held_bow_layer(a0, bow.bow_aim(m.draw[0]), m.show[0].strength, m.show[0].nocked, s[0].clock - m.show[0].loose_at, s[0].clock);
 }
 // What the checks read (e2_probe 150 on): 150 left-button casts, 151 draws, 152 looses, 153 drawing
 // now (1), 154 the aim (percent), 155 cancels, 156 your cast's clip on your body (-1 none or done),

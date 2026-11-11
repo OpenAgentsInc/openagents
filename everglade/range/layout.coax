@@ -1,15 +1,16 @@
 // The Archery Range (everglade/docs/archery-range-spec.md), where things are: one set of numbers
-// for the rules (range.coax), what is built (place.coax) and how it is lit (gpu/range.coax).
-// Metres, +y up. You shoot toward -z: the shooting line is z = 0, the butts stand downrange at
-// z = -distance, and you arrive behind the line, toward +z, facing them.
+// for the rules (score.coax), what is built (place.coax) and the realm that stands them on its
+// meadow (apps/openagents-web/range-scene.coax). Metres, +y up, in the range's own frame: you
+// shoot toward -z, the shooting line is z = 0, the butts stand downrange at z = -distance, and you
+// arrive behind the line, toward +z, facing them. RG_AT_* is where that frame's origin lies on the
+// meadow.
 //   coax/bin/coax test --library everglade/range/layout.coax
 #module "everglade.range.layout";
 
-// The ground you may cover: a rectangle. Walking, riding and a landed dragon stay inside it.
-RG_HALF_WIDE :: 30.0;         // x from -30 to 30
-RG_BACK :: 22.0;              // z up to +22, behind the line
-RG_FAR :: -92.0;              // z down to -92, past the farthest butt
-RG_CEILING :: 40.0;           // a dragon climbs no higher over the range
+// The middle of the shooting line, on the meadow (world metres): the far butt and the place the
+// dragon waits both stay inside the meadow's 82 m edge.
+RG_AT_X :: 0.0;
+RG_AT_Z :: 35.0;
 
 // The lanes, left to right as you face downrange: each a butt at its own distance from the line.
 RG_LANES :: 5;
@@ -17,10 +18,11 @@ RG_LANE_X :: [5] f32.[-16.0, -8.0, 0.0, 8.0, 16.0];
 RG_LANE_Z :: [5] f32.[-10.0, -20.0, -30.0, -50.0, -70.0];      // where each butt's face is
 // A face's radius: the near three carry the 122 cm face, the far two a larger one, as a far butt does.
 RG_LANE_RADIUS :: [5] f32.[0.61, 0.61, 0.61, 0.80, 1.00];
-RG_FACE_Y :: 1.30;            // a face's middle, over the ground
+RG_FACE_Y :: 1.30;            // a face's middle, over the ground under it
 RG_BUTT_DEEP :: 0.45;         // the straw behind a face
 RG_BUTT_MARGIN :: 0.16;       // the straw shows this far round a face
 RG_STAND_LEG :: 0.07;         // half the width of a butt's wooden legs
+RG_PROP_BACK :: 0.9;          // a butt's prop meets the ground this far behind the straw
 
 // Two faces on tall poles for a shot from dragonback, tipped to face up and toward the line.
 RG_SKY :: 2;
@@ -29,6 +31,7 @@ RG_SKY_Y :: [2] f32.[14.0, 20.0];
 RG_SKY_Z :: [2] f32.[-36.0, -58.0];
 RG_SKY_RADIUS :: 1.00;
 RG_SKY_TILT :: 0.6;           // radians a sky face leans back from upright (its normal lifts toward +y)
+RG_SKY_POLE :: 0.14;          // its pole's radius at the ground
 RG_TARGETS :: 7;              // the five lanes, then the two sky faces
 
 // A face's ten rings, the same on every face as a share of its radius: gold 10 and 9, red 8 and 7,
@@ -37,24 +40,20 @@ RG_TARGETS :: 7;              // the five lanes, then the two sky faces
 RG_RINGS :: 10;
 RG_RING :: 0.1;
 
-// The shooting line, the riding track behind it, and where the mounts wait.
+// The shooting line (chalk dashes on the grass), and where you and the mounts arrive.
 RG_LINE_Z :: 0.0;
 RG_LINE_HALF :: 22.0;         // the line runs x from -22 to 22
-RG_TRACK_Z :: 8.0;            // the riding track's middle: a gallop along x, the butts on your side
-RG_TRACK_HALF :: 26.0;        // the track runs x from -26 to 26
-RG_TRACK_WIDE :: 4.0;
+RG_DASH :: 1.0;               // a dash's length; one every RG_DASH_STEP
+RG_DASH_STEP :: 2.0;
+RG_DASHES :: 22;
 RG_START_X :: 0.0; RG_START_Z :: 3.0;        // where you arrive, facing downrange
-RG_HORSE_X :: -6.0; RG_HORSE_Z :: 8.0;       // the horse waits on the track
+RG_HORSE_X :: -6.0; RG_HORSE_Z :: 8.0;       // the horse waits behind the line: a gallop along x keeps the butts on your side
 RG_DRAGON_X :: 10.0; RG_DRAGON_Z :: 15.0;    // the dragon waits behind it
 
-// What is built round it: a rail fence on the boundary, distance posts beside each lane, a rack
-// of bows by the line, and a pennant on a pole whose lean shows the wind (none yet: it hangs).
-RG_FENCE_HEIGHT :: 1.1;
-RG_POST_HEIGHT :: 1.6;        // a lane's distance post, at the lane's left
-RG_POST_OFFSET :: 2.2;        // metres left of the butt
-RG_PENNANT_X :: 22.0; RG_PENNANT_Z :: 2.0; RG_PENNANT_HEIGHT :: 6.0;
-// The sun, for the shader and for where shadows fall: toward +x, high, a little behind you.
-RG_SUN :: [3] f32.[0.42, 0.82, 0.39];
+// A distance post at each lane's left, level with its butt.
+RG_POST_HEIGHT :: 1.6;
+RG_POST_OFFSET :: 2.2;        // metres left of the butt's middle
+RG_POST_HALF :: 0.06;
 
 // Where target `i` is: its face's middle and the way the face looks (a unit vector).
 RgFace :: struct { x: f32; y: f32; z: f32; nx: f32; ny: f32; nz: f32; radius: f32; }
@@ -65,15 +64,16 @@ rg_face :: (i: int) -> RgFace {
   return RgFace.{x = RG_SKY_X[k], y = RG_SKY_Y[k], z = RG_SKY_Z[k], nx = 0, ny = 0.5646425, nz = 0.8253356, radius = RG_SKY_RADIUS};
 }
 
-#test "the range's layout holds: every butt is downrange inside the ground, the lanes don't overlap, the track is behind the line" {
+#test "the range's layout holds: every butt is downrange on the meadow, the lanes don't overlap, you and the mounts arrive behind the line" {
   #assert RG_LANES + RG_SKY == RG_TARGETS;
   for i: 0..<RG_LANES {
-    #assert RG_LANE_Z[i] < RG_LINE_Z && RG_LANE_Z[i] > RG_FAR + 5 && RG_LANE_X[i] > -RG_HALF_WIDE + 5 && RG_LANE_X[i] < RG_HALF_WIDE - 5;
+    #assert RG_LANE_Z[i] < RG_LINE_Z && RG_AT_Z + RG_LANE_Z[i] > -80 && RG_AT_X + RG_LANE_X[i] > -80 && RG_AT_X + RG_LANE_X[i] < 80;
     if i > 0 { #assert RG_LANE_X[i] - RG_LANE_X[i - 1] > RG_LANE_RADIUS[i] + RG_LANE_RADIUS[i - 1] + 2 && RG_LANE_Z[i] < RG_LANE_Z[i - 1]; }
-    #assert RG_FACE_Y - RG_LANE_RADIUS[i] > 0.2;
+    #assert RG_FACE_Y - RG_LANE_RADIUS[i] - RG_BUTT_MARGIN > 0.1;
+    #assert RG_LANE_X[i] - RG_POST_OFFSET < RG_LANE_X[i] - RG_LANE_RADIUS[i] - RG_BUTT_MARGIN - 0.5;   // the post stands clear of the straw
   }
   for i: 0..<RG_TARGETS { f := rg_face(i); unit := f.nx * f.nx + f.ny * f.ny + f.nz * f.nz; #assert unit > 0.999 && unit < 1.001 && f.nz > 0 && f.radius > 0.5; }
-  #assert RG_TRACK_Z - RG_TRACK_WIDE * 0.5 > RG_LINE_Z + 1 && RG_TRACK_Z + RG_TRACK_WIDE * 0.5 < RG_BACK && RG_TRACK_HALF < RG_HALF_WIDE;
-  #assert RG_START_Z > RG_LINE_Z && RG_START_Z < RG_TRACK_Z - RG_TRACK_WIDE * 0.5;
-  for k: 0..<RG_SKY { #assert RG_SKY_Y[k] < RG_CEILING - 5 && RG_SKY_Y[k] > 8; }
+  #assert RG_START_Z > RG_LINE_Z && RG_HORSE_Z > RG_START_Z + 2 && RG_DRAGON_Z > RG_HORSE_Z + 4 && RG_AT_Z + RG_DRAGON_Z < 76;
+  #assert f32(RG_DASHES) * f32(RG_DASH_STEP) == 2 * RG_LINE_HALF && RG_DASH < RG_DASH_STEP;
+  for k: 0..<RG_SKY { #assert RG_SKY_Y[k] > 8 && RG_AT_Z + RG_SKY_Z[k] > -80; }
 }

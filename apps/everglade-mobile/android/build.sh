@@ -24,15 +24,14 @@ glslc="$(echo "$ndk"/shader-tools/*/glslc)"
 work="$here/../build/android"
 rm -rf "$work/apk"; mkdir -p "$work/c" "$work/apk/lib/arm64-v8a" "$work/apk/assets"
 cc=("$llvm/bin/aarch64-linux-android30-clang" -std=c11 -O2 -fPIC -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$desk" -I"$ndk/sources/android/native_app_glue")
-# The worlds alone (scenes.coax: the list, the Workshop, the Archery Range; no Next issue panel: a
+# The worlds alone (scenes.coax: the list, the Workshop; no Next issue panel: a
 # phone has no agent), your model, and the two places' parts.
 "$coax" c "$desk/scenes.coax" --library --header "$work/c/workshop.h" > "$work/c/workshop.c"
-"$coax" c "$repo/everglade/range/place.coax" --library --header "$work/c/range-place.h" > "$work/c/range-place.c"
 "$coax" c "$desk/model.coax" --library --header "$work/c/model.h" > "$work/c/model.c"
 "$coax" c "$repo/everglade/workshop/temple.coax" --library --header "$work/c/temple.h" > "$work/c/temple.c"
 objects=()
-for unit in workshop model temple range-place; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; objects+=("$work/c/$unit.o"); done
-for face in face model-face place-face range-place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; objects+=("$work/c/$face.o"); done
+for unit in workshop model temple; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; objects+=("$work/c/$unit.o"); done
+for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; objects+=("$work/c/$face.o"); done
 "${cc[@]}" -c "$here/host.c" -o "$work/c/host.o"
 "${cc[@]}" -c "$ndk/sources/android/native_app_glue/android_native_app_glue.c" -o "$work/c/glue.o"
 # The glue's entry point is only named in the manifest, so the linker is told to keep it.
@@ -42,7 +41,6 @@ for face in face model-face place-face range-place-face; do "${cc[@]}" -c "$desk
 # The shaders: Aethyr's for the temple, emitted from Coax, and the strokes and your model's.
 for pair in sky scene light; do
   "$coax" spirv "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/apk/assets/temple-$pair.spv" 2> "$work/c/temple-$pair.spv.bind"
-  "$coax" spirv "$repo/everglade/range/gpu/range.coax" --vertex "range_${pair}_vs" --fragment "range_${pair}_fs" -o "$work/apk/assets/range-$pair.spv" 2> "$work/c/range-$pair.spv.bind"
 done
 for stage in strokes.vert strokes.frag model.vert model.frag; do "$glslc" -O "$here/shaders/$stage" -o "$work/apk/assets/$stage.spv"; done
 # The faces' atlas, drawn here by CoreText, since the phone has none.

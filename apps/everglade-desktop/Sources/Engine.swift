@@ -39,11 +39,10 @@ struct Pack {
   }
 }
 
-// A place on the GPU: the temple's parts (everglade/workshop/temple.coax, built from Aethyr's
+// The place on the GPU: the temple's parts (everglade/workshop/temple.coax, built from Aethyr's
 // architecture kit) and the Aethyr shaders that draw them (everglade/workshop/gpu/temple.coax,
-// emitted for Metal by `coax metal` at build time), or the Archery Range's (everglade/range/
-// place.coax and gpu/range.coax), which is built and bound the same way. The host uploads three
-// buffers once and issues the draws; it decides nothing about what is where or how it looks.
+// emitted for Metal by `coax metal` at build time). The host uploads three buffers once and
+// issues the draws; it decides nothing about what is where or how it looks.
 //
 // An emitted shader takes its resources at fixed places (its .bind file lists them): the uniform
 // floats at buffer 0, the mesh at 1, the records at 2, a lengths buffer at 29, and for the scene
@@ -57,38 +56,27 @@ final class Place {
   let solid: MTLDepthStencilState, behind: MTLDepthStencilState, over: MTLDepthStencilState
   let smooth: MTLSamplerState, blank: MTLTexture
   var mirror: MTLTexture?, mirrorDepth: MTLTexture?
-  // The temple's polished floor shows a mirror image; the range's grass doesn't, so its is never drawn.
-  let mirrors: Bool
 
-  // `range` false builds the temple, true the Archery Range. `name` is the shaders' prefix.
-  init?(device: MTLDevice, color: MTLPixelFormat, range: Bool = false) {
-    let name = range ? "range" : "temple"
-    mirrors = !range
-    guard let state = range ? rpl_new() : plc_new() else { return nil }
+  init?(device: MTLDevice, color: MTLPixelFormat) {
+    guard let state = plc_new() else { return nil }
     defer { free(state) }
-    let vertexFloats = range ? rpl_vertex_floats() : plc_vertex_floats(), recordFloats = range ? rpl_record_floats() : plc_record_floats()
-    let vertexCount = range ? rpl_vertices(state) : plc_vertices(state), recordCount = range ? rpl_records(state) : plc_records(state), drawCount = range ? rpl_draws(state) : plc_draws(state)
-    let vf = Int(vertexFloats) * Int(vertexCount), rf = Int(recordFloats) * Int(recordCount), dn = Int(drawCount) * 4
+    let vf = Int(plc_vertex_floats()) * Int(plc_vertices(state)), rf = Int(plc_record_floats()) * Int(plc_records(state)), dn = Int(plc_draws(state)) * 4
     draws = [UInt32](repeating: 0, count: dn)
     guard vf > 0, rf > 0, dn > 0,
           let m = device.makeBuffer(length: vf * 4, options: .storageModeShared),
           let r = device.makeBuffer(length: rf * 4, options: .storageModeShared),
-          let l = device.makeBuffer(length: 64, options: .storageModeShared) else { return nil }
-    let mp = m.contents().assumingMemoryBound(to: Float.self), rp = r.contents().assumingMemoryBound(to: Float.self)
-    guard (range ? rpl_copy_mesh(state, mp, Int32(vf)) : plc_copy_mesh(state, mp, Int32(vf))) == 1,
-          (range ? rpl_copy_records(state, rp, Int32(rf)) : plc_copy_records(state, rp, Int32(rf))) == 1,
-          (range ? rpl_copy_draws(state, &draws, Int32(dn)) : plc_copy_draws(state, &draws, Int32(dn))) == 1 else { return nil }
+          let l = device.makeBuffer(length: 64, options: .storageModeShared),
+          plc_copy_mesh(state, m.contents().assumingMemoryBound(to: Float.self), Int32(vf)) == 1,
+          plc_copy_records(state, r.contents().assumingMemoryBound(to: Float.self), Int32(rf)) == 1,
+          plc_copy_draws(state, &draws, Int32(dn)) == 1 else { return nil }
     mesh = m; records = r; lengths = l
-    for g in 0..<3 {
-      let first = range ? rpl_group_first(state, Int32(g)) : plc_group_first(state, Int32(g)), count = range ? rpl_group_count(state, Int32(g)) : plc_group_count(state, Int32(g))
-      groups.append((Int(first), Int(count)))
-    }
+    for g in 0..<3 { groups.append((Int(plc_group_first(state, Int32(g))), Int(plc_group_count(state, Int32(g))))) }
     func library(_ name: String) -> MTLLibrary? { Bundle.main.url(forResource: name, withExtension: "metallib").flatMap { try? device.makeLibrary(URL: $0) } }
-    guard let skyLib = library("\(name)-sky"), let sceneLib = library("\(name)-scene"), let lightLib = library("\(name)-light") else { return nil }
+    guard let skyLib = library("temple-sky"), let sceneLib = library("temple-scene"), let lightLib = library("temple-light") else { return nil }
     // Each pair twice: once for the picture, once for the mirror image (linear colour, sixteen-bit).
     func pipeline(_ lib: MTLLibrary, _ pair: String, _ format: MTLPixelFormat, add: Bool) -> MTLRenderPipelineState? {
       let d = MTLRenderPipelineDescriptor()
-      d.vertexFunction = lib.makeFunction(name: "\(name)_\(pair)_vs"); d.fragmentFunction = lib.makeFunction(name: "\(name)_\(pair)_fs")
+      d.vertexFunction = lib.makeFunction(name: "temple_\(pair)_vs"); d.fragmentFunction = lib.makeFunction(name: "temple_\(pair)_fs")
       d.colorAttachments[0].pixelFormat = format; d.depthAttachmentPixelFormat = .depth32Float
       if add {
         let a = d.colorAttachments[0]!
@@ -130,7 +118,6 @@ final class Place {
   }
   // What stands on the floor, upside down, into the mirror image.
   func reflect(_ cmd: MTLCommandBuffer, device: MTLDevice, uniforms: [Float], width: Int, height: Int) {
-    if !mirrors { return }
     if mirror == nil || mirror!.width != width || mirror!.height != height {
       let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: width, height: height, mipmapped: false)
       cd.usage = [.renderTarget, .shaderRead]; cd.storageMode = .private

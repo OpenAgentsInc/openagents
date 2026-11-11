@@ -17,7 +17,9 @@ on its own as `glade/weapon5`, and an `Arrow` as `glade/weapon6`. The Fighter ke
 its greatsword for now.
 
 The bow sits on one attach basis in the left fist, the same in every pose
-(`charactercreator.coax` `bow_basis`). The rig binds in a T-pose, so in the hand's
+(`everglade/held-kit.coax` `bow_basis`: the held kit is one game-wide file that
+Character Create, Experimental, Everglade II and the Archery Range all hold a
+weapon through). The rig binds in a T-pose, so in the hand's
 bind frame the arm runs +X and the fist's hole, the thumb's side, runs +Z. The
 bow's limbs run through the fist along that hole, and its string side runs back
 along the forearm, canted 10 degrees out from the body. Drawn, the arm points at
@@ -69,6 +71,8 @@ every monster's hurt capsule.
 - **It reaches a monster:** the SRD rolls the attack. A hit ends the arrow in the
   monster, with sparks, a hit sound, the damage number and a short hit stop. A miss
   shows **MISS**, plays a whoosh and flies on through.
+- **It crosses a static target's face:** it sticks in the face with a thunk, and
+  remembers which target and how far from its middle (see [Targets](#targets)).
 - **It meets the ground, a wall or a prop:** it sticks with a puff of dust, a soft
   swish into grass or a thunk into wood or stone. It stays for 4 s, then fades out over 1 s.
 
@@ -77,12 +81,34 @@ arrow arcs from its hand to where you stood and arrives as the Goblin's attack
 resolves (`verse/experimental-hostiles.coax` `hostile_fly`). One that misses
 flies on until it sticks in the ground.
 
+## Targets
+
+A realm can stand static targets: round faces an arrow strikes
+(`aethyr/action/target.coax`). A face has a middle, the way it looks and a
+radius. The engine answers two questions about a realm's set of faces:
+
+- **Where the crosshair rests.** The crosshair's ray stops on the first face it
+  meets from the front (`targets_sight`), so a full draw at a face lands on it,
+  however far off or high up it is.
+- **What an arrow strikes.** Each frame, an arrow's segment is tested against
+  the faces (`targets_first`) beside the ground, the walls and the bodies. The
+  arrow sticks in the first face it crosses from the front, inside the rim
+  (`arrow_mark`), and keeps the target's index and its distance from the middle.
+
+The engine doesn't score. A realm reads the stuck arrow's `mark` and `off` and
+applies its own rule. The [Archery Range](../../everglade/docs/archery-range-spec.md)
+scores ten rings.
+
+What holds a face up is the realm's collider. A zone lists the boxes round its
+own standing things (`aethyr/world/props.coax`), and the walker, the mounts, the
+crosshair's ray and the arrows all read that one list.
+
 ## Rules mapping (SRD 5.2.1)
 
 | SRD | Here |
 | --- | --- |
 | Longbow: 1d8 Piercing, Ammunition (150/600 ft), Heavy, Two-Handed, Slow mastery | `rs_weapon(W_LONGBOW)`. A hit deals 1d8 + your Dexterity modifier, and the attack roll adds Dexterity and your Proficiency Bonus (`rs_weapon_attack`) |
-| The Attack action with a ranged weapon | `FB_SHOOT`, which calls `rs_shoot` (`apps/openagents-web/fivebar.coax`). Extra Attack at level 5 makes its second attack too |
+| The Attack action with a ranged weapon | `FB_SHOOT`, which calls `rs_shoot` (`apps/openagents-web/fivebar.coax`). Extra Attack at level 5 makes its second attack too. A bow kit's Attack is this shot in every realm and in the room (`class-kit.coax` `xk_rules`), and it aims at the Longbow's range (`xk_weapon`) |
 | Which creature is attacked | The one the arrow physically reaches. The roll decides whether the attack hits |
 | Range: normal 150 ft, long 600 ft, Disadvantage past normal range | The target stands on the engine's line at its true distance, one 5 ft square to 1.524 m, the same scale as every other range in Experimental, so normal range is 45.7 m. Past it, `rs_strike`'s own long-range rule gives Disadvantage. The arrow's arc reaches about 183 m at 45°, the long range |
 | A ranged attack with an enemy within 5 ft | Disadvantage, from the same rule. The other monsters stand on their squares round you |
@@ -160,13 +186,19 @@ pitch and level, like every other combat sound.
    `bow_speed(strength) / bow_speed(1)`, into `arrow_loose`. A ruleset that
    resolves on arrival uses `arrow_timed_velocity(from, to, seconds)`.
 5. Each frame, for every flying arrow, take `arrow_segment`, test it against your
-   world (`arrow_capsule` for bodies), and end it with `arrow_stop(..., hit)`.
-   Then call `arrow_tidy`.
-6. Draw each arrow with `fxp_arrow_at` (`aethyr/fx/puff.coax`) between `fxp_begin`
+   world (`arrow_capsule` for bodies, `targets_first` for static targets), and end
+   it with `arrow_stop(..., hit)` or `arrow_mark`. Then call `arrow_tidy`.
+6. Keep one `BowShow` beside each `BowDraw` (`bow_show_step` each frame,
+   `bow_show_loosed` at the loose) and hand it to the held kit
+   (`everglade/held-kit.coax` `held_pieces`, `held_bow_layer`): the string, the
+   nocked arrow and the draw pose.
+7. Draw each arrow with `fxp_arrow_at` (`aethyr/fx/puff.coax`) between `fxp_begin`
    and `fxp_close`: in flight at `arrow_pos` and `arrow_dir`, and stuck at its
    `at` and `dir` with `arrow_alpha`.
 
 Experimental's adapter is the bow section of
 `apps/openagents-web/experimental-combat.coax` (`xc_bow_*`). Its checks are
 `coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"`
-and `coax/bin/coax test aethyr/action/bow.coax --library`.
+and `coax/bin/coax test aethyr/action/bow.coax --library`. The Archery Range
+(`apps/openagents-web/range-scene.coax`) is the second realm on that adapter: it
+adds no bow code, only its targets, its colliders and its tally.

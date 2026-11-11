@@ -435,8 +435,21 @@ xk_wire :: (c: int, a: FbAb) -> int {
   entry:=xk_entry_at(FB_CL_CLERIC,5,wire);
   #assert entry.ok && entry.ab.sp==SP_REVIVIFY && entry.ab.lvl==3 && entry.ab.tg==FB_ALLY;
 }
-// The weapon class c's hero holds (its Attack's reach).
-xk_weapon :: (c: int) -> int { return ifx c >= 0 && c < FB_CL_N then fb_cl_hero(c, "", 0, XK_LEVEL).weapon else 0; }
+// The weapon class c's hero holds (its Attack's reach): a bow kit's Longbow, not the blade at its
+// belt (#13130: a Ranger's Attack reached the shortsword's 5 feet).
+xk_weapon :: (c: int) -> int {
+  if c < 0 || c >= FB_CL_N { return 0; }
+  h := fb_cl_hero(c, "", 0, XK_LEVEL);
+  return ifx xc_kit(c) == XC_KIT_BOW && h.ranged > 0 then h.ranged else h.weapon;
+}
+// Class c's ability as the rules take it: a bow kit's Attack is the Attack action with its ranged
+// weapon (FB_SHOOT, rs_shoot: the Longbow's 150/600 feet, Disadvantage past normal range), in every
+// realm and the room; every other ability is itself.
+xk_rules :: (c: int, a: FbAb) -> FbAb {
+  if a.kind != FB_ATTACK || xc_kit(c) != XC_KIT_BOW { return a; }
+  shot := fb_feature(FB_SHOOT, "Longbow", "attack"); shot.tg = a.tg;
+  return shot;
+}
 // Wire slot `slot` for class c: its ability, how it aims; ok false when it is not in c's catalog.
 XkEntry :: struct { ok: bool; ab: FbAb; aim: XcAim; }
 xk_entry :: (c: int, slot: int) -> XkEntry {
@@ -517,6 +530,18 @@ xk_entry_at :: (c: int, level: int, slot: int) -> XkEntry {
   }
 }
 
+#test "class kits: a Ranger's Attack is its Longbow in aim and in the rules, 150 feet out; a Fighter's stays its blade (#13130)" {
+  #assert xk_weapon(FB_CL_RANGER) == W_LONGBOW && xk_weapon(FB_CL_FIGHTER) == fb_cl_hero(FB_CL_FIGHTER, "", 0, XK_LEVEL).weapon;
+  slot := -1; bar: [XC_SLOTS] FbAb; n := xk_bar(FB_CL_RANGER, bar[..]); for i: 0..<n { if bar[i].kind == FB_ATTACK { slot = xk_slot(FB_CL_RANGER, i); } }
+  e := xk_entry(FB_CL_RANGER, slot); #assert e.ok && e.ab.kind == FB_ATTACK && e.aim.kind == XC_AIM_BOLT && abs(e.aim.reach - 150 * f32(XC_FT)) < 0.01;
+  #assert xk_rules(FB_CL_RANGER, e.ab).kind == FB_SHOOT && xk_rules(FB_CL_FIGHTER, e.ab).kind == FB_ATTACK && xk_rules(FB_CL_RANGER, bar[2]).kind == bar[2].kind;
+  // the rules: a guard 100 feet off is out of the shortsword's reach and inside the Longbow's
+  b: [1] RsBattle; b[0].w = 40; b[0].h = 6; b[0].dice[0].fixed = true;
+  _ := rs_add(b[..], fb_cl_hero(FB_CL_RANGER, "You", 0, 3), 1, 1); g := rs_add(b[..], rs_fighter("Foe", 1, 3), 21, 1);
+  b[0].c[g].ac = 5; rs_fresh(b[..], 0); hp := b[0].c[g].hp;
+  #assert !fb_use(b[..], 0, e.ab, g, 0, 0, -1) && b[0].c[g].hp == hp;
+  #assert fb_use(b[..], 0, xk_rules(FB_CL_RANGER, e.ab), g, 0, 0, -1) && b[0].c[g].hp < hp;
+}
 #test "class kits: the restart check's --levels fixtures name the slots the kits give" {
   // coax/web/room/e2-restart-check.coax's RX_F_* and RX_B_* constants
   f5: [XC_SLOTS] FbAb; f1: [XC_SLOTS] FbAb; b3: [XC_SLOTS] FbAb;

@@ -1,8 +1,8 @@
 // Firm reason: 6 (AppKit and Metal have no C API; this host holds no product logic).
 // Everglade for desktop, the Mac host (everglade/docs/desktop-app-spec.md): a window,
 // a Metal view and input. Everything drawn comes from scenes.coax (the list of worlds, the
-// Workshop, the Archery Range) through face.h. Escape is the list; --scene N opens on world N
-// (1 Everglade, 2 the Workshop, 3 the Archery Range, 4 Experimental).
+// Workshop) through face.h. Escape is the list; --scene N opens on world N (1 Everglade, 2 the
+// Workshop, 3 the Archery Range, 4 Experimental; the last two are cards for the web's realms).
 // Everglade itself is the web's everglade2 realm (Character Create, then the glade), run natively
 // by Aethyr's page host (aethyr/host/apple/page-host.h): while it is open this host hands it the
 // frames, keys and presses, and draws its picture under the Worlds button.
@@ -27,9 +27,9 @@ import MetalKit
 
 final class WorkshopView: MTKView, MTKViewDelegate {
   let state = eg_new()!
-  var temple: Place!, range: Place!
+  var temple: Place!
   // The place behind the world that is open (face.h eg_place).
-  var place: Place { eg_place(state) == 2 ? range : temple }
+  var place: Place { temple }
   var strokes: MTLRenderPipelineState!
   var vertices: MTLBuffer!
   var model: Model?
@@ -67,11 +67,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let lib = try! device.makeLibrary(URL: url)
     let b = MTLRenderPipelineDescriptor()
     // The place: the temple's parts and Aethyr's shaders. Without them there is nowhere to stand.
-    guard let pl = Place(device: device, color: colorPixelFormat), let rg = Place(device: device, color: colorPixelFormat, range: true) else {
-      FileHandle.standardError.write(Data("Everglade: the temple or the range did not build, or their shaders are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
+    guard let pl = Place(device: device, color: colorPixelFormat) else {
+      FileHandle.standardError.write(Data("Everglade: the temple did not build or its shaders are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       exit(1)
     }
-    temple = pl; range = rg
+    temple = pl
     let f = MTLRenderPipelineDescriptor()
     f.vertexFunction = lib.makeFunction(name: "fx_vs"); f.fragmentFunction = lib.makeFunction(name: "fx_fs")
     let v = MTLVertexDescriptor()

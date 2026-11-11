@@ -33,6 +33,7 @@
 #load "../../../everglade/world/housewright.coax" as hw;
 #load "../../../aethyr/world/build-work.coax" as bwork;
 #load "../../../aethyr/world/build-work-mesh.coax" as bwm;
+#load "../../../everglade/range/place.coax" as range;   // the Archery Range's butts, faces, posts and chalk (--append-range)
 #load "../../everglade/glade-zone.coax";
 
 #test "glade static vertices retain positions beyond the people quantization box" {
@@ -90,7 +91,7 @@ gp_village_tile :: (material:string)->int {
  box:=gp_vertex_bounds(b[..],0,2,false);#assert box[0]<=2000 && box[3]>=3000 && box[2]<= -3000 && box[5]>= -2000;
 }
 GP_VERTS :: 8000000;
-Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;zero_first:int;zero_count:int;zero_tex_first:int;zero_tex_end:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;weaponfirst:[7]int;weaponcount:[7]int;mat_only:string;mat_skip:string;dungeonfirst:[8]int;dungeoncount:[8]int;buildfirst:[hw.HW_PARTS]int;buildcount:[hw.HW_PARTS]int;pilefirst:[hw.HW_STOCKS]int;pilecount:[hw.HW_STOCKS]int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
+Gp :: struct {colliders:[1024][6]int;collider_n:int;bushes:[128][6]int;bush_n:int;v:[GP_VERTS*32]u8;i:[GP_VERTS*12]u8;nv:int;ni:int;envni:int;zero_first:int;zero_count:int;zero_tex_first:int;zero_tex_end:int;extra_props:bool;showcase_keep:[269]bool;animalfirst:[10]int;animalcount:[10]int;weaponfirst:[7]int;weaponcount:[7]int;mat_only:string;mat_skip:string;dungeonfirst:[8]int;dungeoncount:[8]int;buildfirst:[hw.HW_PARTS]int;buildcount:[hw.HW_PARTS]int;pilefirst:[hw.HW_STOCKS]int;pilecount:[hw.HW_STOCKS]int;rangefirst:int;rangecount:int;monsterfirst:[48]int;monstercount:[48]int;monsterpartfirst:[48][2]int;monsterpartcount:[48][2]int;monster_anchor:[2][3]f32;animal_anchor:[12][3]f32;grassfirst:[3]int;grasscount:[3]int;seedfirst:[3]int;seedn:[3]int;layers:int;nt:int;tex:[128]string;encoded:[128]string;txt:[1]Txt;old:[33554432]u8;oldn:int;out:[536870912]u8;atlas:[4194304]u8;village_layer:int = -1;bestiary_layer:int = -1;}
 // Capture exactly the world-space vertices emitted for one placed asset.
 // Tree trunks use their bark geometry so a broad canopy does not become a wall.
 gp_vertex_bounds :: (vertices:[]u8,first:int,last:int,bark:bool)->[6]int {
@@ -620,9 +621,29 @@ gp_append_build :: (input:string,output:string,root:string)->int {
   print("Appended % build parts (% vertices, % indices) to % (% bytes)\n",hw.HW_PARTS,w[0].nv,w[0].ni,output,pos);
   return 0;
 }
+// The Archery Range (everglade/range/place.coax, everglade/docs/archery-range-spec.md): every butt,
+// sky face, post and chalk dash as one mesh, each standing on the meadow under it
+// (experimental-terrain.coax exp_height), outside the glade's environment draw. The stands are the
+// build parts' timber; straw and a face's paint are their own colours on the plain plaster tile.
+gp_range :: (w:[]Gp) {
+ m:[1]bsm.BsMesh;ground:[range.RG_PIECES]f32;
+ for i:0..<range.RG_PIECES {at:=range.rg_piece_at(i);ground[i]=meadow.exp_height(at[0],at[1]);}
+ range.rg_build(m[..],ground[..]);
+ if m[0].over {ph_die("range mesh exceeds its vertex budget");}
+ w[0].rangefirst=w[0].ni;first:=w[0].nv;
+ for q:0..<m[0].nv {v:=m[0].v[q];sc:=GP_HW_SCALE[v.mat];u:=v.uv[0]*sc;vv:=ifx gp_hw_long(v.mat) then 0.03+0.24*v.uv[1] else v.uv[1]*sc;
+  tint:=ifx v.mat==bsite.BS_DAUB || v.mat==range.RG_STRAW_MAT then [3]f32.[1,1,1] else GP_HW_TINT[v.mat];c:=[3]f32.[tint[0]*v.c[0],tint[1]*v.c[1],tint[2]*v.c[2]];
+  id:=gp_v(w,v.p,v.n,[2]f32.[(gp_hw_wrap(u)+4)/8,(gp_hw_wrap(vv)+4)/8],c,w[0].village_layer,4);gp_word(w[0].v[..],id*32+28,f32_bits(100.0+f32(GP_HW_TILE[v.mat])+0.25));
+  w[0].v[id*32+23]=0;}
+ for q:0..<m[0].ni/3 {gp_tri(w,first+m[0].i[q*3],first+m[0].i[q*3+1],first+m[0].i[q*3+2]);}
+ w[0].rangecount=w[0].ni-w[0].rangefirst;
+ print("Archery range: % vertices\n",w[0].nv-first);
+}
 // --append-piles IN.pack OUT.pack: the builders' piles (gp_build_piles) added to a pack, as
 // --append-build adds the parts; the catalog gains "C glade/pile<row>" lines (HW_STOCK_ROWS order).
-gp_append_piles :: (input:string,output:string)->int {
+// --append-range IN.pack OUT.pack: the Archery Range (gp_range) the same way; the catalog gains
+// one "C glade/range" line.
+gp_append_made :: (input:string,output:string,is_range:bool)->int {
   w:[1]Gp; g:[1]Gltf; src:=w[0].out[..];
   size:=fs_read(input,src);
   if size<32 || cast(string)src[0..<4]!="VPK1" || gl_u32(src,8)!=size { tool_errln("not a VPK1 pack"); return 1; }
@@ -638,21 +659,23 @@ gp_append_piles :: (input:string,output:string)->int {
   while at<cat.count {
     end:=at; while end<cat.count && cat[end]!='\n' { end+=1; }
     line:=cat[at..<end];
-    if starts(line,"C glade/pile") { tool_errln("pack already contains the piles"); return 1; }
+    if !is_range && starts(line,"C glade/pile") { tool_errln("pack already contains the piles"); return 1; }
+    if is_range && starts(line,"C glade/range") { tool_errln("pack already contains the range"); return 1; }
     if starts(line,"bytes ") && line.count==16 { size_at=at+6; }
     at=end+1;
   }
   if size_at<0 { return 1; }
   for v:0..<vertex_bytes/32 {o:=vertex_at+v*32;if (int(src[o+15])&7)!=4 {continue;}m:=f32_from_bits(cast(u32)gl_u32(src,o+28));if m>=100 && m<116 && abs(m-floor(m)-0.25)<0.001 {w[0].village_layer=gl_u32(src,o+24);break;}}
   if w[0].village_layer<0 { tool_errln("pack has no village atlas"); return 1; }
-  gp_build_piles(w[..]);
+  if is_range { gp_range(w[..]); } else { gp_build_piles(w[..]); }
   extra:[16384]u8; c:[1]Sb; c[0]=sb(extra[..]);
   sb_byte(c[..],'\n');
-  for i:0..<hw.HW_STOCKS {sb_put(c[..],"C glade/pile");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],index_bytes/4+w[0].pilefirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].pilecount[i]);sb_put(c[..]," 251 ");sb_int(c[..],vertex_bytes/4);sb_put(c[..]," 0 0\n");}
+  if is_range {sb_put(c[..],"C glade/range ");sb_int(c[..],index_bytes/4+w[0].rangefirst);sb_byte(c[..],' ');sb_int(c[..],w[0].rangecount);sb_put(c[..]," 251 ");sb_int(c[..],vertex_bytes/4);sb_put(c[..]," 0 0\n");}
+  for i:0..<(ifx is_range then 0 else hw.HW_STOCKS) {sb_put(c[..],"C glade/pile");sb_int(c[..],i);sb_byte(c[..],' ');sb_int(c[..],index_bytes/4+w[0].pilefirst[i]);sb_byte(c[..],' ');sb_int(c[..],w[0].pilecount[i]);sb_put(c[..]," 251 ");sb_int(c[..],vertex_bytes/4);sb_put(c[..]," 0 0\n");}
   appendix:=sb_text(c[..]);
   out:[536870912]u8;
   new_size:=size+appendix.count+w[0].nv*32+w[0].ni*4+4;
-  if new_size>out.count || new_size>gl_u32(src,12) { tool_errln("piles exceed the pack budget"); return 1; }
+  if new_size>out.count || new_size>gl_u32(src,12) { tool_errln("the appended meshes exceed the pack budget"); return 1; }
   for i:0..<start { out[i]=src[i]; }
   pos:=start;
   for q:0..<entries {
@@ -669,7 +692,7 @@ gp_append_piles :: (input:string,output:string)->int {
   value:=pos;
   for i:0..<10 { out[start+size_at+9-i]=cast(u8)(48+value%10); value/=10; }
   if !fs_write(output,cast(string)out[0..<pos]) { return 1; }
-  print("Appended % piles (% vertices, % indices) to % (% bytes)\n",hw.HW_STOCKS,w[0].nv,w[0].ni,output,pos);
+  print("Appended % (% vertices, % indices) to % (% bytes)\n",ifx is_range then "the archery range" else "the piles",w[0].nv,w[0].ni,output,pos);
   return 0;
 }
 // A broad stone curtain joins the original tower to its three matching copies.
@@ -976,7 +999,8 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-horse" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_HORSE,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-weapons" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_WEAPONS,args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-cat" {return gp_append_models(args_at(args[..],1),args_at(args[..],2),GP_APPEND_CAT,args_at(args[..],3));}
- if args_count(args[..])==3 && args_at(args[..],0)=="--append-piles" {return gp_append_piles(args_at(args[..],1),args_at(args[..],2));}
+ if args_count(args[..])==3 && args_at(args[..],0)=="--append-piles" {return gp_append_made(args_at(args[..],1),args_at(args[..],2),false);}
+ if args_count(args[..])==3 && args_at(args[..],0)=="--append-range" {return gp_append_made(args_at(args[..],1),args_at(args[..],2),true);}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-build" {return gp_append_build(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-dragon" {return gp_append_dragon(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}
  if args_count(args[..])==4 && args_at(args[..],0)=="--append-meadow" {return gp_append_meadow(args_at(args[..],1),args_at(args[..],2),args_at(args[..],3));}

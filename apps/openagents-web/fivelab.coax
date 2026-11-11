@@ -56,6 +56,7 @@
 #load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in experimental-combat.coax xc_sprint_frame)
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: rest and knock-out over Experimental's bar (#13092)
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
+#load "range-scene.coax";   // the Archery Range at /worlds/archery-range: the range's place, targets and tally on the open field
 #load "druid-scene.coax";   // the druid's field at /druid: Shapechange into the Adult Red Dragon, flight and Fire Breath
 #load "experimental-objects.coax";
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
@@ -1933,7 +1934,8 @@ lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  if s[0].creator[0].experimental && s[0].creator[0].field {w.bodies=0;w.pace=xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}return w;}   // the open field: no village, its walls or its bushes
+  // the open field: no village, its walls or its bushes; only the zone's own standing things (aethyr/world/props.coax)
+  if s[0].creator[0].experimental && s[0].creator[0].field {s[0].village_near[0].floor_n=0;s[0].village_near[0].wall_n=wprops.props_near(s[0].creator[0].props[0],x,z,8,xmeadow.exp_height(x,z),s[0].village_near[0].walls[..],0);w.walls=s[0].village_near[0].wall_n;w.bodies=0;w.pace=xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}return w;}
   if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}if sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock) {w.link_flags=512;}return w;}
   b := bt(s);
   me := s[0].me;
@@ -3905,7 +3907,7 @@ lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
   if kind==16 {cc.load_player(s[0].creator[..],t);return;}
   if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
   if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
-  if kind==HOST_PAGE && (cc.experimental_page(t) || xd_page(t)) {if xd_page(t) {xd_enter(s);}if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].build_review=cc.build_review_page(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
+  if kind==HOST_PAGE && (cc.experimental_page(t) || xd_page(t) || xr_page(t)) {if xd_page(t) {xd_enter(s);}if xr_page(t) {xr_enter(s);}if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].build_review=cc.build_review_page(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
   if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
   // The host delivers a kept appearance before page facts identify the route.
   if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }

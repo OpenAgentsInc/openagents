@@ -1,5 +1,5 @@
 // Everglade's apps: the host's C face over scenes.coax (the worlds: the list you open on, the
-// Workshop, the Archery Range). A host allocates the state and the vertex buffer, and calls these
+// Workshop). A host allocates the state and the vertex buffer, and calls these
 // each frame and on input; the Coax sends each to the world that is open.
 #pragma once
 #include <stdbool.h>
@@ -35,7 +35,7 @@ void eg_go(void *state, int32_t world);
 // press is that button's (give it to eg_pointer, not the realm).
 void eg_runs(void *state, int32_t world, int32_t runs);
 int32_t eg_on_worlds(void *state, float x, float y);
-// The place to draw behind it: 1 the temple (plc_), 2 the range (rpl_).
+// The place to draw behind it: 1 the temple (plc_).
 int32_t eg_place(void *state);
 // 1 when a touch that begins at this point is the list's or a button's, so it is a press
 // (eg_pointer), never the stick that moves you.
@@ -120,20 +120,6 @@ int32_t plc_group_count(void *place, int32_t group);
 int32_t plc_copy_mesh(void *place, float *out, int32_t floats);
 int32_t plc_copy_records(void *place, float *out, int32_t floats);
 int32_t plc_copy_draws(void *place, uint32_t *out, int32_t words);
-
-// The Archery Range's place (everglade/range/place.coax, range-place-face.c): the same calls and
-// the same groups as the temple's, so a host draws either with one piece of code.
-void *rpl_new(void);
-int32_t rpl_vertex_floats(void);
-int32_t rpl_record_floats(void);
-int32_t rpl_vertices(void *place);
-int32_t rpl_records(void *place);
-int32_t rpl_draws(void *place);
-int32_t rpl_group_first(void *place, int32_t group);
-int32_t rpl_group_count(void *place, int32_t group);
-int32_t rpl_copy_mesh(void *place, float *out, int32_t floats);
-int32_t rpl_copy_records(void *place, float *out, int32_t floats);
-int32_t rpl_copy_draws(void *place, uint32_t *out, int32_t words);
 
 // A Mac's wheel travel as the host contract's (aethyr/host/appkit-input.coax): down positive, a
 // trackpad's pixels as they are, a wheel's tick forty.

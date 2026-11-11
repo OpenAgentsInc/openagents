@@ -1,32 +1,23 @@
 // The Archery Range's rules (everglade/docs/archery-range-spec.md): what an arrow scores and how
-// good your shooting is. Nothing here moves or draws.
+// good your shooting is. Nothing here moves, aims, flies or draws: the bow, the arrow and the
+// strike are the engine's (aethyr/action/bow.coax, aethyr/action/target.coax).
 //
-//   a strike (rg_strike): an arrow's step crosses a face's plane from the front, inside its rim;
-//   its points (rg_points): the ring it landed in, 10 for the gold's middle down to 1 for the
+//   the faces (rg_targets): the range's seven faces as the engine's static targets, standing on
+//   the ground they are given;
+//   an arrow's points (rg_points): the ring it landed in, 10 for the gold's middle down to 1 for the
 //   outer white, a line counting for the ring inside it; off the face, 0;
-//   how sure the aim is (rg_spread): the angle an arrow may leave the line of sight by. A full,
-//   fresh draw from a still stance is the surest; a half-drawn bow, a draw held too long, your own
-//   pace and the pace of what you ride each widen it;
 //   the tally (RgScore): shots, hits, points and golds, kept apart for each way of shooting (on
 //   foot, from horseback, from dragonback) and each band of distance, with the run of hits in a row.
 //   coax/bin/coax test --library everglade/range/score.coax
 #module "everglade.range.score";
 #load "layout.coax";
+#load "../../aethyr/action/target.coax" as tg;
 
 RG_FOOT :: 0; RG_HORSE :: 1; RG_DRAGON :: 2; RG_MODES :: 3;
 // The bands of distance a shot is counted in, by how far you stood from the face: up to 15 m,
 // to 25, to 40, to 60, and beyond.
 RG_BANDS :: 5;
 RG_BAND_TO :: [4] f32.[15.0, 25.0, 40.0, 60.0];
-
-// The aim's spread, radians.
-RG_SPREAD_BEST :: 0.0035;     // a full fresh draw, standing still: about 25 cm at 70 m
-RG_SPREAD_SLACK :: 0.030;     // more, for a bow not drawn at all
-RG_SPREAD_PACE :: 0.016;      // more, moving at a full gallop or a full flight
-RG_SPREAD_TIRED :: 0.020;     // more, for a draw held RG_TIRED_FULL seconds past RG_TIRED_FROM
-RG_TIRED_FROM :: 2.5; RG_TIRED_FULL :: 4.0;
-
-rg_clamp :: (v: f32, a: f32, b: f32) -> f32 { if v < a { return a; } if v > b { return b; } return v; }
 
 // The points for landing `off` metres from the middle of a face of `radius`.
 rg_points :: (off: f32, radius: f32) -> int {
@@ -36,27 +27,15 @@ rg_points :: (off: f32, radius: f32) -> int {
   return RG_RINGS - ring;
 }
 
-// Where an arrow's step from p0 to p1 meets face f: `hit` when it crossed the face's plane from the
-// front inside the rim; then `u` is how far along the step, `off` how far from the middle.
-RgStrike :: struct { hit: bool; u: f32; off: f32; points: int; }
-rg_strike :: (f: RgFace, p0: [3] f32, p1: [3] f32) -> RgStrike {
-  s: RgStrike;
-  d0 := (p0[0] - f.x) * f.nx + (p0[1] - f.y) * f.ny + (p0[2] - f.z) * f.nz;
-  d1 := (p1[0] - f.x) * f.nx + (p1[1] - f.y) * f.ny + (p1[2] - f.z) * f.nz;
-  if !(d0 > 0) || d1 > 0 { return s; }
-  u := d0 / (d0 - d1);
-  x := p0[0] + (p1[0] - p0[0]) * u - f.x; y := p0[1] + (p1[1] - p0[1]) * u - f.y; z := p0[2] + (p1[2] - p0[2]) * u - f.z;
-  off := sqrt(x * x + y * y + z * z);
-  if off > f.radius { return s; }
-  s.hit = true; s.u = u; s.off = off; s.points = rg_points(off, f.radius);
-  return s;
+// The range's faces as the engine's targets, in the world: the five lanes' then the two sky faces'
+// (rg_face's order), each standing on `ground[i]`, the height of the ground under it.
+rg_target :: (i: int, ground: f32) -> tg.TargetFace {
+  f := rg_face(i);
+  return tg.TargetFace.{x = f32(RG_AT_X) + f.x, y = ground + f.y, z = f32(RG_AT_Z) + f.z, nx = f.nx, ny = f.ny, nz = f.nz, radius = f.radius};
 }
-
-// The spread of a shot: `strength` how drawn the bow is (0 to 1), `held` the seconds it has been
-// drawn, `pace` your speed as a share of the fastest you can go this way (0 still, 1 flat out).
-rg_spread :: (strength: f32, held: f32, pace: f32) -> f32 {
-  tired := rg_clamp((held - f32(RG_TIRED_FROM)) / f32(RG_TIRED_FULL), 0, 1);
-  return f32(RG_SPREAD_BEST) + f32(RG_SPREAD_SLACK) * (1 - rg_clamp(strength, 0, 1)) + f32(RG_SPREAD_PACE) * rg_clamp(pace, 0, 1) + f32(RG_SPREAD_TIRED) * tired;
+rg_targets :: (t: [] tg.Targets, ground: [] f32) {
+  t[0].n = 0;
+  for i: 0..<RG_TARGETS { _ := tg.targets_add(t, rg_target(i, ifx i < ground.count then ground[i] else 0.0f32)); }
 }
 
 rg_band :: (distance: f32) -> int {
@@ -101,22 +80,16 @@ rg_average_tenths :: (t: RgTally) -> int { return ifx t.shots > 0 then (t.points
   last := 11;
   for i: 0..<100 { p := rg_points(f32(i) * 0.01, 1.0); #assert p <= last && p >= 1; last = p; }
 }
-#test "an arrow strikes a face it crosses from the front inside the rim, and no other way" {
-  f := rg_face(2);   // the 30 m lane, facing +z
-  a := rg_strike(f, [3] f32.[f.x + 0.2, f.y, f.z + 1], [3] f32.[f.x + 0.2, f.y, f.z - 1]);
-  #assert a.hit && a.u > 0.49 && a.u < 0.51 && a.off > 0.19 && a.off < 0.21 && a.points == 7;
-  #assert !rg_strike(f, [3] f32.[f.x, f.y, f.z - 1], [3] f32.[f.x, f.y, f.z + 1]).hit;                  // from behind
-  #assert !rg_strike(f, [3] f32.[f.x + 0.7, f.y, f.z + 1], [3] f32.[f.x + 0.7, f.y, f.z - 1]).hit;      // past the rim
-  #assert !rg_strike(f, [3] f32.[f.x, f.y, f.z + 3], [3] f32.[f.x, f.y, f.z + 1]).hit;                  // not there yet
-  // A sky face leans back: an arrow falling onto it from above and in front strikes it.
-  k := rg_face(RG_LANES);
-  b := rg_strike(k, [3] f32.[k.x, k.y + 2, k.z + 2], [3] f32.[k.x, k.y - 1, k.z - 1]);
-  #assert b.hit && b.points >= 1;
-}
-#test "the aim is surest drawn full, fresh and still, and each of the three widens it" {
-  best := rg_spread(1, 1, 0);
-  #assert best == RG_SPREAD_BEST && rg_spread(0.5, 1, 0) > best && rg_spread(1, 1, 1) > best && rg_spread(1, 9, 0) > best;
-  #assert rg_spread(1, RG_TIRED_FROM, 0) == best && rg_spread(0, 99, 5) <= RG_SPREAD_BEST + RG_SPREAD_SLACK + RG_SPREAD_PACE + RG_SPREAD_TIRED + 0.0001;
+#test "the range's faces stand as the engine's targets, and an arrow into the 30 m gold strikes it for 10" {
+  t: [1] tg.Targets; g: [RG_TARGETS] f32; for i: 0..<RG_TARGETS { g[i] = 2; }
+  rg_targets(t[..], g[..]); #assert t[0].n == RG_TARGETS;
+  f := t[0].face[2]; #assert f.y == 2 + RG_FACE_Y && f.z == RG_AT_Z + RG_LANE_Z[2] && f.radius == RG_LANE_RADIUS[2];
+  h := tg.targets_first(t[0], [3] f32.[f.x + 0.03, f.y, f.z + 1], [3] f32.[f.x + 0.03, f.y, f.z - 1]);
+  #assert h.i == 2 && rg_points(h.off, f.radius) == 10;
+  w := tg.targets_first(t[0], [3] f32.[f.x + 0.55, f.y, f.z + 1], [3] f32.[f.x + 0.55, f.y, f.z - 1]); #assert w.i == 2 && rg_points(w.off, f.radius) == 1;
+  // a sky face leans back: an arrow falling onto it from above and in front strikes it
+  k := t[0].face[RG_LANES];
+  #assert tg.targets_first(t[0], [3] f32.[k.x, k.y + 2, k.z + 2], [3] f32.[k.x, k.y - 1, k.z - 1]).i == RG_LANES;
 }
 #test "the tally keeps each way of shooting and each band apart, and the run of hits" {
   s: [1] RgScore;
