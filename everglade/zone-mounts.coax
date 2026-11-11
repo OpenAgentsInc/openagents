@@ -1,7 +1,13 @@
-// Everglade Experimental's horse and red dragon (everglade/docs/mounts-spec.md): zone wiring only. It
-// places one white horse and one red dragon near spawn and hands Everglade's mounts (everglade/mounts.coax, the game layer, on
-// Aethyr's aethyr/action/mount.coax) this zone's ground and the boxes its walker collides with. Part
-// of charactercreator.coax's module (the Creator holds the horses); fivelab.coax wires the keys.
+// Everglade's horse and red dragon standing in a zone (everglade/docs/mounts-spec.md), game-wide:
+// Everglade Experimental and the Archery Range ride through this one file. It places one white horse
+// and one red dragon where the zone says, hands Everglade's mounts (everglade/mounts.coax, on
+// Aethyr's aethyr/action/mount.coax) the zone's ground and the boxes its walker collides with, takes
+// E and the rider's keys (xh_key, xh_ride_keys), and draws the prompt (xh_prompt_draw). A zone only
+// passes its keys in and plays the yes it is handed (the footfall, the dust).
+//
+// A fragment of charactercreator.coax's module (it loads this; the Creator holds the mounts, the
+// ground and the zone's boxes). Its checks run with that file's:
+//   coax/bin/coax test --library apps/openagents-web/charactercreator.coax --only "mounts"
 
 // The white horse: just ahead and right of where you appear (you face +Z), clear of every box (the
 // spawn's safe radius only calms monsters), facing the open meadow past spawn (67 m clear at a gallop).
@@ -63,6 +69,61 @@ xh_ride :: (s: []Creator, i: mount.MountIn, dt: f32, now: f32) -> egm.EgRider {
   _ := egm.eg_mounts_fly(m, i, dt, now, meadow.exp_height(h.x, h.z), near[0].walls[..], n);
   if !s[0].field && !mount.mount_aloft(m[0].mounts[k]) && dungeon.dg_inside(m[0].mounts[k].x, m[0].mounts[k].z, 1.5) { m[0].mounts[k].x = h.x; m[0].mounts[k].z = h.z; m[0].mounts[k].speed = 0; }
   return xh_rider(s, now);
+}
+// E (or the phone's button): mount the mount in reach or get off the one you ride. You ask with
+// your SRD conditions (b: knocked out, held or paralyzed, you stay put). r is the answer
+// (egm.EG_PRESS_*, EG_PRESS_NONE when the key goes on); show: a yes to present, the mounts' `show`
+// (its footfall, and the dust at the stirrup).
+XhKey :: struct { r: int; show: bool; }
+xh_key :: (s: []Creator, now: f32, b: DeedBearing) -> XhKey {
+  if !s[0].experimental || s[0].hostiles[0].hp <= 0 { return XhKey.{}; }
+  shown := s[0].mounts[0].shows;
+  r := xh_press(s, now, b);
+  return XhKey.{r = r, show = s[0].mounts[0].shows != shown};
+}
+// A frame in the saddle: the mount steps on your keys (everglade/mounts.coax eg_ride_input; a
+// gallop goes at `canter` of its speed, 1 the whole of it) and the answer is where your body goes,
+// x then z: the saddle, or once you've just stepped down, where you stood before you mounted.
+xh_ride_keys :: (s: []Creator, k: egm.EgRideKeys, canter: f32, now: f32) -> [2] f32 {
+  m := s[0].mounts[..];
+  i := egm.eg_ride_input(m, k); if i.gallop { i.forward *= canter; }
+  on := m[0].riding;
+  r := xh_ride(s, i, egm.eg_mounts_dt(m, now), now);
+  if r.on { return [2] f32.[r.x, r.z]; }
+  h := m[0].mounts[on];
+  return [2] f32.[h.from_x, h.from_z];
+}
+// The phone's button, and a press on it: true when the press is the button's (the zone then presses E).
+xh_button :: (s: Creator) -> Box { b := egm.eg_ride_button(s.width, s.height, s.scale); return Box.{x0 = b[0], y0 = b[1], x1 = b[2], y1 = b[3]}; }
+xh_button_press :: (s: Creator, x: f32, y: f32, phase: int, touch: bool) -> bool {
+  if phase != 0 || !s.experimental || !touch { return false; }
+  if egm.eg_mount_prompt(s.mounts[0], s.player_x, s.player_z, s.clock, true).count == 0 { return false; }
+  b := xh_button(s);
+  return !(x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1);
+}
+// Where the hint's line starts (its left, its baseline) and its size, device px, on a page w by h at
+// scale k: centred under the bar, made smaller until it fits a narrow page.
+xh_hint_at :: (t: string, w: f32, h: f32, k: f32) -> [3] f32 {
+  cap := egm.eg_ride_hint_cap(face_width(t, f32(egm.EG_RIDE_HINT_CAP) * k, HUD_FACE_BODY), w, k);
+  return [3] f32.[w * 0.5 - face_width(t, cap, HUD_FACE_BODY) * 0.5, h - f32(egm.EG_RIDE_HINT_UP) * k, cap];
+}
+// The mount's prompt: on a phone the MOUNT and DISMOUNT button; otherwise (and for what the button
+// can't press: "Land first") the keys as a small line under the bar.
+xh_prompt_draw :: (s: Creator, out: []f32, at: int, w: f32, h: f32, k: f32, touch: bool) -> int {
+  n := at;
+  if !s.experimental || s.hostiles[0].hp <= 0 { return n; }
+  col := ink(k, 0.98, 0.94, 0.82);
+  if touch {
+    t := egm.eg_mount_prompt(s.mounts[0], s.player_x, s.player_z, s.clock, true);
+    if egm.eg_prompt_pressable(t) {
+      return eg_framed_prompt(out, n, xh_button(s), t, face_width(t, 12 * k, HUD_FACE_BODY), k, col);   // everglade/hud/screens.coax
+    }
+    if t.count == 0 { return n; }
+  }
+  t := egm.eg_mount_hint(s.mounts[0], s.player_x, s.player_z, s.clock);
+  if t.count == 0 { return n; }
+  p := xh_hint_at(t, w, h, k);
+  return text(out, n, t, p[0], p[1], p[2], col);
 }
 xh_rider :: (s:[]Creator, now: f32) -> egm.EgRider {
   if s[0].mounts[0].riding < 0 { return egm.EgRider.{}; }

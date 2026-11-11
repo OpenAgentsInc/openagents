@@ -45,7 +45,7 @@ DR_SEAT :: [225] f32.[
 // heights from 0.5 m above the saddle bone down in 0.1 m steps, how far the surface is out to the
 // dragon's left at each, then to its right; 0 where there's no body), measured from the baked
 // frames' triangles between 0.25 m behind and 0.3 m ahead of the bone. A rider's legs are checked
-// against it (apps/openagents-web/experimental-horse.coax).
+// against it (everglade/zone-mounts.coax).
 DR_HULL :: [2100] f32.[
   0, 0, 0, 0, 0.1, 0.3, 0.38, 0.48, 0.55, 0.61, 0.69, 0.72, 0.72, 0.73, 0, 0, 0, 0, 0.1, 0.3, 0.37, 0.46, 0.53, 0.6, 0.68, 0.71, 0.72, 0.73,
   0, 0, 0, 0, 0.09, 0.29, 0.37, 0.48, 0.55, 0.61, 0.69, 0.72, 0.73, 0.74, 0, 0, 0, 0, 0.09, 0.3, 0.37, 0.46, 0.53, 0.6, 0.68, 0.71, 0.72, 0.73,

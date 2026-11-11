@@ -45,7 +45,7 @@ EG_DRAGON_SEAT_UP :: 0.17;   // above the dragon's saddle bone, on the ridge of 
 // RIDE_HULL_ROWS heights from 0.5 m above the saddle bone down in 0.1 m steps, how far its surface
 // is out to its left, then to its right (0: no body there), from the baked frames' triangles 0.2 m
 // behind to 0.3 m ahead of the bone, in the packed model's metres. The rider's legs are checked
-// against it (apps/openagents-web/experimental-horse.coax), as the dragon's are against DR_HULL.
+// against it (everglade/zone-mounts.coax), as the dragon's are against DR_HULL.
 EG_HORSE_HULL :: [1008] f32.[
   0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
   0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0, 0, 0, 0.22, 0.27, 0.28, 0.29, 0.27, 0.26, 0.22, 0, 0, 0, 0, 0,
@@ -127,6 +127,7 @@ EgMounts :: struct {
   dfirst: [DR_TOTAL] int; dcount: [DR_TOTAL] int; dword: [DR_TOTAL] int; dframes: int;   // the pack's glade/dragon frames
   aloft_at: f32 = -100;      // when a dismount in the air was refused
   breath_at: f32 = -100;     // when the dragon you ride last breathed fire (its torrent pours on a moment: the zone's)
+  land: bool;                // X pressed on the dragon in the air: it comes down to land (eg_ride_land)
 }
 // A kind's handling, and the dragon's wings.
 eg_tune :: (m: EgMounts, k: int) -> MountTune { return ifx m.kind[k] == EG_DRAGON then EG_RED_DRAGON else EG_RIDING_HORSE; }
@@ -227,6 +228,39 @@ eg_mount_input :: (forward: f32, turn: f32, gallop: bool, stick_on: bool, stick_
     return MountIn.{forward = stick_y, turn = stick_x, gallop = gallop || (far >= EG_GALLOP_STICK && stick_y > 0)};
   }
   return MountIn.{forward = forward, turn = turn, gallop = gallop};
+}
+// The rider's keys, every zone's: W and S go and slow, A and D turn (forward, turn: -1 to 1), a
+// phone's stick does both. On the horse Shift gallops. On the dragon Space takes off, beats and
+// (held) climbs, Shift dives in the air, and X lands (eg_ride_land) until Space flies on.
+EgRideKeys :: struct { forward: f32; turn: f32; shift: bool; space: bool; stick_on: bool; stick_x: f32; stick_y: f32; }
+eg_ride_input :: (m: [] EgMounts, k: EgRideKeys) -> MountIn {
+  dragon := eg_on_dragon(m[0]); aloft := eg_aloft(m[0]);
+  i := eg_mount_input(k.forward, k.turn, k.shift && !dragon, k.stick_on, k.stick_x, k.stick_y);
+  if dragon {
+    if k.space || !aloft { m[0].land = false; }
+    i.jump = k.space; i.climb = k.space; i.dive = k.shift && aloft; i.land = m[0].land && aloft;
+  }
+  return i;
+}
+// X on the dragon in the air: it comes down to land. False otherwise (the key goes on).
+eg_ride_land :: (m: [] EgMounts) -> bool {
+  if !eg_on_dragon(m[0]) || !eg_aloft(m[0]) { return false; }
+  m[0].land = true; return true;
+}
+// The phone's MOUNT and DISMOUNT button on a page w by h at scale k: right of centre, above the bar
+// (x0, y0, x1, y1). A prompt is a button unless it only tells you something ("No room to step
+// down", "Land first").
+eg_ride_button :: (w: f32, h: f32, k: f32) -> [4] f32 { return [4] f32.[w - 170 * k, h * 0.52, w - 30 * k, h * 0.52 + 48 * k]; }
+eg_prompt_pressable :: (t: string) -> bool { return t.count > 0 && t[0] != 'N' && t[0] != 'L'; }
+// The mount's keys (eg_mount_hint) are a small line under the bar, never in the middle of the view,
+// so nothing sits over the horse or the dragon while you ride. Its size: EG_RIDE_HINT_CAP, made
+// smaller until a line `wide` at that size fits the page; its baseline EG_RIDE_HINT_UP from the foot.
+EG_RIDE_HINT_CAP :: 9.0;    // CSS px
+EG_RIDE_HINT_UP :: 11.0;
+EG_RIDE_HINT_SIDE :: 16.0;  // CSS px kept clear at each side
+eg_ride_hint_cap :: (wide: f32, w: f32, k: f32) -> f32 {
+  cap := f32(EG_RIDE_HINT_CAP) * k; room := w - 2 * f32(EG_RIDE_HINT_SIDE) * k;
+  return ifx wide > room && wide > 0 then cap * room / wide else cap;
 }
 // A frame: the horse you ride steps (dt seconds, among the walker's boxes), every horse finishes its
 // mount or dismount, and the free ones stand where they were left. False when you've just got off.
@@ -388,6 +422,22 @@ eg_mount_hint :: (m: EgMounts, x: f32, z: f32, now: f32) -> string {
 }
 
 // ---- checks
+#test "the rider's keys: Shift gallops a horse and dives a dragon in the air; Space takes off and climbs; X lands until Space flies on (mounts)" #steps 400000000 {
+  m: [1] EgMounts; #assert eg_mount_add(m[..], 0, 0, 0) == 0; m[0].riding = 0; m[0].mounts[0].state = MOUNT_RIDDEN;
+  i := eg_ride_input(m[..], EgRideKeys.{forward = 1, shift = true}); #assert i.gallop && i.forward == 1 && !i.jump && !i.dive && !eg_ride_land(m[..]);
+  s := eg_ride_input(m[..], EgRideKeys.{stick_on = true, stick_x = 0.2, stick_y = 0.95}); #assert s.gallop && s.turn == 0.2;
+  d: [1] EgMounts; #assert eg_dragon_add(d[..], 0, 0, 0, 0) == 0; d[0].riding = 0; d[0].mounts[0].state = MOUNT_RIDDEN; none: [6] f32;
+  g := eg_ride_input(d[..], EgRideKeys.{forward = 1, shift = true, space = true}); #assert !g.gallop && g.jump && g.climb && !g.dive && !g.land && !eg_ride_land(d[..]);
+  for k: 0..<240 { on := eg_mounts_fly(d[..], eg_ride_input(d[..], EgRideKeys.{forward = 1, space = true}), 1.0 / 60, f32(k) / 60, 0, none[..], 0); }
+  #assert eg_aloft(d[0]);
+  a := eg_ride_input(d[..], EgRideKeys.{shift = true}); #assert a.dive && !a.land;
+  #assert eg_ride_land(d[..]) && eg_ride_input(d[..], EgRideKeys.{}).land && !eg_ride_input(d[..], EgRideKeys.{space = true}).land && !d[0].land;
+}
+#test "the phone's button sits right of centre above the bar; the hint's line shrinks to fit a narrow page (mounts)" {
+  b := eg_ride_button(1170, 2532, 3); #assert b[0] > 1170 * 0.5 && b[2] < 1170 && b[1] > 2532 * 0.5 && b[3] - b[1] == 144;
+  #assert eg_prompt_pressable("MOUNT") && eg_prompt_pressable("DISMOUNT") && !eg_prompt_pressable("No room to step down") && !eg_prompt_pressable("Land first") && !eg_prompt_pressable("");
+  #assert eg_ride_hint_cap(300, 1920, 1) == EG_RIDE_HINT_CAP && eg_ride_hint_cap(700, 382, 1) == EG_RIDE_HINT_CAP * 350 / 700;
+}
 
 EG_TEST_CATALOG :: "C glade/environment 9 12 250 100 8 0\nC glade/horse0 300 60 247 100 0 0\nC glade/horse35 900 63 247 100 0 0\n";
 #test "the catalog finds the horse's frames; a zone is ready only with all 36" {

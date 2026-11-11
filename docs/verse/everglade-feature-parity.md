@@ -44,7 +44,9 @@ they start with `aethyr/`, `verse/`, `coax/` or `everglade/`.
 ### Bow carry and draw
 
 The shared modules are `aethyr/action/bow.coax` (the draw, the arrows and the
-aim), `aethyr/action/bow-pose.coax` (the keyed draw pose) and
+aim), `aethyr/action/archery.coax` (the archer's frame, the sight line, the
+flight and what an arrow meets), `everglade/longbow.coax` (the Longbow's hand,
+sounds and dust), `aethyr/action/bow-pose.coax` (the keyed draw pose) and
 `everglade/held-kit.coax` (the bow in the hand, its string and arrow, and
 `held_bow_layer`, the pose over the upper body; moved out of
 `charactercreator.coax` for #13079). The Archery Range realm wires the same
@@ -147,8 +149,10 @@ through `battle.coax` (`rs_dash`, `rs_cunning_dash`) and `fivebar.coax`
 Mounts are arriving from another agent. The spec
 ([mounts-spec.md](../../everglade/docs/mounts-spec.md)) puts the engine in
 `aethyr/action/mount.coax` and `aethyr/action/ride-pose.coax`, and the game
-layer in `everglade/mounts.coax`. Experimental wires them
-(`experimental-horse.coax`, `bd_ride_posed` fivelab-bodies.coax). The manifest
+layer in `everglade/mounts.coax` (with the rider's keys) and
+`everglade/zone-mounts.coax` (mounts standing in a zone: E, the saddle, the
+prompt). Experimental and the Archery Range ride through them
+(`bd_ride_posed` fivelab-bodies.coax poses the rider). The manifest
 lists the feature as not required yet, and any zone-local mount code (`Mount`,
 `mount_up`, `Horse`, a zone's own `ride_pose` and so on) fails the check. A
 wrapper of the shared `ride_pose` and a wiring file named for its horse pass

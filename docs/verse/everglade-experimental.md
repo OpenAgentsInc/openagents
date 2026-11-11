@@ -315,8 +315,10 @@ horse is Quaternius's CC0 Horse_White, lightened to white and baked by
 as `glade/horse0` to `glade/horse35`). See the
 [mounts spec](../../everglade/docs/mounts-spec.md) for the engine
 (`aethyr/action/mount.coax`, `aethyr/action/ride-pose.coax`), game
-(`everglade/mounts.coax`) and zone (`apps/openagents-web/experimental-horse.coax`,
-`experimental-ride.coax`) layers. Mounting and getting off go through the action
+(`everglade/mounts.coax`: the horse, the dragon and the rider's keys;
+`everglade/zone-mounts.coax`: mounts standing in a zone, E, the saddle and the
+prompt) and zone (`apps/openagents-web/experimental-ride.coax`: Fire Breath and
+the film stages) layers. Mounting and getting off go through the action
 pipeline (`aethyr/action/deed.coax`): a press asks with your conditions, so you
 can't mount while unconscious, paralyzed or grappled. To look at riding without
 playing, add `?ride=1` (in the saddle), `?ride=2` (galloping) or `?ride=3&class=7`

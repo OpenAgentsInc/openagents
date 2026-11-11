@@ -39,6 +39,8 @@
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held, as Neverwinter's
 #load "../../aethyr/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
 #load "../../aethyr/action/bow.coax" as bow;   // the Ranger's Longbow, drawn with the right button
+#load "../../aethyr/action/archery.coax" as arch;   // the archer's frame: the draw eases, comes due and shows on the body (engine)
+#load "../../everglade/longbow.coax";   // Everglade's Longbow: its sounds (game)
 #load "class-feel.coax";        // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";        // a cast's body clip and the bow's aim pose: Experimental's
 #load "everglade2-mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws

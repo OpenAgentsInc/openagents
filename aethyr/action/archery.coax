@@ -1,0 +1,364 @@
+// Archery (docs/verse/bow-combat.md): one archer's bow against a world. aethyr/action/bow.coax is
+// the draw and the arrows' arcs; aethyr/action/target.coax the faces an arrow sticks in. This module
+// is what a realm does with them each frame, so every realm's bow aims, flies and lands the same way:
+//
+//   the archer (Archer): its draw, what its body shows of it, its arrows and the realm's targets,
+//   with a finger's draw on a phone;
+//   the frame (archer_draw_step): the aim eases in and out, and a draw that looses itself comes due;
+//   the sight line (SightMarch, archery_rest): where the reticle's ray rests: on the ground or a
+//   wall, on a target's face, or on a body;
+//   the flight (ArrowFlight, archery_land): each flying arrow's step against the ground and walls,
+//   then the bodies and the targets, in the order they stand along it;
+//   the reticle on a draw (archery_reticle) and each arrow as it is drawn (archery_show).
+//
+// Nothing here knows a realm's ground or rules. Coax has no callbacks, so the realm answers the two
+// questions only it can: whether a point is inside its ground or walls, and whether an arrow that
+// reached a body hit it. Both loops hand the realm a point and take its answer:
+//
+//   m: [1] SightMarch; m[0] = sight_begin(archery_sight(eye, dir, x, z), 150);
+//   while sight_next(m[..]) { m[0].solid = my_wall(m[0].p); }
+//   aim := archery_rest(m[0], 150, 60, a[0].targets[0], bodies);
+//
+//   f: [1] ArrowFlight;
+//   while flight_arrow(a[0].arrows[..], f[..], now) {
+//     while flight_sample(f[..]) { f[0].solid = my_wall(f[0].p); f[0].grass = my_ground(f[0].p); }
+//     l := archery_land(a, f[0], bodies, 0);
+//     if l.kind == LAND_BODY { archery_body(a, f[0], l, my_rules_hit(l.body)); }
+//   }
+//   archery_tidy(a, now);
+//
+// The camera's blend over the shoulder is aethyr/cam/boom.coax (its `aim`), and the pose is
+// aethyr/action/bow-pose.coax: both read bow_aim.
+//   coax/bin/coax test aethyr/action/archery.coax --library
+#module "aethyr.action.archery";
+
+#load "bow.coax" as bow;
+#load "target.coax" as tg;
+#load "../cam/reticle.coax" as reticle;
+
+// One archer. last: the slot of the arrow it loosed last, -1 none. shots, marks and stuck count its
+// own arrows: loosed, stuck in a target's face, and stuck in the ground or a wall. touch: the id of
+// the finger drawing on the bow's slot (-100 none), when it went down, where it is and how far it
+// has dragged.
+Archer :: struct {
+  draw: [1] bow.BowDraw; show: [1] bow.BowShow; arrows: [1] bow.Arrows; targets: [1] tg.Targets;
+  last: int = -1; shots: int; marks: int; stuck: int;
+  touch: int = -100; touch_at: f32; touch_x: f32; touch_y: f32; dragged: f32;
+}
+
+// ---- the frame
+// A frame of a draw: one that may not be held now (`can` false) is let down, the aim eases, and the
+// answer is whether a self-loosing draw has come to full: the realm looses it, then steps what the
+// body shows (archer_show_step).
+archer_draw_step :: (d: [] bow.BowDraw, can: bool, dt: f32, now: f32) -> bool {
+  if d[0].on && !can { bow.bow_cancel(d[..]); }
+  bow.bow_step(d[..], dt);
+  return bow.bow_due(d[0], now);
+}
+archer_show_step :: (sh: [] bow.BowShow, d: bow.BowDraw, now: f32) { bow.bow_show_step(sh, d, now); }
+// Let go: the strength it was drawn to, and the body shows the loose.
+archer_release :: (d: [] bow.BowDraw, sh: [] bow.BowShow, now: f32) -> f32 {
+  st := bow.bow_release(d, now); bow.bow_show_loosed(sh, now); return st;
+}
+// Lets the draw down without loosing, and lifts the finger. False when nothing was drawn.
+archer_cancel :: (a: [] Archer) -> bool {
+  if !a[0].draw[0].on { return false; }
+  bow.bow_cancel(a[0].draw[..]); a[0].touch = -100; return true;
+}
+// The arrow leaves `from` for `to` at the strength the draw had: its slot. The realm releases first
+// (archer_release) so it can stop a loose its rules refuse.
+archer_loose :: (a: [] Archer, owner: int, from: [3] f32, to: [3] f32, strength: f32, body: int, now: f32) -> int {
+  a[0].touch = -100;
+  a[0].last = bow.arrow_loose(a[0].arrows[..], owner, from, bow.arrow_launch(from, to, strength), now, body, strength);
+  a[0].shots += 1;
+  return a[0].last;
+}
+
+// ---- a finger on the bow's slot: held it draws, dragged it aims, lifted it looses; a tap draws on to full
+TOUCH_NONE :: 0; TOUCH_AIM :: 1; TOUCH_LOOSE :: 2; TOUCH_CANCEL :: 3; TOUCH_TAP :: 4;
+TOUCH_TURN :: 0.0055;       // radians a pixel of drag turns the aim
+TOUCH_TAP_DRAG :: 6.0;      // points: a finger that moved less, lifted inside bow.BOW_TAP, tapped
+// The finger went down on the slot and the draw began.
+archer_touch_down :: (a: [] Archer, id: int, x: f32, y: f32, now: f32) { a[0].touch = id; a[0].touch_at = now; a[0].touch_x = x; a[0].touch_y = y; a[0].dragged = 0; }
+// What finger `id` did (phase 1 moved, 2 lifted, 3 cancelled), and for a move how far the aim turns:
+// yaw then pitch, radians. TOUCH_NONE when it is not the bow's finger. A tap's draw goes on to full
+// and looses itself (the realm's frame sees it due).
+ArcherTouch :: struct { kind: int; yaw: f32; pitch: f32; }
+archer_touch :: (a: [] Archer, id: int, phase: int, x: f32, y: f32, k: f32, now: f32) -> ArcherTouch {
+  r: ArcherTouch;
+  if a[0].touch != id || a[0].touch == -100 { return r; }
+  if phase == 1 {
+    dx := x - a[0].touch_x; dy := y - a[0].touch_y;
+    a[0].dragged += abs(dx) + abs(dy); a[0].touch_x = x; a[0].touch_y = y;
+    r.kind = TOUCH_AIM; r.yaw = -dx * f32(TOUCH_TURN); r.pitch = dy * f32(TOUCH_TURN);
+    return r;
+  }
+  if phase != 2 && phase != 3 { return r; }
+  a[0].touch = -100;
+  if phase == 3 { r.kind = TOUCH_CANCEL; return r; }
+  if now - a[0].touch_at < f32(bow.BOW_TAP) && a[0].dragged < f32(TOUCH_TAP_DRAG) * k { bow.bow_begin(a[0].draw[..], now, true); r.kind = TOUCH_TAP; return r; }
+  r.kind = TOUCH_LOOSE;
+  return r;
+}
+
+// ---- a body an arrow may meet: a realm's id for it, its capsule, and where on it a sight line rests
+ArcheryBody :: struct { id: int; c0: [3] f32; c1: [3] f32; r: f32; at: [3] f32; }
+
+// ---- the sight line: the camera's centre ray from where it comes level with the archer
+ArcherySight :: struct { eye: [3] f32; dir: [3] f32; t0: f32; }
+SIGHT_NEAR :: 0.5;          // m: never nearer the eye than this
+SIGHT_STEP :: 0.5;          // m between the points a realm is asked about
+SIGHT_HALVES :: 6;          // times the last step is halved: to under a centimetre
+SIGHT_PAST :: 2.0;          // m past the ground a body may still be picked
+archery_sight :: (eye: [3] f32, dir: [3] f32, x: f32, z: f32) -> ArcherySight {
+  t0 := (x - eye[0]) * dir[0] + (z - eye[2]) * dir[2]; if t0 < f32(SIGHT_NEAR) { t0 = f32(SIGHT_NEAR); }
+  return ArcherySight.{eye = eye, dir = dir, t0 = t0};
+}
+sight_at :: (s: ArcherySight, t: f32) -> [3] f32 { return [3] f32.[s.eye[0] + s.dir[0] * t, s.eye[1] + s.dir[1] * t, s.eye[2] + s.dir[2] * t]; }
+// The march along it out to `far`: p is the point the realm answers for (solid: inside its ground or
+// a wall); best is how far the line runs before it meets one (far when it meets none).
+SightMarch :: struct { s: ArcherySight; far: f32; best: f32; p: [3] f32; solid: bool; t: f32; prev: f32; lo: f32; top: f32; phase: int; halves: int; }
+sight_begin :: (s: ArcherySight, far: f32) -> SightMarch { return SightMarch.{s = s, far = far, best = far, t = s.t0, prev = s.t0}; }
+// The next point to answer for; false when the march is over. Half-metre steps, and the step that
+// went in is halved down to where it met.
+sight_next :: (m: [] SightMarch) -> bool {
+  if m[0].phase == 3 { return false; }
+  if m[0].phase == 1 {
+    if m[0].solid { m[0].lo = m[0].prev; m[0].top = m[0].t; m[0].halves = 0; m[0].phase = 2; m[0].solid = false; m[0].p = sight_at(m[0].s, (m[0].lo + m[0].top) * 0.5); return true; }
+    m[0].prev = m[0].t; m[0].t += f32(SIGHT_STEP);
+  } else if m[0].phase == 2 {
+    mid := (m[0].lo + m[0].top) * 0.5;
+    if m[0].solid { m[0].top = mid; } else { m[0].lo = mid; }
+    m[0].halves += 1; m[0].solid = false;
+    if m[0].halves >= SIGHT_HALVES { m[0].best = m[0].top; m[0].phase = 3; return false; }
+    m[0].p = sight_at(m[0].s, (m[0].lo + m[0].top) * 0.5); return true;
+  }
+  if !(m[0].t < m[0].far) { m[0].phase = 3; return false; }
+  m[0].phase = 1; m[0].solid = false; m[0].p = sight_at(m[0].s, m[0].t);
+  return true;
+}
+// Where the line rests: the ground or wall the march met within `look` metres, else `past` metres
+// along it; a target's face nearer than that; a body nearer than that. body is the realm's id
+// (-1 none), mark the target (-1 none).
+ArcheryAim :: struct { at: [3] f32; body: int = -1; mark: int = -1; }
+archery_rest :: (m: SightMarch, look: f32, past: f32, t: tg.Targets, bodies: [] ArcheryBody) -> ArcheryAim {
+  s := m.s; best := m.best; t0 := s.t0;
+  r := ArcheryAim.{at = sight_at(s, best)};
+  if best >= look { r.at = sight_at(s, past); }
+  th := tg.targets_sight(t, sight_at(s, t0), s.dir, best - t0 + 0.05);
+  if th.i >= 0 { best = t0 + th.u; r.at = th.at; r.mark = th.i; }
+  for i: 0..<bodies.count {
+    b := bodies[i];
+    along := (b.at[0] - s.eye[0]) * s.dir[0] + (b.at[2] - s.eye[2]) * s.dir[2];
+    if along < t0 || along > best + f32(SIGHT_PAST) { continue; }
+    k := bow.arrow_capsule(sight_at(s, t0), sight_at(s, best + f32(SIGHT_PAST)), b.c0, b.c1, b.r);
+    if k < 0 { continue; }
+    d := t0 + (best + f32(SIGHT_PAST) - t0) * k;
+    if d < best + 0.01 { best = d; r.body = b.id; r.mark = -1; r.at = b.at; }
+  }
+  return r;
+}
+
+// ---- the flight: every flying arrow's step this frame, against the realm's ground and walls
+FLIGHT_STEP :: 0.4;         // m between the points along a step the realm is asked about
+FLIGHT_MOST :: 64;          // and at most this many a step
+FLIGHT_NEAR :: 40.0;        // m: a body further from the step's start (along x or z) is not tried
+// i: the arrow (-1 before the first). seg: its step. p: the point the realm answers for (solid:
+// inside its ground or a wall; grass: that point is the ground, not a wall). stop: how far along
+// the step it met one (2: it met none).
+ArrowFlight :: struct { i: int = -1; seg: bow.ArrowSeg; n: int; j: int; p: [3] f32; solid: bool; grass: bool; stop: f32 = 2; soft: bool; }
+// The next flying arrow with a step to take; false when every arrow has had its turn.
+flight_arrow :: (p: [] bow.Arrows, f: [] ArrowFlight, now: f32) -> bool {
+  i := f[0].i + 1;
+  while i < bow.ARROWS {
+    if p[0].a[i].state == bow.ARROW_FLYING {
+      seg := bow.arrow_segment(p, i, now);
+      if seg.count > 0 {
+        sx := seg.p1[0] - seg.p0[0]; sy := seg.p1[1] - seg.p0[1]; sz := seg.p1[2] - seg.p0[2];
+        n := cast(int) (sqrt(sx * sx + sy * sy + sz * sz) / f32(FLIGHT_STEP)) + 1; if n > FLIGHT_MOST { n = FLIGHT_MOST; }
+        f[0] = ArrowFlight.{i = i, seg = seg, n = n};
+        return true;
+      }
+    }
+    i += 1;
+  }
+  f[0].i = bow.ARROWS;
+  return false;
+}
+// The next point along the step to answer for; false once one was solid or the step is done.
+flight_sample :: (f: [] ArrowFlight) -> bool {
+  if f[0].j > 0 && f[0].solid { f[0].stop = f32(f[0].j) / f32(f[0].n); f[0].soft = f[0].grass; f[0].j = f[0].n + 1; return false; }
+  if f[0].j >= f[0].n { return false; }
+  f[0].j += 1; u := f32(f[0].j) / f32(f[0].n); s := f[0].seg;
+  f[0].solid = false; f[0].grass = false;
+  f[0].p = [3] f32.[s.p0[0] + (s.p1[0] - s.p0[0]) * u, s.p0[1] + (s.p1[1] - s.p0[1]) * u, s.p0[2] + (s.p1[2] - s.p0[2]) * u];
+  return true;
+}
+// How an arrow's step ended. LAND_NONE: it flies on. LAND_MARK: it stuck in target `mark`, `off`
+// from its middle. LAND_BODY: it reached body `body` before anything else, and the realm's rules
+// say whether it hit (archery_body). LAND_STUCK: it stuck in the ground (grass) or a wall.
+LAND_NONE :: 0; LAND_MARK :: 1; LAND_BODY :: 2; LAND_STUCK :: 3;
+ArcheryLanding :: struct { kind: int; i: int; owner: int; body: int = -1; mark: int = -1; off: f32; u: f32; at: [3] f32; grass: bool; }
+// Lands arrow f.i after its samples. Only the arrows of owner `mine` meet bodies and targets: a
+// target's face before the wall or the body behind it, then the nearest body, then the wall. An
+// arrow never meets the body it already went through on a miss.
+archery_land :: (a: [] Archer, f: ArrowFlight, bodies: [] ArcheryBody, mine: int) -> ArcheryLanding {
+  p := a[0].arrows[..]; i := f.i; seg := f.seg;
+  r := ArcheryLanding.{i = i, owner = p[0].a[i].owner};
+  stop := f.stop; body := -1;
+  if r.owner == mine {
+    for k: 0..<bodies.count {
+      b := bodies[k]; if b.id == p[0].a[i].passed { continue; }
+      if abs(b.at[0] - seg.p0[0]) > f32(FLIGHT_NEAR) || abs(b.at[2] - seg.p0[2]) > f32(FLIGHT_NEAR) { continue; }
+      u := bow.arrow_capsule(seg.p0, seg.p1, b.c0, b.c1, b.r);
+      if u >= 0 && u < stop { stop = u; body = b.id; }
+    }
+    th := tg.targets_first(a[0].targets[0], seg.p0, seg.p1);
+    if th.i >= 0 && th.u < stop {
+      bow.arrow_mark(p, i, seg, th.u, th.i, th.off); a[0].marks += 1;
+      r.kind = LAND_MARK; r.mark = th.i; r.off = th.off; r.u = th.u; r.at = th.at;
+      return r;
+    }
+  }
+  r.u = stop;
+  if body >= 0 { r.kind = LAND_BODY; r.body = body; return r; }
+  if stop <= 1 {
+    bow.arrow_stop(p, i, seg, stop, false);
+    if r.owner == mine { a[0].stuck += 1; }
+    r.kind = LAND_STUCK; r.at = p[0].a[i].at; r.grass = f.soft;
+  }
+  return r;
+}
+// The rules' word on an arrow that reached a body: a hit ends in it, a miss flies on past it.
+archery_body :: (a: [] Archer, f: ArrowFlight, l: ArcheryLanding, hit: bool) {
+  if hit { bow.arrow_stop(a[0].arrows[..], f.i, f.seg, l.u, true); } else { a[0].arrows[0].a[f.i].passed = l.body; }
+}
+// After the frame's flight: the arrows that are done are let go.
+archery_tidy :: (a: [] Archer, now: f32) { bow.arrow_tidy(a[0].arrows[..], now); }
+
+// ---- what is drawn
+// The reticle with the draw on it (aethyr/cam/reticle.coax): the idle crosshair as far as a looking
+// camera shows it (`look`, 0 to 1), the bow's arms in with the aim, closing as the draw builds.
+RETICLE_LOOK :: 0.9;
+archery_reticle :: (out: [] reticle.ReticleStroke, cx: f32, cy: f32, k: f32, look: f32, d: bow.BowDraw, now: f32) -> int {
+  return reticle.reticle_strokes(out, cx, cy, k, look * f32(RETICLE_LOOK), bow.bow_aim(d), bow.bow_strength(d, now));
+}
+// Arrow i as it is drawn now (aethyr/fx/puff.coax fxp_arrow_at): shown only in the air or stuck, and
+// within `far` metres (along x or z) of the eye.
+SHOW_FAR :: 120.0;
+ArcheryShow :: struct { on: bool; at: [3] f32; dir: [3] f32; alpha: f32; flying: bool; seed: f32; }
+archery_show :: (p: bow.Arrows, i: int, eye_x: f32, eye_z: f32, now: f32) -> ArcheryShow {
+  a := p.a[i]; r: ArcheryShow;
+  if a.state != bow.ARROW_FLYING && a.state != bow.ARROW_STUCK { return r; }
+  at := a.at; dir := a.dir;
+  if a.state == bow.ARROW_FLYING { at = bow.arrow_pos(a, now - a.t0); dir = bow.arrow_dir(a, now - a.t0); }
+  if abs(at[0] - eye_x) > f32(SHOW_FAR) || abs(at[2] - eye_z) > f32(SHOW_FAR) { return r; }
+  return ArcheryShow.{on = true, at = at, dir = dir, alpha = bow.arrow_alpha(a, now), flying = a.state == bow.ARROW_FLYING, seed = f32(i) * 1.7 + 0.3};
+}
+
+// ---- checks: a flat world, its ground at y = 0 and a wall across z = 30
+test_wall :: (p: [3] f32) -> bool { return p[1] < 0 || (p[2] > 30 && p[2] < 31 && p[1] < 4); }
+test_rest :: (a: Archer, eye: [3] f32, dir: [3] f32, bodies: [] ArcheryBody) -> ArcheryAim {
+  m: [1] SightMarch; m[0] = sight_begin(archery_sight(eye, dir, 0, 0), 150);
+  while sight_next(m[..]) { m[0].solid = test_wall(m[0].p); }
+  return archery_rest(m[0], 150, 60, a.targets[0], bodies);
+}
+// A frame of flight; the landing of the archer's last arrow this frame (LAND_NONE when it flew on).
+test_fly :: (a: [] Archer, bodies: [] ArcheryBody, hit: bool, now: f32) -> ArcheryLanding {
+  f: [1] ArrowFlight; out: ArcheryLanding;
+  while flight_arrow(a[0].arrows[..], f[..], now) {
+    while flight_sample(f[..]) { f[0].solid = test_wall(f[0].p); f[0].grass = f[0].p[1] <= 0.02; }
+    l := archery_land(a, f[0], bodies, 0);
+    if l.kind == LAND_BODY { archery_body(a, f[0], l, hit); }
+    if l.i == a[0].last && l.kind != LAND_NONE { out = l; }
+  }
+  archery_tidy(a, now);
+  return out;
+}
+test_unit :: (x: f32, y: f32, z: f32) -> [3] f32 { l := sqrt(x * x + y * y + z * z); return [3] f32.[x / l, y / l, z / l]; }
+
+#test "a draw eases the aim in, comes due on its own only when it looses itself, and is let down when it may not be held" {
+  a: [1] Archer; bow.bow_begin(a[0].draw[..], 0, false);
+  for k: 0..<60 { #assert !archer_draw_step(a[0].draw[..], true, 1.0 / 60, f32(k) / 60); archer_show_step(a[0].show[..], a[0].draw[0], f32(k) / 60); }
+  #assert bow.bow_aim(a[0].draw[0]) == 1 && a[0].show[0].nocked && a[0].show[0].strength == 1;
+  st := archer_release(a[0].draw[..], a[0].show[..], 1); #assert st == 1 && !a[0].draw[0].on && a[0].show[0].loose_at == 1 && !a[0].show[0].nocked;
+  bow.bow_begin(a[0].draw[..], 2, true);
+  #assert !archer_draw_step(a[0].draw[..], true, 0.1, 2.1) && archer_draw_step(a[0].draw[..], true, 0.1, 2 + f32(bow.BOW_FULL));
+  #assert !archer_draw_step(a[0].draw[..], false, 0.1, 3) && !a[0].draw[0].on && a[0].draw[0].cancelled == 1;
+  #assert !archer_cancel(a[..]); bow.bow_begin(a[0].draw[..], 4, false); a[0].touch = 7; #assert archer_cancel(a[..]) && a[0].touch == -100;
+}
+#test "the sight line rests on the ground it meets, to a centimetre; past its look it rests a set way along" {
+  a: [1] Archer; nb: [1] ArcheryBody; none := nb[0..<0];
+  r := test_rest(a[0], [3] f32.[0, 2, -3], test_unit(0, -0.2, 1), none);
+  #assert abs(r.at[1]) < 0.01 && abs(r.at[2] - 7) < 0.05 && r.body == -1 && r.mark == -1;
+  // level over the ground it meets the wall across z = 30
+  w := test_rest(a[0], [3] f32.[0, 2, -3], [3] f32.[0, 0, 1], none); #assert abs(w.at[2] - 30) < 0.01 && abs(w.at[1] - 2) < 0.001;
+  // up into the sky: nothing within its look, so 60 m along the line
+  s := test_rest(a[0], [3] f32.[0, 2, -3], test_unit(0, 1, 1), none); #assert abs(s.at[1] - 2 - 60 * 0.70710678) < 0.01;
+}
+#test "the sight line rests on a target's face before the ground behind it, and on a body before the face behind it" {
+  a: [1] Archer; nb: [1] ArcheryBody; none := nb[0..<0];
+  #assert tg.targets_add(a[0].targets[..], tg.TargetFace.{y = 1.3, z = 20, nz = -1, radius = 0.61}) == 0;
+  r := test_rest(a[0], [3] f32.[0, 1.3, -3], [3] f32.[0, 0, 1], none); #assert r.mark == 0 && r.body == -1 && abs(r.at[2] - 20) < 0.01;
+  b: [2] ArcheryBody;
+  b[0] = ArcheryBody.{id = 5, c0 = [3] f32.[0, 0.25, 10], c1 = [3] f32.[0, 1.25, 10], r = 0.42, at = [3] f32.[0, 0.85, 10]};
+  b[1] = ArcheryBody.{id = 6, c0 = [3] f32.[0, 0.25, 26], c1 = [3] f32.[0, 1.25, 26], r = 0.42, at = [3] f32.[0, 0.85, 26]};
+  near := test_rest(a[0], [3] f32.[0, 1.0, -3], [3] f32.[0, 0, 1], b[..]); #assert near.body == 5 && near.mark == -1 && near.at[1] == 0.85;
+  // the body behind the face is not picked through it
+  far := test_rest(a[0], [3] f32.[0, 1.3, -3], [3] f32.[0, 0, 1], b[1..<2]); #assert far.mark == 0 && far.body == -1;
+  // a body behind the eye's side of the archer is never picked
+  b[0].c0[2] = -2; b[0].c1[2] = -2; b[0].at[2] = -2;
+  #assert test_rest(a[0], [3] f32.[0, 1.0, -3], [3] f32.[0, 0, 1], b[0..<1]).body == -1;
+}
+#test "a full draw at the ground sticks there, in the grass; one at a wall sticks in the wall; each counts once" {
+  a: [1] Archer; nb: [1] ArcheryBody; none := nb[0..<0]; from := [3] f32.[0, 1.45, 0];
+  i := archer_loose(a[..], 0, from, [3] f32.[0, 0, 12], 1, -1, 0); #assert i == a[0].last && a[0].shots == 1;
+  l: ArcheryLanding; t := 0.0f32;
+  for k: 0..<120 { t += 1.0 / 60; q := test_fly(a[..], none, false, t); if q.kind != LAND_NONE { l = q; } }
+  #assert l.kind == LAND_STUCK && l.grass && abs(l.at[2] - 12) < 0.5 && a[0].stuck == 1 && a[0].arrows[0].a[i].state == bow.ARROW_STUCK;
+  j := archer_loose(a[..], 0, from, [3] f32.[0, 2, 30], 1, -1, t); w: ArcheryLanding;
+  for k: 0..<120 { t += 1.0 / 60; q := test_fly(a[..], none, false, t); if q.kind != LAND_NONE { w = q; } }
+  #assert w.kind == LAND_STUCK && !w.grass && w.at[2] > 29.5 && w.at[2] < 30.5 && a[0].stuck == 2 && a[0].marks == 0 && j == a[0].last;
+}
+#test "an arrow meets a face before the wall behind it and remembers it; a body before the face; a miss flies on through and never meets that body again" {
+  a: [1] Archer; nb: [1] ArcheryBody; none := nb[0..<0]; from := [3] f32.[0, 1.45, 0];
+  #assert tg.targets_add(a[0].targets[..], tg.TargetFace.{y = 1.3, z = 20, nz = -1, radius = 0.61}) == 0;
+  i := archer_loose(a[..], 0, from, [3] f32.[0.1, 1.3, 20], 1, -1, 0); l: ArcheryLanding; t := 0.0f32;
+  for k: 0..<120 { t += 1.0 / 60; q := test_fly(a[..], none, false, t); if q.kind != LAND_NONE { l = q; } }
+  #assert l.kind == LAND_MARK && l.mark == 0 && l.off < 0.2 && a[0].marks == 1 && a[0].stuck == 0 && a[0].arrows[0].a[i].mark == 0;
+  b: [1] ArcheryBody; b[0] = ArcheryBody.{id = 3, c0 = [3] f32.[0, 0.25, 10], c1 = [3] f32.[0, 1.75, 10], r = 0.42, at = [3] f32.[0, 0.85, 10]};
+  // the rules say it hit: it ends in the body
+  j := archer_loose(a[..], 0, from, [3] f32.[0, 1.3, 20], 1, 3, t); h: ArcheryLanding;
+  for k: 0..<120 { t += 1.0 / 60; q := test_fly(a[..], b[..], true, t); if q.kind != LAND_NONE { h = q; } }
+  #assert h.kind == LAND_BODY && h.body == 3 && a[0].arrows[0].hits == 1 && a[0].marks == 1;
+  // the rules say it missed: on through it into the face behind
+  m := archer_loose(a[..], 0, from, [3] f32.[0, 1.3, 20], 1, 3, t); bodies := 0; g: ArcheryLanding;
+  for k: 0..<120 { t += 1.0 / 60; q := test_fly(a[..], b[..], false, t); if q.kind == LAND_BODY { bodies += 1; } if q.kind != LAND_NONE { g = q; } }
+  #assert bodies == 1 && g.kind == LAND_MARK && a[0].marks == 2 && a[0].arrows[0].a[m].passed == 3;
+  // another's arrow meets no body and no face: only the world
+  o := bow.arrow_loose(a[0].arrows[..], 4, from, bow.arrow_launch(from, [3] f32.[0, 1.3, 20], 1), t, -1, 1); marks := a[0].marks; stuck := a[0].stuck;
+  for k: 0..<120 { t += 1.0 / 60; _ := test_fly(a[..], b[..], true, t); }
+  #assert a[0].arrows[0].a[o].state == bow.ARROW_STUCK && a[0].arrows[0].a[o].mark == -1 && a[0].marks == marks && a[0].stuck == stuck;
+}
+#test "a finger held on the bow's slot aims as it drags and looses as it lifts; a tap draws on to full; a cancelled touch looses nothing" {
+  a: [1] Archer; bow.bow_begin(a[0].draw[..], 1, false); archer_touch_down(a[..], 4, 100, 200, 1);
+  #assert archer_touch(a[..], 9, 1, 0, 0, 1, 1.1).kind == TOUCH_NONE;
+  d := archer_touch(a[..], 4, 1, 110, 190, 1, 1.1); #assert d.kind == TOUCH_AIM && d.yaw < 0 && d.pitch < 0 && a[0].dragged == 20;
+  #assert archer_touch(a[..], 4, 2, 110, 190, 1, 1.5).kind == TOUCH_LOOSE && a[0].touch == -100;
+  b: [1] Archer; bow.bow_begin(b[0].draw[..], 1, false); archer_touch_down(b[..], 4, 100, 200, 1);
+  #assert archer_touch(b[..], 4, 2, 101, 200, 1, 1.05).kind == TOUCH_TAP && b[0].draw[0].self_loose;
+  c: [1] Archer; bow.bow_begin(c[0].draw[..], 1, false); archer_touch_down(c[..], 4, 100, 200, 1);
+  #assert archer_touch(c[..], 4, 3, 100, 200, 1, 1.05).kind == TOUCH_CANCEL && c[0].touch == -100;
+}
+#test "the reticle's arms come in with the draw, and an arrow is shown in the air and stuck but not once it has faded or far away" {
+  a: [1] Archer; st: [reticle.RETICLE_MAX] reticle.ReticleStroke;
+  #assert archery_reticle(st[..], 100, 50, 1, 0, a[0].draw[0], 0) == 0 && archery_reticle(st[..], 100, 50, 1, 1, a[0].draw[0], 0) == 5 && abs(st[0].alpha - 0.9) < 0.0001;
+  bow.bow_begin(a[0].draw[..], 0, false); bow.bow_step(a[0].draw[..], 1);
+  #assert archery_reticle(st[..], 100, 50, 1, 0, a[0].draw[0], 1) == 5 && st[1].r == 1;
+  nb: [1] ArcheryBody; none := nb[0..<0]; i := archer_loose(a[..], 0, [3] f32.[0, 1.45, 0], [3] f32.[0, 0, 12], 1, -1, 0);
+  s := archery_show(a[0].arrows[0], i, 0, 0, 0.1); #assert s.on && s.flying && s.alpha == 1 && s.at[2] > 1;
+  #assert !archery_show(a[0].arrows[0], i, 500, 0, 0.1).on && !archery_show(a[0].arrows[0], i + 1, 0, 0, 0.1).on;
+  t := 0.0f32; for k: 0..<120 { t += 1.0 / 60; _ := test_fly(a[..], none, false, t); }
+  e := archery_show(a[0].arrows[0], i, 0, 0, t); #assert e.on && !e.flying && e.alpha == 1;
+  _ := test_fly(a[..], none, false, t + f32(bow.ARROW_STAY) + f32(bow.ARROW_FADE) + 1); #assert !archery_show(a[0].arrows[0], i, 0, 0, t + 9).on;
+}

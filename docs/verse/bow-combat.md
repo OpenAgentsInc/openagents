@@ -173,32 +173,69 @@ pitch and level, like every other combat sound.
 
 ## How another realm adopts it
 
-1. Keep one `BowDraw` for each archer and one `Arrows` pool
-   (`#load "aethyr/action/bow.coax" as bow`).
-2. Input: on press, call `bow_begin(draw, now, false)`. On release, take the
-   strength from `bow_release(draw, now)`. Cancel with `bow_cancel(draw)`. A key
-   or tap calls `bow_begin(draw, now, true)`, and the shot is due when `bow_due`
-   says so.
-3. Each frame, call `bow_step(draw, dt)`. Feed `bow_aim(draw)` to your camera
-   (tighten, shoulder offset), the reticle (`reticle_strokes`), facing and the aim pose, and
-   `bow_pace(draw)` to your walk speed.
-4. Loose: `arrow_aim_velocity(hand, crosshair_point, bow_speed(1))`, scaled by
-   `bow_speed(strength) / bow_speed(1)`, into `arrow_loose`. A ruleset that
-   resolves on arrival uses `arrow_timed_velocity(from, to, seconds)`.
-5. Each frame, for every flying arrow, take `arrow_segment`, test it against your
-   world (`arrow_capsule` for bodies, `targets_first` for static targets), and end
-   it with `arrow_stop(..., hit)` or `arrow_mark`. Then call `arrow_tidy`.
-6. Keep one `BowShow` beside each `BowDraw` (`bow_show_step` each frame,
-   `bow_show_loosed` at the loose) and hand it to the held kit
-   (`everglade/held-kit.coax` `held_pieces`, `held_bow_layer`): the string, the
-   nocked arrow and the draw pose.
-7. Draw each arrow with `fxp_arrow_at` (`aethyr/fx/puff.coax`) between `fxp_begin`
-   and `fxp_close`: in flight at `arrow_pos` and `arrow_dir`, and stuck at its
-   `at` and `dir` with `arrow_alpha`.
+The bow is three layers. A realm writes none of the first two.
 
-Experimental's adapter is the bow section of
-`apps/openagents-web/experimental-combat.coax` (`xc_bow_*`). Its checks are
-`coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"`
-and `coax/bin/coax test aethyr/action/bow.coax --library`. The Archery Range
-(`apps/openagents-web/range-scene.coax`) is the second realm on that adapter: it
-adds no bow code, only its targets, its colliders and its tally.
+| Layer | File | What it owns |
+| --- | --- | --- |
+| Engine | `aethyr/action/bow.coax` | The draw's curve, the arrows' arcs, the launch |
+| Engine | `aethyr/action/archery.coax` | One archer against a world: the frame of a draw, the sight line, each arrow's flight and what it meets, a finger's draw on a phone, the reticle on a draw |
+| Engine | `aethyr/action/target.coax` | Static targets |
+| Game | `everglade/longbow.coax` | Everglade's Longbow: where the arrow leaves, how far the reticle looks, a creature's body, the mouse buttons, the sounds and the dust |
+| Game | `everglade/held-kit.coax` | The bow in the hand, its string, the nocked arrow, the draw pose |
+| Realm | its own file | Where its ground and walls are, which creatures stand, and what its rules make of an arrow that reaches one |
+
+Coax has no callbacks, so the engine's two loops hand the realm a point and take
+its answer.
+
+1. Keep one `Archer` (`#load "aethyr/action/archery.coax" as arch`). It holds
+   the draw, what the body shows, the arrows and the realm's targets.
+2. Input: `eg_bow_button(button, phase, archer)` says whether a mouse button
+   draws, looses or lets down. To draw, call `bow_begin(draw, now, false)`; a key
+   or a tap passes `true`, and the draw looses itself at full. A finger on the
+   bow's slot goes through `archer_touch_down` and `archer_touch`.
+3. Each frame, call `archer_draw_step(draw, can, dt, now)`. When it answers
+   true, loose. Then call `archer_show_step`. Feed `bow_aim(draw)` to your camera
+   (`aethyr/cam/boom.coax`), the reticle (`archery_reticle`), your facing and the
+   aim pose, and `bow_pace(draw)` to your walk speed.
+4. Aim: start a `SightMarch` with `sight_begin(archery_sight(eye, dir, x, z),
+   EG_BOW_LOOK)`. While `sight_next` answers true, set `solid` to whether its
+   point `p` is inside your ground or a wall. `archery_rest` then gives the
+   point, and the body or the target it rests on.
+5. Loose: `archer_release` gives the strength. `archer_loose(archer, owner,
+   eg_bow_hand(...), aim.at, strength, aim.body, now)` launches the arrow.
+6. Flight: while `flight_arrow` answers true, answer `flight_sample`'s points
+   the same way (set `grass` when the point is the ground). `archery_land` says
+   how the step ended: stuck in a target (`LAND_MARK`), in the ground or a wall
+   (`LAND_STUCK`), or at a body (`LAND_BODY`). For a body, your rules decide,
+   and you call `archery_body(archer, flight, landing, hit)`. Then call
+   `archery_tidy`.
+7. Play `eg_bow_land_cue` and `eg_bow_land_dust` for each landing, and
+   `eg_bow_draw_cue`, `eg_bow_release_cue` and `eg_bow_leave_cue` at the draw
+   and the loose, through your own sound and effects.
+8. Hand the `BowShow` to the held kit (`held_pieces`, `held_bow_layer`): the
+   string, the nocked arrow and the draw pose.
+9. Draw each arrow: `archery_show(arrows, i, eye_x, eye_z, now)` into
+   `fxp_arrow_at` (`aethyr/fx/puff.coax`), between `fxp_begin` and `fxp_close`.
+
+A ruleset that resolves a shot on arrival (Experimental's Goblins) launches
+with `arrow_timed_velocity(from, to, seconds)` into the same pool.
+
+Three realms use these modules:
+
+- **Everglade Experimental** (`apps/openagents-web/experimental-combat.coax`,
+  `xc_bow_*`): its ground, village and dungeon walls, its monsters, and the SRD
+  Longbow attack.
+- **The Archery Range** (`apps/openagents-web/range-scene.coax`): it adds no bow
+  code, only its targets, its colliders and its tally.
+- **Everglade II** (`apps/openagents-web/everglade2-mouse.coax`): its own mouse
+  buttons, and the room resolves the arrow. The draw's frame, what the body
+  shows and the sounds are the shared ones.
+
+Check them:
+
+```sh
+coax/bin/coax test aethyr/action/archery.coax --library
+coax/bin/coax test everglade/longbow.coax --library
+coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"
+coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 mouse"
+```

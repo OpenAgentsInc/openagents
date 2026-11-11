@@ -11,7 +11,7 @@
 //   the butts, poles and posts are the zone's standing things (aethyr/world/props.coax): you walk
 //   into them, a mount goes round them, an arrow sticks in them;
 //   the horse and the red dragon are Everglade's mounts (everglade/mounts.coax), standing where the
-//   range puts them (experimental-horse.coax xh_stand);
+//   range puts them (everglade/zone-mounts.coax xh_stand);
 //   the layout, the faces, the points and the tally are the range's (everglade/range/);
 //   the tally is drawn with the game's HUD parts, and an arrow's points rise off its face as a hit's
 //   number does (aethyr/action/floats.coax).
@@ -56,7 +56,7 @@ xr_mode :: (s: [] Lab) -> int {
 xr_stand :: (s: [] Lab) {
   x := s[0].xc[..]; cr := s[0].creator[..]; r := x[0].rg.ground[..];
   for i: 0..<RG_PIECES { at := rg_piece_at(i); r[i] = meadow_y(at[0], at[1]); }
-  rg_targets(x[0].targets[..], r);
+  rg_targets(x[0].ar[0].targets[..], r);
   boxes: [RG_BOXES * 6] f32; n := rg_boxes(r, 0, boxes[..], 0);
   _ := wprops.props_set(cr[0].props[..], boxes[..], n);
   cr[0].range_on = true;
@@ -74,7 +74,7 @@ xr_far :: (f: tg.TargetFace, p: [3] f32) -> f32 { dx := f.x - p[0]; dy := f.y - 
 // One arrow has landed (or flown out): into the tally. In a face (mark), its ring's points rise off
 // it; anywhere else, a miss at the distance of the face nearest where it came down.
 xr_land :: (s: [] Lab, sh: XrShot, mark: int, off: f32, at: [3] f32) {
-  x := s[0].xc[..]; now := s[0].creator[0].clock; t := x[0].targets[0];
+  x := s[0].xc[..]; now := s[0].creator[0].clock; t := x[0].ar[0].targets[0];
   if t.n == 0 { return; }
   if mark >= 0 && mark < t.n {
     f := t.face[mark]; points := rg_points(off, f.radius);
@@ -91,16 +91,16 @@ xr_frame :: (s: [] Lab, dt: f32) {
   if !x[0].rg.stood { xr_stand(s); }
   for i: 0..<XC_FOES { if !h[0].enemies[i].dead { h[0].enemies[i].dead = true; h[0].enemies[i].died = -100; h[0].enemies[i].awake = false; } }
   now := cr[0].clock; rg := x[0].rg.shot[..];
-  if x[0].bow_shots != x[0].rg.seen {
-    x[0].rg.seen = x[0].bow_shots; i := x[0].bow_last;
+  if x[0].ar[0].shots != x[0].rg.seen {
+    x[0].rg.seen = x[0].ar[0].shots; i := x[0].ar[0].last;
     if i >= 0 && i < bow.ARROWS {
       if rg[i].live { xr_land(s, rg[i], -1, 0, rg[i].last); }   // the pool gave its slot to the new arrow
-      a := x[0].arrows[0].a[i]; rg[i] = XrShot.{live = true, mode = xr_mode(s), from = a.from, last = a.from};
+      a := x[0].ar[0].arrows[0].a[i]; rg[i] = XrShot.{live = true, mode = xr_mode(s), from = a.from, last = a.from};
     }
   }
   for i: 0..<bow.ARROWS {
     if !rg[i].live { continue; }
-    a := x[0].arrows[0].a[i];
+    a := x[0].ar[0].arrows[0].a[i];
     if a.state == bow.ARROW_FLYING { rg[i].last = bow.arrow_pos(a, now - a.t0); continue; }
     if a.state == bow.ARROW_STUCK { xr_land(s, rg[i], a.mark, a.off, a.at); } else { xr_land(s, rg[i], -1, 0, rg[i].last); }
     rg[i].live = false;
@@ -190,10 +190,10 @@ xr_test_fly :: (s: [] Lab, seconds: f32) {
   #assert cr[0].field && x[0].klass == FB_CL_RANGER && xc_has_bow(s[..]) && xc_own_kit(x);
   #assert cr[0].player_x == RG_AT_X + RG_START_X && cr[0].player_z == RG_AT_Z + RG_START_Z;
   xr_frame(s[..], 1.0 / 60);
-  #assert x[0].rg.stood && x[0].targets[0].n == RG_TARGETS && cr[0].props[0].n == RG_BOXES && cr[0].range_on;
+  #assert x[0].rg.stood && x[0].ar[0].targets[0].n == RG_TARGETS && cr[0].props[0].n == RG_BOXES && cr[0].range_on;
   for i: 0..<XC_FOES { #assert cr[0].hostiles[0].enemies[i].dead; }
   // each face stands on the meadow under it
-  f := x[0].targets[0].face[2]; #assert abs(f.y - meadow_y(f.x, f.z) - RG_FACE_Y) < 0.001;
+  f := x[0].ar[0].targets[0].face[2]; #assert abs(f.y - meadow_y(f.x, f.z) - RG_FACE_Y) < 0.001;
   // the zone's boxes are the walker's walls by the butt, and none back at the line
   w := lab_move_world(s[..], f.x, f.z + 1); #assert w.walls >= 1;
   w = lab_move_world(s[..], cr[0].player_x, cr[0].player_z); #assert w.walls == 0;
@@ -201,13 +201,13 @@ xr_test_fly :: (s: [] Lab, seconds: f32) {
 #test "archery range: a full draw at the 20 m gold sticks in the face and scores it on foot; one into the grass is a miss" #steps 2000000000 {
   s: [1] Lab; xr_test_lab(s[..]); x := s[0].xc[..]; cr := s[0].creator[..];
   xr_frame(s[..], 1.0 / 60);
-  f := x[0].targets[0].face[1];
+  f := x[0].ar[0].targets[0].face[1];
   xr_test_look(s[..], [3] f32.[f.x, f.y, f.z]);
   aim := xc_bow_point(s[..]); #assert aim.mark == 1 && aim.foe < 0 && abs(aim.at[2] - f.z) < 0.02;
-  #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]) && x[0].bow_last >= 0;
+  #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]) && x[0].ar[0].last >= 0;
   xr_test_fly(s[..], 1.5);
-  a := x[0].arrows[0].a[x[0].bow_last];
-  #assert x[0].bow_marks == 1 && a.state == bow.ARROW_STUCK && a.mark == 1 && abs(a.at[2] - f.z) < 0.05;
+  a := x[0].ar[0].arrows[0].a[x[0].ar[0].last];
+  #assert x[0].ar[0].marks == 1 && a.state == bow.ARROW_STUCK && a.mark == 1 && abs(a.at[2] - f.z) < 0.05;
   all := rg_sum(x[0].rg.score[0], -1, -1); foot := rg_sum(x[0].rg.score[0], RG_FOOT, -1);
   #assert all.shots == 1 && all.hits == 1 && all.points >= 9 && foot.shots == 1 && x[0].rg.score[0].run == 1;
   #assert rg_sum(x[0].rg.score[0], RG_FOOT, rg_band(xr_far(f, a.from))).hits == 1 && x[0].floats[0].shown >= 1;
@@ -224,20 +224,20 @@ xr_test_fly :: (s: [] Lab, seconds: f32) {
 #test "archery range: an arrow into the straw beside the face sticks in the butt and misses; a half-drawn one drops short" #steps 2000000000 {
   s: [1] Lab; xr_test_lab(s[..]); x := s[0].xc[..];
   xr_frame(s[..], 1.0 / 60);
-  f := x[0].targets[0].face[0]; edge := f.radius + f32(RG_BUTT_MARGIN) * 0.5;
+  f := x[0].ar[0].targets[0].face[0]; edge := f.radius + f32(RG_BUTT_MARGIN) * 0.5;
   xr_test_look(s[..], [3] f32.[f.x + edge * 0.72, f.y + edge * 0.72, f.z]);   // the straw's corner, outside the rim
   aim := xc_bow_point(s[..]); #assert aim.mark == -1 && abs(aim.at[2] - f.z) < 0.6;
   #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
   xr_test_fly(s[..], 1.5);
-  a := x[0].arrows[0].a[x[0].bow_last];
+  a := x[0].ar[0].arrows[0].a[x[0].ar[0].last];
   #assert a.state == bow.ARROW_STUCK && a.mark == -1 && a.at[2] < f.z + 0.5 && a.at[1] > meadow_y(f.x, f.z) + 1.0;
   #assert rg_sum(x[0].rg.score[0], -1, -1).shots == 1 && rg_sum(x[0].rg.score[0], -1, -1).hits == 0;
   // a tap's worth of draw at the 50 m gold comes down in the grass
-  far := x[0].targets[0].face[3]; x[0].cool_at = -100;
+  far := x[0].ar[0].targets[0].face[3]; x[0].cool_at = -100;
   xr_test_look(s[..], [3] f32.[far.x, far.y, far.z]);
   #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 0.1); #assert xc_bow_loose(s[..]);
   xr_test_fly(s[..], 4.0);
-  #assert x[0].bow_marks == 0 && rg_sum(x[0].rg.score[0], -1, -1).shots == 2 && rg_sum(x[0].rg.score[0], -1, -1).hits == 0;
+  #assert x[0].ar[0].marks == 0 && rg_sum(x[0].rg.score[0], -1, -1).shots == 2 && rg_sum(x[0].rg.score[0], -1, -1).hits == 0;
 }
 #test "archery range: from the saddle a shot is tallied from horseback, and the tally's panel grows a row for its band" #steps 2000000000 {
   s: [1] Lab; xr_test_lab(s[..]); x := s[0].xc[..]; cr := s[0].creator[..];
@@ -247,7 +247,7 @@ xr_test_fly :: (s: [] Lab, seconds: f32) {
   cr[0].player_x = h.x + cos(h.face) * 1.6; cr[0].player_z = h.z - sin(h.face) * 1.6;
   #assert lab_mount_key(s[..]) && cr[0].mounts[0].riding == 0 && xr_mode(s[..]) == RG_HORSE;
   rows := xr_rows(x[0].rg.score[0], RG_HORSE);
-  f := x[0].targets[0].face[0];
+  f := x[0].ar[0].targets[0].face[0];
   xr_test_look(s[..], [3] f32.[f.x, f.y, f.z]);
   #assert xc_bow_begin(s[..], false); xr_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
   xr_test_fly(s[..], 1.5);

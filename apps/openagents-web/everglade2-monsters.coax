@@ -153,7 +153,7 @@ e2mn_hits :: (s: [] E2) {
       y0 := e2g_y(s[0].eg[..], e.fx, e.fz) + 1.0; y1 := e2g_y(s[0].eg[..], e.tx, e.tz) + 1.1;
       c := FxCause.{recipe = FXR_SHAFT, seed = now * 13.7 + f32(e.m), t0 = now, from = fxp_v(e.fx, y0, e.fz), to = fxp_v(e.tx, y1, e.tz), col = fxp_v(1, 1, 1), big = 1, reach = fxp_max(e.fly, 0.1)};
       _ := fxp_start(k[0].puffs[..], c, now);
-      e2k_cue(s, "bow-release", 0.6, e.fx, e.fz, 1); e2k_later(k, now + e.fly * 0.6, "arrow-whiz", e.tx, e.tz, 1, false);
+      oc := eg_bow_other_cue(); e2k_cue(s, oc.name, oc.gain, e.fx, e.fz, oc.rate); e2k_later(k, now + e.fly * 0.6, eg_bow_by_cue().name, e.tx, e.tz, 1, false);
       ml[0].arrows += 1;
       continue;
     }

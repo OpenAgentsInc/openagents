@@ -157,7 +157,6 @@ Lab :: struct {
   stage_at: f32;   // when a riding stage's rider sat down
   stage_hit: f32; stage_rein: f32;  // a horse-archer stage: when its shooting ended, and when the rider reined in (0: not yet)
   ride_view: int;  // a stage's &view=side or &view=rear: the camera beside or behind the rider, close (0: the stage's own)
-  ride_land: bool; // X pressed on the dragon in the air: it comes down to land
   ride_fire_at: f32;   // the dragon-fire stage: when (stage seconds) the dragon breathed
   breath_dn: f32;   // how far down the breath was aimed (its torrent keeps that tilt as the dragon flies)
   breath_puff_at: f32 = -100;   // when the breath's torrent last left the dragon's jaws (experimental-ride.coax lab_breath_stream)
@@ -3742,7 +3741,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
 // No OS cursor while Experimental's crosshair is up (a drawn bow, mouselook's reticle): the crosshair is the pointer.
 lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) {
   c := s[0].creator[..];
-  if c[0].on && c[0].experimental && !c[0].walk.on && (s[0].xc[0].draw[0].on || c[0].aim > 0.01 || c[0].ml[0].shown > 0.01) { return 4; }
+  if c[0].on && c[0].experimental && !c[0].walk.on && (s[0].xc[0].ar[0].draw[0].on || c[0].aim > 0.01 || c[0].ml[0].shown > 0.01) { return 4; }
   return 0;
 }
 // Experimental's mouselook, the host's face (aethyr/cam/mouselook.coax): in the world while you stand
@@ -4377,9 +4376,10 @@ lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int
   // the bow (docs/verse/bow-combat.md): the right button held draws and its release looses; the left
   // button while drawing lets it down. The drag still turns the camera, which is the aim.
   if s[0].creator[0].on && kind==0 && s[0].creator[0].experimental {
-    if button==2 && phase==0 {_:=xc_bow_begin(s,false);}
-    else if button==2 && phase==2 {_:=xc_bow_loose(s);}
-    else if button==0 && phase==0 && s[0].xc[0].draw[0].on && !s[0].xc[0].draw[0].self_loose && xc_bow_cancel(s) {return true;}
+    act:=eg_bow_button(button,phase,s[0].xc[0].ar[0]);   // Everglade's Longbow on the mouse (everglade/longbow.coax)
+    if act==EG_BOW_DRAW {_:=xc_bow_begin(s,false);}
+    else if act==EG_BOW_LOOSE {_:=xc_bow_loose(s);}
+    else if act==EG_BOW_LET_DOWN && xc_bow_cancel(s) {return true;}
   }
   if s[0].creator[0].on && kind==0 {if s[0].creator[0].experimental && button!=1 && button!=2 && lab_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && button!=1 && button!=2 && xc_pointer(s,x,y,phase,id) {return true;}return cc.mouse_pointer(s[0].creator[..],x,y,phase,id,button);}
   return lab_pointer(s,x,y,phase,kind,id);

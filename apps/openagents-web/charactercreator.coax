@@ -30,7 +30,7 @@ VERTEX_FLOATS :: 16;
 #load "../../aethyr/action/deed.coax";       // your bearing, as the mounts ask with it
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "../../aethyr/world/props.coax" as wprops;   // a zone's own standing things: what you walk into and an arrow sticks in
-#load "experimental-horse.coax";             // Experimental's white horse: placed and wired
+#load "../../everglade/zone-mounts.coax";   // Everglade's horse and red dragon standing in a zone: placed, mounted, ridden, their prompt (game)
 #load "../../aethyr/cam/track.coax" as trk;   // a ?stage= setup's camera track (fivelab.coax lab_stage)
 #load "../../aethyr/world/build-site.coax" as bs;          // build sites at any progress (#13106)
 #load "../../everglade/world/housewright.coax" as hw;      // the house tiers' parts
@@ -61,7 +61,7 @@ GrassDraw :: struct {first:int;count:int;word:int;n:int;}
 Creator :: struct {
   build_first:[hw.HW_PARTS]int; build_count:[hw.HW_PARTS]int; build_word:int; build_n:int; sites:[BUILD_SITES]BuildSite;   // build sites (build_site_set)
   build_review:bool; build_t0:f32 = -1;   // ?stage=build-cottage: one cottage from 0 to 7 (build_review_frame)
-  mounts:[1]egm.EgMounts;   // the zone's horses (experimental-horse.coax)
+  mounts:[1]egm.EgMounts;   // the zone's horses (everglade/zone-mounts.coax)
   horse_x:f32 = XH_HORSE_X; horse_z:f32 = XH_HORSE_Z; horse_face:f32 = XH_HORSE_FACE;   // where the zone's horse and dragon wait (xh_place): Experimental's, or a zone's own (xh_stand)
   dragon_x:f32 = XH_DRAGON_X; dragon_z:f32 = XH_DRAGON_Z; dragon_face:f32 = XH_DRAGON_FACE; mounts_stood:bool;
   props:[1]wprops.Props;   // the zone's own standing things' boxes (aethyr/world/props.coax): none in Experimental's village, the Archery Range's butts, poles and posts

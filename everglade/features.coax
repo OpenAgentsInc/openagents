@@ -18,7 +18,7 @@
 EfFeature :: struct { name: string; title: string; required: bool; issue: int; owners: string; marks: string; files: string; }
 EF_FEATURES :: [11] EfFeature.[
   EfFeature.{name = "bow", title = "bow carry and draw", required = true, issue = 13079,
-    owners = "aethyr/action/bow.coax aethyr/action/bow-pose.coax everglade/held-kit.coax",
+    owners = "aethyr/action/bow.coax aethyr/action/archery.coax aethyr/action/bow-pose.coax everglade/longbow.coax everglade/held-kit.coax",
     marks = "BowDraw =Arrows arrow_pos arrow_aim_velocity arrow_timed_velocity bow_strength _bow_layer bow_basis bow_matrix bow_string held_weapon",
     files = "bow"},
   EfFeature.{name = "damage-numbers", title = "damage numbers", required = true, issue = 13080,
@@ -46,7 +46,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "_dash dash_ =dash _DASH DASH_ CDASH =Dash",
     files = "dash"},
   EfFeature.{name = "mounts", title = "mounts", required = false, issue = 0,
-    owners = "aethyr/action/mount.coax aethyr/action/ride-pose.coax everglade/mounts.coax",
+    owners = "aethyr/action/mount.coax aethyr/action/ride-pose.coax everglade/mounts.coax everglade/zone-mounts.coax",
     marks = "=Mount =mount Mounted mounted_ mount_up dismount =ride_pose rider_ Steed steed_ Horse horse_",
     files = "mount"},
   EfFeature.{name = "name-plates", title = "name plates", required = true, issue = 13088,

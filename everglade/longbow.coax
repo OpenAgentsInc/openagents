@@ -1,0 +1,101 @@
+// Everglade's Longbow, for every zone (Experimental, Everglade II, the Archery Range): how the
+// Ranger's bow feels on the engine's archery (aethyr/action/archery.coax, docs/verse/bow-combat.md).
+// The engine owns the draw, the sight line, the arrows' flight and what they meet. This file is the
+// game's own numbers and sounds:
+//
+//   where the arrow leaves (eg_bow_hand): the bow hand, chest high, ahead of and beside the body;
+//   how far the reticle's line looks (EG_BOW_LOOK) and where it points when it meets nothing;
+//   a creature's body as an arrow meets it (eg_bow_body): a capsule from shin to shoulder;
+//   the mouse (eg_bow_button): the right button held draws and its release looses; the left button
+//   while drawing lets the draw down;
+//   the sounds (EgBowCue): the creak of the draw, the loose, the arrow leaving, and what it lands
+//   in; and the dust it raises (EgBowDust).
+//
+// A zone keeps an Archer, answers the engine's two questions (is this point in my ground or walls,
+// did the arrow that reached this body hit), and plays these cues through its own sound and effects.
+//   coax/bin/coax test everglade/longbow.coax --library
+#load "../aethyr/action/archery.coax" as arch;
+
+EG_BOW_HAND :: 1.45;     // m up from your feet the arrow leaves
+EG_BOW_AHEAD :: 0.45;    // m ahead of you, and
+EG_BOW_ASIDE :: 0.12;    // m to the bow hand's side
+EG_BOW_LOOK :: 150.0;    // m the reticle's line looks for what it points at
+EG_BOW_PAST :: 60.0;     // and where it points when it meets nothing
+EG_BOW_BODY :: 0.42;     // m round a creature's middle an arrow meets it (times its scale)
+EG_BOW_SHIN :: 0.25; EG_BOW_SHOULDER :: 1.25; EG_BOW_CHEST :: 0.85;   // m up a creature (times its scale): its capsule's ends, and where the line rests on it
+
+// Where the arrow leaves: you stand at (x, z), your feet at height `feet`, facing `face` (radians).
+eg_bow_hand :: (x: f32, feet: f32, z: f32, face: f32) -> [3] f32 {
+  fx := sin(face); fz := cos(face);
+  return [3] f32.[x + fx * f32(EG_BOW_AHEAD) - fz * f32(EG_BOW_ASIDE), feet + f32(EG_BOW_HAND), z + fz * f32(EG_BOW_AHEAD) + fx * f32(EG_BOW_ASIDE)];
+}
+// A creature standing at (x, z) on ground at height `ground`, `scale` times a person's size.
+eg_bow_body :: (id: int, x: f32, ground: f32, z: f32, scale: f32) -> arch.ArcheryBody {
+  return arch.ArcheryBody.{id = id, c0 = [3] f32.[x, ground + f32(EG_BOW_SHIN) * scale, z], c1 = [3] f32.[x, ground + f32(EG_BOW_SHOULDER) * scale, z],
+    r = f32(EG_BOW_BODY) * scale, at = [3] f32.[x, ground + f32(EG_BOW_CHEST) * scale, z]};
+}
+
+// ---- the mouse. button 0 left, 2 right; phase 0 down, 2 up (coax/web/host.js).
+EG_BOW_NOTHING :: 0; EG_BOW_DRAW :: 1; EG_BOW_LOOSE :: 2; EG_BOW_LET_DOWN :: 3;
+eg_bow_button :: (button: int, phase: int, a: arch.Archer) -> int {
+  if button == 2 && phase == 0 { return EG_BOW_DRAW; }
+  if button == 2 && phase == 2 { return EG_BOW_LOOSE; }
+  if button == 0 && phase == 0 && a.draw[0].on && !a.draw[0].self_loose { return EG_BOW_LET_DOWN; }
+  return EG_BOW_NOTHING;
+}
+
+// ---- the sounds: a cue's name in the bank (apps/openagents-web/experimental-sound.coax), how loud, how fast
+EgBowCue :: struct { name: string; gain: f32; rate: f32 = 1; }
+// The limbs creak as the string comes back.
+eg_bow_draw_cue :: () -> EgBowCue { return EgBowCue.{name = "bow-draw", gain = 0.4}; }
+// The loose, louder and higher the further it was drawn, and the arrow leaving.
+eg_bow_release_cue :: (strength: f32) -> EgBowCue { return EgBowCue.{name = "bow-release", gain = 0.4 + 0.3 * strength, rate = 0.9 + 0.15 * strength}; }
+eg_bow_leave_cue :: (strength: f32) -> EgBowCue { return EgBowCue.{name = "arrow-whiz", gain = 0.12 + 0.12 * strength}; }
+// Another archer's loose (a Goblin's Shortbow, the path guard's Longbow), heard where it stands, and its arrow going by.
+eg_bow_other_cue :: () -> EgBowCue { return EgBowCue.{name = "bow-release", gain = 0.6}; }
+eg_bow_by_cue :: () -> EgBowCue { return EgBowCue.{name = "arrow-whiz", gain = 0.55}; }
+// What it lands in: a thunk into a target's straw, into wood or stone, or the grass. No sound while it flies on.
+eg_bow_land_cue :: (l: arch.ArcheryLanding) -> EgBowCue {
+  if l.kind == arch.LAND_MARK { return EgBowCue.{name = "arrow-hit", gain = 0.5}; }
+  if l.kind == arch.LAND_STUCK { return EgBowCue.{name = ifx l.grass then "arrow-grass" else "arrow-hit", gain = 0.45}; }
+  return EgBowCue.{};
+}
+// The dust where it lands: its colour, how big and how far it spreads. big 0 when it raises none.
+EgBowDust :: struct { r: f32; g: f32; b: f32; big: f32; reach: f32; }
+eg_bow_land_dust :: (l: arch.ArcheryLanding) -> EgBowDust {
+  if l.kind == arch.LAND_MARK { return EgBowDust.{r = 0.7, g = 0.62, b = 0.42, big = 0.3, reach = 0.4}; }
+  if l.kind == arch.LAND_STUCK { return EgBowDust.{r = 0.55, g = 0.48, b = 0.38, big = 0.35, reach = 0.5}; }
+  return EgBowDust.{};
+}
+// A hit's flash on a creature at (x, z), `scale` times a person's size, on ground `ground`: from a
+// stride back toward the archer at (ax, az) to its chest.
+EG_BOW_FLASH :: EgBowDust.{r = 0.8, g = 0.7, b = 0.55, big = 0.8, reach = 1};
+EgBowFlash :: struct { from: [3] f32; to: [3] f32; }
+eg_bow_flash :: (ax: f32, az: f32, x: f32, ground: f32, z: f32, scale: f32) -> EgBowFlash {
+  dx := ax - x; dz := az - z; l := sqrt(dx * dx + dz * dz); if l < 0.01 { l = 0.01; }
+  y := ground + 0.9 * scale;
+  return EgBowFlash.{from = [3] f32.[x + dx / l * 0.8, y, z + dz / l * 0.8], to = [3] f32.[x, y, z]};
+}
+
+#test "the arrow leaves the bow hand: chest high, ahead of you and to the bow's side, whichever way you face" {
+  n := eg_bow_hand(10, 2, 20, 0); #assert abs(n[0] - 10 + EG_BOW_ASIDE) < 0.0001 && abs(n[1] - 2 - EG_BOW_HAND) < 0.0001 && abs(n[2] - 20 - EG_BOW_AHEAD) < 0.0001;
+  e := eg_bow_hand(10, 2, 20, 1.5707963); #assert abs(e[0] - 10 - EG_BOW_AHEAD) < 0.0001 && abs(e[2] - 20 - EG_BOW_ASIDE) < 0.0001;
+}
+#test "a creature's body is a capsule from shin to shoulder that grows with it, and the line rests on its chest" {
+  b := eg_bow_body(7, 3, 1, 4, 2);
+  #assert b.id == 7 && b.c0[1] == 1.5 && b.c1[1] == 3.5 && b.r == 0.84 && b.at[1] == 2.7 && b.at[0] == 3 && b.c1[2] == 4;
+}
+#test "the right button draws and looses; the left lets a held draw down, never one that looses itself" {
+  a: [1] arch.Archer;
+  #assert eg_bow_button(2, 0, a[0]) == EG_BOW_DRAW && eg_bow_button(2, 2, a[0]) == EG_BOW_LOOSE && eg_bow_button(0, 0, a[0]) == EG_BOW_NOTHING && eg_bow_button(2, 1, a[0]) == EG_BOW_NOTHING;
+  a[0].draw[0].on = true; #assert eg_bow_button(0, 0, a[0]) == EG_BOW_LET_DOWN && eg_bow_button(0, 2, a[0]) == EG_BOW_NOTHING;
+  a[0].draw[0].self_loose = true; #assert eg_bow_button(0, 0, a[0]) == EG_BOW_NOTHING;
+}
+#test "a fuller draw looses louder and higher; an arrow thunks into straw and wood, rustles into grass, and each raises its dust" {
+  #assert eg_bow_draw_cue().name == "bow-draw" && eg_bow_release_cue(1).gain > eg_bow_release_cue(0.2).gain && eg_bow_release_cue(1).rate > eg_bow_release_cue(0.2).rate;
+  #assert eg_bow_leave_cue(1).name == "arrow-whiz" && eg_bow_other_cue().gain == 0.6 && eg_bow_by_cue().rate == 1;
+  m := arch.ArcheryLanding.{kind = arch.LAND_MARK}; g := arch.ArcheryLanding.{kind = arch.LAND_STUCK, grass = true}; w := arch.ArcheryLanding.{kind = arch.LAND_STUCK};
+  #assert eg_bow_land_cue(m).name == "arrow-hit" && eg_bow_land_cue(g).name == "arrow-grass" && eg_bow_land_cue(w).name == "arrow-hit" && eg_bow_land_cue(arch.ArcheryLanding.{}).name.count == 0;
+  #assert eg_bow_land_dust(m).big == 0.3 && eg_bow_land_dust(g).big == 0.35 && eg_bow_land_dust(arch.ArcheryLanding.{kind = arch.LAND_BODY}).big == 0;
+  f := eg_bow_flash(0, 0, 0, 1, 10, 2); #assert abs(f.from[2] - 9.2) < 0.0001 && f.to[2] == 10 && f.to[1] == 2.8 && f.from[1] == 2.8;
+}

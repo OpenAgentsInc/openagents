@@ -1,7 +1,9 @@
 // Everglade II's mouse buttons, as Everglade Experimental's (fivelab.coax lab_pointer_buttons,
 // experimental-combat.coax xc_bow_*): while the mouse looks (aethyr/cam/mouselook.coax), the left
 // button casts, and a Ranger's right button held draws the Longbow (aethyr/action/bow.coax) and its
-// release looses it at the reticle (docs/verse/bow-combat.md). The left button while drawing lets it
+// release looses it at the reticle (docs/verse/bow-combat.md). The draw's frame is the engine's
+// archer (aethyr/action/archery.coax) and its sounds Everglade's Longbow (everglade/longbow.coax),
+// as in every zone; only the buttons and the room's Attack are this zone's. The left button while drawing lets it
 // down. Any other press is the world's (everglade2.coax e2_pointer): a click looks again, a drag turns.
 // The arrow is the Ranger's Attack through the room, as the bar's (everglade2-cast.coax e2k_press).
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 mouse"
@@ -32,7 +34,7 @@ e2m_draw :: (s: [] E2, self_loose: bool) -> bool {
   if now - k[0].cool_at < f32(XC_COOL) { return false; }
   if !e2k_ready(s, e2m_attack(k)) { return false; }   // the draw is the Attack's wind-up: it asks first (#13072)
   bow.bow_begin(m[0].draw[..], now, self_loose); m[0].draws += 1;
-  e2k_cue(s, "bow-draw", 0.4, s[0].you_x, s[0].you_z, 1);   // the limbs creak as the string comes back
+  c := eg_bow_draw_cue(); e2k_cue(s, c.name, c.gain, s[0].you_x, s[0].you_z, c.rate);   // the limbs creak as the string comes back
   return true;
 }
 // Let go: the Attack's arrow toward the reticle (the room resolves it).
@@ -40,8 +42,7 @@ e2m_loose :: (s: [] E2) -> bool {
   m := s[0].mouse[..]; k := s[0].casts[..]; now := s[0].clock;
   if !m[0].draw[0].on { return false; }
   if !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); return false; }
-  _ := bow.bow_release(m[0].draw[..], now);
-  bow.bow_show_loosed(m[0].show[..], now); m[0].looses += 1;
+  _ := arch.archer_release(m[0].draw[..], m[0].show[..], now); m[0].looses += 1;
   return e2k_press(s, e2m_attack(s[0].casts[..]));
 }
 
@@ -67,10 +68,8 @@ e2m_buttons :: (s: [] E2, phase: int, kind: int, button: int) -> bool {
 // The frame: the aim eases, a left click's draw looses at full, the pose's strength.
 e2m_step :: (s: [] E2, dt: f32) {
   m := s[0].mouse[..]; k := s[0].casts[..]; now := s[0].clock;
-  if m[0].draw[0].on && !e2m_archer(s) { bow.bow_cancel(m[0].draw[..]); }
-  bow.bow_step(m[0].draw[..], dt);
-  if bow.bow_due(m[0].draw[0], now) { _ := e2m_loose(s); }
-  bow.bow_show_step(m[0].show[..], m[0].draw[0], now);
+  if arch.archer_draw_step(m[0].draw[..], e2m_archer(s), dt, now) { _ := e2m_loose(s); }
+  arch.archer_show_step(m[0].show[..], m[0].draw[0], now);
 }
 // Your figure with the bow drawn: its aim pose over what you were doing (everglade/held-kit.coax).
 e2m_figure :: (s: [] E2, a0: figs.BdAnim) -> figs.BdAnim {
