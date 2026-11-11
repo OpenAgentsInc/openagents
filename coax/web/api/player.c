@@ -34,7 +34,8 @@
 //   POST /api/playtest/room-ticket/<room>     a signed seat ticket for that room's socket
 //                                             (room_ticket below; coax/web/room/room-ticket.coax checks it);
 //                                             ?realm=R: the instance and shard from the directory (rooms.c),
-//                                             answered as "room" and "shard" (#12717)
+//                                             answered as "room" and "shard" (#12717), and the
+//                                             shard's "endpoint" when a room VM names one (#13179)
 //                                             ?with=P: the friend whose invite holds them a seat (#12795);
 //                                             a full asked room adds "asked" and the friend's name "by"
 //                                             ?party=P (with ?realm, no room named): the room party member P
@@ -542,6 +543,9 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (look[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"look\":\"%s\"", look);
   if (klass[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
   if (shard > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
+  /* the shard's own endpoint when it names one (a room VM, #13179): the page opens it in place of the
+     load balancer's /api/room/sK/ */
+  { char ep[200]; if (shard > 0 && rooms_endpoint(db, shard, ep, sizeof ep) && sn + (int)strlen(ep) + 20 < (int)sizeof st) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"endpoint\":\"%s\"", ep); }
   if (shard > 0 && party_full) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"party_full\":\"%s\"", party_room);
   if (shard > 0 && party_away) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"party_away\":true");
   /* the room asked was full: which, and whose it was when an invite named them (the page says so, #12795) */

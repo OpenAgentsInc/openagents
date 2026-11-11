@@ -887,6 +887,7 @@ static void stats_window(double secs) {
   st_line(&o,"capacity startup ready=%d",started_ok&&rooms_warmed?1:0);
   double cost = st_tick_us > 0 ? 100.0 * (double)st_cost_us / (double)st_tick_us : 0;
   int64_t p95 = st_hist_at(&st_work[STW_ALL], 950), ack95 = st_ack_q(NULL, st_ack_all, st_ack_all_n, 950);
+  rm_dir_tick(view(), p95);   /* the directory's health line (#13179) */
   st_report(&o, view(), rm_players(view()), server->shard, secs, true);
   int64_t report_us=now_us()-observation_started,omitted=o.omitted;o.cap=sizeof body;
   st_line(&o,"report omitted lines=%lld",(long long)omitted);
@@ -997,6 +998,8 @@ int main(int argc, char **argv) {
   /* which shard of the instance directory this is (oa-room 1, oa-room-K K: room-directory.coax) */
   const char *shard = getenv("OA_ROOM_SHARD");
   if (shard && *shard) rm_shard(view(), atoi(shard));
+  /* a room VM's shard names where its pages connect, and reports its health every 5 s (#13179) */
+  { const char *ep = getenv("OA_ROOM_ENDPOINT"); if (ep && *ep && !rm_endpoint(view(), (coax_string){ep, (int64_t)strlen(ep)})) fprintf(stderr, "room: OA_ROOM_ENDPOINT is not a wss:// URL ending in /: not named\n"); }
   printf("room: shard %lld\n", (long long)server->shard);
   if (dev_dir) {}
   else if (tkey && strlen(tkey) >= 32) { rm_ticket_key(view(), (coax_string){tkey, (int64_t)strlen(tkey)}, required); printf("room: seat tickets checked%s\n", required ? ", required" : ""); }

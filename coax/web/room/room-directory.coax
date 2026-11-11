@@ -14,9 +14,14 @@
 //   s SHARD FREE                      FREE: the everglade simulations not in use (of EG_ROOMS)
 //   g GEN [d]                         with OA_ROOM_DIR_GEN=1: this process's generation (its start, wall
 //                                     ms, as the vitals' operation IDs), and d while it drains (#12797)
+//   e URL                             with OA_ROOM_ENDPOINT (a room VM, #13179): where pages open this
+//                                     shard's socket, wss://room.openagents.com/api/room/sK/
 //   r CODE PLAYERS PID PID ...        one line a room; PLAYERS counts every seat, a PID each ticketed one
+//   h PLAYERS TICK_P95_US             with an endpoint: its health, last (#13179)
 // It is due when what it says changed, every DIR_EVERY_MS while any room is live, and once more
 // when the last room closes (so the directory drops it at once rather than when it goes stale).
+// A shard with an endpoint reports every DIR_EVERY_MS while it runs, rooms or none: the directory
+// marks it down when its reports stop (migrations/0140_room_shard_endpoints.sql).
 DIR_BODY :: 16384;
 DIR_EVERY_MS :: 5000;
 
@@ -26,7 +31,23 @@ RmDirectory :: struct {
   last: [DIR_BODY] u8; last_n: int;    // what the last post said, its t line left out
   at: int;                             // wall ms of the last post
   rooms: bool;                         // the last post named a room
+  ep: [160] u8; ep_n: int;             // its endpoint (OA_ROOM_ENDPOINT), none: 0 (#13179)
+  tick_us: int = -1;                   // the host's last tick p95, for the h line
 }
+
+// This shard's endpoint, wss://HOST/api/room/sK/ (the host's OA_ROOM_ENDPOINT on a room VM, #13179):
+// named in every report, which then comes every DIR_EVERY_MS with its health. A URL that isn't wss://
+// or doesn't end in "/" is not taken.
+rm_endpoint :: (v: [] RmServer, url: string) -> bool #export_c #effects(all) {
+  v[0].dir.ep_n = 0;
+  if url.count < 8 || url.count > v[0].dir.ep.count || url[0..<6] != "wss://" || url[url.count - 1] != '/' { return false; }
+  for i: 0..<url.count { c := url[i]; if c <= ' ' || c >= 127 || c == '"' || c == '\\' { return false; } }
+  for i: 0..<url.count { v[0].dir.ep[i] = url[i]; }
+  v[0].dir.ep_n = url.count;
+  return true;
+}
+// The tick's 95th percentile in microseconds, from the host's stats window (room-host.c stats_window).
+rm_dir_tick :: (v: [] RmServer, us: int) #export_c #effects(all) { v[0].dir.tick_us = us; }
 
 // The shard this server is (the host's OA_ROOM_SHARD; 1 when unset): it seats only tickets for
 // itself, and only sockets whose path names it or no sharv[0].dir.
@@ -89,6 +110,7 @@ dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
   if v[0].dir_gen && v[0].vit.gen > 0 {
     n = dir_put(b, n, "g "); n = dir_int(b, n, v[0].vit.gen); n = dir_put(b, n, ifx v[0].drain then " d\n" else "\n");
   }
+  if v[0].dir.ep_n > 0 { n = dir_put(b, n, "e "); n = dir_put(b, n, cast(string) v[0].dir.ep[0..<v[0].dir.ep_n]); n = dir_put(b, n, "\n"); }
   rooms[0] = 0;
   for k: 0..<EG_ROOMS {
     r := v[0].eg[k].relay;
@@ -122,13 +144,16 @@ rm_directory_due :: (v: [] RmServer) -> int #export_c #effects(all) {
   if n < 0 { return 0; }
   same := n == v[0].dir.last_n;
   if same { for i: 0..<n { if lines[i] != v[0].dir.last[i] { same = false; break; } } }
-  periodic := rooms[0] > 0 && v[0].wall_ms - v[0].dir.at >= DIR_EVERY_MS;
+  periodic := (rooms[0] > 0 || v[0].dir.ep_n > 0) && v[0].wall_ms - v[0].dir.at >= DIR_EVERY_MS;
   closing := rooms[0] == 0 && v[0].dir.rooms;
   if same && !periodic && !closing { return 0; }
   o := v[0].dir.out[..];
   k := dir_put(o, 0, "t "); k = dir_int(o, k, v[0].wall_ms); k = dir_put(o, k, "\n");
   for i: 0..<n { o[k + i] = lines[i]; }
   k += n;
+  // a VM shard's health, last: the directory keeps it beside the endpoint (#13179)
+  if v[0].dir.ep_n > 0 { k = dir_put(o, k, "h "); k = dir_int(o, k, rm_players(v)); k = dir_put(o, k, " "); k = dir_int(o, k, v[0].dir.tick_us); k = dir_put(o, k, "\n"); }
+  if k < 0 { v[0].dir.out_n = 0; return 0; }
   key: [TICKET_KEY] u8;
   for i: 0..<v[0].tkey_n { key[i] = v[0].tkey[i]; }
   mac: [32] u8;
@@ -206,6 +231,29 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   #assert rm_directory_due(v[..]) == 0;
   _ := rm_drain_tell(v[..]);   // draining: said at once
   #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 3 16\ng 777 d\n";
+}
+
+#test "directory: a VM shard names its endpoint and health, and reports every 5 s with no room (#13179)" #steps 400000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  rm_shard(v[..], 2);
+  rm_clock(v[..], 0, 990000);
+  #assert !rm_endpoint(v[..], "ws://room.openagents.com/api/room/s2/") && !rm_endpoint(v[..], "wss://room.openagents.com/api/room/s2") && v[0].dir.ep_n == 0;
+  #assert rm_endpoint(v[..], "wss://room.openagents.com/api/room/s2/");
+  rm_dir_tick(v[..], 640);
+  #assert rm_directory_due(v[..]) > 0 && cast(string) v[0].dir.out[0..<v[0].dir.out_n] == "t 990000\ns 2 16\ne wss://room.openagents.com/api/room/s2/\nh 0 640\n";
+  rm_clock(v[..], 0, 993000);
+  #assert rm_directory_due(v[..]) == 0;   // nothing changed and 5 s haven't passed
+  rm_clock(v[..], 0, 995000);
+  #assert rm_directory_due(v[..]) > 0;    // the heartbeat, with no room
+  // without an endpoint a shard with no room says nothing more (Cloud Run's, as before)
+  w: [1] RmServer;
+  rm_init(w[..]); rm_ticket_key(w[..], key, true); rm_shard(w[..], 2); rm_clock(w[..], 0, 990000);
+  #assert rm_directory_due(w[..]) > 0;
+  rm_clock(w[..], 0, 999000);
+  #assert rm_directory_due(w[..]) == 0;
 }
 
 #test "directory: a socket's path names its shard; sN/ comes out of the request line (#12717)" {

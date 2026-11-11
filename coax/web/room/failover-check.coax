@@ -1,0 +1,192 @@
+// The shard directory's failover check (#13179, docs/deployment/room-vm.md): players on a real site
+// lose their room server mid-session and come back on their own. Each player is a native socket that
+// does what the page does (everglade2-net.coax): it mints a player key at API (POST
+// /api/playtest/player), asks the directory for a seat (/api/playtest/room-ticket/everglade2?realm=
+// everglade2, as a page that names no room), and opens the endpoint the answer names (a room VM's
+// shard, wss://room-staging.openagents.com/api/room/s1/), or the site's /api/room/sK/ when it names
+// none. It sends its build and hello and an input every 1/30 s, walking.
+// Then KILL runs (a shell command: vm-deploy.sh kill staging sends the unit SIGKILL, and systemd
+// starts it again). When the socket goes, each player waits the page's first retry (750 to 1250 ms),
+// asks the directory again (now for the instance it sat in) and sits again; a refused ask or socket
+// is tried again each second. Twice: once its hello says where it stood (A, as the page's does),
+// once not, when the room puts it where the API's store had it.
+//   coax/web/tool.sh coax/web/room/failover-check.coax API KILL [--players N] [--walk S]
+//   coax/web/tool.sh coax/web/room/failover-check.coax https://staging.openagents.com "coax/web/room/vm-deploy.sh kill staging"
+// Holds when every player sat again within 20 s of the kill each time, within 1 m with A, and within
+// 25 m without it (the store's last checkpoint). Prints each player's return time and error.
+#load "room-socket.coax";
+#load "../../lib/net/http.coax";
+
+FO_MAX :: 8;
+FoBot :: struct {
+  conn: [1] RelayConn; mirror: [1] WireMirror; open: bool;
+  key: [96] u8; key_n: int;
+  code: [64] u8; code_n: int;       // the instance it sat in
+  seat: int = -1; seq: int; next_i: int; theta: int;
+  own: WireS; have: bool;
+  kx: f32; kz: f32; claim: bool;
+  retry_at: int; back: bool; back_ms: int; err_mm: int; tries: int;
+  url: [512] u8; url_n: int;        // the socket it opened last
+  no_ticket: int; no_socket: int;   // asks the directory refused, sockets that didn't open
+  said: [96] u8; said_n: int;       // the room's last refusal (r ...)
+}
+fo_field :: (t: string, key: string, out: [] u8) -> string {
+  pat: [64] u8; pn := rs_put(pat[..], 0, "\""); pn = rs_put(pat[..], pn, key); pn = rs_put(pat[..], pn, "\":");
+  p := cast(string) pat[0..<pn];
+  if t.count < p.count { return ""; }
+  for i: 0..<t.count - p.count + 1 {
+    if t[i..<i + p.count] == p {
+      e := i + p.count; while e < t.count && t[e] == ' ' { e += 1; }
+      q := e < t.count && t[e] == '"'; if q { e += 1; } n := 0;
+      while e < t.count && n < out.count && ((q && t[e] != '"') || (!q && t[e] != ',' && t[e] != '}')) { out[n] = t[e]; n += 1; e += 1; }
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+#test "the failover check reads a flat answer's fields, quoted or not" {
+  b: [64] u8;
+  #assert fo_field("{\"room\":\"everglade2-1\",\"shard\":2}", "room", b[..]) == "everglade2-1" && fo_field("{\"room\":\"x\",\"shard\":2}", "shard", b[..]) == "2";
+  #assert fo_field("{}", "endpoint", b[..]) == "" && fo_field("{\"id\": \"p-1\", \"key\": \"k2\"}", "key", b[..]) == "k2";
+}
+fo_post :: (api: string, path: string, key: string, out: [] u8) -> string {
+  u: [512] u8; n := rs_put(u[..], 0, api); n = rs_put(u[..], n, path);
+  hb: [160] u8; hn := rs_put(hb[..], 0, "X-Verse-Player: "); hn = rs_put(hb[..], hn, key);
+  hs := [3] string.["Content-Type: application/json", "X-Verse-Automation: pair-check-failover", cast(string) hb[0..<hn]];
+  w: [1] HttpWork;
+  r := http_do(w[..], "POST", cast(string) u[0..<n], ifx key.count > 0 then hs[..] else hs[0..<2], "{}", 8000, 0, out);
+  if r.error != HTTP_OK || r.code != 200 { return ""; }
+  return cast(string) out[0..<r.n];
+}
+// Sit (again): the directory's ticket, then the socket it names.
+fo_sit :: (b: [] FoBot, api: string) -> bool {
+  tb: [6144] u8; tk: [4400] u8; rb: [64] u8; sb: [16] u8; eb: [256] u8;
+  path: [160] u8;
+  pn := rs_put(path[..], 0, "/api/playtest/room-ticket/");
+  if b[0].code_n > 0 { pn = rs_put(path[..], pn, cast(string) b[0].code[0..<b[0].code_n]); pn = rs_put(path[..], pn, "?realm=everglade2&checkpoint=2&rest=1"); }   // as the page asks (everglade2-net.coax)
+  else { pn = rs_put(path[..], pn, "everglade2?realm=everglade2&checkpoint=2&rest=1"); }
+  ans := fo_post(api, cast(string) path[0..<pn], cast(string) b[0].key[0..<b[0].key_n], tb[..]);
+  ticket := fo_field(ans, "ticket", tk[..]); room := fo_field(ans, "room", rb[..]);
+  if ticket.count == 0 || room.count == 0 { b[0].no_ticket += 1; return false; }
+  b[0].code_n = rs_put(b[0].code[..], 0, room);
+  shard := rs_num(fo_field(ans, "shard", sb[..])); ep := fo_field(ans, "endpoint", eb[..]);
+  u := b[0].url[..]; n := 0;
+  if ep.count > 6 && ep[0..<6] == "wss://" { n = rs_put(u, 0, ep); n = rs_put(u, n, "relay/everglade/"); }
+  else {
+    host := ifx api.count > 8 && api[0..<8] == "https://" then api[8..<api.count] else api;
+    n = rs_put(u, 0, "wss://"); n = rs_put(u, n, host); n = rs_put(u, n, "/api/room/s"); n = rs_int(u, n, ifx shard > 0 then shard else 1); n = rs_put(u, n, "/relay/everglade/");
+  }
+  n = rs_put(u, n, room); n = rs_put(u, n, "?t="); n = rs_put(u, n, ticket);
+  if n < 0 { return false; }
+  b[0].url_n = n;
+  b[0].mirror[0] = WireMirror.{}; b[0].seat = -1; b[0].have = false;
+  b[0].open = relay_conn_open(b[0].conn[..], cast(string) u[0..<n]);
+  if !b[0].open { b[0].no_socket += 1; }
+  return b[0].open;
+}
+fo_said :: (b: [] FoBot) {
+  m: [128] u8;
+  ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
+  if b[0].claim { ok = relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].kx, z = b[0].kz, yaw = b[0].own.yaw})]) && ok; }
+  ok = relay_conn_send(b[0].conn[..], "H 5 ranger.0.0.0 srd-druid 0 -") && ok;
+}
+fo_pump :: (b: [] FoBot, now: int, walk: bool) {
+  if !b[0].open { return; }
+  m: [160] u8;
+  if now >= b[0].next_i && b[0].seat >= 0 {
+    b[0].seq += 1;
+    k := rs_put(m[..], 0, "I "); k = rs_int(m[..], k, b[0].seq); k = rs_put(m[..], k, ifx walk then " 0 100 0 0 " else " 0 0 0 0 ");
+    k = rs_int(m[..], k, b[0].theta); k = rs_put(m[..], k, ifx walk then " 1 " else " 0 "); k = rs_int(m[..], k, b[0].mirror[0].heard);
+    ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<k]);
+    b[0].next_i = now + 33;
+  }
+  code := relay_conn_poll(b[0].conn[..], 0);
+  while code == RC_TEXT {
+    t := cast(string) b[0].conn[0].text[0..<b[0].conn[0].text_n];
+    if rs_starts(t, "y ") { b[0].seat = rs_num(rs_field(t, 1)); fo_said(b); }
+    if rs_starts(t, "r ") && t.count < 96 { b[0].said_n = rs_put(b[0].said[..], 0, t); }
+    if rs_starts(t, "D ") {
+      d := wire_mirror_frame(b[0].mirror[..], t);
+      if d.tick >= 0 && b[0].seat >= 0 {
+        o := wire_mirror_of(b[0].mirror[..], b[0].seat);
+        if o.id == b[0].seat { b[0].own = o; b[0].have = true; }
+      }
+    }
+    code = relay_conn_poll(b[0].conn[..], 0);
+  }
+  if code == RC_FAIL || code == RC_CLOSED { b[0].open = false; r := relay_conn_close(b[0].conn[..], 1000); }
+}
+// One phase: walk walk_ms, then KILL; every player back on its own. claim: their hellos say A.
+fo_phase :: (bots: [] FoBot, n: int, api: string, kill: string, walk_ms: int, claim: bool) -> bool {
+  until := rs_now() + walk_ms;
+  while rs_now() < until { now := rs_now(); for i: 0..<n { fo_pump(bots[i..<i + 1], now, true); } proc_sleep(2); }
+  // stand still a moment, so where the room has each player is where it stops
+  until = rs_now() + 600;
+  while rs_now() < until { now := rs_now(); for i: 0..<n { fo_pump(bots[i..<i + 1], now, false); } proc_sleep(2); }
+  for i: 0..<n { bots[i].kx = bots[i].own.x; bots[i].kz = bots[i].own.z; bots[i].claim = claim; bots[i].back = false; bots[i].retry_at = -1; bots[i].tries = 0; bots[i].no_ticket = 0; bots[i].no_socket = 0; bots[i].said_n = 0; }
+  killed := rs_now();
+  h := proc_new();
+  if h < 0 || !proc_arg(h, "/bin/sh") || !proc_arg(h, "-c") || !proc_arg(h, kill) || !proc_quiet(h) || proc_start(h) != 0 { tool_errln("failover-check: KILL didn't start"); return false; }
+  w := proc_wait(h, 60000); r := proc_release(h);
+  print("killed (KILL took % ms), % A:\n", rs_now() - killed, ifx claim then "with" else "without");
+  done := killed + 30000;
+  while rs_now() < done {
+    now := rs_now(); all := true;
+    for i: 0..<n {
+      bt := bots[i..<i + 1];
+      if !bt[0].open && !bt[0].back {
+        // the page's first retry, 750 to 1250 ms after its socket went; then each second
+        if bt[0].retry_at < 0 { spread := ifx n > 1 then n - 1 else 1; bt[0].retry_at = now + 750 + 500 * i / spread; }
+        else if now >= bt[0].retry_at { bt[0].tries += 1; if !fo_sit(bt, api) { bt[0].retry_at = now + 1000; } }
+      }
+      fo_pump(bt, now, false);
+      if bt[0].open && bt[0].have && !bt[0].back && bt[0].tries > 0 {
+        bt[0].back = true; bt[0].back_ms = now - killed;
+        dx := bt[0].own.x - bt[0].kx; dz := bt[0].own.z - bt[0].kz; bt[0].err_mm = cast(int) (sqrt(dx * dx + dz * dz) * 1000);
+      }
+      if !bt[0].back { all = false; }
+    }
+    if all { break; }
+    proc_sleep(2);
+  }
+  worst_ms := 0; worst_mm := 0; back := 0;
+  for i: 0..<n {
+    if bots[i].back { back += 1; } if bots[i].back_ms > worst_ms { worst_ms = bots[i].back_ms; } if bots[i].err_mm > worst_mm { worst_mm = bots[i].err_mm; }
+    print("  player %: back % ms after the kill (% asks: % refused, % sockets didn't open; the room's last refusal \"%\"), % mm from where the room had it (% %), in %\n", i, ifx bots[i].back then bots[i].back_ms else -1, bots[i].tries, bots[i].no_ticket, bots[i].no_socket, cast(string) bots[i].said[0..<bots[i].said_n], bots[i].err_mm, bots[i].kx, bots[i].kz, cast(string) bots[i].code[0..<bots[i].code_n]);
+  }
+  print("  % of % back; the slowest % ms; the largest error % mm\n", back, n, worst_ms, worst_mm);
+  print("{\"phase\":\"%\",\"back\":%,\"players\":%,\"slowest_ms\":%,\"error_mm\":%}\n", ifx claim then "with-A" else "without-A", back, n, worst_ms, worst_mm);
+  return back == n && worst_ms <= 20000 && worst_mm < (ifx claim then 1000 else 25000);
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) < 2 { tool_errln("usage: failover-check.coax API KILL [--players N] [--walk S]"); return 2; }
+  api := args_at(a[..], 0); kill := args_at(a[..], 1);
+  n := 2; walk := 5; i := 2;
+  while i + 1 < args_count(a[..]) {
+    x := args_at(a[..], i); y := args_at(a[..], i + 1);
+    if x == "--players" { n = rs_num(y); } else if x == "--walk" { walk = rs_num(y); } else { tool_errln("usage: failover-check.coax API KILL [--players N] [--walk S]"); return 2; }
+    i += 2;
+  }
+  if n < 1 || n > FO_MAX || walk < 1 || !(api.count > 8 && api[0..<8] == "https://") { return 2; }
+  bots: [FO_MAX] FoBot; ab: [2048] u8; kb: [96] u8;
+  for q: 0..<n {
+    key := fo_field(fo_post(api, "/api/playtest/player", "", ab[..]), "key", kb[..]);
+    bots[q].key_n = rs_put(bots[q].key[..], 0, key); bots[q].theta = (q * 9000) % 62832 - 31416;
+    if key.count == 0 || !fo_sit(bots[q..<q + 1], api) {
+      print("failover-check: player % could not sit (key %, ticket refused %, socket %)\n", q, key.count > 0, bots[q].no_ticket, bots[q].no_socket); return 1;
+    }
+  }
+  // seated and seen before the first walk
+  until := rs_now() + 15000; ready := false;
+  while rs_now() < until && !ready { now := rs_now(); ready = true; for q: 0..<n { fo_pump(bots[q..<q + 1], now, false); if !bots[q].have { ready = false; } } proc_sleep(2); }
+  if !ready { tool_errln("failover-check: the players weren't seated within 15 s"); return 1; }
+  print("failover-check: % players in % at %\n", n, cast(string) bots[0].code[0..<bots[0].code_n], cast(string) bots[0].url[0..<rs_index_t(bots[0].url[0..<bots[0].url_n])]);
+  ok := fo_phase(bots[..], n, api, kill, walk * 1000, true);
+  ok = fo_phase(bots[..], n, api, kill, walk * 1000, false) && ok;
+  for q: 0..<n { if bots[q].open { c := relay_conn_close(bots[q].conn[..], 1000); } }
+  print("%\n", ifx ok then "holds" else "fails");
+  return ifx ok then 0 else 1;
+}
+// The URL up to its ticket (?t=...), which the check never prints.
+rs_index_t :: (u: [] u8) -> int { for i: 0..<u.count { if u[i] == '?' { return i; } } return u.count; }

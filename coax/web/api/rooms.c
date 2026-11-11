@@ -6,6 +6,8 @@
 //                                         with the seat-ticket key (X-Room-Mac, as room-vitals is)
 //   POST /api/playtest/room-stats         a shard's vitals every 10 s (coax/web/room/room-stats.h), signed
 //                                         alike, for the admins' room view (GET /api/admin/rooms, admin.c)
+//   GET  /api/playtest/room-shards        the shards: live, draining or down, each one's endpoint and
+//                                         health (#13179, migrations/0140_room_shard_endpoints.sql)
 //   GET  /api/playtest/rooms/REALM        its public instances and which to join; ?with=PLAYER_ID also
 //                                         names the instance that player sits in ("with_full" when it
 //                                         is full and no invite of theirs holds a seat, #12795)
@@ -118,11 +120,47 @@ static bool signed_post(const request *q) {
   if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return false; }
   return true;
 }
+// The endpoint and health lines a VM shard adds (#13179, migrations/0140_room_shard_endpoints.sql),
+// taken out of body (in place) so room_report reads the report it always has:
+//   e wss://HOST/api/room/sK/      h PLAYERS TICK_P95_US
+// ep gets the endpoint ("" none, or one that isn't wss:// on an openagents.com name), *players and
+// *tick_us the health (-1 none). Returns the shard the s line names, 0 when there is none.
+static int shard_lines(char *body, char *ep, size_t cap, int *players, int *tick_us) {
+  ep[0] = 0; *players = -1; *tick_us = -1;
+  int shard = 0; char *w = body;
+  for (char *line = body; *line;) {
+    char *nl = strchr(line, '\n'); size_t n = nl ? (size_t)(nl - line) + 1 : strlen(line);
+    if (line[0] == 'e' && line[1] == ' ') {
+      size_t m = n - 2 - (nl ? 1 : 0);
+      const char *host = line + 2 + 6;
+      bool ok = m < cap && m > 6 && !strncmp(line + 2, "wss://", 6);
+      if (ok) {   /* wss://NAME.openagents.com[:PORT]/api/room/sK/ and nothing else */
+        const char *slash = memchr(host, '/', m - 6);
+        size_t hn = slash ? (size_t)(slash - host) : 0;
+        const char *colon = hn ? memchr(host, ':', hn) : NULL; if (colon) hn = (size_t)(colon - host);
+        ok = slash && hn > 15 && !memcmp(host + hn - 15, ".openagents.com", 15) && !strncmp(slash, "/api/room/s", 11) && line[2 + m - 1] == '/';
+        for (size_t i = 0; ok && i < m; i++) { char c = line[2 + i]; ok = c > ' ' && c < 127 && c != '"' && c != '\\'; }
+      }
+      if (ok) { memcpy(ep, line + 2, m); ep[m] = 0; }
+    } else if (line[0] == 'h' && line[1] == ' ') {
+      if (sscanf(line + 2, "%d %d", players, tick_us) != 2) { *players = -1; *tick_us = -1; }
+    } else {
+      if (line[0] == 's' && line[1] == ' ') shard = atoi(line + 2);
+      memmove(w, line, n); w += n;
+    }
+    line += n;
+  }
+  *w = 0;
+  return shard;
+}
+
 static void report(const request *q, PGconn *db) {
   if (!signed_post(q)) return;
   char *b = malloc(q->body_len + 1);
   if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
+  char ep[200]; int players, tick_us;
+  int shard = shard_lines(b, ep, sizeof ep, &players, &tick_us);
   const char *v[1] = {b};
   PGresult *r = PQexecParams(db, "SELECT verse.room_report($1)", 1, NULL, v, NULL, NULL, 0);
   free(b);
@@ -132,8 +170,41 @@ static void report(const request *q, PGconn *db) {
   PQclear(r);
   if (named == -2) { api_json(q->fd, 409, "{\"error\":\"a newer process has this shard\"}"); return; }   /* fenced (#12797) */
   if (named < 0) { api_json(q->fd, 400, "{\"error\":\"not a report\"}"); return; }
+  if (shard >= 1 && shard <= 99) {   /* its endpoint and health, or none (#13179) */
+    char ks[8], ps[16], ts[16]; snprintf(ks, sizeof ks, "%d", shard); snprintf(ps, sizeof ps, "%d", players); snprintf(ts, sizeof ts, "%d", tick_us);
+    const char *sv[4] = {ks, ep[0] ? ep : NULL, players >= 0 ? ps : NULL, tick_us >= 0 ? ts : NULL};
+    r = PQexecParams(db, "SELECT verse.room_shard_seen($1::int, $2, $3::int, $4::int)", 4, NULL, sv, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("room-directory: %s", PQerrorMessage(db));
+    PQclear(r);
+  }
   char out[48]; snprintf(out, sizeof out, "{\"rooms\":%d}", named);
   api_json(q->fd, 200, out);
+}
+
+// The endpoint a page opens for shard k (#13179): a live VM shard's wss:// URL, into out; false when
+// the shard names none (the page opens the load balancer's /api/room/sK/).
+bool rooms_endpoint(PGconn *db, int shard, char *out, size_t cap) {
+  out[0] = 0;
+  char ks[8]; snprintf(ks, sizeof ks, "%d", shard);
+  const char *v[1] = {ks};
+  PGresult *r = PQexecParams(db, "SELECT verse.room_endpoint($1::int)", 1, NULL, v, NULL, NULL, 0);
+  bool got = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) && strlen(PQgetvalue(r, 0, 0)) < cap;
+  if (got) snprintf(out, cap, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  return got;
+}
+
+// GET /api/playtest/room-shards: the directory's shards, live, draining or down, with their endpoints
+// and health (#13179).
+static void shard_list(const request *q, PGconn *db) {
+  if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET the shards\"}"); return; }
+  PGresult *r = PQexec(db, "SELECT verse.room_shard_list()");
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    api_log("room-shards: %s", PQerrorMessage(db)); PQclear(r);
+    api_json(q->fd, 500, "{\"error\":\"no shards\"}"); return;
+  }
+  api_json(q->fd, 200, PQgetvalue(r, 0, 0));
+  PQclear(r);
 }
 
 static void list(const request *q, PGconn *db, const char *realm) {
@@ -178,6 +249,7 @@ static void stats(const request *q, PGconn *db) {
 bool rooms_route(const request *q, PGconn *db, const char *rest) {
   if (!strcmp(rest, "room-directory")) { report(q, db); return true; }
   if (!strcmp(rest, "room-stats")) { stats(q, db); return true; }
+  if (!strcmp(rest, "room-shards")) { shard_list(q, db); return true; }
   if (!strncmp(rest, "rooms/", 6) && rest[6] && !strchr(rest + 6, '/')) { list(q, db, rest + 6); return true; }
   return false;
 }

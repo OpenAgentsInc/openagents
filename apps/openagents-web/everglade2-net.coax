@@ -196,6 +196,24 @@ e2n_code_ok :: (code: string) -> bool {
   q: [1] E2Net; e2n_facts(q[..], "url=http://127.0.0.1:8863/worlds/everglade2?at=40\n", true); #assert !q[0].want;
 }
 
+// A shard's endpoint the directory may name (#13179): wss:// on an openagents.com name, at a shard's
+// room path, ending in "/". Anything else, and the page opens the load balancer's /api/room/sK/.
+e2n_endpoint_ok :: (ep: string) -> bool {
+  if ep.count < 30 || ep[0..<6] != "wss://" || ep[ep.count - 1] != '/' { return false; }
+  host := 6;
+  while host < ep.count && ep[host] != '/' && ep[host] != ':' { if ep[host] == '"' || ep[host] == '\\' || ep[host] <= ' ' { return false; } host += 1; }
+  tail := ".openagents.com";
+  if host < 6 + tail.count + 1 || ep[host - tail.count..<host] != tail { return false; }
+  p := host; while p < ep.count && ep[p] != '/' { p += 1; }
+  room := "/api/room/s";
+  return p + room.count < ep.count && ep[p..<p + room.count] == room;
+}
+#test "a shard's endpoint is taken only on an openagents.com name at a room path" {
+  #assert e2n_endpoint_ok("wss://room.openagents.com/api/room/s1/") && e2n_endpoint_ok("wss://room-staging.openagents.com:443/api/room/s1/");
+  #assert !e2n_endpoint_ok("ws://room.openagents.com/api/room/s1/") && !e2n_endpoint_ok("wss://room.openagents.com.evil.io/api/room/s1/");
+  #assert !e2n_endpoint_ok("wss://evilopenagents.com/api/room/s1/") && !e2n_endpoint_ok("wss://room.openagents.com/api/other/s1/") && !e2n_endpoint_ok("wss://room.openagents.com/api/room/s1");
+}
+
 // The seat ticket's ask: /api/playtest/room-ticket/CODE (a check's room) or the realm's
 // (?realm=everglade2: the directory places you), with this page's build and checkpoint 2.
 e2n_ask_ticket :: (n: [] E2Net) {
@@ -204,9 +222,22 @@ e2n_ask_ticket :: (n: [] E2Net) {
   listed := n[0].code_n == 0;
   k = wire_put(t[..], k, ifx listed then E2N_REALM else cast(string) n[0].code[0..<n[0].code_n]);
   if listed { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, E2N_REALM); k = net_put_build(t[..], wire_put(t[..], k, "&build=")); k = wire_put(t[..], k, "&checkpoint=2&rest=1"); }
+  else if e2n_realm_instance(cast(string) n[0].code[0..<n[0].code_n]) {
+    // the realm's own instance, asked again (a reconnect): naming the realm, the directory answers
+    // its shard and endpoint, or places you on a live shard when that one is down (#13179)
+    k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, E2N_REALM); k = wire_put(t[..], k, "&checkpoint=2&rest=1");
+  }
   else { k = wire_put(t[..], k, "?checkpoint=2&rest=1"); }   // rest=1: a profile 3 capture as it is (#13046)
   k = wire_put(t[..], k, "\n{}");
   if pipe_put(n[0].pipe[..], E2N_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
+}
+// An instance of the listed realm (everglade2-3), not a check's room (pair-e2-x-1).
+e2n_realm_instance :: (code: string) -> bool {
+  r := E2N_REALM;
+  return code.count > r.count + 1 && code[0..<r.count] == r && code[r.count] == '-';
+}
+#test "a reconnect names the realm for the realm's instances only" {
+  #assert e2n_realm_instance("everglade2-3") && !e2n_realm_instance("everglade2") && !e2n_realm_instance("pair-e2-ab-1");
 }
 // The ticket's answer: the ticket, the instance and shard the directory placed you in, your name.
 e2n_ticket :: (n: [] E2Net, answer: string) {
@@ -221,7 +252,11 @@ e2n_ticket :: (n: [] E2Net, answer: string) {
   if e2n_code_ok(room) && net_code_ok(room) {
     n[0].code_n = net_copy(n[0].code[..], room);
     m := n[0].host_n;
-    if !n[0].local_relay && shard >= 1 && shard <= 99 {
+    ep := net_json_field(answer, "endpoint");
+    if !n[0].local_relay && e2n_endpoint_ok(ep) && ep.count + 64 < NET_URL {
+      // the shard's own endpoint, from the directory (a room VM, #13179): wss://room.openagents.com/api/room/sK/
+      m = wire_put(n[0].url[..], 0, ep); m = wire_put(n[0].url[..], m, "relay/");
+    } else if !n[0].local_relay && shard >= 1 && shard <= 99 {
       m = wire_put(n[0].url[..], m, "/api/room/s"); d := wire_int(n[0].url[..], m, shard);
       for q: m + 1..<d { n[0].url[q - 1] = n[0].url[q]; }   // wire_int puts " N": the space goes
       m = d - 1;
@@ -287,6 +322,11 @@ e2n_named :: (n: [] E2Net, answer: string) -> E2nNamed {
   #assert cast(string) n[0].ticket[0..<n[0].ticket_n] == "abc.def";
   #assert cast(string) n[0].url[0..<n[0].url_n] == "wss://openagents.com/api/room/s4/relay/everglade/everglade2-3";
   #assert cast(string) n[0].name[0..<n[0].name_n] == "Ash Wood";
+  // a room VM's shard: the directory's endpoint, in place of the load balancer's path (#13179)
+  v: [1] E2Net;
+  e2n_facts(v[..], "url=https://openagents.com/worlds/everglade2\nplayer=p-1\n", false);
+  e2n_ticket(v[..], "200\n{\"ticket\":\"abc.def\",\"room\":\"everglade2-3\",\"shard\":2,\"endpoint\":\"wss://room.openagents.com/api/room/s2/\"}");
+  #assert cast(string) v[0].url[0..<v[0].url_n] == "wss://room.openagents.com/api/room/s2/relay/everglade/everglade2-3";
   // a check's room: the API's numbered instance of it, on the room server's own path
   l: [1] E2Net;
   e2n_facts(l[..], "url=http://127.0.0.1:8863/worlds/character-creator?relay=ws://localhost:8945&room=pair-e2-ab\n", false);

@@ -43,6 +43,7 @@ bool rooms_route(const request *q, PGconn *db, const char *rest);   // rooms.c: 
 #define ROOM_SEATS 16   // an Everglade room's seats: coax/web/room/room-relay.coax RELAY_SEATS
 bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, const char *build, char *code, size_t cap, int *shard, bool *full);
 int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until);
+bool rooms_endpoint(PGconn *db, int shard, char *out, size_t cap);   // rooms.c: a live VM shard's wss:// endpoint (#13179)
 bool npc_route(const request *q);         // npc.c
 bool piece_route(const request *q);       // npc.c: the Sandbox's set pieces
 bool voice_edit_route(const request *q);  // npc.c: an admin's spoken edit to a realm (eg-voice-edit)

@@ -19,6 +19,9 @@
 #                                                 everglade.world) to the VM or back to Cloud Run
 #   coax/web/room/vm-deploy.sh switch staging-vm|staging-run    the same for staging.openagents.com
 #   coax/web/room/vm-deploy.sh drain K [SECONDS]  drain production shard K on the VM
+#   coax/web/room/vm-deploy.sh kill K|staging     SIGKILL one unit (the failover check: systemd starts it
+#                                                 again, its pages come back through the directory)
+#   coax/web/room/vm-deploy.sh setup              the VM's packages, units, env files and Caddy again
 #   coax/web/room/vm-deploy.sh status
 #   coax/web/room/vm-deploy.sh wt                 the staging unit's WebTransport on UDP 443: Caddy's
 #                                                 certificate for room-staging, renewed daily (vm/wt-cert.sh)
@@ -88,6 +91,11 @@ secret() {   # the seat-ticket key, piped from Secret Manager into the VM's root
   echo "room-vm: the seat-ticket key is on $vm (/etc/oa-room/secret.env, root only)"
 }
 
+setup() {   # the VM's packages, unit, env files and Caddy (vm/setup.sh); a running unit keeps its env until restarted
+  COPYFILE_DISABLE=1 tar -C "$here/vm" -czf - oa-room@.service Caddyfile setup.sh |
+    on_vm 'd=$(mktemp -d) && tar -xzf - -C "$d" 2>/dev/null && cd "$d" && sudo sh setup.sh'
+}
+
 provision() {
   exists compute addresses describe "$address" --region "$region" || g compute addresses create "$address" --region "$region" --network-tier PREMIUM
   # the room's ports only: TCP and UDP 443 to anyone, the shards' ports to the load balancer and its
@@ -109,8 +117,7 @@ provision() {
   dns "$host"; dns "$staging_host"
   local until=$((SECONDS + 300))
   until on_vm true 2>/dev/null; do (( SECONDS < until )) || { echo "room-vm: no SSH to $vm" >&2; exit 1; }; sleep 5; done
-  COPYFILE_DISABLE=1 tar -C "$here/vm" -czf - oa-room@.service Caddyfile setup.sh |
-    on_vm 'd=$(mktemp -d) && tar -xzf - -C "$d" 2>/dev/null && cd "$d" && sudo sh setup.sh'
+  setup
   on_vm 'sudo test -s /etc/oa-room/secret.env' || secret
   exists compute instance-groups unmanaged describe "$group" --zone "$zone" || {
     g compute instance-groups unmanaged create "$group" --zone "$zone"
@@ -261,17 +268,24 @@ switch() {
   case "${1:-}" in
     vm)
       on_vm '[ -x /opt/oa-room/current/room ]' || { echo "room-vm: no production release: vm-deploy.sh deploy first" >&2; exit 1; }
+      setup >/dev/null   # the units' env files as setup.sh writes them, endpoints included
       for k in $(seq 1 "$shards"); do on_vm "sudo systemctl enable oa-room@s$k >/dev/null 2>&1; sudo systemctl start oa-room@s$k"; done
       for k in $(seq 1 "$shards"); do wait_healthy "$k"; lb_healthy "$(backend "s$k")"; done
       url_map vm
       echo "room-vm: production's rooms are on $vm; vm-deploy.sh switch run goes back to Cloud Run" ;;
     run)
       url_map run
-      # the pages on the VM hear "restarting" and sit again, now through Cloud Run; then the units stop,
-      # so their directory reports end
+      # Each running shard first restarts without its endpoint, so its next report clears it from the
+      # directory and new tickets name the load balancer's path again (#13179); then it drains (its
+      # pages hear "restarting" and sit again, now through Cloud Run) and stops, so its reports end.
       for k in $(seq 1 "$shards"); do
-        if active "$k"; then drain "$k" "${OA_ROOM_DRAIN_WAIT:-30}" || true; on_vm "sudo systemctl disable --now oa-room@s$k >/dev/null 2>&1" || true; fi
+        if active "$k"; then
+          on_vm "sudo sed -i '/^OA_ROOM_ENDPOINT=/d' /etc/oa-room/s$k.env && sudo systemctl restart oa-room@s$k" || true
+          wait_healthy "$k" 30 || true; sleep 6
+          drain "$k" "${OA_ROOM_DRAIN_WAIT:-30}" || true; on_vm "sudo systemctl disable --now oa-room@s$k >/dev/null 2>&1" || true
+        fi
       done
+      echo "room-vm: vm-deploy.sh setup puts the shards' endpoints back before the next switch vm"
       echo "room-vm: production's rooms are on Cloud Run (oa-room, oa-room-2..$shards)" ;;
     staging-vm)
       wait_healthy staging 10; lb_healthy "$(backend staging)"; url_map staging-vm
@@ -303,6 +317,9 @@ case "${1:-}" in
   rollback) rollback ;;
   switch) shift; switch "$@" ;;
   drain) shift; drain "${1:?usage: vm-deploy.sh drain K [SECONDS]}" "${2:-$drain_wait}" ;;
+  kill) shift; u="${1:?usage: vm-deploy.sh kill K|staging}"; [[ "$u" == staging ]] || u="s$u"
+    on_vm "sudo systemctl kill -s KILL oa-room@$u"; echo "room-vm: oa-room@$u killed" ;;
+  setup) setup ;;
   status) status ;;
   *) sed -n '2,26p' "$0" >&2; exit 2 ;;
 esac
