@@ -199,7 +199,10 @@ Each phase ends with every existing check and golden unchanged.
 1. **Move.** Done 2026-11-10: `apps/shared/zeron/` is now `components/zeron/`,
    with no content change;
    the web, the Mac app and Aethyrforge load it from there.
-2. **Split Markdown first.** `core/markdown.coax` (parse),
+2. **Split Markdown first.** Started 2026-11-10: the parser is
+   `core/markdown.coax` and passes its checks with no drawing code loaded;
+   wrapping and highlighting are still in `zeron/markdown.coax`. Next:
+   `core/markdown.coax` (parse),
    `layout/text.coax` (wrap), `kit/markdown.coax` (paint), the display list
    and `backend/gpu.coax`. Markdown is the proof: when chat's pictures don't
    change, the layers are right. Then the rest of the chat set the same way.
