@@ -183,6 +183,17 @@ local_run() {   # the Mac's own slots
   exec "$@"
 }
 
+# What one call made, removed: its scratch folder, its bundle's ref and its
+# token refresher. Each call's own (the names hold its folder and its pid).
+tmp=""; bref=""; refresher=""; cleanup_root=""
+cleanup() {
+  [[ -z "$refresher" ]] || { pkill -P "$refresher" 2> /dev/null; kill "$refresher" 2> /dev/null; refresher=""; }
+  [[ -z "$bref" || -z "$cleanup_root" ]] || git -C "$cleanup_root" update-ref -d "$bref" 2> /dev/null
+  bref=""
+  [[ -z "$tmp" ]] || rm -rf "${tmp:?}"
+  tmp=""
+}
+
 run() {
   local fallback=1 force_local=0 at_commit="" out_dir=""
   while [[ $# -gt 0 ]]; do
@@ -203,15 +214,22 @@ run() {
   elif [[ "$force_local" == 1 || "${OA_REMOTE:-}" == 0 ]]; then local_run "" "$@"; fi
   fail() {   # why CMD...: the Mac's slots run CMD (or, with --no-fallback, exit 97)
     local why="$1"; shift
-    [[ -z "${tmp:-}" ]] || rm -rf "$tmp"
+    cleanup   # local_run execs: the traps go with this shell
     if [[ "$fallback" == 1 ]]; then local_run "$why" "$@"; else say "$why"; exit 97; fi
   }
   local root rel started
   started=$(now)
   root="$(git rev-parse --show-toplevel 2> /dev/null)" || { say "not in a Git checkout"; exit 2; }
   rel="$(git rev-parse --show-prefix)"; rel="${rel%/}"; [[ -n "$rel" ]] || rel=.
-  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/oa-remote.XXXXXXXX")"
-  trap 'rm -rf "$tmp"' EXIT
+  # This call's scratch folder (#13181): never inside the checkout, where the
+  # snapshot would take it and every later call would send it again, and
+  # removed when the call ends however it ends (done, failed, Ctrl-C, kill).
+  # Many calls run side by side: each removes only its own folder and ref.
+  local base="${TMPDIR:-/tmp}"; base="$(cd "$base" 2> /dev/null && pwd -P)" || base=/tmp
+  case "$base/" in "$(cd "$root" && pwd -P)"/*) base=/tmp ;; esac
+  tmp="$(mktemp -d "$base/oa-remote.XXXXXXXX")" || { say "could not make a scratch folder in $base"; exit 2; }
+  trap cleanup EXIT
+  trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP
   local tree commit
   if [[ -n "$at_commit" ]]; then
     rel=.
@@ -222,11 +240,16 @@ run() {
     # ignored ones), as a commit on HEAD made with a scratch index, so the
     # checkout's own index and refs don't change. Its tree is the job's source
     # fingerprint.
-    local big
-    big="$(cd "$root" && git ls-files -o --exclude-standard -z | xargs -0 du -k 2> /dev/null | awk '{ s += $1 } END { print s * 1024 }')"
+    # build-remote/ is scratch of remote builds (a wrapper's temp folders, at
+    # any depth): never part of a job's sources (#13181). It is ignored here
+    # on top of the checkout's own ignores and this user's global ones.
+    local big global
+    global="$(git -C "$root" config --path core.excludesFile 2> /dev/null)" || global="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
+    { [[ ! -f "$global" ]] || cat "$global"; echo; echo 'build-remote/'; } > "$tmp/exclude"
+    big="$(cd "$root" && git -c core.excludesFile="$tmp/exclude" ls-files -o --exclude-standard -z | xargs -0 du -k 2> /dev/null | awk '{ s += $1 } END { print s * 1024 }')"
     (( big < 200000000 )) || fail "untracked files hold $((big / 1000000)) MB (more than 200 MB): too much to send" "$@"
     cp "$(git -C "$root" rev-parse --path-format=absolute --git-path index)" "$tmp/index" 2> /dev/null
-    tree="$(cd "$root" && GIT_INDEX_FILE="$tmp/index" git add -A . && GIT_INDEX_FILE="$tmp/index" git write-tree)" || fail "could not snapshot the checkout" "$@"
+    tree="$(cd "$root" && GIT_INDEX_FILE="$tmp/index" git -c core.excludesFile="$tmp/exclude" add -A . && GIT_INDEX_FILE="$tmp/index" git write-tree)" || fail "could not snapshot the checkout" "$@"
     commit="$(cd "$root" && GIT_AUTHOR_NAME=remote GIT_AUTHOR_EMAIL=remote@localhost GIT_COMMITTER_NAME=remote GIT_COMMITTER_EMAIL=remote@localhost \
       GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z' git commit-tree "$tree" -p HEAD -m 'remote.sh snapshot')" || fail "could not snapshot the checkout" "$@"
   fi
@@ -234,7 +257,8 @@ run() {
   # already has, that commit alone (its parents come with the host's fetch of
   # main). The ref is named for this process too, so jobs on one commit side by
   # side don't delete each other's.
-  local bref="refs/oa-remote/$$/$commit" since=(origin/main)
+  local since=(origin/main)
+  bref="refs/oa-remote/$$/$commit"; cleanup_root="$root"
   if git -C "$root" merge-base --is-ancestor "$commit" origin/main 2> /dev/null; then
     read -r -a since <<< "$(git -C "$root" rev-parse "$commit^@")"
   fi
@@ -242,6 +266,11 @@ run() {
     { git bundle create "$tmp/bundle" "$bref" --not "${since[@]}" > /dev/null 2>&1 || \
       git bundle create "$tmp/bundle" "$bref" > /dev/null 2>&1; }; s=$?; git update-ref -d "$bref"; exit $s) \
     || fail "could not bundle the snapshot" "$@"
+  bref=""
+  local bundle_kb=$(( ($(wc -c < "$tmp/bundle") + 1023) / 1024 ))
+  # OA_REMOTE_DRY_RUN=1: the snapshot and its bundle only, nothing sent (the
+  # cleanup check, and measuring what a call would send).
+  if [[ "${OA_REMOTE_DRY_RUN:-}" == 1 ]]; then echo "snapshot $tree bundle $bundle_kb KB"; exit 0; fi
   # The command, with this checkout's path written @ROOT@ (the host's tree
   # replaces it), and the Coax build settings it would have seen here.
   local argv=() a env_vars=() v
@@ -281,7 +310,7 @@ run() {
     # The cache token lasts an hour, and the job may run longer or have waited
     # for a slot: a new one a minute in, then every 15 minutes (host-job.sh
     # and shared-cache.sh read ~/tokens/JOB first).
-    local refresher=""
+    refresher=""
     if [[ -n "$shared_token" ]]; then
       ( pause=60
         while sleep "$pause"; do
@@ -296,7 +325,7 @@ run() {
     status=$?
     # Its sleep too: an orphaned sleep keeps the caller's descriptors, and with
     # them a lock such as after.sh's (#13102).
-    [[ -z "$refresher" ]] || { pkill -P "$refresher" 2> /dev/null; kill "$refresher" 2> /dev/null; wait "$refresher" 2> /dev/null; }
+    [[ -z "$refresher" ]] || { pkill -P "$refresher" 2> /dev/null; kill "$refresher" 2> /dev/null; wait "$refresher" 2> /dev/null; refresher=""; }
     [[ $status == 96 && $nowait == 1 ]] || break
     # A command of its own that exited 96 left its result.
     ssh_to "$name" "$ip" "grep -qx 96 ~/results/$job/status" < /dev/null 2> /dev/null && break
@@ -318,7 +347,7 @@ run() {
   local back; back="$(ssh_to "$name" "$ip" "cat ~/results/$job/times" < /dev/null 2> /dev/null)"
   local total=$(( $(now) - started ))
   record job "$name" "$total" "status $status: $*"
-  say "$name: $total s in all (snapshot and send $((sent - started)) s; ${back:-no timings}); about \$$(awk -v s="$total" -v r="$rate" 'BEGIN { printf "%.3f", s / 3600 * r }')"
+  say "$name: $total s in all (snapshot and send $((sent - started)) s, $bundle_kb KB; ${back:-no timings}); about \$$(awk -v s="$total" -v r="$rate" 'BEGIN { printf "%.3f", s / 3600 * r }')"
   exit "$status"
 }
 

@@ -8,6 +8,8 @@ target/
 /.coder/
 
 # Local build products; measurement records and fixtures stay tracked.
+# Scratch of remote builds (coax/remote/remote.sh never sends it, #13181).
+build-remote/
 /swift/lev-bridge/.build/
 # Python bytecode anywhere. Recorded bench traces that captured bytecode
 # as produced artifacts stay tracked (their manifests hash them).

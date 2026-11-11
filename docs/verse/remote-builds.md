@@ -411,6 +411,38 @@ heavy.sh) when:
 
 `--no-fallback` exits 97 in those cases instead.
 
+## What a call leaves behind
+
+Issue: [#13181](https://github.com/OpenAgentsInc/openagents/issues/13181).
+
+Nothing. Each call keeps its scratch files (the index copy, the bundle, the
+job's spec) in a folder of its own, `oa-remote.XXXXXXXX` in `TMPDIR`, and
+removes that folder, its bundle's ref and its token refresher when it ends:
+done, failed, fallen back to the Mac, or stopped by Ctrl-C, `kill` (TERM) or
+a closed terminal (HUP). A call removes only its own folder, so any number of
+agents can call `remote.sh` at once. A `TMPDIR` inside the checkout is not
+used (the folder would be part of the next snapshot); the call uses `/tmp`.
+
+The snapshot never takes `build-remote/`, at any depth, whatever the
+checkout's ignores say. Before this, a wrapper had left 1,044 temp folders
+(104 MB) in `build-remote/`, and every call sent them to the host.
+
+`coax/remote/test-remote.sh` checks this with no host or network: a scratch
+checkout, a fake `gcloud` and `OA_REMOTE_DRY_RUN=1` (the snapshot and its
+bundle only; it prints `snapshot TREE bundle N KB`). It fails if any case
+leaves a folder, a ref or a change in the checkout. `check.sh reports` runs
+it, and so does the after-landing check of a change to `coax/remote/`. The
+report line of every call now says how much it sent.
+
+Measured on 2026-11-11, `remote.sh run --no-fallback -- true` from a
+checkout with 1,044 folders (104 MB) in `build-remote/`, on oa-build-1:
+
+| | Before | After |
+| --- | --- | --- |
+| Bundle sent | 104,511,137 bytes | 10 KB |
+| Snapshot and send | 65 s | 0 s |
+| The whole call | 71 s | 5 s |
+
 ## Cost
 
 List prices, us-central1, from the Cloud Billing catalog on 2026-11-09:

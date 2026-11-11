@@ -26,7 +26,7 @@
 #   coax/remote/check.sh modules I/N      the I-th of N parts of the web build's modules
 #                                         (wasm.sh alone, as build.sh runs each)
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
-#   coax/remote/check.sh reports          tools-check, everglade-parity, the committed
+#   coax/remote/check.sh reports          tools-check, test-remote.sh, everglade-parity, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
 #   coax/remote/check.sh visuals          check-visuals alone (the web build's first stop:
@@ -203,6 +203,7 @@ changed_since() {   # the files changed since $arg, in $out/changed
 }
 reports() {
   step tools-check coax/web/tool.sh tools-check || status=1
+  step remote-cleanup coax/remote/test-remote.sh || status=1
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
   visuals
@@ -236,6 +237,7 @@ web_since() {
 # The report checks for a change: a tool file or a zone's source can be any
 # file but a document; the shaders follow the web build's inputs.
 reports_since() {
+  if grep -q '^coax/remote/' "$out/changed"; then step remote-cleanup coax/remote/test-remote.sh || status=1; fi
   if grep -qv '\.md$' "$out/changed"; then
     step tools-check coax/web/tool.sh tools-check || status=1
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
