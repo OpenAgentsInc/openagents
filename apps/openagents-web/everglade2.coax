@@ -194,6 +194,9 @@ e2_ground :: (s: [] E2) {
 // The clips, once: the shared ones and the bow's draw.
 e2_bake :: (s: [] E2, d: [] figs.People) #export_c #effects(all) {
   figs.people_load(d); figs.bd_bake(d, s[0].bake[..], false); figs.bd_bake_bow(d, s[0].bake[..]);
+  // the hands' rows of every baked frame, for what a figure holds (cc.held_pieces through figs.bd_hand):
+  // without them a bow, a sword and the Guard's blade stand at their owner's feet
+  figs.bd_keep_hands(s[0].bodies[..], d, s[0].bake[..]);
 }
 e2_layers_side :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].width >= 840 * s[0].k then 1024 else 512; }
 // Your saved character (message 16, the browser's own copy) or a kept appearance (4); the page's

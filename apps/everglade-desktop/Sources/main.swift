@@ -12,7 +12,9 @@
 //       without --scene it is the list of worlds. In Everglade (--scene 1) nothing leaves this
 //       Mac during a shot unless --online is given (the room is then the site's, as a guest's
 //       browser would join it), nothing of yours is kept, and --do STEPS plays input first: `key:w:2` holds a key two seconds,
-//       `tap:640,400` clicks a point, `text:Ada` types, `wait:1` waits; steps are split by `;`
+//       `tap:640,400` clicks a point, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
+//       mouselook asks, `press:2:1` holds a mouse button a second at the middle, `turn:40,0` moves
+//       the held mouse; steps are split by `;`. --frames DIR writes every sixth frame after `record`
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
 //       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
@@ -333,7 +335,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var golemsWait: Double = 0   // --golems in a shot: seconds to let the board read the agents first
   var nextReply = ""
   var nextRuns: Int32 = 0
-  var doSteps = ""
+  var doSteps = "", framesDir = "", shotLooks = false, recording = false
   func shot(to path: String, width: Int, height: Int, seconds: Float) -> Bool {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
     d.usage = [.renderTarget, .shaderRead]; d.storageMode = .shared
@@ -376,7 +378,18 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       repeat { render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < read + golemsWait && readingGolems || CACurrentMediaTime() < read + 4.5
       if golemsView != 0 { nxp_golems_view(next, golemsView) }
     }
-    func run(_ time: Float) { var left = time; while left > 0 { let step = min(left, inRealm ? 1.0 / 60 : 0.05); render(pass, size: CGSize(width: width, height: height), scale: 2, dt: step) { _ in }; left -= step } }
+    // In a shot nobody holds the pointer, so the harness answers the realm's mouselook as a held
+    // pointer would (--do look), and writes a numbered frame every few when --frames DIR is given.
+    var frameCount = 0
+    func run(_ time: Float) {
+      var left = time
+      while left > 0 {
+        let step = min(left, inRealm ? 1.0 / 60 : 0.05); render(pass, size: CGSize(width: width, height: height), scale: 2, dt: step) { _ in }; left -= step
+        if let page, inRealm, shotLooks { let want = page.mouselook(); if want == 2 && !lookHeld { lookHeld = true; page.pointerLock(1) } else if want != 2 && lookHeld { lookHeld = false; page.pointerLock(0) } }
+        frameCount += 1
+        if !framesDir.isEmpty && recording && frameCount % 6 == 0 { _ = save(texture, width, height, framesDir + String(format: "/f%04d.png", frameCount)) }
+      }
+    }
     run(seconds)
     // --do: input for the realm, a step at a time, each followed by the frames it takes.
     for step in doSteps.split(separator: ";") {
@@ -393,15 +406,25 @@ final class WorkshopView: MTKView, MTKViewDelegate {
         if xy.count == 2 { let at = CGPoint(x: xy[0], y: xy[1]); page.pointer(at, phase: 1, button: 0); run(1.0 / 60); page.pointer(at, phase: 0, button: 0); run(1.0 / 60); page.pointer(at, phase: 2, button: 0); run(0.1) }
       }
       else if verb == "text", part.count > 1 { page.text(part[1]); run(0.1) }
+      else if verb == "look" { shotLooks = true; run(0.2) }
+      else if verb == "turn", part.count > 1 { let xy = part[1].split(separator: ",").compactMap { Double($0) }; if xy.count == 2 { page.look(CGPoint(x: xy[0], y: xy[1])); run(0.1) } }
+      else if verb == "record" { recording = true }
+      else if verb == "press", part.count > 1, let b = Int32(part[1]) {   // a mouse button at the middle of the view, held SECONDS
+        let mid = CGPoint(x: CGFloat(width) / 4, y: CGFloat(height) / 4)
+        page.pointer(mid, phase: 0, button: b); run(part.count > 2 ? Float(part[2]) ?? 0.05 : 0.05); page.pointer(mid, phase: 2, button: b); run(1.0 / 60)
+      }
     }
     render(pass, size: CGSize(width: width, height: height), scale: 2, dt: 0) { _ in }
+    nxp_close(next)
+    page?.close(); try? FileManager.default.removeItem(atPath: shotStore)
+    return save(texture, width, height, path)
+  }
+  func save(_ texture: MTLTexture, _ width: Int, _ height: Int, _ path: String) -> Bool {
     var bytes = [UInt8](repeating: 0, count: width * height * 4)
     texture.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
     let info = CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
     guard let ctx = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info),
           let image = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return false }
-    nxp_close(next)
-    page?.close(); try? FileManager.default.removeItem(atPath: shotStore)
     return (try? png.write(to: URL(fileURLWithPath: path))) != nil
   }
 
@@ -562,6 +585,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { view.nextRuns = v }
   view.pageShot = true; view.pageOffline = !args.contains("--online")
   if let d = args.firstIndex(of: "--do"), d + 1 < args.count { view.doSteps = args[d + 1] }
+  if let d = args.firstIndex(of: "--frames"), d + 1 < args.count { view.framesDir = args[d + 1] }
   if let w = args.firstIndex(of: "--scene"), w + 1 < args.count, let v = Int32(args[w + 1]) { eg_go(view.state, v) }
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
