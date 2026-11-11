@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** Phase and declaration reports, the Wasm
 > build's per-step cache, split C emission, capacity diagnostics and native
-> checks (behind `COAX_NATIVE_CHECKS=1`) run today. R22's general five-case
+> checks (the default; `COAX_NATIVE_CHECKS=0` turns them off) run today. R22's general five-case
 > kernel and startup budgets remain planned.
 
 Measure the stage that slows an edit before changing its budget. The compiler
@@ -129,10 +129,11 @@ not a resident incremental compiler. Release linking uses 8 LTO partitions.
 ## Checks as native code
 
 Most of a large unit's cold compile goes to its checks. The evaluator walks
-the checked syntax tree and pays for every node it visits. With
-`COAX_NATIVE_CHECKS=1`, the compiler instead emits the selected checks and
-the procedures they call as C, compiles that C in parallel parts, and runs
-the binary as several processes. A check that passes natively counts as
+the checked syntax tree and pays for every node it visits. So the compiler
+emits the selected checks and the procedures they call as C, compiles that C
+in parallel parts, and runs the binary as several processes. That is the
+default for every unit; `COAX_NATIVE_CHECKS=0` leaves every check to the
+evaluator. A check that passes natively counts as
 passed. Every other check (a trap, a refusal, a time limit, or one that
 reaches an unevaluated `#run`) runs in the evaluator, so failures still get
 the evaluator's diagnostic and `#forall` counterexample.

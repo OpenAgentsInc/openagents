@@ -1,12 +1,18 @@
-// Native checks (#13122, coax/docs/native-checks.md). With COAX_NATIVE_CHECKS
-// set, a compile's checks (#authority, library and coax test) run as native
-// code first: the program's procedures and the checks' bodies, emitted by the
-// ordinary C emitter (emit_check_binary_c), compiled by the host C compiler
-// and run by a driver main. A check that passes there is taken as passed, with
-// the procedures it ran; every other check (a trap, a refusal for output or a
+// Native checks (#13122, #13143, coax/docs/native-checks.md). A compile's
+// checks (#authority, library and coax test) run as native code first: the
+// program's procedures and the checks' bodies, emitted by the ordinary C
+// emitter (emit_check_binary_c), compiled by the host C compiler and run by a
+// driver main. A check that passes there is taken as passed, with the
+// procedures it ran; every other check (a trap, a refusal for output or a
 // host effect, a crash, a time limit, a form the binary can't hold) runs in
 // the evaluator as before, so its diagnostics are the evaluator's.
-//   COAX_NATIVE_CHECKS=1        native first, the evaluator for the rest
+//   COAX_NATIVE_CHECKS unset    native first when that pays: a run of at least
+//                               COAX_NATIVE_CHECKS_MIN checks (default 16), or
+//                               one holding a check with #steps or #traversal.
+//                               A smaller run costs the evaluator less than
+//                               the C compiler costs, so it stays there.
+//   COAX_NATIVE_CHECKS=1        native first, whatever the run's size
+//   COAX_NATIVE_CHECKS=0        the evaluator alone
 //   COAX_NATIVE_CHECKS=compare  both, for every check; disagreements are
 //                               reported (COAX_NATIVE_CHECKS_REPORT FILE
 //                               appends one JSON line per check)
@@ -29,9 +35,15 @@ static bool g_native_blocked = false;  // a mutation-lowered compile: the evalua
 static NativeMode native_mode() {
   if (g_native_blocked) return NativeMode::off;
   const char *v = getenv("COAX_NATIVE_CHECKS");
-  if (!v || !*v || !strcmp(v, "0") || !strcmp(v, "off")) return NativeMode::off;
+  if (!v || !*v) return NativeMode::on;
+  if (!strcmp(v, "0") || !strcmp(v, "off")) return NativeMode::off;
   if (!strcmp(v, "compare")) return NativeMode::compare;
   return NativeMode::on;
+}
+// Unset: native code runs only the runs it pays for (native_run's first lines).
+static bool native_sized() {
+  const char *v = getenv("COAX_NATIVE_CHECKS");
+  return !v || !*v;
 }
 
 struct NativeResult {
@@ -46,7 +58,7 @@ struct NativeResult {
 // native code gave is never taken by an evaluator-only compile, or back.
 static std::string native_key() {
   const NativeMode m = native_mode();
-  return m == NativeMode::off ? "" : m == NativeMode::on ? " native=1" : " native=compare";
+  return m == NativeMode::off ? "" : m == NativeMode::compare ? " native=compare" : native_sized() ? " native=sized" : " native=1";
 }
 static const char *native_state_name(NativeResult::State s) {
   static const char *names[] = {"not-run", "passed", "trapped", "refused", "timed-out", "crashed"};
@@ -59,6 +71,7 @@ struct NativeRun {
   size_t eligible = 0, passed = 0;
   double emit = 0, compile = 0, run = 0;
   std::string why;  // why no check ran natively ("" when they did)
+  std::string small;  // why a default run left its checks to the evaluator ("" when it didn't): said only in the trace
 };
 static NativeRun g_native;
 static EmitOptions g_native_opts;  // the compile's options (set by front_end)
@@ -151,10 +164,25 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
               " emit %.2f s, compile %.2f s, run %.2f s%s%s (first: %.*s)\n",
               g_native.eligible, n, states[NativeResult::passed], states[NativeResult::trapped], states[NativeResult::refused],
               states[NativeResult::timed_out], states[NativeResult::crashed], g_native.emit, g_native.compile, g_native.run,
-              g_native.why.empty() ? "" : "; ", g_native.why.c_str(), first ? (int)first->name.count : 0, first ? first->name.data : "");
+              g_native.why.empty() && g_native.small.empty() ? "" : "; ", g_native.why.empty() ? g_native.small.c_str() : g_native.why.c_str(), first ? (int)first->name.count : 0, first ? first->name.data : "");
       if (out != stderr) fclose(out);
     }
   } trace{n};
+  // The C compiler costs a few tenths of a second, which the evaluator spends
+  // on a couple of million steps. By default a run goes native only when it
+  // is big enough to pay that back, or says it is heavy (#steps, #traversal).
+  if (native_sized()) {
+    const char *min_env = getenv("COAX_NATIVE_CHECKS_MIN");
+    const size_t least = min_env && *min_env ? (size_t)strtoull(min_env, nullptr, 10) : 16;
+    size_t wanted = 0;
+    bool heavy = false;
+    for (size_t i = 0; i < n; i++) {
+      if (!want[i]) continue;
+      wanted++;
+      heavy = heavy || file->checks[(int32_t)i]->steps || file->checks[(int32_t)i]->traversal;
+    }
+    if (wanted < least && !heavy) { g_native.small = "fewer than " + std::to_string(least) + " checks, none with #steps or #traversal: the evaluator runs them"; return; }
+  }
   // The procedures every struct default calls (the binary's init helpers
   // hold them all), then each eligible check's body and what it calls.
   std::set<const ProcDecl *> have;
@@ -249,6 +277,8 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   const char *jobs_env = getenv("COAX_NATIVE_CHECKS_JOBS");
   size_t jobs = jobs_env && *jobs_env ? (size_t)strtoull(jobs_env, nullptr, 10) : std::min<size_t>((size_t)available_cores(), std::min<size_t>(16, (rows + 7) / 8));
   jobs = std::max<size_t>(1, std::min(jobs, rows));
+  std::set<const ProcDecl *> check_bodies;
+  for (const CheckDecl *c : file->checks) if (c->proc) check_bodies.insert(c->proc);
   struct Worker {
     size_t start;              // the next check this process runs
     pid_t pid = -1;
@@ -295,7 +325,8 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
         while (*end == ' ') end++;
         if (!*end) break;
         const size_t id = strtoull(end, &end, 10);
-        if (id < plan.procedures.size()) out.executed.push_back(plan.procedures[id]);
+        // A check's own body is no procedure the check ran (the evaluator names only what a call entered).
+        if (id < plan.procedures.size() && !check_bodies.count(plan.procedures[id])) out.executed.push_back(plan.procedures[id]);
       }
       g_native.passed++;
       k.start = (size_t)k.current + jobs;

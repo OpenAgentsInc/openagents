@@ -27,7 +27,9 @@
 //   - the cache stays within COAX_CHECK_CACHE_FILES entries, oldest out first;
 //   - a check near its step budget (tests/check-reuse/near) is reused with
 //     the note a cold compile prints: a comment in a loaded file runs no
-//     check (#13123).
+//     check (#13123). Those compiles run with COAX_NATIVE_CHECKS=0; every
+//     other step runs its checks as native code (COAX_NATIVE_CHECKS=1: by
+//     default a run this small stays in the evaluator, #13143).
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/args.coax";
@@ -69,7 +71,7 @@ run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
 // per-check steps agree (else "different"; a compile that reused the whole
 // pass lists no checks, so only the rest is compared).
 // edit FILE FROM TO: replaces the line FROM in $D/w/FILE with TO.
-FUNCTIONS :: "one() { ok=$1; on=$2; shift 2; COAX_CHECK_CACHE=\"$D/$ok\" \"${COMPILER:-$C}\" \"$@\" --timings \"$D/$on.json\" > \"$D/$on.out\" 2> \"$D/$on.err\"; echo $? > \"$D/$on.status\"; grep -o '\"steps\":[0-9]*' \"$D/$on.json\" > \"$D/$on.steps\"; }; chk() { n=$1; c=$2; shift 2; one ${CACHE:-cache} $n $c \"${MAIN:-$D/w/main.coax}\" \"$@\"; one cold-$n cold-$n $c \"${MAIN:-$D/w/main.coax}\" \"$@\"; same=different; cmp -s \"$D/$n.out\" \"$D/cold-$n.out\" && cmp -s \"$D/$n.err\" \"$D/cold-$n.err\" && cmp -s \"$D/$n.status\" \"$D/cold-$n.status\" && { [ ! -s \"$D/$n.steps\" ] || cmp -s \"$D/$n.steps\" \"$D/cold-$n.steps\"; } && same=same; echo \"$n status=$(cat \"$D/$n.status\") $(grep -o '\"check_reuse\":{[^}]*}' \"$D/$n.json\" | sed 's/[^0-9,]//g; s/^/reused=/; s/,/ run=/') $same\"; }; edit() { sed \"s|^$2\\$|$3|\" \"$D/w/$1\" > \"$D/w/$1.new\" && mv \"$D/w/$1.new\" \"$D/w/$1\"; }";
+FUNCTIONS :: "export COAX_NATIVE_CHECKS=1; one() { ok=$1; on=$2; shift 2; COAX_CHECK_CACHE=\"$D/$ok\" \"${COMPILER:-$C}\" \"$@\" --timings \"$D/$on.json\" > \"$D/$on.out\" 2> \"$D/$on.err\"; echo $? > \"$D/$on.status\"; grep -o '\"steps\":[0-9]*' \"$D/$on.json\" > \"$D/$on.steps\"; }; chk() { n=$1; c=$2; shift 2; one ${CACHE:-cache} $n $c \"${MAIN:-$D/w/main.coax}\" \"$@\"; one cold-$n cold-$n $c \"${MAIN:-$D/w/main.coax}\" \"$@\"; same=different; cmp -s \"$D/$n.out\" \"$D/cold-$n.out\" && cmp -s \"$D/$n.err\" \"$D/cold-$n.err\" && cmp -s \"$D/$n.status\" \"$D/cold-$n.status\" && { [ ! -s \"$D/$n.steps\" ] || cmp -s \"$D/$n.steps\" \"$D/cold-$n.steps\"; } && same=same; echo \"$n status=$(cat \"$D/$n.status\") $(grep -o '\"check_reuse\":{[^}]*}' \"$D/$n.json\" | sed 's/[^0-9,]//g; s/^/reused=/; s/,/ run=/') $same\"; }; edit() { sed \"s|^$2\\$|$3|\" \"$D/w/$1\" > \"$D/w/$1.new\" && mv \"$D/w/$1.new\" \"$D/w/$1\"; }";
 
 // The corpus step: for each file, cold and warm coax c into one cache; for an
 // #authority file, a copy of its directory with a comment appended to it,
@@ -164,12 +166,13 @@ tool_main :: () -> int #export_c #effects(all) {
   t = cast(string) out[0..<r.out_n];
   bad += check(has(t, "files=5\nfiles=5\nfiles=5\nfiles=5\nsmall status=0 reused=") && has(t, " same"), "the cache stays within its limit and a compile after an eviction is a cold one's");
 
+  // Steps are the evaluator's: these compiles turn native checks off.
   // A check near its step budget prints a note (#13123); its record keeps
   // the note, with each consumer as an item and a token in it. A comment
   // appended to the zone, or lines added above the engine, run no check and
   // print the note a cold compile prints, at the consumers' new lines; an
   // edit to add() runs only the check that reaches it.
-  r = run(compiler, dir, "export CACHE=near MAIN=\"$D/n/main.coax\"; mkdir -p \"$D/n\" && cp tests/check-reuse/near/*.coax \"$D/n/\" && chk near-cold check; grep -q 'compile-time steps:' \"$D/near-cold.err\" && echo noted; printf '\\n// edited\\n' >> \"$D/n/zone.coax\" && chk near-comment check; { printf '// moved\\n\\n'; cat \"$D/n/engine.coax\"; } > \"$D/n/engine.new\" && mv \"$D/n/engine.new\" \"$D/n/engine.coax\" && chk near-moved check; grep -o 'engine.coax:[0-9]*' \"$D/near-moved.err\" | head -1; sed 's/return a + b;/return b + a;/' \"$D/n/engine.coax\" > \"$D/n/engine.new\" && mv \"$D/n/engine.new\" \"$D/n/engine.coax\" && chk near-engine check", out[..]);
+  r = run(compiler, dir, "export COAX_NATIVE_CHECKS=0 CACHE=near MAIN=\"$D/n/main.coax\"; mkdir -p \"$D/n\" && cp tests/check-reuse/near/*.coax \"$D/n/\" && chk near-cold check; grep -q 'compile-time steps:' \"$D/near-cold.err\" && echo noted; printf '\\n// edited\\n' >> \"$D/n/zone.coax\" && chk near-comment check; { printf '// moved\\n\\n'; cat \"$D/n/engine.coax\"; } > \"$D/n/engine.new\" && mv \"$D/n/engine.new\" \"$D/n/engine.coax\" && chk near-moved check; grep -o 'engine.coax:[0-9]*' \"$D/near-moved.err\" | head -1; sed 's/return a + b;/return b + a;/' \"$D/n/engine.coax\" > \"$D/n/engine.new\" && mv \"$D/n/engine.new\" \"$D/n/engine.coax\" && chk near-engine check", out[..]);
   t = cast(string) out[0..<r.out_n];
   before := bad;
   bad += check(has(t, "near-cold status=0 reused=0 run=3 same\nnoted\n"), "a check near its step budget prints a note");

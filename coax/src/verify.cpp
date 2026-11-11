@@ -1361,7 +1361,10 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   laps.lap("authority.reuse");
   // Native checks (native_run.cpp): each check not reused that passes as
   // native code stands in for a child's report, with no steps or storage.
+  // Run: every check the record didn't answer, in native code or the evaluator.
+  if (g_check_reuse.on) g_check_reuse.ran += n - (size_t)std::count(prefilled.begin(), prefilled.end(), true);
   std::vector<bool> native(n, false);
+  const uint64_t start_slots = slots, start_containers = containers, start_strings = strings;
   if (native_mode() != NativeMode::off) {
     std::vector<bool> want(n);
     for (size_t i = 0; i < n; i++) want[i] = !prefilled[i];
@@ -1389,7 +1392,6 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     }
     laps.lap("authority.native");
   }
-  if (g_check_reuse.on) g_check_reuse.ran += n - (size_t)std::count(prefilled.begin(), prefilled.end(), true);
   size_t next = 0;
   fflush(stdout);
   fflush(stderr);
@@ -1511,7 +1513,9 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       if (check_ids[i].empty()) continue;
       const auto old = record.entries.find(check_ids[i]);
       const std::vector<uint64_t> &report = reports[i];
-      if (prefilled[i] || report.empty() || !report[PASSED] || report[SHARED] || report[DIAGNOSTICS]) {
+      // A check reused from the record keeps its entry; one that passed in a
+      // child or as native code (its steps and storage peaks are 0) gets one.
+      if ((prefilled[i] && !native[i]) || report.empty() || !report[PASSED] || report[SHARED] || report[DIAGNOSTICS]) {
         if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
         continue;
       }
@@ -1534,6 +1538,11 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       const size_t from[ReuseRecord::NUMBERS] = {STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS,
                                                  END_SLOTS, END_CONTAINERS, END_STRINGS};
       for (size_t k = 0; k < ReuseRecord::NUMBERS; k++) e.numbers[k] = report[from[k]];
+      if (native[i]) {  // native code holds no evaluator storage: the record says what the key's start line says
+        e.numbers[ReuseRecord::PEAK_SLOTS] = e.numbers[ReuseRecord::END_SLOTS] = start_slots;
+        e.numbers[ReuseRecord::PEAK_CONTAINERS] = e.numbers[ReuseRecord::END_CONTAINERS] = start_containers;
+        e.numbers[ReuseRecord::PEAK_STRINGS] = e.numbers[ReuseRecord::END_STRINGS] = start_strings;
+      }
       kept.entries[check_ids[i]] = std::move(e);
       changed = true;
     }

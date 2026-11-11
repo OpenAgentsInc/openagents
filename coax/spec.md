@@ -124,7 +124,7 @@ identified only through their environment and toolchain, not content-pinned.
 The evaluator uses the checked AST. Bytecode is not required to prove
 compile-time semantics; adopt an internal bytecode representation only if
 profiling justifies its implementation and debugging costs. Measured cost
-went to checks, and checks can run as native code instead (#13122,
+went to checks, so checks run as native code first (#13122, #13143,
 `coax/docs/native-checks.md`): on 2026-11-09, fivelab's check phase fell
 from 104.5 s in the evaluator to 7.2 s as compiled C. The evaluator stays
 for compile-time constants, `#run`, failing checks and evidence runs. The interpreter

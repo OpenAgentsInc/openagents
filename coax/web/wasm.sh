@@ -87,15 +87,6 @@ case "$render" in 0|1) ;; *) echo "COAXIAL_RENDER must be auto,0 or1" >&2; exit 
 if [[ "$render" == 1 && "$coax_file" != "apps/openagents-web/$name.coax" ]]; then
   echo "renderer source carrier requires the canonical catalog app path" >&2; exit 2
 fi
-# Native checks (#13122, coax/docs/native-checks.md): the units listed here run
-# their checks as native code; every other unit runs them in the evaluator.
-# COAX_NATIVE_CHECKS, when set (0 turns them off), decides instead.
-native_check_units=(apps/openagents-web/fivelab.coax apps/openagents-web/archery-range.coax)
-if [[ -z "${COAX_NATIVE_CHECKS+x}" ]]; then
-  for unit in "${native_check_units[@]}"; do
-    [[ "$coax_file" != "$unit" ]] || export COAX_NATIVE_CHECKS=1
-  done
-fi
 # Concurrent pages often compile the same libraries (and dev rebuilds may
 # target the same output). Give each invocation its own headers, C and objects.
 work_root="$(dirname "$out")/.c"

@@ -16,18 +16,14 @@ every node it visits. The same checks compiled to C run in milliseconds.
 
 ## Where it is on
 
-Native checks are off unless `COAX_NATIVE_CHECKS` is set. Two units have them
-on: `coax/web/wasm.sh` sets `COAX_NATIVE_CHECKS=1` when it builds
-`apps/openagents-web/fivelab.coax` (5E Lab and Experimental) or
-`apps/openagents-web/archery-range.coax` (the Archery Range, whose checks are
-fivelab's zone checks and four of its own), for that module's compiles, its
-libraries included. `COAX_NATIVE_CHECKS=0` turns them
-off there. To add a unit, add it to `native_check_units` in `wasm.sh` after
-`COAX_NATIVE_CHECKS=compare` finds no `disagree` row for it.
+Native checks are on by default for every unit (#13143). `COAX_NATIVE_CHECKS=0`
+turns them off: the evaluator then runs every check, as it did before.
+`COAX_NATIVE_CHECKS=compare` runs both and reports where they differ.
+The evaluator remains the fallback for every check native code doesn't pass.
 
 ## What happens
 
-With `COAX_NATIVE_CHECKS=1`, every place that runs a unit's checks (an
+Every place that runs a unit's checks (an
 `#authority` compile, a loaded unit's standalone library check, `coax test`)
 first runs them as native code:
 
@@ -105,12 +101,20 @@ row on the whole tree.
 
 ## The check cache
 
-The whole-unit verdict keys (`authority_options`, `library_key`) gain
+The whole-unit verdict keys (`authority_options`, `library_key`) hold
 ` native=1` (or ` native=compare`) when native checks are on, so a verdict
 native code gave is never taken by an evaluator-only compile, or the other
-way. Natively passed checks are not yet written as per-check reuse records
-(ax-check-reuse); after an edit, they run natively again. Recording them
-coordinates with #13123, which changes those keys.
+way.
+
+A check that passes natively in an `#authority` compile is written to the
+per-check reuse record (ax-check-reuse), under the key an evaluator pass
+gets: the check's tokens, the tokens of every procedure it ran, the
+signatures and declarations those name, and the compile's options (#13123,
+#13131). The binary's coverage array says which procedures the check ran.
+The record holds 0 steps and the storage the checks start with, since
+native code uses none of the evaluator's. After an edit, the compile takes
+every check the edit doesn't reach from the record and runs only the others,
+natively. `--timings` counts both under `check_reuse` (`reused`, `run`).
 
 ## Time limits instead of step budgets
 
