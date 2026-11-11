@@ -88,8 +88,12 @@ UiSkin :: struct {
   doc_tint: Rgba;           // an attached document's icon (an image's is the muted ink)
   spinner: [3] Rgba;        // the working spinner's three rows
   clear: Rgba;              // nothing: the fill under a ring or a rim
+  sidebar: Rgba;            // the session sidebar's ground
+  action_hover: Rgba;       // a sidebar action (New session) under the pointer
+  row_hover: Rgba; row_shown: Rgba;                 // a session's row hovered, and shown (its tab too)
+  tab_hover: Rgba;          // a tab hovered
   brand: Rgba;              // Claude's mark, in its own tone
-  field_edge: Rgba;         // a field's or a floating card's border: the composer's pill, a menu
+  field_edge: Rgba;         // the border of a field, a floating card, the sidebar and a shown tab: the composer's pill, a menu
   lift: Rgba;               // a floating card's soft shadow (two layers of it)
   hover_chip: Rgba;         // a chip hovered or with its menu open
   menu_hover: Rgba;         // a menu row under the pointer

@@ -16,6 +16,7 @@
 #load "room.coax";
 
 DSK_MAX :: 64;
+DSK_PRIMS :: 1024; DSK_POOL :: 32768;
 DSK_SIDEBAR_MIN :: 208.0; DSK_SIDEBAR_MAX :: 400.0; DSK_SIDEBAR_DEFAULT :: 256.0;
 DSK_ROW :: 29.0;            // a session row (Zeron's compact sidebar row)
 DSK_GAP :: 2.0;             // between rows (SIDEBAR_LIST_GAP)
@@ -76,6 +77,9 @@ Desk :: struct {
   host_action: int;
   cursor: int;              // 0 arrow, 1 I-beam, 2 pointing hand, 3 resize left-right
   text: [256] u8;           // a label fitted to its width
+  // the sidebar and the tabs as a display list in the desk's skin (dsk_skin), and the labels its prims point into
+  skin: UiSkin;
+  prims: [DSK_PRIMS] Prim; pool: [DSK_POOL] u8; pool_n: int;
   room: [1] Room;           // the agents' room (room.coax): agent i is chats[i]
   room_exe: [1024] u8; room_exe_n: int;     // the app's binary, which Codex runs as the room's MCP server
   room_sock: [1024] u8; room_sock_n: int;   // the host's socket it talks to
@@ -233,12 +237,25 @@ dsk_status :: (k: [] Desk, i: int) -> int {
   }
   return DSK_IDLE;
 }
-dsk_dot :: (status: int) -> Rgba {
-  th := zeron_dark();
-  if status == DSK_WORKING { return th.accent; }
-  if status == DSK_WAITING { return hex(WARNING, 1); }
-  if status == DSK_ERROR { return hex(DANGER, 1); }
-  return opacity(th.faint, 0.5);
+dsk_dot :: (sk: UiSkin, status: int) -> Rgba {
+  if status == DSK_WORKING { return sk.accent; }
+  if status == DSK_WAITING { return sk.warning; }
+  if status == DSK_ERROR { return sk.danger; }
+  return opacity(sk.faint, 0.5);
+}
+// The skin the sidebar and the tabs are drawn in: Zeron's until dsk_set_skin gives them another.
+dsk_skin :: (k: [] Desk) -> UiSkin {
+  if !uiskin_is_set(k[0].skin) { k[0].skin = zeron_skin(); }
+  return k[0].skin;
+}
+dsk_set_skin :: (k: [] Desk, skin: UiSkin) { k[0].skin = skin; }
+// A copy of s in the desk's pool, which lives until the next frame (a prim keeps a slice of its text).
+dsk_keep :: (k: [] Desk, s: string) -> string {
+  if k[0].pool_n + s.count > DSK_POOL { return ""; }
+  at := k[0].pool_n;
+  for j: 0..<s.count { k[0].pool[at + j] = s[j]; }
+  k[0].pool_n += s.count;
+  return cast(string) k[0].pool[at..<at + s.count];
 }
 // Its time since its last activity: now, 5m, 3h, 2d.
 dsk_age :: (secs: f32, out: [] u8) -> string {
@@ -532,7 +549,7 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
   if !a[0].ready { return v; }
   if k[0].room_shown { v = dsk_paint_room(k, out, v, a); k[0].room_seen = k[0].room[0].seq; }
   dsk_sort(k);
-  k[0].nhit = 0;
+  k[0].nhit = 0; k[0].pool_n = 0;
   if !k[0].collapsed { v = dsk_paint_sidebar(k, out, v, a); }
   v = dsk_paint_tabs(k, out, v, a);
   dsk_update_cursor(k);
@@ -571,22 +588,24 @@ dsk_fit :: (k: [] Desk, a: [] Atlas, font: int, text: string, w: f32) -> string 
   return dots;
 }
 
-dsk_paint_sidebar :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
-  th := zeron_dark(); d := k[0].d;
+// The sidebar into list (laid out and hit-tested too): its ground and edge,
+// New session, then the sessions by folder, scrolled and clipped under it.
+dsk_sidebar_prims :: (k: [] Desk, list: [] Prim, n: int, a: [] Atlas) -> int {
+  sk := dsk_skin(k);
   w := k[0].width; h := k[0].h;
-  v := paint_quad(out, at, d, 0, 0, w, h, 0, 0, th.bg, th.bg);
-  v = paint_quad(out, v, d, w - 1, 0, 1, h, 0, 0, th.border, th.border);
+  q := prim_fill(list, n, 0, 0, w, h, 0, sk.sidebar);
+  q = prim_fill(list, q, w - 1, 0, 1, h, 0, sk.field_edge);
   y: f32 = TITLEBAR_HEIGHT + 4;
   // New session
   x: f32 = DSK_PAD; rw := w - 2 * DSK_PAD;
-  if dsk_over(k, x, y, rw, DSK_ROW) { v = paint_quad(out, v, d, x, y, rw, DSK_ROW, 6, 0, rgba(1, 1, 1, 0.06), rgba(1, 1, 1, 0.06)); }
-  v = paint_icon(out, v, a, d, ICON_PEN, x + 8, y + (DSK_ROW - 14) / 2, 14, 14, th.muted);
-  v = paint_text(out, v, a, d, FONT_MENU, "New session", x + 8 + 14 + 8, y, DSK_ROW, th.text);
+  if dsk_over(k, x, y, rw, DSK_ROW) { q = prim_fill(list, q, x, y, rw, DSK_ROW, 6, sk.action_hover); }
+  q = prim_icon(list, q, ICON_PEN, x + 8, y + (DSK_ROW - 14) / 2, 14, 14, sk.muted);
+  q = prim_text(list, q, x + 8 + 14 + 8, y, 0, DSK_ROW, sk.menu.face, sk.ink, "New session");
   dsk_hit(k, DSK_ON_NEW, -1, x, y, rw, DSK_ROW);
   y += DSK_ROW + DSK_SECTION_GAP;
   // the list, scrolled, under New session
   top := y;
-  first := v;
+  q = prim_clip(list, q, 0, top, w, top + (h - top));
   total: f32 = 0;
   ly := top - k[0].scroll;
   prev := -1;
@@ -595,65 +614,67 @@ dsk_paint_sidebar :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
     i := k[0].order[j];
     if prev < 0 || !dsk_same_folder(k, prev, i) {
       if prev >= 0 { ly += DSK_SECTION_GAP; total += DSK_SECTION_GAP; }
-      v = paint_icon(out, v, a, d, ICON_FOLDER, x + 8, ly + (DSK_HEADER - DSK_MARK) / 2, DSK_MARK, DSK_MARK, th.faint);
-      v = paint_text(out, v, a, d, FONT_CHIP, dsk_fit(k, a, FONT_CHIP, dsk_folder_name(dsk_cwd(k, i)), rw - 16 - DSK_MARK - 8), x + 8 + DSK_MARK + 8, ly, DSK_HEADER, th.faint);
+      q = prim_icon(list, q, ICON_FOLDER, x + 8, ly + (DSK_HEADER - DSK_MARK) / 2, DSK_MARK, DSK_MARK, sk.faint);
+      q = prim_text(list, q, x + 8 + DSK_MARK + 8, ly, 0, DSK_HEADER, sk.label.face, sk.faint, dsk_keep(k, dsk_fit(k, a, sk.label.face, dsk_folder_name(dsk_cwd(k, i)), rw - 16 - DSK_MARK - 8)));
       ly += DSK_HEADER; total += DSK_HEADER;
     }
     prev = i;
     shown := i == k[0].active;
     hover := dsk_over(k, x, ly, rw, DSK_ROW) && k[0].ly >= top;
-    if shown || hover { fill := rgba(1, 1, 1, ifx shown then 0.08f32 else 0.05f32); v = paint_quad(out, v, d, x, ly, rw, DSK_ROW, 6, 0, fill, fill); }
-    v = paint_icon(out, v, a, d, dsk_mark(k, i), x + 8, ly + (DSK_ROW - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
-    when := dsk_age(k[0].clock - k[0].chats[i].active_at, age[..]);
-    tw := text_width(a, FONT_SMALL, when);
+    if shown || hover { q = prim_fill(list, q, x, ly, rw, DSK_ROW, 6, ifx shown then sk.row_shown else sk.row_hover); }
+    q = prim_icon(list, q, dsk_mark(k, i), x + 8, ly + (DSK_ROW - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
+    when := dsk_keep(k, dsk_age(k[0].clock - k[0].chats[i].active_at, age[..]));
+    tw := text_width(a, sk.small.face, when);
     tx := x + rw - 8 - tw;
-    v = paint_text(out, v, a, d, FONT_SMALL, when, tx, ly, DSK_ROW, th.faint);
+    q = prim_text(list, q, tx, ly, 0, DSK_ROW, sk.small.face, sk.faint, when);
     dot := 6.0f32; dx := tx - 8 - dot;
-    v = paint_quad(out, v, d, dx, ly + (DSK_ROW - dot) / 2, dot, dot, dot / 2, 0, dsk_dot(dsk_status(k, i)), dsk_dot(dsk_status(k, i)));
+    q = prim_fill(list, q, dx, ly + (DSK_ROW - dot) / 2, dot, dot, dot / 2, dsk_dot(sk, dsk_status(k, i)));
     title_x := x + 8 + DSK_MARK + 8;
-    v = paint_text(out, v, a, d, FONT_MENU, dsk_fit(k, a, FONT_MENU, dsk_title(k, i), dx - 8 - title_x), title_x, ly, DSK_ROW, ifx shown then th.text else th.muted);
+    q = prim_text(list, q, title_x, ly, 0, DSK_ROW, sk.menu.face, ifx shown then sk.ink else sk.muted, dsk_keep(k, dsk_fit(k, a, sk.menu.face, dsk_title(k, i), dx - 8 - title_x)));
     if ly + DSK_ROW > top && ly < h { dsk_hit(k, DSK_ON_ROW, i, x, ly, rw, DSK_ROW); }
     ly += DSK_ROW + DSK_GAP; total += DSK_ROW + DSK_GAP;
   }
   k[0].list_h = total;
-  gp_clip(out, first, v, d, 0, top, w, h - top);
   // the edge: drag to resize
   dsk_hit(k, DSK_ON_EDGE, -1, w - DSK_EDGE, 0, 2 * DSK_EDGE, h);
-  return v;
+  return prim_unclip(list, q);
+}
+dsk_paint_sidebar :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
+  n := dsk_sidebar_prims(k, k[0].prims[..], 0, a);
+  return gpu_draw(out, at, a, k[0].d, k[0].prims[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
 }
 
-dsk_paint_tabs :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
-  th := zeron_dark(); d := k[0].d;
+// The tabs in the titlebar into list: ROOM at the right end once agents have
+// talked, then a tab per open session, clipped to the room they have.
+dsk_tabs_prims :: (k: [] Desk, list: [] Prim, n: int, a: [] Atlas) -> int {
+  sk := dsk_skin(k);
   x0: f32 = DSK_LIGHTS;
   if !k[0].collapsed { x0 = k[0].width + DSK_PAD; }
   avail := k[0].w - x0 - DSK_PAD;
-  start := at;
-  if k[0].ntabs == 0 || avail <= 0 { return at; }
+  q := n;
+  if k[0].ntabs == 0 || avail <= 0 { return q; }
   // the ROOM tab, at the right end, once agents have said something to each other
   if k[0].room[0].count > 0 {
-    v0 := start;
-    rw := text_width(a, FONT_CHIP, "ROOM") + 20;
+    rw := text_width(a, sk.label.face, "ROOM") + 20;
     unseen := k[0].room[0].seq > k[0].room_seen && !k[0].room_shown;
     if unseen { rw += 14; }
     rx := k[0].w - DSK_PAD - rw;
     ry := round_layout((TITLEBAR_HEIGHT - DSK_TAB_H) / 2);
     if k[0].room_shown || dsk_over(k, rx, ry, rw, DSK_TAB_H) {
-      v0 = paint_quad(out, v0, d, rx, ry, rw, DSK_TAB_H, 6, ifx k[0].room_shown then 1.0f32 else 0.0f32, rgba(1, 1, 1, ifx k[0].room_shown then 0.08f32 else 0.04f32), th.border);
+      q = prim_box(list, q, rx, ry, rw, DSK_TAB_H, 6, ifx k[0].room_shown then 1.0f32 else 0.0f32, ifx k[0].room_shown then sk.row_shown else sk.tab_hover, sk.field_edge);
     }
-    v0 = paint_text(out, v0, a, d, FONT_CHIP, "ROOM", rx + 10, ry, DSK_TAB_H, ifx k[0].room_shown then th.text else th.muted);
-    if unseen { dot := 6.0f32; v0 = paint_quad(out, v0, d, rx + rw - 10 - dot, ry + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, 0, th.accent, th.accent); }
+    q = prim_text(list, q, rx + 10, ry, 0, DSK_TAB_H, sk.label.face, ifx k[0].room_shown then sk.ink else sk.muted, "ROOM");
+    if unseen { dot := 6.0f32; q = prim_fill(list, q, rx + rw - 10 - dot, ry + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, sk.accent); }
     dsk_hit(k, DSK_ON_ROOM, -1, rx, ry, rw, DSK_TAB_H);
-    start = v0;
     avail -= rw + 8;
-    if avail <= 0 { return start; }
+    if avail <= 0 { return q; }
   }
   tw := avail / cast(f32) k[0].ntabs;
   if tw > DSK_TAB_MAX { tw = DSK_TAB_MAX; }
   if tw < DSK_TAB_MIN { tw = DSK_TAB_MIN; }
   tw = round_layout(tw);
   y := round_layout((TITLEBAR_HEIGHT - DSK_TAB_H) / 2);
-  v := start;
-  first := v;
+  q = prim_clip(list, q, x0, 0, x0 + avail, TITLEBAR_HEIGHT);
   for t: 0..<k[0].ntabs {
     i := k[0].tabs[t];
     x := x0 + cast(f32) t * (tw + 4);
@@ -661,23 +682,25 @@ dsk_paint_tabs :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
     shown := i == k[0].active && !k[0].room_shown;
     hover := dsk_over(k, x, y, tw, DSK_TAB_H);
     if shown || hover {
-      fill := rgba(1, 1, 1, ifx shown then 0.08f32 else 0.04f32);
-      v = paint_quad(out, v, d, x, y, tw, DSK_TAB_H, 6, ifx shown then 1.0f32 else 0.0f32, fill, th.border);
+      q = prim_box(list, q, x, y, tw, DSK_TAB_H, 6, ifx shown then 1.0f32 else 0.0f32, ifx shown then sk.row_shown else sk.tab_hover, sk.field_edge);
     }
-    v = paint_icon(out, v, a, d, dsk_mark(k, i), x + 10, y + (DSK_TAB_H - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
+    q = prim_icon(list, q, dsk_mark(k, i), x + 10, y + (DSK_TAB_H - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
     right := x + tw - 10;
     status := dsk_status(k, i);
     if status != DSK_IDLE {
       dot := 6.0f32;
-      v = paint_quad(out, v, d, right - dot, y + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, 0, dsk_dot(status), dsk_dot(status));
+      q = prim_fill(list, q, right - dot, y + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, dsk_dot(sk, status));
       right -= dot + 8;
     }
     lx := x + 10 + DSK_MARK + 8;
-    v = paint_text(out, v, a, d, FONT_CHIP, dsk_fit(k, a, FONT_CHIP, dsk_title(k, i), right - lx), lx, y, DSK_TAB_H, ifx shown then th.text else th.muted);
+    q = prim_text(list, q, lx, y, 0, DSK_TAB_H, sk.label.face, ifx shown then sk.ink else sk.muted, dsk_keep(k, dsk_fit(k, a, sk.label.face, dsk_title(k, i), right - lx)));
     dsk_hit(k, DSK_ON_TAB, i, x, y, tw, DSK_TAB_H);
   }
-  gp_clip(out, first, v, d, x0, 0, avail, TITLEBAR_HEIGHT);
-  return v;
+  return prim_unclip(list, q);
+}
+dsk_paint_tabs :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
+  n := dsk_tabs_prims(k, k[0].prims[..], 0, a);
+  return gpu_draw(out, at, a, k[0].d, k[0].prims[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
 }
 
 dsk_at :: (k: [] Desk, x: f32, y: f32) -> int {

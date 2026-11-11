@@ -41,7 +41,8 @@ everglade_skin :: () -> UiSkin {
   s.danger_muted = rgba(0.96, 0.62, 0.52, 1); s.warning_muted = rgba(0.98, 0.84, 0.52, 1); s.file_tint = trim;
   s.spinner[0] = trim; s.spinner[1] = text; s.spinner[2] = rgba(0.62, 0.48, 0.30, 1);
   s.doc_tint = rgba(0.90, 0.82, 0.66, 1);
-  s.clear = rgba(0, 0, 0, 0); s.accent_light = rgba(1, 0.95, 0.8, 0.3);
+  s.clear = rgba(0, 0, 0, 0);
+  s.sidebar = rgba(0.055, 0.045, 0.036, 1); s.action_hover = opacity(trim, 0.12); s.row_hover = opacity(trim, 0.08); s.row_shown = opacity(trim, 0.16); s.tab_hover = opacity(trim, 0.06); s.accent_light = rgba(1, 0.95, 0.8, 0.3);
   s.brand = rgba(0.85, 0.47, 0.34, 1); s.field_edge = rgba(0.32, 0.24, 0.15, 0.95); s.lift = rgba(0, 0, 0, 0.3); s.hover_chip = opacity(trim, 0.16);
   s.menu_hover = opacity(trim, 0.08); s.menu_selected = opacity(trim, 0.18); s.menu_ring = opacity(trim, 0.4);
   s.menu_rule = rgba(0.32, 0.24, 0.15, 0.8); s.menu_divider = rgba(0.32, 0.24, 0.15, 0.6); s.list_wash = rgba(0, 0, 0, 0.18);
