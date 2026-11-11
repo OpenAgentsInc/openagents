@@ -1,0 +1,66 @@
+// The echo engine: offline, no model, no process. It answers a message with
+// the message, a word at a time like a stream: the first word 300 ms after
+// the message, then one every 45 ms, then the turn ends finished. Owners'
+// own checks run on it (Coder's terminal and its pseudo-terminal checks,
+// Aethyrforge's native chat). Moved from coder/tui/coder.coax.
+//
+//   ech_send   the message (what the engine is sent) at now_ms
+//   ech_poll   at now_ms: ECH_WAIT, ECH_WORD with the next word, or ECH_DONE once
+//   ech_stop   the turn ends at once
+
+ECH_WAIT :: 0; ECH_WORD :: 1; ECH_DONE :: 2;
+
+AgEcho :: struct {
+  text: [8192] u8; n: int;       // the whole answer
+  at: int;                       // the next word starts here
+  next_ms: int;                  // not before then
+  live: bool;                    // a turn is running
+}
+
+ech_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+ech_send :: (e: [] AgEcho, sent: string, now_ms: int) {
+  e[0].at = 0; e[0].next_ms = now_ms + 300; e[0].live = true;
+  e[0].n = ech_cat(e[0].text[..], 0, "Echo engine, offline. You said: ");
+  e[0].n = ech_cat(e[0].text[..], e[0].n, sent);
+  e[0].n = ech_cat(e[0].text[..], e[0].n, "\nStart with \"$ \" to run a command here, or press Shift-Tab for Claude Code, Codex, Cursor or Microcoder.");
+}
+
+// The next word (ending in its space or line break) into word[0].
+ech_poll :: (e: [] AgEcho, now_ms: int, word: [] string) -> int {
+  if !e[0].live || now_ms < e[0].next_ms { return ECH_WAIT; }
+  at := e[0].at;
+  if at >= e[0].n { e[0].live = false; return ECH_DONE; }
+  x := at; while x < e[0].n && e[0].text[x] != ' ' && e[0].text[x] != 10 { x += 1; }
+  if x < e[0].n { x += 1; }
+  word[0] = cast(string) e[0].text[at..<x];
+  e[0].at = x; e[0].next_ms = now_ms + 45;
+  return ECH_WORD;
+}
+
+ech_stop :: (e: [] AgEcho) { e[0].live = false; }
+
+#test "echo answers the message a word at a time, then ends once" {
+  e: [1] AgEcho; w: [1] string;
+  #assert ech_poll(e[..], 0, w[..]) == ECH_WAIT;
+  ech_send(e[..], "hi there", 1000);
+  #assert ech_poll(e[..], 1299, w[..]) == ECH_WAIT;
+  #assert ech_poll(e[..], 1300, w[..]) == ECH_WORD && w[0] == "Echo ";
+  #assert ech_poll(e[..], 1344, w[..]) == ECH_WAIT;
+  #assert ech_poll(e[..], 1345, w[..]) == ECH_WORD && w[0] == "engine, ";
+  all: [8192] u8; n := ech_cat(all[..], 0, "Echo engine, ");
+  t := 1345; k := ECH_WORD;
+  while k == ECH_WORD { t += 45; k = ech_poll(e[..], t, w[..]); if k == ECH_WORD { n = ech_cat(all[..], n, w[0]); } }
+  #assert k == ECH_DONE && ech_poll(e[..], t + 1000, w[..]) == ECH_WAIT;
+  #assert cast(string) all[0..<n] == "Echo engine, offline. You said: hi there\nStart with \"$ \" to run a command here, or press Shift-Tab for Claude Code, Codex, Cursor or Microcoder.";
+}
+
+#test "a line break ends a word, and stop ends the turn" {
+  e: [1] AgEcho; w: [1] string;
+  ech_send(e[..], "a\nb", 0);
+  t := 300; seen := false; k := ech_poll(e[..], t, w[..]);
+  while k == ECH_WORD { if w[0] == "a\n" { seen = true; } t += 45; k = ech_poll(e[..], t, w[..]); }
+  #assert seen && k == ECH_DONE;
+  ech_send(e[..], "x", 0); ech_stop(e[..]);
+  #assert ech_poll(e[..], 5000, w[..]) == ECH_WAIT;
+}

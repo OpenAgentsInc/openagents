@@ -36,6 +36,8 @@
 #load "../../coax/lib/tui/tui.coax";
 #load "../../coax/lib/tui/vt.coax";
 #load "../../coax/lib/agent/engine/engine.coax";   // the shared engines (Claude, Codex, Cursor, the Microcoder worker) and the session record
+#load "../../coax/lib/agent/engine/echo.coax";     // the offline echo engine
+#load "../../coax/lib/agent/session/fork.coax";    // fork and context
 #load "../../psionic/lib/apple-fm.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
@@ -172,7 +174,7 @@ App :: struct {
   steps: int;
   rep: [65536] u8; nrep: int; rep_done: int; rep_lines: int;   // the reply; committed up to rep_done
   // echo engine
-  echo: [8192] u8; necho: int; echo_at: int; echo_next_ms: int;
+  echo: [1] AgEcho;              // coax/lib/agent/engine/echo.coax
   // a "$ " command
   cmd: [8192] u8; ncmd: int; cmd_h: int = -1; cmd_out: [65536] u8; ncmd_out: int; cmd_started: int;
   // claude engine: one CLI session for the conversation, on the shared engine (coax/lib/agent/engine/claude.coax).
@@ -749,7 +751,7 @@ cd_cmd_apple_fm :: (prompt: string) -> int {
 
 // ---------------------------------------------------------------- engines
 
-CD_CONTEXT_MAX :: 8192;
+CD_CONTEXT_MAX :: SF_CONTEXT_MAX;
 
 cd_start :: (a: [] App, msg: string) {
   if a[0].log[0].failed {a[0].running=false;a[0].exit=1;return;}
@@ -774,19 +776,15 @@ cd_start :: (a: [] App, msg: string) {
   sent := msg;
   fb: [40000] u8;
   if a[0].pre.count > 0 {        // a fork's first message carries the conversation it was forked from
-    n := cd_cat(fb[..], 0, "Earlier in this conversation:\n\n"); n = cd_cat(fb[..], n, a[0].pre);
-    n = cd_cat(fb[..], n, "\n\nNow: "); n = cd_cat(fb[..], n, msg);
-    sent = cast(string) fb[0..<n];
+    sent = sf_earlier(a[0].pre, msg, fb[..]);
     a[0].pre = "";
   }
   xb: [CD_CONTEXT_MAX + 40100] u8;
   if a[0].turns == 1 && a[0].context.count > 0 {     // what the Router inlined, logged so replay rebuilds it (chapter 17)
-    cb: [CD_CONTEXT_MAX] u8; cn := fs_read(a[0].context, cb[..]);
-    while cn > 0 && cb[cn - 1] == 10 { cn -= 1; }
-    if cn > 0 {
-      cs_text(a, "context", "text", cast(string) cb[0..<cn]);
-      xn := cd_cat(xb[..], 0, cast(string) cb[0..<cn]); xn = cd_cat(xb[..], xn, "\n\n"); xn = cd_cat(xb[..], xn, sent);
-      sent = cast(string) xb[0..<xn];
+    cb: [CD_CONTEXT_MAX] u8; context := sf_context_read(a[0].context, cb[..]);
+    if context.count > 0 {
+      cs_text(a, "context", "text", context);
+      sent = sf_with_context(context, sent, xb[..]);
     }
   }
   mb: [MEM_BRIEF_MAX + CD_CONTEXT_MAX + 40100] u8;
@@ -807,10 +805,7 @@ cd_start :: (a: [] App, msg: string) {
   }
   cs_request(a, sent);           // what the engine is sent, as a digest `coder replay` rebuilds (chapters 2 and 23)
   if a[0].engine == ENGINE_ECHO {
-    a[0].necho = 0; a[0].echo_at = 0; a[0].echo_next_ms = cd_now(a) + 300;
-    a[0].necho = cd_cat(a[0].echo[..], 0, "Echo engine, offline. You said: ");
-    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, sent);
-    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, "\nStart with \"$ \" to run a command here, or press Shift-Tab for Claude Code, Codex, Cursor or Microcoder.");
+    ech_send(a[0].echo[..], sent, cd_now(a));
     return;
   }
   a[0].nerr = 0;
@@ -1261,7 +1256,7 @@ cd_claude_answer :: (a: [] App, c: int) {
 cd_stop :: (a: [] App) {
   if !a[0].running { return; }
   if a[0].cmd_h >= 0 { cd_command_stop(a); cd_finish(a, END_STOPPED, ""); return; }
-  if a[0].engine == ENGINE_ECHO { cd_finish(a, END_STOPPED, ""); return; }
+  if a[0].engine == ENGINE_ECHO { ech_stop(a[0].echo[..]); cd_finish(a, END_STOPPED, ""); return; }
   if a[0].engine == ENGINE_CODEX { cd_codex_stop(a); return; }
   if a[0].engine == ENGINE_CURSOR { cd_cursor_stop(a); return; }
   if cd_is_micro(a[0].engine) { cd_micro_stop(a); return; }
@@ -1306,16 +1301,12 @@ cd_poll :: (a: [] App) -> bool {
     if a[0].stopping && cd_now(a) - a[0].stop_ms > 5000 { cd_stop(a); return true; }
     return cd_micro_poll(a);
   }
-  if cd_now(a) < a[0].echo_next_ms { return false; }
-  // a word at a time, like a stream
-  at := a[0].echo_at;
-  if at >= a[0].necho { cd_finish(a, END_FINISHED, ""); return true; }
-  e := at; while e < a[0].necho && a[0].echo[e] != ' ' && a[0].echo[e] != 10 { e += 1; }
-  if e < a[0].necho { e += 1; }
-  cd_reply_add(a, cast(string) a[0].echo[at..<e]);
+  // a word at a time, like a stream (coax/lib/agent/engine/echo.coax)
+  w: [1] string; k := ech_poll(a[0].echo[..], cd_now(a), w[..]);
+  if k == ECH_WAIT { return false; }
+  if k == ECH_DONE { cd_finish(a, END_FINISHED, ""); return true; }
+  cd_reply_add(a, w[0]);
   cd_reply_commit(a, false);
-  a[0].echo_at = e;
-  a[0].echo_next_ms = cd_now(a) + 45;
   return true;
 }
 
@@ -2232,38 +2223,9 @@ cd_rebuild :: (user: string, parent: string, at: int, first: bool, out: [] u8) -
   ptext := cd_session_file(parent, fb[..], ib[..]);
   ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   tb: [40000] u8; tn: [1] int;
-  turns := cs_turns_text(ptext, at, ar[..], tb[..], tn[..]);
+  turns := sf_turns_text(ptext, at, ar[..], tb[..], tn[..]);
   if turns == 0 { n := cd_cat(out, 0, user); return cast(string) out[0..<n]; }
-  n := cd_cat(out, 0, "Earlier in this conversation:\n\n"); n = cd_cat(out, n, cast(string) tb[0..<tn[0]]);
-  n = cd_cat(out, n, "\n\nNow: "); n = cd_cat(out, n, user);
-  return cast(string) out[0..<n];
-}
-
-// The last session ID engine logged in a session's text, or "".
-cd_engine_session_of :: (text: string, engine: string, ar: [] ClArena) -> string {
-  found := "";
-  at := 0;
-  while at < text.count {
-    e := at; while e < text.count && text[e] != 10 { e += 1; }
-    line := cast(string) text[at..<e];
-    at = e + 1;
-    if !rt_has_prefix(line, "{\"kind\":\"engine_session\"") { continue; }
-    ar[0].at = 0; ar[0].full = false;
-    if cl_str(ar, line, "engine") == engine { found = cl_str(ar, line, "id"); }
-  }
-  return found;
-}
-
-// Whether Claude Code keeps session id for folder cwd on this machine:
-// ~/.claude/projects/CWD/ID.jsonl, with each / and . of CWD as -.
-cd_claude_has_session :: (cwd: string, id: string) -> bool {
-  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
-  if home.count == 0 || cwd.count == 0 { return false; }
-  for c: id { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-') { return false; } }
-  pb: [2400] u8; n := cd_cat(pb[..], 0, home); n = cd_cat(pb[..], n, "/.claude/projects/");
-  for c: cwd { if n < pb.count { pb[n] = ifx c == '/' || c == '.' then '-' else c; n += 1; } }
-  n = cd_cat(pb[..], n, "/"); n = cd_cat(pb[..], n, id); n = cd_cat(pb[..], n, ".jsonl");
-  return fs_exists(cast(string) pb[0..<n]);
+  return sf_earlier(cast(string) tb[0..<tn[0]], user, out);
 }
 
 // A new session that carries parent's first `at` turns (all when 0): coder fork,
@@ -2271,19 +2233,22 @@ cd_claude_has_session :: (cwd: string, id: string) -> bool {
 // --engine asked for, "" for the parent's. Returns the parent's turns kept;
 // more than that asked for changes nothing.
 cd_fork_setup :: (a: [] App, parent: string, pid: string, at: int, want: string) -> int {
-  far: [262144] u8; fa: [1] ClArena; fa[0] = ClArena.{buf = far[..]};
-  pn: [1] int;
-  kept := cs_turns_text(parent, at, fa[..], a[0].pre_b[..], pn[..]);
-  if at > kept { return kept; }
-  a[0].pre = cast(string) a[0].pre_b[0..<pn[0]];
-  a[0].nresume = 0;
-  a[0].ncursor_resume = 0;
-  // the whole conversation of a Claude Code parent: resume its session on the server, whose cache holds the prefix (chapter 14)
-  rsid := cd_engine_session_of(parent, "claude", fa[..]);
-  if (at == 0 || at == kept) && rsid.count > 0 && rsid.count < 128 && (want.count == 0 || want == "claude") && cd_claude_has_session(a[0].cwd, rsid) {
-    a[0].nresume = cd_cat(a[0].resume[..], 0, rsid);
-    a[0].pre = "";
+  // the parent's engine unless --engine
+  if want.count == 0 {
+    s: [1] CsSummary; sar: [65536] u8; sa: [1] ClArena; sa[0] = ClArena.{buf = sar[..]};
+    cs_read(parent, s[..], sa[..]);
+    pe := cast(string) s[0].engine[0..<s[0].nengine];
+    a[0].engine = ifx pe == "codex" then ENGINE_CODEX else ifx pe == "cursor" then ENGINE_CURSOR else ifx pe == "microcoder" then ENGINE_MICRO else ifx pe == "psionic" then ENGINE_PSIONIC else ifx pe == "echo" then ENGINE_ECHO else ENGINE_CLAUDE;
+    a[0].model_engine = a[0].engine;
   }
+  // its turns as text, or the engine that kept the conversation resumes it (coax/lib/agent/session/fork.coax)
+  f: [1] SfFork;
+  kept := sf_fork(f[..], parent, at, want, cd_engine_name(a[0].engine), a[0].cwd);
+  if at > kept { return kept; }
+  pn := cd_cat(a[0].pre_b[..], 0, sf_pre(f[..]));
+  a[0].pre = cast(string) a[0].pre_b[0..<pn];
+  a[0].nresume = cd_cat(a[0].resume[..], 0, cast(string) f[0].claude[0..<f[0].nclaude]);
+  a[0].ncursor_resume = cd_cat(a[0].cursor_resume[..], 0, cast(string) f[0].cursor[0..<f[0].ncursor]);
   a[0].log[0].nparent = cd_cat(a[0].log[0].parent[..], 0, pid);
   a[0].log[0].at = kept;
   // never wider than the parent: its ceiling holds unless --ceiling is lower (chapter 20's containment)
@@ -2293,20 +2258,6 @@ cd_fork_setup :: (a: [] App, parent: string, pid: string, at: int, want: string)
   if pc >= 0 && (!a[0].pol[0].on || pc < a[0].pol[0].ceiling) {
     a[0].pol[0].on = true; a[0].pol[0].ceiling = pc;
     if a[0].pol[0].allow > pc { a[0].pol[0].allow = pc; }
-  }
-  // the parent's engine unless --engine
-  if want.count == 0 {
-    s: [1] CsSummary; sar: [65536] u8; sa: [1] ClArena; sa[0] = ClArena.{buf = sar[..]};
-    cs_read(parent, s[..], sa[..]);
-    pe := cast(string) s[0].engine[0..<s[0].nengine];
-    a[0].engine = ifx pe == "codex" then ENGINE_CODEX else ifx pe == "cursor" then ENGINE_CURSOR else ifx pe == "microcoder" then ENGINE_MICRO else ifx pe == "psionic" then ENGINE_PSIONIC else ifx pe == "echo" then ENGINE_ECHO else ENGINE_CLAUDE;
-    a[0].model_engine = a[0].engine;
-  }
-  // the whole conversation of a Cursor parent: session/load, and ignore the history it replays
-  csid := cd_engine_session_of(parent, "cursor", fa[..]);
-  if (at == 0 || at == kept) && csid.count > 0 && csid.count < 128 && (want == "cursor" || (want.count == 0 && a[0].engine == ENGINE_CURSOR)) {
-    a[0].ncursor_resume = cd_cat(a[0].cursor_resume[..], 0, csid);
-    a[0].pre = "";
   }
   return kept;
 }
@@ -2388,26 +2339,25 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
 cd_effort :: (a: [] App) -> string { return cast(string) a[0].effort_b[0..<a[0].neffort]; }
 
 // After a decision: its engine, and its effort when System One was sure; --effort wins.
-cd_route_apply :: (a: [] App, r: [] CdRoute, effort_flag: bool) {
+cd_route_apply :: (a: [] App, r: [] AgRoute, effort_flag: bool) {
   a[0].engine = cd_route_pick(r); a[0].model_engine = a[0].engine;
-  if !effort_flag && r[0].ok && r[0].probability >= CD_ROUTE_SURE { a[0].neffort = cd_cat(a[0].effort_b[..], 0, cast(string) r[0].effort[0..<r[0].neffort]); }
-  if a[0].model.count==0 && r[0].ok && r[0].probability>=CD_ROUTE_SURE {
+  if !effort_flag && r[0].ok && r[0].probability >= AGR_SURE { a[0].neffort = cd_cat(a[0].effort_b[..], 0, cast(string) r[0].effort[0..<r[0].neffort]); }
+  if a[0].model.count==0 && r[0].ok && r[0].probability>=AGR_SURE {
     n:=cd_cat(a[0].route_model[..],0,cast(string)r[0].model[0..<r[0].nmodel]); a[0].model=cast(string)a[0].route_model[0..<n];
   }
 }
 
 // The engine to run for a decision: System One's pick when it is sure and the
 // agent is eligible; else the first eligible engine, or no engine.
-cd_route_pick :: (r: [] CdRoute) -> int {
-  preferred := ifx r[0].ok && r[0].probability >= CD_ROUTE_SURE then ca_index(cd_route_engine(r)) else -1;
-  pick := ca_pick(preferred, r[0].eligible);
+cd_route_pick :: (r: [] AgRoute) -> int {
+  pick := agr_pick(r);
   return ifx pick < 0 then -1 else pick + 1;
 }
 
 // --engine auto: System One picks this conversation's engine from its first
 // message; without a usable decision an eligible default runs, or dispatch refuses.
 cd_auto_route :: (a: [] App, msg: string) -> bool {
-  cb: [16] u8; rt: [1] CdRoute;
+  cb: [16] u8; rt: [1] AgRoute;
   cd_route(msg, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]);
   pick := cd_route_pick(rt[..]);
   if pick < 0 { cd_commit(a, TUI_RED, "  No eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine."); return false; }
@@ -2418,52 +2368,30 @@ cd_auto_route :: (a: [] App, msg: string) -> bool {
 }
 
 // "  Engine: codex (0.87) · easy · effort low, chosen by System One"
-cd_route_line :: (a: [] App, r: [] CdRoute, out: [] u8) -> string {
+cd_route_line :: (a: [] App, r: [] AgRoute, out: [] u8) -> string {
   tb: [256] u8;
   n := cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, cd_engine_name(a[0].engine));
   if !r[0].ok { n = cd_cat(out, n, ", the default; no decision: "); n = cd_cat(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
-  else if r[0].probability < CD_ROUTE_SURE { n = cd_cat(out, n, ", the eligible default; low-confidence decision: "); n = cd_cat(out, n, cd_route_text(r, tb[..])); }
-  else if cd_engine_name(a[0].engine) != cd_route_engine(r) && !(a[0].engine == ENGINE_MICRO && cd_route_engine(r) == "micro") {
-    n = cd_cat(out, n, ", the default; System One said "); n = cd_cat(out, n, cd_route_text(r, tb[..]));
-  } else { n = cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, cd_route_text(r, tb[..])); n = cd_cat(out, n, ", chosen by System One"); }
+  else if r[0].probability < AGR_SURE { n = cd_cat(out, n, ", the eligible default; low-confidence decision: "); n = cd_cat(out, n, agr_text(r, tb[..])); }
+  else if cd_engine_name(a[0].engine) != agr_engine(r) && !(a[0].engine == ENGINE_MICRO && agr_engine(r) == "micro") {
+    n = cd_cat(out, n, ", the default; System One said "); n = cd_cat(out, n, agr_text(r, tb[..]));
+  } else { n = cd_cat(out, 0, "  Engine: "); n = cd_cat(out, n, agr_text(r, tb[..])); n = cd_cat(out, n, ", chosen by System One"); }
   return cast(string) out[0..<n];
 }
 
-cd_route_json :: (r: [] CdRoute, ran: string, out: [] u8) -> string {
-  n := json_raw(out, 0, "{\"kind\":\"route\",\"ok\":"); n = json_raw(out, n, ifx r[0].ok then "true" else "false");
-  if r[0].nsource>0 {
-    n=json_raw(out,n,",\"schema\":\"coder.route.v2\",\"source\":"); n=json_write_string(out,n,cast(string)r[0].source[0..<r[0].nsource]);
-    n=json_raw(out,n,",\"model\":"); n=json_write_string(out,n,cast(string)r[0].model[0..<r[0].nmodel]);
-  }
-  if r[0].ok {
-    n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, cd_route_engine(r));
-    pm := cast(int) (r[0].probability * 1000.0 + 0.5);       // as 0.962: three places are what the decision carries
-    n = json_raw(out, n, ",\"probability\":"); n = json_write_int(out, n, pm / 1000); n = json_raw(out, n, ".");
-    n = json_raw(out, n, ifx pm % 1000 < 10 then "00" else ifx pm % 1000 < 100 then "0" else ""); n = json_write_int(out, n, pm % 1000);
-    n = json_raw(out, n, ",\"difficulty\":"); n = json_write_int(out, n, r[0].difficulty);
-    n = json_raw(out, n, ",\"effort\":"); n = json_write_string(out, n, cast(string) r[0].effort[0..<r[0].neffort]);
-  } else { n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
-  n = json_raw(out, n, ",\"eligible_mask\":"); n = json_write_int(out, n, r[0].eligible);
-  n = json_raw(out, n, ",\"blocked_mask\":"); n = json_write_int(out, n, r[0].blocked);
-  n = json_raw(out, n, ",\"allowed_mask\":"); n = json_write_int(out, n, r[0].allowed);
-  if ran.count > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, ran); }
-  n = json_raw(out, n, "}");
-  return ifx n < 0 then "" else cast(string) out[0..<n];
-}
-
-cs_route :: (a: [] App, r: [] CdRoute) {
+cs_route :: (a: [] App, r: [] AgRoute) {
   n := 0; o := a[0].log[0].line[..];
-  line := cd_route_json(r, cd_engine_name(a[0].engine), o);
+  line := agr_json(r, cd_engine_name(a[0].engine), o);
   cs_put(a, line.count);
 }
 
 cd_cmd_route :: (task: string, json: bool) -> int {
   if task.count == 0 { tool_errln("coder route: needs a task: coder route \"TASK\""); return 2; }
-  rt: [1] CdRoute; eb: [64] u8;
+  rt: [1] AgRoute; eb: [64] u8;
   cd_route(task, cl_getenv("PSIONIC_BASE_URL", eb[..]).count > 0, rt[..]);
   ob: [1024] u8;
-  if json { cd_outln(cd_route_json(rt[..], "", ob[..])); }
-  else if rt[0].ok { cd_outln(cd_route_text(rt[..], ob[..])); }
+  if json { cd_outln(agr_json(rt[..], "", ob[..])); }
+  else if rt[0].ok { cd_outln(agr_text(rt[..], ob[..])); }
   else { tool_err("coder route: "); tool_errln(cast(string) rt[0].why[0..<rt[0].nwhy]); }
   return ifx rt[0].ok then 0 else 1;
 }
@@ -2770,11 +2698,11 @@ tool_main :: () -> int #export_c #effects(all) {
     if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
     tui_ed_set(a[0].ed[..], task);
     // No --engine: System One chooses (chapter 13); the session's first lines say what and why.
-    rt: [1] CdRoute; routed := cr_auto(verb,want);
+    rt: [1] AgRoute; routed := cr_auto(verb,want);
     if routed {
-      rt[0].ncontext=cd_cat(rt[0].context[..],0,cd_route_clip(a[0].pre,256,true));
+      rt[0].ncontext=cd_cat(rt[0].context[..],0,agr_clip(a[0].pre,256,true));
       cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); if cd_route_pick(rt[..]) < 0 {
-      cs_open(a); cs_user(a, task); o := a[0].log[0].line[..]; route_line := cd_route_json(rt[..], "", o); cs_put(a, route_line.count);
+      cs_open(a); cs_user(a, task); o := a[0].log[0].line[..]; route_line := agr_json(rt[..], "", o); cs_put(a, route_line.count);
       a[0].ncause = cd_cat(a[0].cause[..], 0, "availability"); cs_end(a, "failed", 0, 0, "no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine");
       if !json { tool_errln("coder: no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine"); } return 1;
     } cd_route_apply(a, rt[..], args_has(args, "--effort")); cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", ""); }

@@ -1,0 +1,178 @@
+// Fork and context, for any owner of a session (Coder book chapters 14 and 17).
+//
+// A fork is a new session that carries a parent's turns, read from the
+// parent's session log (log.coax; Coder's lines are the same): either the
+// engine resumes the parent's own conversation (Claude Code's session on its
+// server, Cursor's session/load), or the parent's first turns ride ahead of
+// the fork's first message as text ("Earlier in this conversation: ...
+// Now: ..."). A context file is related material an owner hands the first
+// turn (an issue and its comments for Coder's Router, the scene for
+// Aethyrforge): it goes ahead of the first message, and the owner logs it
+// as a "context" line so a replay rebuilds what was sent.
+//
+//   sf_fork          what a fork of a parent's log carries: its turns as text, or the engine's resume
+//   sf_earlier       the fork's first message with the parent's turns ahead of it
+//   sf_context_read  a context file's text, trailing line breaks dropped
+//   sf_with_context  a first message with its context ahead of it
+//
+// Moved from coder/tui/coder.coax and session.coax without a change in behaviour.
+
+#load "../claude/fields.coax";
+#load "../claude/transport.coax";       // cl_getenv
+#load "../../sys/fs.coax";
+#load "../../tui/tui.coax";              // tui_fit: each carried text is cut at a display width
+
+SF_FORK_TURN :: 4000;     // display columns of each earlier message and reply a fork carries
+SF_CONTEXT_MAX :: 8192;   // bytes of a context file the first message carries
+SF_PRE_MAX :: 32768;      // bytes of earlier turns a fork carries as text
+
+SfFork :: struct {
+  pre: [SF_PRE_MAX] u8; npre: int;          // the parent's turns as text: "" when the engine resumes instead
+  kept: int;                                // how many of the parent's turns
+  claude: [128] u8; nclaude: int;           // resume this Claude Code session (with fork_session)
+  cursor: [128] u8; ncursor: int;           // load this Cursor session
+}
+
+sf_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+sf_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
+
+// The conversation a fork carries: the parent's first `at` turns (all when
+// at is 0) as text for the new session's first message. How many turns.
+sf_turns_text :: (text: string, at: int, ar: [] ClArena, out: [] u8, n_out: [] int) -> int {
+  n := 0; turns := 0; at_line := 0; inreply := false;
+  while at_line < text.count {
+    e := at_line; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at_line..<e];
+    at_line = e + 1;
+    if line.count == 0 { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar, line, "kind");
+    if kind == "user" {
+      if at > 0 && turns == at { break; }
+      turns += 1; inreply = false;
+      t := cl_str(ar, line, "text");
+      n = sf_cat(out, n, ifx turns == 1 then "User: " else "\n\nUser: ");
+      n = sf_cat(out, n, cast(string) t[0..<tui_fit(t, SF_FORK_TURN)]);
+    } else if kind == "reply" && turns > 0 {
+      t := cl_str(ar, line, "text");
+      n = sf_cat(out, n, ifx inreply then "\n" else "\nYou: ");
+      inreply = true;
+      n = sf_cat(out, n, cast(string) t[0..<tui_fit(t, SF_FORK_TURN)]);
+    }
+  }
+  n_out[0] = n;
+  return turns;
+}
+
+// The last session ID engine logged in a session's text ({"kind":"engine_session",...}), or "".
+sf_engine_session :: (text: string, engine: string, ar: [] ClArena) -> string {
+  found := "";
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if !sf_prefix(line, "{\"kind\":\"engine_session\"") { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    if cl_str(ar, line, "engine") == engine { found = cl_str(ar, line, "id"); }
+  }
+  return found;
+}
+
+// Whether Claude Code keeps session id for folder cwd on this machine:
+// ~/.claude/projects/CWD/ID.jsonl, with each / and . of CWD as -.
+sf_claude_has_session :: (cwd: string, id: string) -> bool {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 || cwd.count == 0 { return false; }
+  for c: id { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-') { return false; } }
+  pb: [2400] u8; n := sf_cat(pb[..], 0, home); n = sf_cat(pb[..], n, "/.claude/projects/");
+  for c: cwd { if n < pb.count { pb[n] = ifx c == '/' || c == '.' then '-' else c; n += 1; } }
+  n = sf_cat(pb[..], n, "/"); n = sf_cat(pb[..], n, id); n = sf_cat(pb[..], n, ".jsonl");
+  return fs_exists(cast(string) pb[0..<n]);
+}
+
+// What a fork of parent (its log's text) carries, for its first `at` turns
+// (all when 0). want is the engine asked for ("" for the parent's own) and
+// engine the one that will run. A whole conversation resumes on the engine
+// that kept it: Claude Code's when it is asked for or nothing is, and this
+// machine still has it; Cursor's when Cursor runs. Returns the parent's
+// turns; more than that asked for (at) carries nothing.
+sf_fork :: (f: [] SfFork, parent: string, at: int, want: string, engine: string, cwd: string) -> int {
+  far: [262144] u8; fa: [1] ClArena; fa[0] = ClArena.{buf = far[..]};
+  pn: [1] int;
+  f[0].nclaude = 0; f[0].ncursor = 0;
+  f[0].kept = sf_turns_text(parent, at, fa[..], f[0].pre[..], pn[..]);
+  f[0].npre = pn[0];
+  if at > f[0].kept { f[0].npre = 0; return f[0].kept; }
+  whole := at == 0 || at == f[0].kept;
+  // the whole conversation of a Claude Code parent: resume its session on the server, whose cache holds the prefix
+  rsid := sf_engine_session(parent, "claude", fa[..]);
+  if whole && rsid.count > 0 && rsid.count < 128 && (want.count == 0 || want == "claude") && sf_claude_has_session(cwd, rsid) {
+    f[0].nclaude = sf_cat(f[0].claude[..], 0, rsid); f[0].npre = 0;
+  }
+  // the whole conversation of a Cursor parent: session/load, and ignore the history it replays
+  csid := sf_engine_session(parent, "cursor", fa[..]);
+  if whole && csid.count > 0 && csid.count < 128 && (want == "cursor" || (want.count == 0 && engine == "cursor")) {
+    f[0].ncursor = sf_cat(f[0].cursor[..], 0, csid); f[0].npre = 0;
+  }
+  return f[0].kept;
+}
+
+sf_pre :: (f: [] SfFork) -> string { return cast(string) f[0].pre[0..<f[0].npre]; }
+
+// A fork's first message carries the conversation it was forked from.
+sf_earlier :: (pre: string, msg: string, out: [] u8) -> string {
+  n := sf_cat(out, 0, "Earlier in this conversation:\n\n"); n = sf_cat(out, n, pre);
+  n = sf_cat(out, n, "\n\nNow: "); n = sf_cat(out, n, msg);
+  return cast(string) out[0..<n];
+}
+
+// A context file's text without its trailing line breaks; "" when it is missing, empty or unreadable.
+sf_context_read :: (path: string, out: [] u8) -> string {
+  if path.count == 0 { return ""; }
+  cn := fs_read(path, out);
+  while cn > 0 && out[cn - 1] == 10 { cn -= 1; }
+  return ifx cn > 0 then cast(string) out[0..<cn] else "";
+}
+
+// The first message with its context ahead of it.
+sf_with_context :: (context: string, sent: string, out: [] u8) -> string {
+  n := sf_cat(out, 0, context); n = sf_cat(out, n, "\n\n"); n = sf_cat(out, n, sent);
+  return cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a fork carries the parent's turns up to a boundary" {
+  text := "{\"kind\":\"session\",\"id\":\"p\"}\n{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"reply\",\"text\":\"a\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"reply\",\"text\":\"b\"}\n{\"kind\":\"end\",\"ending\":\"finished\"}\n{\"kind\":\"user\",\"text\":\"two\"}\n{\"kind\":\"reply\",\"text\":\"c\"}\n";
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  ob: [1024] u8; n: [1] int;
+  #assert sf_turns_text(text, 0, ar[..], ob[..], n[..]) == 2;
+  #assert cast(string) ob[0..<n[0]] == "User: one\nYou: a\nb\n\nUser: two\nYou: c";
+  #assert sf_turns_text(text, 1, ar[..], ob[..], n[..]) == 1;
+  #assert cast(string) ob[0..<n[0]] == "User: one\nYou: a\nb";
+}
+
+#test "a fork carries text unless the engine that kept the conversation resumes it" {
+  parent := "{\"kind\":\"session\",\"id\":\"p\"}\n{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"engine_session\",\"engine\":\"cursor\",\"id\":\"cu-1\"}\n{\"kind\":\"reply\",\"text\":\"a\"}\n{\"kind\":\"user\",\"text\":\"two\"}\n";
+  f: [1] SfFork;
+  #assert sf_fork(f[..], parent, 0, "", "claude", "/tmp") == 2 && sf_pre(f[..]) == "User: one\nYou: a\n\nUser: two" && f[0].ncursor == 0 && f[0].nclaude == 0;
+  #assert sf_fork(f[..], parent, 0, "", "cursor", "/tmp") == 2 && sf_pre(f[..]) == "" && cast(string) f[0].cursor[0..<f[0].ncursor] == "cu-1";
+  #assert sf_fork(f[..], parent, 0, "cursor", "cursor", "/tmp") == 2 && f[0].ncursor == 4;
+  #assert sf_fork(f[..], parent, 0, "codex", "cursor", "/tmp") == 2 && f[0].ncursor == 0 && f[0].npre > 0;
+  #assert sf_fork(f[..], parent, 1, "", "claude", "/tmp") == 1 && f[0].ncursor == 0 && sf_pre(f[..]) == "User: one\nYou: a";
+  #assert sf_fork(f[..], parent, 3, "", "cursor", "/tmp") == 2 && f[0].npre == 0 && f[0].ncursor == 0;
+  // a Claude Code parent forked onto another engine carries its turns as text (the session check reads $HOME: not here)
+  claude := "{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"engine_session\",\"engine\":\"claude\",\"id\":\"5e55a0e1-x\"}\n";
+  #assert sf_fork(f[..], claude, 0, "codex", "codex", "/tmp") == 1 && f[0].nclaude == 0 && sf_pre(f[..]) == "User: one";
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert sf_engine_session(claude, "claude", ar[..]) == "5e55a0e1-x" && sf_engine_session(claude, "cursor", ar[..]) == "";
+}
+
+#test "the fork's first message and the context ride ahead of the message" {
+  b: [256] u8;
+  #assert sf_earlier("User: one", "two", b[..]) == "Earlier in this conversation:\n\nUser: one\n\nNow: two";
+  #assert sf_with_context("Scene: a lab.", "hi", b[..]) == "Scene: a lab.\n\nhi";
+  c: [SF_CONTEXT_MAX] u8;
+  #assert sf_context_read("", c[..]) == "";
+}

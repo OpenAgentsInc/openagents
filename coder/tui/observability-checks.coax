@@ -16,7 +16,7 @@ main :: () {}
 }
 
 #test "routing uses only eligible defaults and explains low confidence" {
-  r: [1] CdRoute; r[0].eligible = 2;
+  r: [1] AgRoute; r[0].eligible = 2;
   #assert cd_route_pick(r[..]) == ENGINE_CODEX;
   r[0].eligible = 0; #assert cd_route_pick(r[..]) == -1;
   r[0].eligible = 4; r[0].ok = true; r[0].probability = 0.1;
@@ -26,7 +26,7 @@ main :: () {}
 }
 
 #test "automatic profiles own their model bytes and preserve explicit model and effort overrides" {
-  a:[1]App; r:[1]CdRoute;
+  a:[1]App; r:[1]AgRoute;
   r[0].eligible=3;r[0].ok=true;r[0].probability=0.9;
   r[0].nengine=cd_cat(r[0].engine[..],0,"claude");r[0].nmodel=cd_cat(r[0].model[..],0,"opus");
   r[0].neffort=cd_cat(r[0].effort[..],0,"high");
@@ -41,11 +41,11 @@ main :: () {}
 }
 
 #test "Elephant route v2 is distinct from the unchanged legacy route record" {
-  r:[1]CdRoute; b:[2048]u8;
-  #assert !cd_holds(cd_route_json(r[..],"",b[..]),"schema");
+  r:[1]AgRoute; b:[2048]u8;
+  #assert !cd_holds(agr_json(r[..],"",b[..]),"schema");
   r[0].nsource=cd_cat(r[0].source[..],0,"local-elephant");
   r[0].nwhy=cd_cat(r[0].why[..],0,"unavailable");
-  line:=cd_route_json(r[..],"codex",b[..]);
+  line:=agr_json(r[..],"codex",b[..]);
   #assert cd_holds(line,"\"schema\":\"coder.route.v2\"") && cd_holds(line,"\"ran\":\"codex\"") && cd_holds(line,"unavailable");
 }
 

@@ -1,0 +1,349 @@
+// Choose an engine (Coder book chapter 13), for any owner: the task and this
+// machine's environment (the OS, which agent CLIs are on PATH, whether a
+// model server answers on this machine) go to System One as typed questions,
+// and the answer names the engine, how hard the task is and the effort to
+// give it. It is a decision, never a keyword rule. Coder asks when no
+// --engine is given; Aethyrforge asks for every conversation's first turn.
+//
+// A shared router.json (~/.openagents/coder/router.json) selects local
+// Elephant or an explicit Pylon System One door. Without that configuration
+// the legacy Baseten Mammoth path remains. The desktop clients create a
+// local, keyless config and never fall back to Baseten.
+//
+// Two steps, because the owner keeps its own consent ledger: agr_begin reads
+// the config, the eligible engines and the question; when agr_needs_grant
+// says the task would leave this machine, the owner asks its ledger about
+// agr_question's text first (Coder: gt_session_to_so); then agr_ask sends
+// it. agr_pick is the engine that runs: the decision when it is sure enough,
+// else an eligible default (availability.coax).
+//
+// The labels split Claude Code and Codex by the job's size, not by whether
+// it mentions code, as the Lab's labels do; coder/tui/route-labels.tsv is
+// the labelled set and coder/tui/route_eval.py scores the held-out half.
+// Moved from coder/tui/route.coax without a change in behaviour.
+
+#load "../../systemone/systemone.coax";
+#load "../../sys/fs.coax";
+#load "route-policy.coax";
+#load "availability.coax";
+
+AGR_ENGINES :: [4] string.["claude", "codex", "micro", "psionic"];
+AGR_ENGINE_LABELS :: [4] string.[
+  "Claude Code, Anthropic's coding agent CLI: for work that spans files or needs understanding first: refactors, restructuring, new features, debugging, reviews, design, and explaining a codebase",
+  "Codex, OpenAI's coding agent CLI: for quick, contained jobs: a one-line or one-file edit, a typo, a version bump, running tests, a build, git or other terminal commands",
+  "Microcoder, OpenAgents' own small agent on a hosted model: for small talk, a plain question with a short answer, or when neither coding agent CLI is installed",
+  "Microcoder on a model served on this machine: only when the environment says a local model server is running and the user wants the work kept on this machine"];
+AGR_LEVELS :: [5] string.["Trivial: a one-line answer", "Easy: a short answer or a small edit", "Moderate: a few files or steps",
+                          "Hard: many files, debugging or design", "Very hard: a long, open-ended or risky task"];
+AGR_EFFORTS :: [3] string.["low", "medium", "high"];
+AGR_EFFORT_LABELS :: [3] string.["Low: answer directly, little thinking", "Medium: some thought", "High: careful reasoning for hard problems"];
+AGR_SURE :: 0.5;            // below this the person's default engine runs, and the owner says so
+AGR_BASETEN_ENV :: "/work/.secrets/baseten.env";
+
+AgRoute :: struct {
+  ok: bool;
+  eligible: int; allowed: int; blocked: int;
+  engine: [16] u8; nengine: int;
+  probability: f64;
+  difficulty: int;               // 0 trivial to 4 very hard
+  effort: [16] u8; neffort: int;
+  why: [512] u8; nwhy: int;      // why there is no decision
+  source: [32]u8; nsource:int;   // nonempty selects the new coder.route.v2 projection
+  model: [128]u8; nmodel:int;
+  context: [256]u8; ncontext:int; // recent inert conversation text on automatic forks
+}
+
+// The question between agr_begin and agr_ask: its state, its door and the
+// config's text the door's strings point into.
+AgrAsk :: struct {
+  state: [32768] u8; nstate: int;
+  cfg: [4096] u8; arbuf: [4096] u8; ub: [2048] u8;
+  url: string; remote: bool; elephant: bool;
+  key: [512] u8;                 // a Baseten key read from the env file, for curl's environment only; wiped after the ask
+  client: SoClient;
+}
+
+agr_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+#test "routing projections keep UTF8 intact and bound current and recent context" {
+  #assert agr_clip("abc",2,false)=="ab" && agr_clip("abc",2,true)=="bc";
+  #assert agr_clip("éx",1,false)=="" && agr_clip("xé",1,true)=="";
+  #assert agr_clip("éx",2,false)=="é" && agr_clip("xé",2,true)=="é";
+  #assert agr_clip("abc",0,false)=="" && agr_clip("abc",0,true)=="";
+  #assert agr_clip("abc",3,false)=="abc";
+}
+agr_clip :: (text:string,limit:int,tail:bool)->string {
+  if text.count<=limit {return text;}
+  if tail {at:=text.count-limit;while at<text.count && (text[at] & 0xc0)==0x80 {at+=1;}return cast(string)text[at..<text.count];}
+  end:=limit;while end>0 && (text[end] & 0xc0)==0x80 {end-=1;}return cast(string)text[0..<end];
+}
+
+// Compact questions fit the resident Elephant's per-question context budget.
+// Only eligible agents are options; the full prompt still goes to the worker.
+agr_elephant_body :: (b:[]SoBody,buf:[]u8,state:string,eligible:int) {
+  names:=AGR_ENGINES;
+  descriptions:=[4]string.["Complex multi-file work, debugging, design or reviews", "Small contained edits, builds, tests or terminal commands", "Brief answers and small talk on the configured hosted model", "Local-only work on the configured local text model"];
+  keys:[4]string; labels:[4]string; n:=0;
+  for i:0..<4 {if (eligible & (1<<i))!=0 {keys[n]=names[i];labels[n]=descriptions[i];n+=1;}}
+  so_begin(b,buf,SO_PSIONIC_ELEPHANT,""); so_state_json(b,state);
+  so_choice(b,"engine","Choose the eligible agent best suited to the task's complexity.",keys[0..<n],labels[0..<n]);
+  levels:=AGR_LEVELS; efforts:=AGR_EFFORTS; effort_labels:=AGR_EFFORT_LABELS;
+  so_score(b,"difficulty","How difficult is this task?",levels[..]);
+  so_choice(b,"effort","How much reasoning does this task need?",efforts[..],effort_labels[..]);
+}
+
+#test "Elephant routing asks typed complexity questions using only eligible agents" {
+  b:[1]SoBody; buf:[8192]u8;
+  agr_elephant_body(b[..],buf[..],"{\"message\":\"fix a typo\"}",3);
+  body:=so_body(b[..]);
+  #assert cl_raw(body,"model")=="\"elephant-1\"" && b[0].questions==3;
+  engines:=cl_raw(body,"questions.engine.criteria");
+  #assert cl_raw(engines,"claude").count>0 && cl_raw(engines,"codex").count>0 && cl_raw(engines,"micro").count==0;
+}
+
+// Whether name is a program in a PATH directory.
+agr_on_path :: (name: string) -> bool {
+  pb: [8192] u8; path := cl_getenv("PATH", pb[..]);
+  at := 0;
+  while at <= path.count {
+    e := at; while e < path.count && path[e] != ':' { e += 1; }
+    if e > at {
+      fb: [4200] u8; n := agr_cat(fb[..], 0, cast(string) path[at..<e]); n = agr_cat(fb[..], n, "/"); n = agr_cat(fb[..], n, name);
+      if fs_exists(cast(string) fb[0..<n]) { return true; }
+    }
+    at = e + 1;
+  }
+  return false;
+}
+
+// The state System One sees: {"message": ..., "environment": {...}}.
+agr_state :: (task: string, claude: bool, codex: bool, local: bool, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"message\":"); n = json_write_string(out, n, task);
+  n = json_raw(out, n, ",\"environment\":{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"agents\":{\"claude_code\":{\"installed\":");
+  n = json_raw(out, n, ifx claude then "true" else "false");
+  n = json_raw(out, n, "},\"codex\":{\"installed\":"); n = json_raw(out, n, ifx codex then "true" else "false");
+  n = json_raw(out, n, "}},\"local_model_server\":"); n = json_raw(out, n, ifx local then "true" else "false");
+  n = json_raw(out, n, "}}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+agr_body :: (b: [] SoBody, buf: [] u8, state: string) {
+  engines := AGR_ENGINES; labels := AGR_ENGINE_LABELS; levels := AGR_LEVELS;
+  efforts := AGR_EFFORTS; effort_labels := AGR_EFFORT_LABELS;
+  so_begin(b, buf, SO_MAMMOTH, "");
+  so_state_json(b, state);
+  so_choice(b, "engine", "Which agent should handle the user's message? Only choose an agent listed in eligible_engines; installation alone does not establish availability.", engines[..], labels[..]);
+  so_score(b, "difficulty", "How hard is the user's request to do well?", levels[..]);
+  so_choice(b, "effort", "How much reasoning should the agent spend on this request? Hard requests need more.", efforts[..], effort_labels[..]);
+}
+
+// NAME=value from an env file's text ("" when absent); export and quotes dropped.
+agr_env_value :: (text: string, name: string) -> string {
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if line.count > 7 && cast(string) line[0..<7] == "export " { line = cast(string) line[7..<line.count]; }
+    if line.count <= name.count || cast(string) line[0..<name.count] != name || line[name.count] != '=' { continue; }
+    v := cast(string) line[name.count + 1..<line.count];
+    while v.count > 0 && (v[v.count - 1] == 13 || v[v.count - 1] == ' ') { v = cast(string) v[0..<v.count - 1]; }
+    if v.count >= 2 && (v[0] == '"' || v[0] == '\'') && v[v.count - 1] == v[0] { v = cast(string) v[1..<v.count - 1]; }
+    return v;
+  }
+  return "";
+}
+
+// A System One client with its key: from BASETEN_API_KEY, or from
+// ~/work/.secrets/baseten.env into kb, for curl's environment only. "" when
+// it is ready, else why not. Wipe kb after the call.
+agr_keyed :: (c: [] SoClient, kb: [] u8) -> string {
+  c[0] = SoClient.{};
+  ev: [16] u8;
+  if cl_getenv(SO_BASETEN_KEY_ENV, ev[..]).count > 0 { return ""; }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  pb: [1200] u8; pn := agr_cat(pb[..], agr_cat(pb[..], 0, home), AGR_BASETEN_ENV);
+  fb: [8192] u8; nf := fs_read(cast(string) pb[0..<pn], fb[..]);
+  v := agr_env_value(cast(string) fb[0..<ifx nf > 0 then nf else 0], SO_BASETEN_KEY_ENV);
+  kn := ifx v.count <= kb.count then agr_cat(kb, 0, v) else 0;
+  for i: 0..<fb.count { fb[i] = 0; }
+  if kn == 0 { return "no System One key: set BASETEN_API_KEY or add it to ~/work/.secrets/baseten.env"; }
+  c[0].key_value = cast(string) kb[0..<kn];
+  return "";
+}
+
+agr_fail :: (r: [] AgRoute, why: string) { r[0].ok = false; r[0].nwhy = agr_cat(r[0].why[..], 0, why); }
+
+// The question about task, or false with r decided (no eligible engine, a
+// config problem or no key). r's context, when set, rides along.
+agr_begin :: (task: string, local: bool, r: [] AgRoute, q: [] AgrAsk) -> bool {
+  allowed: [1] int; blocked: [1] int;
+  r[0].eligible = ca_eligible(local, allowed[..], blocked[..]); r[0].allowed = allowed[0]; r[0].blocked = blocked[0];
+  if r[0].eligible == 0 { agr_fail(r, "no eligible engine: allowlist, installation or provider cooldown"); return false; }
+  // Shared config, optional env override, then the legacy hosted default.
+  // A configured local/Pylon failure never sends the task to Baseten.
+  pathbuf:[1400]u8; hb:[1024]u8;
+  hn:=agr_cat(pathbuf[..],0,ca_state_home(hb[..])); hn=agr_cat(pathbuf[..],hn,"/.openagents/coder/router.json");
+  exists:=fs_exists(cast(string)pathbuf[0..<hn]);
+  cn:=fs_read(cast(string)pathbuf[0..<hn],q[0].cfg[..]);
+  if exists && cn<=0 {agr_fail(r,"router.json could not be read or is empty");return false;}
+  if cn>=q[0].cfg.count {agr_fail(r,"router.json exceeds its 4096-byte limit");return false;}
+  config:=cast(string)q[0].cfg[0..<ifx cn>0 then cn else 0];
+  if config.count>0 && !json_valid(config) {agr_fail(r,"router.json is not valid JSON");return false;}
+  if config.count>0 && cl_raw(config,"schema")!="\"coder.router.v1\"" {agr_fail(r,"router.json needs schema coder.router.v1");return false;}
+  if config.count>0 && cl_raw(config,"remote")!="true" && cl_raw(config,"remote")!="false" {agr_fail(r,"router.json remote must be a boolean");return false;}
+  config_ar:[1]ClArena; config_ar[0]=ClArena.{buf=q[0].arbuf[..]};
+  url:=cl_getenv(SO_PSIONIC_URL_ENV,q[0].ub[..]);
+  if url.count==0 {url=cl_str(config_ar[..],config,"url");}
+  if exists && url.count==0 {agr_fail(r,"router.json needs a System One URL");return false;}
+  remote:=cl_raw(config,"remote")=="true";
+  rb:[16]u8; if cl_getenv("CODER_ROUTE_REMOTE",rb[..])=="1" {remote=true;}
+  elephant:=url.count>0;
+  if elephant {
+    r[0].nsource=agr_cat(r[0].source[..],0,ifx remote then "pylon-elephant" else "local-elephant");
+    if !cr_endpoint(url,remote) {agr_fail(r,"router endpoint refused: use loopback locally, or an explicit remote HTTPS/Pylon door");return false;}
+  }
+  sb := q[0].state[..];
+  cut:=task.count; if elephant {cut=agr_clip(task,768,false).count;}
+  state := agr_state(cast(string)task[0..<cut], agr_on_path("claude"), agr_on_path("codex"), local, sb);
+  if state.count == 0 { agr_fail(r, "the task is too long to route"); return false; }
+  n := json_raw(sb, state.count - 1, ",\"task_truncated\":"); n=json_raw(sb,n,ifx cut<task.count then "true" else "false");
+  if r[0].ncontext>0 {n=json_raw(sb,n,",\"recent_context\":");n=json_write_string(sb,n,cast(string)r[0].context[0..<r[0].ncontext]);}
+  n = json_raw(sb, n, ",\"eligible_engines\":["); comma := false;
+  names := AGR_ENGINES;
+  for i: 0..<4 { if (r[0].eligible & (1 << i)) != 0 { if comma { n = json_raw(sb, n, ","); } n = json_write_string(sb, n, names[i]); comma = true; } }
+  n = json_raw(sb, n, "]}");
+  if n < 0 { agr_fail(r, "the task is too long to route"); return false; }
+  q[0].nstate = n;
+  cb: [1] SoClient;
+  why:="";
+  if elephant {cb[0]=SoClient.{url=url,key_env="",timeout_s=8};
+    keycheck:[1]u8; if cl_getenv(SO_PSIONIC_KEY_ENV,keycheck[..]).count>0 {cb[0].key_env=SO_PSIONIC_KEY_ENV;cb[0].scheme="Bearer";}
+  } else {why=agr_keyed(cb[..],q[0].key[..]);}
+  if why.count > 0 { agr_fail(r, why); return false; }
+  q[0].client = cb[0]; q[0].url = url; q[0].remote = remote; q[0].elephant = elephant;
+  return true;
+}
+
+// The task leaves this machine (the hosted door or a remote one): the owner's consent ledger decides first.
+agr_needs_grant :: (q: [] AgrAsk) -> bool { return !q[0].elephant || q[0].remote; }
+// What would be sent, for the owner's ledger.
+agr_question :: (q: [] AgrAsk) -> string { return cast(string) q[0].state[0..<q[0].nstate]; }
+// The owner refused the send (it writes its reason into the route): the key is wiped.
+agr_wipe :: (q: [] AgrAsk) { for i: 0..<q[0].key.count { q[0].key[i] = 0; } }
+
+// Asks System One; r says what it chose, or why there is no decision.
+agr_ask :: (q: [] AgrAsk, r: [] AgRoute) {
+  state := agr_question(q);
+  c := q[0].client; elephant := q[0].elephant;
+  buf: [16384] u8; b: [1] SoBody;
+  if elephant {agr_elephant_body(b[..],buf[..],state,r[0].eligible);} else {agr_body(b[..], buf[..], state);}
+  out: [65536] u8; err: [4096] u8;
+  res := so_decide(c, b[..], out[..], err[..]);
+  agr_wipe(q);
+  if res.problem.count > 0 { agr_fail(r, ifx res.stderr.count > 0 then res.stderr else res.problem); return; }
+  mab: [4096] u8; mar: [1] ClArena; mar[0] = ClArena.{buf = mab[..]};
+  if elephant && cl_str(mar[..],res.body,"model")!="elephant-1" {agr_fail(r,"router returned another model identity");return;}
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  e := so_choice_of(ar[..], res.body, "engine");
+  if !e.ok { agr_fail(r, "System One's answer has no engine"); return; }
+  r[0].nengine = agr_cat(r[0].engine[..], 0, e.choice);
+  r[0].probability = e.probability;
+  d := so_score_of(res.body, "difficulty");
+  r[0].difficulty = ifx d.ok then d.level else 2;
+  f := so_choice_of(ar[..], res.body, "effort");
+  r[0].neffort = agr_cat(r[0].effort[..], 0, ifx f.ok then f.choice else "medium");
+  if elephant {r[0].nmodel=agr_cat(r[0].model[..],0,cr_model(e.choice,r[0].difficulty));}
+  chosen := ca_index(agr_engine(r));
+  if chosen < 0 || (r[0].eligible & (1 << chosen)) == 0 { agr_fail(r, "System One selected an ineligible engine"); return; }
+  r[0].ok = true;
+}
+
+agr_engine :: (r: [] AgRoute) -> string { return cast(string) r[0].engine[0..<r[0].nengine]; }
+
+// The engine that runs, as an index of AGR_ENGINES: System One's choice when
+// it is sure enough and that agent is eligible; else the first eligible
+// engine; -1 when none is.
+agr_pick :: (r: [] AgRoute) -> int {
+  preferred := ifx r[0].ok && r[0].probability >= AGR_SURE then ca_index(agr_engine(r)) else -1;
+  return ca_pick(preferred, r[0].eligible);
+}
+
+// "claude (0.93) · moderate · effort medium"
+agr_text :: (r: [] AgRoute, out: [] u8) -> string {
+  levels := [5] string.["trivial", "easy", "moderate", "hard", "very hard"];
+  n := agr_cat(out, 0, agr_engine(r)); n = agr_cat(out, n, " (");
+  pc := cast(int) (r[0].probability * 100.0 + 0.5);
+  n = agr_cat(out, n, ifx pc >= 100 then "1.00" else "0."); if pc < 100 { if pc < 10 { n = agr_cat(out, n, "0"); } n = json_write_int(out, n, pc); }
+  n = agr_cat(out, n, ") · "); n = agr_cat(out, n, levels[ifx r[0].difficulty >= 0 && r[0].difficulty < 5 then r[0].difficulty else 2]);
+  n = agr_cat(out, n, " · effort "); n = agr_cat(out, n, cast(string) r[0].effort[0..<r[0].neffort]);
+  return cast(string) out[0..<n];
+}
+
+// The route as a session line ({"kind":"route",...}); ran is the engine that ran, "" for none.
+agr_json :: (r: [] AgRoute, ran: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"kind\":\"route\",\"ok\":"); n = json_raw(out, n, ifx r[0].ok then "true" else "false");
+  if r[0].nsource>0 {
+    n=json_raw(out,n,",\"schema\":\"coder.route.v2\",\"source\":"); n=json_write_string(out,n,cast(string)r[0].source[0..<r[0].nsource]);
+    n=json_raw(out,n,",\"model\":"); n=json_write_string(out,n,cast(string)r[0].model[0..<r[0].nmodel]);
+  }
+  if r[0].ok {
+    n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, agr_engine(r));
+    pm := cast(int) (r[0].probability * 1000.0 + 0.5);       // as 0.962: three places are what the decision carries
+    n = json_raw(out, n, ",\"probability\":"); n = json_write_int(out, n, pm / 1000); n = json_raw(out, n, ".");
+    n = json_raw(out, n, ifx pm % 1000 < 10 then "00" else ifx pm % 1000 < 100 then "0" else ""); n = json_write_int(out, n, pm % 1000);
+    n = json_raw(out, n, ",\"difficulty\":"); n = json_write_int(out, n, r[0].difficulty);
+    n = json_raw(out, n, ",\"effort\":"); n = json_write_string(out, n, cast(string) r[0].effort[0..<r[0].neffort]);
+  } else { n = json_raw(out, n, ",\"text\":"); n = json_write_string(out, n, cast(string) r[0].why[0..<r[0].nwhy]); }
+  n = json_raw(out, n, ",\"eligible_mask\":"); n = json_write_int(out, n, r[0].eligible);
+  n = json_raw(out, n, ",\"blocked_mask\":"); n = json_write_int(out, n, r[0].blocked);
+  n = json_raw(out, n, ",\"allowed_mask\":"); n = json_write_int(out, n, r[0].allowed);
+  if ran.count > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, ran); }
+  n = json_raw(out, n, "}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+#test "the route asks three typed questions about the message and this machine" {
+  sb: [4096] u8; buf: [16384] u8; b: [1] SoBody;
+  state := agr_state("fix the failing test", true, false, false, sb[..]);
+  #assert state == "{\"message\":\"fix the failing test\",\"environment\":{\"os\":\"macOS\",\"app\":\"Coder in the terminal\",\"agents\":{\"claude_code\":{\"installed\":true},\"codex\":{\"installed\":false}},\"local_model_server\":false}}";
+  agr_body(b[..], buf[..], state);
+  body := so_body(b[..]);
+  #assert body.count > 0;
+  q := cl_raw(body, "questions");
+  #assert cl_raw(q, "engine").count > 0 && cl_raw(q, "difficulty").count > 0 && cl_raw(q, "effort").count > 0;
+}
+
+#test "a decision reads back as engine, probability, difficulty and effort" {
+  r: [1] AgRoute;
+  r[0].nengine = agr_cat(r[0].engine[..], 0, "codex"); r[0].probability = 0.87; r[0].difficulty = 1;
+  r[0].neffort = agr_cat(r[0].effort[..], 0, "low");
+  ob: [128] u8;
+  #assert agr_text(r[..], ob[..]) == "codex (0.87) · easy · effort low";
+  r[0].probability = 0.05;
+  #assert agr_text(r[..], ob[..]) == "codex (0.05) · easy · effort low";
+}
+
+#test "the engine that runs: a sure decision, else the first eligible default, else none" {
+  r: [1] AgRoute; r[0].eligible = 2;
+  #assert agr_pick(r[..]) == 1;
+  r[0].eligible = 0; #assert agr_pick(r[..]) == -1;
+  r[0].eligible = 15; r[0].ok = true; r[0].probability = 0.9; r[0].nengine = agr_cat(r[0].engine[..], 0, "micro");
+  #assert agr_pick(r[..]) == 2;
+  r[0].probability = 0.4; #assert agr_pick(r[..]) == 0;
+  r[0].probability = 0.9; r[0].eligible = 1; #assert agr_pick(r[..]) == 0;
+}
+
+#test "the route line names its door, the decision or why there is none, the masks and what ran" {
+  r: [1] AgRoute; b: [2048] u8;
+  agr_fail(r[..], "no key"); r[0].eligible = 4; r[0].allowed = 15;
+  #assert agr_json(r[..], "", b[..]) == "{\"kind\":\"route\",\"ok\":false,\"text\":\"no key\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15}";
+  r[0].ok = true; r[0].nengine = agr_cat(r[0].engine[..], 0, "codex"); r[0].probability = 0.05; r[0].difficulty = 1;
+  r[0].neffort = agr_cat(r[0].effort[..], 0, "low"); r[0].nsource = agr_cat(r[0].source[..], 0, "local-elephant");
+  #assert agr_json(r[..], "codex", b[..]) == "{\"kind\":\"route\",\"ok\":true,\"schema\":\"coder.route.v2\",\"source\":\"local-elephant\",\"model\":\"\",\"engine\":\"codex\",\"probability\":0.050,\"difficulty\":1,\"effort\":\"low\",\"eligible_mask\":4,\"blocked_mask\":0,\"allowed_mask\":15,\"ran\":\"codex\"}";
+}
+
+#test "env files: export prefixes and quotes" {
+  #assert agr_env_value("A=1\nexport BASETEN_API_KEY=\"k1\"\n", "BASETEN_API_KEY") == "k1";
+  #assert agr_env_value("BASETEN_API_KEYS=x", "BASETEN_API_KEY") == "";
+}

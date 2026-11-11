@@ -1,0 +1,80 @@
+// Which engines automatic routing may pick (route.coax), for any owner: the
+// allowlist (CODER_ROUTE_ENGINES), which agent CLIs are installed, and each
+// engine's provider cooldown. A provider failure is a local, typed
+// observation: no prompt, credential or error prose is kept, only when it
+// happened and when it resets, in ~/.openagents/coder/availability-ENGINE.jsonl
+// ($CODER_HOME in place of $HOME when set). The rules are
+// availability-policy.coax (#authority). Moved from coder/tui/availability.coax;
+// the Coder session that failed keeps its own observability line.
+#load "availability-policy.coax";
+#load "../../sys/fs.coax";
+
+cxproc_wall_us :: () -> int #foreign #effects(all);
+
+// Where agent state lives: $CODER_HOME when set, else $HOME. Engines still
+// run with the real $HOME, so a lab can drive them on the person's own
+// logins without touching the person's sessions, Router or memory.
+ca_state_home :: (out: [] u8) -> string {
+  h := cl_getenv("CODER_HOME", out);
+  if h.count > 0 { return h; }
+  return cl_getenv("HOME", out);
+}
+
+// ~/.openagents/coder/sessions/../availability-ENGINE.jsonl, its folders made when missing; "" without a home.
+ca_path :: (engine: string, out: [] u8) -> string {
+  hb: [1024] u8; home := ca_state_home(hb[..]);
+  if home.count == 0 { return ""; }
+  n := agr_cat(out, 0, home);
+  n = agr_cat(out, n, "/.openagents"); m := fs_mkdir(cast(string) out[0..<n]);
+  n = agr_cat(out, n, "/coder"); m = fs_mkdir(cast(string) out[0..<n]);
+  n = agr_cat(out, n, "/sessions"); m = fs_mkdir(cast(string) out[0..<n]);
+  n = agr_cat(out, n, "/../availability-");
+  n = agr_cat(out, n, engine); n = agr_cat(out, n, ".jsonl");
+  return cast(string) out[0..<n];
+}
+
+// The engine failed recently, or its record cannot be read (which excludes it too).
+ca_recent :: (engine: string, now: int) -> bool {
+  pb: [1400] u8; path := ca_path(engine, pb[..]);
+  if path.count == 0 { return true; }
+  if !fs_exists(path) { return false; }
+  b: [65536] u8; n := fs_read(path, b[..]);
+  if n <= 0 || n >= b.count || b[n - 1] != 10 { return true; }
+  at := 0;
+  while at < n {
+    end := at; while end < n && b[end] != 10 { end += 1; }
+    line := cast(string) b[at..<end]; at = end + 1;
+    t := cl_int(line, "at"); r := cl_int(line, "reset");
+    if !t.ok || !r.ok || ca_blocked(t.value, r.value, now) { return true; }
+  }
+  return false;
+}
+
+// The engines automatic routing may pick, as bits of AGR_ENGINES; allowed and blocked get their masks.
+ca_eligible :: (local: bool, allowed: [] int, blocked: [] int) -> int {
+  b: [256] u8; allowed[0] = ca_allowed(cl_getenv("CODER_ROUTE_ENGINES", b[..]));
+  installed := 4;
+  if agr_on_path("claude") { installed = installed | 1; }
+  if agr_on_path("codex") { installed = installed | 2; }
+  if local { installed = installed | 8; }
+  names := AGR_ENGINES; now := cxproc_wall_us() / 1000000;
+  for i: 0..<4 { if ca_recent(names[i], now) { blocked[0] = blocked[0] | (1 << i); } }
+  return allowed[0] & installed & (15 ^ blocked[0]);
+}
+
+// A provider failure of engine (an AGR_ENGINES name) now: the cooldown is
+// kept until its typed reset when that is within a week, else a minute.
+// saved[0] says whether it reached the disk; the retry time is returned,
+// -1 for an engine routing never picks.
+ca_record :: (engine: string, provider_reset_s: int, saved: [] bool) -> int {
+  saved[0] = false;
+  if ca_index(engine) < 0 { return -1; }
+  pb: [1400] u8; path := ca_path(engine, pb[..]);
+  now := cxproc_wall_us() / 1000000;
+  reset := ca_typed_reset(now, provider_reset_s);
+  retry := ifx reset > now + 60 then reset else now + 60;
+  b: [256] u8; n := json_raw(b[..], 0, "{\"at\":"); n = json_write_int(b[..], n, now);
+  n = json_raw(b[..], n, ",\"reset\":"); n = json_write_int(b[..], n, retry); n = json_raw(b[..], n, "}\n");
+  saved[0] = path.count > 0 && fs_append_durable(path, cast(string) b[0..<n]);
+  return retry;
+}

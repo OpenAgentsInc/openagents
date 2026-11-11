@@ -21,8 +21,9 @@ typed decision from System One, not a keyword rule.
 
 ## The request
 
-[coder/tui/route.coax](../../coder/tui/route.coax) sends the task and this
-machine's environment as the state:
+[coax/lib/agent/engine/route.coax](../../coax/lib/agent/engine/route.coax),
+the router every agent owner shares, sends the task and this machine's
+environment as the state:
 
 ```json
 {"message":"fix the failing test","environment":{"os":"macOS","app":"Coder in the terminal","agents":{"claude_code":{"installed":true},"codex":{"installed":false}},"local_model_server":false}}
@@ -215,6 +216,9 @@ No message in it needs the psionic engine, so that answer has no check yet.
 
 ## Sources
 
-- `coder/tui/route.coax`, `coder/tui/route-labels.tsv`, `coder/tui/route_eval.py`.
+- `coax/lib/agent/engine/route.coax`, `route-policy.coax`, `availability.coax` and
+  `availability-policy.coax` (the shared router); `coder/tui/route.coax`
+  (Coder's consent gate around it), `coder/tui/route-labels.tsv`,
+  `coder/tui/route_eval.py`.
 - `coax/lib/systemone/` (`request.coax`, `answers.coax`, `transport.coax`).
 - `apps/openagents-desktop/router.coax` and `router-labels.tsv`.
