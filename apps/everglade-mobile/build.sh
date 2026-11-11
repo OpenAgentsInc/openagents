@@ -100,6 +100,10 @@ cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 # The Archery Range: a module of its own (apps/openagents-web/archery-range.coax), the same passes, Experimental's pack.
 build_realm archery-range
 emit_page archery-range charactercreator charactercreator fivelab-fx fxg
+# The Bitcoin Lab: its own module (apps/openagents-web/bitcoin-lab-walk.coax), the same passes with its
+# Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
+build_realm bitcoin-lab-walk
+emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # A phone's tier for the pack's layers is Coax's (aethyr/render/texture-format.coax tf_side).
 "$coax" c "$repo/aethyr/render/texture-format.coax" --library --header "$work/c/texture-format.h" > "$work/c/texture-format.c"

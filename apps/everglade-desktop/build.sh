@@ -49,7 +49,7 @@ build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app'
     # fivelab's and the range's checks run natively, as coax/web/wasm.sh runs them (native_check_units):
     # interpreted, fivelab's film-stage check runs past the compiler's traversal budget and nothing is emitted.
     local native_checks=()
-    case "$name" in fivelab|archery-range) native_checks=(COAX_NATIVE_CHECKS=1) ;; esac
+    case "$name" in fivelab|archery-range|bitcoin-lab-walk) native_checks=(COAX_NATIVE_CHECKS=1) ;; esac
     env ${native_checks[@]+"${native_checks[@]}"} COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
     local realm_sources realm_objects=() realm_pids=() s pid
     read -r -a realm_sources < "$realm/sources"
@@ -102,6 +102,10 @@ cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
 # fivelab/glade.pack.gz.
 build_realm archery-range
 emit_page archery-range charactercreator charactercreator fivelab-fx fxg
+# The Bitcoin Lab: its own module (apps/openagents-web/bitcoin-lab-walk.coax), the same passes with its
+# Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
+build_realm bitcoin-lab-walk
+emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # The realms' sound: Aethyr's Apple audio host (aethyr/host/apple/audio-host.h, PageAudio.swift and
 # Aethyrforge's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,

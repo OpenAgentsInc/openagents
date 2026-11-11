@@ -1,10 +1,11 @@
 // Everglade's apps, the worlds you can open (everglade/docs/app-scenes-spec.md): the app opens on
-// a list of four, and you hop between them.
+// a list of five, and you hop between them.
 //
 //   Everglade                  the main flow, as the web has it: make a character, then the glade
 //   The Golemancers' Workshop  workshop.coax
 //   The Archery Range          the web's Archery Range realm (everglade/docs/archery-range-spec.md)
 //   Everglade Experimental     the web's Experimental world
+//   The Bitcoin Lab            the web's Bitcoin Lab realm (apps/openagents-web/bitcoin-lab-walk.coax)
 //
 // The Workshop runs here. Everglade is the web's everglade2 realm, and the Archery Range and
 // Experimental are the web's fivelab realm on their own pages: a host that can run a realm's page
@@ -19,8 +20,8 @@
 //   coax/bin/coax test --library apps/everglade-desktop/scenes.coax --only "scenes"
 #load "workshop.coax";
 
-SC_LIST :: 0; SC_MAIN :: 1; SC_WORKSHOP :: 2; SC_RANGE :: 3; SC_EXPERIMENTAL :: 4;
-SC_WORLDS :: 4;
+SC_LIST :: 0; SC_MAIN :: 1; SC_WORKSHOP :: 2; SC_RANGE :: 3; SC_EXPERIMENTAL :: 4; SC_BTCLAB :: 5;
+SC_WORLDS :: 5;
 // The place a host draws behind a scene: the temple. The list and the cards are shown over it,
 // seen from a camera that walks slowly round it.
 SC_PLACE_TEMPLE :: 1;
@@ -35,6 +36,7 @@ Scenes :: struct {
   realm_main: bool;                   // this host runs Everglade's realm itself (sc_host_runs)
   realm_experimental: bool;           // and Experimental's
   realm_range: bool;                  // and the Archery Range's
+  realm_btclab: bool;                 // and the Bitcoin Lab's
   opening: bool;                      // the host is still opening the realm of the world that is open (sc_host_opening)
 }
 
@@ -42,12 +44,14 @@ sc_name :: (world: int) -> string {
   if world == SC_MAIN { return "Everglade"; }
   if world == SC_WORKSHOP { return "The Golemancers' Workshop"; }
   if world == SC_RANGE { return "The Archery Range"; }
+  if world == SC_BTCLAB { return "The Bitcoin Lab"; }
   return "Everglade Experimental";
 }
 sc_about :: (world: int) -> string {
   if world == SC_MAIN { return "Make your character, then walk into the glade"; }
   if world == SC_WORKSHOP { return "A marble temple in the night, and an unfinished golem"; }
   if world == SC_RANGE { return "Shoot for points on foot, from horseback and dragonback"; }
+  if world == SC_BTCLAB { return "Walk through bytes, hashes and a chain of blocks"; }
   return "Classes, monsters, a horse and a red dragon";
 }
 // Whether a world is one of this file's own scenes.
@@ -56,7 +60,7 @@ sc_here :: (world: int) -> bool { return world == SC_WORKSHOP; }
 sc_runs :: (s: []Scenes, world: int) -> bool { return sc_here(world) || sc_realm(s, world); }
 // Whether a world is a realm this host runs itself.
 sc_realm :: (s: []Scenes, world: int) -> bool {
-  return (world == SC_MAIN && s[0].realm_main) || (world == SC_RANGE && s[0].realm_range) || (world == SC_EXPERIMENTAL && s[0].realm_experimental);
+  return (world == SC_MAIN && s[0].realm_main) || (world == SC_RANGE && s[0].realm_range) || (world == SC_EXPERIMENTAL && s[0].realm_experimental) || (world == SC_BTCLAB && s[0].realm_btclab);
 }
 // Whether the host is drawing a realm now, under the Worlds button.
 sc_in_realm :: (s: []Scenes) -> bool { return sc_realm(s, s[0].scene); }
@@ -65,6 +69,7 @@ sc_address :: (world: int) -> string {
   if world == SC_MAIN { return "openagents.com/worlds/character-creator"; }
   if world == SC_RANGE { return "openagents.com/worlds/archery-range"; }
   if world == SC_EXPERIMENTAL { return "openagents.com/worlds/everglade-experimental"; }
+  if world == SC_BTCLAB { return "openagents.com/worlds/bitcoin-lab"; }
   return "";
 }
 
@@ -126,7 +131,7 @@ sc_list :: (s: []Scenes, out: []f32, d: f32) -> int {
       if b.width >= 430 && !here { about = sc_about(world); n = eg_text(out, n, "On the web for now", b.x + b.width - 16 - eg_width("On the web for now", 13, EG_BODY), b.y + 26, 13, d, EG_BODY, EG_DIM); }
       n = eg_text(out, n, about, b.x + 16, b.y + 50, 14, d, EG_BODY, EG_DIM);
     }
-    hint := ifx s[0].touch then "Tap a world" else "Click a world, or press 1 to 4";
+    hint := ifx s[0].touch then "Tap a world" else "Click a world, or press 1 to 5";
     n = eg_text(out, n, hint, left, s[0].height - 30 - s[0].safe_bottom, 15, d, EG_BODY, EG_DIM);
     return n;
   }
@@ -177,7 +182,7 @@ sc_draw :: (s: []Scenes, out: []f32, width: f32, height: f32, d: f32, dt: f32) -
 // Which world is open (SC_*), and which place the host draws behind it (SC_PLACE_*).
 sc_scene :: (s: []Scenes) -> int #export_c #effects(all) { return s[0].scene; }
 sc_place :: (s: []Scenes) -> int #export_c #effects(all) { return SC_PLACE_TEMPLE; }
-// Opens a world from outside (a host's own menu or a launch argument): SC_LIST to SC_EXPERIMENTAL.
+// Opens a world from outside (a host's own menu or a launch argument): SC_LIST to SC_BTCLAB.
 sc_go :: (s: []Scenes, world: int) #export_c #effects(all) { sc_open(s, world); }
 // The host says whether it runs a realm itself (SC_MAIN: Everglade, the web's everglade2;
 // SC_RANGE and SC_EXPERIMENTAL: the web's fivelab on the Archery Range's and Experimental's
@@ -188,13 +193,14 @@ sc_host_runs :: (s: []Scenes, world: int, runs: bool) #export_c #effects(all) {
   if world == SC_MAIN { s[0].realm_main = runs; }
   if world == SC_RANGE { s[0].realm_range = runs; }
   if world == SC_EXPERIMENTAL { s[0].realm_experimental = runs; }
+  if world == SC_BTCLAB { s[0].realm_btclab = runs; }
 }
 sc_on_worlds :: (s: []Scenes, x: f32, y: f32) -> bool #export_c #effects(all) { return sc_on_back(s, x, y); }
 // The host is opening the realm of the world that is open, off the frame: the scene says so until
 // the host has it (or it didn't open).
 sc_host_opening :: (s: []Scenes, opening: bool) #export_c #effects(all) { s[0].opening = opening; }
 
-// A key (workshop.coax ws_key's codes). Escape (27) is the list from anywhere; on the list 1 to 4
+// A key (workshop.coax ws_key's codes). Escape (27) is the list from anywhere; on the list 1 to 5
 // open a world.
 sc_key :: (s: []Scenes, key: int, down: bool) -> bool #export_c #effects(all) {
   if key == -1 { a := ws_key(s[0].workshop[..], -1, true); s[0].press_row = -1; s[0].press_back = false; return true; }
@@ -273,7 +279,7 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   return true;
 }
 
-#test "scenes: the app opens on the list of four worlds, and the temple is behind it with nobody in it" {
+#test "scenes: the app opens on the list of five worlds, and the temple is behind it with nobody in it" {
   s: [1] Scenes; sc_state_init(s[..]); out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32; you: [5] f32; cam: [16] f32;
   n := sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
   #assert sc_scene(s[..]) == SC_LIST && n > 200 && n % 6 == 0 && sc_place(s[..]) == SC_PLACE_TEMPLE;
@@ -282,7 +288,9 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   for i: 0..<SC_WORLDS { b := sc_row(s[..], i); #assert sc_row_at(s[..], b.x + 5, b.y + 5) == i && b.y + b.height < 800; }
   #assert sc_here(SC_WORKSHOP) && !sc_here(SC_RANGE) && !sc_here(SC_MAIN) && !sc_here(SC_EXPERIMENTAL) && sc_address(SC_MAIN).count > 0 && sc_address(SC_EXPERIMENTAL).count > 0;
   #assert sc_address(SC_RANGE) == "openagents.com/worlds/archery-range" && sc_address(SC_WORKSHOP).count == 0;
-  // An upright phone: the four rows fit, inside its width.
+  #assert sc_address(SC_BTCLAB) == "openagents.com/worlds/bitcoin-lab" && !sc_runs(s[..], SC_BTCLAB);
+  sc_host_runs(s[..], SC_BTCLAB, true); #assert sc_runs(s[..], SC_BTCLAB) && sc_key(s[..], 53, true) && sc_in_realm(s[..]); sc_go(s[..], SC_LIST);
+  // An upright phone: the five rows fit, inside its width.
   t: [1] Scenes; sc_state_init(t[..]); sc_pad(t[..], 0, 0); sc_safe(t[..], 0, 59, 34);
   n = sc_draw(t[..], out[..], 402, 874, 3, 0.016);
   last := sc_row(t[..], SC_WORLDS - 1); #assert n > 200 && last.x + last.width <= 402 && last.y + last.height < 874 - 60;
