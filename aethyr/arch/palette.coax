@@ -1,0 +1,43 @@
+// Aethyr's architecture kit, its stylized materials: what a surface is made of, as the number a
+// vertex carries (aethyr/arch/mesh.coax, float 6). The village and flora generators
+// (aethyr/arch/village.coax, flora.coax) write these, and Aethyr's stylized shading
+// (aethyr/render/stylized.coax) paints each one: its colour, its pattern and how it takes light.
+// A vertex's tint (the pen's, arch_tint) replaces the colour of a material that takes one.
+//
+//   material          pattern, from the surface's metres (u along, v up)        takes a tint
+//   ARCH_M_GROUND     grass, a dirt path's soft edge, cobbles (u cover, v paved) no
+//   ARCH_M_PLASTER    lime plaster, softly mottled                               yes
+//   ARCH_M_TIMBER     dark sawn beams                                            yes
+//   ARCH_M_ROOF       clay tiles in scalloped courses, moss in patches           yes
+//   ARCH_M_ASHLAR     dressed stone blocks in courses                            yes
+//   ARCH_M_FIELDSTONE one rough stone (a dry-stone wall is many)                 yes
+//   ARCH_M_PLANK      upright boards                                             yes
+//   ARCH_M_DOOR       a boarded door with iron straps                            yes
+//   ARCH_M_WINDOW     a lit window: leaded diamonds over warm light              yes (the light)
+//   ARCH_M_BARK       a trunk or a branch                                        yes
+//   ARCH_M_LEAF       a canopy clump: painterly, banded light (u its height in the crown) yes
+//   ARCH_M_METAL      wrought iron                                               no
+//   ARCH_M_GLOW       a lamp's flame: its own light                              yes
+//   ARCH_M_CLOTH      a banner, bunting, an awning                               yes
+//   ARCH_M_ROCK       a far hill or a mountain: pale rock over green slopes      yes
+//   ARCH_M_SMOOTH     smooth cut stone: a coping, a pier, a sill                 yes
+//   ARCH_M_SHUTTER    a slatted shutter                                          yes
+
+ARCH_M_GROUND :: 1;
+ARCH_M_PLASTER :: 2;
+ARCH_M_TIMBER :: 3;
+ARCH_M_ROOF :: 4;
+ARCH_M_ASHLAR :: 5;
+ARCH_M_FIELDSTONE :: 6;
+ARCH_M_PLANK :: 7;
+ARCH_M_DOOR :: 8;
+ARCH_M_WINDOW :: 9;
+ARCH_M_BARK :: 10;
+ARCH_M_LEAF :: 11;
+ARCH_M_METAL :: 12;
+ARCH_M_GLOW :: 13;
+ARCH_M_CLOTH :: 14;
+ARCH_M_ROCK :: 15;
+ARCH_M_SMOOTH :: 16;
+ARCH_M_SHUTTER :: 17;
+ARCH_M_COUNT :: 18;

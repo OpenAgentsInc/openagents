@@ -5,7 +5,8 @@
 //
 // A vertex is ARCH_VERTEX_FLOATS floats: its place (x, y, z), its normal (x, y, z), its material,
 // two coordinates across its surface (u, v) and three spare. Triangles are a plain list, three
-// vertices each, counter-clockwise seen from outside. Units are metres, +y up.
+// vertices each, counter-clockwise seen from outside. Units are metres, +y up. The three spare
+// floats hold the pen's tint: a colour of the triangles' own, for materials that take one.
 // A pen that fills stops whole: it never writes part of a triangle, and says it is full.
 //   coax/bin/coax test --library aethyr/arch/mesh.coax
 #module "aethyr.arch.mesh";
@@ -18,12 +19,15 @@ ArchPen :: struct {
   n: int;               // vertices written
   full: bool;           // a triangle did not fit, and was left out
   material: f32;        // what the next triangles are made of
+  tint: [3] f32;        // their own colour (red, green, blue), written to a vertex's three spare floats; 0, 0, 0 leaves the material's
 }
 ArchPoint :: struct { x: f32; y: f32; z: f32; nx: f32; ny: f32; nz: f32; u: f32; v: f32; }
 // A span of a pen's vertices: one part.
 ArchPart :: struct { first: int; count: int; }
 
-arch_pen :: (p: [] ArchPen, out: [] f32) { p[0].out = out; p[0].n = 0; p[0].full = false; p[0].material = 0; }
+arch_pen :: (p: [] ArchPen, out: [] f32) { p[0].out = out; p[0].n = 0; p[0].full = false; p[0].material = 0; p[0].tint = [3] f32.[0, 0, 0]; }
+// The colour of the next triangles (0, 0, 0: the material's own).
+arch_tint :: (p: [] ArchPen, r: f32, g: f32, b: f32) { p[0].tint = [3] f32.[r, g, b]; }
 arch_at :: (x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) -> ArchPoint {
   return ArchPoint.{x = x, y = y, z = z, nx = nx, ny = ny, nz = nz, u = u, v = v};
 }
@@ -32,7 +36,7 @@ arch_put :: (p: [] ArchPen, a: ArchPoint) {
   p[0].out[o] = a.x; p[0].out[o + 1] = a.y; p[0].out[o + 2] = a.z;
   p[0].out[o + 3] = a.nx; p[0].out[o + 4] = a.ny; p[0].out[o + 5] = a.nz;
   p[0].out[o + 6] = p[0].material; p[0].out[o + 7] = a.u; p[0].out[o + 8] = a.v;
-  p[0].out[o + 9] = 0; p[0].out[o + 10] = 0; p[0].out[o + 11] = 0;
+  p[0].out[o + 9] = p[0].tint[0]; p[0].out[o + 10] = p[0].tint[1]; p[0].out[o + 11] = p[0].tint[2];
   p[0].n += 1;
 }
 arch_tri :: (p: [] ArchPen, a: ArchPoint, b: ArchPoint, c: ArchPoint) {

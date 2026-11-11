@@ -1,0 +1,194 @@
+// Aethyr's architecture kit, flat-faced solids measured in metres: the pieces a vernacular building
+// is made of (aethyr/arch/village.coax). Where aethyr/arch/mesh.coax's shapes run u and v from 0 to
+// 1, these give every face its real size, u along it and v up it in metres, so a shader can lay
+// courses of stone, tiles and boards at their true scale (aethyr/render/stylized.coax).
+//
+//   arch_face       a flat four-sided face (or a triangle: its last two corners the same)
+//   arch_slab       a box by its two corners, its sides' v the height above the ground
+//   arch_obox       a box turned any way: its middle and three half-axes
+//   arch_beam       a squared timber from one point to another
+//   arch_block      a box turned about y
+//   arch_roof_plane one slope of a roof: tiles on top, boards under, a fascia round its edge
+//   arch_wall_*     a face, a beam or a point on an upright wall, by how far along and how high
+//   coax/bin/coax test --library aethyr/arch/solid.coax
+#module "aethyr.arch.solid";
+#load "mesh.coax";
+#load "palette.coax";
+
+// A number from 0 up to 1 for a seed and a count: the same pair always gives the same number.
+arch_hash :: (seed: int, k: int) -> f32 {
+  h: u32 = add_wrap(mul_wrap(cast,trunc(u32) seed, 374761393), mul_wrap(cast,trunc(u32) k, 668265263));
+  h = h ^ (h >> 13); h = mul_wrap(h, 1274126177); h = h ^ (h >> 16);
+  return cast(f32) (h & 0xFFFFFF) / 16777216.0;
+}
+// One from low to high.
+arch_vary :: (seed: int, k: int, low: f32, high: f32) -> f32 { return low + (high - low) * arch_hash(seed, k); }
+
+// What the next triangles are made of (aethyr/arch/palette.coax) and their colour (0, 0, 0: the material's own).
+arch_material :: (p: [] ArchPen, material: int, r: f32, g: f32, b: f32) { p[0].material = cast(f32) material; p[0].tint = [3] f32.[r, g, b]; }
+arch_lowf :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+arch_highf :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+
+arch_v :: (x: f32, y: f32, z: f32) -> [3] f32 { return [3] f32.[x, y, z]; }
+arch_vadd :: (a: [3] f32, b: [3] f32) -> [3] f32 { return [3] f32.[a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+arch_vsub :: (a: [3] f32, b: [3] f32) -> [3] f32 { return [3] f32.[a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+arch_vmul :: (a: [3] f32, k: f32) -> [3] f32 { return [3] f32.[a[0] * k, a[1] * k, a[2] * k]; }
+arch_vdot :: (a: [3] f32, b: [3] f32) -> f32 { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+arch_vcross :: (a: [3] f32, b: [3] f32) -> [3] f32 { return [3] f32.[a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+arch_vlen :: (a: [3] f32) -> f32 { return sqrt(arch_vdot(a, a)); }
+arch_vnorm :: (a: [3] f32) -> [3] f32 { l := arch_vlen(a); if l < 0.0000001 { return [3] f32.[0, 1, 0]; } return arch_vmul(a, 1 / l); }
+arch_vmix :: (a: [3] f32, b: [3] f32, t: f32) -> [3] f32 { return [3] f32.[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+
+// A flat face, its corners in order round it, counter-clockwise from outside. Its normal is the
+// face's own. u runs along its first edge and v across it, in metres from (u0, v0) at the first
+// corner. A triangle is a face whose last two corners are the same.
+arch_face_uv :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, u0: f32, v0: f32) {
+  e1 := arch_vnorm(arch_vsub(b, a));
+  far := arch_vsub(d, a);
+  if arch_vlen(far) < 0.000001 { far = arch_vsub(c, a); }
+  n := arch_vnorm(arch_vcross(arch_vsub(b, a), far));
+  e2 := arch_vcross(n, e1);
+  q: [4] ArchPoint; c4 := [4] [3] f32.[a, b, c, d];
+  for k: 0..<4 {
+    r := arch_vsub(c4[k], a);
+    q[k] = arch_at(c4[k][0], c4[k][1], c4[k][2], n[0], n[1], n[2], u0 + arch_vdot(r, e1), v0 + arch_vdot(r, e2));
+  }
+  arch_tri(p, q[0], q[1], q[2]);
+  if arch_vlen(arch_vsub(d, c)) > 0.000001 { arch_tri(p, q[0], q[2], q[3]); }
+}
+arch_face :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32) { arch_face_uv(p, a, b, c, d, 0, 0); }
+// A face with the normals it is given at each corner (a rounded thing built from flat faces).
+arch_face_n :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, na: [3] f32, nb: [3] f32, nc: [3] f32, nd: [3] f32, u: f32, v: f32) {
+  qa := arch_at(a[0], a[1], a[2], na[0], na[1], na[2], u, v); qb := arch_at(b[0], b[1], b[2], nb[0], nb[1], nb[2], u, v);
+  qc := arch_at(c[0], c[1], c[2], nc[0], nc[1], nc[2], u, v); qd := arch_at(d[0], d[1], d[2], nd[0], nd[1], nd[2], u, v);
+  arch_tri(p, qa, qb, qc);
+  if arch_vlen(arch_vsub(d, c)) > 0.000001 { arch_tri(p, qa, qc, qd); }
+}
+
+// A box by its low and high corners. Its four sides run u along the wall and v up it, v the height
+// itself, so courses meet at the corners; the top and bottom run u along x and v along z.
+arch_slab :: (p: [] ArchPen, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  arch_face_uv(p, arch_v(x0, y0, z1), arch_v(x1, y0, z1), arch_v(x1, y1, z1), arch_v(x0, y1, z1), x0, y0);
+  arch_face_uv(p, arch_v(x1, y0, z0), arch_v(x0, y0, z0), arch_v(x0, y1, z0), arch_v(x1, y1, z0), -x1, y0);
+  arch_face_uv(p, arch_v(x1, y0, z1), arch_v(x1, y0, z0), arch_v(x1, y1, z0), arch_v(x1, y1, z1), -z1, y0);
+  arch_face_uv(p, arch_v(x0, y0, z0), arch_v(x0, y0, z1), arch_v(x0, y1, z1), arch_v(x0, y1, z0), z0, y0);
+  arch_face_uv(p, arch_v(x0, y1, z1), arch_v(x1, y1, z1), arch_v(x1, y1, z0), arch_v(x0, y1, z0), x0, -z1);
+  arch_face_uv(p, arch_v(x0, y0, z0), arch_v(x1, y0, z0), arch_v(x1, y0, z1), arch_v(x0, y0, z1), x0, z0);
+}
+// A box turned any way: its middle and its three half-axes, which must be square to each other and
+// right-handed (ex cross ey points along ez).
+arch_obox :: (p: [] ArchPen, c: [3] f32, ex: [3] f32, ey: [3] f32, ez: [3] f32) {
+  axes := [3] [3] f32.[ex, ey, ez];
+  for f: 0..<6 {
+    k := f / 2; s: f32 = ifx f % 2 == 0 then 1 else -1;
+    n := arch_vmul(axes[k], s); a := axes[(k + 1) % 3]; b := arch_vmul(axes[(k + 2) % 3], s);
+    m := arch_vadd(c, n);
+    arch_face(p, arch_vsub(arch_vsub(m, a), b), arch_vsub(arch_vadd(m, a), b), arch_vadd(arch_vadd(m, a), b), arch_vadd(arch_vsub(m, a), b));
+  }
+}
+// A squared timber from a to b: `half` is half its side.
+arch_beam :: (p: [] ArchPen, a: [3] f32, b: [3] f32, half: f32) { arch_beam2(p, a, b, half, half); }
+// A timber of two sides: half_s across (level, square to its run) and half_t the other way.
+arch_beam2 :: (p: [] ArchPen, a: [3] f32, b: [3] f32, half_s: f32, half_t: f32) {
+  d := arch_vsub(b, a); span := arch_vlen(d);
+  if span < 0.0001 { return; }
+  d = arch_vmul(d, 1 / span);
+  s := arch_vcross(arch_v(0, 1, 0), d);
+  if arch_vlen(s) < 0.01 { s = arch_v(1, 0, 0); }
+  s = arch_vnorm(s); t := arch_vcross(d, s);
+  arch_obox(p, arch_vmix(a, b, 0.5), arch_vmul(d, span * 0.5), arch_vmul(s, half_s), arch_vmul(t, half_t));
+}
+// A box turned `yaw` about y: its middle and its half sizes.
+arch_block :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32, yaw: f32) {
+  c := cos(yaw); s := sin(yaw);
+  arch_obox(p, arch_v(cx, cy, cz), arch_v(c * hx, 0, -s * hx), arch_v(0, hy, 0), arch_v(s * hz, 0, c * hz));
+}
+
+// One slope of a roof, `thick` deep: its top face in the pen's material and tint (the corners
+// counter-clockwise from above, the eave first: eave, eave, ridge, ridge), dark boards under it and
+// a fascia round its edge. A hip's triangle is a slope whose last two corners are the same.
+arch_roof_plane :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32, thick: f32) {
+  far := arch_vsub(d, a);
+  if arch_vlen(far) < 0.000001 { far = arch_vsub(c, a); }
+  n := arch_vnorm(arch_vcross(arch_vsub(b, a), far));
+  down := arch_vmul(n, -thick);
+  arch_face(p, a, b, c, d);
+  material := p[0].material; tint := p[0].tint;
+  p[0].material = ARCH_M_TIMBER; p[0].tint = [3] f32.[0, 0, 0];
+  a2 := arch_vadd(a, down); b2 := arch_vadd(b, down); c2 := arch_vadd(c, down); d2 := arch_vadd(d, down);
+  arch_face(p, b2, a2, d2, c2);
+  arch_face(p, a2, b2, b, a); arch_face(p, b2, c2, c, b);
+  if arch_vlen(arch_vsub(d, c)) > 0.000001 { arch_face(p, c2, d2, d, c); }
+  arch_face(p, d2, a2, a, d);
+  p[0].material = material; p[0].tint = tint;
+}
+
+// An upright wall to build on: where it starts on the ground (ox, oz), the level direction it runs
+// (rx, rz) and the way it faces (nx, nz). A point on it is `along` metres from its start, `up`
+// metres high and `out` metres proud of it.
+ArchWall :: struct { ox: f32; oz: f32; rx: f32; rz: f32; nx: f32; nz: f32; }
+// The four walls of a box w wide (x) and d deep (z) about the origin: 0 the front (+z), 1 the right
+// (+x), 2 the back, 3 the left. Each runs left to right as you face it.
+arch_wall_of :: (side: int, w: f32, d: f32) -> ArchWall {
+  if side == 0 { return ArchWall.{ox = -w * 0.5, oz = d * 0.5, rx = 1, rz = 0, nx = 0, nz = 1}; }
+  if side == 1 { return ArchWall.{ox = w * 0.5, oz = d * 0.5, rx = 0, rz = -1, nx = 1, nz = 0}; }
+  if side == 2 { return ArchWall.{ox = w * 0.5, oz = -d * 0.5, rx = -1, rz = 0, nx = 0, nz = -1}; }
+  return ArchWall.{ox = -w * 0.5, oz = -d * 0.5, rx = 0, rz = 1, nx = -1, nz = 0};
+}
+arch_wall_at :: (f: ArchWall, along: f32, up: f32, out: f32) -> [3] f32 {
+  return arch_v(f.ox + f.rx * along + f.nx * out, up, f.oz + f.rz * along + f.nz * out);
+}
+// A flat piece of the wall, `out` proud of it: from (u0, y0) to (u1, y1).
+arch_wall_face :: (p: [] ArchPen, f: ArchWall, u0: f32, y0: f32, u1: f32, y1: f32, out: f32) {
+  arch_face_uv(p, arch_wall_at(f, u0, y0, out), arch_wall_at(f, u1, y0, out), arch_wall_at(f, u1, y1, out), arch_wall_at(f, u0, y1, out), u0, y0);
+}
+// A timber on the wall from (u0, y0) to (u1, y1), half sunk in it.
+arch_wall_beam :: (p: [] ArchPen, f: ArchWall, u0: f32, y0: f32, u1: f32, y1: f32, half: f32) {
+  arch_beam(p, arch_wall_at(f, u0, y0, 0), arch_wall_at(f, u1, y1, 0), half);
+}
+// A frame of four timbers round an opening.
+arch_wall_frame :: (p: [] ArchPen, f: ArchWall, u0: f32, y0: f32, u1: f32, y1: f32, half: f32) {
+  arch_wall_beam(p, f, u0 - half, y0, u1 + half, y0, half); arch_wall_beam(p, f, u0 - half, y1, u1 + half, y1, half);
+  arch_wall_beam(p, f, u0, y0, u0, y1, half); arch_wall_beam(p, f, u1, y0, u1, y1, half);
+}
+
+#test "a face's normal is its own, its u and v are metres, and a triangle is one triangle" {
+  buf: [64 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  arch_face_uv(p[..], arch_v(0, 0, 0), arch_v(3, 0, 0), arch_v(3, 2, 0), arch_v(0, 2, 0), 5, 7);
+  #assert p[0].n == 6 && buf[3] == 0 && buf[4] == 0 && buf[5] == 1;
+  #assert buf[7] == 5 && buf[8] == 7 && buf[ARCH_VERTEX_FLOATS + 7] == 8 && buf[2 * ARCH_VERTEX_FLOATS + 8] == 9;
+  arch_face(p[..], arch_v(0, 0, 0), arch_v(1, 0, 0), arch_v(0, 1, 0), arch_v(0, 1, 0));
+  #assert p[0].n == 9;
+}
+#test "slabs, turned boxes, beams and roof slopes all face out, and a tint reaches every vertex" {
+  buf: [400 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  arch_tint(p[..], 0.5, 0.25, 0.125);
+  arch_slab(p[..], -1, 0, -2, 1, 3, 2); slab := arch_part(p[..], 0);
+  #assert slab.count == 36 && arch_facing(buf[..], slab) > 11.9;
+  for i: 0..<36 { o := i * ARCH_VERTEX_FLOATS; #assert buf[o + 9] == 0.5 && buf[o + 10] == 0.25 && buf[o + 11] == 0.125 && buf[o + 1] >= 0 && buf[o + 1] <= 3; }
+  // A slab's side runs v as its height.
+  #assert buf[8] == 0 && buf[2 * ARCH_VERTEX_FLOATS + 8] == 3;
+  from := p[0].n; arch_block(p[..], 2, 1, 2, 0.5, 0.25, 0.75, 0.6); block := arch_part(p[..], from);
+  #assert block.count == 36 && arch_facing(buf[..], block) > 11.9;
+  from = p[0].n; arch_beam(p[..], arch_v(0, 0, 0), arch_v(2, 3, 1), 0.1); beam := arch_part(p[..], from);
+  #assert beam.count == 36 && arch_facing(buf[..], beam) > 11.9;
+  from = p[0].n; arch_beam(p[..], arch_v(0, 0, 0), arch_v(0, 3, 0), 0.1); post := arch_part(p[..], from);
+  #assert post.count == 36 && arch_facing(buf[..], post) > 11.9;
+  from = p[0].n; p[0].material = ARCH_M_ROOF;
+  arch_roof_plane(p[..], arch_v(-2, 2, 3), arch_v(2, 2, 3), arch_v(2, 4, 0), arch_v(-2, 4, 0), 0.1); slope := arch_part(p[..], from);
+  #assert slope.count == 36 && buf[from * ARCH_VERTEX_FLOATS + 4] > 0.5 && buf[from * ARCH_VERTEX_FLOATS + 6] == ARCH_M_ROOF && p[0].material == ARCH_M_ROOF;
+  #assert buf[(from + 6) * ARCH_VERTEX_FLOATS + 6] == ARCH_M_TIMBER && buf[(from + 6) * ARCH_VERTEX_FLOATS + 4] < -0.5;
+  from = p[0].n; arch_roof_plane(p[..], arch_v(-2, 2, 3), arch_v(2, 2, 3), arch_v(0, 4, 0), arch_v(0, 4, 0), 0.1); hip := arch_part(p[..], from);
+  #assert hip.count == 3 + 3 + 6 * 3 && !p[0].full;
+}
+#test "a wall's four sides face out from a box, and a point on one is along, up and out" {
+  for side: 0..<4 {
+    f := arch_wall_of(side, 8, 6);
+    a := arch_wall_at(f, 0, 0, 0); b := arch_wall_at(f, ifx side % 2 == 0 then 8.0f32 else 6.0f32, 2, 0); o := arch_wall_at(f, 1, 1, 1);
+    #assert abs(abs(a[0]) - 4) < 0.001 && abs(abs(a[2]) - 3) < 0.001 && abs(abs(b[0]) - 4) < 0.001 && abs(abs(b[2]) - 3) < 0.001 && b[1] == 2;
+    #assert abs(o[0]) > 4.9 || abs(o[2]) > 3.9;
+    // level run cross up is the way it faces
+    #assert abs(-f.rz - f.nx) < 0.001 && abs(f.rx - f.nz) < 0.001;
+  }
+  #assert arch_hash(7, 3) == arch_hash(7, 3) && arch_hash(7, 3) != arch_hash(7, 4) && arch_vary(1, 2, 3, 5) >= 3 && arch_vary(1, 2, 3, 5) < 5;
+}
