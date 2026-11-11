@@ -1,0 +1,187 @@
+// A phone in an Everglade zone (game-wide; GitHub #13151): Everglade Experimental and the Archery
+// Range take a touch screen through this one file. The thumb's stick itself is the engine's
+// (aethyr/sticks.coax), the one Everglade II and the 5E Lab walk on: a zone's face holds it, and
+// this file says which finger is its thumb. A finger that goes down on the world's left side, under
+// the top panels and over the bar, is the thumb's: its stick walks you (a full push runs), steers
+// the horse and the dragon (a full push ahead gallops: everglade/mounts.coax eg_mount_input). Every
+// other finger stays what it was: a drag looks, a slot held draws the bow, a tap presses. Two
+// buttons sit at the right, over the mount's (everglade/zone-mounts.coax xh_button): JUMP, which
+// is UP on the dragon (held, it takes off and climbs, as Space does), and DOWN while the dragon is
+// in the air (it lands, as X does).
+// A fragment of zone.coax's module (it loads this):
+//   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax --only "(touch)"
+
+ZT_NONE :: -100;
+ZT_SIDE :: 0.45;      // the stick's side of the page: this share of its width, from the left
+ZT_TOP :: 0.3;        // and under this share of its height (the name plate, the tally, the picker)
+ZT_FOOT :: 8.0;       // CSS px kept clear over the bar
+ZT_RING :: 56.0;      // the ring's radius, CSS px (aethyr/sticks.coax STICKS_RADIUS)
+// The zone's fields for these (EgZone: zt_stick, the finger that is the thumb's; zt_up, the finger
+// holding JUMP; zt_thumb, whether the pointer event just taken was the thumb's; zt_top, the foot of
+// a realm's own panel on the stick's side, in px, 0 none) are plain fields of the zone, not a struct
+// of their own: the 5E Lab's checks hold three zones at once, a few values under the compile-time limit.
+
+// A touch screen's page fact (coax/web/host.js, aethyr/host/apple/PageHost.m): coarse=1.
+zt_coarse :: (facts: string) -> bool {
+  at := 0;
+  while at < facts.count {
+    e := at; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if facts[at..<e] == "coarse=1" { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+// The touch controls are up: a finger has touched the page (or the host said it is a touch screen),
+// the world is up, you stand, and you aren't the druid's dragon, whose thumbs are its own
+// (apps/openagents-web/druid-scene.coax xd_pointer).
+zt_on :: (s: [] EgZone) -> bool {
+  h := s[0].creator[0].hostiles[0];
+  return s[0].touch && zone_world(s) && !(h.ready && h.hp <= 0) && !s[0].xc[0].dr.on;
+}
+// The foot of the stick's side: the bar's top.
+zt_foot :: (s: [] EgZone) -> f32 { x := s[0].xc[..]; return xc_bar_top(x) - f32(ZT_FOOT) * x[0].k; }
+// Where the ring rests before a thumb is down: left of the middle, over the bar and over the side
+// bar's buttons when they stand above it (an upright phone).
+zt_rest :: (s: [] EgZone) -> [2] f32 {
+  x := s[0].xc[..]; w := x[0].w; h := x[0].h; k := x[0].k; r := f32(ZT_RING) * k;
+  ox := hi(w * 0.22, r + 16 * k); foot := zt_foot(s);
+  side := xc_layout(s).side;
+  if side.n > 0 && side.x0 < ox + r { st := eg_side_top(side) - f32(ZT_FOOT) * k; if st < foot { foot = st; } }
+  g := s[0].creator[0].gfx_box;   // the graphics line, where it reaches this side (a narrow page)
+  if g.x1 > g.x0 && g.x0 < ox + r && g.y0 - f32(ZT_FOOT) * k < foot { foot = g.y0 - f32(ZT_FOOT) * k; }
+  return [2] f32.[ox, lo(h - hi(r * 2.4, h * 0.18), foot - r - 8 * k)];
+}
+// The top of the stick's side: under the page's top panels, and under a realm's own.
+zt_top :: (s: [] EgZone) -> f32 { return hi(s[0].xc[0].h * f32(ZT_TOP), s[0].zt_top); }
+// JUMP (UP on the dragon), and DOWN left of it: at the right, over the mount's button (under it are
+// where you stand and the frames a second, over the bar).
+// Where the class picker stands open over that place (Experimental on an upright phone), they are
+// under the picker's foot.
+zt_up :: (s: [] EgZone) -> cc.Box {
+  cr := s[0].creator[0]; k := cr.scale; b := egm.eg_ride_button(cr.width, cr.height, k);
+  x0 := b[2] - 64 * k; y0 := b[1] - 60 * k;
+  x := s[0].xc[..];
+  if x[0].started && !xc_own_kit(x) {
+    lay := xc_layout(s);
+    if !xc_pick_hidden(x, lay) { p := cm_pick_panel(lay.pick); if p.y1 > y0 && p.x1 > x0 - 76 * k { y0 = p.y1 + 6 * k; } }
+  }
+  return cc.Box.{x0 = x0, y0 = y0, x1 = b[2], y1 = y0 + 48 * k};
+}
+zt_down :: (s: [] EgZone) -> cc.Box { u := zt_up(s); k := s[0].creator[0].scale; return cc.Box.{x0 = u.x0 - 76 * k, y0 = u.y0, x1 = u.x0 - 12 * k, y1 = u.y1}; }
+zt_in :: (b: cc.Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+zt_down_on :: (s: [] EgZone) -> bool { m := s[0].creator[0].mounts[0]; return egm.eg_on_dragon(m) && egm.eg_aloft(m); }
+
+// The top the resting ring needs clear: the stick's side's, and the open class picker's foot.
+zt_rest_top :: (s: [] EgZone) -> f32 {
+  top := zt_top(s); x := s[0].xc[..];
+  if x[0].started && !xc_own_kit(x) { lay := xc_layout(s); if !xc_pick_hidden(x, lay) { p := cm_pick_panel(lay.pick); if p.y1 > top { top = p.y1; } } }
+  return top;
+}
+// The thumb's finger and JUMP's, after they went down: true while the event is theirs.
+zt_held :: (s: [] EgZone, phase: int, id: int) -> bool {
+  if phase == 0 { return false; }
+  if id == s[0].zt_stick { s[0].zt_thumb = true; if phase >= 2 { s[0].zt_stick = ZT_NONE; } return true; }
+  if id == s[0].zt_up { if phase >= 2 { s[0].zt_up = ZT_NONE; s[0].held = s[0].held & (HOLD_ALL - HOLD_JUMP); } return true; }
+  return false;
+}
+// A finger down on JUMP or DOWN.
+zt_press :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase != 0 || !zt_on(s) { return false; }
+  if zt_in(zt_up(s), x, y) { if s[0].zt_up == ZT_NONE { s[0].zt_up = id; s[0].held |= HOLD_JUMP; } return true; }
+  if zt_down_on(s) && zt_in(zt_down(s), x, y) { _ := zone_land_key(s); return true; }
+  return false;
+}
+// A finger down that no control took: the thumb's when it is on the stick's side.
+zt_stick :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool {
+  c := s[0].xc[..];
+  if phase != 0 || !zt_on(s) || s[0].zt_stick != ZT_NONE { return false; }
+  if x > c[0].w * f32(ZT_SIDE) || y < zt_top(s) || y > zt_foot(s) { return false; }
+  s[0].zt_stick = id; s[0].zt_thumb = true;
+  return true;
+}
+// Whether the pointer event the zone just took (zone_pointer) was the thumb's: the face then hands
+// it to its stick (aethyr/sticks.coax verse_sticks_world_touch).
+zone_thumb :: (s: [] EgZone) -> bool #export_c #effects(all) { return s[0].zt_thumb; }
+zt_blur :: (s: [] EgZone) { s[0].zt_stick = ZT_NONE; s[0].zt_up = ZT_NONE; s[0].zt_thumb = false; }
+
+// The ring where the thumb is held, or where to put it, and the two buttons.
+zt_draw :: (s: [] EgZone, out: [] f32, at: int) -> int {
+  if !zt_on(s) { return at; }
+  k := s[0].creator[0].scale; n := at;
+  rest := zt_rest(s);
+  ox := ifx s[0].stick_on then s[0].stick_ox else rest[0]; oy := ifx s[0].stick_on then s[0].stick_oy else rest[1];
+  // at rest the ring shows where a thumb goes, when the side has room for it (a phone on its side has little)
+  if s[0].stick_on || oy - f32(ZT_RING) * k >= zt_rest_top(s) { n = ln_stick(out, n, ox, oy, f32(ZT_RING) * k, s[0].stick_on, s[0].stick_px, s[0].stick_py, k); }
+  ui := s[0].creator[0].ui; t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui;
+  zt_button(l[..], ws[..], t, zt_up(s), ifx egm.eg_on_dragon(s[0].creator[0].mounts[0]) then "UP" else "JUMP", s[0].zt_up != ZT_NONE, k);
+  if zt_down_on(s) { zt_button(l[..], ws[..], t, zt_down(s), "DOWN", false, k); }
+  ws[0].parent = cc.UIT_NONE;
+  return cc.hud_draw(out, n, l[..], ws[..], 1, k);
+}
+// One of the buttons: the game's raised button (aethyr/ui/hud-style.coax hud_button), its word centred.
+zt_button :: (l: [] cc.HudList, ws: [] cc.HudWords, t: cc.HudTokens, q: cc.Box, name: string, lit: bool, k: f32) {
+  b := cc.hud_box(q.x0, q.y0, q.x1, q.y1);
+  cc.hud_button(l, t, b, k, lit);
+  ws[0].parent = cc.uit_put(ws[0].ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, name);
+  cc.hud_word(ws, name, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 5 * k, 10 * k, cc.HUD_TEXT_TITLE, true);
+}
+
+zt_lab :: (s: [] EgZone) {
+  xc_test_lab(s, FB_CL_RANGER, 0); cr := s[0].creator[..]; x := s[0].xc[..];
+  cr[0].on = true; cr[0].width = 1170; cr[0].height = 2532; cr[0].scale = 3;
+  x[0].w = 1170; x[0].h = 2532; x[0].k = 3; x[0].seen = true;
+}
+#test "a zone's thumb: a finger down on the left side over the bar is the stick's until it lifts; the right side and a mouse are not (touch)" #steps 2000000000 {
+  s: [1] EgZone; zt_lab(s[..]);
+  #assert zt_coarse("url=https://openagents.com/worlds/archery-range\ncoarse=1\ntouch=5\n") && !zt_coarse("coarse=0\n") && !zt_coarse("");
+  // a mouse: no thumb, no controls
+  _ := zone_pointer(s[..], 200, 1500, 0, 0, 1); #assert !zone_thumb(s[..]) && !zt_on(s[..]);
+  _ = zone_pointer(s[..], 200, 1500, 2, 0, 1);
+  // a finger on the left side, under the top third and over the bar
+  #assert zone_pointer(s[..], 200, 1500, 0, 1, 7) && zone_thumb(s[..]) && s[0].touch && zt_on(s[..]);
+  #assert zone_pointer(s[..], 260, 1400, 1, 1, 7) && zone_thumb(s[..]);
+  // a second finger on the right looks: it isn't the thumb's, and neither is a second on the left
+  _ = zone_pointer(s[..], 900, 1300, 0, 1, 8); #assert !zone_thumb(s[..]);
+  _ = zone_pointer(s[..], 150, 1600, 0, 1, 9); #assert !zone_thumb(s[..]);
+  #assert zone_pointer(s[..], 260, 1400, 2, 1, 7) && zone_thumb(s[..]) && s[0].zt_stick == ZT_NONE;
+  _ = zone_pointer(s[..], 900, 1300, 2, 1, 8); #assert !zone_thumb(s[..]);
+  // the top of the page (the name plate, the tally) is never the stick's
+  _ = zone_pointer(s[..], 200, 300, 0, 1, 10); #assert !zone_thumb(s[..]);
+  // the window loses the finger: nothing is held
+  _ = zone_pointer(s[..], 200, 1500, 0, 1, 11); #assert zone_thumb(s[..]); zone_blur(s[..]); #assert s[0].zt_stick == ZT_NONE && !zone_thumb(s[..]);
+}
+#test "a zone's JUMP holds the jump while its finger is down, the ring rests over the bar, and DOWN is only the flying dragon's (touch)" #steps 2000000000 {
+  s: [1] EgZone; zt_lab(s[..]); s[0].touch = true;
+  u := zt_up(s[..]); d := zt_down(s[..]); b := egm.eg_ride_button(1170, 2532, 3);
+  #assert s[0].xc[0].own_kit == false && u.y0 >= cm_pick_panel(xc_layout(s[..]).pick).y1 && u.x1 == b[2] && d.x1 < u.x0 && u.x0 > 1170 * ZT_SIDE && u.x1 - u.x0 >= 44 * 3 && u.y1 - u.y0 >= 44 * 3;
+  #assert zone_pointer(s[..], u.x0 + 9, u.y0 + 9, 0, 1, 4) && !zone_thumb(s[..]) && s[0].held & HOLD_JUMP != 0 && zone_move_in(s[..]).jump;
+  #assert zone_pointer(s[..], u.x0 + 9, u.y0 + 9, 2, 1, 4) && s[0].held & HOLD_JUMP == 0;
+  #assert !zt_down_on(s[..]);
+  r := zt_rest(s[..]); #assert r[0] > ZT_RING * 3 && r[0] < 1170 * ZT_SIDE && r[1] + ZT_RING * 3 < zt_foot(s[..]) && r[1] > 2532 * ZT_TOP;
+  // the graphics line over the bar: the ring rests over it
+  s[0].creator[0].gfx_box = cc.Box.{x0 = 180, y0 = r[1], x1 = 1150, y1 = r[1] + 90}; #assert zt_rest(s[..])[1] + ZT_RING * 3 < r[1]; s[0].creator[0].gfx_box = cc.Box.{};
+  out: [4096 * 16] f32; n := zt_draw(s[..], out[..], 0); #assert n > 0;
+  // a realm's own panel on the stick's side: a finger on it is not the thumb's
+  s[0].zt_top = 1300; _ := zone_pointer(s[..], 200, 1200, 0, 1, 12); #assert !zone_thumb(s[..]); _ = zone_pointer(s[..], 200, 1200, 2, 1, 12);
+  // with one kit and no picker (the range), the buttons are over the mount's
+  s[0].xc[0].own_kit = true; #assert zt_up(s[..]).y1 < b[1] && zt_up(s[..]).y0 > 2532 * ZT_TOP; s[0].xc[0].own_kit = false;
+  // you are down: no controls
+  s[0].creator[0].hostiles[0].ready = true; s[0].creator[0].hostiles[0].hp = 0; #assert zt_draw(s[..], out[..], 0) == 0;
+}
+#test "a finger leaves no card behind: a held slot's card is up while it is held, never over the bow's slot, and gone as the finger lifts (touch)" #steps 2000000000 {
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_RANGER, 0); x := s[0].xc[..];
+  s[0].creator[0].on = true; x[0].w = 1170; x[0].h = 2532; x[0].k = 3; x[0].seen = true;
+  bow := -1; other := -1;
+  for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_ATTACK { bow = i; } else if other < 0 { other = i; } }
+  #assert bow >= 0 && other >= 0 && xc_kit(x[0].klass) == XC_KIT_BOW;
+  r := cc.eg_box4(xc_slot_at(x[0].bar_n, other, x[0].w, x[0].h, x[0].k));
+  _ := zone_pointer(s[..], r.x0 + 6, r.y0 + 6, 0, 1, 3); #assert x[0].hover == other;
+  _ = zone_pointer(s[..], r.x0 + 6, r.y0 + 6, 2, 1, 3); #assert x[0].hover == -1;
+  // the bow's slot: the hold draws, and no card comes up while you aim or after you loose
+  a := cc.eg_box4(xc_slot_at(x[0].bar_n, bow, x[0].w, x[0].h, x[0].k));
+  _ = zone_pointer(s[..], a.x0 + 6, a.y0 + 6, 0, 1, 4); #assert x[0].hover == -1 && x[0].ar[0].draw[0].on;
+  _ = zone_pointer(s[..], a.x0 + 60, a.y0 - 200, 1, 1, 4); #assert x[0].hover == -1;
+  _ = zone_pointer(s[..], a.x0 + 60, a.y0 - 200, 2, 1, 4); #assert x[0].hover == -1;
+  // a mouse still hovers
+  _ = zone_pointer(s[..], r.x0 + 6, r.y0 + 6, 1, 0, 1); #assert x[0].hover == other;
+}

@@ -43,6 +43,7 @@
 #load "zone-ride.coax";       // riding in a zone: E, the saddle, the dragon's Fire Breath
 #load "../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
 #load "zone-drive.coax";      // ... wired to a zone
+#load "zone-touch.coax";      // a phone: which finger is the thumb's stick, JUMP, and the dragon's UP and DOWN (#13151)
 #load "../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 
 // The strokes a frame may draw and the uniforms it writes (gpu/charactercreator.bindings).
@@ -89,6 +90,7 @@ EgZone :: struct {
   safe_on: bool; safe_x: f32; safe_y: f32; safe_z: f32; safe_face: f32;
   village_near: [1] village.EvNear;   // the walls and floors round you, for the controller
   touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (aethyr/sticks.coax)
+  zt_stick: int = -100; zt_up: int = -100; zt_thumb: bool; zt_top: f32;   // a phone's fingers: the thumb's and JUMP's, and a realm's panel over the stick's side (zone-touch.coax)
   env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (zone_light)
   qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/quality-page.coax): the pixels drawn and the knobs; the finger on its control
 }
@@ -398,6 +400,7 @@ zone_draw :: (s: [] EgZone, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
     n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
     n = zone_ride_prompt(s,out,n,width,height,hi(dpr,0.5));
+    n = zt_draw(s,out,n);   // a phone's stick and buttons (zone-touch.coax)
   }
   return n;
 }
@@ -460,7 +463,7 @@ zone_key_up :: (s: [] EgZone, key: int, mods: int) -> bool #export_c #effects(al
   s[0].held = s[0].held & (HOLD_ALL - h);   // h is one HOLD_ bit or none
   return h != 0;
 }
-zone_blur :: (s: [] EgZone) #export_c #effects(all) { s[0].creator[0].dragging=false;s[0].creator[0].down=-1; s[0].stick_on = false; s[0].shift = false; s[0].held = 0; s[0].xc[0].arranging=false; s[0].xc[0].down= -100; mlook.ml_blur(s[0].creator[0].ml[..]); }
+zone_blur :: (s: [] EgZone) #export_c #effects(all) { s[0].creator[0].dragging=false;s[0].creator[0].down=-1; s[0].stick_on = false; s[0].shift = false; s[0].held = 0; s[0].xc[0].arranging=false; s[0].xc[0].down= -100; mlook.ml_blur(s[0].creator[0].ml[..]); zt_blur(s); }
 // The keys that fly the camera while they are held.
 hold_bit :: (key: int) -> int {
   if key == 'w' || key == 'W' { return HOLD_W; }
@@ -482,10 +485,25 @@ axis :: (held: int, plus: int, minus: int) -> f32 {
   return a;
 }
 zone_wheel :: (s: [] EgZone, dy: f32) -> bool #export_c #effects(all) { cc.wheel(s[0].creator[..],dy); return true; }
-// A pointer on the page: the respawn, the mount's button, your bar, then the scene's (the camera's drag).
+// A pointer on the page: the respawn, the mount's button, a phone's buttons, your bar, a phone's
+// thumb (zone-touch.coax: zone_thumb then says the event was its stick's), then the scene's (the
+// camera's drag).
 zone_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
-  if s[0].creator[0].on {if s[0].creator[0].experimental && zone_gfx_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && zone_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && zone_ride_pointer(s,x,y,phase) {return true;}if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
+  s[0].zt_thumb = false;
+  if s[0].creator[0].on {
+    if s[0].creator[0].experimental {
+      if kind != 0 { s[0].touch = true; }
+      if zone_gfx_pointer(s,x,y,phase,id) {return true;}   // the graphics control
+      if zt_held(s,phase,id) {return true;}
+      if zone_respawn_pointer(s,x,y,phase,id) {return true;}
+      if zone_ride_pointer(s,x,y,phase) {return true;}
+      if zt_press(s,x,y,phase,id) {return true;}
+      if xc_pointer(s,x,y,phase,id) {return true;}
+      if kind != 0 && zt_stick(s,x,y,phase,id) {return true;}
+    }
+    return cc.pointer(s[0].creator[..],x,y,phase,id);
+  }
   return false;
 }
 // Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
@@ -554,6 +572,7 @@ zone_message :: (s: [] EgZone, kind: int, t: string) -> bool #export_c #effects(
 zone_enter :: (s: [] EgZone, t: string) #export_c #effects(all) {
   cr := s[0].creator[..];
   if !cr[0].experimental {cr[0].preview_collapsed=true;}
+  if zt_coarse(t) { s[0].touch = true; }   // a touch screen: the thumb's ring and the buttons are up before the first finger
   cr[0].on=true;cr[0].experimental=true;cr[0].dev_animations=cc.dev_local(t);cr[0].build_review=cc.build_review_page(t);cr[0].yaw=0;cr[0].pitch=0.35;cr[0].dist=4;
   cc.ensure(cr);
 }

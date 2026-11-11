@@ -40,6 +40,9 @@ Range :: struct {
   shot: [bow.ARROWS] XrShot;
   seen: int;                           // the arrows you have loosed that the tally has taken in
   stage_face: int = -1;                // ?range-hit=N (shots and clips): an arrow from where you stand lands in face N, once, a second in
+  want: int = -1;                      // a phone's FOOT, HORSE or DRAGON button: the way of shooting asked for (RG_*), -1 none
+  want_at: f32; want_put: bool;        // when it was asked, and whether you have been put beside the mount
+  tally_foot: f32;                     // the tally's foot this frame, px: the phone's buttons sit under it
 }
 
 xr_page :: (facts: string) -> bool { for p: XR_PATHS { if cc.page_path(facts, p) { return true; } } return false; }
@@ -122,6 +125,89 @@ xr_frame :: (r: [] Range, dt: f32) {
   }
 }
 
+// ---- a phone's buttons, under the tally (section 6 of the spec): FOOT, HORSE and DRAGON choose
+// how you shoot, and RESET clears the tally and puts you back behind the line. A button only asks:
+// each frame xr_want_step does what a player would, through the zone's own keys (zone-ride.coax).
+// The dragon comes down first (X), you get off the mount you ride (E), you are put beside the mount
+// you asked for, and E mounts it.
+XR_BTN :: 4; XR_BTN_H :: 44.0; XR_BTN_GAP :: 6.0; XR_WANT_S :: 12.0;
+XR_BTN_NAME :: [XR_BTN] string.["FOOT", "HORSE", "DRAGON", "RESET"];
+xr_touch :: (r: [] Range) -> bool { return r[0].on && r[0].z[0].xc[0].started && zt_on(r[0].z[..]); }
+xr_button :: (r: [] Range, i: int) -> cc.Box {
+  k := r[0].z[0].creator[0].scale; wide := (f32(XR_WIDE) - f32(XR_BTN - 1) * f32(XR_BTN_GAP)) / f32(XR_BTN);
+  x0 := (12 + f32(i) * (wide + f32(XR_BTN_GAP))) * k; y0 := r[0].tally_foot + f32(XR_BTN_GAP) * k;
+  return cc.Box.{x0 = x0, y0 = y0, x1 = x0 + wide * k, y1 = y0 + f32(XR_BTN_H) * k};
+}
+// The mount a way of shooting rides: its slot among the zone's mounts, -1 on foot or before it stands.
+xr_mount :: (r: [] Range, mode: int) -> int {
+  cr := r[0].z[0].creator[..]; m := cr[0].mounts[0];
+  if mode == RG_DRAGON { return cc.xh_dragon(cr); }
+  if mode == RG_HORSE { for k: 0..<m.n { if m.kind[k] != egm.EG_DRAGON { return k; } } }
+  return -1;
+}
+// Back behind the line with a clean tally (on foot; from the saddle, the tally alone).
+xr_reset :: (r: [] Range) {
+  s := r[0].z[..];
+  r[0].score[0] = RgScore.{}; r[0].want = -1;
+  for i: 0..<bow.ARROWS { r[0].shot[i].live = false; }
+  if s[0].creator[0].mounts[0].riding < 0 {
+    s[0].put_on = true; s[0].put_x = f32(RG_AT_X) + f32(RG_START_X); s[0].put_y = 0; s[0].put_z = f32(RG_AT_Z) + f32(RG_START_Z); s[0].put_face = 3.1415927;
+    s[0].creator[0].yaw = 0; s[0].creator[0].pitch = 0.35;
+  }
+}
+// A finger down on one of the buttons.
+xr_press :: (r: [] Range, x: f32, y: f32, phase: int) -> bool {
+  if phase != 0 || !xr_touch(r) { return false; }
+  for i: 0..<XR_BTN {
+    b := xr_button(r, i);
+    if x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1 { continue; }
+    if i == 3 { xr_reset(r); return true; }
+    _ := xc_bow_cancel(r[0].z[..]);
+    r[0].want = i; r[0].want_at = r[0].z[0].creator[0].clock; r[0].want_put = false;
+    return true;
+  }
+  return false;
+}
+// A frame of what a button asked.
+xr_want_step :: (r: [] Range) {
+  if r[0].want < 0 { return; }
+  s := r[0].z[..]; cr := s[0].creator[..]; m := cr[0].mounts[0]; now := cr[0].clock;
+  if xr_mode(r) == r[0].want || now - r[0].want_at > f32(XR_WANT_S) { r[0].want = -1; return; }
+  if m.riding >= 0 {
+    if egm.eg_aloft(m) { _ := zone_land_key(s); return; }
+    if egm.eg_mount_prompt(m, cr[0].player_x, cr[0].player_z, now, true) == "DISMOUNT" { _ := zone_mount_key(s); }
+    return;
+  }
+  k := xr_mount(r, r[0].want); if k < 0 { r[0].want = -1; return; }
+  if s[0].put_on { return; }   // the face hasn't put you there yet
+  if egm.eg_mount_nearest(m, cr[0].player_x, cr[0].player_z) == k { _ := zone_mount_key(s); return; }
+  if r[0].want_put { return; }
+  // beside it, on the side the line is on: the nearest place in its reach
+  h := m.mounts[k];
+  for step: 2..<16 {
+    d := f32(step) * 0.5; px := h.x + sin(h.face + 1.5708) * d; pz := h.z + cos(h.face + 1.5708) * d;
+    if egm.eg_mount_nearest(m, px, pz) != k { continue; }
+    s[0].put_on = true; s[0].put_x = px; s[0].put_y = 0; s[0].put_z = pz; s[0].put_face = h.face; r[0].want_put = true;
+    return;
+  }
+  r[0].want = -1;
+}
+xr_buttons_draw :: (r: [] Range, out: [] f32, n0: int) -> int {
+  if !xr_touch(r) { return n0; }
+  s := r[0].z[..]; k := s[0].creator[0].scale; ui := s[0].creator[0].ui; mode := xr_mode(r);
+  t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui;
+  for i: 0..<XR_BTN {
+    q := xr_button(r, i); b := cc.hud_box(q.x0, q.y0, q.x1, q.y1); name := XR_BTN_NAME[i];
+    cc.hud_button(l[..], t, b, k, i == mode || i == r[0].want);
+    ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, name);
+    c := 9.5 * k; wide := cc.face_width(name, c, cc.HUD_FACE_TITLE) + 10 * k; if wide > b.x1 - b.x0 { c = c * (b.x1 - b.x0) / wide; }
+    cc.hud_word(ws[..], name, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + c * 0.5, c, cc.HUD_TEXT_TITLE, true);
+  }
+  ws[0].parent = cc.UIT_NONE;
+  s[0].zt_top = xr_button(r, 0).y1 + f32(XR_BTN_GAP) * k;   // the thumb's side begins under them (everglade/zone-touch.coax)
+  return cc.hud_draw(out, n0, l[..], ws[..], 1, k);
+}
+
 // ---- the tally, top left where the CLASSES picker is elsewhere (the range has one class)
 XR_WIDE :: 262.0; XR_ROW :: 17.0; XR_PAD :: 10.0;   // CSS px
 xr_num :: (b: [] u8, n0: int, v: int) -> int { return rs_put_int(b, n0, v); }
@@ -155,6 +241,7 @@ xr_tally_draw :: (r: [] Range, out: [] f32, n0: int, w: f32, h: f32, k: f32) -> 
   sc := r[0].score[0]; mode := xr_mode(r); now := s[0].creator[0].clock;
   t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ui := s[0].creator[0].ui;
   box := xr_panel(sc, mode, ifx x[0].top > 0 then x[0].top else 20 * k, k);   // where the picker's top is (under a developer's ANIMATIONS bar)
+  r[0].tally_foot = box.y1;
   cc.hud_panel(l[..], t, cc.hud_box(box.x0, box.y0, box.x1, box.y1), k);
   ws[0].ui = ui; ws[0].parent = cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, box.x0, box.y0, box.x1, box.y1, "ARCHERY RANGE");
   left := box.x0 + f32(XR_PAD) * k; y := box.y0 + (f32(XR_PAD) + 11) * k; row := f32(XR_ROW) * k; b: [96] u8;
@@ -176,7 +263,8 @@ xr_tally_draw :: (r: [] Range, out: [] f32, n0: int, w: f32, h: f32, k: f32) -> 
     m = xr_text(b[..], 0, ifx sc.last_points > 0 then "LAST ARROW  " else "LAST ARROW  MISS");
     if sc.last_points > 0 { m = xr_num(b[..], m, sc.last_points); }
     m = xr_text(b[..], m, "  AT "); m = xr_num(b[..], m, cast(int) (sc.last_distance + 0.5)); m = xr_text(b[..], m, " M");
-    cc.hud_word(ws[..], cast(string) b[0..<m], left, y - row * 0.1, 8.5 * k, ifx now - sc.last_at < 2.5 && sc.last_points >= 9 then cc.HUD_TEXT_HEAL else cc.HUD_TEXT_LABEL, false);
+    // a gold is lit green for a moment, at the line's own size (the heal role's size is a floating number's)
+    cc.hud_word_ink(ws[..], cast(string) b[0..<m], left, y - row * 0.1, 8.5 * k, cc.HUD_TEXT_LABEL, false, now - sc.last_at < 2.5 && sc.last_points >= 9, cc.hud_rgba(0.45, 0.95, 0.5, 1));
   }
   return cc.hud_draw(out, n0, l[..], ws[..], 1, k);
 }
@@ -192,8 +280,18 @@ range_frame :: (r: [] Range, out: [] f32, u: [] f32, width: f32, height: f32, dp
   if !s[0].creator[0].on { return 0; }
   zone_begin(s);
   n := zone_draw(s, out, u, width, height, dpr, dt, still);
-  if zone_world(s) { xr_frame(r, ifx still then 0.0f32 else dt); n = xr_tally_draw(r, out, n, width, height, hi(dpr, 0.5)); }
+  if zone_world(s) { xr_want_step(r); xr_frame(r, ifx still then 0.0f32 else dt); n = xr_tally_draw(r, out, n, width, height, hi(dpr, 0.5)); n = xr_buttons_draw(r, out, n); }
   return zone_finish(s, out, u, n, dt, still);
+}
+// A pointer: a phone's buttons under the tally, then the zone's.
+range_pointer :: (r: [] Range, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+  s := r[0].z[..];
+  if kind != 0 && s[0].creator[0].on && xr_press(r, x, y, phase) { s[0].zt_thumb = false; return true; }
+  return zone_pointer(s, x, y, phase, kind, id);
+}
+range_pointer_buttons :: (r: [] Range, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) {
+  if kind != 0 { return range_pointer(r, x, y, phase, kind, id); }
+  return zone_pointer_buttons(r[0].z[..], x, y, phase, kind, id, button);
 }
 // A message from the host: the zone's, or the page's facts, which stand the range (this module has one page).
 range_message :: (r: [] Range, kind: int, t: string) #export_c #effects(all) {
@@ -316,4 +414,37 @@ xr_test_fly :: (r: [] Range, seconds: f32) {
   #assert rg_sum(r[0].score[0], RG_HORSE, -1).shots == 1 && rg_sum(r[0].score[0], RG_FOOT, -1).shots == 0;
   #assert xr_rows(r[0].score[0], RG_HORSE) == rows + 2;   // its band's row, and the last arrow
   p := xr_panel(r[0].score[0], RG_HORSE, 20, 1); #assert p.y1 - p.y0 > 100 && p.x1 - p.x0 == XR_WIDE;
+}
+#test "archery range: a phone's HORSE puts you beside the horse and mounts it, FOOT gets you off, and RESET clears the tally and takes you back behind the line" #steps 2000000000 {
+  r: [1] Range; xr_test_lab(r[..]); s := r[0].z[..]; cr := s[0].creator[..]; x := s[0].xc[..];
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  cr[0].on = true; cr[0].width = 1170; cr[0].height = 2532; cr[0].scale = 3; x[0].w = 1170; x[0].h = 2532; x[0].k = 3; x[0].seen = true;
+  xr_frame(r[..], 1.0 / 60); #assert r[0].stood && xr_mount(r[..], RG_HORSE) == 0;
+  out: [8192 * 16] f32; n := xr_tally_draw(r[..], out[..], 0, 1170, 2532, 3); #assert r[0].tally_foot > 0;
+  // no finger has touched the page: no buttons, and a press there is the zone's
+  b := xr_button(r[..], RG_HORSE); #assert !xr_press(r[..], b.x0 + 9, b.y0 + 9, 0) && xr_buttons_draw(r[..], out[..], 0) == 0;
+  s[0].touch = true; #assert xr_buttons_draw(r[..], out[..], 0) > 0;
+  for i: 0..<XR_BTN { q := xr_button(r[..], i); #assert q.x1 - q.x0 >= 44 * 3 && q.y1 - q.y0 >= 44 * 3 && q.y0 > r[0].tally_foot; if i > 0 { #assert q.x0 > xr_button(r[..], i - 1).x1; } }
+  // HORSE: put beside it, then E
+  #assert range_pointer(r[..], b.x0 + 9, b.y0 + 9, 0, 1, 5) && r[0].want == RG_HORSE && !zone_thumb(s);
+  body := EgBody.{ground = true};
+  for k: 0..<240 {
+    cr[0].clock = f32(k) / 60; xr_want_step(r[..]);
+    w := zone_walk(s); if w.put { body.x = w.x; body.z = w.z; }
+    body = zone_keep_body(s, body, body); cr[0].player_x = body.x; cr[0].player_z = body.z;
+  }
+  h := cr[0].mounts[0].mounts[0];
+  #assert xr_mode(r[..]) == RG_HORSE && r[0].want == -1 && abs(body.x - h.x) < 0.6 && abs(body.z - h.z) < 0.6;
+  // FOOT: off again
+  f := xr_button(r[..], RG_FOOT); #assert range_pointer(r[..], f.x0 + 9, f.y0 + 9, 0, 1, 6) && r[0].want == RG_FOOT;
+  for k: 240..<480 {
+    cr[0].clock = f32(k) / 60; xr_want_step(r[..]);
+    body = zone_keep_body(s, body, body); cr[0].player_x = body.x; cr[0].player_z = body.z;
+  }
+  #assert xr_mode(r[..]) == RG_FOOT && r[0].want == -1;
+  // RESET: a clean tally, back behind the line
+  rg_record(r[0].score[..], RG_FOOT, 20, 9, cr[0].clock); #assert rg_sum(r[0].score[0], -1, -1).shots == 1;
+  q := xr_button(r[..], 3); #assert range_pointer(r[..], q.x0 + 9, q.y0 + 9, 0, 1, 7);
+  #assert rg_sum(r[0].score[0], -1, -1).shots == 0 && r[0].score[0].last_points == -1;
+  w := zone_walk(s); #assert w.put && w.x == RG_AT_X + RG_START_X && w.z == RG_AT_Z + RG_START_Z;
 }

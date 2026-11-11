@@ -35,6 +35,7 @@ Scenes :: struct {
   realm_main: bool;                   // this host runs Everglade's realm itself (sc_host_runs)
   realm_experimental: bool;           // and Experimental's
   realm_range: bool;                  // and the Archery Range's
+  opening: bool;                      // the host is still opening the realm of the world that is open (sc_host_opening)
 }
 
 sc_name :: (world: int) -> string {
@@ -80,9 +81,18 @@ sc_row_at :: (s: []Scenes, x: f32, y: f32) -> int {
   return -1;
 }
 // The Worlds button, under a scene's title. Over a realm, which has no title of ours, it sits at
-// the middle of the top edge, between the realm's own panels in the corners.
+// the middle of the top edge, between the realm's own panels in the corners. An upright phone has
+// no room there: the realm's name plate runs the width of its top (#13152). There the button is in
+// the band beside the notch, over the realm's picture, which begins under that band; a narrow screen
+// with no such band has it at the right, under the name plate.
+SC_NARROW :: 600.0;      // points: narrower than this, a realm's top edge is its name plate's
+SC_NOTCH_BAND :: 44.0;   // points: a top inset this deep has room for the button beside the notch
 sc_back :: (s: []Scenes) -> HudBox {
-  if sc_in_realm(s) { return HudBox.{x = (s[0].width - 92) * 0.5, y = s[0].safe_top + 10, width = 92, height = 32}; }
+  if sc_in_realm(s) {
+    if s[0].width >= SC_NARROW { return HudBox.{x = (s[0].width - 92) * 0.5, y = s[0].safe_top + 10, width = 92, height = 32}; }
+    if s[0].safe_top >= SC_NOTCH_BAND { return HudBox.{x = 22 + s[0].safe_left, y = s[0].safe_top - 36, width = 92, height = 30}; }
+    return HudBox.{x = s[0].width - 104, y = s[0].safe_top + 92, width = 92, height = 32};
+  }
   return HudBox.{x = sc_left(s), y = s[0].safe_top + 106, width = 92, height = 32};
 }
 sc_on_back :: (s: []Scenes, x: f32, y: f32) -> bool {
@@ -128,12 +138,21 @@ sc_list :: (s: []Scenes, out: []f32, d: f32) -> int {
   return n;
 }
 
+// While the host opens a realm (its pack is read and its pictures are drawn, a few seconds on a
+// phone): the world's name and one line, in the middle of the screen.
+sc_opening :: (s: []Scenes, out: []f32, d: f32) -> int {
+  name := sc_name(s[0].scene); line := "Opening the world";
+  y := s[0].height * 0.5;
+  n := eg_text(out, 0, name, (s[0].width - eg_width(name, 22, EG_TITLE)) * 0.5, y - 8, 22, d, EG_TITLE, EG_WHITE);
+  return eg_text(out, n, line, (s[0].width - eg_width(line, 15, EG_BODY)) * 0.5, y + 22, 15, d, EG_BODY, EG_MID);
+}
+
 sc_frame :: (s: []Scenes, out: []f32, width: f32, height: f32, d: f32, dt: f32) -> int {
   step := dt; if !(step > 0) { step = 0; } if step > 0.1 { step = 0.1; }
   s[0].time += step; s[0].width = width; s[0].height = height;
   n := 0;
   if s[0].scene == SC_WORKSHOP { n = ws_frame(s[0].workshop[..], out, width, height, d, dt); }
-  else if sc_in_realm(s) { n = 0; }   // the host draws the realm; only the Worlds button is ours
+  else if sc_in_realm(s) { n = ifx s[0].opening && width > 0 && height > 0 && d > 0 then sc_opening(s, out, d) else 0; }   // the host draws the realm; only the Worlds button is ours, and a line while the realm opens
   else { if !(width > 0) || !(height > 0) || !(d > 0) { return 0; } n = sc_list(s, out, d); }
   if !(width > 0) || !(height > 0) || !(d > 0) { return n; }
   return n + sc_worlds_button(s, out, n, d);
@@ -171,6 +190,9 @@ sc_host_runs :: (s: []Scenes, world: int, runs: bool) #export_c #effects(all) {
   if world == SC_EXPERIMENTAL { s[0].realm_experimental = runs; }
 }
 sc_on_worlds :: (s: []Scenes, x: f32, y: f32) -> bool #export_c #effects(all) { return sc_on_back(s, x, y); }
+// The host is opening the realm of the world that is open, off the frame: the scene says so until
+// the host has it (or it didn't open).
+sc_host_opening :: (s: []Scenes, opening: bool) #export_c #effects(all) { s[0].opening = opening; }
 
 // A key (workshop.coax ws_key's codes). Escape (27) is the list from anywhere; on the list 1 to 4
 // open a world.
@@ -359,4 +381,21 @@ sc_camera :: (s: []Scenes, width: f32, height: f32, d: f32, out: []f32) -> bool 
   sc_go(s[..], SC_EXPERIMENTAL); #assert !sc_in_realm(s[..]);
   sc_host_runs(s[..], SC_RANGE, false); sc_go(s[..], SC_RANGE); n = sc_draw(s[..], out[..], 1280, 800, 2, 0.016);
   #assert !sc_in_realm(s[..]) && n > 200;
+}
+#test "scenes: on an upright phone Worlds is beside the notch, clear of the realm's picture; with no notch it is under the name plate at the right; a line is drawn while the realm opens" {
+  s: [1] Scenes; sc_state_init(s[..]); out: [WS_MAX_VERTICES * VERTEX_FLOATS] f32;
+  sc_pad(s[..], 0, 0); sc_safe(s[..], 0, 59, 34); sc_host_runs(s[..], SC_RANGE, true); sc_go(s[..], SC_RANGE);
+  n := sc_draw(s[..], out[..], 402, 874, 3, 0.016);
+  // the realm's picture begins at the inset's foot (y 59): the button is wholly over it, left of the notch's island
+  b := sc_back(s[..]); #assert sc_in_realm(s[..]) && b.y >= 20 && b.y + b.height <= 59 && b.x >= 16 && b.x + b.width < 402 * 0.5 - 60 && n > 0;
+  #assert sc_on_worlds(s[..], b.x + 4, b.y + 4) && !sc_on_worlds(s[..], 201, 59 + 26);
+  // while it opens: the world's name and a line, more strokes than the button alone
+  sc_host_opening(s[..], true); m := sc_draw(s[..], out[..], 402, 874, 3, 0.016); #assert m > n;
+  sc_host_opening(s[..], false); #assert sc_draw(s[..], out[..], 402, 874, 3, 0.016) == n;
+  // no notch (a small phone): at the right, under where the name plate ends
+  sc_safe(s[..], 0, 20, 0); n = sc_draw(s[..], out[..], 375, 667, 2, 0.016);
+  b = sc_back(s[..]); #assert b.y >= 20 + 88 && b.x + b.width <= 375 - 8 && b.x > 375 * 0.5;
+  // turned on its side it is wide: the middle of the top edge, as on a desktop
+  sc_safe(s[..], 59, 0, 21); n = sc_draw(s[..], out[..], 874, 402, 3, 0.016);
+  b = sc_back(s[..]); #assert b.y < 40 && b.x > 874 * 0.5 - 92 && b.x < 874 * 0.5;
 }

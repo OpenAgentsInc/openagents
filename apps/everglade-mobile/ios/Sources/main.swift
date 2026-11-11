@@ -34,8 +34,19 @@ final class Deep {
     t.start()
   }
   func run(_ block: () -> Void) {
+    finish()
     withoutActuallyEscaping(block) { b in work = b; go.signal(); done.wait() }
   }
+  // Work that takes seconds (a realm's page opening: its pack read, its pictures drawn) is begun
+  // here and not waited for, so the screen keeps drawing. `busy` is true until `ended` has seen it
+  // end; a `run` meanwhile waits for it first, so whoever must not wait asks `busy` before.
+  private(set) var busy = false
+  func begin(_ block: @escaping () -> Void) { finish(); busy = true; work = block; go.signal() }
+  func ended() -> Bool {
+    if busy && done.wait(timeout: .now()) == .success { busy = false }
+    return !busy
+  }
+  private func finish() { if busy { done.wait(); busy = false } }
 }
 
 final class WorkshopView: MTKView, MTKViewDelegate, UIKeyInput {
@@ -132,7 +143,7 @@ final class WorkshopView: MTKView, MTKViewDelegate, UIKeyInput {
     } else if turn.running { turn.stop() }
     let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
     var u: [Float] = [Float(size.width), Float(size.height), time, 0]
-    model?.step(state, dt: dt)
+    if !pages.opening { model?.step(state, dt: dt) }   // the deep thread is a realm's while it opens
     var camera = [Float](repeating: 0, count: 24)
     let seen = eg_camera(state, Float(size.width) / scale, Float(size.height) / scale, scale, &camera) == 1
     camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time; camera[19] = Float(eg_place(state))

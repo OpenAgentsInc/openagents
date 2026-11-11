@@ -1,7 +1,7 @@
 # The Archery Range (spec)
 
 Written 2026-11-10. Status: **built, version 2**, as a realm on the web at
-`/worlds/archery-range`, in a module of its own, `archery-range` (section 8).
+`/worlds/archery-range`, in a module of its own, `archery-range` (section 9).
 Version 1 was a scene written for the Everglade apps alone, with its own draw
 key, aim, camera, reticle, hit test and mounts. It is deleted. Version 2 is
 built only from the systems the game already has.
@@ -17,11 +17,12 @@ foot, from horseback and from dragonback.
 3. [Scoring](#3-scoring)
 4. [The bow](#4-the-bow)
 5. [Three ways of shooting](#5-three-ways-of-shooting)
-6. [The tally](#6-the-tally)
-7. [What it is built from](#7-what-it-is-built-from)
-8. [The realm and the apps](#8-the-realm-and-the-apps)
-9. [What is not done](#9-what-is-not-done)
-10. [Next](#10-next)
+6. [On a phone](#6-on-a-phone)
+7. [The tally](#7-the-tally)
+8. [What it is built from](#8-what-it-is-built-from)
+9. [The realm and the apps](#9-the-realm-and-the-apps)
+10. [What is not done](#10-what-is-not-done)
+11. [Next](#11-next)
 
 ## 1. What you do
 
@@ -109,7 +110,35 @@ Riding is Everglade's mounts ([mounts spec](mounts-spec.md)), unchanged.
 | From horseback | E mounts. W and S go and slow, A and D turn, Shift gallops at 14 m/s, Space jumps |
 | From dragonback | E mounts. Space takes off and climbs, Shift dives, X lands |
 
-## 6. The tally
+## 6. On a phone
+
+A touch screen has the same range, in a phone's browser and in the iPhone
+app. The controls come up at the first touch (the iPhone app shows them from
+the start).
+
+| Touch | What it does |
+| --- | --- |
+| Left thumb, anywhere on the left side between the buttons and the bar | The stick. On foot a small push walks and a full push runs. In the saddle it steers, and a full push ahead gallops |
+| Drag anywhere else | Look |
+| Hold the bow's slot (Attack), drag, lift | Draw, aim, loose. A tap is a quick shot |
+| FOOT, HORSE, DRAGON (under the tally) | How you shoot. HORSE and DRAGON put you beside that mount and mount it. FOOT gets you off; in the air the dragon lands first |
+| RESET (under the tally) | Clears the tally. On foot it also puts you back behind the line |
+| JUMP (right side, over MOUNT) | Jump, on foot and on the horse |
+| UP (right side, on the dragon) | Held, the dragon takes off and climbs |
+| DOWN (right side, while the dragon flies) | The dragon lands |
+| MOUNT, DISMOUNT (right side, beside a mount) | The same as E |
+
+The stick is the engine's (`aethyr/sticks.coax`), the one Everglade II walks
+on. Which finger is the thumb's, and JUMP, UP and DOWN, are the zone's
+([`everglade/zone-touch.coax`](../zone-touch.coax)), so Everglade
+Experimental has them too. FOOT, HORSE, DRAGON and RESET are the range's. A
+button only asks: the range then presses the keys a player would (X to land,
+E to get off, E beside the mount).
+
+A slot's card shows while a finger holds the slot, and goes when it lifts. The
+bow's slot shows none, because holding it is the draw.
+
+## 7. The tally
 
 Shown at the top left, where other realms show the class picker. The range
 has one class, so it has no picker. It is kept until you leave the page.
@@ -126,7 +155,7 @@ has one class, so it has no picker. It is kept until you leave the page.
 - **The last arrow:** its points, or MISS, and its distance.
 - Each way of shooting keeps its own figures.
 
-## 7. What it is built from
+## 8. What it is built from
 
 Nothing about drawing, aiming, flying arrows, hitting or riding is written
 in the range. The range's module is an Everglade zone with the range on it.
@@ -184,7 +213,7 @@ COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax  
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/fivelab.coax         # Experimental on the same zone
 ```
 
-## 8. The realm and the apps
+## 9. The realm and the apps
 
 The Archery Range is a realm of its own in `apps/openagents-web/realms.json`:
 its own page (`/worlds/archery-range`), save slot and row. It is unlisted, as
@@ -217,9 +246,9 @@ its face and the libraries `build.sh` links it with) into
 `libarchery-range.dylib`, and the realm table (`Realms.swift`) names it. Its
 pack is Experimental's, so the app keeps one copy. The range and Experimental
 are two libraries now, so both can be open. The iPhone app's build has the same
-lines; it was not built for this change.
+lines.
 
-## 9. What is not done
+## 10. What is not done
 
 - **The scene and the class bar still live in the app directory.**
   `apps/openagents-web/charactercreator.coax` (the meadow, your figure, the
@@ -239,12 +268,14 @@ lines; it was not built for this change.
 - **Fire Breath** is in `everglade/zone-ride.coax` now. **The film stages**
   stay in `apps/openagents-web/experimental-stages.coax`: they are
   Experimental's own.
-- **Phones.** The range was looked at in desktop Chrome sizes only. Its face
-  takes no thumbs yet, as Experimental's world takes none.
+- **Phones.** The touch controls were driven in headless Chrome at a phone's
+  size and in the iPhone simulator. Nobody has held a phone with them yet. On
+  a phone on its side the left side is short: the ring that shows where a
+  thumb goes is drawn only once a thumb is down.
 - **Mutation.** `coax mutate` has not been run on the new engine and game
   files.
 
-## 10. Next
+## 11. Next
 
 1. Rounds: a fixed number of arrows at one distance with a final score, and
    your best kept.

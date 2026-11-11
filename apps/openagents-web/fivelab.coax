@@ -2662,9 +2662,12 @@ lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 // walls woven"), sized to the board as you see it, for the houses within 16 m.
 #test "the showcase labels the houses near you and none far away" {
  s:[1]Lab;s[0].w[0].creator[0].experimental=true;b:[16]f32;s[0].w[0].creator[0].player_x= -60;s[0].w[0].creator[0].player_z= -60;#assert lab_showcase_titles(s[..],b[..],0,1600,1000,1)==0;
- // on the open field, where no showcase stands, no label is drawn even where the village's row would be (the Druid's meadow)
- {f:[1]Lab;f[0].w[0].creator[0].experimental=true;f[0].w[0].creator[0].field=true;site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE);f[0].w[0].creator[0].player_x=site.x;f[0].w[0].creator[0].player_z=site.z+2;o:[4096]f32;#assert lab_showcase_titles(f[..],o[..],0,1600,1000,1)==0;}
  #assert lab_label_split("Woven hut, 2 of 4: walls woven")==9 && lab_label_split("none")==4;
+}
+// A check of its own: two Labs in one check are more arrays and structs than a check may hold
+// (E0400), and the app's native build runs these checks (verse/native/build.sh).
+#test "on the open field, where no showcase stands, no label is drawn even where the village's row would be (the Druid's meadow)" {
+ f:[1]Lab;f[0].w[0].creator[0].experimental=true;f[0].w[0].creator[0].field=true;site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE);f[0].w[0].creator[0].player_x=site.x;f[0].w[0].creator[0].player_z=site.z+2;o:[4096]f32;#assert lab_showcase_titles(f[..],o[..],0,1600,1000,1)==0;
 }
 // Where a label's tier ends: its first ", ".
 lab_label_split :: (t:string)->int {for i:0..<t.count-1 {if t[i]==',' && t[i+1]==' ' {return i;}}return t.count;}

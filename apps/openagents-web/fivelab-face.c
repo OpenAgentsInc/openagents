@@ -159,14 +159,21 @@ EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(v
 /* Nothing is held across a blur, so focus has nothing to restore. */
 EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { (void)state; }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  if (lab_pointer(at(state), x, y, phase, kind, id)) return 1u;
+  if (lab_pointer(at(state), x, y, phase, kind, id)) {
+    // in a zone's world, the finger the zone says is the thumb's moves the stick (everglade/zone-touch.coax)
+    if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+    return 1u;
+  }
   // a finger the Lab left (Player mode, off its buttons) is a thumb's: the stick, the look, a tap's jump
   if (kind != 0 && lab_at(state)->player) { touched = true; sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
 // Additive DOM input hook; the original pointer export remains available to native hosts.
 EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
-  if (lab_pointer_buttons(at(state), x, y, phase, kind, id, button)) return 1u;
+  if (lab_pointer_buttons(at(state), x, y, phase, kind, id, button)) {
+    if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+    return 1u;
+  }
   if (kind != 0 && lab_at(state)->player) { touched = true; sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }

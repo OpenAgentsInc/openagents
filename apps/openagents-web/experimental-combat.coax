@@ -1932,6 +1932,9 @@ xc_pointer :: (s: [] EgZone, px: f32, py: f32, phase: int, id: int) -> bool {
   over := -1;
   for i: 0..<x[0].bar_n { if xc_in(cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)), px, py) { over = i; } }
   x[0].hover = over;
+  // a finger leaves no hover behind: the slot's card is up only while it is held, and never over
+  // the bow's slot, whose hold is the draw (the card would cover your aim on an upright phone, #13152)
+  if cr[0].ml[0].touch && (phase >= 2 || x[0].ar[0].touch == id || (over >= 0 && x[0].bar[over].kind == FB_ATTACK && xc_kit(x[0].klass) == XC_KIT_BOW)) { x[0].hover = -1; }
   lay := xc_layout(s); pick := lay.pick;
   in_col := !xc_own_kit(x) && !xc_pick_hidden(x, lay) && cm_in(cm_pick_panel(pick), px, py);
   x[0].pick_hover = ifx in_col then cm_pick_hit(pick, px, py) else CmHit.{};

@@ -28,7 +28,7 @@ static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
 static coax_t_Player player;   // your body (aethyr/walk.coax)
-static coax_t_Sticks sticks;   // a phone's thumbs: none yet on this page, as on Experimental's
+static coax_t_Sticks sticks;   // a phone's thumb: the stick of the finger the zone says is its (everglade/zone-touch.coax)
 static double now;
 static coax_t_Drive drive;   // the agent driver's (aethyr/agent/drive.coax): the zone holds a view of it
 
@@ -146,11 +146,16 @@ EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(v
 /* Nothing is held across a blur, so focus has nothing to restore. */
 EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { (void)state; }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  return zone_pointer(zone(state), x, y, phase, kind, id) ? 1u : 0u;
+  bool took = range_pointer(at(state), x, y, phase, kind, id);
+  // the finger the zone says is the thumb's moves the stick (aethyr/sticks.coax)
+  if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  return took ? 1u : 0u;
 }
 // Additive DOM input hook: the mouse's buttons, for the bow.
 EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
-  return zone_pointer_buttons(zone(state), x, y, phase, kind, id, button) ? 1u : 0u;
+  bool took = range_pointer_buttons(at(state), x, y, phase, kind, id, button);
+  if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  return took ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(cx_face_addr state, float dy) { return zone_wheel(zone(state), dy) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (int32_t)zone_cursor(zone(state)); }

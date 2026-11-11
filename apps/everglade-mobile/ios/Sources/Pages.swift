@@ -18,6 +18,12 @@ import Metal
   private(set) var pages: [Int32: AEPageHost] = [:]
   private var sounds: [Int32: AEPageAudio] = [:]   // each open realm's sound (aethyr/host/apple/PageAudio.swift)
   private var tried: Set<Int32> = []
+  // The realm being opened, off the frame (#13152): its world, and where the deep thread leaves the
+  // page. Until it ends nothing else is asked of the deep thread, so the screen never waits on it,
+  // and the scene draws the world's name and a line (face.h eg_opening).
+  private final class Opened { var page: AEPageHost?; var why: NSString? }
+  private var begun: (world: Int32, into: Opened)?
+  var opening: Bool { begun != nil }
   private var shown: Int32 = 0          // the world whose realm is on screen; 0 when none is
   // The fingers that are a realm's: each one's number, and the page it went down on.
   private var fingers: [ObjectIdentifier: (id: Int32, page: AEPageHost)] = [:]
@@ -33,8 +39,8 @@ import Metal
     for world in Realms.table.keys where RealmPages.files(world) != nil { eg_runs(state, world, 1) }
   }
 
-  // The realm of the world that is open, when it has one.
-  var page: AEPageHost? { pages[eg_scene(state)] }
+  // The realm of the world that is open, when it has one (none while another is opening: its thread is busy).
+  var page: AEPageHost? { opening ? nil : pages[eg_scene(state)] }
 
   // A realm's library in the app. iOS loads code only from a framework.
   static func library(_ r: Realm) -> URL? {
@@ -77,14 +83,26 @@ import Metal
     c.touch = true
     c.screen = UIScreen.main.nativeBounds.size
     c.layerSide = { declared in Int32(tf_side(Int64(declared), true, tf_pick(0, 0, true, 0))) }
-    var why: NSString?
-    var opened: AEPageHost?
-    deep.run { opened = AEPageHost.open(c, device: device, queue: queue, why: &why) }
-    pages[world] = opened
+    // The page opens on the deep thread while the frames go on: reading a pack and drawing its
+    // pictures takes a few seconds on a phone, and the screen would hold still for all of them.
+    let into = Opened()
+    begun = (world, into)
+    eg_opening(state, 1)
+    deep.begin(RealmPages.opener(c, device: device, queue: queue, into: into))
+  }
+  // What the deep thread runs to open a page. Made outside the main actor: it runs on that thread.
+  private nonisolated static func opener(_ c: AEPageConfig, device: MTLDevice, queue: MTLCommandQueue, into: Opened) -> () -> Void {
+    return { var why: NSString?; into.page = AEPageHost.open(c, device: device, queue: queue, why: &why); into.why = why }
+  }
+  // The page begun has opened, or did not.
+  private func opened(_ world: Int32, _ into: Opened) {
+    begun = nil
+    eg_opening(state, 0)
+    pages[world] = into.page
     // A shot never plays: its sound is rendered offline, in the shot's time.
-    if let opened { sounds[world] = AEPageAudio(page: opened, resources: res, offline: offline) }
-    if opened == nil {
-      NSLog("Everglade: the realm did not open: %@. Rebuild with apps/everglade-mobile/build.sh.", why ?? "unknown")
+    if let page = into.page, let res = Bundle.main.resourceURL { sounds[world] = AEPageAudio(page: page, resources: res, offline: offline) }
+    if into.page == nil {
+      NSLog("Everglade: the realm did not open: %@. Rebuild with apps/everglade-mobile/build.sh.", into.why ?? "unknown")
       eg_runs(state, world, 0)
     }
   }
@@ -102,7 +120,10 @@ import Metal
   // go; it keeps its state. Returns the realm on screen, drawn, or nil when the open world has none.
   func frame(scale: CGFloat, dt: Float) -> AEPageHost? {
     let world = eg_scene(state)
-    if Realms.table[world] != nil && pages[world] == nil && !tried.contains(world) { open(world, points: box.size) }
+    if let b = begun {
+      guard deep.ended() else { return nil }   // still opening: the scene draws its line
+      opened(b.world, b.into)
+    }
     let on: Int32 = pages[world] != nil ? world : 0
     if on != shown {
       let was = pages[shown], now = pages[on]
@@ -111,6 +132,8 @@ import Metal
       sounds[shown]?.show(false); sounds[on]?.show(true)
       shown = on
     }
+    // A realm's row, first opened: the page before it has been let go above; this one begins to open.
+    if Realms.table[world] != nil && pages[world] == nil && !tried.contains(world) { open(world, points: box.size); if opening { return nil } }
     let realm = pages[on]
     deep.run {
       for (w, p) in pages where w != on { p.idle() }   // out of sight a realm draws nothing, and still hears its room
@@ -149,18 +172,18 @@ import Metal
   }
   // The realm's text field (a character's name): what the phone's keyboard typed, Return and Delete
   // in the host contract's codes (aethyr/host/README.md: Enter -2, Backspace -3).
-  var wantsText: Bool { var w = false; if let p = pages[shown] { deep.run { w = p.wantsText() } }; return w }
+  var wantsText: Bool { var w = false; if !opening, let p = pages[shown] { deep.run { w = p.wantsText() } }; return w }
   func typed(_ text: String) {
-    guard let p = pages[shown] else { return }
+    guard !opening, let p = pages[shown] else { return }
     deep.run { if text == "\n" { _ = p.key(-2, mods: 0, down: true); _ = p.key(-2, mods: 0, down: false) } else { p.text(text) } }
   }
   func deleted() {
-    guard let p = pages[shown] else { return }
+    guard !opening, let p = pages[shown] else { return }
     deep.run { _ = p.key(-3, mods: 0, down: true); _ = p.key(-3, mods: 0, down: false) }
   }
   // A key held or let go, in the host contract's codes, for a shot's script.
   func key(_ code: Int32, down: Bool) {
-    guard let p = pages[shown] else { return }
+    guard !opening, let p = pages[shown] else { return }
     deep.run { _ = p.key(code, mods: 0, down: down) }
   }
   // What the realm on screen has played, for a shot's script (a shot renders its sound offline).
@@ -168,7 +191,7 @@ import Metal
   // The realm's agent driver (aethyr/agent/drive.coax), for a shot's script.
   func drive(_ command: String) -> String {
     var said: String?
-    if let p = pages[shown] { deep.run { said = p.drive(command) } }
+    if !opening, let p = pages[shown] { deep.run { said = p.drive(command) } }
     return said ?? "this realm has no driver"
   }
 }

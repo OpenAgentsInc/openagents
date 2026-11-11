@@ -35,6 +35,9 @@ void eg_go(void *state, int32_t world);
 // press is that button's (give it to eg_pointer, not the realm).
 void eg_runs(void *state, int32_t world, int32_t runs);
 int32_t eg_on_worlds(void *state, float x, float y);
+// A host that opens a realm off the frame (a phone, where it takes seconds) says so while it does:
+// eg_frame then draws the world's name and a line under the Worlds button, until the host has the realm.
+void eg_opening(void *state, int32_t opening);
 // The place to draw behind it: 1 the temple (plc_).
 int32_t eg_place(void *state);
 // 1 when a touch that begins at this point is the list's or a button's, so it is a press

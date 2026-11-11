@@ -29,9 +29,17 @@ and the same table of rows
 What is the phone's own is in [`ios/Sources/Pages.swift`](ios/Sources/Pages.swift):
 
 - **Touch.** Every finger goes to the realm as a browser's touch does, each
-  with its own number, so the realm's own touch controls work: hold the bow's
-  slot (Attack) to draw, drag to aim, lift to loose; drag elsewhere to look;
-  tap a slot or a button. A touch that begins on **Worlds** is the app's.
+  with its own number, so the realm's own touch controls work: the left
+  thumb's stick walks you and steers a mount; hold the bow's slot (Attack) to
+  draw, drag to aim, lift to loose; drag elsewhere to look; tap a slot or a
+  button ([the range's controls](../../everglade/docs/archery-range-spec.md#6-on-a-phone)).
+  A touch that begins on **Worlds** is the app's.
+- **Worlds.** On an upright phone the button is in the band beside the notch,
+  above the realm's picture. On a phone on its side it is at the middle of
+  the top edge, as on the Mac. A phone with no notch has it at the right,
+  under the realm's name plate.
+- **Opening.** A realm's page opens on its own thread, and the screen shows
+  the world's name and "Opening the world" until it is up.
 - **The screen.** The realm fills the screen inside the notch, the corners
   and the home bar.
 - **The keyboard** comes up while the realm takes text.
@@ -51,15 +59,6 @@ What is the phone's own is in [`ios/Sources/Pages.swift`](ios/Sources/Pages.swif
   app's own Application Support folder.
 - **Who it counts as.** These builds go to the team, so their sessions are
   marked as a driven browser's are and never count as visitors.
-
-What the realms don't do on a phone yet:
-
-- **Walking in the range and Experimental.** The web's realm has no thumb
-  stick on those pages (only the Druid's grove and Everglade have one), so
-  you can shoot and look but not walk.
-- **Worlds** sits over the middle of the realm's top panel on an upright phone.
-- **Opening a realm** holds the screen still for a few seconds while its pack
-  loads.
 
 A shot drives fingers from the launch arguments, since nothing outside the
 simulator can touch its screen (`Pages.swift`, `Script`):
@@ -88,8 +87,8 @@ apps/everglade-mobile/ios/release.sh BUILD_NUMBER
 
 That builds for iPhone, signs with the team's Apple Distribution identity,
 and uploads to the App Store Connect app "Everglade". The build number must
-be higher than the last one uploaded (3 went up on 2026-11-10, the first with
-the web's realms). It needs
+be higher than the last one uploaded (4 went up on 2026-11-10: walking by
+touch in the range and Experimental; 3 was the first with the web's realms). It needs
 `~/work/.secrets/appstoreconnect.env`. Apple then processes the build:
 
 ```sh
@@ -162,7 +161,7 @@ them again are in [`icon/`](icon/README.md).
 
 ## Not done
 
-- **A real phone has not run it.** Builds 1 to 3 went to TestFlight without one.
+- **A real phone has not run it.** Builds 1 to 4 went to TestFlight without one.
 - **Android's own list** is in [`android/README.md`](android/README.md).
 - **App size.** The bundle carries Everglade II's 59 MB pack, Experimental's
   92 MB pack and 28 MB of the bars' pictures.

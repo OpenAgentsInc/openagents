@@ -35,3 +35,4 @@ void eg_go(void *state, int32_t world) { sc_go(at(state), world); }
 int32_t eg_claims(void *state, float x, float y) { return sc_claims(at(state), x, y) ? 1 : 0; }
 void eg_runs(void *state, int32_t world, int32_t runs) { sc_host_runs(at(state), world, runs != 0); }
 int32_t eg_on_worlds(void *state, float x, float y) { return sc_on_worlds(at(state), x, y) ? 1 : 0; }
+void eg_opening(void *state, int32_t opening) { sc_host_opening(at(state), opening != 0); }
