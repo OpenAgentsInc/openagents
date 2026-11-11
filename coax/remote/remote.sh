@@ -294,7 +294,9 @@ run() {
     fi
     ssh_to "$name" "$ip" "OA_REMOTE_SLOTS=$slots OA_REMOTE_NO_WAIT=$nowait OA_REMOTE_TIMEOUT=${OA_REMOTE_TIMEOUT:-0} bash ~/inbox/$inbox/host-job.sh run $inbox" < /dev/null
     status=$?
-    [[ -z "$refresher" ]] || { kill "$refresher" 2> /dev/null; wait "$refresher" 2> /dev/null; }
+    # Its sleep too: an orphaned sleep keeps the caller's descriptors, and with
+    # them a lock such as after.sh's (#13102).
+    [[ -z "$refresher" ]] || { pkill -P "$refresher" 2> /dev/null; kill "$refresher" 2> /dev/null; wait "$refresher" 2> /dev/null; }
     [[ $status == 96 && $nowait == 1 ]] || break
     # A command of its own that exited 96 left its result.
     ssh_to "$name" "$ip" "grep -qx 96 ~/results/$job/status" < /dev/null 2> /dev/null && break

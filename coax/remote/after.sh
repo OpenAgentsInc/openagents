@@ -223,7 +223,8 @@ check() {   # commit outdir check-args...
       # check.sh has no such step.
       local cmd=(coax/remote/check.sh "$@")
       [[ "$1" != visuals ]] || cmd=(coax/web/check-visuals.sh apps/openagents-web)
-      OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- "${cmd[@]}" > "$dir/out" 2>&1; s=$?
+      # Without the lock descriptors: nothing a job leaves behind holds the watcher's locks.
+      OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- "${cmd[@]}" > "$dir/out" 2>&1 7>&- 8>&-; s=$?
     fi
     case "$s" in 0|1) break ;; 124) echo "after: the check ran past $limit s" >> "$dir/out"; s=97; break ;; 97|255) s=97 ;; *) s=1; break ;; esac
     (( try < retries )) || break
