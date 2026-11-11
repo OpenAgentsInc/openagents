@@ -8,6 +8,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreText/CoreText.h>
 #import <ImageIO/ImageIO.h>
+#include <TargetConditionals.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
@@ -87,6 +88,7 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
  NSMutableData *soundsTaken, *soundsGiven;   // the sound packets the face said, until the audio host takes them
  PHNet *net; NSURLSession *session; PHSocket *sockets[4]; id http[8];
  NSMutableArray<PHEvent *> *events; NSString *playerKey, *playerId, *playerAccount;
+ NSMutableDictionary<NSNumber *, NSValue *> *fingers; NSMutableDictionary<NSNumber *, NSNumber *> *fingerDown;   // a touch's start and the time it began, by its number
  int width, height; float dpr; CGSize points; int quality; double opened; BOOL closed;
 }
 - (void)push:(int)kind bytes:(NSData *)bytes owner:(id)owner closes:(BOOL)closes;
@@ -226,7 +228,11 @@ static NSData *phInflate(NSData *gz) {
 }
 
 - (NSString *)facts {
- CGDirectDisplayID display = CGMainDisplayID();
+ // The screen in pixels: the one the host names (a phone's, which only UIKit knows), else the Mac's main display.
+ CGSize screenPixels = config.screen;
+#if !TARGET_OS_IOS
+ if (screenPixels.width <= 0) { CGDirectDisplayID display = CGMainDisplayID(); screenPixels = CGSizeMake(CGDisplayPixelsWide(display), CGDisplayPixelsHigh(display)); }
+#endif
  NSMutableString *s = [NSMutableString string];
  void (^put)(NSString *, id) = ^(NSString *k, id v) { [s appendFormat:@"%@%@=%@", s.length ? @"\n" : @"", k, [[v description] stringByReplacingOccurrencesOfString:@"\n" withString:@" "]]; };
  NSString *tab = [self keptId:@"coaxial.visitor"];
@@ -235,9 +241,9 @@ static NSData *phInflate(NSData *gz) {
  put(@"url", [config.origin stringByAppendingString:config.path ?: @"/"]); put(@"ref", @"");
  put(@"ua", [NSString stringWithFormat:@"AethyrPageHost/1 (%@)", NSProcessInfo.processInfo.operatingSystemVersionString]);
  put(@"lang", NSLocale.preferredLanguages.firstObject ?: @"en"); put(@"tz", NSTimeZone.localTimeZone.name);
- put(@"sw", @(CGDisplayPixelsWide(display))); put(@"sh", @(CGDisplayPixelsHigh(display)));
+ put(@"sw", @((int)screenPixels.width)); put(@"sh", @((int)screenPixels.height));
  put(@"vw", @((int)points.width)); put(@"vh", @((int)points.height)); put(@"dpr", @(dpr > 0 ? dpr : 2));
- put(@"coarse", @0); put(@"touch", @0); put(@"gpu", @1); put(@"hidden", @0);
+ put(@"coarse", config.touch ? @1 : @0); put(@"touch", config.touch ? @5 : @0); put(@"gpu", @1); put(@"hidden", @0);
  put(@"cores", @(NSProcessInfo.processInfo.activeProcessorCount)); put(@"memory", @(MIN(8, (int)(NSProcessInfo.processInfo.physicalMemory >> 30))));
  put(@"quality", [self kept:@"verse.quality"]); put(@"settled", [self kept:@"verse.quality.settled"]);
  put(@"gpu_vendor", @"apple"); put(@"gpu_arch", @"metal-3"); put(@"gpu_fallback", @0);
@@ -431,7 +437,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 - (NSString *)open:(AEPageConfig *)c device:(id<MTLDevice>)d queue:(id<MTLCommandQueue>)q {
  config = c; device = d; queue = q; opened = CACurrentMediaTime();
  shaders = [NSMutableDictionary dictionary]; pipes = [NSMutableDictionary dictionary]; sceneNames = [NSMutableDictionary dictionary];
- media = [NSMutableDictionary dictionary]; boxPipes = [NSMutableDictionary dictionary]; events = [NSMutableArray array]; stores = [NSMutableArray array]; storeVersions = [NSMutableArray array];
+ media = [NSMutableDictionary dictionary]; boxPipes = [NSMutableDictionary dictionary]; events = [NSMutableArray array]; stores = [NSMutableArray array]; storeVersions = [NSMutableArray array]; fingers = [NSMutableDictionary dictionary]; fingerDown = [NSMutableDictionary dictionary];
  library = dlopen(c.producer.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
  if (!library) return [NSString stringWithFormat:@"the realm's library did not load: %s", dlerror()];
 #define PH_LOAD(result,name,args) x.name = (result (*) args)dlsym(library, "coaxial_" #name);
@@ -445,7 +451,9 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  if (!stateBytes || !vertexBytes || !uniformBytes) return @"not enough memory for the realm";
  state = (A)stateBytes.mutableBytes; x.state_init(state);
  [self readPlayer];
- NSString *kept = [self kept:@"verse.quality"]; NSUInteger qi = [@[@"high", @"medium", @"low", @"auto"] indexOfObject:kept]; quality = qi == NSNotFound ? 3 : (int)qi;   // nothing kept: AUTO, the realm's governor sets the pixels (aethyr/quality.coax)
+ NSString *kept = [self kept:@"verse.quality"]; NSUInteger qi = [@[@"high", @"medium", @"low", @"auto"] indexOfObject:kept];
+ // nothing kept: AUTO, the realm's governor sets the pixels (aethyr/quality.coax); a touch screen starts at medium, as host.js starts a phone
+ quality = qi == NSNotFound ? (c.touch ? 1 : 3) : (int)qi;
  if (!c.offline) {
   net = [PHNet new]; net.host = self;
   NSURLSessionConfiguration *sc = NSURLSessionConfiguration.ephemeralSessionConfiguration; sc.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
@@ -544,11 +552,14 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  indexBuffer = [device newBufferWithBytes:packIndices length:packIndexBytes options:MTLResourceStorageModeShared];
  int side = x.layers_side_v1 ? (int)x.layers_side_v1(state) : 0;
  if (side <= 0 || side > 4096) side = 1024;
+ // The host's device may ask for smaller layers (a phone's tier, aethyr/render/texture-format.coax).
+ int dataSide = 512;
+ if (config.layerSide) { int s = config.layerSide(side), ds = config.layerSide(dataSide); if (s > 0 && s < side) side = s; if (ds > 0 && ds < dataSide) dataSide = ds; }
  sheets = [self layers:colour side:side data:NO];
  if (!sheets) return @"the realm's pack has a picture this Mac can't read";
  BOOL wantsData = x.data_layers_v1 && x.data_layers_v1() == 1;
  if (wantsData) {
-  dataLayers = maps.count ? [self layers:maps side:512 data:YES] : nil;
+  dataLayers = maps.count ? [self layers:maps side:dataSide data:YES] : nil;
   if (!dataLayers) {   // a pack without data layers binds one flat-normal texel
    MTLTextureDescriptor *d = [MTLTextureDescriptor new]; d.textureType = MTLTextureType2DArray; d.pixelFormat = MTLPixelFormatRGBA8Unorm; d.width = d.height = 1; d.arrayLength = 1;
    dataLayers = [device newTextureWithDescriptor:d]; const uint8_t flat[4] = {128, 128, 255, 255};
@@ -559,6 +570,9 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  // an asset or pack installed: the shadow tiles are drawn again
  if (x.shadow_event_v1) x.shadow_event_v1(state, 1, 0);
  [self after];
+ // The pack's bytes are on the GPU and in the face now: nothing reads the file's copy again (the
+ // index count is kept), so an inflated pack's memory goes back.
+ packBytes = nil; packVertices = packIndices = NULL;
  return nil;
 }
 
@@ -816,9 +830,9 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 
  // The shadow map: the atlas the realm's Coax lays out in tiles (aethyr/render/cascades.coax), or one 2048 square.
  if (shadowPipe) {
-  int aw = x.shadow_atlas_v1 && x.shadow_v1 && x.shadow_event_v1 ? (int)x.shadow_atlas_v1(state, 0, 0) : 0, ah = aw ? (int)x.shadow_atlas_v1(state, 0, 1) : 0;
+  int aw = x.shadow_atlas_v1 && x.shadow_v1 && x.shadow_event_v1 ? (int)x.shadow_atlas_v1(state, config.touch ? 1 : 0, 0) : 0, ah = aw ? (int)x.shadow_atlas_v1(state, config.touch ? 1 : 0, 1) : 0;
   BOOL tiles = aw > 0 && ah > 0 && aw <= 8192 && ah <= 8192;
-  if (!tiles) aw = ah = 2048;
+  if (!tiles) aw = ah = config.touch ? 1024 : 2048;
   if (!shadowMap || (int)shadowMap.width != aw || (int)shadowMap.height != ah || shadowTiles != tiles) { shadowMap = [self target:MTLPixelFormatDepth32Float width:aw height:ah]; shadowTiles = tiles; shadowFresh = tiles; }
   MTLRenderPassDescriptor *pd = [MTLRenderPassDescriptor new]; pd.depthAttachment.texture = shadowMap; pd.depthAttachment.storeAction = MTLStoreActionStore;
   if (tiles) {
@@ -951,6 +965,21 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  if (closed) return; phCurrent = self;
  if (x.pointer_buttons_v1) x.pointer_buttons_v1(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 0, 1, button);
  else if (x.pointer) x.pointer(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 0, 1);
+ [self after];
+}
+// A finger, as host.js sends a touch: kind 1, its own number, and a cancel that ends a short, still
+// touch is that tap's end (iOS cancels a touch a system gesture takes).
+- (void)touch:(CGPoint)at phase:(int32_t)phase finger:(int32_t)finger {
+ if (closed) return; phCurrent = self;
+ NSNumber *k = @(finger); double now = CACurrentMediaTime();
+ if (phase == 0) { fingers[k] = [NSValue valueWithBytes:&at objCType:@encode(CGPoint)]; fingerDown[k] = @(now); }
+ else if (phase == 3 && fingers[k]) {
+  CGPoint from; [fingers[k] getValue:&from];
+  if (now - fingerDown[k].doubleValue < 0.6 && hypot(at.x - from.x, at.y - from.y) < 24) phase = 2;
+ }
+ if (phase >= 2) { [fingers removeObjectForKey:k]; [fingerDown removeObjectForKey:k]; }
+ if (x.pointer_buttons_v1) x.pointer_buttons_v1(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 1, finger, phase == 1 ? -1 : 0);
+ else if (x.pointer) x.pointer(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 1, finger);
  [self after];
 }
 - (void)wheel:(float)dy { if (!closed && x.wheel) { phCurrent = self; x.wheel(state, dy); } }

@@ -4,19 +4,71 @@ The Everglade app for iOS and Android, bundle id `com.openagents.everglade`.
 It opens on a list of worlds ([spec](../../everglade/docs/app-scenes-spec.md)),
 the same as [Everglade for desktop](../../everglade/docs/desktop-app-spec.md):
 
-| World | In the app |
-| --- | --- |
-| Everglade (the main flow) | Not yet: a card says where it runs on the web |
-| The Golemancers' Workshop | Yes: the temple, your character, the shared walking controller |
-| The Archery Range | Not yet: a card says where it runs on the web, `openagents.com/worlds/archery-range` ([spec](../../everglade/docs/archery-range-spec.md)). It runs natively in the Mac app; what iOS still needs is in the [app scenes spec](../../everglade/docs/app-scenes-spec.md#what-is-left-in-order) |
-| Everglade Experimental | Not yet: a card says where it runs on the web |
+| World | On iOS | On Android |
+| --- | --- | --- |
+| Everglade (the main flow) | Yes: the web's realm, run natively (Character Create, then the glade) | Not yet: a card says where it runs on the web |
+| The Golemancers' Workshop | Yes: the temple, your character, the shared walking controller | Yes |
+| The Archery Range | Yes: the web's realm, run natively ([spec](../../everglade/docs/archery-range-spec.md)) | Not yet: a card |
+| Everglade Experimental | Yes: the web's realm, run natively | Not yet: a card |
 
 These apps are an experiment beside the main experience, which is the web app.
 
-Status: **the Workshop ran in the iOS simulator and the Android emulator
-before the list of worlds was added. The list has not been built or run on
-either yet** (the Coax is checked, and the Mac app builds with it).
-No real device has run any of it.
+Status: **on iOS the four worlds ran in the iPhone 17 Pro simulator on
+2026-11-10** (shots read: the range with a draw, an arrow in a face and the
+tally counting; Character Create and the glade; Experimental). The Workshop
+ran in the Android emulator before the list of worlds was added. No real
+device has been checked by hand.
+
+## The web's realms on iOS
+
+The three realms run through Aethyr's page host
+([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h)), the same host
+and the same table of rows
+([`Realms.swift`](../everglade-desktop/Sources/Realms.swift)) as the Mac app
+([how](../../everglade/docs/app-scenes-spec.md#4-bringing-the-webs-worlds-into-the-apps)).
+What is the phone's own is in [`ios/Sources/Pages.swift`](ios/Sources/Pages.swift):
+
+- **Touch.** Every finger goes to the realm as a browser's touch does, each
+  with its own number, so the realm's own touch controls work: hold the bow's
+  slot (Attack) to draw, drag to aim, lift to loose; drag elsewhere to look;
+  tap a slot or a button. A touch that begins on **Worlds** is the app's.
+- **The screen.** The realm fills the screen inside the notch, the corners
+  and the home bar.
+- **The keyboard** comes up while the realm takes text.
+- **Code.** iOS loads code only from a framework, so each realm's library is
+  `Frameworks/NAME.framework`.
+- **Memory.** A phone's layers are 512 texels a side, the tier
+  `aethyr/render/texture-format.coax` gives a phone, and the page host lets
+  go of the pack's bytes once they are on the GPU. Measured in the simulator
+  with `footprint`: Experimental and the range hold 466 MB (719 MB at the
+  peak, while the 286 MB pack is inflated); Everglade holds 195 MB.
+- **Sound** is the Mac app's: Aethyr's Apple audio host
+  (`aethyr/host/apple/PageAudio.swift`). It mixes with what is playing and
+  the ring switch silences it. In a shot it is rendered, never played: the
+  range's run said the bow's draw and release, the arrow's flight and hit,
+  and your steps. Nobody has heard it on a phone yet.
+- **What is kept** (your character, your place, your settings) is in the
+  app's own Application Support folder.
+- **Who it counts as.** These builds go to the team, so their sessions are
+  marked as a driven browser's are and never count as visitors.
+
+What the realms don't do on a phone yet:
+
+- **Walking in the range and Experimental.** The web's realm has no thumb
+  stick on those pages (only the Druid's grove and Everglade have one), so
+  you can shoot and look but not walk.
+- **Worlds** sits over the middle of the realm's top panel on an upright phone.
+- **Opening a realm** holds the screen still for a few seconds while its pack
+  loads.
+
+A shot drives fingers from the launch arguments, since nothing outside the
+simulator can touch its screen (`Pages.swift`, `Script`):
+
+```sh
+xcrun simctl launch booted com.openagents.everglade --offline --scene 3 \
+  --do "wait:6;down:1:110,721;drag:1:103,682:0.8;wait:1.5;up:1:103,682;wait:2;mark:done"
+xcrun simctl io booted screenshot range.png
+```
 
 ## Run it on iOS
 
@@ -60,6 +112,8 @@ the app. See [`android/README.md`](android/README.md) for what it needs.
 
 Tap a world on the list to open it. **Worlds**, under a world's title, comes back.
 
+In the Workshop (a realm's touches are its own, above):
+
 | Touch | What it does |
 | --- | --- |
 | Drag on the left side | Move. A small push walks, a full push runs |
@@ -86,8 +140,9 @@ Nothing in the scene is written twice.
 | The GPU side of the Apple hosts: the pack, the place, the model | [`apps/everglade-desktop/Sources/Engine.swift`](../everglade-desktop/Sources/Engine.swift) |
 | The fonts' atlas, drawn | [`apps/everglade-desktop/Sources/Faces.swift`](../everglade-desktop/Sources/Faces.swift) |
 
-What is iOS's own is [`ios/Sources/main.swift`](ios/Sources/main.swift):
-a full-screen Metal view, touch, the safe area, and a thread with a deep
+What is iOS's own is [`ios/Sources/main.swift`](ios/Sources/main.swift)
+and [`ios/Sources/Pages.swift`](ios/Sources/Pages.swift):
+a full-screen Metal view, touch, the safe area, the realms' pages, and a thread with a deep
 stack (the web's character code passes megabytes by value, and iOS gives the
 main thread one megabyte).
 
@@ -108,8 +163,8 @@ them again are in [`icon/`](icon/README.md).
 
 - **A real phone has not run it.** Build 1 went to TestFlight without one.
 - **Android's own list** is in [`android/README.md`](android/README.md).
-- **App size.** The bundle carries Everglade II's whole 61 MB pack for the
-  character's parts. A phone build should carry only those parts.
+- **App size.** The bundle carries Everglade II's 59 MB pack, Experimental's
+  92 MB pack and 28 MB of the bars' pictures.
 - **The deep-stack thread** is 512 MB of address space. It works in the
   simulator; whether a device grants it is untested.
 - **A launch screen.**

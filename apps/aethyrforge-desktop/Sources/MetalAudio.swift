@@ -175,7 +175,7 @@ final class ForgeMetalAudio {
     var companionDecodes = 0
     init(host: UnsafeMutableRawPointer, resources: URL, muted: Bool, memory: ForgeAudioMemory = ForgeAudioMemory(), bankDirectory: URL? = nil) {
         self.host = host; self.resources = resources; self.muted = muted; self.memory = memory
-        self.bankDirectory = bankDirectory ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/aethyrforge/audio-bank")
+        self.bankDirectory = bankDirectory ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".openagents/aethyrforge/audio-bank")
         let source = self.source
         source.muted = muted
         let format = AVAudioFormat(standardFormatWithSampleRate:48000,channels:2)!

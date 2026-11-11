@@ -2,7 +2,8 @@
 
 Written 2026-11-10. Status: **the list and all four worlds are built on the
 Mac (Everglade itself, the Workshop, the Archery Range and Everglade
-Experimental), with the realms' sound; the phones have the Workshop.**
+Experimental), with the realms' sound, and on iOS, where they ran in the
+simulator; Android has the Workshop.**
 
 The Everglade apps are an experiment beside the main experience, which is
 the web app. They are where the next work, managing agents from inside a
@@ -21,10 +22,10 @@ them.
 
 | World | What it is | In the apps today |
 | --- | --- | --- |
-| Everglade | The main flow, as the web has it: make a character, then walk into the glade | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
+| Everglade | The main flow, as the web has it: make a character, then walk into the glade | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On iOS too ([how](../../apps/everglade-mobile/README.md#the-webs-realms-on-ios)). On Android a card says where it runs |
 | The Golemancers' Workshop | The temple and the unfinished golem | Yes |
-| The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs: `openagents.com/worlds/archery-range` |
-| Everglade Experimental | Classes, monsters, a horse and a red dragon | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
+| The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On iOS too ([how](../../apps/everglade-mobile/README.md#the-webs-realms-on-ios)). On Android a card says where it runs: `openagents.com/worlds/archery-range` |
+| Everglade Experimental | Classes, monsters, a horse and a red dragon | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On iOS too ([how](../../apps/everglade-mobile/README.md#the-webs-realms-on-ios)). On Android a card says where it runs |
 
 Nothing stands in for a world that isn't here: there is no web view, as the
 [desktop spec](desktop-app-spec.md) decided, and no scene written for the apps
@@ -196,18 +197,13 @@ What the realms don't do yet:
 
 ### What is left, in order
 
-1. **The phones.** iOS builds the shared table of realms already
-   (`Realms.swift`). It still needs: the page host and the audio host linked
-   (`PageHost.m`, `PageAudio.swift`, `MetalAudio.swift`, `audio-host.c` and
-   `native-audio.coax`'s C; all Metal, Foundation and AVFoundation, but the
-   audio session category set for iOS), the realm libraries linked into the
-   app instead of loaded with `dlopen` (an App Store app loads no loose
-   dylib: a static archive per module, with its face's symbols prefixed, or
-   one signed framework each), the shaders emitted for the iphoneos SDK, the
-   fivelab pack (92 MB) and the sound files in the bundle, `eg_runs` from
-   its main.swift as the Mac's does, and touches sent to the host as
-   pointer events with a second finger for the draw. Android needs a twin
-   of the host on Vulkan (`verse/native/realm-host.c` is the start).
+1. **The phones.** iOS runs the three realms through the same page host,
+   table of rows and audio host (built 2026-11-10; what is the phone's own,
+   and what the realms don't do on a phone yet, is in
+   [the mobile README](../../apps/everglade-mobile/README.md#the-webs-realms-on-ios)).
+   The web's realm needs a thumb stick on the range's and Experimental's
+   pages before you can walk there by touch. Android needs a twin of the
+   host on Vulkan (`verse/native/realm-host.c` is the start).
 2. **A carrier and catalog profile** for both, when the web's Everglade II
    moves to the shared renderer. The page host then gives way to the realm
    host (`apps/aethyrforge-desktop/MetalRealm.m`).

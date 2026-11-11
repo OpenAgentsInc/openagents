@@ -26,6 +26,9 @@
 @property (copy) NSString *realm, *slot, *style, *clock;
 @property BOOL offline;                // no socket and no HTTP leave this machine (a shot)
 @property BOOL automated;              // nobody is at the keys: said in the page's facts, as a browser under a driver says it
+@property BOOL touch;                  // a touch screen (a phone or a tablet): said in the page's facts, as a browser's coarse pointer is, so the realm draws its touch controls
+@property CGSize screen;               // the screen in pixels, for the page's facts; zero on a Mac, where the host reads the main display
+@property (copy) int32_t (^layerSide)(int32_t declared);   // the side the pack's layers are drawn to, from the one the realm declares (aethyr/render/texture-format.coax tf_side); nil keeps it
 @end
 
 @interface AEPageHost : NSObject
@@ -42,6 +45,8 @@
 - (void)text:(NSString *)typed;
 // Points from the view's top left. phase 0 down, 1 moved, 2 up, 3 cancelled; button 0 left, 2 right.
 - (void)pointer:(CGPoint)at phase:(int32_t)phase button:(int32_t)button;
+// A finger on a touch screen, in the same points and phases; `finger` is its own number from down to up.
+- (void)touch:(CGPoint)at phase:(int32_t)phase finger:(int32_t)finger;
 - (void)wheel:(float)dy;
 - (void)focus:(BOOL)focused;
 // The page out of sight (another world is open, or the window is hidden) and shown again: the realm

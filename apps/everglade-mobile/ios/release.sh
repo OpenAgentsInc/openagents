@@ -31,6 +31,8 @@ cp "$work/Everglade.mobileprovision" "$app/embedded.mobileprovision"
 # The entitlements are the profile's own, which is what the App Store checks the signature against.
 security cms -D -i "$work/Everglade.mobileprovision" > "$work/profile.plist"
 plutil -extract Entitlements xml1 -o "$work/entitlements.plist" "$work/profile.plist"
+# The realms' libraries are frameworks inside the app: each is signed before the app that holds it.
+for f in "$app"/Frameworks/*.framework; do codesign --force --sign "$sha1" --generate-entitlement-der --timestamp "$f"; done
 codesign --force --sign "$sha1" --entitlements "$work/entitlements.plist" --generate-entitlement-der --timestamp "$app"
 codesign --verify --strict "$app"
 rm -rf "$work/Payload" "$work/Everglade.ipa"; mkdir -p "$work/Payload"; cp -R "$app" "$work/Payload/"
