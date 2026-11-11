@@ -1,0 +1,308 @@
+// The Antigravity engine: Google's Antigravity CLI (`agy acp`), driven as the
+// ACP engine (cursor.coax, cue_*) with Antigravity's own CuAgent, one session
+// per conversation (GitHub #13192). What differs from Cursor is here; the
+// protocol, the held first message and the closing are the shared engine's.
+//
+//   agy_agent      the agent: `agy acp`, no authenticate (agy signs in on
+//                  its own: Google, a Gemini key, or Application Default
+//                  Credentials), session/resume (no replayed history)
+//   agy_program    where agy is: PATH, then ~/.local/bin/agy (its installer's place)
+//   agy_launch     agy started with the credentials file's variables
+//   agy_configure  the owner's model, effort and mode for the opened session
+//   agy_signed_out whether a refusal means agy is not signed in
+//   agy_outside    a tool's Antigravity-named paths (rawInput Path, Cwd, ...) with ".."
+//
+// Credentials: Coder passes its own environment through. Besides, the file
+// ~/.openagents/coder/antigravity.env names Google Cloud sign-in for agy, one
+// NAME=value a line ('#' comments): AGY_ADC_AUTH, GOOGLE_APPLICATION_CREDENTIALS
+// (a path to the key, never the key), GOOGLE_CLOUD_PROJECT and
+// GOOGLE_CLOUD_LOCATION. Other names are ignored, and a variable already set
+// in Coder's environment wins over the file.
+//
+// Modes: Coder answers every permission itself (its policy, --ask, or the
+// session's trust), so the session runs in agy's `default` mode, where edits
+// and commands are asked; a resumed session in another mode is set back.
+
+#load "cursor.coax";
+#load "../../sys/fs.coax";
+
+AGY_INSTALL :: "curl -fsSL https://antigravity.google/cli/install.sh | bash";
+AGY_MISSING :: "The Antigravity CLI (agy) was not found. Install it with: curl -fsSL https://antigravity.google/cli/install.sh | bash";
+AGY_SIGNED_OUT :: "Antigravity is not signed in. Run agy once to sign in, or name Google Cloud credentials in ~/.openagents/coder/antigravity.env (AGY_ADC_AUTH=1, GOOGLE_APPLICATION_CREDENTIALS=PATH, GOOGLE_CLOUD_PROJECT=ID).";
+AGY_ENV_FILE :: "/.openagents/coder/antigravity.env";
+AGY_ENV_NAMES :: [4] string.["AGY_ADC_AUTH", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"];
+AGY_MODE :: "default";
+AGY_MODEL_NOT_APPLIED :: 1; AGY_EFFORT_NOT_APPLIED :: 2;
+
+agy_agent :: () -> CuAgent {
+  a: [1] CuAgent;
+  a[0].name = "agy"; a[0].program = "agy"; a[0].login = ""; a[0].resume = CU_SESSION_RESUME;
+  return a[0];
+}
+
+// agy on PATH, else HOME/.local/bin/agy; "" when neither is there.
+agy_find :: (path_env: string, home: string, out: [] u8) -> string {
+  found := cu_on_path(path_env, "agy", out);
+  if found.count > 0 { return found; }
+  if home.count == 0 || home.count > 4000 { return ""; }
+  n := cl_copy(out, home); n += cl_copy(out[n..<out.count], "/.local/bin/agy");
+  if n >= out.count || !fs_exists(cast(string) out[0..<n]) { return ""; }
+  return cast(string) out[0..<n];
+}
+agy_program :: (out: [] u8) -> string {
+  pb: [8192] u8; path := cl_getenv("PATH", pb[..]);
+  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  return agy_find(path, home, out);
+}
+
+// ---------------------------------------------------------------- the credentials file
+
+AgyEnv :: struct {
+  buf: [4096] u8; n: int;
+  vars: [CU_ENV] string; nvars: int;     // NAME=value, into buf
+}
+
+agy_env_name_ok :: (name: string) -> bool {
+  names := AGY_ENV_NAMES;
+  for k: names { if k == name { return true; } }
+  return false;
+}
+
+// The file's lines kept in e: the allowed names with a value, the first of each name.
+agy_env_parse :: (text: string, e: [] AgyEnv) {
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != 10 { end += 1; }
+    line := cast(string) text[at..<end]; at = end + 1;
+    s := 0; t := line.count;
+    while s < t && (line[s] == ' ' || line[s] == 9) { s += 1; }
+    while t > s && (line[t - 1] == ' ' || line[t - 1] == 9 || line[t - 1] == 13) { t -= 1; }
+    if s == t || line[s] == '#' { continue; }
+    eq := s; while eq < t && line[eq] != '=' { eq += 1; }
+    if eq == t || eq + 1 == t { continue; }
+    name := cast(string) line[s..<eq];
+    if !agy_env_name_ok(name) || agy_env_has(e, name) || e[0].nvars >= CU_ENV { continue; }
+    if e[0].n + (t - s) > e[0].buf.count { continue; }
+    from := e[0].n;
+    e[0].n += cl_copy(e[0].buf[from..<e[0].buf.count], cast(string) line[s..<t]);
+    e[0].vars[e[0].nvars] = cast(string) e[0].buf[from..<e[0].n]; e[0].nvars += 1;
+  }
+}
+agy_env_has :: (e: [] AgyEnv, name: string) -> bool {
+  for i: 0..<e[0].nvars {
+    v := e[0].vars[i];
+    if v.count > name.count && cast(string) v[0..<name.count] == name && v[name.count] == '=' { return true; }
+  }
+  return false;
+}
+
+// HOME's credentials file into e, less the names Coder's own environment sets. Whether a file was read.
+agy_env_load :: (e: [] AgyEnv) -> bool {
+  e[0].n = 0; e[0].nvars = 0;
+  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 || home.count > 4000 { return false; }
+  pb: [4200] u8; pn := cl_copy(pb[..], home); pn += cl_copy(pb[pn..<pb.count], AGY_ENV_FILE);
+  fb: [4096] u8; n := fs_read(cast(string) pb[0..<pn], fb[..]);
+  if n <= 0 { return false; }
+  all: [1] AgyEnv; agy_env_parse(cast(string) fb[0..<n], all[..]);
+  for i: 0..<all[0].nvars {
+    v := all[0].vars[i];
+    eq := 0; while eq < v.count && v[eq] != '=' { eq += 1; }
+    vb: [8] u8;
+    if cl_getenv(cast(string) v[0..<eq], vb[..]).count > 0 { continue; }   // Coder's own environment wins
+    from := e[0].n;
+    e[0].n += cl_copy(e[0].buf[from..<e[0].buf.count], v);
+    e[0].vars[e[0].nvars] = cast(string) e[0].buf[from..<e[0].n]; e[0].nvars += 1;
+  }
+  return true;
+}
+
+// agy started in cwd with the credentials file's variables, initialize sent: "" or why it did not start.
+agy_launch :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string) -> string {
+  cue_agent(x, agy_agent());
+  e: [1] AgyEnv; r := agy_env_load(e[..]);
+  l: [1] CuLaunch; l[0].program = program; l[0].cwd = cwd;
+  for i: 0..<e[0].nvars { l[0].env[i] = e[0].vars[i]; }
+  l[0].env_n = e[0].nvars;
+  return cue_start(x, l[0], name, version);
+}
+
+// ---------------------------------------------------------------- the opened session
+
+// The owner's model and effort, and agy's default mode, for the session that just opened
+// (result: session/new's or session/resume's). A model agy lists (models.availableModels, such
+// as gemini-3.8-flash-low) is set with session/set_model, else a model config option's value
+// (gemini-3.8-flash) with session/set_config_option; the effort is the thought_level option's
+// value. Every setting sent holds the first message until it is answered. Returns which were
+// not applied (AGY_MODEL_NOT_APPLIED, AGY_EFFORT_NOT_APPLIED).
+agy_configure :: (x: [] CuEngine, result: string, model: string, effort: string) -> int {
+  ar := x[0].c[0].ar[..];
+  x[0].hold = 0;
+  missed := 0;
+  if model.count > 0 {
+    if cu_model_has(result, model, ar) { cue_set_model(x, model); }
+    else {
+      bb: [128] u8; bn := cl_copy(bb[..], cu_config_id(result, "model", model, ar));
+      if bn == 0 { missed = missed | AGY_MODEL_NOT_APPLIED; } else { cue_set(x, cast(string) bb[0..<bn], model); }
+    }
+  }
+  if effort.count > 0 {
+    ib: [128] u8; idn := cl_copy(ib[..], cu_config_id(result, "thought_level", effort, ar));
+    if idn == 0 { missed = missed | AGY_EFFORT_NOT_APPLIED; } else { cue_set(x, cast(string) ib[0..<idn], effort); }
+  }
+  mode := cl_str(ar, result, "modes.currentModeId");
+  if mode.count > 0 && mode != AGY_MODE && cu_mode_has(result, AGY_MODE, ar) { cue_set_mode(x, AGY_MODE); }
+  return missed;
+}
+
+agy_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if cast(string) text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+// agy's refusal when it has no sign-in ("Authentication required"), or an expired one.
+agy_signed_out :: (message: string) -> bool {
+  return agy_has(message, "Authentication required") || agy_has(message, "Authentication expired") || agy_has(message, "log back in");
+}
+
+// A refused turn the model provider caused (quota, rate, overload, unavailable): routing cools agy down.
+agy_provider :: (message: string) -> bool {
+  if agy_signed_out(message) { return false; }
+  marks := [8] string.["RESOURCE_EXHAUSTED", "quota", "Quota", "rate limit", "Rate limit", "429", "unavailable", "overloaded"];
+  for m: marks { if agy_has(message, m) { return true; } }
+  return agy_has(message, "UNAVAILABLE") || agy_has(message, "503");
+}
+
+#test "antigravity: a provider's refusal is told from a sign-in's" {
+  #assert agy_provider("The model is unavailable. Try again later.") && agy_provider("RESOURCE_EXHAUSTED: quota exceeded") && agy_provider("HTTP 429");
+  #assert !agy_provider("Authentication required") && !agy_provider("Unknown model ID: nope") && !agy_provider("");
+}
+
+AGY_PATH_KEYS :: [5] string.["Path", "Cwd", "TargetFile", "AbsolutePath", "DirectoryPath"];
+
+// True when a path agy's tools name in rawInput (read_file's Path, run_command's Cwd, ...) contains "..".
+agy_outside :: (tool: string, ar: [] ClArena) -> bool {
+  raw := cl_raw(tool, "rawInput");
+  keys := AGY_PATH_KEYS;
+  for k: keys { if cu_has_dotdot(cl_str(ar, raw, k)) { return true; } }
+  return false;
+}
+
+// ---------------------------------------------------------------- checks
+
+// (cue_out_has lowercases what it reads)
+agy_out_has :: (x: [] CuEngine, part: string) -> bool { return agy_has(cu_outbox(x[0].c), part); }
+
+agy_test :: (x: [] CuEngine, c: [] CuClient, p: [] ClProcess, line: [] u8, arena: [] u8, out: [] u8) {
+  cue_test(x, c, p, line, arena, out);
+  cue_agent(x, agy_agent());
+}
+
+AGY_OPENED :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-3.8-flash-low\",\"name\":\"Gemini 3.8 Flash (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"options\":[{\"value\":\"gemini-3.8-flash\"},{\"value\":\"gemini-4-carbon\"}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"options\":[{\"value\":\"low\"},{\"value\":\"medium\"},{\"value\":\"high\"}]}]}}";
+
+#test "antigravity: initialize answered opens a session at once, with no authenticate" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [4096] u8; out: [2048] u8;
+  x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1}}");
+  #assert ev.kind == CuEventKind.initialized && !agy_out_has(x, "authenticate");
+  #assert agy_out_has(x, "\"id\":2,\"method\":\"session/new\"") && agy_out_has(x, "\"cwd\":\"/w\"");
+  ev = cue_feed(x, AGY_OPENED);
+  #assert ev.kind == CuEventKind.answered && ev.of == CU_SESSION_NEW && x[0].ready && cu_session_id(x[0].c) == "g-1";
+}
+
+#test "antigravity: a resumed session uses session/resume, replays nothing, and a refusal opens a new one" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [4096] u8; out: [2048] u8;
+  x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  cue_resume(x, "old-g");
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  #assert !x[0].replay && x[0].nresume == 0 && agy_out_has(x, "\"method\":\"session/resume\"") && agy_out_has(x, "\"sessionId\":\"old-g\"");
+  #assert !agy_out_has(x, "session/load");
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"modes\":{\"currentModeId\":\"default\"}}}");
+  #assert ev.of == CU_SESSION_RESUME && x[0].ready && cu_session_id(x[0].c) == "old-g";   // the answer need not repeat the id
+  // a permission after resume is the owner's: nothing replays
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"session/request_permission\",\"params\":{\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}],\"toolCall\":{\"kind\":\"execute\"}}}");
+  #assert ev.kind == CuEventKind.permission;
+  cu_permit(x[0].c, cu_allow_option(x[0].c));
+  #assert agy_out_has(x, "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"allow\"}}}");
+
+  yb: [1] CuEngine; db: [1] CuClient; qb: [1] ClProcess; line2: [1024] u8; arena2: [4096] u8; out2: [2048] u8;
+  y := yb[..]; agy_test(y, db[..], qb[..], line2[..], arena2[..], out2[..]);
+  cue_resume(y, "gone");
+  ev = cue_feed(y, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  ev = cue_feed(y, "{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32603,\"message\":\"Failed to read session gone\"}}");
+  #assert ev.kind == CuEventKind.refused && ev.of == CU_SESSION_RESUME && agy_out_has(y, "\"method\":\"session/new\"");
+  ev = cue_feed(y, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"sessionId\":\"g-2\"}}");
+  #assert y[0].ready && cu_session_id(y[0].c) == "g-2";
+}
+
+#test "antigravity: a listed model goes by set_model, a base model and the effort by config options, each held" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [8192] u8; out: [4096] u8;
+  x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  #assert !cue_send(x, "hello");
+  ev = cue_feed(x, AGY_OPENED);
+  opened := ev.result;
+  cu_outbox_clear(x[0].c);
+  #assert agy_configure(x, opened, "gemini-3.8-flash-low", "high") == 0 && x[0].hold == 2;
+  #assert agy_out_has(x, "\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"g-1\",\"modelId\":\"gemini-3.8-flash-low\"}");
+  #assert agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"high\"") && !agy_out_has(x, "session/set_mode\"");
+  cue_owed(x, true); #assert !agy_out_has(x, "session/prompt");
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}");
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":4,\"error\":{\"code\":-32602,\"message\":\"no\"}}");
+  #assert x[0].hold == 0;
+  cue_owed(x, true); #assert agy_out_has(x, "\"method\":\"session/prompt\"") && agy_out_has(x, "hello");
+
+  cu_outbox_clear(x[0].c);
+  #assert agy_configure(x, ev.result, "", "") == 0;   // (ev.result is an error's: nothing advertised, nothing asked)
+  x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false;    // (as a fed line resets it)
+  #assert agy_configure(x, opened, "gemini-3.8-flash", "") == 0 && agy_out_has(x, "\"configId\":\"model\",\"value\":\"gemini-3.8-flash\"");
+  x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false;
+  #assert agy_configure(x, opened, "nope", "xhigh") == AGY_MODEL_NOT_APPLIED | AGY_EFFORT_NOT_APPLIED && x[0].hold == 0;
+}
+
+#test "antigravity: a session in another mode is set back to default" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [4096] u8; out: [2048] u8;
+  x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  c := x[0].c; c[0].session_n = cu_keep(c[0].session[..], "g-1");
+  cu_outbox_clear(c);
+  r := "{\"modes\":{\"currentModeId\":\"auto\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]}}";
+  #assert agy_configure(x, r, "", "") == 0 && x[0].hold == 1 && agy_out_has(x, "\"method\":\"session/set_mode\",\"params\":{\"sessionId\":\"g-1\",\"modeId\":\"default\"}");
+  cu_outbox_clear(c);
+  #assert agy_configure(x, "{\"modes\":{\"currentModeId\":\"plan\",\"availableModes\":[{\"id\":\"plan\"}]}}", "", "") == 0 && x[0].hold == 0 && cu_outbox(c).count == 0;
+}
+
+#test "antigravity: the credentials file keeps the four sign-in names, first of each, nothing else" {
+  e: [1] AgyEnv;
+  agy_env_parse("# Antigravity on Google Cloud\nAGY_ADC_AUTH=1\n  GOOGLE_APPLICATION_CREDENTIALS=/k/sa.json  \nGEMINI_API_KEY=secret\nGOOGLE_CLOUD_PROJECT=p1\r\nGOOGLE_CLOUD_PROJECT=p2\nGOOGLE_CLOUD_LOCATION=\nnot a line\n", e[..]);
+  #assert e[0].nvars == 3;
+  #assert e[0].vars[0] == "AGY_ADC_AUTH=1" && e[0].vars[1] == "GOOGLE_APPLICATION_CREDENTIALS=/k/sa.json" && e[0].vars[2] == "GOOGLE_CLOUD_PROJECT=p1";
+  #assert agy_env_has(e[..], "GOOGLE_CLOUD_PROJECT") && !agy_env_has(e[..], "GOOGLE_CLOUD") && !agy_env_has(e[..], "GEMINI_API_KEY");
+  f: [1] AgyEnv; agy_env_parse("", f[..]); #assert f[0].nvars == 0;
+}
+
+#test "antigravity: signed out, paths outside, and the agent's quirks" {
+  #assert agy_signed_out("Authentication required") && agy_signed_out("Authentication expired. Please log back in.");
+  #assert !agy_signed_out("Unknown model ID: nope") && !agy_signed_out("");
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert agy_outside("{\"rawInput\":{\"Path\":\"/w/../etc/passwd\"}}", ar[..]) && agy_outside("{\"rawInput\":{\"Cwd\":\"..\"}}", ar[..]);
+  #assert !agy_outside("{\"rawInput\":{\"Path\":\"/w/a..b\",\"CommandLine\":\"cd .. && ls\"}}", ar[..]);
+  a := agy_agent();
+  #assert a.program == "agy" && a.login == "" && a.resume == CU_SESSION_RESUME && a.unset_n == 0;
+  c := cu_agent_cursor();
+  #assert c.program == "agent" && c.login == "cursor_login" && c.resume == CU_SESSION_LOAD && c.unset_n == 2;
+}
+
+// ---------------------------------------------------------------- for owners of either agent
+
+// Whether the engine's agent is Antigravity's (else Cursor's).
+agy_is :: (x: [] CuEngine) -> bool { return cue_profile(x).program == "agy"; }
+// The agent's name in what an owner shows: "Antigravity" or "Cursor".
+cue_title :: (x: [] CuEngine) -> string { return ifx agy_is(x) then "Antigravity" else "Cursor"; }
+
+#test "antigravity: the engine names its agent" {
+  xb: [1] CuEngine;
+  #assert !agy_is(xb[..]) && cue_title(xb[..]) == "Cursor";
+  cue_agent(xb[..], agy_agent());
+  #assert agy_is(xb[..]) && cue_title(xb[..]) == "Antigravity";
+}

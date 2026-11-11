@@ -180,6 +180,8 @@ agr_begin :: (task: string, local: bool, r: [] AgRoute, q: [] AgrAsk) -> bool {
   allowed: [1] int; blocked: [1] int;
   r[0].eligible = ca_eligible(local, allowed[..], blocked[..]); r[0].allowed = allowed[0]; r[0].blocked = blocked[0];
   if r[0].eligible == 0 { agr_fail(r, "no eligible engine: allowlist, installation or provider cooldown"); return false; }
+  // System One chooses among the first four; Antigravity alone needs no question (availability.coax)
+  if (r[0].eligible & 15) == 0 { agr_fail(r, "only antigravity is eligible; System One is not asked"); return false; }
   // Shared config, optional env override, then the legacy hosted default.
   // A configured local/Pylon failure never sends the task to Baseten.
   pathbuf:[1400]u8; hb:[1024]u8;

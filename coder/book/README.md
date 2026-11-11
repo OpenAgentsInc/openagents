@@ -109,6 +109,7 @@ The [registry](chapters.json) names each chapter’s sources and qualified targe
 | [36. A terminal UI](ch036-a-terminal-ui.md) | Implemented: three agents inline, themes, job status, macOS terminal |
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Partly implemented: vt-text-v1, bounded CPU |
 | [38. Drive Cursor](ch038-drive-cursor.md) | Partly implemented: cursor-agent 2026.10.14-941492e ACP |
+| [39. Drive Antigravity](ch039-drive-antigravity.md) | Implemented: agy 1.5.6 ACP on Google Cloud credits |
 
 ## Contents
 

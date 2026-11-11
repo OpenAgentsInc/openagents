@@ -427,7 +427,31 @@ sw_cx_usage :: (l: [] SwLog, usage: string, client: bool, thread: string, turn: 
   n = json_raw(o, n, "}"); sw_put(l, n);
 }
 
+// An ACP agent's usage for one turn (session/prompt's usage: Antigravity's input, output,
+// cached and thought tokens), under ACP's own names; agy reports no cost.
+sw_acp_usage :: (l: [] SwLog, engine: string, usage: string) {
+  if usage.count == 0 { return; }
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":"); n = json_write_string(o, n, engine);
+  n = json_raw(o, n, ",\"scope\":\"turn\"");
+  for key: [6] string.["totalTokens", "inputTokens", "cachedReadTokens", "cachedWriteTokens", "outputTokens", "thoughtTokens"] {
+    n = json_raw(o, n, ","); n = json_write_string(o, n, key); n = json_raw(o, n, ":");
+    v := cl_int(usage, key); n = ifx v.ok && v.value >= 0 then json_write_int(o, n, v.value) else json_raw(o, n, "null");
+  }
+  n = json_raw(o, n, ",\"cost_usd\":null}"); sw_put(l, n);
+}
+
 // ---------------------------------------------------------------- checks
+
+#test "an ACP turn's usage is one line under ACP's names, a missing count null" {
+  l: [1] SwLog; ob: [4096] u8; l[0].out = ob[..]; l[0].json = true;
+  sw_acp_usage(l[..], "antigravity", "{\"inputTokens\":10579,\"outputTokens\":361,\"cachedReadTokens\":6289,\"cachedWriteTokens\":0,\"thoughtTokens\":213,\"totalTokens\":17229}");
+  sw_acp_usage(l[..], "antigravity", "");
+  sw_acp_usage(l[..], "antigravity", "{\"inputTokens\":5}");
+  got: [4096] u8; n := sw_take(l[..], got[..]);
+  want := "{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"antigravity\",\"scope\":\"turn\",\"totalTokens\":17229,\"inputTokens\":10579,\"cachedReadTokens\":6289,\"cachedWriteTokens\":0,\"outputTokens\":361,\"thoughtTokens\":213,\"cost_usd\":null}\n{\"kind\":\"usage\",\"schema\":\"coder.observability.v1\",\"engine\":\"antigravity\",\"scope\":\"turn\",\"totalTokens\":null,\"inputTokens\":5,\"cachedReadTokens\":null,\"cachedWriteTokens\":null,\"outputTokens\":null,\"thoughtTokens\":null,\"cost_usd\":null}\n";
+  #assert cast(string) got[0..<n] == want;
+}
 
 #test "session IDs sort by time: UTC date, time and milliseconds" {
   b: [32] u8;

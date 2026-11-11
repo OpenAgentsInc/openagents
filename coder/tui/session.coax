@@ -149,6 +149,8 @@ cs_cx_model :: (a: [] App) {
   opt := a[0].cx_options[..];
   sw_cx_model(a[0].log, ccx_text(opt[0].actual_model[..]), ccx_text(opt[0].actual_effort[..])); cs_after(a);
 }
+// An ACP agent's usage for a turn (Antigravity's session/prompt usage).
+cs_acp_usage :: (a: [] App, engine: string, usage: string) { sw_acp_usage(a[0].log, engine, usage); cs_after(a); }
 cs_cx_usage :: (a: [] App, usage: string) {
   c := a[0].cx.count > 0;
   sw_cx_usage(a[0].log, usage, c, ifx c then cx_thread_id(a[0].cx) else "", ifx c then cx_turn_id(a[0].cx) else ""); cs_after(a);

@@ -7,14 +7,14 @@
 // consent ledger), open the session log, then per turn the message joins the
 // log, the turn's request goes out (a fork's earlier turns, a context file and
 // remembered facts ahead of it) and the picked engine runs it with the
-// owner's options: Claude Code, Codex, Cursor, Microcoder, Psionic or the
+// owner's options: Claude Code, Codex, Cursor, Antigravity, Microcoder, Psionic or the
 // echo engine. Each engine's events become the log's lines (writer.coax),
 // which an owner that wants them as they happen (json, live) takes from the
 // log's outbox: session, route, model, user, reply_delta and reply_end,
 // reply, tool, result, diff, approval, engine_session, end.
 //
 // A turn runs unattended: Claude Code bypasses permissions, Codex runs with
-// approval policy never and full access, Cursor's permissions and plans are
+// approval policy never and full access, Cursor's and Antigravity's permissions and plans are
 // accepted, Microcoder's commands run. What still asks (a permission a
 // Claude Code mode sends anyway) waits in ask until the owner answers
 // (tr_answer); Codex's dynamic tool calls wait in tool until the owner
@@ -35,6 +35,7 @@
 #load "claude.coax";
 #load "codex.coax";
 #load "cursor.coax";
+#load "antigravity.coax";
 #load "mcworker-client.coax";   // Microcoder's worker (mcw_*); not engine.coax or microcoder.coax, whose Lab names collide with an owner's (Bitcoin Lab's lab_*)
 #load "echo.coax";
 #load "consent-gate.coax";
@@ -46,7 +47,7 @@
 #load "../session/fork.coax";
 #load "../../tui/vt.coax";
 
-TR_ECHO :: 0; TR_CLAUDE :: 1; TR_CODEX :: 2; TR_MICRO :: 3; TR_PSIONIC :: 4; TR_CURSOR :: 5;
+TR_ECHO :: 0; TR_CLAUDE :: 1; TR_CODEX :: 2; TR_MICRO :: 3; TR_PSIONIC :: 4; TR_CURSOR :: 5; TR_ANTIGRAVITY :: 6;
 TR_FINISHED :: 0; TR_STOPPED :: 1; TR_FAILED :: 2; TR_EXPIRED :: 3; TR_REDIRECTED :: 4;
 TR_COLS :: 100;              // a tool's label is cut to this many columns, as Coder's plain runs cut it
 TR_FIRST_MAX :: 16384;       // a CLI's first message
@@ -84,7 +85,7 @@ TrRun :: struct {
   memory: [TR_MEMORY_MAX] u8; nmemory: int; held: int;   // remembered facts ahead of the first message, and how many stayed back
   pre_b: [SF_PRE_MAX] u8; npre: int;         // a fork's earlier turns, ahead of its first message
   resume: [128] u8; nresume: int;            // a fork resumes this Claude Code session
-  cursor_resume: [128] u8; ncursor_resume: int;   // ... or loads this Cursor session
+  cursor_resume: [128] u8; ncursor_resume: int;   // ... or loads this Cursor session (resumes this Antigravity one)
   // the turn
   running: bool; started_ms: int; steps: int; turns: int; exit: int; cost: f64;
   stopping: bool; stop_ms: int;
@@ -118,8 +119,12 @@ tr_now :: () -> int { return cxproc_now_ms(); }
 // No policy: what Coder's --allow, --ceiling and --root leave when none is given.
 tr_no_policy :: (p: [] CdPolicy) { p[0] = CdPolicy.{}; p[0].ceiling = CD_EFFECT_RUN; }
 
-tr_engine_name :: (e: int) -> string { return ifx e == TR_CLAUDE then "claude" else ifx e == TR_CODEX then "codex" else ifx e == TR_CURSOR then "cursor" else ifx e == TR_MICRO then "microcoder" else ifx e == TR_PSIONIC then "psionic" else "echo"; }
+tr_engine_name :: (e: int) -> string { return ifx e == TR_CLAUDE then "claude" else ifx e == TR_CODEX then "codex" else ifx e == TR_CURSOR then "cursor" else ifx e == TR_ANTIGRAVITY then "antigravity" else ifx e == TR_MICRO then "microcoder" else ifx e == TR_PSIONIC then "psionic" else "echo"; }
 tr_is_micro :: (e: int) -> bool { return e == TR_MICRO || e == TR_PSIONIC; }
+// The engines on the ACP engine (cue_*): Cursor and Antigravity.
+tr_acp :: (e: int) -> bool { return e == TR_CURSOR || e == TR_ANTIGRAVITY; }
+// The engine whose agent the ACP engine holds.
+tr_cue_engine :: (r: [] TrRun) -> int { return ifx agy_is(r[0].cue) then TR_ANTIGRAVITY else TR_CURSOR; }
 tr_end_word :: (e: int) -> string { return ifx e == TR_STOPPED then "stopped" else ifx e == TR_FAILED then "failed" else ifx e == TR_EXPIRED then "expired" else ifx e == TR_REDIRECTED then "redirected" else "finished"; }
 
 tr_cwd :: (r: [] TrRun) -> string { return tr_s(r[0].cwd_b[..], r[0].ncwd); }
@@ -180,7 +185,7 @@ tr_fork :: (r: [] TrRun, parent: string, pid: string, at: int, want: string) -> 
       if kind == "session" || kind == "agent" { en = tr_cat(eb[..], 0, cl_str(ar[..], line, "engine")); }
     }
     pe := cast(string) eb[0..<en];
-    r[0].engine = ifx pe == "codex" then TR_CODEX else ifx pe == "cursor" then TR_CURSOR else ifx pe == "microcoder" then TR_MICRO else ifx pe == "psionic" then TR_PSIONIC else ifx pe == "echo" then TR_ECHO else TR_CLAUDE;
+    r[0].engine = ifx pe == "codex" then TR_CODEX else ifx pe == "cursor" then TR_CURSOR else ifx pe == "antigravity" then TR_ANTIGRAVITY else ifx pe == "microcoder" then TR_MICRO else ifx pe == "psionic" then TR_PSIONIC else ifx pe == "echo" then TR_ECHO else TR_CLAUDE;
     r[0].model_engine = r[0].engine;
   }
   f: [1] SfFork;
@@ -201,7 +206,7 @@ tr_open :: (r: [] TrRun) {
 
 // The engine to run for a decision: System One's pick when it is sure and the
 // agent is eligible; else the first eligible engine, or none (-1).
-tr_pick :: (rt: [] AgRoute) -> int { pick := agr_pick(rt); return ifx pick < 0 then -1 else pick + 1; }
+tr_pick :: (rt: [] AgRoute) -> int { return ca_engine(agr_pick(rt)); }
 
 TR_NO_ENGINE :: "no eligible engine; check CODER_ROUTE_ENGINES and provider cooldowns, or retry explicitly with --engine";
 
@@ -271,7 +276,7 @@ tr_start :: (r: [] TrRun, msg: string) {
   if r[0].engine == TR_ECHO { ech_send(r[0].echo[..], sent, tr_now()); return; }
   r[0].nerr = 0;
   if r[0].engine == TR_CODEX { tr_codex_send(r, sent); return; }
-  if r[0].engine == TR_CURSOR { tr_cursor_send(r, sent); return; }
+  if tr_acp(r[0].engine) { tr_cursor_send(r, sent); return; }
   if tr_is_micro(r[0].engine) { tr_micro_send(r, sent); return; }
   tr_claude_send(r, sent);
 }
@@ -347,7 +352,7 @@ tr_unified :: (r: [] TrRun, path: string, kind: string, diff: string) {
 tr_answer :: (r: [] TrRun, allow: bool) {
   if !r[0].ask { return; }
   r[0].ask = false;
-  if r[0].engine == TR_CURSOR {
+  if tr_acp(r[0].engine) {
     c := r[0].cue[0].c;
     if c[0].asking == CU_ASK_PLAN { cu_plan(c, allow); return; }
     id := ifx allow then cu_allow_option(c) else "";
@@ -373,7 +378,7 @@ tr_poll :: (r: [] TrRun) -> bool {
   if r[0].engine != TR_ECHO && r[0].stopping && tr_now() - r[0].stop_ms > TR_STOP_MS { tr_stop(r); return true; }
   if r[0].engine == TR_CLAUDE { return tr_claude_poll(r); }
   if r[0].engine == TR_CODEX { return tr_codex_poll(r); }
-  if r[0].engine == TR_CURSOR { return tr_cursor_poll(r); }
+  if tr_acp(r[0].engine) { return tr_cursor_poll(r); }
   if tr_is_micro(r[0].engine) { return tr_micro_poll(r); }
   w: [1] string; k := ech_poll(r[0].echo[..], tr_now(), w[..]);
   if k == ECH_WAIT { return false; }
@@ -388,7 +393,7 @@ tr_stop :: (r: [] TrRun) {
   if !r[0].running { return; }
   if r[0].engine == TR_ECHO { ech_stop(r[0].echo[..]); tr_finish(r, TR_STOPPED, ""); return; }
   if r[0].engine == TR_CODEX { tr_codex_stop(r); return; }
-  if r[0].engine == TR_CURSOR { tr_cursor_stop(r); return; }
+  if tr_acp(r[0].engine) { tr_cursor_stop(r); return; }
   if tr_is_micro(r[0].engine) { tr_micro_stop(r); return; }
   if r[0].ask { e_deny(r[0].eng, "The person stopped the turn.", true); r[0].ask = false; }
   if r[0].live && !r[0].stopping {
@@ -860,18 +865,22 @@ tr_codex_stop :: (r: [] TrRun) {
   tr_finish(r, TR_STOPPED, "");
 }
 
-// ---------------------------------------------------------------- Cursor
+// ---------------------------------------------------------------- Cursor and Antigravity (the ACP engine)
 
 tr_cursor_open :: (r: [] TrRun) {
   x := r[0].cue;
+  agy := r[0].engine == TR_ANTIGRAVITY;
+  if x[0].live && agy_is(x) != agy { cue_close(x); }       // the other agent's session: a new process
   if x[0].live { return; }
-  prog: [4096] u8; program := cue_program(prog[..]);
+  prog: [4096] u8; program := ifx agy then agy_program(prog[..]) else cue_program(prog[..]);
   if program.count == 0 {
-    if r[0].running { tr_finish(r, TR_FAILED, "Cursor's agent was not found. Install it from cursor.com/install, or put cursor-agent on PATH."); }
+    if r[0].running { tr_finish(r, TR_FAILED, ifx agy then AGY_MISSING else "Cursor's agent was not found. Install it from cursor.com/install, or put cursor-agent on PATH."); }
     return;
   }
   cue_resume(x, tr_s(r[0].cursor_resume[..], r[0].ncursor_resume));
-  why := cue_launch(x, program, tr_cwd(r), tr_s(r[0].title[..], r[0].ntitle), tr_s(r[0].version[..], r[0].nversion));
+  why := "";
+  if agy { why = agy_launch(x, program, tr_cwd(r), tr_s(r[0].title[..], r[0].ntitle), tr_s(r[0].version[..], r[0].nversion)); }
+  else { cue_agent(x, cu_agent_cursor()); why = cue_launch(x, program, tr_cwd(r), tr_s(r[0].title[..], r[0].ntitle), tr_s(r[0].version[..], r[0].nversion)); }
   if why.count > 0 && r[0].running { tr_finish(r, TR_FAILED, why); }
 }
 
@@ -930,6 +939,11 @@ tr_cursor_inside :: (r: [] TrRun, tool: string) -> bool {
   }
   raw := cl_raw(tool, "rawInput");
   for key: [3] string.["path", "file_path", "cwd"] { if !cd_inside(p[..], tr_cwd(r), cl_str(ar, raw, key)) { return false; } }
+  if agy_is(r[0].cue) {
+    if agy_outside(tool, ar) { return false; }
+    keys := AGY_PATH_KEYS;
+    for key: keys { if !cd_inside(p[..], tr_cwd(r), cl_str(ar, raw, key)) { return false; } }
+  }
   return true;
 }
 
@@ -950,6 +964,12 @@ tr_approval :: (r: [] TrRun, label: string, effect: int, inside: bool, verdict: 
 
 tr_cursor_configure :: (r: [] TrRun, result: string) {
   x := r[0].cue; ar := x[0].c[0].ar[..];
+  if agy_is(x) {
+    missed := agy_configure(x, result, ifx r[0].model_engine == TR_ANTIGRAVITY then tr_model(r) else "", tr_effort(r));
+    if (missed & AGY_MODEL_NOT_APPLIED) != 0 { tr_note(r, "  --model was not applied: this Antigravity session did not advertise it."); }
+    if (missed & AGY_EFFORT_NOT_APPLIED) != 0 { tr_note(r, "  --effort was not applied: this Antigravity session did not advertise that thought level."); }
+    return;
+  }
   x[0].hold = 0;
   model := ifx r[0].model_engine == TR_CURSOR then tr_model(r) else "";
   if model.count > 0 {
@@ -1008,9 +1028,10 @@ tr_cursor_finish :: (r: [] TrRun, result: string) {
   rb: [64] u8; rn := tr_cat(rb[..], 0, reason);
   reason = cast(string) rb[0..<rn];
   r[0].stopping = false;
+  if agy_is(r[0].cue) { sw_acp_usage(r[0].log, "antigravity", cl_raw(result, "usage")); }
   if reason == "end_turn" || reason == "end" || reason.count == 0 { tr_finish(r, TR_FINISHED, ""); return; }
   if reason == "cancelled" { tr_finish(r, TR_STOPPED, ""); return; }
-  wb: [160] u8; wn := tr_cat(wb[..], 0, "Cursor ended the turn: "); wn = tr_cat(wb[..], wn, reason);
+  wb: [160] u8; wn := tr_cat(wb[..], 0, cue_title(r[0].cue)); wn = tr_cat(wb[..], wn, " ended the turn: "); wn = tr_cat(wb[..], wn, reason);
   tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]);
 }
 
@@ -1026,11 +1047,12 @@ tr_cursor_poll :: (r: [] TrRun) -> bool {
     if ev.kind == CuEventKind.idle { break; }
     changed = true;
     if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
+      own := tr_cue_engine(r);
       why := cue_why(x);
-      if why.count == 0 { why = "Cursor exited."; }
       wb: [2600] u8; wn := tr_cat(wb[..], 0, why);
+      if why.count == 0 { wn = tr_cat(wb[..], 0, cue_title(x)); wn = tr_cat(wb[..], wn, " exited."); }
       tr_cursor_close(r);
-      if r[0].running && r[0].engine == TR_CURSOR { tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]); }
+      if r[0].running && r[0].engine == own { tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]); }
       return true;
     }
     if ev.kind == CuEventKind.none || ev.kind == CuEventKind.initialized { continue; }
@@ -1040,14 +1062,20 @@ tr_cursor_poll :: (r: [] TrRun) -> bool {
       if r[0].running { tr_finish(r, TR_FAILED, "Cursor is not logged in. Run agent login."); }
       return true;
     }
-    if ev.kind == CuEventKind.refused && ev.of == CU_SESSION_LOAD {
+    if ev.kind == CuEventKind.refused && (ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME) {
       r[0].ncursor_resume = 0;
-      tr_note(r, "  The Cursor session could not be resumed. Starting a new one.");
+      nb: [128] u8; nn := tr_cat(nb[..], 0, "  The "); nn = tr_cat(nb[..], nn, cue_title(x)); nn = tr_cat(nb[..], nn, " session could not be resumed. Starting a new one.");
+      tr_note(r, cast(string) nb[0..<nn]);
       continue;
     }
     if ev.kind == CuEventKind.refused {
       mb: [1024] u8; mn := tr_cat(mb[..], 0, ev.message);
-      if ev.of == CU_SESSION_SET_CONFIG { tr_note(r, "  A Cursor setting was not applied."); cue_owed(x, r[0].running); continue; }
+      if agy_is(x) && agy_signed_out(ev.message) { mn = tr_cat(mb[..], 0, AGY_SIGNED_OUT); }
+      if agy_is(x) && r[0].running && ev.of == CU_SESSION_PROMPT && agy_provider(ev.message) { r[0].ncause = tr_cat(r[0].cause[..], 0, "provider"); }
+      if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE {
+        nb: [128] u8; nn := tr_cat(nb[..], 0, "  A "); nn = tr_cat(nb[..], nn, cue_title(x)); nn = tr_cat(nb[..], nn, " setting was not applied.");
+        tr_note(r, cast(string) nb[0..<nn]); cue_owed(x, r[0].running); continue;
+      }
       if r[0].running && ev.of == CU_SESSION_PROMPT { tr_finish(r, TR_FAILED, cast(string) mb[0..<mn]); r[0].stopping = false; }
       else if ev.of == CU_SESSION_NEW {
         tr_cursor_close(r);
@@ -1056,15 +1084,16 @@ tr_cursor_poll :: (r: [] TrRun) -> bool {
       }
       continue;
     }
-    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD) {
+    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME) {
+      r[0].ncursor_resume = 0;
       id := cu_session_id(c);
-      if id.count > 0 && r[0].nengine_sid == 0 { r[0].nengine_sid = tr_cat(r[0].engine_sid[..], 0, id); sw_engine_session(r[0].log, "cursor", id); }
+      if id.count > 0 && r[0].nengine_sid == 0 { r[0].nengine_sid = tr_cat(r[0].engine_sid[..], 0, id); sw_engine_session(r[0].log, tr_engine_name(tr_cue_engine(r)), id); }
       tr_cursor_configure(r, ev.result);
       cue_owed(x, r[0].running);
       continue;
     }
-    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_SET_CONFIG { cue_owed(x, r[0].running); continue; }
-    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT && r[0].running && r[0].engine == TR_CURSOR { tr_cursor_finish(r, ev.result); continue; }
+    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE) { cue_owed(x, r[0].running); continue; }
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT && r[0].running && r[0].engine == tr_cue_engine(r) { tr_cursor_finish(r, ev.result); continue; }
     if ev.kind == CuEventKind.question { cu_question(c, true); continue; }
     if ev.kind == CuEventKind.plan { cu_plan(c, true); continue; }
     if ev.kind == CuEventKind.permission {
@@ -1081,7 +1110,7 @@ tr_cursor_poll :: (r: [] TrRun) -> bool {
       continue;
     }
     if ev.kind != CuEventKind.notification { continue; }
-    if r[0].engine != TR_CURSOR || !r[0].running || x[0].replay { continue; }
+    if r[0].engine != tr_cue_engine(r) || !r[0].running || x[0].replay { continue; }
     update := cl_raw(ev.params, "update");
     kind := cl_str(c[0].ar[..], update, "sessionUpdate");
     if ev.method == "cursor/task" { continue; }

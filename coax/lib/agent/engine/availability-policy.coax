@@ -1,4 +1,7 @@
 // Automatic routing eligibility. Explicit --engine is an intentional retry.
+// The engines, as bits: claude 1, codex 2, micro 4, psionic 8, antigravity 16.
+// Antigravity is a candidate only when CODER_ROUTE_ENGINES names it (an empty
+// allowlist is the first four), and then only after the others (#13192).
 #authority;
 
 #test "only a bounded future typed reset extends the retry delay" {
@@ -19,6 +22,12 @@
   #assert ca_allowed("codex,") == 0;
   #assert ca_allowed("unknown") == 0;
   #assert ca_allowed(" codex") == 0;
+  #assert ca_allowed("antigravity") == 16;
+  #assert ca_allowed("claude,antigravity") == 17;
+  #assert ca_allowed("antigravity,claude,codex,micro,psionic") == 31;
+  #assert ca_allowed("antigravity,antigravity") == 0;
+  #assert ca_allowed("agy") == 0 && ca_allowed("cursor") == 0;
+  #assert ca_index("antigravity") == 4 && ca_index("psionic") == 3 && ca_index("cursor") == -1;
 }
 #test "cooldown bounds reject corrupted or future observations" {
   #assert ca_blocked(100, 100, 100);
@@ -35,20 +44,28 @@
   #assert ca_blocked(100, 604901, 100);
 }
 #test "invalid masks do not introduce extra engines" {
-  #assert ca_pick(4, 16) == -1;
+  #assert ca_pick(5, 32) == -1;
   #assert ca_pick(0, -1) == -1;
   #assert ca_pick(0, 15) == 0;
+  #assert ca_pick(0, 47) == -1;
+}
+#test "antigravity runs only when nothing before it is eligible, or when it is preferred" {
+  #assert ca_pick(-1, 16) == 4 && ca_pick(4, 16) == 4;
+  #assert ca_pick(-1, 20) == 2 && ca_pick(-1, 17) == 0 && ca_pick(-1, 24) == 3;
+  #assert ca_pick(4, 17) == 4 && ca_pick(4, 1) == 0 && ca_pick(0, 16) == 4;
 }
 #test "selection stays inside every allowed installed and healthy subset" {
-  for allowed: 0..<16 { for installed: 0..<16 { for blocked: 0..<16 {
-    mask := allowed & installed & (15 ^ blocked);
-    for preferred: -1..<5 {
+  // (allowed & installed is one mask: every pair of it and blocked is every subset)
+  for allowed: 0..<32 { for blocked: 0..<32 {
+    mask := allowed & (31 ^ blocked);
+    for preferred: -1..<6 {
       pick := ca_pick(preferred, mask);
       #assert (pick == -1) == (mask == 0);
       if pick >= 0 { #assert (mask & (1 << pick)) != 0; }
       if preferred >= 0 && (mask & (1 << preferred)) != 0 { #assert pick == preferred; }
+      if preferred < 0 && pick == 4 { #assert (mask & 15) == 0; }     // antigravity only when nothing before it is
     }
-  } } }
+  } }
 }
 
 ca_index :: (name: string) -> int #effects(all) {
@@ -56,6 +73,7 @@ ca_index :: (name: string) -> int #effects(all) {
   if name == "codex" { return 1; }
   if name == "micro" { return 2; }
   if name == "psionic" { return 3; }
+  if name == "antigravity" { return 4; }
   return -1;
 }
 ca_allowed :: (names: string) -> int #effects(all) {
@@ -81,8 +99,8 @@ ca_typed_reset :: (now: int, reset: int) -> int #effects(all) {
   return ifx reset > now && reset - now <= 604800 then reset else 0;
 }
 ca_pick :: (preferred: int, mask: int) -> int #effects(all) {
-  if (mask & 15) != mask { return -1; }
-  for i: [3] int.[1, 2, 3] { if preferred == i && (mask & (1 << i)) != 0 { return i; } }
-  for i: [4] int.[0, 1, 2, 3] { if (mask & (1 << i)) != 0 { return i; } }
+  if (mask & 31) != mask { return -1; }
+  for i: [4] int.[1, 2, 3, 4] { if preferred == i && (mask & (1 << i)) != 0 { return i; } }
+  for i: [5] int.[0, 1, 2, 3, 4] { if (mask & (1 << i)) != 0 { return i; } }
   return -1;
 }

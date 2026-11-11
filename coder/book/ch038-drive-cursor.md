@@ -15,6 +15,11 @@ per-tool approval channel, so it is not the driver. `coder acp` is the
 other direction: Coder as the server an editor talks to. That path is
 unchanged.
 
+The ACP client and engine are shared: Antigravity's `agy acp`
+([chapter 39](ch039-drive-antigravity.md)) runs on them with its own
+`CuAgent` (its program, no `authenticate`, `session/resume`). Cursor's is
+the default agent, and its behaviour did not change.
+
 System One's router stays the four engines it was checked on (Claude Code,
 Codex, Microcoder, Psionic). Cursor is chosen with `--engine cursor`,
 `/engine cursor`, or Shift-Tab. It is not a route label.

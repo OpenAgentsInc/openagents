@@ -1,0 +1,238 @@
+// A stand-in Antigravity CLI for checking Coder's antigravity engine end to end with no Google
+// sign-in and no model (GitHub #13192): it speaks enough of `agy acp` as agy 1.5.6 does
+// (coax/lib/agent/engine/antigravity.coax) for what Coder asks: initialize, session/new and
+// session/resume, session/set_model, session/set_config_option and session/set_mode,
+// session/prompt and session/cancel, and the answers to its own permission requests (agy offers
+// allow and deny, with string ids). Put it on PATH as `agy`. Every line it reads is appended to
+// $AGY_STANDIN_OUT, so a run's outbound protocol can be compared as well as what Coder prints.
+// With AGY_STANDIN_SIGNED_OUT=1 it refuses session/new as a signed-out agy does.
+//
+// What a turn does comes from the message:
+//
+//   "run ls"        run_command; permission is asked first, allowed it lists two files, denied it failed
+//   "edit"          edit_file of notes.txt with its old and new text, asked first the same way
+//   "refuse"        the turn ends with stopReason refusal
+//   "error"         session/prompt is answered with an error, as a model failure is
+//   anything else   a two-part reply
+//
+// Every turn first sends what agy sends ahead of its reply (available commands, the user's
+// message, a title), and ends with agy's usage. session/resume knows only agy-standin-1.
+//
+//   coax/web/tool.sh coder/tui/agy_standin.coax    (a run puts a script on PATH as `agy` that execs this)
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+GS_LINE :: 262144;
+GS_SESSION :: "agy-standin-1";
+GS_MODELS :: "\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\",\"name\":\"Gemini 4 Carbon (Medium)\"},{\"modelId\":\"gemini-3.8-flash-low\",\"name\":\"Gemini 3.8 Flash (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"}";
+GS_MODES :: "\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\",\"name\":\"Default\"},{\"id\":\"accept-edits\",\"name\":\"Accept edits\"},{\"id\":\"auto\",\"name\":\"Auto\"},{\"id\":\"plan\",\"name\":\"Plan\"}]}";
+GS_CONFIG :: "\"configOptions\":[{\"id\":\"model\",\"name\":\"Model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"gemini-4-carbon\",\"options\":[{\"value\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\"},{\"value\":\"gemini-3.8-flash\",\"name\":\"Gemini 3.8 Flash\"}]},{\"id\":\"thought_level\",\"name\":\"Thinking Level\",\"category\":\"thought_level\",\"type\":\"select\",\"currentValue\":\"medium\",\"options\":[{\"value\":\"low\",\"name\":\"Low\"},{\"value\":\"medium\",\"name\":\"Medium\"},{\"value\":\"high\",\"name\":\"High\"}]}]";
+Gs :: struct {
+  line: [GS_LINE] u8; n: int; eof: bool;
+  out: [1024] u8; nout: int;
+  cwd: [1024] u8; ncwd: int;
+  asked: int;
+}
+
+gs_send :: (text: string) {
+  b: [GS_LINE + 1] u8; n := 0;
+  for c: text { if n < GS_LINE { b[n] = c; n += 1; } }
+  b[n] = 10;
+  r := cxterm_write(b[0..<n + 1]);
+}
+gs_read :: (s: [] Gs) -> string {
+  s[0].n = 0;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { s[0].eof = true; return ""; }
+    if b == -1 { continue; }
+    if b == 10 {
+      if s[0].n == 0 { continue; }
+      line := cast(string) s[0].line[0..<s[0].n];
+      if s[0].nout > 0 { ok := fs_append(cast(string) s[0].out[0..<s[0].nout], line) && fs_append(cast(string) s[0].out[0..<s[0].nout], "\n"); }
+      return line;
+    }
+    if s[0].n < GS_LINE { s[0].line[s[0].n] = cast(u8) b; s[0].n += 1; }
+  }
+  return "";
+}
+gs_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+gs_put :: (o: [] u8, m: int, s: string) -> int { k := m; for c: s { if k < o.count { o[k] = c; k += 1; } } return k; }
+#test "agy stand-in: contains" { #assert gs_has("please run ls", "run ls") && !gs_has("ls", "run ls"); }
+
+gs_result :: (id: string, result: string) {
+  b: [GS_LINE] u8; n := gs_put(b[..], 0, "{\"jsonrpc\":\"2.0\",\"result\":"); n = gs_put(b[..], n, result); n = gs_put(b[..], n, ",\"id\":"); n = gs_put(b[..], n, id); n = gs_put(b[..], n, "}");
+  gs_send(cast(string) b[0..<n]);
+}
+gs_error :: (id: string, code: string, message: string) {
+  o: [1] Jo; b: [2048] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0");
+  jo_key(o[..], "error"); jo_obj(o[..]); jo_key(o[..], "code"); jo_raw(o[..], code); jo_key(o[..], "message"); jo_str(o[..], message); jo_end(o[..]);
+  jo_key(o[..], "id"); jo_raw(o[..], id); jo_end(o[..]);
+  gs_send(jo_text(o[..]));
+}
+// A session/update notification carrying update (its JSON).
+gs_update :: (update: string) {
+  b: [GS_LINE] u8; n := gs_put(b[..], 0, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"");
+  n = gs_put(b[..], n, GS_SESSION); n = gs_put(b[..], n, "\",\"update\":"); n = gs_put(b[..], n, update); n = gs_put(b[..], n, "}}");
+  gs_send(cast(string) b[0..<n]);
+}
+gs_chunk :: (kind: string, text: string) {
+  o: [1] Jo; b: [8192] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "sessionUpdate"); jo_str(o[..], kind);
+  jo_key(o[..], "content"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]); jo_end(o[..]);
+  gs_update(jo_text(o[..]));
+}
+// A tool call's fields as agy sends them: name, args, kind, title, rawInput; status as given.
+gs_call :: (o: [] Jo, kind_of_update: string, call: string, name: string, kind: string, title: string, input: string, status: string) {
+  jo_obj(o); jo_key(o, "sessionUpdate"); jo_str(o, kind_of_update); jo_key(o, "toolCallId"); jo_str(o, call);
+  jo_key(o, "name"); jo_str(o, name); jo_key(o, "args"); jo_raw(o, input);
+  jo_key(o, "status"); jo_str(o, status); jo_key(o, "kind"); jo_str(o, kind); jo_key(o, "title"); jo_str(o, title);
+  jo_key(o, "rawInput"); jo_raw(o, input);
+}
+gs_call_update :: (call: string, name: string, kind: string, title: string, input: string, status: string) {
+  o: [1] Jo; b: [4096] u8; jo_start(o[..], b[..]);
+  gs_call(o[..], "tool_call_update", call, name, kind, title, input, status); jo_end(o[..]);
+  gs_update(jo_text(o[..]));
+}
+// Permission for a tool call, asked as agy asks it (string id, allow and deny); whether allow was chosen.
+gs_permission :: (s: [] Gs, call: string, name: string, kind: string, title: string, input: string) -> bool {
+  s[0].asked += 1;
+  plain := ifx s[0].asked == 1 then "1" else "2";
+  ib: [16] u8; idn := gs_put(ib[..], 0, "\""); idn = gs_put(ib[..], idn, plain); idn = gs_put(ib[..], idn, "\"");
+  want := cast(string) ib[0..<idn];
+  o: [1] Jo; b: [4096] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0");
+  jo_key(o[..], "method"); jo_str(o[..], "session/request_permission");
+  jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "sessionId"); jo_str(o[..], GS_SESSION);
+  jo_key(o[..], "toolCall"); gs_call(o[..], "tool_call", call, name, kind, title, input, "pending"); jo_end(o[..]);
+  jo_key(o[..], "options"); jo_raw(o[..], "[{\"optionId\":\"allow\",\"name\":\"Allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]");
+  jo_end(o[..]);
+  jo_key(o[..], "id"); jo_raw(o[..], want); jo_end(o[..]);
+  gs_send(jo_text(o[..]));
+  while true {
+    line := gs_read(s);
+    if line.count == 0 { return false; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    gb: [64] u8; gn := jv_str(d[0], jv_get(d[0], 0, "id"), gb[..]);
+    if gn < 0 || cast(string) gb[0..<gn] != plain || jv_get(d[0], 0, "method") >= 0 { gs_answer(s, d[0]); continue; }
+    ob: [64] u8; on := jv_str(d[0], jv_path(d[0], 0, "result.outcome.optionId"), ob[..]);
+    return on > 0 && cast(string) ob[0..<on] == "allow";
+  }
+  return false;
+}
+gs_turn :: (s: [] Gs, id_in: string, d: Jv) {
+  ib: [64] u8; idn := gs_put(ib[..], 0, id_in); id := cast(string) ib[0..<idn];      // (the line buffer is read again for a permission's answer)
+  mb: [16384] u8; mn := jv_str(d, jv_path(d, 0, "params.prompt[0].text"), mb[..]);
+  msg := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  gs_update("{\"sessionUpdate\":\"available_commands_update\",\"availableCommands\":[{\"name\":\"goal\",\"description\":\"Run until the specified goal is completely finished.\"}]}");
+  gs_chunk("user_message_chunk", msg);
+  gs_update("{\"sessionUpdate\":\"session_info_update\",\"title\":\"Stand-in turn\"}");
+  if gs_has(msg, "error") { gs_error(id, "-32603", "The model is unavailable. Try again later."); return; }
+  stop := "end_turn";
+  if gs_has(msg, "refuse") { gs_chunk("agent_message_chunk", "I can't help with that."); stop = "refusal"; }
+  else if gs_has(msg, "run ls") {
+    input := "{\"CommandLine\":\"ls\",\"WaitMsBeforeAsync\":5000,\"toolSummary\":\"List the folder\"}";
+    o: [1] Jo; b: [2048] u8; jo_start(o[..], b[..]); gs_call(o[..], "tool_call", "call_1", "run_command", "execute", "ls", input, "in_progress"); jo_end(o[..]);
+    gs_update(jo_text(o[..]));
+    ok := gs_permission(s, "call_1", "run_command", "execute", "ls", input);
+    u: [1] Jo; ub: [4096] u8; jo_start(u[..], ub[..]);
+    gs_call(u[..], "tool_call_update", "call_1", "run_command", "execute", "ls", input, ifx ok then "completed" else "failed");
+    jo_key(u[..], "content"); jo_raw(u[..], ifx ok then "[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":\"Command exited with code 0.\\n\\nCommand output:\\na.txt\\nb.txt\\n\"}}]" else "[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":\"The user denied this command.\"}}]");
+    jo_end(u[..]);
+    gs_update(jo_text(u[..]));
+    gs_chunk("agent_message_chunk", ifx ok then "Two files: a.txt and b.txt." else "I could not list the folder.");
+  } else if gs_has(msg, "edit") {
+    pb: [1100] u8; pn := gs_put(pb[..], 0, cast(string) s[0].cwd[0..<s[0].ncwd]); pn = gs_put(pb[..], pn, "/notes.txt");
+    ib2: [1300] u8; in := gs_put(ib2[..], 0, "{\"Path\":\""); in = gs_put(ib2[..], in, cast(string) pb[0..<pn]); in = gs_put(ib2[..], in, "\"}");
+    input := cast(string) ib2[0..<in];
+    o: [1] Jo; b: [4096] u8; jo_start(o[..], b[..]); gs_call(o[..], "tool_call", "call_2", "edit_file", "edit", "Edit notes.txt", input, "in_progress"); jo_end(o[..]);
+    gs_update(jo_text(o[..]));
+    ok := gs_permission(s, "call_2", "edit_file", "edit", "Edit notes.txt", input);
+    u: [1] Jo; ub: [4096] u8; jo_start(u[..], ub[..]);
+    gs_call(u[..], "tool_call_update", "call_2", "edit_file", "edit", "Edit notes.txt", input, ifx ok then "completed" else "failed");
+    if ok {
+      jo_key(u[..], "content"); jo_arr(u[..]); jo_obj(u[..]); jo_key(u[..], "type"); jo_str(u[..], "diff"); jo_key(u[..], "path"); jo_str(u[..], cast(string) pb[0..<pn]);
+      jo_key(u[..], "oldText"); jo_str(u[..], "first\nold line\n"); jo_key(u[..], "newText"); jo_str(u[..], "first\nnew line\n"); jo_end(u[..]); jo_end(u[..]);
+    }
+    jo_end(u[..]);
+    gs_update(jo_text(u[..]));
+    gs_chunk("agent_message_chunk", ifx ok then "Changed one line in notes.txt." else "The edit was denied.");
+  } else { gs_chunk("agent_message_chunk", "Hello from the stand-in "); gs_chunk("agent_message_chunk", "antigravity."); }
+  rb: [512] u8; rn := gs_put(rb[..], 0, "{\"stopReason\":\""); rn = gs_put(rb[..], rn, stop);
+  rn = gs_put(rb[..], rn, "\",\"usage\":{\"inputTokens\":120,\"outputTokens\":12,\"cachedReadTokens\":64,\"cachedWriteTokens\":0,\"thoughtTokens\":8,\"totalTokens\":204}}");
+  gs_result(id, cast(string) rb[0..<rn]);
+}
+
+gs_opened :: (id: string, session: string) {
+  b: [8192] u8; n := gs_put(b[..], 0, "{\"sessionId\":\""); n = gs_put(b[..], n, session); n = gs_put(b[..], n, "\",");
+  n = gs_put(b[..], n, GS_MODELS); n = gs_put(b[..], n, ","); n = gs_put(b[..], n, GS_MODES); n = gs_put(b[..], n, ","); n = gs_put(b[..], n, GS_CONFIG); n = gs_put(b[..], n, "}");
+  gs_result(id, cast(string) b[0..<n]);
+}
+
+gs_answer :: (s: [] Gs, d: Jv) {
+  mi := jv_get(d, 0, "method");
+  if mi < 0 { return; }
+  mb: [64] u8; mn := jv_str(d, mi, mb[..]);
+  method := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  ii := jv_get(d, 0, "id");
+  if ii < 0 { return; }            // session/cancel and other notifications
+  id := jv_raw(d, ii);
+  if method == "initialize" {
+    gs_result(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"image\":true,\"audio\":false,\"embeddedContext\":true},\"sessionCapabilities\":{\"resume\":{},\"close\":{},\"load\":{},\"list\":{}}},\"agentInfo\":{\"name\":\"Antigravity ACP Server\",\"version\":\"1.5.6\"},\"authMethods\":[{\"id\":\"oauth-personal\",\"name\":\"Log in with Google\"},{\"id\":\"agent-platform\",\"name\":\"Gemini Enterprise Agent Platform\"}]}");
+    return;
+  }
+  if method == "session/new" || method == "session/resume" {
+    s[0].ncwd = jv_str(d, jv_path(d, 0, "params.cwd"), s[0].cwd[..]); if s[0].ncwd < 0 { s[0].ncwd = 0; }
+    eb: [8] u8;
+    if proc_getenv("AGY_STANDIN_SIGNED_OUT", eb[..]) == "1" { gs_error(id, "-32000", "Authentication required"); return; }
+    if method == "session/resume" {
+      sb: [256] u8; sn := jv_str(d, jv_path(d, 0, "params.sessionId"), sb[..]);
+      want := ifx sn > 0 then cast(string) sb[0..<sn] else "";
+      if want != GS_SESSION {
+        wb: [400] u8; wn := gs_put(wb[..], 0, "Failed to read session "); wn = gs_put(wb[..], wn, want); wn = gs_put(wb[..], wn, "; retry, or load it with session/load");
+        gs_error(id, "-32603", cast(string) wb[0..<wn]); return;
+      }
+    }
+    gs_opened(id, GS_SESSION);
+    return;
+  }
+  if method == "session/set_model" {
+    vb: [256] u8; vn := jv_str(d, jv_path(d, 0, "params.modelId"), vb[..]);
+    v := ifx vn > 0 then cast(string) vb[0..<vn] else "";
+    if v == "gemini-4-carbon-medium" || v == "gemini-3.8-flash-low" { gs_result(id, "{}"); return; }
+    wb: [400] u8; wn := gs_put(wb[..], 0, "Unknown model ID: "); wn = gs_put(wb[..], wn, v);
+    gs_error(id, "-32602", cast(string) wb[0..<wn]); return;
+  }
+  if method == "session/set_config_option" {
+    b: [8192] u8; n := gs_put(b[..], 0, "{"); n = gs_put(b[..], n, GS_CONFIG); n = gs_put(b[..], n, "}");
+    gs_result(id, cast(string) b[0..<n]); return;
+  }
+  if method == "session/prompt" { gs_turn(s, id, d); return; }
+  gs_result(id, "{}");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  s: [1] Gs;
+  ob: [1024] u8; out := proc_getenv("AGY_STANDIN_OUT", ob[..]);
+  s[0].nout = gs_put(s[0].out[..], 0, out);
+  while !s[0].eof {
+    line := gs_read(s[..]);
+    if line.count == 0 { continue; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    gs_answer(s[..], d[0]);
+  }
+  return 0;
+}

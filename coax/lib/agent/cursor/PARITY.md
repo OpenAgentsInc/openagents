@@ -15,6 +15,11 @@ the protocol documented at <https://cursor.com/docs/cli/acp> on
 | `tests.coax` | The requests byte for byte, a scrubbed session, permissions, questions, plans |
 | `smoke.coax`, `smoke.sh` | The live smoke against the installed CLI |
 
+The same client drives Google's Antigravity CLI (`agy acp`, Coder book
+chapter 39): `CuAgent` in `transport.coax` names each agent's program,
+login method, resume method (`session/load` or `session/resume`) and the
+variables its child never gets. Cursor's is the default.
+
 ## The wire
 
 - Requests: `initialize` (protocol 1, no filesystem and no terminal

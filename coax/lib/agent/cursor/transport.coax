@@ -1,4 +1,4 @@
-// The process transport: `agent acp` as a child in its own process group,
+// The process transport: an ACP agent (`agent acp`, `agy acp`) as a child in its own process group,
 // JSON-RPC on stdin and stdout, stderr kept. The effects are
 // coax/platform/process-native.c, shared with the Claude SDK
 // (../claude/transport.coax: cxproc_*, cl_push, ClProcess).
@@ -7,11 +7,34 @@
 #load "../../sys/fs.coax";
 
 CU_ENV :: 8;
+
+// An ACP agent program and its quirks, so Cursor and Antigravity share one
+// client: its name in errors, the program looked up when the host found none
+// (run with `acp`), the authenticate method sent once initialize is answered
+// ("" sends none), how a session is resumed (CU_SESSION_LOAD replays its
+// history, CU_SESSION_RESUME does not), and the variables the child never gets.
+CuAgent :: struct {
+  name: string;
+  program: string;
+  login: string;
+  resume: int;
+  unset: [CU_ENV] string; unset_n: int;
+}
+
+// Cursor's agent: the person's `agent login`, never an API key.
+cu_agent_cursor :: () -> CuAgent {
+  a: [1] CuAgent;
+  a[0].name = "cursor agent"; a[0].program = "agent"; a[0].login = "cursor_login"; a[0].resume = CU_SESSION_LOAD;
+  a[0].unset[0] = "CURSOR_API_KEY"; a[0].unset[1] = "CURSOR_AUTH_TOKEN"; a[0].unset_n = 2;
+  return a[0];
+}
+
 CuLaunch :: struct {
   program: string;                 // a path the host found; "" is looked up
   env: [CU_ENV] string; env_n: int;
   unset: [CU_ENV] string; unset_n: int;
   cwd: string;
+  agent: CuAgent;                  // the agent; none (no name) is Cursor's
 }
 
 // The installer's shim, which exits unless a Cursor IDE binary is on PATH.
@@ -110,23 +133,32 @@ cu_find :: (path_env: string, home: string, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
-// Spawn `agent acp`. The child never gets CURSOR_API_KEY or CURSOR_AUTH_TOKEN
-// (the person's `agent login` is used) and never opens a browser.
+// Spawn the agent's `acp`. Cursor's never gets CURSOR_API_KEY or CURSOR_AUTH_TOKEN
+// (the person's `agent login` is used); no agent opens a browser.
 // Returns what went wrong, or "".
 cu_start :: (c: [] CuClient, p: [] ClProcess, l: CuLaunch) -> string {
+  ag := ifx l.agent.name.count > 0 then l.agent else cu_agent_cursor();
+  c[0].agent_n = cu_keep(c[0].agent[..], ag.name);
   h := cxproc_new();
   if h < 0 { return "no process slot is free"; }
   program := l.program;
-  if program.count == 0 { program = "agent"; }
+  if program.count == 0 { program = ag.program; }
   ok := cl_push(h, CL_FIELD_ARG, program) && cl_push(h, CL_FIELD_ARG, "acp");
-  ok = ok && cl_push(h, CL_FIELD_UNSET, "CURSOR_API_KEY") && cl_push(h, CL_FIELD_UNSET, "CURSOR_AUTH_TOKEN");
+  for i: 0..<ag.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, ag.unset[i]); }
   for i: 0..<l.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, l.unset[i]); }
   ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true") && cl_push(h, CL_FIELD_ENV, "NO_OPEN_BROWSER=1");
   for i: 0..<l.env_n { ok = ok && cl_push(h, CL_FIELD_ENV, l.env[i]); }
   if l.cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, l.cwd); }
   if !ok { r := cxproc_release(h); return "an argument holds a zero byte or does not fit"; }
   e := cxproc_spawn(h);
-  if e != 0 { r := cxproc_release(h); return ifx e == 2 then "cursor agent executable not found" else "failed to spawn cursor agent"; }
+  if e != 0 {
+    r := cxproc_release(h);
+    n := 0;
+    if e == 2 { n = cu_keep(c[0].error[..], ag.name); n += cu_keep(c[0].error[n..<c[0].error.count], " executable not found"); }
+    else { n = cu_keep(c[0].error[..], "failed to spawn "); n += cu_keep(c[0].error[n..<c[0].error.count], ag.name); }
+    c[0].error_len = n;
+    return cu_error(c);
+  }
   p[0].handle = h; p[0].pid = cxproc_pid(h);
   c[0].completed = false;
   return "";
@@ -145,15 +177,15 @@ CU_INIT_TIMEOUT_MS :: 60000;
 
 cu_poll :: (c: [] CuClient, p: [] ClProcess, timeout_ms: int) -> CuEvent {
   cu_settle(c);
-  if !cu_flush(c, p) { return cu_fail(c, "failed to write to cursor agent: ", "broken pipe"); }
+  if !cu_flush(c, p) { return cu_fail_agent(c, "failed to write to ", ": broken pipe"); }
   if c[0].completed { return CuEvent.{kind = CuEventKind.end}; }
   if c[0].init_wait && c[0].init_since == 0 { c[0].init_since = cxproc_now_ms(); }
-  if c[0].init_wait && cxproc_now_ms() - c[0].init_since > CU_INIT_TIMEOUT_MS { return cu_fail(c, "cursor agent did not answer initialize", ""); }
+  if c[0].init_wait && cxproc_now_ms() - c[0].init_since > CU_INIT_TIMEOUT_MS { return cu_fail_agent(c, "", " did not answer initialize"); }
   n := cxproc_read_line(p[0].handle, ifx timeout_ms < 0 then 0 else timeout_ms);
   if n == CL_TIMEOUT { return CuEvent.{kind = CuEventKind.idle}; }
   if n == CL_EOF { c[0].completed = true; return CuEvent.{kind = CuEventKind.end}; }
   if n == CL_TOO_LONG || n > c[0].line.count { return CuEvent.{kind = CuEventKind.invalid}; }
-  if n < 0 { return cu_fail(c, "failed to read from cursor agent", ""); }
+  if n < 0 { return cu_fail_agent(c, "failed to read from ", ""); }
   for i: 0..<n { c[0].line[i] = cast(u8) cxproc_line_byte(p[0].handle, i); }
   c[0].line_len = n;
   return cu_feed(c, cast(string) c[0].line[0..<n]);

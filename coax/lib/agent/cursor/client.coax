@@ -1,5 +1,7 @@
-// A client of `agent acp` (JSON-RPC 2.0, one JSON object a line, on the
-// CLI's stdin and stdout) as a state machine over lines. cu_feed takes one
+// A client of an ACP agent (JSON-RPC 2.0, one JSON object a line, on the
+// CLI's stdin and stdout) as a state machine over lines: Cursor's `agent acp`
+// and Antigravity's `agy acp` share it, each agent's quirks a CuAgent
+// (transport.coax). cu_feed takes one
 // stdout line and returns what it was. A request the host must answer (a
 // permission, a question, a plan) is an event; the host answers it before
 // the next line. One left unanswered is declined, never allowed.
@@ -16,7 +18,7 @@ CU_OPTS :: 8192;
 
 CU_INITIALIZE :: 1; CU_AUTHENTICATE :: 2; CU_SESSION_NEW :: 3; CU_SESSION_PROMPT :: 4;
 CU_SESSION_LOAD :: 5; CU_SESSION_CANCEL :: 6; CU_SESSION_SET_MODE :: 7; CU_SESSION_SET_CONFIG :: 8;
-CU_OTHER :: 9;
+CU_OTHER :: 9; CU_SESSION_RESUME :: 10; CU_SESSION_SET_MODEL :: 11;
 
 CU_ASK_PERMISSION :: 1; CU_ASK_QUESTION :: 2; CU_ASK_PLAN :: 3;
 
@@ -62,6 +64,7 @@ CuClient :: struct {
   ask_opts: [CU_OPTS] u8; ask_opts_n: int;
   completed: bool;
   error: [512] u8; error_len: int;
+  agent: [48] u8; agent_n: int;   // the agent's name in errors (cu_start); "" is Cursor's
 }
 
 cu_init :: (c: [] CuClient, line: [] u8, arena: [] u8, out: [] u8) {
@@ -81,6 +84,14 @@ cu_fail :: (c: [] CuClient, a: string, b: string) -> CuEvent {
 }
 
 cu_keep :: (dst: [] u8, s: string) -> int { return cl_copy(dst, s); }
+
+// The agent's name in errors: what cu_start was given, else Cursor's.
+cu_agent_name :: (c: [] CuClient) -> string { return ifx c[0].agent_n > 0 then cast(string) c[0].agent[0..<c[0].agent_n] else "cursor agent"; }
+// The client failed: before, the agent's name, after.
+cu_fail_agent :: (c: [] CuClient, before: string, after: string) -> CuEvent {
+  b: [160] u8; n := cl_copy(b[..], before); n += cl_copy(b[n..<b.count], cu_agent_name(c));
+  return cu_fail(c, cast(string) b[0..<n], after);
+}
 
 // ---------------------------------------------------------------- effects and options
 
@@ -162,6 +173,18 @@ cu_config_id :: (result: string, category: string, value: string, ar: [] ClArena
   return "";
 }
 
+// True when session/new, session/load or session/resume advertised this model id (models.availableModels).
+cu_model_has :: (result: string, model: string, ar: [] ClArena) -> bool {
+  if model.count == 0 { return false; }
+  models := cl_raw(result, "models.availableModels");
+  n := cl_count(models);
+  for i: 0..<n {
+    item := cl_json(models, cl_item(models, i));
+    if cl_str(ar, item, "modelId") == model { return true; }
+  }
+  return false;
+}
+
 // True when session/new or session/load advertised this mode id.
 cu_mode_has :: (result: string, mode: string, ar: [] ClArena) -> bool {
   modes := cl_raw(result, "modes.availableModes");
@@ -195,9 +218,11 @@ cu_initialize :: (c: [] CuClient, name: string, version: string) -> int {
   return id;
 }
 
-cu_authenticate :: (c: [] CuClient) -> int {
+cu_authenticate :: (c: [] CuClient) -> int { return cu_authenticate_with(c, "cursor_login"); }
+cu_authenticate_with :: (c: [] CuClient, method: string) -> int {
   id := cu_open(c, CU_AUTHENTICATE, "authenticate");
-  cl_put(c[0].out[..], "{\"methodId\":\"cursor_login\"}");
+  o := c[0].out[..];
+  cl_put(o, "{\"methodId\":"); cl_put_string(o, method); cl_put(o, "}");
   cu_close(c);
   return id;
 }
@@ -216,6 +241,17 @@ cu_session_load :: (c: [] CuClient, session: string, cwd: string) -> int {
   cl_put(o, "{\"sessionId\":"); cl_put_string(o, session);
   cl_put(o, ",\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":[]}");
   cu_close(c);
+  return id;
+}
+
+// A session restored without its history replayed (Antigravity's session/resume).
+cu_session_resume :: (c: [] CuClient, session: string, cwd: string) -> int {
+  id := cu_open(c, CU_SESSION_RESUME, "session/resume");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, session);
+  cl_put(o, ",\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":[]}");
+  cu_close(c);
+  if session.count < CU_ID { c[0].session_n = cu_keep(c[0].session[..], session); }   // the answer need not repeat it
   return id;
 }
 
@@ -240,6 +276,16 @@ cu_set_mode :: (c: [] CuClient, mode: string) -> int {
   o := c[0].out[..];
   cl_put(o, "{\"sessionId\":"); cl_put_string(o, cu_session_id(c));
   cl_put(o, ",\"modeId\":"); cl_put_string(o, mode); cl_put(o, "}");
+  cu_close(c);
+  return id;
+}
+
+// One of models.availableModels (session/set_model).
+cu_set_model :: (c: [] CuClient, model: string) -> int {
+  id := cu_open(c, CU_SESSION_SET_MODEL, "session/set_model");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, cu_session_id(c));
+  cl_put(o, ",\"modelId\":"); cl_put_string(o, model); cl_put(o, "}");
   cu_close(c);
   return id;
 }
@@ -372,7 +418,7 @@ cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
   r := cl_find(line, "result");
   result := cl_json(line, r);
   if of == CU_INITIALIZE { c[0].initialized = true; c[0].init_wait = false; return CuEvent.{kind = CuEventKind.initialized, of = of, result = result, line = line}; }
-  if of == CU_SESSION_NEW || of == CU_SESSION_LOAD { cu_remember_session(c, result); }
+  if of == CU_SESSION_NEW || of == CU_SESSION_LOAD || of == CU_SESSION_RESUME { cu_remember_session(c, result); }
   if of == 0 { return CuEvent.{kind = CuEventKind.none, line = line}; }
   return CuEvent.{kind = CuEventKind.answered, of = of, result = result, line = line};
 }

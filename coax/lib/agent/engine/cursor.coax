@@ -1,12 +1,15 @@
-// The Cursor engine: the person's own Cursor agent (`agent acp`, their Cursor login), driven
-// through the Coax Cursor client (coax/lib/agent/cursor), one ACP session per conversation.
+// The ACP engine: an agent CLI's Agent Client Protocol server, driven through the shared ACP
+// client (coax/lib/agent/cursor), one session per conversation. Cursor (`agent acp`, the
+// person's Cursor login) is its first agent and the default; Antigravity (`agy acp`,
+// antigravity.coax) is the second, the same engine with its own CuAgent (cue_agent).
 // Moved from Coder's terminal (coder/tui/cursor.coax) with no change in behaviour; Coder is its
 // first owner.
 //
 // The engine does the protocol's own steps: it starts the agent and sends initialize, logs in
-// once initialize is answered (authenticate), then opens the conversation's session (session/new,
-// or session/load of a session to resume, whose replayed history it answers itself: nothing is
-// allowed, no plan accepted, no question asked), holds the first message until the session is
+// once initialize is answered (authenticate, when the agent has a login method), then opens the
+// conversation's session (session/new, or session/load of a session to resume, whose replayed
+// history it answers itself: nothing is allowed, no plan accepted, no question asked; or
+// session/resume, which replays nothing), holds the first message until the session is
 // open and every setting sent with it is answered, and closes the agent when it ends. Every
 // other event goes to the owner, one at a time (cue_poll), after the engine's part of it: the
 // owner prints it, applies its own settings (cue_set), answers permission requests, plans and
@@ -17,6 +20,8 @@
 //   cue_launch   the agent started, initialize sent  cue_resume   a session to load in place of a new one
 //   cue_send     a message: now, or owed            cue_poll     the next event, after the engine's part
 //   cue_set      one of the session's settings      cue_owed     the owed message, once nothing is held
+//   cue_set_model, cue_set_mode  the same for session/set_model and session/set_mode
+//   cue_agent    which agent (Cursor's by default)   cue_start    cue_launch with the owner's own CuLaunch
 //   cue_close    the agent stopped
 #load "claude.coax";
 #load "../cursor/cursor.coax";
@@ -34,6 +39,7 @@ CuEngine :: struct {
   resume: [CU_ID] u8; nresume: int; // a session to load in place of a new one
   cwd: [1024] u8; ncwd: int;
   err: [2048] u8; err_n: int;     // why the agent stopped, when it said nothing itself
+  agent: CuAgent;                 // the agent and its quirks; none (no name) is Cursor's
 }
 
 cue_attach :: (x: [] CuEngine, c: [] CuClient, p: [] ClProcess, line: [] u8, arena: [] u8, out: [] u8) {
@@ -49,12 +55,22 @@ cue_program :: (out: [] u8) -> string {
   return cu_find(path, home, out);
 }
 
+// Which agent the next launch starts (Cursor's when never set).
+cue_agent :: (x: [] CuEngine, ag: CuAgent) { x[0].agent = ag; }
+cue_profile :: (x: [] CuEngine) -> CuAgent { return ifx x[0].agent.name.count > 0 then x[0].agent else cu_agent_cursor(); }
+
 // A fresh client, the agent started in cwd and initialize sent: "" or why it did not start.
 cue_launch :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string) -> string {
+  l: [1] CuLaunch; l[0].program = program; l[0].cwd = cwd;
+  return cue_start(x, l[0], name, version);
+}
+// cue_launch with the owner's launch (its environment): the engine's agent is the one started.
+cue_start :: (x: [] CuEngine, launch: CuLaunch, name: string, version: string) -> string {
   x[0].c[0] = CuClient.{};
   cu_init(x[0].c, x[0].line, x[0].arena, x[0].out);
-  l: [1] CuLaunch; l[0].program = program; l[0].cwd = cwd;
-  why := cu_start(x[0].c, x[0].p, l[0]);
+  l := launch; l.agent = cue_profile(x);
+  cwd := l.cwd;
+  why := cu_start(x[0].c, x[0].p, l);
   if why.count > 0 { return why; }
   x[0].ncwd = e_set(x[0].cwd[..], 0, cwd);
   x[0].live = true; x[0].ready = false; x[0].replay = false; x[0].hold = 0;
@@ -77,6 +93,8 @@ cue_owed :: (x: [] CuEngine, running: bool) {
 }
 // One of the session's settings (a model, a thought level): the owed message waits for its answer.
 cue_set :: (x: [] CuEngine, id: string, value: string) { r := cu_set_config(x[0].c, id, value); x[0].hold += 1; }
+cue_set_model :: (x: [] CuEngine, model: string) { r := cu_set_model(x[0].c, model); x[0].hold += 1; }
+cue_set_mode :: (x: [] CuEngine, mode: string) { r := cu_set_mode(x[0].c, mode); x[0].hold += 1; }
 
 cue_close :: (x: [] CuEngine) {
   if !x[0].live { return; }
@@ -106,20 +124,28 @@ cue_gone :: (x: [] CuEngine) {
 // Initialize answered, logging in answered, the session opened or refused, a setting answered.
 cue_session :: (x: [] CuEngine, k: CuEventKind, of: int) {
   c := x[0].c;
-  if k == CuEventKind.initialized { r := cu_authenticate(c); return; }
-  cwd := e_str(x[0].cwd[..], x[0].ncwd);
-  if k == CuEventKind.answered && of == CU_AUTHENTICATE {
-    if x[0].nresume > 0 {
-      x[0].replay = true;
-      r := cu_session_load(c, e_str(x[0].resume[..], x[0].nresume), cwd);
-      x[0].nresume = 0;
-    } else { r := cu_session_new(c, cwd); }
+  if k == CuEventKind.initialized {
+    login := cue_profile(x).login;
+    if login.count > 0 { r := cu_authenticate_with(c, login); } else { cue_open(x); }
     return;
   }
-  if k == CuEventKind.refused && of == CU_SESSION_LOAD { x[0].replay = false; x[0].nresume = 0; r := cu_session_new(c, cwd); return; }
+  cwd := e_str(x[0].cwd[..], x[0].ncwd);
+  if k == CuEventKind.answered && of == CU_AUTHENTICATE { cue_open(x); return; }
+  if k == CuEventKind.refused && (of == CU_SESSION_LOAD || of == CU_SESSION_RESUME) { x[0].replay = false; x[0].nresume = 0; r := cu_session_new(c, cwd); return; }
   if k == CuEventKind.refused && of == CU_SESSION_SET_CONFIG { x[0].hold -= 1; return; }
-  if k == CuEventKind.answered && (of == CU_SESSION_NEW || of == CU_SESSION_LOAD) { x[0].ready = true; x[0].replay = false; return; }
-  if k == CuEventKind.answered && of == CU_SESSION_SET_CONFIG { if x[0].hold > 0 { x[0].hold -= 1; } }
+  if k == CuEventKind.refused && (of == CU_SESSION_SET_MODEL || of == CU_SESSION_SET_MODE) { if x[0].hold > 0 { x[0].hold -= 1; } return; }
+  if k == CuEventKind.answered && (of == CU_SESSION_NEW || of == CU_SESSION_LOAD || of == CU_SESSION_RESUME) { x[0].ready = true; x[0].replay = false; return; }
+  if k == CuEventKind.answered && (of == CU_SESSION_SET_CONFIG || of == CU_SESSION_SET_MODEL || of == CU_SESSION_SET_MODE) { if x[0].hold > 0 { x[0].hold -= 1; } }
+}
+// The conversation's session: a new one, or the one to resume (session/load replays its
+// history, which the engine answers; session/resume replays none).
+cue_open :: (x: [] CuEngine) {
+  c := x[0].c;
+  cwd := e_str(x[0].cwd[..], x[0].ncwd);
+  if x[0].nresume == 0 { r := cu_session_new(c, cwd); return; }
+  if cue_profile(x).resume == CU_SESSION_RESUME { r := cu_session_resume(c, e_str(x[0].resume[..], x[0].nresume), cwd); }
+  else { x[0].replay = true; r := cu_session_load(c, e_str(x[0].resume[..], x[0].nresume), cwd); }
+  x[0].nresume = 0;
 }
 // A request during a replay, answered: no question asked, no plan accepted, nothing allowed. Whether it was one.
 cue_replayed :: (c: [] CuClient, k: CuEventKind) -> bool {

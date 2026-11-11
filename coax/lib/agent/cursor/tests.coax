@@ -6,7 +6,7 @@
 // Checks: coax test coax/lib/agent/cursor/tests.coax --library
 
 #load "cursor.coax";
-#load "../../../../coder/tui/ceiling.coax";
+#load "../engine/ceiling.coax";
 
 CuTest :: struct { line: [8] u8; arena: [65536] u8; out: [16384] u8; }
 

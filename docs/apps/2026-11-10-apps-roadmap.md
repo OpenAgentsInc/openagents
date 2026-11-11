@@ -146,7 +146,7 @@ Today the same job is done several ways:
 | --- | --- | --- |
 | `coax/lib/agent/claude`, `coax/lib/agent/codex` | The SDKs: transport, control protocol, messages | The shared base. Keep |
 | `coax/lib/agent/engine/` (moved 2026-11-10 from `apps/openagents-desktop/zeron/`, about 4,700 lines) | Sessions, parts, tool chips, approvals, routing | The shared engine layer over the SDKs; the desktop app is its first user |
-| `coder/tui/` (`coder.coax`, `codex.coax`, `session.coax`) | Coder's terminal: the same engines, its own session log | On the shared engines (2026-11-10, Claude Code; 2026-11-11, Codex, Cursor and Microcoder); its own session log |
+| `coder/tui/` (`coder.coax`, `codex.coax`, `session.coax`) | Coder's terminal: the same engines, its own session log | On the shared engines (2026-11-10, Claude Code; 2026-11-11, Codex, Cursor, Microcoder and Antigravity); its own session log |
 | `apps/aethyrforge-desktop/chat.coax` | The Forge's chat | Runs Coder as a child and reads its JSONL |
 | `apps/everglade-desktop/next.coax`, `tiers.coax` | Next issue, and Golemancy's issue rating | On the shared Claude engine with their own options (2026-11-10) |
 | `apps/everglade-desktop/golems.coax`, `os/verse-agents.coax`, `coax/lib/agent/observe/processes.coax` | Which agents are working on this machine | One walker, `coax/lib/agent/observe/transcripts.coax` (2026-11-10); the third lists processes |
@@ -246,6 +246,23 @@ Status (2026-11-10, GitHub #13153):
   with `e_*` and Codex with `cxe_*`. Not run: Coder's interactive prompt
   (y/a/n answers, Esc) against a stand-in, and any real Codex, Cursor or
   model.
+- **Built: Antigravity on the shared ACP engine** (2026-11-11, #13192).
+  Google's Antigravity CLI (`agy acp`) is Coder's fifth engine. It runs on
+  Cursor's ACP client and engine rather than a copy: `CuAgent`
+  (`coax/lib/agent/cursor/transport.coax`) names each agent's program, login
+  method, resume method and unset variables, and `engine/cursor.coax`
+  defaults to Cursor's. `engine/antigravity.coax` (`agy_*`) adds what
+  Antigravity needs: finding `agy`, the credentials file
+  `~/.openagents/coder/antigravity.env`, models through `session/set_model`,
+  thought level and mode, sign-in and provider refusals. The turn runner
+  (`run.coax`) and Coder's terminal both drive it, with a usage line per
+  turn (`sw_acp_usage`), and routing takes it only when
+  `CODER_ROUTE_ENGINES` names it and nothing before it is eligible.
+  Checked with a stand-in `agy acp` (`coder/tui/agy_standin.coax`) and real
+  turns on Google Cloud credits; `coder run --stream-json` against the
+  Claude Code, Codex and Cursor stand-ins, Microcoder's replay and echo
+  printed the same stdout, stderr, session JSONL and protocol lines before
+  and after. Coder book chapter 39.
 - **Built: move 3.** Everglade's Next issue panel (`next.coax`) and
   Golemancy's rating (`tiers.coax`) start and drive their agents through the
   shared engine with their own options and tools. They still print from the

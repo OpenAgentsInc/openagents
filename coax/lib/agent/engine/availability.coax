@@ -11,6 +11,32 @@
 
 cxproc_wall_us :: () -> int #foreign #effects(all);
 
+// The engines availability knows, in the policy's bit order: System One's four
+// (AGR_ENGINES), then Antigravity, which routing runs only when allowed and
+// nothing before it is eligible (availability-policy.coax).
+CA_ENGINES :: [5] string.["claude", "codex", "micro", "psionic", "antigravity"];
+CA_ENGINE_NUMBERS :: [5] int.[1, 2, 3, 4, 6];     // Coder's ENGINE_* (the turn runner's TR_*) for each
+
+// The engine number (ENGINE_*, TR_*) for a pick (ca_pick, agr_pick); -1 for none.
+ca_engine :: (pick: int) -> int {
+  numbers := CA_ENGINE_NUMBERS;
+  return ifx pick < 0 || pick >= numbers.count then -1 else numbers[pick];
+}
+
+#test "a pick is Coder's engine number" {
+  #assert ca_engine(-1) == -1 && ca_engine(0) == 1 && ca_engine(1) == 2 && ca_engine(2) == 3 && ca_engine(3) == 4;
+  #assert ca_engine(4) == 6 && ca_engine(5) == -1;
+}
+
+// agy on PATH, or where its installer puts it (~/.local/bin/agy).
+ca_agy_installed :: () -> bool {
+  if agr_on_path("agy") { return true; }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { return false; }
+  pb: [1100] u8; n := agr_cat(pb[..], 0, home); n = agr_cat(pb[..], n, "/.local/bin/agy");
+  return fs_exists(cast(string) pb[0..<n]);
+}
+
 // Where agent state lives: $CODER_HOME when set, else $HOME. Engines still
 // run with the real $HOME, so a lab can drive them on the person's own
 // logins without touching the person's sessions, Router or memory.
@@ -50,19 +76,21 @@ ca_recent :: (engine: string, now: int) -> bool {
   return false;
 }
 
-// The engines automatic routing may pick, as bits of AGR_ENGINES; allowed and blocked get their masks.
+// The engines automatic routing may pick, as bits of CA_ENGINES; allowed and blocked get their masks.
 ca_eligible :: (local: bool, allowed: [] int, blocked: [] int) -> int {
   b: [256] u8; allowed[0] = ca_allowed(cl_getenv("CODER_ROUTE_ENGINES", b[..]));
   installed := 4;
   if agr_on_path("claude") { installed = installed | 1; }
   if agr_on_path("codex") { installed = installed | 2; }
   if local { installed = installed | 8; }
-  names := AGR_ENGINES; now := cxproc_wall_us() / 1000000;
+  if (allowed[0] & 16) != 0 && ca_agy_installed() { installed = installed | 16; }
+  names := CA_ENGINES; now := cxproc_wall_us() / 1000000;
   for i: 0..<4 { if ca_recent(names[i], now) { blocked[0] = blocked[0] | (1 << i); } }
-  return allowed[0] & installed & (15 ^ blocked[0]);
+  if (allowed[0] & 16) != 0 && ca_recent(names[4], now) { blocked[0] = blocked[0] | 16; }
+  return allowed[0] & installed & (31 ^ blocked[0]);
 }
 
-// A provider failure of engine (an AGR_ENGINES name) now: the cooldown is
+// A provider failure of engine (a CA_ENGINES name) now: the cooldown is
 // kept until its typed reset when that is within a week, else a minute.
 // saved[0] says whether it reached the disk; the retry time is returned,
 // -1 for an engine routing never picks.

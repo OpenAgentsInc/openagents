@@ -1,5 +1,6 @@
-// The cursor engine: the installed Cursor CLI on the person's own login,
-// driven as `agent acp` by the shared Cursor engine
+// The cursor and antigravity engines: the installed Cursor CLI on the person's own login,
+// driven as `agent acp`, and Google's Antigravity CLI driven as `agy acp`
+// (coax/lib/agent/engine/antigravity.coax), both by the shared ACP engine
 // (coax/lib/agent/engine/cursor.coax), one session for the conversation. The
 // engine starts the agent, logs in, opens or resumes the session and holds
 // the first message; each event then comes here, where it is printed and
@@ -8,20 +9,36 @@
 // permission comes to the y/a/n prompt. Under a policy the tool kind is
 // the effect (read, search, fetch, edit, delete, move, execute).
 
+// The ACP engines: Cursor and Antigravity share the one ACP engine (a[0].cue).
+cd_is_acp :: (e: int) -> bool { return e == ENGINE_CURSOR || e == ENGINE_ANTIGRAVITY; }
+// The engine whose agent the ACP engine holds.
+cd_cue_engine :: (a: [] App) -> int { return ifx agy_is(a[0].cue) then ENGINE_ANTIGRAVITY else ENGINE_CURSOR; }
+// "  Cursor: " or "  Antigravity: ", for a red line.
+cd_cue_prefix :: (a: [] App, out: [] u8) -> string { n := cd_cat(out, 0, "  "); n = cd_cat(out, n, cue_title(a[0].cue)); n = cd_cat(out, n, ": "); return cast(string) out[0..<n]; }
+
 cd_cursor_open :: (a: [] App) {
   x := a[0].cue;
+  agy := a[0].engine == ENGINE_ANTIGRAVITY;
+  if x[0].live && agy_is(x) != agy { cue_close(x); }       // the other agent's session: a new process
   if x[0].live { return; }
-  prog: [4096] u8; program := cue_program(prog[..]);
+  prog: [4096] u8; program := ifx agy then agy_program(prog[..]) else cue_program(prog[..]);
   if program.count == 0 {
+    if agy {
+      if a[0].running { cd_finish(a, END_FAILED, AGY_MISSING); } else { cd_commit_prefixed(a, TUI_RED, "  Antigravity: ", "  ", AGY_MISSING); }
+      return;
+    }
     why := "Cursor's agent was not found. Install it from cursor.com/install, or put cursor-agent on PATH.";
     if a[0].running { cd_finish(a, END_FAILED, why); } else { cd_commit(a, TUI_RED, "  Cursor: the agent was not found."); }
     return;
   }
-  // a fork resumes the parent's Cursor session (session/load) until the agent has been asked to
+  // a fork resumes the parent's session (Cursor's session/load, Antigravity's session/resume) until the agent has been asked to
   cue_resume(x, cast(string) a[0].cursor_resume[0..<a[0].ncursor_resume]);
-  why := cue_launch(x, program, a[0].cwd, "Coder", CODER_VERSION);
+  why := "";
+  if agy { why = agy_launch(x, program, a[0].cwd, "Coder", CODER_VERSION); }
+  else { cue_agent(x, cu_agent_cursor()); why = cue_launch(x, program, a[0].cwd, "Coder", CODER_VERSION); }
   if why.count > 0 {
-    if a[0].running { cd_finish(a, END_FAILED, why); } else { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", why); }
+    pb: [40] u8;
+    if a[0].running { cd_finish(a, END_FAILED, why); } else { cd_commit_prefixed(a, TUI_RED, cd_cue_prefix(a, pb[..]), "  ", why); }
     return;
   }
 }
@@ -90,6 +107,11 @@ cd_cursor_inside :: (a: [] App, tool: string) -> bool {
   if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], raw, "path")) { return false; }
   if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], raw, "file_path")) { return false; }
   if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], raw, "cwd")) { return false; }
+  if agy_is(a[0].cue) {
+    if agy_outside(tool, a[0].cu[0].ar[..]) { return false; }
+    keys := AGY_PATH_KEYS;
+    for key: keys { if !cd_cursor_path_ok(a, cl_str(a[0].cu[0].ar[..], raw, key)) { return false; } }
+  }
   return true;
 }
 
@@ -102,10 +124,16 @@ cd_cursor_remember :: (a: [] App) {
   id := cu_session_id(a[0].cu);
   if id.count == 0 || a[0].nengine_sid > 0 { return; }
   a[0].nengine_sid = cd_cat(a[0].engine_sid[..], 0, id);
-  cs_engine_session(a, "cursor", id);
+  cs_engine_session(a, cd_engine_name(cd_cue_engine(a)), id);
 }
 
 cd_cursor_configure :: (a: [] App, result: string) {
+  if agy_is(a[0].cue) {
+    missed := agy_configure(a[0].cue, result, ifx a[0].model_engine == ENGINE_ANTIGRAVITY then a[0].model else "", cd_effort(a));
+    if (missed & AGY_MODEL_NOT_APPLIED) != 0 { cd_cursor_note(a, "  --model was not applied: this Antigravity session did not advertise it."); }
+    if (missed & AGY_EFFORT_NOT_APPLIED) != 0 { cd_cursor_note(a, "  --effort was not applied: this Antigravity session did not advertise that thought level."); }
+    return;
+  }
   a[0].cue[0].hold = 0;
   model := ifx a[0].model_engine == ENGINE_CURSOR then a[0].model else "";
   if model.count > 0 {
@@ -148,6 +176,8 @@ cd_cursor_content :: (a: [] App, update: string) {
 cd_cursor_answer :: (a: [] App, c: int) {
   if a[0].cu[0].asking == CU_ASK_PLAN { cu_plan(a[0].cu, c == 'y' || c == 'Y' || c == 'a' || c == 'A'); return; }
   id := cu_choice(a[0].cu, c);
+  // Antigravity offers allow and deny only: "from now on" is allowed this once
+  if id.count == 0 && (c == 'a' || c == 'A') && agy_is(a[0].cue) { id = cu_allow_option(a[0].cu); }
   if id.count == 0 { cu_decline(a[0].cu); } else { cu_permit(a[0].cu, id); }
 }
 
@@ -173,9 +203,10 @@ cd_cursor_finish_turn :: (a: [] App, result: string) {
   rb: [64] u8; rn := cd_cat(rb[..], 0, reason);
   reason = cast(string) rb[0..<rn];
   a[0].stopping = false;
+  if agy_is(a[0].cue) { cs_acp_usage(a, "antigravity", cl_raw(result, "usage")); }
   if reason == "end_turn" || reason == "end" || reason.count == 0 { cd_finish(a, END_FINISHED, ""); return; }
   if reason == "cancelled" { cd_finish(a, END_STOPPED, ""); return; }
-  wb: [160] u8; wn := cd_cat(wb[..], 0, "Cursor ended the turn: "); wn = cd_cat(wb[..], wn, reason);
+  wb: [160] u8; wn := cd_cat(wb[..], 0, cue_title(a[0].cue)); wn = cd_cat(wb[..], wn, " ended the turn: "); wn = cd_cat(wb[..], wn, reason);
   cd_finish(a, END_FAILED, cast(string) wb[0..<wn]);
 }
 
@@ -194,12 +225,14 @@ cd_cursor_poll :: (a: [] App) -> bool {
     if ev.kind == CuEventKind.idle { break; }
     changed = true;
     if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
+      own := cd_cue_engine(a);
+      pb: [40] u8; prefix := cd_cue_prefix(a, pb[..]);
       why := cue_why(x);
-      if why.count == 0 { why = "Cursor exited."; }
       wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
+      if why.count == 0 { wn = cd_cat(wb[..], 0, cue_title(x)); wn = cd_cat(wb[..], wn, " exited."); }
       cd_cursor_close(a);
-      if a[0].running && a[0].engine == ENGINE_CURSOR { cd_finish(a, END_FAILED, cast(string) wb[0..<wn]); }
-      else if a[0].engine == ENGINE_CURSOR { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", cast(string) wb[0..<wn]); }
+      if a[0].running && a[0].engine == own { cd_finish(a, END_FAILED, cast(string) wb[0..<wn]); }
+      else if a[0].engine == own { cd_commit_prefixed(a, TUI_RED, prefix, "  ", cast(string) wb[0..<wn]); }
       return true;
     }
     if ev.kind == CuEventKind.none || ev.kind == CuEventKind.initialized { continue; }
@@ -210,40 +243,48 @@ cd_cursor_poll :: (a: [] App) -> bool {
       else { cd_commit(a, TUI_RED, "  Cursor is not logged in. Run agent login."); }
       return true;
     }
-    if ev.kind == CuEventKind.refused && ev.of == CU_SESSION_LOAD {
+    if ev.kind == CuEventKind.refused && (ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME) {
       a[0].ncursor_resume = 0;
-      cd_cursor_note(a, "  The Cursor session could not be resumed. Starting a new one.");
+      nb: [128] u8; nn := cd_cat(nb[..], 0, "  The "); nn = cd_cat(nb[..], nn, cue_title(x)); nn = cd_cat(nb[..], nn, " session could not be resumed. Starting a new one.");
+      cd_cursor_note(a, cast(string) nb[0..<nn]);
       continue;
     }
     if ev.kind == CuEventKind.refused {
       mb: [1024] u8; mn := cd_cat(mb[..], 0, ev.message);
-      if ev.of == CU_SESSION_SET_CONFIG { cd_cursor_note(a, "  A Cursor setting was not applied."); cd_cursor_prompt_pending(a); continue; }
+      if agy_is(x) && agy_signed_out(ev.message) { mn = cd_cat(mb[..], 0, AGY_SIGNED_OUT); }
+      if agy_is(x) && a[0].running && ev.of == CU_SESSION_PROMPT && agy_provider(ev.message) { a[0].ncause = cd_cat(a[0].cause[..], 0, "provider"); }
+      if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE {
+        nb: [128] u8; nn := cd_cat(nb[..], 0, "  A "); nn = cd_cat(nb[..], nn, cue_title(x)); nn = cd_cat(nb[..], nn, " setting was not applied.");
+        cd_cursor_note(a, cast(string) nb[0..<nn]); cd_cursor_prompt_pending(a); continue;
+      }
       if a[0].running && ev.of == CU_SESSION_PROMPT { cd_finish(a, END_FAILED, cast(string) mb[0..<mn]); a[0].stopping = false; }
       else if ev.of == CU_SESSION_NEW {
+        pb: [40] u8; prefix := cd_cue_prefix(a, pb[..]);
         cd_cursor_close(a);
         if a[0].running { cd_finish(a, END_FAILED, cast(string) mb[0..<mn]); }
-        else { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", cast(string) mb[0..<mn]); }
+        else { cd_commit_prefixed(a, TUI_RED, prefix, "  ", cast(string) mb[0..<mn]); }
         return true;
       }
       continue;
     }
-    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD) {
+    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME) {
+      a[0].ncursor_resume = 0;
       cd_cursor_remember(a);
       cd_cursor_configure(a, ev.result);
       cd_cursor_prompt_pending(a);
       continue;
     }
-    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_SET_CONFIG {
+    if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE) {
       cd_cursor_prompt_pending(a);
       continue;
     }
-    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT && a[0].running && a[0].engine == ENGINE_CURSOR {
+    if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT && a[0].running && a[0].engine == cd_cue_engine(a) {
       cd_cursor_finish_turn(a, ev.result);
       continue;
     }
     if ev.kind == CuEventKind.question {
       qb: [400] u8; qn := cd_cat(qb[..], 0, cl_str(c[0].ar[..], ev.params, "questions.0.prompt"));
-      if qn == 0 { qn = cd_cat(qb[..], 0, "Cursor asked a question"); }
+      if qn == 0 { qn = cd_cat(qb[..], 0, cue_title(x)); qn = cd_cat(qb[..], qn, " asked a question"); }
       qn = cd_cat(qb[..], qn, " (skipped)");
       cd_commit(a, TUI_FAINT, cast(string) qb[0..<qn]);
       cu_question(c, true);
@@ -288,7 +329,7 @@ cd_cursor_poll :: (a: [] App) -> bool {
       return true;
     }
     if ev.kind != CuEventKind.notification { continue; }
-    if a[0].engine != ENGINE_CURSOR || !a[0].running || x[0].replay { continue; }
+    if a[0].engine != cd_cue_engine(a) || !a[0].running || x[0].replay { continue; }
     update := cl_raw(ev.params, "update");
     kind := cl_str(c[0].ar[..], update, "sessionUpdate");
     if ev.method == "cursor/task" {
@@ -314,4 +355,11 @@ cd_cursor_poll :: (a: [] App) -> bool {
     if kind == "tool_call_update" { cd_cursor_content(a, update); continue; }
   }
   return changed;
+}
+
+#test "Shift-Tab passes Antigravity between Cursor and Microcoder; both are the ACP engine" {
+  #assert cd_next_engine(ENGINE_CODEX) == ENGINE_CURSOR && cd_next_engine(ENGINE_CURSOR) == ENGINE_ANTIGRAVITY;
+  #assert cd_next_engine(ENGINE_ANTIGRAVITY) == ENGINE_MICRO && cd_next_engine(ENGINE_MICRO) == ENGINE_CLAUDE;
+  #assert cd_is_acp(ENGINE_CURSOR) && cd_is_acp(ENGINE_ANTIGRAVITY) && !cd_is_acp(ENGINE_CODEX) && !cd_is_acp(ENGINE_MICRO);
+  #assert cd_engine_name(ENGINE_ANTIGRAVITY) == "antigravity" && ca_engine(4) == ENGINE_ANTIGRAVITY;
 }

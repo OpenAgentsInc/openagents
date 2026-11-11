@@ -30,7 +30,7 @@ SfFork :: struct {
   pre: [SF_PRE_MAX] u8; npre: int;          // the parent's turns as text: "" when the engine resumes instead
   kept: int;                                // how many of the parent's turns
   claude: [128] u8; nclaude: int;           // resume this Claude Code session (with fork_session)
-  cursor: [128] u8; ncursor: int;           // load this Cursor session
+  cursor: [128] u8; ncursor: int;           // load this Cursor session, or resume this Antigravity one (the running engine's)
 }
 
 sf_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
@@ -95,7 +95,7 @@ sf_claude_has_session :: (cwd: string, id: string) -> bool {
 // (all when 0). want is the engine asked for ("" for the parent's own) and
 // engine the one that will run. A whole conversation resumes on the engine
 // that kept it: Claude Code's when it is asked for or nothing is, and this
-// machine still has it; Cursor's when Cursor runs. Returns the parent's
+// machine still has it; Cursor's when Cursor runs, Antigravity's when it runs. Returns the parent's
 // turns; more than that asked for (at) carries nothing.
 sf_fork :: (f: [] SfFork, parent: string, at: int, want: string, engine: string, cwd: string) -> int {
   far: [262144] u8; fa: [1] ClArena; fa[0] = ClArena.{buf = far[..]};
@@ -114,6 +114,11 @@ sf_fork :: (f: [] SfFork, parent: string, at: int, want: string, engine: string,
   csid := sf_engine_session(parent, "cursor", fa[..]);
   if whole && csid.count > 0 && csid.count < 128 && (want == "cursor" || (want.count == 0 && engine == "cursor")) {
     f[0].ncursor = sf_cat(f[0].cursor[..], 0, csid); f[0].npre = 0;
+  }
+  // the whole conversation of an Antigravity parent: session/resume, which replays nothing
+  gsid := sf_engine_session(parent, "antigravity", fa[..]);
+  if whole && gsid.count > 0 && gsid.count < 128 && (want == "antigravity" || (want.count == 0 && engine == "antigravity")) {
+    f[0].ncursor = sf_cat(f[0].cursor[..], 0, gsid); f[0].npre = 0;
   }
   return f[0].kept;
 }
@@ -162,6 +167,10 @@ sf_with_context :: (context: string, sent: string, out: [] u8) -> string {
   #assert sf_fork(f[..], parent, 0, "codex", "cursor", "/tmp") == 2 && f[0].ncursor == 0 && f[0].npre > 0;
   #assert sf_fork(f[..], parent, 1, "", "claude", "/tmp") == 1 && f[0].ncursor == 0 && sf_pre(f[..]) == "User: one\nYou: a";
   #assert sf_fork(f[..], parent, 3, "", "cursor", "/tmp") == 2 && f[0].npre == 0 && f[0].ncursor == 0;
+  agy := "{\"kind\":\"session\",\"id\":\"p\"}\n{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"engine_session\",\"engine\":\"antigravity\",\"id\":\"g-1\"}\n{\"kind\":\"reply\",\"text\":\"a\"}\n";
+  #assert sf_fork(f[..], agy, 0, "", "antigravity", "/tmp") == 1 && sf_pre(f[..]) == "" && cast(string) f[0].cursor[0..<f[0].ncursor] == "g-1";
+  #assert sf_fork(f[..], agy, 0, "cursor", "cursor", "/tmp") == 1 && f[0].ncursor == 0 && f[0].npre > 0;
+  #assert sf_fork(f[..], parent, 0, "antigravity", "antigravity", "/tmp") == 2 && f[0].ncursor == 0 && f[0].npre > 0;
   // a Claude Code parent forked onto another engine carries its turns as text (the session check reads $HOME: not here)
   claude := "{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"engine_session\",\"engine\":\"claude\",\"id\":\"5e55a0e1-x\"}\n";
   #assert sf_fork(f[..], claude, 0, "codex", "codex", "/tmp") == 1 && f[0].nclaude == 0 && sf_pre(f[..]) == "User: one";

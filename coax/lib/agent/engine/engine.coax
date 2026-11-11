@@ -43,6 +43,7 @@
 #load "codex.coax";
 #load "lab.coax";
 #load "cursor.coax";    // not a mode of the Agent yet: Coder drives it with cue_* (as Claude with e_*)
+#load "antigravity.coax";   // the same ACP engine with Antigravity's agent (agy_*)
 
 // (a new mode takes the next index: hosts' --mode lists and saved choices
 // read these numbers)
