@@ -286,8 +286,8 @@ bow_carry_mix :: (a:f32,b:f32,m:f32)->f32 {return a+(b-a)*m;}
 // (the CC_BOW_WALK_ values), and the arm's swing carries it fore and aft. The bow arm hangs out from
 // the body and a little ahead meanwhile (fivelab-bodies.coax bd_arm_out, on the GPU fivelab_arm). The
 // bow turns from the carry to the drawn hold as the aim comes in to CC_BOW_CARRY_TO.
-CC_BOW_CARRY_TILT :: 0.2;    // radians
-CC_BOW_CARRY_TURN :: 0.5;    // radians
+CC_BOW_CARRY_TILT :: 0.3;    // radians
+CC_BOW_CARRY_TURN :: 0.1;    // radians: the string nearly straight in, close to the bow seen from ahead
 CC_BOW_CARRY_LEAN :: -0.5;   // radians: the top out (+X)
 CC_BOW_WALK_TILT :: 0.3;     // radians
 CC_BOW_WALK_TURN :: 0.6;     // radians

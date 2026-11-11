@@ -577,7 +577,7 @@ cc_bow_sweep :: (c0:int,c1:int)->overlap.OverlapHit {
 }
 // A bow carrier's pose as the GPU draws it: on the carry's frames the bow arm out (figs.bd_arm_out).
 cc_bow_arm :: (pal:[]f32,female:bool,c:int,f:int) {
- if figs.bd_arm_frame(figs.bd_row(female,c,f)/figs.BD_ROWS) {figs.bd_arm_out_pose(pal,figs.bd_shoulder_bind(female));}
+ if figs.bd_arm_frame(figs.bd_row(female,c,f)/figs.BD_ROWS) {figs.bd_arm_out_pose(pal,female,figs.bd_row(female,c,f)/figs.BD_ROWS);}
 }
 // Carried, the bow's string is in toward the body and its back out (#13073): over clips c0 to c1, every
 // frame, on both bodies, the least by which the string's middle lies nearer the body's middle line than

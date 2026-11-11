@@ -510,12 +510,12 @@ bd_seen :: (c: BdCam, x: f32, z: f32) -> f32 {
 bd_keep_hands :: (b: [] Bodies, d: [] People, bake: [] f32) {
   if bake.count < BD_BAKE_FLOATS { return; }
   for f: 0..<2 * BD_TOTAL { for k: 0..<12 { b[0].hand[f * 24 + k] = bake[(f * BD_ROWS + BD_HAND * 3) * 4 + k]; b[0].hand[f * 24 + 12 + k] = bake[(f * BD_ROWS + BD_HAND_L * 3) * 4 + k]; } }
-  // and the left hand with the bow arm out (bd_arm_out), about the shoulder where that frame has it
+  // and the left hand with the bow arm out (bd_arm_layer), where that frame has the arm
   for f: 0..<2 * BD_TOTAL {
     m: [12] f32; for k: 0..<12 { m[k] = bake[(f * BD_ROWS + BD_HAND_L * 3) * 4 + k]; }
     if bd_arm_frame(f) {
-      s: [12] f32; for k: 0..<12 { s[k] = bake[(f * BD_ROWS + BD_SHOULDER_L * 3) * 4 + k]; }
-      m = bd_arm_out(m, bd_pose_at(s, bd_shoulder_bind(f >= BD_TOTAL)));
+      r: [36] f32; for j: 0..<3 { for k: 0..<12 { r[j * 12 + k] = bake[(f * BD_ROWS + (BD_SHOULDER_L + j) * 3) * 4 + k]; } }
+      m = bd_affine(bd_arm_layer(r, f >= BD_TOTAL, bd_arm_still(f))[1], m);
     }
     for k: 0..<12 { b[0].hand[BD_HAND_AT_OUT + f * 12 + k] = m[k]; }
   }
@@ -611,19 +611,32 @@ bd_layer :: (a0: BdAnim, clip: int, t0: f32, phase: f32, w: f32, now: f32) -> Bd
   return a;
 }
 // ---- the bow arm (#13073): carrying a bow, standing, walking, running and in a jump's air, the bow arm
-// hangs a little out from the body and ahead, the archer's carry, so the bow clears the legs. A pose layer
-// on those clips' frames, the same on the GPU (gpu/fivelab.coax fivelab_arm) and here: the upper arm,
-// forearm, hand and fingers (joints 8 to 30) turned BD_ARM_OUT about the figure's forward axis, then BD_ARM_FWD ahead, through
-// the shoulder where the frame has it. A figure's records carry it with bit 8 of their flags
-// (BD_ARM_FLAG: held-kit.coax sets it on a bow carrier's records).
-BD_ARM_OUT :: 0.35;       // radians: the hand about 19 cm out
-BD_ARM_FWD :: 0.35;       // radians: and about 18 cm ahead
+// hangs nearly straight, a little out from the body and ahead, the archer's carry, so the bow clears the
+// legs. A pose layer on those clips' frames, the same on the GPU (gpu/fivelab.coax fivelab_arm) and here:
+// the upper arm, forearm, hand and fingers (joints 8 to 30) turned BD_ARM_OUT about the figure's forward
+// axis, then BD_ARM_FWD ahead, through the shoulder where the frame has it; then the forearm, hand and
+// fingers (joints 9 to 30) opened BD_ELBOW_OPEN of the way straight about the elbow. Standing (the idle),
+// the arm hangs nearly straight and ahead of the thigh, the reference's; on the move (the walk, run and
+// jump loop: the BD_ARM_MOVE_ values) the walk's own swing, a little out and ahead. A figure's records
+// carry it with bit 8 of their flags (BD_ARM_FLAG: held-kit.coax sets it on a bow carrier's records).
+BD_ARM_OUT :: 0.0;        // radians, standing: the idle's own
+BD_ARM_FWD :: 0.6;        // radians, standing: the hand about 22 cm ahead
+BD_ELBOW_OPEN :: 0.8;     // standing, of the elbow's bend taken out: the arm nearly straight
+BD_ARM_MOVE_OUT :: 0.35;  // radians, on the move: the hand about 19 cm out
+BD_ARM_MOVE_FWD :: 0.35;  // radians, on the move: and about 18 cm ahead
+BD_ELBOW_MOVE_OPEN :: 0.0;   // on the move, the walk's own elbow
 BD_ARM_FLAG :: 8;
 BD_SHOULDER_L :: 8;       // upperarm_l: the turn's pivot
 BD_ARM_LAST :: 30;        // the left arm's last joint (thumb_04_leaf_l)
-// The left shoulder's bind position (male, female): people_rig's, as the shader holds it.
+// The left shoulder's, elbow's and wrist's bind positions (male, female): people_rig's, as the shader holds them.
 BD_SHOULDER_BIND :: [6] f32.[0.1919, 1.4555, -0.0654, 0.1516, 1.4181, -0.0543];
+BD_ELBOW_BIND :: [6] f32.[0.4429, 1.4555, -0.073, 0.3919, 1.4181, -0.0588];
+BD_WRIST_BIND :: [6] f32.[0.6832, 1.4555, -0.0654, 0.6411, 1.4181, -0.0516];
 bd_shoulder_bind :: (female: bool) -> [3] f32 { o := ifx female then 3 else 0; return [3] f32.[BD_SHOULDER_BIND[o], BD_SHOULDER_BIND[o + 1], BD_SHOULDER_BIND[o + 2]]; }
+bd_arm_bind :: (female: bool, j: int) -> [3] f32 {
+  o := ifx female then 3 else 0; t := ifx j == 0 then BD_SHOULDER_BIND else ifx j == 1 then BD_ELBOW_BIND else BD_WRIST_BIND;
+  return [3] f32.[t[o], t[o + 1], t[o + 2]];
+}
 // The frames the bow arm hangs out on (a frame of either body): the idle, walk, run and jump loop.
 bd_arm_frame :: (f0: int) -> bool {
   f := f0 % BD_TOTAL;
@@ -634,25 +647,52 @@ bd_arm_frame :: (f0: int) -> bool {
 bd_pose_at :: (m: [12] f32, q: [3] f32) -> [3] f32 {
   return [3] f32.[m[0] * q[0] + m[1] * q[1] + m[2] * q[2] + m[3], m[4] * q[0] + m[5] * q[1] + m[6] * q[2] + m[7], m[8] * q[0] + m[9] * q[1] + m[10] * q[2] + m[11]];
 }
-// Skinning rows m turned BD_ARM_OUT about the figure's forward axis (+Z) through p: the hand below
-// the shoulder swings out to +X, the left side.
-bd_arm_out :: (m: [12] f32, p: [3] f32) -> [12] f32 {
-  r := bd_arm_turn(); o := m;
-  for i: 0..<3 { for k: 0..<4 { o[i * 4 + k] = r[i * 3] * m[k] + r[i * 3 + 1] * m[4 + k] + r[i * 3 + 2] * m[8 + k]; }
-    o[i * 4 + 3] += p[i] - (r[i * 3] * p[0] + r[i * 3 + 1] * p[1] + r[i * 3 + 2] * p[2]); }
+// Skinning rows m moved by t (rows [R | t]): a point m puts at x, t puts at R x + t.
+bd_affine :: (t: [12] f32, m: [12] f32) -> [12] f32 {
+  o: [12] f32;
+  for i: 0..<3 { for k: 0..<4 { o[i * 4 + k] = t[i * 4] * m[k] + t[i * 4 + 1] * m[4 + k] + t[i * 4 + 2] * m[8 + k]; } o[i * 4 + 3] += t[i * 4 + 3]; }
   return o;
 }
-// The bow arm's turn (rows): BD_ARM_OUT about the forward axis (+Z), then BD_ARM_FWD about the side
-// axis, so a hand below the shoulder swings out (+X) and ahead (+Z).
-bd_arm_turn :: () -> [9] f32 {
-  ca := cos(f32(BD_ARM_OUT)); sa := sin(f32(BD_ARM_OUT)); cf := cos(f32(BD_ARM_FWD)); sf := sin(f32(BD_ARM_FWD));
+// Turn r (rows) about point p, as rows [R | p - R p].
+bd_turn_at :: (r: [9] f32, p: [3] f32) -> [12] f32 {
+  o: [12] f32;
+  for i: 0..<3 { for k: 0..<3 { o[i * 4 + k] = r[i * 3 + k]; } o[i * 4 + 3] = p[i] - (r[i * 3] * p[0] + r[i * 3 + 1] * p[1] + r[i * 3 + 2] * p[2]); }
+  return o;
+}
+// The bow arm's turn at the shoulder (rows), standing (still) or on the move: BD_ARM_OUT about the forward axis (+Z), then BD_ARM_FWD
+// about the side axis, so a hand below the shoulder swings out (+X) and ahead (+Z).
+bd_arm_turn :: (still: bool) -> [9] f32 {
+  o := ifx still then f32(BD_ARM_OUT) else f32(BD_ARM_MOVE_OUT); fw := ifx still then f32(BD_ARM_FWD) else f32(BD_ARM_MOVE_FWD);
+  ca := cos(o); sa := sin(o); cf := cos(fw); sf := sin(fw);
   return [9] f32.[ca, -sa, 0, cf * sa, cf * ca, sf, -sf * sa, -sf * ca, cf];
 }
-// A whole pose (joints' rows, 12 each) with the bow arm out, its shoulder's bind position q.
-bd_arm_out_pose :: (pal: [] f32, q: [3] f32) {
-  sh: [12] f32; for k: 0..<12 { sh[k] = pal[BD_SHOULDER_L * 12 + k]; }
-  p := bd_pose_at(sh, q);
-  for j: BD_SHOULDER_L..<BD_ARM_LAST + 1 { m: [12] f32; for k: 0..<12 { m[k] = pal[j * 12 + k]; } m = bd_arm_out(m, p); for k: 0..<12 { pal[j * 12 + k] = m[k]; } }
+// The bow arm's layer for one frame, from its shoulder's, elbow's and wrist's skinning rows (r: joints
+// 8, 9 and 10, 12 each): [0] the upper arm's move (the shoulder turn), [1] the forearm's, hand's and
+// fingers' (the shoulder turn, then the elbow opened BD_ELBOW_OPEN of its bend about its hinge).
+bd_arm_layer :: (r: [36] f32, female: bool, still: bool) -> [2][12] f32 {
+  s0: [12] f32; e0: [12] f32; w0: [12] f32; for k: 0..<12 { s0[k] = r[k]; e0[k] = r[12 + k]; w0[k] = r[24 + k]; }
+  p := bd_pose_at(s0, bd_arm_bind(female, 0));
+  t1 := bd_turn_at(bd_arm_turn(still), p);
+  e := bd_pose_at(bd_affine(t1, e0), bd_arm_bind(female, 1)); w := bd_pose_at(bd_affine(t1, w0), bd_arm_bind(female, 2));
+  return [2][12] f32.[t1, bd_affine(bd_turn_at(bd_elbow_open(p, e, w, ifx still then f32(BD_ELBOW_OPEN) else f32(BD_ELBOW_MOVE_OPEN)), e), t1)];
+}
+// The turn (rows) that opens the elbow k of its bend: the forearm (e to w) toward the upper
+// arm's line (p to e), about the hinge square to both.
+bd_elbow_open :: (p: [3] f32, e: [3] f32, w: [3] f32, k: f32) -> [9] f32 {
+  u := [3] f32.[e[0] - p[0], e[1] - p[1], e[2] - p[2]]; f := [3] f32.[w[0] - e[0], w[1] - e[1], w[2] - e[2]];
+  a := [3] f32.[f[1] * u[2] - f[2] * u[1], f[2] * u[0] - f[0] * u[2], f[0] * u[1] - f[1] * u[0]];
+  la := sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]); d := f[0] * u[0] + f[1] * u[1] + f[2] * u[2];
+  if la < 0.000001 { return [9] f32.[1, 0, 0, 0, 1, 0, 0, 0, 1]; }
+  th := atan2(la, d) * k; c := cos(th); sn := sin(th); x := a[0] / la; y := a[1] / la; z := a[2] / la; v := 1 - c;
+  return [9] f32.[c + x * x * v, x * y * v - z * sn, x * z * v + y * sn, y * x * v + z * sn, c + y * y * v, y * z * v - x * sn, z * x * v - y * sn, z * y * v + x * sn, c + z * z * v];
+}
+// Standing: a frame of the idle (either body), the bow arm's standing layer.
+bd_arm_still :: (f0: int) -> bool { f := f0 % BD_TOTAL; return f >= BD_FIRST[BD_IDLE] && f < BD_FIRST[BD_IDLE] + BD_FRAMES[BD_IDLE]; }
+// A whole pose (joints' rows, 12 each) of frame f with the bow arm out.
+bd_arm_out_pose :: (pal: [] f32, female: bool, f: int) {
+  r: [36] f32; for k: 0..<36 { r[k] = pal[BD_SHOULDER_L * 12 + k]; }
+  l := bd_arm_layer(r, female, bd_arm_still(f));
+  for j: BD_SHOULDER_L..<BD_ARM_LAST + 1 { m: [12] f32; for k: 0..<12 { m[k] = pal[j * 12 + k]; } m = bd_affine(l[ifx j == BD_SHOULDER_L then 0 else 1], m); for k: 0..<12 { pal[j * 12 + k] = m[k]; } }
 }
 // The left hand's rows with the bow arm out, mixed as bd_hand mixes them.
 bd_hand_out :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32) -> [12] f32 {
@@ -662,21 +702,29 @@ bd_hand_out :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32) -> [12] f32 {
   for k: 0..<12 { h[k] = b[0].hand[BD_HAND_AT_OUT + fa + k] * (1 - mix) + b[0].hand[BD_HAND_AT_OUT + fb + k] * mix; }
   return h;
 }
-#test "the bow arm hangs out on the carry's frames: the shoulder stays, the hand swings out to the left and ahead" {
+#test "the bow arm hangs out on the carry's frames: the shoulder stays, the hand swings out to the left and ahead, the elbow opens" {
   #assert bd_arm_frame(0) && bd_arm_frame(BD_FIRST[BD_RUN] + BD_FRAMES[BD_RUN] - 1) && bd_arm_frame(BD_TOTAL + BD_FIRST[BD_JUMP_LOOP]);
   #assert !bd_arm_frame(BD_FIRST[BD_SLASH]) && !bd_arm_frame(BD_FIRST[BD_SPELL] + 3) && !bd_arm_frame(BD_TOTAL + BD_FIRST[BD_JUMP_START]) && !bd_arm_frame(bd_row(false, BD_BOW, 0) / BD_ROWS);
-  // the bind pose's rows (identity): the shoulder stays, a hand 0.55 m below it swings out about 19 cm and up a little
+  // the bind pose's rows (identity), the arm straight: the shoulder stays, a hand 0.55 m below it swings
+  // out and ahead, and a straight elbow stays straight
   id := [12] f32.[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
-  q := bd_shoulder_bind(false); o := bd_arm_out(id, q);
+  q := bd_shoulder_bind(false); o := bd_turn_at(bd_arm_turn(false), q);
   sh := bd_pose_at(o, q); for k: 0..<3 { #assert abs(sh[k] - q[k]) < 0.0001; }
   h := bd_pose_at(o, [3] f32.[q[0], q[1] - 0.55, q[2]]);
-  #assert abs(h[0] - q[0] - 0.55 * sin(f32(BD_ARM_OUT))) < 0.0001 && h[1] > q[1] - 0.55;
-  #assert abs(h[2] - q[2] - 0.55 * cos(f32(BD_ARM_OUT)) * sin(f32(BD_ARM_FWD))) < 0.0001;   // and ahead
+  #assert abs(h[0] - q[0] - 0.55 * sin(f32(BD_ARM_MOVE_OUT))) < 0.0001 && h[1] > q[1] - 0.55;
+  #assert abs(h[2] - q[2] - 0.55 * cos(f32(BD_ARM_MOVE_OUT)) * sin(f32(BD_ARM_MOVE_FWD))) < 0.0001;   // and ahead
+  #assert bd_arm_still(3) && bd_arm_still(BD_TOTAL + 70) && !bd_arm_still(BD_FIRST[BD_WALK]);
+  r := bd_elbow_open(q, [3] f32.[q[0], q[1] - 0.3, q[2]], [3] f32.[q[0], q[1] - 0.55, q[2]], 0.8); #assert r[0] == 1 && r[4] == 1 && r[8] == 1;
+  // an elbow bent a right angle (the forearm ahead) opens BD_ELBOW_OPEN of the way: the hand comes down
+  e := [3] f32.[0, 1, 0]; t := bd_turn_at(bd_elbow_open([3] f32.[0, 1.3, 0], e, [3] f32.[0, 1, 0.25], f32(BD_ELBOW_OPEN)), e);
+  w := bd_pose_at(t, [3] f32.[0, 1, 0.25]); a := f32(BD_ELBOW_OPEN) * 1.5707963;
+  #assert abs(w[1] - (1 - 0.25 * sin(a))) < 0.0001 && abs(w[2] - 0.25 * cos(a)) < 0.0001 && abs(w[0]) < 0.0001;
 }
-#test "the shoulder the bow arm turns about is the rig's, both bodies" {
+#test "the shoulder, elbow and wrist the bow arm turns about are the rig's, both bodies" {
   d: [1] People; people_load(d[..]);
-  for body: 0..<2 { rig := people_rig(d[..], body == 1); p := bd_bind_at(rig.bind[BD_SHOULDER_L * 12..<BD_SHOULDER_L * 12 + 12]); q := bd_shoulder_bind(body == 1);
-    for k: 0..<3 { #assert abs(p[k] - q[k]) < 0.0002; } }
+  for body: 0..<2 { rig := people_rig(d[..], body == 1);
+    for j: 0..<3 { p := bd_bind_at(rig.bind[(BD_SHOULDER_L + j) * 12..<(BD_SHOULDER_L + j) * 12 + 12]); q := bd_arm_bind(body == 1, j);
+      for k: 0..<3 { #assert abs(p[k] - q[k]) < 0.0002; } } }
 }
 bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32, left: bool) -> [12] f32 {
   side := ifx left then 12 else 0;

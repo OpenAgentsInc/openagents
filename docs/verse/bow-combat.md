@@ -37,8 +37,9 @@ side to side, its string is in toward the body, and its back faces out, away
 from the body.
 
 Standing, the bow is not upright. Its top leans out past the shoulder and a
-little forward, the bow about 28 degrees from upright tip to tip
-(`CC_BOW_CARRY_LEAN`, `CC_BOW_CARRY_TILT`, `CC_BOW_CARRY_TURN`). The lower limb
+little forward, the bow about 28 degrees from upright tip to tip. Its string
+is turned only a little forward, so seen from in front it stays close to the
+bow (`CC_BOW_CARRY_LEAN`, `CC_BOW_CARRY_TILT`, `CC_BOW_CARRY_TURN`). The lower limb
 angles back in, in front of the knee.
 
 Walking, running and jumping, the legs swing through where the standing lower
@@ -47,14 +48,20 @@ forward and its string turned a little forward (the `CC_BOW_WALK_` values).
 The arm's swing carries it forward and back. The carry changes with the clip,
 as the bow hand's pose does (`bow_move_body`).
 
-While you carry the bow, the bow arm hangs out from the body and a little
-forward. A pose layer on the idle, walk, run and jump-loop frames turns the
-upper arm about 20 degrees out and 20 degrees forward at the shoulder, so the
-hand is about 19 cm out and 18 cm forward. The layer is `bd_arm_out` in
+While you carry the bow, a pose layer moves the bow arm (`bd_arm_layer` in
 `apps/openagents-web/fivelab-bodies.coax`, and `fivelab_arm` in the figure
-shader, for any body record flagged a bow carrier. Drawn or held in the fist,
-the bow arm is the clip's own. As you draw, the bow turns from the carry to the
-drawn hold.
+shader, for any body record flagged a bow carrier):
+
+- Standing (the idle), the elbow opens most of the way, so the arm hangs
+  nearly straight, and the arm swings about 34 degrees forward at the
+  shoulder. The fist sits in front of the thigh, about 22 cm forward, so the
+  20 cm brace clears the leg. A straight arm on this rig cannot reach
+  mid-thigh: the fist stays at about hip height.
+- On the move (walk, run and the jump loop), the arm keeps the walk's own
+  elbow and swings about 20 degrees out and 20 degrees forward.
+
+Drawn or held in the fist, the bow arm is the clip's own. As you draw, the bow
+turns from the carry to the drawn hold.
 
 Checks:
 
