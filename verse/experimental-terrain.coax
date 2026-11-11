@@ -4,6 +4,7 @@
 #load "character-glade.coax" as glade;
 #load "experimental-ground.coax" as ground;   // the GPU passes' copy of the sites and exp_height_gpu (#13132)
 #load "experimental-dungeon.coax" as dungeon;
+#load "experimental-meadow-baked.coax" as baked;   // the packed meadow ground at sampled points (#13129)
 #load "../aethyr/world/building.coax" as building;
 #load "../everglade/world/housewright.coax" as hw;
 #load "../everglade/world/town.coax" as town;
@@ -180,6 +181,20 @@ exp_height :: (x:f32,z:f32)->f32 {
  for i:0..<EXP_SITES {h=exp_level(h,exp_site(i),x,z);}
  d:=exp_castle_distance(x,z);if d<4 {t:=ifx d<=0 then 0.0f32 else d/4;t=t*t*(3-2*t);h=glade.cg_height(18,-20)*(1-t)+h*t;}
  return h;
+}
+// The meadow's ground mesh is baked into glade.pack.gz from exp_height (verse/tools/assets/meadow_pack.coax),
+// while the grass is placed from exp_height as it is today: when a site moves, the grass floats over the
+// old ground until the ground is baked again (#13129). This holds exp_height to the packed heights at
+// the sampled points (experimental-meadow-baked.coax, written from the pack). When it fails, bake again:
+//   gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
+//   coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --replace-meadow /tmp/glade.pack /tmp/glade-new.pack
+//   coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --check-meadow /tmp/glade-new.pack verse/experimental-meadow-baked.coax
+//   gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
+#test "the packed meadow ground is exp_height's at every sampled point" {
+ for i:0..<baked.EXP_MEADOW_BAKED_N {
+  x:=f32(baked.EXP_MEADOW_BAKED[i*3])/1000;z:=f32(baked.EXP_MEADOW_BAKED[i*3+1])/1000;y:=f32(baked.EXP_MEADOW_BAKED[i*3+2]+baked.EXP_MEADOW_BAKED_DROP_MM)/1000;
+  #assert abs(exp_height(x,z)-y)<0.004;
+ }
 }
 // The GPU passes read the ground from experimental-ground.coax (exp_height_gpu), which loads none of
 // this file's CPU-side modules (#13132): these checks hold its sites and its height to the table here.

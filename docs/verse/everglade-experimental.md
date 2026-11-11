@@ -294,6 +294,24 @@ coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --append-build \
 
 The append refuses a pack that already has build parts.
 
+The meadow's ground (`C glade/meadow`) is baked from `exp_height`. When a
+site moves, bake the ground again in place, check it and write the samples
+that the terrain's check reads (`verse/tools/assets/meadow_pack.coax`,
+[#13129](https://github.com/OpenAgentsInc/openagents/issues/13129)):
+
+```sh
+gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --replace-meadow /tmp/glade.pack /tmp/glade-new.pack
+coax/web/tool.sh verse/tools/assets/character_glade_pack.coax --check-meadow /tmp/glade-new.pack \
+  verse/experimental-meadow-baked.coax
+gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
+```
+
+`--check-meadow` fails when a packed ground vertex is more than 2 mm off
+`exp_height`. The check "the packed meadow ground is exp_height's at every
+sampled point" in `verse/experimental-terrain.coax` fails when a site moves
+and the ground wasn't baked again.
+
 The Archery Range realm ([spec](../../everglade/docs/archery-range-spec.md))
 draws its butts, sky faces, posts and chalk line from the same pack, as one mesh
 (`C glade/range`, built by `everglade/range/place.coax`). Append it the same way,
