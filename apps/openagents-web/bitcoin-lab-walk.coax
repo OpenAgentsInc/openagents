@@ -80,6 +80,7 @@ BitcoinWalk :: struct {
   near_at: [BW_STATIONS] f32;         // when you came to each station (its animation starts then), -100 not there
   worlds_id: int = -1;                // the finger or button on WORLDS
   worlds_box: cc.Box;
+  in_app: bool;                       // in the Everglade apps (Aethyr's page host): the app draws its own Worlds button, at the top's middle
   framed: bool;                       // the camera's first frame set: further back on an upright screen, where the stations are off to the sides
 }
 
@@ -473,6 +474,7 @@ bw_hud :: (w: [] BitcoinWalk, out: [] f32, n0: int, wd: f32, ht: f32, k: f32) ->
   s := w[0].z[..]; ui := s[0].creator[0].ui;
   t := cc.eg_tokens(); l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui;
   room := bw_clamp(wd / k - 136, 180, BW_HUD_W);   // leave WORLDS its corner on a phone
+  if w[0].in_app && wd / k >= 600 { room = bw_clamp(wd / k * 0.5 - 70, 180, BW_HUD_W); }   // clear of the app's Worlds button
   st := w[0].station; line := ifx st >= 0 then BW_LINE[st] else BW_INTRO;
   // the line, wrapped at a word to two rows when it is too wide
   cap := 8.5 * k; width := room * k - 24 * k; cut := line.count;
@@ -492,6 +494,8 @@ bw_hud :: (w: [] BitcoinWalk, out: [] f32, n0: int, wd: f32, ht: f32, k: f32) ->
   cc.hud_word_ink(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_LABEL, false, true, cc.hud_rgba(1.0, 0.62, 0.2, 1)); y += 15 * k;
   cc.hud_word(ws[..], line[0..<cut], left, y, cap, cc.HUD_TEXT_NUMBER, false);
   if rows == 2 { y += 14 * k; cc.hud_word(ws[..], line[cut + 1..<line.count], left, y, cap, cc.HUD_TEXT_NUMBER, false); }
+  s[0].zt_top = box.y1 + 8 * k;   // a phone's thumb works under the panel (everglade/zone-touch.coax)
+  if w[0].in_app { w[0].worlds_box = cc.Box.{}; return cc.hud_draw(out, n0, l[..], ws[..], 1, k); }
   // WORLDS
   q := bw_worlds(w); wb := cc.hud_box(q.x0, q.y0, q.x1, q.y1); w[0].worlds_box = q;
   cc.hud_button(l[..], t, wb, k, w[0].worlds_id != -1);
@@ -501,7 +505,8 @@ bw_hud :: (w: [] BitcoinWalk, out: [] f32, n0: int, wd: f32, ht: f32, k: f32) ->
   s[0].zt_top = box.y1 + 8 * k;   // a phone's thumb works under the panel (everglade/zone-touch.coax)
   return cc.hud_draw(out, n0, l[..], ws[..], 1, k);
 }
-bw_on_worlds :: (w: [] BitcoinWalk, x: f32, y: f32) -> bool { b := w[0].worlds_box; return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+bw_has :: (text: string, part: string) -> bool { if part.count > text.count { return false; } for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } } return false; }
+bw_on_worlds :: (w: [] BitcoinWalk, x: f32, y: f32) -> bool { if w[0].in_app { return false; } b := w[0].worlds_box; return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 bw_leave :: (w: [] BitcoinWalk) { s := w[0].z[..]; s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; }
 // A press on WORLDS: it goes when let go over it.
 bw_press :: (w: [] BitcoinWalk, x: f32, y: f32, phase: int, id: int) -> bool {
@@ -541,7 +546,7 @@ btc_pointer_buttons :: (w: [] BitcoinWalk, x: f32, y: f32, phase: int, kind: int
 btc_message :: (w: [] BitcoinWalk, kind: int, t: string) #export_c #effects(all) {
   s := w[0].z[..];
   if zone_message(s, kind, t) { return; }
-  if kind == HOST_PAGE { bw_enter(w); zone_enter(s, t); bw_staged(w, t); }
+  if kind == HOST_PAGE { bw_enter(w); zone_enter(s, t); bw_staged(w, t); w[0].in_app = bw_has(t, "ua=AethyrPageHost"); }
 }
 // On a local page, ?at=N stands you before station N (1 to 7; 8 the chain's tip) for shots and clips.
 bw_staged :: (w: [] BitcoinWalk, facts: string) {
@@ -602,4 +607,7 @@ bw_test_lab :: (w: [] BitcoinWalk) {
   #assert bw_press(w[..], 1150, 20, 0, 7) && bw_press(w[..], 1150, 20, 2, 7) && w[0].z[0].action == ACT_NAVIGATE;
   #assert cast(string) w[0].z[0].outbox[0..<w[0].z[0].out_n] == "/worlds";
   #assert !bw_press(w[..], 600, 300, 0, 8);
+  // in the apps the host draws its own Worlds button: the page's is gone and takes no press
+  #assert bw_has("tab=1\nua=AethyrPageHost/1 (macOS)", "ua=AethyrPageHost") && !bw_has("ua=Mozilla", "ua=AethyrPageHost");
+  w[0].in_app = true; #assert !bw_press(w[..], 1150, 20, 0, 9);
 }
