@@ -395,7 +395,7 @@ Engine :: struct {
   codex_auth: bool;                  // its login is on disk (~/.codex/auth.json)
   cwd: [E_FILE] u8; cwd_n: int;
   sid: [128] u8; sid_n: int;         // the conversation's session, for --resume
-  err: [2048] u8;
+  err: [2048] u8; err_n: int;     // what the CLI last wrote to stderr before it went
   // The owner's own options, used as they are in place of the desktop app's (e_own): its system
   // prompt, tools, in-process servers, hooks, permission mode, credentials, budgets, resume and fork.
   opt: [] ClOptions;
@@ -723,6 +723,7 @@ e_take :: (e: [] Engine, s: [] Session, ev: ClEvent) {
     why := "";
     if ev.kind == ClEventKind.failed { why = cl_error(e[0].q[..]); }
     tail := cl_stderr(e[0].p[..], e[0].err[..]);
+    e[0].err_n = tail.count;
     if tail.count > 0 { why = tail; }
     if why.count == 0 { why = "Claude Code stopped before answering."; }
     e_close(e);

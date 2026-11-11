@@ -36,6 +36,7 @@
 #load "../../coax/lib/tui/tui.coax";
 #load "../../coax/lib/tui/vt.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "../../psionic/lib/apple-fm.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
@@ -175,8 +176,11 @@ App :: struct {
   echo: [8192] u8; necho: int; echo_at: int; echo_next_ms: int;
   // a "$ " command
   cmd: [8192] u8; ncmd: int; cmd_h: int = -1; cmd_out: [65536] u8; ncmd_out: int; cmd_started: int;
-  // claude engine: one CLI session for the conversation
-  q: [] ClQuery; p: [] ClProcess; qline: [] u8; qarena: [] u8; qout: [] u8; scratch: [] u8;
+  // claude engine: one CLI session for the conversation, on the shared engine (coax/lib/agent/engine/claude.coax).
+  // eng starts the CLI with opt (this run's options), sends, and folds every message into ses; q and p are the
+  // engine's own query and process, for the answers and commands that are Coder's (hooks, approvals, its tools, /model).
+  eng: [] Engine; ses: [] Session; ses_pool: [] u8; opt: [1] ClOptions;
+  q: [] ClQuery; p: [] ClProcess;
   live: bool;                     // the CLI is running
   stopping: bool; stop_ms: int;   // an interrupt was sent
   provider_reset_s: int;
@@ -997,7 +1001,7 @@ cd_claude_api_key_set :: () -> bool {
 // Partial messages so the reply streams. The person's Claude Code login,
 // unless ANTHROPIC_API_KEY is set: then that key authenticates the child
 // and the login is not used.
-cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool, tool_hooks: bool, api_key: bool) {
+cd_claude_options :: (out: [] ClOptions, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool, tool_hooks: bool, api_key: bool) {
   o: [1] ClOptions;
   o[0].include_partial_messages = true;
   if tool_hooks { cl_add_hook(o[..], "PreToolUse", "", 60.0); }    // every tool call first passes the policy and the plugins' tool_call hooks
@@ -1010,25 +1014,33 @@ cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effo
   o[0].cwd = cwd;
   if model.count > 0 { o[0].model = model; }
   if !api_key { cl_remove_env(o[..], "ANTHROPIC_API_KEY"); }
-  q[0].options = o[0];
+  out[0] = o[0];
 }
 
 // Starts the CLI on the first message; later messages go to the same session.
 cd_claude_send :: (a: [] App, msg: string) {
+  e := a[0].eng; s := a[0].ses;
+  // the record holds the turn being run: the terminal has printed what came before
+  if !s[0].live { s_init(s, a[0].ses_pool); }
   if a[0].live {
-    cl_send_user(a[0].q, msg);
+    e_send_as(e, s, msg, msg);
     return;
   }
-  cd_claude_reset(a[0].q);
-  cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
-  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, a[0].pol[0].on || cd_has_hook(a, "tool_call"), a[0].api_key);
-  if a[0].nresume > 0 { a[0].q[0].options.resume = cast(string) a[0].resume[0..<a[0].nresume]; a[0].q[0].options.fork_session = true; }
-  a[0].q[0].options.mcp_servers = cd_claude_realm_tools(a);
-  a[0].npending = cd_cat(a[0].pending[..], 0, msg);
-  problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
-  if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
+  // a new CLI: this run's options are the engine's (e_own), and the message goes once initialize is answered
+  cd_claude_options(a[0].opt[..], a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, a[0].pol[0].on || cd_has_hook(a, "tool_call"), a[0].api_key);
+  if a[0].nresume > 0 { a[0].opt[0].resume = cast(string) a[0].resume[0..<a[0].nresume]; a[0].opt[0].fork_session = true; }
+  a[0].opt[0].mcp_servers = cd_claude_realm_tools(a);
+  e_own(e, a[0].opt[..]);
+  first := cast(string) msg[0..<ifx msg.count < CD_FIRST_MAX then msg.count else CD_FIRST_MAX];
+  e_send_as(e, s, first, first);
+  if !e[0].running {
+    // it did not start: the record's notice is the SDK's reason
+    cd_finish(a, END_FAILED, ifx s[0].n > 0 && s[0].parts[s[0].n - 1].kind == P_NOTICE then s_text_of(s, s[0].n - 1) else "Claude Code did not start.");
+    return;
+  }
   a[0].live = true;
 }
+CD_FIRST_MAX :: 16384;       // a CLI's first message, as before the shared engine (it was kept in a buffer this long until initialize was answered)
 
 // Realms as tools: the openagents CLI's MCP server (`openagents mcp`, apps/openagents-cli/mcp.coax),
 // so a Claude Code session in Coder makes and edits realms with the CLI's own checks and key. Its
@@ -1049,9 +1061,8 @@ cd_claude_realm_tools :: (a: [] App) -> string {
 
 cd_claude_close :: (a: [] App) {
   if !a[0].live { return; }
-  x := cl_end_input(a[0].q, a[0].p);
-  k := cl_kill(a[0].p);
-  cl_close(a[0].p);
+  if a[0].eng[0].running { x := cl_end_input(a[0].q, a[0].p); k := cl_kill(a[0].p); }
+  e_close(a[0].eng);
   a[0].live = false;
 }
 
@@ -1189,17 +1200,17 @@ cd_claude_poll :: (a: [] App) -> bool {
   if !a[0].live || a[0].ask { return false; }
   q := a[0].q; p := a[0].p;
   changed := false;
+  one: [1] ClEvent;
   for guard: 0..<64 {
-    ev := cl_poll(q, p, 0);
+    // the engine's part of each event is done when it comes back: the owed message sent, a message folded into the record, a dead CLI closed
+    e_poll(a[0].eng, a[0].ses, one[..]);
+    ev := one[0];
     if ev.kind == ClEventKind.idle { break; }
     changed = true;
-    if ev.kind == ClEventKind.initialized {
-      cl_send_user(q, cast(string) a[0].pending[0..<a[0].npending]);
-      continue;
-    }
+    if ev.kind == ClEventKind.initialized { continue; }
     if ev.kind == ClEventKind.end || ev.kind == ClEventKind.failed {
-      eb: [2048] u8; why := cl_error(q);
-      if why.count == 0 { why = cl_stderr(p, eb[..]); }
+      why := cl_error(q);
+      if why.count == 0 { why = e_str(a[0].eng[0].err[..], a[0].eng[0].err_n); }
       if why.count == 0 { why = "Claude Code exited."; }
       wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
       cd_claude_close(a);
@@ -1238,9 +1249,9 @@ cd_claude_answer :: (a: [] App, c: int) {
   if a[0].engine == ENGINE_CURSOR { cd_cursor_answer(a, c); }
   else if a[0].engine == ENGINE_CODEX { cd_codex_answer(a, c); }
   else if cd_is_micro(a[0].engine) { cd_micro_answer(a, c); }
-  else if c == 'y' || c == 'Y' { cl_allow(a[0].q, cast(string) a[0].ask_input[0..<a[0].nask_input], ""); }
-  else if c == 'a' || c == 'A' { cl_allow(a[0].q, cast(string) a[0].ask_input[0..<a[0].nask_input], cast(string) a[0].ask_perm[0..<a[0].nask_perm]); }
-  else { cl_deny(a[0].q, "The person denied this.", false); }
+  else if c == 'y' || c == 'Y' { e_allow(a[0].eng, cast(string) a[0].ask_input[0..<a[0].nask_input], ""); }
+  else if c == 'a' || c == 'A' { e_allow(a[0].eng, cast(string) a[0].ask_input[0..<a[0].nask_input], cast(string) a[0].ask_perm[0..<a[0].nask_perm]); }
+  else { e_deny(a[0].eng, "The person denied this.", false); }
   ab: [1100] u8; an := cd_cat(ab[..], 0, "  ");
   an = cd_cat(ab[..], an, cast(string) a[0].ask_text[0..<a[0].nask]);
   an = cd_cat(ab[..], an, ifx c == 'y' || c == 'Y' then " yes" else ifx c == 'a' || c == 'A' then " yes, from now on" else " no");
@@ -1255,12 +1266,12 @@ cd_stop :: (a: [] App) {
   if a[0].engine == ENGINE_CODEX { cd_codex_stop(a); return; }
   if a[0].engine == ENGINE_CURSOR { cd_cursor_stop(a); return; }
   if cd_is_micro(a[0].engine) { cd_micro_stop(a); return; }
-  if a[0].ask { cl_deny(a[0].q, "The person stopped the turn.", true); a[0].ask = false; }
+  if a[0].ask { e_deny(a[0].eng, "The person stopped the turn.", true); a[0].ask = false; }
   if a[0].live && !a[0].stopping {
     a[0].stopping = true;
-    x := cl_interrupt(a[0].q);
+    e_stop(a[0].eng, a[0].ses);       // the interrupt; a CLI still starting is closed instead
     a[0].stop_ms = cd_now(a);
-    return;           // the turn ends with its result
+    if a[0].eng[0].running { return; }           // the turn ends with its result
   }
   // asked twice, or no answer: end the session; the next message starts a new one
   cd_claude_close(a);
@@ -2634,7 +2645,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if (verb == "run" || verb == "fork") && args_has(args, "--detach") { return cd_detach(args, json); }
   if verb.count > 0 && verb != "run" && verb != "fork" && verb != "resume" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
   a_b: [1] App; a := a_b[..];
-  q: [1] ClQuery; p: [1] ClProcess;
+  eng_b: [1] Engine; ses_b: [1] Session; ses_pool_b: [1048576] u8; prompt_b: [262144] u8;
   dft: [1] DfTable; a[0].df_table = dft[..];
   qline_b: [CL_LINE_MAX] u8; qarena_b: [CL_LINE_MAX] u8; qout_b: [262144] u8; scratch_b: [196608] u8;
   cx_b: [1] CxClient; cxp_b: [1] ClProcess; cxl_b: [CL_LINE_MAX] u8; cxa_b: [262144] u8; cxo_b: [262144] u8;
@@ -2645,7 +2656,10 @@ tool_main :: () -> int #export_c #effects(all) {
   a[0].cup[0].handle = -1;
   mcl_b: [CL_LINE_MAX] u8; mca_b: [262144] u8;
   a[0].mc_line = mcl_b[..]; a[0].mc_ar[0] = ClArena.{buf = mca_b[..]};
-  a[0].q = q[..]; a[0].p = p[..]; a[0].qline = qline_b[..]; a[0].qarena = qarena_b[..]; a[0].qout = qout_b[..]; a[0].scratch = scratch_b[..];
+  a[0].eng = eng_b[..]; a[0].ses = ses_b[..]; a[0].ses_pool = ses_pool_b[..];
+  e_attach(a[0].eng, qline_b[..], qarena_b[..], qout_b[..], scratch_b[..], prompt_b[..]);
+  s_init(a[0].ses, a[0].ses_pool);
+  a[0].q = a[0].eng[0].q[..]; a[0].p = a[0].eng[0].p[..];
   a[0].o[0].b = a[0].ob[..];
   // the palette: --theme, else CODER_THEME, else none when NO_COLOR is set, else dark
   thb: [32] u8; nc: [8] u8;
@@ -2930,12 +2944,12 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert !cd_claude_api_key("  \t");
   #assert cd_claude_title(false) == "Claude Code" && cd_claude_title(true) == "Claude API";
   q: [1] ClQuery;
-  cd_claude_options(q[..], "/tmp", "", false, "", false, false, false);
-  #assert q[0].options.env_remove_count == 1 && q[0].options.env_remove[0] == "ANTHROPIC_API_KEY";
-  #assert q[0].options.include_partial_messages;
-  cd_claude_reset(q[..]);
-  cd_claude_options(q[..], "/tmp", "", false, "", false, false, true);
-  #assert q[0].options.env_remove_count == 0 && q[0].options.include_partial_messages;
+  o: [1] ClOptions;
+  cd_claude_options(o[..], "/tmp", "", false, "", false, false, false);
+  #assert o[0].env_remove_count == 1 && o[0].env_remove[0] == "ANTHROPIC_API_KEY";
+  #assert o[0].include_partial_messages;
+  cd_claude_options(o[..], "/tmp", "", false, "", false, false, true);
+  #assert o[0].env_remove_count == 0 && o[0].include_partial_messages;
   a: [1] App;
   #assert cd_usage_of(a[..], ENGINE_CLAUDE) == 0 && cd_usage_of(a[..], ENGINE_CODEX) == 1;
   a[0].api_key = true;
