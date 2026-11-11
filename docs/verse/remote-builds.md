@@ -255,7 +255,7 @@ of thousands of reads and writes: under $2 a month in all.
 | Stop | itself, after 15 idle minutes (no slot held); spot preemption stops it too; 12 hours of running is the backstop |
 
 `remote.sh` uses a running host with a free slot. With none, it starts a
-stopped host, or creates the next one up to `OA_REMOTE_MAX_HOSTS` (8). A new
+stopped host, or creates the next one up to `OA_REMOTE_MAX_HOSTS` (16). A new
 host's first boot installs Nix, Bun and a blob-less clone (about 4 minutes);
 a stopped host starts in about a minute. Jobs on a full host wait for a slot
 there.
