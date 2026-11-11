@@ -101,6 +101,17 @@ which colour a component wears is its skin's to say.
 - **The tree**: every element on screen in one table, with its role, label,
   state and action. Drawing, hit tests, focus order and accessibility read
   the same rows. This is `aethyr/ui/tree.coax`, moved.
+- **The element table** (`core/elements.coax`, GitHub #13156): the first
+  part of the tree. Every row a component draws that a person presses,
+  types into or reads has a stable id made of its part and its name
+  (`composer.send`, `session.2`, `message.4.7`), never an index that moves
+  when another row comes or goes; a repeated id is numbered (`-2`, `-3`).
+  The chat's desk builds it from where the last frame laid its rows out
+  (`zeron/desk.coax` `dsk_elements`). `coax drive`'s `tree` prints it in the
+  layout trace's format (`ID ROLE "LABEL" at X Y size WxH`, logical px), and
+  `tap ID`, `type ID TEXT` and `drag ID DX,DY` press a row by its id, so a
+  check names what it presses and never a coordinate. Focus order and
+  accessibility do not read it yet.
 - **Actions**: a component never calls the host. It writes what it wants
   (send, stop, open a file picker, copy) to an outbox, and the app takes it.
 
@@ -289,6 +300,13 @@ realm's faces.
 
 - **Rules**: each file's `#test` and `#forall` checks. Core and layout need
   no GPU, so they run anywhere in seconds.
+- **Text, row by row, before pictures** (GitHub #13156): an app's check
+  writes each case's element table (`--tree`) and compares it line by line
+  with its golden (`goldens/NAME.tree`: every row's id, role, label and box)
+  before it compares the picture. A changed label or a moved button fails as
+  the row that changed, on every host, without anyone looking at a picture.
+  The OpenAgents app's checks (`check.sh`, `linux/check.coax`) do this; the
+  gallery does not yet.
 - **Pictures**: the gallery draws each component in each skin at fixed
   sizes; `gallery/check.coax` compares them with goldens. One golden per
   component, skin and platform (text rasterizes differently on each).

@@ -13,8 +13,9 @@
 //   Everglade [--chat]             opens the window (--chat: with the chat open in the Workshop)
 // The chat (Chat in the Everglade menu, Command-J) is the OpenAgents chat (apps/openagents-desktop/linux/
 // chat.h), a panel on the Workshop's left drawn with the shared components; its sessions are kept in
-// ~/Library/Application Support/Everglade/chat/. A shot's --chat-demo opens it on the demo transcript, and
-// --do's tap, text, key and wait reach the list, the Workshop and the chat too, in points.
+// ~/Library/Application Support/Everglade/chat/. A shot's --chat-demo opens it on the demo transcript.
+// Outside a realm --do's steps are coax drive operations (apps/shared/host/drive.c): `chat ; type composer
+// Hello ; tree`, by the chat's element ids; --drive SOCKET answers them from `coax/web/tool.sh drive native`.
 //   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS] [--scene N]
 //       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits;
 //       without --scene it is the list of worlds. In a realm (--scene 1, 3 or 4) nothing leaves this
@@ -478,19 +479,14 @@ final class Workshop {
     for step in doSteps.split(separator: ";") {
       let part = step.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
       guard let verb = part.first else { continue }
-      // Outside a realm (the list, the Workshop and its chat) a step goes in as the window's input does, in points.
+      // Outside a realm (the list, the Workshop and its chat) a step is a coax drive operation, answered by the
+      // shared host (apps/shared/host/drive.c) and the chat (chat.h oa_chat_drive): `chat`, `tree`,
+      // `type composer TEXT`, `tap ID`, `clock +MS`, `clock settle`. Its answer goes to stdout.
       guard let page, inRealm else {
-        let s = Float(shotScale)
-        if verb == "wait", part.count > 1, let t = Float(part[1]) { run(t) }
-        else if verb == "tap", part.count > 1, case let xy = part[1].split(separator: ",").compactMap({ Float($0) }), xy.count == 2 {
-          pointer(xy[0] * s, xy[1] * s, 1); run(1.0 / 60); pointer(xy[0] * s, xy[1] * s, 0); run(1.0 / 60); pointer(xy[0] * s, xy[1] * s, 2); run(0.1)
-        }
-        else if verb == "text", part.count > 1 { text(part[1]); run(0.1) }
-        else if verb == "key", part.count > 1 {
-          let named: [String: Int32] = ["escape": -1, "enter": -2, "backspace": -3, "left": -4, "right": -5, "up": -6, "down": -7, "tab": -15]
-          let code = named[part[1]] ?? Int32(part[1].unicodeScalars.first?.value ?? 0)
-          _ = key(code, 0, true); run(part.count > 2 ? Float(part[2]) ?? 0.1 : 0.1); _ = key(code, 0, false); run(1.0 / 60)
-        }
+        var said = [CChar](repeating: 0, count: 65536)
+        let n = Int(ui_drive(host, step.trimmingCharacters(in: .whitespaces), &said, Int32(said.count)))
+        if n > 0 { print(String(decoding: said[0..<n].map { UInt8(bitPattern: $0) }, as: UTF8.self), terminator: said[n - 1] == 10 ? "" : "\n") }
+        run(1.0 / 60)
         continue
       }
       if verb == "wait", part.count > 1, let t = Float(part[1]) { run(t) }
@@ -651,6 +647,13 @@ final class Workshop {
     if let page, inRealm { heard(); page.text(typed); syncRealm() }
   }
   // While the reply or the realm's text box has the keys, AppKit's typing (and its input method) reaches text.
+  // coax drive's operations for the Workshop: `chat` opens the chat's panel, the rest are the chat's (chat.h).
+  func drive(_ op: String, _ out: UnsafeMutablePointer<CChar>, _ cap: Int32) -> Int32 {
+    if op == "chat" { openChat(); return 0 }
+    guard let chat else { return -1 }
+    return oa_chat_drive(chat, op, out, cap)
+  }
+  func busy() -> Bool { chat.map { oa_chat_busy($0) != 0 } ?? false }
   func wantsText() -> Bool { (chatFocus && chatOn && oa_chat_wants_text(chat) != 0) || (nxp_wants_keys(next) == 1 && !inRealm) || (inRealm && page?.wantsText() == true) }
   func focus(_ on: Bool) {
     if !on { _ = eg_key(state, -1, 1); hold(false) }
@@ -705,12 +708,22 @@ enum Everglade {
       let p = String(cString: path)
       MainActor.assumeIsolated { workshop(u).file(request, p) }
     }
+    app.drive = { u, op, out, cap in
+      guard let op, let out else { return -1 }
+      let o = String(cString: op)
+      return MainActor.assumeIsolated { workshop(u).drive(o, out, cap) }
+    }
+    app.busy = { u in MainActor.assumeIsolated { workshop(u).busy() ? 1 : 0 } }
     app.modifier_keys = 1
     guard let h = ui_open(&app, shotAt != nil ? 1 : 0) else {
       FileHandle.standardError.write(Data("Everglade: the window did not open. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       exit(1)
     }
     w.attach(h)
+    // --drive SOCKET: coax drive (`coax/web/tool.sh drive native SOCKET OP...`), between frames in the window
+    if let d = args.firstIndex(of: "--drive"), d + 1 < args.count, ui_drive_listen(h, args[d + 1]) == 0 {
+      FileHandle.standardError.write(Data("Everglade: could not listen on \(args[d + 1])\n".utf8)); exit(1)
+    }
     if let path = shotAt {
       var width = 2640, height = 1760, seconds: Float = 2
       if let s = args.firstIndex(of: "--size"), s + 1 < args.count {

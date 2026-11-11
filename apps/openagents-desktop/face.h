@@ -90,6 +90,7 @@ void zr_demo(void *state);
 void zr_new_chat(void *state);
 void zr_choose(void *state, int32_t which, int32_t index);
 int32_t zr_live(void *state);
+int32_t zr_busy(void *state);   // a turn is working, not waiting on the user
 int32_t zr_take_action(void *state);
 void zr_quit(void *state);
 // The desk (zeron/desk.coax, zeron-face.c): the sessions, sidebar and tabs.
@@ -169,3 +170,6 @@ int32_t zr_dictation_parts(void *state);
 int32_t zr_dictation_focus(int32_t active, int32_t key);
 
 int32_t dsk_dictation_point(void *desk, float *out);
+// coax drive (components/core/elements.coax): the desk's rows by id as text, and one row's box (logical px x, y, w, h).
+int32_t dsk_tree(void *desk, uint8_t *out, int32_t cap);
+int32_t dsk_box(void *desk, const char *id, float *out);

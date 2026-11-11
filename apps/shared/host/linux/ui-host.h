@@ -73,6 +73,12 @@ typedef struct {
   int (*event)(void *user, void *native);
   // A window made but never shown: no Dock icon, no menu bar, never key (a check's; the Mac's).
   int hidden;
+  // coax drive (apps/shared/host/drive.c): an operation the host does not answer itself (`tree`,
+  // `tap ID`, `type ID TEXT`, the app's own), its answer written to out (at most cap bytes): the
+  // answer's length, or -1 for an operation the app does not know.
+  int (*drive)(void *user, const char *op, char *out, int cap);
+  // 1 while something is still coming (an engine's turn, a model loading): `clock settle` steps until 0.
+  int (*busy)(void *user);
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,
@@ -109,4 +115,16 @@ int ui_mods(UiHost *h);
 int ui_focused(UiHost *h);
 float ui_dpr(UiHost *h);
 void ui_close(UiHost *h);
+
+// ---- coax drive (apps/shared/host/drive.c; docs/research/exact/04-apps-audit-2026-11-10.md)
+// The agent clock: on, a frame gets no time of its own and only `clock +MS` and `clock settle` move it.
+void ui_agent_clock(UiHost *h, int on);
+// With the agent clock, `clock +MS` also waits MS of real time (for a recorder that runs on the wall clock).
+void ui_real_time(UiHost *h, int on);
+// One operation, answered as the socket would answer it: the answer's length in out (at most cap bytes).
+int ui_drive(UiHost *h, const char *op, char *out, int cap);
+// Answer coax drive on a Unix socket at path: in a window between frames, offscreen in ui_drive_serve. 0 failed.
+int ui_drive_listen(UiHost *h, const char *path);
+// Offscreen: answer the socket until the driver says quit. 0 if there is no socket.
+int ui_drive_serve(UiHost *h);
 #endif

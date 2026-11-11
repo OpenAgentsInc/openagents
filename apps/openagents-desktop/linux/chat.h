@@ -49,6 +49,15 @@ int oa_chat_wants_text(OaChat *c);
 void oa_chat_file(OaChat *c, int request, const char *path);   // a file chosen, dropped or pasted (UiApp.file)
 int oa_chat_live(OaChat *c);                         // the shown chat's turn is running
 void oa_chat_close(OaChat *c);                       // the sessions written, dictation and the room closed
+// coax drive (apps/shared/host/drive.c, UiApp.drive): one of the chat's operations, its answer in out (at most
+// cap bytes): the answer's length, or -1 for an operation it does not know. Targets are the element table's ids
+// (`tree`):   tree | tap ID [CLICKS] | shift-tap ID | hover ID | drag ID DX,DY | type ID TEXT | type ID key CHORD |
+//   type - TEXT | key CHORD | wheel DY | send TEXT | newchat | fixture open|closed|table | sidebar | room | closetab |
+//   folder PATH | attach PATH | mode|model|effort|access NAME | plan on|off | open model|access | answer allow|deny |
+//   stop | scroll PX | dictation on|off|down|up|mousedown|mouseup|cancel|feed FILE | state status|last|desk|draft|dictation
+int oa_chat_drive(OaChat *c, const char *op, char *out, int cap);
+// 1 while something is coming: a turn in any session, dictation's model loading, a request's words (UiApp.busy).
+int oa_chat_busy(OaChat *c);
 // --mcp-room SOCKET AGENT: the room's MCP server, which Codex starts as this program again.
 int oa_chat_mcp_room(const char *path, int agent);
 #endif

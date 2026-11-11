@@ -1,0 +1,16 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "What is two plus two?" at 8 111 size 240x29
+session.2 row "Review the tab bar" at 8 182 size 240x29
+sidebar.edge region "" at 252 0 size 8x880
+tab.1 tab "What is two plus two?" at 264 5 size 200x28
+tab.2 tab "Review the tab bar" at 468 5 size 200x28
+transcript region "" at 256 38 size 1064x729
+message.1.2 item "What is two plus two?" at 256 409 size 1064x42
+message.2.3 item "Answered by default: two plus two is four, and the sum stays fou" at 256 499 size 1064x22
+message.3.4 item "One more?" at 256 569 size 1064x42
+message.4.5 item "Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answere" at 256 659 size 1064x44
+composer field "Do anything…" at 420 791 size 736x49
+composer.send button "Send" at 1119 802 size 28x28
+composer.model button "Claude" at 1005 800 size 106x32
+composer.access button "Full access" at 918 800 size 83x32
+composer.attach button "Attach" at 429 802 size 28x28

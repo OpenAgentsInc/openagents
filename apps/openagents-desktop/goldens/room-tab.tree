@@ -1,0 +1,7 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "@Codex 1 the tests pass on main" at 8 111 size 240x29
+session.2 row "Note from Claude 1: the tests pass on main" at 8 182 size 240x29
+sidebar.edge region "" at 252 0 size 8x880
+tab.room tab "ROOM" at 1255 5 size 57x28
+tab.1 tab "@Codex 1 the tests pass on main" at 264 5 size 200x28
+tab.2 tab "Note from Claude 1: the tests pass on main" at 468 5 size 200x28

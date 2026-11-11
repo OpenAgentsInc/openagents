@@ -1,0 +1,15 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "@Codex 1 the tests pass on main" at 8 111 size 240x29
+session.2 row "Note from Claude 1: the tests pass on main" at 8 182 size 240x29
+sidebar.edge region "" at 252 0 size 8x880
+tab.room tab "ROOM" at 1241 5 size 71x28
+tab.1 tab "@Codex 1 the tests pass on main" at 264 5 size 200x28
+tab.2 tab "Note from Claude 1: the tests pass on main" at 468 5 size 200x28
+transcript region "" at 256 38 size 1064x729
+message.1.2 item "Note from Claude 1: the tests pass on main  Ask from Claude 1 (y" at 256 547 size 1064x86
+message.2.3 item "Review: the diff renames a to b; it reads well. (124 chars read)" at 256 681 size 1064x22
+composer field "Do anything…" at 420 791 size 736x49
+composer.send button "Send" at 1119 802 size 28x28
+composer.model button "GPT-6.1-Sol" at 980 800 size 131x32
+composer.access button "Full access" at 893 800 size 83x32
+composer.attach button "Attach" at 429 802 size 28x28

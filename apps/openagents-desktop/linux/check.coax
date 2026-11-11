@@ -1,14 +1,15 @@
 // The Linux app's checks (docs/apps/2026-11-10-apps-roadmap.md Step 1, GitHub #13153): run
 // build/linux/OpenAgents offscreen for each case, compare what it prints with what the case
-// expects, and compare its picture with the golden in goldens/linux/. Nothing reaches Claude
+// expects, then its element table (--tree) row by row with goldens/linux/NAME.tree, then its
+// picture with goldens/linux/NAME.png. Nothing reaches Claude
 // Code, Codex or Psionic: a case is the demo conversation, an empty home with no claude on
 // PATH, or the stand-in Claude Code and Codex the Mac's checks use (zeron/fixtures/),
 // started through python3 or bash from PATH, since NixOS has neither /usr/bin/python3 nor /bin/bash.
 //   apps/openagents-desktop/linux/build.sh                              first
 //   coax/web/tool.sh apps/openagents-desktop/linux/check.coax           from the repo root
 //   coax/web/tool.sh apps/openagents-desktop/linux/check.coax --update  rewrite the goldens (look at them before committing)
-// The steps are the app's own --do steps. docs/research/exact/04-apps-audit-2026-11-10.md says
-// they should become `coax drive` operations; these cases move with them.
+// The steps are coax drive operations (apps/shared/host/drive.c, linux/chat.h oa_chat_drive), run by
+// --do on the agent clock: `clock settle` waits for an engine's answer, never a fixed real-time sleep.
 //
 // The dictation cases never open the microphone and play no sound. Most use the app's
 // --dictation-fixture, which takes a recorded clip's samples (psionic/fixtures/parakeet/) on its
@@ -40,7 +41,7 @@ LC_STAND_IN :: 1; LC_PARAKEET :: 2; LC_RECORDER :: 3; LC_RECORDER_PARAKEET :: 4;
 // The stand-in recorder: 2.5 s of silence, then the clip. A case presses the key a second in and holds it past the clip's end.
 LC_RECORDER_TOOL :: "apps/openagents-desktop/tests/recorder-stand-in.coax";
 LC_LEAD :: "2500";
-LC_HOLD :: "newchat ; type Please inspect ; dictation on ; waitdictationready 60 ; wait 1 ; dictation down ; wait 5.5 ; dictation up ; waitdictation 15 ; draft ; dictation state";
+LC_HOLD :: "newchat ; type - Please inspect ; dictation on ; clock settle within 60000 ; clock +1000 ; dictation down ; clock +5500 ; dictation up ; clock settle within 15000 ; state draft ; state dictation";
 
 // A case's engine: "demo" (the demo conversation), "" (an empty home with no Claude Code on PATH), or a
 // folder of zeron/fixtures/ whose stand-in claude and codex are on PATH. In its steps `@H` is the case's
@@ -55,23 +56,23 @@ LC_CASES :: [24] LcCase.[
   LcCase.{name = "sidebar-closed", size = "1320,880", engine = "demo", steps = "fixture open ; sidebar", expect = "", picture = true, settings = false},
   // the chat set in the everglade skin (components/spec.md Phase 4): the same demo, every component in Everglade's roles
   LcCase.{name = "chat-everglade", size = "1320,880", engine = "demo", steps = "fixture open", expect = "", picture = true, settings = false, skin = "everglade"},
-  LcCase.{name = "claude-missing", size = "1320,880", engine = "", steps = "wait 2 ; type Hello from Coax", expect = "", picture = true, settings = false},
-  LcCase.{name = "attach", size = "1320,880", engine = "", steps = "wait 2 ; attach @H/work/notes.txt ; attach @H/work/missing.bin ; type see the file", expect = "", picture = true, settings = false},
-  LcCase.{name = "turn", size = "1320,880", engine = "stream", steps = "wait 1 ; send What is two plus two? ; waitidle 10 ; last", expect = "last: Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = false},
-  LcCase.{name = "approval-allow", size = "1320,880", engine = "asks", steps = "wait 1 ; access supervised ; send list the files ; wait 3 ; answer allow ; waitidle 10 ; last", expect = "last: Allowed: ls found a.txt and b.txt.", picture = false, settings = false},
-  LcCase.{name = "approval-deny", size = "1320,880", engine = "asks", steps = "wait 1 ; access supervised ; send list the files ; wait 3 ; answer deny ; waitidle 10 ; last", expect = "last: Refused: The user denied this.", picture = false, settings = false},
-  LcCase.{name = "room-ask", size = "1320,880", engine = "room", steps = "wait 1 ; folder @H/work/zeron ; mode codex ; wait 1 ; keyevent cmd+1 ; send Ask Codex to review the diff ; waitidle 15 ; wait 1 ; last", expect = "last: Codex reviewed it: Review: the diff renames a to b; it reads well. (80 chars read)", picture = false, settings = false},
-  LcCase.{name = "room-codex-asks", size = "1320,880", engine = "room", steps = "wait 1 ; folder @H/work/zeron ; mode codex ; wait 1 ; send Ask Claude whether the build is green ; waitidle 20 ; wait 1 ; last", expect = "last: Claude says: The build is green. (tools: agents_list, ask_agent, tell_agent, room_read)", picture = false, settings = false},
-  LcCase.{name = "store-quit", size = "1320,880", engine = "stream", steps = "wait 1 ; send What is two plus two? ; waitidle 10 ; desk", expect = "desk: active=0 tabs=0 sessions=1 collapsed=0", picture = false, settings = true},
-  LcCase.{name = "store-reopen", size = "1320,880", engine = "stream", steps = "wait 1 ; send One more? ; waitidle 10 ; last", expect = "last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = true},
-  LcCase.{name = "dictation-listening", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation down ; dictation feed @P", expect = "", picture = true, settings = false, dictation = LC_STAND_IN},
-  LcCase.{name = "dictation-key", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation down ; dictation feed @P ; dictation up ; waitdictation 15 ; draft ; key cmd+z ; draft", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndraft: Please inspect\ndraft-state: sent=0 parts=0", picture = false, settings = false, dictation = LC_STAND_IN},
-  LcCase.{name = "dictation-mouse", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation mousedown ; dictation feed @P ; dictation mouseup ; waitdictation 15 ; draft ; dictation state", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=5 samples=0", picture = false, settings = false, dictation = LC_STAND_IN},
-  LcCase.{name = "dictation-tap", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 10 ; dictation down ; dictation up ; waitdictation 5 ; draft ; dictation state", expect = "draft: Please inspect\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=1 samples=0", picture = false, settings = false, dictation = LC_STAND_IN},
-  LcCase.{name = "dictation-off", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation down ; dictation feed @P ; dictation up ; draft ; dictation state", expect = "draft: Please inspect\ndraft-state: sent=0 parts=0\ndictation: phase=0 outcome=0 samples=0\ndictation-setting: enabled=0", picture = false, settings = false, dictation = LC_STAND_IN},
-  LcCase.{name = "dictation-saved", size = "1320,880", engine = "stream", steps = "dictation state ; dictation on ; waitdictationready 10 ; dictation state", expect = "dictation-setting: enabled=0\ndictation: phase=1 outcome=0 samples=0\ndictation-setting: enabled=1", picture = false, settings = true, dictation = LC_STAND_IN},
-  LcCase.{name = "dictation-restored", size = "1320,880", engine = "stream", steps = "waitdictationready 10 ; dictation state ; type Please inspect ; dictation down ; dictation feed @P ; dictation up ; waitdictation 15 ; draft", expect = "dictation: phase=1 outcome=0 samples=0\ndictation-setting: enabled=1\ndraft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0", picture = false, settings = true, dictation = LC_STAND_IN},
-  LcCase.{name = "dictation-parakeet", size = "1320,880", engine = "demo", steps = "newchat ; type Please inspect ; dictation on ; waitdictationready 60 ; dictation down ; dictation feed @P ; dictation up ; waitdictation 15 ; draft ; key cmd+z ; draft ; dictation feed @Q ; dictation mousedown ; dictation feed @P ; dictation mouseup ; waitdictation 15 ; draft", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndraft: Please inspect\ndraft-state: sent=0 parts=0\ndraft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0", picture = false, settings = false, dictation = LC_PARAKEET},
+  LcCase.{name = "claude-missing", size = "1320,880", engine = "", steps = "clock settle ; type - Hello from Coax", expect = "", picture = true, settings = false},
+  LcCase.{name = "attach", size = "1320,880", engine = "", steps = "clock settle ; attach @H/work/notes.txt ; attach @H/work/missing.bin ; type - see the file", expect = "", picture = true, settings = false},
+  LcCase.{name = "turn", size = "1320,880", engine = "stream", steps = "clock settle ; send What is two plus two? ; clock settle within 10000 ; state last", expect = "last: Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = false},
+  LcCase.{name = "approval-allow", size = "1320,880", engine = "asks", steps = "clock settle ; access supervised ; send list the files ; clock settle ; answer allow ; clock settle within 10000 ; state last", expect = "last: Allowed: ls found a.txt and b.txt.", picture = false, settings = false},
+  LcCase.{name = "approval-deny", size = "1320,880", engine = "asks", steps = "clock settle ; access supervised ; send list the files ; clock settle ; answer deny ; clock settle within 10000 ; state last", expect = "last: Refused: The user denied this.", picture = false, settings = false},
+  LcCase.{name = "room-ask", size = "1320,880", engine = "room", steps = "clock settle ; folder @H/work/zeron ; mode codex ; clock settle ; key cmd+1 ; send Ask Codex to review the diff ; clock settle within 15000 ; clock settle ; state last", expect = "last: Codex reviewed it: Review: the diff renames a to b; it reads well. (80 chars read)", picture = false, settings = false},
+  LcCase.{name = "room-codex-asks", size = "1320,880", engine = "room", steps = "clock settle ; folder @H/work/zeron ; mode codex ; clock settle ; send Ask Claude whether the build is green ; clock settle within 20000 ; clock settle ; state last", expect = "last: Claude says: The build is green. (tools: agents_list, ask_agent, tell_agent, room_read)", picture = false, settings = false},
+  LcCase.{name = "store-quit", size = "1320,880", engine = "stream", steps = "clock settle ; send What is two plus two? ; clock settle within 10000 ; state desk", expect = "desk: active=0 tabs=0 sessions=1 collapsed=0", picture = false, settings = true},
+  LcCase.{name = "store-reopen", size = "1320,880", engine = "stream", steps = "clock settle ; send One more? ; clock settle within 10000 ; state last", expect = "last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.", picture = false, settings = true},
+  LcCase.{name = "dictation-listening", size = "1320,880", engine = "demo", steps = "newchat ; type - Please inspect ; dictation on ; clock settle within 10000 ; dictation down ; dictation feed @P", expect = "", picture = true, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-key", size = "1320,880", engine = "demo", steps = "newchat ; type - Please inspect ; dictation on ; clock settle within 10000 ; dictation down ; dictation feed @P ; dictation up ; clock settle within 15000 ; state draft ; key cmd+z ; state draft", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndraft: Please inspect\ndraft-state: sent=0 parts=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-mouse", size = "1320,880", engine = "demo", steps = "newchat ; type - Please inspect ; dictation on ; clock settle within 10000 ; dictation mousedown ; dictation feed @P ; dictation mouseup ; clock settle within 15000 ; state draft ; state dictation", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=5 samples=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-tap", size = "1320,880", engine = "demo", steps = "newchat ; type - Please inspect ; dictation on ; clock settle within 10000 ; dictation down ; dictation up ; clock settle within 5000 ; state draft ; state dictation", expect = "draft: Please inspect\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=1 samples=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-off", size = "1320,880", engine = "demo", steps = "newchat ; type - Please inspect ; dictation down ; dictation feed @P ; dictation up ; state draft ; state dictation", expect = "draft: Please inspect\ndraft-state: sent=0 parts=0\ndictation: phase=0 outcome=0 samples=0\ndictation-setting: enabled=0", picture = false, settings = false, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-saved", size = "1320,880", engine = "stream", steps = "state dictation ; dictation on ; clock settle within 10000 ; state dictation", expect = "dictation-setting: enabled=0\ndictation: phase=1 outcome=0 samples=0\ndictation-setting: enabled=1", picture = false, settings = true, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-restored", size = "1320,880", engine = "stream", steps = "clock settle within 10000 ; state dictation ; type - Please inspect ; dictation down ; dictation feed @P ; dictation up ; clock settle within 15000 ; state draft", expect = "dictation: phase=1 outcome=0 samples=0\ndictation-setting: enabled=1\ndraft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0", picture = false, settings = true, dictation = LC_STAND_IN},
+  LcCase.{name = "dictation-parakeet", size = "1320,880", engine = "demo", steps = "newchat ; type - Please inspect ; dictation on ; clock settle within 60000 ; dictation down ; dictation feed @P ; dictation up ; clock settle within 15000 ; state draft ; key cmd+z ; state draft ; dictation feed @Q ; dictation mousedown ; dictation feed @P ; dictation mouseup ; clock settle within 15000 ; state draft", expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndraft: Please inspect\ndraft-state: sent=0 parts=0\ndraft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0", picture = false, settings = false, dictation = LC_PARAKEET},
   LcCase.{name = "dictation-recorder", size = "1320,880", engine = "demo", steps = LC_HOLD, expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=5 samples=0", picture = false, settings = false, dictation = LC_RECORDER},
   LcCase.{name = "dictation-recorder-parakeet", size = "1320,880", engine = "demo", steps = LC_HOLD, expect = "draft: Please inspect I am convinced of what I say, said the Count.\ndraft-state: sent=0 parts=0\ndictation: phase=1 outcome=5 samples=0", picture = false, settings = false, dictation = LC_RECORDER_PARAKEET}
 ];
@@ -136,6 +137,42 @@ lc_differ :: (line: string) -> int {
   #assert lc_has("last: ok", "ok") && lc_has("abc", "") && !lc_has("ab", "abc") && !lc_has("last: no", "ok");
 }
 
+// text with every `from` as `to` (a case's home as ~, so a tree reads the same on every machine).
+lc_replace :: (text: string, from: string, to: string, b: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], b); i := 0; last := 0;
+  while from.count > 0 && i + from.count <= text.count {
+    if text[i..<i + from.count] == from { jo_put(o[..], text[last..<i]); jo_put(o[..], to); i += from.count; last = i; } else { i += 1; }
+  }
+  jo_put(o[..], text[last..<text.count]);
+  return jo_text(o[..]);
+}
+// The first row where two trees differ (a check's text comparison, row by row), or "" when they are the same.
+lc_tree_diff :: (want: string, got: string, b: [] u8) -> string {
+  i := 0; j := 0; row := 1;
+  while i < want.count || j < got.count {
+    i0 := i; j0 := j;
+    while i < want.count && want[i] != 10 { i += 1; }
+    while j < got.count && got[j] != 10 { j += 1; }
+    if want[i0..<i] != got[j0..<j] {
+      o: [1] Jo; jo_start(o[..], b);
+      jo_put(o[..], "row "); jo_int(o[..], row); jo_put(o[..], ": want \""); jo_put(o[..], want[i0..<i]); jo_put(o[..], "\", got \""); jo_put(o[..], got[j0..<j]); jo_put(o[..], "\"");
+      return jo_text(o[..]);
+    }
+    if i < want.count { i += 1; } if j < got.count { j += 1; }
+    row += 1;
+  }
+  return "";
+}
+#test "a home in a tree reads as ~" {
+  b: [256] u8;
+  #assert lc_replace("x /h/a/b /h/a", "/h/a", "~", b[..]) == "x ~/b ~" && lc_replace("none", "/h", "~", b[..]) == "none";
+}
+#test "two trees are compared row by row" {
+  b: [256] u8;
+  #assert lc_tree_diff("a x\nb y\n", "a x\nb y\n", b[..]) == "";
+  #assert lc_tree_diff("a x\nb y\n", "a x\nb z\n", b[..]) == "row 2: want \"b y\", got \"b z\"";
+  #assert lc_tree_diff("a x\n", "a x\nc\n", b[..]) == "row 2: want \"\", got \"c\"";
+}
 lc_path :: (b: [] u8, a: string, c: string) -> string { o: [1] Jo; jo_start(o[..], b); jo_put(o[..], a); jo_put(o[..], c); return jo_text(o[..]); }
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -144,7 +181,7 @@ tool_main :: () -> int #export_c #effects(all) {
   update := args_has(a[..], "--update");
   if !fs_exists(LC_APP) { tool_errln("check: no build/linux/OpenAgents: run apps/openagents-desktop/linux/build.sh first, from the repo root"); return 2; }
   cwd_b: [4096] u8; root := fs_cwd(cwd_b[..]);
-  pb: [16] [8192] u8; out: [65536] u8; err: [65536] u8; env_b: [16384] u8;
+  pb: [24] [8192] u8; out: [65536] u8; err: [65536] u8; env_b: [16384] u8;
   work := lc_path(pb[0][..], root, lc_path(pb[1][..], "/", LC_WORK));
   rm := [3] string.["rm", "-rf", work];
   r := proc_run(rm[..], 20000, out[..], err[..]);
@@ -225,9 +262,11 @@ tool_main :: () -> int #export_c #effects(all) {
     if c.skin.count > 0 { argv[n] = "--skin"; argv[n + 1] = c.skin; n += 2; }
     // the dictation cases keep their setting in a file of their own
     if c.settings { argv[n] = "--settings"; argv[n + 1] = lc_path(pb[14][..], work, ifx c.dictation != 0 then "/dictation/settings.json" else "/store/settings.json"); n += 2; }
-    if live { argv[n] = "--dictation-recorder"; argv[n + 1] = recorder; n += 2; }
+    if live { argv[n] = "--dictation-recorder"; argv[n + 1] = recorder; argv[n + 2] = "--real-time"; n += 3; }   // the recorder runs on the wall clock
     else if c.dictation != 0 { argv[n] = "--dictation-fixture"; n += 1; }
     if c.dictation != 0 && !parakeet { argv[n] = "--dictation-stand-in"; argv[n + 1] = LC_WORDS; n += 2; }
+    tree := lc_path(pb[16][..], work, lc_path(pb[17][..], "/", lc_path(pb[18][..], c.name, ".tree")));
+    argv[n] = "--tree"; argv[n + 1] = tree; n += 2;
     sb: [3] [8192] u8;
     argv[n] = "--do"; argv[n + 1] = lc_swap(lc_swap(lc_steps(c.steps, home, sb[0][..]), 'P', clip, sb[1][..]), 'Q', quiet, sb[2][..]); n += 2;
     r = proc_run(argv[0..<n], 120000, out[..], err[..]);
@@ -237,11 +276,27 @@ tool_main :: () -> int #export_c #effects(all) {
     if !lc_has(said, c.expect) { print("FAIL %: no \"%\" in: %\n", c.name, lc_flat(c.expect, fb[..]), said); failed += 1; continue; }
     if !c.picture { print("ok   %: %\n", c.name, lc_flat(c.expect, fb[..])); continue; }
     golden := lc_path(pb[15][..], root, lc_path(pb[9][..], "/", lc_path(pb[10][..], LC_GOLDENS, lc_path(pb[11][..], c.name, ".png"))));
+    golden_tree := lc_path(pb[19][..], root, lc_path(pb[20][..], "/", lc_path(pb[21][..], LC_GOLDENS, lc_path(pb[22][..], c.name, ".tree"))));
     if update {
       cp := [3] string.["cp", shot, golden];
       r = proc_run(cp[..], 20000, out[..], err[..]);
-      print("updated %\n", golden); continue;
+      ut: [65536] u8; un: [65536] u8; k := fs_read(tree, ut[..]);
+      if k < 0 || !fs_write(golden_tree, lc_replace(cast(string) ut[0..<k], home, "~", un[..])) { print("FAIL %: could not write %\n", c.name, golden_tree); failed += 1; continue; }
+      print("updated % and its .tree\n", golden); continue;
     }
+    // the text first, row by row (the element table: every row's id, role, label and box), then the picture
+    tw: [65536] u8; tg: [65536] u8; dfb: [1024] u8;
+    wn := fs_read(golden_tree, tw[..]); gn := fs_read(tree, tg[..]);
+    tn: [65536] u8;
+    if gn < 0 { print("FAIL %: the app wrote no tree at %\n", c.name, tree); failed += 1; continue; }
+    // a case's first run on a Vulkan host records its tree (look at it before committing it)
+    if wn < 0 {
+      if !fs_write(golden_tree, lc_replace(cast(string) tg[0..<gn], home, "~", tn[..])) { print("FAIL %: could not write %\n", c.name, golden_tree); failed += 1; continue; }
+      print("new  %: recorded %\n", c.name, golden_tree);
+      wn = fs_read(golden_tree, tw[..]);
+    }
+    differ := lc_tree_diff(cast(string) tw[0..<wn], lc_replace(cast(string) tg[0..<gn], home, "~", tn[..]), dfb[..]);
+    if differ.count > 0 { print("FAIL %: its rows differ from %: %\n", c.name, golden_tree, differ); failed += 1; continue; }
     cmp := [5] string.[lc_path(pb[12][..], root, "/coax/web/tool.sh"), "shot", "--compare", shot, golden];
     r = proc_run(cmp[..], 300000, out[..], err[..]);
     line := cast(string) out[0..<r.out_n];

@@ -28,6 +28,8 @@
 #import <objc/runtime.h>
 #include "../linux/ui-host.h"
 #include "ui-host-apple.h"
+#include "../drive.h"
+#include <stdarg.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +39,7 @@
 
 @class UiView;
 struct UiHost {
+  UiDrive drive;   // coax drive (../drive.c)
   UiApp app;
   int offscreen, closed;
   id<MTLDevice> dev;
@@ -399,6 +402,7 @@ static uint64_t ui_digest(const UiHost *h) {
   return d;
 }
 static void ui_fill(UiHost *h, float dt) {
+  if (h->drive.agent) dt = h->drive.giving;   // the agent clock (../drive.c)
   int n = h->app.frame ? h->app.frame(h->app.user, h->frame, (float)h->w, (float)h->rows, h->dpr, dt) : 0;
   if (n < 0) n = 0;
   if ((uint32_t)n > h->app.max_vertices) n = (int)h->app.max_vertices;
@@ -785,7 +789,10 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   h->last = ui_now();
   return h;
 }
+static void ui_drive_poll(UiHost *h);
+static void ui_drive_close(UiHost *h);
 int ui_frame(UiHost *h) {
+  ui_drive_poll(h);
   if (h->offscreen) return 0;
   @autoreleasepool {
 #if TARGET_OS_OSX
@@ -870,6 +877,7 @@ int ui_shot_write(UiHost *h, const char *png) {
 }
 void ui_close(UiHost *h) {
   if (!h) return;
+  ui_drive_close(h);
   ui_hold_pointer(h, 0);
 #if TARGET_OS_OSX
   for (id o in h->observers) [NSNotificationCenter.defaultCenter removeObserver:o];
@@ -889,3 +897,5 @@ void ui_close(UiHost *h) {
   free(h->frame);
   free(h);
 }
+
+#include "../drive.c"

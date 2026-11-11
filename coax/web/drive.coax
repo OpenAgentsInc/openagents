@@ -32,6 +32,11 @@
 // page and its offline room (coax/web/room-worker.js) step together, and the session is pinned to the
 // seed, epoch, locale and time zone of aethyr/agent/pin.coax. --real-time opens the page as a player's
 // (no agent clock: `clock +MS` waits, settle and until refuse).
+// The native hosts (apps/shared/host/drive.c, GitHub #13156) answer the same way on a Unix socket: an
+// app started with --drive SOCKET (OpenAgents, Everglade's Workshop chat) takes
+//   coax/web/tool.sh drive native SOCKET [--within MS] OP...
+// with the host's clock +MS, clock settle [within MS], screenshot OUT.png and quit, and the app's own:
+// tree, tap ID, type ID TEXT, state NAME ... (`tree` lists the ids: components/core/elements.coax).
 // It refuses a build older than its sources (build/.drive/APP.sources, written by coax/web/wasm.sh),
 // printing the command that rebuilds it.
 #import "Basic";
@@ -40,6 +45,7 @@
 #load "../../aethyr/agent/pin.coax";
 
 cxtool_out_flush :: () -> int #foreign #effects(all);
+cxsock_connect_unix :: (timeout_ms: int) -> int #foreign #effects(all);
 
 DV_FILE :: 33554432;   // the largest layout, source list, build script or source file read
 DV_TEXT :: 65536;
@@ -665,11 +671,47 @@ dv_state :: (s: [] DvS, path: string, out: [] Dv) -> bool {
   return true;
 }
 
+// ---- drive native: one line an operation to a native host's socket; each answer is its length, a
+// newline, then that many bytes (apps/shared/host/drive.c).
+dv_native :: (sock: string, ops: [] string, within: int) -> int {
+  if sock.count == 0 || sock.count > 103 { tool_errln("drive: the socket's path is empty or too long"); return 2; }
+  for c: sock { r := cxsock_host_push(cast(int) c); }
+  h := cxsock_connect_unix(5000);
+  if h < 0 { tool_err("drive: nothing answers on "); tool_errln(sock); return 1; }
+  status := 0;
+  for op: ops {
+    ok := true;
+    for c: op { if c == 10 || cxsock_write(h, cast(int) c) != 0 { ok = false; } }
+    ok = ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
+    if !ok { tool_errln("drive: the app closed the socket"); status = 1; break; }
+    // the length, then the answer; an operation may take its own `within` and a little more
+    want := -1; got := 0; until := cxsock_now_ms() + within + 10000;
+    ans: [1] Dv; head := 0;
+    while (want < 0 || got < want) && cxsock_now_ms() < until {
+      k := cxsock_read(h, 1000);
+      if k < 0 { break; }
+      for j: 0..<k {
+        b := cxsock_byte(h, j);
+        if want < 0 { if b == 10 { want = head; } else { head = head * 10 + (b - '0'); } }
+        else if got < want { if ans[0].n < DV_TEXT { ans[0].b[ans[0].n] = cast,trunc(u8) b; ans[0].n += 1; } got += 1; }
+      }
+    }
+    if want < 0 || got < want { tool_err("drive: no answer to "); tool_errln(op); status = 1; break; }
+    text := dv_text(ans[..]);
+    if text.count > 0 { print("%", text); if text[text.count - 1] != 10 { print("\n"); } }
+    if dv_starts(text, "unknown operation") || dv_starts(text, "no row ") || dv_starts(text, "clock: still busy") { status = 1; }
+  }
+  r := cxsock_close(h);
+  r = cxtool_out_flush();
+  return status;
+}
+
 dv_usage :: () -> int {
   tool_errln("usage: coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] [--real-time] OP...");
   tool_errln("  OP: tree, layout, state [PATH], tap ID, type ID TEXT, type ID key NAME, walk-to ID, face ID,");
   tool_errln("      use ABILITY on ID, mount ID, stop, status, screenshot OUT.png, logs, prefer K V, perf,");
   tool_errln("      clock +MS, clock settle [within MS], clock until PATH [OP VALUE] [within MS]");
+  tool_errln("       coax/web/tool.sh drive native SOCKET [--within MS] OP...   (an app started with --drive SOCKET)");
   return 2;
 }
 // The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
@@ -677,6 +719,16 @@ dv_root_dir :: (self: string) -> string { r := self; for i: 0..<5 { r = fs_dir(r
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
+  if args_load(a[..]) && args_count(a[..]) >= 3 && args_at(a[..], 0) == "native" {
+    nops: [64] string; nn := 0; nwithin := 30000;
+    j := 2;
+    while j < args_count(a[..]) {
+      if args_at(a[..], j) == "--within" && j + 1 < args_count(a[..]) { nwithin = dv_int(args_at(a[..], j + 1)); j += 2; continue; }
+      if nn >= nops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
+      nops[nn] = args_at(a[..], j); nn += 1; j += 1;
+    }
+    return dv_native(args_at(a[..], 1), nops[0..<nn], nwithin);
+  }
   if !args_load(a[..]) || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
   query := ""; size := "1280x800"; port := -1; within := 30000; agent := true;

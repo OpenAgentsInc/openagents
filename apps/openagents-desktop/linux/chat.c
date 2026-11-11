@@ -684,3 +684,176 @@ void oa_chat_close(OaChat *a) {
   if (a->room_fd >= 0) { close(a->room_fd); unlink(a->room_path); a->room_fd = -1; }
 }
 int oa_chat_mcp_room(const char *path, int agent) { return mcp_room(path, agent); }
+
+// ---- coax drive (apps/shared/host/drive.c; docs/research/exact/04-apps-audit-2026-11-10.md): the chat's
+// operations. Targets are the element table's ids (components/core/elements.coax: `tree` lists them),
+// never coordinates; time moves only by the host's `clock`.
+typedef struct { char *b; int cap, n; } Say;
+static void say(Say *o, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void say(Say *o, const char *fmt, ...) {
+  if (o->n >= o->cap - 1) return;
+  va_list ap; va_start(ap, fmt);
+  int k = vsnprintf(o->b + o->n, (size_t)(o->cap - o->n), fmt, ap);
+  va_end(ap);
+  if (k > 0) o->n = o->n + k < o->cap - 1 ? o->n + k : o->cap - 1;
+}
+static void say_text(Say *o, const char *verb, void *state, int32_t (*get)(void *, uint8_t *, int32_t)) {
+  uint8_t b[4096]; int n = get(state, b, sizeof b - 1);
+  say(o, "%s: %.*s\n", verb, n > 0 ? n : 0, (const char *)b);
+}
+// --dictation-fixture: the key and the button through the window's own handlers, and a file's samples in
+// place of the recorder's, on the fixture's clock.
+static void fixture_key(App *a, int down) {
+  if (a->dictation_fixture) dn_fixture_time(a->dictation, a->dictation_clock);
+  on_key(a, 'd', down ? 2 : 0, down);
+}
+static void fixture_mouse(App *a, int down) {
+  float at[2] = {0, 0};
+  if (a->dictation_fixture) dn_fixture_time(a->dictation, a->dictation_clock);
+  if (dsk_dictation_point(a->desk, at)) on_pointer(a, at[0], at[1], down ? 0 : 2, 1, 0);
+}
+static void fixture_audio(App *a, const char *path, Say *o) {
+  size_t n; uint8_t *bytes = oac_read_file(path, &n);
+  // 16 kHz mono 16-bit samples: a WAV's, after its 44-byte header, or the bare samples
+  size_t from = bytes && n >= 44 && !memcmp(bytes, "RIFF", 4) && !memcmp(bytes + 8, "WAVE", 4) ? 44 : 0;
+  if (!bytes || (n - from) % 2) { say(o, "dictation: %s is not 16-bit samples\n", path); free(bytes); return; }
+  int64_t start = a->dictation_clock, count = (int64_t)((n - from) / 2);
+  for (int64_t at = 0; at < count; at += 320) {
+    float chunk[320]; int k = count - at < 320 ? (int)(count - at) : 320;
+    for (int i = 0; i < k; i++) { const uint8_t *b = bytes + from + 2 * (at + i); chunk[i] = (float)(int16_t)(b[0] | b[1] << 8) / 32768; }
+    int64_t stamp = start + at / 16;
+    dn_fixture_time(a->dictation, stamp);
+    dn_fixture_audio(a->dictation, chunk, k, 16000, stamp);
+  }
+  a->dictation_clock = start + count / 16;
+  dn_fixture_time(a->dictation, a->dictation_clock);
+  free(bytes);
+}
+static void fixture_tail(App *a) {   // the 200 ms of input a release waits for
+  static const float quiet[320];
+  if (!a->dictation_fixture) return;
+  for (int i = 0; i < 10; i++) {
+    dn_fixture_audio(a->dictation, quiet, 320, 16000, a->dictation_clock);
+    a->dictation_clock += 20; dn_fixture_time(a->dictation, a->dictation_clock);
+  }
+}
+// A chord as the Mac's menus write it: cmd+1, shift+down, enter. 0: none.
+static int chord(char *arg, int *mods) {
+  static const char *const names[] = {"escape", "enter", "backspace", "left", "right", "up", "down", "home", "end", NULL};
+  int key = 0; *mods = 0;
+  for (char *part = strtok(arg, "+"); part; part = strtok(NULL, "+")) {
+    if (!strcmp(part, "shift")) *mods |= 1; else if (!strcmp(part, "ctrl")) *mods |= 2; else if (!strcmp(part, "alt")) *mods |= 4; else if (!strcmp(part, "cmd")) *mods |= 8;
+    else if (!strcmp(part, "delete")) key = -12;
+    else { key = (unsigned char)part[0]; for (int i = 0; names[i]; i++) if (!strcmp(part, names[i])) key = -1 - i; }
+  }
+  return key;
+}
+// Row id's centre in device px (the pointer's units); 0 when there is no such row.
+static int centre(App *a, const char *id, float *x, float *y) {
+  float box[4];
+  if (!dsk_box(a->desk, id, box)) return 0;
+  *x = (box[0] + box[2] / 2) * a->dpr; *y = (box[1] + box[3] / 2) * a->dpr;
+  return 1;
+}
+int oa_chat_busy(OaChat *a) {
+  for (int i = 0; i < dsk_count(a->desk); i++) if (zr_busy(dsk_chat(a->desk, i))) return 1;
+  if (a->dictation && dsk_dictation_enabled(a->desk) && !dn_ready(a->dictation)) return 1;   // the model is loading
+  return a->dictation && a->dictation_ticket != 0;   // a request's words are on their way
+}
+int oa_chat_drive(OaChat *a, const char *request, char *out, int cap) {
+  Say o = {out, cap, 0};
+  char line[8192]; snprintf(line, sizeof line, "%s", request);
+  char *arg = strchr(line, ' ');
+  if (arg) *arg++ = 0; else arg = "";
+  for (char *e = arg + strlen(arg); e > arg && e[-1] == ' ';) *--e = 0;
+  void *state = oac_active(a);
+  float n[4] = {0}; int count = sscanf(arg, "%f,%f,%f,%f", &n[0], &n[1], &n[2], &n[3]);
+  if (!strcmp(line, "tree")) { o.n = dsk_tree(a->desk, (uint8_t *)out, cap); return o.n; }
+  if (!strcmp(line, "tap") || !strcmp(line, "shift-tap") || !strcmp(line, "hover")) {   // tap ID [CLICKS]
+    char *id = arg, *more = strchr(arg, ' ');
+    int clicks = 1;
+    if (more) { *more++ = 0; clicks = atoi(more) > 0 ? atoi(more) : 1; }
+    float x, y;
+    if (!centre(a, id, &x, &y)) { say(&o, "no row %s in the tree\n", id); return o.n; }
+    if (line[0] == 'h') { on_pointer(a, x, y, 1, 1, 0); return o.n; }
+    int mods = line[0] == 's' ? 1 : 0;
+    on_pointer(a, x, y, 0, clicks, mods); on_pointer(a, x, y, 2, clicks, mods);
+    return o.n;
+  }
+  if (!strcmp(line, "drag")) {   // drag ID DX,DY: from the row's centre, by DX, DY logical px
+    char *id = arg, *by = strchr(arg, ' ');
+    float x, y, d[2] = {0, 0};
+    if (by) { *by++ = 0; sscanf(by, "%f,%f", &d[0], &d[1]); }
+    if (!centre(a, id, &x, &y)) { say(&o, "no row %s in the tree\n", id); return o.n; }
+    on_pointer(a, x, y, 0, 1, 0);
+    for (int k = 1; k <= 8; k++) { float t = (float)k / 8; on_pointer(a, x + d[0] * a->dpr * t, y + d[1] * a->dpr * t, 1, 1, 0); }
+    on_pointer(a, x + d[0] * a->dpr, y + d[1] * a->dpr, 2, 1, 0);
+    return o.n;
+  }
+  if (!strcmp(line, "type")) {   // type ID TEXT | type ID key CHORD | type - TEXT (into what has the keyboard)
+    char *id = arg, *text = strchr(arg, ' ');
+    if (text) *text++ = 0; else text = "";
+    if (strcmp(id, "-")) {
+      float x, y;
+      if (!centre(a, id, &x, &y)) { say(&o, "no row %s in the tree\n", id); return o.n; }
+      on_pointer(a, x, y, 0, 1, 0); on_pointer(a, x, y, 2, 1, 0);
+    }
+    if (!strncmp(text, "key ", 4)) { int mods, key = chord(text + 4, &mods); if (key) on_key(a, key, mods, 1); }
+    else on_text(a, text, strlen(text));
+    return o.n;
+  }
+  if (!strcmp(line, "key")) { int mods, key = chord(arg, &mods); if (key) on_key(a, key, mods, 1); return o.n; }
+  if (!strcmp(line, "wheel") && count >= 1) { dsk_wheel(a->desk, n[0]); return o.n; }
+  if (!strcmp(line, "fixture")) { zr_fixture(state, !strcmp(arg, "closed") ? 0 : !strcmp(arg, "table") ? 2 : 1); return o.n; }
+  if (!strcmp(line, "newchat")) { zr_new_chat(state); return o.n; }
+  if (!strcmp(line, "sidebar")) { dsk_toggle(a->desk); return o.n; }
+  if (!strcmp(line, "send")) { zr_text(state, (const uint8_t *)arg, (int32_t)strlen(arg)); zr_key(state, -2, 0); return o.n; }
+  if (!strcmp(line, "mode")) { static const char *const modes[] = {"claude", "psionic", "lab", "codex"}; for (int i = 0; i < 4; i++) if (!strcasecmp(arg, modes[i])) zr_choose(state, 4, i); return o.n; }
+  if (!strcmp(line, "access")) { static const char *const levels[] = {"full", "edits", "supervised"}; for (int i = 0; i < 3; i++) if (!strcasecmp(arg, levels[i])) zr_choose(state, 3, i); return o.n; }
+  if (!strcmp(line, "model") || !strcmp(line, "effort")) { if (!zr_choose_named(state, line[0] == 'm' ? 1 : 2, (const uint8_t *)arg, (int32_t)strlen(arg))) say(&o, "no %s named %s\n", line, arg); return o.n; }
+  if (!strcmp(line, "plan")) { zr_choose(state, 5, strcmp(arg, "off") != 0); return o.n; }
+  if (!strcmp(line, "open")) { zr_open_menu(state, !strcmp(arg, "access") ? 3 : 1); return o.n; }
+  if (!strcmp(line, "attach")) { oac_attach(a, arg); return o.n; }
+  if (!strcmp(line, "folder")) { oac_new_session(a, arg); return o.n; }   // a new session in that folder, as the folder picker makes it
+  if (!strcmp(line, "room")) { dsk_show_room(a->desk); return o.n; }
+  if (!strcmp(line, "closetab")) { if (!dsk_close_tab(a->desk)) say(&o, "closetab: the last tab stays\n"); return o.n; }
+  if (!strcmp(line, "stop")) { zr_key(state, -1, 0); return o.n; }
+  if (!strcmp(line, "scroll") && count >= 1) { zr_scroll_to(state, n[0]); return o.n; }
+  if (!strcmp(line, "answer")) { if (!zr_answer(state, !strcmp(arg, "allow"))) say(&o, "answer: nothing is asking\n"); return o.n; }
+  if (!strcmp(line, "dictation")) {
+    if (!a->offscreen || !a->dictation) { say(&o, "dictation: none here\n"); return o.n; }
+    if (!strcmp(arg, "on")) { dsk_dictation_set(a->desk, 1); dn_enable(a->dictation, 1); dn_activate(a->dictation); oac_sync_dictation(a); }
+    else if (!strcmp(arg, "off")) { dsk_dictation_set(a->desk, 0); dn_enable(a->dictation, 0); oac_sync_dictation(a); }
+    else if (!strcmp(arg, "down")) fixture_key(a, 1);
+    else if (!strcmp(arg, "up")) { fixture_key(a, 0); fixture_tail(a); }
+    else if (!strcmp(arg, "mousedown")) fixture_mouse(a, 1);
+    else if (!strcmp(arg, "mouseup")) { fixture_mouse(a, 0); fixture_tail(a); }
+    else if (!strcmp(arg, "cancel")) oac_cancel_dictation_for_edit(a);
+    else if (!strncmp(arg, "feed ", 5) && a->dictation_fixture) fixture_audio(a, arg + 5, &o);
+    else say(&o, "dictation on|off|down|up|mousedown|mouseup|cancel|feed FILE\n");
+    return o.n;
+  }
+  if (!strcmp(line, "state")) {   // state status|last|desk|draft|dictation: what the chat says, as text
+    if (!strcmp(arg, "status")) say_text(&o, "status", state, zr_status_text);
+    else if (!strcmp(arg, "last")) say_text(&o, "last", state, zr_last_text);
+    else if (!strcmp(arg, "desk")) {
+      int shown = -1;
+      for (int i = 0; i < dsk_count(a->desk); i++) if (dsk_chat(a->desk, i) == dsk_active(a->desk)) shown = i;
+      say(&o, "desk: active=%d tabs=", shown);
+      for (int t = 0; t < dsk_tabs(a->desk); t++) say(&o, "%s%d", t ? "," : "", dsk_tab(a->desk, t));
+      say(&o, " sessions=%d collapsed=%d\n", dsk_count(a->desk), dsk_collapsed(a->desk));
+    } else if (!strcmp(arg, "draft")) {
+      static uint8_t b[8192]; int k = zr_dictation_draft(state, b, sizeof b);
+      say(&o, "draft: %.*s\n", k > 0 ? k : 0, (const char *)b);
+      say(&o, "draft-state: sent=%d parts=%d\n", zr_dictation_sent(state), zr_dictation_parts(state));
+    } else if (!strcmp(arg, "dictation")) {
+      int phase = 0, outcome = 0, samples = 0;
+      if (a->dictation) dn_inspect(a->dictation, &phase, &outcome, &samples);
+      say(&o, "dictation: phase=%d outcome=%d samples=%d\n", phase, outcome, samples);
+      say(&o, "dictation-setting: enabled=%d\n", dsk_dictation_enabled(a->desk));
+    } else say(&o, "state status|last|desk|draft|dictation\n");
+    return o.n;
+  }
+  return -1;
+}
+

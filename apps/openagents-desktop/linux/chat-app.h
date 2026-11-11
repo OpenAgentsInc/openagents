@@ -6,6 +6,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE   // accept4 and the rest: include this first
 #endif
+#include <stdarg.h>
 #include "zeron.h"
 #include "face.h"
 #ifdef __APPLE__
@@ -65,7 +66,6 @@ struct OaChat {
   char room_path[108];
   int room_fd, room_conns[16], room_n[16];
   char room_buf[16][65536];
-  int wait_idle;      // --do: the wait ends when the running turn does
 #ifndef __APPLE__
   Portal *portal;     // the desktop's file chooser; NULL offscreen and where there is no session bus
 #endif
@@ -80,9 +80,8 @@ struct OaChat {
   int pointer_down;         // the left button is down
   int focused;              // the window has the keyboard
   int offscreen;            // a picture, not a window
-  int dictation_fixture;    // --dictation-fixture: its clock, and what a --do wait is for (1 the model, 2 the request)
+  int dictation_fixture;    // --dictation-fixture: the samples come from coax drive's `dictation feed`, on this clock (ms)
   int64_t dictation_clock;
-  int wait_dictation;
   int setting_changed;      // an option changed settings.json before the window opened: written once it has
 };
 typedef struct OaChat App;

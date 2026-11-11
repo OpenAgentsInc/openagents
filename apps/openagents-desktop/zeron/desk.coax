@@ -14,6 +14,7 @@
 
 #load "screen.coax";
 #load "room.coax";
+#load "../../../components/core/elements.coax";   // the rows coax drive names (dsk_elements)
 
 DSK_MAX :: 64;
 DSK_PRIMS :: 1024; DSK_POOL :: 32768;
@@ -65,6 +66,7 @@ Desk :: struct {
   list_h: f32;              // the list's height last frame
   order: [DSK_MAX] int; norder: int;    // the sessions as the sidebar lists them, top down
   hits: [DSK_MAX * 2 + 8] DskHit; nhit: int;
+  els: [1] Elements;        // the element table, built when coax drive asks (dsk_elements)
   host_action: int;
   cursor: int;              // 0 arrow, 1 I-beam, 2 pointing hand, 3 resize left-right
   text: [256] u8;           // a label fitted to its width
@@ -1033,6 +1035,28 @@ dsk_test_chat :: (s: [] ZeronState) { zr_test_screen(s); }
   #assert k[0].ntabs == 2 && k[0].active == 2 && k[0].tabs[1] == 2;
 }
 
+#test "the element table names the desk's rows by id, and a tap at a row's box presses it" {
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]);
+  out: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w/one");
+  i = dsk_add(k[..], b[..], "/w/two");
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  text: [16384] u8; tn := coaxial_desk_tree(k[..], text[..]);
+  tree := cast(string) text[0..<tn];
+  box: [4] f32;
+  #assert coaxial_desk_box(k[..], "sidebar.new", box[..]) && coaxial_desk_box(k[..], "session.1", box[..]) && coaxial_desk_box(k[..], "tab.2", box[..]);
+  #assert coaxial_desk_box(k[..], "composer", box[..]) && box[0] >= 256 && coaxial_desk_box(k[..], "composer.send", box[..]);
+  #assert !coaxial_desk_box(k[..], "nothing.here", box[..]);
+  #assert el_has(tree, "sidebar.new button \"New session\" at ") && el_has(tree, "composer field \"");
+  // a tap at session.1's centre makes it the shown one
+  #assert coaxial_desk_box(k[..], "session.1", box[..]);
+  took := dsk_pointer(k[..], (box[0] + box[2] / 2) * 2, (box[1] + box[3] / 2) * 2, 0, 1, 0);
+  took = dsk_pointer(k[..], (box[0] + box[2] / 2) * 2, (box[1] + box[3] / 2) * 2, 2, 1, 0);
+  #assert k[0].active == 0;
+}
+
 #test "the sidebar: rows and tabs take presses, the edge resizes within 208..400, Cmd+S collapses it, the chat gets the rest" {
   k: [1] Desk;
   a: [1] ZeronState; b: [1] ZeronState;
@@ -1247,6 +1271,70 @@ cl_str_is :: (text: string, path: string, want: string) -> bool { abuf: [4096] u
   // wrapping: a long line takes more than one
   #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "word word word word word word word word word word", 100, 20) > 1;
   #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "one\ntwo", 1000, 20) == 2;
+}
+
+// ---- the element table (components/core/elements.coax; GitHub #13156): every row on the desk that
+// a person presses, types into or reads, by a stable id, from where the last frame laid it out
+// (logical px, the window's top left). Ids: sidebar.new, sidebar.edge, session.N and tab.N (the
+// Nth session made: the desk never removes one), tab.room, transcript, message.ENTRY.PART (one a
+// row: a message, a reply's block, a tool group or a notice), composer (the draft), composer.send,
+// composer.model, composer.access, composer.attach, notice (a failed attachment), menu and
+// menu.access.N (an open menu and its rows). Built when asked (coax drive's tree, tap), not each frame.
+dsk_el_n :: (out: [] u8, part: string, v: int) -> string { n := el_copy(out, part); n = el_put_i(out, n, v); return cast(string) out[0..<n]; }
+dsk_el_n2 :: (out: [] u8, part: string, a: int, b: int) -> string {
+  n := el_copy(out, part); n = el_put_i(out, n, a); n = el_put(out, n, "."); n = el_put_i(out, n, b); return cast(string) out[0..<n];
+}
+dsk_elements :: (k: [] Desk, e: [] Elements) {
+  el_clear(e);
+  if k.count < 1 || k[0].n == 0 { return; }
+  b: [EL_ID] u8;
+  for j: 0..<k[0].nhit {
+    h := k[0].hits[j];
+    if h.kind == DSK_ON_NEW { el_add(e, "sidebar.new", EL_BUTTON, "New session", h.x, h.y, h.w, h.h); }
+    else if h.kind == DSK_ON_ROW { el_add(e, dsk_el_n(b[..], "session.", h.i + 1), EL_ROW, dsk_title(k, h.i), h.x, h.y, h.w, h.h); }
+    else if h.kind == DSK_ON_TAB { el_add(e, dsk_el_n(b[..], "tab.", h.i + 1), EL_TAB, dsk_title(k, h.i), h.x, h.y, h.w, h.h); }
+    else if h.kind == DSK_ON_EDGE { el_add(e, "sidebar.edge", EL_REGION, "", h.x, h.y, h.w, h.h); }
+    else if h.kind == DSK_ON_ROOM { el_add(e, "tab.room", EL_TAB, "ROOM", h.x, h.y, h.w, h.h); }
+  }
+  if k[0].room_shown { return; }
+  s := dsk_chat(k); dx := dsk_side(k);
+  sk := zr_skin(s);
+  c := s[0].composer[..]; t := s[0].transcript[..];
+  top := sk.tr.titlebar; bottom := c[0].y - sk.tr.status_strip;
+  el_add(e, "transcript", EL_REGION, "", dx, top, k[0].w - dx, bottom - top);
+  for i: 0..<t[0].nr {
+    r := t[0].rows[i];
+    y := r.y + t[0].offset;
+    if y + r.h <= top || y >= bottom { continue; }
+    label := ifx r.kind == R_USER then r.text else ifx r.kind == R_MD then md_block_text(t[0].md[..], r.block)
+      else ifx r.kind == R_GROUP then t[0].groups[r.group].summary else ifx r.kind == R_NOTICE then t[0].notices[r.notice].text else "";
+    el_add(e, dsk_el_n2(b[..], "message.", r.entry + 1, r.part + 1), EL_ITEM, label, dx, y, k[0].w - dx, r.h);
+  }
+  if c[0].failure_n > 0 { el_add(e, "notice", EL_REGION, cast(string) c[0].failure[0..<c[0].failure_n], dx + c[0].x, c[0].failure_y, c[0].w, c[0].failure_h); }
+  el_add(e, "composer", EL_FIELD, ifx typed(c).count > 0 then typed(c) else placeholder_of(c), dx + c[0].x, c[0].y, c[0].w, c[0].h);
+  el_add(e, "composer.send", EL_BUTTON, ifx c[0].running then "Stop" else "Send", dx + c[0].chip_x[CH_SEND], c[0].chip_y[CH_SEND], c[0].chip_w[CH_SEND], c[0].chip_h[CH_SEND]);
+  el_add(e, "composer.model", EL_BUTTON, model_label_of(c), dx + c[0].chip_x[CH_MODEL], c[0].chip_y[CH_MODEL], c[0].chip_w[CH_MODEL], c[0].chip_h[CH_MODEL]);
+  el_add(e, "composer.access", EL_BUTTON, access_label_of(c), dx + c[0].chip_x[CH_ACCESS], c[0].chip_y[CH_ACCESS], c[0].chip_w[CH_ACCESS], c[0].chip_h[CH_ACCESS]);
+  el_add(e, "composer.attach", EL_BUTTON, "Attach", dx + c[0].chip_x[CH_ATTACH], c[0].chip_y[CH_ATTACH], c[0].chip_w[CH_ATTACH], c[0].chip_h[CH_ATTACH]);
+  p := s[0].picker[..];
+  if pk_is_open(p) {
+    el_add(e, "menu", EL_REGION, ifx p[0].kind == PK_ACCESS_MENU then "access" else "model", dx + p[0].x, p[0].y, p[0].w, p[0].h);
+    if p[0].kind == PK_ACCESS_MENU { for r: 0..<p[0].rows { el_add(e, dsk_el_n(b[..], "menu.access.", r + 1), EL_ROW, "", dx + p[0].x, p[0].row_y[r], p[0].w, p[0].row_h[r]); } }
+  }
+}
+// The table as text (coax drive's tree): bytes written into out.
+coaxial_desk_tree :: (k: [] Desk, out: [] u8) -> int #export_c #effects(all) {
+  dsk_elements(k, k[0].els[..]);
+  return el_tree(k[0].els[..], out);
+}
+// Row ID's box (logical px: x, y, w, h); false when no row has that id.
+coaxial_desk_box :: (k: [] Desk, id: string, out: [] f32) -> bool #export_c #effects(all) {
+  dsk_elements(k, k[0].els[..]);
+  i := el_find(k[0].els[..], id);
+  if i < 0 || out.count < 4 { return false; }
+  r := k[0].els[0].rows[i];
+  out[0] = r.x; out[1] = r.y; out[2] = r.w; out[3] = r.h;
+  return true;
 }
 
 coaxial_desk_dictation_enabled :: (k:[]Desk)->bool #export_c #effects(all) {return k.count>0 && k[0].dictation_enabled;}

@@ -3,21 +3,23 @@
 // its sessions, atlas, room and dictation) filling a window of the shared host
 // (apps/shared/host/linux/ui-host.h: Wayland and Vulkan on Linux, apps/shared/host/apple/ui-host.m on
 // the Mac, GitHub #13156). This file is the app around it: the options, the Mac's menu bar, the
-// pictures and their --do steps, and the window's loop.
+// pictures and their coax drive operations, and the window's loop.
 //
 //   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N] [--dictation on|off] [--skin zeron|everglade|verse]
 //              [--dictation-recorder PROGRAM]
-//   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "STEP ; STEP"]
+//   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "OP ; OP"] [--drive SOCKET] [--real-time] [--tree OUT.txt]
 //              [--dictation-fixture | --dictation-recorder PROGRAM] [--dictation-stand-in WORDS]
-// Steps, as the Mac's (the former Sources/Zeron.swift step): wait SECONDS, waitidle [SECONDS], fixture
-// open|closed|table, newchat, sidebar, room, folder PATH, attach PATH, closetab, type TEXT, send TEXT, stop,
-// mode|model|effort|access NAME, plan on|off, open model|access, answer allow|deny, click X,Y[,N],
-// move X,Y, wheel DY, scroll PX, key CHORD (cmd+1, shift+down, enter), status, last, desk, draft.
-// With --dictation-fixture, which never runs a recorder: dictation on|off|down|up|mousedown|mouseup|cancel|
-// feed FILE|state (FILE is 16 kHz mono 16-bit samples, a WAV or its bare samples), waitdictationready
-// [SECONDS], waitdictation [SECONDS]. With --dictation-recorder instead, the same steps but feed, in real
-// time: PROGRAM runs in pw-record's place with its arguments (a check's stand-in, which writes a recorded
-// clip as 48 kHz mono 32-bit float samples), and a picture is never taken with the microphone.
+//   OpenAgents --drive SOCKET [--agent-clock] ...   a window that coax drive can drive
+// The operations are coax drive's (apps/shared/host/drive.c: clock +MS, clock settle [within MS], screenshot,
+// quit), the chat's (chat.h oa_chat_drive: tree, tap ID, type ID TEXT, send, state last ...) and, on the Mac,
+// this app's (menu TITLE, shortcut TITLE, clip TEXT, mark TEXT, commit TEXT, state pasteboard, state window).
+// A picture runs them in order on the agent clock, printing each answer, then answers --drive's socket until
+// `quit`, then is written, and with --tree its element table (`tree`) as text beside it.
+// `coax/web/tool.sh drive native SOCKET OP...` sends them to a running app.
+// With --dictation-fixture, which never runs a recorder, `dictation feed FILE` gives the recognizer a file's
+// samples (16 kHz mono 16-bit, a WAV or its bare samples). With --dictation-recorder instead, PROGRAM runs in
+// pw-record's place with its arguments (a check's stand-in, which writes a recorded clip as 48 kHz mono 32-bit
+// float samples) on the wall clock, so such a picture takes --real-time: `clock +MS` then also waits MS.
 // --dictation-stand-in WORDS, for a picture only: a stand-in recognizer that answers WORDS; no model is opened.
 //
 // Dictation (the former Sources/Zeron.swift's dictation members; dictation-host.h): hold Ctrl+D, or the microphone
@@ -137,157 +139,50 @@ static void apply_shortcuts(App *a) {
   }
 }
 #endif
-// ---- --do: the steps a picture is taken after (the former Sources/Zeron.swift step)
-
-static void say(const char *verb, void *state, int32_t (*get)(void *, uint8_t *, int32_t)) {
-  uint8_t b[4096]; int n = get(state, b, sizeof b - 1);
-  b[n > 0 ? n : 0] = 0;
-  printf("%s: %s\n", verb, b);
-}
-// --dictation-fixture: the key and the button through the window's own handlers, and a file's samples in
-// place of the recorder's, on the fixture's clock (the former Sources/Zeron.swift fixtureDictationKey and the rest).
-static void fixture_key(App *a, int down) {
-  if (a->dictation_fixture) dn_fixture_time(a->dictation, a->dictation_clock);
-  oa_chat_key(a, 'd', down ? 2 : 0, down);
-}
-static void fixture_mouse(App *a, int down) {
-  float at[2] = {0, 0};
-  if (a->dictation_fixture) dn_fixture_time(a->dictation, a->dictation_clock);
-  if (dsk_dictation_point(a->desk, at)) oa_chat_pointer(a, at[0], at[1], down ? 0 : 2, 1, 0);
-}
-static void fixture_audio(App *a, const char *path) {
-  size_t n; uint8_t *bytes = oac_read_file(path, &n);
-  // 16 kHz mono 16-bit samples: a WAV's, after its 44-byte header, or the bare samples
-  size_t from = bytes && n >= 44 && !memcmp(bytes, "RIFF", 4) && !memcmp(bytes + 8, "WAVE", 4) ? 44 : 0;
-  if (!bytes || (n - from) % 2) { fprintf(stderr, "OpenAgents: %s is not 16-bit samples\n", path); free(bytes); return; }
-  int64_t start = a->dictation_clock, count = (int64_t)((n - from) / 2);
-  for (int64_t at = 0; at < count; at += 320) {
-    float chunk[320]; int k = count - at < 320 ? (int)(count - at) : 320;
-    for (int i = 0; i < k; i++) { const uint8_t *b = bytes + from + 2 * (at + i); chunk[i] = (float)(int16_t)(b[0] | b[1] << 8) / 32768; }
-    int64_t stamp = start + at / 16;
-    dn_fixture_time(a->dictation, stamp);
-    dn_fixture_audio(a->dictation, chunk, k, 16000, stamp);
-  }
-  a->dictation_clock = start + count / 16;
-  dn_fixture_time(a->dictation, a->dictation_clock);
-  free(bytes);
-}
-static void fixture_tail(App *a) {   // the 200 ms of input a release waits for
-  static const float quiet[320];
-  if (!a->dictation_fixture) return;
-  for (int i = 0; i < 10; i++) {
-    dn_fixture_audio(a->dictation, quiet, 320, 16000, a->dictation_clock);
-    a->dictation_clock += 20; dn_fixture_time(a->dictation, a->dictation_clock);
-  }
-}
-static double step(App *a, char *line) {
-  while (*line == ' ') line++;
+// ---- coax drive (apps/shared/host/drive.c): the app's own operations, then the chat's (chat.h oa_chat_drive)
+static int on_drive(void *user, const char *request, char *out, int cap) {
+  App *a = user;
+#ifdef __APPLE__
+  char line[8192]; snprintf(line, sizeof line, "%s", request);
   char *arg = strchr(line, ' ');
   if (arg) *arg++ = 0; else arg = "";
-  for (char *e = arg + strlen(arg); e > arg && e[-1] == ' ';) *--e = 0;
-  void *state = oac_active(a);
-  float n[4] = {0}; int count = sscanf(arg, "%f,%f,%f,%f", &n[0], &n[1], &n[2], &n[3]);
-  if (!strcmp(line, "wait")) return atof(arg);
-  if (!strcmp(line, "fixture")) zr_fixture(state, !strcmp(arg, "closed") ? 0 : !strcmp(arg, "table") ? 2 : 1);
-  else if (!strcmp(line, "newchat")) zr_new_chat(state);
-  else if (!strcmp(line, "sidebar")) dsk_toggle(a->desk);
-  else if (!strcmp(line, "type")) zr_text(state, (const uint8_t *)arg, (int32_t)strlen(arg));
-  else if (!strcmp(line, "send")) { zr_text(state, (const uint8_t *)arg, (int32_t)strlen(arg)); zr_key(state, -2, 0); }
-  else if (!strcmp(line, "click") && count >= 2) { int k = count > 2 ? (int)n[2] : 1; dsk_pointer(a->desk, n[0], n[1], 0, k, 0); dsk_pointer(a->desk, n[0], n[1], 2, k, 0); }
-  else if (!strcmp(line, "move") && count >= 2) dsk_pointer(a->desk, n[0], n[1], 1, 1, 0);
-  else if (!strcmp(line, "wheel") && count >= 1) dsk_wheel(a->desk, n[0]);
-  else if (!strcmp(line, "key") || !strcmp(line, "keyevent")) {   // a chord as the Mac's steps write it: cmd+1, shift+down, enter
-    static const char *const names[] = {"escape", "enter", "backspace", "left", "right", "up", "down", "home", "end", NULL};
-    int mods = 0, key = 0;
-    for (char *part = strtok(arg, "+"); part; part = strtok(NULL, "+")) {
-      if (!strcmp(part, "shift")) mods |= 1; else if (!strcmp(part, "ctrl")) mods |= 2; else if (!strcmp(part, "alt")) mods |= 4; else if (!strcmp(part, "cmd")) mods |= 8;
-      else if (!strcmp(part, "delete")) key = -12;
-      else { key = (unsigned char)part[0]; for (int i = 0; names[i]; i++) if (!strcmp(part, names[i])) key = -1 - i; }
-    }
-    if (key) oa_chat_key(a, key, mods, 1);
-  }
-  else if (!strcmp(line, "mode")) { static const char *const modes[] = {"claude", "psionic", "lab", "codex"}; for (int i = 0; i < 4; i++) if (!strcasecmp(arg, modes[i])) zr_choose(state, 4, i); }
-  else if (!strcmp(line, "access")) { static const char *const levels[] = {"full", "edits", "supervised"}; for (int i = 0; i < 3; i++) if (!strcasecmp(arg, levels[i])) zr_choose(state, 3, i); }
-  else if (!strcmp(line, "model") || !strcmp(line, "effort")) { if (!zr_choose_named(state, line[0] == 'm' ? 1 : 2, (const uint8_t *)arg, (int32_t)strlen(arg))) printf("no %s named %s\n", line, arg); }
-  else if (!strcmp(line, "plan")) zr_choose(state, 5, strcmp(arg, "off") != 0);
-  else if (!strcmp(line, "open")) zr_open_menu(state, !strcmp(arg, "access") ? 3 : 1);
-  else if (!strcmp(line, "attach")) oac_attach(a, arg);
-  else if (!strcmp(line, "folder")) oac_new_session(a, arg);   // a new session in that folder, as the folder picker makes it
-  else if (!strcmp(line, "room")) dsk_show_room(a->desk);
-  else if (!strcmp(line, "closetab")) { if (!dsk_close_tab(a->desk)) printf("closetab: the last tab stays\n"); }
-  else if (!strcmp(line, "stop")) zr_key(state, -1, 0);
-  else if (!strcmp(line, "scroll") && count >= 1) zr_scroll_to(state, n[0]);
-  else if (!strcmp(line, "answer")) { if (!zr_answer(state, !strcmp(arg, "allow"))) printf("answer: nothing is asking\n"); }
-  else if (!strcmp(line, "waitidle")) { a->wait_idle = 1; return count >= 1 ? n[0] : 300; }   // until the running turn ends
-  else if (!strcmp(line, "dictation") && a->offscreen && a->dictation) {
-    if (!strcmp(arg, "on")) { dsk_dictation_set(a->desk, 1); dn_enable(a->dictation, 1); dn_activate(a->dictation); oac_sync_dictation(a); }
-    else if (!strcmp(arg, "off")) { dsk_dictation_set(a->desk, 0); dn_enable(a->dictation, 0); oac_sync_dictation(a); }
-    else if (!strcmp(arg, "down")) fixture_key(a, 1);
-    else if (!strcmp(arg, "up")) { fixture_key(a, 0); fixture_tail(a); }
-    else if (!strcmp(arg, "mousedown")) fixture_mouse(a, 1);
-    else if (!strcmp(arg, "mouseup")) { fixture_mouse(a, 0); fixture_tail(a); }
-    else if (!strcmp(arg, "cancel")) oac_cancel_dictation_for_edit(a);
-    else if (!strncmp(arg, "feed ", 5) && a->dictation_fixture) fixture_audio(a, arg + 5);
-    else if (!strcmp(arg, "state")) {
-      int phase, outcome, samples; dn_inspect(a->dictation, &phase, &outcome, &samples);
-      printf("dictation: phase=%d outcome=%d samples=%d\n", phase, outcome, samples);
-      printf("dictation-setting: enabled=%d\n", dsk_dictation_enabled(a->desk));
-    }
-    else fprintf(stderr, "OpenAgents: unknown step dictation %s\n", arg);
-  }
-  else if (!strcmp(line, "waitdictationready") && a->offscreen && a->dictation) { a->wait_dictation = 1; double t = count >= 1 ? n[0] : 60; return t < 0 ? 0 : t > 120 ? 120 : t; }
-  else if (!strcmp(line, "waitdictation") && a->offscreen && a->dictation) { a->wait_dictation = 2; double t = count >= 1 ? n[0] : 10; return t < 0 ? 0 : t > 120 ? 120 : t; }
-  else if (!strcmp(line, "draft")) {
-    static uint8_t b[8192]; int k = zr_dictation_draft(state, b, sizeof b);
-    printf("draft: %.*s\n", k > 0 ? k : 0, (const char *)b);
-    printf("draft-state: sent=%d parts=%d\n", zr_dictation_sent(state), zr_dictation_parts(state));
-  }
-  else if (!strcmp(line, "status")) say("status", state, zr_status_text);
-  else if (!strcmp(line, "last")) say("last", state, zr_last_text);
-  else if (!strcmp(line, "desk")) {
-    int shown = -1;
-    for (int i = 0; i < dsk_count(a->desk); i++) if (dsk_chat(a->desk, i) == dsk_active(a->desk)) shown = i;
-    printf("desk: active=%d tabs=", shown);
-    for (int t = 0; t < dsk_tabs(a->desk); t++) printf("%s%d", t ? "," : "", dsk_tab(a->desk, t));
-    printf(" sessions=%d collapsed=%d\n", dsk_count(a->desk), dsk_collapsed(a->desk));
-  }
-  else if (!strcmp(line, "shiftclick") && count >= 2) { dsk_pointer(a->desk, n[0], n[1], 0, 1, 1); dsk_pointer(a->desk, n[0], n[1], 2, 1, 1); }
-  else if (!strcmp(line, "drag") && count == 4) {
-    dsk_pointer(a->desk, n[0], n[1], 0, 1, 0);
-    for (int k = 1; k <= 8; k++) { float t = (float)k / 8; dsk_pointer(a->desk, n[0] + (n[2] - n[0]) * t, n[1] + (n[3] - n[1]) * t, 1, 1, 0); }
-    dsk_pointer(a->desk, n[2], n[3], 2, 1, 0);
-  }
-#ifdef __APPLE__
-  else if (!strcmp(line, "menu")) {   // a menu item, as the menu bar sends it (when it is enabled)
+  int n = 0;
+  #define SAY(...) (n += snprintf(out + n, (size_t)(cap - n > 0 ? cap - n : 0), __VA_ARGS__), n = n < cap ? n : cap - 1)
+  if (!strcmp(line, "menu")) {   // a menu item, as the menu bar sends it (when it is enabled)
     int found = 0;
     for (int i = 0; i < MENU_ITEMS; i++) if (menus[i].title && !strcmp(menus[i].title, arg) && menus[i].id > 0) {
       found = 1;
-      if (on_command_state(a, menus[i].id) & 1) on_command(a, menus[i].id); else printf("menu %s is disabled\n", arg);
+      if (on_command_state(a, menus[i].id) & 1) on_command(a, menus[i].id); else SAY("menu %s is disabled\n", arg);
     }
-    if (!found) printf("unknown step: menu %s\n", arg);
+    if (!found) SAY("no menu item %s\n", arg);
+    return n;
   }
-  else if (!strcmp(line, "shortcut")) {   // a menu command's key as the menu bar has it
+  if (!strcmp(line, "shortcut")) {   // a menu command's key as the menu bar has it
     for (int i = 0; i < MENU_ITEMS; i++) if (menus[i].title && !strcmp(menus[i].title, arg)) {
       int m = menus[i].mods;
-      printf("shortcut: %s %s%s%s%s%s\n", arg, m & 1 ? "shift+" : "", m & 2 ? "ctrl+" : "", m & 4 ? "alt+" : "", m & 8 ? "cmd+" : "", menus[i].key);
+      SAY("shortcut: %s %s%s%s%s%s\n", arg, m & 1 ? "shift+" : "", m & 2 ? "ctrl+" : "", m & 4 ? "alt+" : "", m & 8 ? "cmd+" : "", menus[i].key);
     }
+    return n;
   }
-  else if (!strcmp(line, "clip")) ui_copy(a->host, arg, strlen(arg));   // the picture's own pasteboard
-  else if (!strcmp(line, "pasteboard")) { static char b[1 << 16]; int k = ui_paste_text(a->host, b, sizeof b); printf("pasteboard: %.*s\n", k, b); }
-  else if (!strcmp(line, "mark")) {   // marked text, its caret at its end (UTF-16 units)
+  if (!strcmp(line, "clip")) { ui_copy(a->host, arg, strlen(arg)); return 0; }   // the picture's own pasteboard
+  if (!strcmp(line, "mark")) {   // marked text, its caret at its end (UTF-16 units)
     int units = 0;
     for (const unsigned char *p = (const unsigned char *)arg; *p; p++) units += (*p & 0xC0) != 0x80 ? ((*p >= 0xF0) ? 2 : 1) : 0;
     oac_ime_mark(a, -1, -1, arg, strlen(arg), units, units);
+    return 0;
   }
-  else if (!strcmp(line, "commit")) oac_ime_replace(a, -1, -1, arg, strlen(arg));
-  else if (!strcmp(line, "window")) {
+  if (!strcmp(line, "commit")) { oac_ime_replace(a, -1, -1, arg, strlen(arg)); return 0; }
+  if (!strcmp(line, "state") && !strcmp(arg, "pasteboard")) { static char b[1 << 16]; int k = ui_paste_text(a->host, b, sizeof b); SAY("pasteboard: %.*s\n", k, b); return n; }
+  if (!strcmp(line, "state") && !strcmp(arg, "window")) {
     float f[4];
-    if (ds_window(a->settings, f)) printf("window: %dx%d at %d,%d\n", (int)f[2], (int)f[3], (int)f[0], (int)f[1]); else printf("window: none\n");
+    if (ds_window(a->settings, f)) SAY("window: %dx%d at %d,%d\n", (int)f[2], (int)f[3], (int)f[0], (int)f[1]); else SAY("window: none\n");
+    return n;
   }
+  #undef SAY
 #endif
-  else if (*line) printf("unknown step: %s\n", line);
-  return 0;
+  return oa_chat_drive(a, request, out, cap);
 }
+static int on_busy(void *user) { return oa_chat_busy(user); }
 
 static const char *value(int argc, char **argv, const char *flag) {
   for (int i = 1; i + 1 < argc; i++) if (!strcmp(argv[i], flag)) return argv[i + 1];
@@ -365,7 +260,8 @@ int main(int argc, char **argv) {
   App *a = oa_chat_new(&options);
   if (!a) return options.skin ? 2 : 1;
   UiApp app = {.title = "OpenAgents", .app_id = "com.openagents.desktop", .width = w, .height = h, .max_vertices = oa_chat_max_vertices(), .shader = shader,
-               .user = a, .frame = on_frame, .pointer = on_pointer, .wheel = on_wheel, .key = on_key, .text = on_text, .wants_text = on_wants_text};
+               .user = a, .frame = on_frame, .pointer = on_pointer, .wheel = on_wheel, .key = on_key, .text = on_text, .wants_text = on_wants_text,
+               .drive = on_drive, .busy = on_busy};
 #ifdef __APPLE__
   // the Mac's window: under a transparent title bar, at least 900 by 600 points, where it was at quit
   app.chrome = 1; app.min_width = 900; app.min_height = 600;
@@ -388,31 +284,37 @@ int main(int argc, char **argv) {
 #endif
 
   int status = 0;
+  const char *drive = value(argc, argv, "--drive");
+  if (drive && !ui_drive_listen(host, drive)) { fprintf(stderr, "OpenAgents: could not listen on %s\n", drive); return 1; }
   if (shot) {
-    const char *script = value(argc, argv, "--do");
-    char *steps = strdup(script ? script : "");
+    // a picture runs on the agent clock: nothing moves between two operations but what `clock` gives
+    ui_agent_clock(host, 1);
+    ui_real_time(host, has(argc, argv, "--real-time"));
     for (int i = 0; i < 3; i++) ui_shot_frame(host, w, h, 1 / 60.0f);
-    for (char *s = steps; s && *s;) {
+    const char *script = value(argc, argv, "--do");
+    char *ops = strdup(script ? script : ""), answer[1 << 16];
+    for (char *s = ops; s && *s;) {
       char *next = strstr(s, " ; ");
       if (next) { *next = 0; next += 3; }
-      double wait = step(a, s);
-      int wait_dictation = a->wait_dictation;
-      // an engine's answer comes in real time: frames a sixtieth apart until the wait is over
-      struct timespec nap = {0, 16000000};
-      for (double t = 0; t < wait; t += 1 / 60.0) {
-        ui_shot_frame(host, w, h, 1 / 60.0f); nanosleep(&nap, NULL);
-        if (a->wait_idle && t > 0.2 && !oa_chat_live(a)) break;
-        if ((a->wait_dictation == 1 && dn_ready(a->dictation)) || (a->wait_dictation == 2 && !a->dictation_ticket)) a->wait_dictation = 0;
-        if (wait_dictation && !a->wait_dictation) break;
-      }
-      if (a->wait_dictation) printf("dictation fixture: wait timed out\n");
-      a->wait_idle = 0; a->wait_dictation = 0;
-      for (int i = 0; i < 3; i++) ui_shot_frame(host, w, h, 1 / 60.0f);
+      int k = ui_drive(host, s, answer, sizeof answer);
+      if (k > 0) printf("%.*s%s", k, answer, answer[k - 1] == '\n' ? "" : "\n");
       s = next;
     }
-    free(steps);
+    free(ops);
+    if (drive) ui_drive_serve(host);   // then whatever coax drive asks, until it says quit
+    ui_drive(host, "clock +50", answer, sizeof answer);   // three frames, then the picture
+    ui_shot_frame(host, w, h, 0);
+    // --tree PATH: the element table as text beside the picture (a check compares it first, row by row)
+    const char *tree = value(argc, argv, "--tree");
+    if (tree) {
+      int k = ui_drive(host, "tree", answer, sizeof answer);
+      FILE *f = fopen(tree, "w");
+      if (!f || fwrite(answer, 1, (size_t)k, f) != (size_t)k) { fprintf(stderr, "OpenAgents: could not write %s\n", tree); status = 1; }
+      if (f) fclose(f);
+    }
     if (!ui_shot_write(host, shot)) { fprintf(stderr, "OpenAgents: could not write %s\n", shot); status = 1; }
   } else {
+    if (drive && has(argc, argv, "--agent-clock")) ui_agent_clock(host, 1);
     const char *seconds = value(argc, argv, "--seconds");
     double limit = seconds ? atof(seconds) : 0;
     // --fps SECS: the frames presented a second, after a second's warm-up, printed; then quit

@@ -1,0 +1,9 @@
+tab.1 tab "Fix the sidebar width" at 80 5 size 200x28
+tab.3 tab "New session" at 284 5 size 200x28
+tab.4 tab "New session" at 488 5 size 200x28
+transcript region "" at 0 38 size 1320x306
+composer field "Do anything…" at 292 368 size 736x120
+composer.send button "Send" at 987 449 size 28x28
+composer.model button "Claude" at 873 447 size 106x32
+composer.access button "Full access" at 786 447 size 83x32
+composer.attach button "Attach" at 305 449 size 28x28

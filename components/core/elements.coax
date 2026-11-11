@@ -1,0 +1,150 @@
+// The element table (components/spec.md, "The element table"; docs/research/exact/04-apps-audit-2026-11-10.md,
+// recommendation 2; GitHub #13156): every row a component draws that a person can press, type into
+// or read as one thing, with a stable id, its role, its label and its box. A screen fills it each
+// frame as it lays its parts out; the driver (`coax drive`: `tree`, `tap ID`, `type ID TEXT`) reads
+// it, so a check names what it presses and never a coordinate, and the same ids hold on every host.
+// An id is the part and its name ("composer.send", "session.5e55a0e1"), never an index that moves
+// when another row comes or goes. `tree` writes the rows in the layout trace's format
+// (aethyr/agent/drive.coax): `ID ROLE "LABEL" at X Y size WxH`, logical px, y down.
+//   coax/bin/coax test components/core/elements.coax
+
+EL_MAX :: 192;       // rows in one frame's table
+EL_ID :: 48;         // bytes of an id
+EL_LABEL :: 64;      // bytes of a label
+EL_BUTTON :: 0; EL_ROW :: 1; EL_TAB :: 2; EL_FIELD :: 3; EL_REGION :: 4; EL_ITEM :: 5;
+EL_ROLE :: [6] string.["button", "row", "tab", "field", "region", "item"];
+
+El :: struct {
+  id: [EL_ID] u8; id_n: int;
+  role: int;
+  label: [EL_LABEL] u8; label_n: int;
+  x: f32; y: f32; w: f32; h: f32;
+}
+Elements :: struct { rows: [EL_MAX] El; n: int; lost: int; }
+
+el_clear :: (e: [] Elements) { if e.count > 0 { e[0].n = 0; e[0].lost = 0; } }
+el_copy :: (dst: [] u8, src: string) -> int {
+  n := 0;
+  for c: src { if n >= dst.count { break; } dst[n] = c; n += 1; }
+  return n;
+}
+el_id :: (e: [] Elements, i: int) -> string { return cast(string) e[0].rows[i].id[0..<e[0].rows[i].id_n]; }
+el_label :: (e: [] Elements, i: int) -> string { return cast(string) e[0].rows[i].label[0..<e[0].rows[i].label_n]; }
+// A row; one with no area or an empty id is not kept (it can't be pressed). An id already in the
+// table this frame gets "-2", "-3" after it, so two rows never answer to one id.
+el_add :: (e: [] Elements, id: string, role: int, label: string, x: f32, y: f32, w: f32, h: f32) {
+  if e.count == 0 || id.count == 0 || !(w > 0) || !(h > 0) { return; }
+  if e[0].n >= EL_MAX { e[0].lost += 1; return; }
+  r: El;
+  r.id_n = el_copy(r.id[..], id);
+  // an id already in the table this frame: the first of id-2, id-3 ... that is not
+  if el_find(e, id) >= 0 && r.id_n + 3 <= EL_ID {
+    base := r.id_n;
+    for again: 2..<100 {
+      k := base; r.id[k] = '-'; k += 1;
+      if again >= 10 { r.id[k] = cast(u8) ('0' + again / 10); k += 1; }
+      r.id[k] = cast(u8) ('0' + again % 10); k += 1;
+      r.id_n = k;
+      if el_find(e, cast(string) r.id[0..<k]) < 0 { break; }
+    }
+  }
+  r.role = ifx role >= 0 && role < EL_ROLE.count then role else EL_REGION;
+  r.label_n = el_copy(r.label[..], label);
+  if label.count > r.label_n { while r.label_n > 0 && (label[r.label_n] & 0xC0) == 0x80 { r.label_n -= 1; } }   // not inside a character
+  for i: 0..<r.label_n { if r.label[i] == '"' || r.label[i] < 32 { r.label[i] = ' '; } }
+  r.x = x; r.y = y; r.w = w; r.h = h;
+  e[0].rows[e[0].n] = r;
+  e[0].n += 1;
+}
+// An id made of a part and a name: "session." and the name, its spaces and odd bytes as "-".
+el_join :: (out: [] u8, part: string, name: string) -> string {
+  n := el_copy(out, part);
+  for c: name {
+    if n >= out.count { break; }
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_';
+    out[n] = ifx ok then c else ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else '-';
+    n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+// The rows of another table (a part laid out at its own origin), moved by dx, dy.
+el_append :: (e: [] Elements, from: [] Elements, dx: f32, dy: f32) {
+  if e.count == 0 || from.count == 0 { return; }
+  for i: 0..<from[0].n {
+    r := from[0].rows[i];
+    el_add(e, el_id(from, i), r.role, el_label(from, i), r.x + dx, r.y + dy, r.w, r.h);
+  }
+  e[0].lost += from[0].lost;
+}
+el_find :: (e: [] Elements, id: string) -> int {
+  if e.count == 0 { return -1; }
+  for i: 0..<e[0].n { if el_id(e, i) == id { return i; } }
+  return -1;
+}
+// The id of the row under a logical point, the last one added (the one drawn on top), or "".
+el_at :: (e: [] Elements, x: f32, y: f32) -> string {
+  if e.count == 0 { return ""; }
+  i := e[0].n - 1;
+  while i >= 0 {
+    r := e[0].rows[i];
+    if x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h { return el_id(e, i); }
+    i -= 1;
+  }
+  return "";
+}
+
+el_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m >= out.count { break; } out[m] = c; m += 1; } return m; }
+el_put_i :: (out: [] u8, n: int, v: int) -> int {
+  b: [24] u8; k := 0; x := v; neg := x < 0; if neg { x = -x; }
+  while true { b[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  m := n;
+  if neg && m < out.count { out[m] = '-'; m += 1; }
+  while k > 0 { k -= 1; if m < out.count { out[m] = b[k]; m += 1; } }
+  return m;
+}
+// part somewhere in s (a check reading a tree).
+el_has :: (s: string, part: string) -> bool {
+  if part.count == 0 { return true; }
+  i := 0;
+  while i + part.count <= s.count { if s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+el_round :: (v: f32) -> int { return ifx v >= 0 then cast(int) (v + 0.5) else -cast(int) (0.5 - v); }
+// The table as text, one row a line: `ID ROLE "LABEL" at X Y size WxH`. Bytes written.
+el_tree :: (e: [] Elements, out: [] u8) -> int {
+  n := 0;
+  if e.count == 0 || e[0].n == 0 && e[0].lost == 0 { return el_put(out, 0, "(nothing yet: no rows drawn)\n"); }
+  for i: 0..<e[0].n {
+    r := e[0].rows[i];
+    n = el_put(out, n, el_id(e, i)); n = el_put(out, n, " "); n = el_put(out, n, EL_ROLE[r.role]);
+    n = el_put(out, n, " \""); n = el_put(out, n, el_label(e, i)); n = el_put(out, n, "\" at ");
+    n = el_put_i(out, n, el_round(r.x)); n = el_put(out, n, " "); n = el_put_i(out, n, el_round(r.y));
+    n = el_put(out, n, " size "); n = el_put_i(out, n, el_round(r.w)); n = el_put(out, n, "x"); n = el_put_i(out, n, el_round(r.h));
+    n = el_put(out, n, "\n");
+  }
+  if e[0].lost > 0 { n = el_put(out, n, "(and "); n = el_put_i(out, n, e[0].lost); n = el_put(out, n, " more rows)\n"); }
+  return n;
+}
+
+#test "rows keep their ids, a repeated id is numbered, and the tree is the trace's format" {
+  e: [1] Elements;
+  el_add(e[..], "composer", EL_FIELD, "Do anything", 10, 20, 300, 80.4);
+  el_add(e[..], "composer.send", EL_BUTTON, "Send", 280, 60, 28, 28);
+  el_add(e[..], "composer.send", EL_BUTTON, "Send", 0, 0, 2, 2);
+  el_add(e[..], "nothing", EL_BUTTON, "zero", 0, 0, 0, 10);
+  el_add(e[..], "composer.send", EL_BUTTON, "Send", 0, 0, 2, 2);
+  #assert el_find(e[..], "composer.send-3") == 3;
+  e[0].n = 3;
+  #assert e[0].n == 3 && el_find(e[..], "composer.send") == 1 && el_find(e[..], "composer.send-2") == 2 && el_find(e[..], "nothing") < 0;
+  #assert el_at(e[..], 290, 70) == "composer.send" && el_at(e[..], 20, 30) == "composer" && el_at(e[..], 500, 500) == "";
+  out: [512] u8; n := el_tree(e[..], out[..]);
+  #assert cast(string) out[0..<n] == "composer field \"Do anything\" at 10 20 size 300x80\ncomposer.send button \"Send\" at 280 60 size 28x28\ncomposer.send-2 button \"Send\" at 0 0 size 2x2\n";
+  b: [32] u8; #assert el_join(b[..], "session.", "Fix the Sidebar!") == "session.fix-the-sidebar-";
+  f: [1] Elements; el_add(f[..], "tab.a", EL_TAB, "a \"quoted\"", 1, 2, 3, 4);
+  el_append(e[..], f[..], 100, 0);
+  #assert el_find(e[..], "tab.a") == 3 && e[0].rows[3].x == 101 && el_label(e[..], 3) == "a  quoted ";
+  long: [70] u8; for i: 0..<62 { long[i] = 'a'; } long[62] = 0xE2; long[63] = 0x80; long[64] = 0xA6; long[65] = 'b';
+  el_add(e[..], "cut", EL_ITEM, cast(string) long[0..<66], 0, 0, 1, 1);
+  #assert e[0].rows[el_find(e[..], "cut")].label_n == 62;
+  el_clear(e[..]); n = el_tree(e[..], out[..]); #assert cast(string) out[0..<n] == "(nothing yet: no rows drawn)\n";
+}

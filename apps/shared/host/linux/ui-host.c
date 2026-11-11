@@ -2,6 +2,8 @@
 // The shared Linux host (ui-host.h).
 #define _GNU_SOURCE
 #include "ui-host.h"
+#include "../drive.h"
+#include <stdarg.h>
 #include "vkc.h"
 #include "vks.h"
 #include "vkp.h"
@@ -20,6 +22,7 @@ bool realm_key_up(void *state, int key) { (void)state; (void)key; return false; 
 #define UI_VERTEX_BYTES 112   /* 28 floats: components/zeron/gpui.coax GP_VERTEX_FLOATS */
 
 struct UiHost {
+  UiDrive drive;   // coax drive (../drive.c)
   UiApp app;
   int offscreen;
   Vkc v;
@@ -106,6 +109,7 @@ static void ui_record(VkCommandBuffer cmd, void *user) { UiHost *h = user; vks_p
 // The frame's vertices to the GPU's buffer, once it is known they will be drawn.
 static void ui_hand_over(UiHost *h) { memcpy(h->verts.map, h->frame, (size_t)h->pass.vertex_count * UI_VERTEX_BYTES); }
 static void ui_fill(UiHost *h, float dt) {
+  if (h->drive.agent) dt = h->drive.giving;   // the agent clock (../drive.c)
   float *u = h->uniform.map;
   u[0] = (float)h->w; u[1] = (float)h->rows; u[2] = 0; u[3] = 0;
   int n = h->app.frame ? h->app.frame(h->app.user, h->frame, (float)h->w, (float)h->rows, h->dpr, dt) : 0;
@@ -209,7 +213,10 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   h->last = ui_now();
   return h;
 }
+static void ui_drive_poll(UiHost *h);
+static void ui_drive_close(UiHost *h);
 int ui_frame(UiHost *h) {
+  ui_drive_poll(h);
   if (h->offscreen) return 0;
   vkw_pump(&h->win);
   if (h->win.closed) return 0;
@@ -344,6 +351,7 @@ int ui_shot_write(UiHost *h, const char *png) {
 }
 void ui_close(UiHost *h) {
   if (!h) return;
+  ui_drive_close(h);
   vkDeviceWaitIdle(h->v.dev);
   if (h->has_pipe) vks_pipe_close(&h->v, &h->pipe);
   if (h->has_target) vks_image_free(&h->v, &h->target);
@@ -360,3 +368,5 @@ void ui_close(UiHost *h) {
   }
   free(h->frame); free(h->words); free(h);
 }
+
+#include "../drive.c"

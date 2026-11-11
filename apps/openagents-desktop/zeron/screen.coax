@@ -914,6 +914,14 @@ coaxial_zeron_mode_open :: (s: [] ZeronState) -> bool #export_c #effects(all) { 
 coaxial_zeron_mode_brand :: (mode: int) -> int #export_c #effects(all) { brands := MODE_BRANDS; return ifx mode >= 0 && mode < MODE_COUNT then brands[mode] else 0; }
 // Whether a turn is running (the --shot steps wait on it).
 coaxial_zeron_live :: (s: [] ZeronState) -> bool #export_c #effects(all) { return s.count > 0 && s[0].session[0].live; }
+// A turn is working (not waiting on the user's approval), or the engine is still finding claude and codex
+// (its probe at start): coax drive's `clock settle` waits while it is.
+coaxial_zeron_busy :: (s: [] ZeronState) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  e := s[0].engine[..];
+  if e[0].probe >= 0 && !e[0].probed { return true; }
+  return s[0].session[0].live && zr_status(s) != ZR_STATUS_WAITING;
+}
 // What the host should do for a notice's button (HOST_LOGIN: Terminal running `claude /login`; HOST_INSTALL: the install line;
 // HOST_CODEX_LOGIN and HOST_CODEX_INSTALL the same for Codex: `codex login`, its npm line), once.
 coaxial_zeron_take_action :: (s: [] ZeronState) -> int #export_c #effects(all) {

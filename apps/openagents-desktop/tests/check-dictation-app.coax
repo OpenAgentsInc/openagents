@@ -25,7 +25,7 @@ DappObserved :: struct {ok:bool;drafts:int;states:int;timeouts:int;rejected:bool
  #assert !dapp_observe(cast(string)bytes[0..<DAPP_GOOD.count]).ok;
 }
 #test "dictation app oracle rejects fixture timeouts and unknown scripted actions" {
- b:[2048]u8;n:=0;n=dapp_put(b[..],n,DAPP_GOOD);n=dapp_put(b[..],n,"\ndictation fixture: wait timed out");r:=dapp_observe(cast(string)b[0..<n]);#assert !r.ok && r.timeouts==1;
+ b:[2048]u8;n:=0;n=dapp_put(b[..],n,DAPP_GOOD);n=dapp_put(b[..],n,"\nclock: still busy after 90000 ms");r:=dapp_observe(cast(string)b[0..<n]);#assert !r.ok && r.timeouts==1;
  n=DAPP_GOOD.count;n=dapp_put(b[..],n,"\nunknown step: unexpected");#assert !dapp_observe(cast(string)b[0..<n]).ok;
 }
 #test "dictation app script paths cannot introduce another fixture command" {
@@ -44,7 +44,7 @@ dapp_observe :: (text:string)->DappObserved {
  for i:0..<text.count+1 {
   if i==text.count || text[i]=='\n' {
    end:=i;if end>from && text[end-1]==13 {end-=1;}line:=text[from..<end];from=i+1;
-   if dapp_starts(line,"dictation fixture: wait timed out") {r.timeouts+=1;}
+   if dapp_starts(line,"clock: still busy") {r.timeouts+=1;}
    if dapp_starts(line,"unknown step:") {r.rejected=true;}
    if dapp_starts(line,"draft: ") {
     if waiting || r.drafts>=3 {r.rejected=true;}
@@ -66,10 +66,10 @@ dapp_hash :: (path:string,out:[]u8)->bool {
  digits:="0123456789abcdef";for i:0..<32 {out[2*i]=digits[digest[i]>>4];out[2*i+1]=digits[digest[i]&15];}return true;
 }
 dapp_script :: (pcm:string,silence:string,out:[]u8)->string {
- at:=dapp_put(out,0,"newchat ; type Please inspect ; menu Enable Local Dictation — Parakeet ; waitdictationready 90 ; dictation down ; dictation feed ");
- at=dapp_put(out,at,pcm);at=dapp_put(out,at," ; dictation up ; waitdictation 15 ; draft ; key cmd+z ; draft ; dictation feed ");
+ at:=dapp_put(out,0,"newchat ; type - Please inspect ; menu Enable Local Dictation — Parakeet ; clock settle within 90000 ; dictation down ; dictation feed ");
+ at=dapp_put(out,at,pcm);at=dapp_put(out,at," ; dictation up ; clock settle within 15000 ; state draft ; key cmd+z ; state draft ; dictation feed ");
  at=dapp_put(out,at,silence);at=dapp_put(out,at," ; dictation mousedown ; dictation feed ");at=dapp_put(out,at,pcm);
- at=dapp_put(out,at," ; dictation mouseup ; waitdictation 15 ; draft");return ifx at<0 then "" else cast(string)out[0..<at];
+ at=dapp_put(out,at," ; dictation mouseup ; clock settle within 15000 ; state draft");return ifx at<0 then "" else cast(string)out[0..<at];
 }
 tool_main :: ()->int #export_c #effects(all) {
  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {tool_errln("usage: check-dictation-app APP_OR_EXECUTABLE ROOT OUTPUT_DIR");return 2;}

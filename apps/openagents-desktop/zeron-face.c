@@ -130,6 +130,7 @@ void zr_demo(void *state) { coaxial_zeron_demo(at(state)); }
 void zr_new_chat(void *state) { coaxial_zeron_new_chat(at(state)); }
 void zr_choose(void *state, int32_t which, int32_t index) { coaxial_zeron_choose(at(state), which, index); }
 int32_t zr_live(void *state) { return coaxial_zeron_live(at(state)) ? 1 : 0; }
+int32_t zr_busy(void *state) { return coaxial_zeron_busy(at(state)); }
 int32_t zr_take_action(void *state) { return (int32_t)coaxial_zeron_take_action(at(state)); }
 void zr_quit(void *state) { coaxial_zeron_quit(at(state)); }
 
@@ -216,3 +217,5 @@ int32_t zr_dictation_parts(void *state){return (int32_t)((coax_t_ZeronState*)sta
 int32_t zr_dictation_focus(int32_t active,int32_t key){return coaxial_dictation_focus(active!=0,key!=0);}
 
 int32_t dsk_dictation_point(void *desk,float *out){return coaxial_desk_dictation_point(desk_at(desk),(coax_v_f32){out,2});}
+int32_t dsk_tree(void *desk, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_tree(desk_at(desk), (coax_v_u8){out, cap}); }
+int32_t dsk_box(void *desk, const char *id, float *out) { return coaxial_desk_box(desk_at(desk), (coax_string){id, (int64_t)strlen(id)}, (coax_v_f32){out, 4}); }

@@ -105,9 +105,9 @@ How it works:
   (`at_text_only`, the hook a text-only engine calls). Enter sends; the send button becomes Stop while a turn runs, and Stop
   or Escape sends the interrupt and ends the turn with "Stopped". `--demo`
   (or the shot step `fixture open`) shows Zeron's demo conversation instead.
-  Shot steps `send TEXT`, `stop`, `model/effort/access NAME`, `plan on|off`,
-  `open model|access`, `attach PATH`, `wait S` and
-  `waitidle S` drive a live run offscreen. Tests: `coax test --library
+  The coax drive operations `send TEXT`, `stop`, `model/effort/access NAME`, `plan on|off`,
+  `open model|access`, `attach PATH`, `clock +MS` and
+  `clock settle [within MS]` drive a live run offscreen. Tests: `coax test --library
   zeron/claude.coax` runs a scrubbed recorded stream
   (`zeron/fixtures/claude-tools.jsonl`, regenerated with `fixture.py`)
   through the mapping.
@@ -300,11 +300,14 @@ checkmark, and approvals; hover states follow Zeron's code but were not
 compared against a Zeron render.
 
 Rebuild and look: `apps/openagents-desktop/build.sh --open`; an offscreen PNG:
-`build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--click X,Y] [--type TEXT] [--do STEPS]`,
-where STEPS drive the keyboard, mouse, menus and IME (`linux/main.c` `step`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`;
-`--do "sidebar ; click 20,20 ; fixture open ; scroll 500"` opens the transcript as the
-Zeron capture does (its sidebar collapsed). Shot steps for the desk: `folder PATH` (a new
-session there), `sidebar` (Cmd+S), `closetab`, `desk` (prints the sessions and tabs). A shot has a pasteboard of its own (`clip TEXT` puts text
+`build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--do "OP ; OP"] [--tree out.tree] [--drive SOCKET]`,
+where the OPs are coax drive operations (`apps/shared/host/drive.c`, `linux/chat.h` `oa_chat_drive`) run on
+the agent clock: they press rows by their ids from `tree` (`components/core/elements.coax`), never by
+coordinates, e.g. `--do "key shift+alt+left ; menu Copy ; tap composer 2 ; menu Paste"`;
+`--do "sidebar ; fixture open ; scroll 500"` opens the transcript as the
+Zeron capture does (its sidebar collapsed). Operations for the desk: `folder PATH` (a new
+session there), `sidebar` (Cmd+S), `closetab`, `state desk` (the sessions and tabs). A running
+app started with `--drive SOCKET` takes the same operations from `coax/web/tool.sh drive native SOCKET OP...`. A shot has a pasteboard of its own (`clip TEXT` puts text
 on it), so scripted Copy and Paste never touch yours.
 
 Checks (from a clean checkout: `coax/build.sh`, then):

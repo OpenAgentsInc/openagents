@@ -1,0 +1,10 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "New session" at 8 111 size 240x29
+sidebar.edge region "" at 252 0 size 8x880
+tab.1 tab "New session" at 264 5 size 200x28
+transcript region "" at 256 38 size 1064x306
+composer field "Hello from Coax, pasted:Hello from Coax" at 420 368 size 736x120
+composer.send button "Send" at 1115 449 size 28x28
+composer.model button "Claude" at 1001 447 size 106x32
+composer.access button "Full access" at 914 447 size 83x32
+composer.attach button "Attach" at 433 449 size 28x28
