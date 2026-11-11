@@ -37,10 +37,10 @@ static coax_t_Player player;
 static coax_t_Sticks sticks;
 static float width, height, dpr;
 static double now;
-/* the room (everglade2-net.coax): the step's clock and where the last step began, the seat ticket's
+/* the room (everglade2-net.coax): the step's clock and the next step's speculation, the seat ticket's
    POST and the player key's mint (POST /api/playtest/player, kept by the host as action 5) */
 static float step_acc, step_jump_held;
-static coax_t_Vec3 step_from;
+static coax_t_Player step_next;   /* the step this frame's input will make next: where you are drawn toward (#13167) */
 static int64_t joined_ms = -1;
 static int32_t ticket_id = -1, mint_id = -1;
 static bool has_player, mint_tried, facts_seen;
@@ -204,31 +204,33 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
       int64_t again = e2_net_replay_n(at(state));
       for (int64_t k = 0; k < again; k++) player = step_once(state, player, e2_net_replay_input(at(state), k), STEP);
       coax_t_Vec3 now_at = eg_step_feet(player);
-      float dx = now_at.x - was.x, dy = now_at.y - was.y, dz = now_at.z - was.z;
-      step_from.x += dx; step_from.y += dy; step_from.z += dz;
-      e2_net_fixed(at(state), dx, dy, dz);
+      e2_net_fixed(at(state), now_at.x - was.x, now_at.y - was.y, now_at.z - was.z);
     }
     step_acc += frame > 0.25f ? 0.25f : frame;
     while (step_acc >= STEP) {
       coax_t_EgMoveIn one = input; one.jump = step_jump_held != 0; step_jump_held = 0;
-      step_from = eg_step_feet(player);
       e2_net_input(at(state), one);
       player = step_once(state, player, one, STEP);
       step_acc -= STEP;
     }
+    /* the next step as it will run on this frame's input, not yet sent: drawn toward by the time gone
+       of it, so a key shows on the next frame and not up to a step later (#13167). Only drawn: the
+       sent steps and the room's re-runs are the only ones that move you. */
+    coax_t_EgMoveIn next = input; next.jump = step_jump_held != 0;
+    step_next = step_once(state, player, next, STEP);
   } else {
     /* the run holds its feet while the room seats you (E2N_HOLD_MS at most); alone, the frame's own step */
     if (joined_ms < 0 && e2_at(state)->net.e[0].joined) joined_ms = mono;
     if (joined_ms >= 0 && e2_net_holding(at(state), mono - joined_ms)) { input.key_x = 0; input.key_y = 0; input.pad_x = 0; input.pad_y = 0; input.jump = false; }
     step_acc = 0; step_jump_held = 0;
     player = step_frame(state, player, input, step, frame);
-    step_from = eg_step_feet(player);
   }
   coax_t_Vec3 feet = verse_player_feet(player);
   if (e2_net_live(at(state))) {
-    /* drawn between the last two steps' ends, less what a re-run moved you, eased out */
+    /* drawn from where the last step left you toward where the next one will, by its time gone, less
+       what a re-run moved you, eased out */
     coax_t_Point off = e2_net_offset(at(state), frame);
-    feet = eg_step_drawn(step_from, player, step_acc * 30);
+    feet = eg_step_drawn(eg_step_feet(player), step_next, step_acc * 30);
     feet.x += off.x; feet.y += off.y; feet.z += off.z;
   }
   e2_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player));

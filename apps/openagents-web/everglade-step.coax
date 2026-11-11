@@ -138,9 +138,10 @@ eg_step_set :: (p0: walk.Player, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: 
   return p;
 }
 
-// Where you are drawn in a room this frame: between the last two room steps' ends, `from` the feet
-// where the last step began (eg_step_feet then) and p after it, `ahead` (0 to 1) of the next step's
-// time gone. Each end is the controller's feet (eg_step_feet), not its raw position: the 1/64 s
+// Where you are drawn in a room this frame: `from` the feet where the last room step left you
+// (eg_step_feet) and p the next step as this frame's input will make it, `ahead` (0 to 1) of that
+// step's time gone. Drawing toward the next step, not between the last two, puts a key on screen the
+// next frame rather than up to a step later (#13167); only the sent steps move you. Each end is the controller's feet (eg_step_feet), not its raw position: the 1/64 s
 // controller runs two or three of its steps in each 1/30 s room step, so its raw position moves 31 or
 // 47 ms a step and a draw between those stutters (every few steps the body runs on and jumps back);
 // its feet, between its last two steps by its leftover time, move 33 ms each step.
