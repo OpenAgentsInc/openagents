@@ -21,7 +21,8 @@
 #load "../zeron/gpui.coax";
 #load "svg.coax";
 
-RA_WIDTH :: 4096;
+RA_WIDTH :: 4096;          // the atlas's narrowest width; ra_plan doubles it until the height fits
+RA_MAX_SIDE :: 8192;       // the largest texture side every host takes (the iOS simulator's; Vulkan promises 4096, Android GPUs 8192 or more)
 RA_CELL_EM :: 2.0;          // a glyph's cell, in its font's size (the Mac uses 2.4 for five dilations)
 RA_WEIGHTS :: 4;            // Geist, Geist Medium, Geist SemiBold, Geist Mono
 RA_COLOR_CELLS :: 256;      // GP_DYN_CELLS - GP_DYN_MONO
@@ -45,14 +46,29 @@ ra_ceil :: (v: f32) -> int { f := floor(v); return ifx f < v then cast(int) f + 
 ra_round :: (v: f32) -> int { return cast(int) floor(v + 0.5); }
 
 // The layout: each font's cells (every glyph at GP_SUBPIXEL offsets), then the
-// icons at GP_SVG_SCALE times their size, then the glyph cache's cells.
-ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) {
-  p[0].dpr = dpr; p[0].width = RA_WIDTH;
+// icons at GP_SVG_SCALE times their size, then the glyph cache's cells. The
+// atlas is RA_WIDTH wide, doubled until neither side passes max_side: at 3x a
+// 4096-wide atlas is 10,869 rows, past the iOS simulator's 8,192, and at 8,192
+// wide it is about half that. Whether it fits; when nothing does, the plan is
+// the widest one, too tall, and the host must not make a texture of it.
+ra_plan_max :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32, max_side: int) -> bool {
+  width := RA_WIDTH;
+  while true {
+    ra_plan_at(p, dpr, sizes, icon_sizes, width);
+    if p[0].height <= max_side && p[0].color_height <= max_side && width <= max_side { return true; }
+    if width * 2 > max_side { return false; }
+    width *= 2;
+  }
+  return false;
+}
+ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) -> bool { return ra_plan_max(p, dpr, sizes, icon_sizes, RA_MAX_SIDE); }
+ra_plan_at :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32, width: int) {
+  p[0].dpr = dpr; p[0].width = width;
   y := 0; largest := 1;
   for k: 0..<GP_FONTS {
     size := ifx k < sizes.count then sizes[k] else 14.0f32;
     cell := ra_ceil(size * dpr * RA_CELL_EM);
-    cols := RA_WIDTH / cell;
+    cols := width / cell;
     cells := GP_GLYPHS * GP_SUBPIXEL;
     p[0].slots[k] = RaSlot.{cell = cell, pen_x = ra_round(cast(f32) cell * 0.25), pen_y = ra_round(cast(f32) cell * 0.7), y0 = y, cols = cols};
     y += ((cells + cols - 1) / cols) * cell;
@@ -63,7 +79,7 @@ ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) {
   p[0].icons = n;
   for i: 0..<n {
     px := ra_ceil(icon_sizes[i] * dpr * GP_SVG_SCALE);
-    if x + px > RA_WIDTH { x = 0; y += row; row = 0; }
+    if x + px > width { x = 0; y += row; row = 0; }
     p[0].tiles[i] = RaTile.{x = x, y = y, size = px};
     x += px + 2;
     if px + 2 > row { row = px + 2; }
@@ -71,7 +87,7 @@ ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) {
   p[0].dyn_cell = largest;
   p[0].dyn_pen_x = ra_round(cast(f32) largest * 0.25); p[0].dyn_pen_y = ra_round(cast(f32) largest * 0.7);
   p[0].dyn_y0 = y + row + 1;
-  p[0].dyn_cols = RA_WIDTH / largest;
+  p[0].dyn_cols = width / largest;
   p[0].height = p[0].dyn_y0 + ((GP_DYN_MONO + p[0].dyn_cols - 1) / p[0].dyn_cols) * largest;
   p[0].color_cols = p[0].dyn_cols;
   p[0].color_height = ((RA_COLOR_CELLS + p[0].color_cols - 1) / p[0].color_cols) * largest;
@@ -92,7 +108,7 @@ ra_cell_begin :: (r: [] TtfRaster, cell: int, pen_x: int, pen_y: int) -> bool {
   return true;
 }
 // The raster's coverage of the cell into the atlas at (ox, oy), replacing what was there.
-ra_cell_end :: (r: [] TtfRaster, px: [] u8, ox: int, oy: int, cell: int) {
+ra_cell_end :: (r: [] TtfRaster, px: [] u8, stride: int, ox: int, oy: int, cell: int) {
   m := cell;
   for y: 0..<cell {
     sum := 0.0f64; line := (y + m) * (r[0].w + 2);
@@ -100,7 +116,7 @@ ra_cell_end :: (r: [] TtfRaster, px: [] u8, ox: int, oy: int, cell: int) {
       sum += r[0].acc[line + x];
       if x <= m { continue; }
       a := cast(int) floor(abs(sum) * 256.0);
-      o := (oy + y) * RA_WIDTH + ox + x - 1 - m;
+      o := (oy + y) * stride + ox + x - 1 - m;
       if o >= 0 && o < px.count { px[o] = cast(u8) (ifx a > 255 then 255 else a); }
     }
   }
@@ -133,7 +149,7 @@ ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, f: TtfFont, size: f32, px: [] 
       cell := variant * GP_GLYPHS + g;
       if !ra_cell_begin(w[0].raster[..], s.cell, s.pen_x, s.pen_y) { return false; }
       ok := ttf_outline(f, glyph[g], scale, variant * 64 / GP_SUBPIXEL, 0, w[0].raster[..], 0);
-      ra_cell_end(w[0].raster[..], px, (cell % s.cols) * s.cell, s.y0 + (cell / s.cols) * s.cell, s.cell);
+      ra_cell_end(w[0].raster[..], px, p[0].width, (cell % s.cols) * s.cell, s.y0 + (cell / s.cols) * s.cell, s.cell);
     }
   }
   return true;
@@ -142,7 +158,7 @@ ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, f: TtfFont, size: f32, px: [] 
 ra_icon :: (a: [] Atlas, p: [] RaPlan, i: int, svg: string, px: [] u8, w: [] RaWork) -> bool {
   if i < 0 || i >= p[0].icons { return false; }
   t := p[0].tiles[i];
-  if !svg_draw(svg, w[0].path[..], w[0].raster[..], px, RA_WIDTH, t.x, t.y, t.size) { return false; }
+  if !svg_draw(svg, w[0].path[..], w[0].raster[..], px, p[0].width, t.x, t.y, t.size) { return false; }
   gp_set_icon(a, i, cast(f32) t.x, cast(f32) t.y, cast(f32) t.size, cast(f32) t.size);
   return true;
 }
@@ -201,7 +217,7 @@ ra_serve :: (a: [] Atlas, p: [] RaPlan, fonts: [] RaFonts, weights: [] int, size
         pen += ttf_mulfix(ttf_advance(f, g), scale);
       }
       ox := cast(int) info[4]; oy := cast(int) info[5];
-      ra_cell_end(w[0].raster[..], px, ox, oy, p[0].dyn_cell);
+      ra_cell_end(w[0].raster[..], px, p[0].width, ox, oy, p[0].dyn_cell);
       if p[0].dirty_y1 <= p[0].dirty_y0 { p[0].dirty_y0 = oy; p[0].dirty_y1 = oy + p[0].dyn_cell; }
       if oy < p[0].dirty_y0 { p[0].dirty_y0 = oy; }
       if oy + p[0].dyn_cell > p[0].dirty_y1 { p[0].dirty_y1 = oy + p[0].dyn_cell; }
@@ -214,7 +230,9 @@ ra_serve :: (a: [] Atlas, p: [] RaPlan, fonts: [] RaFonts, weights: [] int, size
 
 // ---- the host's calls (C): the plan's numbers, the fonts' bytes, the build, the serve
 
-coaxial_ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) #export_c #effects(all) { if p.count > 0 { ra_plan(p, dpr, sizes, icon_sizes); } }
+// The plan for this scale; whether it fits in RA_MAX_SIDE (a host with a larger limit passes it to coaxial_ra_plan_max).
+coaxial_ra_plan :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32) -> bool #export_c #effects(all) { return p.count > 0 && ra_plan(p, dpr, sizes, icon_sizes); }
+coaxial_ra_plan_max :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f32, max_side: int) -> bool #export_c #effects(all) { return p.count > 0 && ra_plan_max(p, dpr, sizes, icon_sizes, max_side); }
 coaxial_ra_width :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].width else 0; }
 coaxial_ra_height :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].height else 0; }
 coaxial_ra_color_height :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].color_height else 0; }
@@ -246,7 +264,7 @@ coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[
   p: [1] RaPlan;
   sizes := [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
   icons := [3] f32.[18, 14, 16];
-  ra_plan(p[..], 1, sizes[..], icons[..]);
+  #assert ra_plan(p[..], 1, sizes[..], icons[..]);
   #assert p[0].width == 4096 && p[0].slots[0].cell == 28 && p[0].slots[5].cell == 25 && p[0].slots[0].cols == 146;
   #assert p[0].slots[0].pen_x == 7 && p[0].slots[0].pen_y == 20;
   for k: 1..<GP_FONTS {
@@ -264,10 +282,23 @@ coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[
   p: [1] RaPlan; q: [1] RaPlan;
   sizes := [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
   icons := [2] f32.[18, 13];
-  ra_plan(p[..], 1, sizes[..], icons[..]); ra_plan(q[..], 2, sizes[..], icons[..]);
+  #assert ra_plan(p[..], 1, sizes[..], icons[..]) && ra_plan(q[..], 2, sizes[..], icons[..]);
   for k: 0..<GP_FONTS { #assert q[0].slots[k].cell == 2 * p[0].slots[k].cell; }
   #assert q[0].tiles[0].size == 72 && q[0].tiles[1].size == 52 && q[0].dyn_cell == 56 && q[0].height > p[0].height;
 }
 #test "joiners and variation selectors take no room" {
   #assert ra_zero_width(0x200D) && ra_zero_width(0xFE0F) && ra_zero_width(0x0301) && !ra_zero_width(65) && !ra_zero_width(0x1F600);
+}
+#test "at 3x the atlas widens to stay inside 8,192 rows; with a larger limit it fits at 4x" {
+  p: [1] RaPlan;
+  sizes := [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
+  icons := [3] f32.[18, 14, 16];
+  ra_plan_at(p[..], 3, sizes[..], icons[..], 4096);
+  #assert p[0].height > RA_MAX_SIDE;                     // the 10,869 rows #13156 found
+  #assert ra_plan(p[..], 3, sizes[..], icons[..]);
+  #assert p[0].width == 8192 && p[0].height <= 8192 && p[0].color_height <= 8192;
+  #assert p[0].slots[0].cols == 8192 / p[0].slots[0].cell && p[0].dyn_cols == 8192 / p[0].dyn_cell;
+  #assert ra_plan(p[..], 2, sizes[..], icons[..]) && p[0].width == 4096;   // 2x keeps its layout
+  #assert !ra_plan(p[..], 6, sizes[..], icons[..]) && p[0].width == 8192 && p[0].height > 8192;
+  #assert ra_plan_max(p[..], 4, sizes[..], icons[..], 16384) && p[0].height <= 16384;
 }

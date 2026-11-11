@@ -75,7 +75,10 @@ static int atlas_setup(App *a) {
   }
   a->work = calloc(1, sizeof *a->work);
   if (!a->work) return 0;
-  coaxial_ra_plan(plan_of(a), a->dpr, (coax_v_f32){a->sizes, a->nfonts}, (coax_v_f32){a->icon_sizes, a->nicons});
+  // the atlas widens to fit 8,192 rows (the smallest limit of the hosts); past that it would not upload
+  if (!coaxial_ra_plan(plan_of(a), a->dpr, (coax_v_f32){a->sizes, a->nfonts}, (coax_v_f32){a->icon_sizes, a->nicons})) {
+    fprintf(stderr, "the glyph atlas at %gx does not fit in 8192 by 8192\n", (double)a->dpr); return 0;
+  }
   a->mono = calloc(1, mono_bytes(a)); a->color = calloc(1, color_bytes(a));
   if (!a->mono || !a->color) return 0;
   coax_v_u8 px = {a->mono, (int64_t)mono_bytes(a)};
