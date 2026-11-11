@@ -29,14 +29,27 @@ limbs until the string faces your chin.
 Carried (standing, walking and running), the bow hangs from the relaxed bow
 hand as an archer carries one (`bow_carry_basis`): the limbs run up and down
 the arm, the top tilted a little forward and leaned in, and the string is on
-your side of the bow, inside the bow arm, turned toward ahead so it passes in
-front of the thigh. The bow's back faces out. As you draw, the bow turns from
-this carry to the drawn hold. A check (`cc_bow_side_sweep`) keeps the string
-nearer your midline than the bow's back in every standing, walking and running
-frame, and the overlap sweep keeps the limbs and string out of the legs.
+your side of the bow, inside the bow arm. The bow's back faces out.
 
-Character Create's own preview shows no held gear, so the bow appears only in
-Experimental.
+- Standing (the rest carry, `CC_BOW_REST_*`), the string is turned about
+  halfway toward ahead and lies about 15 cm inside the back.
+- Walking and running (the gait carry, `CC_BOW_CARRY_*`), the bow turns
+  nearly straight ahead, so the string passes in front of the striding thigh
+  and the top clears the swinging arm.
+
+The bow blends between the two with the change of clip (`bow_rest_body`). As
+you draw, it turns from the carry to the drawn hold.
+
+A check (`cc_bow_side_sweep`) keeps the string at least 12 cm nearer your
+midline than the bow's back in every standing frame, and at least 3 cm in
+every walking and running frame. It measures the bow in the figure's space
+and as every zone places it (`bow_carry_side`: from a body record, through
+the frame's kept hand rows, at four turns), so a string turned round ahead of
+the bow, or outside it, fails. The overlap sweep keeps the limbs and string
+out of the legs.
+
+The standalone Character Create page shows no held gear. Everglade II's
+Character Create and Experimental show the bow.
 
 ## Controls
 

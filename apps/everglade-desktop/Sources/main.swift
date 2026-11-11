@@ -14,7 +14,7 @@
 //       without --scene it is the list of worlds. In a realm (--scene 1, 3 or 4) nothing leaves this
 //       Mac during a shot unless --online is given (the room is then the site's, as a guest's
 //       browser would join it), nothing of yours is kept, and --do STEPS plays input first: `key:w:2` holds a key two seconds,
-//       `tap:640,400` clicks a point, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
+//       `tap:640,400` clicks a point, `drag:600,400,700,400` drags from one point to another, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
 //       mouselook asks, `press:2:1` holds a mouse button a second at the middle, `turn:40,0` moves
 //       the held mouse, `down:2` and `up:2` hold and let go a button around other steps, `drive:walk-to guard` asks the realm's agent driver, `near:guard:20:60` waits until the driver lists ID within METRES (SECONDS at most); steps are split by `;`.
 //       A realm's sound is rendered offline in the shot's time, never played: stderr says what it
@@ -442,6 +442,14 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       else if verb == "tap", part.count > 1 {
         let xy = part[1].split(separator: ",").compactMap { Double($0) }
         if xy.count == 2 { let at = CGPoint(x: xy[0], y: xy[1]); page.pointer(at, phase: 1, button: 0); run(1.0 / 60); page.pointer(at, phase: 0, button: 0); run(1.0 / 60); page.pointer(at, phase: 2, button: 0); run(0.1) }
+      }
+      else if verb == "drag", part.count > 1 {   // `drag:x0,y0,x1,y1` presses at one point and drags to the other in ten moves (Character Create's turn)
+        let v = part[1].split(separator: ",").compactMap { Double($0) }
+        if v.count == 4 {
+          page.pointer(CGPoint(x: v[0], y: v[1]), phase: 0, button: 0); run(1.0 / 60)
+          for i in 1...10 { let t = Double(i) / 10; page.pointer(CGPoint(x: v[0] + (v[2] - v[0]) * t, y: v[1] + (v[3] - v[1]) * t), phase: 1, button: 0); run(1.0 / 60) }
+          page.pointer(CGPoint(x: v[2], y: v[3]), phase: 2, button: 0); run(0.1)
+        }
       }
       else if verb == "text", part.count > 1 { page.text(part[1]); run(0.1) }
       else if verb == "look" { shotLooks = true; run(0.2) }
