@@ -2,6 +2,11 @@
 
 ## Post-reset scope and authority
 
+> **Review, 2026-11-11:** [the protocol review](2026-11-11-protocol-review.md) keeps this spec
+> and `proto/` as the one place wire shapes are defined, lists what here is
+> pre-Nuke history, and orders the cutover (API envelope, auth, sync, world
+> edits, chat, rooms, payments).
+
 This is the defining protocol plan for **every OpenAgents surface**, including
 web, mobile, desktop, coding agents, cloud hosts, decisions, payments and Verse.
 **Coax is the implementation target. Verse is the engine and the
