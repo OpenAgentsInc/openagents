@@ -1,4 +1,4 @@
-// The HUD overlap check for Everglade II and its Character Create (GitHub #13076): e2_hud (the
+// The HUD overlap check for Everglade II and its Character Create (GitHub #13076): e2_overlay (the
 // studio's wardrobe and class pane, the bar, its card and the room's rest and aid controls, the GFX
 // control and the frame rate) and, in a dev build, admin mode's CLASSES column, drawn on the four
 // screens of hud-overlap.coax: the studio for every class, the world for every class, in the room
@@ -30,7 +30,7 @@ h2_screen :: (s: [] E2, v: int) {
 h2_draw :: (s: [] E2, t: [] cc.UitTrace, out: [] f32, v: int) {
   h2_screen(s, v);
   cc.uit_clear(t); s[0].creator[0].ui = t;
-  n := e2_hud(s, out, 0);
+  n := e2_overlay(s, out, 0);
   #if BUILD_DEBUG { n = e2a_frame(s, out, n, 0); }
   s[0].creator[0].ui = t[0..<0];
 }

@@ -372,15 +372,15 @@ lab_ride_hint_at :: (t: string, w: f32, h: f32, k: f32) -> [3] f32 {
   cap := xc_fit_cap(t, f32(LAB_HINT_CAP) * k, w - 32 * k);
   return [3] f32.[w * 0.5 - xc_text_w(t, cap) * 0.5, h - 11 * k, cap];
 }
-lab_ride_hud :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
+// The saddle's prompt (a finger's, framed) or the riding hint under the bar: Everglade's words.
+lab_ride_prompt :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   c := s[0].creator[0]; n := at;
   if !c.experimental || c.hostiles[0].hp <= 0 { return n; }
   ink := ink_col(k, 0.98, 0.94, 0.82);
   if s[0].touch {
     t := egm.eg_mount_prompt(c.mounts[0], c.player_x, c.player_z, c.clock, true);
     if t.count > 0 && t[0] != 'N' && t[0] != 'L' {
-      b := lab_ride_box(s); n = xc_frame_box(out, n, b, 1.4 * k, 0.98, 0.86, 0.5);
-      return cc.text(out, n, t, (b.x0 + b.x1) * 0.5 - xc_text_w(t, 12 * k) * 0.5, b.y0 + 31 * k, 12 * k, ink);
+      return cc.eg_framed_prompt(out, n, lab_ride_box(s), t, xc_text_w(t, 12 * k), k, ink);   // everglade/hud/screens.coax
     }
     if t.count == 0 { return n; }
   }
@@ -520,7 +520,7 @@ lab_ride_hud :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int
 // Whether the mount's hint draws something on a page w by h at scale k, all of it outside the middle
 // half of the view (where the horse and the dragon are) and on the page; true too when it draws nothing.
 lab_hint_clear :: (s: [] Lab, w: f32, h: f32, k: f32) -> bool {
-  out: [24000] f32; n := lab_ride_hud(s, out[..], 0, w, h, k); vf := cc.VERTEX_FLOATS;
+  out: [24000] f32; n := lab_ride_prompt(s, out[..], 0, w, h, k); vf := cc.VERTEX_FLOATS;
   for q: 0..<n {
     x := out[q * vf]; y := out[q * vf + 1];
     if x > w * 0.25 && x < w * 0.75 && y > h * 0.25 && y < h * 0.75 { return false; }
@@ -538,11 +538,11 @@ lab_hint_clear_all :: (s: [] Lab) -> bool {
   cc.xh_place(cr); h := cr[0].mounts[0].mounts[0];
   out: [24000] f32;
   // by the horse, then on it
-  cr[0].player_x = h.x + 1.8; cr[0].player_z = h.z; #assert lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
+  cr[0].player_x = h.x + 1.8; cr[0].player_z = h.z; #assert lab_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
   #assert lab_mount_key(s[..]);
   b := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true}; f := 0;
   for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
-  #assert lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
+  #assert lab_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
   cr[0].player_x = b.x; cr[0].player_z = b.z; #assert lab_mount_key(s[..]);
   for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
   // the dragon: on the ground, in the air, and E in the air
@@ -552,11 +552,11 @@ lab_hint_clear_all :: (s: [] Lab) -> bool {
   for j: 0..<90 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
   #assert egm.eg_on_dragon(cr[0].mounts[0]);
   #assert egm.eg_mount_hint(cr[0].mounts[0], cr[0].player_x, cr[0].player_z, cr[0].clock).count > 0;
-  #assert lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0;
+  #assert lab_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0;
   #assert lab_hint_clear_all(s[..]);
   s[0].held = HOLD_W | HOLD_JUMP;
   for j: 0..<240 { f += 1; cr[0].clock = f32(f) / 60; b = lab_keep_body(s[..], b, b); }
-  #assert egm.eg_aloft(cr[0].mounts[0]) && lab_ride_hud(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
+  #assert egm.eg_aloft(cr[0].mounts[0]) && lab_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0 && lab_hint_clear_all(s[..]);
   cr[0].player_x = b.x; cr[0].player_z = b.z; #assert lab_mount_key(s[..]) && lab_hint_clear_all(s[..]);
   s[0].touch = true; #assert lab_hint_clear_all(s[..]);
 }

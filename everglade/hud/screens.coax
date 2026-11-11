@@ -1,0 +1,123 @@
+// Everglade's plain HUD parts, drawn in the creator's reading face (charactercreator.coax text, ttext,
+// lit), every zone's (#13083): the animations list a developer picks a clip from, the plain health
+// line and its bar, the words when you fall, the damage numbers that rise off you, Character
+// Create's boxes on a desk and on a phone, a framed box, a framed prompt and a box's corners as a
+// Box. Plain data in, vertices out. Loaded by charactercreator.coax beside parts.coax, so the zones
+// that load charactercreator as cc call them as cc.eg_*.
+//   coax/bin/coax test apps/openagents-web/charactercreator.coax --only "eg plain"
+
+// A box from its corners, x0, y0, x1, y1.
+eg_box4 :: (r: [4] f32) -> Box { return Box.{x0 = r[0], y0 = r[1], x1 = r[2], y1 = r[3]}; }
+// A box's four sides as lines wd wide in (cr, cg, cb).
+eg_outline :: (out: [] f32, at: int, r: Box, wd: f32, cr: f32, cg: f32, cb: f32) -> int {
+  n := at;
+  if lit(out, n, r.x0, r.y0, r.x1, r.y0, wd, 1, 0, cr, cg, cb, 0) { n += 6; }
+  if lit(out, n, r.x0, r.y1, r.x1, r.y1, wd, 1, 0, cr, cg, cb, 0) { n += 6; }
+  if lit(out, n, r.x0, r.y0, r.x0, r.y1, wd, 1, 0, cr, cg, cb, 0) { n += 6; }
+  if lit(out, n, r.x1, r.y0, r.x1, r.y1, wd, 1, 0, cr, cg, cb, 0) { n += 6; }
+  return n;
+}
+// A prompt in its gold frame: the words centred in box b, wide their width at 12 CSS px.
+eg_framed_prompt :: (out: [] f32, at: int, b: Box, t: string, wide: f32, k: f32, ink: Ink) -> int {
+  n := eg_outline(out, at, b, 1.4 * k, 0.98, 0.86, 0.5);
+  return text(out, n, t, (b.x0 + b.x1) * 0.5 - wide * 0.5, b.y0 + 31 * k, 12 * k, ink);
+}
+
+// ---- the animations list, top left: its heading (+ shut, - open), AUTO, and a row a clip from
+// scroll, the picked one marked; below CSS px kept clear under it. A tap's targets are traced.
+EgClips :: struct { shut: bool; picked: int; scroll: int; rows: int; below: f32; }
+eg_clips :: (ui: [] UitTrace, out: [] f32, at: int, names: [] string, c: EgClips, h: f32, k: f32) -> int {
+  n := at; uit_part(ui, "animations"); uit_debug(ui);
+  // the panel and what a press takes in it (the header, AUTO and each clip's row)
+  pane := uit_put(ui, UIT_NONE, UIT_PANEL, 12 * k, 20 * k, 370 * k, ifx c.shut then 52 * k else h - (20 + c.below) * k, "ANIMATIONS");
+  head := uit_put(ui, pane, UIT_BUTTON, 12 * k, 20 * k, 370 * k, 52 * k, "ANIMATIONS");
+  n = ttext(ui, head, out, n, ifx c.shut then "+ ANIMATIONS" else "- ANIMATIONS", 32 * k, 45 * k, 10 * k, ink(k, 0.95, 0.9, 0.7), "");
+  if c.shut { return n; }
+  auto_row := uit_put(ui, pane, UIT_BUTTON, 12 * k, 58 * k, 370 * k, 86 * k, "AUTO");
+  n = ttext(ui, auto_row, out, n, ifx c.picked < 0 then "> AUTO (MOVEMENT)" else "  AUTO (MOVEMENT)", 32 * k, 77 * k, 10 * k, ink(k, 0.94, 0.8, 0.48), "");
+  for row: 0..<c.rows {
+    i := c.scroll + row; if i >= names.count { break; }
+    y := (109 + f32(row) * 24) * k; clip := uit_put_i(ui, pane, UIT_BUTTON, 12 * k, (92 + f32(row) * 24) * k, 370 * k, (116 + f32(row) * 24) * k, "clip", row);
+    n = ttext(ui, clip, out, n, ifx i == c.picked then ">" else " ", 24 * k, y, 10 * k, ink(k, 0.95, 0.8, 0.4), "");
+    n = ttext(ui, clip, out, n, names[i], 40 * k, y, 10 * k, ink(k, 0.91, 0.93, 0.88), "");
+  }
+  return n;
+}
+
+// ---- health: "HP 39 / 39 + 5 TEMP" over its bar, top right (x its left)
+eg_hp_uint :: (out: [] u8, at: int, points: int) -> int {
+  digits: [24] u8; used := 0; v := points;
+  while v >= 10 { digits[used] = cast(u8)('0' + v % 10); used += 1; v /= 10; }
+  digits[used] = cast(u8)('0' + v); used += 1; n := at;
+  while used > 0 { used -= 1; out[n] = digits[used]; n += 1; }
+  return n;
+}
+eg_hp_label :: (out: [] u8, hp: int, maximum: int, temporary: int) -> string {
+  out[0] = 'H'; out[1] = 'P'; out[2] = ' '; n := eg_hp_uint(out, 3, hp);
+  out[n] = ' '; out[n + 1] = '/'; out[n + 2] = ' '; n = eg_hp_uint(out, n + 3, maximum);
+  if temporary > 0 { out[n] = ' '; out[n + 1] = '+'; out[n + 2] = ' '; n = eg_hp_uint(out, n + 3, temporary); for c: " TEMP" { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+eg_health_line :: (ui: [] UitTrace, out: [] f32, at: int, hp: int, maximum: int, temp: int, x: f32, y: f32, k: f32) -> int {
+  n := at; label: [96] u8;
+  n = ttext(ui, UIT_NONE, out, n, eg_hp_label(label[..], hp, maximum, temp), x + 10 * k, y - 1 * k, 10 * k, ink(k, 0.98, 0.94, 0.85), "HP");
+  bx := x + 10 * k; end := x + 190 * k; by := y + 20 * k; uit_add(ui, UIT_NONE, UIT_BAR, bx, by - 3 * k, end, by + 3 * k, "HP");
+  if lit(out, n, bx, by, end, by, 3 * k, 1, 0, 0.35, 0.22, 0.20, 0) { n += 6; }
+  if hp > 0 && lit(out, n, bx, by, bx + (end - bx) * f32(hp) / f32(maximum), by, 3 * k, 1, 0, 0.85, 0.13, 0.10, 0) { n += 6; }
+  return n;
+}
+// The words when you fall: UNCONSCIOUS (a shared room's, while death saves are rolled) or YOU DIED,
+// and how to come back.
+eg_fallen :: (ui: [] UitTrace, out: [] f32, at: int, unconscious: bool, w: f32, k: f32) -> int {
+  n := ttext(ui, UIT_NONE, out, at, ifx unconscious then "UNCONSCIOUS" else "YOU DIED", w * 0.5 - 50 * k, 95 * k, 15 * k, ink(k, 1, 0.3, 0.25), "");
+  return ttext(ui, UIT_NONE, out, n, "R / CLICK TO RESPAWN", w * 0.5 - 100 * k, 137 * k, 10 * k, ink(k, 0.98, 0.94, 0.82), "");
+}
+// The damage you took rising off you for 1.2 s, red, fading in its last 0.35 s: each pop's world
+// place through the view in u (the glade's uniforms: eye u[16..18], focal u[19], forward u[20..22],
+// centre x u[23], right u[24..26], centre y u[27], up u[28..30]), now its clock; w by h the page.
+eg_pops :: (out: [] f32, at: int, pops: [] hostile.DamagePop, now: f32, u: [] f32, w: f32, h: f32, k: f32) -> int {
+  n := at;
+  for i: 0..<pops.count {
+    p := pops[i]; age := now - p.born; if p.amount <= 0 || age < 0 || age >= 1.2 { continue; }
+    t := age / 1.2; rise := 0.8 * (1 - (1 - t) * (1 - t)); rx := p.x - u[16]; ry := p.y + rise - u[17]; rz := p.z - u[18]; depth := rx * u[20] + ry * u[21] + rz * u[22]; if depth <= 0.5 { continue; }
+    sx := u[23] + u[19] * (rx * u[24] + ry * u[25] + rz * u[26]) / depth; sy := u[27] - u[19] * (rx * u[28] + ry * u[29] + rz * u[30]) / depth;
+    if sx < 0 || sx > w || sy < 0 || sy > h { continue; }
+    v := p.amount; if v > 99 { v = 99; } digits: [3] u8 = [3] u8.[45, 48, 48]; digits[1] = cast(u8)(48 + v / 10); digits[2] = cast(u8)(48 + v % 10);
+    shade := ink(k, 1, 0.2, 0.15); shade.light = cc_clamp((1.2 - age) / 0.35, 0, 1);
+    n = text(out, n, ifx v < 10 then cast(string) digits[0..<1] else cast(string) digits[..], sx - 10 * k, sy, 13 * k, shade);
+    if v < 10 { n = text(out, n, cast(string) digits[2..<3], sx, sy, 13 * k, shade); }
+  }
+  return n;
+}
+
+// ---- Character Create's boxes: thirteen rows, then RESET (13), SURPRISE ME (14), the drag's mode
+// (15), SAVE (16) and USE (17). A desk keeps a column down the left; a phone (narrower than 840
+// CSS px or shorter than 760) two columns of rows over the foot. Returns whether it is a phone's.
+eg_create_boxes :: (b: [] Box, w: f32, h: f32, k: f32) -> bool {
+  mobile := w < 840 * k || h < 760 * k;
+  for i: 0..<13 {
+    x := 28 * k; y := (102 + f32(i) * 40) * k; bw := 304 * k; bh := 36 * k;
+    if mobile { col := i % 2; row := i / 2; bw = (w - 36 * k) / 2; x = 12 * k + f32(col) * (bw + 12 * k); y = h - 484 * k + f32(row) * 60 * k; bh = 42 * k; }
+    b[i] = Box.{x0 = x, y0 = y, x1 = x + bw, y1 = y + bh};
+  }
+  by := ifx mobile then h - 56 * k else 634 * k;
+  b[13] = Box.{x0 = 28 * k, y0 = by, x1 = 172 * k, y1 = by + 36 * k};
+  b[14] = ifx mobile then Box.{x0 = w - 174 * k, y0 = by, x1 = w - 24 * k, y1 = by + 36 * k} else Box.{x0 = 188 * k, y0 = by, x1 = 332 * k, y1 = by + 36 * k};
+  b[16] = ifx mobile then Box.{x0 = 12 * k, y0 = 82 * k, x1 = w / 2 - 6 * k, y1 = 124 * k} else Box.{x0 = 28 * k, y0 = 678 * k, x1 = 172 * k, y1 = 714 * k};
+  b[17] = ifx mobile then Box.{x0 = w / 2 + 6 * k, y0 = 82 * k, x1 = w - 12 * k, y1 = 124 * k} else Box.{x0 = 188 * k, y0 = 678 * k, x1 = 332 * k, y1 = 714 * k};
+  b[15] = ifx mobile then Box.{x0 = w / 2 + 6 * k, y0 = h - 124 * k, x1 = w - 12 * k, y1 = h - 82 * k} else Box.{x0 = 28 * k, y0 = by, x1 = 172 * k, y1 = by + 36 * k};
+  return mobile;
+}
+#test "eg plain: the outline, the boxes, the health line, the fallen words and the clip list" #steps 200000000 {
+  out: [64000] f32; nt: [] UitTrace;
+  #assert eg_outline(out[..], 0, Box.{x0 = 10, y0 = 10, x1 = 60, y1 = 40}, 2, 1, 0.8, 0.35) == 24;
+  #assert eg_box4([4] f32.[1, 2, 3, 4]).y1 == 4;
+  b: [18] Box; #assert !eg_create_boxes(b[..], 1440, 900, 1) && b[0].x0 == 28 && b[12].y1 <= b[13].y0 && eg_create_boxes(b[..], 390, 844, 1);
+  #assert b[16].y1 <= b[0].y0 && b[15].x1 <= 390;
+  l: [32] u8; #assert eg_hp_label(l[..], 9, 18, 3) == "HP 9 / 18 + 3 TEMP" && eg_hp_label(l[..], 0, 7, 0) == "HP 0 / 7";
+  full := eg_health_line(nt, out[..], 0, 9, 18, 0, 700, 39, 1); none := eg_health_line(nt, out[..], 0, 0, 18, 0, 700, 39, 1); #assert full == none + 6;
+  #assert eg_fallen(nt, out[..], 0, true, 960, 1) > 0;
+  names := [3] string.["IDLE", "WALK", "RUN"];
+  shut := eg_clips(nt, out[..], 0, names[..], EgClips.{shut = true, picked = -1, rows = 3}, 720, 1);
+  #assert eg_clips(nt, out[..], 0, names[..], EgClips.{picked = 1, rows = 9}, 720, 1) > shut;
+}

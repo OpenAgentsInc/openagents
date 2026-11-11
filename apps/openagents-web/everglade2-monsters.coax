@@ -191,28 +191,9 @@ e2mn_plate_add :: (s: [] E2, p: [] cc.HudPlates, view: cc.HudPlateView) {
     cc.hud_plates_push(p, g.x, y, g.z, E2MN_NAME[g.kind], f32(rw.hp) / f32(rw.max), true, e2k_area_holds(s, g.x, g.z), s[0].sight_mon[m].share * g.fade);   // lit inside the area you aim
   }
 }
-// The wedge toward a monster that struck you from off the screen (their plates: e2mn_plate_add).
-e2mn_hud :: (s: [] E2, out: [] f32, at: int) -> int {
-  v := at; ml := s[0].monsters[0]; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up; k := s[0].k; now := s[0].clock;
-  cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
-  // the wedge: only when the one that struck you is off the screen
-  age := now - ml.wedge_at;
-  if age >= 0 && age <= f32(E2MN_WEDGE_S) {
-    dx := ml.wedge_x - e[0]; dy := s[0].you_y + 1 - e[1]; dz := ml.wedge_z - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2];
-    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / (ifx ahead > 0.1 then ahead else 0.1f32);
-    sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / (ifx ahead > 0.1 then ahead else 0.1f32);
-    seen := ahead > 0.5 && sx > 0 && sx < s[0].width && sy > 0 && sy < s[0].height;
-    side := dx * r[0] + dz * r[2]; front := dx * f[0] + dz * f[2];
-    if !seen && side * side + front * front > 0.0001 {
-      a := figs.atan2(side, front);   // 0 ahead (the screen's top), clockwise
-      fade := ifx age < 0.1 then age / 0.1 else 1 - (age - 0.1) / (f32(E2MN_WEDGE_S) - 0.1);
-      cx := s[0].width * 0.5; ring := (ifx s[0].width < s[0].height then s[0].width else s[0].height) * 0.36;
-      for j: 0..<3 {
-        spread := 0.16 - f32(j) * 0.045; rr := ring + f32(j) * 7 * k;
-        v = e2k_line(out, v, cx + sin(a - spread) * rr, cy - cos(a - spread) * rr, cx + sin(a + spread) * rr, cy - cos(a + spread) * rr, (4 - f32(j)) * k, 0.95 * fade, 0.18 * fade, 0.12 * fade);
-      }
-    }
-  }
-  return v;
+// The wedge toward a monster that struck you from off the screen (their plates: e2mn_plate_add):
+// Everglade's (everglade/hud/windows.coax eg_wedge).
+e2mn_wedge :: (s: [] E2, out: [] f32, at: int) -> int {
+  ml := s[0].monsters[0]; e := s[0].eye;
+  return eg_wedge(out, at, e2_eg_view(s), ml.wedge_x - e[0], s[0].you_y + 1 - e[1], ml.wedge_z - e[2], s[0].clock - ml.wedge_at, f32(E2MN_WEDGE_S), s[0].k);
 }

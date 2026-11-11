@@ -15,6 +15,8 @@
 #load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)
 #load "experimental-sound.coax" as exsound;
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: class features and rest, every zone's (the game)
+#load "../../everglade/hud/windows.coax";   // Everglade's HUD windows and marks: talk, the workbench, the bar's marks, the wedge (#13083)
+#load "../../everglade/hud/create.coax";    // Everglade's Character Create panel and the world's menu (#13083)
 #load "everglade2-sight.coax";   // ... from this zone's land, trunks, rocks and camp
 #load "../../aethyr/rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
 #load "everglade2-cast.coax";   // the bar here, and everyone's casts through the room (#13058)
@@ -128,7 +130,7 @@ E2 :: struct {
   sight_rem: [E2_REMOTES] cc.HudSight; sight_mon: [12] cc.HudSight; sight_guard: cc.HudSight; sight_dt: f32 = 1; sight_at: f32 = -1;
   cy: f32;                                       // the picture's centre row (e2c_view_lens: the studio frames you off centre)
   env: [1] envf.EnvFrame;                        // the light: the world's environment set, its clock and the record each frame writes (e2_light)
-  light_view: int; light_text: [1] envd.EnvDebugText;   // ?light=VIEW (developer-only, off by default) and its readout (e2_light_hud)
+  light_view: int; light_text: [1] envd.EnvDebugText;   // ?light=VIEW (developer-only, off by default) and its readout (e2_light_readout)
   guard: [1] E2GuardLook;                        // the path's guard as drawn (everglade2-guard.coax)
   mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade2-mouse.coax)
   adm: [1] E2Admin;                              // admin mode (everglade2-admin.coax): set and read in dev builds only
@@ -789,20 +791,14 @@ e2_pixel_budget :: (s: [] E2, w: f32, h: f32, dpr: f32) -> int #export_c #effect
 }
 // The control, left of the frame rate on its line: "GFX AUTO · MED", or the tier the player picked.
 // A tap or a click on it picks the next (quality_next), and the host keeps it (action 6).
-e2_quality_hud :: (s: [] E2, out: [] f32, at: int, right: f32, base: f32) -> int {
+e2_gfx_control :: (s: [] E2, out: [] f32, at: int, right: f32, base: f32) -> int {
   s[0].q_box = cc.Box.{};
   if s[0].golden || !s[0].q_ready { return at; }
-  k := s[0].k; cap := 13 * k;
-  l: [32] u8; t := quality_label(s[0].q[..], l[..]);
-  tw := e2c_text_w(t, cap); x0 := right - tw;
-  y := base;   // e2_fps keeps its line clear of the bar (e2_fps_clear)
-  // a finger's size round it (44 CSS px tall at least)
-  pad := ifx (44 * k - cap) * 0.5 > 8 * k then (44 * k - cap) * 0.5 else 8 * k;
-  s[0].q_box = cc.Box.{x0 = x0 - 10 * k, y0 = y - cap - pad, x1 = right + 6 * k, y1 = y + pad};
-  f := ifx s[0].q_finger >= 0 then 1.0f32 else 0.8f32;
-  ui := s[0].creator[0].ui; cc.uit_part(ui, "gfx");   // the layout trace, when the overlap check attaches one (#13076)
-  b := s[0].q_box; gfx := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, "GFX");
-  return cc.ttext(ui, gfx, out, at, t, x0, y, cap, cc.ink(k, 0.95 * f, 0.93 * f, 0.82 * f), "GFX");
+  k := s[0].k; l: [32] u8; t := quality_label(s[0].q[..], l[..]); bx: [1] cc.Box;
+  // e2_fps keeps its line clear of the bar (e2_fps_clear); Everglade's control (everglade/hud/windows.coax eg_gfx)
+  n := eg_gfx(s[0].creator[0].ui, out, at, t, e2c_text_w(t, 13 * k), right, base, k, s[0].q_finger >= 0, bx[..]);
+  s[0].q_box = bx[0];
+  return n;
 }
 e2_quality_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
   if phase == 0 {
@@ -957,13 +953,13 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
   e2_message(s[..], E2_HOST_PAGE, "url=/worlds/character-creator\nvw=1280\nvh=800\ndpr=1\ncoarse=1\ntouch=5\ncores=2\nsw=800\nsh=600\nquality=low");
   for i: 0..<600 { e2_quality_frame(s[..], 0.05, 1280, 800, 1, true); }
   #assert s[0].q[0].rung == QUALITY_RUNGS - 1;
-  out: [4096] f32; #assert e2_quality_hud(s[..], out[..], 0, 1200, 780) == 0 && s[0].q_box.x1 <= s[0].q_box.x0;
+  out: [4096] f32; #assert e2_gfx_control(s[..], out[..], 0, 1200, 780) == 0 && s[0].q_box.x1 <= s[0].q_box.x0;
 }
 #test "e2 quality: the GFX control beside the frame rate, a finger's size; a tap picks the next and the host keeps it" {
   s: [1] E2; s[0].width = 1170; s[0].height = 2532; s[0].k = 3;
   e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_IPHONE); e2_quality_frame(s[..], 0, 1170, 2532, 3, false);
   out: [4096] f32;
-  n := e2_quality_hud(s[..], out[..], 0, 1000, 2480);
+  n := e2_gfx_control(s[..], out[..], 0, 1000, 2480);
   b := s[0].q_box;
   #assert n > 0 && b.x1 > b.x0 && b.x1 <= 1020 && b.y1 - b.y0 >= 44 * 3 - 0.01;
   cx := (b.x0 + b.x1) / 2; cy := (b.y0 + b.y1) / 2;
@@ -998,7 +994,7 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  if e2k_on(s) && hv>=0 && hv<s[0].casts[0].bar_n {cb:=e2k_card_box(s[0].casts[..],hv,s[0].width,s[0].height,k);
   if cc.eg_meets(cc.hud_box(cb[0],cb[1],cb[2],cb[3]),cc.hud_box(s[0].width-16*k-fw-14*k-gw-10*k,base-44*k,s[0].width-8*k,base+16*k)) {return at;}}
  p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k,k);
- n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,base);
+ n:=e2_gfx_control(s,out,p,s[0].width-16*k-fw-14*k,base);
  return cc.fps_draw(s[0].creator[0].ui,s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
 }
 // The plaque's baseline, from y up: clear of the class bar's slots, its emblem over the middle and the
@@ -1136,7 +1132,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   s[0].sight_dt = ifx s[0].sight_at < 0 then 1.0f32 else ifx s[0].clock - s[0].sight_at > 0.1 then 0.1f32 else ifx s[0].clock < s[0].sight_at then 0.0f32 else s[0].clock - s[0].sight_at;
   s[0].sight_at = s[0].clock;
   e2d_frame(s);   // the agent driver's entities this frame (off: nothing)
-  hud := e2_hud(s, out, dt);
+  hud := e2_overlay(s, out, dt);
   e2d_bar(s);
   #if BUILD_DEBUG { hud = e2a_frame(s, out, hud, step); }
   if s[0].wild[0].stage || s[0].stage != E2ST_NONE { hud = 0; s[0].media_n = 0; }   // a staged shot (?stage=cat, everglade2-stage.coax) draws no HUD: no strokes, no bar pictures
@@ -1144,8 +1140,8 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   return hud;
 }
 // The HUD's strokes, in the order they are drawn over the world (the overlap check, apps/openagents-web/hud-overlap-everglade2.coax, draws the same).
-e2_hud :: (s: [] E2, out: [] f32, dt: f32) -> int {
-  return e2b_hud(s, out, e2p_hud(s, out, e2_light_hud(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_hud(s, out, e2_floats_hud(s, out, e2k_area_marks(s, out, e2k_down_hud(s, out, e2k_hud(s, out, e2c_hud(s, out))))))))), dt))));
+e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
+  return e2b_overlay(s, out, e2p_overlay(s, out, e2_light_readout(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_wedge(s, out, e2_floats_draw(s, out, e2k_area_marks(s, out, e2k_down_line(s, out, e2k_bar_draw(s, out, e2c_draw(s, out))))))))), dt))));
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
@@ -1173,14 +1169,11 @@ e2_light :: (s: [] E2, u: [] f32) {
 }
 // ?light=VIEW's readout, top left: the camera's region weights by profile id, its ambient, key and
 // grade (aethyr/render/environment-debug.coax). Nothing without the query.
-e2_light_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   if s[0].light_view == envd.ENV_VIEW_OFF { return at; }
-  t := s[0].light_text[..]; k := s[0].k; cap := 11 * k; v := at; ink := cc.ink(k, 0.95, 0.93, 0.82);
-  ui := s[0].creator[0].ui; cc.uit_part(ui, "light");
-  v = cc.ttext(ui, cc.UIT_NONE, out, v, "LIGHT", 16 * k, 16 * k, cap, ink, "");
-  v = cc.ttext(ui, cc.UIT_NONE, out, v, envd.ENV_VIEW_NAMES[s[0].light_view], 70 * k, 16 * k, cap, ink, "VIEW");
-  for l: 0..<t[0].count { v = cc.ttext(ui, cc.UIT_NONE, out, v, envd.envd_line(t, l), 16 * k, (36 + 18 * f32(l)) * k, cap, ink, ""); }
-  return v;
+  t := s[0].light_text[..]; lines: [envd.ENV_DEBUG_LINES] string;
+  for l: 0..<t[0].count { lines[l] = envd.envd_line(t, l); }
+  return eg_readout(s[0].creator[0].ui, out, at, "light", "LIGHT", envd.ENV_VIEW_NAMES[s[0].light_view], lines[0..<t[0].count], s[0].k);
 }
 #test "?light=VIEW turns on one light view and its readout; without it nothing changes" {
   s: [1] E2; u: [E2_UNIFORM_FLOATS] f32; s[0].eye = [3]f32.[2, 3, 5];
@@ -1824,27 +1817,27 @@ e2_float :: (s: [] E2, feel: DeedFeel, source: int, x: f32, y: f32, z: f32, kind
   return show;
 }
 // Each live number where it has risen to, its size and colour by kind, thinning as it goes.
-e2_floats_hud :: (s: [] E2, out: [] f32, at: int) -> int {
-  v := at; e := s[0].eye; f := s[0].fwd; r := s[0].right; up := s[0].up; k := s[0].k; now := s[0].clock;
-  cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
+e2_floats_draw :: (s: [] E2, out: [] f32, at: int) -> int {
+  v := at; now := s[0].clock; view := e2_eg_view(s);
   for q: 0..<fl.FLOATS {
     l := fl.floats_look(s[0].floats[0].items[q], now);
     if !l.ok { s[0].floats[0].items[q].on = false; continue; }
     n := s[0].floats[0].items[q];
-    dx := l.x - e[0]; dy := l.y - e[1]; dz := l.z - e[2];
-    ahead := dx * f[0] + dy * f[1] + dz * f[2];
     // only while the body it rose off shows (everglade2-sight.coax)
-    if ahead < 0.5 || !e2_sight_shows(s, n.x, n.y - 1.2, n.z, 1.2) { continue; }
-    sx := s[0].width * 0.5 + s[0].focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
-    sy := cy - s[0].focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
-    // the HUD's own number (everglade/hud/parts.coax eg_float): red when you took it, small "miss"; a
-    // critical hit drawn larger over it (floats_look's size)
+    if eg_view_ahead(view, l.x, l.y, l.z) < 0.5 || !e2_sight_shows(s, n.x, n.y - 1.2, n.z, 1.2) { continue; }
+    // the HUD's own number (everglade/hud/windows.coax eg_float_over): red when you took it, small
+    // "miss"; a critical hit drawn larger over it (floats_look's size)
     t := fl.floats_text(s[0].floats[..], q);
     kind := ifx n.kind == fl.FLOAT_TAKEN then cc.EG_FLOAT_HARM else ifx n.kind == fl.FLOAT_MISS then cc.EG_FLOAT_MISS else ifx n.kind == fl.FLOAT_HEAL then cc.EG_FLOAT_HEAL else cc.EG_FLOAT_DEALT;
-    v = cc.eg_float(out, v, t, sx, sy, k * l.size, kind, l.alpha);
+    v = eg_float_over(out, v, view, l.x, l.y, l.z, t, s[0].k * l.size, kind, l.alpha);
   }
   fl.floats_frame(s[0].floats[..]);
   return v;
+}
+// Where the camera looks from, for the HUD's marks over the world (everglade/hud/windows.coax EgView).
+e2_eg_view :: (s: [] E2) -> EgView {
+  cy := ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5;
+  return EgView.{eye = s[0].eye, fwd = s[0].fwd, right = s[0].right, up = s[0].up, focal = s[0].focal, w = s[0].width, h = s[0].height, cy = cy};
 }
 // The kit a class's body carries here (class-kit.coax xc_kit, charactercreator.coax CC_KITS): the Ranger
 // starts with the Longbow in hand (SRD 5.2.1 p.58). The melee kits wait for Everglade II's hold clips.
@@ -2106,7 +2099,7 @@ e2_test_cast_state :: (s: [] E2, c: int) {
   #assert k[0].bar_n == want && k[0].bar_n >= 2 && k[0].bar[0].name == bar[0].name;
   // the bar's pictures for the host, one a slot, and a press on its first
   out: [8192] f32;
-  s[0].media_n = 0; _ := e2k_hud(s[..], out[..], 0);
+  s[0].media_n = 0; _ := e2k_bar_draw(s[..], out[..], 0);
   lines := 1; for i: 0..<s[0].media_n { if s[0].media[i] == 10 { lines += 1; } }
   #assert s[0].media_n > 0 && lines == k[0].bar_n;
   b := e2k_box(k, 0, 1440, 900, 1);
@@ -2158,7 +2151,7 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
   a: [1] figs.BdAnim; e2_fall(a[..], e2k_bearing(s[..]), s[0].clock); #assert a[0].state == 1;
   row := e2n_vitals(n); line: [64] u8; ln := rs_death_line(rs_death_saves(row.hp, false, row.p2), line[..]);
   #assert cast(string) line[0..<ln] == "You are down · death saves: 1 saved, 2 failed";
-  out: [8192] f32; #assert e2k_down_hud(s[..], out[..], 0) > 0;
+  out: [8192] f32; #assert e2k_down_line(s[..], out[..], 0) > 0;
   // healed: up, and the bar is yours again
   e2_test_vitals(s[..], 4, 20, RS_PRONE, 0); e2k_lock_step(s[..]);
   e2_fall(a[..], e2k_bearing(s[..]), s[0].clock); #assert a[0].state == 0 && e2k_press(s[..], 0) && n[0].cast_sent == sent + 1;
@@ -2297,7 +2290,7 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
   e2n_record(n,cast(string)message[0..<count]); e2k_step(s[..]);
   #assert k[0].deeds[0].refused==1 && deed_look(k[0].deeds[0],0,deed_tick(s[0].clock),0).grey==1 && fxp_live(k[0].puffs[..])==0;
   // the slot's picture again, dimmed over it: a grey veil, and no words
-  s[0].media_n=0; _:=e2k_hud(s[..],out[..],0);
+  s[0].media_n=0; _:=e2k_bar_draw(s[..],out[..],0);
   media:=cast(string)s[0].media[0..<s[0].media_n]; veil:=false;
   for i:0..<media.count-9 { if media[i..<i+10]==" 35 0 1000" { veil=true; } }
   #assert veil;
@@ -2371,39 +2364,39 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
 #test "Everglade II draws the room's counts on the bar's icons and frames a Rage while it holds (#13046)" #steps 1000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_BARBARIAN);
   k:=s[0].casts[..]; n:=s[0].net[..];
-  out:[8192] f32; plain:=e2k_hud(s[..],out[..],0);
+  out:[8192] f32; plain:=e2k_bar_draw(s[..],out[..],0);
   // Rage (slot 1): 1 left, raging; the rest nothing to count
   m:[128] u8; c:=wire_put(m[..],0,"b"); c=wire_int(m[..],c,k[0].bar_n);
   for i:0..<k[0].bar_n { c=wire_int(m[..],c,ifx i==0 then wire_kit_v(1,true) else wire_kit_v(-1,false)); }
   e2n_record(n,cast(string)m[0..<c]);
   #assert e2n_kit(n,0,k[0].bar_n).ok && e2n_kit(n,0,k[0].bar_n).left==1 && e2n_kit(n,0,k[0].bar_n).on;
-  drawn:=e2k_hud(s[..],out[..],0); #assert drawn>plain+4*6;   // a count and four frame lines
+  drawn:=e2k_bar_draw(s[..],out[..],0); #assert drawn>plain+4*6;   // a count and four frame lines
   // no longer raging, none left: the count only
   c=wire_put(m[..],0,"b"); c=wire_int(m[..],c,k[0].bar_n);
   for i:0..<k[0].bar_n { c=wire_int(m[..],c,ifx i==0 then wire_kit_v(0,false) else wire_kit_v(-1,false)); }
   e2n_record(n,cast(string)m[0..<c]);
-  calm:=e2k_hud(s[..],out[..],0); #assert calm>plain && calm<drawn;
+  calm:=e2k_bar_draw(s[..],out[..],0); #assert calm>plain && calm<drawn;
 }
 
 #test "Everglade II health label uses its server row including temporary HP and snapshot removal" #steps 1000000000 {
   s:[1] E2; e2_test_cast_state(s[..],FB_CL_WIZARD);
   n:=s[0].net[..]; label:[80] u8;
   #assert e2k_vitals_text(s[..],label[..])==0;
-  geometry:[8192] f32; plain:=e2k_hud(s[..],geometry[..],0);
+  geometry:[8192] f32; plain:=e2k_bar_draw(s[..],geometry[..],0);
   frame:[1024] u8; row:[WIRE_SF] s32; zero:[WIRE_SF] s32;
   wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=3,max=8,temp=7},row[..]);
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
   count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 3/8 · TEMP 7";
-  #assert e2k_hud(s[..],geometry[..],0)>plain;
+  #assert e2k_bar_draw(s[..],geometry[..],0)>plain;
   newer:[WIRE_SF] s32; wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=6,max=8},newer[..]);
   count=wire_put_d(frame[..],0,WireD.{tick=2}); count=wire_put_s(frame[..],count,1,1,row[..],newer[..]);
   e2n_record(n,cast(string)frame[0..<count]);
   count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 6/8";
   count=wire_put_d(frame[..],0,WireD.{tick=3,f=1}); e2n_record(n,cast(string)frame[0..<count]);
   #assert e2k_vitals_text(s[..],label[..])==0;
-  #assert e2k_hud(s[..],geometry[..],0)==plain;
+  #assert e2k_bar_draw(s[..],geometry[..],0)==plain;
 }
 
 #test "Everglade II health ignores peers and invalid rows and distinguishes unconscious from dead" #steps 1000000000 {
@@ -2488,9 +2481,9 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   b:[48]u8; c:=eg_side_label(e2k_facts(s[..]),EG_SIDE_PET,b[..]); #assert cast(string)b[0..<c]=="WILD COMPANION · CAT";
   c=eg_menu_label(e2k_facts(s[..]),EG_DO_PAY,b[..]); #assert cast(string)b[0..<c]=="PAY: WILD SHAPE";
   // a press elsewhere shuts an open menu, and draws the menu while open
-  out:[32768*16]f32; shut:=e2k_hud(s[..],out[..],0);
+  out:[32768*16]f32; shut:=e2k_bar_draw(s[..],out[..],0);
   pc:=e2k_side_centre(s[..],EG_SIDE_PET); #assert e2_pointer(s[..],pc[0],pc[1],0,0,1) && s[0].casts[0].menu==EG_SIDE_PET;
-  #assert e2k_hud(s[..],out[..],0)>shut;
+  #assert e2k_bar_draw(s[..],out[..],0)>shut;
   // a press outside the menu (a short page's menu grows up toward the top, so the corner)
   #assert e2_pointer(s[..],2,2,0,0,1) && s[0].casts[0].menu== -1;
 }
@@ -2502,10 +2495,10 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   e2n_record(n,cast(string)frame[0..<count]);
   // until the room says your rest: no controls
   #assert e2k_rest_choices(s[..],reqs[..])==0;
-  geometry:[8192] f32; plain:=e2k_hud(s[..],geometry[..],0);
+  geometry:[8192] f32; plain:=e2k_bar_draw(s[..],geometry[..],0);
   e2n_record(n,"z 0 0 1");
   #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_SHORT && reqs[1]==RS_REST_SLEEP && e2k_rest_label(s[..],reqs[1])=="LONG REST";
-  #assert e2k_hud(s[..],geometry[..],0)>plain;
+  #assert e2k_bar_draw(s[..],geometry[..],0)>plain;
   // REST sits in the side bar over the bar, apart from the slots; its menu opens above it
   b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k); rb:=e2k_side_centre(s[..],EG_SIDE_REST);
   #assert rb[1]<b0[1]-40 && rb[0]>0 && rb[0]<s[0].width && e2k_slot_at(s[..],rb[0],rb[1])<0;

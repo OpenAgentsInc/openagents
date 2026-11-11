@@ -1,0 +1,156 @@
+// Everglade's Character Create panel, every zone's (#13083): the card with its rows (a caption, a
+// value between two arrows, a colour's swatch), the name's well, a phone's tabs and sheet, the
+// buttons (RESET, SURPRISE ME, the drag's mode, SAVE, USE IN EVERGLADE), its title and the desk's
+// hint, in Everglade's HUD style (everglade/hud/parts.coax eg_tokens), and the little menu that
+// offers it in the world. The zone lays the boxes out and says what each holds (EgCreateBox); this
+// draws them: the frames into a HudList (eg_create_frames, so the zone may add its own before it
+// emits), then the words (eg_create_words). With a layout trace attached (aethyr/ui/trace.coax)
+// eg_create_trace puts the panels, each box in the panel that holds it and its arrows first.
+// A zone loads this beside charactercreator.coax as cc (class-bar.coax's way).
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "eg create"
+
+EG_CB_EMPTY :: 0; EG_CB_ROW :: 1; EG_CB_NAME :: 2; EG_CB_TAB :: 3; EG_CB_BUTTON :: 4;
+EG_CB_TEXT :: 0; EG_CB_DIM :: 1; EG_CB_BAD :: 2;   // a value's ink: plain, dim (a hint), bad (said back)
+// A box: its kind, where it is, its name in the trace, its caption and its value (a row, the name),
+// a button's or a tab's word; on lights it (a row focused, the name typed, a tab or a button held);
+// a row's colour swatch and its arrows.
+EgCreateBox :: struct {
+  kind: int; b: cc.Box; name: string; label: string; value: string; ink: int; on: bool;
+  swatch: bool; rgb: [3] f32; left: cc.Box; right: cc.Box;
+}
+// The panel: a phone's (rows centred, a sheet under the card) or the desk's (the rows' wells right of
+// their captions, the pane beside), its fade f, k device px a CSS px, the panels' boxes, the title's
+// cap and baseline, the type's sizes (device px) and the page.
+EgCreate :: struct {
+  phone: bool; f: f32; k: f32; card: cc.Box; sheet: cc.Box; pane: cc.Box;
+  title_cap: f32; tx: f32; ty: f32; word: f32; caption: f32; value: f32; arrow: f32; w: f32; h: f32;
+}
+eg_create_empty :: (b: cc.Box) -> bool { return !(b.x1 > b.x0); }
+eg_create_hb :: (b: cc.Box) -> cc.HudPrim { return cc.hud_box(b.x0, b.y0, b.x1, b.y1); }
+eg_create_holds :: (p: cc.Box, b: cc.Box) -> bool { return !eg_create_empty(p) && b.x0 >= p.x0 - 1 && b.y0 >= p.y0 - 1 && b.x1 <= p.x1 + 1 && b.y1 <= p.y1 + 1; }
+eg_create_say :: (ui: [] cc.UitTrace, parent: int, name: string, out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, f: f32, k: f32, centre: bool) -> int {
+  return cc.hud_say_ui(ui, parent, name, out, n, t, x, y, cap, cc.hud_text(cc.eg_tokens(), role), f, k, centre);
+}
+eg_create_say_ink :: (ui: [] cc.UitTrace, parent: int, name: string, out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, ink: cc.HudRgba, f: f32, k: f32, centre: bool) -> int {
+  r := cc.hud_text(cc.eg_tokens(), role); r.ink = ink;
+  return cc.hud_say_ui(ui, parent, name, out, n, t, x, y, cap, r, f, k, centre);
+}
+eg_create_word :: (ui: [] cc.UitTrace, parent: int, name: string, out: [] f32, n: int, t: string, b: cc.Box, cap: f32, ink: cc.HudRgba, f: f32, k: f32) -> int {
+  return eg_create_say_ink(ui, parent, name, out, n, t, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, ink, f, k, true);
+}
+
+// The layout trace: the card and a phone's sheet, then each box held by the panel it lies in (its
+// index in at), a row's arrows in it (in arrows, two a box). Returns the card's index; panels gets
+// the card's and the sheet's.
+eg_create_trace :: (ui: [] cc.UitTrace, c: EgCreate, bx: [] EgCreateBox, at: [] int, arrows: [] int, panels: [] int) -> int {
+  cc.uit_part(ui, "create");
+  card := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, c.card.x0, c.card.y0, c.card.x1, c.card.y1, "card");
+  sheet := ifx c.phone then cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, c.sheet.x0, c.sheet.y0, c.sheet.x1, c.sheet.y1, "sheet") else cc.UIT_NONE;
+  panels[0] = card; panels[1] = sheet;
+  for i: 0..<bx.count {
+    at[i] = cc.UIT_NONE; arrows[i * 2] = cc.UIT_NONE; arrows[i * 2 + 1] = cc.UIT_NONE;
+    x := bx[i]; b := x.b; if x.kind == EG_CB_EMPTY || !cc.uit_on(ui) { continue; }
+    up := ifx eg_create_holds(c.card, b) then card else ifx c.phone && eg_create_holds(c.sheet, b) then sheet else cc.UIT_NONE;
+    at[i] = cc.uit_put(ui, up, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, x.name);
+    if x.kind == EG_CB_ROW {
+      nm: [48] u8; a := x.left; z := x.right;
+      arrows[i * 2] = cc.uit_put(ui, at[i], cc.UIT_BUTTON, a.x0, a.y0, a.x1, a.y1, cc.uit_join(nm[..], x.name, "<"));
+      arrows[i * 2 + 1] = cc.uit_put(ui, at[i], cc.UIT_BUTTON, z.x0, z.y0, z.x1, z.y1, cc.uit_join(nm[..], x.name, ">"));
+    }
+  }
+  return card;
+}
+// The frames: the panels, the rows' wells and arrows and swatches, the name's well, the tabs and the
+// buttons, and the desk's rule under the title.
+eg_create_frames :: (l: [] cc.HudList, c: EgCreate, bx: [] EgCreateBox) {
+  t := cc.eg_tokens(); k := c.k; phone := c.phone;
+  cc.hud_panel(l, t, eg_create_hb(c.card), k);
+  if phone { cc.hud_panel(l, t, eg_create_hb(c.sheet), k); }
+  else if !eg_create_empty(c.pane) { cc.hud_panel(l, t, eg_create_hb(c.pane), k); }
+  for i: 0..<bx.count {
+    x := bx[i]; b := x.b;
+    if x.kind == EG_CB_ROW {
+      if phone { cc.hud_well(l, t, eg_create_hb(b), k, false); }
+      else { cc.hud_well(l, t, cc.hud_box(b.x0 + 106 * k, b.y0, b.x1, b.y1), k, x.on); }
+      cc.hud_button(l, t, eg_create_hb(x.left), k, false); cc.hud_button(l, t, eg_create_hb(x.right), k, false);
+      if x.swatch {
+        rgb := x.rgb; r := x.right; z := (ifx phone then 9.0f32 else 6.0f32) * k; cx := r.x0 - z - 8 * k; cy := (b.y0 + b.y1) * 0.5;
+        cc.hud_fill(l, cc.hud_box(cx - z, cy - z, cx + z, cy + z), 3 * k, cc.hud_rgba(rgb[0], rgb[1], rgb[2], 1), cc.hud_rgba(rgb[0] * 0.8, rgb[1] * 0.8, rgb[2] * 0.8, 1));
+        cc.hud_ring(l, cc.hud_box(cx - z, cy - z, cx + z, cy + z), 3 * k, 1.2 * k, t.trim, cc.hud_mix(t.trim, t.frame_mid, 0.5));
+      }
+    } else if x.kind == EG_CB_NAME {
+      cc.hud_well(l, t, ifx phone then eg_create_hb(b) else cc.hud_box(b.x0 + 106 * k, b.y0, b.x1, b.y1), k, x.on);
+    } else if x.kind == EG_CB_TAB || x.kind == EG_CB_BUTTON {
+      cc.hud_button(l, t, eg_create_hb(b), k, x.on);
+    }
+  }
+  if !phone { cc.hud_line(l, 30 * k, 76 * k, 334 * k, 76 * k, 1 * k, cc.hud_fade(t.trim, 0.8)); }
+}
+// Fade the frames in l by f.
+eg_create_fade :: (l: [] cc.HudList, f: f32) { for i: 0..<l[0].n { l[0].p[i].top.a *= f; l[0].p[i].bottom.a *= f; } }
+// The words: the title, each row's caption and value (made smaller to fit between its arrows), its
+// arrows, the tabs' and the buttons' words, and the desk's hint. at and arrows from eg_create_trace.
+eg_create_words :: (ui: [] cc.UitTrace, out: [] f32, at: int, c: EgCreate, bx: [] EgCreateBox, box_at: [] int, arrows: [] int, card: int) -> int {
+  t := cc.eg_tokens(); k := c.k; f := c.f; phone := c.phone; n := at;
+  n = eg_create_say(ui, card, "title", out, n, "Character Create", c.tx, c.ty, c.title_cap, cc.HUD_TEXT_TITLE, f, k, false);
+  for i: 0..<bx.count {
+    x := bx[i]; b := x.b; if x.kind == EG_CB_EMPTY { continue; }
+    if x.kind == EG_CB_ROW || x.kind == EG_CB_NAME {
+      label := x.label; vt := x.value;
+      ink := ifx x.ink == EG_CB_BAD then t.bad else ifx x.ink == EG_CB_DIM then t.text_dim else t.text;
+      nm: [48] u8; vn: [48] u8;
+      if phone {
+        mx := (b.x0 + b.x1) * 0.5;
+        n = eg_create_say(ui, box_at[i], cc.uit_join(nm[..], label, "label"), out, n, label, mx, b.y0 + 6 * k + c.caption, c.caption, cc.HUD_TEXT_LABEL, f, k, true);
+        // the value, as wide as the row leaves it between the arrows (and the swatch)
+        room := b.x1 - b.x0 - 2 * (b.y1 - b.y0) - (ifx x.swatch then 44.0f32 * k else 0.0f32);
+        cap := c.value; vw := cc.face_width(vt, cap, cc.HUD_FACE_BODY); if vw > room && vw > 0 { cap = cap * room / vw; }
+        n = eg_create_say_ink(ui, box_at[i], cc.uit_join(vn[..], label, "value"), out, n, vt, mx, b.y1 - 9 * k, cap, cc.HUD_TEXT_NUMBER, ink, f, k, true);
+      } else {
+        n = eg_create_say(ui, box_at[i], cc.uit_join(nm[..], label, "label"), out, n, label, b.x0, (b.y0 + b.y1) * 0.5 + c.caption * 0.5, c.caption, cc.HUD_TEXT_LABEL, f, k, false);
+        x0 := ifx x.kind == EG_CB_ROW then b.x0 + 140 * k else b.x0 + 116 * k; room := b.x1 - 30 * k - x0 - (ifx x.swatch then 24.0f32 * k else 0.0f32);
+        cap := 9.5 * k; vw := cc.face_width(vt, cap, cc.HUD_FACE_BODY); if vw > room && vw > 0 { cap = cap * room / vw; }
+        n = eg_create_say_ink(ui, box_at[i], cc.uit_join(vn[..], label, "value"), out, n, vt, x0, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_NUMBER, ink, f, k, false);
+      }
+      if x.kind == EG_CB_ROW {
+        acap := ifx phone then c.arrow else 10.0f32 * k; title := cc.hud_text(t, cc.HUD_TEXT_TITLE).ink;
+        n = eg_create_word(ui, arrows[i * 2], "<", out, n, "<", x.left, acap, title, f, k);
+        n = eg_create_word(ui, arrows[i * 2 + 1], ">", out, n, ">", x.right, acap, title, f, k);
+      }
+      continue;
+    }
+    if x.kind == EG_CB_TAB { n = eg_create_word(ui, box_at[i], "", out, n, x.label, b, c.word, ifx x.on then t.title else t.text_dim, f, k); continue; }
+    wcap := c.word; lw := cc.face_width(x.label, wcap, cc.HUD_FACE_TITLE); room := b.x1 - b.x0 - 12 * k; if lw > room && lw > 0 { wcap = wcap * room / lw; }
+    n = eg_create_word(ui, box_at[i], "", out, n, x.label, b, wcap, ifx x.on then t.title else t.text, f, k);
+  }
+  if !phone { n = eg_create_say(ui, cc.UIT_NONE, "HINT", out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", c.w * 0.5, c.h - 77 * k, 8 * k, cc.HUD_TEXT_LABEL, f, k, true); }
+  return n;
+}
+
+// The world's little menu: a line of words over a rule each ("Change character", "Back to the game"),
+// in gold, or grey while it can't be had.
+eg_menu_lines :: (out: [] f32, at: int, boxes: [] cc.Box, words: [] string, able: [] bool, k: f32) -> int {
+  n := at;
+  for i: 0..<boxes.count {
+    b := boxes[i]; ink := ifx able[i] then cc.ink(k, 0.83, 0.69, 0.43) else cc.ink(k, 0.6, 0.6, 0.58); ink.sans = true;
+    n = cc.line(out, n, b.x0, b.y1, b.x1, b.y1, k, ink.red, ink.green, ink.blue);
+    n = cc.text(out, n, words[i], b.x0 + 12 * k, b.y0 + 24 * k, 12 * k, ink);
+  }
+  return n;
+}
+#test "eg create: the frames and the words of a desk's panel, each box traced in its panel" #steps 400000000 {
+  c := EgCreate.{f = 1, k = 1, card = cc.Box.{x0 = 14, y0 = 14, x1 = 350, y1 = 700}, title_cap = 20, tx = 30, ty = 60, word = 9.5, caption = 7.5, value = 11, arrow = 15, w = 1280, h = 800};
+  bx: [3] EgCreateBox;
+  bx[0] = EgCreateBox.{kind = EG_CB_ROW, b = cc.Box.{x0 = 28, y0 = 102, x1 = 332, y1 = 138}, name = "HAIR", label = "HAIR", value = "SHORT", swatch = true, rgb = [3] f32.[0.4, 0.3, 0.2],
+                       left = cc.Box.{x0 = 137, y0 = 105, x1 = 160, y1 = 135}, right = cc.Box.{x0 = 306, y0 = 105, x1 = 329, y1 = 135}};
+  bx[2] = EgCreateBox.{kind = EG_CB_BUTTON, b = cc.Box.{x0 = 28, y0 = 634, x1 = 172, y1 = 670}, name = "SAVE", label = "SAVE", on = true};
+  l: [1] cc.HudList; eg_create_frames(l[..], c, bx[..]); #assert l[0].n > 0;
+  out: [60000] f32; frames := cc.hud_emit(out[..], 0, l[..]);
+  tr: [1] cc.UitTrace; at: [3] int; ar: [6] int; pn: [2] int;
+  card := eg_create_trace(tr[..], c, bx[..], at[..], ar[..], pn[..]);
+  #assert at[1] == cc.UIT_NONE && tr[0].rects[at[0]].parent == card && tr[0].rects[ar[1]].parent == at[0] && tr[0].rects[at[2]].parent == card;
+  #assert eg_create_words(tr[..], out[..], frames, c, bx[..], at[..], ar[..], card) > frames;
+  m := [2] cc.Box.[cc.Box.{x0 = 500, y0 = 300, x1 = 760, y1 = 338}, cc.Box.{x0 = 500, y0 = 348, x1 = 760, y1 = 386}];
+  w := [2] string.["Change character", "Back to the game"]; able := [2] bool.[false, true];
+  #assert eg_menu_lines(out[..], 0, m[..], w[..], able[..], 1) > 2 * 6;
+}

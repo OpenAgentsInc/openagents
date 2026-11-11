@@ -55,6 +55,7 @@
 #load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
 #load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in experimental-combat.coax xc_sprint_frame)
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: rest and knock-out over Experimental's bar (#13092)
+#load "../../everglade/hud/lines.coax";   // Everglade's line HUD: the lab's lines, words, buttons, slots, sliders, log and corner (#13083)
 #load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
 #load "range-scene.coax";   // the Archery Range at /worlds/archery-range: the range's place, targets and tally on the open field
 #load "druid-scene.coax";   // the druid's field at /druid: Shapechange into the Adult Red Dragon, flight and Fire Breath
@@ -71,7 +72,7 @@ VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD, the log, labels near the camera (the tokens are bg_fs's)
 // The strokes' budget: the scene's labels and effects' text stop short of HUD_VERTS from the end, so
 // the HUD, the log and the sliders always draw; a label that finds no room is counted and said
-// (draw_sliders), never dropped quietly. LABEL_VERTS: the most one label takes.
+// (lab_sliders), never dropped quietly. LABEL_VERTS: the most one label takes.
 HUD_VERTS :: 150000; LABEL_VERTS :: 900;   // the HUD's text is most of it: the log and 48 heroes' lines
 SCENE_VERTS :: 100000;   // MAX_VERTICES - HUD_VERTS
 U_FRAME_FLOATS :: 104;   // 26 vec4s: the camera, the grid, the zones (gpu/fivelab.coax FivelabU)
@@ -118,7 +119,7 @@ SIDE :: 24; HEROES :: 48; SKELETONS :: 160; CASTERS :: 12; TEAMS :: 3;
 HEROES_MAX :: 1024; SKELETONS_MAX :: 16384;
 LAB_MAX :: 17408;   // HEROES_MAX + SKELETONS_MAX: the room the lab gives its battle (25 MB of creatures)
 HORDE_MAX :: 20000;
-LABELS_ALL :: 400; NAMES_ALL :: 96;   // past these, labels only near the camera (draw_sliders says so)   // the dead the Horde can send in after its first wave
+LABELS_ALL :: 400; NAMES_ALL :: 96;   // past these, labels only near the camera (lab_sliders says so)   // the dead the Horde can send in after its first wave
 LEVEL :: 6;
 // The twelve SRD 5e classes as they stand: the casters' two back files, then the front two; each
 // side fields every class twice.
@@ -139,17 +140,7 @@ LINE_CAP :: 96;
 FXS :: 32;
 FX_TEXT :: 3;   // a number floating off a figure (Num.kind; 0 none)
 
-Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
-P3 :: struct { x: f32; y: f32; z: f32; }
-Col :: struct { r: f32; g: f32; b: f32; }
-WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
-DIM :: Col.{r = 0.52, g = 0.55, b = 0.6};
-FAINT :: Col.{r = 0.28, g = 0.3, b = 0.34};
-RED :: Col.{r = 1.0, g = 0.25, b = 0.22};
-GREEN :: Col.{r = 0.4, g = 1.0, b = 0.5};
-VIOLET :: Col.{r = 0.75, g = 0.48, b = 1.0};
-GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
-CYAN :: Col.{r = 0.35, g = 0.9, b = 1.0};
+P3 :: struct { x: f32; y: f32; z: f32; }   // Rect, Col and the kit's colours: everglade/hud/lines.coax
 TEAM_COL :: [3] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}, Col.{r = 0.9, g = 0.86, b = 0.74}];
 
 Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
@@ -259,11 +250,9 @@ Lab :: struct {
 
 // ---- small things
 
-GAP :: 0.5; SPACE :: 1.2;
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 
-text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
 in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
 put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
@@ -2232,41 +2221,6 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
   }
   return true;
 }
-seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col) -> int {
-  if lit(out, n, ax, ay, bx, by, w * 0.55, light, w * 1.8, c.r, c.g, c.b, 0) { return n + 6; }
-  return n;
-}
-ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, w: f32, light: f32, c: Col) -> int {
-  n := at;
-  sides := rs_max(8, rs_min(20, int(r * 2)));   // a small ring, fewer sides (the flat view's crowds)
-  for i: 0..<sides {
-    a0 := f32(i) * 6.2831853 / f32(sides); a1 := f32(i + 1) * 6.2831853 / f32(sides);
-    n = seg(out, n, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, w, light, c);
-  }
-  return n;
-}
-box_lines :: (out: [] f32, at: int, r: Rect, w: f32, light: f32, c: Col) -> int {
-  n := at;
-  n = seg(out, n, r.x0, r.y0, r.x1, r.y0, w, light, c);
-  n = seg(out, n, r.x1, r.y0, r.x1, r.y1, w, light, c);
-  n = seg(out, n, r.x1, r.y1, r.x0, r.y1, w, light, c);
-  n = seg(out, n, r.x0, r.y1, r.x0, r.y0, w, light, c);
-  return n;
-}
-ink :: (k: f32, light: f32, c: Col) -> Ink {
-  i: Ink;
-  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = c.r; i.green = c.g; i.blue = c.b; i.mode = 0; i.scale = k;
-  return i;
-}
-say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
-  return draw_text(out, n, t, x, base, cap, GAP, SPACE, k, false, false);
-}
-say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
-  return say_at(out, n, t, x - text_width(t, cap) / 2, base, cap, k);
-}
-say_right :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
-  return say_at(out, n, t, x - text_width(t, cap), base, cap, k);
-}
 // A square's middle on the screen.
 scr_x :: (s: [] Lab, x: f32) -> f32 { return s[0].gx + (x + 0.5) * s[0].cell; }
 scr_y :: (s: [] Lab, y: f32) -> f32 { return s[0].gy + (y + 0.5) * s[0].cell; }
@@ -2302,7 +2256,9 @@ ring3 :: (s: [] Lab, out: [] f32, at: int, x: f32, z: f32, r: f32, y: f32, w: f3
   return n;
 }
 
-layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
+// The page: the log's panel, the buttons, the picker, the hotbar and the sliders (Everglade's line
+// HUD's places), the board's grid, and the camera fitted to what is left.
+lab_layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   s[0].portrait = h > w * 1.1;
   pad := 16 * k;
   top := ifx s[0].portrait then 92 * k else 64 * k;
@@ -2319,39 +2275,17 @@ layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   s[0].cell = cell;
   s[0].gx = pad + (gw - cell * f32(s[0].cols)) / 2;
   s[0].gy = top + (gh - cell * f32(s[0].rows)) / 2;
-  bw := 96 * k;
-  s[0].back = Rect.{x0 = w - pad - bw, y0 = 18 * k, x1 = w - pad, y1 = 46 * k};
-  s[0].flip = Rect.{x0 = s[0].back.x0 - 8 * k - bw, y0 = 18 * k, x1 = s[0].back.x0 - 8 * k, y1 = 46 * k};
-  mw := 128 * k;
-  s[0].modal = Rect.{x0 = s[0].flip.x0 - 8 * k - mw, y0 = 18 * k, x1 = s[0].flip.x0 - 8 * k, y1 = 46 * k};
-  // a phone has no room beside the title: the mode sits in the scene's bottom-left corner
-  if s[0].portrait { s[0].modal = Rect.{x0 = pad, y0 = s[0].panel.y0 - 8 * k - 28 * k, x1 = pad + mw, y1 = s[0].panel.y0 - 8 * k}; }
-  pbw := 104 * k;
-  s[0].pbtn = Rect.{x0 = s[0].modal.x0 - 8 * k - pbw, y0 = s[0].modal.y0, x1 = s[0].modal.x0 - 8 * k, y1 = s[0].modal.y1};
-  if s[0].portrait { s[0].pbtn = Rect.{x0 = s[0].modal.x1 + 8 * k, y0 = s[0].modal.y0, x1 = s[0].modal.x1 + 8 * k + pbw, y1 = s[0].modal.y1}; }
-  // the scenario (Horde, Armies or Siege; H cycles them): left of the Spectator switch, on a phone
-  // a row above the mode switch (the FPS has the right of its row)
-  sbw := 84 * k;
-  s[0].sbtn = Rect.{x0 = s[0].pbtn.x0 - 8 * k - sbw, y0 = s[0].pbtn.y0, x1 = s[0].pbtn.x0 - 8 * k, y1 = s[0].pbtn.y1};
-  if s[0].portrait { s[0].sbtn = Rect.{x0 = pad, y0 = s[0].modal.y0 - 36 * k, x1 = pad + sbw, y1 = s[0].modal.y0 - 8 * k}; }
+  // the buttons along the top (the scenario: Horde, Armies or Siege, H cycles them), Everglade's
+  // line HUD's places (everglade/hud/lines.coax ln_top_buttons)
+  tb: [5] Rect; ln_top_buttons(tb[..], w, pad, s[0].portrait, s[0].panel.y0, k);
+  s[0].back = tb[0]; s[0].flip = tb[1]; s[0].modal = tb[2]; s[0].pbtn = tb[3]; s[0].sbtn = tb[4];
   // Player mode: the class picker along the scene's top, the hotbar centred at its foot
   scx0 := pad; scx1 := ifx s[0].portrait then w - pad else s[0].panel.x0 - pad;
   scy1 := ifx s[0].portrait then s[0].modal.y0 - (ifx s[0].player then 34.0f32 else 8.0f32) * k else h - pad;   // playing: room for the keys under it
-  np := pick_count(s);
-  pg := 4 * k; pwid := (scx1 - scx0 - f32(np - 1) * pg) / f32(np);
-  for c: 0..<12 {
-    s[0].picks[c] = Rect.{};
-    if c < np { s[0].picks[c] = Rect.{x0 = scx0 + f32(c) * (pwid + pg), y0 = top + 6 * k, x1 = scx0 + f32(c) * (pwid + pg) + pwid, y1 = top + 30 * k}; }
-  }
+  ln_spread(s[0].picks[..], ifx s[0].player then pick_count(s) else 0, scx0, scx1, 4 * k, top + 6 * k, top + 30 * k);
   nslot := 0;
   if s[0].player && s[0].me >= 0 { list: [SLOTS] Ab; nslot = hero_abilities(s, s[0].me, list[..]); }
-  sg := 6 * k; slot := lo(64 * k, (scx1 - scx0 - f32(SLOTS - 1) * sg) / f32(SLOTS));
-  hx0 := (scx0 + scx1) / 2 - (f32(nslot) * slot + f32(rs_max(nslot - 1, 0)) * sg) / 2;
-  for c: 0..<SLOTS {
-    s[0].slots[c] = Rect.{};
-    if c < nslot { s[0].slots[c] = Rect.{x0 = hx0 + f32(c) * (slot + sg), y0 = scy1 - 20 * k - slot, x1 = hx0 + f32(c) * (slot + sg) + slot, y1 = scy1 - 20 * k}; }
-  }
-  if !s[0].player { for c: 0..<12 { s[0].picks[c] = Rect.{}; } }
+  ln_hotbar(s[0].slots[..], nslot, scx0, scx1, scy1 - 20 * k, k);
   layout_sliders(s, k, scx0, scx1, top + ifx s[0].player then 34 * k else 4 * k);
   // the scene's top for floating numbers: under the sliders
   s[0].scene_top = top; for r: 0..<sl_count(s) { s[0].scene_top = hi(s[0].scene_top, s[0].sliders[r].y1 + 8 * k); }
@@ -2664,7 +2598,9 @@ draw_nums3 :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 
-draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+// The log's panel: the characters, the sides counted and the log, in Everglade's line HUD
+// (everglade/hud/lines.coax ln_roster_row, ln_log). What each row says is the battle's.
+lab_panel_view :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; p := s[0].panel; b := bt(s);
   n = box_lines(out, n, p, 0.6 * k, 0.3, DIM);
   pad := 12 * k; x := p.x0 + pad; y := p.y0 + pad;
@@ -2684,7 +2620,6 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     x = p.x0 + pad + f32(q / SIDE) * half;
     y = top + f32(q % SIDE + 1) * crow;
     col := ifx cr.dead then FAINT else team_col(s, cr.team);
-    n = say_at(out, n, cast(string) cr.name[0..<cr.name_n], x, y, cap * 0.92, ink(k, 0.85, col));
     m := put(l[..], 0, "HP ");
     m = put_int(l[..], m, cr.hp); m = put(l[..], m, "/"); m = put_int(l[..], m, cr.hp_max);
     if cr.temp > 0 { m = put(l[..], m, " +"); m = put_int(l[..], m, cr.temp); }
@@ -2736,13 +2671,8 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if cr.dodging { m = put(l[..], m, "  DODGING"); }
       if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }
-    // after the name: 54 px in, or past a long name (a siege's "Cultist Fanatic 10")
-    off := hi(54 * k, text_width(cast(string) cr.name[0..<cr.name_n], cap * 0.92) + 6 * k);
-    room := half - off - 4 * k - pad;
-    if text_width(cast(string) l[0..<m], cap * 0.8) > room * 1.25 { m = m0; }
-    t := cast(string) l[0..<m];
-    cp := lo(cap * 0.8, cap * 0.8 * room / hi(text_width(t, cap * 0.8), 1));
-    n = say_at(out, n, t, x + off, y, cp, ink(k, 0.6, DIM));
+    // after the name, fitted to its column (a siege's "Cultist Fanatic 10" is long)
+    n = ln_roster_row(out, n, x, y, half, pad, cast(string) cr.name[0..<cr.name_n], col, cast(string) l[0..<m], cast(string) l[0..<m0], cap, k);
   }
   x = p.x0 + pad; y = top + f32(SIDE) * crow;
   // the Siege's sides, counted (fivelab-siege.coax)
@@ -2778,21 +2708,10 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   }
   y += row * 1.2;
   n = seg(out, n, p.x0 + pad, y, p.x1 - pad, y, 0.6 * k, 0.25, DIM);
-  // the log, newest at the bottom
-  foot := p.y1 - pad - 18 * k;
-  lines := int((foot - y - row * 0.5) / row);
-  lines = rs_max(rs_min(lines, s[0].line_n), 0);
-  ly := foot - f32(lines - 1) * row;
-  for j: 0..<lines {
-    q := (s[0].line_head + s[0].line_n - lines + j) % LOG_LINES;
-    ln := s[0].lines[q..<q + 1];
-    t := cast(string) ln[0].text[0..<ln[0].n];
-    cp := lo(cap, cap * (p.x1 - p.x0 - pad * 2) / hi(text_width(t, cap), 1));
-    n = say_at(out, n, t, x, ly + f32(j) * row, cp, ink(k, 0.8, ln[0].col));
-  }
-  // the attribution the SRD's licence asks for
-  n = say_at(out, n, "SRD 5.2.1 BY WIZARDS OF THE COAST LLC, CC BY 4.0", x, p.y1 - pad, 7.5 * k, ink(k, 0.4, FAINT));
-  return n;
+  // the log, newest at the bottom, and the SRD's attribution
+  said: [LOG_LINES] string; cols: [LOG_LINES] Col;
+  for j: 0..<s[0].line_n { q := (s[0].line_head + j) % LOG_LINES; said[j] = cast(string) s[0].lines[q].text[0..<s[0].lines[q].n]; cols[j] = s[0].lines[q].col; }
+  return ln_log(out, n, p, pad, y, said[0..<s[0].line_n], cols[0..<s[0].line_n], cap, row, k);
 }
 
 // The token under (x, y) on the screen that's a foe of yours, or -1.
@@ -2832,27 +2751,20 @@ ab_icon :: (out: [] f32, at: int, r: Rect, a: Ab, k: f32, c: Col) -> int {
   }
   return n;
 }
-// Player mode's bar: the Spectator/Player switch always; when playing, the class picker, your
+// Player mode's bar, in Everglade's line HUD (everglade/hud/lines.coax): the Spectator/Player switch always; when playing, the class picker, your
 // hero's ring and your target's, and the hotbar, each slot filling as your next turn comes round.
-draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+lab_player_bar :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at;
   pb := s[0].pbtn;
-  n = box_lines(out, n, pb, 0.8 * k, ifx s[0].pressing == 4 then 0.9 else 0.45, DIM);
-  n = say_mid(out, n, ifx s[0].player then "PLAYER" else "SPECTATOR", (pb.x0 + pb.x1) / 2, (pb.y0 + pb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, ifx s[0].player then GOLD else WHITE));
+  n = ln_button(out, n, pb, ifx s[0].player then "PLAYER" else "SPECTATOR", s[0].pressing == 4, ifx s[0].player then GOLD else WHITE, k);
   sb := s[0].sbtn;
   if !s[0].player {   // playing, the battle doesn't change under you
-    n = box_lines(out, n, sb, 0.8 * k, ifx s[0].pressing == 5 then 0.9 else 0.45, DIM);
-    n = say_mid(out, n, scenario_name(s), (sb.x0 + sb.x1) / 2, (sb.y0 + sb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, ifx s[0].siege then GOLD else WHITE));
+    n = ln_button(out, n, sb, scenario_name(s), s[0].pressing == 5, ifx s[0].siege then GOLD else WHITE, k);
   }
   if !s[0].player { return n; }
   b := bt(s);
   for c: 0..<pick_count(s) {
-    r := s[0].picks[c];
-    on := c == s[0].pick;
-    n = box_lines(out, n, r, 0.8 * k, ifx on then 0.95 else 0.4, ifx on then GOLD else DIM);
-    nm := ifx s[0].siege then SIEGE_PICK_NAME[c] else RS_CLASS[ROSTER[c]];
-    cp := lo(8 * k, 8 * k * (r.x1 - r.x0 - 6 * k) / hi(text_width(nm, 8 * k), 1));
-    n = say_mid(out, n, nm, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2 + 4 * k, cp, ink(k, ifx on then 1 else 0.7, ifx on then GOLD else WHITE));
+    n = ln_pick(out, n, s[0].picks[c], ifx s[0].siege then SIEGE_PICK_NAME[c] else RS_CLASS[ROSTER[c]], c == s[0].pick, k);
   }
   me := s[0].me;
   if s[0].view == VIEW_GLADE {
@@ -2886,16 +2798,9 @@ draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     a := list[c];
     on := c == s[0].act;
     can := ab_ready(s, me, a);
-    n = box_lines(out, n, r, ifx on then 1.6 * k else 0.9 * k, ifx on then 1 else ifx can then 0.6 else 0.25, ifx on then GOLD else DIM);
-    fill := (r.y1 - r.y0 - 4 * k) * ready;
-    for row: 0..<6 { yy := r.y1 - 2 * k - fill * f32(row) / 5; n = seg(out, n, r.x0 + 3 * k, yy, r.x1 - 3 * k, yy, 0.7 * k, ifx on then 0.3 else 0.15, ifx on then GOLD else DIM); }
+    n = ln_slot_frame(out, n, r, on, can, ready, k);
     n = ab_icon(out, n, r, a, k, ifx !can then FAINT else ifx on then GOLD else WHITE);
-    key: [2] u8; key[0] = cast(u8) ('1' + c);
-    n = say_at(out, n, cast(string) key[0..<1], r.x1 - 9 * k, r.y0 + 10 * k, 7.5 * k, ink(k, 0.9, WHITE));
-    left := ab_left(s, me, a);
-    if left >= 0 { lb: [8] u8; lm := put_int(lb[..], 0, left); n = say_at(out, n, cast(string) lb[0..<lm], r.x0 + 4 * k, r.y0 + 10 * k, 7.5 * k, ink(k, 0.9, ifx left > 0 then GOLD else RED)); }
-    cp := lo(6.5 * k, 6.5 * k * (r.x1 - r.x0 - 4 * k) / hi(text_width(a.name, 6.5 * k), 1));
-    n = say_mid(out, n, a.name, (r.x0 + r.x1) / 2, r.y1 - 5 * k, cp, ink(k, ifx can then 0.9 else 0.4, ifx on then GOLD else WHITE));
+    n = ln_slot_words(out, n, r, c, ab_left(s, me, a), a.name, on, can, k);
   }
   // who you are, above the hotbar
   l: [LINE_CAP] u8;
@@ -2914,15 +2819,13 @@ draw_player :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
           else ifx s[0].siege then "W A S D MOVE  SHIFT WALK  DRAG LOOK  SPACE JUMP  WHEEL ZOOM  1 TO 9 ACT  CLICK OR TAB TARGET  [ ] WHO"
           else "W A S D MOVE  SHIFT WALK  DRAG LOOK  SPACE JUMP  WHEEL ZOOM  1 TO 9 ACT  CLICK OR TAB TARGET  [ ] CLASS";
   room := ifx s[0].portrait then s[0].width - 32 * k else s[0].panel.x0 - 300 * k;
-  kc := lo(8.5 * k, 8.5 * k * room / hi(text_width(keys, 8.5 * k), 1));
-  n = say_at(out, n, keys, 16 * k, ifx nab > 0 then r0.y1 + 14 * k else s[0].cy, kc, ink(k, 0.9, GOLD));
+  n = say_at(out, n, keys, 16 * k, ifx nab > 0 then r0.y1 + 14 * k else s[0].cy, ln_fit(keys, 8.5 * k, room), ink(k, 0.9, GOLD));
   // the thumb's stick: where it is held, or where to put your thumb (aethyr/sticks.coax's ring)
   if s[0].touch {
     sr := 56 * k;
     ox := ifx s[0].stick_on then s[0].stick_ox else s[0].width * 0.22;
     oy := ifx s[0].stick_on then s[0].stick_oy else s[0].height - hi(sr * 2.4, s[0].height * 0.18);
-    n = ring(out, n, ox, oy, sr, 1.2 * k, ifx s[0].stick_on then 0.6 else 0.3, WHITE);
-    if s[0].stick_on { n = ring(out, n, ox + s[0].stick_px * sr, oy - s[0].stick_py * sr, 12 * k, 2 * k, 0.8, GOLD); }
+    n = ln_stick(out, n, ox, oy, sr, s[0].stick_on, s[0].stick_px, s[0].stick_py, k);
   }
   return n;
 }
@@ -2932,7 +2835,9 @@ on_field :: (s: [] Lab) -> int {
   for i: 0..<b[0].n { if !b[0].c[i].dead { n += 1; } }
   return n;
 }
-draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
+// The top: the title, the battle's line and the keys, the frame rate's corner, a pause or a win
+// over the scene, and the mode, view and WORLDS buttons, in Everglade's line HUD (everglade/hud/lines.coax).
+lab_top_bar :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   n := at; pad := 16 * k;
   n = say_at(out, n, "5E LAB", pad, 38 * k, 18 * k, ink(k, 0.95, WHITE));
   l: [2 * LINE_CAP] u8;   // the key line runs long
@@ -2957,8 +2862,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   // fitted to the room before the buttons (a phone's whole width under them)
   room := ifx s[0].portrait then s[0].width - pad - sx0 else lo(s[0].sbtn.x0, s[0].pbtn.x0) - 16 * k - sx0;
   sc := ifx s[0].portrait then 8.5 * k else 10 * k;
-  sw := text_width(cast(string) l[0..<m], sc);
-  if sw > room && room > 0 { sc = sc * room / sw; }
+  if room > 0 { sc = ln_fit(cast(string) l[0..<m], sc, room); }
   n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, sc, ink(k, 0.7, DIM));
   // the keys: in Player mode under the top line (the play keys are under the hotbar); watching,
   // along the scene's foot left of the frame rate, two lines; a phone has no keys to show
@@ -2968,8 +2872,7 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
     m = put(l[..], m, "   F "); m = put(l[..], m, ifx s[0].fast then "NORMAL SPEED" else "FAST");
     m = put(l[..], m, "   R NEW BATTLE   H HORDE/ARMIES/SIEGE   P PLAY   V 2D/3D   M MODE");
     hroom := s[0].panel.x0 - 16 * k - 260 * k - pad;   // the figures' count and the FPS on the right
-    hc := 8 * k; hw := text_width(cast(string) l[0..<m], hc);
-    if hw > hroom && hroom > 0 { hc = hc * hroom / hw; }
+    hc := 8 * k; if hroom > 0 { hc = ln_fit(cast(string) l[0..<m], hc, hroom); }
     hy := s[0].height - 20 * k;
     if s[0].view == VIEW_GLADE {
       n = say_at(out, n, "DRAG ORBIT   SHIFT+DRAG PAN   WASD FLY   WHEEL ZOOM   C RESET CAMERA", pad, hy, hc, ink(k, 0.85, WHITE));
@@ -2980,20 +2883,9 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
   // frames a second and the frame's milliseconds, in the scene's bottom-right corner, and over
   // them the figures on the field (not in the golden, which has no clock)
   if !s[0].golden {
-    fl: [40] u8;
-    fm := put_int(fl[..], 0, int(s[0].fps + 0.5)); fm = put(fl[..], fm, " FPS  ");
-    tenths := int(s[0].ms * 10 + 0.5);
-    fm = put_int(fl[..], fm, tenths / 10); fm = put(fl[..], fm, "."); fm = put_int(fl[..], fm, tenths % 10); fm = put(fl[..], fm, " MS");
-    fc := 15 * k;
     fxr := ifx s[0].portrait then s[0].width - 16 * k else s[0].panel.x0 - 16 * k;
     fyb := ifx s[0].portrait then s[0].panel.y0 - 16 * k else s[0].height - 20 * k;
-    // a phone's corner is narrow: the milliseconds go up a line, with the count
-    if s[0].portrait { fm = put_int(fl[..], 0, int(s[0].fps + 0.5)); fm = put(fl[..], fm, " FPS"); }
-    n = say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], fc), fyb, fc, ink(k, 1, ifx s[0].fps >= 50 then GREEN else ifx s[0].fps >= 30 then GOLD else RED));
-    fm = 0;
-    if s[0].portrait { fm = put_int(fl[..], 0, tenths / 10); fm = put(fl[..], fm, "."); fm = put_int(fl[..], fm, tenths % 10); fm = put(fl[..], fm, " MS  "); }
-    fm = put_int(fl[..], fm, on_field(s)); fm = put(fl[..], fm, ifx s[0].portrait then " FIGURES" else " FIGURES ON THE FIELD");
-    n = say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], 10 * k), fyb - 24 * k, 10 * k, ink(k, 0.85, WHITE));
+    n = ln_fps(out, n, s[0].fps, s[0].ms, on_field(s), fxr, fyb, s[0].portrait, k);
   }
   if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].cx, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
   if s[0].over && s[0].winner >= 0 {
@@ -3001,16 +2893,9 @@ draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
     m = put(l[..], 0, team_name(s, s[0].winner)); m = put(l[..], m, " WINS");
     n = say_mid(out, n, cast(string) l[0..<m], mid, cy, 26 * k, ink(k, 0.95, team_col(s, s[0].winner)));
   }
-  mb := s[0].modal;
-  n = box_lines(out, n, mb, 0.8 * k, ifx s[0].pressing == 3 then 0.9 else 0.45, DIM);
-  n = say_mid(out, n, ifx s[0].mode == MODE_ACTION then "ACTION COMBAT" else "SRD ROUNDS", (mb.x0 + mb.x1) / 2, (mb.y0 + mb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, ifx s[0].mode == MODE_ACTION then GOLD else WHITE));
-  fb := s[0].flip;
-  n = box_lines(out, n, fb, 0.8 * k, ifx s[0].pressing == 2 then 0.9 else 0.45, DIM);
-  n = say_mid(out, n, ifx s[0].view == VIEW_GLADE then "2D VIEW" else "3D VIEW", (fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, WHITE));
-  b := s[0].back;
-  n = box_lines(out, n, b, 0.8 * k, ifx s[0].pressing == 1 then 0.9 else 0.45, DIM);
-  n = say_mid(out, n, "WORLDS", (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, WHITE));
-  return n;
+  n = ln_button(out, n, s[0].modal, ifx s[0].mode == MODE_ACTION then "ACTION COMBAT" else "SRD ROUNDS", s[0].pressing == 3, ifx s[0].mode == MODE_ACTION then GOLD else WHITE, k);
+  n = ln_button(out, n, s[0].flip, ifx s[0].view == VIEW_GLADE then "2D VIEW" else "3D VIEW", s[0].pressing == 2, WHITE, k);
+  return ln_button(out, n, s[0].back, "WORLDS", s[0].pressing == 1, WHITE, k);
 }
 
 #test "Aribeth local view and absent animation label are bounded" {
@@ -3246,7 +3131,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
       if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
       n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
-      n = lab_ride_hud(s,out,n,width,height,hi(dpr,0.5));
+      n = lab_ride_prompt(s,out,n,width,height,hi(dpr,0.5));
       n = lab_pack_titles(s,out,n,width,height,hi(dpr,0.5));
       n = lab_aribeth_label(s,out,n,width,height,hi(dpr,0.5));
       n = lab_showcase_titles(s,out,n,width,height,hi(dpr,0.5));
@@ -3283,7 +3168,7 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     if s[0].fps_t >= 0.5 { s[0].fps = f32(s[0].fps_n) / s[0].fps_t; s[0].ms = s[0].fps_t * 1000 / f32(s[0].fps_n); s[0].fps_n = 0; s[0].fps_t = 0; }
   }
   t := s[0].clock;
-  layout(s, width, height, k);
+  lab_layout(s, width, height, k);
   n := 0; s[0].unlabelled = 0;
   if s[0].film != FILM_NONE { glade_puffs(s); }   // a film draws the field alone
   else if s[0].view == VIEW_GLADE {
@@ -3297,10 +3182,10 @@ lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, d
     n = draw_tokens(s, out, n, k, t);
   }
   if s[0].film == FILM_NONE {
-    n = draw_panel(s, out, n, k);
-    n = draw_top(s, out, n, width, k, t);
-    n = draw_player(s, out, n, k);
-    n = draw_sliders(s, out, n, k);
+    n = lab_panel_view(s, out, n, k);
+    n = lab_top_bar(s, out, n, width, k, t);
+    n = lab_player_bar(s, out, n, k);
+    n = lab_sliders(s, out, n, k);
   }
   for i: 0..<u.count { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = t; u[3] = 1;
@@ -3441,31 +3326,17 @@ slider_value_at :: (s: [] Lab, r: int, x: f32) -> int {
   t := s[0].sliders[r];
   return sl_at(s, r, (x - t.x0) / hi(t.x1 - t.x0, 1));
 }
-draw_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+// The army-size sliders, each Everglade's line HUD's (everglade/hud/lines.coax ln_slider), and the
+// notes under them: their keys and the labels' limits.
+lab_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at;
   for r: 0..<sl_count(s) {
     t := s[0].sliders[r];
     if t.x1 <= t.x0 { continue; }
     on := s[0].sliding == r;
     v := ifx on then s[0].want[r] else sl_value(s, r);
-    y := (t.y0 + t.y1) / 2;
-    n = say_right(out, n, sl_name(s, r), t.x0 - 10 * k, y + 4 * k, 8.5 * k, ink(k, 0.85, ifx on then GOLD else WHITE));
-    n = seg(out, n, t.x0, y, t.x1, y, 1.6 * k, 0.3, DIM);
-    px := t.x0 + (t.x1 - t.x0) * sl_pos(s, r, v);
-    n = seg(out, n, t.x0, y, px, y, 1.8 * k, 0.9, ifx r == SL_HEROES then TEAM_COL[0] else ifx s[0].siege then team_col(s, 1) else TEAM_COL[2]);
-    n = ring(out, n, px, y, 6 * k, 1.8 * k, ifx on then 1 else 0.8, ifx on then GOLD else WHITE);
-    l: [16] u8; m := put_int(l[..], 0, v);
-    // the number, then the most it can field ("50 / 1024"), kept inside the screen
-    e: [24] u8; em := put(e[..], 0, "/ "); em = put_int(e[..], em, sl_most(s, r));
-    vw := text_width(cast(string) l[0..<m], 10 * k); mw := text_width(cast(string) e[0..<em], 7.5 * k);
-    vx := lo(t.x1 + 12 * k, s[0].width - 8 * k - mw - 8 * k - vw);
-    n = say_at(out, n, cast(string) l[0..<m], vx, y + 4.5 * k, 10 * k, ink(k, 0.95, ifx on then GOLD else WHITE));
-    n = say_at(out, n, cast(string) e[0..<em], vx + vw + 8 * k, y + 4.5 * k, 7.5 * k, ink(k, 0.8, WHITE));
-    if s[0].asked[r] > 0 {
-      a: [64] u8; am := put_int(a[..], 0, s[0].asked[r]); am = put(a[..], am, " ASKED, ");
-      am = put_int(a[..], am, sl_most(s, r)); am = put(a[..], am, " IS THE MOST");
-      n = say_at(out, n, cast(string) a[0..<am], t.x1 + 62 * k, y + 4 * k, 7.5 * k, ink(k, 1, RED));
-    }
+    col := ifx r == SL_HEROES then TEAM_COL[0] else ifx s[0].siege then team_col(s, 1) else TEAM_COL[2];
+    n = ln_slider(out, n, t, sl_name(s, r), v, sl_most(s, r), sl_pos(s, r, v), on, col, s[0].asked[r], s[0].width, k);
   }
   t0 := s[0].sliders[0];
   if t0.x1 > t0.x0 {
@@ -4318,7 +4189,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   #assert SCENE_VERTS + HUD_VERTS == MAX_VERTICES;
   n = frame_at(s[..], 1600, 1000, 1, 0.016);
   hud: [HUD_VERTS * VERTEX_FLOATS] f32;
-  m := draw_sliders(s[..], hud[..], draw_player(s[..], hud[..], draw_top(s[..], hud[..], draw_panel(s[..], hud[..], 0, 1), 1600, 1, 0), 1), 1);
+  m := lab_sliders(s[..], hud[..], lab_player_bar(s[..], hud[..], lab_top_bar(s[..], hud[..], lab_panel_view(s[..], hud[..], 0, 1), 1600, 1, 0), 1), 1);
   #assert m > 1000 && m < HUD_VERTS - 100;
 }
 

@@ -270,7 +270,7 @@ xd_draw :: (s: [] Lab, out: [] f32, n: int) -> int {
 // side, under the top third) and the wings' button over the bar's right end.
 XD_PAD_R :: 56.0;   // px at k 1: a full push of the stick
 xd_fly_at :: (x: [] XcCombat) -> [3] f32 {
-  k := x[0].k; r := xc_slot_box(x, ifx x[0].bar_n > 0 then x[0].bar_n - 1 else 0);
+  k := x[0].k; r := cc.eg_box4(xc_slot_at(x[0].bar_n, ifx x[0].bar_n > 0 then x[0].bar_n - 1 else 0, x[0].w, x[0].h, x[0].k));
   return [3] f32.[x[0].w - 70 * k, r.y0 - 80 * k, 40 * k];
 }
 xd_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
@@ -281,7 +281,7 @@ xd_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
     x[0].dr.touch_seen = true;
     f := xd_fly_at(x); dx := px - f[0]; dy := py - f[1];
     if dx * dx + dy * dy <= f[2] * f[2] * 1.4 { x[0].dr.fly_id = id; return true; }
-    if px < x[0].w * 0.42 && py > x[0].h * 0.33 && py < xc_slot_box(x, 0).y0 - 10 * k {
+    if px < x[0].w * 0.42 && py > x[0].h * 0.33 && py < cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k)).y0 - 10 * k {
       x[0].dr.pad_id = id; x[0].dr.pad_ox = px; x[0].dr.pad_oy = py; x[0].dr.pad_x = 0; x[0].dr.pad_y = 0; return true;
     }
     return false;

@@ -26,13 +26,6 @@ E2Npc :: struct {
   hover: int = -1; sight: cc.HudSight;
   drawn: int; opened: int; picked: int;
 }
-// The panel's boxes: its frame, the line's wrapped rows, the answers' buttons, and the prompt.
-E2pLayout :: struct {
-  panel: cc.HudPrim; pad: f32; title_cap: f32; cap: f32; row_h: f32; text_y: f32;
-  rows: int; row_at: [12] int; row_n: [12] int;
-  answers: int; answer: [E2P_ANSWERS] cc.HudPrim; choice: [E2P_ANSWERS] int;
-  prompt: cc.HudPrim;
-}
 
 // Where he stands and the way he faces at rest: toward the glade's middle, where you start.
 e2p_place :: (s: [] E2) {
@@ -111,57 +104,19 @@ e2p_prompt_text :: (s: [] E2, b: [] u8) -> string {
   n := e2p_put(b, 0, ifx s[0].ml[0].touch then "TAP  " else "E  "); n = e2p_put(b, n, "Talk to "); n = e2p_put(b, n, PANSOPHER_NAME);
   n = e2p_put(b, n, ", "); n = e2p_put(b, n, PANSOPHER_TITLE); return cast(string) b[0..<n];
 }
-e2p_layout :: (s: [] E2) -> E2pLayout {
-  w := s[0].width; h := s[0].height; k := s[0].k; p := s[0].npc[0]; g: E2pLayout;
-  g.pad = 20 * k; g.title_cap = 17 * k; g.cap = 15 * k; g.row_h = g.cap * 1.55;
-  wide := 620 * k; if wide > w - 32 * k { wide = w - 32 * k; }
-  x0 := (w - wide) * 0.5; x1 := x0 + wide;
-  // the line, wrapped to the panel
-  line := pansopher_says(p.line);
-  adv: [700] f32; a := cc.face_advances(line, g.cap, cc.HUD_FACE_BODY, adv[..]);
-  wd: [12] f32; g.rows = cc.hud_tip_wrap(line, a, wide - 2 * g.pad, g.row_at[..], g.row_n[..], wd[..]);
-  t := PANSOPHER_CHOICES; g.answers = talk_tree_offered(t[..], p.line, g.choice[..]);
-  ah := 36 * k; gap := 8 * k;
-  tall := g.pad + g.title_cap * 1.4 + 10 * k + f32(g.rows) * g.row_h + 14 * k + f32(g.answers) * (ah + gap) - gap + g.pad;
-  y0 := h * 0.42 - tall * 0.5; if y0 > h - tall - 150 * k { y0 = h - tall - 150 * k; } if y0 < 16 * k { y0 = 16 * k; }
-  g.panel = cc.hud_box(x0, y0, x1, y0 + tall);
-  g.text_y = y0 + g.pad + g.title_cap * 1.4 + 10 * k;
-  ay := g.text_y + f32(g.rows) * g.row_h + 14 * k;
-  for i: 0..<g.answers { g.answer[i] = cc.hud_box(x0 + g.pad, ay, x1 - g.pad, ay + ah); ay += ah + gap; }
-  // the prompt: a plaque in the lower middle of the picture
-  pb: [96] u8; pt := e2p_prompt_text(s, pb[..]); pw := cc.face_width(pt, 14 * k, cc.HUD_FACE_BODY) + 28 * k; py := h * 0.64;
-  g.prompt = cc.hud_box(w * 0.5 - pw * 0.5, py - 17 * k, w * 0.5 + pw * 0.5, py + 17 * k);
-  return g;
+// The talk's boxes and its prompt's (everglade/hud/windows.coax eg_talk_layout).
+e2p_layout :: (s: [] E2) -> EgTalk {
+  p := s[0].npc[0]; t := PANSOPHER_CHOICES; pb: [96] u8;
+  return eg_talk_layout(s[0].width, s[0].height, s[0].k, pansopher_says(p.line), t[..], p.line, e2p_prompt_text(s, pb[..]));
 }
-e2p_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+// Near him the prompt, talking his panel: Everglade's (everglade/hud/windows.coax eg_prompt, eg_talk).
+e2p_overlay :: (s: [] E2, out: [] f32, at: int) -> int {
   p := s[0].npc[0];
   if !p.talking && !p.near { return at; }
-  k := s[0].k; g := e2p_layout(s); t := cc.eg_tokens(); ui := drv_trace(s[0].drive[..]);
-  l: [1] cc.HudList;
-  if !p.talking {
-    cc.hud_button(l[..], t, g.prompt, k, true);
-    v := cc.hud_emit(out, at, l[..]);
-    pb: [96] u8; pt := e2p_prompt_text(s, pb[..]);
-    cc.uit_part(ui, "talk"); cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.prompt.x0, g.prompt.y0, g.prompt.x1, g.prompt.y1, "talk-to-pansopher");
-    return cc.hud_say(out, v, pt, (g.prompt.x0 + g.prompt.x1) * 0.5, (g.prompt.y0 + g.prompt.y1) * 0.5 + 14 * k * 0.5, 14 * k, cc.hud_text(t, cc.HUD_TEXT_NUMBER), 1, k, true);
-  }
-  cc.hud_panel(l[..], t, g.panel, k);
-  for i: 0..<g.answers { cc.hud_button(l[..], t, g.answer[i], k, i == p.hover); }
-  v := cc.hud_emit(out, at, l[..]);
-  x := g.panel.x0 + g.pad;
-  v = cc.hud_say(out, v, PANSOPHER_NAME, x, g.panel.y0 + g.pad + g.title_cap, g.title_cap, cc.hud_text(t, cc.HUD_TEXT_TITLE), 1, k, false);
-  nw := cc.face_width(PANSOPHER_NAME, g.title_cap, t.title_face);
-  v = cc.hud_say(out, v, PANSOPHER_TITLE, x + nw + 12 * k, g.panel.y0 + g.pad + g.title_cap, 12 * k, cc.hud_text(t, cc.HUD_TEXT_LABEL), 1, k, false);
-  line := pansopher_says(p.line);
-  for r: 0..<g.rows { v = cc.hud_say(out, v, line[g.row_at[r]..<g.row_at[r] + g.row_n[r]], x, g.text_y + f32(r) * g.row_h + g.cap, g.cap, cc.hud_text(t, cc.HUD_TEXT_NUMBER), 1, k, false); }
+  g := e2p_layout(s); ui := drv_trace(s[0].drive[..]);
+  if !p.talking { pb: [96] u8; return eg_prompt(ui, "talk", "talk-to-pansopher", out, at, g.prompt, e2p_prompt_text(s, pb[..]), s[0].k); }
   ch := PANSOPHER_CHOICES;
-  cc.uit_part(ui, "talk");
-  for i: 0..<g.answers {
-    b := g.answer[i]; lb: [96] u8; n := 0; lb[0] = cast(u8)('1' + i); n = 1; n = e2p_put(lb[..], n, ".  "); n = e2p_put(lb[..], n, ch[g.choice[i]].text);
-    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, ch[g.choice[i]].text);
-    v = cc.hud_say(out, v, cast(string) lb[0..<n], b.x0 + 14 * k, (b.y0 + b.y1) * 0.5 + 14 * k * 0.5, 14 * k, cc.hud_text(t, cc.HUD_TEXT_NUMBER), 1, k, false);
-  }
-  return v;
+  return eg_talk(ui, out, at, g, s[0].k, PANSOPHER_NAME, PANSOPHER_TITLE, pansopher_says(p.line), ch[..], p.hover);
 }
 
 // ---- the world: his body, his plate, his place for the driver
@@ -228,6 +183,6 @@ e2p_drive :: (s: [] E2, d: [] Drive) {
   #assert !e2p_pointer(s[..], 2, 2, 0);   // off the panel: the world's
   _ = e2p_key(s[..], E2P_KEY_ESC); #assert !s[0].npc[0].talking && mlook.ml_wants(s[0].ml[0]);
   out: [40000 * E2_VERTEX_FLOATS] f32;
-  #assert e2p_hud(s[..], out[..], 0) > 0;    // the prompt, near him
-  _ = e2p_key(s[..], 'e'); #assert e2p_hud(s[..], out[..], 0) > 0;
+  #assert e2p_overlay(s[..], out[..], 0) > 0;    // the prompt, near him
+  _ = e2p_key(s[..], 'e'); #assert e2p_overlay(s[..], out[..], 0) > 0;
 }

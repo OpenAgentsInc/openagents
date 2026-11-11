@@ -11,7 +11,7 @@
 // dev build of everglade2.wasm, then http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950
 // (docs/verse/everglade2.md "Admin mode"). Backquote (`) shows and hides the panel; it starts shown.
 //
-// The panel is Everglade Experimental's left column: ANIMATIONS (charactercreator.coax dev_hud, any
+// The panel is Everglade Experimental's left column: ANIMATIONS (charactercreator.coax dev_panel, any
 // clip on your character), CLASSES, LEVEL 1 to 6 and REST with KNOCK OUT (class-menu.coax); then the
 // admin rows: HEAL, GOD, NOCLIP, CLICK TP (the next click on the ground takes you there), GO TO
 // (type X Z, Enter), the time of day, the guard (kill, reset, off and on), the path 50 m either way,
@@ -289,7 +289,7 @@ e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
   a[0].top = ifx cr[0].preview_collapsed then (52 + f32(CM_GAP)) * k else h - (20 + col) * k;
   n := at;
   // ANIMATIONS (it writes from its slice's start: the HUD's strokes so far kept)
-  n += cc.dev_hud(cr[0], out[n * E2_VERTEX_FLOATS..<out.count], w, h, k);
+  n += cc.dev_panel(cr[0], out[n * E2_VERTEX_FLOATS..<out.count], w, h, k);
   rest := "REST";
   nt := s[0].net[..];
   if e2n_rest_message(nt).count > 0 { rest = "REST UNAVAILABLE"; }

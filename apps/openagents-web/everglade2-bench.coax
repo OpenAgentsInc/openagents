@@ -43,11 +43,6 @@ E2Bench :: struct {
   kind: int; hover: int = -1; said_at: f32 = -100;
   drawn: int; opened: int; shaped: int;
 }
-E2bLayout :: struct {
-  win: cc.HudPrim; pad: f32; three: bool; foot: bool;
-  close: cc.HudPrim; kinds: cc.HudPrim; kind: [GOLEM_KINDS] cc.HudPrim; detail: cc.HudPrim; shape: cc.HudPrim;
-  side: [3] cc.HudPrim; stock: cc.HudPrim; ranks: cc.HudPrim; prompt: cc.HudPrim;
-}
 
 // The pack's M rows for the bench's meshes (Everglade's kit at the front of the pack, at the origin).
 e2b_catalog :: (s: [] E2, text: string) {
@@ -119,7 +114,7 @@ e2b_key :: (s: [] E2, key: int) -> bool {
   if b[0].near && (key == 'e' || key == 'E') { e2b_open(s); return true; }
   return false;
 }
-e2b_hit :: (g: E2bLayout, x: f32, y: f32) -> int {
+e2b_hit :: (g: EgBench, x: f32, y: f32) -> int {
   if e2p_inside(g.close, x, y) { return E2B_HIT_CLOSE; }
   if e2p_inside(g.shape, x, y) { return E2B_HIT_SHAPE; }
   for i: 0..<GOLEM_KINDS { if e2p_inside(g.kind[i], x, y) { return i; } }
@@ -143,145 +138,17 @@ e2b_prompt_text :: (s: [] E2, t: [] u8) -> string {
   n := e2p_put(t, 0, ifx s[0].ml[0].touch then "TAP  " else "E  "); n = e2p_put(t, n, "Use the "); n = e2p_put(t, n, GOLEM_BENCH_NAME);
   return cast(string) t[0..<n];
 }
-e2b_layout :: (s: [] E2) -> E2bLayout {
-  w := s[0].width; h := s[0].height; k := s[0].k; g: E2bLayout;
-  mx := w * 0.04; if mx < 14 * k { mx = 14 * k; } my := h * 0.05; if my < 12 * k { my = 12 * k; }
-  g.win = cc.hud_box(mx, my, w - mx, h - my); g.pad = 22 * k; p := g.pad;
-  x0 := g.win.x0 + p; x1 := g.win.x1 - p;
-  g.close = cc.hud_box(x1 - 116 * k, g.win.y0 + p, x1, g.win.y0 + p + 36 * k);
-  top := g.win.y0 + p + 70 * k;
-  // the materials and the ranks along the foot, when there is height for them
-  foot := 84 * k; g.foot = g.win.y1 - p - top > 300 * k;
-  bottom := ifx g.foot then g.win.y1 - p - foot - 14 * k else g.win.y1 - p;
-  gap := 16 * k; iw := x1 - x0; g.three = iw >= 860 * k;
-  lw := ifx g.three then (iw - 2 * gap) * 0.28 else (iw - gap) * 0.42;
-  mw := ifx g.three then (iw - 2 * gap) * 0.42 else iw - gap - lw;
-  g.kinds = cc.hud_box(x0, top, x0 + lw, bottom);
-  g.detail = cc.hud_box(x0 + lw + gap, top, x0 + lw + gap + mw, bottom);
-  // the kinds, one row each under SHAPING
-  kh := (bottom - top - 50 * k - f32(GOLEM_KINDS - 1) * 8 * k) / f32(GOLEM_KINDS); if kh > 64 * k { kh = 64 * k; }
-  ky := top + 42 * k;
-  for i: 0..<GOLEM_KINDS { g.kind[i] = cc.hud_box(x0 + 12 * k, ky, x0 + lw - 12 * k, ky + kh); ky += kh + 8 * k; }
-  g.shape = cc.hud_box(g.detail.x0 + 16 * k, bottom - 16 * k - 40 * k, g.detail.x0 + 16 * k + 190 * k, bottom - 16 * k);
-  if g.three {
-    rx := g.detail.x1 + gap; sh := (bottom - top - 2 * gap) / 3;
-    for i: 0..<3 { y := top + f32(i) * (sh + gap); g.side[i] = cc.hud_box(rx, y, x1, y + sh); }
-  }
-  if g.foot {
-    fy := g.win.y1 - p - foot;
-    g.stock = cc.hud_box(x0, fy, x0 + (iw - gap) * 0.44, g.win.y1 - p);
-    g.ranks = cc.hud_box(x0 + (iw - gap) * 0.44 + gap, fy, x1, g.win.y1 - p);
-  }
-  pb: [96] u8; pt := e2b_prompt_text(s, pb[..]); pw := cc.face_width(pt, 14 * k, cc.HUD_FACE_BODY) + 28 * k; py := h * 0.64;
-  g.prompt = cc.hud_box(w * 0.5 - pw * 0.5, py - 17 * k, w * 0.5 + pw * 0.5, py + 17 * k);
-  return g;
-}
-// Words wrapped to room, a row every 1.5 caps from the baseline y; rows[0] the rows written.
-e2b_para :: (out: [] f32, at: int, t: string, x: f32, y: f32, room: f32, cap: f32, r: cc.HudText, k: f32, rows: [] int) -> int {
-  adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
-  ra: [10] int; rn: [10] int; rw: [10] f32; n := cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
-  v := at; for i: 0..<n { v = cc.hud_say(out, v, t[ra[i]..<ra[i] + rn[i]], x, y + f32(i) * cap * 1.5, cap, r, 1, k, false); }
-  rows[0] = n; return v;
-}
-// The rows e2b_para would write.
-e2b_rows :: (t: string, room: f32, cap: f32, r: cc.HudText) -> int {
-  adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
-  ra: [10] int; rn: [10] int; rw: [10] f32; return cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
-}
-// Words along a well's foot, a gap between each, smaller when they wouldn't fit across it.
-e2b_row :: (out: [] f32, at: int, words: [] string, b: cc.HudPrim, cap: f32, r: cc.HudText, k: f32) -> int {
-  room := b.x1 - b.x0 - 32 * k; gap := 22 * k; c := cap; whole := gap * f32(words.count - 1);
-  for w: words { whole += cc.face_width(w, cap * r.scale, r.face); }
-  if whole > room { c = cap * (room - gap * f32(words.count - 1)) / (whole - gap * f32(words.count - 1)); }
-  x := b.x0 + 16 * k; v := at;
-  for w: words { v = cc.hud_say(out, v, w, x, b.y1 - 18 * k, c, r, 1, k, false); x += cc.face_width(w, c * r.scale, r.face) + gap; }
-  return v;
-}
-e2b_head :: (out: [] f32, at: int, t: string, b: cc.HudPrim, k: f32) -> int {
-  return cc.hud_say(out, at, t, b.x0 + 16 * k, b.y0 + 16 * k + 13 * k, 13 * k, cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_TITLE), 1, k, false);
-}
-e2b_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+// The window's boxes and its prompt's (everglade/hud/windows.coax eg_bench_layout).
+e2b_layout :: (s: [] E2) -> EgBench { pb: [96] u8; return eg_bench_layout(s[0].width, s[0].height, s[0].k, e2b_prompt_text(s, pb[..])); }
+// Near it the prompt, open its window: Everglade's (everglade/hud/windows.coax eg_prompt, eg_bench).
+e2b_overlay :: (s: [] E2, out: [] f32, at: int) -> int {
   b := s[0].bench[0];
   if !b.open && !b.near { return at; }
-  k := s[0].k; g := e2b_layout(s); t := cc.eg_tokens(); ui := drv_trace(s[0].drive[..]);
-  l: [1] cc.HudList;
-  body := cc.hud_text(t, cc.HUD_TEXT_NUMBER); dim := cc.hud_text(t, cc.HUD_TEXT_LABEL); title := cc.hud_text(t, cc.HUD_TEXT_TITLE);
+  g := e2b_layout(s); ui := drv_trace(s[0].drive[..]);
+  if !b.open { pb: [96] u8; return eg_prompt(ui, "bench", "use-workbench", out, at, g.prompt, e2b_prompt_text(s, pb[..]), s[0].k); }
   cc.uit_part(ui, "bench");
-  if !b.open {
-    cc.hud_button(l[..], t, g.prompt, k, true);
-    v := cc.hud_emit(out, at, l[..]);
-    pb: [96] u8; pt := e2b_prompt_text(s, pb[..]);
-    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.prompt.x0, g.prompt.y0, g.prompt.x1, g.prompt.y1, "use-workbench");
-    return cc.hud_say(out, v, pt, (g.prompt.x0 + g.prompt.x1) * 0.5, (g.prompt.y0 + g.prompt.y1) * 0.5 + 7 * k, 14 * k, body, 1, k, true);
-  }
-  // the frames: the window, Close, the kinds' rows, the wells and Shape
-  cc.hud_panel(l[..], t, g.win, k);
-  cc.hud_button(l[..], t, g.close, k, b.hover == E2B_HIT_CLOSE);
-  cc.hud_well(l[..], t, g.kinds, k, false); cc.hud_well(l[..], t, g.detail, k, false);
-  for i: 0..<GOLEM_KINDS { cc.hud_button(l[..], t, g.kind[i], k, i == b.kind || i == b.hover); }
-  cc.hud_button(l[..], t, g.shape, k, b.hover == E2B_HIT_SHAPE);
-  if g.three { for i: 0..<3 { cc.hud_well(l[..], t, g.side[i], k, false); } }
-  if g.foot { cc.hud_well(l[..], t, g.stock, k, false); cc.hud_well(l[..], t, g.ranks, k, false); }
-  x := g.win.x0 + g.pad; ty := g.win.y0 + g.pad + 26 * k;
-  cc.hud_line(l[..], x, g.win.y0 + g.pad + 54 * k, g.win.x1 - g.pad, g.win.y0 + g.pad + 54 * k, 1 * k, cc.hud_fade(t.trim, 0.45));
-  v := cc.hud_emit(out, at, l[..]);
-  // the heading and where you stand in the craft
-  v = cc.hud_say(out, v, GOLEM_BENCH_NAME, x, ty, 26 * k, title, 1, k, false);
-  v = cc.hud_say(out, v, "Not yet a golemancer     Golems 0 of 0     Golem salt 0", x, ty + 22 * k, 12 * k, dim, 1, k, false);
-  v = cc.hud_say(out, v, ifx s[0].ml[0].touch then "CLOSE" else "CLOSE   Esc", (g.close.x0 + g.close.x1) * 0.5, (g.close.y0 + g.close.y1) * 0.5 + 6 * k, 13 * k, body, 1, k, true);
-  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.close.x0, g.close.y0, g.close.x1, g.close.y1, "close");
-  // SHAPING: the kinds, each with the rank it needs
-  v = e2b_head(out, v, "SHAPING", g.kinds, k);
-  for i: 0..<GOLEM_KINDS {
-    r := g.kind[i]; gk := golem_kind(i); my := (r.y0 + r.y1) * 0.5;
-    lb: [48] u8; n := 0; lb[0] = cast(u8)('1' + i); n = 1; n = e2p_put(lb[..], n, "  "); n = e2p_put(lb[..], n, gk.name);
-    v = cc.hud_say(out, v, cast(string) lb[0..<n], r.x0 + 14 * k, my + 5 * k, 14 * k, body, 1, k, false);
-    rb: [16] u8; m := e2p_put(rb[..], 0, "Rank "); rb[m] = cast(u8)('0' + gk.rank); m += 1;
-    v = cc.hud_say(out, v, cast(string) rb[0..<m], r.x1 - 14 * k - cc.face_width(cast(string) rb[0..<m], 12 * k * dim.scale, dim.face), my + 5 * k, 12 * k, dim, 1, k, false);
-    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, r.x0, r.y0, r.x1, r.y1, gk.name);
-  }
-  // the kind picked: its body, its work, and the three steps that make it
-  gk := golem_kind(b.kind); d := g.detail; dx := d.x0 + 16 * k; room := d.x1 - d.x0 - 32 * k; rows: [1] int;
-  y := d.y0 + 16 * k + 20 * k;
-  v = cc.hud_say(out, v, gk.name, dx, y, 20 * k, title, 1, k, false); y += 26 * k;
-  rk: [40] u8; m := e2p_put(rk[..], 0, "Rank "); rk[m] = cast(u8)('0' + gk.rank); m += 1; m = e2p_put(rk[..], m, ", "); m = e2p_put(rk[..], m, golem_rank(gk.rank));
-  v = cc.hud_say(out, v, cast(string) rk[0..<m], dx, y, 12 * k, dim, 1, k, false); y += 24 * k;
-  v = e2b_para(out, v, gk.body, dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 2 * k;
-  v = e2b_para(out, v, gk.does, dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 16 * k;
-  if y + 3 * 22 * k < g.shape.y0 - 80 * k {
-    v = cc.hud_say(out, v, "THE MAKING", dx, y, 13 * k, title, 1, k, false); y += 24 * k;
-    for i: 0..<GOLEM_STEPS {
-      steps := GOLEM_STEP; st := steps[i]; sb: [96] u8; n := 0; sb[0] = cast(u8)('1' + i); n = 1; n = e2p_put(sb[..], n, "  "); n = e2p_put(sb[..], n, st.name); n = e2p_put(sb[..], n, ":  "); n = e2p_put(sb[..], n, st.how);
-      v = e2b_para(out, v, cast(string) sb[0..<n], dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 4 * k;
-    }
-  }
-  v = cc.hud_say(out, v, "SHAPE", (g.shape.x0 + g.shape.x1) * 0.5, (g.shape.y0 + g.shape.y1) * 0.5 + 6 * k, 14 * k, body, 1, k, true);
-  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.shape.x0, g.shape.y0, g.shape.x1, g.shape.y1, "shape");
-  warn := s[0].clock - b.said_at < f32(E2B_SAID);
-  note := ifx warn then cc.hud_text(t, cc.HUD_TEXT_WARN) else dim;
-  nr := e2b_rows(GOLEM_BENCH_LOCKED, room, 12 * k, note);
-  v = e2b_para(out, v, GOLEM_BENCH_LOCKED, dx, g.shape.y0 - 14 * k - f32(nr - 1) * 18 * k, room, 12 * k, note, k, rows[..]);
-  // your golems, their orders and what they reported
-  if g.three {
-    heads := [3] string.["GOLEMS", "ORDERS", "REPORTS"];
-    says := [3] string.["No golems yet. Shape one here, then give it a name.", "No orders. A golem works one task at a time.", "Nothing to report. Finished tasks come back here and by letter."];
-    for i: 0..<3 {
-      r := g.side[i]; v = e2b_head(out, v, heads[i], r, k);
-      v = e2b_para(out, v, says[i], r.x0 + 16 * k, r.y0 + 16 * k + 40 * k, r.x1 - r.x0 - 32 * k, 13 * k, dim, k, rows[..]);
-    }
-  }
-  // the materials, none held yet, and the five ranks
-  if g.foot {
-    mats := GOLEM_MATERIAL; mt: [GOLEM_MATERIALS] string; mb: [GOLEM_MATERIALS][32] u8;
-    for i: 0..<GOLEM_MATERIALS { n := e2p_put(mb[i][..], 0, mats[i]); n = e2p_put(mb[i][..], n, "  0"); mt[i] = cast(string) mb[i][0..<n]; }
-    v = e2b_head(out, v, "MATERIALS", g.stock, k);
-    v = e2b_row(out, v, mt[..], g.stock, 13 * k, body, k);
-    rt: [GOLEM_RANKS] string; rb: [GOLEM_RANKS][32] u8;
-    for i: 0..<GOLEM_RANKS { rb[i][0] = cast(u8)('1' + i); n := e2p_put(rb[i][..], 1, " "); n = e2p_put(rb[i][..], n, golem_rank(i + 1)); rt[i] = cast(string) rb[i][0..<n]; }
-    v = e2b_head(out, v, "RANKS", g.ranks, k);
-    v = e2b_row(out, v, rt[..], g.ranks, 12 * k, dim, k);
-  }
-  return v;
+  return eg_bench(ui, out, at, g, s[0].k, EgBenchLook.{kind = b.kind, hover = b.hover, on_close = b.hover == E2B_HIT_CLOSE, on_shape = b.hover == E2B_HIT_SHAPE,
+                                                     warn = s[0].clock - b.said_at < f32(E2B_SAID), touch = s[0].ml[0].touch});
 }
 
 // ---- the world: the table and what stands on it, each mesh a static record
@@ -343,7 +210,7 @@ e2b_drive :: (s: [] E2, d: [] Drive) {
   r := g.kind[0]; #assert e2b_pointer(s[..], (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5, 0) && s[0].bench[0].kind == 0;
   r = g.shape; s[0].clock = 5; #assert e2b_pointer(s[..], (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5, 0) && s[0].bench[0].shaped == 1 && s[0].bench[0].said_at == 5;
   #assert e2b_pointer(s[..], 640, 360, 0) && !e2b_pointer(s[..], 2, 2, 0);   // in the window it is the window's; off it, the world's
-  out: [32768 * E2_VERTEX_FLOATS] f32; v := e2b_hud(s[..], out[..], 0); #assert v > 0 && v < 32768;
+  out: [32768 * E2_VERTEX_FLOATS] f32; v := e2b_overlay(s[..], out[..], 0); #assert v > 0 && v < 32768;
   _ := e2b_key(s[..], E2P_KEY_ESC); #assert !s[0].bench[0].open && mlook.ml_wants(s[0].ml[0]);
   _ = e2b_key(s[..], 'E'); #assert s[0].bench[0].open;
   r = g.close; #assert e2b_pointer(s[..], (r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5, 0) && !s[0].bench[0].open;

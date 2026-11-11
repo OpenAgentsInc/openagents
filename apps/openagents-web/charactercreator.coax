@@ -14,6 +14,7 @@
 #load "../../everglade/hud/fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
 #load "../../aethyr/ui/hud-menu.coax";   // the engine's HUD style layer (hud-style.coax) and widgets; Everglade draws in FANTASY (docs/verse/hud-styles.md)
 #load "../../everglade/hud/parts.coax";   // Everglade's HUD parts in that style (the game's, every zone's)
+#load "../../everglade/hud/screens.coax";   // Everglade's plain HUD parts: the clip list, health, the boxes (#13083)
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as dungeon;
 #load "../../verse/experimental-aribeth.coax" as aribeth;
@@ -214,7 +215,7 @@ FIELD_NAMES :: [13]string.["BODY", "CLOTHES", "HOOD", "COLORWAY", "CLOTH DYE", "
   before:=s[0].revision; change(s[..],-1,1); change(s[..],13,1); #assert s[0].revision==before;
 }
 #test "creator hit testing cancellation and narrow layout keep controls usable" {
-  s:[1]Creator; layout(s[..],390,844,1);
+  s:[1]Creator; creator_layout(s[..],390,844,1);
   for i:0..<18 { b:=s[0].boxes[i]; #assert b.x0>=0 && b.x1<=390 && b.y1<=844 && b.y1-b.y0>=36; }
   b:=s[0].boxes[1]; x:=(b.x0+b.x1)/2; y:=(b.y0+b.y1)/2;
   handled:=pointer(s[..],x,y,0,7); handled=pointer(s[..],x,y,3,7); #assert s[0].outfit==2;
@@ -222,7 +223,7 @@ FIELD_NAMES :: [13]string.["BODY", "CLOTHES", "HOOD", "COLORWAY", "CLOTH DYE", "
 }
 
 #test "creator Surprise Me independently varies hood body outfits and eye colors" {
- s:[1]Creator;ensure(s[..]);layout(s[..],1440,900,1);
+ s:[1]Creator;ensure(s[..]);creator_layout(s[..],1440,900,1);
  h:[2]bool;bodies:[2]bool;outfits:[4]bool;eyes:[6]bool;repeated_hood:=false;last:=false;
  for i:0..<96 {b:=s[0].boxes[14];used:=pointer(s[..],b.x0+20,b.y0+18,0,1);used=pointer(s[..],b.x0+20,b.y0+18,2,1);
   h[ifx s[0].hood then 1 else 0]=true;bodies[ifx s[0].female then 1 else 0]=true;outfits[s[0].outfit]=true;eyes[s[0].eye_color]=true;
@@ -303,62 +304,28 @@ dev_pointer :: (s:[]Creator,x:f32,y:f32,phase:int)->bool {
   else if p>=0 && x>=12*k && x<=370*k && y>=92*k && cast(int)((y/k-92)/24)+s[0].preview_scroll==p {s[0].preview_clip=p;s[0].preview_at=s[0].clock;}}
  if phase==2 || phase==3 {s[0].preview_down= -1;}return true;
 }
-dev_hud :: (s:Creator,out:[]f32,w:f32,h:f32,k:f32)->int {
- n:=0;ui:=s.ui;uit_part(ui,"animations");uit_debug(ui);
- // the panel and what dev_pointer presses in it (the header, AUTO and each clip's row)
- pane:=uit_put(ui,UIT_NONE,UIT_PANEL,12*k,20*k,370*k,ifx s.preview_collapsed then 52*k else h-(20+s.dev_below)*k,"ANIMATIONS");
- head:=uit_put(ui,pane,UIT_BUTTON,12*k,20*k,370*k,52*k,"ANIMATIONS");
- n=ttext(ui,head,out,n,ifx s.preview_collapsed then "+ ANIMATIONS" else "- ANIMATIONS",32*k,45*k,10*k,ink(k,0.95,0.9,0.7),"");
- if s.preview_collapsed {return n;}
- auto_row:=uit_put(ui,pane,UIT_BUTTON,12*k,58*k,370*k,86*k,"AUTO");
- n=ttext(ui,auto_row,out,n,ifx s.preview_clip<0 then "> AUTO (MOVEMENT)" else "  AUTO (MOVEMENT)",32*k,77*k,10*k,ink(k,0.94,0.8,0.48),"");
- for row:0..<dev_visible(s) {i:=s.preview_scroll+row;if i>=figs.PREVIEW_BAKED {break;}
-  y:=(109+f32(row)*24)*k;clip:=uit_put_i(ui,pane,UIT_BUTTON,12*k,(92+f32(row)*24)*k,370*k,(116+f32(row)*24)*k,"clip",row);
-  n=ttext(ui,clip,out,n,ifx i==s.preview_clip then ">" else " ",24*k,y,10*k,ink(k,0.95,0.8,0.4),"");
-  n=ttext(ui,clip,out,n,figs.PREVIEW_CLIP_NAME[i],40*k,y,10*k,ink(k,0.91,0.93,0.88),"");
- }
- return n;
+// The animations list (everglade/hud/screens.coax eg_clips): what dev_pointer presses.
+dev_panel :: (s:Creator,out:[]f32,w:f32,h:f32,k:f32)->int {
+ names:=figs.PREVIEW_CLIP_NAME;
+ return eg_clips(s.ui,out,0,names[0..<figs.PREVIEW_BAKED],EgClips.{shut=s.preview_collapsed,picked=s.preview_clip,scroll=s.preview_scroll,rows=dev_visible(s),below=s.dev_below},h,k);
 }
 // Like Everglade's watch HUD, keep HP legible and lift recent damage over the player.
-cc_hp_uint :: (out: [] u8, at: int, points: int) -> int {
-  digits: [24] u8; used:=0; v:=points;
-  while v>=10 { digits[used]=cast(u8)('0'+v%10); used+=1; v/=10; }
-  digits[used]=cast(u8)('0'+v); used+=1; n:=at;
-  while used>0 { used-=1; out[n]=digits[used]; n+=1; }
-  return n;
-}
-cc_hp_label :: (out: [] u8, hp: int, maximum: int, temporary: int) -> string {
-  out[0]='H';out[1]='P';out[2]=' '; n:=cc_hp_uint(out,3,hp);
-  out[n]=' ';out[n+1]='/';out[n+2]=' ';n=cc_hp_uint(out,n+3,maximum);
-  if temporary>0 { out[n]=' ';out[n+1]='+';out[n+2]=' ';n=cc_hp_uint(out,n+3,temporary); for c: " TEMP" {out[n]=c;n+=1;} }
-  return cast(string)out[0..<n];
-}
-combat_hud :: (s:Creator,out:[]f32,u:[]f32,at:int,w:f32,k:f32)->int {
+// Health, the fall and the damage you took (everglade/hud/screens.coax). Everglade Experimental's
+// health is on its portrait plate (experimental-combat.coax xc_frame).
+combat_overlay :: (s:Creator,out:[]f32,u:[]f32,at:int,w:f32,k:f32)->int {
  n:=at;hp:=s.hostiles[0].hp;maximum:=ifx s.hostiles[0].max_hp>0 then s.hostiles[0].max_hp else 1;if hp<0 {hp=0;}if hp>maximum {hp=maximum;}
- x:=w-226*k;y:=39*k;ui:=s.ui;uit_part(ui,"health");
- label:[96]u8;
- // Everglade Experimental's health is on its portrait plate (experimental-combat.coax xc_frame)
- if !s.experimental {
- n=ttext(ui,UIT_NONE,out,n,cc_hp_label(label[..],hp,maximum,s.hostiles[0].temp),x+10*k,y-1*k,10*k,ink(k,0.98,0.94,0.85),"HP");
- bx:=x+10*k;end:=x+190*k;by:=y+20*k;uit_add(ui,UIT_NONE,UIT_BAR,bx,by-3*k,end,by+3*k,"HP");if lit(out,n,bx,by,end,by,3*k,1,0,0.35,0.22,0.20,0) {n+=6;}
- if hp>0 && lit(out,n,bx,by,bx+(end-bx)*f32(hp)/f32(maximum),by,3*k,1,0,0.85,0.13,0.10,0) {n+=6;}
- }
- if hp==0 {n=ttext(ui,UIT_NONE,out,n,ifx s.hostiles[0].shared && !s.hostiles[0].player_dead then "UNCONSCIOUS" else "YOU DIED",w*0.5-50*k,95*k,15*k,ink(k,1,0.3,0.25),"");n=ttext(ui,UIT_NONE,out,n,"R / CLICK TO RESPAWN",w*0.5-100*k,137*k,10*k,ink(k,0.98,0.94,0.82),"");}
- for i:0..<8 {p:=s.hostiles[0].pops[i];age:=s.hostiles[0].time-p.born;if p.amount<=0 || age<0 || age>=1.2 {continue;}
-  t:=age/1.2;rise:=0.8*(1-(1-t)*(1-t));rx:=p.x-u[16];ry:=p.y+rise-u[17];rz:=p.z-u[18];depth:=rx*u[20]+ry*u[21]+rz*u[22];if depth<=0.5 {continue;}
-  sx:=u[23]+u[19]*(rx*u[24]+ry*u[25]+rz*u[26])/depth;sy:=u[27]-u[19]*(rx*u[28]+ry*u[29]+rz*u[30])/depth;
-  if sx<0 || sx>w || sy<0 || sy>s.height {continue;}v:=p.amount;if v>99 {v=99;}digits:[3]u8=[3]u8.[45,48,48];digits[1]=cast(u8)(48+v/10);digits[2]=cast(u8)(48+v%10);
-  shade:=ink(k,1,0.2,0.15);shade.light=cc_clamp((1.2-age)/0.35,0,1);n=text(out,n,ifx v<10 then cast(string)digits[0..<1] else cast(string)digits[..],sx-10*k,sy,13*k,shade);
-  if v<10 {n=text(out,n,cast(string)digits[2..<3],sx,sy,13*k,shade);}
- }
- return n;
+ ui:=s.ui;uit_part(ui,"health");
+ if !s.experimental {n=eg_health_line(ui,out,n,hp,maximum,s.hostiles[0].temp,w-226*k,39*k,k);}
+ if hp==0 {n=eg_fallen(ui,out,n,s.hostiles[0].shared && !s.hostiles[0].player_dead,w,k);}
+ pops:=s.hostiles[0].pops;
+ return eg_pops(out,n,pops[0..<8],s.hostiles[0].time,u,w,s.height,k);
 }
 #test "combat HUD shows health and projects a recent damage number" {
  s:Creator;s.height=600;s.hostiles[0].ready=true;s.hostiles[0].hp=39;s.hostiles[0].time=1;
  u:[104]f32;u[19]=300;u[22]=1;u[23]=480;u[24]=1;u[27]=300;u[29]=1;
- out:[4096]f32;base:=combat_hud(s,out[..],u[..],0,960,1);#assert base>0;
- s.hostiles[0].pops[0]=hostile.DamagePop.{amount=5,x=0,y=0,z=4,born=1};hit:=combat_hud(s,out[..],u[..],0,960,1);#assert hit>base;
- s.hostiles[0].time=2.3;#assert combat_hud(s,out[..],u[..],0,960,1)==base;
+ out:[4096]f32;base:=combat_overlay(s,out[..],u[..],0,960,1);#assert base>0;
+ s.hostiles[0].pops[0]=hostile.DamagePop.{amount=5,x=0,y=0,z=4,born=1};hit:=combat_overlay(s,out[..],u[..],0,960,1);#assert hit>base;
+ s.hostiles[0].time=2.3;#assert combat_overlay(s,out[..],u[..],0,960,1)==base;
 }
 experimental_air :: (s:[]Creator,air:bool) {
  if air && !s[0].airborne {s[0].air_at=s[0].clock;}
@@ -973,24 +940,14 @@ build_sites_draw :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n:int,cap:int)->int {
 
 inside :: (b:Box,x:f32,y:f32)->bool { return x>=b.x0 && x<=b.x1 && y>=b.y0 && y<=b.y1; }
 #test "creator desktop controls share one compact left sidebar without overlapping actions" {
- s:[1]Creator;layout(s[..],1440,900,1);
+ s:[1]Creator;creator_layout(s[..],1440,900,1);
  for i:0..<13 {b:=s[0].boxes[i];#assert b.x0==28 && b.x1==332 && b.y1-b.y0==36;if i>0 {#assert b.y0>=s[0].boxes[i-1].y1+4;}}
  for i:13..<18 {if i==15 {continue;}b:=s[0].boxes[i];#assert b.x0>=28 && b.x1<=332 && b.y1<=714;}
  #assert s[0].boxes[13].y0>s[0].boxes[12].y1 && s[0].boxes[16].y0>s[0].boxes[13].y1;
 }
-layout :: (s:[]Creator,w:f32,h:f32,k:f32) {
- s[0].width=w;s[0].height=h;s[0].scale=k;s[0].mobile=w<840*k || h<760*k;
- for i:0..<13 {
-  x:=28*k;y:=(102+f32(i)*40)*k;bw:=304*k;bh:=36*k;
-  if s[0].mobile {col:=i%2;row:=i/2;bw=(w-36*k)/2;x=12*k+f32(col)*(bw+12*k);y=h-484*k+f32(row)*60*k;bh=42*k;}
-  s[0].boxes[i]=Box.{x0=x,y0=y,x1=x+bw,y1=y+bh};
- }
- by:=ifx s[0].mobile then h-56*k else 634*k;
- s[0].boxes[13]=Box.{x0=28*k,y0=by,x1=172*k,y1=by+36*k};
- s[0].boxes[14]=ifx s[0].mobile then Box.{x0=w-174*k,y0=by,x1=w-24*k,y1=by+36*k} else Box.{x0=188*k,y0=by,x1=332*k,y1=by+36*k};
- s[0].boxes[16]=ifx s[0].mobile then Box.{x0=12*k,y0=82*k,x1=w/2-6*k,y1=124*k} else Box.{x0=28*k,y0=678*k,x1=172*k,y1=714*k};
- s[0].boxes[17]=ifx s[0].mobile then Box.{x0=w/2+6*k,y0=82*k,x1=w-12*k,y1=124*k} else Box.{x0=188*k,y0=678*k,x1=332*k,y1=714*k};
- s[0].boxes[15]=ifx s[0].mobile then Box.{x0=w/2+6*k,y0=h-124*k,x1=w-12*k,y1=h-82*k} else Box.{x0=28*k,y0=by,x1=172*k,y1=by+36*k};
+// The page's size and Character Create's boxes (everglade/hud/screens.coax eg_create_boxes).
+creator_layout :: (s:[]Creator,w:f32,h:f32,k:f32) {
+ s[0].width=w;s[0].height=h;s[0].scale=k;s[0].mobile=eg_create_boxes(s[0].boxes[..],w,h,k);
 }
 value :: (s:Creator,f:int)->string {
   if f==0 { return ifx s.female then "FEMALE" else "MALE"; }
@@ -1153,15 +1110,15 @@ dungeon_light :: (s:[]Creator,u:[]f32,x:f32,z:f32) {
     u[o+3]=0.88+0.08*sin(s[0].clock*11.0+f32(i)*1.7)+0.04*sin(s[0].clock*23.0+f32(i)*0.6);}
 }
 frame :: (s:[]Creator,out:[]f32,u:[]f32,w:f32,h:f32,k:f32,dt:f32,still:bool)->int {
-  if s[0].walk.on || s[0].profile_go {ensure(s);layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
+  if s[0].walk.on || s[0].profile_go {ensure(s);creator_layout(s,w,h,k);return walk_frame(s,out,u,w,h,k,dt,still);}
   if s[0].experimental {
-    ensure(s);layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);build_review_frame(s);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
+    ensure(s);creator_layout(s,w,h,k);hostile.hostile_start(s[0].hostiles[..]);build_review_frame(s);if !still && dt>0 && dt<1 {s[0].clock+=dt;if !s[0].hostile_external {hostile.hostile_tick(s[0].hostiles[..],s[0].player_x,s[0].player_y,s[0].player_z,ifx dt>0.25 then 0.25 else dt);}}
     for i:0..<u.count {u[i]=0;}u[0]=w;u[1]=h;u[2]=s[0].clock;u[3]=1;u[4]=k;u[42]=ifx s[0].experimental then 0.0f32 else 1.0f32;if s[0].stage_on && s[0].shadow[0].on {s[0].shadow[0].glade=true;}u[10]=shadow_frame(s);u[11]=ifx !s[0].dev_animations then 1 else ifx s[0].preview_collapsed then 3 else 2;dungeon_light(s,u,s[0].player_x,s[0].player_z);
     if s[0].camera_room>=0 && !still && dt>0 && dt<1 {s[0].camera_room+=dt*4;}
-    cc_view(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);if s[0].stage_on {u[11]=1;fps_count(s[0].fps[..],dt);return 0;}n:=ifx s[0].dev_animations then dev_hud(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_hud(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);if s[0].experimental && !s[0].walk.on {return n;}   // Experimental's HUD places them over its bar (experimental-combat.coax xc_corner)
+    cc_view(s[0],u,w,h,k);dx:=u[16]-s[0].player_x;dy:=u[17]-(meadow.exp_height(s[0].player_x,s[0].player_z)+s[0].player_y+1.2);dz:=u[18]-s[0].player_z;s[0].camera_room=sqrt(dx*dx+dy*dy+dz*dz);if s[0].stage_on {u[11]=1;fps_count(s[0].fps[..],dt);return 0;}n:=ifx s[0].dev_animations then dev_panel(s[0],out,w,h,k) else 0;if !s[0].hostiles[0].shared {n=combat_overlay(s[0],out,u,n,w,k);}fps_count(s[0].fps[..],dt);if s[0].experimental && !s[0].walk.on {return n;}   // Experimental's HUD places them over its bar (experimental-combat.coax xc_corner)
 n=coord_draw(s[0],out,n,w,h,k);return ifx s[0].experimental then eg_fps(s[0].ui,s[0].fps[0],out,n,w,h,k) else fps_draw(s[0].ui,s[0].fps[0],out,n,w,h,k);
   }
-  ensure(s); layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
+  ensure(s); creator_layout(s,w,h,k); if !still && dt>0 && dt<1 { s[0].clock+=dt; }
   n:=0; white:=ink(k,0.91,0.92,0.9); dim:=ink(k,0.70,0.76,0.74); gold:=ink(k,0.83,0.69,0.43);
   n=text(out,n,"Character Create",(ifx s[0].mobile then 24.0f32 else 30.0f32)*k,(ifx s[0].mobile then 58.0f32 else 60.0f32)*k,(ifx s[0].mobile then 18 else 22)*k,white);
   if !s[0].mobile {n=line(out,n,30*k,78*k,334*k,78*k,k,gold.red,gold.green,gold.blue);}
@@ -1548,7 +1505,7 @@ catalog_ready :: (s:Creator)->bool {for i:0..<80 {if appearance.PART_NAMES[i]!="
 }
 
 #test "creator pan moves camera without turning and reset centers it" {
-  s:[1]Creator;layout(s[..],1440,900,1);s[0].dist=0.65;
+  s:[1]Creator;creator_layout(s[..],1440,900,1);s[0].dist=0.65;
   #assert key(s[..],'p') && s[0].pan_mode;
   yaw:=s[0].yaw;pitch:=s[0].pitch;
   ok:=pointer(s[..],700,400,0,31);ok=pointer(s[..],800,550,1,31);ok=pointer(s[..],800,550,2,31);
@@ -1563,7 +1520,7 @@ catalog_ready :: (s:Creator)->bool {for i:0..<80 {if appearance.PART_NAMES[i]!="
 }
 
 #test "creator mouse buttons select rotate or pan per drag without a toggle" {
-  s:[1]Creator;layout(s[..],1440,900,1);s[0].pan_mode=true;
+  s:[1]Creator;creator_layout(s[..],1440,900,1);s[0].pan_mode=true;
   yaw:=s[0].yaw;ok:=mouse_pointer(s[..],700,400,0,31,0);ok=mouse_pointer(s[..],800,450,1,31,-1);ok=mouse_pointer(s[..],800,450,2,31,0);
   #assert s[0].yaw>yaw && s[0].pan_x==0 && s[0].pan_y==0;
   yaw=s[0].yaw;pitch:=s[0].pitch;
@@ -1657,10 +1614,10 @@ scene_capture :: (facts:string)->bool {
 
 #test "animation heading uses the smaller creator font and plus minus toggle" {
  s:Creator;s.preview_collapsed=true;s.height=720;s.scale=1;
- out:[64000]f32;expected:[4096]f32;n:=dev_hud(s,out[..],1280,720,1);
+ out:[64000]f32;expected:[4096]f32;n:=dev_panel(s,out[..],1280,720,1);
  e:=text(expected[..],0,"+ ANIMATIONS",32,45,10,ink(1,0.95,0.9,0.7));#assert n==e;
  for i:0..<n*16 {#assert out[i]==expected[i];}
- s.preview_collapsed=false;n=dev_hud(s,out[..],1280,720,1);
+ s.preview_collapsed=false;n=dev_panel(s,out[..],1280,720,1);
  e=text(expected[..],0,"- ANIMATIONS",32,45,10,ink(1,0.95,0.9,0.7));#assert n>e;
  for i:0..<e*16 {#assert out[i]==expected[i];}
 }
@@ -1745,9 +1702,9 @@ texture_side :: (s:Creator)->int {if !s.on {return 0;}return ifx s.width>=840*s.
 
 #test "combat health labels retain class maximum and separate temporary HP" {
   b: [96] u8;
-  #assert cc_hp_label(b[..],7,12,0)=="HP 7 / 12";
-  #assert cc_hp_label(b[..],100,120,9)=="HP 100 / 120 + 9 TEMP";
-  #assert cc_hp_label(b[..],0,30,0)=="HP 0 / 30";
+  #assert eg_hp_label(b[..],7,12,0)=="HP 7 / 12";
+  #assert eg_hp_label(b[..],100,120,9)=="HP 100 / 120 + 9 TEMP";
+  #assert eg_hp_label(b[..],0,30,0)=="HP 0 / 30";
 }
 
 #test "0 A.D. scene geometry keeps its distinct source catalog entry" {

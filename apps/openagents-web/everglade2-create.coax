@@ -314,19 +314,12 @@ e2c_menu_layout :: (s: [] E2) {
   x0 := w * 0.5 - f32(E2C_MENU_W) * 0.5 * k; y0 := h * 0.42;
   for i: 0..<2 { y := y0 + f32(i) * (f32(E2C_MENU_H) + 10) * k; c[0].menu_box[i] = cc.Box.{x0 = x0, y0 = y, x1 = x0 + f32(E2C_MENU_W) * k, y1 = y + f32(E2C_MENU_H) * k}; }
 }
-e2c_menu_hud :: (s: [] E2, out: [] f32, at: int) -> int {
-  c := s[0].cz[0];
-  if !c.menu { return at; }
+e2c_menu_draw :: (s: [] E2, out: [] f32, at: int) -> int {
+  if !s[0].cz[0].menu { return at; }
   e2c_menu_layout(s);
-  k := s[0].k; gold := e2c_ink(k, 0.83, 0.69, 0.43, 1); dim := e2c_ink(k, 0.6, 0.6, 0.58, 1);
-  able := e2k_bearing(s).pose != DeedPose.down;
-  n := at;
-  for i: 0..<2 {
-    b := s[0].cz[0].menu_box[i]; ink := ifx i == 0 && !able then dim else gold;
-    n = cc.line(out, n, b.x0, b.y1, b.x1, b.y1, k, ink.red, ink.green, ink.blue);
-    n = cc.text(out, n, ifx i == 0 then "Change character" else "Back to the game", b.x0 + 12 * k, b.y0 + 24 * k, 12 * k, ink);
-  }
-  return n;
+  m := s[0].cz[0].menu_box; words := [2] string.["Change character", "Back to the game"];
+  able := [2] bool.[e2k_bearing(s).pose != DeedPose.down, true];
+  return eg_menu_lines(out, at, m[0..<2], words[..], able[..], s[0].k);   // everglade/hud/create.coax
 }
 e2c_menu_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
   c := s[0].cz[..];
@@ -582,17 +575,7 @@ e2c_arrow :: (s: [] E2, b: cc.Box, right: bool) -> cc.Box {
 e2c_say :: (ui: [] cc.UitTrace, parent: int, name: string, out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, f: f32, k: f32, centre: bool) -> int {
   return cc.hud_say_ui(ui, parent, name, out, n, t, x, y, cap, cc.hud_text(cc.eg_tokens(), role), f, k, centre);
 }
-e2c_say_ink :: (ui: [] cc.UitTrace, parent: int, name: string, out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, ink: cc.HudRgba, f: f32, k: f32, centre: bool) -> int {
-  r := cc.hud_text(cc.eg_tokens(), role); r.ink = ink;
-  return cc.hud_say_ui(ui, parent, name, out, n, t, x, y, cap, r, f, k, centre);
-}
 // A word centred in a box, on its middle.
-e2c_word :: (ui: [] cc.UitTrace, parent: int, name: string, out: [] f32, n: int, t: string, b: cc.Box, cap: f32, role: int, f: f32, k: f32) -> int {
-  return e2c_say(ui, parent, name, out, n, t, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, role, f, k, true);
-}
-e2c_word_ink :: (ui: [] cc.UitTrace, parent: int, name: string, out: [] f32, n: int, t: string, b: cc.Box, cap: f32, ink: cc.HudRgba, f: f32, k: f32) -> int {
-  return e2c_say_ink(ui, parent, name, out, n, t, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_TITLE, ink, f, k, true);
-}
 e2c_swatch :: (s: [] E2, i: int) -> [3] f32 {
   cr := s[0].creator[0];
   return ifx i == 4 then cc.DYES[cr.dye] else ifx i == 5 then cc.SKINS[cr.skin] else ifx i == 12 then cc.EYES[cr.eye_color] else cc.HAIRS[cr.hair_color];
@@ -613,112 +596,65 @@ e2c_name_word :: (s: [] E2, buf: [] u8) -> int {
   if c.editing && (cast(int)(s[0].clock * 2) % 2 == 0) { buf[m] = '_'; m += 1; }
   return m;
 }
-// For the layout trace (#13076): whether box b lies in panel p, and box i's name.
-e2c_holds :: (p: cc.Box, b: cc.Box) -> bool { return !e2c_empty(p) && b.x0 >= p.x0 - 1 && b.y0 >= p.y0 - 1 && b.x1 <= p.x1 + 1 && b.y1 <= p.y1 + 1; }
+// For the layout trace (#13076): box i's name.
 e2c_box_name :: (s: [] E2, i: int) -> string {
   if i == E2C_NAME_BOX { return "NAME"; }
   fi := e2c_row_field(i); if fi >= 0 { return e2c_row_name(fi, true); }
   if i >= E2C_TAB_BOX { return E2C_TAB_NAMES[i - E2C_TAB_BOX]; }
   return ifx i == 13 then "RESET" else ifx i == 14 then "SURPRISE ME" else ifx i == 15 then "DRAG" else ifx i == 16 then "SAVE" else "USE";
 }
-e2c_hud :: (s: [] E2, out: [] f32) -> int {
+// What each box holds, for Everglade's panel (everglade/hud/create.coax EgCreateBox). name holds
+// the name's words while they are drawn.
+e2c_eg_boxes :: (s: [] E2, bx: [] EgCreateBox, name: [] u8) {
+  c := s[0].cz[0]; cr := s[0].creator[0]; phone := c.mobile;
+  for i: 0..<E2C_BOXES {
+    b := c.boxes[i]; x: EgCreateBox; x.b = b;
+    if e2c_empty(b) { bx[i] = x; continue; }
+    x.name = e2c_box_name(s, i); fi := e2c_row_field(i);
+    if fi >= 0 || i == E2C_NAME_BOX {
+      x.kind = ifx fi >= 0 then EG_CB_ROW else EG_CB_NAME;
+      x.label = ifx i == E2C_NAME_BOX then "NAME" else e2c_row_name(fi, !phone);
+      x.value = ifx fi >= 0 then e2c_value(s, fi) else "";
+      said := i == E2C_NAME_BOX && c.said_n > 0 && !c.editing;
+      if i == E2C_NAME_BOX { m := e2c_name_word(s, name); x.value = ifx said then cast(string) s[0].cz[0].said[0..<c.said_n] else ifx m == 0 then "TAP TO TYPE A NAME" else cast(string) name[0..<m]; }
+      x.ink = ifx said then EG_CB_BAD else ifx i == E2C_NAME_BOX && (e2c_name_shown(s).count == 0 || c.naming) && !c.editing then EG_CB_DIM else EG_CB_TEXT;
+      x.on = ifx fi >= 0 then cr.focused == fi && !phone else c.editing;
+      if fi >= 0 {
+        x.left = e2c_arrow(s, b, false); x.right = e2c_arrow(s, b, true);
+        x.swatch = e2c_has_swatch(fi); if x.swatch { x.rgb = e2c_swatch(s, fi); }
+      }
+    } else if i >= E2C_TAB_BOX {
+      x.kind = EG_CB_TAB; x.label = E2C_TAB_NAMES[i - E2C_TAB_BOX]; x.on = i - E2C_TAB_BOX == e2c_tab_of(s);
+    } else {
+      x.kind = EG_CB_BUTTON; x.on = (i == 15 && cr.pan_mode) || i == 17;
+      x.label = ifx i == 13 then "RESET" else ifx i == 14 then "SURPRISE ME" else ifx i == 15 then (ifx cr.pan_mode then (ifx phone then "PAN" else "DRAG: PAN") else (ifx phone then "ROTATE" else "DRAG: ROTATE")) else ifx i == 16 then e2c_save_word(s) else "USE IN EVERGLADE";
+    }
+    bx[i] = x;
+  }
+}
+// Character Create over the world: Everglade's panel (everglade/hud/create.coax), with a phone's
+// CLASS card in it and the desk's pane beside it; shut, the world's little menu.
+e2c_draw :: (s: [] E2, out: [] f32) -> int {
   w := s[0].width; h := s[0].height; k := s[0].k;
   e2c_layout(s, w, h, k);
   f := e2c_shown(s);
-  if f <= 0.003 { return e2c_menu_hud(s, out, 0); }
-  c := s[0].cz[0]; cr := s[0].creator[0]; t := cc.eg_tokens(); phone := c.mobile;
-  l: [1] cc.HudList;
-  // the layout trace, when the overlap check attaches one (#13076): the panels, each box in the panel
-  // that holds it, its arrows in it, and (below) each word in its box
-  ui := cr.ui; cc.uit_part(ui, "create");
-  card_p := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, c.card.x0, c.card.y0, c.card.x1, c.card.y1, "card");
-  sheet_p := ifx phone then cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, c.sheet.x0, c.sheet.y0, c.sheet.x1, c.sheet.y1, "sheet") else cc.UIT_NONE;
+  if f <= 0.003 { return e2c_menu_draw(s, out, 0); }
+  c := s[0].cz[0]; phone := c.mobile; ui := s[0].creator[0].ui;
+  bx: [E2C_BOXES] EgCreateBox; nb: [NET_NAME + 2] u8; e2c_eg_boxes(s, bx[..], nb[..]);
+  g := EgCreate.{phone = phone, f = f, k = k, card = c.card, sheet = c.sheet, title_cap = e2c_title_cap(s, k), w = w, h = h,
+                 word = f32(E2C_WORD_CAP) * k, caption = f32(E2C_CAPTION_CAP) * k, value = f32(E2C_VALUE_CAP) * k, arrow = f32(E2C_ARROW_CAP) * k};
+  if !phone { g.pane = e2c_pane(s, w, h, k).a; }
+  g.tx = ifx phone then c.card.x0 + f32(E2C_PADDING) * k + 2 * k else 30 * k;
+  g.ty = ifx phone then (c.boxes[15].y0 + c.boxes[15].y1) * 0.5 + g.title_cap * 0.5 else 60 * k;
+  // the layout trace, when the overlap check attaches one (#13076)
   box_at: [E2C_BOXES] int; arrows: [E2C_BOXES * 2] int;
-  for i: 0..<E2C_BOXES {
-    box_at[i] = cc.UIT_NONE; arrows[i * 2] = cc.UIT_NONE; arrows[i * 2 + 1] = cc.UIT_NONE;
-    b := c.boxes[i]; if e2c_empty(b) || !cc.uit_on(ui) { continue; }
-    fi := e2c_row_field(i);
-    up := ifx e2c_holds(c.card, b) then card_p else ifx phone && e2c_holds(c.sheet, b) then sheet_p else cc.UIT_NONE;
-    box_at[i] = cc.uit_put(ui, up, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, e2c_box_name(s, i));
-    if fi >= 0 {
-      nm: [48] u8; a := e2c_arrow(s, b, false); z := e2c_arrow(s, b, true);
-      arrows[i * 2] = cc.uit_put(ui, box_at[i], cc.UIT_BUTTON, a.x0, a.y0, a.x1, a.y1, cc.uit_join(nm[..], e2c_box_name(s, i), "<"));
-      arrows[i * 2 + 1] = cc.uit_put(ui, box_at[i], cc.UIT_BUTTON, z.x0, z.y0, z.x1, z.y1, cc.uit_join(nm[..], e2c_box_name(s, i), ">"));
-    }
-  }
-  // ---- the frames: panels, wells for the rows, the buttons
-  cc.hud_panel(l[..], t, e2c_hb(c.card), k);
-  if phone { cc.hud_panel(l[..], t, e2c_hb(c.sheet), k); }
-  else { p := e2c_pane(s, w, h, k); if !e2c_empty(p.a) { cc.hud_panel(l[..], t, e2c_hb(p.a), k); } }
-  for i: 0..<E2C_BOXES {
-    b := c.boxes[i]; if e2c_empty(b) { continue; }
-    fi := e2c_row_field(i);
-    if fi >= 0 {
-      lit := cr.focused == fi && !phone;
-      if phone { cc.hud_well(l[..], t, e2c_hb(b), k, false); }
-      else { cc.hud_well(l[..], t, cc.hud_box(b.x0 + 106 * k, b.y0, b.x1, b.y1), k, lit); }
-      cc.hud_button(l[..], t, e2c_hb(e2c_arrow(s, b, false)), k, false); cc.hud_button(l[..], t, e2c_hb(e2c_arrow(s, b, true)), k, false);
-      if e2c_has_swatch(fi) {
-        rgb := e2c_swatch(s, fi); r := e2c_arrow(s, b, true); z := (ifx phone then 9.0f32 else 6.0f32) * k; cx := r.x0 - z - 8 * k; cy := (b.y0 + b.y1) * 0.5;
-        cc.hud_fill(l[..], cc.hud_box(cx - z, cy - z, cx + z, cy + z), 3 * k, cc.hud_rgba(rgb[0], rgb[1], rgb[2], 1), cc.hud_rgba(rgb[0] * 0.8, rgb[1] * 0.8, rgb[2] * 0.8, 1));
-        cc.hud_ring(l[..], cc.hud_box(cx - z, cy - z, cx + z, cy + z), 3 * k, 1.2 * k, t.trim, cc.hud_mix(t.trim, t.frame_mid, 0.5));
-      }
-    } else if i == E2C_NAME_BOX {
-      cc.hud_well(l[..], t, ifx phone then e2c_hb(b) else cc.hud_box(b.x0 + 106 * k, b.y0, b.x1, b.y1), k, c.editing);
-    } else if i >= E2C_TAB_BOX {
-      cc.hud_button(l[..], t, e2c_hb(b), k, i - E2C_TAB_BOX == e2c_tab_of(s));
-    } else {
-      cc.hud_button(l[..], t, e2c_hb(b), k, (i == 15 && cr.pan_mode) || i == 17);
-    }
-  }
-  if !phone { cc.hud_line(l[..], 30 * k, 76 * k, 334 * k, 76 * k, 1 * k, cc.hud_fade(t.trim, 0.8)); }
+  panels: [2] int; card := eg_create_trace(ui, g, bx[..], box_at[..], arrows[..], panels[..]); sheet := panels[1];
+  l: [1] cc.HudList; eg_create_frames(l[..], g, bx[..]);
   if phone && e2c_tab_of(s) == E2C_TAB_CLASS { _ := e2c_class_card(s, l[..], out, 0, f, false, cc.UIT_NONE); }
-  for i: 0..<l[0].n { l[0].p[i].top.a *= f; l[0].p[i].bottom.a *= f; }
+  eg_create_fade(l[..], f);
   n := cc.hud_emit(out, 0, l[..]);
-  // ---- the words
-  title_cap := e2c_title_cap(s, k);
-  tx := ifx phone then c.card.x0 + f32(E2C_PADDING) * k + 2 * k else 30 * k;
-  ty := ifx phone then (c.boxes[15].y0 + c.boxes[15].y1) * 0.5 + title_cap * 0.5 else 60 * k;
-  n = e2c_say(ui, card_p, "title", out, n, "Character Create", tx, ty, title_cap, cc.HUD_TEXT_TITLE, f, k, false);
-  word := f32(E2C_WORD_CAP) * k; caption := f32(E2C_CAPTION_CAP) * k; vcap := f32(E2C_VALUE_CAP) * k;
-  for i: 0..<E2C_BOXES {
-    b := c.boxes[i]; if e2c_empty(b) { continue; }
-    fi := e2c_row_field(i);
-    if fi >= 0 || i == E2C_NAME_BOX {
-      label := ifx i == E2C_NAME_BOX then "NAME" else e2c_row_name(fi, !phone);
-      v: [NET_NAME + 2] u8; vt := ifx fi >= 0 then e2c_value(s, fi) else "";
-      said := i == E2C_NAME_BOX && c.said_n > 0 && !c.editing;
-      if i == E2C_NAME_BOX { m := e2c_name_word(s, v[..]); vt = ifx said then cast(string) c.said[0..<c.said_n] else ifx m == 0 then "TAP TO TYPE A NAME" else cast(string) v[0..<m]; }
-      ink := ifx said then t.bad else ifx i == E2C_NAME_BOX && (e2c_name_shown(s).count == 0 || c.naming) && !c.editing then t.text_dim else t.text;
-      if phone {
-        mx := (b.x0 + b.x1) * 0.5;
-        nm: [48] u8; vn: [48] u8;
-        n = e2c_say(ui, box_at[i], cc.uit_join(nm[..], label, "label"), out, n, label, mx, b.y0 + 6 * k + caption, caption, cc.HUD_TEXT_LABEL, f, k, true);
-        // the value, as wide as the row leaves it between the arrows (and the swatch)
-        room := b.x1 - b.x0 - 2 * (b.y1 - b.y0) - (ifx fi >= 0 && e2c_has_swatch(fi) then 44.0f32 * k else 0.0f32);
-        cap := vcap; vw := cc.face_width(vt, cap, cc.HUD_FACE_BODY); if vw > room && vw > 0 { cap = cap * room / vw; }
-        n = e2c_say_ink(ui, box_at[i], cc.uit_join(vn[..], label, "value"), out, n, vt, mx, b.y1 - 9 * k, cap, cc.HUD_TEXT_NUMBER, ink, f, k, true);
-      } else {
-        nm: [48] u8; vn: [48] u8;
-        n = e2c_say(ui, box_at[i], cc.uit_join(nm[..], label, "label"), out, n, label, b.x0, (b.y0 + b.y1) * 0.5 + caption * 0.5, caption, cc.HUD_TEXT_LABEL, f, k, false);
-        x0 := ifx fi >= 0 then b.x0 + 140 * k else b.x0 + 116 * k; room := b.x1 - 30 * k - x0 - (ifx fi >= 0 && e2c_has_swatch(fi) then 24.0f32 * k else 0.0f32);
-        cap := 9.5 * k; vw := cc.face_width(vt, cap, cc.HUD_FACE_BODY); if vw > room && vw > 0 { cap = cap * room / vw; }
-        n = e2c_say_ink(ui, box_at[i], cc.uit_join(vn[..], label, "value"), out, n, vt, x0, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, cc.HUD_TEXT_NUMBER, ink, f, k, false);
-      }
-      if fi >= 0 {
-        acap := ifx phone then f32(E2C_ARROW_CAP) * k else 10.0f32 * k;
-        n = e2c_word(ui, arrows[i * 2], "<", out, n, "<", e2c_arrow(s, b, false), acap, cc.HUD_TEXT_TITLE, f, k);
-        n = e2c_word(ui, arrows[i * 2 + 1], ">", out, n, ">", e2c_arrow(s, b, true), acap, cc.HUD_TEXT_TITLE, f, k);
-      }
-      continue;
-    }
-    if i >= E2C_TAB_BOX { on := i - E2C_TAB_BOX == e2c_tab_of(s); n = e2c_word_ink(ui, box_at[i], "", out, n, E2C_TAB_NAMES[i - E2C_TAB_BOX], b, word, ifx on then t.title else t.text_dim, f, k); continue; }
-    lab := ifx i == 13 then "RESET" else ifx i == 14 then "SURPRISE ME" else ifx i == 15 then (ifx cr.pan_mode then (ifx phone then "PAN" else "DRAG: PAN") else (ifx phone then "ROTATE" else "DRAG: ROTATE")) else ifx i == 16 then e2c_save_word(s) else "USE IN EVERGLADE";
-    wcap := word; lw := cc.face_width(lab, wcap, cc.HUD_FACE_TITLE); room := b.x1 - b.x0 - 12 * k; if lw > room && lw > 0 { wcap = wcap * room / lw; }
-    n = e2c_word_ink(ui, box_at[i], "", out, n, lab, b, wcap, ifx i == 17 || (i == 15 && cr.pan_mode) then t.title else t.text, f, k);
-  }
-  if phone && e2c_tab_of(s) == E2C_TAB_CLASS { n = e2c_class_card(s, l[..], out, n, f, true, sheet_p); }
-  if !phone { n = e2c_say(ui, cc.UIT_NONE, "HINT", out, n, "DRAG: ROTATE / P: PAN / SCROLL: ZOOM", w * 0.5, h - 77 * k, 8 * k, cc.HUD_TEXT_LABEL, f, k, true); }
+  n = eg_create_words(ui, out, n, g, bx[..], box_at[..], arrows[..], card);
+  if phone && e2c_tab_of(s) == E2C_TAB_CLASS { n = e2c_class_card(s, l[..], out, n, f, true, sheet); }
   if !phone { n = e2c_pane_draw(s, out, n, f); }
   return n;
 }

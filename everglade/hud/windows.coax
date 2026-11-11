@@ -1,0 +1,365 @@
+// Everglade's HUD windows and marks, every zone's (#13083): the plaque that offers a near thing
+// ("E  Talk to ..."), a character's talk (the line wrapped in a panel, the answers as buttons), the
+// Golemancer's Workbench window, the marks over the action bar's slots (the key, the room's count,
+// the used line and the gold frame of an effect that holds), the slot's card over the bar, the bar's
+// refusal, the graphics control, a developer's readout, the wedge toward a blow from off the screen,
+// the line said while you are down and a number risen off a body. Plain data in, vertices out, in
+// Everglade's HUD style (eg_tokens, everglade/hud/parts.coax). A zone loads this beside
+// charactercreator.coax as cc (the class bar's way, class-bar.coax), fills what it knows and calls.
+//   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "eg win"
+#load "../../aethyr/talk/tree.coax";
+#load "../world/golem-bench.coax";
+
+eg_win_put :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }
+eg_win_inside :: (b: cc.HudPrim, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+eg_win_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, r: f32, g: f32, b: f32) -> int {
+  if cc.lit(out, n, ax, ay, bx, by, wide, 1, 0, r, g, b, 0) { return n + 6; }
+  return n;
+}
+
+// ---- the plaque that offers a near thing: a lit button in the lower middle of the picture with its
+// words, "E  Use the Golemancer's Workbench". id names it in the layout trace (part its part).
+eg_prompt_box :: (t: string, w: f32, h: f32, k: f32) -> cc.HudPrim {
+  pw := cc.face_width(t, 14 * k, cc.HUD_FACE_BODY) + 28 * k; py := h * 0.64;
+  return cc.hud_box(w * 0.5 - pw * 0.5, py - 17 * k, w * 0.5 + pw * 0.5, py + 17 * k);
+}
+eg_prompt :: (ui: [] cc.UitTrace, part: string, id: string, out: [] f32, at: int, b: cc.HudPrim, t: string, k: f32) -> int {
+  tk := cc.eg_tokens(); l: [1] cc.HudList;
+  cc.hud_button(l[..], tk, b, k, true);
+  v := cc.hud_emit(out, at, l[..]);
+  cc.uit_part(ui, part); cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, id);
+  return cc.hud_say(out, v, t, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 7 * k, 14 * k, cc.hud_text(tk, cc.HUD_TEXT_NUMBER), 1, k, true);
+}
+
+// ---- a character's talk: its line wrapped in a panel, your answers as buttons under it
+EG_TALK_ANSWERS :: TALK_TREE_CHOICES;
+EgTalk :: struct {
+  panel: cc.HudPrim; pad: f32; title_cap: f32; cap: f32; row_h: f32; text_y: f32;
+  rows: int; row_at: [12] int; row_n: [12] int;
+  answers: int; answer: [EG_TALK_ANSWERS] cc.HudPrim; choice: [EG_TALK_ANSWERS] int;
+  prompt: cc.HudPrim;
+}
+// The talk's boxes for a page w by h (k device px a CSS px): line is what is said now, at its
+// number in the tree's choices; prompt the plaque's words.
+eg_talk_layout :: (w: f32, h: f32, k: f32, line: string, choices: [] TalkTreeChoice, at: int, prompt: string) -> EgTalk {
+  g: EgTalk;
+  g.pad = 20 * k; g.title_cap = 17 * k; g.cap = 15 * k; g.row_h = g.cap * 1.55;
+  wide := 620 * k; if wide > w - 32 * k { wide = w - 32 * k; }
+  x0 := (w - wide) * 0.5; x1 := x0 + wide;
+  adv: [700] f32; a := cc.face_advances(line, g.cap, cc.HUD_FACE_BODY, adv[..]);
+  wd: [12] f32; g.rows = cc.hud_tip_wrap(line, a, wide - 2 * g.pad, g.row_at[..], g.row_n[..], wd[..]);
+  g.answers = talk_tree_offered(choices, at, g.choice[..]);
+  ah := 36 * k; gap := 8 * k;
+  tall := g.pad + g.title_cap * 1.4 + 10 * k + f32(g.rows) * g.row_h + 14 * k + f32(g.answers) * (ah + gap) - gap + g.pad;
+  y0 := h * 0.42 - tall * 0.5; if y0 > h - tall - 150 * k { y0 = h - tall - 150 * k; } if y0 < 16 * k { y0 = 16 * k; }
+  g.panel = cc.hud_box(x0, y0, x1, y0 + tall);
+  g.text_y = y0 + g.pad + g.title_cap * 1.4 + 10 * k;
+  ay := g.text_y + f32(g.rows) * g.row_h + 14 * k;
+  for i: 0..<g.answers { g.answer[i] = cc.hud_box(x0 + g.pad, ay, x1 - g.pad, ay + ah); ay += ah + gap; }
+  g.prompt = eg_prompt_box(prompt, w, h, k);
+  return g;
+}
+// The talk open: the panel, who speaks and what they are, the line, and each answer numbered on its
+// button (hover lit).
+eg_talk :: (ui: [] cc.UitTrace, out: [] f32, at: int, g: EgTalk, k: f32, name: string, title: string, line: string, choices: [] TalkTreeChoice, hover: int) -> int {
+  t := cc.eg_tokens(); l: [1] cc.HudList;
+  cc.hud_panel(l[..], t, g.panel, k);
+  for i: 0..<g.answers { cc.hud_button(l[..], t, g.answer[i], k, i == hover); }
+  v := cc.hud_emit(out, at, l[..]);
+  x := g.panel.x0 + g.pad;
+  v = cc.hud_say(out, v, name, x, g.panel.y0 + g.pad + g.title_cap, g.title_cap, cc.hud_text(t, cc.HUD_TEXT_TITLE), 1, k, false);
+  nw := cc.face_width(name, g.title_cap, t.title_face);
+  v = cc.hud_say(out, v, title, x + nw + 12 * k, g.panel.y0 + g.pad + g.title_cap, 12 * k, cc.hud_text(t, cc.HUD_TEXT_LABEL), 1, k, false);
+  for r: 0..<g.rows { v = cc.hud_say(out, v, line[g.row_at[r]..<g.row_at[r] + g.row_n[r]], x, g.text_y + f32(r) * g.row_h + g.cap, g.cap, cc.hud_text(t, cc.HUD_TEXT_NUMBER), 1, k, false); }
+  cc.uit_part(ui, "talk");
+  for i: 0..<g.answers {
+    b := g.answer[i]; lb: [96] u8; n := 0; lb[0] = cast(u8)('1' + i); n = 1; n = eg_win_put(lb[..], n, ".  "); n = eg_win_put(lb[..], n, choices[g.choice[i]].text);
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, choices[g.choice[i]].text);
+    v = cc.hud_say(out, v, cast(string) lb[0..<n], b.x0 + 14 * k, (b.y0 + b.y1) * 0.5 + 14 * k * 0.5, 14 * k, cc.hud_text(t, cc.HUD_TEXT_NUMBER), 1, k, false);
+  }
+  return v;
+}
+
+// ---- words in a well: wrapped paragraphs, a row of words along its foot, its heading
+// Words wrapped to room, a row every 1.5 caps from the baseline y; rows[0] the rows written.
+eg_para :: (out: [] f32, at: int, t: string, x: f32, y: f32, room: f32, cap: f32, r: cc.HudText, k: f32, rows: [] int) -> int {
+  adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
+  ra: [10] int; rn: [10] int; rw: [10] f32; n := cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
+  v := at; for i: 0..<n { v = cc.hud_say(out, v, t[ra[i]..<ra[i] + rn[i]], x, y + f32(i) * cap * 1.5, cap, r, 1, k, false); }
+  rows[0] = n; return v;
+}
+// The rows eg_para would write.
+eg_para_rows :: (t: string, room: f32, cap: f32, r: cc.HudText) -> int {
+  adv: [400] f32; a := cc.face_advances(t, cap * r.scale, r.face, adv[..]);
+  ra: [10] int; rn: [10] int; rw: [10] f32; return cc.hud_tip_wrap(t, a, room, ra[..], rn[..], rw[..]);
+}
+// Words along a well's foot, a gap between each, smaller when they wouldn't fit across it.
+eg_word_row :: (out: [] f32, at: int, words: [] string, b: cc.HudPrim, cap: f32, r: cc.HudText, k: f32) -> int {
+  room := b.x1 - b.x0 - 32 * k; gap := 22 * k; c := cap; whole := gap * f32(words.count - 1);
+  for w: words { whole += cc.face_width(w, cap * r.scale, r.face); }
+  if whole > room { c = cap * (room - gap * f32(words.count - 1)) / (whole - gap * f32(words.count - 1)); }
+  x := b.x0 + 16 * k; v := at;
+  for w: words { v = cc.hud_say(out, v, w, x, b.y1 - 18 * k, c, r, 1, k, false); x += cc.face_width(w, c * r.scale, r.face) + gap; }
+  return v;
+}
+eg_well_head :: (out: [] f32, at: int, t: string, b: cc.HudPrim, k: f32) -> int {
+  return cc.hud_say(out, at, t, b.x0 + 16 * k, b.y0 + 16 * k + 13 * k, 13 * k, cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_TITLE), 1, k, false);
+}
+
+// ---- the Golemancer's Workbench (everglade/world/golem-bench.coax): the window most of the screen,
+// Close, the kinds under SHAPING, the kind picked, Shape; your golems, their orders and reports when
+// it is wide, and the materials and ranks along its foot when it is tall.
+EgBench :: struct {
+  win: cc.HudPrim; pad: f32; three: bool; foot: bool;
+  close: cc.HudPrim; kinds: cc.HudPrim; kind: [GOLEM_KINDS] cc.HudPrim; detail: cc.HudPrim; shape: cc.HudPrim;
+  side: [3] cc.HudPrim; stock: cc.HudPrim; ranks: cc.HudPrim; prompt: cc.HudPrim;
+}
+eg_bench_layout :: (w: f32, h: f32, k: f32, prompt: string) -> EgBench {
+  g: EgBench;
+  mx := w * 0.04; if mx < 14 * k { mx = 14 * k; } my := h * 0.05; if my < 12 * k { my = 12 * k; }
+  g.win = cc.hud_box(mx, my, w - mx, h - my); g.pad = 22 * k; p := g.pad;
+  x0 := g.win.x0 + p; x1 := g.win.x1 - p;
+  g.close = cc.hud_box(x1 - 116 * k, g.win.y0 + p, x1, g.win.y0 + p + 36 * k);
+  top := g.win.y0 + p + 70 * k;
+  // the materials and the ranks along the foot, when there is height for them
+  foot := 84 * k; g.foot = g.win.y1 - p - top > 300 * k;
+  bottom := ifx g.foot then g.win.y1 - p - foot - 14 * k else g.win.y1 - p;
+  gap := 16 * k; iw := x1 - x0; g.three = iw >= 860 * k;
+  lw := ifx g.three then (iw - 2 * gap) * 0.28 else (iw - gap) * 0.42;
+  mw := ifx g.three then (iw - 2 * gap) * 0.42 else iw - gap - lw;
+  g.kinds = cc.hud_box(x0, top, x0 + lw, bottom);
+  g.detail = cc.hud_box(x0 + lw + gap, top, x0 + lw + gap + mw, bottom);
+  // the kinds, one row each under SHAPING
+  kh := (bottom - top - 50 * k - f32(GOLEM_KINDS - 1) * 8 * k) / f32(GOLEM_KINDS); if kh > 64 * k { kh = 64 * k; }
+  ky := top + 42 * k;
+  for i: 0..<GOLEM_KINDS { g.kind[i] = cc.hud_box(x0 + 12 * k, ky, x0 + lw - 12 * k, ky + kh); ky += kh + 8 * k; }
+  g.shape = cc.hud_box(g.detail.x0 + 16 * k, bottom - 16 * k - 40 * k, g.detail.x0 + 16 * k + 190 * k, bottom - 16 * k);
+  if g.three {
+    rx := g.detail.x1 + gap; sh := (bottom - top - 2 * gap) / 3;
+    for i: 0..<3 { y := top + f32(i) * (sh + gap); g.side[i] = cc.hud_box(rx, y, x1, y + sh); }
+  }
+  if g.foot {
+    fy := g.win.y1 - p - foot;
+    g.stock = cc.hud_box(x0, fy, x0 + (iw - gap) * 0.44, g.win.y1 - p);
+    g.ranks = cc.hud_box(x0 + (iw - gap) * 0.44 + gap, fy, x1, g.win.y1 - p);
+  }
+  g.prompt = eg_prompt_box(prompt, w, h, k);
+  return g;
+}
+// What the window shows: the kind picked, what the pointer is over (a kind, or Close or Shape), a
+// refusal just said, and whether a finger plays (no Esc to name).
+EgBenchLook :: struct { kind: int; hover: int = -1; on_close: bool; on_shape: bool; warn: bool; touch: bool; }
+eg_bench :: (ui: [] cc.UitTrace, out: [] f32, at: int, g: EgBench, k: f32, b: EgBenchLook) -> int {
+  t := cc.eg_tokens(); l: [1] cc.HudList;
+  body := cc.hud_text(t, cc.HUD_TEXT_NUMBER); dim := cc.hud_text(t, cc.HUD_TEXT_LABEL); title := cc.hud_text(t, cc.HUD_TEXT_TITLE);
+  // the frames: the window, Close, the kinds' rows, the wells and Shape
+  cc.hud_panel(l[..], t, g.win, k);
+  cc.hud_button(l[..], t, g.close, k, b.on_close);
+  cc.hud_well(l[..], t, g.kinds, k, false); cc.hud_well(l[..], t, g.detail, k, false);
+  for i: 0..<GOLEM_KINDS { cc.hud_button(l[..], t, g.kind[i], k, i == b.kind || i == b.hover); }
+  cc.hud_button(l[..], t, g.shape, k, b.on_shape);
+  if g.three { for i: 0..<3 { cc.hud_well(l[..], t, g.side[i], k, false); } }
+  if g.foot { cc.hud_well(l[..], t, g.stock, k, false); cc.hud_well(l[..], t, g.ranks, k, false); }
+  x := g.win.x0 + g.pad; ty := g.win.y0 + g.pad + 26 * k;
+  cc.hud_line(l[..], x, g.win.y0 + g.pad + 54 * k, g.win.x1 - g.pad, g.win.y0 + g.pad + 54 * k, 1 * k, cc.hud_fade(t.trim, 0.45));
+  v := cc.hud_emit(out, at, l[..]);
+  // the heading and where you stand in the craft
+  v = cc.hud_say(out, v, GOLEM_BENCH_NAME, x, ty, 26 * k, title, 1, k, false);
+  v = cc.hud_say(out, v, "Not yet a golemancer     Golems 0 of 0     Golem salt 0", x, ty + 22 * k, 12 * k, dim, 1, k, false);
+  v = cc.hud_say(out, v, ifx b.touch then "CLOSE" else "CLOSE   Esc", (g.close.x0 + g.close.x1) * 0.5, (g.close.y0 + g.close.y1) * 0.5 + 6 * k, 13 * k, body, 1, k, true);
+  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.close.x0, g.close.y0, g.close.x1, g.close.y1, "close");
+  // SHAPING: the kinds, each with the rank it needs
+  v = eg_well_head(out, v, "SHAPING", g.kinds, k);
+  for i: 0..<GOLEM_KINDS {
+    r := g.kind[i]; gk := golem_kind(i); my := (r.y0 + r.y1) * 0.5;
+    lb: [48] u8; n := 0; lb[0] = cast(u8)('1' + i); n = 1; n = eg_win_put(lb[..], n, "  "); n = eg_win_put(lb[..], n, gk.name);
+    v = cc.hud_say(out, v, cast(string) lb[0..<n], r.x0 + 14 * k, my + 5 * k, 14 * k, body, 1, k, false);
+    rb: [16] u8; m := eg_win_put(rb[..], 0, "Rank "); rb[m] = cast(u8)('0' + gk.rank); m += 1;
+    v = cc.hud_say(out, v, cast(string) rb[0..<m], r.x1 - 14 * k - cc.face_width(cast(string) rb[0..<m], 12 * k * dim.scale, dim.face), my + 5 * k, 12 * k, dim, 1, k, false);
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, r.x0, r.y0, r.x1, r.y1, gk.name);
+  }
+  // the kind picked: its body, its work, and the three steps that make it
+  gk := golem_kind(b.kind); d := g.detail; dx := d.x0 + 16 * k; room := d.x1 - d.x0 - 32 * k; rows: [1] int;
+  y := d.y0 + 16 * k + 20 * k;
+  v = cc.hud_say(out, v, gk.name, dx, y, 20 * k, title, 1, k, false); y += 26 * k;
+  rk: [40] u8; m := eg_win_put(rk[..], 0, "Rank "); rk[m] = cast(u8)('0' + gk.rank); m += 1; m = eg_win_put(rk[..], m, ", "); m = eg_win_put(rk[..], m, golem_rank(gk.rank));
+  v = cc.hud_say(out, v, cast(string) rk[0..<m], dx, y, 12 * k, dim, 1, k, false); y += 24 * k;
+  v = eg_para(out, v, gk.body, dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 2 * k;
+  v = eg_para(out, v, gk.does, dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 16 * k;
+  if y + 3 * 22 * k < g.shape.y0 - 80 * k {
+    v = cc.hud_say(out, v, "THE MAKING", dx, y, 13 * k, title, 1, k, false); y += 24 * k;
+    for i: 0..<GOLEM_STEPS {
+      steps := GOLEM_STEP; st := steps[i]; sb: [96] u8; n := 0; sb[0] = cast(u8)('1' + i); n = 1; n = eg_win_put(sb[..], n, "  "); n = eg_win_put(sb[..], n, st.name); n = eg_win_put(sb[..], n, ":  "); n = eg_win_put(sb[..], n, st.how);
+      v = eg_para(out, v, cast(string) sb[0..<n], dx, y, room, 14 * k, body, k, rows[..]); y += f32(rows[0]) * 21 * k + 4 * k;
+    }
+  }
+  v = cc.hud_say(out, v, "SHAPE", (g.shape.x0 + g.shape.x1) * 0.5, (g.shape.y0 + g.shape.y1) * 0.5 + 6 * k, 14 * k, body, 1, k, true);
+  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.shape.x0, g.shape.y0, g.shape.x1, g.shape.y1, "shape");
+  note := ifx b.warn then cc.hud_text(t, cc.HUD_TEXT_WARN) else dim;
+  nr := eg_para_rows(GOLEM_BENCH_LOCKED, room, 12 * k, note);
+  v = eg_para(out, v, GOLEM_BENCH_LOCKED, dx, g.shape.y0 - 14 * k - f32(nr - 1) * 18 * k, room, 12 * k, note, k, rows[..]);
+  // your golems, their orders and what they reported
+  if g.three {
+    heads := [3] string.["GOLEMS", "ORDERS", "REPORTS"];
+    says := [3] string.["No golems yet. Shape one here, then give it a name.", "No orders. A golem works one task at a time.", "Nothing to report. Finished tasks come back here and by letter."];
+    for i: 0..<3 {
+      r := g.side[i]; v = eg_well_head(out, v, heads[i], r, k);
+      v = eg_para(out, v, says[i], r.x0 + 16 * k, r.y0 + 16 * k + 40 * k, r.x1 - r.x0 - 32 * k, 13 * k, dim, k, rows[..]);
+    }
+  }
+  // the materials, none held yet, and the five ranks
+  if g.foot {
+    mats := GOLEM_MATERIAL; mt: [GOLEM_MATERIALS] string; mb: [GOLEM_MATERIALS][32] u8;
+    for i: 0..<GOLEM_MATERIALS { n := eg_win_put(mb[i][..], 0, mats[i]); n = eg_win_put(mb[i][..], n, "  0"); mt[i] = cast(string) mb[i][0..<n]; }
+    v = eg_well_head(out, v, "MATERIALS", g.stock, k);
+    v = eg_word_row(out, v, mt[..], g.stock, 13 * k, body, k);
+    rt: [GOLEM_RANKS] string; rb: [GOLEM_RANKS][32] u8;
+    for i: 0..<GOLEM_RANKS { rb[i][0] = cast(u8)('1' + i); n := eg_win_put(rb[i][..], 1, " "); n = eg_win_put(rb[i][..], n, golem_rank(i + 1)); rt[i] = cast(string) rb[i][0..<n]; }
+    v = eg_well_head(out, v, "RANKS", g.ranks, k);
+    v = eg_word_row(out, v, rt[..], g.ranks, 12 * k, dim, k);
+  }
+  return v;
+}
+#test "eg win: the prompt, the talk and the bench lay out inside the page and draw" #steps 400000000 {
+  out: [40000 * 16] f32; nt: [] cc.UitTrace;
+  b := eg_prompt_box("E  Talk to him", 1280, 720, 1);
+  #assert b.x0 > 0 && b.x1 < 1280 && abs((b.x0 + b.x1) * 0.5 - 640) < 0.01 && b.y1 - b.y0 == 34;
+  #assert eg_prompt(nt, "talk", "talk", out[..], 0, b, "E  Talk to him", 1) > 0;
+  ch := [3] TalkTreeChoice.[TalkTreeChoice.{from = 0, text = "Who are you?", to = 1}, TalkTreeChoice.{from = 0, text = "Farewell.", to = TALK_TREE_END}, TalkTreeChoice.{from = 1, text = "Thanks.", to = 0}];
+  g := eg_talk_layout(1280, 720, 1, "Welcome to the glade, traveller.", ch[..], 0, "E  Talk");
+  #assert g.answers == 2 && g.rows == 1 && g.answer[0].y0 > g.text_y && g.answer[1].y1 <= g.panel.y1 && g.panel.y0 >= 16;
+  tr: [1] cc.UitTrace;
+  #assert eg_talk(tr[..], out[..], 0, g, 1, "Pansopher", "the trainer", "Welcome to the glade, traveller.", ch[..], 1) > 0 && tr[0].n == 2;
+  w := eg_bench_layout(1280, 720, 1, "E  Use it");
+  #assert w.three && w.foot && w.shape.y1 <= w.detail.y1 && w.close.x1 <= w.win.x1;
+  #assert eg_bench(nt, out[..], 0, w, 1, EgBenchLook.{kind = 1}) > 0;
+  n := eg_bench_layout(760, 400, 1, "E  Use it"); #assert !n.three && n.kinds.x1 < n.detail.x0;
+}
+
+// ---- the marks over the action bar's slots (the bar's iron is eg_bar_frame, the pictures the page's)
+// What a slot says over its picture: its key (0 none), the room's count left (-1 none), whether it
+// was the last used while the bar cools, and whether its effect holds (a gold frame).
+EgSlotMarks :: struct { key: u8; count: int = -1; used: bool; held: bool; }
+// b: the slot's box (x0, y0, x1, y1); slot its index in the layout trace.
+eg_slot_marks :: (ui: [] cc.UitTrace, slot: int, out: [] f32, at: int, b: [] f32, m: EgSlotMarks, k: f32) -> int {
+  n := at;
+  if m.key != 0 {
+    key: [1] u8; key[0] = m.key;
+    n = cc.ttext(ui, slot, out, n, cast(string) key[..], b[0] + 4 * k, b[1] + 13 * k, 9 * k, cc.ink(k, 0.98, 0.95, 0.85), "key");
+  }
+  if m.used { n = eg_win_line(out, n, b[0], b[3] + 4 * k, b[2], b[3] + 4 * k, 1.5 * k, 1, 0.8, 0.4); }
+  if m.count >= 0 {
+    d: [12] u8; dn := cc.eg_int(d[..], 0, m.count); cap := 9 * k;
+    n = cc.ttext(ui, slot, out, n, cast(string) d[0..<dn], b[2] - f32(dn) * cap * 0.78 - 5 * k, b[3] - 5 * k, cap,
+                 ifx m.count == 0 then cc.ink(k, 1, 0.55, 0.4) else cc.ink(k, 1, 0.82, 0.35), "count");
+  }
+  if m.held {
+    n = eg_win_line(out, n, b[0], b[1], b[2], b[1], 1.5 * k, 1, 0.75, 0.3); n = eg_win_line(out, n, b[0], b[3], b[2], b[3], 1.5 * k, 1, 0.75, 0.3);
+    n = eg_win_line(out, n, b[0], b[1], b[0], b[3], 1.5 * k, 1, 0.75, 0.3); n = eg_win_line(out, n, b[2], b[1], b[2], b[3], 1.5 * k, 1, 0.75, 0.3);
+  }
+  return n;
+}
+// The card of the slot under the pointer: its box over that slot and over the bar's emblem (32 px
+// over the top row), kept on the page. boxes holds every slot's box (4 a slot); the card is
+// 358 by 171 CSS px. Returns x0, y0, x1, y1.
+eg_slot_card :: (boxes: [] f32, n: int, hover: int, w: f32, k: f32) -> [4] f32 {
+  cw := 358 * k; ch := 171 * k; cx := (boxes[hover * 4] + boxes[hover * 4 + 2]) / 2;
+  if cx - cw / 2 < 12 * k { cx = 12 * k + cw / 2; }
+  if cx + cw / 2 > w - 12 * k { cx = w - 12 * k - cw / 2; }
+  cy := boxes[hover * 4 + 1] - 30 * k; for i: 0..<n { t := boxes[i * 4 + 1] - 38 * k; if t < cy { cy = t; } }
+  return [4] f32.[cx - cw / 2, cy - ch, cx + cw / 2, cy];
+}
+// A refusal over the bar's emblem, centred at x a little over top.
+eg_bar_refused :: (ui: [] cc.UitTrace, out: [] f32, at: int, said: string, x: f32, top: f32, k: f32) -> int {
+  if said.count == 0 { return at; }
+  cc.uit_part(ui, "bar");
+  return cc.hud_say_ui(ui, cc.UIT_NONE, "REFUSED", out, at, said, x, top - 12 * k, 8 * k, cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_WARN), 1, k, true);
+}
+#test "eg win: a slot's marks, its card kept on the page, and the bar's refusal" #steps 100000000 {
+  out: [4000 * 16] f32; nt: [] cc.UitTrace; b := [4] f32.[100, 600, 152, 652];
+  #assert eg_slot_marks(nt, cc.UIT_NONE, out[..], 0, b[..], EgSlotMarks.{}, 1) == 0;
+  #assert eg_slot_marks(nt, cc.UIT_NONE, out[..], 0, b[..], EgSlotMarks.{used = true, held = true}, 1) == 5 * 6;
+  #assert eg_slot_marks(nt, cc.UIT_NONE, out[..], 0, b[..], EgSlotMarks.{key = '1', count = 2}, 1) > 0;
+  bx := [8] f32.[4, 600, 56, 652, 60, 600, 112, 652];
+  c := eg_slot_card(bx[..], 2, 0, 1280, 1); #assert c[0] == 12 && c[2] - c[0] == 358 && c[3] == 562;
+  #assert eg_bar_refused(nt, out[..], 7, "", 640, 500, 1) == 7 && eg_bar_refused(nt, out[..], 0, "No slot left", 640, 500, 1) > 0;
+}
+
+// ---- small controls and lines
+// The graphics control on the frame rate's line: its words right-aligned at right on baseline base,
+// a finger's size round them (44 CSS px tall at least); held while a finger is on it. box gets
+// where a tap or a click takes it.
+eg_gfx :: (ui: [] cc.UitTrace, out: [] f32, at: int, t: string, wide: f32, right: f32, base: f32, k: f32, held: bool, box: [] cc.Box) -> int {
+  cap := 13 * k; x0 := right - wide; y := base;
+  pad := ifx (44 * k - cap) * 0.5 > 8 * k then (44 * k - cap) * 0.5 else 8 * k;
+  box[0] = cc.Box.{x0 = x0 - 10 * k, y0 = y - cap - pad, x1 = right + 6 * k, y1 = y + pad};
+  f := ifx held then 1.0f32 else 0.8f32;
+  cc.uit_part(ui, "gfx");   // the layout trace, when the overlap check attaches one (#13076)
+  b := box[0]; gfx := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_BUTTON, b.x0, b.y0, b.x1, b.y1, "GFX");
+  return cc.ttext(ui, gfx, out, at, t, x0, y, cap, cc.ink(k, 0.95 * f, 0.93 * f, 0.82 * f), "GFX");
+}
+// A developer's readout, top left: its title, the view's name beside it, and a line a row under.
+eg_readout :: (ui: [] cc.UitTrace, out: [] f32, at: int, part: string, title: string, view: string, lines: [] string, k: f32) -> int {
+  cap := 11 * k; v := at; ink := cc.ink(k, 0.95, 0.93, 0.82);
+  cc.uit_part(ui, part);
+  v = cc.ttext(ui, cc.UIT_NONE, out, v, title, 16 * k, 16 * k, cap, ink, "");
+  v = cc.ttext(ui, cc.UIT_NONE, out, v, view, 70 * k, 16 * k, cap, ink, "VIEW");
+  for l: 0..<lines.count { v = cc.ttext(ui, cc.UIT_NONE, out, v, lines[l], 16 * k, (36 + 18 * f32(l)) * k, cap, ink, ""); }
+  return v;
+}
+// The line said while you are down (the Death Saving Throws as the room rolls them), centred over
+// the bar on a page w by h.
+eg_down_line :: (out: [] f32, at: int, line: string, w: f32, h: f32, k: f32) -> int {
+  if line.count == 0 { return at; }
+  cap := 14 * k;
+  return cc.text(out, at, line, (w - f32(line.count) * cap * 0.55) / 2, h * 0.38, cap, cc.ink(k, 1, 0.5, 0.42));
+}
+// Where the camera looks from, for a mark placed over the world: eye, its forward, right and up,
+// the focal length (device px), the page's width and the picture's middle row cy.
+EgView :: struct { eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32; w: f32; h: f32; cy: f32; }
+// The wedge toward one that struck you from off the screen: three red arcs on a ring round the
+// middle, turned toward (dx, dz) off the eye (dy its height), fading over life seconds; age since
+// the blow. Nothing while it is on the screen.
+eg_wedge :: (out: [] f32, at: int, v: EgView, dx: f32, dy: f32, dz: f32, age: f32, life: f32, k: f32) -> int {
+  n := at; f := v.fwd; r := v.right; up := v.up;
+  if age < 0 || age > life { return n; }
+  ahead := dx * f[0] + dy * f[1] + dz * f[2];
+  sx := v.w * 0.5 + v.focal * (dx * r[0] + dy * r[1] + dz * r[2]) / (ifx ahead > 0.1 then ahead else 0.1f32);
+  sy := v.cy - v.focal * (dx * up[0] + dy * up[1] + dz * up[2]) / (ifx ahead > 0.1 then ahead else 0.1f32);
+  seen := ahead > 0.5 && sx > 0 && sx < v.w && sy > 0 && sy < v.h;
+  side := dx * r[0] + dz * r[2]; front := dx * f[0] + dz * f[2];
+  if seen || side * side + front * front <= 0.0001 { return n; }
+  a := figs.atan2(side, front);   // 0 ahead (the screen's top), clockwise
+  fade := ifx age < 0.1 then age / 0.1 else 1 - (age - 0.1) / (life - 0.1);
+  cx := v.w * 0.5; ring := (ifx v.w < v.h then v.w else v.h) * 0.36;
+  for j: 0..<3 {
+    spread := 0.16 - f32(j) * 0.045; rr := ring + f32(j) * 7 * k;
+    n = eg_win_line(out, n, cx + sin(a - spread) * rr, v.cy - cos(a - spread) * rr, cx + sin(a + spread) * rr, v.cy - cos(a + spread) * rr, (4 - f32(j)) * k, 0.95 * fade, 0.18 * fade, 0.12 * fade);
+  }
+  return n;
+}
+// How far ahead of the eye (x, y, z) lies, along the view.
+eg_view_ahead :: (v: EgView, x: f32, y: f32, z: f32) -> f32 { e := v.eye; f := v.fwd; return (x - e[0]) * f[0] + (y - e[1]) * f[1] + (z - e[2]) * f[2]; }
+// A number risen to (x, y, z) in the world, drawn where it shows (eg_float), or nothing within half
+// a metre ahead of the eye or behind it.
+eg_float_over :: (out: [] f32, at: int, v: EgView, x: f32, y: f32, z: f32, t: string, k: f32, kind: int, alpha: f32) -> int {
+  e := v.eye; r := v.right; up := v.up;
+  dx := x - e[0]; dy := y - e[1]; dz := z - e[2];
+  ahead := eg_view_ahead(v, x, y, z);
+  if ahead < 0.5 { return at; }
+  sx := v.w * 0.5 + v.focal * (dx * r[0] + dy * r[1] + dz * r[2]) / ahead;
+  sy := v.cy - v.focal * (dx * up[0] + dy * up[1] + dz * up[2]) / ahead;
+  return cc.eg_float(out, at, t, sx, sy, k, kind, alpha);
+}
+#test "eg win: the wedge shows only for a blow off the screen; a number only ahead of the eye" #steps 100000000 {
+  out: [4000 * 16] f32;
+  v := EgView.{eye = [3] f32.[0, 0, 0], fwd = [3] f32.[0, 0, -1], right = [3] f32.[1, 0, 0], up = [3] f32.[0, 1, 0], focal = 900, w = 1280, h = 720, cy = 360};
+  #assert eg_wedge(out[..], 0, v, 0, 0, -10, 0.5, 1.5, 1) == 0;        // ahead, on the screen
+  #assert eg_wedge(out[..], 0, v, 0, 0, 10, 0.5, 1.5, 1) == 3 * 6;      // behind you
+  #assert eg_wedge(out[..], 0, v, 0, 0, 10, 2, 1.5, 1) == 0;            // past its life
+  #assert eg_float_over(out[..], 0, v, 0, 1, 5, "-4", 1, cc.EG_FLOAT_DEALT, 1) == 0 && eg_float_over(out[..], 0, v, 0, 1, -5, "-4", 1, cc.EG_FLOAT_DEALT, 1) > 0;
+  #assert eg_down_line(out[..], 3, "", 1280, 720, 1) == 3 && eg_down_line(out[..], 0, "SUCCESSES 1", 1280, 720, 1) > 0;
+  nt: [] cc.UitTrace; bx: [1] cc.Box; l := [2] string.["A", "B"];
+  #assert eg_gfx(nt, out[..], 0, "GFX AUTO", 60, 900, 700, 1, false, bx[..]) > 0 && bx[0].x1 == 906 && bx[0].y1 - bx[0].y0 >= 44;
+  #assert eg_readout(nt, out[..], 0, "light", "LIGHT", "AMBIENT", l[..], 1) > 0;
+}

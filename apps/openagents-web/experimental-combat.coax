@@ -1359,7 +1359,7 @@ XC_BADGE :: 18.0;   // CSS px: the corner's tap square, and the bottom strip's h
 xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
   x := s[0].xc[..]; k := x[0].k;
   if i < 0 || i >= x[0].bar_n { return false; }
-  r := xc_slot_box(x, i); a := x[0].bar[i..<i + 1];
+  r := cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); a := x[0].bar[i..<i + 1];
   if a[0].kind==XC_FAMILIAR {
     if px<=r.x0+f32(XC_BADGE)*k && py<=r.y0+f32(XC_BADGE)*k {
       f:=rs_familiar_of(x[0].b[..],0);
@@ -1794,7 +1794,7 @@ xc_facts :: (s:[]Lab)->EgBarFacts {
   return f;
 }
 // The bar's top (its highest slot's), device px.
-xc_bar_top :: (x:[]XcCombat)->f32 { top:=x[0].h; for i:0..<x[0].bar_n { r:=xc_slot_box(x,i); if r.y0<top { top=r.y0; } } return top; }
+xc_bar_top :: (x:[]XcCombat)->f32 { top:=x[0].h; for i:0..<x[0].bar_n { r:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if r.y0<top { top=r.y0; } } return top; }
 xc_side_geo :: (s:[]Lab)->EgSideGeo { return xc_layout(s).side; }
 // What a side-bar press asks: knock-out flips, a rest choice goes to the rules (xc_rest_request).
 xc_side_act :: (s:[]Lab,f:EgBarFacts,act:int) {
@@ -1824,7 +1824,7 @@ xc_layout :: (s:[]Lab)->XcLayout {
   }
   if cr[0].dev_animations && y0<(52+f32(XC_GAP))*k { y0=(52+f32(XC_GAP))*k; }   // under its header
   // over the bar: clear of its emblem and class line where the picker reaches the bar's middle
-  lx:=w; rx:=0.0f32; for i:0..<x[0].bar_n { sb:=xc_slot_box(x,i); if sb.x0<lx { lx=sb.x0; } if sb.x1>rx { rx=sb.x1; } }
+  lx:=w; rx:=0.0f32; for i:0..<x[0].bar_n { sb:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if sb.x0<lx { lx=sb.x0; } if sb.x1>rx { rx=sb.x1; } }
   bfoot:=ifx 12*k+wide>(lx+rx)*0.5-40*k then bar-38*k else bar-14*k;
   foot:=(ifx lay.side.n>0 then eg_side_top(lay.side) else bar)-8*k; if bfoot<foot { foot=bfoot; }
   lay.pick=cm_pick(12*k,y0,wide,foot,open,wild,w,h,k);
@@ -1842,7 +1842,7 @@ xc_layout :: (s:[]Lab)->XcLayout {
 // emblem and of the side bar over it.
 xc_card_box :: (x:[]XcCombat,lay:XcLayout)->cc.Box {
   if x[0].arranging || x[0].hover<0 || x[0].hover>=x[0].bar_n || x[0].bar[x[0].hover].kind==XC_BREATH { return cc.Box.{}; }
-  k:=x[0].k; w:=x[0].w; r:=xc_slot_box(x,x[0].hover);
+  k:=x[0].k; w:=x[0].w; r:=cc.eg_box4(xc_slot_at(x[0].bar_n, x[0].hover, x[0].w, x[0].h, x[0].k));
   cw:=358*k; ch:=171*k; cx:=(r.x0+r.x1)/2;
   if cx-cw/2<12*k { cx=12*k+cw/2; }
   if cx+cw/2>w-12*k { cx=w-12*k-cw/2; }
@@ -1868,17 +1868,12 @@ xc_corner :: (s:[]Lab,lay:XcLayout,out:[]f32,at:int)->int {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; k:=x[0].k; w:=x[0].w; h:=x[0].h;
   if x[0].side.menu>=0 || x[0].side.side_hover>=0 { return at; }
   top:=h+1000; cx0:=w-240*k;
-  for i:0..<x[0].bar_n { sr:=xc_slot_box(x,i); if sr.x1+19*k>cx0 && sr.y0-14*k<top { top=sr.y0-14*k; } }
+  for i:0..<x[0].bar_n { sr:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if sr.x1+19*k>cx0 && sr.y0-14*k<top { top=sr.y0-14*k; } }
   for j:0..<lay.side.n { sb:=eg_side_box(lay.side,j); if sb.x1+5*k>cx0 && sb.y0-11*k<top { top=sb.y0-11*k; } }
   fh:=ifx top+7*k<h then top+7*k else h;
   c:=xc_card_box(x,lay); if c.x1>c.x0 && c.x1>cx0 && c.y1>fh-52*k && c.y0<fh { return at; }   // a slot's card is up over the corner
   n:=cc.coord_draw(cr[0],out,at,w,fh,k);
   return cc.eg_fps(cr[0].ui,cr[0].fps[0],out,n,w,fh,k);
-}
-// The bar's slot i, device px.
-xc_slot_box :: (x:[]XcCombat, i: int) -> cc.Box {
-  r := xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k);
-  return cc.Box.{x0 = r[0], y0 = r[1], x1 = r[2], y1 = r[3]};
 }
 xc_in :: (r: cc.Box, px: f32, py: f32) -> bool { return px >= r.x0 && px <= r.x1 && py >= r.y0 && py <= r.y1; }
 xc_text_w :: (t: string, cap: f32) -> f32 {
@@ -1956,7 +1951,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   n = xr_hud(s, out, n, w, h, k);
   if observing { n=cc.ttext(cr[0].ui,cc.UIT_NONE,out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1),""); }
   n=xc_portrait(s,out,n,w,k);
-  n=cc.combat_hud(cr[0],out,u,n,w,k);
+  n=cc.combat_overlay(cr[0],out,u,n,w,k);
   n=xc_hit_mark(x,cr[0],out,n,w,h,k,now);
   xc_strike_due(s);
   xc_lock_step(s);
@@ -2036,12 +2031,12 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   }
   // the bar: its iron round the pictures (everglade/hud/parts.coax), each slot's key over its picture; your class and your target over it
   slots: [XC_SLOTS * 4] f32;
-  for i: 0..<x[0].bar_n { r := xc_slot_box(x, i); slots[i * 4] = r.x0; slots[i * 4 + 1] = r.y0; slots[i * 4 + 2] = r.x1; slots[i * 4 + 3] = r.y1; }
+  for i: 0..<x[0].bar_n { r := cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); slots[i * 4] = r.x0; slots[i * 4 + 1] = r.y0; slots[i * 4 + 2] = r.x1; slots[i * 4 + 3] = r.y1; }
   tray := cc.uit_next(ui);   // the tray's place in the layout trace: its slots follow it (eg_bar_slot_at)
   n = cc.eg_bar_frame(ui, out, n, slots[..], x[0].bar_n, k, XC_CL_UP[x[0].klass][0], 1);
   m := 0;
   for i: 0..<x[0].bar_n {
-    r := xc_slot_box(x, i);
+    r := cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k));
     a := x[0].bar[i]; art := xc_art(a, i);
     slot := cc.eg_bar_slot_at(ui, tray, i);
     m = put(x[0].media[..], m, "image "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
@@ -2106,11 +2101,11 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     if (a.kind==FB_RITUAL && me.rite==a.sp) || (a.kind==XC_FAMILIAR && me.rite==SP_FIND_FAMILIAR) {
       seconds:=ifx a.kind!=XC_FAMILIAR then RS_RITE_SECONDS else ifx me.familiar_slot>0 then RS_FIND_FAMILIAR_SECONDS else RS_FIND_FAMILIAR_SECONDS+RS_RITE_SECONDS;
       done:=1-(me.rite_until-x[0].b[0].clock)/f32(seconds); if done>1 { done=1; }
-      n = xc_frame_box(out, n, r, 2 * k, 1, 0.8, 0.35);
+      n = cc.eg_outline(out, n, r, 2 * k, 1, 0.8, 0.35);
       n = xc_line(out, n, r.x0, r.y1 - 2 * k, r.x0 + (r.x1 - r.x0) * done, r.y1 - 2 * k, 3 * k, 1, 0.8, 0.35);
     }
     // a Ready held: its frame gold until it answers or your next turn starts
-    if a.kind == FB_READY && rs_ready_at(me) >= 0 { n = xc_frame_box(out, n, r, 2 * k, 1, 0.8, 0.35); }
+    if a.kind == FB_READY && rs_ready_at(me) >= 0 { n = cc.eg_outline(out, n, r, 2 * k, 1, 0.8, 0.35); }
   }
   // The picked-up icon follows the pointer, as in the original Everglade bar.
   if x[0].arranging && x[0].down >= 0 && x[0].down < x[0].bar_n {
@@ -2123,7 +2118,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   }
   // a spell that found no one ahead: its icon flashes red a moment (no words)
   if x[0].fizzle >= 0 && x[0].fizzle < x[0].bar_n && now - x[0].fizzle_at < 0.45 {
-    r := xc_slot_box(x, x[0].fizzle); g := 1 - (now - x[0].fizzle_at) / 0.45; wd := 2.5 * k;
+    r := cc.eg_box4(xc_slot_at(x[0].bar_n, x[0].fizzle, x[0].w, x[0].h, x[0].k)); g := 1 - (now - x[0].fizzle_at) / 0.45; wd := 2.5 * k;
     n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
     n = xc_line(out, n, r.x0, r.y0, r.x0, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g); n = xc_line(out, n, r.x1, r.y0, r.x1, r.y1, wd, 0.95 * g, 0.2 * g, 0.15 * g);
     n = xc_line(out, n, r.x0 + 8 * k, r.y0 + 8 * k, r.x1 - 8 * k, r.y1 - 8 * k, wd, 0.95 * g, 0.2 * g, 0.15 * g);
@@ -2131,10 +2126,10 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   // a check's result on its icon: the frame flashes green when it passed, red when it failed
   if x[0].told >= 0 && x[0].told < x[0].bar_n && now - x[0].told_at < 0.6 {
     g := 1 - (now - x[0].told_at) / 0.6;
-    n = xc_frame_box(out, n, xc_slot_box(x, x[0].told), 2.5 * k, ifx x[0].told_ok then 0.3 * g else 0.95 * g, ifx x[0].told_ok then 0.9 * g else 0.2 * g, 0.2 * g);
+    n = cc.eg_outline(out, n, cc.eg_box4(xc_slot_at(x[0].bar_n, x[0].told, x[0].w, x[0].h, x[0].k)), 2.5 * k, ifx x[0].told_ok then 0.3 * g else 0.95 * g, ifx x[0].told_ok then 0.9 * g else 0.2 * g, 0.2 * g);
   }
   if x[0].arranging && x[0].hover >= 0 && x[0].hover < x[0].bar_n {
-    r := xc_slot_box(x, x[0].hover);
+    r := cc.eg_box4(xc_slot_at(x[0].bar_n, x[0].hover, x[0].w, x[0].h, x[0].k));
     n = xc_line(out, n, r.x0, r.y0, r.x1, r.y0, 3 * k, 1, 0.8, 0.4);
     n = xc_line(out, n, r.x0, r.y1, r.x1, r.y1, 3 * k, 1, 0.8, 0.4);
   }
@@ -2147,7 +2142,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   }
   x[0].media_n = m;
   if x[0].bar_n > 0 {
-    r0 := xc_slot_box(x, 0);
+    r0 := cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k));
     line: [64] u8; ln := put(line[..], 0, XC_CL_UP[x[0].klass]);
     t := x[0].target;
     if t >= 0 && !hs[0].enemies[t].dead {
@@ -2159,8 +2154,8 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     }
     tl := cast(string) line[0..<ln];
     // beside the bar's emblem (everglade/hud/parts.coax eg_bar_frame), not under it
-    lx := ifx x[0].bar_n > 0 then xc_slot_box(x, 0).x0 else 0.0f32; rx := lx;
-    for i: 0..<x[0].bar_n { sb := xc_slot_box(x, i); if sb.x0 < lx { lx = sb.x0; } if sb.x1 > rx { rx = sb.x1; } }
+    lx := ifx x[0].bar_n > 0 then cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k)).x0 else 0.0f32; rx := lx;
+    for i: 0..<x[0].bar_n { sb := cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if sb.x0 < lx { lx = sb.x0; } if sb.x1 > rx { rx = sb.x1; } }
     n = cc.ttext(ui, cc.UIT_NONE, out, n, tl, (lx + rx) / 2 + 24 * k, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7), "class and target");
   }
   // the side bar over the bar: REST and KNOCK OUT, their menu and tips (everglade/hud/class-bar.coax)
@@ -2181,10 +2176,6 @@ xc_box_text :: (buf: [] u8, at: int, r: cc.Box) -> int {
 }
 ink_col :: (k: f32, r: f32, g: f32, b: f32) -> Ink { return cc.ink(k, r, g, b); }
 meadow_y :: (x: f32, z: f32) -> f32 { return xmeadow.exp_height(x, z); }
-xc_frame_box :: (out: [] f32, n: int, r: cc.Box, wd: f32, cr: f32, cg: f32, cb: f32) -> int {
-  m := xc_line(out, n, r.x0, r.y0, r.x1, r.y0, wd, cr, cg, cb); m = xc_line(out, m, r.x0, r.y1, r.x1, r.y1, wd, cr, cg, cb);
-  m = xc_line(out, m, r.x0, r.y0, r.x0, r.y1, wd, cr, cg, cb); return xc_line(out, m, r.x1, r.y0, r.x1, r.y1, wd, cr, cg, cb);
-}
 xc_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, r: f32, g: f32, b: f32) -> int {
   if cc.lit(out, n, ax, ay, bx, by, wide, 1, 0, r, g, b, 0) { return n + 6; }
   return n;
@@ -2205,7 +2196,7 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   if !x[0].seen || cr[0].walk.on { return false; }
   k := x[0].k;
   over := -1;
-  for i: 0..<x[0].bar_n { if xc_in(xc_slot_box(x, i), px, py) { over = i; } }
+  for i: 0..<x[0].bar_n { if xc_in(cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)), px, py) { over = i; } }
   x[0].hover = over;
   lay := xc_layout(s); pick := lay.pick;
   in_col := !xc_own_kit(x) && !xc_pick_hidden(x, lay) && cm_in(cm_pick_panel(pick), px, py);
@@ -2314,8 +2305,8 @@ xc_probe :: (s: [] Lab, f: int) -> int {
   }
   if f >= 940 && f < 946 { return ifx hs[0].enemies[f - 940].dead then 1 else 0; }
   if f >= 950 && f < 962 { b := cm_pick_box(xc_pick(s), CM_CLASS, f - 950); return cast(int) ((b.y0 + b.y1) / 2); }
-  if f >= 970 && f < 976 { r := xc_slot_box(x, f - 970); return cast(int) ((r.x0 + r.x1) / 2); }
-  if f == 976 { r := xc_slot_box(x, 0); return cast(int) ((r.y0 + r.y1) / 2); }
+  if f >= 970 && f < 976 { r := cc.eg_box4(xc_slot_at(x[0].bar_n, f - 970, x[0].w, x[0].h, x[0].k)); return cast(int) ((r.x0 + r.x1) / 2); }
+  if f == 976 { r := cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k)); return cast(int) ((r.y0 + r.y1) / 2); }
   if f >= 980 && f < 986 { return cast(int) (x[0].bar[f - 980].sp); }
   // the bow: shots loosed, that hit, missed, stuck in the world, struck past normal range; the draw's
   // aim (per mille) and whether drawing; arrows in the air and stuck; where the crosshair is
@@ -2446,7 +2437,7 @@ xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[
   b[0].dice[0].fixed = true; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
   h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.5; cr[0].clock += 1.1;
   sh := xc_slot_of(x, FB_SHOVE); #assert sh >= 0 && fb_ab_option_n(x[0].bar[sh]) == 2 && fb_ab_option_label(x[0].bar[sh], 1) == "PUSH";
-  x[0].k = 1; x[0].w = 1200; x[0].h = 800; r := xc_slot_box(x, sh); #assert xc_choose(s[..], sh, r.x0 + 3, r.y1 - 3) && x[0].bar[sh].opt == 1;
+  x[0].k = 1; x[0].w = 1200; x[0].h = 800; r := cc.eg_box4(xc_slot_at(x[0].bar_n, sh, x[0].w, x[0].h, x[0].k)); #assert xc_choose(s[..], sh, r.x0 + 3, r.y1 - 3) && x[0].bar[sh].opt == 1;
   #assert xc_press(s[..], sh) && h[0].enemies[3].z > 2.9 && h[0].enemies[3].z < 3.1 && !rs_has(b[0].c[4], RS_PRONE);
 }
 #test "experimental combat: a readied move carries you 30 feet away (#13040, #13038)" #steps 2000000000 {
@@ -2653,7 +2644,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 2, 1);
   #assert x[0].level == 3 && x[0].b[0].c[0].level == 3;
   x[0].bar_n = 12;
-  a := xc_slot_box(x, 0); b := xc_slot_box(x, 9);
+  a := cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k)); b := cc.eg_box4(xc_slot_at(x[0].bar_n, 9, x[0].w, x[0].h, x[0].k));
   #assert a.y0 < b.y0 && a.x0 >= 0 && b.x1 <= x[0].w;
   x[0].open = false; l = cm_pick_box(xc_pick(s[..]), CM_LEVEL, 6);
   #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 0, 1);
@@ -2664,7 +2655,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 #test "experimental combat shift drag swaps keys without casting and cancels safely" {
   s: [1] Lab; s[0].creator[0].experimental = true; xc_start(s[0].xc[..], FB_CL_WIZARD);
   x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
-  a := xc_slot_box(x, 0); b := xc_slot_box(x, 1); first := x[0].bar[0].sp; second := x[0].bar[1].sp;
+  a := cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k)); b := cc.eg_box4(xc_slot_at(x[0].bar_n, 1, x[0].w, x[0].h, x[0].k)); first := x[0].bar[0].sp; second := x[0].bar[1].sp;
   s[0].shift = true;
   #assert xc_pointer(s[..], a.x0 + 3, a.y0 + 3, 0, 7);
   #assert xc_pointer(s[..], b.x0 + 3, b.y0 + 3, 1, 7);
@@ -3258,7 +3249,7 @@ xc_play_kit :: (c: int) {
   x := s[0].xc[..]; xc_set_level(x, 3); x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
   ray := 2; #assert x[0].bar[ray].sp == SP_RAY_OF_SICKNESS && x[0].bar[ray].lvl == 1;
   levels: [9] int; #assert fb_cast_levels(x[0].b[0].c[0], x[0].bar[ray], levels[..]) == 2 && levels[0] == 1 && levels[1] == 2;
-  r := xc_slot_box(x, ray);
+  r := cc.eg_box4(xc_slot_at(x[0].bar_n, ray, x[0].w, x[0].h, x[0].k));
   for want: [3] int.[2, 1, 2] {
     #assert xc_pointer(s[..], r.x1 - 3, r.y0 + 3, 0, 4) && xc_pointer(s[..], r.x1 - 3, r.y0 + 3, 2, 4);
     #assert x[0].bar[ray].lvl == want && x[0].casts == 0;
@@ -3275,7 +3266,7 @@ xc_play_kit :: (c: int) {
   s: [1] Lab; xc_test_lab(s[..], FB_CL_WARLOCK, 0);
   x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
   hex := 2; #assert x[0].bar[hex].sp == SP_HEX && fb_option_n(SP_HEX) == 6;
-  r := xc_slot_box(x, hex);
+  r := cc.eg_box4(xc_slot_at(x[0].bar_n, hex, x[0].w, x[0].h, x[0].k));
   #assert xc_pointer(s[..], r.x0 + 3, r.y1 - 3, 0, 5) && xc_pointer(s[..], r.x0 + 3, r.y1 - 3, 2, 5);
   #assert x[0].bar[hex].opt == 1 && x[0].casts == 0 && fb_option_label(SP_HEX, 1) == "DEX";
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6;
@@ -3301,7 +3292,7 @@ xc_play_kit :: (c: int) {
   slot:=-1;
   for i:0..<x[0].bar_n { if x[0].bar[i].sp==SP_GUIDANCE { slot=i; } }
   #assert slot>=0;
-  r:=xc_slot_box(x,slot);
+  r:=cc.eg_box4(xc_slot_at(x[0].bar_n, slot, x[0].w, x[0].h, x[0].k));
   #assert xc_choose(s[..],slot,r.x0+3,r.y1-3);
   #assert x[0].bar[slot].opt==1 && fb_option_label(SP_GUIDANCE,1)=="PRF";
   s[0].creator[0].clock=5;
@@ -3558,7 +3549,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
     lay:=xc_layout(s[..]); pb:=cm_pick_panel(lay.pick); top:=xc_bar_top(x);
     #assert x[0].bar_n>0 && lay.side.n==2 && pb.x1<=x[0].w && pb.y1<=top;
     #assert v!=0 || pb.y0>=XC_PORTRAIT_FOOT*x[0].k;   // under the portrait on a phone held upright
-    for i:0..<x[0].bar_n { r:=xc_slot_box(x,i); #assert r.x0>=0 && r.x1<=x[0].w && (r.y0>=pb.y1 || r.x0>=pb.x1); }
+    for i:0..<x[0].bar_n { r:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); #assert r.x0>=0 && r.x1<=x[0].w && (r.y0>=pb.y1 || r.x0>=pb.x1); }
     for j:0..<lay.side.n { b:=eg_side_box(lay.side,j); #assert b.x1>b.x0 && b.y1<=top && (b.y0>=pb.y1 || b.x0>=pb.x1); }
     if v<2 { c:=cm_pick_box(lay.pick,CM_CLASS,0); l:=cm_pick_box(lay.pick,CM_LEVEL,1); #assert c.y1-c.y0>=44*x[0].k-0.01 && l.x1-l.x0>=44*x[0].k-0.01; }
   }
@@ -3746,7 +3737,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
   x[0].level=2; xc_set_class(x,FB_CL_DRUID);
   x[0].k=1; x[0].w=1100; x[0].h=840; x[0].seen=true;
   k:=xc_slot_of(x,XC_FAMILIAR); #assert k>=0;
-  r:=xc_slot_box(x,k);
+  r:=cc.eg_box4(xc_slot_at(x[0].bar_n, k, x[0].w, x[0].h, x[0].k));
   px:=r.x0+26; py:=r.y0+26;
   cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
   #assert xc_press(s[..],k);
@@ -3799,7 +3790,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
   f:=rs_familiar_of(b,0); #assert f>=0;
   k:=1; #assert x[0].bar[k].sp==SP_CHILL_TOUCH;
   x[0].k=1; x[0].w=1100; x[0].h=840; x[0].seen=true;
-  r:=xc_slot_box(x,k);
+  r:=cc.eg_box4(xc_slot_at(x[0].bar_n, k, x[0].w, x[0].h, x[0].k));
   #assert xc_choose(s[..],k,r.x0+6,r.y1-6) && x[0].familiar_touch;
   x[0].familiar_z=4*f32(XC_SQ);
   foe:=cr[0].hostiles[0].enemies[3..<4];
@@ -3835,7 +3826,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
   #assert rs_spell_ready(b[0].c[0],SP_FIND_FAMILIAR);
   #assert b[0].c[0].spells.prepared==rs_prepared_limit(RS_WIZARD,1);
   x[0].k=1; x[0].w=1100; x[0].h=840; x[0].seen=true;
-  k:=xc_slot_of(x,XC_FAMILIAR); r:=xc_slot_box(x,k);
+  k:=xc_slot_of(x,XC_FAMILIAR); r:=cc.eg_box4(xc_slot_at(x[0].bar_n, k, x[0].w, x[0].h, x[0].k));
   #assert xc_choose(s[..],k,r.x1-6,r.y0+6) && x[0].bar[k].lvl==1;
   #assert xc_choose(s[..],k,r.x1-6,r.y1-6);
   cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
@@ -3885,7 +3876,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   x[0].level=2; xc_set_class(x,FB_CL_DRUID);
   x[0].k=1; x[0].w=1100; x[0].h=840;
-  k:=xc_slot_of(x,XC_FAMILIAR); r:=xc_slot_box(x,k);
+  k:=xc_slot_of(x,XC_FAMILIAR); r:=cc.eg_box4(xc_slot_at(x[0].bar_n, k, x[0].w, x[0].h, x[0].k));
   for n:0..<8 { #assert xc_choose(s[..],k,r.x0+6,r.y1-6); }
   cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
   #assert xc_press(s[..],k);

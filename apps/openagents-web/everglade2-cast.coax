@@ -132,14 +132,12 @@ e2k_lock_step :: (s: [] E2) {
 }
 // The plain line while you are down: centred over the bar, the Death Saving Throws as the room rolls
 // them (aethyr/rules/srd/death-save-line.coax).
-e2k_down_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+e2k_down_line :: (s: [] E2, out: [] f32, at: int) -> int {
   if !e2k_on(s) { return at; }
   row := e2n_vitals(s[0].net[..]);
   if row.id < 0 { return at; }
   line: [64] u8; ln := rs_death_line(rs_death_saves(row.hp, (row.g & WG_DEAD) != 0, row.p2), line[..]);
-  if ln == 0 { return at; }
-  kk := s[0].k; cap := 14 * kk; w := s[0].width;
-  return cc.text(out, at, cast(string) line[0..<ln], (w - f32(ln) * cap * 0.55) / 2, s[0].height * 0.38, cap, cc.ink(kk, 1, 0.5, 0.42));
+  return eg_down_line(out, at, cast(string) line[0..<ln], s[0].width, s[0].height, s[0].k);   // everglade/hud/windows.coax
 }
 // Whether slot i can go now (a held action, such as the bow's draw, asks before it starts): a no from
 // your bearing greys the slot.
@@ -370,12 +368,9 @@ e2k_box :: (k: [] E2Cast, i: int, w: f32, h: f32, kk: f32) -> [4] f32 { return x
 // A slot's card: 358x171 CSS px over its slot, kept 12 px inside the page, its foot over the slot and over
 // the bar's emblem (everglade/hud/parts.coax eg_bar_frame: 32 px over the top row).
 e2k_card_box :: (k: [] E2Cast, i: int, w: f32, h: f32, kk: f32) -> [4] f32 {
-  b := e2k_box(k, i, w, h, kk);
-  cw := 358 * kk; ch := 171 * kk; cx := (b[0] + b[2]) / 2;
-  if cx - cw / 2 < 12 * kk { cx = 12 * kk + cw / 2; }
-  if cx + cw / 2 > w - 12 * kk { cx = w - 12 * kk - cw / 2; }
-  cy := b[1] - 30 * kk; for j: 0..<k[0].bar_n { t := e2k_box(k, j, w, h, kk)[1] - 38 * kk; if t < cy { cy = t; } }
-  return [4] f32.[cx - cw / 2, cy - ch, cx + cw / 2, cy];
+  boxes: [XC_SLOTS * 4] f32;
+  for j: 0..<k[0].bar_n { b := e2k_box(k, j, w, h, kk); for q: 0..<4 { boxes[j * 4 + q] = b[q]; } }
+  return eg_slot_card(boxes[..], k[0].bar_n, i, w, kk);   // everglade/hud/windows.coax
 }
 e2k_put :: (m: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < m.count { m[n] = ch; n += 1; } } return n; }
 e2k_int :: (m: [] u8, at: int, v: int) -> int {
@@ -394,11 +389,11 @@ e2k_media :: (s: [] E2, what: string, url: string, art: string, size: string, b:
   n = e2k_put(m, n, tail);
   s[0].media_n = n;
 }
-e2k_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, r: f32, g: f32, b: f32) -> int {
-  if cc.lit(out, n, ax, ay, bx, by, wide, 1, 0, r, g, b, 0) { return n + 6; }
-  return n;
-}
-e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
+// The bar: Everglade's iron round the slots (everglade/hud/parts.coax eg_bar_frame), each slot's
+// picture with its grey and its cooling (the page's pictures), the marks over it (everglade/hud/
+// windows.coax eg_slot_marks), the card of the one under the pointer (eg_slot_card), the side bar and
+// a refusal over the emblem (eg_bar_refused).
+e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
   n := at;
   if !e2k_on(s) { return n; }
   k := s[0].casts[..]; w := s[0].width; h := s[0].height; kk := s[0].k;
@@ -406,7 +401,6 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   size := ifx kk > 1.4 then "-128.jpg" else "-72.jpg";
   left := f32(XC_COOL) - (now - k[0].cool_at);
   tick := deed_tick(now); bar_dim := deed_bar_dim(e2k_bearing(s));
-  // the bar's iron (everglade/hud/parts.coax eg_bar_frame), round the slots' pictures, the class's emblem over it
   boxes: [XC_SLOTS * 4] f32;
   for i: 0..<k[0].bar_n { b := e2k_box(k, i, w, h, kk); for q: 0..<4 { boxes[i * 4 + q] = b[q]; } }
   ui := s[0].creator[0].ui; tray := cc.uit_next(ui);   // the layout trace (#13076): the tray, its slots after it (eg_bar_slot_at)
@@ -414,7 +408,6 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   for i: 0..<k[0].bar_n {
     b := e2k_box(k, i, w, h, kk);
     a := k[0].bar[i]; art := xc_art(a, i);
-    slot := cc.eg_bar_slot_at(ui, tray, i);
     e2k_media(s, "image", xc_url(art), art, size, b, "");
     // refused, or held by your conditions: the slot greys (#13072), no words
     grey := deed_look(k[0].deeds[0], i, tick, 0).grey; if bar_dim > grey { grey = bar_dim; }
@@ -428,40 +421,29 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
       tail: [24] u8; tn := e2k_put(tail[..], 0, " 35 0 "); tn = e2k_int(tail[..], tn, cast(int)(share * 1000));
       e2k_media(s, "over", xc_url(art), art, size, dim, cast(string) tail[0..<tn]);
     }
-    if i < 9 && xc_draw_slot_key(i, art) {
-      key: [1] u8; key[0] = cast(u8)(49 + i);
-      n = cc.ttext(ui, slot, out, n, cast(string) key[..], b[0] + 4 * kk, b[1] + 13 * kk, 9 * kk, cc.ink(kk, 0.98, 0.95, 0.85), "key");
-    }
-    if i == k[0].used && left > 0 { n = e2k_line(out, n, b[0], b[3] + 4 * kk, b[2], b[3] + 4 * kk, 1.5 * kk, 1, 0.8, 0.4); }
-    // the room's count for it (slots at its level, uses, Rages, Focus) in its corner, and a gold
-    // frame while its effect holds (a Rage, Wild Shape's form): the room's word only (#13046)
+    // the room's count for it (slots at its level, uses, Rages, Focus) and a gold frame while its
+    // effect holds (a Rage, Wild Shape's form): the room's word only (#13046)
     kit := e2n_kit(s[0].net[..], i, k[0].bar_n);
-    if kit.ok && kit.left >= 0 {
-      d: [4] u8; dn := e2k_int(d[..], 0, kit.left); cap := 9 * kk;
-      n = cc.ttext(ui, slot, out, n, cast(string) d[0..<dn], b[2] - f32(dn) * cap * 0.78 - 5 * kk, b[3] - 5 * kk, cap,
-                  ifx kit.left == 0 then cc.ink(kk, 1, 0.55, 0.4) else cc.ink(kk, 1, 0.82, 0.35), "count");
-    }
-    if kit.ok && kit.on {
-      n = e2k_line(out, n, b[0], b[1], b[2], b[1], 1.5 * kk, 1, 0.75, 0.3); n = e2k_line(out, n, b[0], b[3], b[2], b[3], 1.5 * kk, 1, 0.75, 0.3);
-      n = e2k_line(out, n, b[0], b[1], b[0], b[3], 1.5 * kk, 1, 0.75, 0.3); n = e2k_line(out, n, b[2], b[1], b[2], b[3], 1.5 * kk, 1, 0.75, 0.3);
-    }
+    m: EgSlotMarks;
+    if i < 9 && xc_draw_slot_key(i, art) { m.key = cast(u8)(49 + i); }
+    m.used = i == k[0].used && left > 0;
+    if kit.ok && kit.left >= 0 { m.count = kit.left; }
+    m.held = kit.ok && kit.on;
+    n = eg_slot_marks(ui, cc.eg_bar_slot_at(ui, tray, i), out, n, b[..], m, kk);
   }
   if k[0].hover >= 0 && k[0].hover < k[0].bar_n {
-    a := k[0].bar[k[0].hover]; b := e2k_box(k, k[0].hover, w, h, kk);
-    c := e2k_card_box(k, k[0].hover, w, h, kk); cw := c[2] - c[0]; ch := c[3] - c[1]; cx := (c[0] + c[2]) / 2; cy := c[3];
-    e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", [4] f32.[cx - cw / 2, cy - ch, cx + cw / 2, cy], "");
-    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, cx - cw / 2, cy - ch, cx + cw / 2, cy, "card");
+    a := k[0].bar[k[0].hover]; c := e2k_card_box(k, k[0].hover, w, h, kk);
+    e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", c, "");
+    cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, c[0], c[1], c[2], c[3], "card");
   }
   // your health and what holds you are on the portrait plate (everglade2.coax e2_world_view, everglade/hud/parts.coax eg_world)
-  b0 := e2k_box(k, 0, w, h, kk);
   // Healer's Kit, the companion and rest: a framed side bar over the bar, each with its menu
   n = e2k_side_bar(s, out, n);
-  refused:=e2n_rest_message(s[0].net[..]);   // a refused cast greys its slot instead (#13072)
+  refused := e2n_rest_message(s[0].net[..]);   // a refused cast greys its slot instead (#13072)
   if refused.count == 0 { refused = e2n_aid_message(s[0].net[..]); }
   if refused.count == 0 { refused = e2n_familiar_message(s[0].net[..]); }
   // over the bar's emblem (the class's initial: its name is on the portrait plate)
-  if refused.count>0 { cc.uit_part(ui, "bar"); n=cc.hud_say_ui(ui,cc.UIT_NONE,"REFUSED",out,n,refused,w*0.5,e2k_side_top(s)-12*kk,8*kk,cc.hud_text(cc.eg_tokens(),cc.HUD_TEXT_WARN),1,kk,true); }
-  return n;
+  return eg_bar_refused(ui, out, n, refused, w * 0.5, ifx refused.count > 0 then e2k_side_top(s) else 0.0f32, kk);
 }
 
 // ---- input: 1 to 9 press the bar's slots; the pointer presses a slot or shows its card

@@ -1,0 +1,212 @@
+// Everglade's line HUD, the 5E Lab's (Everglade Experimental's spectator and player screens, #13083):
+// glowing lines and the vector font (font.coax draw_text), the kit's colours, and its parts: a
+// button, a picker's tab, a hotbar slot filling as its turn comes round, a slider with its number
+// and its most, a roster row, the log, the frame rate's corner, a thumb's stick, and where the top
+// buttons, the picker and the hotbar go. Plain data in, vertices out. A zone loads this beside
+// font.coax and charactercreator.coax as cc (lines are cc.lit's).
+//   coax/bin/coax test apps/openagents-web/fivelab.coax --only "ln "
+
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+Col :: struct { r: f32; g: f32; b: f32; }
+WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
+DIM :: Col.{r = 0.52, g = 0.55, b = 0.6};
+FAINT :: Col.{r = 0.28, g = 0.3, b = 0.34};
+RED :: Col.{r = 1.0, g = 0.25, b = 0.22};
+GREEN :: Col.{r = 0.4, g = 1.0, b = 0.5};
+VIOLET :: Col.{r = 0.75, g = 0.48, b = 1.0};
+GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
+CYAN :: Col.{r = 0.35, g = 0.9, b = 1.0};
+GAP :: 0.5; SPACE :: 1.2;   // the vector font's letter and word spacing, in caps
+
+ln_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+ln_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col) -> int {
+  if cc.lit(out, n, ax, ay, bx, by, w * 0.55, light, w * 1.8, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  sides := cast(int) (r * 2); if sides > 20 { sides = 20; } if sides < 8 { sides = 8; }   // a small ring, fewer sides (the flat view's crowds)
+  for i: 0..<sides {
+    a0 := f32(i) * 6.2831853 / f32(sides); a1 := f32(i + 1) * 6.2831853 / f32(sides);
+    n = seg(out, n, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, w, light, c);
+  }
+  return n;
+}
+box_lines :: (out: [] f32, at: int, r: Rect, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  n = seg(out, n, r.x0, r.y0, r.x1, r.y0, w, light, c);
+  n = seg(out, n, r.x1, r.y0, r.x1, r.y1, w, light, c);
+  n = seg(out, n, r.x1, r.y1, r.x0, r.y1, w, light, c);
+  n = seg(out, n, r.x0, r.y1, r.x0, r.y0, w, light, c);
+  return n;
+}
+ink :: (k: f32, light: f32, c: Col) -> Ink {
+  i: Ink;
+  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = c.r; i.green = c.g; i.blue = c.b; i.mode = 0; i.scale = k;
+  return i;
+}
+say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, n, t, x, base, cap, GAP, SPACE, k, false, false);
+}
+say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap) / 2, base, cap, k);
+}
+say_right :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap), base, cap, k);
+}
+// The cap that sets t no wider than room, cap at most.
+ln_fit :: (t: string, cap: f32, room: f32) -> f32 { return ln_lo(cap, cap * room / ln_hi(text_width(t, cap), 1)); }
+ln_put :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }
+ln_int :: (b: [] u8, at: int, v: int) -> int {
+  n := at; x := v; if x < 0 { n = ln_put(b, n, "-"); x = -x; }
+  d: [12] u8; c := 0; while true { d[c] = cast(u8)('0' + x % 10); c += 1; x /= 10; if x == 0 || c >= 12 { break; } }
+  while c > 0 { c -= 1; if n < b.count { b[n] = d[c]; n += 1; } }
+  return n;
+}
+
+// ---- the parts
+// A button: its frame (brighter while pressed) and its word in col, centred.
+ln_button :: (out: [] f32, at: int, r: Rect, word: string, pressed: bool, col: Col, k: f32) -> int {
+  n := box_lines(out, at, r, 0.8 * k, ifx pressed then 0.9 else 0.45, DIM);
+  return say_mid(out, n, word, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, col));
+}
+// A picker's tab: gold while picked, its word made smaller to fit.
+ln_pick :: (out: [] f32, at: int, r: Rect, word: string, on: bool, k: f32) -> int {
+  n := box_lines(out, at, r, 0.8 * k, ifx on then 0.95 else 0.4, ifx on then GOLD else DIM);
+  return say_mid(out, n, word, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2 + 4 * k, ln_fit(word, 8 * k, r.x1 - r.x0 - 6 * k), ink(k, ifx on then 1 else 0.7, ifx on then GOLD else WHITE));
+}
+// A hotbar slot's frame: gold while picked, dim while it can't go, and lines filling it from its foot
+// as ready (0 to 1) comes round. Its picture goes over it (the realm's), then ln_slot_words.
+ln_slot_frame :: (out: [] f32, at: int, r: Rect, on: bool, can: bool, ready: f32, k: f32) -> int {
+  n := box_lines(out, at, r, ifx on then 1.6 * k else 0.9 * k, ifx on then 1 else ifx can then 0.6 else 0.25, ifx on then GOLD else DIM);
+  fill := (r.y1 - r.y0 - 4 * k) * ready;
+  for row: 0..<6 { yy := r.y1 - 2 * k - fill * f32(row) / 5; n = seg(out, n, r.x0 + 3 * k, yy, r.x1 - 3 * k, yy, 0.7 * k, ifx on then 0.3 else 0.15, ifx on then GOLD else DIM); }
+  return n;
+}
+// A slot's key (slot c: "1" to "9"), its uses left (-1 none: red at 0) and its name along its foot.
+ln_slot_words :: (out: [] f32, at: int, r: Rect, c: int, left: int, name: string, on: bool, can: bool, k: f32) -> int {
+  key: [2] u8; key[0] = cast(u8) ('1' + c);
+  n := say_at(out, at, cast(string) key[0..<1], r.x1 - 9 * k, r.y0 + 10 * k, 7.5 * k, ink(k, 0.9, WHITE));
+  if left >= 0 { lb: [12] u8; lm := ln_int(lb[..], 0, left); n = say_at(out, n, cast(string) lb[0..<lm], r.x0 + 4 * k, r.y0 + 10 * k, 7.5 * k, ink(k, 0.9, ifx left > 0 then GOLD else RED)); }
+  return say_mid(out, n, name, (r.x0 + r.x1) / 2, r.y1 - 5 * k, ln_fit(name, 6.5 * k, r.x1 - r.x0 - 4 * k), ink(k, ifx can then 0.9 else 0.4, ifx on then GOLD else WHITE));
+}
+// A thumb's stick: its ring where it is held (or where to put a thumb), the knob while held.
+ln_stick :: (out: [] f32, at: int, ox: f32, oy: f32, r: f32, held: bool, px: f32, py: f32, k: f32) -> int {
+  n := ring(out, at, ox, oy, r, 1.2 * k, ifx held then 0.6 else 0.3, WHITE);
+  if held { n = ring(out, n, ox + px * r, oy - py * r, 12 * k, 2 * k, 0.8, GOLD); }
+  return n;
+}
+// A slider: its name right of nothing (left of the track), the track, its fill to pos (0 to 1) in
+// col, the knob, its number and the most it can field ("50 / 1024") kept inside a page w wide, and
+// what was asked past the most (asked 0: nothing).
+ln_slider :: (out: [] f32, at: int, t: Rect, name: string, v: int, most: int, pos: f32, on: bool, col: Col, asked: int, w: f32, k: f32) -> int {
+  y := (t.y0 + t.y1) / 2; n := at;
+  n = say_right(out, n, name, t.x0 - 10 * k, y + 4 * k, 8.5 * k, ink(k, 0.85, ifx on then GOLD else WHITE));
+  n = seg(out, n, t.x0, y, t.x1, y, 1.6 * k, 0.3, DIM);
+  px := t.x0 + (t.x1 - t.x0) * pos;
+  n = seg(out, n, t.x0, y, px, y, 1.8 * k, 0.9, col);
+  n = ring(out, n, px, y, 6 * k, 1.8 * k, ifx on then 1 else 0.8, ifx on then GOLD else WHITE);
+  l: [16] u8; m := ln_int(l[..], 0, v);
+  e: [24] u8; em := ln_put(e[..], 0, "/ "); em = ln_int(e[..], em, most);
+  vw := text_width(cast(string) l[0..<m], 10 * k); mw := text_width(cast(string) e[0..<em], 7.5 * k);
+  vx := ln_lo(t.x1 + 12 * k, w - 8 * k - mw - 8 * k - vw);
+  n = say_at(out, n, cast(string) l[0..<m], vx, y + 4.5 * k, 10 * k, ink(k, 0.95, ifx on then GOLD else WHITE));
+  n = say_at(out, n, cast(string) e[0..<em], vx + vw + 8 * k, y + 4.5 * k, 7.5 * k, ink(k, 0.8, WHITE));
+  if asked > 0 {
+    a: [64] u8; am := ln_int(a[..], 0, asked); am = ln_put(a[..], am, " ASKED, ");
+    am = ln_int(a[..], am, most); am = ln_put(a[..], am, " IS THE MOST");
+    n = say_at(out, n, cast(string) a[0..<am], t.x1 + 62 * k, y + 4 * k, 7.5 * k, ink(k, 1, RED));
+  }
+  return n;
+}
+// A roster row in a column half wide: the name in col, then what it holds after it (54 px in, or
+// past a long name), the short form when the whole is far too wide, fitted to what is left.
+ln_roster_row :: (out: [] f32, at: int, x: f32, y: f32, half: f32, pad: f32, name: string, col: Col, whole: string, short: string, cap: f32, k: f32) -> int {
+  n := say_at(out, at, name, x, y, cap * 0.92, ink(k, 0.85, col));
+  off := ln_hi(54 * k, text_width(name, cap * 0.92) + 6 * k);
+  room := half - off - 4 * k - pad;
+  t := ifx text_width(whole, cap * 0.8) > room * 1.25 then short else whole;
+  cp := ln_lo(cap * 0.8, cap * 0.8 * room / ln_hi(text_width(t, cap * 0.8), 1));
+  return say_at(out, n, t, x + off, y, cp, ink(k, 0.6, DIM));
+}
+// The log's lines from the foot up (each fitted to the panel's room), newest at the bottom, and the
+// attribution the SRD's licence asks for under them. lines and cols the newest last.
+ln_log :: (out: [] f32, at: int, p: Rect, pad: f32, top: f32, lines: [] string, cols: [] Col, cap: f32, row: f32, k: f32) -> int {
+  n := at; x := p.x0 + pad;
+  foot := p.y1 - pad - 18 * k;
+  shown := cast(int) ((foot - top - row * 0.5) / row); if shown > lines.count { shown = lines.count; } if shown < 0 { shown = 0; }
+  ly := foot - f32(shown - 1) * row;
+  for j: 0..<shown {
+    q := lines.count - shown + j; t := lines[q];
+    n = say_at(out, n, t, x, ly + f32(j) * row, ln_fit(t, cap, p.x1 - p.x0 - pad * 2), ink(k, 0.8, cols[q]));
+  }
+  return say_at(out, n, "SRD 5.2.1 BY WIZARDS OF THE COAST LLC, CC BY 4.0", x, p.y1 - pad, 7.5 * k, ink(k, 0.4, FAINT));
+}
+// The frame rate's corner, right-aligned at fxr on baseline fyb: "60 FPS  16.7 MS" (green, gold,
+// red as it falls) and over it the figures on the field; a phone's narrow corner puts the
+// milliseconds up a line with the count.
+ln_fps :: (out: [] f32, at: int, fps: f32, ms: f32, figures: int, fxr: f32, fyb: f32, phone: bool, k: f32) -> int {
+  fl: [40] u8; tenths := cast(int) (ms * 10 + 0.5); whole := cast(int) (fps + 0.5);
+  fm := ln_int(fl[..], 0, whole); fm = ln_put(fl[..], fm, " FPS");
+  if !phone { fm = ln_put(fl[..], fm, "  "); fm = ln_int(fl[..], fm, tenths / 10); fm = ln_put(fl[..], fm, "."); fm = ln_int(fl[..], fm, tenths % 10); fm = ln_put(fl[..], fm, " MS"); }
+  fc := 15 * k;
+  n := say_at(out, at, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], fc), fyb, fc, ink(k, 1, ifx fps >= 50 then GREEN else ifx fps >= 30 then GOLD else RED));
+  fm = 0;
+  if phone { fm = ln_int(fl[..], 0, tenths / 10); fm = ln_put(fl[..], fm, "."); fm = ln_int(fl[..], fm, tenths % 10); fm = ln_put(fl[..], fm, " MS  "); }
+  fm = ln_int(fl[..], fm, figures); fm = ln_put(fl[..], fm, ifx phone then " FIGURES" else " FIGURES ON THE FIELD");
+  return say_at(out, n, cast(string) fl[0..<fm], fxr - text_width(cast(string) fl[0..<fm], 10 * k), fyb - 24 * k, 10 * k, ink(k, 0.85, WHITE));
+}
+
+// ---- where the parts go
+// The buttons along the top right, right to left: WORLDS (back), the view (flip), the mode (modal),
+// Spectator/Player and the scenario; a phone puts the mode, the switch and the scenario over the
+// panel (panel_y0) at the left. b gets back, flip, modal, player, scenario.
+ln_top_buttons :: (b: [] Rect, w: f32, pad: f32, phone: bool, panel_y0: f32, k: f32) {
+  bw := 96 * k;
+  b[0] = Rect.{x0 = w - pad - bw, y0 = 18 * k, x1 = w - pad, y1 = 46 * k};
+  b[1] = Rect.{x0 = b[0].x0 - 8 * k - bw, y0 = 18 * k, x1 = b[0].x0 - 8 * k, y1 = 46 * k};
+  mw := 128 * k;
+  b[2] = Rect.{x0 = b[1].x0 - 8 * k - mw, y0 = 18 * k, x1 = b[1].x0 - 8 * k, y1 = 46 * k};
+  // a phone has no room beside the title: the mode sits in the scene's bottom-left corner
+  if phone { b[2] = Rect.{x0 = pad, y0 = panel_y0 - 8 * k - 28 * k, x1 = pad + mw, y1 = panel_y0 - 8 * k}; }
+  pbw := 104 * k;
+  b[3] = Rect.{x0 = b[2].x0 - 8 * k - pbw, y0 = b[2].y0, x1 = b[2].x0 - 8 * k, y1 = b[2].y1};
+  if phone { b[3] = Rect.{x0 = b[2].x1 + 8 * k, y0 = b[2].y0, x1 = b[2].x1 + 8 * k + pbw, y1 = b[2].y1}; }
+  // the scenario: left of the switch, on a phone a row above the mode (the FPS has the right of its row)
+  sbw := 84 * k;
+  b[4] = Rect.{x0 = b[3].x0 - 8 * k - sbw, y0 = b[3].y0, x1 = b[3].x0 - 8 * k, y1 = b[3].y1};
+  if phone { b[4] = Rect.{x0 = pad, y0 = b[2].y0 - 36 * k, x1 = pad + sbw, y1 = b[2].y0 - 8 * k}; }
+}
+// n tabs side by side across x0..x1 (gap between), y0 to y1; the rest of r left empty.
+ln_spread :: (r: [] Rect, n: int, x0: f32, x1: f32, gap: f32, y0: f32, y1: f32) {
+  wid := (x1 - x0 - f32(n - 1) * gap) / f32(ln_hi(f32(n), 1));
+  for c: 0..<r.count { r[c] = Rect.{}; if c < n { r[c] = Rect.{x0 = x0 + f32(c) * (wid + gap), y0 = y0, x1 = x0 + f32(c) * (wid + gap) + wid, y1 = y1}; } }
+}
+// n square slots centred across x0..x1, size at most 64 CSS px (as r.count of them fit), their foot
+// at y1; the rest of r left empty.
+ln_hotbar :: (r: [] Rect, n: int, x0: f32, x1: f32, y1: f32, k: f32) {
+  sg := 6 * k; slot := ln_lo(64 * k, (x1 - x0 - f32(r.count - 1) * sg) / f32(r.count));
+  gaps := ifx n > 1 then f32(n - 1) else 0.0f32;
+  hx0 := (x0 + x1) / 2 - (f32(n) * slot + gaps * sg) / 2;
+  for c: 0..<r.count { r[c] = Rect.{}; if c < n { r[c] = Rect.{x0 = hx0 + f32(c) * (slot + sg), y0 = y1 - slot, x1 = hx0 + f32(c) * (slot + sg) + slot, y1 = y1}; } }
+}
+#test "ln parts: buttons, picks, slots, a slider, a roster row, the log, the corner and the places" #steps 400000000 {
+  out: [60000] f32; k := 1.0f32;
+  r := Rect.{x0 = 100, y0 = 18, x1 = 196, y1 = 46};
+  #assert ln_button(out[..], 0, r, "WORLDS", false, WHITE, k) > 4 && ln_pick(out[..], 0, r, "A VERY LONG CLASS NAME", true, k) > 4;
+  #assert ln_slot_frame(out[..], 0, r, true, true, 0.5, k) == 10 * 6 && ln_slot_words(out[..], 0, r, 0, 2, "FIRE BOLT", true, true, k) > 0;
+  #assert ln_stick(out[..], 0, 300, 600, 56, false, 0, 0, k) == 20 * 6;
+  t := Rect.{x0 = 200, y0 = 90, x1 = 420, y1 = 110};
+  plain := ln_slider(out[..], 0, t, "HEROES", 48, 1024, 0.2, false, GREEN, 0, 1600, k); #assert ln_slider(out[..], 0, t, "HEROES", 1024, 1024, 1, true, GREEN, 1283, 1600, k) > plain;
+  #assert ln_roster_row(out[..], 0, 20, 100, 300, 12, "Ash", GREEN, "HP 9/18  AC 13  POISONED", "HP 9/18  AC 13", 8.5, k) > 0;
+  ls := [3] string.["ONE", "TWO", "THREE"]; cs := [3] Col.[WHITE, RED, GOLD];
+  #assert ln_log(out[..], 0, Rect.{x0 = 1000, y0 = 64, x1 = 1580, y1 = 980}, 12, 400, ls[..], cs[..], 8.5, 16, k) > 0;
+  #assert ln_fps(out[..], 0, 60, 16.7, 300, 1000, 980, false, k) > 0;
+  b: [5] Rect; ln_top_buttons(b[..], 1600, 16, false, 0, k);
+  #assert b[0].x1 == 1584 && b[1].x1 < b[0].x0 && b[2].x1 < b[1].x0 && b[3].x1 < b[2].x0 && b[4].x1 < b[3].x0;
+  ln_top_buttons(b[..], 390, 16, true, 600, k); #assert b[2].x0 == 16 && b[2].y1 == 592 && b[3].x0 > b[2].x1 && b[4].y1 < b[2].y0;
+  p: [12] Rect; ln_spread(p[..], 4, 16, 816, 4, 70, 94); #assert p[3].x1 == 816 && p[4].x1 == 0;
+  h: [9] Rect; ln_hotbar(h[..], 3, 16, 816, 700, k); #assert h[0].x1 - h[0].x0 == 64 && abs((h[0].x0 + h[2].x1) / 2 - 416) < 0.01 && h[3].x1 == 0;
+}

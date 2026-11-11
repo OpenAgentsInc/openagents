@@ -64,7 +64,7 @@ presentation queue (`aethyr/action/react.coax`, #13072).
 | Zone | Where |
 | --- | --- |
 | Everglade II | Local, twice: monsters (`E2mnMark` everglade2-monsters.coax:26, `e2mn_mark` :143, drawn in `e2mn_hud` :186) and the guard (`E2gdMark` everglade2-guard.coax:19, drawn in `e2gd_hud` :160). |
-| Experimental | Local, three times: the 5E Lab (`HitGroup` fivelab.coax:355, `hit_groups` :360, drawn by `draw_fx` :2610), the combat (`XcFloat` experimental-combat.coax:76, `xc_float_from` :292, throttled by the shared `react.react_present`), and Character Create's `combat_hud` (charactercreator.coax:302) drawing `DamagePop` (verse/experimental-hostiles.coax:19). |
+| Experimental | Local, three times: the 5E Lab (`HitGroup` fivelab.coax:355, `hit_groups` :360, drawn by `draw_fx` :2610), the combat (`XcFloat` experimental-combat.coax:76, `xc_float_from` :292, throttled by the shared `react.react_present`), and Character Create's pops (`eg_pops` in everglade/hud/screens.coax) drawing `DamagePop` (verse/experimental-hostiles.coax:19). |
 | Everglade v1 | Local: `WatchPop` everglade-watch.coax:34, `watch_pop` :617, `watch_pops_draw` :656; condition words through `st_pops_frame` everglade-status.coax:139. |
 
 ### Area targeting
@@ -100,13 +100,22 @@ clock of an effect a page counts down (`CdClock`).
 
 The shared modules are `aethyr/ui/` (HUD atlas boxes, settings, feed),
 `verse/hud.coax` and `verse/hud/` (slot geometry and frames), `class-look.coax`
-(`xc_slot_at`, the bar's boxes) and `class-menu.coax` (the CLASSES column).
-`everglade/hud/` is arriving from the HUD work.
+(`xc_slot_at`, the bar's boxes), `class-menu.coax` (the CLASSES column) and
+`everglade/hud/`: `parts.coax` (the portrait plate, the bar's tray, the map,
+plates, numbers), `class-bar.coax` (the side bar), `windows.coax` (the prompt
+plaque, a character's talk, the Golemancer's Workbench, the marks over the bar's
+slots and its card, the graphics control, a readout, the wedge toward a blow from
+off the screen, the line said while you are down, a number risen off a body),
+`create.coax` (Character Create's panel and the world's menu), `screens.coax`
+(the animations list, the plain health line, the fallen words, damage pops,
+Character Create's boxes, a framed box and prompt) and `lines.coax` (the 5E Lab's
+line HUD: buttons, picks, hotbar slots, sliders, roster rows, the log, the frame
+rate's corner and where the top buttons, the picker and the hotbar go).
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Local: the hotbar and health line `e2k_hud` everglade2-cast.coax:259, monster and guard plates `e2mn_hud` everglade2-monsters.coax:186 and `e2gd_hud` everglade2-guard.coax:160, `e2c_hud` everglade2-create.coax:417, `e2_quality_hud` everglade2.coax:785, `e2_light_hud` :1062. Shared slot layout and art. |
-| Experimental | Local: the 5E Lab's `layout` fivelab.coax:2427, `draw_panel` :2802, `draw_player` :2971, `draw_top` :3069, `draw_sliders` :3409; the combat's `xc_slot_box` experimental-combat.coax:1686 and `xc_frame_box` :1992; Character Create's `dev_hud` charactercreator.coax:277, `combat_hud` :302 and `layout` :921. |
+| Everglade II | Shared: `e2_overlay` wires `everglade/hud/` (`e2k_bar_draw`, `e2c_draw`, `e2p_overlay`, `e2b_overlay`, `e2mn_wedge`, `e2_gfx_control`, `e2_light_readout`, `e2_floats_draw`, `e2k_down_line`). |
+| Experimental | Shared: the 5E Lab (`lab_layout`, `lab_panel_view`, `lab_player_bar`, `lab_top_bar`, `lab_sliders`) draws through `everglade/hud/lines.coax`; Character Create (`creator_layout`, `dev_panel`, `combat_overlay`) and the combat's slot boxes, frames and the ride prompt (`lab_ride_prompt`) through `everglade/hud/screens.coax`. |
 | Everglade v1 | Local: `hud` everglade.coax:4084, the spell bar `spells_hud` everglade-spells.coax:2023 and `sp_bar` :2254, the generated icon table everglade-hotbar.coax, party frames `pt_draw` everglade-party.coax:222, and a HUD a subsystem (`watch_hud`, `st_hud`, `ege_hud`, `ega_hud` and more). Shared `verse/hud/frame.coax` for the forge panels only (everglade-forge.coax:20). |
 
 ### Class bars
@@ -264,7 +273,7 @@ when v1 wires the shared module or retires.
 | Damage numbers | #13080 | 7 / 14 / 24 | Everglade II, Experimental, Everglade v1 |
 | Area targeting | #13081 | 0 / 0 / 10 | |
 | Conditions | #13082 | 0 / 0 / 15 | none |
-| HUD parts | #13083 | 11 / 11 / 24 | none |
+| HUD parts | #13083 | 0 / 0 / 24 | none |
 | Class bars | #13084 | 2 / 1 / 5 | Everglade v1 |
 | Dash | #13085 | 0 / 2 / 0 | none |
 | Name plates | #13088 | 0 / 0 / 14 | Everglade v1 |
@@ -301,10 +310,9 @@ No zone-local copies: the held kit moved to `everglade/held-kit.coax`.
 
 ### HUD parts (#13083)
 
-46 zone-local copies.
+24 zone-local copies, all in the frozen Everglade v1. Everglade II and Experimental wire
+`everglade/hud/`.
 
-- Everglade II: `e2k_hud` everglade2-cast.coax:259, `e2c_hud` everglade2-create.coax:417, `e2mn_hud` everglade2-monsters.coax:186, `e2_quality_hud` everglade2.coax:785, `e2_light_hud` everglade2.coax:1062, and, landed before the check gated `main` (#13135), `e2b_hud` everglade2-bench.coax:203, `e2k_down_hud` everglade2-cast.coax:135, `e2c_menu_hud` everglade2-create.coax:317, `e2p_hud` everglade2-npc.coax:136, `e2_hud` everglade2.coax:1140, `e2_floats_hud` everglade2.coax:1820.
-- Experimental: `lab_ride_hud` experimental-ride.coax:375 (#13135), `dev_hud` charactercreator.coax:277, `combat_hud` charactercreator.coax:302, `layout` charactercreator.coax:921, `xc_slot_box` experimental-combat.coax:1686, `xc_frame_box` experimental-combat.coax:1992, `layout` fivelab.coax:2427, `draw_panel` fivelab.coax:2802, `draw_player` fivelab.coax:2971, `draw_top` fivelab.coax:3069, `draw_sliders` fivelab.coax:3409.
 - Everglade v1: `ega_hud` everglade-access.coax:398, `ega_test_hud` everglade-access.coax:708, `cz_hud` everglade-create.coax:328, `everglade_edit_hud` everglade-edit.coax:348, `ege_hud` everglade-events.coax:553, `forge_hud` everglade-forge.coax:179, `fork_hud` everglade-fork.coax:327, `everglade_guide_hud` everglade-guide.coax:106, `eg_first_hud` everglade-guide.coax:187, `eg_raid_arrival_hud` everglade-guide.coax:245, `everglade-hotbar.coax` (file), `join_hud` everglade-join.coax:311, `pt_draw` everglade-party.coax:222, `eg_quality_hud` everglade-quality.coax:62, `rp_hud_off` everglade-raid-preview.coax:140, `egs_hud` everglade-sound.coax:507, `spells_hud` everglade-spells.coax:2023, `sp_bar` everglade-spells.coax:2254, `sp_bar_desk` everglade-spells.coax:2313, `sp_bar_card` everglade-spells.coax:2348, `st_hud` everglade-storm.coax:549, `everglade_voice_hud` everglade-voice.coax:1032, `watch_hud` everglade-watch.coax:692, `hud` everglade.coax:4084.
 
 ### Class bars (#13084)
