@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Firm reason: 5, a wrapper around gcloud, cloud-sql-proxy and psql; the logic is SQL (guard.sql,
+# grants.sql). Its loops, SCRAM step and checks are to move into Coax (follow-up to #13218).
 # Splits the API's database roles (docs/auth/data-and-backups.md, #13194):
 #
 #   coax/web/api/db/roles.sh staging      # oa_analytics_staging: oa_api_staging

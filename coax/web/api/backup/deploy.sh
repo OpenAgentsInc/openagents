@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5, a thin wrapper around gcloud (build, jobs, schedules).
 # Builds the backup image and (re)makes its Cloud Run jobs and schedules
 # (docs/auth/data-and-backups.md, #13194). Idempotent.
 #

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Firm reason: 5, it wraps pg_dump, pg_restore, psql, age and curl inside the postgres:18 job
+# image, where no Coax binary ships yet. Its count comparison is to move into Coax (follow-up to #13218).
 # The API database's logical backups (docs/auth/data-and-backups.md, #13194).
 #
 #   backup.sh dump    pg_dump of the whole database, encrypted to recipients.txt,
