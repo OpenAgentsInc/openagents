@@ -1,12 +1,15 @@
 // The codex engine: the installed Codex CLI on its own ChatGPT login,
-// driven as `codex app-server` over JSON-RPC by coax/lib/agent/codex, one
-// thread for the conversation. Like the claude engine it streams the reply,
+// driven as `codex app-server` by the shared Codex engine
+// (coax/lib/agent/engine/codex.coax) with Coder's own launch, settings and
+// name (cxe_own), one thread for the conversation. The engine starts the
+// server, sends the owed message once the thread is open and keeps the
+// session record; each event then comes here, where it is printed and where
+// approvals and Coder's tool calls are answered. Like the claude engine it streams the reply,
 // shows each command and its output, and shows file changes as diffs.
 // Commands run without asking (approval policy never, full access); with
 // --ask each approval comes to the y/a/n prompt instead. Under a policy the
 // sandbox follows its ceiling (cd_codex_sandbox): read-only below write.
 
-#load "../../coax/lib/agent/codex/codex.coax";
 #load "codex-options.coax";
 
 // This read-only handoff is available in every Codex chat, without requiring
@@ -42,7 +45,15 @@ cd_codex_settings :: (a: [] App) -> CxSettings {
 cd_codex_reader_answer :: (a: [] App) {
   out: [CSR_OUTPUT_MAX] u8;
   got := csr_request_in(cast(string) a[0].ask_input[0..<a[0].nask_input], a[0].cwd, out[..]);
-  cx_tool_answer(a[0].cx, got, cl_raw(got, "error").count == 0);
+  cxe_tool_answer(a[0].cxe, got, cl_raw(got, "error").count == 0);
+}
+
+// What the shared engine runs the server with: Coder's launch (codex on PATH, in the session's
+// folder), its settings as they are now, its name.
+cd_codex_own :: (a: [] App) {
+  a[0].cx_set[0] = cd_codex_settings(a);
+  a[0].cx_launch[0] = CxLaunch.{}; a[0].cx_launch[0].cwd = a[0].cwd;
+  cxe_own(a[0].cxe, a[0].cx_launch[..], a[0].cx_set[..], "openagents-coder", "Coder", CODER_VERSION);
 }
 
 // Client-executed tools must pass Coder's own hooks and existing policy:
@@ -51,20 +62,20 @@ cd_codex_reader_answer :: (a: [] App) {
 // a job with no person is refused by the existing job approval path.
 cd_codex_tool_call :: (a: [] App, ev: CxEvent) {
   c := a[0].cx;
-  if a[0].engine != ENGINE_CODEX || !a[0].running || a[0].stopping { cx_tool_answer(c, "Coder's Codex turn is inactive.", false); return; }
+  if a[0].engine != ENGINE_CODEX || !a[0].running || a[0].stopping { cxe_tool_answer(a[0].cxe, "Coder's Codex turn is inactive.", false); return; }
   name := cd_cx_str(a, ev.params, "tool");
-  if name != "coder_session_read" || cd_cx_str(a, ev.params, "namespace").count > 0 { cx_tool_answer(c, "Unknown Coder tool.", false); return; }
+  if name != "coder_session_read" || cd_cx_str(a, ev.params, "namespace").count > 0 { cxe_tool_answer(a[0].cxe, "Unknown Coder tool.", false); return; }
   thread := cd_cx_str(a, ev.params, "threadId"); turn := cd_cx_str(a, ev.params, "turnId");
-  if (thread.count > 0 && thread != cx_thread_id(c)) || (turn.count > 0 && turn != cx_turn_id(c)) { cx_tool_answer(c, "Coder's Codex turn is inactive.", false); return; }
+  if (thread.count > 0 && thread != cx_thread_id(c)) || (turn.count > 0 && turn != cx_turn_id(c)) { cxe_tool_answer(a[0].cxe, "Coder's Codex turn is inactive.", false); return; }
   args := cl_raw(ev.params, "arguments");
-  if args.count == 0 || args.count > a[0].ask_input.count { cx_tool_answer(c, "Invalid or overlong reader arguments.", false); return; }
+  if args.count == 0 || args.count > a[0].ask_input.count { cxe_tool_answer(a[0].cxe, "Invalid or overlong reader arguments.", false); return; }
   hw: [400] u8;
-  if !cd_hooks_run(a, "tool_call", "", name, args, hw[..]) { cx_tool_answer(c, "A Coder tool hook refused this call.", false); return; }
+  if !cd_hooks_run(a, "tool_call", "", name, args, hw[..]) { cxe_tool_answer(a[0].cxe, "A Coder tool hook refused this call.", false); return; }
   if a[0].pol[0].on {
     why: [256] u8; verdict := cd_policy_tool(a[0].pol[..], name, false, why[..]);
     k := 0; while k < why.count && why[k] != 0 { k += 1; }
     cd_approval_note(a, name, cd_effect_of(name), false, verdict, cast(string) why[0..<k]);
-    if verdict == CD_VERDICT_REFUSE { cx_tool_answer(c, cast(string) why[0..<k], false); return; }
+    if verdict == CD_VERDICT_REFUSE { cxe_tool_answer(a[0].cxe, cast(string) why[0..<k], false); return; }
     // An external history read cannot be silently approved through roots.
   }
   a[0].nask_input = cd_cat(a[0].ask_input[..], 0, args);
@@ -83,33 +94,34 @@ cd_codex_open :: (a: [] App) {
   a[0].cx_options[0].resolved = false;
   ok := ccx_keep(a[0].cx_options[0].actual_model[..], "");
   ok = ccx_keep(a[0].cx_options[0].actual_effort[..], "");
-  fresh: CxClient; a[0].cx[0] = fresh;
-  cx_init(a[0].cx, a[0].cx_line, a[0].cx_arena, a[0].cx_outb);
-  l: [1] CxLaunch; l[0].cwd = a[0].cwd;
-  why := cx_start(a[0].cx, a[0].cxp, l[0]);
-  if why.count > 0 {
+  // a fresh client: the server started and initialize sent (cxe_launch)
+  cd_codex_own(a);
+  if !cxe_launch(a[0].cxe, a[0].cx_ses, true) {
+    wb: [2048] u8; wn := cd_cat(wb[..], 0, e_str(a[0].cxe[0].err, a[0].cxe[0].err_n));
+    why := cast(string) wb[0..<wn];
     a[0].cx_options[0].failed = true;
     if a[0].running { cd_finish(a, END_FAILED, why); }
     else { cd_commit_prefixed(a, TUI_RED, "  Codex: ", "  ", why); }
     return;
   }
   a[0].cx_live = true; a[0].cx_ready = false;
-  r := cx_initialize(a[0].cx, "openagents-coder", "Coder", CODER_VERSION);
 }
 
+// The message joins the engine's record and goes as a turn: at once on an open thread, else once
+// the thread is open (a first message is cut to CD_FIRST_MAX, as Coder kept it while it waited).
 cd_codex_send :: (a: [] App, msg: string) {
-  none: [1] string;
-  if a[0].cx_live && a[0].cx_ready {
-    r := cx_turn_start(a[0].cx, msg, none[0..<0], cd_codex_settings(a));
-    return;
-  }
-  a[0].npending = cd_cat(a[0].pending[..], 0, msg);
-  cd_codex_open(a);
+  ready := a[0].cx_live && a[0].cx_ready;
+  if !ready { cd_codex_open(a); if !a[0].cx_live { return; } }
+  s := a[0].cx_ses;
+  if !s[0].live { s_init(s, s[0].pool); a[0].cx_seen[0] = SCursor.{}; }
+  a[0].cx_set[0] = cd_codex_settings(a);
+  text := ifx ready || msg.count <= CD_FIRST_MAX then msg else cast(string) msg[0..<CD_FIRST_MAX];
+  cxe_send_as(a[0].cxe, s, text, text);
 }
 
 cd_codex_close :: (a: [] App) {
   if !a[0].cx_live { return; }
-  cx_close_process(a[0].cxp);
+  cxe_close(a[0].cxe);
   a[0].cx_live = false; a[0].cx_ready = false;
 }
 
@@ -281,19 +293,34 @@ cd_codex_completed :: (a: [] App, item: string) {
   }
 }
 
+// The engine's record keeps nothing the terminal has had: it is read to the end and trimmed.
+cd_codex_record :: (a: [] App) {
+  s := a[0].cx_ses;
+  while s_next(s, a[0].cx_seen[..]).k >= 0 {}
+  trimmed := s_trim(s, a[0].cx_seen[..]);
+}
+
 // One poll of the server; true when something changed.
 cd_codex_poll :: (a: [] App) -> bool {
   if !a[0].cx_live || a[0].ask { return false; }
-  c := a[0].cx; p := a[0].cxp;
+  changed := cd_codex_events(a);
+  cd_codex_record(a);
+  return changed;
+}
+cd_codex_events :: (a: [] App) -> bool {
+  c := a[0].cx; x := a[0].cxe;
   changed := false;
-  none: [1] string;
+  one: [1] CxEvent;
   for guard: 0..<64 {
-    ev := cx_poll(c, p, 0);
+    // the engine's part of each event is done when it comes back: initialize noted, the owed
+    // message sent once the thread is open, a notification folded into the record, a dead server closed
+    asked := cxe_poll(x, a[0].cx_ses, one[..]);
+    ev := one[0];
     if ev.kind == CxEventKind.idle { break; }
     changed = true;
     if ev.kind == CxEventKind.end || ev.kind == CxEventKind.failed {
-      eb: [2048] u8; why := cx_error(c);
-      if why.count == 0 { why = cl_stderr(p, eb[..]); }
+      why := cx_error(c);
+      if why.count == 0 { why = e_str(x[0].err, x[0].err_n); }
       if why.count == 0 { why = "Codex exited."; }
       wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
       cd_codex_close(a);
@@ -305,7 +332,8 @@ cd_codex_poll :: (a: [] App) -> bool {
     if ev.kind == CxEventKind.initialized {
       // A restarted server may expose a different catalog.
       cd_codex_catalog_start(a);
-      r := cx_thread_start(c, cd_codex_settings(a));
+      a[0].cx_set[0] = cd_codex_settings(a);
+      cxe_thread(x);
       continue;
     }
     if ev.kind == CxEventKind.answered && ev.of == CX_MODEL_LIST {
@@ -322,11 +350,7 @@ cd_codex_poll :: (a: [] App) -> bool {
     if ev.kind == CxEventKind.answered && ev.of == CX_THREAD_START {
       ccx_resolved(a[0].cx_options[..], c[0].ar[..], ev.result);
       cs_cx_model(a);
-      a[0].cx_ready = true;
-      if a[0].npending > 0 && a[0].running {
-        r := cx_turn_start(c, cast(string) a[0].pending[0..<a[0].npending], none[0..<0], cd_codex_settings(a));
-        a[0].npending = 0;
-      }
+      a[0].cx_ready = true;      // (the engine has sent the owed message as the thread's first turn)
       continue;
     }
     if ev.kind == CxEventKind.refused {
@@ -363,14 +387,14 @@ cd_codex_poll :: (a: [] App) -> bool {
         if gr.count > 0 { inside = cd_inside(a[0].pol[..], a[0].cwd, gr); }
       }
       hw: [400] u8; for i: 0..<hw.count { hw[i] = 0; }
-      if !cd_hooks_run(a, "tool_call", "", what, ev.params, hw[..]) { cx_approve(a[0].cx, false); continue; }
-      if !a[0].pol[0].on && !a[0].ask_first { cx_approve(a[0].cx, true); continue; }   // asked only for the hooks
+      if !cd_hooks_run(a, "tool_call", "", what, ev.params, hw[..]) { cxe_approve(a[0].cxe, false); continue; }
+      if !a[0].pol[0].on && !a[0].ask_first { cxe_approve(a[0].cxe, true); continue; }   // asked only for the hooks
       if a[0].pol[0].on {
         pw: [256] u8;
         verdict := cd_policy_decide(a[0].pol[..], effect, inside, pw[..]);
         k := 0; while k < pw.count && pw[k] != 0 { k += 1; }
         cd_approval_note(a, what, effect, inside, verdict, cast(string) pw[0..<k]);
-        if verdict != CD_VERDICT_ASK { cx_approve(a[0].cx, verdict == CD_VERDICT_RUN); continue; }
+        if verdict != CD_VERDICT_ASK { cxe_approve(a[0].cxe, verdict == CD_VERDICT_RUN); continue; }
       }
       a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
       a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, what);
@@ -420,13 +444,13 @@ cd_codex_poll :: (a: [] App) -> bool {
 
 cd_codex_answer :: (a: [] App, c: int) {
   if a[0].cx[0].asking == CX_ASK_TOOL && (c == 'y' || c == 'Y' || c == 'a' || c == 'A') { cd_codex_reader_answer(a); return; }
-  cx_approve(a[0].cx, c == 'y' || c == 'Y' || c == 'a' || c == 'A');
+  cxe_approve(a[0].cxe, c == 'y' || c == 'Y' || c == 'a' || c == 'A');
 }
 
 // Esc: interrupt the turn; asked twice, or no turn to interrupt, end the session.
 cd_codex_stop :: (a: [] App) {
-  if a[0].ask { cx_approve(a[0].cx, false); a[0].ask = false; }
-  if a[0].cx_live && a[0].cx_ready && !a[0].stopping && cx_interrupt(a[0].cx) != 0 {
+  if a[0].ask { cxe_approve(a[0].cxe, false); a[0].ask = false; }
+  if a[0].cx_live && a[0].cx_ready && !a[0].stopping && cxe_interrupt(a[0].cxe, a[0].cx_ses) {
     a[0].stopping = true;
     a[0].stop_ms = cd_now(a);
     return;           // the turn ends with turn/completed, status interrupted

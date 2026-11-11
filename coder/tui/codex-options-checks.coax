@@ -1,3 +1,4 @@
+#run_steps 1000000;
 #load "coder.coax";
 main :: () {}
 
@@ -58,8 +59,7 @@ main :: () {}
   #assert cd_codex_settings(a[..]).effort == "ultra"; // unsupported on deep
   tui_ed_set(a[0].ed[..], "/effort high"); cd_submit(a[..]);
   #assert cd_codex_settings(a[..]).effort == "high";
-  cd_key(a[..], TuiKey.{kind = TUI_K_BACKTAB}); // Codex -> Microcoder
-  cd_key(a[..], TuiKey.{kind = TUI_K_BACKTAB}); // -> Claude
+  cd_switch(a[..], ENGINE_CLAUDE);               // (Shift-Tab passes Cursor, which needs a process: a check can't start one)
   #assert a[0].engine == ENGINE_CLAUDE && a[0].model == "claude-model";
   tui_ed_set(a[0].ed[..], "/model small"); cd_submit(a[..]);
   #assert ccx_model(a[0].cx_options[..]) == "deep";

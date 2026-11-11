@@ -36,7 +36,7 @@
 #load "../../coax/lib/tui/tui.coax";
 #load "../../coax/lib/tui/vt.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
-#load "../../coax/lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
+#load "../../coax/lib/agent/engine/engine.coax";   // the shared engines (Claude and Codex here) and the session record they write
 #load "../../psionic/lib/apple-fm.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
@@ -193,7 +193,9 @@ App :: struct {
   ask_input: [65536] u8; nask_input: int;
   ask_perm: [16384] u8; nask_perm: int;
   // codex engine: one app-server thread for the conversation
-  cx: [] CxClient; cxp: [] ClProcess; cx_line: [] u8; cx_arena: [] u8; cx_outb: [] u8;
+  // the shared Codex engine (codex.coax) and its record; cx and cxp are its client and process
+  cxe: [] CxEngine; cx_ses: [] Session; cx_seen: [1] SCursor; cx_set: [1] CxSettings; cx_launch: [1] CxLaunch;
+  cx: [] CxClient; cxp: [] ClProcess;
   cx_live: bool;                  // the server is running
   cx_ready: bool;                 // its thread is started
   cx_options: [1] CdCxOptions;     // Codex's own catalog, resolved config and session selection
@@ -2652,9 +2654,13 @@ tool_main :: () -> int #export_c #effects(all) {
   eng_b: [1] Engine; ses_b: [1] Session; ses_pool_b: [2097152] u8; prompt_b: [262144] u8;
   dft: [1] DfTable; a[0].df_table = dft[..];
   qline_b: [CL_LINE_MAX] u8; qarena_b: [CL_LINE_MAX] u8; qout_b: [262144] u8; scratch_b: [196608] u8;
-  cx_b: [1] CxClient; cxp_b: [1] ClProcess; cxl_b: [CL_LINE_MAX] u8; cxa_b: [262144] u8; cxo_b: [262144] u8;
-  a[0].cx = cx_b[..]; a[0].cxp = cxp_b[..]; a[0].cx_line = cxl_b[..]; a[0].cx_arena = cxa_b[..]; a[0].cx_outb = cxo_b[..];
-  a[0].cxp[0].handle = -1;
+  // the Codex engine's buffers: its arena holds what the engine and this side each read of a line
+  cxe_b: [1] CxEngine; cxl_b: [CL_LINE_MAX] u8; cxa_b: [CL_LINE_MAX] u8; cxo_b: [262144] u8; cxm_b: [CX_MEM] u8; cxq_b: [262144] u8;
+  cxs_b: [1] Session; cxsp_b: [1048576] u8;
+  cxe_attach(cxe_b[..], cxl_b[..], cxa_b[..], cxo_b[..], cxm_b[..], "");
+  cxe_b[0].prompt = cxq_b[..];
+  a[0].cxe = cxe_b[..]; a[0].cx = cxe_b[0].c[..]; a[0].cxp = cxe_b[0].p[..];
+  a[0].cx_ses = cxs_b[..]; s_init(a[0].cx_ses, cxsp_b[..]); a[0].cx_ses[0].tabs = true;
   cu_b: [1] CuClient; cup_b: [1] ClProcess; cul_b: [262144] u8; cua_b: [262144] u8; cuo_b: [262144] u8;
   a[0].cu = cu_b[..]; a[0].cup = cup_b[..]; a[0].cu_line = cul_b[..]; a[0].cu_arena = cua_b[..]; a[0].cu_outb = cuo_b[..];
   a[0].cup[0].handle = -1;

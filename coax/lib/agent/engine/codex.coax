@@ -38,7 +38,7 @@
 #load "../codex/codex.coax";
 #load "../codex/fixture.coax";
 
-// The wall clock in seconds (zeron-face.c): a limit's reset time is a Unix time.
+// The wall clock in seconds (zeron-face.c; agent-signer-none.c for a host without one): a limit's reset time is a Unix time.
 zr_unix_s :: () -> int #foreign #effects(all);
 
 CODEX_LEVEL_IDS :: [7] string.["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
@@ -222,7 +222,13 @@ CxEngine :: struct {
   held: [] u8; held_n: int;      // the turn's last final error notification
   lim: [1] CxLimits;
   ask_kind: int;                     // the approval asked (CX_ASK_*), its part is the session's asking
-  err: [] u8;
+  err: [] u8; err_n: int;            // what the server last wrote to stderr before it went
+  // An owner that is not the desktop app (cxe_own): it starts the server its way and under its
+  // own name, its settings are used as they are, it lists models and opens the thread itself
+  // (cxe_thread), and approvals and tool calls are its to answer (cxe_approve, cxe_tool_answer).
+  own: bool;
+  launch: [] CxLaunch; set: [] CxSettings;
+  client: string; title: string; version: string;
   room: [4096] u8; room_n: int;      // the room's MCP server as config overrides (desk.coax), "" off the desk
 }
 // The engine's own buffers, carved from the host's (cxe_mem): the catalog's
@@ -263,6 +269,7 @@ cxe_attach :: (x: [] CxEngine, line: [] u8, arena: [] u8, out: [] u8, mem: [] u8
 // What a thread and its turns run with: the chosen model and effort, the
 // access mapped as Zeron's (permissions()), plan mode.
 cxe_settings :: (x: [] CxEngine) -> CxSettings {
+  if x[0].own && x[0].set.count > 0 { return x[0].set[0]; }
   st := CxSettings.{cwd = cx_str(x[0].cwd, x[0].cwd_n), plan = x[0].plan, name_mode = x[0].plan_used};
   cat := x[0].cat[..];
   if x[0].model >= 0 && x[0].model < cat[0].n { st.model = cat[0].id[x[0].model]; }
@@ -299,21 +306,29 @@ cxe_launch :: (x: [] CxEngine, s: [] Session, warm: bool) -> bool {
   c := x[0].c[..];
   cx_init(c, x[0].line, x[0].arena, x[0].out);
   l: [1] CxLaunch;
-  l[0].program = cx_str(x[0].exe, x[0].exe_n);
-  if x[0].path_n > 5 { cx_add_env(l[..], cx_str(x[0].path_env, x[0].path_n)); }
-  l[0].cwd = cx_str(x[0].cwd, x[0].cwd_n);
+  if x[0].own && x[0].launch.count > 0 { l[0] = x[0].launch[0]; }
+  else {
+    l[0].program = cx_str(x[0].exe, x[0].exe_n);
+    if x[0].path_n > 5 { cx_add_env(l[..], cx_str(x[0].path_env, x[0].path_n)); }
+    l[0].cwd = cx_str(x[0].cwd, x[0].cwd_n);
+  }
   why := cx_start(c, x[0].p[..], l[0]);
   if why.count > 0 {
     x[0].p[0].handle = -1;
+    if x[0].own { x[0].err_n = e_set(x[0].err, 0, why); }     // an owner words its own failures: the client's reason, in err
     if warm { return false; }
-    if why == "codex executable not found" || x[0].exe_n == 0 {
+    if x[0].own { s_notice(s, N_ERROR, why); }
+    else if why == "codex executable not found" || x[0].exe_n == 0 {
       s_notice(s, N_CODEX_INSTALL, "Install it in Terminal, then send again: npm install -g @openai/codex");
     } else { s_notice(s, N_ERROR, why); }
     s_turn_end(s, false, "");
     return false;
   }
-  r := cx_initialize(c, "openagents-desktop", "OpenAgents", "0.1.0");
-  if !x[0].listed { r = cx_model_list(c, ""); x[0].listed = true; }
+  if x[0].own { r := cx_initialize(c, x[0].client, x[0].title, x[0].version); }
+  else {
+    r := cx_initialize(c, "openagents-desktop", "OpenAgents", "0.1.0");
+    if !x[0].listed { r = cx_model_list(c, ""); x[0].listed = true; }
+  }
   x[0].running = true; x[0].ready = false; x[0].thread_wait = false; x[0].turn_wait = false;
   return true;
 }
@@ -345,9 +360,7 @@ cxe_go :: (x: [] CxEngine, s: [] Session, k: int) {
 cxe_open :: (x: [] CxEngine) {
   c := x[0].c[..];
   if c[0].thread_n > 0 { cxe_deliver(x); return; }
-  st := cxe_settings(x);
-  r := ifx x[0].tid_n > 0 then cx_thread_resume(c, cx_str(x[0].tid[..], x[0].tid_n), st) else cx_thread_start(c, st);
-  x[0].thread_wait = true;
+  cxe_thread(x);
 }
 cxe_deliver :: (x: [] CxEngine) {
   st := cxe_settings(x);
@@ -667,7 +680,7 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
   c := x[0].c[..]; ar := c[0].ar[..];
   if ev.kind == CxEventKind.initialized {
     x[0].ready = true;
-    if x[0].pend >= 0 && s[0].live { cxe_open(x); }
+    if !x[0].own && x[0].pend >= 0 && s[0].live { cxe_open(x); }     // an owner opens the thread itself (cxe_thread)
     return false;
   }
   if ev.kind == CxEventKind.answered {
@@ -705,6 +718,7 @@ cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
   }
   if ev.kind == CxEventKind.notification { cxe_note(x, s, ar, ev.method, ev.params); return false; }
   if ev.kind == CxEventKind.approval {
+    if x[0].own { return false; }                 // the owner's to answer
     if !s[0].live { cx_approve(c, false); return false; }
     cxe_approval(x, s, ev);
     return s[0].asking >= 0;
@@ -736,23 +750,67 @@ cxe_pump :: (x: [] CxEngine, e: [] Engine, s: [] Session) {
   // the server starts ahead of the first message once the Codex tab is open: its model/list fills the picker
   if !x[0].running && x[0].want_warm && !x[0].warmed && x[0].exe_n > 0 { x[0].warmed = true; b := cxe_launch(x, s, true); }
   if !x[0].running || s[0].asking >= 0 { return; }
+  one: [1] CxEvent;
   for guard: 0..<200 {
-    ev := cx_poll(x[0].c[..], x[0].p[..], 0);
-    if ev.kind == CxEventKind.idle { return; }
-    if ev.kind == CxEventKind.failed || ev.kind == CxEventKind.end {
-      why := "";
-      if ev.kind == CxEventKind.failed { why = cx_error(x[0].c[..]); }
-      tail := cl_stderr(x[0].p[..], x[0].err);
-      if tail.count > 0 { why = tail; }
-      if why.count == 0 { why = "Codex stopped before answering."; }
-      cxe_close(x);
-      x[0].pend = -1;
-      if !s[0].live { return; }
-      s_turn_end(s, !s[0].stopping, why);
-      return;
-    }
-    if cxe_event(x, s, ev) { return; }
+    asked := cxe_poll(x, s, one[..]);
+    k := one[0].kind;
+    if k == CxEventKind.idle || k == CxEventKind.failed || k == CxEventKind.end || asked { return; }
   }
+}
+// One event from the server into ev (idle: it wrote nothing more), after the engine's own part of
+// it: initialize answered, the thread opened (the owed message goes as its turn), a notification
+// folded into the session, the process gone (the turn ends with why). Whether the session now
+// asks the person (the desktop app's approvals). An owner's approvals and tool calls come back
+// unanswered: they are its own (cxe_approve, cxe_tool_answer). Never blocks.
+cxe_poll :: (x: [] CxEngine, s: [] Session, ev: [] CxEvent) -> bool {
+  ev[0] = cx_poll(x[0].c[..], x[0].p[..], 0);
+  return cxe_take(x, s, ev[0]);
+}
+cxe_take :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
+  if ev.kind == CxEventKind.idle { return false; }
+  if ev.kind == CxEventKind.failed || ev.kind == CxEventKind.end {
+    why := "";
+    if ev.kind == CxEventKind.failed { why = cx_error(x[0].c[..]); }
+    tail := cl_stderr(x[0].p[..], x[0].err);
+    x[0].err_n = tail.count;
+    if tail.count > 0 { why = tail; }
+    if why.count == 0 { why = "Codex stopped before answering."; }
+    cxe_close(x);
+    x[0].pend = -1;
+    if !s[0].live { return false; }
+    s_turn_end(s, !s[0].stopping, why);
+    return false;
+  }
+  return cxe_event(x, s, ev);
+}
+// An owner's engine (Coder's terminal): how it starts the server (program, environment, folder),
+// the settings every thread and turn of its takes (a slice it keeps current: approval policy,
+// sandbox, model, effort, its dynamic tools), and the name it gives the server. No login-shell
+// probe: the server is `codex` on the owner's PATH unless its launch names one. The owner starts
+// the server with cxe_launch (why it did not start is in err), opens the thread with cxe_thread,
+// sends with cxe_send_as, takes each event with cxe_poll after the engine's part of it (the
+// session record is kept as for the desktop app), and answers approvals and tool calls itself
+// (cxe_approve, cxe_tool_answer); cxe_interrupt stops the turn.
+cxe_own :: (x: [] CxEngine, launch: [] CxLaunch, set: [] CxSettings, client: string, title: string, version: string) {
+  x[0].own = true; x[0].settled = true;
+  x[0].launch = launch; x[0].set = set;
+  x[0].client = client; x[0].title = title; x[0].version = version;
+}
+// The thread on the running server, with the settings as they are now (the owed message goes as
+// its turn once the server has answered): the conversation's thread resumed after a restart, or a
+// new one. An owner's server always gets a new one; the owner calls this once initialize is answered.
+cxe_thread :: (x: [] CxEngine) {
+  st := cxe_settings(x);
+  r := ifx x[0].tid_n > 0 && !x[0].own then cx_thread_resume(x[0].c[..], cx_str(x[0].tid[..], x[0].tid_n), st) else cx_thread_start(x[0].c[..], st);
+  x[0].thread_wait = true;
+}
+cxe_approve :: (x: [] CxEngine, allow: bool) { cx_approve(x[0].c[..], allow); }
+cxe_tool_answer :: (x: [] CxEngine, text: string, ok: bool) { cx_tool_answer(x[0].c[..], text, ok); }
+// The interrupt for the running turn; false when there is no turn to interrupt.
+cxe_interrupt :: (x: [] CxEngine, s: [] Session) -> bool {
+  if cx_interrupt(x[0].c[..]) == 0 { return false; }
+  s[0].stopping = true;
+  return true;
 }
 
 // The chips: model, level and plan ride the next turn; access too.
@@ -959,4 +1017,32 @@ cxe_test_full :: (x: [] CxEngine, s: [] Session, last: int, models: bool) {
   w = cxe_test_feed(x[..], s[..], "{\"method\":\"turn/plan/updated\",\"params\":{\"plan\":[{\"step\":\"look\",\"status\":\"completed\"},{\"step\":\"fix\",\"status\":\"inProgress\"}]}}");
   p := s[0].parts[s[0].n - 1];
   #assert p.tk == TK_TODO && p.arg == "[x] look\n[ ] fix" && p.detail == "1/2 done";
+}
+
+#test "an owner's engine: its settings as they are, no thread until it opens one, approvals handed back unanswered" {
+  x: [1] CxEngine; b: [1] CxeTest;
+  cxe_test_engine(x[..], b[..]);
+  l: [1] CxLaunch; set: [1] CxSettings;
+  set[0].cwd = "/w"; set[0].model = "gpt-6-luna"; set[0].approval_policy = "untrusted"; set[0].sandbox = "read-only"; set[0].ask_person = true;
+  set[0].dynamic_tools = "[{\"type\":\"function\",\"name\":\"coder_session_read\"}]";
+  #assert cxe_settings(x[..]).sandbox == "danger-full-access";        // the desktop app's, at Full access
+  cxe_own(x[..], l[..], set[..], "openagents-coder", "Coder", "1");
+  st := cxe_settings(x[..]);
+  #assert x[0].own && x[0].settled && st.cwd == "/w" && st.model == "gpt-6-luna" && st.sandbox == "read-only" && st.ask_person;
+  s: [1] Session; pool: [4096] u8; s_init(s[..], pool[..]);
+  // a message while the server starts waits; initialize answered opens no thread by itself
+  x[0].on = true;
+  cxe_send_as(x[..], s[..], "run ls", "run ls");
+  x[0].on = false;
+  #assert s[0].live && x[0].pend == 0 && !x[0].ready;
+  cx_outbox_clear(x[0].c[..]);
+  asked := cxe_take(x[..], s[..], CxEvent.{kind = CxEventKind.initialized});
+  #assert x[0].ready && !x[0].thread_wait && cx_outbox(x[0].c[..]).count == 0;
+  cxe_thread(x[..]);
+  #assert x[0].thread_wait && s_has(cx_outbox(x[0].c[..]), "\"method\":\"thread/start\"") && s_has(cx_outbox(x[0].c[..]), "\"sandbox\":\"read-only\"") && s_has(cx_outbox(x[0].c[..]), "coder_session_read");
+  // an approval is the owner's: nothing is answered and the session asks nothing
+  #assert !cxe_test_feed(x[..], s[..], "{\"method\":\"item/commandExecution/requestApproval\",\"id\":8,\"params\":{\"command\":\"ls\",\"reason\":\"list\"}}");
+  #assert s[0].asking < 0 && cx_outbox(x[0].c[..]).count == 0 && s[0].n == 1;
+  cxe_approve(x[..], false);
+  #assert s_has(cx_outbox(x[0].c[..]), "\"decision\":\"decline\"");
 }

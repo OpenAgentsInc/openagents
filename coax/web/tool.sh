@@ -70,7 +70,7 @@ if [[ -n "$why" ]]; then
   # library's, not folded to x * x): a tool that reproduces another program's floats
   # (verse/tools/humans/pack_human.coax) needs each rounding
   build=("${cc[@]}" -std=c11 -O2 -ffp-contract=off -fno-fast-math -fno-builtin-pow ${stack[@]+"${stack[@]}"})
-  units=("$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c")
+  units=("$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$p/agent-signer-none.c")
   # Every checkout shares the compiled tools (#13139): the C compiler takes most of a build
   # (about 15 of 17 s for shot), and a new worktree would pay it again for the same C. The
   # key is what the executable is made from: the tool's C, the platform sources, and the C

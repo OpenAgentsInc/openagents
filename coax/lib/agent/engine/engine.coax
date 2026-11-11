@@ -20,7 +20,11 @@
 // engine still starts the CLI, sends the owed message and folds every
 // message into the session, and the owner answers what is its own (a hook,
 // a permission request, a call to one of its in-process tools) with
-// e_allow, e_deny and e_tool_text.
+// e_allow, e_deny and e_tool_text. The Codex engine takes an owner the same
+// way (codex.coax cxe_own: its launch, its CxSettings with its dynamic tools,
+// its name; events one at a time with cxe_poll; approvals and tool calls
+// answered with cxe_approve and cxe_tool_answer). A host without the Lab's
+// signer (a Coax tool, Coder) links coax/platform/agent-signer-none.c.
 //
 // The modes: Claude is the user's own Claude Code (claude.coax); Codex the
 // user's own Codex (codex.coax, codex app-server on their ChatGPT login);

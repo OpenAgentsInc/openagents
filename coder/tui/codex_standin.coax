@@ -1,0 +1,276 @@
+// A stand-in `codex` for checking Coder's codex engine end to end with no Codex login and no
+// model: it speaks enough of `codex app-server` (coax/lib/agent/codex) for what Coder asks:
+// initialize, model/list, thread/start, turn/start and turn/interrupt, and the answers to its own
+// approval and tool requests. Put it on PATH as `codex`. Every line it reads is appended to
+// $CODEX_STANDIN_OUT, so a run's outbound protocol can be compared as well as what Coder prints.
+//
+// What a turn does comes from the message:
+//
+//   "run ls"        a command; asked first (item/commandExecution/requestApproval) unless the
+//                   thread's approval policy is never; accepted it runs (two files listed),
+//                   declined it is reported declined
+//   "edit"          a file change with its diff; asked first the same way (item/fileChange/requestApproval)
+//   "read history"  a call to Coder's dynamic tool coder_session_read (item/tool/call), then its item
+//   "fail"          the turn fails with the provider overloaded
+//   anything else   a two-part reply
+//
+//   coax/web/tool.sh coder/tui/codex_standin.coax    (a run puts a script on PATH as `codex` that execs this)
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+XS_LINE :: 262144;
+XS_THREAD :: "th-standin-1";
+Xs :: struct {
+  line: [XS_LINE] u8; n: int; eof: bool;
+  out: [1024] u8; nout: int;
+  cwd: [1024] u8; ncwd: int;
+  never: bool;                  // the thread's approval policy is never: nothing is asked
+  turns: int;
+}
+
+xs_send :: (text: string) {
+  b: [XS_LINE + 1] u8; n := 0;
+  for c: text { if n < XS_LINE { b[n] = c; n += 1; } }
+  b[n] = 10;
+  r := cxterm_write(b[0..<n + 1]);
+}
+// The next line from Coder ("" at the end), each one noted.
+xs_read :: (s: [] Xs) -> string {
+  s[0].n = 0;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { s[0].eof = true; return ""; }
+    if b == -1 { continue; }
+    if b == 10 {
+      if s[0].n == 0 { continue; }
+      line := cast(string) s[0].line[0..<s[0].n];
+      if s[0].nout > 0 { ok := fs_append(cast(string) s[0].out[0..<s[0].nout], line) && fs_append(cast(string) s[0].out[0..<s[0].nout], "\n"); }
+      return line;
+    }
+    if s[0].n < XS_LINE { s[0].line[s[0].n] = cast(u8) b; s[0].n += 1; }
+  }
+  return "";
+}
+xs_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+xs_put :: (o: [] u8, m: int, s: string) -> int { k := m; for c: s { if k < o.count { o[k] = c; k += 1; } } return k; }
+#test "stand-in: contains" { #assert xs_has("please run ls now", "run ls") && !xs_has("run", "run ls") && xs_has("x", ""); }
+
+// An answer to request id (its JSON, as it came).
+xs_result :: (id: string, result: string) {
+  b: [XS_LINE] u8; n := xs_put(b[..], 0, "{\"id\":"); n = xs_put(b[..], n, id); n = xs_put(b[..], n, ",\"result\":"); n = xs_put(b[..], n, result); n = xs_put(b[..], n, "}");
+  xs_send(cast(string) b[0..<n]);
+}
+xs_note :: (method: string, params: string) {
+  b: [XS_LINE] u8; n := xs_put(b[..], 0, "{\"method\":"); n = xs_put(b[..], n, "\""); n = xs_put(b[..], n, method);
+  n = xs_put(b[..], n, "\",\"params\":"); n = xs_put(b[..], n, params); n = xs_put(b[..], n, "}");
+  xs_send(cast(string) b[0..<n]);
+}
+// The turn's own fields: "threadId":..,"turnId":..
+xs_ids :: (o: [] Jo, turn: string) {
+  jo_key(o, "threadId"); jo_str(o, XS_THREAD); jo_key(o, "turnId"); jo_str(o, turn);
+}
+xs_item :: (method: string, turn: string, item: string) {
+  o: [1] Jo; b: [XS_LINE] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "item"); jo_raw(o[..], item); xs_ids(o[..], turn); jo_end(o[..]);
+  xs_note(method, jo_text(o[..]));
+}
+xs_delta :: (turn: string, item: string, text: string) {
+  o: [1] Jo; b: [8192] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); xs_ids(o[..], turn); jo_key(o[..], "itemId"); jo_str(o[..], item); jo_key(o[..], "delta"); jo_str(o[..], text); jo_end(o[..]);
+  xs_note("item/agentMessage/delta", jo_text(o[..]));
+}
+xs_message :: (turn: string, id: string, a: string, b: string) {
+  st: [1] Jo; sb: [256] u8; jo_start(st[..], sb[..]);
+  jo_obj(st[..]); jo_key(st[..], "type"); jo_str(st[..], "agentMessage"); jo_key(st[..], "id"); jo_str(st[..], id); jo_key(st[..], "text"); jo_str(st[..], ""); jo_end(st[..]);
+  xs_item("item/started", turn, jo_text(st[..]));
+  xs_delta(turn, id, a);
+  if b.count > 0 { xs_delta(turn, id, b); }
+  whole: [4096] u8; wn := xs_put(whole[..], 0, a); wn = xs_put(whole[..], wn, b);
+  done: [1] Jo; db: [8192] u8; jo_start(done[..], db[..]);
+  jo_obj(done[..]); jo_key(done[..], "type"); jo_str(done[..], "agentMessage"); jo_key(done[..], "id"); jo_str(done[..], id); jo_key(done[..], "text"); jo_str(done[..], cast(string) whole[0..<wn]); jo_end(done[..]);
+  xs_item("item/completed", turn, jo_text(done[..]));
+}
+xs_usage :: (turn: string) {
+  o: [1] Jo; b: [1024] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); xs_ids(o[..], turn);
+  jo_key(o[..], "tokenUsage"); jo_raw(o[..], "{\"total\":{\"totalTokens\":1200,\"inputTokens\":1000,\"cachedInputTokens\":200,\"outputTokens\":200,\"reasoningOutputTokens\":50},\"last\":{\"totalTokens\":1200,\"inputTokens\":1000,\"cachedInputTokens\":200,\"outputTokens\":200,\"reasoningOutputTokens\":50},\"modelContextWindow\":200000}");
+  jo_end(o[..]);
+  xs_note("thread/tokenUsage/updated", jo_text(o[..]));
+}
+xs_done :: (turn: string, status: string, error: string) {
+  o: [1] Jo; b: [2048] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "threadId"); jo_str(o[..], XS_THREAD);
+  jo_key(o[..], "turn"); jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], turn); jo_key(o[..], "items"); jo_raw(o[..], "[]");
+  jo_key(o[..], "status"); jo_str(o[..], status); jo_key(o[..], "error"); jo_raw(o[..], ifx error.count > 0 then error else "null"); jo_end(o[..]);
+  jo_end(o[..]);
+  xs_note("turn/completed", jo_text(o[..]));
+}
+
+// A request of the stand-in's own (an approval, a tool call) and the answer's result, as it came.
+xs_ask :: (s: [] Xs, id: string, method: string, params: string, out: [] u8) -> string {
+  b: [XS_LINE] u8; n := xs_put(b[..], 0, "{\"method\":\""); n = xs_put(b[..], n, method); n = xs_put(b[..], n, "\",\"id\":"); n = xs_put(b[..], n, id);
+  n = xs_put(b[..], n, ",\"params\":"); n = xs_put(b[..], n, params); n = xs_put(b[..], n, "}");
+  xs_send(cast(string) b[0..<n]);
+  while true {
+    line := xs_read(s);
+    if line.count == 0 { return ""; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    if jv_raw(d[0], jv_get(d[0], 0, "id")) != id { xs_answer(s, d[0], line); continue; }
+    if jv_get(d[0], 0, "method") >= 0 { continue; }
+    raw := jv_raw(d[0], jv_get(d[0], 0, "result"));
+    m := xs_put(out, 0, raw);
+    return cast(string) out[0..<m];
+  }
+  return "";
+}
+
+// A command the turn runs: asked first unless nothing is asked; what it printed, or declined.
+xs_command :: (s: [] Xs, turn: string) {
+  cwd := cast(string) s[0].cwd[0..<s[0].ncwd];
+  item: [1] Jo; ib: [2048] u8; jo_start(item[..], ib[..]);
+  jo_obj(item[..]); jo_key(item[..], "type"); jo_str(item[..], "commandExecution"); jo_key(item[..], "id"); jo_str(item[..], "cmd-1");
+  jo_key(item[..], "command"); jo_str(item[..], "/bin/zsh -lc 'ls'"); jo_key(item[..], "cwd"); jo_str(item[..], cwd);
+  jo_key(item[..], "commandActions"); jo_raw(item[..], "[{\"type\":\"listFiles\",\"command\":\"ls\",\"path\":null}]");
+  jo_key(item[..], "status"); jo_str(item[..], "inProgress"); jo_end(item[..]);
+  xs_item("item/started", turn, jo_text(item[..]));
+  accepted := true;
+  if !s[0].never {
+    p: [1] Jo; pb: [2048] u8; jo_start(p[..], pb[..]);
+    jo_obj(p[..]); xs_ids(p[..], turn); jo_key(p[..], "itemId"); jo_str(p[..], "cmd-1"); jo_key(p[..], "command"); jo_str(p[..], "/bin/zsh -lc 'ls'");
+    jo_key(p[..], "cwd"); jo_str(p[..], cwd); jo_key(p[..], "reason"); jo_str(p[..], "list the folder"); jo_end(p[..]);
+    rb: [1024] u8; got := xs_ask(s, "0", "item/commandExecution/requestApproval", jo_text(p[..]), rb[..]);
+    accepted = xs_has(got, "\"accept\"");
+  }
+  done: [1] Jo; db: [2048] u8; jo_start(done[..], db[..]);
+  jo_obj(done[..]); jo_key(done[..], "type"); jo_str(done[..], "commandExecution"); jo_key(done[..], "id"); jo_str(done[..], "cmd-1");
+  jo_key(done[..], "command"); jo_str(done[..], "/bin/zsh -lc 'ls'"); jo_key(done[..], "cwd"); jo_str(done[..], cwd);
+  jo_key(done[..], "commandActions"); jo_raw(done[..], "[{\"type\":\"listFiles\",\"command\":\"ls\",\"path\":null}]");
+  if accepted { jo_key(done[..], "status"); jo_str(done[..], "completed"); jo_key(done[..], "exitCode"); jo_int(done[..], 0); jo_key(done[..], "aggregatedOutput"); jo_str(done[..], "a.txt\nb.txt\n"); }
+  else { jo_key(done[..], "status"); jo_str(done[..], "declined"); jo_key(done[..], "exitCode"); jo_null(done[..]); jo_key(done[..], "aggregatedOutput"); jo_null(done[..]); }
+  jo_end(done[..]);
+  xs_item("item/completed", turn, jo_text(done[..]));
+  xs_message(turn, "msg-2", ifx accepted then "Two files: a.txt and b.txt." else "I could not list the folder: the command was declined.", "");
+}
+
+// A file change with its diff, asked first the same way.
+xs_edit :: (s: [] Xs, turn: string) {
+  pb: [1100] u8; pn := xs_put(pb[..], 0, cast(string) s[0].cwd[0..<s[0].ncwd]); pn = xs_put(pb[..], pn, "/notes.txt");
+  path := cast(string) pb[0..<pn];
+  ch: [1] Jo; cb: [2048] u8; jo_start(ch[..], cb[..]);
+  jo_arr(ch[..]); jo_obj(ch[..]); jo_key(ch[..], "path"); jo_str(ch[..], path); jo_key(ch[..], "kind"); jo_raw(ch[..], "{\"type\":\"update\",\"move_path\":null}");
+  jo_key(ch[..], "diff"); jo_str(ch[..], "@@ -1,2 +1,2 @@\n first\n-old line\n+new line\n"); jo_end(ch[..]); jo_end(ch[..]);
+  changes := jo_text(ch[..]);
+  for done: 0..<2 {
+    accepted := true;
+    if done == 1 && !s[0].never {
+      p: [1] Jo; qb: [1024] u8; jo_start(p[..], qb[..]);
+      jo_obj(p[..]); xs_ids(p[..], turn); jo_key(p[..], "itemId"); jo_str(p[..], "patch-1"); jo_key(p[..], "reason"); jo_null(p[..]); jo_key(p[..], "grantRoot"); jo_null(p[..]); jo_end(p[..]);
+      rb: [1024] u8; got := xs_ask(s, "1", "item/fileChange/requestApproval", jo_text(p[..]), rb[..]);
+      accepted = xs_has(got, "\"accept\"");
+    }
+    item: [1] Jo; ib: [4096] u8; jo_start(item[..], ib[..]);
+    jo_obj(item[..]); jo_key(item[..], "type"); jo_str(item[..], "fileChange"); jo_key(item[..], "id"); jo_str(item[..], "patch-1");
+    jo_key(item[..], "changes"); jo_raw(item[..], changes);
+    jo_key(item[..], "status"); jo_str(item[..], ifx done == 0 then "inProgress" else ifx accepted then "completed" else "declined"); jo_end(item[..]);
+    xs_item(ifx done == 0 then "item/started" else "item/completed", turn, jo_text(item[..]));
+  }
+  xs_message(turn, "msg-3", "Changed one line in notes.txt.", "");
+}
+
+// Coder's dynamic tool, called as Codex calls a client's tool.
+xs_tool :: (s: [] Xs, turn: string) {
+  args := "{\"source\":\"claude\",\"action\":\"list\",\"limit\":1}";
+  p: [1] Jo; pb: [1024] u8; jo_start(p[..], pb[..]);
+  jo_obj(p[..]); xs_ids(p[..], turn); jo_key(p[..], "callId"); jo_str(p[..], "call-1"); jo_key(p[..], "tool"); jo_str(p[..], "coder_session_read");
+  jo_key(p[..], "arguments"); jo_raw(p[..], args); jo_end(p[..]);
+  item: [1] Jo; ib: [1024] u8; jo_start(item[..], ib[..]);
+  jo_obj(item[..]); jo_key(item[..], "type"); jo_str(item[..], "dynamicToolCall"); jo_key(item[..], "id"); jo_str(item[..], "call-1");
+  jo_key(item[..], "tool"); jo_str(item[..], "coder_session_read"); jo_key(item[..], "arguments"); jo_raw(item[..], args); jo_key(item[..], "status"); jo_str(item[..], "inProgress"); jo_end(item[..]);
+  xs_item("item/started", turn, jo_text(item[..]));
+  rb: [65536] u8; got := xs_ask(s, "2", "item/tool/call", jo_text(p[..]), rb[..]);
+  ok := xs_has(got, "\"success\":true");
+  done: [1] Jo; db: [1024] u8; jo_start(done[..], db[..]);
+  jo_obj(done[..]); jo_key(done[..], "type"); jo_str(done[..], "dynamicToolCall"); jo_key(done[..], "id"); jo_str(done[..], "call-1");
+  jo_key(done[..], "tool"); jo_str(done[..], "coder_session_read"); jo_key(done[..], "arguments"); jo_raw(done[..], args);
+  jo_key(done[..], "status"); jo_str(done[..], ifx ok then "completed" else "failed");
+  if !ok { jo_key(done[..], "error"); jo_raw(done[..], "{\"message\":\"the reader refused\"}"); }
+  jo_end(done[..]);
+  xs_item("item/completed", turn, jo_text(done[..]));
+  xs_message(turn, "msg-4", ifx ok then "I read your recent Claude sessions." else "The reader did not answer.", "");
+}
+
+xs_turn :: (s: [] Xs, id: string, d: Jv) {
+  s[0].turns += 1;
+  tb: [32] u8; tn := xs_put(tb[..], 0, "tu-standin-"); tn = xs_put(tb[..], tn, ifx s[0].turns == 1 then "1" else ifx s[0].turns == 2 then "2" else "n");
+  turn := cast(string) tb[0..<tn];
+  r: [1] Jo; rb: [256] u8; jo_start(r[..], rb[..]);
+  jo_obj(r[..]); jo_key(r[..], "turn"); jo_obj(r[..]); jo_key(r[..], "id"); jo_str(r[..], turn); jo_key(r[..], "items"); jo_raw(r[..], "[]");
+  jo_key(r[..], "status"); jo_str(r[..], "inProgress"); jo_key(r[..], "error"); jo_null(r[..]); jo_end(r[..]); jo_end(r[..]);
+  xs_result(id, jo_text(r[..]));
+  mb: [16384] u8; mn := jv_str(d, jv_path(d, 0, "params.input[0].text"), mb[..]);
+  msg := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  st: [1] Jo; sb: [256] u8; jo_start(st[..], sb[..]);
+  jo_obj(st[..]); jo_key(st[..], "threadId"); jo_str(st[..], XS_THREAD); jo_key(st[..], "turn"); jo_obj(st[..]); jo_key(st[..], "id"); jo_str(st[..], turn);
+  jo_key(st[..], "items"); jo_raw(st[..], "[]"); jo_key(st[..], "status"); jo_str(st[..], "inProgress"); jo_end(st[..]); jo_end(st[..]);
+  xs_note("turn/started", jo_text(st[..]));
+  if xs_has(msg, "fail") {
+    xs_done(turn, "failed", "{\"message\":\"The model is overloaded. Try again later.\",\"codexErrorInfo\":\"serverOverloaded\",\"additionalDetails\":null}");
+    return;
+  }
+  if xs_has(msg, "run ls") { xs_command(s, turn); }
+  else if xs_has(msg, "edit") { xs_edit(s, turn); }
+  else if xs_has(msg, "read history") { xs_tool(s, turn); }
+  else { xs_message(turn, "msg-1", "Hello from the stand-in ", "codex."); }
+  xs_usage(turn);
+  xs_done(turn, "completed", "");
+}
+
+// One request from Coder, answered.
+xs_answer :: (s: [] Xs, d: Jv, line: string) {
+  mi := jv_get(d, 0, "method");
+  if mi < 0 { return; }
+  mb: [64] u8; mn := jv_str(d, mi, mb[..]);
+  method := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  ii := jv_get(d, 0, "id");
+  if ii < 0 { return; }            // a notification (initialized)
+  id := jv_raw(d, ii);
+  if method == "initialize" { xs_result(id, "{\"userAgent\":\"codex-standin/0.0.1\",\"codexHome\":\"/tmp/codex-standin\"}"); return; }
+  if method == "model/list" {
+    xs_result(id, "{\"data\":[{\"id\":\"gpt-standin\",\"model\":\"gpt-standin\",\"displayName\":\"GPT Stand-in\",\"description\":\"The stand-in's model.\",\"hidden\":false,\"isDefault\":true,\"defaultReasoningEffort\":\"high\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"},{\"reasoningEffort\":\"medium\"},{\"reasoningEffort\":\"high\"}]},{\"id\":\"gpt-standin-mini\",\"model\":\"gpt-standin-mini\",\"displayName\":\"GPT Stand-in Mini\",\"description\":\"Small.\",\"hidden\":false,\"isDefault\":false,\"defaultReasoningEffort\":\"low\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"}]}],\"nextCursor\":null}");
+    return;
+  }
+  if method == "thread/start" || method == "thread/resume" {
+    pb: [64] u8; pn := jv_str(d, jv_path(d, 0, "params.approvalPolicy"), pb[..]);
+    s[0].never = pn > 0 && cast(string) pb[0..<pn] == "never";
+    s[0].ncwd = jv_str(d, jv_path(d, 0, "params.cwd"), s[0].cwd[..]); if s[0].ncwd < 0 { s[0].ncwd = 0; }
+    xs_result(id, "{\"thread\":{\"id\":\"th-standin-1\",\"model\":\"gpt-standin\",\"status\":{\"type\":\"idle\"},\"turns\":[]},\"model\":\"gpt-standin\",\"modelProvider\":\"openai\",\"reasoningEffort\":\"high\",\"approvalPolicy\":\"never\"}");
+    return;
+  }
+  if method == "turn/start" { xs_turn(s, id, d); return; }
+  xs_result(id, "{}");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  s: [1] Xs;
+  ob: [1024] u8; out := proc_getenv("CODEX_STANDIN_OUT", ob[..]);
+  s[0].nout = xs_put(s[0].out[..], 0, out);
+  while !s[0].eof {
+    line := xs_read(s[..]);
+    if line.count == 0 { continue; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    xs_answer(s[..], d[0], line);
+  }
+  return 0;
+}
