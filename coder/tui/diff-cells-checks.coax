@@ -13,7 +13,7 @@ dc_all :: (out: [] u8) -> int {
   n := 0;
   rows := [5] string.["main :: () -> int { return 0x2a; }  // the answer", "  s := \"x\"; f(1.5);", "", "\tdone();", "日本 wide"];
   for th: 0..<3 {
-    a: [1] App; logs: [1] CsLog; ob: [65536] u8;
+    a: [1] App; logs: [1] SwLog; ob: [65536] u8;
     a[0].log = logs[..]; a[0].plain = false; a[0].cols = 72;
     a[0].o[0].b = ob[..]; a[0].o[0].theme = th;
     hl_b: [1] TuiHl;
