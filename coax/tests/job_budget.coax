@@ -263,6 +263,18 @@ jb_until_held :: (j: [] Jb) -> int #effects(all) {
   return held;
 }
 
+// Waits up to ms for the case's pool to hold no token.
+jb_until_free :: (j: [] Jb, ms: int) -> bool #effects(all) {
+  n0: [1] string;
+  deadline := proc_now_ms() + ms;
+  while true {
+    if jb_status(j[..], n0[0..<0], n0[0..<0]).held == 0 { return true; }
+    if proc_now_ms() >= deadline { return false; }
+    proc_sleep(20);
+  }
+  return false;
+}
+
 test_killed_frees :: (compiler: string) -> int #effects(all) {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
@@ -273,7 +285,9 @@ test_killed_frees :: (compiler: string) -> int #effects(all) {
   // the compile's own process only (its workers are what the next case checks)
   k := cxproc_pid_signal(proc_pid(h), PROC_SIGKILL);
   w := proc_wait(h, 30000);
-  check(j[..], jb_status(j[..], n0[0..<0], n0[0..<0]).held == 0, "its tokens are free as soon as it is killed");
+  // In a resident the compile is a request, which the resident stops when it
+  // sees its client leave: within a moment, not at the client's exit.
+  check(j[..], jb_until_free(j[..], 1000), "its tokens are free within a second of its kill");
   tp: [1] Jt; jt_s(tp[..], jt_text(j[0].dir[..])); jt_s(tp[..], "/t.json");
   b := [4] string.["check", "slow.coax", "--timings", jt_text(tp[..])];
   r: [1] JbRun; jb_run(j[..], b[..], n0[0..<0], n0[0..<0], true, r[..]);
