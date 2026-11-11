@@ -10,6 +10,7 @@
 
 #load "font.coax";
 #load "ui.coax";
+#load "textkeys.coax";
 #load "worldbuilder-plan.coax";
 
 VERTEX_FLOATS :: 16;
@@ -55,7 +56,7 @@ WorldBuilder :: struct {
   // "here": the spot last tapped
   has_here: bool; here_x: f32; here_z: f32; here_at: f32;
   // the line typed, the words sent (shown while the answer comes), the one line answered
-  typed: [TYPED] u8; typed_n: int;
+  typed: [TYPED] u8; typed_n: int; all: bool;   // all: Cmd+A selected everything typed (textkeys.coax)
   heard: [TYPED] u8; heard_n: int;
   reply: [REPLY] u8; reply_n: int; reply_kind: int; reply_at: f32;
   waiting: bool; act_id: int = -1; status_id: int = -1; want_status: bool = true;
@@ -200,6 +201,7 @@ worldbuilder_message :: (s: [] WorldBuilder, kind: int, text: string) #export_c 
     return;
   }
   if kind == MSG_TEXT {
+    if s[0].all { s[0].typed_n = 0; s[0].all = false; }   // typing or a paste replaces what's selected
     for i: 0..<text.count { if s[0].typed_n < TYPED && text[i] >= 32 { s[0].typed[s[0].typed_n] = text[i]; s[0].typed_n += 1; } }
     return;
   }
@@ -328,14 +330,36 @@ undo :: (s: [] WorldBuilder) {
 
 // ---- keys and the pointer
 
-worldbuilder_key :: (s: [] WorldBuilder, key: int, down: bool) -> bool #export_c #effects(all) {
+worldbuilder_key :: (s: [] WorldBuilder, key: int, down: bool, mods: int) -> bool #export_c #effects(all) {
   wb_begin(s);
   if !down { return false; }
-  if key == KEY_ENTER { send_typed(s); return true; }
-  if key == KEY_BACKSPACE { s[0].typed_n = pop(s[0].typed[..], s[0].typed_n); return true; }
-  if key == KEY_ESCAPE { s[0].typed_n = 0; return true; }
+  // Cmd or Ctrl: the keys every typed box on the site shares (textkeys.coax)
+  cmd := tk_command(key, mods);
+  if cmd == TK_ALL { s[0].all = s[0].typed_n > 0; return true; }
+  if cmd == TK_COPY || cmd == TK_CUT {
+    // what's typed, or with nothing typed the line answered
+    text := ifx s[0].typed_n > 0 then cast(string) s[0].typed[0..<s[0].typed_n] else cast(string) s[0].reply[0..<s[0].reply_n];
+    if text.count == 0 { return true; }
+    if s[0].action == ACT_KEEP { s[0].saved_version = -1; }   // a save not yet taken is made again next frame
+    s[0].out_n = tk_copy(s[0].outbox[..], text); s[0].action = TK_ACT_COPY;
+    if cmd == TK_CUT && s[0].typed_n > 0 { s[0].typed_n = 0; }
+    s[0].all = false;
+    return true;
+  }
+  if cmd == TK_BROWSER { return false; }   // Cmd+V pastes through the field; Cmd+R, Cmd+L stay the browser's
+  if key == KEY_ENTER { s[0].all = false; send_typed(s); return true; }
+  if key == KEY_BACKSPACE {
+    s[0].typed_n = ifx s[0].all then 0 else tk_back(cast(string) s[0].typed[0..<s[0].typed_n], mods);
+    s[0].all = false; return true;
+  }
+  if key == KEY_ESCAPE { s[0].typed_n = 0; s[0].all = false; return true; }
   // a key typed before the field had the keyboard
-  if key >= 32 && key < 127 && s[0].typed_n < TYPED { s[0].typed[s[0].typed_n] = cast(u8) key; s[0].typed_n += 1; return true; }
+  if key >= 32 && key < 127 {
+    if s[0].all { s[0].typed_n = 0; s[0].all = false; }
+    if s[0].typed_n < TYPED { s[0].typed[s[0].typed_n] = cast(u8) key; s[0].typed_n += 1; }
+    return true;
+  }
+  s[0].all = false;
   return false;
 }
 worldbuilder_blur :: (s: [] WorldBuilder) #export_c #effects(all) { s[0].down = false; s[0].two = false; s[0].press = -1; }
@@ -623,6 +647,8 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
     typed := cast(string) s[0].typed[0..<s[0].typed_n];
     from := tail_fit(typed, cap, troom - 8 * k);
     shown := typed[from..<typed.count];
+    // Cmd+A: a band behind everything typed, as any selected text
+    if s[0].all && lit(out, vertices, tx - 2 * k, base - cap * 0.5, tx + text_w(shown, cap) + 2 * k, base - cap * 0.5, cap + 6 * k, 0.45, 0, CYAN_R, CYAN_G, CYAN_B, MODE_STROKE) { vertices += 6; }
     vertices = write(d, out, vertices, shown, tx, base, cap, GAP, SPACE, pale(k, 0.97), false, false);
     cx := tx + text_w(shown, cap) + 3 * k;
     blink := s[0].still || cast(int) (s[0].time * 2) % 2 == 0;
@@ -738,13 +764,13 @@ has :: (t: string, part: string) -> bool {
   #assert worldbuilder_pointer(s[..], 800, 500, POINTER_DOWN, 0, 1) && worldbuilder_pointer(s[..], 800, 500, POINTER_UP, 0, 1);
   #assert s[0].has_here && abs(s[0].here_x) < 0.5 && abs(s[0].here_z) < 0.5;
   type_in(s[..], "put a \"tree\" here");
-  #assert worldbuilder_key(s[..], KEY_ENTER, true);
+  #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
   #assert s[0].waiting && s[0].req_ready && s[0].req_what == REQ_ACT && s[0].typed_n == 0;
   #assert has(body(s[..]), "{\"text\":\"put a \\\"tree\\\" here\",\"here\":[") && has(body(s[..]), "\"present\":{}");
   worldbuilder_requested(s[..], 1);
   // a second line can't go while one is out
   type_in(s[..], "more");
-  #assert !worldbuilder_key(s[..], KEY_ENTER, true) || !s[0].req_ready;
+  #assert !worldbuilder_key(s[..], KEY_ENTER, true, 0) || !s[0].req_ready;
   worldbuilder_message(s[..], MSG_HTTP + 1, "200\nS A birch, right there.\nA place|nature/birch-1|1|||here||at||||||\n");
   #assert !s[0].waiting && s[0].world[0].n == 1 && cast(string) s[0].reply[0..<s[0].reply_n] == "A birch, right there.";
   #assert s[0].want_status;
@@ -757,14 +783,14 @@ has :: (t: string, part: string) -> bool {
   s: [1] WorldBuilder;
   ready(s[..]);
   type_in(s[..], "add rocks");
-  #assert worldbuilder_key(s[..], KEY_ENTER, true);
+  #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
   worldbuilder_requested(s[..], 2);
   worldbuilder_message(s[..], MSG_HTTP + 2, "429\nflood 1200");
   #assert !s[0].waiting && cast(string) s[0].typed[0..<s[0].typed_n] == "add rocks" && s[0].flood_until > s[0].time + 1.1;
   #assert !can_send(s[..]);
   s[0].time += 1.3;
   #assert can_send(s[..]);
-  #assert worldbuilder_key(s[..], KEY_ENTER, true);
+  #assert worldbuilder_key(s[..], KEY_ENTER, true, 0);
   worldbuilder_requested(s[..], 3);
   worldbuilder_message(s[..], MSG_HTTP + 3, "429\nresting");
   #assert s[0].resting && !can_send(s[..]) && s[0].typed_n == 9;
@@ -816,4 +842,25 @@ has :: (t: string, part: string) -> bool {
   n := frame(s[..]);
   // loading isn't a change to keep again
   #assert worldbuilder_action(s[..]) == 0;
+}
+
+#test "the chat box keeps the site's keys: Cmd+A selects, Cmd+C copies, typing replaces, Cmd+V is the browser's" {
+  s: [1] WorldBuilder;
+  ready(s[..]);
+  type_in(s[..], "put a tree here");
+  #assert worldbuilder_key(s[..], 'a', true, 8) && s[0].all;
+  #assert worldbuilder_key(s[..], 'c', true, 8);
+  #assert worldbuilder_action(s[..]) == TK_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "put a tree here";
+  #assert cast(string) s[0].typed[0..<s[0].typed_n] == "put a tree here";
+  worldbuilder_action_done(s[..]);
+  #assert !worldbuilder_key(s[..], 'v', true, 8);   // the browser pastes into the field; its text comes as MSG_TEXT
+  #assert worldbuilder_key(s[..], 'a', true, 2) && s[0].all;   // Ctrl on Windows and Linux
+  worldbuilder_message(s[..], MSG_TEXT, "add rocks");
+  #assert !s[0].all && cast(string) s[0].typed[0..<s[0].typed_n] == "add rocks";
+  #assert worldbuilder_key(s[..], 'x', true, 8) && worldbuilder_action(s[..]) == TK_ACT_COPY && s[0].typed_n == 0;
+  worldbuilder_action_done(s[..]);
+  worldbuilder_message(s[..], MSG_TEXT, "one two");
+  #assert worldbuilder_key(s[..], KEY_BACKSPACE, true, 4) && cast(string) s[0].typed[0..<s[0].typed_n] == "one ";
+  #assert worldbuilder_key(s[..], 'a', true, 8) && worldbuilder_key(s[..], KEY_BACKSPACE, true, 0) && s[0].typed_n == 0;
+  #assert !worldbuilder_key(s[..], 'r', true, 8);   // Cmd+R stays the browser's
 }

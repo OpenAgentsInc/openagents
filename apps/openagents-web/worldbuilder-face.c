@@ -51,9 +51,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
-  (void)mods; bool used = worldbuilder_key(at(state), key, true); drain(state); return used ? 1u : 0u;
+  bool used = worldbuilder_key(at(state), key, true, mods); drain(state); return used ? 1u : 0u;
 }
-EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { (void)mods; return worldbuilder_key(at(state), key, false) ? 1u : 0u; }
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return worldbuilder_key(at(state), key, false, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { worldbuilder_blur(at(state)); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   bool used = worldbuilder_pointer(at(state), x, y, phase, kind, id); drain(state); return used ? 1u : 0u;
