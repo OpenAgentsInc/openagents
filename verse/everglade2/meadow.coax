@@ -164,6 +164,9 @@ e2_meadow_weights :: (autumn: f32) -> [4] f32 {
   for i: 0..<E2_MEADOW_KITS { k := e2_meadow_kit_at(i); #assert e2_meadow_side(k, 0) == 2 * int(-floor(-e2_meadow_reach(k) / e2_meadow_cell(k))) + 1; }
   for t: 0..<4 { #assert e2_meadow_side(E2_MEADOW_GRASS, t) == 2 * int(-floor(-e2_field_out(t) / e2_field_cell(t))) + 1 && e2_meadow_side(E2_MEADOW_GRASS, t) * e2_meadow_side(E2_MEADOW_GRASS, t) <= 65535; }
   #assert e2_meadow_side(23, 0) == 0 && e2_meadow_side(E2_MEADOW_GRASS, 4) == 0;
+  // the density a page thins its own grass by is the tiers' together: whole to the near ring, a quarter a step, gone at the far one
+  #assert e2_meadow_density(f32(E2_FIELD_NEAR), 1) == 1 && e2_meadow_density(f32(E2_FIELD_FAR), 1) == 0;
+  for t: 0..<3 { #assert abs(e2_meadow_density(e2_field_out(t), 1) - pow(0.25f32, f32(t + 1))) < 0.0001; }
   // and the grid's cell and ring, as a page culls it (meadow-grid.coax), are the kit's and the tier's own
   for i: 0..<E2_MEADOW_KITS { k := e2_meadow_kit_at(i);
     #assert abs(e2_meadow_grid_cell(k, 0) - e2_meadow_cell(k)) < 0.0001 && e2_meadow_grid_inner(k, 0) == 0 && e2_meadow_grid_outer(k, 0) == e2_meadow_reach(k) && e2_meadow_grid_pad(k) > 0; }

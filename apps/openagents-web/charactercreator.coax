@@ -1007,17 +1007,42 @@ grass_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,v:gcull.GridView,i:int,r:in
     mid:=ggrid.exg_mid(c);dx:=mid[0]-v.ex;dz:=mid[1]-v.ez;d:=dx*dx+dz*dz;
     j:=m;while j>0 && far[j-1]>d {far[j]=far[j-1];cells[j]=cells[j-1];j-=1;}far[j]=d;cells[j]=c;m+=1;
   }
-  if n+m-1>cap {return n;}
-  if m==0 {b[0].draws[i*4+3]=0;return n;}
+  // each cell its share of seeds, and past the near ring fewer, as every field in the engine thins
+  // with distance (meadow-grid.coax e2_meadow_density at the quality's grass reach, from the cell's
+  // nearest point): far cells drew every seed of their share, tufts a few pixels tall (#13147)
+  counts:[ggrid.EXG_CELLS]int;kept:=0;
   for k:0..<m {
-    first:=gbaked.EXG_BAKED_AT[g.group][cells[k]];count:=grass_share(gbaked.EXG_BAKED_AT[g.group][cells[k]+1]-first,s[0].q_grass);
-    at:=ifx k==0 then i else n;
-    b[0].draws[at*4]=b[0].draws[i*4];b[0].draws[at*4+1]=b[0].draws[i*4+1];b[0].draws[at*4+2]=cast(u32)(base+first);b[0].draws[at*4+3]=cast(u32)count;
-    if k>0 {n+=1;}
+    first:=gbaked.EXG_BAKED_AT[g.group][cells[k]];all:=gbaked.EXG_BAKED_AT[g.group][cells[k]+1]-first;
+    counts[k]=grass_kept(all,s[0].q_grass,grass_cell_near(cells[k],v.ex,v.ez));
+    if counts[k]>0 {kept+=1;}
+  }
+  if n+kept-1>cap {return n;}
+  if kept==0 {b[0].draws[i*4+3]=0;return n;}
+  put:=0;
+  for k:0..<m {
+    if counts[k]<=0 {continue;}
+    first:=gbaked.EXG_BAKED_AT[g.group][cells[k]];
+    at:=ifx put==0 then i else n;
+    b[0].draws[at*4]=b[0].draws[i*4];b[0].draws[at*4+1]=b[0].draws[i*4+1];b[0].draws[at*4+2]=cast(u32)(base+first);b[0].draws[at*4+3]=cast(u32)counts[k];
+    if put>0 {n+=1;}
+    put+=1;
   }
   return n;
 }
-#test "the glade's grass, sorted into cells, draws the cells in view nearest first, each its share; an unsorted pack draws every seed" #steps 400000000 {
+// How far a grass cell's nearest seed may stand from the eye (x, z): to its square, less a tuft's reach.
+grass_cell_near :: (c:int,ex:f32,ez:f32)->f32 {
+  x0:=f32(ggrid.EXG_X0)+f32(c%ggrid.EXG_SIDE)*f32(ggrid.EXG_CELL);z0:=f32(ggrid.EXG_Z0)+f32(c/ggrid.EXG_SIDE)*f32(ggrid.EXG_CELL);
+  dx:=ifx ex<x0 then x0-ex else ifx ex>x0+f32(ggrid.EXG_CELL) then ex-x0-f32(ggrid.EXG_CELL) else 0.0f32;
+  dz:=ifx ez<z0 then z0-ez else ifx ez>z0+f32(ggrid.EXG_CELL) then ez-z0-f32(ggrid.EXG_CELL) else 0.0f32;
+  d:=sqrt(dx*dx+dz*dz)-1;return ifx d>0 then d else 0.0f32;
+}
+// A cell of n seeds d metres off: its share at the quality's grass knob, and no more than the
+// field's density there (the cell's first seeds are an even thinning of it, so fewer stay even).
+grass_kept :: (n:int,knob:f32,d:f32)->int {
+  share:=grass_share(n,knob);far:=cast(int)(f32(n)*grid.e2_meadow_density(d,knob)+0.5);
+  return ifx far<share then far else share;
+}
+#test "the glade's grass, sorted into cells, draws the cells in view nearest first, each its share thinned with distance; an unsorted pack draws every seed" #steps 400000000 {
  s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;
  total:=gbaked.EXG_BAKED_N[2];#assert total>0 && gbaked.EXG_BAKED_AT[2][ggrid.EXG_CELLS]==total && gbaked.EXG_BAKED_AT[2][0]==0;
  for c:0..<ggrid.EXG_CELLS {#assert gbaked.EXG_BAKED_AT[2][c+1]>=gbaked.EXG_BAKED_AT[2][c];}
@@ -1027,20 +1052,24 @@ grass_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,v:gcull.GridView,i:int,r:in
  // a view from the glade's middle looking along -z, level
  s[0].view=[16]f32.[0,1.6,0,712, 0,0,-1,640, 1,0,0,384, 0,1,0,0];s[0].view_w=1280;s[0].view_ok=true;
  m:=meadow_cull(s[..],b[..],out[..],1,1024);#assert m>1 && m<=1+ggrid.EXG_CELLS;
- drawn:=0;last:f32= -1;
+ drawn:=0;last:f32= -1;thinned:=0;
  for i:0..<m {
   #assert b[0].draws[i*4]==700 && b[0].draws[i*4+1]==1482 && (b[0].draws[i*4+2]>>16)==1;
   first:=cast(int)(b[0].draws[i*4+2]&65535);count:=cast(int)b[0].draws[i*4+3];drawn+=count;
   // the draw is one cell's seeds, whole, and the cell is ahead of the eye or beside it, never well behind
   c:= -1;for k:0..<ggrid.EXG_CELLS {if gbaked.EXG_BAKED_AT[2][k]==first && gbaked.EXG_BAKED_AT[2][k+1]>first {c=k;}}
-  #assert c>=0 && count==gbaked.EXG_BAKED_AT[2][c+1]-first;
+  // its seeds as far off as it lies: all of them near, fewer past the field's near ring (grass_kept)
+  #assert c>=0 && count>0 && count==grass_kept(gbaked.EXG_BAKED_AT[2][c+1]-first,1,grass_cell_near(c,0,0));
+  if grass_cell_near(c,0,0)<=16 {#assert count==gbaked.EXG_BAKED_AT[2][c+1]-first;}
+  if grass_cell_near(c,0,0)>=40 {thinned+=1;#assert count*8<gbaked.EXG_BAKED_AT[2][c+1]-first+8;}
   mid:=ggrid.exg_mid(c);#assert mid[1]<16;far:=mid[0]*mid[0]+mid[1]*mid[1];#assert far>=last;last=far;
  }
- #assert drawn>0 && drawn<total*7/10;
+ #assert drawn>0 && drawn<total*7/10 && thinned>0;
+ #assert grass_kept(100,1,0)==100 && grass_kept(100,0.5,0)==50 && grass_kept(100,1,28)==25 && grass_kept(100,1,200)==0;
  // a second cull changes nothing; at a lower quality each cell draws its share
  #assert meadow_cull(s[..],b[..],out[..],m,1024)==m;
- b[0].draws[2]=cast(u32)(1<<16);b[0].draws[3]=cast(u32)total;s[0].q_grass=0.5;half:=meadow_cull(s[..],b[..],out[..],1,1024);#assert half==m;
- less:=0;for i:0..<half {less+=cast(int)b[0].draws[i*4+3];}#assert less<drawn*6/10 && less>drawn*4/10;s[0].q_grass=1;
+ b[0].draws[2]=cast(u32)(1<<16);b[0].draws[3]=cast(u32)total;s[0].q_grass=0.5;half:=meadow_cull(s[..],b[..],out[..],1,1024);#assert half>1 && half<=m;
+ less:=0;for i:0..<half {less+=cast(int)b[0].draws[i*4+3];}#assert less<drawn*6/10 && less>0;s[0].q_grass=1;
  // no room for the cells: the one whole draw stays; an unsorted pack's group is left alone
  b[0].draws[2]=cast(u32)(1<<16);b[0].draws[3]=cast(u32)total;#assert meadow_cull(s[..],b[..],out[..],1,1)==1 && b[0].draws[3]==cast(u32)total;
  s[0].grass[0].group= -1;#assert !grass_sorted(s[0]) && meadow_cull(s[..],b[..],out[..],1,1024)==1 && b[0].draws[3]==cast(u32)total;

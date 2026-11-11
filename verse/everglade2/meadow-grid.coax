@@ -27,5 +27,26 @@ e2_meadow_grid_outer :: (kit: int, tier: int) -> f32 {
   if kit == E2_MEADOW_GRASS { return ifx tier >= 3 then 140.0f32 else 16.0f32 + f32(tier + 1) * 12; }
   return ifx kit >= 20 && kit <= 22 then 320.0f32 else ifx kit == 29 || kit == 30 then 140.0f32 else ifx kit >= 25 && kit <= 27 then 100.0f32 else 80.0f32;
 }
+// The share of a field's tufts that stand d metres from the eye, field.coax's four tiers together:
+// all of them out to E2_FIELD_NEAR (16 m), a quarter left every E2_FIELD_STEP (12 m) past it, and
+// the last tier's 1/64 fading to none by E2_FIELD_FAR (140 m). g, the quality's grass reach
+// (aethyr/quality.coax `grass`), scales every distance, as e2_field_start_r and e2_field_out_r do.
+// A page whose grass isn't drawn in field.coax's tiers thins its own by it, so every grass in the
+// engine falls off with distance the same way (charactercreator.coax grass_cull, #13147).
+e2_meadow_density :: (d: f32, g: f32) -> f32 {
+  k := ifx g > 0.05f32 then g else 0.05f32;
+  near := 16.0f32 * k; step := 12.0f32 * k; last := near + 3 * step; far := 140.0f32 * k;
+  if d <= near { return 1; }
+  if d >= far { return 0; }
+  if d < last { return pow(0.25f32, (d - near) / step); }
+  return (1.0f32 / 64) * (1 - (d - last) / (far - last));
+}
+#test "a field's grass is whole to its near ring, a quarter fewer every step past it, and gone by its far ring" {
+  #assert e2_meadow_density(0, 1) == 1 && e2_meadow_density(16, 1) == 1 && e2_meadow_density(140, 1) == 0 && e2_meadow_density(500, 1) == 0;
+  #assert abs(e2_meadow_density(28, 1) - 0.25) < 0.0001 && abs(e2_meadow_density(52, 1) - 1.0f32 / 64) < 0.0001;
+  #assert abs(e2_meadow_density(14, 0.5) - 0.25) < 0.0001 && e2_meadow_density(70, 0.5) == 0 && e2_meadow_density(7.9, 0.5) == 1;
+  last: f32 = 2; d: f32 = 0;
+  while d < 150 { v := e2_meadow_density(d, 0.7); #assert v <= last && v >= 0; last = v; d += 0.25; }
+}
 // How far past its cell a piece of the kit reaches at most (metres): its mesh at its largest size.
 e2_meadow_grid_pad :: (kit: int) -> f32 { return ifx kit == E2_MEADOW_GRASS then 1.0f32 else ifx kit >= 20 && kit <= 22 then 3.0f32 else 1.5f32; }
