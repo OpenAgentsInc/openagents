@@ -180,6 +180,7 @@ App :: struct {
   // eng starts the CLI with opt (this run's options), sends, and folds every message into ses; q and p are the
   // engine's own query and process, for the answers and commands that are Coder's (hooks, approvals, its tools, /model).
   eng: [] Engine; ses: [] Session; ses_pool: [] u8; opt: [1] ClOptions;
+  seen: [1] SCursor;              // how much of the record the terminal has printed (cd_claude_record)
   q: [] ClQuery; p: [] ClProcess;
   live: bool;                     // the CLI is running
   stopping: bool; stop_ms: int;   // an interrupt was sent
@@ -1021,7 +1022,7 @@ cd_claude_options :: (out: [] ClOptions, cwd: string, model: string, ask: bool, 
 cd_claude_send :: (a: [] App, msg: string) {
   e := a[0].eng; s := a[0].ses;
   // the record holds the turn being run: the terminal has printed what came before
-  if !s[0].live { s_init(s, a[0].ses_pool); }
+  if !s[0].live { s_init(s, a[0].ses_pool); a[0].seen[0] = SCursor.{}; }
   if a[0].live {
     e_send_as(e, s, msg, msg);
     return;
@@ -1095,6 +1096,35 @@ cd_label :: (a: [] App, name: string, arg_in: string, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
+// What the record has that the terminal has not printed: the reply's new text as it streams, and
+// each tool call once, as its row (an Edit or a Write is remembered, to show as a diff when it
+// has run). The record keeps nothing printed (s_trim), so a long turn never fills it.
+cd_claude_record :: (a: [] App) {
+  s := a[0].ses; q := a[0].q;
+  while true {
+    nw := s_next(s, a[0].seen[..]);
+    if nw.k < 0 { break; }
+    part := s[0].parts[nw.k];
+    if part.kind == P_TEXT { cd_reply_add(a, nw.text); cd_reply_commit(a, false); continue; }
+    if part.kind != P_TOOL { continue; }
+    cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
+    lb: [1024] u8;
+    label := cd_tool_label(a, part.name, part.input, lb[..]);
+    cd_tool_row(a, label);
+    a[0].steps += 1;
+    if part.name == "Edit" || part.name == "Write" {
+      dp := a[0].df_pending[..];
+      dp[0].write = part.name == "Write";
+      dp[0].nid = cd_cat(dp[0].id[..], 0, part.id);
+      dp[0].npath = cd_cat(dp[0].path[..], 0, cl_str(q[0].ar[..], part.input, "file_path"));
+      dp[0].nold = cd_cat(dp[0].old[..], 0, ifx dp[0].write then "" else cl_str(q[0].ar[..], part.input, "old_string"));
+      dp[0].nnext = cd_cat(dp[0].next[..], 0, cl_str(q[0].ar[..], part.input, ifx dp[0].write then "content" else "new_string"));
+      dp[0].active = dp[0].npath > 0;
+    }
+  }
+  trimmed := s_trim(s, a[0].seen[..]);
+}
+
 cd_claude_message :: (a: [] App, m: ClMessage) {
   q := a[0].q;
   if m.parent_tool_use_id.count > 0 { return; }       // a subagent's own traffic
@@ -1107,39 +1137,13 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
     if rate.status == "rejected" && rate.resets_at.has { a[0].provider_reset_s = rate.resets_at.value; }
     return;
   }
-  if m.kind == ClKind.stream_event {
-    t := cl_str(q[0].ar[..], m.line, "event.type");
-    if t == "content_block_delta" && cl_str(q[0].ar[..], m.line, "event.delta.type") == "text_delta" {
-      cd_reply_add(a, cl_str(q[0].ar[..], m.line, "event.delta.text"));
-      cd_reply_commit(a, false);
-    }
-    return;
-  }
+  // the reply's text and the tool calls are printed from the session record, which the engine has
+  // just folded this message into; what follows reads only what the record does not keep
+  cd_claude_record(a);
+  if m.kind == ClKind.stream_event { return; }
   if m.kind == ClKind.assistant {
     ae := cl_str(q[0].ar[..], m.line, "error");
     if ae == "rate_limit" || ae == "server_error" || ae == "overloaded_error" { a[0].ncause = cd_cat(a[0].cause[..], 0, "provider"); }
-    content := cl_raw(m.line, "message.content");
-    count := cl_count(content);
-    for i: 0..<count {
-      item := cl_json(content, cl_item(content, i));
-      if cl_str(q[0].ar[..], item, "type") != "tool_use" { continue; }
-      cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
-      lb: [1024] u8;
-      label := cd_tool_label(a, cl_str(q[0].ar[..], item, "name"), cl_raw(item, "input"), lb[..]);
-      cd_tool_row(a, label);
-      a[0].steps += 1;
-      name := cl_str(q[0].ar[..], item, "name");
-      if name == "Edit" || name == "Write" {
-        input := cl_raw(item, "input");
-        dp := a[0].df_pending[..];
-        dp[0].write = name == "Write";
-        dp[0].nid = cd_cat(dp[0].id[..], 0, cl_str(q[0].ar[..], item, "id"));
-        dp[0].npath = cd_cat(dp[0].path[..], 0, cl_str(q[0].ar[..], input, "file_path"));
-        dp[0].nold = cd_cat(dp[0].old[..], 0, ifx dp[0].write then "" else cl_str(q[0].ar[..], input, "old_string"));
-        dp[0].nnext = cd_cat(dp[0].next[..], 0, cl_str(q[0].ar[..], input, ifx dp[0].write then "content" else "new_string"));
-        dp[0].active = dp[0].npath > 0;
-      }
-    }
     return;
   }
   if m.kind == ClKind.user {
@@ -2645,7 +2649,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if (verb == "run" || verb == "fork") && args_has(args, "--detach") { return cd_detach(args, json); }
   if verb.count > 0 && verb != "run" && verb != "fork" && verb != "resume" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
   a_b: [1] App; a := a_b[..];
-  eng_b: [1] Engine; ses_b: [1] Session; ses_pool_b: [1048576] u8; prompt_b: [262144] u8;
+  eng_b: [1] Engine; ses_b: [1] Session; ses_pool_b: [2097152] u8; prompt_b: [262144] u8;
   dft: [1] DfTable; a[0].df_table = dft[..];
   qline_b: [CL_LINE_MAX] u8; qarena_b: [CL_LINE_MAX] u8; qout_b: [262144] u8; scratch_b: [196608] u8;
   cx_b: [1] CxClient; cxp_b: [1] ClProcess; cxl_b: [CL_LINE_MAX] u8; cxa_b: [262144] u8; cxo_b: [262144] u8;
@@ -2658,7 +2662,7 @@ tool_main :: () -> int #export_c #effects(all) {
   a[0].mc_line = mcl_b[..]; a[0].mc_ar[0] = ClArena.{buf = mca_b[..]};
   a[0].eng = eng_b[..]; a[0].ses = ses_b[..]; a[0].ses_pool = ses_pool_b[..];
   e_attach(a[0].eng, qline_b[..], qarena_b[..], qout_b[..], scratch_b[..], prompt_b[..]);
-  s_init(a[0].ses, a[0].ses_pool);
+  s_init(a[0].ses, a[0].ses_pool); a[0].ses[0].tabs = true;     // the terminal prints the text as it came
   a[0].q = a[0].eng[0].q[..]; a[0].p = a[0].eng[0].p[..];
   a[0].o[0].b = a[0].ob[..];
   // the palette: --theme, else CODER_THEME, else none when NO_COLOR is set, else dark
