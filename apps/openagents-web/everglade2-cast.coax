@@ -31,7 +31,7 @@ E2Cast :: struct {
   klass: int = -1; level: int = 1; bar: [XC_SLOTS] FbAb; bar_n: int;
   wire: [XC_SLOTS] int;                    // each slot's ability on the wire (class-kit.coax xk_wire)
   cool_at: f32 = -100; used: int = -1; hover: int = -1;
-  menu: int = -1; side_hover: int = -1; menu_hover: int = -1;   // the side bar's open menu (EG_SIDE_*, everglade/hud/class-bar.coax) and what the pointer is over
+  menu: int = -1; side_hover: int = -1; menu_hover: int = -1;   // the class menus' open one (EG_SIDE_*, everglade/hud/class-bar.coax) and what the pointer is over
   puffs: [1] FxPuffs;                      // the casts' effects (aethyr/fx/puff.coax), drawn by gpu/everglade2-fx.coax
   audio: [1] exsound.ExperimentalSound;    // their sounds, for the host (everglade2-face.c coaxial_sounds)
   later: [E2K_LATER] E2kLater;
@@ -391,8 +391,8 @@ e2k_media :: (s: [] E2, what: string, url: string, art: string, size: string, b:
 }
 // The bar: Everglade's iron round the slots (everglade/hud/parts.coax eg_bar_frame), each slot's
 // picture with its grey and its cooling (the page's pictures), the marks over it (everglade/hud/
-// windows.coax eg_slot_marks), the card of the one under the pointer (eg_slot_card), the side bar and
-// a refusal over the emblem (eg_bar_refused).
+// windows.coax eg_slot_marks), the card of the one under the pointer (eg_slot_card), the open class
+// menu under your portrait and a refusal over the emblem (eg_bar_refused).
 e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
   n := at;
   if !e2k_on(s) { return n; }
@@ -445,13 +445,13 @@ e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
     cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, c[0], c[1], c[2], c[3], "card");
   }
   // your health and what holds you are on the portrait plate (everglade2.coax e2_world_view, everglade/hud/parts.coax eg_world)
-  // Healer's Kit, the companion and rest: a framed side bar over the bar, each with its menu
+  // Healer's Kit, the companion and rest: the menus your portrait opens (nothing of them over the bar)
   n = e2k_side_bar(s, out, n);
   refused := e2n_rest_message(s[0].net[..]);   // a refused cast greys its slot instead (#13072)
   if refused.count == 0 { refused = e2n_aid_message(s[0].net[..]); }
   if refused.count == 0 { refused = e2n_familiar_message(s[0].net[..]); }
   // over the bar's emblem (the class's initial: its name is on the portrait plate)
-  return eg_bar_refused(ui, out, n, refused, w * 0.5, ifx refused.count > 0 then e2k_side_top(s) else 0.0f32, kk);
+  return eg_bar_refused(ui, out, n, refused, w * 0.5, ifx refused.count > 0 then e2k_bar_top(s) else 0.0f32, kk);
 }
 
 // ---- input: 1 to 9 press the bar's slots; the pointer presses a slot or shows its card
@@ -502,7 +502,7 @@ E2K_HEALTH :: CD_TEXT + 64;   // bytes: the numbers and rest, then every conditi
 // the room's effect bits (everglade-wire.coax WC_*) are the shared display's (CD_*)
 #test "Everglade II's rows carry the shared display's effect bits" { #assert WC_HALTED == CD_HALTED && WC_SLOWED == CD_SLOWED && WC_BOUND == CD_BOUND && WC_BANED == CD_BANED && WC_ENFEEBLED == CD_ENFEEBLED && WC_HEXED == CD_HEXED && WC_BLESSED == CD_BLESSED && WC_FAITH == CD_FAITH; }
 
-// ---- rest (#13046): the choices the room's rest allows now, in the side bar's REST menu; the room decides each
+// ---- rest (#13046): the choices the room's rest allows now, in REST's menu, which your portrait opens; the room decides each
 // The rest requests (RS_REST_*) shown now, into out: none until the room has said your rest.
 e2k_rest_choices :: (s: [] E2, out: [] int) -> int {
   n := s[0].net[..];
@@ -549,9 +549,9 @@ e2k_familiar_heal_target :: (s:[]E2)->int {
   return best;
 }
 
-// ---- the side bar over the bar (zone wiring): Everglade's class features and rest (the game's
-// everglade/hud/class-bar.coax) drawn with the engine's widgets (aethyr/ui/hud-menu.coax), from what
-// this zone's room said; a press sends the room its request.
+// ---- the class menus under your portrait (zone wiring): Everglade's class features and rest (the
+// game's everglade/hud/class-bar.coax) drawn with the engine's widgets (aethyr/ui/hud-menu.coax), from
+// what this zone's room said; a press sends the room its request. Nothing of them is over the bar.
 e2k_facts :: (s: [] E2) -> EgBarFacts {
   f: EgBarFacts; net := s[0].net[..];
   f.kit = e2k_aid_on(s); f.aid_left = net[0].aid_left;
@@ -560,21 +560,37 @@ e2k_facts :: (s: [] E2) -> EgBarFacts {
   f.rest_n = e2k_rest_choices(s, f.rest[..]); f.resting = net[0].rest_known && net[0].rest_code != WIRE_REST_NONE;
   return f;
 }
-// Everglade's side bar (everglade/hud/class-bar.coax) over this zone's bar, with this zone's facts.
-e2k_side_geo :: (s: [] E2) -> EgSideGeo { kk := s[0].k; b0 := e2k_box(s[0].casts[..], 0, s[0].width, s[0].height, kk); return eg_side_geo(e2k_facts(s), s[0].width, s[0].height, kk, b0[1]); }
+// The top of this zone's bar's first slot (device px): what sits over the bar starts above it.
+e2k_bar_top :: (s: [] E2) -> f32 { return e2k_box(s[0].casts[..], 0, s[0].width, s[0].height, s[0].k)[1]; }
+// Everglade's class menus (everglade/hud/class-bar.coax) under your portrait plate (everglade/hud/parts.coax
+// eg_world_portrait), down to this zone's bar at most, with this zone's facts.
+e2k_side_geo :: (s: [] E2) -> EgSideGeo { kk := s[0].k; return eg_side_geo(e2k_facts(s), s[0].width, s[0].height, kk, cc.eg_world_portrait(s[0].width, s[0].height, kk), e2k_bar_top(s) - 8 * kk); }
 e2k_side_st :: (s: [] E2) -> EgSideState { k := s[0].casts[0]; return EgSideState.{menu = k.menu, side_hover = k.side_hover, menu_hover = k.menu_hover}; }
 e2k_rect :: (b: cc.HudPrim) -> [4] f32 { return [4] f32.[b.x0, b.y0, b.x1, b.y1]; }
 e2k_side_h :: (s: [] E2) -> f32 { return eg_side_h(s[0].width, s[0].height, s[0].k); }
 e2k_side :: (s: [] E2, ids: [] int) -> int { return eg_side_items(e2k_facts(s), ids); }
 e2k_side_find :: (s: [] E2, id: int) -> int { return eg_side_find(e2k_side_geo(s), id); }
 e2k_menu_rows :: (s: [] E2, id: int, rows: [] int) -> int { return eg_menu_rows(e2k_facts(s), id, rows); }
-e2k_side_box :: (s: [] E2, j: int) -> [4] f32 { return e2k_rect(eg_side_box(e2k_side_geo(s), j)); }
-// The side bar's top (over the bar when it shows nothing): what sits over it starts here.
-e2k_side_top :: (s: [] E2) -> f32 { return eg_side_top(e2k_side_geo(s)); }
 e2k_menu_panel :: (s: [] E2, id: int) -> [4] f32 { return e2k_rect(eg_menu_of(e2k_facts(s), e2k_side_geo(s), id).panel); }
 e2k_menu_box :: (s: [] E2, id: int, r: int) -> [4] f32 { rows: [EG_MENU_ROWS] int; if r < 0 || r >= e2k_menu_rows(s, id, rows[..]) { return [4] f32.[0, 0, 0, 0]; } return e2k_rect(cc.hud_menu_row(eg_menu_of(e2k_facts(s), e2k_side_geo(s), id), r)); }
-// The centres a check presses: button id's, and action a's row in id's menu ([-1, -1] when not shown).
-e2k_side_centre :: (s: [] E2, id: int) -> [2] f32 { j := e2k_side_find(s, id); if j < 0 { return [2] f32.[-1, -1]; } b := e2k_side_box(s, j); return [2] f32.[(b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5]; }
+// The centres a check presses. Toward item id's menu ([-1, -1] when the room doesn't offer it): your
+// portrait, or with the portrait's own menu open, id's row in it. And action a's row in id's menu.
+e2k_side_centre :: (s: [] E2, id: int) -> [2] f32 {
+  g := e2k_side_geo(s); if eg_side_find(g, id) < 0 { return [2] f32.[-1, -1]; }
+  if s[0].casts[0].menu == EG_SIDE_ROOT { return e2k_menu_centre(s, EG_SIDE_ROOT, ifx id == EG_SIDE_KIT then EG_DO_KIT else EG_DO_OPEN + id); }
+  return [2] f32.[(g.anchor.x0 + g.anchor.x1) * 0.5, (g.anchor.y0 + g.anchor.y1) * 0.5];
+}
+// For the checks: press toward item id until its menu is open (the kit: until its row is pressed).
+e2k_side_open :: (s: [] E2, id: int) -> bool {
+  for step: 0..<2 {
+    if id != EG_SIDE_KIT && s[0].casts[0].menu == id { return true; }
+    c := e2k_side_centre(s, id); if !(c[0] > 0) { return false; }
+    kit_row := id == EG_SIDE_KIT && s[0].casts[0].menu == EG_SIDE_ROOT;
+    if !e2_pointer(s, c[0], c[1], 0, 0, 1) { return false; }
+    if kit_row { return true; }
+  }
+  return id != EG_SIDE_KIT && s[0].casts[0].menu == id;
+}
 e2k_menu_centre :: (s: [] E2, id: int, a: int) -> [2] f32 {
   rows: [EG_MENU_ROWS] int; m := e2k_menu_rows(s, id, rows[..]);
   for r: 0..<m { if rows[r] == a { b := e2k_menu_box(s, id, r); return [2] f32.[(b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5]; } }
@@ -599,6 +615,6 @@ e2k_side_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
   return p.taken;
 }
 e2k_side_bar :: (s: [] E2, out: [] f32, at: int) -> int {
-  g := e2k_side_geo(s); k := s[0].casts[..]; if k[0].menu >= 0 && eg_side_find(g, k[0].menu) < 0 { k[0].menu = -1; }
+  g := e2k_side_geo(s); k := s[0].casts[..]; if k[0].menu >= 0 && !eg_menu_on(g, k[0].menu) { k[0].menu = -1; }
   return eg_side_draw(s[0].creator[0].ui, e2k_facts(s), g, e2k_side_st(s), out, at);
 }

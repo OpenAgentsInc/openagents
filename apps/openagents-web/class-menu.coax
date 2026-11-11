@@ -1,6 +1,6 @@
 // Everglade Experimental's CLASSES column (experimental-combat.coax), shared with Everglade II's
 // local admin mode (everglade2-admin.coax): the twelve SRD 5.2.1 classes, LEVEL 1 to 6, and REST
-// (SHORT, SLEEP, WATCH, HIT DIE, END REST) with KNOCK OUT. This unit lays the column out, draws it
+// (SHORT, SLEEP, WATCH, HIT DIE, END REST). This unit lays the column out, draws it
 // and says what a point in it is; each world applies the choice its own way (Experimental to its
 // offline battle, Everglade II through its room). Its loader loads charactercreator.coax as cc and
 // class-kit.coax (XC_CL_UP).
@@ -9,16 +9,16 @@
 CM_HEAD :: 32.0; CM_ROW :: 24.0; CM_ROWS_TOP :: 40.0; CM_GAP :: 8.0;   // CSS px: its header, its rows, the gap above it
 CM_CLASSES :: 12; CM_LEVELS :: 6;
 CM_REST_LABELS :: [5]string.["SHORT","SLEEP","WATCH","HIT DIE","END REST"];
-// What a point in the column is (cm_hit): nothing, the header, a class row, a level, a rest
-// request (0 to 4, CM_REST_LABELS's order) or KNOCK OUT.
-CM_NONE :: 0; CM_TOGGLE :: 1; CM_CLASS :: 2; CM_LEVEL :: 3; CM_REST :: 4; CM_KNOCKOUT :: 5;
+// What a point in the column is (cm_hit): nothing, the header, a class row, a level, or a rest
+// request (0 to 4, CM_REST_LABELS's order).
+CM_NONE :: 0; CM_TOGGLE :: 1; CM_CLASS :: 2; CM_LEVEL :: 3; CM_REST :: 4;
 CmHit :: struct { kind: int; index: int; }
 
 // The class part's height, CSS px: its header, and when open its twelve rows.
 cm_class_height :: (open: bool) -> f32 { return ifx open then f32(CM_ROWS_TOP) + f32(CM_CLASSES) * f32(CM_ROW) + 8 else f32(CM_HEAD); }
 // The whole column's height, CSS px, with `extra` px of rows of its world's own below REST.
 cm_height :: (open: bool, extra: f32) -> f32 { return cm_class_height(open) + 110 + extra; }
-// REST's box i (0 to 4 its requests, 5 KNOCK OUT, then a world's own boxes in the same grid), device px.
+// REST's box i (0 to 4 its requests, 5 left empty, then a world's own boxes in the same grid), device px.
 cm_box :: (top: f32, open: bool, k: f32, i: int) -> cc.Box {
   left := (32 + f32(i % 3) * 106) * k; y := top + (cm_class_height(open) + 58 + f32(i / 3) * 23) * k;
   return cc.Box.{x0 = left, y0 = y, x1 = left + 96 * k, y1 = y + 21 * k};
@@ -28,7 +28,7 @@ cm_in :: (r: cc.Box, px: f32, py: f32) -> bool { return px >= r.x0 && px <= r.x1
 cm_hit :: (top: f32, open: bool, k: f32, px: f32, py: f32) -> CmHit {
   if px < 12 * k || px > 370 * k || py < top { return CmHit.{}; }
   if py >= top + (cm_class_height(open) + 34) * k {
-    for i: 0..<6 { if cm_in(cm_box(top, open, k, i), px, py) { return CmHit.{kind = ifx i < 5 then CM_REST else CM_KNOCKOUT, index = i}; } }
+    for i: 0..<5 { if cm_in(cm_box(top, open, k, i), px, py) { return CmHit.{kind = CM_REST, index = i}; } }
     return CmHit.{};
   }
   if py >= top + cm_class_height(open) * k {
@@ -42,11 +42,11 @@ cm_hit :: (top: f32, open: bool, k: f32, px: f32, py: f32) -> CmHit {
   }
   return CmHit.{};
 }
-// The column's words: CLASSES (yours marked), LEVEL (yours gold), the rest line and its requests, KNOCK
-// OUT. With a layout trace attached (aethyr/ui/trace.coax) it also puts what cm_hit presses there, in
+// The column's words: CLASSES (yours marked), LEVEL (yours gold), the rest line and its requests.
+// With a layout trace attached (aethyr/ui/trace.coax) it also puts what cm_hit presses there, in
 // the column's panel `pane` (the caller's, as tall as its own rows: UIT_NONE for none), under the
 // part the caller names (cc.uit_part), so a developer's panel can mark it (cc.uit_debug).
-cm_draw :: (ui: [] cc.UitTrace, pane: int, out: [] f32, at: int, top: f32, open: bool, k: f32, klass: int, level: int, rest: string, knockout: bool) -> int {
+cm_draw :: (ui: [] cc.UitTrace, pane: int, out: [] f32, at: int, top: f32, open: bool, k: f32, klass: int, level: int, rest: string) -> int {
   n := at; head := cc.ink(k, 0.95, 0.9, 0.7); body := cc.ink(k, 0.91, 0.93, 0.88); gold := cc.ink(k, 1, 0.75, 0.3);
   toggle := cc.uit_put(ui, pane, cc.UIT_BUTTON, 12 * k, top, 370 * k, top + f32(CM_HEAD) * k, "CLASSES");
   n = cc.ttext(ui, toggle, out, n, ifx open then "- CLASSES" else "+ CLASSES", 32 * k, top + 25 * k, 10 * k, head, "");
@@ -71,14 +71,12 @@ cm_draw :: (ui: [] cc.UitTrace, pane: int, out: [] f32, at: int, top: f32, open:
     r := cm_box(top, open, k, i); rest_b := cc.uit_put(ui, pane, cc.UIT_BUTTON, r.x0, r.y0, r.x1, r.y1, CM_REST_LABELS[i]);
     n = cc.ttext(ui, rest_b, out, n, CM_REST_LABELS[i], r.x0, r.y0 + 16 * k, 8 * k, body, "");
   }
-  ko := cm_box(top, open, k, 5); kb := cc.uit_put(ui, pane, cc.UIT_BUTTON, ko.x0, ko.y0, ko.x1, ko.y1, "KNOCK OUT");
-  n = cc.ttext(ui, kb, out, n, ifx knockout then "KNOCK OUT: ON" else "KNOCK OUT", ko.x0, ko.y0 + 16 * k, 8 * k, ifx knockout then gold else body, "");
   return n;
 }
 
 // ---- the compact picker (Everglade Experimental, #13092): touch-sized buttons in the realm's HUD
-// style, the twelve classes as a grid and LEVEL beside its header when it fits, rest and knock-out on
-// the side bar (everglade/hud/class-bar.coax). A world places it in the room it has (x0, y0, wide:
+// style, the twelve classes as a grid and LEVEL beside its header when it fits; rest is in the menu
+// your portrait opens (everglade/hud/class-bar.coax). A world places it in the room it has (x0, y0, wide:
 // device px) and gives the lowest it may reach (foot); the grid takes as many columns as it needs to
 // stay over that foot. The wild-shape row (a Druid's form swap) sits under it while one is due.
 CM_WILD :: 6;                       // a wild-shape box (0 the known form, 1 the new, 2 REPLACE)

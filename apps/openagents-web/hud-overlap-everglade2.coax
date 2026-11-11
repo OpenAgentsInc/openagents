@@ -63,13 +63,21 @@ tool_main :: () -> int #export_c #effects(all) {
       h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world", false);
       h2_room(s[..]);
       h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, rest controls", false);
-      // each side-bar button's tip, then its menu open with a row's tip
+      // the class menus under your portrait: its tip, its own menu where it has one, then each item's
+      // menu open with a row's tip
       ids: [3] int; sn := e2k_side(s[..], ids[..]);
+      if sn > 0 {
+        s[0].casts[0].menu = -1; s[0].casts[0].side_hover = 0; s[0].casts[0].menu_hover = -1;
+        h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, portrait tip", false);
+        if eg_side_first(e2k_side_geo(s[..])) == EG_SIDE_ROOT {
+          s[0].casts[0].menu = EG_SIDE_ROOT; s[0].casts[0].side_hover = -1; s[0].casts[0].menu_hover = 0;
+          h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, portrait menu", false);
+        }
+      }
       for j: 0..<sn {
-        s[0].casts[0].menu = -1; s[0].casts[0].side_hover = j; s[0].casts[0].menu_hover = -1;
-        h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, side tip", false);
+        if ids[j] == EG_SIDE_KIT { continue; }
         s[0].casts[0].menu = ids[j]; s[0].casts[0].side_hover = -1; s[0].casts[0].menu_hover = 0;
-        h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, side menu", false);
+        h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, class menu", false);
       }
     }
     {

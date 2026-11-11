@@ -14,7 +14,7 @@
 #load "everglade2-net.coax";    // the room: the others, your inputs and the server's word on you (#13054)
 #load "class-look.coax";        // your class's bar, how it aims, looks and sounds: Everglade Experimental's (#13058)
 #load "experimental-sound.coax" as exsound;
-#load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: class features and rest, every zone's (the game)
+#load "../../everglade/hud/class-bar.coax";   // Everglade's class menus under your portrait: class features and rest, every zone's (the game)
 #load "../../everglade/hud/windows.coax";   // Everglade's HUD windows and marks: talk, the workbench, the bar's marks, the wedge (#13083)
 #load "../../everglade/hud/class-resource.coax";   // Everglade's class resource bar: Rages, Focus (#13084)
 #load "../../everglade/hud/create.coax";    // Everglade's Character Create panel and the world's menu (#13083)
@@ -1011,7 +1011,7 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  // both on a dark plaque, so they read over the bright glade
  fw:=e2c_text_w(cast(string)buf[0..<m],13*k);gl:[32]u8;gw:=ifx s[0].golden || !s[0].q_ready then 0.0f32 else e2c_text_w(quality_label(s[0].q[..],gl[..]),13*k)+24*k;
  base:=e2_fps_clear(s,s[0].width-16*k-fw-14*k-gw,s[0].width-8*k,h-16*k);
- // an open side-bar menu on a short page reaches over it: it steps aside under the menu
+ // an open class menu on a short page reaches over it: it steps aside under the menu
  if e2k_on(s) && cc.eg_meets(eg_menu_cover(e2k_facts(s),e2k_side_geo(s),e2k_side_st(s)),cc.hud_box(s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k)) {return at;}
  // a slot's card is up over the corner: the plaque steps aside under it
  hv:=s[0].casts[0].hover;
@@ -1021,9 +1021,9 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  n:=e2_gfx_control(s,out,p,s[0].width-16*k-fw-14*k,base);
  return cc.fps_draw(s[0].creator[0].ui,s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
 }
-// The plaque's baseline, from y up: clear of the class bar's slots, its emblem over the middle and the
-// side bar over it, wherever they share its width (x0..x1). On a phone the bar spans the page, so the
-// plaque sits over all of it.
+// The plaque's baseline, from y up: clear of the class bar's slots and its emblem over the middle,
+// wherever they share its width (x0..x1). On a phone the bar spans the page, so the plaque sits over
+// all of it.
 e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
   k := s[0].k; base := y; if !e2k_on(s) { return base; }
   w := s[0].width; h := s[0].height; top := y + 1000;
@@ -1031,8 +1031,6 @@ e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
     if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k {
       t := b[1] - 8 * k; mid := w * 0.5; if x0 < mid + 30 * k && x1 > mid - 30 * k { t = b[1] - 32 * k; }   // the emblem's medallion
       if t < top { top = t; } } }
-  ids: [EG_SIDE_N] int; sn := e2k_side(s, ids[..]);
-  for j: 0..<sn { b := e2k_side_box(s, j); if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k && b[1] - 8 * k < top { top = b[1] - 8 * k; } }
   if top < y + 1000 && base + 16 * k > top { base = top - 16 * k; }
   return base;
 }
@@ -1663,7 +1661,8 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // px: x, y, x, y), 104 its level, 105 your bar's slots, 106 the room's word on it known (1), 107
   // refused casts undone, 108 their fades still going, 110 + i what slot i has left (-1 unknown) and
   // 120 + i whether it holds (1)
-  // 132, 133: the side bar's REST button's centre (canvas px, -1 none); 134 the menu open (EG_SIDE_*, -1 none)
+  // 132, 133: what to press toward REST's menu (canvas px, -1 none): your portrait, or REST's row in
+  // the portrait's own menu while that is open; 134 the menu open (EG_SIDE_*, -1 none)
   if field == 132 || field == 133 { c := e2k_side_centre(s, EG_SIDE_REST); return cast(int)(ifx field == 132 then c[0] else c[1]); }
   if field == 134 { return s[0].casts[0].menu; }
   // 130, 131: on a phone, the CLASS tab's centre (canvas px), which shows NAME, CLASS and LEVEL; 0 with no tabs
@@ -2413,7 +2412,7 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
   count=e2k_vitals_text(s[..],label[..]); #assert cast(string)label[0..<count]=="HP 3/8 · TEMP 7";
-  #assert e2k_bar_draw(s[..],geometry[..],0)>plain;
+  #assert e2k_bar_draw(s[..],geometry[..],0)==plain;   // your health is on the portrait plate; nothing is added over the bar
   newer:[WIRE_SF] s32; wire_s_pack(WireS.{id=1,kind=WK_PLAYER,hp=6,max=8},newer[..]);
   count=wire_put_d(frame[..],0,WireD.{tick=2}); count=wire_put_s(frame[..],count,1,1,row[..],newer[..]);
   e2n_record(n,cast(string)frame[0..<count]);
@@ -2472,10 +2471,10 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
 
 // For the checks: open the companion's menu if it is shut, then press action a's row in it.
 e2k_tap_pet :: (s: [] E2, a: int) -> bool {
-  if s[0].casts[0].menu != EG_SIDE_PET { c := e2k_side_centre(s, EG_SIDE_PET); if !(c[0] > 0) || !e2_pointer(s, c[0], c[1], 0, 0, 1) { return false; } }
+  if !e2k_side_open(s, EG_SIDE_PET) { return false; }
   r := e2k_menu_centre(s, EG_SIDE_PET, a); return r[0] > 0 && e2_pointer(s, r[0], r[1], 0, 0, 1);
 }
-#test "Everglade II side bar: kit, companion and rest are framed buttons that never overlap, at any width; menus stay on the page" #steps 2000000000 {
+#test "Everglade II class menus: kit, companion and rest are no buttons over the bar; your portrait opens them, and every menu hangs under it on the page, at any width" #steps 2000000000 {
   s:[1]E2; e2_test_cast_state(s[..],FB_CL_DRUID);
   n:=s[0].net[..]; n[0].mono=100;
   e2k_set_class(s[0].casts[..],FB_CL_DRUID,2); e2n_set_class(n,FB_CL_DRUID,2);
@@ -2487,26 +2486,27 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   for q:0..<3 {
     s[0].width=sizes[q*2]; s[0].height=sizes[q*2+1];
     ids:[3]int; c:=e2k_side(s[..],ids[..]); #assert c==3;
-    b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k);
-    for i:0..<c { a:=e2k_side_box(s[..],i);
-      #assert a[0]>=8 && a[2]<=s[0].width-8 && a[3]<b0[1]-30 && a[3]-a[1]>=e2k_side_h(s[..])-0.01;
-      for j:0..<i { z:=e2k_side_box(s[..],j); #assert a[2]<=z[0] || z[2]<=a[0] || a[3]<=z[1] || z[3]<=a[1]; } }
-    #assert q==0 || e2k_side_h(s[..])>=44;
-    // the frame rate's and the GFX control's plaque keeps clear of the bar and the side bar
-    px0:=s[0].width-240; px1:=s[0].width-8; base:=e2_fps_clear(s[..],px0,px1,s[0].height-16);
-    for i:0..<s[0].casts[0].bar_n { b:=e2k_box(s[0].casts[..],i,s[0].width,s[0].height,s[0].k); #assert b[2]<=px0 || b[0]>=px1 || base+9<=b[1]; }
-    for i:0..<c { a:=e2k_side_box(s[..],i); #assert a[2]<=px0 || a[0]>=px1 || base+9<=a[1]; }
-    for id:1..<3 { rows:[EG_MENU_ROWS]int; m:=e2k_menu_rows(s[..],id,rows[..]); p:=e2k_menu_panel(s[..],id);
-      #assert p[0]>=8 && p[2]<=s[0].width-8 && p[1]>=0 && p[3]<=e2k_side_top(s[..]);
+    b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k); g:=e2k_side_geo(s[..]);
+    // your portrait is what opens them: on the page, well over the bar, and no slot under it
+    #assert g.anchor.x0>=0 && g.anchor.x1<=s[0].width && g.anchor.y1<b0[1]-30 && e2k_slot_at(s[..],(g.anchor.x0+g.anchor.x1)*0.5,(g.anchor.y0+g.anchor.y1)*0.5)<0;
+    #assert eg_side_first(g)==EG_SIDE_ROOT && (q==0 || e2k_side_h(s[..])>=44);
+    // the portrait's own menu and each item's: on the page, over the bar, rows inside and apart
+    menus:=[3]int.[EG_SIDE_ROOT,EG_SIDE_PET,EG_SIDE_REST];
+    for id:menus { rows:[EG_MENU_ROWS]int; m:=e2k_menu_rows(s[..],id,rows[..]); p:=e2k_menu_panel(s[..],id);
+      #assert m>0 && p[0]>=8 && p[2]<=s[0].width-8 && p[1]>=0 && p[3]<=b0[1];
       for r:0..<m { a:=e2k_menu_box(s[..],id,r); #assert a[0]>=p[0] && a[2]<=p[2] && a[1]>=p[1] && a[3]<=p[3];
         for r2:0..<r { z:=e2k_menu_box(s[..],id,r2); #assert a[2]<=z[0] || z[2]<=a[0] || a[3]<=z[1] || z[3]<=a[1]; } } }
   }
-  // the companion's button says its form in words, not a code
+  // the companion's row says its form in words, not a code
   b:[48]u8; c:=eg_side_label(e2k_facts(s[..]),EG_SIDE_PET,b[..]); #assert cast(string)b[0..<c]=="WILD COMPANION · CAT";
   c=eg_menu_label(e2k_facts(s[..]),EG_DO_PAY,b[..]); #assert cast(string)b[0..<c]=="PAY: WILD SHAPE";
-  // a press elsewhere shuts an open menu, and draws the menu while open
-  out:[32768*16]f32; shut:=e2k_bar_draw(s[..],out[..],0);
-  pc:=e2k_side_centre(s[..],EG_SIDE_PET); #assert e2_pointer(s[..],pc[0],pc[1],0,0,1) && s[0].casts[0].menu==EG_SIDE_PET;
+  // shut, the menus draw nothing; your portrait opens its own menu, a row the companion's; a press
+  // elsewhere shuts an open menu
+  out:[32768*16]f32; nt:[] cc.UitTrace; shut:=e2k_bar_draw(s[..],out[..],0);
+  #assert eg_side_draw(nt,e2k_facts(s[..]),e2k_side_geo(s[..]),e2k_side_st(s[..]),out[..],0)==0;
+  pc:=e2k_side_centre(s[..],EG_SIDE_PET); #assert e2_pointer(s[..],pc[0],pc[1],0,0,1) && s[0].casts[0].menu==EG_SIDE_ROOT;
+  #assert e2k_bar_draw(s[..],out[..],0)>shut;
+  #assert e2k_side_open(s[..],EG_SIDE_PET) && s[0].casts[0].menu==EG_SIDE_PET;
   #assert e2k_bar_draw(s[..],out[..],0)>shut;
   // a press outside the menu (a short page's menu grows up toward the top, so the corner)
   #assert e2_pointer(s[..],2,2,0,0,1) && s[0].casts[0].menu== -1;
@@ -2522,14 +2522,14 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   geometry:[8192] f32; plain:=e2k_bar_draw(s[..],geometry[..],0);
   e2n_record(n,"z 0 0 1");
   #assert e2k_rest_choices(s[..],reqs[..])==2 && reqs[0]==RS_REST_SHORT && reqs[1]==RS_REST_SLEEP && e2k_rest_label(s[..],reqs[1])=="LONG REST";
-  #assert e2k_bar_draw(s[..],geometry[..],0)>plain;
-  // REST sits in the side bar over the bar, apart from the slots; its menu opens above it
+  #assert e2k_bar_draw(s[..],geometry[..],0)==plain;   // nothing new over the bar: the choices wait in the menu your portrait opens
+  // REST is in the menus your portrait opens, well over the bar and apart from the slots; its menu hangs under the portrait
   b0:=e2k_box(s[0].casts[..],0,s[0].width,s[0].height,s[0].k); rb:=e2k_side_centre(s[..],EG_SIDE_REST);
   #assert rb[1]<b0[1]-40 && rb[0]>0 && rb[0]<s[0].width && e2k_slot_at(s[..],rb[0],rb[1])<0;
   #assert e2_probe(s[..],132)==cast(int)rb[0] && e2_probe(s[..],133)==cast(int)rb[1] && e2_probe(s[..],134)== -1;
-  #assert e2_pointer(s[..],rb[0],rb[1],0,0,1) && s[0].casts[0].menu==EG_SIDE_REST && e2_probe(s[..],134)==EG_SIDE_REST;
+  #assert e2k_side_open(s[..],EG_SIDE_REST) && s[0].casts[0].menu==EG_SIDE_REST && e2_probe(s[..],134)==EG_SIDE_REST;
   a:=e2k_menu_centre(s[..],EG_SIDE_REST,EG_DO_REST); z:=e2k_menu_centre(s[..],EG_SIDE_REST,EG_DO_REST+1);
-  #assert a[1]<rb[1] && a[1]<z[1] && a[0]>=0 && e2k_slot_at(s[..],a[0],a[1])<0;
+  #assert a[1]>rb[1] && a[1]<z[1] && a[1]<b0[1] && a[0]>=0 && e2k_slot_at(s[..],a[0],a[1])<0;
   // the probes a browser check presses them by
   #assert e2_probe(s[..],30)==WIRE_REST_NONE && e2_probe(s[..],31)==2 && e2_probe(s[..],32)==RS_REST_SHORT && e2_probe(s[..],33)==RS_REST_SLEEP;
   #assert e2_probe(s[..],34)==cast(int)a[0] && e2_probe(s[..],35)==cast(int)a[1] && e2_probe(s[..],36)==cast(int)z[0] && e2_probe(s[..],37)==cast(int)z[1];
@@ -2559,8 +2559,8 @@ e2k_tap_pet :: (s: [] E2, a: int) -> bool {
   count:=wire_put_d(frame[..],0,WireD.{tick=1,f=1});
   count=wire_put_s(frame[..],count,1,0,zero[..],row[..]);
   e2n_record(n,cast(string)frame[0..<count]);
-  box:=e2k_side_centre(s[..],EG_SIDE_KIT); sent:=n[0].pipe[0].n;
-  #assert e2_pointer(s[..],box[0],box[1],0,0,1);
+  sent:=n[0].pipe[0].n;
+  #assert e2k_side_open(s[..],EG_SIDE_KIT);   // your portrait, then the kit's row in its menu
   #assert n[0].pipe[0].n==sent+1 && n[0].aid_left==-1;
   p:=n[0].pipe[0]; last:=p.n-1;
   #assert cast(string)p.buf[p.from[last]..<p.from[last]+p.len[last]]=="U1 3000001";

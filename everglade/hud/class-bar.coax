@@ -1,24 +1,27 @@
-// Everglade's side bar over the action bar, for every Everglade zone: the SRD class features and
-// rest that are not slots on the bar. HEALER'S KIT, the Druid's Wild Companion or the Wizard's
-// Find Familiar, and REST, with what each menu offers and a tip for each. Plain facts in, words
-// out: a zone fills EgBarFacts from what its room said, draws them with the engine's widgets
-// (aethyr/ui/hud-menu.coax hud_side_draw, hud_menu_draw, hud_tip) and sends what a press asks.
+// Everglade's class menus, for every Everglade zone: the SRD class features and rest that are not
+// slots on the bar. HEALER'S KIT, the Druid's Wild Companion or the Wizard's Find Familiar, and
+// REST, with what each menu offers and a tip for each. Nothing of them is a button over the action
+// bar (GitHub #13147): a press on your own portrait plate opens them, as a menu hung under it. Plain
+// facts in, words out: a zone fills EgBarFacts from what its room said, draws them with the engine's
+// widgets (aethyr/ui/hud-menu.coax hud_menu_draw, hud_tip) and sends what a press asks.
 // The room decides every request. docs/verse/hud-styles.md.
 
-// What the side bar shows: only what the room has said. rest holds the rest requests (RS_REST_*,
+// What the menus offer: only what the room has said. rest holds the rest requests (RS_REST_*,
 // aethyr/rules/srd/rest-control.coax) the room allows now.
 EgBarFacts :: struct {
   kit: bool; aid_left: int = -1;                 // Healer's Kit, and its uses left (-1 not said)
   pet: bool; wizard: bool; druid: bool;          // a companion or familiar to call, and whose
   form: string; spirit: int; paid_slot: bool;    // its form's name, the familiar's spirit (0 fey, 1 celestial, 2 fiend), paid with a slot
   rest: [4] int; rest_n: int; resting: bool;     // the rest choices, and whether a rest is under way
-  rest_say: string;                              // how the rest stands, on its button ("" just REST)
-  knock: int = -1;                               // knocking out with melee blows (SRD p.17): -1 not offered, 0 off, 1 on
+  rest_say: string;                              // how the rest stands, on its row ("" just REST)
 }
-EG_SIDE_KIT :: 0; EG_SIDE_PET :: 1; EG_SIDE_REST :: 2; EG_SIDE_KNOCK :: 3; EG_SIDE_N :: 4;
+EG_SIDE_KIT :: 0; EG_SIDE_PET :: 1; EG_SIDE_REST :: 2; EG_SIDE_N :: 3;
+EG_SIDE_ROOT :: 8;   // EgSideState.menu: your portrait's own menu, a row for each of the above the room offers
 // A menu row's action: the companion's (summon, form, spirit, how it is paid, the orders 1 to 4 and
-// 6, Cure Wounds through it) and rest's (choice j)
+// 6, Cure Wounds through it), rest's (choice j), and in the portrait's menu a row that opens item
+// id's menu (EG_DO_OPEN + id; the Healer's Kit has none, its row acts: EG_DO_KIT)
 EG_DO_SUMMON :: 1; EG_DO_FORM :: 2; EG_DO_SPIRIT :: 3; EG_DO_PAY :: 4; EG_DO_ORDER :: 10; EG_DO_CURE :: 15; EG_DO_REST :: 20;
+EG_DO_KIT :: 30; EG_DO_OPEN :: 40;
 EG_MENU_ROWS :: 12;
 
 eg_put_s :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }
@@ -35,25 +38,23 @@ eg_side_items :: (f: EgBarFacts, ids: [] int) -> int {
   if f.kit { ids[n] = EG_SIDE_KIT; n += 1; }
   if f.pet { ids[n] = EG_SIDE_PET; n += 1; }
   if f.rest_n > 0 || f.rest_say.count > 0 { ids[n] = EG_SIDE_REST; n += 1; }
-  if f.knock >= 0 { ids[n] = EG_SIDE_KNOCK; n += 1; }
   return n;
 }
 eg_side_label :: (f: EgBarFacts, id: int, b: [] u8) -> int {
   if id == EG_SIDE_KIT { n := eg_put_s(b, 0, "HEALER'S KIT"); if f.aid_left >= 0 { n = eg_put_s(b, n, " · "); n = eg_int_s(b, n, f.aid_left); } return n; }
   if id == EG_SIDE_PET { return eg_caps_s(b, eg_put_s(b, 0, ifx f.wizard then "FAMILIAR · " else "WILD COMPANION · "), f.form); }
-  if id == EG_SIDE_KNOCK { return eg_put_s(b, 0, ifx f.knock > 0 then "KNOCK OUT · ON" else "KNOCK OUT"); }
   return eg_put_s(b, 0, ifx f.rest_say.count > 0 then f.rest_say else "REST");
 }
 eg_side_tip :: (f: EgBarFacts, id: int) -> string {
   if id == EG_SIDE_KIT { return "Stabilize a dying ally beside you"; }
   if id == EG_SIDE_PET { return ifx f.wizard then "Find Familiar: cast it, pick its form, give it orders" else "Wild Companion: summon it, pick its form, give it orders"; }
-  if id == EG_SIDE_KNOCK { return ifx f.knock > 0 then "Your melee blows leave a foe at 1 HP, unconscious" else "Knock foes out with melee blows instead of killing"; }
   if f.rest_n == 0 { return "You can't rest now"; }
   return ifx f.resting then "Choose how your rest goes on" else "Take a short or a long rest";
 }
-eg_menu_title :: (f: EgBarFacts, id: int) -> string { if id == EG_SIDE_REST { return "REST"; } return ifx f.wizard then "FAMILIAR" else "WILD COMPANION"; }
+eg_menu_title :: (f: EgBarFacts, id: int) -> string { if id == EG_SIDE_ROOT { return "CAMP"; } if id == EG_SIDE_REST { return "REST"; } return ifx f.wizard then "FAMILIAR" else "WILD COMPANION"; }
 eg_menu_rows :: (f: EgBarFacts, id: int, rows: [] int) -> int {
   n := 0;
+  if id == EG_SIDE_ROOT { ids: [EG_SIDE_N] int; c := eg_side_items(f, ids[..]); for j: 0..<c { rows[n] = ifx ids[j] == EG_SIDE_KIT then EG_DO_KIT else EG_DO_OPEN + ids[j]; n += 1; } }
   if id == EG_SIDE_PET {
     rows[n] = EG_DO_SUMMON; n += 1; rows[n] = EG_DO_FORM; n += 1;
     if f.wizard { rows[n] = EG_DO_SPIRIT; n += 1; }
@@ -75,6 +76,8 @@ eg_rest_label :: (req: int, resting: bool) -> string {
 }
 EG_SPIRITS :: [3] string.["FEY", "CELESTIAL", "FIEND"];
 eg_menu_label :: (f: EgBarFacts, a: int, b: [] u8) -> int {
+  if a == EG_DO_KIT { return eg_side_label(f, EG_SIDE_KIT, b); }
+  if a >= EG_DO_OPEN { return eg_side_label(f, a - EG_DO_OPEN, b); }
   if a == EG_DO_SUMMON { return eg_put_s(b, 0, ifx f.wizard then "CAST FIND FAMILIAR" else "SUMMON"); }
   if a == EG_DO_FORM { return eg_caps_s(b, eg_put_s(b, 0, "FORM: "), f.form); }
   if a == EG_DO_SPIRIT { return eg_put_s(b, eg_put_s(b, 0, "SPIRIT: "), EG_SPIRITS[ifx f.spirit < 0 || f.spirit > 2 then 0 else f.spirit]); }
@@ -92,6 +95,8 @@ eg_menu_label :: (f: EgBarFacts, a: int, b: [] u8) -> int {
   return 0;
 }
 eg_menu_tip :: (f: EgBarFacts, a: int) -> string {
+  if a == EG_DO_KIT { return eg_side_tip(f, EG_SIDE_KIT); }
+  if a >= EG_DO_OPEN { return eg_side_tip(f, a - EG_DO_OPEN); }
   if a == EG_DO_SUMMON { return ifx f.wizard then "Cast Find Familiar with the form and spirit below" else "Summon a beast spirit in the form below"; }
   if a == EG_DO_FORM { return "Pick the beast's form"; }
   if a == EG_DO_SPIRIT { return "Fey, celestial or fiend"; }
@@ -111,47 +116,62 @@ eg_menu_tip :: (f: EgBarFacts, a: int) -> string {
   return "Stop resting";
 }
 
-// ---- the side bar itself, every Everglade zone's: where its buttons sit over the zone's action bar,
-// its menus over them, what a press does to it, and its drawing on the engine's widgets. A zone passes
-// its facts, its page (w, h, k: device px per CSS px), the top of its action bar (bar_top) and the
-// bar's state (EgSideState); a press answers EgPress, and the zone sends the action to its room.
-EG_SIDE_CAP :: 9.0; EG_TIP_CAP :: 8.5;     // the buttons' words (TITLE), a tip's line (LABEL), CSS px cap height
-EG_SIDE_PAD :: 14; EG_SIDE_GAP :: 8; EG_SIDE_UP :: 40; EG_MENU_W :: 210; EG_MENU_HEAD :: 26; EG_MENU_TOP :: 120;
-EG_DO_KIT :: 30; EG_DO_KNOCK :: 31;   // the Healer's Kit and knock-out buttons: they have no menu
-// Which menu is open (-1 none), and which button and row the pointer is over (-1 none).
+// ---- the menus themselves, every Everglade zone's: they hang under your portrait plate. A press on
+// the plate opens them: the one menu there is when the room offers one thing (REST, for most), else
+// a short menu with a row for each (CAMP: HEALER'S KIT, the companion, REST). A zone passes its facts,
+// its page (w, h, k: device px per CSS px), the plate (anchor), the lowest a menu may reach (foot:
+// over its action bar) and the menus' state (EgSideState); a press answers EgPress, and the zone sends
+// the action to its room. Nothing here is drawn until the plate is pressed.
+EG_SIDE_CAP :: 9.0; EG_TIP_CAP :: 8.5;     // the rows' words (TITLE), a tip's line (LABEL), CSS px cap height
+EG_SIDE_PAD :: 14; EG_SIDE_GAP :: 8; EG_MENU_W :: 210; EG_MENU_HEAD :: 26; EG_MENU_DOWN :: 8;
+// Which menu is open (-1 none, EG_SIDE_ROOT the portrait's own, else an item's), whether the pointer
+// is over the plate (side_hover 0, else -1), and which row it is over (-1 none).
 EgSideState :: struct { menu: int = -1; side_hover: int = -1; menu_hover: int = -1; }
-// mx0, mx1, mtop: the room its menus and tips may take (a zone narrows it to keep them off its other parts)
-EgSideGeo :: struct { ids: [EG_SIDE_N] int; n: int; wd: [EG_SIDE_N] f32; x0: f32; x1: f32; y1: f32; h: f32; gap: f32; w: f32; k: f32; mx0: f32; mx1: f32; mtop: f32; }
+// anchor: your portrait plate; mx0, mx1, foot: the room the menus and tips may take
+EgSideGeo :: struct { ids: [EG_SIDE_N] int; n: int; anchor: cc.HudPrim; h: f32; gap: f32; w: f32; k: f32; mx0: f32; mx1: f32; foot: f32; }
 // A finger's size on a phone or a tablet, smaller with a mouse on a desktop (aethyr/ui/hud-menu.coax
 // hud_touch_size, hud_row_h).
 eg_side_h :: (w: f32, h: f32, k: f32) -> f32 { return cc.hud_row_h(cc.hud_touch_size(w, h, k, false), k); }
-eg_side_geo :: (f: EgBarFacts, w: f32, h: f32, k: f32, bar_top: f32) -> EgSideGeo {
-  g: EgSideGeo; g.n = eg_side_items(f, g.ids[..]); g.w = w; g.k = k; b: [48] u8;
-  for i: 0..<g.n { c := eg_side_label(f, g.ids[i], b[..]); g.wd[i] = cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; }
-  g.x0 = 12 * k; g.x1 = w - 12 * k; g.y1 = bar_top - EG_SIDE_UP * k; g.h = eg_side_h(w, h, k); g.gap = EG_SIDE_GAP * k;
-  g.mx0 = 8 * k; g.mx1 = w - 8 * k; g.mtop = EG_MENU_TOP * k;
+eg_side_geo :: (f: EgBarFacts, w: f32, h: f32, k: f32, anchor: cc.HudPrim, foot: f32) -> EgSideGeo {
+  g: EgSideGeo; g.n = eg_side_items(f, g.ids[..]); g.w = w; g.k = k; g.anchor = anchor; g.foot = foot;
+  g.h = eg_side_h(w, h, k); g.gap = EG_SIDE_GAP * k; g.mx0 = 8 * k; g.mx1 = w - 8 * k;
   return g;
 }
-eg_side_box :: (g: EgSideGeo, j: int) -> cc.HudPrim { wd := g.wd; return cc.hud_side_box(wd[..], g.n, j, g.x0, g.x1, g.y1, g.h, g.gap); }
-eg_side_top :: (g: EgSideGeo) -> f32 { wd := g.wd; return cc.hud_side_top(wd[..], g.n, g.x0, g.x1, g.y1, g.h, g.gap); }
 eg_side_find :: (g: EgSideGeo, id: int) -> int { for j: 0..<g.n { if g.ids[j] == id { return j; } } return -1; }
+// The menu a press on the plate opens: none (-1) when the room offers nothing, the one item's own
+// when there is one with a menu, else the portrait's.
+eg_side_first :: (g: EgSideGeo) -> int {
+  if g.n == 0 { return -1; }
+  return ifx g.n == 1 && g.ids[0] != EG_SIDE_KIT then g.ids[0] else EG_SIDE_ROOT;
+}
+// Whether menu id can show now: the portrait's while the room offers anything, an item's while it offers that.
+eg_menu_on :: (g: EgSideGeo, id: int) -> bool { return (id == EG_SIDE_ROOT && g.n > 0) || (id >= 0 && id < EG_SIDE_N && eg_side_find(g, id) >= 0); }
 eg_menu_of :: (f: EgBarFacts, g: EgSideGeo, id: int) -> cc.HudMenu {
-  k := g.k; rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, id, rows[..]); j := eg_side_find(g, id);
-  if j < 0 || m == 0 { return cc.HudMenu.{}; }
+  k := g.k; rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, id, rows[..]);
+  if !eg_menu_on(g, id) || m == 0 { return cc.HudMenu.{}; }
   cw := EG_MENU_W * k; b: [48] u8;
   for r: 0..<m { c := eg_menu_label(f, rows[r], b[..]); x := cc.face_width(cast(string) b[0..<c], EG_SIDE_CAP * k, cc.HUD_FACE_TITLE) + 2 * EG_SIDE_PAD * k; if x > cw { cw = x; } }
-  return cc.hud_menu(eg_side_box(g, j), m, cw, g.h, EG_MENU_HEAD * k, g.gap, g.mtop, eg_side_top(g) - 12 * k, g.mx0, g.mx1);
+  // under the plate: laid out for the room down to the foot, then hung from the plate's foot
+  top := g.anchor.y1 + EG_MENU_DOWN * k;
+  menu := cc.hud_menu(g.anchor, m, cw, g.h, EG_MENU_HEAD * k, g.gap, top, g.foot, g.mx0, g.mx1);
+  up := menu.panel.y0 - top; if up > 0 { menu.panel.y0 -= up; menu.panel.y1 -= up; }
+  return menu;
 }
-// The tip the side bar shows for what the pointer is over: its line and what it sits over.
+// The tip the menus show for what the pointer is over: its line and what it sits under.
 EgTip :: struct { line: string; anchor: cc.HudPrim; }
 eg_side_tip_now :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState) -> EgTip {
-  p := EgTip.{};
-  if st.menu >= 0 && eg_side_find(g, st.menu) >= 0 {
+  p := EgTip.{}; under := g.anchor;
+  if eg_menu_on(g, st.menu) {
     rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, st.menu, rows[..]);
-    if st.menu_hover >= 0 && st.menu_hover < m { p.line = eg_menu_tip(f, rows[st.menu_hover]); p.anchor = eg_menu_of(f, g, st.menu).panel; }
-  } else if st.side_hover >= 0 && st.side_hover < g.n {
-    wd := g.wd; p.line = eg_side_tip(f, g.ids[st.side_hover]); p.anchor = cc.hud_side_tip_anchor(wd[..], g.n, st.side_hover, g.x0, g.x1, g.y1, g.h, g.gap, g.k);
+    if st.menu_hover >= 0 && st.menu_hover < m { p.line = eg_menu_tip(f, rows[st.menu_hover]); under = eg_menu_of(f, g, st.menu).panel; }
+  } else if st.side_hover >= 0 && g.n > 0 {
+    p.line = ifx g.n == 1 then eg_side_tip(f, g.ids[0]) else "Rest, your kit and your companion";
   }
+  // hud_tip sets a tip over its anchor: an anchor two lines under `under` puts it below. Where that
+  // would pass the foot (a phone on its side) there is no tip: the rows say what they are.
+  tc := EG_TIP_CAP * g.k; y := under.y1 + 6 * g.k + tc * 4.2 + 6 * g.k;
+  if y - 6 * g.k > g.foot { p.line = ""; }
+  p.anchor = cc.hud_box(under.x0, y, under.x1, y);
   return p;
 }
 // A tip's plaque, its line measured as it is set: the LABEL role's face, at its scale.
@@ -159,11 +179,11 @@ eg_tip_box :: (g: EgSideGeo, tp: EgTip, adv: [] f32) -> cc.HudPrim {
   k := g.k; tc := EG_TIP_CAP * k; role := cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_LABEL);
   return cc.hud_tip_box(tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv), tp.anchor, tc, g.mx0, g.mx1, k);
 }
-// What the side bar's open menu and its tip cover above the bar; nothing when both are shut. A short
-// page's menu may reach the top, and what the zone draws there steps aside under it (eg_world).
+// What the open menu and its tip cover; nothing when both are shut. What a zone draws there steps
+// aside under it (eg_world, a zone's picker).
 eg_menu_cover :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState) -> cc.HudPrim {
   c := cc.HudPrim.{};
-  if st.menu >= 0 && eg_side_find(g, st.menu) >= 0 { c = eg_menu_of(f, g, st.menu).panel; }
+  if eg_menu_on(g, st.menu) { c = eg_menu_of(f, g, st.menu).panel; }
   adv: [256] f32; b := eg_tip_box(g, eg_side_tip_now(f, g, st), adv[..]);
   if b.x1 > b.x0 {
     if !(c.x1 > c.x0) { return b; }
@@ -171,49 +191,48 @@ eg_menu_cover :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState) -> cc.HudPrim {
   }
   return c;
 }
-// What a press did: taken (the side bar had it), the action for the room (0 none), and the bar's state.
+// What a press did: taken (the menus had it), the action for the room (0 none), and the menus' state.
 EgPress :: struct { taken: bool; act: int; st: EgSideState; }
-// A pointer at (x, y), phase 0 down: the buttons open and close their menus (the Healer's Kit acts at
-// once), a row acts (the form, the spirit and how it is paid keep the menu open), and a press
-// elsewhere closes the menu.
+// A pointer at (x, y), phase 0 down. On the plate it opens the menus (eg_side_first) or shuts the one
+// that is open. In a menu a row acts: the portrait's rows open an item's menu (the Healer's Kit acts
+// at once), the form, the spirit and how it is paid keep their menu open. A press elsewhere shuts it.
 eg_side_press :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, x: f32, y: f32, phase: int) -> EgPress {
   p := EgPress.{st = st}; p.st.side_hover = -1; p.st.menu_hover = -1;
-  if p.st.menu >= 0 && eg_side_find(g, p.st.menu) < 0 { p.st.menu = -1; }   // its button went away
+  if p.st.menu >= 0 && !eg_menu_on(g, p.st.menu) { p.st.menu = -1; }   // the room no longer offers it
   if p.st.menu >= 0 {
     id := p.st.menu; rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, id, rows[..]); menu := eg_menu_of(f, g, id);
     for r: 0..<m { if cc.hud_in(cc.hud_menu_row(menu, r), x, y) { p.st.menu_hover = r;
-      if phase == 0 { p.taken = true; p.act = rows[r]; if rows[r] != EG_DO_FORM && rows[r] != EG_DO_SPIRIT && rows[r] != EG_DO_PAY { p.st.menu = -1; } }
+      if phase == 0 {
+        p.taken = true; a := rows[r];
+        if a >= EG_DO_OPEN { p.st.menu = a - EG_DO_OPEN; p.st.menu_hover = -1; }
+        else { p.act = a; if a != EG_DO_FORM && a != EG_DO_SPIRIT && a != EG_DO_PAY { p.st.menu = -1; } }
+      }
       return p; } }
     if cc.hud_in(menu.panel, x, y) { p.taken = phase == 0; return p; }
   }
-  for j: 0..<g.n {
-    if !cc.hud_in(eg_side_box(g, j), x, y) { continue; }
-    p.st.side_hover = j; if phase != 0 { return p; }
-    p.taken = true;
-    if g.ids[j] == EG_SIDE_KIT { p.st.menu = -1; p.act = EG_DO_KIT; }
-    else if g.ids[j] == EG_SIDE_KNOCK { p.st.menu = -1; p.act = EG_DO_KNOCK; } else { p.st.menu = ifx p.st.menu == g.ids[j] then -1 else g.ids[j]; }
+  if g.n > 0 && cc.hud_in(g.anchor, x, y) {
+    p.st.side_hover = 0; if phase != 0 { return p; }
+    p.taken = true; p.st.menu = ifx p.st.menu >= 0 then -1 else eg_side_first(g);
     return p;
   }
   if phase == 0 && p.st.menu >= 0 { p.st.menu = -1; p.taken = true; }
   return p;
 }
-// Draw the side bar, its open menu and the tip for what the pointer is over, through the realm's
-// renderer (charactercreator.coax hud_draw).
+// Draw the open menu and the tip for what the pointer is over, through the realm's renderer
+// (charactercreator.coax hud_draw). Shut, and the pointer elsewhere, it draws nothing.
 // ui: the layout trace (aethyr/ui/trace.coax), when the overlap check attaches one; empty for none.
 eg_side_draw :: (ui: [] cc.UitTrace, f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: int) -> int {
   if g.n == 0 { return at; }
   k := g.k; t := cc.eg_tokens(); cap := EG_SIDE_CAP * k;
-  l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui; cc.uit_part(ui, "side bar");
-  bufs: [EG_SIDE_N * 48] u8; labels: [EG_SIDE_N] string; lit: [EG_SIDE_N] bool;
-  for i: 0..<g.n { c := eg_side_label(f, g.ids[i], bufs[i * 48..<i * 48 + 48]); labels[i] = cast(string) bufs[i * 48..<i * 48 + c]; lit[i] = st.menu == g.ids[i] || st.side_hover == i; }
-  wd := g.wd; cc.hud_side_draw(l[..], ws[..], t, wd[..], labels[..], lit[..], g.n, g.x0, g.x1, g.y1, g.h, g.gap, cap, k);
-  if st.menu >= 0 && eg_side_find(g, st.menu) >= 0 {
-    rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, st.menu, rows[..]); mb: [EG_MENU_ROWS * 32] u8; ml: [EG_MENU_ROWS] string;
-    for r: 0..<m { c := eg_menu_label(f, rows[r], mb[r * 32..<r * 32 + 32]); ml[r] = cast(string) mb[r * 32..<r * 32 + c]; }
+  l: [1] cc.HudList; ws: [1] cc.HudWords; ws[0].ui = ui; cc.uit_part(ui, "class menus");
+  if eg_menu_on(g, st.menu) {
+    rows: [EG_MENU_ROWS] int; m := eg_menu_rows(f, st.menu, rows[..]); mb: [EG_MENU_ROWS * 48] u8; ml: [EG_MENU_ROWS] string;
+    for r: 0..<m { c := eg_menu_label(f, rows[r], mb[r * 48..<r * 48 + 48]); ml[r] = cast(string) mb[r * 48..<r * 48 + c]; }
     cc.hud_menu_draw(l[..], ws[..], t, eg_menu_of(f, g, st.menu), eg_menu_title(f, st.menu), ml[..], m, st.menu_hover, cap, k);
   }
   // the tip's line measured as it is set: the LABEL role's face, at its scale
   tp := eg_side_tip_now(f, g, st); tc := EG_TIP_CAP * k; role := cc.hud_text(t, cc.HUD_TEXT_LABEL); adv: [256] f32;
   cc.hud_tip(l[..], ws[..], t, tp.line, cc.face_advances(tp.line, tc * role.scale, role.face, adv[..]), tp.anchor, tc, g.mx0, g.mx1, k);
+  if l[0].n == 0 && ws[0].n == 0 { return at; }
   return cc.hud_draw(out, at, l[..], ws[..], 1, k);
 }

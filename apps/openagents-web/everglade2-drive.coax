@@ -52,18 +52,16 @@ e2d_press :: (s: [] E2) {
   if k[0].bar_n == 0 { nn = drv_put_s(names[..], 0, ": the bar is empty"); }
   drv_no_ability(d, cast(string) names[0..<nn]);
 }
-// The bar's slots and the side bar's buttons, as the HUD draws them, for `tree` and `tap`.
+// The bar's slots, your portrait (it opens the class menus) and the open menu's rows, as the HUD draws
+// them, for `tree` and `tap`.
 e2d_bar :: (s: [] E2) {
   t := drv_trace(s[0].drive[..]); if t.count == 0 || !e2k_on(s) { return; }
   k := s[0].casts[..];
   uit_part(t, "bar");
   for i: 0..<k[0].bar_n { b := e2k_box(k, i, s[0].width, s[0].height, s[0].k); uit_add(t, UIT_NONE, UIT_BUTTON, b[0], b[1], b[2], b[3], k[0].bar[i].name); }
   g := e2k_side_geo(s);
-  uit_part(t, "side");
-  for j: 0..<g.n {
-    b := e2k_side_box(s, j); lb: [48] u8; ln := eg_side_label(e2k_facts(s), g.ids[j], lb[..]);
-    uit_add(t, UIT_NONE, UIT_BUTTON, b[0], b[1], b[2], b[3], cast(string) lb[0..<ln]);
-  }
+  uit_part(t, "portrait");
+  if g.n > 0 { uit_add(t, UIT_NONE, UIT_BUTTON, g.anchor.x0, g.anchor.y0, g.anchor.x1, g.anchor.y1, "portrait"); }
   if k[0].menu >= 0 {
     rows: [EG_MENU_ROWS] int; m := e2k_menu_rows(s, k[0].menu, rows[..]);
     uit_part(t, "menu");

@@ -209,8 +209,9 @@ ec_rest_wait :: (p: [] Cdp, want: int, other: int, ms: int) -> int {
 // Presses the first (last false) or the last rest control when it asks req; false when it doesn't.
 ec_rest_press :: (p: [] Cdp, req: int, last: bool) -> bool {
   if ec_probe(p, ifx last then 33 else 32) != req { return false; }
-  // the choices are in the side bar's REST menu (e2_probe 132, 133 its button; 134 the menu open, 2 REST)
-  if ec_probe(p, 134) != 2 { bx := ec_probe(p, 132); by := ec_probe(p, 133); if bx <= 0 || by <= 0 || !ec_click(p, bx, by) { return false; } proc_sleep(150); }
+  // the choices are in REST's menu, which your portrait opens (e2_probe 132, 133: what to press toward
+  // it, your portrait and then REST's row where the portrait has a menu of its own; 134 the menu open, 2 REST)
+  for step: 0..<2 { if ec_probe(p, 134) != 2 { bx := ec_probe(p, 132); by := ec_probe(p, 133); if bx <= 0 || by <= 0 || !ec_click(p, bx, by) { return false; } proc_sleep(150); } }
   x := ec_probe(p, ifx last then 36 else 34); y := ec_probe(p, ifx last then 37 else 35);
   return x > 0 && y > 0 && ec_click(p, x, y);
 }

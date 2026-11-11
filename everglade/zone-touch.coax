@@ -40,13 +40,11 @@ zt_on :: (s: [] EgZone) -> bool {
 }
 // The foot of the stick's side: the bar's top.
 zt_foot :: (s: [] EgZone) -> f32 { x := s[0].xc[..]; return xc_bar_top(x) - f32(ZT_FOOT) * x[0].k; }
-// Where the ring rests before a thumb is down: left of the middle, over the bar and over the side
-// bar's buttons when they stand above it (an upright phone).
+// Where the ring rests before a thumb is down: left of the middle, over the bar. Nothing else stands
+// over the bar (the class menus hang under your portrait, GitHub #13147).
 zt_rest :: (s: [] EgZone) -> [2] f32 {
   x := s[0].xc[..]; w := x[0].w; h := x[0].h; k := x[0].k; r := f32(ZT_RING) * k;
   ox := hi(w * 0.22, r + 16 * k); foot := zt_foot(s);
-  side := xc_layout(s).side;
-  if side.n > 0 && side.x0 < ox + r { st := eg_side_top(side) - f32(ZT_FOOT) * k; if st < foot { foot = st; } }
   g := s[0].creator[0].gfx_box;   // the graphics line, where it reaches this side (a narrow page)
   if g.x1 > g.x0 && g.x0 < ox + r && g.y0 - f32(ZT_FOOT) * k < foot { foot = g.y0 - f32(ZT_FOOT) * k; }
   return [2] f32.[ox, lo(h - hi(r * 2.4, h * 0.18), foot - r - 8 * k)];

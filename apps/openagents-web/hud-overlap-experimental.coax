@@ -37,13 +37,21 @@ tool_main :: () -> int #export_c #effects(all) {
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "world", false);
       s[0].w[0].xc[0].open = false;
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "classes shut", false);
-      // each side-bar button's tip, then its menu open with a row's tip
+      // the class menus under your portrait: its tip, its own menu where it has one, then each item's
+      // menu open with a row's tip
       g := xc_side_geo(s[0].w[..]);
+      if g.n > 0 {
+        s[0].w[0].xc[0].side = EgSideState.{side_hover = 0};
+        hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "portrait tip", false);
+        if eg_side_first(g) == EG_SIDE_ROOT {
+          s[0].w[0].xc[0].side = EgSideState.{menu = EG_SIDE_ROOT, menu_hover = 0};
+          hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "portrait menu", false);
+        }
+      }
       for j: 0..<g.n {
-        s[0].w[0].xc[0].side = EgSideState.{side_hover = j};
-        hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "side tip", false);
+        if g.ids[j] == EG_SIDE_KIT { continue; }
         s[0].w[0].xc[0].side = EgSideState.{menu = g.ids[j], menu_hover = 0};
-        hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "side menu", false);
+        hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "class menu", false);
       }
     }
     {

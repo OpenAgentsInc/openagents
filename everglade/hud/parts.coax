@@ -33,6 +33,9 @@ eg_int :: (b: [] u8, at: int, v: int) -> int {
 eg_put :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }
 eg_upper :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { c := ch; if c >= 'a' && c <= 'z' { c -= 32; } if n < b.count { b[n] = c; n += 1; } } return n; }
 
+// The portrait plate's box, device px, its top left at (x, y) and wide CSS px wide: what a press on
+// your portrait hits, and what its menus hang under (everglade/hud/class-bar.coax).
+eg_portrait_box :: (x: f32, y: f32, wide: f32, k: f32) -> HudPrim { return hud_box(x, y, x + wide * k, y + 72 * k); }
 // The portrait plate: a medallion with the class's initial and a level badge, then a plate with
 // the name, the class and level, the health bar with its numbers and the AC shield; spell slots as
 // gems and the conditions under it. (x, y) its top left, wide its width (CSS px). Returns the end.
@@ -308,8 +311,8 @@ eg_plaque :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, k: f32) 
 // time of day, the portrait plate top left as wide as the map leaves it, and a place's banner. A zone
 // passes what it knows (EgWorld, its map's dots, your portrait); this lays them out for the page
 // (w, h device px, k device px per CSS px), a phone's narrower and closer to the corners.
-// cover is what an open menu takes (everglade/hud/class-bar.coax eg_menu_cover): on a short page it
-// may reach the top, and the map and the plate step aside under it.
+// cover is what an open menu takes (everglade/hud/class-bar.coax eg_menu_cover): it hangs under your
+// plate, and on a narrow page the map steps aside under it.
 EgWorld :: struct { you_x: f32; you_z: f32; fx: f32; fz: f32; reach: f32 = 60; place: string; clock: string; since: f32; cover: HudPrim; }
 // Whether boxes a and b share area (an empty box meets nothing).
 eg_meets :: (a: HudPrim, b: HudPrim) -> bool { return a.x1 > a.x0 && b.x1 > b.x0 && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
@@ -321,10 +324,19 @@ eg_world :: (ui: [] UitTrace, out: [] f32, at: int, w: f32, h: f32, k: f32, wd: 
   if !eg_meets(wd.cover, hud_box(mcx - (mr + 8) * k, top * k, mcx + (mr + 8) * k, mcy + (mr + 30) * k)) {
     v = eg_map(ui, out, v, mcx, mcy, mr * k, k, wd.you_x, wd.you_z, wd.fx, wd.fz, wd.reach, dots, nd, wd.place, wd.clock, 1);
   }
+  // the plate stays under its own menus, which hang from its foot
   wide := W - (2 * mr + 44) - 20; if wide > f32(EG_PORTRAIT_W) { wide = f32(EG_PORTRAIT_W); }
   px := ifx phone then 8.0f32 else 14.0f32;
-  if !eg_meets(wd.cover, hud_box(px * k, top * k, (px + wide) * k, (top + 100) * k)) { v = eg_portrait(ui, out, v, px * k, top * k, wide, k, p, 1); }
+  v = eg_portrait(ui, out, v, px * k, top * k, wide, k, p, 1);
   return eg_banner(out, v, w, h * 0.22, k, wd.place, wd.since);
+}
+// Where eg_world puts your portrait plate on a w by h page (device px).
+eg_world_portrait :: (w: f32, h: f32, k: f32) -> HudPrim {
+  W := w / k; phone := W < 700 || h / k < 500;
+  mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
+  wide := W - (2 * mr + 44) - 20; if wide > f32(EG_PORTRAIT_W) { wide = f32(EG_PORTRAIT_W); }
+  px := ifx phone then 8.0f32 else 14.0f32;
+  return eg_portrait_box(px * k, top * k, wide, k);
 }
 #test "eg plates: the frame's plates placed and drawn, a covered name counted on the one over it, none past most" #steps 400000000 {
   out: [60000] f32; p: [1] HudPlates;

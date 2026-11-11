@@ -5,21 +5,21 @@
 //     everglade2.wasm has none of it (apps/openagents-web/build.sh checks the bytes for E2A_MARK);
 //   - in a dev build it turns on only on a page served from 127.0.0.1 or localhost whose address
 //     has ?admin (e2a_facts);
-//   - what changes the room (heal, god, teleport, noclip, the guard, knock out) goes as X lines that
+//   - what changes the room (heal, god, teleport, noclip, the guard) goes as X lines that
 //     only a local room takes: --dev and bound to 127.0.0.1 (coax/web/room/room-e2-admin.coax).
 // Open it: coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static --no-build, a
 // dev build of everglade2.wasm, then http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950
 // (docs/verse/everglade2.md "Admin mode"). Backquote (`) shows and hides the panel; it starts shown.
 //
 // The panel is Everglade Experimental's left column: ANIMATIONS (charactercreator.coax dev_panel, any
-// clip on your character), CLASSES, LEVEL 1 to 6 and REST with KNOCK OUT (class-menu.coax); then the
+// clip on your character), CLASSES, LEVEL 1 to 6 and REST (class-menu.coax); then the
 // admin rows: HEAL, GOD, NOCLIP, CLICK TP (the next click on the ground takes you there), GO TO
 // (type X Z, Enter), the time of day, the guard (kill, reset, off and on), the path 50 m either way,
 // and where you stand. The frame rate is the corner's (e2_fps).
 //   coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "admin"
 
 E2A_MARK :: "ADMIN MODE · LOCAL ONLY";   // the panel's title: build.sh fails a release whose wasm holds it
-E2A_FIRST :: 9;      // the first admin box in class-menu.coax's grid (0-5 REST and KNOCK OUT, 6-8 the title row)
+E2A_FIRST :: 9;      // the first admin box in class-menu.coax's grid (0-4 REST, 5 empty, 6-8 the title row)
 E2A_BOXES :: 12;
 E2A_EXTRA :: 155.0;  // CSS px the admin rows add under REST (cm_height)
 E2A_FLY :: 14.0; E2A_FLY_SLOW :: 4.0;   // m/s through anything (Shift the slow one)
@@ -31,7 +31,7 @@ E2Admin :: struct {
   shown: bool = true;       // the panel (backquote)
   open: bool = true;        // its CLASSES rows
   top: f32;                 // the column's top, device px
-  god: bool; noclip: bool; ko: bool; click_tp: bool;
+  god: bool; noclip: bool; click_tp: bool;
   hour: int = -1;           // the time of day, 0 to 23, -1 the room's
   typing: bool; typed: [32] u8; typed_n: int;
   fly_x: f32; fly_z: f32; fly_sent: f32;
@@ -226,7 +226,6 @@ e2a_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
     else if h.kind == CM_CLASS { cr[0].klass = h.index; cr[0].revision += 1; a[0].class_due = true; e2a_say(s, XC_CL_UP[h.index]); }
     else if h.kind == CM_LEVEL { cr[0].level = h.index; cr[0].revision += 1; a[0].class_due = true; }
     else if h.kind == CM_REST { ok := e2n_rest(s[0].net[..], E2A_REQUESTS[h.index]); if !ok { e2a_say(s, "NO ROOM: START THE LOCAL ROOM"); } }
-    else if h.kind == CM_KNOCKOUT { if e2a_flag(s, "X ko", !a[0].ko) { a[0].ko = !a[0].ko; } }
     else { for i: 0..<E2A_BOXES { if cm_in(e2a_box(s, E2A_FIRST + i), x, y) { e2a_press(s, i); } } }
   }
   if phase == 3 { a[0].down = false; }
@@ -300,7 +299,7 @@ e2a_frame :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
   }
   ui := cr[0].ui; cc.uit_part(ui, "class-menu"); cc.uit_debug(ui);   // the layout trace, when the overlap check attaches one (#13076)
   column := cc.uit_put(ui, cc.UIT_NONE, cc.UIT_PANEL, 12 * k, a[0].top, 370 * k, a[0].top + col * k, "CLASSES");
-  n = cm_draw(ui, column, out, n, a[0].top, a[0].open, k, e2c_class_of(s), e2c_level_of(s), rest, a[0].ko);
+  n = cm_draw(ui, column, out, n, a[0].top, a[0].open, k, e2c_class_of(s), e2c_level_of(s), rest);
   head := cc.ink(k, 1, 0.62, 0.25); body := cc.ink(k, 0.91, 0.93, 0.88); gold := cc.ink(k, 1, 0.75, 0.3);
   t0 := e2a_box(s, 6); cc.uit_part(ui, "admin"); cc.uit_debug(ui);
   n = cc.ttext(ui, column, out, n, E2A_MARK, t0.x0, t0.y0 + 16 * k, 9 * k, head, "");

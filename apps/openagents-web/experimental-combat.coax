@@ -112,7 +112,7 @@ XcCombat :: struct {
   open: bool = true;                // the CLASSES column is open
   top: f32;                         // its top, device px
   pick_hover: CmHit;                // the picker's button under the pointer (class-menu.coax cm_pick_hit)
-  side: EgSideState;                // the side bar's open menu and hover (everglade/hud/class-bar.coax)
+  side: EgSideState;                // the class menus' open one and hover (everglade/hud/class-bar.coax)
   hover: int = -1;                  // the bar's slot under the pointer
   down: int = -100; down_x: f32; down_y: f32; down_id: int;
   media: [16384] u8; media_n: int;   // the bar's pictures for the host (coaxial_media)
@@ -1503,9 +1503,10 @@ xc_rest_label :: (c:RsCreature)->string {
   return "REST";
 }
 XC_REST_REQUESTS :: [5]int.[RS_REST_SHORT,RS_REST_SLEEP,RS_REST_WATCH,RS_REST_DIE,RS_REST_END];
-// ---- Experimental on Everglade's side bar (everglade/hud/class-bar.coax, #13092): REST's choices and
-// KNOCK OUT over the bar, as every Everglade zone has them; the picker (class-menu.coax cm_pick) keeps
-// CLASSES and LEVEL. The rest choices follow how your rest stands, as Everglade II's room offers them.
+// ---- Experimental on Everglade's class menus (everglade/hud/class-bar.coax, #13092, #13147): REST's
+// choices in the menu your portrait opens, as every Everglade zone has them; nothing of it is a button
+// over the bar. The picker (class-menu.coax cm_pick) keeps CLASSES and LEVEL. The rest choices follow
+// how your rest stands, as Everglade II's room offers them. K turns knocking out on and off (xc_key).
 xc_rest_choices :: (c:RsCreature,out:[]int)->int {
   if c.long_rest.phase==2 { out[0]=RS_REST_SLEEP; out[1]=RS_REST_WATCH; out[2]=RS_REST_END; return 3; }
   if c.long_rest.phase==1 { out[0]=ifx c.long_rest.mode==1 then RS_REST_WATCH else RS_REST_SLEEP; out[1]=RS_REST_END; return 2; }
@@ -1517,7 +1518,6 @@ xc_facts :: (s:[] EgZone)->EgBarFacts {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; f:EgBarFacts;
   if !cr[0].experimental || !x[0].started { return f; }
   c:=x[0].b[0].c[0];
-  f.knock=ifx x[0].knockout then 1 else 0;
   if c.hp>0 { f.rest_n=xc_rest_choices(c,f.rest[..]); }
   f.resting=c.long_rest.phase==1 || c.long_rest.phase==2 || c.rest.phase>0;
   f.rest_say=ifx x[0].rest_refused then "REST UNAVAILABLE" else ifx f.resting then xc_rest_label(c) else "";
@@ -1526,23 +1526,23 @@ xc_facts :: (s:[] EgZone)->EgBarFacts {
 // The bar's top (its highest slot's), device px.
 xc_bar_top :: (x:[]XcCombat)->f32 { top:=x[0].h; for i:0..<x[0].bar_n { r:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if r.y0<top { top=r.y0; } } return top; }
 xc_side_geo :: (s:[] EgZone)->EgSideGeo { return xc_layout(s).side; }
-// What a side-bar press asks: knock-out flips, a rest choice goes to the rules (xc_rest_request).
+// What a menu row asks: a rest choice goes to the rules (xc_rest_request).
 xc_side_act :: (s:[] EgZone,f:EgBarFacts,act:int) {
-  x:=s[0].xc[..];
-  if act==EG_DO_KNOCK { x[0].knockout=!x[0].knockout; return; }
   j:=act-EG_DO_REST; if j>=0 && j<f.rest_n { _:=xc_rest_request(s,f.rest[j]); }
 }
+// Your portrait plate's box, top right (xc_portrait): a press on it opens the class menus.
+xc_portrait_box :: (x:[]XcCombat)->cc.HudPrim { wide:=f32(cc.EG_PORTRAIT_W); return cc.eg_portrait_box(x[0].w-(wide+16)*x[0].k,14*x[0].k,wide,x[0].k); }
 XC_PORTRAIT_FOOT :: 124.0;   // CSS px: the portrait plate's foot, its slot gems and conditions under it (xc_portrait)
-// Where the picker and the side bar sit. The picker: top left beside your portrait where the page is
-// wide enough, under it on a phone held upright; it keeps over the side bar, and where the page is too
-// short for that (a phone on its side) the side bar moves right of it and the picker keeps over the bar.
-// cramped: the side bar moved right of the picker, or a short page; its menus and tips then keep
-// left of your portrait, and the picker steps aside while one is up (xc_pick_hidden)
-XcLayout :: struct { pick: CmPick; side: EgSideGeo; cramped: bool; }
+// Where the picker and the class menus sit. The picker: top left beside your portrait where the page
+// is wide enough, under it on a phone held upright; it keeps over the bar. The menus hang under your
+// portrait, down to the bar at most; where one would cover the picker, the picker steps aside while it
+// is up (xc_pick_hidden).
+// cover: what the open class menu and its tip take (empty when shut)
+XcLayout :: struct { pick: CmPick; side: EgSideGeo; cover: cc.HudPrim; }
 xc_layout :: (s:[] EgZone)->XcLayout {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; w:=x[0].w; h:=x[0].h; k:=x[0].k;
   lay:XcLayout; bar:=xc_bar_top(x);
-  if !x[0].dr.on { lay.side=eg_side_geo(xc_facts(s),w,h,k,bar); }   // the druid has no side bar
+  if !x[0].dr.on { sf:=xc_facts(s); lay.side=eg_side_geo(sf,w,h,k,xc_portrait_box(x),bar-8*k); lay.cover=eg_menu_cover(sf,lay.side,x[0].side); }   // the druid's own bar has no class menus
   beside:=w-(f32(cc.EG_PORTRAIT_W)+16)*k-24*k; room:=beside>=320*k;
   wide:=ifx room then beside else w-24*k; if wide>460*k { wide=460*k; }
   y0:=ifx room then 20*k else (XC_PORTRAIT_FOOT+8)*k;
@@ -1556,20 +1556,11 @@ xc_layout :: (s:[] EgZone)->XcLayout {
   // over the bar: clear of its emblem and class line where the picker reaches the bar's middle
   lx:=w; rx:=0.0f32; for i:0..<x[0].bar_n { sb:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if sb.x0<lx { lx=sb.x0; } if sb.x1>rx { rx=sb.x1; } }
   bfoot:=ifx 12*k+wide>(lx+rx)*0.5-40*k then bar-38*k else bar-14*k;
-  foot:=(ifx lay.side.n>0 then eg_side_top(lay.side) else bar)-8*k; if bfoot<foot { foot=bfoot; }
-  lay.pick=cm_pick(12*k,y0,wide,foot,open,wild,w,h,k);
-  if lay.side.n>0 && y0+cm_pick_height(lay.pick)>foot {
-    lay.side.x0=12*k+wide+8*k; lay.cramped=true;
-    lay.pick=cm_pick(12*k,y0,wide,bfoot,open,wild,w,h,k);
-  }
-  // a short page (a phone on its side): the side bar's menus and tips take the room left of your
-  // portrait, under a tip's line, the picker stepping aside while one is up
-  if h<560*k { lay.cramped=true; }
-  if lay.cramped { lay.side.mtop=36*k; lay.side.mx1=w-(f32(cc.EG_PORTRAIT_W)+16)*k-8*k; }
+  lay.pick=cm_pick(12*k,y0,wide,bfoot,open,wild,w,h,k);
   return lay;
 }
 // A slot's card, device px (empty with none): over the slot under the pointer, clear of the bar's
-// emblem and of the side bar over it.
+// emblem.
 xc_card_box :: (x:[]XcCombat,lay:XcLayout)->cc.Box {
   if x[0].arranging || x[0].hover<0 || x[0].hover>=x[0].bar_n || x[0].bar[x[0].hover].kind==XC_BREATH { return cc.Box.{}; }
   k:=x[0].k; w:=x[0].w; r:=cc.eg_box4(xc_slot_at(x[0].bar_n, x[0].hover, x[0].w, x[0].h, x[0].k));
@@ -1577,29 +1568,28 @@ xc_card_box :: (x:[]XcCombat,lay:XcLayout)->cc.Box {
   if cx-cw/2<12*k { cx=12*k+cw/2; }
   if cx+cw/2>w-12*k { cx=w-12*k-cw/2; }
   y1:=r.y0-30*k; et:=xc_bar_top(x)-38*k; if et<y1 { y1=et; }
-  if lay.side.n>0 { st:=eg_side_top(lay.side)-8*k; a:=eg_side_box(lay.side,0); z:=eg_side_box(lay.side,lay.side.n-1);
-    if st<y1 && cx+cw/2>a.x0 && cx-cw/2<z.x1 { y1=st; } }
   return cc.Box.{x0=cx-cw/2,y0=y1-ch,x1=cx+cw/2,y1=y1};
 }
-// The picker steps aside while a slot's card covers it, and on a cramped page while the side bar's
-// menu or a tip is up.
+// The picker steps aside while a slot's card covers it, or a class menu or its tip does.
 // A page with one class of its own shows no CLASSES picker: the druid's grove, the Archery Range.
 xc_own_kit :: (x:[]XcCombat)->bool { return x[0].dr.on || x[0].own_kit; }
 xc_pick_hidden :: (x:[]XcCombat,lay:XcLayout)->bool {
   c:=xc_card_box(x,lay); pb:=cm_pick_panel(lay.pick);
   if c.x1>c.x0 && c.x0<pb.x1 && c.x1>pb.x0 && c.y0<pb.y1 && c.y1>pb.y0 { return true; }
-  return lay.cramped && (x[0].side.menu>=0 || x[0].side.side_hover>=0);
+  return cc.eg_meets(lay.cover,cc.hud_box(pb.x0,pb.y0,pb.x1,pb.y1));
 }
 xc_pick :: (s:[] EgZone)->CmPick { return xc_layout(s).pick; }
 // The coordinates and the FPS plaque (charactercreator.coax coord_draw, everglade/hud/parts.coax eg_fps),
-// bottom right: over the bar's tray and the side bar where a narrow page brings them under it, and
-// left out while the side bar's menu or a tip is up.
+// bottom right: over the bar's tray, its emblem and class line where a narrow page brings them under
+// it, and left out while a class menu or its tip is up over that corner.
 xc_corner :: (s:[] EgZone,lay:XcLayout,out:[]f32,at:int)->int {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; k:=x[0].k; w:=x[0].w; h:=x[0].h;
-  if x[0].side.menu>=0 || x[0].side.side_hover>=0 { return at; }
   top:=h+1000; cx0:=w-240*k;
-  for i:0..<x[0].bar_n { sr:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if sr.x1+19*k>cx0 && sr.y0-14*k<top { top=sr.y0-14*k; } }
-  for j:0..<lay.side.n { sb:=eg_side_box(lay.side,j); if sb.x1+5*k>cx0 && sb.y0-11*k<top { top=sb.y0-11*k; } }
+  lx:=w; rx:=0.0f32;
+  for i:0..<x[0].bar_n { sr:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if sr.x0<lx { lx=sr.x0; } if sr.x1>rx { rx=sr.x1; } if sr.x1+19*k>cx0 && sr.y0-14*k<top { top=sr.y0-14*k; } }
+  // the emblem over the bar's middle and the class and target line beside it
+  if top<h+1000 && cx0<(lx+rx)*0.5+200*k { et:=xc_bar_top(x)-42*k; if et<top { top=et; } }
+  if cc.eg_meets(lay.cover,cc.hud_box(cx0,top-40*k,w,h)) { return at; }
   fh:=ifx top+7*k<h then top+7*k else h;
   c:=xc_card_box(x,lay); if c.x1>c.x0 && c.x1>cx0 && c.y1>fh-52*k && c.y0<fh { return at; }   // a slot's card is up over the corner
   n:=cc.coord_draw(cr[0],out,at,w,fh,k);
@@ -1892,7 +1882,7 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
     for i: 0..<x[0].bar_n { sb := cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if sb.x0 < lx { lx = sb.x0; } if sb.x1 > rx { rx = sb.x1; } }
     n = cc.ttext(ui, cc.UIT_NONE, out, n, tl, (lx + rx) / 2 + 24 * k, r0.y0 - 12 * k, 10 * k, ink_col(k, 0.95, 0.9, 0.7), "class and target");
   }
-  // the side bar over the bar: REST and KNOCK OUT, their menu and tips (everglade/hud/class-bar.coax)
+  // the class menus under your portrait: REST's, and a tip (everglade/hud/class-bar.coax)
   sf := xc_facts(s); sg := lay.side;
   n = eg_side_draw(ui, sf, sg, x[0].side, out, n);
   n = xc_corner(s, lay, out, n);
@@ -1920,6 +1910,7 @@ xc_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, 
 xc_key :: (s: [] EgZone, key: int) -> bool {
   x := s[0].xc[..];
   if key == -1 && xc_bow_cancel(s) { return true; }   // Escape lets the draw down
+  if key == 'k' || key == 'K' { x[0].knockout = !x[0].knockout; return true; }   // SRD p.17: your melee blows knock out instead of killing
   if key >= '1' && key <= '9' { i := key - '1'; if xd_aim(s, i) { x[0].dr.breath_key = key; return true; } if i < x[0].bar_n { _ := xc_press(s, i); return true; } }
   return false;
 }
@@ -1938,7 +1929,7 @@ xc_pointer :: (s: [] EgZone, px: f32, py: f32, phase: int, id: int) -> bool {
   lay := xc_layout(s); pick := lay.pick;
   in_col := !xc_own_kit(x) && !xc_pick_hidden(x, lay) && cm_in(cm_pick_panel(pick), px, py);
   x[0].pick_hover = ifx in_col then cm_pick_hit(pick, px, py) else CmHit.{};
-  // the side bar first: its buttons and menu act on the press (everglade/hud/class-bar.coax)
+  // the class menus first: your portrait opens them, a row acts on the press (everglade/hud/class-bar.coax)
   if x[0].ar[0].touch != id {
     sf := xc_facts(s); sp := eg_side_press(sf, lay.side, x[0].side, px, py, ifx phase == 0 then 0 else 1);
     x[0].side = sp.st;
@@ -3258,12 +3249,20 @@ xc_check_ai_rate :: (speed:int)->bool {
   s[0].held=HOLD_W;
   #assert xc_rest_request(s[..],RS_REST_END) && b[0].c[0].long_rest.phase==0;
 }
-// A finger on the side bar (everglade/hud/class-bar.coax): the button id, then (req >= 0) its menu's
-// row for that rest request. True when every press was taken.
+// A finger on the class menus (everglade/hud/class-bar.coax): your portrait, the portrait menu's row
+// for item id where there is one, then (req >= 0) its menu's row for that rest request. True when
+// every press was taken.
 xc_side_tap :: (s:[] EgZone,id:int,req:int)->bool {
-  g:=xc_side_geo(s); j:=eg_side_find(g,id); if j<0 { return false; }
-  b:=eg_side_box(g,j); bx:=(b.x0+b.x1)/2; by:=(b.y0+b.y1)/2;
-  if !xc_pointer(s,bx,by,0,1) || !xc_pointer(s,bx,by,2,1) { return false; }
+  x:=s[0].xc[..]; g:=xc_side_geo(s); if eg_side_find(g,id)<0 { return false; }
+  if x[0].side.menu!=id {
+    bx:=(g.anchor.x0+g.anchor.x1)/2; by:=(g.anchor.y0+g.anchor.y1)/2;
+    if !xc_pointer(s,bx,by,0,1) || !xc_pointer(s,bx,by,2,1) { return false; }
+    if x[0].side.menu==EG_SIDE_ROOT {
+      f0:=xc_facts(s); rr:[EG_MENU_ROWS]int; mr:=eg_menu_rows(f0,EG_SIDE_ROOT,rr[..]); root:=eg_menu_of(f0,g,EG_SIDE_ROOT);
+      for r:0..<mr { if rr[r]==EG_DO_OPEN+id { rb:=cc.hud_menu_row(root,r); rx:=(rb.x0+rb.x1)/2; ry:=(rb.y0+rb.y1)/2; if !xc_pointer(s,rx,ry,0,1) || !xc_pointer(s,rx,ry,2,1) { return false; } } }
+    }
+    if x[0].side.menu!=id { return false; }
+  }
   if req<0 { return true; }
   f:=xc_facts(s); rows:[EG_MENU_ROWS]int; m:=eg_menu_rows(f,id,rows[..]); menu:=eg_menu_of(f,xc_side_geo(s),id);
   for r:0..<m { if rows[r]>=EG_DO_REST && f.rest[rows[r]-EG_DO_REST]==req {
@@ -3271,21 +3270,27 @@ xc_side_tap :: (s:[] EgZone,id:int,req:int)->bool {
     return xc_pointer(s,rx,ry,0,1) && xc_pointer(s,rx,ry,2,1); } }
   return false;
 }
-#test "Experimental's picker, side bar and bar keep apart on a phone either way up and on a desktop" #steps 2000000000 {
+#test "Experimental's picker and bar keep apart on a phone either way up and on a desktop; nothing is a button over the bar, and REST hangs under your portrait" #steps 2000000000 {
   for v:0..<3 {
     s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0); x:=s[0].xc[..];
     x[0].seen=true; x[0].open=true; x[0].k=ifx v==2 then 1.0f32 else 3.0f32;
     x[0].w=ifx v==0 then 1170.0f32 else ifx v==1 then 2532.0f32 else 1920.0f32;
     x[0].h=ifx v==0 then 2532.0f32 else ifx v==1 then 1170.0f32 else 1080.0f32;
     lay:=xc_layout(s[..]); pb:=cm_pick_panel(lay.pick); top:=xc_bar_top(x);
-    #assert x[0].bar_n>0 && lay.side.n==2 && pb.x1<=x[0].w && pb.y1<=top;
+    #assert x[0].bar_n>0 && lay.side.n==1 && lay.side.ids[0]==EG_SIDE_REST && pb.x1<=x[0].w && pb.y1<=top;
     #assert v!=0 || pb.y0>=XC_PORTRAIT_FOOT*x[0].k;   // under the portrait on a phone held upright
     for i:0..<x[0].bar_n { r:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); #assert r.x0>=0 && r.x1<=x[0].w && (r.y0>=pb.y1 || r.x0>=pb.x1); }
-    for j:0..<lay.side.n { b:=eg_side_box(lay.side,j); #assert b.x1>b.x0 && b.y1<=top && (b.y0>=pb.y1 || b.x0>=pb.x1); }
+    // shut, the class menus draw nothing; a press on your portrait hangs REST's menu under it, on the page and over the bar
+    out:[20000]f32; nt:[] cc.UitTrace; f:=xc_facts(s[..]); #assert eg_side_draw(nt,f,lay.side,x[0].side,out[..],0)==0;
+    a:=lay.side.anchor; #assert a.x1<=x[0].w && a.y0>=0 && a.y1<top;
+    #assert xc_side_tap(s[..],EG_SIDE_REST,-1) && x[0].side.menu==EG_SIDE_REST;
+    m:=eg_menu_of(f,lay.side,EG_SIDE_REST).panel; #assert m.y0>=a.y1 && m.y1<=top && m.x0>=0 && m.x1<=x[0].w;
+    #assert eg_side_draw(nt,f,lay.side,x[0].side,out[..],0)>0;
+    #assert xc_pointer(s[..],2,x[0].h*0.6,0,1) && x[0].side.menu<0;   // a press elsewhere shuts it
     if v<2 { c:=cm_pick_box(lay.pick,CM_CLASS,0); l:=cm_pick_box(lay.pick,CM_LEVEL,1); #assert c.y1-c.y0>=44*x[0].k-0.01 && l.x1-l.x0>=44*x[0].k-0.01; }
   }
 }
-#test "Experimental rest on the side bar preserves class selection and lets Short Rest choices spend one Hit Die" #steps 2000000000 {
+#test "Experimental rest from your portrait's menu preserves class selection and lets Short Rest choices spend one Hit Die" #steps 2000000000 {
   for v:0..<2 {
     s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0); x:=s[0].xc[..]; b:=x[0].b[..];
     x[0].seen=true; x[0].k=ifx v==0 then 1.0f32 else 3.0f32; x[0].w=ifx v==0 then 1200.0f32 else 1170.0f32; x[0].h=ifx v==0 then 800.0f32 else 2532.0f32; x[0].open=v==0;
@@ -3300,9 +3305,8 @@ xc_side_tap :: (s:[] EgZone,id:int,req:int)->bool {
     #assert xc_side_tap(s[..],EG_SIDE_REST,RS_REST_SLEEP);
     #assert rs_sleeping(b[0].c[0]) && x[0].klass==FB_CL_FIGHTER && x[0].level==1;
     #assert xc_rest_label(b[0].c[0])=="REST: SLEEPING" && xc_facts(s[..]).rest_say=="REST: SLEEPING";
-    // KNOCK OUT flips on its button, and the menu's gone
-    #assert !x[0].knockout && xc_side_tap(s[..],EG_SIDE_KNOCK,-1) && x[0].knockout && x[0].side.menu<0;
-    #assert xc_side_tap(s[..],EG_SIDE_KNOCK,-1) && !x[0].knockout;
+    // knocking out is no button anywhere: K turns it on and off
+    #assert !x[0].knockout && xc_key(s[..],'k') && x[0].knockout && xc_key(s[..],'K') && !x[0].knockout;
   }
 }
 
