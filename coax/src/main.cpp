@@ -741,7 +741,7 @@ static int write_evidence(const std::string &cmd, const std::string &input, cons
   if (!checked) bits = EV_add(bits, 4);
   std::string sources;
   for (const auto &unit : src->units)
-    sources += std::string(sources.empty() ? "" : ",") + "{\"path\":" + json_string(unit->canonical) + ",\"sha256\":" + json_string(debug_source_hash(unit->text)) + "}";
+    sources += std::string(sources.empty() ? "" : ",") + "{\"path\":" + json_string(unit->canonical) + ",\"sha256\":" + json_string(unit_text_sha(*unit)) + "}";
   std::string compiler_hash;
   {
     char self[4096];
@@ -924,7 +924,7 @@ static std::string target_json() {
 static std::string modules_report(const Source *src, const File *file, const EmitOptions &) {
   const size_t n = src->units.size();
   std::vector<std::string> hash(n);
-  for (size_t i = 0; i < n; i++) hash[i] = debug_source_hash(src->units[i]->text);
+  for (size_t i = 0; i < n; i++) hash[i] = unit_text_sha(*src->units[i]);
   auto revision_of = [&](uint8_t kind, std::vector<std::string> own, std::vector<std::string> deps) {
     std::sort(own.begin(), own.end()); std::sort(deps.begin(), deps.end());
     std::vector<coax_string> a, b;
@@ -1249,6 +1249,11 @@ static std::string declarations_report(const Source *src, const File *file) {
 static bool g_library_checks = false;     // set by compile() for C, header and check output
 static std::map<std::string, bool> g_library_verdicts;  // canonical unit -> checks standalone (this process)
 static std::string executable_path();
+// The resident compiler (serve.cpp): a request's path to the binary and the
+// binary's SHA-256 when the resident knows it.
+static const std::string &serve_executable();
+static const std::string &serve_compiler();
+static void serve_compiler_known(const std::string &sha);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks, bool mutation_lowering, struct QueryParsed *parsed);
 
@@ -1325,7 +1330,7 @@ static void compiler_hash_join() {
 }
 static void compiler_hash_start() {
 #ifndef COAX_BOOTSTRAP_IMPORTER
-  if (g_hash_thread) return;
+  if (g_hash_thread || !serve_compiler().empty()) return;
   const std::string path = executable_path();
   g_hash_result = new std::string;
   g_hash_thread = new std::thread([path] { *g_hash_result = profile_file_hash(path); });
@@ -1338,7 +1343,8 @@ static std::string compiler_hash() {
 #ifndef COAX_BOOTSTRAP_IMPORTER
   if (!known) {
     compiler_hash_join();
-    hash = g_hash_result ? *g_hash_result : profile_file_hash(executable_path());
+    hash = !serve_compiler().empty() ? serve_compiler() : g_hash_result ? *g_hash_result : profile_file_hash(executable_path());
+    serve_compiler_known(hash);
   }
 #endif
   known = true;
@@ -1500,8 +1506,8 @@ static bool library_check_finish(pid_t pid) {
 // under the SHA-256 of the compiler binary, the options that change checking
 // (the run-step budget used, including the entry file's #run_steps, the
 // profile, arithmetic, build profile, library, Metal or CUDA), each unit's
-// canonical path and SHA-256, the SHA-256 of the whole input after
-// #import_proto, and which units' checks library_units left out. A later
+// canonical path and SHA-256, the SHA-256 of the whole input when
+// #import_proto generated part of it, and which units' checks library_units left out. A later
 // compile with the same key skips run_compilation_checks. A failure is never
 // recorded, so a failing program runs its checks, and reports the same
 // diagnostics, every time. A passing record also replays its capacity facts. coax test,
@@ -1523,13 +1529,15 @@ static std::string authority_options(const File *file, const EmitOptions &opts) 
 static std::string authority_key(const Source *src, const File *file, const EmitOptions &opts, const std::vector<bool> &dropped) {
   const std::string options = authority_options(file, opts);
   if (options.empty()) return "";
-  std::string text = "coax.authority-check.v3\n" + options;
+  std::string text = "coax.authority-check.v4\n" + options;
   for (size_t u = 0; u < src->units.size(); u++) {
     const SourceUnit &unit = *src->units[u];
-    const std::string sha = debug_source_hash(unit.text);
+    const std::string sha = unit_text_sha(unit);
     if (sha.empty()) return "";
     text += tree_path(unit.canonical) + "\t" + sha + (u < dropped.size() && dropped[u] ? "\tlibrary" : "") + "\n";
   }
+  // Without generated text the input is the units above, in this order, and nothing else.
+  if (src->generated.empty()) return debug_source_hash(text);
   const std::string all = debug_source_hash(src->text);
   if (all.empty()) return "";
   return debug_source_hash(text + "input\t" + all + "\n");
@@ -1585,16 +1593,21 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
   // Each unit's tokens' SHA-256 (library_key).
   std::vector<std::string> sums(n);
   if (!compiler.empty()) {
-    std::map<const SourceUnit *, size_t> index;
-    for (size_t i = 0; i < n; i++) index[src->units[i].get()] = i;
+    // Without generated text a unit's tokens here are its own lex's, so their
+    // sum is a fact about the unit's bytes, kept with its lex (UnitLex::token_sum).
+    const bool own = src->generated.empty();
+    auto known = [&](size_t i) { return own && src->units[i]->lexed && !src->units[i]->lexed->token_sum.empty(); };
     std::vector<std::string> bytes(n);
     for (const Token &t : tokens) {
       if (t.kind == Tok::eof) continue;
-      const SourceUnit *u = source_unit_at(src, t.loc);
-      auto at = u ? index.find(u) : index.end();
-      if (at != index.end()) ReuseIndex::put(bytes[at->second], t);
+      const int32_t at = source_unit_index(src, t.loc);
+      if (at >= 0 && !known((size_t)at)) ReuseIndex::put(bytes[(size_t)at], t);
     }
-    for (size_t i = 0; i < n; i++) sums[i] = debug_source_hash("coax.unit-tokens.v1\n" + bytes[i]);
+    for (size_t i = 0; i < n; i++) {
+      if (known(i)) { sums[i] = src->units[i]->lexed->token_sum; continue; }
+      sums[i] = debug_source_hash("coax.unit-tokens.v1\n" + bytes[i]);
+      if (own && src->units[i]->lexed && !sums[i].empty()) { src->units[i]->lexed->token_sum = sums[i]; serve_keep_unit(src->units[i]->lexed); }
+    }
   }
   // Loaded units before their loaders, so a unit's own check reuses its libraries' verdicts.
   std::vector<int32_t> order;
@@ -1846,7 +1859,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
   std::vector<Token> tokens;  // load_sources makes them from each unit's lex; else the composed text is lexed
   {TimedPhase phase{"load"};if (!load_sources(arena, src, path, &tokens)) return false;}
   for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;
-  bool ok=true;if(tokens.empty()){TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);}
+  bool ok=true;if(tokens.empty()){TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);}else lex_check(arena, src, tokens);
   if (ok) {
     size_t before = src->text.size();
     {TimedPhase phase{"imports"};ok=import_protos(src, opts, tokens);}
@@ -1858,7 +1871,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
   std::vector<bool> dropped;
   if (ok && g_library_checks) {TimedPhase phase{"libraries"};dropped=library_units(src, tokens, opts);drop_library_checks(src, dropped, &tokens);}
   if(!g_semantic.path.empty()) {
-    for(const auto &unit:src->units)g_semantic.sources.emplace_back(unit->canonical,debug_source_hash(unit->text));
+    for(const auto &unit:src->units)g_semantic.sources.emplace_back(unit->canonical,unit_text_sha(*unit));
     // No report is written when the complete input graph could not be read
     // and checked for aliases (including failures partway through #load).
     g_semantic.inputs_admitted=ok;
@@ -2024,6 +2037,7 @@ static int usage() {
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
           "       coax status [--json] | --jobs [--json]   (the build-worker budget: on stderr, or alone with --jobs)\n"
+          "       coax serve [status|start|stop]   (the resident compiler that c, check, test, lib, header, build and deps use; COAX_SERVE=0 turns it off)\n"
           "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --traversal N sets the aggregate traversal limit of the compilation and of each check without #traversal\n       --json prints diagnostics as JSON lines\n       --near-limit P notes each limit used above P percent (1 to 100; default 75, or COAX_NEAR_LIMIT)\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check, library and declaration times on stderr\n       --timings-top N lists the N costliest declarations in those reports (default 20)\n       --jobs N runs at most N parallel check workers; every coax process shares one build-worker budget (coax status --jobs)\n");
   return 2;
 }
@@ -2104,6 +2118,7 @@ static std::string compiler_source_digest(const std::string &root) {
 }
 
 static std::string executable_path() {
+  if (!serve_executable().empty()) return serve_executable();  // a resident's request: the client's path to the same bytes
   char self[4096];
 #ifdef __APPLE__
   uint32_t size = sizeof self;
@@ -2687,8 +2702,12 @@ static int main_impl(int argc, char **argv) {
 
 }  // namespace coax
 
+#include "serve.cpp"
+
 int main(int argc, char **argv) {
-  int status = coax::finish_profile(coax::main_impl(argc, argv));
+  int status = 0;
+  if (coax::serve_main(argc, argv, &status)) return status;
+  status = coax::finish_profile(coax::main_impl(argc, argv));
   if (status != 0) coax::report_stale_compiler();
   return status;
 }

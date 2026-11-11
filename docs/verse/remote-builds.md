@@ -438,6 +438,121 @@ What is left on a quiet host: 4.9 s to load (4.0 s of it the units' lexing),
 1.8 s to check, 1.3 s for the libraries' verdicts, 0.8 s to parse, 0.6 s to
 emit and 1.8 s for the `#authority` pass.
 
+### The resident compiler (#13138)
+
+Every `coax c`, `coax test` and `coax check` started from nothing: it read,
+lexed and syntax-checked every unit of the `#load` closure, hashed each one
+for the cache keys, and hashed the compiler binary. `coax serve` keeps that
+work between commands.
+
+**What it is.** One resident process per compiler binary and user. The
+commands `c`, `check`, `test`, `lib`, `header`, `build`, `deps`, `layout` and
+`checks-c` connect to it over a socket in `~/.cache/coax-serve/` (or
+`$COAX_SERVE_DIR`), pass their arguments, directory, environment and standard
+streams, and the resident forks a child that runs the command as a new
+process would. The child inherits the resident's memo, and when the command
+ends it sends back what it computed. The resident itself never runs a
+compiler phase.
+
+**What it keeps.** For each unit, by the unit's bytes (compared whole, not by
+a hash): its tokens, that it passed the unit syntax check, the SHA-256 of its
+bytes and the SHA-256 of its tokens. And the compiler binary's SHA-256. A
+unit you edited is lexed again; the others are not. The parse, the type
+check, the effect contracts and the C are still made for the whole program
+on every compile.
+
+**One resident serves every checkout.** Its directory is named by the
+binary's content, so worktrees with the same compiler share one resident and
+its memo, and a host's three slots do too. A resident leaves after 15 idle
+minutes (`COAX_SERVE_IDLE`, seconds), when its binary is replaced or
+deleted, or on `coax serve stop`. It keeps at most 4 GiB of unit lexes
+(`COAX_SERVE_MEMORY_MB`), least recently used out first; fivelab's 294 units
+take 160 MiB.
+
+**Failure is safe.** With no resident, the command starts one and runs cold
+(the resident never delays a command). A resident that refuses (the client is
+another binary), doesn't answer in 5 seconds, or whose request dies, makes
+the command run cold. A command whose client is killed is stopped too.
+`COAX_SERVE=0` turns it off. `coax serve status` prints what a resident holds.
+
+**The output is a cold compile's.** `coax/tests/serve.coax` (in
+`tests/run.sh` as `serve`) compiles a three-unit `#authority` program and the
+compiler's corpora cold and in a resident and compares stdout, stderr and the
+exit status: after an edited line, an appended comment, a syntax error and
+its repair, after the resident is killed, and after it is stopped. Given a
+checkout and `UNIT:EDITED` pairs it does the same for real units, before and
+after a comment and a new procedure in `EDITED`, comparing the C and the
+header:
+
+```sh
+coax/remote/remote.sh run -- bash -c 'cd coax && web/tool.sh tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
+  apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax \
+  apps/openagents-web/everglade2.coax:apps/openagents-web/everglade2-move.coax \
+  apps/openagents-web/charactercreator.coax:verse/character-glade.coax'
+```
+
+The same change makes a cold compile cheaper: a large store the parser and
+checker never touch is no longer cleared (the Mac's allocator cleared a
+recycled block by writing all of it), the checker's node store is sized once,
+each syntax node finds its unit by bisection, and the parser reads the
+loader's tokens without copying them.
+
+Measured 2026-11-10 with `coax c UNIT --library --header`, wall time, each
+edit made two or three times. "First compile" is the first after the edit
+(each check is keyed and reused); "again" is the same sources once more (the
+whole pass is cached). The edited files are
+`verse/experimental-dungeon.coax` (fivelab), `apps/openagents-web/everglade2-move.coax`
+(everglade2) and `verse/character-glade.coax` (Character Create).
+
+On a build host (oa-build-2 and oa-build-8, 30 cores, load 3 to 6). Before is
+main at `9d847d9398`, which has #13131:
+
+| Unit | State | Before | Now, `COAX_SERVE=0` | Now, in a resident |
+| --- | --- | --- | --- | --- |
+| fivelab | unedited, or again after an edit | 10.5 s | 9.6 s | 3.5 s |
+| fivelab | a comment, first compile | 11.5 s | 10.6 s | 4.5 s |
+| everglade2 | unedited, or again | 10.7 s | 9.6 to 9.8 s | 3.5 to 3.6 s |
+| Character Create | unedited, or again | 7.4 to 7.5 s | 6.9 to 7.1 s | 1.6 to 1.7 s |
+
+fivelab's first compile after a comment, by phase, on the host:
+
+| Phase | `COAX_SERVE=0` | Resident |
+| --- | --- | --- |
+| load (read, lex and syntax-check each unit) | 4.9 s | 0.3 s |
+| libraries (each library's verdict key) | 1.2 s | 0.1 s |
+| parse | 0.6 s | 0.6 s |
+| check | 1.7 s | 1.7 s |
+| effect contracts | 0.2 s | 0.2 s |
+| authority (key 1,314 checks; run none) | 1.35 s | 1.0 s |
+| emit | 0.6 s | 0.6 s |
+| Total | 10.6 s | 4.5 s |
+
+On the Mac (18 cores, other agents' builds at load 12 to 15, down to 5 for
+the last fivelab row). Before is main at `92578eb750`, before #13131:
+
+| Unit | State | Before | Now, `COAX_SERVE=0` | Now, in a resident |
+| --- | --- | --- | --- | --- |
+| fivelab | unedited, or again | 5.1 s | 2.4 to 4.5 s | 1.3 to 2.3 s |
+| fivelab | a comment, first compile | 9.1 to 9.9 s | | 1.6 to 2.8 s |
+| fivelab | a new procedure and its check, first compile | | | 3.0 s |
+| fivelab | a syntax error in the zone file | 1.75 s | 1.6 s | 0.17 s |
+| fivelab | a type error in the zone file | 4.5 s | 3.2 s | 1.05 s |
+| everglade2 | unedited, or again | 5.5 to 6.4 s | 3.1 to 4.0 s | 1.4 to 2.6 s |
+| everglade2 | a comment, first compile | 17.7 to 22.8 s | | 13.6 to 14.9 s |
+| Character Create | unedited, or again | 3.2 s | 2.3 to 3.5 s | 0.9 to 1.0 s |
+| Character Create | a comment, first compile | 4.6 s | | 0.8 to 1.1 s |
+
+everglade2's first compile after an edit runs 8 checks again whatever the
+edit (they come near a storage limit, so their notes are never reused,
+#13123): 11.6 to 13.1 of its 13.6 to 14.9 seconds.
+
+The issue's target, a one-line edit of a fivelab zone file to C in under 3
+seconds, is met on the Mac and not on a build host (4.5 s). What the host's
+4.5 s holds is work no cache keys by file: the type check of the whole
+program (1.7 s), keying its checks (1.0 s), emitting its C (0.6 s) and
+parsing it (0.6 s). The checker has to take a previous typed graph and the
+changed declarations before that falls; see the book, chapter 46.
+
 ## The Linux toolchain
 
 The size budgets in `apps/openagents-web/wasm-budgets.txt` were measured

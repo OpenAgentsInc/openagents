@@ -123,6 +123,11 @@ template<class T> Slice<T*> checked_pointers(Arena *arena,const zvec<coax_t_CK_N
 }
 struct CheckInput {
   zvec<coax_t_CK_Node> nodes;
+  // The parser's nodes the store was filled from: a run that fills the store
+  // with instances starts again from them (check_input_nodes), so no copy of
+  // the input is kept. Released once no run can need them.
+  zvec<coax_t_PS_Node> parsed;
+  std::vector<int64_t> scopes;  // each unit's module scope
   std::vector<void*> objects;
   int64_t used=0;
   // Logical module scopes (0 is the unowned program) and the aliases each scope loads.
@@ -138,8 +143,29 @@ static int64_t module_scope(CheckInput *input,const SourceUnit *unit){
   for(size_t i=1;i<input->modules.size();i++)if(input->modules[i]==unit->module)return (int64_t)i;
   input->modules.push_back(unit->module);return (int64_t)input->modules.size()-1;
 }
-static void attach_check_input(File *file,const zvec<coax_t_PS_Node> &nodes,const std::vector<void*> &objects,int64_t used){
-  auto input=std::make_shared<CheckInput>();input->used=used;input->objects=objects;input->nodes.resize((size_t)used+1);
+// Fills the first used+1 nodes of the checker's store from the parser's.
+static void check_input_nodes(const File *file,CheckInput *input){
+  const auto &nodes=input->parsed;
+  for(int64_t id=0;id<=input->used;id++){
+    const auto &v=nodes[(size_t)id];auto &n=input->nodes[(size_t)id];n.kind=v.kind;n.loc=checked_loc(v.loc);n.name=v.name;n.name2=v.name2;n.loc2=checked_loc(v.loc2);
+    n.a=v.a;n.b=v.b;n.c=v.c;n.d=v.d;n.head=v.head;n.tail=v.tail;n.next=v.next;n.op=v.op;n.flag=v.flag;n.flag2=v.flag2;n.value=v.value;memcpy(&n.floating,&v.floating,8);n.field_index=-1;n.sum_variant=-1;const int32_t at=source_unit_index(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
+    const SourceUnit *unit=at<0?nullptr:file->src->units[(size_t)at].get();
+    n.skip_authority=!file->src->units.empty() && !(unit && unit->authority);
+    n.quantity=v.quantity;n.unit={v.unit.e[0],v.unit.e[1],v.unit.e[2],v.unit.e[3],v.unit.e[4],v.unit.e[5]};
+    n.frame_decl=v.frame_decl;n.frame={v.frame.e[0],(uint8_t)v.frame.e[1],(uint8_t)v.frame.e[2],v.frame.e[3]};
+    n.effect_present=v.effect_present;n.pure_decl=v.pure_decl;n.effect_head=v.effect_head;n.effect_loc=checked_loc(v.effect_loc);
+    n.scope=unit?input->scopes[(size_t)at]:0;
+    // The physical unit, 1-based (0: none), so a local may share the name of a
+    // procedure another unit declares (#12675, CK_unit_proc).
+    if(unit)n.source_unit=(int64_t)at+1;
+    if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
+  }
+}
+static void attach_check_input(File *file,zvec<coax_t_PS_Node> &&nodes,const std::vector<void*> &objects,int64_t used){
+  auto input=std::make_shared<CheckInput>();input->used=used;input->objects=objects;
+  // Room for the store check() sizes it to (CK_caps and CK_meta_capacity), so that resize moves nothing; untouched pages cost nothing.
+  input->nodes.reserve((size_t)CK_caps(used+1,(int64_t)file->src->text.size()).nodes+65536);
+  input->nodes.resize((size_t)used+1);
   input->modules.push_back("");
   for(const auto &u:file->src->units)module_scope(input.get(),u.get());
   for(const auto &u:file->src->units)for(const auto &a:u->aliases)input->alias_names.push_back(a.name);
@@ -155,19 +181,10 @@ static void attach_check_input(File *file,const zvec<coax_t_PS_Node> &nodes,cons
     input->exports.push_back({module_scope(input.get(),u.get()),{name.data(),(int64_t)name.size()},{u->first_line+e.loc.line-1,e.loc.col,u->begin+e.loc.offset}});
   }
   for(const auto &m:input->modules)input->module_names.push_back({m.data(),(int64_t)m.size()});
-  for(int64_t id=0;id<=used;id++){
-    const auto &v=nodes[(size_t)id];auto &n=input->nodes[(size_t)id];n.kind=v.kind;n.loc=checked_loc(v.loc);n.name=v.name;n.name2=v.name2;n.loc2=checked_loc(v.loc2);
-    n.a=v.a;n.b=v.b;n.c=v.c;n.d=v.d;n.head=v.head;n.tail=v.tail;n.next=v.next;n.op=v.op;n.flag=v.flag;n.flag2=v.flag2;n.value=v.value;memcpy(&n.floating,&v.floating,8);n.field_index=-1;n.sum_variant=-1;n.skip_authority=!file->src->units.empty() && !source_authority(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
-    n.quantity=v.quantity;n.unit={v.unit.e[0],v.unit.e[1],v.unit.e[2],v.unit.e[3],v.unit.e[4],v.unit.e[5]};
-    n.frame_decl=v.frame_decl;n.frame={v.frame.e[0],(uint8_t)v.frame.e[1],(uint8_t)v.frame.e[2],v.frame.e[3]};
-    n.effect_present=v.effect_present;n.pure_decl=v.pure_decl;n.effect_head=v.effect_head;n.effect_loc=checked_loc(v.effect_loc);
-    const SourceUnit *unit=source_unit_at(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
-    n.scope=module_scope(input.get(),unit);
-    // The physical unit, 1-based (0: none), so a local may share the name of a
-    // procedure another unit declares (#12675, CK_unit_proc).
-    for(size_t i=0;unit && i<file->src->units.size();i++)if(file->src->units[i].get()==unit){n.source_unit=(int64_t)i+1;break;}
-    if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
-  }
+  // Every unit's module scope is already registered above; a node takes its unit's.
+  for(const auto &u:file->src->units)input->scopes.push_back(module_scope(input.get(),u.get()));
+  input->parsed=std::move(nodes);
+  check_input_nodes(file,input.get());
   file->check_input=std::move(input);
 }
 bool check(Arena *arena,File *file,bool mutation_lowering){
@@ -178,7 +195,8 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   // of its input with a larger store, up to CK_node_bound (generics.coax,
   // #12699). An input without a type placeholder makes no instance: no copy.
   const int64_t first=caps.nodes+extra;int64_t capacity=first;
-  zvec<coax_t_CK_Node> original;if(CK_generic_input({input->nodes.data(),(int64_t)input->nodes.size()}))original=input->nodes;
+  const bool retries=CK_generic_input({input->nodes.data(),(int64_t)input->nodes.size()});
+  if(!retries)input->parsed=zvec<coax_t_PS_Node>();
   input->nodes.resize((size_t)capacity);
   zvec<coax_t_CK_Type> records;zvec<coax_t_CK_Local> locals;zvec<coax_t_CK_Error> errors;zvec<uint8_t> bytes;coax_t_CK_State state{};
   const auto borrow_caps=CK_borrow_caps(input->used+1);
@@ -204,11 +222,12 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     context.names={names.data(),(int64_t)names.size()};
     laps.lap("check.storage");
     ok=CK_run(context,input->used,{file->library,file->metal,file->authority,file->quantity_device});
-    const int64_t next=original.empty()?0:CK_node_retry(state.used,capacity,state.fatal,first);
+    const int64_t next=retries?CK_node_retry(state.used,capacity,state.fatal,first):0;
     if(ok || !next)break;
     // A fresh zeroed store: the failed run's records past the input must not survive.
-    capacity=next;input->nodes=zvec<coax_t_CK_Node>((size_t)capacity);std::copy(original.begin(),original.end(),input->nodes.begin());
+    capacity=next;input->nodes=zvec<coax_t_CK_Node>((size_t)capacity);check_input_nodes(file,input.get());
   }
+  input->parsed=zvec<coax_t_PS_Node>();
   capacity_use("checker nesting","E0381",(uint64_t)state.peak_depth,(uint64_t)CK_depth_limit());
   // Borrow analysis: each declaration's own budget (the three that used the
   // most), and the whole run against the sum of those budgets (#12644).
@@ -245,13 +264,13 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
                   :"bind "+top+" to fewer distinct types or sizes (one capacity for every use, or a concrete type where the binding does not matter)";
     return d;
   };
-  const uint64_t node_limit=(uint64_t)(original.empty()?first:CK_node_bound(first));
+  const uint64_t node_limit=(uint64_t)(!retries?first:CK_node_bound(first));
   const bool node_store_full=!ok && state.fatal && state.used+1>=(int64_t)input->nodes.size();
   const uint64_t instance_limit=(uint64_t)std::max<int64_t>(state.instance_limit,0);
   capacity_use("generic instances","E0339",(uint64_t)state.instance_count,instance_limit,
                capacity_near((uint64_t)state.instance_count,instance_limit)?instance_detail(false):CapacityDetail{});
   capacity_use("checker node store","E0381",(uint64_t)state.used+1,node_limit,
-               !original.empty() && capacity_near((uint64_t)state.used+1,node_limit)?instance_detail(true):CapacityDetail{});
+               retries && capacity_near((uint64_t)state.used+1,node_limit)?instance_detail(true):CapacityDetail{});
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];const std::string code=checked_text(d.code);
     if(code=="E0339")capacity_refusal({"generic instances",(uint64_t)state.instance_count+1,instance_limit,instance_detail(false)});
     else if(code=="E0381" && node_store_full)capacity_refusal({"checker node store",(uint64_t)state.used+2,node_limit,instance_detail(true)});

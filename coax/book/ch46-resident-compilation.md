@@ -4,8 +4,9 @@
 > shown follows [the Coax specification](https://github.com/OpenAgentsInc/openagents/tree/main/coax/spec.md) and may change
 > before it's built. This is roadmap R27.
 
-`coax0` is not incremental: every run starts from nothing. R27 adds a
-resident compiler with a bounded cache built from content and declaration
+`coax0` checks and emits a whole program on every run. Its resident
+compiler, `coax serve`, keeps only the per-file work between runs ("What
+exists" below). R27 adds a bounded cache built from content and declaration
 dependencies, and a resident Mac host that can change a running program's
 code and, when a layout changes, migrate its state. A migration either
 publishes atomically or rolls back and keeps the old state. This follows the
@@ -43,47 +44,78 @@ only if that experiment showed value.
    their signing and deployment rules. No stack migration or device
    code-loading bypass is implied.
 
-## What exists, and what a resident check server would need
+## What exists: `coax serve`
 
-`coax0` has no resident process yet. Since #12647 it does have the first
-piece of the cache: a compile reuses each `#authority` check whose inputs
-didn't change, keyed by the tokens of the declarations the check reaches by
-name, the procedures it ran, the compiler, the options and the storage it
-starts with (`ReuseIndex` in `coax/src/verify.cpp`; INVARIANTS.md, "A reused
-check is one whose every input is unchanged"). After a one-constant edit to
-an Everglade realm file, `coax check apps/openagents-web/everglade.coax`
-runs 31 of its 302 checks instead of all of them. What is left of a warm
-check is the front end: about 0.6 s to load, 0.5 s to lex, 0.25 s to parse
-and 0.75 s to type-check, every time, for every unit.
+`coax0` reuses work between compiles in two places. This section describes
+them and what is still missing.
 
-A resident server for agents ([chapter 22](ch22-agents.md)) would keep that
-front end's results in memory between requests. It would need:
+**The check cache** (#12647). A compile reuses each `#authority` check whose
+inputs didn't change, keyed by the tokens of the declarations the check
+reaches by name, the procedures it ran, the compiler, the options and the
+storage it starts with (`ReuseIndex` in `coax/src/verify.cpp`; INVARIANTS.md,
+"A reused check is one whose every input is unchanged").
 
-1. **A protocol.** A local socket, one request per edit (`check FILE`,
-   `query ...`), answers in the same `coax.diagnostic.v1` lines and exit
-   statuses as the command line, and a compiler identity in every answer so a
-   stale server is never used after a rebuild.
-2. **File identity.** Each request names the units' revisions, with the same
-   bound-revision rule as `fmt --write --revision`. Watching the file system
-   can only tell the server to look again, never stand in for that check.
-3. **Per-unit lexing and parsing kept warm.** Tokens and parse trees per
-   unit, keyed by its SHA-256. The parser already works per unit; the
-   checker doesn't, because it resolves names across the whole program. So
-   the server reparses only edited units and re-runs the checker on the
-   whole graph (about 0.75 s for Everglade today) until the checker can take
-   a previous typed graph and the set of changed declarations.
-4. **The same keys as the check cache.** The per-check keys above are the
-   invalidation rule. The server would keep the item index in memory instead
-   of rebuilding it (about 1 s for Everglade's 302 keys today).
-5. **Bounded memory and a way back.** A cap on retained graphs, eviction by
-   last use, and `coax check` with no server as the reference: any answer the
-   server gives must be byte-identical to a cold run's, checked the way
-   `tests/check-reuse.coax` checks the cache.
+**The resident compiler** (#13138, `coax/src/serve.cpp`). One long-lived
+process for each compiler binary and user. You don't start it: the first
+`coax c`, `coax check`, `coax test`, `coax lib`, `coax header`, `coax build`
+or `coax deps` starts one and runs as before, and later commands run in it.
 
-When an edit leaves every check's inputs alone, Everglade's check takes
-about 3.2 s. A server holding tokens, parse trees and the index would save
-about 2.3 s of that and still pay the checker's 0.75 s. Going below that
-needs the checker's incremental input first.
+```console
+$ coax check apps/openagents-web/fivelab.coax     # starts a resident, compiles cold
+$ coax check apps/openagents-web/fivelab.coax     # runs in the resident, fills its memo
+$ coax check apps/openagents-web/fivelab.coax     # reuses every unit's lex
+$ coax serve status
+coax serve: pid 40243, up 50 s, 3 requests (0 running), 294 unit lexes kept in 159 MiB ...
+$ coax serve stop
+```
+
+How it works:
+
+1. **A protocol.** A command connects to a local socket and sends its
+   arguments, directory, environment and its three standard streams. The
+   resident forks a child, and the child runs the command exactly as a new
+   process would: the same code, writing to the caller's own streams, with
+   the same exit status. The resident's directory is named by the compiler
+   binary's content, and it compares a client's binary with its own bytes, so
+   a resident never serves another compiler. A rebuilt compiler gets a new
+   resident and the old one leaves.
+2. **File identity.** Nothing is watched and nothing is trusted from a
+   previous run. Each command reads every unit again and looks its bytes up
+   in the memo. An entry is used only when the whole text is equal, so a hit
+   is the value a cold compile would compute.
+3. **What is kept warm.** For each unit, by its bytes: its tokens (the
+   lexer's exact conversion of number literals is most of a large program's
+   lexing), that it passed the unit syntax check, and the SHA-256 of its
+   bytes and of its tokens, which the cache keys need. Also the compiler
+   binary's SHA-256. The child that computed a value sends it to the
+   resident when its command ends. The resident never runs a compiler phase,
+   so a compile error or a crash in a request can't damage it.
+4. **Bounded memory and a way back.** The memo holds at most 4 GiB
+   (`COAX_SERVE_MEMORY_MB`), least recently used out first, and the resident
+   leaves after 15 idle minutes (`COAX_SERVE_IDLE`). A command with no
+   resident, a refusing one, a silent one or a dead one runs cold.
+   `COAX_SERVE=0` turns residents off. `coax/tests/serve.coax` compares
+   commands run both ways (stdout, stderr, exit status, C and header) on the
+   corpora and on real units before and after edits.
+
+Measured on fivelab (294 units, 9.7 MB of source, 1,314 checks) after a
+comment appended to one zone file, as the first compile after the edit:
+11.5 s before and 4.5 s in a resident on a 30-core build host, and 9.1 to
+9.9 s before and 1.6 to 2.8 s on an 18-core Mac. A syntax error in the edited
+file is reported in 0.17 s on the Mac, and a type error in 1.05 s.
+`docs/verse/remote-builds.md` has the tables.
+
+What a resident does not do yet: the parser's tree, the checker's typed
+graph and the emitted C are made again for the whole program on every
+compile. The parser already works per unit, so its trees could be kept. The
+checker (`lib/compiler/checker/`) resolves names across the whole program in
+one pass over one node store; it has to take a previous typed graph and the
+set of changed declarations before a one-line edit can skip the unchanged
+ones. Emitted C holds each trap's line in the composed program, so an edit
+that adds a line changes the C of every later unit; per-declaration C needs
+unit-relative lines first. Those two are the rest of R27's cache. On the
+build host they are what is left of fivelab's 4.5 seconds: 1.7 s to check,
+1.0 s to key its checks, 0.6 s to emit and 0.6 s to parse.
 
 ## The consumer and the gate
 

@@ -17,28 +17,34 @@ static_assert((uint8_t)Tok::directive == 6 && (uint8_t)Tok::string_lit == 5 &&
               (uint8_t)Tok::rbrace == 11 && (uint8_t)Tok::lbracket == 12 &&
               (uint8_t)Tok::rbracket == 13, "source token ABI");
 
+// Units lie end to end in the composed text, in order: the unit that holds an
+// offset is the last one that begins at or before it.
+static int32_t unit_index_at(const Source *src, int32_t offset) {
+  const auto &units = src->units;
+  size_t lo = 0, hi = units.size();
+  while (lo < hi) { const size_t mid = lo + (hi - lo) / 2; if (units[mid]->begin <= offset) lo = mid + 1; else hi = mid; }
+  if (lo == 0) return -1;
+  const auto &unit = units[lo - 1];
+  return offset >= unit->begin && offset < unit->end ? (int32_t)(lo - 1) : -1;
+}
+int32_t source_unit_index(const Source *src, Loc loc) { return unit_index_at(src, diagnostic_loc(src, loc).offset); }
 SourcePoint source_point(const Source *src, Loc loc) {
   loc = diagnostic_loc(src, loc);
-  for (const auto &unit : src->units) {
-    if (loc.offset >= unit->begin && (loc.offset < unit->end || (unit==src->units.back() && loc.offset==unit->end))) {
-      loc.offset -= unit->begin;
-      loc.line -= unit->first_line - 1;
-      return {unit->path, loc};
-    }
-  }
-  return {src->path, loc};
+  int32_t at = unit_index_at(src, loc.offset);
+  if (at < 0 && !src->units.empty() && loc.offset == src->units.back()->end && loc.offset >= src->units.back()->begin) at = (int32_t)src->units.size() - 1;
+  if (at < 0) return {src->path, loc};
+  const auto &unit = src->units[(size_t)at];
+  loc.offset -= unit->begin;
+  loc.line -= unit->first_line - 1;
+  return {unit->path, loc};
 }
 bool source_authority(const Source *src, Loc loc) {
-  loc = diagnostic_loc(src, loc);
-  for (const auto &unit : src->units)
-    if (loc.offset >= unit->begin && loc.offset < unit->end) return unit->authority;
-  return false;
+  const int32_t at = source_unit_index(src, loc);
+  return at >= 0 && src->units[(size_t)at]->authority;
 }
 const SourceUnit *source_unit_at(const Source *src, Loc loc) {
-  loc = diagnostic_loc(src, loc);
-  for (const auto &unit : src->units)
-    if (loc.offset >= unit->begin && loc.offset < unit->end) return unit.get();
-  return nullptr;
+  const int32_t at = source_unit_index(src, loc);
+  return at < 0 ? nullptr : src->units[(size_t)at].get();
 }
 // The checked tuple encoding (SU_decl_id); native code only transports it.
 std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc) {
@@ -150,7 +156,14 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     if (from>=0) units[(size_t)from]->source->loads.push_back((int32_t)self);
     Source local;local.path=display;local.text=u->source->text;
     std::vector<Token> tokens;
-    std::vector<Loc> lexed;const bool lexed_ok=lex(arena,&local,&tokens,&lexed);
+    // A resident compiler may hold this unit's lex from an earlier compile of the same bytes.
+    std::shared_ptr<const UnitLex> kept=serve_find_unit(local.text);
+    std::vector<Loc> lexed;bool lexed_ok=true;
+    if (kept) unit_tokens(*kept,local.text.data(),&tokens);
+    else lexed_ok=lex(arena,&local,&tokens,&lexed);
+    bool learned=lexed_ok && !kept;  // something a resident does not hold yet
+    if (learned) kept=unit_lex(local.text,tokens);
+    if (lexed_ok) u->source->lexed=kept;
     std::vector<coax_t_SU_Token> records;
     for (const auto &t : tokens) {
       const auto text=t.kind==Tok::string_lit?t.string_value:t.text;
@@ -216,7 +229,11 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     if (composition && !u->balanced) {
       error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return stop();
     }
-    if (composition && !source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed)) return stop();
+    if (composition && !kept->syntax) {
+      if (!source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed)) return stop();
+      kept->syntax=true;learned=true;
+    }
+    if (learned) serve_keep_unit(kept);
     for (int64_t i=0;i<list.count;i++) {
       const auto &e=exported[(size_t)i];Loc at{1,1,(int32_t)e.at};
       for (const auto &t:tokens) if (t.loc.offset==at.offset) {at=t.loc;break;}

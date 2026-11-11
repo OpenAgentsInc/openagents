@@ -5427,6 +5427,41 @@ for `#authority` files, after an edit. `coax c` of Everglade, Newland and
 the CLI gives byte-identical C cold, warm and after an edit (the commit
 records it).
 
+## A resident compiler answers with a cold compile's bytes
+
+`coax serve` (#13138, `coax/src/serve.cpp`) keeps work between compile
+commands, and a command run in it must produce what the same command
+produces in a new process: the same stdout, stderr, exit status and files.
+Three rules hold that.
+
+- **The resident runs no compiler phase.** It forks a child for each
+  command, and the child runs the command's ordinary code with the caller's
+  arguments, directory, environment and streams. The only difference from a
+  cold process is the memo the child inherits.
+- **A memo entry is a pure function of its whole key.** An entry holds what
+  the compiler computes from one unit's bytes alone: its tokens, that it
+  passed the unit syntax check, the SHA-256 of the bytes and the SHA-256 of
+  its tokens. A lookup compares the unit's whole text with the entry's, never
+  a hash alone and never a path or a modification time. An entry is made
+  only from a unit that lexed without a diagnostic, by the child that
+  computed it. The compiler's SHA-256 is kept the same way, and a resident
+  serves only clients whose binary has its own bytes.
+- **A command runs once.** A request starts only after its client says it
+  is still waiting. A client that gets no reply runs the command itself
+  only when the request never started or is known to be gone.
+
+A resident that is absent, refuses, is silent or dies costs a cold compile.
+`COAX_SERVE=0` turns residents off.
+
+Check: `coax/tests/serve.coax` (`tests/run.sh --only serve`). Commands run
+cold and in a resident agree on stdout, stderr and exit status for a
+three-unit `#authority` program after an edited line, an appended comment, a
+syntax error and its repair; for the C and header of a library compile; for
+the pass, fail, diagnostics and check-fixture corpora; and after the
+resident is killed or stopped. With a checkout, it compares the C and header
+of fivelab, everglade2 and Character Create before and after a comment and a
+new procedure in a loaded file.
+
 ## Development body replacement keeps the resident host and requires a source proof
 
 The explicit Everglade scalar experiment in `coax/web/fast-edit.coax` seals

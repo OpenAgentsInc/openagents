@@ -132,6 +132,7 @@ coax/bin/coax mutate FILE                   # are the checks sharp? parallel wit
 coax/bin/coax mutate FILE --root-only       # entry-source sites; all baseline checks still run
 coax/bin/coax mutate FILE --jobs N          # cap the workers (or COAX_MUTATE_JOBS=N, COAX_JOBS=N)
 coax/bin/coax status --jobs                 # the shared build-worker budget and who holds it
+coax/bin/coax serve status                  # the resident compiler c, check and test run in (it starts itself; COAX_SERVE=0 turns it off)
 coax/bin/coax mutate FILE --shard I/N > I.rec  # one of N parts; then --merge 1.rec --merge 2.rec ...
 psionic/check.sh --only UNIT...             # just those Psionic units: checks, mutation, native, sanitizers, book
 psionic/check.sh                            # every Psionic unit: the release gate

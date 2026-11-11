@@ -12,6 +12,7 @@
 #include <new>
 #include <string>
 #include <vector>
+#include <sys/mman.h>
 
 namespace coax {
 // Storage for the parser's and checker's caller-owned arrays, which are sized
@@ -25,12 +26,25 @@ template <class T> struct ZeroAlloc {
   using value_type = T;
   ZeroAlloc() = default;
   template <class U> ZeroAlloc(const ZeroAlloc<U> &) {}
+  // A large store comes straight from the system as untouched zero pages:
+  // some allocators (macOS) clear a recycled large block by writing all of it.
+  static constexpr size_t MAPPED = 1 << 20;
   T *allocate(size_t n) {
+    const size_t bytes = (n ? n : 1) * sizeof(T);
+    if (bytes >= MAPPED) {
+      void *p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+      if (p == MAP_FAILED) throw std::bad_alloc();
+      return (T *)p;
+    }
     void *p = calloc(n ? n : 1, sizeof(T));
     if (!p) throw std::bad_alloc();
     return (T *)p;
   }
-  void deallocate(T *p, size_t) { free(p); }
+  void deallocate(T *p, size_t n) {
+    const size_t bytes = (n ? n : 1) * sizeof(T);
+    if (bytes >= MAPPED) munmap((void *)p, bytes);
+    else free(p);
+  }
   template <class U> void construct(U *) {}
   template <class U, class A, class... More> void construct(U *p, A &&a, More &&...more) {
     ::new ((void *)p) U(static_cast<A &&>(a), static_cast<More &&>(more)...);
@@ -107,9 +121,33 @@ struct GeneratedRegion {
   Loc directive;
   std::string prefix;
 };
+// What a unit's own lex produced (load_sources lexes each unit alone before
+// the program is composed): its tokens with positions inside the unit, and
+// other facts about its bytes. All of it is a pure function of `text`, which
+// is why a resident compiler (serve.cpp) keeps it between compiles, keyed by
+// those bytes.
+struct UnitToken {
+  uint64_t int_value = 0;
+  double float_value = 0;
+  int32_t line = 0, col = 0, offset = 0;             // where it starts in the unit
+  int32_t text = 0, count = 0;                       // its spelling: bytes [text, text + count) of the unit
+  int32_t decoded = -1, decoded_count = 0;           // a string literal's bytes after escapes, in UnitLex::decoded
+  uint8_t kind = 0, float_bits = 0;
+};
+struct UnitLex {
+  std::string text;               // the unit's bytes as read
+  std::vector<UnitToken> tokens;  // through eof
+  std::string decoded;            // every decoded string, each followed by a NUL
+  // Facts about these bytes that later phases compute once and keep here.
+  mutable bool syntax = false;          // source_unit_syntax passed for these tokens (a unit of a composition)
+  mutable std::string text_sha;         // SHA-256 of text ("" until needed)
+  mutable std::string token_sum;        // SHA-256 of the unit's tokens in the composed program ("" until needed)
+  mutable bool queued = false;          // a resident's request: it reports this lex when it ends
+};
 struct SourceUnit {
   std::string path, canonical, text;
   int32_t begin = 0, end = 0, first_line = 1;
+  std::shared_ptr<const UnitLex> lexed;                 // null when the unit did not lex
   bool authority = false;
   // Logical module (schema 1): `claims` when this unit declares #module;
   // `module` is its owner's ID, or empty when no owner is available (legacy).
@@ -137,6 +175,8 @@ Loc diagnostic_loc(const Source *src, Loc loc);
 SourcePoint source_point(const Source *src, Loc loc);
 bool source_authority(const Source *src, Loc loc);
 const SourceUnit *source_unit_at(const Source *src, Loc loc);
+// Its index in src->units, or -1.
+int32_t source_unit_index(const Source *src, Loc loc);
 // The nominal declaration ID "coax.decl.v1:MODULE:KIND:NAME" (kind 0 proc,
 // 1 struct, 2 enum, 3 const), or "" when the declaring unit has no owner.
 std::string declaration_id(const Source *src, uint8_t kind, Str name, Loc loc);
@@ -257,6 +297,18 @@ struct Token {
 
 // errors, when given, receives where each lexer error is.
 bool lex(Arena *arena, const Source *src, std::vector<Token> *out, std::vector<Loc> *errors = nullptr);
+// COAX_LEX_CHECK=1: stops unless lexing the composed text gives exactly these
+// tokens (load_sources composes them from each unit's own lex).
+void lex_check(Arena *arena, const Source *src, const std::vector<Token> &composed);
+// A unit's tokens as lex() of its text alone leaves them (text is the bytes they index).
+void unit_tokens(const UnitLex &unit, const char *text, std::vector<Token> *out);
+std::shared_ptr<UnitLex> unit_lex(const std::string &text, const std::vector<Token> &tokens);
+// The resident compiler's memo of unit lexes (serve.cpp). find: the lex kept
+// for exactly these bytes, or null (always null outside a resident's request).
+// keep: a lex this process made, or learned another fact about, for the
+// resident to keep.
+std::shared_ptr<const UnitLex> serve_find_unit(const std::string &text);
+void serve_keep_unit(const std::shared_ptr<const UnitLex> &unit);
 const char *tok_name(Tok t);
 
 // ---- Types ----

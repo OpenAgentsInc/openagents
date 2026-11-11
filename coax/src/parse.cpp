@@ -115,9 +115,10 @@ static void parse_report(const Source *src,const std::vector<coax_t_PS_Token> &i
 // never raises the budget of a program that loads it. A malformed one still
 // reaches the parser (E0224), and so does a second one in the same file.
 // False with E0224 reported when a loaded file declares it twice.
-bool drop_loaded_run_steps(const Source *src,const std::vector<Token> &tokens,std::vector<Token> *kept) {
-  kept->clear();kept->reserve(tokens.size());
-  if(src->units.size()<2) {*kept=tokens;return true;}
+// *same: nothing was dropped, and kept is left empty: the caller reads tokens.
+bool drop_loaded_run_steps(const Source *src,const std::vector<Token> &tokens,std::vector<Token> *kept,bool *same) {
+  kept->clear();*same=true;
+  if(src->units.size()<2) return true;
   const std::string &entry=src->units.front()->path;
   std::vector<std::string> declared;
   for(size_t i=0;i<tokens.size();i++) {
@@ -130,16 +131,19 @@ bool drop_loaded_run_steps(const Source *src,const std::vector<Token> &tokens,st
         for(const auto &path:declared) if(path==at.path) {
           error_at(src,t.loc,"E0224","#run_steps is declared more than once","declare one #run_steps N; in a file");return false;
         }
-        declared.push_back(at.path);i+=2;continue;
+        declared.push_back(at.path);
+        if(*same) {*same=false;kept->reserve(tokens.size());kept->assign(tokens.begin(),tokens.begin()+(std::ptrdiff_t)i);}
+        i+=2;continue;
       }
     }
-    kept->push_back(t);
+    if(!*same) kept->push_back(t);
   }
   return true;
 }
 bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,File *out,bool development) {
-  std::vector<Token> tokens;
-  if(!drop_loaded_run_steps(src,all_tokens,&tokens)) return false;
+  std::vector<Token> kept;bool same=true;
+  if(!drop_loaded_run_steps(src,all_tokens,&kept,&same)) return false;
+  const std::vector<Token> &tokens=same?all_tokens:kept;
   auto input=parser_tokens(tokens);
   const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
   zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);
@@ -235,7 +239,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
   out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->unions=to_slice(arena,unions);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
   for(int64_t id=1;id<=state.used;id++)if(nodes[(size_t)id].kind==COAX_PS_Tag_stmt_transaction)out->has_transactions=true;
-  attach_check_input(out,nodes,objects,state.used);
+  attach_check_input(out,std::move(nodes),objects,state.used);
   return true;
 }
 } // namespace coax

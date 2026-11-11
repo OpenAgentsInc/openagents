@@ -106,6 +106,7 @@ unit_steps() { web/tool.sh tests/steps.coax "$COAX_ABS"; }
 unit_library_checks() { web/tool.sh tests/library-checks.coax "$COAX_ABS"; }
 unit_authority_cache() { web/tool.sh tests/authority-cache.coax "$COAX_ABS"; }
 unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
+unit_serve() { web/tool.sh tests/serve.coax "$COAX_ABS"; }
 unit_parallel_checks() { web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
 unit_job_budget() { web/tool.sh tests/job_budget.coax "$COAX_ABS"; }
 # A sample of units that compare stdout and stderr between compiles, run with
@@ -274,7 +275,7 @@ unit_spatial() {
 
 # Every unit, in the order the whole suite runs them.
 UNITS=(pass fail examples pulse python native strict_math native_checks lexer parser budget strings traversal
-  provenance query steps library_checks authority_cache check_reuse parallel_checks job_budget loaded release mutation_schedule
+  provenance query steps library_checks authority_cache check_reuse serve parallel_checks job_budget loaded release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded kept clock debugging nostr constant_time wrapping integer_ops nominal_ids handles effect_contracts transactions compat mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks

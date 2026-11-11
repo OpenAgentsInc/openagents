@@ -4344,13 +4344,20 @@ static std::string debug_source_hash(const std::string &text) {
 #endif
   return ""; // build-only stage0 refuses --source-map; no native hash fallback
 }
+// The SHA-256 of a unit's bytes, computed once for those bytes: it is kept on
+// the unit's lex, which a resident compiler holds between compiles.
+static std::string unit_text_sha(const SourceUnit &unit) {
+  if(!unit.lexed)return debug_source_hash(unit.text);
+  if(unit.lexed->text_sha.empty()){unit.lexed->text_sha=debug_source_hash(unit.text);if(!unit.lexed->text_sha.empty())serve_keep_unit(unit.lexed);}
+  return unit.lexed->text_sha;
+}
 std::string emit_debug_map(const File *file) {
   Emitter em{file,{}};
   std::string out="{\"schema_version\":1,\"sources\":[";
   bool first=true;
   for (const auto &unit:file->src->units) {out+=(first?"":",")+json_string(unit->canonical);first=false;}
   out+="],\"source_hashes\":{";first=true;
-  for(const auto &unit:file->src->units) {out+=(first?"":",")+json_string(unit->canonical)+":"+json_string(debug_source_hash(unit->text));first=false;}
+  for(const auto &unit:file->src->units) {out+=(first?"":",")+json_string(unit->canonical)+":"+json_string(unit_text_sha(*unit));first=false;}
   out+="},\"functions\":[";first=true;
   for (const auto *p:file->procs) {
     if(p->foreign) continue;

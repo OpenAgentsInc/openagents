@@ -1,0 +1,214 @@
+// The resident compiler (`coax serve`, #13138) runs a command with a cold
+// compile's result: the same stdout, stderr and exit status, and for coax c
+// the same C and header.
+//   coax/web/tool.sh coax/tests/serve.coax COMPILER [ROOT UNIT:EDITED ...]
+// Run from coax/. The first part needs nothing else. It compiles
+// tests/check-reuse/main.coax (an #authority program of three units) and the
+// corpora once with COAX_SERVE=0 and once through a resident kept in a
+// scratch directory, and compares them:
+//   - a compile with no resident starts one and runs cold; the next runs in
+//     it, and the one after reuses each unit's lex;
+//   - an edited line, an appended comment, a syntax error and its repair all
+//     compile as a cold compile does;
+//   - the header and the C of a library compile are a cold compile's;
+//   - a resident that was killed, or stopped, costs nothing but a cold compile;
+//   - COAX_SERVE=0 starts none.
+// With ROOT (a checkout) and UNIT:EDITED pairs (paths in it), each UNIT is
+// also compiled to C cold and in the resident before and after two edits of
+// EDITED, a comment and a new procedure with its check; the C and the header must be the
+// same bytes, and the line printed for each state gives both wall times:
+//   coax/web/tool.sh coax/tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
+//     apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax
+// EDITED is put back when the unit's step ends.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// Runs body in sh with C the compiler, D a scratch directory, S the
+// resident's directory (short: it holds a socket) and the shell functions.
+run :: (compiler: string, dir: string, serve: string, body: string, out: [] u8) -> ProcRun {
+  argv := [9] string.["sh", "-c", "C=$1; D=$2; S=$3; export COAX_SERVE_DIR=\"$S\"; eval \"$4\"; eval \"$5\"", "sh", compiler, dir, serve, FUNCTIONS, body];
+  err: [1024] u8;
+  return proc_run(argv[..], 3600000, out, err[..]);
+}
+
+// both NAME ARGS...: the command cold (COAX_SERVE=0) and then with the
+// resident, each with its own check cache, so both caches see the same
+// history. Prints "NAME status=N same" when stdout, stderr and the exit
+// status agree, else "NAME status=N different".
+// up: waits until a resident answers. settled: waits until it has taken a
+// finished request's report (requests=N in its status).
+// reused: prints "reused=N", the unit lexes requests found in the resident.
+// edit FILE FROM TO: replaces the line FROM in $D/w/FILE with TO.
+FUNCTIONS :: "both() { n=$1; shift; COAX_SERVE=0 COAX_CHECK_CACHE=\"$D/cache-cold\" \"$C\" \"$@\" > \"$D/$n.cold.out\" 2> \"$D/$n.cold.err\"; echo $? > \"$D/$n.cold.status\"; COAX_CHECK_CACHE=\"$D/cache\" \"$C\" \"$@\" > \"$D/$n.out\" 2> \"$D/$n.err\"; echo $? > \"$D/$n.status\"; s=different; cmp -s \"$D/$n.out\" \"$D/$n.cold.out\" && cmp -s \"$D/$n.err\" \"$D/$n.cold.err\" && cmp -s \"$D/$n.status\" \"$D/$n.cold.status\" && s=same; echo \"$n status=$(cat \"$D/$n.status\") $s\"; }; up() { i=0; while ! \"$C\" serve status > /dev/null 2>&1 && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; \"$C\" serve status > /dev/null 2>&1 && echo up; }; reused() { i=0; while [ $i -lt 100 ]; do r=$(\"$C\" serve status 2> /dev/null | sed -n 's/.* \\([0-9][0-9]*\\) reused and.*/\\1/p'); [ \"${r:-0}\" -ge \"${1:-1}\" ] && break; sleep 0.1; i=$((i + 1)); done; echo \"reused=${r:-0}\"; }; edit() { sed \"s|^$2\\$|$3|\" \"$D/w/$1\" > \"$D/w/$1.new\" && mv \"$D/w/$1.new\" \"$D/w/$1\"; }";
+
+// The corpus step: every pass, fail and diagnostics program and every check
+// fixture, compiled cold and in the resident. Prints "corpus differs=N
+// files=M" and the files that differ.
+CORPUS :: "d=0; m=0; for f in tests/pass/*.coax tests/fail/*.coax tests/diagnostics/*.coax tests/parallel-checks/*.coax tests/authority-cache/*.coax tests/library-checks/*.coax; do m=$((m + 1)); r=$(both corpus-$m c \"$f\"); case \"$r\" in *same) ;; *) d=$((d + 1)); echo \"differs $f\";; esac; done; echo \"corpus differs=$d files=$m\"";
+
+// The unit step's shell, with R the checkout, U the unit and E the file to
+// edit. once NAME ENV...: compiles U to C there; NAME.c, NAME.h and NAME.err
+// are in $D. same3 STATE: prints "same" when STATE's three compiles (a cold
+// one that fills the check cache, the resident's and a second cold one) agree
+// and succeeded.
+UNIT :: "once() { n=$1; shift; (cd \"$R\" && env \"$@\" \"$C\" c \"$U\" --library --header \"$D/$n.h\" > \"$D/$n.c\" 2> \"$D/$n.err\"); echo $? > \"$D/$n.status\"; }; same3() { s=different; cmp -s \"$D/$1-res.c\" \"$D/$1-cold.c\" && cmp -s \"$D/$1-res.h\" \"$D/$1-cold.h\" && cmp -s \"$D/$1-res.err\" \"$D/$1-cold.err\" && cmp -s \"$D/$1-res.status\" \"$D/$1-cold.status\" && cmp -s \"$D/$1-fill.c\" \"$D/$1-cold.c\" && [ \"$(cat \"$D/$1-cold.status\")\" = 0 ] && s=same; echo $s; }; ";
+COMMENT :: "printf '\\n// serve.coax: a comment\\n' >> \"$R/$E\"";
+PROCEDURE :: "printf '\\nserve_coax_probe_13138 :: (n: int) -> int #effects(all) { return n + 1; }\\n#test \"serve.coax: the probe adds one\" { #assert serve_coax_probe_13138(1) == 2; }\\n' >> \"$R/$E\"";
+
+// a + b + c in buffer.
+join3 :: (buffer: [] u8, a: string, b: string, c: string) -> string {
+  n := 0;
+  parts := [3] string.[a, b, c];
+  for p: 0..<3 { for j: 0..<parts[p].count { if n < buffer.count { buffer[n] = parts[p][j]; n += 1; } } }
+  return cast(string) buffer[0..<n];
+}
+#test "join3 joins three strings in order" {
+  b: [16] u8;
+  #assert join3(b[..], "ab", "", "cd") == "abcd" && join3(b[..], "", "", "") == "";
+}
+
+// One state of a unit: the cold compile that fills the check cache, then the
+// resident's compile and a cold one, each timed here. Prints the line and
+// returns 0 when the three agree.
+unit_state :: (compiler: string, dir: string, serve: string, head: string, unit: string, state: string, out: [] u8) -> int {
+  body: [8192] u8;
+  r := run(compiler, dir, serve, join3(body[..], head, "once ", join3(out[0..<256], state, "-fill COAX_SERVE=0", "")), out);
+  began := cxproc_now_ms();
+  r = run(compiler, dir, serve, join3(body[..], head, "once ", join3(out[0..<256], state, "-res COAX_SERVE=1", "")), out);
+  resident := cxproc_now_ms() - began;
+  began = cxproc_now_ms();
+  r = run(compiler, dir, serve, join3(body[..], head, "once ", join3(out[0..<256], state, "-cold COAX_SERVE=0", "")), out);
+  cold := cxproc_now_ms() - began;
+  r = run(compiler, dir, serve, join3(body[..], head, "same3 ", state), out);
+  t := cast(string) out[0..<r.out_n];
+  same := has(t, "same");
+  verdict := "DIFFERENT";
+  if same { verdict = "the same C and header"; }
+  print("  unit % %: cold %.% s, resident %.% s, %\n", unit, state, cold / 1000, (cold % 1000) / 100, resident / 1000, (resident % 1000) / 100, verdict);
+  if same { return 0; }
+  return 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: serve.coax COMPILER [ROOT UNIT:EDITED ...]"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+  dir_out: [4096] u8;
+  serve_out: [4096] u8;
+  r := run(compiler, "", "", "mktemp -d \"${TMPDIR:-/tmp}/coax-serve-test.XXXXXX\"", dir_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("serve: cannot make a scratch directory"); return 1; }
+  dir := cast(string) dir_out[0..<r.out_n - 1];
+  r = run(compiler, "", "", "mktemp -d /tmp/coax-st.XXXXXX", serve_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("serve: cannot make a resident directory"); return 1; }
+  serve := cast(string) serve_out[0..<r.out_n - 1];
+
+  // No resident: the compile runs cold, and starts one for the next.
+  r = run(compiler, dir, serve, "mkdir -p \"$D/w\" && cp tests/check-reuse/*.coax \"$D/w/\"; \"$C\" serve status; echo \"none=$?\"; both first check \"$D/w/main.coax\"; up", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(has(t, "no resident is running") && has(t, "none=1"), "with no resident, coax serve status says so");
+  bad += check(has(t, "first status=0 same\nup"), "a compile with no resident runs cold and starts one");
+
+  // The next compile runs in it; the one after reuses the three units' lexes.
+  r = run(compiler, dir, serve, "both second check \"$D/w/main.coax\"; both third check \"$D/w/main.coax\"; reused 3; \"$C\" serve status", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "second status=0 same\nthird status=0 same\n"), "a compile in the resident is a cold compile's");
+  bad += check(has(t, "reused=") && !has(t, "reused=0\n") && !has(t, "reused=1\n") && !has(t, "reused=2\n"), "it reuses each unit's lex");
+  if !has(t, "second status=0 same\n") || has(t, "reused=0") { print("%", t); }
+
+  // Edits: a changed line, an appended comment, a syntax error, its repair.
+  r = run(compiler, dir, serve, "edit a.coax 'base :: () -> int { return 3; }' 'base :: () -> int { return 2 + 1; }' && both line check \"$D/w/main.coax\"; printf '\\n// a comment\\n' >> \"$D/w/b.coax\" && both comment check \"$D/w/main.coax\"; cp \"$D/w/a.coax\" \"$D/a.keep\"; printf 'broken :: ( -> int { return 1 +; }\\n' >> \"$D/w/a.coax\"; both broken check \"$D/w/main.coax\"; cat \"$D/broken.err\"; cp \"$D/a.keep\" \"$D/w/a.coax\"; both mended check \"$D/w/main.coax\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "line status=0 same\n"), "an edited line compiles as a cold compile does");
+  bad += check(has(t, "comment status=0 same\n"), "so does an appended comment");
+  bad += check(has(t, "broken status=1 same\n") && has(t, "error[E"), "a syntax error is reported as a cold compile reports it, with exit 1");
+  bad += check(has(t, "mended status=0 same"), "the repaired source compiles again");
+  if !has(t, "line status=0 same\n") || !has(t, "broken status=1 same\n") { print("%", t); }
+
+  // The C and the header of a library compile, the check list and the inputs.
+  r = run(compiler, dir, serve, "both c c \"$D/w/main.coax\"; COAX_SERVE=0 \"$C\" c \"$D/w/a.coax\" --library --header \"$D/cold.h\" > \"$D/cold.c\" 2> /dev/null; \"$C\" c \"$D/w/a.coax\" --library --header \"$D/res.h\" > \"$D/res.c\" 2> /dev/null; cmp \"$D/cold.c\" \"$D/res.c\" && cmp \"$D/cold.h\" \"$D/res.h\" && [ -s \"$D/res.h\" ] && echo same-library; both list test \"$D/w/main.coax\" --list; both deps deps \"$D/w/main.coax\"; both missing check \"$D/w/absent.coax\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "c status=0 same\n") && has(t, "same-library"), "the C and the header are a cold compile's");
+  bad += check(has(t, "list status=0 same\n") && has(t, "deps status=0 same\n"), "coax test --list and coax deps answer as cold");
+  bad += check(has(t, "missing status=1 same"), "a missing file is the same error");
+  if !has(t, "same-library") || !has(t, "list status=0 same\n") { print("%", t); }
+
+  // A reader that leaves early ends the command as it ends a cold one (no retry, no note).
+  r = run(compiler, dir, serve, "\"$C\" c \"$D/w/main.coax\" 2> \"$D/pipe.err\" | head -c 64 > /dev/null; sleep 0.2; echo \"notes=$(grep -c resident \"$D/pipe.err\")\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "notes=0"), "a closed output pipe ends the command quietly");
+
+  // The corpora.
+  r = run(compiler, dir, serve, CORPUS, out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "corpus differs=0 "), "the corpora compile the same in the resident as cold");
+  if !has(t, "corpus differs=0 ") { print("%", t); }
+
+  // A resident that was killed costs a cold compile; one is started again.
+  r = run(compiler, dir, serve, "kill -9 \"$(cat \"$S\"/*/pid)\"; sleep 0.2; both killed check \"$D/w/main.coax\"; up; both again check \"$D/w/main.coax\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "killed status=0 same\nup\nagain status=0 same"), "after its resident is killed a compile runs cold and starts another");
+  if !has(t, "killed status=0 same\nup\nagain status=0 same") { print("%", t); }
+
+  // Stopped, and off.
+  r = run(compiler, dir, serve, "\"$C\" serve stop | tail -n 1; sleep 0.3; \"$C\" serve status; COAX_SERVE=0 \"$C\" check \"$D/w/main.coax\" > /dev/null 2>&1; echo \"off=$?\"; sleep 0.3; \"$C\" serve status", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "coax serve: stopped\ncoax serve: no resident is running for this compiler\noff=0\ncoax serve: no resident is running for this compiler"), "coax serve stop ends it, and COAX_SERVE=0 starts none");
+  if !has(t, "off=0\ncoax serve: no resident") { print("%", t); }
+
+  // Real units: the same C and header before and after two edits.
+  if args_count(a[..]) >= 3 {
+    root := args_at(a[..], 1);
+    for i: 2..<args_count(a[..]) {
+      pair := args_at(a[..], i);
+      colon := -1;
+      for j: 0..<pair.count { if pair[j] == ':' { colon = j; break; } }
+      if colon < 1 || colon + 1 >= pair.count { tool_errln("serve: a unit is UNIT:EDITED"); bad += 1; continue; }
+      unit := pair[0..<colon];
+      head_buffer: [4096] u8;
+      names: [1024] u8;
+      n := 0;
+      parts := [7] string.["R='", root, "'; U='", unit, "'; E='", pair[colon + 1..<pair.count], "'; "];
+      for p: 0..<7 { for j: 0..<parts[p].count { names[n] = parts[p][j]; n += 1; } }
+      head := join3(head_buffer[..], cast(string) names[0..<n], UNIT, "");
+      body: [8192] u8;
+      // Twice with the resident: the first may start it, the second fills it.
+      r = run(compiler, dir, serve, join3(body[..], head, "cp \"$R/$E\" \"$D/edited.keep\"; once warm-1 COAX_SERVE=1; up > /dev/null; once warm-2 COAX_SERVE=1; reused 1 > /dev/null", ""), out[..]);
+      wrong := unit_state(compiler, dir, serve, head, unit, "unedited", out[..]);
+      r = run(compiler, dir, serve, join3(body[..], head, COMMENT, ""), out[..]);
+      wrong += unit_state(compiler, dir, serve, head, unit, "comment", out[..]);
+      r = run(compiler, dir, serve, join3(body[..], head, PROCEDURE, ""), out[..]);
+      wrong += unit_state(compiler, dir, serve, head, unit, "procedure", out[..]);
+      r = run(compiler, dir, serve, join3(body[..], head, "cp \"$D/edited.keep\" \"$R/$E\"", ""), out[..]);
+      bad += check(wrong == 0, pair);
+    }
+  }
+
+  r = run(compiler, dir, serve, "\"$C\" serve stop > /dev/null 2>&1; rm -rf \"$D\" \"$S\"", out[..]);
+  if bad == 0 { print("serve: ok\n"); return 0; }
+  print("serve: % failed\n", bad);
+  return 1;
+}

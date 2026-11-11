@@ -95,4 +95,46 @@ bool lex(Arena *arena,const Source *src,std::vector<Token> *out,std::vector<Loc>
   }
   return !failed;
 }
+std::shared_ptr<UnitLex> unit_lex(const std::string &text,const std::vector<Token> &tokens) {
+  auto out=std::make_shared<UnitLex>();out->text=text;out->tokens.reserve(tokens.size());
+  for(const auto &t:tokens) {
+    UnitToken v;v.kind=(uint8_t)t.kind;v.line=t.loc.line;v.col=t.loc.col;v.offset=t.loc.offset;
+    v.text=(int32_t)(t.text.data-text.data());v.count=t.text.count;
+    v.int_value=t.int_value;v.float_value=t.float_value;v.float_bits=t.float_bits;
+    if(t.string_value.data) {
+      v.decoded=(int32_t)out->decoded.size();v.decoded_count=t.string_value.count;
+      out->decoded.append(t.string_value.data,(size_t)t.string_value.count);out->decoded+='\0';
+    }
+    out->tokens.push_back(v);
+  }
+  return out;
+}
+void unit_tokens(const UnitLex &unit,const char *text,std::vector<Token> *out) {
+  out->clear();out->reserve(unit.tokens.size());
+  for(const auto &v:unit.tokens) {
+    Token t;t.kind=(Tok)v.kind;t.loc={v.line,v.col,v.offset};t.text={text+v.text,v.count};
+    t.int_value=v.int_value;t.float_value=v.float_value;t.float_bits=v.float_bits;
+    if(v.decoded>=0) t.string_value={unit.decoded.data()+v.decoded,v.decoded_count};
+    out->push_back(t);
+  }
+}
+// COAX_LEX_CHECK=1: lexes the composed text as well and stops unless its
+// tokens are exactly the ones load_sources composed from the units' own.
+void lex_check(Arena *arena,const Source *src,const std::vector<Token> &composed) {
+  const char *check=getenv("COAX_LEX_CHECK");
+  if(!check || !*check || *check=='0') return;
+  std::vector<Token> real;const bool ok=lex(arena,src,&real);
+  auto same=[](const Token &a,const Token &b) {
+    return a.kind==b.kind && a.loc.line==b.loc.line && a.loc.col==b.loc.col && a.loc.offset==b.loc.offset && a.text.data==b.text.data &&
+           a.text.count==b.text.count && a.int_value==b.int_value && memcmp(&a.float_value,&b.float_value,sizeof a.float_value)==0 &&
+           a.float_bits==b.float_bits && !a.string_value.data==!b.string_value.data && a.string_value.count==b.string_value.count &&
+           (!a.string_value.data || memcmp(a.string_value.data,b.string_value.data,(size_t)a.string_value.count)==0);
+  };
+  size_t at=0;while(at<real.size() && at<composed.size() && same(real[at],composed[at])) at++;
+  if(ok && real.size()==composed.size() && at==real.size()) return;
+  const Loc where=at<real.size()?real[at].loc:Loc{};
+  fprintf(stderr,"coax: COAX_LEX_CHECK: the units' tokens differ from the composed text's at token %zu of %zu/%zu (line %d, column %d, offset %d of '%s')\n",
+          at,composed.size(),real.size(),where.line,where.col,where.offset,src->path.c_str());
+  abort();
+}
 } // namespace coax
