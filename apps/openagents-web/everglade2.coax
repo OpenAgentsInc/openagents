@@ -993,6 +993,10 @@ e2_fps :: (s: [] E2, out: [] f32, at: int, dt: f32) -> int {
  base:=e2_fps_clear(s,s[0].width-16*k-fw-14*k-gw,s[0].width-8*k,h-16*k);
  // an open side-bar menu on a short page reaches over it: it steps aside under the menu
  if e2k_on(s) && cc.eg_meets(eg_menu_cover(e2k_facts(s),e2k_side_geo(s),e2k_side_st(s)),cc.hud_box(s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k)) {return at;}
+ // a slot's card is up over the corner: the plaque steps aside under it
+ hv:=s[0].casts[0].hover;
+ if e2k_on(s) && hv>=0 && hv<s[0].casts[0].bar_n {cb:=e2k_card_box(s[0].casts[..],hv,s[0].width,s[0].height,k);
+  if cc.eg_meets(cc.hud_box(cb[0],cb[1],cb[2],cb[3]),cc.hud_box(s[0].width-16*k-fw-14*k-gw-10*k,base-44*k,s[0].width-8*k,base+16*k)) {return at;}}
  p:=cc.eg_plaque(out,at,s[0].width-16*k-fw-14*k-gw,base-13*k-9*k,s[0].width-8*k,base+9*k,k);
  n:=e2_quality_hud(s,out,p,s[0].width-16*k-fw-14*k,base);
  return cc.fps_draw(s[0].creator[0].ui,s[0].fps_counter[0],out,n,s[0].width,base+16*k,k);
@@ -1009,7 +1013,7 @@ e2_fps_clear :: (s: [] E2, x0: f32, x1: f32, y: f32) -> f32 {
       if t < top { top = t; } } }
   ids: [EG_SIDE_N] int; sn := e2k_side(s, ids[..]);
   for j: 0..<sn { b := e2k_side_box(s, j); if b[2] > b[0] && b[2] > x0 - 8 * k && b[0] < x1 + 8 * k && b[1] - 8 * k < top { top = b[1] - 8 * k; } }
-  if top < y + 1000 && base + 9 * k > top { base = top - 9 * k; }
+  if top < y + 1000 && base + 16 * k > top { base = top - 16 * k; }
   return base;
 }
 // ---- the world's HUD (Everglade's FANTASY style, everglade/hud/parts.coax): your portrait plate top left,

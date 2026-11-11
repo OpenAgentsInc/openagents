@@ -13,13 +13,8 @@ HUD_GATE :: true;   // a NEW finding in the player's HUD fails the run
 // The findings already reported (docs/verification/hud-overlap-2026-11-09.md), each under the issue
 // that fixes it: their keys, as printed, with the screen and state each first shows on. When a fix
 // lands, the run says "gone" for its keys; take them out here.
-H2_KNOWN :: [5] string.[
-  // #13090, the GFX and frame-rate plaque
-  "overlap bar/panel \"emblem\" | gfx/button \"GFX\"",   // 390x844 world
-  "overlap side bar/panel \"side tray\" | gfx/button \"GFX\"",   // 390x844 world, rest controls
-  "overlap bar/panel \"card\" | gfx/button \"GFX\"",   // 390x844 card
-  "overlap bar/panel \"card\" | fps/text \"FPS\"",   // 390x844 card
-  "overlap bar/panel \"bar tray\" | gfx/button \"GFX\""   // 844x390 world
+H2_KNOWN :: [1] string.[
+  ""   // none left (the list can't be empty); this placeholder prints "gone"
 ];
 hud_known :: (key: string) -> bool { for i: 0..<H2_KNOWN.count { if H2_KNOWN[i] == key { return true; } } return false; }
 

@@ -78,7 +78,9 @@ side-bar labels fit their buttons, and side-bar rows are 44 px on a tablet.
 - At 1024x768 the title "Character Create" is wider than its card.
 - "USE IN EVERGLADE" is wider than the USE button.
 
-### The GFX and frame-rate plaque (#13090), 5 findings
+### The GFX and frame-rate plaque (#13090), fixed
+
+Fixed: the plaque keeps 16 px clear of the bar, its emblem and the side bar's tray, and steps aside under a slot's card. The run reports no player-HUD findings.
 
 - On a 390x844 phone, the GFX control sits under the bar's emblem, the side
   bar's tray (with the rest controls showing) and a slot's card. The frame rate

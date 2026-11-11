@@ -367,6 +367,16 @@ e2k_figure :: (a0: figs.BdAnim, act: E2kAct, clock: f32) -> figs.BdAnim {
 
 // ---- the bar: each slot's picture, its key, its cooldown; a card over the slot the pointer is on
 e2k_box :: (k: [] E2Cast, i: int, w: f32, h: f32, kk: f32) -> [4] f32 { return xc_slot_at(k[0].bar_n, i, w, h, kk); }
+// A slot's card: 358x171 CSS px over its slot, kept 12 px inside the page, its foot over the slot and over
+// the bar's emblem (everglade/hud/parts.coax eg_bar_frame: 32 px over the top row).
+e2k_card_box :: (k: [] E2Cast, i: int, w: f32, h: f32, kk: f32) -> [4] f32 {
+  b := e2k_box(k, i, w, h, kk);
+  cw := 358 * kk; ch := 171 * kk; cx := (b[0] + b[2]) / 2;
+  if cx - cw / 2 < 12 * kk { cx = 12 * kk + cw / 2; }
+  if cx + cw / 2 > w - 12 * kk { cx = w - 12 * kk - cw / 2; }
+  cy := b[1] - 30 * kk; for j: 0..<k[0].bar_n { t := e2k_box(k, j, w, h, kk)[1] - 38 * kk; if t < cy { cy = t; } }
+  return [4] f32.[cx - cw / 2, cy - ch, cx + cw / 2, cy];
+}
 e2k_put :: (m: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < m.count { m[n] = ch; n += 1; } } return n; }
 e2k_int :: (m: [] u8, at: int, v: int) -> int {
   n := at; x := v; if x < 0 { n = e2k_put(m, n, "-"); x = -x; }
@@ -438,11 +448,7 @@ e2k_hud :: (s: [] E2, out: [] f32, at: int) -> int {
   }
   if k[0].hover >= 0 && k[0].hover < k[0].bar_n {
     a := k[0].bar[k[0].hover]; b := e2k_box(k, k[0].hover, w, h, kk);
-    cw := 358 * kk; ch := 171 * kk; cx := (b[0] + b[2]) / 2;
-    if cx - cw / 2 < 12 * kk { cx = 12 * kk + cw / 2; }
-    if cx + cw / 2 > w - 12 * kk { cx = w - 12 * kk - cw / 2; }
-    // its foot over the slot, and over the bar's emblem (everglade/hud/parts.coax eg_bar_frame: 32 px over the top row)
-    cy := b[1] - 30 * kk; for i: 0..<k[0].bar_n { t := e2k_box(k, i, w, h, kk)[1] - 38 * kk; if t < cy { cy = t; } }
+    c := e2k_card_box(k, k[0].hover, w, h, kk); cw := c[2] - c[0]; ch := c[3] - c[1]; cx := (c[0] + c[2]) / 2; cy := c[3];
     e2k_media(s, "over", xc_url(a.art), a.art, "-card-2x.jpg", [4] f32.[cx - cw / 2, cy - ch, cx + cw / 2, cy], "");
     cc.uit_add(ui, cc.UIT_NONE, cc.UIT_PANEL, cx - cw / 2, cy - ch, cx + cw / 2, cy, "card");
   }
