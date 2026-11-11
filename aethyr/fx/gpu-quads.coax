@@ -1,0 +1,237 @@
+// A world of lit quads (engine): the shader for aethyr/fx/quads.coax's list, drawn by the host's
+// particle pass (coax/web/host.js "Particles", aethyr/host/apple) after a page's raster scene and
+// depth-tested against it, so a figure the scene drew stands in front of a quad behind it and
+// behind one in front. Everything is drawn in the pass that blends premultiplied over
+// (particle_over_vs/fs), in the list's order, far to near; a quad that only adds light returns
+// alpha 0. The added pass (particle_vs/fs) draws nothing.
+//
+// A quad is four rows (QuadRow): its centre, its two half sides, its ink.
+//   at.xyz the centre (m), at.w the kind
+//   ax.xyz the half side along its x, ax.w the first number
+//   ay.xyz the half side along its y, ay.w the second number
+//   ink.rgb the colour (linear light), ink.w the third number
+// The kinds and their numbers:
+//   0 SKY     the whole view, behind everything: a dark dome, a glow low on the horizon, stars
+//   1 FLOOR   the Grid: metre lines, four-metre lines, a lit lane along z through x = 0 and a pool
+//             of light round ax.w, ay.w (your feet's x and z). ink.w the time, s
+//   2 PANEL   a lit face: ax.w how much it shines of itself, ay.w its rim's light, ink.w how
+//             opaque (1: solid)
+//   3 GLYPH   one character of the pixel face (aethyr/fx/pixel-font.coax): ax.w its top four rows,
+//             ay.w its bottom three, ink.w its light
+//   4 GLOW    a soft round light, added: ink.w its strength
+//   5 BEAM    a bar of light, added, bright along its middle (its x): ink.w its strength
+// The camera is the page's pinhole, read from its uniforms as aethyr/fx/gpu-puff.coax reads it:
+// size 0, eye 16 (then the focal length, px), forward 20 (then the centre's x), right 24 (then
+// the centre's y), up 28. Depth is the raster scene's (gpu/fivelab.coax fivelab_project).
+#load "../../verse/gpu/wgsl.coax";
+#load "../render/noise.coax";
+
+QFX_SKY :: 0.0f32; QFX_FLOOR :: 1.0f32; QFX_PANEL :: 2.0f32; QFX_GLYPH :: 3.0f32; QFX_GLOW :: 4.0f32; QFX_BEAM :: 5.0f32;
+QFX_NEAR :: 0.1f32;   // gpu/fivelab.coax FIVELAB_NEAR, FIVELAB_FAR
+QFX_FAR :: 900.0f32;
+QuadRow :: struct {at:V4; ax:V4; ay:V4; ink:V4;}
+// corner: across the quad, -1 to 1. world: the point drawn. ink: the quad's. look: kind, the
+// first and second numbers, the distance scale. side: the half sides' lengths (m), then the normal's
+// light and nothing.
+QuadP :: struct {pos:V4; corner:V2; world:V3; ink:V4 #flat; look:V4 #flat; side:V4 #flat;}
+
+qfx_clip :: (w:V3,u:[]f32)->V4 {
+  rel:V3=v3(w.x-u[16],w.y-u[17],w.z-u[18]);
+  z:f32=(rel.x*u[20])+(rel.y*u[21])+(rel.z*u[22]);
+  r:f32=(rel.x*u[24])+(rel.y*u[25])+(rel.z*u[26]);
+  q:f32=(rel.x*u[28])+(rel.y*u[29])+(rel.z*u[30]);
+  wd:f32=fmax(u[0],1.0f32);
+  ht:f32=fmax(u[1],1.0f32);
+  f:f32=fmax(u[19],1.0f32);
+  x:f32=((((2.0f32*u[23])/wd)-1.0f32)*z)+(((2.0f32*f)/wd)*r);
+  y:f32=((1.0f32-((2.0f32*u[27])/ht))*z)+(((2.0f32*f)/ht)*q);
+  return v4(x,y,(QFX_FAR*(z-QFX_NEAR))/(QFX_FAR-QFX_NEAR),z);
+}
+qfx_rgba :: (c:V3,a:f32)->V4 {return v4(c.x,c.y,c.z,a);}
+qfx_gone :: ()->QuadP {
+  o:QuadP;
+  o.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32);
+  return o;
+}
+// The key light: high, from behind your left shoulder as you walk the lane (toward -z).
+qfx_key :: ()->V3 { return v3(-0.42f32,0.74f32,0.52f32); }
+qfx_place :: (v:u32,n:u32,u:[]f32,puffs:[]QuadRow)->QuadP {
+  o:QuadP;
+  e:QuadRow=puffs[cast(int)n];
+  quad:[6]V2=[6]V2.[v2(-1.0f32,-1.0f32),v2(1.0f32,-1.0f32),v2(-1.0f32,1.0f32),v2(-1.0f32,1.0f32),v2(1.0f32,-1.0f32),v2(1.0f32,1.0f32)];
+  c:V2=quad[cast(int)v];
+  kind:f32=floor(e.at.w+0.5f32);
+  o.corner=c;
+  o.ink=e.ink;
+  o.look=v4(kind,e.ax.w,e.ay.w,0.0f32);
+  if (kind==QFX_SKY) {
+    o.pos=v4(c.x,c.y,0.99999f32,1.0f32);
+    o.world=v3(0.0f32,0.0f32,0.0f32);
+    o.side=v4(1.0f32,1.0f32,1.0f32,0.0f32);
+    return o;
+  }
+  ax:V3=v3(e.ax.x,e.ax.y,e.ax.z);
+  ay:V3=v3(e.ay.x,e.ay.y,e.ay.z);
+  w:V3=add3(v3(e.at.x,e.at.y,e.at.z),add3(scale3(ax,c.x),scale3(ay,c.y)));
+  o.pos=qfx_clip(w,u);
+  o.world=w;
+  nrm:V3=normalize3(add3(cross3(ax,ay),v3(0.0f32,0.000001f32,0.0f32)));
+  to_eye:V3=sub3(v3(u[16],u[17],u[18]),v3(e.at.x,e.at.y,e.at.z));
+  if (dot3(nrm,to_eye)<0.0f32) { nrm=scale3(nrm,-1.0f32); }
+  lit:f32=0.34f32+(0.66f32*saturate(dot3(nrm,qfx_key())))+(0.10f32*saturate(nrm.y));
+  o.side=v4(wg_length3(ax),wg_length3(ay),lit,0.0f32);
+  return o;
+}
+qfx_particle_over_vs :: (v:u32,n:u32,u:[]f32,puffs:[]QuadRow)->QuadP { return qfx_place(v,n,u,puffs); }
+qfx_particle_vs :: (v:u32,n:u32,u:[]f32,puffs:[]QuadRow)->QuadP { return qfx_gone(); }
+qfx_particle_fs :: (p:QuadP,u:[]f32)->V4 { return v4(0.0f32,0.0f32,0.0f32,0.0f32); }
+
+// The sky's colour along a ray: near black overhead, a deep blue low down, a band of light at the
+// horizon. The floor and every quad fade toward the horizon's colour with distance.
+qfx_horizon :: ()->V3 { return v3(0.006f32,0.024f32,0.042f32); }
+qfx_sky :: (rd:V3,t:f32)->V3 {
+  up:f32=saturate(rd.y);
+  dome:V3=mix3(v3(0.004f32,0.011f32,0.024f32),v3(0.0004f32,0.0008f32,0.0025f32),pow(up,0.55f32));
+  band:f32=exp(-abs(rd.y)*9.0f32);
+  c:V3=add3(dome,scale3(qfx_horizon(),band*1.1f32));
+  // stars: one in a cell of the ray's direction, a few of them, steady with a slow shimmer
+  if (rd.y>0.02f32) {
+    g:V2=v2((wg_atan2(rd.x,rd.z)*90.0f32),(rd.y*150.0f32));
+    cell:V2=v2(floor(g.x),floor(g.y));
+    h:f32=render_noise2(cell.x,cell.y);
+    if (h>0.965f32) {
+      f:V2=v2(fract(g.x)-0.5f32,fract(g.y)-0.5f32);
+      d:f32=dot2(f,f);
+      tw:f32=0.75f32+(0.25f32*sin((t*(0.6f32+(h*2.0f32)))+(h*400.0f32)));
+      c=add3(c,scale3(v3(0.55f32,0.75f32,1.0f32),(exp(-d*90.0f32)*tw)*((h-0.965f32)*26.0f32)*saturate(rd.y*6.0f32)));
+    }
+  }
+  return c;
+}
+// How much of a line shows at distance d from it, the line `wide` metres to each side (its edge a
+// pixel soft: `soft` metres).
+qfx_line :: (d:f32,wide:f32,soft:f32)->f32 { return 1.0f32-smoothstep(wide,wide+soft,d); }
+// The distance to the nearest line of a grid `step` metres apart.
+qfx_cell :: (x:f32,step:f32)->f32 { return abs((fract((x/step)+0.5f32)-0.5f32)*step); }
+qfx_fog :: (c:V3,dist:f32)->V3 { return mix3(c,qfx_horizon(),1.0f32-exp(-dist/150.0f32)); }
+qfx_floor :: (p:QuadP,u:[]f32)->V4 {
+  w:V3=p.world;
+  eye:V3=v3(u[16],u[17],u[18]);
+  dist:f32=wg_length3(sub3(w,eye));
+  // a pixel's footprint on the floor, m: the lines never thinner than it, so they don't shimmer
+  px:f32=(dist*dist)/(fmax(u[19],1.0f32)*fmax(abs(eye.y),0.3f32));
+  fine:f32=fmax(qfx_line(qfx_cell(w.x,1.0f32),0.006f32+(px*0.35f32),px+0.004f32),qfx_line(qfx_cell(w.z,1.0f32),0.006f32+(px*0.35f32),px+0.004f32));
+  bold:f32=fmax(qfx_line(qfx_cell(w.x,4.0f32),0.014f32+(px*0.4f32),px+0.006f32),qfx_line(qfx_cell(w.z,4.0f32),0.014f32+(px*0.4f32),px+0.006f32));
+  fine=fine*exp(-dist/34.0f32)*saturate(0.05f32/fmax(px,0.0001f32));
+  bold=bold*exp(-dist/120.0f32)*saturate(0.22f32/fmax(px,0.0001f32));
+  // the lane you walk: a paler strip between two bright rails
+  lane:f32=1.0f32-smoothstep(2.35f32,2.6f32,abs(w.x));
+  rail:f32=qfx_line(abs(abs(w.x)-2.5f32),0.035f32+(px*0.5f32),px+0.01f32)*exp(-dist/170.0f32);
+  // a pulse running down the rails, away from where you came in
+  run:f32=fract((w.z*0.035f32)+(p.ink.w*0.11f32));
+  pulse:f32=exp(-run*7.0f32);
+  dx:f32=w.x-p.look.y; dz:f32=w.z-p.look.z;
+  r2:f32=(dx*dx)+(dz*dz);
+  pool:f32=exp(-r2/55.0f32);
+  base:V3=add3(v3(0.0004f32,0.0010f32,0.0020f32),scale3(v3(0.0010f32,0.0030f32,0.0050f32),lane));
+  base=add3(base,scale3(v3(0.004f32,0.012f32,0.020f32),pool));
+  line:V3=v3(0.02f32,0.26f32,0.42f32);
+  c:V3=add3(base,scale3(line,(fine*0.07f32)+(bold*0.30f32)));
+  c=add3(c,scale3(v3(0.12f32,0.62f32,0.90f32),rail*(0.6f32+(1.4f32*pulse))));
+  // your shadow: a soft dark under your feet
+  c=scale3(c,1.0f32-(0.72f32*exp(-r2*3.2f32)));
+  return qfx_rgba(qfx_fog(c,dist),1.0f32);
+}
+qfx_panel :: (p:QuadP,u:[]f32)->V4 {
+  dist:f32=wg_length3(sub3(p.world,v3(u[16],u[17],u[18])));
+  ink:V3=v3(p.ink.x,p.ink.y,p.ink.z);
+  // the rim: a line of light just inside the edge, as wide in metres on every side
+  ex:f32=(1.0f32-abs(p.corner.x))*p.side.x;
+  ey:f32=(1.0f32-abs(p.corner.y))*p.side.y;
+  edge:f32=fmin(ex,ey);
+  wide:f32=0.018f32+(dist*0.0011f32);
+  rim:f32=(1.0f32-smoothstep(wide,wide*2.2f32,edge))*p.look.z;
+  inner:f32=exp(-edge*5.0f32)*0.22f32*p.look.z;
+  c:V3=add3(scale3(ink,p.side.z*0.5f32),scale3(ink,p.look.y));
+  c=add3(c,scale3(add3(scale3(ink,2.0f32),v3(0.012f32,0.06f32,0.10f32)),(rim*2.4f32)+inner));
+  a:f32=saturate(p.ink.w);
+  return qfx_rgba(scale3(qfx_fog(c,dist),a),a);
+}
+qfx_glyph :: (p:QuadP,u:[]f32)->V4 {
+  gx:f32=((p.corner.x*0.5f32)+0.5f32)*5.0f32;
+  gy:f32=(0.5f32-(p.corner.y*0.5f32))*7.0f32;
+  col:f32=clampf(floor(gx),0.0f32,4.0f32);
+  row:f32=clampf(floor(gy),0.0f32,6.0f32);
+  bits:u32=wg_u32_f(ifx row<4.0f32 then p.look.y else p.look.z);
+  at:u32=wg_u32_f((ifx row<4.0f32 then row else row-4.0f32)*5.0f32+col);
+  if (((bits>>at)&1)==0) { gpu_demote_helper(); return v4(0.0f32,0.0f32,0.0f32,0.0f32); }
+  // a lamp: a soft square in its cell
+  fx:f32=abs(fract(gx)-0.5f32); fy:f32=abs(fract(gy)-0.5f32);
+  m:f32=1.0f32-smoothstep(0.36f32,0.5f32,fmax(fx,fy));
+  dist:f32=wg_length3(sub3(p.world,v3(u[16],u[17],u[18])));
+  a:f32=m*exp(-dist/260.0f32);
+  return qfx_rgba(scale3(v3(p.ink.x,p.ink.y,p.ink.z),p.ink.w*a),a);
+}
+qfx_particle_over_fs :: (p:QuadP,u:[]f32)->V4 {
+  kind:f32=p.look.x;
+  if (kind==QFX_SKY) {
+    f:f32=fmax(u[19],1.0f32);
+    rd:V3=normalize3(add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(p.pos.x-u[23])/f),scale3(wg_at3(u,28),(u[27]-p.pos.y)/f))));
+    return qfx_rgba(qfx_sky(rd,p.ink.w),1.0f32);
+  }
+  if (kind==QFX_FLOOR) { return qfx_floor(p,u); }
+  if (kind==QFX_PANEL) { return qfx_panel(p,u); }
+  if (kind==QFX_GLYPH) { return qfx_glyph(p,u); }
+  dist:f32=wg_length3(sub3(p.world,v3(u[16],u[17],u[18])));
+  fade:f32=exp(-dist/190.0f32);
+  if (kind==QFX_BEAM) {
+    across:f32=exp(-(p.corner.y*p.corner.y)*5.0f32)*(1.0f32-(p.corner.y*p.corner.y));
+    ends:f32=1.0f32-smoothstep(0.86f32,1.0f32,abs(p.corner.x));
+    return qfx_rgba(scale3(v3(p.ink.x,p.ink.y,p.ink.z),across*ends*p.ink.w*fade),0.0f32);
+  }
+  r2:f32=dot2(p.corner,p.corner);
+  if (r2>=1.0f32) { gpu_demote_helper(); return v4(0.0f32,0.0f32,0.0f32,0.0f32); }
+  glow:f32=exp(-r2*3.2f32)*(1.0f32-r2);
+  return qfx_rgba(scale3(v3(p.ink.x,p.ink.y,p.ink.z),glow*p.ink.w*fade),0.0f32);
+}
+
+qfx_test_camera :: (u:[]f32) {
+  u[0]=1280.0f32; u[1]=720.0f32; u[16]=0.0f32; u[17]=2.0f32; u[18]=10.0f32; u[19]=900.0f32;
+  u[20]=0.0f32; u[21]=0.0f32; u[22]= -1.0f32; u[23]=640.0f32; u[24]=1.0f32; u[25]=0.0f32; u[26]=0.0f32; u[27]=360.0f32;
+  u[28]=0.0f32; u[29]=1.0f32; u[30]=0.0f32;
+}
+#test "quad world: a point ahead lands in the view at the scene's depth, nearer points nearer; one behind the eye is clipped" {
+  u:[32]f32; qfx_test_camera(u[..]);
+  a:=qfx_clip(v3(0.0f32,2.0f32,5.0f32),u[..]); b:=qfx_clip(v3(0.0f32,2.0f32,-40.0f32),u[..]);
+  #assert abs(a.x)<0.0001f32 && abs(a.y)<0.0001f32 && a.w==5.0f32 && b.w==50.0f32;
+  #assert a.z/a.w<b.z/b.w && b.z/b.w<1.0f32 && a.z>0.0f32;
+  back:=qfx_clip(v3(0.0f32,2.0f32,20.0f32),u[..]); #assert back.z<0.0f32;
+  right:=qfx_clip(v3(1.0f32,3.0f32,5.0f32),u[..]); #assert right.x>0.0f32 && right.y>0.0f32;
+}
+#test "quad world: a glyph lights the lamps of its bits and no others" {
+  u:[32]f32; qfx_test_camera(u[..]);
+  // a glyph with only row 0 column 4 and row 6 column 0 lit
+  p:QuadP; p.look=v4(QFX_GLYPH,16.0f32,1024.0f32,0.0f32); p.ink=v4(1.0f32,1.0f32,1.0f32,1.0f32); p.world=v3(0.0f32,2.0f32,5.0f32);
+  p.corner=v2(0.8f32,0.857f32); #assert qfx_glyph(p,u[..]).w>0.5f32;
+  p.corner=v2(-0.8f32,-0.857f32); #assert qfx_glyph(p,u[..]).w>0.5f32;
+  p.corner=v2(0.0f32,0.0f32); #assert qfx_glyph(p,u[..]).w==0.0f32;
+  p.corner=v2(-0.8f32,0.857f32); #assert qfx_glyph(p,u[..]).w==0.0f32;
+}
+#test "quad world: the floor is brightest on a rail, a metre line shows near and is gone far, and fog takes the far floor to the horizon" {
+  u:[32]f32; qfx_test_camera(u[..]);
+  p:QuadP; p.look=v4(QFX_FLOOR,0.0f32,10.0f32,0.0f32);
+  p.world=v3(2.5f32,0.0f32,6.3f32); rail:=qfx_floor(p,u[..]);
+  p.world=v3(0.5f32,0.0f32,6.3f32); bare:=qfx_floor(p,u[..]);
+  p.world=v3(1.0f32,0.0f32,6.3f32); line:=qfx_floor(p,u[..]);
+  #assert rail.y>line.y && line.y>bare.y && bare.w==1.0f32;
+  p.world=v3(1.0f32,0.0f32,-700.3f32); far:=qfx_floor(p,u[..]); h:=qfx_horizon();
+  #assert abs(far.x-h.x)<0.004f32 && abs(far.y-h.y)<0.01f32;
+}
+#test "quad world: a panel's rim is brighter than its middle, and a see-through one is premultiplied" {
+  u:[32]f32; qfx_test_camera(u[..]);
+  p:QuadP; p.look=v4(QFX_PANEL,0.2f32,1.0f32,0.0f32); p.ink=v4(0.1f32,0.4f32,0.6f32,1.0f32); p.world=v3(0.0f32,2.0f32,5.0f32); p.side=v4(1.0f32,1.0f32,0.8f32,0.0f32);
+  p.corner=v2(0.0f32,0.0f32); mid:=qfx_panel(p,u[..]);
+  p.corner=v2(0.995f32,0.0f32); edge:=qfx_panel(p,u[..]);
+  #assert edge.y>mid.y*1.5f32 && mid.w==1.0f32;
+  p.ink.w=0.5f32; p.corner=v2(0.0f32,0.0f32); half:=qfx_panel(p,u[..]); #assert half.w==0.5f32 && abs(half.y-mid.y*0.5f32)<0.0001f32;
+}
