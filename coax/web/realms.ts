@@ -135,7 +135,9 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     }
     if (typeof r.clock !== "string" || !CLOCK.test(r.clock)) throw new Error(`realms.json: ${r.slug}: clock is cycle, real or fixed:T (T 0 to 1), not ${JSON.stringify(r.clock)}`)
     if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal" || st === "flat" || st === "anime")) {
-      const wgsl = join(site, `${r.module}.wgsl`)
+      // the shader the page loads: the one its row names (aethyr/render/page-render.coax data-wgsl), else its module's
+      const named = /data-wgsl="\/([^"]+)"/.exec(renderAttributes(r.slug, r.module))?.[1]
+      const wgsl = join(site, named ?? `${r.module}.wgsl`)
       if (!existsSync(wgsl) || !styled(readFileSync(wgsl, "utf8"))) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)`)
     }
     // its pack's style (verse/packs/<pack>.json "style", none is lowpoly) is one the realm draws in

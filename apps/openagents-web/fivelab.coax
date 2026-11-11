@@ -56,29 +56,19 @@
 #load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in experimental-combat.coax xc_sprint_frame)
 #load "../../everglade/hud/class-bar.coax";   // Everglade's side bar: rest and knock-out over Experimental's bar (#13092)
 #load "../../everglade/hud/lines.coax";   // Everglade's line HUD: the lab's lines, words, buttons, slots, sliders, log and corner (#13083)
-#load "experimental-combat.coax";   // Experimental's combat: your class's level 1 bar against the monsters, and CLASSES (#13025)     // the Siege: a level 17 Warlock's cult against a town watch (H, or the scenario button)
-#load "range-scene.coax";   // the Archery Range at /worlds/archery-range: the range's place, targets and tally on the open field
-#load "druid-scene.coax";   // the druid's field at /druid: Shapechange into the Adult Red Dragon, flight and Fire Breath
-#load "experimental-objects.coax";
+#load "../../everglade/zone.coax";   // an Everglade zone: Experimental's and the Druid's world (the scene, the class bar and its rules, the bow, riding, the agent driver)
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
-#load "experimental-ride.coax";               // Experimental's riding: E, the saddle, the prompt
-#load "../../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
-#load "fivelab-drive.coax";   // ... wired to Everglade Experimental
+#load "experimental-stages.coax";   // Experimental's film stages on a mount
 #load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../../aethyr/cam/track.coax" as trk;   // ?stage= setups' camera tracks (lab_stage)
 #load "../../everglade/world/housewright-stage.coax" as hws;   // ?stage=house-*: the housewright time-lapses (#13107)
 
-VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD, the log, labels near the camera (the tokens are bg_fs's)
 // The strokes' budget: the scene's labels and effects' text stop short of HUD_VERTS from the end, so
 // the HUD, the log and the sliders always draw; a label that finds no room is counted and said
 // (lab_sliders), never dropped quietly. LABEL_VERTS: the most one label takes.
 HUD_VERTS :: 150000; LABEL_VERTS :: 900;   // the HUD's text is most of it: the log and 48 heroes' lines
 SCENE_VERTS :: 100000;   // MAX_VERTICES - HUD_VERTS
 U_FRAME_FLOATS :: 104;   // 26 vec4s: the camera, the grid, the zones (gpu/fivelab.coax FivelabU)
-U_ENV :: 208;            // the camera's resolved environment, 27 vec4s (aethyr/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
-U_ENV_WORDS :: envf.ENV_FRAME_FLOATS;   // the record's words, from its owner (#13067: no second copy of the layout)
-UNIFORM_FLOATS :: 316;   // 79 vec4s (gpu/fivelab.bindings, gpu/charactercreator.bindings)
 // The frame store (a read-only storage buffer, group 0 binding 1: coax/web/host.js frame store),
 // the tokens and squares bg_fs reads, too many for a uniform block's 64 KB: every creature's token
 // (4 floats), then every square's (the token standing nearest its middle plus 1, 0 none).
@@ -87,8 +77,6 @@ FRAME_FLOATS :: 143360;   // F_SQUARES + LAB_SQUARES
 U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
 U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_ZONES :: 36; U_BOUNDS :: 100;
 SQ :: 1.524;   // a 5-foot square, metres
-HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
-HOLD_JUMP :: 1024; HOLD_ALL :: 2047;
 DIST :: 40.0; PIVOT_Z :: 0.6; ZOOM_NEAR :: 6.0; ZOOM_FAR :: 140.0;   // the camera's orbit: start, and how near and far it zooms
 VIEW_FLAT :: 0; VIEW_GLADE :: 1;
 // The time adapters (docs/dnd/README.md, "The time adapter"): the SRD's 6-second rounds, or action
@@ -100,10 +88,6 @@ ACTION_BEAT :: 1.5; ACTION_RECHARGE :: 9.0;
 STEP :: 0.0166666667;
 LAB_STEP_NS :: 16666667;
 LAB_FRAME_NS :: 100000000;
-OUTBOX_CAP :: 4096;
-ACT_NAVIGATE :: 1;
-ACT_PREFETCH :: 18;   // host.js (zone-host.js): open a page out of sight, up to its first drawn frame; its progress comes back as message 18, and action 1 to it then hands over in place
-KEY_SHIFT :: -13; KEY_TAB :: -15; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
 // The grid grows with the armies (size_grid): 40 by 20 for the 208 the lab fields by default, about
 // four squares a figure past that, twice as wide as deep, at most 384 by 192 (LAB_SQUARES).
@@ -140,7 +124,7 @@ LINE_CAP :: 96;
 FXS :: 32;
 FX_TEXT :: 3;   // a number floating off a figure (Num.kind; 0 none)
 
-P3 :: struct { x: f32; y: f32; z: f32; }   // Rect, Col and the kit's colours: everglade/hud/lines.coax
+// Rect, Col and the kit's colours: everglade/hud/lines.coax; P3: everglade/zone.coax
 TEAM_COL :: [3] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}, Col.{r = 0.9, g = 0.86, b = 0.74}];
 
 Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
@@ -151,18 +135,12 @@ Lab :: struct {
   stage_steps: int;  // its clock: the game steps (1/60 s) it has run
   stage_x: f32 = LAB_STAGE_X; stage_z: f32 = LAB_STAGE_Z; stage_turn: int = LAB_STAGE_TURN;   // where it stands: LAB_STAGE_*, or on a local page &sx=, &sz= (metres + 1000) and &turn=
   film: int; film_steps: int; film_x: f32;   // a film stage (fivelab-film.coax): which, its clock in steps, its front line's x in metres
-  experimental_audio: [1] exsound.ExperimentalSound;
-  respawn_id:int = -1;
-  ride_dev: int;   // a local page's ?ride= or ?stage= (experimental-ride.coax lab_ride_dev): mounted, galloping, drawing on the horse, or a stage
+  ride_dev: int;   // a local page's ?ride= or ?stage= (experimental-stages.coax lab_ride_dev): mounted, galloping, drawing on the horse, or a stage
   stage_at: f32;   // when a riding stage's rider sat down
   stage_hit: f32; stage_rein: f32;  // a horse-archer stage: when its shooting ended, and when the rider reined in (0: not yet)
   ride_view: int;  // a stage's &view=side or &view=rear: the camera beside or behind the rider, close (0: the stage's own)
   ride_fire_at: f32;   // the dragon-fire stage: when (stage seconds) the dragon breathed
-  breath_dn: f32;   // how far down the breath was aimed (its torrent keeps that tilt as the dragon flies)
-  breath_puff_at: f32 = -100;   // when the breath's torrent last left the dragon's jaws (experimental-ride.coax lab_breath_stream)
-  drive: [] Drive;   // the agent driver (aethyr/agent/drive.coax), held by the face (fivelab-face.c): empty in checks, off until a driver speaks
-  xc: [1] XcCombat;   // Experimental's combat and CLASSES column (experimental-combat.coax)
-  creator: [1] cc.Creator;
+  w: [1] EgZone;   // the zone (everglade/zone.coax): the scene, your class's bar and rules, your body, the keys held, the figures' stores
   aribeth_state:[1]nwna.Aribeth;
   started: bool;
   battle: [1] RsBattle;
@@ -173,15 +151,13 @@ Lab :: struct {
   over: bool; over_t: f32; winner: int;
   army: [LAB_MAX] RsCreature; squares: [LAB_SQUARES] int;   // the battle's room (bt: rs_use)
   frame: [FRAME_FLOATS] f32;       // the frame store: the tokens and squares bg_fs reads
-  shadow_draws: [4096] u32; shadow_n: int;
-  records: [figs.BD_RECORDS * figs.BD_REC_FLOATS] f32;   // the figures' instances (fivelab-face.c's objects store)
   dx: [LAB_MAX] f32; dy: [LAB_MAX] f32;   // where each token is drawn, in squares
   acted: [LAB_MAX] f32;            // when each last took its turn
   fell: [LAB_MAX] f32;             // in the Horde, when each of the dead fell (0: standing)
   pool: int; raised: int;          // the Horde: the dead still to come, and how many have come
   lines: [LOG_LINES] Line; line_n: int; line_head: int;   // a ring: the oldest of line_n lines is at line_head
   fx: [FXS] Num; fx_at: int;   // the numbers floating off the figures
-  puffs: [1] FxPuffs; fx_last: f32;   // the glade's effects as puffs (aethyr/fx/puff.coax), and the clock they last saw
+  fx_last: f32;   // the clock the glade's effects (the zone's puffs) last saw
   clock: f32;                      // the drawn clock
   pace: FrameClock;
   paused: bool; fast: bool;
@@ -224,37 +200,26 @@ Lab :: struct {
   yaw: f32 = 0; pitch: f32 = 0.6; dist: f32 = DIST;
   px: f32 = 0; pz: f32 = PIVOT_Z;   // the point it orbits, on the ground (metres)
   dragging: bool; drag_x: f32; drag_y: f32;
-  panning: bool; shift: bool;       // Shift held: a drag pans
+  panning: bool;                    // a drag pans (Shift held: the zone's shift)
   fps: f32; fps_n: int; fps_t: f32;   // frames a second, counted over each half second
-  held: int; vx: f32; vz: f32; vyaw: f32; vpitch: f32; vzoom: f32;   // keys held (HOLD_*), and how the camera flies
+  vx: f32; vz: f32; vyaw: f32; vpitch: f32; vzoom: f32;   // how the camera flies on the keys held (the zone's held)
   fingers: int; fing_id: [2] int; fing_x: [2] f32; fing_y: [2] f32;   // touches down, for a pinch
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
   // the figures (fivelab-bodies.coax): their playback, and the squares the Horde filled afresh
-  bodies: [1] figs.Bodies; fresh: [LAB_MAX] bool;
-  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+  fresh: [LAB_MAX] bool;
   // Player mode's camera and your body: Everglade's free orbit (aethyr/camera.coax) behind the body
   // Everglade's controller walks (fivelab-face.c: aethyr/walk.coax through everglade-step.coax)
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;   // a drag's look, spent each frame
   blend: f32;                       // 0 the spectator's camera, 1 the follow camera; it swings between
-  you_on: bool; you_me: int = -1;   // the face walked your body this frame; the hero it is
-  you_x: f32; you_y: f32; you_z: f32; you_face: f32;   // your body's feet (metres) and facing
-  put_on: bool; put_x: f32; put_y: f32; put_z: f32; put_face: f32;
-  safe_on: bool; safe_x: f32; safe_y: f32; safe_z: f32; safe_face: f32;   // the face puts your body here first
+  you_me: int = -1;   // the hero your body is (the body itself is the zone's: you_on, you_x, put_x)
   my_sx: int; my_sy: int;           // your token's square as your last turn (or the put) left it
   move_bodies: [LAB_NEAR_BODIES * 7] f32;   // the figures round you, capsules for the controller
-  village_near: [1] village.EvNear;
-  touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (aethyr/sticks.coax)
-  env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (lab_light)
 }
 
 // ---- small things
 
-lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
-hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 
 in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
-put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
-put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
 // The battle, in the room the lab gives it (army and squares: more than a battle holds of its own).
 bt :: (s: [] Lab) -> [] RsBattle {
   if s[0].battle[0].c.count != LAB_MAX { rs_use(s[0].battle[..], s[0].army[..], s[0].squares[..]); }
@@ -397,11 +362,11 @@ cue_event :: (s: [] Lab, e: RsEvent) {
   tx := ifx aimed then wx(s, s[0].dx[e.to]) else 0.0f32; tz := ifx aimed then wz(s, s[0].dy[e.to]) else 0.0f32;
   if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
     melee := e.spell < 0 && rs_feet_to(b, e.by, e.to) <= 5;
-    figs.bd_cue(s[0].bodies[..], e.by, ifx melee then figs.BD_SLASH else figs.BD_SPELL, now, tx, tz, true);
+    figs.bd_cue(s[0].w[0].bodies[..], e.by, ifx melee then figs.BD_SLASH else figs.BD_SPELL, now, tx, tz, true);
     return;
   }
-  if e.kind == RS_EV_CAST { figs.bd_cue(s[0].bodies[..], e.by, figs.BD_SPELL, now, tx, tz, aimed); return; }
-  if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b[0].n && b[0].c[e.to].hp > 0 { figs.bd_cue(s[0].bodies[..], e.to, figs.BD_KNOCK, now, 0, 0, false); }
+  if e.kind == RS_EV_CAST { figs.bd_cue(s[0].w[0].bodies[..], e.by, figs.BD_SPELL, now, tx, tz, aimed); return; }
+  if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b[0].n && b[0].c[e.to].hp > 0 { figs.bd_cue(s[0].w[0].bodies[..], e.to, figs.BD_KNOCK, now, 0, 0, false); }
 }
 // The figures this frame, from the battle: each creature's look, square and state. It reads the
 // creatures in place (a copy of one is 1.5 KB, and there can be two thousand of them).
@@ -410,11 +375,11 @@ put_bodies :: (s: [] Lab) {
   // your figure is your body: where it stands, and in squares for the labels and rings
   me := s[0].me;
   if s[0].player && me >= 0 && s[0].you_me == me {
-    s[0].dx[me] = (s[0].you_x + f32(s[0].cols) * f32(SQ) / 2) / f32(SQ) - 0.5;
-    s[0].dy[me] = (s[0].you_z + f32(s[0].rows) * f32(SQ) / 2) / f32(SQ) - 0.5;
+    s[0].dx[me] = (s[0].w[0].you_x + f32(s[0].cols) * f32(SQ) / 2) / f32(SQ) - 0.5;
+    s[0].dy[me] = (s[0].w[0].you_z + f32(s[0].rows) * f32(SQ) / 2) / f32(SQ) - 0.5;
   }
   for i: 0..<figs.BD_SLOTS {
-    if i >= b[0].n { if i < s[0].shown_n { figs.bd_clear(s[0].bodies[..], i); continue; } break; }
+    if i >= b[0].n { if i < s[0].shown_n { figs.bd_clear(s[0].w[0].bodies[..], i); continue; } break; }
     cd := b[0].c[i].cond;
     marks := 0;
     if cd & RS_RESTRAINED != 0 { marks += 1; }
@@ -429,72 +394,35 @@ put_bodies :: (s: [] Lab) {
     // the second of each class, and every other skeleton, looks a little different
     v := ifx kl == RS_MONSTER then (i * 7 / 3) % 2 else (i / 12) % 2;
     look := ifx b[0].c[i].npc != RS_NPC_NONE then siege_look(b[0].c[i].npc) else look_of(kl);
-    figs.bd_put(s[0].bodies[..], i, s[0].fresh[i], look, v, wx(s, s[0].dx[i]), wz(s, s[0].dy[i]), state, f32(marks), ifx b[0].c[i].outlined_by >= 0 then 1.0f32 else 0.0f32, b[0].clock);
+    figs.bd_put(s[0].w[0].bodies[..], i, s[0].fresh[i], look, v, wx(s, s[0].dx[i]), wz(s, s[0].dy[i]), state, f32(marks), ifx b[0].c[i].outlined_by >= 0 then 1.0f32 else 0.0f32, b[0].clock);
     s[0].fresh[i] = false;
   }
   s[0].shown_n = b[0].n;
-  if s[0].player && me >= 0 && s[0].you_me == me && !b[0].c[me].dead && b[0].c[me].hp > 0 { figs.bd_own(s[0].bodies[..], me, s[0].you_y, s[0].you_face); }
-  figs.bd_frame(s[0].bodies[..], b[0].clock);
+  if s[0].player && me >= 0 && s[0].you_me == me && !b[0].c[me].dead && b[0].c[me].hp > 0 { figs.bd_own(s[0].w[0].bodies[..], me, s[0].w[0].you_y, s[0].w[0].you_face); }
+  figs.bd_frame(s[0].w[0].bodies[..], b[0].clock);
 }
 // Whether creature i is under an effect of `kind` (rs_effect, without copying the creature).
 has_eff :: (b: [] RsBattle, i: int, kind: int) -> bool {
   for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == kind { return true; } }
   return false;
 }
-// The pack's catalog arrived (fivelab-face.c): the figures' parts.
-lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { figs.bd_catalog(s[0].bodies[..], text); s[0].creator[0].aribeth=s[0].aribeth_state[..];cc.catalog(s[0].creator[..], text); }
-// The clips baked into the bake store, once (fivelab-face.c).
-lab_bake :: (s: [] Lab, d: [] figs.People, out: [] f32) #export_c #effects(all) { figs.people_load(d); figs.bd_bake(d, out, s[0].creator[0].dev_animations); figs.bd_bake_owned(out); figs.bd_bake_bow(d, out); figs.bd_keep_hands(s[0].bodies[..], d, out); }
-// Existing optional layer-size hook: Character Create owns its quality choice.
-lab_layers_side :: (s:[]Lab)->int #export_c #effects(all) {return cc.texture_side(s[0].creator[0]);}
-// Character Create's shadow tiles for the host (coaxial_shadow_*_v1; charactercreator.coax shadow_frame): none on the lab's own pages.
-lab_shadow_atlas :: (s:[]Lab,coarse:int,which:int)->int #export_c #effects(all) {return cc.shadow_atlas(s[0].creator[0],coarse!=0,which);}
-lab_shadow_field :: (s:[]Lab,field:int)->int #export_c #effects(all) {return cc.shadow_field(s[0].creator[0],field);}
-lab_shadow_event :: (s:[]Lab,kind:int,arg:int) #export_c #effects(all) {if s[0].creator[0].on {cc.shadow_event(s[0].creator[..],kind,arg);}}
-// The shader already clips grass in both shadow tiles and static glade meshes
-// in the player tile. Do not submit those vertices to the GPU in the first place.
-lab_shadow_select :: (s: [] Lab) {
-  s[0].shadow_n = 0;
-  for i: 0..<s[0].bodies[0].draw_n {
-    base := s[0].bodies[0].draws[i*4+2];
-    if s[0].creator[0].on {
-      if base >= 65536 { continue; }
-      if s[0].creator[0].shadow[0].on && !s[0].creator[0].shadow[0].now && s[0].records[cast(int) base*24+15] > 11.5 { continue; }
-      // the dungeon's inside (charactercreator.coax): under its roof, it casts no sun shadow
-      if s[0].records[cast(int) base*24+15] > 15.5 && s[0].records[cast(int) base*24+15] < 16.5 && s[0].records[cast(int) base*24+14] > 0.5 { continue; }
-      // a build site's parts (charactercreator.coax build_record): they grow, so the cached glade tile can't hold them
-      if s[0].records[cast(int) base*24+15] > 18.5 && s[0].records[cast(int) base*24+13] > 6.5 { continue; }
-    }
-    j := s[0].shadow_n;
-    for k: 0..<4 { s[0].shadow_draws[j*4+k] = s[0].bodies[0].draws[i*4+k]; }
-    s[0].shadow_n += 1;
-  }
-}
+// The pack's catalog arrived (fivelab-face.c): Experimental's Aribeth keeps her clips here; the rest is the zone's.
+lab_catalog :: (s: [] Lab, text: string) #export_c #effects(all) { s[0].w[0].creator[0].aribeth=s[0].aribeth_state[..]; zone_catalog(s[0].w[..], text); }
 // The figures' instances for the frame (the objects store) and their draws; the count of draws.
 lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
-  if s[0].creator[0].on {
-    n := cc.scene_reserved(s[0].creator[..],s[0].bodies[..],out,ifx s[0].creator[0].experimental then 2 else 0);
-    if s[0].creator[0].experimental {
-      n=xc_familiar_draw(s,out,n);n=xd_draw(s,out,n);
-      if n<s[0].bodies[0].draws.count/4 { n=xc_objects_draw(s,out,n); }
-    }
-    lab_shadow_select(s);
-    // first person (charactercreator.coax cc_self_hidden): your body still casts its shadow, but isn't drawn from your eyes
-    for i: 0..<s[0].bodies[0].self_n { s[0].bodies[0].draws[i*4+1] = 0; }
-    return n;
-  }
-  if !s[0].started || s[0].view != VIEW_GLADE { s[0].bodies[0].draw_n = 0; s[0].shadow_n = 0; return 0; }
+  if s[0].w[0].creator[0].on { return zone_scene(s[0].w[..], out); }
+  if !s[0].started || s[0].view != VIEW_GLADE { s[0].w[0].bodies[0].draw_n = 0; s[0].w[0].shadow_n = 0; return 0; }
   c := figs.BdCam.{ex = s[0].eye.x, ey = s[0].eye.y, ez = s[0].eye.z, fx = s[0].fwd.x, fy = s[0].fwd.y, fz = s[0].fwd.z,
               rx = s[0].right.x, ry = s[0].right.y, rz = s[0].right.z, ux = s[0].up.x, uy = s[0].up.y, uz = s[0].up.z,
               focal = s[0].focal, cx = s[0].cx, cy = s[0].cy, w = s[0].width, h = s[0].height};
-  r := figs.bd_build(s[0].bodies[..], c, out);
+  r := figs.bd_build(s[0].w[0].bodies[..], c, out);
   // none in view: one empty draw still, so host.js draws the effects after the scene
-  if s[0].bodies[0].draw_n == 0 && s[0].bodies[0].ready {
-    for k: 0..<4 { s[0].bodies[0].draws[k] = 0; }
-    s[0].bodies[0].draw_n = 1;
+  if s[0].w[0].bodies[0].draw_n == 0 && s[0].w[0].bodies[0].ready {
+    for k: 0..<4 { s[0].w[0].bodies[0].draws[k] = 0; }
+    s[0].w[0].bodies[0].draw_n = 1;
   }
-  lab_shadow_select(s);
-  return s[0].bodies[0].draw_n;
+  zone_shadow_select(s[0].w[..]);
+  return s[0].w[0].bodies[0].draw_n;
 }
 // Where the battle's grid lies in the glade (wx, wz), for the shared effects (aethyr/fx/battle.coax).
 lab_grid :: (s: [] Lab) -> FxeGrid { return FxeGrid.{x0 = -f32(s[0].cols) * f32(SQ) / 2, z0 = -f32(s[0].rows) * f32(SQ) / 2, sq = f32(SQ)}; }
@@ -505,7 +433,7 @@ lab_effect :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   if e.by < 0 || e.by >= b[0].n { return; }
   foe := ifx e.feat == RS_FT_CUNNING_DASH then nearest_foe(s, e.by) else ifx e.feat == RS_FT_FLURRY then foe_at_hand(s, e.by, -1) else -1;
   g := lab_grid(s);
-  fxe_event(s[0].puffs[..], b, g, e, seed, t0, FxeSeen.{foe = foe, was = fxe_point(g, s[0].dx[e.by], s[0].dy[e.by], 0)});
+  fxe_event(s[0].w[0].puffs[..], b, g, e, seed, t0, FxeSeen.{foe = foe, was = fxe_point(g, s[0].dx[e.by], s[0].dy[e.by], 0)});
 }
 // What lasts on a creature, as the glade draws it (aethyr/fx/abilities.coax fxp_status): its
 // conditions, concentration, Rage, Sacred Weapon, Innate Sorcery, a flame in hand and a Fiend's
@@ -1593,7 +1521,7 @@ player_turn :: (s: [] Lab, i: int) {
   // your token walks the squares to where your body stands (Everglade's controller moves it,
   // fivelab-face.c), a square at a time on the rules' movement: Speed, Difficult Terrain, the
   // squares others hold. What the turn can't reach, your body is held back from (lab_keep).
-  if s[0].you_on {
+  if s[0].w[0].you_on {
     gx := you_square_x(s); gy := you_square_y(s);
     guard := 0;
     while rs_movement_left(b,i) >= RS_SQUARE && guard < 16 {
@@ -1820,7 +1748,7 @@ pick_hero :: (s: [] Lab) {
 }
 set_player :: (s: [] Lab, on: bool) {
   s[0].player = on;
-  s[0].you_me = -1; s[0].you_on = false;
+  s[0].you_me = -1; s[0].w[0].you_on = false;
   if on { pick_hero(s); s[0].view = VIEW_GLADE; s[0].fast = false; } else { s[0].me = -1; s[0].target = -1; }
 }
 
@@ -1837,8 +1765,8 @@ LAB_NEAR_M :: 6.0;        // metres: as far as they are looked for
 LAB_BODY_R :: 0.42;       // a figure's capsule round its feet's line
 BLEND_TIME :: 1.0;        // seconds the camera takes to swing between the spectator's and the follow camera
 // Your body's square: the one under its feet.
-you_square_x :: (s: [] Lab) -> int { return cast(int) floor((s[0].you_x + f32(s[0].cols) * f32(SQ) / 2) / f32(SQ)); }
-you_square_y :: (s: [] Lab) -> int { return cast(int) floor((s[0].you_z + f32(s[0].rows) * f32(SQ) / 2) / f32(SQ)); }
+you_square_x :: (s: [] Lab) -> int { return cast(int) floor((s[0].w[0].you_x + f32(s[0].cols) * f32(SQ) / 2) / f32(SQ)); }
+you_square_y :: (s: [] Lab) -> int { return cast(int) floor((s[0].w[0].you_z + f32(s[0].rows) * f32(SQ) / 2) / f32(SQ)); }
 // The squares one turn's Speed carries you: 0 while you can't move (Grappled, Restrained, down).
 you_reach :: (s: [] Lab) -> int {
   b := bt(s);
@@ -1851,80 +1779,45 @@ you_theta :: (s: [] Lab) -> f32 {
   if s[0].view != VIEW_GLADE { return 0; }
   return figs.wrap_angle(s[0].orbit.yaw + 3.14159265);
 }
-LabWalk :: struct { on: bool; put: bool; x: f32; y: f32; z: f32; face: f32; }
 // Whether the face walks your body this frame, and a place to put it first: a new hero, or your
 // token moved by what the rules did (a shove, a new battle).
-lab_walk :: (s: [] Lab) -> LabWalk #export_c #effects(all) {
-  w: LabWalk;
-  if s[0].creator[0].experimental {if s[0].creator[0].hostiles[0].ready && s[0].creator[0].hostiles[0].hp<=0 {return w;}w.on=true;if s[0].put_on {w.put=true;w.x=s[0].put_x;w.y=s[0].put_y;w.z=s[0].put_z;w.face=s[0].put_face;s[0].put_on=false;s[0].you_on=true;}else if !s[0].you_on {w.put=true;s[0].you_on=true;}if w.put {s[0].xc[0].jump=EgJump.{};s[0].xc[0].jump_run=0;s[0].you_x=w.x;s[0].you_y=w.y;s[0].you_z=w.z;s[0].you_face=w.face;s[0].creator[0].player_x=w.x;s[0].creator[0].player_y=w.y;s[0].creator[0].player_z=w.z;}return w;}
-  if !s[0].started || !s[0].player || s[0].me < 0 || s[0].golden { s[0].you_on = false; return w; }
+lab_walk :: (s: [] Lab) -> ZoneWalk #export_c #effects(all) {
+  w: ZoneWalk;
+  if s[0].w[0].creator[0].experimental { return zone_walk(s[0].w[..]); }
+  if !s[0].started || !s[0].player || s[0].me < 0 || s[0].golden { s[0].w[0].you_on = false; return w; }
   b := bt(s);
   me := s[0].me;
   if me != s[0].you_me || b[0].c[me].x != s[0].my_sx || b[0].c[me].y != s[0].my_sy {
-    s[0].put_on = true;
-    s[0].put_x = wx(s, f32(b[0].c[me].x)); s[0].put_z = wz(s, f32(b[0].c[me].y));
+    s[0].w[0].put_on = true;
+    s[0].w[0].put_x = wx(s, f32(b[0].c[me].x)); s[0].w[0].put_z = wz(s, f32(b[0].c[me].y));
     if me != s[0].you_me {
       // a new hero faces the way the camera looks, so the follow camera swings in from behind it
-      s[0].put_face = figs.atan2(s[0].fwd.x, s[0].fwd.z);
-      s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].put_x, 0, s[0].put_z), s[0].put_face);
-    } else { s[0].put_face = s[0].you_face; }
+      s[0].w[0].put_face = figs.atan2(s[0].fwd.x, s[0].fwd.z);
+      s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].w[0].put_x, 0, s[0].w[0].put_z), s[0].w[0].put_face);
+    } else { s[0].w[0].put_face = s[0].w[0].you_face; }
     s[0].you_me = me; s[0].my_sx = b[0].c[me].x; s[0].my_sy = b[0].c[me].y;
-    s[0].you_x = s[0].put_x; s[0].you_y = 0; s[0].you_z = s[0].put_z; s[0].you_face = s[0].put_face;
+    s[0].w[0].you_x = s[0].w[0].put_x; s[0].w[0].you_y = 0; s[0].w[0].you_z = s[0].w[0].put_z; s[0].w[0].you_face = s[0].w[0].put_face;
   }
   w.on = !s[0].paused;
-  s[0].you_on = w.on;
-  if s[0].put_on { w.put = true; w.x = s[0].put_x; w.z = s[0].put_z; w.face = s[0].put_face; s[0].put_on = false; }
+  s[0].w[0].you_on = w.on;
+  if s[0].w[0].put_on { w.put = true; w.x = s[0].w[0].put_x; w.z = s[0].w[0].put_z; w.face = s[0].w[0].put_face; s[0].w[0].put_on = false; }
   return w;
 }
 // Your keys for Everglade's step: W, A, S and D along the camera, Shift (Everglade runs unless it
 // is held: verse_runs), Space to jump. The face adds the thumb's stick.
 lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
-  h := s[0].held;
-  // a Dash's sprint runs you ahead the way it heads (xc_sprint_frame steers it), at its pace (lab_move_scale)
-  if sprint.sprint_on(s[0].xc[0].dash[0], s[0].creator[0].clock) {
-    return EgMoveIn.{key_y = 1, run = true, theta = s[0].xc[0].dash[0].face - 3.14159265, link_flags = 512};
-  }
-  dm := fd_move_in(s); if dm.ok && h == 0 { return xd_move_in(s, dm.in); }   // an agent's walk-to, face or use (fivelab-drive.coax)
-  return xd_move_in(s, EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].shift,
-                   jump = h & HOLD_JUMP != 0, theta = ifx s[0].creator[0].experimental then s[0].creator[0].yaw else you_theta(s)});
+  if s[0].w[0].creator[0].experimental { return zone_move_in(s[0].w[..]); }
+  h := s[0].w[0].held;
+  return EgMoveIn.{key_x = axis(h, HOLD_D, HOLD_A), key_y = axis(h, HOLD_W, HOLD_S), run = s[0].w[0].shift, jump = h & HOLD_JUMP != 0, theta = you_theta(s)};
 }
 // The world where you stand, for Everglade's step: the figures round you (lab_move_bodies), your
 // Speed as the walk's pace (30 feet Everglade's own), still while you can't move. `deck` keeps
 // eg_step_advance's Everglade fountain out of the first figure.
-#test "experimental unrecoverable contact returns to the last clear position" {
- s:[1]Lab;s[0].creator[0].experimental=true;s[0].you_on=true;s[0].safe_on=true;s[0].safe_x=7;s[0].safe_y=3;s[0].safe_z=9;s[0].safe_face=1;
- lab_queue_escape(s[..],10,0,12);w:=lab_walk(s[..]);#assert w.on && w.put && w.x==7 && w.y==3 && w.z==9 && w.face==1;
-}
-// If fixed structural geometry is genuinely unresolved, return to a previously
-// accepted clear position rather than publishing an invalid collision step.
-#test "experimental escape falls back to spawn if no earlier clear place exists" {
- s:[1]Lab;s[0].creator[0].experimental=true;s[0].you_on=true;lab_queue_escape(s[..],10,0,12);w:=lab_walk(s[..]);#assert w.put && w.x==0 && w.y==0 && w.z==0;
-}
-#test "experimental crowd does not block the player and mobs yield" {
- s:[1]Lab;s[0].creator[0].experimental=true;s[0].creator[0].hostiles[0].ready=true;
- for i:0..<6 {s[0].creator[0].hostiles[0].enemies[i].x=0;s[0].creator[0].hostiles[0].enemies[i].z=0;}
- w:=lab_move_world(s[..],0,0);#assert w.bodies==0;
- lab_you(s[..],0,0,-0.1,0,false,false,false,0,0,0,0);for i:0..<6 {e:=s[0].creator[0].hostiles[0].enemies[i];#assert e.x*e.x+e.z*e.z>0;}
-}
-lab_queue_escape :: (s:[]Lab,x:f32,y:f32,z:f32) {
- use_safe:=s[0].safe_on && (abs(s[0].safe_x-x)+abs(s[0].safe_y-y)+abs(s[0].safe_z-z)>0.05);
- s[0].put_on=true;s[0].put_x=ifx use_safe then s[0].safe_x else 0.0f32;s[0].put_y=ifx use_safe then s[0].safe_y else 0.0f32;s[0].put_z=ifx use_safe then s[0].safe_z else 0.0f32;s[0].put_face=ifx use_safe then s[0].safe_face else s[0].you_face;
-}
-// The combat controller rate is distinct from environmental pace (which the
-// generic walker deliberately clamps to one). Other modes retain their path.
-lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) {
-  if !s[0].creator[0].experimental || !s[0].xc[0].started { return 1; }
-  xc_sync_world(s);
-  // dragging what you grapple costs a foot more each foot (grapple.coax rs_drag_feet): half the pace
-  // and a Dash's sprint over your run (aethyr/action/sprint.coax sprint_pace)
-  return rs_walk_scale(s[0].xc[0].b[..],0) / f32(1 + rs_drag_feet(s[0].xc[0].b[..],0,XC_AWAY,XC_AWAY)/5) * sprint.sprint_pace(s[0].xc[0].dash[0], s[0].creator[0].clock);
-}
+lab_move_scale :: (s:[]Lab)->f32 #export_c #effects(all) { return zone_move_scale(s[0].w[..]); }
 lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  // the open field: no village, its walls or its bushes; only the zone's own standing things (aethyr/world/props.coax)
-  if s[0].creator[0].experimental && s[0].creator[0].field {s[0].village_near[0].floor_n=0;s[0].village_near[0].wall_n=wprops.props_near(s[0].creator[0].props[0],x,z,8,xmeadow.exp_height(x,z),s[0].village_near[0].walls[..],0);w.walls=s[0].village_near[0].wall_n;w.bodies=0;w.pace=xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}return w;}
-  if s[0].creator[0].experimental {rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {lab_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}if sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock) {w.link_flags=512;}return w;}
+  if s[0].w[0].creator[0].experimental { return zone_move_world(s[0].w[..], x, z); }
   b := bt(s);
   me := s[0].me;
   if me < 0 { w.still = true; return w; }
@@ -1949,8 +1842,8 @@ lab_move_world :: (s: [] Lab, x: f32, z: f32) -> EgMoveWorld #export_c #effects(
   return w;
 }
 lab_move_bodies :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return s[0].move_bodies[..]; }
-lab_move_walls :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return s[0].village_near[0].walls[..]; }
-lab_move_floors :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return s[0].village_near[0].floors[..]; }
+lab_move_walls :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return zone_move_walls(s[0].w[..]); }
+lab_move_floors :: (s: [] Lab) -> [] f32 #export_c #effects(all) { return zone_move_floors(s[0].w[..]); }
 // Where your body may be: within one turn's Speed of your token (a box, as the grid counts
 // diagonals: 5 feet each), and on the grid.
 you_box :: (s: [] Lab) -> Rect {
@@ -1960,85 +1853,21 @@ you_box :: (s: [] Lab) -> Rect {
   return Rect.{x0 = hi(cx - r, -hx), y0 = hi(cz - r, -hz), x1 = lo(cx + r, hx), y1 = lo(cz + r, hz)};
 }
 lab_keep :: (s: [] Lab, x: f32, z: f32) -> P3 #export_c #effects(all) {
-  // the meadow's edge, but for the dungeon, which runs on south past it (verse/experimental-dungeon.coax)
-  if s[0].creator[0].experimental {kz:=lo(82,hi(-82,z));if x>f32(xdungeon.DG_X0) && x<xdungeon.dg_east() && z< -82 {kz=hi(xdungeon.dg_south()+0.3,z);}return P3.{x=lo(82,hi(-82,x)),z=kz};}
+  if s[0].w[0].creator[0].experimental { return zone_keep(s[0].w[..], x, z); }
   if s[0].me < 0 { return P3.{x = x, z = z}; }
   r := you_box(s);
   return P3.{x = lo(r.x1, hi(r.x0, x)), z = lo(r.y1, hi(r.y0, z))};
 }
-// Translate the saved SRD turn to a physical jump envelope. Only an admitted
-// rise commits its cost. A running start measures accepted ground motion.
-lab_jump_plan :: (s:[] Lab,origin:EgBody,intent:EgMotionIntent,pending:bool)->EgJump #export_c #effects(all) {
-  x:=s[0].xc[..];
-  if !s[0].creator[0].experimental || !x[0].started { return EgJump.{}; }
-  if xd_jump(s,pending) { return EgJump.{mode=EG_JUMP_DENIED}; }   // the dragon's wings take the jump (druid-scene.coax)
-  if !origin.ground { return x[0].jump; }
-  x[0].jump=EgJump.{};
-  if !pending { return x[0].jump; }
-  plan:=EgJump.{mode=EG_JUMP_DENIED};
-  b:=x[0].b[..]; seat:=x[0].seat[..];
-  saved:=seat[0].turn;
-  fb_seat_in(b,seat);
-  if rs_jump_ready(b,0) {
-    b[0].turn.run_ft=ifx x[0].jump_run>=3.048 then 10 else 0;
-    score:=rs_jump_score(b[0].c[0]);
-    full:=ifx intent.walk then score else rs_max(3+rs_mod(score),0);
-    feet:=rs_jump_reach(b,full);
-    left:=rs_movement_left(b,0);
-    if intent.walk { feet=rs_min(feet,left); }
-    if feet>0 && feet<=left {
-      plan.mode=ifx intent.walk then EG_JUMP_LONG else EG_JUMP_HIGH;
-      plan.feet=feet;
-      if intent.walk { plan.span=f32(feet)*f32(XC_FT); }
-      else { plan.height=f32(feet)*f32(XC_FT); }
-    }
-  }
-  fb_seat_out(b,seat); seat[0].turn=saved;
-  x[0].jump=plan; x[0].jump_x=origin.x; x[0].jump_z=origin.z;
-  return plan;
-}
-lab_jump_limit :: (s:[] Lab,origin:EgBody,body0:EgBody)->EgBody {
-  body:=body0; x:=s[0].xc[..]; plan:=x[0].jump;
-  if plan.mode<EG_JUMP_HIGH || origin.ground && body.ground { return body; }
-  dx:=body.x-x[0].jump_x; dz:=body.z-x[0].jump_z;
-  span:=sqrt(dx*dx+dz*dz);
-  if span>plan.span {
-    body.x=x[0].jump_x+dx*plan.span/span;
-    body.z=x[0].jump_z+dz*plan.span/span;
-    body.px=body.x; body.pz=body.z; body.vx=0; body.vz=0;
-  }
-  return body;
-}
-lab_jump_pay :: (s:[] Lab)->bool {
-  x:=s[0].xc[..]; b:=x[0].b[..]; seat:=x[0].seat[..];
-  plan:=x[0].jump; saved:=seat[0].turn;
-  fb_seat_in(b,seat);
-  b[0].turn.run_ft=ifx x[0].jump_run>=3.048 then 10 else 0;
-  paid:=false;
-  if plan.mode==EG_JUMP_HIGH { paid=rs_high_jump(b,0)==plan.feet; }
-  else if rs_jump_ready(b,0) { paid=rs_jump_pay(b,0,plan.feet); }
-  fb_seat_out(b,seat);
-  if paid { x[0].jump_run=0; }
-  else { seat[0].turn=saved; x[0].jump=EgJump.{}; }
-  return paid;
-}
+lab_jump_plan :: (s:[] Lab,origin:EgBody,intent:EgMotionIntent,pending:bool)->EgJump #export_c #effects(all) { return zone_jump_plan(s[0].w[..],origin,intent,pending); }
 // Admission between controller advance and body publication. The host only
 // transports this result back into the shared controller.
 lab_keep_body :: (s:[] Lab,origin:EgBody,proposed:EgBody)->EgBody #export_c #effects(all) {
-  lab_ride_dev(s); lab_breath_slot(s);
-  if lab_riding(s) { return lab_ride_body(s,origin,proposed); }   // the horse carries you (experimental-ride.coax)
-  body:=ifx s[0].creator[0].experimental then lab_jump_limit(s,origin,proposed) else proposed;
+  lab_ride_dev(s);
+  if s[0].w[0].creator[0].experimental { return zone_keep_body(s[0].w[..],origin,proposed); }
+  body:=proposed;
   kept:=lab_keep(s,body.x,body.z); body.x=kept.x; body.z=kept.z;
   if body.x!=proposed.x { body.px=body.x; body.vx=0; }
   if body.z!=proposed.z { body.pz=body.z; body.vz=0; }
-  if s[0].creator[0].experimental {
-    takes_off:=s[0].xc[0].jump.mode>=EG_JUMP_HIGH && origin.ground && !body.ground && body.y>origin.y;
-    allowed:=xc_depart(s,origin,body);
-    if takes_off && (!allowed || !lab_jump_pay(s)) { return origin; }
-    if allowed { return body; }
-    body.x=origin.x; body.z=origin.z;
-    body.px=body.x; body.pz=body.z; body.vx=0; body.vz=0;
-  }
   return body;
 }
 // Actual body activity after admission. A jump request alone and passive
@@ -2046,39 +1875,17 @@ lab_keep_body :: (s:[] Lab,origin:EgBody,proposed:EgBody)->EgBody #export_c #eff
 lab_rest_motion :: (s:[]Lab,origin:EgBody,body:EgBody,walking:bool,jumping:bool) #export_c #effects(all) {
   walked:=walking && (body.x!=origin.x || body.z!=origin.z);
   jumped:=jumping && origin.ground && !body.ground && body.y>origin.y;
-  if s[0].creator[0].experimental {
-    if s[0].xc[0].started {
-      if walked && origin.ground && body.ground {
-        dx:=body.x-origin.x; dz:=body.z-origin.z;
-        s[0].xc[0].jump_run=lo(3.048,s[0].xc[0].jump_run+sqrt(dx*dx+dz*dz));
-      } else if !walking || jumped || !body.ground || abs(body.vx)+abs(body.vz)<0.01 {
-        s[0].xc[0].jump_run=0;
-      }
-      if body.ground && !origin.ground { s[0].xc[0].jump=EgJump.{}; }
-      settled:=body.ground && abs(body.vx)<0.01 && abs(body.vz)<0.01;
-      s[0].xc[0].rest_seen=true; s[0].xc[0].rest_settled=settled && !walking && !jumping;
-      observed:=rs_rest_observe_motion(s[0].xc[0].b[..],0,walked,jumped,settled);
-    }
-    return;
-  }
+  if s[0].w[0].creator[0].experimental { zone_rest_motion(s[0].w[..],origin,body,walking,jumping); return; }
   if !s[0].started || !s[0].player { return; }
   b:=bt(s); i:=s[0].me; if i<0 || i>=b[0].n { return; }
   rs_rest_motion(b[0].c[i..<i+1],walked,jumped);
 }
-// A drawn bow turns you to face where the camera looks, as far as its aim has come in (docs/verse/bow-combat.md).
-// Mouselook faces you the same way, as far as its fade has come: A and D strafe, S backpedals.
-lab_aim_face :: (s:[]Lab,face:f32)->f32 {
-  a:=s[0].creator[0].aim; look:=s[0].creator[0].ml[0].shown; if look>a { a=look; } if a<=0 { return face; }
-  d:=figs.wrap_angle(s[0].creator[0].yaw+3.14159265-face);
-  return figs.wrap_angle(face+d*a);
-}
 // Your body after the step (its feet, its facing) and the thumb's stick, for the frame.
 lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch: bool, stick_on: bool, ox: f32, oy: f32, px: f32, py: f32) #export_c #effects(all) {
-  if s[0].creator[0].experimental {hostile.hostile_push(s[0].creator[0].hostiles[..],x,y,z,s[0].you_x,s[0].you_z);cc.experimental_air(s[0].creator[..],airborne);s[0].creator[0].player_x=x;s[0].creator[0].player_y=y+lab_ride_lift(s);s[0].creator[0].player_z=z;s[0].creator[0].player_face=lab_aim_face(s,face);s[0].creator[0].backpedal=s[0].creator[0].ml[0].shown>0.5 && axis(s[0].held,HOLD_W,HOLD_S)<0;s[0].creator[0].moving=axis(s[0].held,HOLD_W,HOLD_S)!=0 || axis(s[0].held,HOLD_D,HOLD_A)!=0 || stick_on || sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock);xc_sprint_frame(s);}
-  if s[0].creator[0].experimental { xd_you(s); }
-  s[0].you_x = x; s[0].you_y = y; s[0].you_z = z; s[0].you_face = face;
-  if touch { s[0].touch = true; }
-  s[0].stick_on = stick_on; s[0].stick_ox = ox; s[0].stick_oy = oy; s[0].stick_px = px; s[0].stick_py = py;
+  if s[0].w[0].creator[0].experimental { zone_you(s[0].w[..], x, y, z, face, airborne, touch, stick_on, ox, oy, px, py); return; }
+  s[0].w[0].you_x = x; s[0].w[0].you_y = y; s[0].w[0].you_z = z; s[0].w[0].you_face = face;
+  if touch { s[0].w[0].touch = true; }
+  s[0].w[0].stick_on = stick_on; s[0].w[0].stick_ox = ox; s[0].w[0].stick_oy = oy; s[0].w[0].stick_px = px; s[0].w[0].stick_py = py;
 }
 // A thumb's look and pinch (aethyr/sticks.coax), as a drag and the wheel.
 lab_look :: (s: [] Lab, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
@@ -2088,11 +1895,11 @@ lab_look :: (s: [] Lab, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(al
 // The follow camera this frame (aethyr/cam/chase.coax): the look asked for, the arrow keys, after
 // your body, kept above the glade's ground.
 lab_chase_step :: (s: [] Lab, dt: f32) {
-  h := s[0].held; me := s[0].me;
+  h := s[0].w[0].held; me := s[0].me;
   vx := 0.0f32; vz := 0.0f32;
-  if me >= 0 && me < figs.BD_SLOTS { sp := s[0].bodies[0].slot[me].speed; vx = sin(s[0].you_face) * sp; vz = cos(s[0].you_face) * sp; }
+  if me >= 0 && me < figs.BD_SLOTS { sp := s[0].w[0].bodies[0].slot[me].speed; vx = sin(s[0].w[0].you_face) * sp; vz = cos(s[0].w[0].you_face) * sp; }
   in := figs.CamChaseIn.{look_yaw = s[0].look_yaw, look_pitch = s[0].look_pitch, turn = axis(h, HOLD_LEFT, HOLD_RIGHT), tilt = axis(h, HOLD_UP, HOLD_DOWN),
-    zoom = axis(h, HOLD_OUT, HOLD_IN), feet = figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), heading = figs.yaw_of(vx, vz), moving = sqrt(vx * vx + vz * vz) > 0.6};
+    zoom = axis(h, HOLD_OUT, HOLD_IN), feet = figs.v3(s[0].w[0].you_x, s[0].w[0].you_y, s[0].w[0].you_z), heading = figs.yaw_of(vx, vz), moving = sqrt(vx * vx + vz * vz) > 0.6};
   s[0].look_yaw = 0; s[0].look_pitch = 0;
   s[0].orbit = figs.cam_chase_floor(figs.cam_chase_orbit(figs.CamMode.{}, s[0].orbit, in, dt), 0.3, dt);
 }
@@ -2177,7 +1984,7 @@ step :: (s: [] Lab, dt: f32) {
   }
   // the tokens go to their squares at a run (3.2 squares a second, faster the further they have to go)
   for i: 0..<b[0].n {
-    if i == s[0].me && s[0].you_on { continue; }   // your figure stands where your body is (put_bodies)
+    if i == s[0].me && s[0].w[0].you_on { continue; }   // your figure stands where your body is (put_bodies)
     gx := f32(b[0].c[i].x) - s[0].dx[i]; gy := f32(b[0].c[i].y) - s[0].dy[i];
     d := sqrt(gx * gx + gy * gy);
     if d < 0.0001 { continue; }
@@ -2428,7 +2235,7 @@ draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
 // The flat view's effects: the glade's own causes seen from above (aethyr/fx/flat.coax), as strokes.
 draw_casts :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; c := s[0].cell;
-  pf := s[0].puffs[..];
+  pf := s[0].w[0].puffs[..];
   pf[0].out_n = 0;   // the flat view writes no puffs
   now := s[0].battle[0].clock;
   if now < s[0].fx_last { fxp_clear(pf); }   // a new battle: its clock starts again
@@ -2537,7 +2344,7 @@ abs_f :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
 // (fivelab-fx.wgsl, host.js particles), the lasting zones' motes with them (aethyr/fx/battle.coax).
 glade_puffs :: (s: [] Lab) {
   now := s[0].battle[0].clock;
-  pf := s[0].puffs[..];
+  pf := s[0].w[0].puffs[..];
   if now < s[0].fx_last { fxp_clear(pf); }   // a new battle: its clock starts again
   s[0].fx_last = now;
   fxp_begin(pf, now, fxp_v(s[0].eye.x, s[0].eye.y, s[0].eye.z));
@@ -2814,17 +2621,17 @@ lab_player_bar :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n = say_mid(out, n, cast(string) l[0..<m], ifx nab > 0 then (r0.x0 + r2.x1) / 2 else s[0].cx, r0.y0 - 10 * k, 9 * k, ink(k, 0.9, ifx me >= 0 then WHITE else RED));
   // the keys you play with, under the hotbar
   // (from the left, short of the frames-a-second corner on a desktop)
-  keys := ifx s[0].touch then "LEFT THUMB MOVE  RIGHT THUMB LOOK  TAP JUMP  PINCH ZOOM  TAP A SLOT TO ACT"
+  keys := ifx s[0].w[0].touch then "LEFT THUMB MOVE  RIGHT THUMB LOOK  TAP JUMP  PINCH ZOOM  TAP A SLOT TO ACT"
           else ifx s[0].siege then "W A S D MOVE  SHIFT WALK  DRAG LOOK  SPACE JUMP  WHEEL ZOOM  1 TO 9 ACT  CLICK OR TAB TARGET  [ ] WHO"
           else "W A S D MOVE  SHIFT WALK  DRAG LOOK  SPACE JUMP  WHEEL ZOOM  1 TO 9 ACT  CLICK OR TAB TARGET  [ ] CLASS";
   room := ifx s[0].portrait then s[0].width - 32 * k else s[0].panel.x0 - 300 * k;
   n = say_at(out, n, keys, 16 * k, ifx nab > 0 then r0.y1 + 14 * k else s[0].cy, ln_fit(keys, 8.5 * k, room), ink(k, 0.9, GOLD));
   // the thumb's stick: where it is held, or where to put your thumb (aethyr/sticks.coax's ring)
-  if s[0].touch {
+  if s[0].w[0].touch {
     sr := 56 * k;
-    ox := ifx s[0].stick_on then s[0].stick_ox else s[0].width * 0.22;
-    oy := ifx s[0].stick_on then s[0].stick_oy else s[0].height - hi(sr * 2.4, s[0].height * 0.18);
-    n = ln_stick(out, n, ox, oy, sr, s[0].stick_on, s[0].stick_px, s[0].stick_py, k);
+    ox := ifx s[0].w[0].stick_on then s[0].w[0].stick_ox else s[0].width * 0.22;
+    oy := ifx s[0].w[0].stick_on then s[0].w[0].stick_oy else s[0].height - hi(sr * 2.4, s[0].height * 0.18);
+    n = ln_stick(out, n, ox, oy, sr, s[0].w[0].stick_on, s[0].w[0].stick_px, s[0].w[0].stick_py, k);
   }
   return n;
 }
@@ -2898,14 +2705,14 @@ lab_top_bar :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int 
 }
 
 #test "Aribeth local view and absent animation label are bounded" {
- s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?aribeth=1\n");#assert s[0].put_on && s[0].put_x==0 && s[0].put_z== -1.5 && s[0].creator[0].dist==4.5;
+ s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?aribeth=1\n");#assert s[0].w[0].put_on && s[0].w[0].put_x==0 && s[0].w[0].put_z== -1.5 && s[0].w[0].creator[0].dist==4.5;
  b:[16]f32;#assert lab_aribeth_label(s[..],b[..],0,1600,1000,1)==0;
- lab_catalog(s[..],"C glade/aribeth0 0 3 248 0 3 0\nA aribeth pause1 0 1 2000\n");#assert s[0].aribeth_state[0].ready && s[0].creator[0].aribeth.count==1;
+ lab_catalog(s[..],"C glade/aribeth0 0 3 248 0 3 0\nA aribeth pause1 0 1 2000\n");#assert s[0].aribeth_state[0].ready && s[0].w[0].creator[0].aribeth.count==1;
  lab_catalog(s[..],"C glade/environment 3 6 250 20 3 0\n");#assert !s[0].aribeth_state[0].ready;
 }
 lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
- if s[0].creator[0].aribeth.count==0 {return at;}a:=s[0].creator[0].aribeth[0];pose:=nwna.arb_sample(a,s[0].creator[0].clock);
- if !pose.valid {return at;}p:=xc_proj(s[0].xc[..],1.8,2.15,-2);
+ if s[0].w[0].creator[0].aribeth.count==0 {return at;}a:=s[0].w[0].creator[0].aribeth[0];pose:=nwna.arb_sample(a,s[0].w[0].creator[0].clock);
+ if !pose.valid {return at;}p:=xc_proj(s[0].w[0].xc[..],1.8,2.15,-2);
  if !p.ok || p.x<60*k || p.x>w-60*k || p.y<45*k || p.y>h-90*k || at+4000>MAX_VERTICES {return at;}
  label:[32]u8;name:=nwna.arb_clip_label(a,pose.clip,label[..]);n:=cc.text(out,at,"ARIBETH",p.x-24*k,p.y-12*k,10*k,ink_col(k,1,0.95,0.8));
  return cc.text(out,n,name,p.x-f32(name.count)*2.7*k,p.y+3*k,9*k,ink_col(k,0.75,0.9,1));
@@ -2918,15 +2725,18 @@ lab_aribeth_label :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 // the board of its sign, the tier on one line and the stage under it ("Woven hut" over "2 of 4:
 // walls woven"), sized to the board as you see it, for the houses within 16 m.
 #test "the showcase labels the houses near you and none far away" {
- s:[1]Lab;s[0].creator[0].experimental=true;b:[16]f32;s[0].creator[0].player_x= -60;s[0].creator[0].player_z= -60;#assert lab_showcase_titles(s[..],b[..],0,1600,1000,1)==0;
+ s:[1]Lab;s[0].w[0].creator[0].experimental=true;b:[16]f32;s[0].w[0].creator[0].player_x= -60;s[0].w[0].creator[0].player_z= -60;#assert lab_showcase_titles(s[..],b[..],0,1600,1000,1)==0;
+ // on the open field, where no showcase stands, no label is drawn even where the village's row would be (the Druid's meadow)
+ {f:[1]Lab;f[0].w[0].creator[0].experimental=true;f[0].w[0].creator[0].field=true;site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE);f[0].w[0].creator[0].player_x=site.x;f[0].w[0].creator[0].player_z=site.z+2;o:[4096]f32;#assert lab_showcase_titles(f[..],o[..],0,1600,1000,1)==0;}
  #assert lab_label_split("Woven hut, 2 of 4: walls woven")==9 && lab_label_split("none")==4;
 }
 // Where a label's tier ends: its first ", ".
 lab_label_split :: (t:string)->int {for i:0..<t.count-1 {if t[i]==',' && t[i+1]==' ' {return i;}}return t.count;}
 lab_showcase_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
-  n:=at;x:=s[0].xc[..];px:=s[0].creator[0].player_x;pz:=s[0].creator[0].player_z;
-  // ?stage=build-cottage films its own house: the yards' labels would print over it
-  if s[0].creator[0].build_review {return n;}
+  n:=at;x:=s[0].w[0].xc[..];px:=s[0].w[0].creator[0].player_x;pz:=s[0].w[0].creator[0].player_z;
+  // ?stage=build-cottage films its own house: the yards' labels would print over it; the open field
+  // (the Druid's meadow) has no village and none of its showcase houses to label
+  if s[0].w[0].creator[0].build_review || s[0].w[0].creator[0].field {return n;}
   near:=false;for i:0..<xterrain.EXP_SHOWCASE_SITES {site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE+i);if xterrain.exp_distance(site,px,pz)<16 {near=true;}}
   if !near {return n;}
   // Placed on the shared plates (aethyr/ui/hud-plates.coax): nearest first, and with no lifts a label
@@ -2960,8 +2770,8 @@ lab_showcase_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
 // The loaded private packs' titles over their stations (each pair's, NWN's and Quaternius's side; each
 // biome's), on the shared plates (aethyr/ui/hud-plates.coax, everglade/hud/parts.coax eg_plates).
 lab_pack_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
- bp:=s[0].creator[0].biomes_present;cp:=s[0].creator[0].comparison_present;if (!bp && !cp) || s[0].creator[0].field {return at;}
- pl:=s[0].heads[..];view:=xc_plate_view(s[0].xc[..],w,h);
+ bp:=s[0].w[0].creator[0].biomes_present;cp:=s[0].w[0].creator[0].comparison_present;if (!bp && !cp) || s[0].w[0].creator[0].field {return at;}
+ pl:=s[0].heads[..];view:=xc_plate_view(s[0].w[0].xc[..],w,h);
  cc.hud_plates_begin(pl);pl[0].far=0;
  if cp {
   for i:0..<compare.CMP_N {p:=compare.cmp_site(i);
@@ -2987,7 +2797,7 @@ lab_stage :: (s: [] Lab, facts: string) {
     line := facts[i..<e]; i = e + 1;
     if line.count < 4 || line[0..<4] != "url=" { continue; }
     st := hws.hws_find(line[4..<line.count]);
-    if st >= 0 { s[0].stage = st; s[0].stage_steps = 0; s[0].xc[0].open = false; }
+    if st >= 0 { s[0].stage = st; s[0].stage_steps = 0; s[0].w[0].xc[0].open = false; }
     q := line[4..<line.count]; x := url_number(q, "sx"); z := url_number(q, "sz"); r := url_number(q, "turn");
     if st >= 0 && x >= 0 && z >= 0 { s[0].stage_x = f32(x) - 1000; s[0].stage_z = f32(z) - 1000; }
     if st >= 0 && r >= 0 && r < 4 { s[0].stage_turn = r; }
@@ -3004,19 +2814,19 @@ LAB_STAGE_SLOTS :: 5;
 lab_stage_site :: (s: [] Lab) -> building.BuildingFrame { return building.BuildingFrame.{x = s[0].stage_x, z = s[0].stage_z, turn = s[0].stage_turn}; }
 lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
   t := lab_stage_t(s);
-  s[0].creator[0].clock = t;   // the page clock is the stage's too, so the builders' trips (cc_crew_set) land on the same frames every run
+  s[0].w[0].creator[0].clock = t;   // the page clock is the stage's too, so the builders' trips (cc_crew_set) land on the same frames every run
   site := lab_stage_site(s); g := xterrain.exp_height(site.x, site.z);
   // the houses: each a build site at its progress (aethyr/world/build-site.coax, #13106)
   h: [LAB_STAGE_SLOTS] hws.HwsHouse; n := hws.hws_houses(s[0].stage, t, 0, 0, h[..]);
   for i: 0..<LAB_STAGE_SLOTS {
-    if i >= n { cc.build_site_clear(s[0].creator[..], i); continue; }
+    if i >= n { cc.build_site_clear(s[0].w[0].creator[..], i); continue; }
     p := building.building_point(site, h[i].frame.x, h[i].frame.z);
     f := building.BuildingFrame.{x = p[0], z = p[1], turn = site.turn};
-    cc.build_site_set(s[0].creator[..], i, h[i].tier, f, xterrain.exp_height(p[0], p[1]), h[i].progress);
+    cc.build_site_set(s[0].w[0].creator[..], i, h[i].tier, f, xterrain.exp_height(p[0], p[1]), h[i].progress);
   }
   v := hws.hws_view(s[0].stage, t, 0, 0, 0);
   e := building.building_point(site, v.ex, v.ez); l := building.building_point(site, v.lx, v.lz);
-  cc.stage_set(s[0].creator[..], trk.CamView.{ex = e[0], ey = v.ey + g, ez = e[1], lx = l[0], ly = v.ly + g, lz = l[1]}, hws.hws_day(s[0].stage, t));
+  cc.stage_set(s[0].w[0].creator[..], trk.CamView.{ex = e[0], ey = v.ey + g, ez = e[1], lx = l[0], ly = v.ly + g, lz = l[1]}, hws.hws_day(s[0].stage, t));
   // whole game steps of the frame's time: a clip's fixed 1/30 s is exactly 2, and its loading steps (a
   // millionth of a second each) none, so the take starts on step 0 however long the page took to load
   if dt > 0 && dt < 1 && !still { q := int(dt * f32(hws.HWS_HZ) + 0.5); s[0].stage_steps += ifx q < 1 && dt > 0.001 then 1 else q; }
@@ -3057,20 +2867,20 @@ lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k
 }
 #test "a ?stage=house-* page stages its house: the clock is whole steps and the camera and day are the stage's" {
   s: [1] Lab; lab_stage(s[..], "tab=1\nurl=http://127.0.0.1:8800/worlds/everglade-experimental?stage=house-cottage\n");
-  #assert s[0].stage == 2 && s[0].stage_steps == 0 && !s[0].xc[0].open;
+  #assert s[0].stage == 2 && s[0].stage_steps == 0 && !s[0].w[0].xc[0].open;
   for i: 0..<600 { lab_stage_step(s[..], 0.000001, false); }   // a clip's loading steps
   #assert s[0].stage_steps == 0;
   for i: 0..<45 { lab_stage_step(s[..], 1.0 / 30.0, false); }
-  #assert s[0].stage_steps == 90 && lab_stage_t(s[..]) == 1.5 && s[0].creator[0].stage_on;
+  #assert s[0].stage_steps == 90 && lab_stage_t(s[..]) == 1.5 && s[0].w[0].creator[0].stage_on;
   lab_stage_step(s[..], 0, true); #assert s[0].stage_steps == 90;
-  a := s[0].creator[0].stage_view; d := s[0].creator[0].stage_day;
+  a := s[0].w[0].creator[0].stage_view; d := s[0].w[0].creator[0].stage_day;
   // another frame rate, the same clock: the same shot and day
   lab_stage(s[..], "url=http://x/worlds/everglade-experimental?stage=house-cottage");
   #assert s[0].stage_steps == 0;
   for i: 0..<90 { lab_stage_step(s[..], 0.02, false); }
   lab_stage_step(s[..], 0, true);
-  b := s[0].creator[0].stage_view;
-  #assert a.ex == b.ex && a.ey == b.ey && a.lz == b.lz && d == s[0].creator[0].stage_day && abs(d - 0.3675) < 0.0001;
+  b := s[0].w[0].creator[0].stage_view;
+  #assert a.ex == b.ex && a.ey == b.ey && a.lz == b.lz && d == s[0].w[0].creator[0].stage_day && abs(d - 0.3675) < 0.0001;
   s[0].stage = -1; lab_stage(s[..], "url=http://x/worlds/everglade-experimental?stage=nothing"); #assert s[0].stage == -1;
 }
 
@@ -3081,18 +2891,11 @@ lab_stage_text :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k
 // clock moves it, so the record is resolved once and the same words go up every frame.
 lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   n := lab_frame_draw(s, out, u, width, height, dpr, dt, still);
-  fd_frame(s);   // the agent driver's entities and bar this frame (off: nothing)
+  fd_frame(s[0].w[..]);   // the agent driver's entities and bar this frame (off: nothing)
   if u.count >= UNIFORM_FLOATS { lab_light(s, u); }
   return n;
 }
-lab_light :: (s: [] Lab, u: [] f32) {
-  if (s[0].stage >= 0 || s[0].creator[0].build_review) && s[0].creator[0].stage_on {
-    w := envf.env_frame_glade_day_words(s[0].creator[0].stage_day); for i: 0..<U_ENV_WORDS { u[U_ENV + i] = w[i]; }
-    envf.env_frame_day_halo(s[0].creator[0].stage_day, u, 32); return;
-  }
-  if s[0].env_n == 0 { g := envf.env_frame_glade_words(); for i: 0..<U_ENV_WORDS { s[0].env[i] = g[i]; } s[0].env_n = U_ENV_WORDS; }
-  for i: 0..<U_ENV_WORDS { u[U_ENV + i] = s[0].env[i]; }
-}
+lab_light :: (s: [] Lab, u: [] f32) { zone_light(s[0].w[..], u, s[0].stage >= 0); }
 #test "every frame writes the camera's environment: the glade's noon, as the resolver gives it" {
   s: [1] Lab; u: [UNIFORM_FLOATS] f32; u[16] = 1; u[17] = 2; u[18] = -30;
   lab_light(s[..], u[..]); lab_light(s[..], u[..]);
@@ -3101,51 +2904,33 @@ lab_light :: (s: [] Lab, u: [] f32) {
   #assert envf.env_frame_write_eye(f[..], 0, u[16], u[17], u[18], w[..], U_ENV) && f[0].refusals == 0;
   for i: 0..<U_ENV_WORDS { #assert u[U_ENV + i] == w[U_ENV + i]; }
   for i: U_FRAME_FLOATS..<U_ENV { #assert u[i] == 0; }
-  #assert s[0].env_n == U_ENV_WORDS && U_ENV_WORDS == envf.ENV_FRAME_FLOATS;
-}
-// Everglade Experimental's strokes blend straight alpha (its HUD is the FANTASY style, cc.hud_seal).
-lab_straight_alpha :: (s: [] Lab) -> bool #export_c #effects(all) { return s[0].creator[0].experimental; }
-// The world's sounds this frame: ambience, your footsteps, the blows you take, and the build sites'
-// landings (charactercreator-crew.coax). Your own feet are silent in the air and while a mount
-// carries you: a rider plays no footsteps, on the horse or on the dragon in flight.
-lab_sounds :: (s: [] Lab, dt: f32, still: bool) {
-  cr := s[0].creator[..];
-  exsound.experimental_sound_tick(s[0].experimental_audio[..],cr[0].experimental && !cr[0].walk.on,cr[0].player_x,cr[0].player_z,exsound.experimental_sound_feet_off(cr[0].airborne,cr[0].mounts[0].riding),cr[0].hostiles[0].hp,cr[0].hostiles[0].hits,ifx still then 0.0f32 else dt);
-  if cr[0].experimental && !still {bc:[5]int;cc.cc_crew_sounds(cr,bc[..]);exsound.experimental_sound_build(s[0].experimental_audio[..],bc[..],0.45,0);}
+  #assert s[0].w[0].env_n == U_ENV_WORDS && U_ENV_WORDS == envf.ENV_FRAME_FLOATS;
 }
 lab_frame_draw :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int {
-  if s[0].creator[0].on {
-    s[0].creator[0].hostile_external=s[0].creator[0].experimental && !s[0].creator[0].walk.on;
-    if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
-      hostile.hostile_start(s[0].creator[0].hostiles[..]);
-      xc_start(s[0].xc[..],s[0].xc[0].klass); xc_sync_vitals(s); xc_sync_permissions(s);
-    }
+  if s[0].w[0].creator[0].on {
+    zone_begin(s[0].w[..]);
     if s[0].stage >= 0 {
       lab_stage_step(s, dt, still);
-      n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
+      n := cc.frame(s[0].w[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
       n = lab_stage_text(s,out,n,u,width,height,hi(dpr,0.5));
       cc.hud_seal(out,0,n);
       return n;
     }
-    if s[0].creator[0].build_review {
+    if s[0].w[0].creator[0].build_review {
       // ?stage=build-cottage films its cottage: the world alone, no HUD or bar
-      n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
+      n := cc.frame(s[0].w[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
       cc.hud_seal(out,0,n);
       return n;
     }
-    lab_mouselook_step(s, ifx still then 0.0f32 else dt);
-    n := cc.frame(s[0].creator[..],out,u,width,height,hi(dpr,0.5),dt,still);
-    if s[0].creator[0].experimental && !s[0].creator[0].walk.on {
-      if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
-      n = xc_frame(s,out,n,u,width,height,hi(dpr,0.5),ifx still then 0.0f32 else dt);
-      n = lab_ride_prompt(s,out,n,width,height,hi(dpr,0.5));
+    // the world, its bar and the mount's keys are the zone's (everglade/zone.coax); the labels are Experimental's
+    n := zone_draw(s[0].w[..],out,u,width,height,dpr,dt,still);
+    if zone_world(s[0].w[..]) {
       n = lab_pack_titles(s,out,n,width,height,hi(dpr,0.5));
       n = lab_aribeth_label(s,out,n,width,height,hi(dpr,0.5));
       n = lab_showcase_titles(s,out,n,width,height,hi(dpr,0.5));
-      if s[0].ride_dev >= LAB_STAGE_DRAGONBACK { n = 0; s[0].xc[0].media_n = 0; if u.count > 11 { u[11] = 1; } }   // a riding stage is a shot: the world alone, no HUD or bar
+      if s[0].ride_dev >= LAB_STAGE_DRAGONBACK { n = 0; s[0].w[0].xc[0].media_n = 0; if u.count > 11 { u[11] = 1; } }   // a riding stage is a shot: the world alone, no HUD or bar
     }
-    if s[0].creator[0].experimental { cc.hud_seal(out,0,n); }
-    lab_sounds(s, dt, still);
+    zone_seal(s[0].w[..],out,n); zone_sounds(s[0].w[..],dt,still);
     return n;
   }
   lab_start(s);
@@ -3387,44 +3172,44 @@ url_number :: (q: string, key: string) -> int {
 lab_dev_cell :: (s: [] Lab, facts: string) {
  i:=0;while i<facts.count {e:=i;while e<facts.count && facts[e]!='\n' {e+=1;}line:=facts[i..<e];i=e+1;
   if line.count<4 || line[0..<4]!="url=" {continue;}q:=line[4..<line.count];
-  if url_number(q,"aribeth")==1 {s[0].put_on=true;s[0].put_x=0;s[0].put_y=0;s[0].put_z= -1.5;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.25;s[0].creator[0].dist=4.5;s[0].xc[0].open=false;}
+  if url_number(q,"aribeth")==1 {s[0].w[0].put_on=true;s[0].w[0].put_x=0;s[0].w[0].put_y=0;s[0].w[0].put_z= -1.5;s[0].w[0].put_face=0;s[0].w[0].creator[0].yaw=0;s[0].w[0].creator[0].pitch=0.25;s[0].w[0].creator[0].dist=4.5;s[0].w[0].xc[0].open=false;}
   bio:=url_number(q,"biome");if bio>=0 && bio<=biomes.BIO_N {
-   p:=biomes.bio_site(ifx bio==0 then 1 else bio-1);s[0].put_on=true;s[0].put_x=ifx bio==0 then 35 else p.x;s[0].put_y=0.025;s[0].put_z=ifx bio==0 then 73 else p.z+3;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx bio==0 then 1.15 else ifx bio==1 then 0.85 else 0.65;s[0].creator[0].dist=ifx bio==0 then 75 else ifx bio==1 then 24 else 15;s[0].xc[0].open=false;
+   p:=biomes.bio_site(ifx bio==0 then 1 else bio-1);s[0].w[0].put_on=true;s[0].w[0].put_x=ifx bio==0 then 35 else p.x;s[0].w[0].put_y=0.025;s[0].w[0].put_z=ifx bio==0 then 73 else p.z+3;s[0].w[0].put_face=0;s[0].w[0].creator[0].yaw=0;s[0].w[0].creator[0].pitch=ifx bio==0 then 1.15 else ifx bio==1 then 0.85 else 0.65;s[0].w[0].creator[0].dist=ifx bio==0 then 75 else ifx bio==1 then 24 else 15;s[0].w[0].xc[0].open=false;
   }
   cmp:=url_number(q,"compare");if cmp>=0 && cmp<=compare.CMP_N {
-   p:=compare.cmp_site(ifx cmp==0 then 2 else cmp-1);s[0].put_on=true;s[0].put_x=ifx cmp==0 then 31 else p.x;s[0].put_y=0.2;s[0].put_z=ifx cmp==0 then 12 else p.z+1;s[0].put_face=0;s[0].creator[0].yaw=0;s[0].creator[0].pitch=ifx cmp==0 then 1.2 else 0.4;s[0].creator[0].dist=ifx cmp==0 then 28 else 5;s[0].xc[0].open=false;
+   p:=compare.cmp_site(ifx cmp==0 then 2 else cmp-1);s[0].w[0].put_on=true;s[0].w[0].put_x=ifx cmp==0 then 31 else p.x;s[0].w[0].put_y=0.2;s[0].w[0].put_z=ifx cmp==0 then 12 else p.z+1;s[0].w[0].put_face=0;s[0].w[0].creator[0].yaw=0;s[0].w[0].creator[0].pitch=ifx cmp==0 then 1.2 else 0.4;s[0].w[0].creator[0].dist=ifx cmp==0 then 28 else 5;s[0].w[0].xc[0].open=false;
   }
-  cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].xc[..],cl);}
+  cl:=url_number(q,"class");if cl>=0 && cl<FB_CL_N {xc_set_class(s[0].w[0].xc[..],cl);}
   rd:=url_number(q,"ride");if rd>0 && rd<=3 {s[0].ride_dev=rd;}
-  if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].xc[0].open=false;} if url_has(q,"stage=horse-archer") {s[0].ride_dev=LAB_STAGE_HORSE_ARCHER;s[0].xc[0].open=false;} if url_has(q,"stage=dragon-fire") {s[0].ride_dev=LAB_STAGE_DRAGONFIRE;s[0].xc[0].open=false;} if url_has(q,"view=side") {s[0].ride_view=1;} if url_has(q,"view=rear") {s[0].ride_view=2;}
+  if url_has(q,"stage=dragonback") {s[0].ride_dev=LAB_STAGE_DRAGONBACK;s[0].w[0].xc[0].open=false;} if url_has(q,"stage=horseback") {s[0].ride_dev=LAB_STAGE_HORSEBACK;s[0].w[0].xc[0].open=false;} if url_has(q,"stage=horse-archer") {s[0].ride_dev=LAB_STAGE_HORSE_ARCHER;s[0].w[0].xc[0].open=false;} if url_has(q,"stage=dragon-fire") {s[0].ride_dev=LAB_STAGE_DRAGONFIRE;s[0].w[0].xc[0].open=false;} if url_has(q,"view=side") {s[0].ride_view=1;} if url_has(q,"view=rear") {s[0].ride_view=2;}
   // px, pz: any spot, metres plus 1000 (px=970&pz=1010 is (-30, 10)); yaw the way you face in degrees
   // (0 is +z), the camera behind you; dist the camera's metres; pitch its tilt down in degrees; class a
   // class's row (fivebar.coax FB_CL_*)
   px:=url_number(q,"px");pz:=url_number(q,"pz");if px>=0 && pz>=0 {
    yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;dist:=url_number(q,"dist");
-   s[0].put_on=true;s[0].put_x=f32(px)-1000;s[0].put_y=0;s[0].put_z=f32(pz)-1000;s[0].put_face=a;s[0].creator[0].yaw=a+3.1415927;if dist>0 {s[0].creator[0].dist=f32(dist);}pt:=url_number(q,"pitch");if pt>=0 {s[0].creator[0].pitch=f32(pt)*0.0174533;}s[0].xc[0].open=false;continue;
+   s[0].w[0].put_on=true;s[0].w[0].put_x=f32(px)-1000;s[0].w[0].put_y=0;s[0].w[0].put_z=f32(pz)-1000;s[0].w[0].put_face=a;s[0].w[0].creator[0].yaw=a+3.1415927;if dist>0 {s[0].w[0].creator[0].dist=f32(dist);}pt:=url_number(q,"pitch");if pt>=0 {s[0].w[0].creator[0].pitch=f32(pt)*0.0174533;}s[0].w[0].xc[0].open=false;continue;
   }
   n:=url_number(q,"cell");if n<0 || n>=xdungeon.DG_COLS*xdungeon.DG_ROWS {continue;}
   yaw:=url_number(q,"yaw");a:=ifx yaw>=0 then f32(yaw)*0.0174533 else 0.0f32;
-  s[0].put_on=true;s[0].put_x=xdungeon.dg_x(n%xdungeon.DG_COLS)+f32(xdungeon.DG_CELL)*0.5;s[0].put_y=0;s[0].put_z=xdungeon.dg_z(n/xdungeon.DG_COLS)-f32(xdungeon.DG_CELL)*0.5;s[0].put_face=a;s[0].creator[0].yaw=a;
+  s[0].w[0].put_on=true;s[0].w[0].put_x=xdungeon.dg_x(n%xdungeon.DG_COLS)+f32(xdungeon.DG_CELL)*0.5;s[0].w[0].put_y=0;s[0].w[0].put_z=xdungeon.dg_z(n/xdungeon.DG_COLS)-f32(xdungeon.DG_CELL)*0.5;s[0].w[0].put_face=a;s[0].w[0].creator[0].yaw=a;
  }
 }
 #test "local biome views frame the three native terrain sections" {
- {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?biome=0\n");#assert s[0].put_on && s[0].put_x==35 && s[0].put_z==73 && s[0].creator[0].dist==75;}
- {t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?biome=1\n");p:=biomes.bio_site(0);#assert t[0].put_x==p.x && t[0].put_z==p.z+3 && t[0].creator[0].dist==24 && !t[0].xc[0].open;}
+ {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?biome=0\n");#assert s[0].w[0].put_on && s[0].w[0].put_x==35 && s[0].w[0].put_z==73 && s[0].w[0].creator[0].dist==75;}
+ {t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?biome=1\n");p:=biomes.bio_site(0);#assert t[0].w[0].put_x==p.x && t[0].w[0].put_z==p.z+3 && t[0].w[0].creator[0].dist==24 && !t[0].w[0].xc[0].open;}
 }
 #test "a local comparison view can frame all ten pairs or one station" {
  {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1/worlds/everglade-experimental?compare=0\n");
- #assert s[0].put_on && s[0].put_z==12 && s[0].creator[0].dist==28 && s[0].put_x==31 && !s[0].xc[0].open;}
+ #assert s[0].w[0].put_on && s[0].w[0].put_z==12 && s[0].w[0].creator[0].dist==28 && s[0].w[0].put_x==31 && !s[0].w[0].xc[0].open;}
  {t:[1]Lab;lab_dev_cell(t[..],"url=http://localhost/worlds/everglade-experimental?compare=10\n");p:=compare.cmp_site(9);
- #assert t[0].put_on && t[0].put_x==p.x && t[0].put_z==p.z+1 && t[0].creator[0].dist==5;
+ #assert t[0].w[0].put_on && t[0].w[0].put_x==p.x && t[0].w[0].put_z==p.z+1 && t[0].w[0].creator[0].dist==5;
  b:[16]f32;#assert lab_pack_titles(t[..],b[..],0,1600,1000,1)==0;}
 }
 #test "a local page can start you in a dungeon cell" {
  // one Lab at a time: each block's Lab is gone before the next is made (two at once is most of the check's value slots)
  {s:[1]Lab;lab_dev_cell(s[..],"url=http://127.0.0.1:1/worlds/everglade-experimental?cell=200&yaw=90\n");
- #assert s[0].put_on && s[0].put_x==xdungeon.dg_x(2)+2.5 && s[0].put_z==xdungeon.dg_z(18)-2.5 && abs(s[0].creator[0].yaw-1.5708)<0.001;}
- {t:[1]Lab;lab_dev_cell(t[..],"url=http://127.0.0.1:1/worlds/everglade-experimental\n");#assert !t[0].put_on;}
+ #assert s[0].w[0].put_on && s[0].w[0].put_x==xdungeon.dg_x(2)+2.5 && s[0].w[0].put_z==xdungeon.dg_z(18)-2.5 && abs(s[0].w[0].creator[0].yaw-1.5708)<0.001;}
+ {t:[1]Lab;lab_dev_cell(t[..],"url=http://127.0.0.1:1/worlds/everglade-experimental\n");#assert !t[0].w[0].put_on;}
 }
 url_sizes :: (s: [] Lab, facts: string) -> bool {
   i := 0;
@@ -3450,27 +3235,27 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
 }
 
 #test "experimental respawn restores the player while keeping defeated monsters dead" {
- s:[1]Lab;s[0].creator[0].experimental=true;s[0].creator[0].on=true;s[0].creator[0].width=960;s[0].creator[0].height=600;s[0].creator[0].scale=1;
- h:=s[0].creator[0].hostiles[..];h[0].ready=true;h[0].hp=0;h[0].enemies[0].dead=true;h[0].enemies[1].x=3;h[0].enemies[1].home_x=10;h[0].enemies[1].home_z=9;s[0].you_on=true;
- #assert lab_key(s[..], 'r', 0) && h[0].hp==s[0].xc[0].b[0].c[0].hp_max && h[0].enemies[0].dead && h[0].enemies[1].x==10;
+ s:[1]Lab;s[0].w[0].creator[0].experimental=true;s[0].w[0].creator[0].on=true;s[0].w[0].creator[0].width=960;s[0].w[0].creator[0].height=600;s[0].w[0].creator[0].scale=1;
+ h:=s[0].w[0].creator[0].hostiles[..];h[0].ready=true;h[0].hp=0;h[0].enemies[0].dead=true;h[0].enemies[1].x=3;h[0].enemies[1].home_x=10;h[0].enemies[1].home_z=9;s[0].w[0].you_on=true;
+ #assert lab_key(s[..], 'r', 0) && h[0].hp==s[0].w[0].xc[0].b[0].c[0].hp_max && h[0].enemies[0].dead && h[0].enemies[1].x==10;
  w:=lab_walk(s[..]);#assert w.on && w.put && w.x==0 && w.z==0 && !lab_walk(s[..]).put;
- #assert s[0].xc[0].b[0].c[1].dead;
- h[0].hp=0;s[0].xc[0].b[0].c[0].hp=0;s[0].xc[0].b[0].c[0].dead=true;
+ #assert s[0].w[0].xc[0].b[0].c[1].dead;
+ h[0].hp=0;s[0].w[0].xc[0].b[0].c[0].hp=0;s[0].w[0].xc[0].b[0].c[0].dead=true;
  #assert hostile.hc_offer(h[0].contacts[..],1);
- #assert lab_pointer(s[..],480,130,0,1,7) && lab_pointer(s[..],480,130,2,1,7) && h[0].hp==s[0].xc[0].b[0].c[0].hp_max;
- #assert h[0].contacts[0].count==0 && !s[0].xc[0].b[0].c[0].dead;
- h[0].hp=0;#assert !lab_respawn(s[..]); // a stale observer cannot reset a living hero
+ #assert lab_pointer(s[..],480,130,0,1,7) && lab_pointer(s[..],480,130,2,1,7) && h[0].hp==s[0].w[0].xc[0].b[0].c[0].hp_max;
+ #assert h[0].contacts[0].count==0 && !s[0].w[0].xc[0].b[0].c[0].dead;
+ h[0].hp=0;#assert !zone_respawn(s[0].w[..]); // a stale observer cannot reset a living hero
 }
 #test "experimental death stops the player controller" {
- s:[1]Lab;s[0].creator[0].experimental=true;s[0].creator[0].hostiles[0].ready=true;s[0].creator[0].hostiles[0].hp=0;
+ s:[1]Lab;s[0].w[0].creator[0].experimental=true;s[0].w[0].creator[0].hostiles[0].ready=true;s[0].w[0].creator[0].hostiles[0].hp=0;
  #assert !lab_walk(s[..]).on;
 }
 #test "experimental glade starts with a free Everglade walker and accepts held keys" {
   s:[1]Lab;
   lab_message(s[..],600,"url=http://localhost/worlds/everglade-experimental\n");
-  #assert s[0].creator[0].experimental && s[0].creator[0].on && s[0].creator[0].preview_collapsed;
-  u:[64]f32; out:[1]f32; _:=cc.frame(s[0].creator[..],out[..],u[..],1280,720,1,0,false); #assert u[11]==3;
-  s[0].creator[0].preview_collapsed=false;lab_message(s[..],600,"url=http://localhost/worlds/everglade-experimental\n");#assert !s[0].creator[0].preview_collapsed;
+  #assert s[0].w[0].creator[0].experimental && s[0].w[0].creator[0].on && s[0].w[0].creator[0].preview_collapsed;
+  u:[64]f32; out:[1]f32; _:=cc.frame(s[0].w[0].creator[..],out[..],u[..],1280,720,1,0,false); #assert u[11]==3;
+  s[0].w[0].creator[0].preview_collapsed=false;lab_message(s[..],600,"url=http://localhost/worlds/everglade-experimental\n");#assert !s[0].w[0].creator[0].preview_collapsed;
   w:=lab_walk(s[..]); #assert w.on && w.put;
   #assert lab_key(s[..],'w',0); input:=lab_move_in(s[..]); #assert input.key_y==1 && input.theta==0;
   edge:=lab_keep(s[..],150,150); #assert edge.x==82 && edge.z==82;
@@ -3479,48 +3264,29 @@ url_sizes :: (s: [] Lab, facts: string) -> bool {
   edge=lab_keep(s[..],-20,-150);#assert edge.x== -20 && edge.z== -150;edge=lab_keep(s[..],-20,-170);#assert edge.z>xdungeon.dg_south();
   #assert !lab_move_world(s[..],0,0).still;
   lab_you(s[..],2,0,3,1,false,false,false,0,0,0,0);
-  #assert s[0].creator[0].player_x==2 && s[0].creator[0].player_z==3;
-  #assert cc.probe(s[0].creator[..],26)==2000 && cc.probe(s[0].creator[..],27)==3000;
+  #assert s[0].w[0].creator[0].player_x==2 && s[0].w[0].creator[0].player_z==3;
+  #assert cc.probe(s[0].w[0].creator[..],26)==2000 && cc.probe(s[0].w[0].creator[..],27)==3000;
   released:=lab_key_up(s[..],'w',0); #assert lab_move_in(s[..]).key_y==0;
 }
 
 // ---- input
 
 leave_to :: (s: [] Lab, url: string) {
-  if s[0].action != 0 { return; }
-  s[0].out_n = put(s[0].outbox[..], 0, url);
-  s[0].action = ACT_NAVIGATE;
+  if s[0].w[0].action != 0 { return; }
+  s[0].w[0].out_n = put(s[0].w[0].outbox[..], 0, url);
+  s[0].w[0].action = ACT_NAVIGATE;
 }
 // SRD rounds or action combat: a new battle on the other clock.
 switch_mode :: (s: [] Lab) {
   s[0].mode = 1 - s[0].mode;
   new_battle(s);
 }
-// Respawn at the experimental spawn; defeated foes stay defeated.
-lab_respawn :: (s:[]Lab)->bool {
- c:=s[0].creator[..];h:=c[0].hostiles[..];if !c[0].experimental || !h[0].ready {return false;}
- if s[0].xc[0].started {if s[0].xc[0].b[0].c[0].hp>0 {return false;}} else if h[0].hp>0 {return false;}
- xc_start(s[0].xc[..],s[0].xc[0].klass);
- xc_set_class(s[0].xc[..],s[0].xc[0].klass);
- h[0].contacts[0]=hostile.HcContacts.{};hostile.hostile_calm(h);   // nothing engages you for a moment, and no shot is in the air
- xc_sync_vitals(s);xc_sync_permissions(s);
- h[0].died_at=0;h[0].pop_next=0;for i:0..<8 {h[0].pops[i].amount=0;}
- for i:0..<hostile.HS_N {e:=h[0].enemies[i..<i+1];if !e[0].dead {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].swing= -1;e[0].moving=false;e[0].cool=1;e[0].returning=false;if e[0].sleeper {e[0].awake=false;}}}
- c[0].player_x=0;c[0].player_y=0;c[0].player_z=0;c[0].airborne=false;c[0].land_at= -100;c[0].camera_room= -1;
- s[0].you_on=false;s[0].safe_on=false;s[0].put_on=false;s[0].held=0;s[0].shift=false;s[0].xc[0].target= -1;sprint.sprint_stop(s[0].xc[0].dash[..]);return true;
-}
-lab_respawn_pointer :: (s:[]Lab,x:f32,y:f32,phase:int,id:int)->bool {
- c := s[0].creator[..];if !c[0].experimental || !c[0].hostiles[0].ready || c[0].hostiles[0].hp>0 {s[0].respawn_id= -1;return false;}
- k:=c[0].scale;inside:=x>=c[0].width*0.5-130*k && x<=c[0].width*0.5+130*k && y>=105*k && y<=155*k;
- if phase==0 && inside {s[0].respawn_id=id;return true;}
- if s[0].respawn_id!=id {return false;}if phase==2 {s[0].respawn_id= -1;if inside {_:=lab_respawn(s);}return true;}if phase==3 {s[0].respawn_id= -1;return true;}return true;
-}
 lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
-  if s[0].creator[0].experimental {if (key=='r' || key=='R') && lab_respawn(s) {return true;}if mlook.ml_key(s[0].creator[0].ml[..],key) {return true;}if (key=='e' || key=='E') && lab_mount_key(s) {return true;}if (key=='x' || key=='X') && lab_land_key(s) {return true;}if (key=='f' || key=='F') && lab_breath_key(s) {return true;}if xc_key(s,key) {return true;}if key==' ' {s[0].held|=HOLD_JUMP;return true;}if key==KEY_SHIFT {s[0].shift=true;return true;}h:=hold_bit(key);if h!=0 {s[0].held|=h;return true;}return false;}
-  if s[0].creator[0].on {return cc.key(s[0].creator[..],key);}
+  if s[0].w[0].creator[0].experimental { return zone_key(s[0].w[..], key); }
+  if s[0].w[0].creator[0].on {return cc.key(s[0].w[0].creator[..],key);}
   lab_start(s);
   // Escape pauses and resumes, as a game's does (WORLDS, top right, goes back to the worlds)
-  if key == KEY_ESCAPE { s[0].paused = !s[0].paused; s[0].held = 0; return true; }
+  if key == KEY_ESCAPE { s[0].paused = !s[0].paused; s[0].w[0].held = 0; return true; }
   if key == 'p' || key == 'P' { set_player(s, !s[0].player); return true; }
   if key == 'v' || key == 'V' { s[0].view = 1 - s[0].view; return true; }
   if s[0].player {
@@ -3529,10 +3295,10 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
     if key >= '1' && key <= '9' { s[0].act = key - '1'; return true; }
     if key == '[' || key == ']' { np := pick_count(s); s[0].pick = (s[0].pick + ifx key == ']' then 1 else np - 1) % np; pick_hero(s); return true; }
     if key == KEY_TAB { target_next(s); return true; }
-    if key == ' ' { s[0].held |= HOLD_JUMP; return true; }
-    if key == KEY_SHIFT { s[0].shift = true; return true; }
+    if key == ' ' { s[0].w[0].held |= HOLD_JUMP; return true; }
+    if key == KEY_SHIFT { s[0].w[0].shift = true; return true; }
     h := hold_bit(key);
-    if h != 0 { s[0].held |= h; return true; }
+    if h != 0 { s[0].w[0].held |= h; return true; }
     return false;
   }
   if key == 'f' || key == 'F' { s[0].fast = !s[0].fast; return true; }
@@ -3544,20 +3310,13 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
   if key == 'h' || key == 'H' { next_scenario(s); return true; }
   if s[0].view == VIEW_GLADE {
     h := hold_bit(key);
-    if h != 0 { s[0].held |= h; return true; }
+    if h != 0 { s[0].w[0].held |= h; return true; }
     if key == 'c' || key == 'C' { lab_view_home(s); return true; }
-    if key == KEY_SHIFT { s[0].shift = true; return false; }
+    if key == KEY_SHIFT { s[0].w[0].shift = true; return false; }
   }
   return false;
 }
-lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) {
-  if key == KEY_SHIFT { s[0].shift = false; }
-  if s[0].xc[0].dr.breath_slot >= 0 && key == s[0].xc[0].dr.breath_key && xd_release(s) { return true; }
-  if mlook.ml_key_up(s[0].creator[0].ml[..], key) { return true; }
-  h := ifx key == ' ' then HOLD_JUMP else hold_bit(key);
-  s[0].held = s[0].held & (HOLD_ALL - h);   // h is one HOLD_ bit or none
-  return h != 0;
-}
+lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c #effects(all) { return zone_key_up(s[0].w[..], key, mods); }
 // Tab: your target is the next of the foes standing, nearest first, round again past the last.
 target_next :: (s: [] Lab) {
   b := bt(s);
@@ -3574,34 +3333,14 @@ target_next :: (s: [] Lab) {
   }
   s[0].target = ifx best >= 0 then best else first;
 }
-lab_blur :: (s: [] Lab) #export_c #effects(all) { s[0].creator[0].dragging=false;s[0].creator[0].down=-1; s[0].stick_on = false; s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].shift = false; s[0].fingers = 0; s[0].held = 0; s[0].xc[0].arranging=false; s[0].xc[0].down= -100; mlook.ml_blur(s[0].creator[0].ml[..]); }
-// The keys that fly the camera while they are held.
-hold_bit :: (key: int) -> int {
-  if key == 'w' || key == 'W' { return HOLD_W; }
-  if key == 'a' || key == 'A' { return HOLD_A; }
-  if key == 's' || key == 'S' { return HOLD_S; }
-  if key == 'd' || key == 'D' { return HOLD_D; }
-  if key == KEY_LEFT { return HOLD_LEFT; }
-  if key == KEY_RIGHT { return HOLD_RIGHT; }
-  if key == KEY_UP { return HOLD_UP; }
-  if key == KEY_DOWN { return HOLD_DOWN; }
-  if key == '=' || key == '+' { return HOLD_IN; }
-  if key == '-' || key == '_' { return HOLD_OUT; }
-  return 0;
-}
-axis :: (held: int, plus: int, minus: int) -> f32 {
-  a: f32 = 0;
-  if held & plus != 0 { a += 1; }
-  if held & minus != 0 { a -= 1; }
-  return a;
-}
+lab_blur :: (s: [] Lab) #export_c #effects(all) { zone_blur(s[0].w[..]); s[0].sliding = -1; s[0].pressing = 0; s[0].dragging = false; s[0].fingers = 0; }
 // Each frame the held keys fly the camera: its speeds ease toward what the keys ask and coast to
 // a stop when they let go, so it glides rather than steps. Paused or not, on the frame's real time.
 fly :: (s: [] Lab, dt: f32) {
   t := lo(dt, 0.1);
   if !(t > 0) { return; }
   ease := lo(1, t * 9);
-  h := s[0].held;
+  h := s[0].w[0].held;
   if s[0].view != VIEW_GLADE { h = 0; }
   // in Player mode the keys walk your hero and turn the follow camera (lab_chase_step): the
   // spectator's camera waits where it was, for when you leave
@@ -3645,7 +3384,7 @@ lab_view_pan :: (s: [] Lab, dx: f32, dy: f32) {
 }
 // The wheel (CSS px, down is out) zooms.
 lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
-  if s[0].creator[0].on {cc.wheel(s[0].creator[..],dy);return true;}
+  if s[0].w[0].creator[0].on { return zone_wheel(s[0].w[..], dy); }
   lab_start(s);
   if s[0].view != VIEW_GLADE { return false; }
   if s[0].player { s[0].orbit = figs.cam_wheel(s[0].orbit, dy); return true; }
@@ -3653,8 +3392,8 @@ lab_wheel :: (s: [] Lab, dy: f32) -> bool #export_c #effects(all) {
   return true;
 }
 lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
-  if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
-  if s[0].creator[0].on {if s[0].creator[0].experimental && lab_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && lab_ride_pointer(s,x,y,phase) {return true;}if s[0].creator[0].experimental && xc_pointer(s,x,y,phase,id) {return true;}return cc.pointer(s[0].creator[..],x,y,phase,id);}
+  if phase == 0 { s[0].w[0].creator[0].ml[0].touch = kind != 0; }
+  if s[0].w[0].creator[0].on { return zone_pointer(s[0].w[..], x, y, phase, kind, id); }
   lab_start(s);
   if phase == 0 {
     if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
@@ -3677,7 +3416,7 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
         s[0].fingers = 2; s[0].fing_id[1] = id; s[0].fing_x[1] = x; s[0].fing_y[1] = y; return true;
       }
       if kind == 1 { s[0].fingers = 1; s[0].fing_id[0] = id; s[0].fing_x[0] = x; s[0].fing_y[0] = y; }
-      s[0].dragging = true; s[0].panning = s[0].shift; s[0].drag_x = x; s[0].drag_y = y; return true;
+      s[0].dragging = true; s[0].panning = s[0].w[0].shift; s[0].drag_x = x; s[0].drag_y = y; return true;
     }
     return false;
   }
@@ -3744,61 +3483,14 @@ lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bo
   }
   return false;
 }
-// No OS cursor while Experimental's crosshair is up (a drawn bow, mouselook's reticle): the crosshair is the pointer.
-lab_cursor :: (s: [] Lab) -> int #export_c #effects(all) {
-  c := s[0].creator[..];
-  if c[0].on && c[0].experimental && !c[0].walk.on && (s[0].xc[0].ar[0].draw[0].on || c[0].aim > 0.01 || c[0].ml[0].shown > 0.01) { return 4; }
-  return 0;
-}
-// Experimental's mouselook, the host's face (aethyr/cam/mouselook.coax): in the world while you stand
-// (dead, the cursor is free for the respawn), never in Character Create's studio or the walk out of it.
-// The mouse turns the camera as a drag does, its tilt held to the drag's.
-lab_mouselook :: (s: [] Lab) -> int #export_c #effects(all) { return mlook.ml_host(s[0].creator[0].ml[0]); }
-lab_look_delta :: (s: [] Lab, dx: f32, dy: f32) #export_c #effects(all) {
-  c := s[0].creator[..]; t := mlook.ml_turn(c[0].ml[0], dx, dy);
-  c[0].yaw = figs.wrap_angle(c[0].yaw - t[0]); c[0].pitch = cc.cc_clamp(c[0].pitch + t[1], -1.2, 1.2);
-}
-lab_pointer_lock :: (s: [] Lab, status: int) #export_c #effects(all) { mlook.ml_lock(s[0].creator[0].ml[..], status); if status == 1 { s[0].creator[0].dragging = false; } }
-#test "Experimental's mouse looks round in the world, not in the studio, and a dead hero gets the cursor" {
-  s: [1] Lab; s[0].creator[0].on = true; s[0].creator[0].experimental = true; s[0].creator[0].hostiles[0].ready = true; s[0].creator[0].hostiles[0].hp = 10;
-  lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == mlook.ML_LOOK;
-  lab_pointer_lock(s[..], 1); yaw := s[0].creator[0].yaw; pitch := s[0].creator[0].pitch;
-  lab_look_delta(s[..], 100, 40); #assert s[0].creator[0].yaw < yaw && s[0].creator[0].pitch > pitch;
-  #assert lab_key(s[..], KEY_TAB, 0) && lab_mouselook(s[..]) == mlook.ML_FREE;
-  #assert lab_key(s[..], KEY_TAB, 0) && lab_mouselook(s[..]) == mlook.ML_LOOK;
-  for i: 0..<5 { lab_mouselook_step(s[..], 0.1); }
-  #assert abs(figs.wrap_angle(lab_aim_face(s[..], 0) - (s[0].creator[0].yaw + 3.14159265))) < 0.001;   // you face the camera's way
-  s[0].creator[0].hostiles[0].hp = 0; lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == 0;
-  s[0].creator[0].experimental = false; lab_mouselook_step(s[..], 0.1); #assert lab_mouselook(s[..]) == 0;
-}
-lab_mouselook_step :: (s: [] Lab, dt: f32) {
-  c := s[0].creator[..];
-  c[0].ml[0].able = c[0].on && c[0].experimental && !c[0].walk.on && !(c[0].hostiles[0].ready && c[0].hostiles[0].hp <= 0);
-  mlook.ml_step(c[0].ml[..], dt);
-}
-HOST_PAGE :: 600;   // coax/web/host.js's page facts: key=value lines, the url among them
 lab_message :: (s: [] Lab, kind: int, t: string) #export_c #effects(all) {
-  if kind == 700 { fd_message(s, t); return; }   // a driver's command (coax/web/host.js coaxial.drive)
-  if kind==12 { _ := xc_order_load(s[0].xc[..], t); return; }
-  if kind==16 {cc.load_player(s[0].creator[..],t);return;}
-  if kind==17 {cc.player_reply(s[0].creator[..],t);return;}
-  if kind==ACT_PREFETCH {cc.walk_reply(s[0].creator[..],t);return;}
-  if kind==HOST_PAGE && (cc.experimental_page(t) || xd_page(t) || xr_page(t)) {if xd_page(t) {xd_enter(s);}if xr_page(t) {xr_enter(s);}if !s[0].creator[0].experimental {s[0].creator[0].preview_collapsed=true;}s[0].creator[0].on=true;s[0].creator[0].experimental=true;s[0].creator[0].dev_animations=cc.dev_local(t);s[0].creator[0].build_review=cc.build_review_page(t);s[0].creator[0].yaw=0;s[0].creator[0].pitch=0.35;s[0].creator[0].dist=4;s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);lab_stage(s,t);if s[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
-  if kind==HOST_PAGE && cc.page(t) {s[0].creator[0].on=true;s[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].creator[..]);return;}
-  // The host delivers a kept appearance before page facts identify the route.
-  if kind==4 { restored:=cc.restore(s[0].creator[..],t);if restored {return;} }
+  if zone_message(s[0].w[..], kind, t) { return; }   // the driver, the bar's order, your character and its kept appearance
+  if kind==HOST_PAGE && (cc.experimental_page(t) || xd_page(t)) {if xd_page(t) {xd_enter(s[0].w[..]);}zone_enter(s[0].w[..],t);s[0].started=true;s[0].view=VIEW_GLADE;lab_stage(s,t);if s[0].w[0].creator[0].dev_animations {lab_dev_cell(s,t);}return;}
+  if kind==HOST_PAGE && cc.page(t) {s[0].w[0].creator[0].on=true;s[0].w[0].creator[0].scene_only=cc.scene_capture(t);s[0].started=true;s[0].view=VIEW_GLADE;cc.ensure(s[0].w[0].creator[..]);return;}
   lab_start(s);
   if kind == HOST_PAGE { changed := url_sizes(s, t); }
 }
 lab_golden :: (s: [] Lab, on: bool) #export_c #effects(all) { lab_start(s); s[0].golden = on; }
-lab_action :: (s: [] Lab) -> int #export_c #effects(all) {
- if s[0].creator[0].on && s[0].creator[0].profile_request {for i:0..<56 {s[0].outbox[i]=s[0].creator[0].profile_bytes[i];}s[0].out_n=56;s[0].creator[0].profile_request=false;return 16;}
- if s[0].creator[0].experimental && s[0].xc[0].order_dirty {s[0].out_n=xc_order_save(s[0].xc[..],s[0].outbox[..]);s[0].xc[0].order_dirty=false;if s[0].out_n>0 {return 12;}}
- // USE IN EVERGLADE: open Everglade out of sight while the character walks there, then hand over in place (charactercreator-walk.coax).
- if s[0].creator[0].on && cc.walk_ask(s[0].creator[..]) {s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_PREFETCH;}
- if s[0].creator[0].on && cc.walk_leave(s[0].creator[..]) {s[0].out_n=put(s[0].outbox[..],0,"/worlds/everglade");return ACT_NAVIGATE;}
- if s[0].creator[0].on && s[0].creator[0].revision!=s[0].creator[0].saved {s[0].out_n=cc.save(s[0].creator[0],s[0].outbox[..]);s[0].creator[0].saved=s[0].creator[0].revision;return 4;} a := s[0].action; s[0].action = 0; return a; }
-lab_action_done :: (s: [] Lab) #export_c #effects(all) { s[0].out_n = 0; }
 
 coaxial_lab_max_vertices :: () -> int #export_c #effects(all) { return MAX_VERTICES; }
 coaxial_lab_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
@@ -3957,7 +3649,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   n := frame_at(s[..], 1600, 1000, 1, 0.016);
   b := s[0].back;
   ok := lab_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 0, 1); ok = lab_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 0, 1);
-  #assert lab_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds";
+  #assert zone_action(s[0].w[..]) == ACT_NAVIGATE && cast(string) s[0].w[0].outbox[0..<s[0].w[0].out_n] == "/worlds";
 }
 
 #test "the Horde: every hero on one side mid-glade, the dead on the edges, and they run in" #steps 2000000000 {
@@ -4017,7 +3709,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   #assert kept.x < w.x + 3 * f32(SQ) + (f32(you_reach(s[..])) + 0.6) * f32(SQ);
   // the follow camera swings in behind you; the play keys show under the hotbar
   for i: 0..<12 { n = frame_into(s[..], out[..], 1600, 1000, 1, 0.1); }
-  #assert s[0].blend == 1 && s[0].eye.y < 4 && abs(s[0].eye.x - s[0].you_x) < 8;
+  #assert s[0].blend == 1 && s[0].eye.y < 4 && abs(s[0].eye.x - s[0].w[0].you_x) < 8;
   // a key that would start the battle again does nothing while you play
   r := s[0].round; #assert !lab_key(s[..], 'r', 0) && s[0].round == r;
   #assert n > 300 && s[0].slots[0].x1 > s[0].slots[0].x0;
@@ -4042,24 +3734,24 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   spells := [10] int.[SP_FIREBALL, SP_THUNDERWAVE, SP_FIRE_BOLT, SP_ELDRITCH_BLAST, -1, -1, -1, SP_SACRED_FLAME, SP_CALL_LIGHTNING, -1];
   want := [10] int.[FXR_FIREBALL, FXR_SHOCK, FXR_FIREBOLT, FXR_ELDRITCH, FXR_HIT, FXR_HEAL, FXR_BONES, FXR_COLUMN, FXR_LIGHTNING, FXR_HIT];
   for q: 0..<10 {
-    fxp_clear(s[0].puffs[..]);
+    fxp_clear(s[0].w[0].puffs[..]);
     e.kind = kinds[q]; e.spell = spells[q]; e.amount = 3; e.x = 10; e.y = 8; e.to = ifx q == 6 then sk else 1;
     b[0].c[e.to].x = 2 + q; b[0].c[e.to].y = 4;   // apart from the caster, but within reach of a blow
     b[0].c[0].x = 1 + q; b[0].c[0].y = 4;
     e.damage = ifx q == 9 then 1 else 0;
     lab_effect(s[..], e, 1.5 + f32(q), e.at);
-    #assert fxp_live(s[0].puffs[..]) == 1;
+    #assert fxp_live(s[0].w[0].puffs[..]) == 1;
     found := -1; big: f32 = 0;
-    for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { found = s[0].puffs[0].live[k].recipe; big = s[0].puffs[0].live[k].big; } }
+    for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { found = s[0].w[0].puffs[0].live[k].recipe; big = s[0].w[0].puffs[0].live[k].big; } }
     #assert found == want[q];
     if q == 9 { #assert big > 1.5; }   // a critical hit is bigger
   }
   // a blow from afar is an arrow
   b[0].c[0].x = 1; b[0].c[1].x = 20;
-  fxp_clear(s[0].puffs[..]);
+  fxp_clear(s[0].w[0].puffs[..]);
   e.kind = RS_EV_ATTACK; e.spell = -1; e.to = 1; e.damage = 0;
   lab_effect(s[..], e, 3.5, e.at);
-  for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { #assert s[0].puffs[0].live[k].recipe == FXR_ARROW; } }
+  for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { #assert s[0].w[0].puffs[0].live[k].recipe == FXR_ARROW; } }
 }
 
 #test "the glade's effects: each class feature and spell starts its own recipe" #steps 2000000000 {
@@ -4079,27 +3771,27 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
                     FXR_STUN, FXR_WIND, FXR_WIND, FXR_WHOLENESS, FXR_LAY,
                     FXR_SACRED, FXR_WAVE, FXR_NOTES, FXR_ARCANE, FXR_FIEND];
   for q: 0..<16 {
-    fxp_clear(s[0].puffs[..]);
+    fxp_clear(s[0].w[0].puffs[..]);
     e.kind = kinds[q]; e.feat = feats[q]; e.spell = -1; e.to = ifx q == 2 || q == 6 || q == 10 || q == 13 then 1 else 0;
     lab_effect(s[..], e, 2.5 + f32(q), e.at);
     found := -1;
-    for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { found = s[0].puffs[0].live[k].recipe; } }
-    #assert found == want[q] && fxp_live(s[0].puffs[..]) == 1;
+    for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { found = s[0].w[0].puffs[0].live[k].recipe; } }
+    #assert found == want[q] && fxp_live(s[0].w[0].puffs[..]) == 1;
   }
   // a feature's own healing draws nothing more: its cast showed it
-  fxp_clear(s[0].puffs[..]);
+  fxp_clear(s[0].w[0].puffs[..]);
   e.kind = RS_EV_HEAL; e.feat = RS_FT_SECOND_WIND; e.to = 0;
   lab_effect(s[..], e, 1.5, e.at);
-  #assert fxp_live(s[0].puffs[..]) == 0;
+  #assert fxp_live(s[0].w[0].puffs[..]) == 0;
   // the spells that had no look of their own
   e.feat = RS_FT_NONE; e.kind = RS_EV_CAST; e.to = 1;
   spells := [5] int.[SP_HOLD_PERSON, SP_BLINDNESS, SP_VICIOUS_MOCKERY, SP_SHIELD, SP_DIVINE_SMITE];
   looks := [5] int.[FXR_BIND, FXR_VEIL, FXR_MOCKERY, FXR_BARRIER, FXR_SMITE];
   for q: 0..<5 {
-    fxp_clear(s[0].puffs[..]);
+    fxp_clear(s[0].w[0].puffs[..]);
     e.spell = spells[q]; e.amount = 3;
     lab_effect(s[..], e, 4.5 + f32(q), e.at);
-    for k: 0..<FX_LIVE { if s[0].puffs[0].on[k] { #assert s[0].puffs[0].live[k].recipe == looks[q]; if q == 4 { #assert s[0].puffs[0].live[k].big > 1.5; } } }
+    for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { #assert s[0].w[0].puffs[0].live[k].recipe == looks[q]; if q == 4 { #assert s[0].w[0].puffs[0].live[k].big > 1.5; } } }
   }
   // a creature poisoned and concentrating carries its lasting looks
   b[0].c[1].cond = RS_POISONED; b[0].c[0].conc = SP_HOLD_PERSON;
@@ -4117,14 +3809,14 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
     step(s[..], f32(STEP));
     if i % 20 == 0 {
       glade_puffs(s[..]); n := draw_nums3(s[..], out[..], 0, 1);
-      #assert s[0].puffs[0].out_n <= FX_PUFF_CAP && fxp_live(s[0].puffs[..]) <= FX_LIVE;
-      if s[0].puffs[0].out_n > most { most = s[0].puffs[0].out_n; }
+      #assert s[0].w[0].puffs[0].out_n <= FX_PUFF_CAP && fxp_live(s[0].w[0].puffs[..]) <= FX_LIVE;
+      if s[0].w[0].puffs[0].out_n > most { most = s[0].w[0].puffs[0].out_n; }
     }
   }
-  #assert most > 0 && s[0].puffs[0].started > 0;
+  #assert most > 0 && s[0].w[0].puffs[0].started > 0;
   // the flat view writes none
   n := draw_casts(s[..], out[..], 0, 1);
-  #assert s[0].puffs[0].out_n == 0;
+  #assert s[0].w[0].puffs[0].out_n == 0;
 }
 
 #test "the army sizes: the grid grows with them, every figure on its own square, the Horde's heroes in a block" #steps 2000000000 {
@@ -4363,46 +4055,34 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   #assert hit == 8 && gold == 1 && nums == 4;   // the 3 biggest, and your target's
 }
 
-// 840 mouselook's word to the host, 841 the pointer held, 842 the reticle (percent), 843 the camera's turn, 844 its tilt (milliradians), 845 the bar slot under the pointer
-lab_creator_probe :: (s:[]Lab,f:int)->int #export_c #effects(all) {if f>=900 {return xc_probe(s,f);}
-  c := s[0].creator[..];if f==840 {return mlook.ml_host(c[0].ml[0]);}if f==841 {return ifx c[0].ml[0].locked then 1 else 0;}if f==842 {return cast(int)(c[0].ml[0].shown*100);}if f==843 {return cast(int)(c[0].yaw*1000);}if f==844 {return cast(int)(c[0].pitch*1000);}if f==845 {return s[0].xc[0].hover;}return cc.probe(s[0].creator[..],f);}
 
 #test "creator restores a kept appearance before the host identifies its page" #steps 20000000 {
   s:[1]Lab;appearance:[1]cc.Creator;cc.ensure(appearance[..]);cc.change(appearance[..],1,1);
   buf:[64]u8;n:=cc.save(appearance[0],buf[..]);
   lab_message(s[..],4,cast(string)buf[0..<n]);
-  #assert s[0].creator[0].configured && s[0].creator[0].outfit==3 && !s[0].started;
+  #assert s[0].w[0].creator[0].configured && s[0].w[0].creator[0].outfit==3 && !s[0].started;
   lab_message(s[..],600,"url=http://127.0.0.1:8817/worlds/character-creator\n");
-  #assert s[0].creator[0].on && s[0].started && s[0].creator[0].outfit==3;
+  #assert s[0].w[0].creator[0].on && s[0].started && s[0].w[0].creator[0].outfit==3;
 }
 
 // Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
 lab_pointer_buttons :: (s:[]Lab,x:f32,y:f32,phase:int,kind:int,id:int,button:int)->bool #export_c #effects(all) {
-  if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
-  // the bow (docs/verse/bow-combat.md): the right button held draws and its release looses; the left
-  // button while drawing lets it down. The drag still turns the camera, which is the aim.
-  if s[0].creator[0].on && kind==0 && s[0].creator[0].experimental {
-    act:=eg_bow_button(button,phase,s[0].xc[0].ar[0]);   // Everglade's Longbow on the mouse (everglade/longbow.coax)
-    if act==EG_BOW_DRAW {_:=xc_bow_begin(s,false);}
-    else if act==EG_BOW_LOOSE {_:=xc_bow_loose(s);}
-    else if act==EG_BOW_LET_DOWN && xc_bow_cancel(s) {return true;}
-  }
-  if s[0].creator[0].on && kind==0 {if s[0].creator[0].experimental && button!=1 && button!=2 && lab_respawn_pointer(s,x,y,phase,id) {return true;}if s[0].creator[0].experimental && button!=1 && button!=2 && xc_pointer(s,x,y,phase,id) {return true;}return cc.mouse_pointer(s[0].creator[..],x,y,phase,id,button);}
+  if s[0].w[0].creator[0].on && kind==0 { return zone_pointer_buttons(s[0].w[..],x,y,phase,kind,id,button); }
   return lab_pointer(s,x,y,phase,kind,id);
 }
 
 #test "character glade shadow draws include only casters for the tile being redrawn" {
-  s: [1] Lab; s[0].creator[0].on = true; s[0].creator[0].shadow[0].on = true;
-  s[0].bodies[0].draw_n = 4;
+  s: [1] Lab; s[0].w[0].creator[0].on = true; s[0].w[0].creator[0].shadow[0].on = true;
+  s[0].w[0].bodies[0].draw_n = 4;
   // Player, village, instanced grass, and monster: their normal draw list stays intact.
-  for i: 0..<4 { s[0].bodies[0].draws[i*4] = cast(u32) (100+i); s[0].bodies[0].draws[i*4+1] = 6; s[0].bodies[0].draws[i*4+2] = cast(u32) i; s[0].bodies[0].draws[i*4+3] = 1; }
-  s[0].records[1*24+15] = 16; s[0].records[2*24+15] = 17; s[0].records[3*24+15] = 18;
-  s[0].bodies[0].draws[2*4+2] = 196608;
-  lab_shadow_select(s[..]);
-  #assert s[0].shadow_n == 1 && s[0].shadow_draws[0] == 100 && s[0].bodies[0].draw_n == 4;
-  s[0].creator[0].shadow[0].now = true; lab_shadow_select(s[..]);
-  #assert s[0].shadow_n == 3 && s[0].shadow_draws[4] == 101 && s[0].shadow_draws[8] == 103;
-  s[0].creator[0].on = false; lab_shadow_select(s[..]); #assert s[0].shadow_n == 4;
+  for i: 0..<4 { s[0].w[0].bodies[0].draws[i*4] = cast(u32) (100+i); s[0].w[0].bodies[0].draws[i*4+1] = 6; s[0].w[0].bodies[0].draws[i*4+2] = cast(u32) i; s[0].w[0].bodies[0].draws[i*4+3] = 1; }
+  s[0].w[0].records[1*24+15] = 16; s[0].w[0].records[2*24+15] = 17; s[0].w[0].records[3*24+15] = 18;
+  s[0].w[0].bodies[0].draws[2*4+2] = 196608;
+  zone_shadow_select(s[0].w[..]);
+  #assert s[0].w[0].shadow_n == 1 && s[0].w[0].shadow_draws[0] == 100 && s[0].w[0].bodies[0].draw_n == 4;
+  s[0].w[0].creator[0].shadow[0].now = true; zone_shadow_select(s[0].w[..]);
+  #assert s[0].w[0].shadow_n == 3 && s[0].w[0].shadow_draws[4] == 101 && s[0].w[0].shadow_draws[8] == 103;
+  s[0].w[0].creator[0].on = false; zone_shadow_select(s[0].w[..]); #assert s[0].w[0].shadow_n == 4;
 }
 
 // The reaction's #transaction snapshots the whole battle, so this check's cost grows with RsCreature;

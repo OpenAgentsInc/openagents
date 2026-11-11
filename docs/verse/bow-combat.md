@@ -195,7 +195,8 @@ The bow is three layers. A realm writes none of the first two.
 | Engine | `aethyr/action/target.coax` | Static targets |
 | Game | `everglade/longbow.coax` | Everglade's Longbow: where the arrow leaves, how far the reticle looks, a creature's body, the mouse buttons, the sounds and the dust |
 | Game | `everglade/held-kit.coax` | The bow in the hand, its string, the nocked arrow, the draw pose |
-| Realm | its own file | Where its ground and walls are, which creatures stand, and what its rules make of an arrow that reaches one |
+| Game | `everglade/zone-bow.coax` | The bow in an Everglade zone (`everglade/zone.coax`): where the zone's ground and walls are, which monsters stand, and the SRD Longbow attack an arrow that reaches one makes. Experimental and the Archery Range share it |
+| Realm | its own file | A realm that isn't a zone (Everglade II) says the same three things itself |
 
 Coax has no callbacks, so the engine's two loops hand the realm a point and take
 its answer.
@@ -235,11 +236,12 @@ with `arrow_timed_velocity(from, to, seconds)` into the same pool.
 
 Three realms use these modules:
 
-- **Everglade Experimental** (`apps/openagents-web/experimental-combat.coax`,
-  `xc_bow_*`): its ground, village and dungeon walls, its monsters, and the SRD
-  Longbow attack.
-- **The Archery Range** (`apps/openagents-web/range-scene.coax`): it adds no bow
-  code, only its targets, its colliders and its tally.
+- **Everglade Experimental** and **the Archery Range** shoot through one game
+  file, `everglade/zone-bow.coax` (`xc_bow_*`): a zone's ground and walls, its
+  monsters as bodies, and the SRD Longbow attack. Each realm's module holds an
+  Everglade zone (`everglade/zone.coax`), which loads it.
+- **The Archery Range** (`apps/openagents-web/archery-range.coax`, a module of
+  its own): it adds no bow code, only its targets, its colliders and its tally.
 - **Everglade II** (`apps/openagents-web/everglade2-mouse.coax`): its own mouse
   buttons, and the room resolves the arrow. The draw's frame, what the body
   shows and the sounds are the shared ones.
@@ -249,6 +251,7 @@ Check them:
 ```sh
 coax/bin/coax test aethyr/action/archery.coax --library
 coax/bin/coax test everglade/longbow.coax --library
-coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "experimental combat"
+COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/fivelab.coax --only "experimental combat"
+COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax --only "archery range"
 coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/everglade2.coax --only "e2 mouse"
 ```

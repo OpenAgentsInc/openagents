@@ -5,11 +5,11 @@ XcObject :: struct { rules:[1]RsObject; burn_at:int; }
 xc_objects_start :: (x:[]XcCombat) {
   for i:0..<XC_OBJECTS { x[0].objects[i].rules[0]=rs_object("Supply crate",0,0,RS_OBJ_WOOD,RS_MEDIUM,true); }
 }
-xc_objects_ready :: (s:[]Lab)->bool {
+xc_objects_ready :: (s:[] EgZone)->bool {
   return s[0].xc[0].started && !s[0].creator[0].field && s[0].creator[0].glade_first==XC_OBJECT_ENV_FIRST &&   // the open field has no crates
     s[0].creator[0].glade_count==XC_OBJECT_ENV_COUNT && s[0].creator[0].glade_word==XC_OBJECT_WORD;
 }
-xc_object_blocked :: (s:[]Lab,x:f32,z:f32,pad:f32)->bool {
+xc_object_blocked :: (s:[] EgZone,x:f32,z:f32,pad:f32)->bool {
   if !xc_objects_ready(s) { return false; }
   for i:0..<XC_OBJECTS {
     if s[0].xc[0].objects[i].rules[0].destroyed { continue; }
@@ -18,7 +18,7 @@ xc_object_blocked :: (s:[]Lab,x:f32,z:f32,pad:f32)->bool {
   }
   return false;
 }
-xc_objects_walls :: (s:[]Lab,x:f32,z:f32) {
+xc_objects_walls :: (s:[] EgZone,x:f32,z:f32) {
   if !xc_objects_ready(s) { return; }
   for i:0..<XC_OBJECTS {
     if s[0].xc[0].objects[i].rules[0].destroyed { continue; }
@@ -27,7 +27,7 @@ xc_objects_walls :: (s:[]Lab,x:f32,z:f32) {
       xmeadow.exp_height(p[0],p[1])-xmeadow.exp_height(x,z),XC_OBJECT_BOUNDS);
   }
 }
-xc_object_pick :: (s:[]Lab,fx:f32,fz:f32,reach:f32)->int {
+xc_object_pick :: (s:[] EgZone,fx:f32,fz:f32,reach:f32)->int {
   if !xc_objects_ready(s) { return -1; }
   cr:=s[0].creator[..]; best := -1; along:=reach+1;
   for i:0..<XC_OBJECTS {
@@ -50,7 +50,7 @@ xc_object_apply :: (b:[]RsBattle,seat:[]FbSeat,o:[]RsObject,a:FbAb)->bool? #effe
   }
   return some(true);
 }
-xc_use_object :: (s:[]Lab,k:int,a:FbAb,i:int)->bool {
+xc_use_object :: (s:[] EgZone,k:int,a:FbAb,i:int)->bool {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..]; p:=XC_OBJECT_POS[i];
   xc_sync_world(s);
   o:=x[0].objects[i].rules[..];
@@ -74,7 +74,7 @@ xc_use_object :: (s:[]Lab,k:int,a:FbAb,i:int)->bool {
   if o[0].destroyed {fx_start_at(s,FXR_DUST,cr[0].clock,fxp_v(p[0],0.5,p[1]),fxp_v(p[0],0.5,p[1]),fxp_v(0.6,0.5,0.4),1,1);}
   xc_look(s,a,-1,p[0],p[1]); xc_cast_sound(s,a); return true;
 }
-xc_objects_tick :: (s:[]Lab) {
+xc_objects_tick :: (s:[] EgZone) {
   if !xc_objects_ready(s) { return; }
   x:=s[0].xc[..]; b:=x[0].b[..]; now:=b[0].rest_clock.ticks;
   for i:0..<XC_OBJECTS {
@@ -86,7 +86,7 @@ xc_objects_tick :: (s:[]Lab) {
   }
 }
 // One instanced mesh draw: each surviving crate has its own translated record.
-xc_objects_draw :: (s:[]Lab,out:[]f32,n:int)->int {
+xc_objects_draw :: (s:[] EgZone,out:[]f32,n:int)->int {
   if !xc_objects_ready(s) {return n;}
   live:=0;
   for i:0..<XC_OBJECTS {
@@ -100,6 +100,6 @@ xc_objects_draw :: (s:[]Lab,out:[]f32,n:int)->int {
   d:=s[0].bodies[0].draws[..];d[n*4]=cast(u32)XC_OBJECT_MESH_FIRST;d[n*4+1]=cast(u32)XC_OBJECT_MESH_COUNT;d[n*4+2]=cast(u32)n;d[n*4+3]=cast(u32)live;
   s[0].bodies[0].draw_n=n+1;return n+1;
 }
-xc_blocked :: (s:[]Lab,x:f32,z:f32)->bool {
+xc_blocked :: (s:[] EgZone,x:f32,z:f32)->bool {
   return hostile.hostile_blocked(x,z) || xc_object_blocked(s,x,z,0.3);
 }

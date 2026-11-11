@@ -78,7 +78,7 @@ lw_rise :: (s: [] Lab) {
     for q: 0..<b[0].c[by].name_n { if n < LINE_CAP { l[n] = b[0].c[by].name[q]; n += 1; } }
     add_line(s, cast(string) l[0..<n], VIOLET);
     risen := fxe_spot(b, lab_grid(s), j, 0);
-    fxe_cause(s[0].puffs[..], b, FXR_RISE, f32(j) * 0.37 + 0.19, b[0].clock, risen, risen, FXW_NECRO, 1, 1);
+    fxe_cause(s[0].w[0].puffs[..], b, FXR_RISE, f32(j) * 0.37 + 0.19, b[0].clock, risen, risen, FXW_NECRO, 1, 1);
     s[0].lw_q[k] = s[0].lw_q[s[0].lw_n - 1]; s[0].lw_n -= 1;
   }
 }

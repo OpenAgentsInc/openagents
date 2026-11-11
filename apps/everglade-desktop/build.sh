@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, metal and swiftc; holds no logic)
 # Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the worlds (the list,
-# the Workshop, and the web's realms run natively: Everglade itself, everglade2, and the Archery Range and Experimental, fivelab, with their sound) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
+# the Workshop, and the web's realms run natively: Everglade itself, everglade2, Experimental, fivelab, and the Archery Range, archery-range, with their sound) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
 # Everglade II's pack, and the AppKit and Metal host in Swift.
@@ -85,12 +85,18 @@ emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
 xcrun -sdk macosx metal -w "$repo/aethyr/host/apple/PageHost.metal" -o "$work/c/page-host.metallib"
 build_realm everglade2
 emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
-# The Archery Range and Experimental: the fivelab module on their pages draws with Character Create's passes
+# Experimental: the fivelab module on its page draws with Character Create's passes
 # (the site's data-wgsl="/charactercreator.wgsl"), and its pack is the site's own file, gzipped as
 # the site serves it; the page host inflates it as a browser does.
 build_realm fivelab
 emit_page fivelab charactercreator charactercreator fivelab-fx fxg
 cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz" "$app/Contents/Resources/fivelab/glade.pack.gz"
+# The Archery Range: a module of its own (apps/openagents-web/archery-range.coax, an Everglade zone
+# with the range on it), drawn with the same passes. Its pack is Experimental's, so the app keeps one
+# copy: the realm table's row for it (Sources/Realms.swift) names module archery-range and pack
+# fivelab/glade.pack.gz.
+build_realm archery-range
+emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # The realms' sound: Aethyr's Apple audio host (aethyr/host/apple/audio-host.h, PageAudio.swift and
 # Aethyrforge's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,

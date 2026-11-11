@@ -16,10 +16,12 @@ every node it visits. The same checks compiled to C run in milliseconds.
 
 ## Where it is on
 
-Native checks are off unless `COAX_NATIVE_CHECKS` is set. One unit has them
+Native checks are off unless `COAX_NATIVE_CHECKS` is set. Two units have them
 on: `coax/web/wasm.sh` sets `COAX_NATIVE_CHECKS=1` when it builds
-`apps/openagents-web/fivelab.coax` (5E Lab and Experimental), for that
-module's compiles, its libraries included. `COAX_NATIVE_CHECKS=0` turns them
+`apps/openagents-web/fivelab.coax` (5E Lab and Experimental) or
+`apps/openagents-web/archery-range.coax` (the Archery Range, whose checks are
+fivelab's zone checks and four of its own), for that module's compiles, its
+libraries included. `COAX_NATIVE_CHECKS=0` turns them
 off there. To add a unit, add it to `native_check_units` in `wasm.sh` after
 `COAX_NATIVE_CHECKS=compare` finds no `disagree` row for it.
 

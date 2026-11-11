@@ -139,7 +139,7 @@
       } },
     { "id": "archery-range", "name": "ARCHERY RANGE", "kind": "open", "listed": false, "orbit": { "r": 0.37, "a": 4.5, "size": 0.02 },
       "realm": {
-        "slug": "archery-range", "title": "Archery Range", "module": "fivelab", "slot": "archery-range",
+        "slug": "archery-range", "title": "Archery Range", "module": "archery-range", "slot": "archery-range",
         "description": "Shoot the Ranger's Longbow at straw butts from 10 to 70 metres for points, on foot, from horseback and from dragonback, and see your tally by distance.",
         "share": "Draw the Ranger's Longbow and shoot for points at 10 to 70 metres, on foot, from horseback and from dragonback.",
         "alt": "A ranger drawing a longbow at a row of straw archery butts on an open meadow",

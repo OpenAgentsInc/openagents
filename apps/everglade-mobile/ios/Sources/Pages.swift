@@ -53,8 +53,7 @@ import Metal
   // app's own folder, one for every realm, as one site's pages share a browser's storage.
   private func open(_ world: Int32, points: CGSize) {
     tried.insert(world)
-    // A module runs one page at a time (Realms.sharing): the Archery Range and Experimental are
-    // both fivelab, so opening one closes the other, which opens afresh from its save slot.
+    // A module runs one page at a time (Realms.sharing): opening a world closes any other page of its module.
     for other in Realms.sharing(world) where pages[other] != nil { close(other) }
     guard let r = Realms.table[world], let dir = RealmPages.files(world), let res = Bundle.main.resourceURL, let lib = RealmPages.library(r),
           let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { eg_runs(state, world, 0); return }

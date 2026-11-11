@@ -39,7 +39,7 @@ rg_piece :: (i: int) -> RgPiece {
   if i < RG_TARGETS { k := i - RG_LANES; return RgPiece.{kind = RG_SKYFACE, k = k, x = RG_SKY_X[k], z = RG_SKY_Z[k]}; }
   if i < RG_TARGETS + RG_LANES { k := i - RG_TARGETS; return RgPiece.{kind = RG_POST, k = k, x = RG_LANE_X[k] - f32(RG_POST_OFFSET), z = RG_LANE_Z[k]}; }
   k := i - RG_TARGETS - RG_LANES;
-  return RgPiece.{kind = RG_CHALK, k = k, x = -f32(RG_LINE_HALF) + f32(RG_DASH_STEP) * (f32(k) + 0.5), z = RG_LINE_Z};
+  return RgPiece.{kind = RG_CHALK, k = k, x = -f32(RG_LINE_HALF) + f32(RG_MARK_STEP) * (f32(k) + 0.5), z = RG_LINE_Z};
 }
 // Piece i's foot on the meadow (world metres): where the caller reads the ground's height for it.
 rg_piece_at :: (i: int) -> [2] f32 { p := rg_piece(i); return [2] f32.[f32(RG_AT_X) + p.x, f32(RG_AT_Z) + p.z]; }
@@ -92,7 +92,7 @@ rg_build_piece :: (m: [] bsm.BsMesh, i: int, ground: f32) {
     bsm.bm_box(m, [3] f32.[0, (top - 0.4) * 0.5, 0], [3] f32.[0, (top + 0.4) * 0.5, 0], [3] f32.[h, 0, 0], [3] f32.[0, 0, h], [3] f32.[0.9, 0.86, 0.8], bs.BS_TIMBER, true);
     // a painted band for each ten metres... the nearest lane one band, the farthest five
     for b: 0..<p.k + 1 { y := top - 0.1 - f32(b) * 0.16; bsm.bm_box(m, [3] f32.[0, y, 0], [3] f32.[h + 0.008, 0, 0], [3] f32.[0, 0.045, 0], [3] f32.[0, 0, h + 0.008], RG_PAINT[3], bs.BS_DAUB, false); } }
-  else { bsm.bm_box(m, [3] f32.[0, 0.012, 0], [3] f32.[f32(RG_DASH) * 0.5, 0, 0], [3] f32.[0, 0.014, 0], [3] f32.[0, 0, 0.06], RG_PAINT[0], bs.BS_DAUB, false); }
+  else { bsm.bm_box(m, [3] f32.[0, 0.012, 0], [3] f32.[f32(RG_MARK) * 0.5, 0, 0], [3] f32.[0, 0.014, 0], [3] f32.[0, 0, 0.06], RG_PAINT[0], bs.BS_DAUB, false); }
 }
 // The whole range into the mesh: ground[i] the meadow's height under piece i (rg_piece_at).
 rg_build :: (m: [] bsm.BsMesh, ground: [] f32) {
@@ -118,7 +118,7 @@ rg_boxes :: (ground: [] f32, base: f32, out: [] f32, n0: int) -> int {
 
 #test "the range has every piece once: five butts, two sky faces, five posts and the chalk line's dashes" {
   kinds: [4] int; for i: 0..<RG_PIECES { kinds[rg_piece(i).kind] += 1; }
-  #assert kinds[RG_BUTT] == RG_LANES && kinds[RG_SKYFACE] == RG_SKY && kinds[RG_POST] == RG_LANES && kinds[RG_CHALK] == RG_DASHES;
+  #assert kinds[RG_BUTT] == RG_LANES && kinds[RG_SKYFACE] == RG_SKY && kinds[RG_POST] == RG_LANES && kinds[RG_CHALK] == RG_MARKS;
   a := rg_piece(RG_TARGETS + RG_LANES); b := rg_piece(RG_PIECES - 1);
   #assert a.x == -RG_LINE_HALF + 1 && b.x == RG_LINE_HALF - 1 && a.z == RG_LINE_Z;
   at := rg_piece_at(2); #assert at[0] == RG_AT_X + RG_LANE_X[2] && at[1] == RG_AT_Z + RG_LANE_Z[2];

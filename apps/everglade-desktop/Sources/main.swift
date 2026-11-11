@@ -3,8 +3,8 @@
 // a Metal view and input. Everything drawn comes from scenes.coax (the list of worlds, the
 // Workshop) through face.h. Escape is the list; --scene N opens on world N (1 Everglade, 2 the
 // Workshop, 3 the Archery Range, 4 Experimental). Everglade itself is the web's everglade2 realm
-// (Character Create, then the glade), and the Archery Range and Experimental are the web's fivelab
-// realm on their own pages, each run natively by Aethyr's page host (aethyr/host/apple/
+// (Character Create, then the glade), and the Archery Range and Experimental are the web's
+// archery-range and fivelab realms, each run natively by Aethyr's page host (aethyr/host/apple/
 // page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this host
 // hands it the frames, keys and presses, draws its picture under the Worlds button, and plays its
 // sound through the Apple audio host (aethyr/host/apple/PageAudio.swift).
@@ -134,8 +134,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // realm, as one site's pages share a browser's storage: your character is the same in each).
   func openPage(_ world: Int32) {
     pageTried.insert(world)
-    // A module runs one page at a time (Realms.sharing): the Archery Range and Experimental are
-    // both fivelab, so opening one closes the other, which opens afresh from its save slot.
+    // A module runs one page at a time (Realms.sharing): opening a world closes any other page of its module.
     for other in Realms.sharing(world) where pages[other] != nil { closePage(other) }
     guard let device, let r = Realms.table[world], let dir = WorkshopView.realmFiles(world), let res = Bundle.main.resourceURL else { eg_runs(state, world, 0); return }
     let c = AEPageConfig()

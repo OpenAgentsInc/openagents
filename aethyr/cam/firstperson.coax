@@ -5,7 +5,7 @@
 // Past FP_HIDE the eye is in your head, so the realm leaves your own body out of the view (fp_hidden;
 // it may still cast its shadow), keeping in view only what your hands hold up in front of you. The view's centre stays the
 // reticle's (aethyr/cam/reticle.coax), so what aims off the camera's centre ray still aims there.
-// Experimental: boom.coax (charactercreator.coax cc_view) and scene_reserved, fivelab.coax lab_scene.
+// Experimental: boom.coax (charactercreator.coax cc_view) and scene_reserved, everglade/zone.coax zone_scene.
 //   coax/bin/coax test aethyr/cam/firstperson.coax --library
 #module "aethyr.cam.firstperson";
 

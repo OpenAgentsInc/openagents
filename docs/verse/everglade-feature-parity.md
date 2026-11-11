@@ -55,7 +55,7 @@ three, as Experimental does.
 | Zone | Draw and arrows | Carry (the bow in hand or on the back) |
 | --- | --- | --- |
 | Everglade II | Shared: `E2Mouse` holds a `bow.BowDraw` (everglade2-mouse.coax); `e2m_draw` and `e2m_loose` wire it; `everglade/held-kit.coax` `held_bow_layer` lays the pose (`e2m_figure`). | Shared: `e2_held` places the kit through `held_pieces` (everglade/held-kit.coax). |
-| Experimental | Shared: `xc_bow_begin`, `xc_bow_loose` and `xc_bow_step` (experimental-combat.coax) call `bow.coax`; arrows draw through `aethyr/fx/puff.coax` `fxp_arrow_at`. | Shared: `held_weapon`, `bow_string`, `bow_basis` and `bow_matrix` are `everglade/held-kit.coax`'s; `experimental_figure` calls its `held_bow_layer`. No bow on the back. |
+| Experimental | Shared: `xc_bow_begin`, `xc_bow_loose` and `xc_bow_step` (everglade/zone-bow.coax) call `bow.coax`; arrows draw through `aethyr/fx/puff.coax` `fxp_arrow_at`. | Shared: `held_weapon`, `bow_string`, `bow_basis` and `bow_matrix` are `everglade/held-kit.coax`'s; `experimental_figure` calls its `held_bow_layer`. No bow on the back. |
 | Everglade v1 | Absent for players. NPC bows are local sticks (`rp_person_at` everglade-raid-preview.coax:325, `watch_missiles_draw` everglade-watch.coax:451). | Absent. |
 
 ### Damage numbers
@@ -151,7 +151,8 @@ Mounts are arriving from another agent. The spec
 `aethyr/action/mount.coax` and `aethyr/action/ride-pose.coax`, and the game
 layer in `everglade/mounts.coax` (with the rider's keys) and
 `everglade/zone-mounts.coax` (mounts standing in a zone: E, the saddle, the
-prompt). Experimental and the Archery Range ride through them
+prompt) and `everglade/zone-ride.coax` (a zone's keys handed to them, the
+dragon's Fire Breath). Experimental and the Archery Range ride through them
 (`bd_ride_posed` fivelab-bodies.coax poses the rider). The manifest
 lists the feature as not required yet, and any zone-local mount code (`Mount`,
 `mount_up`, `Horse`, a zone's own `ride_pose` and so on) fails the check. A

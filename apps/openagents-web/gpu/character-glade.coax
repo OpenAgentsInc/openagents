@@ -106,6 +106,12 @@ cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivel
  gx:=add_wrap(cast(u32)floor((ex-origin)/c),ix)-half;gz:=add_wrap(cast(u32)floor((ez-origin)/c),iz)-half;
  if (!e2_meadow_held(gx,gz,kit)) {return o;}
  x:=e2_meadow_at_x(gx,gz,kit);z:=e2_meadow_at_z(gx,gz,kit);dx:=x-ex;dz:=z-ez;
+ // a zone's clearing (the record's c: x0 z0 x1 z1, charactercreator.coax field_clear): none of this kit inside it;
+ // with a band (a.w, metres) the kit stands only in that band round the clearing, a share of it (b.x)
+ if (m.c.z>m.c.x) {
+  if (x>m.c.x && x<m.c.z && z>m.c.y && z<m.c.w) {return o;}
+  if (m.a.w>0.0f32 && (x<m.c.x-m.a.w || x>m.c.z+m.a.w || z<m.c.y-m.a.w || z>m.c.w+m.a.w || cg_hash(e2_meadow_seed(gx,gz,kit),9)>m.b.x)) {return o;}
+ }
  k:=e2_meadow_fade(kit,sqrt(dx*dx+dz*dz));
  if (k<=0.0f32) {return o;}
  h:=e2_meadow_seed(gx,gz,kit);au:=e2_meadow_gold(x,z);p:=e2_meadow_piece(kit,h,au);

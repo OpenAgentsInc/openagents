@@ -379,6 +379,15 @@ multiplayer realm.
    dismounts within 2.5 metres, a phone button does the same, WASD steers,
    Shift gallops, the horse collides with walls, bows fire from the saddle,
    the horse stays where you leave it, and monsters attack the rider.
+   Space jumps the horse (`aethyr/action/mount.coax` `mount_step`): its feet
+   leave the ground at 6.2 m/s and come down under 17 m/s² of gravity, 1.13 m
+   high and 0.73 s long, about 10 m at a gallop. In the air it keeps its
+   speed, turns a little, and clears any box its feet are above (a low rock
+   or fence); it stays over a box until it has passed. The rider rises with
+   the saddle. The horse's pack has Idle, Walk and Gallop only, so in the air
+   its legs reach through a slowed stride; there is no jump clip, and the
+   sound bank has no hoof sound yet. The dragon keeps Space for take-off and
+   climb.
 2. **Owned horses.** Stables, buying, the whistle, feed and care, death and
    recovery, stat blocks in the SRD engine (the horse's HP and AC, falling
    off).

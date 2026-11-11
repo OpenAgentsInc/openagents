@@ -80,14 +80,14 @@ XC_PLAYER_MAX :: 44;           // legacy body-only fixture HP; live HP is the se
 XC_HEAD :: CM_HEAD; XC_ROW :: CM_ROW; XC_ROWS_TOP :: CM_ROWS_TOP; XC_GAP :: CM_GAP;   // class-menu.coax
 
 XC_FAMILIAR :: 29;
-XC_BREATH :: 31;   // the dragon's Fire Breath while you ride it (experimental-ride.coax lab_breath_slot): the dragon's, not your class's, so never in the bar's saved order
+XC_BREATH :: 31;   // the dragon's Fire Breath while you ride it (everglade/zone-ride.coax zone_breath_slot): the dragon's, not your class's, so never in the bar's saved order
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
 XcCombat :: struct {
   sight: [XC_FOES] cc.HudSight; sight_at: f32 = -1;   // each foe's plate's share shown while its body shows (xc_sight_shows), fading
   plates: [1] cc.HudPlates;                   // the frame's plates over bodies (xc_frame: aethyr/ui/hud-plates.coax)
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
-  dragon_seat:[1]FbSeat;   // the red dragon you ride, once it has joined the battle (experimental-ride.coax lab_dragon_join)
+  dragon_seat:[1]FbSeat;   // the red dragon you ride, once it has joined the battle (everglade/zone-ride.coax zone_dragon_join)
   familiar_incense:int=1; // one Lab supply, carried across preset changes
   protection_water_used:bool;
   revivify_diamond_used:bool; // one Lab diamond, carried across preset changes
@@ -117,7 +117,7 @@ XcCombat :: struct {
   down: int = -100; down_x: f32; down_y: f32; down_id: int;
   media: [16384] u8; media_n: int;   // the bar's pictures for the host (coaxial_media)
   floats: [1] fl.Floats;   // the shared numbers (aethyr/action/floats.coax): the queue and the count shown and suppressed live inside
-  casts: int; landed: int; kills: int; refused: int; last_dmg: int;   // for the checks (lab_creator_probe 900+)
+  casts: int; landed: int; kills: int; refused: int; last_dmg: int;   // for the checks (zone_probe 900+)
   whiffs: int;                      // bolts that flew to their range and blows that met no one
   releasing: bool;                  // an arrow or a swung blow landing: it resolves though you fell first (#13120)
   fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
@@ -128,7 +128,7 @@ XcCombat :: struct {
   swing_def: act.ActionDef; swing: act.ActionInstance; swing_tick: int = -1;   // its action and the last tick sensed
   swing_struck: bool; swing_next: int = 1; ledger: sense.HitLedger;
   contacts: int; fallbacks: int; exhausted: int;   // accepted blade contacts; ticks sensed on the fallback arc; ticks refused as too much work
-  blade_step: f32;                  // the largest blade-end move in one tick so far, metres (lab_creator_probe 933, mm)
+  blade_step: f32;                  // the largest blade-end move in one tick so far, metres (zone_probe 933, mm)
   lock: attn.AttnState;             // your target, held through attention (xc_lock_step): target is its answer
   stops: react.Stops;               // hit stops in force: a struck monster pauses, and a monster that strikes you
   npc_seat: [XC_FOES] FbSeat;
@@ -147,7 +147,7 @@ XcCombat :: struct {
   ar: [1] arch.Archer;
   shot_arrow: [hostile.HS_SHOTS] int;
   dr: XcDruid;                      // the druid's grove (druid-scene.coax), off elsewhere
-  rg: XcRange;                      // the Archery Range (range-scene.coax), off elsewhere
+  own_kit: bool;                    // the page has one class of its own and no CLASSES picker (the Archery Range)
   bow_hits: int; bow_misses: int; bow_far: int;
 }
 XC_TICK :: 64.0;           // aethyr/loop.coax: ticks a second
@@ -314,11 +314,11 @@ xc_float_int :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, v: int, hea
 }
 
 // What kind of aim ability a takes, and its reach in metres (class-kit.coax xc_aim_for), for the weapon you hold.
-xc_aim_kind :: (s: [] Lab, a: FbAb) -> XcAim { return xc_aim_for(a, s[0].xc[0].b[0].c[0].weapon); }
+xc_aim_kind :: (s: [] EgZone, a: FbAb) -> XcAim { return xc_aim_for(a, s[0].xc[0].b[0].c[0].weapon); }
 // A single-target spell's monster: Aethyr's attention query (aethyr/cam/attention.coax) for an action
 // target within reach in a 30 degree cone ahead, the nearest first (angle-weighted), ties by id. The
 // SRD still decides what the spell does; this only says at whom. -1 when none.
-xc_attend :: (s: [] Lab, fx: f32, fz: f32, reach: f32) -> int {
+xc_attend :: (s: [] EgZone, fx: f32, fz: f32, reach: f32) -> int {
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
   y := xmeadow.exp_height(cr[0].player_x, cr[0].player_z) + 1.2;
   // the living monsters in reach you can see (not through a dungeon wall), within the shared
@@ -338,14 +338,14 @@ xc_attend :: (s: [] Lab, fx: f32, fz: f32, reach: f32) -> int {
 // acquired for you (acquire 0): it is set only by a strike, kept within 24 m all round you for at least
 // the hold, kept through a second of being out of reach (the grace), and released at once when it falls.
 XC_LOCK_HOLD :: 16; XC_LOCK_GRACE :: 64;
-xc_lock_query :: (s: [] Lab) -> attn.AttnQuery {
+xc_lock_query :: (s: [] EgZone) -> attn.AttnQuery {
   cr := s[0].creator[..]; y := xmeadow.exp_height(cr[0].player_x, cr[0].player_z) + 1.2;
   return attn.AttnQuery.{origin = asp.world_point(cr[0].player_x, y, cr[0].player_z), forward = asp.world_point(sin(cr[0].player_face), 0, cos(cr[0].player_face)),
     need = attn.ATTN_LOCK, acquire = 0, retain = 24, acquire_cos = 1, retain_cos = -1, rise = 6, hold = XC_LOCK_HOLD, grace = XC_LOCK_GRACE};
 }
 // The living monsters within the hold's reach, the held one first, up to the shared answer's
 // ATTN_CANDIDATES; how many.
-xc_lock_targets :: (s: [] Lab, out: [] attn.AttnTarget) -> int {
+xc_lock_targets :: (s: [] EgZone, out: [] attn.AttnTarget) -> int {
   cr := s[0].creator[..]; h := cr[0].hostiles[..]; held := s[0].xc[0].lock.target; n := 0;
   for pass: 0..<2 { for i: 0..<XC_FOES {
     if (pass == 0) != (i == held) { continue; }
@@ -357,7 +357,7 @@ xc_lock_targets :: (s: [] Lab, out: [] attn.AttnTarget) -> int {
   return n;
 }
 // Lock onto monster foe now (a strike at it).
-xc_lock_on :: (s: [] Lab, foe: int) {
+xc_lock_on :: (s: [] EgZone, foe: int) {
   x := s[0].xc[..]; now := xc_tick(s[0].creator[0].clock);
   if foe < 0 || foe >= XC_FOES { return; }
   if x[0].lock.target != foe { x[0].lock = attn.AttnState.{target = foe, gen = 1, since = now, seen = now, reason = attn.AttnReason.acquired}; }
@@ -365,7 +365,7 @@ xc_lock_on :: (s: [] Lab, foe: int) {
   x[0].target = foe;
 }
 // One step of the held target at the creator clock's tick.
-xc_lock_step :: (s: [] Lab) {
+xc_lock_step :: (s: [] EgZone) {
   x := s[0].xc[..];
   if x[0].lock.target < 0 { x[0].target = -1; return; }
   ts: [attn.ATTN_CANDIDATES] attn.AttnTarget; tn := xc_lock_targets(s, ts[..]);
@@ -377,7 +377,7 @@ xc_lock_step :: (s: [] Lab) {
 // ticks, and a monster whose blow lands on you pauses itself. Only those actors are held; the world, the
 // other monsters and you go on. Actor 0 is you, 1 to 6 the monsters.
 XC_STOP_STRUCK :: 5; XC_STOP_STRIKER :: 4;
-xc_stop_hit :: (s: [] Lab, foe: int, kinds: u32) {
+xc_stop_hit :: (s: [] EgZone, foe: int, kinds: u32) {
   x := s[0].xc[..]; cr := s[0].creator[..]; e := cr[0].hostiles[0].enemies[foe];
   dx := cr[0].player_x - e.x; dz := cr[0].player_z - e.z; l := sqrt(dx * dx + dz * dz);
   toward := ifx l > 0.0001 then asp.world_point(dx / l, 0, dz / l) else asp.world_point(0, 0, 1);
@@ -385,13 +385,13 @@ xc_stop_hit :: (s: [] Lab, foe: int, kinds: u32) {
   r := react.react_decide(a, react.TargetResponse.{}, asp.world_point(e.face_x, 0, e.face_z), toward, 1);
   x[0].stops = react.react_stop_add(x[0].stops, r, 0, 1 + foe, xc_tick(cr[0].clock));
 }
-xc_stop_striker :: (s: [] Lab, foe: int) {
+xc_stop_striker :: (s: [] EgZone, foe: int) {
   x := s[0].xc[..]; cr := s[0].creator[..];
   claw := react.AttackAttrs.{kinds = react.DMG_SLASH, stop = react.HitStop.{ticks = XC_STOP_STRIKER, scope = react.StopScope.source}};
   r := react.react_decide(claw, react.TargetResponse.{}, asp.world_point(sin(cr[0].player_face),0,cos(cr[0].player_face)),asp.world_point(0,0,1),1);
   x[0].stops = react.react_stop_add(x[0].stops,r,1+foe,0,xc_tick(cr[0].clock));
 }
-xc_stops_step :: (s: [] Lab) {
+xc_stops_step :: (s: [] EgZone) {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; now := xc_tick(cr[0].clock);
   if h[0].hits > x[0].seen_hits && h[0].last >= 0 && h[0].last < XC_FOES {
     xc_stop_striker(s,h[0].last);
@@ -401,7 +401,7 @@ xc_stops_step :: (s: [] Lab) {
   for i: 0..<XC_FOES { h[0].enemies[i].stopped = !h[0].enemies[i].dead && react.react_held(x[0].stops, 1 + i, now); }
 }
 // Ability a's aim from where you stand and face: its kind, its reach, your forward and its monster.
-xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
+xc_aim :: (s: [] EgZone, a: FbAb) -> XcAim {
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
   m := xd_reach(s, a, xc_aim_kind(s, a));
   m.fx = sin(cr[0].player_face); m.fz = cos(cr[0].player_face);   // aethyr/walk.coax: you face atan2(x, z)
@@ -430,7 +430,7 @@ xc_aim :: (s: [] Lab, a: FbAb) -> XcAim {
 }
 
 // Keep the sphere at its original world point while the grid follows the hero.
-xc_truth_project :: (s:[]Lab,new_zones:int) {
+xc_truth_project :: (s:[] EgZone,new_zones:int) {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   if b[0].truth_zones==0 { return; }
   sq:=f32(XC_SQ);
@@ -457,7 +457,7 @@ xc_truth_project :: (s:[]Lab,new_zones:int) {
 }
 // Restore the world's coordinate frame after a facing-relative cube, so other
 // ongoing areas and later combat steps continue to use world-aligned squares.
-xc_sync_world :: (s: [] Lab) {
+xc_sync_world :: (s: [] EgZone) {
   b := s[0].xc[0].b[..]; cr := s[0].creator[..];
   rs_place(b,0,XC_MID,XC_MID);
   for i: 0..<XC_FOES {
@@ -469,7 +469,7 @@ xc_sync_world :: (s: [] Lab) {
   xc_familiar_project(s,0,1);
   xc_truth_project(s,0);
 }
-xc_familiar_project :: (s:[]Lab,fx:f32,fz:f32) {
+xc_familiar_project :: (s:[] EgZone,fx:f32,fz:f32) {
   x:=s[0].xc[..]; b:=x[0].b[..];
   f:=rs_familiar_of(b,0);
   if f<0 || !rs_up(b[0].c[f]) { return; }
@@ -481,7 +481,7 @@ xc_familiar_project :: (s:[]Lab,fx:f32,fz:f32) {
 }
 // The AI produces candidate bodies locally. Publish each only after a selected
 // player opportunity has resolved; the real mover's seat is the active turn.
-xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
+xc_monster_move :: (s:[] EgZone,foe:int,proposed:hostile.Enemy) {
   x:=s[0].xc[..]; if !x[0].started || foe<0 || foe>=XC_FOES { return; }
   b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..]; old:=h[0].enemies[foe];
   if xc_object_blocked(s,proposed.x,proposed.z,0.3*proposed.scale) { return; }
@@ -538,7 +538,7 @@ xc_monster_move :: (s:[] Lab,foe:int,proposed:hostile.Enemy) {
 }
 // Spirit Guardians (p.164): a monster saves when it enters your Emanation or the Emanation enters its
 // space, whoever moved (its end-of-turn save comes from its own turn, fb_seat_step). Once a turn.
-xc_guardians_step :: (s:[] Lab) {
+xc_guardians_step :: (s:[] EgZone) {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
   if !x[0].started { return; }
   on:=b[0].c[0].conc==SP_SPIRIT_GUARDIANS;
@@ -561,7 +561,7 @@ xc_guardians_step :: (s:[] Lab) {
     x[0].guard_in[foe]=inside;
   }
 }
-xc_hostile_tick :: (s:[] Lab,dt:f32) {
+xc_hostile_tick :: (s:[] EgZone,dt:f32) {
   h:=s[0].creator[0].hostiles[..]; cr:=s[0].creator[..];
   xc_sync_world(s);
   fastest:f32=0; limit:f32=0.15;
@@ -584,8 +584,8 @@ xc_hostile_tick :: (s:[] Lab,dt:f32) {
 }
 // Controller locomotion proposes a physical position; current creature/body
 // positions remain authoritative until this returns. Teleports synchronize their
-// origin separately in lab_walk and never pass their displacement here.
-xc_depart :: (s:[] Lab,origin:EgBody,proposed:EgBody)->bool {
+// origin separately in zone_walk and never pass their displacement here.
+xc_depart :: (s:[] EgZone,origin:EgBody,proposed:EgBody)->bool {
   x:=s[0].xc[..]; if !x[0].started { return true; }
   b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
   if !rs_can_move(b[0].c[0]) || rs_walk_speed(b,0)<=0 { return false; }
@@ -625,7 +625,7 @@ xc_hostile_attack :: (kind: int) -> RsStatAttack {
   m := xc_hostile_action(kind); k := rs_stat_melee_pick(m);
   return ifx k >= 0 then m.attacks[k] else RsStatAttack.{};
 }
-xc_sync_vitals :: (s: [] Lab) {
+xc_sync_vitals :: (s: [] EgZone) {
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   if !s[0].xc[0].started { return; }
   if h[0].hp>0 && b[0].c[0].hp==0 { h[0].died_at=h[0].time; }
@@ -634,7 +634,7 @@ xc_sync_vitals :: (s: [] Lab) {
   h[0].temp=b[0].c[0].temp; h[0].player_dead=b[0].c[0].dead;
 }
 // Shared damage/hit presentation for Action contacts and opportunity Reactions.
-xc_hostile_result :: (s:[] Lab,foe:int,before:int,seq:int,accepted:bool) {
+xc_hostile_result :: (s:[] EgZone,foe:int,before:int,seq:int,accepted:bool) {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
     lost := before-b[0].c[0].hp-b[0].c[0].temp;
     landed := false;
@@ -660,7 +660,7 @@ xc_hostile_result :: (s:[] Lab,foe:int,before:int,seq:int,accepted:bool) {
 // (FXR_SHAFT, an arrow, for a Goblin's Shortbow; FXR_STONE, a rock, for the Ogre and the Hill Giant)
 // to where you stood, arriving when hostile_fly resolves it, with a release sound at the shooter.
 // One that hits strikes you with an impact; one that misses flies on past and away.
-xc_shots_step :: (s: [] Lab) {
+xc_shots_step :: (s: [] EgZone) {
   cr := s[0].creator[..]; h := cr[0].hostiles[..]; now := cr[0].clock;
   for k: 0..<hostile.HS_SHOTS {
     q := h[0].shots[k..<k+1];
@@ -731,7 +731,7 @@ xc_hit_mark :: (x: [] XcCombat, cr: cc.Creator, out: [] f32, at: int, w: f32, h:
   }
   return n;
 }
-xc_hostile_contacts :: (s: [] Lab) {
+xc_hostile_contacts :: (s: [] EgZone) {
   x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   xc_sync_world(s);
   // Quiet actors take turns too: repeat saves do not depend on reaching you.
@@ -757,7 +757,7 @@ xc_hostile_contacts :: (s: [] Lab) {
 }
 // Project shared movement/action permissions independently into the body AI.
 // A Stunned actor can move; a Restrained actor can still take an action.
-xc_sync_permission :: (s:[] Lab,i:int) {
+xc_sync_permission :: (s:[] EgZone,i:int) {
   b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..];
   if i<0 || i>=XC_FOES || i+1>=b[0].n { return; }
     c := b[0].c[i+1];
@@ -776,7 +776,7 @@ xc_sync_permission :: (s:[] Lab,i:int) {
 // Grappled (p.181): the monster you hold comes along as you walk, kept within your reach. A wall
 // it can't be dragged through parts you, and the grapple lapses (grapple.coax), as it does when
 // you are Incapacitated.
-xc_grapple_step :: (s: [] Lab) {
+xc_grapple_step :: (s: [] EgZone) {
   x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   g := b[0].c[0].grappling;
   if !x[0].started || g < 1 || g > XC_FOES { return; }
@@ -790,7 +790,7 @@ xc_grapple_step :: (s: [] Lab) {
 }
 // Place the familiar in an open neighboring square, preferring the facing
 // direction. The same world coordinates are projected back into the grid.
-xc_familiar_arrive :: (s:[]Lab,a:FbAb,timed:bool,recall:bool)->bool {
+xc_familiar_arrive :: (s:[] EgZone,a:FbAb,timed:bool,recall:bool)->bool {
   x:=s[0].xc[..]; b:=x[0].b[..]; cr := s[0].creator[..];
   xc_sync_world(s);
   form:=RS_FAMILIAR_FORMS[a.opt%RS_FAMILIAR_FORMS.count];
@@ -816,7 +816,7 @@ xc_familiar_arrive :: (s:[]Lab,a:FbAb,timed:bool,recall:bool)->bool {
 }
 // Orders walk a square in the direction the owner faces. Hostile stat-block
 // reactions happen before the step, just as for the owner's departure.
-xc_familiar_step :: (s:[]Lab)->bool {
+xc_familiar_step :: (s:[] EgZone)->bool {
   x:=s[0].xc[..]; b:=x[0].b[..];
   xc_sync_world(s);
   f:=rs_familiar_command_actor(b,0,false);
@@ -839,7 +839,7 @@ xc_familiar_step :: (s:[]Lab)->bool {
   return true;
 }
 
-xc_familiar_press :: (s:[]Lab,k:int,a:FbAb)->bool {
+xc_familiar_press :: (s:[] EgZone,k:int,a:FbAb)->bool {
   x:=s[0].xc[..]; b:=x[0].b[..];
   order:=x[0].familiar_order;
   seat:=ifx order==XC_FAMILIAR_STEP then x[0].familiar_seat[..] else x[0].seat[..];
@@ -865,7 +865,7 @@ xc_familiar_press :: (s:[]Lab,k:int,a:FbAb)->bool {
 
 // A Ritual under way keeps going: each turn that owes its Magic action takes it (p.104), so the rite
 // fails only when you can't act; the turn its ten minutes are up, that action casts the spell.
-xc_rite_step :: (s: [] Lab) {
+xc_rite_step :: (s: [] EgZone) {
   x := s[0].xc[..]; b := x[0].b[..];
   if !x[0].started || b[0].c[0].rite < 0 || !b[0].c[0].rite_owed || !x[0].seat[0].open { return; }
   fb_seat_in(b, x[0].seat[..]);
@@ -878,7 +878,7 @@ xc_rite_step :: (s: [] Lab) {
   fb_seat_out(b, x[0].seat[..]);
 }
 // A readied move carries you where the engine stepped you, over 0.6 s, stopping at a wall.
-xc_glide_step :: (s: [] Lab) {
+xc_glide_step :: (s: [] EgZone) {
   x := s[0].xc[..]; cr := s[0].creator[..];
   if x[0].glide_until < 0 { return; }
   dx := x[0].glide_x - cr[0].player_x; dz := x[0].glide_z - cr[0].player_z; d := sqrt(dx * dx + dz * dz);
@@ -889,7 +889,7 @@ xc_glide_step :: (s: [] Lab) {
   s[0].put_on = true; s[0].put_x = nx; s[0].put_y = cr[0].player_y; s[0].put_z = nz; s[0].put_face = cr[0].player_face;
   cr[0].player_x = nx; cr[0].player_z = nz;
 }
-xc_sync_permissions :: (s: [] Lab) {
+xc_sync_permissions :: (s: [] EgZone) {
   for i:0..<XC_FOES { xc_sync_permission(s,i); }
 }
 xc_touch_spell :: (a:FbAb)->bool {
@@ -899,35 +899,13 @@ xc_touch_spell :: (a:FbAb)->bool {
 }
 // Press slot k: the engine resolves it at what it aims at (xc_aim). True when it was used. Sets what the
 // world shows: the look (xc_look), the numbers and the fallen.
-// ---- the bow (docs/verse/bow-combat.md): hold to draw, let go to loose. A Ranger holds a Longbow
-// (class-kit.coax xc_kit). Hold the right mouse button (or the bow's slot, on a phone: drag to aim)
-// and the aim comes in: a crosshair, the camera over your shoulder, you turn to face where it looks
-// and walk (aethyr/action/bow.coax bow_aim, read by charactercreator.coax camera and fivelab.coax
-// lab_you and lab_move_world). Let go and the arrow leaves your bow hand along the camera's ray, at
-// a speed its draw gave it, and flies its arc. A full draw lands where the crosshair points. The
-// arrow that reaches a monster is the SRD Attack with your Longbow on it (FB_SHOOT, rs_shoot: 1d8
-// Piercing + Dex, Disadvantage past 150 feet); a miss flies on through. One that meets the ground or
-// a wall sticks, then fades. Escape or the other button lets the draw down without loosing. A
-// key's press or a tap draws on its own and looses at full draw. Arrows never run out (the bar has
-// no consumables).
-// What is Experimental's own here is only what the engine and the game can't know: where this
-// zone's ground and walls are (xc_bow_wall), which monsters stand (xc_bow_bodies), and the SRD
-// attack an arrow that reaches one makes (xc_bow_strike). The sight line, the flight, the reticle
-// and the finger's draw are the engine's (aethyr/action/archery.coax); the hand, the sounds and the
-// dust are Everglade's Longbow (everglade/longbow.coax).
-XC_BOW_HAND :: EG_BOW_HAND;
-xc_has_bow :: (s: [] Lab) -> bool {
-  x := s[0].xc[..]; cr := s[0].creator[..];
-  return cr[0].experimental && x[0].started && xc_kit(x[0].klass) == XC_KIT_BOW && !cr[0].walk.on && cr[0].hostiles[0].hp > 0;
-}
-// Your pace while drawn (fivelab.coax lab_move_world): down to a walk as the aim comes in.
-xc_bow_pace :: (s: [] Lab) -> f32 { return bow.bow_pace(s[0].xc[0].ar[0].draw[0]); }
+// The bow in a zone (xc_has_bow, xc_bow_begin, xc_bow_loose, xc_bow_step, xc_crosshair): everglade/zone-bow.coax.
 // ---- Dash as a sprint: the engine's (aethyr/action/sprint.coax) at Everglade's distance
 // (everglade/dash.coax), begun when the pipeline accepts an action whose feel moves `dash`
 // (class-feel.coax xf_feel, aethyr/action/deed.coax deed_show). Here it is only wired in: a frame
-// after your step (fivelab.coax lab_you) hands it your keys or thumb, your stride follows it
+// after your step (fivelab.coax zone_you) hands it your keys or thumb, your stride follows it
 // (charactercreator.coax experimental_figure), and its dust is the glade's puff.
-xc_sprint_frame :: (s: [] Lab) {
+xc_sprint_frame :: (s: [] EgZone) {
   x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock; h := s[0].held;
   puff := eg_dash_frame(x[0].dash[..], now, cr[0].yaw, axis(h, HOLD_D, HOLD_A), axis(h, HOLD_W, HOLD_S), s[0].stick_on, s[0].stick_px, s[0].stick_py, !cr[0].airborne, cr[0].hostiles[0].hp <= 0);
   cr[0].stride = x[0].dash[0].stride;
@@ -936,157 +914,11 @@ xc_sprint_frame :: (s: [] Lab) {
     fx_start_at(s, FXR_DUST, now, fxp_v(p[0], y, p[1]), fxp_v(p[0], y, p[1]), fxp_v(0.62, 0.55, 0.44), 0.6, 0.6);
   }
 }
-// The squares between you and monster foe, along a line: its true distance in 5-foot squares.
-xc_bow_squares :: (s: [] Lab, foe: int) -> int {
-  cr := s[0].creator[..]; e := cr[0].hostiles[0].enemies[foe];
-  dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
-  q := cast(int) floor(sqrt(dx * dx + dz * dz) / f32(XC_SQ) + 0.5);
-  return ifx q < 1 then 1 else q;
-}
-// Whether a point in the air (world metres) is inside a wall, a house or a prop: the boxes round
-// it (experimental-village.coax ev_hostile_near, heights from the ground there), the dungeon's, or
-// one of the zone's own standing things (aethyr/world/props.coax).
-xc_bow_wall :: (s: [] Lab, x: f32, y: f32, z: f32) -> bool {
-  up := y - meadow_y(x, z);
-  if up < 0 { return true; }
-  if wprops.props_inside(s[0].creator[0].props[0], x, y, z) { return true; }   // the zone's own standing things
-  if s[0].creator[0].field { return false; }   // the open field has no village and no dungeon
-  if xdungeon.dg_inside(x, z, 1.5) { return up < 3 && xdungeon.dg_blocked(x, z, 0.02); }
-  near: [1] village.EvNear; village.ev_hostile_near(near[..], x, z);
-  for i: 0..<near[0].wall_n { o := i * 6; w := near[0].walls[o..<o + 6];
-    if x > w[0] && x < w[3] && z > w[2] && z < w[5] && up > w[1] && up < w[4] { return true; } }
-  return false;
-}
-// Draw (self_loose: a key or a tap, which looses itself at full draw). False when you can't now.
-xc_bow_begin :: (s: [] Lab, self_loose: bool) -> bool {
-  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock;
-  if !xc_has_bow(s) { return false; }
-  if x[0].ar[0].draw[0].on { bow.bow_begin(x[0].ar[0].draw[..], now, self_loose); return true; }
-  if now - x[0].cool_at < f32(XC_COOL) { x[0].refused += 1; return false; }
-  // the draw is the Attack's wind-up: it asks first (#13072), so a downed or held-still archer draws nothing
-  if !deed_can_act(rs_bearing(x[0].b[0].c[0])) { deed_grey(x[0].deeds[..], xc_slot_of(x, FB_ATTACK), deed_tick(now)); x[0].refused += 1; return false; }
-  if !x[0].seeded { x[0].seeded = true; x[0].b[0].dice[0].state = x[0].b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
-  bow.bow_begin(x[0].ar[0].draw[..], now, self_loose);
-  xc_bow_cue(s, eg_bow_draw_cue(), cr[0].player_x, cr[0].player_z);   // the limbs creak as the string comes back
-  return true;
-}
-xc_bow_cancel :: (s: [] Lab) -> bool { return arch.archer_cancel(s[0].xc[0].ar[..]); }
-xc_bow_cue :: (s: [] Lab, c: EgBowCue, x: f32, z: f32) { xc_cue(s, c.name, c.gain, x, z, c.rate); }
-// The monsters standing, as bodies an arrow or the reticle's line may meet (everglade/longbow.coax
-// eg_bow_body): how many it wrote.
-xc_bow_bodies :: (s: [] Lab, out: [] arch.ArcheryBody) -> int {
-  h := s[0].creator[0].hostiles[..]; n := 0;
-  for i: 0..<XC_FOES {
-    e := h[0].enemies[i]; if e.dead || n >= out.count { continue; }
-    out[n] = eg_bow_body(i, e.x, meadow_y(e.x, e.z), e.z, e.scale); n += 1;
-  }
-  return n;
-}
-// Where the crosshair points: the first monster, static target's face or ground its ray meets past
-// you, within the Longbow's look, else a set way along it; and that monster or target, -1 none.
-XcBowAim :: struct { at: [3] f32; foe: int = -1; mark: int = -1; }
-xc_bow_point :: (s: [] Lab) -> XcBowAim {
-  x := s[0].xc[..]; cr := s[0].creator[..]; u := x[0].u;
-  m: [1] arch.SightMarch;
-  m[0] = arch.sight_begin(arch.archery_sight([3] f32.[u[16], u[17], u[18]], [3] f32.[u[20], u[21], u[22]], cr[0].player_x, cr[0].player_z), f32(EG_BOW_LOOK));
-  while arch.sight_next(m[..]) { m[0].solid = xc_bow_wall(s, m[0].p[0], m[0].p[1], m[0].p[2]); }
-  bodies: [XC_FOES] arch.ArcheryBody; n := xc_bow_bodies(s, bodies[..]);
-  r := arch.archery_rest(m[0], f32(EG_BOW_LOOK), f32(EG_BOW_PAST), x[0].ar[0].targets[0], bodies[0..<n]);
-  return XcBowAim.{at = r.at, foe = r.body, mark = r.mark};
-}
-// Let go: the arrow leaves your bow hand toward where the crosshair points.
-xc_bow_loose :: (s: [] Lab) -> bool {
-  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock;
-  if !x[0].ar[0].draw[0].on { return false; }
-  if !xc_has_bow(s) || !x[0].seen { _ := xc_bow_cancel(s); return false; }
-  strength := arch.archer_release(x[0].ar[0].draw[..], x[0].ar[0].show[..], now); cr[0].loose_at = now; cr[0].nocked = false;
-  aim := xc_bow_point(s);
-  // you face where the camera looks
-  from := eg_bow_hand(cr[0].player_x, meadow_y(cr[0].player_x, cr[0].player_z) + cr[0].player_y, cr[0].player_z, cr[0].yaw + 3.14159265);
-  _ := arch.archer_loose(x[0].ar[..], 0, from, aim.at, strength, aim.foe, now);
-  x[0].cool_at = now; x[0].used = xc_slot_of(x, FB_ATTACK);
-  xc_bow_cue(s, eg_bow_release_cue(strength), cr[0].player_x, cr[0].player_z);
-  xc_bow_cue(s, eg_bow_leave_cue(strength), cr[0].player_x, cr[0].player_z);   // the arrow leaving
-  return true;
-}
-// An arrow of yours reached monster foe: the SRD Attack with your Longbow on it. Whether it hit.
-xc_bow_strike :: (s: [] Lab, foe: int) -> bool {
-  x := s[0].xc[..];
-  shot := xk_rules(x[0].klass, xc_attack());   // the kit's Attack as the rules take it: the Longbow's shot (class-kit.coax)
-  e := s[0].creator[0].hostiles[0].enemies[foe];
-  if f32(xc_bow_squares(s, foe)) * 5 > f32(rs_weapon(W_LONGBOW).range_ft) { x[0].bow_far += 1; }
-  // the arrow reached it: it wakes and comes after you, whether the rules let the shot count or not
-  hostile.hostile_provoke(s[0].creator[0].hostiles[..], foe);
-  landed := x[0].landed; kills := x[0].kills;
-  slot := xc_slot_of(x, FB_ATTACK);
-  x[0].releasing = true; ok := xc_use_ab(s, ifx slot >= 0 then slot else 0, shot, foe); x[0].releasing = false;   // loosed, it lands though you fell since
-  hit := ok && (x[0].landed > landed || x[0].kills > kills);
-  if hit {
-    x[0].bow_hits += 1;
-    // the strike's flash at its chest, a stride back toward you (from your feet it streaked from below the ground)
-    c := s[0].creator[0]; f := eg_bow_flash(c.player_x, c.player_z, e.x, meadow_y(e.x, e.z), e.z, e.scale); t := EG_BOW_FLASH;
-    fx_start_at(s, FXR_HIT, c.clock, fxp_v(f.from[0], f.from[1], f.from[2]), fxp_v(f.to[0], f.to[1], f.to[2]), fxp_v(t.r, t.g, t.b), t.big, t.reach);
-  }
-  else { x[0].bow_misses += 1; }
-  return hit;
-}
-// Every arrow this frame: yours meet monsters, the zone's targets and the world; everyone's stick
-// in the ground and walls. The flight is the engine's (aethyr/action/archery.coax): this zone says
-// where its ground and walls are, and what the rules make of an arrow that reaches a monster.
-xc_bow_step :: (s: [] Lab, dt: f32) {
-  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock; a := x[0].ar[..];
-  if !xc_has_bow(s) { _ := xc_bow_cancel(s); }
-  if arch.archer_draw_step(a[0].draw[..], true, dt, now) { _ := xc_bow_loose(s); }
-  cr[0].aim = ifx xc_has_bow(s) || a[0].draw[0].aim > 0 then bow.bow_aim(a[0].draw[0]) else 0.0f32;
-  // what your body shows of the draw (aethyr/action/bow.coax BowShow), handed to the scene that draws you
-  arch.archer_show_step(a[0].show[..], a[0].draw[0], now);
-  cr[0].nocked = a[0].show[0].nocked; cr[0].draw = a[0].show[0].strength; cr[0].loose_at = a[0].show[0].loose_at;
-  f: [1] arch.ArrowFlight; bodies: [XC_FOES] arch.ArcheryBody;
-  while arch.flight_arrow(a[0].arrows[..], f[..], now) {
-    while arch.flight_sample(f[..]) { q := f[0].p; f[0].solid = xc_bow_wall(s, q[0], q[1], q[2]); f[0].grass = q[1] <= meadow_y(q[0], q[2]) + 0.02; }
-    n := xc_bow_bodies(s, bodies[..]);
-    l := arch.archery_land(a, f[0], bodies[0..<n], 0);
-    if l.kind == arch.LAND_BODY { arch.archery_body(a, f[0], l, xc_bow_strike(s, l.body)); continue; }
-    d := eg_bow_land_dust(l); if d.big <= 0 { continue; }
-    fx_start_at(s, FXR_DUST, now, fxp_v(l.at[0], l.at[1], l.at[2]), fxp_v(l.at[0], l.at[1], l.at[2]), fxp_v(d.r, d.g, d.b), d.big, d.reach);
-    xc_bow_cue(s, eg_bow_land_cue(l), l.at[0], l.at[2]);   // a thunk into straw, wood or stone, or into the grass
-  }
-  arch.archery_tidy(a, now);
-}
-// The arrows in the air and stuck, as puffs (aethyr/fx/puff.coax fxp_arrow_at).
-xc_bow_puffs :: (s: [] Lab, pf: [] FxPuffs) {
-  x := s[0].xc[..]; now := s[0].creator[0].clock; u := x[0].u;
-  for i: 0..<bow.ARROWS {
-    a := arch.archery_show(x[0].ar[0].arrows[0], i, u[16], u[18], now); if !a.on { continue; }
-    fxp_arrow_at(pf, fxp_v(a.at[0], a.at[1], a.at[2]), fxp_v(a.dir[0], a.dir[1], a.dir[2]), a.alpha, a.flying, a.seed);
-  }
-}
-// The crosshair: the shared reticle (aethyr/cam/reticle.coax) on the camera's centre ray: a small
-// crosshair while the mouse looks (aethyr/cam/mouselook.coax), a little warmer over a monster, and the
-// bow's arms in with the aim, closing as the draw builds. One crosshair for both.
-xc_crosshair :: (s: [] Lab, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
-  x := s[0].xc[..]; n := at; ml := s[0].creator[0].ml[0];
-  if !x[0].seen { return n; }
-  cx := x[0].u[23]; cy := x[0].u[27]; hs := s[0].creator[0].hostiles[..];
-  st: [reticle.RETICLE_MAX] reticle.ReticleStroke;
-  m := arch.archery_reticle(st[..], cx, cy, k, ml.shown, x[0].ar[0].draw[0], s[0].creator[0].clock);
-  if m == 0 { return n; }
-  over := false;
-  for i: 0..<XC_FOES {
-    e := hs[0].enemies[i]; if e.dead { continue; }
-    p := xc_proj(s[0].xc[..], e.x, meadow_y(e.x, e.z) + 0.8, e.z);
-    if p.ok && (p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy) < 30 * k * 30 * k { over = true; }
-  }
-  // a dark edge under it, so it reads on a bright coat or the sky
-  for i: 0..<m { q := st[i]; if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width + 1.6 * k, q.alpha * 0.45, 0.5, 0.05, 0.05, 0.06, 0) { n += 6; } }
-  for i: 0..<m { q := xlook.ml_tint(st[i], over); if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width, q.alpha, 0.5, q.r, q.g, q.b, 0) { n += 6; } }
-  return n;
-}
-xc_press :: (s: [] Lab, k: int) -> bool {
+xc_press :: (s: [] EgZone, k: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   if !cr[0].experimental || cr[0].walk.on || !x[0].started || k < 0 || k >= x[0].bar_n { return false; }
   xc_sync_vitals(s);
-  if x[0].bar[k].kind == XC_BREATH { return lab_breath_key(s); }   // the dragon's own action, on its own Recharge
+  if x[0].bar[k].kind == XC_BREATH { return zone_breath_key(s); }   // the dragon's own action, on its own Recharge
   now := cr[0].clock;
   if now - x[0].cool_at < f32(XC_COOL) || h[0].hp <= 0 { x[0].refused += 1; return false; }
   xc_strike_due(s);
@@ -1125,7 +957,7 @@ xc_press :: (s: [] Lab, k: int) -> bool {
 xc_tick :: (t: f32) -> int { return cast(int) floor(f64(t) * f64(XC_TICK)); }
 // A swing's action: the clip's length in ticks and its sensor window round the impact (bd_blow), the
 // impact itself an event. Its ID is the clip's, version 1.
-xc_swing_def :: (s: [] Lab, clip: int) -> act.ActionDef {
+xc_swing_def :: (s: [] EgZone, clip: int) -> act.ActionDef {
   d: act.ActionDef; d.id = 1000 + clip; d.version = 1; d.clip = clip;
   d.length = act.action_ticks_of_seconds(f64(figs.bd_seconds(clip)));
   if d.length < 1 { d.length = 1; }
@@ -1140,8 +972,8 @@ xc_swing_def :: (s: [] Lab, clip: int) -> act.ActionDef {
 }
 // The blow pressed earlier: its action stepped tick by tick to now, each sensing tick sweeping the
 // blade (each frame, and before a press). Its slot lands on the first monster the blade meets.
-xc_strike_due :: (s: [] Lab) { xc_swing_step(s, xc_tick(s[0].creator[0].clock)); }
-xc_swing_step :: (s: [] Lab, now: int) {
+xc_strike_due :: (s: [] EgZone) { xc_swing_step(s, xc_tick(s[0].creator[0].clock)); }
+xc_swing_step :: (s: [] EgZone, now: int) {
   x := s[0].xc[..];
   if x[0].pend < 0 { return; }
   d := x[0].swing_def;
@@ -1166,7 +998,7 @@ xc_swing_step :: (s: [] Lab, now: int) {
 // The blade at time t (creator seconds): the swing clip's baked hand pose, between its frames, through
 // the weapon matrix that draws it. Not ready (no bake): the fallback arc, flagged.
 XcBlade :: struct { pose: sense.SensorPose; fallback: bool; }
-xc_blade :: (s: [] Lab, t: f32) -> XcBlade {
+xc_blade :: (s: [] EgZone, t: f32) -> XcBlade {
   cr := s[0].creator[..]; b := s[0].bodies[..];
   k := cr[0].weapon; clip := cr[0].swing_clip;
   if k < 0 || k >= cc.CC_KITS { k = 0; }
@@ -1202,7 +1034,7 @@ xc_blade :: (s: [] Lab, t: f32) -> XcBlade {
 }
 // Sense tick t: sample the blade across the tick finely enough for the sensor's motion profile, sweep
 // the living monsters' hurt capsules, and land the slot on the first accepted contact.
-xc_sense :: (s: [] Lab, t: int) {
+xc_sense :: (s: [] EgZone, t: int) {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   t0 := f32(f64(t) / f64(XC_TICK)); t1 := f32(f64(t + 1) / f64(XC_TICK));
   p := xc_blade(s, t0); q := xc_blade(s, t1);
@@ -1244,7 +1076,7 @@ xc_sense :: (s: [] Lab, t: int) {
   }
 }
 // A blow that met no one: the turn is spent swinging at the air.
-xc_whiff :: (s: [] Lab, k: int) {
+xc_whiff :: (s: [] EgZone, k: int) {
   x := s[0].xc[..]; cr := s[0].creator[..];
   a := x[0].bar[k]; m := xc_aim_kind(s, a);
   fx := sin(cr[0].player_face); fz := cos(cr[0].player_face);
@@ -1252,7 +1084,7 @@ xc_whiff :: (s: [] Lab, k: int) {
   xc_look(s, a, -1, cr[0].player_x + fx * m.reach, cr[0].player_z + fz * m.reach);
 }
 // One cue heard where it happens: softer the farther it is, panned the way the camera faces.
-xc_cue :: (s: [] Lab, name: string, gain: f32, x: f32, z: f32, rate: f32) {
+xc_cue :: (s: [] EgZone, name: string, gain: f32, x: f32, z: f32, rate: f32) {
   if name.count == 0 { return; }
   cr := s[0].creator[..];
   xc:=s[0].xc[..]; b:=xc[0].b[..];
@@ -1268,21 +1100,21 @@ xc_cue :: (s: [] Lab, name: string, gain: f32, x: f32, z: f32, rate: f32) {
 }
 // A monster's voice when it is hurt or dies: the imp shrieks, the gremlin snarls; the bigger
 // they are, the deeper (the Warlord's a growl).
-xc_voice :: (s: [] Lab, i: int, died: bool) {
+xc_voice :: (s: [] EgZone, i: int, died: bool) {
   e := s[0].creator[0].hostiles[0].enemies[i];
   imp := xdungeon.dg_kind_mesh(e.kind) == 0;
   name := ifx imp then (ifx died then "imp-death" else "imp-hurt") else (ifx died then "gremlin-death" else "gremlin-hurt");
   xc_cue(s, name, (ifx died then 0.6f32 else 0.5f32) * (ifx e.scale > 2 then 1.3f32 else 1.0f32), e.x, e.z, 1 / sqrt(e.scale));
 }
-xc_cast_sound :: (s: [] Lab, a: FbAb) {
+xc_cast_sound :: (s: [] EgZone, a: FbAb) {
   cr := s[0].creator[..]; d := xc_sound(a, s[0].xc[0].klass);
   xc_cue(s, d.start, 0.55, cr[0].player_x, cr[0].player_z, d.rate);
   xc_cue(s, d.layer, 0.32, cr[0].player_x, cr[0].player_z, d.rate);
 }
 // Slot k used now: the engine resolves it at what it aims at (xc_aim). True when it was used.
-xc_use :: (s: [] Lab, k: int) -> bool { return xc_use_on(s, k, -2); }
+xc_use :: (s: [] EgZone, k: int) -> bool { return xc_use_on(s, k, -2); }
 // Whether the monster you clicked still stands within reach metres and in sight; a fallen one is let go.
-xc_pick_live :: (s: [] Lab, reach: f32) -> bool {
+xc_pick_live :: (s: [] EgZone, reach: f32) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; p := x[0].picked;
   if p < 0 || p >= XC_FOES { return false; }
   e := cr[0].hostiles[0].enemies[p];
@@ -1294,7 +1126,7 @@ xc_pick_live :: (s: [] Lab, reach: f32) -> bool {
 // its option along the bottom edge. A tap there steps to the next choice instead of casting; the
 // engine refuses a choice it can't take, spending nothing.
 XC_BADGE :: 18.0;   // CSS px: the corner's tap square, and the bottom strip's height
-xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
+xc_choose :: (s: [] EgZone, i: int, px: f32, py: f32) -> bool {
   x := s[0].xc[..]; k := x[0].k;
   if i < 0 || i >= x[0].bar_n { return false; }
   r := cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); a := x[0].bar[i..<i + 1];
@@ -1342,7 +1174,7 @@ xc_choose :: (s: [] Lab, i: int, px: f32, py: f32) -> bool {
   return false;
 }
 // Click the monster under the pointer to pick it (true); a click on nothing lets the pick go.
-xc_pick_at :: (s: [] Lab, px: f32, py: f32) -> bool {
+xc_pick_at :: (s: [] EgZone, px: f32, py: f32) -> bool {
   x := s[0].xc[..]; hs := s[0].creator[0].hostiles[..]; k := x[0].k;
   best := -1; bd := 30 * k * 30 * k;
   for i: 0..<XC_FOES {
@@ -1357,9 +1189,9 @@ xc_pick_at :: (s: [] Lab, px: f32, py: f32) -> bool {
   return best >= 0;
 }
 // Slot k used now against monster on (a blade's contact), or at what it aims at when on is -2.
-xc_use_on :: (s: [] Lab, k: int, on: int) -> bool { return xc_use_ab(s, k, s[0].xc[0].bar[k], on); }
+xc_use_on :: (s: [] EgZone, k: int, on: int) -> bool { return xc_use_ab(s, k, s[0].xc[0].bar[k], on); }
 // Ability a, from slot k, used now (xc_use_on), or an arrow's Attack (FB_SHOOT) on the monster it reached.
-xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
+xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   now := cr[0].clock;
   a := a0;
@@ -1568,7 +1400,7 @@ xc_use_ab :: (s: [] Lab, k: int, a0: FbAb, on: int) -> bool {
 // What a blow, a spell or a dragon's breath did to monster i, which had `before` Hit Points: the
 // number rising off it, its flinch (a hit-stop of react's `kinds`), the hit's sound and its voice;
 // at 0 Hit Points it falls, cries out and dust puffs up. True when it lost any.
-xc_harmed :: (s: [] Lab, i: int, before: int, kinds: u32, hit: string, rate: f32, now: f32) -> bool {
+xc_harmed :: (s: [] EgZone, i: int, before: int, kinds: u32, hit: string, rate: f32, now: f32) -> bool {
   x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; c := x[0].b[0].c[1 + i]; e := h[0].enemies[i..<i + 1];
   lost := before - rs_max(c.hp, 0);
   if lost > 0 { x[0].calm[i] = false; hostile.hostile_provoke(h, i); }   // harmed, it fights again, and comes after you
@@ -1586,12 +1418,12 @@ xc_harmed :: (s: [] Lab, i: int, before: int, kinds: u32, hit: string, rate: f32
   return lost > 0;
 }
 // One of the glade's effects (aethyr/fx/puff.coax), on the creator's clock.
-fx_start_at :: (s: [] Lab, recipe: int, now: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
+fx_start_at :: (s: [] EgZone, recipe: int, now: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
   c := FxCause.{recipe = recipe, seed = now * 13.7 + f32(recipe), t0 = now, from = from, to = to, col = col, big = big, reach = reach};
   _ := fxp_start(s[0].puffs[..], c, now);
 }
 // A slot's look: Everglade's recipes for its spells and features (everglade-classes.coax cl_look).
-xc_look :: (s: [] Lab, a: FbAb, foe: int, ax: f32, az: f32) {
+xc_look :: (s: [] EgZone, a: FbAb, foe: int, ax: f32, az: f32) {
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
   at := fxp_v(ax, cr[0].player_y + 1.0, az);   // where it is aimed: ahead of you (a bolt's full range when it hits no one)
   if foe >= 0 { at = fxp_v(h[0].enemies[foe].x, 0.8, h[0].enemies[foe].z); }
@@ -1691,7 +1523,7 @@ xc_wild_pick :: (x:[]XcCombat,i:int)->bool {
   return true;
 }
 
-xc_rest_request :: (s:[]Lab,request:int)->bool {
+xc_rest_request :: (s:[] EgZone,request:int)->bool {
   x:=s[0].xc[..]; cr:=s[0].creator[..];
   if !cr[0].experimental || !x[0].started { return false; }
   settled:=x[0].rest_seen && x[0].rest_settled && !cr[0].airborne && !cr[0].moving && !cr[0].walk.on &&
@@ -1721,7 +1553,7 @@ xc_rest_choices :: (c:RsCreature,out:[]int)->int {
   if c.rest.phase==1 { out[0]=RS_REST_END; return 1; }
   out[0]=RS_REST_SHORT; out[1]=RS_REST_SLEEP; return 2;
 }
-xc_facts :: (s:[]Lab)->EgBarFacts {
+xc_facts :: (s:[] EgZone)->EgBarFacts {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; f:EgBarFacts;
   if !cr[0].experimental || !x[0].started { return f; }
   c:=x[0].b[0].c[0];
@@ -1733,9 +1565,9 @@ xc_facts :: (s:[]Lab)->EgBarFacts {
 }
 // The bar's top (its highest slot's), device px.
 xc_bar_top :: (x:[]XcCombat)->f32 { top:=x[0].h; for i:0..<x[0].bar_n { r:=cc.eg_box4(xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k)); if r.y0<top { top=r.y0; } } return top; }
-xc_side_geo :: (s:[]Lab)->EgSideGeo { return xc_layout(s).side; }
+xc_side_geo :: (s:[] EgZone)->EgSideGeo { return xc_layout(s).side; }
 // What a side-bar press asks: knock-out flips, a rest choice goes to the rules (xc_rest_request).
-xc_side_act :: (s:[]Lab,f:EgBarFacts,act:int) {
+xc_side_act :: (s:[] EgZone,f:EgBarFacts,act:int) {
   x:=s[0].xc[..];
   if act==EG_DO_KNOCK { x[0].knockout=!x[0].knockout; return; }
   j:=act-EG_DO_REST; if j>=0 && j<f.rest_n { _:=xc_rest_request(s,f.rest[j]); }
@@ -1747,7 +1579,7 @@ XC_PORTRAIT_FOOT :: 124.0;   // CSS px: the portrait plate's foot, its slot gems
 // cramped: the side bar moved right of the picker, or a short page; its menus and tips then keep
 // left of your portrait, and the picker steps aside while one is up (xc_pick_hidden)
 XcLayout :: struct { pick: CmPick; side: EgSideGeo; cramped: bool; }
-xc_layout :: (s:[]Lab)->XcLayout {
+xc_layout :: (s:[] EgZone)->XcLayout {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; w:=x[0].w; h:=x[0].h; k:=x[0].k;
   lay:XcLayout; bar:=xc_bar_top(x);
   if !x[0].dr.on { lay.side=eg_side_geo(xc_facts(s),w,h,k,bar); }   // the druid has no side bar
@@ -1792,17 +1624,17 @@ xc_card_box :: (x:[]XcCombat,lay:XcLayout)->cc.Box {
 // The picker steps aside while a slot's card covers it, and on a cramped page while the side bar's
 // menu or a tip is up.
 // A page with one class of its own shows no CLASSES picker: the druid's grove, the Archery Range.
-xc_own_kit :: (x:[]XcCombat)->bool { return x[0].dr.on || x[0].rg.on; }
+xc_own_kit :: (x:[]XcCombat)->bool { return x[0].dr.on || x[0].own_kit; }
 xc_pick_hidden :: (x:[]XcCombat,lay:XcLayout)->bool {
   c:=xc_card_box(x,lay); pb:=cm_pick_panel(lay.pick);
   if c.x1>c.x0 && c.x0<pb.x1 && c.x1>pb.x0 && c.y0<pb.y1 && c.y1>pb.y0 { return true; }
   return lay.cramped && (x[0].side.menu>=0 || x[0].side.side_hover>=0);
 }
-xc_pick :: (s:[]Lab)->CmPick { return xc_layout(s).pick; }
+xc_pick :: (s:[] EgZone)->CmPick { return xc_layout(s).pick; }
 // The coordinates and the FPS plaque (charactercreator.coax coord_draw, everglade/hud/parts.coax eg_fps),
 // bottom right: over the bar's tray and the side bar where a narrow page brings them under it, and
 // left out while the side bar's menu or a tip is up.
-xc_corner :: (s:[]Lab,lay:XcLayout,out:[]f32,at:int)->int {
+xc_corner :: (s:[] EgZone,lay:XcLayout,out:[]f32,at:int)->int {
   x:=s[0].xc[..]; cr:=s[0].creator[..]; k:=x[0].k; w:=x[0].w; h:=x[0].h;
   if x[0].side.menu>=0 || x[0].side.side_hover>=0 { return at; }
   top:=h+1000; cx0:=w-240*k;
@@ -1842,7 +1674,7 @@ xc_area_draw :: (x: [] XcCombat, a: aa.AreaAim, y: f32, out: [] f32, at: int, k:
 }
 // The same look angles apply at the familiar's eye. Only view and lighting
 // uniforms change; the player and familiar keep their own world positions.
-xc_familiar_view :: (s:[]Lab,u:[]f32)->bool {
+xc_familiar_view :: (s:[] EgZone,u:[]f32)->bool {
   x:=s[0].xc[..]; b:=x[0].b[..]; f:=rs_familiar_observer(b,0);
   if u.count>65 { u[65]=0; }
   if f==0 || rs_has(b[0].c[f],RS_BLINDED) { return false; }
@@ -1858,7 +1690,7 @@ xc_familiar_view :: (s:[]Lab,u:[]f32)->bool {
 // ---- the frame: after Character Create's (cc.frame), in Experimental
 // Your portrait plate, top right (the CLASSES column has the left): your class, its level, your
 // Hit Points, your AC and spell slots, as the rules hold them for you.
-xc_portrait :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32) -> int {
+xc_portrait :: (s: [] EgZone, out: [] f32, at: int, w: f32, k: f32) -> int {
   x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0]; me := x[0].b[0].c[0];
   p: cc.EgPortrait; nb: [32] u8; p.klass = cc.eg_title(nb[..], XC_CL_UP[x[0].klass]); p.name = p.klass; p.level = x[0].level;
   p.max = hs.max_hp; p.hp = ifx hs.hp < 0 then 0 else hs.hp; p.temp = hs.temp; p.ac = me.ac;
@@ -1866,7 +1698,7 @@ xc_portrait :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32) -> int {
   wide := f32(cc.EG_PORTRAIT_W);
   return cc.eg_portrait(s[0].creator[0].ui, out, at, w - (wide + 16) * k, 14 * k, wide, k, p, 1);
 }
-xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32, dt: f32) -> int {
+xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32, dt: f32) -> int {
   x := s[0].xc[..]; cr := s[0].creator[..]; hs := cr[0].hostiles[..];
   n := at;
   xc_start(x, x[0].klass);
@@ -1876,7 +1708,6 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   fl.floats_frame(x[0].floats[..]);
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   xd_frame(s, dt);
-  xr_frame(s, dt);
   xc_objects_tick(s);
   xc_rite_step(s); xc_glide_step(s);
   xc_hostile_contacts(s);
@@ -1886,7 +1717,6 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
   xc_bow_step(s, dt);
   n = xc_crosshair(s, out, n, w, h, k);
   n = xd_hud(s, out, n, k);
-  n = xr_hud(s, out, n, w, h, k);
   if observing { n=cc.ttext(cr[0].ui,cc.UIT_NONE,out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1),""); }
   n=xc_portrait(s,out,n,w,k);
   n=cc.combat_overlay(cr[0],out,u,n,w,k);
@@ -1982,7 +1812,7 @@ xc_frame :: (s: [] Lab, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32,
     m = xc_box_text(x[0].media[..], m, r); m = put(x[0].media[..], m, "\n");
     left := f32(XC_COOL) - (now - x[0].cool_at);
     // the dragon's breath sweeps on its own: spent, the time to its next Recharge roll
-    if a.kind == XC_BREATH { left = lab_breath_wait(s); }
+    if a.kind == XC_BREATH { left = zone_breath_wait(s); }
     if left > 0 {
       share := ifx a.kind == XC_BREATH then left else left / f32(XC_COOL);
       dim := cc.Box.{x0 = r.x0, y0 = r.y0, x1 = r.x1, y1 = r.y0 + (r.y1 - r.y0) * share};
@@ -2121,7 +1951,7 @@ xc_line :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, wide: f32, 
 
 // ---- input
 // Keys 1 to N press the bar's slots.
-xc_key :: (s: [] Lab, key: int) -> bool {
+xc_key :: (s: [] EgZone, key: int) -> bool {
   x := s[0].xc[..];
   if key == -1 && xc_bow_cancel(s) { return true; }   // Escape lets the draw down
   if key >= '1' && key <= '9' { i := key - '1'; if xd_aim(s, i) { x[0].dr.breath_key = key; return true; } if i < x[0].bar_n { _ := xc_press(s, i); return true; } }
@@ -2129,7 +1959,7 @@ xc_key :: (s: [] Lab, key: int) -> bool {
 }
 // The column and the bar are pressed; a click (no drag) on a monster makes it your target. False
 // leaves the pointer to Character Create (the camera, the ANIMATIONS browser).
-xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
+xc_pointer :: (s: [] EgZone, px: f32, py: f32, phase: int, id: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..];
   if !x[0].seen || cr[0].walk.on { return false; }
   k := x[0].k;
@@ -2195,8 +2025,8 @@ xc_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   if phase == 1 && x[0].arranging && id == x[0].down_id { x[0].drag_x = px; x[0].drag_y = py; }
   return x[0].down >= 0 || x[0].down == -2;
 }
-// What the checks read (lab_creator_probe 900 on).
-xc_probe :: (s: [] Lab, f: int) -> int {
+// What the checks read (zone_probe 900 on).
+xc_probe :: (s: [] EgZone, f: int) -> int {
   x := s[0].xc[..]; hs := s[0].creator[0].hostiles[..];
   if f == 900 { return x[0].klass; }
   // 999 the Attack slot; 1000 + 4i + k monster i's x and z (centimetres), awake (1) and returning (2), and
@@ -2283,8 +2113,8 @@ xc_probe :: (s: [] Lab, f: int) -> int {
 }
 #test "experimental combat: a Wizard's Fire Bolt and a Fighter's Attack fell a monster, which then lies still" #steps 2000000000 {
   for pass: 0..<2 {
-    s: [1] Lab;
-    lab_message(s[..], 600, "url=http://localhost/worlds/everglade-experimental\n");
+    s: [1] EgZone;
+    zone_enter(s[..], "url=http://localhost/worlds/everglade-experimental\n");
     cr := s[0].creator[..]; h := cr[0].hostiles[..];
     h[0].ready = true; h[0].hp = XC_PLAYER_MAX; for i: 0..<XC_FOES { h[0].enemies[i].swing = -1; }
     x := s[0].xc[..];
@@ -2310,7 +2140,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
 
 #test "experimental combat: with KNOCK OUT on, a Fighter's blow leaves a monster at 1 HP, Unconscious and still; off, it kills" #steps 2000000000 {
   for pass: 0..<2 {
-    s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+    s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
     cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..];
     h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.2;   // a gremlin (a Goblin Warrior) just ahead
     x[0].b[0].c[4].hp = 1;
@@ -2335,7 +2165,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
     #assert xc_actions(bar[..], n, hero) == n + 5 + (ifx fb_ritual_spell(hero) >= 0 then 1 else 0) + (ifx hero.companion || hero.klass==RS_WIZARD then 1 else 0) && n + 7 <= XC_SLOTS;
   } }
   for pass: 0..<3 {
-    s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+    s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
     cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
     b[0].dice[0].fixed = true; b[0].c[4].ac = 5; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
     slot: [4] int;
@@ -2364,7 +2194,7 @@ xc_probe :: (s: [] Lab, f: int) -> int {
 xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[0].bar[i].kind == kind { return i; } } return -1; }
 #test "experimental combat: Shove's push moves it 5 feet away (#13040, #13038)" #steps 2000000000 {
   // Shove's push (p.181): the strip's second option moves it 5 feet straight away, through the world
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
   cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
   b[0].dice[0].fixed = true; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
   h[0].enemies[3].x = 0; h[0].enemies[3].z = 1.5; cr[0].clock += 1.1;
@@ -2374,7 +2204,7 @@ xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[
 }
 #test "experimental combat: a readied move carries you 30 feet away (#13040, #13038)" #steps 2000000000 {
   // Ready a move: the gremlin steps, and you are carried 30 feet straight away from it
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
   cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
   h[0].enemies[3].x = 0; h[0].enemies[3].z = 4.5; cr[0].clock += 1.1;
   rd := xc_slot_of(x, FB_READY); x[0].bar[rd].opt = 1;
@@ -2386,7 +2216,7 @@ xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[
 }
 #test "experimental combat: a readied spell answers a monster that moves in range (#13040, #13038)" #steps 2000000000 {
   // Ready a spell: a Wizard holds Fire Bolt and lets it go at the monster that moves in range
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
   cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
   b[0].dice[0].fixed = true; b[0].c[4].ac = 1; b[0].c[4].hp = 100; b[0].c[4].hp_max = 100;
   h[0].enemies[3].x = 0; h[0].enemies[3].z = 9; cr[0].clock += 1.1;
@@ -2397,7 +2227,7 @@ xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[
 }
 #test "experimental combat: Search, Study and Influence take their checks (#13040, #13038)" #steps 2000000000 {
   // Search, Study and Influence: each takes the check; Study recalls its AC, Influence calms it
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_BARD, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_BARD, 0);
   cr := s[0].creator[..]; h := cr[0].hostiles[..]; x := s[0].xc[..]; b := x[0].b[..];
   h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.5; cr[0].clock += 1.1;
   sk := xc_slot_of(x, FB_SKILL); #assert sk >= 0 && fb_ab_option_label(x[0].bar[sk], 2) == "INFLUENCE";
@@ -2412,7 +2242,7 @@ xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[
 }
 #test "experimental combat: a Ritual runs ten minutes and casts with no slot (#13040, #13038)" #steps 2000000000 {
   // a Ritual: the Druid's Speak with Animals, kept going each turn, cast with no slot after ten minutes
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_DRUID, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_DRUID, 0);
   cr := s[0].creator[..]; x := s[0].xc[..]; b := x[0].b[..];
   rt := xc_slot_of(x, FB_RITUAL); #assert rt >= 0 && x[0].bar[rt].sp == SP_SPEAK_WITH_ANIMALS;
   cr[0].clock += 1.1; slots := b[0].c[0].slots;
@@ -2424,18 +2254,18 @@ xc_slot_of :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[
 }
 // A fresh fight for the aim checks: class c, you at the origin facing +z (or `face`), every monster
 // far away except those the check places.
-xc_test_lab :: (s: [] Lab, c: int, face: f32) {
-  lab_message(s, 600, "url=http://localhost/worlds/everglade-experimental\n");
+xc_test_lab :: (s: [] EgZone, c: int, face: f32) {
+  zone_enter(s, "url=http://localhost/worlds/everglade-experimental\n");
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
   h[0].ready = true; h[0].hp = XC_PLAYER_MAX; h[0].safe_r = 0; h[0].calm_until = -1;   // the checks place you and the monsters themselves
   for i: 0..<XC_FOES { h[0].enemies[i].swing = -1; h[0].enemies[i].x = 70 + f32(i) * 3; h[0].enemies[i].z = -70; }
   xc_start(s[0].xc[..], c); xc_set_class(s[0].xc[..], c);
   cr[0].player_x = 0; cr[0].player_z = 0; cr[0].player_face = face;
 }
-xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b[0].c[1 + i].hp; } return t; }
+xc_hp_sum :: (s: [] EgZone) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b[0].c[1 + i].hp; } return t; }
 #test "experimental combat: a bolt flies the way you face; one behind you is never hit, one ahead is, and a miss does no damage" #steps 2000000000 {
   // behind you (you face +z, the imp 8 m at -z), fifty Fire Bolts: none touch it
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = -8;
   hp := xc_hp_sum(s[..]);
   for i: 0..<50 { s[0].creator[0].clock += 1.1; #assert xc_press(s[..], 0); }
@@ -2464,7 +2294,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
   #assert s[0].xc[0].landed == 1 && xc_hp_sum(s[..]) < hp && s[0].xc[0].target == 3;
 }
 #test "experimental combat: a blow strikes ahead within reach and nothing behind is picked" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_FIGHTER, 0);
   h := s[0].creator[0].hostiles[..]; bar := s[0].xc[0].bar[1];   // Attack (a longsword: a blow)
   #assert xc_aim_kind(s[..], bar).kind == XC_AIM_MELEE;
   h[0].enemies[0].x = 0; h[0].enemies[0].z = -1.2;   // right behind you
@@ -2479,7 +2309,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 }
 #test "experimental combat: a save spell takes the cone ahead and nothing outside is picked" #steps 2000000000 {
   // Sacred Flame: the nearest in range within 30 degrees ahead, or nothing (its icon fizzles, no turn spent)
-  c: [1] Lab; xc_test_lab(c[..], FB_CL_CLERIC, 0);
+  c: [1] EgZone; xc_test_lab(c[..], FB_CL_CLERIC, 0);
   g := c[0].creator[0].hostiles[..]; flame := c[0].xc[0].bar[0];
   #assert xc_aim_kind(c[..], flame).kind == XC_AIM_CONE;
   g[0].enemies[0].x = 4; g[0].enemies[0].z = 4;      // 45 degrees off: outside the cone
@@ -2490,13 +2320,13 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 }
 #test "experimental combat: Thunderwave's cube follows the facing direction" #steps 2000000000 {
   // Thunderwave's cube is set ahead of you; Second Wind is yours
-  w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 1.5707963);
+  w: [1] EgZone; xc_test_lab(w[..], FB_CL_WIZARD, 1.5707963);
   tw := xc_aim(w[..], w[0].xc[0].bar[4]); #assert tw.kind == XC_AIM_AREA && tw.fx > 0.99 && abs(tw.reach - 4.572) < 0.01;
 }
 #test "experimental combat: a melee class holds its weapon, and a blow lands where its blade meets a monster, not at the press" #steps 2000000000 {
   #assert xc_kit(FB_CL_BARBARIAN) == 0 && cc.CC_KIT_TWO[0] && xc_kit(FB_CL_FIGHTER) == 1 && xc_kit(FB_CL_PALADIN) == 2;
   #assert xc_kit(FB_CL_RANGER) == XC_KIT_BOW && xc_kit(FB_CL_ROGUE) == 3 && xc_kit(FB_CL_MONK) == -1 && xc_kit(FB_CL_WIZARD) == -1 && xc_kit(FB_CL_CLERIC) == -1;
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_PALADIN, 0);
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2;   // just ahead, in reach
   hp := xc_hp_sum(s[..]);
   tries := 0;
@@ -2518,7 +2348,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 }
 #test "experimental combat: two-handed weapons use the owned cleave's impact timing" #steps 2000000000 {
   // the Barbarian's greataxe and the Fighter's greatsword swing the owned two-handed cleave, its impact the action's
-  t: [1] Lab; xc_test_lab(t[..], FB_CL_BARBARIAN, 0); t[0].creator[0].clock = 5;
+  t: [1] EgZone; xc_test_lab(t[..], FB_CL_BARBARIAN, 0); t[0].creator[0].clock = 5;
   #assert xc_press(t[..], 1) && t[0].creator[0].swing_clip == figs.BD_OWN + figs.TWOHAND_AXE_CLEAVE && t[0].creator[0].weapon == 0;
   d := t[0].xc[0].swing_def;
   #assert d.events[1].kind == act.ActionEventKind.impact && d.events[1].tick == cast(int) floor(f64(figs.BD_OWN_IMPACT) * f64(d.length) + 0.5);
@@ -2528,7 +2358,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 }
 #test "experimental combat: a caster's spell resolves without a weapon swing" #steps 2000000000 {
   // a caster's spell resolves at once, with no swing
-  w: [1] Lab; xc_test_lab(w[..], FB_CL_WIZARD, 0); w[0].creator[0].clock = 5;
+  w: [1] EgZone; xc_test_lab(w[..], FB_CL_WIZARD, 0); w[0].creator[0].clock = 5;
   #assert xc_press(w[..], 0) && w[0].xc[0].pend == -1 && w[0].creator[0].swing_clip == -1;
 }
 
@@ -2569,7 +2399,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 }
 
 #test "experimental combat level selector and multirow hotbar" {
-  s: [1] Lab; xc_start(s[0].xc[..], FB_CL_WIZARD);
+  s: [1] EgZone; xc_start(s[0].xc[..], FB_CL_WIZARD);
   x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
   l := cm_pick_box(xc_pick(s[..]), CM_LEVEL, 3);
   #assert xc_pointer(s[..], (l.x0 + l.x1) / 2, (l.y0 + l.y1) / 2, 0, 1);
@@ -2585,7 +2415,7 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 }
 
 #test "experimental combat shift drag swaps keys without casting and cancels safely" {
-  s: [1] Lab; s[0].creator[0].experimental = true; xc_start(s[0].xc[..], FB_CL_WIZARD);
+  s: [1] EgZone; s[0].creator[0].experimental = true; xc_start(s[0].xc[..], FB_CL_WIZARD);
   x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
   a := cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k)); b := cc.eg_box4(xc_slot_at(x[0].bar_n, 1, x[0].w, x[0].h, x[0].k)); first := x[0].bar[0].sp; second := x[0].bar[1].sp;
   s[0].shift = true;
@@ -2618,17 +2448,17 @@ xc_hp_sum :: (s: [] Lab) -> int { t := 0; for i: 0..<XC_FOES { t += s[0].xc[0].b
 #test "experimental combat stores swaps through the host" {
   // one Lab at a time: the message and the bar it sets are kept, then the first Lab goes
   msg: [OUTBOX_CAP] u8; n := 0; sp := 0;
-  { s: [1] Lab; s[0].creator[0].on = true; s[0].creator[0].experimental = true;
+  { s: [1] EgZone; s[0].creator[0].on = true; s[0].creator[0].experimental = true;
     xc_start(s[0].xc[..], FB_CL_WIZARD); xc_swap(s[0].xc[..], 0, 1);
-    #assert lab_action(s[..]) == 12 && s[0].out_n > 0;
+    #assert zone_action(s[..]) == 12 && s[0].out_n > 0;
     n = s[0].out_n; for i: 0..<n { msg[i] = s[0].outbox[i]; } sp = s[0].xc[0].bar[0].sp; }
-  t: [1] Lab; lab_message(t[..], 12, cast(string) msg[0..<n]);
+  t: [1] EgZone; _ := zone_message(t[..], 12, cast(string) msg[0..<n]);
   xc_start(t[0].xc[..], FB_CL_WIZARD);
   #assert t[0].xc[0].bar[0].sp == sp;
 }
 // One Fighter swing at a monster ahead, the frames dt apart (alternating with dt2): the accepted contacts.
 xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_PALADIN, 0);
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0.2; h[0].enemies[0].z = foe_z; h[0].enemies[1].x = -0.3; h[0].enemies[1].z = foe_z;
   s[0].creator[0].clock = 3;
   if !xc_press(s[..], 1) { return -1; }
@@ -2648,36 +2478,36 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
 }
 
 #test "experimental Dash sprints its Speed past the run, steers, and ends after its time" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_BARBARIAN, 0.5); cr := s[0].creator[..]; x := s[0].xc[..];
-  base := lab_move_scale(s[..]); speed := x[0].b[0].c[0].speed;
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_BARBARIAN, 0.5); cr := s[0].creator[..]; x := s[0].xc[..];
+  base := zone_move_scale(s[..]); speed := x[0].b[0].c[0].speed;
   dash := -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_DASH { dash = i; } }
   #assert dash >= 0 && xc_press(s[..], dash) && sprint.sprint_on(x[0].dash[0], cr[0].clock);
-  input := lab_move_in(s[..]);
+  input := zone_move_in(s[..]);
   #assert input.key_y == 1 && input.key_x == 0 && input.run && input.link_flags & 512 != 0;
-  #assert lab_move_world(s[..], 0, 0).link_flags & 512 != 0;
+  #assert zone_move_world(s[..], 0, 0).link_flags & 512 != 0;
   #assert abs(input.theta - (0.5 - 3.14159265)) < 0.001;
   // a sixtieth of a second at a time: the run's metres the sprint adds (7.5 m/s at your Speed's scale)
   extra: f32 = 0; peak: f32 = 0; dt := 1.0f32 / 60;
   for k: 0..<120 {
-    rate := lab_move_scale(s[..]); extra += 7.5 * (rate - base) * dt; if rate > peak { peak = rate; }
+    rate := zone_move_scale(s[..]); extra += 7.5 * (rate - base) * dt; if rate > peak { peak = rate; }
     cr[0].clock += dt; xc_sprint_frame(s[..]);
   }
   // the SRD's extra movement, your Speed in feet as metres, at about twice the run at its peak
   #assert abs(extra - f32(speed) * 0.3048) < 0.15 && peak > base * 1.85 && peak < base * 1.95;
   // ended after its 1.8 s: your own keys again, at your run
-  #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && lab_move_scale(s[..]) == base && cr[0].stride > 1;
-  input = lab_move_in(s[..]); #assert input.link_flags & 512 == 0 && input.key_y == 0;
+  #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && zone_move_scale(s[..]) == base && cr[0].stride > 1;
+  input = zone_move_in(s[..]); #assert input.link_flags & 512 == 0 && input.key_y == 0;
   // steered: D held while it runs turns it to your right, a little at a time
   cr[0].clock += 1; cr[0].yaw = 0; #assert xc_press(s[..], dash);
   face := x[0].dash[0].face; s[0].held = HOLD_D;
   for k: 0..<6 { cr[0].clock += dt; xc_sprint_frame(s[..]); }
   #assert x[0].dash[0].face != face && abs(x[0].dash[0].face - face) <= 6 * dt * f32(sprint.SPRINT_TURN) + 0.001;
-  #assert abs(lab_move_in(s[..]).theta - (x[0].dash[0].face - 3.14159265)) < 0.001;
+  #assert abs(zone_move_in(s[..]).theta - (x[0].dash[0].face - 3.14159265)) < 0.001;
   // down, it carries you no more
-  s[0].held = 0; cr[0].hostiles[0].hp = 0; xc_sprint_frame(s[..]); #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && lab_move_in(s[..]).link_flags & 512 == 0;
+  s[0].held = 0; cr[0].hostiles[0].hp = 0; xc_sprint_frame(s[..]); #assert !sprint.sprint_on(x[0].dash[0], cr[0].clock) && zone_move_in(s[..]).link_flags & 512 == 0;
 }
 #test "experimental Dash kicks up dust behind you as it runs" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_ROGUE, 0); cr := s[0].creator[..]; x := s[0].xc[..];
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_ROGUE, 0); cr := s[0].creator[..]; x := s[0].xc[..];
   dash := -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_DASH { dash = i; } }
   fxp_clear(s[0].puffs[..]); #assert dash >= 0 && xc_press(s[..], dash);
   // standing still here, each puff joins the last (fxp_start's merge); on the move each is its own
@@ -2716,7 +2546,7 @@ xc_test_swing :: (dt: f32, dt2: f32, foe_z: f32) -> int {
 // One diagonal facing of Thunderwave's forward cube. A check each (#13115): one check made all four
 // Labs, 92,437,704 traversal visits, 69% of the limit on its own.
 xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
-  s: [1] Lab; face := 0.78539816 + f32(turn)*1.5707963; xc_test_lab(s[..], FB_CL_WIZARD, face);
+  s: [1] EgZone; face := 0.78539816 + f32(turn)*1.5707963; xc_test_lab(s[..], FB_CL_WIZARD, face);
   h := s[0].creator[0].hostiles[..]; fx := sin(face); fz := cos(face); rx := fz; rz := -fx;
   // Three creatures in a broad fan ahead, one at the shoulder, and one safely behind.
   h[0].enemies[0].x = fx*2; h[0].enemies[0].z = fz*2;
@@ -2736,7 +2566,7 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 #test "experimental Thunderwave hits the whole forward cube at diagonal facings (4 of 4)" #steps 2000000000 { #assert xc_thunderwave_diagonal(3); }
 
 #test "experimental Thunderwave pushes a creature that fails its save in the scene" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
   h := s[0].creator[0].hostiles[..]; b := s[0].xc[0].b[..];
   b[0].c[1].score[RS_CON] = 1; pushed := false;
   for attempt: 0..<12 {
@@ -2749,7 +2579,7 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 }
 
 #test "experimental Thunderwave area outline matches every grid square it can hit" {
-  s: [1] Lab; xc_start(s[0].xc[..], FB_CL_WIZARD);
+  s: [1] EgZone; xc_start(s[0].xc[..], FB_CL_WIZARD);
   for turn: 0..<4 {
     face := f32(turn)*0.78539816; wave := aa.area_face(xk_spell_area(SP_THUNDERWAVE), 4, -6, face);
     b := s[0].xc[0].b[..]; z := rs_area(b, 0, rs_spell(SP_THUNDERWAVE), XC_MID, XC_MID+3);
@@ -2762,14 +2592,14 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 }
 
 #test "experimental Thunderwave shows its cast area and keeps it at the cast position" {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0.78539816);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0.78539816);
   s[0].creator[0].clock = 4; #assert xc_press(s[..], 4);
   #assert s[0].xc[0].wave_until > 4 && s[0].xc[0].wave.x == 0 && s[0].xc[0].wave.z == 0;
   #assert abs(s[0].xc[0].wave.fx - sin(0.78539816f32)) < 0.001;
   s[0].creator[0].player_x = 10; #assert s[0].xc[0].wave.x == 0;
 }
 #test "experimental combat: your target is held by attention, never picked for you, kept through the grace and dropped when it falls" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 6; h[0].enemies[1].x = 0.5; h[0].enemies[1].z = 3;
   // a monster near and ahead is not your target until you strike at it
   s[0].creator[0].clock = 2; xc_lock_step(s[..]); #assert s[0].xc[0].target == -1;
@@ -2790,7 +2620,7 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
   #assert s[0].xc[0].target == -1 && s[0].xc[0].lock.reason == attn.AttnReason.invalid;
 }
 #test "experimental combat: a landed blow holds the struck monster for its hit stop, a monster's landed blow holds it, and nothing else pauses" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_PALADIN, 0);
   h := s[0].creator[0].hostiles[..]; h[0].enemies[0].x = 0; h[0].enemies[0].z = 1.2;
   hp := xc_hp_sum(s[..]); tries := 0; stopped := false;
   while xc_hp_sum(s[..]) == hp && tries < 40 {
@@ -2813,7 +2643,7 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
   xc_stops_step(s[..]); #assert !h[0].enemies[3].stopped && s[0].xc[0].stops.n == 0;
 }
 #test "experimental combat: numbers go through the presentation queue, capped a source a frame and counted" {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0); x := s[0].xc[..];
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0); x := s[0].xc[..];
   for i: 0..<10 { xc_float_int(x, f32(i), 1.9, 0, 1, 3 + i, false); }
   fs := x[0].floats[0];
   #assert fs.shown == fs.per_source && fs.suppressed == 10 - fs.per_source;
@@ -2825,7 +2655,7 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 }
 
 #test "experimental combat: Stunned hostiles can move but cannot attack and restraint preserves separate action permission" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   h[0].enemies[0].swing=0.34;
   #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=0,spell=-1,until=60,save=-1});
@@ -2844,7 +2674,7 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 }
 
 #test "experimental combat: each body kind fights as its SRD stat block" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
   b := s[0].xc[0].b[..];
   for i: 0..<XC_FOES {
     k := hostile.hostile_kind(i); c := b[0].c[i+1]; blk := rs_monster_block(XC_FOE_BLOCK[k]);
@@ -2858,29 +2688,29 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 
 // ---- the bow's checks (docs/verse/bow-combat.md)
 // A Ranger at the spawn facing +z, the camera behind and above, looking along `fwd`.
-xc_test_bow :: (s: [] Lab, fwd: [3] f32) {
+xc_test_bow :: (s: [] EgZone, fwd: [3] f32) {
   xc_test_lab(s, FB_CL_RANGER, 0);
   x := s[0].xc[..]; cr := s[0].creator[..];
   cr[0].yaw = -3.14159265; cr[0].clock = 10;
   x[0].seen = true; x[0].u[16] = 0; x[0].u[17] = meadow_y(0, 0) + 2.0; x[0].u[18] = -2.5;
   x[0].u[20] = fwd[0]; x[0].u[21] = fwd[1]; x[0].u[22] = fwd[2]; x[0].u[23] = 640; x[0].u[27] = 345;
 }
-xc_test_fly :: (s: [] Lab, seconds: f32) {
+xc_test_fly :: (s: [] EgZone, seconds: f32) {
   for k: 0..<cast(int) (seconds * 60) { s[0].creator[0].clock += 1.0 / 60; xc_bow_step(s, 1.0 / 60); }
 }
 #test "experimental combat: a Ranger holds the longbow, its Attack is a shot, and Fighters keep their blades" {
   #assert xc_kit(FB_CL_RANGER) == XC_KIT_BOW && cc.CC_KIT_MESH[XC_KIT_BOW] == 4 && !cc.CC_KIT_TWO[XC_KIT_BOW] && xc_kit(FB_CL_ROGUE) == 3 && xc_kit(FB_CL_FIGHTER) == 1;
   #assert rs_weapon(W_LONGBOW).dice == 1 && rs_weapon(W_LONGBOW).sides == 8 && rs_weapon(W_LONGBOW).range_ft == 150 && rs_weapon(W_LONGBOW).long_ft == 600;
-  { s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.05, 1]);
+  { s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.05, 1]);
   #assert xc_has_bow(s[..]) && s[0].xc[0].b[0].c[0].ranged == W_LONGBOW;
   // a key's press draws and looses itself at full draw
   slot := xc_slot_of(s[0].xc[..], FB_ATTACK); #assert slot >= 0 && xc_press(s[..], slot) && s[0].xc[0].ar[0].draw[0].on && s[0].xc[0].ar[0].draw[0].self_loose;
   xc_test_fly(s[..], 0.5); #assert s[0].xc[0].ar[0].shots == 0 && s[0].creator[0].aim > 0.9;
   xc_test_fly(s[..], 0.4); #assert s[0].xc[0].ar[0].shots == 1 && !s[0].xc[0].ar[0].draw[0].on; }
-  t: [1] Lab;   // after the first Lab is gone: two at once is most of the check's value slots xc_test_lab(t[..], FB_CL_FIGHTER, 0); #assert !xc_has_bow(t[..]) && !xc_bow_begin(t[..], false);
+  t: [1] EgZone;   // after the first Lab is gone: two at once is most of the check's value slots xc_test_lab(t[..], FB_CL_FIGHTER, 0); #assert !xc_has_bow(t[..]) && !xc_bow_begin(t[..], false);
 }
 #test "experimental combat: held and let go at a Goblin, the arrow arcs to it and the Longbow's 1d8 + Dex lands" #steps 800000000 {
-  s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
+  s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
   x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; b := x[0].b[..];
   g := 3; h[0].enemies[g].x = 0; h[0].enemies[g].z = 20; b[0].c[1 + g].ac = 1; before := b[0].c[1 + g].hp; b[0].c[1 + g].hp = 40; b[0].c[1 + g].hp_max = 40;
   #assert xc_bow_begin(s[..], false) && !x[0].ar[0].draw[0].self_loose;
@@ -2896,7 +2726,7 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   #assert before > 0;
 }
 #test "experimental combat: a miss is shown and flies on past; a shot past 150 feet is the Longbow's long range" #steps 800000000 {
-  s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.02, 1]);
+  s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.02, 1]);
   x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; b := x[0].b[..];
   g := 3; h[0].enemies[g].x = 0; h[0].enemies[g].z = 18; b[0].c[1 + g].ac = 60;
   #assert xc_bow_begin(s[..], false); xc_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
@@ -2910,7 +2740,7 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   #assert x[0].bow_far == 1;
 }
 #test "experimental combat: an arrow into the ground sticks, then fades; a short draw falls short; Escape looses nothing" #steps 800000000 {
-  s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.45, 0.89]);
+  s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.45, 0.89]);
   x := s[0].xc[..];
   #assert xc_bow_begin(s[..], false); xc_test_fly(s[..], 1.0); #assert xc_bow_loose(s[..]);
   xc_test_fly(s[..], 1.5);
@@ -2927,7 +2757,7 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   xc_test_fly(s[..], 1.0); #assert x[0].ar[0].shots == 2 && s[0].creator[0].aim == 0;
 }
 #test "experimental combat: a Goblin shoots from past its reach and a Hill Giant's contact is two attacks" #steps 400000000 {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=100; b[0].c[0].hp_max=100; b[0].c[0].temp=0;
   // the gremlin (enemy 3) 10 m off, awake and in sight: its swing is a Shortbow shot
@@ -2960,7 +2790,7 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
 // Its own check: each monster step far from you gathers the walls afresh, and the two halves
 // together came near the traversal budget.
 #test "experimental combat: a Goblin's shot is kept through the world's own tick" #steps 400000000 {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=100; b[0].c[0].hp_max=100; b[0].c[0].temp=0;
   g := 3; h[0].enemies[g].kind=xdungeon.DG_KIND_GREMLIN; h[0].enemies[g].x=0; h[0].enemies[g].z=10;
@@ -2973,7 +2803,7 @@ xc_test_fly :: (s: [] Lab, seconds: f32) {
   #assert kept;
 }
 // The Hill Giant beside you kills you now (its Tree Club through the shared contact, fixed dice).
-xc_test_killed :: (s: [] Lab) {
+xc_test_killed :: (s: [] EgZone) {
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   boss := -1; for i: 0..<XC_FOES { if hostile.hostile_kind(i)==xdungeon.DG_KIND_BOSS { boss=i; } }
   b[0].dice[0].fixed=true; b[0].c[0].ac=1; b[0].c[0].hp=3; b[0].c[0].temp=0; xc_sync_vitals(s);
@@ -2981,7 +2811,7 @@ xc_test_killed :: (s: [] Lab) {
   if hostile.hc_offer(h[0].contacts[..],boss) { xc_hostile_contacts(s); }
 }
 #test "experimental combat: an arrow loosed before a monster kills you still lands, harms and kills (#13120)" #steps 800000000 {
-  s: [1] Lab; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
+  s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
   x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; b := x[0].b[..];
   g := 3; h[0].enemies[g].x = 0; h[0].enemies[g].z = 20; b[0].c[1 + g].ac = 1; b[0].c[1 + g].hp = 1;
   #assert xc_bow_begin(s[..], false); xc_test_fly(s[..], 1.0);
@@ -3000,7 +2830,7 @@ xc_test_killed :: (s: [] Lab) {
   x[0].cool_at = -100; #assert !xc_press(s[..], xc_slot_of(x, FB_ATTACK)) && !x[0].ar[0].draw[0].on;
 }
 #test "experimental combat: a blow already swung lands though a monster kills you first; down, nothing new swings (#13120)" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_PALADIN, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_PALADIN, 0);
   x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; b := x[0].b[..];
   h[0].enemies[0].x = 0.2; h[0].enemies[0].z = 1.2; b[0].c[1].ac = 1; b[0].c[1].hp = 30; b[0].c[1].hp_max = 30;
   s[0].creator[0].clock = 3;
@@ -3015,7 +2845,7 @@ xc_test_killed :: (s: [] Lab) {
 }
 
 #test "experimental combat: physical contact uses shared class AC, defenses, temporary HP and the saved player turn" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=14;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].kind=xdungeon.DG_KIND_IMP;
@@ -3048,7 +2878,7 @@ xc_test_killed :: (s: [] Lab) {
   #assert !xc_foe(xdungeon.DG_KIND_GREMLIN).fiend && !xc_foe(xdungeon.DG_KIND_BRUTE).fiend && !xc_foe(xdungeon.DG_KIND_BOSS).fiend;
 }
 #test "experimental combat: a Wizard's Shield answers a blow with its own sound and barrier" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0); xc_set_level(s[0].xc[..],3);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0); xc_set_level(s[0].xc[..],3);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   #assert rs_spell_ready(b[0].c[0],SP_SHIELD) && b[0].c[0].shield_spell;
   b[0].dice[0].fixed=true; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=0;
@@ -3059,7 +2889,7 @@ xc_test_killed :: (s: [] Lab) {
   #assert s[0].xc[0].shields == 1 && b[0].c[0].hp == 20 && b[0].c[0].shield_active && s[0].experimental_audio[0].n > 0;
 }
 #test "experimental combat: a monster that walks into a Cleric's Spirit Guardians saves once as it enters" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_CLERIC,0); xc_set_level(s[0].xc[..],5);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_CLERIC,0); xc_set_level(s[0].xc[..],5);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..]; x := s[0].xc[..];
   b[0].dice[0].fixed=true;
   k := -1; for i: 0..<x[0].bar_n { if x[0].bar[i].kind == FB_SPELL && x[0].bar[i].sp == SP_SPIRIT_GUARDIANS { k = i; } }
@@ -3076,7 +2906,7 @@ xc_test_killed :: (s: [] Lab) {
 // Every spell on class c's bar at every selector level 1-6, used at a monster just ahead: it resolves
 // through the shared engine and plays its own cast sound. Divine Smite needs a melee hit first.
 xc_play_kit :: (c: int) {
-  s: [1] Lab; xc_test_lab(s[..],c,0);
+  s: [1] EgZone; xc_test_lab(s[..],c,0);
   for level: 1..<7 {
     // Each level is a separate preset trial with its initial supplies.
     s[0].xc[0].protection_water_used=false; s[0].xc[0].revivify_diamond_used=false;
@@ -3106,7 +2936,7 @@ xc_play_kit :: (c: int) {
 #test "experimental combat: Warlock and Wizard kits' spells resolve and sound at levels 1-6" #steps 4000000000 { xc_play_kit(FB_CL_WARLOCK); xc_play_kit(FB_CL_WIZARD); }
 
 #test "experimental combat: accepted and refused casts preserve actual HP and temporary HP rather than synthetic healing" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   b[0].c[0].hp=3; b[0].c[0].temp=7; xc_sync_vitals(s[..]);
   h[0].enemies[0].x=0; h[0].enemies[0].z=4; s[0].creator[0].clock=2;
@@ -3116,7 +2946,7 @@ xc_play_kit :: (c: int) {
 }
 
 #test "experimental combat: quiet NPC turns repeat their saves without physical contact" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0);
   b := s[0].xc[0].b[..]; b[0].dice[0].fixed=true;
   b[0].c[1].turn_at=0; b[0].c[1].round_at=0; b[0].c[1].score[RS_WIS]=30;
   #assert rs_put_effect(b,1,RsEffect.{kind=EF_COND,cond=RS_PARALYZED,by=0,spell=-1,until=60,save=RS_WIS,dc=13});
@@ -3126,7 +2956,7 @@ xc_play_kit :: (c: int) {
 }
 
 #test "experimental combat: healing caps at class HP and False Life never becomes ordinary healing" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_DRUID,0);
   x := s[0].xc[..]; b := x[0].b[..]; h := s[0].creator[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].hp=29; b[0].c[0].hp_max=30; b[0].c[0].temp=7;
   x[0].bar[0]=fb_spell(SP_CURE_WOUNDS,1,FB_SELF); x[0].bar_n=1; s[0].creator[0].clock=2;
@@ -3140,7 +2970,7 @@ xc_play_kit :: (c: int) {
 }
 
 #test "experimental combat: the real frame binds contact-only physics before the first hostile tick" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   for i: 1..<XC_FOES { h[0].enemies[i].dead=true; }
   h[0].enemies[0].x=0; h[0].enemies[0].z=1; h[0].enemies[0].swing=0.34;
@@ -3148,13 +2978,13 @@ xc_play_kit :: (c: int) {
   b[0].c[0].turn_at=0; b[0].c[1].turn_at=0;
   before := h[0].dice[0].state;
   u: [104] f32; out: [1] f32;
-  _ := lab_frame(s[..],out[..],u[..],1280,720,1,0.05,false);
+  _ := zone_frame(s[..],out[..],u[..],1280,720,1,0.05,false);
   #assert h[0].shared && h[0].contacts[0].count==0 && h[0].dice[0].state==before;
   #assert b[0].c[0].hp==20 && b[0].c[0].temp==2 && h[0].hp==20 && h[0].temp==2;
 }
 
 #test "experimental combat: simultaneous shared hits stop each striker even when temporary HP absorb them" {
-  s: [1] Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s: [1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b := s[0].xc[0].b[..]; h := s[0].creator[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].ac=10; b[0].c[0].temp=20;
   b[0].c[1].turn_at=0; b[0].c[2].turn_at=0;
@@ -3165,7 +2995,7 @@ xc_play_kit :: (c: int) {
 }
 
 #test "experimental combat: refused press restores spent budgets while explicit unlimited casting preserves reactions" {
-  s:[1] Lab; xc_test_lab(s[..],FB_CL_CLERIC,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_CLERIC,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; b[0].c[0].hp=1;
   b[0].c[0].slots[1]=0; b[0].c[0].reacted=true; b[0].c[0].speech_blocked=true;
   x[0].seat[0].open=true; x[0].seat[0].turn.bonus=true; x[0].seat[0].turn.slot_spent=true;
@@ -3177,7 +3007,7 @@ xc_play_kit :: (c: int) {
 }
 
 #test "experimental combat: a spell slot's corner steps its slot level and the cast spends that slot (#13038)" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WIZARD, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0);
   x := s[0].xc[..]; xc_set_level(x, 3); x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
   ray := 2; #assert x[0].bar[ray].sp == SP_RAY_OF_SICKNESS && x[0].bar[ray].lvl == 1;
   levels: [9] int; #assert fb_cast_levels(x[0].b[0].c[0], x[0].bar[ray], levels[..]) == 2 && levels[0] == 1 && levels[1] == 2;
@@ -3195,7 +3025,7 @@ xc_play_kit :: (c: int) {
   #assert x[0].whiffs == 0 && x[0].b[0].c[0].slots[1] == x[0].b[0].c[0].slots_max[1] && x[0].b[0].c[0].slots[2] == x[0].b[0].c[0].slots_max[2] - 1;
 }
 #test "experimental combat: Hex's bottom strip picks its ability, and an option it can't take spends nothing (#13038)" #steps 2000000000 {
-  s: [1] Lab; xc_test_lab(s[..], FB_CL_WARLOCK, 0);
+  s: [1] EgZone; xc_test_lab(s[..], FB_CL_WARLOCK, 0);
   x := s[0].xc[..]; x[0].seen = true; x[0].k = 1; x[0].w = 1200; x[0].h = 800;
   hex := 2; #assert x[0].bar[hex].sp == SP_HEX && fb_option_n(SP_HEX) == 6;
   r := cc.eg_box4(xc_slot_at(x[0].bar_n, hex, x[0].w, x[0].h, x[0].k));
@@ -3218,7 +3048,7 @@ xc_play_kit :: (c: int) {
   #assert fb_option_n(SP_FIRE_BOLT) == 0;
 }
 #test "Experimental Guidance's skill badge changes the ability check benefit of the cast" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_PALADIN,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_PALADIN,0);
   x:=s[0].xc[..]; xc_set_level(x,2);
   x[0].seen=true; x[0].k=1; x[0].w=1200; x[0].h=800;
   slot:=-1;
@@ -3236,7 +3066,7 @@ xc_play_kit :: (c: int) {
   #assert guided;
 }
 #test "Experimental Protection consumes its flask once across preset changes" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_PALADIN,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_PALADIN,0);
   x:=s[0].xc[..]; xc_set_level(x,3);
   slot:=-1;
   for i:0..<x[0].bar_n { if x[0].bar[i].sp==SP_PROTECTION_GOOD_EVIL { slot=i; } }
@@ -3254,7 +3084,7 @@ xc_play_kit :: (c: int) {
   #assert !xc_use(s[..],slot) && b[0].c[0].slots[1]==slots;
 }
 #test "experimental combat: a clicked monster in reach takes a cone spell; out of reach or fallen it is let go (#13038)" #steps 2000000000 {
-  c: [1] Lab; xc_test_lab(c[..], FB_CL_CLERIC, 0);
+  c: [1] EgZone; xc_test_lab(c[..], FB_CL_CLERIC, 0);
   x := c[0].xc[..]; g := c[0].creator[0].hostiles[..]; flame := x[0].bar[0];
   g[0].enemies[0].x = 0; g[0].enemies[0].z = 4;      // nearer, dead ahead
   g[0].enemies[1].x = 1; g[0].enemies[1].z = 9;      // the one you clicked
@@ -3268,23 +3098,23 @@ xc_play_kit :: (c: int) {
   x[0].picked = 0; #assert !xc_pick_at(c[..], 600, 400) && x[0].picked == -1;
 }
 #test "experimental physical opportunity interrupts the admitted body before leaving exact reach" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].hp=1; b[0].c[0].ac=10;
   cr[0].player_x=0; cr[0].player_y=0; cr[0].player_z=0;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
-  body:=lab_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
+  body:=zone_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
   #assert body.z==0 && body.vz==0 && b[0].c[0].hp==0 && b[0].c[1].reacted;
   #assert h[0].hp==0 && cr[0].player_z==0 && h[0].hits==1 && h[0].pops[0].amount==1;
 }
 #test "experimental physical opportunity keeps the accepted move and saved budgets after nonlethal damage" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].hp=100; b[0].c[0].ac=10;
   cr[0].player_x=0; cr[0].player_y=0; cr[0].player_z=0;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
   s[0].xc[0].seat[0].turn.action=true; s[0].xc[0].seat[0].turn.slot_spent=true;
-  body:=lab_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
+  body:=zone_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
   #assert body.z==f32(-0.1) && b[0].c[0].hp==88 && b[0].c[1].reacted;
   #assert s[0].xc[0].seat[0].turn.action && s[0].xc[0].seat[0].turn.slot_spent;
   #assert !s[0].xc[0].npc_seat[0].turn.action;
@@ -3292,7 +3122,7 @@ xc_play_kit :: (c: int) {
 
 #test "experimental physical opportunity respects Disengage ordinary sight and Addle" {
   for mode:0..<4 {
-    s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+    s:[1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
     b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
     b[0].dice[0].fixed=true; b[0].c[0].hp=100; b[0].c[0].ac=10;
     cr[0].player_x=0; cr[0].player_y=0; cr[0].player_z=0;
@@ -3301,31 +3131,31 @@ xc_play_kit :: (c: int) {
     if mode==1 { b[0].c[0].cond|=RS_INVISIBLE; }
     if mode==2 { b[0].c[1].cond|=RS_BLINDED; }
     if mode==3 { b[0].c[1].opportunity_blocked=true; }
-    body:=lab_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
+    body:=zone_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
     #assert body.z==f32(-0.1) && b[0].c[0].hp==100 && !b[0].c[1].reacted;
   }
 }
 #test "experimental physical opportunity uses controller origin rather than interpolated render position" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].hp=100; b[0].c[0].ac=10; cr[0].player_z=4;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
-  body:=lab_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
+  body:=zone_keep_body(s[..],EgBody.{},EgBody.{z= -0.1});
   #assert body.z==f32(-0.1) && b[0].c[0].hp==88 && cr[0].player_z==4;
 }
 #test "experimental teleport publishes a new origin without provoking for the teleport displacement" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);
   b:=s[0].xc[0].b[..]; cr:=s[0].creator[..]; h:=cr[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[0].hp=100;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
-  s[0].put_on=true; s[0].put_z=4; w:=lab_walk(s[..]);
+  s[0].put_on=true; s[0].put_z=4; w:=zone_walk(s[..]);
   #assert w.put && cr[0].player_z==4;
-  body:=lab_keep_body(s[..],EgBody.{z=4},EgBody.{z=4.1});
+  body:=zone_keep_body(s[..],EgBody.{z=4},EgBody.{z=4.1});
   #assert body.z==f32(4.1) && b[0].c[0].hp==100 && !b[0].c[1].reacted;
 }
 
 #test "experimental monster departure resolves one player Reaction before publishing a lethal move" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
   b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..];
   b[0].dice[0].fixed=true; b[0].c[1].hp=1; b[0].c[1].ac=10;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
@@ -3335,7 +3165,7 @@ xc_play_kit :: (c: int) {
   #assert !s[0].xc[0].seat[0].turn.action && !s[0].xc[0].npc_seat[0].turn.action;
 }
 #test "experimental monster departure survives a miss while a second mover cannot spend the player's Reaction again" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
   b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true;
   for foe:0..<2 {
     h[0].enemies[foe].x=0; h[0].enemies[foe].z=1.5; b[0].c[foe+1].ac=30;
@@ -3348,7 +3178,7 @@ xc_play_kit :: (c: int) {
 
 #test "experimental monster departure reads the moving seat's Disengage and ordinary visibility" {
   for mode:0..<4 {
-    s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+    s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
     b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true; b[0].c[1].ac=10;
     h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
     if mode==0 { s[0].xc[0].npc_seat[0].turn.disengaged=true; }
@@ -3361,7 +3191,7 @@ xc_play_kit :: (c: int) {
   }
 }
 #test "experimental monster departure can choose an Unarmed Strike while the player holds a ranged weapon" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
   b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true;
   b[0].c[0].weapon=W_LONGBOW; b[0].c[1].ac=10; b[0].c[1].hp=100;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
@@ -3370,16 +3200,16 @@ xc_play_kit :: (c: int) {
   #assert b[0].c[0].reacted && rs_saw(b,0,"Unarmed Strike") && b[0].c[1].hp<100;
 }
 #test "experimental staged monster AI advances once per actual Lab frame" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
   h:=s[0].creator[0].hostiles[..]; h[0].enemies[0].x=4; h[0].enemies[0].z=0;
   time:=h[0].time; clock:=s[0].creator[0].clock;
-  out:[1]f32; u:[128]f32; _:=lab_frame(s[..],out[..],u[..],960,600,1,0.05,false);
+  out:[1]f32; u:[128]f32; _:=zone_frame(s[..],out[..],u[..],960,600,1,0.05,false);
   #assert s[0].creator[0].hostile_external && abs(h[0].time-time-f32(0.05))<f32(0.0001);
   #assert abs(s[0].creator[0].clock-clock-f32(0.05))<f32(0.0001) && h[0].enemies[0].x<4;
 }
 
 #test "experimental monster departure does not label a non-locomotion placement as own movement" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
   b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].dice[0].fixed=true;
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
   proposed:=h[0].enemies[0]; proposed.z=1.6; proposed.moving=false;
@@ -3388,15 +3218,15 @@ xc_play_kit :: (c: int) {
 }
 
 #test "experimental walking scale exposes class Speed and condition changes without the terrain pace clamp" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_MONK,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_MONK,0);
   s[0].xc[0].level=6; xc_set_class(s[0].xc[..],FB_CL_MONK);
-  b:=s[0].xc[0].b[..]; #assert b[0].c[0].speed==45 && lab_move_scale(s[..])==f32(1.5);
-  b[0].c[0].halved_until=60; #assert lab_move_scale(s[..])==f32(22)/30;
-  b[0].c[0].halved_until=0; b[0].c[0].cond|=RS_PRONE; #assert lab_move_scale(s[..])==f32(0.75);
-  b[0].c[0].cond|=RS_GRAPPLED; #assert lab_move_scale(s[..])==0;
+  b:=s[0].xc[0].b[..]; #assert b[0].c[0].speed==45 && zone_move_scale(s[..])==f32(1.5);
+  b[0].c[0].halved_until=60; #assert zone_move_scale(s[..])==f32(22)/30;
+  b[0].c[0].halved_until=0; b[0].c[0].cond|=RS_PRONE; #assert zone_move_scale(s[..])==f32(0.75);
+  b[0].c[0].cond|=RS_GRAPPLED; #assert zone_move_scale(s[..])==0;
 }
 xc_check_ai_rate :: (speed:int)->bool {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0);
   b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..]; b[0].c[1].speed=speed;
   h[0].enemies[0].x=4; h[0].enemies[0].z=0;
   xc_hostile_tick(s[..],0.05);
@@ -3408,18 +3238,18 @@ xc_check_ai_rate :: (speed:int)->bool {
 #test "experimental walking scale changes actual AI distance at twice base Speed" { #assert xc_check_ai_rate(60); }
 
 #test "experimental rest activity uses admitted own motion rather than attempts or passive displacement" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..];
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..];
   #assert rs_short_rest_begin(b,0);
   origin:=EgBody.{ground=true}; body:=origin;
-  lab_rest_motion(s[..],origin,body,true,true); #assert b[0].c[0].rest.phase==1;
-  body.x=1; lab_rest_motion(s[..],origin,body,false,false); #assert b[0].c[0].rest.phase==1;
-  lab_rest_motion(s[..],origin,body,true,false); #assert b[0].c[0].rest.phase==0;
+  zone_rest_motion(s[..],origin,body,true,true); #assert b[0].c[0].rest.phase==1;
+  body.x=1; zone_rest_motion(s[..],origin,body,false,false); #assert b[0].c[0].rest.phase==1;
+  zone_rest_motion(s[..],origin,body,true,false); #assert b[0].c[0].rest.phase==0;
   #assert rs_short_rest_begin(b,0); body=origin; body.y=1; body.ground=false;
-  lab_rest_motion(s[..],origin,body,false,false); #assert b[0].c[0].rest.phase==1;
-  lab_rest_motion(s[..],origin,body,false,true); #assert b[0].c[0].rest.phase==0;
+  zone_rest_motion(s[..],origin,body,false,false); #assert b[0].c[0].rest.phase==1;
+  zone_rest_motion(s[..],origin,body,false,true); #assert b[0].c[0].rest.phase==0;
 }
 #test "experimental rest activity interrupts a monster only after its own candidate is accepted" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..];
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..]; h:=s[0].creator[0].hostiles[..];
   #assert rs_short_rest_begin(b,1);
   proposed:=h[0].enemies[0]; proposed.x+=1; proposed.moving=false;
   xc_monster_move(s[..],0,proposed); #assert b[0].c[1].rest.phase==1;
@@ -3428,23 +3258,23 @@ xc_check_ai_rate :: (speed:int)->bool {
 }
 
 #test "Experimental accepted player motion accounts Long Rest exertion and settled stopping returns to watch" #steps 2000000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..];
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0); b:=s[0].xc[0].b[..];
   #assert rs_rest_schedule_enable(b) && rs_long_rest_start_owned(b,0,2,true);
   rs_tick(b,3600);
   origin:=EgBody.{ground=true}; body:=origin; body.z=1;
-  lab_rest_motion(s[..],origin,body,true,false);
+  zone_rest_motion(s[..],origin,body,true,false);
   #assert b[0].c[0].long_rest.mode==3 && b[0].c[0].long_rest.phase==1;
   rs_tick(b,20);
   // A blocked held key does not keep crediting walking after actual motion stops.
-  lab_rest_motion(s[..],body,body,true,false);
+  zone_rest_motion(s[..],body,body,true,false);
   #assert b[0].c[0].long_rest.mode==2 && b[0].c[0].long_rest.exertion==20000000;
   #assert b[0].c[0].long_rest.interruptions==0;
 }
 
 #test "Experimental rest controls require actual settled observations and refuse active movement or strikes" #steps 2000000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0); x:=s[0].xc[..]; b:=x[0].b[..];
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0); x:=s[0].xc[..]; b:=x[0].b[..];
   #assert b[0].rest_auto && !xc_rest_request(s[..],RS_REST_SLEEP);
-  body:=EgBody.{ground=true}; lab_rest_motion(s[..],body,body,false,false);
+  body:=EgBody.{ground=true}; zone_rest_motion(s[..],body,body,false,false);
   for busy:0..<7 {
     if busy==0 { s[0].held=HOLD_W; } if busy==1 { s[0].stick_on=true; }
     if busy==2 { s[0].creator[0].airborne=true; } if busy==3 { s[0].creator[0].moving=true; }
@@ -3454,14 +3284,14 @@ xc_check_ai_rate :: (speed:int)->bool {
     s[0].held=0; s[0].stick_on=false; s[0].creator[0].airborne=false; s[0].creator[0].moving=false;
     s[0].creator[0].walk.on=false; x[0].pend = -1; sprint.sprint_stop(x[0].dash[..]);
   }
-  #assert xc_rest_request(s[..],RS_REST_SLEEP) && rs_sleeping(b[0].c[0]) && lab_move_scale(s[..])==0;
+  #assert xc_rest_request(s[..],RS_REST_SLEEP) && rs_sleeping(b[0].c[0]) && zone_move_scale(s[..])==0;
   #assert xc_rest_request(s[..],RS_REST_WATCH) && !rs_sleeping(b[0].c[0]) && b[0].c[0].long_rest.mode==2;
   s[0].held=HOLD_W;
   #assert xc_rest_request(s[..],RS_REST_END) && b[0].c[0].long_rest.phase==0;
 }
 // A finger on the side bar (everglade/hud/class-bar.coax): the button id, then (req >= 0) its menu's
 // row for that rest request. True when every press was taken.
-xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
+xc_side_tap :: (s:[] EgZone,id:int,req:int)->bool {
   g:=xc_side_geo(s); j:=eg_side_find(g,id); if j<0 { return false; }
   b:=eg_side_box(g,j); bx:=(b.x0+b.x1)/2; by:=(b.y0+b.y1)/2;
   if !xc_pointer(s,bx,by,0,1) || !xc_pointer(s,bx,by,2,1) { return false; }
@@ -3474,7 +3304,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 #test "Experimental's picker, side bar and bar keep apart on a phone either way up and on a desktop" #steps 2000000000 {
   for v:0..<3 {
-    s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0); x:=s[0].xc[..];
+    s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0); x:=s[0].xc[..];
     x[0].seen=true; x[0].open=true; x[0].k=ifx v==2 then 1.0f32 else 3.0f32;
     x[0].w=ifx v==0 then 1170.0f32 else ifx v==1 then 2532.0f32 else 1920.0f32;
     x[0].h=ifx v==0 then 2532.0f32 else ifx v==1 then 1170.0f32 else 1080.0f32;
@@ -3488,9 +3318,9 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 #test "Experimental rest on the side bar preserves class selection and lets Short Rest choices spend one Hit Die" #steps 2000000000 {
   for v:0..<2 {
-    s:[1]Lab; xc_test_lab(s[..],FB_CL_FIGHTER,0); x:=s[0].xc[..]; b:=x[0].b[..];
+    s:[1] EgZone; xc_test_lab(s[..],FB_CL_FIGHTER,0); x:=s[0].xc[..]; b:=x[0].b[..];
     x[0].seen=true; x[0].k=ifx v==0 then 1.0f32 else 3.0f32; x[0].w=ifx v==0 then 1200.0f32 else 1170.0f32; x[0].h=ifx v==0 then 800.0f32 else 2532.0f32; x[0].open=v==0;
-    body:=EgBody.{ground=true}; lab_rest_motion(s[..],body,body,false,false);
+    body:=EgBody.{ground=true}; zone_rest_motion(s[..],body,body,false,false);
     b[0].c[0].hp=1; b[0].dice[0].fixed=true;
     #assert xc_side_tap(s[..],EG_SIDE_REST,RS_REST_SHORT);
     #assert b[0].c[0].rest.phase==1 && x[0].klass==FB_CL_FIGHTER && x[0].level==1;
@@ -3508,7 +3338,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental placed-object Fire Bolt uses the shared attack instead of the empty bolt path" #steps 2000000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
   cr:=s[0].creator[..]; cr[0].glade_first=1137376; cr[0].glade_count=7059666; cr[0].glade_word=2525712;
   b:=s[0].xc[0].b[..]; b[0].dice[0].fixed=true; before:=b[0].dice[0].rolled;
   k:=0;
@@ -3516,7 +3346,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental placed-object picking destruction and packed-scene admission" #steps 2000000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
   cr:=s[0].creator[..];
   #assert xc_object_pick(s[..],0,-1,40)==-1;
   cr[0].glade_first=XC_OBJECT_ENV_FIRST;cr[0].glade_count=XC_OBJECT_ENV_COUNT;cr[0].glade_word=XC_OBJECT_WORD;
@@ -3533,7 +3363,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
   #assert xc_objects_draw(s[..],out[..],10)==10 && !xc_object_blocked(s[..],-4,-9,0.3);
 }
 #test "Experimental placed-object burning uses elapsed rounds and removes destroyed collision" #steps 2000000000 {
-  s:[1]Lab;xc_test_lab(s[..],FB_CL_WIZARD,0);
+  s:[1] EgZone;xc_test_lab(s[..],FB_CL_WIZARD,0);
   cr:=s[0].creator[..];cr[0].glade_first=XC_OBJECT_ENV_FIRST;cr[0].glade_count=XC_OBJECT_ENV_COUNT;cr[0].glade_word=XC_OBJECT_WORD;
   x:=s[0].xc[..];o:=x[0].objects[0].rules[..];o[0].burning=true;o[0].hp=1;x[0].objects[0].burn_at=6000000;
   x[0].b[0].rest_clock.ticks=5999999;xc_objects_tick(s[..]);#assert o[0].hp==1;
@@ -3543,7 +3373,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
   xc_set_class(x,FB_CL_FIGHTER);#assert o[0].destroyed;
 }
 #test "Experimental placed-object refused cast preserves RNG resources object and saved action" #steps 2000000000 {
-  s:[1]Lab;xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  s:[1] EgZone;xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
   cr:=s[0].creator[..];cr[0].glade_first=XC_OBJECT_ENV_FIRST;cr[0].glade_count=XC_OBJECT_ENV_COUNT;cr[0].glade_word=XC_OBJECT_WORD;
   x:=s[0].xc[..];b:=x[0].b[..];b[0].c[0].cond|=RS_INCAPACITATED;
   hp:=x[0].objects[0].rules[0].hp;rolled:=b[0].dice[0].rolled;seat:=x[0].seat[0];
@@ -3554,7 +3384,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental Fireball reads cover from its origin across the dungeon wall" #steps 2000000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,3.14159265);
   x:=s[0].xc[..]; xc_set_level(x,5);
   cr:=s[0].creator[..]; cr[0].player_x=-40.5; cr[0].player_z=-40;
   foes:=cr[0].hostiles[..];
@@ -3580,33 +3410,33 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental jump uses Strength and an admitted run-up, then pays on takeoff" #steps 2000000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0);
   x:=s[0].xc[..]; b:=x[0].b[..];
   ground:=EgBody.{ground=true}; intent:=EgMotionIntent.{walk=true,jump=true};
   b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
   b[0].c[0].score[RS_STR]=8;
-  standing:=lab_jump_plan(s[..],ground,intent,true);
+  standing:=zone_jump_plan(s[..],ground,intent,true);
   #assert standing.mode==EG_JUMP_LONG && standing.feet==4;
-  lab_rest_motion(s[..],ground,EgBody.{x=3.1,ground=true,vx=1},true,false);
-  running:=lab_jump_plan(s[..],EgBody.{x=3.1,ground=true},intent,true);
+  zone_rest_motion(s[..],ground,EgBody.{x=3.1,ground=true,vx=1},true,false);
+  running:=zone_jump_plan(s[..],EgBody.{x=3.1,ground=true},intent,true);
   #assert running.feet==8;
-  long_body:=lab_keep_body(s[..],EgBody.{x=3.1,ground=true},EgBody.{x=8,y=0.1,vy=6});
+  long_body:=zone_keep_body(s[..],EgBody.{x=3.1,ground=true},EgBody.{x=8,y=0.1,vy=6});
   #assert abs(long_body.x-3.1-running.span)<0.0001 && x[0].seat[0].turn.move_left==0 && x[0].seat[0].turn.move_feet==2;
   b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
-  lab_rest_motion(s[..],ground,EgBody.{x=3.1,ground=true,vx=1},true,false);
+  zone_rest_motion(s[..],ground,EgBody.{x=3.1,ground=true,vx=1},true,false);
   b[0].c[0].score[RS_STR]=16;
-  #assert lab_jump_plan(s[..],EgBody.{x=3.1,ground=true},intent,true).feet==10;
-  lab_rest_motion(s[..],ground,ground,false,false);
-  high:=lab_jump_plan(s[..],ground,EgMotionIntent.{jump=true},true);
+  #assert zone_jump_plan(s[..],EgBody.{x=3.1,ground=true},intent,true).feet==10;
+  zone_rest_motion(s[..],ground,ground,false,false);
+  high:=zone_jump_plan(s[..],ground,EgMotionIntent.{jump=true},true);
   #assert high.mode==EG_JUMP_HIGH && high.feet==3 && !x[0].seat[0].turn.moved;
-  body:=lab_keep_body(s[..],ground,EgBody.{x=1,y=0.1,vy=6});
+  body:=zone_keep_body(s[..],ground,EgBody.{x=1,y=0.1,vy=6});
   #assert body.y>0 && body.x==0 && x[0].seat[0].turn.moved && x[0].jump_run==0;
   b[0].c[0].cond|=RS_PRONE;
-  #assert lab_jump_plan(s[..],ground,intent,true).mode==EG_JUMP_DENIED;
+  #assert zone_jump_plan(s[..],ground,intent,true).mode==EG_JUMP_DENIED;
 }
 
 #test "Experimental replaces a known Wild Shape with the Cat through the Long Rest controls" #steps 2000000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_DRUID,0);
   x:=s[0].xc[..]; xc_set_level(x,4);
   x[0].seen=true; x[0].open=true; x[0].k=1; x[0].w=1200; x[0].h=800;
   b:=x[0].b[..]; c:=b[0].c[0..<1];
@@ -3626,7 +3456,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental familiar hotbar summons a Druid companion and completes a Wizard ritual" #steps 100000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_DRUID,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   x[0].level=2; xc_set_class(x,FB_CL_DRUID);
   k:=xc_slot_of(x,XC_FAMILIAR); #assert k>=0;
@@ -3664,7 +3494,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental familiar lifecycle controls dismiss, recall and release on the owner's turn" #steps 100000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_DRUID,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   x[0].level=2; xc_set_class(x,FB_CL_DRUID);
   x[0].k=1; x[0].w=1100; x[0].h=840; x[0].seen=true;
@@ -3689,7 +3519,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental familiar Step command spends the familiar's movement on its own seat" #steps 100000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_DRUID,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   x[0].level=2; xc_set_class(x,FB_CL_DRUID);
   k:=xc_slot_of(x,XC_FAMILIAR); #assert k>=0;
@@ -3712,7 +3542,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental familiar Touch routes a clicked foe through the familiar and spends its Reaction" #steps 100000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   summon:=xc_slot_of(x,XC_FAMILIAR);
   cr[0].clock=2; b[0].clock=b[0].c[0].turn_at; fb_seat_step(b,x[0].seat[..]);
@@ -3753,7 +3583,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
     #assert hero[0].spells.cantrips==rs_cantrip_limit(RS_WIZARD,level);
     #assert !rs_wizard_key_bit(hero[0],hero[0].spells.selected,RS_KEY_MAGE_ARMOR);
   }
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_WIZARD,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_WIZARD,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   #assert rs_spell_ready(b[0].c[0],SP_FIND_FAMILIAR);
   #assert b[0].c[0].spells.prepared==rs_prepared_limit(RS_WIZARD,1);
@@ -3778,7 +3608,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental familiar senses use its camera and spatial audio until the owner turn" #steps 100000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_DRUID,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   x[0].level=2; xc_set_class(x,FB_CL_DRUID);
   k:=xc_slot_of(x,XC_FAMILIAR);
@@ -3804,7 +3634,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
 }
 
 #test "Experimental familiar badge can choose and summon the Owl" #steps 100000000 {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_DRUID,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_DRUID,0);
   x:=s[0].xc[..]; b:=x[0].b[..]; cr:=s[0].creator[..];
   x[0].level=2; xc_set_class(x,FB_CL_DRUID);
   x[0].k=1; x[0].w=1100; x[0].h=840;
@@ -3822,7 +3652,7 @@ xc_side_tap :: (s:[]Lab,id:int,req:int)->bool {
   #assert xc_familiar_draw(s[..],draw[..],0)==0;
 }
 
-xc_familiar_draw :: (s:[]Lab,out:[]f32,n:int)->int {
+xc_familiar_draw :: (s:[] EgZone,out:[]f32,n:int)->int {
   x:=s[0].xc[..]; c:=s[0].creator[..]; b:=x[0].b[..];
   if !x[0].started || n>=s[0].bodies[0].draws.count/4 || (n+1)*24>out.count { return n; }
   f:=rs_familiar_of(b,0);
@@ -3842,7 +3672,7 @@ xc_familiar_draw :: (s:[]Lab,out:[]f32,n:int)->int {
 }
 
 #test "Experimental Zone of Truth stays at the cast point after player travel" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_PALADIN,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_PALADIN,0);
   x:=s[0].xc[..]; xc_set_level(x,5);
   cr:=s[0].creator[..]; b:=x[0].b[..];
   slot:=-1;
@@ -3867,7 +3697,7 @@ xc_familiar_draw :: (s:[]Lab,out:[]f32,n:int)->int {
 }
 
 #test "Experimental Revivify restores a nearby corpse and keeps the diamond spent after a preset change" {
-  s:[1]Lab; xc_test_lab(s[..],FB_CL_CLERIC,0);
+  s:[1] EgZone; xc_test_lab(s[..],FB_CL_CLERIC,0);
   x:=s[0].xc[..]; xc_set_level(x,5);
   cr:=s[0].creator[..]; b:=x[0].b[..];
   k:=-1;

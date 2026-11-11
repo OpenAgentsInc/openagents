@@ -7123,7 +7123,8 @@ no-bystander-harm profile. Evidence and limits:
 ## Experimental player locomotion resolves measured monster opportunities before publication
 
 The physical controller supplies its real pre-step and proposed bodies to
-Coax `lab_keep_body` before publishing feet. Experimental measures departure
+Coax `zone_keep_body` (`everglade/zone.coax`; fivelab's `lab_keep_body` hands it
+on) before publishing feet. Experimental measures departure
 in terrain-adjusted feet, uses shared trigger/typed Reaction execution with
 the saved player turn, and retains accepted damage if movement is stopped.
 Disengage, ordinary sight and Addle remain shared; teleport placement updates

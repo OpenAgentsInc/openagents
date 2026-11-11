@@ -1813,6 +1813,17 @@ fn coax_p_cg_meadow_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
   l_z_32 = coax_p_e2_meadow_at_z(l_gx_29, l_gz_30, l_kit);
   l_dx_33 = (l_x_31 - l_ex);
   l_dz_34 = (l_z_32 - l_ez);
+  if ((l_m.z.z > l_m.z.x))
+  {
+    if (((((l_x_31 > l_m.z.x) && (l_x_31 < l_m.z.z)) && (l_z_32 > l_m.z.y)) && (l_z_32 < l_m.z.w)))
+    {
+      return l_o;
+    }
+    if (((l_m.x.w > 0.0f) && (((((l_x_31 < (l_m.z.x - l_m.x.w)) || (l_x_31 > (l_m.z.z + l_m.x.w))) || (l_z_32 < (l_m.z.y - l_m.x.w))) || (l_z_32 > (l_m.z.w + l_m.x.w))) || (coax_p_cg_hash(coax_p_e2_meadow_seed(l_gx_29, l_gz_30, l_kit), 0x1.200000p3f) > l_m.y.x))))
+    {
+      return l_o;
+    }
+  }
   l_k = coax_p_e2_meadow_fade(l_kit, sqrt(((l_dx_33 * l_dx_33) + (l_dz_34 * l_dz_34))));
   if ((l_k <= 0.0f))
   {
@@ -2837,18 +2848,25 @@ fn coax_p_e2_meadow_at_z(p_gx: u32, p_gz: u32, p_kit: i32) -> f32 {
   var l_kit: i32 = p_kit;
   return ((-0x1.000000p15f) + (((f32(l_gz) + 0x1.99999ap-4f) + (0x1.99999ap-1f * coax_p_e2_unit(coax_p_e2_field_hash(l_gx, l_gz, u32((80i + l_kit)))))) * coax_p_e2_meadow_cell(l_kit)));
 }
+fn coax_p_e2_meadow_seed(p_gx: u32, p_gz: u32, p_kit: i32) -> f32 {
+  var l_gx: u32 = p_gx;
+  var l_gz: u32 = p_gz;
+  var l_kit: i32 = p_kit;
+  return ((coax_p_e2_unit(coax_p_e2_field_hash(l_gx, l_gz, u32((40i + l_kit)))) * 0x1.840000p6f) + 0x1.000000p-1f);
+}
+fn coax_p_cg_hash(p_a: f32, p_b: f32) -> f32 {
+  var l_a: f32 = p_a;
+  var l_b: f32 = p_b;
+  var l_v: f32;
+  l_v = (sin(((l_a * 0x1.fc6666p6f) + (l_b * 0x1.37b334p8f))) * 0x1.55dd18p15f);
+  return (l_v - floor(l_v));
+}
 fn coax_p_e2_meadow_fade(p_kit: i32, p_d: f32) -> f32 {
   var l_kit: i32 = p_kit;
   var l_d: f32 = p_d;
   var l_r: f32;
   l_r = coax_p_e2_meadow_reach(l_kit);
   return (0x1.000000p0f - coax_p_cg_ramp((0x1.800000p-1f * l_r), l_r, l_d));
-}
-fn coax_p_e2_meadow_seed(p_gx: u32, p_gz: u32, p_kit: i32) -> f32 {
-  var l_gx: u32 = p_gx;
-  var l_gz: u32 = p_gz;
-  var l_kit: i32 = p_kit;
-  return ((coax_p_e2_unit(coax_p_e2_field_hash(l_gx, l_gz, u32((40i + l_kit)))) * 0x1.840000p6f) + 0x1.000000p-1f);
 }
 fn coax_p_e2_meadow_piece(p_kit: i32, p_h: f32, p_autumn: f32) -> coax_t33 {
   var l_kit: i32 = p_kit;
@@ -2921,13 +2939,6 @@ fn coax_p_e2_meadow_piece(p_kit: i32, p_h: f32, p_autumn: f32) -> coax_t33 {
     }
   }
   return l_p;
-}
-fn coax_p_cg_hash(p_a: f32, p_b: f32) -> f32 {
-  var l_a: f32 = p_a;
-  var l_b: f32 = p_b;
-  var l_v: f32;
-  l_v = (sin(((l_a * 0x1.fc6666p6f) + (l_b * 0x1.37b334p8f))) * 0x1.55dd18p15f);
-  return (l_v - floor(l_v));
 }
 fn coax_p_cg_instance_point(p_p: vec3f, p_center: vec3f, p_vertical: f32, p_horizontal: f32, p_angle: f32) -> vec3f {
   var l_p: vec3f = p_p;

@@ -1,0 +1,177 @@
+// The bow in an Everglade zone (docs/verse/bow-combat.md), game-wide: Everglade Experimental and the
+// Archery Range shoot through this one file. The archer is the engine's (aethyr/action/archery.coax:
+// the draw's frame, the sight line, each arrow's flight, the reticle) and the Longbow is the game's
+// (longbow.coax: the hand, the mouse buttons, the sounds, the dust). Here is what only a zone knows:
+// where its ground and walls are (xc_bow_wall), which monsters stand (xc_bow_bodies), and the SRD
+// attack an arrow that reaches one makes (xc_bow_strike), with the draw and the loose wired to them.
+// A fragment of zone.coax's module (it loads this). Its checks are the combat's:
+//   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax --only "experimental combat"
+// ---- the bow (docs/verse/bow-combat.md): hold to draw, let go to loose. A Ranger holds a Longbow
+// (class-kit.coax xc_kit). Hold the right mouse button (or the bow's slot, on a phone: drag to aim)
+// and the aim comes in: a crosshair, the camera over your shoulder, you turn to face where it looks
+// and walk (aethyr/action/bow.coax bow_aim, read by charactercreator.coax camera and fivelab.coax
+// zone_you and zone_move_world). Let go and the arrow leaves your bow hand along the camera's ray, at
+// a speed its draw gave it, and flies its arc. A full draw lands where the crosshair points. The
+// arrow that reaches a monster is the SRD Attack with your Longbow on it (FB_SHOOT, rs_shoot: 1d8
+// Piercing + Dex, Disadvantage past 150 feet); a miss flies on through. One that meets the ground or
+// a wall sticks, then fades. Escape or the other button lets the draw down without loosing. A
+// key's press or a tap draws on its own and looses at full draw. Arrows never run out (the bar has
+// no consumables).
+// What is a zone's own here is only what the engine and the game can't know: where this
+// zone's ground and walls are (xc_bow_wall), which monsters stand (xc_bow_bodies), and the SRD
+// attack an arrow that reaches one makes (xc_bow_strike). The sight line, the flight, the reticle
+// and the finger's draw are the engine's (aethyr/action/archery.coax); the hand, the sounds and the
+// dust are Everglade's Longbow (everglade/longbow.coax).
+XC_BOW_HAND :: EG_BOW_HAND;
+xc_has_bow :: (s: [] EgZone) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..];
+  return cr[0].experimental && x[0].started && xc_kit(x[0].klass) == XC_KIT_BOW && !cr[0].walk.on && cr[0].hostiles[0].hp > 0;
+}
+// Your pace while drawn (fivelab.coax zone_move_world): down to a walk as the aim comes in.
+xc_bow_pace :: (s: [] EgZone) -> f32 { return bow.bow_pace(s[0].xc[0].ar[0].draw[0]); }
+// The squares between you and monster foe, along a line: its true distance in 5-foot squares.
+xc_bow_squares :: (s: [] EgZone, foe: int) -> int {
+  cr := s[0].creator[..]; e := cr[0].hostiles[0].enemies[foe];
+  dx := e.x - cr[0].player_x; dz := e.z - cr[0].player_z;
+  q := cast(int) floor(sqrt(dx * dx + dz * dz) / f32(XC_SQ) + 0.5);
+  return ifx q < 1 then 1 else q;
+}
+// Whether a point in the air (world metres) is inside a wall, a house or a prop: the boxes round
+// it (experimental-village.coax ev_hostile_near, heights from the ground there), the dungeon's, or
+// one of the zone's own standing things (aethyr/world/props.coax).
+xc_bow_wall :: (s: [] EgZone, x: f32, y: f32, z: f32) -> bool {
+  up := y - meadow_y(x, z);
+  if up < 0 { return true; }
+  if wprops.props_inside(s[0].creator[0].props[0], x, y, z) { return true; }   // the zone's own standing things
+  if s[0].creator[0].field { return false; }   // the open field has no village and no dungeon
+  if xdungeon.dg_inside(x, z, 1.5) { return up < 3 && xdungeon.dg_blocked(x, z, 0.02); }
+  near: [1] village.EvNear; village.ev_hostile_near(near[..], x, z);
+  for i: 0..<near[0].wall_n { o := i * 6; w := near[0].walls[o..<o + 6];
+    if x > w[0] && x < w[3] && z > w[2] && z < w[5] && up > w[1] && up < w[4] { return true; } }
+  return false;
+}
+// Draw (self_loose: a key or a tap, which looses itself at full draw). False when you can't now.
+xc_bow_begin :: (s: [] EgZone, self_loose: bool) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock;
+  if !xc_has_bow(s) { return false; }
+  if x[0].ar[0].draw[0].on { bow.bow_begin(x[0].ar[0].draw[..], now, self_loose); return true; }
+  if now - x[0].cool_at < f32(XC_COOL) { x[0].refused += 1; return false; }
+  // the draw is the Attack's wind-up: it asks first (#13072), so a downed or held-still archer draws nothing
+  if !deed_can_act(rs_bearing(x[0].b[0].c[0])) { deed_grey(x[0].deeds[..], xc_slot_of(x, FB_ATTACK), deed_tick(now)); x[0].refused += 1; return false; }
+  if !x[0].seeded { x[0].seeded = true; x[0].b[0].dice[0].state = x[0].b[0].dice[0].state ^ (cast(u64) (now * 1000003) * 2654435761); }
+  bow.bow_begin(x[0].ar[0].draw[..], now, self_loose);
+  xc_bow_cue(s, eg_bow_draw_cue(), cr[0].player_x, cr[0].player_z);   // the limbs creak as the string comes back
+  return true;
+}
+xc_bow_cancel :: (s: [] EgZone) -> bool { return arch.archer_cancel(s[0].xc[0].ar[..]); }
+xc_bow_cue :: (s: [] EgZone, c: EgBowCue, x: f32, z: f32) { xc_cue(s, c.name, c.gain, x, z, c.rate); }
+// The monsters standing, as bodies an arrow or the reticle's line may meet (everglade/longbow.coax
+// eg_bow_body): how many it wrote.
+xc_bow_bodies :: (s: [] EgZone, out: [] arch.ArcheryBody) -> int {
+  h := s[0].creator[0].hostiles[..]; n := 0;
+  for i: 0..<XC_FOES {
+    e := h[0].enemies[i]; if e.dead || n >= out.count { continue; }
+    out[n] = eg_bow_body(i, e.x, meadow_y(e.x, e.z), e.z, e.scale); n += 1;
+  }
+  return n;
+}
+// Where the crosshair points: the first monster, static target's face or ground its ray meets past
+// you, within the Longbow's look, else a set way along it; and that monster or target, -1 none.
+XcBowAim :: struct { at: [3] f32; foe: int = -1; mark: int = -1; }
+xc_bow_point :: (s: [] EgZone) -> XcBowAim {
+  x := s[0].xc[..]; cr := s[0].creator[..]; u := x[0].u;
+  m: [1] arch.SightMarch;
+  m[0] = arch.sight_begin(arch.archery_sight([3] f32.[u[16], u[17], u[18]], [3] f32.[u[20], u[21], u[22]], cr[0].player_x, cr[0].player_z), f32(EG_BOW_LOOK));
+  while arch.sight_next(m[..]) { m[0].solid = xc_bow_wall(s, m[0].p[0], m[0].p[1], m[0].p[2]); }
+  bodies: [XC_FOES] arch.ArcheryBody; n := xc_bow_bodies(s, bodies[..]);
+  r := arch.archery_rest(m[0], f32(EG_BOW_LOOK), f32(EG_BOW_PAST), x[0].ar[0].targets[0], bodies[0..<n]);
+  return XcBowAim.{at = r.at, foe = r.body, mark = r.mark};
+}
+// Let go: the arrow leaves your bow hand toward where the crosshair points.
+xc_bow_loose :: (s: [] EgZone) -> bool {
+  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock;
+  if !x[0].ar[0].draw[0].on { return false; }
+  if !xc_has_bow(s) || !x[0].seen { _ := xc_bow_cancel(s); return false; }
+  strength := arch.archer_release(x[0].ar[0].draw[..], x[0].ar[0].show[..], now); cr[0].loose_at = now; cr[0].nocked = false;
+  aim := xc_bow_point(s);
+  // you face where the camera looks
+  from := eg_bow_hand(cr[0].player_x, meadow_y(cr[0].player_x, cr[0].player_z) + cr[0].player_y, cr[0].player_z, cr[0].yaw + 3.14159265);
+  _ := arch.archer_loose(x[0].ar[..], 0, from, aim.at, strength, aim.foe, now);
+  x[0].cool_at = now; x[0].used = xc_slot_of(x, FB_ATTACK);
+  xc_bow_cue(s, eg_bow_release_cue(strength), cr[0].player_x, cr[0].player_z);
+  xc_bow_cue(s, eg_bow_leave_cue(strength), cr[0].player_x, cr[0].player_z);   // the arrow leaving
+  return true;
+}
+// An arrow of yours reached monster foe: the SRD Attack with your Longbow on it. Whether it hit.
+xc_bow_strike :: (s: [] EgZone, foe: int) -> bool {
+  x := s[0].xc[..];
+  shot := xk_rules(x[0].klass, xc_attack());   // the kit's Attack as the rules take it: the Longbow's shot (class-kit.coax)
+  e := s[0].creator[0].hostiles[0].enemies[foe];
+  if f32(xc_bow_squares(s, foe)) * 5 > f32(rs_weapon(W_LONGBOW).range_ft) { x[0].bow_far += 1; }
+  // the arrow reached it: it wakes and comes after you, whether the rules let the shot count or not
+  hostile.hostile_provoke(s[0].creator[0].hostiles[..], foe);
+  landed := x[0].landed; kills := x[0].kills;
+  slot := xc_slot_of(x, FB_ATTACK);
+  x[0].releasing = true; ok := xc_use_ab(s, ifx slot >= 0 then slot else 0, shot, foe); x[0].releasing = false;   // loosed, it lands though you fell since
+  hit := ok && (x[0].landed > landed || x[0].kills > kills);
+  if hit {
+    x[0].bow_hits += 1;
+    // the strike's flash at its chest, a stride back toward you (from your feet it streaked from below the ground)
+    c := s[0].creator[0]; f := eg_bow_flash(c.player_x, c.player_z, e.x, meadow_y(e.x, e.z), e.z, e.scale); t := EG_BOW_FLASH;
+    fx_start_at(s, FXR_HIT, c.clock, fxp_v(f.from[0], f.from[1], f.from[2]), fxp_v(f.to[0], f.to[1], f.to[2]), fxp_v(t.r, t.g, t.b), t.big, t.reach);
+  }
+  else { x[0].bow_misses += 1; }
+  return hit;
+}
+// Every arrow this frame: yours meet monsters, the zone's targets and the world; everyone's stick
+// in the ground and walls. The flight is the engine's (aethyr/action/archery.coax): this zone says
+// where its ground and walls are, and what the rules make of an arrow that reaches a monster.
+xc_bow_step :: (s: [] EgZone, dt: f32) {
+  x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock; a := x[0].ar[..];
+  if !xc_has_bow(s) { _ := xc_bow_cancel(s); }
+  if arch.archer_draw_step(a[0].draw[..], true, dt, now) { _ := xc_bow_loose(s); }
+  cr[0].aim = ifx xc_has_bow(s) || a[0].draw[0].aim > 0 then bow.bow_aim(a[0].draw[0]) else 0.0f32;
+  // what your body shows of the draw (aethyr/action/bow.coax BowShow), handed to the scene that draws you
+  arch.archer_show_step(a[0].show[..], a[0].draw[0], now);
+  cr[0].nocked = a[0].show[0].nocked; cr[0].draw = a[0].show[0].strength; cr[0].loose_at = a[0].show[0].loose_at;
+  f: [1] arch.ArrowFlight; bodies: [XC_FOES] arch.ArcheryBody;
+  while arch.flight_arrow(a[0].arrows[..], f[..], now) {
+    while arch.flight_sample(f[..]) { q := f[0].p; f[0].solid = xc_bow_wall(s, q[0], q[1], q[2]); f[0].grass = q[1] <= meadow_y(q[0], q[2]) + 0.02; }
+    n := xc_bow_bodies(s, bodies[..]);
+    l := arch.archery_land(a, f[0], bodies[0..<n], 0);
+    if l.kind == arch.LAND_BODY { arch.archery_body(a, f[0], l, xc_bow_strike(s, l.body)); continue; }
+    d := eg_bow_land_dust(l); if d.big <= 0 { continue; }
+    fx_start_at(s, FXR_DUST, now, fxp_v(l.at[0], l.at[1], l.at[2]), fxp_v(l.at[0], l.at[1], l.at[2]), fxp_v(d.r, d.g, d.b), d.big, d.reach);
+    xc_bow_cue(s, eg_bow_land_cue(l), l.at[0], l.at[2]);   // a thunk into straw, wood or stone, or into the grass
+  }
+  arch.archery_tidy(a, now);
+}
+// The arrows in the air and stuck, as puffs (aethyr/fx/puff.coax fxp_arrow_at).
+xc_bow_puffs :: (s: [] EgZone, pf: [] FxPuffs) {
+  x := s[0].xc[..]; now := s[0].creator[0].clock; u := x[0].u;
+  for i: 0..<bow.ARROWS {
+    a := arch.archery_show(x[0].ar[0].arrows[0], i, u[16], u[18], now); if !a.on { continue; }
+    fxp_arrow_at(pf, fxp_v(a.at[0], a.at[1], a.at[2]), fxp_v(a.dir[0], a.dir[1], a.dir[2]), a.alpha, a.flying, a.seed);
+  }
+}
+// The crosshair: the shared reticle (aethyr/cam/reticle.coax) on the camera's centre ray: a small
+// crosshair while the mouse looks (aethyr/cam/mouselook.coax), a little warmer over a monster, and the
+// bow's arms in with the aim, closing as the draw builds. One crosshair for both.
+xc_crosshair :: (s: [] EgZone, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
+  x := s[0].xc[..]; n := at; ml := s[0].creator[0].ml[0];
+  if !x[0].seen { return n; }
+  cx := x[0].u[23]; cy := x[0].u[27]; hs := s[0].creator[0].hostiles[..];
+  st: [reticle.RETICLE_MAX] reticle.ReticleStroke;
+  m := arch.archery_reticle(st[..], cx, cy, k, ml.shown, x[0].ar[0].draw[0], s[0].creator[0].clock);
+  if m == 0 { return n; }
+  over := false;
+  for i: 0..<XC_FOES {
+    e := hs[0].enemies[i]; if e.dead { continue; }
+    p := xc_proj(s[0].xc[..], e.x, meadow_y(e.x, e.z) + 0.8, e.z);
+    if p.ok && (p.x - cx) * (p.x - cx) + (p.y - cy) * (p.y - cy) < 30 * k * 30 * k { over = true; }
+  }
+  // a dark edge under it, so it reads on a bright coat or the sky
+  for i: 0..<m { q := st[i]; if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width + 1.6 * k, q.alpha * 0.45, 0.5, 0.05, 0.05, 0.06, 0) { n += 6; } }
+  for i: 0..<m { q := xlook.ml_tint(st[i], over); if cc.lit(out, n, q.ax, q.ay, q.bx, q.by, q.width, q.alpha, 0.5, q.r, q.g, q.b, 0) { n += 6; } }
+  return n;
+}

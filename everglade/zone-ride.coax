@@ -1,0 +1,385 @@
+// Riding in an Everglade zone (docs/mounts-spec.md), game-wide: Everglade Experimental and the Archery
+// Range ride through this one file. Riding itself is Everglade's mounts (mounts.coax: the horse, the
+// red dragon, the rider's keys) standing in a zone (zone-mounts.coax: E, the saddle, the prompt). Here
+// the zone's keys are handed to them, the yes is played through the zone's sound and effects, and the
+// dragon's Fire Breath is resolved by the SRD battle the zone holds. Your bow, your monsters' blows
+// and the camera follow your body, so they need nothing here.
+// A fragment of zone.coax's module (it loads this):
+//   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax --only "(mounts)"
+
+// E: mount the horse in reach or get off the one you ride. False (the key goes on) when neither.
+// It asks with your SRD conditions (rs_bearing: knocked out, held or paralyzed, you stay put), and
+// only a yes presents: its footfall and the dust at the stirrup (everglade/mounts.coax eg_mount_feel).
+zone_mount_key :: (s: [] EgZone) -> bool {
+  cr := s[0].creator[..];
+  k := cc.xh_key(cr, cr[0].clock, zone_bearing(s));
+  if k.r == egm.EG_PRESS_MOUNTED || k.r == egm.EG_PRESS_DISMOUNTED { _ := xc_bow_cancel(s); }
+  if k.show {
+    w := cr[0].mounts[0].show; x := cr[0].player_x; z := cr[0].player_z;
+    xc_cue(s, w.sound, 0.5, x, z, 1);
+    fx_start_at(s, w.fx, cr[0].clock, fxp_v(x, meadow_y(x, z), z), fxp_v(x, meadow_y(x, z), z), fxp_v(0.6, 0.55, 0.45), 0.6, 0.6);
+  }
+  return k.r != egm.EG_PRESS_NONE;
+}
+// Your bearing from your SRD conditions (aethyr/rules/srd/condition-bearing.coax); none before the
+// rules have you.
+zone_bearing :: (s: [] EgZone) -> DeedBearing {
+  b := s[0].xc[0].b[..];
+  if b[0].n <= 0 || b[0].c.count == 0 { return DeedBearing.{}; }
+  return rs_bearing(b[0].c[0]);
+}
+zone_riding :: (s: [] EgZone) -> bool { return s[0].creator[0].experimental && s[0].creator[0].mounts[0].riding >= 0; }
+// While you ride, the step the walker proposed is set aside: the mount steps on your keys or stick
+// (everglade/mounts.coax eg_ride_input, through everglade/zone-mounts.coax xh_ride_keys), and your
+// body goes where the saddle carries it, on the ground.
+zone_ride_body :: (s: [] EgZone, origin: EgBody, proposed: EgBody) -> EgBody {
+  cr := s[0].creator[..]; h := s[0].held;
+  keys := egm.EgRideKeys.{forward = axis(h, HOLD_W, HOLD_S), turn = axis(h, HOLD_D, HOLD_A), shift = s[0].shift, space = (h & HOLD_JUMP) != 0,
+    stick_on = s[0].stick_on, stick_x = s[0].stick_px, stick_y = s[0].stick_py};
+  // a film stage canters: a gallop's stick pushed part way (rein)
+  at := cc.xh_ride_keys(cr, keys, s[0].rein, cr[0].clock);
+  zone_breath_stream(s);
+  b := origin;
+  b.x = at[0]; b.z = at[1];
+  b.px = b.x; b.pz = b.z; b.py = 0; b.vx = 0; b.vz = 0; b.y = 0; b.vy = 0; b.ground = true; b.air = false; b.show_vx = 0; b.show_vz = 0;
+  return b;
+}
+// Your feet's height over the ground while you ride (the figure, the bow's launch and the camera all
+// read it from your body): the saddle less your pelvis.
+zone_ride_lift :: (s: [] EgZone) -> f32 { if !zone_riding(s) { return 0; } return cc.xh_lift(s[0].creator[..], s[0].creator[0].clock); }
+// The red dragon you ride as a creature of the battle, on your side: the SRD Adult Red Dragon, its
+// turns kept by its own seat (experimental-combat.coax xc_hostile_contacts steps it), so its breath
+// recharges on the SRD's 5-6 and what it sets alight burns. Its index, or -1 when there's no room.
+zone_dragon_join :: (s: [] EgZone) -> int {
+  x := s[0].xc[..]; b := x[0].b[..];
+  i := x[0].dragon_seat[0].me;
+  if i > 0 && i < b[0].n && rs_breather(b[0].c[i]) && b[0].c[i].team == b[0].c[0].team { return i; }
+  i = rs_add(b, rs_monster(MON_ADULT_RED_DRAGON, "Red Dragon", b[0].c[0].team), XC_MID, XC_MID + 1);
+  if i < 0 { return -1; }
+  x[0].dragon_seat[0] = FbSeat.{me = i};
+  return i;
+}
+// F (or the bar's Fire Breath) on the dragon: its breath ahead, on the ground or in the air. You ask
+// with your bearing (everglade/mounts.coax eg_breath_ask); the SRD's 60-foot cone
+// (aethyr/rules/srd/dragon-actions.coax rs_in_cone3) runs from its jaws along its heading, tipped
+// down as far as you look down (in the air, down to the ground), and picks the monsters in it; the
+// SRD's breath acts on them on the dragon's own turn (rs_fire_breath_on: Dex save DC 21, 17d6 fire,
+// half on a success, Burning on a failure). Only a yes shows the torrent and its roar; each monster
+// it reaches flinches, cries out or falls (xc_harmed), the ones that failed burn, and the grass under
+// the cone catches. False when you aren't on the dragon (the key goes on).
+ZONE_BREATH_DOWN :: 0.35;   // how far (the aim's down part) the cone tips down on the ground at most; in the air, 0.9
+// The cone's aim: along the dragon's heading, tipped down by dn (the aim's down part), at most as far
+// as ZONE_BREATH_DOWN on the ground and 0.9 in the air.
+zone_breath_aim :: (s: [] EgZone, dn0: f32) -> [3] f32 {
+  m := s[0].creator[0].mounts[0]; k := m.mounts[m.riding]; dn := dn0;
+  lo_y := ifx egm.eg_aloft(m) then -0.9f32 else -f32(ZONE_BREATH_DOWN);
+  if dn < lo_y { dn = lo_y; } if dn > 0.2 { dn = 0.2; }
+  h := sqrt(1 - dn * dn);
+  return [3] f32.[sin(k.face) * h, dn, cos(k.face) * h];
+}
+// How far down you look: the camera's view's down part.
+zone_look_down :: (s: [] EgZone) -> f32 {
+  x := s[0].xc[0]; fy := x.u[21]; fl := sqrt(x.u[20] * x.u[20] + fy * fy + x.u[22] * x.u[22]);
+  return ifx fl > 0.0001 then fy / fl else 0;
+}
+zone_breath_key :: (s: [] EgZone) -> bool { return zone_breath_down(s, zone_look_down(s)); }
+// The breath tipped down by dn (a stage aims it at what it films).
+zone_breath_down :: (s: [] EgZone, dn: f32) -> bool {
+  cr := s[0].creator[..]; m := cr[0].mounts[..]; x := s[0].xc[..];
+  if !cr[0].experimental || !egm.eg_on_dragon(m[0]) || !x[0].started { return false; }
+  now := cr[0].clock;
+  seq := egm.eg_breath_ask(m, now, zone_bearing(s)); if seq == 0 { return true; }
+  i := zone_dragon_join(s);
+  if i < 0 { egm.eg_breath_answer(m, seq, false, now); return true; }
+  b := x[0].b[..]; h := cr[0].hostiles[..];
+  jaws := egm.eg_dragon_mouth(m[0], m[0].riding);
+  f := zone_breath_aim(s, dn); s[0].breath_dn = f[1];
+  picks: [XC_FOES] int; before: [XC_FOES] int; n := 0;
+  for g: 0..<XC_FOES {
+    e := h[0].enemies[g]; before[g] = rs_max(b[0].c[1 + g].hp, 0); if e.dead { continue; }
+    ft := 1.0f32 / 0.3048;
+    dx := (e.x - jaws[0]) * ft; dy := (meadow_y(e.x, e.z) + 0.9 * e.scale - jaws[1]) * ft; dz := (e.z - jaws[2]) * ft;
+    if rs_in_cone3(dx, dy, dz, f[0], f[1], f[2], f32(RS_BREATH_FT)) { picks[n] = 1 + g; n += 1; }
+  }
+  fb_seat_in(b, x[0].dragon_seat[..]); r := rs_fire_breath_on(b, i, picks[0..<n]); fb_seat_out(b, x[0].dragon_seat[..]);
+  egm.eg_breath_answer(m, seq, r >= 0, now);
+  if r < 0 { return true; }
+  w := m[0].show; far := f32(egm.EG_BREATH_M);
+  xc_cue(s, w.sound, 0.9, jaws[0], jaws[2], 0.8);
+  xc_cue(s, "rage-roar", 0.6, jaws[0], jaws[2], 0.6);   // the dragon's roar under the flames
+  to := fxp_v(jaws[0] + f[0] * far, jaws[1] + f[1] * far, jaws[2] + f[2] * far);
+  fx_start_at(s, w.fx, now, fxp_v(jaws[0], jaws[1], jaws[2]), to, fxp_v(1, 0.5, 0.1), 2.2, far); s[0].breath_puff_at = now;
+  // the grass catches where the cone meets the ground: flames along its floor and the ground left black, wider the farther out
+  for q: 1..<7 {
+    d := far * f32(q) / 6; px := jaws[0] + f[0] * d; pz := jaws[2] + f[2] * d; gy := meadow_y(px, pz);
+    if jaws[1] + f[1] * d - gy > d * 0.5 + 0.5 { continue; }
+    fx_start_at(s, FXR_BURNING, now + 0.15 * f32(q), fxp_v(px, gy, pz), fxp_v(px, gy, pz), fxp_v(1, 0.5, 0.1), 0.8 + d * 0.06, 1);
+    fx_start_at(s, FXR_SCORCH, now + 0.15 * f32(q), fxp_v(px, gy, pz), fxp_v(px, gy, pz), fxp_v(0.1, 0.08, 0.06), 1, 1.5 + d * 0.3);
+  }
+  // each monster in it: the number, the flinch, the cry or the fall; the ones that failed burn
+  for j: 0..<n {
+    g := picks[j] - 1; e := h[0].enemies[g];
+    _ := xc_harmed(s, g, before[g], react.DMG_FIRE, "fire-hit", 1, now);
+    if b[0].c[1 + g].burning > 0 || b[0].c[1 + g].dead { fx_start_at(s, FXR_BURNING, now + 0.2, fxp_v(e.x, meadow_y(e.x, e.z), e.z), fxp_v(e.x, meadow_y(e.x, e.z), e.z), fxp_v(1, 0.5, 0.1), e.scale, 1); }
+  }
+  xc_sync_permissions(s);
+  return true;
+}
+// The breath pours from the jaws as the dragon flies on (its rules acted once, at the word): its
+// torrents stay fixed to the jaws and the tilt it was aimed at, and a second torrent follows the first
+// ZONE_BREATH_AGAIN seconds on, so the fire lasts about a second and a half. Every frame while you ride.
+ZONE_BREATH_AGAIN :: 0.55;
+zone_breath_stream :: (s: [] EgZone) {
+  m := s[0].creator[0].mounts[0]; now := s[0].creator[0].clock; b := m.breath_at;
+  if !egm.eg_on_dragon(m) || now - b > f32(ZONE_BREATH_AGAIN) + 2 { return; }
+  jaws := egm.eg_dragon_mouth(m, m.riding); f := zone_breath_aim(s, s[0].breath_dn); far := f32(egm.EG_BREATH_M);
+  from := fxp_v(jaws[0], jaws[1], jaws[2]); to := fxp_v(jaws[0] + f[0] * far, jaws[1] + f[1] * far, jaws[2] + f[2] * far);
+  if now - b >= f32(ZONE_BREATH_AGAIN) && s[0].breath_puff_at < b + f32(ZONE_BREATH_AGAIN) * 0.5 {
+    fx_start_at(s, FXR_DRAGON_BREATH, now, from, to, fxp_v(1, 0.5, 0.1), 2.2, far); s[0].breath_puff_at = now;
+  }
+  p := s[0].puffs[..];
+  for k: 0..<p[0].live.count {
+    c := p[0].live[k];
+    if p[0].on[k] && c.recipe == FXR_DRAGON_BREATH && c.t0 >= b - 0.001 { p[0].live[k].from = from; p[0].live[k].to = to; }
+  }
+}
+// The dragon's Fire Breath on the bar while you ride it, after your own slots: there as you mount it,
+// gone as you get off. Every frame.
+zone_breath_slot :: (s: [] EgZone) {
+  x := s[0].xc[..]; if !x[0].started { return; }
+  want := s[0].creator[0].experimental && egm.eg_on_dragon(s[0].creator[0].mounts[0]);
+  k := xc_slot_of(x, XC_BREATH);
+  if want && k < 0 && x[0].bar_n < x[0].bar.count { x[0].bar[x[0].bar_n] = fb_feature(XC_BREATH, "Fire Breath", "fireball"); x[0].bar[x[0].bar_n].tg = FB_POINT; x[0].bar_n += 1; }
+  if !want && k >= 0 {
+    for i: k..<x[0].bar_n - 1 { x[0].bar[i] = x[0].bar[i + 1]; }
+    x[0].bar_n -= 1; x[0].used = -1; x[0].hover = -1; x[0].fizzle = -1;
+  }
+}
+// The breath's slot's sweep, 0 to 1: 0 ready; spent, the share of a round left to the dragon's next
+// Recharge roll (on a 5 or 6 it is back), so it sweeps once a round until it comes back.
+zone_breath_wait :: (s: [] EgZone) -> f32 {
+  x := s[0].xc[0]; i := x.dragon_seat[0].me;
+  if i <= 0 || i >= x.b[0].n || !x.b[0].c[i].breath_spent { return 0; }
+  left := (x.b[0].c[i].round_at - x.b[0].clock) / f32(RS_ROUND);
+  return ifx left > 1 then 1.0f32 else ifx left < 0.04 then 0.04f32 else left;
+}
+// X on the dragon in the air: it comes down to land (Space again flies on). False otherwise.
+zone_land_key :: (s: [] EgZone) -> bool { return egm.eg_ride_land(s[0].creator[0].mounts[..]); }
+// The phone's button and the mount's keys under the bar are the game's (everglade/zone-mounts.coax
+// xh_button_press, xh_prompt_draw): this zone says whether a finger has touched the page.
+zone_ride_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int) -> bool {
+  if !cc.xh_button_press(s[0].creator[0], x, y, phase, s[0].touch) { return false; }
+  return zone_mount_key(s);
+}
+zone_ride_prompt :: (s: [] EgZone, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int { return cc.xh_prompt_draw(s[0].creator[0], out, at, w, h, k, s[0].touch); }
+
+#test "E mounts the white horse only in reach and E gets you off; you ride on the ground, lifted to the saddle (mounts)" #steps 400000000 {
+  s: [1] EgZone; s[0].creator[0].experimental = true; s[0].creator[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { s[0].creator[0].mounts[0].count[i] = 3; } s[0].creator[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  cc.xh_place(s[0].creator[..]); h := s[0].creator[0].mounts[0].mounts[0];
+  s[0].creator[0].player_x = 0; s[0].creator[0].player_z = 0; #assert !zone_mount_key(s[..]) && !zone_riding(s[..]);
+  s[0].creator[0].player_x = h.x + 1.8; s[0].creator[0].player_z = h.z; #assert zone_mount_key(s[..]) && zone_riding(s[..]);
+  #assert s[0].creator[0].mounts[0].shows == 1 && fxp_live(s[0].puffs[..]) > 0;
+  b := EgBody.{x = h.x + 1.8, z = h.z, ground = true};
+  for k: 0..<60 { s[0].creator[0].clock = f32(k) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert b.ground && b.y == 0 && abs(b.x - h.x) < 0.5 && zone_ride_lift(s[..]) > 0.4;
+  // W and Shift: a gallop, far quicker than your 7.5 m/s run on foot
+  s[0].held = HOLD_W; s[0].shift = true;
+  for k: 60..<300 { s[0].creator[0].clock = f32(k) / 60; b = zone_keep_body(s[..], b, b); }
+  x0 := b.x; z0 := b.z;
+  for k: 300..<360 { s[0].creator[0].clock = f32(k) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert sqrt((b.x - x0) * (b.x - x0) + (b.z - z0) * (b.z - z0)) > 12;
+  s[0].held = 0; s[0].shift = false;
+  for k: 360..<480 { s[0].creator[0].clock = f32(k) / 60; b = zone_keep_body(s[..], b, b); }
+  s[0].creator[0].player_x = b.x; s[0].creator[0].player_z = b.z;
+  #assert zone_mount_key(s[..]);
+  for k: 480..<540 { s[0].creator[0].clock = f32(k) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert !zone_riding(s[..]) && zone_ride_lift(s[..]) == 0;
+  left := s[0].creator[0].mounts[0].mounts[0]; dx := b.x - left.x; dz := b.z - left.z; #assert dx * dx + dz * dz > 0.8 && dx * dx + dz * dz < 1.3;
+}
+#test "a Longbow shot from the saddle leaves from the rider's hand and the SRD attack lands (mounts)" #steps 900000000 {
+  s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.04, 1]);
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; b := x[0].b[..];
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  _ := egm.eg_mount_add(cr[0].mounts[..], cr[0].player_x + 1.6, cr[0].player_z, 0);
+  #assert zone_mount_key(s[..]);
+  body := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for k: 0..<60 { cr[0].clock += 1.0 / 60; body = zone_keep_body(s[..], body, body); }
+  zone_you(s[..], body.x, 0, body.z, 0, false, false, false, 0, 0, 0, 0);
+  r := cc.xh_rider(cr, cr[0].clock); #assert r.on && r.seated == 1;
+  g := 3; h[0].enemies[g].x = body.x; h[0].enemies[g].z = body.z + 20; b[0].c[1 + g].ac = 1; b[0].c[1 + g].hp = 40; b[0].c[1 + g].hp_max = 40;
+  // the camera behind and over the rider, as the riding camera sits
+  x[0].u[16] = body.x; x[0].u[17] = r.y + 0.6; x[0].u[18] = body.z - 4; x[0].u[21] = -0.05;
+  #assert xc_bow_begin(s[..], false); xc_test_fly(s[..], 1.0); #assert xc_bow_point(s[..]).foe == g;
+  #assert xc_bow_loose(s[..]) && x[0].ar[0].shots == 1;
+  a := x[0].ar[0].arrows[0].a[0];
+  // the hand: chest high over the saddle (your pelvis in it), beside the rider, not at a walker's height
+  hand := r.y + f32(XC_BOW_HAND) - cc.xh_hip(cr);
+  #assert abs(a.from[1] - hand) < 0.05 && a.from[1] > meadow_y(body.x, body.z) + 1.45 + 0.4;
+  #assert abs(a.from[0] - r.x) < 0.6 && abs(a.from[2] - r.z) < 0.6;
+  xc_test_fly(s[..], 1.0);
+  #assert x[0].bow_hits == 1 && b[0].c[1 + g].hp < 40;
+}
+#test "riding, a monster's blow still lands on you (mounts)" #steps 400000000 {
+  s: [1] EgZone; s[0].creator[0].experimental = true; hs := s[0].creator[0].hostiles[..]; hostile.hostile_test_start(hs);
+  for i: 0..<egm.EG_HORSE_FRAMES { s[0].creator[0].mounts[0].count[i] = 3; } s[0].creator[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  _ := egm.eg_mount_add(s[0].creator[0].mounts[..], 1.6, 0, 0);
+  s[0].creator[0].player_x = 0; s[0].creator[0].player_z = 0; #assert zone_mount_key(s[..]);
+  hp := hs[0].hp; for i: 0..<600 { hostile.hostile_tick(hs, 1.6, 0.6, -0.27, 0.016); }
+  #assert hs[0].hp < hp;
+}
+#test "on the dragon: Space takes off and climbs, X brings it down, E in the air says Land first (mounts)" #steps 900000000 {
+  s: [1] EgZone; cr := s[0].creator[..]; cr[0].experimental = true; cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  cc.xh_place(cr); k := cc.xh_dragon(cr); d := cr[0].mounts[0].mounts[k];
+  cr[0].player_x = d.x + cos(d.face) * 3.5; cr[0].player_z = d.z - sin(d.face) * 3.5;
+  #assert zone_mount_key(s[..]) && egm.eg_on_dragon(cr[0].mounts[0]);
+  b := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true}; f := 0;
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  s[0].held = HOLD_W | HOLD_JUMP;
+  for j: 0..<240 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert egm.eg_aloft(cr[0].mounts[0]) && zone_ride_lift(s[..]) > 15;
+  cr[0].player_x = b.x; cr[0].player_z = b.z;
+  #assert zone_mount_key(s[..]) && egm.eg_on_dragon(cr[0].mounts[0]);
+  #assert egm.eg_mount_prompt(cr[0].mounts[0], b.x, b.z, cr[0].clock, false) == "Land first";
+  s[0].held = 0; #assert zone_land_key(s[..]) && cr[0].mounts[0].land;
+  for j: 0..<1200 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert !egm.eg_aloft(cr[0].mounts[0]) && !zone_land_key(s[..]);
+  cr[0].clock += 3; cr[0].player_x = b.x; cr[0].player_z = b.z;
+  #assert zone_mount_key(s[..]);
+  for j: 0..<60 { cr[0].clock += 1.0 / 60; b = zone_keep_body(s[..], b, b); }
+  #assert !zone_riding(s[..]);
+}
+#test "on the dragon, F breathes fire where you look: the SRD's breath burns the monster in the cone, then waits to recharge (mounts)" #steps 900000000 {
+  s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.1, 1]);
+  x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; b := x[0].b[..];
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  k := egm.eg_dragon_add(cr[0].mounts[..], cr[0].player_x - 3.5, cr[0].player_z, 0, meadow_y(cr[0].player_x - 3.5, cr[0].player_z));
+  #assert !zone_breath_key(s[..]);   // on foot, F is not the dragon's
+  #assert zone_mount_key(s[..]) && egm.eg_on_dragon(cr[0].mounts[0]);
+  body := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for j: 0..<90 { cr[0].clock += 1.0 / 60; body = zone_keep_body(s[..], body, body); }
+  d := cr[0].mounts[0].mounts[k];
+  // a monster 9 m ahead of its jaws, one well off to the side
+  g := 3; h[0].enemies[g].x = d.x; h[0].enemies[g].z = d.z + 15; b[0].c[1 + g].hp = 300; b[0].c[1 + g].hp_max = 300;
+  o := 1; h[0].enemies[o].x = d.x + 30; h[0].enemies[o].z = d.z + 2; hp_o := b[0].c[1 + o].hp;
+  shows := cr[0].mounts[0].shows;
+  #assert zone_breath_key(s[..]);
+  i := x[0].dragon_seat[0].me;
+  #assert i > XC_FOES && rs_breather(b[0].c[i]) && b[0].c[i].breath_spent && b[0].c[i].team == b[0].c[0].team;
+  #assert b[0].c[1 + g].hp < 300 && b[0].c[1 + o].hp == hp_o;
+  #assert cr[0].mounts[0].shows == shows + 1 && fxp_live(s[0].puffs[..]) > 0;
+  // spent: F again asks, the rules say no, and nothing shows
+  #assert zone_breath_key(s[..]) && cr[0].mounts[0].shows == shows + 1 && zone_dragon_join(s[..]) == i;
+}
+// Whether the mount's hint draws something on a page w by h at scale k, all of it outside the middle
+// half of the view (where the horse and the dragon are) and on the page; true too when it draws nothing.
+zone_hint_clear :: (s: [] EgZone, w: f32, h: f32, k: f32) -> bool {
+  out: [24000] f32; n := zone_ride_prompt(s, out[..], 0, w, h, k); vf := cc.VERTEX_FLOATS;
+  for q: 0..<n {
+    x := out[q * vf]; y := out[q * vf + 1];
+    if x > w * 0.25 && x < w * 0.75 && y > h * 0.25 && y < h * 0.75 { return false; }
+    if x < 0 || x > w || y < 0 || y > h { return false; }
+  }
+  return true;
+}
+zone_hint_clear_all :: (s: [] EgZone) -> bool {
+  return zone_hint_clear(s, 1920, 1080, 1) && zone_hint_clear(s, 1280, 720, 1) && zone_hint_clear(s, 2560, 1440, 2) && zone_hint_clear(s, 1170, 2532, 3);
+}
+#test "the mount's keys draw under the bar, never in the middle of the view: by the horse, riding it, on the dragon on the ground and in the air (mounts)" #steps 2000000000 {
+  s: [1] EgZone; cr := s[0].creator[..]; cr[0].experimental = true; cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  cc.xh_place(cr); h := cr[0].mounts[0].mounts[0];
+  out: [24000] f32;
+  // by the horse, then on it
+  cr[0].player_x = h.x + 1.8; cr[0].player_z = h.z; #assert zone_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0 && zone_hint_clear_all(s[..]);
+  #assert zone_mount_key(s[..]);
+  b := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true}; f := 0;
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert zone_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0 && zone_hint_clear_all(s[..]);
+  cr[0].player_x = b.x; cr[0].player_z = b.z; #assert zone_mount_key(s[..]);
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  // the dragon: on the ground, in the air, and E in the air
+  k := cc.xh_dragon(cr); d := cr[0].mounts[0].mounts[k];
+  cr[0].player_x = d.x + cos(d.face) * 3.5; cr[0].player_z = d.z - sin(d.face) * 3.5; #assert zone_mount_key(s[..]);
+  b = EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for j: 0..<90 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert egm.eg_on_dragon(cr[0].mounts[0]);
+  #assert egm.eg_mount_hint(cr[0].mounts[0], cr[0].player_x, cr[0].player_z, cr[0].clock).count > 0;
+  #assert zone_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0;
+  #assert zone_hint_clear_all(s[..]);
+  s[0].held = HOLD_W | HOLD_JUMP;
+  for j: 0..<240 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert egm.eg_aloft(cr[0].mounts[0]) && zone_ride_prompt(s[..], out[..], 0, 1920, 1080, 1) > 0 && zone_hint_clear_all(s[..]);
+  cr[0].player_x = b.x; cr[0].player_z = b.z; #assert zone_mount_key(s[..]) && zone_hint_clear_all(s[..]);
+  s[0].touch = true; #assert zone_hint_clear_all(s[..]);
+}
+#test "the bar carries the dragon's Fire Breath while you ride it, and its slot sweeps until it recharges (mounts)" #steps 900000000 {
+  s: [1] EgZone; xc_test_bow(s[..], [3] f32.[0, -0.1, 1]);
+  x := s[0].xc[..]; cr := s[0].creator[..];
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  _ := egm.eg_dragon_add(cr[0].mounts[..], cr[0].player_x - 3.5, cr[0].player_z, 0, meadow_y(cr[0].player_x - 3.5, cr[0].player_z));
+  n0 := x[0].bar_n; zone_breath_slot(s[..]); #assert x[0].bar_n == n0 && xc_slot_of(x, XC_BREATH) < 0;
+  #assert zone_mount_key(s[..]);
+  body := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true};
+  for j: 0..<90 { cr[0].clock += 1.0 / 60; body = zone_keep_body(s[..], body, body); }
+  k := xc_slot_of(x, XC_BREATH); #assert k == n0 && x[0].bar_n == n0 + 1 && zone_breath_wait(s[..]) == 0;
+  // the slot breathes; spent, it sweeps
+  #assert xc_press(s[..], k) && x[0].b[0].c[x[0].dragon_seat[0].me].breath_spent;
+  w := zone_breath_wait(s[..]); #assert w > 0 && w <= 1;
+  // a second torrent follows the first from the jaws
+  for j: 0..<40 { cr[0].clock += 1.0 / 60; body = zone_keep_body(s[..], body, body); }
+  #assert s[0].breath_puff_at > cr[0].mounts[0].breath_at;
+  // off the dragon, the slot goes
+  for j: 0..<120 { cr[0].clock += 1.0 / 60; body = zone_keep_body(s[..], body, body); }
+  cr[0].player_x = body.x; cr[0].player_z = body.z; #assert zone_mount_key(s[..]);
+  for j: 0..<60 { cr[0].clock += 1.0 / 60; body = zone_keep_body(s[..], body, body); }
+  #assert xc_slot_of(x, XC_BREATH) < 0 && x[0].bar_n == n0;
+}
+// Counts the footstep packets in the frame's sound lines.
+zone_test_steps :: (s: [] EgZone) -> int {
+  a := s[0].experimental_audio[..]; t := cast(string) a[0].lines[0..<a[0].n]; n := 0;
+  for i: 0..<t.count - 4 { if t[i..<i + 5] == "step-" { n += 1; } }
+  return n;
+}
+#test "five seconds of flight on the dragon play no footstep of yours; on foot your steps are heard (mounts)" #steps 2000000000 {
+  s: [1] EgZone; cr := s[0].creator[..]; cr[0].experimental = true; cr[0].on = true; cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  cc.xh_place(cr); k := cc.xh_dragon(cr); d := cr[0].mounts[0].mounts[k];
+  // on foot: ten metres of walking are heard
+  steps := 0; zone_sounds(s[..], 1.0 / 60, false);
+  for j: 0..<120 { cr[0].player_x = f32(j) * 0.1; s[0].experimental_audio[0].n = 0; zone_sounds(s[..], 1.0 / 60, false); steps += zone_test_steps(s[..]); }
+  #assert steps >= 5;
+  // the dragon: mounted (the mount's own footfall is the deed's cue, not a step of yours), up, and five seconds of flight
+  cr[0].player_x = d.x + cos(d.face) * 3.5; cr[0].player_z = d.z - sin(d.face) * 3.5;
+  #assert zone_mount_key(s[..]) && egm.eg_on_dragon(cr[0].mounts[0]);
+  b := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true}; f := 0;
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); cr[0].player_x = b.x; cr[0].player_z = b.z; zone_sounds(s[..], 1.0 / 60, false); }
+  s[0].held = HOLD_W | HOLD_JUMP;
+  for j: 0..<120 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); cr[0].player_x = b.x; cr[0].player_z = b.z; zone_sounds(s[..], 1.0 / 60, false); }
+  #assert egm.eg_aloft(cr[0].mounts[0]);
+  steps = 0; x0 := b.x; z0 := b.z;
+  for j: 0..<300 {
+    f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); cr[0].player_x = b.x; cr[0].player_z = b.z;
+    s[0].experimental_audio[0].n = 0; zone_sounds(s[..], 1.0 / 60, false); steps += zone_test_steps(s[..]);
+  }
+  #assert egm.eg_aloft(cr[0].mounts[0]) && abs(b.x - x0) + abs(b.z - z0) > 20 && steps == 0;
+}
+#test "Space on the horse jumps it: you rise with the saddle and come down, and the hint says so (mounts)" #steps 900000000 {
+  s: [1] EgZone; cr := s[0].creator[..]; cr[0].experimental = true; cr[0].hostiles[0].hp = 44;
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  cc.xh_place(cr); h := cr[0].mounts[0].mounts[0];
+  cr[0].player_x = h.x + 1.8; cr[0].player_z = h.z; #assert zone_mount_key(s[..]);
+  b := EgBody.{x = cr[0].player_x, z = cr[0].player_z, ground = true}; f := 0;
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert egm.eg_mount_hint(cr[0].mounts[0], b.x, b.z, cr[0].clock) == "SPACE JUMP  SHIFT GALLOP  E DISMOUNT";
+  sat := zone_ride_lift(s[..]); s[0].held = HOLD_W | HOLD_JUMP; s[0].shift = true; top := sat;
+  for j: 0..<30 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); l := zone_ride_lift(s[..]); if l > top { top = l; } }
+  #assert top > sat + 0.8 && egm.eg_jumping(cr[0].mounts[0]);
+  s[0].held = HOLD_W;
+  for j: 0..<60 { f += 1; cr[0].clock = f32(f) / 60; b = zone_keep_body(s[..], b, b); }
+  #assert !egm.eg_jumping(cr[0].mounts[0]) && abs(zone_ride_lift(s[..]) - sat) < 0.3;
+}

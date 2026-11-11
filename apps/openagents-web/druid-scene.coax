@@ -42,7 +42,7 @@ xd_form :: (c: RsCreature) -> int { return ifx c.shape_form == MON_ADULT_RED_DRA
 // book:end druid-form
 xd_dragon :: (x: [] XcCombat) -> bool { return x[0].dr.on && x[0].dr.sh[0].form == SH_DRAGON; }
 // Flight has the body: the dragon, once its change is done.
-xd_flying_body :: (s: [] Lab) -> bool { x := s[0].xc[..]; return xd_dragon(x) && !sh_changing(x[0].dr.sh[0], s[0].creator[0].clock); }
+xd_flying_body :: (s: [] EgZone) -> bool { x := s[0].xc[..]; return xd_dragon(x) && !sh_changing(x[0].dr.sh[0], s[0].creator[0].clock); }
 
 // The field's bar: the druid's two changes, then the dragon's five actions (greyed until it is one).
 xd_bar :: (x: [] XcCombat) {
@@ -68,7 +68,7 @@ xd_labels :: (x: [] XcCombat) {
   }
 }
 // The page: the open field in Everglade II's daylight, a level 17 Druid.
-xd_enter :: (s: [] Lab) {
+xd_enter :: (s: [] EgZone) {
   s[0].creator[0].field = true;   // the open field: Everglade II's meadow in place of the glade (charactercreator.coax scene)
   x := s[0].xc[..];
   if x[0].dr.on { return; }
@@ -78,7 +78,7 @@ xd_enter :: (s: [] Lab) {
 
 // Each frame (xc_frame): the body follows the engine's, its change's moments play, the dragon flies,
 // burning monsters show their flames, the camera eases out round the dragon.
-xd_frame :: (s: [] Lab, dt: f32) {
+xd_frame :: (s: [] EgZone, dt: f32) {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
   if !x[0].dr.on || !x[0].started { return; }
   d := x[..]; b := x[0].b[..]; now := cr[0].clock;
@@ -126,7 +126,7 @@ xd_frame :: (s: [] Lab, dt: f32) {
   cr[0].cam_k = sh_cam_scale(sh[0], now);
 }
 // Your keys or stick along the camera (aethyr/walk.coax wish), and the wings' buttons.
-xd_input :: (s: [] Lab, now: f32) -> WingInput {
+xd_input :: (s: [] EgZone, now: f32) -> WingInput {
   x := s[0].xc[..]; cr := s[0].creator[0]; held := s[0].held;
   ax := axis(held, HOLD_D, HOLD_A); ay := axis(held, HOLD_W, HOLD_S);
   if x[0].dr.pad_id != -100 && sqrt(x[0].dr.pad_x * x[0].dr.pad_x + x[0].dr.pad_y * x[0].dr.pad_y) > f32(XD_PAD_DEAD) { ax = x[0].dr.pad_x; ay = x[0].dr.pad_y; }
@@ -144,16 +144,16 @@ xd_input :: (s: [] Lab, now: f32) -> WingInput {
   in.dive = s[0].shift && x[0].dr.sh[0].wing.phase == WING_AIR;
   return in;
 }
-// The walker's jump while the dragon has the body: the wings take it (lab_jump_plan). True when taken.
-xd_jump :: (s: [] Lab, pending: bool) -> bool {
+// The walker's jump while the dragon has the body: the wings take it (zone_jump_plan). True when taken.
+xd_jump :: (s: [] EgZone, pending: bool) -> bool {
   if !xd_flying_body(s) { return false; }
   if pending { s[0].xc[0].dr.jump_at = s[0].creator[0].clock; }
   return true;
 }
-// The walker moves nothing of yours while the dragon flies (lab_move_world).
-xd_holds_body :: (s: [] Lab) -> bool { return s[0].xc[0].dr.on && xd_flying_body(s); }
-// lab_you: the dragon's place, not the walker's, is yours.
-xd_you :: (s: [] Lab) {
+// The walker moves nothing of yours while the dragon flies (zone_move_world).
+xd_holds_body :: (s: [] EgZone) -> bool { return s[0].xc[0].dr.on && xd_flying_body(s); }
+// zone_you: the dragon's place, not the walker's, is yours.
+xd_you :: (s: [] EgZone) {
   if !xd_holds_body(s) { return; }
   w := s[0].xc[0].dr.sh[0].wing; cr := s[0].creator[..];
   cr[0].player_x = w.x; cr[0].player_y = w.y; cr[0].player_z = w.z; cr[0].player_face = w.yaw;
@@ -161,7 +161,7 @@ xd_you :: (s: [] Lab) {
 }
 
 // The change's moments as effects: the rune circle and leaves at its start, the flash, the roar.
-xd_moments :: (s: [] Lab, before: f32, now: f32) {
+xd_moments :: (s: [] EgZone, before: f32, now: f32) {
   x := s[0].xc[..]; cr := s[0].creator[0]; sh := x[0].dr.sh[0];
   m := sh_moments(sh, before, now);
   if m == 0 { return; }
@@ -172,18 +172,18 @@ xd_moments :: (s: [] Lab, before: f32, now: f32) {
   if (m & SH_FX_FLASH) != 0 { fx_start_at(s, FXR_FLASH, now, at, at, fxp_v(0.7, 1.0, 0.6), big, 4 * big); xc_cue(s, "spell-thunder", 0.5, cr.player_x, cr.player_z, 0.8); }
   if (m & SH_FX_ROAR) != 0 { xd_roar_fx(s, now); }
 }
-xd_mouth :: (s: [] Lab) -> [3] f32 {
+xd_mouth :: (s: [] EgZone) -> [3] f32 {
   cr := s[0].creator[0];
   return sh_mouth(cr.player_x, meadow_y(cr.player_x, cr.player_z) + cr.player_y, cr.player_z, cr.player_face, f32(DR_HEIGHT));
 }
-xd_roar_fx :: (s: [] Lab, now: f32) {
+xd_roar_fx :: (s: [] EgZone, now: f32) {
   cr := s[0].creator[0]; m := xd_mouth(s); d := sh_dir(cr.player_face, 0);
   fx_start_at(s, FXR_ROAR, now, fxp_v(m[0], m[1], m[2]), fxp_v(m[0] + d[0] * 18, m[1], m[2] + d[2] * 18), fxp_v(1, 0.8, 0.5), 2.2, 18);
   xc_cue(s, "monster-roar", 0.8, cr.player_x, cr.player_z, 0.7);
 }
 
 // The breath's aim from where the dragon is: level on the ground, down onto the ground ahead from the air.
-xd_breath_pitch :: (s: [] Lab) -> f32 {
+xd_breath_pitch :: (s: [] EgZone) -> f32 {
   m := xd_mouth(s); cr := s[0].creator[0];
   ahead := f32(XD_AIM_AHEAD);
   gx := cr.player_x + sin(cr.player_face) * ahead; gz := cr.player_z + cos(cr.player_face) * ahead;
@@ -191,7 +191,7 @@ xd_breath_pitch :: (s: [] Lab) -> f32 {
   return -figs.atan2(drop, ahead);
 }
 // Hold: aim, if the breath is ready (Recharge 5-6 brought it back).
-xd_aim :: (s: [] Lab, k: int) -> bool {
+xd_aim :: (s: [] EgZone, k: int) -> bool {
   x := s[0].xc[..];
   if !x[0].dr.on || k < 0 || k >= x[0].bar_n || x[0].bar[k].kind != FB_BREATH { return false; }
   if !sh_aim(x[0].dr.sh[..], rs_breath_ready(x[0].b[0].c[0]), s[0].creator[0].clock) { x[0].fizzle = k; x[0].fizzle_at = s[0].creator[0].clock; x[0].refused += 1; return true; }
@@ -199,14 +199,14 @@ xd_aim :: (s: [] Lab, k: int) -> bool {
   return true;
 }
 // Let go: the engine resolves the cone's creatures through the bar's own press (xc_use_ab).
-xd_release :: (s: [] Lab) -> bool {
+xd_release :: (s: [] EgZone) -> bool {
   x := s[0].xc[..];
   k := x[0].dr.breath_slot; x[0].dr.breath_slot = -1;
   if k < 0 || !x[0].dr.sh[0].aiming { return false; }
   return xc_use(s, k);
 }
 // xc_use_ab's step for Fire Breath: the creatures in the 60-foot cone in the world, then the engine.
-xd_breathe :: (s: [] Lab) -> bool {
+xd_breathe :: (s: [] EgZone) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..]; b := x[0].b[..]; now := cr[0].clock;
   yaw := cr[0].player_face; pitch := xd_breath_pitch(s);
   if !sh_release(x[0].dr.sh[..], yaw, pitch, now) { return false; }
@@ -229,7 +229,7 @@ xd_breathe :: (s: [] Lab) -> bool {
   return true;
 }
 // After the bar's press: the dragon's clip and look for its other actions.
-xd_after :: (s: [] Lab, a: FbAb) {
+xd_after :: (s: [] EgZone, a: FbAb) {
   x := s[0].xc[..]; cr := s[0].creator[0]; now := cr.clock;
   if !xd_dragon(x) { return; }
   at := fxp_v(cr.player_x, meadow_y(cr.player_x, cr.player_z) + cr.player_y, cr.player_z);
@@ -239,14 +239,14 @@ xd_after :: (s: [] Lab, a: FbAb) {
   if a.kind == FB_ROAR { sh_act(x[0].dr.sh[..], SH_ACT_ROAR, now); xd_roar_fx(s, now); }
 }
 // A blow's reach in dragon form: Rend reaches 10 feet from the Huge body.
-xd_reach :: (s: [] Lab, a: FbAb, m: XcAim) -> XcAim {
+xd_reach :: (s: [] EgZone, a: FbAb, m: XcAim) -> XcAim {
   o := m;
   if xd_dragon(s[0].xc[..]) && a.kind == FB_ATTACK { o.reach = f32(XD_REND_M); }
   return o;
 }
 
 // The dragon's draw: its baked frame for its clip now, turned, pitched with its climb, banked with its turns.
-xd_draw :: (s: [] Lab, out: [] f32, n: int) -> int {
+xd_draw :: (s: [] EgZone, out: [] f32, n: int) -> int {
   x := s[0].xc[..]; c := s[0].creator[..];
   if !x[0].dr.on || n >= s[0].bodies[0].draws.count / 4 || (n + 1) * 24 > out.count { return n; }
   now := c[0].clock; sh := x[0].dr.sh[0];
@@ -273,7 +273,7 @@ xd_fly_at :: (x: [] XcCombat) -> [3] f32 {
   k := x[0].k; r := cc.eg_box4(xc_slot_at(x[0].bar_n, ifx x[0].bar_n > 0 then x[0].bar_n - 1 else 0, x[0].w, x[0].h, x[0].k));
   return [3] f32.[x[0].w - 70 * k, r.y0 - 80 * k, 40 * k];
 }
-xd_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
+xd_pointer :: (s: [] EgZone, px: f32, py: f32, phase: int, id: int) -> bool {
   x := s[0].xc[..]; cr := s[0].creator[..];
   if !x[0].dr.on { return false; }
   k := x[0].k;
@@ -297,8 +297,8 @@ xd_pointer :: (s: [] Lab, px: f32, py: f32, phase: int, id: int) -> bool {
   if (phase == 2 || phase == 3) && id == x[0].dr.fly_id { x[0].dr.fly_id = -100; return true; }
   return id == x[0].dr.pad_id || id == x[0].dr.fly_id;
 }
-// The walker's input from the thumbs while the druid walks (lab_move_in).
-xd_move_in :: (s: [] Lab, in: EgMoveIn) -> EgMoveIn {
+// The walker's input from the thumbs while the druid walks (zone_move_in).
+xd_move_in :: (s: [] EgZone, in: EgMoveIn) -> EgMoveIn {
   x := s[0].xc[..]; o := in;
   if !x[0].dr.on { return o; }
   if x[0].dr.pad_id != -100 { o.key_x = x[0].dr.pad_x; o.key_y = x[0].dr.pad_y; }
@@ -306,7 +306,7 @@ xd_move_in :: (s: [] Lab, in: EgMoveIn) -> EgMoveIn {
   return o;
 }
 // The thumbs drawn once a finger has touched: the stick's ring and the wings' button.
-xd_hud :: (s: [] Lab, out: [] f32, n0: int, k: f32) -> int {
+xd_hud :: (s: [] EgZone, out: [] f32, n0: int, k: f32) -> int {
   x := s[0].xc[..]; n := n0;
   if !x[0].dr.on || !x[0].dr.touch_seen { return n; }
   f := xd_fly_at(x);
@@ -323,18 +323,18 @@ xd_hud :: (s: [] Lab, out: [] f32, n0: int, k: f32) -> int {
 
 // ---- checks
 
-xd_lab :: (s: [] Lab) {
+xd_lab :: (s: [] EgZone) {
   s[0].creator[0].experimental = true; s[0].creator[0].clock = 1;
   xd_enter(s);
   xc_start(s[0].xc[..], FB_CL_DRUID);
 }
 xd_slot :: (x: [] XcCombat, kind: int) -> int { for i: 0..<x[0].bar_n { if x[0].bar[i].kind == kind { return i; } } return -1; }
-xd_run :: (s: [] Lab, seconds: f32) {
+xd_run :: (s: [] EgZone, seconds: f32) {
   steps := cast(int) floor(seconds * 30);
   for i: 0..<steps { s[0].creator[0].clock += 1.0 / 30.0; xd_frame(s, 1.0 / 30.0); }
 }
 #test "druid: the field's druid is level 17, and its bar holds Wild Shape, Shapechange (Dragon) and the dragon's five actions" {
-  s: [1] Lab; xd_lab(s[..]);
+  s: [1] EgZone; xd_lab(s[..]);
   x := s[0].xc[..]; c := x[0].b[0].c[0];
   #assert c.klass == RS_DRUID && c.level == 17 && c.slots[9] == 1;
   names := [7] string.["Wild Shape", "Shapechange (Dragon)", "Rend", "Fire Breath", "Tail Sweep", "Wing Buffet", "Frightful Roar"];
@@ -343,7 +343,7 @@ xd_run :: (s: [] Lab, seconds: f32) {
   #assert xc_url("shapechange") == XC_EG_URL && xc_url("fire-storm") == XC_EG_URL && xc_url("wild-shape") == XC_MMO_URL;
 }
 #test "druid: Shapechange swaps in the dragon's body and the bar's label, and Return to Form gives it back" {
-  s: [1] Lab; xd_lab(s[..]); x := s[0].xc[..];
+  s: [1] EgZone; xd_lab(s[..]); x := s[0].xc[..];
   k := xd_slot(x, FB_SHAPECHANGE);
   #assert xc_use(s[..], k);
   xd_run(s[..], 0.1);
@@ -359,7 +359,7 @@ xd_run :: (s: [] Lab, seconds: f32) {
   #assert x[0].b[0].c[0].slots[9] == 1;
 }
 #test "druid: the dragon takes off with Jump, flies faster than it walks, and glides down to land" {
-  s: [1] Lab; xd_lab(s[..]); x := s[0].xc[..];
+  s: [1] EgZone; xd_lab(s[..]); x := s[0].xc[..];
   #assert xc_use(s[..], xd_slot(x, FB_SHAPECHANGE));
   xd_run(s[..], 2);
   s[0].held = HOLD_W; xd_run(s[..], 2);
@@ -375,7 +375,7 @@ xd_run :: (s: [] Lab, seconds: f32) {
   #assert x[0].dr.sh[0].wing.phase == WING_GROUND && s[0].creator[0].player_y == 0;
 }
 #test "druid: Fire Breath held and let go burns the monsters in its cone and none behind" {
-  s: [1] Lab; xd_lab(s[..]); x := s[0].xc[..]; h := s[0].creator[0].hostiles[..];
+  s: [1] EgZone; xd_lab(s[..]); x := s[0].xc[..]; h := s[0].creator[0].hostiles[..];
   #assert xc_use(s[..], xd_slot(x, FB_SHAPECHANGE));
   xd_run(s[..], 2.5);
   s[0].creator[0].player_face = 0;   // facing +z
@@ -399,7 +399,7 @@ xd_run :: (s: [] Lab, seconds: f32) {
   #assert !rs_breath_ready(x[0].b[0].c[0]);
 }
 #test "druid: on a phone, the left thumb walks and flies the dragon and the wings' button takes off" {
-  s: [1] Lab; xd_lab(s[..]); x := s[0].xc[..];
+  s: [1] EgZone; xd_lab(s[..]); x := s[0].xc[..];
   x[0].w = 800; x[0].h = 1600; x[0].k = 2;
   #assert xc_use(s[..], xd_slot(x, FB_SHAPECHANGE));
   xd_run(s[..], 2);

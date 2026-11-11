@@ -90,7 +90,7 @@ fi
 # Native checks (#13122, coax/docs/native-checks.md): the units listed here run
 # their checks as native code; every other unit runs them in the evaluator.
 # COAX_NATIVE_CHECKS, when set (0 turns them off), decides instead.
-native_check_units=(apps/openagents-web/fivelab.coax)
+native_check_units=(apps/openagents-web/fivelab.coax apps/openagents-web/archery-range.coax)
 if [[ -z "${COAX_NATIVE_CHECKS+x}" ]]; then
   for unit in "${native_check_units[@]}"; do
     [[ "$coax_file" != "$unit" ]] || export COAX_NATIVE_CHECKS=1

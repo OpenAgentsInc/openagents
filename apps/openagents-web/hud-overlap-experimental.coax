@@ -18,15 +18,15 @@ hud_known :: (key: string) -> bool { return key.count < 0; }
 HX_OUT :: 1048576;   // floats: 65536 stroke vertices
 // The HUD of lab s on screen v: its trace in t.
 hx_draw :: (s: [] Lab, t: [] cc.UitTrace, out: [] f32, u: [] f32, v: int) {
-  cc.uit_clear(t); s[0].creator[0].ui = t;
+  cc.uit_clear(t); s[0].w[0].creator[0].ui = t;
   view := hud_view(v);
   n := lab_frame_draw(s, out, u, view.w, view.h, view.k, 0, true);
-  s[0].creator[0].ui = t[0..<0];
+  s[0].w[0].creator[0].ui = t[0..<0];
 }
 // A lab in Experimental as class `klass` with the ANIMATIONS browser off, as the site shows it.
 hx_lab :: (s: [] Lab, klass: int) {
-  xc_test_lab(s, klass, 0);
-  s[0].creator[0].dev_animations = false;
+  xc_test_lab(s[0].w[..], klass, 0);
+  s[0].w[0].creator[0].dev_animations = false;
 }
 tool_main :: () -> int #export_c #effects(all) {
   r: [1] HudRun; t: [1] cc.UitTrace;
@@ -35,33 +35,33 @@ tool_main :: () -> int #export_c #effects(all) {
     for klass: 0..<FB_CL_N {
       s: [1] Lab; hx_lab(s[..], klass);
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "world", false);
-      s[0].xc[0].open = false;
+      s[0].w[0].xc[0].open = false;
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "classes shut", false);
       // each side-bar button's tip, then its menu open with a row's tip
-      g := xc_side_geo(s[..]);
+      g := xc_side_geo(s[0].w[..]);
       for j: 0..<g.n {
-        s[0].xc[0].side = EgSideState.{side_hover = j};
+        s[0].w[0].xc[0].side = EgSideState.{side_hover = j};
         hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "side tip", false);
-        s[0].xc[0].side = EgSideState.{menu = g.ids[j], menu_hover = 0};
+        s[0].w[0].xc[0].side = EgSideState.{menu = g.ids[j], menu_hover = 0};
         hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "side menu", false);
       }
     }
     {
-      s: [1] Lab; hx_lab(s[..], FB_CL_WIZARD); s[0].xc[0].hover = 0;
+      s: [1] Lab; hx_lab(s[..], FB_CL_WIZARD); s[0].w[0].xc[0].hover = 0;
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "card", false);
     }
     {
-      s: [1] Lab; hx_lab(s[..], FB_CL_DRUID); s[0].xc[0].b[0].c[0].wild_swap = true;
+      s: [1] Lab; hx_lab(s[..], FB_CL_DRUID); s[0].w[0].xc[0].b[0].c[0].wild_swap = true;
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "wild shape swap", false);
     }
     {
-      s: [1] Lab; hx_lab(s[..], FB_CL_FIGHTER); s[0].creator[0].hostiles[0].hp = 0;
+      s: [1] Lab; hx_lab(s[..], FB_CL_FIGHTER); s[0].w[0].creator[0].hostiles[0].hp = 0;
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "down", false);
     }
     {
-      s: [1] Lab; hx_lab(s[..], FB_CL_WIZARD); s[0].creator[0].dev_animations = true; s[0].creator[0].preview_collapsed = false;
+      s: [1] Lab; hx_lab(s[..], FB_CL_WIZARD); s[0].w[0].creator[0].dev_animations = true; s[0].w[0].creator[0].preview_collapsed = false;
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "animations open", true);
-      s[0].creator[0].preview_collapsed = true;
+      s[0].w[0].creator[0].preview_collapsed = true;
       hx_draw(s[..], t[..], out[..], u[..], v); hud_screen(r[..], t[..], v, "animations shut", false);
     }
   }

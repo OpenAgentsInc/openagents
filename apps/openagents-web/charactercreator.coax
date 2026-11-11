@@ -65,6 +65,8 @@ Creator :: struct {
   horse_x:f32 = XH_HORSE_X; horse_z:f32 = XH_HORSE_Z; horse_face:f32 = XH_HORSE_FACE;   // where the zone's horse and dragon wait (xh_place): Experimental's, or a zone's own (xh_stand)
   dragon_x:f32 = XH_DRAGON_X; dragon_z:f32 = XH_DRAGON_Z; dragon_face:f32 = XH_DRAGON_FACE; mounts_stood:bool;
   props:[1]wprops.Props;   // the zone's own standing things' boxes (aethyr/world/props.coax): none in Experimental's village, the Archery Range's butts, poles and posts
+  field_clear:[4]f32;   // a zone's clearing on the open field (x0, z0, x1, z1, metres): the meadow scatters no rocks inside it; all 0, none
+  field_band:f32; field_keep:f32;   // with a clearing: rocks stand only in a band this wide round it (0: everywhere past it), this share of them
   range_first:int; range_count:int; range_word:int; range_on:bool;   // the Archery Range's mesh ("C glade/range", everglade/range/place.coax), drawn where a zone stands it (range_on)
   stage_on:bool; stage_view:trk.CamView; stage_day:f32 = 0.5;   // a ?stage= setup owns the camera and the sun (stage_set)
   hostile_external:bool; // owner stages AI through shared combat before publication
@@ -830,7 +832,7 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     }
   }
   // the dungeon's inside, only the parts you can see into (experimental-dungeon.coax dg_seen); its
-  // shadows are the shell's[0], so these cast none (fivelab.coax lab_shadow_select reads out[14])
+  // shadows are the shell's[0], so these cast none (everglade/zone.coax zone_shadow_select reads out[14])
   if s[0].experimental && !open_field && s[0].dungeon_n==dungeon.DG_CHUNKS {seen:=dungeon.dg_seen(s[0].player_x,s[0].player_z);for part:0..<dungeon.DG_CHUNKS {
     if n>=43 || (seen&(1<<part))==0 {continue;}
     for k:0..<24 {out[n*24+k]=0;}out[n*24+7]=f32(s[0].glade_word);out[n*24+14]=1;out[n*24+15]=16;
@@ -874,6 +876,7 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
   if open_field {for j:0..<14 {kit:=20+j;for t:0..<(ifx kit==grid.E2_MEADOW_GRASS then 4 else 1) {side:=grid.e2_meadow_side(kit,t);if side<=0 || s[0].kit_count[j]<3 || n>=44-reserved {break;}
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24]=f32(kit);out[n*24+1]=f32(t);out[n*24+2]=f32(side);out[n*24+7]=f32(s[0].kit_word[j]);out[n*24+15]=20;
+    if kit>=20 && kit<=22 {for k:0..<4 {out[n*24+8+k]=s[0].field_clear[k];}out[n*24+3]=s[0].field_band;out[n*24+4]=s[0].field_keep;}   // rocks keep out of a zone's clearing (gpu/character-glade.coax cg_meadow_vs reads c)
     b[0].draws[n*4]=cast(u32)s[0].kit_first[j];b[0].draws[n*4+1]=cast(u32)s[0].kit_count[j];b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)(side*side);n+=1;
   }}}
   for gi:0..<(ifx open_field then 0 else s[0].grass_groups) {if n>=44-reserved {break;}g:=s[0].grass[gi];
@@ -904,7 +907,7 @@ build_site_set :: (s:[]Creator,slot:int,tier:int,f:building.BuildingFrame,y:f32,
 }
 build_site_clear :: (s:[]Creator,slot:int) {if slot>=0 && slot<BUILD_SITES {s[0].sites[slot].on=false;}cc_crew_clear(s,slot);}
 // One part's record at r: kind 19, its whole matrix (columns c, e, f; translation a), a.w the cutoff,
-// d.y 7 marks it a build part (fivelab.coax lab_shadow_select leaves it out of the shadow tiles).
+// d.y 7 marks it a build part (everglade/zone.coax zone_shadow_select leaves it out of the shadow tiles).
 build_record :: (out:[]f32,r:int,word:int,site:BuildSite,p:bs.BuildPart,frac:f32) {build_instance(out,r,word,site.f,site.y,bs.bs_pose(p,frac),frac);}
 // Any packed mesh with reveal keys (a part, a builder's pile) as a build instance: placed at the
 // frame and ground y, moved by `pose` in the frame, showing the vertices whose key is at most frac.
@@ -1236,7 +1239,7 @@ cc_first_person :: (s:Creator)->f32 { if !s.experimental || s.walk.on {return 0;
 cc_self_hidden :: (s:Creator)->bool { return s.stage_on || fpcam.fp_hidden(cc_first_person(s)); }   // a ?stage= setup films the scene, not you
 // A ?stage= setup (apps/openagents-web/fivelab.coax lab_stage, #13107) sets the shot and the day each
 // frame: the camera is its eye and look, the frame draws no HUD, and the glade's shadow is redrawn
-// every frame so it follows the sun (fivelab.coax lab_light writes that day's light).
+// every frame so it follows the sun (everglade/zone.coax zone_light writes that day's light).
 stage_set :: (s:[]Creator,v:trk.CamView,day:f32) {s[0].stage_on=true;s[0].stage_view=v;s[0].stage_day=day;}
 stage_camera :: (s:Creator,u:[]f32,w:f32,h:f32) {
   v:=s.stage_view;fx:=v.lx-v.ex;fy:=v.ly-v.ey;fz:=v.lz-v.ez;l:=sqrt(fx*fx+fy*fy+fz*fz);
@@ -1684,6 +1687,17 @@ load_player :: (s:[]Creator,t:string) {
  catalog(s[..],"C glade/grass 0 465 250 100 65536 0\n");#assert s[0].grass_groups==0;
 }
 
+#test "a zone's clearing on the open field goes to the rocks' grid alone" {
+ s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);
+ catalog(s[..],"C glade/meadow 40 600 250 300 0 0\nC glade/meadowkit20 700 90 250 310 0 0\nC glade/meadowkit25 800 120 250 320 0 0\n");
+ for i:0..<80 {if appearance.PART_NAMES[i]!="" {s[0].source_count[i]=3;}}b[0].ready=true;s[0].scene_only=true;s[0].field=true;
+ n:=scene(s[..],b[..],out[..]);#assert n==3 && out[24]==20 && out[48]==25;
+ for k:0..<4 {#assert out[24+8+k]==0 && out[48+8+k]==0;}   // no clearing: the meadow as it is everywhere
+ s[0].field_clear=[4]f32.[-34,-43,34,59];n=scene(s[..],b[..],out[..]);
+ #assert n==3 && out[24+8]== -34 && out[24+9]== -43 && out[24+10]==34 && out[24+11]==59 && out[24+3]==0;
+ s[0].field_band=10;s[0].field_keep=0.25;n=scene(s[..],b[..],out[..]);#assert out[24+3]==10 && out[24+4]==0.25 && out[48+3]==0 && out[48+4]==0;
+ for k:0..<4 {#assert out[48+8+k]==0;}   // the flowers grow in it
+}
 #test "the open field draws Everglade II's meadow, its grass and its understory in place of the glade" {
  s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);
  catalog(s[..],"C glade/environment 9 12 250 100 8 0\nC glade/grass 21 465 250 164 20000 0\nC glade/meadow 40 600 250 300 0 0\nC glade/meadowkit33 700 90 250 310 0 0\nC glade/meadowkit25 800 120 250 320 0 0\nC glade/meadowkit23 900 50 250 300 0 0\n");

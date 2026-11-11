@@ -63,8 +63,10 @@ under the left thumb.
 
 The main flow is the web's `everglade2` app
 (`apps/openagents-web/everglade2.coax`, with Character Create inside it).
-Experimental and the Archery Range are the web's `fivelab` app
-(`apps/openagents-web/fivelab.coax`; the range is its `range-scene.coax`).
+Experimental is the web's `fivelab` app (`apps/openagents-web/fivelab.coax`),
+and the Archery Range is the web's `archery-range` app
+(`apps/openagents-web/archery-range.coax`). Both hold an Everglade zone
+(`everglade/zone.coax`).
 
 ### Everglade on the Mac (built 2026-11-10)
 
@@ -132,7 +134,7 @@ the village.
 
 ### The Archery Range on the Mac (built 2026-11-10)
 
-The Archery Range row opens the web's `fivelab` realm on the range's page
+The Archery Range row opens the web's `archery-range` realm on its page
 (`/worlds/archery-range`, its own save slot): the shooting line, the five
 butts, the Longbow, the tally at the top left, the horse and the dragon.
 
@@ -140,13 +142,14 @@ butts, the Longbow, the tally at the top left, the horse and the dragon.
   [`apps/everglade-desktop/Sources/Realms.swift`](../../apps/everglade-desktop/Sources/Realms.swift),
   shared with the iOS host's build: world, module, page, realm, slot and
   pack. `scenes.coax` takes `sc_host_runs` for the range (world 3).
-- **Nothing new to build.** The range is the same library, shaders and pack
-  as Experimental.
+- **Its own library.** The range is its own module (`archery-range`: an
+  Everglade zone with the range on it). The app builds `libarchery-range.dylib`
+  and its shaders beside fivelab's; the pack is Experimental's, one copy.
 - **One page of a module at a time.** A module's library loads once in a
   process, and the face keeps some of a page's state beside the state it is
-  handed (your body, the agent driver). So opening the range closes
-  Experimental's page and the other way round (`Realms.sharing`); each opens
-  afresh from its own save slot. Everglade, another module, keeps its page.
+  handed (your body, the agent driver), so two pages of one module can't be
+  open together (`Realms.sharing`). The range and Experimental are two modules
+  now, so both stay open.
 - **In a shot.** `--scene 3`.
 
 ### Sound in the page host (built 2026-11-10)
@@ -187,7 +190,6 @@ What the realms don't do yet:
 - **Leaving for another page.** A portal to another realm, the clipboard
   and the address bar have no effect. The address the web gives the
   dungeon has no row of its own in the app.
-- **Two fivelab pages at once.** See the range above.
 - **Instance culling on the GPU.** The host draws every piece the page
   picked, as the browser does without its cull module.
 - **Math mode.** The shaders are compiled in Metal's relaxed math mode, not

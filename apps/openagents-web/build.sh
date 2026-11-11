@@ -202,6 +202,11 @@ watchtower=$!
 "$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
   "$here/everglade-step.coax" "$a/sticks.coax" &
 fivelab=$!
+# /worlds/archery-range (unlisted): the Archery Range, an Everglade zone (everglade/zone.coax) with the range on it
+# (everglade/docs/archery-range-spec.md). It draws with Character Create's passes (charactercreator.wgsl).
+"$here/../../coax/web/wasm.sh" "$here/archery-range.coax" "$here/archery-range-face.c" "$here/build/archery-range.wasm" \
+  "$here/everglade-step.coax" "$a/sticks.coax" &
+archery_range=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
@@ -366,6 +371,7 @@ wait "$stair"
 wait "$painted"
 wait "$watchtower"
 wait "$fivelab"
+wait "$archery_range"
 wait "$everglade2"
 # Everglade II's admin mode is a dev build's only (everglade2-admin.coax, wasm.sh's --build-profile):
 # a release everglade2.wasm holding its panel's words or its room lines is refused.

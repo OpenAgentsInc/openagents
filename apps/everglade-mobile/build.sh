@@ -3,7 +3,7 @@
 # Builds Everglade for the iOS simulator (apps/everglade-mobile/README.md): the same Coax as the
 # desktop app (the scene, your model, the temple's parts and Aethyr shaders) with the iOS host, and
 # the web's realms run natively as the Mac app runs them (Everglade itself, everglade2; the Archery
-# Range and Experimental, fivelab) through Aethyr's page host (aethyr/host/apple/).
+# Range, archery-range; Experimental, fivelab) through Aethyr's page host (aethyr/host/apple/).
 #   apps/everglade-mobile/build.sh           builds build/ios/Everglade.app
 #   apps/everglade-mobile/build.sh --open    builds, then installs and opens it in a simulator
 #   apps/everglade-mobile/build.sh --device  builds build/ios-device/Everglade.app for a phone, unsigned
@@ -97,6 +97,9 @@ emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
 build_realm fivelab
 emit_page fivelab charactercreator charactercreator fivelab-fx fxg
 cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz" "$app/fivelab/glade.pack.gz"
+# The Archery Range: a module of its own (apps/openagents-web/archery-range.coax), the same passes, Experimental's pack.
+build_realm archery-range
+emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # A phone's tier for the pack's layers is Coax's (aethyr/render/texture-format.coax tf_side).
 "$coax" c "$repo/aethyr/render/texture-format.coax" --library --header "$work/c/texture-format.h" > "$work/c/texture-format.c"
