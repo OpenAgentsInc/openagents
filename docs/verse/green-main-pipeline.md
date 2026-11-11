@@ -321,12 +321,24 @@ Each kind is reported at most once every two hours
 (`OA_PIPELINE_ALARM_GAP`). `release.sh` also prints a warning when the
 watcher is not running (`after.sh health`).
 
+The watcher's two locks are `flock`s on `after.lock` (a run) and
+`watch.lock` (the watcher). A process that inherits either descriptor keeps
+the lock after the watcher lets go. On 2026-11-11 an orphaned `sleep` from
+`remote.sh`'s token refresher held both for 12 minutes: the log said "a run
+is going" every 30 seconds and the restarted watcher said "another watcher is
+running". Host jobs now run without the lock descriptors, and `remote.sh`
+ends the refresher's children with it (ab67fe133c). If the log says either
+line with no run in progress, `lsof ~/.openagents/pipeline/releases/after/*.lock`
+names the holder.
+
 Measured on 2026-11-09 on today's tree: a branch check takes 8 to 42 s of
 host time when it touches a few suites or modules, about $0.001 to $0.003 of
 host time (remote.sh's ledger bills each job at a whole host's price, three
 times that). A full run is 11 jobs and 11,712 slot-seconds, about $0.30 of
 host time ($0.90 on the ledger); with the hosts shared with agents' own
-builds it took 31 minutes. Logs, each
+builds it took 31 minutes. On 2026-11-11, with native checks and check
+reuse, a full run of 18 jobs took 455 s and 3,222 slot-seconds (f6b7edd058,
+the first full run to pass). Logs, each
 job's output and the red list are under `~/.openagents/pipeline/`
 (`releases/after/COMMIT/`, `releases/after/red.json`,
 `releases/after/history.tsv`). A message to an agent goes to
