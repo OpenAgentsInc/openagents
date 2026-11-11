@@ -67,6 +67,8 @@ EXPORT("rw_tick") int32_t rw_tick(void) {
   for (int k = 0; k < WORLD_ROOMS; k++) if (everglade_room_tick(k)) live++;
   return live;
 }
+/* What the room has scheduled: casts begun and not yet resolved (room-casts.coax; the agent clock's settle, #13096). */
+EXPORT("rw_scheduled") int32_t rw_scheduled(void) { return (int32_t)rm_scheduled(view()); }
 /* The frames queued, one at a time: its length (0 none), its bytes at rw_frame, rw_to whom. */
 EXPORT("rw_next") int32_t rw_next(void) { return (int32_t)rm_relay_next(view()); }
 EXPORT("rw_frame") uint32_t rw_frame(void) { return (uint32_t)(uintptr_t)server->rout.e; }

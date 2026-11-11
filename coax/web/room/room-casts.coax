@@ -307,6 +307,13 @@ rc_strikes :: (v: [] RmServer, k: int, helps: bool) {
     rc_strike(v, k, best);
   }
 }
+// What the rooms have scheduled (the agent clock's `clock settle`, #13096): the casts begun and not yet
+// resolved, over every live room. A room with none has nothing with a moment of its own still to come.
+rm_scheduled :: (v: [] RmServer) -> int #export_c #effects(all) {
+  n := 0;
+  for k: 0..<EG_ROOMS { if !rm_eg_live(v, k) { continue; } for q: 0..<EG_CASTS { if v[0].eg[k].casts[q].on { n += 1; } } }
+  return n;
+}
 // Each tick's casts, before the rules' step: the starts (in the order heard), then the heals due.
 rc_tick_first :: (v: [] RmServer, k: int) {
   for q:0..<EG_CASTS {if v[0].eg[k].casts[q].on && !rc_owner_live(v,k,v[0].eg[k].casts[q]) {v[0].eg[k].casts[q].on=false;}}

@@ -1,0 +1,12 @@
+// The agent session's pin (GitHub #13096; docs/verse/agent-clock.md): the one seed, epoch, locale and
+// time zone every agent session runs under, on every host, so two runs of the same operations see the
+// same world. The driver (coax/web/drive.coax) hands these to the host before the page loads; the
+// web host (coax/web/host.js agent mode, coax/web/room-worker.js) answers Date, Math.random,
+// crypto.getRandomValues and the room's clock and dice from them. Change a value here and nowhere else.
+AGENT_SEED :: 13096;                  // the dice: the page's and the offline room's
+AGENT_EPOCH_MS :: 1767225600000;      // the date as the session starts: 2026-01-01T00:00:00Z
+AGENT_LOCALE :: "en-US";
+AGENT_TIME_ZONE :: "UTC";
+AGENT_HZ :: 60;                       // the agent clock's frames a second of simulation time
+AGENT_SETTLE_MS :: 10000;             // `clock settle` gives up after this much simulation time, and says so
+AGENT_POLL_MS :: 100;                 // settle, until and a world operation look again this often

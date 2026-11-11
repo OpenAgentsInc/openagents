@@ -277,6 +277,30 @@ const root = (script && script.dataset.root) || "";
 const canvas = document.getElementById("coaxial");
 const dev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 const probe = dev && new URLSearchParams(location.search).has("probe"); // tests: read the frame back
+// Agent mode (?agent, in development; coax drive opens every page so: docs/verse/agent-clock.md, #13096).
+// Simulation time moves only when the agent's clock steps it (coaxial.agent.step): the page draws
+// fixed frames as a clip does (clip mode below), and the local room (room-worker.js) ticks on the
+// same clock. The session is pinned: the seed, epoch, locale and time zone of aethyr/agent/pin.coax,
+// which the driver hands over as globalThis.coaxialAgent before the page loads (?agent=SEED.EPOCH_MS
+// by hand). Date, Math.random and crypto.getRandomValues answer from the pin, the date moving with
+// the agent's clock. While the page loads, before the first step, it draws frames a microsecond apart.
+const agentMode = dev && new URLSearchParams(location.search).has("agent");
+let agentMs = 0, agentHeld = false, agentLoading = false, agentQueue = Promise.resolve();
+const agentPin = agentMode ? agentPinned() : null;
+function agentPinned() {
+  const g = globalThis.coaxialAgent, q = (new URLSearchParams(location.search).get("agent") || "").split(".");
+  const seed = Number(g?.seed ?? q[0]) >>> 0, epoch = Number(g?.epoch ?? q[1]);
+  if (!seed || !(epoch > 0)) { console.warn("?agent without a pin (coax drive gives one): the clock is the agent's, but the seed and the date are this machine's"); return { pinned: false, locale: "", timeZone: "" }; }
+  const pin = { pinned: true, seed, epoch, locale: String(g?.locale || ""), timeZone: String(g?.timeZone || "") };
+  let r = seed;
+  const byte = () => { r ^= r << 13; r ^= r >>> 17; r ^= r << 5; return r & 255; };
+  Math.random = () => { let v = 0; for (let i = 0; i < 4; i++) v = v * 256 + byte(); return v / 4294967296; };
+  try { crypto.getRandomValues = (a) => { const b = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); for (let i = 0; i < b.length; i++) b[i] = byte(); return a; }; } catch {}
+  const RealDate = Date, now = () => epoch + Math.floor(agentMs);
+  globalThis.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(now()); } static now() { return now(); } };
+  globalThis.coaxialAgentSession = pin;   // room-worker.js: the room on the agent's clock, its seed and date the pin's
+  return pin;
+}
 // Explicit local observation can retain normal animation and simulation.
 const captureRequested = probe || (dev && globalThis.coaxialRenderCapture === true);
 const mediaNoticeTrace = captureRequested ? [] : null;
@@ -923,7 +947,7 @@ function pageFacts() {
   const nav = performance.getEntriesByType?.("navigation")?.[0], fcp = performance.getEntriesByName?.("first-contentful-paint")?.[0];
   const clean = (v) => String(v ?? "").replace(/[\r\n]/g, " ");
   return Object.entries({ tab, fresh: fresh ? 1 : 0, visitor, now: Date.now(), nav: performance.now().toFixed(1), url: location.href,
-    ref: document.referrer, ua: navigator.userAgent, lang: navigator.language, tz, sw: screen.width, sh: screen.height,
+    ref: document.referrer, ua: navigator.userAgent, lang: agentPin?.locale || navigator.language, tz: agentPin?.timeZone || tz, sw: screen.width, sh: screen.height,
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
     cores: navigator.hardwareConcurrency || 0, memory: navigator.deviceMemory || 0, quality: storedQuality(),
@@ -2690,9 +2714,9 @@ const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.
 // Clip mode (clip.coax sets coaxialClip before the page loads): the page draws only when
 // coaxialClipStep says so, each frame one fixed step of game time, so a recording has
 // every frame at its exact moment however slowly the machine draws or captures.
-const clipping = globalThis.coaxialClip === true;
+const clipping = globalThis.coaxialClip === true || agentMode;
 // A clip that records a local room (room-worker.js) keeps the page's clock and the room's on the clip's.
-const clipRoom = clipping && globalThis.coaxialClipRoom === true, clipStart = performance.now();
+const clipRoom = clipping && (globalThis.coaxialClipRoom === true || agentMode), clipStart = agentMode ? 1000 : performance.now();
 // Optional platform timing observations for the desktop profiler. No work is
 // collected in an ordinary page; Coax tools summarize these raw milliseconds.
 const frameTrace = globalThis.coaxialFrameTrace === true ? [] : null;
@@ -2764,7 +2788,7 @@ if (clipping) globalThis.coaxialClipStep = async (frames = 1, fps = 30) => {
   // a clip that records its sound starts the audio once the engine is up (no gesture needed: nothing plays)
   if (globalThis.coaxialClipAudio && engine) {if(hostTransport)soundBank();else if(!audio)startAudio();}
   for (let k = 0; k < frames; k++) {
-    clipNow += 1000 / fps;
+    clipNow += 1000 / fps; agentMs = clipNow;
     // the room to the same moment, and every frame it sent then in the app before it draws
     if (clipRoom && globalThis.coaxial?.roomHost?.advance) { await globalThis.coaxial.roomHost.advance(clipNow); if (engine) drainSockets(1e9); }
     const observedStart = frameTrace ? performance.now() : 0;
@@ -2783,6 +2807,8 @@ function frame(now) {
   frameRequest = 0;
   if (worldPaused) return;
   frameRequest = requestAnimationFrame(frame);
+  // an agent's page loads on frames a microsecond apart, until its clock first steps
+  if (agentMode && !agentHeld && !agentLoading) { agentLoading = true; agentQueue = agentQueue.then(() => agentHeld ? 0 : globalThis.coaxialClipStep(1, 1e6)).catch(() => 0).finally(() => { agentLoading = false; }); }
   if (clipping) return;
   worldFrames++;
   const observedStart = frameTrace ? performance.now() : 0;
@@ -3345,6 +3371,18 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => l
   // command as message 700 and returns its answer (coaxial_drive_out), or null when the engine can't
   // take it yet; peek returns `size` bytes of the state at `offset` as hex, for `state` (the driver
   // reads the field's place and type from the build's layout, build/APP.layout).
+  // The agent's clock (agent mode): step(MS) draws fixed frames, AGENT_HZ a second, until MS more of
+  // simulation time has passed (at least one frame) and answers the clock, ms; now() is the clock;
+  // scheduled() is how much the local room still has scheduled (-1: no local room, or one that can't say).
+  agent: agentMode ? {
+    pin: agentPin, now: () => clipNow,
+    step: (ms, hz = 60) => (agentQueue = agentQueue.then(async () => {
+      agentHeld = true;
+      await globalThis.coaxialClipStep(Math.max(1, Math.round(Number(ms) * hz / 1000)), hz);
+      return clipNow;
+    })),
+    scheduled: () => globalThis.coaxial?.roomHost?.scheduled ?? -1,
+  } : null,
   drive: {
     send: (text) => {
       const x = engine?.exports;

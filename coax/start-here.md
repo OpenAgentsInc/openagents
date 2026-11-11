@@ -79,7 +79,7 @@ then the operations.
 | `state PATH` | Reads a value from the engine's state, such as `you_x` or `player.zone` |
 | `layout ID` | Prints a node's rectangle and its children's |
 | `logs` | Prints the page's console and the engine's log lines |
-| `clock ...` | Steps time (see below) |
+| `clock ...` | Steps simulation time (see below) |
 | `prefer NAME VALUE` | Sets a preference such as the color scheme or text size |
 | `perf` | Prints frame times |
 | `walk-to ID` | Walks your character to an entity |
@@ -87,11 +87,12 @@ then the operations.
 | `use ABILITY on ID` | Uses an ability on an entity, through the same deed a player's input makes |
 | `mount ID` | Mounts a mount |
 
-The agent clock lands with phase 2 of the agent loop (#13101): in agent mode
+The driver opens the page in agent mode ([the agent clock](../docs/verse/agent-clock.md)):
 nothing moves between two operations, and the page and the offline room
-step together. Its forms are `clock +MS`, `clock settle` (run until nothing
-is scheduled), `clock data` (until pending fetches answer) and
-`clock until STATE within MS`. Drive scripts land with phase 3: a file of
+step together. `clock +MS` steps the clock, `clock settle` steps until
+nothing is scheduled, and `clock until PATH OP VALUE within MS` steps until
+a state field compares so. Every session has the same seed, date, locale
+and time zone. Drive scripts land with phase 3: a file of
 these operations with expectations, which is also a replay stream, so a
 playtest recording can become a test. Until they land, read the header of
 `coax/web/drive.coax` for what works today.

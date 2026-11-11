@@ -49,6 +49,7 @@ Drive :: struct {
   seen: bool; best: f32; best_at: f32;   // the nearest it has come to the target, and when
   why: [DRV_WHY] u8; why_n: int;
   out: [DRV_OUT] u8; out_n: int;
+  busy: [DRV_WHY] u8; busy_n: int;       // what the realm still has scheduled this frame (drv_busy), for `quiet`
 }
 // Which way to go this frame: a unit direction on the ground (x, z), and whether to press now.
 DrvSteer :: struct { go: bool; dx: f32; dz: f32; press: bool; dist: f32 = -1; }
@@ -108,7 +109,7 @@ cp_has :: (s: string, part: string) -> bool {
 // A new frame on a screen w by h device px at k device px a CSS px: the lists start empty.
 drv_frame :: (d: [] Drive, w: f32, h: f32, k: f32, touch: bool) {
   if !d[0].on { return; }
-  d[0].n = 0; d[0].lost = 0; uit_clear(d[0].trace[..]);
+  d[0].n = 0; d[0].lost = 0; d[0].busy_n = 0; uit_clear(d[0].trace[..]);
   d[0].view = UitView.{w = w, h = h, k = ifx k > 0 then k else 1, touch = touch};
 }
 // The layout trace the HUD records into this frame: empty (off) until a driver speaks.
@@ -274,6 +275,35 @@ drv_target :: (d: [] Drive, id: string) -> string {
   #assert drv_uit_kind(UIT_KINDS) == "widget" && drv_uit_kind(-1) == "widget" && drv_uit_kind(UIT_BAR) == "bar" && drv_uit_kind(UIT_PANEL) == "panel";
 }
 
+// ---- what is scheduled (the agent clock's `clock settle`, #13096)
+// The realm says each frame, after drv_frame, what it still has scheduled: a cast in flight, a number
+// rising, a door opening. The first one said is the one `quiet` names.
+drv_busy :: (d: [] Drive, what: string) {
+  if !d[0].on || d[0].busy_n > 0 { return; }
+  d[0].busy_n = drv_put_s(d[0].busy[..], 0, what);
+}
+// `quiet`, or `busy: WHAT`: a world operation still going, else what the realm said this frame.
+drv_quiet :: (d: [] Drive) -> string {
+  if d[0].status == DRV_GOING {
+    out := d[0].out[..]; n := drv_put_s(out, 0, "busy: "); n = drv_put_s(out, n, DRV_OP[d[0].op]); n = drv_put_s(out, n, " "); n = drv_put_s(out, n, drv_target_id(d));
+    return drv_say(d, n);
+  }
+  if d[0].busy_n > 0 { return drv_say3(d, "busy: ", cast(string) d[0].busy[0..<d[0].busy_n], ""); }
+  return drv_say3(d, "quiet", "", "");
+}
+#test "quiet until a world operation goes or the realm says what it has scheduled" {
+  d: [1] Drive;
+  drv_busy(d[..], "a cast"); #assert d[0].busy_n == 0;   // no driver has spoken: nothing kept
+  #assert drv_command(d[..], "quiet", 0) == "quiet";
+  drv_frame(d[..], 100, 100, 1, false);
+  drv_busy(d[..], "a cast"); drv_busy(d[..], "a number rising");
+  #assert drv_command(d[..], "quiet", 0) == "busy: a cast";
+  drv_frame(d[..], 100, 100, 1, false); #assert drv_command(d[..], "quiet", 0) == "quiet";
+  drv_add(d[..], DRV_NPC, "guard", -1, "Guard", 0, 0, 5, -1, -1, false);
+  #assert drv_command(d[..], "walk-to guard", 0) == "walk-to guard: going" && drv_command(d[..], "quiet", 0) == "busy: walk-to guard";
+  #assert drv_command(d[..], "stop", 0) == "none: idle, stopped" && drv_command(d[..], "quiet", 0) == "quiet";
+}
+
 // ---- commands
 drv_why :: (d: [] Drive, a: string, b: string, c: string) {
   n := drv_put_s(d[0].why[..], 0, a); n = drv_put_s(d[0].why[..], n, b); d[0].why_n = drv_put_s(d[0].why[..], n, c);
@@ -326,6 +356,7 @@ drv_command :: (d: [] Drive, text: string, now: f32) -> string {
   if op == "tree" { return drv_tree(d, false); }
   if op == "layout" { return drv_tree(d, true); }
   if op == "status" { return drv_status(d); }
+  if op == "quiet" { return drv_quiet(d); }
   if op == "target" { return drv_target(d, drv_word(text, 1)); }
   if op == "stop" { d[0].op = DRV_NONE; drv_end(d, DRV_IDLE, "stopped", "", ""); return drv_status(d); }
   kind := DRV_NONE; id := drv_word(text, 1); ability := "";

@@ -1,6 +1,6 @@
 // coax drive (GitHub #13095; docs/research/exact/03-what-to-adapt.md): an agent drives a realm by
 // ids, one operation an argument, in one live session of headless Chrome (no window, muted).
-//   coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] OP...
+//   coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] [--real-time] OP...
 //   coax/web/tool.sh drive web apps/openagents-web /worlds/everglade2 tree "walk-to guard" \
 //     "use 1 on goblin-5" "clock +2000" "state you_x" "screenshot out.png"
 // It serves APP_DIR as it is built (coax/web/serve.sh --static, on a free port above 9000), opens
@@ -17,16 +17,27 @@
 //                                 input would (a deed the room answers); it waits until the operation
 //                                 is done or failed, at most --within ms (30000)
 //   status                        the last world operation's state
-//   clock +MS                     lets MS of real time pass (the agent clock is phase 2, #13096)
+//   clock +MS                     steps the agent clock MS (in whole frames, AGENT_HZ a second; at least one)
+//   clock settle [within MS]      steps until the page and the offline room say nothing is scheduled,
+//                                 at most MS of the clock (10000), and says so when it reaches that bound
+//   clock until PATH [OP VALUE] [within MS]
+//                                 steps until the state's field compares so (OP: == != < > <= >=; with no
+//                                 OP, until it isn't 0 or false), at most MS (--within); it fails if not
 //   screenshot OUT.png            the page as it is
 //   logs                          the page's console and errors since the last `logs`
 //   prefer color-scheme dark|light | prefer reduced-motion reduce|no-preference | prefer size WxH
 //   perf                          frames drawn in one second, and the world loop's counters
+// The agent clock (GitHub #13096, docs/verse/agent-clock.md): the page opens in agent mode (?agent,
+// coax/web/host.js), where simulation time moves only when `clock` or a world operation steps it; the
+// page and its offline room (coax/web/room-worker.js) step together, and the session is pinned to the
+// seed, epoch, locale and time zone of aethyr/agent/pin.coax. --real-time opens the page as a player's
+// (no agent clock: `clock +MS` waits, settle and until refuse).
 // It refuses a build older than its sources (build/.drive/APP.sources, written by coax/web/wasm.sh),
 // printing the command that rebuilds it.
 #import "Basic";
 #load "resident.coax";
 #load "../lib/crypto/sha256_workspace.coax";
+#load "../../aethyr/agent/pin.coax";
 
 cxtool_out_flush :: () -> int #foreign #effects(all);
 
@@ -368,6 +379,7 @@ dv_app_of :: (html: string) -> string {
 // ---- the session
 DvS :: struct {
   c: [1] Cdp; serve: int = -1; port: int; within: int = 30000;
+  agent: bool = true;   // the agent clock (false: --real-time)
   lay: [DV_FILE] u8; lay_n: int; root: [128] u8; root_n: int;
   value: [1048576] u8;
 }
@@ -413,6 +425,144 @@ dv_key :: (s: [] DvS, name: string) -> bool {
 DV_LOGS_JS :: "(() => { if (globalThis.__driveLogs) return; const L = globalThis.__driveLogs = []; const k = (t, a) => { try { L.push(t + ': ' + a.map((x) => typeof x === 'string' ? x : JSON.stringify(x)).join(' ')); if (L.length > 500) L.shift(); } catch {} }; for (const m of ['error', 'warn', 'log', 'info']) { const o = console[m].bind(console); console[m] = (...a) => { k(m, a); o(...a); }; } addEventListener('error', (e) => k('page error', [e.message + ' at ' + e.filename + ':' + e.lineno])); addEventListener('unhandledrejection', (e) => k('unhandled rejection', [String(e.reason)])); })()";
 DV_PERF_JS :: "(async () => { const c = globalThis.coaxial; if (!c?.worldLoop) return 'no world loop on this page'; const a = c.worldLoop(), t0 = performance.now(); await new Promise((r) => setTimeout(r, 1000)); const b = c.worldLoop(), ms = performance.now() - t0; return (Math.round((b.frames - a.frames) * 10000 / ms) / 10) + ' frames a second; ' + JSON.stringify(b); })()";
 
+// ---- the agent clock
+// The clock, ms of simulation time since the page opened: -1 when the page has no agent clock.
+dv_now :: (s: [] DvS) -> int { return dv_int(dv_eval(s, "String(Math.round(globalThis.coaxial?.agent?.now() ?? -1))")); }
+// Steps the clock ms (whole frames; at least one), in runs of at most half a second so no one call
+// to the page is long: the clock after, or -1.
+DV_RUN_MS :: 500;
+dv_advance :: (s: [] DvS, ms: int) -> int {
+  left := ms; now := -1;
+  while true {
+    run := ifx left > DV_RUN_MS then DV_RUN_MS else left;
+    t: [1] Dv; dv_s(t[..], "globalThis.coaxial.agent.step("); dv_i(t[..], run); dv_s(t[..], ", "); dv_i(t[..], AGENT_HZ); dv_s(t[..], ").then((v) => String(Math.round(v)))");
+    now = dv_int(dv_eval(s, dv_text(t[..])));
+    left -= run;
+    if now < 0 || left <= 0 { break; }
+  }
+  return now;
+}
+// Lets ms pass: of the agent's clock, or of real time without one.
+dv_pass :: (s: [] DvS, ms: int) { if s[0].agent { now := dv_advance(s, ms); } else { proc_sleep(ms); } }
+// Whether nothing is scheduled: the realm's word (aethyr/agent/drive.coax `quiet`) and the offline
+// room's count (room-casts.coax rm_scheduled; -1 when there is no local room). why: what still is.
+dv_quiet :: (s: [] DvS, why: [] Dv) -> bool {
+  why[0].n = 0;
+  page := dv_send(s, "quiet"); busy := dv_starts(page, "busy");
+  room := dv_int(dv_eval(s, "String(globalThis.coaxial?.agent?.scheduled() ?? -1)"));
+  if busy { dv_s(why, "the page is "); dv_s(why, page); }
+  if room > 0 { dv_s(why, ifx busy then "; the room has " else "the room has "); dv_i(why, room); dv_s(why, " scheduled"); }
+  return !busy && room <= 0;
+}
+// A decimal number: -12, 3.5, .25.
+DvNum :: struct { ok: bool; v: f64; }
+dv_num :: (t: string) -> DvNum {
+  at := 0; neg := false; v: f64 = 0; digits := 0;
+  if t.count > 0 && (t[0] == '-' || t[0] == '+') { neg = t[0] == '-'; at = 1; }
+  while at < t.count && t[at] >= '0' && t[at] <= '9' { v = v * 10 + f64(cast(int) (t[at] - '0')); at += 1; digits += 1; }
+  if at < t.count && t[at] == '.' {
+    at += 1; scale: f64 = 0.1;
+    while at < t.count && t[at] >= '0' && t[at] <= '9' { v += scale * f64(cast(int) (t[at] - '0')); scale *= 0.1; at += 1; digits += 1; }
+  }
+  if digits == 0 || at != t.count { return DvNum.{}; }
+  return DvNum.{ok = true, v = ifx neg then -v else v};
+}
+// The last word of a printed value: "DeedPose 3" is 3, "1.500" itself.
+dv_last_word :: (t: string) -> string {
+  e := t.count; while e > 0 && t[e - 1] == ' ' { e -= 1; }
+  b := e; while b > 0 && t[b - 1] != ' ' { b -= 1; }
+  return t[b..<e];
+}
+// Whether a state's printed value compares so with `want`: 1 yes, 0 no, -1 when the comparison can't
+// be made (no such OP, or an order asked of words). With no OP: the value isn't 0 or false.
+dv_compare :: (value: string, cmp: string, want: string) -> int {
+  a := dv_num(dv_last_word(value)); b := dv_num(want);
+  if cmp.count == 0 { return ifx value == "false" || (a.ok && a.v == 0) then 0 else 1; }
+  if cmp != "==" && cmp != "!=" && cmp != "<" && cmp != ">" && cmp != "<=" && cmp != ">=" { return -1; }
+  if a.ok && b.ok {
+    hold := ifx cmp == "==" then a.v == b.v else ifx cmp == "!=" then a.v != b.v else ifx cmp == "<" then a.v < b.v else ifx cmp == ">" then a.v > b.v else ifx cmp == "<=" then a.v <= b.v else a.v >= b.v;
+    return ifx hold then 1 else 0;
+  }
+  // words: a text field prints in quotes
+  v := value; if v.count >= 2 && v[0] == '"' && v[v.count - 1] == '"' { v = v[1..<v.count - 1]; }
+  if cmp == "==" { return ifx v == want then 1 else 0; }
+  if cmp == "!=" { return ifx v != want then 1 else 0; }
+  return -1;
+}
+#test "numbers and comparisons of a state's value" {
+  #assert dv_num("42").ok && dv_num("42").v == 42 && dv_num("-3.5").v == -3.5 && dv_num(".25").v == 0.25 && !dv_num("").ok && !dv_num("4x").ok && !dv_num("-").ok && !dv_num("1.2.3").ok;
+  #assert dv_last_word("DeedPose 3") == "3" && dv_last_word("1.500") == "1.500" && dv_last_word("") == "";
+  #assert dv_compare("1.500", ">", "1") == 1 && dv_compare("1.500", "<=", "1") == 0 && dv_compare("DeedPose 3", "==", "3") == 1 && dv_compare("7", "!=", "7") == 0;
+  #assert dv_compare("7", ">=", "7") == 1 && dv_compare("6", "<", "7") == 1 && dv_compare("7", "<", "7") == 0 && dv_compare("7", "=", "7") == -1;
+  #assert dv_compare("\"glade\"", "==", "glade") == 1 && dv_compare("\"glade\"", "!=", "glade") == 0 && dv_compare("\"glade\"", "<", "glade") == -1;
+  #assert dv_compare("true", "", "") == 1 && dv_compare("false", "", "") == 0 && dv_compare("0", "", "") == 0 && dv_compare("0.000", "", "") == 0 && dv_compare("2", "", "") == 1 && dv_compare("\"x\"", "", "") == 1;
+}
+// The value in a `state` answer ("PATH = VALUE").
+dv_state_value :: (answer: string) -> string {
+  if answer.count < 3 { return ""; }
+  for i: 0..<answer.count - 2 { if answer[i..<i + 3] == " = " { return answer[i + 3..<answer.count]; } }
+  return "";
+}
+#test "a state answer's value" { #assert dv_state_value("you_x = 1.500") == "1.500" && dv_state_value("net.zone = \"a = b\"") == "\"a = b\"" && dv_state_value("nope") == "" && dv_state_value("") == ""; }
+// `within MS` at word w of op: MS, `otherwise` when the words end there, -1 when they are something else.
+dv_within :: (op: string, w: int, otherwise: int) -> int {
+  if dv_word(op, w).count == 0 { return otherwise; }
+  if dv_word(op, w) != "within" || dv_word(op, w + 2).count > 0 { return -1; }
+  return dv_int(dv_word(op, w + 1));
+}
+#test "within MS ends a clock operation" {
+  #assert dv_within("clock settle", 2, 10000) == 10000 && dv_within("clock settle within 500", 2, 10000) == 500 && dv_within("clock settle soon", 2, 10000) == -1;
+  #assert dv_within("clock settle within", 2, 10000) == -1 && dv_within("clock settle within 5 6", 2, 10000) == -1 && dv_within("clock until a > 3 within 250", 5, 9) == 250;
+}
+DV_CLOCK_HELP :: "clock takes +MS, settle [within MS] or until PATH [OP VALUE] [within MS] (OP: == != < > <= >=)";
+dv_clock :: (s: [] DvS, op: string, out: [] Dv) -> bool {
+  a := dv_word(op, 1);
+  if a.count > 1 && a[0] == '+' && dv_int(a[1..<a.count]) >= 0 {
+    ms := dv_int(a[1..<a.count]);
+    if !s[0].agent { proc_sleep(ms); dv_s(out, "waited "); dv_i(out, ms); dv_s(out, " ms of real time (--real-time: no agent clock)"); return true; }
+    was := dv_now(s); now := dv_advance(s, ms);
+    if was < 0 || now < 0 { dv_s(out, "the clock didn't step: this page has no agent clock"); return false; }
+    dv_s(out, "stepped "); dv_i(out, now - was); dv_s(out, " ms; the clock is at "); dv_i(out, now); dv_s(out, " ms");
+    return true;
+  }
+  if a != "settle" && a != "until" { dv_s(out, DV_CLOCK_HELP); return false; }
+  if !s[0].agent { dv_s(out, "clock settle and clock until step the agent clock: run without --real-time"); return false; }
+  start := dv_now(s); now := start;
+  if start < 0 { dv_s(out, "this page has no agent clock"); return false; }
+  if a == "settle" {
+    bound := dv_within(op, 2, AGENT_SETTLE_MS);
+    if bound < 0 { dv_s(out, DV_CLOCK_HELP); return false; }
+    why: [1] Dv;
+    // an operation just asked for is seen by the page on its next frame: step, then ask
+    while true {
+      now = dv_advance(s, AGENT_POLL_MS);
+      if now < 0 { dv_s(out, "the clock didn't step"); return false; }
+      if dv_quiet(s, why[..]) { dv_s(out, "settled after "); dv_i(out, now - start); dv_s(out, " ms; the clock is at "); dv_i(out, now); dv_s(out, " ms"); return true; }
+      if now - start >= bound { break; }
+    }
+    dv_s(out, "not settled at the bound of "); dv_i(out, bound); dv_s(out, " ms: "); dv_s(out, dv_text(why[..])); dv_s(out, "; the clock is at "); dv_i(out, now); dv_s(out, " ms");
+    return true;
+  }
+  path := dv_word(op, 2); cmp := dv_word(op, 3); want := dv_word(op, 4); at := 5;
+  if cmp == "within" || cmp.count == 0 { cmp = ""; want = ""; at = 3; }
+  within := dv_within(op, at, s[0].within);
+  if path.count == 0 || within < 0 || (cmp.count > 0 && want.count == 0) { dv_s(out, DV_CLOCK_HELP); return false; }
+  got: [1] Dv;
+  while true {
+    got[0].n = 0;
+    if !dv_state(s, path, got[..]) { dv_s(out, dv_text(got[..])); return false; }
+    value := dv_state_value(dv_text(got[..]));
+    h := dv_compare(value, cmp, want);
+    if h < 0 { dv_s(out, dv_text(got[..])); dv_s(out, ": can't be compared with "); dv_s(out, cmp); dv_s(out, " "); dv_s(out, want); dv_s(out, "; "); dv_s(out, DV_CLOCK_HELP); return false; }
+    if h == 1 { dv_s(out, dv_text(got[..])); dv_s(out, " after "); dv_i(out, now - start); dv_s(out, " ms; the clock is at "); dv_i(out, now); dv_s(out, " ms"); return true; }
+    if now - start >= within { break; }
+    now = dv_advance(s, AGENT_POLL_MS);
+    if now < 0 { dv_s(out, "the clock didn't step"); return false; }
+  }
+  dv_s(out, "not within "); dv_i(out, within); dv_s(out, " ms: "); dv_s(out, dv_text(got[..]));
+  return false;
+}
+
 // One operation; its answer (printed by the caller); false when it couldn't run at all.
 dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   out[0].n = 0;
@@ -421,9 +571,9 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   if w0 == "walk-to" || w0 == "face" || w0 == "use" || w0 == "mount" || w0 == "stop" {
     first := dv_send(s, op);
     if !dv_has(first, ": going") { dv_s(out, first); return true; }
-    start := proc_now_ms(); last := first;
-    while proc_now_ms() - start < s[0].within {
-      proc_sleep(100);
+    waited := 0; last := first;
+    while waited < s[0].within {
+      dv_pass(s, AGENT_POLL_MS); waited += AGENT_POLL_MS;
       last = dv_send(s, "status");
       if !dv_has(last, ": going") { break; }
     }
@@ -456,11 +606,7 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
     return true;
   }
-  if w0 == "clock" {
-    a := dv_word(op, 1);
-    if a.count > 1 && a[0] == '+' && dv_int(a[1..<a.count]) >= 0 { proc_sleep(dv_int(a[1..<a.count])); dv_s(out, "waited "); dv_s(out, a[1..<a.count]); dv_s(out, " ms of real time"); return true; }
-    dv_s(out, "clock takes +MS (settle, until and the agent clock come with phase 2, #13096)"); return false;
-  }
+  if w0 == "clock" { return dv_clock(s, op, out); }
   if w0 == "screenshot" {
     path := dv_word(op, 1);
     if path.count == 0 { dv_s(out, "screenshot takes a file: screenshot out.png"); return false; }
@@ -520,9 +666,10 @@ dv_state :: (s: [] DvS, path: string, out: [] Dv) -> bool {
 }
 
 dv_usage :: () -> int {
-  tool_errln("usage: coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] OP...");
+  tool_errln("usage: coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] [--real-time] OP...");
   tool_errln("  OP: tree, layout, state [PATH], tap ID, type ID TEXT, type ID key NAME, walk-to ID, face ID,");
-  tool_errln("      use ABILITY on ID, mount ID, stop, status, clock +MS, screenshot OUT.png, logs, prefer K V, perf");
+  tool_errln("      use ABILITY on ID, mount ID, stop, status, screenshot OUT.png, logs, prefer K V, perf,");
+  tool_errln("      clock +MS, clock settle [within MS], clock until PATH [OP VALUE] [within MS]");
   return 2;
 }
 // The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
@@ -532,7 +679,7 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
-  query := ""; size := "1280x800"; port := -1; within := 30000;
+  query := ""; size := "1280x800"; port := -1; within := 30000; agent := true;
   ops: [64] string; n_ops := 0;
   i := 3;
   while i < args_count(a[..]) {
@@ -542,6 +689,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if x == "--query" { query = v; } else if x == "--size" { size = v; } else if x == "--port" { port = dv_int(v); } else { within = dv_int(v); }
       i += 2; continue;
     }
+    if x == "--real-time" { agent = false; i += 1; continue; }
     if n_ops >= ops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
     ops[n_ops] = x; n_ops += 1; i += 1;
   }
@@ -550,7 +698,7 @@ tool_main :: () -> int #export_c #effects(all) {
   selfb: [4096] u8; sn := cxproc_self_path(selfb[..]);
   if sn <= 0 { tool_errln("drive: can't find the repository"); return 1; }
   root := dv_root_dir(cast(string) selfb[0..<sn]);
-  s: [1] DvS; s[0].within = within;
+  s: [1] DvS; s[0].within = within; s[0].agent = agent;
   t: [1] Dv; buf: [DV_FILE] u8;
   // the page's app, from its index.html
   dv_s(t[..], root); dv_s(t[..], "/"); dv_s(t[..], app_dir);
@@ -616,13 +764,26 @@ dv_session :: (s: [] DvS, path: string, query: string, wh: ArgsSize, ops: [] str
   if resident { rs_release(c, r[..], false); } else { cdp_close(c); }
   return status;
 }
-DV_FIRST_MS :: 250;   // ms the page draws after the first command, before the operations start
+DV_FIRST_MS :: 250;   // ms the page draws after the first command, before the operations start (of the agent clock, with one)
 dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
   c := s[0].c[..];
   p: [8192] u8; j: [1] Jo; jo_start(j[..], p[..]); jo_obj(j[..]); jo_key(j[..], "source"); jo_str(j[..], DV_LOGS_JS); jo_end(j[..]);
   if !media_size(c, wh) || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(j[..]), CDP_CALL_MS) < 0 { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
   u: [1] Dv; dv_s(u[..], "http://127.0.0.1:"); dv_i(u[..], s[0].port); dv_s(u[..], path);
   if query.count > 0 { dv_s(u[..], ifx query[0] == '?' then "" else "?"); dv_s(u[..], query); }
+  if s[0].agent {
+    // the agent's session: the page in agent mode, pinned (aethyr/agent/pin.coax) before it loads
+    dv_s(u[..], ifx query.count > 0 then "&agent" else "?agent");
+    pin: [1] Dv; dv_s(pin[..], "globalThis.coaxialAgent = { seed: "); dv_i(pin[..], AGENT_SEED); dv_s(pin[..], ", epoch: "); dv_i(pin[..], AGENT_EPOCH_MS);
+    dv_s(pin[..], ", locale: '"); dv_s(pin[..], AGENT_LOCALE); dv_s(pin[..], "', timeZone: '"); dv_s(pin[..], AGENT_TIME_ZONE); dv_s(pin[..], "' };");
+    a: [1024] u8; aj: [1] Jo; jo_start(aj[..], a[..]); jo_obj(aj[..]); jo_key(aj[..], "source"); jo_str(aj[..], dv_text(pin[..])); jo_end(aj[..]);
+    ok := cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(aj[..]), CDP_CALL_MS) >= 0;
+    jo_start(aj[..], a[..]); jo_obj(aj[..]); jo_key(aj[..], "locale"); jo_str(aj[..], AGENT_LOCALE); jo_end(aj[..]);
+    ok = ok && cdp_call(c, "Emulation.setLocaleOverride", jo_text(aj[..]), CDP_CALL_MS) >= 0;
+    jo_start(aj[..], a[..]); jo_obj(aj[..]); jo_key(aj[..], "timezoneId"); jo_str(aj[..], AGENT_TIME_ZONE); jo_end(aj[..]);
+    ok = ok && cdp_call(c, "Emulation.setTimezoneOverride", jo_text(aj[..]), CDP_CALL_MS) >= 0;
+    if !ok { tool_err("drive: the session couldn't be pinned: "); tool_errln(cdp_error(c)); return 1; }
+  }
   q: [8192] u8; k: [1] Jo; jo_start(k[..], q[..]); jo_obj(k[..]); jo_key(k[..], "url"); jo_str(k[..], dv_text(u[..])); jo_end(k[..]);
   if cdp_call(c, "Page.navigate", jo_text(k[..]), CDP_CALL_MS) < 0 { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
   start := proc_now_ms(); idle_from := -1;
@@ -638,7 +799,9 @@ dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
   // The realm lists nothing until a driver speaks: speak once, then let a few frames list the world.
   first := dv_send(s, "status");
   if first != "none: idle" { tool_err("drive: "); tool_errln(first); return 1; }
-  proc_sleep(DV_FIRST_MS);
+  if s[0].agent && dv_now(s) < 0 { tool_errln("drive: the page has no agent clock (its host is older than this driver, or isn't served from 127.0.0.1); --real-time drives it without one"); return 1; }
+  dv_pass(s, DV_FIRST_MS);
   print("drive: % ready in % ms (WebGPU adapter: %)\n", dv_text(u[..]), proc_now_ms() - start, cdp_adapter(c, s[0].value[..]));
+  if s[0].agent { print("drive: the agent clock is at % ms; seed %, epoch % ms, % in %\n", dv_now(s), AGENT_SEED, AGENT_EPOCH_MS, AGENT_LOCALE, AGENT_TIME_ZONE); }
   return 0;
 }

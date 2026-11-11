@@ -11,7 +11,7 @@
 // and the phone-throttle measurement as globalThis.coaxial.roomHost; roomHost.control(LINES) gives
 // the room control lines as the API's answer does (the drift check's held step).
 // A clip that records the room (globalThis.coaxialClipRoom, set with coaxialClip before the page
-// loads) runs it on the clip's clock: roomHost.advance(MS) ticks it to the clip's MS and resolves once
+// loads; an agent's session too, host.js agent mode) runs it on the clip's clock: roomHost.advance(MS) ticks it to the clip's MS and resolves once
 // every frame it sent then is on its way, so each recorded frame sees the room at its exact moment.
 
 // The worker's body, run from its own source text (a Blob: no second script for a release to name).
@@ -19,7 +19,7 @@ function roomWorkerMain() {
   const HZ = 30, STEP = 1000 / HZ, PARTS = 8;
   let x = null, mem = null, booting = null, next = 0, timer = 0, start = "";
   // the clip's clock (ms past its start), else null for the real one
-  let clipMs = null, seed = 12996; const perf0 = performance.now(), date0 = Date.now();
+  let clipMs = null, seed = 12996, perf0 = performance.now(), date0 = Date.now();
   const nowMs = () => clipMs === null ? performance.now() : perf0 + clipMs;
   const waiting = [], conns = new Set();
   const enc = new TextEncoder(), dec = new TextDecoder();
@@ -123,6 +123,8 @@ function roomWorkerMain() {
     if (m.t === "boot") {
       start = m.start || "";
       if (m.clip) clipMs = 0;
+      // an agent's session (host.js agent mode): the pin's seed and date, and a clock from one start
+      if (m.clip && m.pin) { seed = m.pin.seed; date0 = m.pin.epoch; perf0 = 1000; }
       booting = boot(m.wasm, m.world, m.control).then(() => { for (const f of waiting.splice(0)) f(); },
         (err) => { postMessage({ t: "failed", why: String(err && err.message || err) }); });
       return;
@@ -141,7 +143,7 @@ function roomWorkerMain() {
       } else if (m.t === "frame") { if(conns.has(m.id)){x.rw_heard(m.id, put(m.text));flush();}if(m.ack!==undefined)postMessage({t:"sent",id:m.id,ack:m.ack}); }
       else if (m.t === "close" && conns.has(m.id)) { conns.delete(m.id); x.rw_left(m.id); flush(); }
       else if (m.t === "control") { x.rw_control(put(m.text)); flush(); }   // roomHost.control
-      else if (m.t === "advance") { if (clipMs !== null) { clipMs = Math.max(clipMs, m.ms); if (conns.size) beat(); } postMessage({ t: "advanced", ms: m.ms }); }
+      else if (m.t === "advance") { if (clipMs !== null) { clipMs = Math.max(clipMs, m.ms); if (conns.size) beat(); } postMessage({ t: "advanced", ms: m.ms, scheduled: x.rw_scheduled ? x.rw_scheduled() : -1 }); }
     };
     if (x) run(); else waiting.push(run);
   };
@@ -189,8 +191,10 @@ function roomWorker(wasmUrl) {
   // &stage=echo with it: Echo joins the watch as the siege begins (room-events.coax "hero 1", #12996)
   const levels = (params.get("levels") === "off" ? "levels 0 2\n" : "") + (raid && params.get("stage") === "echo" ? "hero 1\n" : "");
   const control = levels + (raid ? raid + " 0 0\n" : "");
-  const clip = globalThis.coaxialClip === true && globalThis.coaxialClipRoom === true;
-  worker.postMessage({ t: "boot", wasm: href(wasmUrl), world: href("/api/playtest/world/everglade"), control, start: raid ? levels + raid + " 1 0\n" : "", clip });
+  // an agent's session (host.js agent mode) runs the room on the agent's clock, as a clip does on its own
+  const agent = globalThis.coaxialAgentSession || null;
+  const clip = (globalThis.coaxialClip === true && globalThis.coaxialClipRoom === true) || !!agent;
+  worker.postMessage({ t: "boot", wasm: href(wasmUrl), world: href("/api/playtest/world/everglade"), control, start: raid ? levels + raid + " 1 0\n" : "", clip, pin: agent?.pinned ? { seed: agent.seed, epoch: agent.epoch } : null });
   const host = (globalThis.coaxial ||= {}).roomHost = { native: false, transport: "wasm-worker", ticks: 0, us: 0, ms: 0, parts: [], failed: "" };
   const advancing = [];
   if (clip) host.advance = (ms) => new Promise((done) => { advancing.push(done); worker.postMessage({ t: "advance", ms }); });
@@ -200,7 +204,7 @@ function roomWorker(wasmUrl) {
   worker.onmessage = (e) => {
     const m = e.data, s = sockets.get(m.id);
     if (m.t === "cost") { Object.assign(host, m); host.tickUs = m.ticks ? m.us / m.ticks : 0; return; }
-    if (m.t === "advanced") { advancing.shift()?.(); return; }
+    if (m.t === "advanced") { host.scheduled = m.scheduled ?? -1; advancing.shift()?.(); return; }
     if (m.t === "failed") { host.failed = m.why; console.error(m.why); for (const k of sockets.values()) k.closed(); return; }
     if (!s) return;
     if (m.t === "open") { s.readyState = 1; s.onopen?.(); }
