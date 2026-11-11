@@ -59,6 +59,9 @@ EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
 // The meadow shares one large geometry storage buffer.
 EXPORT("coaxial_character_storage_v1") uint32_t coaxial_character_storage_v1(void) { return 256u * 1024u * 1024u; }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+// The open field's ground drawn as the runs of it in view (everglade/zone.coax zone_mesh_cull, aethyr/render/mesh-cull.coax):
+// the boxes the host makes from the pack's bytes (host.js meshBounds, PageHost.m meshBounds), once the zone asks.
+EXPORT("coaxial_mesh_bounds_v1") cx_face_addr coaxial_mesh_bounds_v1(cx_face_addr state) { return zone_at(state)->glade_cull.e[0].ask.e[0] ? (cx_face_addr)(uintptr_t)&zone_at(state)->glade_cull.e[0] : 0u; }
 
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float w, float h, float scale, float dt, uint32_t still) {

@@ -1,0 +1,124 @@
+// A realm's frame rate as a phone would run it, in headless Chrome (GitHub #13190): the page at a
+// phone's CSS size and pixel ratio (390x844 at 3 by default, an iPhone's), touch on, a coarse
+// pointer and the CPU slowed (Emulation.setCPUThrottlingRate, 4 by default), then a line every
+// window: the frames it drew, the median and 95th-percentile frame (ms, requestAnimationFrame to
+// requestAnimationFrame), the GPU's median span a frame and its shadow pass's (the host's pass timer,
+// us; its 10th percentile too, the frames least slowed by other work on a shared GPU) and the passes a frame, the draws and thousands of triangles (coaxial.drawStats, the view's and
+// the shadow map's), the pixels the
+// canvas draws, and the graphics governor's rung and grass knob (coaxial.fieldProbe 846, 849: an
+// Everglade zone's). A summary of the last half of the windows ends it.
+//
+// Headless Chrome's device-pixel box ignores the emulated pixel ratio, so the check hides it and
+// the host sizes the canvas from its CSS box times devicePixelRatio, as a phone's browser does.
+// It stands in for a phone, it is not one: the Mac's GPU draws the frames, much faster than a
+// phone's, and the throttle slows only the page's main thread (the realm's Coax), not the GPU. Read
+// its GPU column against a phone's GPU by the pixels and triangles, and its frame column as the
+// CPU's share.
+//   coax/web/tool.sh coax/web/phone-fps-check.coax URL [--size WxH] [--dpr N] [--cpu N] [--seconds N] [--shot OUT.png]
+// URL is the whole page's, with its query (?quality=auto|high|medium|low). Exit 0 when the page
+// drew, 1 when not, 2 on bad usage or no hardware WebGPU adapter.
+#import "Basic";
+#load "../lib/media/media.coax";      // MEDIA_READY_JS, media_ready_step, media_value; it loads cdp.coax
+
+PF_PNG :: 16777216;
+PF_WINDOW_MS :: 2000;
+// One window: frames, median and p95 frame (tenths of a ms), GPU median (us), canvas w and h, rung, grass.
+PF_WINDOW_JS :: "(async(ms)=>{const c=globalThis.coaxial;c.takePassTimes&&c.takePassTimes();const d=[];let last=performance.now();const end=last+ms;await new Promise(r=>{const f=(t)=>{d.push(t-last);last=t;if(t<end)requestAnimationFrame(f);else r();};requestAnimationFrame(f);});d.sort((a,b)=>a-b);const pt=c.takePassTimes?c.takePassTimes():[];const md=(i)=>{const v=pt.map(r=>r[i]).filter(x=>x>0).sort((a,b)=>a-b);return v.length?v[v.length>>1]:-1;};const g=pt.map(r=>r[0]).filter(x=>x>0).sort((a,b)=>a-b);const cv=document.querySelector('canvas');const q=(n)=>c.fieldProbe?c.fieldProbe(n):-1;return [d.length,Math.round(d[d.length>>1]*10),Math.round(d[Math.floor(d.length*0.95)]*10),g.length?g[g.length>>1]:-1,cv?cv.width:0,cv?cv.height:0,q(846),q(849),md(1),md(2),g.length?g[Math.floor(g.length*0.1)]:-1,...(()=>{const t=c.drawStats?c.drawStats():null;return t?[t.draws,Math.round(t.indices/3000),t.shadowDraws,Math.round(t.shadowIndices/3000)]:[-1,-1,-1,-1];})()].join(' ');})";
+
+PfBuf :: struct { b: [8192] u8; n: int; }
+pf_put :: (o: [] PfBuf, s: string) { for ch: s { if o[0].n < o[0].b.count { o[0].b[o[0].n] = ch; o[0].n += 1; } } }
+pf_int :: (o: [] PfBuf, value: int) { v := value; if v < 0 { pf_put(o, "-"); v = -v; } d: [24] u8; k := 0; while true { d[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } } while k > 0 { k -= 1; pf_put(o, cast(string) d[k..<k + 1]); } }
+pf_tenths :: (o: [] PfBuf, v: int) { pf_int(o, v / 10); pf_put(o, "."); pf_int(o, (ifx v < 0 then -v else v) % 10); }
+pf_text :: (o: [] PfBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+pf_num :: (s: string) -> int { v := 0; for ch: s { if ch >= '0' && ch <= '9' { v = v * 10 + cast(int) (ch - '0'); } } return v; }
+// The window's numbers from its line ("a b c ..."), -1 for a missing or negative one.
+pf_fields :: (s: string, out: [] int) -> int {
+  n := 0; i := 0;
+  while i < s.count && n < out.count {
+    while i < s.count && s[i] == ' ' { i += 1; }
+    if i >= s.count { break; }
+    neg := s[i] == '-'; if neg { i += 1; }
+    v := 0; while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(int) (s[i] - '0'); i += 1; }
+    while i < s.count && s[i] != ' ' { i += 1; }
+    out[n] = ifx neg then -1 else v; n += 1;
+  }
+  return n;
+}
+pf_median :: (v: [] int) -> int {
+  s: [64] int; n := v.count; if n == 0 { return -1; } for i: 0..<n { s[i] = v[i]; }
+  for i: 1..<n { j := i; while j > 0 && s[j - 1] > s[j] { t := s[j]; s[j] = s[j - 1]; s[j - 1] = t; j -= 1; } }
+  return s[(n - 1) / 2];
+}
+#test "the check's numbers" {
+  f: [8] int; #assert pf_fields("120 166 333 -1 585 1266 5 70", f[..]) == 8 && f[0] == 120 && f[2] == 333 && f[3] == -1 && f[7] == 70;
+  v := [3] int.[9, 1, 5]; #assert pf_median(v[..]) == 5 && pf_num("3") == 3;
+  o: [1] PfBuf; pf_tenths(o[..], 166); pf_put(o[..], " "); pf_int(o[..], -2); #assert pf_text(o[..]) == "16.6 -2";
+}
+pf_call :: (c: [] Cdp, method: string, params: string) -> bool { return cdp_call(c, method, params, 30000) >= 0; }
+pf_ready :: (c: [] Cdp) -> bool {
+  t0 := proc_now_ms(); idle_from := -1;
+  while true {
+    word: [512] u8; wn := media_value(c, MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - t0, ifx idle_from < 0 then 0 else now - idle_from, 180000);
+    if step == MEDIA_READY { return true; }
+    if step == MEDIA_TIMEOUT || step == MEDIA_FAILED { return false; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: phone-fps-check URL [--size WxH] [--dpr N] [--cpu N] [--seconds N] [--shot OUT.png]\n"); return 2; }
+  url := args_at(a[..], 0); size := args_value(a[..], "--size", "390x844");
+  dpr := pf_num(args_value(a[..], "--dpr", "3")); cpu := pf_num(args_value(a[..], "--cpu", "4"));
+  seconds := pf_num(args_value(a[..], "--seconds", "30")); shot := args_value(a[..], "--shot", "");
+  w := 0; h := 0; at := 0;
+  while at < size.count && size[at] >= '0' && size[at] <= '9' { w = w * 10 + cast(int) (size[at] - '0'); at += 1; }
+  at += 1; while at < size.count && size[at] >= '0' && size[at] <= '9' { h = h * 10 + cast(int) (size[at] - '0'); at += 1; }
+  if w < 64 || h < 64 || w > 2560 || h > 2560 || dpr < 1 || dpr > 4 || cpu < 1 || cpu > 20 || seconds < 4 || seconds > 120 {
+    print("phone-fps-check: --size WxH (64 to 2560), --dpr 1 to 4, --cpu 1 to 20, --seconds 4 to 120\n"); return 2;
+  }
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], w, h, "phone-fps-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer { cdp_close(c[..]); }
+  vp: [1] PfBuf; pf_put(vp[..], "{\"width\":"); pf_int(vp[..], w); pf_put(vp[..], ",\"height\":"); pf_int(vp[..], h);
+  pf_put(vp[..], ",\"deviceScaleFactor\":"); pf_int(vp[..], dpr); pf_put(vp[..], ",\"mobile\":true}");
+  th: [1] PfBuf; pf_put(th[..], "{\"rate\":"); pf_int(th[..], cpu); pf_put(th[..], "}");
+  if !pf_call(c[..], "Page.enable", "") || !pf_call(c[..], "Emulation.setDeviceMetricsOverride", pf_text(vp[..]))
+     || !pf_call(c[..], "Emulation.setTouchEmulationEnabled", "{\"enabled\":true,\"maxTouchPoints\":5}")
+     || !pf_call(c[..], "Emulation.setEmitTouchEventsForMouse", "{\"enabled\":true,\"configuration\":\"mobile\"}")
+     || !pf_call(c[..], "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialPassTimer = true; try { Object.defineProperty(ResizeObserverEntry.prototype, 'devicePixelContentBoxSize', { get() { return undefined; } }); } catch (e) {}\"}") { tool_errln(cdp_error(c[..])); return 1; }
+  nav: [4096] u8; jo: [1] Jo; jo_start(jo[..], nav[..]); jo_obj(jo[..]); jo_key(jo[..], "url"); jo_str(jo[..], url); jo_end(jo[..]);
+  if !pf_call(c[..], "Page.navigate", jo_text(jo[..])) || !pf_ready(c[..]) { print("FAIL: the scene didn't draw\n"); return 1; }
+  gb: [256] u8; line := cdp_adapter(c[..], gb[..]); print("phone-fps-check: WebGPU adapter: %\n", line);
+  if !cdp_adapter_hardware(line) { tool_errln("phone-fps-check: no hardware WebGPU adapter"); return 2; }
+  // the throttle from the first measured frame on, so loading isn't slowed
+  if !pf_call(c[..], "Emulation.setCPUThrottlingRate", pf_text(th[..])) { tool_errln(cdp_error(c[..])); return 1; }
+  print("phone-fps-check: %x% at dpr %, CPU % times slower, % s\n", w, h, dpr, cpu, seconds);
+  print("window  frames  median ms  p95 ms  GPU us  canvas  rung  grass  shadow us  passes  GPU p10 us  draws  ktris  shadow draws  shadow ktris\n");
+  windows := seconds * 1000 / PF_WINDOW_MS; if windows > 60 { windows = 60; }
+  meds: [60] int; p95s: [60] int; gpus: [60] int; lows: [60] int; got := 0;
+  js: [1] PfBuf; pf_put(js[..], PF_WINDOW_JS); pf_put(js[..], "("); pf_int(js[..], PF_WINDOW_MS); pf_put(js[..], ")");
+  for k: 0..<windows {
+    out: [512] u8; n := media_value(c[..], pf_text(js[..]), out[..]);
+    if n <= 0 { print("FAIL: window % read nothing\n", k + 1); return 1; }
+    f: [15] int; m := pf_fields(cast(string) out[0..<n], f[..]); if m < 15 { print("FAIL: window %: %\n", k + 1, cast(string) out[0..<n]); return 1; }
+    o: [1] PfBuf; pf_int(o[..], k + 1); pf_put(o[..], "  "); pf_int(o[..], f[0]); pf_put(o[..], "  "); pf_tenths(o[..], f[1]); pf_put(o[..], "  ");
+    pf_tenths(o[..], f[2]); pf_put(o[..], "  "); pf_int(o[..], f[3]); pf_put(o[..], "  "); pf_int(o[..], f[4]); pf_put(o[..], "x"); pf_int(o[..], f[5]);
+    pf_put(o[..], "  "); pf_int(o[..], f[6]); pf_put(o[..], "  "); pf_int(o[..], f[7]); pf_put(o[..], "  "); pf_int(o[..], f[8]); pf_put(o[..], "  "); pf_int(o[..], f[9]); for i: 10..<15 { pf_put(o[..], "  "); pf_int(o[..], f[i]); } print("%\n", pf_text(o[..]));
+    meds[k] = f[1]; p95s[k] = f[2]; gpus[k] = f[3]; lows[k] = f[10]; got = k + 1;
+  }
+  half := got / 2;
+  s: [1] PfBuf; pf_put(s[..], "summary (last "); pf_int(s[..], got - half); pf_put(s[..], " windows): median frame "); pf_tenths(s[..], pf_median(meds[half..<got]));
+  pf_put(s[..], " ms, p95 "); pf_tenths(s[..], pf_median(p95s[half..<got])); pf_put(s[..], " ms, GPU "); pf_int(s[..], pf_median(gpus[half..<got])); pf_put(s[..], " us (p10 "); pf_int(s[..], pf_median(lows[half..<got])); pf_put(s[..], " us: the least shared)");
+  print("%\n", pf_text(s[..]));
+  if shot.count > 0 {
+    png: [PF_PNG] u8; pn := cdp_screenshot(c[..], png[..]);
+    if pn > 0 && fs_write(shot, cast(string) png[0..<pn]) { print("shot: %\n", shot); } else { print("shot: not written\n"); }
+  }
+  return 0;
+}

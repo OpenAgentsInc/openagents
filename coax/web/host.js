@@ -3409,6 +3409,11 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => l
   cull: (on) => { if (gpu?.cull) gpu.cull.off = !on; return !!gpu?.cull && !gpu.cull.off; },
   cullStats: () => gpu?.cull?.stats() ?? null,
   meshCull: (on) => meshCullSwitch(on !== false),
+  // the frame's draw lists for headless checks (coax/web/phone-fps-check.coax): draws and indices drawn, the view's and the shadow map's, and the view's indices by record (a draw's base instance >> 16, or "0.N" for a draw of record N alone)
+  drawStats: () => { const x = engine?.exports, sum = (at, n) => { const d = n ? new Uint32Array(memory.buffer, at, n * 4) : []; let k = 0; for (let i = 0; i < n; i++) k += d[i * 4 + 1] * d[i * 4 + 3]; return k; };
+    const n = x?.coaxial_draw_count?.(arena.state) ?? 0, sn = x?.coaxial_shadow_draw_count_v1?.(arena.state) ?? -1;
+    const by = {}; if (n) { const d = new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), n * 4); for (let i = 0; i < n; i++) { const r = d[i * 4 + 2] >>> 16 || `0.${d[i * 4 + 2] & 65535}`; by[r] = (by[r] || 0) + d[i * 4 + 1] * d[i * 4 + 3]; } }
+    return { draws: n, indices: n ? sum(x.coaxial_draws(arena.state), n) : 0, shadowDraws: sn, shadowIndices: sn > 0 ? sum(x.coaxial_shadow_draws_v1(arena.state), sn) : -1, byRecord: by }; },
   meshCullStats: () => { const x = engine?.exports, at = x?.coaxial_mesh_bounds_v1?.(arena.state) ?? 0, n = x?.coaxial_draw_count?.(arena.state) ?? 0, d = n ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), n * 4) : [];
     let indices = 0; for (let i = 0; i < n; i++) indices += d[i * 4 + 1] * d[i * 4 + 3];
     return at ? { state: new Uint32Array(memory.buffer, at, 12)[0], mesh: new Uint32Array(memory.buffer, at, 12)[2], runs: new Uint32Array(memory.buffer, at, 12)[10], draws: n, indices } : null; },

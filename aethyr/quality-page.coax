@@ -71,7 +71,7 @@ qp_frame :: (p: [] QualityPage, dt: f32, w: f32, h: f32, dpr: f32, golden: bool,
   t := quality_rung_knobs(p[0].q[0].rung);
   if golden || !p[0].kn_ready { p[0].kn = t; p[0].kn_ready = true; return; }
   k := p[0].kn;
-  k.grass = qp_ease(k.grass, t.grass, dt); k.fine = qp_ease(k.fine, t.fine, dt); k.scenery = qp_ease(k.scenery, t.scenery, dt);
+  k.grass = qp_ease(k.grass, t.grass, dt); k.fine = qp_ease(k.fine, t.fine, dt); k.scenery = qp_ease(k.scenery, t.scenery, dt); k.understory = qp_ease(k.understory, t.understory, dt);
   k.scale = t.scale; k.debris = t.debris; k.fx = t.fx; k.shadow = t.shadow; k.post = t.post; k.crowd = t.crowd;
   p[0].kn = k;
 }

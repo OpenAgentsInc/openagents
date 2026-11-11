@@ -171,8 +171,8 @@ everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c #effec
 #test "graphics quality: the facts start it; ?quality= wins over the kept tier; a tap picks the next and tells the host" {
   g: [1] Everglade;
   eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade\nvw=390\nvh=844\ndpr=3\ncoarse=1\ntouch=5\ncores=8\nmemory=4\nquality=");
-  #assert quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_MEDIUM;
-  #assert everglade_pixel_budget(g[..], 1170, 2532, 3) == cast(int) (390.0 * 844.0 * 2.25);
+  #assert quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_LOW;   // a phone starts low and climbs (#13190)
+  #assert everglade_pixel_budget(g[..], 1170, 2532, 3) == 390 * 844;
   eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade\nvw=1440\nvh=900\ndpr=2\ncoarse=0\ntouch=0\ncores=10\nquality=low");
   #assert !quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_LOW && !g[0].q_tell;
   eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade?quality=med#market\nvw=1440\nvh=900\ndpr=2\ncores=10\nquality=low");
@@ -194,11 +194,11 @@ everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c #effec
   #assert !eg_quality_pointer(g[..], 1, 1, 0, 8);   // elsewhere: not the control's
 }
 
-#test "graphics quality: golden frames hold the screen's tier on any machine; before the facts a phone is MED" {
+#test "graphics quality: golden frames hold the screen's tier on any machine; before the facts a phone is LOW" {
   g: [1] Everglade;
   g[0].width = 390 * 3; g[0].height = 844 * 3; g[0].dpr = 3;
   everglade_quality_frame(g[..], 1.0 / 60.0, false);
-  #assert quality_tier(g[0].q[..]) == QUALITY_MEDIUM;
+  #assert quality_tier(g[0].q[..]) == QUALITY_LOW;
   eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade\nvw=1440\nvh=900\ndpr=1\ncores=2\nmemory=2");
   #assert quality_tier(g[0].q[..]) == QUALITY_MEDIUM;   // a weak computer
   everglade_quality_frame(g[..], 1.0 / 60.0, true);

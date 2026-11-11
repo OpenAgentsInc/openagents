@@ -48,14 +48,19 @@ It does this without any piece moving, growing or popping in front of you.
   governor, and `e2_pixel_budget` tells the host how many pixels to draw. It
   steps down a ladder of twelve rungs when frames run slow and back up when
   there's room. The start comes from the device's class: a weak phone at
-  LOW, a phone and a tablet at MED, a laptop with a built-in GPU at MED's
-  top, a computer at HIGH. When the scene first draws, the governor times
-  1.5 s of frames and, if they run slow, steps down several rungs at once.
+  the bottom, a phone at LOW's top, a tablet at MED, a laptop with a
+  built-in GPU at MED's top, a computer at HIGH. A phone starts low and
+  climbs while its frames keep on time (#13190). When the scene first draws,
+  the governor times 1.5 s of frames and, if they run slow, steps down
+  several rungs at once; frames that run far over later (under 40 FPS) do
+  the same. A rung up is earned only by frames on time at 60, so the
+  governor never settles at 30 FPS on a higher rung.
   The rung it settles at is kept for your next visit. At 20 s one
   `graphics` analytics event reports the device's class, its GPU, the rungs
   and the median frame rate from 10 s on.
 - **The knobs.** Each rung sets how much the frame draws: the pixels, the
-  grass's reach, the scenery's reach, the shadow tiles, the post pass and the
+  grass's reach, the scenery's reach, the understory's reach (flowers,
+  plants, clover, mushrooms), the shadow tiles, the post pass and the
   other players drawn (`quality_rung_knobs`, `e2_knobs_frame`).
 - **The GFX control.** Left of the counter, `GFX AUTO` (or the tier you
   picked) shows the graphics. Tap it to pick the next: HIGH, MED, LOW, AUTO.
@@ -163,8 +168,8 @@ In `apps/openagents-web/everglade2-cull.coax`:
 
 In `aethyr/quality.coax`:
 
-- `#test "quality: a phone starts no higher than MED, a weak one LOW, a computer
-  HIGH"`.
+- `#test "quality: a phone starts at LOW and climbs, a weak one at the bottom, a
+  computer HIGH"`.
 - `#test "quality: each rung down costs no more than the one above it"`.
 - `#test "quality: the page's facts give the device; a phone held sideways or a
   tablet never starts at HIGH"`.

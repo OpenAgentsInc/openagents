@@ -72,7 +72,7 @@ Creator :: struct {
   field_clear:[4]f32;   // a zone's clearing on the open field (x0, z0, x1, z1, metres): the meadow scatters no rocks inside it; all 0, none
   field_band:f32; field_keep:f32;   // with a clearing: rocks stand only in a band this wide round it (0: everywhere past it), this share of them
   view:[16]f32; view_w:f32; view_h:f32; view_ok:bool;   // the frame's view as cc_view wrote it (u[16..<32], the picture's width), for meadow_cull
-  q_grass:f32 = 1; q_fine:f32 = 1; q_scenery:f32 = 1;   // the graphics quality's knobs (aethyr/quality.coax): the grass's reach (and the share of the glade's seeds drawn), its finest tier's share, the understory's reach
+  q_grass:f32 = 1; q_fine:f32 = 1; q_scenery:f32 = 1; q_understory:f32 = 1;   // the graphics quality's knobs (aethyr/quality.coax): the grass's reach (and the share of the glade's seeds drawn), its finest tier's share, the rocks' reach, the small pieces' reach (flowers, plants, clover, mushrooms)
   gfx:[40]u8; gfx_n:int; gfx_box:Box;   // the graphics control's words beside the frame rate ("GFX AUTO · MED"; none: not shown) and where it was drawn
   flat:bool;   // a zone on level ground (the Bitcoin Lab's Grid): the open field's rules with no meadow drawn, the ground at 0 everywhere (cc_ground) and no coordinates in the corner
   range_first:int; range_count:int; range_word:int; range_on:bool;   // the Archery Range's mesh ("C glade/range", everglade/range/place.coax), drawn where a zone stands it (range_on)
@@ -923,8 +923,8 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24]=f32(kit);out[n*24+1]=f32(t);out[n*24+2]=f32(side);out[n*24+7]=f32(s[0].kit_word[j]);out[n*24+15]=20;
     if kit>=20 && kit<=22 {for k:0..<4 {out[n*24+8+k]=s[0].field_clear[k];}out[n*24+3]=s[0].field_band;out[n*24+4]=s[0].field_keep;}   // rocks keep out of a zone's clearing (gpu/character-glade.coax cg_meadow_vs reads c)
-    // the quality's reach (b.y) and, for the grass, its finest tier's share (b.z): cg_meadow_vs draws to them
-    out[n*24+5]=ifx kit==grid.E2_MEADOW_GRASS then s[0].q_grass else s[0].q_scenery;out[n*24+6]=ifx kit==grid.E2_MEADOW_GRASS then s[0].q_fine else 1.0f32;
+    // the quality's reach (b.y: the grass's, the rocks' or the understory's) and, for the grass, its finest tier's share (b.z): cg_meadow_vs draws to them
+    out[n*24+5]=ifx kit==grid.E2_MEADOW_GRASS then s[0].q_grass else ifx kit>=20 && kit<=22 then s[0].q_scenery else s[0].q_understory;out[n*24+6]=ifx kit==grid.E2_MEADOW_GRASS then s[0].q_fine else 1.0f32;   // the rocks stand far off; the small pieces cost a phone most and show least (#13190)
     b[0].draws[n*4]=cast(u32)s[0].kit_first[j];b[0].draws[n*4+1]=cast(u32)s[0].kit_count[j];b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)(side*side);n+=1;
   }}}
   for gi:0..<(ifx open_field then 0 else s[0].grass_groups) {if n>=44-reserved {break;}g:=s[0].grass[gi];
@@ -1109,9 +1109,10 @@ grass_kept :: (n:int,knob:f32,d:f32)->int {
  // a second cull changes nothing more (its draws are no longer whole grids)
  #assert meadow_cull(s[..],b[..],out[..],m,1024)==m;
  // a lower quality's reach draws fewer cells still; with the finest grass tier off, the 1 m tier draws from the eye
- s[0].q_scenery=0.7;s[0].q_grass=0.45;s[0].q_fine=0.25;n=scene(s[..],b[..],out[..]);#assert out[1*24+5]==0.7f32 && out[3*24+5]==0.45f32 && out[3*24+6]==0.25f32 && out[1*24+6]==1;
+ s[0].q_scenery=0.7;s[0].q_understory=0.4;s[0].q_grass=0.45;s[0].q_fine=0.25;n=scene(s[..],b[..],out[..]);flowers:=0;stones:=0;for r:0..<n {if out[r*24+15]==20 && out[r*24]==25 {#assert out[r*24+5]==0.4f32;flowers+=1;}if out[r*24+15]==20 && out[r*24]==20 {#assert out[r*24+5]==0.7f32;stones+=1;}}#assert flowers==1 && stones==1;   // the understory's own reach; the rocks keep the scenery's
+ #assert out[3*24+5]==0.45f32 && out[3*24+6]==0.25f32 && out[1*24+6]==1;
  low:=meadow_cull(s[..],b[..],out[..],n,1024);#assert low<m && b[0].draws[3*4+3]==0 && b[0].draws[4*4+3]>0;
- s[0].q_scenery=1;s[0].q_grass=1;s[0].q_fine=1;
+ s[0].q_scenery=1;s[0].q_understory=1;s[0].q_grass=1;s[0].q_fine=1;
  // a zone's clearing with a band: the rocks' grid draws only the cells in the band round it (the field's first kit here is a rock, 20)
  n=scene(s[..],b[..],out[..]);all:=meadow_cull(s[..],b[..],out[..],n,1024);rocks:=0;for i:0..<all {if (b[0].draws[i*4+2]>>16)==2 {rocks+=cast(int)b[0].draws[i*4+3];}}
  s[0].field_clear=[4]f32.[-34,-43,34,59];s[0].field_band=9;s[0].field_keep=0.25;n=scene(s[..],b[..],out[..]);band:=meadow_cull(s[..],b[..],out[..],n,1024);ring:=0;for i:0..<band {if (b[0].draws[i*4+2]>>16)==2 {ring+=cast(int)b[0].draws[i*4+3];}}

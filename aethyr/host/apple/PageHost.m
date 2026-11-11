@@ -230,7 +230,7 @@ static NSData *phInflate(NSData *gz) {
 }
 
 - (NSString *)facts {
- // The screen in pixels: the one the host names (a phone's, which only UIKit knows), else the Mac's main display.
+ // The screen in points: the one the host names (a phone's, which only UIKit knows), else the Mac's main display.
  CGSize screenPixels = config.screen;
 #if !TARGET_OS_IOS
  if (screenPixels.width <= 0) { CGDirectDisplayID display = CGMainDisplayID(); screenPixels = CGSizeMake(CGDisplayPixelsWide(display), CGDisplayPixelsHigh(display)); }

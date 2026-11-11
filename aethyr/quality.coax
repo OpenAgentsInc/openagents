@@ -11,13 +11,17 @@
 //
 // In AUTO a governor moves the rung. It keeps a short and a long average of the frame's length
 // and steps:
-//   - down one rung when the long average is over budget for QUALITY_DOWN_S, or at once when the
-//     short one is far over (a destroy's burst);
+//   - down one rung when the long average is over budget for QUALITY_DOWN_S, and as many rungs as
+//     the cost table (QUALITY_COST) says when the frames are over by QUALITY_FAR (a phone at 30 FPS
+//     reaches its rung in one step); one rung at once when the short one is far over (a destroy's
+//     burst);
 //   - up one rung after QUALITY_UP_S of frames on time. A rung it had to leave again soon after
 //     stepping up to it waits twice as long the next time (up to QUALITY_UP_MAX_S), so the
 //     quality settles instead of going up and down.
 // A page that can't hold 60 FPS even on the lowest rung gets a 30 FPS budget instead, and goes
-// back to 60 once its frames are on time at 60 again.
+// back to 60 once its frames are on time at 60 again. It never steps up at 30 FPS: a rung up is
+// earned only by frames on time at the target (60), so it never settles at 30 on a higher rung
+// (GitHub #13190: a phone held MED at 25-30 FPS).
 //   coax/bin/coax test aethyr/quality.coax --library
 
 #module "aethyr.quality";
@@ -36,16 +40,19 @@ QUALITY_HOST :: [4] string.["high", "medium", "low", "auto"];   // the names hos
 //   fx:      the share of its fire, smoke and glow puffs a frame
 //   scenery: the share of its far scenery's reach and count (trees)
 //   grass:   the share of its grass's reach; under a half, its finest tier is left out too
+//   understory: the share of its small pieces' reach on the ground (flowers, plants, clover,
+//            mushrooms): what costs a phone the most triangles, and what shows least far off
 //   shadow:  its key light's shadow tiles: 1 all, redrawn as needed; past a half fewer redraws and
 //            filter taps; under a half the nearest tile only; 0 none (the baked shade alone)
 //   post:    its post passes: 1 all; past a half less bloom, contact shade and frosted glass; under
 //            a half only the edge smoothing and the glass the panels need
 //   crowd:   the share of the others (players, monsters) it draws whole
 // Down from the top: pixels 3.0, 2.0, 1.5; then the post; the shadows' redraws; the grass's reach;
-// the far scenery's; the grass's finest tier; the shadow tiles past the nearest; the post off at
-// 1.0 px; then 0.85 px; and 0.75 px with no shadow tiles.
+// the far scenery's; the grass's finest tier; the shadow tiles past the nearest; 1.25 px; the post
+// off at 1.0 px; then 0.85 px; and 0.75 px with no shadow tiles. The understory's reach falls a
+// little on every rung below the top three.
 QUALITY_RUNGS :: 12;
-QUALITY_SCALE :: [12] f32.[0.75, 0.85, 1.0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 2.0, 3.0];
+QUALITY_SCALE :: [12] f32.[0.75, 0.85, 1.0, 1.25, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 2.0, 3.0];
 QUALITY_DEBRIS :: [12] f32.[0.3, 0.3, 0.3, 0.3, 0.3, 0.4, 0.4, 0.5, 0.5, 1.0, 1.0, 1.0];
 QUALITY_FINE :: [12] f32.[0.25, 0.25, 0.25, 0.25, 0.25, 0.4, 0.4, 0.5, 0.5, 1.0, 1.0, 1.0];
 QUALITY_FX :: [12] f32.[0.15, 0.15, 0.2, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4, 1.0, 1.0, 1.0];
@@ -54,6 +61,7 @@ QUALITY_GRASS :: [12] f32.[0.35, 0.45, 0.45, 0.45, 0.45, 0.7, 0.7, 1.0, 1.0, 1.0
 QUALITY_SHADOW :: [12] f32.[0.0, 0.3, 0.3, 0.3, 0.6, 0.6, 0.6, 0.6, 1.0, 1.0, 1.0, 1.0];
 QUALITY_POST :: [12] f32.[0.2, 0.2, 0.2, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 1.0, 1.0, 1.0];
 QUALITY_CROWD :: [12] f32.[0.25, 0.25, 0.25, 0.5, 0.5, 0.5, 0.75, 1.0, 1.0, 1.0, 1.0, 1.0];
+QUALITY_UNDERSTORY :: [12] f32.[0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.7, 0.85, 1.0, 1.0, 1.0];
 // the rung each tier holds, and the tier each rung is shown as
 QUALITY_TIER_RUNG :: [3] int.[11, 8, 2];
 QUALITY_RUNG_TIER :: [12] int.[2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 0, 0];
@@ -65,9 +73,10 @@ QUALITY_SHORT_S :: 0.25;     // s: the short average's
 QUALITY_OVER :: 1.12;        // the long average over budget by this share is over (60 FPS: 18.7 ms)
 QUALITY_BURST :: 1.8;        // the short one over by this share is a burst (60 FPS: 30 ms)
 QUALITY_ON_TIME :: 1.05;     // the long average under budget by this share is on time
-QUALITY_DOWN_S :: 1.0;       // s over budget before a step down
+QUALITY_DOWN_S :: 0.5;       // s over budget before a step down
 QUALITY_BURST_S :: 0.25;     // s in a burst before a step down
-QUALITY_SETTLE_S :: 0.5;     // s after a step before the next step down
+QUALITY_SETTLE_S :: 0.375;   // s after a step before the next step down
+QUALITY_FAR :: 1.5;          // frames this far over budget (40 FPS at 60) step down as far as the cost table says, not one rung
 QUALITY_UP_S :: 5.0;         // s on time before a step up
 QUALITY_UP_MAX_S :: 80.0;    // the longest a rung that failed waits
 QUALITY_FAILED_S :: 10.0;    // s: a step down this soon after a step up marks the rung failed
@@ -87,15 +96,16 @@ QualityDevice :: struct { css_w: f32; css_h: f32; dpr: f32 = 1; touch: bool; coa
 // none said, a software one, a laptop's built-in, a phone's, a card, an Apple one.
 QUALITY_GPU_NONE :: 0; QUALITY_GPU_SOFT :: 1; QUALITY_GPU_BUILTIN :: 2; QUALITY_GPU_PHONE :: 3; QUALITY_GPU_CARD :: 4; QUALITY_GPU_APPLE :: 5;
 QUALITY_GPU_NAMES :: [6] string.["none", "soft", "builtin", "phone", "card", "apple"];
-// The device's class, and the rung each starts at (quality_device_rung): a weak phone at LOW, a
-// phone low in MED, a tablet at MED, a laptop's built-in GPU at MED's top, a computer at HIGH.
+// The device's class, and the rung each starts at (quality_device_rung): a weak phone at LOW's
+// bottom, a phone at LOW's top, a tablet low in MED, a laptop's built-in GPU at MED's top, a
+// computer at HIGH. A phone starts low and climbs while its frames keep on time (GitHub #13190).
 QUALITY_PHONE_WEAK :: 0; QUALITY_PHONE :: 1; QUALITY_TABLET :: 2; QUALITY_LAPTOP :: 3; QUALITY_DESKTOP :: 4;
 QUALITY_CLASSES :: 5;
 QUALITY_CLASS_NAMES :: [5] string.["phone-weak", "phone", "tablet", "laptop", "desktop"];
-QUALITY_CLASS_RUNG :: [5] int.[2, 5, 8, 9, 11];
+QUALITY_CLASS_RUNG :: [5] int.[0, 2, 5, 9, 11];
 // What a rung costs a frame, as a share of the top's: mostly its pixels (QUALITY_SCALE squared over
 // a base the pixels don't change), less for each knob turned down. The measured start reads it.
-QUALITY_COST :: [12] f32.[0.19, 0.22, 0.25, 0.31, 0.34, 0.37, 0.40, 0.43, 0.45, 0.475, 0.61, 1.0];
+QUALITY_COST :: [12] f32.[0.19, 0.22, 0.25, 0.29, 0.34, 0.37, 0.40, 0.43, 0.45, 0.475, 0.61, 1.0];
 // The measured start: the frames of the first QUALITY_PROBE_S once the scene draws (the first
 // QUALITY_PROBE_SKIP_S of them left out: shaders still compiling), their median against the budget.
 QUALITY_PROBE_S :: 1.5;
@@ -108,9 +118,9 @@ QUALITY_SETTLED_S :: 20.0;
 QUALITY_REPORT_FROM_S :: 10.0;
 QUALITY_REPORT_TO_S :: 20.0;
 QUALITY_HIST :: 128;
-QUALITY_LADDER :: 2;          // the ladder's version: a kept rung from another ladder is dropped
+QUALITY_LADDER :: 3;          // the ladder's version: a kept rung from another ladder is dropped (3: phones start low, #13190)
 
-QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; grass: f32 = 1; shadow: f32 = 1; post: f32 = 1; crowd: f32 = 1; }
+QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; grass: f32 = 1; shadow: f32 = 1; post: f32 = 1; crowd: f32 = 1; understory: f32 = 1; }
 
 Quality :: struct {
   mode: int = QUALITY_AUTO;   // AUTO, or the tier the player picked
@@ -319,13 +329,17 @@ quality_probe_end :: (q: [] Quality) {
   if n < 8 || q[0].mode != QUALITY_AUTO { return; }
   med := quality_median(q[0].probe_ms[0..<n]);
   if med <= q[0].budget * f32(QUALITY_OVER) { return; }
-  need := q[0].target_ms / med;
-  from := q[0].rung; r := from;
-  while r > 0 && QUALITY_COST[r] / QUALITY_COST[from] > need { r -= 1; }
+  from := q[0].rung; r := quality_cost_rung(from, q[0].target_ms / med);
   if r == from { return; }
   q[0].rung = r; q[0].steps += 1; q[0].since = 0; q[0].over = 0; q[0].burst = 0; q[0].on_time = 0;
   q[0].slow_avg = q[0].budget; q[0].fast_avg = q[0].budget;
   q[0].probe_from = from; q[0].probe_to = r;
+}
+// The rung below `from` whose cost (QUALITY_COST) is at most `need` of from's, or rung 0.
+quality_cost_rung :: (from: int, need: f32) -> int {
+  r := from;
+  while r > 0 && QUALITY_COST[r] / QUALITY_COST[from] > need { r -= 1; }
+  return r;
 }
 // The median of some frames' lengths (the upper one of an even count), by counting (they are few).
 quality_median :: (ms: [] f32) -> f32 {
@@ -393,7 +407,7 @@ quality_knobs :: (q: [] Quality) -> QualityKnobs {
 // A rung's knobs.
 quality_rung_knobs :: (r: int) -> QualityKnobs {
   return QualityKnobs.{scale = QUALITY_SCALE[r], debris = QUALITY_DEBRIS[r], fine = QUALITY_FINE[r], fx = QUALITY_FX[r], scenery = QUALITY_SCENERY[r],
-    grass = QUALITY_GRASS[r], shadow = QUALITY_SHADOW[r], post = QUALITY_POST[r], crowd = QUALITY_CROWD[r]};
+    grass = QUALITY_GRASS[r], shadow = QUALITY_SHADOW[r], post = QUALITY_POST[r], crowd = QUALITY_CROWD[r], understory = QUALITY_UNDERSTORY[r]};
 }
 
 // A share of a budget, at least `least`.
@@ -460,10 +474,15 @@ quality_frame :: (q: [] Quality, dt: f32) -> bool {
   if q[0].slow_avg > b * f32(QUALITY_OVER) { q[0].over += dt; q[0].on_time = 0; }
   else {
     q[0].over = 0;
-    if q[0].slow_avg <= b * f32(QUALITY_ON_TIME) { q[0].on_time += dt; } else { q[0].on_time = 0; }
+    // on time at the target, never at the 30 FPS budget: a rung up at 30 FPS would settle there
+    if q[0].slow_avg <= q[0].target_ms * f32(QUALITY_ON_TIME) { q[0].on_time += dt; } else { q[0].on_time = 0; }
   }
   if q[0].since >= f32(QUALITY_SETTLE_S) && (q[0].burst >= f32(QUALITY_BURST_S) || q[0].over >= f32(QUALITY_DOWN_S)) {
-    quality_step(q, -1);
+    // long frames held: one rung, or, far over, as far as the cost table says they need (a burst: one rung)
+    // (the frames' length: the long average, or the short one when it is longer, as it is while the long one still climbs)
+    est := quality_hi(q[0].slow_avg, q[0].fast_avg);
+    to := ifx q[0].over >= f32(QUALITY_DOWN_S) && est > b * f32(QUALITY_FAR) then quality_cost_rung(q[0].rung, b / est) else q[0].rung;
+    quality_step(q, ifx to < q[0].rung - 1 then to - q[0].rung else -1);
   } else if q[0].rung + 1 < QUALITY_RUNGS && q[0].on_time >= quality_hi(q[0].wait[q[0].rung + 1], f32(QUALITY_UP_S)) {
     quality_step(q, 1);
   }
@@ -507,11 +526,11 @@ quality_run :: (q: [] Quality, ms: f32, seconds: f32) -> int {
   return changes;
 }
 
-#test "quality: a phone starts no higher than MED, a weak one LOW, a computer HIGH" {
-  #assert QUALITY_RUNG_TIER[quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true, cores = 6, memory = 4})] == QUALITY_MEDIUM;
-  #assert QUALITY_RUNG_TIER[quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true})] == QUALITY_MEDIUM;
-  #assert quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 2, touch = true, cores = 4}) == QUALITY_TIER_RUNG[QUALITY_LOW];
-  #assert quality_device_rung(QualityDevice.{css_w = 640, css_h = 900, dpr = 2, memory = 2}) == QUALITY_TIER_RUNG[QUALITY_LOW];
+#test "quality: a phone starts at LOW and climbs, a weak one at the bottom, a computer HIGH" {
+  #assert quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true, cores = 6, memory = 4}) == QUALITY_TIER_RUNG[QUALITY_LOW];
+  #assert quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}) == QUALITY_TIER_RUNG[QUALITY_LOW];
+  #assert quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 2, touch = true, cores = 4}) == 0;
+  #assert quality_device_rung(QualityDevice.{css_w = 640, css_h = 900, dpr = 2, memory = 2}) == 0;
   #assert quality_device_rung(QualityDevice.{css_w = 1440, css_h = 900, dpr = 2, cores = 10, memory = 16}) == QUALITY_TIER_RUNG[QUALITY_HIGH];
   #assert QUALITY_RUNG_TIER[quality_device_rung(QualityDevice.{css_w = 1440, css_h = 900, dpr = 1, cores = 2})] == QUALITY_MEDIUM;
   #assert QUALITY_RUNG_TIER[QUALITY_TIER_RUNG[QUALITY_HIGH]] == QUALITY_HIGH && QUALITY_RUNG_TIER[QUALITY_TIER_RUNG[QUALITY_MEDIUM]] == QUALITY_MEDIUM;
@@ -532,14 +551,14 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
 #test "quality: the page's facts give the device; a phone held sideways or a tablet never starts at HIGH" {
   p := quality_device_from_facts(QUALITY_FACTS_IPHONE);
   #assert p.css_w == 390 && p.css_h == 844 && p.dpr == 3 && p.touch && p.coarse && p.screen_w == 390 && p.screen_h == 844 && p.cores == 0;
-  #assert QUALITY_RUNG_TIER[quality_device_rung(p)] == QUALITY_MEDIUM;
+  #assert QUALITY_RUNG_TIER[quality_device_rung(p)] == QUALITY_LOW;
   l := quality_device_from_facts(QUALITY_FACTS_IPHONE_SIDE);
-  #assert l.css_w == 844 && quality_handheld(l) && QUALITY_RUNG_TIER[quality_device_rung(l)] == QUALITY_MEDIUM;
+  #assert l.css_w == 844 && quality_handheld(l) && QUALITY_RUNG_TIER[quality_device_rung(l)] == QUALITY_LOW;
   // sideways, with no touch facts at all: the screen's short side still says phone
   #assert quality_handheld(QualityDevice.{css_w = 844, css_h = 390, screen_w = 390, screen_h = 844});
-  #assert quality_device_rung(quality_device_from_facts(QUALITY_FACTS_IPAD)) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];   // a tablet
+  #assert QUALITY_RUNG_TIER[quality_device_rung(quality_device_from_facts(QUALITY_FACTS_IPAD))] == QUALITY_MEDIUM;   // a tablet
   a := quality_device_from_facts(QUALITY_FACTS_ANDROID_LOW);
-  #assert abs(a.dpr - 2.625) < 0.0001 && a.cores == 4 && a.memory == 3 && quality_device_rung(a) == QUALITY_TIER_RUNG[QUALITY_LOW];
+  #assert abs(a.dpr - 2.625) < 0.0001 && a.cores == 4 && a.memory == 3 && quality_device_rung(a) == 0;
   m := quality_device_from_facts(QUALITY_FACTS_MAC);
   #assert !quality_handheld(m) && m.frame_hz == 120 && m.minimum_hz == 60 && quality_device_rung(m) == QUALITY_TIER_RUNG[QUALITY_HIGH];
   // a laptop's short page (657 high) on a 768 screen is a computer
@@ -568,7 +587,7 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   // a weak tablet is a weak phone; a tablet's start is never HIGH, a phone's never above MED
   #assert quality_device_class(QualityDevice.{screen_w = 820, screen_h = 1180, css_w = 820, css_h = 1180, touch = true, cores = 4}) == QUALITY_PHONE_WEAK;
   for c: 0..<QUALITY_CLASSES { #assert QUALITY_CLASS_RUNG[c] >= 0 && QUALITY_CLASS_RUNG[c] < QUALITY_RUNGS; if c > 0 { #assert QUALITY_CLASS_RUNG[c] >= QUALITY_CLASS_RUNG[c - 1]; } }
-  #assert QUALITY_RUNG_TIER[QUALITY_CLASS_RUNG[QUALITY_PHONE_WEAK]] == QUALITY_LOW && QUALITY_RUNG_TIER[QUALITY_CLASS_RUNG[QUALITY_PHONE]] == QUALITY_MEDIUM;
+  #assert QUALITY_CLASS_RUNG[QUALITY_PHONE_WEAK] == 0 && QUALITY_CLASS_RUNG[QUALITY_PHONE] == QUALITY_TIER_RUNG[QUALITY_LOW];
   #assert QUALITY_RUNG_TIER[QUALITY_CLASS_RUNG[QUALITY_TABLET]] == QUALITY_MEDIUM && QUALITY_CLASS_RUNG[QUALITY_DESKTOP] == QUALITY_RUNGS - 1;
   q: [1] Quality; quality_start(q[..], quality_device_from_facts(QUALITY_FACTS_IPAD), QUALITY_AUTO); #assert q[0].kind == QUALITY_TABLET && q[0].rung == QUALITY_CLASS_RUNG[QUALITY_TABLET];
 }
@@ -603,12 +622,12 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
 }
 #test "quality: the rung AUTO settles at is kept for the next visit, for its class and its ladder only" {
   out: [16] u8; n := quality_settled_text(out[..], QUALITY_PHONE, 4);
-  t := cast(string) out[0..<n]; #assert t == "2/1/4";
-  #assert quality_settled_from_facts("settled=2/1/4", QUALITY_PHONE) == 4 && quality_settled_from_facts("settled=2/1/4", QUALITY_TABLET) == -1;
-  #assert quality_settled_from_facts("settled=1/1/4", QUALITY_PHONE) == -1 && quality_settled_from_facts("settled=2/1/12", QUALITY_PHONE) == -1;
-  #assert quality_settled_from_facts("settled=2/1", QUALITY_PHONE) == -1 && quality_settled_from_facts("settled=2/1/x", QUALITY_PHONE) == -1 && quality_settled_from_facts("", QUALITY_PHONE) == -1;
-  #assert quality_settled_from_facts("settled=2/1/4/5", QUALITY_PHONE) == -1 && quality_settled_from_facts("settled=2//4", QUALITY_PHONE) == -1;
-  n = quality_settled_text(out[..], QUALITY_DESKTOP, 11); #assert cast(string) out[0..<n] == "2/4/11";
+  t := cast(string) out[0..<n]; #assert t == "3/1/4";
+  #assert quality_settled_from_facts("settled=3/1/4", QUALITY_PHONE) == 4 && quality_settled_from_facts("settled=3/1/4", QUALITY_TABLET) == -1;
+  #assert quality_settled_from_facts("settled=2/1/4", QUALITY_PHONE) == -1 && quality_settled_from_facts("settled=3/1/12", QUALITY_PHONE) == -1;   // the old ladder's MED: dropped
+  #assert quality_settled_from_facts("settled=3/1", QUALITY_PHONE) == -1 && quality_settled_from_facts("settled=3/1/x", QUALITY_PHONE) == -1 && quality_settled_from_facts("", QUALITY_PHONE) == -1;
+  #assert quality_settled_from_facts("settled=3/1/4/5", QUALITY_PHONE) == -1 && quality_settled_from_facts("settled=3//4", QUALITY_PHONE) == -1;
+  n = quality_settled_text(out[..], QUALITY_DESKTOP, 11); #assert cast(string) out[0..<n] == "3/4/11";
   // a start from it: AUTO starts there; the next tell waits for a different rung
   q: [1] Quality; quality_start_settled(q[..], quality_device_from_facts(QUALITY_FACTS_IPHONE), QUALITY_AUTO, 3);
   #assert q[0].rung == 3 && q[0].start == 3 && q[0].told == 3;
@@ -655,7 +674,7 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   #assert quality_url_new("url=https://everglade.world/play?quality=low\nquality=high") && !quality_url_new("url=https://everglade.world/play?quality=low\nquality=low");
   #assert !quality_url_new("url=https://everglade.world/play\nquality=low") && quality_query("url=/play?quality=", "quality") == "";
   q: [1] Quality;
-  #assert quality_start_pixels(quality_device_from_facts(QUALITY_FACTS_IPHONE_SIDE), QUALITY_AUTO) == cast(int) (844.0 * 390.0 * 2.25);
+  #assert quality_start_pixels(quality_device_from_facts(QUALITY_FACTS_IPHONE_SIDE), QUALITY_AUTO) == 844 * 390;
   #assert quality_start_pixels(quality_device_from_facts(QUALITY_FACTS_MAC), QUALITY_LOW) == 1512 * 860 && quality_start_pixels(QualityDevice.{}, QUALITY_AUTO) == 0;
   #assert quality_start_rung(quality_device_from_facts(QUALITY_FACTS_MAC), QUALITY_MEDIUM) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
   quality_start(q[..], quality_device_from_facts(QUALITY_FACTS_IPHONE_SIDE), quality_mode_from_facts("url=/play?quality=low"));
@@ -666,7 +685,7 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   #assert QUALITY_SCALE[QUALITY_RUNGS - 1] == 3 && QUALITY_SCALE[0] == 0.75;
   for r: 1..<QUALITY_RUNGS {
     a := quality_rung_knobs(r - 1); b := quality_rung_knobs(r);
-    #assert a.scale <= b.scale && a.debris <= b.debris && a.fine <= b.fine && a.fx <= b.fx && a.scenery <= b.scenery;
+    #assert a.scale <= b.scale && a.debris <= b.debris && a.fine <= b.fine && a.fx <= b.fx && a.scenery <= b.scenery && a.understory <= b.understory;
     #assert a.grass <= b.grass && a.shadow <= b.shadow && a.post <= b.post && a.crowd <= b.crowd;
     // every rung changes at least one knob, rungs 0 and 1 too: a rung that changes nothing would be
     // a step that buys nothing
@@ -678,38 +697,50 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   }
   // the top rung draws everything; every knob of the bottom one is a share
   t := quality_rung_knobs(QUALITY_RUNGS - 1);
-  #assert t.debris == 1 && t.fine == 1 && t.fx == 1 && t.scenery == 1 && t.grass == 1 && t.shadow == 1 && t.post == 1 && t.crowd == 1;
+  #assert t.debris == 1 && t.fine == 1 && t.fx == 1 && t.scenery == 1 && t.grass == 1 && t.shadow == 1 && t.post == 1 && t.crowd == 1 && t.understory == 1;
   z := quality_rung_knobs(0);
-  #assert z.shadow == 0 && z.grass > 0 && z.post > 0 && z.crowd > 0 && z.scenery > 0;
+  #assert z.shadow == 0 && z.grass > 0 && z.post > 0 && z.crowd > 0 && z.scenery > 0 && z.understory > 0 && z.understory < z.scenery;
   // the tiers' rungs keep the knobs Everglade's tiers always had
   m := quality_rung_knobs(QUALITY_TIER_RUNG[QUALITY_MEDIUM]); lo := quality_rung_knobs(QUALITY_TIER_RUNG[QUALITY_LOW]);
   #assert m.scale == 1.5 && m.debris == 0.5 && m.fine == 0.5 && m.fx == 0.4 && m.scenery == 1;
   #assert lo.scale == 1 && lo.debris == 0.3 && lo.fine == 0.25 && lo.fx == 0.2 && lo.scenery == 0.8;
   q: [1] Quality;
   quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
-  #assert quality_auto(q[..]) && quality_tier(q[..]) == QUALITY_MEDIUM && quality_pixels(q[..], 390, 844) == cast(int) (390.0 * 844.0 * 2.25);
+  #assert quality_auto(q[..]) && quality_tier(q[..]) == QUALITY_LOW && quality_pixels(q[..], 390, 844) == 390 * 844;
   #assert quality_pixels(q[..], 0, 844) == 0 && quality_share(260, 0.3, 2) == 78 && quality_share(24, 0.01, 2) == 2;
   l: [32] u8;
-  #assert quality_label(q[..], l[..]) == "GFX AUTO · MED";
+  #assert quality_label(q[..], l[..]) == "GFX AUTO · LOW";
   quality_choose(q[..], QUALITY_LOW);
   #assert quality_label(q[..], l[..]) == "GFX LOW";
 }
 
-#test "quality: sustained slow frames step it down, a rung at a time, after a second" {
+#test "quality: sustained slow frames step it down, a rung at a time, after half a second" {
   q: [1] Quality;
   quality_start(q[..], QualityDevice.{css_w = 1440, css_h = 900, dpr = 2, cores = 10}, -1);
   top := QUALITY_RUNGS - 1;
   #assert q[0].rung == top;
   _ := quality_run(q[..], 16.7, 4);    // past the warm-up, on time
   #assert q[0].rung == top;
-  _ = quality_run(q[..], 25, 0.5);     // half a second over: not yet
+  _ = quality_run(q[..], 25, 0.5);     // half a second over: the long average is still climbing
   #assert q[0].rung == top;
-  _ = quality_run(q[..], 25, 1.7);
+  _ = quality_run(q[..], 25, 0.8);
   #assert q[0].rung == top - 1;
   _ = quality_run(q[..], 25, 3);
-  #assert q[0].rung <= top - 2 && q[0].rung >= top - 4;   // a step about every second it stays over
+  #assert q[0].rung <= top - 2 && q[0].rung >= top - 5;   // a step about every second it stays over
   _ = quality_run(q[..], 25, 20);
   #assert q[0].rung == 0;
+}
+#test "quality: a phone at 30 FPS steps down to where the cost table says 60 is, in one step, and climbs only on time at 60" {
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{css_w = 1440, css_h = 900, dpr = 2, cores = 10}, -1);
+  _ := quality_run(q[..], 16.7, 4);
+  #assert q[0].rung == QUALITY_RUNGS - 1;
+  #assert quality_run(q[..], 33.3, 1.5) >= 1 && QUALITY_COST[q[0].rung] <= 0.5;   // within 1.5 s, to half the top's cost or less
+  // a device whose frames are 33 ms at the top and fall with the rung's cost: it settles where 60 holds, under 4 s
+  d: [1] Quality; quality_start(d[..], QualityDevice.{css_w = 1440, css_h = 900, dpr = 2, cores = 10}, -1);
+  _ = quality_run(d[..], 16.7, 4); t := 0.0f32; at := -1.0f32;
+  while t < 60 { ms := 33.3f32 * QUALITY_COST[d[0].rung]; _ = quality_frame(d[..], ms / 1000); t += ms / 1000; if at < 0 && ms < 18 { at = t; } }
+  #assert at > 0 && at < 4 && 33.3 * QUALITY_COST[d[0].rung] < 18.7 && 33.3 * QUALITY_COST[d[0].rung] > 8;
 }
 
 #test "quality: a destroy's burst steps it down at once; frames lost to a hidden tab don't count" {
@@ -779,9 +810,9 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
   _ := quality_run(q[..], 33.3, 14);
   #assert q[0].rung == 0 && q[0].budget > 30;
-  // at 30 FPS, on time: it climbs again
-  _ = quality_run(q[..], 33.3, 12);
-  #assert q[0].rung >= 1;
+  // at 30 FPS, on time at 30: it never climbs, so it never settles at 30 on a higher rung (#13190)
+  _ = quality_run(q[..], 33.3, 60);
+  #assert q[0].rung == 0;
   // and frames on time at 60 bring the 60 FPS budget back
   _ = quality_run(q[..], 16.7, 20);
   #assert q[0].budget < 17;
@@ -828,13 +859,13 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   #assert quality_mode_from_facts("url=/p?quality=high\nquality=low") == QUALITY_HIGH && quality_mode_from_facts("url=/p?quality=high") == QUALITY_HIGH;
   #assert quality_url_new("url=/p?quality=high\nquality=low");
   // the settled fact: three numbers of up to three digits, digits only
-  #assert quality_settled_from_facts("settled=002/1/4", QUALITY_PHONE) == 4 && quality_settled_from_facts("settled=0002/1/4", QUALITY_PHONE) == -1;
-  #assert quality_settled_from_facts("settled=2//4", QUALITY_PHONE_WEAK) == -1 && quality_settled_from_facts("settled=2/1/10", QUALITY_PHONE) == 10;
-  #assert quality_settled_from_facts("settled=2/1/010", QUALITY_PHONE) == 10 && quality_settled_from_facts("settled=2/1/:", QUALITY_PHONE) == -1;
-  #assert quality_settled_from_facts("settled=2/1/0", QUALITY_PHONE) == 0 && quality_settled_from_facts("settled=2/1/9", QUALITY_PHONE) == 9;
-  #assert quality_settled_from_facts("settled=2/1/.", QUALITY_PHONE) == -1;
-  out: [16] u8; n := quality_settled_text(out[..], QUALITY_DESKTOP, 10); #assert cast(string) out[0..<n] == "2/4/10";
-  short: [2] u8; #assert quality_settled_text(short[..], QUALITY_DESKTOP, 11) == 2 && cast(string) short[0..<2] == "2/";
+  #assert quality_settled_from_facts("settled=003/1/4", QUALITY_PHONE) == 4 && quality_settled_from_facts("settled=0003/1/4", QUALITY_PHONE) == -1;
+  #assert quality_settled_from_facts("settled=3//4", QUALITY_PHONE_WEAK) == -1 && quality_settled_from_facts("settled=3/1/10", QUALITY_PHONE) == 10;
+  #assert quality_settled_from_facts("settled=3/1/010", QUALITY_PHONE) == 10 && quality_settled_from_facts("settled=3/1/:", QUALITY_PHONE) == -1;
+  #assert quality_settled_from_facts("settled=3/1/0", QUALITY_PHONE) == 0 && quality_settled_from_facts("settled=3/1/9", QUALITY_PHONE) == 9;
+  #assert quality_settled_from_facts("settled=3/1/.", QUALITY_PHONE) == -1;
+  out: [16] u8; n := quality_settled_text(out[..], QUALITY_DESKTOP, 10); #assert cast(string) out[0..<n] == "3/4/10";
+  short: [2] u8; #assert quality_settled_text(short[..], QUALITY_DESKTOP, 11) == 2 && cast(string) short[0..<2] == "3/";
   // pixels: none for a side that isn't over 0, even against an endless other side
   big := 1.0e38f32; inf := big * 10;
   #assert quality_start_pixels(QualityDevice.{css_w = 0, css_h = inf}, QUALITY_LOW) == 0 && quality_start_pixels(QualityDevice.{css_w = inf, css_h = 0}, QUALITY_LOW) == 0;
@@ -997,9 +1028,15 @@ QUALITY_FACTS_INTEL :: "url=https://everglade.world/play\nua=Mozilla/5.0 (Window
   #assert q[0].fast > 0 && q[0].budget == 32;
   q[0] = base; q[0].budget = 32; q[0].fast = 1; q[0].slow_avg = 17; _ = quality_frame(q[..], 0.000000001); #assert q[0].fast == 0;
   // a step down at QUALITY_SETTLE_S after the last, at QUALITY_BURST_S of burst, at QUALITY_DOWN_S over, each to the frame
-  q[0] = base; q[0].since = 0.484375; q[0].burst = 1; q[0].fast_avg = 50; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
+  q[0] = base; q[0].since = 0.359375; q[0].burst = 1; q[0].fast_avg = 50; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
   q[0] = base; q[0].burst = 0.234375; q[0].fast_avg = 50; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
-  q[0] = base; q[0].over = 0.984375; q[0].slow_avg = 30; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
+  q[0] = base; q[0].over = 0.484375; q[0].slow_avg = 20; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
+  q[0] = base; q[0].over = 0.46875; q[0].slow_avg = 20; #assert !quality_frame(q[..], 0.015625) && q[0].rung == 5;
+  // far over (QUALITY_FAR): as far down as the cost table says, by the longer of the two averages
+  q[0] = base; q[0].over = 0.484375; q[0].slow_avg = 30; #assert quality_frame(q[..], 0.015625) && q[0].rung == 0;   // 16/30 of rung 5's cost is rung 0's
+  q[0] = base; q[0].over = 0.484375; q[0].slow_avg = 20; q[0].fast_avg = 30; #assert quality_frame(q[..], 0.015625) && q[0].rung < 3;
+  q[0] = base; q[0].over = 0.484375; q[0].slow_avg = 23.9; q[0].fast_avg = 23.9; #assert quality_frame(q[..], 0.015625) && q[0].rung == 4;
+  #assert quality_cost_rung(5, 1) == 5 && quality_cost_rung(5, 0.01) == 0 && quality_cost_rung(11, QUALITY_COST[10]) == 10 && quality_cost_rung(11, QUALITY_COST[10] - 0.001) == 9;
   // a step up at QUALITY_UP_S on time, to the frame, to the top rung too
   q[0] = base; q[0].rung = 10; q[0].on_time = 4.984375; #assert quality_frame(q[..], 0.015625) && q[0].rung == 11;
   // quality_run counts each change, and runs to the time and no further

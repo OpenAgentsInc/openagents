@@ -892,7 +892,7 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
 #test "e2 quality: graphics start from the page's facts: a phone held sideways starts at MED or lower; ?quality=low holds LOW" #steps 60000000 {
   s: [1] E2;
   e2_message(s[..], E2_HOST_PAGE, QUALITY_FACTS_IPHONE_SIDE);
-  #assert e2_pixel_budget(s[..], 0, 0, 0) == cast(int) (844.0 * 390.0 * 2.25);   // before the first frame: the start rung's
+  #assert e2_pixel_budget(s[..], 0, 0, 0) == 844 * 390;   // before the first frame: the start rung's (a phone's: LOW, #13190)
   e2_quality_frame(s[..], 0, 844 * 3, 390 * 3, 3, false);
   #assert s[0].q_ready && quality_auto(s[0].q[..]) && s[0].q[0].rung <= QUALITY_TIER_RUNG[QUALITY_MEDIUM];
   #assert e2_pixel_budget(s[..], 844 * 3, 390 * 3, 3) <= cast(int) (844.0 * 390.0 * 2.25);
@@ -971,12 +971,12 @@ e2_bloom_passes :: (s: [] E2) -> int #export_c #effects(all) {
   // held 20 s: the host keeps it (action 33), once
   for i: 0..<1300 { e2_quality_frame(s[..], 0.0178, 1366, 657, 1, false); if s[0].action == ACT_SETTLED { break; } }
   told := cast(string) s[0].outbox[0..<s[0].out_n];
-  #assert s[0].action == ACT_SETTLED && told.count >= 5 && told[0..<4] == "2/3/";
+  #assert s[0].action == ACT_SETTLED && told.count >= 5 && told[0..<4] == "3/3/";
   e2_action_done(s[..]);
   for i: 0..<100 { e2_quality_frame(s[..], 0.0178, 1366, 657, 1, false); } #assert s[0].action != ACT_SETTLED;
   // the next visit: the kept rung is where AUTO starts
   n: [1] E2;
-  e2_message(n[..], E2_HOST_PAGE, "url=https://everglade.world/play\nvw=1366\nvh=657\nsw=1366\nsh=768\ndpr=1\ncores=8\ngpu_vendor=intel\nsettled=2/3/4\nquality=");
+  e2_message(n[..], E2_HOST_PAGE, "url=https://everglade.world/play\nvw=1366\nvh=657\nsw=1366\nsh=768\ndpr=1\ncores=8\ngpu_vendor=intel\nsettled=3/3/4\nquality=");
   e2_quality_frame(n[..], 0, 1366, 657, 1, false); #assert n[0].q[0].rung == 4 && n[0].q[0].start == 4;
 }
 #test "e2 quality: golden frames hold the screen's rung; the GFX control is hidden there" {

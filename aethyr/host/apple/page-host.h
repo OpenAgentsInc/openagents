@@ -27,7 +27,7 @@
 @property BOOL offline;                // no socket and no HTTP leave this machine (a shot)
 @property BOOL automated;              // nobody is at the keys: said in the page's facts, as a browser under a driver says it
 @property BOOL touch;                  // a touch screen (a phone or a tablet): said in the page's facts, as a browser's coarse pointer is, so the realm draws its touch controls
-@property CGSize screen;               // the screen in pixels, for the page's facts; zero on a Mac, where the host reads the main display
+@property CGSize screen;               // the screen in points (a browser's screen.width), for the page's facts; zero on a Mac, where the host reads the main display
 @property (copy) int32_t (^layerSide)(int32_t declared);   // the side the pack's layers are drawn to, from the one the realm declares (aethyr/render/texture-format.coax tf_side); nil keeps it
 @end
 

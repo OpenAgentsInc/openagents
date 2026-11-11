@@ -248,7 +248,7 @@ e2_track_pointer :: (s: [] E2, t: [] Track, x: f32, y: f32, phase: int, kind: in
   for i: 0..<150 { e2_quality_frame(s[..], 1.0 / 60.0, 1170, 2532, 3, false); e2_track(s[..], w[..], t[..], true); }
   sent = cast(string) t[0].buf[0..<t[0].buf_n];
   #assert text_has(sent, "\"ev\":\"graphics\"") && text_has(sent, "\"class\":\"phone\"") && text_has(sent, "\"gpu\":\"apple\"") && text_has(sent, "\"vendor\":\"apple\"");
-  #assert text_has(sent, "\"arch\":\"apple-7\"") && text_has(sent, "\"mode\":\"auto\"") && text_has(sent, "\"start\":5") && text_has(sent, "\"fps\":61");
+  #assert text_has(sent, "\"arch\":\"apple-7\"") && text_has(sent, "\"mode\":\"auto\"") && text_has(sent, "\"start\":2") && text_has(sent, "\"fps\":61");   // a phone starts at LOW (#13190)
   // once
   t[0].buf_n = 0; for i: 0..<120 { e2_quality_frame(s[..], 1.0 / 60.0, 1170, 2532, 3, false); e2_track(s[..], w[..], t[..], true); }
   #assert !text_has(cast(string) t[0].buf[0..<t[0].buf_n], "\"ev\":\"graphics\"");

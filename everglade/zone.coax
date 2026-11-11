@@ -280,10 +280,11 @@ zone_you :: (s: [] EgZone, x: f32, y: f32, z: f32, face: f32, airborne: bool, to
 // The pack's catalog arrived (fivelab-face.c): the figures' parts.
 zone_catalog :: (s: [] EgZone, text: string) #export_c #effects(all) {
   figs.bd_catalog(s[0].bodies[..], text); cc.catalog(s[0].creator[..], text);
-  // the glade's environment mesh: its boxes asked of the host, 8 words a vertex; a sky vertex (kind 0, the
-  // normal word's bits 24 to 27: gpu/character-glade.coax cg_environment_vs) is in screen space, so its run is always drawn
-  c := s[0].creator[..];
-  mc.mesh_cull_want(s[0].glade_cull[..], c[0].glade_first, c[0].glade_count, c[0].glade_word, 8, 3, 0x0f000000, 0);
+  // the glade's environment mesh, or on the open field its meadow's ground (180 thousand triangles at the
+  // range, #13190): its boxes asked of the host, 8 words a vertex; a sky vertex (kind 0, the normal word's
+  // bits 24 to 27: gpu/character-glade.coax cg_environment_vs) is in screen space, so its run is always drawn
+  c := s[0].creator[..]; m := zone_cull_mesh(c[0]);
+  mc.mesh_cull_want(s[0].glade_cull[..], m.first, m.count, m.word, 8, 3, 0x0f000000, 0);
 }
 
 // The clips baked into the bake store, once (fivelab-face.c).
@@ -333,13 +334,21 @@ zone_scene :: (s: [] EgZone, out: [] f32) -> int #export_c #effects(all) {
 // is added after the others for each further one, sharing its record. Without the host's boxes, or
 // with no room for another draw, it stays one whole draw. Returns the draws.
 ZONE_MESH_DRAWS :: 48;
+// The one big static mesh a zone culls: the open field's meadow ground where the zone draws it
+// (charactercreator.coax scene: the open field stands in for the glade), else the glade's.
+ZoneCullMesh :: struct { first: int; count: int; word: int; }
+zone_cull_mesh :: (c: cc.Creator) -> ZoneCullMesh {
+  if c.field && c.field_count > 0 && !c.flat { return ZoneCullMesh.{first = c.field_first, count = c.field_count, word = c.field_word}; }
+  return ZoneCullMesh.{first = c.glade_first, count = c.glade_count, word = c.glade_word};
+}
 ZONE_MESH_PAD :: 0.1;   // metres: the wind sways a leaf at most 0.05 m (cg_environment_vs)
 zone_mesh_cull :: (s: [] EgZone, n0: int) -> int {
   n := n0; c := s[0].creator[..]; b := s[0].bodies[..];
-  if !c[0].on || c[0].glade_count <= 0 || !c[0].view_ok { return n; }
+  cm := zone_cull_mesh(c[0]);
+  if !c[0].on || cm.count <= 0 || !c[0].view_ok { return n; }
   vo := mc.mesh_cull_view(c[0].view[..], c[0].view_w, c[0].view_h); if !vo.ok { return n; }
   d := -1;
-  for i: 0..<n { if cast(int) b[0].draws[i*4] == c[0].glade_first && cast(int) b[0].draws[i*4+1] == c[0].glade_count && b[0].draws[i*4+2] < 65536 && b[0].draws[i*4+3] == 1 { d = i; break; } }
+  for i: 0..<n { if cast(int) b[0].draws[i*4] == cm.first && cast(int) b[0].draws[i*4+1] == cm.count && b[0].draws[i*4+2] < 65536 && b[0].draws[i*4+3] == 1 { d = i; break; } }
   if d < 0 { return n; }
   most := b[0].draws.count/4 - n + 1; if most > ZONE_MESH_DRAWS { most = ZONE_MESH_DRAWS; }
   spans: [ZONE_MESH_DRAWS * 2] u32;
@@ -349,6 +358,13 @@ zone_mesh_cull :: (s: [] EgZone, n0: int) -> int {
   b[0].draws[d*4] = spans[0]; b[0].draws[d*4+1] = spans[1];
   for k: 1..<m { b[0].draws[n*4] = spans[k*2]; b[0].draws[n*4+1] = spans[k*2+1]; b[0].draws[n*4+2] = b[0].draws[d*4+2]; b[0].draws[n*4+3] = 1; n += 1; }
   return n;
+}
+#test "the mesh a zone culls: the open field's ground where it draws one, else the glade's" {
+  c: cc.Creator; c.glade_first = 5; c.glade_count = 300; c.glade_word = 7;
+  m := zone_cull_mesh(c); #assert m.first == 5 && m.count == 300 && m.word == 7;
+  c.field = true; m = zone_cull_mesh(c); #assert m.first == 5;   // the field's mesh not in yet
+  c.field_first = 900; c.field_count = 540000; c.field_word = 11; m = zone_cull_mesh(c); #assert m.first == 900 && m.count == 540000 && m.word == 11;
+  c.flat = true; m = zone_cull_mesh(c); #assert m.first == 5;   // a level zone draws no meadow
 }
 #test "the glade's mesh draws the spans in view, after the shadows took it whole, and whole until the host's boxes are in" #steps 900000000 {
   s: [1] EgZone; c := s[0].creator[..]; b := s[0].bodies[..];
@@ -382,7 +398,7 @@ zone_quality_frame :: (s: [] EgZone, dt: f32, w: f32, h: f32, dpr: f32, golden: 
   cr := s[0].creator[..];
   drawing := ifx cr[0].on then s[0].bodies[0].draw_n > 0 else true;   // the measured start waits for the scene's first draws
   qp_frame(s[0].qp[..], dt, w, h, dpr, golden, drawing);
-  kn := s[0].qp[0].kn; cr[0].q_grass = kn.grass; cr[0].q_fine = kn.fine; cr[0].q_scenery = kn.scenery;
+  kn := s[0].qp[0].kn; cr[0].q_grass = kn.grass; cr[0].q_fine = kn.fine; cr[0].q_scenery = kn.scenery; cr[0].q_understory = kn.understory;
   l: [40] u8; t := qp_label(s[0].qp[..], l[..]);
   cr[0].gfx_n = t.count; for i: 0..<t.count { cr[0].gfx[i] = t[i]; }
 }
@@ -407,7 +423,7 @@ zone_gfx_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool 
   #assert quality_auto(s[0].qp[0].q[..]) && zone_pixel_budget(s[..], 2560, 1600, 2) == ZONE_PIXELS && s[0].creator[0].q_grass == 1 && s[0].creator[0].q_scenery == 1;
   #assert cast(string) s[0].creator[0].gfx[0..<s[0].creator[0].gfx_n] == "GFX AUTO · HIGH" && zone_probe(s[..], 847) == QUALITY_HIGH && zone_probe(s[..], 848) == QUALITY_AUTO;
   for i: 0..<600 { zone_quality_frame(s[..], 0.06, 2560, 1600, 2, false); }
-  #assert quality_tier(s[0].qp[0].q[..]) == QUALITY_LOW && zone_pixel_budget(s[..], 2560, 1600, 2) <= 1280 * 800 && s[0].creator[0].q_grass < 0.5 && s[0].creator[0].q_scenery < 1;
+  #assert quality_tier(s[0].qp[0].q[..]) == QUALITY_LOW && zone_pixel_budget(s[..], 2560, 1600, 2) <= 1280 * 800 && s[0].creator[0].q_grass < 0.5 && s[0].creator[0].q_scenery < 1 && s[0].creator[0].q_understory < s[0].creator[0].q_scenery;
   #assert cast(string) s[0].creator[0].gfx[0..<s[0].creator[0].gfx_n] == "GFX AUTO · LOW";
   #assert zone_probe(s[..], 846) == s[0].qp[0].q[0].rung && zone_probe(s[..], 847) == QUALITY_LOW && zone_probe(s[..], 849) < 50;
   // the host is told the rung it settled at, when the zone has nothing else to send
