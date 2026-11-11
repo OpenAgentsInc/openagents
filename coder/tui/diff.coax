@@ -8,10 +8,21 @@
 DF_MAX_LINES :: 400;       // lines per side the diff compares
 DF_SHOWN :: 40;            // rows shown before "… N more lines"
 DF_CONTEXT :: 3;
-DF_ADD_BG :: ";48;2;47;59;42";             // Coder Noir: success #9fd08a at 25% over #0a0a0a
-DF_DEL_BG :: ";48;2;71;27;24";             // danger #ff4d42 at 25% over #0a0a0a
-DF_ADD_BG_LIGHT :: ";48;2;218;245;222";        // the same on a light background
-DF_DEL_BG_LIGHT :: ";48;2;252;224;226";
+// A row's background: Coder Noir's success #9fd08a or danger #ff4d42 at 25%
+// over #0a0a0a, or the same on a light background; none without colours.
+df_bg :: (theme: int, sign: u8) -> Rgba {
+  if theme == TUI_THEME_NONE || (sign != '+' && sign != '-') { return tui_own(); }
+  light := theme == TUI_THEME_LIGHT;
+  if sign == '+' { return ifx light then tui_rgb(218, 245, 222) else tui_rgb(47, 59, 42); }
+  return ifx light then tui_rgb(252, 224, 226) else tui_rgb(71, 27, 24);
+}
+// The line number's and the sign's look: the row's colour on a change, grey on context; bold with no colours.
+df_mark :: (theme: int, sign: u8) -> TuiLook {
+  none := theme == TUI_THEME_NONE; light := theme == TUI_THEME_LIGHT;
+  if sign == '+' { return ifx none then tui_look(TERM_FACE_BOLD, tui_own()) else tui_look(TERM_FACE_PLAIN, ifx light then tui_rgb(30, 130, 60) else tui_rgb(159, 208, 138)); }
+  if sign == '-' { return ifx none then tui_look(TERM_FACE_BOLD, tui_own()) else tui_look(TERM_FACE_PLAIN, ifx light then tui_rgb(190, 40, 40) else tui_rgb(255, 77, 66)); }
+  return tui_look(TERM_FACE_PLAIN, ifx none then tui_own() else ifx light then tui_rgb(140, 141, 147) else tui_rgb(129, 129, 129));
+}
 
 // A tool call waiting for its result: Edit (old -> new) or Write (new only).
 DfPending :: struct {
@@ -41,37 +52,26 @@ df_split :: (s: string, l: [] DfLines) {
 
 df_line :: (s: string, l: [] DfLines, i: int) -> string { return cast(string) s[l[0].at[i]..<l[0].end[i]]; }
 
-// One row: number, sign and code, on the row's background to the edge.
-DfRow :: struct { o: [1] TuiOut; b: [8192] u8; }
+// One row: number, sign and code, on the row's background to the edge,
+// painted (coax/lib/tui's painter: the terminal backend writes its styles).
+DfRow :: struct { o: [1] TuiOut; b: [8192] u8; p: [1] TuiPaint; }
 
 df_row :: (a: [] App, num: int, sign: u8, code: string, lang: int, hl: [] TuiHl) {
   r_b: [1] DfRow; r := r_b[..]; o := r[0].o[..]; o[0].b = r[0].b[..];
   th := a[0].o[0].theme; o[0].theme = th;
-  light := th == TUI_THEME_LIGHT; none := th == TUI_THEME_NONE;
-  bg := ifx none then "" else ifx sign == '+' then (ifx light then DF_ADD_BG_LIGHT else DF_ADD_BG) else ifx sign == '-' then (ifx light then DF_DEL_BG_LIGHT else DF_DEL_BG) else "";
-  add_fg := ifx none then "[0;1" else ifx light then "[0;38;2;30;130;60" else "[0;38;2;159;208;138";
-  del_fg := ifx none then "[0;1" else ifx light then "[0;38;2;190;40;40" else "[0;38;2;255;77;66";
-  ctx_fg := ifx none then "[0" else ifx light then "[0;38;2;140;141;147" else "[0;38;2;129;129;129";
-  tui_put(o, "      ");
-  // the number in the row's color on a changed line, grey on context
-  tui_byte(o, 27);
-  tui_put(o, ifx sign == '+' then add_fg else ifx sign == '-' then del_fg else ctx_fg);
-  tui_put(o, bg); tui_put(o, "m");
-  nb: [16] u8; ns := ifx num > 0 then cd_itoa(num, nb[..]) else "";
-  for i: ns.count..<5 { tui_put(o, " "); }
-  tui_put(o, ns); tui_put(o, " ");
-  if sign == '+' { tui_byte(o, 27); tui_put(o, add_fg); tui_put(o, bg); tui_put(o, "m+"); }
-  else if sign == '-' { tui_byte(o, 27); tui_put(o, del_fg); tui_put(o, bg); tui_put(o, "m-"); }
-  else { tui_put(o, " "); }
-  tui_hl_line(hl, lang, code, o, bg);
-  row := tui_text(o);
+  bg := df_bg(th, sign); mark := df_mark(th, sign); plain := tui_look(TERM_FACE_PLAIN, tui_own());
   width := a[0].cols - 1;
-  cut := tui_fit(row, width);
-  shown := cast(string) row[0..<cut];
-  pad := width - tui_text_width(shown);
-  fb: [8400] u8; fn := cd_cat(fb[..], 0, shown);
-  if bg.count > 0 { for i: 0..<pad { fn = cd_cat(fb[..], fn, " "); } }
-  fn = cd_cat(fb[..], fn, "");
+  p := r[0].p[..]; tui_paint(p, o, width);
+  tui_paint_spaces(p, plain, tui_own(), 6);
+  // the number in the row's color on a changed line, grey on context
+  nb: [16] u8; ns := ifx num > 0 then cd_itoa(num, nb[..]) else "";
+  tui_paint_spaces(p, mark, bg, 5 - ns.count);
+  tui_paint_text(p, mark, bg, ns); tui_paint_text(p, mark, bg, " ");
+  tui_paint_text(p, mark, bg, ifx sign == '+' then "+" else ifx sign == '-' then "-" else " ");
+  tui_hl_paint(p, hl, lang, code, bg);
+  if bg.a > 0 { tui_paint_spaces(p, plain, bg, width - p[0].col); }
+  tui_paint_flush(p);
+  fb: [8400] u8; fn := cd_cat(fb[..], 0, tui_text(o));
   if a[0].plain {
     // plain output: the same row without styles
     pn := 0; i := 0; t := cast(string) fb[0..<fn];

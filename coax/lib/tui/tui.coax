@@ -10,7 +10,8 @@
 // style sequences.
 
 #load "../../../components/core/markdown.coax";
-#load "../../../components/core/edit.coax";   // the composer's text: the one edit buffer
+#load "../../../components/core/edit.coax";
+#load "../../../components/backend/terminal.coax";   // a styled line is painted as a display list and written by the terminal backend   // the composer's text: the one edit buffer
 
 // ---------------------------------------------------------------- output
 
@@ -37,26 +38,104 @@ tui_text :: (o: [] TuiOut) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 
 // Styles: the Coder ladder, four intensities of white, and two signal colors.
 TUI_PLAIN :: 0; TUI_BRIGHT :: 1; TUI_DIM :: 2; TUI_FAINT :: 3; TUI_RED :: 4; TUI_GREEN :: 5; TUI_AMBER :: 6;
-tui_style :: (o: [] TuiOut, s: int) {
-  t := o[0].theme;
-  if s == TUI_PLAIN { tui_csi(o, "0m"); }
-  else if t == TUI_THEME_NONE { tui_csi(o, ifx s == TUI_BRIGHT then "0;1m" else ifx s == TUI_RED then "0;1m" else "0m"); }
-  else if t == TUI_THEME_LIGHT {
-    if s == TUI_BRIGHT { tui_csi(o, "0;1;38;2;20;20;20m"); }
-    else if s == TUI_DIM { tui_csi(o, "0;38;2;95;95;95m"); }
-    else if s == TUI_FAINT { tui_csi(o, "0;38;2;150;150;150m"); }
-    else if s == TUI_RED { tui_csi(o, "0;38;2;190;40;40m"); }
-    else if s == TUI_GREEN { tui_csi(o, "0;38;2;30;130;60m"); }
-    else if s == TUI_AMBER { tui_csi(o, "0;38;2;150;100;0m"); }
+
+// How a style looks: a face (components/skin/terminal.coax's attribute bits)
+// and a colour (an alpha of 0 is the terminal's own). The style sequences are
+// written by components/backend/terminal.coax (term_sgr, term_row), never here.
+TuiLook :: struct { face: int; fg: Rgba; }
+tui_rgb :: (r: int, g: int, b: int) -> Rgba { return rgba(cast(f32) r / 255.0, cast(f32) g / 255.0, cast(f32) b / 255.0, 1); }
+tui_own :: () -> Rgba { return rgba(0, 0, 0, 0); }
+tui_look :: (face: int, fg: Rgba) -> TuiLook { return TuiLook.{face = face, fg = fg}; }
+
+// A rung of the ladder in a theme. Coder Noir (the desktop app's dark theme):
+// text #ededed, muted #818181, faint #656565, danger #ff4d42, success
+// #9fd08a, warning #e6c15c; a light background darkens them; none leaves bold.
+tui_ladder_look :: (theme: int, s: int) -> TuiLook {
+  if s == TUI_PLAIN { return tui_look(TERM_FACE_PLAIN, tui_own()); }
+  if theme == TUI_THEME_NONE { return tui_look(ifx s == TUI_BRIGHT || s == TUI_RED then TERM_FACE_BOLD else TERM_FACE_PLAIN, tui_own()); }
+  light := theme == TUI_THEME_LIGHT;
+  if s == TUI_BRIGHT { return tui_look(TERM_FACE_BOLD, ifx light then tui_rgb(20, 20, 20) else tui_rgb(237, 237, 237)); }
+  if s == TUI_DIM { return tui_look(TERM_FACE_PLAIN, ifx light then tui_rgb(95, 95, 95) else tui_rgb(129, 129, 129)); }
+  if s == TUI_FAINT { return tui_look(TERM_FACE_PLAIN, ifx light then tui_rgb(150, 150, 150) else tui_rgb(101, 101, 101)); }
+  if s == TUI_RED { return tui_look(TERM_FACE_PLAIN, ifx light then tui_rgb(190, 40, 40) else tui_rgb(255, 77, 66)); }
+  if s == TUI_GREEN { return tui_look(TERM_FACE_PLAIN, ifx light then tui_rgb(30, 130, 60) else tui_rgb(159, 208, 138)); }
+  if s == TUI_AMBER { return tui_look(TERM_FACE_PLAIN, ifx light then tui_rgb(150, 100, 0) else tui_rgb(230, 193, 92)); }
+  return tui_look(TERM_FACE_PLAIN, tui_own());
+}
+
+// A look's style sequence into o.
+tui_sgr :: (o: [] TuiOut, look: TuiLook) {
+  b: [64] u8;
+  k := term_sgr(b[..], 0, look.face, look.fg, tui_own());
+  tui_put(o, cast(string) b[0..<k]);
+}
+tui_style :: (o: [] TuiOut, s: int) { tui_sgr(o, tui_ladder_look(o[0].theme, s)); }
+
+// ---------------------------------------------------------------- painting
+
+// A styled line is painted, not written: its runs are the component system's
+// display list in cells (components/paint/list.coax: a text run, a box for a
+// background), drawn into a row of cells and written with its style sequences
+// by components/backend/terminal.coax (term_draw, term_row). A line of any
+// length is painted a window of TUI_PAINT_COLS columns at a time.
+TUI_PAINT_COLS :: 256;
+TUI_PAINT_PRIMS :: 96;
+TUI_PAINT_POOL :: 8192;
+TuiPaint :: struct {
+  o: [] TuiOut;
+  list: [TUI_PAINT_PRIMS] Prim; n: int;
+  col: int; base: int;           // the line's columns so far, and where the window starts
+  limit: int;                    // the columns the line may take (0: any); what is past it is cut
+  pool: [TUI_PAINT_POOL] u8; np: int;   // the window's text, copied: a run's text may live only in its caller
+}
+
+tui_paint :: (p: [] TuiPaint, o: [] TuiOut, limit: int) { p[0].o = o; p[0].n = 0; p[0].np = 0; p[0].col = 0; p[0].base = 0; p[0].limit = limit; }
+
+// The window's runs into o, through the terminal backend.
+tui_paint_flush :: (p: [] TuiPaint) {
+  if p[0].n > 0 {
+    cells: [TUI_PAINT_COLS] TermCell;
+    g := term_grid(cells[..], TUI_PAINT_COLS, 1);
+    term_draw(g, p[0].list[0..<p[0].n], 0, 0);
+    b: [8192] u8;
+    k := term_row(g, 0, b[..]);
+    tui_put(p[0].o, cast(string) b[0..<k]);
   }
-  // Coder Noir (the desktop app's dark theme): text #ededed, muted #818181,
-  // faint #656565, danger #ff4d42, success #9fd08a, warning #e6c15c
-  else if s == TUI_BRIGHT { tui_csi(o, "0;1;38;2;237;237;237m"); }
-  else if s == TUI_DIM { tui_csi(o, "0;38;2;129;129;129m"); }
-  else if s == TUI_FAINT { tui_csi(o, "0;38;2;101;101;101m"); }
-  else if s == TUI_RED { tui_csi(o, "0;38;2;255;77;66m"); }
-  else if s == TUI_GREEN { tui_csi(o, "0;38;2;159;208;138m"); }
-  else if s == TUI_AMBER { tui_csi(o, "0;38;2;230;193;92m"); }
+  p[0].n = 0; p[0].np = 0; p[0].base = p[0].col;
+}
+
+// A run of text in a look, on a background (an alpha of 0: none).
+tui_paint_text :: (p: [] TuiPaint, look: TuiLook, bg: Rgba, text: string) {
+  at := 0;
+  for guard: 0..<text.count + 1 {
+    if at >= text.count { return; }
+    room := TUI_PAINT_COLS - (p[0].col - p[0].base);
+    cap := ifx p[0].limit > 0 then p[0].limit - p[0].col else room;
+    if cap <= 0 { return; }
+    if room <= 0 || p[0].n + 2 > TUI_PAINT_PRIMS || p[0].np >= TUI_PAINT_POOL { tui_paint_flush(p); continue; }
+    piece := cast(string) text[at..<text.count];
+    if piece.count > TUI_PAINT_POOL - p[0].np { piece = cast(string) piece[0..<TUI_PAINT_POOL - p[0].np]; }
+    first := p[0].col == p[0].base;      // nothing before it in the window's row
+    take := term_text_fit(piece, ifx cap < room then cap else room, first);
+    if take == 0 {
+      if p[0].limit > 0 && cap <= room { return; }       // what is left is past the limit
+      if p[0].col > p[0].base { tui_paint_flush(p); continue; }
+      take = cluster_len(piece, 0);
+    }
+    for k: 0..<take { p[0].pool[p[0].np + k] = piece[k]; }
+    seg := cast(string) p[0].pool[p[0].np..<p[0].np + take];
+    p[0].np += take;
+    w := term_text_cells(seg, first);
+    x := cast(f32) (p[0].col - p[0].base);
+    if bg.a > 0 { p[0].n = prim_fill(p[0].list[..], p[0].n, x, 0, cast(f32) w, 1, 0, bg); }
+    p[0].n = prim_text(p[0].list[..], p[0].n, x, 0, cast(f32) w, 1, look.face, look.fg, seg);
+    p[0].col += w; at += take;
+  }
+}
+tui_paint_spaces :: (p: [] TuiPaint, look: TuiLook, bg: Rgba, count: int) {
+  sp := "                                                                ";
+  left := count;
+  while left > 0 { k := ifx left < sp.count then left else sp.count; tui_paint_text(p, look, bg, cast(string) sp[0..<k]); left -= k; }
 }
 
 // The theme a name means, or -1.
@@ -716,8 +795,8 @@ tui_live_commit :: (o: [] TuiOut, lv: [] TuiLive, style: int, s: string) {
 // follows) gets the full treatment: keywords, #directives, types, the names
 // a declaration defines, calls, CONSTANTS, numbers, strings and comments,
 // nested /* */ comments carried across lines. Other languages get strings,
-// numbers, comments and a shared keyword list. bg is appended to every
-// style (";48;2;R;G;B" for a diff line, or "").
+// numbers, comments and a shared keyword list. A diff's row paints the line
+// on its background (bg; an alpha of 0 for none).
 TUI_LANG_PLAIN :: 0; TUI_LANG_COAX :: 1; TUI_LANG_C :: 2; TUI_LANG_HASH :: 3;
 
 TuiHl :: struct { comment: int; }   // open /* */ depth
@@ -725,35 +804,32 @@ TuiHl :: struct { comment: int; }   // open /* */ depth
 TUI_HL_TEXT :: 0; TUI_HL_KEYWORD :: 1; TUI_HL_DIRECTIVE :: 2; TUI_HL_TYPE :: 3; TUI_HL_DEF :: 4; TUI_HL_CALL :: 5;
 TUI_HL_CONST :: 6; TUI_HL_NUMBER :: 7; TUI_HL_STRING :: 8; TUI_HL_COMMENT :: 9; TUI_HL_PUNCT :: 10;
 
-tui_hl_sgr :: (o: [] TuiOut, kind: int, bg: string) {
-  tui_byte(o, 27); tui_put(o, "[0");
-  if o[0].theme == TUI_THEME_NONE {
-    if kind == TUI_HL_KEYWORD || kind == TUI_HL_DEF { tui_put(o, ";1"); } else if kind == TUI_HL_COMMENT { tui_put(o, ";3"); }
-    tui_put(o, "m"); return;
+// A token kind's look in a theme: Coder Noir's syntax colours, a light
+// background's, or none's bold keywords and italic comments.
+tui_hl_look :: (theme: int, kind: int) -> TuiLook {
+  if theme == TUI_THEME_NONE {
+    return tui_look(ifx kind == TUI_HL_KEYWORD || kind == TUI_HL_DEF then TERM_FACE_BOLD else ifx kind == TUI_HL_COMMENT then TERM_FACE_ITALIC else TERM_FACE_PLAIN, tui_own());
   }
-  if o[0].theme == TUI_THEME_LIGHT {
-    if kind == TUI_HL_KEYWORD { tui_put(o, ";38;2;166;38;164"); }
-    else if kind == TUI_HL_DIRECTIVE || kind == TUI_HL_CONST || kind == TUI_HL_NUMBER { tui_put(o, ";38;2;152;104;1"); }
-    else if kind == TUI_HL_TYPE { tui_put(o, ";38;2;1;132;188"); }
-    else if kind == TUI_HL_DEF { tui_put(o, ";1;38;2;64;120;242"); }
-    else if kind == TUI_HL_CALL { tui_put(o, ";38;2;64;120;242"); }
-    else if kind == TUI_HL_STRING { tui_put(o, ";38;2;80;161;79"); }
-    else if kind == TUI_HL_COMMENT { tui_put(o, ";3;38;2;140;141;147"); }
-    else { tui_put(o, ";38;2;56;58;66"); }
-    tui_put(o, bg); tui_put(o, "m"); return;
+  if theme == TUI_THEME_LIGHT {
+    if kind == TUI_HL_KEYWORD { return tui_look(TERM_FACE_PLAIN, tui_rgb(166, 38, 164)); }
+    if kind == TUI_HL_DIRECTIVE || kind == TUI_HL_CONST || kind == TUI_HL_NUMBER { return tui_look(TERM_FACE_PLAIN, tui_rgb(152, 104, 1)); }
+    if kind == TUI_HL_TYPE { return tui_look(TERM_FACE_PLAIN, tui_rgb(1, 132, 188)); }
+    if kind == TUI_HL_DEF { return tui_look(TERM_FACE_BOLD, tui_rgb(64, 120, 242)); }
+    if kind == TUI_HL_CALL { return tui_look(TERM_FACE_PLAIN, tui_rgb(64, 120, 242)); }
+    if kind == TUI_HL_STRING { return tui_look(TERM_FACE_PLAIN, tui_rgb(80, 161, 79)); }
+    if kind == TUI_HL_COMMENT { return tui_look(TERM_FACE_ITALIC, tui_rgb(140, 141, 147)); }
+    return tui_look(TERM_FACE_PLAIN, tui_rgb(56, 58, 66));
   }
-  // Coder Noir's syntax colors
-  if kind == TUI_HL_KEYWORD { tui_put(o, ";38;2;208;147;208"); }
-  else if kind == TUI_HL_DIRECTIVE { tui_put(o, ";1;38;2;230;193;92"); }   // bold: a number shares the color
-  else if kind == TUI_HL_TYPE { tui_put(o, ";38;2;116;207;209"); }
-  else if kind == TUI_HL_DEF { tui_put(o, ";1;38;2;127;178;232"); }
-  else if kind == TUI_HL_CALL { tui_put(o, ";38;2;127;178;232"); }
-  else if kind == TUI_HL_CONST || kind == TUI_HL_NUMBER { tui_put(o, ";38;2;230;193;92"); }
-  else if kind == TUI_HL_STRING { tui_put(o, ";38;2;159;208;138"); }
-  else if kind == TUI_HL_COMMENT { tui_put(o, ";3;38;2;129;129;129"); }
-  else if kind == TUI_HL_PUNCT { tui_put(o, ";38;2;201;201;201"); }
-  else { tui_put(o, ";38;2;237;237;237"); }
-  tui_put(o, bg); tui_put(o, "m");
+  if kind == TUI_HL_KEYWORD { return tui_look(TERM_FACE_PLAIN, tui_rgb(208, 147, 208)); }
+  if kind == TUI_HL_DIRECTIVE { return tui_look(TERM_FACE_BOLD, tui_rgb(230, 193, 92)); }   // bold: a number shares the color
+  if kind == TUI_HL_TYPE { return tui_look(TERM_FACE_PLAIN, tui_rgb(116, 207, 209)); }
+  if kind == TUI_HL_DEF { return tui_look(TERM_FACE_BOLD, tui_rgb(127, 178, 232)); }
+  if kind == TUI_HL_CALL { return tui_look(TERM_FACE_PLAIN, tui_rgb(127, 178, 232)); }
+  if kind == TUI_HL_CONST || kind == TUI_HL_NUMBER { return tui_look(TERM_FACE_PLAIN, tui_rgb(230, 193, 92)); }
+  if kind == TUI_HL_STRING { return tui_look(TERM_FACE_PLAIN, tui_rgb(159, 208, 138)); }
+  if kind == TUI_HL_COMMENT { return tui_look(TERM_FACE_ITALIC, tui_rgb(129, 129, 129)); }
+  if kind == TUI_HL_PUNCT { return tui_look(TERM_FACE_PLAIN, tui_rgb(201, 201, 201)); }
+  return tui_look(TERM_FACE_PLAIN, tui_rgb(237, 237, 237));
 }
 
 // The language a fence tag or a file name means.
@@ -803,12 +879,9 @@ tui_hl_all_caps :: (w: string) -> bool {
   return letters >= 2;
 }
 
-// One line of code into o.
-tui_hl_line :: (st: [] TuiHl, lang: int, line: string, o: [] TuiOut, bg: string) {
-  cur := -1;
-  i := 0;
-  for guard: 0..<line.count + 1 {
-    if i >= line.count { break; }
+// The token at line[i]: its kind and where it ends.
+TuiHlToken :: struct { kind: int; end: int; }
+tui_hl_token :: (st: [] TuiHl, lang: int, line: string, i: int) -> TuiHlToken {
     c := line[i];
     kind := TUI_HL_TEXT; e := i + 1;
     if lang == TUI_LANG_PLAIN { kind = TUI_HL_TEXT; e = line.count; }
@@ -864,11 +937,31 @@ tui_hl_line :: (st: [] TuiHl, lang: int, line: string, o: [] TuiOut, bg: string)
       kind = TUI_HL_PUNCT;
     }
     if e <= i { e = i + 1; }
-    if kind != cur { tui_hl_sgr(o, kind, bg); cur = kind; }
-    tui_put(o, cast(string) line[i..<e]);
-    i = e;
+    return TuiHlToken.{kind = kind, end = e};
+}
+
+// One line of code painted on a background, its runs of one kind together.
+tui_hl_paint :: (p: [] TuiPaint, st: [] TuiHl, lang: int, line: string, bg_in: Rgba) {
+  theme := p[0].o[0].theme;
+  bg := ifx theme == TUI_THEME_NONE then tui_own() else bg_in;
+  cur := -1; from := 0; i := 0;
+  for guard: 0..<line.count + 1 {
+    if i >= line.count { break; }
+    t := tui_hl_token(st, lang, line, i);
+    if t.kind != cur {
+      if cur >= 0 { tui_paint_text(p, tui_hl_look(theme, cur), bg, cast(string) line[from..<i]); }
+      cur = t.kind; from = i;
+    }
+    i = t.end;
   }
-  if cur < 0 { tui_hl_sgr(o, TUI_HL_TEXT, bg); }
+  if cur >= 0 { tui_paint_text(p, tui_hl_look(theme, cur), bg, cast(string) line[from..<line.count]); }
+}
+
+// One line of code into o.
+tui_hl_line :: (st: [] TuiHl, lang: int, line: string, o: [] TuiOut, bg: Rgba) {
+  p_b: [1] TuiPaint; p := p_b[..]; tui_paint(p, o, 0);
+  tui_hl_paint(p, st, lang, line, bg);
+  tui_paint_flush(p);
 }
 
 // ---------------------------------------------------------------- markdown
@@ -882,30 +975,22 @@ TuiMd :: struct { in_code: bool; fence: u8; lang: int; hl: TuiHl; }
 
 TUI_MD_BOLD :: 1; TUI_MD_ITALIC :: 2; TUI_MD_CODE :: 4; TUI_MD_STRIKE :: 8; TUI_MD_LINK :: 16; TUI_MD_DIM :: 32; TUI_MD_HEAD :: 64;
 
-// The style for a set of flags, after a reset.
-tui_md_sgr :: (o: [] TuiOut, f: int) {
-  tui_byte(o, 27); tui_put(o, "[0");
-  t := o[0].theme;
-  if t != TUI_THEME_DARK {
-    light := t == TUI_THEME_LIGHT;
-    if (f & TUI_MD_HEAD) != 0 { tui_put(o, ifx light then ";1;38;2;20;20;20" else ";1"); }
-    if (f & TUI_MD_BOLD) != 0 { tui_put(o, ";1"); }
-    if (f & TUI_MD_ITALIC) != 0 { tui_put(o, ";3"); }
-    if (f & TUI_MD_STRIKE) != 0 { tui_put(o, ";9"); }
-    if (f & TUI_MD_LINK) != 0 { tui_put(o, ifx light then ";4;38;2;64;120;242" else ";4"); }
-    if light && (f & TUI_MD_CODE) != 0 { tui_put(o, ";38;2;152;104;1"); }
-    else if light && (f & TUI_MD_DIM) != 0 { tui_put(o, ";38;2;95;95;95"); }
-    tui_put(o, "m"); return;
-  }
-  if (f & TUI_MD_HEAD) != 0 { tui_put(o, ";1;38;2;237;237;237"); }
-  if (f & TUI_MD_BOLD) != 0 { tui_put(o, ";1"); }
-  if (f & TUI_MD_ITALIC) != 0 { tui_put(o, ";3"); }
-  if (f & TUI_MD_STRIKE) != 0 { tui_put(o, ";9"); }
-  if (f & TUI_MD_LINK) != 0 { tui_put(o, ";4;38;2;127;178;232"); }
-  if (f & TUI_MD_CODE) != 0 { tui_put(o, ";38;2;116;207;209"); }
-  else if (f & TUI_MD_DIM) != 0 { tui_put(o, ";38;2;129;129;129"); }
-  tui_put(o, "m");
+// The look of a set of flags in a theme. A later colour wins over an
+// earlier one, as it did when these were style sequences: code's or dim's,
+// then a link's, then a heading's.
+tui_md_look :: (theme: int, f: int) -> TuiLook {
+  face := TERM_FACE_PLAIN; fg := tui_own();
+  light := theme == TUI_THEME_LIGHT; none := theme == TUI_THEME_NONE;
+  if (f & TUI_MD_HEAD) != 0 { face = face | TERM_FACE_BOLD; if light { fg = tui_rgb(20, 20, 20); } else if !none { fg = tui_rgb(237, 237, 237); } }
+  if (f & TUI_MD_BOLD) != 0 { face = face | TERM_FACE_BOLD; }
+  if (f & TUI_MD_ITALIC) != 0 { face = face | TERM_FACE_ITALIC; }
+  if (f & TUI_MD_STRIKE) != 0 { face = face | TERM_FACE_STRIKE; }
+  if (f & TUI_MD_LINK) != 0 { face = face | TERM_FACE_UNDERLINE; if light { fg = tui_rgb(64, 120, 242); } else if !none { fg = tui_rgb(127, 178, 232); } }
+  if (f & TUI_MD_CODE) != 0 { if light { fg = tui_rgb(152, 104, 1); } else if !none { fg = tui_rgb(116, 207, 209); } }
+  else if (f & TUI_MD_DIM) != 0 { if light { fg = tui_rgb(95, 95, 95); } else if !none { fg = tui_rgb(129, 129, 129); } }
+  return tui_look(face, fg);
 }
+tui_md_text :: (p: [] TuiPaint, f: int, text: string) { tui_paint_text(p, tui_md_look(p[0].o[0].theme, f), tui_own(), text); }
 
 // The flags a run of the parsed line draws with, over the line's base flags.
 tui_md_flags :: (r: MdRun, base: int) -> int {
@@ -918,37 +1003,51 @@ tui_md_flags :: (r: MdRun, base: int) -> int {
   return f;
 }
 
-// Styled runs (components/core/markdown.coax) written as style sequences
-// and text under the base flags: a style is set where it changes, and a
-// link's target follows it, faint, unless it is the link's own text or a
-// place on the page.
-tui_md_runs :: (o: [] TuiOut, doc: [] MdDoc, text: string, runs: [] MdRun, base: int) {
-  cur := base;
-  tui_md_sgr(o, base);
+// Styled runs (components/core/markdown.coax) painted under the base flags;
+// a link's target follows it, faint, unless it is the link's own text or a
+// place on the page. The runs' text must outlive the next flush.
+tui_md_runs_paint :: (p: [] TuiPaint, doc: [] MdDoc, text: string, runs: [] MdRun, base: int) {
   for k: 0..<runs.count {
     r := runs[k];
-    f := tui_md_flags(r, base);
-    if f != cur { tui_md_sgr(o, f); cur = f; }
     shown := cast(string) text[r.from..<r.to];
-    tui_put(o, shown);
+    tui_md_text(p, tui_md_flags(r, base), shown);
     if (r.marks & MD_LINK) != 0 {
-      tui_md_sgr(o, base); cur = base;
       url := md_link(doc, r);
       if url != shown && url.count > 0 && url[0] != '#' {
-        tui_md_sgr(o, base | TUI_MD_DIM); tui_put(o, " ("); tui_put(o, url); tui_put(o, ")"); tui_md_sgr(o, base);
+        tui_md_text(p, base | TUI_MD_DIM, " ("); tui_md_text(p, base | TUI_MD_DIM, url); tui_md_text(p, base | TUI_MD_DIM, ")");
       }
     }
   }
-  if cur != base { tui_md_sgr(o, base); }
-  tui_csi(o, "0m");
+}
+// The columns those runs take.
+tui_md_runs_width :: (doc: [] MdDoc, text: string, runs: [] MdRun) -> int {
+  w := 0;
+  for k: 0..<runs.count {
+    r := runs[k];
+    shown := cast(string) text[r.from..<r.to];
+    w += tui_text_width(shown);
+    if (r.marks & MD_LINK) != 0 {
+      url := md_link(doc, r);
+      if url != shown && url.count > 0 && url[0] != '#' { w += tui_text_width(url) + 3; }
+    }
+  }
+  return w;
+}
+// Styled runs written into o.
+tui_md_runs :: (o: [] TuiOut, doc: [] MdDoc, text: string, runs: [] MdRun, base: int) {
+  p_b: [1] TuiPaint; p := p_b[..]; tui_paint(p, o, 0);
+  tui_md_runs_paint(p, doc, text, runs, base);
+  tui_paint_flush(p);
 }
 
-// Inline spans of s under the base flags. The spans are read by the one
-// Markdown parser (md_inline_text: a finished line).
-tui_md_inline :: (o: [] TuiOut, s: string, base: int) {
+// Inline spans of s under the base flags, painted (and flushed: the spans
+// live in this call). The spans are read by the one Markdown parser
+// (md_inline_text: a finished line).
+tui_md_inline :: (p: [] TuiPaint, s: string, base: int) {
   doc_b: [1] MdDoc = ---; doc := doc_b[..];
   md_inline_text(doc, s);
-  tui_md_runs(o, doc, md_str(doc, 0, doc[0].n), doc[0].runs[0..<doc[0].nr], base);
+  tui_md_runs_paint(p, doc, md_str(doc, 0, doc[0].n), doc[0].runs[0..<doc[0].nr], base);
+  tui_paint_flush(p);
 }
 
 // Leading spaces of s.
@@ -956,6 +1055,12 @@ tui_md_indent :: (s: string) -> int { n := 0; while n < s.count && s[n] == ' ' {
 
 // Renders one line into o. False when the line shows nothing (a code fence).
 tui_md_line :: (st: [] TuiMd, line: string, o: [] TuiOut, cols: int) -> bool {
+  p_b: [1] TuiPaint; p := p_b[..]; tui_paint(p, o, 0);
+  shows := tui_md_line_paint(p, st, line, cols);
+  tui_paint_flush(p);
+  return shows;
+}
+tui_md_line_paint :: (p: [] TuiPaint, st: [] TuiMd, line: string, cols: int) -> bool {
   ind := tui_md_indent(line);
   rest := cast(string) line[ind..<line.count];
   fence := md_fence_char(rest);
@@ -970,56 +1075,54 @@ tui_md_line :: (st: [] TuiMd, line: string, o: [] TuiOut, cols: int) -> bool {
     }
     if fence == st[0].fence { st[0].in_code = false; return false; }
   }
+  plain := tui_md_look(p[0].o[0].theme, 0);
   if st[0].in_code {
-    if st[0].lang == TUI_LANG_PLAIN { tui_md_sgr(o, TUI_MD_CODE); tui_put(o, line); }
-    else { hl_b: [1] TuiHl; hl_b[0] = st[0].hl; tui_hl_line(hl_b[..], st[0].lang, line, o, ""); st[0].hl = hl_b[0]; }
-    tui_csi(o, "0m");
+    if st[0].lang == TUI_LANG_PLAIN { tui_md_text(p, TUI_MD_CODE, line); }
+    else { hl_b: [1] TuiHl; hl_b[0] = st[0].hl; tui_hl_paint(p, hl_b[..], st[0].lang, line, tui_own()); st[0].hl = hl_b[0]; }
     return true;
   }
   // What a line is, is the one Markdown parser's to say (components/core/markdown.coax).
   // headings
   h := md_heading(rest);
   if h > 0 {
-    tui_md_inline(o, cast(string) rest[h..<rest.count], TUI_MD_HEAD);
+    tui_md_inline(p, cast(string) rest[h..<rest.count], TUI_MD_HEAD);
     return true;
   }
   // a rule: three or more of - * _ and nothing else
   if md_rule(rest) {
-    tui_md_sgr(o, TUI_MD_DIM);
     w := ifx cols > 4 && cols < 200 then cols else 40;
-    for i: 0..<w { tui_put(o, "─"); }
-    tui_csi(o, "0m");
+    for i: 0..<w { tui_md_text(p, TUI_MD_DIM, "─"); }
     return true;
   }
   // a quote
   q := md_quote_at(rest);
   if q >= 0 {
-    for i: 0..<ind { tui_byte(o, ' '); }
-    tui_md_sgr(o, TUI_MD_DIM); tui_put(o, "│ ");
-    tui_md_inline(o, cast(string) rest[q..<rest.count], TUI_MD_DIM | TUI_MD_ITALIC);
+    tui_paint_spaces(p, plain, tui_own(), ind);
+    tui_md_text(p, TUI_MD_DIM, "│ ");
+    tui_md_inline(p, cast(string) rest[q..<rest.count], TUI_MD_DIM | TUI_MD_ITALIC);
     return true;
   }
   // list items: - * + become a bullet, or a box when the item is a task; numbers stay
   if md_bullet(rest) > 0 {
-    for i: 0..<ind { tui_byte(o, ' '); }
+    tui_paint_spaces(p, plain, tui_own(), ind);
     body := cast(string) rest[2..<rest.count];
     task := md_task(body);
     if task != MD_TASK_NONE {
-      tui_put(o, ifx task == MD_TASK_DONE then "☑ " else "☐ ");
-      tui_md_inline(o, cast(string) body[4..<body.count], 0);
+      tui_md_text(p, 0, ifx task == MD_TASK_DONE then "☑ " else "☐ ");
+      tui_md_inline(p, cast(string) body[4..<body.count], 0);
       return true;
     }
-    tui_put(o, ifx ind >= 2 then "◦ " else "• ");
-    tui_md_inline(o, body, 0);
+    tui_md_text(p, 0, ifx ind >= 2 then "◦ " else "• ");
+    tui_md_inline(p, body, 0);
     return true;
   }
   // table separator rows are drawn faint
   if rest.count >= 3 && rest[0] == '|' {
     al: [MD_TABLE_COLS] int;
-    if md_delim(rest, al[..]) > 0 { tui_md_sgr(o, TUI_MD_DIM); tui_put(o, line); tui_csi(o, "0m"); return true; }
+    if md_delim(rest, al[..]) > 0 { tui_md_text(p, TUI_MD_DIM, line); return true; }
   }
-  for i: 0..<ind { tui_byte(o, ' '); }
-  tui_md_inline(o, rest, 0);
+  tui_paint_spaces(p, plain, tui_own(), ind);
+  tui_md_inline(p, rest, 0);
   return true;
 }
 
@@ -1029,8 +1132,7 @@ tui_md_line :: (st: [] TuiMd, line: string, o: [] TuiOut, cols: int) -> bool {
 // caller holds the rows (tui_md_is_row) and passes them here together. It
 // draws a box with a bold header row, each column as wide as its widest
 // cell and aligned as the separator row says. A table wider than cols
-// becomes one block a row: the first cell in bold, then "header: value"
-// lines. Output lines are separated by newlines.
+// becomes one block a row: the first cell, then "header: value" lines. Output lines are separated by newlines.
 TUI_MD_TCOLS :: 12; TUI_MD_TROWS :: 64;
 
 tui_md_is_row :: (line: string) -> bool {
@@ -1041,13 +1143,15 @@ tui_md_is_row :: (line: string) -> bool {
 // The delimiter row: every cell dashes, with colons for alignment (md_delim).
 tui_md_is_sep :: (line: string) -> bool { al: [MD_TABLE_COLS] int; return md_delim(line, al[..]) > 0; }
 
-tui_md_dashes :: (o: [] TuiOut, glyph: string, w: int) { for i: 0..<w { tui_put(o, glyph); } }
+tui_md_dashes :: (p: [] TuiPaint, glyph: string, w: int) { for i: 0..<w { tui_md_text(p, TUI_MD_DIM, glyph); } }
 
-tui_md_edge :: (o: [] TuiOut, w: [] int, ncols: int, left: string, mid: string, right: string) {
-  tui_md_sgr(o, TUI_MD_DIM); tui_put(o, left);
-  for c: 0..<ncols { tui_md_dashes(o, "─", w[c] + 2); tui_put(o, ifx c + 1 < ncols then mid else right); }
-  tui_csi(o, "0m"); tui_byte(o, 10);
+tui_md_edge :: (p: [] TuiPaint, w: [] int, ncols: int, left: string, mid: string, right: string) {
+  tui_md_text(p, TUI_MD_DIM, left);
+  for c: 0..<ncols { tui_md_dashes(p, "─", w[c] + 2); tui_md_text(p, TUI_MD_DIM, ifx c + 1 < ncols then mid else right); }
+  tui_md_newline(p);
 }
+// Ends a row of a multi-row painting: what is painted goes out, then a newline.
+tui_md_newline :: (p: [] TuiPaint) { tui_paint_flush(p); tui_byte(p[0].o, 10); p[0].col = 0; p[0].base = 0; }
 
 tui_md_table :: (text: string, o: [] TuiOut, cols: int) {
   // the one Markdown parser reads the rows (GFM, as the chat reads them: a
@@ -1065,6 +1169,8 @@ tui_md_table :: (text: string, o: [] TuiOut, cols: int) {
     }
     return;
   }
+  p_b: [1] TuiPaint; p := p_b[..]; tui_paint(p, o, 0);
+  plain := tui_md_look(o[0].theme, 0);
   dcols := doc[0].blocks[0].cols; i0 := doc[0].blocks[0].item0;
   ncols := ifx dcols > TUI_MD_TCOLS then TUI_MD_TCOLS else dcols;
   nrows := md_table_rows(doc, 0);
@@ -1073,51 +1179,54 @@ tui_md_table :: (text: string, o: [] TuiOut, cols: int) {
   align: [12] int;
   for c: 0..<TUI_MD_TCOLS { align[c] = 0; }
   for c: 0..<ncols { a := doc[0].items[i0 + c].number; align[c] = ifx a == MA_RIGHT then 1 else ifx a == MA_CENTER then 2 else 0; }
-  // every cell rendered once, and its width
-  cb: [65536] u8; pos := 0;
-  cs: [768] int; ce: [768] int; cw: [768] int;
+  // every cell's width
+  cw: [768] int; has: [768] bool;
   for r: 0..<nrows {
     for c: 0..<TUI_MD_TCOLS {
       k := r * TUI_MD_TCOLS + c;
-      co_b: [1] TuiOut; co := co_b[..]; co[0].b = cb[pos..<cb.count]; co[0].theme = o[0].theme;
+      cw[k] = 0; has[k] = false;
       if c < ncols && doc[0].items[i0 + r * dcols + c].n > 0 {
         item := i0 + r * dcols + c;
-        tui_md_runs(co, doc, md_item_text(doc, item), md_item_runs(doc, item), ifx r == 0 then TUI_MD_BOLD else 0);
+        cw[k] = tui_md_runs_width(doc, md_item_text(doc, item), md_item_runs(doc, item));
+        has[k] = true;
       }
-      cs[k] = pos; ce[k] = pos + co[0].n; pos += co[0].n;
-      cw[k] = tui_text_width(cast(string) cb[cs[k]..<ce[k]]);
     }
   }
   w: [12] int;
   for c: 0..<ncols { w[c] = 1; for r: 0..<nrows { if cw[r * TUI_MD_TCOLS + c] > w[c] { w[c] = cw[r * TUI_MD_TCOLS + c]; } } }
   total := 1; for c: 0..<ncols { total += w[c] + 3; }
   if total <= cols {
-    tui_md_edge(o, w[..], ncols, "┌", "┬", "┐");
+    tui_md_edge(p, w[..], ncols, "┌", "┬", "┐");
     for r: 0..<nrows {
       for c: 0..<ncols {
         k := r * TUI_MD_TCOLS + c;
-        tui_md_sgr(o, TUI_MD_DIM); tui_put(o, ifx c == 0 then "│ " else " │ "); tui_csi(o, "0m");
+        tui_md_text(p, TUI_MD_DIM, ifx c == 0 then "│ " else " │ ");
         pad := w[c] - cw[k];
         before := ifx align[c] == 1 then pad else ifx align[c] == 2 then pad / 2 else 0;
-        for i: 0..<before { tui_byte(o, ' '); }
-        tui_put(o, cast(string) cb[cs[k]..<ce[k]]); tui_csi(o, "0m");
-        for i: 0..<pad - before { tui_byte(o, ' '); }
+        tui_paint_spaces(p, plain, tui_own(), before);
+        if has[k] { item := i0 + r * dcols + c; tui_md_runs_paint(p, doc, md_item_text(doc, item), md_item_runs(doc, item), ifx r == 0 then TUI_MD_BOLD else 0); }
+        tui_paint_spaces(p, plain, tui_own(), pad - before);
       }
-      tui_md_sgr(o, TUI_MD_DIM); tui_put(o, " │"); tui_csi(o, "0m"); tui_byte(o, 10);
-      if r == 0 && nrows > 1 { tui_md_edge(o, w[..], ncols, "├", "┼", "┤"); }
+      tui_md_text(p, TUI_MD_DIM, " │"); tui_md_newline(p);
+      if r == 0 && nrows > 1 { tui_md_edge(p, w[..], ncols, "├", "┼", "┤"); }
     }
-    tui_md_edge(o, w[..], ncols, "└", "┴", "┘");
+    tui_md_edge(p, w[..], ncols, "└", "┴", "┘");
     return;
   }
   // too wide: a block a row
   for r: 1..<nrows {
     k0 := r * TUI_MD_TCOLS;
-    tui_md_sgr(o, TUI_MD_BOLD); tui_put(o, cast(string) cb[cs[k0]..<ce[k0]]); tui_csi(o, "0m"); tui_byte(o, 10);
+    if has[k0] { tui_md_runs_paint(p, doc, md_item_text(doc, i0 + r * dcols), md_item_runs(doc, i0 + r * dcols), 0); }
+    tui_md_newline(p);
     for c: 1..<ncols {
       k := k0 + c;
-      if ce[k] == cs[k] { continue; }
-      tui_put(o, "  "); tui_md_sgr(o, TUI_MD_DIM); tui_put(o, cast(string) cb[cs[c]..<ce[c]]); tui_md_sgr(o, TUI_MD_DIM); tui_put(o, ": "); tui_csi(o, "0m");
-      tui_put(o, cast(string) cb[cs[k]..<ce[k]]); tui_csi(o, "0m"); tui_byte(o, 10);
+      if !has[k] { continue; }
+      tui_paint_spaces(p, plain, tui_own(), 2);
+      if has[c] { tui_md_runs_paint(p, doc, md_item_text(doc, i0 + c), md_item_runs(doc, i0 + c), TUI_MD_BOLD); }   // the header's label, as it reads in the header row
+      tui_md_text(p, TUI_MD_DIM, ": ");
+      item := i0 + r * dcols + c;
+      tui_md_runs_paint(p, doc, md_item_text(doc, item), md_item_runs(doc, item), 0);
+      tui_md_newline(p);
     }
   }
 }
@@ -1409,23 +1518,12 @@ tui_md_plain :: (st: [] TuiMd, line: string, out: [] u8) -> string {
 
 // The kinds a highlighted line shows, one letter per byte, for checks.
 tui_hl_kinds :: (st: [] TuiHl, lang: int, line: string, out: [] u8) -> string {
-  ob: [4096] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
-  tui_hl_line(st, lang, line, o, "");
-  t := tui_text(o); n := 0; i := 0; kind: u8 = '?';
   names := "tkdyfcCnsm,";      // text keyword directive type def call CONST (same color as numbers) number string comment punct
-  while i < t.count {
-    e := tui_esc_len(t, i);
-    if e > 0 {
-      sgr := cast(string) t[i..<i + e];
-      kind = 't';
-      for k: 0..<11 {
-        pb: [64] u8; p_b: [1] TuiOut; po := p_b[..]; po[0].b = pb[..];
-        tui_hl_sgr(po, k, "");
-        if tui_text(po) == sgr { kind = names[k]; }
-      }
-      i += e; continue;
-    }
-    out[n] = kind; n += 1; i += 1;
+  n := 0; i := 0;
+  while i < line.count {
+    t := tui_hl_token(st, lang, line, i);
+    for k: i..<t.end { out[n] = names[t.kind]; n += 1; }
+    i = t.end;
   }
   return cast(string) out[0..<n];
 }
@@ -1437,7 +1535,7 @@ tui_hl_kinds :: (st: [] TuiHl, lang: int, line: string, out: [] u8) -> string {
   k = tui_hl_kinds(st, TUI_LANG_COAX, "#load \"x\";", b[..]);
   #assert k == "dddddtsss,";
   k = tui_hl_kinds(st, TUI_LANG_COAX, "if MAX_N > 10 { f(x); }", b[..]);
-  #assert k == "kktnnnnntttnnt,tc,t,,t,";
+  #assert k == "kktCCCCCtttnnt,tc,t,,t,";
   k = tui_hl_kinds(st, TUI_LANG_COAX, "x := 1; // done", b[..]);
   #assert k == "tt,,tn,tmmmmmmm";
   k = tui_hl_kinds(st, TUI_LANG_COAX, "a /* open", b[..]);
@@ -1456,7 +1554,7 @@ tui_hl_kinds :: (st: [] TuiHl, lang: int, line: string, out: [] u8) -> string {
   tui_style(o, TUI_BRIGHT); #assert ob[0] == 27 && cast(string) ob[1..<o[0].n] == "[0;1;38;2;237;237;237m";
   o[0].n = 0; o[0].theme = TUI_THEME_LIGHT; tui_style(o, TUI_BRIGHT); #assert cast(string) ob[1..<o[0].n] == "[0;1;38;2;20;20;20m";
   o[0].n = 0; o[0].theme = TUI_THEME_NONE; tui_style(o, TUI_DIM); #assert cast(string) ob[1..<o[0].n] == "[0m";
-  o[0].n = 0; tui_hl_sgr(o, TUI_HL_STRING, ";48;2;1;2;3"); #assert cast(string) ob[1..<o[0].n] == "[0m";
+  hl: [1] TuiHl; o[0].n = 0; tui_hl_line(hl[..], TUI_LANG_COAX, "\"s\"", o, tui_rgb(1, 2, 3)); #assert tui_text(o) == "\"s\"";   // none: no colours, no background, so no style at all
   #assert tui_theme_of("light") == TUI_THEME_LIGHT && tui_theme_of("blue") == -1;
 }
 

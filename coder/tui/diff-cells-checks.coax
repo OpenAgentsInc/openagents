@@ -1,0 +1,38 @@
+// A diff's rows as a terminal shows them, cell by cell, pinned (GitHub
+// #13153): the line numbers, the signs and the highlighted code on the added
+// and removed rows' backgrounds, out to the screen's edge, in each theme
+// (coax/lib/tui/tui-cells.coax reads the bytes back into cells).
+//   coax/bin/coax test coder/tui/diff-cells-checks.coax
+
+#load "coder.coax";
+#load "../../coax/lib/tui/tui-cells.coax";
+
+DC_PINNED :: 622458528013029240;   // the cells as diff.coax wrote its own style sequences (before 2026-11-11)
+
+dc_all :: (out: [] u8) -> int {
+  n := 0;
+  rows := [5] string.["main :: () -> int { return 0x2a; }  // the answer", "  s := \"x\"; f(1.5);", "", "\tdone();", "日本 wide"];
+  for th: 0..<3 {
+    a: [1] App; logs: [1] CsLog; ob: [65536] u8;
+    a[0].log = logs[..]; a[0].plain = false; a[0].cols = 72;
+    a[0].o[0].b = ob[..]; a[0].o[0].theme = th;
+    hl_b: [1] TuiHl;
+    for row, i: rows {
+      for sign: [3] u8.['+', '-', ' '] {
+        a[0].o[0].n = 0;
+        df_row(a[..], i * 7 + 3, sign, row, TUI_LANG_COAX, hl_b[..]);
+        n = tc_cells(tui_text(a[0].o[..]), out, n);
+      }
+    }
+  }
+  return n;
+}
+
+// The hash, for a C driver that prints it (pinning DC_PINNED).
+dc_hash :: () -> int #export_c #effects(all) { out: [131072] u8; n := dc_all(out[..]); return tc_fnv(cast(string) out[0..<n]); }
+
+#test "a diff's rows show the same cells in every theme" #steps 400000000 {
+  out: [131072] u8;
+  n := dc_all(out[..]);
+  #assert n < out.count && tc_fnv(cast(string) out[0..<n]) == DC_PINNED;
+}

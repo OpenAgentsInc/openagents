@@ -1,0 +1,133 @@
+// What Coder's terminal shows, cell by cell (GitHub #13153): a corpus of
+// Markdown, code, tables and the ladder's styles, written by tui.coax in each
+// theme, read back by a small terminal model (style sequences applied: bold,
+// dim, italic, underline, strike, 24-bit colours) into cells, and hashed. The
+// hash is pinned: the bytes may change (who writes the style sequences, in
+// which order), what a terminal shows may not. A space or a tab shows only
+// its underline, strike and background; blanks at a row's end show nothing.
+// The checks are tui-cells-checks.coax (and coder/tui/diff-cells-checks.coax
+// for a diff's rows).
+
+#load "tui.coax";
+
+TC_OUT :: 262144;
+
+// The model's pen.
+TcPen :: struct { bold: bool; dim: bool; italic: bool; under: bool; strike: bool; fg: int; bg: int; }
+
+tc_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+tc_int :: (out: [] u8, n: int, v: int) -> int { b: [24] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = b[..]; tui_int(o, v); return tc_put(out, n, tui_text(o)); }
+
+// A style sequence's parameters applied to the pen.
+tc_sgr :: (p: [] TcPen, params: string) {
+  vals: [32] int; nv := 0; v := -1; i := 0;
+  while i <= params.count {
+    if i == params.count || params[i] == ';' { if nv < 32 { vals[nv] = ifx v < 0 then 0 else v; nv += 1; } v = -1; }
+    else if params[i] >= '0' && params[i] <= '9' { v = (ifx v < 0 then 0 else v) * 10 + cast(int) (params[i] - '0'); }
+    i += 1;
+  }
+  k := 0;
+  while k < nv {
+    c := vals[k];
+    if c == 0 { p[0] = TcPen.{fg = -1, bg = -1}; }
+    else if c == 1 { p[0].bold = true; } else if c == 2 { p[0].dim = true; } else if c == 3 { p[0].italic = true; }
+    else if c == 4 { p[0].under = true; } else if c == 9 { p[0].strike = true; }
+    else if c == 22 { p[0].bold = false; p[0].dim = false; } else if c == 23 { p[0].italic = false; } else if c == 24 { p[0].under = false; } else if c == 29 { p[0].strike = false; }
+    else if c == 39 { p[0].fg = -1; } else if c == 49 { p[0].bg = -1; }
+    else if (c == 38 || c == 48) && k + 4 < nv && vals[k + 1] == 2 {
+      rgb := (vals[k + 2] << 16) | (vals[k + 3] << 8) | vals[k + 4];
+      if c == 38 { p[0].fg = rgb; } else { p[0].bg = rgb; }
+      k += 4;
+    }
+    k += 1;
+  }
+}
+
+// The cells a terminal shows for bytes, one row a line: "glyph attrs fg bg|" a cell.
+tc_cells :: (bytes: string, out: [] u8, n0: int) -> int {
+  n := n0;
+  pen_b: [1] TcPen; pen := pen_b[..]; pen[0] = TcPen.{fg = -1, bg = -1};
+  row: [4096] u8; rn := 0; keep := 0;           // keep: the row's length through its last cell that shows
+  i := 0;
+  while i <= bytes.count {
+    if i == bytes.count || bytes[i] == 10 {
+      n = tc_put(out, n, cast(string) row[0..<keep]); n = tc_put(out, n, "\n");
+      rn = 0; keep = 0; i += 1; continue;
+    }
+    e := tui_esc_len(bytes, i);
+    if e > 0 {
+      if bytes[i + e - 1] == 'm' { tc_sgr(pen, cast(string) bytes[i + 2..<i + e - 1]); }
+      i += e; continue;
+    }
+    if bytes[i] == 13 { i += 1; continue; }
+    r := tui_rune(bytes, i);
+    glyph := cast(string) bytes[i..<i + r.len];
+    space := glyph == " " || glyph == "\t";     // a tab shows no glyph either
+    q := pen[0];
+    shows := !space || q.under || q.strike || q.bg >= 0;
+    cell: [96] u8; cn := tc_put(cell[..], 0, glyph); cn = tc_put(cell[..], cn, " ");
+    if !space { if q.bold { cn = tc_put(cell[..], cn, "b"); } if q.dim { cn = tc_put(cell[..], cn, "d"); } if q.italic { cn = tc_put(cell[..], cn, "i"); } }
+    if q.under { cn = tc_put(cell[..], cn, "u"); } if q.strike { cn = tc_put(cell[..], cn, "s"); }
+    cn = tc_put(cell[..], cn, " "); cn = tc_int(cell[..], cn, ifx space then -1 else q.fg);
+    cn = tc_put(cell[..], cn, " "); cn = tc_int(cell[..], cn, q.bg); cn = tc_put(cell[..], cn, "|");
+    rn = tc_put(row[..], rn, cast(string) cell[0..<cn]);
+    if shows { keep = rn; }
+    i += r.len;
+  }
+  return n;
+}
+
+// A 40-bit hash of the cells, with their byte count in its low digits.
+tc_fnv :: (s: string) -> int {
+  h := 7;
+  for c: s { h = (h * 1000003 + cast(int) c) & 0xFFFFFFFFFF; }
+  return h * 1000000 + s.count % 1000000;
+}
+
+// The corpus: a reply streamed a line at a time, tables, highlighted code
+// with and without a diff row's background, and the ladder.
+TC_REPLY :: "# Heading with `code` and **bold**\n## Second *level*\nPlain text, **bold**, *italic*, _under_, ~~gone~~, `code`, ***both***, **bold `code` inside**.\nA [link](https://example.com/x) and [itself](https://example.com/x) and [anchor](#here); escaped \\*star\\* and snake_case_name.\n- a bullet with **bold**\n  * nested bullet\n- [ ] an open task\n- [x] a done task with `code`\n1. first\n2. second\n> a quote with *more* and `code`\n---\n***\n```coax\n// a comment\nmain :: () -> int { x := 1 + 0x2a; s := \"str\"; #load \"f.coax\"; return MAX_N; }\nApp :: struct { a: [] u8; } /* open\nstill */ done(1.5);\n```\n```py\nx = foo(2)  # note\ndef f(a): return 'q'\n```\n~~~c\nint main(void) { return printf(\"%d\", 3); }\n~~~\n```\nplain\tcode with a tab\n```\n| not | a | table\nwide 日本語 😀 and é and \ttab\n   indented text\n";
+TC_TABLE :: "| Where | Files | **What** |\n| --- | ---: | :-: |\n| coax/web | 55 | goldens `x` |\n| verse | 2 | `a\\|b` [l](u) |\n";
+
+// Every case in one theme into out.
+tc_theme :: (theme: int, out: [] u8, n0: int) -> int {
+  n := n0;
+  ob: [65536] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..]; o[0].theme = theme;
+  // the reply, line by line
+  st_b: [1] TuiMd; st := st_b[..];
+  text := TC_REPLY; at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    o[0].n = 0;
+    if tui_md_line(st, cast(string) text[at..<e], o, 40) { n = tc_cells(tui_text(o), out, n); } else { n = tc_put(out, n, "<skip>\n"); }
+    at = e + 1;
+  }
+  // a table that fits, and one that does not
+  o[0].n = 0; tui_md_table(TC_TABLE, o, 80); n = tc_cells(tui_text(o), out, n);
+  o[0].n = 0; tui_md_table(TC_TABLE, o, 20); n = tc_cells(tui_text(o), out, n);
+  o[0].n = 0; tui_md_table("| a | b |\n| c | d |\n", o, 80); n = tc_cells(tui_text(o), out, n);
+  // highlighted lines on a diff row's backgrounds
+  bgs := [3] string.["", ";48;2;47;59;42", ";48;2;252;224;226"];
+  langs := [4] int.[TUI_LANG_COAX, TUI_LANG_C, TUI_LANG_HASH, TUI_LANG_PLAIN];
+  lines := [3] string.["foo :: (a: int) -> string { return \"x\"; } // done", "if (n > 10) { f(0x1f); } /* c", "x = 1  # note 'q'"];
+  for bg: bgs { for lang: langs { for line: lines {
+    hl_b: [1] TuiHl; o[0].n = 0; tc_hl(hl_b[..], lang, line, o, bg); n = tc_cells(tui_text(o), out, n);
+  } } }
+  // the ladder, around text
+  for s: 0..<7 { o[0].n = 0; tui_style(o, s); tui_put(o, "ladder "); tui_style(o, TUI_PLAIN); tui_put(o, "after"); n = tc_cells(tui_text(o), out, n); }
+  return n;
+}
+
+// A highlighted line on a background (a diff row's), named as the style
+// sequence's parameters it was once written with.
+tc_hl :: (st: [] TuiHl, lang: int, line: string, o: [] TuiOut, bg: string) {
+  c := ifx bg == ";48;2;47;59;42" then tui_rgb(47, 59, 42) else ifx bg == ";48;2;252;224;226" then tui_rgb(252, 224, 226) else tui_own();
+  tui_hl_line(st, lang, line, o, c);
+}
+
+tc_all :: (out: [] u8) -> int {
+  n := 0;
+  for th: 0..<3 { n = tc_put(out, n, "== theme "); n = tc_int(out, n, th); n = tc_put(out, n, "\n"); n = tc_theme(th, out, n); }
+  return n;
+}
+

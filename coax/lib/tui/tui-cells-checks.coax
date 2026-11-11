@@ -1,0 +1,25 @@
+// What Coder's terminal shows, cell by cell, pinned (tui-cells.coax has the
+// terminal model and the corpus; GitHub #13153).
+//   coax/bin/coax test coax/lib/tui/tui-cells-checks.coax
+//   coax/web/tool.sh coax/lib/tui/tui-cells-checks.coax      prints every case's cells
+
+#import "Basic";
+#load "../sys/tool.coax";
+#load "tui-cells.coax";
+
+TC_PINNED :: 814180973060086122;   // the cells as tui.coax wrote its own style sequences (before 2026-11-11)
+
+tool_main :: () -> int #export_c #effects(all) {
+  out: [TC_OUT] u8;
+  n := tc_all(out[..]);
+  s := cast(string) out[0..<n];
+  print("%", s);
+  print("cells: % bytes, fnv %\n", n, tc_fnv(s));
+  return 0;
+}
+
+#test "Coder's terminal shows the same cells for its Markdown, code, tables and ladder in every theme" #steps 400000000 {
+  out: [TC_OUT] u8;
+  n := tc_all(out[..]);
+  #assert n < TC_OUT && tc_fnv(cast(string) out[0..<n]) == TC_PINNED;
+}

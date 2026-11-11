@@ -2839,7 +2839,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cd_claude_close(a); cd_codex_close(a); cd_cursor_close(a); cd_micro_close(a); afm_stop(a[0].afm[..]);
   tui_live_erase(a[0].o[..], a[0].lv[..]);
   tui_csi(a[0].o[..], TUI_KEYS_OFF);
-  tui_csi(a[0].o[..], "?2004l"); tui_csi(a[0].o[..], "?25h"); tui_csi(a[0].o[..], "0m");
+  tui_csi(a[0].o[..], "?2004l"); tui_csi(a[0].o[..], "?25h"); tui_style(a[0].o[..], TUI_PLAIN);
   cd_flush(a);
   x = cxterm_keys(0);
   return 0;

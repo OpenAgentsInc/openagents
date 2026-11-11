@@ -9,8 +9,11 @@
 
 #load "skin.coax";
 
-// A terminal's faces: what a run is set in.
-TERM_FACE_PLAIN :: 0; TERM_FACE_BOLD :: 1; TERM_FACE_CODE :: 2; TERM_FACE_ITALIC :: 3; TERM_FACE_DIM :: 4;
+// A terminal's faces: what a run is set in. A face is a set of these bits
+// (bold and italic, a link's underline): the terminal backend writes each
+// bit's attribute. CODE has none of its own; its colour sets code apart.
+TERM_FACE_PLAIN :: 0; TERM_FACE_BOLD :: 1; TERM_FACE_CODE :: 2; TERM_FACE_ITALIC :: 4; TERM_FACE_DIM :: 8;
+TERM_FACE_UNDERLINE :: 16; TERM_FACE_STRIKE :: 32;
 
 terminal_skin :: () -> UiSkin {
   none := rgba(0, 0, 0, 0);
