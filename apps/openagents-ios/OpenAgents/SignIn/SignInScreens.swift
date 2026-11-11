@@ -24,6 +24,7 @@ enum SignInRouter {
 final class SignInViewController: WalletForm {
     private let npub = Look.label("", .monospacedSystemFont(ofSize: 13, weight: .regular), Hud.light)
     private let note = Look.label("", .preferredFont(forTextStyle: .footnote), Hud.mid)
+    private lazy var account = AccountLogin(form: self)
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -49,13 +50,14 @@ final class SignInViewController: WalletForm {
         let paste = HudButton("Paste a link", "signin.paste")
         paste.addAction(UIAction { [weak self] _ in self?.take(UIPasteboard.general.string ?? "") }, for: .touchUpInside)
         let keyNote = Look.label("This key is made on this phone and stays in its Keychain. It signs only after you approve.", .preferredFont(forTextStyle: .footnote), Hud.mid)
-        let ways = HudPanel([about, scan, paste, note])
+        let ways = HudPanel([HudHeading("Log in on a computer"), about, scan, paste, note])
         ways.column.setCustomSpacing(18, after: about)
         let key = HudPanel([HudHeading("Your key"), npub, copy, keyNote])
-        let stack = Look.stack([head, ways, key], spacing: 20)
+        let stack = Look.stack([head, account.panel, ways, key], spacing: 20)
         stack.setCustomSpacing(28, after: head)
         column.addArrangedSubview(stack)
         do { npub.text = try PhoneSignIn.npub() } catch { npub.text = error.localizedDescription }
+        account.show()
     }
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -109,6 +111,89 @@ final class ApproveSignInViewController: WalletForm {
             UIAccessibility.post(notification: .announcement, argument: said)
             self.approve.isHidden = true
             self.cancel.setTitle("Done", for: .normal); self.cancel.accessibilityIdentifier = "signin.done"; self.cancel.isEnabled = true
+        }
+    }
+}
+
+/// Logging this app in to your openagents.com account (AppAuth): an email code, or this phone's
+/// key. Logged in, it says so and offers Log out.
+@MainActor
+final class AccountLogin {
+    private weak var form: WalletForm?
+    private let auth: AppAuth
+    private let state = Look.label("", .preferredFont(forTextStyle: .body), Hud.light)
+    private let message = Look.label("", .preferredFont(forTextStyle: .footnote), Hud.mid)
+    private let email = Look.field("Email address", "login.email")
+    private let code = Look.field("6-digit code", "login.code")
+    private let send = HudButton("Send code", "login.send", main: true)
+    private let verify = HudButton("Log in", "login.verify", main: true)
+    private let again = HudButton("Send a new code", "login.again")
+    private let key = HudButton("Log in with this phone's key", "login.key")
+    private let logout = HudButton("Log out", "login.logout")
+    private var pending: String?
+    lazy var panel = HudPanel([HudHeading("Your account"), state, email, send, code, verify, again, key, logout, message])
+
+    init(form: WalletForm, auth: AppAuth = .shared) {
+        self.form = form; self.auth = auth
+        state.accessibilityIdentifier = "login.state"; message.accessibilityIdentifier = "login.message"
+        email.keyboardType = .emailAddress; email.textContentType = .emailAddress
+        email.autocapitalizationType = .none; email.autocorrectionType = .no
+        code.keyboardType = .numberPad; code.textContentType = .oneTimeCode
+        send.addAction(UIAction { [weak self] _ in self?.start() }, for: .touchUpInside)
+        again.addAction(UIAction { [weak self] _ in self?.start() }, for: .touchUpInside)
+        verify.addAction(UIAction { [weak self] _ in self?.check() }, for: .touchUpInside)
+        key.addAction(UIAction { [weak self] _ in self?.withKey() }, for: .touchUpInside)
+        logout.addAction(UIAction { [weak self] _ in self?.end() }, for: .touchUpInside)
+    }
+
+    /// The panel for the current state: logged in, waiting for a code, or the ways in.
+    func show() {
+        let inNow = auth.loggedIn
+        state.text = inNow ? "Logged in." : (pending == nil ? "Log in with your email or this phone's key." : "We sent a code. It works for 10 minutes and 5 tries.")
+        email.isHidden = inNow || pending != nil
+        send.isHidden = inNow || pending != nil
+        code.isHidden = inNow || pending == nil
+        verify.isHidden = inNow || pending == nil
+        again.isHidden = inNow || pending == nil
+        key.isHidden = inNow
+        logout.isHidden = !inNow
+    }
+    private func say(_ error: Error) {
+        message.text = error.localizedDescription
+        UIAccessibility.post(notification: .announcement, argument: message.text)
+    }
+
+    private func start() {
+        let address = (email.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else { message.text = "Type your email address."; return }
+        form?.busy(pending == nil ? send : again) { [weak self] in
+            guard let self else { return }
+            do { self.pending = try await self.auth.emailStart(address); self.message.text = ""; self.code.text = "" } catch { self.say(error) }
+            self.show()
+        }
+    }
+    private func check() {
+        guard let pending else { return }
+        let typed = (code.text ?? "").filter { $0.isNumber }
+        guard typed.count == 6 else { message.text = "Type the 6 digits from the email."; return }
+        form?.busy(verify) { [weak self] in
+            guard let self else { return }
+            do { try await self.auth.emailVerify(code: typed, pending: pending); self.pending = nil; self.message.text = "" } catch { self.say(error) }
+            self.show()
+        }
+    }
+    private func withKey() {
+        form?.busy(key) { [weak self] in
+            guard let self else { return }
+            do { try await self.auth.keyLogin(); self.message.text = "" } catch { self.say(error) }
+            self.show()
+        }
+    }
+    private func end() {
+        form?.busy(logout) { [weak self] in
+            guard let self else { return }
+            await self.auth.logout(); self.pending = nil; self.message.text = ""
+            self.show()
         }
     }
 }

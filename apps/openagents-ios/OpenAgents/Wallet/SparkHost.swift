@@ -329,7 +329,7 @@ actor SparkHost {
         case .bolt12Offer, .bolt12Invoice, .bolt12InvoiceRequest:
             return .unsupported("This is a BOLT12 offer. Ask for a Lightning invoice or address instead.")
         case .lnurlAuth:
-            return .unsupported("This is a sign-in code, not a payment.")
+            return .unsupported("This is a login code, not a payment.")
         case .silentPaymentAddress:
             return .unsupported("Silent payment addresses aren't supported yet. Ask for a regular bitcoin address.")
         case .url:

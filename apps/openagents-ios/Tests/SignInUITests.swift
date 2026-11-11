@@ -18,6 +18,8 @@ final class SignInUITests: XCTestCase {
         var seen: [(path: String, auth: String, body: Data)] = []
         var status = 200
         var answer = "{\"ok\":true,\"kind\":\"signin\"}"
+        /// Answers by path, first in first out, before status and answer (the app's account login).
+        var byPath: [String: [(Int, String)]] = [:]
         let lock = NSLock()
         init() throws {
             let params = NWParameters.tcp
@@ -45,7 +47,10 @@ final class SignInUITests: XCTestCase {
                         let body = got[end.upperBound...]
                         if body.count >= length {
                             let path = lines.first?.split(separator: " ").dropFirst().first.map(String.init) ?? ""
-                            self.lock.lock(); self.seen.append((path, header("Authorization"), Data(body.prefix(length)))); let s = self.status, a = self.answer; self.lock.unlock()
+                            self.lock.lock(); self.seen.append((path, header("Authorization"), Data(body.prefix(length))))
+                            var s = self.status, a = self.answer
+                            if var q = self.byPath[path], !q.isEmpty { (s, a) = q.removeFirst(); self.byPath[path] = q }
+                            self.lock.unlock()
                             let out = "HTTP/1.1 \(s) X\r\nContent-Type: application/json\r\nContent-Length: \(a.utf8.count)\r\nConnection: close\r\n\r\n\(a)"
                             c.send(content: Data(out.utf8), completion: .contentProcessed { _ in c.cancel() })
                             return
@@ -162,6 +167,101 @@ final class SignInUITests: XCTestCase {
         XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 30))
         XCTAssertFalse(app.staticTexts["signin.question"].waitForExistence(timeout: 3))
         XCTAssertEqual(fake.seen.count, 3)
+    }
+
+    private func launchLogin(_ origin: String, code: String? = nil) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-OAGridSeen", "NO", "-OANativeHome", "YES", "-OAAPIOrigin", origin]
+        if let code { app.launchArguments += ["-OASignInOpen", code] }
+        app.launch()
+        return app
+    }
+    /// Opens the Log in screen, logged out.
+    private func openLogin(_ app: XCUIApplication, _ fake: Fake) {
+        XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 30))
+        app.buttons["signin.open"].tap()
+        XCTAssertTrue(app.staticTexts["login.state"].waitForExistence(timeout: 10))
+        if app.buttons["login.logout"].exists && app.buttons["login.logout"].isHittable {
+            fake.byPath["/api/auth/logout", default: []].append((200, "{\"state\":\"logged-out\"}"))
+            app.buttons["login.logout"].tap()
+            XCTAssertTrue(wait(10) { app.buttons["login.send"].exists && app.buttons["login.send"].isHittable })
+        }
+    }
+    private func body(_ d: Data) -> String { String(decoding: d, as: UTF8.self) }
+
+    /// The app's own login: an email code (a wrong one says how many tries are left, in the
+    /// server's words), then Log out, then this phone's key over a signed challenge.
+    func testAccountLogin() throws {
+        let fake = try Fake()
+        let origin = "http://127.0.0.1:\(fake.port)"
+        let app = launchLogin(origin)
+        openLogin(app, fake)
+        let before = fake.seen.count
+        XCTAssertEqual(app.staticTexts["login.state"].label, "Log in with your email or this phone's key.")
+        shot(app, "Log in")
+
+        fake.byPath["/api/auth/email/start"] = [(200, "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5,\"pending\":\"\(secret)\"}")]
+        app.textFields["login.email"].tap()
+        app.textFields["login.email"].typeText("ada@example.com")
+        app.buttons["login.send"].tap()
+        XCTAssertTrue(app.textFields["login.code"].waitForExistence(timeout: 20))
+        XCTAssertTrue(wait(10) { app.staticTexts["login.state"].label == "We sent a code. It works for 10 minutes and 5 tries." })
+        XCTAssertEqual(fake.seen[before].path, "/api/auth/email/start")
+        XCTAssertEqual(body(fake.seen[before].body), "{\"client\":\"app\",\"email\":\"ada@example.com\"}")
+
+        fake.byPath["/api/auth/email/verify"] = [(401, "{\"error\":\"That code isn't right. 4 tries left.\"}"),
+            (200, "{\"state\":\"logged-in\",\"account\":\"acct_aaaaaaaaaaaaaaaaaaaaaaaaaa\",\"new\":true,\"access_token\":\"oa_at_X\",\"refresh_token\":\"oa_rt_Y\",\"expires_in\":3600}")]
+        app.textFields["login.code"].tap()
+        app.textFields["login.code"].typeText("000000")
+        app.buttons["login.verify"].tap()
+        XCTAssertTrue(wait(20) { app.staticTexts["login.message"].label == "That code isn't right. 4 tries left." }, app.staticTexts["login.message"].label)
+        shot(app, "Wrong code")
+        app.textFields["login.code"].tap()
+        app.textFields["login.code"].typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6) + "482913")
+        app.buttons["login.verify"].tap()
+        XCTAssertTrue(wait(20) { app.staticTexts["login.state"].label == "Logged in." }, app.staticTexts["login.state"].label)
+        shot(app, "Logged in")
+        let verify = fake.seen.last { $0.path == "/api/auth/email/verify" }
+        XCTAssertEqual(body(verify?.body ?? Data()), "{\"code\":\"482913\",\"pending\":\"\(secret)\"}")
+
+        fake.byPath["/api/auth/logout"] = [(200, "{\"state\":\"logged-out\"}")]
+        app.buttons["login.logout"].tap()
+        XCTAssertTrue(wait(20) { app.buttons["login.key"].exists && app.buttons["login.key"].isHittable })
+        XCTAssertEqual(fake.seen.last { $0.path == "/api/auth/logout" }?.auth, "Bearer oa_at_X")
+
+        let challenge = String(repeating: "b", count: 64)
+        fake.byPath["/api/auth/nostr/challenge"] = [(200, "{\"challenge\":\"\(challenge)\",\"expires_in\":300}")]
+        fake.byPath["/api/auth/nostr"] = [(200, "{\"state\":\"logged-in\",\"account\":\"acct_bbbbbbbbbbbbbbbbbbbbbbbbbb\",\"new\":false,\"access_token\":\"oa_at_K\",\"refresh_token\":\"oa_rt_K\",\"expires_in\":3600}")]
+        app.buttons["login.key"].tap()
+        XCTAssertTrue(wait(20) { app.staticTexts["login.state"].label == "Logged in." }, app.staticTexts["login.state"].label)
+        XCTAssertEqual(body(fake.seen.last { $0.path == "/api/auth/nostr/challenge" }?.body ?? Data()), "{\"client\":\"app\"}")
+        guard let signed = fake.seen.last(where: { $0.path == "/api/auth/nostr" }) else { return XCTFail("no key login") }
+        XCTAssertEqual(body(signed.body), "{\"challenge\":\"\(challenge)\",\"label\":\"app\"}")
+        _ = checkSigned(signed.auth, url: "\(origin)/api/auth/nostr", body: signed.body)
+        fake.byPath["/api/auth/logout"] = [(200, "{\"state\":\"logged-out\"}")]
+        app.buttons["login.logout"].tap()
+        XCTAssertTrue(wait(20) { app.buttons["login.send"].exists && app.buttons["login.send"].isHittable })
+    }
+
+    /// The new login page's QR (/login#c=) is approved at /api/auth/phone/approve with only the
+    /// challenge; a refusal shows the server's words.
+    func testApproveNewLoginPage() throws {
+        let fake = try Fake()
+        let origin = "http://127.0.0.1:\(fake.port)"
+        fake.byPath["/api/auth/phone/approve"] = [(200, "{\"state\":\"approved\"}"), (410, "{\"error\":\"That code has ended. Show a new one on the page.\"}")]
+        var app = launchLogin(origin, code: "\(origin)/login#c=\(secret)")
+        XCTAssertTrue(app.staticTexts["signin.question"].waitForExistence(timeout: 30))
+        app.buttons["signin.approve"].tap()
+        XCTAssertTrue(wait(20) { app.staticTexts["signin.result"].label == "Logged in. Look at your computer." }, app.staticTexts["signin.result"].label)
+        guard let first = fake.seen.first else { return XCTFail("no request") }
+        XCTAssertEqual(first.path, "/api/auth/phone/approve")
+        XCTAssertEqual(body(first.body), "{\"challenge\":\"\(secret)\"}")
+        _ = checkSigned(first.auth, url: "\(origin)/api/auth/phone/approve", body: first.body)
+        app.terminate()
+        app = launchLogin(origin, code: "\(origin)/login#c=\(secret)")
+        XCTAssertTrue(app.buttons["signin.approve"].waitForExistence(timeout: 30))
+        app.buttons["signin.approve"].tap()
+        XCTAssertTrue(wait(20) { app.staticTexts["signin.result"].label == "That code has ended. Show a new one on the page." }, app.staticTexts["signin.result"].label)
     }
 
     /// The key screen in the lander's HUD: its buttons keep their words for

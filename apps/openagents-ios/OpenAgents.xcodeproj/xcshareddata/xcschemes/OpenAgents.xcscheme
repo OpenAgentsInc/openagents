@@ -44,6 +44,17 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "FAB980B9658225CB7383114B"
+               BuildableName = "OpenAgentsTests.xctest"
+               BlueprintName = "OpenAgentsTests"
+               ReferencedContainer = "container:OpenAgents.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "D6306D13CC52B0771CBD18E6"
                BuildableName = "OpenAgentsUITests.xctest"
                BlueprintName = "OpenAgentsUITests"

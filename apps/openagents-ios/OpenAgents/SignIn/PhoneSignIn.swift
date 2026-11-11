@@ -56,12 +56,38 @@ struct PhoneSignIn {
         } ?? ""
     }
 
+    /// A code from the new login page (openagents.com/login#c=..., coax/web/api/auth.c) is approved
+    /// at /api/auth/phone/approve with {"challenge"}; the older /signin page's at /api/auth/approve
+    /// (until that page is removed, #13207). The Coax parser has already chosen the kind; this
+    /// reads only the path of the code it accepted.
+    var newLogin: Bool {
+        guard kind == .signin, let s = String(bytes: text, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let url = URL(string: s) else { return false }
+        return url.path == "/login" || url.path == "/login/"
+    }
+
     /// The signed request: Coax writes the URL, the body, the id's serialization and the event.
     func request(now: Date = Date()) throws -> URLRequest {
         let code = code
-        guard let url = withText({ t in PhoneSignIn.write { verse_signin_url(t, code, $0) } }),
-              let body = withText({ t in PhoneSignIn.write { verse_signin_body(t, code, $0) } }),
-              let target = URL(string: url) else { throw NostrKey.Failure.signing }
+        guard var url = withText({ t in PhoneSignIn.write { verse_signin_url(t, code, $0) } }),
+              var body = withText({ t in PhoneSignIn.write { verse_signin_body(t, code, $0) } }) else { throw NostrKey.Failure.signing }
+        if newLogin, let old = url.range(of: "/api/auth/approve", options: .backwards),
+           let challenge = (try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])?["challenge"] as? String {
+            url.replaceSubrange(old, with: "/api/auth/phone/approve")
+            body = "{\"challenge\":\"\(challenge)\"}"
+        }
+        guard let target = URL(string: url) else { throw NostrKey.Failure.signing }
+        var request = URLRequest(url: target, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20)
+        request.httpMethod = "POST"
+        request.httpBody = Data(body.utf8)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(try PhoneSignIn.nip98(url: url, body: body, now: now), forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    /// The NIP-98 Authorization value ("Nostr " + base64 event) for a POST of body to url, signed with
+    /// the phone's key. Coax writes the id's serialization and the event (verse/phone-signin.coax).
+    static func nip98(url: String, body: String, now: Date = Date()) throws -> String {
         let payload = PhoneSignIn.hex(Data(SHA256.hash(data: Data(body.utf8))))
         let pubkey = PhoneSignIn.hex(try NostrKey.publicKey())
         let at = Int64(now.timeIntervalSince1970)
@@ -72,12 +98,7 @@ struct PhoneSignIn {
         let idHex = PhoneSignIn.hex(id)
         guard let event = PhoneSignIn.view(idHex, { i in PhoneSignIn.view(pubkey, { pk in PhoneSignIn.view(url, { u in PhoneSignIn.view(payload, { pl in PhoneSignIn.view(sig, { s in
             PhoneSignIn.write(4096) { verse_signin_event(i, pk, at, u, pl, s, $0) } }) }) }) }) }) else { throw NostrKey.Failure.signing }
-        var request = URLRequest(url: target, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 20)
-        request.httpMethod = "POST"
-        request.httpBody = Data(body.utf8)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Nostr " + Data(event.utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")
-        return request
+        return "Nostr " + Data(event.utf8).base64EncodedString()
     }
 
     /// Signs and sends it; what to tell the person (verse_signin_result).
@@ -94,6 +115,8 @@ struct PhoneSignIn {
         } catch {
             status = 0
         }
+        // The new login's refusals say what happened in their own words (auth.c): show them as given.
+        if newLogin, status >= 400, let words = AppAuth.errorWords(answer) { return words }
         var bytes = [UInt8](answer)
         let kind = kind.rawValue
         return bytes.withUnsafeMutableBufferPointer { b in

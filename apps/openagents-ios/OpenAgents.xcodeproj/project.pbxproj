@@ -53,6 +53,7 @@
 		777987D602FE02582208A54B /* haunt-step_grass_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = B92DC9E803C0D83793130EE0 /* haunt-step_grass_1.mp3 */; };
 		7859D5562411497FB00B8FFE /* haunt-layer0.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 4A29BCBC72FC7A99126C9D1E /* haunt-layer0.jpg */; };
 		78B8BF182A2A8E0DC101918C /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = C982D84F055B8ABBAD50C802 /* NostrSign.c */; };
+		78FC01DBBAB02183BA2A18CC /* AppAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7059FB56C33A4938F817F834 /* AppAuthTests.swift */; };
 		7936085AF00569E867930063 /* Haunt.pb in Resources */ = {isa = PBXBuildFile; fileRef = 14166A55B3401A60E8955D9E /* Haunt.pb */; };
 		7C03BECB12D4D71352A3A98D /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DCA95D29E37C09C798B337E /* SparkHost.swift */; };
 		839CBB38B37EEC8B8173B356 /* haunt-step_stone_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = E63041B894166B46A3E46D9D /* haunt-step_stone_1.mp3 */; };
@@ -80,6 +81,7 @@
 		A5B6AF72BD610C316262A8C2 /* haunt-boo.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */; };
 		A711923FCA51E11FAD70A5A7 /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; };
 		A82532704621FA268D0CA249 /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8 -Wno-unused-function -Wno-shorten-64-to-32"; }; };
+		A93E8E81D21E7BD5F6452F86 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD57E9C41719D9EA591F3DA1 /* AppAuth.swift */; };
 		A95DFBD890907028562D37A4 /* PhoneTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */; };
 		AB6D5B362735767EF7D5E89E /* Hud.c in Sources */ = {isa = PBXBuildFile; fileRef = FE9115742188118078C4592C /* Hud.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */; };
@@ -125,6 +127,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		9B8ACC96B13D559B69CD8EFE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 037A81F78D877520A602A5C1;
+			remoteInfo = OpenAgents;
+		};
 		D0665F73E8E58F5928328084 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = D73FDB66A38EC188DC701EB0 /* Project object */;
@@ -155,6 +164,7 @@
 		21F22E3C15BA8552B95E9ABE /* haunt-layer21.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer21.jpg"; sourceTree = "<group>"; };
 		2470A951A569419B3A288638 /* cast-layer9.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer9.jpg"; sourceTree = "<group>"; };
 		253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer11.jpg"; sourceTree = "<group>"; };
+		285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		29CE2F09F9A0B3457456014E /* secp256k1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = secp256k1.c; sourceTree = "<group>"; };
 		2DCA95D29E37C09C798B337E /* SparkHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkHost.swift; sourceTree = "<group>"; };
 		317B94CAFFEDC4F181368BFA /* haunt-layer20.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer20.jpg"; sourceTree = "<group>"; };
@@ -179,6 +189,7 @@
 		64067442BA5A73442D8D93AD /* haunt-layer27.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer27.jpg"; sourceTree = "<group>"; };
 		68E7BC528083770536878DDA /* haunt-step_grass_3.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_grass_3.mp3"; sourceTree = "<group>"; };
 		6D5957996BC1975E50D7DFFF /* SignInScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInScreens.swift; sourceTree = "<group>"; };
+		7059FB56C33A4938F817F834 /* AppAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuthTests.swift; sourceTree = "<group>"; };
 		72745517BDD6D929C45F607A /* HudChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HudChrome.swift; sourceTree = "<group>"; };
 		72C6BDFF8688434D7DE8F49C /* haunt-step_wood_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_wood_1.mp3"; sourceTree = "<group>"; };
 		73B73CC5A17FE246BB0A3643 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
@@ -210,6 +221,7 @@
 		A8590DE7BE9F641F9A440194 /* Home.pb */ = {isa = PBXFileReference; path = Home.pb; sourceTree = "<group>"; };
 		AB94FB3266A42BB8002A0185 /* haunt-jump.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-jump.mp3"; sourceTree = "<group>"; };
 		AC28403A12E4EEEBE6C0CB2B /* VoiceFloor.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceFloor.c; sourceTree = "<group>"; };
+		AD57E9C41719D9EA591F3DA1 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		AD722D77A3244F05AAF6E9AA /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
 		B1F14129101E502D2EB4F25C /* EngineHotbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHotbar.swift; sourceTree = "<group>"; };
 		B39219FCD634F147CEECDE36 /* cast-layer12.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer12.jpg"; sourceTree = "<group>"; };
@@ -358,6 +370,7 @@
 		4D7B029870A78279D13B70E1 /* SignIn */ = {
 			isa = PBXGroup;
 			children = (
+				AD57E9C41719D9EA591F3DA1 /* AppAuth.swift */,
 				EE2C59DEAC80496452B46A2F /* NostrKey.swift */,
 				84398239DF707163D47256C2 /* PhoneSignIn.swift */,
 				6D5957996BC1975E50D7DFFF /* SignInScreens.swift */,
@@ -386,6 +399,14 @@
 				4176C3BB15A8996C7FB6B383 /* Wallet.c */,
 			);
 			path = Generated;
+			sourceTree = "<group>";
+		};
+		653E7B06FDCB7DAD944BCD01 /* UnitTests */ = {
+			isa = PBXGroup;
+			children = (
+				7059FB56C33A4938F817F834 /* AppAuthTests.swift */,
+			);
+			path = UnitTests;
 			sourceTree = "<group>";
 		};
 		8A366ADC38979696589B7858 /* src */ = {
@@ -432,6 +453,7 @@
 			isa = PBXGroup;
 			children = (
 				8229C5D27BC40A99010E48D9 /* OpenAgents.app */,
+				285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */,
 				910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */,
 			);
 			name = Products;
@@ -479,6 +501,7 @@
 				2B3DDEC1B150BF9146AE0B93 /* platform */,
 				8A366ADC38979696589B7858 /* src */,
 				956B19516518C8B6A6AB7CBA /* Tests */,
+				653E7B06FDCB7DAD944BCD01 /* UnitTests */,
 				A399D11B8F0035506E68EDB0 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -525,6 +548,24 @@
 			productReference = 910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		FAB980B9658225CB7383114B /* OpenAgentsTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FD5F82D9C7CB002A18146475 /* Build configuration list for PBXNativeTarget "OpenAgentsTests" */;
+			buildPhases = (
+				50F756062D7ED0894535DCE8 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				90A33034A8968FE01C8E0041 /* PBXTargetDependency */,
+			);
+			name = OpenAgentsTests;
+			packageProductDependencies = (
+			);
+			productName = OpenAgentsTests;
+			productReference = 285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -542,6 +583,10 @@
 						DevelopmentTeam = HQWSG26L43;
 						ProvisioningStyle = Automatic;
 						TestTargetID = 037A81F78D877520A602A5C1;
+					};
+					FAB980B9658225CB7383114B = {
+						DevelopmentTeam = HQWSG26L43;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -564,6 +609,7 @@
 			targets = (
 				037A81F78D877520A602A5C1 /* OpenAgents */,
 				D6306D13CC52B0771CBD18E6 /* OpenAgentsUITests */,
+				FAB980B9658225CB7383114B /* OpenAgentsTests */,
 			);
 		};
 /* End PBXProject section */
@@ -692,6 +738,7 @@
 			files = (
 				40EBE76A352087D40B6D5955 /* App.swift in Sources */,
 				CA73A901ED4FB77F95048C73 /* AppAnalytics.swift in Sources */,
+				A93E8E81D21E7BD5F6452F86 /* AppAuth.swift in Sources */,
 				370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */,
 				90A1BF200BAEF60AB8A87530 /* Benchmarks.c in Sources */,
 				BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */,
@@ -758,6 +805,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		50F756062D7ED0894535DCE8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				78FC01DBBAB02183BA2A18CC /* AppAuthTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -765,6 +820,11 @@
 			isa = PBXTargetDependency;
 			target = 037A81F78D877520A602A5C1 /* OpenAgents */;
 			targetProxy = D0665F73E8E58F5928328084 /* PBXContainerItemProxy */;
+		};
+		90A33034A8968FE01C8E0041 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 037A81F78D877520A602A5C1 /* OpenAgents */;
+			targetProxy = 9B8ACC96B13D559B69CD8EFE /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -801,6 +861,48 @@
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = OpenAgents/Platform/Bridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		697B755B51E90796EC72B97F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated",
+					"$(SRCROOT)/../../verse/platform",
+				);
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OpenAgents";
+			};
+			name = Release;
+		};
+		7E28CE464050BEF83775BDA4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Generated",
+					"$(SRCROOT)/../../verse/platform",
+				);
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OpenAgents";
 			};
 			name = Debug;
 		};
@@ -1027,6 +1129,15 @@
 			buildConfigurations = (
 				E44E7EDC43220A8E9C58E657 /* Debug */,
 				8195142255CB8C80BCAD0AFA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FD5F82D9C7CB002A18146475 /* Build configuration list for PBXNativeTarget "OpenAgentsTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E28CE464050BEF83775BDA4 /* Debug */,
+				697B755B51E90796EC72B97F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

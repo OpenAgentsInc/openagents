@@ -142,6 +142,21 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Tests/TestBridge.h
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.uitests
+  OpenAgentsTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: UnitTests
+    dependencies:
+      - target: OpenAgents
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.tests
+        # @testable import reads the app's bridging header (Generated/, verse/platform).
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../../verse/platform"]
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OpenAgents"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
   OpenAgents:
     build:
@@ -150,6 +165,6 @@ schemes:
     run:
       config: Debug
     test:
-      targets: [OpenAgentsUITests]
+      targets: [OpenAgentsTests, OpenAgentsUITests]
     archive:
       config: Release
