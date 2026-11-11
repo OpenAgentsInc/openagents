@@ -43,6 +43,13 @@ terminal_skin :: () -> UiSkin {
   s.add_wash = none; s.add_bar = s.success; s.del_wash = none; s.del_bar = s.danger;
   s.danger_muted = s.danger; s.warning_muted = s.warning; s.file_tint = code;
   s.spinner[0] = code; s.spinner[1] = dim; s.spinner[2] = dim;
+  s.brand = rgba(0.85, 0.47, 0.34, 1); s.field_edge = dim; s.lift = none; s.hover_chip = rgba(1, 1, 1, 0.12);
+  s.menu_hover = rgba(1, 1, 1, 0.12); s.menu_selected = rgba(1, 1, 1, 0.25); s.menu_ring = none;
+  s.menu_rule = dim; s.menu_divider = dim; s.list_wash = none; s.stop_on = code;
+  s.track = UiPlate.{top = none, bottom = none, rim = dim, inset = none, drop = none};
+  s.thumb = UiPlate.{top = code, bottom = code, rim = code, inset = none, drop = none};
+  s.switch_shade = none; s.switch_wash = none; s.switch_rim = dim;
+  s.switch_mark = code; s.switch_ring = dim; s.switch_knob = code; s.switch_knob_rim = dim;
   // comment, keyword, string, number, type, function, property, variable, punctuation, tag, attribute, invalid
   s.syntax[0] = dim; s.syntax[1] = rgba(0.78, 0.57, 0.92, 1); s.syntax[2] = rgba(0.60, 0.80, 0.50, 1); s.syntax[3] = rgba(0.90, 0.75, 0.35, 1);
   s.syntax[4] = rgba(0.50, 0.80, 0.90, 1); s.syntax[5] = link; s.syntax[6] = rgba(0.90, 0.60, 0.70, 1);

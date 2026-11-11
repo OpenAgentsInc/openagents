@@ -73,3 +73,35 @@ sc_transcript :: (sk: UiSkin, out: [] Rgba) -> int {
   t_test_setup(z[..], za[..]);
   #assert z[0].nr == t[0].nr && z[0].content_h == t[0].content_h;
 }
+
+// The composer, expanded and docked: two lines typed and selected, the
+// model chip hovered and the access chip in plan mode, the caret on; then
+// empty with Stop. Returns its colours.
+sc_composer :: (sk: UiSkin, out: [] Rgba) -> int {
+  c: [1] Composer; a: [1] Atlas;
+  md_test_atlas(a[..]);
+  composer_set_skin(c[..], sk);
+  c[0].focused = true;
+  composer_insert(c[..], "Keep the tool group headers quiet\nand let the chips carry the error.");
+  list: [COMPOSER_PRIMS] Prim; split: [1] int;
+  c[0].hover = CH_MODEL; c[0].plan = true; c[0].access_set = true;
+  n := composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
+  m := sc_colours(list[..], n, out, 0);
+  composer_select_all(c[..]);
+  c[0].hover = CH_ACCESS; c[0].brand = ICON_OPENAI;
+  n = composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
+  m = sc_colours(list[..], n, out, m);
+  e: [1] Composer; composer_set_skin(e[..], sk); e[0].running = true; e[0].focused = true;
+  n = composer_docked_prims(list[..], 0, e[..], a[..], 292, 860, 736, split[..]);
+  return sc_colours(list[..], n, out, m);
+}
+
+#test "the composer in Everglade wears none of Zeron's colours" #steps 400000000 {
+  z: [SC_MAX] Rgba; e: [SC_MAX] Rgba;
+  nz := sc_composer(zeron_skin(), z[..]);
+  ne := sc_composer(everglade_skin(), e[..]);
+  #assert nz > 8 && ne > 8;
+  shared := 0;
+  for j: 0..<ne { if sc_has(z[..], nz, e[j]) { shared += 1; print("a Zeron colour in Everglade's composer: % % % %\n", e[j].r, e[j].g, e[j].b, e[j].a); } }
+  #assert shared == 0;
+}

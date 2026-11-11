@@ -51,6 +51,14 @@ UiMarkdown :: struct {
   task_open: string; task_done: string;             // and its task boxes (a pixel target draws them)
 }
 
+// A glass surface (a slider's track or thumb): a vertical gradient, a rim,
+// an unblurred inset light dy down, and a soft drop under it.
+UiPlate :: struct {
+  top: Rgba; bottom: Rgba; rim: Rgba;
+  inset: Rgba; inset_dy: f32;
+  drop: Rgba; drop_dy: f32; drop_blur: f32;
+}
+
 UiSkin :: struct {
   id: int; name: string;
   // colour roles
@@ -78,6 +86,19 @@ UiSkin :: struct {
   danger_muted: Rgba; warning_muted: Rgba;          // a notice's text on its tinted ground
   file_tint: Rgba;          // a source file's icon
   spinner: [3] Rgba;        // the working spinner's three rows
+  brand: Rgba;              // Claude's mark, in its own tone
+  field_edge: Rgba;         // a field's or a floating card's border: the composer's pill, a menu
+  lift: Rgba;               // a floating card's soft shadow (two layers of it)
+  hover_chip: Rgba;         // a chip hovered or with its menu open
+  menu_hover: Rgba;         // a menu row under the pointer
+  menu_selected: Rgba; menu_ring: Rgba;             // the chosen menu row and its ring
+  menu_rule: Rgba; menu_divider: Rgba;              // under a menu's search field; between its sections
+  list_wash: Rgba;          // a menu's list, set into the card
+  stop_on: Rgba;            // a slider's stop at or under the thumb (one past it is the muted ink, faint)
+  track: UiPlate; thumb: UiPlate;                   // a slider's track and thumb (the fill is the accent's plate)
+  switch_shade: Rgba; switch_wash: Rgba; switch_rim: Rgba;   // a switch's track, on (over the accent) and off (over the surface), and its rim on
+  switch_mark: Rgba; switch_ring: Rgba;             // the on mark and the off ring
+  switch_knob: Rgba; switch_knob_rim: Rgba;         // the knob (over the surface) and its rim (over the knob)
   // type roles
   body: UiType; strong: UiType; code: UiType;       // running text, **bold**, `inline code`
   mono: UiType;             // a code block's lines
@@ -115,6 +136,22 @@ uiskin_small_faces :: (s: UiSkin) -> TextFaces { return TextFaces.{plain = s.too
 
 // Whether a skin value has been set (a zeroed one has no name).
 uiskin_is_set :: (s: UiSkin) -> bool { return s.name.count > 0; }
+
+// A plate: the drop beneath, the fill with its rim, the inset light above. Returns the count.
+uiskin_plate :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, p: UiPlate) -> int {
+  k := prim_shadow(list, n, x, y, w, h, radius, 0, p.drop_dy, p.drop_blur, 0, p.drop);
+  k = prim_gradient(list, k, x, y, w, h, radius, p.top, p.bottom);
+  k = prim_box(list, k, x, y, w, h, radius, 1, rgba(0, 0, 0, 0), p.rim);
+  return prim_inset(list, k, x, y, w, h, radius, p.inset_dy, p.inset);
+}
+// A colour moved toward white by amount (glass.rs lift).
+uiskin_lift :: (c: Rgba, amount: f32) -> Rgba { return Rgba.{r = c.r + (1 - c.r) * amount, g = c.g + (1 - c.g) * amount, b = c.b + (1 - c.b) * amount, a = c.a}; }
+// The accent's plate: a slider's fill (glass.rs accent_plate, from the skin's accent).
+uiskin_accent_plate :: (s: UiSkin) -> UiPlate {
+  base := s.accent;
+  return UiPlate.{top = uiskin_lift(base, 0.06), bottom = base, rim = opacity(uiskin_lift(base, 0.35), 0.35),
+                  inset = rgba(1, 1, 1, 0.12), inset_dy = 1, drop = rgba(0, 0, 0, 0), drop_dy = 0, drop_blur = 0};
+}
 
 // A syntax role's colour; anything outside the roles is the plain colour.
 uiskin_syntax :: (s: UiSkin, role: int, plain: Rgba) -> Rgba {

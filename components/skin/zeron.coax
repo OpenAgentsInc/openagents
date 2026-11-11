@@ -67,6 +67,8 @@ zeron_dark :: () -> Theme {
     accent = hex(0x8b7cf6, 1), selection = hex(0x8b7cf6, 89.0 / 255.0), bg = hex(0x060606, 1), claude = hex(0xd97757, 1)};
 }
 
+// A chip hovered or with its menu open (Zeron Dark element_hover).
+CHIP_WASH :: Rgba.{r = 1, g = 1, b = 1, a = 0.11};
 // The working spinner's rows (loaders.rs).
 GSPIN_TINTS :: [3] int.[0xB6D3EF, 0xEDB185, 0xF888A0];
 // Zeron's own washes: white ink and the near-white wash at an alpha.
@@ -147,6 +149,15 @@ zeron_skin :: () -> UiSkin {
   for k: 0..<UISKIN_SYNTAX { s.syntax[k] = hex(palette[k], 1); }
   tints := GSPIN_TINTS;
   for k: 0..<3 { s.spinner[k] = hex(tints[k], 1); }
+  // the composer and its menus (composer.rs, pickers.rs, glass.rs)
+  s.brand = th.claude; s.field_edge = th.border; s.lift = rgba(0, 0, 0, 0.1); s.hover_chip = CHIP_WASH;
+  s.menu_hover = ink(0.05); s.menu_selected = wash(0.11); s.menu_ring = ink(0.09);   // card_selected_bg, card_selected_shadows
+  s.menu_rule = ink(0.08); s.menu_divider = ink(0.07); s.list_wash = ink(0.02);
+  s.stop_on = ink(0.4);
+  s.track = UiPlate.{top = ink(0.08), bottom = ink(0.05), rim = ink(0.09), inset = ink(0.07), inset_dy = 1, drop = rgba(0, 0, 0, 0.16), drop_dy = 1, drop_blur = 2};
+  s.thumb = UiPlate.{top = ink(1), bottom = rgba(0.965, 0.965, 0.965, 1), rim = rgba(0, 0, 0, 0.12), inset = ink(0.8), inset_dy = 1, drop = rgba(0, 0, 0, 0.22), drop_dy = 1, drop_blur = 2};
+  s.switch_shade = rgba(0, 0, 0, 0.14); s.switch_wash = ink(0.18); s.switch_rim = ink(0.12);
+  s.switch_mark = ink(0.96); s.switch_ring = ink(0.92); s.switch_knob = ink(0.96); s.switch_knob_rim = rgba(0, 0, 0, 0.10);
   return s;
 }
 
