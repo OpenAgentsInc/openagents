@@ -31,7 +31,7 @@ Golemancers' Workshop), Aethyrforge, Coder's terminal and the phone apps.
 ```
 components/
   spec.md          this file
-  README.md        how to use a component and add one
+  README.md        how to use a component and add one (not written yet)
   core/            what a component is: state and rules, no pixels
                    (color, text, markdown, syntax)
   layout/          sizes and positions from state, a width and a skin
@@ -287,7 +287,18 @@ Each phase ends with every existing check and golden unchanged.
    (`gallery/check.coax`) yet.
 4. **Chat in Everglade for desktop.** The Workshop gets the same transcript
    and composer in the `everglade` skin, on the shared engines. Its boards
-   (`golem-board.coax`) move onto the list and panel components.
+   (`golem-board.coax`) move onto the list and panel components. Not
+   started. What exists for it: the `everglade` skin, and Markdown, the
+   panel and the list as components that draw in it (see `/components`).
+   What it still needs: the transcript and the composer reading a skin
+   (Phase 2's remainder: they are Zeron's constants today); and a way for
+   the Workshop to draw a display list, which is one of two things. Either
+   its Mac host gets a component pass (the 28-float vertices, the component
+   shader and an atlas with Everglade's faces, Spectral and Cinzel, in the
+   skin's slots), or a backend writes a display list as the Workshop's
+   present 12-float HUD vertices with `apps/everglade-desktop/text.coax`'s
+   text, measured from that file's advance tables. The Workshop has only a
+   Mac host, so neither could be run where Phases 2, 3 and 5 were done.
 5. **The terminal and the leftovers.** Done 2026-11-10: there is one
    Markdown parser. `core/markdown.coax` grew what the others read that it
    didn't (italic, strike, links with their targets, backslash escapes,
