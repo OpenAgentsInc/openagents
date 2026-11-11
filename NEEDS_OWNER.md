@@ -1,5 +1,13 @@
 # Owner actions
 
+## Apps, components and OpenAgents for Linux (#13153, 2026-11-10)
+
+- **Use the Linux app and say what is wrong.** `~/.openagents/bin/openagents-desktop` opens it (reinstall with `apps/openagents-desktop/linux/build.sh --install`). Nobody has typed into the window with a real keyboard, used an input method, or chosen a file in the paperclip's dialog: those three need a person. A window opened before 22:10 on 2026-11-10 is an older build with no saved sessions; close it and open the installed one.
+- **Build the Mac apps once.** `apps/shared/zeron/` moved to `components/zeron/` and the engines moved to `coax/lib/agent/engine/`. The paths in `apps/openagents-desktop/build.sh`, `apps/aethyrforge-desktop/aethyrforge-build.coax` and the Swift hosts were updated but never built: there is no Mac here. Run `apps/openagents-desktop/check.sh` and the Aethyrforge and Everglade builds. The Mac build of OpenAgents may also need `coax/platform/store-file-native.c` on its link line (the Linux link needed it for `cxfs_*` and `cxjournal_*`).
+- **Chrome replaced the Coder Browser on `coderos-4080`** (`~/coder`, commits `0e526e98f` and `4ea216ccc`). Its GPU process runs without the sandbox, which is what gives WebGPU the Nvidia adapter; the warning bar is turned off by policy. Coder's `browser` tool has no browser to steer on this machine now. Say if either should be undone.
+- **Decide who may use openagents.com/chat.** It is admins only. Opening it to anyone else is an access and cost decision, and needs a deploy.
+- **Read the audit** `docs/research/exact/04-apps-audit-2026-11-10.md`: it recommends replacing the apps' `--do` steps with `coax drive`, a decision on flex layout for `components/layout/`, and an implementer and date on each phase of `components/spec.md`.
+
 ## Everglade apps: worlds list, first build (2026-11-10)
 
 - These were written on Linux with no Mac or Android SDK, so no host build has run. Build each and look: `apps/everglade-desktop/build.sh --open`, `apps/everglade-mobile/build.sh --open`, `apps/everglade-mobile/android/build.sh --open`. A Swift or C compile error in `Sources/Engine.swift`, either `main.swift` or `android/host.c` is from this change.
