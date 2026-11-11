@@ -13,6 +13,7 @@
 #include "fivelab.h"
 #include "Everglade-step.h"
 #include "Sticks.h"
+#include "face-address.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -36,14 +37,14 @@ static double now;
 static bool touched;
 static coax_t_Drive drive;   // the agent driver's (aethyr/agent/drive.coax): the Lab holds a view of it
 
-static coax_t_Lab *lab_at(uint32_t state) { return (coax_t_Lab *)(uintptr_t)state; }
-static coax_v_t_Lab at(uint32_t state) { return (coax_v_t_Lab){lab_at(state), 1}; }
+static coax_t_Lab *lab_at(cx_face_addr state) { return (coax_t_Lab *)(uintptr_t)state; }
+static coax_v_t_Lab at(cx_face_addr state) { return (coax_v_t_Lab){lab_at(state), 1}; }
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Lab) * 1000003u + offsetof(coax_t_Lab, outbox) * 13u + 0x35454c42u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Lab); }
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Lab((coax_t_Lab *)(uintptr_t)state); lab_drive_attach(at(state), (coax_v_t_Drive){&drive, 1}); }
+EXPORT("coaxial_state_init") void coaxial_state_init(cx_face_addr state) { coax_default_t_Lab((coax_t_Lab *)(uintptr_t)state); lab_drive_attach(at(state), (coax_v_t_Drive){&drive, 1}); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_lab_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_lab_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
@@ -55,7 +56,7 @@ EXPORT("coaxial_character_storage_v1") uint32_t coaxial_character_storage_v1(voi
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 
 EXPORT("coaxial_frame")
-uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
+uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float w, float h, float scale, float dt, uint32_t still) {
   lab_golden(at(state), golden);
   width = w; height = h; dpr = scale; now += dt;
   // Player mode: your body's step on Everglade's controller, in everglade-face.c's order
@@ -101,100 +102,112 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 }
 
 // ---- the figures: the pack's catalog, and the scene's draws over its vertices and the two stores
-EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
+EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
   (void)state;
-  return i == 0 && bytes <= sizeof catalog ? (uint32_t)(uintptr_t)catalog : 0u;
+  return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
 }
-EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) {
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) {
   (void)state;return i == 0 ? (uint32_t)sizeof catalog : 0u;
 }
-EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
+EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) lab_catalog(at(state), (coax_string){(const char *)catalog, bytes});
 }
-EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->bodies.e[0].draws.e; }
-EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
-EXPORT("coaxial_shadow_draws_v1") uint32_t coaxial_shadow_draws_v1(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->shadow_draws.e; }
-EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(uint32_t state) { return (uint32_t)lab_at(state)->shadow_n; }
+EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_at(state)->bodies.e[0].draws.e; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
+EXPORT("coaxial_shadow_draws_v1") cx_face_addr coaxial_shadow_draws_v1(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_at(state)->shadow_draws.e; }
+EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(cx_face_addr state) { return (uint32_t)lab_at(state)->shadow_n; }
 /* Character Create's key-light shadow tiles (charactercreator.coax shadow_frame; coax/web/host.js shadowTexture): none elsewhere. */
-EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(uint32_t state, int32_t coarse, int32_t which) { return (uint32_t)lab_shadow_atlas(at(state), coarse, which); }
-EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(uint32_t state, int32_t field) { return (int32_t)lab_shadow_field(at(state), field); }
-EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(uint32_t state, int32_t kind, int32_t arg) { lab_shadow_event(at(state), kind, arg); }
-EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(uint32_t state) { return (uint32_t)lab_layers_side(at(state)); }
+EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr state, int32_t coarse, int32_t which) { return (uint32_t)lab_shadow_atlas(at(state), coarse, which); }
+EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return (int32_t)lab_shadow_field(at(state), field); }
+EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { lab_shadow_event(at(state), kind, arg); }
+EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)lab_layers_side(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
 // The frame store (host.js, group 0 binding 1): the tokens and squares bg_fs reads, every frame.
 EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { return (uint32_t)sizeof(((coax_t_Lab *)0)->frame.e); }
-EXPORT("coaxial_frame_store") uint32_t coaxial_frame_store(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->frame.e; }
-EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(uint32_t state) { return (uint32_t)coaxial_lab_frame_floats(at(state)) * 4u; }
+EXPORT("coaxial_frame_store") cx_face_addr coaxial_frame_store(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_at(state)->frame.e; }
+EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(cx_face_addr state) { return (uint32_t)coaxial_lab_frame_floats(at(state)) * 4u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 0 ? (uint32_t)sizeof(((coax_t_Lab *)0)->records.e) : (uint32_t)sizeof bake; }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { return k == 0 ? (uint32_t)(uintptr_t)lab_at(state)->records.e : (uint32_t)(uintptr_t)bake; }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) {
+EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr state, int32_t k) { return k == 0 ? (cx_face_addr)(uintptr_t)lab_at(state)->records.e : (cx_face_addr)(uintptr_t)bake; }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, int32_t k) {
   (void)state;
   if (k == 0) { uint32_t n = 0; coax_t_Bodies *b = &lab_at(state)->bodies.e[0]; for (int64_t d = 0; d < b->draw_n; d++) n += b->draws.e[d * 4 + 3]; return n * 24u * 4u; }
   return (uint32_t)sizeof bake;
 }
 // The instances every frame; the bake once, when it is made.
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { (void)state; return k == 0 ? frames : baked; }
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { (void)state; return k == 0 ? frames : baked; }
 
-EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return lab_key(at(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return lab_key_up(at(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { lab_blur(at(state)); sticks = verse_sticks_reset(); }
-EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
+EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { return lab_key(at(state), key, mods) ? 1u : 0u; }
+EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { return lab_key_up(at(state), key, mods) ? 1u : 0u; }
+EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { lab_blur(at(state)); sticks = verse_sticks_reset(); }
+/* Aethyr host contract v1 (aethyr/host/README.md), as everglade2-face.c has it: addresses of the
+   host's width (face-address.h), focus as a call of its own, and the whole allocations the action,
+   media and sound-bank bytes are in. A native build says so; the browser's module does not yet
+   (there v1 also means the shared transport adapter a page gets with its render carrier). */
+#if defined(COAXIAL_NATIVE_ADDRESS)
+EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(void) { return 1; }
+#endif
+/* Nothing is held across a blur, so focus has nothing to restore. */
+EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { (void)state; }
+EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   if (lab_pointer(at(state), x, y, phase, kind, id)) return 1u;
   // a finger the Lab left (Player mode, off its buttons) is a thumb's: the stick, the look, a tap's jump
   if (kind != 0 && lab_at(state)->player) { touched = true; sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
 // Additive DOM input hook; the original pointer export remains available to native hosts.
-EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
+EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
   if (lab_pointer_buttons(at(state), x, y, phase, kind, id, button)) return 1u;
   if (kind != 0 && lab_at(state)->player) { touched = true; sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
-EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return lab_wheel(at(state), dy) ? 1u : 0u; }
-EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)lab_cursor(at(state)); }
+EXPORT("coaxial_wheel") uint32_t coaxial_wheel(cx_face_addr state, float dy) { return lab_wheel(at(state), dy) ? 1u : 0u; }
+EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (int32_t)lab_cursor(at(state)); }
 /* Experimental's mouselook (aethyr/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
-EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(uint32_t state) { return (int32_t)lab_mouselook(at(state)); }
-EXPORT("coaxial_look_delta") void coaxial_look_delta(uint32_t state, float dx, float dy) { lab_look_delta(at(state), dx, dy); }
-EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t status) { lab_pointer_lock(at(state), status); }
+EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(cx_face_addr state) { return (int32_t)lab_mouselook(at(state)); }
+EXPORT("coaxial_look_delta") void coaxial_look_delta(cx_face_addr state, float dx, float dy) { lab_look_delta(at(state), dx, dy); }
+EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(cx_face_addr state, int32_t status) { lab_pointer_lock(at(state), status); }
 
 // ---- the glade's effects, drawn after bg_fs (fivelab-fx.wgsl, host.js particles): puffs of 12 floats
 EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_Lab *)0)->puffs.e[0].out); }
-EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->puffs.e[0].out.e; }
-EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { return (uint32_t)(lab_at(state)->puffs.e[0].out_n * 12 * sizeof(float)); }
-EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { return lab_at(state)->started ? (uint32_t)lab_at(state)->puffs.e[0].out_n : 0u; }
+EXPORT("coaxial_particles") cx_face_addr coaxial_particles(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_at(state)->puffs.e[0].out.e; }
+EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(cx_face_addr state) { return (uint32_t)(lab_at(state)->puffs.e[0].out_n * 12 * sizeof(float)); }
+EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(cx_face_addr state) { return lab_at(state)->started ? (uint32_t)lab_at(state)->puffs.e[0].out_n : 0u; }
 
-EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
+EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
 // Everglade Experimental draws its HUD in the FANTASY style (aethyr/ui/hud-style.coax): its strokes then
 // blend straight alpha, sealed with their coverage (lab_straight_alpha). The 5E Lab keeps max blending.
-static uint32_t page_state;
+static cx_face_addr page_state;
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return page_state && lab_straight_alpha(at(page_state)) ? 1u : 0u; }
-EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
+EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind, uint32_t length) {
   page_state = state;
   if (length > sizeof inbox) return;
   lab_message(at(state), kind, (coax_string){(const char *)inbox, length});
 }
 
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)lab_action(at(state)); }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->outbox.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)lab_at(state)->out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { lab_action_done(at(state)); }
+EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) { return (int32_t)lab_action(at(state)); }
+EXPORT("coaxial_outbox") cx_face_addr coaxial_outbox(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_at(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(cx_face_addr state) { return (uint32_t)lab_at(state)->out_n; }
+/* the allocations those bytes and the media packet's are in, whole (host contract v1) */
+EXPORT("coaxial_outbox_capacity") uint32_t coaxial_outbox_capacity(cx_face_addr state) { return (uint32_t)sizeof lab_at(state)->outbox.e; }
+EXPORT("coaxial_action_done") void coaxial_action_done(cx_face_addr state) { lab_action_done(at(state)); }
 
 // Experimental's bar: its pictures, cards and cooldowns for the host to draw (coax/web/host.js coaxial_media; experimental-combat.coax xc_frame).
-EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->xc.e[0].media.e; }
-EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { coax_t_Lab *l = lab_at(state); return l->creator.e[0].experimental && !l->creator.e[0].walk.on ? (uint32_t)l->xc.e[0].media_n : 0u; }
+EXPORT("coaxial_media") cx_face_addr coaxial_media(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_at(state)->xc.e[0].media.e; }
+EXPORT("coaxial_media_len") uint32_t coaxial_media_len(cx_face_addr state) { coax_t_Lab *l = lab_at(state); return l->creator.e[0].experimental && !l->creator.e[0].walk.on ? (uint32_t)l->xc.e[0].media_n : 0u; }
+EXPORT("coaxial_media_capacity") uint32_t coaxial_media_capacity(cx_face_addr state) { return (uint32_t)sizeof lab_at(state)->xc.e[0].media.e; }
 
 // Read-only observations for headless wardrobe checks.
 /* The agent driver (aethyr/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
-EXPORT("coaxial_drive_out") uint32_t coaxial_drive_out(uint32_t state) { return (uint32_t)(uintptr_t)lab_drive_out(at(state)).data; }
-EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(uint32_t state) { return (uint32_t)lab_drive_out(at(state)).count; }
-EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state,int32_t field) {return (int32_t)lab_creator_probe(at(state),field);}
+EXPORT("coaxial_drive_out") cx_face_addr coaxial_drive_out(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_drive_out(at(state)).data; }
+EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(cx_face_addr state) { return (uint32_t)lab_drive_out(at(state)).count; }
+EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state,int32_t field) {return (int32_t)lab_creator_probe(at(state),field);}
 
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }
 
 // Experimental's per-frame audio commands, consumed once by the shared host.
-EXPORT("coaxial_sounds") uint32_t coaxial_sounds(uint32_t state) { return (uint32_t)(uintptr_t)lab_at(state)->experimental_audio.e[0].lines.e; }
-EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(uint32_t state) { return sizeof lab_at(state)->experimental_audio.e[0].lines.e; }
-EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { coax_t_ExperimentalSound *audio = &lab_at(state)->experimental_audio.e[0]; uint32_t n = (uint32_t)audio->n; audio->n = 0; return n; }
+EXPORT("coaxial_sounds") cx_face_addr coaxial_sounds(cx_face_addr state) { return (cx_face_addr)(uintptr_t)lab_at(state)->experimental_audio.e[0].lines.e; }
+EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(cx_face_addr state) { return sizeof lab_at(state)->experimental_audio.e[0].lines.e; }
+EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(cx_face_addr state) { coax_t_ExperimentalSound *audio = &lab_at(state)->experimental_audio.e[0]; uint32_t n = (uint32_t)audio->n; audio->n = 0; return n; }
 
 #include "experimental-sound-bank.h"

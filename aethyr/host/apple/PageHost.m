@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <time.h>
+#include <zlib.h>
 
 typedef uintptr_t A;
 // The face (aethyr/host/README.md, and the page's optional v1 exports host.js reads). A name the
@@ -104,6 +105,27 @@ static void phLog(NSString *format, ...) {
  fprintf(stderr, "page host: %s\n", line.UTF8String);
 }
 static int64_t phMillis(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
+
+// A gzip file's bytes, inflated; nil when it is damaged. The file's last four bytes say how long
+// the result is (mod 4 GiB), which sizes the first allocation; the stream decides the real length.
+static NSData *phInflate(NSData *gz) {
+ uint32_t said; memcpy(&said, (const uint8_t *)gz.bytes + gz.length - 4, 4);
+ NSMutableData *out = [NSMutableData dataWithLength:MAX((size_t)said, (size_t)1 << 16)];
+ z_stream z = {0};
+ if (!out || inflateInit2(&z, 15 + 16) != Z_OK) return nil;
+ const uint8_t *in = gz.bytes; size_t left = gz.length, made = 0; int r = Z_OK;
+ while (r == Z_OK) {
+  if (made == out.length) { out.length += out.length / 2; if (!out.mutableBytes) break; }
+  uInt give = (uInt)MIN(left, (size_t)1 << 30), room = (uInt)MIN(out.length - made, (size_t)1 << 30);
+  z.next_in = (Bytef *)in; z.avail_in = give; z.next_out = (Bytef *)out.mutableBytes + made; z.avail_out = room;
+  r = inflate(&z, Z_NO_FLUSH);
+  in += give - z.avail_in; left -= give - z.avail_in; made += room - z.avail_out;
+  if (r == Z_OK && !left && z.avail_out) break;   // the file ended before its stream did
+ }
+ inflateEnd(&z);
+ if (r != Z_STREAM_END) return nil;
+ out.length = made; return out;
+}
 
 @implementation PHNet
 - (void)URLSession:(NSURLSession *)s webSocketTask:(NSURLSessionWebSocketTask *)task didOpenWithProtocol:(NSString *)p { [self.host socket:task event:0 bytes:nil]; }
@@ -469,6 +491,8 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 }
 - (NSString *)loadPack {
  packBytes = [NSData dataWithContentsOfFile:config.pack options:NSDataReadingMappedIfSafe error:nil];
+ // A pack the site serves gzipped (NAME.pack.gz) is inflated whole first, as host.js does.
+ if (packBytes.length > 18 && ((const uint8_t *)packBytes.bytes)[0] == 0x1f && ((const uint8_t *)packBytes.bytes)[1] == 0x8b) packBytes = phInflate(packBytes);
  const uint8_t *b = packBytes.bytes; size_t n = packBytes.length;
  if (n < 32 || memcmp(b, "VPK1", 4)) return @"the realm's pack is missing";
  uint32_t count, table; memcpy(&count, b + 4, 4); memcpy(&table, b + 16, 4);

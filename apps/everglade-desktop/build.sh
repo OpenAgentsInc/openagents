@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, metal and swiftc; holds no logic)
 # Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the worlds (the list,
-# the Workshop, and Everglade itself: the web's everglade2 realm run natively) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
+# the Workshop, and the web's realms run natively: Everglade itself, everglade2, and Experimental, fivelab) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
 # Everglade II's pack, and the AppKit and Metal host in Swift.
@@ -32,45 +32,65 @@ for pair in sky scene light; do
   "$coax" metal "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/c/temple-$pair.metal" 2> "$work/c/temple-$pair.bind"
   xcrun -sdk macosx metal -w "$work/c/temple-$pair.metal" -o "$app/Contents/Resources/temple-$pair.metallib"
 done
-# The Everglade row: the web's everglade2 realm (Character Create, then the glade), natively, drawn
-# by Aethyr's page host for Metal (aethyr/host/apple/). Its Coax as C and its face are built as
-# verse/native/build.sh builds any realm, into a library the host loads; its shaders are the web's
-# own Coax (apps/openagents-web/gpu/), emitted for Metal a pair at a time, each with the list of
-# what it reads (.bind). The C takes over a minute to emit, so it is kept until its sources change.
-realm="$work/realm"; pages="$app/Contents/Resources/everglade2"
-mkdir -p "$realm" "$pages"
-key="$( (shasum -a 256 "$coax" | cut -d ' ' -f 1; git -C "$repo" rev-parse HEAD:apps/openagents-web HEAD:aethyr HEAD:verse HEAD:coax/lib; git -C "$repo" status --porcelain -- apps/openagents-web aethyr verse coax/lib ':(exclude)aethyr/host/apple'; git -C "$repo" diff HEAD -- apps/openagents-web aethyr verse coax/lib ':(exclude)aethyr/host/apple') | shasum -a 256 | cut -d ' ' -f 1)"
-if [[ "$(cat "$realm/key" 2>/dev/null)" != "$key" || ! -f "$realm/libeverglade2.dylib" ]]; then
-  rm -f "$realm/key"
-  COAX="$coax" "$repo/verse/native/build.sh" everglade2 "$realm" >/dev/null
-  read -r -a realm_sources < "$realm/sources"
-  realm_objects=(); realm_pids=()
-  for s in "${realm_sources[@]}"; do
-    /usr/bin/clang -std=gnu11 -O2 -ffp-contract=off -fno-fast-math -DCOAXIAL_NATIVE_ADDRESS -w -I"$realm" -c "$realm/$s" -o "$realm/${s%.c}.o" & realm_pids+=($!); realm_objects+=("$realm/${s%.c}.o")
-  done
-  for pid in "${realm_pids[@]}"; do wait "$pid"; done
-  # The face's imports (the socket, HTTP, the clock) are the host's, found when the library loads.
-  /usr/bin/clang -dynamiclib -Wl,-undefined,dynamic_lookup "${realm_objects[@]}" -lm -o "$realm/libeverglade2.dylib"
-  echo "$key" > "$realm/key"
-fi
-cp "$realm/libeverglade2.dylib" "$pages/libeverglade2.dylib"
+# The realms: the Everglade row is the web's everglade2 realm (Character Create, then the glade),
+# and the Experimental row is the web's fivelab realm on its Experimental page, both natively,
+# drawn by Aethyr's page host for Metal (aethyr/host/apple/). A realm's Coax as C and its face are
+# built as verse/native/build.sh builds any realm, into a library the host loads; its shaders are
+# the web's own Coax (apps/openagents-web/gpu/), emitted for Metal a pair at a time, each with the
+# list of what it reads (.bind). The C takes over a minute to emit, so it is kept until its sources
+# change.
+key="$( (shasum -a 256 "$coax" | cut -d ' ' -f 1; git -C "$repo" rev-parse HEAD:apps/openagents-web HEAD:aethyr HEAD:verse HEAD:everglade HEAD:coax/lib; git -C "$repo" status --porcelain -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)aethyr/host/apple'; git -C "$repo" diff HEAD -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)aethyr/host/apple') | shasum -a 256 | cut -d ' ' -f 1)"
+build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app's NAME folder
+  local name="$1" realm="$work/realm/$1" pages="$app/Contents/Resources/$1"
+  mkdir -p "$realm" "$pages"
+  if [[ "$(cat "$realm/key" 2>/dev/null)" != "$key" || ! -f "$realm/lib$name.dylib" ]]; then
+    rm -f "$realm/key"
+    COAX="$coax" "$repo/verse/native/build.sh" "$name" "$realm" >/dev/null
+    local realm_sources realm_objects=() realm_pids=() s pid
+    read -r -a realm_sources < "$realm/sources"
+    for s in "${realm_sources[@]}"; do
+      /usr/bin/clang -std=gnu11 -O2 -ffp-contract=off -fno-fast-math -DCOAXIAL_NATIVE_ADDRESS -w -I"$realm" -c "$realm/$s" -o "$realm/${s%.c}.o" & realm_pids+=($!); realm_objects+=("$realm/${s%.c}.o")
+    done
+    for pid in "${realm_pids[@]}"; do wait "$pid"; done
+    # The face's imports (the socket, HTTP, the clock) are the host's, found when the library loads.
+    /usr/bin/clang -dynamiclib -Wl,-undefined,dynamic_lookup "${realm_objects[@]}" -lm -o "$realm/lib$name.dylib"
+    echo "$key" > "$realm/key"
+  fi
+  cp "$realm/lib$name.dylib" "$pages/lib$name.dylib"
+}
 # Metal's relaxed math mode (it honours NaN and infinity, and keeps the math functions precise):
 # the scene has millions of vertices a frame, and its vertex stage takes about 45% longer in the
 # safe mode on this Mac (19.4 ms against 13.5 ms a frame at 990 by 660).
-emit_pair() {   # ROLE SOURCE VERTEX FRAGMENT
-  "$coax" metal "$repo/apps/openagents-web/gpu/$2.coax" --vertex "$3" --fragment "$4" -o "$work/c/e2-$1.metal" 2> "$pages/$1.bind"
-  xcrun -sdk macosx metal -w -fmetal-math-mode=relaxed -fmetal-math-fp32-functions=precise "$work/c/e2-$1.metal" -o "$pages/$1.metallib"
+emit_pair() {   # REALM ROLE SOURCE VERTEX FRAGMENT
+  "$coax" metal "$repo/apps/openagents-web/gpu/$3.coax" --vertex "$4" --fragment "$5" -o "$work/c/$1-$2.metal" 2> "$app/Contents/Resources/$1/$2.bind"
+  xcrun -sdk macosx metal -w -fmetal-math-mode=relaxed -fmetal-math-fp32-functions=precise "$work/c/$1-$2.metal" -o "$app/Contents/Resources/$1/$2.metallib"
 }
-emit_pair bg everglade2 everglade2_bg_vs everglade2_bg_fs
-emit_pair shadow everglade2 everglade2_shadow_vs everglade2_shadow_fs
-emit_pair scene everglade2 everglade2_scene_vs everglade2_scene_fs
-emit_pair bloom everglade2 everglade2_bg_vs everglade2_bloom_fs
-emit_pair post everglade2 everglade2_bg_vs everglade2_post_fs
-emit_pair fx everglade2 everglade2_fx_vs everglade2_fx_fs
-emit_pair particle everglade2-fx e2fx_particle_vs e2fx_particle_fs
-emit_pair particle_over everglade2-fx e2fx_particle_over_vs e2fx_particle_over_fs
-cp "$repo/apps/openagents-web/gpu/everglade2.bindings" "$pages/page.bindings"
-xcrun -sdk macosx metal -w "$repo/aethyr/host/apple/PageHost.metal" -o "$pages/page-host.metallib"
+# A realm's eight pairs: the page's six from SOURCE (its entries begin PREFIX_), the particles' two
+# from FX (they begin FXPREFIX_), and the page's bindings.
+emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
+  local pids=() pid
+  emit_pair "$1" bg "$2" "$3_bg_vs" "$3_bg_fs" & pids+=($!)
+  emit_pair "$1" shadow "$2" "$3_shadow_vs" "$3_shadow_fs" & pids+=($!)
+  emit_pair "$1" scene "$2" "$3_scene_vs" "$3_scene_fs" & pids+=($!)
+  emit_pair "$1" bloom "$2" "$3_bg_vs" "$3_bloom_fs" & pids+=($!)
+  for pid in "${pids[@]}"; do wait "$pid"; done; pids=()
+  emit_pair "$1" post "$2" "$3_bg_vs" "$3_post_fs" & pids+=($!)
+  emit_pair "$1" fx "$2" "$3_fx_vs" "$3_fx_fs" & pids+=($!)
+  emit_pair "$1" particle "$4" "$5_particle_vs" "$5_particle_fs" & pids+=($!)
+  emit_pair "$1" particle_over "$4" "$5_particle_over_vs" "$5_particle_over_fs" & pids+=($!)
+  for pid in "${pids[@]}"; do wait "$pid"; done
+  cp "$repo/apps/openagents-web/gpu/$2.bindings" "$app/Contents/Resources/$1/page.bindings"
+  cp "$work/c/page-host.metallib" "$app/Contents/Resources/$1/page-host.metallib"
+}
+xcrun -sdk macosx metal -w "$repo/aethyr/host/apple/PageHost.metal" -o "$work/c/page-host.metallib"
+build_realm everglade2
+emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
+# Experimental: the fivelab module on its Experimental page draws with Character Create's passes
+# (the site's data-wgsl="/charactercreator.wgsl"), and its pack is the site's own file, gzipped as
+# the site serves it; the page host inflates it as a browser does.
+build_realm fivelab
+emit_page fivelab charactercreator charactercreator fivelab-fx fxg
+cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz" "$app/Contents/Resources/fivelab/glade.pack.gz"
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # The pictures the realm names (the classes' and spells' icons), where the site has them.
 mkdir -p "$app/Contents/Resources/web/realms/everglade" "$app/Contents/Resources/web/realms/5e-mmo"
@@ -84,7 +104,7 @@ cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/Co
 # thread, which runs every Coax call, gets a 512 MB stack (reserved, not touched until used).
 printf '#include "%s"\n#import "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" > "$work/c/bridge.h"
 xcrun -sdk macosx swiftc -O -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$work/c/page-host.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" \
-  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -lm \
+  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -lm -lz \
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's
 # hash; an unknown verb builds it and does nothing else), then copied in beside the app's own.

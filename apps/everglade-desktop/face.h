@@ -29,9 +29,9 @@ int32_t eg_tap(void *state, float x, float y);
 // Range, 4 Experimental. eg_go opens one from outside (a launch argument).
 int32_t eg_scene(void *state);
 void eg_go(void *state, int32_t world);
-// A host that runs a realm itself says so (world 1: Everglade, the web's everglade2 realm, through
-// aethyr/host/apple/page-host.h). While that world is open the host draws the realm and sends it
-// the keys and presses; eg_frame then draws only the Worlds button, and eg_on_worlds is 1 where a
+// A host that runs a realm itself says so (world 1: Everglade, the web's everglade2 realm; world 4:
+// Experimental, the web's fivelab realm; both through aethyr/host/apple/page-host.h). While that
+// world is open the host draws the realm and sends it the keys and presses; eg_frame then draws only the Worlds button, and eg_on_worlds is 1 where a
 // press is that button's (give it to eg_pointer, not the realm).
 void eg_runs(void *state, int32_t world, int32_t runs);
 int32_t eg_on_worlds(void *state, float x, float y);

@@ -1,8 +1,8 @@
 # Worlds in the Everglade apps (spec)
 
-Written 2026-11-10. Status: **the list and two worlds are built on the Mac
-(Everglade itself and the Workshop); the phones have the Workshop; the
-Archery Range and Experimental are the web's realms and don't run in the
+Written 2026-11-10. Status: **the list and three worlds are built on the Mac
+(Everglade itself, the Workshop and Everglade Experimental); the phones have
+the Workshop; the Archery Range is the web's realm and doesn't run in the
 apps yet.**
 
 The Everglade apps are an experiment beside the main experience, which is
@@ -25,7 +25,7 @@ them.
 | Everglade | The main flow, as the web has it: make a character, then walk into the glade | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
 | The Golemancers' Workshop | The temple and the unfinished golem | Yes |
 | The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | No. A card says where it runs on the web: `openagents.com/worlds/archery-range` |
-| Everglade Experimental | Classes, monsters, a horse and a red dragon | No. A card says where it runs on the web |
+| Everglade Experimental | Classes, monsters, a horse and a red dragon | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
 
 Nothing stands in for a world that isn't here: there is no web view, as the
 [desktop spec](desktop-app-spec.md) decided, and no scene written for the apps
@@ -44,7 +44,7 @@ share.
   camera.
 - Click or tap a row to open that world. On a keyboard, 1 to 4.
 - Every world has a **Worlds** button under its title. Escape does the same.
-- In Everglade the keys are the realm's, Escape too. The Worlds button sits
+- In Everglade and Experimental the keys are the realm's, Escape too. The Worlds button sits
   at the middle of the top edge, between the realm's own panels, and the
   Mac's menu has **Worlds** (Command 0).
 - Leaving a world lets go of every key and finger, and the world keeps its
@@ -99,7 +99,38 @@ pictures. It is the same Coax and the same shaders as the web, not a copy.
   (`sc_host_runs`): the row then opens the world, and the Coax draws only
   the Worlds button over it.
 
-What it doesn't do yet:
+### Experimental on the Mac (built 2026-11-10)
+
+The Experimental row opens the web's `fivelab` realm on its Experimental
+page (`/worlds/everglade-experimental`): the glade, the village and the
+castle, the classes and levels, the bar, the monsters, the Longbow (hold the
+right mouse button to draw, let go to loose), and the horse and the red
+dragon (E to mount). The page host opens it with no fork: it is the same
+host Everglade uses.
+
+- **The face.** `fivelab-face.c` got what `everglade2-face.c` got: addresses
+  of the host's width, `focus`, `outbox_capacity`, `media_capacity`, and
+  version 1 in a native build.
+- **The shaders.** The Experimental page draws with Character Create's passes
+  (the site's `data-wgsl="/charactercreator.wgsl"`), so the app emits
+  `gpu/charactercreator.coax`'s pairs and `gpu/fivelab-fx.coax`'s particles.
+- **The pack.** The app carries the site's own `glade.pack.gz` (92 MB). The
+  page host inflates a gzipped pack as it opens, as the browser host does.
+- **One host, two realms.** The Mac app keeps a page for each realm world.
+  A realm out of sight draws nothing and keeps its state. Both keep what a
+  browser would in the same folder, so your character is the same in each.
+- **No room.** Experimental has no room on the web, so it joins none here.
+  Everglade is the world that joins the site's room.
+- **In a shot.** `--scene 4` opens it. `--do` gained `down:BUTTON` and
+  `up:BUTTON`, so a shot can hold a draw, turn the aim and loose:
+  `look;down:2;turn:229,-143;wait:0.9;up:2`.
+
+Checked on 2026-11-10 from native shots: the glade and its HUD, a Ranger
+picked from the classes, a held draw that looses an arrow which hits an Imp
+for 7, the horse mounted and ridden, and the dragon mounted and flown over
+the village.
+
+What neither realm does yet:
 
 - **Sound.** The realm's sounds are taken and not played. The host needs
   Aethyr's audio interpreter (`aethyr/audio/host-pcm.coax`), as Aethyrforge
@@ -114,7 +145,8 @@ What it doesn't do yet:
   shared adapter a page gets with its render carrier, so the web module
   declares no version until Everglade II has a carrier.
 - **Leaving for another page.** A portal to another realm, the clipboard
-  and the address bar have no effect.
+  and the address bar have no effect. The addresses the web gives the
+  dungeon and the range have no row of their own in the app.
 - **Instance culling on the GPU.** The host draws every piece the page
   picked, as the browser does without its cull module.
 - **Math mode.** The shaders are compiled in Metal's relaxed math mode, not
@@ -129,11 +161,10 @@ What it doesn't do yet:
    Foundation only); its app needs the realm's library, shaders and pack in
    its bundle and its touches sent to the host. Android needs a twin of the
    host on Vulkan (`verse/native/realm-host.c` is the start).
-3. **Experimental and the Archery Range.** They share one module, so one
-   port brings both. `fivelab-face.c` needs the same changes
-   `everglade2-face.c` got, its shaders emitted the same way
-   (`gpu/fivelab.coax`), and its own pack (`glade.pack`) in the app. The
-   page host then opens it with no change.
+3. **The Archery Range.** It is the same module as Experimental, which now
+   runs, on another page (`/worlds/archery-range`). The Mac app needs a row
+   in its table of realms (`Sources/main.swift`, `realms`), `sc_host_runs`
+   for it in `scenes.coax`, and a second page of the same library.
 4. **A carrier and catalog profile** for both, when the web's Everglade II
    moves to the shared renderer. The page host then gives way to the realm
    host (`apps/aethyrforge-desktop/MetalRealm.m`).

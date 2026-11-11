@@ -3,7 +3,7 @@
 // Metal for the same face built natively (verse/native/build.sh) and the same shaders emitted by
 // `coax metal`. It draws any realm that uses the page's own passes (a background, a shadow map, a
 // scene of indexed draws over stores, particles, bloom and post, and the HUD's strokes): Everglade
-// II and Character Create today. It decides nothing about the game: it hands the face its assets,
+// II, Character Create and Everglade Experimental today. It decides nothing about the game: it hands the face its assets,
 // messages, keys and frames, uploads what the face hands back, and carries out its actions.
 // The Mac and iOS hosts link it; a host on another GPU needs its own twin of PageHost.m.
 #import <Foundation/Foundation.h>
@@ -13,7 +13,7 @@
 @interface AEPageConfig : NSObject
 @property (copy) NSString *producer;   // the realm's library (the face and its Coax, natively)
 @property (copy) NSString *shaders;    // ROLE.metallib and ROLE.bind for bg, shadow, scene, bloom, post, fx, particle, particle_over; page.bindings
-@property (copy) NSString *pack;       // the realm's VPK1 pack
+@property (copy) NSString *pack;       // the realm's VPK1 pack, or that pack gzipped as the site serves it (NAME.pack.gz)
 @property (copy) NSString *fonts;      // the HUD's faces: READING.ttf and TITLE.ttf
 @property (copy) NSString *reading, *title;   // their file names without .ttf
 @property double titleWeight;
