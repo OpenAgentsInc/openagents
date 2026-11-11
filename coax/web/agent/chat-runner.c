@@ -206,6 +206,9 @@ static bool chat_checkout(const char *dir) {
     FILE *f = fopen(sparse, "w");
     if (!f) return false;
     fputs("/*\n!*.png\n!*.jpg\n!*.jpeg\n!*.gif\n!*.webp\n!*.bin\n!*.vertices\n!*.indices\n!*.wasm\n!*.mp4\n!*.mov\n!*.glb\n!*.ktx2\n!*.zip\n", f);
+    // and packed or raw data (the realms' gzipped packs, model fixtures, sound): 1.7 GB of checkout
+    // was 1.2 GB of these on 2026-11-11, and the checkout lives in the container's memory
+    fputs("!*.gz\n!*.pack\n!*.f32\n!*.xz\n!*.wav\n!*.pcm\n!*.ogg\n!*.mp3\n!*.ttf\n!*.otf\n!*.safetensors\n!*.npy\n!*.tar\n!/docs/verification/data/\n", f);
     fclose(f);
   }
   text out = {0};
