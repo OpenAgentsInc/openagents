@@ -122,9 +122,9 @@ bow with the same `bow_matrix` and `bow_string_points` that draw it. The
 body's capsules run joint to joint: upper arms and forearms, thighs and
 shins, the torso, the neck and the skull. A check fails on any overlap.
 Standing, walking and running, a second check (`cc_bow_side_sweep`) needs the
-string's middle nearer the midline than the bow's grip (12 cm standing, 3 cm
-walking and running), both in the figure's space and as every zone places the
-bow from a body record.
+string's middle at least 10 cm behind the bow's grip along the way you face,
+both in the figure's space and as every zone places the bow from a body
+record.
 
 ## Rules
 
