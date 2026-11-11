@@ -1,0 +1,13 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "Zeron's demo conversation" at 8 111 size 240x29
+sidebar.edge region "" at 252 0 size 8x600
+tab.1 tab "Zeron's demo conversation" at 264 5 size 200x28
+transcript region "" at 256 38 size 644x449
+message.2.4 item "Matches the desktop fix in 1749890." at 256 43 size 644x22
+message.3.5 item "Ship it and open the PR." at 256 113 size 644x42
+message.4.6 item "Opening the PR now. Running the checks first:" at 256 203 size 644x22
+message.4.7 item "Ran 2 commands · fetched 1 page" at 256 237 size 644x186
+composer field "Do anything…" at 272 511 size 612x49
+composer.send button "Send" at 847 522 size 28x28
+composer.model button "claude-opus-5-5" at 709 520 size 130x32
+composer.attach button "Attach" at 281 522 size 28x28

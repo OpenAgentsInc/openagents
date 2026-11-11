@@ -1,0 +1,17 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "Zeron's demo conversation" at 8 111 size 240x29
+sidebar.edge region "" at 252 0 size 8x880
+tab.1 tab "Zeron's demo conversation" at 264 5 size 200x28
+transcript region "" at 256 38 size 1064x729
+message.2.3 item "Thought process · Ran 2 commands · edited 1 file · read 1 fil" at 256 -574 size 1064x627
+message.2.4 item "Done — the header keeps text_muted even on failure; only the c" at 256 65 size 1064x44
+message.2.4-2 item "" at 256 121 size 1064x74
+message.2.4-3 item "fn header_color(_group: &ToolGroup, theme: &Theme) -> Hsla {    " at 256 207 size 1064x104
+message.2.4-4 item "Matches the desktop fix in 1749890." at 256 323 size 1064x22
+message.3.5 item "Ship it and open the PR." at 256 393 size 1064x42
+message.4.6 item "Opening the PR now. Running the checks first:" at 256 483 size 1064x22
+message.4.7 item "Ran 2 commands · fetched 1 page" at 256 517 size 1064x186
+composer field "Do anything…" at 420 791 size 736x49
+composer.send button "Send" at 1119 802 size 28x28
+composer.model button "claude-opus-5-5" at 981 800 size 130x32
+composer.attach button "Attach" at 429 802 size 28x28

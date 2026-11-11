@@ -758,7 +758,10 @@ static int centre(App *a, const char *id, float *x, float *y) {
 }
 int oa_chat_busy(OaChat *a) {
   for (int i = 0; i < dsk_count(a->desk); i++) if (zr_busy(dsk_chat(a->desk, i))) return 1;
-  if (a->dictation && dsk_dictation_enabled(a->desk) && !dn_ready(a->dictation)) return 1;   // the model is loading
+  // the model is loading: the status strip's "Loading Parakeet…" (preparing reason 2). Not !dn_ready: that is whether
+  // capture is allowed, which also needs the window to have the keyboard, so offscreen it never comes and every
+  // `clock settle` ran to its bound
+  if (a->dictation && dsk_dictation_enabled(a->desk) && a->dictation_preparing == 2) return 1;
   return a->dictation && a->dictation_ticket != 0;   // a request's words are on their way
 }
 int oa_chat_drive(OaChat *a, const char *request, char *out, int cap) {

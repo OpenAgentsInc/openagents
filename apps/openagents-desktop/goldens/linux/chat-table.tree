@@ -1,0 +1,14 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "Zeron's demo conversation" at 8 111 size 240x29
+sidebar.edge region "" at 252 0 size 8x880
+tab.1 tab "Zeron's demo conversation" at 264 5 size 200x28
+transcript region "" at 256 38 size 1064x729
+message.1.2 item "What tools do you have? A table, please." at 256 140 size 1064x42
+message.2.3 item "Here are the tools I can reach from this Mac:" at 256 230 size 1064x22
+message.2.3-2 item "" at 256 264 size 1064x300
+message.2.3-3 item "And a wide one:" at 256 576 size 1064x22
+message.2.3-4 item "" at 256 610 size 1064x93
+composer field "Do anything…" at 420 791 size 736x49
+composer.send button "Send" at 1119 802 size 28x28
+composer.model button "claude-opus-5-5" at 981 800 size 130x32
+composer.attach button "Attach" at 429 802 size 28x28

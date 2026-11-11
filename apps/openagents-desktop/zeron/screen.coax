@@ -919,8 +919,22 @@ coaxial_zeron_live :: (s: [] ZeronState) -> bool #export_c #effects(all) { retur
 coaxial_zeron_busy :: (s: [] ZeronState) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   e := s[0].engine[..];
+  // a chat with no engine attached (the demo conversation, a picture's chat) has no probe to wait for:
+  // its probe field is the default 0, not a process, so without this every `clock settle` ran to its bound
+  if e[0].line.count == 0 { return false; }
   if e[0].probe >= 0 && !e[0].probed { return true; }
   return s[0].session[0].live && zr_status(s) != ZR_STATUS_WAITING;
+}
+#test "a chat with no engine attached is never busy; an attached one is while its probe runs" {
+  s: [1] ZeronState;
+  #assert !coaxial_zeron_busy(s[..]);
+  zr_demo(s[..]);
+  #assert !coaxial_zeron_busy(s[..]);
+  // an attached engine still probing is busy (a line buffer is what attaching gives it)
+  line: [16] u8; s[0].engine[0].line = line[..]; s[0].engine[0].probe = 3; s[0].engine[0].probed = false;
+  #assert coaxial_zeron_busy(s[..]);
+  s[0].engine[0].probed = true;
+  #assert !coaxial_zeron_busy(s[..]);
 }
 // What the host should do for a notice's button (HOST_LOGIN: Terminal running `claude /login`; HOST_INSTALL: the install line;
 // HOST_CODEX_LOGIN and HOST_CODEX_INSTALL the same for Codex: `codex login`, its npm line), once.

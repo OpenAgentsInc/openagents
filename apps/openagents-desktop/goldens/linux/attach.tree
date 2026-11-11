@@ -1,0 +1,12 @@
+sidebar.new button "New session" at 8 42 size 240x29
+session.1 row "New session" at 8 111 size 240x29
+sidebar.edge region "" at 252 0 size 8x880
+tab.1 tab "New session" at 264 5 size 200x28
+transcript region "" at 256 38 size 1064x729
+message.1.2 item "Install it in Terminal, then send your message: curl -fsSL https" at 256 606 size 1064x97
+notice region "missing.bin is not a file." at 420 724 size 736x61
+composer field "󰀀 see the file" at 420 791 size 736x49
+composer.send button "Send" at 1119 802 size 28x28
+composer.model button "Claude" at 1005 800 size 106x32
+composer.access button "Full access" at 918 800 size 83x32
+composer.attach button "Attach" at 429 802 size 28x28
