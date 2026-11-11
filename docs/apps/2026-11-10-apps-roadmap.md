@@ -1,6 +1,7 @@
 # Apps roadmap: Linux first, one agent stack, shared code for Verse apps
 
-Written 2026-11-10. Status: plan. Nothing below is built unless a line says so.
+Written 2026-11-10. Status: Step 0 is done, Step 1 opens (see its status), Steps 2 and 3 are in progress.
+Tracked in GitHub #13153.
 
 The order is the owner's (2026-11-10): work on Linux first because the Mac is
 busy, get OpenAgents for desktop opening on `coderos-4080`, then make every
@@ -43,6 +44,24 @@ Done when: openagents.com and `/chat` draw in the Coder Browser, and a browser
 with no adapter shows the message.
 
 ## Step 1. OpenAgents for desktop opens on Linux
+
+Status, 2026-11-10: it opens. `apps/openagents-desktop/linux/build.sh --open`
+builds and opens the window on `coderos-4080`. Slices 1 to 3 below are done,
+and from slice 4 saved sessions and settings. What was checked: the demo
+conversation and a new chat draw (text and icons from the Coax rasterizers,
+`components/raster/`); a turn with the stand-in Claude Code and one real turn
+ran offscreen; a session is kept and continued across a quit; the window
+holds 60 frames a second through a resize; and
+`coax/web/tool.sh apps/openagents-desktop/linux/check.coax` passes its eight
+cases against the goldens in `goldens/linux/`. Not checked: typing into the
+window with a real keyboard. Not built on Linux yet: kerning and colour
+emoji, the folder and file pickers, attachments, the room, dictation, and a
+terminal for a notice's Log in or Install button.
+
+The host is `apps/shared/host/linux/` (shared, 300 lines of C over the
+realms' Vulkan and Wayland helpers in `verse/gpu/`). The audit in
+[docs/research/exact/04-apps-audit-2026-11-10.md](../research/exact/04-apps-audit-2026-11-10.md)
+recommends its `--do` steps become `coax drive` operations.
 
 The app's product code is already Coax compiled to C behind `face.h`. Only
 the host is Mac-only. A Linux host has to supply what `Sources/Zeron.swift`
