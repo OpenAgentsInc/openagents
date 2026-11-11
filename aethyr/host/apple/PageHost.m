@@ -13,6 +13,7 @@
 #include <sys/sysctl.h>
 #include <time.h>
 #include <zlib.h>
+#include "audio-host.h"
 
 typedef uintptr_t A;
 // The face (aethyr/host/README.md, and the page's optional v1 exports host.js reads). A name the
@@ -33,7 +34,9 @@ typedef uintptr_t A;
  F(uint32_t,frame_store_cap,(void)) F(A,frame_store,(A)) F(uint32_t,frame_store_bytes,(A)) \
  F(uint32_t,particle_cap,(void)) F(A,particles,(A)) F(uint32_t,particle_bytes,(A)) F(uint32_t,particle_instances,(A)) \
  F(int32_t,action,(A)) F(A,outbox,(A)) F(uint32_t,outbox_len,(A)) F(uint32_t,outbox_capacity,(A)) F(void,action_done,(A)) \
- F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void))
+ F(A,drive_out,(A)) F(uint32_t,drive_out_len,(A)) F(A,media,(A)) F(uint32_t,media_len,(A)) F(uint32_t,media_capacity,(A)) F(uint32_t,sounds_len,(A)) F(uint32_t,player_appearance_v1,(void)) \
+ F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
+ F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A))
 typedef struct {
 #define PH_FN(result,name,args) result (*name) args;
  PH_FACE(PH_FN)
@@ -81,6 +84,7 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
  NSMutableDictionary<NSString *, NSNumber *> *sceneNames;   // a scene resource's name -> its place in group 1
  id<MTLRenderPipelineState> clearPipe; NSMutableDictionary<NSNumber *, id<MTLRenderPipelineState>> *boxPipes; id<MTLLibrary> glue;
  NSMutableDictionary<NSString *, PHMedia *> *media; NSString *mediaSaid;
+ NSMutableData *soundsTaken, *soundsGiven;   // the sound packets the face said, until the audio host takes them
  PHNet *net; NSURLSession *session; PHSocket *sockets[4]; id http[8];
  NSMutableArray<PHEvent *> *events; NSString *playerKey, *playerId, *playerAccount;
  int width, height; float dpr; CGSize points; int quality; double opened; BOOL closed;
@@ -178,7 +182,23 @@ static NSData *phInflate(NSData *gz) {
  [self after];
 }
 - (void)message:(int)kind text:(NSString *)text { NSData *d = [text dataUsingEncoding:NSUTF8StringEncoding]; [self message:kind bytes:d.bytes length:d.length]; }
+// The face's sound packet (aethyr/host/README.md, Audio), once after each handoff: coaxial_sounds_len
+// drains it, so it is read once, and a v1 packet must lie inside the allocation the face names or it
+// is refused whole. The packets wait, a line each, for the audio host (mf_sound_commands); one
+// nobody takes is dropped past 64 KB rather than grown.
+- (void)takeSounds {
+ if (closed || !x.sounds_len) return;
+ uint32_t n = x.sounds_len(state);
+ if (!n) return;
+ A p = x.sounds ? x.sounds(state) : 0;
+ if (!p || !x.sounds_capacity || n > x.sounds_capacity(state)) return;
+ if (!soundsTaken) soundsTaken = [NSMutableData data];
+ if (soundsTaken.length + n + 1 > 65536) return;
+ [soundsTaken appendBytes:(void *)p length:n];
+ if (((const uint8_t *)p)[n - 1] != '\n') [soundsTaken appendBytes:"\n" length:1];
+}
 - (void)after {
+ [self takeSounds];
  if (closed || !x.action) return;
  int32_t code = x.action(state);
  if (!code) return;
@@ -772,7 +792,6 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  double t0 = CACurrentMediaTime();
  uint32_t n = x.frame(state, (A)vertexBytes.mutableBytes, (A)uniformBytes.mutableBytes, (float)w, (float)h, dpr, dt, 0);
  double t1 = CACurrentMediaTime();
- if (x.sounds_len) (void)x.sounds_len(state);   // this host plays no sound yet: the packet is taken so it never backs up
  [self after];
  n = MIN(n, x.max_vertices());
  memcpy(uniformBuffer.contents, uniformBytes.bytes, uniformBytes.length);
@@ -942,7 +961,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  [self message:shown ? 602 : 601 bytes:NULL length:0];
  if (shown && x.focus) x.focus(state);
 }
-- (void)idle { if (closed) return; phCurrent = self; [self drain]; }
+- (void)idle { if (closed) return; phCurrent = self; [self drain]; [self takeSounds]; }
 // The agent driver (aethyr/agent/drive.coax), as host.js's coaxial.drive: a command in as message
 // 700, the realm's answer out. nil for a realm that has no driver.
 - (NSString *)drive:(NSString *)command {
@@ -985,3 +1004,30 @@ PH_IMPORT int32_t coaxial_http(uintptr_t url, uint32_t length, uintptr_t body, u
  return [h http:path body:body && body_length ? [NSData dataWithBytes:(void *)body length:body_length] : nil flags:flags];
 }
 PH_IMPORT int64_t coaxial_now_ms(void) { return phMillis(); }
+
+// ---- the page's sound, for the Apple audio host (audio-host.h; PageAudio.swift): its bank and its packets
+const uint8_t *mf_sound_bank(void *host, size_t *count) {
+ AEPageHost *h = (__bridge AEPageHost *)host; *count = 0;
+ if (!h || h->closed || !h->x.sound_bank || !h->x.sound_bank_len || !h->x.sound_bank_capacity) return NULL;
+ phCurrent = h;
+ size_t n = h->x.sound_bank_len(h->state), capacity = h->x.sound_bank_capacity(h->state);
+ A p = h->x.sound_bank(h->state);
+ if (!p || n > capacity) return NULL;
+ *count = n; return (const uint8_t *)p;
+}
+const uint8_t *mf_sound_bank_storage(void *host, size_t *capacity) {
+ AEPageHost *h = (__bridge AEPageHost *)host; *capacity = 0;
+ if (!h || h->closed || !h->x.sound_bank_storage || !h->x.sound_bank_storage_bytes) return NULL;
+ A p = h->x.sound_bank_storage(h->state);
+ if (!p) return NULL;
+ *capacity = h->x.sound_bank_storage_bytes(h->state); return (const uint8_t *)p;
+}
+// The packets taken since the last call; the bytes stay until the next call.
+const uint8_t *mf_sound_commands(void *host, size_t *count) {
+ AEPageHost *h = (__bridge AEPageHost *)host; *count = 0;
+ if (!h) return NULL;
+ h->soundsGiven = h->soundsTaken; h->soundsTaken = nil;
+ *count = h->soundsGiven.length; return h->soundsGiven.bytes;
+}
+// A page's face here has no spatial probe: every sound is the packet's own gain and pan.
+int32_t mf_sound_probe(void *host, int32_t slot, float right, float ahead, float up) { (void)host; (void)slot; (void)right; (void)ahead; (void)up; return 0; }

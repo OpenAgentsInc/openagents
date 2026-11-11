@@ -6,7 +6,8 @@
 // (Character Create, then the glade), and the Archery Range and Experimental are the web's fivelab
 // realm on their own pages, each run natively by Aethyr's page host (aethyr/host/apple/
 // page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this host
-// hands it the frames, keys and presses, and draws its picture under the Worlds button.
+// hands it the frames, keys and presses, draws its picture under the Worlds button, and plays its
+// sound through the Apple audio host (aethyr/host/apple/PageAudio.swift).
 //   Everglade                      opens the window
 //   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS] [--scene N]
 //       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits;
@@ -16,6 +17,8 @@
 //       `tap:640,400` clicks a point, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
 //       mouselook asks, `press:2:1` holds a mouse button a second at the middle, `turn:40,0` moves
 //       the held mouse, `down:2` and `up:2` hold and let go a button around other steps, `drive:walk-to guard` asks the realm's agent driver, `near:guard:20:60` waits until the driver lists ID within METRES (SECONDS at most); steps are split by `;`.
+//       A realm's sound is rendered offline in the shot's time, never played: stderr says what it
+//       did (the packets, the voices, the names played, the loudest sample), --audio OUT.wav writes it.
 //       --scale S draws S pixels a point (2 unless given); --realtime gives each frame the time it took. --frames DIR writes every sixth frame after `record` (--every N: every Nth)
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
@@ -48,6 +51,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // The realms, each once its row is first opened, by its world's number. `pageOffline` is a
   // shot's: no socket and no request leaves this Mac.
   var pages: [Int32: AEPageHost] = [:]
+  var sounds: [Int32: AEPageAudio] = [:]   // each open realm's sound
   var pageTried: Set<Int32> = []
   var pageOffline = false, pageShot = false
   var shownWorld: Int32 = 0           // the world whose realm is on screen; 0 when none is
@@ -150,6 +154,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     c.automated = true
     var why: NSString?
     pages[world] = AEPageHost.open(c, device: device, queue: queue, why: &why)
+    if let page = pages[world] { sounds[world] = AEPageAudio(page: page, resources: res, offline: pageShot) }
     if pages[world] == nil {
       FileHandle.standardError.write(Data("Everglade: the realm did not open: \(why ?? "unknown"). Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       eg_runs(state, world, 0)
@@ -157,8 +162,12 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   }
   func closePage(_ world: Int32) {
     if shownWorld == world { hold(false); shownWorld = 0 }
+    if pageShot, let sound = sounds[world] { FileHandle.standardError.write(Data("Everglade: world \(world) \(sound.summary())\n".utf8)) }
+    sounds[world]?.close(); sounds[world] = nil
     pages[world]?.close(); pages[world] = nil; pageTried.remove(world)
   }
+  // A key or a press in the realm on screen: the gesture its sound starts on.
+  func heard() { sounds[eg_scene(state)]?.gesture() }
   // Mouselook: the realm says when it wants the pointer held; the host holds it and says what it did.
   func hold(_ on: Bool) {
     if on == lookHeld { return }
@@ -193,10 +202,10 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let world = eg_scene(state)
     if Realms.table[world] != nil && pages[world] == nil && !pageTried.contains(world) { openPage(world) }
     let on: Int32 = pages[world] != nil ? world : 0
-    if on != shownWorld { hold(false); pages[shownWorld]?.shown(false); pages[on]?.shown(true); shownWorld = on }
+    if on != shownWorld { hold(false); pages[shownWorld]?.shown(false); sounds[shownWorld]?.show(false); pages[on]?.shown(true); sounds[on]?.show(true); shownWorld = on }
     let realm = page
-    for (w, p) in pages where w != on { p.idle() }   // out of sight a realm draws nothing, and still hears its room
-    if let realm { _ = realm.frame(CGSize(width: size.width / CGFloat(scale), height: size.height / CGFloat(scale)), scale: CGFloat(scale), dt: dt, wait: wait) }
+    for (w, p) in pages where w != on { p.idle(); sounds[w]?.step(dt) }   // out of sight a realm draws nothing, and still hears its room
+    if let realm { _ = realm.frame(CGSize(width: size.width / CGFloat(scale), height: size.height / CGFloat(scale)), scale: CGFloat(scale), dt: dt, wait: wait); sounds[on]?.step(dt) }
     let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
     var u: [Float] = [Float(size.width), Float(size.height), time, 0]
     model?.step(state, dt: dt)
@@ -361,7 +370,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var framesEvery = 6
   var shotRoom = ""   // --room CODE: a shot's own room on the site (a check's pair-e2-NAME), apart from everyone's
   var shotScale: Float = 2, shotRealtime = false, lastShotFrame = CACurrentMediaTime()
-  var doSteps = "", framesDir = "", shotLooks = false, recording = false
+  var doSteps = "", framesDir = "", shotAudio = "", shotLooks = false, recording = false
   func shot(to path: String, width: Int, height: Int, seconds: Float) -> Bool {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
     d.usage = [.renderTarget, .shaderRead]; d.storageMode = .shared
@@ -461,6 +470,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     }
     render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0) { _ in }
     nxp_close(next)
+    if !shotAudio.isEmpty, let sound = sounds[eg_scene(state)], !sound.write(shotAudio) { FileHandle.standardError.write(Data("Everglade: couldn't write \(shotAudio)\n".utf8)) }
     for world in Array(pages.keys) { closePage(world) }; try? FileManager.default.removeItem(atPath: shotStore)
     return save(texture, width, height, path)
   }
@@ -487,6 +497,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       if phase == 0 { worldsPress = eg_on_worlds(state, p.0, p.1) == 1 }
       if worldsPress { eg_pointer(state, p.0, p.1, phase); if phase == 2 { worldsPress = false }; return }
     }
+    if phase == 0 { heard() }   // a press is the gesture the realm's sound starts on, before the realm hears it
     // With the pointer held, a move only turns the camera and a press is at the middle of the view.
     if lookHeld {
       if phase == 1 { page.look(CGPoint(x: e.deltaX, y: e.deltaY)); return }
@@ -546,6 +557,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       // Escape with the pointer held lets it go, as a browser does, and is not the realm's key.
       if e.keyCode == 53 && lookHeld { hold(false); return }
       guard let k = realmKey(e) else { return }
+      heard()
       // While the realm takes text, what you type arrives as text; a named key is still a key.
       if k >= 32 && page.wantsText() && !e.modifierFlags.contains(.control) { if let t = e.characters, !t.isEmpty { page.text(t) } }
       else { _ = page.key(k, mods: mods(e), down: true) }
@@ -636,6 +648,7 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   view.pageShot = true; view.pageOffline = !args.contains("--online")
   if let d = args.firstIndex(of: "--do"), d + 1 < args.count { view.doSteps = args[d + 1] }
   if let d = args.firstIndex(of: "--frames"), d + 1 < args.count { view.framesDir = args[d + 1] }
+  if let d = args.firstIndex(of: "--audio"), d + 1 < args.count { view.shotAudio = args[d + 1] }
   if let w = args.firstIndex(of: "--scene"), w + 1 < args.count, let v = Int32(args[w + 1]) { eg_go(view.state, v) }
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }

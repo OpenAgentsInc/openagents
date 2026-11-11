@@ -3,8 +3,10 @@
 // Metal for the same face built natively (verse/native/build.sh) and the same shaders emitted by
 // `coax metal`. It draws any realm that uses the page's own passes (a background, a shadow map, a
 // scene of indexed draws over stores, particles, bloom and post, and the HUD's strokes): Everglade
-// II, Character Create and Everglade Experimental today. It decides nothing about the game: it hands the face its assets,
-// messages, keys and frames, uploads what the face hands back, and carries out its actions.
+// II, Character Create, Everglade Experimental and the Archery Range today. It decides nothing about
+// the game: it hands the face its assets, messages, keys and frames, uploads what the face hands back,
+// and carries out its actions. Its sound packets and sound bank go to the Apple audio host
+// (audio-host.h: mf_sound_bank, mf_sound_commands; PageAudio.swift plays them).
 // The Mac and iOS hosts link it; a host on another GPU needs its own twin of PageHost.m.
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>

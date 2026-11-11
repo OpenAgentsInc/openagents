@@ -1,9 +1,8 @@
 # Worlds in the Everglade apps (spec)
 
-Written 2026-11-10. Status: **the list and three worlds are built on the Mac
-(Everglade itself, the Workshop and Everglade Experimental); the phones have
-the Workshop; the Archery Range is the web's realm and doesn't run in the
-apps yet.**
+Written 2026-11-10. Status: **the list and all four worlds are built on the
+Mac (Everglade itself, the Workshop, the Archery Range and Everglade
+Experimental), with the realms' sound; the phones have the Workshop.**
 
 The Everglade apps are an experiment beside the main experience, which is
 the web app. They are where the next work, managing agents from inside a
@@ -24,7 +23,7 @@ them.
 | --- | --- | --- |
 | Everglade | The main flow, as the web has it: make a character, then walk into the glade | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
 | The Golemancers' Workshop | The temple and the unfinished golem | Yes |
-| The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | No. A card says where it runs on the web: `openagents.com/worlds/archery-range` |
+| The Archery Range | Shoot for points on foot, from horseback and dragonback ([spec](archery-range-spec.md)) | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs: `openagents.com/worlds/archery-range` |
 | Everglade Experimental | Classes, monsters, a horse and a red dragon | On the Mac, yes: the web's realm runs natively ([section 4](#4-bringing-the-webs-worlds-into-the-apps)). On the phones a card says where it runs |
 
 Nothing stands in for a world that isn't here: there is no web view, as the
@@ -44,7 +43,7 @@ share.
   camera.
 - Click or tap a row to open that world. On a keyboard, 1 to 4.
 - Every world has a **Worlds** button under its title. Escape does the same.
-- In Everglade and Experimental the keys are the realm's, Escape too. The Worlds button sits
+- In Everglade, the Archery Range and Experimental the keys are the realm's, Escape too. The Worlds button sits
   at the middle of the top edge, between the realm's own panels, and the
   Mac's menu has **Worlds** (Command 0).
 - Leaving a world lets go of every key and finger, and the world keeps its
@@ -130,11 +129,51 @@ picked from the classes, a held draw that looses an arrow which hits an Imp
 for 7, the horse mounted and ridden, and the dragon mounted and flown over
 the village.
 
-What neither realm does yet:
+### The Archery Range on the Mac (built 2026-11-10)
 
-- **Sound.** The realm's sounds are taken and not played. The host needs
-  Aethyr's audio interpreter (`aethyr/audio/host-pcm.coax`), as Aethyrforge
-  has.
+The Archery Range row opens the web's `fivelab` realm on the range's page
+(`/worlds/archery-range`, its own save slot): the shooting line, the five
+butts, the Longbow, the tally at the top left, the horse and the dragon.
+
+- **The row.** The table of realms is
+  [`apps/everglade-desktop/Sources/Realms.swift`](../../apps/everglade-desktop/Sources/Realms.swift),
+  shared with the iOS host's build: world, module, page, realm, slot and
+  pack. `scenes.coax` takes `sc_host_runs` for the range (world 3).
+- **Nothing new to build.** The range is the same library, shaders and pack
+  as Experimental.
+- **One page of a module at a time.** A module's library loads once in a
+  process, and the face keeps some of a page's state beside the state it is
+  handed (your body, the agent driver). So opening the range closes
+  Experimental's page and the other way round (`Realms.sharing`); each opens
+  afresh from its own save slot. Everglade, another module, keeps its page.
+- **In a shot.** `--scene 3`.
+
+### Sound in the page host (built 2026-11-10)
+
+The realms' sound plays through the Apple audio host Aethyrforge already
+plays with, not a second one:
+
+- **The Coax.** `aethyr/host/native-audio.coax` (the PCM interpreter
+  `aethyr/audio/host-pcm.coax`, the session, the bank, the memory tickets,
+  the WAV and Opus plans and the Everglade PCM assets), compiled to C into
+  the app.
+- **The C wrappers.** `aethyr/host/apple/audio-host.h` and `audio-host.c`,
+  moved out of Aethyrforge's `MetalRealm.m`, which now includes them. The
+  page host answers the four calls a realm host owes the audio host: the
+  sound bank, its storage, the sound packets (`mf_sound_commands`: each
+  packet read once after every handoff, refused whole when it is outside the
+  face's allocation) and the spatial probe (none).
+- **The Swift.** `aethyr/host/apple/PageAudio.swift` hands a page to
+  Aethyrforge's `ForgeMetalAudio` (`Sources/MetalAudio.swift`): the bank the
+  realm renders (Experimental's synthesized sounds, the bow's among them),
+  the site's sound files and PCM companions (`/realms/everglade/sfx/`,
+  `pcm-v1/`, copied into the app), the first key or press as the gesture,
+  and a covered page's clock stopped.
+- **In a shot** the device is never opened. The interpreter renders in the
+  shot's time, stderr says what it did (packets, voices, the names played,
+  the loudest sample), and `--audio OUT.wav` writes it.
+
+What the realms don't do yet:
 - **Your web character.** The app has no log in, so it starts from its own
   kept character, not the one your browser has.
 - **The catalog renderer.** The host draws with the page's own passes, as
@@ -145,8 +184,9 @@ What neither realm does yet:
   shared adapter a page gets with its render carrier, so the web module
   declares no version until Everglade II has a carrier.
 - **Leaving for another page.** A portal to another realm, the clipboard
-  and the address bar have no effect. The addresses the web gives the
-  dungeon and the range have no row of their own in the app.
+  and the address bar have no effect. The address the web gives the
+  dungeon has no row of its own in the app.
+- **Two fivelab pages at once.** See the range above.
 - **Instance culling on the GPU.** The host draws every piece the page
   picked, as the browser does without its cull module.
 - **Math mode.** The shaders are compiled in Metal's relaxed math mode, not
@@ -156,16 +196,19 @@ What neither realm does yet:
 
 ### What is left, in order
 
-1. **Sound** in the page host.
-2. **The phones.** iOS can link the same page host (it is Metal and
-   Foundation only); its app needs the realm's library, shaders and pack in
-   its bundle and its touches sent to the host. Android needs a twin of the
-   host on Vulkan (`verse/native/realm-host.c` is the start).
-3. **The Archery Range.** It is the same module as Experimental, which now
-   runs, on another page (`/worlds/archery-range`). The Mac app needs a row
-   in its table of realms (`Sources/main.swift`, `realms`), `sc_host_runs`
-   for it in `scenes.coax`, and a second page of the same library.
-4. **A carrier and catalog profile** for both, when the web's Everglade II
+1. **The phones.** iOS builds the shared table of realms already
+   (`Realms.swift`). It still needs: the page host and the audio host linked
+   (`PageHost.m`, `PageAudio.swift`, `MetalAudio.swift`, `audio-host.c` and
+   `native-audio.coax`'s C; all Metal, Foundation and AVFoundation, but the
+   audio session category set for iOS), the realm libraries linked into the
+   app instead of loaded with `dlopen` (an App Store app loads no loose
+   dylib: a static archive per module, with its face's symbols prefixed, or
+   one signed framework each), the shaders emitted for the iphoneos SDK, the
+   fivelab pack (92 MB) and the sound files in the bundle, `eg_runs` from
+   its main.swift as the Mac's does, and touches sent to the host as
+   pointer events with a second finger for the draw. Android needs a twin
+   of the host on Vulkan (`verse/native/realm-host.c` is the start).
+2. **A carrier and catalog profile** for both, when the web's Everglade II
    moves to the shared renderer. The page host then gives way to the realm
    host (`apps/aethyrforge-desktop/MetalRealm.m`).
 

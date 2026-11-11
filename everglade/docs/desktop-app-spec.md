@@ -16,17 +16,17 @@ cloud with a far city's lamps in its gaps.
   light from each crystal to the golem's sphere, and four holographic
   displays hung between the pylons.
 - **A list of worlds.** The app now opens on a list of four worlds
-  ([spec](app-scenes-spec.md)): Everglade itself, the Workshop and
-  Experimental run in it; the [Archery Range](archery-range-spec.md) is a
-  card that says where it runs on the web.
+  ([spec](app-scenes-spec.md)): Everglade itself, the Workshop, the
+  [Archery Range](archery-range-spec.md) and Experimental all run in it.
 - **Everglade itself.** The Everglade row opens the web's realm natively:
   Character Create, then the run into the glade, in the site's room. Aethyr's
   page host for Metal ([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h))
-  runs the realm's own Coax and shaders; there is no web view. It has no
-  sound yet. [What is built and what is left](app-scenes-spec.md#4-bringing-the-webs-worlds-into-the-apps).
-- **Experimental too.** The Experimental row opens the web's `fivelab` realm
-  the same way, through the same page host: the classes, the monsters, the
-  Longbow, the horse and the red dragon.
+  runs the realm's own Coax and shaders; there is no web view. Its sound
+  plays through the Apple audio host Aethyrforge uses. [What is built and what is left](app-scenes-spec.md#4-bringing-the-webs-worlds-into-the-apps).
+- **Experimental and the Archery Range too.** Their rows open the web's
+  `fivelab` realm the same way, through the same page host: the classes,
+  the monsters, the Longbow, the horse and the red dragon, and the range's
+  butts and tally.
 - **On a phone too.** [`apps/everglade-mobile/`](../../apps/everglade-mobile/README.md)
   is the same Workshop as an iOS app, `com.openagents.everglade`, with touch
   controls and no Next issue panel, and as an Android app on a Vulkan host.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, metal and swiftc; holds no logic)
 # Builds Everglade.app for this Mac (everglade/docs/desktop-app-spec.md): the worlds (the list,
-# the Workshop, and the web's realms run natively: Everglade itself, everglade2, and Experimental, fivelab) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
+# the Workshop, and the web's realms run natively: Everglade itself, everglade2, and the Archery Range and Experimental, fivelab, with their sound) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
 # Everglade II's pack, and the AppKit and Metal host in Swift.
@@ -85,26 +85,34 @@ emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
 xcrun -sdk macosx metal -w "$repo/aethyr/host/apple/PageHost.metal" -o "$work/c/page-host.metallib"
 build_realm everglade2
 emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
-# Experimental: the fivelab module on its Experimental page draws with Character Create's passes
+# The Archery Range and Experimental: the fivelab module on their pages draws with Character Create's passes
 # (the site's data-wgsl="/charactercreator.wgsl"), and its pack is the site's own file, gzipped as
 # the site serves it; the page host inflates it as a browser does.
 build_realm fivelab
 emit_page fivelab charactercreator charactercreator fivelab-fx fxg
 cp "$repo/apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz" "$app/Contents/Resources/fivelab/glade.pack.gz"
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
+# The realms' sound: Aethyr's Apple audio host (aethyr/host/apple/audio-host.h, PageAudio.swift and
+# Aethyrforge's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,
+# and the site's sound files a page names (/realms/everglade/sfx/ and their PCM companions).
+"$coax" c "$repo/aethyr/host/native-audio.coax" --library --header "$work/c/native-audio.h" > "$work/c/native-audio.c"
+/usr/bin/clang "${cflags[@]}" -w -c "$work/c/native-audio.c" -o "$work/c/native-audio.o"
+printf '#include "native-audio.h"\n#include "%s"\n#include "%s"\n' "$repo/aethyr/host/apple/audio-host.h" "$repo/aethyr/host/apple/audio-host.c" > "$work/c/audio-host-unit.c"
+/usr/bin/clang "${cflags[@]}" -w -c "$work/c/audio-host-unit.c" -o "$work/c/audio-host.o"
 # The pictures the realm names (the classes' and spells' icons), where the site has them.
 mkdir -p "$app/Contents/Resources/web/realms/everglade" "$app/Contents/Resources/web/realms/5e-mmo"
 rsync -a --delete "$repo/apps/openagents-web/realms/everglade/hotbar" "$app/Contents/Resources/web/realms/everglade/"
 rsync -a --delete "$repo/apps/openagents-web/realms/5e-mmo/hotbar" "$app/Contents/Resources/web/realms/5e-mmo/"
+rsync -a --delete "$repo/apps/openagents-web/realms/everglade/sfx" "$repo/apps/openagents-web/realms/everglade/pcm-v1" "$app/Contents/Resources/web/realms/everglade/"
 # Everglade's faces and their licences (SIL OFL 1.1), as the web realm ships them.
 rm -rf "$app/Contents/Resources/fonts"
 cp -R "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$app/Contents/Resources/fonts"
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/Contents/Resources/everglade2.pack"
 # The web's character code passes its Creator and Bodies by value, megabytes a call, so the main
 # thread, which runs every Coax call, gets a 512 MB stack (reserved, not touched until used).
-printf '#include "%s"\n#import "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" > "$work/c/bridge.h"
-xcrun -sdk macosx swiftc -O -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$work/c/page-host.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" \
-  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -lm -lz \
+printf '#include "%s"\n#import "%s"\n#include "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" "$repo/aethyr/host/apple/audio-host.h" > "$work/c/bridge.h"
+xcrun -sdk macosx swiftc -O -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" "$work/c/page-host.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" \
+  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -lm -lz \
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's
 # hash; an unknown verb builds it and does nothing else), then copied in beside the app's own.
