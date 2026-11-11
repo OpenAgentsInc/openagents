@@ -10,23 +10,34 @@
 #
 # Both run as the API's runtime account, read the database as oa_dump
 # (secret oa-db-dump-database-url, coax/web/api/db/roles.sh), and write only
-# new objects into gs://openagentsgemini-db-backups, whose 35-day retention
+# new objects into gs://openagentsgemini-db-backups (until the owner moves
+# them to gs://openagents-backups-db), whose 35-day retention
 # policy is locked: nobody can delete or overwrite a dump before it's 35 days old.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-project=openagentsgemini region=us-central1 bucket=openagentsgemini-db-backups
+project=openagentsgemini region=us-central1
 instance="$project:$region:openagents-production-pg"
 sa="157437760789-compute@developer.gserviceaccount.com"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
+# The bucket the jobs already write to wins: the owner moves them to the backup
+# project's gs://openagents-backups-db (NEEDS_OWNER.md, #13194), and a redeploy keeps that.
+bucket="$(gcloud run jobs describe oa-db-dump --project "$project" --region "$region" --format=json 2>/dev/null |
+  python3 -c 'import json,sys
+try: env = json.load(sys.stdin)["spec"]["template"]["spec"]["template"]["spec"]["containers"][0].get("env", [])
+except Exception: env = []
+print(next((e.get("value", "") for e in env if e.get("name") == "OA_BACKUP_BUCKET"), ""))' || true)"
+bucket="${bucket:-openagentsgemini-db-backups}"
 commit="$(git -C "$here" rev-parse --short=12 HEAD)"
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-db-backup:$commit-$(date +%Y%m%d-%H%M%S)"
 gcloud builds submit "$here" --project "$project" --region "$region" --tag "$tag" --suppress-logs --quiet \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > /dev/null
-echo "backup: built $tag"
+echo "backup: built $tag; bucket gs://$bucket"
 
-gcloud storage buckets add-iam-policy-binding "gs://$bucket" --member "serviceAccount:$sa" --role roles/storage.objectCreator > /dev/null
-gcloud storage buckets add-iam-policy-binding "gs://$bucket" --member "serviceAccount:$sa" --role roles/storage.objectViewer > /dev/null
+# In the backup project only the owner sets IAM; there these fail and the owner's grants stand.
+gcloud storage buckets add-iam-policy-binding "gs://$bucket" --member "serviceAccount:$sa" --role roles/storage.objectCreator > /dev/null 2>&1 ||
+  echo "backup: gs://$bucket's IAM is the owner's"
+gcloud storage buckets add-iam-policy-binding "gs://$bucket" --member "serviceAccount:$sa" --role roles/storage.objectViewer > /dev/null 2>&1 || true
 gcloud secrets add-iam-policy-binding oa-db-backup-drill-age-key --project "$project" --member "serviceAccount:$sa" \
   --role roles/secretmanager.secretAccessor --condition=None > /dev/null
 

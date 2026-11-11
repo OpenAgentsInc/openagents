@@ -146,6 +146,10 @@ the production connection-string secrets, gives it the read-only one, and
 creates the `openagents-backups` project where it has no role. Exact
 commands go in `NEEDS_OWNER.md` when step 0 starts.
 
+**Status (2026-11-11, #13194):** approved. The agent part is built (roles,
+guard, retained backups, locked nightly dumps, monthly drill); the owner's
+steps are in `NEEDS_OWNER.md`.
+
 **Decided 2026-11-11: yes.**
 
 ## D10. Recovery when every strong factor is lost

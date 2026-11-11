@@ -1,6 +1,7 @@
 # Data, storage and backups
 
-Status: design, 2026-11-11. Part of [OpenAgents authentication](README.md).
+Status: design, 2026-11-11. The roles, guard, retained backups, locked
+dumps and drill are built (#13194). Part of [OpenAgents authentication](README.md).
 
 ## Where it lives
 
@@ -75,7 +76,7 @@ their account id.
 
 ## Backups
 
-### Today (checked read-only, 2026-11-11)
+### Today (built 2026-11-11, #13194)
 
 | Control | State |
 | --- | --- |
@@ -83,61 +84,102 @@ their account id.
 | Point-in-time recovery | On, 7 days of transaction logs |
 | Instance deletion protection | On |
 | Availability | Zonal (one zone) |
-| Backups kept if the instance is deleted | Not set |
-| Logical dumps outside Cloud SQL | None scheduled. `gs://openagentsgemini-coder-backup-20261028` holds a one-off dump of the old accounts database |
-| Locked retention on any backup bucket | None. The two backup buckets have 7-day soft delete only |
-| Who can drop tables | The API applies its own migrations at startup (`api.c`, `migrate()`) as `oa_analytics`, so the role it serves requests with can run DDL, and so can anyone holding its connection string |
-| Who can read that connection string | Any agent using the automation service account, which holds `secretmanager.admin` |
+| Backups kept if the instance is deleted | On (`--retain-backups-on-delete`) |
+| Logical dumps outside Cloud SQL | Nightly at 09:30 UTC: Cloud Run job `oa-db-dump`, scheduler `oa-db-dump-nightly` |
+| Locked retention | `gs://openagentsgemini-db-backups`: 35 days, **locked**. Nobody, us included, can delete or overwrite a dump before it is 35 days old; a lifecycle rule deletes it at 40 days |
+| Encryption of dumps | [age](https://age-encryption.org), to two keys in `coax/web/api/backup/recipients.txt`: the offline key (the owner holds the private half, on paper) and the drill key (Secret Manager `oa-db-backup-drill-age-key`). The job can encrypt but can't decrypt |
+| Restore drill | Monthly, the 3rd at 12:00 UTC: Cloud Run job `oa-db-drill`, scheduler `oa-db-drill-monthly`. Results in `gs://openagentsgemini-db-backups/drills/` |
+| Who can drop tables | Nobody outside a migration. The API serves as `oa_api`, which has no DDL, no `TRUNCATE` and owns nothing. Migrations run as `oa_analytics` in the job `oa-api-migrate-production`, which `deploy.sh` runs before each rollout. An event trigger refuses `DROP` and a trigger on every table refuses `TRUNCATE` unless the transaction set `oa.allow_ddl` |
+| Who can read the owner's connection string | The migration jobs, and still the automation account until the owner's step in `NEEDS_OWNER.md` (D9) |
 
-The instance can't be deleted by an agent, but the data inside it can,
-and the only copies are inside Cloud SQL itself.
+Not yet done: the separate backup project. The automation account can't
+create projects or change project IAM, so the bucket is in
+`openagentsgemini` for now; its lock already stops anyone deleting dumps
+early. Moving it to `openagents-backups` is the owner's step in
+`NEEDS_OWNER.md`.
+
+### How it's built
+
+- **Roles:** `coax/web/api/db/roles.sh staging|production` makes the
+  roles, puts their connection strings in Secret Manager (passwords never
+  printed; Postgres gets SCRAM verifiers), applies `guard.sql` and
+  `grants.sql`, and checks the result: from the catalog, and by trying
+  `DROP` and `TRUNCATE` on a scratch table inside a transaction that rolls
+  back. It never touches a table's rows. Run it again after adding a role.
+- **Migrations:** `api --migrations /migrations --migrate-only` applies
+  them and exits. `coax/web/api/deploy.sh` runs it as the Cloud Run job
+  `oa-api-migrate-<env>`, with the same image, before the service rollout;
+  a failed migration stops the deploy. The service itself no longer
+  migrates at startup. Local tests (`test.sh`) still pass `--migrations`.
+- **Dumps:** `coax/web/api/backup/backup.sh dump` takes one snapshot,
+  counts every table's rows in it, `pg_dump`s it (custom format), encrypts
+  with age, and writes `oa_analytics/<time>.dump.age` and
+  `<time>.counts.tsv` create-only. `coax/web/api/backup/deploy.sh` builds
+  the image (Postgres 18 Alpine plus age) and makes the jobs and schedules.
+- **Decrypt by hand:** `age -d -i <offline key file> <time>.dump.age > db.dump`,
+  then `pg_restore -d <empty database> --no-owner --no-acl db.dump` with
+  Postgres 18 tools.
 
 ### The plan
 
 1. **Retain Cloud SQL backups on instance deletion**
    (`gcloud sql instances patch openagents-production-pg --retain-backups-on-delete`),
-   so even deleting the instance leaves its backups.
+   so even deleting the instance leaves its backups. Done.
 2. **A separate backup project**, `openagents-backups`, holding one bucket
-   `oa-db-backups` with:
+   `openagents-backups-db` with:
    - a retention policy of 35 days, **locked** (Bucket Lock): no one,
      including a project owner, can delete or overwrite an object before
      it is 35 days old, and the policy can't be shortened;
-   - object versioning on;
-   - the only writer is a dedicated service account `oa-backup-writer`,
-     with `storage.objectCreator` and nothing else. No account in the
-     main project has any role in this project; only the owner's human
-     login does.
-3. **Logical dumps:** a Cloud Run job, `oa-db-dump`, runs `pg_dump` of
-   `oa_analytics` (whole database) nightly and of the `auth` schema every 6
-   hours, compressed, then sealed to an **offline backup public key**
-   (secp256k1 ECDH plus XChaCha20-Poly1305, the NIP-44 construction). The
-   job can encrypt but can't decrypt. The private key is printed on paper
-   and kept by the owner, with a second copy in a separate location.
+   - the only writer is the dump job's account, with
+     `storage.objectCreator`, and the drill's read with
+     `storage.objectViewer`. No account in the main project has any other
+     role in this project; only the owner's human login does.
+   Owner's step (D9). Until then the locked bucket above stands in.
+3. **Logical dumps:** nightly, whole database, encrypted to an offline age
+   key. Done. (A 6-hourly `auth` dump comes with the `auth` schema.)
 4. **The seal key and pepper** are exported once, sealed to the same
    offline key, and stored in the locked bucket, so a restore can read
-   emails.
-5. **Roles** (below) so the running API can't drop tables at all.
+   emails. With the `auth` schema.
+5. **Roles** (below) so the running API can't drop tables at all. Done.
 
 ### Database roles
 
 | Role | Can | Can't | Used by |
 | --- | --- | --- | --- |
-| `oa_owner` | Own every schema; run migrations | Serve requests | A separate migration job (`oa-api-migrate`) run by the deploy before the new revision; the API stops migrating at startup. Its password is in a secret only the owner and the deploy can read |
-| `oa_api` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on tables; `EXECUTE` on functions; `INSERT` on `auth.audit` | `CREATE`, `DROP`, `ALTER`, `TRUNCATE`; `UPDATE` or `DELETE` on `auth.audit` | The API |
-| `oa_readonly` | `SELECT` on views that exclude sealed columns and digests | Anything else | Agents, analytics, debugging |
-| `oa_dump` | `SELECT` on everything, for `pg_dump` | Writes | The dump job |
+| `oa_analytics` | Own every schema; run migrations | Serve requests | The migration jobs `oa-api-migrate-staging` and `oa-api-migrate-production`, run by `deploy.sh` before each rollout. Secrets `oa-analytics-database-url` and `-staging` |
+| `oa_api`, `oa_api_staging` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on tables; sequences; functions | `CREATE`, `DROP`, `ALTER`, `TRUNCATE`; owning anything | The API. Secrets `oa-api-database-url`, `oa-api-staging-database-url` |
+| `oa_readonly` | `SELECT` on every table | Anything else | Agents, analytics, debugging. Secret `oa-analytics-readonly-database-url` |
+| `oa_dump` | `SELECT` on every table, for `pg_dump` | Writes | The dump and drill jobs. Secret `oa-db-dump-database-url` |
+| `oa_admin` | A `cloudsqlsuperuser`: make roles, own the guard | Serve requests | `roles.sh` only. Secret `oa-pg-admin-database-url` |
 
-Plus an event trigger on `ddl_command_start` that refuses `DROP` and
-`TRUNCATE` in production unless the session set
-`oa.allow_ddl = '<migration id>'`, which only the migration step does.
-This catches the case where someone does get `oa_owner`.
+Default privileges give `oa_api` and the readers what later migrations
+make. When `auth.audit` lands, its migration revokes `UPDATE` and `DELETE`
+on it from `oa_api`.
+
+Plus the guard (`coax/web/api/db/guard.sql`, schema `oa_guard`, owned by
+`oa_admin` so the owner role can't rewrite it): an event trigger on
+`ddl_command_start` refuses every `DROP` unless the transaction set
+`oa.allow_ddl`, which only the migration runner does (to the migration's
+file name). Event triggers don't see `TRUNCATE`, so every table carries a
+`BEFORE TRUNCATE` trigger with the same test, and a second event trigger
+adds it to each table a migration creates. Cloud SQL's own roles pass. This
+catches the case where someone does get `oa_analytics`.
 
 **IAM changes that go with it** (owner-run; the automation account can't
-change IAM):
+change project IAM; exact steps in `NEEDS_OWNER.md`, D9):
 
-- the automation account loses access to the production connection
-  string secrets; it gets the `oa_readonly` one;
-- the backup project grants nothing to the main project's accounts.
+- the migration jobs move to their own account, `oa-api-migrator`
+  (made, with read access to the owner secrets; it needs
+  `roles/cloudsql.client`);
+- a deny policy stops the automation account reading the owner, runtime,
+  dump and admin connection strings and resetting Cloud SQL passwords; it
+  keeps `oa-analytics-readonly-database-url`;
+- the backup project grants nothing to the main project's accounts except
+  the dump job's create-only write and the drill's read.
+
+Even then, an account that can redeploy a Cloud Run job can make that job
+run as the owner role: deploys need to. The guard and the locked dumps are
+what stop that from losing data.
 
 ### The "an agent nukes the production database" runbook
 
@@ -146,7 +188,7 @@ change IAM):
 | A table or schema dropped, rows deleted | Point-in-time clone to the minute before (`gcloud sql instances clone ... --point-in-time`), copy the damaged tables back | Under 1 minute | About 1 hour |
 | The whole database dropped | Point-in-time clone, then point the API at the clone | Under 1 minute | About 1 hour |
 | The instance deleted (needs owner rights) | Retained Cloud SQL backup, restored to a new instance | Up to 24 hours | 1 to 2 hours |
-| Cloud SQL backups also gone, or bad for days | Latest locked dump in `oa-db-backups` | 6 hours for `auth`, 24 hours for the rest | 2 to 3 hours |
+| Cloud SQL backups also gone, or bad for days | Latest locked dump in `gs://openagentsgemini-db-backups` (later the backup project) | Up to 24 hours (nightly at 09:30 UTC) | About 30 minutes: measured restore of the data is seconds (below); most of it is making a Cloud SQL instance and pointing the API at it |
 | The main project is compromised or deleted | Locked dumps in the backup project, restored into a new project | Same | Half a day |
 
 **Steps when it happens:**
@@ -166,27 +208,48 @@ change IAM):
 
 ### Restore drills
 
-Monthly, a scheduled job:
+Monthly, on the 3rd at 12:00 UTC, the Cloud Run job `oa-db-drill`
+(`backup.sh drill`):
 
-1. restores last night's locked dump into a temporary instance named
-   `oa-drill-<date>` (the smallest tier, about $0.05 an hour),
-2. decrypts it with a drill copy of the backup key held in Secret Manager
-   for this purpose (a separate key pair from the paper one; the job
-   encrypts each dump to both),
-3. runs the counts and a login replay against it,
-4. writes the result and timings to `docs/verification/`,
-5. deletes the temporary instance it made (and only that).
+1. takes the newest dump from the locked bucket,
+2. decrypts it with the drill key (Secret Manager
+   `oa-db-backup-drill-age-key`; a separate key pair from the paper one,
+   and every dump is encrypted to both),
+3. restores it into a throwaway Postgres 18 inside the job's own
+   container, so there is no instance to forget and delete,
+4. checks every table's row count against the counts taken in the dump's
+   own snapshot (they must match exactly), and notes how many rows
+   production has changed since,
+5. writes the result to `gs://openagentsgemini-db-backups/drills/` and
+   the job log. A failed drill fails the job execution.
 
-A drill that fails opens an issue.
+First drill, 2026-11-11 (`drills/20261111T211024Z.json`):
+
+| Measure | Result |
+| --- | --- |
+| Dump | `oa_analytics/20261111T210517Z.dump.age`, 8.0 MB encrypted, taken in 7 seconds |
+| Restored | 135 tables, 273,369 rows, every count equal to the dump's; 0 restore errors |
+| Restore time | 3 seconds; the whole drill job 49 seconds, start to finish |
+| Offline key | Decrypted the same dump on the owner's Mac (`PGDMP` header) |
+| Lock | Deleting a dump was refused: "subject to bucket's retention policy" |
+
+**RPO:** under 1 minute while Cloud SQL and its point-in-time recovery
+are intact; up to 24 hours from the locked dumps alone. **RTO:** about 1
+hour for a point-in-time clone; about 30 minutes from a locked dump into a
+new instance (minutes to create it, seconds to restore, then one secret
+version and a redeploy).
+
+Not built yet: opening an issue on a failed drill, and a login replay
+against the restore (it comes with the `auth` schema).
 
 ### What it costs
 
 | Item | Monthly |
 | --- | --- |
 | Cloud SQL automated backups and logs, for a database under 10 GB | About $2 |
-| Locked bucket: 35 days of nightly dumps and 6-hourly `auth` dumps, compressed, well under 10 GB | Under $1 |
+| Locked bucket: 35 to 40 days of nightly dumps, about 8 MB each today | Under $0.10 |
 | Dump job runs | Under $1 |
-| Monthly drill instance, a few hours | Under $1 |
+| Monthly drill: a minute of a Cloud Run job, no instance | Under $0.01 |
 | **Total added** | **About $5** |
 | Optional: high availability (regional) | About +$50 |
 | Optional: cross-region read replica | About +$50 |
@@ -207,7 +270,7 @@ recommend neither now (decision D11).
   (cancel by logging in). Purging deletes authenticators, sessions,
   grants, connections and owned content, sets audit rows' account to null,
   and leaves the account id as a tombstone so it's never reused. Copies in
-  backups age out within 35 days; the privacy page says so.
+  backups age out within 40 days; the privacy page says so.
 - **Money first:** before deleting, the page shows any service credit
   left (spend it first; credit can't be withdrawn) and reminds you that
   your wallet is yours: deleting the account deletes our encrypted copy
