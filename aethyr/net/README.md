@@ -15,6 +15,9 @@ effects. An interface does not create a second model world for the consumer.
 | Replication and body lifetime | `replication.coax` | Per-recipient receipt ring, baselines, replacement/removal and complete-tick ACK | Complete absolute snapshots, complete-tick ACK and absence removal; no unused delta/removal queue |
 | Recipient fields | `realm.coax`, `row.coax` | Owner/public body fields; distant party HP/MAX only; blocks deny fields | Public pose, paint and life; fuel only for the owner; no party fields |
 | Persistence | `net_session_saved`; existing checkpoint flow | Schema 2 requires an accepted capture within the existing bound; old schemas keep their existing policy | Explicit `NET_DURABLE_NONE`; no implied checkpoint or resume promise |
+| Relevance at scale | `grid.coax` (#13178) | The room's interest grid: uniform cells of half the relevance radius, queries by neighbourhood | — |
+| Priority, budget and backpressure | `budget.coax` (#13178) | Per-seat link (15 KB/s of rows, halved and spaced while its socket queues or HEARD lags), priority by distance, view, combat, speed and age, starved rows first | — |
+| Reliable spawn and despawn | `spawn.coax` (#13178) | Spawns and x's lead each frame (the reliable lane); on datagrams an unheard spawn's updates wait | — |
 | Diagnostics | `diagnostics.coax` | Readiness, selected profile, world tick, live/held seats; unavailable counters are −1 | Readiness, selected profile, world tick, admitted humans and bots, consumed controls, refusals and snapshots |
 
 `coax/web/room/room.coax` selects profiles and exports
@@ -39,6 +42,10 @@ The published signed room-stats body keeps its existing format.
   It copies only occupied slots. Its former local copies of those decisions
   are removed. `net_row_delta` supplies the explicit field mask.
 - `room-blocks.coax` passes selected fields through `wire_seat_frame_fields`.
+- `room-everglade.coax` steps each seat's `NetLink` and passes its limit, the
+  seat's camera and each slot's combat to `wire_seat_frame_look`; a packed page
+  hears its link once a second (`k`) for the `?net` overlay's BUDGET and DROP.
+  `coax/web/tool.sh coax/web/room/repl-bench.coax` measures the layer.
   Party health does not create a visible body in `everglade-net.coax`.
   Widening permissions invalidates a baseline and sends an absolute row.
   Narrowing permissions cannot expose a previously private field.

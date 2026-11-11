@@ -475,7 +475,7 @@ e2n_record :: (n: [] E2Net, t: string) {
     return;
   }
 }
-// One entry of a state (D): a row (s), who a seat is (n), one gone (x).
+// One entry of a state (D): a row (s), who a seat is (n), your link (k), one gone (x).
 e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   if t.count < 1 { return; }
   r: [1] WireRd; r[0] = wire_rd(t, 1);
@@ -522,6 +522,11 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     for i: 0..<E2N_CASTS { if !n[0].casts[i].live { q = i; old = -1; break; } if n[0].casts[i].t < n[0].casts[old].t { old = i; } }
     if old >= 0 { q = old; }   // all waiting: the oldest gives way
     n[0].casts[q] = E2nCast.{live = true, ss = ce.ss, slot = ce.slot, ax = ce.ax, ay = ce.ay, az = ce.az, seed = ce.seed, t = n[0].tick_t};
+    return;
+  }
+  if c == 'k' {   // the room's word on your link: the ?net overlay's BUDGET and DROP (#13178)
+    l := wire_read_link(t, r[..]);
+    if r[0].ok { net_stats_link(n[0].stats[..], l.rate, l.used, l.dropped, l.every); }
     return;
   }
   if c == 'x' {

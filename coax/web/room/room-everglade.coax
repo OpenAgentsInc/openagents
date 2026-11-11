@@ -88,6 +88,14 @@ EG_VIEW :: 120.0;               // m: what a seat hears of creatures, zones and 
 //     bytes each, "e break 2999 0 0 0;") go in about 1.9 s.
 // The host reports the bytes each sent and the entries each left waiting (room-stats.coax rm_st_alloc).
 EG_META_BUDGET :: 900;
+// A seat's rows a second (#13178, aethyr/net/budget.coax NetLink): the link starts here and halves,
+// to NET_LINK_FLOOR, and spaces its rows, to one tick in NET_EVERY_MAX, while the seat's socket queues
+// or its HEARD lags; then climbs back. A tick's rows are the link's limit (500 bytes at 30 Hz), within
+// WIRE_BUDGET. Its own row, what is on it, the x's and the aged rows' allowance are on top, as before.
+EG_ROW_BPS :: 15000;
+EG_LINK_SAY :: 30;   // ticks between a packed page's k entries (its ?net overlay's BUDGET and DROP lines)
+EG_FIGHT_TICKS :: 90;   // ticks (3 s) an entity whose HP moved counts as fighting
+EG_FIGHT_NEAR :: 30.0;  // m: fighting this near a seat is combat near it
 EG_JOIN_BUDGET :: 2000;
 EG_CHUNK :: 3740;               // a D frame's entries at most (WIRE_SERVER_FRAME with its header); past it, F 2
 EG_CASTS :: 32;                 // casts heard and on their way, from the press to the strike (room-casts.coax)
@@ -172,6 +180,10 @@ EgSeat :: struct {
   heard_n: [EG_SEATS] int;                            // a hash of who it last heard each seat is (0 nothing)
   heard_w: [EG_SEATS] int;                            // the WANTED level it last heard of each seat, plus 1 (0 nothing)
   rep: [1] WireSeat;                                  // what its page holds of the table (everglade-wire.coax)
+  // its link (aethyr/net/budget.coax, #13178): the bytes of rows it may be sent a tick, lowered and
+  // spaced while its socket queues or its HEARD lags; and the last second's sums for its overlay (k)
+  link: NetLink; link_used: int; link_drop: int; link_said: int;
+  cam: f32; cam_on: bool;                             // its camera's yaw (rad), from its last input
   // its n and w entries of each seat: the tick each last went out, the ticks it went out in (a bit
   // each, as WireSeat's sent), and whether a tick its page heard held it
   n_t: [EG_SEATS] int; n_bits: [EG_SEATS] int; n_ok: [EG_SEATS] bool;
@@ -285,6 +297,8 @@ EgRoom :: struct {
   cn: [EG_SEATS * EG_ENT] u8; cn_n: [EG_SEATS] int; cn_h: [EG_SEATS] int;
   // who may receive what (room-interest.coax, #12789), and each seat's blocks by player id (K)
   im: [1] Interest; im_blk: [EG_SEATS] ImBlockList;
+  fight_t: [WIRE_SLOTS] int;   // the tick each slot's Hit Points last moved, 0 never (eg_combat, #13178)
+  combat_q: [WIRE_SLOTS] int; combat_n: int;   // this tick's slots that may be in combat with a seat: players, a seat's targets and makings, the fighting
 }
 EgStrike :: struct { owner:Handle(EvergladeSeat); by: int; source: int = -1; slot: int; fx: f32; fy: f32; fz: f32; ax: f32; ay: f32; az: f32; seed: int; }
 EgCrime :: struct { by: int; x: f32; z: f32; }
@@ -354,6 +368,9 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].work[0]=WorkBudget.{};
     v[0].eg[q].effect_known=false;v[0].eg[q].house_free=0;for s:0..<EG_SEATS{v[0].eg[q].effect_free[s]=0;}
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
+    for t: 0..<WIRE_SLOTS { v[0].eg[q].fight_t[t] = 0; }
+    v[0].eg[q].combat_n = 0;
+    im_clear(v[0].eg[q].im[..]);   // its interest from nothing: a slot's last room's entities and picks are not this one's (#13178)
     // its entities' lives numbered its own (a restart, or this slot's last room, never repeats one: #12835)
     wire_hist_scope(v[0].eg[q].hist[..], v[0].wall_ms + r * 7919);
     for a: 0..<EG_SEATS * RA_ABS { v[0].eg[q].ab_slot[a] = 0; }
@@ -712,6 +729,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   if !r[0].ok || eg_fields(text) != 9 || (link && !wire_link_input_ok(w.b)) { return; }
   eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
+  if w.theta == w.theta { v[0].eg[k].seat[seat].cam = w.theta; v[0].eg[k].seat[seat].cam_on = true; }   // where it looks: its rows' view (#13178)
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
@@ -1576,9 +1594,48 @@ eg_table :: (v: [] RmServer, k: int) {
   for t: 1..<WIRE_TREES {
     if rm[0].tree_on[t] { wire_hist_put(h, EG_SLOT_TREE + t, rm[0].tree[t], wire_rel(WK_TREE), true, false); }
   }
+  // whose Hit Points moved since last tick: fighting; and the slots that may be in combat with a seat (eg_combat)
+  now := rm[0].tick; nrow := now % WIRE_BASES;
+  rm[0].combat_n = 0;
+  for q: 0..<WIRE_SLOTS {
+    id1 := cast(int) h[0].id[nrow * WIRE_SLOTS + q];
+    if id1 == 0 { continue; }
+    a := (nrow * WIRE_SLOTS + q) * WIRE_SF;
+    was := wire_hist_at(h, now - 1, q, id1);
+    if was >= 0 && h[0].f[was + WS_HP] != h[0].f[a + WS_HP] { rm[0].fight_t[q] = now; }
+    kind := cast(int) h[0].f[a + WS_KIND]; owner := cast(int) h[0].f[a + WS_OWNER];
+    if kind == WK_PLAYER || (kind == WK_FOLK && owner >= WIRE_TGT_SEAT && owner < WIRE_TGT_SEAT + EG_SEATS)
+       || (kind != WK_FOLK && kind != WK_EFFECT && owner >= 0 && owner < EG_SEATS)
+       || (rm[0].fight_t[q] > 0 && now - rm[0].fight_t[q] < EG_FIGHT_TICKS) {
+      rm[0].combat_q[rm[0].combat_n] = q; rm[0].combat_n += 1;
+    }
+  }
   eg_im_table(v, k);   // and the table into the interest grid (room-blocks.coax, #12789)
 }
 
+// Each table slot's combat with seat s this tick (aethyr/net/budget.coax NET_COMBAT_*, #13178): a
+// townsperson casting at it targets it; a player in its party, and a creature or zone it made, are its
+// party's; anything whose Hit Points moved in the last EG_FIGHT_TICKS within EG_FIGHT_NEAR m is
+// fighting near it.
+eg_combat :: (v: [] RmServer, k: int, s_id: SeatId, me: EgPose, out: [] int) { s := s_id.value;
+  rm := v[0].eg[k..<k + 1];
+  h := rm[0].hist[..]; now := h[0].now; row := now % WIRE_BASES;
+  party := ifx s >= 0 && s < IM_SEATS then rm[0].im[0].party[s] else 0;
+  for q: 0..<out.count { out[q] = 0; }
+  for c: 0..<rm[0].combat_n {
+    q := rm[0].combat_q[c];
+    if q >= out.count || h[0].id[row * WIRE_SLOTS + q] == 0 { continue; }
+    a := (row * WIRE_SLOTS + q) * WIRE_SF;
+    kind := cast(int) h[0].f[a + WS_KIND]; owner := cast(int) h[0].f[a + WS_OWNER];
+    if kind == WK_FOLK && owner == WIRE_TGT_SEAT + s { out[q] = out[q] | NET_COMBAT_YOU; }
+    if kind == WK_PLAYER && q != s && party != 0 && q < IM_SEATS && rm[0].im[0].party[q] == party { out[q] = out[q] | NET_COMBAT_PARTY; }
+    if kind != WK_PLAYER && kind != WK_FOLK && kind != WK_EFFECT && owner == s { out[q] = out[q] | NET_COMBAT_PARTY; }
+    if rm[0].fight_t[q] > 0 && now - rm[0].fight_t[q] < EG_FIGHT_TICKS {
+      dx := h[0].x[q] - me.x; dz := h[0].z[q] - me.z;
+      if dx * dx + dz * dz <= EG_FIGHT_NEAR * EG_FIGHT_NEAR { out[q] = out[q] | NET_COMBAT_NEAR; }
+    }
+  }
+}
 // Seat s's state this tick: a D frame (in parts when it runs past EG_CHUNK) of its rows (cut from the
 // room's table: wire_seat_frame, against what its page acknowledged, the nearest first within
 // WIRE_BUDGET), who each seat is and their WANTED levels (on change, again until acknowledged), the
@@ -1647,7 +1704,19 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   pick: [WIRE_SLOTS] f32;
   fields:[WIRE_SLOTS]int;
   eg_im_pick_fields(v,k,s_id,me.x,me.z,pick[..],fields[..]);
-  n := wire_seat_frame_fields(st[0].rep[..],rm[0].hist[..],s,me.x,me.z,pick[..],fields[..],ifx full then rows.count else ifx behind then 0 else WIRE_BUDGET,rows[..]);
+  // its link this tick (#13178): what waits on its socket, and how far its HEARD trails
+  waiting := ifx c >= 0 && c < CONNS then v[0].conns[c].waiting else 0;
+  lag := ifx st[0].said_ms > 0 && v[0].mono_ms - st[0].said_ms < WIRE_AWAY_MS && st[0].said_heard > 0 then now - st[0].said_heard else -1;
+  st[0].link = net_link_step(st[0].link, now, EG_HZ, EG_ROW_BPS, waiting, lag);
+  limit := ifx st[0].link.limit < WIRE_BUDGET then st[0].link.limit else WIRE_BUDGET;
+  // what it looks at, and each slot's combat with it
+  look := ifx st[0].cam_on then WireLook.{fx = -sin(st[0].cam), fz = -cos(st[0].cam)} else WireLook.{};
+  combat: [WIRE_SLOTS] int;
+  eg_combat(v, k, s_id, me, combat[..]);
+  n := wire_seat_frame_look(st[0].rep[..],rm[0].hist[..],s,me.x,me.z,pick[..],fields[..],look,combat[..],ifx full then rows.count else ifx behind then 0 else limit,rows[..]);
+  st[0].link = net_link_spent(st[0].link, st[0].rep[0].bytes, st[0].rep[0].left);
+  st[0].link_used += st[0].rep[0].bytes; st[0].link_drop += st[0].rep[0].left;
+  v[0].st.link_cuts += ifx st[0].link.congested then 1 else 0;
   observed_seat:=k*EG_SEATS+s;v[0].st.rows_last[observed_seat]=0;v[0].st.left_last[observed_seat]=st[0].rep[0].left;v[0].st.rows_deferred+=st[0].rep[0].left;
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
@@ -1711,6 +1780,14 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   if st[0].out_n > 0 && (st[0].out_n != st[0].out_said || now - st[0].out_t >= EG_OUT_SAY) {
     eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<wire_put_outcomes(e[..], 0, st[0].out_n)]);
     st[0].out_said = st[0].out_n; st[0].out_t = now;
+  }
+  // its link, once a second, to a page that reads packed rows (its ?net overlay: #13178)
+  if now - st[0].link_said >= EG_LINK_SAY {
+    if st[0].rep[0].packed {
+      eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<wire_put_link(e[..], 0, WireLink.{rate = st[0].link.rate, used = st[0].link_used * EG_HZ / EG_LINK_SAY,
+                                                                                           dropped = st[0].link_drop * EG_HZ / EG_LINK_SAY, every = st[0].link.every})]);
+    }
+    st[0].link_said = now; st[0].link_used = 0; st[0].link_drop = 0;
   }
   eg_out_send(o[..], v, k, s_id, f);
 }
@@ -2004,10 +2081,13 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   for q: 1..<4 { eg_test_input(v[..], q); }
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "s 1 ") && !eg_test_has(eg_test_of(box[..], 1), "s 0 ") && v[0].eg[k].behind_n == 1;
-  // caught up: seat 0's row, where it is now
+  // caught up: seat 0's row, where it is now, on the first tick its link (cut and spaced while it
+  // queued, #13178) sends rows
   rm_conn_waiting(v[..], 1, 0);
-  eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 1), "s 0 ") && eg_test_ent(box[..], 1, 0).z == eg_test_ent(box[..], 0, 0).z;
+  #assert v[0].eg[k].seat[1].link.every > 1;
+  got := false;
+  for t: 0..<NET_EVERY_MAX { if !got { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); got = eg_test_has(eg_test_of(box[..], 1), "s 0 "); } }
+  #assert got && eg_test_ent(box[..], 1, 0).z == eg_test_ent(box[..], 0, 0).z;
 }
 // Conn c's input SEQ standing still, saying it heard tick `heard`.
 eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
@@ -2029,12 +2109,15 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box[0].deaf[1] = true;
   seq := 0; said := box[0].m[1].heard;
   #assert said > 0;
+  last_row := -1;
   for t: 0..<EG_HEARD_BEHIND {
     seq += 1; eg_test_input(v[..], seq);
     eg_test_input_on(v[..], 1, seq, said);
     eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    if eg_test_has(eg_test_of(box[..], 1), "s 0 ") { last_row = t; }
   }
-  #assert v[0].eg[k].behind_n == 0 && eg_test_has(eg_test_of(box[..], 1), "s 0 ");
+  // its link lowers its rate as its HEARD trails (#13178): its rows spaced, never stopped, until behind
+  #assert v[0].eg[k].behind_n == 0 && last_row >= EG_HEARD_BEHIND - NET_EVERY_MAX && v[0].eg[k].seat[1].link.every > 1;
   seq += 1; eg_test_input(v[..], seq); eg_test_input_on(v[..], 1, seq, said);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   seq += 1; eg_test_input(v[..], seq); eg_test_input_on(v[..], 1, seq, said);
@@ -2043,8 +2126,10 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   #assert eg_test_has(eg_test_of(box[..], 1), "s 1 ") && !eg_test_has(eg_test_of(box[..], 1), "s 0 ");
   // it hears again: seat 0's row comes back
   box[0].deaf[1] = false;
-  for t: 0..<3 { seq += 1; eg_test_input(v[..], seq); eg_test_input_on(v[..], 1, seq, box[0].m[1].heard); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
-  #assert eg_test_has(eg_test_of(box[..], 1), "s 0 ");
+  // (within its link's spacing, which eases once it is calm)
+  back := false;
+  for t: 0..<3 + NET_EVERY_MAX { seq += 1; eg_test_input(v[..], seq); eg_test_input_on(v[..], 1, seq, box[0].m[1].heard); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); back = back || eg_test_has(eg_test_of(box[..], 1), "s 0 "); }
+  #assert back;
 }
 #test "everglade room: a page still sending that hasn't heard its snapshot gets the next one EG_SNAP_WAIT ticks on, not every tick (#12903)" #steps 2000000000 {
   v: [1] RmServer;

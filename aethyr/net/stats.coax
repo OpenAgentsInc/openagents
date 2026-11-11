@@ -11,16 +11,21 @@
 //   OUT 1.2 KB/S 31/S         bytes and frames sent in the last whole second
 //   PRED 4 MM MAX 40 MM       the last re-run's correction of your body, the largest in the last second
 //   RERUNS 120                re-runs since the seat
+//   BUDGET 4.2/15.0 KB/S      the room's word on your link (#13178): row bytes it sent you in the last
+//                             second, of the rate it may send you now ("-" before its first word)
+//   DROP 3/S EVERY 1          rows that waited for want of bytes in that second (never queued), and
+//                             one tick in how many your rows go (more while your link lags)
 //   coax/bin/coax test aethyr/net/stats.coax
 #module "aethyr.net.stats";
 
-NET_STATS_LINES :: 9; NET_STATS_LINE :: 40;
+NET_STATS_LINES :: 11; NET_STATS_LINE :: 40;
 NetStats :: struct {
   at: int = -1;                         // when this second began (ms; -1 none yet)
   in_b: int; in_n: int; out_b: int; out_n: int; snap_max: int; fix_max: int; gap_sum: int; gap_n: int; gap_max: int;   // this second
   in_bps: int; in_hz: int; out_bps: int; out_hz: int; snap_most: int; fix_most: int; gap_mean: int; gap_most: int;   // the last whole second
   snap_b: int; snap_at: int = -1; fix_mm: int; fixes: int;
   rows: int; row_b: int;                // the last state frame's entity rows and their bytes
+  link_rate: int = -1; link_used: int; link_drop: int; link_every: int;   // the room's last word on your link (-1 none)
 }
 // What the realm knows that these counts don't: the round trip, the room's rate and the draw's delay.
 NetStatsView :: struct { rtt_ms: int = -1; hz: int; delay_ms: int; }
@@ -51,6 +56,12 @@ net_stats_in :: (st: [] NetStats, bytes: int, snapshot: bool, now_ms: int) {
 }
 // The last state frame's entity rows: `rows` of them, `bytes` in all.
 net_stats_rows :: (st: [] NetStats, rows: int, bytes: int) { st[0].rows = ifx rows < 0 then 0 else rows; st[0].row_b = ifx bytes < 0 then 0 else bytes; }
+// The room's word on your link: its rate (bytes of rows a second), the row bytes and the rows dropped in
+// the last second, and its spacing (one tick in `every`).
+net_stats_link :: (st: [] NetStats, rate: int, used: int, dropped: int, every: int) {
+  st[0].link_rate = ifx rate < 0 then 0 else rate; st[0].link_used = ifx used < 0 then 0 else used;
+  st[0].link_drop = ifx dropped < 0 then 0 else dropped; st[0].link_every = ifx every < 1 then 1 else every;
+}
 net_stats_out :: (st: [] NetStats, bytes: int, now_ms: int) { net_stats_roll(st, now_ms); st[0].out_b += bytes; st[0].out_n += 1; }
 // A re-run moved your body `mm` from where it was drawn.
 net_stats_fix :: (st: [] NetStats, mm: int, now_ms: int) {
@@ -96,6 +107,15 @@ net_stats_text :: (st: NetStats, v: NetStatsView, t: [] NetStatsText) {
   n = nst_put(b[..], 0, "OUT "); n = nst_kb(b[..], n, st.out_bps); n = nst_put(b[..], n, " "); n = nst_int(b[..], n, st.out_hz); n = nst_put(b[..], n, "/S"); nst_line(t, b[..], n);
   n = nst_put(b[..], 0, "PRED "); n = nst_int(b[..], n, st.fix_mm); n = nst_put(b[..], n, " MM MAX "); n = nst_int(b[..], n, st.fix_most); n = nst_put(b[..], n, " MM"); nst_line(t, b[..], n);
   n = nst_put(b[..], 0, "RERUNS "); n = nst_int(b[..], n, st.fixes); nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "BUDGET ");
+  if st.link_rate >= 0 { n = nst_kb1(b[..], n, st.link_used); n = nst_put(b[..], n, "/"); n = nst_kb(b[..], n, st.link_rate); } else { n = nst_put(b[..], n, "-"); }
+  nst_line(t, b[..], n);
+  n = nst_put(b[..], 0, "DROP "); n = nst_int(b[..], n, st.link_drop); n = nst_put(b[..], n, "/S EVERY "); n = nst_int(b[..], n, ifx st.link_every > 0 then st.link_every else 1); nst_line(t, b[..], n);
+}
+// bytes as KB with one decimal, no unit
+nst_kb1 :: (b: [] u8, at: int, bps: int) -> int {
+  t := (ifx bps < 0 then 0 else bps) / 100;
+  n := nst_int(b, at, t / 10); n = nst_put(b, n, "."); return nst_int(b, n, t % 10);
 }
 
 #test "net stats: a second's frames, bytes, state gaps and corrections become the last second's" {
@@ -117,11 +137,16 @@ net_stats_text :: (st: NetStats, v: NetStatsView, t: [] NetStatsText) {
   st[0].gap_mean = 33; st[0].gap_most = 41; st[0].fix_mm = 4; st[0].fix_most = 40; st[0].fixes = 120;
   net_stats_rows(st[..], 3, 43);
   net_stats_text(st[0], NetStatsView.{rtt_ms = 42, hz = 30, delay_ms = 100}, t[..]);
-  #assert t[0].count == 9 && net_stats_line(t[..], 0) == "RTT 42 MS" && net_stats_line(t[..], 1) == "TICK 30 HZ GAP 33/41 MS";
+  #assert t[0].count == 11 && net_stats_line(t[..], 0) == "RTT 42 MS" && net_stats_line(t[..], 1) == "TICK 30 HZ GAP 33/41 MS";
+  #assert net_stats_line(t[..], 9) == "BUDGET -" && net_stats_line(t[..], 10) == "DROP 0/S EVERY 1";
+  net_stats_link(st[..], 15000, 4210, 3, 2);
+  net_stats_text(st[0], NetStatsView.{rtt_ms = 42, hz = 30, delay_ms = 100}, t[..]);
+  #assert net_stats_line(t[..], 9) == "BUDGET 4.2/15.0 KB/S" && net_stats_line(t[..], 10) == "DROP 3/S EVERY 2";
+  net_stats_link(st[..], -1, -1, -1, 0); #assert st[0].link_rate == 0 && st[0].link_used == 0 && st[0].link_drop == 0 && st[0].link_every == 1;
   #assert net_stats_line(t[..], 2) == "DELAY 100 MS" && net_stats_line(t[..], 3) == "IN 3.1 KB/S 31/S" && net_stats_line(t[..], 4) == "SNAP 96 B MAX 140 B";
   #assert net_stats_line(t[..], 5) == "ROWS 3 AT 14 B";
   #assert net_stats_line(t[..], 6) == "OUT 1.2 KB/S 30/S" && net_stats_line(t[..], 7) == "PRED 4 MM MAX 40 MM" && net_stats_line(t[..], 8) == "RERUNS 120";
-  #assert net_stats_line(t[..], 9) == "" && net_stats_line(t[..], -1) == "";
+  #assert net_stats_line(t[..], 11) == "" && net_stats_line(t[..], -1) == "";
   net_stats_rows(st[..], -1, -5); #assert st[0].rows == 0 && st[0].row_b == 0;
   net_stats_text(NetStats.{}, NetStatsView.{}, t[..]); #assert net_stats_line(t[..], 0) == "RTT - MS" && net_stats_line(t[..], 3) == "IN 0.0 KB/S 0/S" && net_stats_line(t[..], 5) == "ROWS 0 AT 0 B";
 }
