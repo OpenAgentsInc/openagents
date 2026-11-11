@@ -40,7 +40,6 @@ fn coax_p_e2q_bounds(p_i: u32) {
   var l_x: f32;
   var l_y: f32;
   var l_z: f32;
-  var l__: u32;
   l_b = i32((l_i / 1024u));
   l_j = (l_i - (u32(l_b) * 1024u));
   if ((l_b >= i32(coax_at_u(i32(97i)))))
@@ -56,9 +55,9 @@ fn coax_p_e2q_bounds(p_i: u32) {
     l_x = bitcast<f32>(vertices[l_w]);
     l_y = bitcast<f32>(vertices[(l_w + 1i)]);
     l_z = bitcast<f32>(vertices[(l_w + 2i)]);
-    l__ = atomicMin(&bounds[((l_b * 4i) + 0i)], coax_p_e2q_low(l_y));
-    l__ = atomicMax(&bounds[((l_b * 4i) + 1i)], coax_p_e2q_high(l_y));
-    l__ = atomicMax(&bounds[((l_b * 4i) + 2i)], coax_p_e2q_high(sqrt(((l_x * l_x) + (l_z * l_z)))));
+    _ = atomicMin(&bounds[((l_b * 4i) + 0i)], coax_p_e2q_low(l_y));
+    _ = atomicMax(&bounds[((l_b * 4i) + 1i)], coax_p_e2q_high(l_y));
+    _ = atomicMax(&bounds[((l_b * 4i) + 2i)], coax_p_e2q_high(sqrt(((l_x * l_x) + (l_z * l_z)))));
     l_j = (l_j + 1024u);
   }
 }
@@ -67,8 +66,6 @@ fn coax_p_e2q_cull_one(p_t: u32) {
   var l_run: i32;
   var l_k: i32;
   var l_e: coax_t10;
-  var l__: u32;
-  var l___13: u32;
   if ((i32(l_t) >= i32(coax_at_u(i32(93i)))))
   {
     return;
@@ -79,13 +76,13 @@ fn coax_p_e2q_cull_one(p_t: u32) {
   if (coax_p_cl_outside(l_e.x, l_e.y))
   {
     flags[i32(l_t)] = 0u;
-    l__ = atomicAdd(&tally[0i], 1u);
+    _ = atomicAdd(&tally[0i], 1u);
     return;
   }
   if (((coax_at_u(i32(22i)) > 0x1.000000p-1f) && coax_p_cl_hidden(l_e.x, l_e.y)))
   {
     flags[i32(l_t)] = 2u;
-    l___13 = atomicAdd(&tally[1i], 1u);
+    _ = atomicAdd(&tally[1i], 1u);
     return;
   }
   flags[i32(l_t)] = 1u;
@@ -96,7 +93,6 @@ fn coax_p_e2q_cull_two(p_t: u32) {
   var l_run: i32;
   var l_k: i32;
   var l_e: coax_t10;
-  var l__: u32;
   if (((i32(l_t) >= i32(coax_at_u(i32(93i)))) || (flags[i32(l_t)] != 2u)))
   {
     return;
@@ -107,7 +103,7 @@ fn coax_p_e2q_cull_two(p_t: u32) {
   if (coax_p_cl_hidden(l_e.x, l_e.y))
   {
     flags[i32(l_t)] = 4u;
-    l__ = atomicAdd(&tally[2i], 1u);
+    _ = atomicAdd(&tally[2i], 1u);
     return;
   }
   flags[i32(l_t)] = 3u;

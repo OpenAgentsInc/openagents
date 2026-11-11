@@ -5539,7 +5539,10 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   keyboard, always clipped out of sight; the canvas draws what a sighted
   visitor sees, focus included;
 - the text fallback a browser without WebGPU sees instead (an owner
-  decision, 2026-10-28);
+  decision, 2026-10-28), and one line above it saying why the page isn't
+  drawn and which browser to use (`host.js` noGpuNotice, #13155: with no GPU
+  Coax can't draw it; `check-visuals.sh` passes only its lines marked
+  `// text fallback`);
 - an invisible `<input>` over a Coax-drawn text field (the rect Coax reports),
   for the keyboard, paste and the context menu; it draws nothing itself;
 - the development-only error note `coax serve` shows on localhost;

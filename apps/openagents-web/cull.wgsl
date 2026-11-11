@@ -25,12 +25,11 @@ fn coax_p_cull_one(p_i: u32) {
   var l_i: u32 = p_i;
   var l_c: i32;
   var l_n: i32;
-  var l__: u32;
   var l_page: i32;
   var l_low: vec4f;
   var l_high: vec4f;
   var l_k: u32;
-  var l_k_16: u32;
+  var l_k_15: u32;
   l_c = i32(l_i);
   l_n = i32(coax_at_u(i32(20i)));
   if ((l_c >= l_n))
@@ -42,14 +41,14 @@ fn coax_p_cull_one(p_i: u32) {
   {
     return;
   }
-  l__ = atomicAdd(&draws[9i], 1u);
+  _ = atomicAdd(&draws[9i], 1u);
   l_page = i32(info[((l_c * 8i) + 0i)]);
   l_low = data[((l_c * 4i) + 2i)];
   l_high = data[((l_c * 4i) + 3i)];
   if (coax_p_cl_outside(l_low, l_high))
   {
-    l__ = atomicAdd(&draws[10i], 1u);
-    l__ = atomicMax(&requests[l_page], 1u);
+    _ = atomicAdd(&draws[10i], 1u);
+    _ = atomicMax(&requests[l_page], 1u);
     lists[((3i * l_n) + l_c)] = 3u;
     return;
   }
@@ -57,13 +56,13 @@ fn coax_p_cull_one(p_i: u32) {
   {
     l_k = atomicAdd(&draws[8i], 1u);
     lists[((2i * l_n) + i32(l_k))] = u32(l_c);
-    l__ = atomicAdd(&draws[11i], 1u);
-    l__ = atomicMax(&requests[l_page], 1u);
+    _ = atomicAdd(&draws[11i], 1u);
+    _ = atomicMax(&requests[l_page], 1u);
     lists[((3i * l_n) + l_c)] = 5u;
     return;
   }
-  l_k_16 = atomicAdd(&draws[1i], 1u);
-  lists[((0i * l_n) + i32(l_k_16))] = u32(l_c);
+  l_k_15 = atomicAdd(&draws[1i], 1u);
+  lists[((0i * l_n) + i32(l_k_15))] = u32(l_c);
   coax_p_cl_want(l_c);
   coax_p_cl_texture(l_c);
   lists[((3i * l_n) + l_c)] = 9u;
@@ -73,7 +72,6 @@ fn coax_p_cull_two(p_i: u32) {
   var l_k: i32;
   var l_n: i32;
   var l_c: i32;
-  var l__: u32;
   var l_j: u32;
   l_k = i32(l_i);
   l_n = i32(coax_at_u(i32(20i)));
@@ -84,7 +82,7 @@ fn coax_p_cull_two(p_i: u32) {
   l_c = i32(lists[((2i * l_n) + l_k)]);
   if (coax_p_cl_hidden(data[((l_c * 4i) + 2i)], data[((l_c * 4i) + 3i)]))
   {
-    l__ = atomicAdd(&draws[12i], 1u);
+    _ = atomicAdd(&draws[12i], 1u);
     lists[((3i * l_n) + l_c)] = (lists[((3i * l_n) + l_c)] | 32u);
     return;
   }
@@ -344,12 +342,11 @@ fn coax_p_cl_want(p_c: i32) {
   var l_c: i32 = p_c;
   var l_t: f32;
   var l_page: i32;
-  var l__: u32;
   var l_child: u32;
   var l_seen: f32;
   l_t = coax_at_u(i32(19i));
   l_page = i32(info[((l_c * 8i) + 0i)]);
-  l__ = atomicMax(&requests[l_page], coax_p_cl_weigh(coax_p_cl_priority(coax_p_cl_seen(bitcast<f32>(info[((l_c * 8i) + 5i)]), data[((l_c * 4i) + 1i)]), l_t)));
+  _ = atomicMax(&requests[l_page], coax_p_cl_weigh(coax_p_cl_priority(coax_p_cl_seen(bitcast<f32>(info[((l_c * 8i) + 5i)]), data[((l_c * 4i) + 1i)]), l_t)));
   l_child = info[((l_c * 8i) + 1i)];
   if ((l_child == 4294967295u))
   {
@@ -358,19 +355,18 @@ fn coax_p_cl_want(p_c: i32) {
   l_seen = coax_p_cl_seen(bitcast<f32>(info[((l_c * 8i) + 4i)]), data[((l_c * 4i) + 0i)]);
   if ((l_seen > l_t))
   {
-    l__ = atomicMax(&requests[i32(l_child)], coax_p_cl_weigh(coax_p_cl_priority(l_seen, l_t)));
+    _ = atomicMax(&requests[i32(l_child)], coax_p_cl_weigh(coax_p_cl_priority(l_seen, l_t)));
   }
 }
 fn coax_p_cl_texture(p_c: i32) {
   var l_c: i32 = p_c;
   var l_tex: f32;
-  var l__: u32;
   l_tex = data[((l_c * 4i) + 3i)].w;
   if (((l_tex < 0.0f) || (coax_at_u(i32(91i)) < 0x1.000000p0f)))
   {
     return;
   }
-  l__ = atomicMax(&requests[(i32(coax_at_u(i32(21i))) + i32(l_tex))], u32((i32(coax_at_u(i32(91i))) - coax_p_cl_mip(l_c))));
+  _ = atomicMax(&requests[(i32(coax_at_u(i32(21i))) + i32(l_tex))], u32((i32(coax_at_u(i32(91i))) - coax_p_cl_mip(l_c))));
 }
 fn coax_p_cl_clampi(p_x: i32, p_low: i32, p_high: i32) -> i32 {
   var l_x: i32 = p_x;

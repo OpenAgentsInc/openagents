@@ -3888,12 +3888,13 @@ function live() {
 
 // A browser with no WebGPU adapter gets the page's text (the <main> every page carries), and above
 // it one plain line saying why the page isn't drawn and what to do (#13153). Before this the reader
-// saw only a title and a link to the page's Markdown.
+// saw only a title and a link to the page's Markdown. With no GPU, Coax can't draw it: it is part
+// of the text fallback INVARIANTS.md allows, and check-visuals passes its lines marked so (#13155).
 function noGpuNotice() {
   if (document.getElementById("coaxial-no-gpu")) return;
-  const note = document.createElement("p");
+  const note = document.createElement("p"); // text fallback
   note.id = "coaxial-no-gpu"; note.setAttribute("role", "alert");
-  note.style.cssText = "margin:0 0 16px;padding:12px 14px;border:1px solid #ff8c1f;border-radius:6px;color:#ededed;background:#1a1a1a";
+  note.style.cssText = "margin:0 0 16px;padding:12px 14px;border:1px solid #ff8c1f;border-radius:6px;color:#ededed;background:#1a1a1a"; // text fallback
   note.textContent = navigator.gpu
     ? "This page is drawn with WebGPU, and this browser has no graphics adapter for it. Use a current Chrome, Edge or Safari with hardware acceleration turned on. In Chrome on Linux, start it with --enable-unsafe-webgpu."
     : "This page is drawn with WebGPU, which this browser doesn't have. Use a current Chrome, Edge or Safari.";
