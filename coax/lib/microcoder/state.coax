@@ -27,8 +27,8 @@
 
 MC_OUTPUT_HEAD :: 6000;          // bytes of a command's output kept from its start
 MC_OUTPUT_TAIL :: 6000;          // and from its end
-MC_LOG_BYTES :: 393216;          // the actions' JSON, all of them
-MC_ACTION_ROOM :: 98304;         // free log a new action starts with (older steps leave for it)
+MC_LOG_BYTES :: 196608;          // the actions' JSON, all of them
+MC_ACTION_ROOM :: 65536;         // free log a new action starts with (older steps leave for it)
 MC_MAX_ACTIONS :: 512;           // actions the log can hold
 MC_PROMPT_BYTES :: 458752;       // the whole state's JSON: every buffer below, with room for its keys
 
@@ -119,7 +119,7 @@ mc_room :: (st: [] McState) -> [] u8 { return st[0].log[0..<st[0].log.count - 8]
 // Begins the next action: {"step":N,"rationale":"...","results":[
 mc_action_begin :: (st: [] McState, rationale: string) {
   if st[0].open >= 0 { mc_action_end(st); }
-  if st[0].nacts >= MC_MAX_ACTIONS || st[0].log.count - st[0].nlog < MC_ACTION_ROOM { mc_log_drop(st, st[0].log.count / 2 - MC_ACTION_ROOM / 2); }
+  if st[0].nacts >= MC_MAX_ACTIONS || st[0].log.count - st[0].nlog < MC_ACTION_ROOM { mc_log_drop(st, st[0].log.count / 2); }
   if st[0].nacts >= MC_MAX_ACTIONS { mc_log_drop(st, 0); }
   st[0].steps += 1;
   at := st[0].nlog;
@@ -312,15 +312,15 @@ McStateTest :: struct { b: [1] McStateBuffers; out: [MC_PROMPT_BYTES] u8; }
   #assert out.count > 12000 && out.count < 12200;
   for i: 0..<70000 { big[i] = 'v'; }
   // 64 KB views: the log holds a few; then the earliest half leaves in one go
-  for s: 0..<4 { mc_action_begin(st[..], "view"); mc_file(st[..], "v", true, cast(string) big[0..<65536]); mc_action_end(st[..]); }
-  #assert st[0].left_out == 0 && st[0].nacts == 5;
+  for s: 0..<2 { mc_action_begin(st[..], "view"); mc_file(st[..], "v", true, cast(string) big[0..<65536]); mc_action_end(st[..]); }
+  #assert st[0].left_out == 0 && st[0].nacts == 3;
   for s: 0..<6 {
     mc_action_begin(st[..], "view");
     #assert st[0].log.count - st[0].nlog >= MC_ACTION_ROOM;
     mc_file(st[..], "v", true, cast(string) big[0..<65536]);
     if s < 5 { mc_action_end(st[..]); }
   }
-  #assert st[0].left_out >= 2 && st[0].nacts + st[0].left_out == 11;
+  #assert st[0].left_out >= 2 && st[0].nacts + st[0].left_out == 9;
   mc_action_end(st[..]);
   j = mc_state_json(st[..], t[0].out[..]);
   #assert json_valid(j) && cl_int(j, "left_out").value == st[0].left_out && cl_count(cl_raw(j, "actions")) == st[0].nacts;

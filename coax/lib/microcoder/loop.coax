@@ -88,9 +88,30 @@ mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environmen
 // The next step's request: the system prompt, the state as JSON, the strict
 // next_action schema. The plan fills in each attempt's model. Valid until
 // the next mc_request.
+// The largest request body a journaled run may send (coax/lib/agent/journal-flow.coax's
+// AF_REQUEST, 256 KB: a longer one fails the run), less room for the system prompt and schema.
+MC_REQUEST_MAX :: 262144;
+MC_REQUEST_ROOM :: 12288;
+
+// The bytes s takes as a JSON string's content (each quote, backslash and control character escaped).
+mc_escaped_size :: (s: string) -> int {
+  n := s.count;
+  for c: s { if c == '"' || c == '\\' || c == 10 || c == 13 || c == 9 || c == 8 || c == 12 { n += 1; } else if c < 32 { n += 5; } }
+  return n;
+}
+
 mc_request :: (l: [] McLoop) -> GwRequest {
   l[0].nr = 0; l[0].got_text = false;
   state := mc_state_json(l[0].st[..], l[0].prompt);
+  // too long to send (escaped once more inside the request's JSON): the earliest steps leave
+  for guard: 0..<16 {
+    if state.count > 0 && mc_escaped_size(state) + MC_REQUEST_ROOM <= MC_REQUEST_MAX { break; }
+    if l[0].st[0].nacts == 0 { break; }
+    kept := l[0].st[0].nlog;
+    mc_log_drop(l[0].st[..], kept / 2);
+    if l[0].st[0].nlog == kept { mc_log_drop(l[0].st[..], 0); }
+    state = mc_state_json(l[0].st[..], l[0].prompt);
+  }
   l[0].msgs[0] = GwMessage.{role = "user", text = state};
   return GwRequest.{system = MC_SYSTEM, messages = l[0].msgs[..], schema = MC_SCHEMA, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
 }
@@ -249,6 +270,18 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
 }
 
 
+
+#test "a state too long for one request loses its earliest steps until it fits" #steps 200000000 {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "x", "{}", 1.0);
+  #assert mc_escaped_size("a\"b\\c\nd") == 10 && mc_escaped_size("abc") == 3;
+  // quote-heavy outputs: each byte doubles inside the request
+  q: [12000] u8; for i: 0..<q.count { q[i] = '"'; }
+  for s: 0..<40 { mc_action_begin(l[0].st[..], "q"); mc_action_command(l[0].st[..], "cat q", 0, false, cast(string) q[..]); mc_action_end(l[0].st[..]); }
+  before := l[0].st[0].left_out;
+  req := mc_request(l[..]);
+  #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX && l[0].st[0].left_out > before && json_valid(req.messages[0].text);
+}
 
 #test "'what is 2+2' finishes in one step with no commands" {
   sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;

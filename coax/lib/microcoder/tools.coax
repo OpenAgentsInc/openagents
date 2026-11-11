@@ -183,7 +183,16 @@ mc_view_file_profile :: (cwd: string, path: string, buf: [] u8, profile:string) 
   y := cxproc_release(h);
   if status != 0 { return McViewResult.{content = "not shown: no such file, or it can't be read"}; }
   if binary { return McViewResult.{found = true, content = "[a binary file: not shown]"}; }
-  if cut && n > 0 { return McViewResult.{found = true, content = cast(string) buf[0..<n]}; }
+  if cut && n > 0 {
+    // say where it was cut, so the rest is asked for and not guessed
+    k := ifx n > MC_VIEW_BYTES - 96 then MC_VIEW_BYTES - 96 else n;
+    while k > 0 && (buf[k] & 0xC0) == 0x80 { k -= 1; }
+    m := json_raw(buf, k, "\n[... cut here at ");
+    m = json_write_int(buf, m, k);
+    m = json_raw(buf, m, " bytes: read the rest with a command such as sed -n]");
+    if m > 0 { return McViewResult.{found = true, content = cast(string) buf[0..<m]}; }
+    return McViewResult.{found = true, content = cast(string) buf[0..<n]};
+  }
   return McViewResult.{found = true, content = cast(string) buf[0..<n]};
 }
 

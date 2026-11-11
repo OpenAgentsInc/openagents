@@ -97,8 +97,8 @@ MicroState {
 
 The actions only grow at their end, so each step's prompt starts with the
 one before it and the provider's prompt cache serves that prefix. When the
-next step may not fit (384 KB of actions), the earliest steps leave in one
-go, down to about half. (Until #13231 it kept the last 12 actions in a ring
+next step may not fit (192 KB of actions), or a request would pass the
+journal's 256 KB, the earliest steps leave in one go, down to about half. (Until #13231 it kept the last 12 actions in a ring
 and the last view's files after them, which broke the cached prefix on
 every step and dropped a viewed file at the next view.)
 

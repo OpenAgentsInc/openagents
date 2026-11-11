@@ -51,6 +51,11 @@ main :: () {
   ok = ok && !e.ok && e.why == "the old text is not in the file: copy it exactly, with its whitespace, from a view or the file";
   e = mc_edit_file(dir, McEdit.{path = "nope.txt", old = "a", text = "b"}, "danger-full-access", b[..]);
   ok = ok && !e.ok && e.why == "no such file (an empty old writes a new one)";
+  // a view of a file over 64 KB says where it was cut
+  r = mc_run_command(dir, "head -c 70000 /dev/zero | tr '\\0' 'x' > long.txt", 30, b[0].out[..]);
+  v = mc_view_file(dir, "long.txt", b[0].view[..]);
+  print("cut view: % bytes, ends [%]\n", v.content.count, cast(string) v.content[v.content.count - 40..<v.content.count]);
+  ok = ok && v.found && v.content.count <= MC_VIEW_BYTES && cast(string) v.content[v.content.count - 30..<v.content.count] == "with a command such as sed -n]";
   // an edit in a step: recorded before the step's commands, which see it
   x = mc_request(l[..]);
   s = mc_take(l[..], "{\"rationale\":\"fix\",\"edits\":[{\"path\":\"b.swift\",\"old\":\"b\",\"new\":\"b2\"}],\"commands\":[\"cat b.swift\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
