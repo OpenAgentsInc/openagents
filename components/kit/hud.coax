@@ -24,9 +24,7 @@ HkSize :: struct { w: f32; h: f32; }
 hk_int :: (sh: [] Sheet, v: int) -> string {
   b: [24] u8; n := 0; x := v;
   if x < 0 { b[n] = '-'; n += 1; x = -x; }
-  d: [16] u8; c := 0;
-  while true { d[c] = cast(u8) ('0' + x % 10); c += 1; x /= 10; if x == 0 || c >= d.count { break; } }
-  while c > 0 { c -= 1; b[n] = d[c]; n += 1; }
+  n = text_put_int(b[..], n, x);
   return sheet_pool(sh, cast(string) b[0..<n]);
 }
 // Two texts joined, kept in the sheet's pool.
@@ -224,9 +222,10 @@ hk_portrait :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, 
   // the medallion: its face tinted with the accent, its rim, an inner line of trim
   rr := ifx hk_round(s) then r else 0.0f32;
   e := sheet_box(sh, med.x, med.y, med.w, med.h, rr, hd.rim, hd.face, s.frame_light);
-  if hk_round(s) { sh[0].nu = prim_ring(sh[0].under, sh[0].nu, med.x + hd.rim * 2, med.y + hd.rim * 2, med.w - hd.rim * 4, med.h - hd.rim * 4, s.border, hd.inner); }
+  ri := hd.rim * 2;   // the inner line, two rims in
+  if hk_round(s) { sh[0].nu = prim_ring(sh[0].under, sh[0].nu, med.x + ri, med.y + ri, med.w - ri * 2, med.h - ri * 2, s.border, hd.inner); }
   ini: [1] u8; ini[0] = ifx u.klass.count > 0 then u.klass[0] else ifx u.name.count > 0 then u.name[0] else '?';
-  if ini[0] >= 'a' && ini[0] <= 'z' { ini[0] -= 32; }
+  if ini[0] >= 'a' && ini[0] <= 'z' { ini[0] = ini[0] - 'a' + 'A'; }
   hk_centred(sh, m, med, s.title, ifx u.foe then hd.foe else hd.name, sheet_pool(sh, cast(string) ini[..]));
   if u.level > 0 {
     bd := hd.badge * 2;
@@ -270,6 +269,8 @@ hk_portrait :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, 
 
 // A thing on the map: where it is (metres) and what it is.
 HK_DOT_ALLY :: 0; HK_DOT_FOE :: 1; HK_DOT_GUARD :: 2; HK_DOT_PATH :: 3;
+// The map's boxes in its tree, in the order hk_map_tree adds them.
+HK_MAP_RING :: 1; HK_MAP_PLACE :: 2; HK_MAP_CLOCK :: 3;
 HkDot :: struct { x: f32; z: f32; kind: int; }
 // The map: you, the way you face (fx, fz on the ground), how many metres the ring shows, what is on
 // it, the place's name and the time of day.
@@ -291,10 +292,11 @@ hk_map_size :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, mp: HkMap) -> HkSize {
 hk_map :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, y: f32, mp: HkMap, dots: [] HkDot) -> HkSize {
   hd := s.hud;
   size := hk_map_tree(fx, m, s, mp);
-  ring := hk_box(fx, 1, x, y);
+  ring := hk_box(fx, HK_MAP_RING, x, y);
   r := hd.map_r; cx := ring.x + r; cy := ring.y + r;
   e := sheet_box(sh, ring.x, ring.y, ring.w, ring.h, r, hd.rim, hd.map_ground, s.frame_light);
-  sh[0].nu = prim_ring(sh[0].under, sh[0].nu, ring.x + hd.rim * 2, ring.y + hd.rim * 2, ring.w - hd.rim * 4, ring.h - hd.rim * 4, s.border, hd.inner);
+  ri := hd.rim * 2;   // the inner line, two rims in
+  sh[0].nu = prim_ring(sh[0].under, sh[0].nu, ring.x + ri, ring.y + ri, ring.w - ri * 2, ring.h - ri * 2, s.border, hd.inner);
   fl := sqrt(mp.face_x * mp.face_x + mp.face_z * mp.face_z);
   fwx := ifx fl > 0 then mp.face_x / fl else 0.0f32; fwz := ifx fl > 0 then mp.face_z / fl else -1.0f32;
   rx := -fwz; rz := fwx;
@@ -316,10 +318,10 @@ hk_map :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, y: f3
   f := sheet_box(sh, nb.x, nb.y, nb.w, nb.h, ifx hk_round(s) then hd.north else 0.0f32, s.border, s.sunk, s.trim);
   hk_centred(sh, m, nb, s.small, s.ink, "N");
   // the place, and the time of day
-  pb := hk_box(fx, 2, x, y);
+  pb := hk_box(fx, HK_MAP_PLACE, x, y);
   sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, pb.x, pb.y, pb.w, pb.h, UISKIN_REST);
   hk_centred(sh, m, pb, s.label, hd.name, mp.place);
-  if mp.clock.count > 0 { cb := hk_box(fx, 3, x, y); cw := sheet_text(sh, m, -1, cb.x, cb.y, s.small.line, s.small.face, s.muted, mp.clock); }
+  if mp.clock.count > 0 { cb := hk_box(fx, HK_MAP_CLOCK, x, y); cw := sheet_text(sh, m, -1, cb.x, cb.y, s.small.line, s.small.face, s.muted, mp.clock); }
   return size;
 }
 
@@ -410,6 +412,8 @@ hk_banner :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, cx: f32, y: f32, title: s
 // What a character says: who, what they are, the line, and your answers.
 HkTalk :: struct { speaker: string; title: string; line: string; }
 HK_TALK_LINES :: 16;
+// The talk's boxes in its tree, in the order hk_talk_tree adds them.
+HK_TALK_SPEAKER :: 2; HK_TALK_TITLE :: 3; HK_TALK_LINE :: 4; HK_TALK_CHOICE :: 6;
 
 hk_talk_tree :: (fx: [] FxTree, m: TextMeasure, s: UiSkin, w: f32, t: HkTalk, choices: int, lines: [] TextLine) -> int {
   fx_reset(fx);
@@ -439,13 +443,13 @@ hk_talk :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, fx: [] FxTree, x: f32, y: f
   n := hk_talk_tree(fx, m, s, w, t, choices.count, lines[..]);
   size := HkSize.{w = fx[0].nodes[0].w, h = fx[0].nodes[0].h};
   sh[0].nu = uiskin_panel(sh[0].under, sh[0].nu, s, x, y, size.w, size.h);
-  sb := hk_box(fx, 2, x, y); tb := hk_box(fx, 3, x, y);
+  sb := hk_box(fx, HK_TALK_SPEAKER, x, y); tb := hk_box(fx, HK_TALK_TITLE, x, y);
   sw := sheet_text(sh, m, -1, sb.x, sb.y, s.title.line, s.title.face, s.hud.name, t.speaker);
   tw := sheet_text(sh, m, -1, tb.x, tb.y, s.small.line, s.small.face, s.muted, t.title);
-  lb := hk_box(fx, 4, x, y);
+  lb := hk_box(fx, HK_TALK_LINE, x, y);
   for k: 0..<n { q := sheet_plain(sh, m, lb.x, lb.y + cast(f32) k * s.body.line, s.body.line, s.body.face, s.ink, cast(string) t.line[lines[k].from..<lines[k].to], true); }
   for k: 0..<choices.count {
-    cb := hk_box(fx, 6 + k, x, y);
+    cb := hk_box(fx, HK_TALK_CHOICE + k, x, y);
     state := ifx k == picked then UISKIN_PRIMARY else ifx k == hot then UISKIN_HOVER else UISKIN_REST;
     sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, cb.x, cb.y, cb.w, cb.h, state);
     label := hk_join(sh, hk_join(sh, hk_int(sh, k + 1), ". "), choices[k]);
