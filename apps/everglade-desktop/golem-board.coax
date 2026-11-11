@@ -35,7 +35,7 @@ GB_ISSUES :: "https://github.com/OpenAgentsInc/openagents/issues/";
 // A G line's fields (golems.coax).
 GF_KEY :: 1; GF_STATE :: 2; GF_QUIET :: 3; GF_MODEL :: 4; GF_TITLE :: 5; GF_PLACE :: 6; GF_TOOLS :: 7; GF_STEPS :: 8; GF_PARENT :: 9;
 GF_LAST :: 10; GF_SAID :: 11; GF_TOOL :: 12; GF_ISSUE :: 13; GF_ISSUE_TITLE :: 14; GF_STARTED :: 15; GF_TOKENS :: 16; GF_COST :: 17;
-GF_COMMITS :: 18; GF_WAIT :: 19; GF_SPENT :: 20; GF_FOLDER :: 25; GF_FILES :: 26; GF_WHOLE :: 27; GF_ENDED :: 28; GF_NAME :: 29;
+GF_COMMITS :: 18; GF_WAIT :: 19; GF_SPENT :: 20; GF_FOLDER :: 25; GF_FILES :: 26; GF_WHOLE :: 27; GF_ENDED :: 28; GF_NAME :: 29; GF_HOST :: 30;
 
 // A colour: the HUD's four inks (hd_ink's kinds), then amber, red and green.
 GB_AMBER :: 4; GB_RED :: 5; GB_GREEN :: 6;
@@ -394,6 +394,7 @@ gb_card_draw :: (b: []GolemBoard, out: []f32, n: int, l: string, card: HudBox, d
   mb: [48] u8; tb: [320] u8; sb: [24] u8;
   k := np_put(tb[..], 0, gb_model(gb_field(l, GF_MODEL), mb[..]));
   if sub { k = np_put(tb[..], k, ", subagent"); }
+  host := gb_field(l, GF_HOST); if host.count > 0 { k = np_put(tb[..], k, ", on "); k = np_put(tb[..], k, host); }   // an agent on another machine (#13227)
   started := gb_num(gb_field(l, GF_STARTED)); ended := gb_num(gb_field(l, GF_ENDED));
   if started > 0 { k = np_put(tb[..], k, "   "); k = np_put(tb[..], k, gb_span((ifx ended > started then ended else now) - started, sb[..])); }
   tokens := gb_num(gb_field(l, GF_TOKENS));

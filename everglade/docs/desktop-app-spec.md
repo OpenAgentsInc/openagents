@@ -736,7 +736,10 @@ walker finds and `coax/lib/agent/observe/antigravity.coax` reads. Their cards sa
 `antigravity` for the place, agy's own title for the conversation, the model its request
 chose, and working, waiting (yours), stuck or idle from the same records a Claude card is
 read from; a `REPORT:` line is their report. agy reports no cost, so theirs shows none.
-Verse OS lists them as `agent=antigravity|antigravity|STATE|MINUTES`. N agents are at work
+Verse OS lists them as `agent=antigravity|antigravity|STATE|MINUTES`. Agents on the agent
+machines show too (2026-11-11, #13227): Claude Code sessions and Antigravity conversations on
+`coderos-4080`, or the machines `GOLEMS_HOSTS` names (space-separated; `none` for none). Their
+cards say `on coderos-4080` after the model. N agents are at work
 now, out of M seen since the day began (or in the last 12 hours, whichever is longer). The
 button turns red when an agent needs you.
 
@@ -824,8 +827,15 @@ Click a card to see that agent: its card, then
   3 seconds while the board is open and every 30 seconds while it is shut.
 - `refresh --now SECONDS --tz SECONDS --repo-dir DIR` fetches the slow things into files the
   snapshot reads: the open issues and the ones closed today (`gh`), and the build hosts
-  (`coax/remote/remote.sh status`). The app runs it at most every 2 minutes while the board
-  is open, and it does nothing when its files are under 110 seconds old.
+  (`coax/remote/remote.sh status`), and the agent machines' transcripts: one `ssh` call
+  lists those written in the last 25 hours, and `rsync -t` copies only what changed into
+  `~/.openagents/everglade/golems/hosts/HOST/`, laid out as that machine's home, with the
+  times they were written. A pull of `coderos-4080` takes about 2 seconds once the first
+  (about 77 MB) is done. `snapshot` walks each machine's copy with the shared walker
+  (`coax/lib/agent/observe/transcripts.coax`), and a conversation found twice is shown once.
+  The app runs `refresh` at most every 2 minutes while the board is open, and it does
+  nothing when its files are under 110 seconds old, so a card from another machine can be
+  up to about 4 minutes behind.
 
 Run them yourself with
 `coax/web/tool.sh apps/everglade-desktop/golems.coax snapshot --now $(date +%s)`.
@@ -835,7 +845,8 @@ Run them yourself with
 queue.
 
 Not built yet:
-- Codex sessions (`~/.codex/sessions`) and the Coder and Foreman agents running on other
-  hosts.
+- Codex sessions (`~/.codex/sessions`), and Coder's own sessions
+  (`~/.openagents/coder/sessions`) on any machine. A Coder run that drives Antigravity or
+  Claude Code shows through that agent's transcript.
 - Golems standing in the world for each agent.
 - Sending a message to an agent from the board. Today it copies one for you to paste.

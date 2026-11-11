@@ -25,15 +25,24 @@
 // until then that agent's G line says its count is not whole.
 //
 // refresh runs the slow things, which snapshot only reads back: `gh` for the open issues and the
-// ones closed today (issues.tsv) and coax/remote/remote.sh status for the build hosts (hosts.txt),
-// both under ~/.openagents/everglade/golems/. It does nothing when issues.tsv is under
-// GS_REFRESH seconds old, so the board may ask as often as it likes.
+// ones closed today (issues.tsv), coax/remote/remote.sh status for the build hosts (hosts.txt),
+// and the agents on other machines (GitHub #13227), all under ~/.openagents/everglade/golems/.
+// It does nothing when issues.tsv is under GS_REFRESH seconds old, so the board may ask as often
+// as it likes.
+//
+// Agents on other machines: Coder and Antigravity runs, and Claude Code sessions, also run on
+// the agent machines (GS_HOSTS, coderos-4080; GOLEMS_HOSTS names others, space-separated, or
+// "none"). coax/remote's hosts run builds, not agents, so they are not asked. refresh
+// asks each over ssh which transcripts it wrote in the last GS_HOST_MINUTES and pulls those with
+// rsync (only what changed, file times kept) into hosts/HOST/, laid out as that machine's home.
+// snapshot walks each with the same walker as this Mac's home; their cards say the machine
+// (the G line's host field).
 //
 // snapshot prints, tab-separated with tabs and newlines in text made spaces:
 //
 //   T  attention working waiting idle spend_e6 closed open hosts_busy hosts_on hosts spend_text
 //   G  key state quiet model title place tools steps parent last said tool issue issue_title
-//      started tokens cost_e6 commits waiting_since think read edit build other folder files whole ended name
+//      started tokens cost_e6 commits waiting_since think read edit build other folder files whole ended name host
 //   M  kind HH:MM text          (kind: a its words, u what it was asked, t a tool call)
 //   Q  number title agent state (an open issue and who has it; agent is empty when nobody does)
 //
@@ -69,6 +78,9 @@ GS_BLOCK :: 12288;        // bytes of one agent's lines
 GS_STALLED :: 300; GS_STUCK :: 900; GS_YOURS :: 1800; GS_GONE :: 7200;
 GS_REFRESH :: 110;        // seconds issues.tsv stays fresh
 GS_REPO :: "OpenAgentsInc/openagents";
+GS_HOSTS :: "coderos-4080";   // the agent machines besides this Mac (GOLEMS_HOSTS overrides)
+GS_HOST_MINUTES :: 1500;      // a transcript written this many minutes ago is still pulled (the board shows the day, or 12 hours)
+GS_HOST_KEEP :: 2880;         // a pulled transcript not written for this many minutes is dropped
 
 GS_READ :: 1; GS_EDIT :: 2; GS_BUILD :: 4; GS_TEST :: 8; GS_COMMIT :: 16; GS_PUSH :: 32; GS_CLOSE :: 64;
 // What a stretch of an agent's time went to.
@@ -686,7 +698,56 @@ gs_path :: (home: string, name: string, out: []u8) -> string {
   return cast(string) out[0..<n];
 }
 
-GsOne :: struct { rank: int; mtime: int; from: int; to: int; issue: int; state: [12] u8; state_n: int; label: [96] u8; label_n: int; }
+// ---- agents on other machines
+
+// A machine's name as ssh takes it: letters, digits, '.', '-' and '_', not starting with '-'.
+gs_host_ok :: (name: string) -> bool {
+  if name.count == 0 || name.count > 63 || name[0] == '-' || name[0] == '.' { return false; }
+  for c: name { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_') { return false; } }
+  return true;
+}
+// The i-th space-separated word of a list, or "".
+gs_word :: (list: string, i: int) -> string {
+  k := 0; at := 0;
+  while at < list.count {
+    while at < list.count && list[at] <= 32 { at += 1; }
+    if at >= list.count { break; }
+    end := at; while end < list.count && list[end] > 32 { end += 1; }
+    if k == i { return list[at..<end]; }
+    k += 1; at = end;
+  }
+  return "";
+}
+// The agent machines: GOLEMS_HOSTS when it names some ("none": no others), else GS_HOSTS.
+gs_host_list :: (out: []u8) -> string {
+  v := gs_trim(cl_getenv("GOLEMS_HOSTS", out));
+  if v == "none" { return ""; }
+  return ifx v.count > 0 then v else GS_HOSTS;
+}
+// The machine a pulled transcript came from: HOST when path is under root/HOST/, else "".
+gs_host_of :: (path: string, root: string) -> string {
+  if root.count == 0 || path.count <= root.count + 1 || path[0..<root.count] != root || path[root.count] != '/' { return ""; }
+  at := root.count + 1; end := at;
+  while end < path.count && path[end] != '/' { end += 1; }
+  if end >= path.count { return ""; }
+  return path[at..<end];
+}
+// The shell line that pulls a machine's recent transcripts into mirror and prints their list
+// (list: a file beside mirror). One ssh call lists them; rsync then copies only what changed,
+// keeping file times, which say when each was last written.
+gs_pull_command :: (host: string, mirror: string, list: string, out: []u8) -> int {
+  ssh := "ssh -o BatchMode=yes -o ConnectTimeout=5";
+  n := gs_raw(out, 0, ssh); n = gs_raw(out, n, " '"); n = gs_raw(out, n, host);
+  n = gs_raw(out, n, "' 'cd && find .claude/projects .gemini/antigravity-cli/brain .gemini/antigravity-cli/annotations -type f \\( -path \".claude/projects/*.jsonl\" -o -path \"*/.system_generated/logs/transcript.jsonl\" -o -name \"*.pbtxt\" \\) -mmin -");
+  n = gs_int(out, n, GS_HOST_MINUTES); n = gs_raw(out, n, " 2>/dev/null; true' > '"); n = gs_raw(out, n, list);
+  n = gs_raw(out, n, "' && rsync -t -e '"); n = gs_raw(out, n, ssh); n = gs_raw(out, n, "' --files-from='"); n = gs_raw(out, n, list);
+  n = gs_raw(out, n, "' '"); n = gs_raw(out, n, host); n = gs_raw(out, n, ":' '"); n = gs_raw(out, n, mirror);
+  n = gs_raw(out, n, "/' && { find '"); n = gs_raw(out, n, mirror); n = gs_raw(out, n, "' -type f -mmin +"); n = gs_int(out, n, GS_HOST_KEEP);
+  n = gs_raw(out, n, " -delete; cat '"); n = gs_raw(out, n, list); n = gs_raw(out, n, "'; echo done; }");
+  return n;
+}
+
+GsOne :: struct { key: [80] u8; key_n: int; rank: int; mtime: int; from: int; to: int; issue: int; state: [12] u8; state_n: int; label: [96] u8; label_n: int; }
 
 gs_snapshot :: (now: int, hours: int, tz: int) -> int {
   home_b: [1024] u8; home := gs_home(home_b[..]);
@@ -698,6 +759,17 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
   walk[0].claude = true; walk[0].subagents = true; walk[0].agy = true; walk[0].since = since; walk[0].prune = true;
   ob_start(walk[..], home);
   while ob_next(walk[..]) { count = ob_keep(walk[..], found[..], count); }
+  // The agent machines' transcripts that refresh pulled, each walked as that machine's home.
+  hr_b: [1400] u8; hroot := gs_path(home, "hosts", hr_b[..]);
+  hl_b: [1024] u8; hlist := gs_host_list(hl_b[..]);
+  for hi: 0..<16 {
+    host := gs_word(hlist, hi); if host.count == 0 { break; }
+    if !gs_host_ok(host) { continue; }
+    mb: [1500] u8; mirror := fs_join(hroot, host, mb[..]);
+    if fs_kind(mirror) != FS_DIR { continue; }
+    ob_start(walk[..], mirror);
+    while ob_next(walk[..]) { count = ob_keep(walk[..], found[..], count); }
+  }
   // Newest first, so a short budget goes to the agents at work.
   order: [GS_MAX] int; for i: 0..<count { order[i] = i; }
   for i: 1..<count { j := i; while j > 0 && found[order[j - 1]].mtime < found[order[j]].mtime { x := order[j]; order[j] = order[j - 1]; order[j - 1] = x; j -= 1; } }
@@ -725,11 +797,16 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
     base := fs_base(path); base = base[0..<base.count - 6];
     if f.kind == OB_AGY { base = cast(string) f.parent[0..<f.parentn]; }
     g[0].key_n = gs_set(g[0].key[..], base);
+    // The same conversation found twice (a copy on this Mac and the machine's own): the newest only.
+    seen := false; for i: 0..<shown { if cast(string) one[i].key[0..<one[i].key_n] == cast(string) g[0].key[0..<g[0].key_n] { seen = true; } }
+    if seen { continue; }
     if f.sub { g[0].parent_n = gs_set(g[0].parent[..], cast(string) f.parent[0..<f.parentn]); }
     g[0].place_n = ifx f.kind == OB_AGY then gs_set(g[0].place[..], "antigravity") else gs_place(cast(string) f.project[0..<f.pn], g[0].place[..]);
     cf_b: [1600] u8; cf := fs_join(cache, base, cf_b[..]);
     cn := ifx f.kind == OB_AGY then 0 else fs_read(cf, small[..]);
-    if f.kind == OB_AGY { gs_agy(g[..], ar[..], buf[..], home); }
+    host := gs_host_of(path, hroot);
+    hm_b: [1500] u8; there := ifx host.count > 0 then fs_join(hroot, host, hm_b[..]) else home;
+    if f.kind == OB_AGY { gs_agy(g[..], ar[..], buf[..], there); }
     else if !(cn > 0 && gs_load(g[..], cast(string) small[0..<cn])) || g[0].offset > g[0].size {
       fresh := Golem.{}; fresh.path = g[0].path; fresh.path_n = g[0].path_n; fresh.mtime = g[0].mtime; fresh.size = g[0].size; fresh.sub = g[0].sub;
       fresh.key = g[0].key; fresh.key_n = g[0].key_n; fresh.parent = g[0].parent; fresh.parent_n = g[0].parent_n; fresh.place = g[0].place; fresh.place_n = g[0].place_n;
@@ -783,6 +860,7 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
       jb: [4096] u8; jn := fs_read(cast(string) mb[0..<mk], jb[..]);
       if jn > 0 { ar[0].at = 0; ar[0].full = false; n = gs_put(out, n, cl_str(ar[..], cast(string) jb[0..<jn], "description")); }
     }
+    n = gs_raw(out, n, "\t"); n = gs_put(out, n, host);   // the machine it runs on; "" for this Mac
     n = gs_raw(out, n, "\n");
     for mi: 0..<g[0].mn {
       msg := g[0].msgs[(g[0].m0 + mi) % GS_MSGS];
@@ -791,6 +869,7 @@ gs_snapshot :: (now: int, hours: int, tz: int) -> int {
       n = gs_clock(msg.at, tz, out, n); n = gs_raw(out, n, "\t");
       n = gs_put(out, n, cast(string) msg.text[0..<msg.n]); n = gs_raw(out, n, "\n");
     }
+    one[shown].key = g[0].key; one[shown].key_n = g[0].key_n;
     one[shown].rank = rank; one[shown].mtime = f.mtime; one[shown].from = shown * GS_BLOCK; one[shown].to = shown * GS_BLOCK + n; one[shown].issue = issue;
     one[shown].state_n = gs_set(one[shown].state[..], state);
     ln := gs_put(one[shown].label[..], 0, ifx f.sub then "a subagent" else cast(string) g[0].place[0..<g[0].place_n]);
@@ -875,6 +954,20 @@ gs_refresh :: (now: int, tz: int, repo_dir: string, force: bool) -> int {
     hosts := gs_fetch(home, "hosts.txt", cast(string) cb[0..<n], 90000);
     if !hosts { tool_errln("golems: the build hosts could not be read (coax/remote/remote.sh status)"); }
   }
+  hr_b: [1400] u8; hroot := gs_path(home, "hosts", hr_b[..]); made := fs_mkdir(hroot);
+  hl_b: [1024] u8; hlist := gs_host_list(hl_b[..]);
+  for hi: 0..<16 {
+    host := gs_word(hlist, hi); if host.count == 0 { break; }
+    if !gs_host_ok(host) { tool_errln("golems: not a machine name in GOLEMS_HOSTS"); continue; }
+    mb: [1500] u8; mirror := fs_join(hroot, host, mb[..]); dir := fs_mkdir(mirror);
+    lb2: [1600] u8; ln := gs_raw(lb2[..], 0, mirror); ln = gs_raw(lb2[..], ln, ".files");
+    pc: [4096] u8; pn := gs_pull_command(host, mirror, cast(string) lb2[0..<ln], pc[..]);
+    nb: [128] u8; nn := gs_raw(nb[..], 0, "hosts/"); nn = gs_raw(nb[..], nn, host); nn = gs_raw(nb[..], nn, ".list");
+    if !gs_fetch(home, cast(string) nb[0..<nn], cast(string) pc[0..<pn], 120000) {
+      eb: [200] u8; en := gs_raw(eb[..], 0, "golems: the agents on "); en = gs_raw(eb[..], en, host); en = gs_raw(eb[..], en, " could not be read (ssh and rsync)");
+      tool_errln(cast(string) eb[0..<en]);
+    }
+  }
   freed := fs_unlock();
   return ifx ok then 0 else 1;
 }
@@ -919,6 +1012,18 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert cast(string) b[0..<gs_place("-Users-me-work-openagents-issue-13116", b[..])] == "#13116";
   #assert cast(string) b[0..<gs_place("-Users-me-work-openagents", b[..])] == "openagents";
   #assert gs_seconds("1794348248") == 1794348248 && gs_seconds("17x") == -1 && gs_seconds("") == -1;
+}
+#test "golems: agent machines: their names, the list, which pulled transcript is whose, and the pull" {
+  #assert gs_host_ok("coderos-4080") && gs_host_ok("a.b_c") && !gs_host_ok("") && !gs_host_ok("-oProxyCommand=x") && !gs_host_ok("a b") && !gs_host_ok("a/b") && !gs_host_ok("a'b") && !gs_host_ok(".x");
+  #assert gs_word(" one  two\tthree ", 0) == "one" && gs_word(" one  two\tthree ", 2) == "three" && gs_word("one", 1) == "" && gs_word("", 0) == "";
+  root := "/h/.openagents/everglade/golems/hosts";
+  #assert gs_host_of("/h/.openagents/everglade/golems/hosts/coderos-4080/.claude/projects/p/s.jsonl", root) == "coderos-4080";
+  #assert gs_host_of("/h/.claude/projects/p/s.jsonl", root) == "" && gs_host_of("/h/.openagents/everglade/golems/hostsx/a/b", root) == "" && gs_host_of("/h/.openagents/everglade/golems/hosts/a", root) == "";
+  b: [4096] u8; n := gs_pull_command("coderos-4080", "/m/coderos-4080", "/m/coderos-4080.files", b[..]);
+  c := cast(string) b[0..<n];
+  #assert gs_starts(c, "ssh -o BatchMode=yes -o ConnectTimeout=5 'coderos-4080' 'cd && find .claude/projects .gemini/antigravity-cli/brain .gemini/antigravity-cli/annotations -type f ");
+  #assert gs_has(c, "-path \".claude/projects/*.jsonl\" -o -path \"*/.system_generated/logs/transcript.jsonl\" -o -name \"*.pbtxt\" \\) -mmin -1500 2>/dev/null; true' > '/m/coderos-4080.files'");
+  #assert gs_has(c, " && rsync -t -e 'ssh -o BatchMode=yes -o ConnectTimeout=5' --files-from='/m/coderos-4080.files' 'coderos-4080:' '/m/coderos-4080/' && { find '/m/coderos-4080' -type f -mmin +2880 -delete; cat '/m/coderos-4080.files'; echo done; }");
 }
 #test "golems: a full list keeps the newest" {
   f: [2] ObFound; c := 0;
