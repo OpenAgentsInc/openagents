@@ -25,6 +25,7 @@ Its development route is `/render-fixtures/galaxy/`.
 | `noise.coax`, `footprint.coax`, `sampling-core.coax`, `sampling.coax` | Portable integer noise, fine derivative footprints and the shared eight-tap texture filter |
 | `sky.coax`, `vegetation.coax` | Sky, halo, clouds, world-space gusts and wind, blade and canopy response, masks and distance fades; adopted through the existing style bridge |
 | `grass-root.coax` | Conservative root-cell instance ranges for the legacy grass profile; keeps original seed IDs, terrain-corner height bounds and full-draw fallback for unsupported grid alignment. Everglade 5E browser adoption uses optional grass-range ABI v1; native and other legacy adapters retain their full draw |
+| `stylized.coax`, `stylized-frame.coax`, `stylized-layout.coax` | [Stylized shading](#stylized-shading): the hand-painted look for worlds built from the architecture kit, as shaders in Coax and the frame's numbers they read |
 | `shadow-filter.coax`, `post.coax` | Shadow sampling, exposure, saturation, lift, bloom and light shafts; these numerical functions do not own GPU passes |
 | `texture-codec.coax` | Physical texel decoding; sRGB RGB becomes linear before filtering, while alpha stays linear |
 | `reference-quad.coax`, `reference-ir.coax`, `reference-io.coax` | Four helper lanes, checked tree-v2/v3 execution, resource views and stage word layouts |
@@ -40,6 +41,52 @@ binding from its name or slot. Published scene draw records remain four words.
 The [shared rendering and audio integration record](../../docs/verification/aethyr-shared-render-audio-2026-11-06.md)
 maps these functions to their current consumers and separates CPU checks,
 shader emission and actual host observations.
+
+## Stylized shading
+
+`stylized.coax` is the hand-painted look as an engine feature: warm daylight
+in soft bands, soft shadows, aerial haze, painterly grass and a sky of big
+clouds, over materials painted from each surface's own metres. Any world built
+from [the architecture kit](../arch/README.md) can draw with it.
+[Painted Village](../../apps/openagents-web/painted.coax) is the first.
+
+To use it in a world:
+
+1. Build parts with the kit's pen and stand them with records
+   (`aethyr/arch/`). Give each vertex a material from `aethyr/arch/palette.coax`.
+2. In the world's `gpu/<module>.coax`, `#load` `aethyr/render/stylized.coax`.
+   In its `.module`, name `stylized_bg_vs/fs`, `stylized_scene_vs/fs`,
+   `stylized_shadow_vs/fs` and `stylized_grass_vs/fs`, with `--strip stylized_`.
+3. Bind three stores in this order: `mesh` (the kit's vertices), `objects`
+   (the records) and `heights` (the ground table), then the shadow map
+   (`shadow_map`, `shadow_cmp`). The uniform block is `STY_UNIFORM_FLOATS`
+   floats.
+4. Each frame, fill the block with `stylized-frame.coax`: `sty_frame` (the
+   picture, the clock, a `StyCamera` and a `StyLook`), `sty_shadow_box`,
+   `sty_ground_table`, `sty_path_add` and `sty_grass_field`.
+
+| What it draws | How |
+| --- | --- |
+| Materials | `sty_surface`: courses of dressed stone, scalloped roof tiles with moss, boards, plaster, leaded lit windows, bark, leaves in dabs of three tones, cloth, far rock. A vertex's tint replaces a material's colour and a record's wash multiplies it |
+| Light | `sty_bands`: the sun in two soft bands (`StyLook.band` 0.05 is a hard cel edge, 1 is smooth), over light from the sky on faces that look up and from the ground on faces that look down |
+| Shadows | `sty_shadow`: twelve taps of the sun's shadow map on a spiral. `sty_shadow_box` says which box of the world the map covers |
+| Haze | `sty_haze`: distance fades to the haze's colour, from `haze_start` metres, never more than `haze_most` |
+| Ground | `sty_ground`: grass, dirt paths with soft wandering edges (`sty_path_add`, at most `STY_PATHS`), cobbles where the ground table says paved, and a meadow that runs lush or dry in patches (`meadow_dry`, `meadow_shift`) |
+| Grass | `stylized_grass_vs`: one tapered blade a cell of the grass field, rooted on the ground table, facing the eye, swaying, and kept off paths, paving and bare ground (`blade`, `blade_wide`, `grass_cell`, `grass_reach`) |
+| Sky | `sty_sky`: zenith to horizon, and crisp-edged heaps of cloud lit from the sun's side (`cloud`, `cloud_scale`, `cloud_turn`) |
+
+Colours are authored as they should look on the display. The shaders decode
+them once, light them, and encode once on the way out.
+
+```sh
+coax/bin/coax test --library aethyr/render/stylized.coax
+coax/bin/coax test --library aethyr/render/stylized-frame.coax
+```
+
+It doesn't do yet: outlines, a walking character's shadow, water, or level of
+detail. The web host draws it on the page's own passes
+(`render_adoption` tracks Painted Village as a legacy consumer); the shared
+render catalog and the native carriers don't name it yet.
 
 ## Build a package
 
