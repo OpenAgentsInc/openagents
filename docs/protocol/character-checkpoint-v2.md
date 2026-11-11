@@ -48,10 +48,16 @@ Each admitted v4 character reserves one bounded outbox entry before it can
 play. Unsaved entries for the current owner are never evicted or expired;
 a newly issued owner supersedes the fenced owner's unsent captures. One immutable capture is
 in flight; a separate latest capture coalesces changes until that receipt.
-Initial gameplay waits for its first durable acceptance. Thereafter an
-encounter pauses before advancing more than 30 seconds beyond its oldest
-accepted capture, and takes no new mutating intents while paused. It keeps
-retrying. Thus the loss bound is 30 seconds of authoritative gameplay, plus
+A capture that is refused or unanswered retries unchanged, but in turn with
+every other character's, so one character's capture (an absent player's
+too) never holds up another's (#13185).
+Initial gameplay waits for its first durable acceptance: the restored
+character is held (no world state, no intents) while the others in its
+encounter play on, so a restore never stops the tick or the seating of
+others. Until that acceptance its loss bound counts from its restoring hello.
+An encounter pauses before advancing more than 30 seconds beyond its oldest
+accepted capture (or a held character's restore), and takes no new mutating
+intents while paused. It keeps retrying. Thus the loss bound is 30 seconds of authoritative gameplay, plus
 at most one simulation tick at a cutover; wall-clock checkpoint age can grow
 without bound while paused. A planned drain freezes and captures final state,
 and succeeds only after the final checkpoints are accepted. Forced termination

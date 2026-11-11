@@ -1363,10 +1363,13 @@ account carries its accepted body and advances both ownership fences.
 Each admitted profile-2 character reserves a bounded save entry. Pending and
 in-flight captures are not evicted or expired; a newly issued owner supersedes
 the fenced owner's unsent captures. One immutable capture retries independently
-of the latest mailbox. A generic success or legacy receipt cannot acknowledge
-it. The initial body cannot play before its first complete durable acceptance.
-Thereafter an encounter advances only while every profile-2 seat's accepted
-capture is less than 30 monotonic seconds old. A pause clears queued movement
+of the latest mailbox, in turn with every other entry's, so no refused or
+unanswered capture holds up another character's. A generic success or legacy
+receipt cannot acknowledge it. The initial body cannot play, and gets no world
+state, before its first complete durable acceptance; its encounter plays on for
+the others meanwhile. An encounter advances only while every profile-2 seat's
+accepted capture (for a body not yet accepted, its restoring hello) is less than
+30 monotonic seconds old. A pause clears queued movement
 and accrual, takes no mutating intents, and keeps retrying. Crash loss is at
 most 30 seconds of authoritative gameplay plus one tick; an unavailable store
 has no finite wall-clock restore objective. Normal capture cadence is 5 seconds;

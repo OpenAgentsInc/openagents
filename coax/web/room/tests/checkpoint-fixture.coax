@@ -1,9 +1,10 @@
 // Integration fixtures exercise actual signed tickets and the room exports.
 CK_TEST_KEY :: "profile-check-key-not-a-secret-0123456789";
 ck_test_init :: (v:[]RmServer){rm_init(v);rm_clock(v,1000,1762190000000);rm_ticket_key(v,CK_TEST_KEY,true);rm_vitals_gen(v,101);}
-ck_test_join :: (v:[]RmServer,conn:int,owner:int,capture:CharacterCapture)->int {
+ck_test_join :: (v:[]RmServer,conn:int,owner:int,capture:CharacterCapture)->int {return ck_test_join_as(v,conn,"p-a",owner,capture);}
+ck_test_join_as :: (v:[]RmServer,conn:int,pid:string,owner:int,capture:CharacterCapture)->int {
   core:[256]u8;out:[RT_TEXT]u8;saved:[CC_BODY]u8;request:[4608]u8;
-  n:=tk_sign_owner(CK_TEST_KEY,"p-a",false,"Ash","pair-a",1,v[0].wall_ms+60000,7,350,2,owner,core[..]);
+  n:=tk_sign_owner(CK_TEST_KEY,pid,false,"Ash","pair-a",1,v[0].wall_ms+60000,7,350,2,owner,core[..]);
   cap:=ifx capture.ok then cc_stored(capture,saved[..]) else "-";ticket:=resume_ticket_wrap(CK_TEST_KEY,cast(string)core[0..<n],cap,out[..]);
   size:=tk_add(request[..],0,"GET /api/room/relay/everglade/pair-a?t=");size=tk_add(request[..],size,ticket);size=tk_add(request[..],size," HTTP/1.1\r\n\r\n");
   if rm_join(v,conn,cast(string)request[0..<size])<0{return -1;}k:=eg_room_at(v,v[0].conns[conn].relay);

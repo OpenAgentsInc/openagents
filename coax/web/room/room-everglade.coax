@@ -798,7 +798,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   rv_hp_back(v, k, seat_id); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
   trv_carry(v, k, seat_id);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
   ck_restore(v,k, seat_id);
-  if tk.schema == 2 { st[0].checkpoint_hello=true; ck_capture(v, k, seat_id); }   // captured now if already placed (#13184)
+  if tk.schema == 2 { if !st[0].checkpoint_hello { ck_hello(v, k, seat_id); } st[0].checkpoint_hello=true; ck_capture(v, k, seat_id); }   // captured now if already placed (#13184)
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
   for ch: h.name[0..<h.name_n] {
@@ -1172,6 +1172,8 @@ rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
   for s:0..<EG_SEATS {
     if !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed || v[0].eg[k].seat[s].conn<0 { continue; }
+    // a restored seat waiting for its first receipt is held: no world yet, while the others play on (#13185)
+    if !ck_can_play(v,k,SeatId.{value=s}) { continue; }
     eg_send(v,k,SeatId.{value=s});
     if v[0].eg[k].e2 { e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); e2_guard_snapshot(v,k,s); e2_monsters_snapshot(v,k,s); }
   }
