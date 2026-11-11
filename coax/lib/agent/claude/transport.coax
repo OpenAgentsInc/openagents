@@ -4,27 +4,9 @@
 // that file into the program. Strings cross the boundary a byte at a time.
 
 #load "query.coax";
+#load "../../sys/proc-foreign.coax";
 
-cxproc_new :: () -> int #foreign #effects(all);
-cxproc_push :: (h: int, field: int, byte: int) -> int #foreign #effects(all);
-cxproc_end :: (h: int, field: int) -> int #foreign #effects(all);
-cxproc_spawn :: (h: int) -> int #foreign #effects(all);
-cxproc_read_line :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
-cxproc_line_byte :: (h: int, i: int) -> int #foreign #effects(all);
-cxproc_write :: (h: int, byte: int) -> int #foreign #effects(all);
-cxproc_flush :: (h: int) -> int #foreign #effects(all);
-cxproc_close_stdin :: (h: int) -> int #foreign #effects(all);
-cxproc_kill :: (h: int, sig: int) -> int #foreign #effects(all);
-cxproc_wait :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
-cxproc_pid :: (h: int) -> int #foreign #effects(all);
 cxproc_group_alive :: (pgid: int) -> int #foreign #effects(all);
-cxproc_stderr_count :: (h: int) -> int #foreign #effects(all);
-cxproc_stderr_byte :: (h: int, i: int) -> int #foreign #effects(all);
-cxproc_release :: (h: int) -> int #foreign #effects(all);
-cxproc_now_ms :: () -> int #foreign #effects(all);
-cxproc_getenv_push :: (byte: int) -> int #foreign #effects(all);
-cxproc_getenv :: () -> int #foreign #effects(all);
-cxproc_getenv_byte :: (i: int) -> int #foreign #effects(all);
 
 CL_EOF :: -1;
 CL_TIMEOUT :: -2;

@@ -1,0 +1,4 @@
+// A code point and how many bytes of UTF-8 it took: one declaration for the
+// readers that decode text (components/core/text.coax, the web's font.coax),
+// so a program may load both.
+Rune :: struct { code: u32; len: int; }

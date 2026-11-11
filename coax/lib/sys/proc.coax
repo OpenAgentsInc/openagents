@@ -10,32 +10,14 @@
 //   argv := [2] string.["ffmpeg", "-version"]; out: [65536] u8; err: [4096] u8;
 //   r := proc_run(argv[..], 60000, out[..], err[..]);   // r.status, r.out_n, r.err_n, r.timed_out
 // Every child runs in its own process group; a timeout kills the group.
+#load "proc-foreign.coax";
 
-cxproc_new :: () -> int #foreign #effects(all);
-cxproc_push :: (h: int, field: int, byte: int) -> int #foreign #effects(all);
-cxproc_end :: (h: int, field: int) -> int #foreign #effects(all);
 cxproc_quiet :: (h: int) -> int #foreign #effects(all);
 cxproc_detach :: (h: int) -> int #foreign #effects(all);
 cxproc_err_ours :: (h: int) -> int #foreign #effects(all);
 cxproc_gentle :: (h: int) -> int #foreign #effects(all);
-cxproc_spawn :: (h: int) -> int #foreign #effects(all);
-cxproc_read_line :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
-cxproc_line_byte :: (h: int, i: int) -> int #foreign #effects(all);
-cxproc_write :: (h: int, byte: int) -> int #foreign #effects(all);
-cxproc_flush :: (h: int) -> int #foreign #effects(all);
-cxproc_close_stdin :: (h: int) -> int #foreign #effects(all);
-cxproc_kill :: (h: int, sig: int) -> int #foreign #effects(all);
-cxproc_wait :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
-cxproc_pid :: (h: int) -> int #foreign #effects(all);
-cxproc_stderr_count :: (h: int) -> int #foreign #effects(all);
-cxproc_stderr_byte :: (h: int, i: int) -> int #foreign #effects(all);
-cxproc_release :: (h: int) -> int #foreign #effects(all);
-cxproc_now_ms :: () -> int #foreign #effects(all);
 cxproc_now_ns :: () -> int #foreign #effects(foreign, clock);
 cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
-cxproc_getenv_push :: (byte: int) -> int #foreign #effects(all);
-cxproc_getenv :: () -> int #foreign #effects(all);
-cxproc_getenv_byte :: (i: int) -> int #foreign #effects(all);
 
 PROC_EOF :: -1; PROC_TIMEOUT :: -2; PROC_ERROR :: -3; PROC_TOO_LONG :: -4;
 PROC_RUNNING :: -2;              // proc_wait: still running at the timeout

@@ -1,0 +1,85 @@
+// A desktop chat turn on the shared turn runner (coax/lib/agent/engine/run.coax),
+// for a host that drives it through C (the Mac's chat.m through chat-face.c):
+// start a turn, poll it each frame, take the session's lines one at a time
+// (the same lines fc_read reads), stop it. Linux's native app runs the same
+// calls in Coax (linux-native.coax fgn_launch). How a turn runs is
+// chat-launch.coax's.
+#load "../../coax/lib/agent/engine/run.coax";
+#load "chat-launch.coax";
+
+FCR_LINES :: 1048576;
+
+ForgeChatRun :: struct {
+  run: [1] TrRun; chat: [1] TrBuffers; attached: bool;
+  lines: [FCR_LINES] u8; n: int; at: int;     // the lines taken from the log, and how far they are read
+  turn: bool;                                 // a turn runs, or its last lines wait to be read
+}
+
+// A turn: text, forking the session parent ("" for a new conversation), in
+// folder cwd, a context file ahead of its first message ("" for none), on
+// engine ("auto" for System One's pick). False when the parent's log is not there.
+fcr_start :: (s: [] ForgeChatRun, text: string, parent: string, cwd: string, context: string, engine: string) -> bool #export_c #effects(all) {
+  r := s[0].run[..];
+  if !s[0].attached { tr_buffers(r, s[0].chat[..]); s[0].attached = true; }
+  tr_reset(r); r[0].log[0].live = fc_run_live();
+  s[0].n = 0; s[0].at = 0;
+  tr_owner(r, cwd, "0.1.0", "openagents-aethyrforge", "Aethyrforge");
+  r[0].engine = fc_run_engine(engine); r[0].model_engine = r[0].engine; r[0].api_key = tr_api_key();
+  if parent.count > 0 {
+    file: [4194304] u8; id: [128] u8; text_p := tr_session_file(parent, file[..], id[..]);
+    if text_p.count == 0 { return false; }
+    k := 0; while k < id.count && id[k] != 0 { k += 1; }
+    kept := tr_fork(r, text_p, cast(string) id[0..<k], 0, ifx fc_run_routed(engine) then "auto" else engine);
+  }
+  if context.count > 0 && fs_kind(context) == FS_FILE { r[0].ncontext = tr_cat(r[0].context[..], 0, context); }
+  if fc_run_routed(engine) { lb: [1400] u8; if tr_begin(r, text, cg_ledger(lb[..])) { tr_submit(r, text); } }
+  else { tr_submit(r, text); }
+  s[0].turn = true;
+  return true;
+}
+
+// One poll: what still asks is answered as chat-launch.coax says, the engine
+// runs, and its lines join those waiting. True while the turn runs or lines wait.
+fcr_poll :: (s: [] ForgeChatRun) -> bool #export_c #effects(all) {
+  if !s[0].turn { return false; }
+  r := s[0].run[..];
+  if r[0].ask { tr_answer(r, fc_run_allow()); }
+  if r[0].tool { tr_tool_answer(r, "Aethyrforge offers no tools of its own.", false); }
+  changed := tr_poll(r);
+  if sw_lost(r[0].log) { tr_close(r); r[0].running = false; }
+  if s[0].at > 0 {          // read lines go; the rest move to the front
+    for i: s[0].at..<s[0].n { s[0].lines[i - s[0].at] = s[0].lines[i]; }
+    s[0].n -= s[0].at; s[0].at = 0;
+  }
+  s[0].n += sw_take(r[0].log, s[0].lines[s[0].n..<FCR_LINES]);
+  if !r[0].running && s[0].at >= s[0].n { tr_close(r); s[0].turn = false; }
+  return s[0].turn;
+}
+
+// The next line (without its newline) into out: its length, 0 when none waits, -1 when it does not fit (it is skipped).
+fcr_line :: (s: [] ForgeChatRun, out: [] u8) -> int #export_c #effects(all) {
+  if s[0].at >= s[0].n { return 0; }
+  e := s[0].at; while e < s[0].n && s[0].lines[e] != '\n' { e += 1; }
+  k := e - s[0].at; from := s[0].at; s[0].at = ifx e < s[0].n then e + 1 else e;
+  if k > out.count { return -1; }
+  for i: 0..<k { out[i] = s[0].lines[from + i]; }
+  return k;
+}
+
+// STOP: the turn and its engine end now; no end line is written (as when its process was stopped).
+fcr_stop :: (s: [] ForgeChatRun) #export_c #effects(all) {
+  if s[0].attached { tr_close(s[0].run[..]); s[0].run[0].running = false; }
+  s[0].turn = false; s[0].n = 0; s[0].at = 0;
+}
+
+#test "a host reads the runner's lines one at a time, and a stop drops what waits" {
+  s: [1] ForgeChatRun;
+  t := "{\"kind\":\"user\",\"text\":\"hi\"}\n{\"kind\":\"end\",\"ending\":\"finished\"}\n";
+  for i: 0..<t.count { s[0].lines[i] = t[i]; } s[0].n = t.count;
+  o: [64] u8;
+  #assert fcr_line(s[..], o[..]) == 27 && cast(string) o[0..<27] == "{\"kind\":\"user\",\"text\":\"hi\"}";
+  small: [8] u8;
+  #assert fcr_line(s[..], small[..]) == -1 && fcr_line(s[..], o[..]) == 0;
+  s[0].turn = true; fcr_stop(s[..]);
+  #assert !s[0].turn && s[0].n == 0 && !fcr_poll(s[..]);
+}

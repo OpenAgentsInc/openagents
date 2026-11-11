@@ -32,7 +32,10 @@
 //
 // Engine numbers are Coder's (ENGINE_* in coder/tui/coder.coax).
 
-#load "engine.coax";
+#load "claude.coax";
+#load "codex.coax";
+#load "cursor.coax";
+#load "mcworker-client.coax";   // Microcoder's worker (mcw_*); not engine.coax or microcoder.coax, whose Lab names collide with an owner's (Bitcoin Lab's lab_*)
 #load "echo.coax";
 #load "consent-gate.coax";
 #load "ceiling.coax";
@@ -402,6 +405,22 @@ tr_stop :: (r: [] TrRun) {
 tr_close :: (r: [] TrRun) { tr_claude_close(r); tr_codex_close(r); tr_cursor_close(r); tr_micro_close(r); }
 
 // ---------------------------------------------------------------- Claude Code
+
+// A non-empty ANTHROPIC_API_KEY, ignoring surrounding space. The value is
+// never stored: the child inherits the variable, and the runner only knows
+// that it was set.
+tr_api_key_text :: (key: string) -> bool {
+  for c: key { if c != ' ' && c != 9 && c != 10 && c != 13 { return true; } }
+  return false;
+}
+// Whether this process was started with ANTHROPIC_API_KEY. The copy is wiped.
+tr_api_key :: () -> bool {
+  kb: [4096] u8;
+  key := cl_getenv("ANTHROPIC_API_KEY", kb[..]);
+  set := tr_api_key_text(key);
+  for i: 0..<kb.count { kb[i] = 0; }
+  return set;
+}
 
 // Partial messages so the reply streams. The person's Claude Code login,
 // unless ANTHROPIC_API_KEY is set: then that key authenticates the child.
@@ -1254,6 +1273,10 @@ tr_reset :: (r: [] TrRun) {
   #assert tr_label(r[..], "Read", "/w/a/b.txt", b[..]) == "Read(a/b.txt)";
   #assert tr_label(r[..], "Bash", "ls\nmore", b[..]) == "Bash(ls…)";
   #assert tr_label(r[..], "Grep", "", b[..]) == "Grep";
+}
+
+#test "an API key counts when it has more than space" {
+  #assert tr_api_key_text("present") && !tr_api_key_text("") && !tr_api_key_text("  \t\n");
 }
 
 #test "Codex's provider failures are the ones that clear on their own" {

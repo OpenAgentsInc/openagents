@@ -1,10 +1,11 @@
-// Native integration against the real Coax Coder child, using echo and an
-// isolated CODER_HOME. No browser, provider login or GPU is used here.
+// Native integration: Aethyrforge's chat on the shared turn runner, in this
+// process, using echo and an isolated CODER_HOME. No browser, provider login
+// or GPU is used here.
 #load "linux-native.coax";
 #load "../../coax/lib/sys/tool.coax";
 fgnt_wait :: (s:[]ForgeNative)->bool {
   until:=proc_now_ms()+10000;
-  while proc_now_ms()<until {fgn_tick(s);if s[0].coder<0 {return s[0].sn>0 && s[0].hud[0].replies>0;}proc_sleep(10);}fgn_stop(s);return false;
+  while proc_now_ms()<until {fgn_tick(s);if s[0].turn<0 {return s[0].sn>0 && s[0].hud[0].replies>0;}proc_sleep(10);}fgn_stop(s);return false;
 }
 fgnt_turn :: (s:[]ForgeNative,text:string)->bool {
   used:=fgn_key(s,-2,true,0);used=fgn_key(s,-2,false,0);fgl_text(s[0].hud[..],text);
@@ -19,17 +20,16 @@ tool_main :: ()->int #export_c #effects(all) {
   if !fgnt_turn(s[..],"Aethyrforge native Linux Bitcoin Lab") {tool_errln("FAIL first native Coder turn");return 1;}
   first:[128]u8;fn:=s[0].sn;for i:0..<fn {first[i]=s[0].session[i];}
   if !fgnt_turn(s[..],"Continue this native conversation") || cast(string)s[0].session[0..<s[0].sn]==cast(string)first[0..<fn] {tool_errln("FAIL native Coder fork");return 1;}
-  // Verify the durable Coder journal, rather than trusting the HUD's counter.
-  homebuf:[4096]u8;home:=proc_getenv("CODER_HOME",homebuf[..]);name:[256]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],".openagents/coder/sessions/");jo_put(o[..],cast(string)s[0].session[0..<s[0].sn]);jo_put(o[..],".jsonl");
-  path:[4096]u8;bytes:[65536]u8;count:=fs_read(fs_join(home,jo_text(o[..]),path[..]),bytes[..]);
-  if count<0 {return 1;}end:=0;while end<count && bytes[end]!='\n' {end+=1;}
-  d:[1]Jv;nodes:[128]JvNode;if !jv_parse(d[..],cast(string)bytes[0..<end],nodes[..]) || jv_raw(d[0],jv_get(d[0],0,"parent"))!=cast(string)first[0..<fn] {tool_errln("FAIL durable fork parent");return 1;}
+  // Verify the durable session log (the shared one, as a fork reads it: run.coax tr_session_file), rather than trusting the HUD's counter.
+  bytes:[4194304]u8;idb:[128]u8;slog:=tr_session_file(cast(string)s[0].session[0..<s[0].sn],bytes[..],idb[..]);
+  if slog.count==0 {tool_errln("FAIL durable session log");return 1;}end:=0;while end<slog.count && slog[end]!='\n' {end+=1;}
+  d:[1]Jv;nodes:[128]JvNode;if !jv_parse(d[..],cast(string)slog[0..<end],nodes[..]) || jv_raw(d[0],jv_get(d[0],0,"parent"))!=cast(string)first[0..<fn] {tool_errln("FAIL durable fork parent");return 1;}
   s[0].hud[0].opened=true;n=fgn_frame(s[..],out[..],u[..],1440,900,1,0.016);
   if n<=0 || n>FGN_VERTICES || s[0].hud[0].history[0].n<=0 {return 1;}
   fgl_text(s[0].hud[..],"This owned echo turn is cancelled immediately");if !fgl_effect(s[0].hud[..],1) {return 1;}fgn_tick(s[..]);
-  if s[0].coder<0 || !fgl_effect(s[0].hud[..],2) {return 1;}fgn_tick(s[..]);if s[0].coder>=0 || s[0].hud[0].busy {return 1;}
+  if s[0].turn<0 || !fgl_effect(s[0].hud[..],2) {return 1;}fgn_tick(s[..]);if s[0].turn>=0 || s[0].hud[0].busy {return 1;}
   if !fgl_effect(s[0].hud[..],3) {return 1;}fgn_tick(s[..]);if s[0].sn!=0 || s[0].hud[0].history[0].n!=0 {return 1;}
   if !fgl_effect(s[0].hud[..],4) {return 1;}fgn_tick(s[..]);n=fgn_frame(s[..],out[..],u[..],1440,900,1,0.016);if !s[0].hud[0].ready {return 1;}
   if !fgl_effect(s[0].hud[..],5) {return 1;}fgn_tick(s[..]);if !s[0].quit {return 1;}
-  print("PASS native Linux: Bitcoin Lab geometry, shared Coax HUD, real Coder echo + durable fork, Stop, New, Reload, Quit\n");return 0;
+  print("PASS native Linux: Bitcoin Lab geometry, shared Coax HUD, echo on the shared turn runner + durable fork, Stop, New, Reload, Quit\n");return 0;
 }

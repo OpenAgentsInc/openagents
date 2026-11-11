@@ -887,10 +887,7 @@ cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
 // A non-empty ANTHROPIC_API_KEY, ignoring surrounding space. The value is
 // never stored: the child inherits the variable, and Coder only remembers
 // that it was set.
-cd_claude_api_key :: (key: string) -> bool {
-  for c: key { if c != ' ' && c != 9 && c != 10 && c != 13 { return true; } }
-  return false;
-}
+cd_claude_api_key :: (key: string) -> bool { return tr_api_key_text(key); }
 
 // What the opening line and Shift-Tab call the claude engine.
 cd_claude_title :: (api_key: bool) -> string { return ifx api_key then "Claude API" else "Claude Code"; }
@@ -982,13 +979,7 @@ cd_claude_model_cmd :: (a: [] App, msg: string, models: bool, effort: bool) {
 }
 
 // Whether this process was started with ANTHROPIC_API_KEY. The copy is wiped.
-cd_claude_api_key_set :: () -> bool {
-  kb: [4096] u8;
-  key := cl_getenv("ANTHROPIC_API_KEY", kb[..]);
-  set := cd_claude_api_key(key);
-  for i: 0..<kb.count { kb[i] = 0; }
-  return set;
-}
+cd_claude_api_key_set :: () -> bool { return tr_api_key(); }
 
 // Partial messages so the reply streams. The person's Claude Code login,
 // unless ANTHROPIC_API_KEY is set: then that key authenticates the child

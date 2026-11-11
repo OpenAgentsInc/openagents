@@ -4,7 +4,7 @@
 // terminal measure the same clusters (components/layout/measure.coax).
 //   coax/bin/coax test components/core/text.coax
 
-Rune :: struct { code: u32; len: int; }
+#load "../../coax/lib/text/rune.coax";   // Rune
 
 // The code point at byte i of UTF-8 text; a malformed byte reads as itself.
 rune_at :: (text: string, i: int) -> Rune {

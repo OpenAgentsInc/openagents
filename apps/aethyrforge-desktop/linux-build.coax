@@ -1,5 +1,6 @@
 // Native Linux build decisions. Nix supplies C SDK headers/libraries only;
-// application, Coder, HUD and shader arithmetic are Coax.
+// application, chat (the shared turn runner, in process), HUD and shader
+// arithmetic are Coax.
 fgl_copy :: (from:string,to:string,deadline:int)->bool {
   b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],to);jo_put(o[..],".new");
   out:[65536]u8;cmd:=[3]string.["cp",from,jo_text(o[..])];return af_run(cmd[..],out[..],deadline)>=0 && fs_rename(jo_text(o[..]),to);
@@ -32,7 +33,7 @@ fgl_build :: (a:[]Args)->int {
   }
   here:=af_path(p[..],root,"apps/aethyrforge-desktop");work:=af_path(p[..],here,"build/native-linux");spec:=af_path(p[..],work,"spec");wl:=af_path(p[..],work,"wl");
   if !fs_mkdir(spec) || !fs_mkdir(wl) {return 1;}out:[16777216]u8;
-  print("Building native Aethyrforge: Coax Coder + Bitcoin Lab, Wayland + Vulkan…\n");
+  print("Building native Aethyrforge: Bitcoin Lab and its chat, Wayland + Vulkan…\n");
   api_build:=[2]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"bitcoin/lab/build.coax")];if !fgn_cmd(api_build[..],deadline) {return 1;}
   fetch_build:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"bitcoin/lab/fetch.coax"),"--help",""];
   // Compile through tool.sh without a request. Argument refusal is expected;
@@ -66,7 +67,7 @@ fgl_build :: (a:[]Args)->int {
   flagsbuf:[8192]u8;for i:0..<n {flagsbuf[i]=out[i];}sdkflags:=cast(string)flagsbuf[0..<n];
   h:=proc_new();for arg:[14]string.["cc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-ffunction-sections","-fdata-sections","-Wl,--gc-sections","-w","-I",work,"-I",wl] {ok:=proc_arg(h,arg);}
   for inc:[3]string.["verse/native","verse/gpu","verse/kms"] {ok:=proc_arg(h,"-I") && proc_arg(h,af_path(p[..],root,inc));}
-  for src:[14]string.["apps/aethyrforge-desktop/linux-native-face.c","verse/native/realm-host.c","verse/gpu/vk-realm.c","verse/gpu/vk-spec.c","verse/gpu/vks.c","verse/gpu/vkc.c","verse/gpu/vkp.c","verse/gpu/vkd.c","coax/platform/process-native.c","coax/platform/store-file-native.c","os/verse-panel.coax","os/verse-hands.coax","linux-native.c",""] {
+  for src:[14]string.["apps/aethyrforge-desktop/linux-native-face.c","verse/native/realm-host.c","verse/gpu/vk-realm.c","verse/gpu/vk-spec.c","verse/gpu/vks.c","verse/gpu/vkc.c","verse/gpu/vkp.c","verse/gpu/vkd.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/agent-signer-none.c","os/verse-panel.coax","os/verse-hands.coax","linux-native.c"] {
     if src=="" {continue;}path:=af_path(p[..],root,src);
     if src=="linux-native.c" {path=af_path(p[..],work,src);}
     if src=="os/verse-panel.coax" || src=="os/verse-hands.coax" {
@@ -80,13 +81,11 @@ fgl_build :: (a:[]Args)->int {
   for name:[2]string.["xdg-shell-protocol.c","xdg-decoration-unstable-v1-protocol.c"] {ok:=proc_arg(h,af_path(p[..],wl,name));}
   ok:=fgn_words(h,sdkflags);for arg:[6]string.["-lvulkan","-lpthread","-lm","-o",af_path(p[..],work,"aethyrforge"),""] {if arg!="" {ok=ok && proc_arg(h,arg);}}
   if !ok || proc_start(h)!=0 {r:=proc_release(h);return 1;}if !af_finish(h,deadline) {return 1;}
-  coderbuild:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coder/tui/coder.coax"),"--version"];if !fgn_cmd(coderbuild[..],deadline) {return 1;}
   hashcmd:=[4]string.["shasum","-a","256",coax];if af_run(hashcmd[..],out[..],deadline)<64 {return 1;}
-  cachebuf:[256]u8;o:[1]Jo;jo_start(o[..],cachebuf[..]);jo_put(o[..],"coax/web/build/tools/coder-");jo_put(o[..],cast(string)out[0..<64]);codercache:=af_path(p[..],root,jo_text(o[..]));
   fetchbuf:[256]u8;vfetch:[1]Jo;jo_start(vfetch[..],fetchbuf[..]);jo_put(vfetch[..],"coax/web/build/tools/fetch-");jo_put(vfetch[..],cast(string)out[0..<64]);fetchcache:=af_path(p[..],root,jo_text(vfetch[..]));
   home:=proc_getenv("HOME",env[..]);base:=af_path(p[..],home,".openagents");runtime:=af_path(p[..],base,"aethyrforge/native-linux");bin:=af_path(p[..],base,"bin");workspace:=af_path(p[..],base,"aethyrforge/workspace");
   if !fs_mkdir(runtime) || !fs_mkdir(bin) || !fs_mkdir(workspace) {return 1;}
-  if !fgl_copy(af_path(p[..],work,"aethyrforge"),af_path(p[..],bin,"aethyrforge-native"),deadline) || !fgl_copy(codercache,af_path(p[..],bin,"aethyrforge-coder"),deadline) {return 1;}
+  if !fgl_copy(af_path(p[..],work,"aethyrforge"),af_path(p[..],bin,"aethyrforge-native"),deadline) {return 1;}
   if !fgl_copy(af_path(p[..],root,"bitcoin/lab/build/native/bitcoin-lab"),af_path(p[..],bin,"bitcoin-lab-api"),deadline) || !fgl_copy(fetchcache,af_path(p[..],bin,"bitcoin-lab-fetch"),deadline) {return 1;}
   copy:=[4]string.["cp","-a",af_path(p[..],spec,"."),runtime];if !fgn_cmd(copy[..],deadline) {return 1;}
   if !fgl_copy(af_path(p[..],here,"linux-scene-context.txt"),af_path(p[..],runtime,"bitcoin-lab-context.txt"),deadline) {return 1;}
@@ -102,7 +101,7 @@ fgl_build :: (a:[]Args)->int {
   }
   if fs_kind("/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json")==FS_FILE {jo_put(u[..],"Environment=VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json\n");}
   if u[0].bad || !fs_write(af_path(p[..],unitdir,"openagents-aethyrforge.service"),jo_text(u[..])) {return 1;}
-  if !fs_write(af_path(p[..],desktopdir,"openagents-aethyrforge.desktop"),"[Desktop Entry]\nType=Application\nName=Aethyrforge\nComment=Native Bitcoin Lab and Coax Coder\nExec=systemctl --user start openagents-aethyrforge.service\nTerminal=false\nCategories=Development;\n") {return 1;}
+  if !fs_write(af_path(p[..],desktopdir,"openagents-aethyrforge.desktop"),"[Desktop Entry]\nType=Application\nName=Aethyrforge\nComment=Native Bitcoin Lab and its agent chat\nExec=systemctl --user start openagents-aethyrforge.service\nTerminal=false\nCategories=Development;\n") {return 1;}
   reload:=[3]string.["systemctl","--user","daemon-reload"];if !fgn_cmd(reload[..],deadline) {return 1;}
   print("Installed native Wayland/Vulkan Aethyrforge at %\n",launcher);
   if args_count(a)==2 {

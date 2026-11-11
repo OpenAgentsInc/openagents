@@ -29,12 +29,19 @@ independently of its source checkout. Existing general CLI installations,
 provider logins, models and Mac settings/worlds are preserved.
 
 Enter opens Coder and releases held walking keys. Enter sends; Shift-Enter
-adds a line; Escape closes the composer. Stop cancels this window's own Coder
-child. New starts a new conversation, Reload resets Bitcoin Lab, and Quit
-closes the app and its child. Subsequent turns fork the window's own durable
-Coder session. The default workspace is
-`~/.openagents/aethyrforge/workspace/`; `AETHYRFORGE_WORKSPACE` overrides it.
-Coder uses the existing automatic router/provider logins. No model or
+adds a line; Escape closes the composer. Each turn runs in the app's own
+process on the shared turn runner (`coax/lib/agent/engine/run.coax`, the one
+Coder's plain runs use; no Coder child): System One picks the engine, and the
+turn runs unattended as `coder run --stream-json` does. Stop ends the turn
+and its engine. New starts a new conversation, Reload resets Bitcoin Lab,
+and Quit closes the app and its engines. Subsequent turns fork the window's
+own durable session in Coder's session log (`~/.openagents/coder/sessions/`,
+`$CODER_HOME` first), so `coder ls` and `coder log` read them. The default
+workspace is `~/.openagents/aethyrforge/workspace/`; `AETHYRFORGE_WORKSPACE`
+overrides it. Turns use the existing automatic router/provider logins and
+Coder's consent ledger. Unlike Coder's own runs they carry no remembered
+facts (`coder remember`), offer Codex no Coder tools, and run no "$ "
+commands; System One's answer is awaited on the frame. No model or
 microphone starts when the window opens.
 
 This initial port uses the native host's existing US keyboard mapping and
@@ -48,7 +55,7 @@ Focused checks:
 
 ```sh
 coax/bin/coax test apps/aethyrforge-desktop/linux-native.coax --only 'native Aethyrforge'
-# A fresh directory isolates Coder's logs/router/memory from the owner's:
+# A fresh directory isolates the session log, router and ledger from the owner's:
 CODER_HOME=/tmp/aethyrforge-coder-check AETHYRFORGE_ENGINE=echo \
   coax/web/tool.sh apps/aethyrforge-desktop/linux-native-check.coax
 # Actual offscreen Vulkan; --keys opens the real Coax composer:
@@ -60,7 +67,7 @@ The admission checks and zero-survivor mutation gate are in
 `linux-policy.coax`. The request envelope stays inside this process's Coax
 state; it is not a command endpoint. The native bridge does scalar ABI and
 window/GPU effects only. Application layout, draft state, input ownership,
-process launch/stop decisions and Coder event interpretation stay in Coax.
+turn start/stop decisions and the session's event interpretation stay in Coax.
 
 ## Mac: AppKit and Metal
 

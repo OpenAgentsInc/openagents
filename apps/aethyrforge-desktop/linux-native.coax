@@ -1,16 +1,23 @@
 // Aethyrforge's native Linux model. The same Bitcoin Lab producer and desktop
-// Coder HUD run as ordinary Coax-generated C in the Wayland/Vulkan host.
+// Coder HUD run as ordinary Coax-generated C in the Wayland/Vulkan host. A
+// chat turn runs in this process on the shared turn runner
+// (chat-run.coax over coax/lib/agent/engine/run.coax, as chat-launch.coax says): its session's
+// lines are the events the HUD reads (fgl_event), and the session log is the
+// one Coder keeps (~/.openagents/coder/sessions, $CODER_HOME first).
 #load "linux-view.coax";
+#load "chat-run.coax";
 #load "../openagents-web/bitcoin-lab.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 FGN_VERTICES :: 144000;
 FGN_EPOCH :: "00000000000000000000000000000000";
+FGN_LINE_MAX :: 65536;           // a longer line is more than the HUD's transport takes
 ForgeNative :: struct {
   lab:[1]BitcoinLab;hud:[1]ForgeLinux;
-  initialized:bool;quit:bool;shift:bool;control:bool;coder:int=-1;last:int;ended:bool;
-  session:[128]u8;sn:int;workspace:[4096]u8;wn:int;image:[4096]u8;imn:int;engine:[16]u8;en:int;context:[4096]u8;cn:int;
+  initialized:bool;quit:bool;shift:bool;control:bool;turn:int=-1;last:int;ended:bool;   // turn: 1 while a chat turn runs
+  session:[128]u8;sn:int;workspace:[4096]u8;wn:int;engine:[16]u8;en:int;context:[4096]u8;cn:int;
+  chat:[1]ForgeChatRun;     // the turn runner and its engines
   inbox:[LAB_REPLY_MAX]u8;frame:int;px:f32;py:f32;
   lab_clip:int=-1;lab_service:int=-1;lab_port:int;lab_started:int;lab_fetch:[2]int=[2]int.[-1,-1];lab_status:[2]int;lab_deadline:[2]int;
 }
@@ -23,7 +30,7 @@ ForgeNative :: struct {
   #assert fgn_key(s[..],-13,true,0) && fgn_key(s[..],-2,true,0);
   #assert cast(string)s[0].hud[0].draft[0..<s[0].hud[0].dn]=="h\n";
 }
-#test "native Aethyrforge owns only valid sessions emitted by its child" {
+#test "native Aethyrforge owns only valid sessions its runner reports" {
   s:[1]ForgeNative;fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"owned_123\",\"engine\":\"echo\"}");
   #assert cast(string)s[0].session[0..<s[0].sn]=="owned_123";
   fgn_event(s[..],"{\"kind\":\"session\",\"id\":\"../bad\"}");
@@ -48,8 +55,6 @@ fgn_boot :: (s:[]ForgeNative) #export_c #effects(all) {
   env:[4096]u8;home:=proc_getenv("HOME",env[..]);p:[4096]u8;
   workspace:=proc_getenv("AETHYRFORGE_WORKSPACE",p[..]);if workspace=="" {workspace=fs_join(home,".openagents/aethyrforge/workspace",p[..]);}
   s[0].wn=workspace.count;for i:0..<workspace.count {s[0].workspace[i]=workspace[i];}
-  image:=proc_getenv("AETHYRFORGE_CODER",p[..]);if image=="" {image=fs_join(home,".openagents/bin/aethyrforge-coder",p[..]);}
-  s[0].imn=image.count;for i:0..<image.count {s[0].image[i]=image[i];}
   engine:=proc_getenv("AETHYRFORGE_ENGINE",p[..]);if engine!="echo" {engine="auto";}
   s[0].en=engine.count;for i:0..<engine.count {s[0].engine[i]=engine[i];}
   context:=fs_join(home,".openagents/aethyrforge/native-linux/bitcoin-lab-context.txt",p[..]);s[0].cn=context.count;for i:0..<context.count {s[0].context[i]=context[i];}
@@ -64,25 +69,21 @@ fgn_event :: (s:[]ForgeNative,line:string) {
   if e.kind==7 {s[0].ended=true;}
 }
 fgn_stop :: (s:[]ForgeNative) #export_c #effects(all) {
-  if s[0].coder>=0 {r:=proc_release(s[0].coder);s[0].coder=-1;}
-  s[0].hud[0].busy=false;
+  fcr_stop(s[0].chat[..]);
+  s[0].turn=-1;s[0].hud[0].busy=false;
 }
+// A turn on the runner: a new session for each (the next forks the last).
 fgn_launch :: (s:[]ForgeNative,text:string)->bool {
-  h:=proc_new();if h<0 {return false;}
-  ok:=proc_arg(h,cast(string)s[0].image[0..<s[0].imn]) && proc_arg(h,ifx s[0].sn==0 then "run" else "fork");
-  if s[0].sn>0 {ok=ok && proc_arg(h,cast(string)s[0].session[0..<s[0].sn]);}
-  ok=ok && proc_arg(h,text) && proc_arg(h,"--cwd") && proc_arg(h,cast(string)s[0].workspace[0..<s[0].wn]);
-  context:=cast(string)s[0].context[0..<s[0].cn];if fs_kind(context)==FS_FILE {ok=ok && proc_arg(h,"--context") && proc_arg(h,context);}
-  for i:0..<3 {value:=ifx i==1 then cast(string)s[0].engine[0..<s[0].en] else fc_launch_option(i);ok=ok && proc_arg(h,value);}
-  if !ok || proc_start(h)!=0 {r:=proc_release(h);return false;}
-  s[0].coder=h;s[0].ended=false;return true;
+  ok:=fcr_start(s[0].chat[..],text,cast(string)s[0].session[0..<s[0].sn],cast(string)s[0].workspace[0..<s[0].wn],cast(string)s[0].context[0..<s[0].cn],cast(string)s[0].engine[0..<s[0].en]);
+  if !ok {return false;}
+  s[0].turn=1;s[0].ended=false;return true;
 }
 fgn_tick :: (s:[]ForgeNative) {
   if s[0].hud[0].pending {
-    r:=fgl_request(cast(string)s[0].hud[0].request[0..<s[0].hud[0].request_n],FGN_EPOCH,s[0].last,s[0].coder>=0);
+    r:=fgl_request(cast(string)s[0].hud[0].request[0..<s[0].hud[0].request_n],FGN_EPOCH,s[0].last,s[0].turn>=0);
     if r.ok {
       s[0].last=r.ticket;
-      if r.op==1 {s[0].hud[0].busy=fgn_launch(s,cast(string)r.text[0..<r.n]);fgl_status(s[0].hud[..],ifx s[0].coder>=0 then "Coder is running" else "Coder could not start");}
+      if r.op==1 {s[0].hud[0].busy=fgn_launch(s,cast(string)r.text[0..<r.n]);fgl_status(s[0].hud[..],ifx s[0].turn>=0 then "Coder is running" else "Coder could not start");}
       else if r.op==2 {fgn_stop(s);fgn_event(s,"{\"kind\":\"end\",\"ending\":\"stopped\"}");}
       else if r.op==3 {s[0].sn=0;}
       else if r.op==4 {lr_select(s[0].lab[0].remote[..],0,0);lab_blur(s[0].lab[..]);s[0].lab[0].ready=false;s[0].lab[0].explorer[0]=LabExplore.{};}
@@ -90,18 +91,19 @@ fgn_tick :: (s:[]ForgeNative) {
     }
     s[0].hud[0].pending=false;s[0].hud[0].request_n=0;
   }
-  if s[0].coder<0 {return;}
-  line:[65536]u8;eof:=false;
-  for i:0..<16 {
-    n:=proc_line(s[0].coder,0,line[..]);if n==PROC_TIMEOUT {break;}if n==PROC_EOF {eof=true;break;}
+  if s[0].turn<0 {return;}
+  alive:=fcr_poll(s[0].chat[..]);
+  line:[FGN_LINE_MAX]u8;
+  for guard:0..<100000 {
+    n:=fcr_line(s[0].chat[..],line[..]);if n==0 {break;}
     if n<0 {fgn_stop(s);fgl_status(s[0].hud[..],"Coder output exceeded the bounded display transport");return;}
     fgn_event(s,cast(string)line[0..<n]);
   }
-  if eof && proc_wait(s[0].coder,0)!=PROC_RUNNING {
+  if !alive {
     if !s[0].ended {fgn_event(s,"{\"kind\":\"end\",\"ending\":\"exited\"}");}
     fgn_stop(s);
   }
-  if s[0].coder>=0 {s[0].hud[0].busy=true;}
+  if s[0].turn>=0 {s[0].hud[0].busy=true;}
 }
 fgn_key :: (s:[]ForgeNative,key:int,down:bool,mods:int)->bool #export_c #effects(all) {
   if key== -13 {s[0].shift=down;return true;}if key== -14 {s[0].control=down;return true;}

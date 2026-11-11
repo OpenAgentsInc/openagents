@@ -1,12 +1,48 @@
-// Desktop turns use Coder's existing unattended provider flow. Claude sets
-// bypassPermissions; Codex sets approvalPolicy=never / danger-full-access.
+// How a desktop chat turn runs. On Linux it runs in this process on the
+// shared turn runner (coax/lib/agent/engine/run.coax): unattended, as Coder's
+// plain runs are (Claude Code bypasses permissions; Codex runs with approval
+// policy never and full access; Cursor's permissions and Microcoder's
+// commands are accepted), System One picking the engine unless the person
+// named one (the offline echo engine, or an engine the Mac's menu chose),
+// and the reply streaming as it comes. An
+// approval that still asks is refused: no one stands at an unattended run.
+// The Mac still starts Coder with fc_launch_option's argv until its chat is
+// moved onto the runner (#13156).
 #authority;
+// The runner's engine numbers (TR_* in run.coax, Coder's ENGINE_*), by name.
+FC_RUN_NAMES :: [7] string.["echo","claude","codex","microcoder","psionic","cursor","micro"];
+FC_RUN_ENGINES :: [7] int.[0,1,2,3,4,5,3];
+FC_RUN_CLAUDE :: 1;    // where an automatic route starts from
 #test "desktop launch routes and streams without forcing interactive tool approval" {
   #assert fc_launch_option(0)=="--engine" && fc_launch_option(1)=="auto";
   #assert fc_launch_option(2)=="--stream-json";
   #assert fc_launch_option(-1)=="" && fc_launch_option(3)=="";
 }
+#test "desktop turns on the runner: System One picks unless an engine is named, streamed, approvals refused" {
+  names:=FC_RUN_NAMES;engines:=FC_RUN_ENGINES;
+  for name,i:names {#assert !fc_run_routed(name) && fc_run_engine(name)==engines[i];}
+  #assert fc_run_engine("echo")==0 && fc_run_engine("claude")==1 && fc_run_engine("codex")==2 && fc_run_engine("microcoder")==3;
+  #assert fc_run_engine("psionic")==4 && fc_run_engine("cursor")==5 && fc_run_engine("micro")==3;
+  for name:[4]string.["auto","","Echo","claude "] {#assert fc_run_routed(name) && fc_run_engine(name)==FC_RUN_CLAUDE;}
+  #assert fc_run_live() && !fc_run_allow();
+}
 fc_launch_option :: (i:int)->string #export_c #effects(all) {
   options:=[3]string.["--engine","auto","--stream-json"];
   return ifx i>=0 && i<options.count then options[i] else "";
 }
+// The engine a turn runs on: the one named, else Claude Code, where an automatic route starts from.
+fc_run_engine :: (engine:string)->int #export_c #effects(all) {
+  names:=FC_RUN_NAMES;engines:=FC_RUN_ENGINES;
+  for name,i:names {if name==engine {return engines[i];}}
+  return FC_RUN_CLAUDE;
+}
+// Whether System One picks the turn's engine: unless the person named one.
+fc_run_routed :: (engine:string)->bool #export_c #effects(all) {
+  names:=FC_RUN_NAMES;
+  for name:names {if name==engine {return false;}}
+  return true;
+}
+// The reply streams as it comes (reply_delta lines), as --stream-json did.
+fc_run_live :: ()->bool #export_c #effects(all) {return true;}
+// What an approval that still asks gets: no.
+fc_run_allow :: ()->bool #export_c #effects(all) {return false;}
