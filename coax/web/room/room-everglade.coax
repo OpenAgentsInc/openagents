@@ -151,6 +151,7 @@ EgSeat :: struct {
   claim: bool; claim_x: f32; claim_z: f32; claim_yaw: f32; hello: bool; joined_ms: int;
   look: [EG_LOOK] u8; look_n: int; klass: [EG_NAME] u8; klass_n: int; flags: int; name: [EG_NAME] u8; name_n: int;
   last_cast: int = -1000;
+  loose: NetLoose;               // an arrow's launch its page said, kept for the Attack's request of the same number (room-e2-arrows.coax)
   aid: E2Aid;
   familiar:E2Familiar;
   familiar_incense_used:bool;
@@ -234,6 +235,7 @@ EgRoom :: struct {
   familiar_reactions: [EG_SEATS] E2StepReactions;
   guard: [1] E2Guard;   // Everglade II's path guard (room-e2-guard.coax)
   monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (room-e2-monsters.coax)
+  arrows: [1] E2Arrows;          // Everglade II's arrows in the air (room-e2-arrows.coax)
   tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   casts: [EG_CASTS] EgCast; cast_order: int;
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals
@@ -377,6 +379,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
       e2_rest_start(v,q); e5rr_enable_familiars(rules);
       v[0].eg[q].guard[0] = E2Guard.{};
       v[0].eg[q].monsters[0] = E2Monsters.{};
+      v[0].eg[q].arrows[0] = E2Arrows.{};
     }   // Everglade II's rests are the shared rules' (room-e2-rest.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
@@ -532,12 +535,13 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'J' || c == 'C' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if (c == 'I' || c == 'J' || c == 'C' || c == 'F' || c == 'E' || c == 'L' || c == 'Z' || c == 'U' || c == 'M' || c == 'R' || c == 'T' || c == 'V') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
   if c == 'X' { e2_admin_heard(v, k, seat_id, text); return; }   // admin mode: a local room's only (room-e2-admin.coax)
   if c=='M' { if v[0].eg[k].e2 { e2_familiar_ask(v,k,seat_id,text); } return; }
   if c == 'U' { if v[0].eg[k].e2 { e2_aid_ask(v,k,seat_id,text); } return; }
   if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
   if c == 'I' || (c=='J' && wire_is(text,"J1")) { eg_heard_input(v, k, seat_id, text); return; }
+  if c == 'F' { if v[0].eg[k].e2 { e2_arrow_heard(v, k, seat_id, text); } return; }   // an arrow's launch, before its Attack's C (room-e2-arrows.coax)
   if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
   if c == 'P' {   // the page's build, for its hello's admission (#12839)
     rp: [1] WireRd; rp[0] = wire_rd(text, 1);
@@ -899,6 +903,19 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   reach := ifx e.aim.kind == XC_AIM_SELF then 0.0f32 else e.aim.reach;
   if dx * dx + dz * dz > (reach + f32(EG_E2_CAST_SLACK)) * (reach + f32(EG_E2_CAST_SLACK)) { eg_refuse(v, k, seat_id, wc.seq, cr_word(CR_RANGE)); return; }
   r:=v[0].eg[k].rules[..];
+  // a bow's Attack with its launch said: an arrow the room flies; its Attack is rolled when it reaches
+  // a body or the ground (room-e2-arrows.coax). The cast is told now, as any: the archer's loose.
+  if e.ab.kind == FB_ATTACK && xc_kit(r[0].klass[seat] - E5R_CL0) == XC_KIT_BOW && st[0].loose.ok {
+    kept := st[0].loose.seq == wc.seq && rs_can_act(r[0].b[0].c[E5RR_SEAT + seat]);
+    if !kept { st[0].loose = NetLoose.{}; }
+    if kept && e2_arrow_loose(v, k, seat_id, wc.slot, wc.seq) {
+      st[0].last_cast = t; v[0].eg[k].e2_casts += 1;
+      ev: [128] u8;
+      en := wire_put_cast_e(ev[..], 0, WireCastE.{ss = seat, slot = wc.slot, ax = wc.ax, ay = wc.ay, az = wc.az, seed = 1 + (v[0].eg[k].seed + t * 31 + seat * 977 + wc.slot * 7) % 999983});
+      eg_event(v, k, cast(string) ev[0..<en], me.x, me.z, false);
+      return;
+    }
+  }
   revive:=e.ab.kind==FB_SPELL && e.ab.sp==SP_REVIVIFY;
   // aimed at the path's guard or a monster, a harmful cast is at it (room-e2-guard.coax,
   // room-e2-monsters.coax): the shared rules' strike
@@ -1120,7 +1137,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
   eg_ends_due(v, k);
   rc_tick_first(v, k);
   fg_sync(v,k);
-  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); }
+  if v[0].eg[k].e2 { e2_aid_commit(v,k); e2_familiar_commit(v,k); e2_admin_before(v,k); e2_guard_tick(v,k); e2_monsters_tick(v,k); e2_arrows_tick(v,k); }
   e5rr_step(v[0].eg[k].rules[..], f32(t) / f32(EG_HZ));
   if v[0].eg[k].e2 { e2_admin_after(v,k); }
   e2_guard_after(v,k); e2_monsters_after(v,k);

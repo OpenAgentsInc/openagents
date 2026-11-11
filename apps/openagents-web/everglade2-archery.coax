@@ -1,0 +1,67 @@
+// Everglade II's answers to the archer's questions (#13157), for the page and the room alike. The
+// flight is the engine's (aethyr/action/archery.coax, bow.coax) and the Longbow the game's
+// (everglade/longbow.coax), as in Everglade Experimental and the Archery Range (everglade/zone-bow.coax).
+// What only this zone knows is here: where its ground is, how big its monsters stand, and how near
+// where the room has an archer a launch must be. The page (everglade2-arrows.coax) predicts with these and
+// the room (coax/web/room/room-e2-arrows.coax) decides with them, so both fly the same arrow.
+//   coax/bin/coax test --library apps/openagents-web/everglade2-archery.coax
+#load "everglade2-move.coax";
+#load "../../everglade/longbow.coax";
+#load "../../aethyr/action/bow.coax" as bow;
+
+E2AR_MONSTERS :: 12;        // the room's monsters (coax/web/room/room-e2-monsters.coax E2M_N): bodies 0 to 11
+E2AR_GUARD :: 12;           // the path's guard's body
+E2AR_BODIES :: 13;
+E2AR_HAND_SLACK :: 3.0;     // m a launch may be from where the room has the archer's hand: the steps the room hasn't stepped yet
+E2AR_HAND_LOW :: 0.4; E2AR_HAND_HIGH :: 4.5;   // m over the land a launch may be (a jump's top)
+
+// Whether a point is in the ground. The trunks and rocks don't stop an arrow yet (#13166).
+e2ar_solid :: (x: f32, y: f32, z: f32) -> bool { return y < e2_height(x, z); }
+// How big a monster stands beside a person: a wolf (kind 0), a goblin.
+e2ar_scale :: (kind: int) -> f32 { return ifx kind == 0 then 0.75f32 else 0.9f32; }
+e2ar_monster :: (m: int, kind: int, x: f32, z: f32) -> arch.ArcheryBody { return eg_bow_body(m, x, e2_height(x, z), z, e2ar_scale(kind)); }
+e2ar_guard :: (x: f32, z: f32) -> arch.ArcheryBody { return eg_bow_body(E2AR_GUARD, x, e2_height(x, z), z, 1); }
+// Whether an arrow may leave `from` when the room has its archer's feet at (x, z).
+e2ar_launch_ok :: (from: [3] f32, x: f32, z: f32) -> bool {
+  dx := from[0] - x; dz := from[2] - z; up := from[1] - e2_height(from[0], from[2]);
+  if !(dx == dx) || !(dz == dz) || !(up == up) { return false; }
+  return dx * dx + dz * dz <= f32(E2AR_HAND_SLACK * E2AR_HAND_SLACK) && up >= f32(E2AR_HAND_LOW) && up <= f32(E2AR_HAND_HIGH);
+}
+// The launch the room flies when the page's is refused or it said none: from the hand of an archer
+// standing at (x, z) facing the aim.
+e2ar_hand :: (x: f32, z: f32, to: [3] f32) -> [3] f32 {
+  dx := to[0] - x; dz := to[2] - z; d := sqrt(dx * dx + dz * dz);
+  fx := ifx d > 0.01 then dx / d else 0.0f32; fz := ifx d > 0.01 then dz / d else 1.0f32;   // eg_bow_hand's facing, as its unit vector
+  return [3] f32.[x + fx * f32(EG_BOW_AHEAD) - fz * f32(EG_BOW_ASIDE), e2_height(x, z) + f32(EG_BOW_HAND), z + fz * f32(EG_BOW_AHEAD) + fx * f32(EG_BOW_ASIDE)];
+}
+// Every flying arrow's step to `now` against this zone's ground: after it f names the arrow (false
+// when every arrow has had its turn) and how its step ended, for archery_land.
+e2ar_fly :: (p: [] bow.Arrows, f: [] arch.ArrowFlight, now: f32) -> bool {
+  if !arch.flight_arrow(p, f, now) { return false; }
+  while arch.flight_sample(f) { q := f[0].p; f[0].solid = e2ar_solid(q[0], q[1], q[2]); f[0].grass = f[0].solid; }
+  return true;
+}
+
+#test "e2 archery: an arrow loosed level over the land flies, drops and sticks in the ground" {
+  a: [1] arch.Archer; x := 0.0f32; z := -30.0f32;
+  from := eg_bow_hand(x, e2_height(x, z), z, 3.14159265);
+  to := [3] f32.[x, e2_height(x, z - 25), z - 25];
+  #assert e2ar_launch_ok(from, x, z) && !e2ar_launch_ok(from, x + 5, z) && !e2ar_launch_ok([3] f32.[from[0], from[1] + 9, from[2]], x, z) && !e2ar_launch_ok([3] f32.[from[0], e2_height(x, z), from[2]], x, z);
+  _ := arch.archer_loose(a[..], 0, from, to, 1, -1, 0);
+  f: [1] arch.ArrowFlight; stuck := false; t := 0.0f32; flew := 0;
+  while t < 4 && !stuck {
+    t += 1.0 / 30; f[0] = arch.ArrowFlight.{};
+    while e2ar_fly(a[0].arrows[..], f[..], t) {
+      none: [1] arch.ArcheryBody;
+      l := arch.archery_land(a[..], f[0], none[0..<0], 0);
+      if l.kind == arch.LAND_STUCK { stuck = true; dx := l.at[0] - to[0]; dz := l.at[2] - to[2]; #assert abs(dx) < 1.5 && abs(dz) < 8 && abs(l.at[1] - e2_height(l.at[0], l.at[2])) < 0.5; } else { flew += 1; }
+    }
+  }
+  #assert stuck && flew > 5 && t < 2;
+}
+#test "e2 archery: the hand the room flies from faces the aim, and a wolf stands lower than a goblin" {
+  h := e2ar_hand(0, -30, [3] f32.[0, 0, -60]); #assert h[2] < -30 && e2ar_launch_ok(h, 0, -30);
+  w := e2ar_monster(3, 0, 2, -80); g := e2ar_monster(9, 1, 2, -80);
+  #assert w.id == 3 && g.id == 9 && w.c1[1] < g.c1[1] && w.r < g.r && e2ar_guard(0, -20).id == E2AR_GUARD;
+  #assert e2ar_solid(0, e2_height(0, -30) - 0.1, -30) && !e2ar_solid(0, e2_height(0, -30) + 0.1, -30);
+}

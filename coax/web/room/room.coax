@@ -49,6 +49,9 @@
 #load "room-e2-guard.coax";   // Everglade II's path guard
 #load "room-e2-admin.coax";   // Everglade II's admin mode: a local room's only (--dev on 127.0.0.1)
 #load "room-e2-monsters.coax";   // Everglade II's wolves and goblins
+#load "../../../apps/openagents-web/everglade2-archery.coax";   // Everglade II's ground and bodies for an arrow, the page's too (#13157)
+#load "../../../aethyr/net/projectile.coax";   // projectiles over a room: the launch, the flight, the end, the bodies' past
+#load "room-e2-arrows.coax";   // Everglade II's arrows: the room flies each one
 
 #load "room-e2-rest.coax";   // Everglade II rests, room-authoritative on the shared rules (#13046)
 #load "room-control.coax";

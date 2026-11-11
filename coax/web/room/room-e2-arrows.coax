@@ -1,0 +1,265 @@
+// Everglade II's arrows, the room's (#13157): a Ranger's Attack looses a real arrow, and the room
+// flies it. The flight is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's
+// (everglade/longbow.coax) and this zone's ground and bodies everglade2-archery.coax's, which the page
+// predicts with too (apps/openagents-web/everglade2-arrows.coax). What crosses the socket and how far
+// back the room rewinds are aethyr/net/projectile.coax and rewind.coax, any realm's.
+//
+// A page that looses says the launch (F SEQ ...) just before the Attack's own request (C, the same SEQ).
+// The room keeps the launch for that request. When the request passes the checks every cast passes
+// (eg_e2_cast: the slot, the cooldown, the reach) and the archer can act, the room looses the arrow:
+// from the page's hand when that is within E2AR_HAND_SLACK of where the room has the archer, else from
+// the hand the room reckons; at the page's aim and draw; and from the moment the page was drawing
+// (VIEW), no more than NET_REWIND_AGE_MS back. The ticks it missed are flown at once, each against the
+// monsters where they stood at that tick (NetPast), so what the archer's page showed is what the room
+// judges. Then it flies a tick at a time with the world. Every page in view hears it by id (a), the
+// archer's with its request's number, and hears its end (d): stuck in the ground, or in a body. The
+// arrow that reaches a monster or the guard is the SRD Attack with the Longbow on it (everglade2-
+// rules.coax), rolled then: a hit ends in it and the harm is told as any cast's, a miss flies on.
+// An Attack with no launch before it (a page from before arrows) is the cast it was: at its aim, at once.
+//   coax/bin/coax test --library coax/web/room/room.coax --only "e2 arrows"
+
+E2A_LEAD :: 64;             // ticks before the first arrow's tick the arrows' clock starts, so a rewound launch is after 0
+// One arrow's room: its id (0 none), its archer's seat and the Attack's slot on the wire.
+E2ArrowTag :: struct { id: int; seat: int = -1; slot: int; }
+E2Arrows :: struct {
+  ar: [1] arch.Archer;                    // its arrows: each one's owner is its archer's seat
+  tag: [bow.ARROWS] E2ArrowTag;
+  past: [1] NetPast;                      // where the monsters and the guard stood, tick by tick
+  epoch: int;                             // the tick the arrows' clock counts from (set when the first of a flight is loosed; below 0 in a young room)
+  next: int;                              // the last id given
+  loosed: int; hits: int; misses: int; stuck: int; gone: int; rewound_ms: int;   // what the checks read
+}
+e2a_room :: (v: [] RmServer, k: int) -> [] E2Arrows { return v[0].eg[k].arrows[..]; }
+// The arrows' clock at a tick (s): small numbers, so an f32 holds a 30th of a second exactly enough.
+e2a_clock :: (a: [] E2Arrows, tick: int) -> f32 { return f32(tick - a[0].epoch) / f32(EG_HZ); }
+e2a_flying :: (a: [] E2Arrows) -> int { n := 0; for i: 0..<bow.ARROWS { if a[0].ar[0].arrows[0].a[i].state == bow.ARROW_FLYING { n += 1; } } return n; }
+
+// F: a page's launch, kept for the Attack's request of the same number.
+e2_arrow_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  l := net_loose_read(text);
+  if !l.ok { return; }
+  v[0].eg[k].seat[seat].loose = l;
+}
+// This tick's bodies written down: every monster that stands, and the guard.
+e2a_remember :: (v: [] RmServer, k: int) {
+  a := e2a_room(v, k); t := v[0].eg[k].tick; ms := e2mo_room(v, k);
+  net_past_begin(a[0].past[..], t);
+  for m: 0..<E2M_N { mo := ms[0].mon[m]; if e2mo_up(v, k, m) { net_past_put(a[0].past[..], m, mo.x, mo.z); } }
+  g := v[0].eg[k].guard[0];
+  if g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE { net_past_put(a[0].past[..], E2AR_GUARD, g.x, g.z); }
+}
+// The bodies as they stood at `tick` (from the past; a tick it doesn't hold: none).
+e2a_bodies :: (v: [] RmServer, k: int, tick: int, out: [] arch.ArcheryBody) -> int {
+  a := e2a_room(v, k); n := 0;
+  for b: 0..<E2AR_BODIES {
+    at := net_past_at(a[0].past[..], b, tick, 0);
+    if !at.up || n >= out.count { continue; }
+    out[n] = ifx b == E2AR_GUARD then e2ar_guard(at.x, at.z) else e2ar_monster(b, e2mo_kind(b), at.x, at.z);
+    n += 1;
+  }
+  return n;
+}
+// The rules' creature for body b now (-1: it no longer stands).
+e2a_creature :: (v: [] RmServer, k: int, b: int) -> int {
+  if b == E2AR_GUARD { g := v[0].eg[k].guard[0]; return ifx g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE then E5RR_BEAST0 + g.q else -1; }
+  if b < 0 || b >= E2M_N || !e2mo_up(v, k, b) { return -1; }
+  return E5RR_BEAST0 + e2mo_room(v, k)[0].mon[b].q;
+}
+e2a_say_end :: (v: [] RmServer, k: int, id: int, kind: int, at: [3] f32, dir: [3] f32, body: int) {
+  out: [160] u8;
+  n := net_shot_end_write(NetShotEnd.{tick = v[0].eg[k].tick, id = id, kind = kind, at = at, dir = dir, body = body}, out[..]);
+  if n > 0 { e2mo_say(v, k, cast(string) out[0..<n], at[0], at[2]); }
+}
+// The Attack's request with a launch kept for it: loosed. False when no launch is kept for `seq` (the
+// cast goes on as it was) ; the checks every cast passes are the caller's (eg_e2_cast).
+e2_arrow_loose :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int, seq: int) -> bool { seat := seat_id.value;
+  st := v[0].eg[k].seat[seat..<seat + 1]; a := e2a_room(v, k); t := v[0].eg[k].tick;
+  l := st[0].loose;
+  if !l.ok || l.seq != seq { return false; }
+  st[0].loose = NetLoose.{};
+  if e2a_flying(a) == 0 { a[0].epoch = t - E2A_LEAD; for i: 0..<bow.ARROWS { a[0].ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{}; } }
+  me := st[0].pose;
+  from := ifx e2ar_launch_ok(l.from, me.x, me.z) then l.from else e2ar_hand(me.x, me.z, l.to);
+  strength := ifx l.strength < 0 then 0.0f32 else ifx l.strength > 1 then 1.0f32 else l.strength;
+  // the moment the page was drawing, inside the bound: how long ago the arrow left
+  now_ms := t * 1000 / EG_HZ;
+  back := net_rewind(now_ms, net_loose_view(now_ms, l.view_ms), 0);
+  age := ifx l.view_ms > 0 then back.age_ms else 0;
+  now := e2a_clock(a, t);
+  i := bow.arrow_loose(a[0].ar[0].arrows[..], seat, from, bow.arrow_launch(from, l.to, strength), now - f32(age) / 1000, -1, strength);
+  a[0].next += 1; a[0].tag[i] = E2ArrowTag.{id = a[0].next, seat = seat, slot = slot};
+  a[0].loosed += 1; a[0].rewound_ms = age;
+  out: [200] u8;
+  n := net_shot_write(NetShot.{tick = t, id = a[0].next, seat = seat, seq = seq, from = from, vel = a[0].ar[0].arrows[0].a[i].vel, strength = strength, age_ms = age}, out[..]);
+  if n > 0 { e2mo_say(v, k, cast(string) out[0..<n], me.x, me.z); }
+  // the ticks it missed, each against the bodies as they stood then
+  ticks := net_rewind_ticks(age, EG_HZ);
+  for q: 0..<ticks { e2a_fly(v, k, t - ticks + 1 + q); }
+  return true;
+}
+// Every flying arrow flown to tick `tick`'s moment, against the bodies as they stood at it.
+e2a_fly :: (v: [] RmServer, k: int, tick: int) {
+  a := e2a_room(v, k); ar := a[0].ar[..]; now := e2a_clock(a, tick);
+  bodies: [E2AR_BODIES] arch.ArcheryBody; nb := e2a_bodies(v, k, tick, bodies[..]);
+  f: [1] arch.ArrowFlight;
+  while e2ar_fly(ar[0].arrows[..], f[..], now) {
+    i := f[0].i; tag := a[0].tag[i];
+    l := arch.archery_land(ar, f[0], bodies[0..<nb], tag.seat);
+    if l.kind == arch.LAND_NONE { continue; }
+    if l.kind == arch.LAND_BODY {
+      c := bodies[0]; for q: 0..<nb { if bodies[q].id == l.body { c = bodies[q]; } }
+      if e2a_strike(v, k, tag, l.body) {
+        a[0].hits += 1;
+        arch.archery_body(ar, f[0], l, true);
+        e2a_say_end(v, k, tag.id, NET_SHOT_BODY, c.at, ar[0].arrows[0].a[i].dir, l.body);
+        ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{};
+      } else { a[0].misses += 1; arch.archery_body(ar, f[0], l, false); }   // a miss flies on past it
+      continue;
+    }
+    // stuck in the ground: the Attack met no one
+    a[0].stuck += 1;
+    e2a_empty(v, k, tag);
+    e2a_say_end(v, k, tag.id, NET_SHOT_STUCK, ar[0].arrows[0].a[i].at, ar[0].arrows[0].a[i].dir, -1);
+    ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{};
+  }
+  // one that has flown too long is let go, and the pages told
+  for i: 0..<bow.ARROWS {
+    w := ar[0].arrows[0].a[i];
+    if w.state != bow.ARROW_FLYING || now - w.t0 <= f32(bow.ARROW_LONG) { continue; }
+    a[0].gone += 1;
+    e2a_empty(v, k, a[0].tag[i]);
+    e2a_say_end(v, k, a[0].tag[i].id, NET_SHOT_GONE, bow.arrow_pos(w, now - w.t0), bow.arrow_dir(w, now - w.t0), -1);
+    ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{};
+  }
+}
+// The archer's rules for its Attack, when its seat still holds that class's slot: (rules, seat, class).
+e2a_archer_ok :: (v: [] RmServer, k: int, tag: E2ArrowTag) -> bool {
+  if tag.seat < 0 || tag.seat >= EG_SEATS || !v[0].eg[k].seat[tag.seat].live { return false; }
+  r := v[0].eg[k].rules[..];
+  return xk_entry_at(r[0].klass[tag.seat] - E5R_CL0, r[0].b[0].c[E5RR_SEAT + tag.seat].level, tag.slot).ok;
+}
+// An arrow reached body b: the SRD Attack on it, rolled now (everglade2-rules.coax). Whether it hit.
+e2a_strike :: (v: [] RmServer, k: int, tag: E2ArrowTag, b: int) -> bool {
+  foe := e2a_creature(v, k, b);
+  if foe < 0 || !e2a_archer_ok(v, k, tag) { return false; }
+  r := v[0].eg[k].rules[..]; s := tag.seat; me := v[0].eg[k].seat[s].pose;
+  hp := r[0].b[0].c[foe].hp;
+  done := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - E5R_CL0, tag.slot, e5r_sq(me.x), e5rr_z_cell(r, me.z), foe);
+  if !done { return false; }
+  if b == E2AR_GUARD { e2_guard_struck(v, k, s, hp); } else { e2_monster_struck(v, k, s, foe, hp); }
+  e2_kit_tell(v, k, SeatId.{value = s}, false);
+  return r[0].b[0].c[foe].hp < hp;
+}
+// An arrow met no one: the Attack is spent on the air, as a cast aimed at nothing is.
+e2a_empty :: (v: [] RmServer, k: int, tag: E2ArrowTag) {
+  if !e2a_archer_ok(v, k, tag) { return; }
+  r := v[0].eg[k].rules[..]; s := tag.seat; me := v[0].eg[k].seat[s].pose;
+  _ := e2r_use_at_on(r[0].b[..], r[0].seat[s..<s + 1], r[0].klass[s] - E5R_CL0, tag.slot, e5r_sq(me.x), e5rr_z_cell(r, me.z), -1);
+  e2_kit_tell(v, k, SeatId.{value = s}, false);
+}
+// The tick (after the monsters have moved): this tick's bodies are written down, then every arrow flies to it.
+e2_arrows_tick :: (v: [] RmServer, k: int) {
+  if !v[0].eg[k].e2 { return; }
+  e2a_remember(v, k);
+  a := e2a_room(v, k);
+  if e2a_flying(a) == 0 { return; }   // (epoch may be below 0: a room younger than E2A_LEAD ticks)
+  e2a_fly(v, k, v[0].eg[k].tick);
+}
+
+// A check's Ranger in an Everglade II room of its own, standing on the path at (0, -40).
+e2at_room :: (v: [] RmServer, code: string) -> int {
+  rm_init(v); rm_clock(v, 0, 1762190000000);
+  path: [128] u8; n := wire_put(path[..], 0, "GET /api/room/relay/everglade/"); n = wire_put(path[..], n, code); n = wire_put(path[..], n, " HTTP/1.1\r\n\r\n");
+  if rm_join(v, 0, cast(string) path[0..<n]) != 0 { return -1; }
+  k := eg_room_at(v, v[0].conns[0].relay);
+  rm_heard(v, 0, "H 5 ranger.0.0.0 srd-ranger 0 -");
+  eg_test_tick(v, k);
+  e2mt_at(v, k, 0, -40);
+  return k;
+}
+// The Ranger's Attack on the wire: the Longbow's shot (class-kit.coax xk_bar).
+e2at_attack :: () -> int {
+  bar: [XC_SLOTS] FbAb; n := xk_bar(FB_CL_RANGER, bar[..]);
+  for i: 0..<n { if bar[i].kind == FB_ATTACK { return xk_slot(FB_CL_RANGER, i); } }
+  return -1;
+}
+// The launch and the Attack's request a page sends: from the hand toward `to`, drawn at tick `view`.
+e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
+  me := v[0].eg[k].seat[0].pose; b: [160] u8;
+  from := e2ar_hand(me.x, me.z, to);
+  n := net_loose_write(NetLoose.{seq = seq, from = from, to = to, strength = 1, view_ms = view_tick * 1000 / EG_HZ}, b[..]);
+  rm_heard(v, 0, cast(string) b[0..<n]);
+  n = wire_put_cast(b[..], 0, WireCast.{seq = seq, slot = e2at_attack(), ax = me.x, ay = 1, az = me.z - 5});
+  rm_heard(v, 0, cast(string) b[0..<n]);
+}
+#test "e2 arrows: a Ranger's loose is an arrow the room flies; the page hears it by id and where it stuck" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-arrows"); #assert k >= 0 && v[0].eg[k].e2;
+  a := v[0].eg[k].arrows[..]; out: [262144] u8;
+  for q: 0..<10 { e2mt_tick(v[..], k); }
+  _ := e2rt_heard(v[..], 0, out[..]);
+  to := [3] f32.[0.5, e2_height(0.5, -62), -62];
+  e2at_shoot(v[..], k, 1000001, to, v[0].eg[k].tick);
+  #assert a[0].loosed == 1 && e2a_flying(a) == 1 && a[0].rewound_ms == 0;
+  heard := e2rt_heard(v[..], 0, out[..]);
+  // its id, the archer's seat and request, where it left and how fast (aethyr/net/projectile.coax a)
+  got: NetShot; i := 0;
+  while i < heard.count { e := i; while e < heard.count && heard[e] != '|' && heard[e] != '\n' { e += 1; } if heard[i] == 'a' { got = net_shot_read(heard[i..<e]); } i = e + 1; }
+  #assert got.ok && got.id == 1 && got.seat == 0 && got.seq == 1000001 && got.vel[2] < -20 && got.age_ms == 0;
+  stuck := false; ended: NetShotEnd; ticks := 0;
+  while !stuck && ticks < EG_HZ * 4 {
+    e2mt_tick(v[..], k); ticks += 1;
+    heard = e2rt_heard(v[..], 0, out[..]); i = 0;
+    while i < heard.count { e := i; while e < heard.count && heard[e] != '|' && heard[e] != '\n' { e += 1; } if heard[i] == 'd' { w := net_shot_end_read(heard[i..<e]); if w.ok { ended = w; stuck = true; } } i = e + 1; }
+  }
+  #assert a[0].hits == 0 && a[0].gone == 0 && a[0].misses == 0;
+  #assert stuck && ended.id == 1 && ended.kind == NET_SHOT_STUCK && ended.body == -1 && ticks > 8 && a[0].stuck == 1 && e2a_flying(a) == 0;
+  #assert abs(ended.at[0] - to[0]) < 1.5 && abs(ended.at[2] - to[2]) < 8 && ended.dir[1] < 0;
+  // the next Attack with no launch before it is the cast it was: no arrow
+  for q: 0..<EG_E2_GAP + 1 { e2mt_tick(v[..], k); }
+  b: [96] u8; n := wire_put_cast(b[..], 0, WireCast.{seq = 1000002, slot = e2at_attack(), ax = 0, ay = 1, az = -45});
+  rm_heard(v[..], 0, cast(string) b[0..<n]);
+  e2mt_tick(v[..], k); h2 := e2rt_heard(v[..], 0, out[..]);   // a cast is told with the tick's frame
+  #assert a[0].loosed == 1 && eg_test_has(h2, "e cast");
+  // a launch whose request is refused (the cooldown) looses nothing, and is not kept for a later one
+  e2at_shoot(v[..], k, 1000003, to, v[0].eg[k].tick);
+  #assert a[0].loosed == 1 && eg_test_has(e2rt_heard(v[..], 0, out[..]), "r 1000003");
+}
+#test "e2 arrows: the room flies a loose from the moment its page was drawing, inside the bound, and it meets a monster where it stood then" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2at_room(v[..], "pair-e2-rewind"); #assert k >= 0;
+  a := v[0].eg[k].arrows[..]; ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..]; out: [262144] u8;
+  for q: 0..<6 { e2mt_tick(v[..], k); }
+  v[0].eg[k].tick += 600;   // an older room: a moment 300 ticks back is after its start
+  // a wolf stands 4 m down the path; the room's rules make every Attack hit and none kill
+  m := 0; mo := ms[0].mon[m..<m + 1]; foe := E5RR_BEAST0 + mo[0].q;
+  b[0].c[foe].ac = 1; b[0].c[foe].hp = 500; b[0].c[foe].hp_max = 500;
+  for q: 0..<8 { mo[0].x = 0; mo[0].z = -44; mo[0].state = E2M_IDLE; mo[0].foe = -1; e2a_remember(v[..], k); v[0].eg[k].tick += 1; }
+  // then, for the room's last two ticks, it is 6 m aside: the archer's page, drawing five ticks back,
+  // still saw it on the path when it loosed, and the arrow (4 m at 42 m/s: 3 ticks) reached it then
+  for q: 0..<2 { mo[0].x = 6; e2a_remember(v[..], k); v[0].eg[k].tick += 1; }
+  v[0].eg[k].tick -= 1;
+  t := v[0].eg[k].tick; _ := e2rt_heard(v[..], 0, out[..]);
+  chest := e2ar_monster(m, 0, 0, -44).at;
+  e2at_shoot(v[..], k, 1000001, chest, t - 5);
+  #assert a[0].loosed == 1 && a[0].rewound_ms == t * 1000 / EG_HZ - (t - 5) * 1000 / EG_HZ && a[0].rewound_ms >= 166 && a[0].rewound_ms <= 167;
+  // judged in the ticks flown at once, against the wolf where it stood then
+  #assert a[0].hits == 1 && b[0].c[foe].hp < 500 && e2a_flying(a) == 0;
+  heard := e2rt_heard(v[..], 0, out[..]);
+  #assert eg_test_has(heard, "d ") && eg_test_has(heard, "h3 ");
+  // the same shot with no rewind (its page drew the present): the wolf is aside, and the arrow flies past
+  v[0].eg[k].tick += EG_E2_GAP + 1; e2a_remember(v[..], k); hp := b[0].c[foe].hp;
+  e2at_shoot(v[..], k, 1000004, chest, v[0].eg[k].tick);
+  for q: 0..<6 { v[0].eg[k].tick += 1; e2a_remember(v[..], k); e2a_fly(v[..], k, v[0].eg[k].tick); }
+  #assert a[0].loosed == 2 && a[0].rewound_ms == 0 && a[0].hits == 1 && b[0].c[foe].hp == hp;
+  // a page that claims a moment far in the past is taken at the bound
+  v[0].eg[k].tick += EG_E2_GAP + 1; e2a_remember(v[..], k);
+  e2at_shoot(v[..], k, 1000002, [3] f32.[-8, e2_height(-8, -60), -60], v[0].eg[k].tick - 300);
+  #assert a[0].loosed == 3 && a[0].rewound_ms == NET_REWIND_AGE_MS;
+  // and one from the future, or from nowhere near the archer, flies from now, from the room's own hand
+  v[0].eg[k].tick += EG_E2_GAP + 1; e2a_remember(v[..], k);
+  far: [160] u8; n := net_loose_write(NetLoose.{seq = 1000003, from = [3] f32.[40, 2, -90], to = [3] f32.[-8, 0, -60], strength = 1, view_ms = (v[0].eg[k].tick + 90) * 1000 / EG_HZ}, far[..]);
+  rm_heard(v[..], 0, cast(string) far[0..<n]);
+  n = wire_put_cast(far[..], 0, WireCast.{seq = 1000003, slot = e2at_attack(), ax = 0, ay = 1, az = -45}); rm_heard(v[..], 0, cast(string) far[0..<n]);
+  #assert a[0].loosed == 4 && a[0].rewound_ms == 0;
+  w: bow.Arrow; for i: 0..<bow.ARROWS { if a[0].tag[i].id == 4 { w = a[0].ar[0].arrows[0].a[i]; } }
+  #assert e2ar_launch_ok(w.from, 0, -40);
+}
