@@ -786,8 +786,9 @@ has :: (t: string, part: string) -> bool {
   worldbuilder_catalog(s[..], WB_PIECES_CAT);
   sum := wb_answer(s[0].world[..], s[0].cat[..], wb_view(s[..]), "A place|house/cottage|1|||origin||at||||||\nA place|village/roof-roundtiles-4x4|1|||origin||right||||||\n");
   scene(s[..]);
-  // seven meshes: five walls (the straight one three times), the corner (four) and the roof (two: the cottage's and the one alone)
-  #assert s[0].draw_n == 7 && s[0].inst_n == 14 && worldbuilder_store_bytes(s[..]) == 14 * 64;
+  // eight meshes: five walls (the straight one three times), the corner (four), the roof (two: the
+  // cottage's and the one alone) and the gable (two)
+  #assert s[0].draw_n == 8 && s[0].inst_n == 16 && worldbuilder_store_bytes(s[..]) == 16 * 64;
   #assert s[0].draws[5 * 4 + 3] == 4 && s[0].draws[6 * 4 + 3] == 2;
   // the cottage's roof stands 3 m up
   #assert abs(s[0].objects[s[0].draws[6 * 4 + 2] * INSTANCE_FLOATS + 7] - 3) < 0.001;
