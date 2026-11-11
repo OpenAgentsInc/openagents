@@ -309,6 +309,17 @@ std::shared_ptr<UnitLex> unit_lex(const std::string &text, const std::vector<Tok
 // resident to keep.
 std::shared_ptr<const UnitLex> serve_find_unit(const std::string &text);
 void serve_keep_unit(const std::shared_ptr<const UnitLex> &unit);
+// The last compiles of an entry unit whose type check passed (skeleton.cpp),
+// newest first; a resident's request keeps the one it made when it ends.
+struct PassedSkeleton;
+std::vector<std::shared_ptr<const PassedSkeleton>> serve_passed(const std::string &entry);
+void serve_keep_passed(const std::string &entry, const std::shared_ptr<const PassedSkeleton> &passed);
+// This process is a resident's request (a compile that may use and add to its memo).
+bool serve_request();
+// A request reported the errors of its changed bodies' check (skeleton.cpp): counted in `coax serve status`.
+void serve_answered();
+// A child a request forked for a side computation: it reports nothing and answers no client.
+void serve_detach();
 const char *tok_name(Tok t);
 
 // ---- Types ----

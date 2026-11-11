@@ -2,6 +2,7 @@
 // allocates native representations and copies checked results for the evaluator.
 #include "coax.h"
 #include <algorithm>
+#include <functional>
 #ifdef COAX_BOOTSTRAP_IMPORTER
 #include "checker.h"
 #include "parser.h"
@@ -146,7 +147,9 @@ static int64_t module_scope(CheckInput *input,const SourceUnit *unit){
 // Fills the first used+1 nodes of the checker's store from the parser's.
 static void check_input_nodes(const File *file,CheckInput *input){
   const auto &nodes=input->parsed;
-  for(int64_t id=0;id<=input->used;id++){
+  // A node's record is made from the parser's same node and the units alone: slices of nodes on threads (burst, main.cpp).
+  burst((size_t)input->used+1,16384,[&](size_t begin,size_t end,unsigned){
+  for(int64_t id=(int64_t)begin;id<(int64_t)end;id++){
     const auto &v=nodes[(size_t)id];auto &n=input->nodes[(size_t)id];n.kind=v.kind;n.loc=checked_loc(v.loc);n.name=v.name;n.name2=v.name2;n.loc2=checked_loc(v.loc2);
     n.a=v.a;n.b=v.b;n.c=v.c;n.d=v.d;n.head=v.head;n.tail=v.tail;n.next=v.next;n.op=v.op;n.flag=v.flag;n.flag2=v.flag2;n.value=v.value;memcpy(&n.floating,&v.floating,8);n.field_index=-1;n.sum_variant=-1;const int32_t at=source_unit_index(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
     const SourceUnit *unit=at<0?nullptr:file->src->units[(size_t)at].get();
@@ -160,6 +163,7 @@ static void check_input_nodes(const File *file,CheckInput *input){
     if(unit)n.source_unit=(int64_t)at+1;
     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
   }
+  });
 }
 static void attach_check_input(File *file,zvec<coax_t_PS_Node> &&nodes,const std::vector<void*> &objects,int64_t used){
   auto input=std::make_shared<CheckInput>();input->used=used;input->objects=objects;
@@ -187,8 +191,23 @@ static void attach_check_input(File *file,zvec<coax_t_PS_Node> &&nodes,const std
   check_input_nodes(file,input.get());
   file->check_input=std::move(input);
 }
+// A check of the changed procedure bodies alone (skeleton.cpp, #13142) keeps
+// its errors here in place of printing them, with what the run used.
+struct CheckCapture {
+  struct Error {Loc loc;std::string code,message,fix;};
+  std::vector<Error> errors;
+  bool refused=false;  // it stopped on storage, or with no error of its own to name
+};
+static CheckCapture *g_check_capture=nullptr;
+// Called before the checker runs: true when the compile already has its
+// errors (the changed bodies' check) and they are reported.
+static std::function<bool()> g_before_checker;
+// What the last check run used of the stores a longer program fills (the same skeleton check's bounds).
+// nodes: those the checker added to its input's (instances and what it generates); input: the input's own.
+struct CheckUsage {uint64_t nodes=0,input=0,instances=0,instance_limit=0,types=0,type_limit=0,bytes=0,byte_limit=0;};
+static CheckUsage g_check_usage;
 bool check(Arena *arena,File *file,bool mutation_lowering){
-  if(!file->check_input){error_at(file->src,{1,1,0},"E0381","type checker has no indexed syntax input");return false;}
+  if(!file->check_input){if(g_check_capture){g_check_capture->refused=true;return false;}error_at(file->src,{1,1,0},"E0381","type checker has no indexed syntax input");return false;}
   TimedLaps laps;  // --timings: check.storage, check.checker (types, borrows, effects inference), check.effects, check.transfer
   auto input=file->check_input;const auto caps=CK_caps(input->used+1,(int64_t)file->src->text.size());const auto extra=CK_meta_capacity({input->nodes.data(),(int64_t)input->nodes.size()},input->used);
   // A run that fills the node store with instances runs again from this copy
@@ -221,6 +240,7 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     names=zvec<int64_t>((size_t)caps.names);
     context.names={names.data(),(int64_t)names.size()};
     laps.lap("check.storage");
+    if(g_before_checker && !g_check_capture && g_before_checker()){file->check_input.reset();return false;}
     ok=CK_run(context,input->used,{file->library,file->metal,file->authority,file->quantity_device});
     const int64_t next=retries?CK_node_retry(state.used,capacity,state.fatal,first):0;
     if(ok || !next)break;
@@ -271,6 +291,12 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
                capacity_near((uint64_t)state.instance_count,instance_limit)?instance_detail(false):CapacityDetail{});
   capacity_use("checker node store","E0381",(uint64_t)state.used+1,node_limit,
                retries && capacity_near((uint64_t)state.used+1,node_limit)?instance_detail(true):CapacityDetail{});
+  g_check_usage={(uint64_t)std::max<int64_t>(state.used-input->used,0),(uint64_t)input->used,(uint64_t)state.instance_count,instance_limit,(uint64_t)state.type_count,(uint64_t)caps.types,(uint64_t)state.byte_count,(uint64_t)caps.bytes};
+  if(g_check_capture){
+    for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];g_check_capture->errors.push_back({checked_loc(d.loc),checked_text(d.code),checked_text(d.message),checked_text(d.fix)});}
+    if(state.fatal || (!ok && !state.error_count))g_check_capture->refused=true;
+    file->check_input.reset();return ok;
+  }
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];const std::string code=checked_text(d.code);
     if(code=="E0339")capacity_refusal({"generic instances",(uint64_t)state.instance_count+1,instance_limit,instance_detail(false)});
     else if(code=="E0381" && node_store_full)capacity_refusal({"checker node store",(uint64_t)state.used+2,node_limit,instance_detail(true)});

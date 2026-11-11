@@ -915,7 +915,7 @@ struct ReuseIndex {
     }
     // Identities: unit, name and which of the unit's items so named.
     std::map<std::pair<int32_t, std::string>, int32_t> seen;
-    std::unordered_map<std::string, std::vector<int32_t>> by_name;
+    std::unordered_map<std::string_view, std::vector<int32_t>> by_name;  // keys are the items' own names: items is complete
     std::vector<std::string> unit_paths;  // each unit by its path in the checkout (tree_path), as keys name it
     for (const auto &unit : src->units) unit_paths.push_back(tree_path(unit->canonical));
     for (size_t k = 0; k < items.size(); k++) {
@@ -928,22 +928,26 @@ struct ReuseIndex {
       const int32_t ordinal = seen[{it.unit, name}]++;
       it.id = (it.unit < 0 ? std::string("?") : unit_paths[(size_t)it.unit]) + "\x1f" + name + "\x1f" + std::to_string(ordinal);
       if (it.id.find('\n') != std::string::npos) it.id.clear();  // no record can name it
-      if (it.named) by_name[it.name].push_back((int32_t)k);
+      if (it.named) by_name[std::string_view(it.name)].push_back((int32_t)k);
     }
-    for (Item &it : items) {
-      auto names = [&](int32_t last, std::vector<int32_t> *out) {
-        for (int32_t t = it.first; t <= last; t++) {
-          if (tk[(size_t)t].kind != Tok::ident) continue;
-          auto at = by_name.find(to_std(tk[(size_t)t].text));
-          if (at != by_name.end()) out->insert(out->end(), at->second.begin(), at->second.end());
-        }
-        std::sort(out->begin(), out->end());
-        out->erase(std::unique(out->begin(), out->end()), out->end());
-      };
-      names(it.last, &it.uses);
-      if (it.proc) names(it.sig_last, &it.sig_uses);
-      for (int32_t t = it.first; it.proc && t <= it.sig_last; t++) it.sig_run = it.sig_run || (tk[(size_t)t].kind == Tok::directive && str_eq(tk[(size_t)t].text, "run"));
-    }
+    // Each item's uses are its own: a slice of items a thread (burst, main.cpp).
+    burst(items.size(), 64, [&](size_t begin, size_t end, unsigned) {
+      for (size_t k = begin; k < end; k++) {
+        Item &it = items[k];
+        auto names = [&](int32_t last, std::vector<int32_t> *out) {
+          for (int32_t t = it.first; t <= last; t++) {
+            if (tk[(size_t)t].kind != Tok::ident) continue;
+            auto at = by_name.find(std::string_view(tk[(size_t)t].text.data, (size_t)tk[(size_t)t].text.count));
+            if (at != by_name.end()) out->insert(out->end(), at->second.begin(), at->second.end());
+          }
+          std::sort(out->begin(), out->end());
+          out->erase(std::unique(out->begin(), out->end()), out->end());
+        };
+        names(it.last, &it.uses);
+        if (it.proc) names(it.sig_last, &it.sig_uses);
+        for (int32_t t = it.first; it.proc && t <= it.sig_last; t++) it.sig_run = it.sig_run || (tk[(size_t)t].kind == Tok::directive && str_eq(tk[(size_t)t].text, "run"));
+      }
+    });
     // Every procedure, by its template's item and its instance's bindings.
     for (const ProcDecl *p : file->procs) {
       const ProcDecl *base = p->origin ? p->origin : p;
@@ -965,20 +969,30 @@ struct ReuseIndex {
     }
     global = debug_source_hash(bytes);
     if (global.empty()) { why = "no hash in this compiler"; return false; }
+    line_ready.reset(new std::atomic<uint8_t>[items.size()]);
+    for (size_t k = 0; k < items.size(); k++) line_ready[k].store(0, std::memory_order_relaxed);
     return true;
   }
 
   // An item's line in a key: its part (S, E or F), its identity and its
   // digest (its signature's for S), hashed. false when this compiler can't hash.
+  // Keys are made on several threads at once (key, below): an item's lines
+  // and digests are made once, under its lock, and read after line_ready says so.
+  std::unique_ptr<std::atomic<uint8_t>[]> line_ready;
+  std::mutex line_locks[64];
   bool line_sum(int32_t k, uint8_t m, LineSum *out) {
     Item &it = items[(size_t)k];
     const int at = m - SIG;
-    if (!(it.lines >> at & 1)) {
-      const std::string hex = debug_source_hash(std::string(m == SIG ? "S\t" : m == EXEC ? "E\t" : "F\t") + it.id + "\t" +
-                                                (m == SIG ? sig_digest(k) : full_digest(k)) + "\n");
-      if (hex.size() != 64) return false;
-      for (int lane = 0; lane < 4; lane++) it.line[at].lane[lane] = strtoull(hex.substr((size_t)lane * 16, 16).c_str(), nullptr, 16);
-      it.lines |= (uint8_t)(1 << at);
+    if (!(line_ready[(size_t)k].load(std::memory_order_acquire) >> at & 1)) {
+      std::lock_guard<std::mutex> held(line_locks[(size_t)k % 64]);
+      if (!(it.lines >> at & 1)) {
+        const std::string hex = debug_source_hash(std::string(m == SIG ? "S\t" : m == EXEC ? "E\t" : "F\t") + it.id + "\t" +
+                                                  (m == SIG ? sig_digest(k) : full_digest(k)) + "\n");
+        if (hex.size() != 64) return false;
+        for (int lane = 0; lane < 4; lane++) it.line[at].lane[lane] = strtoull(hex.substr((size_t)lane * 16, 16).c_str(), nullptr, 16);
+        it.lines |= (uint8_t)(1 << at);
+      }
+      line_ready[(size_t)k].store(it.lines, std::memory_order_release);
     }
     *out = it.line[at];
     return true;
@@ -992,11 +1006,18 @@ struct ReuseIndex {
   // set, each with one part, so the sum names them in any order, and a key
   // costs one addition an item where it cost a line of text to hash (fivelab's
   // checks reach 2.8 million items between them: 321 MB of lines, #13131).
-  std::vector<uint8_t> mode, in_ran;
-  std::string key(int32_t check, const std::set<int32_t> &ran, const std::string &head) {
+  // Scratch is a thread's own: keys of different checks are made at once.
+  struct Scratch { std::vector<uint8_t> mode, in_ran; std::vector<int32_t> work, reached; };
+  Scratch own;
+  std::string key(int32_t check, const std::set<int32_t> &ran, const std::string &head) { return key(check, std::vector<int32_t>(ran.begin(), ran.end()), head, &own); }
+  // ran: the items of the procedures the check ran, in any order, each any number of times.
+  std::string key(int32_t check, const std::vector<int32_t> &ran, const std::string &head, Scratch *scratch) {
+    std::vector<uint8_t> &mode = scratch->mode, &in_ran = scratch->in_ran;
     if (mode.size() != items.size()) { mode.assign(items.size(), NONE); in_ran.assign(items.size(), 0); }
     for (int32_t r : ran) in_ran[(size_t)r] = 1;
-    std::vector<int32_t> work{check}, reached{check};
+    std::vector<int32_t> &work = scratch->work, &reached = scratch->reached;
+    work.assign(1, check);
+    reached.assign(1, check);
     mode[(size_t)check] = EXEC;
     auto visit = [&](int32_t k, uint8_t m) {
       if (!items[(size_t)k].proc) m = FULL;
@@ -1142,42 +1163,63 @@ static bool unhex_bytes(const std::string &text, std::string *out) {
 struct ReuseRecord {
   enum { STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS, END_SLOTS, END_CONTAINERS, END_STRINGS, NUMBERS };
   // near: the check's near-limit uses (near_write, each location an item and a token in it), "" for none.
-  struct Entry { std::string key; uint64_t numbers[NUMBERS] = {}; std::vector<std::string> ran; std::string near; };
+  // ran: the procedures the check ran, each its place in table: a program's
+  // checks run the same procedures many times over between them, and each
+  // is named and found once (#13142).
+  struct Entry { std::string key; uint64_t numbers[NUMBERS] = {}; std::vector<uint32_t> ran; std::string near; };
   std::map<std::string, Entry> entries;  // by the check's identity
+  std::vector<std::string> table;        // procedure identities
+  std::unordered_map<std::string, uint32_t> places;  // made by place()
+  // id's place in table, added when it is new.
+  uint32_t place(const std::string &id) {
+    if (places.size() != table.size()) { places.clear(); for (size_t i = 0; i < table.size(); i++) places.emplace(table[i], (uint32_t)i); }
+    const auto at = places.find(id);
+    if (at != places.end()) return at->second;
+    table.push_back(id);
+    places.emplace(id, (uint32_t)table.size() - 1);
+    return (uint32_t)table.size() - 1;
+  }
   void load(const std::string &path) {
     std::string text;
     if (!read_record(path, &text) || text.compare(0, 20, "coax.check-reuse.v2\n") != 0) return;
     cache_touch(path);
-    std::vector<std::string> table;
+    const char *data = text.data();
     for (size_t at = 20; at < text.size();) {
       const size_t end = text.find('\n', at);
       if (end == std::string::npos) break;
-      const std::string line = text.substr(at, end - at);
+      const size_t from = at;
       at = end + 1;
-      if (line.compare(0, 2, "p\t") == 0) { table.push_back(line.substr(2)); continue; }
-      if (line.compare(0, 2, "c\t") != 0) return;
-      std::vector<std::string> f;
-      for (size_t s = 2;;) {
-        const size_t tab = line.find('\t', s);
-        f.push_back(line.substr(s, tab == std::string::npos ? std::string::npos : tab - s));
-        if (tab == std::string::npos) break;
+      if (end - from >= 2 && data[from] == 'p' && data[from + 1] == '\t') { table.emplace_back(data + from + 2, end - from - 2); continue; }
+      if (end - from < 2 || data[from] != 'c' || data[from + 1] != '\t') return;
+      // Fields between tabs: [begin, end) of each.
+      size_t field[4 + NUMBERS][2], count = 0;
+      for (size_t s = from + 2;;) {
+        const void *found = memchr(data + s, '\t', end - s);
+        const size_t tab = found ? (size_t)((const char *)found - data) : end;
+        if (count == 4 + NUMBERS) return;
+        field[count][0] = s;
+        field[count++][1] = tab;
+        if (tab == end) break;
         s = tab + 1;
       }
-      if (f.size() != 4 + NUMBERS) return;
+      if (count != 4 + NUMBERS) return;
+      auto text_of = [&](size_t f) { return std::string(data + field[f][0], field[f][1] - field[f][0]); };
       Entry e;
-      e.key = f[1];
-      if (!unhex_bytes(f[3 + NUMBERS], &e.near)) return;
-      for (size_t i = 0; i < NUMBERS; i++) e.numbers[i] = strtoull(f[2 + i].c_str(), nullptr, 10);
-      const std::string &list = f[2 + NUMBERS];
-      for (size_t s = 0; s < list.size();) {
-        size_t comma = list.find(',', s);
-        if (comma == std::string::npos) comma = list.size();
-        const size_t index = strtoull(list.c_str() + s, nullptr, 10);
+      e.key = text_of(1);
+      if (!unhex_bytes(text_of(3 + NUMBERS), &e.near)) return;
+      for (size_t i = 0; i < NUMBERS; i++) e.numbers[i] = strtoull(text_of(2 + i).c_str(), nullptr, 10);
+      // The list: decimal places in table, with commas. strtoull read each
+      // number's leading digits and took none as 0; so does this.
+      for (size_t s = field[2 + NUMBERS][0], stop = field[2 + NUMBERS][1]; s < stop;) {
+        uint64_t index = 0;
+        size_t d = s;
+        while (d < stop && data[d] >= '0' && data[d] <= '9' && index < table.size()) index = index * 10 + (uint64_t)(data[d++] - '0');
         if (index >= table.size()) return;
-        e.ran.push_back(table[index]);
-        s = comma + 1;
+        e.ran.push_back((uint32_t)index);
+        while (d < stop && data[d] != ',') d++;
+        s = d + 1;
       }
-      entries[f[0]] = std::move(e);
+      entries[text_of(0)] = std::move(e);
     }
   }
   bool save(const std::string &dir, const std::string &path) const {
@@ -1188,8 +1230,9 @@ struct ReuseRecord {
       for (uint64_t v : e.numbers) rows += "\t" + std::to_string(v);
       rows += "\t";
       for (size_t i = 0; i < e.ran.size(); i++) {
-        auto at = index.find(e.ran[i]);
-        if (at == index.end()) { at = index.emplace(e.ran[i], index.size()).first; table += "p\t" + e.ran[i] + "\n"; }
+        const std::string &id = this->table[e.ran[i]];
+        auto at = index.find(id);
+        if (at == index.end()) { at = index.emplace(id, index.size()).first; table += "p\t" + id + "\n"; }
         rows += (i ? "," : "") + std::to_string(at->second);
       }
       rows += "\t" + hex_bytes(e.near) + "\n";
@@ -1318,22 +1361,48 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
            std::to_string(memory.container_limit) + " " + std::to_string(CB_string_live_limit()) + " steps " + std::to_string(max_steps) + "\n";
     record_path = g_check_reuse.dir + "/" + debug_source_hash("coax.check-reuse-record.v2\n" + tree_path(g_check_reuse.src->units[0]->canonical) + "\n" + g_check_reuse.prefix);
     record.load(record_path);
-    for (size_t i = 0; i < n; i++) {
-      const auto at = index.check_item.find(file->checks[(int32_t)i]);
-      if (at == index.check_item.end() || index.items[(size_t)at->second].id.empty()) continue;
-      check_ids[i] = debug_source_hash(index.items[(size_t)at->second].id);
-      const auto e = record.entries.find(check_ids[i]);
-      if (e == record.entries.end()) continue;
-      std::set<int32_t> ran;
-      std::vector<const ProcDecl *> procs;
-      bool known_all = true;
-      for (const std::string &id : e->second.ran) {
-        const auto p = index.proc_by_id.find(id);
-        if (p == index.proc_by_id.end()) { known_all = false; break; }
-        procs.push_back(p->second);
-        ran.insert(index.proc_item[p->second]);
+    // Each check's key is its own work over the index, which nothing writes
+    // here but an item's lines (line_sum): the checks' keys are made on
+    // threads (burst, main.cpp), then taken in the checks' order (#13142).
+    struct Candidate { int32_t item = -1; bool same = false; std::vector<const ProcDecl *> procs; };
+    std::vector<Candidate> candidates(n);
+    // Each procedure the record names, found once: the procedure and its item, or null.
+    std::vector<const ProcDecl *> named(record.table.size(), nullptr);
+    std::vector<int32_t> named_item(record.table.size(), -1);
+    burst(record.table.size(), 256, [&](size_t begin, size_t end, unsigned) {
+      for (size_t t = begin; t < end; t++) {
+        const auto p = index.proc_by_id.find(record.table[t]);
+        if (p == index.proc_by_id.end()) continue;
+        named[t] = p->second;
+        named_item[t] = index.proc_item.find(p->second)->second;
       }
-      if (!known_all || index.key(at->second, ran, head) != e->second.key) continue;
+    });
+    std::vector<ReuseIndex::Scratch> scratch(burst_threads(n, 8));
+    burst(n, 8, [&](size_t begin, size_t end, unsigned worker) {
+      for (size_t i = begin; i < end; i++) {
+        const auto at = index.check_item.find(file->checks[(int32_t)i]);
+        if (at == index.check_item.end() || index.items[(size_t)at->second].id.empty()) continue;
+        Candidate &c = candidates[i];
+        c.item = at->second;
+        check_ids[i] = debug_source_hash(index.items[(size_t)at->second].id);
+        const auto e = record.entries.find(check_ids[i]);
+        if (e == record.entries.end()) continue;
+        std::vector<int32_t> ran;
+        ran.reserve(e->second.ran.size());
+        c.procs.reserve(e->second.ran.size());
+        bool known_all = true;
+        for (const uint32_t t : e->second.ran) {
+          if (!named[t]) { known_all = false; break; }
+          c.procs.push_back(named[t]);
+          ran.push_back(named_item[t]);
+        }
+        c.same = known_all && index.key(at->second, ran, head, &scratch[worker]) == e->second.key;
+      }
+    });
+    for (size_t i = 0; i < n; i++) {
+      if (!candidates[i].same) continue;
+      const auto e = record.entries.find(check_ids[i]);
+      const std::vector<const ProcDecl *> &procs = candidates[i].procs;
       if (!e->second.near.empty() && !near_read(e->second.near, file->src, &nears[i], record_locate)) { nears[i].clear(); continue; }
       const uint64_t *v = e->second.numbers;
       std::vector<uint64_t> report(FIELDS + procs.size());
@@ -1508,6 +1577,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   // the next compile; drop the records of checks this program no longer has.
   if (reuse) {
     ReuseRecord kept;
+    kept.table = record.table;  // the kept entries' places are the record's
     bool changed = false;
     for (size_t i = 0; i < n; i++) {
       if (check_ids[i].empty()) continue;
@@ -1526,7 +1596,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
         const ProcDecl *p = (const ProcDecl *)(uintptr_t)report[k];
         const auto id = index.proc_id.find(p);
         if (id == index.proc_id.end()) { named = false; break; }
-        e.ran.push_back(id->second);
+        e.ran.push_back(kept.place(id->second));
         ran.insert(index.proc_item[p]);
       }
       if (named) e.key = index.key(index.check_item[file->checks[(int32_t)i]], ran, head);

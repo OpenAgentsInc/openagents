@@ -23,8 +23,12 @@
 // --json prints diagnostics as one JSON object per line on stderr.
 // The C compiler is $COAX_CC, or cc.
 #include "coax.h"
+#include <atomic>
 #include <charconv>
 #include <fstream>
+#include <mutex>
+#include <system_error>
+#include <thread>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
@@ -106,6 +110,40 @@ struct DeclClock {  // adds the seconds since it started to *into, when timings 
   explicit DeclClock(double *into):into(into),start(into?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{}) {}
   ~DeclClock(){if(into)*into+=seconds_since(start);}
 };
+// Short bursts of pure work over a range, on threads (#13142): each worker
+// takes [begin, end) slices of [0, count) and its own number. The slices are
+// disjoint and what a slice computes never depends on another, so the result
+// is the sequential one. Never more than 16 threads, the cores, COAX_JOBS, or
+// one per `grain` items; one thread runs it inline. Every thread has ended
+// before this returns, so no fork happens with one running.
+static unsigned burst_threads(size_t count, size_t grain) {
+  unsigned most = std::thread::hardware_concurrency();
+  if (most == 0) most = 1;
+  if (const char *env = getenv("COAX_JOBS")) { char *end = nullptr; const unsigned long v = strtoul(env, &end, 10); if (end && !*end && v > 0) most = (unsigned)std::min<unsigned long>(most, v); }
+  if (const char *env = getenv("COAX_BURST_THREADS")) { char *end = nullptr; const unsigned long v = strtoul(env, &end, 10); if (end && !*end && v > 0) most = (unsigned)std::min<unsigned long>(most, v); }
+  most = std::min<unsigned>(most, 16);
+  return (unsigned)std::max<size_t>(1, std::min<size_t>(most, grain ? count / grain : count));
+}
+template <class F> static void burst(size_t count, size_t grain, F &&work) {
+  const unsigned threads = burst_threads(count, grain);
+  if (threads <= 1) { work((size_t)0, count, 0u); return; }
+  // Slices smaller than a thread's share, handed out in order, so an uneven range still balances.
+  const size_t slice = std::max<size_t>(1, count / ((size_t)threads * 8));
+  std::atomic<size_t> next{0};
+  auto run = [&](unsigned worker) {
+    for (;;) {
+      const size_t begin = next.fetch_add(slice, std::memory_order_relaxed);
+      if (begin >= count) return;
+      work(begin, std::min(count, begin + slice), worker);
+    }
+  };
+  std::vector<std::thread> pool;
+  pool.reserve(threads - 1);
+  // A thread the system will not start is one worker fewer: the others take its slices.
+  try { for (unsigned t = 1; t < threads; t++) pool.emplace_back(run, t); } catch (const std::system_error &) {}
+  run(0);
+  for (auto &t : pool) t.join();
+}
 }  // namespace coax
 
 #include "check.cpp"
@@ -1852,6 +1890,21 @@ static void record_tree_costs(const File *file) {
     g_decl_costs.at(file, d, "struct", d->name, d->loc)->nodes += n;
   }
 }
+// What the parse and the command say of how a file is checked. The changed
+// bodies' check (skeleton.cpp) checks its emptied program the same way.
+static void check_options(File *file, const EmitOptions &opts, int library) {
+  // library 2: the command links no program, so a file that exports, or that
+  // has no main at all, is checked and emitted as a library (#13125).
+  bool exports = false, entry = false;
+  for (const ProcDecl *p : file->procs) { exports = exports || p->export_c; entry = entry || str_eq(p->name, "main"); }
+  file->library = library == 1 || (library == 2 && (exports || !entry));
+  file->metal = opts.metal;
+  file->quantity_device=opts.quantity_device;
+  file->execution_profile=std::to_string(opts.profile_identity);
+}
+}  // namespace coax
+#include "skeleton.cpp"
+namespace coax {
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
                       bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
@@ -1877,18 +1930,55 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     // and checked for aliases (including failures partway through #load).
     g_semantic.inputs_admitted=ok;
   }
+  // In a resident: this compile's skeleton, and a check of the changed bodies
+  // alone when only bodies changed since a compile that passed (skeleton.cpp).
+  SkeletonNow skeleton;
+  SkeletonJob changed_bodies;
+  if (ok && serve_request() && !parsed && !mutation_lowering && !g_timings.on() && g_semantic.path.empty() && g_evidence.path.empty() && !skeleton_off()) {
+    const std::string options = "library=" + std::to_string(library) + " metal=" + std::to_string(opts.metal) + " quantity_device=" + std::to_string(opts.quantity_device) +
+                                " development=" + std::to_string(opts.development) + " profile=" + std::to_string(opts.profile_identity) +
+                                " near=" + std::to_string(capacity_near_percent()) + " library_checks=" + std::to_string(g_library_checks) +
+                                " run_checks=" + std::to_string(run_checks);
+    if (skeleton_make(src, tokens, options, &skeleton)) skeleton_start(&changed_bodies, src, tokens, skeleton, opts, library);
+  }
+  // The changed bodies' errors are the whole check's: report them and stop.
+  // The answer is asked for when the tokens have parsed, when the tree is
+  // made, and once more before the checker runs (below).
+  const bool verify_bodies = getenv("COAX_SKELETON_VERIFY") != nullptr;
+  auto report_bodies = [&] {
+    for (const auto &e : changed_bodies.errors) error_at(src, e.loc, e.code.c_str(), e.message, e.fix);
+    serve_answered();
+  };
+  // The last time it is asked, before the checker runs, the compile waits up
+  // to a tenth of a second for it (COAX_SKELETON_WAIT_MS, at most ten
+  // seconds): an answer costs that wait and saves the whole check.
+  int bodies_wait_ms = 100;
+  if (const char *env = getenv("COAX_SKELETON_WAIT_MS")) bodies_wait_ms = std::max(0, std::min(10000, atoi(env)));
+  if (changed_bodies.pid > 0 && !verify_bodies) g_parsed_far_enough = [&] { if (!changed_bodies.answer()) return false; report_bodies(); return true; };
   if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file, opts.development);}
+  g_parsed_far_enough = nullptr;
   if (ok && parsed) query_snapshot(parsed, file);
+  std::vector<CheckCapture::Error> body_errors;
+  if (ok && changed_bodies.answer(verify_bodies ? 60000 : 0)) body_errors = changed_bodies.errors;
+  if (ok && body_errors.empty() && changed_bodies.pid > 0 && !verify_bodies)
+    g_before_checker = [&] { const bool answered = changed_bodies.answer(bodies_wait_ms); changed_bodies.stop(); if (answered) report_bodies(); return answered; };
   if (ok) {
-    // library 2: the command links no program, so a file that exports, or that
-    // has no main at all, is checked and emitted as a library (#13125).
-    bool exports = false, entry = false;
-    for (const ProcDecl *p : file->procs) { exports = exports || p->export_c; entry = entry || str_eq(p->name, "main"); }
-    file->library = library == 1 || (library == 2 && (exports || !entry));
-    file->metal = opts.metal;
-    file->quantity_device=opts.quantity_device;
-    file->execution_profile=std::to_string(opts.profile_identity);
-    {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
+    check_options(file, opts, library);
+    if(!body_errors.empty() && verify_bodies) {
+      // The whole check must report exactly these.
+      CheckCapture whole;g_check_capture=&whole;check(arena,file,mutation_lowering);g_check_capture=nullptr;
+      bool same=whole.errors.size()==body_errors.size();
+      for(size_t i=0;same && i<body_errors.size();i++) {
+        const auto &a=whole.errors[i],&b=body_errors[i];
+        same=a.loc.line==b.loc.line && a.loc.col==b.loc.col && a.loc.offset==b.loc.offset && a.code==b.code && a.message==b.message && a.fix==b.fix;
+      }
+      if(!same) {fprintf(stderr,"coax: internal error: the changed bodies' check reported %zu error(s) and the whole check %zu, or they differ (COAX_SKELETON_VERIFY)\n",body_errors.size(),whole.errors.size());fflush(stderr);_exit(70);}
+    }
+    if(!body_errors.empty()) {report_bodies();file->check_input.reset();ok=false;}
+    else {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
+    g_before_checker = nullptr;
+    changed_bodies.stop();
+    if(ok && skeleton.made) {skeleton_passed(&skeleton,tokens,file);serve_keep_passed(tree_path(src->units[0]->canonical),std::make_shared<PassedSkeleton>(std::move(skeleton.skeleton)));}
     if(ok){TimedPhase phase{"effect contracts"};ok=effect_contracts(file,opts);}
     if(ok)record_tree_costs(file);
     // --run-steps overrides the entry file's #run_steps; either replaces the default.

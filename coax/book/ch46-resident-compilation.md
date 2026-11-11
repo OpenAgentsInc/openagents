@@ -5,8 +5,8 @@
 > before it's built. This is roadmap R27.
 
 `coax0` checks and emits a whole program on every run. Its resident
-compiler, `coax serve`, keeps only the per-file work between runs ("What
-exists" below). R27 adds a bounded cache built from content and declaration
+compiler, `coax serve`, keeps the per-file work between runs, and checks an
+edited procedure's body before the rest ("What exists" below). R27 adds a bounded cache built from content and declaration
 dependencies, and a resident Mac host that can change a running program's
 code and, when a layout changes, migrate its state. A migration either
 publishes atomically or rolls back and keeps the old state. This follows the
@@ -46,7 +46,7 @@ only if that experiment showed value.
 
 ## What exists: `coax serve`
 
-`coax0` reuses work between compiles in two places. This section describes
+`coax0` reuses work between compiles in three places. This section describes
 them and what is still missing.
 
 **The check cache** (#12647). A compile reuses each `#authority` check whose
@@ -98,24 +98,73 @@ How it works:
    commands run both ways (stdout, stderr, exit status, C and header) on the
    corpora and on real units before and after edits.
 
-Measured on fivelab (294 units, 9.7 MB of source, 1,314 checks) after a
-comment appended to one zone file, as the first compile after the edit:
-11.5 s before and 4.5 s in a resident on a 30-core build host, and 9.1 to
-9.9 s before and 1.6 to 2.8 s on an 18-core Mac. A syntax error in the edited
-file is reported in 0.17 s on the Mac, and a type error in 1.05 s.
+**The changed bodies, checked first** (#13142, `coax/src/skeleton.cpp`). A
+resident remembers each compile that passed the type check as a skeleton:
+every top-level item's tokens outside its procedure body, and each body's
+tokens, compared whole. When the next compile of that program differs only
+inside the bodies of some procedures or checks, a forked child parses the
+program with every other body emptied (fivelab: a tenth of its tokens) and
+runs the ordinary checker over it, while the compile itself goes on parsing.
+
+```console
+$ coax c apps/openagents-web/fivelab.coax --library > fivelab.c     # passes: the resident keeps its skeleton
+$ $EDITOR verse/experimental-dungeon.coax                           # a mistake inside one procedure
+$ coax c apps/openagents-web/fivelab.coax --library > fivelab.c
+verse/experimental-dungeon.coax:398:63: error[E0325]: 'x' is bool but is initialized with int
+1 error
+$ coax serve status
+coax serve: ... 1 checked programs remembered, 1 errors from changed bodies alone ...
+```
+
+Why the child's errors are the whole check's:
+
+1. **A body's check reads no other body.** The checker's body pass reads,
+   for one procedure, its own body and the declarations outside bodies:
+   types, constants, signatures, templates and module scopes. None of those
+   changed, so every other declaration passes as it did, and the changed
+   bodies report what they report in the whole program, in the same order.
+2. **After one error the checker goes no further.** It expands no generic
+   instance and runs no later pass (results, borrows, effects, coverage),
+   in the child or in the whole check.
+3. **Anything else is not an answer.** An emptied body that must return a
+   value reports E0338, which the child drops. Any other error outside a
+   changed body, a storage error, or a use near its limit, and the compile
+   checks the whole program as before. So does a compile whose edit touched
+   a signature, a struct, a constant or a generic procedure.
+
+The compile asks for the answer when its tokens have parsed, when its tree
+is made, and once more before the checker runs, waiting up to a tenth of a
+second that last time. A body that passes costs nothing but that wait: the
+whole check runs as before. `COAX_SKELETON=0` turns the child off, and
+`COAX_SKELETON_VERIFY=1` runs both checks and stops if they disagree.
+
+**Threads for the parts that are separate** (#13142). The compiler's own
+Coax (lexer, parser, checker, SHA-256) is compiled at `-O3`. Work that is
+one item's alone runs on up to 16 threads: the parser's and checker's node
+copies, each `#authority` check's reuse key, each procedure's effect
+contract, each item's skeleton bytes. Every thread writes only its own
+slice, so the result is the sequential one.
+
+Measured on fivelab (294 units, 9.7 MB of source, 1,319 checks) on a 30-core
+build host, as the first compile after the edit, by turns with the compiler
+before this change: 4.6 s before and 2.5 s now for a comment or a changed
+line of a body, and 2.3 s before and 0.63 s now for a type error in a body.
 `docs/verse/remote-builds.md` has the tables.
 
 What a resident does not do yet: the parser's tree, the checker's typed
 graph and the emitted C are made again for the whole program on every
-compile. The parser already works per unit, so its trees could be kept. The
-checker (`lib/compiler/checker/`) resolves names across the whole program in
-one pass over one node store; it has to take a previous typed graph and the
-set of changed declarations before a one-line edit can skip the unchanged
-ones. Emitted C holds each trap's line in the composed program, so an edit
-that adds a line changes the C of every later unit; per-declaration C needs
-unit-relative lines first. Those two are the rest of R27's cache. On the
-build host they are what is left of fivelab's 4.5 seconds: 1.7 s to check,
-1.0 s to key its checks, 0.6 s to emit and 0.6 s to parse.
+compile that passes. The parser already works per unit, so its trees could
+be kept. The checker (`lib/compiler/checker/`) resolves names across the
+whole program in one pass over one node store; it has to take a previous
+typed graph and the set of changed declarations before a one-line edit can
+skip the unchanged ones. The changed-bodies check is the first half of that:
+it finds what an edit can change, and checks only that, but it answers with
+errors and not with a typed graph. Emitted C holds each trap's line in the
+composed program, so an edit that adds a line changes the C of every later
+unit; per-declaration C needs unit-relative lines first. Those two are the
+rest of R27's cache. On the build host they are what is left of fivelab's
+2.4 seconds: 0.7 s to check, 0.6 s to emit, 0.24 s to parse and 0.3 s to
+load.
 
 ## The consumer and the gate
 

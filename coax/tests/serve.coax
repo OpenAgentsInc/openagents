@@ -16,7 +16,10 @@
 // With ROOT (a checkout) and UNIT:EDITED pairs (paths in it), each UNIT is
 // also compiled to C cold and in the resident before and after two edits of
 // EDITED, a comment and a new procedure with its check; the C and the header must be the
-// same bytes, and the line printed for each state gives both wall times:
+// same bytes, and the line printed for each state gives both wall times. Then
+// the new procedure's body gets a type error: both compiles must fail with
+// the same stderr (the line says whether the resident's came from that
+// body's check alone):
 //   coax/web/tool.sh coax/tests/serve.coax "$PWD/bin/coax" "$PWD/.." \
 //     apps/openagents-web/fivelab.coax:verse/experimental-dungeon.coax
 // EDITED is put back when the unit's step ends.
@@ -60,8 +63,11 @@ run :: (compiler: string, dir: string, serve: string, body: string, out: [] u8) 
 // up: waits until a resident answers. settled: waits until it has taken a
 // finished request's report (requests=N in its status).
 // reused: prints "reused=N", the unit lexes requests found in the resident.
+// idle: waits until no request is running, so the resident has taken the
+// last one's report. answered: prints "answered=N", the compiles whose errors
+// came from a check of their changed procedure bodies alone (#13142).
 // edit FILE FROM TO: replaces the line FROM in $D/w/FILE with TO.
-FUNCTIONS :: "both() { n=$1; shift; COAX_SERVE=0 COAX_CHECK_CACHE=\"$D/cache-cold\" \"$C\" \"$@\" > \"$D/$n.cold.out\" 2> \"$D/$n.cold.err\"; echo $? > \"$D/$n.cold.status\"; COAX_CHECK_CACHE=\"$D/cache\" \"$C\" \"$@\" > \"$D/$n.out\" 2> \"$D/$n.err\"; echo $? > \"$D/$n.status\"; s=different; cmp -s \"$D/$n.out\" \"$D/$n.cold.out\" && cmp -s \"$D/$n.err\" \"$D/$n.cold.err\" && cmp -s \"$D/$n.status\" \"$D/$n.cold.status\" && s=same; echo \"$n status=$(cat \"$D/$n.status\") $s\"; }; up() { i=0; while ! \"$C\" serve status > /dev/null 2>&1 && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; \"$C\" serve status > /dev/null 2>&1 && echo up; }; reused() { i=0; while [ $i -lt 100 ]; do r=$(\"$C\" serve status 2> /dev/null | sed -n 's/.* \\([0-9][0-9]*\\) reused and.*/\\1/p'); [ \"${r:-0}\" -ge \"${1:-1}\" ] && break; sleep 0.1; i=$((i + 1)); done; echo \"reused=${r:-0}\"; }; edit() { sed \"s|^$2\\$|$3|\" \"$D/w/$1\" > \"$D/w/$1.new\" && mv \"$D/w/$1.new\" \"$D/w/$1\"; }";
+FUNCTIONS :: "both() { n=$1; shift; COAX_SERVE=0 COAX_CHECK_CACHE=\"$D/cache-cold\" \"$C\" \"$@\" > \"$D/$n.cold.out\" 2> \"$D/$n.cold.err\"; echo $? > \"$D/$n.cold.status\"; COAX_CHECK_CACHE=\"$D/cache\" \"$C\" \"$@\" > \"$D/$n.out\" 2> \"$D/$n.err\"; echo $? > \"$D/$n.status\"; s=different; cmp -s \"$D/$n.out\" \"$D/$n.cold.out\" && cmp -s \"$D/$n.err\" \"$D/$n.cold.err\" && cmp -s \"$D/$n.status\" \"$D/$n.cold.status\" && s=same; echo \"$n status=$(cat \"$D/$n.status\") $s\"; }; up() { i=0; while ! \"$C\" serve status > /dev/null 2>&1 && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; \"$C\" serve status > /dev/null 2>&1 && echo up; }; reused() { i=0; while [ $i -lt 100 ]; do r=$(\"$C\" serve status 2> /dev/null | sed -n 's/.* \\([0-9][0-9]*\\) reused and.*/\\1/p'); [ \"${r:-0}\" -ge \"${1:-1}\" ] && break; sleep 0.1; i=$((i + 1)); done; echo \"reused=${r:-0}\"; }; edit() { sed \"s|^$2\\$|$3|\" \"$D/w/$1\" > \"$D/w/$1.new\" && mv \"$D/w/$1.new\" \"$D/w/$1\"; }; idle() { i=0; while [ $i -lt 100 ]; do \"$C\" serve status 2> /dev/null | grep -q '(0 running)' && break; sleep 0.1; i=$((i + 1)); done; }; answered() { \"$C\" serve status 2> /dev/null | sed -n 's/.* \\([0-9][0-9]*\\) errors from changed bodies alone.*/answered=\\1/p'; }";
 
 // The corpus step: every pass, fail and diagnostics program and every check
 // fixture, compiled cold and in the resident. Prints "corpus differs=N
@@ -76,6 +82,10 @@ CORPUS :: "d=0; m=0; for f in tests/pass/*.coax tests/fail/*.coax tests/diagnost
 UNIT :: "once() { n=$1; shift; (cd \"$R\" && env \"$@\" \"$C\" c \"$U\" --library --header \"$D/$n.h\" > \"$D/$n.c\" 2> \"$D/$n.err\"); echo $? > \"$D/$n.status\"; }; same3() { s=different; cmp -s \"$D/$1-res.c\" \"$D/$1-cold.c\" && cmp -s \"$D/$1-res.h\" \"$D/$1-cold.h\" && cmp -s \"$D/$1-res.err\" \"$D/$1-cold.err\" && cmp -s \"$D/$1-res.status\" \"$D/$1-cold.status\" && cmp -s \"$D/$1-fill.c\" \"$D/$1-cold.c\" && [ \"$(cat \"$D/$1-cold.status\")\" = 0 ] && s=same; echo $s; }; ";
 COMMENT :: "printf '\\n// serve.coax: a comment\\n' >> \"$R/$E\"";
 PROCEDURE :: "printf '\\nserve_coax_probe_13138 :: (n: int) -> int #effects(all) { return n + 1; }\\n#test \"serve.coax: the probe adds one\" { #assert serve_coax_probe_13138(1) == 2; }\\n' >> \"$R/$E\"";
+// The new procedure's body with a type error in it; errors STATE: "same" when
+// the resident's compile and the cold one failed with the same stderr.
+BODY_ERROR :: "sed 's/^serve_coax_probe_13138 :: (n: int) -> int #effects(all) { return n + 1; }$/serve_coax_probe_13138 :: (n: int) -> int #effects(all) { flag: bool = n; return n + 1; }/' \"$R/$E\" > \"$D/edited.new\" && cp \"$D/edited.new\" \"$R/$E\"";
+ERRORS :: "errors() { s=different; cmp -s \"$D/$1-res.err\" \"$D/$1-cold.err\" && [ \"$(cat \"$D/$1-res.status\")\" = 1 ] && [ \"$(cat \"$D/$1-cold.status\")\" = 1 ] && grep -q 'error.E' \"$D/$1-res.err\" && s=same; echo $s; }; ";
 
 // a + b + c in buffer.
 join3 :: (buffer: [] u8, a: string, b: string, c: string) -> string {
@@ -107,6 +117,61 @@ unit_state :: (compiler: string, dir: string, serve: string, head: string, unit:
   verdict := "DIFFERENT";
   if same { verdict = "the same C and header"; }
   print("  unit % %: cold %.% s, resident %.% s, %\n", unit, state, cold / 1000, (cold % 1000) / 100, resident / 1000, (resident % 1000) / 100, verdict);
+  if same { return 0; }
+  return 1;
+}
+
+// The number written at t[at...], 0 when there is none.
+number_at :: (t: string, at: int) -> int {
+  n := 0;
+  j := at;
+  while j < t.count && t[j] >= 48 && t[j] <= 57 { n = n * 10 + cast(int)(t[j] - 48); j += 1; }
+  return n;
+}
+// The count after the which-th "answered=" in t (from 0), -1 when there are fewer.
+answered_count :: (t: string, which: int) -> int {
+  seen := 0;
+  key := "answered=";
+  for at: 0..<t.count {
+    if at + key.count > t.count { break; }
+    same := true;
+    for j: 0..<key.count { if t[at + j] != key[j] { same = false; break; } }
+    if !same { continue; }
+    if seen == which { return number_at(t, at + key.count); }
+    seen += 1;
+  }
+  return -1;
+}
+#test "answered_count reads each count in order" {
+  t := "x\nanswered=12\nsame\nanswered=13\n";
+  #assert answered_count(t, 0) == 12 && answered_count(t, 1) == 13 && answered_count(t, 2) == -1;
+  #assert answered_count("", 0) == -1 && answered_count("answered=", 0) == 0 && number_at("a7", 1) == 7;
+}
+
+// A type error in a body: the resident's compile (checked against the whole
+// check, COAX_SKELETON_VERIFY=1, then timed without it) and a cold one.
+// Prints the line, which says whether the resident answered from the changed
+// body's check, and returns 0 when both fail with the same stderr.
+unit_error :: (compiler: string, dir: string, serve: string, head: string, unit: string, out: [] u8) -> int {
+  body: [8192] u8;
+  text: [4096] u8;
+  r := run(compiler, dir, serve, join3(body[..], head, "idle; answered; once error-res COAX_SERVE=1 COAX_SKELETON_VERIFY=1; once error-cold COAX_SERVE=0; ", join3(text[..], ERRORS, "errors error; idle; answered", "")), out);
+  t := cast(string) out[0..<r.out_n];
+  same := has(t, "\nsame\n");
+  answered := answered_count(t, 0) >= 0 && answered_count(t, 1) == answered_count(t, 0) + 1;
+  began := cxproc_now_ms();
+  r = run(compiler, dir, serve, join3(body[..], head, "once error-timed COAX_SERVE=1", ""), out);
+  resident := cxproc_now_ms() - began;
+  began = cxproc_now_ms();
+  r = run(compiler, dir, serve, join3(body[..], head, "once error-timed-cold COAX_SERVE=0", ""), out);
+  cold := cxproc_now_ms() - began;
+  // An edited file that checks alone as a library keeps its own checks in
+  // the compile once its check fails, so more than a body changed: the whole
+  // check reports it. Either way the errors are a cold compile's.
+  verdict := "DIFFERENT errors";
+  if same { verdict = "the same errors, from the whole check"; }
+  if same && answered { verdict = "the same errors, from the changed body's check"; }
+  print("  unit % a type error in a body: cold %.% s, resident %.% s, %\n", unit, cold / 1000, (cold % 1000) / 100, resident / 1000, (resident % 1000) / 100, verdict);
   if same { return 0; }
   return 1;
 }
@@ -147,6 +212,19 @@ tool_main :: () -> int #export_c #effects(all) {
   bad += check(has(t, "broken status=1 same\n") && has(t, "error[E"), "a syntax error is reported as a cold compile reports it, with exit 1");
   bad += check(has(t, "mended status=0 same"), "the repaired source compiles again");
   if !has(t, "line status=0 same\n") || !has(t, "broken status=1 same\n") { print("%", t); }
+
+  // A type error inside a procedure's body, after a compile that passed: the
+  // resident checks that body alone, and its errors are the whole check's
+  // (COAX_SKELETON_VERIFY=1 runs both and stops with status 70 when they
+  // differ). Two errors in two bodies come in the whole check's order; an
+  // error outside a body (a changed signature) is the whole check's own.
+  r = run(compiler, dir, serve, "export COAX_SKELETON_VERIFY=1; idle; edit a.coax 'base :: () -> int { return 2 + 1; }' 'base :: () -> int { flag: bool = 3; return 2 + 1; }' && both bodyerr check \"$D/w/main.coax\"; cat \"$D/bodyerr.err\"; idle; answered; edit a.coax 'scale :: (n: int) -> int { return n \\* 2; }' 'scale :: (n: int) -> int { text: string = n; return n \\* 2; }' && both bodies check \"$D/w/main.coax\"; grep -c 'error\\[' \"$D/bodies.err\"; idle; answered; COAX_SKELETON=0 \"$C\" check \"$D/w/main.coax\" > /dev/null 2> \"$D/off.err\"; cmp -s \"$D/off.err\" \"$D/bodies.err\" && echo same-off; idle; answered; edit a.coax 'scale :: (n: int) -> int { text: string = n; return n \\* 2; }' 'scale :: (n: bool) -> int { return n \\* 2; }' && both signature check \"$D/w/main.coax\"; idle; answered; cp \"$D/a.keep\" \"$D/w/a.coax\"; both mended-again check \"$D/w/main.coax\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "bodyerr status=1 same\n") && has(t, "error[E") && has(t, "\nanswered=1\n"), "a type error in a changed body is reported from that body's check, as a cold compile reports it");
+  bad += check(has(t, "bodies status=1 same\n2\nanswered=2\n"), "errors in two changed bodies come in the whole check's order");
+  bad += check(has(t, "same-off\nanswered=2\n"), "COAX_SKELETON=0 checks the whole program, with the same errors");
+  bad += check(has(t, "signature status=1 same\nanswered=2\n") && has(t, "mended-again status=0 same"), "an error outside a body is the whole check's, and the repaired source compiles");
+  if !has(t, "bodyerr status=1 same\n") || !has(t, "\nanswered=1\n") || !has(t, "bodies status=1 same\n2\nanswered=2\n") || !has(t, "signature status=1 same\nanswered=2\n") { print("%", t); }
 
   // The C and the header of a library compile, the check list and the inputs.
   r = run(compiler, dir, serve, "both c c \"$D/w/main.coax\"; COAX_SERVE=0 \"$C\" c \"$D/w/a.coax\" --library --header \"$D/cold.h\" > \"$D/cold.c\" 2> /dev/null; \"$C\" c \"$D/w/a.coax\" --library --header \"$D/res.h\" > \"$D/res.c\" 2> /dev/null; cmp \"$D/cold.c\" \"$D/res.c\" && cmp \"$D/cold.h\" \"$D/res.h\" && [ -s \"$D/res.h\" ] && echo same-library; both list test \"$D/w/main.coax\" --list; both deps deps \"$D/w/main.coax\"; both missing check \"$D/w/absent.coax\"", out[..]);
@@ -202,6 +280,8 @@ tool_main :: () -> int #export_c #effects(all) {
       wrong += unit_state(compiler, dir, serve, head, unit, "comment", out[..]);
       r = run(compiler, dir, serve, join3(body[..], head, PROCEDURE, ""), out[..]);
       wrong += unit_state(compiler, dir, serve, head, unit, "procedure", out[..]);
+      r = run(compiler, dir, serve, join3(body[..], head, BODY_ERROR, ""), out[..]);
+      wrong += unit_error(compiler, dir, serve, head, unit, out[..]);
       r = run(compiler, dir, serve, join3(body[..], head, "cp \"$D/edited.keep\" \"$R/$E\"", ""), out[..]);
       bad += check(wrong == 0, pair);
     }

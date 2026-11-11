@@ -5436,8 +5436,9 @@ Three rules hold that.
 
 - **The resident runs no compiler phase.** It forks a child for each
   command, and the child runs the command's ordinary code with the caller's
-  arguments, directory, environment and streams. The only difference from a
-  cold process is the memo the child inherits.
+  arguments, directory, environment and streams. The only differences from
+  a cold process are the memo the child inherits and the check of changed
+  bodies it may run first (next section).
 - **A memo entry is a pure function of its whole key.** An entry holds what
   the compiler computes from one unit's bytes alone: its tokens, that it
   passed the unit syntax check, the SHA-256 of the bytes and the SHA-256 of
@@ -5445,7 +5446,9 @@ Three rules hold that.
   a hash alone and never a path or a modification time. An entry is made
   only from a unit that lexed without a diagnostic, by the child that
   computed it. The compiler's SHA-256 is kept the same way, and a resident
-  serves only clients whose binary has its own bytes.
+  serves only clients whose binary has its own bytes. The skeletons of
+  compiles that passed the type check are kept too; the next section says
+  what one may be used for.
 - **A command runs once.** A request starts only after its client says it
   is still waiting. A client that gets no reply runs the command itself
   only when the request never started or is known to be gone.
@@ -5461,6 +5464,55 @@ the pass, fail, diagnostics and check-fixture corpora; and after the
 resident is killed or stopped. With a checkout, it compares the C and header
 of fivelab, everglade2 and Character Create before and after a comment and a
 new procedure in a loaded file.
+
+## A changed body's errors are reported alone only when they are the whole check's
+
+In a resident, a compile whose sources differ from a compile that passed the
+type check only inside procedure bodies checks those bodies first, in a
+forked child, with every other body emptied (#13142,
+`coax/src/skeleton.cpp`). When that check reports errors, the compile reports
+them and stops without checking the rest. The errors must be exactly the
+whole check's, in its order. These rules hold that.
+
+- **Nothing outside the changed bodies changed.** The resident remembers a
+  passing compile as each top-level item's tokens outside its final brace
+  group and the tokens inside it (kind, spelling and value, as bytes), the
+  units' paths, modules, loads, aliases and exports, and the options that
+  change the parse or the check. They are compared whole, never by a hash.
+  The answer is used only when all of those agree except the inside tokens
+  of items whose group was, in the remembered parse, the body of a procedure
+  without type parameters or of a `#test` or `#forall` check. The child's
+  own parse must say the same of each such item.
+- **A body's check reads no other body.** The checker's body pass
+  (`CK_run`, `lib/compiler/checker/statements.coax`) reads, for a
+  procedure, its own body and declarations outside bodies. So every
+  unchanged declaration passes again, and the changed bodies report what
+  they report in the whole program. With one error reported, the checker
+  expands no generic instance and runs no later pass, in the child or in the
+  whole check.
+- **Only errors inside a changed body are taken.** An emptied body that must
+  return a value reports E0338 at its procedure; the child drops those. Any
+  other error outside a changed body, a storage error (E0339, E0381), a
+  refused run or a use near its limit makes the answer unused.
+- **The whole check would stop on no limit.** The remembered check's use of
+  the node store, generic instances, types and text, plus the child's use,
+  must be under the near-limit fraction of the child's limits, which are
+  never larger than the whole check's. The remembered compile had no use
+  near a limit.
+
+An unused answer costs nothing: the compile checks the whole program as
+before, and a check that passes records the next skeleton. `COAX_SKELETON=0`
+turns the child off.
+
+Check: `coax/tests/serve.coax` (`tests/run.sh --only serve`) sets
+`COAX_SKELETON_VERIFY=1`, which also runs the whole check and stops with
+status 70 when its errors are not the child's. It compares a cold compile's
+stderr and status with the resident's for a type error in one body, in two
+bodies and in a changed signature, and, with a checkout, for a type error in
+a procedure of a loaded file of fivelab, everglade2 and Character Create.
+A loaded file that checks alone as a library keeps its own checks in the
+compile once its check fails, so more than a body changed and the whole
+check reports the error.
 
 ## Development body replacement keeps the resident host and requires a source proof
 

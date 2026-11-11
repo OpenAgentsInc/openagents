@@ -602,11 +602,92 @@ edit (they come near a storage limit, so their notes are never reused,
 #13123): 11.6 to 13.1 of its 13.6 to 14.9 seconds.
 
 The issue's target, a one-line edit of a fivelab zone file to C in under 3
-seconds, is met on the Mac and not on a build host (4.5 s). What the host's
-4.5 s holds is work no cache keys by file: the type check of the whole
+seconds, was met on the Mac and not on a build host (4.5 s). What the host's
+4.5 s held was work no cache keys by file: the type check of the whole
 program (1.7 s), keying its checks (1.0 s), emitting its C (0.6 s) and
-parsing it (0.6 s). The checker has to take a previous typed graph and the
-changed declarations before that falls; see the book, chapter 46.
+parsing it (0.6 s). The next section is what changed.
+
+### One-line edits on a build host (#13142)
+
+Three changes to the compiler, none to its output (`coax/tests/serve.coax`
+compares a resident's compiles with cold ones, and the C of fivelab is the
+C the compiler before them emits):
+
+- **The compiler's own Coax at `-O3`.** The lexer, parser, checker and
+  SHA-256 are Coax, compiled to C; the bootstrap compiled that C at `-O1`.
+  On fivelab the parser takes 0.26 s at `-O1` and 0.10 s at `-O3`, and the
+  checker 1.45 s and 0.54 to 0.60 s (1.07 s at `-O2`). The compiler's own C
+  takes about five minutes longer to compile in a bootstrap.
+- **Threads for work that is one item's alone.** Up to 16, and never more
+  than the cores or `COAX_JOBS`: the parser's node copies (its objects and
+  lists are laid out in node order first, so their places don't depend on
+  the threads), the checker's input copy, each `#authority` check's reuse
+  key, each procedure's effect-contract trace and each item's skeleton
+  bytes. Every thread writes only its own slice. `COAX_BURST_THREADS=1`
+  runs them inline. A check reuse record also names each procedure a check
+  ran once, where it copied and looked up every name for every check.
+- **The changed bodies, checked first.** A resident remembers each compile
+  that passed the type check as a skeleton: every top-level item's tokens
+  outside its procedure body, and each body's tokens, compared whole (at
+  most two for an entry unit and six entry units; fivelab's is 30 MB). When
+  the next compile differs only inside the bodies of procedures or checks, a forked
+  child parses the program with every other body emptied (a tenth of
+  fivelab's tokens) and checks that. If it finds errors in the changed
+  bodies they are the whole check's errors, and the compile reports them and
+  stops. If it finds none, the compile checks the whole program as before.
+  The compile asks for the answer when its tokens have parsed, when its tree
+  is made, and once more before the checker runs, waiting up to a tenth of a
+  second that last time (`COAX_SKELETON_WAIT_MS`).
+  The rules that make the child's errors the whole check's are in
+  INVARIANTS.md ("A changed body's errors are reported alone only when they
+  are the whole check's") and the book, chapter 46. `COAX_SKELETON=0` turns
+  it off; `coax serve status` counts the compiles it answered.
+
+Measured 2026-11-10 on a build host (oa-build-1, 30 cores, load 5 to 13),
+fivelab to C with `coax c UNIT --library --header`, in a resident, wall
+time. Each edit was made four times. The compiler before this change
+(main's published build) and the one with it, built with the release
+toolchain, compiled each edit by turns, each in its own resident, so both
+saw the same machine load. Each emitted the same C:
+
+| Edit of `verse/experimental-dungeon.coax`, first compile | Before | Now |
+| --- | --- | --- |
+| a comment | 4.6 to 5.3 s | 2.5 to 2.6 s (one of four 3.5 s, while the load spiked and the other took 5.3 s) |
+| one line of a procedure's body | 4.6 s | 2.5 s |
+| a type error in a procedure's body | 2.3 s | 0.63 s |
+| a type error in a new procedure (more than a body changed: the whole check) | 2.3 s | 1.0 s |
+
+The first compile after a comment, by phase (`--timings-table`; before on
+oa-build-2 at load 3 to 6, now on oa-build-1 at load 5 to 13):
+
+| Phase | Before | Now |
+| --- | --- | --- |
+| load | 0.32 s | 0.29 s |
+| imports, libraries, evaluate | 0.16 s | 0.13 s |
+| parse | 0.60 s | 0.24 s |
+| check | 1.77 s | 0.70 s |
+| effect contracts | 0.23 s | 0.21 s |
+| authority (key 1,319 checks; run none) | 1.04 s | 0.21 s |
+| emit | 0.63 s | 0.59 s |
+| Total | 4.77 s | 2.40 s |
+
+`coax/tests/serve.coax` with the bootstrapped compiler, on oa-build-10: a
+type error put in a procedure of a loaded file, against a cold compile's
+stderr.
+
+| Unit | Cold | In a resident |
+| --- | --- | --- |
+| fivelab | 3.0 s | 0.7 s, from the changed body's check |
+| everglade2 | 3.1 s | 0.7 s, from the changed body's check |
+| Character Create | 2.2 s | 0.7 s, from the whole check (its edited file checks alone as a library, so its own checks come back into the compile) |
+
+What is left on a compile that passes is the type check of the whole
+program (0.7 s), emitting its C (0.6 s) and loading and parsing it (0.5 s).
+The checker has to take a previous typed graph and the changed declarations
+before the first falls, and the emitted C needs unit-relative trap lines
+before a declaration's C can be kept; see the book, chapter 46. A profile of the check (callgrind, the
+`-O2` build) puts a third of the checker's instructions in the borrow and
+retain analysis (2.2 of 6.3 billion on fivelab).
 
 ## The Linux toolchain
 

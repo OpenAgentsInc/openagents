@@ -9,6 +9,26 @@ namespace coax {
 namespace {
 struct ObservedEffectEdge { int64_t from, to; };
 struct ObservedEffectSite { int64_t procedure, kind; };
+// The expressions seen in one procedure: a flat table that clear() empties
+// for what was put in it, since a program has a million expressions and ten
+// thousand procedures (a std::set made and freed a node for each, #13142).
+struct SeenExprs {
+  std::vector<const Expr *> slots;
+  std::vector<uint32_t> used;
+  static size_t home(const Expr *e,size_t mask) { uint64_t h=(uint64_t)(uintptr_t)e*0x9e3779b97f4a7c15ull;return (size_t)(h>>20)&mask; }
+  // True when e was not there.
+  bool insert(const Expr *e) {
+    if(slots.empty())slots.assign(1024,nullptr);
+    if((used.size()+1)*2>slots.size()) {
+      std::vector<const Expr *> old;old.swap(slots);slots.assign(old.size()*2,nullptr);used.clear();
+      for(const Expr *o:old)if(o)insert(o);
+    }
+    const size_t mask=slots.size()-1;size_t at=home(e,mask);
+    while(slots[at]) {if(slots[at]==e)return false;at=(at+1)&mask;}
+    slots[at]=e;used.push_back((uint32_t)at);return true;
+  }
+  void clear() {for(uint32_t at:used)slots[at]=nullptr;used.clear();}
+};
 struct EffectFacts {
   const File *file;
   bool language = false;
@@ -18,7 +38,7 @@ struct EffectFacts {
   std::vector<Loc> edge_locations;
   std::vector<ObservedEffectSite> sites;
   std::vector<Loc> site_locations;
-  std::set<const Expr *> seen;
+  SeenExprs seen;
   std::set<Type> defaults_seen;
   std::map<const Stmt *,const ProcDecl *> transactions;
   std::vector<std::unique_ptr<ProcDecl>> transaction_procedures;
@@ -52,7 +72,7 @@ struct EffectFacts {
   void expression(const Expr *e,bool place=false) {
     if(!e)return;
     // Places may also be read later; do not let a write suppress that fact.
-    if(!place && !seen.insert(e).second)return;
+    if(!place && !seen.insert(e))return;
     if(!e->type || e->type->kind==TypeKind::invalid){site(3,e->loc);return;}
     if(e->kind==ExprKind::ct_value)return; // Former compile-time calls are not runtime edges.
     if(e->own_effects&2)site(4,e->loc);
@@ -195,10 +215,25 @@ static bool effect_contracts(const File *file,const EmitOptions &opts) {
     row.allowed=f.transaction_roots.count(p)?TX_effects():declaration(p);
   }
   if(!valid)return false;
+  // Each root's trace reads the graph and writes its own scratch: the roots
+  // are traced on threads (burst, main.cpp), and the few that do not hold are
+  // traced again below, in order, for their reports (#13142).
+  std::vector<uint8_t> holds(n,0);
+  burst(n,16,[&](size_t begin,size_t end,unsigned){
+    std::vector<int64_t> parent(n),via(n),queue(n);
+    for(size_t root=begin;root<end;root++){
+      if(!procedures[root].declared&&!procedures[root].required)continue;
+      if(!EC_needs_closure(procedures[root].declared,procedures[root].allowed))continue;
+      const auto r=EC_trace({procedures.data(),(int64_t)n},{edges.data(),(int64_t)edges.size()},{sites.data(),(int64_t)sites.size()},(int64_t)root,
+        {parent.data(),(int64_t)n},{via.data(),(int64_t)n},{queue.data(),(int64_t)n});
+      holds[root]=r.status!=1&&r.status!=2&&r.status!=3;
+    }
+  });
   std::vector<int64_t> parent(n),via(n),queue(n);
   for(size_t root=0;root<n;root++){
     if(!procedures[root].declared&&!procedures[root].required)continue;
     if(!EC_needs_closure(procedures[root].declared,procedures[root].allowed))continue;
+    if(holds[root])continue;
     const auto *p=f.procedures[root];
     auto r=EC_trace({procedures.data(),(int64_t)n},{edges.data(),(int64_t)edges.size()},{sites.data(),(int64_t)sites.size()},(int64_t)root,
       {parent.data(),(int64_t)n},{via.data(),(int64_t)n},{queue.data(),(int64_t)n});

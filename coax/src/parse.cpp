@@ -1,6 +1,7 @@
 // Representation bridge only. Grammar, tree construction, budgets and syntax
 // diagnostics live in lib/compiler/parser.coax. No native parser fallback.
 #include "coax.h"
+#include <functional>
 #ifdef COAX_BOOTSTRAP_IMPORTER
 #include "parser.h"
 #else
@@ -73,11 +74,14 @@ template<class T> Slice<T*> parser_pointers(Arena *arena,const zvec<coax_t_PS_No
 }
 namespace {
 std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
-  std::vector<coax_t_PS_Token> input;input.reserve(tokens.size());
-  for(const auto &t:tokens) {
-    const auto text=t.kind==Tok::string_lit?t.string_value:t.text;
-    input.push_back({(uint32_t)t.kind,{text.data,text.count},{t.loc.line,t.loc.col,t.loc.offset},t.int_value,t.float_value,t.float_bits,t.text.count});
-  }
+  std::vector<coax_t_PS_Token> input(tokens.size());
+  burst(tokens.size(),16384,[&](size_t begin,size_t end,unsigned) {
+    for(size_t i=begin;i<end;i++) {
+      const auto &t=tokens[i];
+      const auto text=t.kind==Tok::string_lit?t.string_value:t.text;
+      input[i]={(uint32_t)t.kind,{text.data,text.count},{t.loc.line,t.loc.col,t.loc.offset},t.int_value,t.float_value,t.float_bits,t.text.count};
+    }
+  });
   return input;
 }
 }
@@ -140,39 +144,70 @@ bool drop_loaded_run_steps(const Source *src,const std::vector<Token> &tokens,st
   }
   return true;
 }
+// Called once the tokens parsed, before the tree is made: true when the
+// compile already has its errors (the changed bodies' check, skeleton.cpp)
+// and they are reported, so there is nothing to build a tree for.
+static std::function<bool()> g_parsed_far_enough;
 bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,File *out,bool development) {
   std::vector<Token> kept;bool same=true;
   if(!drop_loaded_run_steps(src,all_tokens,&kept,&same)) return false;
   const std::vector<Token> &tokens=same?all_tokens:kept;
+  TimedLaps laps;  // --timings: parse.tokens, parse.build (the Coax parser), parse.tree, parse.input (the checker's copy)
   auto input=parser_tokens(tokens);
   const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
   zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);
   coax_t_PS_State state{};
+  laps.lap("parse.tokens");
   const auto result=PS_parse_build({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
       {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()},development);
   capacity_use("parser nesting","E0221",(uint64_t)state.peak,(uint64_t)PS_depth_limit());
+  laps.lap("parse.build");
   if(!result.ok) {parse_report(src,input,state,std::string((char*)message.data(),(size_t)state.length),{},development);return false;}
+  if(g_parsed_far_enough && g_parsed_far_enough()) return false;
   std::vector<void*> objects((size_t)state.used+1,nullptr);
   // Allocate first so all subsequent reference copies are independent of order.
-  for(int64_t id=1;id<=state.used;id++) {
-    const auto k=nodes[(size_t)id].kind;void *p=nullptr;
-    if(parser_type_tag(k)) p=make<TypeExpr>(arena);
-    else if(parser_expr_tag(k)) p=make<Expr>(arena);
-    else if(parser_stmt_tag(k)) p=make<Stmt>(arena);
-    else switch(k) {
-      case COAX_PS_Tag_decl_proc:p=make<ProcDecl>(arena);break;case COAX_PS_Tag_decl_constant:p=make<ConstDecl>(arena);break;
-      case COAX_PS_Tag_decl_struct_:p=make<StructDecl>(arena);break;case COAX_PS_Tag_decl_enum_:p=make<EnumDecl>(arena);break;
-      case COAX_PS_Tag_decl_param:p=make<Param>(arena);break;case COAX_PS_Tag_decl_field:p=make<Field>(arena);break;
-      case COAX_PS_Tag_decl_enum_member:p=make<EnumMember>(arena);break;case COAX_PS_Tag_decl_field_init:p=make<FieldInit>(arena);break;
-      case COAX_PS_Tag_decl_import_:p=make<Import>(arena);break;case COAX_PS_Tag_decl_check:p=make<CheckDecl>(arena);break;
-      case COAX_PS_Tag_decl_union:p=make<UnionDecl>(arena);break;case COAX_PS_Tag_decl_variant:p=make<UnionVariant>(arena);break;
-      case COAX_PS_Tag_switch_case:p=make<SwitchCase>(arena);break;case COAX_PS_Tag_case_binding:p=make<CaseBinding>(arena);break;
-      case COAX_PS_Tag_effect_name:p=make<EffectName>(arena);break;
+  // One block holds every node's object, in node order: each node's size is
+  // found, then its place, then the objects are made, on threads (burst, main.cpp).
+  auto object=[&](uint32_t k,void *at)->size_t {
+#define COAX_OBJECT(T) do{if(at)new(at)T{};return (sizeof(T)+15)&~(size_t)15;}while(0)
+    if(parser_type_tag(k)) COAX_OBJECT(TypeExpr);
+    if(parser_expr_tag(k)) COAX_OBJECT(Expr);
+    if(parser_stmt_tag(k)) COAX_OBJECT(Stmt);
+    switch(k) {
+      case COAX_PS_Tag_decl_proc:COAX_OBJECT(ProcDecl);case COAX_PS_Tag_decl_constant:COAX_OBJECT(ConstDecl);
+      case COAX_PS_Tag_decl_struct_:COAX_OBJECT(StructDecl);case COAX_PS_Tag_decl_enum_:COAX_OBJECT(EnumDecl);
+      case COAX_PS_Tag_decl_param:COAX_OBJECT(Param);case COAX_PS_Tag_decl_field:COAX_OBJECT(Field);
+      case COAX_PS_Tag_decl_enum_member:COAX_OBJECT(EnumMember);case COAX_PS_Tag_decl_field_init:COAX_OBJECT(FieldInit);
+      case COAX_PS_Tag_decl_import_:COAX_OBJECT(Import);case COAX_PS_Tag_decl_check:COAX_OBJECT(CheckDecl);
+      case COAX_PS_Tag_decl_union:COAX_OBJECT(UnionDecl);case COAX_PS_Tag_decl_variant:COAX_OBJECT(UnionVariant);
+      case COAX_PS_Tag_switch_case:COAX_OBJECT(SwitchCase);case COAX_PS_Tag_case_binding:COAX_OBJECT(CaseBinding);
+      case COAX_PS_Tag_effect_name:COAX_OBJECT(EffectName);
     }
-    objects[(size_t)id]=p;
-  }
+#undef COAX_OBJECT
+    return 0;
+  };
+  // places[id]: where node id's bytes begin in the block (places[used+1]: the total), from each node's size.
+  auto place=[&](std::vector<size_t> &places)->uint8_t* {
+    size_t total=0;
+    for(int64_t id=1;id<=state.used;id++) {const size_t size=places[(size_t)id];places[(size_t)id]=total;total+=size;}
+    places[(size_t)state.used+1]=total;
+    return total?(uint8_t*)arena_alloc(arena,total):nullptr;
+  };
+  std::vector<size_t> places((size_t)state.used+2,0);
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned) {
+    for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++) places[(size_t)id]=object(nodes[(size_t)id].kind,nullptr);
+  });
+  uint8_t *block=place(places);
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned) {
+    for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++) if(places[(size_t)id+1]!=places[(size_t)id]) {
+      objects[(size_t)id]=block+places[(size_t)id];object(nodes[(size_t)id].kind,objects[(size_t)id]);
+    }
+  });
   // Scalar and reference fields; list value copies happen after this pass.
-  for(int64_t id=1;id<=state.used;id++) {
+  // Each node fills its own object from the parser's record: slices of nodes
+  // on threads (burst, main.cpp). A check's domains are a list: made after.
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned) {
+  for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++) {
     const auto &v=nodes[(size_t)id];const auto loc=parser_loc(v.loc);const auto name=parser_str(v.name);
     if(parser_type_tag(v.kind)) {
       auto *p=parser_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;p->read_only=v.flag;
@@ -203,24 +238,51 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
       case COAX_PS_Tag_case_binding:{auto *p=parser_ref<CaseBinding>(objects,id);p->name=name;p->loc=loc;break;}
       case COAX_PS_Tag_effect_name:{auto *p=parser_ref<EffectName>(objects,id);p->name=name;p->loc=loc;break;}
       case COAX_PS_Tag_decl_import_:{auto *p=parser_ref<Import>(objects,id);p->loc=loc;p->module=name;break;}
-      case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->steps=v.value;p->traversal=(uint64_t)v.width;p->proc=parser_ref<ProcDecl>(objects,v.a);
-        std::vector<Binding> domains;for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next) domains.push_back({parser_ref<Expr>(objects,nodes[(size_t)b].b),parser_ref<Expr>(objects,nodes[(size_t)b].c)});
-        p->domains=to_slice(arena,domains);break;}
+      case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->steps=v.value;p->traversal=(uint64_t)v.width;p->proc=parser_ref<ProcDecl>(objects,v.a);break;}
     }
   }
-  for(int64_t id=1;id<=state.used;id++) {
-    const auto &v=nodes[(size_t)id];switch(v.kind) {
-      case COAX_PS_Tag_expr_call:case COAX_PS_Tag_expr_array_lit:parser_ref<Expr>(objects,id)->args=parser_pointers<Expr>(arena,nodes,objects,v.head);break;
-      case COAX_PS_Tag_expr_struct_lit:parser_ref<Expr>(objects,id)->fields=parser_values<FieldInit>(arena,nodes,objects,v.head);break;
-      case COAX_PS_Tag_stmt_block:parser_ref<Stmt>(objects,id)->body=parser_pointers<Stmt>(arena,nodes,objects,v.head);break;
-      case COAX_PS_Tag_decl_proc:{auto *p=parser_ref<ProcDecl>(objects,id);p->params=parser_values<Param>(arena,nodes,objects,v.head);p->effect_names=parser_values<EffectName>(arena,nodes,objects,v.effect_head);break;}
-      case COAX_PS_Tag_stmt_switch:parser_ref<Stmt>(objects,id)->cases=parser_pointers<SwitchCase>(arena,nodes,objects,v.head);break;
-      case COAX_PS_Tag_decl_union:parser_ref<UnionDecl>(objects,id)->variants=parser_values<UnionVariant>(arena,nodes,objects,v.head);break;
-      case COAX_PS_Tag_type_named:{std::vector<TypeArgument> args;for(auto at=v.head;at;at=nodes[(size_t)at].next){TypeArgument a;if(parser_type_tag(nodes[(size_t)at].kind))a.type=parser_ref<TypeExpr>(objects,at);else a.length=parser_ref<Expr>(objects,at);args.push_back(a);}parser_ref<TypeExpr>(objects,id)->args=to_slice(arena,args);break;}
-      case COAX_PS_Tag_decl_struct_:parser_ref<StructDecl>(objects,id)->fields=parser_values<Field>(arena,nodes,objects,v.head);break;
-      case COAX_PS_Tag_decl_enum_:parser_ref<EnumDecl>(objects,id)->members=parser_values<EnumMember>(arena,nodes,objects,v.head);break;
-    }
+  });
+  for(int64_t id=1;id<=state.used;id++) if(nodes[(size_t)id].kind==COAX_PS_Tag_decl_check) {
+    const auto &v=nodes[(size_t)id];auto *p=parser_ref<CheckDecl>(objects,id);
+    std::vector<Binding> domains;for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next) domains.push_back({parser_ref<Expr>(objects,nodes[(size_t)b].b),parser_ref<Expr>(objects,nodes[(size_t)b].c)});
+    p->domains=to_slice(arena,domains);
   }
+  // Each node's lists, the same way: their sizes, one block in node order, then the copies.
+  auto lists=[&](int64_t id,uint8_t *at)->size_t {
+    const auto &v=nodes[(size_t)id];
+    // A list of the nodes from head: each one's value(node) in turn. Without a place, only its size.
+    auto list=[&](int64_t head,auto *out,auto &&value)->size_t {
+      using T=std::remove_reference_t<decltype(*out->data)>;
+      int32_t n=0;
+      for(auto at_node=head;at_node;at_node=nodes[(size_t)at_node].next) {if(at)new((void*)((T*)at+n))T(value(at_node));n++;}
+      if(at) {out->count=n;out->data=n?(T*)at:nullptr;}
+      return ((size_t)n*sizeof(T)+15)&~(size_t)15;
+    };
+    auto values=[&](int64_t head,auto *out) {return list(head,out,[&](int64_t node) {return *parser_ref<std::remove_reference_t<decltype(*out->data)>>(objects,node);});};
+    auto pointers=[&](int64_t head,auto *out) {return list(head,out,[&](int64_t node) {return parser_ref<std::remove_pointer_t<std::remove_reference_t<decltype(*out->data)>>>(objects,node);});};
+    switch(v.kind) {
+      case COAX_PS_Tag_expr_call:case COAX_PS_Tag_expr_array_lit:return pointers(v.head,&parser_ref<Expr>(objects,id)->args);
+      case COAX_PS_Tag_expr_struct_lit:return values(v.head,&parser_ref<Expr>(objects,id)->fields);
+      case COAX_PS_Tag_stmt_block:return pointers(v.head,&parser_ref<Stmt>(objects,id)->body);
+      case COAX_PS_Tag_decl_proc:{
+        auto *p=parser_ref<ProcDecl>(objects,id);const size_t params=values(v.head,&p->params);
+        uint8_t *first=at;if(at)at+=params;const size_t names=values(v.effect_head,&p->effect_names);at=first;return params+names;}
+      case COAX_PS_Tag_stmt_switch:return pointers(v.head,&parser_ref<Stmt>(objects,id)->cases);
+      case COAX_PS_Tag_decl_union:return values(v.head,&parser_ref<UnionDecl>(objects,id)->variants);
+      case COAX_PS_Tag_type_named:return list(v.head,&parser_ref<TypeExpr>(objects,id)->args,[&](int64_t node) {
+        TypeArgument a;if(parser_type_tag(nodes[(size_t)node].kind))a.type=parser_ref<TypeExpr>(objects,node);else a.length=parser_ref<Expr>(objects,node);return a;});
+      case COAX_PS_Tag_decl_struct_:return values(v.head,&parser_ref<StructDecl>(objects,id)->fields);
+      case COAX_PS_Tag_decl_enum_:return values(v.head,&parser_ref<EnumDecl>(objects,id)->members);
+    }
+    return 0;
+  };
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned) {
+    for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++) places[(size_t)id]=lists(id,nullptr);
+  });
+  block=place(places);
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned) {
+    for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++) if(places[(size_t)id+1]!=places[(size_t)id]) lists(id,block+places[(size_t)id]);
+  });
   std::vector<Import> imports;std::vector<ProcDecl*> procs;std::vector<ConstDecl*> constants;
   std::vector<StructDecl*> structs;std::vector<EnumDecl*> enums;std::vector<UnionDecl*> unions;std::vector<Expr*> assertions;std::vector<CheckDecl*> checks;
   for(auto id=nodes[(size_t)result.root].head;id;id=nodes[(size_t)id].next) switch(nodes[(size_t)id].kind) {
@@ -239,7 +301,9 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
   out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->unions=to_slice(arena,unions);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
   for(int64_t id=1;id<=state.used;id++)if(nodes[(size_t)id].kind==COAX_PS_Tag_stmt_transaction)out->has_transactions=true;
+  laps.lap("parse.tree");
   attach_check_input(out,std::move(nodes),objects,state.used);
+  laps.lap("parse.input");
   return true;
 }
 } // namespace coax

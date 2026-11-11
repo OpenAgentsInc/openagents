@@ -39,7 +39,7 @@ constexpr uint32_t SERVE_MAGIC = 0x53584f43;  // "COXS"
 constexpr uint32_t SERVE_PROTOCOL = 1;
 enum : uint32_t { SERVE_RUN = 1, SERVE_STATUS = 2, SERVE_STOP = 3 };
 // A request's reports to its resident.
-enum : uint32_t { REPORT_RUNNING = 1, REPORT_REPLIED = 2, REPORT_UNIT = 3, REPORT_COMPILER = 4, REPORT_USED = 5, REPORT_END = 6 };
+enum : uint32_t { REPORT_RUNNING = 1, REPORT_REPLIED = 2, REPORT_UNIT = 3, REPORT_COMPILER = 4, REPORT_USED = 5, REPORT_END = 6, REPORT_PASSED = 7, REPORT_ANSWERED = 8 };
 
 struct ServeEntry {
   std::shared_ptr<const UnitLex> unit;
@@ -50,6 +50,13 @@ struct ServeState {
   std::unordered_map<uint64_t, std::vector<ServeEntry>> units;  // by serve_hash of the bytes
   uint64_t bytes = 0;
   std::string compiler;    // the binary's SHA-256, once a request computed it
+  // The last compiles whose type check passed, by entry unit, newest first
+  // (skeleton.cpp): at most PASSED_EACH an entry (one for each set of
+  // options) and PASSED_ENTRIES entries, the least recently used out first.
+  struct Passed { std::vector<std::shared_ptr<const PassedSkeleton>> last; uint64_t used = 0; };
+  std::map<std::string, Passed> passed;
+  std::vector<std::pair<std::string, std::shared_ptr<const PassedSkeleton>>> passed_fresh;  // a request's own, reported when it ends
+  bool answered = false;   // a request: its errors came from the changed bodies' check
   std::string executable;  // a request: the client's path to the same binary
   // A request's own additions and uses, reported when it ends.
   std::vector<std::shared_ptr<const UnitLex>> fresh;
@@ -62,6 +69,7 @@ struct ServeState {
 // last moments freeing the resident's memo.
 ServeState &serve_state() { static ServeState *state = new ServeState; return *state; }
 
+constexpr size_t PASSED_EACH = 2, PASSED_ENTRIES = 6;  // a skeleton is some 14 bytes a token (fivelab: 30 MB)
 uint64_t serve_hash(const char *data, size_t count) {
   uint64_t h = 0x9e3779b97f4a7c15ull ^ (uint64_t)count;
   auto mix = [&](uint64_t k) { h = (h ^ k) * 0xff51afd7ed558ccdull; h ^= h >> 29; };
@@ -227,6 +235,8 @@ void request_finish(int status) {
   if (null >= 0) { dup2(null, 0); dup2(null, 1); dup2(null, 2); if (null > 2) close(null); }
   if (s.compiler_fresh) report_send(REPORT_COMPILER, s.compiler);
   for (const auto &unit : s.fresh) report_send(REPORT_UNIT, unit_record(*unit));
+  for (const auto &[entry, passed] : s.passed_fresh) report_send(REPORT_PASSED, passed_record(entry, *passed));
+  if (s.answered) report_send(REPORT_ANSWERED, "");
   std::string used;
   put_u64(used, s.hits);
   put_u64(used, s.misses);
@@ -304,7 +314,7 @@ bool parse_run(const std::string &payload, RunRequest *out) {
 struct Resident {
   std::string dir, image;
   int log = -1, listener = -1, lock = -1;
-  uint64_t requests = 0, hits = 0, misses = 0, evicted = 0, limit = 0, idle = 0;
+  uint64_t requests = 0, hits = 0, misses = 0, evicted = 0, limit = 0, idle = 0, answered = 0;
   std::chrono::steady_clock::time_point began = std::chrono::steady_clock::now(), active = began;
   struct Live {
     pid_t pid = -1;
@@ -421,6 +431,24 @@ void resident_report(Resident &r, Resident::Live &live, uint32_t kind, const std
       break;
     case REPORT_UNIT: resident_keep(r, payload); break;
     case REPORT_COMPILER: if (payload.size() == 64 && s.compiler.empty()) s.compiler = payload; break;
+    case REPORT_ANSWERED: r.answered++; break;
+    case REPORT_PASSED: {
+      std::string entry;
+      const auto passed = passed_parse(payload, &entry);
+      if (!passed || entry.empty()) break;
+      ServeState::Passed &kept = s.passed[entry];
+      kept.used = r.requests;
+      // One of the same options replaces the older one of them.
+      for (size_t i = 0; i < kept.last.size(); i++) if (passed_same_options(*kept.last[i], *passed)) { kept.last.erase(kept.last.begin() + (std::ptrdiff_t)i); break; }
+      kept.last.insert(kept.last.begin(), passed);
+      if (kept.last.size() > PASSED_EACH) kept.last.resize(PASSED_EACH);
+      while (s.passed.size() > PASSED_ENTRIES) {
+        auto oldest = s.passed.begin();
+        for (auto at = s.passed.begin(); at != s.passed.end(); ++at) if (at->second.used < oldest->second.used) oldest = at;
+        s.passed.erase(oldest);
+      }
+      break;
+    }
     case REPORT_USED: {
       Reader in{payload.data(), payload.data() + payload.size()};
       const uint64_t hits = in.u64(), misses = in.u64();
@@ -490,13 +518,16 @@ std::string resident_status(const Resident &r) {
   const ServeState &s = serve_state();
   size_t units = 0;
   for (const auto &[hash, bucket] : s.units) units += bucket.size();
-  char text[512];
+  size_t passed = 0;
+  for (const auto &[entry, kept] : s.passed) passed += kept.last.size();
+  char text[768];
   snprintf(text, sizeof text,
            "coax serve: pid %lld, up %lld s, %llu requests (%zu running), %zu unit lexes kept in %llu MiB (limit %llu MiB, %llu evicted), "
-           "%llu reused and %llu made, idle exit after %llu s\n  %s\n",
+           "%llu reused and %llu made, %zu checked programs remembered, %llu errors from changed bodies alone, idle exit after %llu s\n  %s\n",
            (long long)getpid(), (long long)std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - r.began).count(),
            (unsigned long long)r.requests, r.live.size(), units, (unsigned long long)(s.bytes >> 20), (unsigned long long)(r.limit >> 20),
-           (unsigned long long)r.evicted, (unsigned long long)r.hits, (unsigned long long)r.misses, (unsigned long long)r.idle, r.dir.c_str());
+           (unsigned long long)r.evicted, (unsigned long long)r.hits, (unsigned long long)r.misses, passed, (unsigned long long)r.answered,
+           (unsigned long long)r.idle, r.dir.c_str());
   return text;
 }
 void resident_accept(Resident &r) {
@@ -825,6 +856,24 @@ std::shared_ptr<const UnitLex> serve_find_unit(const std::string &text) {
     }
   s.misses++;
   return nullptr;
+}
+std::vector<std::shared_ptr<const PassedSkeleton>> serve_passed(const std::string &entry) {
+  ServeState &s = serve_state();
+  if (!s.request) return {};
+  const auto found = s.passed.find(entry);
+  return found == s.passed.end() ? std::vector<std::shared_ptr<const PassedSkeleton>>() : found->second.last;
+}
+void serve_keep_passed(const std::string &entry, const std::shared_ptr<const PassedSkeleton> &passed) {
+  ServeState &s = serve_state();
+  if (s.request && passed) s.passed_fresh.push_back({entry, passed});
+}
+bool serve_request() { return serve_state().request; }
+void serve_answered() { serve_state().answered = true; }
+void serve_detach() {
+  ServeState &s = serve_state();
+  s.request = false;
+  s.report = -1;
+  s.client = -1;
 }
 void serve_keep_unit(const std::shared_ptr<const UnitLex> &unit) {
   ServeState &s = serve_state();

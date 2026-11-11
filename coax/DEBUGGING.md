@@ -144,7 +144,9 @@ hashing/writing and output preparation. `total` includes remaining driver
 overhead and, for `run`, child program execution. It ends before serializing
 and writing the timing report itself.
 
-Parts of a phase, in `detail_seconds`: `check.storage`, `check.checker`
+Parts of a phase, in `detail_seconds`: `parse.tokens`, `parse.build` (the
+Coax parser), `parse.tree` and `parse.input` (the checker's copy of the
+nodes); `check.storage`, `check.checker`
 (type checking, generic instantiation and borrow/retain analysis, which run
 in one pass of the Coax checker), `check.effects`, `check.transfer`;
 `authority.reuse` (finding the checks that passed before with the same

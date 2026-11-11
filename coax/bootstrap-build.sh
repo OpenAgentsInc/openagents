@@ -16,7 +16,8 @@ root="$(cd .. && pwd -P)"
 input_identity="$(./provenance.sh fingerprint "$root")"
 mkdir -p bin
 # The C++ driver at -O2: its evaluator runs every #authority check, and -O2 inlines
-# the Value moves and destructors each node costs (#12657). The C seeds stay -O1.
+# the Value moves and destructors each node costs (#12657). The C seeds stay -O1;
+# the final compiler's own Coax is compiled at -O3 (below).
 host_flags=(-std=c++20 -O2 -g -ffp-contract=off -Wall -Wextra -Wno-missing-field-initializers)
 if [[ -n "${COAX_HOST_TARGET:-}" ]]; then host_flags+=(-target "$COAX_HOST_TARGET"); fi
 c_flags=(-std=c11 -O1 -g)
@@ -309,7 +310,12 @@ gate "$work/stage0" mutate lib/proto/fingerprint.coax
 gate "$work/stage0" test lib/proto/importer.coax
 gate "$work/stage0" mutate lib/proto/importer.coax
 "$work/stage0" c lib/compiler/compiler.coax --library --header "$work/proto_importer.h" > "$work/proto_importer.c"
-"${CC:-cc}" "${c_flags[@]}" -c "$work/proto_importer.c" -o "$work/proto_importer.o"
+# The compiler's own Coax (lexer, parser, checker, SHA-256) at -O3: it is most
+# of a compile's time (#13142, fivelab on a build host: the parser 0.26 s at
+# -O1 and 0.10 s at -O3, the checker 1.45 s and 0.60 s). The seeds above stay
+# -O1; they only run this bootstrap. The compiler that results compiles
+# itself to the same C just below, and runs every gate after it.
+"${CC:-cc}" "${c_flags[@]}" -O3 -c "$work/proto_importer.c" -o "$work/proto_importer.o"
 "${CXX:-c++}" "${host_flags[@]}" -I "$work" -o "$work/coax" src/main.cpp "$work/proto_importer.o" ${link_flags[@]+"${link_flags[@]}"}
 "$work/coax" c lib/compiler/compiler.coax --library > "$work/rebuilt.c"
 cmp "$work/proto_importer.c" "$work/rebuilt.c"
