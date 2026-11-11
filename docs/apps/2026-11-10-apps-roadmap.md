@@ -130,7 +130,9 @@ rasterization exactly. Linux has no CoreText, and the rule is no toolchain
 beyond Coax and the host C compiler. Options: rasterize Geist in Coax (a
 TrueType outline reader and scanline fill, also usable on Android), or link
 FreeType through Nix as a host library. Recommended: Coax, so one rasterizer
-serves Linux, Android and any shot check.
+serves Linux, Android and any shot check. Taken: Linux builds the atlas in
+Coax (`components/raster/`); the Mac keeps CoreText until that rasterizer
+has font fallback and colour glyphs (components/spec.md, decision 3).
 
 Done when: `apps/openagents-desktop/build.sh --open` on `coderos-4080` opens
 the window, a message to Claude Code streams an answer, and `check.sh` passes

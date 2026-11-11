@@ -370,3 +370,17 @@ taken the same day: flex with CSS's names, in Coax, checked against Chrome
    rasterizer in Coax would give every platform the same text and the same
    goldens. Recommended, and it is the same question as Step 1 of the apps
    roadmap.
+
+   **On the Mac, CoreText's atlas stays for now** (2026-11-11, #13156).
+   `components/raster/atlas.coax` draws only what Geist has: a grapheme the
+   font lacks (an emoji, a CJK character, most symbols) becomes the
+   missing-glyph box, where CoreText falls back to the system's fonts and
+   draws emoji in colour into the colour atlas. It also has one dilation
+   level, where CoreText thickens light text on dark by the fill's
+   luminance, so the Mac's text would get visibly thinner. Moving the Mac
+   onto it would make real conversations worse to match a picture check.
+   It moves when the Coax rasterizer has font fallback (a list of faces,
+   tried in order) and colour glyphs (an sbix or COLR reader); until then
+   Linux and Android, which have no platform rasterizer, use the Coax one,
+   and the Mac and iOS keep CoreText. The pictures are already per platform
+   (see "Checks"), so nothing else changes.
