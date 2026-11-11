@@ -40,6 +40,13 @@ static void wt_out(int i, const uint8_t *text, size_t n) {
   if (ch < 0 || ch >= WT_CHANNELS) ch = WT_SESSION_STREAM;
   if (ch == 0 && n > WT_DATAGRAM_MAX) { wt_oversize++; ch = WT_SESSION_STREAM; }   /* never cut: whole on the stream */
   if (ch == 0) { if (wt_send_datagram(wts, wt_sid(i), text, n) == 0) conns[i].wt_dg++; return; }
+  /* a hastened outcome (rm_wt_hasten: an arrow loosed or ended) goes on its stream, which guarantees it,
+     and as a datagram now and again next tick, so one lost packet costs it no resend's wait; the page
+     takes it once by its id */
+  if (rm_wt_hasten(view(), (coax_string){(const char *)text, (int64_t)n}) && n <= sizeof conns[i].wt_again[0]) {
+    if (wt_send_datagram(wts, wt_sid(i), text, n) == 0) conns[i].wt_dg++;
+    if (conns[i].wt_agains < 4) { int a = conns[i].wt_agains++; memcpy(conns[i].wt_again[a], text, n); conns[i].wt_again_n[a] = (uint16_t)n; }
+  }
   wt_stream_frame(i, ch, text, n);
 }
 
@@ -93,7 +100,7 @@ static void wt_stream_in(void *user, int sid, int64_t stream, const uint8_t *dat
     if (len > 4096) { c->doomed = true; return; }
     if (c->n - at - 2 < len) break;
     st_frame_in(c->in + at + 2, len, len + 2);
-    rm_heard(view(), i, (coax_string){(const char *)c->in + at + 2, (int64_t)len});
+    rm_wt_reliable(view(), i, (coax_string){(const char *)c->in + at + 2, (int64_t)len});
     at += 2 + len;
     if (rm_relay_kicked(view(), i)) { c->doomed = true; return; }
   }
@@ -120,6 +127,8 @@ static void wt_tick_begin(void) {
   for (int j = 0; j < CONNS; j++) {
     if (conns[j].fd < 0 || !conns[j].wt) continue;
     conns[j].wt_stale += wt_drop_waiting(wts, wt_sid(j));
+    for (int a = 0; a < conns[j].wt_agains; a++) if (wt_send_datagram(wts, wt_sid(j), conns[j].wt_again[a], conns[j].wt_again_n[a]) == 0) conns[j].wt_dg++;
+    conns[j].wt_agains = 0;
     rm_conn_waiting(view(), j, (int64_t)wt_stream_waiting(wts, wt_sid(j)));
   }
 }

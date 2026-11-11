@@ -10,8 +10,9 @@ if [ -n "$need" ]; then apt-get update -q >/dev/null && apt-get install -y -q --
 install -d -m 755 /opt/oa-room /opt/oa-room/releases /opt/oa-room/bin /etc/oa-room
 [ -f /etc/oa-room/secret.env ] || install -m 600 /dev/null /etc/oa-room/secret.env
 for k in 1 2 3 4 5 6; do
-  # OA_ROOM_ENDPOINT: the directory hands pages this shard's own address (#13179)
-  printf 'PORT=%s\nOA_ROOM_SHARD=%s\nOA_ROOM_DIR_GEN=1\nOA_ROOM_TICKET_REQUIRED=1\nOA_ROOM_ENDPOINT=wss://room.openagents.com/api/room/s%s/\n' "$((8080 + k))" "$k" "$k" > "/etc/oa-room/s$k.env"
+  # OA_ROOM_ENDPOINT: the directory hands pages this shard's own address (#13179), on a port of its
+  # own, 443K: Caddy's TLS on TCP for its WebSocket, the shard's own WebTransport on UDP (wt-cert.sh, #13187)
+  printf 'PORT=%s\nOA_ROOM_SHARD=%s\nOA_ROOM_DIR_GEN=1\nOA_ROOM_TICKET_REQUIRED=1\nOA_ROOM_ENDPOINT=wss://room.openagents.com:%s/api/room/s%s/\n' "$((8080 + k))" "$k" "$((4430 + k))" "$k" > "/etc/oa-room/s$k.env"
   ln -sfn /opt/oa-room/current/room "/opt/oa-room/bin/s$k"
 done
 # the staging unit reports to the staging API (its directory, control, vitals and checkpoints)

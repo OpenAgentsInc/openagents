@@ -23,8 +23,9 @@
 #                                                 again, its pages come back through the directory)
 #   coax/web/room/vm-deploy.sh setup              the VM's packages, units, env files and Caddy again
 #   coax/web/room/vm-deploy.sh status
-#   coax/web/room/vm-deploy.sh wt                 the staging unit's WebTransport on UDP 443: Caddy's
-#                                                 certificate for room-staging, renewed daily (vm/wt-cert.sh)
+#   coax/web/room/vm-deploy.sh wt                 the units' WebTransport: staging on UDP 443, shard K on
+#                                                 UDP 443K, Caddy's certificates renewed daily (vm/wt-cert.sh);
+#                                                 then each running shard drained and restarted onto it
 #
 # Player state lives in the API, not on the VM: each room posts its seats' HP, XP, WANTED and
 # checkpoints to openagents.com (room-host.c vitals_post, checkpoint_post), as Cloud Run's do, so a
@@ -98,14 +99,18 @@ setup() {   # the VM's packages, unit, env files and Caddy (vm/setup.sh); a runn
 
 provision() {
   exists compute addresses describe "$address" --region "$region" || g compute addresses create "$address" --region "$region" --network-tier PREMIUM
-  # the room's ports only: TCP and UDP 443 to anyone, the shards' ports to the load balancer and its
+  # the room's ports only: TCP and UDP 443 to anyone (staging's), and 4431-4436 (shard K's own
+  # endpoint, 443K: its WebSocket through Caddy on TCP, its WebTransport on UDP, #13187), the shards' ports to the load balancer and its
   # health checks, SSH through IAP; everything else is refused (the default network allows SSH from anywhere)
   exists compute firewall-rules describe oa-room-deny-other-ingress ||
     g compute firewall-rules create oa-room-deny-other-ingress --network default --direction INGRESS --action DENY --rules all --source-ranges 0.0.0.0/0 --target-tags oa-room --priority 1000
   exists compute firewall-rules describe oa-room-iap-ssh ||
     g compute firewall-rules create oa-room-iap-ssh --network default --direction INGRESS --action ALLOW --rules tcp:22 --source-ranges 35.235.240.0/20 --target-tags oa-room --priority 900
-  exists compute firewall-rules describe oa-room-public ||
-    g compute firewall-rules create oa-room-public --network default --direction INGRESS --action ALLOW --rules tcp:443,udp:443 --source-ranges 0.0.0.0/0 --target-tags oa-room --priority 900
+  if exists compute firewall-rules describe oa-room-public; then
+    g compute firewall-rules update oa-room-public --rules tcp:443,udp:443,tcp:4431-4436,udp:4431-4436 >/dev/null
+  else
+    g compute firewall-rules create oa-room-public --network default --direction INGRESS --action ALLOW --rules tcp:443,udp:443,tcp:4431-4436,udp:4431-4436 --source-ranges 0.0.0.0/0 --target-tags oa-room --priority 900
+  fi
   exists compute firewall-rules describe oa-room-lb ||
     g compute firewall-rules create oa-room-lb --network default --direction INGRESS --action ALLOW --rules tcp:8081-8090 --source-ranges 130.211.0.0/22,35.191.0.0/16 --target-tags oa-room --priority 900
   # no service account: the VM calls no Google API (its one secret arrives over SSH)
@@ -311,7 +316,8 @@ for pm in m["pathMatchers"]:
 case "${1:-}" in
   provision) provision ;;
   wt) COPYFILE_DISABLE=1 tar -C "$here/vm" -czf - wt-cert.sh |
-      on_vm 'd=$(mktemp -d) && tar -xzf - -C "$d" 2>/dev/null && cd "$d" && sudo sh wt-cert.sh --install' ;;
+      on_vm 'd=$(mktemp -d) && tar -xzf - -C "$d" 2>/dev/null && cd "$d" && sudo sh wt-cert.sh --install'
+      restart_shards ;;   # each shard drained, then restarted onto its UDP port and certificate
   secret) secret ;;
   deploy) shift; deploy "$@" ;;
   rollback) rollback ;;

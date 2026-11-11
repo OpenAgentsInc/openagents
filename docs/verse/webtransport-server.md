@@ -166,13 +166,25 @@ with `?transport=wt&wthash=HASH`:
 
 ### On the room VM
 
-UDP 443 on the VM has one owner: the staging unit, `oa-room@staging`, for
-`room-staging.openagents.com`. `vm-deploy.sh wt` copies Caddy's certificate
-for that name (the key as PKCS#8), gives the unit the files and UDP 443, and
-installs a daily timer that does it again after Caddy renews
-(`vm/wt-cert.sh`). The production shards stay on WebSocket only. A page
-reaches staging's WebTransport with
-`?relay=wss://room-staging.openagents.com&transport=wt`.
+Each room unit on the VM owns one UDP port. The staging unit,
+`oa-room@staging`, has UDP 443 for `room-staging.openagents.com`. Production
+shard K, `oa-room@sK`, has UDP 443K (4431 to 4436) for
+`room.openagents.com`. Its endpoint, the one the directory hands pages, is
+`wss://room.openagents.com:443K/api/room/sK/`: Caddy serves its WebSocket on
+that TCP port, and the shard serves WebTransport on that UDP port.
+
+`vm-deploy.sh wt` copies Caddy's certificate for each name (the key as
+PKCS#8), gives each unit its files and port, and installs a daily timer that
+does it again after Caddy renews (`vm/wt-cert.sh`). Then it drains and
+restarts each running shard onto them. A renewal restarts the staging unit
+at once. A production shard takes it at its next restart, unless the
+certificate it runs expires within a week.
+
+The page opens WebTransport by default (`E2N_WT_DEFAULT`, #13187) when the
+directory names a shard's own endpoint. It falls back to that endpoint's
+WebSocket when WebTransport fails. When neither opens (a network that blocks
+the port), it uses the load balancer's path from then on. `?transport=ws`
+keeps the WebSocket.
 
 ## Loss: the matrix and the pipeline check (#13177)
 

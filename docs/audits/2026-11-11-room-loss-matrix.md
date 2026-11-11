@@ -5,7 +5,10 @@ Date: 2026-11-11. Every cell's JSON is in
 
 ## Summary
 
-- WebTransport stays behind its switch: `E2N_WT_DEFAULT` is still false.
+- After #13187 (below) WebTransport meets the bar, 16 of 16 arrows at a
+  p95 of 190 ms, and is the default. The rest of this summary is the
+  first run.
+- WebTransport stayed behind its switch after the first run.
   The pass bar is the remote arrow's p95 under 2 RTT at 2% loss, 120 ms
   and ±30 ms, with no cell worse than WebSocket. It isn't met: WT's p95 is
   313 ms, against a 240 ms bar and WebSocket's 255 ms.
@@ -87,7 +90,77 @@ The pass bar, 16 trials each, on fresh rooms after the fix:
 | WS | 2% | 120 | 16/16 | 170 / 255 | 240 | 1615 / 814 | 5 |
 | WT | 2% | 120 | 15/16 | 171 / 313 | 240 | 1662 / 4299 | 4 |
 
-## What the table says
+## After #13187: the full matrix again
+
+Date: 2026-11-11, the same Mac, proxy, seed (13177), jitter (±30 ms) and
+fresh room per cell, phase `wt2-13187` in the `.jsonl`. Three changes made
+the difference:
+
+- **Resends were garbage** (`wt.c`). The room's QUIC writer kept each
+  stream's unacknowledged bytes in one buffer that it moved on every
+  acknowledgement and grew with `realloc`. ngtcp2 resends lost stream data
+  from the pointers it was given, so after a loss it resent whatever lay
+  there by then. Frames on the reliable streams arrived corrupt or not at
+  all: casts went unanswered, arrows went unseen, sessions went silent.
+  The buffer is now a chain of chunks that never move, each freed once
+  every byte in it is acknowledged.
+- **Casts and launches don't wait for a resend.** A `C` or `F` goes on the
+  combat stream and in the input datagrams under the next input's number
+  until the room acknowledges it. The room takes each once by its sequence
+  number, whichever way it came (`net_seen_fresh`). An arrow loosed (`a`)
+  or ended (`d`) goes on the stream and as a datagram now and next tick;
+  the page takes each once by the arrow's id.
+- **Redundancy is bounded.** An input datagram repeats the newest 6
+  unacknowledged inputs at most (`NET_OWED`), and an input that is the next
+  one's but for its number and last word is one byte (`~`). Page A's out
+  rate fell from 2.6 to 5.9 KB/s to 1.4 to 2.1 KB/s; a WebSocket page
+  sends 0.8 KB/s.
+
+| Transport | Loss | RTT ms | Arrows seen | Remote arrow p50 / p95 | Walk p50 / p95 | Bytes/s in / out | Tick p50 / p95 | Keys |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| WS | 0% | 50 | 12/12 | 90 / 124 | 8 / 16 | 1736 / 817 | 200 / 400 | 3 |
+| WT | 0% | 50 | 12/12 | 86 / 119 | 11 / 15 | 1826 / 1442 | 200 / 400 | 2 |
+| WS | 2% | 50 | 12/12 | 80 / 130 | 12 / 41 | 1685 / 816 | 200 / 300 | 3 |
+| WT | 2% | 50 | 12/12 | 90 / 118 | 9 / 15 | 1809 / 1419 | 200 / 300 | 3 |
+| WS | 5% | 50 | 12/12 | 137 / 272 | 11 / 15 | 1635 / 816 | 200 / 400 | 4 |
+| WT | 5% | 50 | 12/12 | 99 / 135 | 7 / 14 | 1765 / 1442 | 300 / 500 | 4 |
+| WS | 10% | 50 | 12/12 | 271 / 445 | 11 / 15 | 1688 / 820 | 200 / 400 | 5 |
+| WT | 10% | 50 | 12/12 | 89 / 109 | 9 / 16 | 1664 / 1465 | 200 / 300 | 4 |
+| WS | 0% | 100 | 12/12 | 136 / 171 | 11 / 15 | 1750 / 820 | 200 / 400 | 3 |
+| WT | 0% | 100 | 12/12 | 152 / 168 | 9 / 15 | 1847 / 1760 | 200 / 300 | 5 |
+| WS | 2% | 100 | 12/12 | 153 / 305 | 9 / 16 | 1721 / 821 | 200 / 400 | 3 |
+| WT | 2% | 100 | 12/12 | 140 / 187 | 6 / 12 | 1810 / 1824 | 300 / 400 | 6 |
+| WS | 5% | 100 | 12/12 | 147 / 247 | 9 / 15 | 1679 / 821 | 200 / 300 | 3 |
+| WT | 5% | 100 | 12/12 | 141 / 158 | 12 / 24 | 1748 / 1839 | 300 / 400 | 5 |
+| WS | 10% | 100 | 12/12 | 285 / 477 | 12 / 16 | 1705 / 820 | 200 / 300 | 5 |
+| WT | 10% | 100 | 12/12 | 155 / 188 | 10 / 16 | 1651 / 1820 | 200 / 400 | 6 |
+| WS | 0% | 150 | 12/12 | 175 / 197 | 11 / 16 | 1754 / 820 | 200 / 300 | 5 |
+| WT | 0% | 150 | 12/12 | 197 / 240 | 12 / 16 | 1851 / 2048 | 300 / 400 | 6 |
+| WS | 2% | 150 | 12/12 | 202 / 291 | 9 / 13 | 1716 / 820 | 300 / 400 | 5 |
+| WT | 2% | 150 | 12/12 | 183 / 231 | 11 / 16 | 1829 / 2060 | 300 / 400 | 7 |
+| WS | 5% | 150 | 12/12 | 263 / 713 | 9 / 16 | 2092 / 821 | 300 / 500 | 7 |
+| WT | 5% | 150 | 12/12 | 200 / 221 | 11 / 17 | 1755 / 2069 | 300 / 400 | 5 |
+| WS | 10% | 150 | 12/12 | 345 / 694 | 9 / 16 | 1890 / 820 | 200 / 400 | 9 |
+| WT | 10% | 150 | 12/12 | 193 / 230 | 9 / 16 | 1675 / 2084 | 300 / 400 | 5 |
+
+The pass bar, 16 trials each:
+
+| Transport | Loss | RTT ms | Arrows seen | Remote arrow p50 / p95 | Bar (2 RTT) | Bytes/s in / out | Keys |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| WS | 2% | 120 | 16/16 | 146 / 344 | 240 | 1610 / 811 | 6 |
+| WT | 2% | 120 | 16/16 | 166 / 190 | 240 | 1703 / 1813 | 6 |
+
+- WebTransport meets the bar: 16 of 16 arrows, p95 190 ms against 240 ms.
+  WebSocket misses it (344 ms).
+- Every WT cell saw every arrow. Under loss WT's p95 stays within about
+  1.6 RTT; WebSocket's grows with TCP's resends to 713 ms.
+- The one cell where WT trailed, 0% at 150 ms (240 against 197 ms), ran
+  again: WT 231 ms, WebSocket 216 ms. That is under a tick apart (noise,
+  per the trials note above), and both are inside 2 RTT.
+- `E2N_WT_DEFAULT` is now on, for a shard's own endpoint
+  (`docs/verse/webtransport-server.md`).
+
+## What the first table said
 
 - **When WebTransport works, it beats WebSocket under loss.** In the cells
   where every arrow came through, WT's p95 stays near one RTT plus a

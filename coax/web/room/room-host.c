@@ -61,6 +61,7 @@ typedef struct {
   // a WebTransport session's (room-wt.c, #13176): its id + 1 (0 a WebSocket), whether it already ended,
   // its streams by channel (id + 1), the page's stream (id + 1), datagrams sent, and state dropped stale
   int wt; bool wt_gone; int64_t wt_stream[5]; int64_t wt_in, wt_dg, wt_stale;
+  uint8_t wt_again[4][256]; uint16_t wt_again_n[4]; int wt_agains;   /* hastened frames to send once more as datagrams next tick (room-wt.c) */
 } conn;
 static conn conns[CONNS];
 static coax_t_RmServer *server;

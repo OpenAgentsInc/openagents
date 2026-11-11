@@ -52,11 +52,24 @@ channel is its own stream, so a resend in one never holds up another.
 
 - **Open.** `net_conn_url` prefixes `wt+`. The host tries WebTransport for
   2.5 seconds, then opens the WebSocket; its opened event says `wt` when
-  WebTransport won. `?transport=wt|ws` on the page picks one;
-  `E2N_WT_DEFAULT` is the default.
+  WebTransport won. `?transport=wt|ws` on the page picks one; with
+  neither, `E2N_WT_DEFAULT` (on) applies on a shard's own endpoint. The load
+  balancer's path is TCP only, so it stays on the WebSocket.
 - **Inputs.** `net_conn_input` sends each input in a datagram that repeats
-  every input the room hasn't acknowledged, oldest first (32 kept, up to
-  1,200 bytes). The room's `net_gate_fresh` lets each through once.
+  the inputs the room hasn't acknowledged, oldest first: the newest
+  `NET_OWED` (6) at most, within 1,200 bytes. An owed input that is the next
+  one's but for its number and its last word goes as one byte, `~`, made
+  whole by `net_bundle_expand`. The room's `net_gate_fresh` lets each
+  through once.
+- **Casts and launches.** A `C` or `F` frame goes on the combat stream, and
+  also rides the input datagrams under the next input's number
+  (`net_conn_owe`) until the room acknowledges it. The room takes each once
+  by its sequence number (`net_seen_fresh`, `room-wt.coax` `rm_wt_once`),
+  whichever way comes first, so no event depends on which channel brought
+  it.
+- **Arrows loosed and ended.** The room sends `a` and `d` on the combat
+  stream and as a datagram now and again next tick (`rm_wt_hasten`). The
+  page takes each once by the arrow's id.
 - **State.** The room writes one datagram of state per tick per seat, by
   priority, and leaves the rest for the next tick. What doesn't fit, and
   every cue and outcome, goes out of band on the combat stream. A tick's

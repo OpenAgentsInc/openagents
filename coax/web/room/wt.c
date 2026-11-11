@@ -39,10 +39,20 @@
 #define WT_STREAM_REJECTED 0x3994bd84ULL   /* WT_BUFFERED_STREAM_REJECTED */
 enum { K_NEW, K_H3, K_WT };
 
+/* A session stream's bytes of ours, in chunks that never move: ngtcp2 keeps pointers to the bytes it
+   sent until they are acknowledged, and resends from them when a packet is lost (ngtcp2.h,
+   ngtcp2_conn_writev_stream: "the caller must keep the portion of data ... intact until
+   acked_stream_data_offset"). A chunk is freed once every byte of it is acknowledged; new bytes go
+   in the last chunk's free room, or a new chunk. (#13187: the buffer used to be moved on each
+   acknowledgement and grown with realloc, so a resend after loss sent whatever bytes sat there then,
+   and the page's frames on that stream came apart.) */
+typedef struct wt_chunk { struct wt_chunk *next; size_t cap, n; uint8_t b[]; } wt_chunk;
+#define CHUNK_MIN 4096
 typedef struct wt_strm {
   int64_t id; int kind; int sid;
   uint8_t pre[16]; size_t pre_n;          /* a new peer stream's first bytes, until its type is known */
-  uint8_t *out; size_t out_n, out_cap, sent;   /* bytes of ours not yet acknowledged; sent of them handed to QUIC */
+  wt_chunk *head, *tail;                  /* our bytes from `base` (the head chunk's first) on */
+  uint64_t base, acked, sent, end;        /* stream offsets: the head's first byte, acknowledged to, handed to QUIC to, written to */
   bool fin_want, fin_sent, blocked, ended;
   char method[16], protocol[32], path[512], authority[256], origin[256];
   struct wt_strm *next;
@@ -115,6 +125,55 @@ static qconn *cid_find(wt_server *s, const uint8_t *id, size_t n) {
 }
 
 /* ---- streams and sessions */
+static void strm_chunks_free(wt_strm *t) {
+  while (t->head) { wt_chunk *k = t->head; t->head = k->next; free(k); }
+  t->tail = NULL; t->base = t->acked = t->sent = t->end;
+}
+/* Bytes [acked, to) acknowledged: every chunk wholly before `to` is freed. */
+static void strm_acked(wt_strm *t, uint64_t to) {
+  if (to > t->sent) to = t->sent;
+  if (to <= t->acked) return;
+  t->acked = to;
+  while (t->head && t->base + t->head->n <= t->acked) {
+    wt_chunk *k = t->head; t->base += k->n; t->head = k->next; if (!t->head) t->tail = NULL; free(k);
+  }
+}
+/* Up to `max` pieces of the bytes from `sent` to `end`, in place. */
+static size_t strm_unsent(const wt_strm *t, ngtcp2_vec *v, size_t max) {
+  size_t m = 0; uint64_t at = t->base;
+  for (const wt_chunk *k = t->head; k && m < max; k = k->next) {
+    uint64_t lo = at, hi = at + k->n; at = hi;
+    if (hi <= t->sent) continue;
+    uint64_t from = t->sent > lo ? t->sent : lo;
+    v[m].base = (uint8_t *)k->b + (from - lo); v[m].len = (size_t)(hi - from); m++;
+  }
+  return m;
+}
+/* The bytes not yet handed to QUIC are dropped (the peer stopped the stream): `end` comes back to `sent`. */
+static void strm_drop_unsent(wt_strm *t) {
+  uint64_t at = t->base;
+  for (wt_chunk *k = t->head; k; k = k->next) {
+    if (at + k->n >= t->sent) { k->n = (size_t)(t->sent - at); wt_chunk *r = k->next; k->next = NULL; t->tail = k; while (r) { wt_chunk *q = r->next; free(r); r = q; } break; }
+    at += k->n;
+  }
+  t->end = t->sent;
+}
+/* n bytes appended; false when out of memory. */
+static bool strm_append(wt_strm *t, const uint8_t *d, size_t n) {
+  while (n) {
+    if (!t->tail || t->tail->n == t->tail->cap) {
+      size_t cap = n > CHUNK_MIN ? n : CHUNK_MIN;
+      wt_chunk *k = malloc(sizeof *k + cap);
+      if (!k) return false;
+      k->next = NULL; k->cap = cap; k->n = 0;
+      if (t->tail) t->tail->next = k; else { t->head = k; t->base = t->end; }
+      t->tail = k;
+    }
+    size_t take = t->tail->cap - t->tail->n; if (take > n) take = n;
+    memcpy(t->tail->b + t->tail->n, d, take); t->tail->n += take; t->end += take; d += take; n -= take;
+  }
+  return true;
+}
 static wt_strm *strm_get(qconn *c, int64_t id, bool make) {
   for (wt_strm *t = c->streams; t; t = t->next) if (t->id == id) return t;
   if (!make) return NULL;
@@ -125,7 +184,7 @@ static wt_strm *strm_get(qconn *c, int64_t id, bool make) {
 }
 static void strm_free(qconn *c, int64_t id) {
   for (wt_strm **p = &c->streams; *p; p = &(*p)->next)
-    if ((*p)->id == id) { wt_strm *t = *p; *p = t->next; free(t->out); free(t); return; }
+    if ((*p)->id == id) { wt_strm *t = *p; *p = t->next; strm_chunks_free(t); free(t); return; }
 }
 static int session_of(qconn *c, int64_t connect) {
   for (int i = 0; i < WT_SESSIONS; i++) if (c->s->sess[i].live && c->s->sess[i].c == c && c->s->sess[i].connect == connect) return i;
@@ -318,8 +377,7 @@ static int q_acked(ngtcp2_conn *qc, int64_t id, uint64_t off, uint64_t n, void *
   (void)qc; (void)off; (void)su; qconn *c = u;
   wt_strm *t = strm_get(c, id, false);
   if (t && t->kind == K_WT) {
-    size_t k = n < t->sent ? (size_t)n : t->sent;
-    memmove(t->out, t->out + k, t->out_n - k); t->out_n -= k; t->sent -= k;
+    strm_acked(t, off + n);
     return 0;
   }
   if (c->h3 && nghttp3_conn_add_ack_offset(c->h3, id, n)) return NGTCP2_ERR_CALLBACK_FAILURE;
@@ -347,7 +405,7 @@ static int q_stream_reset(ngtcp2_conn *qc, int64_t id, uint64_t size, uint64_t c
 static int q_stop_sending(ngtcp2_conn *qc, int64_t id, uint64_t code, void *u, void *su) {
   (void)qc; (void)code; (void)su; qconn *c = u;
   wt_strm *t = strm_get(c, id, false);
-  if (t && t->kind == K_WT) { t->out_n = t->sent; t->fin_want = false; return 0; }
+  if (t && t->kind == K_WT) { strm_drop_unsent(t); t->fin_want = false; return 0; }
   if (c->h3 && nghttp3_conn_shutdown_stream_read(c->h3, id)) return NGTCP2_ERR_CALLBACK_FAILURE;
   return 0;
 }
@@ -439,22 +497,22 @@ static void conn_write(qconn *c) {
     }
     if (sid < 0) {
       for (wt_strm *x = c->streams; x; x = x->next)
-        if (x->kind == K_WT && !x->blocked && (x->out_n > x->sent || (x->fin_want && !x->fin_sent))) { t = x; break; }
-      if (t) { sid = t->id; vec[0].base = t->out + t->sent; vec[0].len = t->out_n - t->sent; cnt = vec[0].len ? 1 : 0; fin = t->fin_want; }
+        if (x->kind == K_WT && !x->blocked && (x->end > x->sent || (x->fin_want && !x->fin_sent))) { t = x; break; }
+      if (t) { sid = t->id; cnt = (nghttp3_ssize)strm_unsent(t, (ngtcp2_vec *)vec, 16); fin = t->fin_want; }
     }
     ngtcp2_ssize nd = -1;
     ngtcp2_ssize w = ngtcp2_conn_writev_stream(c->conn, &ps.path, &pi, buf, sizeof buf, &nd, fin ? NGTCP2_WRITE_STREAM_FLAG_FIN : 0, sid, (const ngtcp2_vec *)vec, (size_t)cnt, now);
     if (w < 0) {
       if (w == NGTCP2_ERR_STREAM_DATA_BLOCKED) { if (t) t->blocked = true; else if (c->h3) nghttp3_conn_block_stream(c->h3, sid); continue; }
       if (w == NGTCP2_ERR_STREAM_SHUT_WR || w == NGTCP2_ERR_STREAM_NOT_FOUND) {
-        if (t) { t->out_n = t->sent; t->fin_want = false; t->blocked = true; }
+        if (t) { strm_drop_unsent(t); t->fin_want = false; t->blocked = true; }
         else if (c->h3) nghttp3_conn_shutdown_stream_write(c->h3, sid);
         continue;
       }
       conn_close_error(c, (int)w); return;
     }
     if (nd >= 0) {
-      if (t) { t->sent += (size_t)nd; if (fin && t->sent == t->out_n) t->fin_sent = true; }
+      if (t) { t->sent += (uint64_t)nd; if (fin && t->sent == t->end) t->fin_sent = true; }
       else if (sid >= 0 && c->h3 && nghttp3_conn_add_write_offset(c->h3, sid, (size_t)nd)) { conn_close_error(c, NGTCP2_ERR_INTERNAL); return; }
     }
     if (w == 0) break;
@@ -467,7 +525,7 @@ static void conn_write(qconn *c) {
 static void conn_free(wt_server *s, qconn *c) {
   for (int i = 0; i < WT_SESSIONS; i++) if (s->sess[i].c == c) { session_end(s, i); s->sess[i] = (session){0}; }
   for (int i = 0; i < s->ncids;) { if (s->cids[i].c == c) s->cids[i] = s->cids[--s->ncids]; else i++; }
-  while (c->streams) { wt_strm *t = c->streams; c->streams = t->next; free(t->out); free(t); }
+  while (c->streams) { wt_strm *t = c->streams; c->streams = t->next; strm_chunks_free(t); free(t); }
   if (c->h3) nghttp3_conn_del(c->h3);
   if (c->conn) ngtcp2_conn_del(c->conn);
   if (c->cptls.ptls) { ngtcp2_crypto_picotls_deconfigure_session(&c->cptls); ptls_free(c->cptls.ptls); }
@@ -665,16 +723,8 @@ int wt_stream_send(wt_server *s, int sid, int64_t stream, const uint8_t *data, s
   if (!x) return -1;
   wt_strm *t = strm_get(x->c, stream, false);
   if (!t || t->kind != K_WT || t->sid != sid || t->fin_want) return -1;
-  if (t->out_n + n > t->out_cap) {
-    size_t cap = t->out_cap ? t->out_cap : 4096;
-    while (cap < t->out_n + n) cap *= 2;
-    if (cap > 16u << 20) return -1;   /* a peer that acknowledges nothing for 16 MB is gone */
-    uint8_t *g = realloc(t->out, cap);
-    if (!g) return -1;
-    t->out = g; t->out_cap = cap;
-  }
-  if (n) memcpy(t->out + t->out_n, data, n);
-  t->out_n += n;
+  if (t->end - t->acked + n > (16u << 20)) return -1;   /* a peer that acknowledges nothing for 16 MB is gone */
+  if (!strm_append(t, data, n)) return -1;
   if (fin) t->fin_want = true;
   return 0;
 }
@@ -682,7 +732,7 @@ size_t wt_stream_waiting(const wt_server *s, int sid) {
   session *x = live_session(s, sid);
   if (!x) return 0;
   size_t k = 0;
-  for (wt_strm *t = x->c->streams; t; t = t->next) if (t->kind == K_WT && t->sid == sid) k += t->out_n;
+  for (wt_strm *t = x->c->streams; t; t = t->next) if (t->kind == K_WT && t->sid == sid) k += (size_t)(t->end - t->acked);
   return k;
 }
 void wt_close(wt_server *s, int sid, uint32_t code) {

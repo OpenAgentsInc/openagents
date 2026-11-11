@@ -26,7 +26,9 @@ RM_WT_ROUTES :: [12] NetRoute.[
   NetRoute.{word = "z", channel = NET_LOOT},         // your rest
   NetRoute.{word = "u1", channel = NET_LOOT},        // an aid's count
 ];
-RmWt :: struct { on: bool; gate: [1] NetGate; dgrams: int; spilled: int; oob: int; }
+// gate: the inputs (I, J1) a datagram repeats; casts and launches (C, F) come both ways, on the stream
+// and in the datagrams until acknowledged (everglade2-net.coax e2n_send), each heard once (#13187)
+RmWt :: struct { on: bool; gate: [1] NetGate; casts: [1] NetSeen; looses: [1] NetSeen; dgrams: int; spilled: int; oob: int; }
 
 // Conn conn is (on) or is no longer a WebTransport session: what it counted starts again.
 rm_wt_conn :: (v: [] RmServer, conn: int, on: bool) #export_c #effects(all) {
@@ -45,20 +47,40 @@ rm_wt_channel_of :: (text: string) -> int {
   }
   return net_route(RM_WT_ROUTES[..], text);
 }
-// A datagram from session conn: its frames, '\n' apart, each heard; an input (I or J1) only the first
-// time its number comes (each datagram repeats the ones the room hasn't acknowledged).
+// Whether a frame on a reliable stream goes as a datagram too, now and again next tick (room-wt.c
+// wt_out): an arrow loosed (a) or ended (d), which the page draws from the moment it names and takes
+// once by its id (everglade2-net.coax e2n_shot_word). A resend's wait on the stream would show late.
+rm_wt_hasten :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) { return wire_is(text, "a") || wire_is(text, "d"); }
+// A datagram from session conn: its frames, '\n' apart, each one heard (NET_SAME made whole); an input
+// (I or J1) only the first time its number comes (each datagram repeats the ones the room hasn't
+// acknowledged), and a cast or a launch only the first time either way brings it.
 rm_wt_heard :: (v: [] RmServer, conn: int, text: string) #export_c #effects(all) {
   if !rm_wt_on(v, conn) { return; }
+  b: [RELAY_FRAME] u8;
   for q: 0..<net_bundle_count(text) {
-    f := net_bundle_frame(text, q);
+    f := net_bundle_expand(text, q, b[..]);
     if f.count == 0 { continue; }
     if wire_is(f, "I") || wire_is(f, "J1") {
       r: [1] WireRd; r[0] = wire_rd(f, ifx f[0] == 'J' then 2 else 1);
       seq := wire_num(f, r[..]);
       if !r[0].ok || !net_gate_fresh(v[0].wt[conn].gate[..], seq) { continue; }
     }
+    if !rm_wt_once(v, conn, f) { continue; }
     rm_heard(v, conn, f);
   }
+}
+// A frame from session conn's reliable stream: heard, but a cast or launch its datagrams brought first.
+rm_wt_reliable :: (v: [] RmServer, conn: int, text: string) #export_c #effects(all) {
+  if rm_wt_on(v, conn) && !rm_wt_once(v, conn, text) { return; }
+  rm_heard(v, conn, text);
+}
+// Whether f is to be heard: false for a cast (C SEQ) or launch (F SEQ) whose number came before.
+rm_wt_once :: (v: [] RmServer, conn: int, f: string) -> bool {
+  if !wire_is(f, "C") && !wire_is(f, "F") { return true; }
+  r: [1] WireRd; r[0] = wire_rd(f, 1);
+  seq := wire_num(f, r[..]);
+  if !r[0].ok { return true; }
+  return net_seen_fresh(ifx f[0] == 'C' then v[0].wt[conn].casts[..] else v[0].wt[conn].looses[..], seq);
 }
 rm_wt_stat :: (v: [] RmServer, conn: int, what: int) -> int #export_c #effects(all) {
   if conn < 0 || conn >= CONNS { return -1; }
@@ -78,6 +100,7 @@ eg_dg_state :: (entry: string) -> bool {
   #assert rm_wt_channel(v[..], "D 40 3 5 0 e town") == NET_COMBAT && rm_wt_channel(v[..], "D x") == NET_DATAGRAM;
   #assert rm_wt_channel(v[..], "h2 4 0") == NET_DATAGRAM && rm_wt_channel(v[..], "h3 4 0 1 2 3") == NET_COMBAT && rm_wt_channel(v[..], "a 1 2") == NET_COMBAT;
   #assert rm_wt_channel(v[..], "b 1 2") == NET_LOOT && rm_wt_channel(v[..], "y 0 2 3") == NET_SESSION && rm_wt_channel(v[..], "W 1 30 1 2 0 1000") == NET_SESSION;
+  #assert rm_wt_hasten(v[..], "a 1302 1 0 1001325 0 0 0 0 0 0 1000 250") && rm_wt_hasten(v[..], "d 1302 1 1 0 0 0 0 0 0 -1") && !rm_wt_hasten(v[..], "a") && !rm_wt_hasten(v[..], "h3 1 2") && !rm_wt_hasten(v[..], "ab 1");
   #assert eg_dg_state("s 1 0 7 1") && eg_dg_state("SAbc") && eg_dg_state("x 4") && eg_dg_state("n 1 - a b 0 -") && eg_dg_state("w 1 2");
   #assert !eg_dg_state("e hit 1 2 3 0") && !eg_dg_state("o 4") && !eg_dg_state("e town") && !eg_dg_state("s") && !eg_dg_state("S");
   rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
@@ -91,6 +114,14 @@ eg_dg_state :: (entry: string) -> bool {
   rm_wt_heard(v[..], 0, "I 1 100 0 0 0 0 0 0\nI 2 100 0 0 0 0 0 0\nI 3 100 0 0 0 0 0 0\nnonsense\n");
   #assert v[0].eg[k].seat[0].q_n == 3 && v[0].eg[k].seat[0].q[0].seq == 1 && v[0].eg[k].seat[0].q[2].seq == 3 && rm_wt_stat(v[..], 0, 3) == 3;
   #assert v[0].conns[0].dropped == 0;   // the repeats never reach the rate limits
+  // a held stick's repeats as NET_SAME, made whole; a cast and its launch both ways, heard once each
+  rm_wt_heard(v[..], 0, "~\n~\nI 6 100 0 0 0 0 0 0");
+  #assert v[0].eg[k].seat[0].q_n == 6 && v[0].eg[k].seat[0].q[3].seq == 4 && v[0].eg[k].seat[0].q[5].seq == 6;
+  rm_wt_reliable(v[..], 0, "F 1000007 0 1450 -30000 0 0 -60000 1000 0");
+  rm_wt_heard(v[..], 0, "F 1000007 0 1450 -30000 0 0 -60000 1000 0\nC 1000007 128 0 1 -40 -1\nI 7 100 0 0 0 0 0 0");
+  rm_wt_reliable(v[..], 0, "C 1000007 128 0 1 -40 -1");
+  #assert v[0].wt[0].looses[0].dups == 1 && v[0].wt[0].casts[0].dups == 1 && v[0].eg[k].seat[0].q_n == 7;
+  rm_wt_reliable(v[..], 0, "C 1000040 128 0 1 -40 -1"); rm_wt_reliable(v[..], 0, "C x"); #assert v[0].wt[0].casts[0].dups == 1;
   rm_wt_conn(v[..], 0, false); #assert rm_wt_stat(v[..], 0, 3) == 0 && rm_wt_stat(v[..], 0, 9) == -1 && rm_wt_stat(v[..], -1, 0) == -1;
 }
 // Each frame of what conn c heard since the last drain ('|' apart) that is a D: the datagrams' bytes

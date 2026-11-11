@@ -1,7 +1,8 @@
 # TLS for the room VM (docs/deployment/room-vm.md): Let's Encrypt certificates for both names,
 # issued and renewed by Caddy over TLS-ALPN on TCP 443 (port 80 stays closed). The private keys stay
-# in /var/lib/caddy on the VM. UDP 443 is left for the room's own WebTransport (#13164): Caddy
-# serves HTTP/1.1 and HTTP/2 only.
+# in /var/lib/caddy on the VM. UDP is left for the rooms' own WebTransport (#13164): Caddy serves
+# HTTP/1.1 and HTTP/2 only. Production shard K's own endpoint is room.openagents.com:443K (#13187):
+# its WebSocket through Caddy on that TCP port, its WebTransport on that UDP port (vm/wt-cert.sh).
 {
 	servers {
 		protocols h1 h2
@@ -37,4 +38,28 @@ room.openagents.com {
 
 room-staging.openagents.com {
 	reverse_proxy 127.0.0.1:8090
+}
+
+room.openagents.com:4431 {
+	reverse_proxy 127.0.0.1:8081
+}
+
+room.openagents.com:4432 {
+	reverse_proxy 127.0.0.1:8082
+}
+
+room.openagents.com:4433 {
+	reverse_proxy 127.0.0.1:8083
+}
+
+room.openagents.com:4434 {
+	reverse_proxy 127.0.0.1:8084
+}
+
+room.openagents.com:4435 {
+	reverse_proxy 127.0.0.1:8085
+}
+
+room.openagents.com:4436 {
+	reverse_proxy 127.0.0.1:8086
 }

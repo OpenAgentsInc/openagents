@@ -66,21 +66,25 @@ drew A's arrow p50 93 ms and p95 204 ms after the button went up.
 | VM | `oa-room-1`, e2-standard-2, Debian 12, us-central1-a, labels `app=oa-room`, `owner=openagents`, tag `oa-room`, no service account |
 | Address | `oa-room-1-ip`, static, 34.41.219.6 |
 | DNS (Cloudflare, not proxied) | `room.openagents.com` and `room-staging.openagents.com`, A to 34.41.219.6 |
-| Firewall | `oa-room-public` (TCP and UDP 443 from anywhere), `oa-room-lb` (TCP 8081-8090 from the load balancer's ranges), `oa-room-iap-ssh` (TCP 22 from IAP only), `oa-room-deny-other-ingress` (everything else) |
+| Firewall | `oa-room-public` (TCP and UDP 443 and 4431-4436 from anywhere), `oa-room-lb` (TCP 8081-8090 from the load balancer's ranges), `oa-room-iap-ssh` (TCP 22 from IAP only), `oa-room-deny-other-ingress` (everything else) |
 | Units | `oa-room@s1` to `oa-room@s6` (production's shards 1 to 6, ports 8081 to 8086), `oa-room@staging` (8090) |
 | Load balancer | instance group `oa-room-vm-ig` (named ports `s1`..`s6`, `staging`), health check `oa-room-vm-hc` (`/health` on the serving port), backend services `oa-room-vm-s1`..`s6` and `oa-room-vm-staging`, one-day timeout |
 | URL map | `coaxial-openagents-web-staging`: the `production` and `everglade` path matchers' `/api/room/sK/` rules go to `oa-room-vm-sK`; the `staging` matcher's go to `oa-room-vm-staging` |
 
 ```
 page ── wss://openagents.com/api/room/sK/… ── HTTPS load balancer ── oa-room-vm-sK ── oa-room-1:808K (oa-room@sK)
-       wss://room.openagents.com/api/room/sK/… ─────────── Caddy :443 ─────────────┘
+       wss://room.openagents.com:443K/api/room/sK/… ────── Caddy :443K ────────────┘
+       https://room.openagents.com:443K/api/room/sK/… (WebTransport, UDP 443K) ── oa-room@sK
 ```
 
-The pages reach the rooms through the load balancer, as they did on Cloud
-Run. Caddy on the VM answers `room.openagents.com` and
-`room-staging.openagents.com` on TCP 443 directly, routes `/api/room/sK/` to
-shard K, and holds the certificates the room's WebTransport (UDP 443) will
-use.
+The directory hands pages each shard's own endpoint,
+`room.openagents.com:443K` (#13187). A page opens WebTransport there on
+UDP 443K, served by the shard itself, and falls back to the WebSocket on TCP
+443K through Caddy. A page whose network blocks the port uses the load
+balancer's path. Caddy answers `room.openagents.com` and
+`room-staging.openagents.com` on TCP 443 too, routes `/api/room/sK/` to
+shard K, and holds the certificates the rooms' WebTransport uses
+(`vm/wt-cert.sh`).
 
 The staging unit reports to the staging API (`OA_ROOM_API=https://staging.openagents.com`):
 its directory, room control, vitals and checkpoints. staging.openagents.com's
@@ -243,14 +247,15 @@ shard.
 
 1. A row: `INSERT INTO verse.room_shards (shard, rooms_cap) VALUES (7, 3);`
 2. A unit: `/etc/oa-room/s7.env` (`PORT=8087`, `OA_ROOM_SHARD=7`,
-   `OA_ROOM_ENDPOINT=wss://room.openagents.com/api/room/s7/`, as `setup.sh`
-   writes 1 to 6), a Caddy route for `/api/room/s7/*`, a named port `s7` on
+   `OA_ROOM_ENDPOINT=wss://room.openagents.com:4437/api/room/s7/`, as `setup.sh`
+   writes 1 to 6), a Caddy route for `/api/room/s7/*` and a site on :4437,
+   UDP and TCP 4437 in `oa-room-public`, the shard in `vm/wt-cert.sh`, a named port `s7` on
    `oa-room-vm-ig`, a backend `oa-room-vm-s7`, and the url map's
    `/api/room/s7/` rules.
 
 More shards than one VM holds means a second VM in its own instance group.
 Once there is more than one shard per region on more than one VM, or the
-room's WebTransport (UDP 443) ships, put a passthrough network load balancer
+rooms need more UDP ports than one address holds, put a passthrough network load balancer
 (TCP and UDP 443) in front of each VM's address instead of pointing DNS at
 it, as `coder-sync-1` does; the directory's endpoints then name each VM's own
 host (`room-2.openagents.com`), so a page goes straight to its shard's VM.
