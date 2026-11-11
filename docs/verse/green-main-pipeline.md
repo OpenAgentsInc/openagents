@@ -11,8 +11,12 @@ that wrote it, and reverts the commit if it still fails 30 minutes later.
 To see the state of `main`:
 
 ```sh
-coax/remote/after.sh state    # main, main-green, the last runs, the red list
+coax/remote/after.sh state    # the watcher, main, main-green, the last runs, the red list
 ```
+
+The first line says whether the watcher is running. When it is not, no head
+is checked and `main-green` does not move. Start it with
+`coax/remote/after.sh install`.
 
 The design follows a merge-queue layout that Kit Langton published on
 2026-11-09: builders hand off to an integrator, a fast check runs before
@@ -193,11 +197,21 @@ compile-time totals and wasm sizes shows which commit made a unit grow.
 A job whose host stops under it (the hosts are spot machines) runs again, up
 to two more times, before the run counts as unfinished.
 
+An unfinished run leaves the head unjudged, neither green nor red. The same
+is true when the hosts could not finish a bisect. The jobs that did not pass
+run again at once on the same head, and the jobs that passed are kept. After
+three such runs (`OA_AFTER_UNFINISHED`) the pipeline reports it, then tries
+the head again every half hour. A new head is checked at once. So a failed
+bisect never leaves `main-green` waiting for someone to push.
+
 ### 5. A failure finds its culprit and goes back to its author
 
-When a run fails, `after.sh` bisects between `main-green` and the failing
-head. It runs only the failing check, several commits at once on parallel
-host slots, so a run of eight commits takes one or two rounds. It then:
+When a run fails, `after.sh` first runs the failing check again on the head.
+If it passes, the check is flaky (see below). If it fails again, `after.sh`
+bisects between `main-green` and the head. It runs only the failing check,
+several commits at once on parallel host slots, so a run of eight commits
+takes one or two rounds. A commit the hosts could not run is left out of its
+round, and the other commits still narrow the range. It then:
 
 1. Files an issue that names the culprit commit, the failing check and its
    output, and the agent from the commit's `Agent:` trailer.
@@ -205,15 +219,20 @@ host slots, so a run of eight commits takes one or two rounds. It then:
    alone.
 3. Adds the failure to the red list (`releases/after/red.json`), so other
    agents know a failure on `main` is already owned.
+4. Comments on each issue the culprit's subject names (`#NNNN`), so the
+   session working on that issue hears of the failure before any revert.
 
 A check that fails at the head and passes when run again is flaky. It is
-recorded in `releases/after/flaky.txt` and has no culprit.
+recorded in `releases/after/flaky.txt` and has no culprit. A check that is
+already in that file gets three runs on the head, and one pass is enough.
 
 Each later run that still sees the failure stamps the red-list entry. When a
 run sees it 30 minutes or more after the entry opened, the integrator lands a
 revert of the culprit commit and reopens its issue. The revert's check is a
 branch's check plus the check the culprit broke, which must pass with the
-revert, so a wrong culprit is never reverted. The revert's message says which
+revert, so a wrong culprit is never reverted. That check must also still fail
+on the head the revert lands on: when a fix landed first, the revert is
+dropped and the entry closes. The revert's message says which
 check failed, and the agent gets a message that names the revert.
 
 ### 6. Releases ship `main-green`
@@ -255,8 +274,8 @@ Issue [#13102](https://github.com/OpenAgentsInc/openagents/issues/13102).
 | --- | --- |
 | Submit and the queue refs | `coax/remote/submit.sh` (`status`, `withdraw`) |
 | The integrator | `coax/remote/integrate.sh` (`--once`, `status`) |
-| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `room`, `tools`) |
-| The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `state`, `red`, `history`) |
+| One check on a host | `coax/remote/check.sh` (`branch BASE`, `since BASE I/N`, `web BASE`, `room-since BASE`, `suites I/N`, `only PATHS`, `compiler I/N`, `unit UNIT`, `modules I/N`, `module NAME`, `wasm`, `reports`, `visuals`, `room`, `tools`) |
+| The after-landing check, bisect and red list | `coax/remote/after.sh` (`--once`, `--watch`, `install`, `uninstall`, `state`, `health`, `red`, `history`) |
 | The revert | `coax/remote/integrate.sh --revert`, which `after.sh --watch` runs each minute |
 | Releases from `main-green` | `coax/web/release.sh` |
 | Shared settings | `coax/remote/pipeline-lib.sh` |
@@ -266,13 +285,41 @@ instead of a snapshot of the checkout, so the integrator and `after.sh` check
 exact commits without a worktree. `coax/web/tool.sh suites --part I/N` splits
 the suites across host slots.
 
-The coordinator runs one watcher on the Mac. It runs the after-landing check
-on each new head, and one integrator round a minute for the 30-minute revert
-and for any branch an agent submitted:
+One watcher runs on the coordinator's Mac, under launchd. It runs the
+after-landing check on each new head, and one integrator round a minute for
+the 30-minute revert and for any branch an agent submitted:
 
 ```sh
-coax/remote/after.sh --watch        # --no-revert: report culprits, revert nothing
+coax/remote/after.sh install        # start it, now and at every login
+coax/remote/after.sh uninstall      # stop it
+coax/remote/after.sh --watch        # the same loop in a terminal (--no-revert: revert nothing)
 ```
+
+`install` writes `~/Library/LaunchAgents/com.openagents.green-main.plist`.
+The job runs `after.sh --watch` in a checkout of its own,
+`~/.openagents/pipeline/checkout`, which holds only `coax/remote`. launchd
+starts it at login and starts it again whenever it stops. When the pipeline's
+scripts change on `main`, the watcher stops after its current run and starts
+again on the new scripts. Its log is `~/.openagents/pipeline/logs/after.out`.
+
+### When the pipeline itself fails
+
+Until 2026-11-10 nothing ran the watcher: each run was started by hand with
+`after.sh --once`. The last of them ended at 21:45 Chicago time, and for more
+than an hour 40 commits landed with no check and `main-green` did not move.
+The pipeline now reports its own trouble in three places: the log, the file
+`~/.openagents/pipeline/ALARM` (which `after.sh state` prints), and one
+GitHub issue titled "Green-main pipeline needs attention", which it opens,
+comments on, and closes when `main-green` next moves. It reports when:
+
+- the watcher starts after 15 minutes or more without running;
+- `main-green` is three hours behind `main` (`OA_AFTER_STALE`), for any
+  reason;
+- the hosts could not finish the check of one head three times in a row.
+
+Each kind is reported at most once every two hours
+(`OA_PIPELINE_ALARM_GAP`). `release.sh` also prints a warning when the
+watcher is not running (`after.sh health`).
 
 Measured on 2026-11-09 on today's tree: a branch check takes 8 to 42 s of
 host time when it touches a few suites or modules, about $0.001 to $0.003 of
@@ -320,6 +367,10 @@ the room build and the compiler's units took 41 minutes on shared hosts and
 - Compile-limit totals come from the web build's near-limit notes (75% and
   up). `tool.sh suites` doesn't pass a suite's notes on, so a touched test
   suite's totals aren't reported.
+- `check-visuals` is a report check since 2026-11-10. `build.sh` stops on it
+  before any module, and the module jobs run `wasm.sh` alone, so no run saw
+  it fail. A bisect runs `coax/web/check-visuals.sh` as itself, so it can
+  judge commits older than the step.
 - No run includes the drift check: it needs a browser, and the hosts have
   none.
 - `suites --since` picks suites from the `#load` graph. A suite's checks run

@@ -8,7 +8,12 @@
 #   coax/remote/after.sh --watch    the same every minute, for ever, and the
 #                                   30-minute revert (integrate.sh --once --revert;
 #                                   --no-revert or OA_AFTER_REVERT=0: no reverts)
-#   coax/remote/after.sh state      main, main-green, the last run and the red list
+#   coax/remote/after.sh install    run the watcher under launchd: it starts at login,
+#                                   starts again whenever it stops, and takes new
+#                                   pipeline scripts from main (uninstall: stop it)
+#   coax/remote/after.sh state      the watcher, main, main-green, the last runs and
+#                                   the red list
+#   coax/remote/after.sh health     whether the watcher is running (status 1: it is not)
 #   coax/remote/after.sh red        the red list: failures on main and who owns them
 #   coax/remote/after.sh history [NAME]
 #                                   compile-limit use and wasm sizes per commit
@@ -52,7 +57,15 @@
 # failure goes on the red list owned by nobody, under one issue.
 #
 # A job a host could not finish (a spot host stopped under it) runs again, up
-# to OA_AFTER_RETRIES times, before the run counts as unfinished.
+# to OA_AFTER_RETRIES times, before the run counts as unfinished. An unfinished
+# run, or a bisect the hosts could not finish, leaves the head unjudged: the
+# jobs that did not pass run again at once on the same head, up to
+# OA_AFTER_UNFINISHED (3) runs, then every half hour, and it is reported.
+#
+# The pipeline reports its own trouble (pipeline-lib.sh's pl_alarm: the log,
+# OA_PIPELINE_DIR/ALARM and one GitHub issue): the watcher was not running,
+# main-green is OA_AFTER_STALE (10800) seconds behind main, or the hosts could
+# not finish a head.
 #
 # Results: OA_PIPELINE_DIR/releases/after/COMMIT/ (each job's output and
 # report, run.tsv with each job's status and seconds, kind and status),
@@ -64,7 +77,8 @@
 # seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
 # OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing checks bisected one by
 # one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job),
-# OA_AFTER_RETRIES (2), OA_AFTER_PAGES (0: no pages), OA_AFTER_PAGES_GAP
+# OA_AFTER_RETRIES (2), OA_AFTER_UNFINISHED (3), OA_AFTER_STALE (10800),
+# OA_AFTER_FLAKY_TRIES (3), OA_AFTER_PAGES (0: no pages), OA_AFTER_PAGES_GAP
 # (3600), OA_AFTER_CHECK (a command run as CMD COMMIT OUTDIR CHECK-ARGS... in
 # place of the remote check, for scratch runs), and
 # coax/remote/pipeline-lib.sh's OA_PIPELINE_*.
@@ -83,8 +97,20 @@ compiler_mode="${OA_AFTER_COMPILER:-auto}"
 width="${OA_BISECT_WIDTH:-4}"
 bisect_checks="${OA_BISECT_CHECKS:-4}"
 limit="${OA_AFTER_TIMEOUT:-3000}"
+max_unfinished="${OA_AFTER_UNFINISHED:-3}"
+stale="${OA_AFTER_STALE:-10800}"
 results="$pl_dir/releases/after"
 history="$results/history.tsv"
+label="${OA_AFTER_LABEL:-com.openagents.green-main}"
+# Whether a watcher is alive, from the time it writes each minute (heartbeat).
+watcher_health() {
+  local at=0 age
+  [[ ! -f "$results/heartbeat" ]] || at="$(cat "$results/heartbeat")"
+  age=$(( $(date +%s) - at ))
+  if (( age < 300 )); then echo "watcher     running, seen $age s ago"; return 0; fi
+  echo "watcher     NOT RUNNING$( (( at == 0 )) || echo " since $(date -r "$at" '+%Y-%m-%d %H:%M')"): no head is checked and $pl_green does not move. Start it: coax/remote/after.sh install"
+  return 1
+}
 
 case "${1:-}" in
   state)
@@ -92,6 +118,8 @@ case "${1:-}" in
     git fetch -q "$pl_remote" "+refs/heads/$pl_green:refs/remotes/$pl_remote/$pl_green" 2> /dev/null || git update-ref -d "refs/remotes/$pl_remote/$pl_green" 2> /dev/null
     h="$(git rev-parse -q --verify "refs/remotes/$pl_remote/$pl_main" 2> /dev/null || true)"
     g="$(git rev-parse -q --verify "refs/remotes/$pl_remote/$pl_green" 2> /dev/null || true)"
+    watcher_health
+    [[ ! -s "$pl_dir/ALARM" ]] || { echo "alarms (time, kind, what):"; tail -n 5 "$pl_dir/ALARM" | sed 's/^/  /'; }
     echo "$pl_main        ${h:0:10} $(git log -1 --format='%s' "$h" 2> /dev/null | cut -c1-70)"
     if [[ -z "$g" ]]; then echo "$pl_green  none: no run has passed yet"
     else echo "$pl_green  ${g:0:10} $(git log -1 --format='%cd' --date=format-local:'%Y-%m-%d %H:%M' "$g"), $(git rev-list --count "$g..$h" 2> /dev/null) commit(s) behind $pl_main"; fi
@@ -102,6 +130,55 @@ case "${1:-}" in
     n="$(jq '[.[] | select(.status == "open")] | length' "$pl_red")"
     echo "red list: $n open"
     jq -r '.[] | select(.status == "open") | "  \(.check): \(if .culprit == "" then "no culprit" else .culprit[0:10] + " by " + .agent end)\(if .issue then " (#" + .issue + ")" else "" end)"' "$pl_red" | head -n 40
+    exit 0 ;;
+  health) watcher_health; exit $? ;;
+  install)
+    # The watcher as a launchd job that starts at login and starts again
+    # whenever it stops, in a checkout of its own that holds only coax/remote.
+    root="$(git rev-parse --show-toplevel 2> /dev/null)" || { echo "after: not in a Git checkout" >&2; exit 2; }
+    co="$pl_dir/checkout"; plist="$HOME/Library/LaunchAgents/$label.plist"; mref="refs/remotes/$pl_remote/$pl_main"
+    git -C "$root" fetch -q "$pl_remote" "+refs/heads/$pl_main:$mref" || { echo "after: could not fetch $pl_remote" >&2; exit 1; }
+    if [[ ! -e "$co/.git" ]]; then
+      git -C "$root" worktree prune
+      git -C "$root" worktree add -q --detach --no-checkout "$co" "$mref" || exit 1
+      git -C "$co" sparse-checkout set --cone coax/remote || exit 1
+    fi
+    git -C "$co" checkout -q --detach "$mref" || exit 1
+    esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<< "$1"; }
+    cmd="cd '$co' || exit 1; if git fetch -q $pl_remote '+refs/heads/$pl_main:$mref'; then git checkout -q --detach '$mref'; fi; exec coax/remote/after.sh --watch"
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key><array><string>$(esc "$(command -v bash)")</string><string>-c</string><string>$(esc "$cmd")</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>$(esc "$PATH")</string>
+    <key>HOME</key><string>$(esc "$HOME")</string>
+    <key>OA_AFTER_SUPERVISED</key><string>1</string>
+    <key>OA_PIPELINE_DIR</key><string>$(esc "$pl_dir")</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>AbandonProcessGroup</key><true/>
+  <key>StandardOutPath</key><string>$(esc "$pl_dir/logs/after.out")</string>
+  <key>StandardErrorPath</key><string>$(esc "$pl_dir/logs/after.out")</string>
+</dict></plist>
+EOF
+    launchctl bootout "gui/$(id -u)/$label" 2> /dev/null
+    for try in 1 2 3 4 5 6; do
+      launchctl bootstrap "gui/$(id -u)" "$plist" 2> /dev/null && break
+      sleep 2
+    done
+    launchctl print "gui/$(id -u)/$label" > /dev/null 2>&1 || { echo "after: launchd did not take $plist" >&2; exit 1; }
+    echo "after: the watcher runs as $label from $co; its log is $pl_dir/logs/after.out"
+    exit 0 ;;
+  uninstall)
+    launchctl bootout "gui/$(id -u)/$label" 2> /dev/null
+    rm -f "$HOME/Library/LaunchAgents/$label.plist" "$results/heartbeat"
+    echo "after: the watcher is stopped and will not start again"
     exit 0 ;;
   red)
     jq -r '.[] | "\(.status)\t\(.check)\t\(if .culprit == "" then "-" else .culprit[0:10] end) \(.subject)\tagent \(.agent)\t#\(.issue // "-")\t\(.opened | strflocaltime("%Y-%m-%d %H:%M %Z"))"' "$pl_red"
@@ -117,7 +194,7 @@ while (($#)); do
     --once) shift ;;
     --watch) watch=1; shift ;;
     --no-revert) revert=0; shift ;;
-    -h|--help) sed -n '2,62p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,84p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "after: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -142,7 +219,11 @@ check() {   # commit outdir check-args...
       # shellcheck disable=SC2086
       timeout "$limit" $OA_AFTER_CHECK "$commit" "$dir" "$@" > "$dir/out" 2>&1; s=$?
     else
-      OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- coax/remote/check.sh "$@" > "$dir/out" 2>&1; s=$?
+      # check-visuals runs as itself, so a bisect can run it on commits whose
+      # check.sh has no such step.
+      local cmd=(coax/remote/check.sh "$@")
+      [[ "$1" != visuals ]] || cmd=(coax/web/check-visuals.sh apps/openagents-web)
+      OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- "${cmd[@]}" > "$dir/out" 2>&1; s=$?
     fi
     case "$s" in 0|1) break ;; 124) echo "after: the check ran past $limit s" >> "$dir/out"; s=97; break ;; 97|255) s=97 ;; *) s=1; break ;; esac
     (( try < retries )) || break
@@ -163,47 +244,55 @@ args_for() {   # item job-args...
     job\ *) echo "${item#job }" ;;
     step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
+    step\ check-visuals) echo "visuals" ;;
     *) echo "$*" ;;   # the whole job again
   esac
 }
 
-# Bisect one check between good (passes) and the commits after it up to bad.
-# Prints the culprit, "flaky" when bad passes when run again, "infra" when the
-# hosts could not run a check, or "" when it did not settle in 20 rounds.
+# A failing check run again on the head: "flaky" when it passes, "red" when
+# it fails again, "infra" when the hosts could not run it. A check that was
+# flaky before (flaky.txt) gets OA_AFTER_FLAKY_TRIES (3) runs, and one pass is
+# enough.
+confirm() {   # dir head item check-args...
+  local dir="$1" head="$2" item="$3" tries=1 t; shift 3
+  ! cut -f2 "$results/flaky.txt" 2> /dev/null | grep -qxF "$item" || tries="${OA_AFTER_FLAKY_TRIES:-3}"
+  for (( t = 1; t <= tries; t++ )); do
+    check "$head" "$dir/c$t-${head:0:10}" "$@"
+    case $? in 0) echo flaky; return 0 ;; 97) echo infra; return 0 ;; esac
+  done
+  echo red
+}
+# Bisect one check between good (passes) and bad (fails: confirm ran it
+# again). Prints the culprit, "infra" when the hosts could not run any commit
+# of a round, or "" when it did not settle in 20 rounds. A commit the hosts
+# could not run is left out of its round; the others still narrow the range.
 bisect() {   # dir good bad check-args...
   local dir="$1" good="$2" bad="$3"; shift 3
   local list=() c
   while read -r c; do list+=("$c"); done < <(git rev-list --reverse --first-parent "$good..$bad")
   (( ${#list[@]} > 0 )) || { echo ""; return 0; }
-  local lo=-1 hi=$(( ${#list[@]} - 1 )) round=0 confirmed=0
+  local lo=-1 hi=$(( ${#list[@]} - 1 )) round=0
   # lo: the index known to pass (-1: good), hi: the index known to fail.
-  while (( hi - lo > 1 || confirmed == 0 )); do
+  while (( hi - lo > 1 )); do
     round=$((round + 1))
     local points=() n=$(( hi - lo - 1 )) i
-    if (( confirmed == 0 )); then points+=("$hi"); fi
-    local want=$(( width - ${#points[@]} ))
-    if (( n > 0 && want > 0 )); then
-      if (( n <= want )); then for (( i = lo + 1; i < hi; i++ )); do points+=("$i"); done
-      else for (( i = 1; i <= want; i++ )); do points+=("$(( lo + (n + 1) * i / (want + 1) ))"); done
-      fi
+    if (( n <= width )); then for (( i = lo + 1; i < hi; i++ )); do points+=("$i"); done
+    else for (( i = 1; i <= width; i++ )); do points+=("$(( lo + (n + 1) * i / (width + 1) ))"); done
     fi
     local pids=() p
     for p in "${points[@]}"; do check "${list[$p]}" "$dir/r$round-${list[$p]:0:10}" "$@" & pids+=($!); done
-    local st=() k
+    local st=() k settled=0
     for k in "${!pids[@]}"; do wait "${pids[$k]}"; st+=($?); done
     # Lowest failing point, highest passing point under it.
     local newhi=$hi newlo=$lo
     for k in "${!points[@]}"; do
       p="${points[$k]}"
       case "${st[$k]}" in
-        97) echo "infra"; return 0 ;;
-        1) (( p < newhi )) && newhi=$p ;;
+        0) settled=1 ;;
+        1) settled=1; (( p < newhi )) && newhi=$p ;;
       esac
     done
-    if (( confirmed == 0 )); then
-      for k in "${!points[@]}"; do [[ "${points[$k]}" == "$hi" ]] && { [[ "${st[$k]}" == 1 ]] || { echo flaky; return 0; }; }; done
-      confirmed=1
-    fi
+    (( settled == 1 )) || { echo infra; return 0; }
     for k in "${!points[@]}"; do
       p="${points[$k]}"
       [[ "${st[$k]}" == 0 ]] && (( p < newhi && p > newlo )) && newlo=$p
@@ -237,7 +326,7 @@ pages_of() {   # head: its pages into the shared store, once, in the background 
   [[ "${OA_AFTER_PAGES:-1}" != 0 && -z "${OA_AFTER_CHECK:-}" ]] || return 0
   due last-pages "$pages_gap" || return 0
   date +%s > "$results/last-pages"
-  ( "$here/pages.sh" build "$1" > "$results/$1/pages.log" 2>&1 && pl_say "after: ${1:0:10}'s pages are in the shared store" ) &
+  ( "$here/pages.sh" build "$1" > "$results/$1/pages.log" 2>&1 && pl_say "after: ${1:0:10}'s pages are in the shared store" ) 8>&- 7>&- &
 }
 
 
@@ -256,6 +345,30 @@ record_run() {   # head kind status started jobs
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M')" "${1:0:10}" "$2" "$3" "$(( $(date +%s) - $4 ))" "$slot" "$5" >> "$results/runs.tsv"
   echo "$(( $(date +%s) - $4 )) s, $slot slot-seconds"
 }
+# The hosts could not finish H's run: what did not finish runs again at once
+# (the jobs that passed are kept), OA_AFTER_UNFINISHED (3) times. Then it is
+# reported, and H waits half an hour or for a new head.
+unfinished() {   # head kind started jobs why
+  local dir="$results/$1" n cost
+  n=$(( $(cat "$dir/tries" 2> /dev/null || echo 0) + 1 )); echo "$n" > "$dir/tries"
+  cost="$(record_run "$1" "$2" unfinished "$3" "$4")"
+  if (( n < max_unfinished )); then
+    rm -f "$results/last-$2"
+    pl_say "after: $5 on ${1:0:10}; what did not finish runs again (try $n of $max_unfinished; $cost)"
+    return 0
+  fi
+  echo unfinished > "$dir/status"; date +%s > "$results/last-unfinished"
+  pl_say "after: $5 on ${1:0:10}, $n times; it is tried again in half an hour or on a new head ($cost)"
+  pl_alarm unfinished "the hosts could not finish the check of ${1:0:10}" "$5 on ${1:0:10}, $n times in a row, so \`$pl_green\` has not moved. The pipeline tries this head again in half an hour, and a new head at once.
+
+Each job's status and seconds (97: the hosts could not run it):
+
+\`\`\`
+$(tail -n 30 "$dir/run.tsv" 2> /dev/null)
+\`\`\`
+
+The hosts: \`coax/remote/remote.sh status\`. Each job's output: \`$dir/\` on the coordinator's Mac."
+}
 # H passed: main-green moves to it. A full run also records it as the last
 # head where every check ran and passed.
 go_green() {   # head green kind started jobs note
@@ -267,6 +380,7 @@ go_green() {   # head green kind started jobs note
     pl_say "after: green ($kind run$6); $pl_green stays at ${head:0:10} ($cost)"
   elif git push -q "$pl_remote" "$head:refs/heads/$pl_green" 2> /dev/null; then
     pl_say "after: green ($kind run$6); $pl_green is ${head:0:10} ($cost)"
+    pl_alarm_clear "\`$pl_green\` moved to ${head:0:10} after a green $kind run."
     pages_of "$head"
   else
     pl_say "after: green ($kind run$6), but $pl_green could not move to ${head:0:10}"
@@ -279,6 +393,8 @@ run_head() {
   head="$(git rev-parse "$main_ref")"
   green="$(git rev-parse -q --verify "$green_ref" 2> /dev/null || true)"
   local dir="$results/$head"
+  # A head the hosts could not finish is tried again half an hour on.
+  if [[ "$(cat "$dir/status" 2> /dev/null)" == unfinished ]] && due last-unfinished 1800; then rm -f "$dir/status"; fi
   [[ ! -f "$results/full-green" ]] || full_green="$(cat "$results/full-green")"
   [[ -z "$full_green" ]] || git merge-base --is-ancestor "$full_green" "$head" 2> /dev/null || full_green=""
   # What a fast run compares against: main-green. With no main-green, the
@@ -308,7 +424,9 @@ run_head() {
     return 0
   fi
   date +%s > "$results/last-$kind"
-  [[ -f "$dir/status" ]] || rm -rf "$dir"
+  # An unfinished run on this head left the jobs that passed (passed): they
+  # don't run again.
+  if [[ -f "$dir/status" ]]; then rm -f "$dir/passed" "$dir/tries"; elif [[ ! -f "$dir/tries" ]]; then rm -rf "$dir"; fi
   mkdir -p "$dir"; rm -f "$dir/failed"; echo "$kind" > "$dir/kind"
   local started; started=$(date +%s)
   # What a failure is bisected against: what the run compares against, or for
@@ -352,11 +470,15 @@ run_head() {
   fi
   local pids=() names=() j
   for j in "${jobs[@]}"; do
+    names+=("$j")
+    if grep -qxF "$j" "$dir/passed" 2> /dev/null; then pids+=(0); continue; fi
     # shellcheck disable=SC2086
-    check "$head" "$dir/${j//[ \/]/-}" $j & pids+=($!); names+=("$j")
+    check "$head" "$dir/${j//[ \/]/-}" $j & pids+=($!)
   done
+  [[ ! -s "$dir/passed" ]] || pl_say "after: $(wc -l < "$dir/passed" | tr -d ' ') of the job(s) passed on ${head:0:10} before and don't run again"
   local st=() k failed=() infra=0
-  for k in "${!pids[@]}"; do wait "${pids[$k]}"; st+=($?); done
+  for k in "${!pids[@]}"; do if [[ "${pids[$k]}" == 0 ]]; then st+=(0); else wait "${pids[$k]}"; st+=($?); fi; done
+  for k in "${!names[@]}"; do [[ "${st[$k]}" != 0 ]] || echo "${names[$k]}"; done > "$dir/passed"
   # Per-commit compile-limit use and sizes.
   cat "$dir"/*/build/pipeline/limits.txt 2> /dev/null | sort -u > "$dir/limits.txt"
   cat "$dir"/*/build/pipeline/sizes.txt 2> /dev/null | sort -u > "$dir/sizes.txt"
@@ -414,8 +536,7 @@ $(awk -F'\t' -v i="$issue" '$3 == i { print "- `" $2 "`" }' "$dir/fixed.tsv" | h
     return 0
   fi
   if (( ${#failed[@]} == 0 )); then
-    pl_say "after: the hosts could not run every job on ${head:0:10}; it is checked again next time ($(record_run "$head" "$kind" unfinished "$started" "${#jobs[@]}"))"
-    rm -f "$results/last-$kind"
+    unfinished "$head" "$kind" "$started" "${#jobs[@]}" "the hosts could not run every job"
     return 0
   fi
   # Red: bisect each failing check, unless the red list owns it.
@@ -452,7 +573,7 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
     pl_say "after: $kind run on ${head:0:10}: $(record_run "$head" "$kind" red "$started" "${#jobs[@]}")"
     return 0
   fi
-  local bpids=() bitems=() n=0 job args rest=() owned=0 flaky_n=0 found=0
+  local bpids=() bitems=() n=0 job args rest=() owned=0 flaky_n=0 found=0 infra_b=0
   for x in ${failed[@]+"${failed[@]}"}; do
     item="${x%%|*}"; job="${x#*|}"
     if jq -e --arg c "$item" '.[] | select(.status == "open" and .check == $c)' "$pl_red" > /dev/null; then
@@ -461,7 +582,9 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
     if (( n < bisect_checks )); then
       args="$(args_for "$item" "$job")"
       # shellcheck disable=SC2086
-      ( bisect "$dir/bisect-$n" "$base" "$head" $args > "$dir/bisect-$n.culprit" ) & bpids+=($!); bitems+=("$item"); n=$((n + 1))
+      ( c="$(confirm "$dir/bisect-$n" "$head" "$item" $args)"
+        [[ "$c" != red ]] || c="$(bisect "$dir/bisect-$n" "$base" "$head" $args)"
+        echo "$c" > "$dir/bisect-$n.culprit" ) & bpids+=($!); bitems+=("$item"); n=$((n + 1))
     else rest+=("$item"); fi
   done
   (( ${#rest[@]} == 0 )) || pl_say "after: left for the next run (OA_BISECT_CHECKS=$bisect_checks): ${rest[*]}"
@@ -472,7 +595,7 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
     case "$culprit" in
       flaky) pl_say "after: $item failed at ${head:0:10} and passed when run again: flaky"
              printf '%s\t%s\n' "${head:0:10}" "$item" >> "$results/flaky.txt"; flaky_n=$((flaky_n + 1)); continue ;;
-      infra) pl_say "after: the hosts could not finish the bisect of $item"; continue ;;
+      infra) pl_say "after: the hosts could not finish the bisect of $item"; infra_b=$((infra_b + 1)); continue ;;
       "") pl_say "after: the bisect of $item found no culprit after ${base:0:10}"
           continue ;;
     esac
@@ -487,11 +610,16 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
 Output: $out
 Run it alone: coax/remote/remote.sh run -- coax/remote/check.sh $(args_for "$item" "$job")
 Fixing it comes before new work. If it still fails 30 minutes from now, the integrator reverts the commit."
+    # The issues the culprit's subject names hear of it too, before any revert.
+    local r
+    for r in $(grep -oE '#[0-9]+' <<< "$subject" | tr -d '#' | sort -u); do
+      [[ "$r" == "$issue" ]] || pl_issue_comment "$r" "The after-landing check \`$item\` fails on \`$pl_main\` since ${culprit:0:10} (\"$subject\"), by agent \`$agent\`${issue:+: #$issue}. If it still fails 30 minutes from now, the integrator queues a revert of ${culprit:0:10}; a fix on \`$pl_main\` before then means nothing is reverted. Run the check alone with \`coax/remote/remote.sh run -- $([[ "$(args_for "$item" "$job")" == visuals ]] && echo "coax/web/check-visuals.sh apps/openagents-web" || echo "coax/remote/check.sh $(args_for "$item" "$job")")\`."
+    done
     pl_say "after: $item: culprit ${culprit:0:10} by $agent${issue:+ (#$issue)}"
     found=$((found + 1))
   done
   # Every failure passed when run again on H: H is green.
-  if (( owned == 0 && ${#rest[@]} == 0 && flaky_n == ${#failed[@]} )); then
+  if (( infra == 0 && infra_b == 0 && owned == 0 && ${#rest[@]} == 0 && flaky_n == ${#failed[@]} )); then
     go_green "$head" "$green" "$kind" "$started" "${#jobs[@]}" ", on a second run of $flaky_n flaky check(s)"
     return 0
   fi
@@ -501,8 +629,30 @@ Fixing it comes before new work. If it still fails 30 minutes from now, the inte
     git push -q --force "$pl_remote" "$base:refs/heads/$pl_green" 2> /dev/null &&
       pl_say "after: a full run failed after fast runs passed; $pl_green is back at ${base:0:10}"
   fi
+  # A job or a bisect the hosts could not finish: the head is not red yet, and
+  # main-green must not wait for a new head. What did not finish runs again.
+  if (( infra == 1 || infra_b > 0 )); then
+    unfinished "$head" "$kind" "$started" "${#jobs[@]}" "the hosts could not finish every job and bisect"
+    return 0
+  fi
   echo red > "$dir/status"; [[ "$kind" != full ]] || { : > "$dir/full"; echo "$head" > "$results/full-head"; }
   pl_say "after: $kind run and bisects on ${head:0:10}: $(record_run "$head" "$kind" red "$started" "${#jobs[@]}")"
+}
+# main-green far behind main is reported, whatever the reason: releases ship it.
+stale_check() {
+  local head green first age
+  head="$(git rev-parse -q --verify "$main_ref" 2> /dev/null || true)"
+  green="$(git rev-parse -q --verify "$green_ref" 2> /dev/null || true)"
+  [[ -n "$head" && -n "$green" && "$head" != "$green" ]] || return 0
+  first="$(git rev-list --reverse --first-parent "$green..$head" | head -1)"
+  [[ -n "$first" ]] || return 0
+  age=$(( $(date +%s) - $(git log -1 --format=%ct "$first") ))
+  (( age >= stale )) || return 0
+  pl_alarm stale "$pl_green is $(( age / 3600 )) h $(( age % 3600 / 60 )) min behind $pl_main" "\`$pl_green\` is ${green:0:10}, and the oldest of the $(git rev-list --count "$green..$head") commit(s) after it landed $(( age / 60 )) minutes ago. Releases ship \`$pl_green\`, so they are that far behind.
+
+\`\`\`
+$("$here/after.sh" state 2>&1 | head -n 40)
+\`\`\`"
 }
 
 once() {
@@ -512,13 +662,28 @@ once() {
   exec 8>&-
 }
 if (( watch == 1 )); then
+  exec 7> "$results/watch.lock"
+  flock -n 7 || { pl_say "after: another watcher is running ($results/watch.lock)"; exit 75; }
   pl_say "after: watching $pl_remote/$pl_main (full runs every $gap s, reverts $([[ $revert == 1 ]] && echo on || echo off))"
+  # A gap in the heartbeat is a time when nothing was checked: say so.
+  if [[ -f "$results/heartbeat" ]]; then
+    was="$(cat "$results/heartbeat")"; down=$(( $(date +%s) - was ))
+    (( down < 900 )) || pl_alarm "down-$was" "the watcher was not running for $(( down / 60 )) minutes" "No after-landing check ran between $(date -r "$was" '+%Y-%m-%d %H:%M') and $(date '+%Y-%m-%d %H:%M %Z'), so \`$pl_green\` did not move. The watcher is running again and checks the newest head now."
+  fi
+  ( while kill -0 $$ 2> /dev/null; do date +%s > "$results/heartbeat"; sleep 60; done ) 7>&- &
   while true; do
     once
+    stale_check
+    # Under launchd (after.sh install): new pipeline scripts on main are taken
+    # by stopping here; launchd starts the watcher again on them.
+    if [[ -n "${OA_AFTER_SUPERVISED:-}" ]] && ! git diff --quiet HEAD "$main_ref" -- coax/remote 2> /dev/null; then
+      pl_say "after: the pipeline's scripts changed on $pl_main; starting again on them"
+      exit 0
+    fi
     # The 30-minute revert, and any branch agents submitted: one integrator
     # round, beside the next run (it holds its own lock).
     if [[ "$revert" == 1 ]]; then
-      ( OA_INTEGRATE_QUIET=1 "$here/integrate.sh" --once --revert >> "$pl_dir/logs/integrate.out" 2>&1 & )
+      ( OA_INTEGRATE_QUIET=1 "$here/integrate.sh" --once --revert >> "$pl_dir/logs/integrate.out" 2>&1 7>&- & )
     fi
     sleep "${OA_AFTER_POLL:-30}"
   done

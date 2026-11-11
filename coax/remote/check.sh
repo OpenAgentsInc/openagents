@@ -29,6 +29,8 @@
 #   coax/remote/check.sh reports          tools-check, everglade-parity, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
+#   coax/remote/check.sh visuals          check-visuals alone (the web build's first stop:
+#                                         a page or the host building visible UI)
 #   coax/remote/check.sh room             the room build
 #   coax/remote/check.sh tools            reports and room
 #
@@ -201,9 +203,12 @@ reports() {
   step tools-check coax/web/tool.sh tools-check || status=1
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
+  visuals
   generated
   cards
 }
+# build.sh stops on it before any module, and no module job runs build.sh.
+visuals() { step check-visuals coax/web/check-visuals.sh apps/openagents-web || status=1; }
 # The other committed files the web build writes (#13117): each realm's page
 # from realms.json, and the changelog page from coax/CHANGELOG.md.
 generated() {
@@ -234,6 +239,7 @@ reports_since() {
   fi
   if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then
     step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1
+    visuals
   fi
   # Their sources: the realm table and its generator, and the compiler's changelog.
   if grep -Eq '^(apps/openagents-web/realms|coax/web/realms\.ts|coax/CHANGELOG\.md|coax/web/changelog-page\.coax|apps/openagents-web/(changelog-content\.coax|coax/changelog/))' "$out/changed"; then
@@ -268,6 +274,7 @@ run() {   # mode arg: one check
       step modules build_modules || status=1
       cat "$out"/module-*.log >> "$log" 2> /dev/null ;;
     reports) reports ;;
+    visuals) visuals ;;
     room) room ;;
     tools) reports; room ;;
     *) return 2 ;;
@@ -296,7 +303,7 @@ case "$mode" in
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room
     else echo "== room-build: skipped, the change doesn't reach the room" >> "$log"; fi ;;
-  *) run "$mode" "$arg" || { sed -n '8,33p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
+  *) run "$mode" "$arg" || { sed -n '8,35p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
 echo "$status" > "$out/status"

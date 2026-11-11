@@ -73,3 +73,38 @@ pl_issue_comment() {   # issue-number text
   [[ "$pl_issues" == 1 && -n "$1" ]] || return 0
   gh issue comment "$1" --repo "$pl_repo" --body "$2" > /dev/null 2>&1 || pl_say "could not comment on #$1"
 }
+
+# A loud report that the pipeline itself needs attention (the watcher was not
+# running, main-green is stale, a head could not be checked): the log, the
+# ALARM file under the pipeline's directory (after.sh state prints it), and a
+# comment on one GitHub issue, opened when none is open. One report per KEY
+# every OA_PIPELINE_ALARM_GAP seconds (7200).
+pl_alarm() {   # key title text
+  local key="${1//[^A-Za-z0-9._-]/-}" gap="${OA_PIPELINE_ALARM_GAP:-7200}" n="" url
+  mkdir -p "$pl_dir/alarms"
+  if [[ -f "$pl_dir/alarms/$key" ]] && (( $(date +%s) - $(cat "$pl_dir/alarms/$key") < gap )); then return 0; fi
+  date +%s > "$pl_dir/alarms/$key"
+  pl_say "ALARM: $2"
+  printf '%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M %Z')" "$key" "$2" >> "$pl_dir/ALARM"
+  [[ "$pl_issues" == 1 ]] || return 0
+  [[ ! -f "$pl_dir/alarm-issue" ]] || n="$(cat "$pl_dir/alarm-issue")"
+  if [[ -n "$n" && "$(gh issue view "$n" --repo "$pl_repo" --json state --jq .state 2> /dev/null)" == OPEN ]]; then
+    gh issue comment "$n" --repo "$pl_repo" --body "**$2**
+
+$3" > /dev/null 2>&1 || pl_say "could not comment on #$n"
+  else
+    url="$(gh issue create --repo "$pl_repo" --title "Green-main pipeline needs attention: $2" --body "$3
+
+Reported by \`coax/remote/after.sh\` (docs/verse/green-main-pipeline.md). \`coax/remote/after.sh state\` shows the pipeline now. This issue closes itself when \`$pl_green\` next moves." 2> /dev/null)" &&
+      echo "${url##*/}" > "$pl_dir/alarm-issue" || pl_say "could not open an issue for the alarm"
+  fi
+}
+# main-green moved: the alarms are over.
+pl_alarm_clear() {   # text
+  [[ -f "$pl_dir/ALARM" || -f "$pl_dir/alarm-issue" ]] || return 0
+  rm -rf "$pl_dir/ALARM" "$pl_dir/alarms"
+  local n=""; [[ ! -f "$pl_dir/alarm-issue" ]] || n="$(cat "$pl_dir/alarm-issue")"
+  rm -f "$pl_dir/alarm-issue"
+  [[ "$pl_issues" == 1 && -n "$n" ]] || return 0
+  gh issue close "$n" --repo "$pl_repo" --comment "$1" > /dev/null 2>&1 || true
+}

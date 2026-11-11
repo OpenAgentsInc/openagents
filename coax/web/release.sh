@@ -114,6 +114,8 @@ if [[ -z "$ref" ]]; then
     ref=origin/main-green
     behind="$(git -C "$repo" rev-list --count origin/main-green..origin/main)"
     echo "release: main-green is $(git -C "$repo" rev-parse --short=10 origin/main-green), $behind commit(s) behind main; those ship once a full check passes on them"
+    "$repo/coax/remote/after.sh" health > /dev/null 2>&1 ||
+      echo "release: WARNING: the green-main watcher is not running on this computer, so main-green is not moving. Start it: coax/remote/after.sh install"
   else
     ref=origin/main
     echo "release: no main-green on origin; releasing origin/main"

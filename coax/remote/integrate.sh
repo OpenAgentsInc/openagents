@@ -100,6 +100,15 @@ run_check() {   # commit base outdir [also...]: 0 passed, 1 failed, 97 the hosts
   fi
   case "$s" in 0|1) return "$s" ;; 124) echo "integrate: the check ran past $limit s" >> "$dir/out"; return 97 ;; 97|255) return 97 ;; *) return 1 ;; esac
 }
+# The check a culprit broke, on the head its revert would land on: 0 it
+# passes (a fix landed first), 1 it still fails, 97 the hosts could not run it.
+head_check() {   # commit outdir check-args...
+  local commit="$1" dir="$2" s; shift 2
+  [[ -z "${OA_INTEGRATE_CHECK:-}" ]] || return 1
+  mkdir -p "$dir"
+  OA_REMOTE_TIMEOUT=$(( limit - 60 )) timeout "$limit" "$here/remote.sh" run --commit "$commit" --out "$dir" --no-fallback -- coax/remote/check.sh "$@" > "$dir/out" 2>&1; s=$?
+  case "$s" in 0|1) return "$s" ;; 124|97|255) return 97 ;; *) return 1 ;; esac
+}
 send_back() {   # name sha why logdir
   local name="$1" sha="$2" why="$3" dir="$4" agent="${1%%/*}"
   git push -q --force "$pl_remote" "$sha:refs/heads/$pl_rejected/$name" 2> /dev/null
@@ -124,6 +133,7 @@ also_for() {   # item
     step\ wasm) echo "wasm" ;;
     step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
+    step\ check-visuals) echo "visuals" ;;
   esac
 }
 # The revert step: a culprit that an after-landing run still saw failing
@@ -180,6 +190,19 @@ reverted() {   # queue name of a landed revert, landed commit
 Fix the failure on the newest $pl_main, then land the change again."
 }
 
+# A queued revert whose check already passes on main: the revert is dropped
+# and its red entry is fixed.
+fixed_first() {   # queue name, queued sha, head
+  local id check issue
+  IFS='|' read -r id check issue < <(jq -r --arg r "$1" '.[] | select(.revert == $r) | "\(.id)|\(.check)|\(.issue // "")"' "$pl_red")
+  git push -q "$pl_remote" --force-with-lease="refs/heads/$pl_queue/$1:$2" ":refs/heads/$pl_queue/$1" 2> /dev/null
+  [[ -n "$id" ]] || return 0
+  pl_red_update '(.[] | select(.id == $id)) |= (.status = "fixed" | .revert = "")' --arg id "$id"
+  pl_issue_comment "$issue" "\`$check\` passes on $pl_main at ${3:0:10}: a fix landed before the revert, so nothing was reverted."
+  [[ "$pl_issues" != 1 || -z "$issue" ]] || gh issue close "$issue" --repo "$pl_repo" > /dev/null 2>&1 || true
+  pl_say "$1: $check already passes on ${3:0:10}; nothing is reverted"
+}
+
 round() {
   fetch || { pl_say "could not fetch $pl_remote"; return 2; }
   queue_reverts
@@ -222,8 +245,14 @@ round() {
     # A revert must make the check its culprit broke pass.
     [[ "${names[${keep[$i]}]}" != integrator/revert-* ]] ||
       also="$(also_for "$(jq -r --arg r "${names[${keep[$i]}]}" '[.[] | select(.revert == $r)][0].check // ""' "$pl_red")")"
+    # A revert lands only while that check still fails on the head it lands
+    # on: when a fix landed first, nothing is reverted (status 96).
     # shellcheck disable=SC2086
-    run_check "${cands[$i]}" "${bases[$i]}" "$dir/$((i + 1))" $also & pids+=($!)
+    ( if [[ -n "$also" ]]; then
+        head_check "${bases[$i]}" "$dir/$((i + 1))-head" $also
+        case $? in 0) exit 96 ;; 97) exit 97 ;; esac
+      fi
+      run_check "${cands[$i]}" "${bases[$i]}" "$dir/$((i + 1))" $also ) & pids+=($!)
   done
   local results=()
   for i in "${!pids[@]}"; do wait "${pids[$i]}"; results+=($?); done
@@ -234,6 +263,7 @@ round() {
     case "${results[$i]}" in
       0) if [[ $waiting == 0 ]]; then land="${cands[$i]}"; landed=$((i + 1)); fi ;;
       97) pl_say "${names[$k]}: the hosts could not run its check; it stays queued"; waiting=1 ;;
+      96) fixed_first "${names[$k]}" "${shas[$k]}" "${bases[$i]}"; waiting=1 ;;
       *) if [[ $waiting == 0 ]]; then
            send_back "${names[$k]}" "${shas[$k]}" "its check failed on the head it would land on" "$dir/$((i + 1))"
            rejected=$((rejected + 1))
