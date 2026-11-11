@@ -19,6 +19,7 @@
 //       the held mouse, `down:2` and `up:2` hold and let go a button around other steps, `drive:walk-to guard` asks the realm's agent driver, `near:guard:20:60` waits until the driver lists ID within METRES (SECONDS at most); steps are split by `;`.
 //       A realm's sound is rendered offline in the shot's time, never played: stderr says what it
 //       did (the packets, the voices, the names played, the loudest sample), --audio OUT.wav writes it.
+//       --quality TIER starts the realm with that graphics tier kept (auto when none is).
 //       --scale S draws S pixels a point (2 unless given); --realtime gives each frame the time it took. --frames DIR writes every sixth frame after `record` (--every N: every Nth)
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
@@ -649,6 +650,11 @@ if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
   if let d = args.firstIndex(of: "--do"), d + 1 < args.count { view.doSteps = args[d + 1] }
   if let d = args.firstIndex(of: "--frames"), d + 1 < args.count { view.framesDir = args[d + 1] }
   if let d = args.firstIndex(of: "--audio"), d + 1 < args.count { view.shotAudio = args[d + 1] }
+  // --quality high|medium|low|auto: the graphics tier the shot's realm finds kept, as a browser that picked it would
+  if let d = args.firstIndex(of: "--quality"), d + 1 < args.count, ["high", "medium", "low", "auto"].contains(args[d + 1]) {
+    try? FileManager.default.createDirectory(atPath: view.shotStore, withIntermediateDirectories: true)
+    try? args[d + 1].write(toFile: view.shotStore + "/verse.quality", atomically: true, encoding: .utf8)
+  }
   if let w = args.firstIndex(of: "--scene"), w + 1 < args.count, let v = Int32(args[w + 1]) { eg_go(view.state, v) }
   if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
     for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }

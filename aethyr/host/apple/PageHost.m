@@ -445,7 +445,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  if (!stateBytes || !vertexBytes || !uniformBytes) return @"not enough memory for the realm";
  state = (A)stateBytes.mutableBytes; x.state_init(state);
  [self readPlayer];
- NSString *kept = [self kept:@"verse.quality"]; NSUInteger qi = [@[@"high", @"medium", @"low", @"auto"] indexOfObject:kept]; quality = qi == NSNotFound ? 0 : (int)qi;
+ NSString *kept = [self kept:@"verse.quality"]; NSUInteger qi = [@[@"high", @"medium", @"low", @"auto"] indexOfObject:kept]; quality = qi == NSNotFound ? 3 : (int)qi;   // nothing kept: AUTO, the realm's governor sets the pixels (aethyr/quality.coax)
  if (!c.offline) {
   net = [PHNet new]; net.host = self;
   NSURLSessionConfiguration *sc = NSURLSessionConfiguration.ephemeralSessionConfiguration; sc.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
