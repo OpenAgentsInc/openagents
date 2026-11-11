@@ -323,10 +323,13 @@ the room build and the compiler's units took 41 minutes on shared hosts and
   recorded in `releases/after/flaky.txt`, and if every failure of a run was
   flaky, `main-green` moves.
 - Before the first green run there is no `main-green` to bisect against.
-  Each failure of that run goes on the red list owned by nobody, under one
-  issue, so later runs don't bisect it, and it is never reverted.
-  `main-green` is first set at the head where every check of a full run
-  passes, the compiler's units included.
+  Each failure of a full run goes on the red list owned by nobody, under one
+  issue, so later runs don't bisect it, and it is never reverted. A fast run
+  then compares each new head against that full run's head, and runs the
+  full run's failures again (up to eight; more wait for the next full run).
+  When they and everything the change touched pass, the head is green and
+  `main-green` is set. A failure the full run didn't have is bisected from
+  the full run's head and gets its culprit.
 - The full run builds the web modules in three parts, each module as
   `build.sh` runs it. It leaves out `project` and `projects`, which need the
   tables `build.sh` bakes from Nostr first.

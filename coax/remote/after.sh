@@ -23,8 +23,12 @@
 # passed at G and reads no changed file, so it passes at H. A head that changes
 # only documents is green with no job.
 #
-# A full run, when there is no main-green, and at most every OA_AFTER_GAP
-# seconds after that: every suite in OA_AFTER_PARTS parts, every web module
+# With no main-green, a fast run compares against the head of the last full
+# run and runs that run's failures again: when they and everything the change
+# touched pass, the head is green. A new failure is bisected from that head.
+#
+# A full run, when there is no main-green (at most once an hour), and at most
+# every OA_AFTER_GAP seconds after that: every suite in OA_AFTER_PARTS parts, every web module
 # against its budget in OA_AFTER_MODULE_PARTS parts, the report checks and the
 # room build (check.sh tools), and coax/tests/run.sh in 8 parts when compiler
 # sources changed since the last full green run (always, when there is none).
@@ -154,6 +158,7 @@ args_for() {   # item job-args...
     step\ wasm) echo "wasm" ;;
     module\ *) echo "module ${item#module }" ;;
     compiler\ *) echo "unit ${item#compiler }" ;;
+    job\ *) echo "${item#job }" ;;
     step\ tools-check|step\ everglade-parity|step\ wgsl|step\ realm-pages|step\ changelog-page) echo "reports" ;;
     step\ room-build) echo "room" ;;
     *) echo "$*" ;;   # the whole job again
@@ -254,7 +259,7 @@ record_run() {   # head kind status started jobs
 go_green() {   # head green kind started jobs note
   local head="$1" green="$2" kind="$3" dir="$results/$1" cost
   echo green > "$dir/status"; rm -f "$dir/failed"
-  [[ "$kind" != full ]] || { : > "$dir/full"; echo "$head" > "$results/full-green"; }
+  [[ "$kind" != full ]] || { : > "$dir/full"; echo "$head" > "$results/full-green"; echo "$head" > "$results/full-head"; }
   cost="$(record_run "$head" "$kind" green "$4" "$5")"
   if [[ "$head" == "$green" ]]; then
     pl_say "after: green ($kind run$6); $pl_green stays at ${head:0:10} ($cost)"
@@ -274,12 +279,23 @@ run_head() {
   local dir="$results/$head"
   [[ ! -f "$results/full-green" ]] || full_green="$(cat "$results/full-green")"
   [[ -z "$full_green" ]] || git merge-base --is-ancestor "$full_green" "$head" 2> /dev/null || full_green=""
+  # What a fast run compares against: main-green. With no main-green, the
+  # head of the last full run, whose failures (known) are run again too: if
+  # they and everything the change touched pass, the head is green. More than
+  # OA_AFTER_KNOWN (8) known failures wait for a full run.
+  local ref="$green" known=""
+  if [[ -z "$green" && -f "$results/full-head" ]]; then
+    ref="$(cat "$results/full-head")"
+    if git merge-base --is-ancestor "$ref" "$head" 2> /dev/null && [[ -s "$results/$ref/failed" ]] &&
+       (( $(wc -l < "$results/$ref/failed") <= ${OA_AFTER_KNOWN:-8} )); then known="$results/$ref/failed"
+    else ref=""; fi
+  fi
   # Which run: a full one when it is due (with no main-green, at most once an
   # hour), else a fast one on a head not checked yet.
   local kind="" full_gap="$gap"
   [[ -n "$green" ]] || full_gap=$(( gap < 3600 ? gap : 3600 ))
   if [[ ! -f "$dir/full" ]] && due last-full "$full_gap"; then kind=full
-  elif [[ -n "$green" && "$head" != "$green" && ! -f "$dir/status" ]] && due last-fast "$fast_gap"; then kind=fast
+  elif [[ -n "$ref" && "$head" != "$ref" && ! -f "$dir/status" ]] && due last-fast "$fast_gap"; then kind=fast
   fi
   if [[ -z "$kind" ]]; then
     # main has not moved since a red run: its failures are still there.
@@ -290,18 +306,28 @@ run_head() {
   [[ -f "$dir/status" ]] || rm -rf "$dir"
   mkdir -p "$dir"; rm -f "$dir/failed"; echo "$kind" > "$dir/kind"
   local started; started=$(date +%s)
-  # What a failure is bisected against: main-green, or for a full run the last
-  # head a full run passed (the fast runs since may have missed it).
-  local base="$green"
-  [[ "$kind" != full || -z "$full_green" ]] || base="$full_green"
+  # What a failure is bisected against: what the run compares against, or for
+  # a full run the last head a full run passed (the fast runs since may have
+  # missed it).
+  local base="$ref"
+  if [[ "$kind" == full ]]; then base="$green"; known=""; [[ -z "$full_green" ]] || base="$full_green"; fi
   # The jobs.
   local jobs=() i changed=""
   if [[ "$kind" == fast ]]; then
-    changed="$(git diff --name-only "$green" "$head")"
+    changed="$(git diff --name-only "$ref" "$head")"
     if [[ -n "$changed" ]] && grep -qvE '(\.md$|^docs/)' <<< "$changed"; then
-      for (( i = 1; i <= fast_parts; i++ )); do jobs+=("since $green $i/$fast_parts"); done
+      for (( i = 1; i <= fast_parts; i++ )); do jobs+=("since $ref $i/$fast_parts"); done
     fi
-    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $green")
+    [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref")
+    # The last full run's failures, each as its own check.
+    if [[ -n "$known" ]]; then
+      local item a j
+      while read -r item; do
+        a="$(args_for "$item")"; [[ -n "$a" ]] || continue
+        for j in ${jobs[@]+"${jobs[@]}"}; do [[ "$j" != "$a" ]] || continue 2; done
+        jobs+=("$a")
+      done < "$known"
+    fi
   else
     for (( i = 1; i <= parts; i++ )); do jobs+=("suites $i/$parts"); done
     for (( i = 1; i <= module_parts; i++ )); do jobs+=("modules $i/$module_parts"); done
@@ -314,7 +340,7 @@ run_head() {
           elif git diff --name-only "$base" "$head" | grep -Eq '^coax/(src|tests|bootstrap|lib/compiler)/'; then compiler=1; fi ;;
   esac
   (( compiler == 0 )) || for (( i = 1; i <= 8; i++ )); do jobs+=("compiler $i/8"); done
-  pl_say "after: $kind run on ${head:0:10} ($(git log -1 --format=%s "$head" | cut -c1-60)), ${#jobs[@]} job(s), $pl_green ${green:0:10}"
+  pl_say "after: $kind run on ${head:0:10} ($(git log -1 --format=%s "$head" | cut -c1-60)), ${#jobs[@]} job(s), $pl_green $([[ -n "$green" ]] && echo "${green:0:10}" || echo none)$([[ "$kind" != fast || "$ref" == "$green" ]] || echo ", against the full run on ${ref:0:10}")"
   if (( ${#jobs[@]} == 0 )); then
     go_green "$head" "$green" "$kind" "$started" 0 ": only documents changed"
     return 0
@@ -358,7 +384,7 @@ run_head() {
   : > "$dir/fixed.tsv"
   while IFS='|' read -r id chk issue; do
     [[ -n "$id" ]] && (( infra == 0 )) || continue   # an unfinished job may be its check
-    [[ "$chk" != compiler\ * ]] || (( compiler == 1 )) || continue
+    [[ "$chk" != compiler\ * ]] || (( compiler == 1 )) || { [[ -n "$known" ]] && grep -qxF "$chk" "$known"; } || continue
     local still=0
     for x in ${failed[@]+"${failed[@]}"}; do [[ "${x%%|*}" == "$chk" ]] && still=1; done
     (( still == 1 )) || printf '%s\t%s\t%s\n' "$id" "$chk" "$issue" >> "$dir/fixed.tsv"
@@ -417,7 +443,7 @@ Each job's output: \`$dir/\` on the coordinator's Mac. Run one alone with \`coax
         --rawfile f "$dir/new" --arg i "$issue" --arg t "$(date +%s)"
       pl_say "after: no $pl_green to bisect against; ${#new[@]} failure(s) listed with no culprit${issue:+ (#$issue)}"
     fi
-    echo red > "$dir/status"; [[ "$kind" != full ]] || : > "$dir/full"
+    echo red > "$dir/status"; [[ "$kind" != full ]] || { : > "$dir/full"; echo "$head" > "$results/full-head"; }
     pl_say "after: $kind run on ${head:0:10}: $(record_run "$head" "$kind" red "$started" "${#jobs[@]}")"
     return 0
   fi
@@ -470,7 +496,7 @@ Fixing it comes before new work. If it still fails 30 minutes from now, the inte
     git push -q --force "$pl_remote" "$base:refs/heads/$pl_green" 2> /dev/null &&
       pl_say "after: a full run failed after fast runs passed; $pl_green is back at ${base:0:10}"
   fi
-  echo red > "$dir/status"; [[ "$kind" != full ]] || : > "$dir/full"
+  echo red > "$dir/status"; [[ "$kind" != full ]] || { : > "$dir/full"; echo "$head" > "$results/full-head"; }
   pl_say "after: $kind run and bisects on ${head:0:10}: $(record_run "$head" "$kind" red "$started" "${#jobs[@]}")"
 }
 
