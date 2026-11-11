@@ -1,0 +1,6 @@
+// Runs processes.coax's checks. That file is a library the CLI loads
+// (apps/openagents-cli/coder.coax), so it can't import Basic itself: its
+// loader does, and a second import is E0332.
+//   coax test coax/lib/agent/observe/processes-checks.coax --library
+#import "Basic";
+#load "processes.coax";

@@ -7,6 +7,8 @@
 // (--agents; apps/openagents-web/newland-local.coax draws them). Only names and times: nothing of
 // what a transcript says leaves its file. Loaded by os/verse-session.coax.
 
+#load "../coax/lib/agent/observe/transcripts.coax";
+
 cxproc_wall_us :: () -> int #foreign #effects(all);
 
 VA_MAX :: 8;
@@ -27,15 +29,6 @@ va_state :: (age_s: int) -> int {
 #test "an agent's state by its transcript's age" {
   #assert va_state(0) == VA_WORKING && va_state(VA_WORKING_S) == VA_WORKING && va_state(VA_WORKING_S + 1) == VA_WAITING;
   #assert va_state(VA_WAITING_S) == VA_WAITING && va_state(VA_WAITING_S + 1) == 0 && va_state(-3) == VA_WORKING;
-}
-// Claude Code names a project's directory by its path with / as -: its last part is the project.
-va_project_of :: (dir: string) -> string {
-  i := dir.count;
-  while i > 0 && dir[i - 1] != '-' { i -= 1; }
-  return ifx i < dir.count then dir[i..<dir.count] else dir;
-}
-#test "a project from Claude Code's directory name" {
-  #assert va_project_of("-home-christopherdavid-openagents") == "openagents" && va_project_of("plain") == "plain" && va_project_of("-a-") == "-a-";
 }
 // Keeps the newest VA_MAX: an agent goes in by its age, the oldest falls out.
 va_add :: (l: [] VaList, kind: string, project: string, age_s: int) { va_add_at(l, kind, project, age_s, ""); }
@@ -83,39 +76,17 @@ va_text :: (l: [] VaList, out: [] u8) -> int {
   #assert cast(string) b[0..<n] == "agent=claude|openagents|working|0\nagent=codex|coder|waiting|10\n";
 }
 
-// The transcripts in one directory (names ending .jsonl), each an agent of kind for project.
-va_scan_dir :: (l: [] VaList, dir: string, kind: string, project: string, now_s: int) {
-  fl: [1] FsList; pb: [4096] u8;
-  n := fs_list(dir, fl[..]);
-  for i: 0..<ifx n > 0 then n else 0 {
-    e := fs_entry(fl[..], i);
-    if e.count < 7 || e[e.count - 6..<e.count] != ".jsonl" { continue; }
-    full := fs_join(dir, e, pb[..]);
-    m := fs_mtime_ns(full);
-    if m > 0 { va_add_at(l, kind, project, now_s - m / 1000000000, full); }
-  }
-}
-// Every agent under home, now.
+// Every agent under home, now. Where the transcripts are is the shared walker's
+// (coax/lib/agent/observe/transcripts.coax): Claude Code's sessions by project, Codex's by date, Coder's.
 va_scan :: (l: [] VaList, home: string) {
   l[0].n = 0;
   now_s := cxproc_wall_us() / 1000000;
-  b: [4] [4096] u8; pl: [1] FsList;
-  // Claude Code: a directory per project
-  cl := fs_join(home, ".claude/projects", b[0][..]);
-  np := fs_list(cl, pl[..]);
-  for i: 0..<ifx np > 0 then np else 0 { e := fs_entry(pl[..], i); va_scan_dir(l, fs_join(cl, e, b[1][..]), "claude", va_project_of(e), now_s); }
-  // Codex: by date; today's and yesterday's directories are enough for half an hour
-  cx := fs_join(home, ".codex/sessions", b[0][..]);
-  yl: [1] FsList; ny := fs_list(cx, yl[..]);
-  for y: 0..<ifx ny > 0 then ny else 0 {
-    yd := fs_join(cx, fs_entry(yl[..], y), b[1][..]);
-    ml: [1] FsList; nm := fs_list(yd, ml[..]);
-    for m: 0..<ifx nm > 0 then nm else 0 {
-      md := fs_join(yd, fs_entry(ml[..], m), b[2][..]);
-      dl: [1] FsList; nd := fs_list(md, dl[..]);
-      for d: 0..<ifx nd > 0 then nd else 0 { va_scan_dir(l, fs_join(md, fs_entry(dl[..], d), b[3][..]), "codex", "codex", now_s); }
-    }
+  kinds := OB_KINDS;
+  w: [1] ObWalk;
+  w[0].claude = true; w[0].codex = true; w[0].coder = true;
+  ob_start(w[..], home);
+  while ob_next(w[..]) {
+    project := ifx w[0].kind == OB_CLAUDE then ob_project_of(ob_project(w[..])) else ob_project(w[..]);
+    va_add_at(l, kinds[w[0].kind], project, now_s - w[0].mtime, ob_path(w[..]));
   }
-  // Coder
-  va_scan_dir(l, fs_join(home, ".openagents/coder/sessions", b[0][..]), "coder", "coder", now_s);
 }

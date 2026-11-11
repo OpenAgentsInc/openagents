@@ -50,7 +50,7 @@ It builds on what exists today:
 - [`aethyr/talk`](../../aethyr/talk)
 - [`aethyr/actors`](../../aethyr/actors)
 - [`apps/everglade-desktop/next.coax`](../../apps/everglade-desktop/next.coax)
-- [`coax/lib/agent/local-agents.coax`](../../coax/lib/agent/local-agents.coax)
+- [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 
 Planned paths: `openagents/agent/surfaces/golems.coax`.

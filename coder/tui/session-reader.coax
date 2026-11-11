@@ -1,6 +1,6 @@
-// Read-only filesystem and CLI adapter for coax/lib/agent/session-reader.coax.
+// Read-only filesystem and CLI adapter for coax/lib/agent/observe/claude-history.coax.
 // Every reply is JSON, including errors. The MCP catalog calls this same verb.
-#load "../../coax/lib/agent/session-reader.coax";
+#load "../../coax/lib/agent/observe/claude-history.coax";
 
 CSR_DIRS :: 256;
 CSR_FILES :: 512;

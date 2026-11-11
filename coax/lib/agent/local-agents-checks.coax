@@ -1,6 +1,0 @@
-// Runs local-agents.coax's checks. That file is a library the CLI loads
-// (apps/openagents-cli/coder.coax), so it can't import Basic itself: its
-// loader does, and a second import is E0332.
-//   coax test coax/lib/agent/local-agents-checks.coax --library
-#import "Basic";
-#load "local-agents.coax";

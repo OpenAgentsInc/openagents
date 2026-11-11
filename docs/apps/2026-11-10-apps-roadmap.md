@@ -123,6 +123,27 @@ Order of moves, one consumer at a time, each with its checks kept green:
 5. The three transcript readers become one.
 6. The server engines (`coax/web/agent/`) take the shared session record.
 
+Status (2026-11-10, GitHub #13153):
+
+- **Built: the three layers exist.** `coax/lib/agent/engine/` holds the
+  engines moved from the desktop app (`claude.coax`, `codex.coax`,
+  `psionic.coax`, `lab.coax`, `gpu.coax`, `microcoder.coax`) and
+  `engine.coax`, the one interface (`ag_start`, `ag_send`, `ag_poll`,
+  `ag_answer`, `ag_stop`). `coax/lib/agent/session/` holds the record
+  (`session.coax`, with the part kinds in `kinds.coax`) and the log format
+  (`log.coax`: Coder's JSONL plus the keys a record needs to come back
+  whole). `coax/lib/agent/observe/` holds the transcript walker
+  (`transcripts.coax`), the process inventory (`processes.coax`, was
+  `local-agents.coax`) and the read-only Claude history reader
+  (`claude-history.coax`, was `session-reader.coax`).
+- **Built: move 1.** The desktop app's screen calls only `engine.coax`; its
+  `zeron/claude.coax` keeps only how a session becomes rows; its store
+  writes the shared log format and still reads its old files.
+- **Built: move 5.** The Golems board's reader and Verse OS find transcripts
+  through `observe/transcripts.coax`. `local-agents` never read transcripts
+  (it lists processes); it moved beside the walker.
+- **Not built yet:** moves 2, 3, 4 and 6.
+
 Done when: a grep for the Claude or Codex SDK outside `coax/lib/agent/` finds
 only tests.
 

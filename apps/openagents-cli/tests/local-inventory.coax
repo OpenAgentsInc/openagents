@@ -1,5 +1,5 @@
 // The shared filesystem paths and bounded read-only local-agent parser.
 #import "Basic";
 #load "../../../coax/lib/sys/openagents-paths.coax";
-#load "../../../coax/lib/agent/local-agents-host.coax";
+#load "../../../coax/lib/agent/observe/processes-host.coax";
 tool_main :: () -> int #export_c #effects(all) { return la_command(true); }

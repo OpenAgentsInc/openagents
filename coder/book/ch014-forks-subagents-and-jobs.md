@@ -31,7 +31,7 @@ the existing tool hooks and policy, then the same typed implementation;
 requests fail. The conservative shared MCP effect remains `run`; with a
 policy, foreign history is outside the session's room and asks the person,
 or is refused by the ceiling. Its implementation is
-[`coax/lib/agent/session-reader.coax`](../../coax/lib/agent/session-reader.coax)
+[`coax/lib/agent/observe/claude-history.coax`](../../coax/lib/agent/observe/claude-history.coax)
 with the file/CLI adapter in
 [`coder/tui/session-reader.coax`](../../coder/tui/session-reader.coax).
 It reads local JSONL without calling Claude, starting an engine session,

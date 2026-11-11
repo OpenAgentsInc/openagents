@@ -1,6 +1,6 @@
 // Synthetic contracts for the read-only Claude reader; no private transcripts.
 #import "Basic";
-#load "../../coax/lib/agent/session-reader.coax";
+#load "../../coax/lib/agent/observe/claude-history.coax";
 main :: () {}
 
 #test "session reader: compaction context is separate inert data and never a new user request" {

@@ -1,0 +1,201 @@
+// Where the agents on this machine write their transcripts, walked once for
+// everything that shows who is working (docs/apps/2026-11-10-apps-roadmap.md,
+// Step 2, "Observation"): the Golems board (apps/everglade-desktop/golems.coax),
+// Verse OS (os/verse-agents.coax) and whatever comes next. Read-only: it
+// lists folders and reads a file's time, never its contents.
+//
+//   Claude Code   ~/.claude/projects/PROJECT/SESSION.jsonl, and the agents a
+//                 session started: PROJECT/SESSION/subagents/NAME.jsonl
+//   Codex         ~/.codex/sessions/YYYY/MM/DD/NAME.jsonl
+//   Coder         ~/.openagents/coder/sessions/ID.jsonl   (the session log, ../session/log.coax)
+//
+// ob_start names the home and what to look for; each ob_next finds the next
+// transcript (its path, when it was last written, whose it is). The order is
+// fixed: Claude Code's projects by name and each project's entries by name,
+// then Codex by date, then Coder. A caller keeps what it wants: the newest
+// few (ob_add), or only those written since some time.
+
+#load "../../sys/fs.coax";
+
+OB_CLAUDE :: 0; OB_CODEX :: 1; OB_CODER :: 2;
+OB_KINDS :: [3] string.["claude", "codex", "coder"];
+OB_DONE :: 3;
+OB_DIR :: 2048;
+
+ObWalk :: struct {
+  home: [1024] u8; home_n: int;
+  claude: bool; codex: bool; coder: bool;     // whose transcripts
+  subagents: bool;               // also the agents a Claude Code session started
+  since: int;                    // only transcripts written at or after this second (0: all)
+  // The Golems board's shortcut, kept as it was: a project folder not changed for a day before
+  // `since` is skipped whole, and so is a subagents folder not changed since `since`. A folder's
+  // time moves when a file is added to it, not when one is written to.
+  prune: bool;
+  phase: int; depth: int;
+  l: [4] FsList; i: [4] int; n: [4] int;
+  dir: [4] [OB_DIR] u8; dir_n: [4] int;
+  // the transcript ob_next found
+  path: [OB_DIR] u8; path_n: int;
+  mtime: int;                    // when it was last written, in seconds
+  kind: int;                     // OB_CLAUDE, OB_CODEX or OB_CODER
+  sub: bool;                     // a subagent's
+  project: [256] u8; project_n: int;   // Claude Code's project folder name ("-home-you-repo"); "codex"; "coder"
+  parent: [80] u8; parent_n: int;      // a session's own name; for a subagent, the session that started it
+}
+
+ob_put :: (out: [] u8, at: int, s: string) -> int { k := at; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+ob_jsonl :: (name: string) -> bool { return name.count > 6 && name[name.count - 6..<name.count] == ".jsonl"; }
+// Claude Code names a project's folder by its path with / as -: its last part is the project.
+ob_project_of :: (dir: string) -> string {
+  i := dir.count;
+  while i > 0 && dir[i - 1] != '-' { i -= 1; }
+  return ifx i < dir.count then dir[i..<dir.count] else dir;
+}
+ob_path :: (w: [] ObWalk) -> string { return cast(string) w[0].path[0..<w[0].path_n]; }
+ob_project :: (w: [] ObWalk) -> string { return cast(string) w[0].project[0..<w[0].project_n]; }
+ob_parent :: (w: [] ObWalk) -> string { return cast(string) w[0].parent[0..<w[0].parent_n]; }
+ob_dir :: (w: [] ObWalk, level: int) -> string { return cast(string) w[0].dir[level][0..<w[0].dir_n[level]]; }
+
+#test "a transcript's name ends .jsonl; a project is the last part of Claude Code's folder name" {
+  #assert ob_jsonl("a.jsonl") && !ob_jsonl(".jsonl") && !ob_jsonl("a.json") && !ob_jsonl("notes.txt") && !ob_jsonl("");
+  #assert ob_project_of("-home-christopherdavid-openagents") == "openagents" && ob_project_of("plain") == "plain" && ob_project_of("-a-") == "-a-";
+  kinds := OB_KINDS;
+  #assert kinds[OB_CLAUDE] == "claude" && kinds[OB_CODEX] == "codex" && kinds[OB_CODER] == "coder";
+}
+
+// Everything under home, from the start.
+ob_start :: (w: [] ObWalk, home: string) {
+  w[0].home_n = ob_put(w[0].home[..], 0, home);
+  w[0].phase = OB_CLAUDE; w[0].depth = 0;
+  w[0].path_n = 0;
+}
+
+// Lists a folder at a level (its names, or none when it is missing).
+ob_open :: (w: [] ObWalk, level: int, dir: string) {
+  w[0].dir_n[level] = ob_put(w[0].dir[level][..], 0, dir);
+  n := fs_list(dir, w[0].l[level..<level + 1]);
+  w[0].n[level] = ifx n > 0 then n else 0;
+  w[0].i[level] = 0;
+  w[0].depth = level + 1;
+}
+// The next name at a level, or "" when it has no more.
+ob_name :: (w: [] ObWalk, level: int) -> string {
+  if w[0].i[level] >= w[0].n[level] { return ""; }
+  e := fs_entry(w[0].l[level..<level + 1], w[0].i[level]);
+  w[0].i[level] += 1;
+  return e;
+}
+// The file is a transcript the caller wants: its path and time are set.
+ob_take :: (w: [] ObWalk, level: int, name: string) -> bool {
+  if !ob_jsonl(name) { return false; }
+  full := fs_join(ob_dir(w, level), name, w[0].path[..]);
+  w[0].path_n = full.count;
+  m := fs_mtime_ns(full);
+  if m <= 0 { return false; }
+  w[0].mtime = m / 1000000000;
+  return w[0].since == 0 || w[0].mtime >= w[0].since;
+}
+
+// The next transcript; false when there are no more.
+ob_next :: (w: [] ObWalk) -> bool {
+  b: [OB_DIR] u8;
+  while w[0].phase != OB_DONE {
+    if w[0].phase == OB_CLAUDE {
+      if !w[0].claude { w[0].phase = OB_CODEX; w[0].depth = 0; continue; }
+      if w[0].depth == 0 { ob_open(w, 0, fs_join(cast(string) w[0].home[0..<w[0].home_n], ".claude/projects", b[..])); continue; }
+      if w[0].depth == 1 {
+        project := ob_name(w, 0);
+        if project.count == 0 { w[0].phase = OB_CODEX; w[0].depth = 0; continue; }
+        pdir := fs_join(ob_dir(w, 0), project, b[..]);
+        if w[0].prune && (fs_kind(pdir) != FS_DIR || fs_mtime_ns(pdir) / 1000000000 < w[0].since - 86400) { continue; }
+        w[0].project_n = ob_put(w[0].project[..], 0, project);
+        ob_open(w, 1, pdir);
+        continue;
+      }
+      if w[0].depth == 2 {
+        name := ob_name(w, 1);
+        if name.count == 0 { w[0].depth = 1; continue; }
+        if ob_jsonl(name) {
+          w[0].sub = false; w[0].kind = OB_CLAUDE;
+          w[0].parent_n = ob_put(w[0].parent[..], 0, name[0..<name.count - 6]);
+          if ob_take(w, 1, name) { return true; }
+          continue;
+        }
+        if !w[0].subagents { continue; }
+        // SESSION/subagents/NAME.jsonl
+        sb: [OB_DIR] u8;
+        sdir := fs_join(fs_join(ob_dir(w, 1), name, b[..]), "subagents", sb[..]);
+        if fs_kind(sdir) != FS_DIR || (w[0].prune && fs_mtime_ns(sdir) / 1000000000 < w[0].since) { continue; }
+        w[0].parent_n = ob_put(w[0].parent[..], 0, name);
+        ob_open(w, 2, sdir);
+        continue;
+      }
+      name := ob_name(w, 2);
+      if name.count == 0 { w[0].depth = 2; continue; }
+      w[0].sub = true; w[0].kind = OB_CLAUDE;
+      if ob_take(w, 2, name) { return true; }
+      continue;
+    }
+    if w[0].phase == OB_CODEX {
+      if !w[0].codex { w[0].phase = OB_CODER; w[0].depth = 0; continue; }
+      if w[0].depth == 0 { ob_open(w, 0, fs_join(cast(string) w[0].home[0..<w[0].home_n], ".codex/sessions", b[..])); continue; }
+      if w[0].depth < 4 {
+        // a year, a month, a day
+        level := w[0].depth - 1;
+        name := ob_name(w, level);
+        if name.count == 0 { if level == 0 { w[0].phase = OB_CODER; w[0].depth = 0; } else { w[0].depth = level; } continue; }
+        ob_open(w, level + 1, fs_join(ob_dir(w, level), name, b[..]));
+        continue;
+      }
+      name := ob_name(w, 3);
+      if name.count == 0 { w[0].depth = 3; continue; }
+      w[0].sub = false; w[0].kind = OB_CODEX; w[0].parent_n = 0;
+      w[0].project_n = ob_put(w[0].project[..], 0, "codex");
+      if ob_take(w, 3, name) { return true; }
+      continue;
+    }
+    if !w[0].coder { w[0].phase = OB_DONE; continue; }
+    if w[0].depth == 0 { ob_open(w, 0, fs_join(cast(string) w[0].home[0..<w[0].home_n], ".openagents/coder/sessions", b[..])); continue; }
+    name := ob_name(w, 0);
+    if name.count == 0 { w[0].phase = OB_DONE; continue; }
+    w[0].sub = false; w[0].kind = OB_CODER; w[0].parent_n = 0;
+    w[0].project_n = ob_put(w[0].project[..], 0, "coder");
+    if ob_take(w, 0, name) { return true; }
+  }
+  return false;
+}
+
+// A transcript a caller kept.
+ObFound :: struct { path: [1024] u8; n: int; mtime: int; kind: int; sub: bool; project: [256] u8; pn: int; parent: [80] u8; parentn: int; }
+
+// Keeps the newest found.count: a full list drops its oldest for a newer one. The new count.
+ob_add :: (found: [] ObFound, count: int, path: string, mtime: int, kind: int, sub: bool, project: string, parent: string) -> int {
+  slot := count;
+  if count >= found.count {
+    oldest := 0; for i: 1..<found.count { if found[i].mtime < found[oldest].mtime { oldest = i; } }
+    if found[oldest].mtime >= mtime { return count; }
+    slot = oldest;
+  }
+  found[slot].n = ob_put(found[slot].path[..], 0, path); found[slot].mtime = mtime; found[slot].kind = kind; found[slot].sub = sub;
+  found[slot].pn = ob_put(found[slot].project[..], 0, project); found[slot].parentn = ob_put(found[slot].parent[..], 0, parent);
+  return ifx count < found.count then count + 1 else count;
+}
+// The transcript ob_next just found, kept.
+ob_keep :: (w: [] ObWalk, found: [] ObFound, count: int) -> int {
+  return ob_add(found, count, ob_path(w), w[0].mtime, w[0].kind, w[0].sub, ob_project(w), ob_parent(w));
+}
+
+#test "the newest are kept: a full list drops its oldest for a newer one and refuses an older one" {
+  f: [3] ObFound; n := 0;
+  n = ob_add(f[..], n, "/a.jsonl", 100, OB_CLAUDE, false, "-w-one", "a");
+  n = ob_add(f[..], n, "/b.jsonl", 300, OB_CODEX, false, "codex", "");
+  n = ob_add(f[..], n, "/c.jsonl", 200, OB_CLAUDE, true, "-w-one", "a");
+  #assert n == 3 && cast(string) f[0].path[0..<f[0].n] == "/a.jsonl" && f[2].sub && f[1].kind == OB_CODEX;
+  n = ob_add(f[..], n, "/old.jsonl", 50, OB_CODER, false, "coder", "");
+  #assert n == 3 && cast(string) f[0].path[0..<f[0].n] == "/a.jsonl";
+  n = ob_add(f[..], n, "/same.jsonl", 100, OB_CODER, false, "coder", "");
+  #assert n == 3 && cast(string) f[0].path[0..<f[0].n] == "/a.jsonl";
+  n = ob_add(f[..], n, "/new.jsonl", 400, OB_CODER, false, "coder", "");
+  #assert n == 3 && cast(string) f[0].path[0..<f[0].n] == "/new.jsonl" && f[0].kind == OB_CODER && f[0].mtime == 400;
+  #assert cast(string) f[0].project[0..<f[0].pn] == "coder" && f[0].parentn == 0 && cast(string) f[2].parent[0..<f[2].parentn] == "a";
+}

@@ -46,9 +46,9 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
-- [`coax/lib/agent/local-agents.coax`](../../coax/lib/agent/local-agents.coax)
+- [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
 - [`apps/everglade-desktop/next.coax`](../../apps/everglade-desktop/next.coax)
-- [`coax/lib/agent/session-reader.coax`](../../coax/lib/agent/session-reader.coax)
+- [`coax/lib/agent/observe/claude-history.coax`](../../coax/lib/agent/observe/claude-history.coax)
 
 Planned paths: `openagents/agent/fleet.coax`.
 

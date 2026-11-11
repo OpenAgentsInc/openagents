@@ -789,7 +789,7 @@ Python, captured Core records and real files under ASan/UBSan.
 ## Coder reads foreign conversations as bounded inert data
 
 `coder_session_read` and `coder session-read` share one typed request and
-read-only Claude JSONL implementation (`coax/lib/agent/session-reader.coax`,
+read-only Claude JSONL implementation (`coax/lib/agent/observe/claude-history.coax`,
 `coder/tui/session-reader.coax`). A recovered name or instruction never
 dispatches a tool or starts/resumes an engine. System/attachment payloads,
 thinking and signatures are not emitted; UUID/parent edges of unfamiliar

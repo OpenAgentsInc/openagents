@@ -64,7 +64,7 @@
 #load "credential.coax";
 #load "dictation.coax";
 #load "dictate.coax";
-#load "../../coax/lib/agent/local-agents.coax";
+#load "../../coax/lib/agent/observe/processes.coax";
 
 // Reuse Coder's existing process transport; inventory parsing/reporting is shared
 // with openagents coder agents and does not inspect command arguments.

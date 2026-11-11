@@ -1,6 +1,6 @@
 // Native command transport for the shared read-only inventory.
-#load "local-agents.coax";
-#load "../sys/proc.coax";
+#load "processes.coax";
+#load "../../sys/proc.coax";
 la_command :: (json: bool) -> int {
   r: [1] LaInventory;
   output: [1048576] u8; err: [4096] u8;

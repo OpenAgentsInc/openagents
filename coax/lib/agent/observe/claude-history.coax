@@ -2,8 +2,8 @@
 // Own the source text until rendering ends. IDs and records borrow its bytes;
 // escaped metadata is decoded into the graph's own pool. No foreign system or
 // thinking block is rendered. Coder's filesystem/CLI adapter is separate.
-#load "claude/fields.coax";
-#load "../json/json.coax";
+#load "../claude/fields.coax";
+#load "../../json/json.coax";
 
 CSR_FILE_MAX :: 33554432;
 CSR_LINE_MAX :: 1048576;

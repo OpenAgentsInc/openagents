@@ -50,6 +50,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
+#load "../../coax/lib/agent/observe/transcripts.coax";
 
 GS_CHUNK :: 2097152;      // bytes of a transcript read at a time
 GS_BUDGET :: 1200;       // milliseconds one snapshot spends reading transcripts; the rest waits for the next
@@ -545,21 +546,8 @@ gs_issue :: (g: []Golem) -> int {
   return 0;
 }
 
-Found :: struct { path: [1024] u8; n: int; mtime: int; sub: bool; project: [256] u8; pn: int; parent: [80] u8; parentn: int; }
-
-gs_add :: (found: []Found, count: int, path: string, mtime: int, sub: bool, project: string, parent: string) -> int {
-  // The newest: a full list drops its oldest for a newer one.
-  slot := count;
-  if count >= found.count {
-    oldest := 0; for i: 1..<found.count { if found[i].mtime < found[oldest].mtime { oldest = i; } }
-    if found[oldest].mtime >= mtime { return count; }
-    slot = oldest;
-  }
-  found[slot].n = gs_put(found[slot].path[..], 0, path); found[slot].mtime = mtime; found[slot].sub = sub;
-  found[slot].pn = gs_put(found[slot].project[..], 0, project); found[slot].parentn = gs_put(found[slot].parent[..], 0, parent);
-  return ifx count < found.count then count + 1 else count;
-}
-gs_jsonl :: (name: string) -> bool { return name.count > 6 && name[name.count - 6..<name.count] == ".jsonl"; }
+// Where the transcripts are is the shared walker's (coax/lib/agent/observe/transcripts.coax: ObWalk,
+// ObFound, ob_add); this board keeps the newest GS_MAX of Claude Code's sessions and their subagents.
 
 // ---- the issues, the hosts and the ledger, from their files
 
@@ -633,37 +621,13 @@ GsOne :: struct { rank: int; mtime: int; from: int; to: int; issue: int; state: 
 gs_snapshot :: (now: int, hours: int, tz: int) -> int {
   home_b: [1024] u8; home := gs_home(home_b[..]);
   if home.count == 0 { tool_errln("golems: HOME is not set"); return 1; }
-  root_b: [1200] u8; root := fs_join(home, ".claude/projects", root_b[..]);
   day := gs_day(now, tz);
   since := now - hours * 3600; if day < since { since = day; }
-  projects: [1] FsList; sessions: [1] FsList; subs: [1] FsList;
-  found: [GS_MAX] Found; count := 0;
-  k := fs_list(root, projects[..]);
-  for i: 0..<k {
-    project := fs_entry(projects[..], i);
-    pb: [1400] u8; pdir := fs_join(root, project, pb[..]);
-    if fs_kind(pdir) != FS_DIR || fs_mtime_ns(pdir) / 1000000000 < since - 86400 { continue; }
-    m := fs_list(pdir, sessions[..]);
-    for j: 0..<m {
-      name := fs_entry(sessions[..], j);
-      fb: [1600] u8; f := fs_join(pdir, name, fb[..]);
-      if gs_jsonl(name) {
-        t := fs_mtime_ns(f) / 1000000000;
-        if t >= since { count = gs_add(found[..], count, f, t, false, project, name[0..<name.count - 6]); }
-        continue;
-      }
-      // SESSION/subagents/agent-*.jsonl
-      sb: [1700] u8; sdir := fs_join(f, "subagents", sb[..]);
-      if fs_kind(sdir) != FS_DIR || fs_mtime_ns(sdir) / 1000000000 < since { continue; }
-      q := fs_list(sdir, subs[..]);
-      for r: 0..<q {
-        sname := fs_entry(subs[..], r); if !gs_jsonl(sname) { continue; }
-        ab: [1900] u8; af := fs_join(sdir, sname, ab[..]);
-        t := fs_mtime_ns(af) / 1000000000;
-        if t >= since { count = gs_add(found[..], count, af, t, true, project, name); }
-      }
-    }
-  }
+  found: [GS_MAX] ObFound; count := 0;
+  walk: [1] ObWalk;
+  walk[0].claude = true; walk[0].subagents = true; walk[0].since = since; walk[0].prune = true;
+  ob_start(walk[..], home);
+  while ob_next(walk[..]) { count = ob_keep(walk[..], found[..], count); }
   // Newest first, so a short budget goes to the agents at work.
   order: [GS_MAX] int; for i: 0..<count { order[i] = i; }
   for i: 1..<count { j := i; while j > 0 && found[order[j - 1]].mtime < found[order[j]].mtime { x := order[j]; order[j] = order[j - 1]; order[j - 1] = x; j -= 1; } }
@@ -885,9 +849,9 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert gs_seconds("1794348248") == 1794348248 && gs_seconds("17x") == -1 && gs_seconds("") == -1;
 }
 #test "golems: a full list keeps the newest" {
-  f: [2] Found; c := 0;
-  c = gs_add(f[..], c, "/a", 10, false, "p", "a"); c = gs_add(f[..], c, "/b", 30, false, "p", "b");
-  c = gs_add(f[..], c, "/c", 20, false, "p", "c"); c = gs_add(f[..], c, "/d", 5, false, "p", "d");
+  f: [2] ObFound; c := 0;
+  c = ob_add(f[..], c, "/a", 10, OB_CLAUDE, false, "p", "a"); c = ob_add(f[..], c, "/b", 30, OB_CLAUDE, false, "p", "b");
+  c = ob_add(f[..], c, "/c", 20, OB_CLAUDE, false, "p", "c"); c = ob_add(f[..], c, "/d", 5, OB_CLAUDE, false, "p", "d");
   #assert c == 2 && ((f[0].mtime == 20 && f[1].mtime == 30) || (f[0].mtime == 30 && f[1].mtime == 20));
 }
 #test "golems: a record's time reads as seconds, and a day begins at local midnight" {
