@@ -53,6 +53,12 @@ network and through a bad one (120 ms each way, 2% loss, ±30 ms jitter):
 Server tick p95: VM 0.54 to 0.80 ms, Cloud Run 0.75 to 3.5 ms. Room input to
 ack p95: VM 32 to 46 ms, Cloud Run 36 to 46 ms.
 
+Production after the switch (openagents.com, page release 9f73ed6a58, two
+headless pages in one room): round trip 34 and 37 ms, walk p50 19 ms and p95
+23 ms, attack p50 16 ms, your own arrow in the air p50 15 ms; A loosed 16
+arrows, the room confirmed all 16 (the last 0 mm from where A drew it), and B
+drew A's arrow p50 93 ms and p95 204 ms after the button went up.
+
 ## Topology
 
 | Piece | Name |
