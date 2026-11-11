@@ -52,6 +52,16 @@ typedef struct {
   int chrome;
   uint32_t min_width, min_height;
   float place[4];
+  // A game's input (Everglade's realms): the other buttons (1 the middle, 2 the right) with
+  // pointer's phases; every move of the pointer in points, held by ui_hold_pointer or not; the
+  // wheel as the platform reports it (points, and 1 for a trackpad's precise deltas) in place of
+  // wheel; the window gaining (1) or losing (0) the keyboard; and, with modifier_keys, Shift,
+  // Control and Alt as keys of their own (-13, -14, -16), down and up.
+  void (*button)(void *user, float x, float y, int phase, int button, int mods);
+  void (*motion)(void *user, float dx, float dy);
+  void (*scroll)(void *user, float dy, int precise);
+  void (*focus)(void *user, int on);
+  int modifier_keys;
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,
@@ -78,7 +88,7 @@ int ui_shot_frame(UiHost *h, uint32_t w, uint32_t rows, float dt);
 int ui_shot_write(UiHost *h, const char *png);
 // The device scale frames are drawn at (1 unless set).
 void ui_set_dpr(UiHost *h, float dpr);
-// The pointer's shape: 0 arrow, 1 text, 2 hand, 3 resize left and right.
+// The pointer's shape: 0 arrow, 1 text, 2 hand, 3 resize left and right, 4 crosshair.
 void ui_cursor(UiHost *h, int kind);
 // Text to the clipboard. 0 if the seat would not take it.
 int ui_copy(UiHost *h, const char *bytes, size_t n);

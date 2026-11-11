@@ -11,6 +11,23 @@ void *ui_view(UiHost *h);
 // (row 0 first) at ui_atlas's sizes, and [y0, y1) and [cy0, cy1) the rows that changed.
 void ui_atlas_rows(UiHost *h, const uint8_t *mono, uint32_t y0, uint32_t y1, const uint8_t *color, uint32_t cy0, uint32_t cy1);
 
+// A layer of the app's own Metal under the components (Everglade's place, model and realms). With
+// one, every frame is drawn (nothing is skipped as unchanged). prepare gets the frame's command
+// buffer (id<MTLCommandBuffer>) before its pass, for passes of the app's own; encode gets the
+// pass's encoder (id<MTLRenderCommandEncoder>) before the components are drawn. depth 1 gives the
+// pass a depth32Float attachment cleared to 1. Offscreen, ui_shot_frame waits for the GPU as before.
+typedef struct {
+  void *user;
+  int depth;
+  void (*prepare)(void *user, void *cmd, uint32_t w, uint32_t h, float dpr);
+  void (*encode)(void *user, void *enc, uint32_t w, uint32_t h, float dpr);
+} UiLayer;
+void ui_layer(UiHost *h, const UiLayer *layer);
+void *ui_device(UiHost *h);   // id<MTLDevice>
+void *ui_queue(UiHost *h);    // id<MTLCommandQueue>, the one the host draws with
+// Mouselook: the pointer hidden and held where it is; its moves still reach UiApp.motion.
+void ui_hold_pointer(UiHost *h, int on);
+
 // ---- the Mac's (each does nothing on iOS, and nothing offscreen unless it says otherwise)
 
 // A menu bar item. Items with the same menu, one after another, make that menu; a NULL title is a

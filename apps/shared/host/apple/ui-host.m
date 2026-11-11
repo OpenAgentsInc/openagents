@@ -61,7 +61,14 @@ struct UiHost {
 #if TARGET_OS_OSX
   NSPasteboard *pasteboard;   // the general one; offscreen, the app's own
   id menu_target;             // the menus' items send their ids through it
+  NSEventModifierFlags flags; // the modifiers last reported as keys (UiApp.modifier_keys)
 #endif
+  int looking;                // ui_hold_pointer
+  // the app's own layer (ui_layer)
+  UiLayer layer_of; int layered;
+  id<MTLLibrary> lib;
+  id<MTLTexture> depth;
+  id<MTLDepthStencilState> flat;
 };
 
 static double ui_now(void) { return CACurrentMediaTime(); }
@@ -106,12 +113,38 @@ static int ui_paste_from(UiHost *h, NSPasteboard *pb);
   if (phase == 2) h->held = 0;
   h->app.pointer(h->app.user, (float)p.x, (float)p.y, phase, e.clickCount > 0 ? (int)MIN(e.clickCount, 3) : 1, ui_mods_of(e.modifierFlags));
 }
+- (void)motion:(NSEvent *)e { UiHost *h = self.host; if (h->app.motion) h->app.motion(h->app.user, (float)e.deltaX, (float)e.deltaY); }
 - (void)mouseDown:(NSEvent *)e { [self pointer:e phase:0]; }
-- (void)mouseDragged:(NSEvent *)e { [self pointer:e phase:1]; }
-- (void)mouseMoved:(NSEvent *)e { if (!self.host->held) [self pointer:e phase:1]; }
+- (void)mouseDragged:(NSEvent *)e { [self motion:e]; [self pointer:e phase:1]; }
+- (void)mouseMoved:(NSEvent *)e { [self motion:e]; if (!self.host->held) [self pointer:e phase:1]; }
 - (void)mouseUp:(NSEvent *)e { [self pointer:e phase:2]; }
+// The other buttons (UiApp.button): 2 the right, 1 the middle.
+- (void)other:(NSEvent *)e phase:(int)phase button:(int)b {
+  UiHost *h = self.host;
+  if (!h->app.button) return;
+  NSPoint p = [self devicePoint:e];
+  h->app.button(h->app.user, (float)p.x, (float)p.y, phase, b, ui_mods_of(e.modifierFlags));
+}
+- (void)rightMouseDown:(NSEvent *)e { if (self.host->app.button) [self other:e phase:0 button:2]; else [super rightMouseDown:e]; }
+- (void)rightMouseDragged:(NSEvent *)e { [self motion:e]; [self other:e phase:1 button:2]; }
+- (void)rightMouseUp:(NSEvent *)e { [self other:e phase:2 button:2]; }
+- (void)otherMouseDown:(NSEvent *)e { [self other:e phase:0 button:1]; }
+- (void)otherMouseDragged:(NSEvent *)e { [self motion:e]; [self other:e phase:1 button:1]; }
+- (void)otherMouseUp:(NSEvent *)e { [self other:e phase:2 button:1]; }
+// Shift, Control and Alt as keys of their own (UiApp.modifier_keys).
+- (void)flagsChanged:(NSEvent *)e {
+  UiHost *h = self.host;
+  if (!h->app.modifier_keys || !h->app.key) { [super flagsChanged:e]; return; }
+  NSEventModifierFlags now = e.modifierFlags & (NSEventModifierFlagShift | NSEventModifierFlagControl | NSEventModifierFlagOption);
+  const NSEventModifierFlags flag[3] = {NSEventModifierFlagShift, NSEventModifierFlagControl, NSEventModifierFlagOption};
+  const int key[3] = {-13, -14, -16};
+  for (int i = 0; i < 3; i++)
+    if ((now & flag[i]) != (h->flags & flag[i])) h->app.key(h->app.user, key[i], ui_mods_of(e.modifierFlags), (now & flag[i]) ? 1 : 0);
+  h->flags = now;
+}
 - (void)scrollWheel:(NSEvent *)e {
   UiHost *h = self.host;
+  if (h->app.scroll) { h->app.scroll(h->app.user, (float)e.scrollingDeltaY, e.hasPreciseScrollingDeltas ? 1 : 0); return; }
   if (!h->app.wheel) return;
   // GPUI's pixel delta: precise deltas as they come, a mouse's lines times the line height (22.75)
   CGFloat dy = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 22.75;
@@ -242,6 +275,12 @@ static int ui_to(NSRange r) { return r.location == NSNotFound ? -1 : (int)(r.loc
 @end
 @implementation UiWindowDelegate
 - (void)windowWillClose:(NSNotification *)n { (void)n; self.host->closed = 1; }
+- (void)windowDidBecomeKey:(NSNotification *)n { (void)n; UiHost *h = self.host; if (h->app.focus) h->app.focus(h->app.user, 1); }
+- (void)windowDidResignKey:(NSNotification *)n {
+  (void)n; UiHost *h = self.host;
+  ui_hold_pointer(h, 0);
+  if (h->app.focus) h->app.focus(h->app.user, 0);
+}
 @end
 #else
 // iOS: the view the app puts in its window. Its layer is the CAMetalLayer frames are presented to.
@@ -278,7 +317,7 @@ static id<MTLLibrary> ui_library(id<MTLDevice> dev, const char *path) {
   if (!lib) fprintf(stderr, "ui-host: no shader at %s (%s)\n", path, err ? err.localizedDescription.UTF8String : "unreadable");
   return lib;
 }
-static id<MTLRenderPipelineState> ui_pipeline(id<MTLDevice> dev, id<MTLLibrary> lib) {
+static id<MTLRenderPipelineState> ui_pipeline(id<MTLDevice> dev, id<MTLLibrary> lib, int depth) {
   MTLRenderPipelineDescriptor *p = [MTLRenderPipelineDescriptor new];
   p.vertexFunction = [lib newFunctionWithName:@"chat_fx_vs"];
   p.fragmentFunction = [lib newFunctionWithName:@"chat_fx_fs"];
@@ -287,6 +326,7 @@ static id<MTLRenderPipelineState> ui_pipeline(id<MTLDevice> dev, id<MTLLibrary> 
   for (int i = 0; i < 7; i++) { v.attributes[i].format = MTLVertexFormatFloat4; v.attributes[i].offset = 16 * i; v.attributes[i].bufferIndex = 30; }
   v.layouts[30].stride = UI_VERTEX_BYTES;
   p.vertexDescriptor = v;
+  if (depth) p.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
   MTLRenderPipelineColorAttachmentDescriptor *a = p.colorAttachments[0];
   a.pixelFormat = MTLPixelFormatBGRA8Unorm; a.blendingEnabled = YES;
   a.rgbBlendOperation = MTLBlendOperationAdd; a.alphaBlendOperation = MTLBlendOperationAdd;
@@ -335,14 +375,46 @@ static void ui_fill(UiHost *h, float dt) {
   if ((uint32_t)n > h->app.max_vertices) n = (int)h->app.max_vertices;
   h->count = (uint32_t)n;
 }
-// One frame into a texture: the background is the shell's colour, then the vertices.
+void ui_layer(UiHost *h, const UiLayer *layer) {
+  int depth = layer && layer->depth;
+  if (depth != (h->layered && h->layer_of.depth)) {
+    id<MTLRenderPipelineState> p = ui_pipeline(h->dev, h->lib, depth);
+    if (p) h->pipe = p;
+  }
+  if (layer) { h->layer_of = *layer; h->layered = 1; } else { memset(&h->layer_of, 0, sizeof h->layer_of); h->layered = 0; }
+  if (!h->flat) {
+    MTLDepthStencilDescriptor *d = [MTLDepthStencilDescriptor new];
+    d.depthCompareFunction = MTLCompareFunctionAlways; d.depthWriteEnabled = NO;
+    h->flat = [h->dev newDepthStencilStateWithDescriptor:d];
+  }
+  h->stale = 1;
+}
+void *ui_device(UiHost *h) { return (__bridge void *)h->dev; }
+void *ui_queue(UiHost *h) { return (__bridge void *)h->queue; }
+// One frame into a texture: the background is the shell's colour, the app's own layer, then the vertices.
 static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
+  int depth = h->layered && h->layer_of.depth;
+  if (h->layered && h->layer_of.prepare) h->layer_of.prepare(h->layer_of.user, (__bridge void *)cmd, h->w, h->rows, h->dpr);
   MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
   rp.colorAttachments[0].texture = into;
   rp.colorAttachments[0].loadAction = MTLLoadActionClear;
   rp.colorAttachments[0].storeAction = MTLStoreActionStore;
   rp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1);
+  if (depth) {
+    if (!h->depth || h->depth.width != into.width || h->depth.height != into.height) {
+      MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float width:into.width height:into.height mipmapped:NO];
+      d.usage = MTLTextureUsageRenderTarget; d.storageMode = MTLStorageModePrivate;
+      h->depth = [h->dev newTextureWithDescriptor:d];
+    }
+    rp.depthAttachment.texture = h->depth;
+    rp.depthAttachment.loadAction = MTLLoadActionClear; rp.depthAttachment.clearDepth = 1;
+    rp.depthAttachment.storeAction = MTLStoreActionDontCare;
+  }
   id<MTLRenderCommandEncoder> e = [cmd renderCommandEncoderWithDescriptor:rp];
+  if (h->layered && h->layer_of.encode) {
+    h->layer_of.encode(h->layer_of.user, (__bridge void *)e, h->w, h->rows, h->dpr);
+    if (h->flat) [e setDepthStencilState:h->flat];
+  }
   if (h->count && h->pipe && h->mono) {
     memcpy(h->verts.contents, h->frame, (size_t)h->count * UI_VERTEX_BYTES);
     float u[4] = {(float)h->w, (float)h->rows, 0, 0};
@@ -363,8 +435,15 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
 void ui_cursor(UiHost *h, int kind) {
   h->cursor_kind = kind;
   if (h->offscreen) return;
-  NSCursor *c = kind == 1 ? NSCursor.IBeamCursor : kind == 2 ? NSCursor.pointingHandCursor : kind == 3 ? NSCursor.resizeLeftRightCursor : NSCursor.arrowCursor;
+  NSCursor *c = kind == 1 ? NSCursor.IBeamCursor : kind == 2 ? NSCursor.pointingHandCursor : kind == 3 ? NSCursor.resizeLeftRightCursor : kind == 4 ? NSCursor.crosshairCursor : NSCursor.arrowCursor;
   [c set];
+}
+void ui_hold_pointer(UiHost *h, int on) {
+  on = on ? 1 : 0;
+  if (h->offscreen || on == h->looking) { h->looking = on; return; }
+  h->looking = on;
+  CGAssociateMouseAndMouseCursorPosition(on ? 0 : 1);
+  if (on) [NSCursor hide]; else [NSCursor unhide];
 }
 int ui_copy(UiHost *h, const char *bytes, size_t n) {
   NSString *s = [[NSString alloc] initWithBytes:bytes length:n encoding:NSUTF8StringEncoding];
@@ -513,6 +592,7 @@ void ui_open_url(const char *url) {
 }
 void ui_terminal(const char *command) { (void)command; }
 void ui_cursor(UiHost *h, int kind) { h->cursor_kind = kind; }   // a touch screen has no pointer to shape
+void ui_hold_pointer(UiHost *h, int on) { h->looking = on ? 1 : 0; }
 int ui_copy(UiHost *h, const char *bytes, size_t n) {
   if (h->offscreen) return 0;
   NSString *s = [[NSString alloc] initWithBytes:bytes length:n encoding:NSUTF8StringEncoding];
@@ -572,7 +652,8 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   h->dev = MTLCreateSystemDefaultDevice();
   if (!h->dev) { fprintf(stderr, "ui-host: no Metal device\n"); free(h); return NULL; }
   id<MTLLibrary> lib = ui_library(h->dev, app->shader);
-  if (!lib || !(h->pipe = ui_pipeline(h->dev, lib))) { free(h); return NULL; }
+  if (!lib || !(h->pipe = ui_pipeline(h->dev, lib, 0))) { free(h); return NULL; }
+  h->lib = lib;
   h->queue = [h->dev newCommandQueue];
   h->verts = [h->dev newBufferWithLength:(NSUInteger)app->max_vertices * UI_VERTEX_BYTES options:MTLResourceStorageModeShared];
   h->frame = malloc((size_t)app->max_vertices * UI_VERTEX_BYTES);
@@ -631,7 +712,7 @@ int ui_frame(UiHost *h) {
   @autoreleasepool {
 #if TARGET_OS_OSX
     // the seat's events, without waiting: a frame's time at most when nothing changed
-    NSDate *until = h->stale ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
+    NSDate *until = h->stale || h->layered ? NSDate.distantPast : [NSDate dateWithTimeIntervalSinceNow:1 / 60.0];
     NSEvent *e;
     while ((e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:until inMode:NSDefaultRunLoopMode dequeue:YES])) {
       [NSApp sendEvent:e];
@@ -652,7 +733,7 @@ int ui_frame(UiHost *h) {
     if (dt > 0.1f) dt = 0.1f;
     ui_fill(h, dt);
     uint64_t digest = ui_digest(h);
-    if (!h->stale && digest == h->shown) return 1;
+    if (!h->stale && !h->layered && digest == h->shown) return 1;
     id<CAMetalDrawable> d = [h->layer nextDrawable];
     if (!d) return 1;
     h->shown = digest; h->stale = 0;
@@ -705,6 +786,7 @@ int ui_shot_write(UiHost *h, const char *png) {
 }
 void ui_close(UiHost *h) {
   if (!h) return;
+  ui_hold_pointer(h, 0);
 #if TARGET_OS_OSX
   if (h->window) { h->window.delegate = nil; [h->window close]; }
   h->window = nil;
@@ -717,6 +799,7 @@ void ui_close(UiHost *h) {
   h->pasteboard = nil; h->menu_target = nil;
 #endif
   h->mono = nil; h->color = nil; h->target = nil; h->verts = nil; h->dev = nil;
+  h->lib = nil; h->depth = nil; h->flat = nil;
   free(h->frame);
   free(h);
 }

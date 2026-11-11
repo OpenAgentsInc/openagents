@@ -426,7 +426,8 @@ phase with no implementer by its date is cut from this list, not left open.
    `linux/check.coax`'s `chat-everglade` golden). The Workshop itself does
    not run on Linux, and cannot without new host work: its temple and your
    model are drawn by the Mac host's own Metal pipelines from hand-written
-   `Workshop.metal` and `Model.metal` (`Sources/main.swift`), its words are
+   `Workshop.metal` and `Model.metal` (`Sources/Workshop.swift`, a layer on the
+   shared Mac host since 2026-11-11), its words are
    12-float HUD strokes over `text.coax`'s Spectral and Cinzel atlas drawn by
    a third Metal pipeline, its input is `aethyr/host/appkit-input.coax`, and
    the shared Linux host (`apps/shared/host/linux/ui-host.h`) has one

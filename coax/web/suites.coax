@@ -255,12 +255,12 @@ su_web_input :: (path: string, faces: bool) -> bool {
   #assert su_input("coax/src/check.cpp") && su_input("coax/bootstrap/checker.c") && su_input("coax/build.sh") && su_input("coax/web/native-check.c");
   #assert su_input("verse/voice.pb") && su_input("os/wire/desk.pb");
   #assert !su_input("aethyr/host/frame.c") && !su_input("apps/openagents-web/wasm-budgets.txt") && !su_input("coax/web/tool.sh");
-  #assert !su_input("apps/everglade-desktop/Sources/main.swift") && !su_input("coax/remote/after.sh") && !su_input("pb") && !su_input(".gitignore");
+  #assert !su_input("apps/everglade-desktop/Sources/Workshop.swift") && !su_input("coax/remote/after.sh") && !su_input("pb") && !su_input(".gitignore");
 }
 #test "a web module's inputs are wider: the trees the build reads, its faces left to the caller on request" {
   #assert su_web_input("apps/openagents-web/wasm-budgets.txt", false) && su_web_input("coax/web/host.js", true) && su_web_input("coax/src/emit_c.cpp", true);
   #assert su_web_input("aethyr/host/frame.c", false) && !su_web_input("aethyr/host/frame.c", true) && !su_web_input("apps/openagents-web/sound-bank.h", true);
-  #assert !su_web_input("apps/everglade-desktop/Sources/main.swift", false) && !su_web_input("scripts/join-pylon.sh", true) && !su_web_input("coax/remote/check.sh", false);
+  #assert !su_web_input("apps/everglade-desktop/Sources/Workshop.swift", false) && !su_web_input("scripts/join-pylon.sh", true) && !su_web_input("coax/remote/check.sh", false);
 }
 #test "paths: a #load from a file's folder, dots resolved, never out of the repo" {
   b: [256] u8;

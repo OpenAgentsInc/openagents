@@ -4,7 +4,8 @@
 # the Workshop, and the web's realms run natively: Everglade itself, everglade2, Experimental, fivelab, and the Archery Range, archery-range, with their sound) with the Next issue panel (desktop.coax) and your model (model.coax) compiled to C
 # behind face.h, Next issue (next.coax, in the scene's unit: the Coax Claude Agent SDK), the
 # context program it asks the host to run (next-context.coax, as everglade-next), their shaders,
-# Everglade II's pack, and the AppKit and Metal host in Swift.
+# Everglade II's pack, on the shared Mac host (apps/shared/host/apple/ui-host.m, the ui-host.h
+# contract OpenAgents uses) with the app's Metal layer and callbacks in Swift (Sources/Workshop.swift).
 #   apps/everglade-desktop/build.sh [--open [APP ARGS...]]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -120,9 +121,13 @@ cp -R "$repo/apps/openagents-web/realms/everglade2/assets/fonts" "$app/Contents/
 cp "$repo/apps/openagents-web/realms/everglade2/assets/everglade2.pack" "$app/Contents/Resources/everglade2.pack"
 # The web's character code passes its Creator and Bodies by value, megabytes a call, so the main
 # thread, which runs every Coax call, gets a 512 MB stack (reserved, not touched until used).
-printf '#include "%s"\n#import "%s"\n#include "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" "$repo/aethyr/host/apple/audio-host.h" > "$work/c/bridge.h"
-xcrun -sdk macosx swiftc -O -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" "$work/c/page-host.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" \
-  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -lm -lz \
+# The shared Mac host, and the component shader it draws the shared components with (components/backend/gpu-shader.coax as Metal).
+/usr/bin/clang -fobjc-arc -O2 -w -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -c "$repo/apps/shared/host/apple/ui-host.m" -o "$work/c/ui-host.o"
+"$coax" metal "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/c/gpu-shader.metal" 2> "$work/c/gpu-shader.bind"
+xcrun -sdk macosx metal "$work/c/gpu-shader.metal" -o "$app/Contents/Resources/zeron.metallib"
+printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" "$repo/aethyr/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" > "$work/c/bridge.h"
+xcrun -sdk macosx swiftc -O -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" \
+  -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -framework UniformTypeIdentifiers -lm -lz \
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's
 # hash; an unknown verb builds it and does nothing else), then copied in beside the app's own.

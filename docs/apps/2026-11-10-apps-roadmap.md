@@ -98,7 +98,7 @@ recommends its `--do` steps become `coax drive` operations.
 
 The app's product code is already Coax compiled to C behind `face.h`. Only
 the host is Mac-only. A Linux host has to supply what `Sources/Zeron.swift`
-and `Sources/main.swift` supply:
+and `Sources/main.swift` supplied (both replaced by the shared Mac host on 2026-11-11):
 
 | The host's job | On the Mac | On Linux |
 | --- | --- | --- |
@@ -344,10 +344,17 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
   CoreAudio and Parakeet through `linux/dictation-host.c` and
   `dictation-mac.m`. `Sources/*.swift` are deleted; the 21 goldens and the
   dictation check pass on it.
-- **Not built:** Everglade and Aethyrforge still run their own
-  `main.swift` hosts. Next is Everglade's
-  Workshop (which then gets the component pass Phase 4 needs), with the
-  page host for the realms kept as it is, then Aethyrforge. The Android
+- **Built: Everglade on the shared Mac host** (2026-11-11, #13156).
+  `Sources/main.swift` is replaced by `Sources/Workshop.swift`, the app's
+  callbacks and its Metal layer on `ui-host.m`: the host gained an app layer
+  (`ui-host-apple.h` `ui_layer`: passes of the app's own on the frame's
+  command buffer, then its encoder under the components, with a depth
+  attachment), game input (`UiApp.button`, `motion`, `scroll`, `focus`,
+  `modifier_keys`) and `ui_hold_pointer` for mouselook. The realms still
+  run on Aethyr's page host. `--shot` of the list, the Workshop, Everglade,
+  the Archery Range and Experimental, and a driven range run, match the
+  Swift host's to the pixel.
+- **Not built:** Aethyrforge still runs its own `main.swift` host. The Android
   window, on the activity's `ANativeWindow`, is not written. Who and when:
   components/spec.md, "Phases".
 - **Staged: /chat's server engines.** `coax/web/agent/deploy.sh --staging`

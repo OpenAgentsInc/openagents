@@ -1,11 +1,13 @@
-// Firm reason: 6 (AppKit and Metal have no C API; this host holds no product logic).
-// Everglade for desktop, the Mac host (everglade/docs/desktop-app-spec.md): a window,
-// a Metal view and input. Everything drawn comes from scenes.coax (the list of worlds, the
+// Firm reason: 6 (Metal's own passes for the place, the model and the realms; this file holds no product logic).
+// Everglade for desktop on the shared Mac host (everglade/docs/desktop-app-spec.md; apps/shared/host/apple/
+// ui-host.m, the ui-host.h contract OpenAgents uses, GitHub #13156): the host owns the window, the
+// event loop, the input and the offscreen pictures; this file is the app's callbacks and its Metal
+// layer (ui-host-apple.h ui_layer). Everything drawn comes from scenes.coax (the list of worlds, the
 // Workshop) through face.h. Escape is the list; --scene N opens on world N (1 Everglade, 2 the
 // Workshop, 3 the Archery Range, 4 Experimental). Everglade itself is the web's everglade2 realm
 // (Character Create, then the glade), and the Archery Range and Experimental are the web's
 // archery-range and fivelab realms, each run natively by Aethyr's page host (aethyr/host/apple/
-// page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this host
+// page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this app
 // hands it the frames, keys and presses, draws its picture under the Worlds button, and plays its
 // sound through the Apple audio host (aethyr/host/apple/PageAudio.swift).
 //   Everglade                      opens the window
@@ -21,6 +23,7 @@
 //       did (the packets, the voices, the names played, the loudest sample), --audio OUT.wav writes it.
 //       --quality TIER starts the realm with that graphics tier kept (auto when none is).
 //       --scale S draws S pixels a point (2 unless given); --realtime gives each frame the time it took, and stderr says the frame rate the realm ran at (the whole shot, and its last 5 seconds). --frames DIR writes every sixth frame after `record` (--every N: every Nth)
+//       A shot never shows in the Dock or the menu bar.
 //   Everglade --shot OUT.png --next WAIT [--reply TEXT]
 //       presses Next issue first and waits up to WAIT seconds for the agent (a real Haiku turn on
 //       your login); --reply then types TEXT as your answer and waits for the agent again. A reply
@@ -29,10 +32,18 @@
 //       Autopilot is on, so the loop goes round by itself: --runs N stops waiting after N coding turns
 import AppKit
 import Metal
-import MetalKit
 
-final class WorkshopView: MTKView, MTKViewDelegate {
+// The menu bar's commands (ui_menus ids).
+let commandWorlds: Int32 = 1, commandQuit: Int32 = 2
+
+// The realms' sound (PageAudio.swift) is the main actor's; so is all of this, run on the main thread by the host.
+@MainActor
+final class Workshop {
   let state = eg_new()!
+  var host: OpaquePointer!
+  var device: MTLDevice!
+  var queue: MTLCommandQueue!     // the host's: the realms, the place and the frame share one queue
+  let format = MTLPixelFormat.bgra8Unorm
   var temple: Place!
   // The place behind the world that is open (face.h eg_place).
   var place: Place { temple }
@@ -46,8 +57,6 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var flat: MTLDepthStencilState!
   var faces: MTLTexture!
   var faceSampler: MTLSamplerState!
-  var queue: MTLCommandQueue!     // one for the life of the view: Metal means a queue to be kept
-  var last = CACurrentMediaTime()
   var time: Float = 0
   // The realms, each once its row is first opened, by its world's number. `pageOffline` is a
   // shot's: no socket and no request leaves this Mac.
@@ -56,9 +65,18 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var pageTried: Set<Int32> = []
   var pageOffline = false, pageShot = false
   var shownWorld: Int32 = 0           // the world whose realm is on screen; 0 when none is
-  var lookHeld = false, worldsPress = false
+  var lookHeld = false, worldsPress = false, leftDown = false
   weak var lookPage: AEPageHost?      // the realm the pointer is held for
   var shotStore = NSTemporaryDirectory() + "everglade-shot-\(getpid())"
+  // The view in points, and where the pointer last was, from the host's frames and moves.
+  var viewW: Float = 1320, viewH: Float = 880, pointerX: Float = 0, pointerY: Float = 0
+  var cursorShown: Int32 = -1
+  // What this frame draws, kept from the frame callback for the layer's prepare and encode.
+  var drawn: Int32 = 0, panelDrawn: Int32 = 0, seen = false
+  var box = [Float](repeating: 0, count: 8)
+  var camera = [Float](repeating: 0, count: 24)
+  var pu = [Float](repeating: 0, count: 24)
+  var frameRealm: AEPageHost?
   // The realm of the world that is open, when it has one.
   var page: AEPageHost? { pages[eg_scene(state)] }
   var inRealm: Bool { page != nil }
@@ -70,19 +88,20 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     return dir
   }
 
-  init(frame: CGRect) {
-    super.init(frame: frame, device: MTLCreateSystemDefaultDevice())
-    guard let device else { fatalError("Everglade needs a Metal device.") }
-    colorPixelFormat = .bgra8Unorm
-    preferredFramesPerSecond = NSScreen.main?.maximumFramesPerSecond ?? 60
-    clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-    depthStencilPixelFormat = .depth32Float; clearDepth = 1
-    queue = device.makeCommandQueue()
+  init() {
+    // A realm's files are in the app: its row opens a world, not a card.
+    for world in Realms.table.keys where Workshop.realmFiles(world) != nil { eg_runs(state, world, 1) }
+  }
+
+  // The app's pipelines on the host's device, once the host is open.
+  func attach(_ h: OpaquePointer) {
+    host = h
+    device = (Unmanaged<AnyObject>.fromOpaque(ui_device(h)!).takeUnretainedValue() as! MTLDevice)
+    queue = (Unmanaged<AnyObject>.fromOpaque(ui_queue(h)!).takeUnretainedValue() as! MTLCommandQueue)
     let url = Bundle.main.url(forResource: "default", withExtension: "metallib")!
     let lib = try! device.makeLibrary(URL: url)
-    let b = MTLRenderPipelineDescriptor()
     // The place: the temple's parts and Aethyr's shaders. Without them there is nowhere to stand.
-    guard let pl = Place(device: device, color: colorPixelFormat) else {
+    guard let pl = Place(device: device, color: format) else {
       FileHandle.standardError.write(Data("Everglade: the temple did not build or its shaders are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       exit(1)
     }
@@ -94,7 +113,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     v.layouts[0].stride = Int(eg_vertex_floats()) * 4
     f.vertexDescriptor = v; f.depthAttachmentPixelFormat = .depth32Float
     let a = f.colorAttachments[0]!
-    a.pixelFormat = colorPixelFormat; a.isBlendingEnabled = true
+    a.pixelFormat = format; a.isBlendingEnabled = true
     a.rgbBlendOperation = .add; a.alphaBlendOperation = .max
     a.sourceRGBBlendFactor = .one; a.destinationRGBBlendFactor = .one; a.sourceAlphaBlendFactor = .one; a.destinationAlphaBlendFactor = .one
     strokes = try! device.makeRenderPipelineState(descriptor: f)
@@ -104,7 +123,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     r.vertexFunction = lib.makeFunction(name: "rect_vs"); r.fragmentFunction = lib.makeFunction(name: "rect_fs")
     r.depthAttachmentPixelFormat = .depth32Float
     let ra = r.colorAttachments[0]!
-    ra.pixelFormat = colorPixelFormat; ra.isBlendingEnabled = true
+    ra.pixelFormat = format; ra.isBlendingEnabled = true
     ra.sourceRGBBlendFactor = .sourceAlpha; ra.destinationRGBBlendFactor = .oneMinusSourceAlpha; ra.sourceAlphaBlendFactor = .one; ra.destinationAlphaBlendFactor = .one
     panel = try! device.makeRenderPipelineState(descriptor: r)
     let fd = MTLDepthStencilDescriptor(); fd.depthCompareFunction = .always; fd.isDepthWriteEnabled = false
@@ -119,14 +138,17 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     faceSampler = device.makeSamplerState(descriptor: fsd)!
     // Your model, from the pack in the app. Without it there is no you to draw, so say so and stop.
     guard let url = Bundle.main.url(forResource: "everglade2", withExtension: "pack"), let pack = Pack(url),
-          let m = Model(device: device, library: lib, color: colorPixelFormat, pack: pack) else {
+          let m = Model(device: device, library: lib, color: format, pack: pack) else {
       FileHandle.standardError.write(Data("Everglade: the app's everglade2.pack is missing or doesn't hold the player's parts. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       exit(1)
     }
     model = m
-    // A realm's files are in the app: its row opens a world, not a card.
-    for world in Realms.table.keys where WorkshopView.realmFiles(world) != nil { eg_runs(state, world, 1) }
-    delegate = self
+    var layer = UiLayer()
+    layer.user = Unmanaged.passUnretained(self).toOpaque()
+    layer.depth = 1
+    layer.prepare = { u, cmd, w, h, _ in MainActor.assumeIsolated { workshop(u).prepare(Unmanaged<AnyObject>.fromOpaque(cmd!).takeUnretainedValue() as! MTLCommandBuffer, Int(w), Int(h)) } }
+    layer.encode = { u, enc, _, _, dpr in MainActor.assumeIsolated { workshop(u).encode(Unmanaged<AnyObject>.fromOpaque(enc!).takeUnretainedValue() as! MTLRenderCommandEncoder, scale: dpr) } }
+    ui_layer(h, &layer)
   }
 
   // Opens a world's realm: its library, shaders, pack, fonts and pictures from the app, and what a
@@ -136,7 +158,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     pageTried.insert(world)
     // A module runs one page at a time (Realms.sharing): opening a world closes any other page of its module.
     for other in Realms.sharing(world) where pages[other] != nil { closePage(other) }
-    guard let device, let r = Realms.table[world], let dir = WorkshopView.realmFiles(world), let res = Bundle.main.resourceURL else { eg_runs(state, world, 0); return }
+    guard let device, let r = Realms.table[world], let dir = Workshop.realmFiles(world), let res = Bundle.main.resourceURL else { eg_runs(state, world, 0); return }
     let c = AEPageConfig()
     c.producer = dir.appendingPathComponent("lib\(r.module).dylib").path; c.shaders = dir.path
     c.pack = res.appendingPathComponent(r.pack).path
@@ -172,31 +194,24 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   func hold(_ on: Bool) {
     if on == lookHeld { return }
     lookHeld = on
-    CGAssociateMouseAndMouseCursorPosition(on ? 0 : 1)
-    if on { NSCursor.hide() } else { NSCursor.unhide() }
+    if host != nil && !pageShot { ui_hold_pointer(host, on ? 1 : 0) }
     if on { lookPage = page }
     lookPage?.pointerLock(on ? 1 : 0)
     if !on { lookPage = nil }
   }
   func syncRealm() {
-    guard let page, inRealm else { hold(false); return }
+    guard let page, inRealm else { hold(false); setCursor(0); return }
     let want = page.mouselook()
-    if want == 2 && !lookHeld && window?.isKeyWindow == true { hold(true) } else if want != 2 && lookHeld { hold(false) }
-    if !lookHeld {
-      switch page.cursor() { case 1: NSCursor.pointingHand.set(); case 2: NSCursor.crosshair.set(); case 3: NSCursor.iBeam.set(); default: NSCursor.arrow.set() }
-    }
+    if want == 2 && !lookHeld && ui_focused(host) == 1 { hold(true) } else if want != 2 && lookHeld { hold(false) }
+    // The realm's cursor (1 hand, 2 crosshair, 3 text) as the host's kinds.
+    if !lookHeld { switch page.cursor() { case 1: setCursor(2); case 2: setCursor(4); case 3: setCursor(1); default: setCursor(0) } }
   }
-  required init(coder: NSCoder) { fatalError() }
+  func setCursor(_ kind: Int32) { if kind != cursorShown { cursorShown = kind; ui_cursor(host, kind) } }
 
-  func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-  func draw(in view: MTKView) {
-    guard let pass = currentRenderPassDescriptor, let drawable = currentDrawable else { return }
-    let now = CACurrentMediaTime(); let dt = Float(now - last); last = now
-    render(pass, size: drawableSize, scale: Float(window?.backingScaleFactor ?? 2), dt: dt, wait: false) { $0.present(drawable) }
-  }
-
-  // `wait` holds the caller until the GPU has drawn: a shot reads the picture back, the window doesn't.
-  func render(_ pass: MTLRenderPassDescriptor, size: CGSize, scale: Float, dt: Float, wait: Bool = true, then: (MTLCommandBuffer) -> Void) {
+  // One frame's work before it is drawn (UiApp.frame): the realm's own picture, the scene's and
+  // the Next issue panel's strokes, and what the panel asked of the Mac. w and h are device pixels.
+  func frame(width: Float, height: Float, scale: Float, dt: Float) {
+    viewW = width / scale; viewH = height / scale
     time += dt
     // A realm's row, first opened: the realm starts. Leaving it lets its keys go; it keeps its state.
     let world = eg_scene(state)
@@ -204,64 +219,62 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let on: Int32 = pages[world] != nil ? world : 0
     if on != shownWorld { hold(false); pages[shownWorld]?.shown(false); sounds[shownWorld]?.show(false); pages[on]?.shown(true); sounds[on]?.show(true); shownWorld = on }
     let realm = page
+    frameRealm = realm
     for (w, p) in pages where w != on { p.idle(); sounds[w]?.step(dt) }   // out of sight a realm draws nothing, and still hears its room
-    if let realm { _ = realm.frame(CGSize(width: size.width / CGFloat(scale), height: size.height / CGFloat(scale)), scale: CGFloat(scale), dt: dt, wait: wait); sounds[on]?.step(dt) }
-    let n = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), Float(size.width) / scale, Float(size.height) / scale, scale, dt)
-    var u: [Float] = [Float(size.width), Float(size.height), time, 0]
+    // A shot waits for the realm's picture; the window doesn't.
+    if let realm { _ = realm.frame(CGSize(width: CGFloat(viewW), height: CGFloat(viewH)), scale: CGFloat(scale), dt: dt, wait: pageShot); sounds[on]?.step(dt) }
+    drawn = eg_frame(state, vertices.contents().assumingMemoryBound(to: Float.self), viewW, viewH, scale, dt)
     model?.step(state, dt: dt)
     // The view, the picture's size, the clock and where you stand: the place's uniforms, and the
     // first twenty floats Model.metal's MU.
-    var camera = [Float](repeating: 0, count: 24)
-    let seen = eg_camera(state, Float(size.width) / scale, Float(size.height) / scale, scale, &camera) == 1
-    camera[16] = Float(size.width); camera[17] = Float(size.height); camera[18] = time; camera[19] = Float(eg_place(state))
-    let place = self.place
+    for k in 0..<24 { camera[k] = 0; pu[k] = 0 }
+    seen = eg_camera(state, viewW, viewH, scale, &camera) == 1
+    camera[16] = width; camera[17] = height; camera[18] = time; camera[19] = Float(eg_place(state))
     var you = [Float](repeating: 0, count: 5)
     if eg_you(state, &you) == 1 { camera[20] = you[0]; camera[21] = you[1]; camera[22] = you[2] }
-    guard let cmd = queue.makeCommandBuffer() else { return }
     // The place's uniforms (everglade/workshop/gpu/temple.coax): size, clock, mirror flag, the eye
     // and its right, up and forward with the focal length, and where you stand.
-    var pu = [Float](repeating: 0, count: 24)
-    pu[0] = Float(size.width); pu[1] = Float(size.height); pu[2] = time
+    pu[0] = width; pu[1] = height; pu[2] = time
     for k in 0..<3 { pu[4 + k] = camera[k]; pu[8 + k] = camera[4 + k]; pu[12 + k] = camera[8 + k]; pu[16 + k] = camera[12 + k]; pu[20 + k] = camera[20 + k] }
     pu[19] = camera[15]
-    if seen, realm == nil, let device { place.reflect(cmd, device: device, uniforms: pu, width: Int(size.width), height: Int(size.height)) }
-    guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
-    // The realm's picture; or the place, you, what is only light. Then the scene's text over them, as the phones draw it.
-    if let realm { enc.setDepthStencilState(flat); realm.present(enc, format: colorPixelFormat) }
+    // Next issue, over everything: its panel's dark box, then its strokes.
+    for k in 0..<8 { box[k] = 0 }
+    panelDrawn = nxp_frame(next, overlay.contents().assumingMemoryBound(to: Float.self), &box, viewW, viewH, scale, dt, Int64(Date().timeIntervalSince1970))
+    serve()
+    if !pageShot { syncRealm() }
+  }
+  // Passes of the place's own before the frame's: its reflection.
+  func prepare(_ cmd: MTLCommandBuffer, _ width: Int, _ height: Int) {
+    if seen, frameRealm == nil, let device { place.reflect(cmd, device: device, uniforms: pu, width: width, height: height) }
+  }
+  // The realm's picture; or the place, you, what is only light. Then the scene's text over them, as the phones draw it.
+  func encode(_ enc: MTLRenderCommandEncoder, scale: Float) {
+    var u: [Float] = [pu[0], pu[1], time, 0]
+    if let realm = frameRealm { enc.setDepthStencilState(flat); realm.present(enc, format: format) }
     else if seen { place.draw(enc, uniforms: pu); model?.draw(enc, camera: camera); place.glow(enc, uniforms: pu) }
     enc.setDepthStencilState(flat)
-    if n > 0 {
+    if drawn > 0 {
       enc.setRenderPipelineState(strokes)
       enc.setFragmentTexture(faces, index: 0); enc.setFragmentSamplerState(faceSampler, index: 0)
       enc.setVertexBuffer(vertices, offset: 0, index: 0)
       enc.setVertexBytes(&u, length: 16, index: 1)
-      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(n))
+      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(drawn))
     }
-    // Next issue, over everything: its panel's dark box, then its strokes.
-    var box = [Float](repeating: 0, count: 8)
-    let tn = nxp_frame(next, overlay.contents().assumingMemoryBound(to: Float.self), &box, Float(size.width) / scale, Float(size.height) / scale, scale, dt, Int64(Date().timeIntervalSince1970))
-    serve()
-    enc.setDepthStencilState(flat)
     // Over the realm the agent's buttons and panels are not drawn: the realm's own HUD is there.
     // The agent keeps working; its buttons are back on the list and in the other worlds.
-    for k in [0, 4] where box[k + 2] > 0 && realm == nil {
-      var ru: [Float] = [box[k] * scale, box[k + 1] * scale, box[k + 2] * scale, box[k + 3] * scale, Float(size.width), Float(size.height), 0, 0]
+    for k in [0, 4] where box[k + 2] > 0 && frameRealm == nil {
+      var ru: [Float] = [box[k] * scale, box[k + 1] * scale, box[k + 2] * scale, box[k + 3] * scale, pu[0], pu[1], 0, 0]
       enc.setRenderPipelineState(panel)
       enc.setVertexBytes(&ru, length: 32, index: 0)
       enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
     }
-    if tn > 0 && realm == nil {
+    if panelDrawn > 0 && frameRealm == nil {
       enc.setRenderPipelineState(strokes)
       enc.setFragmentTexture(faces, index: 0); enc.setFragmentSamplerState(faceSampler, index: 0)
       enc.setVertexBuffer(overlay, offset: 0, index: 0)
       enc.setVertexBytes(&u, length: 16, index: 1)
-      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(tn))
+      enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Int(panelDrawn))
     }
-    enc.endEncoding()
-    then(cmd)
-    cmd.commit()
-    if wait { cmd.waitUntilCompleted() }
-    if !wait { syncRealm() }
   }
 
   // What the panel asked of the host this frame. The host holds no logic here: it runs the
@@ -340,8 +353,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     let asked = Int(nxp_golems_action(next, &line, Int32(line.count)))
     if asked > 0, let text = String(bytes: line[0..<asked], encoding: .utf8), let tab = text.firstIndex(of: "\t") {
       let verb = text[..<tab], rest = String(text[text.index(after: tab)...])
-      if verb == "open", let url = URL(string: rest), url.scheme == "https" { NSWorkspace.shared.open(url) }
-      if verb == "copy" { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(rest, forType: .string) }
+      if verb == "open", let url = URL(string: rest), url.scheme == "https" { ui_open_url(rest) }
+      if verb == "copy" { _ = rest.withCString { ui_copy(host, $0, strlen($0)) } }
     }
     let home = FileManager.default.homeDirectoryForCurrentUser
     var n = Int(nxp_take_usage(next, &line, Int32(line.count)))
@@ -372,15 +385,8 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   var shotScale: Float = 2, shotRealtime = false, lastShotFrame = CACurrentMediaTime()
   var doSteps = "", framesDir = "", shotAudio = "", shotLooks = false, recording = false
   func shot(to path: String, width: Int, height: Int, seconds: Float) -> Bool {
-    let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorPixelFormat, width: width, height: height, mipmapped: false)
-    d.usage = [.renderTarget, .shaderRead]; d.storageMode = .shared
-    guard let texture = device?.makeTexture(descriptor: d) else { return false }
-    let pass = MTLRenderPassDescriptor()
-    pass.colorAttachments[0].texture = texture; pass.colorAttachments[0].loadAction = .clear; pass.colorAttachments[0].storeAction = .store
-    let zd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: width, height: height, mipmapped: false)
-    zd.usage = [.renderTarget]; zd.storageMode = .private
-    guard let z = device?.makeTexture(descriptor: zd) else { return false }
-    pass.depthAttachment.texture = z; pass.depthAttachment.loadAction = .clear; pass.depthAttachment.clearDepth = 1; pass.depthAttachment.storeAction = .dontCare
+    // One frame of the host's, offscreen, dt seconds after the last; the GPU has drawn it when this returns.
+    func render(_ dt: Float) { _ = ui_shot_frame(host, UInt32(width), UInt32(height), dt) }
     // --next: press the button, then draw in real time until it is your turn (or it failed) or the
     // wait is up; --reply types a reply and waits for the answer to it. The run loop turns so the
     // context program's answer, which arrives on the main queue, is delivered.
@@ -391,11 +397,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       func wait() {
         let until = CACurrentMediaTime() + Double(nextWait)
         repeat {
-          render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0.05) { _ in }
+          render(0.05)
           RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         } while CACurrentMediaTime() < until && (nxp_state(next) == 1 || nxp_state(next) == 2) && (nextRuns == 0 || nxp_runs(next) < nextRuns)
       }
-      render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0) { _ in }
+      render(0)
       _ = nxp_pointer(next, bx, by, 0, w, h); _ = nxp_pointer(next, bx, by, 2, w, h)
       wait()
       if !nextReply.isEmpty && nxp_state(next) == 3 {
@@ -408,9 +414,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     if golemsWait > 0 {
       let until = CACurrentMediaTime() + golemsWait
       // The issues and hosts first (a fresh copy is a few seconds; an old one is left), then the agents.
-      repeat { render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < until + 24 && refreshingGolems
+      repeat { render(0.05); RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < until + 24 && refreshingGolems
       let read = CACurrentMediaTime()
-      repeat { render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0.05) { _ in }; RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < read + golemsWait && readingGolems || CACurrentMediaTime() < read + 4.5
+      repeat { render(0.05); RunLoop.current.run(until: Date().addingTimeInterval(0.05)) } while CACurrentMediaTime() < read + golemsWait && readingGolems || CACurrentMediaTime() < read + 4.5
       if golemsView != 0 { nxp_golems_view(next, golemsView) }
     }
     // In a shot nobody holds the pointer, so the harness answers the realm's mouselook as a held
@@ -422,11 +428,11 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       while left > 0 {
         // --realtime: a frame takes the time it really took, so the realm keeps pace with the site's room
         let since = Float(CACurrentMediaTime() - lastShotFrame); lastShotFrame = CACurrentMediaTime()
-        let step = shotRealtime && inRealm ? min(max(since, 1.0 / 240), 0.1) : min(left, inRealm ? 1.0 / 60 : 0.05); render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: step) { _ in }; left -= step
+        let step = shotRealtime && inRealm ? min(max(since, 1.0 / 240), 0.1) : min(left, inRealm ? 1.0 / 60 : 0.05); render(step); left -= step
         if let page, inRealm, shotLooks { let want = page.mouselook(); if want == 2 && !lookHeld { lookHeld = true; page.pointerLock(1) } else if want != 2 && lookHeld { lookHeld = false; page.pointerLock(0) } }
         frameCount += 1
         if shotRealtime && inRealm { frameStamps.append(CACurrentMediaTime()) }
-        if !framesDir.isEmpty && recording && frameCount % framesEvery == 0 { _ = save(texture, width, height, framesDir + String(format: "/f%04d.png", frameCount)) }
+        if !framesDir.isEmpty && recording && frameCount % framesEvery == 0 { _ = ui_shot_write(host, framesDir + String(format: "/f%04d.png", frameCount)) }
       }
     }
     run(seconds)
@@ -478,7 +484,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
         page.pointer(mid, phase: 0, button: b); run(part.count > 2 ? Float(part[2]) ?? 0.05 : 0.05); page.pointer(mid, phase: 2, button: b); run(1.0 / 60)
       }
     }
-    render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0) { _ in }
+    render(0)
     nxp_close(next)
     // --realtime: the frame rate the realm really ran at, over the whole shot and over its last 5 seconds (the
     // HUD's own number is the last half second's), so a measurement doesn't hang on one sample.
@@ -492,199 +498,187 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     }
     if !shotAudio.isEmpty, let sound = sounds[eg_scene(state)], !sound.write(shotAudio) { FileHandle.standardError.write(Data("Everglade: couldn't write \(shotAudio)\n".utf8)) }
     for world in Array(pages.keys) { closePage(world) }; try? FileManager.default.removeItem(atPath: shotStore)
-    return save(texture, width, height, path)
-  }
-  func save(_ texture: MTLTexture, _ width: Int, _ height: Int, _ path: String) -> Bool {
-    var bytes = [UInt8](repeating: 0, count: width * height * 4)
-    texture.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
-    let info = CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-    guard let ctx = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info),
-          let image = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return false }
-    return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+    return ui_shot_write(host, path) == 1
   }
 
-  override var acceptsFirstResponder: Bool { true }
-  func point(_ e: NSEvent) -> (Float, Float) { let p = convert(e.locationInWindow, from: nil); return (Float(p.x), Float(bounds.height - p.y)) }
+  // ---- input, from the host (device pixels; this app's worlds take points)
+
   // The Next issue button and panel take a press first; the world gets what they leave.
-  func press(_ e: NSEvent, _ phase: Int32, button: Int32 = 0) {
-    let p = point(e)
+  func press(_ x: Float, _ y: Float, _ phase: Int32, button: Int32 = 0) {
     guard let page, inRealm else {
-      if button == 0 && nxp_pointer(next, p.0, p.1, phase, Float(bounds.width), Float(bounds.height)) == 0 { eg_pointer(state, p.0, p.1, phase) }
+      if button == 0 && nxp_pointer(next, x, y, phase, viewW, viewH) == 0 { eg_pointer(state, x, y, phase) }
       return
     }
     // In the realm: a press that begins on the Worlds button is the list's; every other is the realm's.
     if button == 0 && !lookHeld {
-      if phase == 0 { worldsPress = eg_on_worlds(state, p.0, p.1) == 1 }
-      if worldsPress { eg_pointer(state, p.0, p.1, phase); if phase == 2 { worldsPress = false }; return }
+      if phase == 0 { worldsPress = eg_on_worlds(state, x, y) == 1 }
+      if worldsPress { eg_pointer(state, x, y, phase); if phase == 2 { worldsPress = false }; return }
     }
     if phase == 0 { heard() }   // a press is the gesture the realm's sound starts on, before the realm hears it
-    // With the pointer held, a move only turns the camera and a press is at the middle of the view.
+    // With the pointer held a move only turns the camera (motion), and a press is at the middle of the view.
     if lookHeld {
-      if phase == 1 { page.look(CGPoint(x: e.deltaX, y: e.deltaY)); return }
-      page.pointer(CGPoint(x: bounds.width / 2, y: bounds.height / 2), phase: phase, button: button)
-    } else { page.pointer(CGPoint(x: CGFloat(p.0), y: CGFloat(p.1)), phase: phase, button: button) }
+      if phase == 1 { return }
+      page.pointer(CGPoint(x: CGFloat(viewW) / 2, y: CGFloat(viewH) / 2), phase: phase, button: button)
+    } else { page.pointer(CGPoint(x: CGFloat(x), y: CGFloat(y)), phase: phase, button: button) }
     syncRealm()
   }
-  override func mouseDown(with e: NSEvent) { press(e, 0) }
-  override func mouseDragged(with e: NSEvent) { press(e, 1) }
-  override func mouseUp(with e: NSEvent) { press(e, 2) }
-  override func mouseMoved(with e: NSEvent) { if inRealm { press(e, 1) } }
-  override func rightMouseDown(with e: NSEvent) { if inRealm { press(e, 0, button: 2) } }
-  override func rightMouseDragged(with e: NSEvent) { if inRealm { press(e, 1, button: 2) } }
-  override func rightMouseUp(with e: NSEvent) { if inRealm { press(e, 2, button: 2) } }
-  override func updateTrackingAreas() {
-    super.updateTrackingAreas()
-    for a in trackingAreas { removeTrackingArea(a) }
-    addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil))
+  func pointer(_ x: Float, _ y: Float, _ phase: Int32) {
+    let s = ui_dpr(host), px = x / s, py = y / s
+    pointerX = px; pointerY = py
+    if phase == 0 { leftDown = true }
+    // A move with no button down is the realm's alone (its hover); the list and the panel take drags.
+    if phase == 1 && !leftDown && !inRealm { return }
+    if phase == 2 { leftDown = false }
+    press(px, py, phase)
   }
-  // A key for the realm, in the host contract's codes (aethyr/host/README.md): a named key's
-  // negative number, else the character it types.
-  func realmKey(_ e: NSEvent) -> Int32? {
-    switch e.keyCode {
-    case 53: return -1; case 36, 76: return -2; case 51: return -3; case 123: return -4; case 124: return -5; case 126: return -6; case 125: return -7
-    case 115: return -8; case 119: return -9; case 116: return -10; case 121: return -11; case 117: return -12; case 48: return -15
-    default: break
+  func button(_ x: Float, _ y: Float, _ phase: Int32, _ b: Int32) {
+    let s = ui_dpr(host)
+    if inRealm { press(x / s, y / s, phase, button: b) }
+  }
+  func motion(_ dx: Float, _ dy: Float) { if lookHeld, let page, inRealm { page.look(CGPoint(x: CGFloat(dx), y: CGFloat(dy))) } }
+  func scroll(_ dy: Float, _ precise: Bool) {
+    if let page, inRealm { page.wheel(hmi_appkit_wheel(dy, precise)); return }
+    let d = precise ? dy : dy * 10
+    if nxp_wheel(next, pointerX, pointerY, d, viewW, viewH) == 1 { return }
+    eg_wheel(state, d)
+  }
+  // The host's named keys as the list's and Workshop's codes (the characters AppKit gave them).
+  func listKey(_ k: Int32) -> Int32? {
+    switch k {
+    case -1: return 27; case -2: return 13; case -3: return 127; case -15: return 9
+    case -4, -5, -6, -7, -13: return k
+    case ..<0: return nil
+    default: return k < 128 ? Int32(Character(Unicode.Scalar(UInt8(k))).lowercased().unicodeScalars.first!.value) : nil
     }
-    guard let c = e.charactersIgnoringModifiers?.unicodeScalars.first, c.value >= 32, c.value != 127, !(0xF700...0xF8FF).contains(c.value) else { return nil }
-    return Int32(c.value)
   }
-  func mods(_ e: NSEvent) -> Int32 {
-    let f = e.modifierFlags
-    return (f.contains(.shift) ? 1 : 0) | (f.contains(.control) ? 2 : 0) | (f.contains(.option) ? 4 : 0) | (f.contains(.command) ? 8 : 0)
-  }
-  var heldMods: NSEvent.ModifierFlags = []
-  // Keys go to Coax in the web realms' codes; Cmd chords stay with the menu.
-  func code(_ e: NSEvent) -> Int32? {
-    switch e.keyCode { case 123: return -4; case 124: return -5; case 126: return -6; case 125: return -7; case 49: return 32; default: break }
-    guard let c = e.charactersIgnoringModifiers?.lowercased().unicodeScalars.first, c.isASCII else { return nil }
-    return Int32(c.value)
-  }
-  override func keyDown(with e: NSEvent) {
-    if e.modifierFlags.contains(.command) { super.keyDown(with: e); return }
-    // While the reply has the keys they are typing, not walking.
-    if nxp_wants_keys(next) == 1 && !inRealm {
-      switch e.keyCode {
-      case 36, 76: nxp_key(next, 13)
-      case 51: nxp_key(next, 8)
-      case 53: nxp_key(next, 27)
-      default: for c in (e.characters ?? "").unicodeScalars where c.isASCII && c.value >= 32 && c.value <= 126 { nxp_key(next, Int32(c.value)) }
-      }
+  func key(_ k: Int32, _ mods: Int32, _ down: Bool) -> Bool {
+    if mods & 8 != 0 { return false }   // Command chords stay with the menu
+    // While the reply has the keys they are typing, not walking: its text comes as text.
+    if down && nxp_wants_keys(next) == 1 && !inRealm {
+      switch k { case -2: nxp_key(next, 13); case -3: nxp_key(next, 8); case -1: nxp_key(next, 27); default: break }
       _ = eg_key(state, -1, 1)
-      if inRealm { page?.focus(false); page?.focus(true) }
-      return
+      return true
     }
     if let page, inRealm {
+      // A control character or a function key's private-use character is no key of the realm's.
+      if k >= 0 && (k < 32 || k == 127 || (0xF700...0xF8FF).contains(k)) { return true }
       // Escape with the pointer held lets it go, as a browser does, and is not the realm's key.
-      if e.keyCode == 53 && lookHeld { hold(false); return }
-      guard let k = realmKey(e) else { return }
-      heard()
-      // While the realm takes text, what you type arrives as text; a named key is still a key.
-      if k >= 32 && page.wantsText() && !e.modifierFlags.contains(.control) { if let t = e.characters, !t.isEmpty { page.text(t) } }
-      else { _ = page.key(k, mods: mods(e), down: true) }
-      syncRealm()
+      if down && k == -1 && lookHeld { hold(false); return true }
+      if down && k != -13 && k != -14 && k != -16 { heard() }
+      _ = page.key(k, mods: mods, down: down)
+      if down { syncRealm() }
+      return true
+    }
+    if k == -14 || k == -16 { return true }
+    if let c = listKey(k) { _ = eg_key(state, c, down ? 1 : 0) }
+    return true
+  }
+  func text(_ typed: String) {
+    if nxp_wants_keys(next) == 1 && !inRealm {
+      for c in typed.unicodeScalars where c.isASCII && c.value >= 32 && c.value <= 126 { nxp_key(next, Int32(c.value)) }
+      _ = eg_key(state, -1, 1)
       return
     }
-    if let k = code(e) { _ = eg_key(state, k, 1) }
+    if let page, inRealm { heard(); page.text(typed); syncRealm() }
   }
-  override func keyUp(with e: NSEvent) {
-    if let page, inRealm { if let k = realmKey(e) { _ = page.key(k, mods: mods(e), down: false) }; return }
-    if let k = code(e) { _ = eg_key(state, k, 0) }
+  // While the reply or the realm's text box has the keys, AppKit's typing (and its input method) reaches text.
+  func wantsText() -> Bool { (nxp_wants_keys(next) == 1 && !inRealm) || (inRealm && page?.wantsText() == true) }
+  func focus(_ on: Bool) {
+    if !on { _ = eg_key(state, -1, 1); hold(false) }
+    if inRealm { page?.focus(on) }
   }
-  override func flagsChanged(with e: NSEvent) {
-    if let page, inRealm {
-      let now = e.modifierFlags.intersection([.shift, .control, .option])
-      for (flag, key) in [(NSEvent.ModifierFlags.shift, Int32(-13)), (.control, -14), (.option, -16)] where now.contains(flag) != heldMods.contains(flag) { _ = page.key(key, mods: mods(e), down: now.contains(flag)) }
-      heldMods = now; return
+  func command(_ id: Int32) {
+    if id == commandWorlds { eg_go(state, 0) }   // the list of worlds from anywhere: in the realm Escape is the realm's own key
+    if id == commandQuit { ui_quit(host) }
+  }
+  func close() { hold(false); for world in Array(pages.keys) { closePage(world) }; nxp_close(next) }
+}
+
+@MainActor func workshop(_ u: UnsafeMutableRawPointer?) -> Workshop { Unmanaged<Workshop>.fromOpaque(u!).takeUnretainedValue() }
+
+@main
+enum Everglade {
+  @MainActor static func main() {
+    // Opened from the Finder the app gets a bare PATH; the agent's `gh` and a Homebrew or user install
+    // of `claude` live in these, so they are added once, for this process and its children.
+    let home = NSHomeDirectory(), have = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+    setenv("PATH", have + ":/opt/homebrew/bin:/usr/local/bin:\(home)/.local/bin", 1)
+    let args = CommandLine.arguments
+    let shotAt = args.firstIndex(of: "--shot").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+    // A headless run (a shot, an Autopilot run) never shows in the Dock or the menu bar.
+    if shotAt != nil { NSApplication.shared.setActivationPolicy(.prohibited) }
+    let w = Workshop()
+    var app = UiApp()
+    app.title = UnsafePointer(strdup("Everglade")); app.app_id = UnsafePointer(strdup("com.openagents.everglade"))
+    app.width = 1320; app.height = 880; app.min_width = 900; app.min_height = 600
+    app.max_vertices = 6
+    // The component shader (components/backend/gpu-shader.coax as Metal), for what the app draws with the shared components.
+    app.shader = UnsafePointer(strdup(Bundle.main.url(forResource: "zeron", withExtension: "metallib")?.path ?? ""))
+    app.user = Unmanaged.passUnretained(w).toOpaque()
+    app.frame = { u, _, width, height, dpr, dt in MainActor.assumeIsolated { workshop(u).frame(width: width, height: height, scale: dpr, dt: dt); return 0 } }
+    app.pointer = { u, x, y, phase, _, _ in MainActor.assumeIsolated { workshop(u).pointer(x, y, phase) } }
+    app.button = { u, x, y, phase, b, _ in MainActor.assumeIsolated { workshop(u).button(x, y, phase, b) } }
+    app.motion = { u, dx, dy in MainActor.assumeIsolated { workshop(u).motion(dx, dy) } }
+    app.scroll = { u, dy, precise in MainActor.assumeIsolated { workshop(u).scroll(dy, precise != 0) } }
+    app.key = { u, k, mods, down in MainActor.assumeIsolated { workshop(u).key(k, mods, down != 0) ? 1 : 0 } }
+    app.text = { u, bytes, n in
+      guard let bytes, let s = String(bytes: UnsafeRawBufferPointer(start: bytes, count: n), encoding: .utf8) else { return }
+      MainActor.assumeIsolated { workshop(u).text(s) }
     }
-    _ = eg_key(state, -13, e.modifierFlags.contains(.shift) ? 1 : 0)
-  }
-  override func resignFirstResponder() -> Bool { _ = eg_key(state, -1, 1); hold(false); if inRealm { page?.focus(false) }; return super.resignFirstResponder() }
-  override func becomeFirstResponder() -> Bool { if inRealm { page?.focus(true) }; return super.becomeFirstResponder() }
-  override func scrollWheel(with e: NSEvent) {
-    let p = point(e), dy = Float(e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 10)
-    if let page, inRealm { page.wheel(hmi_appkit_wheel(Float(e.scrollingDeltaY), e.hasPreciseScrollingDeltas)); return }
-    if nxp_wheel(next, p.0, p.1, dy, Float(bounds.width), Float(bounds.height)) == 1 { return }
-    eg_wheel(state, dy)
+    app.wants_text = { u in MainActor.assumeIsolated { workshop(u).wantsText() ? 1 : 0 } }
+    app.focus = { u, on in MainActor.assumeIsolated { workshop(u).focus(on != 0) } }
+    app.command = { u, id in MainActor.assumeIsolated { workshop(u).command(id) } }
+    app.modifier_keys = 1
+    guard let h = ui_open(&app, shotAt != nil ? 1 : 0) else {
+      FileHandle.standardError.write(Data("Everglade: the window did not open. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
+      exit(1)
+    }
+    w.attach(h)
+    if let path = shotAt {
+      var width = 2640, height = 1760, seconds: Float = 2
+      if let s = args.firstIndex(of: "--size"), s + 1 < args.count {
+        let parts = args[s + 1].split(separator: "x").compactMap { Int($0) }
+        if parts.count == 2, parts[0] > 0, parts[1] > 0, parts[0] <= 8192, parts[1] <= 8192 { width = parts[0]; height = parts[1] }
+      }
+      if let t = args.firstIndex(of: "--at"), t + 1 < args.count, let v = Float(args[t + 1]), v >= 0, v <= 600 { seconds = v }
+      var shotScale: Float = 2
+      if let c = args.firstIndex(of: "--scale"), c + 1 < args.count, let v = Float(args[c + 1]), v >= 1, v <= 3 { shotScale = v }
+      ui_set_dpr(h, shotScale)
+      if let r = args.firstIndex(of: "--room"), r + 1 < args.count, args[r + 1].allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) { w.shotRoom = args[r + 1] }
+      if let r = args.firstIndex(of: "--every"), r + 1 < args.count, let v = Int(args[r + 1]), v >= 1, v <= 60 { w.framesEvery = v }
+      w.shotScale = shotScale; w.shotRealtime = args.contains("--realtime")
+      if let n = args.firstIndex(of: "--next"), n + 1 < args.count, let v = Float(args[n + 1]), v > 0, v <= 86400 { w.nextWait = v }
+      if let r = args.firstIndex(of: "--reply"), r + 1 < args.count { w.nextReply = args[r + 1] }
+      if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { w.nextRuns = v }
+      w.pageShot = true; w.pageOffline = !args.contains("--online")
+      if let d = args.firstIndex(of: "--do"), d + 1 < args.count { w.doSteps = args[d + 1] }
+      if let d = args.firstIndex(of: "--frames"), d + 1 < args.count { w.framesDir = args[d + 1] }
+      if let d = args.firstIndex(of: "--audio"), d + 1 < args.count { w.shotAudio = args[d + 1] }
+      // --quality high|medium|low|auto: the graphics tier the shot's realm finds kept, as a browser that picked it would
+      if let d = args.firstIndex(of: "--quality"), d + 1 < args.count, ["high", "medium", "low", "auto"].contains(args[d + 1]) {
+        try? FileManager.default.createDirectory(atPath: w.shotStore, withIntermediateDirectories: true)
+        try? args[d + 1].write(toFile: w.shotStore + "/verse.quality", atomically: true, encoding: .utf8)
+      }
+      if let s = args.firstIndex(of: "--scene"), s + 1 < args.count, let v = Int32(args[s + 1]) { eg_go(w.state, v) }
+      if let k = args.firstIndex(of: "--hold"), k + 1 < args.count {
+        for c in args[k + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(w.state, Int32(c.value), 1) }
+      }
+      if args.contains("--golems") { nxp_golems_open(w.next); w.golemsWait = 6 }
+      if let g = args.firstIndex(of: "--golems-view"), g + 1 < args.count, let v = Int32(args[g + 1]) { w.golemsView = v }
+      exit(w.shot(to: path, width: width, height: height, seconds: seconds) ? 0 : 1)
+    }
+    if let s = args.firstIndex(of: "--scene"), s + 1 < args.count, let v = Int32(args[s + 1]) { eg_go(w.state, v) }
+    if args.contains("--golems") { nxp_golems_open(w.next) }
+    let menus: [(String?, String, Int32, Int32, String?)] = [
+      ("Worlds", "0", 8, commandWorlds, nil), (nil, "", 0, -1, nil), ("Quit Everglade", "q", 8, commandQuit, nil),
+    ]
+    var items: [UiMenuItem] = menus.map { m in
+      UiMenuItem(menu: UnsafePointer(strdup("Everglade")), title: m.0.map { UnsafePointer(strdup($0)) }, key: UnsafePointer(strdup(m.1)), mods: m.2, id: m.3, selector: m.4.map { UnsafePointer(strdup($0)) })
+    }
+    ui_menus(h, &items, Int32(items.count))
+    while ui_frame(h) != 0 {}
+    w.close()
+    ui_close(h)
+    exit(0)
   }
 }
-
-final class App: NSObject, NSApplicationDelegate {
-  var window: NSWindow!
-  func applicationDidFinishLaunching(_ note: Notification) {
-    let frame = NSRect(x: 0, y: 0, width: 1320, height: 880)
-    window = NSWindow(contentRect: frame, styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-    window.title = "Everglade"
-    window.minSize = NSSize(width: 900, height: 600)
-    let view = WorkshopView(frame: frame)
-    if let w = CommandLine.arguments.firstIndex(of: "--scene"), w + 1 < CommandLine.arguments.count, let v = Int32(CommandLine.arguments[w + 1]) { eg_go(view.state, v) }
-    if CommandLine.arguments.contains("--golems") { nxp_golems_open(view.next) }
-    window.contentView = view
-    window.center()
-    window.makeKeyAndOrderFront(nil)
-    window.makeFirstResponder(window.contentView)
-    NSApp.activate(ignoringOtherApps: true)
-  }
-  func applicationDidResignActive(_ note: Notification) { if let v = window.contentView as? WorkshopView { _ = eg_key(v.state, -1, 1); v.hold(false); if v.inRealm { v.page?.focus(false) } } }
-  func applicationDidBecomeActive(_ note: Notification) { if let v = window?.contentView as? WorkshopView, v.inRealm { v.page?.focus(true) } }
-  func applicationWillTerminate(_ note: Notification) { if let v = window.contentView as? WorkshopView { v.hold(false); for world in Array(v.pages.keys) { v.closePage(world) }; nxp_close(v.next) } }
-  // The list of worlds from anywhere: in the realm Escape is the realm's own key.
-  @objc func worlds(_ sender: Any?) { if let v = window.contentView as? WorkshopView { eg_go(v.state, 0) } }
-  func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
-}
-
-func menus() {
-  let bar = NSMenu(), item = NSMenuItem(), menu = NSMenu()
-  menu.addItem(withTitle: "Worlds", action: #selector(App.worlds(_:)), keyEquivalent: "0")
-  menu.addItem(NSMenuItem.separator())
-  menu.addItem(withTitle: "Quit Everglade", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-  item.submenu = menu; bar.addItem(item); NSApp.mainMenu = bar
-}
-
-// Opened from the Finder the app gets a bare PATH; the agent's `gh` and a Homebrew or user install
-// of `claude` live in these, so they are added once, for this process and its children.
-do {
-  let home = NSHomeDirectory(), have = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-  setenv("PATH", have + ":/opt/homebrew/bin:/usr/local/bin:\(home)/.local/bin", 1)
-}
-let args = CommandLine.arguments
-if let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
-  // A headless run (a shot, an Autopilot run) never shows in the Dock or the menu bar.
-  NSApplication.shared.setActivationPolicy(.prohibited)
-  var width = 2640, height = 1760, seconds: Float = 2
-  if let s = args.firstIndex(of: "--size"), s + 1 < args.count {
-    let parts = args[s + 1].split(separator: "x").compactMap { Int($0) }
-    if parts.count == 2, parts[0] > 0, parts[1] > 0, parts[0] <= 8192, parts[1] <= 8192 { width = parts[0]; height = parts[1] }
-  }
-  if let t = args.firstIndex(of: "--at"), t + 1 < args.count, let v = Float(args[t + 1]), v >= 0, v <= 600 { seconds = v }
-  var shotScale: Float = 2
-  if let c = args.firstIndex(of: "--scale"), c + 1 < args.count, let v = Float(args[c + 1]), v >= 1, v <= 3 { shotScale = v }
-  let view = WorkshopView(frame: NSRect(x: 0, y: 0, width: CGFloat(width) / CGFloat(shotScale), height: CGFloat(height) / CGFloat(shotScale)))
-  if let r = args.firstIndex(of: "--room"), r + 1 < args.count, args[r + 1].allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) { view.shotRoom = args[r + 1] }
-  if let r = args.firstIndex(of: "--every"), r + 1 < args.count, let v = Int(args[r + 1]), v >= 1, v <= 60 { view.framesEvery = v }
-  view.shotScale = shotScale; view.shotRealtime = args.contains("--realtime")
-  if let w = args.firstIndex(of: "--next"), w + 1 < args.count, let v = Float(args[w + 1]), v > 0, v <= 86400 { view.nextWait = v }
-  if let r = args.firstIndex(of: "--reply"), r + 1 < args.count { view.nextReply = args[r + 1] }
-  if let r = args.firstIndex(of: "--runs"), r + 1 < args.count, let v = Int32(args[r + 1]), v > 0, v <= 16 { view.nextRuns = v }
-  view.pageShot = true; view.pageOffline = !args.contains("--online")
-  if let d = args.firstIndex(of: "--do"), d + 1 < args.count { view.doSteps = args[d + 1] }
-  if let d = args.firstIndex(of: "--frames"), d + 1 < args.count { view.framesDir = args[d + 1] }
-  if let d = args.firstIndex(of: "--audio"), d + 1 < args.count { view.shotAudio = args[d + 1] }
-  // --quality high|medium|low|auto: the graphics tier the shot's realm finds kept, as a browser that picked it would
-  if let d = args.firstIndex(of: "--quality"), d + 1 < args.count, ["high", "medium", "low", "auto"].contains(args[d + 1]) {
-    try? FileManager.default.createDirectory(atPath: view.shotStore, withIntermediateDirectories: true)
-    try? args[d + 1].write(toFile: view.shotStore + "/verse.quality", atomically: true, encoding: .utf8)
-  }
-  if let w = args.firstIndex(of: "--scene"), w + 1 < args.count, let v = Int32(args[w + 1]) { eg_go(view.state, v) }
-  if let h = args.firstIndex(of: "--hold"), h + 1 < args.count {
-    for c in args[h + 1].lowercased().unicodeScalars where c.isASCII { _ = eg_key(view.state, Int32(c.value), 1) }
-  }
-  if args.contains("--golems") { nxp_golems_open(view.next); view.golemsWait = 6 }
-  if let g = args.firstIndex(of: "--golems-view"), g + 1 < args.count, let v = Int32(args[g + 1]) { view.golemsView = v }
-  exit(view.shot(to: args[i + 1], width: width, height: height, seconds: seconds) ? 0 : 1)
-}
-let app = NSApplication.shared
-let delegate = App()
-app.delegate = delegate
-app.setActivationPolicy(.regular)
-menus()
-app.run()
