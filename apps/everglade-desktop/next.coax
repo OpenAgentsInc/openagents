@@ -78,7 +78,6 @@ NP_SAID :: 8192;           // bytes of an Antigravity coder's words kept a turn
 NP_ENGINE_CLAUDE :: 0; NP_ENGINE_AGY :: 1;
 NP_AGY_CODER_MODEL :: "gemini-4-argon-high";   // when the picker gave no usable scores: the Opus tier's Gemini model
 NP_AGY_PRICE_FALLBACK :: "gemini-4-carbon";    // a model the card has no row for is priced at the dearest Gemini row, never free
-NP_AGY_ARGS :: [1] string.["--include-default-customizations=false"];   // no built-in plugins or skills: no swarms
 NP_AGY_BARRED :: [9] string.["browser", "invoke_subagent", "send_message", "manage_subagents", "define_subagent", "search_web", "read_url", "generate_image", "swarm"];
 NP_AGY_TOOLS :: "The instructions above are your system instructions. You run in the Antigravity CLI, so your tools are its own: reading and searching files, editing files and running commands, all in the worktree. Subagents, the browser, web search, reading URLs, image generation and swarms are refused here, and starting one stops your turn. There is no report tool: you report by ending your last message with one line, REPORT: done SUMMARY after you pushed and closed the issue, or REPORT: blocked SUMMARY when you stop and leave the issue open. Your turn is over only when that line is written.";
 NP_AGY_REHEARSAL_TOOLS :: "The instructions above are your system instructions. You run in the Antigravity CLI: only its reading and searching tools are allowed here, and every edit or command is refused. Subagents, the browser, web search, reading URLs, image generation and swarms are refused too. There is no report tool: end your last message with one line, REPORT: done followed by a short summary.";
@@ -636,8 +635,8 @@ np_coder_model :: (c: NpCoder, named: string, tier: int) -> string {
   return ifx c.engine == NP_ENGINE_AGY then NP_AGY_CODER_MODEL else NP_CODER_MODEL;
 }
 
-// Starts the Antigravity coder in the worktree: agy acp with the credentials file, no built-in
-// plugins or skills. The first message (s.context) goes once the session is open and its model set.
+// Starts the Antigravity coder in the worktree: agy acp with the credentials file, as Coder starts
+// it. The first message (s.context) goes once the session is open and its model set.
 // "" when it started, else why not.
 np_run_agy :: (s: []NextPanel) -> string {
   if s[0].started { np_end(s, s[0].state); }
@@ -646,8 +645,7 @@ np_run_agy :: (s: []NextPanel) -> string {
   cue_attach(x, a[0].cu[..], a[0].cup[..], a[0].line[..], a[0].arena[..], a[0].out[..]);
   pb: [4096] u8; program := agy_program(pb[..]);
   if program.count == 0 { return AGY_MISSING; }
-  args := NP_AGY_ARGS;
-  why := agy_launch_with(x, program, cast(string) s[0].cwd[0..<s[0].cwd_n], "everglade-desktop", "1", args[..]);
+  why := agy_launch(x, program, cast(string) s[0].cwd[0..<s[0].cwd_n], "everglade-desktop", "1");
   if why.count > 0 { return why; }
   s[0].started = true; s[0].agy = true; s[0].agy_owed = true; s[0].agy_barred = false; s[0].said_n = 0;
   return "";

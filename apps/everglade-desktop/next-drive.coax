@@ -1,0 +1,114 @@
+// next-drive: Next issue and Autopilot with no window, driven through next.coax's exported calls
+// as the Workshop's host drives them (next-face.c over Workshop.swift's frame loop), so the flow
+// runs and is checked headless on any machine (GitHub #13193). It presses Next issue, calls
+// np_frame every 50 ms (no drawing: a zero-sized view), answers the panel's requests by running
+// next-context (the host's everglade-next) through coax/web/tool.sh, appends the ledger lines and
+// decisions where the host does, prints the chat as it grows, and stops after --laps coding turns
+// have ended (Stop, as the button), when the flow fails, stops or waits on you, or at --minutes.
+//
+//   coax/web/tool.sh apps/everglade-desktop/next-drive.coax [--laps N] [--minutes M] [--repo-dir CHECKOUT]
+//       [--ledger PATH] [--decisions PATH] [--autopilot-off]
+//
+// The settings are next.coax's, from the environment: EVERGLADE_CODER_ENGINE, EVERGLADE_TIER_FAMILY,
+// EVERGLADE_CODER_MODEL, EVERGLADE_CODER_MODE=rehearsal. A worktree is made beside CHECKOUT (the
+// working directory unless given) as CHECKOUT-issue-N, as the app makes it; removing it is yours.
+// The ledger is ~/.openagents/usage/ai-calls.jsonl and the decisions
+// ~/.openagents/everglade/next-issue/decisions.jsonl unless given.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "next.coax";
+
+cxproc_wall_us :: () -> int #foreign #effects(all);
+
+ND_CONTEXT :: "apps/everglade-desktop/next-context.coax";
+W :: 1320.0; H :: 880.0;    // the view the presses are made in (nothing is drawn)
+
+nd_put :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+// Where the chat printed so far ends in text after the panel cut it (its newest half kept): just after
+// the last bytes printed, or 0 when they are gone too.
+nd_after :: (text: string, tail: string) -> int {
+  if tail.count == 0 || tail.count > text.count { return 0; }
+  i := text.count - tail.count;
+  while i >= 0 { if text[i..<i + tail.count] == tail { return i + tail.count; } i -= 1; }
+  return 0;
+}
+
+// next-context with these arguments, from the checkout's tool.sh: its output and the end of its stderr.
+NdRun :: struct { ok: bool; out_n: int; err_n: int; }
+nd_context :: (root: string, args: [] string, out: [] u8, err: [] u8) -> NdRun {
+  tb: [2048] u8; tn := nd_put(tb[..], 0, root); tn = nd_put(tb[..], tn, "/coax/web/tool.sh");
+  cb: [2048] u8; cn := nd_put(cb[..], 0, root); cn = nd_put(cb[..], cn, "/"); cn = nd_put(cb[..], cn, ND_CONTEXT);
+  argv: [8] string; k := 0;
+  argv[k] = cast(string) tb[0..<tn]; k += 1; argv[k] = cast(string) cb[0..<cn]; k += 1;
+  for a: args { if k < argv.count { argv[k] = a; k += 1; } }
+  r := proc_run(argv[0..<k], 600000, out, err);
+  return NdRun.{ok = r.started == 0 && r.status == 0 && !r.timed_out, out_n = r.out_n, err_n = r.err_n};
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: next-drive [--laps N] [--minutes M] [--repo-dir CHECKOUT] [--ledger PATH] [--decisions PATH] [--autopilot-off]"); return 2; }
+  laps := args_whole(args_value(a[..], "--laps", "1")); minutes := args_whole(args_value(a[..], "--minutes", "30"));
+  if laps < 1 || minutes < 1 { tool_errln("next-drive: --laps and --minutes are whole numbers above 0"); return 2; }
+  wb: [2048] u8; here := fs_cwd(wb[..]);
+  repo := args_value(a[..], "--repo-dir", here);
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  lb: [2048] u8; ledger := args_value(a[..], "--ledger", fs_join(home, ".openagents/usage/ai-calls.jsonl", lb[..]));
+  db: [2048] u8; decisions := args_value(a[..], "--decisions", fs_join(home, ".openagents/everglade/next-issue/decisions.jsonl", db[..]));
+
+  s: [1] NextPanel; np_init(s[..]);
+  if args_has(a[..], "--autopilot-off") { x := np_auto_box(W); t := np_pointer(s[..], x.x + 5, x.y + 5, 0, W, H); t = np_pointer(s[..], x.x + 5, x.y + 5, 2, W, H); }
+  b := np_button(W);
+  pressed := np_pointer(s[..], b.x + 5, b.y + 5, 0, W, H) && np_pointer(s[..], b.x + 5, b.y + 5, 2, W, H);
+  if !pressed { tool_errln("next-drive: Next issue did not take the press"); return 1; }
+
+  out: [8] f32; box: [8] f32;
+  ctx: [NP_CONTEXT] u8; err: [8192] u8; line: [8192] u8;
+  printed := 0; seen: [96] u8; seen_n := 0; yours_since := 0; started_ms := proc_now_ms(); last_ms := started_ms;
+  ending := "the time limit";
+  while proc_now_ms() - started_ms < minutes * 60000 {
+    now_ms := proc_now_ms(); dt := cast(f32) (now_ms - last_ms) / 1000.0; last_ms = now_ms;
+    n := np_frame(s[..], out[..], box[..], 0, 0, 0, dt, cxproc_wall_us() / 1000000);
+    // The chat as it grows (the panel keeps its newest half when it fills: print again from there).
+    if s[0].text_n < printed { printed = nd_after(cast(string) s[0].text[0..<s[0].text_n], cast(string) seen[0..<seen_n]); }
+    if s[0].text_n > printed {
+      print("%", cast(string) s[0].text[printed..<s[0].text_n]); printed = s[0].text_n;
+      from := ifx printed > seen.count then printed - seen.count else 0; seen_n = 0; for i: from..<printed { seen[seen_n] = s[0].text[i]; seen_n += 1; }
+    }
+    mid_line := printed > 0 && s[0].text[printed - 1] != '\n';
+    un := np_take_usage(s[..], line[..]);
+    if un > 0 { ok := fs_append(ledger, cast(string) line[0..<un]) && fs_append(ledger, "\n"); print("%[ledger] %\n", ifx mid_line then "\n" else "", cast(string) line[0..<un]); }
+    dn := np_take_decision(s[..], line[..]);
+    if dn > 0 { ok := fs_append(decisions, cast(string) line[0..<dn]) && fs_append(decisions, "\n"); print("%[decision] %\n", ifx mid_line then "\n" else "", cast(string) line[0..<dn]); }
+    // Enough coding turns: stop before the next asking is answered (Stop, as the button, between turns too).
+    if np_runs(s[..]) >= laps && np_state(s[..]) != NP_RUNNING {
+      if np_busy(s[..]) { s[0].want_stop = true; n = np_frame(s[..], out[..], box[..], 0, 0, 0, 0, cxproc_wall_us() / 1000000); }
+      ending = "the laps asked for"; break;
+    }
+    request := np_take_request(s[..]);
+    if request == 1 || request == 2 {
+      args: [1] string; args[0] = "context";
+      if request == 2 { more: [2] string; more[0] = "context"; more[1] = "--refresh"; r := nd_context(repo, more[..], ctx[..], err[..]); np_context(s[..], cast(string) ctx[0..<r.out_n], cast(string) err[0..<r.err_n], r.ok); }
+      else { r := nd_context(repo, args[..], ctx[..], err[..]); np_context(s[..], cast(string) ctx[0..<r.out_n], cast(string) err[0..<r.err_n], r.ok); }
+    }
+    if request == 3 {
+      nb: [24] u8; nn := np_put_int(nb[..], 0, np_chosen(s[..]));
+      args: [4] string; args[0] = "work"; args[1] = cast(string) nb[0..<nn]; args[2] = "--repo-dir"; args[3] = repo;
+      r := nd_context(repo, args[..], ctx[..], err[..]);
+      np_work(s[..], cast(string) ctx[0..<r.out_n], cast(string) err[0..<r.err_n], r.ok);
+    }
+    state := np_state(s[..]);
+    if state == NP_FAILED { ending = "a failure"; break; }
+    if state == NP_STOPPED { ending = "Stop"; break; }
+    if state == NP_YOURS { if yours_since == 0 { yours_since = now_ms; } else if now_ms - yours_since > 3000 { ending = "a turn that waits on you"; break; } } else { yours_since = 0; }
+    proc_sleep(50);
+  }
+  if s[0].text_n > printed { print("%", cast(string) s[0].text[printed..<s[0].text_n]); }
+  cb: [32] u8; cn := np_put_cost(cb[..], 0, s[0].run_cost_e6);
+  print("\n[next-drive] ended on %: % coding turns, state %, run cost %\n", ending, np_runs(s[..]), np_state(s[..]), cast(string) cb[0..<cn]);
+  np_close(s[..]);
+  return ifx np_state(s[..]) == NP_FAILED then 1 else 0;
+}

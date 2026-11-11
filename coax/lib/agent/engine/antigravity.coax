@@ -119,17 +119,11 @@ agy_env_load :: (e: [] AgyEnv) -> bool {
 
 // agy started in cwd with the credentials file's variables, initialize sent: "" or why it did not start.
 agy_launch :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string) -> string {
-  none: [1] string;
-  return agy_launch_with(x, program, cwd, name, version, none[0..<0]);
-}
-// The same with more of agy acp's flags (at most CU_ENV), such as --include-default-customizations=false.
-agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, args: [] string) -> string {
   cue_agent(x, agy_agent());
   e: [1] AgyEnv; r := agy_env_load(e[..]);
   l: [1] CuLaunch; l[0].program = program; l[0].cwd = cwd;
   for i: 0..<e[0].nvars { l[0].env[i] = e[0].vars[i]; }
   l[0].env_n = e[0].nvars;
-  for a: args { if l[0].args_n < CU_ENV { l[0].args[l[0].args_n] = a; l[0].args_n += 1; } }
   return cue_start(x, l[0], name, version);
 }
 

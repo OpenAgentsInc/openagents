@@ -729,7 +729,14 @@ Everglade II fixes (#13104, #13117, #13129, #13130). State carry on reload
 
 **Golems N/M**, left of Autopilot, opens the board you steer many agents from: every agent
 working on this Mac, live, wherever it was started. That includes the Autopilot coders,
-Claude Code sessions run in a terminal, and the subagents they start. N agents are at work
+Claude Code sessions run in a terminal, and the subagents they start. Antigravity's
+conversations are agents too (2026-11-11, #13193): `agy` keeps each under
+`~/.gemini/antigravity-cli/brain/ID/.system_generated/logs/transcript.jsonl`, which the shared
+walker finds and `coax/lib/agent/observe/antigravity.coax` reads. Their cards say
+`antigravity` for the place, agy's own title for the conversation, the model its request
+chose, and working, waiting (yours), stuck or idle from the same records a Claude card is
+read from; a `REPORT:` line is their report. agy reports no cost, so theirs shows none.
+Verse OS lists them as `agent=antigravity|antigravity|STATE|MINUTES`. N agents are at work
 now, out of M seen since the day began (or in the last 12 hours, whichever is longer). The
 button turns red when an agent needs you.
 

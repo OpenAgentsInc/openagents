@@ -184,6 +184,55 @@ and its session ends. Then:
 | Rules it loads | The repository's own (`AGENTS.md`, `CLAUDE.md`). Not your user settings |
 | Its one job | That issue and nothing else. When its checks pass: commit its files, rebase on `origin/main`, push `HEAD:main`, close the issue with a comment naming the commit. If it can't finish: stop, say what blocks it, leave the issue open |
 
+### The coding agent on Antigravity (built 2026-11-11, #13193)
+
+The coding agent can be Google's Antigravity CLI (`agy`) instead of Claude
+Code, in the normal flow and in Autopilot. The picker stays Claude Haiku.
+
+| Setting | Effect |
+| --- | --- |
+| `EVERGLADE_CODER_ENGINE=antigravity` (or `agy`) | The coder runs on Antigravity, and the rubric names Gemini models |
+| `EVERGLADE_TIER_FAMILY=gemini` | The same, said from the rubric's side |
+| `EVERGLADE_CODER_MODEL=gemini-3.8-flash-low` | Any model `agy models` lists; one agy doesn't offer fails the run before any turn |
+| Neither | Claude, as before. Two that disagree (`claude` with `gemini`) are refused with why |
+
+It runs on the shared ACP engine with Antigravity's agent
+(`coax/lib/agent/engine/antigravity.coax`, the one Coder runs), started in the
+worktree with the credentials file `~/.openagents/coder/antigravity.env`, in
+agy's `default` mode, where it asks before edits and commands. What the
+Claude coder has, and how it maps:
+
+| Claude coder | Antigravity coder |
+| --- | --- |
+| Rules in the system prompt (`NP_CODER_RULES`, `NP_CODER_REHEARSAL`) | The same text at the top of the first message, then a paragraph on agy's tools and the report line, then the same job and issue. agy advertises `_meta.antigravity.systemPrompt.append` at initialize, but its shape isn't documented, so the rules ride in the message |
+| Bash, Read, Edit, Write, Grep, Glob; no subagents, no web | agy's own tools, limited by the panel's answers to its permission requests: a coding run allows edits and commands inside the worktree; rehearsal allows only `read` and `search` kinds. Refused always: kind `fetch`, a path outside the worktree or with `..`, and the tools `browser*`, `invoke_subagent`, `send_message`, `manage_subagents`, `define_subagent`, `search_web`, `read_url*`, `generate_image`, `swarm*`. agy runs some tools without asking (reads in the workspace, writes under the temporary folder), so a barred tool that starts unasked cancels the turn (`session/cancel`) and the run fails |
+| The in-process `report` tool | A last line, `REPORT: done SUMMARY` or `REPORT: blocked SUMMARY`, read from the turn's words when it ends. agy takes no in-process tool, and an MCP server over ACP's `mcpServers` would be a second process to build, ship and wire back; a file can't be written in rehearsal. The line needs nothing and works read-only |
+| Nudges (three) | The same, with the REPORT line named |
+| Stop | Ends the agy process |
+| Ledger line per turn | `harness` `antigravity`, `thought_tokens`, and `cost_priced_as`: agy reports tokens but no cost, so the turn is priced from the rates card (`coax/lib/gateway/card.coax`, Vertex): the model less its level (`gemini-3.8-flash-low` is `gemini-3.8-flash`); a model the card lacks (Gemini 4 Argon) at Carbon's row, so it is never free. Thought tokens are billed as output |
+| The budget (`NP_BUDGET_E6`) | Counts those prices |
+
+**Headless.** The Workshop window runs only on the Mac, so the flow has a
+driver that calls `next.coax`'s exported calls as the Mac host does
+(`next-face.c` under `Workshop.swift`'s frame loop): it presses Next issue,
+runs `next-context` for the panel's requests, appends the ledger lines and
+decisions where the app does, prints the chat, and stops after N coding turns.
+
+```sh
+EVERGLADE_CODER_ENGINE=antigravity EVERGLADE_CODER_MODEL=gemini-3.8-flash-low EVERGLADE_CODER_MODE=rehearsal \
+  coax/web/tool.sh apps/everglade-desktop/next-drive.coax --laps 2 --minutes 14 --repo-dir CHECKOUT
+```
+
+Two laps rehearsed this way on coderos-4080 (2026-11-11, `gemini-3.8-flash-low`,
+read-only) took about a minute. The picker chose #13218 (Sonnet tier), then
+#13198 (Opus tier). Each time the coder first tried a shell command (`git show`,
+`ls`), which rehearsal refuses; agy ends its turn after a refusal, so Autopilot
+nudged it once, and its second turn read the files and ended with
+`REPORT: done ...`. Antigravity's four turns: 61,397 input tokens, 194,146 read
+from cache, 1,095 output, no thought tokens: $0.0647 at the card's Flash price.
+The two picker turns cost $0.1231; Claude Code billed the first as Opus 5.5
+(its `modelUsage`), though Haiku 5.5 was asked for.
+
 ### Which model works the issue (tiers)
 
 With every `choose` call the picker also fills a rubric for the issue it
@@ -208,6 +257,20 @@ The rule, first match wins:
 | a sum of 6 or more, risk 3, or depth 3 | Opus 5.5 |
 | a sum of 3 or more, or risk 2 or more | Sonnet 5.5 |
 | otherwise (housekeeping) | Haiku 5.5 |
+
+**Gemini's models.** `EVERGLADE_TIER_FAMILY=gemini` (or the Antigravity
+engine) makes the same tiers name Antigravity's models; the scores and the
+thresholds don't change. Claude stays the default until the experiments in
+#13193 say otherwise.
+
+| Tier | Claude (default) | Gemini |
+| --- | --- | --- |
+| Haiku | `claude-haiku-5-5` | `gemini-3.8-flash-low` |
+| Sonnet | `claude-sonnet-5-5` | `gemini-3.8-flash-high` |
+| Opus | `claude-opus-5-5` | `gemini-4-argon-high` (the model agy's own `pro` subagent runs) |
+| Fable | `claude-fable-5-2` | `gemini-4-carbon-high` (the newest) |
+
+`tiers.coax --family gemini` prints the Gemini model for each issue.
 
 The chat shows `> start #N on Sonnet`, and the decision line carries `tier`
 and `scores`. To rate every open issue at once (one Haiku session, about
@@ -314,13 +377,14 @@ Every model turn appends one line to `~/.openagents/usage/ai-calls.jsonl`
 | `at` | Seconds since the epoch |
 | `app`, `purpose` | Who asked and what for: `next-issue.suggest`, `next-issue.reply`, `issue.code`, `issue.rehearse` |
 | `issue` | The issue a coding turn worked on |
-| `harness`, `model` | `claude-code`, and the model asked for |
+| `harness`, `model` | `claude-code` or `antigravity`, and the model asked for |
 | `session`, `turn` | The session and the turn within it |
 | `input_tokens` | New input tokens, not from cache |
 | `cache_read_input_tokens` | Input read from the provider's cache |
 | `cache_creation_input_tokens` | Input written to the provider's cache |
 | `output_tokens` | Output, thinking included |
-| `cost_usd_e6` | This turn's cost in millionths of a dollar |
+| `cost_usd_e6` | This turn's cost in millionths of a dollar (Antigravity's: the rates card's price, the row in `cost_priced_as`) |
+| `thought_tokens` | Antigravity's thinking tokens, priced as output (only on its lines) |
 | `session_cost_usd_e6` | The session's cost so far |
 | `duration_ms`, `duration_api_ms`, `model_turns` | As the CLI reports them |
 | `prompt_bytes` | Bytes we sent this turn |

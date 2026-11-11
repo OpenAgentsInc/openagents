@@ -6,6 +6,13 @@ Status: **the name is decided; everything else is a design proposal.**
   the game and in the code, docs, records and issue labels alike. There is no
   other internal name. Its practitioner is a **golemancer**, and the agents
   they command are **golems**.
+- **Exists today, outside the game:** the Golemancers' Workshop in the
+  Everglade desktop app: Next issue, Autopilot, the rubric that picks a model
+  per issue (`coax/lib/agent/tier.coax`) and the Golems board
+  ([desktop-app-spec](desktop-app-spec.md), [next-issue-spec](next-issue-spec.md)).
+  Its golems are Claude Code agents by default; since 2026-11-11 (#13193) the
+  coding golem can be Antigravity (`agy`) on Gemini models, the rubric can
+  name Gemini's tiers, and the board shows Antigravity's conversations.
 - **Proposal only:** every other rule, number and name below. It is kept here
   as a starting point for discussion. None of it is agreed and none of it is
   built, except the pieces marked **exists today**.
