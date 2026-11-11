@@ -115,7 +115,9 @@ web_whole='^(coax/src/|coax/bootstrap/|coax/lib/compiler/|coax/platform/|coax/we
 # build.sh (the release) builds them.
 module_cmds() {
   awk '{ if (sub(/\\$/, "")) { buf = buf $0 " "; next } print buf $0; buf = "" }' "$root/apps/openagents-web/build.sh" |
-    grep 'coax/web/wasm.sh"' | sed -E 's/[[:space:]]*&[[:space:]]*$//' | grep -vE '/build/(project|projects)\.wasm"'
+    grep 'coax/web/wasm.sh"' | grep -vE '/build/(project|projects)\.wasm"' |
+    # build.sh's step timer (`timed NAME CMD`, #13154) and its `& made+=($!)` are its own: the command alone.
+    sed -E 's/(^|[[:space:]])timed[[:space:]]+[A-Za-z0-9_-]+[[:space:]]+/\1/; s/[[:space:]]+&([[:space:]].*)?$//'
 }
 # The .coax files the change reaches through #load, in $out/affected, once: 0,
 # 3 when the graph can't tell, else the tool failed.
