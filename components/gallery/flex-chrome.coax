@@ -1,0 +1,178 @@
+// The flex layout's oracle (components/layout/flex.coax; components/spec.md "Layout: flex"): the same
+// trees laid out by fx_layout and, as HTML with the same CSS, by headless Chrome, every rectangle
+// compared. The trees come from a fixed sequence, so a run is the same every time: rows and
+// columns three deep with padding, gaps, fixed and content sizes, grow, shrink and basis, and each
+// align and justify.
+//   coax/web/tool.sh components/gallery/flex-chrome.coax            from the repo root (needs Chrome)
+// It prints how many boxes agreed, or each one that did not with both rectangles, and leaves the
+// page it measured at build/flex-chrome.html beside this file's folder for a look in a browser.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../layout/flex.coax";
+
+FC_TREES :: 200;
+FC_MAX_NODES :: 10;
+FC_TOLERANCE :: 0.05;      // pixels: Chrome lays out in 64ths of one
+FC_SPREAD :: 1200;         // each tree's own place down the page
+
+// The sequence the trees are drawn from.
+fc_next :: (s: [] int, n: int) -> int { s[0] = (s[0] * 1103515245 + 12345) & 2147483647; return (s[0] >> 8) % n; }
+fc_pick :: (s: [] int, values: [] f32) -> f32 { return values[fc_next(s, values.count)]; }
+
+// Tree k: a root, then items; a quarter of the items one or two levels down are containers too.
+fc_build :: (t: [] FxTree, k: int, depth: [] int) {
+  s: [1] int; s[0] = 7919 * (k + 1);
+  sizes := [6] f32.[-1, -1, 20, 45, 90, 150];
+  pads := [3] f32.[0, 4, 10]; gaps := [3] f32.[0, 6, 12];
+  grows := [4] f32.[0, 0, 1, 2]; shrinks := [4] f32.[1, 1, 0, 2]; bases := [5] f32.[-1, -1, -1, 0, 50];
+  fx_reset(t);
+  root := fx_add(t, -1); depth[0] = 0;
+  i := 0;
+  while i < t[0].n {
+    container := i == 0 || (depth[i] < 3 && fc_next(s[..], 4) == 0);
+    t[0].nodes[i].direction = fc_next(s[..], 2);
+    if i > 0 {
+      t[0].nodes[i].width = fc_pick(s[..], sizes[..]); t[0].nodes[i].height = fc_pick(s[..], sizes[..]);
+      fx_flex(t, i, fc_pick(s[..], grows[..]), fc_pick(s[..], shrinks[..]), fc_pick(s[..], bases[..]));
+      self := fc_next(s[..], 7);
+      t[0].nodes[i].self = ifx self < 3 then FX_INHERIT else self - 3;
+    }
+    if container {
+      fx_pad(t, i, fc_pick(s[..], pads[..]), fc_pick(s[..], pads[..]), fc_pick(s[..], pads[..]), fc_pick(s[..], pads[..]));
+      t[0].nodes[i].gap = fc_pick(s[..], gaps[..]);
+      t[0].nodes[i].align = fc_next(s[..], 4);
+      justify := fc_next(s[..], 4);
+      t[0].nodes[i].justify = ifx justify == 3 then FX_BETWEEN else justify;
+      count := 1 + fc_next(s[..], 4);
+      for c: 0..<count {
+        if t[0].n >= FC_MAX_NODES { break; }
+        child := fx_add(t, i);
+        if child >= 0 { depth[child] = depth[i] + 1; }
+      }
+    }
+    i += 1;
+  }
+}
+// The root's size for tree k: a width, and a height or none.
+fc_width :: (k: int) -> f32 { widths := [4] f32.[180, 320, 480, 640]; return widths[k % 4]; }
+fc_height :: (k: int) -> f32 { heights := [3] f32.[-1, 120, 300]; return heights[(k / 4) % 3]; }
+
+fc_px :: (o: [] Jo, name: string, v: f32) { jo_put(o, name); jo_int(o, cast(int) v); jo_put(o, "px;"); }
+fc_word :: (v: int) -> string {
+  if v == FX_CENTER { return "center"; }
+  if v == FX_END { return "flex-end"; }
+  if v == FX_STRETCH { return "stretch"; }
+  if v == FX_BETWEEN { return "space-between"; }
+  return "flex-start";
+}
+// A box's CSS: what flex.coax's header says a box is, spelled for a browser.
+fc_style :: (o: [] Jo, b: FxNode, root: bool, width: f32, height: f32) {
+  jo_put(o, "display:flex;box-sizing:border-box;min-width:0;min-height:0;flex-direction:");
+  jo_put(o, ifx b.direction == FX_ROW then "row;" else "column;");
+  fc_px(o, "gap:", b.gap);
+  jo_put(o, "padding:"); jo_int(o, cast(int) b.pad_top); jo_put(o, "px "); jo_int(o, cast(int) b.pad_right); jo_put(o, "px ");
+  jo_int(o, cast(int) b.pad_bottom); jo_put(o, "px "); jo_int(o, cast(int) b.pad_left); jo_put(o, "px;");
+  jo_put(o, "align-items:"); jo_put(o, fc_word(b.align)); jo_put(o, ";justify-content:"); jo_put(o, fc_word(b.justify)); jo_put(o, ";");
+  w := ifx root then width else b.width; h := ifx root then height else b.height;
+  if w >= 0 { fc_px(o, "width:", w); }
+  if h >= 0 { fc_px(o, "height:", h); }
+  if root { return; }
+  jo_put(o, "flex:"); jo_int(o, cast(int) b.grow); jo_put(o, " "); jo_int(o, cast(int) b.shrink); jo_put(o, " ");
+  if b.basis >= 0 { jo_int(o, cast(int) b.basis); jo_put(o, "px;"); } else { jo_put(o, "auto;"); }
+  if b.self != FX_INHERIT { jo_put(o, "align-self:"); jo_put(o, fc_word(b.self)); jo_put(o, ";"); }
+}
+// Tree k as nested divs, each with the id K_I. No recursion: down to a first child, else along, else up.
+fc_html :: (o: [] Jo, t: [] FxTree, k: int) {
+  jo_put(o, "<div class=root style=\"position:absolute;left:0;top:"); jo_int(o, k * FC_SPREAD); jo_put(o, "px\">");
+  i := 0;
+  while i >= 0 {
+    jo_put(o, "<div id=\""); jo_int(o, k); jo_put(o, "_"); jo_int(o, i); jo_put(o, "\" style=\"");
+    fc_style(o, t[0].nodes[i], i == 0, fc_width(k), fc_height(k));
+    jo_put(o, "\">");
+    if t[0].nodes[i].first >= 0 { i = t[0].nodes[i].first; continue; }
+    jo_put(o, "</div>");
+    while i >= 0 && t[0].nodes[i].next < 0 { i = t[0].nodes[i].parent; if i >= 0 { jo_put(o, "</div>"); } }
+    if i >= 0 { i = t[0].nodes[i].next; }
+  }
+  jo_put(o, "</div>\n");
+}
+
+// A number at s[at[0]] (a sign, digits, a fraction), past spaces; at[0] moves past it.
+fc_number :: (s: string, at: [] int) -> f32 {
+  i := at[0];
+  while i < s.count && s[i] == ' ' { i += 1; }
+  neg := i < s.count && s[i] == '-';
+  if neg { i += 1; }
+  v := 0.0f32;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(f32) (cast(int) s[i] - 48); i += 1; }
+  if i < s.count && s[i] == '.' {
+    i += 1; scale := 0.1f32;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { v += cast(f32) (cast(int) s[i] - 48) * scale; scale = scale * 0.1; i += 1; }
+  }
+  at[0] = i;
+  return ifx neg then -v else v;
+}
+#test "the measured rectangles are read back" {
+  at: [1] int; s := "12 -3.500 0.250";
+  #assert fc_number(s, at[..]) == 12 && fc_number(s, at[..]) == -3.5 && abs(fc_number(s, at[..]) - 0.25) < 0.0001 && at[0] == s.count;
+}
+#test "the trees are the same every run, parents before children, within the table" {
+  t: [1] FxTree; u: [1] FxTree; d: [FX_NODES] int;
+  for k: 0..<FC_TREES {
+    fc_build(t[..], k, d[..]); fc_build(u[..], k, d[..]);
+    #assert t[0].n >= 2 && t[0].n <= FC_MAX_NODES && t[0].n == u[0].n;
+    for i: 1..<t[0].n { #assert t[0].nodes[i].parent < i && t[0].nodes[i].parent >= 0 && t[0].nodes[i].width == u[0].nodes[i].width; }
+  }
+}
+
+FcWork :: struct { html: [1048576] u8; out: [1048576] u8; err: [65536] u8; trees: [FC_TREES] FxTree; depth: [FX_NODES] int; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  w: [1] FcWork;
+  cwd: [4096] u8; root := fs_cwd(cwd[..]);
+  o: [1] Jo; jo_start(o[..], w[0].html[..]);
+  jo_put(o[..], "<!doctype html><meta charset=utf-8><title>flex.coax against Chrome</title><style>body{margin:0}div{outline:1px solid rgba(255,140,31,.5);outline-offset:-1px}.root{outline:none}</style>\n");
+  for k: 0..<FC_TREES {
+    fc_build(w[0].trees[k..<k + 1], k, w[0].depth[..]);
+    fx_layout(w[0].trees[k..<k + 1], fc_width(k), fc_height(k));
+    fc_html(o[..], w[0].trees[k..<k + 1], k);
+  }
+  if o[0].bad { tool_errln("flex-chrome: the page did not fit its buffer"); return 2; }
+  pb: [4] [8192] u8;
+  dir := fs_join(root, "components/build", pb[0][..]);
+  ok := fs_mkdir(dir);
+  page := fs_join(dir, "flex-chrome.html", pb[1][..]);
+  if !fs_write(page, jo_text(o[..])) { tool_errln("flex-chrome: could not write components/build/flex-chrome.html (run it from the repo root)"); return 2; }
+  url: [8300] u8; uo: [1] Jo; jo_start(uo[..], url[..]); jo_put(uo[..], "file://"); jo_put(uo[..], page);
+  js := "[...document.querySelectorAll('[id]')].map(e=>{const r=e.getBoundingClientRect(),o=e.closest('.root').getBoundingClientRect();return e.id.replace('_',' ')+' '+(r.left-o.left).toFixed(3)+' '+(r.top-o.top).toFixed(3)+' '+r.width.toFixed(3)+' '+r.height.toFixed(3)}).join('|')";
+  argv := [8] string.[fs_join(root, "coax/web/tool.sh", pb[2][..]), "shot", jo_text(uo[..]), fs_join(dir, "flex-chrome.png", pb[3][..]), "800x600", "3000", "--eval", js];
+  r := proc_run(argv[..], 240000, w[0].out[..], w[0].err[..]);
+  if r.started != 0 || r.status != 0 { tool_err("flex-chrome: the browser did not run: "); tool_errln(cast(string) w[0].err[0..<r.err_n]); return 2; }
+  text := cast(string) w[0].out[0..<r.out_n];
+  // the line of rectangles: "K I X Y W H|K I X Y W H|..."
+  from := 0;
+  while from < text.count && !(text[from] >= '0' && text[from] <= '9') { while from < text.count && text[from] != '\n' { from += 1; } from += 1; }
+  at: [1] int; at[0] = from;
+  boxes := 0; wrong := 0;
+  while at[0] < text.count && text[at[0]] != '\n' {
+    k := cast(int) fc_number(text, at[..]); i := cast(int) fc_number(text, at[..]);
+    x := fc_number(text, at[..]); y := fc_number(text, at[..]); bw := fc_number(text, at[..]); bh := fc_number(text, at[..]);
+    if at[0] < text.count && text[at[0]] == '|' { at[0] = at[0] + 1; }
+    if k < 0 || k >= FC_TREES || i < 0 || i >= w[0].trees[k].n { tool_errln("flex-chrome: the browser named a box no tree has"); return 2; }
+    b := w[0].trees[k].nodes[i];
+    boxes += 1;
+    if abs(b.x - x) > FC_TOLERANCE || abs(b.y - y) > FC_TOLERANCE || abs(b.w - bw) > FC_TOLERANCE || abs(b.h - bh) > FC_TOLERANCE {
+      wrong += 1;
+      if wrong <= 12 { print("differs: tree % box %: flex.coax % % % %, Chrome % % % %\n", k, i, b.x, b.y, b.w, b.h, x, y, bw, bh); }
+    }
+  }
+  total := 0;
+  for k: 0..<FC_TREES { total += w[0].trees[k].n; }
+  if boxes != total { print("flex-chrome: the browser measured % boxes of %\n", boxes, total); return 1; }
+  if wrong > 0 { print("flex-chrome: % of % boxes differ from Chrome by more than % px (the page: %)\n", wrong, boxes, FC_TOLERANCE, page); return 1; }
+  print("flex-chrome: % trees, % boxes, every rectangle within % px of Chrome's\n", FC_TREES, boxes, FC_TOLERANCE);
+  return 0;
+}

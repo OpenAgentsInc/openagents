@@ -1,0 +1,322 @@
+// Flex layout with CSS's names, in Coax (components/spec.md "Layout: flex"; the decision of
+// docs/research/exact/04-apps-audit-2026-11-10.md, recommendation 4; GitHub #13153).
+//
+// A component that is boxes inside boxes says so the way a web page does: a container has a
+// `direction`, a `gap`, `padding`, `align` (align-items) and `justify` (justify-content); an item has
+// a `width` and `height` (or neither: its content's), `grow`, `shrink` and `basis` (the three numbers
+// of `flex`), and `self` (align-self). fx_layout gives every box its rectangle. The names and the
+// arithmetic are CSS Flexible Box Layout's, so what an agent knows about flexbox is true here, and
+// Chrome is the oracle: `coax/web/tool.sh components/layout/flex-chrome.coax` lays the same trees
+// out as HTML in headless Chrome and compares every rectangle.
+//
+// The subset, on purpose:
+//  - one line: no wrapping (`flex-wrap`), no `order`, no reverse directions;
+//  - every box is `box-sizing: border-box` with `min-width: 0` and `min-height: 0`, so an item may
+//    shrink below its content, down to its padding (CSS's automatic minimum is the part of
+//    flexbox that surprises people, and a component that wants a floor says `shrink = 0`);
+//  - lengths are logical pixels: no percentages, no margins (use `gap` and `padding`), no
+//    `min-`/`max-` sizes, no baseline alignment, no aspect ratios;
+//  - a leaf's content size is its `width` and `height`: a component measures its text
+//    (layout/measure.coax) and gives the box that size.
+// Nodes are added parents first, so layout is two passes over the table and nothing recurses.
+//   coax/bin/coax test components/layout/flex.coax --library
+
+FX_NODES :: 256;
+FX_AUTO :: -1.0;                 // a width, height or basis that is not given
+// direction (flex-direction)
+FX_ROW :: 0; FX_COLUMN :: 1;
+// align (align-items), self (align-self) and justify (justify-content)
+FX_START :: 0; FX_CENTER :: 1; FX_END :: 2; FX_STRETCH :: 3; FX_BETWEEN :: 4;
+FX_INHERIT :: -1;                // self: the container's align
+
+FxNode :: struct {
+  parent: int = -1; first: int = -1; last: int = -1; next: int = -1; children: int;
+  direction: int;
+  gap: f32;
+  pad_top: f32; pad_right: f32; pad_bottom: f32; pad_left: f32;
+  width: f32 = -1; height: f32 = -1;
+  grow: f32; shrink: f32 = 1; basis: f32 = -1;
+  align: int = 3; self: int = -1; justify: int;
+  // what fx_layout answers: the box, from the root's top left corner
+  x: f32; y: f32; w: f32; h: f32;
+  // working: the content's width and height, the item's size along its container before and after flexing
+  cw: f32; ch: f32; base: f32; main: f32; frozen: bool;
+}
+FxTree :: struct { n: int; nodes: [FX_NODES] FxNode; }
+
+fx_reset :: (t: [] FxTree) { t[0].n = 0; }
+// A new box inside parent (-1: the root, which must be first); its index, or -1 when the table is full
+// or the parent is not a box already added.
+fx_add :: (t: [] FxTree, parent: int) -> int {
+  i := t[0].n;
+  if i >= FX_NODES || parent >= i || (parent < 0 && i != 0) { return -1; }
+  fresh: FxNode;
+  t[0].nodes[i] = fresh;
+  t[0].nodes[i].parent = parent;
+  if parent >= 0 {
+    if t[0].nodes[parent].last >= 0 { t[0].nodes[t[0].nodes[parent].last].next = i; } else { t[0].nodes[parent].first = i; }
+    t[0].nodes[parent].last = i; t[0].nodes[parent].children += 1;
+  }
+  t[0].n = i + 1;
+  return i;
+}
+fx_pad :: (t: [] FxTree, i: int, top: f32, right: f32, bottom: f32, left: f32) {
+  if i < 0 || i >= t[0].n { return; }
+  t[0].nodes[i].pad_top = top; t[0].nodes[i].pad_right = right; t[0].nodes[i].pad_bottom = bottom; t[0].nodes[i].pad_left = left;
+}
+// `flex: grow shrink basis`.
+fx_flex :: (t: [] FxTree, i: int, grow: f32, shrink: f32, basis: f32) {
+  if i < 0 || i >= t[0].n { return; }
+  t[0].nodes[i].grow = grow; t[0].nodes[i].shrink = shrink; t[0].nodes[i].basis = basis;
+}
+
+fx_max :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+// An item's size along its container before any flexing (the flex base size): its basis, else its
+// width or height, else its content's.
+fx_base :: (c: FxNode, row: bool) -> f32 {
+  least := fx_padding(c, row);
+  if c.basis >= 0 { return fx_max(c.basis, least); }
+  if row { return fx_max(ifx c.width >= 0 then c.width else c.cw, least); }
+  return fx_max(ifx c.height >= 0 then c.height else c.ch, least);
+}
+// A box's padding along a row (left and right) or a column (top and bottom): a border box is never
+// smaller than it, whatever its width, height or basis says.
+fx_padding :: (c: FxNode, row: bool) -> f32 { return ifx row then c.pad_left + c.pad_right else c.pad_top + c.pad_bottom; }
+
+// Every box's rectangle. The root is `width` wide, and `height` tall or, with FX_AUTO, as tall as
+// its content.
+fx_layout :: (t: [] FxTree, width: f32, height: f32) {
+  n := t[0].n;
+  if n < 1 { return; }
+  // Content sizes, children before parents: a row's content is its items side by side with the gaps
+  // between them and as tall as the tallest; a column's is the other way round. Width and height are
+  // not counted alike, because CSS does not count them alike (and Chrome is the oracle): a content
+  // width is what the items want, a content height is what layout would give them.
+  for k: 0..<n {
+    i := n - 1 - k;
+    row := t[0].nodes[i].direction == FX_ROW;
+    along := 0.0f32; across := 0.0f32;
+    c := t[0].nodes[i].first;
+    while c >= 0 {
+      item := t[0].nodes[c];
+      w := fx_max(ifx item.width >= 0 then item.width else item.cw, fx_padding(item, true));
+      h := fx_max(ifx item.height >= 0 then item.height else item.ch, fx_padding(item, false));
+      if row {
+        // across a row an item counts as its content, held to its base size from above when it
+        // cannot grow and from below when it cannot shrink (CSS's max-content contribution)
+        part := w; b := fx_base(item, true);
+        if item.grow <= 0 && part > b { part = b; }
+        if item.shrink <= 0 && part < b { part = b; }
+        along += part;
+      } else { along += fx_base(item, false); }   // down a column, as its base size: what layout will give it
+      across = fx_max(across, ifx row then h else w);
+      c = item.next;
+    }
+    if t[0].nodes[i].children > 1 { along += t[0].nodes[i].gap * cast(f32) (t[0].nodes[i].children - 1); }
+    t[0].nodes[i].cw = t[0].nodes[i].pad_left + t[0].nodes[i].pad_right + (ifx row then along else across);
+    t[0].nodes[i].ch = t[0].nodes[i].pad_top + t[0].nodes[i].pad_bottom + (ifx row then across else along);
+  }
+  t[0].nodes[0].x = 0; t[0].nodes[0].y = 0;
+  t[0].nodes[0].w = width;
+  t[0].nodes[0].h = ifx height >= 0 then height else t[0].nodes[0].ch;
+  // Rectangles, parents before children.
+  for i: 0..<n {
+    p := t[0].nodes[i];
+    if p.children == 0 { continue; }
+    row := p.direction == FX_ROW;
+    inner_main := (ifx row then p.w - p.pad_left - p.pad_right else p.h - p.pad_top - p.pad_bottom);
+    inner_cross := (ifx row then p.h - p.pad_top - p.pad_bottom else p.w - p.pad_left - p.pad_right);
+    if inner_main < 0 { inner_main = 0; }
+    if inner_cross < 0 { inner_cross = 0; }
+    gaps := p.gap * cast(f32) (p.children - 1);
+    used := 0.0f32; grow := 0.0f32;
+    c := p.first;
+    while c >= 0 {
+      b := fx_base(t[0].nodes[c], row);
+      t[0].nodes[c].base = b; t[0].nodes[c].main = b; t[0].nodes[c].frozen = false;
+      used += b; grow += t[0].nodes[c].grow;
+      c = t[0].nodes[c].next;
+    }
+    free := inner_main - gaps - used;
+    if free > 0 && grow > 0 {
+      // grow: the free space shared by the grow factors (all of it once they sum to one or more)
+      share := ifx grow < 1 then free else free / grow;
+      c = p.first;
+      while c >= 0 { t[0].nodes[c].main = t[0].nodes[c].base + share * t[0].nodes[c].grow; c = t[0].nodes[c].next; }
+    } else if free < 0 {
+      // shrink: the overflow taken from each item by its shrink factor times its base size inside
+      // its padding; an item that reaches its padding is frozen there and the rest share what is
+      // left to take
+      for round: 0..<p.children {
+        scaled := 0.0f32; left := inner_main - gaps;
+        c = p.first;
+        while c >= 0 {
+          if t[0].nodes[c].frozen { left -= t[0].nodes[c].main; } else { left -= t[0].nodes[c].base; scaled += t[0].nodes[c].shrink * (t[0].nodes[c].base - fx_padding(t[0].nodes[c], row)); }
+          c = t[0].nodes[c].next;
+        }
+        if left >= 0 || scaled <= 0 { break; }
+        again := false;
+        c = p.first;
+        while c >= 0 {
+          if !t[0].nodes[c].frozen {
+            least := fx_padding(t[0].nodes[c], row);
+            m := t[0].nodes[c].base + left * t[0].nodes[c].shrink * (t[0].nodes[c].base - least) / scaled;
+            if m < least { m = least; t[0].nodes[c].frozen = true; again = true; }
+            t[0].nodes[c].main = m;
+          }
+          c = t[0].nodes[c].next;
+        }
+        if !again { break; }
+      }
+    }
+    // what is left after flexing goes where justify says
+    rest := inner_main - gaps;
+    c = p.first;
+    while c >= 0 { rest -= t[0].nodes[c].main; c = t[0].nodes[c].next; }
+    at := 0.0f32; between := 0.0f32;
+    if p.justify == FX_CENTER { at = rest / 2; }
+    else if p.justify == FX_END { at = rest; }
+    else if p.justify == FX_BETWEEN && rest > 0 && p.children > 1 { between = rest / cast(f32) (p.children - 1); }
+    c = p.first;
+    while c >= 0 {
+      item := t[0].nodes[c];
+      align := ifx item.self == FX_INHERIT then p.align else item.self;
+      // across: the item's own size, else the container's when stretched, else its content's
+      set := ifx row then item.height else item.width;
+      across := ifx set >= 0 then set else (ifx align == FX_STRETCH then inner_cross else (ifx row then item.ch else item.cw));
+      across = fx_max(across, fx_padding(item, !row));
+      off := 0.0f32;
+      if align == FX_CENTER { off = (inner_cross - across) / 2; }
+      else if align == FX_END { off = inner_cross - across; }
+      if row {
+        t[0].nodes[c].x = p.x + p.pad_left + at; t[0].nodes[c].y = p.y + p.pad_top + off;
+        t[0].nodes[c].w = item.main; t[0].nodes[c].h = across;
+      } else {
+        t[0].nodes[c].x = p.x + p.pad_left + off; t[0].nodes[c].y = p.y + p.pad_top + at;
+        t[0].nodes[c].w = across; t[0].nodes[c].h = item.main;
+      }
+      at += item.main + p.gap + between;
+      c = item.next;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- checks
+
+fx_test_is :: (t: [] FxTree, i: int, x: f32, y: f32, w: f32, h: f32) -> bool {
+  b := t[0].nodes[i];
+  return abs(b.x - x) < 0.001 && abs(b.y - y) < 0.001 && abs(b.w - w) < 0.001 && abs(b.h - h) < 0.001;
+}
+// A row 300 wide with 10 of padding and a gap of 10: a fixed box, one that grows, a fixed box.
+fx_test_bar :: (t: [] FxTree) {
+  fx_reset(t);
+  root := fx_add(t, -1); fx_pad(t, root, 10, 10, 10, 10); t[0].nodes[root].gap = 10;
+  a := fx_add(t, root); t[0].nodes[a].width = 40; t[0].nodes[a].height = 20;
+  b := fx_add(t, root); fx_flex(t, b, 1, 1, 0); t[0].nodes[b].height = 30;
+  c := fx_add(t, root); t[0].nodes[c].width = 60;
+}
+
+#test "a row: fixed, growing, fixed; the tallest item sets the height; an item with no height stretches" {
+  t: [1] FxTree; fx_test_bar(t[..]);
+  fx_layout(t[..], 300, FX_AUTO);
+  #assert fx_test_is(t[..], 0, 0, 0, 300, 50);
+  #assert fx_test_is(t[..], 1, 10, 10, 40, 20);
+  #assert fx_test_is(t[..], 2, 60, 10, 160, 30);    // 300 - 20 padding - 20 gaps - 40 - 60
+  #assert fx_test_is(t[..], 3, 230, 10, 60, 30);    // stretched to the row's 30
+}
+#test "align and justify place what is left over" {
+  t: [1] FxTree; fx_test_bar(t[..]);
+  t[0].nodes[2].grow = 0; t[0].nodes[2].basis = 50;
+  t[0].nodes[0].align = FX_CENTER; t[0].nodes[0].justify = FX_END;
+  fx_layout(t[..], 300, 100);
+  // 110 left of 280: everything sits 110 further right; across, 80 is free and each box is centred
+  #assert fx_test_is(t[..], 1, 120, 40, 40, 20) && fx_test_is(t[..], 2, 170, 35, 50, 30) && fx_test_is(t[..], 3, 230, 50, 60, 0);
+  t[0].nodes[0].justify = FX_BETWEEN; t[0].nodes[3].self = FX_END; t[0].nodes[3].height = 10;
+  fx_layout(t[..], 300, 100);
+  #assert fx_test_is(t[..], 1, 10, 40, 40, 20) && fx_test_is(t[..], 2, 115, 35, 50, 30) && fx_test_is(t[..], 3, 230, 80, 60, 10);
+  t[0].nodes[0].justify = FX_CENTER;
+  fx_layout(t[..], 300, 100);
+  #assert fx_test_is(t[..], 1, 65, 40, 40, 20);
+}
+#test "items shrink by their shrink factor times their size; one that will not shrink overflows" {
+  t: [1] FxTree; fx_reset(t[..]);
+  root := fx_add(t[..], -1);
+  a := fx_add(t[..], root); t[0].nodes[a].width = 100; t[0].nodes[a].height = 10;
+  b := fx_add(t[..], root); t[0].nodes[b].width = 300; t[0].nodes[b].height = 10;
+  fx_layout(t[..], 200, FX_AUTO);
+  // 200 over: a gives 200 * 100/400, b gives 200 * 300/400
+  #assert fx_test_is(t[..], 1, 0, 0, 50, 10) && fx_test_is(t[..], 2, 50, 0, 150, 10);
+  t[0].nodes[a].shrink = 0;
+  fx_layout(t[..], 200, FX_AUTO);
+  #assert fx_test_is(t[..], 1, 0, 0, 100, 10) && fx_test_is(t[..], 2, 100, 0, 100, 10);
+  t[0].nodes[b].shrink = 0;
+  fx_layout(t[..], 200, FX_AUTO);
+  #assert fx_test_is(t[..], 2, 100, 0, 300, 10);
+  // an item shrunk to nothing stays there and the other takes the rest
+  t[0].nodes[a].shrink = 1; t[0].nodes[b].shrink = 0; t[0].nodes[b].width = 250;
+  fx_layout(t[..], 200, FX_AUTO);
+  #assert fx_test_is(t[..], 1, 0, 0, 0, 10) && fx_test_is(t[..], 2, 0, 0, 250, 10);
+}
+#test "a column inside a row: content sizes come up from the leaves, stretch comes down" {
+  t: [1] FxTree; fx_reset(t[..]);
+  root := fx_add(t[..], -1); t[0].nodes[root].gap = 8;
+  side := fx_add(t[..], root); t[0].nodes[side].direction = FX_COLUMN; t[0].nodes[side].gap = 4; fx_pad(t[..], side, 6, 6, 6, 6);
+  r1 := fx_add(t[..], side); t[0].nodes[r1].width = 80; t[0].nodes[r1].height = 20;
+  r2 := fx_add(t[..], side); t[0].nodes[r2].height = 20;
+  main := fx_add(t[..], root); fx_flex(t[..], main, 1, 1, 0); t[0].nodes[main].direction = FX_COLUMN;
+  body := fx_add(t[..], main); fx_flex(t[..], body, 1, 1, 0);
+  foot := fx_add(t[..], main); t[0].nodes[foot].height = 40;
+  fx_layout(t[..], 400, 300);
+  #assert fx_test_is(t[..], side, 0, 0, 92, 300);     // its widest row and its padding
+  #assert fx_test_is(t[..], r1, 6, 6, 80, 20) && fx_test_is(t[..], r2, 6, 30, 80, 20);
+  #assert fx_test_is(t[..], main, 100, 0, 300, 300);
+  #assert fx_test_is(t[..], body, 100, 0, 300, 260) && fx_test_is(t[..], foot, 100, 260, 300, 40);
+  // with no height given, the root is as tall as its tallest column
+  fx_layout(t[..], 400, FX_AUTO);
+  #assert fx_test_is(t[..], 0, 0, 0, 400, 56) && fx_test_is(t[..], foot, 100, 16, 300, 40) && fx_test_is(t[..], body, 100, 0, 300, 16);
+}
+#test "a row's content width counts an item as its content held by what it can do; a column's height counts base sizes" {
+  // Chrome 152 measures 160 and 50 for these (the second and third boxes of the probe in the spec's notes)
+  t: [1] FxTree; fx_reset(t[..]);
+  root := fx_add(t[..], -1); t[0].nodes[root].align = FX_START;
+  row := fx_add(t[..], root); fx_flex(t[..], row, 0, 0, FX_AUTO);
+  a := fx_add(t[..], row); t[0].nodes[a].width = 20; t[0].nodes[a].height = 10; fx_flex(t[..], a, 0, 1, 50);    // cannot grow: its content, 20
+  b := fx_add(t[..], row); t[0].nodes[b].width = 30; t[0].nodes[b].height = 10; fx_flex(t[..], b, 0, 1, 0);     // cannot grow past a base of 0: 0
+  c := fx_add(t[..], row); t[0].nodes[c].width = 40; t[0].nodes[c].height = 10; fx_flex(t[..], c, 1, 1, 0);     // can do both: its content, 40
+  d := fx_add(t[..], row); t[0].nodes[d].width = 60; t[0].nodes[d].height = 10; fx_flex(t[..], d, 0, 0, 100);   // can do neither: its base, 100
+  fx_layout(t[..], 1000, FX_AUTO);
+  #assert fx_test_is(t[..], row, 0, 0, 160, 10);
+  fx_reset(t[..]);
+  root = fx_add(t[..], -1); t[0].nodes[root].direction = FX_COLUMN; t[0].nodes[root].align = FX_START;
+  col := fx_add(t[..], root); t[0].nodes[col].direction = FX_COLUMN; fx_flex(t[..], col, 0, 0, FX_AUTO);
+  a = fx_add(t[..], col); t[0].nodes[a].width = 20; t[0].nodes[a].height = 10; fx_flex(t[..], a, 0, 1, 50);
+  b = fx_add(t[..], col); t[0].nodes[b].width = 30; t[0].nodes[b].height = 15; fx_flex(t[..], b, 1, 1, 0);
+  fx_layout(t[..], 1000, 50);
+  #assert fx_test_is(t[..], col, 0, 0, 30, 50);
+}
+#test "padding is a floor: a box is never smaller than it, and shrinking counts only what is inside it" {
+  t: [1] FxTree; fx_reset(t[..]);
+  root := fx_add(t[..], -1); t[0].nodes[root].direction = FX_COLUMN; t[0].nodes[root].gap = 12; fx_pad(t[..], root, 0, 10, 10, 10); t[0].nodes[root].justify = FX_END;
+  a := fx_add(t[..], root); t[0].nodes[a].height = 45; fx_flex(t[..], a, 2, 1, 0);
+  b := fx_add(t[..], root); t[0].nodes[b].height = 90; fx_flex(t[..], b, 2, 1, FX_AUTO);
+  c := fx_add(t[..], root); t[0].nodes[c].height = 150; fx_flex(t[..], c, 1, 1, FX_AUTO);
+  d := fx_add(t[..], root); t[0].nodes[d].height = 90; fx_flex(t[..], d, 0, 2, 50); fx_pad(t[..], d, 10, 4, 0, 10);
+  fx_layout(t[..], 480, 300);
+  // 36 over; b gives 36 * 90/320, c 36 * 150/320, d 36 * 2*(50 - 10)/320: Chrome's 79.875, 133.125 and 41
+  #assert abs(t[0].nodes[b].h - 79.875) < 0.001 && abs(t[0].nodes[c].h - 133.125) < 0.001 && abs(t[0].nodes[d].h - 41) < 0.001 && t[0].nodes[a].h == 0;
+  // a basis of nothing is still the padding
+  fx_reset(t[..]);
+  root = fx_add(t[..], -1);
+  a = fx_add(t[..], root); fx_flex(t[..], a, 0, 0, 0); fx_pad(t[..], a, 3, 7, 3, 5); t[0].nodes[a].height = 2;
+  fx_layout(t[..], 100, FX_AUTO);
+  #assert fx_test_is(t[..], a, 0, 0, 12, 6) && t[0].nodes[0].h == 6;
+}
+#test "grow factors that sum to less than one take only that share; the table refuses a box with no parent yet" {
+  t: [1] FxTree; fx_reset(t[..]);
+  root := fx_add(t[..], -1);
+  a := fx_add(t[..], root); fx_flex(t[..], a, 0.25, 1, 0); t[0].nodes[a].height = 5;
+  b := fx_add(t[..], root); fx_flex(t[..], b, 0.25, 1, 0); t[0].nodes[b].height = 5;
+  fx_layout(t[..], 100, FX_AUTO);
+  #assert fx_test_is(t[..], a, 0, 0, 25, 5) && fx_test_is(t[..], b, 25, 0, 25, 5);
+  #assert fx_add(t[..], 7) == -1 && fx_add(t[..], -1) == -1 && t[0].n == 3;
+}

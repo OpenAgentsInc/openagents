@@ -35,6 +35,11 @@ struct UiHost {
   uint32_t w, rows;
   float dpr;
   double last;
+  // what the last presented frame was made of: when the next is the same, nothing is drawn
+  uint64_t shown; int stale;
+  // the frame's vertices in ordinary memory: the GPU's mapped buffer is slow to read back, and a
+  // frame is compared before it is drawn
+  float *frame;
   // the pointer: where the left button went down and when, for double and triple clicks
   double down_at; float down_x, down_y; int clicks, held;
   // the cursor
@@ -70,7 +75,7 @@ static void ui_target(UiHost *h, uint32_t w, uint32_t rows) {
   if (h->has_pipe) { vks_pipe_close(&h->v, &h->pipe); h->has_pipe = 0; }
   if (h->has_target) vks_image_free(&h->v, &h->target);
   h->target = vks_image(&h->v, w, rows, 1, 0, VK_FORMAT_R8G8B8A8_UNORM, VKS_TARGET | VKS_TEXTURE);
-  h->has_target = 1; h->w = w; h->rows = rows;
+  h->has_target = 1; h->w = w; h->rows = rows; h->stale = 1;
   ui_pipe(h);
 }
 void ui_atlas(UiHost *h, const uint8_t *mono, uint32_t w, uint32_t rows, const uint8_t *color, uint32_t cw, uint32_t crows) {
@@ -86,13 +91,24 @@ void ui_atlas(UiHost *h, const uint8_t *mono, uint32_t w, uint32_t rows, const u
   }
   vks_upload(&h->v, &h->mono, mono, (size_t)w * rows);
   vks_upload(&h->v, &h->color, color, (size_t)cw * crows * 4);
+  h->stale = 1;
   if (fresh) ui_pipe(h);
 }
+// A frame's vertices as one number: equal numbers are taken as the same picture.
+static uint64_t ui_digest(const UiHost *h) {
+  const uint64_t *words = (const uint64_t *)h->frame;
+  size_t n = (size_t)h->pass.vertex_count * UI_VERTEX_BYTES / 8;
+  uint64_t d = 0x9e3779b97f4a7c15ull ^ h->pass.vertex_count ^ ((uint64_t)h->w << 32) ^ ((uint64_t)h->rows << 48);
+  for (size_t i = 0; i < n; i++) { d ^= words[i]; d *= 0xff51afd7ed558ccdull; d ^= d >> 29; }
+  return d;
+}
 static void ui_record(VkCommandBuffer cmd, void *user) { UiHost *h = user; vks_pipe_record(&h->pipe, cmd, &h->pass); }
+// The frame's vertices to the GPU's buffer, once it is known they will be drawn.
+static void ui_hand_over(UiHost *h) { memcpy(h->verts.map, h->frame, (size_t)h->pass.vertex_count * UI_VERTEX_BYTES); }
 static void ui_fill(UiHost *h, float dt) {
   float *u = h->uniform.map;
   u[0] = (float)h->w; u[1] = (float)h->rows; u[2] = 0; u[3] = 0;
-  int n = h->app.frame ? h->app.frame(h->app.user, h->verts.map, (float)h->w, (float)h->rows, h->dpr, dt) : 0;
+  int n = h->app.frame ? h->app.frame(h->app.user, h->frame, (float)h->w, (float)h->rows, h->dpr, dt) : 0;
   if (n < 0) n = 0;
   if ((uint32_t)n > h->app.max_vertices) n = (int)h->app.max_vertices;
   h->pass.vertex_count = (uint32_t)n;
@@ -186,6 +202,8 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
     }
   }
   h->verts = vkc_buffer(&h->v, (VkDeviceSize)app->max_vertices * UI_VERTEX_BYTES);
+  h->frame = malloc((size_t)app->max_vertices * UI_VERTEX_BYTES);
+  if (!h->frame) { fprintf(stderr, "ui-host: no memory for a frame's vertices\n"); return NULL; }
   h->uniform = vkc_buffer(&h->v, 16);
   h->last = ui_now();
   return h;
@@ -213,7 +231,19 @@ int ui_frame(UiHost *h) {
   if (dt > 0.1f) dt = 0.1f;
   ui_fill(h, dt);
   if (!h->has_pipe) return 1;   // no atlas yet: the app gives one from its first frame
-  if (vkp_present(&h->v, &h->p, ui_record, h, h->target.image, h->w, h->rows, NULL, NULL)) vkp_resize(&h->v, &h->p, h->p.w, h->p.h);
+  // The same vertices over the same atlas at the same size are the same picture: it is not drawn
+  // or presented again, and the loop waits for the seat or the compositor (a frame's time at most,
+  // so the app still polls its engines). A still window then costs the app's frame and no GPU work.
+  uint64_t digest = ui_digest(h);
+  if (!h->stale && digest == h->shown) {
+    struct pollfd wake = {.fd = wl_display_get_fd(h->win.display), .events = POLLIN};
+    wl_display_flush(h->win.display);
+    poll(&wake, 1, 16);
+    return 1;
+  }
+  h->shown = digest; h->stale = 0;
+  ui_hand_over(h);
+  if (vkp_present(&h->v, &h->p, ui_record, h, h->target.image, h->w, h->rows, NULL, NULL)) { vkp_resize(&h->v, &h->p, h->p.w, h->p.h); h->stale = 1; }
   // UI_HOST_TRACE=1: frames presented each second, on stderr
   static int trace = -1, frames; static double since;
   if (trace < 0) trace = getenv("UI_HOST_TRACE") != NULL;
@@ -225,6 +255,7 @@ int ui_shot_frame(UiHost *h, uint32_t w, uint32_t rows, float dt) {
   ui_target(h, w, rows);
   ui_fill(h, dt);
   if (!h->has_pipe) return 1;
+  ui_hand_over(h);
   vks_submit(&h->v, ui_record, h);
   return 1;
 }
@@ -326,5 +357,5 @@ void ui_close(UiHost *h) {
     if (h->registry) wl_registry_destroy(h->registry);
     vkw_close(&h->v, &h->win);
   }
-  free(h->words); free(h);
+  free(h->frame); free(h->words); free(h);
 }

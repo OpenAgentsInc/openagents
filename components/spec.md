@@ -118,6 +118,36 @@ both over in one call; only the GPU backend reads that part.
 `layout/text.coax` is the one line wrapper (`text_wrap`), and
 `layout/round.coax` is GPUI's rounding.
 
+#### Layout: flex
+
+Decided 2026-11-10 (the audit in
+[docs/research/exact/04-apps-audit-2026-11-10.md](../docs/research/exact/04-apps-audit-2026-11-10.md),
+recommendation 4): boxes inside boxes are laid out by flex layout with CSS's
+names, written in Coax, and Chrome is the oracle.
+
+`layout/flex.coax` is built. A container has `direction`, `gap`, padding,
+`align` (align-items) and `justify` (justify-content). An item has `width`,
+`height`, `grow`, `shrink`, `basis` and `self` (align-self). `fx_layout` gives
+every box its rectangle. An agent that knows flexbox knows this.
+
+The subset is deliberate: one line (no wrapping), every box is a border box
+that may shrink to its padding, lengths are logical pixels, and there are no
+margins, percentages, `min-`/`max-` sizes or baselines. A leaf's content size
+is the width and height its component measured.
+
+The check is `coax/web/tool.sh components/gallery/flex-chrome.coax`: 200
+generated trees, 1,136 boxes, laid out by `fx_layout` and as HTML by headless
+Chrome, every rectangle within 0.05 px. It found two rules the first version
+had wrong (a box's padding is a floor on its size and is left out of what
+shrinks; a row's content width counts each item as its content, held to its
+base size when it cannot grow or cannot shrink, while a column's content
+height counts base sizes). Both are in the file's checks now.
+
+Who uses it: nothing yet. The chat set keeps its arithmetic, which is one
+column and matches Zeron to the pixel. New components use flex from the
+start: the game HUD set (Phase 5), and the gallery's cards when they are next
+touched. A component moves to flex only with its pictures unchanged.
+
 ### 3. Paint: the display list
 
 A component paints into a list of primitives, not vertices
@@ -324,6 +354,10 @@ Each phase ends with every existing check and golden unchanged.
    set has not moved.
 
 ## Decisions for the owner
+
+All three were taken on 2026-11-10 as recommended. A fourth, layout, was
+taken the same day: flex with CSS's names, in Coax, checked against Chrome
+(see "Layout: flex").
 
 1. **The root `components/` directory and the `/components` page**, as
    above. Recommended.
