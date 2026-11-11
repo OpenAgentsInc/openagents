@@ -72,10 +72,19 @@ Character Create's frozen save keys. Do not add new app-private source copies.
   download or `Library/Application Support`. Explicit path overrides remain valid.
 - **No visible browsers.** Page checks and screenshots run in headless
   Chrome, which renders WebGPU: `coax/web/tool.sh shot URL OUT.png [WxH]
-  [WAIT_MS] [--eval JS]`, or the same flags (`--headless=new --mute-audio
+  [WAIT_MS] [--eval JS] [--keep]`, or the same flags (`--headless=new --mute-audio
   --enable-unsafe-webgpu --use-angle=metal`) in your own driver. Never open a
   window or take focus on the owner's screen, and never play sound on it:
   headless Chrome still plays a page's audio unless it is muted.
+- **Take pictures the fast way** ([docs/verse/fast-shots.md](docs/verse/fast-shots.md)).
+  `shot`, `clip` and `drive` share one headless browser per checkout, so
+  don't start your own. Pass `--keep` on every shot of a build after the
+  first: the page stays loaded, and a script plus a picture takes about a
+  second instead of 12. The world carries over between `--keep` calls, so
+  each `--eval` script sets what it needs. A rebuilt page is loaded again on
+  its own. `WAIT_MS` is the longest wait, not a fixed one: the shot is taken
+  as soon as the page is settled, so don't raise it to be safe. Pass
+  `--exact-wait` only when the moment you want comes at a set time.
 - **Bitcoin-only money.** Lightning, on-chain Bitcoin, Spark and Taproot
   Assets. No USDC, USDT, EVM, Solana, Tron or Cashu. The first wallet is
   Breez Spark ([docs/lightning/](docs/lightning/README.md)).
@@ -136,6 +145,8 @@ apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
 coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
+coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/verse/fast-shots.md)
+coax/web/tool.sh shot --compare A.png B.png  # how much two pictures differ
 ```
 
 Wait for a long command without polling. Run it in the foreground with a long

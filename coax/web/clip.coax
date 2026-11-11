@@ -3,6 +3,7 @@
 // Nothing opens on screen and no sound plays.
 //   coax/web/tool.sh clip URL OUT.mp4 [--size 1280x720] [--seconds 3] [--fps 30]
 //       [--skip SECONDS] [--eval JS] [--frames DIR] [--audio] [--room] [--require JS]
+//       [--keep] [--fresh] [--times]
 // --skip runs that much game time first without capturing (the lead-up to the moment);
 // --eval runs a script once the page has started, before the skip (a staged moment's inputs).
 // --frames keeps the PNG frames (f00000.png, ...) in DIR.
@@ -11,17 +12,24 @@
 // --room advances a local room on the same fixed clock as the page.
 // --audio records the page's own sound in step with the frames (host.js renders the
 // lines its frames sent, offline) and muxes it in as AAC; with --frames, DIR keeps it as audio.wav.
+// The browser is the checkout's resident one (coax/web/resident.coax, docs/verse/fast-shots.md),
+// so a clip does not start a browser; the page still loads in a new, empty browser context.
+// --keep records on from where the last clip of this URL left its page (no load) when its
+// files have not changed on the server. --fresh starts a browser for this clip alone, as
+// before. --times prints where the time went on stderr.
 // A page stages its own moments from its URL (?stage=NAME): see docs/verse/clips.md.
 // The recording is coax/lib/media/media.coax, which `openagents labs clip` uses too.
 #import "Basic";
-#load "../lib/media/media.coax";
+#load "resident.coax";
+
+clip_ms :: (label: string, ms: int) { b: [24] u8; n := ws_digits(b[..], 0, ms); tool_err(label); tool_err(cast(string) b[0..<n]); }
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0); out := args_at(a[..], 1);
   if !ok || url.count == 0 || out.count == 0 || (url.count >= 2 && url[0] == '-' && url[1] == '-') {
-    tool_errln("usage: coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] [--fps N] [--skip S] [--eval JS] [--frames DIR] [--audio] [--require JS]");
+    tool_errln("usage: coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] [--fps N] [--skip S] [--eval JS] [--frames DIR] [--audio] [--require JS] [--keep] [--fresh] [--times]");
     return 2;
   }
   wh := args_size(args_value(a[..], "--size", "1280x720"));
@@ -36,7 +44,7 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_errln("clip: --size is WxH and --seconds, --fps, --skip are numbers");
     return 2;
   }
-  keep := args_has(a[..], "--frames");
+  keep_frames := args_has(a[..], "--frames");
   dirbuf: [4096] u8;
   frames := args_value(a[..], "--frames", "");
   if frames.count == 0 { frames = fs_temp("coax-clip-frames-", dirbuf[..]); }
@@ -44,18 +52,45 @@ tool_main :: () -> int #export_c #effects(all) {
 
   wavbuf: [4200] u8;
   wav := ifx args_has(a[..], "--audio") then fs_join(frames, "audio.wav", wavbuf[..]) else "";
-  c: [1] Cdp;
+  room := args_has(a[..], "--room");
+  keep := args_has(a[..], "--keep"); times := args_has(a[..], "--times");
+  mode := ifx room then (ifx wav.count > 0 then "clip-room-audio" else "clip-room") else (ifx wav.count > 0 then "clip-audio" else "clip");
+  c: [1] Cdp; r: [1] Rs; t: [1] MediaClipTimes; kept: [1] bool;
   failed := "";
-  if !cdp_launch(c[..], wh.w, wh.h, "coax-clip-") { failed = cdp_error(c[..]); }
-  else { failed = media_record_room(c[..], url, wh, seconds.value, fps.value, fps_text, skip.value, script, frames, guard, wav, args_has(a[..], "--room")); }
+  began := proc_now_ms();
+  resident := !args_has(a[..], "--fresh") && rs_open(c[..], r[..]);
+  if resident {
+    if !rs_clip_page(c[..], r[..], mode, url, wh, keep, kept[..]) {
+      rs_drop(c[..], r[..]); resident = false;
+      tool_errln("clip: the resident browser failed; starting a browser for this clip");
+    }
+  }
+  if !resident && !cdp_launch(c[..], wh.w, wh.h, "coax-clip-") { failed = cdp_error(c[..]); }
+  opened := proc_now_ms() - began;
+  // The resident browser's frames are the same pixels in a PNG that Chrome writes faster.
+  if failed.count == 0 { failed = media_record_on(c[..], url, wh, seconds.value, fps.value, fps_text, skip.value, script, frames, guard, wav, room, kept[0], resident, t[..]); }
   // the error text lives in c, which closing keeps
-  if failed.count > 0 { tool_err("clip: "); tool_errln(failed); cdp_close(c[..]); return 1; }
-  cdp_close(c[..]);
+  if failed.count > 0 {
+    tool_err("clip: "); tool_errln(failed);
+    if resident { rs_release(c[..], r[..], false); } else { cdp_close(c[..]); }
+    return 1;
+  }
+  if resident {
+    if keep && !kept[0] { rs_clip_note(c[..], mode, url); }
+    rs_release(c[..], r[..], keep);
+  } else { cdp_close(c[..]); }
+  recorded := proc_now_ms() - began;
 
   se: [65536] u8;
   bad := media_encode_sound("ffmpeg", frames, fps_text, wav, out, se[..]);
   if bad.count > 0 { tool_err("clip: ffmpeg failed: "); tool_errln(bad); return 1; }
-  if !keep { gone := fs_remove(frames); }
+  if !keep_frames { gone := fs_remove(frames); }
+  if times {
+    tool_err(ifx !resident then "clip: times (ms), its own browser:" else (ifx kept[0] then "clip: times (ms), the kept page:" else "clip: times (ms), the resident browser:"));
+    clip_ms(" browser ", opened); clip_ms(", load ", t[0].load); clip_ms(", ", t[0].n); clip_ms(" frames ", t[0].frames);
+    clip_ms(" (", ifx t[0].n > 0 then t[0].frames / t[0].n else 0); tool_err(" a frame)");
+    clip_ms(", encode ", proc_now_ms() - began - recorded); clip_ms(", total ", proc_now_ms() - began); tool_errln("");
+  }
   print("%\n", out);
   return 0;
 }

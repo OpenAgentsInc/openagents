@@ -25,10 +25,9 @@
 // It refuses a build older than its sources (build/.drive/APP.sources, written by coax/web/wasm.sh),
 // printing the command that rebuilds it.
 #import "Basic";
-#load "../lib/media/media.coax";
+#load "resident.coax";
 #load "../lib/crypto/sha256_workspace.coax";
 
-cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 cxtool_out_flush :: () -> int #foreign #effects(all);
 
 DV_FILE :: 33554432;   // the largest layout, source list, build script or source file read
@@ -597,7 +596,13 @@ tool_main :: () -> int #export_c #effects(all) {
 }
 dv_session :: (s: [] DvS, path: string, query: string, wh: ArgsSize, ops: [] string) -> int {
   c := s[0].c[..];
-  if !cdp_launch(c, wh.w, wh.h, "coax-drive-") { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
+  // The checkout's resident browser (resident.coax): no browser starts for this session. Its page
+  // is new and empty, as a new browser's. DRIVE_FRESH=1, or a resident browser that is busy or
+  // fails, starts one for this session alone.
+  off: [8] u8; r: [1] Rs;
+  resident := proc_getenv("DRIVE_FRESH", off[..]) != "1" && rs_open(c, r[..]);
+  if resident && !rs_fresh(c, r[..], wh.w, wh.h) { rs_drop(c, r[..]); resident = false; }
+  if !resident && !cdp_launch(c, wh.w, wh.h, "coax-drive-") { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
   status := dv_open(s, path, query, wh);
   if status == 0 {
     out: [1] Dv;
@@ -608,7 +613,7 @@ dv_session :: (s: [] DvS, path: string, query: string, wh: ArgsSize, ops: [] str
       if !ok { status = 1; }
     }
   }
-  cdp_close(c);
+  if resident { rs_release(c, r[..], false); } else { cdp_close(c); }
   return status;
 }
 DV_FIRST_MS :: 250;   // ms the page draws after the first command, before the operations start

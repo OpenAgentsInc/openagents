@@ -69,8 +69,27 @@ if [[ -n "$why" ]]; then
   # IEEE arithmetic as written (no fused multiply-adds, as coax/web/wasm.sh, and pow() the C
   # library's, not folded to x * x): a tool that reproduces another program's floats
   # (verse/tools/humans/pack_human.coax) needs each rounding
-  "${cc[@]}" -std=c11 -O2 -ffp-contract=off -fno-fast-math -fno-builtin-pow ${stack[@]+"${stack[@]}"} -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
-    "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
+  build=("${cc[@]}" -std=c11 -O2 -ffp-contract=off -fno-fast-math -fno-builtin-pow ${stack[@]+"${stack[@]}"})
+  units=("$p/tool-native.c" "$p/process-native.c" "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c")
+  # Every checkout shares the compiled tools (#13139): the C compiler takes most of a build
+  # (about 15 of 17 s for shot), and a new worktree would pay it again for the same C. The
+  # key is what the executable is made from: the tool's C, the platform sources, and the C
+  # compiler with its flags. COAX_TOOL_CACHE names the directory (0: none). Entries go
+  # 14 days after their last use.
+  cache="${COAX_TOOL_CACHE:-$HOME/.cache/coax-tools}"; key=""
+  if [[ "$cache" != 0 ]]; then
+    key="$({ cat "$work/$name.c" "$work/entropy.c" "$work/entropy-policy.h" "$p"/*.c "$p"/*.h "$p"/*.inc
+             printf '%s\n' "$name" "${build[@]}" "${units[@]##*/}" ${tls[@]+"${tls[@]}"} "${libs[@]}"; "${cc[0]}" --version; uname -sm; } 2> /dev/null | shasum -a 256 | cut -d ' ' -f 1)"
+  fi
+  if [[ -n "$key" && -x "$cache/$key" ]] && cp "$cache/$key" "$work/$name" 2> /dev/null; then
+    touch "$cache/$key" 2> /dev/null || true
+  else
+    "${build[@]}" -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "${units[@]}" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
+    if [[ -n "$key" ]] && mkdir -p "$cache" 2> /dev/null && cp "$work/$name" "$cache/$key.$$" 2> /dev/null; then
+      mv -f "$cache/$key.$$" "$cache/$key" 2> /dev/null || rm -f "$cache/$key.$$"
+      find "$cache" -type f -atime +14 -mtime +14 -delete 2> /dev/null || true
+    fi
+  fi
   mv -f "$work/$name" "$bin"
   # the sources this build read, for the next staleness check (none: the broad check)
   if wait "$deps_pid" && grep -o '"sources":\[[^]]*\]' "$work/deps.json" | grep -o '"/[^"]*"' | tr -d '"' > "$work/sources" && [[ -s "$work/sources" ]]; then
@@ -79,4 +98,4 @@ if [[ -n "$why" ]]; then
   rm -rf "$work"; trap - EXIT
   [[ ! -t 2 ]] || printf '%s: built in %d s\n' "$name" $((SECONDS - started)) >&2
 fi
-exec "$bin" "$@"
+COAX_TOOL_REPO="${COAX_TOOL_REPO:-$repo}" exec "$bin" "$@"

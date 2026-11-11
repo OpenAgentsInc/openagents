@@ -24,7 +24,10 @@ realm, a feature being shown off, or a moment a player really had.
    same voices the live page uses. The recorder muxes that WAV in as AAC, so
    the sound is in step with the frames however slowly they were captured.
    `tool.sh` builds the recorder on first use (the Coax compiler and a C
-   compiler); it needs Chrome and ffmpeg.
+   compiler); it needs Chrome and ffmpeg. The recorder uses the checkout's
+   resident browser, and `--keep` records on from where the last `--keep`
+   clip of the same URL ended, without loading the page again
+   ([fast-shots.md](fast-shots.md)).
 2. **Staged moments** (`?stage=NAME` in the page's URL). Each game knows its
    own best moments and can set one up from a seed: positions, velocities,
    the camera, the bot's plan. A stage is game code with a test, so it keeps

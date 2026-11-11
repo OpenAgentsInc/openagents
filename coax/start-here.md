@@ -40,7 +40,10 @@ CODE` for a diagnostic, [LIBRARIES.md](LIBRARIES.md) for shared code, and the
    uses.
 6. **Test the page the way a player uses it.** Drive it (next section), and
    take screenshots in headless Chrome:
-   `coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS]`. Never open a visible
+   `coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS] [--keep]`.
+   Pass `--keep` on every shot of a build after the first: the page stays
+   loaded in the checkout's resident browser, and a shot takes about a second
+   ([fast shots](../docs/verse/fast-shots.md)). Never open a visible
    browser; set `BROWSER=/usr/bin/true` for anything that might.
 7. **Mutate what decides.** `coax/remote/remote.sh run -- coax/bin/coax
    mutate FILE` on every `#authority` file you changed, with zero survivors.

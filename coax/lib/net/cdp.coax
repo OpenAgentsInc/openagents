@@ -62,6 +62,9 @@ Cdp :: struct {
   id: int;                                          // the last command's id
   events: int;                                      // events seen while awaiting replies
   err: [512] u8; err_n: int;                        // what went wrong (cdp_error)
+  keep_profile: bool;                               // cdp_close leaves the profile directory (cdp_launch_at)
+  port: int;                                        // the browser's DevTools port, once launched
+  browser_url: [512] u8; browser_url_n: int;        // the browser's own ws:// URL (Target.* commands), from DevToolsActivePort
 }
 
 // ---- which Chrome, which flags (pure) ------------------------------------
@@ -443,6 +446,37 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
   // spawn leaves enough identity for the next launch to find the whole group.
   owner_file:[1100]u8;
   if !fs_write(fs_join(profile,"cdp-executable",owner_file[..]),chrome) {cdp_close(c);return cdp_fail(c,"could not record browser ownership","");}
+  return cdp_start_in(c, chrome, profile, w, h, background);
+}
+// Starts headless Chrome at w x h on the profile directory `profile` (made if missing, and kept
+// by cdp_close) and connects to its first page: a browser that outlives its launcher's tool, such
+// as the resident browser of coax/web/resident.coax. Its caches (HTTP, shaders, compiled Wasm)
+// stay in the profile for the next start. The caller sees that one launcher uses a profile at a
+// time; a browser an earlier launcher left on it is stopped first. cdp_browser_url is the
+// browser's ws:// URL for a later cdp_connect from another process.
+cdp_launch_at :: (c: [] Cdp, w: int, h: int, profile: string, background: bool) -> bool {
+  c[0].proc = -1; c[0].h = -1; c[0].used = 0; c[0].id = 0; c[0].err_n = 0; c[0].profile_n = 0;
+  bin: [4096] u8;
+  chrome := cdp_chrome(bin[..]);
+  if chrome.count == 0 { return cdp_fail(c, "no headless Chromium on this machine; set CHROME", ""); }
+  if profile.count == 0 || profile.count > c[0].profile.count || !fs_mkdir(profile) { return cdp_fail(c, "could not make the profile ", profile); }
+  for i: 0..<profile.count { c[0].profile[i] = profile[i]; }
+  c[0].profile_n = profile.count; c[0].keep_profile = true;
+  // A browser still on this profile (its launcher was killed) would take this launch over and
+  // leave no port: it goes first. It is found by this executable and this profile, never by name.
+  kept := cast(string) c[0].profile[0..<c[0].profile_n];
+  old := cdp_owner_pid(kept, chrome);
+  if old > 1 && cxproc_group_signal(old, PROC_SIGKILL) == 0 {
+    until := proc_now_ms() + 2000;
+    while cxproc_group_alive(old) == 1 && proc_now_ms() < until { proc_sleep(20); }
+  }
+  // a port file left by the last browser on this profile would be read as this one's
+  stale: [1100] u8; gone := fs_remove(fs_join(profile, "DevToolsActivePort", stale[..]));
+  return cdp_start_in(c, chrome, cast(string) c[0].profile[0..<c[0].profile_n], w, h, background);
+}
+// The browser's own ws:// URL, where Target.* commands make and close pages; "" when unknown.
+cdp_browser_url :: (c: [] Cdp) -> string { return cast(string) c[0].browser_url[0..<c[0].browser_url_n]; }
+cdp_start_in :: (c: [] Cdp, chrome: string, profile: string, w: int, h: int, background: bool) -> bool {
   a: [1] Args;
   wg: [32] u8; os := cdp_os(proc_getenv("CDP_WEBGPU", wg[..]), cxtool_os());
   fitted:=ifx background then cdp_background_flags(a[..],os,chrome,profile,w,h) else cdp_flags(a[..],os,chrome,profile,w,h);
@@ -450,6 +484,8 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
   p := proc_new();
   ok := p >= 0;
   for i: 0..<args_count(a[..]) - 1 { ok = ok && proc_arg(p, args_at(a[..], i)); }
+  // a kept profile never asks the macOS Keychain for a password (no dialog on the owner's screen)
+  if c[0].keep_profile { ok = ok && proc_arg(p, "--use-mock-keychain") && proc_arg(p, "--password-store=basic"); }
   ok = ok && proc_quiet(p);
   if !ok { r := proc_release(p); cdp_close(c); return cdp_fail(c, "could not set up the browser process", ""); }
   e := proc_start(p);
@@ -469,6 +505,19 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
     ms := cdp_next_wait(polls, waited, CDP_PORT_WAIT_MS);
     if ms < 0 { break; }
     proc_sleep(ms); waited += ms; polls += 1;
+  }
+  c[0].port = port;
+  c[0].browser_url_n = 0;
+  if port > 0 {
+    // line 2 of DevToolsActivePort is the browser target's path
+    from := 0; while from < text.count && text[from] != '\n' { from += 1; }
+    from += 1; to := from;
+    while to < text.count && text[to] > ' ' { to += 1; }
+    if from < to && text[from] == '/' {
+      k := ws_put(c[0].browser_url[..], 0, "ws://127.0.0.1:"); k = ws_digits(c[0].browser_url[..], k, port);
+      k = ws_put(c[0].browser_url[..], k, cast(string) text[from..<to]);
+      c[0].browser_url_n = ifx k > 0 then k else 0;
+    }
   }
   if port < 0 { cdp_close(c); return cdp_fail(c, ifx died then "the browser quit before it opened its DevTools port" else "the browser never opened its DevTools port", ""); }
   // The page target, from /json/list: a slow browser lists it after its port.
@@ -718,6 +767,17 @@ cdp_screenshot :: (c: [] Cdp, out: [] u8) -> int {
   if n < 0 { e := cdp_fail(c, "the screenshot does not fit or is not base64", ""); }
   return n;
 }
+// Page.captureScreenshot with params (a JSON object's text: a format, a clip with a scale,
+// optimizeForSpeed), decoded into out: its size, or -1.
+cdp_screenshot_with :: (c: [] Cdp, params: string, out: [] u8) -> int {
+  r := cdp_call(c, "Page.captureScreenshot", params, CDP_CALL_MS);
+  d := c[0].doc[0];
+  data := jv_get(d, r, "data");
+  if jv_kind(d, data) != JV_STRING { if r >= 0 { e := cdp_fail(c, "a screenshot without data", ""); } return -1; }
+  n := b64_decode(jv_raw(d, data), out);
+  if n < 0 { e := cdp_fail(c, "the screenshot does not fit or is not base64", ""); }
+  return n;
+}
 // Closes the socket, kills the browser's process group and removes its profile.
 cdp_close :: (c: [] Cdp) {
   if c[0].h >= 0 { sent := cdp_frame(c, WS_OP_CLOSE, ""); }
@@ -728,7 +788,7 @@ cdp_close :: (c: [] Cdp) {
     r := proc_release(c[0].proc);
     c[0].proc = -1;
   }
-  if c[0].profile_n > 0 {
+  if c[0].profile_n > 0 && !c[0].keep_profile {
     // Chrome's helpers may still be writing as they die: try again briefly.
     p := cast(string) c[0].profile[0..<c[0].profile_n];
     for i: 0..<20 { if fs_remove(p) && !fs_exists(p) { break; } proc_sleep(50); }

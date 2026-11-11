@@ -1,7 +1,10 @@
 // Screenshot a Coaxial page with WebGPU in headless Chrome: no window opens and
 // nothing takes focus. Agents never open a visible browser for checks.
-//   coax/web/tool.sh shot URL OUT.png [WIDTHxHEIGHT] [WAIT_MS] [--eval JS] [--require-hardware]
+//   coax/web/tool.sh shot URL OUT.png [WIDTHxHEIGHT] [WAIT_MS] [--eval JS] [--keep] [--fresh]
+//       [--exact-wait] [--times] [--require-hardware]
 //   (prints what JS returns)
+//   coax/web/tool.sh shot --stop                 stops this checkout's resident browser
+//   coax/web/tool.sh shot --compare A.png B.png  how much two pictures differ
 // It says on stderr which WebGPU adapter the page got ("shot: WebGPU adapter:
 // hardware nvidia lovelace", "software google swiftshader" or "none").
 // --require-hardware takes no shot, and exits 1, unless that adapter is a
@@ -10,41 +13,114 @@
 // of the picture (Chromium 152's headless Vulkan surface is missing, #12678);
 // for a picture of a WebGPU page there, CDP_WEBGPU=swiftshader.
 // It waits for the page to be ready (a Coaxial page: its first scene drawn and
-// its loading card gone; media.coax's media_ready_step), then WAIT_MS more of
-// real time (the pages animate in), then captures. A page never ready writes
-// no picture. A
+// its loading card gone; media.coax's media_ready_step), then until the page is
+// quiet (nothing loading, its picture no longer changing: resident.coax's
+// rs_settle) and at most WAIT_MS (the pages animate in), then captures. A page
+// never ready writes no picture. A
 // value the script returns is printed: a string as it is, anything else as
-// compact JSON. Then OUT is printed. The capture is coax/lib/media/media.coax,
-// which `openagents labs shot` uses too.
+// compact JSON. Then OUT is printed.
+//
+// The browser is the checkout's resident one (coax/web/resident.coax,
+// docs/verse/fast-shots.md): it stays up for 3 minutes after the last call, so a
+// call does not start a browser. Each call still loads its page in a new, empty
+// browser context. --keep uses the page the last call left as it stands (its
+// world where the last script left it) when it is this URL and its files have
+// not changed on the server, and loads it otherwise: a camera move and a picture
+// then cost a few frames. --fresh starts a browser for this call alone, as every
+// call did before; so does SHOT_RESIDENT=0, a busy resident browser (another
+// call in this checkout) and a resident browser that fails. --exact-wait waits
+// the whole WAIT_MS, and 500 ms after the script. --times prints where the
+// time went on stderr.
+// The capture is coax/lib/media/media.coax, which `openagents labs shot` uses too.
+// tool.sh: release
 #import "Basic";
-#load "../lib/media/media.coax";
+#load "resident.coax";
+
+SHOT_PX :: 35389440;   // --compare: the largest picture, 4096 x 2160 RGBA
+
+Compare :: struct { a: [SHOT_PX] u8; b: [SHOT_PX] u8; png: [MEDIA_PNG] u8; work: [SHOT_PX + MEDIA_PNG] u8; }
+// A PNG file as RGBA into out: its info (status PNG_OK when it decoded).
+shot_decode :: (m: [] Compare, path: string, out: [] u8) -> PngInfo {
+  bad := PngInfo.{status = PNG_NOT};
+  n := fs_read(path, m[0].png[..]);
+  if n <= 0 { return bad; }
+  info := png_info(m[0].png[0..<n]);
+  if info.status != PNG_OK { return info; }
+  if info.w * info.h * 4 > out.count || info.work > m[0].work.count { bad.status = PNG_SMALL; return bad; }
+  info.status = png_decode(m[0].png[0..<n], m[0].work[..], out[0..<info.w * info.h * 4]);
+  return info;
+}
+// Prints how much two pictures differ: the pixels in a thousand that differ by more than
+// RS_PIXEL in a channel, and the mean difference of a channel in hundredths. 0 when it
+// could compare them.
+shot_compare :: (pa: string, pb: string) -> int {
+  m: [1] Compare;
+  a := shot_decode(m[..], pa, m[0].a[..]); b := shot_decode(m[..], pb, m[0].b[..]);
+  if a.status != PNG_OK || b.status != PNG_OK { tool_errln("shot: --compare takes two PNG files (8 bits a channel, at most 4096 x 2160)"); return 1; }
+  if a.w != b.w || a.h != b.h { print("different sizes: % x % and % x %\n", a.w, a.h, b.w, b.h); return 0; }
+  n := a.w * a.h * 4; sum := 0;
+  for i: 0..<n {
+    if i % 4 == 3 { continue; }
+    d := cast(int) m[0].a[i] - cast(int) m[0].b[i];
+    sum += ifx d < 0 then -d else d;
+  }
+  print("% x %: % of 1000 pixels differ by more than % in a channel; mean difference % hundredths of 255\n", a.w, a.h, rs_changed(m[0].a[0..<n], m[0].b[0..<n]), RS_PIXEL, sum * 100 / (a.w * a.h * 3));
+  return 0;
+}
+shot_ms :: (label: string, ms: int) { b: [24] u8; n := ws_digits(b[..], 0, ms); tool_err(label); tool_err(cast(string) b[0..<n]); }
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
   url := args_at(a[..], 0); out := args_at(a[..], 1);
+  if ok && url == "--keeper" && out.count > 0 { return rs_keeper(out, RS_IDLE_MS); }
+  if ok && url == "--compare" { return shot_compare(out, args_at(a[..], 2)); }
+  if ok && url == "--stop" {
+    r: [1] Rs;
+    print("%\n", ifx rs_stop(r[..]) then "stopped this checkout's resident browser" else "no resident browser runs for this checkout");
+    return 0;
+  }
   // The size and wait are positional; a flag in their place leaves the default.
   size := args_at(a[..], 2); wait := args_at(a[..], 3);
-  if size.count == 0 || (size.count > 1 && size[0] == '-' && size[1] == '-') { size = "1440x900"; }
+  if size.count == 0 || (size.count > 1 && size[0] == '-' && size[1] == '-') { size = "1440x900"; wait = ""; }
   if wait.count == 0 || (wait.count > 1 && wait[0] == '-' && wait[1] == '-') { wait = "4000"; }
   e := args_find(a[..], "--eval");
   script := ifx e > 0 then args_at(a[..], e + 1) else "";
-  if !ok || url.count == 0 || out.count == 0 {
-    tool_errln("usage: coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS] [--require-hardware]");
+  if !ok || url.count == 0 || out.count == 0 || (url.count > 1 && url[0] == '-' && url[1] == '-') {
+    tool_errln("usage: coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS] [--keep] [--fresh] [--exact-wait] [--times] [--require-hardware]");
     return 2;
   }
   wh := args_size(size); ms := args_number(wait);
   if !wh.ok || !ms.ok || ms.value < 0.0 { tool_errln("shot: WxH is two whole numbers and WAIT_MS a number of milliseconds"); return 2; }
-  c: [1] Cdp;
-  if !cdp_launch(c[..], wh.w, wh.h, "coax-shot-") { tool_err("shot: "); tool_errln(cdp_error(c[..])); return 1; }
   o: MediaShotOptions; o.wait = cast(int) ms.value; o.script = script;
   hardware := args_has(a[..], "--require-hardware");
   if hardware { o.guard = CDP_HARDWARE_JS; }
+  keep := args_has(a[..], "--keep"); exact := args_has(a[..], "--exact-wait"); times := args_has(a[..], "--times");
   value: [1048576] u8; build: [256] u8;
-  s := media_shot(c[..], url, out, wh, o, value[..], build[..]);
+  c: [1] Cdp; r: [1] Rs; t: [1] RsTimes;
+  s: MediaShot; s.status = 1;
+  r[0].trace = times;
+  began := proc_now_ms();
+  resident := !args_has(a[..], "--fresh") && rs_open(c[..], r[..]);
+  opened := proc_now_ms() - began;
+  if resident {
+    s = rs_shot(c[..], r[..], url, out, wh, o, keep, exact, value[..], build[..], t[..]);
+    // The resident browser failed: stop it, and take this shot as before.
+    if s.status == 1 { rs_drop(c[..], r[..]); resident = false; tool_errln("shot: the resident browser failed; starting a browser for this shot"); }
+  }
+  launched := 0; fresh_total := 0;
+  if !resident {
+    l0 := proc_now_ms();
+    if !cdp_launch(c[..], wh.w, wh.h, "coax-shot-") { tool_err("shot: "); tool_errln(cdp_error(c[..])); return 1; }
+    launched = proc_now_ms() - l0;
+    f0 := proc_now_ms();
+    s = media_shot(c[..], url, out, wh, o, value[..], build[..]);
+    fresh_total = proc_now_ms() - f0;
+  }
   if s.status == 1 { tool_err("shot: "); tool_errln(cdp_error(c[..])); }
   // the adapter the page got, asked on the page (about:blank has no WebGPU)
   gpu: [256] u8;
+  q0 := proc_now_ms();
   if s.status == 0 || s.status == 6 {
     adapter := cdp_adapter(c[..], gpu[..]);
     tool_err("shot: WebGPU adapter: "); tool_errln(adapter);
@@ -54,7 +130,26 @@ tool_main :: () -> int #export_c #effects(all) {
       tool_errln("shot: on Linux a WebGPU canvas is not in the picture with a GPU adapter (software compositing); CDP_WEBGPU=swiftshader draws it");
     }
   }
-  cdp_close(c[..]);
+  asked := proc_now_ms() - q0;
+  c0 := proc_now_ms();
+  if resident { rs_release(c[..], r[..], keep); } else { cdp_close(c[..]); }
+  closed := proc_now_ms() - c0;
+  if times {
+    if resident {
+      tool_err(ifx t[0].kept then "shot: times (ms), the kept page:" else "shot: times (ms), the resident browser:");
+      shot_ms(" browser ", opened); shot_ms(", page ", t[0].page);
+      if !t[0].kept {
+        shot_ms(", load until ready ", t[0].ready); shot_ms(", settle ", t[0].settle);
+        if !exact { tool_err(ifx t[0].settled then " (quiet after" else " (never quiet:"); shot_ms(" ", t[0].samples); tool_err(" looks)"); }
+      }
+      shot_ms(", script ", t[0].script); shot_ms(", capture ", t[0].capture); shot_ms(", files noted ", t[0].note);
+    } else {
+      tool_err("shot: times (ms), its own browser:");
+      shot_ms(" browser start ", launched); shot_ms(", load until ready ", s.waited_ms); shot_ms(", fixed wait ", o.wait + (ifx script.count > 0 then 500 else 0));
+      shot_ms(", script and capture ", fresh_total - s.waited_ms - o.wait - (ifx script.count > 0 then 500 else 0));
+    }
+    shot_ms(", adapter ", asked); shot_ms(", close ", closed); shot_ms(", total ", proc_now_ms() - began); tool_errln("");
+  }
   if s.status == 6 { tool_errln("shot: --require-hardware: the page has no hardware WebGPU adapter; no shot taken"); return 1; }
   if s.status == 2 { tool_errln("shot: the URL is too long"); return 2; }
   if s.status == 3 { tool_err("shot: could not write "); tool_errln(out); return 1; }

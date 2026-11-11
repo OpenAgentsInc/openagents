@@ -453,7 +453,8 @@ clang major is linked again on first use.
   GPU. Chrome's software WebGPU (SwiftShader) is not what the goldens and
   frame budgets were measured on, so a shot from the host would not compare.
   A GPU host (`g2-standard-8` spot, about $0.30 an hour) could take them; that
-  is not built.
+  is not built. On the Mac a shot uses the checkout's resident browser
+  ([fast-shots.md](fast-shots.md)).
 - **release.sh**. It deploys with the Mac's credentials and compares against
   production. Its build takes the hosts' modules for its commit (see "The
   release reuses them"), but the release itself stays where it is.
