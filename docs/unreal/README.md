@@ -8,6 +8,7 @@ the Model Context Protocol (MCP) tools that ship inside it. Written 2026-11-11.
 | [build-from-source.md](build-from-source.md) | Disk, clone, setup, build, uninstall of 5.7 and 5.8 |
 | [mcp-tools.md](mcp-tools.md) | The built-in MCP server, the toolset plugins, and how we connect to them |
 | [ue6.md](ue6.md) | What Epic has said about Unreal Engine 6, what it removes, and what it means for us |
+| [2026-11-11-learning-from-unreal-5-9.md](2026-11-11-learning-from-unreal-5-9.md) | What Aethyr should adapt from UE 5.9, system by system, ideas only and never code |
 
 ## Summary
 
