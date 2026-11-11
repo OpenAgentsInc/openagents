@@ -5,6 +5,8 @@
 #load "../../everglade/dragon-clips.coax" as dragon;   // the Shapechange dragon's baked frames
 #load "../../verse/character-glade.coax" as glade;
 #load "../../verse/experimental-terrain.coax" as meadow;
+#load "../../verse/experimental-grass-grid.coax" as ggrid;    // the glade's grass seeds by cell (meadow_cull)
+#load "../../verse/experimental-grass-baked.coax" as gbaked;  // where each cell's seeds start in the committed glade pack
 #load "../../aethyr/render/grid-cull.coax" as gcull;   // the open field draws only the cells its view can see (meadow_cull)
 #load "../../verse/everglade2/meadow-grid.coax" as grid;   // the open field's scatter grids (verse/everglade2/meadow.coax)
 #load "../../verse/experimental-village.coax" as village;
@@ -59,7 +61,7 @@ fps_draw :: (ui:[]UitTrace,f:FpsCounter,out:[]f32,at:int,w:f32,h:f32,k:f32)->int
  uit_part(ui,"fps");return ttext(ui,UIT_NONE,out,at,cast(string)buf[0..<n],w-16*k-wide,h-16*k,cap,ink(k,0.95,0.93,0.82),"FPS");
 }
 Box :: struct { x0:f32; y0:f32; x1:f32; y1:f32; }
-GrassDraw :: struct {first:int;count:int;word:int;n:int;}
+GrassDraw :: struct {first:int;count:int;word:int;n:int;group:int = -1;}   // group: which of the pack's grass groups, when its seeds are the sorted ones (verse/experimental-grass-baked.coax); else -1
 Creator :: struct {
   build_first:[hw.HW_PARTS]int; build_count:[hw.HW_PARTS]int; build_word:int; build_n:int; sites:[BUILD_SITES]BuildSite;   // build sites (build_site_set)
   build_review:bool; build_t0:f32 = -1;   // ?stage=build-cottage: one cottage from 0 to 7 (build_review_frame)
@@ -893,7 +895,7 @@ scene_reserved :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,reserved:int)->int {
     for k:0..<24 {out[n*24+k]=0;}
     out[n*24]=f32(g.word);out[n*24+7]=f32(s[0].glade_word);out[n*24+15]=17;
     b[0].draws[n*4]=cast(u32)g.first;b[0].draws[n*4+1]=cast(u32)g.count;
-    b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)grass_share(g.n,s[0].q_grass);n+=1;
+    b[0].draws[n*4+2]=cast(u32)((n+1)<<16);b[0].draws[n*4+3]=cast(u32)(ifx grass_sorted(s[0]) then g.n else grass_share(g.n,s[0].q_grass));n+=1;   // sorted seeds: meadow_cull takes each cell's share
   }
   n=build_sites_draw(s,b,out,n,b[0].draws.count/4-reserved);
   n=range_draw(s,b,out,n,b[0].draws.count/4-reserved);
@@ -923,7 +925,9 @@ meadow_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n0:int,cap:int)->int {
   runs:[1024]u32;origin:f32= -32768;   // E2_MEADOW_ORIGIN: the grids' corner (gpu/character-glade.coax cg_meadow_vs)
   for i:0..<n0 {
     base:=cast(int)b[0].draws[i*4+2];if base<65536 || (base&65535)!=0 {continue;}
-    r:=(base>>16)-1;if (r+1)*24>out.count || out[r*24+15]!=20 {continue;}
+    r:=(base>>16)-1;if (r+1)*24>out.count {continue;}
+    if out[r*24+15]==17 {n=grass_cull(s,b,out,v,i,r,base,n,cap);continue;}
+    if out[r*24+15]!=20 {continue;}
     kit:=cast(int)out[r*24];t:=cast(int)out[r*24+1];side:=cast(int)out[r*24+2];c:=grid.e2_meadow_grid_cell(kit,t);
     if side<=0 || c<=0 || cast(int)b[0].draws[i*4+3]!=side*side {continue;}
     gx:=floor((v.ex-origin)/c)-f32(side/2);gz:=floor((v.ez-origin)/c)-f32(side/2);
@@ -937,10 +941,80 @@ meadow_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n0:int,cap:int)->int {
     m:=gcull.grid_cull_runs_clear(v,clear,origin+gx*c,origin+gz*c,c,side,inner,outer,grid.e2_meadow_grid_pad(kit)+0.25*c,runs[..]);
     if m<0 || n+m-1>cap {continue;}
     if m==0 {b[0].draws[i*4+3]=0;continue;}
+    // nearest run first: what stands in front is drawn before what it hides, so the GPU's depth test
+    // drops the hidden pixels before it shades them (the scene's shader cuts leaves out, so the GPU
+    // can't sort them itself)
+    if m<=256 {far:[256]f32;
+      for k:0..<m {first:=cast(int)runs[k*2];count:=cast(int)runs[k*2+1];rx:=origin+(gx+f32(first%side)+f32(count)*0.5)*c-v.ex;rz:=origin+(gz+f32(first/side)+0.5)*c-v.ez;far[k]=rx*rx+rz*rz;}
+      for k:1..<m {d:=far[k];r0:=runs[k*2];r1:=runs[k*2+1];j:=k;while j>0 && far[j-1]>d {far[j]=far[j-1];runs[j*2]=runs[j*2-2];runs[j*2+1]=runs[j*2-1];j-=1;}far[j]=d;runs[j*2]=r0;runs[j*2+1]=r1;}
+    }
     b[0].draws[i*4+2]=cast(u32)(base+cast(int)runs[0]);b[0].draws[i*4+3]=runs[1];
     for k:1..<m {b[0].draws[n*4]=b[0].draws[i*4];b[0].draws[n*4+1]=b[0].draws[i*4+1];b[0].draws[n*4+2]=cast(u32)(base+cast(int)runs[k*2]);b[0].draws[n*4+3]=runs[k*2+1];n+=1;}
   }
   return n;
+}
+// The glade's grass, culled (verse/experimental-grass-grid.coax): a group whose seeds the pack holds
+// sorted into cells draws only the cells the view can see, nearest first, each the quality's share
+// of its seeds (a cell's first seeds are an even thinning of it). The draw takes the first cell and
+// a draw is added for each further one. With no room for them the group keeps its one whole draw.
+// The pack's grass is the sorted one: every group it lists has the baked count for its number.
+grass_sorted :: (s:Creator)->bool {
+  if s.grass_groups<1 {return false;}
+  for k:0..<s.grass_groups {if s.grass[k].group<0 {return false;}}
+  return true;
+}
+grass_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,v:gcull.GridView,i:int,r:int,base:int,n0:int,cap:int)->int {
+  n:=n0;gi:= -1;for k:0..<s[0].grass_groups {if f32(s[0].grass[k].word)==out[r*24] {gi=k;}}
+  if gi<0 || !grass_sorted(s[0]) {return n;}g:=s[0].grass[gi];if cast(int)b[0].draws[i*4+3]!=g.n {return n;}
+  cells:[ggrid.EXG_CELLS]int;far:[ggrid.EXG_CELLS]f32;m:=0;big:f32=1000000;
+  for c:0..<ggrid.EXG_CELLS {
+    if gbaked.EXG_BAKED_AT[g.group][c+1]<=gbaked.EXG_BAKED_AT[g.group][c] {continue;}
+    q:=ggrid.exg_rect(c);if !gcull.grid_cull_seen(v,q[0],q[1],q[2],q[3],0,big,1.5) {continue;}
+    mid:=ggrid.exg_mid(c);dx:=mid[0]-v.ex;dz:=mid[1]-v.ez;d:=dx*dx+dz*dz;
+    j:=m;while j>0 && far[j-1]>d {far[j]=far[j-1];cells[j]=cells[j-1];j-=1;}far[j]=d;cells[j]=c;m+=1;
+  }
+  if n+m-1>cap {return n;}
+  if m==0 {b[0].draws[i*4+3]=0;return n;}
+  for k:0..<m {
+    first:=gbaked.EXG_BAKED_AT[g.group][cells[k]];count:=grass_share(gbaked.EXG_BAKED_AT[g.group][cells[k]+1]-first,s[0].q_grass);
+    at:=ifx k==0 then i else n;
+    b[0].draws[at*4]=b[0].draws[i*4];b[0].draws[at*4+1]=b[0].draws[i*4+1];b[0].draws[at*4+2]=cast(u32)(base+first);b[0].draws[at*4+3]=cast(u32)count;
+    if k>0 {n+=1;}
+  }
+  return n;
+}
+#test "the glade's grass, sorted into cells, draws the cells in view nearest first, each its share; an unsorted pack draws every seed" #steps 400000000 {
+ s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;
+ total:=gbaked.EXG_BAKED_N[2];#assert total>0 && gbaked.EXG_BAKED_AT[2][ggrid.EXG_CELLS]==total && gbaked.EXG_BAKED_AT[2][0]==0;
+ for c:0..<ggrid.EXG_CELLS {#assert gbaked.EXG_BAKED_AT[2][c+1]>=gbaked.EXG_BAKED_AT[2][c];}
+ // one group, the pack's third, as scene() draws it: record 0 of kind 17, one draw of every seed
+ s[0].grass_groups=1;s[0].grass[0]=GrassDraw.{first=700,count=1482,word=4242,n=total,group=2};
+ out[0]=4242;out[15]=17;b[0].draws[0]=700;b[0].draws[1]=1482;b[0].draws[2]=cast(u32)(1<<16);b[0].draws[3]=cast(u32)total;
+ // a view from the glade's middle looking along -z, level
+ s[0].view=[16]f32.[0,1.6,0,712, 0,0,-1,640, 1,0,0,384, 0,1,0,0];s[0].view_w=1280;s[0].view_ok=true;
+ m:=meadow_cull(s[..],b[..],out[..],1,1024);#assert m>1 && m<=1+ggrid.EXG_CELLS;
+ drawn:=0;last:f32= -1;
+ for i:0..<m {
+  #assert b[0].draws[i*4]==700 && b[0].draws[i*4+1]==1482 && (b[0].draws[i*4+2]>>16)==1;
+  first:=cast(int)(b[0].draws[i*4+2]&65535);count:=cast(int)b[0].draws[i*4+3];drawn+=count;
+  // the draw is one cell's seeds, whole, and the cell is ahead of the eye or beside it, never well behind
+  c:= -1;for k:0..<ggrid.EXG_CELLS {if gbaked.EXG_BAKED_AT[2][k]==first && gbaked.EXG_BAKED_AT[2][k+1]>first {c=k;}}
+  #assert c>=0 && count==gbaked.EXG_BAKED_AT[2][c+1]-first;
+  mid:=ggrid.exg_mid(c);#assert mid[1]<16;far:=mid[0]*mid[0]+mid[1]*mid[1];#assert far>=last;last=far;
+ }
+ #assert drawn>0 && drawn<total*7/10;
+ // a second cull changes nothing; at a lower quality each cell draws its share
+ #assert meadow_cull(s[..],b[..],out[..],m,1024)==m;
+ b[0].draws[2]=cast(u32)(1<<16);b[0].draws[3]=cast(u32)total;s[0].q_grass=0.5;half:=meadow_cull(s[..],b[..],out[..],1,1024);#assert half==m;
+ less:=0;for i:0..<half {less+=cast(int)b[0].draws[i*4+3];}#assert less<drawn*6/10 && less>drawn*4/10;s[0].q_grass=1;
+ // no room for the cells: the one whole draw stays; an unsorted pack's group is left alone
+ b[0].draws[2]=cast(u32)(1<<16);b[0].draws[3]=cast(u32)total;#assert meadow_cull(s[..],b[..],out[..],1,1)==1 && b[0].draws[3]==cast(u32)total;
+ s[0].grass[0].group= -1;#assert !grass_sorted(s[0]) && meadow_cull(s[..],b[..],out[..],1,1024)==1 && b[0].draws[3]==cast(u32)total;
+ // one group of another pack's among them: none is culled
+ s[0].grass[0].group=2;s[0].grass_groups=2;s[0].grass[1]=GrassDraw.{first=1,count=3,word=9,n=5};#assert !grass_sorted(s[0]) && meadow_cull(s[..],b[..],out[..],1,1024)==1;s[0].grass_groups=1;#assert grass_sorted(s[0]);
+ // the catalog: a group with the baked count is sorted; any other count is not
+ ctext:[96]u8;t:=0;for ch:"C glade/grass2 21 465 250 164 " {ctext[t]=ch;t+=1;}dg:[12]u8;dk:=0;left:=total;while left>0 {dg[dk]=cast,trunc(u8)(48+left%10);left/=10;dk+=1;}for j:0..<dk {ctext[t]=dg[dk-1-j];t+=1;}for ch:" 0\nC glade/grass1 21 465 250 164 7 0\n" {ctext[t]=ch;t+=1;}
+ q:[1]Creator;ensure(q[..]);catalog(q[..],cast(string)ctext[0..<t]);#assert q[0].grass_groups==2 && q[0].grass[0].group==2 && q[0].grass[0].n==total && q[0].grass[1].group== -1 && !grass_sorted(q[0]);
 }
 #test "the open field's grids are drawn as the runs of cells the view can see, and the glade's grass thins with its knob" #steps 400000000 {
  s:[1]Creator;b:[1]figs.Bodies;out:[44*24]f32;ensure(s[..]);
@@ -962,6 +1036,11 @@ meadow_cull :: (s:[]Creator,b:[]figs.Bodies,out:[]f32,n0:int,cap:int)->int {
    iz:=first/side;#assert iz<=side/2+6;}
   #assert cells>0 && cells<side*side/2;
  }
+ // a kit's runs come nearest first: each run's middle no nearer the eye than the one before
+ for d:1..<7 {side:=cast(int)out[d*24+2];c:=grid.e2_meadow_grid_cell(cast(int)out[d*24],cast(int)out[d*24+1]);rec:=cast(u32)(d+1);last:f32= -1;
+  gx:=floor((3.0f32+32768)/c)-f32(side/2);gz:=floor((-4.0f32+32768)/c)-f32(side/2);
+  for i:0..<m {base:=b[0].draws[i*4+2];if (base>>16)!=rec {continue;}first:=cast(int)(base&65535);count:=cast(int)b[0].draws[i*4+3];
+   rx:= -32768+(gx+f32(first%side)+f32(count)*0.5)*c-3;rz:= -32768+(gz+f32(first/side)+0.5)*c+4;far:=rx*rx+rz*rz;#assert far>=last;last=far;}}
  // a second cull changes nothing more (its draws are no longer whole grids)
  #assert meadow_cull(s[..],b[..],out[..],m,1024)==m;
  // a lower quality's reach draws fewer cells still; with the finest grass tier off, the 1 m tier draws from the eye
@@ -1536,6 +1615,8 @@ catalog :: (s:[]Creator,t:string) {
     }
     if name.count>=11 && name[0..<11]=="glade/grass" && s[0].grass_groups<3 {
       g:GrassDraw;p:=ne;g.first=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);g.count=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);p=figs.bd_word_end(row,p+1);g.word=figs.bd_whole_at(row,p);p=figs.bd_word_end(row,p+1);g.n=figs.bd_whole_at(row,p);
+      // "glade/grassK": the pack's seeds are sorted into cells when their count is the baked one
+      k:=ifx name.count==12 then cast(int)name[11]-cast(int)'0' else -1;if k>=0 && k<ggrid.EXG_GROUPS && g.n==gbaked.EXG_BAKED_N[k] {g.group=k;}
       if g.n>=1 && g.n<=65535 && g.count>=3 {s[0].grass[s[0].grass_groups]=g;s[0].grass_groups+=1;}
     }
     for i:0..<80 {if name==appearance.PART_NAMES[i] {

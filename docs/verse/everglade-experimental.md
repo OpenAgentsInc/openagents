@@ -312,6 +312,25 @@ gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experim
 sampled point" in `verse/experimental-terrain.coax` fails when a site moves
 and the ground wasn't baked again.
 
+The glade's grass seeds (`C glade/grass0`, `1` and `2`: 50,690 tufts) are kept
+sorted by the 8 m cell they stand in (`verse/experimental-grass-grid.coax`,
+[#13147](https://github.com/OpenAgentsInc/openagents/issues/13147)), so the page
+draws only the cells in view, nearest first
+(`charactercreator.coax` `grass_cull`). The builder sorts the seeds it writes.
+After any bake that changes the grass, write where each cell's seeds start and
+commit that file with the pack:
+
+```sh
+gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > /tmp/glade.pack
+coax/web/tool.sh verse/tools/assets/grass_cells.coax --sort /tmp/glade.pack /tmp/glade-new.pack \
+  verse/experimental-grass-baked.coax
+coax/web/tool.sh verse/tools/assets/grass_cells.coax --check /tmp/glade-new.pack verse/experimental-grass-baked.coax
+gzip -n -6 -c /tmp/glade-new.pack > apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz
+```
+
+`--sort` leaves a sorted pack as it is. A pack whose seed counts differ from
+the file's is drawn whole, every seed, as before the sort.
+
 The Archery Range realm ([spec](../../everglade/docs/archery-range-spec.md))
 draws its butts, sky faces, posts and chalk line from the same pack, as one mesh
 (`C glade/range`, built by `everglade/range/place.coax`). Append it the same way,

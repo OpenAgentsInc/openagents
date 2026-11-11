@@ -1,0 +1,110 @@
+// The glade's grass by cell (GitHub #13147). Everglade Experimental's glade pack holds its grass as
+// seeds, one instance each (verse/tools/assets/character_glade_pack.coax gp_grass_seeds: three
+// groups, 50,690 seeds in all). The pack listed them in the order they were tried, which is no
+// order of place, so a page had to draw every seed every frame: 22 million triangles for the wispy
+// group alone, wherever the camera looked.
+//
+// Here the seeds of a group are kept sorted by the cell of a fixed grid they stand in, and inside a
+// cell in the order they were tried (so the first of a cell's seeds are still an even thinning of
+// it). A page then draws a cell's seeds as one run of instances, only the cells its view can see,
+// nearest first (apps/openagents-web/charactercreator.coax meadow_cull). The pack's builder sorts
+// them (exg_sort), verse/tools/assets/grass_cells.coax sorts a pack that has them unsorted and
+// writes where each cell's seeds start (verse/experimental-grass-baked.coax).
+//   coax/bin/coax test verse/experimental-grass-grid.coax
+
+#module "verse.experimentalgrassgrid";
+
+EXG_GROUPS :: 3;       // glade/grass0, grass1, grass2
+EXG_CELL :: 8.0;       // metres a cell's side
+EXG_X0 :: -96.0;       // the grid's corner: the seeds stand within 89 m of the glade's middle
+EXG_Z0 :: -96.0;
+EXG_SIDE :: 24;        // cells a side
+EXG_CELLS :: 576;
+EXG_SEED :: 32;        // bytes a seed (a packed vertex: x, y, z first, as f32)
+EXG_MOST :: 65535;     // seeds a group at most (an instance's index is 16 bits)
+
+exg_u32 :: (b: [] u8, at: int) -> u32 { return cast(u32) b[at] | (cast(u32) b[at + 1] << 8) | (cast(u32) b[at + 2] << 16) | (cast(u32) b[at + 3] << 24); }
+exg_f32 :: (b: [] u8, at: int) -> f32 { return f32_from_bits(exg_u32(b, at)); }
+// The cell a place stands in; a place off the grid counts in the cell at its edge.
+exg_cell :: (x: f32, z: f32) -> int {
+  cx := cast(int) floor((x - f32(EXG_X0)) / f32(EXG_CELL)); cz := cast(int) floor((z - f32(EXG_Z0)) / f32(EXG_CELL));
+  if cx < 0 { cx = 0; } if cx >= EXG_SIDE { cx = EXG_SIDE - 1; }
+  if cz < 0 { cz = 0; } if cz >= EXG_SIDE { cz = EXG_SIDE - 1; }
+  return cz * EXG_SIDE + cx;
+}
+// A cell's square: x0, z0, x1, z1. An edge cell reaches out without end, as exg_cell counts it.
+exg_rect :: (c: int) -> [4] f32 {
+  cx := c % EXG_SIDE; cz := c / EXG_SIDE; far: f32 = 100000;
+  return [4] f32.[ifx cx == 0 then -far else f32(EXG_X0) + f32(cx) * f32(EXG_CELL), ifx cz == 0 then -far else f32(EXG_Z0) + f32(cz) * f32(EXG_CELL),
+                  ifx cx == EXG_SIDE - 1 then far else f32(EXG_X0) + f32(cx + 1) * f32(EXG_CELL), ifx cz == EXG_SIDE - 1 then far else f32(EXG_Z0) + f32(cz + 1) * f32(EXG_CELL)];
+}
+// A cell's middle, for telling near cells from far ones (an edge cell's is its square's on the grid).
+exg_mid :: (c: int) -> [2] f32 {
+  return [2] f32.[f32(EXG_X0) + (f32(c % EXG_SIDE) + 0.5) * f32(EXG_CELL), f32(EXG_Z0) + (f32(c / EXG_SIDE) + 0.5) * f32(EXG_CELL)];
+}
+// The seed at b[at + i * EXG_SEED]'s cell.
+exg_seed_cell :: (b: [] u8, at: int, i: int) -> int { o := at + i * EXG_SEED; return exg_cell(exg_f32(b, o), exg_f32(b, o + 8)); }
+// Where each cell's seeds start once sorted, into first (EXG_CELLS + 1 numbers; the last is n).
+exg_starts :: (b: [] u8, at: int, n: int, first: [] int) {
+  for c: 0..<EXG_CELLS + 1 { first[c] = 0; }
+  for i: 0..<n { first[exg_seed_cell(b, at, i) + 1] += 1; }
+  for c: 0..<EXG_CELLS { first[c + 1] += first[c]; }
+}
+// Whether the n seeds at b[at] are in cell order already.
+exg_sorted :: (b: [] u8, at: int, n: int) -> bool {
+  last := 0;
+  for i: 0..<n { c := exg_seed_cell(b, at, i); if c < last { return false; } last = c; }
+  return true;
+}
+// The n seeds at b[at] sorted by cell, each cell's in the order they were (a counting sort through
+// scratch, which holds n seeds). first gets where each cell's seeds start (exg_starts). False, and
+// nothing changed, when there are too many seeds or no room.
+exg_sort :: (b: [] u8, at: int, n: int, scratch: [] u8, first: [] int) -> bool {
+  if n < 0 || n > EXG_MOST || at < 0 || at + n * EXG_SEED > b.count || scratch.count < n * EXG_SEED || first.count < EXG_CELLS + 1 { return false; }
+  exg_starts(b, at, n, first);
+  next: [EXG_CELLS] int; for c: 0..<EXG_CELLS { next[c] = first[c]; }
+  for i: 0..<n {
+    c := exg_seed_cell(b, at, i); to := next[c] * EXG_SEED; from := at + i * EXG_SEED; next[c] += 1;
+    for k: 0..<EXG_SEED { scratch[to + k] = b[from + k]; }
+  }
+  for k: 0..<n * EXG_SEED { b[at + k] = scratch[k]; }
+  return true;
+}
+
+// ---- checks
+
+exg_test_put :: (b: [] u8, at: int, v: f32) { w := f32_bits(v); for k: 0..<4 { b[at + k] = cast,trunc(u8) (w >> cast(u32) (k * 8)); } }
+#test "the grass grid: a place's cell, its square and its middle; a place off the grid counts at the edge" {
+  #assert exg_cell(-96, -96) == 0 && exg_cell(-88.1, -96) == 0 && exg_cell(-88, -96) == 1 && exg_cell(0, 0) == 12 * EXG_SIDE + 12 && exg_cell(95.9, 95.9) == EXG_CELLS - 1;
+  #assert exg_cell(-500, 0) == 12 * EXG_SIDE && exg_cell(500, 500) == EXG_CELLS - 1 && EXG_CELLS == EXG_SIDE * EXG_SIDE && f32(EXG_X0) + f32(EXG_SIDE) * f32(EXG_CELL) == 96;
+  for c: 0..<EXG_CELLS {
+    r := exg_rect(c); m := exg_mid(c);
+    #assert exg_cell(m[0], m[1]) == c && m[0] > r[0] && m[0] < r[2] && m[1] > r[1] && m[1] < r[3];
+    // every place the cell counts is inside its square
+    for p: 0..<4 { x := m[0] + (f32(p % 2) - 0.5) * 7.9; z := m[1] + (f32(p / 2) - 0.5) * 7.9; #assert exg_cell(x, z) == c && x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]; }
+  }
+  #assert exg_rect(0)[0] < -1000 && exg_rect(EXG_CELLS - 1)[3] > 1000 && exg_rect(EXG_SIDE + 1)[0] == -88 && exg_rect(EXG_SIDE + 1)[3] == -80;
+}
+#test "the grass grid: a sort keeps every seed, puts them in cell order, keeps a cell's own order, and says where each cell starts" {
+  n := 500; b: [8 + 500 * 32 + 8] u8; scratch: [500 * 32] u8; first: [EXG_CELLS + 1] int; at := 8;
+  for i: 0..<n {
+    o := at + i * EXG_SEED; h := (i * 7919 + 13) % 1009;
+    exg_test_put(b[..], o, f32(h % 37) * 5.3 - 97); exg_test_put(b[..], o + 4, f32(i)); exg_test_put(b[..], o + 8, f32(h % 41) * 4.9 - 99);
+    b[o + 28] = cast,trunc(u8) (i & 255); b[o + 29] = cast,trunc(u8) (i >> 8);   // its number, to follow it
+  }
+  b[0] = 77; b[at + n * EXG_SEED] = 99;
+  #assert !exg_sorted(b[..], at, n) && exg_sort(b[..], at, n, scratch[..], first[..]) && exg_sorted(b[..], at, n);
+  #assert b[0] == 77 && b[at + n * EXG_SEED] == 99 && first[0] == 0 && first[EXG_CELLS] == n;
+  seen: [500] bool; last := -1; cell := -1;
+  for i: 0..<n {
+    o := at + i * EXG_SEED; id := cast(int) b[o + 28] | (cast(int) b[o + 29] << 8);
+    #assert id < n && !seen[id] && exg_f32(b[..], o + 4) == f32(id); seen[id] = true;
+    c := exg_seed_cell(b[..], at, i); #assert i >= first[c] && i < first[c + 1];
+    if c == cell { #assert id > last; } cell = c; last = id;
+  }
+  // sorted again it is the same, and its starts are the same
+  again: [EXG_CELLS + 1] int; copy := b; #assert exg_sort(b[..], at, n, scratch[..], again[..]);
+  for k: 0..<b.count { #assert b[k] == copy[k]; } for c: 0..<EXG_CELLS + 1 { #assert again[c] == first[c]; }
+  // no room, or too many: nothing changes
+  #assert !exg_sort(b[..], at, n, scratch[0..<100], first[..]) && !exg_sort(b[..], at, EXG_MOST + 1, scratch[..], first[..]) && !exg_sort(b[..], at, n + 1, scratch[..], first[..]);
+}
