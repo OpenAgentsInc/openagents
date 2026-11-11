@@ -1,16 +1,17 @@
-// Firm reason: 6 (the Linux app's process, files and window; every decision is Coax).
-// OpenAgents for Linux: the host of the Zeron-fork chat screen (zeron/screen.coax,
-// zeron/desk.coax) on the shared Linux host (apps/shared/host/linux/ui-host.h). It is
-// what Sources/main.swift and Sources/Zeron.swift are on the Mac, less what Linux
-// does not have yet (see docs/apps/2026-11-10-apps-roadmap.md Step 1): it makes the
-// sessions, builds each chat's glyph atlas in Coax, hands frames and input across,
-// and takes the app's actions.
+// Firm reason: 6 (the app's process, files and window; every decision is Coax).
+// OpenAgents for Linux and the Mac: the host of the Zeron-fork chat screen (zeron/screen.coax,
+// zeron/desk.coax) on the shared host (apps/shared/host/linux/ui-host.h: Wayland and Vulkan on
+// Linux, apps/shared/host/apple/ui-host.m on the Mac, GitHub #13156). It makes the sessions,
+// builds each chat's glyph atlas (in Coax on Linux, with CoreText on the Mac:
+// apps/shared/host/apple/ct-atlas.m), hands frames and input across, and takes the app's actions.
+// The Mac adds its menu bar, the open panel, the pasteboard's files and dropped files, and
+// dictation from CoreAudio (apps/openagents-cli/dictate-mac.m) where Linux runs a recorder.
 //
 //   OpenAgents [--demo] [--cwd PATH] [--settings PATH] [--size WxH] [--dpr K] [--seconds N] [--dictation on|off] [--skin zeron|everglade|verse]
 //              [--dictation-recorder PROGRAM]
 //   OpenAgents --shot OUT.png [--size W,H] [--dpr K] [--demo] [--do "STEP ; STEP"]
 //              [--dictation-fixture | --dictation-recorder PROGRAM] [--dictation-stand-in WORDS]
-// Steps, as the Mac's (Sources/Zeron.swift step): wait SECONDS, waitidle [SECONDS], fixture
+// Steps, as the Mac's (the former Sources/Zeron.swift step): wait SECONDS, waitidle [SECONDS], fixture
 // open|closed|table, newchat, sidebar, room, folder PATH, attach PATH, closetab, type TEXT, send TEXT, stop,
 // mode|model|effort|access NAME, plan on|off, open model|access, answer allow|deny, click X,Y[,N],
 // move X,Y, wheel DY, scroll PX, key CHORD (cmd+1, shift+down, enter), status, last, desk, draft.
@@ -21,15 +22,22 @@
 // clip as 48 kHz mono 32-bit float samples), and a picture is never taken with the microphone.
 // --dictation-stand-in WORDS, for a picture only: a stand-in recognizer that answers WORDS; no model is opened.
 //
-// Dictation (Sources/Zeron.swift's dictation members; dictation-host.h): hold Ctrl+D, or the microphone
+// Dictation (the former Sources/Zeron.swift's dictation members; dictation-host.h): hold Ctrl+D, or the microphone
 // under the composer, and speak; the words go into the draft when you let go, and are never sent.
 // It is off until you turn it on: Ctrl+Shift+D in the window, or --dictation on. It is kept in settings.json.
 //   OpenAgents --mcp-room SOCKET AGENT    the room's MCP server, which Codex starts
 #define _GNU_SOURCE
 #include "zeron.h"
 #include "face.h"
+#ifdef __APPLE__
+#include "ui-host-apple.h"
+#include "ct-atlas.h"
+#include "dictation-mac.h"
+#include <mach-o/dyld.h>
+#else
 #include "ui-host.h"
 #include "portal.h"
+#endif
 #include "dictation-host.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -61,6 +69,11 @@ typedef struct {
   int nfonts, nicons;
   char *svg[64]; size_t svg_n[64];
   ChatAtlas atlases[MAX_CHATS];
+#ifdef __APPLE__
+  CtAtlas *ct;        // CoreText's fonts and icons, once; a chat's mono pixels are its cache rows only
+  uint8_t *full;      // the mono image the GPU holds: the fonts and icons, and the bound chat's cache rows
+  int quit;           // Quit was chosen
+#endif
   int natlases;
   void *bound;        // the chat whose atlas the GPU holds
   float dpr;
@@ -72,7 +85,9 @@ typedef struct {
   int room_fd, room_conns[16], room_n[16];
   char room_buf[16][65536];
   int wait_idle;      // --do: the wait ends when the running turn does
+#ifndef __APPLE__
   Portal *portal;     // the desktop's file chooser; NULL offscreen and where there is no session bus
+#endif
   // dictation: the recorder and the recognizer (NULL for a picture with neither --dictation-fixture nor
   // --dictation-recorder), the request in flight (ticket 0: none) with the chat it began in, and the
   // controller's facts as last said
@@ -102,10 +117,56 @@ static uint8_t *slurp(const char *dir, const char *sub, const char *name, const 
 }
 static void *active(App *a) { void *s = dsk_active(a->desk); return s ? s : a->first; }
 static coax_v_t_Atlas atlas_of(void *state) { return (coax_v_t_Atlas){((coax_t_ZeronState *)state)->atlas.e, 1}; }
+#ifndef __APPLE__
 static coax_v_t_RaPlan plan_of(App *a) { return (coax_v_t_RaPlan){&a->plan, 1}; }
 static size_t mono_bytes(App *a) { return (size_t)coaxial_ra_width(plan_of(a)) * (size_t)coaxial_ra_height(plan_of(a)); }
 static size_t color_bytes(App *a) { return (size_t)coaxial_ra_width(plan_of(a)) * (size_t)coaxial_ra_color_height(plan_of(a)) * 4; }
+#endif
 
+#ifdef __APPLE__
+static const CtApi ct_api = {zr_glyph_count, zr_glyph_code, zr_font_count, zr_font_size, zr_font_weight, zr_icon_count, zr_icon_size, zr_icon_name,
+                             zr_set_font, zr_set_icon, zr_set_atlas, zr_set_dynamic, zr_next_cluster, zr_cluster, zr_measured, zr_next_cell, zr_cell, zr_cell_ready};
+static size_t cache_bytes(App *a) { return (size_t)ct_atlas_width(a->ct) * (size_t)(ct_atlas_height(a->ct) - ct_atlas_cache_y0(a->ct)); }
+static size_t color_bytes(App *a) { return (size_t)ct_atlas_width(a->ct) * (size_t)ct_atlas_color_height(a->ct) * 4; }
+// CoreText's fonts and icons at this device scale; every chat's atlas starts again.
+static int atlas_setup(App *a) {
+  for (int i = 0; i < a->natlases; i++) { free(a->atlases[i].mono); free(a->atlases[i].color); }
+  a->natlases = 0; a->bound = NULL;
+  ct_atlas_free(a->ct); free(a->full); a->full = NULL;
+  a->ct = ct_atlas_new(&ct_api, a->resources, a->dpr);
+  if (!a->ct) return 0;
+  size_t n = (size_t)ct_atlas_width(a->ct) * ct_atlas_height(a->ct);
+  a->full = malloc(n);
+  if (!a->full) return 0;
+  memcpy(a->full, ct_atlas_mono(a->ct), n);
+  return 1;
+}
+// A chat's own glyph cache, made when the chat is first shown.
+static ChatAtlas *atlas_for(App *a, void *state) {
+  for (int i = 0; i < a->natlases; i++) if (a->atlases[i].state == state) return &a->atlases[i];
+  if (a->natlases == MAX_CHATS) return NULL;
+  ChatAtlas *c = &a->atlases[a->natlases];
+  c->state = state; c->mono = calloc(1, cache_bytes(a)); c->color = calloc(1, color_bytes(a));
+  if (!c->mono || !c->color) return NULL;
+  ct_atlas_bind(a->ct, state);
+  a->natlases++;
+  return c;
+}
+static void atlas_upload(App *a, ChatAtlas *c) {
+  uint32_t w = ct_atlas_width(a->ct), y0 = ct_atlas_cache_y0(a->ct);
+  memcpy(a->full + (size_t)y0 * w, c->mono, cache_bytes(a));
+  ui_atlas(a->host, a->full, w, ct_atlas_height(a->ct), c->color, w, ct_atlas_color_height(a->ct));
+  a->bound = c->state;
+}
+// The graphemes and cells the last frame wanted, drawn; the rows that changed, uploaded.
+static void atlas_serve(App *a, ChatAtlas *c, void *shown) {
+  int y0, y1, cy0, cy1;
+  if (ct_atlas_serve(a->ct, shown, c->mono, c->color, &y0, &y1, &cy0, &cy1) <= 0 || a->bound != shown) return;
+  uint32_t w = ct_atlas_width(a->ct), top = ct_atlas_cache_y0(a->ct);
+  if (y1 > y0) memcpy(a->full + (size_t)y0 * w, c->mono + (size_t)(y0 - (int)top) * w, (size_t)(y1 - y0) * w);
+  ui_atlas_rows(a->host, a->full, (uint32_t)y0, (uint32_t)y1, c->color, (uint32_t)cy0, (uint32_t)cy1);
+}
+#else
 // The fonts and icons, read once; the plan for this device scale.
 static int atlas_setup(App *a) {
   static const char *const files[4] = {"Geist", "Geist-Medium", "Geist-SemiBold", "GeistMono"};
@@ -148,6 +209,12 @@ static void atlas_upload(App *a, ChatAtlas *c) {
            (uint32_t)coaxial_ra_width(plan_of(a)), (uint32_t)coaxial_ra_color_height(plan_of(a)));
   a->bound = c->state;
 }
+static void atlas_serve(App *a, ChatAtlas *c, void *shown) {
+  coaxial_ra_clean(plan_of(a));
+  if (coaxial_ra_serve(atlas_of(shown), plan_of(a), (coax_v_t_RaFonts){&a->fonts, 1}, (coax_v_s64){a->weights, a->nfonts}, (coax_v_f32){a->sizes, a->nfonts},
+                       (coax_v_u8){c->mono, (int64_t)mono_bytes(a)}, (coax_v_t_RaWork){a->work, 1}) > 0) atlas_upload(a, c);
+}
+#endif
 
 // Ctrl is what Command is on the Mac: the app's chords are written for the Mac's modifiers (8 is Command).
 static int app_mods(int mods) { return (mods & 1) | (mods & 4) | ((mods & (2 | 8)) ? 8 : 0); }
@@ -160,7 +227,7 @@ static void copy_selection(App *a) {
   if (b && zr_selected(state, b, n) == n) ui_copy(a->host, (const char *)b, (size_t)n);
   free(b);
 }
-// ---- dictation (Sources/Zeron.swift): the host never submits. The Coax binds a result to the one
+// ---- dictation (the former Sources/Zeron.swift): the host never submits. The Coax binds a result to the one
 // unchanged composer it began in, and Enter and Send stay the only ways to send.
 
 static void cancel_dictation(App *a) {
@@ -215,7 +282,7 @@ static void focus_dictation(App *a, int focused) {
   else { cancel_dictation_for_edit(a); if (a->dictation) dn_deactivate(a->dictation); }
 }
 
-// ---- what is kept between runs (Sources/Zeron.swift saveSettings, storeFile, flushStore)
+// ---- what is kept between runs (the former Sources/Zeron.swift saveSettings, storeFile, flushStore)
 
 static void make_dirs(const char *file) {   // the folders a file's path names
   char dir[PATH_MAX]; snprintf(dir, sizeof dir, "%s", file);
@@ -258,7 +325,11 @@ static void flush_store(App *a, int force) {
 static void save_settings(App *a) {
   static uint8_t out[1 << 20];
   if (!a->settings_path[0]) return;
-  int n = ds_save(a->desk, 0, 0, (float)a->w, (float)a->h, out, sizeof out);
+  float f[4] = {0, 0, (float)a->w, (float)a->h};
+#ifdef __APPLE__
+  if (!ui_window_frame(a->host, f)) { f[2] = (float)a->w / (a->dpr > 0 ? a->dpr : 1); f[3] = (float)a->h / (a->dpr > 0 ? a->dpr : 1); }
+#endif
+  int n = ds_save(a->desk, f[0], f[1], f[2], f[3], out, sizeof out);
   if (n <= 0) return;
   char tmp[PATH_MAX + 8]; snprintf(tmp, sizeof tmp, "%s.new", a->settings_path);
   make_dirs(tmp);
@@ -302,7 +373,7 @@ static int restore(App *a, const char *cwd) {
   return count;
 }
 
-// ---- attachments (Sources/Zeron.swift attach): a file is copied into the app's uploads folder as
+// ---- attachments (the former Sources/Zeron.swift attach): a file is copied into the app's uploads folder as
 // {id8}-{name}, then handed to the chat with its bytes when it is small enough to send inline.
 
 #define UPLOAD_MAX (24 << 20)
@@ -344,10 +415,23 @@ static void new_session(App *a, const char *cwd) {
   save_settings(a);
 }
 
-// ---- the room (Sources/RoomSocket.swift): the app listens on a Unix socket; each Codex session's MCP
+// ---- the room (the former Sources/RoomSocket.swift): the app listens on a Unix socket; each Codex session's MCP
 // server (this program run with --mcp-room) connects, sends one JSON line a tool call and reads one back.
 // Only bytes move here; the desk (zeron/desk.coax) does the rest.
 
+// This program's own path (the room's MCP server runs it again).
+static ssize_t self_path(char *out, size_t cap) {
+#ifdef __APPLE__
+  char raw[PATH_MAX]; uint32_t size = sizeof raw;
+  if (_NSGetExecutablePath(raw, &size) || !realpath(raw, out)) return -1;
+  (void)cap;
+  return (ssize_t)strlen(out);
+#else
+  ssize_t n = readlink("/proc/self/exe", out, cap - 1);
+  if (n > 0) out[n] = 0;
+  return n;
+#endif
+}
 static int room_address(const char *path, struct sockaddr_un *a) {
   memset(a, 0, sizeof *a); a->sun_family = AF_UNIX;
   if (strlen(path) >= sizeof a->sun_path) return 0;
@@ -355,24 +439,42 @@ static int room_address(const char *path, struct sockaddr_un *a) {
   return 1;
 }
 static void room_open(App *a) {
+#ifdef __APPLE__
+  const char *dir = getenv("TMPDIR");
+#else
   const char *dir = getenv("XDG_RUNTIME_DIR");
+#endif
   struct sockaddr_un addr;
   a->room_fd = -1;
   for (int i = 0; i < 16; i++) a->room_conns[i] = -1;
-  snprintf(a->room_path, sizeof a->room_path, "%s/oa-room-%d.sock", dir && *dir ? dir : "/tmp", (int)getpid());
+  size_t dn = dir && *dir ? strlen(dir) : 0;
+  snprintf(a->room_path, sizeof a->room_path, "%.*s/oa-room-%d.sock", (int)(dn && dir[dn - 1] == '/' ? dn - 1 : dn), dn ? dir : "/tmp", (int)getpid());
+  if (!dn) snprintf(a->room_path, sizeof a->room_path, "/tmp/oa-room-%d.sock", (int)getpid());
   unlink(a->room_path);
+#ifdef __APPLE__
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd >= 0) { fcntl(fd, F_SETFL, O_NONBLOCK); fcntl(fd, F_SETFD, FD_CLOEXEC); }
+#else
   int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#endif
   if (fd < 0 || !room_address(a->room_path, &addr) || bind(fd, (struct sockaddr *)&addr, sizeof addr) || listen(fd, 16)) { if (fd >= 0) close(fd); return; }
   chmod(a->room_path, 0600);
   a->room_fd = fd;
-  char exe[PATH_MAX]; ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+  char exe[PATH_MAX]; ssize_t n = self_path(exe, sizeof exe);
   if (n > 0) dsk_set_room(a->desk, (const uint8_t *)exe, (int32_t)n, (const uint8_t *)a->room_path, (int32_t)strlen(a->room_path));
 }
 static void room_pump(App *a) {
   if (a->room_fd < 0) return;
   for (;;) {
+#ifdef __APPLE__
+    int c = accept(a->room_fd, NULL, NULL);
+    if (c < 0) break;
+    fcntl(c, F_SETFL, O_NONBLOCK); fcntl(c, F_SETFD, FD_CLOEXEC);
+    int one = 1; setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#else
     int c = accept4(a->room_fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
     if (c < 0) break;
+#endif
     int slot = -1;
     for (int i = 0; i < 16; i++) if (a->room_conns[i] < 0) { slot = i; break; }
     if (slot < 0) { close(c); continue; }
@@ -402,7 +504,11 @@ static void room_pump(App *a) {
     if (!known) continue;
     out[n] = 10;
     for (int at = 0; at <= n;) {
+#ifdef __APPLE__
+      ssize_t k = send(conn, out + at, (size_t)(n + 1 - at), 0);   // SO_NOSIGPIPE is set on the connection
+#else
       ssize_t k = send(conn, out + at, (size_t)(n + 1 - at), MSG_NOSIGNAL);
+#endif
       if (k > 0) { at += (int)k; continue; }
       if (k < 0 && errno == EAGAIN) { struct timespec nap = {0, 1000000}; nanosleep(&nap, NULL); continue; }
       break;
@@ -415,7 +521,8 @@ static void room_pump(App *a) {
 static int mcp_room(const char *path, int agent) {
   static uint8_t out[1 << 20]; static char line[1 << 20], reply[1 << 20];
   struct sockaddr_un addr;
-  int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd >= 0) fcntl(fd, F_SETFD, FD_CLOEXEC);
   if (fd >= 0 && (!room_address(path, &addr) || connect(fd, (struct sockaddr *)&addr, sizeof addr))) { close(fd); fd = -1; }
   FILE *app = fd >= 0 ? fdopen(fd, "r+") : NULL;
   while (fgets(line, sizeof line, stdin)) {
@@ -438,11 +545,173 @@ static int mcp_room(const char *path, int agent) {
   return 0;
 }
 
-// What the file chooser came back with: files to attach (request 1), or the folder a new session works in (2).
+// What the file chooser came back with: files to attach (request 1, or 0 dropped or pasted), or the folder a new session works in (2).
 static void on_chosen(void *user, int request, const char *path) { App *a = user; if (request == 2) new_session(a, path); else attach(a, path); }
+// New session in a folder: the chooser, opened at the shown chat's folder.
+static void pick_folder(App *a) {
+  uint8_t cwd[PATH_MAX]; int m = dsk_cwd(a->desk, cwd, sizeof cwd - 1);
+  cwd[m > 0 ? m : 0] = 0;
+#ifdef __APPLE__
+  if (!a->offscreen) { ui_choose(a->host, 2, 1, 0, "The folder the new session works in", "New Session", (const char *)cwd); return; }
+#else
+  if (portal_pick(a->portal, 2, 1, "The folder the new session works in", (const char *)cwd)) return;
+#endif
+  new_session(a, m > 0 ? (const char *)cwd : getenv("HOME"));
+}
+// The paperclip: any files, several at once.
+static void pick_files(App *a) {
+#ifdef __APPLE__
+  ui_choose(a->host, 1, 0, 1, "Attach files", NULL, NULL);
+#else
+  if (!portal_pick(a->portal, 1, 0, "Attach files", NULL)) fprintf(stderr, "OpenAgents: no file chooser on this desktop\n");
+#endif
+}
+
+#ifdef __APPLE__
+// ---- the Mac's menu bar (Zeron's crates/ui/src/app_menus.rs for what this app has), as the former Sources/main.swift had it
+
+enum { C_DICTATION = 1, C_DICTATION_INPUT, C_NEW, C_NEW_IN_FOLDER, C_CLOSE_TAB, C_UNDO, C_REDO, C_CUT, C_COPY, C_PASTE, C_SELECT_ALL,
+       C_SIDEBAR, C_QUIT, C_CLOSE_WINDOW, C_INPUTS = 100 };
+static UiMenuItem menus[] = {
+  {"OpenAgents", "About OpenAgents", "", 0, -1, "orderFrontStandardAboutPanel:"}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
+  {"OpenAgents", "Enable Local Dictation — Parakeet", "", 0, C_DICTATION, NULL},
+  {"OpenAgents", "Dictation Input…", "", 0, C_DICTATION_INPUT, NULL},
+  {"OpenAgents", "Hold ⌘D or microphone · on-device draft only", "", 0, -1, NULL}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
+  {"OpenAgents", "Services", "", 0, -1, NULL}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
+  {"OpenAgents", "Hide OpenAgents", "h", 8, -1, "hide:"},
+  {"OpenAgents", "Hide Others", "h", 8 | 4, -1, "hideOtherApplications:"},
+  {"OpenAgents", "Show All", "", 0, -1, "unhideAllApplications:"}, {"OpenAgents", NULL, NULL, 0, -1, NULL},
+  {"OpenAgents", "Quit OpenAgents", "q", 8, C_QUIT, NULL},
+  {"File", "New Session", "n", 8, C_NEW, NULL},
+  {"File", "New Session in Folder…", "n", 8 | 1, C_NEW_IN_FOLDER, NULL}, {"File", NULL, NULL, 0, -1, NULL},
+  {"File", "Close Tab", "w", 8, C_CLOSE_TAB, NULL},
+  // AppKit adds Dictation and Emoji & Symbols to a menu titled Edit
+  {"Edit", "Undo", "z", 8, C_UNDO, NULL}, {"Edit", "Redo", "z", 8 | 1, C_REDO, NULL}, {"Edit", NULL, NULL, 0, -1, NULL},
+  {"Edit", "Cut", "x", 8, C_CUT, NULL}, {"Edit", "Copy", "c", 8, C_COPY, NULL}, {"Edit", "Paste", "v", 8, C_PASTE, NULL}, {"Edit", NULL, NULL, 0, -1, NULL},
+  {"Edit", "Select All", "a", 8, C_SELECT_ALL, NULL},
+  {"View", "Toggle Sidebar", "s", 8, C_SIDEBAR, NULL},
+  {"Window", "Minimize", "m", 8, -1, "performMiniaturize:"}, {"Window", "Zoom", "", 0, -1, "performZoom:"}, {"Window", NULL, NULL, 0, -1, NULL},
+  {"Window", "Close Window", "w", 8 | 1, C_CLOSE_WINDOW, NULL},
+};
+enum { MENU_ITEMS = (int)(sizeof menus / sizeof menus[0]) };
+static char menu_keys[MENU_ITEMS][8];   // the key equivalents settings.json gave (menus[i].key points here then)
+
+static void paste(App *a) {
+  void *state = active(a);
+  cancel_dictation_for_edit(a);
+  // files and images are attachments (staged, not typed)
+  if (zr_wants_text(state) && ui_paste_files(a->host) > 0) return;
+  static char text[1 << 20];
+  int n = ui_paste_text(a->host, text, sizeof text);
+  if (n <= 0) return;
+  zr_unmark(state);
+  zr_paste(state, (const uint8_t *)text, n);
+}
+static DmInput inputs[32];
+static int ninputs;
+static void on_command(void *user, int id) {
+  App *a = user;
+  void *state = active(a);
+  switch (id) {
+    case C_DICTATION: cancel_dictation_for_edit(a); set_dictation(a, !dsk_dictation_enabled(a->desk)); break;
+    case C_DICTATION_INPUT: {
+      // the inputs there are, the chosen one checked
+      static UiMenuItem items[34];
+      char chosen[256]; dm_selected(chosen, sizeof chosen);
+      ninputs = dm_inputs(inputs, 32);
+      int n = 0, checked = chosen[0] ? -1 : C_INPUTS, found = 0;
+      items[n++] = (UiMenuItem){"", "System default input", "", 0, C_INPUTS, NULL};
+      for (int i = 0; i < ninputs; i++) {
+        items[n++] = (UiMenuItem){"", inputs[i].name, "", 0, C_INPUTS + 1 + i, NULL};
+        if (chosen[0] && !strcmp(chosen, inputs[i].uid)) { checked = C_INPUTS + 1 + i; found = 1; }
+      }
+      if (chosen[0] && !found) items[n++] = (UiMenuItem){"", "Selected input unavailable — choose an input", "", 0, -1, NULL};
+      ui_popup(a->host, items, n, 16 * a->dpr, 36 * a->dpr, checked);
+      break;
+    }
+    case C_NEW: { cancel_dictation_for_edit(a); uint8_t cwd[PATH_MAX]; int k = dsk_cwd(a->desk, cwd, sizeof cwd - 1); cwd[k > 0 ? k : 0] = 0; new_session(a, k > 0 ? (const char *)cwd : getenv("HOME")); break; }
+    case C_NEW_IN_FOLDER: cancel_dictation_for_edit(a); pick_folder(a); break;
+    case C_CLOSE_TAB: cancel_dictation_for_edit(a); if (!dsk_close_tab(a->desk)) a->quit = 1; break;   // the last tab closes the window
+    case C_UNDO: cancel_dictation_for_edit(a); zr_undo(state); break;
+    case C_REDO: cancel_dictation_for_edit(a); zr_redo(state); break;
+    case C_CUT: cancel_dictation_for_edit(a); if (zr_can_cut(state)) { copy_selection(a); zr_cut(state); } break;
+    case C_COPY: copy_selection(a); break;
+    case C_PASTE: paste(a); break;
+    case C_SELECT_ALL: cancel_dictation_for_edit(a); zr_select_all(state); break;
+    case C_SIDEBAR: dsk_toggle(a->desk); break;
+    case C_QUIT: case C_CLOSE_WINDOW: a->quit = 1; break;
+    default:
+      if (id >= C_INPUTS && id <= C_INPUTS + ninputs) {
+        cancel_dictation_for_edit(a);
+        dm_select(id == C_INPUTS ? "" : inputs[id - C_INPUTS - 1].uid);
+        sync_dictation(a);
+      }
+  }
+}
+static int on_command_state(void *user, int id) {
+  App *a = user;
+  void *state = active(a);
+  int focused = zr_wants_text(state) != 0;
+  switch (id) {
+    case C_DICTATION: return 1 | (dsk_dictation_enabled(a->desk) ? 2 : 0);
+    case C_UNDO: case C_REDO: case C_PASTE: return focused;
+    case C_COPY: return zr_selected_count(state) > 0;
+    case C_CUT: return zr_can_cut(state) != 0;
+    default: return 1;
+  }
+}
+static void on_file(void *user, int request, const char *path) { on_chosen(user, request, path); }
+// "shift+alt+left" as the menus' key and mods; the key's letter, or 0 for a named key.
+static int chord(const char *text, char *key, int *mods) {
+  char buf[64]; snprintf(buf, sizeof buf, "%s", text);
+  *mods = 0; key[0] = 0;
+  for (char *part = strtok(buf, "+"); part; part = strtok(NULL, "+")) {
+    if (!strcasecmp(part, "shift")) *mods |= 1; else if (!strcasecmp(part, "ctrl")) *mods |= 2;
+    else if (!strcasecmp(part, "alt")) *mods |= 4; else if (!strcasecmp(part, "cmd")) *mods |= 8;
+    else if (strlen(part) == 1) { key[0] = (char)(part[0] >= 'A' && part[0] <= 'Z' ? part[0] + 32 : part[0]); key[1] = 0; }
+  }
+  return key[0] != 0;
+}
+// The menu commands' keys from settings.json (zeron/desk.coax DSK_KEY_*, in that order).
+static void apply_shortcuts(App *a) {
+  static const int ids[5] = {C_NEW, C_NEW_IN_FOLDER, C_CLOSE_TAB, C_SIDEBAR, C_CLOSE_WINDOW};
+  for (int j = 0; j < 5; j++) {
+    uint8_t buf[32]; int n = dsk_shortcut(a->desk, j, buf, sizeof buf - 1);
+    if (n <= 0) continue;
+    buf[n] = 0;
+    char key[8]; int mods;
+    if (!chord((const char *)buf, key, &mods)) continue;
+    for (int i = 0; i < MENU_ITEMS; i++) if (menus[i].id == ids[j]) {
+      snprintf(menu_keys[i], sizeof menu_keys[i], "%s", key);
+      menus[i].key = menu_keys[i]; menus[i].mods = mods;
+      ui_menu_key(a->host, ids[j], key, mods);
+    }
+  }
+}
+// The input method over the composer (the former Sources/Zeron.swift's NSTextInputClient): its ranges in UTF-16 units.
+static void ime_replace(void *user, int from, int to, const char *bytes, size_t n) { App *a = user; cancel_dictation_for_edit(a); zr_replace(active(a), from, to, (const uint8_t *)bytes, (int32_t)n); }
+static void ime_mark(void *user, int from, int to, const char *bytes, size_t n, int sf, int st) { App *a = user; cancel_dictation_for_edit(a); zr_mark(active(a), from, to, (const uint8_t *)bytes, (int32_t)n, sf, st); }
+static void ime_unmark(void *user) { App *a = user; zr_unmark(active(a)); }
+static int ime_range(void *user, int which) { App *a = user; return zr_range16(active(a), which); }
+static int ime_text(void *user, int from, int to, char *out, int cap) { App *a = user; return zr_text16(active(a), from, to, (uint8_t *)out, cap); }
+// the composer's rect is the chat's; the chat sits right of the sidebar
+static int ime_rect(void *user, int at, float rect[4]) {
+  App *a = user;
+  if (!zr_rect16(active(a), at, rect)) return 0;
+  rect[0] = (rect[0] + dsk_side(a->desk)) * a->dpr; rect[1] *= a->dpr; rect[2] *= a->dpr; rect[3] *= a->dpr;
+  return 1;
+}
+static int ime_index(void *user, float x, float y) { App *a = user; return zr_index16(active(a), x - dsk_side(a->desk) * a->dpr, y); }
+static const UiIme ime = {ime_replace, ime_mark, ime_unmark, ime_range, ime_text, ime_rect, ime_index};
+#endif
 
 static int on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   App *a = user;
+#ifdef __APPLE__
+  if (a->quit) ui_quit(a->host);
+  // the window moved to a screen of another scale: the glyphs again, at it
+  if (!a->offscreen && dpr > 0 && dpr != a->dpr) { a->dpr = dpr; if (!atlas_setup(a)) return 0; }
+#endif
   void *shown = active(a);
   ChatAtlas *c = atlas_for(a, shown);
   if (!c) return 0;
@@ -457,22 +726,22 @@ static int on_frame(void *user, float *vertices, float w, float h, float dpr, fl
   flush_store(a, 0);
   int n = dsk_frame(a->desk, vertices, w, h, dpr, dt);
   // the graphemes and cells this frame wanted, for the next
-  coaxial_ra_clean(plan_of(a));
-  if (coaxial_ra_serve(atlas_of(shown), plan_of(a), (coax_v_t_RaFonts){&a->fonts, 1}, (coax_v_s64){a->weights, a->nfonts}, (coax_v_f32){a->sizes, a->nfonts},
-                       (coax_v_u8){c->mono, (int64_t)mono_bytes(a)}, (coax_v_t_RaWork){a->work, 1}) > 0) atlas_upload(a, c);
+  atlas_serve(a, c, shown);
+#ifndef __APPLE__
   portal_poll(a->portal, on_chosen, a);
-  if (dsk_take_action(a->desk) == 1) {   // New session in a folder: the desktop's chooser, opened at the shown chat's folder
-    uint8_t cwd[PATH_MAX]; int m = dsk_cwd(a->desk, cwd, sizeof cwd - 1);
-    cwd[m > 0 ? m : 0] = 0;
-    if (!portal_pick(a->portal, 2, 1, "The folder the new session works in", (const char *)cwd)) new_session(a, m > 0 ? (const char *)cwd : getenv("HOME"));
-  }
+#endif
+  if (dsk_take_action(a->desk) == 1) pick_folder(a);   // New session in a folder: the chooser, opened at the shown chat's folder
   int own = dsk_cursor(a->desk);
   ui_cursor(a->host, own >= 0 ? own : zr_cursor(shown));
-  // a notice's button: the command to run, said on stderr until Linux opens a terminal for it
+  // a notice's button: the command to run (in Terminal on the Mac; said on stderr until Linux opens a terminal for it)
   static const char *const commands[6] = {NULL, "claude /login", "curl -fsSL https://claude.ai/install.sh | bash", NULL, "codex login", "npm install -g @openai/codex"};
   int action = zr_take_action(shown);
+#ifdef __APPLE__
+  if (action > 0 && action < 6 && commands[action] && !a->offscreen) ui_terminal(commands[action]);
+#else
   if (action > 0 && action < 6 && commands[action]) fprintf(stderr, "OpenAgents: run this in a terminal: %s\n", commands[action]);
-  if (action == 3 && !portal_pick(a->portal, 1, 0, "Attach files", NULL)) fprintf(stderr, "OpenAgents: no file chooser on this desktop\n");   // the paperclip
+#endif
+  if (action == 3) pick_files(a);   // the paperclip
   static uint8_t copied[65536];
   int k = zr_take_copy(shown, copied, sizeof copied);
   if (k > 0) ui_copy(a->host, (const char *)copied, (size_t)k);
@@ -526,6 +795,9 @@ static int on_key(void *user, int key, int mods, int down) {
   if (dsk_key(a->desk, c, m)) return 1;
   if (!(m & 4)) {
     if (c == 'c') { copy_selection(a); return 1; }
+#ifdef __APPLE__
+    if (c == 'v') { paste(a); return 1; }
+#endif
     if (c == 'x') { if (zr_can_cut(state)) { copy_selection(a); zr_cut(state); } return 1; }
     if (c == 'a') { zr_select_all(state); return 1; }
     if (c == 'z') { if (m & 1) zr_redo(state); else zr_undo(state); return 1; }
@@ -538,7 +810,7 @@ static int on_key(void *user, int key, int mods, int down) {
   return zr_key(state, c, m);
 }
 
-// ---- --do: the steps a picture is taken after (Sources/Zeron.swift step)
+// ---- --do: the steps a picture is taken after (the former Sources/Zeron.swift step)
 
 static void say(const char *verb, void *state, int32_t (*get)(void *, uint8_t *, int32_t)) {
   uint8_t b[4096]; int n = get(state, b, sizeof b - 1);
@@ -546,7 +818,7 @@ static void say(const char *verb, void *state, int32_t (*get)(void *, uint8_t *,
   printf("%s: %s\n", verb, b);
 }
 // --dictation-fixture: the key and the button through the window's own handlers, and a file's samples in
-// place of the recorder's, on the fixture's clock (Sources/Zeron.swift fixtureDictationKey and the rest).
+// place of the recorder's, on the fixture's clock (the former Sources/Zeron.swift fixtureDictationKey and the rest).
 static void fixture_key(App *a, int down) {
   if (a->dictation_fixture) dn_fixture_time(a->dictation, a->dictation_clock);
   on_key(a, 'd', down ? 2 : 0, down);
@@ -652,7 +924,41 @@ static double step(App *a, char *line) {
     for (int t = 0; t < dsk_tabs(a->desk); t++) printf("%s%d", t ? "," : "", dsk_tab(a->desk, t));
     printf(" sessions=%d collapsed=%d\n", dsk_count(a->desk), dsk_collapsed(a->desk));
   }
-  else if (*line) fprintf(stderr, "OpenAgents: unknown step %s\n", line);
+  else if (!strcmp(line, "shiftclick") && count >= 2) { dsk_pointer(a->desk, n[0], n[1], 0, 1, 1); dsk_pointer(a->desk, n[0], n[1], 2, 1, 1); }
+  else if (!strcmp(line, "drag") && count == 4) {
+    dsk_pointer(a->desk, n[0], n[1], 0, 1, 0);
+    for (int k = 1; k <= 8; k++) { float t = (float)k / 8; dsk_pointer(a->desk, n[0] + (n[2] - n[0]) * t, n[1] + (n[3] - n[1]) * t, 1, 1, 0); }
+    dsk_pointer(a->desk, n[2], n[3], 2, 1, 0);
+  }
+#ifdef __APPLE__
+  else if (!strcmp(line, "menu")) {   // a menu item, as the menu bar sends it (when it is enabled)
+    int found = 0;
+    for (int i = 0; i < MENU_ITEMS; i++) if (menus[i].title && !strcmp(menus[i].title, arg) && menus[i].id > 0) {
+      found = 1;
+      if (on_command_state(a, menus[i].id) & 1) on_command(a, menus[i].id); else printf("menu %s is disabled\n", arg);
+    }
+    if (!found) printf("unknown step: menu %s\n", arg);
+  }
+  else if (!strcmp(line, "shortcut")) {   // a menu command's key as the menu bar has it
+    for (int i = 0; i < MENU_ITEMS; i++) if (menus[i].title && !strcmp(menus[i].title, arg)) {
+      int m = menus[i].mods;
+      printf("shortcut: %s %s%s%s%s%s\n", arg, m & 1 ? "shift+" : "", m & 2 ? "ctrl+" : "", m & 4 ? "alt+" : "", m & 8 ? "cmd+" : "", menus[i].key);
+    }
+  }
+  else if (!strcmp(line, "clip")) ui_copy(a->host, arg, strlen(arg));   // the picture's own pasteboard
+  else if (!strcmp(line, "pasteboard")) { static char b[1 << 16]; int k = ui_paste_text(a->host, b, sizeof b); printf("pasteboard: %.*s\n", k, b); }
+  else if (!strcmp(line, "mark")) {   // marked text, its caret at its end (UTF-16 units)
+    int units = 0;
+    for (const unsigned char *p = (const unsigned char *)arg; *p; p++) units += (*p & 0xC0) != 0x80 ? ((*p >= 0xF0) ? 2 : 1) : 0;
+    ime_mark(a, -1, -1, arg, strlen(arg), units, units);
+  }
+  else if (!strcmp(line, "commit")) ime_replace(a, -1, -1, arg, strlen(arg));
+  else if (!strcmp(line, "window")) {
+    float f[4];
+    if (ds_window(a->settings, f)) printf("window: %dx%d at %d,%d\n", (int)f[2], (int)f[3], (int)f[0], (int)f[1]); else printf("window: none\n");
+  }
+#endif
+  else if (*line) printf("unknown step: %s\n", line);
   return 0;
 }
 
@@ -667,13 +973,22 @@ static void on_signal(int sig) { (void)sig; stopping = 1; }
 
 int main(int argc, char **argv) {
   static App a;
-  // the resources sit beside the program: fonts/, icons/, zeron.spv
-  ssize_t len = readlink("/proc/self/exe", a.resources, sizeof a.resources - 1);
-  if (len <= 0) return 1;
-  a.resources[len] = 0;
+  // the resources sit beside the program (fonts/, icons/, zeron.spv), or in the bundle's Resources on the Mac (zeron.metallib)
+  if (self_path(a.resources, sizeof a.resources) <= 0) return 1;
   char *slash = strrchr(a.resources, '/');
   if (slash) *slash = 0;
-  char shader[PATH_MAX + 16]; snprintf(shader, sizeof shader, "%s/zeron.spv", a.resources);
+  char shader[PATH_MAX + 32];
+#ifdef __APPLE__
+  // OpenAgents.app/Contents/MacOS/OpenAgents: its Resources are beside MacOS
+  slash = strrchr(a.resources, '/');
+  if (slash && !strcmp(slash, "/MacOS")) strcpy(slash, "/Resources");
+  snprintf(shader, sizeof shader, "%s/zeron.metallib", a.resources);
+  // --compare SHOT GOLDEN [PERCENT]: how many pixels differ by more than 48 of 255 (check.sh's goldens)
+  for (int i = 1; i + 2 < argc; i++) if (!strcmp(argv[i], "--compare")) return ui_compare(argv[i + 1], argv[i + 2], i + 3 < argc ? atof(argv[i + 3]) : 0.1);
+  signal(SIGPIPE, SIG_IGN);
+#else
+  snprintf(shader, sizeof shader, "%s/zeron.spv", a.resources);
+#endif
 
   for (int i = 1; i + 2 < argc; i++) if (!strcmp(argv[i], "--mcp-room")) return mcp_room(argv[i + 1], atoi(argv[i + 2]));
   const char *shot = value(argc, argv, "--shot"), *size = value(argc, argv, "--size"), *dpr = value(argc, argv, "--dpr");
@@ -686,23 +1001,43 @@ int main(int argc, char **argv) {
                .user = &a, .frame = on_frame, .pointer = on_pointer, .wheel = on_wheel, .key = on_key, .text = on_text, .wants_text = on_wants_text};
   // the sessions first: the seat's first events come while the window opens
   a.desk = dsk_new(); a.settings = ds_new(); a.first = zr_new();
+  // settings.json: --settings PATH, else ~/.openagents/desktop/settings.json (on the Mac, where it has always been:
+  // ~/Library/Application Support/OpenAgents/settings.json); none for --demo and for a picture without --settings
+  const char *settings = value(argc, argv, "--settings"), *home = getenv("HOME");
+  if (settings) snprintf(a.settings_path, sizeof a.settings_path, "%s", settings);
+#ifdef __APPLE__
+  else if (!shot && !has(argc, argv, "--demo") && home) snprintf(a.settings_path, sizeof a.settings_path, "%s/Library/Application Support/OpenAgents/settings.json", home);
+  // the Mac's window: under a transparent title bar, at least 900 by 600 points, where it was at quit
+  app.chrome = 1; app.min_width = 900; app.min_height = 600;
+  app.ime = &ime; app.command = on_command; app.command_state = on_command_state; app.file = on_file;
+  if (a.settings_path[0] && !has(argc, argv, "--demo")) {
+    size_t sn; uint8_t *json = read_file(a.settings_path, &sn);
+    void *peek = json ? ds_new() : NULL;
+    if (peek && ds_load(peek, dsk_new(), json, (int32_t)sn) >= 0) ds_window(peek, app.place);
+    free(json);
+  }
+#else
+  else if (!shot && !has(argc, argv, "--demo") && home) snprintf(a.settings_path, sizeof a.settings_path, "%s/.openagents/desktop/settings.json", home);
+#endif
   const char *skin = value(argc, argv, "--skin");
   if (skin && !dsk_set_skin(a.desk, (const uint8_t *)skin, (int32_t)strlen(skin))) { fprintf(stderr, "OpenAgents: no skin named %s (zeron, everglade, verse)\n", skin); return 2; }
   if (!a.desk || !a.settings || !a.first) return 1;
   room_open(&a);
   a.host = ui_open(&app, shot != NULL);
   if (!a.host) return 1;
+#ifdef __APPLE__
+  if (!shot) a.dpr = ui_dpr(a.host);   // the screen's scale, not --dpr
+  ui_menus(a.host, menus, MENU_ITEMS);
+#endif
   ui_set_dpr(a.host, a.dpr);
   if (!atlas_setup(&a)) return 1;
+#ifndef __APPLE__
   if (!shot) a.portal = portal_open();
+#endif
   const char *cwd = value(argc, argv, "--cwd");
   if (!cwd) cwd = getenv("HOME");
   if (!cwd) cwd = "/";
   if (has(argc, argv, "--still-clock")) dsk_still(a.desk);
-  // settings.json: --settings PATH, else ~/.openagents/desktop/settings.json; none for --demo and for a picture without --settings
-  const char *settings = value(argc, argv, "--settings"), *home = getenv("HOME");
-  if (settings) snprintf(a.settings_path, sizeof a.settings_path, "%s", settings);
-  else if (!shot && !has(argc, argv, "--demo") && home) snprintf(a.settings_path, sizeof a.settings_path, "%s/.openagents/desktop/settings.json", home);
   if (has(argc, argv, "--demo")) { a.settings_path[0] = 0; zr_demo(a.first); dsk_add(a.desk, a.first, (const uint8_t *)cwd, (int32_t)strlen(cwd)); }
   else if (!restore(&a, cwd)) {
     zr_attach(a.first, (const uint8_t *)cwd, (int32_t)strlen(cwd));
@@ -710,7 +1045,7 @@ int main(int argc, char **argv) {
     add_chat(&a, a.first, cwd);
   }
 
-  // Dictation (Sources/Zeron.swift configureDictation): in a window; for a picture, only with a fixture
+  // Dictation (the former Sources/Zeron.swift configureDictation): in a window; for a picture, only with a fixture
   // or a stand-in recorder.
   const char *dictation = value(argc, argv, "--dictation");
   if (dictation && (!strcmp(dictation, "on") || !strcmp(dictation, "off"))) { dsk_dictation_set(a.desk, !strcmp(dictation, "on")); save_settings(&a); }
@@ -729,6 +1064,9 @@ int main(int argc, char **argv) {
     if (shot) dn_activate(a.dictation);   // a picture has no keyboard to be given
     sync_dictation(&a);
   }
+#ifdef __APPLE__
+  apply_shortcuts(&a);
+#endif
 
   int status = 0;
   if (shot) {
@@ -758,17 +1096,32 @@ int main(int argc, char **argv) {
   } else {
     const char *seconds = value(argc, argv, "--seconds");
     double limit = seconds ? atof(seconds) : 0;
+    // --fps SECS: the frames presented a second, after a second's warm-up, printed; then quit
+    const char *fps = value(argc, argv, "--fps");
+    double warm = fps ? 1 : 0;
+    if (fps) limit = warm + atof(fps);
+    uint64_t presented = 0;
     struct timespec t0; clock_gettime(CLOCK_MONOTONIC, &t0);
     signal(SIGINT, on_signal); signal(SIGTERM, on_signal);
     while (!stopping && ui_frame(a.host)) {
-      if (limit > 0) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); if (t.tv_sec - t0.tv_sec + (t.tv_nsec - t0.tv_nsec) / 1e9 > limit) break; }
+      struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+      double at = t.tv_sec - t0.tv_sec + (t.tv_nsec - t0.tv_nsec) / 1e9;
+#ifdef __APPLE__
+      if (fps && warm > 0 && at >= warm) { presented = ui_presented(a.host); warm = -warm; }
+#endif
+      if (limit > 0 && at > limit) break;
     }
+#ifdef __APPLE__
+    if (fps) printf("%.1f fps over %s s at %ux%u (scale %.0f)\n", (double)(ui_presented(a.host) - presented) / atof(fps), fps, a.w, a.h, (double)a.dpr);
+#endif
   }
   cancel_dictation_for_edit(&a);
   dn_close(a.dictation); a.dictation = NULL;
   flush_store(&a, 1);
   save_settings(&a);
+#ifndef __APPLE__
   portal_close(a.portal);
+#endif
   dsk_quit(a.desk);
   if (a.room_fd >= 0) { close(a.room_fd); unlink(a.room_path); }
   ui_close(a.host);

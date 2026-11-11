@@ -6070,7 +6070,8 @@ room delivery and idle panel draws through setup, status, reload, minimize,
 hide and resume.
 
 Setup and status paint through `components/zeron/gpui.coax` and the shared
-`MetalUI.swift`/`Zeron.metal` effects used by OpenAgents desktop. Coax owns
+`MetalUI.swift` effects (OpenAgents desktop now draws on the shared Mac host,
+`apps/shared/host/apple/`, with the same CoreText atlas in `ct-atlas.m`). Coax owns
 labels, geometry, readiness and button rectangles. AppKit's transparent buttons
 supply input/accessibility only. The surfaces redraw on changes, with no idle
 animation loop. The game's own HUD is unchanged. CPU measurement converts

@@ -57,6 +57,11 @@ struct UiHost {
   int cursor_kind;
   // the pointer: double and triple clicks are AppKit's clickCount
   int held;
+  uint64_t presented;
+#if TARGET_OS_OSX
+  NSPasteboard *pasteboard;   // the general one; offscreen, the app's own
+  id menu_target;             // the menus' items send their ids through it
+#endif
 };
 
 static double ui_now(void) { return CACurrentMediaTime(); }
@@ -77,6 +82,8 @@ static int ui_named(unsigned short code, unichar c) {
 }
 
 // ---- the view: input and the drawable
+
+static int ui_paste_from(UiHost *h, NSPasteboard *pb);
 
 @interface UiView : NSView <NSTextInputClient>
 @property(nonatomic, assign) UiHost *host;
@@ -106,7 +113,8 @@ static int ui_named(unsigned short code, unichar c) {
 - (void)scrollWheel:(NSEvent *)e {
   UiHost *h = self.host;
   if (!h->app.wheel) return;
-  CGFloat dy = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 16;
+  // GPUI's pixel delta: precise deltas as they come, a mouse's lines times the line height (22.75)
+  CGFloat dy = e.hasPreciseScrollingDeltas ? e.scrollingDeltaY : e.scrollingDeltaY * 22.75;
   h->app.wheel(h->app.user, (float)(-dy * h->dpr));
 }
 - (void)updateTrackingAreas {
@@ -117,12 +125,16 @@ static int ui_named(unsigned short code, unichar c) {
 - (void)cursorUpdate:(NSEvent *)e { (void)e; ui_cursor(self.host, self.host->cursor_kind); }
 // A key: the app's chords first (named keys and anything with Command or Control); the rest goes
 // through the input method, which calls insertText or setMarkedText.
+- (BOOL)composing {
+  UiHost *h = self.host;
+  return h->app.ime ? h->app.ime->range(h->app.user, 2) >= 0 : self.marked.length > 0;
+}
 - (void)keyDown:(NSEvent *)e {
   UiHost *h = self.host;
   int mods = ui_mods_of(e.modifierFlags);
   NSString *bare = e.charactersIgnoringModifiers;
   int named = ui_named(e.keyCode, bare.length ? [bare characterAtIndex:0] : 0);
-  if (h->app.key && self.marked.length == 0) {
+  if (h->app.key && ![self composing]) {
     if (named && h->app.key(h->app.user, named, mods, 1)) return;
     if (!named && (mods & (2 | 8)) && bare.length) {
       int c = (int)[bare characterAtIndex:0];
@@ -140,32 +152,88 @@ static int ui_named(unsigned short code, unichar c) {
   if (h->app.key) h->app.key(h->app.user, named ? named : (bare.length ? (int)[bare characterAtIndex:0] : 0), ui_mods_of(e.modifierFlags), 0);
 }
 - (void)doCommandBySelector:(SEL)s { (void)s; }
+// The input method. With UiApp.ime the text box's own ranges answer it (marked text is the app's);
+// without, marked text is held here and only committed text reaches the app.
+static int ui_from(NSRange r) { return r.location == NSNotFound ? -1 : (int)r.location; }
+static int ui_to(NSRange r) { return r.location == NSNotFound ? -1 : (int)(r.location + r.length); }
 - (void)insertText:(id)text replacementRange:(NSRange)r {
-  (void)r;
+  UiHost *h = self.host;
   NSString *s = [text isKindOfClass:[NSAttributedString class]] ? [text string] : text;
   self.marked = nil;
   const char *u = s.UTF8String;
-  if (self.host->app.text && u) self.host->app.text(self.host->app.user, u, strlen(u));
+  if (!u) return;
+  if (h->app.ime) h->app.ime->replace(h->app.user, ui_from(r), ui_to(r), u, strlen(u));
+  else if (h->app.text) h->app.text(h->app.user, u, strlen(u));
 }
 - (void)setMarkedText:(id)text selectedRange:(NSRange)s replacementRange:(NSRange)r {
-  (void)s; (void)r;
-  self.marked = [text isKindOfClass:[NSAttributedString class]] ? [text string] : text;
+  UiHost *h = self.host;
+  NSString *t = [text isKindOfClass:[NSAttributedString class]] ? [text string] : text;
+  if (!h->app.ime) { self.marked = t; return; }
+  const char *u = t.UTF8String;
+  h->app.ime->mark(h->app.user, ui_from(r), ui_to(r), u ? u : "", u ? strlen(u) : 0, ui_from(s), ui_to(s));
 }
-- (void)unmarkText { self.marked = nil; }
-- (NSRange)selectedRange { return NSMakeRange(NSNotFound, 0); }
-- (NSRange)markedRange { return self.marked.length ? NSMakeRange(0, self.marked.length) : NSMakeRange(NSNotFound, 0); }
-- (BOOL)hasMarkedText { return self.marked.length > 0; }
-- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)r actualRange:(NSRangePointer)a { (void)r; (void)a; return nil; }
+- (void)unmarkText { UiHost *h = self.host; self.marked = nil; if (h->app.ime) h->app.ime->unmark(h->app.user); }
+- (NSRange)selectedRange {
+  UiHost *h = self.host;
+  if (!h->app.ime) return NSMakeRange(NSNotFound, 0);
+  int a = h->app.ime->range(h->app.user, 0), b = h->app.ime->range(h->app.user, 1);
+  return NSMakeRange((NSUInteger)a, (NSUInteger)(b - a));
+}
+- (NSRange)markedRange {
+  UiHost *h = self.host;
+  if (!h->app.ime) return self.marked.length ? NSMakeRange(0, self.marked.length) : NSMakeRange(NSNotFound, 0);
+  int a = h->app.ime->range(h->app.user, 2), b = h->app.ime->range(h->app.user, 3);
+  return a < 0 ? NSMakeRange(NSNotFound, 0) : NSMakeRange((NSUInteger)a, (NSUInteger)(b - a));
+}
+- (BOOL)hasMarkedText { return [self composing]; }
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)r actualRange:(NSRangePointer)actual {
+  UiHost *h = self.host;
+  if (!h->app.ime) return nil;
+  int total = h->app.ime->range(h->app.user, 4);
+  int a = (int)MIN((NSUInteger)total, r.location), b = (int)MIN((NSUInteger)total, r.location + r.length);
+  if (a > b) return nil;
+  char bytes[8192];
+  int n = h->app.ime->text(h->app.user, a, b, bytes, (int)sizeof bytes);
+  if (actual) *actual = NSMakeRange((NSUInteger)a, (NSUInteger)(b - a));
+  NSString *s = [[NSString alloc] initWithBytes:bytes length:(NSUInteger)(n > 0 ? n : 0) encoding:NSUTF8StringEncoding];
+  return [[NSAttributedString alloc] initWithString:s ? s : @""];
+}
 - (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
-- (NSUInteger)characterIndexForPoint:(NSPoint)p { (void)p; return NSNotFound; }
+- (NSUInteger)characterIndexForPoint:(NSPoint)p {
+  UiHost *h = self.host;
+  if (!h->app.ime || !self.window) return NSNotFound;
+  NSPoint v = [self convertPoint:[self.window convertPointFromScreen:p] fromView:nil];
+  int i = h->app.ime->index(h->app.user, (float)(v.x * h->dpr), (float)((self.bounds.size.height - v.y) * h->dpr));
+  return i < 0 ? NSNotFound : (NSUInteger)i;
+}
 // Where the text box is, for the input method's window.
 - (NSRect)firstRectForCharacterRange:(NSRange)r actualRange:(NSRangePointer)a {
-  (void)r; (void)a;
   UiHost *h = self.host;
   float rect[4] = {0};
-  if (!h->app.text_rect || !h->app.text_rect(h->app.user, rect)) return NSZeroRect;
+  if (h->app.ime) {
+    if (!h->app.ime->rect(h->app.user, r.location == NSNotFound ? 0 : (int)r.location, rect)) return NSZeroRect;
+    if (a) *a = r;
+  } else if (!h->app.text_rect || !h->app.text_rect(h->app.user, rect)) return NSZeroRect;
   NSRect v = NSMakeRect(rect[0] / h->dpr, self.bounds.size.height - (rect[1] + rect[3]) / h->dpr, rect[2] / h->dpr, rect[3] / h->dpr);
   return [self.window convertRectToScreen:[self convertRect:v toView:nil]];
+}
+// Files dropped on the window go to UiApp.file.
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)s { (void)s; return self.host->app.file ? NSDragOperationCopy : NSDragOperationNone; }
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)s { return ui_paste_from(self.host, s.draggingPasteboard) > 0; }
+@end
+
+// The menus' items: each sends its id to the app, which says whether it can run and is checked.
+@interface UiMenuTarget : NSObject <NSMenuItemValidation>
+@property(nonatomic, assign) UiHost *host;
+@end
+@implementation UiMenuTarget
+- (void)command:(NSMenuItem *)item { UiHost *h = self.host; if (h->app.command) h->app.command(h->app.user, (int)item.tag); }
+- (BOOL)validateMenuItem:(NSMenuItem *)item {
+  UiHost *h = self.host;
+  if (!h->app.command_state) return YES;
+  int st = h->app.command_state(h->app.user, (int)item.tag);
+  item.state = (st & 2) ? NSControlStateValueOn : NSControlStateValueOff;
+  return (st & 1) != 0;
 }
 @end
 
@@ -242,6 +310,18 @@ void ui_atlas(UiHost *h, const uint8_t *mono, uint32_t w, uint32_t rows, const u
   [h->color replaceRegion:MTLRegionMake2D(0, 0, cw, crows) mipmapLevel:0 withBytes:color bytesPerRow:(NSUInteger)cw * 4];
   h->stale = 1;
 }
+void ui_atlas_rows(UiHost *h, const uint8_t *mono, uint32_t y0, uint32_t y1, const uint8_t *color, uint32_t cy0, uint32_t cy1) {
+  if (h->mono && y1 > y0 && y1 <= h->mono.height) {
+    NSUInteger w = h->mono.width;
+    [h->mono replaceRegion:MTLRegionMake2D(0, y0, w, y1 - y0) mipmapLevel:0 withBytes:mono + (size_t)y0 * w bytesPerRow:w];
+    h->stale = 1;
+  }
+  if (h->color && cy1 > cy0 && cy1 <= h->color.height) {
+    NSUInteger w = h->color.width;
+    [h->color replaceRegion:MTLRegionMake2D(0, cy0, w, cy1 - cy0) mipmapLevel:0 withBytes:color + (size_t)cy0 * w * 4 bytesPerRow:w * 4];
+    h->stale = 1;
+  }
+}
 static uint64_t ui_digest(const UiHost *h) {
   const uint64_t *words = (const uint64_t *)h->frame;
   size_t n = (size_t)h->count * UI_VERTEX_BYTES / 8;
@@ -287,15 +367,151 @@ void ui_cursor(UiHost *h, int kind) {
   [c set];
 }
 int ui_copy(UiHost *h, const char *bytes, size_t n) {
-  if (h->offscreen) return 0;
   NSString *s = [[NSString alloc] initWithBytes:bytes length:n encoding:NSUTF8StringEncoding];
   if (!s) return 0;
-  [NSPasteboard.generalPasteboard clearContents];
-  return [NSPasteboard.generalPasteboard setString:s forType:NSPasteboardTypeString] ? 1 : 0;
+  [h->pasteboard clearContents];
+  return [h->pasteboard setString:s forType:NSPasteboardTypeString] ? 1 : 0;
 }
 int ui_mods(UiHost *h) { return h->offscreen ? 0 : ui_mods_of(NSEvent.modifierFlags); }
 int ui_focused(UiHost *h) { return h->offscreen ? 0 : (h->window.isKeyWindow && NSApp.isActive); }
+int ui_paste_text(UiHost *h, char *out, size_t cap) {
+  NSString *s = [h->pasteboard stringForType:NSPasteboardTypeString];
+  const char *u = s.UTF8String;
+  if (!u || !cap) return 0;
+  size_t n = strlen(u); if (n >= cap) n = cap - 1;
+  memcpy(out, u, n); out[n] = 0;
+  return (int)n;
+}
+static int ui_paste_from(UiHost *h, NSPasteboard *pb) {
+  if (!h->app.file) return 0;
+  NSArray<NSURL *> *urls = [pb readObjectsForClasses:@[ NSURL.class ] options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+  int n = 0;
+  for (NSURL *u in urls) { h->app.file(h->app.user, 0, u.path.fileSystemRepresentation); n++; }
+  if (n) return n;
+  // an image with no file: written as a PNG, then given like a file
+  NSData *png = [pb dataForType:NSPasteboardTypePNG];
+  if (!png) {
+    NSData *tiff = [pb dataForType:NSPasteboardTypeTIFF];
+    NSBitmapImageRep *rep = tiff ? [NSBitmapImageRep imageRepWithData:tiff] : nil;
+    png = rep ? [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] : nil;
+  }
+  if (!png) return 0;
+  NSString *dir = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+  [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  NSString *path = [dir stringByAppendingPathComponent:@"pasted-image.png"];
+  if (![png writeToFile:path atomically:YES]) return 0;
+  h->app.file(h->app.user, 0, path.fileSystemRepresentation);
+  return 1;
+}
+int ui_paste_files(UiHost *h) { return ui_paste_from(h, h->pasteboard); }
+
+static NSEventModifierFlags ui_flags(int mods) {
+  return ((mods & 1) ? NSEventModifierFlagShift : 0) | ((mods & 2) ? NSEventModifierFlagControl : 0) |
+         ((mods & 4) ? NSEventModifierFlagOption : 0) | ((mods & 8) ? NSEventModifierFlagCommand : 0);
+}
+static NSMenuItem *ui_item(UiHost *h, const UiMenuItem *it) {
+  if (!it->title) return [NSMenuItem separatorItem];
+  NSString *title = [NSString stringWithUTF8String:it->title];
+  if (!strcmp(it->title, "Services")) {
+    NSMenuItem *i = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+    NSMenu *services = [[NSMenu alloc] initWithTitle:title];
+    i.submenu = services;
+    if (!h->offscreen) NSApp.servicesMenu = services;
+    return i;
+  }
+  SEL action = it->selector ? NSSelectorFromString([NSString stringWithUTF8String:it->selector]) : (it->id >= 0 ? @selector(command:) : nil);
+  NSMenuItem *i = [[NSMenuItem alloc] initWithTitle:title action:action keyEquivalent:[NSString stringWithUTF8String:it->key ? it->key : ""]];
+  i.keyEquivalentModifierMask = ui_flags(it->mods);
+  i.tag = it->id;
+  if (!it->selector && it->id >= 0) i.target = h->menu_target;
+  return i;
+}
+void ui_menus(UiHost *h, const UiMenuItem *items, int n) {
+  if (h->offscreen) return;
+  NSMenu *bar = [NSMenu new];
+  for (int k = 0; k < n;) {
+    const char *name = items[k].menu;
+    NSMenuItem *top = [NSMenuItem new];
+    NSMenu *sub = [[NSMenu alloc] initWithTitle:[NSString stringWithUTF8String:name]];
+    for (; k < n && !strcmp(items[k].menu, name); k++) [sub addItem:ui_item(h, &items[k])];
+    top.submenu = sub;
+    [bar addItem:top];
+    if (!strcmp(name, "Window")) NSApp.windowsMenu = sub;
+  }
+  NSApp.mainMenu = bar;
+}
+void ui_menu_key(UiHost *h, int id, const char *key, int mods) {
+  if (h->offscreen) return;
+  for (NSMenuItem *top in NSApp.mainMenu.itemArray)
+    for (NSMenuItem *i in top.submenu.itemArray)
+      if (i.target == h->menu_target && i.tag == id) { i.keyEquivalent = [NSString stringWithUTF8String:key]; i.keyEquivalentModifierMask = ui_flags(mods); }
+}
+void ui_popup(UiHost *h, const UiMenuItem *items, int n, float x, float y, int checked) {
+  if (h->offscreen || !h->view) return;
+  NSMenu *m = [NSMenu new];
+  m.autoenablesItems = NO;
+  for (int k = 0; k < n; k++) {
+    NSMenuItem *i = ui_item(h, &items[k]);
+    if (items[k].title && items[k].id < 0) i.enabled = NO;
+    if (items[k].title && items[k].id == checked) i.state = NSControlStateValueOn;
+    [m addItem:i];
+  }
+  [m popUpMenuPositioningItem:nil atLocation:NSMakePoint(x / h->dpr, h->view.bounds.size.height - y / h->dpr) inView:h->view];
+}
+void ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start) {
+  if (h->offscreen || !h->app.file) return;
+  NSOpenPanel *p = [NSOpenPanel openPanel];
+  p.canChooseFiles = !folders; p.canChooseDirectories = folders != 0; p.allowsMultipleSelection = many != 0;
+  p.canCreateDirectories = folders != 0;
+  if (message) p.message = [NSString stringWithUTF8String:message];
+  if (prompt) p.prompt = [NSString stringWithUTF8String:prompt];
+  if (start && *start) p.directoryURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:start]];
+  void (^done)(NSModalResponse) = ^(NSModalResponse r) {
+    if (r != NSModalResponseOK) return;
+    for (NSURL *u in p.URLs) h->app.file(h->app.user, request, u.path.fileSystemRepresentation);
+  };
+  if (h->window.isVisible) [p beginSheetModalForWindow:h->window completionHandler:done];
+  else done([p runModal]);
+}
+int ui_window_frame(UiHost *h, float f[4]) {
+  if (h->offscreen || !h->window) return 0;
+  NSRect r = h->window.frame;
+  f[0] = (float)r.origin.x; f[1] = (float)r.origin.y; f[2] = (float)r.size.width; f[3] = (float)r.size.height;
+  return 1;
+}
+void ui_quit(UiHost *h) { h->closed = 1; }
+void ui_open_url(const char *url) {
+  NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
+  if (u) [NSWorkspace.sharedWorkspace openURL:u];
+}
+void ui_terminal(const char *command) {
+  NSString *c = [[NSString stringWithUTF8String:command] stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
+  NSString *script = [NSString stringWithFormat:@"tell application \"Terminal\"\nactivate\ndo script \"%@\"\nend tell", c];
+  [[[NSAppleScript alloc] initWithSource:script] executeAndReturnError:nil];
+}
 #else
+void ui_menus(UiHost *h, const UiMenuItem *items, int n) { (void)h; (void)items; (void)n; }
+void ui_menu_key(UiHost *h, int id, const char *key, int mods) { (void)h; (void)id; (void)key; (void)mods; }
+void ui_popup(UiHost *h, const UiMenuItem *items, int n, float x, float y, int checked) { (void)h; (void)items; (void)n; (void)x; (void)y; (void)checked; }
+int ui_paste_text(UiHost *h, char *out, size_t cap) {
+  (void)h;
+  const char *u = UIPasteboard.generalPasteboard.string.UTF8String;
+  if (!u || !cap) return 0;
+  size_t n = strlen(u); if (n >= cap) n = cap - 1;
+  memcpy(out, u, n); out[n] = 0;
+  return (int)n;
+}
+int ui_paste_files(UiHost *h) { (void)h; return 0; }
+void ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start) {
+  (void)h; (void)request; (void)folders; (void)many; (void)message; (void)prompt; (void)start;
+}
+int ui_window_frame(UiHost *h, float f[4]) { (void)h; (void)f; return 0; }
+void ui_quit(UiHost *h) { h->closed = 1; }
+void ui_open_url(const char *url) {
+  NSURL *u = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
+  if (u) [UIApplication.sharedApplication openURL:u options:@{} completionHandler:nil];
+}
+void ui_terminal(const char *command) { (void)command; }
 void ui_cursor(UiHost *h, int kind) { h->cursor_kind = kind; }   // a touch screen has no pointer to shape
 int ui_copy(UiHost *h, const char *bytes, size_t n) {
   if (h->offscreen) return 0;
@@ -308,6 +524,42 @@ int ui_mods(UiHost *h) { (void)h; return 0; }
 int ui_focused(UiHost *h) { return h->offscreen ? 0 : h->view.window.isKeyWindow; }
 #endif
 void *ui_view(UiHost *h) { return (__bridge void *)h->view; }
+uint64_t ui_presented(UiHost *h) { return h->presented; }
+// Two pictures' pixels as RGBX, w by rows.
+static uint8_t *ui_pixels(const char *path, size_t *w, size_t *rows) {
+  CGImageSourceRef src = CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:[NSString stringWithUTF8String:path]], NULL);
+  CGImageRef img = src ? CGImageSourceCreateImageAtIndex(src, 0, NULL) : NULL;
+  if (src) CFRelease(src);
+  if (!img) return NULL;
+  *w = CGImageGetWidth(img); *rows = CGImageGetHeight(img);
+  uint8_t *px = calloc(*w * *rows, 4);
+  CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+  CGContextRef g = px ? CGBitmapContextCreate(px, *w, *rows, 8, *w * 4, cs, (CGBitmapInfo)kCGImageAlphaNoneSkipLast) : NULL;
+  if (g) { CGContextDrawImage(g, CGRectMake(0, 0, *w, *rows), img); CGContextRelease(g); } else { free(px); px = NULL; }
+  CGColorSpaceRelease(cs); CGImageRelease(img);
+  return px;
+}
+int ui_compare(const char *a, const char *b, double limit) {
+  size_t aw = 0, ar = 0, bw = 0, br = 0;
+  uint8_t *pa = ui_pixels(a, &aw, &ar), *pb = ui_pixels(b, &bw, &br);
+  int status = 1;
+  if (!pa || !pb) printf("compare: cannot read %s or %s\n", a, b);
+  else if (aw != bw || ar != br) printf("compare: %zux%zu against %zux%zu\n", aw, ar, bw, br);
+  else {
+    size_t over = 0; int most = 0;
+    for (size_t p = 0; p < aw * ar; p++) {
+      int worst = 0;
+      for (int c = 0; c < 3; c++) { int d = abs((int)pa[p * 4 + c] - (int)pb[p * 4 + c]); if (d > worst) worst = d; }
+      if (worst > most) most = worst;
+      if (worst > 48) over++;
+    }
+    double percent = 100.0 * (double)over / (double)(aw * ar);
+    printf("%zu of %zu pixels differ by more than 48 (%.4f%%, at most %d)\n", over, aw * ar, percent, most);
+    status = percent > limit ? 1 : 0;
+  }
+  free(pa); free(pb);
+  return status;
+}
 float ui_dpr(UiHost *h) { return h->dpr; }
 void ui_set_dpr(UiHost *h, float dpr) { if (dpr > 0) h->dpr = dpr; }
 
@@ -326,13 +578,20 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
   h->frame = malloc((size_t)app->max_vertices * UI_VERTEX_BYTES);
   if (!h->verts || !h->frame) { fprintf(stderr, "ui-host: no memory for a frame's vertices\n"); free(h->frame); free(h); return NULL; }
 #if TARGET_OS_OSX
+  // a picture's Copy and Paste use a pasteboard of the app's own, never the one you copy to
+  h->pasteboard = offscreen ? [NSPasteboard pasteboardWithName:[NSString stringWithFormat:@"%s.shot", app->app_id ? app->app_id : "ui-host"]] : NSPasteboard.generalPasteboard;
+  UiMenuTarget *target = [UiMenuTarget new]; target.host = h; h->menu_target = target;
   if (!offscreen) {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     NSRect r = NSMakeRect(0, 0, app->width, app->height);
-    h->window = [[NSWindow alloc] initWithContentRect:r styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
-                                              backing:NSBackingStoreBuffered defer:NO];
+    NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+    if (app->chrome) style |= NSWindowStyleMaskFullSizeContentView;
+    h->window = [[NSWindow alloc] initWithContentRect:r styleMask:style backing:NSBackingStoreBuffered defer:NO];
     h->window.title = [NSString stringWithUTF8String:app->title ? app->title : ""];
+    if (app->chrome) { h->window.titlebarAppearsTransparent = YES; h->window.titleVisibility = NSWindowTitleHidden; }
+    h->window.backgroundColor = [NSColor colorWithRed:13 / 255.0 green:13 / 255.0 blue:13 / 255.0 alpha:1];
+    if (app->min_width && app->min_height) h->window.minSize = NSMakeSize(app->min_width, app->min_height);
     h->window.releasedWhenClosed = NO;
     UiWindowDelegate *wd = [UiWindowDelegate new]; wd.host = h;
     h->window.delegate = wd;
@@ -344,7 +603,11 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
     h->window.contentView = h->view;
     [h->window makeFirstResponder:h->view];
     h->window.acceptsMouseMovedEvents = YES;
+    if (app->file) [h->view registerForDraggedTypes:@[ NSPasteboardTypeFileURL, NSPasteboardTypePNG, NSPasteboardTypeTIFF ]];
     [h->window center];
+    // the frame it had at quit, kept on a screen
+    if (app->place[2] >= (app->min_width ? app->min_width : 1) && app->place[3] >= (app->min_height ? app->min_height : 1))
+      [h->window setFrame:[h->window constrainFrameRect:NSMakeRect(app->place[0], app->place[1], app->place[2], app->place[3]) toScreen:NSScreen.mainScreen] display:NO];
     [h->window makeKeyAndOrderFront:nil];
     [NSApp finishLaunching];
     [NSApp activateIgnoringOtherApps:YES];
@@ -397,6 +660,7 @@ int ui_frame(UiHost *h) {
     ui_draw(h, d.texture, cmd);
     [cmd presentDrawable:d];
     [cmd commit];
+    h->presented++;
   }
   return 1;
 }
@@ -449,6 +713,9 @@ void ui_close(UiHost *h) {
 #endif
   // ARC keeps the struct's object fields: let them go before the memory does
   h->view = nil; h->layer = nil; h->pipe = nil; h->queue = nil;
+#if TARGET_OS_OSX
+  h->pasteboard = nil; h->menu_target = nil;
+#endif
   h->mono = nil; h->color = nil; h->target = nil; h->verts = nil; h->dev = nil;
   free(h->frame);
   free(h);

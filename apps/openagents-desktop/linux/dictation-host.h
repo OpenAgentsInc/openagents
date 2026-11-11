@@ -1,6 +1,6 @@
 // Firm reason: 6 (the recorder process, the model's thread and the clock; every decision is Coax).
 // Dictation's effects for OpenAgents on Linux: what CoderDictation is on the Mac
-// (Sources/Dictation.swift). It runs the recorder the Coax names and hands its samples to
+// (the former Sources/Dictation.swift). It runs the recorder the Coax names and hands its samples to
 // the shared controller (apps/shared/dictation.coax behind dictation-face.h), opens Psionic's
 // resident Parakeet on a thread of its own, and gives each finished clip to it one segment at a
 // time. The recorder and the model's worker are the CLI's (apps/openagents-cli/dictate-native.c).

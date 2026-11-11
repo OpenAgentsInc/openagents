@@ -336,11 +336,16 @@ Status (2026-11-11, GitHub #13156, on the owner's Mac):
   `components/backend/gpu-shader.coax` emitted as Metal; `Zeron.metal` is
   deleted and the 21 Mac goldens still pass.
 - **Kept: CoreText's atlas on the Mac** (components/spec.md, decision 3).
-- **Not built:** OpenAgents, Everglade and Aethyrforge still run their own
-  `main.swift` hosts. Moving them is the next part: OpenAgents first (its
-  Linux `main.c` already runs on the contract and needs a Mac file chooser
-  and dictation host in place of the portal and the Linux ones, and a
-  CoreText atlas filler in place of the Coax one), then Everglade's
+- **Built: OpenAgents on the shared Mac host** (2026-11-11, #13156). Its
+  `linux/main.c` is now the Mac app's host too, on
+  `apps/shared/host/apple/ui-host.m`: the menu bar, the input method, the
+  open panel and drag and drop through the contract's Mac additions
+  (`ui-host-apple.h`), CoreText's atlas in `ct-atlas.m`, and dictation on
+  CoreAudio and Parakeet through `linux/dictation-host.c` and
+  `dictation-mac.m`. `Sources/*.swift` are deleted; the 21 goldens and the
+  dictation check pass on it.
+- **Not built:** Everglade and Aethyrforge still run their own
+  `main.swift` hosts. Next is Everglade's
   Workshop (which then gets the component pass Phase 4 needs), with the
   page host for the realms kept as it is, then Aethyrforge. The Android
   window, on the activity's `ANativeWindow`, is not written. Who and when:

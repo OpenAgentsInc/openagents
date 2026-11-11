@@ -23,7 +23,7 @@ platform-neutral components are shared with openagents.com/chat in
 `NOTICE`, `fonts/` with Geist's OFL, and `icons/`). What drives an engine or
 a host stays in `apps/openagents-desktop/zeron/` (`screen.coax`,
 `modes.coax`, `claude.coax`, `psionic.coax`, `lab.coax`, `gpu.coax`, the
-fixtures), with `zeron-face.c` and the Swift host beside it.
+fixtures), with `zeron-face.c` and the host program, `linux/main.c`, beside it.
 Below, `zeron/X.coax` means whichever of the two holds X. A branch that
 edits one of the moved files rebases onto the move as a rename.
 
@@ -35,7 +35,9 @@ How it works:
   pixels the way GPUI's `window.rs` snaps them, text placed on quarter-pixel
   x positions with CoreText's advances and kerning. `components/backend/gpu-shader.coax` (emitted as Metal) ports GPUI's
   `quad_fragment`, `shadow_fragment` and `monochrome_sprite_fragment`.
-- The Swift host (`Sources/Zeron.swift`) is GPUI's platform layer: it
+- The host (`linux/main.c` on the shared Mac host, `apps/shared/host/apple/ui-host.m`,
+  since 2026-11-11, GitHub #13156; it replaced `Sources/main.swift` and `Sources/Zeron.swift`)
+  is GPUI's platform layer. Its atlas (`apps/shared/host/apple/ct-atlas.m`)
   rasterizes Geist (Zeron's font, bundled under `components/zeron/fonts/` with its OFL) exactly
   as `gpui_macos/text_system.rs` does (four subpixel offsets, the
   font-smoothing dilation picked from the text color's luminance) and Zeron's
@@ -264,7 +266,8 @@ How it works:
   this Mac: no tunnel, no swap) come from the environment or
   `~/work/.secrets/psionic-responses.env`.
 - The HUD chat, its LAB and the Mammoth router (`apps/openagents-web/chat-hud.coax`,
-  `router.coax`, `Router.swift`) stay in the tree and build, unshown.
+  `router.coax`) stay in the tree, unshown; the app no longer builds them, and the
+  Mac's `--route` check went with `Router.swift` (2026-11-11).
   `apps/openagents-web/chat.coax` is now openagents.com/chat drawn with the
   shared Zeron components on WebGPU ([../chat.md](../chat.md#how-the-page-is-drawn)).
 - Licenses and attribution: `apps/openagents-desktop/zeron/NOTICE`.
@@ -298,8 +301,7 @@ compared against a Zeron render.
 
 Rebuild and look: `apps/openagents-desktop/build.sh --open`; an offscreen PNG:
 `build/OpenAgents.app/Contents/MacOS/OpenAgents --shot out.png [--click X,Y] [--type TEXT] [--do STEPS]`,
-where STEPS drive the keyboard, mouse, menus and IME (`Sources/Zeron.swift`
-`shot`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`;
+where STEPS drive the keyboard, mouse, menus and IME (`linux/main.c` `step`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`;
 `--do "sidebar ; click 20,20 ; fixture open ; scroll 500"` opens the transcript as the
 Zeron capture does (its sidebar collapsed). Shot steps for the desk: `folder PATH` (a new
 session there), `sidebar` (Cmd+S), `closetab`, `desk` (prints the sessions and tabs). A shot has a pasteboard of its own (`clip TEXT` puts text
@@ -360,9 +362,10 @@ AppKit window + Metal  ──  Coax UI (compiled to C)  ──  Coax engine (C)
                                                          └── codex app-server (JSON-RPC, stdio)
 ```
 
-- **Host:** a thin Swift/AppKit shell, `apps/openagents-desktop/`. It owns the
-  window, the Metal layer, input, the clipboard, file dialogs and the menu bar,
-  and it calls into Coax compiled to C. It contains no product logic, just as
+- **Host:** `apps/openagents-desktop/linux/main.c` on the shared host
+  (`apps/shared/host/apple/ui-host.m` on the Mac, the `ui-host.h` contract the
+  Linux app keeps). The host owns the window, the Metal layer, input, the
+  clipboard, file dialogs and the menu bar, and it calls into Coax compiled to C. It contains no product logic, just as
   `host.js` contains none on the web.
 - **UI:** Coax files that write vertex buffers each frame, like the web pages
   do. Compiled to C rather than wasm, linked into the app, and drawn by a Metal
@@ -456,7 +459,7 @@ same four tools: each Codex thread starts with the config override
 another agent's whole turn). That process answers MCP on stdio with
 `room_mcp` (desk.coax) and sends each tools/call as one JSON line to the
 app's Unix socket (`$TMPDIR/oa-room-PID.sock`, mode 600,
-`Sources/RoomSocket.swift`), which hands it to the desk (`dsk_room_line`)
+`linux/main.c` `room_pump`), which hands it to the desk (`dsk_room_line`)
 and writes back the one-line answer. check.sh's `room-codex-asks` has a
 stand-in Codex run that server from its thread config and ask Claude
 Code; Claude's answer comes back as Codex's tool result.

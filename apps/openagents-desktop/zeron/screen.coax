@@ -18,7 +18,7 @@
 // it: codex app-server on their ChatGPT login. Zeron's demo
 // conversation stays as a fixture (--demo, and
 // the transcript-fixture capture's `fixture` step). The host
-// (Sources/Zeron.swift, through zeron-face.c) builds the atlas from the
+// (apps/shared/host/apple/ct-atlas.m, through zeron-face.c) builds the atlas from the
 // fonts and icons listed here, gives the engine its buffers and working
 // folder, then each frame asks for the vertices. Based on Zeron by Wing, MIT.
 

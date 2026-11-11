@@ -37,7 +37,34 @@ typedef struct {
   void (*text)(void *user, const char *bytes, size_t n);   // typed, composed or pasted text
   int (*wants_text)(void *user);                            // a text box has the keyboard
   int (*text_rect)(void *user, float rect[4]);              // where it is, for an input method's window
+  // The rest is optional; a host that has none of it leaves it unused (the Linux host, so far).
+  // The input method over the text box, in UTF-16 units of its text (AppKit's NSTextInputClient):
+  // with it, the host routes marked text and the box's ranges to the app instead of only text.
+  const struct UiIme *ime;
+  // A menu item, popup item or app command chosen (ui-host-apple.h ui_menus): its id.
+  void (*command)(void *user, int id);
+  // Whether a command can run now (bit 1) and whether its item is checked (bit 2).
+  int (*command_state)(void *user, int id);
+  // A file the user gave the app: dropped on the window, pasted, or chosen in the chooser (request 0 for a drop or a paste).
+  void (*file)(void *user, int request, const char *path);
+  // The window: chrome 1 draws under a transparent title bar (the app draws its own); the smallest
+  // size, in points; and where it was (points, x y w h from the screen's lower left), 0 wide for centred.
+  int chrome;
+  uint32_t min_width, min_height;
+  float place[4];
 } UiApp;
+
+// The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,
+// 2 marked start (-1 none), 3 marked end, 4 the length. from and to of -1: the selection.
+typedef struct UiIme {
+  void (*replace)(void *user, int from, int to, const char *bytes, size_t n);
+  void (*mark)(void *user, int from, int to, const char *bytes, size_t n, int sel_from, int sel_to);
+  void (*unmark)(void *user);
+  int (*range)(void *user, int which);
+  int (*text)(void *user, int from, int to, char *out, int cap);         // UTF-8 bytes of [from, to)
+  int (*rect)(void *user, int at, float rect[4]);                        // device pixels from the view's top left
+  int (*index)(void *user, float x, float y);                            // device pixels
+} UiIme;
 
 // A window (offscreen 0) or no window at all (offscreen 1: ui_shot only). NULL, with why on stderr, if it cannot open.
 UiHost *ui_open(const UiApp *app, int offscreen);
