@@ -1,7 +1,7 @@
 # Painted Village's bindings for coax/web/wgsl-module.coax (NAME GROUP BINDING [uniform VEC4FS]), as coax/web/host.js lays them out:
-# group 0 the frame's uniforms (aethyr/render/stylized-layout.coax: 208 floats); group 1 the scene's stores: the kit's
+# group 0 the frame's uniforms (aethyr/render/stylized-layout.coax: 220 floats); group 1 the scene's stores: the kit's
 # vertices, the records, the ground table; group 2 the sun's shadow map and its comparison sampler.
-u 0 0 uniform 52
+u 0 0 uniform 55
 mesh 1 0
 objects 1 1
 heights 1 2

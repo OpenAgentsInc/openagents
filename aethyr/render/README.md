@@ -57,6 +57,9 @@ To use it in a world:
 2. In the world's `gpu/<module>.coax`, `#load` `aethyr/render/stylized.coax`.
    In its `.module`, name `stylized_bg_vs/fs`, `stylized_scene_vs/fs`,
    `stylized_shadow_vs/fs` and `stylized_grass_vs/fs`, with `--strip stylized_`.
+   For water, also name `stylized_water_vs`, `stylized_water_transmit_fs` and
+   `stylized_water_emit_fs`, put the wet draws last and say how many there are
+   (`coaxial_water_draws` on the web host).
 3. Bind three stores in this order: `mesh` (the kit's vertices), `objects`
    (the records) and `heights` (the ground table), then the shadow map
    (`shadow_map`, `shadow_cmp`). The uniform block is `STY_UNIFORM_FLOATS`
@@ -67,13 +70,14 @@ To use it in a world:
 
 | What it draws | How |
 | --- | --- |
-| Materials | `sty_surface`: courses of dressed stone, scalloped roof tiles with moss, boards, plaster, leaded lit windows, bark, cloth, far rock, stained-glass lancets and a rose window, heraldic banners, paving slabs, setts, water, and leaves in four flat tones chosen by how a leaf's mass faces the sun (a mass's dark heart shows between its leaves). A dry-stone wall's stones are lighter on top than on their sides. A vertex's tint replaces a material's colour and a record's wash multiplies it |
+| Materials | `sty_surface`: courses of dressed stone, scalloped roof tiles with moss, boards, plaster, leaded lit windows, bark, cloth, far rock, stained-glass lancets and a rose window, heraldic banners, paving slabs, setts, water, and leaves in four flat tones that lie across a crown in broad patches (how the crown faces the sun there, how high the leaf sits, a slow patch of the world's own), a cliff's bedded rock under moss, petals, and far hills that are meadow where they lie easy and rock where they are steep. A dry-stone wall's stones are lighter on top than on their sides. A vertex's tint replaces a material's colour and a record's wash multiplies it |
 | Light | `sty_bands`: the sun in two soft bands (`StyLook.band` 0.05 is a hard cel edge, 1 is smooth), over light from the sky on faces that look up and from the ground on faces that look down |
 | Shadows | `sty_shadow`: twelve taps of the sun's shadow map on a spiral. `sty_shadow_box` says which box of the world the map covers |
 | Haze | `sty_haze`: distance fades to the haze's colour, from `haze_start` metres, never more than `haze_most` |
 | Ground | `sty_ground`: grass, dirt paths with soft wandering edges (`sty_path_add`, at most `STY_PATHS`), many-sided flagstones where the ground table says paved (`sty_flags`), and a meadow that runs lush or dry in patches (`meadow_dry`, `meadow_shift`) |
-| Grass | `stylized_grass_vs`: one tapered blade a cell of the grass field, rooted on the ground table, facing the eye, swaying, and kept off paths, paving and bare ground (`blade`, `blade_wide`, `grass_cell`, `grass_reach`) |
-| Sky | `sty_sky`: zenith to horizon; a field of cloud (`cloud`, `cloud_scale`, `cloud_turn`; `cloud` 0 is none); and up to `STY_CUMULI` heaped clouds placed by hand (`StyLook.cumulus`: where round the horizon, how high its flat base, half its width, its height), each crisp-edged, white above and blue-grey toward its base (`sty_cumulus`) |
+| Grass | `stylized_grass_vs`: one tapered blade a cell of the grass field, rooted on the ground table, facing the eye, swaying, and kept off paths, paving and bare ground (`blade`, `blade_wide`, `grass_cell`, `grass_reach`). Where the table's grass cover is above 1 the blades grow that much longer |
+| Water | The water pass draws a world's wet parts after everything else, blended over it. `sty_river`: clear turquoise in the shallows and blue in the depths (from the ground table under the surface), pale ripples that wind downstream, foam along the shore and wherever the table's fourth field says the water churns (under a fall, round a rock). `sty_falls`: a waterfall's falling white streaks. Spray is soft puffs and a rainbow a band of the spectrum (`sty_wet`) |
+| Sky | `sty_sky`: zenith to horizon; a field of cloud (`cloud`, `cloud_scale`, `cloud_turn`; `cloud` 0 is none); and up to `STY_CUMULI` (six) heaped clouds placed by hand (`StyLook.cumulus`: where round the horizon, how high its flat base, half its width, its height), each crisp-edged, white above and blue-grey toward its base (`sty_cumulus`) |
 
 Colours are authored as they should look on the display. The shaders decode
 them once, light them, and encode once on the way out.
@@ -83,8 +87,8 @@ coax/bin/coax test --library aethyr/render/stylized.coax
 coax/bin/coax test --library aethyr/render/stylized-frame.coax
 ```
 
-It doesn't do yet: outlines, a walking character's shadow, water, or level of
-detail. The web host draws it on the page's own passes
+It doesn't do yet: outlines, a walking character's shadow, reflections in
+water, or level of detail. The web host draws it on the page's own passes
 (`render_adoption` tracks Painted Village as a legacy consumer); the shared
 render catalog and the native carriers don't name it yet.
 

@@ -50,8 +50,8 @@ STY_U_PATH :: 100;
 STY_PATHS :: 12;
 STY_PATH_FLOATS :: 8;
 STY_U_CUMULUS :: 196;          // STY_U_PATH + STY_PATHS * STY_PATH_FLOATS
-STY_CUMULI :: 3;
-STY_UNIFORM_FLOATS :: 208;     // STY_U_CUMULUS + STY_CUMULI * 4
+STY_CUMULI :: 6;
+STY_UNIFORM_FLOATS :: 220;     // STY_U_CUMULUS + STY_CUMULI * 4
 
 // The shadow map's bias: how far along its normal a surface is moved before it is looked up (m),
 // and how much nearer the sun it must be than what the map holds (a share of the map's depth).
