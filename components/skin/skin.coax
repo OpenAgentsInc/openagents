@@ -46,6 +46,9 @@ UiMarkdown :: struct {
   block_radius: f32; block_border: f32; block_header: f32;  // a code block's frame and its header's height (0: no header)
   block_pad_x: f32; block_pad_y: f32; block_line: f32;
   action: f32;              // a header action's size (copy, wrap); 0: none
+  action_gap: f32; action_edge: f32;                // Copy's extra width and the gap before it; from the block's edge
+  wrap_radius: f32; copy_radius: f32; wrap_icon: f32; copy_icon: f32; copy_icon_x: f32;
+  task: f32; task_radius: f32;                      // a task's box, drawn (a pixel target)
   cell_pad: f32; cell_pad_y: f32; divider: f32;      // a table's cell padding (sideways, then above and below), its row divider
   col_min_content: f32; col_min: f32;                // and its columns' floors
   bullet: string;           // a terminal's bullet (a pixel target draws a disc)
@@ -59,6 +62,119 @@ UiPlate :: struct {
   inset: Rgba; inset_dy: f32;
   drop: Rgba; drop_dy: f32; drop_blur: f32;
 }
+
+// The chat set's measures: the transcript's rows, notices, working trailer,
+// tool groups and their details (Zeron's transcript.rs, changes.rs,
+// notice.rs and loaders.rs). Alphas here are a role's ink at a strength.
+UiTranscript :: struct {
+  titlebar: f32;            // the window's titlebar, which the first row clears and the content fades under
+  fade_band: f32;           // that fade's band
+  status_strip: f32;        // the strip under the composer
+  column: f32;              // the column's width (settings transcriptWidth)
+  row_pad_x: f32;           // the room either side of the column
+  gap: f32; gap_turn: f32; gap_group: f32;        // between rows; above a turn's first row; around a group, between blocks
+  gap_first: f32;           // the first row's gap past the titlebar and a turn's gap
+  lane: f32;                // under an entry's last row (its time)
+  cull: f32;                // how far past the view a box is still painted
+  bubble_share: f32;        // a user bubble's widest, a share of the column
+  bubble_radius: f32; bubble_pad_x: f32; bubble_pad_y: f32;
+  // a notice: its tile, header, wrapped message and buttons
+  notice_pad: f32; notice_py: f32; notice_gap: f32; notice_tile: f32; notice_line: f32;
+  notice_radius: f32; notice_tile_radius: f32; notice_icon: f32; notice_icon_inset: f32; notice_label_gap: f32;
+  notice_button_h: f32; notice_button_pad: f32; notice_button_py: f32; notice_button_gap: f32; notice_actions_gap: f32;
+  notice_wash: f32; notice_tile_wash: f32; notice_ink: f32; notice_button_wash: f32; notice_button_hover: f32;   // alphas of the notice's tone
+  meta_line: f32;           // a quiet line under a turn (a meta notice, "Stopped")
+  stop_icon: f32; stop_dy: f32; stop_gap: f32;   // "Stopped": its mark, set down in the line, and the gap after it
+  // the working trailer: the spinner's cells, the word and the time
+  work_top: f32; work_line: f32;
+  spin_cell: f32; spin_pitch: f32; spin_side: f32; spin_period: f32; spin_dim: f32;
+  // a tool group's header and its rows
+  group_header: f32; group_chevron: f32; group_chevron_dx: f32; group_chevron_box: f32; group_chevron_dy: f32; group_summary_x: f32;
+  label_line: f32; chips_top: f32; tree_row: f32; chip_card: f32;
+  trunk_x: f32; bend: f32; branch_end: f32; icon_left: f32; icon: f32; gutter: f32; text_gap: f32;
+  // a chip's header: the gaps, the trailing chevron, a file's badge
+  chip_gap: f32; chevron_room: f32; chevron: f32; chevron_inset: f32;
+  badge_h: f32; badge_radius: f32; badge_well: f32; badge_well_radius: f32; badge_icon: f32; badge_icon_inset: f32; badge_pad: f32; badge_edge: f32;
+  file_ink: f32;            // a file's name on its badge: the ink's alpha
+  // an open chip's details: lines, then a diff
+  separator: f32; output_line: f32; output_py: f32; output_pad: f32;
+  hunk_header: f32; diff_line: f32; body_bottom: f32;
+  diff_gutter: f32; diff_digit: f32; gutter_pad_l: f32; gutter_pad_r: f32; number_inset: f32;
+  marker: f32; accent_bar: f32; code_pad_l: f32;
+  marker_ink: f32; number_ink: f32; changed_ink: f32; code_ink: f32;   // alphas: a context marker, a line number, a changed one, the code
+}
+
+// The composer's measures (Zeron's composer.rs and pickers.rs trigger_chip):
+// the pill, its text box, the actions row and its chips, and the one-row
+// form it docks in under a chat.
+UiComposer :: struct {
+  radius: f32; max_width: f32;              // the pill's corner; its widest
+  line: f32;                                // a line of typed text
+  text_inset: f32;                          // the text's room inside the pill's hairline, either side
+  pad_top: f32; pad_v: f32;                 // the text box's padding above, and above and below together
+  min: f32; max: f32;                       // the text box's least and most height
+  actions_row: f32; actions_bottom: f32;    // the actions row's height, and its room under the chips
+  border_v: f32;                            // the hairline, top and bottom together
+  action_inset: f32; primary_gap: f32;      // the actions from the pill's edges; the gap before Send
+  chip_h: f32; chip_radius: f32; chip_gap: f32; chip_pad: f32; model_chip_pad: f32; chip_icon: f32; chip_line: f32;
+  pickers_gap: f32;                         // between the access chip and the model chip
+  send: f32; stop: f32; stop_radius: f32;   // Send's circle; Stop's square in it
+  caret: f32; caret_blink: f32;             // the caret's width; its blink, seconds a phase
+  underline: f32;                           // an IME underline, a share of the descent under the baseline
+  model_ink: f32; effort_ink: f32;          // alphas of a chip's model (the ink) and effort (muted)
+  compact_h: f32; compact_inset: f32; compact_text_pad: f32;   // the docked one-row form
+}
+
+// The menus' measures (Zeron's popover.rs, pickers/compact.rs and
+// settings/widgets.rs toggle_switch): a card, its rows, the compact model
+// panel with its effort slider, the model list with its search, the access
+// menu and its switch.
+UiMenus :: struct {
+  card_radius: f32; card_inset: f32; card_borders: f32;      // the card's corner, its rows' inset, its hairline top and bottom together
+  gap: f32; item_radius: f32;                                // between rows; a row's corner
+  offset: f32; margin: f32; most: f32; room: f32; below_min: f32;   // from the chip; inside the window; its tallest; kept free; under this above, it opens below
+  pad_x: f32;                                                // text and marks inside a row
+  // the compact model panel
+  width: f32; header: f32; header_single: f32;
+  title_line: f32; name_line: f32; title_chevron_room: f32; chevron: f32; chevron_gap: f32; chevron_shift: f32;
+  title_chevron_dy: f32; name_chevron_dy: f32; chevron_ink: f32;   // the chevron set down beside the title or the name; its alpha at rest
+  slider_top: f32; slider: f32; slider_bottom: f32;
+  rail: f32; rail_top: f32; fill_past: f32;
+  thumb_w: f32; thumb_h: f32; thumb_inset: f32;
+  stop: f32; stop_radius: f32; stop_off_ink: f32;            // a stop on the rail; past the thumb, the muted ink's alpha
+  // the model list
+  row: f32; list_header: f32; tab_icon: f32; tab_ink: f32;
+  search_row: f32; search_icon: f32; search_icon_x: f32; search_gap: f32; search_text_dy: f32; search_line: f32; caret: f32;
+  row_icon: f32; row_gap: f32; star_inset: f32; star: f32; detail_gap: f32; detail_min: f32;
+  // the access menu
+  access_width: f32; line: f32; desc_line: f32; row_py: f32; check: f32; check_gap: f32; label_ink: f32;
+  // the switch: track, marks and knob
+  switch_w: f32; switch_h: f32; switch_track: f32; switch_inset: f32; switch_knob: f32; switch_mark: f32; switch_gap: f32;
+  switch_track_dy: f32; switch_empty: f32; switch_mark_dy: f32; switch_knob_h: f32; switch_travel: f32;
+  bar_w: f32; bar_h: f32; bar_radius: f32; bar_dx: f32;      // the on mark
+  ring_in: f32; ring: f32; ring_radius: f32;                 // the off mark
+}
+
+// The desk's measures (the desktop app's session sidebar, its tabs in the
+// titlebar and the agents' room; Zeron's sidebar.rs and tab strip).
+UiDesk :: struct {
+  side_min: f32; side_max: f32; side: f32;     // the sidebar's width: least, most, at first
+  top: f32;                 // the sidebar's first row under the titlebar
+  pad: f32;                 // the sidebar's and the tab strip's side padding
+  row: f32; gap: f32; header: f32; section_gap: f32;   // a session row, between rows, a folder's header, between sections
+  row_radius: f32; inset: f32; icon: f32; icon_gap: f32; mark: f32;   // a row's corner; its content inset; New session's icon; the gap after a mark
+  dot: f32; dot_gap: f32; idle_ink: f32;       // a status dot, the gap before it, an idle dot's alpha of the faint ink
+  edge: f32;                // the resize handle, half its width
+  lights: f32;              // the traffic lights' room, where tabs start with the sidebar collapsed
+  tab_h: f32; tab_min: f32; tab_max: f32; tab_gap: f32; tab_pad: f32;
+  room_pad: f32; room_unseen: f32; room_gap: f32;      // the ROOM tab: its label's padding, its unseen dot's room, before the session tabs
+  chat_min: f32;            // the shown chat's least width
+  room_col: f32; room_line: f32; room_head: f32; room_foot: f32;   // the room's column, a line of a message, its header, under it
+  room_margin: f32; room_top: f32; room_bottom: f32; room_cull: f32; room_mark_dy: f32; room_mark_gap: f32;
+}
+
+// A floating surface's shadow (Tailwind's shadow-lg: two soft layers of the skin's lift).
+UiFloat :: struct { dy: [2] f32; blur: [2] f32; spread: [2] f32; }
 
 UiSkin :: struct {
   id: int; name: string;
@@ -126,6 +242,8 @@ UiSkin :: struct {
   border: f32;              // a hairline's weight
   control_h: f32;           // a button's or a tab's height
   control_pad: f32;         // a control's padding either side of its label
+  slider_track: f32; knob: f32;                     // a slider's track and its knob (0: none, the value is the bar)
+  bar_h: f32;               // a bar's thickness
   // frames
   frame: int;
   frame_mid: Rgba; frame_light: Rgba; trim: Rgba;   // a frame's metal, its lit edge, its ornaments
@@ -136,6 +254,11 @@ UiSkin :: struct {
   icon_copy: int; icon_wrap: int; icon_chevron: int; icon_check: int;
   md: UiMarkdown;
   hud: UiHud;               // the game HUD's colours and measures (skin/hud.coax)
+  tr: UiTranscript;         // the chat set's measures (a cell skin leaves them 0: the chat set is not laid out in cells)
+  cmp: UiComposer;
+  menus: UiMenus;
+  desk: UiDesk;
+  lifted: UiFloat;          // a floating card's shadow: the composer's pill, a menu
 }
 
 // A skin's faces for styled text (layout/text.coax).
@@ -152,6 +275,12 @@ uiskin_plate :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: 
   k = prim_gradient(list, k, x, y, w, h, radius, p.top, p.bottom);
   k = prim_box(list, k, x, y, w, h, radius, 1, rgba(0, 0, 0, 0), p.rim);
   return prim_inset(list, k, x, y, w, h, radius, p.inset_dy, p.inset);
+}
+// A floating surface's shadow, both layers of it, under (x, y, w, h). Returns the count.
+uiskin_float :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: f32, radius: f32) -> int {
+  k := n;
+  for i: 0..<s.lifted.dy.count { k = prim_shadow(list, k, x, y, w, h, radius, 0, s.lifted.dy[i], s.lifted.blur[i], s.lifted.spread[i], s.lift); }
+  return k;
 }
 // A colour moved toward white by amount (glass.rs lift).
 uiskin_lift :: (c: Rgba, amount: f32) -> Rgba { return Rgba.{r = c.r + (1 - c.r) * amount, g = c.g + (1 - c.g) * amount, b = c.b + (1 - c.b) * amount, a = c.a}; }

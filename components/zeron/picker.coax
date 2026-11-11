@@ -24,38 +24,10 @@
 
 #load "transcript.coax";   // its theme roles (ink, wash) and PHI
 
-// popover.rs
-CARD_RADIUS :: 12.0;
-CARD_INSET :: 4.0;
-MENU_GAP :: 2.0;
-MENU_ITEM_RADIUS :: 7.0;        // CARD_RADIUS - 1 - CARD_INSET
-MENU_OFFSET :: 6.0;             // anchored_menu: pt-6 from the trigger
-MENU_MARGIN :: 8.0;             // snap_to_window_with_margin
-MENU_MAX :: 640.0;              // menu_geometry: min(640, the room less 14)
-MENU_ROOM :: 14.0;
-SEARCH_ROW_HEIGHT :: 40.0;
-// compact.rs
-COMPACT_WIDTH :: 256.0;
-COMPACT_ROW_HEIGHT :: 32.0;
+// Its measures are the skin's (UiMenus, skin.menus: Zeron's are in skin/zeron.coax).
 COMPACT_LIST_ROWS :: 7;
-SLIDER_HEIGHT :: 36.0;
-RAIL_HEIGHT :: 28.0;
-RAIL_TOP :: 4.0;                // (SLIDER_HEIGHT - RAIL_HEIGHT) / 2
-THUMB_WIDTH :: 44.0;
-THUMB_HEIGHT :: 32.0;
-THUMB_INSET :: 22.0;            // THUMB_WIDTH / 2
-FILL_PAST :: 14.0;              // RAIL_HEIGHT / 2
-HEADER_HEIGHT :: 48.0;
-HEADER_HEIGHT_SINGLE :: 36.0;
-SLIDER_TOP :: 2.0;
-SLIDER_BOTTOM :: 4.0;
-CARD_BORDERS :: 2.0;
-LIST_HEADER :: 80.0;
-// pickers.rs: the access popover's width
-ACCESS_WIDTH :: 288.0;
-// settings/widgets.rs toggle_switch
-SWITCH_WIDTH :: 44.8; SWITCH_HEIGHT :: 28.8; SWITCH_TRACK_HEIGHT :: 20.8;
-SWITCH_SIDE_INSET :: 1.6; SWITCH_THUMB_WIDTH :: 24.0; SWITCH_MARK_SIZE :: 7.2;
+PK_EMPTY_ROWS :: 4;          // the list's height while nothing matches, in rows
+PK_TABS :: 4;                // providers' tabs at most
 
 PK_MODELS :: 32;
 PK_LEVELS :: 8;
@@ -143,14 +115,15 @@ PK_POOL :: 4096;
 // menu_geometry: the room the menu may take, above the chip unless that is
 // under 180 and there is more below (or below is asked for).
 pk_open :: (p: [] Picker, kind: int, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32, w: f32, h: f32, view_h: f32, force_below: bool) {
+  m := pk_skin(p).menus;
   p[0].kind = kind; p[0].list = false; p[0].keyboard = false; p[0].qn = 0; p[0].scroll = 0; p[0].dragging = false;
   p[0].ax = x; p[0].ay = y; p[0].aw = w; p[0].ah = h;
-  above := y - MENU_ROOM; below := view_h - (y + h) - MENU_ROOM;
+  above := y - m.room; below := view_h - (y + h) - m.room;
   if above < 0 { above = 0; }
   if below < 0 { below = 0; }
-  p[0].below = force_below || (above < 180 && below > above);
+  p[0].below = force_below || (above < m.below_min && below > above);
   room := ifx p[0].below then below else above;
-  p[0].budget = ifx room < MENU_MAX then room else MENU_MAX;
+  p[0].budget = ifx room < m.most then room else m.most;
   p[0].pick_model = -1; p[0].pick_level = -1; p[0].pick_access = -1; p[0].flip_plan = false;
   p[0].tabs = 1; p[0].view = 0;
   // the keyboard highlight starts on the chosen row
@@ -158,10 +131,10 @@ pk_open :: (p: [] Picker, kind: int, cat: [] PkCatalog, sel: PkSel, x: f32, y: f
 }
 // The providers' tabs the list offers (at most four) and the one it opens on.
 pk_tabs :: (p: [] Picker, n: int, home: int) {
-  p[0].tabs = ifx n < 1 then 1 else ifx n > 4 then 4 else n;
+  p[0].tabs = ifx n < 1 then 1 else ifx n > PK_TABS then PK_TABS else n;
   p[0].view = ifx home >= 0 && home < p[0].tabs then home else 0;
 }
-pk_tab :: (p: [] Picker, k: int, icon: int, tint: Rgba) { if k >= 0 && k < 4 { p[0].tab_icon[k] = icon; p[0].tab_tint[k] = tint; } }
+pk_tab :: (p: [] Picker, k: int, icon: int, tint: Rgba) { if k >= 0 && k < PK_TABS { p[0].tab_icon[k] = icon; p[0].tab_tint[k] = tint; } }
 // Tab: the next provider's models.
 pk_next_tab :: (p: [] Picker) {
   p[0].list = true; p[0].qn = 0; p[0].scroll = 0; p[0].active = 0;
@@ -172,7 +145,7 @@ pk_is_open :: (p: [] Picker) -> bool { return p[0].kind != PK_NONE; }
 
 // ---------------------------------------------------------------- the model list's rows
 
-pk_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+pk_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + ('a' - 'A') else c; }
 pk_contains :: (hay: string, needle: string) -> bool {
   if needle.count == 0 { return true; }
   if needle.count > hay.count { return false; }
@@ -197,15 +170,16 @@ pk_rows :: (p: [] Picker, cat: [] PkCatalog, out: [] int) -> int {
   return n;
 }
 // compact_list_height: the rows (up to seven, four while empty) at a 34px pitch, the card inset around them.
-pk_list_height :: (rows: int) -> f32 {
-  r := ifx rows == 0 then 4 else ifx rows > COMPACT_LIST_ROWS then COMPACT_LIST_ROWS else rows;
-  return cast(f32) r * (COMPACT_ROW_HEIGHT + MENU_GAP) + 2 * CARD_INSET;
+pk_list_height :: (m: UiMenus, rows: int) -> f32 {
+  r := ifx rows == 0 then PK_EMPTY_ROWS else ifx rows > COMPACT_LIST_ROWS then COMPACT_LIST_ROWS else rows;
+  return cast(f32) r * (m.row + m.gap) + 2 * m.card_inset;
 }
 // Keeps the active row inside the list's box (scroll_to_item, Nearest).
 pk_reveal :: (p: [] Picker, rows: int) {
-  pitch: f32 = COMPACT_ROW_HEIGHT + MENU_GAP;
-  view := pk_list_height(rows) - 2 * CARD_INSET;
-  if p[0].list_h > 0 { view = p[0].list_h - 2 * CARD_INSET; }
+  m := pk_skin(p).menus;
+  pitch := m.row + m.gap;
+  view := pk_list_height(m, rows) - 2 * m.card_inset;
+  if p[0].list_h > 0 { view = p[0].list_h - 2 * m.card_inset; }
   if p[0].active < 0 { return; }
   top := cast(f32) p[0].active * pitch;
   if top < p[0].scroll { p[0].scroll = top; }
@@ -323,18 +297,20 @@ pk_slider_pick :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32) {
   ladder: [PK_LEVELS] int;
   n := pk_ladder(cat, sel.model, ladder[..]);
   if n == 0 { return; }
-  run := p[0].sw - 2 * THUMB_INSET;
-  f := (x - p[0].sx - THUMB_INSET) / (ifx run < 1 then 1.0f32 else run);
+  m := pk_skin(p).menus;
+  run := p[0].sw - 2 * m.thumb_inset;
+  f := (x - p[0].sx - m.thumb_inset) / (ifx run < 1 then 1.0f32 else run);
   f = ifx f < 0 then 0.0f32 else ifx f > 1 then 1.0f32 else f;
   p[0].pick_level = ladder[cast(int) floor(f * cast(f32) (n - 1) + 0.5)];
 }
 // The list row (its index among the rows) under y, or -1.
 pk_list_row :: (p: [] Picker, rows: int, y: f32) -> int {
-  if y < p[0].list_y + CARD_INSET || y >= p[0].list_y + p[0].list_h - CARD_INSET { return -1; }
-  pitch: f32 = COMPACT_ROW_HEIGHT + MENU_GAP;
-  off := y - p[0].list_y - CARD_INSET + p[0].scroll;
+  m := pk_skin(p).menus;
+  if y < p[0].list_y + m.card_inset || y >= p[0].list_y + p[0].list_h - m.card_inset { return -1; }
+  pitch := m.row + m.gap;
+  off := y - p[0].list_y - m.card_inset + p[0].scroll;
   k := cast(int) floor(off / pitch);
-  if off - cast(f32) k * pitch >= COMPACT_ROW_HEIGHT || k < 0 || k >= rows { return -1; }
+  if off - cast(f32) k * pitch >= m.row || k < 0 || k >= rows { return -1; }
   return k;
 }
 // A press at logical (x, y): true when the menu took it. Outside the card
@@ -344,6 +320,7 @@ pk_press :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32) -> boo
   if p[0].kind == PK_NONE { return false; }
   if !pk_inside(p, x, y) { pk_close(p); return false; }
   p[0].keyboard = false;
+  m := pk_skin(p).menus;
   if p[0].kind == PK_ACCESS_MENU {
     for k: 0..<p[0].rows {
       if y >= p[0].row_y[k] && y < p[0].row_y[k] + p[0].row_h[k] {
@@ -354,19 +331,19 @@ pk_press :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32) -> boo
     return true;
   }
   if !p[0].list {
-    if y >= p[0].sy && y < p[0].sy + SLIDER_HEIGHT && x >= p[0].sx && x < p[0].sx + p[0].sw {
+    if y >= p[0].sy && y < p[0].sy + m.slider && x >= p[0].sx && x < p[0].sx + p[0].sw {
       p[0].dragging = true; pk_slider_pick(p, cat, sel, x);
     } else if y < p[0].sy || pk_ladder_count(cat, sel.model) == 0 {
-      if y >= p[0].y + 1 + CARD_INSET && y < p[0].y + 1 + CARD_INSET + pk_header_height(cat, sel) { pk_show_list(p, cat, sel, 0); p[0].active = -1; }
+      if y >= p[0].y + 1 + m.card_inset && y < p[0].y + 1 + m.card_inset + pk_header_height(m, cat, sel) { pk_show_list(p, cat, sel, 0); p[0].active = -1; }
     }
     return true;
   }
   // the list page: Back, the rows
-  if y < p[0].y + 1 + COMPACT_ROW_HEIGHT + 2 * CARD_INSET && x < p[0].x + 1 + CARD_INSET + COMPACT_ROW_HEIGHT {
+  if y < p[0].y + 1 + m.row + 2 * m.card_inset && x < p[0].x + 1 + m.card_inset + m.row {
     p[0].list = false; p[0].qn = 0; p[0].active = -1; return true;
   }
-  if y < p[0].y + 1 + COMPACT_ROW_HEIGHT + 2 * CARD_INSET {
-    t := cast(int) floor((x - p[0].tab_x) / (COMPACT_ROW_HEIGHT + MENU_GAP));
+  if y < p[0].y + 1 + m.row + 2 * m.card_inset {
+    t := cast(int) floor((x - p[0].tab_x) / (m.row + m.gap));
     if x >= p[0].tab_x && t < p[0].tabs && t != p[0].view { p[0].view = t; p[0].qn = 0; p[0].scroll = 0; p[0].active = 0; }
     return true;
   }
@@ -377,12 +354,13 @@ pk_press :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32) -> boo
   return true;
 }
 pk_ladder_count :: (cat: [] PkCatalog, m: int) -> int { ladder: [PK_LEVELS] int; return pk_ladder(cat, m, ladder[..]); }
-pk_header_height :: (cat: [] PkCatalog, sel: PkSel) -> f32 { return ifx pk_ladder_count(cat, sel.model) == 0 then HEADER_HEIGHT_SINGLE else HEADER_HEIGHT; }
+pk_header_height :: (m: UiMenus, cat: [] PkCatalog, sel: PkSel) -> f32 { return ifx pk_ladder_count(cat, sel.model) == 0 then m.header_single else m.header; }
 // The pointer moving (a drag of the thumb, else hover).
 pk_move :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32) {
   if p[0].kind == PK_NONE { return; }
   if p[0].dragging { pk_slider_pick(p, cat, sel, x); return; }
   inside := pk_inside(p, x, y);
+  m := pk_skin(p).menus;
   p[0].title_hover = false; p[0].back_hover = false;
   if p[0].kind == PK_ACCESS_MENU {
     if !inside { return; }
@@ -391,11 +369,11 @@ pk_move :: (p: [] Picker, cat: [] PkCatalog, sel: PkSel, x: f32, y: f32) {
   }
   if !inside { return; }
   if !p[0].list {
-    top := p[0].y + 1 + CARD_INSET;
-    p[0].title_hover = y >= top && y < top + pk_header_height(cat, sel);
+    top := p[0].y + 1 + m.card_inset;
+    p[0].title_hover = y >= top && y < top + pk_header_height(m, cat, sel);
     return;
   }
-  p[0].back_hover = y < p[0].y + 1 + COMPACT_ROW_HEIGHT + 2 * CARD_INSET && x < p[0].x + 1 + CARD_INSET + COMPACT_ROW_HEIGHT;
+  p[0].back_hover = y < p[0].y + 1 + m.row + 2 * m.card_inset && x < p[0].x + 1 + m.card_inset + m.row;
   rows: [PK_MODELS] int;
   n := pk_rows(p, cat, rows[..]);
   k := pk_list_row(p, n, y);
@@ -407,7 +385,8 @@ pk_wheel :: (p: [] Picker, cat: [] PkCatalog, dy: f32) -> bool {
   if p[0].kind != PK_MODEL || !p[0].list { return p[0].kind != PK_NONE; }
   rows: [PK_MODELS] int;
   n := pk_rows(p, cat, rows[..]);
-  most := cast(f32) n * (COMPACT_ROW_HEIGHT + MENU_GAP) - (p[0].list_h - 2 * CARD_INSET);
+  m := pk_skin(p).menus;
+  most := cast(f32) n * (m.row + m.gap) - (p[0].list_h - 2 * m.card_inset);
   s := p[0].scroll - dy;
   p[0].scroll = ifx s < 0 then 0.0f32 else ifx s > most then (ifx most > 0 then most else 0.0f32) else s;
   return true;
@@ -440,9 +419,8 @@ pk_keep :: (p: [] Picker, s: string) -> string {
 
 // popover_card: shadow-lg (Tailwind's two drops), the surface, the hairline border.
 pk_card :: (list: [] Prim, n: int, sk: UiSkin, x: f32, y: f32, w: f32, h: f32) -> int {
-  k := prim_shadow(list, n, x, y, w, h, CARD_RADIUS, 0, 10, 15, -3, sk.lift);
-  k = prim_shadow(list, k, x, y, w, h, CARD_RADIUS, 0, 4, 6, -4, sk.lift);
-  return prim_box(list, k, x, y, w, h, CARD_RADIUS, 1, sk.surface, sk.field_edge);
+  k := uiskin_float(list, n, sk, x, y, w, h, sk.menus.card_radius);
+  return prim_box(list, k, x, y, w, h, sk.menus.card_radius, 1, sk.surface, sk.field_edge);
 }
 
 // Text cut to a width with an ellipsis (GPUI truncate), into buf.
@@ -465,12 +443,13 @@ pk_fit :: (a: [] Atlas, font: int, s: string, w: f32, buf: [] u8) -> string {
 // Where the card goes: its right edge on the chip's, 6px past the chip
 // (below or above), inside the window's 8px margin.
 pk_place :: (p: [] Picker, w: f32, h: f32, view_w: f32, view_h: f32) {
+  m := pk_skin(p).menus;
   x := p[0].ax + p[0].aw - w;
-  y := ifx p[0].below then p[0].ay + p[0].ah + MENU_OFFSET else p[0].ay - MENU_OFFSET - h;
-  if x + w > view_w - MENU_MARGIN { x = view_w - MENU_MARGIN - w; }
-  if x < MENU_MARGIN { x = MENU_MARGIN; }
-  if y + h > view_h - MENU_MARGIN { y = view_h - MENU_MARGIN - h; }
-  if y < MENU_MARGIN { y = MENU_MARGIN; }
+  y := ifx p[0].below then p[0].ay + p[0].ah + m.offset else p[0].ay - m.offset - h;
+  if x + w > view_w - m.margin { x = view_w - m.margin - w; }
+  if x < m.margin { x = m.margin; }
+  if y + h > view_h - m.margin { y = view_h - m.margin - h; }
+  if y < m.margin { y = m.margin; }
   p[0].x = x; p[0].y = y; p[0].w = w; p[0].h = h;
 }
 
@@ -494,144 +473,148 @@ pk_paint :: (out: [] f32, at: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, 
 // The compact panel: the header (the effort over the model's name, a
 // button onto the list), then the effort slider.
 pk_panel_prims :: (list: [] Prim, n0: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, a: [] Atlas, sk: UiSkin, view_w: f32, view_h: f32) -> int {
+  m := sk.menus;
   ladder: [PK_LEVELS] int;
   n := pk_ladder(cat, sel.model, ladder[..]);
-  head: f32 = ifx n == 0 then HEADER_HEIGHT_SINGLE else HEADER_HEIGHT;
-  h := CARD_BORDERS + 2 * CARD_INSET + head + (ifx n == 0 then 0.0f32 else SLIDER_TOP + SLIDER_HEIGHT + SLIDER_BOTTOM);
+  head := ifx n == 0 then m.header_single else m.header;
+  h := m.card_borders + 2 * m.card_inset + head + (ifx n == 0 then 0.0f32 else m.slider_top + m.slider + m.slider_bottom);
   if h > p[0].budget && p[0].budget > 0 { h = p[0].budget; }
-  pk_place(p, COMPACT_WIDTH, h, view_w, view_h);
+  pk_place(p, m.width, h, view_w, view_h);
   x := p[0].x; y := p[0].y;
-  k := pk_card(list, n0, sk, x, y, COMPACT_WIDTH, h);
-  ix := x + 1 + CARD_INSET; iy := y + 1 + CARD_INSET; iw: f32 = COMPACT_WIDTH - 2 - 2 * CARD_INSET;
+  k := pk_card(list, n0, sk, x, y, m.width, h);
+  ix := x + 1 + m.card_inset; iy := y + 1 + m.card_inset; iw := m.width - 2 - 2 * m.card_inset;
   // the title button: the menu's hover wash
-  if p[0].title_hover { k = prim_fill(list, k, ix, iy, iw, head, MENU_ITEM_RADIUS, sk.menu_hover); }
+  if p[0].title_hover { k = prim_fill(list, k, ix, iy, iw, head, m.item_radius, sk.menu_hover); }
   name := ifx sel.model >= 0 && sel.model < cat[0].n then cat[0].label[sel.model] else "";
   buf: [160] u8;
   lv := pk_level_for(cat, sel.model, sel.level);
-  tx := ix + 8;
+  tx := ix + m.pad_x;
+  shift := ifx p[0].title_hover then m.chevron_shift else 0.0f32;
+  chev := opacity(ifx p[0].title_hover then sk.ink else sk.muted, ifx p[0].title_hover then 1.0f32 else m.chevron_ink);
   if n > 0 {
     // SemiBold 14 on a 17px line, then the name Medium 12 on 15, both centered in the 48px header
-    ty := iy + round_layout((head - 17 - 15) / 2);
-    k = prim_text(list, k, tx, ty, 0, 17, sk.strong.face, sk.ink, ifx lv >= 0 then cat[0].level_label[lv] else "Default");
-    nm := pk_keep(p, pk_fit(a, sk.label.face, name, iw - 16 - 13, buf[..]));
+    ty := iy + round_layout((head - m.title_line - m.name_line) / 2);
+    k = prim_text(list, k, tx, ty, 0, m.title_line, sk.strong.face, sk.ink, ifx lv >= 0 then cat[0].level_label[lv] else "Default");
+    nm := pk_keep(p, pk_fit(a, sk.label.face, name, iw - 2 * m.pad_x - m.title_chevron_room, buf[..]));
     tone := ifx p[0].title_hover then sk.ink else sk.muted;
-    k = prim_text(list, k, tx, ty + 17, 0, 15, sk.label.face, tone, nm);
-    cx := tx + text_width(a, sk.label.face, nm) + 3;
-    k = prim_icon(list, k, ICON_CHEVRON_10, cx + (ifx p[0].title_hover then 3.0f32 else 0.0f32), ty + 17 + (15 - 10) / 2, 10, 10, opacity(tone, ifx p[0].title_hover then 1.0f32 else 0.55f32));
+    k = prim_text(list, k, tx, ty + m.title_line, 0, m.name_line, sk.label.face, tone, nm);
+    cx := tx + text_width(a, sk.label.face, nm) + m.chevron_gap;
+    k = prim_icon(list, k, ICON_CHEVRON_10, cx + shift, ty + m.title_line + m.name_chevron_dy, m.chevron, m.chevron, chev);
   } else {
-    ty := iy + round_layout((head - 17) / 2);
-    nm := pk_keep(p, pk_fit(a, sk.strong.face, name, iw - 16 - 13, buf[..]));
-    k = prim_text(list, k, tx, ty, 0, 17, sk.strong.face, sk.ink, nm);
-    cx := tx + text_width(a, sk.strong.face, nm) + 3;
-    tone := ifx p[0].title_hover then sk.ink else sk.muted;
-    k = prim_icon(list, k, ICON_CHEVRON_10, cx + (ifx p[0].title_hover then 3.0f32 else 0.0f32), ty + (17 - 10) / 2, 10, 10, opacity(tone, ifx p[0].title_hover then 1.0f32 else 0.55f32));
+    ty := iy + round_layout((head - m.title_line) / 2);
+    nm := pk_keep(p, pk_fit(a, sk.strong.face, name, iw - 2 * m.pad_x - m.title_chevron_room, buf[..]));
+    k = prim_text(list, k, tx, ty, 0, m.title_line, sk.strong.face, sk.ink, nm);
+    cx := tx + text_width(a, sk.strong.face, nm) + m.chevron_gap;
+    k = prim_icon(list, k, ICON_CHEVRON_10, cx + shift, ty + m.title_chevron_dy, m.chevron, m.chevron, chev);
   }
   if n == 0 { p[0].sw = 0; return k; }
   // the slider: px 8, 2 above and 4 below its 36px box
-  sx := ix + 8; sy := iy + head + SLIDER_TOP; sw: f32 = iw - 16;
+  sx := ix + m.pad_x; sy := iy + head + m.slider_top; sw := iw - 2 * m.pad_x;
   p[0].sx = sx; p[0].sy = sy; p[0].sw = sw;
   at_stop := 0;
   for q: 0..<n { if ladder[q] == lv { at_stop = q; } }
   fraction := ifx n > 1 then cast(f32) at_stop / cast(f32) (n - 1) else 0.0f32;
-  run := sw - 2 * THUMB_INSET;
-  center := THUMB_INSET + fraction * run;
-  k = uiskin_plate(list, k, sx, sy + RAIL_TOP, sw, RAIL_HEIGHT, RAIL_HEIGHT / 2, sk.track);
-  fill_w := ifx center + FILL_PAST < sw then center + FILL_PAST else sw;
-  k = uiskin_plate(list, k, sx, sy + RAIL_TOP, fill_w, RAIL_HEIGHT, RAIL_HEIGHT / 2, uiskin_accent_plate(sk));
+  run := sw - 2 * m.thumb_inset;
+  center := m.thumb_inset + fraction * run;
+  k = uiskin_plate(list, k, sx, sy + m.rail_top, sw, m.rail, m.rail / 2, sk.track);
+  fill_w := ifx center + m.fill_past < sw then center + m.fill_past else sw;
+  k = uiskin_plate(list, k, sx, sy + m.rail_top, fill_w, m.rail, m.rail / 2, uiskin_accent_plate(sk));
   // the stops: filled up to the thumb, open past it
   for q: 0..<n {
     stop := ifx n > 1 then cast(f32) q / cast(f32) (n - 1) else 0.0f32;
-    c := ifx stop <= fraction then sk.stop_on else opacity(sk.muted, 0.28);
-    k = prim_fill(list, k, sx + THUMB_INSET + stop * run - 2, sy + SLIDER_HEIGHT / 2 - 2, 4, 4, 2, c);
+    c := ifx stop <= fraction then sk.stop_on else opacity(sk.muted, m.stop_off_ink);
+    k = prim_fill(list, k, sx + m.thumb_inset + stop * run - m.stop / 2, sy + m.slider / 2 - m.stop / 2, m.stop, m.stop, m.stop_radius, c);
   }
-  return uiskin_plate(list, k, sx + center - THUMB_WIDTH / 2, sy + (SLIDER_HEIGHT - THUMB_HEIGHT) / 2, THUMB_WIDTH, THUMB_HEIGHT, THUMB_HEIGHT / 2, sk.thumb);
+  return uiskin_plate(list, k, sx + center - m.thumb_w / 2, sy + (m.slider - m.thumb_h) / 2, m.thumb_w, m.thumb_h, m.thumb_h / 2, sk.thumb);
 }
 
 // The model list: Back and the provider's tab, the search row, the rows.
 pk_list_prims :: (list: [] Prim, n0: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, a: [] Atlas, sk: UiSkin, view_w: f32, view_h: f32) -> int {
+  m := sk.menus;
   rows: [PK_MODELS] int;
   n := pk_rows(p, cat, rows[..]);
-  list_h := pk_list_height(n);
-  if p[0].budget > 0 && LIST_HEADER + list_h + CARD_BORDERS > p[0].budget {
-    list_h = p[0].budget - LIST_HEADER - CARD_BORDERS;
+  list_h := pk_list_height(m, n);
+  if p[0].budget > 0 && m.list_header + list_h + m.card_borders > p[0].budget {
+    list_h = p[0].budget - m.list_header - m.card_borders;
     if list_h < 0 { list_h = 0; }
   }
-  h := LIST_HEADER + list_h + CARD_BORDERS;
-  pk_place(p, COMPACT_WIDTH, h, view_w, view_h);
-  x := p[0].x; y := p[0].y; w: f32 = COMPACT_WIDTH;
+  h := m.list_header + list_h + m.card_borders;
+  pk_place(p, m.width, h, view_w, view_h);
+  x := p[0].x; y := p[0].y; w := m.width;
   k := pk_card(list, n0, sk, x, y, w, h);
   ix := x + 1; iy := y + 1; iw := w - 2;
   // the strip: Back, then the provider's tab (viewed: the hover wash), each a row-height square
-  bx := ix + CARD_INSET; by := iy + CARD_INSET;
-  if p[0].back_hover { k = prim_fill(list, k, bx, by, COMPACT_ROW_HEIGHT, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, sk.menu_hover); }
-  k = prim_icon(list, k, ICON_BACK, bx, by, COMPACT_ROW_HEIGHT, COMPACT_ROW_HEIGHT, sk.muted);
-  tx := bx + COMPACT_ROW_HEIGHT + MENU_GAP;
+  bx := ix + m.card_inset; by := iy + m.card_inset;
+  if p[0].back_hover { k = prim_fill(list, k, bx, by, m.row, m.row, m.item_radius, sk.menu_hover); }
+  k = prim_icon(list, k, ICON_BACK, bx, by, m.row, m.row, sk.muted);
+  tx := bx + m.row + m.gap;
   p[0].tab_x = tx;
   // the tabs: the viewed one on the hover wash, the others at 0.7 (each mark 16px, centered); none while searching
   if pk_query(p).count == 0 {
     for t: 0..<p[0].tabs {
-      kx := tx + cast(f32) t * (COMPACT_ROW_HEIGHT + MENU_GAP);
+      kx := tx + cast(f32) t * (m.row + m.gap);
       icon := p[0].tab_icon[t]; tint := p[0].tab_tint[t];
-      if t == p[0].view { k = prim_fill(list, k, kx, by, COMPACT_ROW_HEIGHT, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, sk.hover); }
-      k = prim_icon(list, k, icon, kx + 8, by + 8, 16, 16, ifx t == p[0].view then tint else opacity(tint, 0.7));
+      if t == p[0].view { k = prim_fill(list, k, kx, by, m.row, m.row, m.item_radius, sk.hover); }
+      ti := (m.row - m.tab_icon) / 2;
+      k = prim_icon(list, k, icon, kx + ti, by + ti, m.tab_icon, m.tab_icon, ifx t == p[0].view then tint else opacity(tint, m.tab_ink));
     }
   }
   // the search row: 40 tall, px 10, the magnifier, the query (or its placeholder), the rule under it
-  sy := iy + COMPACT_ROW_HEIGHT + 2 * CARD_INSET;
-  k = prim_icon(list, k, ICON_MAGNIFER_14, ix + 10, sy + (SEARCH_ROW_HEIGHT - 14) / 2, 14, 14, sk.muted);
+  sy := iy + m.row + 2 * m.card_inset;
+  k = prim_icon(list, k, ICON_MAGNIFER_14, ix + m.search_icon_x, sy + (m.search_row - m.search_icon) / 2, m.search_icon, m.search_icon, sk.muted);
   // the search is a ComposerInput: 14px (Medium, inherited) on the composer's 22.75 line, its placeholder, its blinking caret
-  qlh: f32 = INPUT_LINE_HEIGHT;
-  qy := sy + 7.5;   // the input's line box in the 39px row above the hairline, as Zeron lays it (measured)
+  qlh := m.search_line;
+  qy := sy + m.search_text_dy;
   q := pk_query(p);
-  qx := ix + 10 + 14 + 8;
+  qx := ix + m.search_icon_x + m.search_icon + m.search_gap;
   if q.count == 0 { k = prim_text(list, k, qx, qy, 0, qlh, sk.search.face, sk.faint, "Search models…"); }
   else { k = prim_text(list, k, qx, qy, 0, qlh, sk.search.face, sk.ink, q); }
-  if cast(int) floor(p[0].since / CARET_BLINK) % 2 == 0 {
-    k = prim_fill(list, k, qx + text_width(a, sk.search.face, q), qy, 2, qlh, 0, sk.accent);
+  if cast(int) floor(p[0].since / sk.cmp.caret_blink) % 2 == 0 {
+    k = prim_fill(list, k, qx + text_width(a, sk.search.face, q), qy, m.caret, qlh, 0, sk.accent);
   }
-  k = prim_fill(list, k, ix, sy + SEARCH_ROW_HEIGHT - 1, iw, 1, 0, sk.menu_rule);
+  k = prim_fill(list, k, ix, sy + m.search_row - 1, iw, 1, 0, sk.menu_rule);
   // the rows on the list's wash, py 4, clipped to the list's box
-  ly := sy + SEARCH_ROW_HEIGHT;
+  ly := sy + m.search_row;
   p[0].list_y = ly; p[0].list_h = list_h;
   k = prim_fill(list, k, ix, ly, iw, list_h, 0, sk.list_wash);
   k = prim_clip(list, k, ix, ly, ix + iw, ly + list_h);
-  pitch: f32 = COMPACT_ROW_HEIGHT + MENU_GAP;
-  rx := ix + CARD_INSET; rw := iw - 2 * CARD_INSET;
+  pitch := m.row + m.gap;
+  rx := ix + m.card_inset; rw := iw - 2 * m.card_inset;
   lh := sk.label.line;
   buf: [160] u8; dbuf: [160] u8;
   if n == 0 {
-    k = prim_text(list, k, rx + 8, ly + CARD_INSET + (COMPACT_ROW_HEIGHT - lh) / 2, 0, lh, sk.tool.face, sk.muted, "No models found");
+    k = prim_text(list, k, rx + m.pad_x, ly + m.card_inset + (m.row - lh) / 2, 0, lh, sk.tool.face, sk.muted, "No models found");
   }
   for r: 0..<n {
-    ry := ly + CARD_INSET + cast(f32) r * pitch - p[0].scroll;
-    if ry + COMPACT_ROW_HEIGHT < ly || ry > ly + list_h { continue; }
-    m := rows[r];
-    is_sel := m == sel.model;
+    ry := ly + m.card_inset + cast(f32) r * pitch - p[0].scroll;
+    if ry + m.row < ly || ry > ly + list_h { continue; }
+    md := rows[r];
+    is_sel := md == sel.model;
     if is_sel {
-      k = prim_fill(list, k, rx, ry, rw, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, sk.menu_selected);
-      k = prim_box(list, k, rx, ry, rw, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, 1, sk.clear, sk.menu_ring);
+      k = prim_fill(list, k, rx, ry, rw, m.row, m.item_radius, sk.menu_selected);
+      k = prim_box(list, k, rx, ry, rw, m.row, m.item_radius, 1, sk.clear, sk.menu_ring);
     } else if r == p[0].active {
-      k = prim_fill(list, k, rx, ry, rw, COMPACT_ROW_HEIGHT, MENU_ITEM_RADIUS, sk.menu_hover);
+      k = prim_fill(list, k, rx, ry, rw, m.row, m.item_radius, sk.menu_hover);
     }
-    k = prim_icon(list, k, cat[0].icon, rx + 8, ry + (COMPACT_ROW_HEIGHT - 14) / 2, 14, 14, cat[0].tint);
-    lx := rx + 8 + 14 + 8;
-    room := rx + rw - 4 - 28 - 8 - lx;   // the star button's room stays (its control is not offered)
-    ty := ry + round_half_toward_zero((COMPACT_ROW_HEIGHT - lh) / 2);
-    label := pk_keep(p, pk_fit(a, sk.label.face, cat[0].label[m], room, buf[..]));
+    k = prim_icon(list, k, cat[0].icon, rx + m.pad_x, ry + (m.row - m.row_icon) / 2, m.row_icon, m.row_icon, cat[0].tint);
+    lx := rx + m.pad_x + m.row_icon + m.row_gap;
+    room := rx + rw - m.star_inset - m.star - m.pad_x - lx;   // the star button's room stays (its control is not offered)
+    ty := ry + round_half_toward_zero((m.row - lh) / 2);
+    label := pk_keep(p, pk_fit(a, sk.label.face, cat[0].label[md], room, buf[..]));
     k = prim_text(list, k, lx, ty, 0, lh, sk.label.face, sk.ink, label);
     // the muted detail after the name: where the model runs (as pickers.rs's
     // device rows put a checkout's path), else the description that tells
     // identically named rows apart
-    detail := ifx m == cat[0].place_model && cat[0].place.count > 0 then cat[0].place else ifx pk_ambiguous(cat, m) then cat[0].desc[m] else "";
+    detail := ifx md == cat[0].place_model && cat[0].place.count > 0 then cat[0].place else ifx pk_ambiguous(cat, md) then cat[0].desc[md] else "";
     if detail.count > 0 {
-      dx := lx + text_width(a, sk.label.face, label) + 6;
+      dx := lx + text_width(a, sk.label.face, label) + m.detail_gap;
       // a place may run into the star's room (no star is drawn); a description keeps clear of it
-      if m == cat[0].place_model && cat[0].place.count > 0 {
-        room = rx + rw - 8 - lx;
+      if md == cat[0].place_model && cat[0].place.count > 0 {
+        room = rx + rw - m.pad_x - lx;
         // too long: its first part ("coderos-4080 · RTX 4080" -> "coderos-4080") before an ellipsis
         if text_width(a, sk.menu_small.face, detail) > room - (dx - lx) { detail = pk_first_part(detail); }
       }
-      if room - (dx - lx) > 12 {
+      if room - (dx - lx) > m.detail_min {
         // baseline-aligned with the name
         lf := sk.label.face; sf := sk.menu_small.face;
         dlh := sk.menu_small.line;
@@ -672,67 +655,66 @@ pk_wrap :: (a: [] Atlas, face: int, s: string, w: f32, ends: [] int) -> int {
   return ifx n == 0 then 1 else n;
 }
 // A row's height: py 6, the 13px label and its description's lines on
-// phi lines, each line box whole pixels (Taffy's rounding: 21 and 18, which
-// makes the access menu Zeron's 245).
-MENU_LINE :: 21.0; MENU_DESC_LINE :: 18.0;
-pk_row_height :: (a: [] Atlas, face: int, desc: string, w: f32) -> f32 {
+// phi lines, each line box whole pixels (the skin's line and desc_line).
+pk_row_height :: (m: UiMenus, a: [] Atlas, face: int, desc: string, w: f32) -> f32 {
   ends: [8] int;
-  return 12 + MENU_LINE + cast(f32) pk_wrap(a, face, desc, w, ends[..]) * MENU_DESC_LINE;
+  return 2 * m.row_py + m.line + cast(f32) pk_wrap(a, face, desc, w, ends[..]) * m.desc_line;
 }
 
 // The access menu: the modes, a divider, Plan mode with its switch.
 pk_access_prims :: (list: [] Prim, n0: int, p: [] Picker, cat: [] PkCatalog, sel: PkSel, a: [] Atlas, sk: UiSkin, view_w: f32, view_h: f32) -> int {
-  w: f32 = ACCESS_WIDTH;
-  rw: f32 = w - 2 - 2 * CARD_INSET;
-  check_w: f32 = 14 + 10;
-  text_w := rw - 16 - check_w;
-  plan_text_w := rw - 16 - SWITCH_WIDTH - 10;
+  m := sk.menus;
+  w := m.access_width;
+  rw := w - 2 - 2 * m.card_inset;
+  check_w := m.check + m.check_gap;
+  text_w := rw - 2 * m.pad_x - check_w;
+  plan_text_w := rw - 2 * m.pad_x - m.switch_w - m.switch_gap;
   plan_desc := "Explore and propose a plan before changing anything.";
   sf := sk.menu_small.face;
   // the rows' heights, laid out as Taffy rounds them
   hs: [8] f32; n := 0;
-  for k: 0..<cat[0].access { hs[n] = pk_row_height(a, sf, cat[0].access_desc[k], text_w); n += 1; }
-  if cat[0].plan { hs[n] = pk_row_height(a, sf, plan_desc, plan_text_w); n += 1; }
+  for k: 0..<cat[0].access { hs[n] = pk_row_height(m, a, sf, cat[0].access_desc[k], text_w); n += 1; }
+  if cat[0].plan { hs[n] = pk_row_height(m, a, sf, plan_desc, plan_text_w); n += 1; }
   content: f32 = 0;
   for k: 0..<n { content += hs[k]; }
-  content += cast(f32) (n - 1) * MENU_GAP;
-  if cat[0].plan { content += 1 + 2 * MENU_GAP + MENU_GAP; }   // the separator and its gap
-  h := round_layout(CARD_BORDERS + 2 * CARD_INSET + content);
+  content += cast(f32) (n - 1) * m.gap;
+  if cat[0].plan { content += 1 + 2 * m.gap + m.gap; }   // the separator and its gap
+  h := round_layout(m.card_borders + 2 * m.card_inset + content);
   pk_place(p, w, h, view_w, view_h);
   x := p[0].x; y := p[0].y;
   v := pk_card(list, n0, sk, x, y, w, h);
-  rx := x + 1 + CARD_INSET;
-  ry := y + 1 + CARD_INSET;
+  rx := x + 1 + m.card_inset;
+  ry := y + 1 + m.card_inset;
   p[0].rows = n;
-  lh: f32 = MENU_LINE; dlh: f32 = MENU_DESC_LINE;
+  lh := m.line; dlh := m.desc_line;
   for k: 0..<n {
     plan_row := k == cat[0].access;
     if plan_row {
-      ry += MENU_GAP;
+      ry += m.gap;
       sep_y := round_layout(ry);
       v = prim_fill(list, v, x + 1, sep_y, w - 2, 1, 0, sk.menu_divider);
-      ry += 1 + MENU_GAP + MENU_GAP;
+      ry += 1 + m.gap + m.gap;
     }
     top := round_layout(ry); bottom := round_layout(ry + hs[k]);
     p[0].row_y[k] = top; p[0].row_h[k] = bottom - top;
     chosen := !plan_row && k == sel.access;
-    if chosen || k == p[0].active { v = prim_fill(list, v, rx, top, rw, bottom - top, MENU_ITEM_RADIUS, sk.menu_selected); }
+    if chosen || k == p[0].active { v = prim_fill(list, v, rx, top, rw, bottom - top, m.item_radius, sk.menu_selected); }
     label := ifx plan_row then "Plan mode" else cat[0].access_label[k];
     desc := ifx plan_row then plan_desc else cat[0].access_desc[k];
-    tone := ifx chosen || k == p[0].active then sk.ink else opacity(sk.ink, 0.9);
-    v = prim_text(list, v, rx + 8, top + 6, 0, lh, sk.menu.face, tone, label);
+    tone := ifx chosen || k == p[0].active then sk.ink else opacity(sk.ink, m.label_ink);
+    v = prim_text(list, v, rx + m.pad_x, top + m.row_py, 0, lh, sk.menu.face, tone, label);
     ends: [8] int;
     nl := pk_wrap(a, sf, desc, ifx plan_row then plan_text_w else text_w, ends[..]);
     from := 0;
     for q: 0..<nl {
       to := ends[q];
-      v = prim_text(list, v, rx + 8, top + 6 + lh + cast(f32) q * dlh, 0, dlh, sf, sk.muted, cast(string) desc[from..<to]);
+      v = prim_text(list, v, rx + m.pad_x, top + m.row_py + lh + cast(f32) q * dlh, 0, dlh, sf, sk.muted, cast(string) desc[from..<to]);
       from = to;
       while from < desc.count && desc[from] == ' ' { from += 1; }
     }
-    if chosen { v = prim_icon(list, v, ICON_CHECK, rx + rw - 8 - 14, top + (bottom - top - 14) / 2, 14, 14, sk.muted); }
-    if plan_row { v = pk_switch(list, v, sk, rx + rw - 8 - SWITCH_WIDTH, top + (bottom - top - SWITCH_HEIGHT) / 2, sel.plan); }
-    ry += hs[k] + MENU_GAP;
+    if chosen { v = prim_icon(list, v, ICON_CHECK, rx + rw - m.pad_x - m.check, top + (bottom - top - m.check) / 2, m.check, m.check, sk.muted); }
+    if plan_row { v = pk_switch(list, v, sk, rx + rw - m.pad_x - m.switch_w, top + (bottom - top - m.switch_h) / 2, sel.plan); }
+    ry += hs[k] + m.gap;
   }
   return v;
 }
@@ -742,24 +724,25 @@ pk_access_prims :: (list: [] Prim, n0: int, p: [] Picker, cat: [] PkCatalog, sel
 // rim, the on mark (a 1.2x7.2 bar) or the off mark (a 6.4 ring), and the
 // knob with its rim.
 pk_switch :: (list: [] Prim, n: int, sk: UiSkin, x: f32, y: f32, on: bool) -> int {
+  m := sk.menus;
   surface := sk.surface;
   track := ifx on then flatten(sk.switch_shade, sk.accent) else flatten(sk.switch_wash, surface);
   rim := ifx on then flatten(sk.switch_rim, track) else flatten(sk.field_edge, track);
-  ty := y + (SWITCH_HEIGHT - SWITCH_TRACK_HEIGHT) / 2;
-  k := prim_box(list, n, x, ty, SWITCH_WIDTH, SWITCH_TRACK_HEIGHT, SWITCH_TRACK_HEIGHT / 2, 1, track, rim);
-  empty: f32 = SWITCH_WIDTH - SWITCH_THUMB_WIDTH - SWITCH_SIDE_INSET;
-  pad: f32 = (empty - SWITCH_MARK_SIZE) / 2;
-  my := ty + (SWITCH_TRACK_HEIGHT - SWITCH_MARK_SIZE) / 2;
+  ty := y + m.switch_track_dy;
+  k := prim_box(list, n, x, ty, m.switch_w, m.switch_track, m.switch_track / 2, 1, track, rim);
+  empty := m.switch_empty;
+  pad := (empty - m.switch_mark) / 2;
+  my := ty + m.switch_mark_dy;
   if on {
-    k = prim_fill(list, k, x + pad + (SWITCH_MARK_SIZE - 1.2) / 2, my, 1.2, 7.2, 0.6, sk.switch_mark);
+    k = prim_fill(list, k, x + pad + m.bar_dx, my, m.bar_w, m.bar_h, m.bar_radius, sk.switch_mark);
   } else {
-    mx := x + SWITCH_WIDTH - pad - SWITCH_MARK_SIZE;
-    k = prim_box(list, k, mx + 0.4, my + 0.4, 6.4, 6.4, 3.2, 1, sk.clear, sk.switch_ring);
+    mx := x + m.switch_w - pad - m.switch_mark;
+    k = prim_box(list, k, mx + m.ring_in, my + m.ring_in, m.ring, m.ring, m.ring_radius, 1, sk.clear, sk.switch_ring);
   }
   thumb := flatten(sk.switch_knob, surface);
-  thumb_h: f32 = SWITCH_TRACK_HEIGHT - 2 * SWITCH_SIDE_INSET;
-  tx := x + SWITCH_SIDE_INSET + (ifx on then SWITCH_WIDTH - SWITCH_THUMB_WIDTH - 2 * SWITCH_SIDE_INSET else 0.0f32);
-  return prim_box(list, k, tx, ty + SWITCH_SIDE_INSET, SWITCH_THUMB_WIDTH, thumb_h, thumb_h / 2, 1, thumb, flatten(sk.switch_knob_rim, thumb));
+  thumb_h := m.switch_knob_h;
+  tx := x + m.switch_inset + (ifx on then m.switch_travel else 0.0f32);
+  return prim_box(list, k, tx, ty + m.switch_inset, m.switch_knob, thumb_h, thumb_h / 2, 1, thumb, flatten(sk.switch_knob_rim, thumb));
 }
 
 // ---------------------------------------------------------------- checks

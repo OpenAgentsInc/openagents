@@ -98,6 +98,209 @@ CODE_LINE_HEIGHT :: 18.0; CODE_ACTION_SIZE :: 22.0;
 TABLE_CELL_PADDING :: 12.0; TABLE_DIVIDER :: 1.0; TABLE_MIN_COLUMN_CONTENT :: 48.0; TABLE_MIN_COLUMN_WIDTH :: 96.0;
 PHI :: 1.618034;                // GPUI's default line height, relative
 
+// Theme.rs and transcript.rs: the transcript's column and its gaps.
+SPACE_SM :: 8.0; SPACE_MD :: 12.0; SPACE_LG :: 16.0;
+TITLEBAR_HEIGHT :: 38.0;
+TRANSCRIPT_FADE_BAND :: 24.0;
+STATUS_STRIP_HEIGHT :: 24.0;
+TRANSCRIPT_WIDTH :: 736.0;      // settings transcriptWidth
+ROW_PAD_X :: 48.0;
+TIMESTAMP_LANE :: 32.0;         // SPACE_SM + 2 * SPACE_MD, under an entry's last row
+BUBBLE_RADIUS :: 16.0;
+BUBBLE_PAD_X :: 16.0; BUBBLE_PAD_Y :: 10.0;
+// notice.rs notice_chip_with_action, the transcript's tile
+NOTICE_PAD :: 10.0; NOTICE_PY :: 8.0; NOTICE_GAP :: 6.0; NOTICE_TILE :: 20.0;
+NOTICE_LINE :: 19.416408;       // 12px text on GPUI's phi line
+NOTICE_BUTTON_H :: 27.416408;   // py 4 around it
+// The working trailer under the last row (render_working_trailer): pt 16,
+// the 3x3 gradient spinner (loaders.rs, 2.5px cells, 750ms a turn).
+WORK_TOP :: 16.0;
+WORK_HEIGHT :: 19.416408;
+GSPIN_CELL :: 2.5;
+GSPIN_PERIOD :: 0.75;
+GSPIN_DIM :: 0.1;
+// transcript.rs / changes.rs: tool groups, chips and their details
+CHIP_CARD_HEIGHT :: 30.0;
+TOOL_TREE_ROW_HEIGHT :: 32.0;
+TOOL_GROUP_HEADER_HEIGHT :: 26.0;
+TOOL_LABEL_LINE_HEIGHT :: 18.0;
+CHIPS_TOP_PAD :: 2.0;
+OUTPUT_LINE_HEIGHT :: 18.0;
+OUTPUT_BODY_PAD :: 12.0;
+DETAIL_SEPARATOR :: 1.0;
+HUNK_HEADER_HEIGHT :: 28.0;
+DIFF_LINE_HEIGHT :: 21.0;
+BODY_BOTTOM_PAD :: 8.0;
+GUTTER_WIDTH :: 36.0;
+MARKER_WIDTH :: 28.0;
+ACCENT_BAR_WIDTH :: 3.0;
+UNIFIED_CODE_PADDING_LEFT :: 12.0;
+ACTIVITY_GUTTER_WIDTH :: 48.0;
+ACTIVITY_TEXT_GAP :: 8.0;
+ACTIVITY_TRUNK_X :: 12.5;
+ACTIVITY_BEND_RADIUS :: 6.0;
+ACTIVITY_BRANCH_END_X :: 28.0;
+ACTIVITY_ICON_LEFT :: 32.0;
+ACTIVITY_ICON_SIZE :: 16.0;
+
+// composer.rs: the pill, its text box and its actions row
+TEXTAREA_PAD_TOP :: 16.0;   // pt-4
+TEXTAREA_PAD_V :: 20.0;     // pt-4 pb-1
+TEXTAREA_MIN :: 76.0;
+TEXTAREA_MAX :: 260.0;
+ACTIONS_ROW_HEIGHT :: 42.0; // 2 + 32 + 8
+ACTIONS_BOTTOM_PAD :: 8.0;
+PILL_BORDER_V :: 2.0;
+COMPOSER_RADIUS :: 26.0;
+COMPOSER_MAX_WIDTH :: 768.0;
+INPUT_LINE_HEIGHT :: 22.75;
+INPUT_TEXT_SIZE :: 14.0;
+CARET_BLINK :: 0.5;
+ACTION_INSET :: 12.0;       // morph_cluster_inset, expanded: 8 + CLUSTER_X_DELTA
+ACTION_PRIMARY_GAP :: 8.0;  // Theme::SPACE_SM
+// pickers.rs trigger_chip: h-8 rounded-lg, 12px medium, 16px icon, gap 6
+CHIP_HEIGHT :: 32.0;
+CHIP_GAP :: 6.0;
+CHIP_PAD :: 10.0;
+MODEL_CHIP_PAD :: 6.0;
+CHIP_ICON :: 16.0;
+CHIP_TEXT_SIZE :: 12.0;
+CHIP_RADIUS :: 8.0;
+PICKERS_GAP :: 4.0;
+SEND_SIZE :: 28.0;
+COMPACT_TOTAL_HEIGHT :: 49.0;  // composer.rs: py-3 + one 22.75 line + the hairline
+COMPACT_INSET :: 8.0;          // morph_cluster_inset, compact
+COMPACT_TEXT_PAD :: 8.0;       // the input's px-2
+
+zeron_composer :: () -> UiComposer {
+  return UiComposer.{radius = COMPOSER_RADIUS, max_width = COMPOSER_MAX_WIDTH, line = INPUT_LINE_HEIGHT, text_inset = 16,
+    pad_top = TEXTAREA_PAD_TOP, pad_v = TEXTAREA_PAD_V, min = TEXTAREA_MIN, max = TEXTAREA_MAX,
+    actions_row = ACTIONS_ROW_HEIGHT, actions_bottom = ACTIONS_BOTTOM_PAD, border_v = PILL_BORDER_V,
+    action_inset = ACTION_INSET, primary_gap = ACTION_PRIMARY_GAP,
+    chip_h = CHIP_HEIGHT, chip_radius = CHIP_RADIUS, chip_gap = CHIP_GAP, chip_pad = CHIP_PAD, model_chip_pad = MODEL_CHIP_PAD, chip_icon = CHIP_ICON,
+    chip_line = CHIP_TEXT_SIZE * 1.618034,   // GPUI's default line height, phi
+    pickers_gap = PICKERS_GAP, send = SEND_SIZE, stop = 11, stop_radius = 3,
+    caret = 2, caret_blink = CARET_BLINK, underline = 0.618, model_ink = 0.9, effort_ink = 0.7,
+    compact_h = COMPACT_TOTAL_HEIGHT, compact_inset = COMPACT_INSET, compact_text_pad = COMPACT_TEXT_PAD};
+}
+
+// popover.rs, pickers/compact.rs, settings/widgets.rs: the menus
+CARD_RADIUS :: 12.0;
+CARD_INSET :: 4.0;
+MENU_GAP :: 2.0;
+MENU_ITEM_RADIUS :: 7.0;        // CARD_RADIUS - 1 - CARD_INSET
+MENU_OFFSET :: 6.0;             // anchored_menu: pt-6 from the trigger
+MENU_MARGIN :: 8.0;             // snap_to_window_with_margin
+MENU_MAX :: 640.0;              // menu_geometry: min(640, the room less 14)
+MENU_ROOM :: 14.0;
+SEARCH_ROW_HEIGHT :: 40.0;
+COMPACT_WIDTH :: 256.0;
+COMPACT_ROW_HEIGHT :: 32.0;
+SLIDER_HEIGHT :: 36.0;
+RAIL_HEIGHT :: 28.0;
+RAIL_TOP :: 4.0;                // (SLIDER_HEIGHT - RAIL_HEIGHT) / 2
+THUMB_WIDTH :: 44.0;
+THUMB_HEIGHT :: 32.0;
+THUMB_INSET :: 22.0;            // THUMB_WIDTH / 2
+FILL_PAST :: 14.0;              // RAIL_HEIGHT / 2
+HEADER_HEIGHT :: 48.0;
+HEADER_HEIGHT_SINGLE :: 36.0;
+SLIDER_TOP :: 2.0;
+SLIDER_BOTTOM :: 4.0;
+CARD_BORDERS :: 2.0;
+LIST_HEADER :: 80.0;
+ACCESS_WIDTH :: 288.0;          // pickers.rs: the access popover's width
+// A row's lines: the 13px label and its description on phi lines, each
+// line box whole pixels (Taffy's rounding: 21 and 18, which makes the
+// access menu Zeron's 245).
+MENU_LINE :: 21.0; MENU_DESC_LINE :: 18.0;
+SWITCH_WIDTH :: 44.8; SWITCH_HEIGHT :: 28.8; SWITCH_TRACK_HEIGHT :: 20.8;
+SWITCH_SIDE_INSET :: 1.6; SWITCH_THUMB_WIDTH :: 24.0; SWITCH_MARK_SIZE :: 7.2;
+
+// The desktop app's sidebar, tabs and room (Zeron's compact sidebar).
+zeron_desk :: () -> UiDesk {
+  return UiDesk.{side_min = 208, side_max = 400, side = 256, top = 4, pad = 8,
+    row = 29,            // a session row (Zeron's compact sidebar row)
+    gap = 2,             // between rows (SIDEBAR_LIST_GAP)
+    header = 28,         // a folder's header (SIDEBAR_DISCLOSURE_HEADER_HEIGHT)
+    section_gap = 12, row_radius = 6, inset = 8, icon = 14, icon_gap = 8,
+    mark = 13,           // a harness mark (SIDEBAR_ACTIVE_HARNESS_ICON_SIZE)
+    dot = 6, dot_gap = 8, idle_ink = 0.5, edge = 4, lights = 80,
+    tab_h = 28, tab_min = 96, tab_max = 200, tab_gap = 4, tab_pad = 10,
+    room_pad = 10, room_unseen = 14, room_gap = 8, chat_min = 320,
+    room_col = TRANSCRIPT_WIDTH, room_line = 20, room_head = 22, room_foot = 18,
+    room_margin = 64, room_top = 8, room_bottom = 24, room_cull = 200, room_mark_dy = 4, room_mark_gap = 6};
+}
+
+zeron_menus :: () -> UiMenus {
+  return UiMenus.{card_radius = CARD_RADIUS, card_inset = CARD_INSET, card_borders = CARD_BORDERS,
+    gap = MENU_GAP, item_radius = MENU_ITEM_RADIUS, offset = MENU_OFFSET, margin = MENU_MARGIN, most = MENU_MAX, room = MENU_ROOM, below_min = 180,
+    pad_x = 8,
+    width = COMPACT_WIDTH, header = HEADER_HEIGHT, header_single = HEADER_HEIGHT_SINGLE,
+    title_line = 17, name_line = 15, title_chevron_room = 13, chevron = 10, chevron_gap = 3, chevron_shift = 3,
+    title_chevron_dy = (17 - 10) / 2, name_chevron_dy = (15 - 10) / 2, chevron_ink = 0.55,   // whole pixels, as Zeron's integer arithmetic set them
+    slider_top = SLIDER_TOP, slider = SLIDER_HEIGHT, slider_bottom = SLIDER_BOTTOM,
+    rail = RAIL_HEIGHT, rail_top = RAIL_TOP, fill_past = FILL_PAST,
+    thumb_w = THUMB_WIDTH, thumb_h = THUMB_HEIGHT, thumb_inset = THUMB_INSET,
+    stop = 4, stop_radius = 2, stop_off_ink = 0.28,
+    row = COMPACT_ROW_HEIGHT, list_header = LIST_HEADER, tab_icon = 16, tab_ink = 0.7,
+    search_row = SEARCH_ROW_HEIGHT, search_icon = 14, search_icon_x = 10, search_gap = 8,
+    search_text_dy = 7.5,   // the input's line box in the 39px row above the hairline, as Zeron lays it (measured)
+    search_line = INPUT_LINE_HEIGHT, caret = 2,
+    row_icon = 14, row_gap = 8, star_inset = 4, star = 28, detail_gap = 6, detail_min = 12,
+    access_width = ACCESS_WIDTH, line = MENU_LINE, desc_line = MENU_DESC_LINE, row_py = 6, check = 14, check_gap = 10, label_ink = 0.9,
+    switch_w = SWITCH_WIDTH, switch_h = SWITCH_HEIGHT, switch_track = SWITCH_TRACK_HEIGHT, switch_inset = SWITCH_SIDE_INSET,
+    switch_knob = SWITCH_THUMB_WIDTH, switch_mark = SWITCH_MARK_SIZE, switch_gap = 10,
+    switch_track_dy = (SWITCH_HEIGHT - SWITCH_TRACK_HEIGHT) / 2, switch_empty = SWITCH_WIDTH - SWITCH_THUMB_WIDTH - SWITCH_SIDE_INSET,
+    switch_mark_dy = (SWITCH_TRACK_HEIGHT - SWITCH_MARK_SIZE) / 2, switch_knob_h = SWITCH_TRACK_HEIGHT - 2 * SWITCH_SIDE_INSET,
+    switch_travel = SWITCH_WIDTH - SWITCH_THUMB_WIDTH - 2 * SWITCH_SIDE_INSET,
+    bar_w = 1.2, bar_h = 7.2, bar_radius = 0.6, bar_dx = (SWITCH_MARK_SIZE - 1.2) / 2,
+    ring_in = 0.4, ring = 6.4, ring_radius = 3.2};
+}
+
+// The spinner's pulse (loaders.rs): a cell's opacity at phase p, falling
+// from full to dim, resting, then rising back.
+gspin_opacity :: (p: f32, dim: f32) -> f32 {
+  q := p - floor(p);
+  if q < 0.45 { return 1 + (dim - 1) * (q / 0.45); }
+  if q < 0.92 { return dim; }
+  return dim + (1 - dim) * ((q - 0.92) / 0.08);
+}
+// A cell's opacity in the 3x3 spinner at phase (turns): the pulse rises
+// from the bottom edge to the top-centre cell, a quarter turn a step.
+gspin_cell :: (phase: f32, row: int, col: int, dim: f32) -> f32 {
+  dist := 2.0f32 - cast(f32) row + abs(cast(f32) col - 1);
+  return gspin_opacity(phase + dist / 4, dim);
+}
+
+// Zeron's transcript measures.
+zeron_transcript :: () -> UiTranscript {
+  return UiTranscript.{
+    titlebar = TITLEBAR_HEIGHT, fade_band = TRANSCRIPT_FADE_BAND, status_strip = STATUS_STRIP_HEIGHT,
+    column = TRANSCRIPT_WIDTH, row_pad_x = ROW_PAD_X,
+    gap = SPACE_SM, gap_turn = SPACE_LG, gap_group = SPACE_MD, gap_first = 10, lane = TIMESTAMP_LANE, cull = 4,
+    bubble_share = 0.8, bubble_radius = BUBBLE_RADIUS, bubble_pad_x = BUBBLE_PAD_X, bubble_pad_y = BUBBLE_PAD_Y,
+    notice_pad = NOTICE_PAD, notice_py = NOTICE_PY, notice_gap = NOTICE_GAP, notice_tile = NOTICE_TILE, notice_line = NOTICE_LINE,
+    notice_radius = 10, notice_tile_radius = 6, notice_icon = 12, notice_icon_inset = 4, notice_label_gap = 8,
+    notice_button_h = NOTICE_BUTTON_H, notice_button_pad = 10, notice_button_py = 4, notice_button_gap = 8, notice_actions_gap = 2,
+    notice_wash = 0.1, notice_tile_wash = 0.12, notice_ink = 0.8, notice_button_wash = 0.14, notice_button_hover = 0.22,
+    meta_line = 18, stop_icon = 11, stop_dy = 3, stop_gap = 8,
+    work_top = WORK_TOP, work_line = WORK_HEIGHT,
+    spin_cell = GSPIN_CELL, spin_pitch = 1.5 * GSPIN_CELL, spin_side = 3 * GSPIN_CELL + 2 * (GSPIN_CELL / 2), spin_period = GSPIN_PERIOD, spin_dim = GSPIN_DIM,
+    group_header = TOOL_GROUP_HEADER_HEIGHT, group_chevron = 14, group_chevron_dx = 7, group_chevron_box = 18, group_chevron_dy = 2, group_summary_x = 22 + 6,
+    label_line = TOOL_LABEL_LINE_HEIGHT, chips_top = CHIPS_TOP_PAD, tree_row = TOOL_TREE_ROW_HEIGHT, chip_card = CHIP_CARD_HEIGHT,
+    trunk_x = ACTIVITY_TRUNK_X, bend = ACTIVITY_BEND_RADIUS, branch_end = ACTIVITY_BRANCH_END_X, icon_left = ACTIVITY_ICON_LEFT,
+    icon = ACTIVITY_ICON_SIZE, gutter = ACTIVITY_GUTTER_WIDTH, text_gap = ACTIVITY_TEXT_GAP,
+    chip_gap = 8, chevron_room = 18, chevron = 12, chevron_inset = 3,
+    badge_h = 22, badge_radius = 5, badge_well = 20, badge_well_radius = 4, badge_icon = 14, badge_icon_inset = 3, badge_pad = 6, badge_edge = 1,
+    file_ink = 0.85,
+    separator = DETAIL_SEPARATOR, output_line = OUTPUT_LINE_HEIGHT, output_py = 6, output_pad = OUTPUT_BODY_PAD,
+    hunk_header = HUNK_HEADER_HEIGHT, diff_line = DIFF_LINE_HEIGHT, body_bottom = BODY_BOTTOM_PAD,
+    diff_gutter = GUTTER_WIDTH, diff_digit = 6.6, gutter_pad_l = 8, gutter_pad_r = 6, number_inset = 8,
+    marker = MARKER_WIDTH, accent_bar = ACCENT_BAR_WIDTH, code_pad_l = UNIFIED_CODE_PADDING_LEFT,
+    marker_ink = 0.5, number_ink = 0.8, changed_ink = 0.9, code_ink = 0.92};
+}
+
 
 zeron_syntax :: (role: int, plain: Rgba) -> Rgba {
   if role < 0 || role > 11 { return plain; }
@@ -134,6 +337,7 @@ zeron_skin :: () -> UiSkin {
     danger_muted = hex(DANGER_MUTED, 1), warning_muted = hex(WARNING_MUTED, 1),
     file_tint = hex(0xfb923c, 1),
     space = 8, pad = 16, radius = 12, radius_control = 8, border = 1, control_h = 32, control_pad = 12,
+    slider_track = 4, knob = 14, bar_h = 8,   // a 32px control's eighth, 0.44 of it rounded, its quarter
     frame = UIFRAME_PLATE, frame_mid = ink(0.10), frame_light = ink(0.16), trim = th.accent,
     shadow = 15, shade = rgba(0, 0, 0, 0.35), stud = 0,
     icon_copy = ICON_COPY, icon_wrap = ICON_WRAP, icon_chevron = ICON_CHEVRON, icon_check = ICON_CHECK,
@@ -143,12 +347,16 @@ zeron_skin :: () -> UiSkin {
       code_pad_x = INLINE_CODE_PAD_X, code_inset_y = INLINE_CODE_INSET_Y, code_radius = INLINE_CODE_RADIUS,
       block_radius = CODE_RADIUS, block_border = 1, block_header = CODE_HEADER_HEIGHT,
       block_pad_x = CODE_PADDING_X, block_pad_y = CODE_PADDING_Y, block_line = CODE_LINE_HEIGHT, action = CODE_ACTION_SIZE,
+      action_gap = 2, action_edge = 5, wrap_radius = 6, copy_radius = 5, wrap_icon = 13, copy_icon = 12, copy_icon_x = 6,
+      task = LIST_DISC * 2 + 4, task_radius = 3,
       cell_pad = TABLE_CELL_PADDING, cell_pad_y = TABLE_CELL_PADDING, divider = TABLE_DIVIDER, col_min_content = TABLE_MIN_COLUMN_CONTENT, col_min = TABLE_MIN_COLUMN_WIDTH,
       bullet = "•", task_open = "☐", task_done = "☑"}};
   palette := SYNTAX_DARK;
   for k: 0..<UISKIN_SYNTAX { s.syntax[k] = hex(palette[k], 1); }
   tints := GSPIN_TINTS;
   for k: 0..<3 { s.spinner[k] = hex(tints[k], 1); }
+  s.tr = zeron_transcript(); s.cmp = zeron_composer(); s.menus = zeron_menus(); s.desk = zeron_desk();
+  s.lifted = UiFloat.{dy = [2] f32.[10, 4], blur = [2] f32.[15, 6], spread = [2] f32.[-3, -4]};   // Tailwind's shadow-lg
   // the composer and its menus (composer.rs, pickers.rs, glass.rs)
   s.doc_tint = rgba(0.796, 0.835, 0.882, 1);   // the file theme's dark tint, #CBD5E1
   s.clear = rgba(0, 0, 0, 0);

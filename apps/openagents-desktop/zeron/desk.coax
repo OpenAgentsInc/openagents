@@ -17,16 +17,7 @@
 
 DSK_MAX :: 64;
 DSK_PRIMS :: 1024; DSK_POOL :: 32768;
-DSK_SIDEBAR_MIN :: 208.0; DSK_SIDEBAR_MAX :: 400.0; DSK_SIDEBAR_DEFAULT :: 256.0;
-DSK_ROW :: 29.0;            // a session row (Zeron's compact sidebar row)
-DSK_GAP :: 2.0;             // between rows (SIDEBAR_LIST_GAP)
-DSK_HEADER :: 28.0;         // a folder's header (SIDEBAR_DISCLOSURE_HEADER_HEIGHT)
-DSK_SECTION_GAP :: 12.0;
-DSK_PAD :: 8.0;             // the sidebar's side padding
-DSK_MARK :: 13.0;           // a harness mark (SIDEBAR_ACTIVE_HARNESS_ICON_SIZE)
-DSK_LIGHTS :: 80.0;         // the traffic lights' width, where tabs start with the sidebar collapsed
-DSK_TAB_H :: 28.0; DSK_TAB_MAX :: 200.0; DSK_TAB_MIN :: 96.0;
-DSK_EDGE :: 4.0;            // the resize handle's half width
+// Its measures are the skin's (UiDesk, skin.desk: Zeron's are in components/skin/zeron.coax).
 DSK_TITLE :: 160;           // bytes of a title kept
 // What the host is asked to do (dsk_take_action).
 DSK_HOST_NONE :: 0; DSK_HOST_PICK_FOLDER :: 1;
@@ -129,7 +120,8 @@ dsk_set_shortcut :: (k: [] Desk, j: int, text: string) -> bool {
 }
 
 dsk_init :: (k: [] Desk) {
-  if k[0].width < DSK_SIDEBAR_MIN { k[0].width = DSK_SIDEBAR_DEFAULT; }
+  m := dsk_skin(k).desk;
+  if k[0].width < m.side_min { k[0].width = m.side; }
 }
 // The sidebar's width as drawn (0 collapsed).
 dsk_side :: (k: [] Desk) -> f32 { return ifx k[0].collapsed then 0.0f32 else k[0].width; }
@@ -241,7 +233,7 @@ dsk_dot :: (sk: UiSkin, status: int) -> Rgba {
   if status == DSK_WORKING { return sk.accent; }
   if status == DSK_WAITING { return sk.warning; }
   if status == DSK_ERROR { return sk.danger; }
-  return opacity(sk.faint, 0.5);
+  return opacity(sk.faint, sk.desk.idle_ink);
 }
 // The skin the sidebar and the tabs are drawn in: Zeron's until dsk_set_skin gives them another.
 dsk_skin :: (k: [] Desk) -> UiSkin {
@@ -264,10 +256,8 @@ dsk_age :: (secs: f32, out: [] u8) -> string {
   if secs < 3600 { v = cast(int) (secs / 60); }
   else if secs < 86400 { v = cast(int) (secs / 3600); unit = 'h'; }
   else { v = cast(int) (secs / 86400); unit = 'd'; }
-  digits: [12] u8; nd := 0;
-  while v > 0 || nd == 0 { digits[nd] = cast(u8) ('0' + v % 10); v /= 10; nd += 1; }
-  n := 0;
-  while nd > 0 && n < out.count - 1 { nd -= 1; out[n] = digits[nd]; n += 1; }
+  n := text_put_int(out[0..<out.count - 1], 0, v);
+  if n > out.count - 1 { n = out.count - 1; }
   out[n] = unit; n += 1;
   return cast(string) out[0..<n];
 }
@@ -532,7 +522,7 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
   side := dsk_side(k);
   // the chat's width: the window's less the sidebar, in device px (at least a column's worth)
   cw := width - side * d;
-  if cw < 320 * d { cw = 320 * d; }
+  if cw < dsk_skin(k).desk.chat_min * d { cw = dsk_skin(k).desk.chat_min * d; }
   for i: 0..<k[0].n { k[0].chats[i].s[0].still = k[0].still; }
   dsk_mentions(k);
   dsk_room(k);
@@ -592,18 +582,18 @@ dsk_fit :: (k: [] Desk, a: [] Atlas, font: int, text: string, w: f32) -> string 
 // The sidebar into list (laid out and hit-tested too): its ground and edge,
 // New session, then the sessions by folder, scrolled and clipped under it.
 dsk_sidebar_prims :: (k: [] Desk, list: [] Prim, n: int, a: [] Atlas) -> int {
-  sk := dsk_skin(k);
+  sk := dsk_skin(k); m := sk.desk;
   w := k[0].width; h := k[0].h;
   q := prim_fill(list, n, 0, 0, w, h, 0, sk.sidebar);
   q = prim_fill(list, q, w - 1, 0, 1, h, 0, sk.field_edge);
-  y: f32 = TITLEBAR_HEIGHT + 4;
+  y := sk.tr.titlebar + m.top;
   // New session
-  x: f32 = DSK_PAD; rw := w - 2 * DSK_PAD;
-  if dsk_over(k, x, y, rw, DSK_ROW) { q = prim_fill(list, q, x, y, rw, DSK_ROW, 6, sk.action_hover); }
-  q = prim_icon(list, q, ICON_PEN, x + 8, y + (DSK_ROW - 14) / 2, 14, 14, sk.muted);
-  q = prim_text(list, q, x + 8 + 14 + 8, y, 0, DSK_ROW, sk.menu.face, sk.ink, "New session");
-  dsk_hit(k, DSK_ON_NEW, -1, x, y, rw, DSK_ROW);
-  y += DSK_ROW + DSK_SECTION_GAP;
+  x := m.pad; rw := w - 2 * m.pad;
+  if dsk_over(k, x, y, rw, m.row) { q = prim_fill(list, q, x, y, rw, m.row, m.row_radius, sk.action_hover); }
+  q = prim_icon(list, q, ICON_PEN, x + m.inset, y + (m.row - m.icon) / 2, m.icon, m.icon, sk.muted);
+  q = prim_text(list, q, x + m.inset + m.icon + m.icon_gap, y, 0, m.row, sk.menu.face, sk.ink, "New session");
+  dsk_hit(k, DSK_ON_NEW, -1, x, y, rw, m.row);
+  y += m.row + m.section_gap;
   // the list, scrolled, under New session
   top := y;
   q = prim_clip(list, q, 0, top, w, top + (h - top));
@@ -614,30 +604,30 @@ dsk_sidebar_prims :: (k: [] Desk, list: [] Prim, n: int, a: [] Atlas) -> int {
   for j: 0..<k[0].norder {
     i := k[0].order[j];
     if prev < 0 || !dsk_same_folder(k, prev, i) {
-      if prev >= 0 { ly += DSK_SECTION_GAP; total += DSK_SECTION_GAP; }
-      q = prim_icon(list, q, ICON_FOLDER, x + 8, ly + (DSK_HEADER - DSK_MARK) / 2, DSK_MARK, DSK_MARK, sk.faint);
-      q = prim_text(list, q, x + 8 + DSK_MARK + 8, ly, 0, DSK_HEADER, sk.label.face, sk.faint, dsk_keep(k, dsk_fit(k, a, sk.label.face, dsk_folder_name(dsk_cwd(k, i)), rw - 16 - DSK_MARK - 8)));
-      ly += DSK_HEADER; total += DSK_HEADER;
+      if prev >= 0 { ly += m.section_gap; total += m.section_gap; }
+      q = prim_icon(list, q, ICON_FOLDER, x + m.inset, ly + (m.header - m.mark) / 2, m.mark, m.mark, sk.faint);
+      q = prim_text(list, q, x + m.inset + m.mark + m.icon_gap, ly, 0, m.header, sk.label.face, sk.faint, dsk_keep(k, dsk_fit(k, a, sk.label.face, dsk_folder_name(dsk_cwd(k, i)), rw - 2 * m.inset - m.mark - m.icon_gap)));
+      ly += m.header; total += m.header;
     }
     prev = i;
     shown := i == k[0].active;
-    hover := dsk_over(k, x, ly, rw, DSK_ROW) && k[0].ly >= top;
-    if shown || hover { q = prim_fill(list, q, x, ly, rw, DSK_ROW, 6, ifx shown then sk.row_shown else sk.row_hover); }
-    q = prim_icon(list, q, dsk_mark(k, i), x + 8, ly + (DSK_ROW - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
+    hover := dsk_over(k, x, ly, rw, m.row) && k[0].ly >= top;
+    if shown || hover { q = prim_fill(list, q, x, ly, rw, m.row, m.row_radius, ifx shown then sk.row_shown else sk.row_hover); }
+    q = prim_icon(list, q, dsk_mark(k, i), x + m.inset, ly + (m.row - m.mark) / 2, m.mark, m.mark, dsk_mark_tint(k, i));
     when := dsk_keep(k, dsk_age(k[0].clock - k[0].chats[i].active_at, age[..]));
     tw := text_width(a, sk.small.face, when);
-    tx := x + rw - 8 - tw;
-    q = prim_text(list, q, tx, ly, 0, DSK_ROW, sk.small.face, sk.faint, when);
-    dot := 6.0f32; dx := tx - 8 - dot;
-    q = prim_fill(list, q, dx, ly + (DSK_ROW - dot) / 2, dot, dot, dot / 2, dsk_dot(sk, dsk_status(k, i)));
-    title_x := x + 8 + DSK_MARK + 8;
-    q = prim_text(list, q, title_x, ly, 0, DSK_ROW, sk.menu.face, ifx shown then sk.ink else sk.muted, dsk_keep(k, dsk_fit(k, a, sk.menu.face, dsk_title(k, i), dx - 8 - title_x)));
-    if ly + DSK_ROW > top && ly < h { dsk_hit(k, DSK_ON_ROW, i, x, ly, rw, DSK_ROW); }
-    ly += DSK_ROW + DSK_GAP; total += DSK_ROW + DSK_GAP;
+    tx := x + rw - m.inset - tw;
+    q = prim_text(list, q, tx, ly, 0, m.row, sk.small.face, sk.faint, when);
+    dot := m.dot; dx := tx - m.dot_gap - dot;
+    q = prim_fill(list, q, dx, ly + (m.row - dot) / 2, dot, dot, dot / 2, dsk_dot(sk, dsk_status(k, i)));
+    title_x := x + m.inset + m.mark + m.icon_gap;
+    q = prim_text(list, q, title_x, ly, 0, m.row, sk.menu.face, ifx shown then sk.ink else sk.muted, dsk_keep(k, dsk_fit(k, a, sk.menu.face, dsk_title(k, i), dx - m.dot_gap - title_x)));
+    if ly + m.row > top && ly < h { dsk_hit(k, DSK_ON_ROW, i, x, ly, rw, m.row); }
+    ly += m.row + m.gap; total += m.row + m.gap;
   }
   k[0].list_h = total;
   // the edge: drag to resize
-  dsk_hit(k, DSK_ON_EDGE, -1, w - DSK_EDGE, 0, 2 * DSK_EDGE, h);
+  dsk_hit(k, DSK_ON_EDGE, -1, w - m.edge, 0, 2 * m.edge, h);
   return prim_unclip(list, q);
 }
 dsk_paint_sidebar :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
@@ -648,54 +638,54 @@ dsk_paint_sidebar :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
 // The tabs in the titlebar into list: ROOM at the right end once agents have
 // talked, then a tab per open session, clipped to the room they have.
 dsk_tabs_prims :: (k: [] Desk, list: [] Prim, n: int, a: [] Atlas) -> int {
-  sk := dsk_skin(k);
-  x0: f32 = DSK_LIGHTS;
-  if !k[0].collapsed { x0 = k[0].width + DSK_PAD; }
-  avail := k[0].w - x0 - DSK_PAD;
+  sk := dsk_skin(k); m := sk.desk;
+  x0 := m.lights;
+  if !k[0].collapsed { x0 = k[0].width + m.pad; }
+  avail := k[0].w - x0 - m.pad;
   q := n;
   if k[0].ntabs == 0 || avail <= 0 { return q; }
   // the ROOM tab, at the right end, once agents have said something to each other
   if k[0].room[0].count > 0 {
-    rw := text_width(a, sk.label.face, "ROOM") + 20;
+    rw := text_width(a, sk.label.face, "ROOM") + 2 * m.room_pad;
     unseen := k[0].room[0].seq > k[0].room_seen && !k[0].room_shown;
-    if unseen { rw += 14; }
-    rx := k[0].w - DSK_PAD - rw;
-    ry := round_layout((TITLEBAR_HEIGHT - DSK_TAB_H) / 2);
-    if k[0].room_shown || dsk_over(k, rx, ry, rw, DSK_TAB_H) {
-      q = prim_box(list, q, rx, ry, rw, DSK_TAB_H, 6, ifx k[0].room_shown then 1.0f32 else 0.0f32, ifx k[0].room_shown then sk.row_shown else sk.tab_hover, sk.field_edge);
+    if unseen { rw += m.room_unseen; }
+    rx := k[0].w - m.pad - rw;
+    ry := round_layout((sk.tr.titlebar - m.tab_h) / 2);
+    if k[0].room_shown || dsk_over(k, rx, ry, rw, m.tab_h) {
+      q = prim_box(list, q, rx, ry, rw, m.tab_h, m.row_radius, ifx k[0].room_shown then 1.0f32 else 0.0f32, ifx k[0].room_shown then sk.row_shown else sk.tab_hover, sk.field_edge);
     }
-    q = prim_text(list, q, rx + 10, ry, 0, DSK_TAB_H, sk.label.face, ifx k[0].room_shown then sk.ink else sk.muted, "ROOM");
-    if unseen { dot := 6.0f32; q = prim_fill(list, q, rx + rw - 10 - dot, ry + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, sk.accent); }
-    dsk_hit(k, DSK_ON_ROOM, -1, rx, ry, rw, DSK_TAB_H);
-    avail -= rw + 8;
+    q = prim_text(list, q, rx + m.room_pad, ry, 0, m.tab_h, sk.label.face, ifx k[0].room_shown then sk.ink else sk.muted, "ROOM");
+    if unseen { dot := m.dot; q = prim_fill(list, q, rx + rw - m.room_pad - dot, ry + (m.tab_h - dot) / 2, dot, dot, dot / 2, sk.accent); }
+    dsk_hit(k, DSK_ON_ROOM, -1, rx, ry, rw, m.tab_h);
+    avail -= rw + m.room_gap;
     if avail <= 0 { return q; }
   }
   tw := avail / cast(f32) k[0].ntabs;
-  if tw > DSK_TAB_MAX { tw = DSK_TAB_MAX; }
-  if tw < DSK_TAB_MIN { tw = DSK_TAB_MIN; }
+  if tw > m.tab_max { tw = m.tab_max; }
+  if tw < m.tab_min { tw = m.tab_min; }
   tw = round_layout(tw);
-  y := round_layout((TITLEBAR_HEIGHT - DSK_TAB_H) / 2);
-  q = prim_clip(list, q, x0, 0, x0 + avail, TITLEBAR_HEIGHT);
+  y := round_layout((sk.tr.titlebar - m.tab_h) / 2);
+  q = prim_clip(list, q, x0, 0, x0 + avail, sk.tr.titlebar);
   for t: 0..<k[0].ntabs {
     i := k[0].tabs[t];
-    x := x0 + cast(f32) t * (tw + 4);
+    x := x0 + cast(f32) t * (tw + m.tab_gap);
     if x >= x0 + avail { break; }
     shown := i == k[0].active && !k[0].room_shown;
-    hover := dsk_over(k, x, y, tw, DSK_TAB_H);
+    hover := dsk_over(k, x, y, tw, m.tab_h);
     if shown || hover {
-      q = prim_box(list, q, x, y, tw, DSK_TAB_H, 6, ifx shown then 1.0f32 else 0.0f32, ifx shown then sk.row_shown else sk.tab_hover, sk.field_edge);
+      q = prim_box(list, q, x, y, tw, m.tab_h, m.row_radius, ifx shown then 1.0f32 else 0.0f32, ifx shown then sk.row_shown else sk.tab_hover, sk.field_edge);
     }
-    q = prim_icon(list, q, dsk_mark(k, i), x + 10, y + (DSK_TAB_H - DSK_MARK) / 2, DSK_MARK, DSK_MARK, dsk_mark_tint(k, i));
-    right := x + tw - 10;
+    q = prim_icon(list, q, dsk_mark(k, i), x + m.tab_pad, y + (m.tab_h - m.mark) / 2, m.mark, m.mark, dsk_mark_tint(k, i));
+    right := x + tw - m.tab_pad;
     status := dsk_status(k, i);
     if status != DSK_IDLE {
-      dot := 6.0f32;
-      q = prim_fill(list, q, right - dot, y + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, dsk_dot(sk, status));
-      right -= dot + 8;
+      dot := m.dot;
+      q = prim_fill(list, q, right - dot, y + (m.tab_h - dot) / 2, dot, dot, dot / 2, dsk_dot(sk, status));
+      right -= dot + m.dot_gap;
     }
-    lx := x + 10 + DSK_MARK + 8;
-    q = prim_text(list, q, lx, y, 0, DSK_TAB_H, sk.label.face, ifx shown then sk.ink else sk.muted, dsk_keep(k, dsk_fit(k, a, sk.label.face, dsk_title(k, i), right - lx)));
-    dsk_hit(k, DSK_ON_TAB, i, x, y, tw, DSK_TAB_H);
+    lx := x + m.tab_pad + m.mark + m.icon_gap;
+    q = prim_text(list, q, lx, y, 0, m.tab_h, sk.label.face, ifx shown then sk.ink else sk.muted, dsk_keep(k, dsk_fit(k, a, sk.label.face, dsk_title(k, i), right - lx)));
+    dsk_hit(k, DSK_ON_TAB, i, x, y, tw, m.tab_h);
   }
   return prim_unclip(list, q);
 }
@@ -753,7 +743,8 @@ dsk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) 
   }
   if k[0].press == DSK_ON_EDGE {
     w := k[0].drag_w + k[0].lx - k[0].drag_x;
-    k[0].width = ifx w < DSK_SIDEBAR_MIN then DSK_SIDEBAR_MIN else ifx w > DSK_SIDEBAR_MAX then DSK_SIDEBAR_MAX else w;
+    m := dsk_skin(k).desk;
+    k[0].width = ifx w < m.side_min then m.side_min else ifx w > m.side_max then m.side_max else w;
     if phase == 2 { k[0].press = DSK_ON_NONE; }
     dsk_update_cursor(k);
     return false;
@@ -770,7 +761,8 @@ dsk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) 
 dsk_wheel :: (k: [] Desk, dy: f32) -> bool {
   if k[0].n == 0 { return false; }
   if k[0].lx < dsk_side(k) {
-    room := k[0].h - (TITLEBAR_HEIGHT + 4 + DSK_ROW + DSK_SECTION_GAP);
+    sk := dsk_skin(k); m := sk.desk;
+    room := k[0].h - (sk.tr.titlebar + m.top + m.row + m.section_gap);
     most := k[0].list_h - room;
     if most < 0 { most = 0; }
     was := k[0].scroll;
@@ -785,48 +777,48 @@ dsk_wheel :: (k: [] Desk, dy: f32) -> bool {
 // The ROOM tab: every message between agents, newest at the bottom, each its
 // from → to line (the harness marks, what it was) over its text, wrapped to
 // the chat's column. Scrolls with the wheel.
-DSK_ROOM_COL :: 736.0;
-DSK_ROOM_LINE :: 20.0;
+// It reads the desk's skin: its canvas, inks, faces and measures.
 dsk_paint_room :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
-  th := zeron_dark(); d := k[0].d; r := k[0].room[..];
+  sk := dsk_skin(k); m := sk.desk; d := k[0].d; r := k[0].room[..];
   side := dsk_side(k);
+  bar := sk.tr.titlebar;
   cw := k[0].w - side;
-  colw := ifx cw - 64 < DSK_ROOM_COL then cw - 64 else DSK_ROOM_COL;
+  colw := ifx cw - m.room_margin < m.room_col then cw - m.room_margin else m.room_col;
   x := round_layout(side + (cw - colw) / 2);
-  top: f32 = TITLEBAR_HEIGHT + 8;
-  y: f32 = k[0].h - 24 + k[0].room_scroll;
-  v := paint_quad(out, at, d, side, TITLEBAR_HEIGHT, cw, k[0].h - TITLEBAR_HEIGHT, 0, 0, th.shell, th.shell);
+  top := bar + m.room_top;
+  y := k[0].h - m.room_bottom + k[0].room_scroll;
+  v := paint_quad(out, at, d, side, bar, cw, k[0].h - bar, 0, 0, sk.canvas, sk.canvas);
   first := at;
   kinds := [5] string.["", "asks", "tells", "answers", "cancels"];
   nb: [64] u8; nb2: [64] u8; head: [256] u8;
-  m := r[0].count - 1;
-  while m >= 0 && y > top {
-    text := rm_text(r, m);
-    lines := dsk_wrap_count(a, FONT_INPUT, text, colw);
-    hgt := 22 + cast(f32) lines * DSK_ROOM_LINE + 18;
+  mi := r[0].count - 1;
+  while mi >= 0 && y > top {
+    text := rm_text(r, mi);
+    lines := dsk_wrap_count(a, sk.body.face, text, colw, m.room_line);
+    hgt := m.room_head + cast(f32) lines * m.room_line + m.room_foot;
     y -= hgt;
-    if y + hgt < top - 200 { break; }
-    from := rm_from(r, m); to := rm_to(r, m);
+    if y + hgt < top - m.room_cull { break; }
+    from := rm_from(r, mi); to := rm_to(r, mi);
     hx := x;
-    if from >= 0 && from < k[0].n { v = paint_icon(out, v, a, d, dsk_mark(k, from), hx, y + 4, DSK_MARK, DSK_MARK, dsk_mark_tint(k, from)); hx += DSK_MARK + 6; }
+    if from >= 0 && from < k[0].n { v = paint_icon(out, v, a, d, dsk_mark(k, from), hx, y + m.room_mark_dy, m.mark, m.mark, dsk_mark_tint(k, from)); hx += m.mark + m.room_mark_gap; }
     hn := e_copy(head[..], 0, dsk_agent_name(k, from, nb[..])); hn = e_copy(head[..], hn, " → "); hn = e_copy(head[..], hn, dsk_agent_name(k, to, nb2[..]));
-    hn = e_copy(head[..], hn, " · "); hn = e_copy(head[..], hn, kinds[rm_kind(r, m)]);
-    v = paint_text(out, v, a, d, FONT_CHIP, cast(string) head[0..<hn], hx, y, 22, th.muted);
-    v = dsk_paint_wrapped(out, v, a, d, FONT_INPUT, text, x, y + 22, colw, th.text);
-    m -= 1;
+    hn = e_copy(head[..], hn, " · "); hn = e_copy(head[..], hn, kinds[rm_kind(r, mi)]);
+    v = paint_text(out, v, a, d, sk.label.face, cast(string) head[0..<hn], hx, y, m.room_head, sk.muted);
+    v = dsk_paint_wrapped(out, v, a, d, sk.body.face, text, x, y + m.room_head, colw, m.room_line, sk.ink);
+    mi -= 1;
   }
-  gp_clip(out, first, v, d, side, TITLEBAR_HEIGHT, cw, k[0].h - TITLEBAR_HEIGHT);
+  gp_clip(out, first, v, d, side, bar, cw, k[0].h - bar);
   // scrolled past the oldest: hold there
-  if m < 0 && y > top && k[0].room_scroll > 0 { k[0].room_scroll -= y - top; if k[0].room_scroll < 0 { k[0].room_scroll = 0; } }
+  if mi < 0 && y > top && k[0].room_scroll > 0 { k[0].room_scroll -= y - top; if k[0].room_scroll < 0 { k[0].room_scroll = 0; } }
   return v;
 }
 // Text broken at spaces (and its own newlines) to fit w: the lines it takes, and painted.
-dsk_wrap_count :: (a: [] Atlas, font: int, text: string, w: f32) -> int { none: [1] f32; return dsk_wrap(a, font, text, w, none[..], 0, 0, 0, 0, Rgba.{}, false).lines; }
+dsk_wrap_count :: (a: [] Atlas, font: int, text: string, w: f32, lh: f32) -> int { none: [1] f32; return dsk_wrap(a, font, text, w, none[..], 0, 0, 0, 0, lh, Rgba.{}, false).lines; }
 DskWrap :: struct { lines: int; v: int; }
-dsk_paint_wrapped :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, y: f32, w: f32, color: Rgba) -> int {
-  return dsk_wrap(a, font, text, w, out, at, d, x, y, color, true).v;
+dsk_paint_wrapped :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, y: f32, w: f32, lh: f32, color: Rgba) -> int {
+  return dsk_wrap(a, font, text, w, out, at, d, x, y, lh, color, true).v;
 }
-dsk_wrap :: (a: [] Atlas, font: int, text: string, w: f32, out: [] f32, at: int, d: f32, x: f32, y: f32, color: Rgba, paint: bool) -> DskWrap {
+dsk_wrap :: (a: [] Atlas, font: int, text: string, w: f32, out: [] f32, at: int, d: f32, x: f32, y: f32, lh: f32, color: Rgba, paint: bool) -> DskWrap {
   r := DskWrap.{lines = 0, v = at};
   space := text_width(a, font, " ");
   start := 0; lw: f32 = 0; i := 0; last_end := 0;
@@ -835,13 +827,13 @@ dsk_wrap :: (a: [] Atlas, font: int, text: string, w: f32, out: [] f32, at: int,
       ww := text_width(a, font, cast(string) text[last_end..<i]);
       if lw > 0 && lw + ww > w {
         // the line ends before this word
-        if paint { r.v = paint_text(out, r.v, a, d, font, cast(string) text[start..<last_end], x, y + cast(f32) r.lines * DSK_ROOM_LINE, DSK_ROOM_LINE, color); }
+        if paint { r.v = paint_text(out, r.v, a, d, font, cast(string) text[start..<last_end], x, y + cast(f32) r.lines * lh, lh, color); }
         r.lines += 1;
         start = last_end; while start < i && text[start] == ' ' { start += 1; }
         lw = text_width(a, font, cast(string) text[start..<i]);
       } else { lw += ww; }
       if i == text.count || text[i] == '\n' {
-        if paint { r.v = paint_text(out, r.v, a, d, font, cast(string) text[start..<i], x, y + cast(f32) r.lines * DSK_ROOM_LINE, DSK_ROOM_LINE, color); }
+        if paint { r.v = paint_text(out, r.v, a, d, font, cast(string) text[start..<i], x, y + cast(f32) r.lines * lh, lh, color); }
         r.lines += 1;
         start = i + 1; lw = 0;
         last_end = i + 1; i += 1;
@@ -887,19 +879,20 @@ dsk_key :: (k: [] Desk, key: int, mods: int) -> bool {
 }
 // Before the scroll is clamped, a shown row stays in view.
 dsk_reveal :: (k: [] Desk, i: int) {
+  sk := dsk_skin(k); m := sk.desk;
   dsk_sort(k);
   y: f32 = 0; prev := -1;
   for j: 0..<k[0].norder {
     c := k[0].order[j];
-    if prev < 0 || !dsk_same_folder(k, prev, c) { if prev >= 0 { y += DSK_SECTION_GAP; } y += DSK_HEADER; }
+    if prev < 0 || !dsk_same_folder(k, prev, c) { if prev >= 0 { y += m.section_gap; } y += m.header; }
     prev = c;
     if c == i {
-      room := k[0].h - (TITLEBAR_HEIGHT + 4 + DSK_ROW + DSK_SECTION_GAP);
+      room := k[0].h - (sk.tr.titlebar + m.top + m.row + m.section_gap);
       if y < k[0].scroll { k[0].scroll = y; }
-      if room > 0 && y + DSK_ROW > k[0].scroll + room { k[0].scroll = y + DSK_ROW - room; }
+      if room > 0 && y + m.row > k[0].scroll + room { k[0].scroll = y + m.row - room; }
       return;
     }
-    y += DSK_ROW + DSK_GAP;
+    y += m.row + m.gap;
   }
 }
 
@@ -1071,19 +1064,19 @@ dsk_test_chat :: (s: [] ZeronState) { zr_test_screen(s); }
   took = dsk_pointer(k[..], 256 * 2, 400 * 2, 0, 1, 0);
   #assert k[0].press == DSK_ON_EDGE && coaxial_desk_cursor(k[..]) == 3;
   took = dsk_pointer(k[..], 900 * 2, 400 * 2, 1, 1, 0);
-  #assert k[0].width == DSK_SIDEBAR_MAX;
+  #assert k[0].width == zeron_skin().desk.side_max;
   took = dsk_pointer(k[..], 10 * 2, 400 * 2, 2, 1, 0);
-  #assert k[0].width == DSK_SIDEBAR_MIN && k[0].press == DSK_ON_NONE;
+  #assert k[0].width == zeron_skin().desk.side_min && k[0].press == DSK_ON_NONE;
   // Cmd+S: collapsed, the chat takes the whole width and the tabs start after the traffic lights
   #assert dsk_key(k[..], 's', MOD_CMD) && k[0].collapsed;
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
   #assert a[0].width == 2640;
-  for j: 0..<k[0].nhit { #assert k[0].hits[j].kind == DSK_ON_TAB && k[0].hits[j].x >= DSK_LIGHTS; }
+  for j: 0..<k[0].nhit { #assert k[0].hits[j].kind == DSK_ON_TAB && k[0].hits[j].x >= zeron_skin().desk.lights; }
   // a press in the chat goes to it, moved by the sidebar: the composer takes it
   #assert dsk_key(k[..], 's', MOD_CMD) && !k[0].collapsed;
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
   c := a[0].composer[..];
-  px := (DSK_SIDEBAR_MIN + c[0].x + 40) * 2; py := (c[0].y + 20) * 2;
+  px := (zeron_skin().desk.side_min + c[0].x + 40) * 2; py := (c[0].y + 20) * 2;
   #assert dsk_pointer(k[..], px, py, 0, 1, 0);
   took = dsk_pointer(k[..], px, py, 2, 1, 0);
 }
@@ -1252,8 +1245,8 @@ cl_str_is :: (text: string, path: string, want: string) -> bool { abuf: [4096] u
   // a session's tab shows it again
   #assert dsk_key(k[..], '1', MOD_CMD) && !k[0].room_shown;
   // wrapping: a long line takes more than one
-  #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "word word word word word word word word word word", 100) > 1;
-  #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "one\ntwo", 1000) == 2;
+  #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "word word word word word word word word word word", 100, 20) > 1;
+  #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "one\ntwo", 1000, 20) == 2;
 }
 
 coaxial_desk_dictation_enabled :: (k:[]Desk)->bool #export_c #effects(all) {return k.count>0 && k[0].dictation_enabled;}

@@ -157,6 +157,51 @@ cc_names_a_look :: (code: string) -> bool {
   return false;
 }
 
+cc_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+cc_ident :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || cc_digit(c) || c == '_'; }
+// Whether a line of a component writes a size: a number other than 0, 1, 2
+// or a half. A count is not a size: a number that is an array's length or
+// an index ([64], t[3]), a range's end (0..<3) or an integer constant
+// (T_ROWS :: 256;) passes. Strings and characters are text, not numbers.
+// A line that says "// not a size" (an epsilon, a sentinel) passes too.
+cc_names_a_size :: (code: string) -> bool {
+  i := 0; quoted := false;
+  while i < code.count {
+    c := code[i];
+    if quoted { if c == '\\' { i += 2; continue; } if c == '"' { quoted = false; } i += 1; continue; }
+    if c == '"' { quoted = true; i += 1; continue; }
+    if c == '\'' { i += 1; while i < code.count && code[i] != '\'' { if code[i] == '\\' { i += 1; } i += 1; } i += 1; continue; }   // a character, '0'
+    if !cc_digit(c) || (i > 0 && (cc_ident(code[i - 1]) || code[i - 1] == '.')) { i += 1; continue; }
+    if c == '0' && i + 1 < code.count && (code[i + 1] == 'x' || code[i + 1] == 'b') { i += 2; while i < code.count && cc_ident(code[i]) { i += 1; } continue; }
+    s := i; dot := false;
+    while i < code.count && (cc_digit(code[i]) || (code[i] == '.' && !dot && i + 1 < code.count && cc_digit(code[i + 1]))) { if code[i] == '.' { dot = true; } i += 1; }
+    while i < code.count && cc_ident(code[i]) { i += 1; }          // a suffix (1e3, 2.0f32) is part of it
+    num := cast(string) code[s..<i];
+    if num == "0" || num == "1" || num == "2" || num == "0.0" || num == "1.0" || num == "2.0" || num == "0.5" || num == "0.0f32" || num == "1.0f32" || num == "0.5f32" { continue; }
+    b := s - 1; while b >= 0 && code[b] == ' ' { b -= 1; }
+    if b >= 0 && code[b] == '-' && !dot { b -= 1; while b >= 0 && code[b] == ' ' { b -= 1; } if !(b >= 1 && code[b] == ':' && code[b - 1] == ':') { b = s - 1; } }   // a negative integer constant (KEY_ENTER :: -2;)
+    if b >= 0 && code[b] == '[' { continue; }                         // a length or an index
+    if b >= 2 && code[b] == '<' && code[b - 1] == '.' && code[b - 2] == '.' { continue; }   // a range's end
+    if !dot && b >= 1 && code[b] == ':' && code[b - 1] == ':' {     // an integer constant
+      e := i; while e < code.count && code[e] == ' ' { e += 1; }
+      if e < code.count && code[e] == ';' { continue; }
+    }
+    return true;
+  }
+  return false;
+}
+
+CC_NOT_A_SIZE :: "// not a size";
+// Whether a line opens a checks' fixture: a procedure named for tests
+// (t_test_setup :: (...) {, test_catalog :: (...) {), whose body ends at the
+// next "}" in column 0.
+cc_fixture :: (line: string) -> bool {
+  code := cc_code(line);
+  e := code.count; while e > 0 && code[e - 1] == ' ' { e -= 1; }
+  name := cc_defines(code);
+  return (cc_has(name, "_test") || cc_starts(name, "test_")) && e > 0 && code[e - 1] == '{';
+}
+
 // The name a top-level line defines as a procedure ("name :: (...)"), or "".
 cc_defines :: (line: string) -> string {
   e := 0;
@@ -266,9 +311,10 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       // rule 2
       if (layer == CC_KIT || chat) && !checks_file {
-        if cc_starts(line, "#test") || cc_starts(line, "#forall") { in_test = true; }
+        if cc_starts(line, "#test") || cc_starts(line, "#forall") || cc_fixture(line) { in_test = true; }
         if in_test { if cc_starts(line, "}") { in_test = false; } continue; }
         if cc_names_a_look(cc_code(line)) { print("a look in a component: % names a colour or a face (read it from the skin): %\n", path, line); bad += 1; }
+        if cc_names_a_size(cc_code(line)) && !cc_has(line, CC_NOT_A_SIZE) { print("a size in a component: % writes a size (read it from the skin): %\n", path, line); bad += 1; }
       }
     }
   }
@@ -314,6 +360,14 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert cc_names_a_look("t := UiType.{face = 1, size = 14, line = 22};") && cc_names_a_look("c := Rgba.{r = 1};");
   #assert !cc_names_a_look("sheet_fill(sh, x, y, w, h, 0, s.hover);") && !cc_names_a_look("n := 0x10 + k;") && !cc_names_a_look(cc_code("x := 1;   // was hex(0x27272a, 1)"));
   #assert cc_code("a := \"//not a comment\"; // one") == "a := \"//not a comment\"; ";
+}
+#test "a size in a component: a number but a count, a half or text; a fixture's numbers are its checks'" {
+  #assert cc_names_a_size("  bw := 2 * 10 + ceil(w);") && cc_names_a_size("CARD_RADIUS :: 12.0;") && cc_names_a_size("  maxw := w * 0.8;") && cc_names_a_size("  y += 6;");
+  #assert cc_names_a_size("  k = prim_fill(list, k, x, y, 4, 4, 2, c);") && cc_names_a_size("  if s.control_h >= 8 {");
+  #assert !cc_names_a_size("T_ROWS :: 256; T_GROUPS :: 64;") && !cc_names_a_size("KEY_ESCAPE :: -1; KEY_DELETE :: -12;") && !cc_names_a_size("  lines: [64] TextLine;");
+  #assert !cc_names_a_size("  for k: 0..<12 { a[3] = b[k]; }") && !cc_names_a_size("  h := w / 2 + 1 - 0.5;") && cc_names_a_size("  c := 'A' + 32;");
+  #assert !cc_names_a_size("  s := \"Opus 5.5 at 12 px\";") && !cc_names_a_size("  if c >= '0' && c <= '9' { n += 1; }") && !cc_names_a_size("  x := v2 + t.x3 + 0xFF;");
+  #assert cc_fixture("t_test_setup :: (t: [] Transcript, a: [] Atlas) {") && cc_fixture("test_catalog :: (out: [] PkCatalog) {") && !cc_fixture("t_layout :: (t: [] Transcript) {") && !cc_fixture("latest_x :: (t: int) {") && !cc_fixture("x_test :: (a: int) -> int { return a; }");
 }
 #test "one of each: Markdown's marks compared, a wrapper that takes text, a caret moved a word; checks and comments don't count" {
   #assert cc_line_does("    if cast(string) line[0..<3] == \"```\" { fenced = !fenced; }") == CC_MARKDOWN;

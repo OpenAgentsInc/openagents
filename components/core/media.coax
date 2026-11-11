@@ -1,0 +1,61 @@
+// Files as the core layer reads them (components/spec.md, GitHub #13153):
+// a name's extension, the media type an image's first bytes say, whether
+// bytes read as text, a 4-byte code point. No pixels; the attachments'
+// chips (components/zeron/attachments.coax) stage files with these rules.
+//   coax/bin/coax test components/core/media.coax
+
+// A name's extension, lowered ("" for none).
+at_lower_ext :: (name: string, out: [] u8) -> string {
+  dot := -1;
+  for i: 0..<name.count { if name[i] == '.' { dot = i; } if name[i] == '/' { dot = -1; } }
+  if dot < 0 { return ""; }
+  n := 0;
+  for i: dot + 1..<name.count { if n < out.count { c := name[i]; out[n] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// The media type Claude takes for an image block: by its name, else its first bytes; "" for none.
+at_media :: (name: string, bytes: [] u8) -> string {
+  b: [8] u8;
+  e := at_lower_ext(name, b[..]);
+  if e == "png" { return "image/png"; }
+  if e == "jpg" || e == "jpeg" { return "image/jpeg"; }
+  if e == "gif" { return "image/gif"; }
+  if e == "webp" { return "image/webp"; }
+  if bytes.count >= 8 && bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G' { return "image/png"; }
+  if bytes.count >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF { return "image/jpeg"; }
+  if bytes.count >= 6 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == '8' { return "image/gif"; }
+  if bytes.count >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P' { return "image/webp"; }
+  return "";
+}
+// The code point at i and its length (UTF-8).
+at_code :: (s: string, i: int) -> u32 {
+  c := cast(u32) s[i];
+  if c >= 0xF0 && i + 3 < s.count { return ((c & 7) << 18) | ((cast(u32) s[i + 1] & 63) << 12) | ((cast(u32) s[i + 2] & 63) << 6) | (cast(u32) s[i + 3] & 63); }
+  return c;
+}
+// Whether bytes read as text: UTF-8 without NUL.
+at_is_text :: (b: [] u8) -> bool {
+  i := 0;
+  while i < b.count {
+    c := cast(int) b[i];
+    if c == 0 { return false; }
+    if c < 0x80 { i += 1; continue; }
+    n := ifx c >= 0xF0 && c < 0xF8 then 3 else ifx c >= 0xE0 then 2 else ifx c >= 0xC2 && c < 0xE0 then 1 else -1;
+    if n < 0 || i + n >= b.count { return false; }
+    for q: 1..<n + 1 { if (cast(int) b[i + q] & 0xC0) != 0x80 { return false; } }
+    i += n + 1;
+  }
+  return true;
+}
+
+#test "a file's extension, its media type by name or by its first bytes, whether it reads as text" {
+  b: [8] u8;
+  #assert at_lower_ext("a/Shot.PNG", b[..]) == "png" && at_lower_ext("dir.d/file", b[..]) == "" && at_lower_ext("x", b[..]) == "";
+  png := [8] u8.[0x89, 'P', 'N', 'G', 13, 10, 26, 10];
+  gif := [6] u8.['G', 'I', 'F', '8', '9', 'a'];
+  #assert at_media("shot.jpeg", png[0..<0]) == "image/jpeg" && at_media("blob", png[..]) == "image/png" && at_media("blob", gif[..]) == "image/gif" && at_media("blob", gif[0..<3]) == "";
+  txt := [4] u8.['h', 0xC3, 0xA9, '!'];
+  bad := [2] u8.['a', 0];
+  #assert at_is_text(txt[..]) && !at_is_text(bad[..]) && !at_is_text(txt[0..<2]);
+  #assert at_code("😀", 0) == 0x1F600 && at_code("a", 0) == 97;
+}

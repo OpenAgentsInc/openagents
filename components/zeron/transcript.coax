@@ -24,16 +24,7 @@
 T_ROWS :: 256; T_GROUPS :: 64; T_TOOLS :: 256; T_DIFF :: 512; T_POOL :: 32768;
 T_BOXES :: 2048; T_TEXTS :: 4096; T_SELS :: 1024; T_HITS :: 256;
 
-// Theme.rs constants
-SPACE_SM :: 8.0; SPACE_MD :: 12.0; SPACE_LG :: 16.0;
-TITLEBAR_HEIGHT :: 38.0;
-TRANSCRIPT_FADE_BAND :: 24.0;
-STATUS_STRIP_HEIGHT :: 24.0;
-TRANSCRIPT_WIDTH :: 736.0;      // settings transcriptWidth
-ROW_PAD_X :: 48.0;
-TIMESTAMP_LANE :: 32.0;         // SPACE_SM + 2 * SPACE_MD, under an entry's last row
-BUBBLE_RADIUS :: 16.0;
-BUBBLE_PAD_X :: 16.0; BUBBLE_PAD_Y :: 10.0;
+// Its measures are the skin's (UiTranscript, skin.tr: Zeron's are in skin/zeron.coax).
 R_USER :: 0; R_MD :: 1; R_GROUP :: 2; R_NOTICE :: 3;
 H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: MARKDOWN_HIT_WRAP; H_COPY :: MARKDOWN_HIT_COPY; H_ACTION :: 5;
 
@@ -47,18 +38,10 @@ H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: MARKDOWN_HIT_WRAP; H_COPY :: MARKDOWN_HIT_C
 TNotice :: struct { kind: int; text: string; }
 T_NOTICES :: 64;
 // What a notice's button asks of the screen (t.action, until it takes it).
+T_TRIPLE :: 3;              // a triple click takes the line
 A_NONE :: 0; A_LOGIN :: 1; A_INSTALL :: 2; A_ALLOW :: 3; A_DENY :: 4;
-NOTICE_PAD :: 10.0; NOTICE_PY :: 8.0; NOTICE_GAP :: 6.0; NOTICE_TILE :: 20.0;
-NOTICE_LINE :: 19.416408;       // 12px text on GPUI's phi line
-NOTICE_BUTTON_H :: 27.416408;   // py 4 around it
-// The working trailer under the last row (render_working_trailer): pt 16,
-// the 3x3 gradient spinner (loaders.rs, 2.5px cells, 750ms a turn), the
-// flavour word and the elapsed time.
-WORK_TOP :: 16.0;
-WORK_HEIGHT :: 19.416408;
-GSPIN_CELL :: 2.5;
-GSPIN_PERIOD :: 0.75;
-GSPIN_DIM :: 0.1;
+// The working trailer under the last row (render_working_trailer): the 3x3
+// gradient spinner (loaders.rs), the flavour word and the elapsed time.
 FLAVOUR_WORDS :: [21] string.["Zeroning", "Thinking", "Pondering", "Scheming", "Brewing", "Weaving", "Tinkering",
   "Musing", "Composing", "Sifting", "Untangling", "Distilling", "Sketching", "Plotting", "Riffing",
   "Combobulating", "Percolating", "Marinating", "Noodling", "Puzzling", "Conjuring"];
@@ -226,14 +209,14 @@ t_demo :: (t: [] Transcript) {
   d0 := t[0].nd;
   t_diff_line(t, DL_DEL, 1, 0, "fn header_color(group: &ToolGroup, theme: &Theme) -> Hsla {");
   t_diff_line(t, DL_DEL, 2, 0, "    if group.any_failed() {");
-  t_diff_line(t, DL_DEL, 3, 0, "        theme.danger");
-  t_diff_line(t, DL_DEL, 4, 0, "    } else {");
-  t_diff_line(t, DL_DEL, 5, 0, "        theme.text_muted");
-  t_diff_line(t, DL_DEL, 6, 0, "    }");
+  t_diff_line(t, DL_DEL, 3, 0, "        theme.danger");   // not a size: line numbers
+  t_diff_line(t, DL_DEL, 4, 0, "    } else {");   // not a size: line numbers
+  t_diff_line(t, DL_DEL, 5, 0, "        theme.text_muted");   // not a size: line numbers
+  t_diff_line(t, DL_DEL, 6, 0, "    }");   // not a size: line numbers
   t_diff_line(t, DL_ADD, 0, 1, "fn header_color(_group: &ToolGroup, theme: &Theme) -> Hsla {");
   t_diff_line(t, DL_ADD, 0, 2, "    // Quiet even when a child failed: the chips carry the error.");
-  t_diff_line(t, DL_ADD, 0, 3, "    theme.text_muted");
-  t_diff_line(t, DL_CONTEXT, 7, 4, "}");
+  t_diff_line(t, DL_ADD, 0, 3, "    theme.text_muted");   // not a size: line numbers
+  t_diff_line(t, DL_CONTEXT, 7, 4, "}");   // not a size: line numbers
   k = t_tool(t, g, Tool.{kind = TK_EDIT, arg = path, resolved = true, hunk = "@@ -1,7 +1,4 @@", diff_from = d0, diff_lines = t[0].nd - d0});
   k = t_tool(t, g, Tool.{kind = TK_EXEC, arg = "cargo test -p zeron-ui tool_group", output = "running 9 tests\ntest tool_group::quiet_header ... ok\ntest tool_group::failed_chip_tint ... ok\n\ntest result: ok. 9 passed; 0 failed", resolved = true});
   t_text(t, DEMO_REPLY);
@@ -343,8 +326,9 @@ t_rich :: (t: [] Transcript, a: [] Atlas, th: Theme, text: string, runs: [] MdRu
 lay_user :: (t: [] Transcript, a: [] Atlas, th: Theme, r: int, x: f32, y: f32, w: f32) -> f32 {
   sk := t_skin(t);
   text := t[0].rows[r].text;
-  maxw := w * 0.8;
-  inner := maxw - 2 * BUBBLE_PAD_X;
+  m := sk.tr;
+  maxw := w * m.bubble_share;
+  inner := maxw - 2 * m.bubble_pad_x;
   no_runs: [1] MdRun;
   lines: [64] TextLine;
   // each line the person typed wraps on its own (md_wrap does not break at a newline)
@@ -352,18 +336,18 @@ lay_user :: (t: [] Transcript, a: [] Atlas, th: Theme, r: int, x: f32, y: f32, w
   while lq <= text.count && n < lines.count {
     e := lq; while e < text.count && text[e] != '\n' { e += 1; }
     part: [64] TextLine;
-    m := t_wrap(t, a, cast(string) text[lq..<e], no_runs[0..<0], inner, false, part[..]);
-    for j: 0..<m { if n < lines.count { lines[n] = TextLine.{from = part[j].from + lq, to = part[j].to + lq}; n += 1; } }
+    pn := t_wrap(t, a, cast(string) text[lq..<e], no_runs[0..<0], inner, false, part[..]);
+    for j: 0..<pn { if n < lines.count { lines[n] = TextLine.{from = part[j].from + lq, to = part[j].to + lq}; n += 1; } }
     lq = e + 1;
   }
   tw := ifx n > 1 then inner else ceil(text_width(a, sk.body.face, text));
-  bw := tw + 2 * BUBBLE_PAD_X;
-  h := cast(f32) n * MD_LINE_HEIGHT + 2 * BUBBLE_PAD_Y;
+  bw := tw + 2 * m.bubble_pad_x;
+  h := cast(f32) n * sk.md.line + 2 * m.bubble_pad_y;
   bx := round_layout(x + w - bw);
-  t_quad(t, bx, y, bw, h, BUBBLE_RADIUS, sk.raised);
+  t_quad(t, bx, y, bw, h, m.bubble_radius, sk.raised);
   for k: 0..<n {
     seg := cast(string) text[lines[k].from..<lines[k].to];
-    q := t_plain(t, a, bx + BUBBLE_PAD_X, y + BUBBLE_PAD_Y + cast(f32) k * MD_LINE_HEIGHT, MD_LINE_HEIGHT, sk.body.face, sk.ink, seg, k + 1 == n);
+    q := t_plain(t, a, bx + m.bubble_pad_x, y + m.bubble_pad_y + cast(f32) k * sk.md.line, sk.md.line, sk.body.face, sk.ink, seg, k + 1 == n);
   }
   return h;
 }
@@ -391,110 +375,110 @@ table_measure :: (t: [] Transcript, a: [] Atlas, b: int, w: f32) -> MarkdownTabl
 // Lines of a detail body (py 6, 18px rows): Geist Mono 12 or, for a
 // thought, Geist 12, in the faint tone.
 lay_detail_lines :: (t: [] Transcript, a: [] Atlas, src: string, lines: [] ToolLine, n: int, x: f32, y: f32, font: int, color: Rgba) -> f32 {
-  lh: f32 = 12 * PHI;
+  sk := t_skin(t); m := sk.tr;
+  lh := sk.tool.line;
   for k: 0..<n {
-    ry := y + 6 + cast(f32) k * OUTPUT_LINE_HEIGHT;
+    ry := y + m.output_py + cast(f32) k * m.output_line;
     seg := cast(string) src[lines[k].from..<lines[k].to];
-    q := t_plain(t, a, x, ry + round_layout((OUTPUT_LINE_HEIGHT - lh) / 2), lh, font, color, seg, true);
+    q := t_plain(t, a, x, ry + round_layout((m.output_line - lh) / 2), lh, font, color, seg, true);
   }
-  return cast(f32) n * OUTPUT_LINE_HEIGHT + OUTPUT_BODY_PAD;
+  return cast(f32) n * m.output_line + m.output_pad;
 }
 
 // An edit's diff (changes.rs render_file_body_with_syntax, unified): the
 // hunk header on its bluish wash, then each line: the accent bar, the old
 // and new line numbers, the marker, the highlighted code; pb 8.
 lay_diff :: (t: [] Transcript, a: [] Atlas, th: Theme, tool: Tool, x: f32, y: f32, w: f32) -> f32 {
-  sk := t_skin(t);
+  sk := t_skin(t); m := sk.tr;
   hunk_bg := sk.hunk_wash;   // sampled: the accent at 0.08
-  t_quad(t, x, y, w, HUNK_HEADER_HEIGHT, 0, hunk_bg);
-  hl: f32 = 11 * PHI;
-  q := t_text_seg(t, a, -1, x + SPACE_LG, y + round_layout((HUNK_HEADER_HEIGHT - hl) / 2), hl, sk.mono_tiny.face, sk.faint, tool.hunk);
+  t_quad(t, x, y, w, m.hunk_header, 0, hunk_bg);
+  hl := sk.mono_tiny.line;
+  q := t_text_seg(t, a, -1, x + m.gap_turn, y + round_layout((m.hunk_header - hl) / 2), hl, sk.mono_tiny.face, sk.faint, tool.hunk);
   max_line := 0;
   for k: 0..<tool.diff_lines {
     dl := t[0].diff[tool.diff_from + k];
     if dl.old_no > max_line { max_line = dl.old_no; }
     if dl.new_no > max_line { max_line = dl.new_no; }
   }
-  gutter := diff_gutter(max_line);
+  gutter := diff_gutter(m, max_line);
   add := sk.success; del := sk.danger;
   runs: [128] MdRun;
   for k: 0..<tool.diff_lines {
     dl := t[0].diff[tool.diff_from + k];
-    ry := y + HUNK_HEADER_HEIGHT + cast(f32) k * DIFF_LINE_HEIGHT;
-    marker := "·"; mc := opacity(sk.faint, 0.5); num := opacity(sk.faint, 0.8);
-    old_c := opacity(sk.faint, 0.8); new_c := old_c;
+    ry := y + m.hunk_header + cast(f32) k * m.diff_line;
+    marker := "·"; mc := opacity(sk.faint, m.marker_ink); num := opacity(sk.faint, m.number_ink);
+    old_c := opacity(sk.faint, m.number_ink); new_c := old_c;
     if dl.kind == DL_ADD {
-      marker = "+"; mc = add; new_c = opacity(add, 0.9);
-      t_quad(t, x, ry, w, DIFF_LINE_HEIGHT, 0, sk.add_wash);
-      t_quad(t, x, ry, ACCENT_BAR_WIDTH, DIFF_LINE_HEIGHT, 0, sk.add_bar);
+      marker = "+"; mc = add; new_c = opacity(add, m.changed_ink);
+      t_quad(t, x, ry, w, m.diff_line, 0, sk.add_wash);
+      t_quad(t, x, ry, m.accent_bar, m.diff_line, 0, sk.add_bar);
     } else if dl.kind == DL_DEL {
-      marker = "−"; mc = del; old_c = opacity(del, 0.9);
-      t_quad(t, x, ry, w, DIFF_LINE_HEIGHT, 0, sk.del_wash);
-      t_quad(t, x, ry, ACCENT_BAR_WIDTH, DIFF_LINE_HEIGHT, 0, sk.del_bar);
+      marker = "−"; mc = del; old_c = opacity(del, m.changed_ink);
+      t_quad(t, x, ry, w, m.diff_line, 0, sk.del_wash);
+      t_quad(t, x, ry, m.accent_bar, m.diff_line, 0, sk.del_bar);
     }
-    gx := x + ACCENT_BAR_WIDTH;
-    if dl.old_no > 0 { t_number(t, a, dl.old_no, gx + gutter - 8, ry, old_c); }
-    if dl.new_no > 0 { t_number(t, a, dl.new_no, gx + 2 * gutter - 8, ry, new_c); }
+    gx := x + m.accent_bar;
+    if dl.old_no > 0 { t_number(t, a, dl.old_no, gx + gutter - m.number_inset, ry, old_c); }
+    if dl.new_no > 0 { t_number(t, a, dl.new_no, gx + 2 * gutter - m.number_inset, ry, new_c); }
     mx := gx + 2 * gutter;
     mw := text_width(a, sk.mono_small.face, marker);
-    q = t_text_seg(t, a, -1, mx + round_layout((MARKER_WIDTH - mw) / 2), ry, DIFF_LINE_HEIGHT, sk.mono_small.face, mc, marker);
-    t_syntax_line(t, a, dl.text, runs[..], mx + MARKER_WIDTH + UNIFIED_CODE_PADDING_LEFT, ry, DIFF_LINE_HEIGHT, sk.mono_small.face, opacity(sk.ink, 0.92));
+    q = t_text_seg(t, a, -1, mx + round_layout((m.marker - mw) / 2), ry, m.diff_line, sk.mono_small.face, mc, marker);
+    t_syntax_line(t, a, dl.text, runs[..], mx + m.marker + m.code_pad_l, ry, m.diff_line, sk.mono_small.face, opacity(sk.ink, m.code_ink));
   }
-  return HUNK_HEADER_HEIGHT + cast(f32) tool.diff_lines * DIFF_LINE_HEIGHT + BODY_BOTTOM_PAD;
+  return m.hunk_header + cast(f32) tool.diff_lines * m.diff_line + m.body_bottom;
 }
 // A line number right-aligned at right (Geist Mono 11 on the diff's 21px line).
 t_number :: (t: [] Transcript, a: [] Atlas, v: int, right: f32, y: f32, color: Rgba) {
   sk := t_skin(t);
-  digits: [12] u8; nd := 0; n := v;
-  while n > 0 && nd < 10 { digits[nd] = cast(u8) ('0' + n % 10); n /= 10; nd += 1; }
-  buf: [12] u8;
-  for q: 0..<nd { buf[q] = digits[nd - 1 - q]; }
-  s := t_pool(t, cast(string) buf[0..<nd]);
+  buf: [24] u8;
+  s := t_pool(t, cast(string) buf[0..<text_put_int(buf[..], 0, v)]);
   w := text_width(a, sk.mono_tiny.face, s);
-  q := t_text_seg(t, a, -1, right - ceil(w), y, DIFF_LINE_HEIGHT, sk.mono_tiny.face, color, s);
+  q := t_text_seg(t, a, -1, right - ceil(w), y, sk.tr.diff_line, sk.mono_tiny.face, color, s);
 }
 
 // A chip's header row (chip_header_row, an activity chip): the label, then
 // the detail or the file badge, the red of a failure on both; hovered, both
 // take the text tone and the trailing chevron shows.
 lay_chip_header :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, k: int, x: f32, y: f32, w: f32) {
-  sk := t_skin(t);
+  sk := t_skin(t); m := sk.tr;
   tool := t[0].tools[t[0].groups[g].tool0 + k];
   hover := t_hovered(t, H_CHIP, g, k);
   tint := ifx tool.failed then sk.danger else ifx hover then sk.ink else sk.muted;
-  lh: f32 = TOOL_LABEL_LINE_HEIGHT;
-  ty := y + (CHIP_CARD_HEIGHT - lh) / 2;
+  lh := m.label_line;
+  ty := y + (m.chip_card - lh) / 2;
   pen := x + ceil(t_text_seg(t, a, -1, x, ty, lh, sk.tool.face, tint, tool_label(tool)));   // GPUI measures text to whole px
   detail := tool_detail(tool);
-  room := x + w - 8 - 18 - pen;   // the chevron's place stays clear
+  room := x + w - m.chip_gap - m.chevron_room - pen;   // the chevron's place stays clear
+  // a file's badge: a hairline, the icon's well, a gap, the name, a pad
+  edge := m.badge_edge;
   if tool_has_file(tool) {
-    pen += 8;
-    name_c := ifx tool.failed then sk.danger else ifx hover then sk.ink else opacity(sk.ink, 0.85);
-    detail = t_fit(t, a, sk.tool.face, detail, room - 8 - 1 - 20 - 6 - 6);
+    pen += m.chip_gap;
+    name_c := ifx tool.failed then sk.danger else ifx hover then sk.ink else opacity(sk.ink, m.file_ink);
+    detail = t_fit(t, a, sk.tool.face, detail, room - m.chip_gap - edge - m.badge_well - m.badge_pad - m.badge_pad);
     nw := ceil(text_width(a, sk.tool.face, detail));
-    by := y + (CHIP_CARD_HEIGHT - 22) / 2;
-    t_quad(t, pen, by, 1 + 20 + 6 + nw + 6, 22, 5, sk.chip);
-    t_quad(t, pen + 1, by + 1, 20, 20, 4, sk.well);
-    if t_is_rust(detail) { t_icon(t, ICON_RUST, pen + 1 + 3, by + 1 + 3, 14, sk.file_tint); }
-    else { t_icon(t, ICON_DOCUMENT, pen + 1 + 3, by + 1 + 3, 14, sk.muted); }
-    pen += 1 + 20 + 6;
-    q := t_text_seg(t, a, -1, pen, by + (22 - lh) / 2, lh, sk.tool.face, name_c, detail);
-    pen += nw + 6;
+    by := y + (m.chip_card - m.badge_h) / 2;
+    t_quad(t, pen, by, edge + m.badge_well + m.badge_pad + nw + m.badge_pad, m.badge_h, m.badge_radius, sk.chip);
+    t_quad(t, pen + edge, by + edge, m.badge_well, m.badge_well, m.badge_well_radius, sk.well);
+    if t_is_rust(detail) { t_icon(t, ICON_RUST, pen + edge + m.badge_icon_inset, by + edge + m.badge_icon_inset, m.badge_icon, sk.file_tint); }
+    else { t_icon(t, ICON_DOCUMENT, pen + edge + m.badge_icon_inset, by + edge + m.badge_icon_inset, m.badge_icon, sk.muted); }
+    pen += edge + m.badge_well + m.badge_pad;
+    q := t_text_seg(t, a, -1, pen, by + (m.badge_h - lh) / 2, lh, sk.tool.face, name_c, detail);
+    pen += nw + m.badge_pad;
   } else if detail.count > 0 {
-    pen += 8;
-    detail = t_fit(t, a, sk.tool.face, detail, room - 8);
+    pen += m.chip_gap;
+    detail = t_fit(t, a, sk.tool.face, detail, room - m.chip_gap);
     pen += ceil(t_text_seg(t, a, -1, pen, ty, lh, sk.tool.face, tint, detail));
   }
   if hover {
-    pen += 8;
+    pen += m.chip_gap;
     cc := ifx tool.failed then sk.danger else sk.ink;
-    t_icon(t, ifx tool.open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, pen + 3, y + (CHIP_CARD_HEIGHT - 12) / 2, 12, cc);
+    t_icon(t, ifx tool.open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, pen + m.chevron_inset, y + (m.chip_card - m.chevron) / 2, m.chevron, cc);
   }
-  t_hit(t, H_CHIP, g, k, x, y, w, CHIP_CARD_HEIGHT);
+  t_hit(t, H_CHIP, g, k, x, y, w, m.chip_card);
 }
 
 // A file name GPUI would badge with the Rust glyph.
-t_is_rust :: (name: string) -> bool { return name.count > 3 && name[name.count - 3] == '.' && name[name.count - 2] == 'r' && name[name.count - 1] == 's'; }
+t_is_rust :: (name: string) -> bool { return name.count > ".rs".count && text_ends(name, ".rs"); }
 // A one-line text cut to fit w with an ellipsis (GPUI's truncate), in the pool.
 t_fit :: (t: [] Transcript, a: [] Atlas, font: int, s: string, w: f32) -> string {
   if text_width(a, font, s) <= w { return s; }
@@ -525,57 +509,57 @@ t_notice_label :: (kind: int) -> string {
   return "Error";
 }
 t_notice_button :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, which: int, label: string, x: f32, y: f32, accent: Rgba, muted: Rgba) -> f32 {
-  sk := t_skin(t);
-  bw := 2 * 10 + ceil(text_width(a, sk.label.face, label));
+  sk := t_skin(t); m := sk.tr;
+  bw := 2 * m.notice_button_pad + ceil(text_width(a, sk.label.face, label));
   hover := t_hovered(t, H_ACTION, k, which);
-  t_quad(t, x, y, bw, NOTICE_BUTTON_H, 6, opacity(accent, ifx hover then 0.22f32 else 0.14f32));
-  q := t_text_seg(t, a, -1, x + 10, y + 4, NOTICE_LINE, sk.label.face, muted, label);
-  t_hit(t, H_ACTION, k, which, x, y, bw, NOTICE_BUTTON_H);
+  t_quad(t, x, y, bw, m.notice_button_h, m.notice_tile_radius, opacity(accent, ifx hover then m.notice_button_hover else m.notice_button_wash));
+  q := t_text_seg(t, a, -1, x + m.notice_button_pad, y + m.notice_button_py, m.notice_line, sk.label.face, muted, label);
+  t_hit(t, H_ACTION, k, which, x, y, bw, m.notice_button_h);
   return bw;
 }
 lay_notice :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, x: f32, y: f32, w: f32) -> f32 {
-  sk := t_skin(t);
+  sk := t_skin(t); m := sk.tr;
   n := t[0].notices[k];
   if n.kind == N_META {
-    q := t_plain(t, a, x + 1, y, 18, sk.tool.face, sk.faint, n.text, true);
-    return 18;
+    q := t_plain(t, a, x + 1, y, m.meta_line, sk.tool.face, sk.faint, n.text, true);
+    return m.meta_line;
   }
   if n.kind == N_STOPPED {
-    t_icon(t, ICON_STOP, x + 1, y + (18 - 11) / 2, 11, sk.faint);
-    q := t_plain(t, a, x + 1 + 11 + 8, y, 18, sk.tool.face, sk.faint, "Stopped", true);
-    return 18;
+    t_icon(t, ICON_STOP, x + 1, y + m.stop_dy, m.stop_icon, sk.faint);
+    q := t_plain(t, a, x + 1 + m.stop_icon + m.stop_gap, y, m.meta_line, sk.tool.face, sk.faint, "Stopped", true);
+    return m.meta_line;
   }
   warn := n.kind == N_ASK || n.kind == N_BUSY;
   accent := ifx warn then sk.warning else sk.danger;
   muted := ifx warn then sk.warning_muted else sk.danger_muted;
-  inner := w - 2 * NOTICE_PAD;
+  inner := w - 2 * m.notice_pad;
   no_runs: [1] MdRun;
   lines: [64] TextLine;
   nl := t_wrap(t, a, n.text, no_runs[0..<0], inner, true, lines[..]);
-  h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
+  h := m.notice_py + m.notice_tile + m.notice_gap + cast(f32) nl * m.notice_line + m.notice_py;
   acts := n.kind == N_SIGNED_OUT || n.kind == N_LIMIT || n.kind == N_INSTALL || n.kind == N_CODEX_INSTALL || n.kind == N_ASK;
-  if acts { h += NOTICE_GAP + 2 + NOTICE_BUTTON_H; }
-  t_quad(t, x, y, w, h, 10, opacity(accent, 0.1));
-  hy := y + NOTICE_PY;
-  t_quad(t, x + NOTICE_PAD, hy, NOTICE_TILE, NOTICE_TILE, 6, opacity(accent, 0.12));
-  t_icon(t, ICON_DANGER, x + NOTICE_PAD + 4, hy + 4, 12, opacity(muted, 0.8));
-  q := t_text_seg(t, a, -1, x + NOTICE_PAD + NOTICE_TILE + 8, hy + (NOTICE_TILE - NOTICE_LINE) / 2, NOTICE_LINE, sk.label.face, opacity(muted, 0.8), t_notice_label(n.kind));
-  cx := x + w - NOTICE_PAD - NOTICE_TILE;
-  if t_hovered(t, H_ACTION, k, 2) { t_quad(t, cx, hy, NOTICE_TILE, NOTICE_TILE, 6, opacity(accent, 0.12)); }
-  t_icon(t, ICON_COPY, cx + 4, hy + 4, 12, opacity(muted, 0.8));
-  t_hit(t, H_ACTION, k, 2, cx, hy, NOTICE_TILE, NOTICE_TILE);
-  my := hy + NOTICE_TILE + NOTICE_GAP;
+  if acts { h += m.notice_gap + m.notice_actions_gap + m.notice_button_h; }
+  t_quad(t, x, y, w, h, m.notice_radius, opacity(accent, m.notice_wash));
+  hy := y + m.notice_py;
+  t_quad(t, x + m.notice_pad, hy, m.notice_tile, m.notice_tile, m.notice_tile_radius, opacity(accent, m.notice_tile_wash));
+  t_icon(t, ICON_DANGER, x + m.notice_pad + m.notice_icon_inset, hy + m.notice_icon_inset, m.notice_icon, opacity(muted, m.notice_ink));
+  q := t_text_seg(t, a, -1, x + m.notice_pad + m.notice_tile + m.notice_label_gap, hy + (m.notice_tile - m.notice_line) / 2, m.notice_line, sk.label.face, opacity(muted, m.notice_ink), t_notice_label(n.kind));
+  cx := x + w - m.notice_pad - m.notice_tile;
+  if t_hovered(t, H_ACTION, k, 2) { t_quad(t, cx, hy, m.notice_tile, m.notice_tile, m.notice_tile_radius, opacity(accent, m.notice_tile_wash)); }
+  t_icon(t, ICON_COPY, cx + m.notice_icon_inset, hy + m.notice_icon_inset, m.notice_icon, opacity(muted, m.notice_ink));
+  t_hit(t, H_ACTION, k, 2, cx, hy, m.notice_tile, m.notice_tile);
+  my := hy + m.notice_tile + m.notice_gap;
   for q2: 0..<nl {
     seg := cast(string) n.text[lines[q2].from..<lines[q2].to];
-    q = t_plain(t, a, x + NOTICE_PAD, my + cast(f32) q2 * NOTICE_LINE, NOTICE_LINE, sk.tool.face, muted, seg, q2 + 1 == nl);
+    q = t_plain(t, a, x + m.notice_pad, my + cast(f32) q2 * m.notice_line, m.notice_line, sk.tool.face, muted, seg, q2 + 1 == nl);
   }
   if acts {
-    by := my + cast(f32) nl * NOTICE_LINE + NOTICE_GAP + 2;
+    by := my + cast(f32) nl * m.notice_line + m.notice_gap + m.notice_actions_gap;
     if n.kind == N_ASK {
-      bw := t_notice_button(t, a, th, k, 0, "Allow", x + NOTICE_PAD, by, accent, muted);
-      bw = t_notice_button(t, a, th, k, 1, "Deny", x + NOTICE_PAD + bw + 8, by, accent, muted);
+      bw := t_notice_button(t, a, th, k, 0, "Allow", x + m.notice_pad, by, accent, muted);
+      bw = t_notice_button(t, a, th, k, 1, "Deny", x + m.notice_pad + bw + m.notice_button_gap, by, accent, muted);
     } else {
-      bw := t_notice_button(t, a, th, k, 0, ifx n.kind == N_INSTALL || n.kind == N_CODEX_INSTALL then "Install" else "Log in", x + NOTICE_PAD, by, accent, muted);
+      bw := t_notice_button(t, a, th, k, 0, ifx n.kind == N_INSTALL || n.kind == N_CODEX_INSTALL then "Install" else "Log in", x + m.notice_pad, by, accent, muted);
     }
   }
   return h;
@@ -584,67 +568,49 @@ lay_notice :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, x: f32, y: f32,
 // The working trailer: the spinner's 3x3 cells (each row its tint, the
 // pulse rising from the bottom edge to the top-centre cell), the flavour
 // word and the elapsed time.
-gspin_opacity :: (p: f32, dim: f32) -> f32 {
-  q := p - floor(p);
-  if q < 0.45 { return 1 + (dim - 1) * (q / 0.45); }
-  if q < 0.92 { return dim; }
-  return dim + (1 - dim) * ((q - 0.92) / 0.08);
-}
+// The elapsed time as a person reads it ("3m 7s"), in the pool.
 format_elapsed :: (t: [] Transcript, secs: int) -> string {
-  buf: [24] u8; n := 0;
-  s := ifx secs < 0 then 0 else secs;
-  a := s; b := 0; ua: u8 = 's'; ub: u8 = 0;
-  if s >= 86400 { a = s / 86400; b = (s % 86400) / 3600; ua = 'd'; ub = 'h'; }
-  else if s >= 3600 { a = s / 3600; b = (s % 3600) / 60; ua = 'h'; ub = 'm'; }
-  else if s >= 60 { a = s / 60; b = s % 60; ua = 'm'; ub = 's'; }
-  n = put_int(buf[..], n, a); buf[n] = ua; n += 1;
-  if ub != 0 { buf[n] = ' '; n += 1; n = put_int(buf[..], n, b); buf[n] = ub; n += 1; }
-  return t_pool(t, cast(string) buf[0..<n]);
+  buf: [24] u8;
+  return t_pool(t, cast(string) buf[0..<text_elapsed(buf[..], secs)]);
 }
-put_int :: (buf: [] u8, at: int, v: int) -> int {
-  digits: [12] u8; nd := 0; m := v;
-  if m == 0 { digits[0] = '0'; nd = 1; }
-  while m > 0 && nd < 12 { digits[nd] = cast(u8) ('0' + m % 10); m /= 10; nd += 1; }
-  for q: 0..<nd { buf[at + q] = digits[nd - 1 - q]; }
-  return at + nd;
-}
+// A count in decimal (core/text.coax text_put_int; the desktop app's tool summaries write with it).
+put_int :: (buf: [] u8, at: int, v: int) -> int { return text_put_int(buf, at, v); }
 lay_working :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, y: f32) -> f32 {
-  sk := t_skin(t);
-  mid := y + WORK_HEIGHT / 2;
-  side: f32 = 3 * GSPIN_CELL + 2 * (GSPIN_CELL / 2);
+  sk := t_skin(t); m := sk.tr;
+  mid := y + m.work_line / 2;
+  side := m.spin_side;
   top := mid - side / 2;
-  phase := t[0].spin / GSPIN_PERIOD;
-  for row: 0..<3 {
-    for col: 0..<3 {
-      dist := 2.0f32 - cast(f32) row + abs(cast(f32) col - 1);
-      o := gspin_opacity(phase + dist / 4, GSPIN_DIM);
-      t_quad(t, x + cast(f32) col * 1.5 * GSPIN_CELL, top + cast(f32) row * 1.5 * GSPIN_CELL, GSPIN_CELL, GSPIN_CELL, GSPIN_CELL / 2, opacity(sk.spinner[row], o));
+  phase := t[0].spin / m.spin_period;
+  for row: 0..<sk.spinner.count {
+    for col: 0..<sk.spinner.count {
+      o := gspin_cell(phase, row, col, m.spin_dim);
+      t_quad(t, x + cast(f32) col * m.spin_pitch, top + cast(f32) row * m.spin_pitch, m.spin_cell, m.spin_cell, m.spin_cell / 2, opacity(sk.spinner[row], o));
     }
   }
   secs := cast(int) floor(t[0].work_secs);
   words := FLAVOUR_WORDS;
   step := secs / FLAVOUR_ROTATE_SECS;
-  word := words[(t[0].seed + step) % 21];
-  wx := x + side + SPACE_SM;
-  ww := t_text_seg(t, a, -1, wx, y, WORK_HEIGHT, sk.tool.face, sk.muted, word);
-  ew := t_text_seg(t, a, -1, wx + ww, y, WORK_HEIGHT, sk.tool.face, sk.muted, "…");
-  sl: f32 = 11 * PHI;
-  q := t_text_seg(t, a, -1, wx + ww + ew + SPACE_SM, y + 1 + (WORK_HEIGHT - sl) / 2, sl, sk.small.face, sk.faint, format_elapsed(t, secs));
-  return WORK_HEIGHT;
+  word := words[(t[0].seed + step) % words.count];
+  wx := x + side + m.gap;
+  ww := t_text_seg(t, a, -1, wx, y, m.work_line, sk.tool.face, sk.muted, word);
+  ew := t_text_seg(t, a, -1, wx + ww, y, m.work_line, sk.tool.face, sk.muted, "…");
+  sl := sk.small.line;
+  q := t_text_seg(t, a, -1, wx + ww + ew + m.gap, y + 1 + (m.work_line - sl) / 2, sl, sk.small.face, sk.faint, format_elapsed(t, secs));
+  return m.work_line;
 }
 
 // A tool group (render_tool_group, collapsing): the 26px summary header with
 // its chevron; open, 2px, then a row per call with the activity rail.
 lay_group :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, x: f32, y: f32, w: f32) -> f32 {
-  sk := t_skin(t);
+  sk := t_skin(t); m := sk.tr;
   grp := t[0].groups[g];
   hover := t_hovered(t, H_GROUP, g, -1);
-  t_icon(t, ifx grp.open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, x + ACTIVITY_TRUNK_X - 7, y + (TOOL_GROUP_HEADER_HEIGHT - 18) / 2 + 2, 14, sk.muted);
-  lh: f32 = TOOL_LABEL_LINE_HEIGHT;
-  q := t_text_seg(t, a, -1, x + 22 + 6, y + (TOOL_GROUP_HEADER_HEIGHT - lh) / 2, lh, sk.tool.face, ifx hover then sk.ink else sk.muted, grp.summary);
-  t_hit(t, H_GROUP, g, -1, x, y, w, TOOL_GROUP_HEADER_HEIGHT);
-  if !grp.open { return TOOL_GROUP_HEADER_HEIGHT; }
-  ry := y + TOOL_GROUP_HEADER_HEIGHT + CHIPS_TOP_PAD;
+  t_icon(t, ifx grp.open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, x + m.trunk_x - m.group_chevron_dx, y + (m.group_header - m.group_chevron_box) / 2 + m.group_chevron_dy, m.group_chevron, sk.muted);
+  lh := m.label_line;
+  q := t_text_seg(t, a, -1, x + m.group_summary_x, y + (m.group_header - lh) / 2, lh, sk.tool.face, ifx hover then sk.ink else sk.muted, grp.summary);
+  t_hit(t, H_GROUP, g, -1, x, y, w, m.group_header);
+  if !grp.open { return m.group_header; }
+  ry := y + m.group_header + m.chips_top;
   rail := sk.rail;
   buf: [64] ToolLine;
   // A group that is one thought says "Thought process" once: its text sits
@@ -652,38 +618,39 @@ lay_group :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, x: f32, y: f32, 
   // "Thought process" chip here; we don't).
   if grp.tools == 1 && t[0].tools[grp.tool0].kind == TK_THOUGHT {
     tool := t[0].tools[grp.tool0];
-    cx := x + ACTIVITY_GUTTER_WIDTH + ACTIVITY_TEXT_GAP;
+    cx := x + m.gutter + m.text_gap;
     n := thought_lines(tool.arg, buf[..]);
     return ry - y + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, ry, sk.tool.face, sk.faint);
   }
   for k: 0..<grp.tools {
     tool := t[0].tools[grp.tool0 + k];
-    rh := tool_row_height(tool);
+    rh := tool_row_height(m, tool);
     continues := k + 1 < grp.tools;
-    tx := x + ACTIVITY_TRUNK_X;
+    tx := x + m.trunk_x;
     // the trunk: from the row's top to the elbow, or on through the row
-    bend := ry + TOOL_TREE_ROW_HEIGHT / 2 - ACTIVITY_BEND_RADIUS;
+    bend := ry + m.tree_row / 2 - m.bend;
     t_quad(t, tx - 0.5, ry, 1, ifx continues then rh else bend - ry, 0, rail);
-    // the bend is painted with radius 0, as it always was here (ACTIVITY_BEND_RADIUS only places it)
-    t[0].nbox = prim_elbow(t[0].boxes[..], t[0].nbox, tx, bend, 0, x + ACTIVITY_BRANCH_END_X, continues, rail);
-    t_icon(t, tool_icon(tool), x + ACTIVITY_ICON_LEFT, ry + TOOL_TREE_ROW_HEIGHT / 2 - ACTIVITY_ICON_SIZE / 2, ACTIVITY_ICON_SIZE, ifx tool.failed then sk.danger else sk.muted);
-    cx := x + ACTIVITY_GUTTER_WIDTH + ACTIVITY_TEXT_GAP;
+    // the bend is painted with radius 0, as it always was here (the bend's radius only places it)
+    t[0].nbox = prim_elbow(t[0].boxes[..], t[0].nbox, tx, bend, 0, x + m.branch_end, continues, rail);
+    t_icon(t, tool_icon(tool), x + m.icon_left, ry + m.tree_row / 2 - m.icon / 2, m.icon, ifx tool.failed then sk.danger else sk.muted);
+    cx := x + m.gutter + m.text_gap;
     cw := x + w - cx;
-    cy := ry + (TOOL_TREE_ROW_HEIGHT - CHIP_CARD_HEIGHT) / 2;
+    cy := ry + (m.tree_row - m.chip_card) / 2;
     lay_chip_header(t, a, th, g, k, cx, cy, cw);
     if tool.open {
-      py := cy + CHIP_CARD_HEIGHT;
+      py := cy + m.chip_card;
+      sep := m.separator;
       if tool.kind == TK_THOUGHT {
         n := thought_lines(tool.arg, buf[..]);
-        py += DETAIL_SEPARATOR + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, py + DETAIL_SEPARATOR, sk.tool.face, sk.faint);
+        py += sep + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, py + sep, sk.tool.face, sk.faint);
       } else {
         n := call_lines(tool.arg, buf[..]);
-        py += DETAIL_SEPARATOR + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, py + DETAIL_SEPARATOR, sk.mono_small.face, sk.faint);
+        py += sep + lay_detail_lines(t, a, tool.arg, buf[..], n, cx, py + sep, sk.mono_small.face, sk.faint);
         if (tool.kind == TK_EDIT || tool.kind == TK_WRITE) && tool.diff_lines > 0 {
-          py += DETAIL_SEPARATOR + lay_diff(t, a, th, tool, cx, py + DETAIL_SEPARATOR, cw);
+          py += sep + lay_diff(t, a, th, tool, cx, py + sep, cw);
         } else if tool.output.count > 0 {
           n = output_lines(tool.output, buf[..]);
-          if n > 0 { py += DETAIL_SEPARATOR + lay_detail_lines(t, a, tool.output, buf[..], n, cx, py + DETAIL_SEPARATOR, sk.mono_small.face, sk.faint); }
+          if n > 0 { py += sep + lay_detail_lines(t, a, tool.output, buf[..], n, cx, py + sep, sk.mono_small.face, sk.faint); }
         }
       }
     }
@@ -696,17 +663,19 @@ lay_group :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, x: f32, y: f32, 
 // entry's first row 16; Markdown blocks of one part 12; around a tool group
 // 12; else 8.
 top_gap :: (t: [] Transcript, r: int) -> f32 {
-  if r == 0 { return TITLEBAR_HEIGHT + SPACE_LG + 10; }
+  m := t_skin(t).tr;
+  if r == 0 { return m.titlebar + m.gap_turn + m.gap_first; }
   row := t[0].rows[r]; prev := t[0].rows[r - 1];
-  if row.turn_start { return SPACE_LG; }
-  if row.kind == R_MD && prev.kind == R_MD && row.part == prev.part { return MD_BLOCK_GAP; }
-  if row.kind == R_GROUP || prev.kind == R_GROUP || row.kind == R_NOTICE { return SPACE_MD; }
-  return SPACE_SM;
+  if row.turn_start { return m.gap_turn; }
+  if row.kind == R_MD && prev.kind == R_MD && row.part == prev.part { return t_skin(t).md.block_gap; }
+  if row.kind == R_GROUP || prev.kind == R_GROUP || row.kind == R_NOTICE { return m.gap_group; }
+  return m.gap;
 }
 
 // Lays out every row in the column (x, w) and remakes the display list.
 // bottom_pad: the last row's clearance (the composer stack, the fade band, 8).
 t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pad: f32) {
+  m := t_skin(t).tr;
   t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
   // what the last layout wrote to the pool goes; the conversation's text stays
   if t[0].laid { t[0].np = t[0].np_base; } else { t[0].np_base = t[0].np; t[0].laid = true; }
@@ -722,13 +691,13 @@ t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pa
     t[0].rows[r].y = y; t[0].rows[r].h = h;
     y += h;
     // the live entry's lane holds the working trailer instead of its time
-    if row.last_of_entry && !(t[0].working && r + 1 == t[0].nr) { y += TIMESTAMP_LANE; }
+    if row.last_of_entry && !(t[0].working && r + 1 == t[0].nr) { y += m.lane; }
   }
   if t[0].working {
-    if t[0].nr == 0 { y += TITLEBAR_HEIGHT + SPACE_LG + 10 - WORK_TOP; }
-    y += WORK_TOP;
+    if t[0].nr == 0 { y += m.titlebar + m.gap_turn + m.gap_first - m.work_top; }
+    y += m.work_top;
     y += lay_working(t, a, th, x, y);
-    y += TIMESTAMP_LANE - WORK_TOP;
+    y += m.lane - m.work_top;
   }
   t[0].content_h = y + bottom_pad;
 }
@@ -793,7 +762,7 @@ t_paint :: (out: [] f32, at: int, t: [] Transcript, a: [] Atlas, th: Theme, d: f
   if !a[0].ready { return at; }
   sk := t_skin(t);
   off := t[0].offset;
-  v := gpu_draw(out, at, a, d, t[0].boxes[0..<t[0].nbox], 0, off, -4, view_h + 4);
+  v := gpu_draw(out, at, a, d, t[0].boxes[0..<t[0].nbox], 0, off, -sk.tr.cull, view_h + sk.tr.cull);
   // the selection, under the glyphs
   if t[0].has_sel {
     lo := t_sel_lo(t); hi := t_sel_hi(t);
@@ -809,7 +778,7 @@ t_paint :: (out: [] f32, at: int, t: [] Transcript, a: [] Atlas, th: Theme, d: f
     }
   }
   v = gpu_draw(out, v, a, d, t[0].texts[0..<t[0].ntext], 0, off, 0, view_h);
-  gp_fade(out, at, v, d, TITLEBAR_HEIGHT, TRANSCRIPT_FADE_BAND, view_h, fade_bottom_band);
+  gp_fade(out, at, v, d, sk.tr.titlebar, sk.tr.fade_band, view_h, fade_bottom_band);
   return v;
 }
 
@@ -828,12 +797,12 @@ t_hit_at :: (t: [] Transcript, x: f32, y: f32) -> int {
 // nearest above or below), the byte nearest its x.
 t_pos_at :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32) -> SelPos {
   cy := y - t[0].offset;
-  best := -1; best_d: f32 = 1000000;
+  best := -1; best_d: f32 = 1000000;   // not a size: farther than any line
   for s: 0..<t[0].nsel {
     ln := t[0].sels[s];
     if ln.items == 0 { continue; }
     dy: f32 = 0;
-    if cy < ln.y { dy = ln.y - cy; } else if cy >= ln.y + ln.h { dy = cy - ln.y - ln.h + 0.001; }
+    if cy < ln.y { dy = ln.y - cy; } else if cy >= ln.y + ln.h { dy = cy - ln.y - ln.h + 0.001; }   // not a size: a line's bottom edge is below it
     // a point between lines of one row lands on the line it is level with; ties go to the later line's left
     if dy < best_d || (dy == best_d && dy == 0 && x >= ln.x) { best = s; best_d = dy; }
   }
@@ -909,7 +878,7 @@ t_pointer :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32, phase: int, clicks:
       if clicks >= 2 && t[0].nsel > 0 {
         // a double click takes the word, a triple the line
         ln := p.line; ll := t_line_len(t, ln);
-        if clicks >= 3 { t[0].anchor = SelPos.{line = ln, off = 0}; t[0].focus = SelPos.{line = ln, off = ll}; }
+        if clicks >= T_TRIPLE { t[0].anchor = SelPos.{line = ln, off = 0}; t[0].focus = SelPos.{line = ln, off = ll}; }
         else {
           lo := p.off; hi := p.off;
           while lo > 0 && t_word_byte(t, ln, lo - 1) { lo -= 1; }

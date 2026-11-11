@@ -480,7 +480,7 @@ zr_paint :: (s: [] ZeronState, out: [] f32) -> int {
     // Zeron's new chat: the expanded composer, centered a little high
     c[0].docked = false;
     composer_wrap(c, s[0].atlas[..], cw - 34);
-    y := round_layout((h - composer_height(c[0].lines)) / 2 - ZR_HERO_LIFT);
+    y := round_layout((h - composer_height(c, c[0].lines)) / 2 - ZR_HERO_LIFT);
     t[0].nr = 0; t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
     v = paint_composer(out, v, c, s[0].atlas[..], th, d, x, y, cw);
     v = zr_paint_dictation(out, v, s, th, d);

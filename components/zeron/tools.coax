@@ -16,32 +16,10 @@
 // The tool kinds (TK_*) are the session record's: engines write them, a chip shows them.
 #load "../../coax/lib/agent/session/kinds.coax";
 
-// transcript.rs / changes.rs constants
-CHIP_CARD_HEIGHT :: 30.0;
-TOOL_TREE_ROW_HEIGHT :: 32.0;
-TOOL_GROUP_HEADER_HEIGHT :: 26.0;
-TOOL_LABEL_LINE_HEIGHT :: 18.0;
-CHIPS_TOP_PAD :: 2.0;
-OUTPUT_LINE_HEIGHT :: 18.0;
-OUTPUT_BODY_PAD :: 12.0;
-DETAIL_SEPARATOR :: 1.0;
+// Its measures are the skin's (UiTranscript, skin.tr); what it counts stays here.
 OUTPUT_DETAIL_MAX_LINES :: 24;
 CALL_WRAP_COLS :: 80;
 THOUGHT_WRAP_COLS :: 96;
-HUNK_HEADER_HEIGHT :: 28.0;
-DIFF_LINE_HEIGHT :: 21.0;
-BODY_BOTTOM_PAD :: 8.0;
-GUTTER_WIDTH :: 36.0;
-MARKER_WIDTH :: 28.0;
-ACCENT_BAR_WIDTH :: 3.0;
-UNIFIED_CODE_PADDING_LEFT :: 12.0;
-ACTIVITY_GUTTER_WIDTH :: 48.0;
-ACTIVITY_TEXT_GAP :: 8.0;
-ACTIVITY_TRUNK_X :: 12.5;
-ACTIVITY_BEND_RADIUS :: 6.0;
-ACTIVITY_BRANCH_END_X :: 28.0;
-ACTIVITY_ICON_LEFT :: 32.0;
-ACTIVITY_ICON_SIZE :: 16.0;
 
 DL_CONTEXT :: 0; DL_ADD :: 1; DL_DEL :: 2;
 DiffLine :: struct { kind: int; old_no: int; new_no: int; text: string; }
@@ -176,29 +154,27 @@ thought_lines :: (s: string, out: [] ToolLine) -> int {
 
 // An open chip's added height: separator and body for the invocation, then
 // for its output, thought or diff (detail_height).
-lines_height :: (n: int) -> f32 { return DETAIL_SEPARATOR + cast(f32) n * OUTPUT_LINE_HEIGHT + OUTPUT_BODY_PAD; }
-diff_height :: (t: Tool) -> f32 { return DETAIL_SEPARATOR + HUNK_HEADER_HEIGHT + cast(f32) t.diff_lines * DIFF_LINE_HEIGHT + BODY_BOTTOM_PAD; }
-tool_open_height :: (t: Tool) -> f32 {
+lines_height :: (m: UiTranscript, n: int) -> f32 { return m.separator + cast(f32) n * m.output_line + m.output_pad; }
+diff_height :: (m: UiTranscript, t: Tool) -> f32 { return m.separator + m.hunk_header + cast(f32) t.diff_lines * m.diff_line + m.body_bottom; }
+tool_open_height :: (m: UiTranscript, t: Tool) -> f32 {
   buf: [64] ToolLine;
   h: f32 = 0;
-  if t.kind == TK_THOUGHT { return lines_height(thought_lines(t.arg, buf[..])); }
-  h += lines_height(call_lines(t.arg, buf[..]));
-  if (t.kind == TK_EDIT || t.kind == TK_WRITE) && t.diff_lines > 0 { h += diff_height(t); }
+  if t.kind == TK_THOUGHT { return lines_height(m, thought_lines(t.arg, buf[..])); }
+  h += lines_height(m, call_lines(t.arg, buf[..]));
+  if (t.kind == TK_EDIT || t.kind == TK_WRITE) && t.diff_lines > 0 { h += diff_height(m, t); }
   else if t.output.count > 0 {
     n := output_lines(t.output, buf[..]);
-    if n > 0 { h += lines_height(n); }
+    if n > 0 { h += lines_height(m, n); }
   }
   return h;
 }
 // A chip's row in a collapsing group: the tree row, plus its open detail.
-tool_row_height :: (t: Tool) -> f32 { return TOOL_TREE_ROW_HEIGHT + (ifx t.open then tool_open_height(t) else 0.0f32); }
+tool_row_height :: (m: UiTranscript, t: Tool) -> f32 { return m.tree_row + (ifx t.open then tool_open_height(m, t) else 0.0f32); }
 
 // The gutter width for a diff's line numbers (changes.rs gutter_width).
-diff_gutter :: (max_line: int) -> f32 {
-  digits := 1; m := ifx max_line < 1 then 1 else max_line;
-  while m >= 10 { m /= 10; digits += 1; }
-  g := cast(f32) digits * 6.6 + 8 + 6;
-  return ifx g < GUTTER_WIDTH then GUTTER_WIDTH else g;
+diff_gutter :: (m: UiTranscript, max_line: int) -> f32 {
+  g := cast(f32) text_digits(max_line) * m.diff_digit + m.gutter_pad_l + m.gutter_pad_r;
+  return ifx g < m.diff_gutter then m.diff_gutter else g;
 }
 
 // ---------------------------------------------------------------- checks
@@ -226,12 +202,13 @@ diff_gutter :: (max_line: int) -> f32 {
 #test "open chips grow by Zeron's analytic detail heights" {
   run := Tool.{kind = TK_EXEC, arg = "cargo test", output = "error\n  --> x", failed = true, resolved = true, open = true};
   // the tree row, the invocation (1 line) and the output (2 lines)
-  #assert tool_row_height(run) == 32 + 31 + 49;
+  m := zeron_skin().tr;
+  #assert tool_row_height(m, run) == 32 + 31 + 49;
   thought := Tool.{kind = TK_THOUGHT, arg = "short", open = true};
-  #assert tool_row_height(thought) == 32 + 31;
+  #assert tool_row_height(m, thought) == 32 + 31;
   edit := Tool.{kind = TK_EDIT, arg = "a/b.rs", diff_lines = 10, open = true};
-  #assert tool_row_height(edit) == 32 + 31 + 1 + 28 + 210 + 8;
+  #assert tool_row_height(m, edit) == 32 + 31 + 1 + 28 + 210 + 8;
   edit.open = false;
-  #assert tool_row_height(edit) == 32;
-  #assert diff_gutter(7) == 36 && abs(diff_gutter(12345) - 47) < 0.001;
+  #assert tool_row_height(m, edit) == 32;
+  #assert diff_gutter(m, 7) == 36 && abs(diff_gutter(m, 12345) - 47) < 0.001;
 }

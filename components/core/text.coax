@@ -56,6 +56,54 @@ cluster_len :: (text: string, i: int) -> int {
   return k - i;
 }
 
+// Whether text ends with tail.
+text_ends :: (text: string, tail: string) -> bool {
+  if tail.count > text.count { return false; }
+  for i: 0..<tail.count { if text[text.count - tail.count + i] != tail[i] { return false; } }
+  return true;
+}
+// The decimal digits of a count (1 for anything under 10, 0 and less too).
+text_digits :: (v: int) -> int {
+  digits := 1; m := ifx v < 1 then 1 else v;
+  while m >= 10 { m /= 10; digits += 1; }
+  return digits;
+}
+// A count written in decimal into buf at `at` (a negative one as 0); returns the end.
+text_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; nd := 0; m := ifx v < 0 then 0 else v;
+  if m == 0 { digits[0] = '0'; nd = 1; }
+  while m > 0 && nd < 20 { digits[nd] = cast(u8) ('0' + m % 10); m /= 10; nd += 1; }
+  for q: 0..<nd { if at + q < buf.count { buf[at + q] = digits[nd - 1 - q]; } }
+  return at + nd;
+}
+// A span of seconds as a person reads it: "45s", "3m 07s" is "3m 7s", "2h 5m", "1d 3h" (a negative span is 0s).
+text_elapsed :: (buf: [] u8, secs: int) -> int {
+  s := ifx secs < 0 then 0 else secs;
+  a := s; b := 0; ua: u8 = 's'; ub: u8 = 0;
+  if s >= 86400 { a = s / 86400; b = (s % 86400) / 3600; ua = 'd'; ub = 'h'; }
+  else if s >= 3600 { a = s / 3600; b = (s % 3600) / 60; ua = 'h'; ub = 'm'; }
+  else if s >= 60 { a = s / 60; b = s % 60; ua = 'm'; ub = 's'; }
+  n := text_put_int(buf, 0, a);
+  if n < buf.count { buf[n] = ua; } n += 1;
+  if ub != 0 {
+    if n < buf.count { buf[n] = ' '; } n += 1;
+    n = text_put_int(buf, n, b);
+    if n < buf.count { buf[n] = ub; } n += 1;
+  }
+  return ifx n > buf.count then buf.count else n;
+}
+
+#test "counts in decimal: digits, a number written out, a span of seconds; a text's end" {
+  #assert text_ends("main.rs", ".rs") && !text_ends("main.rsx", ".rs") && !text_ends("rs", ".rs") && text_ends("x", "");
+  #assert text_digits(0) == 1 && text_digits(9) == 1 && text_digits(10) == 2 && text_digits(12345) == 5 && text_digits(-3) == 1;
+  b: [32] u8;
+  #assert cast(string) b[0..<text_put_int(b[..], 0, 0)] == "0" && cast(string) b[0..<text_put_int(b[..], 0, 1749890)] == "1749890";
+  n := text_put_int(b[..], 0, 7); n = text_put_int(b[..], n, 42);
+  #assert cast(string) b[0..<n] == "742";
+  #assert cast(string) b[0..<text_elapsed(b[..], 45)] == "45s" && cast(string) b[0..<text_elapsed(b[..], 187)] == "3m 7s";
+  #assert cast(string) b[0..<text_elapsed(b[..], 7500)] == "2h 5m" && cast(string) b[0..<text_elapsed(b[..], 97200)] == "1d 3h" && cast(string) b[0..<text_elapsed(b[..], -5)] == "0s";
+}
+
 #test "graphemes: a letter with its marks, emoji with modifiers and joiners, flags, CR LF" {
   #assert cluster_len("ab", 0) == 1 && cluster_len("", 0) == 0;
   #assert cluster_len("éx", 0) == 3;            // e + combining acute

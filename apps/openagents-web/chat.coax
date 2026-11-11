@@ -966,7 +966,7 @@ wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f
     // Zeron's new chat: the expanded composer, centered a little high, the intro above it
     c[0].docked = false;
     composer_wrap(c, a, cw - 34);
-    y := round_layout((h - composer_height(c[0].lines)) / 2 - WC_HERO_LIFT);
+    y := round_layout((h - composer_height(c, c[0].lines)) / 2 - WC_HERO_LIFT);
     t[0].nr = 0; t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
     r := wc_words(out, WcFlow.{v = v, y = y - 24 - 3 * 19.416408}, s, d, WC_INTRO, x + 4, cw - 8, true, 19.416408, th.faint, 3);
     v = paint_composer(out, r.v, c, a, th, d, x, y, cw);

@@ -15,30 +15,7 @@
 #load "../skin/zeron.coax";   // the fonts, the icons, Zeron Dark and its tokens
 #load "../core/edit.coax";   // the edit buffer
 
-// composer.rs
-TEXTAREA_PAD_TOP :: 16.0;   // pt-4
-TEXTAREA_PAD_V :: 20.0;     // pt-4 pb-1
-TEXTAREA_MIN :: 76.0;
-TEXTAREA_MAX :: 260.0;
-ACTIONS_ROW_HEIGHT :: 42.0; // 2 + 32 + 8
-ACTIONS_BOTTOM_PAD :: 8.0;
-PILL_BORDER_V :: 2.0;
-COMPOSER_RADIUS :: 26.0;
-COMPOSER_MAX_WIDTH :: 768.0;
-INPUT_LINE_HEIGHT :: 22.75;
-INPUT_TEXT_SIZE :: 14.0;
-CARET_BLINK :: 0.5;
-ACTION_INSET :: 12.0;       // morph_cluster_inset, expanded: 8 + CLUSTER_X_DELTA
-ACTION_PRIMARY_GAP :: 8.0;  // Theme::SPACE_SM
-// pickers.rs trigger_chip: h-8 rounded-lg, 12px medium, 16px icon, gap 6
-CHIP_HEIGHT :: 32.0;
-CHIP_GAP :: 6.0;
-CHIP_PAD :: 10.0;
-MODEL_CHIP_PAD :: 6.0;
-CHIP_ICON :: 16.0;
-CHIP_TEXT_SIZE :: 12.0;
-PICKERS_GAP :: 4.0;
-SEND_SIZE :: 28.0;
+// Its measures are the skin's (UiComposer, skin.cmp: Zeron's are in skin/zeron.coax).
 
 PLACEHOLDER :: "Do anything…";
 ACCESS_LABEL :: "Full access";
@@ -47,10 +24,8 @@ EFFORT_LABEL :: "High";
 
 // A chat's model chip (no effort named, no access chip: workspace-write).
 CHAT_MODEL_LABEL :: "claude-opus-5-5";
-COMPACT_TOTAL_HEIGHT :: 49.0;  // composer.rs: py-3 + one 22.75 line + the hairline
-COMPACT_INSET :: 8.0;          // morph_cluster_inset, compact
-COMPACT_TEXT_PAD :: 8.0;       // the input's px-2
 
+COMPOSER_UNBOUNDED :: 100000;    // a width no text reaches (one row while it fits)
 COMPOSER_LINES :: 1024;
 
 // Zeron's input (composer.rs ComposerInput, "adapted from gpui
@@ -115,7 +90,6 @@ Composer :: struct {
 }
 CH_SEND :: 0; CH_MODEL :: 1; CH_EFFORT :: 2; CH_ACCESS :: 3; CH_ATTACH :: 4;
 CH_COUNT :: 5;
-CHIP_RADIUS :: 8.0;
 chip_at :: (c: [] Composer, k: int, x: f32, y: f32, w: f32, h: f32) { c[0].chip_x[k] = x; c[0].chip_y[k] = y; c[0].chip_w[k] = w; c[0].chip_h[k] = h; }
 // The action under a logical point, or -1.
 composer_chip_hit :: (c: [] Composer, x: f32, y: f32) -> int {
@@ -135,8 +109,9 @@ composer_face :: (c: [] Composer) -> int { return composer_skin(c).body.face; }
 
 // The model chip's mark (harness_brand_icon): Claude's keeps its brand tone, the others take text_muted.
 composer_brand :: (list: [] Prim, n: int, c: [] Composer, sk: UiSkin, x: f32, y: f32) -> int {
-  if c[0].brand <= 0 { return prim_icon(list, n, ICON_CLAUDE, x, y, CHIP_ICON, CHIP_ICON, sk.brand); }
-  return prim_icon(list, n, c[0].brand, x, y, CHIP_ICON, CHIP_ICON, sk.muted);
+  m := sk.cmp;
+  if c[0].brand <= 0 { return prim_icon(list, n, ICON_CLAUDE, x, y, m.chip_icon, m.chip_icon, sk.brand); }
+  return prim_icon(list, n, c[0].brand, x, y, m.chip_icon, m.chip_icon, sk.muted);
 }
 model_label_of :: (c: [] Composer) -> string { return ifx c[0].model_label.count > 0 then c[0].model_label else ifx c[0].docked then CHAT_MODEL_LABEL else MODEL_LABEL; }
 effort_label_of :: (c: [] Composer) -> string { if c[0].no_effort { return ""; } return ifx c[0].effort_label.count > 0 then c[0].effort_label else EFFORT_LABEL; }
@@ -146,18 +121,19 @@ access_label_of :: (c: [] Composer) -> string { return ifx c[0].access_label.cou
 // in the background color, radius 3; with text typed it still sends, and
 // the CLI queues the message behind the run).
 composer_send :: (list: [] Prim, n: int, c: [] Composer, sk: UiSkin, send_x: f32, row_mid: f32) -> int {
-  chip_at(c, CH_SEND, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE);
-  k := prim_fill(list, n, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, SEND_SIZE / 2, sk.ink);
+  m := sk.cmp;
+  chip_at(c, CH_SEND, send_x, row_mid - m.send / 2, m.send, m.send);
+  k := prim_fill(list, n, send_x, row_mid - m.send / 2, m.send, m.send, m.send / 2, sk.ink);
   if c[0].running && c[0].ed[0].n == 0 {
-    return prim_fill(list, k, send_x + (SEND_SIZE - 11) / 2, row_mid - 11.0 / 2, 11, 11, 3, sk.on_accent);
+    return prim_fill(list, k, send_x + (m.send - m.stop) / 2, row_mid - m.stop / 2, m.stop, m.stop, m.stop_radius, sk.on_accent);
   }
-  return prim_icon(list, k, ICON_ARROW_UP, send_x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, sk.on_accent);
+  return prim_icon(list, k, ICON_ARROW_UP, send_x, row_mid - m.send / 2, m.send, m.send, sk.on_accent);
 }
 
 typed :: (c: [] Composer) -> string { return eb_text(c[0].ed[..]); }
 placeholder_of :: (c: [] Composer) -> string { return ifx c[0].placeholder.count > 0 then c[0].placeholder else PLACEHOLDER; }
 // The paperclip's slot in the compact row (none without the paperclip).
-attach_slot :: (c: [] Composer) -> f32 { return ifx c[0].no_attach then 0.0f32 else SEND_SIZE; }
+attach_slot :: (c: [] Composer) -> f32 { return ifx c[0].no_attach then 0.0f32 else composer_skin(c).cmp.send; }
 sel_lo :: (c: [] Composer) -> int { return eb_sel_lo(c[0].ed[..]); }
 sel_hi :: (c: [] Composer) -> int { return eb_sel_hi(c[0].ed[..]); }
 selected :: (c: [] Composer) -> string { return eb_selected(c[0].ed[..]); }
@@ -319,13 +295,15 @@ composer_wrap :: (c: [] Composer, a: [] Atlas, w: f32) {
 
 // The border-box height for the wrapped text: the text box (lines + pt-4 pb-1)
 // clamps to 76..260, then the actions row and the hairline (composer.rs).
-text_box :: (lines: int) -> f32 {
-  box := cast(f32) (ifx lines < 1 then 1 else lines) * INPUT_LINE_HEIGHT + TEXTAREA_PAD_V;
-  if box < TEXTAREA_MIN { box = TEXTAREA_MIN; }
-  if box > TEXTAREA_MAX { box = TEXTAREA_MAX; }
+text_box :: (m: UiComposer, lines: int) -> f32 {
+  box := cast(f32) (ifx lines < 1 then 1 else lines) * m.line + m.pad_v;
+  if box < m.min { box = m.min; }
+  if box > m.max { box = m.max; }
   return box;
 }
-composer_height :: (lines: int) -> f32 { return text_box(lines) + ACTIONS_ROW_HEIGHT + PILL_BORDER_V; }
+composer_height :: (c: [] Composer, lines: int) -> f32 { m := composer_skin(c).cmp; return text_box(m, lines) + m.actions_row + m.border_v; }
+// A line of typed text.
+composer_line :: (c: [] Composer) -> f32 { return composer_skin(c).cmp.line; }
 
 // The row holding byte i; at a soft wrap, the upper row when upstream.
 line_of :: (c: [] Composer, i: int) -> int {
@@ -352,7 +330,7 @@ x_in_row :: (c: [] Composer, a: [] Atlas, k: int, i: int) -> f32 {
 Hit :: struct { at: int; upstream: bool; }
 hit_at :: (c: [] Composer, a: [] Atlas, x: f32, y: f32) -> Hit {
   if y < 0 { return Hit.{at = 0, upstream = false}; }
-  k := cast(int) floor(y / INPUT_LINE_HEIGHT);
+  k := cast(int) floor(y / composer_line(c));
   if k >= c[0].lines { k = c[0].lines - 1; }
   from := c[0].line_at[k];
   i := from + text_offset(a, composer_face(c), cast(string) c[0].ed[0].text[from..<c[0].line_end[k]], x);
@@ -368,7 +346,7 @@ vertical :: (c: [] Composer, a: [] Atlas, dir: int, extend: bool) {
   h := Hit.{at = 0, upstream = false};
   if to < 0 { h = Hit.{at = 0, upstream = false}; }
   else if to >= c[0].lines { h = Hit.{at = c[0].ed[0].n, upstream = true}; }
-  else { h = hit_at(c, a, col, (cast(f32) to + 0.5) * INPUT_LINE_HEIGHT); }
+  else { h = hit_at(c, a, col, (cast(f32) to + 0.5) * composer_line(c)); }
   if extend { select_to(c, h.at); } else { move_to(c, h.at); }
   c[0].upstream = h.upstream; c[0].column = col; c[0].has_column = true;
 }
@@ -432,7 +410,7 @@ composer_release :: (c: [] Composer) { c[0].selecting = false; }
 
 // The wheel over the text: scrolls it when it overflows (on_scroll_wheel).
 composer_wheel :: (c: [] Composer, dy: f32) -> bool {
-  most := cast(f32) c[0].lines * INPUT_LINE_HEIGHT - c[0].view_h;
+  most := cast(f32) c[0].lines * composer_line(c) - c[0].view_h;
   if most <= 0 { return false; }
   s := c[0].scroll - dy;
   c[0].scroll = ifx s < 0 then 0.0f32 else ifx s > most then most else s;
@@ -461,14 +439,14 @@ chip_label_width :: (c: [] Composer, a: [] Atlas, s: string) -> f32 { return cei
 // count. Lays it out too (where it was drawn, its rows, its scroll). split[0]
 // is where the typed text's prims end (the IME's underline goes after them).
 composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y: f32, w: f32, split: [] int) -> int {
-  sk := composer_skin(c);
-  left := x + 1 + 16; text_w := w - 2 - 32;
+  sk := composer_skin(c); m := sk.cmp;
+  left := x + 1 + m.text_inset; text_w := w - 2 - 2 * m.text_inset;
   composer_wrap(c, a, text_w);
-  h := round_layout(y + composer_height(c[0].lines)) - y;   // Taffy rounds the pill's edges
-  view_h := text_box(c[0].lines) - TEXTAREA_PAD_V;
+  h := round_layout(y + composer_height(c, c[0].lines)) - y;   // Taffy rounds the pill's edges
+  view_h := text_box(m, c[0].lines) - m.pad_v;
   c[0].x = x; c[0].y = y; c[0].w = w; c[0].h = h;
-  c[0].text_x = left; c[0].text_y = y + 1 + TEXTAREA_PAD_TOP; c[0].text_w = text_w; c[0].view_h = view_h;
-  lh: f32 = INPUT_LINE_HEIGHT;
+  c[0].text_x = left; c[0].text_y = y + 1 + m.pad_top; c[0].text_w = text_w; c[0].view_h = view_h;
+  lh := m.line;
   // the scroll keeps the caret's row in view (clamp_scroll)
   most := cast(f32) c[0].lines * lh - view_h;
   if most < 0 { most = 0; }
@@ -479,11 +457,10 @@ composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y
   if c[0].scroll > most { c[0].scroll = most; }
   if c[0].scroll < 0 { c[0].scroll = 0; }
   // shadow-lg, then the pill (theme.rs: no shadow on frost, this is opaque)
-  k := prim_shadow(list, n, x, y, w, h, COMPOSER_RADIUS, 0, 10, 15, -3, sk.lift);
-  k = prim_shadow(list, k, x, y, w, h, COMPOSER_RADIUS, 0, 4, 6, -4, sk.lift);
-  k = prim_box(list, k, x, y, w, h, COMPOSER_RADIUS, 1, sk.surface, sk.field_edge);
+  k := uiskin_float(list, n, sk, x, y, w, h, m.radius);
+  k = prim_box(list, k, x, y, w, h, m.radius, 1, sk.surface, sk.field_edge);
   // the text box, clipped to the input's bounds (paint_bounds: into the top padding once scrolled)
-  pad := ifx c[0].scroll > 1 then TEXTAREA_PAD_TOP else 0.0f32;
+  pad := ifx c[0].scroll > 1 then m.pad_top else 0.0f32;
   k = prim_clip(list, k, left, c[0].text_y - pad, left + text_w, (c[0].text_y - pad) + (view_h + pad));
   t := typed(c);
   top := c[0].text_y - c[0].scroll;
@@ -505,25 +482,25 @@ composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y
   } else {
     for r: 0..<c[0].lines {
       ly := top + cast(f32) r * lh;
-      if ly + lh < c[0].text_y - TEXTAREA_PAD_TOP || ly > c[0].text_y + view_h { continue; }
+      if ly + lh < c[0].text_y - m.pad_top || ly > c[0].text_y + view_h { continue; }
       k = prim_text(list, k, left, ly, 0, lh, sk.body.face, sk.ink, cast(string) t[c[0].line_at[r]..<c[0].line_end[r]]);
     }
   }
   split[0] = k;
   // the caret: 2px in the accent, the line's height, blinking; none over a selection
-  if c[0].focused && hi == lo && cast(int) floor(c[0].since / CARET_BLINK) % 2 == 0 {
+  if c[0].focused && hi == lo && cast(int) floor(c[0].since / m.caret_blink) % 2 == 0 {
     r := row_of(c, c[0].ed[0].caret, c[0].upstream);
     cx := left + x_in_row(c, a, r, c[0].ed[0].caret);
-    k = prim_fill(list, k, cx, top + cast(f32) r * lh, 2, lh, 0, sk.accent);
+    k = prim_fill(list, k, cx, top + cast(f32) r * lh, m.caret, lh, 0, sk.accent);
   }
   k = prim_unclip(list, k);
   // the actions row: 42 tall at the pill's bottom inside the hairline, 32px items centered
-  row_mid := y + h - 1 - ACTIONS_BOTTOM_PAD - CHIP_HEIGHT / 2;
-  k = composer_attach(list, k, c, sk, x + 1 + ACTION_INSET, row_mid);
-  send_x := x + w - 1 - ACTION_INSET - SEND_SIZE;
+  row_mid := y + h - 1 - m.actions_bottom - m.chip_h / 2;
+  k = composer_attach(list, k, c, sk, x + 1 + m.action_inset, row_mid);
+  send_x := x + w - 1 - m.action_inset - m.send;
   k = composer_send(list, k, c, sk, send_x, row_mid);
   if c[0].docked && c[0].model_label.count == 0 { return composer_chat_chip(list, k, c, a, sk, send_x, row_mid); }
-  return composer_pickers(list, k, c, a, sk, send_x - ACTION_PRIMARY_GAP, row_mid);
+  return composer_pickers(list, k, c, a, sk, send_x - m.primary_gap, row_mid);
 }
 
 // The IME's composition: underlined, 1px in the text color (line.rs: descent
@@ -531,24 +508,24 @@ composer_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, y
 // text box. A stroke snapped to whole device pixels, as GPUI draws it.
 composer_underline :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, d: f32) -> int {
   if !c[0].ed[0].marked || c[0].ed[0].n == 0 { return at; }
-  sk := composer_skin(c);
-  lh: f32 = INPUT_LINE_HEIGHT;
+  sk := composer_skin(c); m := sk.cmp;
+  lh := m.line;
   left := c[0].text_x; top := c[0].text_y - c[0].scroll;
   fi := a[0].fonts[sk.body.face].ascent; fd := a[0].fonts[sk.body.face].descent;
   v := at;
   for k: 0..<c[0].lines {
     ly := top + cast(f32) k * lh;
-    if ly + lh < c[0].text_y - TEXTAREA_PAD_TOP || ly > c[0].text_y + c[0].view_h { continue; }
+    if ly + lh < c[0].text_y - m.pad_top || ly > c[0].text_y + c[0].view_h { continue; }
     ma := ifx c[0].ed[0].marked_at > c[0].line_at[k] then c[0].ed[0].marked_at else c[0].line_at[k];
     mb := ifx c[0].ed[0].marked_end < c[0].line_end[k] then c[0].ed[0].marked_end else c[0].line_end[k];
     if mb > ma {
       ux := left + x_in_row(c, a, k, ma); uw := x_in_row(c, a, k, mb) - x_in_row(c, a, k, ma);
-      uy := ly + (lh - fi - fd) / 2 + fi + fd * 0.618;
+      uy := ly + (lh - fi - fd) / 2 + fi + fd * m.underline;
       bx := floor(ux * d + 0.5); by := floor(uy * d + 0.5); bw := snap_stroke(uw, d); bh := snap_stroke(1, d);
       v = emit(out, v, bx, by, bx + bw, by + bh, GP_QUAD, 0, bx, by, bw, bh, 0, 0, 0, 0, 0, 0, sk.ink, sk.ink);
     }
   }
-  pad := ifx c[0].scroll > 1 then TEXTAREA_PAD_TOP else 0.0f32;
+  pad := ifx c[0].scroll > 1 then m.pad_top else 0.0f32;
   gp_clip(out, at, v, d, left, c[0].text_y - pad, c[0].text_w, c[0].view_h + pad);
   return v;
 }
@@ -577,8 +554,9 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
 // The paperclip (Zeron's attach button: a 28px ghost icon button).
 composer_attach :: (list: [] Prim, n: int, c: [] Composer, sk: UiSkin, x: f32, row_mid: f32) -> int {
   if c[0].no_attach { chip_at(c, CH_ATTACH, 0, 0, 0, 0); return n; }
-  chip_at(c, CH_ATTACH, x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE);
-  return prim_icon(list, n, ICON_PAPERCLIP, x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, sk.muted);
+  b := sk.cmp.send;
+  chip_at(c, CH_ATTACH, x, row_mid - b / 2, b, b);
+  return prim_icon(list, n, ICON_PAPERCLIP, x, row_mid - b / 2, b, b, sk.muted);
 }
 
 // The picker chips, right-aligned at right (pickers.rs trigger_chip, the
@@ -588,44 +566,45 @@ composer_attach :: (list: [] Prim, n: int, c: [] Composer, sk: UiSkin, x: f32, r
 // access, "Plan" after it in the accent in plan mode. A chip hovered or
 // with its menu open carries the wash, and its text brightens on hover.
 composer_pickers :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, sk: UiSkin, right: f32, row_mid: f32) -> int {
+  m := sk.cmp;
   ml := model_label_of(c); el := effort_label_of(c); al := access_label_of(c);
-  model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(c, a, ml);
-  if el.count > 0 { model_w += CHIP_GAP + chip_label_width(c, a, el); }
+  model_w := 2 * m.model_chip_pad + m.chip_icon + m.chip_gap + chip_label_width(c, a, ml);
+  if el.count > 0 { model_w += m.chip_gap + chip_label_width(c, a, el); }
   mx := right - model_w;
-  chip_top := row_mid - CHIP_HEIGHT / 2;
-  clh: f32 = CHIP_TEXT_SIZE * 1.618034;   // GPUI's default line height, phi
+  chip_top := row_mid - m.chip_h / 2;
+  clh := m.chip_line;
   // Taffy rounds each layout box to whole logical pixels (GPUI layouts with rounding on)
-  cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
+  cly := row_mid - m.chip_h / 2 + round_half_toward_zero((m.chip_h - clh) / 2);   // centered in the chip, rounded within it
   k := n;
-  if c[0].hover == CH_MODEL || c[0].open == CH_MODEL { k = prim_fill(list, k, mx, chip_top, model_w, CHIP_HEIGHT, CHIP_RADIUS, sk.hover_chip); }
-  k = composer_brand(list, k, c, sk, mx + MODEL_CHIP_PAD, chip_top + (CHIP_HEIGHT - CHIP_ICON) / 2);
-  lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
-  k = prim_text(list, k, lx, cly, 0, clh, sk.label.face, ifx c[0].hover == CH_MODEL then sk.ink else opacity(sk.ink, 0.9), ml);
-  if el.count > 0 { k = prim_text(list, k, lx + chip_label_width(c, a, ml) + CHIP_GAP, cly, 0, clh, sk.label.face, opacity(sk.muted, 0.7), el); }
-  chip_at(c, CH_MODEL, mx, chip_top, model_w, CHIP_HEIGHT);
+  if c[0].hover == CH_MODEL || c[0].open == CH_MODEL { k = prim_fill(list, k, mx, chip_top, model_w, m.chip_h, m.chip_radius, sk.hover_chip); }
+  k = composer_brand(list, k, c, sk, mx + m.model_chip_pad, chip_top + (m.chip_h - m.chip_icon) / 2);
+  lx := mx + m.model_chip_pad + m.chip_icon + m.chip_gap;
+  k = prim_text(list, k, lx, cly, 0, clh, sk.label.face, ifx c[0].hover == CH_MODEL then sk.ink else opacity(sk.ink, m.model_ink), ml);
+  if el.count > 0 { k = prim_text(list, k, lx + chip_label_width(c, a, ml) + m.chip_gap, cly, 0, clh, sk.label.face, opacity(sk.muted, m.effort_ink), el); }
+  chip_at(c, CH_MODEL, mx, chip_top, model_w, m.chip_h);
   chip_at(c, CH_EFFORT, 0, 0, 0, 0);
   if c[0].no_access { chip_at(c, CH_ACCESS, 0, 0, 0, 0); return k; }
   // the access chip
-  access_w := 2 * CHIP_PAD + text_width(a, sk.label.face, al);
-  if c[0].plan { access_w += CHIP_GAP + text_width(a, sk.label.face, "Plan"); }
-  ax := round_half_toward_zero(mx - PICKERS_GAP - access_w);
-  if c[0].hover == CH_ACCESS || c[0].open == CH_ACCESS { k = prim_fill(list, k, ax, chip_top, access_w, CHIP_HEIGHT, CHIP_RADIUS, sk.hover_chip); }
-  tone := ifx c[0].hover == CH_ACCESS then sk.ink else ifx c[0].access_set then opacity(sk.ink, 0.9) else sk.muted;
-  k = prim_text(list, k, ax + CHIP_PAD, cly, 0, clh, sk.label.face, tone, al);
-  if c[0].plan { k = prim_text(list, k, ax + CHIP_PAD + text_width(a, sk.label.face, al) + CHIP_GAP, cly, 0, clh, sk.label.face, sk.accent, "Plan"); }
-  chip_at(c, CH_ACCESS, ax, chip_top, access_w, CHIP_HEIGHT);
+  access_w := 2 * m.chip_pad + text_width(a, sk.label.face, al);
+  if c[0].plan { access_w += m.chip_gap + text_width(a, sk.label.face, "Plan"); }
+  ax := round_half_toward_zero(mx - m.pickers_gap - access_w);
+  if c[0].hover == CH_ACCESS || c[0].open == CH_ACCESS { k = prim_fill(list, k, ax, chip_top, access_w, m.chip_h, m.chip_radius, sk.hover_chip); }
+  tone := ifx c[0].hover == CH_ACCESS then sk.ink else ifx c[0].access_set then opacity(sk.ink, m.model_ink) else sk.muted;
+  k = prim_text(list, k, ax + m.chip_pad, cly, 0, clh, sk.label.face, tone, al);
+  if c[0].plan { k = prim_text(list, k, ax + m.chip_pad + text_width(a, sk.label.face, al) + m.chip_gap, cly, 0, clh, sk.label.face, sk.accent, "Plan"); }
+  chip_at(c, CH_ACCESS, ax, chip_top, access_w, m.chip_h);
   return k;
 }
 // The pickers' width (both chips and the gap between them).
 pickers_width :: (c: [] Composer, a: [] Atlas) -> f32 {
-  face := composer_skin(c).label.face;
+  face := composer_skin(c).label.face; m := composer_skin(c).cmp;
   el := effort_label_of(c);
-  model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(c, a, model_label_of(c));
-  if el.count > 0 { model_w += CHIP_GAP + chip_label_width(c, a, el); }
+  model_w := 2 * m.model_chip_pad + m.chip_icon + m.chip_gap + chip_label_width(c, a, model_label_of(c));
+  if el.count > 0 { model_w += m.chip_gap + chip_label_width(c, a, el); }
   if c[0].no_access { return model_w; }
-  access_w := 2 * CHIP_PAD + text_width(a, face, access_label_of(c));
-  if c[0].plan { access_w += CHIP_GAP + text_width(a, face, "Plan"); }
-  return model_w + PICKERS_GAP + access_w;
+  access_w := 2 * m.chip_pad + text_width(a, face, access_label_of(c));
+  if c[0].plan { access_w += m.chip_gap + text_width(a, face, "Plan"); }
+  return model_w + m.pickers_gap + access_w;
 }
 
 // A chat's model chip left of Send: the Claude mark and the model, no effort
@@ -633,25 +612,27 @@ pickers_width :: (c: [] Composer, a: [] Atlas) -> f32 {
 // With the chat's labels set, the effort follows the model, muted, as the
 // new-chat chip shows it, so the chip still changes both mid-chat.
 chat_chip_width :: (c: [] Composer, a: [] Atlas) -> f32 {
-  w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(c, a, model_label_of(c));
-  if c[0].effort_label.count > 0 { w += CHIP_GAP + chip_label_width(c, a, c[0].effort_label); }
+  m := composer_skin(c).cmp;
+  w := 2 * m.model_chip_pad + m.chip_icon + m.chip_gap + chip_label_width(c, a, model_label_of(c));
+  if c[0].effort_label.count > 0 { w += m.chip_gap + chip_label_width(c, a, c[0].effort_label); }
   return w;
 }
 composer_chat_chip :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, sk: UiSkin, send_x: f32, row_mid: f32) -> int {
+  m := sk.cmp;
   cw := chat_chip_width(c, a);
-  mx := send_x - ACTION_PRIMARY_GAP - cw;
-  clh: f32 = CHIP_TEXT_SIZE * 1.618034;
-  cly := row_mid - CHIP_HEIGHT / 2 + round_half_toward_zero((CHIP_HEIGHT - clh) / 2);   // centered in the chip, rounded within it
-  k := composer_brand(list, n, c, sk, mx + MODEL_CHIP_PAD, row_mid - CHIP_ICON / 2);
+  mx := send_x - m.primary_gap - cw;
+  clh := m.chip_line;
+  cly := row_mid - m.chip_h / 2 + round_half_toward_zero((m.chip_h - clh) / 2);   // centered in the chip, rounded within it
+  k := composer_brand(list, n, c, sk, mx + m.model_chip_pad, row_mid - m.chip_icon / 2);
   ml := model_label_of(c);
-  lx := mx + MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP;
-  k = prim_text(list, k, lx, cly, 0, clh, sk.label.face, opacity(sk.ink, 0.9), ml);
-  ex := lx + chip_label_width(c, a, ml) + CHIP_GAP;
+  lx := mx + m.model_chip_pad + m.chip_icon + m.chip_gap;
+  k = prim_text(list, k, lx, cly, 0, clh, sk.label.face, opacity(sk.ink, m.model_ink), ml);
+  ex := lx + chip_label_width(c, a, ml) + m.chip_gap;
   chip_at(c, CH_ACCESS, 0, 0, 0, 0);
-  if c[0].effort_label.count == 0 { chip_at(c, CH_MODEL, mx, row_mid - CHIP_HEIGHT / 2, cw, CHIP_HEIGHT); chip_at(c, CH_EFFORT, 0, 0, 0, 0); return k; }
-  k = prim_text(list, k, ex, cly, 0, clh, sk.label.face, opacity(sk.muted, 0.7), c[0].effort_label);
-  chip_at(c, CH_MODEL, mx, row_mid - CHIP_HEIGHT / 2, ex - CHIP_GAP / 2 - mx, CHIP_HEIGHT);
-  chip_at(c, CH_EFFORT, ex - CHIP_GAP / 2, row_mid - CHIP_HEIGHT / 2, mx + cw - (ex - CHIP_GAP / 2), CHIP_HEIGHT);
+  if c[0].effort_label.count == 0 { chip_at(c, CH_MODEL, mx, row_mid - m.chip_h / 2, cw, m.chip_h); chip_at(c, CH_EFFORT, 0, 0, 0, 0); return k; }
+  k = prim_text(list, k, ex, cly, 0, clh, sk.label.face, opacity(sk.muted, m.effort_ink), c[0].effort_label);
+  chip_at(c, CH_MODEL, mx, row_mid - m.chip_h / 2, ex - m.chip_gap / 2 - mx, m.chip_h);
+  chip_at(c, CH_EFFORT, ex - m.chip_gap / 2, row_mid - m.chip_h / 2, mx + cw - (ex - m.chip_gap / 2), m.chip_h);
   return k;
 }
 
@@ -661,7 +642,8 @@ composer_chat_chip :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, sk: U
 // composer carries both pickers, as the new chat's does.
 docked_chips_width :: (c: [] Composer, a: [] Atlas) -> f32 { return ifx c[0].model_label.count == 0 then chat_chip_width(c, a) else pickers_width(c, a); }
 compact_text_width :: (c: [] Composer, a: [] Atlas, w: f32) -> f32 {
-  return w - 2 - COMPACT_INSET - attach_slot(c) - 2 * COMPACT_TEXT_PAD - docked_chips_width(c, a) - ACTION_PRIMARY_GAP - SEND_SIZE - COMPACT_INSET;
+  m := composer_skin(c).cmp;
+  return w - 2 - m.compact_inset - attach_slot(c) - 2 * m.compact_text_pad - docked_chips_width(c, a) - m.primary_gap - m.send - m.compact_inset;
 }
 composer_fits_compact :: (c: [] Composer, a: [] Atlas, w: f32) -> bool {
   t := typed(c);
@@ -670,9 +652,10 @@ composer_fits_compact :: (c: [] Composer, a: [] Atlas, w: f32) -> bool {
 }
 // The docked composer's height at width w.
 docked_height :: (c: [] Composer, a: [] Atlas, w: f32) -> f32 {
-  if composer_fits_compact(c, a, w) { return COMPACT_TOTAL_HEIGHT; }
-  composer_wrap(c, a, w - 2 - 32);
-  return composer_height(c[0].lines);
+  m := composer_skin(c).cmp;
+  if composer_fits_compact(c, a, w) { return m.compact_h; }
+  composer_wrap(c, a, w - 2 - 2 * m.text_inset);
+  return composer_height(c, c[0].lines);
 }
 
 // The composer docked under a chat at logical x, its bottom edge at bottom,
@@ -681,25 +664,24 @@ docked_height :: (c: [] Composer, a: [] Atlas, w: f32) -> f32 {
 // 47px line), else the expanded form grown upward. Into list; split as composer_prims.
 composer_docked_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x: f32, bottom: f32, w: f32, split: [] int) -> int {
   c[0].docked = true;
+  sk := composer_skin(c); m := sk.cmp;
   if !composer_fits_compact(c, a, w) {
     c[0].compact = false;
-    composer_wrap(c, a, w - 2 - 32);
-    return composer_prims(list, n, c, a, x, bottom - composer_height(c[0].lines), w, split);
+    composer_wrap(c, a, w - 2 - 2 * m.text_inset);
+    return composer_prims(list, n, c, a, x, bottom - composer_height(c, c[0].lines), w, split);
   }
-  sk := composer_skin(c);
   c[0].compact = true;
-  h: f32 = COMPACT_TOTAL_HEIGHT; y := bottom - h;
+  h := m.compact_h; y := bottom - h;
   text_w := compact_text_width(c, a, w);
-  left := x + 1 + COMPACT_INSET + attach_slot(c) + COMPACT_TEXT_PAD;
-  lh: f32 = INPUT_LINE_HEIGHT;
-  top := y + 1 + (h - PILL_BORDER_V - lh) / 2;
-  composer_wrap(c, a, 100000);
+  left := x + 1 + m.compact_inset + attach_slot(c) + m.compact_text_pad;
+  lh := m.line;
+  top := y + 1 + (h - m.border_v - lh) / 2;
+  composer_wrap(c, a, COMPOSER_UNBOUNDED);
   c[0].x = x; c[0].y = y; c[0].w = w; c[0].h = h;
   c[0].text_x = left; c[0].text_y = top; c[0].text_w = text_w; c[0].view_h = lh; c[0].scroll = 0;
   // GPUI clamps the radii to half the box (clamp_radii_for_quad_size): 24.5 here
-  r: f32 = ifx COMPOSER_RADIUS > h / 2 then h / 2 else COMPOSER_RADIUS;
-  k := prim_shadow(list, n, x, y, w, h, r, 0, 10, 15, -3, sk.lift);
-  k = prim_shadow(list, k, x, y, w, h, r, 0, 4, 6, -4, sk.lift);
+  r: f32 = ifx m.radius > h / 2 then h / 2 else m.radius;
+  k := uiskin_float(list, n, sk, x, y, w, h, r);
   k = prim_box(list, k, x, y, w, h, r, 1, sk.surface, sk.field_edge);
   t := typed(c);
   lo := sel_lo(c); hi := sel_hi(c);
@@ -713,15 +695,15 @@ composer_docked_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, x:
     k = prim_text(list, k, left, top, 0, lh, sk.body.face, sk.ink, t);
   }
   split[0] = k;
-  if c[0].focused && hi == lo && cast(int) floor(c[0].since / CARET_BLINK) % 2 == 0 {
-    k = prim_fill(list, k, left + x_in_row(c, a, 0, c[0].ed[0].caret), top, 2, lh, 0, sk.accent);
+  if c[0].focused && hi == lo && cast(int) floor(c[0].since / m.caret_blink) % 2 == 0 {
+    k = prim_fill(list, k, left + x_in_row(c, a, 0, c[0].ed[0].caret), top, m.caret, lh, 0, sk.accent);
   }
-  row_mid := y + h - 1 - (h - PILL_BORDER_V) / 2;
-  k = composer_attach(list, k, c, sk, x + 1 + COMPACT_INSET, row_mid);
-  send_x := x + w - 1 - COMPACT_INSET - SEND_SIZE;
+  row_mid := y + h - 1 - (h - m.border_v) / 2;
+  k = composer_attach(list, k, c, sk, x + 1 + m.compact_inset, row_mid);
+  send_x := x + w - 1 - m.compact_inset - m.send;
   k = composer_send(list, k, c, sk, send_x, row_mid);
   if c[0].model_label.count == 0 { return composer_chat_chip(list, k, c, a, sk, send_x, row_mid); }
-  return composer_pickers(list, k, c, a, sk, send_x - ACTION_PRIMARY_GAP, row_mid);
+  return composer_pickers(list, k, c, a, sk, send_x - m.primary_gap, row_mid);
 }
 paint_composer_docked :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: f32, x: f32, bottom: f32, w: f32) -> int {
   if !a[0].ready { return at; }
@@ -926,9 +908,10 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
   #assert u16_of(c[..], c[0].ed[0].n) == 6 && byte_of(c[..], 6) == c[0].ed[0].n && byte_of(c[..], 5) == c[0].ed[0].n;
 }
 #test "the height is Zeron's: 120 empty, growing a line at a time up to 304" {
-  #assert composer_height(1) == 120 && composer_height(2) == 120;
-  #assert composer_height(3) == 22.75 * 3 + 20 + 44;
-  #assert composer_height(20) == 304;
+  c: [1] Composer;
+  #assert composer_height(c[..], 1) == 120 && composer_height(c[..], 2) == 120;
+  #assert composer_height(c[..], 3) == 22.75 * 3 + 20 + 44;
+  #assert composer_height(c[..], 20) == 304;
 }
 #test "text wraps at spaces and at newlines (CR LF is one)" {
   c: [1] Composer; a: [1] Atlas;

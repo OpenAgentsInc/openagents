@@ -64,12 +64,12 @@ toggle :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, label: strin
 // slider_value reads a pointer's x back into a value.
 slider :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, value: f32, hit_kind: int, hit_a: int) {
   v := ifx value < 0 then 0.0f32 else ifx value > 1 then 1.0f32 else value;
-  th := ifx s.control_h >= 8 then round_layout(s.control_h / 8) else s.control_h;
+  th := s.slider_track;
   ty := y + (s.control_h - th) / 2;
   sh[0].nu = uiskin_bar(sh[0].under, sh[0].nu, s, x, ty, w, th, v, s.accent);
-  if s.control_h >= 8 {
+  if s.knob > 0 {
     // the knob, centred on the value
-    k := round_layout(s.control_h * 0.44);
+    k := s.knob;
     kx := x + (w - k) * v;
     sh[0].nu = uiskin_control(sh[0].under, sh[0].nu, s, kx, y + (s.control_h - k) / 2, k, k, UISKIN_PRIMARY);
   }
@@ -126,7 +126,7 @@ list_rows :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, x: f32, y: f32, w: f32, s
 
 // A bar filled to a share (0..1) in a colour role the caller picks from the skin. Returns its height.
 bar :: (sh: [] Sheet, s: UiSkin, x: f32, y: f32, w: f32, share: f32, color: Rgba) -> f32 {
-  h := ifx s.control_h >= 8 then round_layout(s.control_h / 4) else s.control_h;
+  h := s.bar_h;
   sh[0].nu = uiskin_bar(sh[0].under, sh[0].nu, s, x, y, w, h, share, color);
   return h;
 }

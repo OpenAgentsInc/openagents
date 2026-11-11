@@ -98,13 +98,14 @@ markdown_code :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int
     if act > 0 {
       // actions, right to left: Copy (two wider than Wrap: its side padding and its icon), then Wrap, 2 apart, 5 from the edge
       ay := y + bd + (head - bd - act) / 2;
-      copy_w := act + 2;
-      copy_x := x + w - bd - 5 - copy_w;
-      wrap_x := copy_x - 2 - act;
-      if sheet_hovered(sh, MARKDOWN_HIT_WRAP, b, 0) { sheet_fill(sh, wrap_x, ay, act, act, 6, s.hover); }
-      if sheet_hovered(sh, MARKDOWN_HIT_COPY, b, 0) { sheet_fill(sh, copy_x, ay, copy_w, act, 5, s.hover); }
-      sheet_icon(sh, s.icon_wrap, wrap_x + (act - 13) / 2, ay + (act - 13) / 2, 13, s.muted);
-      sheet_icon(sh, s.icon_copy, copy_x + 6, ay + (act - 12) / 2, 12, s.muted);
+      md := s.md;
+      copy_w := act + md.action_gap;
+      copy_x := x + w - bd - md.action_edge - copy_w;
+      wrap_x := copy_x - md.action_gap - act;
+      if sheet_hovered(sh, MARKDOWN_HIT_WRAP, b, 0) { sheet_fill(sh, wrap_x, ay, act, act, md.wrap_radius, s.hover); }
+      if sheet_hovered(sh, MARKDOWN_HIT_COPY, b, 0) { sheet_fill(sh, copy_x, ay, copy_w, act, md.copy_radius, s.hover); }
+      sheet_icon(sh, s.icon_wrap, wrap_x + (act - md.wrap_icon) / 2, ay + (act - md.wrap_icon) / 2, md.wrap_icon, s.muted);
+      sheet_icon(sh, s.icon_copy, copy_x + md.copy_icon_x, ay + (act - md.copy_icon) / 2, md.copy_icon, s.muted);
       sheet_hit(sh, MARKDOWN_HIT_WRAP, b, 0, wrap_x, ay, act, act);
       sheet_hit(sh, MARKDOWN_HIT_COPY, b, 0, copy_x, ay, copy_w, act);
     }
@@ -236,11 +237,8 @@ markdown_table :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
 
 // A number and a dot, kept in the sheet's pool.
 markdown_ordinal :: (sh: [] Sheet, number: int) -> string {
-  nb: [12] u8; nn := 0; v := number;
-  digits: [12] u8; nd := 0;
-  if v == 0 { digits[0] = '0'; nd = 1; }
-  while v > 0 && nd < 10 { digits[nd] = cast(u8) ('0' + v % 10); v /= 10; nd += 1; }
-  for q: 0..<nd { nb[nn] = digits[nd - 1 - q]; nn += 1; }
+  nb: [24] u8;
+  nn := text_put_int(nb[..], 0, number);
   nb[nn] = '.'; nn += 1;
   return sheet_pool(sh, cast(string) nb[0..<nn]);
 }
@@ -283,9 +281,9 @@ markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
     } else if doc[0].items[ix].task != MD_TASK_NONE && s.md.disc > 0 {
       // a task's box, drawn: an outline when it is open; filled, with the skin's check, when it is done
       done := doc[0].items[ix].task == MD_TASK_DONE;
-      side := s.md.disc * 2 + 4;
+      side := s.md.task;
       by := y + h + (lh - side) / 2;
-      tb := sheet_box(sh, ix_x, by, side, side, 3, s.border, ifx done then s.accent else opacity(s.accent, 0), ifx done then s.accent else s.muted);
+      tb := sheet_box(sh, ix_x, by, side, side, s.md.task_radius, s.border, ifx done then s.accent else opacity(s.accent, 0), ifx done then s.accent else s.muted);
       if done && s.icon_check >= 0 { sheet_icon(sh, s.icon_check, ix_x, by, side, s.on_accent); }
     } else if doc[0].items[ix].task != MD_TASK_NONE {
       q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, ifx doc[0].items[ix].task == MD_TASK_DONE then s.md.task_done else s.md.task_open);

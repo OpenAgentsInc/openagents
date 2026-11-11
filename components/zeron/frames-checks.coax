@@ -1,0 +1,119 @@
+// The chat set's display lists, pinned (components/spec.md Phase 2, GitHub
+// #13153): the transcript (every group and chip open, a notice of each kind,
+// the working trailer), the composer (expanded with two lines, docked with
+// Stop) and the menus (the model panel, the list, the access menu with Plan
+// mode on and off), laid out in the Zeron, Everglade and Verse skins and
+// hashed prim by prim. /chat's vertex buffers are pinned by
+// apps/openagents-web/chat-frames.coax; these pin what it does not show (the
+// menus but the panel, the other skins). A change that moves a component's
+// measures into its skin keeps these hashes; one that means to move a pixel
+// changes them in its commit.
+//   coax/bin/coax test components/zeron/frames-checks.coax
+
+#load "picker.coax";       // the transcript, the composer and the menus
+#load "../skin/all.coax";
+
+FC_PRIMS :: 4096;
+
+// A list's prims hashed: every number in 1/65536ths, every text's bytes.
+fc_q :: (h: int, v: f32) -> int { return (h * 1000003 + cast(int) floor(v * 65536 + 0.5)) & 0xFFFFFFFFFF; }
+fc_hash :: (list: [] Prim, n: int, seed: int) -> int {
+  h := (seed & 0xFFFFFFFF) * 31 + n;
+  for i: 0..<n {
+    p := list[i];
+    h = (h * 1000003 + p.kind * 7 + p.id * 131 + (ifx p.on then 1 else 0) + p.line * 17 + p.off) & 0xFFFFFFFFFF;
+    for v: [16] f32.[p.x, p.y, p.w, p.h, p.radius, p.border, p.a, p.b, p.c, p.d, p.fill.r, p.fill.g, p.fill.b, p.fill.a, p.edge.r, p.edge.a] { h = fc_q(h, v); }
+    h = fc_q(fc_q(h, p.edge.g), p.edge.b);
+    for c: p.text { h = (h * 257 + cast(int) c) & 0xFFFFFFFFFF; }
+  }
+  return h;
+}
+
+fc_transcript :: (sk: UiSkin) -> int {
+  t: [1] Transcript; a: [1] Atlas;
+  t_test_setup(t[..], a[..]);
+  t_set_skin(t[..], sk);
+  t_table_demo(t[..]);
+  kinds := [7] int.[N_ASK, N_BUSY, N_LIMIT, N_META, N_STOPPED, N_SIGNED_OUT, N_INSTALL];
+  for kd: kinds { _ = t_notice(t[..], kd, "Claude Code needs your approval to run a command in this folder."); }
+  t[0].working = true; t[0].work_secs = 187; t[0].spin = 0.3;
+  for g: 0..<t[0].ng {
+    t_set_open(t[..], g, -1, true);
+    for c: 0..<t[0].groups[g].tools { t_set_open(t[..], g, c, true); }
+  }
+  t[0].hover_kind = H_CHIP; t[0].hover_a = 0; t[0].hover_b = 4;
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  h := fc_hash(t[0].boxes[..], t[0].nbox, 1);
+  h = fc_hash(t[0].texts[..], t[0].ntext, h);
+  t[0].hover_kind = H_ACTION; t[0].hover_a = 0; t[0].hover_b = 2;
+  t_layout(t[..], a[..], zeron_dark(), 292, 736, 145);
+  return fc_hash(t[0].boxes[..], t[0].nbox, h) + cast(int) floor(t[0].content_h * 64);
+}
+
+fc_composer :: (sk: UiSkin) -> int {
+  c: [1] Composer; a: [1] Atlas;
+  md_test_atlas(a[..]);
+  composer_set_skin(c[..], sk);
+  c[0].focused = true;
+  composer_insert(c[..], "Keep the tool group headers quiet\nand let the chips carry the error.");
+  list: [COMPOSER_PRIMS] Prim; split: [1] int;
+  c[0].hover = CH_MODEL; c[0].plan = true; c[0].access_set = true;
+  n := composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
+  h := fc_hash(list[..], n, 2);
+  composer_select_all(c[..]);
+  c[0].hover = CH_ACCESS; c[0].brand = ICON_OPENAI; c[0].model_label = "gpt-5.5"; c[0].effort_label = "High";
+  n = composer_prims(list[..], 0, c[..], a[..], 292, 368, 736, split[..]);
+  h = fc_hash(list[..], n, h);
+  n = composer_docked_prims(list[..], 0, c[..], a[..], 292, 860, 736, split[..]);
+  h = fc_hash(list[..], n, h);
+  e: [1] Composer; composer_set_skin(e[..], sk); e[0].running = true; e[0].focused = true;
+  n = composer_docked_prims(list[..], 0, e[..], a[..], 292, 860, 736, split[..]);
+  h = fc_hash(list[..], n, h);
+  e[0].docked = false; e[0].no_attach = true; e[0].no_access = true;
+  n = composer_prims(list[..], 0, e[..], a[..], 292, 368, 736, split[..]);
+  return fc_hash(list[..], n, h) + cast(int) floor(docked_height(c[..], a[..], 736) * 64);
+}
+
+fc_menus :: (sk: UiSkin) -> int {
+  a: [1] Atlas; test_atlas(a[..]);
+  cat: [1] PkCatalog; test_catalog(cat[..]);
+  cat[0].place = "coderos-4080 · RTX 4080"; cat[0].place_model = 1; cat[0].tint = sk.brand;
+  p: [1] Picker; pk_set_skin(p[..], sk);
+  list: [PK_PRIMS] Prim;
+  sel := PkSel.{model = 1, level = 2, access = 1, plan = true};
+  pk_open(p[..], PK_MODEL, cat[..], sel, 781, 447, 198, 32, 880, true);
+  p[0].title_hover = true;
+  h := fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), 3);
+  sel.model = 3;
+  h = fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), h);
+  sel.model = 1;
+  _ = pk_press(p[..], cat[..], sel, 800, 500);
+  p[0].active = 2; p[0].back_hover = true; p[0].tabs = 2; p[0].tab_icon[0] = ICON_CLAUDE_14; p[0].tab_tint[0] = sk.brand; p[0].tab_icon[1] = ICON_OPENAI_14; p[0].tab_tint[1] = sk.muted;
+  h = fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), h);
+  _ = pk_text(p[..], cat[..], "zzz");
+  h = fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), h);
+  pk_open(p[..], PK_ACCESS_MENU, cat[..], sel, 694, 447, 83, 32, 880, true);
+  h = fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), h);
+  sel.plan = false; p[0].active = 3;
+  h = fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), h);
+  pk_open(p[..], PK_MODEL, cat[..], sel, 781, 120, 198, 32, 880, false);
+  return fc_hash(list[..], pk_prims(list[..], 0, p[..], cat[..], sel, a[..], 1320, 880), h);
+}
+
+// The hashes as of 6cc616b5eb, before the chat set's measures moved into its skin.
+FC_WANT :: [9] int.[895054135633, 668902141251, 972258035541,     // zeron: transcript, composer, menus
+                    140100635475, 1036568112289, 470701923851,    // everglade
+                    807423348363, 396024690953, 326021744922];    // verse
+
+#test "frames: the transcript in three skins" #steps 900000000 {
+  want := FC_WANT;
+  #assert fc_transcript(uiskin(UISKIN_ZERON)) == want[0] && fc_transcript(uiskin(UISKIN_EVERGLADE)) == want[3] && fc_transcript(uiskin(UISKIN_VERSE)) == want[6];
+}
+#test "frames: the composer in three skins" #steps 900000000 {
+  want := FC_WANT;
+  #assert fc_composer(uiskin(UISKIN_ZERON)) == want[1] && fc_composer(uiskin(UISKIN_EVERGLADE)) == want[4] && fc_composer(uiskin(UISKIN_VERSE)) == want[7];
+}
+#test "frames: the menus in three skins" #steps 900000000 {
+  want := FC_WANT;
+  #assert fc_menus(uiskin(UISKIN_ZERON)) == want[2] && fc_menus(uiskin(UISKIN_EVERGLADE)) == want[5] && fc_menus(uiskin(UISKIN_VERSE)) == want[8];
+}

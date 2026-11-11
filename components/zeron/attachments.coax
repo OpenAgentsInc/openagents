@@ -20,6 +20,7 @@
 // another binary file is refused with a message saying so.
 
 #load "composer.coax";
+#load "../core/media.coax";   // extensions, media types, text or not
 
 AT_MAX :: 16;
 AT_PATH :: 256;
@@ -27,6 +28,7 @@ AT_NAME :: 256;
 AT_INLINE_MAX :: 5242880;       // 5 MB: an image inlined (Claude's own limit)
 AT_STAGE_MAX_MB :: 24;          // what the host stages
 AT_TEXT_MAX :: 262144;          // a text file inlined for a text-only engine
+AT_CHIP_BYTES :: 4;             // a chip's character in UTF-8 (a code point past the BMP)
 
 AtFile :: struct {
   chip: int;                    // its chip (gpui.coax's registry)
@@ -51,33 +53,11 @@ at_skin :: (t: [] Attachments) -> UiSkin {
 }
 at_set_skin :: (t: [] Attachments, skin: UiSkin) { t[0].skin = skin; }
 
-at_lower_ext :: (name: string, out: [] u8) -> string {
-  dot := -1;
-  for i: 0..<name.count { if name[i] == '.' { dot = i; } if name[i] == '/' { dot = -1; } }
-  if dot < 0 { return ""; }
-  n := 0;
-  for i: dot + 1..<name.count { if n < out.count { c := name[i]; out[n] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; n += 1; } }
-  return cast(string) out[0..<n];
-}
 // is_image_path: what the chip calls an image.
 at_is_image_name :: (name: string) -> bool {
   b: [8] u8;
   e := at_lower_ext(name, b[..]);
   return e == "png" || e == "jpg" || e == "jpeg" || e == "gif" || e == "webp" || e == "svg" || e == "bmp" || e == "tif" || e == "tiff";
-}
-// The media type Claude takes for an image block: by its name, else its first bytes; "" for none.
-at_media :: (name: string, bytes: [] u8) -> string {
-  b: [8] u8;
-  e := at_lower_ext(name, b[..]);
-  if e == "png" { return "image/png"; }
-  if e == "jpg" || e == "jpeg" { return "image/jpeg"; }
-  if e == "gif" { return "image/gif"; }
-  if e == "webp" { return "image/webp"; }
-  if bytes.count >= 8 && bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G' { return "image/png"; }
-  if bytes.count >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF { return "image/jpeg"; }
-  if bytes.count >= 6 && bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == '8' { return "image/gif"; }
-  if bytes.count >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P' { return "image/webp"; }
-  return "";
 }
 at_base_name :: (path: string) -> string {
   k := 0;
@@ -92,7 +72,7 @@ at_bytes :: (t: [] Attachments, f: AtFile) -> [] u8 { return t[0].store[f.at..<f
 // (when they fit the store). Writes the chip's character into out; returns
 // its byte count (0: the draft is full).
 at_add :: (t: [] Attachments, a: [] Atlas, path: string, name: string, bytes: [] u8, out: [] u8) -> int {
-  if t[0].n >= AT_MAX || out.count < 4 { return 0; }
+  if t[0].n >= AT_MAX || out.count < AT_CHIP_BYTES { return 0; }
   // a new draft starts the store over once the last message was delivered
   if t[0].n == 0 { t[0].used = 0; t[0].images = 0; }
   f := AtFile.{};
@@ -128,23 +108,11 @@ e_copy :: (dst: [] u8, at: int, s: string) -> int {
   while k < dst.count && k > at && k - at < s.count && (cast(int) s[k - at] & 0xC0) == 0x80 { k -= 1; }
   return k;
 }
-at_put_int :: (dst: [] u8, at: int, v: int) -> int {
-  digits: [20] u8; n := 0; x := ifx v < 0 then 0 else v;
-  while true { digits[n] = cast(u8) ('0' + x % 10); n += 1; x /= 10; if x == 0 { break; } }
-  k := at;
-  while n > 0 { n -= 1; if k < dst.count { dst[k] = digits[n]; k += 1; } }
-  return k;
-}
+at_put_int :: (dst: [] u8, at: int, v: int) -> int { k := text_put_int(dst, at, v); return ifx k > dst.count then dst.count else k; }
 
-// The code point at i and its length (UTF-8).
-at_code :: (s: string, i: int) -> u32 {
-  c := cast(u32) s[i];
-  if c >= 0xF0 && i + 3 < s.count { return ((c & 7) << 18) | ((cast(u32) s[i + 1] & 63) << 12) | ((cast(u32) s[i + 2] & 63) << 6) | (cast(u32) s[i + 3] & 63); }
-  return c;
-}
 // Whether the text still holds a chip.
 at_has_chip :: (text: string, chip: int) -> bool {
-  for i: 0..<text.count { if text[i] >= 0xF0 && i + 3 < text.count && gp_chip_of(at_code(text, i)) == chip { return true; } }
+  for i: 0..<text.count { if text[i] >= 0xF0 && i + AT_CHIP_BYTES <= text.count && gp_chip_of(at_code(text, i)) == chip { return true; } }
   return false;
 }
 // Send: the draft's attachments whose chips are still in the text become the sent message's.
@@ -171,9 +139,9 @@ at_restore :: (t: [] Attachments) {
 at_plain :: (a: [] Atlas, text: string, out: [] u8, at: int) -> int {
   k := at; i := 0;
   while i < text.count {
-    if text[i] >= 0xF0 && i + 3 < text.count {
+    if text[i] >= 0xF0 && i + AT_CHIP_BYTES <= text.count {
       chip := gp_chip_of(at_code(text, i));
-      if chip >= 0 { k = e_copy(out, k, gp_chip_label(a, chip)); i += 4; continue; }
+      if chip >= 0 { k = e_copy(out, k, gp_chip_label(a, chip)); i += AT_CHIP_BYTES; continue; }
     }
     if k < out.count { out[k] = text[i]; k += 1; }
     i += 1;
@@ -200,21 +168,6 @@ at_media_of :: (t: [] Attachments, j: int) -> string {
   f := t[0].files[j];
   if !f.image || f.n == 0 { return ""; }
   return at_media(at_path(t[0].files[..], j), at_bytes(t, f));
-}
-
-// Whether bytes read as text: UTF-8 without NUL.
-at_is_text :: (b: [] u8) -> bool {
-  i := 0;
-  while i < b.count {
-    c := cast(int) b[i];
-    if c == 0 { return false; }
-    if c < 0x80 { i += 1; continue; }
-    n := ifx c >= 0xF0 && c < 0xF8 then 3 else ifx c >= 0xE0 then 2 else ifx c >= 0xC2 && c < 0xE0 then 1 else -1;
-    if n < 0 || i + n >= b.count { return false; }
-    for q: 1..<n + 1 { if (cast(int) b[i + q] & 0xC0) != 0x80 { return false; } }
-    i += n + 1;
-  }
-  return true;
 }
 
 // The Psionic hook (an engine that reads text alone): the message with
