@@ -80,7 +80,7 @@ SHA-256 of the whole string and show the token once.
 | Refresh token | `oa_rt_` + 52 + 6 | Body of `POST /api/auth/refresh` |
 | Agent API key | `oa_key_` + 8-char id + `_` + 52 + 6 | `Authorization: Bearer`; the id is shown in lists |
 | Email link token | 43 base64url chars | URL fragment only |
-| Email or SMS code | 6 digits | Typed |
+| Email code | 6 digits | Typed |
 | Recovery code | 24 BIP-39 words | Typed |
 | NIP-98 event | kind 27235 JSON, base64 | `Authorization: Nostr` |
 | Device proof | ES256 signature over method, URL, time, token hash | `OA-Device-Proof` header |
@@ -133,7 +133,6 @@ lifts ("Too many codes. Try again at 3:42 PM."), and listed on
 | Action | Limit | Keyed by |
 | --- | --- | --- |
 | Email code sends | 5 an hour, 20 a day | Address hash; also 30 an hour per IP |
-| SMS code sends | 3 an hour, 10 a day | Number hash; also 10 an hour per IP, and the monthly SMS budget |
 | Code tries | 5 per code, then the code dies | Login attempt |
 | Passkey or Nostr login | 30 a minute | IP |
 | Refresh | 60 an hour | Refresh family |
@@ -146,13 +145,13 @@ lifts ("Too many codes. Try again at 3:42 PM."), and listed on
 | Threat | What it looks like | Defence |
 | --- | --- | --- |
 | Credential stuffing | Leaked password lists tried against us | No passwords. Codes are per-login, 5 tries |
-| Code bombing, SMS pumping | Bots trigger sends to premium numbers | Two countries, per-number and per-IP limits, monthly SMS budget with a hard stop, proof of work on new accounts |
-| SIM swap | Attacker ports your number, logs in by SMS | SMS is L1; accounts with stronger factors get a limited session and the 72-hour recovery path; notices on every channel |
-| Phishing | Fake login page relays codes | Passkeys can't be relayed; email links complete only in the browser that asked; domain-bound SMS format; we nudge everyone to a passkey |
+| Code bombing | Bots trigger code emails to addresses they don't own | Per-address and per-IP limits, proof of work on new accounts. No SMS, so no SMS pumping or SIM swap exposure (D3) |
+| Inbox takeover | Attacker controls your email and logs in by code | Email is L1; accounts with stronger factors get a limited session and the 72-hour recovery path; notices on every channel |
+| Phishing | Fake login page relays codes | Passkeys can't be relayed; email links complete only in the browser that asked; we nudge everyone to a passkey |
 | Session theft | Malware or XSS copies a cookie or token | HttpOnly, `__Host-`, strict CSP with no third-party scripts, device-bound refresh, reuse detection, short access tokens, devices list |
 | Agent key leak | An agent's key lands in a log, repo or prompt | Keys are scoped and capped; secret scanning; one-click revoke; agent keys can't reach human-only routes |
 | Agent mistake | An agent with access deletes or rewrites data | Database roles that can't drop tables, locked backups in another project ([data](data-and-backups.md)) |
 | Insider | A teammate or admin abuses access | No staff recovery override; every admin action in the audit log; root admins only by deploy; PII encrypted with keys the API holds, not humans |
 | Account takeover by recovery | Attacker claims a lost account | 72-hour wait, cancellable from any channel |
-| Our provider is breached | SMS or email vendor leaks logs | They hold no user table; codes expire in 10 minutes; we can swap them ([build order](build-order.md#outside-services-we-cant-avoid)) |
-| Server breach | Database dump stolen | Tokens and codes are hashes; emails and phones are ciphertext; no passwords; no seeds we can open |
+| Our provider is breached | Email vendor leaks logs | They hold no user table; codes expire in 10 minutes; we can swap them ([build order](build-order.md#outside-services-we-cant-avoid)) |
+| Server breach | Database dump stolen | Tokens and codes are hashes; emails are ciphertext; we hold no phone numbers; no passwords; no seeds we can open |

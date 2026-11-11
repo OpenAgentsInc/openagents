@@ -19,7 +19,6 @@ A sketch, not a migration. Every id is random; every secret is a digest.
 | --- | --- |
 | `auth.accounts` | `id` (`acct_...`), `kind` (person, agent, service), `owner` (agents), `display_name`, `team`, `frozen_at`, `session_epoch`, `created_at`, `deleted_at`, `merged_into` |
 | `auth.emails` | `account`, `lookup` (HMAC-SHA256 of the normalized address, unique), `sealed` (ciphertext), `verified_at`, `primary` |
-| `auth.phones` | `account`, `lookup` (HMAC of E.164, unique), `sealed`, `country`, `verified_at` |
 | `auth.passkeys` | `account`, `credential_id` (unique), `user_handle`, `public_key` (COSE), `alg`, `sign_count`, `backup_eligible`, `backed_up`, `aaguid`, `transports`, `name`, `prf_salt`, `last_used_at` |
 | `auth.nostr_keys` | `account`, `pubkey` (unique), `label` (`phone`, `cli:<machine>`, `extension`, `bunker`), `last_used_at` |
 | `auth.devices` | `account`, `public_key` (P-256), `platform`, `name`, `created_at`, `last_seen_at`, `revoked_at` |
@@ -33,6 +32,10 @@ A sketch, not a migration. Every id is random; every secret is a digest.
 | `auth.connections` | `account`, `provider` (github, google), `subject`, `scopes`, `token_sealed`, `refreshed_at` |
 | `auth.audit` | Append-only; see below |
 
+There is no phone table and no phone column anywhere: we never collect
+phone numbers (decision D3). Lightning Address names live in
+`pay.addresses` ([Lightning Addresses](lightning-addresses.md#data)).
+
 Constraints do the policing: unique `lookup`, `credential_id`, `pubkey`;
 a check that an agent account has an owner and that owner is a person; a
 trigger that refuses deleting an account's last login authenticator.
@@ -45,7 +48,7 @@ dump or a read-only agent sees ciphertext.
 
 | Field | Protection |
 | --- | --- |
-| Email, phone | XChaCha20-Poly1305 (`coax/lib/crypto/xchacha20_poly1305.coax`), associated data = table, column and account id. Lookup by HMAC-SHA256 with a separate pepper |
+| Email | XChaCha20-Poly1305 (`coax/lib/crypto/xchacha20_poly1305.coax`), associated data = table, column and account id. Lookup by HMAC-SHA256 with a separate pepper |
 | OAuth connection tokens | Same sealing |
 | Tokens, codes, link tokens | SHA-256 only |
 | Recovery codes | scrypt, N = 2^17 |

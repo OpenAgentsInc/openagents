@@ -49,13 +49,20 @@ custody.
    in our ledger, capped (say 100,000 sats an account, shown), spendable
    only on our services, never withdrawable or sendable to another person.
    That is prepaid service, not a wallet.
-3. **Maker tips need a legal look (decision D6).** Today a player pays our
-   wallet and we pay the maker. That is accepting value from one person
-   and transmitting it to another, which is what money-transmission rules
-   cover. The clean shape is for tips to go straight from the player's
-   wallet to the maker's Lightning address, with us only showing the
-   invoice.
-4. **Agents: ch122's split, keys separate from the owner's.** An agent
+3. **Maker tips pay the maker directly (decision D6, decided).** Today a
+   player pays our wallet and we pay the maker. That is accepting value
+   from one person and transmitting it to another, which is what
+   money-transmission rules cover. So tips and upgrade shares change to go
+   straight from the player's wallet to the maker's Lightning Address,
+   with us only fetching and showing the invoice. The first-tip bonus
+   becomes a separate payment from our wallet to the maker.
+4. **`name@openagents.com` Lightning Addresses, paying the person's own
+   wallet.** Anyone can claim one in one tap. The invoice is made for the
+   person's own Spark wallet, which receives even while the phone is
+   offline, or the address forwards to a Lightning Address the person
+   already has. We never receive or hold the money. See
+   [Lightning Addresses](lightning-addresses.md).
+5. **Agents: ch122's split, keys separate from the owner's.** An agent
    holds a hot wallet capped by its grant, and co-signs refills from a
    2-of-3 treasury (agent, owner, recovery key with a 30-day timelock).
    The agent's one-seed card (ch121) gives its Nostr name and wallets from
@@ -98,7 +105,7 @@ authenticator, and shows the single-point-of-failure warning once.
 | Show the seed or export the wallet | `L2-fresh` on the device that holds it |
 | Create or widen an agent's spend grant | `L2-fresh`, human only |
 | Agent spend | Within its grant's per-payment and per-day caps; refills by the ch122 rule |
-| Any spend from a session that came from email or SMS alone on an account with stronger factors | Refused until the 72-hour recovery completes |
+| Any spend from a session that came from email alone on an account with stronger factors | Refused until the 72-hour recovery completes |
 
 Spending service credit (model D) follows the same daily limit.
 
@@ -108,8 +115,8 @@ Spending service credit (model D) follows the same daily limit.
 | --- | --- | --- |
 | A synced passkey | Log in with it | PRF slot opens the backup; restore on the new device |
 | The recovery code | Log in with it | Recovery slot opens the backup |
-| The wallet's written words | Log in by email or phone | Type the words |
-| Only email or phone | Log in at L1; recovery wait for stronger actions | **Lost**, unless they had a synced passkey or the code. We can't open the backup |
+| The wallet's written words | Log in by email or Nostr key | Type the words |
+| Only email | Log in at L1; recovery wait for stronger actions | **Lost**, unless they had a synced passkey or the code. We can't open the backup |
 | Collaborative custody (C) | Any way in | We co-sign a sweep to a new wallet after the 72-hour wait |
 
 The app asks for a backup the moment the wallet first holds money, not at
@@ -132,4 +139,6 @@ States add their own licensing on top. So:
 | C: we hold one of three keys and can't move funds alone | Low to medium; keep our key's role to co-signing |
 | D as non-withdrawable service credit | Low to medium (prepaid access rules) |
 | D as a withdrawable or transferable balance | High: money transmission |
-| Maker tips through our wallet | Medium to high; see D6 |
+| Maker tips through our wallet | Medium to high; replaced by direct payment (D6) |
+| `@openagents.com` addresses paying the person's own wallet, or forwarding to their own address | Low: we answer with an invoice someone else's wallet made; we never hold the money ([Lightning Addresses](lightning-addresses.md#money-transmission)) |
+| `@openagents.com` addresses received into our wallet and held | High: refused |

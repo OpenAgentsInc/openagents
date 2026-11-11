@@ -1,6 +1,7 @@
 # OpenAgents authentication
 
-Status: design, 2026-11-11. Docs only: nothing here is built yet.
+Status: design, 2026-11-11; owner decisions taken the same day
+([decisions](decisions.md)). Docs only: nothing here is built yet.
 
 This is a greenfield design. We have about zero users, so we replace
 today's login code instead of migrating it: the words account, the phone
@@ -25,17 +26,23 @@ moves onto the new accounts; the rest of that doc is superseded.
 ## The design in one page
 
 - **One account, many authenticators.** An account is an opaque id in our
-  own Postgres. Email, phone, passkeys, Nostr keys, device keys and agent
-  keys attach to it, in any combination. Any one strong authenticator logs
-  you in.
+  own Postgres. Email, Nostr keys, passkeys, device keys and agent keys
+  attach to it, in any combination. Any one strong authenticator logs you
+  in.
+- **We launch with email and Nostr.** Those two ship first, on the web and
+  in the apps. Passkeys, device keys and agent keys follow in the
+  [build order](build-order.md).
+- **No phone numbers, ever.** No SMS login, no phone recovery, no phone
+  field. We never collect a cell number (decision D3).
 - **No passwords.** We never store one, so there is nothing to stuff and
   no hash to crack.
 - **No third-party login on the apps.** GitHub and Google are
   *connections* (repository access, files), not ways in. Because no app
   uses a third-party login for the primary account, Apple's guideline 4.8
   does not require Sign in with Apple.
-- **Mobile default: email code, then phone.** The app then offers a
-  passkey, and makes a hardware-bound device key in the background.
+- **Mobile: email code or a Nostr key.** Once they ship, the app offers a
+  passkey after the first login and makes a hardware-bound device key in
+  the background.
 - **Nostr is first class.** NIP-98 signed requests, NIP-07 in the browser,
   NIP-46 remote signers and the phone-approves-the-web QR, all on our own
   [nostr library](../../coax/lib/nostr/).
@@ -49,6 +56,10 @@ moves onto the new accounts; the rest of that doc is superseded.
   plus database roles that can't drop tables, plus a monthly restore drill.
 - **Wallets stay self-custodial.** We store encrypted seed backups we can't
   open. Custodial balances stay small, non-withdrawable service credit.
+- **`name@openagents.com` Lightning Addresses, one tap to claim.** Money
+  sent to one lands in the person's own wallet, not ours. We also pay
+  makers' own Lightning Addresses directly
+  ([Lightning Addresses](lightning-addresses.md)).
 
 ## Principles
 
@@ -56,12 +67,12 @@ moves onto the new accounts; the rest of that doc is superseded.
    audit log live in our Cloud SQL Postgres, in our GCP project. No
    identity provider holds a copy.
 2. **No third party holds identities or sessions.** Outside services only
-   deliver messages (email, SMS, push). They see an address at the moment
-   of delivery and nothing else. Each one sits behind a small interface so
+   deliver messages (email, push). They see an address at the moment of
+   delivery and nothing else. Each one sits behind a small interface so
    it can be swapped (see [build order](build-order.md#outside-services-we-cant-avoid)).
 3. **Every secret is a digest or ciphertext at rest.** Tokens and codes are
-   stored as SHA-256. Emails and phone numbers are encrypted, with a keyed
-   hash for lookup.
+   stored as SHA-256. Emails are encrypted, with a keyed hash for lookup.
+   We don't collect phone numbers at all.
 4. **Agent-safe by construction.** Agents can't log in as people, can't
    raise their own limits, can't drop production tables and can't delete
    backups. The database and IAM enforce this, not good behaviour.
@@ -99,8 +110,8 @@ We have not verified those details beyond these sources.
 The breach did not reach auth data, but it makes the owner's point: any
 vendor that holds our user table is one more company whose internal tools
 can leak it. We already have the hard parts (Schnorr, NIP-98, AES-GCM,
-scrypt, BIP-39/32, sessions, Resend). Passkeys and SMS are the only real
-additions.
+scrypt, BIP-39/32, sessions, Resend). Passkeys are the only real
+addition.
 
 ## History we build on
 
@@ -138,25 +149,26 @@ Lessons we keep from that history:
 | [Sessions and tokens](sessions-and-tokens.md) | Session model, cookies and native storage, token formats, middleware, rate limits, threat model |
 | [Data, storage and backups](data-and-backups.md) | Schema, encryption at rest, audit log, backups, database roles, the "agent nukes prod" runbook, export and deletion |
 | [Wallets and custody](wallets-and-custody.md) | Self-custody, encrypted backups, custodial credit, one seed, agent treasuries, spend step-up, regulation |
+| [Lightning Addresses](lightning-addresses.md) | `name@openagents.com` addresses: the LNURL flow, zaps, names, the one-tap claim, where the money goes, limits, agents |
 | [Build order](build-order.md) | What to build first, the crypto we must write in Coax, the outside services we can't avoid, and the old code to delete |
-| [Decisions](decisions.md) | Every open owner decision, with options and a recommendation |
+| [Decisions](decisions.md) | Every owner decision, the options weighed, and what was decided |
 | [Realm invites and accounts](2026-10-31-realm-invites-and-auth.md) | The invite gate (kept, moved onto new accounts); its account model is superseded |
 
 ## Owner decisions
 
-Each one is argued in [decisions.md](decisions.md). The recommendation is
-what this design assumes.
+All decided by the owner on 2026-11-11. Each one is argued in
+[decisions.md](decisions.md).
 
-| # | Decision | Recommendation |
+| # | Decision | Decided |
 | --- | --- | --- |
 | D1 | Offer OAuth login (GitHub, Google) at all? | No. Connections only, so no Sign in with Apple |
-| D2 | Mobile default | Email code first, phone code second, passkey offered after |
-| D3 | SMS: offer it, and which provider | Yes, US and Canada first, through a delivery-only provider behind our own codes |
+| D2 | Launch methods and mobile default | Email code and Nostr first, everywhere. Passkeys, device keys and agent keys later |
+| D3 | SMS | None. We never collect phone numbers |
 | D4 | Custody model | Self-custody with encrypted backups we can't open; custodial only as non-withdrawable credit |
-| D5 | One seed for login and wallet | Not by default for people; opt-in. Default for agents, with the ch122 treasury split |
-| D6 | Money-transmission review of maker tips | Get counsel before the tip flow scales |
+| D5 | One seed for login and wallet | Opt-in for people; the default for agents, with the ch122 treasury split |
+| D6 | Maker tips and Lightning Addresses | Pay makers' own addresses directly, and offer opt-in `name@openagents.com` addresses that pay the person's own wallet |
 | D7 | Retire WorkOS | Delete the WorkOS environments and five named secrets |
-| D8 | Nostr-key-only accounts (no email or phone) | Allowed, with the same limits as everyone, shown up front |
+| D8 | Nostr-key-only accounts (no email) | Allowed, with the same limits as everyone, shown up front |
 | D9 | IAM: take the prod database password away from the automation account | Yes, and add a separate backup project |
-| D10 | Recovery delay when every authenticator is lost | 72 hours, cancellable from any channel; no staff override |
+| D10 | Recovery delay when every strong authenticator is lost | 72 hours, cancellable from any channel; no staff override |
 | D11 | High availability for the database | Not now; locked backups and drills first |
