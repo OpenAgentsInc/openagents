@@ -1,7 +1,7 @@
 // Everglade II's arrows (#13157), the zone's wiring of the shared ones: the Ranger's Longbow looses a real arrow here, as in Everglade
 // Experimental and the Archery Range (everglade/zone-bow.coax), and the room owns it. The flight
 // is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's (everglade/longbow.coax),
-// and this zone's ground and bodies are everglade2-archery.coax's, which the room flies with too.
+// and this zone's ground, trunks, rocks and bodies are everglade2-archery.coax's, which the room flies with too.
 //
 // Yours is drawn the frame you let go, from your bow hand toward where the crosshair rests: the page
 // doesn't wait for the room. It tells the room (aethyr/net/projectile.coax F, then the Attack's own
@@ -24,7 +24,10 @@ E2Bow :: struct {
   ar: [1] arch.Archer;                 // yours and the others' (its draw is everglade2-mouse.coax's)
   net: [1] NetShots;                   // the room's word on each (aethyr/net/shots.coax)
   strength: f32 = 1;                   // the draw your next loose had (everglade2-mouse.coax e2m_loose)
+  near: [1] E2ArNear;                  // the trunks and rocks round where an arrow or the crosshair last asked (#13166)
 }
+// The planting this page draws, which your step walks among too (everglade2-move.coax e2m_world).
+e2bw_land :: (s: [] E2) -> E2ArLand { return e2ar_land(s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_done); }
 
 // The bodies an arrow of yours may meet, as this page draws them: the monsters and the path's guard.
 e2bw_bodies :: (s: [] E2, out: [] arch.ArcheryBody) -> int {
@@ -43,7 +46,8 @@ e2bw_bodies :: (s: [] E2, out: [] arch.ArcheryBody) -> int {
 e2bw_point :: (s: [] E2) -> arch.ArcheryAim {
   m: [1] arch.SightMarch;
   m[0] = arch.sight_begin(arch.archery_sight(s[0].eye, s[0].fwd, s[0].you_x, s[0].you_z), f32(EG_BOW_LOOK));
-  while arch.sight_next(m[..]) { m[0].solid = e2ar_solid(m[0].p[0], m[0].p[1], m[0].p[2]); }
+  land := e2bw_land(s); near := s[0].bows[0].near[..];
+  while arch.sight_next(m[..]) { m[0].solid = e2ar_solid(land, near, m[0].p[0], m[0].p[1], m[0].p[2]); }
   bodies: [E2AR_BODIES] arch.ArcheryBody; n := e2bw_bodies(s, bodies[..]);
   return arch.archery_rest(m[0], f32(EG_BOW_LOOK), f32(EG_BOW_PAST), s[0].bows[0].ar[0].targets[0], bodies[0..<n]);
 }
@@ -100,7 +104,7 @@ e2bw_step :: (s: [] E2) {
   }
   bodies: [E2AR_BODIES] arch.ArcheryBody; nb := e2bw_bodies(s, bodies[..]);
   f: [1] arch.ArrowFlight;
-  while e2ar_fly(p, f[..], now) {
+  while e2ar_fly(p, f[..], now, e2bw_land(s), b[0].near[..]) {
     l := arch.archery_land(a, f[0], bodies[0..<nb], NET_SHOT_MINE);
     // yours reached a body as this page draws it: it ends there now, and the room's word says the harm
     if l.kind == arch.LAND_BODY { arch.archery_body(a, f[0], l, true); c := bodies[0]; for k: 0..<nb { if bodies[k].id == l.body { c = bodies[k]; } } e2bw_struck(s, c.at); sh[0].landed += 1; continue; }

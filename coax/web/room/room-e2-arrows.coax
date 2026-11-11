@@ -28,7 +28,18 @@ E2Arrows :: struct {
   epoch: int;                             // the tick the arrows' clock counts from (set when the first of a flight is loosed; below 0 in a young room)
   next: int;                              // the last id given
   loosed: int; hits: int; misses: int; stuck: int; gone: int; rewound_ms: int;   // what the checks read
+  near: [1] E2ArNear;                     // the trunks and rocks round where an arrow last asked (#13166)
 }
+// The planting every Everglade II room steps its seats among (room-world.c's, handed over by
+// rm_e2_land): an arrow flies among the same trunks and rocks. A room without one (the checks) has the
+// glade's own trees and rocks and the camp's props.
+e2a_land :: (v: [] RmServer) -> E2ArLand {
+  g := v[0].e2land;
+  if g.count == 0 || !g[0].done { return E2ArLand.{}; }
+  return e2ar_land(g[0].items[..], g[0].kinds[..], g[0].first[..], true);
+}
+// room-world.c's planting (world2_prepare), which the seats' steps walk among: the arrows' too.
+rm_e2_land :: (v: [] RmServer, g: [] E2MoveGround) #export_c #effects(all) { v[0].e2land = g; }
 e2a_room :: (v: [] RmServer, k: int) -> [] E2Arrows { return v[0].eg[k].arrows[..]; }
 // The arrows' clock at a tick (s): small numbers, so an f32 holds a 30th of a second exactly enough.
 e2a_clock :: (a: [] E2Arrows, tick: int) -> f32 { return f32(tick - a[0].epoch) / f32(EG_HZ); }
@@ -102,7 +113,7 @@ e2a_fly :: (v: [] RmServer, k: int, tick: int) {
   a := e2a_room(v, k); ar := a[0].ar[..]; now := e2a_clock(a, tick);
   bodies: [E2AR_BODIES] arch.ArcheryBody; nb := e2a_bodies(v, k, tick, bodies[..]);
   f: [1] arch.ArrowFlight;
-  while e2ar_fly(ar[0].arrows[..], f[..], now) {
+  while e2ar_fly(ar[0].arrows[..], f[..], now, e2a_land(v), a[0].near[..]) {
     i := f[0].i; tag := a[0].tag[i];
     l := arch.archery_land(ar, f[0], bodies[0..<nb], tag.seat);
     if l.kind == arch.LAND_NONE { continue; }

@@ -153,6 +153,9 @@ e2_hulls_hold :: (hulls: [] f32, n: int, x: f32, z: f32) -> bool {
   w = e2m_world(items[..], kinds[..], first[..], false, body[..], hulls[..], e2_road_x(-300), -300);
   #assert w.hulls == 0 && w.bodies == 0;
 }
+// A trunk's body, from its foot to its waist, as you brush past it (an arrow's flight takes it on up to
+// the crown: everglade2-archery.coax E2AR_CROWN).
+E2_TRUNK_LOW :: 0.3; E2_TRUNK_HIGH :: 1.6;
 e2m_body :: (out: [] f32, n: int, x0: f32, z0: f32, x1: f32, z1: f32, y0: f32, y1: f32, r: f32) -> int {
   if n >= E2_NEAR_BODIES || (n + 1) * 7 > out.count { return n; }
   m := n * 7;
@@ -178,14 +181,14 @@ e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: []
       if rock >= 0 {
         if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, E2Rock.{model = rock, x = px, y = items[o + 1], z = pz, yaw = items[o + 3], sh = sh, sv = items[o + 4]}, x, z); if next > at { rocks += 1; } at = next; }
       }
-      else { t := e2_trunk(kit, px, pz, items[o + 3], sh); n = e2m_body(out, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); }
+      else { t := e2_trunk(kit, px, pz, items[o + 3], sh); n = e2m_body(out, n, t[0], t[1], t[0], t[1], f32(E2_TRUNK_LOW), f32(E2_TRUNK_HIGH), t[2]); }
     }
   }}
   // the glade's own trees and rocks (its pack's composition, verse/character-glade.coax cg_item)
   for i: 0..<CG_ITEMS {
     gt := cg_item(i); if !e2_glade_kept(gt) { continue; }
     if abs(gt.x - x) > 5 + 4.2 * gt.scale || abs(gt.z - z) > 5 + 4.2 * gt.scale { continue; }
-    if gt.kind <= 1 { tv := ifx gt.variant < 0 then 0 else ifx gt.variant > 4 then 4 else gt.variant; t := e2_trunk(tv + 5 * gt.kind, gt.x, gt.z, gt.yaw, gt.scale); n = e2m_body(out, n, t[0], t[1], t[0], t[1], 0.3, 1.6, t[2]); continue; }
+    if gt.kind <= 1 { tv := ifx gt.variant < 0 then 0 else ifx gt.variant > 4 then 4 else gt.variant; t := e2_trunk(tv + 5 * gt.kind, gt.x, gt.z, gt.yaw, gt.scale); n = e2m_body(out, n, t[0], t[1], t[0], t[1], f32(E2_TRUNK_LOW), f32(E2_TRUNK_HIGH), t[2]); continue; }
     if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, e2_glade_rock(gt), x, z); if next > at { rocks += 1; } at = next; }
   }
   for i: 0..<E2_GLADE_STONES { if rocks < E2_NEAR_HULLS { next := e2_rock_hull(hulls, at, e2_glade_stone(i), x, z); if next > at { rocks += 1; } at = next; } }

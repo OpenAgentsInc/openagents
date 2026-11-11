@@ -132,6 +132,7 @@ RmServer :: struct {
   adm: RmE2Admin;                        // Everglade II's admin lines, a local room's only (room-e2-admin.coax)
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
   trv: RmTravels;                        // journeys from one room to another in flight (room-travel.coax)
+  e2land: [] E2MoveGround;               // Everglade II's planting, room-world.c's (room-e2-arrows.coax rm_e2_land)
 }
 
 // book:begin server-start

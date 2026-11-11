@@ -15,8 +15,49 @@ E2AR_BODIES :: 13;
 E2AR_HAND_SLACK :: 3.0;     // m a launch may be from where the room has the archer's hand: the steps the room hasn't stepped yet
 E2AR_HAND_LOW :: 0.4; E2AR_HAND_HIGH :: 4.5;   // m over the land a launch may be (a jump's top)
 
-// Whether a point is in the ground. The trunks and rocks don't stop an arrow yet (#13166).
-e2ar_solid :: (x: f32, y: f32, z: f32) -> bool { return y < e2_height(x, z); }
+// What an arrow flies among is what you walk among (#13166): the trunks and rocks round a point are
+// the walker's own (everglade2-move.coax e2m_world), from the planting the page draws and the room
+// steps by, so where an arrow stops is where a trunk or rock is drawn, on the page and in the room alike.
+// The planting: the page's (everglade2.coax) or the room's (E2MoveGround).
+E2ArLand :: struct { items: [] f32; kinds: [] u8; first: [] int; planted: bool; }   // E2ArLand.{}: none planted (the glade's own and the camp's only)
+// The trunks and rocks round where an arrow last asked, kept while it stays within E2AR_NEAR of there.
+E2ArNear :: struct { bodies: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32; nb: int; nh: int; x: f32; z: f32; ok: bool; }
+E2AR_NEAR :: 1.0;    // m: under the reach a rock's hull is taken from (E2_HULL_REACH) and a trunk's (5 m)
+E2AR_CROWN :: 3.0;   // m over the land a trunk stops an arrow: the walker's body ends at the waist (E2_TRUNK_HIGH)
+E2AR_AIR :: 0; E2AR_GROUND :: 1; E2AR_WOOD :: 2;   // what a point is in (e2ar_in)
+e2ar_land :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool) -> E2ArLand { return E2ArLand.{items = items, kinds = kinds, first = first, planted = planted}; }
+e2ar_near :: (land: E2ArLand, n: [] E2ArNear, x: f32, z: f32) {
+  if n[0].ok && abs(x - n[0].x) <= f32(E2AR_NEAR) && abs(z - n[0].z) <= f32(E2AR_NEAR) { return; }
+  w := e2m_world(land.items, land.kinds, land.first, land.planted, n[0].bodies[..], n[0].hulls[..], x, z);
+  n[0].nb = w.bodies; n[0].nh = w.hulls; n[0].x = x; n[0].z = z; n[0].ok = true;
+}
+// What the point (x, y, z) is in: the ground, a trunk or rock (or a camp prop), or the air.
+e2ar_in :: (land: E2ArLand, n: [] E2ArNear, x: f32, y: f32, z: f32) -> int {
+  g := e2_height(x, z);
+  if !(y >= g) { return E2AR_GROUND; }
+  e2ar_near(land, n, x, z); up := y - g;   // the walker's plane: height over the land
+  for q: 0..<n[0].nb {
+    o := q * 7; r := n[0].bodies[o + 6]; lo := n[0].bodies[o + 1]; hi := n[0].bodies[o + 4];
+    if lo == f32(E2_TRUNK_LOW) && hi == f32(E2_TRUNK_HIGH) { lo = 0; hi = f32(E2AR_CROWN); }
+    if up < lo - r || up > hi + r { continue; }
+    dx := x - n[0].bodies[o]; dz := z - n[0].bodies[o + 2];
+    if dx * dx + dz * dz < r * r { return E2AR_WOOD; }
+  }
+  at := 0;
+  while at < n[0].nh {
+    faces := cast(int) n[0].hulls[at];
+    if faces <= 0 { break; }
+    if up >= n[0].hulls[at + 1] && up <= n[0].hulls[at + 2] {
+      inside := true;
+      for q: 0..<faces { o := at + E2_HULL_HEAD + q * E2_HULL_FACE; h := n[0].hulls[o..<o + 4]; if h[0] * x + h[1] * up + h[2] * z > h[3] { inside = false; break; } }
+      if inside { return E2AR_WOOD; }
+    }
+    at += E2_HULL_HEAD + faces * E2_HULL_FACE;
+  }
+  return E2AR_AIR;
+}
+// Whether a point is in the ground, a trunk or a rock.
+e2ar_solid :: (land: E2ArLand, n: [] E2ArNear, x: f32, y: f32, z: f32) -> bool { return e2ar_in(land, n, x, y, z) != E2AR_AIR; }
 // How big a monster stands beside a person: a wolf (kind 0), a goblin.
 e2ar_scale :: (kind: int) -> f32 { return ifx kind == 0 then 0.75f32 else 0.9f32; }
 e2ar_monster :: (m: int, kind: int, x: f32, z: f32) -> arch.ArcheryBody { return eg_bow_body(m, x, e2_height(x, z), z, e2ar_scale(kind)); }
@@ -34,24 +75,65 @@ e2ar_hand :: (x: f32, z: f32, to: [3] f32) -> [3] f32 {
   fx := ifx d > 0.01 then dx / d else 0.0f32; fz := ifx d > 0.01 then dz / d else 1.0f32;   // eg_bow_hand's facing, as its unit vector
   return [3] f32.[x + fx * f32(EG_BOW_AHEAD) - fz * f32(EG_BOW_ASIDE), e2_height(x, z) + f32(EG_BOW_HAND), z + fz * f32(EG_BOW_AHEAD) + fx * f32(EG_BOW_ASIDE)];
 }
-// Every flying arrow's step to `now` against this zone's ground: after it f names the arrow (false
-// when every arrow has had its turn) and how its step ended, for archery_land.
-e2ar_fly :: (p: [] bow.Arrows, f: [] arch.ArrowFlight, now: f32) -> bool {
+// Every flying arrow's step to `now` against this zone's ground, trunks and rocks: after it f names the
+// arrow (false when every arrow has had its turn) and how its step ended, for archery_land (grass: it
+// stuck in the ground, not in wood or stone).
+e2ar_fly :: (p: [] bow.Arrows, f: [] arch.ArrowFlight, now: f32, land: E2ArLand, n: [] E2ArNear) -> bool {
   if !arch.flight_arrow(p, f, now) { return false; }
-  while arch.flight_sample(f) { q := f[0].p; f[0].solid = e2ar_solid(q[0], q[1], q[2]); f[0].grass = f[0].solid; }
+  while arch.flight_sample(f) { q := f[0].p; in := e2ar_in(land, n, q[0], q[1], q[2]); f[0].solid = in != E2AR_AIR; f[0].grass = in == E2AR_GROUND; }
   return true;
 }
 
+// A check's land: no planting, so the glade's own trees and rocks and the camp's props (e2m_world).
+e2ar_test_land :: () -> E2ArLand { return E2ArLand.{}; }
+// One arrow loosed from `from` at `to`, flown to its end: where it ended and whether in the ground.
+E2ArTestEnd :: struct { stuck: bool; at: [3] f32; grass: bool; }
+e2ar_test_shoot :: (from: [3] f32, to: [3] f32) -> E2ArTestEnd {
+  a: [1] arch.Archer; land := e2ar_test_land(); near: [1] E2ArNear; r: E2ArTestEnd;
+  _ := arch.archer_loose(a[..], 0, from, to, 1, -1, 0);
+  f: [1] arch.ArrowFlight; t := 0.0f32;
+  while t < 4 && !r.stuck {
+    t += 1.0 / 30; f[0] = arch.ArrowFlight.{};
+    while e2ar_fly(a[0].arrows[..], f[..], t, land, near[..]) {
+      none: [1] arch.ArcheryBody;
+      l := arch.archery_land(a[..], f[0], none[0..<0], 0);
+      if l.kind == arch.LAND_STUCK { r = E2ArTestEnd.{stuck = true, at = l.at, grass = l.grass}; }
+    }
+  }
+  return r;
+}
+#test "e2 archery: a trunk and a rock stop an arrow where the walker meets them, and the ground past them is reached without them" {
+  land := e2ar_test_land(); near: [1] E2ArNear;
+  // the glade's first kept tree and first rock, as the walker has them
+  tree := -1; rock := -1;
+  for i: 0..<CG_ITEMS { gt := cg_item(i); if !e2_glade_kept(gt) { continue; } if gt.kind <= 1 && tree < 0 { tree = i; } if (gt.kind == 2 || gt.kind == 3) && rock < 0 && gt.scale > 0.8 { rock = i; } }
+  #assert tree >= 0 && rock >= 0;
+  tg := cg_item(tree); tv := ifx tg.variant < 0 then 0 else ifx tg.variant > 4 then 4 else tg.variant;
+  tk := e2_trunk(tv + 5 * tg.kind, tg.x, tg.z, tg.yaw, tg.scale);
+  g := e2_height(tk[0], tk[1]);
+  // a point in the trunk is wood at the walker's height and up to the crown, not past the crown, and air beside it
+  #assert e2ar_in(land, near[..], tk[0], g + 1, tk[1]) == E2AR_WOOD && e2ar_in(land, near[..], tk[0], g + 2.5, tk[1]) == E2AR_WOOD;
+  #assert e2ar_in(land, near[..], tk[0], g + f32(E2AR_CROWN) + tk[2] + 0.5, tk[1]) == E2AR_AIR;
+  #assert e2ar_in(land, near[..], tk[0] + tk[2] + 0.3, g + 1, tk[1]) == E2AR_AIR && e2ar_in(land, near[..], tk[0], g - 0.1, tk[1]) == E2AR_GROUND;
+  // shot level through the trunk from 8 m off: it sticks in the wood at the trunk's side, not in the ground beyond
+  from := [3] f32.[tk[0] - 8, e2_height(tk[0] - 8, tk[1]) + 1.4, tk[1]];
+  e := e2ar_test_shoot(from, [3] f32.[tk[0] + 8, g + 1.2, tk[1]]);
+  #assert e.stuck && !e.grass && abs(e.at[0] - (tk[0] - tk[2])) < 0.6 && abs(e.at[2] - tk[1]) < 0.3;
+  // the rock: its middle a metre over its foot is stone, by the walker's hull
+  rg := cg_item(rock); r := e2_glade_rock(rg); n2: [1] E2ArNear;
+  e2ar_near(land, n2[..], r.x, r.z); #assert n2[0].nh > 0;
+  #assert e2ar_in(land, n2[..], r.x, e2_height(r.x, r.z) + 0.2, r.z) == E2AR_WOOD;
+}
 #test "e2 archery: an arrow loosed level over the land flies, drops and sticks in the ground" {
   a: [1] arch.Archer; x := 0.0f32; z := -30.0f32;
   from := eg_bow_hand(x, e2_height(x, z), z, 3.14159265);
   to := [3] f32.[x, e2_height(x, z - 25), z - 25];
   #assert e2ar_launch_ok(from, x, z) && !e2ar_launch_ok(from, x + 5, z) && !e2ar_launch_ok([3] f32.[from[0], from[1] + 9, from[2]], x, z) && !e2ar_launch_ok([3] f32.[from[0], e2_height(x, z), from[2]], x, z);
   _ := arch.archer_loose(a[..], 0, from, to, 1, -1, 0);
-  f: [1] arch.ArrowFlight; stuck := false; t := 0.0f32; flew := 0;
+  f: [1] arch.ArrowFlight; stuck := false; t := 0.0f32; flew := 0; near: [1] E2ArNear;
   while t < 4 && !stuck {
     t += 1.0 / 30; f[0] = arch.ArrowFlight.{};
-    while e2ar_fly(a[0].arrows[..], f[..], t) {
+    while e2ar_fly(a[0].arrows[..], f[..], t, e2ar_test_land(), near[..]) {
       none: [1] arch.ArcheryBody;
       l := arch.archery_land(a[..], f[0], none[0..<0], 0);
       if l.kind == arch.LAND_STUCK { stuck = true; dx := l.at[0] - to[0]; dz := l.at[2] - to[2]; #assert abs(dx) < 1.5 && abs(dz) < 8 && abs(l.at[1] - e2_height(l.at[0], l.at[2])) < 0.5; } else { flew += 1; }
@@ -63,5 +145,6 @@ e2ar_fly :: (p: [] bow.Arrows, f: [] arch.ArrowFlight, now: f32) -> bool {
   h := e2ar_hand(0, -30, [3] f32.[0, 0, -60]); #assert h[2] < -30 && e2ar_launch_ok(h, 0, -30);
   w := e2ar_monster(3, 0, 2, -80); g := e2ar_monster(9, 1, 2, -80);
   #assert w.id == 3 && g.id == 9 && w.c1[1] < g.c1[1] && w.r < g.r && e2ar_guard(0, -20).id == E2AR_GUARD;
-  #assert e2ar_solid(0, e2_height(0, -30) - 0.1, -30) && !e2ar_solid(0, e2_height(0, -30) + 0.1, -30);
+  near: [1] E2ArNear;
+  #assert e2ar_solid(e2ar_test_land(), near[..], 0, e2_height(0, -30) - 0.1, -30) && !e2ar_solid(e2ar_test_land(), near[..], 0, e2_height(0, -30) + 0.1, -30);
 }

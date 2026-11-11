@@ -386,6 +386,7 @@ bool world2_prepare(void) {
   e2mg_plant(e2mg());
   return e2_ground->done;
 }
+void *world2_ground(void) { return world2_prepare() ? (void *)e2_ground : NULL; }
 bool world2_contact(const float from[3], const float to[3]) {
   if (!world2_prepare()) return false;
   coax_t_EgMoveWorld w = e2mg_move_world(e2mg(), from[0], from[2], false);

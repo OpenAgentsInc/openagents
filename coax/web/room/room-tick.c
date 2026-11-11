@@ -170,6 +170,8 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
   if (!world2_prepare()) { rm_work_done(view(), k, now_us() - room_work_start); return false; }
+  /* the arrows fly among the trunks and rocks the seats' steps walk among (#13166) */
+  rm_e2_land(view(), (coax_v_t_E2MoveGround){(coax_t_E2MoveGround *)world2_ground(), 1});
   int64_t tm = now_us();
   float guard[2] = {0, 0};
   bool guard_on = rm_e2_guard_body(view(), k, (coax_v_f32){guard, 2});
