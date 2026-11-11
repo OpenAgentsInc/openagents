@@ -165,11 +165,11 @@ Everglade Experimental and Everglade II are. Its page loads the `fivelab`
 module, the same one Everglade Experimental and the Druid realm load, because
 that module holds the player, the bow and the mounts.
 
-In the Everglade apps, the world list's row for the Archery Range says it
-runs on the web for now and gives that address, as the row for
-Experimental does. It comes to the apps when the `fivelab` module runs there
-through the page host, as Everglade's realm already does on the Mac
-([app scenes spec](app-scenes-spec.md), section 4).
+In the Mac app the world list's row for the Archery Range opens this realm
+natively, through Aethyr's page host, with its sound: the same `fivelab`
+library Experimental runs ([app scenes spec](app-scenes-spec.md), section 4).
+Only one of the two is open at a time. On the phones its row still says it
+runs on the web and gives that address.
 
 ## 9. What is not checked
 

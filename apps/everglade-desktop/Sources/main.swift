@@ -2,15 +2,15 @@
 // Everglade for desktop, the Mac host (everglade/docs/desktop-app-spec.md): a window,
 // a Metal view and input. Everything drawn comes from scenes.coax (the list of worlds, the
 // Workshop) through face.h. Escape is the list; --scene N opens on world N (1 Everglade, 2 the
-// Workshop, 3 the Archery Range, 4 Experimental; the Range is a card for the web's realm).
-// Everglade itself is the web's everglade2 realm (Character Create, then the glade) and
-// Experimental is the web's fivelab realm on its Experimental page, both run natively by Aethyr's
-// page host (aethyr/host/apple/page-host.h): while one is open this host hands it the frames, keys
-// and presses, and draws its picture under the Worlds button.
+// Workshop, 3 the Archery Range, 4 Experimental). Everglade itself is the web's everglade2 realm
+// (Character Create, then the glade), and the Archery Range and Experimental are the web's fivelab
+// realm on their own pages, each run natively by Aethyr's page host (aethyr/host/apple/
+// page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this host
+// hands it the frames, keys and presses, and draws its picture under the Worlds button.
 //   Everglade                      opens the window
 //   Everglade --shot OUT.png [--size WxH] [--at SECONDS] [--hold KEYS] [--scene N]
 //       draws one frame offscreen after SECONDS with KEYS held (letters, as "wd"), and exits;
-//       without --scene it is the list of worlds. In a realm (--scene 1 or 4) nothing leaves this
+//       without --scene it is the list of worlds. In a realm (--scene 1, 3 or 4) nothing leaves this
 //       Mac during a shot unless --online is given (the room is then the site's, as a guest's
 //       browser would join it), nothing of yours is kept, and --do STEPS plays input first: `key:w:2` holds a key two seconds,
 //       `tap:640,400` clicks a point, `text:Ada` types, `wait:1` waits, `look` holds the pointer as
@@ -57,16 +57,9 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // The realm of the world that is open, when it has one.
   var page: AEPageHost? { pages[eg_scene(state)] }
   var inRealm: Bool { page != nil }
-  // What the web's page for a world says of itself (its script tag in apps/openagents-web/realms/):
-  // the module, the page's path on the site, its realm and slot, and its pack in the app.
-  struct Realm { let module: String, path: String, realm: String, slot: String, pack: String }
-  static let realms: [Int32: Realm] = [
-    1: Realm(module: "everglade2", path: "/worlds/character-creator", realm: "everglade2", slot: "everglade2", pack: "everglade2.pack"),
-    4: Realm(module: "fivelab", path: "/worlds/everglade-experimental", realm: "everglade-experimental", slot: "everglade-experimental", pack: "fivelab/glade.pack.gz"),
-  ]
   // A realm's folder in the app (its library, shaders and bindings), when the app was built with it.
   static func realmFiles(_ world: Int32) -> URL? {
-    guard let r = realms[world], let dir = Bundle.main.url(forResource: r.module, withExtension: nil), let res = Bundle.main.resourceURL,
+    guard let r = Realms.table[world], let dir = Bundle.main.url(forResource: r.module, withExtension: nil), let res = Bundle.main.resourceURL,
           FileManager.default.fileExists(atPath: dir.appendingPathComponent("lib\(r.module).dylib").path),
           FileManager.default.fileExists(atPath: res.appendingPathComponent(r.pack).path) else { return nil }
     return dir
@@ -127,7 +120,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     }
     model = m
     // A realm's files are in the app: its row opens a world, not a card.
-    for world in WorkshopView.realms.keys where WorkshopView.realmFiles(world) != nil { eg_runs(state, world, 1) }
+    for world in Realms.table.keys where WorkshopView.realmFiles(world) != nil { eg_runs(state, world, 1) }
     delegate = self
   }
 
@@ -136,7 +129,10 @@ final class WorkshopView: MTKView, MTKViewDelegate {
   // realm, as one site's pages share a browser's storage: your character is the same in each).
   func openPage(_ world: Int32) {
     pageTried.insert(world)
-    guard let device, let r = WorkshopView.realms[world], let dir = WorkshopView.realmFiles(world), let res = Bundle.main.resourceURL else { eg_runs(state, world, 0); return }
+    // A module runs one page at a time (Realms.sharing): the Archery Range and Experimental are
+    // both fivelab, so opening one closes the other, which opens afresh from its save slot.
+    for other in Realms.sharing(world) where pages[other] != nil { closePage(other) }
+    guard let device, let r = Realms.table[world], let dir = WorkshopView.realmFiles(world), let res = Bundle.main.resourceURL else { eg_runs(state, world, 0); return }
     let c = AEPageConfig()
     c.producer = dir.appendingPathComponent("lib\(r.module).dylib").path; c.shaders = dir.path
     c.pack = res.appendingPathComponent(r.pack).path
@@ -158,6 +154,10 @@ final class WorkshopView: MTKView, MTKViewDelegate {
       FileHandle.standardError.write(Data("Everglade: the realm did not open: \(why ?? "unknown"). Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       eg_runs(state, world, 0)
     }
+  }
+  func closePage(_ world: Int32) {
+    if shownWorld == world { hold(false); shownWorld = 0 }
+    pages[world]?.close(); pages[world] = nil; pageTried.remove(world)
   }
   // Mouselook: the realm says when it wants the pointer held; the host holds it and says what it did.
   func hold(_ on: Bool) {
@@ -191,7 +191,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     time += dt
     // A realm's row, first opened: the realm starts. Leaving it lets its keys go; it keeps its state.
     let world = eg_scene(state)
-    if WorkshopView.realms[world] != nil && pages[world] == nil && !pageTried.contains(world) { openPage(world) }
+    if Realms.table[world] != nil && pages[world] == nil && !pageTried.contains(world) { openPage(world) }
     let on: Int32 = pages[world] != nil ? world : 0
     if on != shownWorld { hold(false); pages[shownWorld]?.shown(false); pages[on]?.shown(true); shownWorld = on }
     let realm = page
@@ -461,7 +461,7 @@ final class WorkshopView: MTKView, MTKViewDelegate {
     }
     render(pass, size: CGSize(width: width, height: height), scale: shotScale, dt: 0) { _ in }
     nxp_close(next)
-    for p in pages.values { p.close() }; try? FileManager.default.removeItem(atPath: shotStore)
+    for world in Array(pages.keys) { closePage(world) }; try? FileManager.default.removeItem(atPath: shotStore)
     return save(texture, width, height, path)
   }
   func save(_ texture: MTLTexture, _ width: Int, _ height: Int, _ path: String) -> Bool {
@@ -594,7 +594,7 @@ final class App: NSObject, NSApplicationDelegate {
   }
   func applicationDidResignActive(_ note: Notification) { if let v = window.contentView as? WorkshopView { _ = eg_key(v.state, -1, 1); v.hold(false); if v.inRealm { v.page?.focus(false) } } }
   func applicationDidBecomeActive(_ note: Notification) { if let v = window?.contentView as? WorkshopView, v.inRealm { v.page?.focus(true) } }
-  func applicationWillTerminate(_ note: Notification) { if let v = window.contentView as? WorkshopView { v.hold(false); for p in v.pages.values { p.close() }; nxp_close(v.next) } }
+  func applicationWillTerminate(_ note: Notification) { if let v = window.contentView as? WorkshopView { v.hold(false); for world in Array(v.pages.keys) { v.closePage(world) }; nxp_close(v.next) } }
   // The list of worlds from anywhere: in the realm Escape is the realm's own key.
   @objc func worlds(_ sender: Any?) { if let v = window.contentView as? WorkshopView { eg_go(v.state, 0) } }
   func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }

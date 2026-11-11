@@ -35,7 +35,7 @@ for pair in sky scene light; do
   "$coax" metal "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/c/temple-$pair.metal" 2> "$work/c/temple-$pair.bind"
   xcrun -sdk "$sdk" metal -w $min "$work/c/temple-$pair.metal" -o "$app/temple-$pair.metallib"
 done
-xcrun -sdk "$sdk" swiftc -target "$target" -O -import-objc-header "$desk/face.h" "$here/ios/Sources/main.swift" "$here/ios/Sources/PhoneTurn.swift" "$desk/Sources/Engine.swift" "$desk/Sources/Faces.swift" \
+xcrun -sdk "$sdk" swiftc -target "$target" -O -import-objc-header "$desk/face.h" "$here/ios/Sources/main.swift" "$here/ios/Sources/PhoneTurn.swift" "$desk/Sources/Engine.swift" "$desk/Sources/Faces.swift" "$desk/Sources/Realms.swift" \
   "$work/c/workshop.o" "$work/c/model.o" "$work/c/temple.o" "$work/c/face.o" "$work/c/model-face.o" "$work/c/place-face.o" \
   -framework UIKit -framework Metal -framework MetalKit -framework QuartzCore -framework CoreText -framework ImageIO -framework CoreGraphics -framework CoreMotion -lm -o "$app/Everglade"
 cp "$here/ios/Info.plist" "$app/Info.plist"

@@ -8,7 +8,7 @@ the same as [Everglade for desktop](../../everglade/docs/desktop-app-spec.md):
 | --- | --- |
 | Everglade (the main flow) | Not yet: a card says where it runs on the web |
 | The Golemancers' Workshop | Yes: the temple, your character, the shared walking controller |
-| The Archery Range | Not yet: a card says where it runs on the web, `openagents.com/worlds/archery-range` ([spec](../../everglade/docs/archery-range-spec.md)) |
+| The Archery Range | Not yet: a card says where it runs on the web, `openagents.com/worlds/archery-range` ([spec](../../everglade/docs/archery-range-spec.md)). It runs natively in the Mac app; what iOS still needs is in the [app scenes spec](../../everglade/docs/app-scenes-spec.md#what-is-left-in-order) |
 | Everglade Experimental | Not yet: a card says where it runs on the web |
 
 These apps are an experiment beside the main experience, which is the web app.
