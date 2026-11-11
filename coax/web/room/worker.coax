@@ -5,7 +5,9 @@
 //   coax/web/tool.sh coax/web/room/worker.coax [OUT.wasm]   (default apps/openagents-web/build/everglade-room.wasm)
 // The C of each unit is kept under the SHA-256 of the compiler and the unit's #load closure
 // (COAXIAL_WASM_CACHE, default ~/.cache/coax-wasm; empty for none), so a build whose sources didn't
-// change compiles no Coax. COAXIAL_MODE=dev links at -O1 without LTO, as wasm.sh does.
+// change compiles no Coax. On a build host the hosts' shared store sits behind that cache, and one
+// host compiles a key at a time (wk_shared, docs/verse/remote-builds.md).
+// COAXIAL_MODE=dev links at -O1 without LTO, as wasm.sh does.
 // COAX_ROOM_KEEP_C=DIR retains these same C/header units and their compiler/key
 // manifest for native qualification. COAX_ROOM_C_ONLY=1 stops after retention.
 #import "Basic";
@@ -143,6 +145,44 @@ wk_run :: (argv: [] string, dir: string, env: [] string, out: [] u8) -> int {
   st := proc_wait(h, -1); r := proc_release(h);
   return ifx st == 0 then n else -1 - st;
 }
+// The hosts' shared store behind the disk cache (coax/remote/shared-cache.sh, #13119): a unit's
+// C under the same key, as wasm/KEY.c and wasm/KEY.h, so a host compiles room.coax (minutes of
+// checks) only when no host has. On when the job carries the tool and a token for the bucket
+// (remote.sh's host jobs); the Mac's builds leave it off. The tool's exit status, or -1 when off.
+wk_shared :: (verb: string, name: string, file: string, env: [] string) -> int {
+  tb: [4096] u8; tool := proc_getenv("COAX_SHARED_CACHE_TOOL", tb[..]);
+  if tool.count == 0 || !proc_has_env("COAX_SHARED_CACHE_TOKEN") { return -1; }
+  a := [4] string.[tool, verb, name, file];
+  ob: [256] u8;
+  n := wk_run(a[0..<(ifx file.count > 0 then 4 else 3)], "", env, ob[..]);
+  if n >= 0 { return 0; }
+  if n == -1 { return -1; }
+  return -1 - n;
+}
+// A key's header and C from the shared store into the disk cache; whether both came (the C is
+// written first, so a host that finds the header finds the C).
+wk_shared_have :: (key: string, cc: string, ch: string, env: [] string) -> bool {
+  hn: [1] Wk; wk_s(hn[..], "wasm/"); wk_s(hn[..], key); wk_s(hn[..], ".h");
+  cn: [1] Wk; wk_s(cn[..], "wasm/"); wk_s(cn[..], key); wk_s(cn[..], ".c");
+  return wk_shared("get", wk_text(hn[..]), ch, env) == 0 && wk_shared("get", wk_text(cn[..]), cc, env) == 0;
+}
+// One line of the job's cache report (shared-cache.sh summary): "coax_to_c RESULT MICROSECONDS".
+wk_stat :: (result: string, ms: int) {
+  sb: [4096] u8; stats := proc_getenv("COAX_SHARED_CACHE_STATS", sb[..]);
+  if stats.count == 0 { return; }
+  t: [1] Wk; wk_s(t[..], "coax_to_c "); wk_s(t[..], result); wk_s(t[..], " "); wk_int(t[..], ms * 1000); wk_s(t[..], "\n");
+  ok := fs_append(stats, wk_text(t[..]));
+}
+wk_int :: (t: [] Wk, v: int) {
+  d: [20] u8; n := 0; x := v;
+  if x <= 0 { wk_s(t, "0"); return; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); n += 1; x = x / 10; }
+  while n > 0 { n -= 1; if t[0].n < t[0].b.count { t[0].b[t[0].n] = d[n]; t[0].n += 1; } }
+}
+#test "a count writes as its decimal digits" {
+  t: [1] Wk; wk_int(t[..], 0); wk_s(t[..], " "); wk_int(t[..], 7); wk_s(t[..], " "); wk_int(t[..], 1794353269000);
+  #assert wk_text(t[..]) == "0 7 1794353269000";
+}
 // Starts argv in dir with env, stdout to nowhere; the handle or -1.
 wk_start :: (argv: [] string, dir: string, env: [] string) -> int {
   h := proc_new();
@@ -220,8 +260,9 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   csb: [64] u8; compiler_sum := wk_file_sha(coax, buf[..], csb[..]);
   if compiler_sum.count == 0 { tool_err("worker: can't read "); tool_errln(coax); return 1; }
   hs: [6] int; keys: [6] [64] u8; keyed: [6] bool;
+  claimed: [6] bool; beats: [6] int; began := proc_now_ms();
   for ui: 0..<WK_UNITS.count {
-    hs[ui] = -2;
+    hs[ui] = -2; beats[ui] = -1;
     u := WK_UNITS[ui]; n := wk_name(u);
     p1: [1] Wk; p2: [1] Wk;
     wc := wk_join(work, "/", p1[..]); wk_s(p1[..], n); wk_s(p1[..], ".c"); wc = wk_text(p1[..]);
@@ -254,8 +295,34 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
           wk_s(ch[..], cache); wk_s(ch[..], "/"); wk_s(ch[..], key); wk_s(ch[..], ".h");
           if fs_kind(wk_text(cc[..])) == 1 && fs_kind(wk_text(ch[..])) == 1 && wk_copy(wk_text(cc[..]), wc, buf[..]) && wk_copy(wk_text(ch[..]), wh, buf[..]) {
             ta := [3] string.["touch", wk_text(cc[..]), wk_text(ch[..])]; tn: [1] u8; t := wk_run(ta[..], "", env, tn[..]);
+            wk_stat("hit", proc_now_ms() - began);
             continue;
           }
+          // Not on this disk: the shared store's, else the right to compile it. One host
+          // compiles a key at a time (claim/wasm/KEY.h); the others wait for its result.
+          got := wk_shared_have(key, wk_text(cc[..]), wk_text(ch[..]), env);
+          claim: [1] Wk; wk_s(claim[..], "wasm/"); wk_s(claim[..], key); wk_s(claim[..], ".h");
+          said := false;
+          while !got {
+            c := wk_shared("claim", wk_text(claim[..]), "", env);
+            if c != 4 { claimed[ui] = c == 0; break; }
+            got = wk_shared_have(key, wk_text(cc[..]), wk_text(ch[..]), env);
+            if got { break; }
+            if !said { tool_err("worker: another host is compiling "); tool_err(u); tool_errln("; waiting for its result"); said = true; }
+            proc_sleep(5000);
+          }
+          if claimed[ui] {
+            // Written between the lookup and the claim: take it. Else keep the claim fresh
+            // while this process lives (a claim 150 seconds old is anyone's).
+            got = wk_shared_have(key, wk_text(cc[..]), wk_text(ch[..]), env);
+            if got { claimed[ui] = false; r := wk_shared("unclaim", wk_text(claim[..]), "", env); }
+            else {
+              tb: [4096] u8; tool := proc_getenv("COAX_SHARED_CACHE_TOOL", tb[..]);
+              ba := [5] string.["/bin/sh", "-c", "while sleep 30; do kill -0 $PPID 2> /dev/null || exit 0; \"$0\" claim \"$1\" refresh; done", tool, wk_text(claim[..])];
+              beats[ui] = wk_start(ba[..], "", env);
+            }
+          }
+          if got && wk_copy(wk_text(cc[..]), wc, buf[..]) && wk_copy(wk_text(ch[..]), wh, buf[..]) { wk_stat("shared", proc_now_ms() - began); continue; }
         }
       }
     }
@@ -268,7 +335,12 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
   }
   started: [6] int; ns := 0;
   for ui: 0..<6 { if hs[ui] != -2 { started[ns] = hs[ui]; ns += 1; } }
-  if !wk_wait_all(started[0..<ns]) { tool_errln("worker: a unit's C failed"); return 1; }
+  compiled_ok := wk_wait_all(started[0..<ns]);
+  for ui: 0..<6 { if beats[ui] >= 0 { k := proc_kill(beats[ui], PROC_SIGKILL); st := proc_wait(beats[ui], 2000); r := proc_release(beats[ui]); } }
+  if !compiled_ok {
+    for ui: 0..<6 { if claimed[ui] { claim: [1] Wk; wk_s(claim[..], "wasm/"); wk_s(claim[..], cast(string) keys[ui][..]); wk_s(claim[..], ".h"); r := wk_shared("unclaim", wk_text(claim[..]), "", env); } }
+    tool_errln("worker: a unit's C failed"); return 1;
+  }
   // the new C into the cache, each file renamed into place whole
   for ui: 0..<6 {
     if hs[ui] == -2 || !keyed[ui] { continue; }
@@ -279,6 +351,17 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
       fin: [1] Wk; wk_s(fin[..], cache); wk_s(fin[..], "/"); wk_s(fin[..], key); wk_s(fin[..], ext);
       if !wk_copy(wk_text(from[..]), wk_text(tmp[..]), buf[..]) || !fs_rename(wk_text(tmp[..]), wk_text(fin[..])) { tool_errln("worker: can't keep a unit's C in the cache"); return 1; }
     }
+    // Into the shared store, the C before its header, and one line in the day's compile log;
+    // then the claim goes back.
+    dup := false;
+    for ext: [2] string.[".c", ".h"] {
+      fin: [1] Wk; wk_s(fin[..], cache); wk_s(fin[..], "/"); wk_s(fin[..], key); wk_s(fin[..], ext);
+      nm: [1] Wk; wk_s(nm[..], "wasm/"); wk_s(nm[..], key); wk_s(nm[..], ext);
+      if wk_shared("put", wk_text(nm[..]), wk_text(fin[..]), env) == 2 { dup = true; }
+    }
+    ln: [1] Wk; wk_s(ln[..], key); wk_s(ln[..], ".c"); r := wk_shared("log", wk_text(ln[..]), "", env);
+    if claimed[ui] { claim: [1] Wk; wk_s(claim[..], "wasm/"); wk_s(claim[..], key); wk_s(claim[..], ".h"); r2 := wk_shared("unclaim", wk_text(claim[..]), "", env); }
+    wk_stat(ifx dup then "dup" else "miss", proc_now_ms() - began);
   }
   keep_b:[FS_PATH_MAX]u8;keep:=proc_getenv("COAX_ROOM_KEEP_C",keep_b[..]);
   only_b:[8]u8;only:=proc_getenv("COAX_ROOM_C_ONLY",only_b[..])=="1";

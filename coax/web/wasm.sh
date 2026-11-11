@@ -232,6 +232,53 @@ compiled() {   # entry...: each into the shared store, logged as one compile; pr
   [[ "$shared" != 1 ]] || "$shared_tool" log "$(basename "$1")" > /dev/null 2>&1 &
   [[ "$status" == 2 ]] && echo dup || echo miss
 }
+# One compile per key (#13119). Before a compile, once ENTRY takes the right to
+# make ENTRY: on this machine a lock folder in the cache (the wasm.sh runs of
+# one build.sh share units: Everglade's controller, the thumbs, the Grid), and
+# across hosts a claim object in the bucket (claim/wasm/KEY, written only when
+# absent, refreshed every 30 seconds while its holder lives, anyone's after 150
+# seconds without one). A run that finds the right taken waits for the holder's
+# result instead of compiling the same thing beside it.
+#   0: compile it, then call done_once ENTRY
+#   1: ENTRY is in this disk's cache now (fetched=1 in the caller when it came from the bucket)
+self_pid() { exec sh -c 'echo $PPID'; }
+once() {
+  local e="$1" lock me who rc name said=0
+  lock="$cache/.once.$(basename "$1")"; me="$(self_pid)"
+  while ! mkdir "$lock" 2> /dev/null; do
+    [[ ! -f "$e" ]] || return 1
+    who="$(cat "$lock/pid" 2> /dev/null || true)"
+    # A holder that is gone (its build failed or was killed) holds nothing.
+    if [[ -n "$who" ]] && ! kill -0 "$who" 2> /dev/null; then rm -rf "$lock"; continue; fi
+    [[ -n "$who" || -z "$(find "$lock" -maxdepth 0 -mmin +1 2> /dev/null)" ]] || { rm -rf "$lock"; continue; }
+    sleep 0.3
+  done
+  echo "$me" > "$lock/pid"
+  if [[ -f "$e" ]]; then rm -rf "$lock"; return 1; fi
+  if [[ "$shared" == 1 ]]; then
+    name="wasm/$(basename "$e")"
+    while :; do
+      rc=0; "$shared_tool" claim "$name" || rc=$?
+      (( rc == 4 )) || break   # 0: ours. Else the store didn't answer (or its tool is an older one): compile.
+      if "$shared_tool" get "$name" "$e"; then fetched=1; rm -rf "$lock"; return 1; fi
+      (( said )) || echo "wasm.sh: another host is compiling $(basename "$e"); waiting for its result" >&2
+      said=1; sleep 3
+    done
+    if (( rc == 0 )); then
+      # Written between our lookup and our claim: take it.
+      if "$shared_tool" get "$name" "$e"; then "$shared_tool" unclaim "$name"; fetched=1; rm -rf "$lock"; return 1; fi
+      ( while sleep 30; do
+          kill -0 "$me" 2> /dev/null && [[ "$(cat "$lock/pid" 2> /dev/null)" == "$me" ]] || exit 0
+          "$shared_tool" claim "$name" refresh
+        done ) < /dev/null > /dev/null 2>&1 &
+    fi
+  fi
+  return 0
+}
+done_once() {   # entry: the compile is over and its result written
+  [[ "$shared" != 1 ]] || "$shared_tool" unclaim "wasm/$(basename "$1")" || true
+  rm -rf "$cache/.once.$(basename "$1")"
+}
 # The build report (#12925): each step's wall time in microseconds, and whether
 # the cache supplied it, as "base step cache start end" lines in $work/steps;
 # each compiler run's own phase report (coax --timings) in $work/BASE.coax.json.
@@ -248,11 +295,17 @@ emit() {   # unit header-base: its C and header into $work, from the cache or th
   printf '%s' "$key" > "$work/$2.key"
   # A unit with a headroom line needs its compile's notes, so its cached C
   # counts only with them (entries made before the notes were kept compile again).
-  if [[ -n "$key" ]] && have "$cache/$key.h" && { [[ -z "$(headroom_of "$2")" ]] || from_cache "$cache/$key.notes" "$work/$2.notes"; } &&
-     from_cache "$cache/$key.c" "$work/$2.c" && from_cache "$cache/$key.h" "$work/$2.h"; then
-    [[ ! -s "$work/$2.notes" ]] || grep '^coax: note\[' "$work/$2.notes" | sed 's/^/(cached) /' >&2 || true
-    step "$2" coax_to_c "$( (( fetched )) && echo shared || echo hit)" "$began"; return 0
-  fi
+  local held=0 try
+  for try in 1 2; do
+    if [[ -n "$key" ]] && have "$cache/$key.h" && { [[ -z "$(headroom_of "$2")" ]] || from_cache "$cache/$key.notes" "$work/$2.notes"; } &&
+       from_cache "$cache/$key.c" "$work/$2.c" && from_cache "$cache/$key.h" "$work/$2.h"; then
+      [[ ! -s "$work/$2.notes" ]] || grep '^coax: note\[' "$work/$2.notes" | sed 's/^/(cached) /' >&2 || true
+      step "$2" coax_to_c "$( (( fetched )) && echo shared || echo hit)" "$began"; return 0
+    fi
+    # Not there: compile it, unless another run is (then look again for its result).
+    [[ -n "$key" && "$try" == 1 ]] || break
+    if once "$cache/$key.h"; then held=1; break; fi
+  done
   # The check records the last compile of this unit on any host used (the
   # compiler's check cache, keyed as always): so a compile after an edit reuses
   # the checks the edit didn't touch, whichever host ran them before.
@@ -274,6 +327,7 @@ emit() {   # unit header-base: its C and header into $work, from the cache or th
   local result=off
   # The C before its header: a host that finds the header finds the C.
   [[ -z "$key" ]] || result="$(compiled "$cache/$key.c" "$cache/$key.notes" "$cache/$key.h")"
+  (( ! held )) || done_once "$cache/$key.h"
   if [[ -n "$pack" ]]; then   # the check records this compile used (a record read is touched), for the next compile of the unit anywhere
     (cd "$check_cache" && find . -maxdepth 1 -type f ! -name '.*' -newer "$work/$2.mark" > "$work/$2.checks-out.list") || true
     [[ ! -s "$work/$2.checks-out.list" ]] ||
@@ -290,13 +344,19 @@ object_key() {   # source [flags...]: the SHA-256 of clang, its flags and every 
   { printf '%s\n' coax-wasm-object-1 "$flags_sum"; shasum -a 256 $deps | sed "s|  $work/|  |"; } | shasum -a 256 | cut -c1-64
 }
 compile() {   # name source [flags...]: $work/name.o from the cache or clang, and its key in $work/name.okey
-  local name="$1" key="" began fetched=0; shift; began="$(now)"
+  local name="$1" key="" began fetched=0 key_held=0; shift; began="$(now)"
   [[ -z "$cache" ]] || key="$(object_key "$@")"
   printf '%s' "$key" > "$work/$name.okey"
   [[ -n "$key" ]] && from_cache "$cache/$key.o" "$work/$name.o" && { step "$name" clang "$( (( fetched )) && echo shared || echo hit)" "$began"; return 0; }
+  if [[ -n "$key" ]] && ! once "$cache/$key.o"; then   # another run compiled it meanwhile
+    cp "$cache/$key.o" "$work/$name.o" && { step "$name" clang "$( (( fetched )) && echo shared || echo hit)" "$began"; return 0; }
+    key_held=0
+  else
+    key_held=1
+  fi
   "$clang" "${cflags[@]}" "$@" -c -o "$work/$name.o"
   local result=off
-  [[ -z "$key" ]] || { keep "$work/$name.o" "$cache/$key.o"; result="$(compiled "$cache/$key.o")"; }
+  [[ -z "$key" ]] || { keep "$work/$name.o" "$cache/$key.o"; result="$(compiled "$cache/$key.o")"; (( ! key_held )) || done_once "$cache/$key.o"; }
   step "$name" clang "$result" "$began"
 }
 # Compile headroom (#13115): apps/openagents-web/wasm-headroom.txt (beside
@@ -478,7 +538,11 @@ if [[ -n "$cache" ]]; then
   } | shasum -a 256 | cut -c1-64)" || module_key=""
 fi
 began="$(now)"; fetched=0
-if [[ -n "$module_key" ]] && from_cache "$cache/$module_key.wasm" "$work/output.wasm"; then
+module_held=0
+if [[ -n "$module_key" ]] && ! from_cache "$cache/$module_key.wasm" "$work/output.wasm"; then
+  if once "$cache/$module_key.wasm"; then module_held=1; fi   # else another run linked it meanwhile
+fi
+if [[ -n "$module_key" ]] && (( ! module_held )) && from_cache "$cache/$module_key.wasm" "$work/output.wasm"; then
   step module link "$( (( fetched )) && echo shared || echo hit)" "$began"
 else
   # Linked without -O, so clang doesn't run a wasm-opt of its own choosing (a
@@ -495,6 +559,7 @@ else
     fi
   fi
   [[ -z "$module_key" ]] || { keep "$work/output.wasm" "$cache/$module_key.wasm"; compiled "$cache/$module_key.wasm" > /dev/null; }
+  (( ! module_held )) || done_once "$cache/$module_key.wasm"
 fi
 # Every module says where its time went in one line, and writes the whole
 # report as JSON: COAXIAL_WASM_REPORT, else .c/MODULE.timings.json beside the

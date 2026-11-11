@@ -10,6 +10,12 @@
 #   shared-cache.sh put NAME FILE       FILE as NAME unless NAME is there: 0 written, 2 already there, 1 failed (or off)
 #   shared-cache.sh replace NAME FILE   FILE as NAME, over what is there
 #   shared-cache.sh log NAME            records one compile of NAME (report counts them)
+#   shared-cache.sh claim NAME [refresh]
+#                                       the right to build NAME (claim/NAME, written only when
+#                                       absent): 0 taken, 4 another builder holds it, 1 failed
+#                                       (or off). A claim not refreshed for 150 seconds is
+#                                       anyone's. refresh rewrites a claim its holder keeps
+#   shared-cache.sh unclaim NAME        gives the claim back (after the build, pass or fail)
 #   shared-cache.sh token               a token for this bucket alone, minted from the automation
 #                                       account's key (the Mac: remote.sh sends one with each job)
 #   shared-cache.sh summary FILE        one line from a job's stats file (host-job.sh's report)
@@ -54,6 +60,27 @@ log() {   # name: one empty object per compile, under the UTC day
   on || return 1
   fetch -X PUT -H 'Content-Length: 0' --data-binary '' "$api/$bucket/log/$(date -u +%F)/$1/$(hostname -s 2> /dev/null || hostname).$$.$(date +%s)" > /dev/null
 }
+
+# One builder per name across the hosts (wasm.sh's once): an object written
+# only when absent, holding its builder's clock. Its holder rewrites it every
+# 30 seconds; one older than COAX_SHARED_CLAIM_STALE seconds (150) belongs to a
+# builder that is gone (a failed build, a preempted host), and the next taker
+# writes over it.
+claim() {   # name [refresh]
+  on || return 1
+  local body code at
+  body="$(date +%s) $(hostname -s 2> /dev/null || hostname) $$"
+  if [[ "${2:-}" == refresh ]]; then
+    [[ "$(fetch -X PUT -H 'Content-Type: text/plain' --data-binary "$body" "$api/$bucket/claim/$1")" == 200 ]]; return
+  fi
+  code="$(fetch -X PUT -H 'x-goog-if-generation-match: 0' -H 'Content-Type: text/plain' --data-binary "$body" "$api/$bucket/claim/$1")"
+  case "$code" in 200) return 0 ;; 412) ;; *) return 1 ;; esac
+  at="$(curl -sS --max-time 30 -H "Authorization: Bearer $token" "$api/$bucket/claim/$1" 2> /dev/null | awk 'NR == 1 && $1 ~ /^[0-9]+$/ { print $1 }')"
+  if [[ -n "$at" ]] && (( $(date +%s) - at <= ${COAX_SHARED_CLAIM_STALE:-150} )); then return 4; fi
+  # Stale, or given back since: take it.
+  [[ "$(fetch -X PUT -H 'Content-Type: text/plain' --data-binary "$body" "$api/$bucket/claim/$1")" == 200 ]]
+}
+unclaim() { on || return 1; fetch -X DELETE "$api/$bucket/claim/$1" > /dev/null; }
 
 # A token for the bucket alone: an hour-long token for the automation account
 # (a JWT signed with its key, so it is always fresh), exchanged at Google's STS
@@ -171,9 +198,11 @@ case "${1:-}" in
   put) put "$2" "$3" ;;
   replace) put "$2" "$3" replace ;;
   log) log "$2" ;;
+  claim) claim "$2" "${3:-}" ;;
+  unclaim) unclaim "$2" ;;
   token) token ;;
   summary) summary "$2" ;;
   report) report "${2:-}" ;;
   publish-pages) publish_pages "$2" "$3" ;;
-  *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
