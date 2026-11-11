@@ -1,0 +1,147 @@
+// The Zeron skin: Zeron Dark (crates/theme/src/builtins.rs zeron_dark and
+// theme.rs's derived roles), the first skin of the component system
+// (components/spec.md, GitHub #13153). Everything Zeron's look is made of is
+// here: the fonts the atlas holds, the icons, the colour roles, and the
+// measures Zeron's Markdown is set with. These were constants written into
+// the chat components; a component now reads them from zeron_skin().
+// Based on Zeron by Wing, MIT.
+//   coax/bin/coax test components/skin/zeron.coax
+
+#load "skin.coax";
+
+// The fonts the atlas holds (the host rasterizes each size): Zeron's UI and
+// transcript sizes. Weights: 0 Geist, 1 Geist Medium, 2 Geist SemiBold, 3 Geist Mono.
+FONT_INPUT :: 0;            // Geist 14: the input, messages, Markdown
+FONT_CHIP :: 1;             // Geist Medium 12: composer chips
+FONT_TOOL :: 2;             // Geist 12: tool groups and chips
+FONT_BOLD :: 3;             // Geist SemiBold 14: **bold**
+FONT_MONO_14 :: 4;          // Geist Mono 14: inline code
+FONT_CODE :: 5;             // Geist Mono 12.5: code blocks
+FONT_MONO_12 :: 6;          // Geist Mono 12: tool output, invocations, diffs
+FONT_MONO_11 :: 7;          // Geist Mono 11: diff gutters and hunk headers
+FONT_SMALL :: 8;            // Geist 11: a code block's language
+// The menus (picker.coax) open inside the chips, so their text inherits the
+// chips' Medium weight (GPUI's inherited text style):
+FONT_MENU :: 9;             // Geist Medium 13: menu rows
+FONT_MENU_SMALL :: 10;      // Geist Medium 11: a menu row's description
+FONT_SEARCH :: 11;          // Geist Medium 14: the model search (a ComposerInput)
+FONT_SIZES :: [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
+FONT_WEIGHTS :: [12] int.[0, 1, 0, 2, 3, 3, 3, 3, 0, 1, 1, 1];
+
+ICON_PAPERCLIP :: 0; ICON_ARROW_UP :: 1; ICON_CLAUDE :: 2;
+ICON_CHEVRON :: 3; ICON_TERMINAL :: 4; ICON_DOCUMENT :: 5; ICON_PEN :: 6; ICON_MAGNIFER :: 7;
+ICON_GLOBAL :: 8; ICON_THOUGHT :: 9; ICON_COPY :: 10; ICON_WRAP :: 11; ICON_RUST :: 12; ICON_CHEVRON_RIGHT :: 13;
+ICON_DOCUMENT_ADD :: 14; ICON_FOLDER :: 15; ICON_CHECKLIST :: 16; ICON_BOT :: 17; ICON_WIDGET :: 18;
+ICON_DANGER :: 19; ICON_STOP :: 20;
+ICON_PSIONIC :: 21;        // the Psionic mode's mark: the OpenAgents power symbol, monochrome
+// attachment chips' icons (the gallery glyph, the file theme's text and
+// document artwork), and the pickers' (picker.coax)
+ICON_GALLERY :: 22; ICON_FILE_TEXT :: 23; ICON_FILE :: 24; ICON_CHECK :: 25; ICON_BACK :: 26;
+ICON_CHEVRON_10 :: 27; ICON_CLAUDE_14 :: 28; ICON_MAGNIFER_14 :: 29;
+// the Codex mode's mark (icons.rs OPENAI_MARK, monochrome): the chip's, the picker's
+ICON_OPENAI :: 30; ICON_OPENAI_14 :: 31;
+ICON_COUNT :: 32;
+ICON_NAMES :: [32] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+                           "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
+                           "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
+                           "gallery", "file-text", "file-document", "check", "alt-arrow-left",
+                           "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark"];
+ICON_SIZES :: [32] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14];
+
+// Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
+Theme :: struct {
+  shell: Rgba;          // the window's canvas
+  surface: Rgba;        // composer_surface_bg
+  border: Rgba;         // composer_surface_border
+  text: Rgba; muted: Rgba; faint: Rgba;
+  accent: Rgba;         // the caret
+  selection: Rgba;      // the accent at 0.35 (theme crate AccentRoles::derive)
+  bg: Rgba;             // Send's arrow
+  claude: Rgba;         // the Claude mark (icons.rs claude_brand)
+}
+zeron_dark :: () -> Theme {
+  return Theme.{
+    shell = hex(0x0d0d0d, 1), surface = hex(0x27272a, 1), border = rgba(1, 1, 1, 26.0 / 255.0),   // zeron_theme stores alpha as a byte: 0.10 is 26
+    text = hex(0xe8e8ea, 1), muted = hex(0xa9a9ae, 1), faint = hex(0x85858a, 1),
+    accent = hex(0x8b7cf6, 1), selection = hex(0x8b7cf6, 89.0 / 255.0), bg = hex(0x060606, 1), claude = hex(0xd97757, 1)};
+}
+
+// Zeron's own washes: white ink and the near-white wash at an alpha.
+ink :: (a: f32) -> Rgba { return rgba(1, 1, 1, a); }
+// zeron_theme keeps a color's alpha as a byte: opacity(0.055) is 14/255.
+byte_alpha :: (c: Rgba, a: f32) -> Rgba { return opacity(c, floor(a * 255 + 0.5) / 255); }
+wash :: (a: f32) -> Rgba { return rgba(0.92, 0.92, 0.92, a); }
+DANGER :: 0xf87171; SUCCESS :: 0x34d399;
+DANGER_MUTED :: 0xfca5a5; WARNING :: 0xfbbf24; WARNING_MUTED :: 0xfde68a;
+
+// Zeron Dark's syntax seeds, by role (builtins.rs zeron_dark).
+SYNTAX_DARK :: [12] int.[0x92929a, 0x8b7cf6, 0x34d399, 0xfacc15, 0xc084fc, 0x60a5fa, 0xf472b6, 0xe8e8ea, 0xa1a1aa, 0xf472b6, 0x22d3ee, 0xf87171];
+
+
+// render.rs and theme.rs: the transcript's Markdown.
+MD_BLOCK_GAP :: 12.0;
+MD_LINE_HEIGHT :: 22.0;
+LIST_ITEM_GAP :: 4.0; LIST_MARKER_W :: 18.0; LIST_MARKER_GAP :: 8.0; LIST_DISC :: 5.0;
+QUOTE_RAIL :: 2.0; QUOTE_PAD_L :: 12.0; QUOTE_PAD_R :: 10.0; QUOTE_PAD_Y :: 6.0; QUOTE_GAP :: 8.0;
+INLINE_CODE_RADIUS :: 4.5; INLINE_CODE_PAD_X :: 2.0; INLINE_CODE_INSET_Y :: 2.0;
+CODE_RADIUS :: 10.0; CODE_HEADER_HEIGHT :: 28.0; CODE_PADDING_X :: 12.0; CODE_PADDING_Y :: 10.0;
+CODE_LINE_HEIGHT :: 18.0; CODE_ACTION_SIZE :: 22.0;
+// A GFM table (render.rs TABLE_*, mugen-markdown's TableBlock under Zeron's
+// md theme): frameless, a 1px white@10% hairline between rows the only
+// chrome, 12px cell padding, a column's natural width floored at 48 (plus
+// padding), its minimum min(natural, 96).
+TABLE_CELL_PADDING :: 12.0; TABLE_DIVIDER :: 1.0; TABLE_MIN_COLUMN_CONTENT :: 48.0; TABLE_MIN_COLUMN_WIDTH :: 96.0;
+PHI :: 1.618034;                // GPUI's default line height, relative
+
+
+zeron_syntax :: (role: int, plain: Rgba) -> Rgba {
+  if role < 0 || role > 11 { return plain; }
+  palette := SYNTAX_DARK;
+  return hex(palette[role], 1);
+}
+
+zeron_skin :: () -> UiSkin {
+  th := zeron_dark();
+  s := UiSkin.{id = UISKIN_ZERON, name = "zeron",
+    canvas = th.shell, surface = th.surface, raised = wash(0.08), sunk = ink(0.035), hairline = ink(0.10), hover = ink(0.08),
+    ink = th.text, muted = th.muted, faint = th.faint,
+    accent = th.accent, on_accent = th.bg, selection = th.selection,
+    danger = hex(DANGER, 1), warning = hex(WARNING, 1), success = hex(SUCCESS, 1),
+    code_wash = opacity(th.accent, 56.0 / 255.0), quote_wash = opacity(th.accent, 0.05), quote_rail = opacity(th.accent, 0.6),
+    header_wash = ink(0.02),
+    body = UiType.{face = FONT_INPUT, size = 14, line = MD_LINE_HEIGHT},
+    strong = UiType.{face = FONT_BOLD, size = 14, line = MD_LINE_HEIGHT},
+    code = UiType.{face = FONT_MONO_14, size = 14, line = MD_LINE_HEIGHT},
+    mono = UiType.{face = FONT_CODE, size = 12.5, line = CODE_LINE_HEIGHT},
+    small = UiType.{face = FONT_SMALL, size = 11, line = 11 * PHI},
+    label = UiType.{face = FONT_CHIP, size = 12, line = 12 * PHI},
+    title = UiType.{face = FONT_BOLD, size = 14, line = MD_LINE_HEIGHT},
+    space = 8, pad = 16, radius = 12, radius_control = 8, border = 1, control_h = 32,
+    frame = UIFRAME_PLATE, frame_mid = ink(0.10), frame_light = ink(0.16), trim = th.accent,
+    shadow = 15, shade = rgba(0, 0, 0, 0.35), stud = 0,
+    icon_copy = ICON_COPY, icon_wrap = ICON_WRAP, icon_chevron = ICON_CHEVRON, icon_check = ICON_CHECK,
+    md = UiMarkdown.{line = MD_LINE_HEIGHT, block_gap = MD_BLOCK_GAP, item_gap = LIST_ITEM_GAP,
+      marker_w = LIST_MARKER_W, marker_gap = LIST_MARKER_GAP, disc = LIST_DISC,
+      quote_rail = QUOTE_RAIL, quote_pad_l = QUOTE_PAD_L, quote_pad_r = QUOTE_PAD_R, quote_pad_y = QUOTE_PAD_Y, quote_gap = QUOTE_GAP,
+      code_pad_x = INLINE_CODE_PAD_X, code_inset_y = INLINE_CODE_INSET_Y, code_radius = INLINE_CODE_RADIUS,
+      block_radius = CODE_RADIUS, block_border = 1, block_header = CODE_HEADER_HEIGHT,
+      block_pad_x = CODE_PADDING_X, block_pad_y = CODE_PADDING_Y, block_line = CODE_LINE_HEIGHT, action = CODE_ACTION_SIZE,
+      cell_pad = TABLE_CELL_PADDING, divider = TABLE_DIVIDER, col_min_content = TABLE_MIN_COLUMN_CONTENT, col_min = TABLE_MIN_COLUMN_WIDTH,
+      bullet = "•"}};
+  palette := SYNTAX_DARK;
+  for k: 0..<UISKIN_SYNTAX { s.syntax[k] = hex(palette[k], 1); }
+  return s;
+}
+
+#test "the Zeron skin is Zeron Dark: its roles, faces and Markdown measures" {
+  s := zeron_skin();
+  #assert s.id == UISKIN_ZERON && s.name == "zeron" && s.frame == UIFRAME_PLATE;
+  #assert s.ink.r == hex(0xe8e8ea, 1).r && s.accent.b == hex(0x8b7cf6, 1).b && s.canvas.r == hex(0x0d0d0d, 1).r;
+  #assert s.body.face == FONT_INPUT && s.strong.face == FONT_BOLD && s.code.face == FONT_MONO_14 && s.mono.face == FONT_CODE;
+  f := uiskin_faces(s);
+  #assert f.plain == FONT_INPUT && f.bold == FONT_BOLD && f.code == FONT_MONO_14;
+  #assert s.md.line == 22 && s.md.block_line == 18 && s.md.marker_w + s.md.marker_gap == 26 && s.md.cell_pad == 12;
+  #assert uiskin_syntax(s, 1, s.ink).r == hex(0x8b7cf6, 1).r && uiskin_syntax(s, -1, s.ink).r == s.ink.r;
+  #assert s.syntax[0].r == zeron_syntax(0, s.ink).r;
+}

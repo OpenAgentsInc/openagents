@@ -12,6 +12,7 @@
 // Based on Zeron by Wing, MIT.
 
 #load "gpui.coax";
+#load "../skin/zeron.coax";   // the fonts, the icons, Zeron Dark and its tokens
 
 // composer.rs
 TEXTAREA_PAD_TOP :: 16.0;   // pt-4
@@ -49,66 +50,8 @@ COMPACT_TOTAL_HEIGHT :: 49.0;  // composer.rs: py-3 + one 22.75 line + the hairl
 COMPACT_INSET :: 8.0;          // morph_cluster_inset, compact
 COMPACT_TEXT_PAD :: 8.0;       // the input's px-2
 
-// The fonts the atlas holds (the host rasterizes each size): Zeron's UI and
-// transcript sizes. Weights: 0 Geist, 1 Geist Medium, 2 Geist SemiBold, 3 Geist Mono.
-FONT_INPUT :: 0;            // Geist 14: the input, messages, Markdown
-FONT_CHIP :: 1;             // Geist Medium 12: composer chips
-FONT_TOOL :: 2;             // Geist 12: tool groups and chips
-FONT_BOLD :: 3;             // Geist SemiBold 14: **bold**
-FONT_MONO_14 :: 4;          // Geist Mono 14: inline code
-FONT_CODE :: 5;             // Geist Mono 12.5: code blocks
-FONT_MONO_12 :: 6;          // Geist Mono 12: tool output, invocations, diffs
-FONT_MONO_11 :: 7;          // Geist Mono 11: diff gutters and hunk headers
-FONT_SMALL :: 8;            // Geist 11: a code block's language
-// The menus (picker.coax) open inside the chips, so their text inherits the
-// chips' Medium weight (GPUI's inherited text style):
-FONT_MENU :: 9;             // Geist Medium 13: menu rows
-FONT_MENU_SMALL :: 10;      // Geist Medium 11: a menu row's description
-FONT_SEARCH :: 11;          // Geist Medium 14: the model search (a ComposerInput)
-FONT_SIZES :: [12] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14];
-FONT_WEIGHTS :: [12] int.[0, 1, 0, 2, 3, 3, 3, 3, 0, 1, 1, 1];
-
-ICON_PAPERCLIP :: 0; ICON_ARROW_UP :: 1; ICON_CLAUDE :: 2;
-ICON_CHEVRON :: 3; ICON_TERMINAL :: 4; ICON_DOCUMENT :: 5; ICON_PEN :: 6; ICON_MAGNIFER :: 7;
-ICON_GLOBAL :: 8; ICON_THOUGHT :: 9; ICON_COPY :: 10; ICON_WRAP :: 11; ICON_RUST :: 12; ICON_CHEVRON_RIGHT :: 13;
-ICON_DOCUMENT_ADD :: 14; ICON_FOLDER :: 15; ICON_CHECKLIST :: 16; ICON_BOT :: 17; ICON_WIDGET :: 18;
-ICON_DANGER :: 19; ICON_STOP :: 20;
-ICON_PSIONIC :: 21;        // the Psionic mode's mark: the OpenAgents power symbol, monochrome
-// attachment chips' icons (the gallery glyph, the file theme's text and
-// document artwork), and the pickers' (picker.coax)
-ICON_GALLERY :: 22; ICON_FILE_TEXT :: 23; ICON_FILE :: 24; ICON_CHECK :: 25; ICON_BACK :: 26;
-ICON_CHEVRON_10 :: 27; ICON_CLAUDE_14 :: 28; ICON_MAGNIFER_14 :: 29;
-// the Codex mode's mark (icons.rs OPENAI_MARK, monochrome): the chip's, the picker's
-ICON_OPENAI :: 30; ICON_OPENAI_14 :: 31;
-ICON_COUNT :: 32;
-ICON_NAMES :: [32] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
-                           "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
-                           "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
-                           "gallery", "file-text", "file-document", "check", "alt-arrow-left",
-                           "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark"];
-ICON_SIZES :: [32] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
-                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14];
-
 COMPOSER_TEXT :: 8000;
 COMPOSER_LINES :: 1024;
-
-// Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
-Theme :: struct {
-  shell: Rgba;          // the window's canvas
-  surface: Rgba;        // composer_surface_bg
-  border: Rgba;         // composer_surface_border
-  text: Rgba; muted: Rgba; faint: Rgba;
-  accent: Rgba;         // the caret
-  selection: Rgba;      // the accent at 0.35 (theme crate AccentRoles::derive)
-  bg: Rgba;             // Send's arrow
-  claude: Rgba;         // the Claude mark (icons.rs claude_brand)
-}
-zeron_dark :: () -> Theme {
-  return Theme.{
-    shell = hex(0x0d0d0d, 1), surface = hex(0x27272a, 1), border = rgba(1, 1, 1, 26.0 / 255.0),   // zeron_theme stores alpha as a byte: 0.10 is 26
-    text = hex(0xe8e8ea, 1), muted = hex(0xa9a9ae, 1), faint = hex(0x85858a, 1),
-    accent = hex(0x8b7cf6, 1), selection = hex(0x8b7cf6, 89.0 / 255.0), bg = hex(0x060606, 1), claude = hex(0xd97757, 1)};
-}
 
 // Zeron's input (composer.rs ComposerInput, "adapted from gpui
 // examples/input.rs"): a selection with an anchor and a caret, edits that

@@ -1,0 +1,45 @@
+// The Verse skin: the instrument look, grey-white type on dark glass, thin
+// lines and a cyan accent, square corners with corner ticks. Its colours are
+// the SCIFI tokens of aethyr/ui/hud-style.coax (hud_tokens(HUD_SCIFI)),
+// copied here so the component system does not load the engine;
+// components/gallery/skin-parity.coax holds the two equal until the HUD
+// draws from this file (components/spec.md Phase 5, GitHub #13153).
+// Its faces are the slots of the atlas it is drawn with (see everglade.coax).
+//   coax/bin/coax test components/skin/verse.coax
+
+#load "zeron.coax";
+
+verse_skin :: () -> UiSkin {
+  s := zeron_skin();
+  s.id = UISKIN_VERSE; s.name = "verse";
+  cyan := rgba(0.216, 0.851, 0.851, 1);         // the Arwes accent
+  g: f32 = 0.94;
+  text := rgba(g, g, g, 1);
+  dim := rgba(0.6, 0.6, 0.6, 1);
+  s.canvas = rgba(0, 0, 0, 1);
+  s.surface = rgba(0, 0, 0, 0.55);              // frame_dark
+  s.raised = rgba(1, 1, 1, 0.06);
+  s.sunk = rgba(0, 0, 0, 0.40);
+  s.hairline = rgba(0.42, 0.42, 0.42, 0.8);
+  s.hover = opacity(cyan, 0.14);
+  s.ink = text; s.muted = dim; s.faint = rgba(0.45, 0.45, 0.45, 1);
+  s.accent = cyan; s.on_accent = rgba(0, 0, 0, 1); s.selection = opacity(cyan, 0.30);
+  s.danger = rgba(0.95, 0.2, 0.15, 1); s.warning = rgba(1, 0.55, 0.35, 1); s.success = rgba(0.3, 0.9, 0.2, 1);
+  s.code_wash = opacity(cyan, 0.14); s.quote_wash = opacity(cyan, 0.05); s.quote_rail = opacity(cyan, 0.7);
+  s.header_wash = rgba(1, 1, 1, 0.04);
+  s.syntax[0] = dim; s.syntax[1] = cyan; s.syntax[2] = s.success; s.syntax[3] = s.warning;
+  s.syntax[4] = rgba(0.78, 0.78, 0.78, 1); s.syntax[5] = rgba(0.55, 0.92, 0.92, 1); s.syntax[6] = rgba(0.5, 0.95, 0.55, 1);
+  s.syntax[7] = text; s.syntax[8] = dim; s.syntax[9] = s.danger; s.syntax[10] = cyan; s.syntax[11] = s.danger;
+  s.radius = 10; s.radius_control = 0; s.border = 1;
+  s.frame = UIFRAME_CUT;
+  s.frame_mid = rgba(0.42, 0.42, 0.42, 1); s.frame_light = rgba(0.78, 0.78, 0.78, 1); s.trim = cyan;
+  s.shadow = 0; s.stud = 0;
+  s.md.block_radius = 0; s.md.code_radius = 0;
+  return s;
+}
+
+#test "the Verse skin is grey and cyan with square corners and no shadow" {
+  s := verse_skin();
+  #assert s.id == UISKIN_VERSE && s.name == "verse" && s.frame == UIFRAME_CUT && s.shadow == 0 && s.radius_control == 0;
+  #assert s.ink.r == s.ink.g && s.ink.g == s.ink.b && s.accent.g > s.accent.r + 0.5 && s.md.block_radius == 0;
+}

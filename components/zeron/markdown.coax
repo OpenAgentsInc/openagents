@@ -30,9 +30,6 @@ md_wrap :: (a: [] Atlas, text: string, runs: [] MdRun, width: f32, small: bool, 
   return text_wrap(measure_font(a), md_faces(small), text, runs, width, out);
 }
 
-// Zeron Dark's syntax seeds, by role (builtins.rs zeron_dark).
-SYNTAX_DARK :: [12] int.[0x92929a, 0x8b7cf6, 0x34d399, 0xfacc15, 0xc084fc, 0x60a5fa, 0xf472b6, 0xe8e8ea, 0xa1a1aa, 0xf472b6, 0x22d3ee, 0xf87171];
-
 md_test_atlas :: (a: [] Atlas) { text_test_atlas(a); }
 
 #test "Zeron's faces: Geist 14, SemiBold for bold, Geist Mono for code; tool text a size down" {

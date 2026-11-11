@@ -1,0 +1,53 @@
+// Every skin, picked by id or by name (components/spec.md, GitHub #13153).
+// A page or an app that offers a choice of skins loads this; one that wears
+// a single skin loads that skin's file.
+//   coax/bin/coax test components/skin/all.coax
+
+#load "zeron.coax";
+#load "everglade.coax";
+#load "verse.coax";
+#load "terminal.coax";
+
+uiskin :: (id: int) -> UiSkin {
+  if id == UISKIN_EVERGLADE { return everglade_skin(); }
+  if id == UISKIN_VERSE { return verse_skin(); }
+  if id == UISKIN_TERMINAL { return terminal_skin(); }
+  return zeron_skin();
+}
+// A skin's id from its name; anything else is Zeron.
+uiskin_named :: (name: string) -> int {
+  for id: 0..<UISKINS { if uiskin(id).name == name { return id; } }
+  return UISKIN_ZERON;
+}
+
+#test "four skins, each with its id and a name that finds it; every role is set" {
+  for id: 0..<UISKINS {
+    s := uiskin(id);
+    #assert s.id == id && s.name.count > 0 && uiskin_named(s.name) == id;
+    #assert s.body.line > 0 && s.md.line > 0 && s.md.marker_w > 0 && s.border > 0 && s.muted.a > 0 && s.accent.a > 0;
+  }
+  #assert uiskin(-1).id == UISKIN_ZERON && uiskin(9).id == UISKIN_ZERON && uiskin_named("steampunk") == UISKIN_ZERON;
+}
+#test "a panel is built as its skin builds frames: a plate, iron with studs, cut corners, a cell border" {
+  list: [16] Prim;
+  z := uiskin_panel(list[..], 0, zeron_skin(), 10, 10, 200, 100);
+  #assert z == 2 && list[0].kind == PRIM_SHADOW && list[1].kind == PRIM_BOX && list[1].radius == 12;
+  e := uiskin_panel(list[..], 0, everglade_skin(), 10, 10, 200, 100);
+  #assert e == 7 && list[1].border == 3 && list[2].x == 13 && list[3].w == 4;       // shadow, frame, lit edge, four studs
+  v := uiskin_panel(list[..], 0, verse_skin(), 10, 10, 200, 100);
+  #assert v == 5 && list[0].radius == 0 && list[1].kind == PRIM_LINE && list[1].a == 20;
+  t := uiskin_panel(list[..], 0, terminal_skin(), 0, 0, 20, 5);
+  #assert t == 1 && list[0].border == 1 && list[0].fill.a == 0;
+}
+#test "a control, a slot and a bar in each skin" {
+  list: [8] Prim;
+  for id: 0..<UISKINS {
+    s := uiskin(id);
+    n := uiskin_control(list[..], 0, s, 0, 0, 80, s.control_h, UISKIN_PRIMARY);
+    #assert n == 1 && list[0].fill.r == s.accent.r;
+    #assert uiskin_slot(list[..], 0, s, 0, 0, 40, 40, 4) == 1;
+    b := uiskin_bar(list[..], 0, s, 0, 0, 100, 4, 0.25, s.success);
+    #assert b == 2 && list[1].w == 25 && uiskin_bar(list[..], 0, s, 0, 0, 100, 4, 0, s.success) == 1 && uiskin_bar(list[..], 0, s, 0, 0, 100, 4, 7, s.success) == 2 && list[1].w == 100;
+  }
+  #assert uiskin_control(list[..], 0, terminal_skin(), 0, 0, 8, 1, UISKIN_REST) == 0;   // a resting control in a terminal is its label
+}

@@ -1,0 +1,54 @@
+// The terminal skin: the same components in cells (components/spec.md,
+// GitHub #13153). Sizes are columns and rows: a line is one row, a list's
+// marker column is two cells, there are no radii, shadows or icons, and a
+// code block has no frame. Colours are what Coder's terminal has always set
+// Markdown in on a dark screen (coax/lib/tui/tui.coax's dark theme); an
+// alpha of 0 means the terminal's own default colour. Faces are text
+// attributes, read by components/backend/terminal.coax.
+//   coax/bin/coax test components/skin/terminal.coax
+
+#load "skin.coax";
+
+// A terminal's faces: what a run is set in.
+TERM_FACE_PLAIN :: 0; TERM_FACE_BOLD :: 1; TERM_FACE_CODE :: 2; TERM_FACE_ITALIC :: 3; TERM_FACE_DIM :: 4;
+
+terminal_skin :: () -> UiSkin {
+  none := rgba(0, 0, 0, 0);
+  dim := rgba(129.0 / 255.0, 129.0 / 255.0, 129.0 / 255.0, 1);
+  code := rgba(116.0 / 255.0, 207.0 / 255.0, 209.0 / 255.0, 1);
+  link := rgba(127.0 / 255.0, 178.0 / 255.0, 232.0 / 255.0, 1);
+  row := UiType.{face = TERM_FACE_PLAIN, size = 1, line = 1};
+  s := UiSkin.{id = UISKIN_TERMINAL, name = "terminal",
+    canvas = none, surface = none, raised = none, sunk = none, hairline = dim, hover = rgba(1, 1, 1, 0.12),
+    ink = none, muted = dim, faint = dim,
+    accent = code, on_accent = rgba(0, 0, 0, 1), selection = rgba(1, 1, 1, 0.25),
+    danger = rgba(0.95, 0.33, 0.31, 1), warning = rgba(0.90, 0.75, 0.35, 1), success = rgba(0.45, 0.80, 0.45, 1),
+    code_wash = none, quote_wash = none, quote_rail = dim, header_wash = none,
+    body = row, strong = UiType.{face = TERM_FACE_BOLD, size = 1, line = 1}, code = UiType.{face = TERM_FACE_CODE, size = 1, line = 1},
+    mono = row, small = UiType.{face = TERM_FACE_DIM, size = 1, line = 1}, label = row, title = UiType.{face = TERM_FACE_BOLD, size = 1, line = 1},
+    space = 1, pad = 1, radius = 0, radius_control = 0, border = 1, control_h = 1,
+    frame = UIFRAME_CELLS, frame_mid = dim, frame_light = dim, trim = code,
+    shadow = 0, shade = none, stud = 0,
+    icon_copy = -1, icon_wrap = -1, icon_chevron = -1, icon_check = -1,
+    md = UiMarkdown.{line = 1, block_gap = 1, item_gap = 0,
+      marker_w = 1, marker_gap = 1, disc = 0,
+      quote_rail = 1, quote_pad_l = 2, quote_pad_r = 0, quote_pad_y = 0, quote_gap = 1,
+      code_pad_x = 0, code_inset_y = 0, code_radius = 0,
+      block_radius = 0, block_border = 0, block_header = 0, block_pad_x = 0, block_pad_y = 0, block_line = 1, action = 0,
+      cell_pad = 1, divider = 1, col_min_content = 3, col_min = 8,
+      bullet = "•"}};
+  // comment, keyword, string, number, type, function, property, variable, punctuation, tag, attribute, invalid
+  s.syntax[0] = dim; s.syntax[1] = rgba(0.78, 0.57, 0.92, 1); s.syntax[2] = rgba(0.60, 0.80, 0.50, 1); s.syntax[3] = rgba(0.90, 0.75, 0.35, 1);
+  s.syntax[4] = rgba(0.50, 0.80, 0.90, 1); s.syntax[5] = link; s.syntax[6] = rgba(0.90, 0.60, 0.70, 1);
+  s.syntax[7] = none; s.syntax[8] = dim; s.syntax[9] = s.danger; s.syntax[10] = code; s.syntax[11] = s.danger;
+  return s;
+}
+
+#test "the terminal skin is cells: one-row lines, no radii, shadows or icons, the terminal's own ink" {
+  s := terminal_skin();
+  #assert s.id == UISKIN_TERMINAL && s.frame == UIFRAME_CELLS && s.md.line == 1 && s.md.block_line == 1;
+  #assert s.radius == 0 && s.shadow == 0 && s.md.disc == 0 && s.md.bullet == "•" && s.md.action == 0 && s.md.block_header == 0;
+  #assert s.icon_copy == -1 && s.ink.a == 0 && s.muted.a == 1;
+  f := uiskin_faces(s);
+  #assert f.plain == TERM_FACE_PLAIN && f.bold == TERM_FACE_BOLD && f.code == TERM_FACE_CODE;
+}

@@ -1,0 +1,163 @@
+// A skin: how components look, apart from what they are (components/spec.md,
+// GitHub #13153). A skin is tokens (colour roles, type roles, spacing,
+// radii, border weights) plus frames (how a panel, a button, a slot or a bar
+// is built from primitives). A component reads only roles: it asks for
+// "ink", "the body face" or "a panel here", never for a colour or a size.
+//
+// The skins are values of one struct, UiSkin, made by zeron_skin
+// (skin/zeron.coax: Zeron Dark), everglade_skin (skin/everglade.coax: iron
+// and gold), verse_skin (skin/verse.coax: the Verse's instrument look) and
+// terminal_skin (skin/terminal.coax: cells). ui_skin (skin/all.coax) picks
+// one by id. Sizes are in the target's units: logical pixels on a pixel
+// target, cells in a terminal.
+//
+// A face is a slot in the target's fonts (layout/font.coax): the host
+// rasterized that slot's typeface and size, so a type role names a slot and
+// carries the size and line height layout needs.
+//   coax/bin/coax test components/skin/skin.coax
+
+#load "../layout/text.coax";
+#load "../paint/list.coax";
+
+UISKIN_ZERON :: 0; UISKIN_EVERGLADE :: 1; UISKIN_VERSE :: 2; UISKIN_TERMINAL :: 3;
+UISKINS :: 4;
+
+// A type role: its face, its size and the height of a line of it.
+UiType :: struct { face: int; size: f32; line: f32; }
+
+// How a skin builds its frames.
+UIFRAME_PLATE :: 0;           // Zeron: a rounded box, a hairline, a soft drop shadow
+UIFRAME_IRON :: 1;            // Everglade: a dark body in a metal frame with a lit edge and gold studs
+UIFRAME_CUT :: 2;             // the Verse: a dark body, a thin grey line, cyan corner ticks
+UIFRAME_CELLS :: 3;           // a terminal: a one-cell border, no fill
+
+// The roles a code token can have, in core/syntax.coax's order.
+UISKIN_SYNTAX :: 12;
+
+// Markdown's own measures.
+UiMarkdown :: struct {
+  line: f32;                // a line of body text
+  block_gap: f32;           // between two blocks of one reply
+  item_gap: f32;            // between list items
+  marker_w: f32; marker_gap: f32; disc: f32;        // a list's marker column, the gap before the text, the bullet's size
+  quote_rail: f32; quote_pad_l: f32; quote_pad_r: f32; quote_pad_y: f32; quote_gap: f32;
+  code_pad_x: f32; code_inset_y: f32; code_radius: f32;     // inline code's wash: past the glyphs, inset from the line, its rounding
+  block_radius: f32; block_border: f32; block_header: f32;  // a code block's frame and its header's height (0: no header)
+  block_pad_x: f32; block_pad_y: f32; block_line: f32;
+  action: f32;              // a header action's size (copy, wrap); 0: none
+  cell_pad: f32; divider: f32; col_min_content: f32; col_min: f32;   // a table's cell padding, row divider, column floors
+  bullet: string;           // a terminal's bullet (a pixel target draws a disc)
+}
+
+UiSkin :: struct {
+  id: int; name: string;
+  // colour roles
+  canvas: Rgba;             // the window behind everything
+  surface: Rgba;            // a panel's body
+  raised: Rgba;             // a control resting on a surface: a bubble, a chip's well
+  sunk: Rgba;               // a ground set into a surface: a code block, a slot
+  hairline: Rgba;           // borders and dividers
+  hover: Rgba;              // the wash under a hovered control
+  ink: Rgba; muted: Rgba; faint: Rgba;
+  accent: Rgba;             // the caret, a bullet, inline code, a primary action
+  on_accent: Rgba;          // what is drawn on the accent
+  selection: Rgba;
+  danger: Rgba; warning: Rgba; success: Rgba;
+  code_wash: Rgba;          // inline code's ground
+  quote_wash: Rgba; quote_rail: Rgba;
+  header_wash: Rgba;        // a code block's header over its ground
+  syntax: [UISKIN_SYNTAX] Rgba;
+  // type roles
+  body: UiType; strong: UiType; code: UiType;       // running text, **bold**, `inline code`
+  mono: UiType;             // a code block's lines
+  small: UiType;            // a caption: a code block's language, a timestamp
+  label: UiType;            // a control's label: a button, a tab, a chip
+  title: UiType;            // a panel's heading
+  // spacing, radii and weights
+  space: f32;               // the base gap (Zeron's SPACE_SM)
+  pad: f32;                 // a panel's padding
+  radius: f32;              // a panel's corner
+  radius_control: f32;      // a button's, a chip's
+  border: f32;              // a hairline's weight
+  control_h: f32;           // a button's or a tab's height
+  // frames
+  frame: int;
+  frame_mid: Rgba; frame_light: Rgba; trim: Rgba;   // a frame's metal, its lit edge, its ornaments
+  shadow: f32;              // a panel's drop shadow reach; 0 none
+  shade: Rgba;              // the shadow's colour
+  stud: f32;                // an ornament's size; 0 none
+  // icons a component asks for by role (slots in the target's icons; -1: the skin has none)
+  icon_copy: int; icon_wrap: int; icon_chevron: int; icon_check: int;
+  md: UiMarkdown;
+}
+
+// A skin's faces for styled text (layout/text.coax).
+uiskin_faces :: (s: UiSkin) -> TextFaces { return TextFaces.{plain = s.body.face, bold = s.strong.face, code = s.code.face}; }
+
+// A syntax role's colour; anything outside the roles is the plain colour.
+uiskin_syntax :: (s: UiSkin, role: int, plain: Rgba) -> Rgba {
+  if role < 0 || role >= UISKIN_SYNTAX { return plain; }
+  return s.syntax[role];
+}
+
+// ---------------------------------------------------------------- frames
+
+// A panel: the skin's frame around (x, y, w, h), its body filled. Returns the count.
+uiskin_panel :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: f32) -> int {
+  k := n;
+  if s.frame == UIFRAME_CELLS {
+    return prim_box(list, k, x, y, w, h, 0, s.border, rgba(0, 0, 0, 0), s.hairline);
+  }
+  if s.shadow > 0 { k = prim_shadow(list, k, x, y, w, h, s.radius, 0, s.shadow / 3, s.shadow, 0, s.shade); }
+  if s.frame == UIFRAME_IRON {
+    // the metal frame, its lit inner edge, the body, a stud at each corner
+    k = prim_box(list, k, x, y, w, h, s.radius, s.border * 2, s.surface, s.frame_mid);
+    k = prim_box(list, k, x + s.border * 2, y + s.border * 2, w - s.border * 4, h - s.border * 4, s.radius - s.border, s.border / 2, rgba(0, 0, 0, 0), s.frame_light);
+    if s.stud > 0 {
+      d := s.stud; o := d / 2;
+      k = prim_fill(list, k, x - o + s.border, y - o + s.border, d, d, 1, s.trim);
+      k = prim_fill(list, k, x + w - o - s.border, y - o + s.border, d, d, 1, s.trim);
+      k = prim_fill(list, k, x - o + s.border, y + h - o - s.border, d, d, 1, s.trim);
+      k = prim_fill(list, k, x + w - o - s.border, y + h - o - s.border, d, d, 1, s.trim);
+    }
+    return k;
+  }
+  if s.frame == UIFRAME_CUT {
+    // a dark body in a thin line, with a brighter tick at each corner
+    k = prim_box(list, k, x, y, w, h, 0, s.border, s.surface, s.frame_mid);
+    t := s.radius; b := s.border * 2;
+    k = prim_line(list, k, x, y + b / 2, x + t, y + b / 2, b, s.trim);
+    k = prim_line(list, k, x + b / 2, y, x + b / 2, y + t, b, s.trim);
+    k = prim_line(list, k, x + w - t, y + h - b / 2, x + w, y + h - b / 2, b, s.trim);
+    k = prim_line(list, k, x + w - b / 2, y + h - t, x + w - b / 2, y + h, b, s.trim);
+    return k;
+  }
+  return prim_box(list, k, x, y, w, h, s.radius, s.border, s.surface, s.hairline);
+}
+
+// A control's ground (a button, a chip, a tab): resting, hovered or the primary action.
+UISKIN_REST :: 0; UISKIN_HOVER :: 1; UISKIN_PRIMARY :: 2;
+uiskin_control :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: f32, state: int) -> int {
+  if s.frame == UIFRAME_CELLS {
+    return ifx state == UISKIN_REST then n else prim_fill(list, n, x, y, w, h, 0, ifx state == UISKIN_PRIMARY then s.accent else s.hover);
+  }
+  fill := ifx state == UISKIN_PRIMARY then s.accent else ifx state == UISKIN_HOVER then s.hover else s.raised;
+  if s.frame == UIFRAME_IRON { return prim_box(list, n, x, y, w, h, s.radius_control, s.border, fill, ifx state == UISKIN_REST then s.frame_mid else s.trim); }
+  if s.frame == UIFRAME_CUT { return prim_box(list, n, x, y, w, h, 0, s.border, fill, ifx state == UISKIN_REST then s.frame_mid else s.trim); }
+  return prim_box(list, n, x, y, w, h, s.radius_control, s.border, fill, s.hairline);
+}
+
+// A slot: a ground set into a surface (a code block's body, an item slot, a track).
+uiskin_slot :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: f32, radius: f32) -> int {
+  if s.frame == UIFRAME_CELLS { return prim_box(list, n, x, y, w, h, 0, s.border, rgba(0, 0, 0, 0), s.hairline); }
+  return prim_box(list, n, x, y, w, h, radius, s.border, s.sunk, ifx s.frame == UIFRAME_IRON then s.frame_mid else s.hairline);
+}
+
+// A bar: a track filled to a share (0..1) in a colour.
+uiskin_bar :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: f32, share: f32, color: Rgba) -> int {
+  f := ifx share < 0 then 0.0f32 else ifx share > 1 then 1.0f32 else share;
+  r := ifx s.frame == UIFRAME_PLATE || s.frame == UIFRAME_IRON then h / 2 else 0.0f32;
+  k := prim_box(list, n, x, y, w, h, r, ifx s.frame == UIFRAME_IRON then s.border else 0.0f32, s.sunk, s.frame_mid);
+  if f > 0 { k = prim_fill(list, k, x, y, w * f, h, r, color); }
+  return k;
+}

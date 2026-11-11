@@ -1,0 +1,113 @@
+// The Markdown component's checks: one document, laid out and painted in
+// pixels in the Zeron skin and in cells in the terminal skin, by the same
+// code (components/spec.md, GitHub #13153). The chat frames
+// (apps/openagents-web/chat-frames.coax) pin its vertices in the Zeron skin.
+//   coax/bin/coax test components/kit/markdown-checks.coax
+
+#load "markdown.coax";
+#load "../skin/all.coax";
+
+MdkStore :: struct { under: [512] Prim; over: [1024] Prim; lines: [256] SheetLine; hits: [16] SheetHit; pool: [256] u8; doc: [1] MdDoc; }
+mdk_sheet :: (st: [] MdkStore) -> Sheet {
+  return Sheet.{under = st[0].under[..], over = st[0].over[..], lines = st[0].lines[..], hits = st[0].hits[..], pool = st[0].pool[..]};
+}
+// The text of selectable line k.
+mdk_line :: (sh: [] Sheet, k: int, buf: [] u8) -> string {
+  n := 0;
+  for i: 0..<sh[0].lines[k].items { for c: sh[0].over[sh[0].lines[k].item0 + i].text { if n < buf.count { buf[n] = c; n += 1; } } }
+  return cast(string) buf[0..<n];
+}
+
+MDK_SRC :: "Done — the header keeps `text_muted`:\n\n- the header reads the **summary**\n  - nested\n3. third\n\n> quoted\n\n```rust\nfn a() {\n    b\n}\n```\n\n| a | b |\n|---|--:|\n| one | two words |";
+
+#test "in a terminal: one row a line, a bullet in a one-cell column, nested items two cells in, code with no frame" {
+  st: [1] MdkStore; sh: [1] Sheet; sh[0] = mdk_sheet(st[..]);
+  doc := st[0].doc[..];
+  n := md_parse(doc, MDK_SRC, 0);
+  #assert n == 6;                                 // a paragraph, a list, a numbered list, a quote, code, a table
+  m := measure_cells(); s := terminal_skin();
+  buf: [128] u8;
+  // the paragraph: 36 columns, so two rows at 30
+  #assert markdown_block(sh[..], m, s, doc, 0, 0, 0, 30) == 2;
+  #assert mdk_line(sh[..], 0, buf[..]) == "Done — the header keeps " && mdk_line(sh[..], 1, buf[..]) == "text_muted:";
+  #assert sh[0].over[1].id == TERM_FACE_CODE && sh[0].over[1].y == 1 && sh[0].over[1].x == 0 && !sh[0].lines[0].hard && sh[0].lines[1].hard;
+  // inline code has no wash in a terminal
+  for k: 0..<sh[0].nu { #assert sh[0].under[k].fill.a == 0; }
+  // the list: a bullet at column 0, the text at 2; the nested item's bullet at 2, its text at 4; a number where a number is
+  sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
+  #assert markdown_block(sh[..], m, s, doc, 1, 0, 0, 40) == 2 && markdown_block(sh[..], m, s, doc, 2, 0, 2, 40) == 1;
+  #assert sh[0].over[0].text == "•" && sh[0].over[0].x == 0 && sh[0].over[1].x == 2 && sh[0].over[1].text == "the header reads the ";
+  #assert sh[0].over[2].id == TERM_FACE_BOLD && sh[0].over[2].text == "summary";
+  #assert sh[0].over[3].text == "•" && sh[0].over[3].x == 2 && sh[0].over[3].y == 1 && sh[0].over[4].x == 4;
+  #assert sh[0].over[5].text == "3." && sh[0].over[5].y == 2 && sh[0].over[6].text == "third";
+  // the quote: a one-cell rail, the text two cells in, muted
+  sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
+  #assert markdown_block(sh[..], m, s, doc, 3, 0, 0, 40) == 1;
+  #assert sh[0].under[1].w == 1 && sh[0].under[1].h == 1 && sh[0].over[0].x == 2 && sh[0].over[0].fill.r == s.muted.r;
+  // the code: three rows, no header, no actions, no hits
+  sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
+  #assert markdown_block(sh[..], m, s, doc, 4, 0, 0, 40) == 3 && sh[0].nh == 0 && sh[0].nl == 3;
+  #assert mdk_line(sh[..], 0, buf[..]) == "fn a() {" && mdk_line(sh[..], 1, buf[..]) == "    b" && sh[0].over[0].fill.r == s.syntax[SYN_KEYWORD].r;
+  #assert markdown_code_height(s, "a\nb") == 2;
+}
+#test "in a terminal: a table's columns share the width, a rule between rows, the right column right-aligned" {
+  st: [1] MdkStore; sh: [1] Sheet; sh[0] = mdk_sheet(st[..]);
+  doc := st[0].doc[..];
+  n := md_parse(doc, MDK_SRC, 0);
+  m := measure_cells(); s := terminal_skin();
+  L := markdown_table_measure(m, s, doc, 5, 30);
+  // naturals: 3 + 2 and 9 + 2 cells; they share 30 as 5 : 11, none under its minimum (5 and 8)
+  #assert L.cols == 2 && L.rows == 2 && L.total == 30 && L.x[2] == 30 && L.x[1] == round_layout(30.0 * 5.0 / 16.0);
+  h := markdown_block(sh[..], m, s, doc, 5, 0, 0, 30);
+  #assert h == 1 + 2 + 1 + 1 + 2;                 // a row and its padding, the rule, a row and its padding
+  found := false;
+  for k: 0..<sh[0].no { if sh[0].over[k].text == "two words" { found = true; #assert sh[0].over[k].x + sh[0].over[k].w == 29; } }
+  #assert found && sh[0].under[0].h == 1 && sh[0].under[0].w == 30;
+  // too narrow: each column its minimum, cut at the width
+  sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
+  h = markdown_block(sh[..], m, s, doc, 5, 0, 0, 10);
+  #assert sh[0].over[0].kind == PRIM_CLIP && sh[0].over[0].a == 10 && sh[0].over[sh[0].no - 1].kind == PRIM_CLIP;
+}
+#test "in pixels, in the Zeron skin: the same document at Zeron's measures; a code block's header carries its two actions" {
+  st: [1] MdkStore; sh: [1] Sheet; sh[0] = mdk_sheet(st[..]);
+  doc := st[0].doc[..];
+  n := md_parse(doc, MDK_SRC, 0);
+  a: [1] Atlas; text_test_atlas(a[..]);
+  m := measure_font(a[..]); s := zeron_skin();
+  // 36 glyphs of 8px: two 22px lines at 240
+  #assert markdown_block(sh[..], m, s, doc, 0, 48, 100, 240) == 44;
+  #assert sh[0].under[0].kind == PRIM_BOX && sh[0].under[0].radius == 4.5 && sh[0].under[0].fill.a > 0 && sh[0].under[0].y == 100 + 22 + 2;
+  // the list: a 5px disc, text 26px in; the nested one 26 further
+  sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
+  #assert markdown_block(sh[..], m, s, doc, 1, 48, 0, 600) == 22 + 4 + 22;
+  #assert sh[0].under[0].w == 5 && sh[0].under[0].x == 49 && sh[0].over[0].x == 48 + 26 && sh[0].under[1].x == 49 + 26;
+  // the code block: 2 + 28 + 20 + 3 * 18, two hits, two icons
+  sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0;
+  #assert markdown_block(sh[..], m, s, doc, 4, 48, 0, 600) == 104 && markdown_height(sh[..], m, s, doc, 4, 600) == 104;
+  #assert sh[0].nh == 2 && sh[0].hits[0].kind == MARKDOWN_HIT_WRAP && sh[0].hits[1].kind == MARKDOWN_HIT_COPY && sh[0].hits[1].a == 4;
+  icons := 0;
+  for k: 0..<sh[0].nu { if sh[0].under[k].kind == PRIM_ICON { icons += 1; } }
+  #assert icons == 2 && sh[0].over[0].text == "rust" && sh[0].over[0].id == s.small.face;
+  // hovering Copy lights it
+  nu := sh[0].nu;
+  sh[0].no = 0; sh[0].nl = 0; sh[0].nu = 0; sh[0].nh = 0;
+  sh[0].hover_kind = MARKDOWN_HIT_COPY; sh[0].hover_a = 4;
+  #assert markdown_block(sh[..], m, s, doc, 4, 48, 0, 600) == 104 && sh[0].nu == nu + 1;
+}
+#test "every skin lays the document out; only measures and colours differ between the pixel skins" {
+  st: [1] MdkStore; sh: [1] Sheet;
+  doc := st[0].doc[..];
+  n := md_parse(doc, MDK_SRC, 0);
+  a: [1] Atlas; text_test_atlas(a[..]);
+  m := measure_font(a[..]);
+  heights: [3] f32; prims: [3] int;
+  for id: 0..<3 {
+    sh[0] = mdk_sheet(st[..]);
+    s := uiskin(id);
+    y: f32 = 0;
+    for b: 0..<n { y += markdown_block(sh[..], m, s, doc, b, 0, y, 600) + s.md.block_gap; }
+    heights[id] = y; prims[id] = sh[0].nu + sh[0].no;
+    for k: 0..<sh[0].no { if sh[0].over[k].kind == PRIM_TEXT && sh[0].over[k].text == "quoted" { #assert sh[0].over[k].fill.r == s.muted.r; } }
+  }
+  #assert heights[0] == heights[1] && heights[1] == heights[2] && prims[0] == prims[1] && prims[1] == prims[2];
+}

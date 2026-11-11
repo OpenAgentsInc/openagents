@@ -36,10 +36,12 @@ components/
                    (color, text, markdown, syntax)
   layout/          sizes and positions from state, a width and a skin
                    (round, font, measure, text)
-  paint/           the display list: the primitives a frame is made of (list)
-  skin/            tokens and frames: zeron.coax, verse.coax, everglade.coax, terminal.coax
+  paint/           the display list: the primitives a frame is made of (list),
+                   and a sheet: two lists, selectable lines and hit regions (sheet)
+  skin/            tokens and frames: skin.coax (what a skin is), zeron.coax, verse.coax,
+                   everglade.coax, terminal.coax, all.coax (pick one by id or name)
   backend/         display list to a target: gpu.coax (and its shader), terminal.coax
-  kit/             the components themselves, one file each
+  kit/             the components themselves, one file each (markdown, so far)
   gallery/         the /components page and the picture checks
   fonts/, icons/   with their licences and NOTICE
   zeron/           the chat components as moved from apps/shared/zeron/ (Phase 1, done),
@@ -237,11 +239,25 @@ Each phase ends with every existing check and golden unchanged.
    in to those files. Chat's frames are pinned by
    `apps/openagents-web/chat-frames.coax` (eight scenes of `/chat`, hashed
    vertex buffers): the same input gives the same floats as before the
-   split. Next: `kit/markdown.coax` (paint), then the rest of the chat set.
-   Markdown is the proof: when chat's pictures don't change, the layers are
-   right.
-3. **Skins and the gallery.** The `zeron` skin from the constants now in the
-   code, the `everglade` skin, and openagents.com/components.
+   split. Markdown is `kit/markdown.coax`: the transcript's Markdown
+   blocks (paragraphs, lists, quotes, code blocks, tables) are laid out and
+   painted by it onto a sheet (`paint/sheet.coax`) in the Zeron skin, and
+   the transcript's whole display list is the paint layer's primitives,
+   drawn by `gpu_draw`. Chat's frames did not change. The same file lays
+   the same document out in cells in the terminal skin
+   (`kit/markdown-checks.coax`). Still to move onto the display list and
+   the skin: the rest of the transcript (bubbles, tool groups, diffs,
+   notices), the composer, the pickers and the attachments, which still
+   call `paint_*` with Zeron's constants.
+3. **Skins and the gallery.** Done 2026-11-10: `skin/skin.coax` (`UiSkin`:
+   colour roles, type roles, spacing, Markdown's measures, and the frames
+   `uiskin_panel`, `uiskin_control`, `uiskin_slot`, `uiskin_bar`), with
+   `zeron.coax` (from the constants that were in the components, which now
+   live there), `everglade.coax` and `verse.coax` (the HUD's FANTASY and
+   SCIFI colours; `gallery/skin-parity.coax` holds them equal to
+   `aethyr/ui/hud-style.coax`) and `terminal.coax` (cells). The pixel skins
+   share the atlas's faces (Geist): a skin's own typefaces need its fonts in
+   the atlas, which no host loads yet. Next: openagents.com/components.
 4. **Chat in Everglade for desktop.** The Workshop gets the same transcript
    and composer in the `everglade` skin, on the shared engines. Its boards
    (`golem-board.coax`) move onto the list and panel components.

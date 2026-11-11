@@ -19,6 +19,7 @@
 // user bubble. Based on Zeron by Wing, MIT.
 
 #load "tools.coax";
+#load "../kit/markdown.coax";   // Markdown blocks: laid out and painted by the component
 
 T_ROWS :: 256; T_GROUPS :: 64; T_TOOLS :: 256; T_DIFF :: 512; T_POOL :: 32768;
 T_BOXES :: 2048; T_TEXTS :: 4096; T_SELS :: 1024; T_HITS :: 256;
@@ -31,25 +32,10 @@ STATUS_STRIP_HEIGHT :: 24.0;
 TRANSCRIPT_WIDTH :: 736.0;      // settings transcriptWidth
 ROW_PAD_X :: 48.0;
 TIMESTAMP_LANE :: 32.0;         // SPACE_SM + 2 * SPACE_MD, under an entry's last row
-MD_BLOCK_GAP :: 12.0;
-MD_LINE_HEIGHT :: 22.0;
 BUBBLE_RADIUS :: 16.0;
 BUBBLE_PAD_X :: 16.0; BUBBLE_PAD_Y :: 10.0;
-LIST_ITEM_GAP :: 4.0; LIST_MARKER_W :: 18.0; LIST_MARKER_GAP :: 8.0; LIST_DISC :: 5.0;
-QUOTE_RAIL :: 2.0; QUOTE_PAD_L :: 12.0; QUOTE_PAD_R :: 10.0; QUOTE_PAD_Y :: 6.0; QUOTE_GAP :: 8.0;
-INLINE_CODE_RADIUS :: 4.5; INLINE_CODE_PAD_X :: 2.0; INLINE_CODE_INSET_Y :: 2.0;
-CODE_RADIUS :: 10.0; CODE_HEADER_HEIGHT :: 28.0; CODE_PADDING_X :: 12.0; CODE_PADDING_Y :: 10.0;
-CODE_LINE_HEIGHT :: 18.0; CODE_ACTION_SIZE :: 22.0;
-// A GFM table (render.rs TABLE_*, mugen-markdown's TableBlock under Zeron's
-// md theme): frameless, a 1px white@10% hairline between rows the only
-// chrome, 12px cell padding, a column's natural width floored at 48 (plus
-// padding), its minimum min(natural, 96).
-TABLE_CELL_PADDING :: 12.0; TABLE_DIVIDER :: 1.0; TABLE_MIN_COLUMN_CONTENT :: 48.0; TABLE_MIN_COLUMN_WIDTH :: 96.0;
-PHI :: 1.618034;                // GPUI's default line height, relative
-
 R_USER :: 0; R_MD :: 1; R_GROUP :: 2; R_NOTICE :: 3;
-TI_QUAD :: 0; TI_ICON :: 1; TI_ELBOW :: 2; TI_TEXT :: 3;
-H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: 3; H_COPY :: 4; H_ACTION :: 5;
+H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: MARKDOWN_HIT_WRAP; H_COPY :: MARKDOWN_HIT_COPY; H_ACTION :: 5;
 
 // A notice row: Zeron's ErrorChip (notice.rs notice_chip_with_action, the
 // transcript's tile) for a failed turn, labelled as run_errors.rs reads the
@@ -65,7 +51,6 @@ A_NONE :: 0; A_LOGIN :: 1; A_INSTALL :: 2; A_ALLOW :: 3; A_DENY :: 4;
 NOTICE_PAD :: 10.0; NOTICE_PY :: 8.0; NOTICE_GAP :: 6.0; NOTICE_TILE :: 20.0;
 NOTICE_LINE :: 19.416408;       // 12px text on GPUI's phi line
 NOTICE_BUTTON_H :: 27.416408;   // py 4 around it
-DANGER_MUTED :: 0xfca5a5; WARNING :: 0xfbbf24; WARNING_MUTED :: 0xfde68a;
 // The working trailer under the last row (render_working_trailer): pt 16,
 // the 3x3 gradient spinner (loaders.rs, 2.5px cells, 750ms a turn), the
 // flavour word and the elapsed time.
@@ -91,20 +76,10 @@ TRow :: struct {
 }
 TGroup :: struct { tool0: int; tools: int; summary: string; open: bool; }
 
-// The display list.
-TItem :: struct {
-  kind: int; x: f32; y: f32; w: f32; h: f32;
-  radius: f32; border: f32; fill: Rgba; edge: Rgba;
-  icon: int; joined: bool; end_x: f32;
-  text: string; font: int; sel: int; off: int;
-}
-// A table wider than the column: the boxes and texts it laid out, cut at its right edge.
-TClip :: struct { box0: int; box1: int; text0: int; text1: int; right: f32; }
-T_CLIPS :: 16;
-// A selectable line of text: its segments texts[item0..<item0+items], and
-// whether a line break follows it when copied (a soft wrap has none).
-TSel :: struct { x: f32; y: f32; h: f32; item0: int; items: int; hard: bool; }
-THit :: struct { x: f32; y: f32; w: f32; h: f32; kind: int; a: int; b: int; }
+// The display list is a sheet (components/paint/sheet.coax): boxes and
+// icons under, text over, the selectable lines and the hit regions, all in
+// content coordinates. The transcript keeps its arrays; t_sheet lends them
+// to a component's layout.
 SelPos :: struct { line: int; off: int; }
 
 Transcript :: struct {
@@ -122,10 +97,10 @@ Transcript :: struct {
   content_h: f32; view_h: f32; offset: f32;   // offset: content y 0 in window y
   started: bool;
   // the display list from the last layout
-  boxes: [T_BOXES] TItem; nbox: int;
-  texts: [T_TEXTS] TItem; ntext: int;
-  sels: [T_SELS] TSel; nsel: int;
-  hits: [T_HITS] THit; nhit: int;
+  boxes: [T_BOXES] Prim; nbox: int;
+  texts: [T_TEXTS] Prim; ntext: int;
+  sels: [T_SELS] SheetLine; nsel: int;
+  hits: [T_HITS] SheetHit; nhit: int;
   copy_code: int;               // a code block's Copy pressed: its block, until the host takes it
   notices: [T_NOTICES] TNotice; nn: int;
   copy_notice: int;             // a notice's copy pressed: its notice + 1, until the host takes it
@@ -134,22 +109,12 @@ Transcript :: struct {
   working: bool; work_secs: f32; spin: f32; seed: int;
   // the pointer (window logical px)
   px: f32; py: f32; inside: bool;
-  clips: [T_CLIPS] TClip; nclip: int;
   hover_kind: int; hover_a: int; hover_b: int;
   press_kind: int; press_a: int; press_b: int;
   selecting: bool; has_sel: bool; anchor: SelPos; focus: SelPos;
 }
 
-ink :: (a: f32) -> Rgba { return rgba(1, 1, 1, a); }
-// zeron_theme keeps a color's alpha as a byte: opacity(0.055) is 14/255.
-byte_alpha :: (c: Rgba, a: f32) -> Rgba { return opacity(c, floor(a * 255 + 0.5) / 255); }
-wash :: (a: f32) -> Rgba { return rgba(0.92, 0.92, 0.92, a); }
-DANGER :: 0xf87171; SUCCESS :: 0x34d399;
-syntax_color :: (role: int, plain: Rgba) -> Rgba {
-  if role < 0 || role > 11 { return plain; }
-  palette := SYNTAX_DARK;
-  return hex(palette[role], 1);
-}
+syntax_color :: (role: int, plain: Rgba) -> Rgba { return zeron_syntax(role, plain); }
 
 // ---------------------------------------------------------------- the model
 
@@ -285,22 +250,31 @@ t_demo :: (t: [] Transcript) {
 
 // ---------------------------------------------------------------- the display list
 
-t_box :: (t: [] Transcript, kind: int, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
-  if t[0].nbox >= T_BOXES { return -1; }
-  b := t[0].nbox; t[0].nbox += 1;
-  t[0].boxes[b] = TItem.{kind = kind, x = x, y = y, w = w, h = h, radius = radius, border = border, fill = fill, edge = edge, icon = -1, sel = -1};
-  return b;
+// The transcript's arrays as a sheet, and the counts a layout moved taken back.
+t_sheet :: (t: [] Transcript, sh: [] Sheet) {
+  sh[0] = Sheet.{under = t[0].boxes[..], nu = t[0].nbox, over = t[0].texts[..], no = t[0].ntext,
+    lines = t[0].sels[..], nl = t[0].nsel, hits = t[0].hits[..], nh = t[0].nhit, pool = t[0].pool[..], np = t[0].np,
+    hover_kind = t[0].hover_kind, hover_a = t[0].hover_a, hover_b = t[0].hover_b};
+}
+t_sheet_done :: (t: [] Transcript, sh: [] Sheet) {
+  t[0].nbox = sh[0].nu; t[0].ntext = sh[0].no; t[0].nsel = sh[0].nl; t[0].nhit = sh[0].nh; t[0].np = sh[0].np;
+}
+
+t_box :: (t: [] Transcript, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
+  n := prim_box(t[0].boxes[..], t[0].nbox, x, y, w, h, radius, border, fill, edge);
+  if n == t[0].nbox { return -1; }
+  t[0].nbox = n;
+  return n - 1;
 }
 t_quad :: (t: [] Transcript, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba) {
-  b := t_box(t, TI_QUAD, x, y, w, h, radius, 0, fill, fill);
+  t[0].nbox = prim_box(t[0].boxes[..], t[0].nbox, x, y, w, h, radius, 0, fill, fill);
 }
 t_icon :: (t: [] Transcript, icon: int, x: f32, y: f32, size: f32, color: Rgba) {
-  b := t_box(t, TI_ICON, x, y, size, size, 0, 0, color, color);
-  if b >= 0 { t[0].boxes[b].icon = icon; }
+  t[0].nbox = prim_icon(t[0].boxes[..], t[0].nbox, icon, x, y, size, size, color);
 }
 t_hit :: (t: [] Transcript, kind: int, a: int, b: int, x: f32, y: f32, w: f32, h: f32) {
   if t[0].nhit >= T_HITS { return; }
-  t[0].hits[t[0].nhit] = THit.{x = x, y = y, w = w, h = h, kind = kind, a = a, b = b};
+  t[0].hits[t[0].nhit] = SheetHit.{x = x, y = y, w = w, h = h, kind = kind, a = a, b = b};
   t[0].nhit += 1;
 }
 t_hovered :: (t: [] Transcript, kind: int, a: int, b: int) -> bool {
@@ -310,7 +284,7 @@ t_hovered :: (t: [] Transcript, kind: int, a: int, b: int) -> bool {
 t_line :: (t: [] Transcript, x: f32, y: f32, h: f32, hard: bool) -> int {
   if t[0].nsel >= T_SELS { return -1; }
   s := t[0].nsel; t[0].nsel += 1;
-  t[0].sels[s] = TSel.{x = x, y = y, h = h, item0 = t[0].ntext, items = 0, hard = hard};
+  t[0].sels[s] = SheetLine.{x = x, y = y, h = h, item0 = t[0].ntext, items = 0, hard = hard};
   return s;
 }
 // A text segment: a line's run in one font and color, at x, its line box at y.
@@ -323,8 +297,9 @@ t_text_seg :: (t: [] Transcript, a: [] Atlas, sel: int, x: f32, y: f32, h: f32, 
     for k: t[0].sels[sel].item0..<t[0].ntext { off += t[0].texts[k].text.count; }
     t[0].sels[sel].items += 1;
   }
-  t[0].texts[t[0].ntext] = TItem.{kind = TI_TEXT, x = x, y = y, w = w, h = h, fill = color, edge = color, icon = -1, text = text, font = font, sel = sel, off = off};
-  t[0].ntext += 1;
+  n := prim_text(t[0].texts[..], t[0].ntext, x, y, w, h, font, color, text);
+  t[0].texts[t[0].ntext].line = sel; t[0].texts[t[0].ntext].off = off;
+  t[0].ntext = n;
   return w;
 }
 // One plain selectable line.
@@ -333,34 +308,18 @@ t_plain :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32, h: f32, font: int, co
   return t_text_seg(t, a, s, x, y, h, font, color, text);
 }
 
-// One wrapped line of Markdown-styled text: each run in its font and color,
-// inline code on its rounded wash (painted under the glyphs, 2px past them,
-// inset 2px from the line box).
+// One wrapped line of Markdown-styled text (kit/markdown.coax markdown_line), in Zeron's faces.
 t_rich_line :: (t: [] Transcript, a: [] Atlas, th: Theme, text: string, runs: [] MdRun, from: int, to: int, x: f32, y: f32, lh: f32, small: bool, color: Rgba, hard: bool) {
-  s := t_line(t, x, y, lh, hard);
-  i := from; pen := x;
-  while i < to {
-    style := md_style_at(runs, i);
-    j := i;
-    while j < to && md_style_at(runs, j) == style { j += 1; }
-    seg := cast(string) text[i..<j];
-    font := md_font(style, small);
-    if style == MD_CODE {
-      w := text_width(a, font, seg);
-      t_quad(t, pen - INLINE_CODE_PAD_X, y + INLINE_CODE_INSET_Y, w + 2 * INLINE_CODE_PAD_X, lh - 2 * INLINE_CODE_INSET_Y, INLINE_CODE_RADIUS, opacity(th.accent, 56.0 / 255.0));
-      pen += t_text_seg(t, a, s, pen, y, lh, font, th.accent, seg);
-    } else {
-      pen += t_text_seg(t, a, s, pen, y, lh, font, color, seg);
-    }
-    i = j;
-  }
+  sh: [1] Sheet; t_sheet(t, sh[..]);
+  markdown_line(sh[..], measure_font(a), zeron_skin(), md_faces(small), text, runs, from, to, x, y, lh, color, hard);
+  t_sheet_done(t, sh[..]);
 }
 // A wrapped styled text at (x, y), width w; returns its height.
 t_rich :: (t: [] Transcript, a: [] Atlas, th: Theme, text: string, runs: [] MdRun, x: f32, y: f32, w: f32, lh: f32, color: Rgba) -> f32 {
-  lines: [64] TextLine;
-  n := md_wrap(a, text, runs, w, false, lines[..]);
-  for k: 0..<n { t_rich_line(t, a, th, text, runs, lines[k].from, lines[k].to, x, y + cast(f32) k * lh, lh, false, color, k + 1 == n); }
-  return cast(f32) n * lh;
+  sh: [1] Sheet; t_sheet(t, sh[..]);
+  h := markdown_text(sh[..], measure_font(a), zeron_skin(), text, runs, x, y, w, lh, color);
+  t_sheet_done(t, sh[..]);
+  return h;
 }
 
 // ---------------------------------------------------------------- rows
@@ -393,219 +352,24 @@ lay_user :: (t: [] Transcript, a: [] Atlas, th: Theme, r: int, x: f32, y: f32, w
   return h;
 }
 
-// A fenced code block (render.rs code_block_frame): the rounded frame, the
-// header with the language and its two actions, the highlighted lines.
-lay_code :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: f32) -> f32 {
-  doc := t[0].md[..];
-  code := md_block_text(doc, b);
-  nl := 1;
-  for k: 0..<code.count { if code[k] == '\n' { nl += 1; } }
-  h := 2 + CODE_HEADER_HEIGHT + 2 * CODE_PADDING_Y + cast(f32) nl * CODE_LINE_HEIGHT;
-  border := ink(0.10);
-  bb := t_box(t, TI_QUAD, x, y, w, h, CODE_RADIUS, 1, ink(0.035), border);
-  // the header: ink(0.02) over the frame, its bottom hairline
-  t_quad(t, x + 1, y + 1, w - 2, CODE_HEADER_HEIGHT - 1, 0, ink(0.02));
-  t_quad(t, x + 1, y + CODE_HEADER_HEIGHT, w - 2, 1, 0, border);
-  llh: f32 = 11 * PHI;
-  ly := y + 1 + (CODE_HEADER_HEIGHT - 1 - llh) / 2;
-  lw := t_text_seg(t, a, -1, x + 1 + CODE_PADDING_X, ly, llh, FONT_SMALL, th.muted, md_lang(doc, b));
-  // actions, right to left: Copy (24 wide: px 6 and the 12px icon), then wrap (22), gap 2, header pr 5
-  ay := y + 1 + (CODE_HEADER_HEIGHT - 1 - CODE_ACTION_SIZE) / 2;
-  copy_x := x + w - 1 - 5 - 24;
-  wrap_x := copy_x - 2 - CODE_ACTION_SIZE;
-  if t_hovered(t, H_WRAP, b, 0) { t_quad(t, wrap_x, ay, CODE_ACTION_SIZE, CODE_ACTION_SIZE, 6, ink(0.08)); }
-  if t_hovered(t, H_COPY, b, 0) { t_quad(t, copy_x, ay, 24, CODE_ACTION_SIZE, 5, ink(0.08)); }
-  t_icon(t, ICON_WRAP, wrap_x + (CODE_ACTION_SIZE - 13) / 2, ay + (CODE_ACTION_SIZE - 13) / 2, 13, th.muted);
-  t_icon(t, ICON_COPY, copy_x + 6, ay + (CODE_ACTION_SIZE - 12) / 2, 12, th.muted);
-  t_hit(t, H_WRAP, b, 0, wrap_x, ay, CODE_ACTION_SIZE, CODE_ACTION_SIZE);
-  t_hit(t, H_COPY, b, 0, copy_x, ay, 24, CODE_ACTION_SIZE);
-  // the lines
-  top := y + 1 + CODE_HEADER_HEIGHT + CODE_PADDING_Y;
-  i := 0; k := 0;
-  runs: [128] MdRun;
-  while i <= code.count {
-    j := i; while j < code.count && code[j] != '\n' { j += 1; }
-    line := cast(string) code[i..<j];
-    t_syntax_line(t, a, line, runs[..], x + 1 + CODE_PADDING_X, top + cast(f32) k * CODE_LINE_HEIGHT, CODE_LINE_HEIGHT, FONT_CODE, th.text);
-    k += 1; i = j + 1;
-  }
-  return h;
-}
-// A highlighted line of Rust as one selectable line (spaces between tokens
-// included, in the plain color).
+// A highlighted line of Rust as one selectable line (kit/markdown.coax markdown_syntax_line).
 t_syntax_line :: (t: [] Transcript, a: [] Atlas, line: string, runs: [] MdRun, x: f32, y: f32, lh: f32, font: int, plain: Rgba) {
-  s := t_line(t, x, y, lh, true);
-  n := syn_rust(line, runs);
-  pen := x; i := 0;
-  for k: 0..<n {
-    if runs[k].from > i { pen += t_text_seg(t, a, s, pen, y, lh, font, plain, cast(string) line[i..<runs[k].from]); }
-    pen += t_text_seg(t, a, s, pen, y, lh, font, syntax_color(runs[k].style, plain), cast(string) line[runs[k].from..<runs[k].to]);
-    i = runs[k].to;
-  }
-  if i < line.count { pen += t_text_seg(t, a, s, pen, y, lh, font, plain, cast(string) line[i..<line.count]); }
+  sh: [1] Sheet; t_sheet(t, sh[..]);
+  markdown_syntax_line(sh[..], measure_font(a), zeron_skin(), line, runs, x, y, lh, font, plain);
+  t_sheet_done(t, sh[..]);
 }
 
-// A Markdown block: a paragraph, a list (accent discs or numbers in an 18px
-// column, 8px before the text, 4px between items; a nested item sits one
-// marker column further in, under its parent's text, as render.rs nests an
-// item's child list), a quote (render.rs BlockQuote: a 2px accent rail at 0.6
-// over the accent at 0.05, padding 12/10 and 6, its paragraphs 8 apart in the
-// muted tone) or a code block.
+// A Markdown block: the Markdown component lays it out and paints it onto
+// the transcript's sheet, in the Zeron skin (kit/markdown.coax).
 lay_md :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: f32) -> f32 {
-  doc := t[0].md[..];
-  kind := doc[0].blocks[b].kind;
-  if kind == MB_CODE { return lay_code(t, a, th, b, x, y, w); }
-  if kind == MB_TABLE { return lay_table(t, a, th, b, x, y, w); }
-  if kind == MB_PARA { return t_rich(t, a, th, md_block_text(doc, b), md_block_runs(doc, b), x, y, w, MD_LINE_HEIGHT, th.text); }
-  i0 := doc[0].blocks[b].item0;
-  if kind == MB_QUOTE {
-    // measure first, so the wash and rail go under the text
-    iw: f32 = w - cast(f32) QUOTE_PAD_L - cast(f32) QUOTE_PAD_R;
-    th_: f32 = 2 * QUOTE_PAD_Y;
-    lines: [64] TextLine;
-    for k: 0..<doc[0].blocks[b].items {
-      if k > 0 { th_ += QUOTE_GAP; }
-      th_ += cast(f32) md_wrap(a, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), iw, false, lines[..]) * MD_LINE_HEIGHT;
-    }
-    t_quad(t, x, y, w, th_, 0, opacity(th.accent, 0.05));
-    t_quad(t, x, y, QUOTE_RAIL, th_, 0, opacity(th.accent, 0.6));
-    h: f32 = QUOTE_PAD_Y;
-    for k: 0..<doc[0].blocks[b].items {
-      if k > 0 { h += QUOTE_GAP; }
-      h += t_rich(t, a, th, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), x + cast(f32) QUOTE_PAD_L, y + h, iw, MD_LINE_HEIGHT, th.muted);
-    }
-    return th_;
-  }
-  h: f32 = 0;
-  col: f32 = LIST_MARKER_W + LIST_MARKER_GAP;
-  for k: 0..<doc[0].blocks[b].items {
-    if k > 0 { h += LIST_ITEM_GAP; }
-    ix := i0 + k;
-    ix_x := x + cast(f32) doc[0].items[ix].depth * col;
-    if doc[0].items[ix].ordered {
-      nb: [12] u8; nn := 0; v := doc[0].items[ix].number;
-      digits: [12] u8; nd := 0;
-      if v == 0 { digits[0] = '0'; nd = 1; }
-      while v > 0 && nd < 10 { digits[nd] = cast(u8) ('0' + v % 10); v /= 10; nd += 1; }
-      for q: 0..<nd { nb[nn] = digits[nd - 1 - q]; nn += 1; }
-      nb[nn] = '.'; nn += 1;
-      num := t_pool(t, cast(string) nb[0..<nn]);
-      q := t_text_seg(t, a, -1, ix_x, y + h, MD_LINE_HEIGHT, FONT_INPUT, th.accent, num);
-    } else {
-      t_quad(t, ix_x + 1, y + h + (MD_LINE_HEIGHT - LIST_DISC) / 2, LIST_DISC, LIST_DISC, LIST_DISC / 2, th.accent);
-    }
-    h += t_rich(t, a, th, md_item_text(doc, ix), md_item_runs(doc, ix), ix_x + col, y + h, x + w - ix_x - col, MD_LINE_HEIGHT, th.text);
-  }
+  sh: [1] Sheet; t_sheet(t, sh[..]);
+  h := markdown_block(sh[..], measure_font(a), zeron_skin(), t[0].md[..], b, x, y, w);
+  t_sheet_done(t, sh[..]);
   return h;
 }
-
-// A GFM table (render.rs render_table): every cell's natural width is its
-// text unwrapped (the header row in its weight); a column's natural is the
-// widest, floored at 48, plus its padding; its minimum min(natural, 96).
-// The table spans the column, columns sharing it in proportion to their
-// naturals (flex-grow natural on a zero basis), none below its minimum (CSS
-// flex's frozen violations, as Taffy resolves them); when the minimums
-// overflow the column, each column takes its minimum. Cells wrap their text
-// at the column's width less the padding and align it as the delimiter row
-// says; a row is as tall as its tallest cell; a hairline between rows. Copy
-// reads the cells in order, one to a line.
-TableLayout :: struct { cols: int; rows: int; w: [MD_TABLE_COLS] f32; x: [MD_TABLE_COLS + 1] f32; total: f32; }
-
-// The column widths for naturals and minimums sharing width avail.
-table_share :: (naturals: [] f32, minimums: [] f32, cols: int, avail: f32, out: [] f32) -> f32 {
-  sum_min: f32 = 0;
-  for c: 0..<cols { sum_min += minimums[c]; }
-  space := ifx sum_min > avail then sum_min else avail;
-  frozen: [MD_TABLE_COLS] bool;
-  for c: 0..<cols { frozen[c] = false; }
-  // freeze the columns whose share falls under their minimum until none does
-  rounds := 0;
-  while rounds <= cols {
-    rounds += 1;
-    left := space; grow: f32 = 0;
-    for c: 0..<cols { if frozen[c] { left -= minimums[c]; } else { grow += naturals[c]; } }
-    any := false;
-    for c: 0..<cols {
-      if frozen[c] { out[c] = minimums[c]; continue; }
-      out[c] = ifx grow > 0 then left * naturals[c] / grow else 0.0f32;
-    }
-    for c: 0..<cols { if !frozen[c] && out[c] < minimums[c] { frozen[c] = true; any = true; } }
-    if !any { break; }
-  }
-  return space;
-}
-
-table_measure :: (t: [] Transcript, a: [] Atlas, b: int, w: f32) -> TableLayout {
-  doc := t[0].md[..];
-  L: TableLayout;
-  L.cols = doc[0].blocks[b].cols; L.rows = md_table_rows(doc, b);
-  i0 := doc[0].blocks[b].item0;
-  content: [MD_TABLE_COLS] f32; naturals: [MD_TABLE_COLS] f32; minimums: [MD_TABLE_COLS] f32;
-  for c: 0..<L.cols { content[c] = 0; }
-  for r: 0..<L.rows {
-    for c: 0..<L.cols {
-      k := i0 + r * L.cols + c;
-      text := md_item_text(doc, k);
-      cw := md_width(a, text, md_item_runs(doc, k), 0, text.count, false);
-      if cw > content[c] { content[c] = cw; }
-    }
-  }
-  for c: 0..<L.cols {
-    naturals[c] = (ifx content[c] > TABLE_MIN_COLUMN_CONTENT then content[c] else TABLE_MIN_COLUMN_CONTENT) + 2 * TABLE_CELL_PADDING;
-    minimums[c] = ifx naturals[c] < TABLE_MIN_COLUMN_WIDTH then naturals[c] else TABLE_MIN_COLUMN_WIDTH;
-  }
-  L.total = table_share(naturals[..], minimums[..], L.cols, w, L.w[..]);
-  // edges on whole layout pixels, as GPUI rounds Taffy's layout
-  acc: f32 = 0; L.x[0] = 0;
-  for c: 0..<L.cols { acc += L.w[c]; L.x[c + 1] = round_layout(acc); }
-  return L;
-}
-
-lay_table :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: f32) -> f32 {
-  doc := t[0].md[..];
-  L := table_measure(t, a, b, w);
-  if L.cols == 0 || L.rows == 0 { return 0; }
-  i0 := doc[0].blocks[b].item0;
-  wider := L.total > w + 0.5;
-  box0 := t[0].nbox; text0 := t[0].ntext;
-  h: f32 = 0;
-  lines: [64] TextLine;
-  for r: 0..<L.rows {
-    if r > 0 { t_quad(t, x, y + h, L.total, TABLE_DIVIDER, 0, ink(0.10)); h += TABLE_DIVIDER; }
-    // the row's height: its tallest cell
-    tall := 1;
-    for c: 0..<L.cols {
-      k := i0 + r * L.cols + c;
-      iw := L.x[c + 1] - L.x[c] - 2 * TABLE_CELL_PADDING;
-      n := md_wrap(a, md_item_text(doc, k), md_item_runs(doc, k), iw, false, lines[..]);
-      if n > tall { tall = n; }
-    }
-    for c: 0..<L.cols {
-      k := i0 + r * L.cols + c;
-      text := md_item_text(doc, k); runs := md_item_runs(doc, k);
-      cx := x + L.x[c] + TABLE_CELL_PADDING;
-      iw := L.x[c + 1] - L.x[c] - 2 * TABLE_CELL_PADDING;
-      n := md_wrap(a, text, runs, iw, false, lines[..]);
-      if text.count == 0 { continue; }
-      for q: 0..<n {
-        lx := cx;
-        al := doc[0].items[k].number;
-        if al != MA_LEFT {
-          lw := md_width(a, text, runs, lines[q].from, lines[q].to, false);
-          // a wrapped line's trailing space doesn't count toward its alignment
-          if lines[q].to > lines[q].from && text[lines[q].to - 1] == ' ' { lw -= md_width(a, text, runs, lines[q].to - 1, lines[q].to, false); }
-          lx = ifx al == MA_CENTER then cx + (iw - lw) / 2 else cx + iw - lw;
-        }
-        t_rich_line(t, a, th, text, runs, lines[q].from, lines[q].to, lx, y + h + TABLE_CELL_PADDING + cast(f32) q * MD_LINE_HEIGHT, MD_LINE_HEIGHT, false, th.text, q + 1 == n);
-      }
-    }
-    h += cast(f32) tall * MD_LINE_HEIGHT + 2 * TABLE_CELL_PADDING;
-  }
-  if wider && t[0].nclip < T_CLIPS {
-    t[0].clips[t[0].nclip] = TClip.{box0 = box0, box1 = t[0].nbox, text0 = text0, text1 = t[0].ntext, right = x + w};
-    t[0].nclip += 1;
-  }
-  return h;
+// A table's columns at width w (kit/markdown.coax markdown_table_measure).
+table_measure :: (t: [] Transcript, a: [] Atlas, b: int, w: f32) -> MarkdownTable {
+  return markdown_table_measure(measure_font(a), zeron_skin(), t[0].md[..], b, w);
 }
 
 // Lines of a detail body (py 6, 18px rows): Geist Mono 12 or, for a
@@ -878,8 +642,8 @@ lay_group :: (t: [] Transcript, a: [] Atlas, th: Theme, g: int, x: f32, y: f32, 
     // the trunk: from the row's top to the elbow, or on through the row
     bend := ry + TOOL_TREE_ROW_HEIGHT / 2 - ACTIVITY_BEND_RADIUS;
     t_quad(t, tx - 0.5, ry, 1, ifx continues then rh else bend - ry, 0, rail);
-    eb := t_box(t, TI_ELBOW, tx, bend, ACTIVITY_BEND_RADIUS, 0, 0, 0, rail, rail);
-    if eb >= 0 { t[0].boxes[eb].end_x = x + ACTIVITY_BRANCH_END_X; t[0].boxes[eb].joined = continues; }
+    // the bend is painted with radius 0, as it always was here (ACTIVITY_BEND_RADIUS only places it)
+    t[0].nbox = prim_elbow(t[0].boxes[..], t[0].nbox, tx, bend, 0, x + ACTIVITY_BRANCH_END_X, continues, rail);
     t_icon(t, tool_icon(tool), x + ACTIVITY_ICON_LEFT, ry + TOOL_TREE_ROW_HEIGHT / 2 - ACTIVITY_ICON_SIZE / 2, ACTIVITY_ICON_SIZE, ifx tool.failed then hex(DANGER, 1) else th.muted);
     cx := x + ACTIVITY_GUTTER_WIDTH + ACTIVITY_TEXT_GAP;
     cw := x + w - cx;
@@ -921,7 +685,7 @@ top_gap :: (t: [] Transcript, r: int) -> f32 {
 // Lays out every row in the column (x, w) and remakes the display list.
 // bottom_pad: the last row's clearance (the composer stack, the fade band, 8).
 t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pad: f32) {
-  t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0; t[0].nclip = 0;
+  t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
   // what the last layout wrote to the pool goes; the conversation's text stays
   if t[0].laid { t[0].np = t[0].np_base; } else { t[0].np_base = t[0].np; t[0].laid = true; }
   y: f32 = 0;
@@ -993,21 +757,11 @@ t_line_x :: (t: [] Transcript, a: [] Atlas, s: int, off: int) -> f32 {
   ln := t[0].sels[s];
   for k: 0..<ln.items {
     ti := t[0].texts[ln.item0 + k];
-    if off <= ti.off + ti.text.count { return ti.x + text_x_at(a, ti.font, ti.text, off - ti.off); }
+    if off <= ti.off + ti.text.count { return ti.x + text_x_at(a, ti.id, ti.text, off - ti.off); }
   }
   if ln.items == 0 { return ln.x; }
   last := t[0].texts[ln.item0 + ln.items - 1];
   return last.x + last.w;
-}
-
-// The right edge a box (or text) k is cut at, 0 when it isn't in a too-wide table.
-t_clip_right :: (t: [] Transcript, k: int, box: bool) -> f32 {
-  for c: 0..<t[0].nclip {
-    cl := t[0].clips[c];
-    if box && k >= cl.box0 && k < cl.box1 { return cl.right; }
-    if !box && k >= cl.text0 && k < cl.text1 { return cl.right; }
-  }
-  return 0;
 }
 
 // Paints the display list: content y 0 at window y offset; everything fades
@@ -1016,19 +770,7 @@ t_clip_right :: (t: [] Transcript, k: int, box: bool) -> f32 {
 t_paint :: (out: [] f32, at: int, t: [] Transcript, a: [] Atlas, th: Theme, d: f32, view_h: f32, fade_bottom_band: f32) -> int {
   if !a[0].ready { return at; }
   off := t[0].offset;
-  v := at;
-  for k: 0..<t[0].nbox {
-    b := t[0].boxes[k];
-    y := b.y + off;
-    if y > view_h + 4 || y + b.h + (ifx b.kind == TI_ELBOW then b.radius + 1 else 0.0f32) < -4 { continue; }
-    right := t_clip_right(t, k, true);
-    if right > 0 && b.x >= right { continue; }
-    v0 := v;
-    if b.kind == TI_QUAD { v = paint_quad(out, v, d, b.x, y, b.w, b.h, b.radius, b.border, b.fill, b.edge); }
-    else if b.kind == TI_ICON { v = paint_icon(out, v, a, d, b.icon, b.x, y, b.w, b.h, b.fill); }
-    else if b.kind == TI_ELBOW { v = paint_elbow(out, v, d, b.x, y, b.radius, b.end_x, b.joined, b.fill); }
-    if right > 0 { gp_clip(out, v0, v, d, -GP_NO_CLIP, -GP_NO_CLIP, right + GP_NO_CLIP, 2 * GP_NO_CLIP); }
-  }
+  v := gpu_draw(out, at, a, d, t[0].boxes[0..<t[0].nbox], 0, off, -4, view_h + 4);
   // the selection, under the glyphs
   if t[0].has_sel {
     lo := t_sel_lo(t); hi := t_sel_hi(t);
@@ -1043,16 +785,7 @@ t_paint :: (out: [] f32, at: int, t: [] Transcript, a: [] Atlas, th: Theme, d: f
       if x1 > x0 { v = paint_quad(out, v, d, x0, y, x1 - x0, ln.h, 0, 0, sel_c, sel_c); }
     }
   }
-  for k: 0..<t[0].ntext {
-    ti := t[0].texts[k];
-    y := ti.y + off;
-    if y > view_h || y + ti.h < 0 { continue; }
-    right := t_clip_right(t, k, false);
-    if right > 0 && ti.x >= right { continue; }
-    v0 := v;
-    v = paint_text(out, v, a, d, ti.font, ti.text, ti.x, y, ti.h, ti.fill);
-    if right > 0 { gp_clip(out, v0, v, d, -GP_NO_CLIP, -GP_NO_CLIP, right + GP_NO_CLIP, 2 * GP_NO_CLIP); }
-  }
+  v = gpu_draw(out, v, a, d, t[0].texts[0..<t[0].ntext], 0, off, 0, view_h);
   gp_fade(out, at, v, d, TITLEBAR_HEIGHT, TRANSCRIPT_FADE_BAND, view_h, fade_bottom_band);
   return v;
 }
@@ -1086,7 +819,7 @@ t_pos_at :: (t: [] Transcript, a: [] Atlas, x: f32, y: f32) -> SelPos {
   for k: 0..<ln.items {
     ti := t[0].texts[ln.item0 + k];
     if x < ti.x + ti.w || k + 1 == ln.items {
-      return SelPos.{line = best, off = ti.off + text_offset(a, ti.font, ti.text, x - ti.x)};
+      return SelPos.{line = best, off = ti.off + text_offset(a, ti.id, ti.text, x - ti.x)};
     }
   }
   return SelPos.{line = best, off = 0};
@@ -1271,7 +1004,7 @@ t_row_of :: (t: [] Transcript, kind: int, n: int) -> int {
   #assert t[0].rows[1].h == 26 + 2 + 6 * 32 + (31 + 49) + (31 + 1 + 28 + 210 + 8);
   // every row of an open group has its glyph; the failed run's is red
   red := 0;
-  for k: 0..<t[0].nbox { if t[0].boxes[k].kind == TI_ICON && t[0].boxes[k].icon == ICON_TERMINAL && t[0].boxes[k].fill.r > 0.95 && t[0].boxes[k].fill.g < 0.5 { red += 1; } }
+  for k: 0..<t[0].nbox { if t[0].boxes[k].kind == PRIM_ICON && t[0].boxes[k].id == ICON_TERMINAL && t[0].boxes[k].fill.r > 0.95 && t[0].boxes[k].fill.g < 0.5 { red += 1; } }
   #assert red == 1;
 }
 
@@ -1289,7 +1022,7 @@ t_row_of :: (t: [] Transcript, kind: int, n: int) -> int {
   h := t[0].rows[t[0].nr - 1].h;
   #assert h > 26 + 2 && h < 26 + 2 + 32;
   icons := 0;
-  for b: 0..<t[0].nbox { if t[0].boxes[b].kind == TI_ICON && t[0].boxes[b].icon == ICON_THOUGHT { icons += 1; } }
+  for b: 0..<t[0].nbox { if t[0].boxes[b].kind == PRIM_ICON && t[0].boxes[b].id == ICON_THOUGHT { icons += 1; } }
   #assert icons == 0;
 }
 
@@ -1379,7 +1112,7 @@ t_row_of :: (t: [] Transcript, kind: int, n: int) -> int {
   #assert found;
   // the header row is bold
   hdr := false;
-  for k: 0..<t[0].ntext { if t[0].texts[k].text == "Bee" { hdr = t[0].texts[k].font == FONT_BOLD; } }
+  for k: 0..<t[0].ntext { if t[0].texts[k].text == "Bee" { hdr = t[0].texts[k].id == FONT_BOLD; } }
   #assert hdr;
 }
 
@@ -1394,6 +1127,7 @@ t_row_of :: (t: [] Transcript, kind: int, n: int) -> int {
   L := table_measure(t[..], a[..], b, 300);
   // minimums: 96, 72, 96, 96 = 360 > 300
   #assert L.total == 360 && L.x[1] == 96 && L.x[2] == 168;
-  #assert t[0].nclip == 1 && t[0].clips[0].right == 348 && t[0].clips[0].text1 == t[0].ntext && t[0].clips[0].text0 == 1;   // all but the user's bubble
-  #assert t_clip_right(t[..], 0, false) == 0 && t_clip_right(t[..], 1, false) == 348;
+  // everything but the user's bubble sits between a clip at the column's right edge and its end, under and over
+  #assert t[0].texts[1].kind == PRIM_CLIP && t[0].texts[1].on && t[0].texts[1].a == 348 && t[0].texts[t[0].ntext - 1].kind == PRIM_CLIP && !t[0].texts[t[0].ntext - 1].on;
+  #assert t[0].texts[0].kind == PRIM_TEXT && t[0].boxes[1].kind == PRIM_CLIP && t[0].boxes[1].a == 348;
 }

@@ -1,0 +1,145 @@
+// A sheet: what a component lays out before it is drawn, and what the
+// pointer can reach on it (components/spec.md, GitHub #13153). Two display
+// lists (paint/list.coax), `under` for boxes and icons and `over` for text,
+// so a selection can be painted between them; the selectable lines the text
+// runs make up (a line's runs sit side by side in `over`); hit regions; and
+// a pool for bytes a layout makes up itself (a list item's number, a cut
+// label). Everything is in the component's content coordinates.
+//
+// A sheet holds views: the arrays are its owner's (the transcript keeps
+// them across frames), so two components can lay out onto one sheet. A
+// procedure that fills one takes it as a view of one Sheet and moves its
+// counts.
+//   coax/bin/coax test components/paint/sheet.coax
+
+#load "list.coax";
+#load "../layout/measure.coax";
+
+// A selectable line of text: its runs over[item0..<item0+items], and whether
+// a line break follows it when copied (a soft wrap has none).
+SheetLine :: struct { x: f32; y: f32; h: f32; item0: int; items: int; hard: bool; }
+// A region the pointer can press or hover: what it is (the component's own
+// kinds) and two numbers that say which.
+SheetHit :: struct { x: f32; y: f32; w: f32; h: f32; kind: int; a: int; b: int; }
+
+Sheet :: struct {
+  under: [] Prim; nu: int;
+  over: [] Prim; no: int;
+  lines: [] SheetLine; nl: int;
+  hits: [] SheetHit; nh: int;
+  pool: [] u8; np: int;
+  hover_kind: int; hover_a: int; hover_b: int;    // the hit the pointer is over, so a layout can light it
+}
+
+// Keeps bytes for as long as the sheet's owner keeps its pool; "" when full.
+sheet_pool :: (sh: [] Sheet, s: string) -> string {
+  if sh[0].np + s.count > sh[0].pool.count { return ""; }
+  at := sh[0].np;
+  for k: 0..<s.count { sh[0].pool[at + k] = s[k]; }
+  sh[0].np += s.count;
+  return cast(string) sh[0].pool[at..<at + s.count];
+}
+
+// A box under the text. Returns its index in `under`, or -1 when full.
+sheet_box :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
+  n := prim_box(sh[0].under, sh[0].nu, x, y, w, h, radius, border, fill, edge);
+  if n == sh[0].nu { return -1; }
+  sh[0].nu = n;
+  return n - 1;
+}
+sheet_fill :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: Rgba) {
+  sh[0].nu = prim_box(sh[0].under, sh[0].nu, x, y, w, h, radius, 0, fill, fill);
+}
+sheet_icon :: (sh: [] Sheet, icon: int, x: f32, y: f32, size: f32, color: Rgba) {
+  sh[0].nu = prim_icon(sh[0].under, sh[0].nu, icon, x, y, size, size, color);
+}
+sheet_elbow :: (sh: [] Sheet, x: f32, y: f32, radius: f32, end_x: f32, joined: bool, color: Rgba) {
+  sh[0].nu = prim_elbow(sh[0].under, sh[0].nu, x, y, radius, end_x, joined, color);
+}
+sheet_hit :: (sh: [] Sheet, kind: int, a: int, b: int, x: f32, y: f32, w: f32, h: f32) {
+  if sh[0].nh >= sh[0].hits.count { return; }
+  sh[0].hits[sh[0].nh] = SheetHit.{x = x, y = y, w = w, h = h, kind = kind, a = a, b = b};
+  sh[0].nh += 1;
+}
+sheet_hovered :: (sh: [] Sheet, kind: int, a: int, b: int) -> bool {
+  return sh[0].hover_kind == kind && sh[0].hover_a == a && sh[0].hover_b == b;
+}
+// A selectable line begins at (x, y), h tall; its runs follow. Returns the line, or -1 when full.
+sheet_line :: (sh: [] Sheet, x: f32, y: f32, h: f32, hard: bool) -> int {
+  if sh[0].nl >= sh[0].lines.count { return -1; }
+  s := sh[0].nl; sh[0].nl += 1;
+  sh[0].lines[s] = SheetLine.{x = x, y = y, h = h, item0 = sh[0].no, items = 0, hard = hard};
+  return s;
+}
+// A run of text: a line's stretch in one face and colour, at x, its line box
+// at y. line < 0: not selectable. Returns its width.
+sheet_text :: (sh: [] Sheet, m: TextMeasure, line: int, x: f32, y: f32, h: f32, face: int, color: Rgba, text: string) -> f32 {
+  w := measure_width(m, face, text);
+  if sh[0].no >= sh[0].over.count || text.count == 0 { return w; }
+  off := 0;
+  if line >= 0 {
+    for k: sh[0].lines[line].item0..<sh[0].no { off += sh[0].over[k].text.count; }
+    sh[0].lines[line].items += 1;
+  }
+  n := prim_text(sh[0].over, sh[0].no, x, y, w, h, face, color, text);
+  sh[0].over[sh[0].no].line = line; sh[0].over[sh[0].no].off = off;
+  sh[0].no = n;
+  return w;
+}
+// One plain selectable line.
+sheet_plain :: (sh: [] Sheet, m: TextMeasure, x: f32, y: f32, h: f32, face: int, color: Rgba, text: string, hard: bool) -> f32 {
+  s := sheet_line(sh, x, y, h, hard);
+  return sheet_text(sh, m, s, x, y, h, face, color, text);
+}
+// What follows, under and over, is cut at a right edge (a table wider than
+// its column); sheet_unclip ends it. Call both outside a selectable line.
+sheet_clip_right :: (sh: [] Sheet, right: f32) {
+  sh[0].nu = prim_clip(sh[0].under, sh[0].nu, -PRIM_OPEN, -PRIM_OPEN, right, PRIM_OPEN);
+  sh[0].no = prim_clip(sh[0].over, sh[0].no, -PRIM_OPEN, -PRIM_OPEN, right, PRIM_OPEN);
+}
+sheet_unclip :: (sh: [] Sheet) {
+  sh[0].nu = prim_unclip(sh[0].under, sh[0].nu);
+  sh[0].no = prim_unclip(sh[0].over, sh[0].no);
+}
+
+// ---------------------------------------------------------------- checks
+
+// A sheet over a test's own arrays.
+SheetStore :: struct { under: [64] Prim; over: [64] Prim; lines: [16] SheetLine; hits: [8] SheetHit; pool: [64] u8; }
+sheet_over :: (st: [] SheetStore) -> Sheet {
+  return Sheet.{under = st[0].under[..], over = st[0].over[..], lines = st[0].lines[..], hits = st[0].hits[..], pool = st[0].pool[..]};
+}
+
+#test "a line's runs carry their line and their byte offset in it; boxes go under" {
+  st: [1] SheetStore; sh: [1] Sheet; sh[0] = sheet_over(st[..]);
+  m := measure_cells();
+  sheet_fill(sh[..], 0, 0, 10, 1, 0, hex(0x202020, 1));
+  ln := sheet_line(sh[..], 2, 0, 1, true);
+  w := sheet_text(sh[..], m, ln, 2, 0, 1, 0, hex(0xffffff, 1), "ab ");
+  w2 := sheet_text(sh[..], m, ln, 2 + w, 0, 1, 1, hex(0xffffff, 1), "日本");
+  #assert w == 3 && w2 == 4 && sh[0].no == 2 && sh[0].nu == 1 && sh[0].nl == 1;
+  #assert sh[0].lines[0].item0 == 0 && sh[0].lines[0].items == 2 && sh[0].lines[0].hard;
+  #assert sh[0].over[1].line == 0 && sh[0].over[1].off == 3 && sh[0].over[1].x == 5 && sh[0].over[1].id == 1;
+  // an unselectable run belongs to no line; empty text is measured, not kept
+  q := sheet_text(sh[..], m, -1, 0, 1, 1, 0, hex(0xffffff, 1), "x");
+  #assert sh[0].over[2].line == -1 && sheet_text(sh[..], m, -1, 0, 1, 1, 0, hex(0xffffff, 1), "") == 0 && sh[0].no == 3;
+}
+#test "hits, hover, the pool and a clip on both lists" {
+  st: [1] SheetStore; sh: [1] Sheet; sh[0] = sheet_over(st[..]);
+  sheet_hit(sh[..], 4, 7, 0, 10, 20, 30, 40);
+  #assert sh[0].nh == 1 && sh[0].hits[0].kind == 4 && sh[0].hits[0].a == 7 && sh[0].hits[0].w == 30;
+  #assert !sheet_hovered(sh[..], 4, 7, 0);
+  sh[0].hover_kind = 4; sh[0].hover_a = 7;
+  #assert sheet_hovered(sh[..], 4, 7, 0) && !sheet_hovered(sh[..], 4, 8, 0);
+  a := sheet_pool(sh[..], "12."); b := sheet_pool(sh[..], "3.");
+  #assert a == "12." && b == "3." && sh[0].np == 5;
+  big: [80] u8;
+  #assert sheet_pool(sh[..], cast(string) big[..]).count == 0 && sh[0].np == 5;
+  sheet_clip_right(sh[..], 348); sheet_unclip(sh[..]);
+  #assert sh[0].nu == 2 && sh[0].no == 2 && sh[0].under[0].kind == PRIM_CLIP && sh[0].over[0].a == 348 && !sh[0].over[1].on;
+  i := sheet_box(sh[..], 0, 0, 1, 1, 0, 0, hex(0, 1), hex(0, 1));
+  #assert i == 2;
+  sheet_elbow(sh[..], 4, 8, 6, 20, true, hex(0, 1));
+  sheet_icon(sh[..], 3, 0, 0, 16, hex(0, 1));
+  #assert sh[0].under[3].kind == PRIM_ELBOW && sh[0].under[3].on && sh[0].under[4].kind == PRIM_ICON && sh[0].under[4].id == 3 && sh[0].under[4].h == 16;
+}

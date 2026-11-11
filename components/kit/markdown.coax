@@ -1,0 +1,296 @@
+// Markdown, the component: a parsed document's blocks (core/markdown.coax)
+// laid out at a width in a skin and painted onto a sheet
+// (components/spec.md, GitHub #13153). One file draws Markdown for every
+// target and every skin: it measures through layout/measure.coax (pixels or
+// cells), wraps with layout/text.coax, reads every colour, face and measure
+// from the skin, and paints primitives, never vertices or escape codes.
+//
+// A block is a paragraph, a list (the skin's bullet or numbers in a marker
+// column, a nested item one column further in, under its parent's text), a
+// quote (a rail over a wash, its paragraphs in the muted tone), a fenced
+// code block (a frame, a header with the language and its two actions, the
+// highlighted lines) or a GFM table. The layout is Zeron's (render.rs,
+// mugen-markdown's TableBlock under Zeron's md theme); a skin changes its
+// measures and colours, not its rules. Based on Zeron by Wing, MIT.
+//   coax/bin/coax test components/kit/markdown.coax
+
+#load "../core/syntax.coax";
+#load "../paint/sheet.coax";
+#load "../skin/skin.coax";
+
+// The hits a code block's header leaves on the sheet: a = the block.
+MARKDOWN_HIT_WRAP :: 3; MARKDOWN_HIT_COPY :: 4;
+
+// One wrapped line of styled text: each run in its face and colour, inline
+// code on its rounded wash (painted under the glyphs, past them by the
+// skin's pad, inset from the line box).
+markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, text: string, runs: [] MdRun, from: int, to: int, x: f32, y: f32, lh: f32, color: Rgba, hard: bool) {
+  ln := sheet_line(sh, x, y, lh, hard);
+  i := from; pen := x;
+  while i < to {
+    style := md_style_at(runs, i);
+    j := i;
+    while j < to && md_style_at(runs, j) == style { j += 1; }
+    seg := cast(string) text[i..<j];
+    face := text_face(faces, style);
+    if style == MD_CODE {
+      w := measure_width(m, face, seg);
+      sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, w + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, s.code_wash);
+      pen += sheet_text(sh, m, ln, pen, y, lh, face, s.accent, seg);
+    } else {
+      pen += sheet_text(sh, m, ln, pen, y, lh, face, color, seg);
+    }
+    i = j;
+  }
+}
+
+// A wrapped styled text at (x, y), width w; returns its height.
+markdown_text :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, text: string, runs: [] MdRun, x: f32, y: f32, w: f32, lh: f32, color: Rgba) -> f32 {
+  lines: [64] TextLine;
+  faces := uiskin_faces(s);
+  n := text_wrap(m, faces, text, runs, w, lines[..]);
+  for k: 0..<n { markdown_line(sh, m, s, faces, text, runs, lines[k].from, lines[k].to, x, y + cast(f32) k * lh, lh, color, k + 1 == n); }
+  return cast(f32) n * lh;
+}
+
+// A highlighted line of code as one selectable line (the spaces between
+// tokens included, in the plain colour).
+markdown_syntax_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, line: string, runs: [] MdRun, x: f32, y: f32, lh: f32, face: int, plain: Rgba) {
+  ln := sheet_line(sh, x, y, lh, true);
+  n := syn_rust(line, runs);
+  pen := x; i := 0;
+  for k: 0..<n {
+    if runs[k].from > i { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) line[i..<runs[k].from]); }
+    pen += sheet_text(sh, m, ln, pen, y, lh, face, uiskin_syntax(s, runs[k].style, plain), cast(string) line[runs[k].from..<runs[k].to]);
+    i = runs[k].to;
+  }
+  if i < line.count { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) line[i..<line.count]); }
+}
+
+// A fenced code block's height at any width: its borders, header, padding and lines.
+markdown_code_height :: (s: UiSkin, code: string) -> f32 {
+  nl := 1;
+  for k: 0..<code.count { if code[k] == '\n' { nl += 1; } }
+  return 2 * s.md.block_border + s.md.block_header + 2 * s.md.block_pad_y + cast(f32) nl * s.md.block_line;
+}
+
+// A fenced code block (render.rs code_block_frame): the frame, the header
+// with the language and its two actions (a skin with no header or no
+// actions draws none), the highlighted lines.
+markdown_code :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32) -> f32 {
+  code := md_block_text(doc, b);
+  h := markdown_code_height(s, code);
+  bd := s.md.block_border; head := s.md.block_header;
+  border := s.hairline;
+  bb := sheet_box(sh, x, y, w, h, s.md.block_radius, bd, s.sunk, border);
+  if head > 0 {
+    // the header: its wash over the frame, its bottom hairline
+    sheet_fill(sh, x + bd, y + bd, w - 2 * bd, head - bd, 0, s.header_wash);
+    sheet_fill(sh, x + bd, y + head, w - 2 * bd, bd, 0, border);
+    llh := s.small.line;
+    ly := y + bd + (head - bd - llh) / 2;
+    lw := sheet_text(sh, m, -1, x + bd + s.md.block_pad_x, ly, llh, s.small.face, s.muted, md_lang(doc, b));
+    act := s.md.action;
+    if act > 0 {
+      // actions, right to left: Copy (two wider than Wrap: its side padding and its icon), then Wrap, 2 apart, 5 from the edge
+      ay := y + bd + (head - bd - act) / 2;
+      copy_w := act + 2;
+      copy_x := x + w - bd - 5 - copy_w;
+      wrap_x := copy_x - 2 - act;
+      if sheet_hovered(sh, MARKDOWN_HIT_WRAP, b, 0) { sheet_fill(sh, wrap_x, ay, act, act, 6, s.hover); }
+      if sheet_hovered(sh, MARKDOWN_HIT_COPY, b, 0) { sheet_fill(sh, copy_x, ay, copy_w, act, 5, s.hover); }
+      sheet_icon(sh, s.icon_wrap, wrap_x + (act - 13) / 2, ay + (act - 13) / 2, 13, s.muted);
+      sheet_icon(sh, s.icon_copy, copy_x + 6, ay + (act - 12) / 2, 12, s.muted);
+      sheet_hit(sh, MARKDOWN_HIT_WRAP, b, 0, wrap_x, ay, act, act);
+      sheet_hit(sh, MARKDOWN_HIT_COPY, b, 0, copy_x, ay, copy_w, act);
+    }
+  }
+  // the lines
+  top := y + bd + head + s.md.block_pad_y;
+  i := 0; k := 0;
+  runs: [128] MdRun;
+  while i <= code.count {
+    j := i; while j < code.count && code[j] != '\n' { j += 1; }
+    line := cast(string) code[i..<j];
+    markdown_syntax_line(sh, m, s, line, runs[..], x + bd + s.md.block_pad_x, top + cast(f32) k * s.md.block_line, s.md.block_line, s.mono.face, s.ink);
+    k += 1; i = j + 1;
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- tables
+// A GFM table (render.rs render_table): every cell's natural width is its
+// text unwrapped (the header row in its weight); a column's natural is the
+// widest, floored at the skin's minimum content, plus its padding; its
+// minimum min(natural, the skin's column minimum). The table spans the
+// column, columns sharing it in proportion to their naturals (flex-grow
+// natural on a zero basis), none below its minimum (CSS flex's frozen
+// violations, as Taffy resolves them); when the minimums overflow the
+// column, each column takes its minimum. Cells wrap their text at the
+// column's width less the padding and align it as the delimiter row says; a
+// row is as tall as its tallest cell; a hairline between rows. Copy reads
+// the cells in order, one to a line.
+MarkdownTable :: struct { cols: int; rows: int; w: [MD_TABLE_COLS] f32; x: [MD_TABLE_COLS + 1] f32; total: f32; }
+
+// The column widths for naturals and minimums sharing width avail.
+markdown_table_share :: (naturals: [] f32, minimums: [] f32, cols: int, avail: f32, out: [] f32) -> f32 {
+  sum_min: f32 = 0;
+  for c: 0..<cols { sum_min += minimums[c]; }
+  space := ifx sum_min > avail then sum_min else avail;
+  frozen: [MD_TABLE_COLS] bool;
+  for c: 0..<cols { frozen[c] = false; }
+  // freeze the columns whose share falls under their minimum until none does
+  rounds := 0;
+  while rounds <= cols {
+    rounds += 1;
+    left := space; grow: f32 = 0;
+    for c: 0..<cols { if frozen[c] { left -= minimums[c]; } else { grow += naturals[c]; } }
+    any := false;
+    for c: 0..<cols {
+      if frozen[c] { out[c] = minimums[c]; continue; }
+      out[c] = ifx grow > 0 then left * naturals[c] / grow else 0.0f32;
+    }
+    for c: 0..<cols { if !frozen[c] && out[c] < minimums[c] { frozen[c] = true; any = true; } }
+    if !any { break; }
+  }
+  return space;
+}
+
+markdown_table_measure :: (m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, w: f32) -> MarkdownTable {
+  L: MarkdownTable;
+  L.cols = doc[0].blocks[b].cols; L.rows = md_table_rows(doc, b);
+  i0 := doc[0].blocks[b].item0;
+  faces := uiskin_faces(s);
+  content: [MD_TABLE_COLS] f32; naturals: [MD_TABLE_COLS] f32; minimums: [MD_TABLE_COLS] f32;
+  for c: 0..<L.cols { content[c] = 0; }
+  for r: 0..<L.rows {
+    for c: 0..<L.cols {
+      k := i0 + r * L.cols + c;
+      text := md_item_text(doc, k);
+      cw := text_run_width(m, faces, text, md_item_runs(doc, k), 0, text.count);
+      if cw > content[c] { content[c] = cw; }
+    }
+  }
+  for c: 0..<L.cols {
+    naturals[c] = (ifx content[c] > s.md.col_min_content then content[c] else s.md.col_min_content) + 2 * s.md.cell_pad;
+    minimums[c] = ifx naturals[c] < s.md.col_min then naturals[c] else s.md.col_min;
+  }
+  L.total = markdown_table_share(naturals[..], minimums[..], L.cols, w, L.w[..]);
+  // edges on whole layout units, as GPUI rounds Taffy's layout
+  acc: f32 = 0; L.x[0] = 0;
+  for c: 0..<L.cols { acc += L.w[c]; L.x[c + 1] = round_layout(acc); }
+  return L;
+}
+
+// A table wider than its column keeps each column's minimum and is cut at the column's right edge.
+markdown_table :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32) -> f32 {
+  L := markdown_table_measure(m, s, doc, b, w);
+  if L.cols == 0 || L.rows == 0 { return 0; }
+  i0 := doc[0].blocks[b].item0;
+  faces := uiskin_faces(s);
+  pad := s.md.cell_pad; lh := s.md.line;
+  wider := L.total > w + 0.5;
+  if wider { sheet_clip_right(sh, x + w); }
+  h: f32 = 0;
+  lines: [64] TextLine;
+  for r: 0..<L.rows {
+    if r > 0 { sheet_fill(sh, x, y + h, L.total, s.md.divider, 0, s.hairline); h += s.md.divider; }
+    // the row's height: its tallest cell
+    tall := 1;
+    for c: 0..<L.cols {
+      k := i0 + r * L.cols + c;
+      iw := L.x[c + 1] - L.x[c] - 2 * pad;
+      n := text_wrap(m, faces, md_item_text(doc, k), md_item_runs(doc, k), iw, lines[..]);
+      if n > tall { tall = n; }
+    }
+    for c: 0..<L.cols {
+      k := i0 + r * L.cols + c;
+      text := md_item_text(doc, k); runs := md_item_runs(doc, k);
+      cx := x + L.x[c] + pad;
+      iw := L.x[c + 1] - L.x[c] - 2 * pad;
+      n := text_wrap(m, faces, text, runs, iw, lines[..]);
+      if text.count == 0 { continue; }
+      for q: 0..<n {
+        lx := cx;
+        al := doc[0].items[k].number;
+        if al != MA_LEFT {
+          lw := text_run_width(m, faces, text, runs, lines[q].from, lines[q].to);
+          // a wrapped line's trailing space doesn't count toward its alignment
+          if lines[q].to > lines[q].from && text[lines[q].to - 1] == ' ' { lw -= text_run_width(m, faces, text, runs, lines[q].to - 1, lines[q].to); }
+          lx = ifx al == MA_CENTER then cx + (iw - lw) / 2 else cx + iw - lw;
+        }
+        markdown_line(sh, m, s, faces, text, runs, lines[q].from, lines[q].to, lx, y + h + pad + cast(f32) q * lh, lh, s.ink, q + 1 == n);
+      }
+    }
+    h += cast(f32) tall * lh + 2 * pad;
+  }
+  if wider { sheet_unclip(sh); }
+  return h;
+}
+
+// ---------------------------------------------------------------- blocks
+
+// A number and a dot, kept in the sheet's pool.
+markdown_ordinal :: (sh: [] Sheet, number: int) -> string {
+  nb: [12] u8; nn := 0; v := number;
+  digits: [12] u8; nd := 0;
+  if v == 0 { digits[0] = '0'; nd = 1; }
+  while v > 0 && nd < 10 { digits[nd] = cast(u8) ('0' + v % 10); v /= 10; nd += 1; }
+  for q: 0..<nd { nb[nn] = digits[nd - 1 - q]; nn += 1; }
+  nb[nn] = '.'; nn += 1;
+  return sheet_pool(sh, cast(string) nb[0..<nn]);
+}
+
+// Lays out and paints block b of doc at (x, y), width w. Returns its height.
+markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32) -> f32 {
+  kind := doc[0].blocks[b].kind;
+  lh := s.md.line;
+  if kind == MB_CODE { return markdown_code(sh, m, s, doc, b, x, y, w); }
+  if kind == MB_TABLE { return markdown_table(sh, m, s, doc, b, x, y, w); }
+  if kind == MB_PARA { return markdown_text(sh, m, s, md_block_text(doc, b), md_block_runs(doc, b), x, y, w, lh, s.ink); }
+  i0 := doc[0].blocks[b].item0;
+  if kind == MB_QUOTE {
+    // measure first, so the wash and rail go under the text
+    iw: f32 = w - s.md.quote_pad_l - s.md.quote_pad_r;
+    th_: f32 = 2 * s.md.quote_pad_y;
+    lines: [64] TextLine;
+    faces := uiskin_faces(s);
+    for k: 0..<doc[0].blocks[b].items {
+      if k > 0 { th_ += s.md.quote_gap; }
+      th_ += cast(f32) text_wrap(m, faces, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), iw, lines[..]) * lh;
+    }
+    sheet_fill(sh, x, y, w, th_, 0, s.quote_wash);
+    sheet_fill(sh, x, y, s.md.quote_rail, th_, 0, s.quote_rail);
+    h: f32 = s.md.quote_pad_y;
+    for k: 0..<doc[0].blocks[b].items {
+      if k > 0 { h += s.md.quote_gap; }
+      h += markdown_text(sh, m, s, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), x + s.md.quote_pad_l, y + h, iw, lh, s.muted);
+    }
+    return th_;
+  }
+  h: f32 = 0;
+  col: f32 = s.md.marker_w + s.md.marker_gap;
+  for k: 0..<doc[0].blocks[b].items {
+    if k > 0 { h += s.md.item_gap; }
+    ix := i0 + k;
+    ix_x := x + cast(f32) doc[0].items[ix].depth * col;
+    if doc[0].items[ix].ordered {
+      q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, markdown_ordinal(sh, doc[0].items[ix].number));
+    } else if s.md.disc > 0 {
+      sheet_fill(sh, ix_x + 1, y + h + (lh - s.md.disc) / 2, s.md.disc, s.md.disc, s.md.disc / 2, s.accent);
+    } else {
+      q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, s.md.bullet);
+    }
+    h += markdown_text(sh, m, s, md_item_text(doc, ix), md_item_runs(doc, ix), ix_x + col, y + h, x + w - ix_x - col, lh, s.ink);
+  }
+  return h;
+}
+
+// The height block b takes at width w, painting nothing a caller keeps:
+// it lays out onto the sheet and takes it back.
+markdown_height :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, w: f32) -> f32 {
+  nu := sh[0].nu; no := sh[0].no; nl := sh[0].nl; nh := sh[0].nh; np := sh[0].np;
+  h := markdown_block(sh, m, s, doc, b, 0, 0, w);
+  sh[0].nu = nu; sh[0].no = no; sh[0].nl = nl; sh[0].nh = nh; sh[0].np = np;
+  return h;
+}
