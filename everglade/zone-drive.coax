@@ -42,6 +42,14 @@ fd_frame :: (s: [] EgZone) {
   if t.count == 0 || !x[0].started { return; }
   uit_part(t, "bar");
   for i: 0..<x[0].bar_n { r := xc_slot_at(x[0].bar_n, i, x[0].w, x[0].h, x[0].k); uit_add(t, UIT_NONE, UIT_BUTTON, r[0], r[1], r[2], r[3], x[0].bar[i].name); }
+  // your portrait (a press opens the class menus) and the open menu's rows (everglade/hud/class-bar.coax)
+  side_g := xc_side_geo(s); side_f := xc_facts(s);
+  if side_g.n > 0 { uit_part(t, "portrait"); uit_add(t, UIT_NONE, UIT_BUTTON, side_g.anchor.x0, side_g.anchor.y0, side_g.anchor.x1, side_g.anchor.y1, "portrait"); }
+  if eg_menu_on(side_g, x[0].side.menu) {
+    side_rows: [EG_MENU_ROWS] int; side_n := eg_menu_rows(side_f, x[0].side.menu, side_rows[..]); side_menu := eg_menu_of(side_f, side_g, x[0].side.menu);
+    uit_part(t, "menu");
+    for q: 0..<side_n { rb := cc.hud_menu_row(side_menu, q); lb: [48] u8; ln := eg_menu_label(side_f, side_rows[q], lb[..]); uit_add(t, UIT_NONE, UIT_BUTTON, rb.x0, rb.y0, rb.x1, rb.y1, cast(string) lb[0..<ln]); }
+  }
 }
 // The input a world operation makes this frame, in place of the keys' (ok false: none going). A use
 // near and facing its target presses the slot it names.

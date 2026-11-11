@@ -113,6 +113,19 @@ which were measured from the same font files.
 [`aethyr/ui/hud-menu.coax`](../../aethyr/ui/hud-menu.coax) holds widgets any
 realm uses with its own data:
 
+- `hud_trail_step`, `hud_vital` and `hud_plate_trail` (in
+  [`hud-style.coax`](../../aethyr/ui/hud-style.coax), GitHub #13147): a health
+  bar that eases to its value and, after a blow, leaves a pale trail where it
+  stood, which waits 0.3 s and then catches up; healing takes the trail along.
+  A realm keeps one `HudTrail` a bar and steps it each frame with the true
+  share. `hud_vital` draws the bar: a dark groove with a gold hairline, the
+  trail, the fill running dark to bright toward its end, a gloss.
+- `hud_vignette_step` and `hud_vignette` (in
+  [`hud-style.coax`](../../aethyr/ui/hud-style.coax), GitHub #13147): the
+  screen's edges in red. A blow on you flashes them, harder and longer for a
+  bigger blow (gone within a second), and they pulse every 1.25 s while you are
+  under a quarter of your Hit Points. A realm keeps one `HudVignette`, steps it
+  with your share of Hit Points, and draws it before the rest of its HUD.
 - `hud_side_box`, `hud_side_top` and `hud_side_draw`: a side bar of framed
   buttons over an action bar. Rows wrap to the page's width, so no button
   overlaps another at any width.
@@ -158,7 +171,7 @@ Each part is engine (any realm), game (every Everglade zone) or zone wiring
 | Engine | Where plates over bodies go: reach, order, lift or fold | `aethyr/ui/hud-plates.coax` |
 | Engine | The straight-alpha HUD blend and the two-face glyph atlas | `coax/web/host.js` (`coaxial_fx_alpha_v1`, `sansAtlas`) |
 | Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `apps/openagents-web/charactercreator.coax` |
-| Game | Portrait plate, bar tray, map ring, name plates (`eg_plates`), place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
+| Game | Unit frames (`eg_portrait`: your portrait plate, and your target's frame as its red mirror: a gold-rimmed medallion, a glass plate, the health bar with its damage trail), bar tray, a slot's cooldown sweep (`eg_slot_sweep`), map ring, name plates with their trails (`eg_plates`), the screen's red edges (`eg_vignette`), place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
 | Game | The class menus: the class features (Healer's Kit, Wild Companion, Find Familiar) and the rest menu with how the rest stands. Nothing of them is a button over the action bar (GitHub #13147): a press on your portrait plate opens them, hung under it (`eg_side_geo`, `eg_side_press`, `eg_side_draw`). Knocking out has no control on screen; in Experimental K turns it on and off | `everglade/hud/class-bar.coax` |
 | Game | The CLASSES and LEVEL picker shared by Everglade's test pages: buttons a finger tall on phones and tablets, the classes as a grid that keeps over the action bar, the wild-shape swap (`cm_pick`, `cm_pick_hit`, `cm_pick_draw`) | `apps/openagents-web/class-menu.coax` |
 | Game | The faces' widths | `everglade/hud/fonts.coax`; the faces in `realms.json` |

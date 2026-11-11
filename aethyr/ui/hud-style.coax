@@ -289,6 +289,189 @@ hud_bar :: (l: [] HudList, t: HudTokens, b: HudPrim, share: f32, c: HudRgba, k: 
   hud_ring(l[..], o, r + 2 * w, 1 * k, hud_fade(t.frame_light, 0.9), hud_fade(t.frame_mid, 0.9));
 }
 
+// ---- vitals (GitHub #13147): a health bar that eases to its value and, where a blow took it down,
+// leaves a pale trail from where it stood, which waits a moment and then catches up. Healing takes
+// the trail with it at once. A realm keeps one HudTrail a bar (yours, your target's, each plate's),
+// steps it each frame with the true share, and draws its fill and trail (hud_vital).
+HUD_TRAIL_FILL :: 20.0;    // a second: the fill closes this share of what is left (most of it in 0.14 s)
+HUD_TRAIL_HOLD :: 0.30;    // seconds the trail waits after a blow
+HUD_TRAIL_EASE :: 4.5;     // a second: the trail then closes this share of what is left,
+HUD_TRAIL_LEAST :: 0.06;   // and never less than this much of the bar (so it ends, in about 0.75 s)
+HudTrail :: struct { fill: f32; trail: f32; goal: f32; hold: f32; on: bool; }
+hud_share :: (v: f32) -> f32 { return ifx !(v > 0) then 0.0f32 else ifx v > 1 then 1.0f32 else v; }
+// The bar at `share` now, nothing eased: a new target, a respawn, the first frame.
+hud_trail_snap :: (tr: [] HudTrail, share: f32) { v := hud_share(share); tr[0] = HudTrail.{fill = v, trail = v, goal = v, on = true}; }
+// One frame of dt seconds toward `share`.
+hud_trail_step :: (tr: [] HudTrail, share: f32, dt: f32) {
+  v := hud_share(share);
+  if !tr[0].on { hud_trail_snap(tr, v); return; }
+  d := ifx !(dt > 0) then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  a := d * f32(HUD_TRAIL_FILL); if a > 1 { a = 1; }
+  tr[0].fill += (v - tr[0].fill) * a;
+  if tr[0].fill - v < 0.002 && v - tr[0].fill < 0.002 { tr[0].fill = v; }
+  if v >= tr[0].trail { tr[0].trail = v; tr[0].hold = 0; }   // healing: no trail
+  else {
+    if v < tr[0].goal { tr[0].hold = f32(HUD_TRAIL_HOLD); }   // a new blow: it waits again
+    if tr[0].hold > 0 { tr[0].hold -= d; }
+    else { tr[0].trail -= ((tr[0].trail - v) * f32(HUD_TRAIL_EASE) + f32(HUD_TRAIL_LEAST)) * d; if tr[0].trail < v { tr[0].trail = v; } }
+  }
+  tr[0].goal = v;
+}
+// Whether the bar is still moving (a realm that draws only on change asks).
+hud_trail_busy :: (tr: HudTrail) -> bool { return tr.on && (tr.fill != tr.goal || tr.trail != tr.goal); }
+#test "a health bar's trail: a blow drops the fill at once, the trail waits 0.3 s and catches up in under a second; healing takes it along" {
+  tr: [1] HudTrail; hud_trail_step(tr[..], 0.8, 0.016); #assert tr[0].fill == 0.8 && tr[0].trail == 0.8 && !hud_trail_busy(tr[0]);
+  for i: 0..<9 { hud_trail_step(tr[..], 0.5, 1.0f32 / 60); }                   // 0.15 s after a blow
+  #assert tr[0].fill < 0.52 && tr[0].fill >= 0.5 && tr[0].trail == 0.8 && hud_trail_busy(tr[0]);
+  for i: 0..<12 { hud_trail_step(tr[..], 0.5, 1.0f32 / 60); }                  // 0.35 s: it has begun to close
+  #assert tr[0].fill == 0.5 && tr[0].trail < 0.8 && tr[0].trail > 0.7;
+  hud_trail_step(tr[..], 0.4, 1.0f32 / 60); held := tr[0].trail;               // a second blow: it waits again
+  for i: 0..<12 { hud_trail_step(tr[..], 0.4, 1.0f32 / 60); } #assert tr[0].trail == held;
+  for i: 0..<60 { hud_trail_step(tr[..], 0.4, 1.0f32 / 60); #assert tr[0].trail >= tr[0].fill && tr[0].trail <= held; }
+  #assert tr[0].trail == 0.4 && tr[0].fill == 0.4 && !hud_trail_busy(tr[0]);   // caught up within a second of the wait's end
+  hud_trail_step(tr[..], 0.9, 1.0f32 / 60); #assert tr[0].trail == 0.9 && tr[0].fill > 0.4 && tr[0].fill < 0.9;   // a heal: the trail goes with it
+  // a share out of range or not a number is held to 0..1; a stalled frame never overshoots
+  hud_trail_step(tr[..], 7, 5); #assert tr[0].fill == 1 && tr[0].trail == 1;
+  hud_trail_step(tr[..], 0.0f32 / 0.0f32, 0.016); #assert tr[0].goal == 0 && tr[0].fill >= 0 && tr[0].fill <= 1;
+  hud_trail_snap(tr[..], 0.3); #assert tr[0].fill == 0.3 && tr[0].trail == 0.3;
+}
+// A box whose colour runs from `left` to `right` across it: a fill turned a quarter, since a fill's
+// own colours run top to bottom.
+hud_fill_across :: (l: [] HudList, b: HudPrim, left: HudRgba, right: HudRgba) {
+  cx := (b.x0 + b.x1) * 0.5; cy := (b.y0 + b.y1) * 0.5; hw := (b.x1 - b.x0) * 0.5; hh := (b.y1 - b.y0) * 0.5;
+  p := hud_box(cx - hh, cy - hw, cx + hh, cy + hw); p.turn = 1.5707964;
+  hud_fill(l[..], p, 0, right, left);
+}
+// The health bar itself: a dark groove with a hairline of gold round it, the trail in pale gold from
+// the fill's end to where the bar stood, the fill, and a gloss over the top half. across: the fill
+// runs dark at its root to bright at its end (a unit frame's); else one colour, light over dark (a
+// plate's). fill and trail in 0..1. SCIFI keeps its line, the trail a paler line behind it.
+hud_vital :: (l: [] HudList, t: HudTokens, b: HudPrim, fill: f32, trail: f32, c: HudRgba, across: bool, alpha: f32, k: f32) {
+  if !(alpha > 0) { return; }
+  fv := hud_share(fill); tv := hud_share(trail); h := b.y1 - b.y0; w := b.x1 - b.x0;
+  if t.bar == HUD_BAR_LINE {
+    y := (b.y0 + b.y1) * 0.5; hud_line(l[..], b.x0, y, b.x1, y, h, hud_fade(t.hp_back, alpha));
+    if tv > fv { hud_line(l[..], b.x0, y, b.x0 + w * tv, y, h, hud_fade(hud_mix(c, hud_rgba(1, 1, 1, 1), 0.6), alpha)); }
+    if fv > 0 { hud_line(l[..], b.x0, y, b.x0 + w * fv, y, h, hud_fade(c, alpha)); }
+    return;
+  }
+  r := 2 * k; if r > h * 0.5 { r = h * 0.5; }
+  line := hud_box(b.x0 - 1.8 * k, b.y0 - 1.8 * k, b.x1 + 1.8 * k, b.y1 + 1.8 * k);
+  edge := hud_box(b.x0 - 1 * k, b.y0 - 1 * k, b.x1 + 1 * k, b.y1 + 1 * k);
+  hud_fill(l[..], line, r + 1.8 * k, hud_fade(t.trim, 0.36 * alpha), hud_fade(t.trim, 0.22 * alpha));
+  hud_fill(l[..], edge, r + 1 * k, hud_rgba(0, 0, 0, 0.9 * alpha), hud_rgba(0, 0, 0, 0.9 * alpha));
+  hud_fill(l[..], b, r, hud_rgba(0.02, 0.016, 0.016, 0.94 * alpha), hud_rgba(0.085, 0.066, 0.055, 0.94 * alpha));
+  if tv > fv {
+    tb := b; tb.x0 = b.x0 + w * fv; tb.x1 = b.x0 + w * tv; if tb.x0 > b.x0 + r { tb.x0 -= r; }
+    hud_fill(l[..], tb, r, hud_rgba(1, 0.914, 0.72, 0.9 * alpha), hud_rgba(0.906, 0.663, 0.36, 0.9 * alpha));
+  }
+  if fv > 0 {
+    x1 := b.x0 + w * fv; if x1 - b.x0 < 2 * r { x1 = b.x0 + 2 * r; }
+    f := b; f.x1 = x1;
+    if !across { hud_fill(l[..], f, r, hud_fade(hud_mix(c, hud_rgba(1, 1, 1, 1), 0.2), alpha), hud_fade(hud_mix(c, hud_rgba(0.19, 0, 0, 1), 0.3), alpha)); }
+    else {
+      // dark at its root, the colour itself past a third, bright at its end
+      warm := hud_rgba(1, 0.74, 0.42, 1); dark := hud_rgba(0, 0, 0, 1); fw := x1 - b.x0;
+      s0 := hud_fade(hud_mix(c, dark, 0.5), alpha); s1 := hud_fade(hud_mix(c, dark, 0.14), alpha);
+      s2 := hud_fade(hud_mix(c, warm, 0.2), alpha); s3 := hud_fade(hud_mix(c, warm, 0.58), alpha);
+      hud_fill(l[..], f, r, s1, s1);   // its rounded ends, under the run of colour
+      hud_fill_across(l[..], hud_box(b.x0 + r * 0.5, b.y0, b.x0 + fw * 0.38, b.y1), s0, s1);
+      hud_fill_across(l[..], hud_box(b.x0 + fw * 0.38, b.y0, b.x0 + fw * 0.78, b.y1), s1, s2);
+      hud_fill_across(l[..], hud_box(b.x0 + fw * 0.78, b.y0, x1 - r * 0.5, b.y1), s2, s3);
+    }
+  }
+  // the gloss: light over the top half, strongest at the top, and a shade toward the foot (a prim has
+  // one strength, so each is two strips)
+  hud_fill(l[..], hud_box(b.x0, b.y0, b.x1, b.y0 + h * 0.46), r, hud_rgba(1, 1, 1, 0.07 * alpha), hud_rgba(1, 1, 1, 0.07 * alpha));
+  hud_fill(l[..], hud_box(b.x0, b.y0, b.x1, b.y0 + h * 0.22), r, hud_rgba(1, 1, 1, 0.1 * alpha), hud_rgba(1, 1, 1, 0.1 * alpha));
+  hud_fill(l[..], hud_box(b.x0, b.y0 + h * 0.56, b.x1, b.y1), r, hud_rgba(0, 0, 0, 0.1 * alpha), hud_rgba(0, 0, 0, 0.1 * alpha));
+  hud_fill(l[..], hud_box(b.x0, b.y0 + h * 0.8, b.x1, b.y1), r, hud_rgba(0, 0, 0, 0.14 * alpha), hud_rgba(0, 0, 0, 0.14 * alpha));
+}
+#test "a vital bar: its groove, the trail only where the bar stood past the fill, the fill within the groove, a gloss; nothing past its hairline" {
+  l: [1] HudList; t := hud_tokens(HUD_FANTASY); b := hud_box(100, 50, 300, 66);
+  hud_vital(l[..], t, b, 0.5, 0.5, t.hp, true, 1, 1); plain := l[0].n; #assert plain == 3 + 4 + 4;
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0.5, 0.8, t.hp, true, 1, 1); #assert l[0].n == plain + 1;
+  tr := l[0].p[3]; #assert tr.x0 >= 198 && tr.x0 <= 200 && abs(tr.x1 - 260) < 0.01 && tr.top.r > 0.9 && tr.top.b > 0.6;   // pale, from the fill's end to 0.8
+  // the run of colour is three boxes turned a quarter, end to end from the root to the fill's end, brighter toward it
+  a0 := l[0].p[5]; a2 := l[0].p[7]; #assert a0.turn > 1.5 && a2.turn > 1.5 && a2.top.r > a0.bottom.r && a2.top.g > a0.top.g;
+  cx := (a2.x0 + a2.x1) * 0.5; half := (a2.y1 - a2.y0) * 0.5; #assert cx + half <= 200.01 && cx + half > 198 && abs((a2.x1 - a2.x0) - 16) < 0.01;
+  for i: 0..<l[0].n { p := l[0].p[i]; if p.turn != 0 { continue; } #assert p.x0 >= 98 && p.x1 <= 302 && p.y0 >= 48 && p.y1 <= 68; }
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0, 0, t.hp, true, 1, 1); #assert l[0].n == 7;              // empty: the groove and the gloss
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0.5, 0.2, t.hp, false, 1, 1); #assert l[0].n == 3 + 1 + 4;  // a trail under the fill is never drawn
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0.5, 0.8, t.hp, true, 0, 1); #assert l[0].n == 0;
+  hud_clear(l[..]); hud_vital(l[..], hud_tokens(HUD_SCIFI), b, 0.5, 0.8, t.hp, true, 1, 1); #assert l[0].n == 3;
+}
+
+// ---- the edges of the screen in red (GitHub #13147): a flash when a blow lands on you, stronger
+// and longer for a bigger blow, and a slow pulse while your Hit Points are under a quarter. A realm
+// keeps one HudVignette, steps it each frame with your share of Hit Points, and draws it first, under
+// the rest of its HUD (hud_vignette).
+HUD_VIG_LOW :: 0.25;        // under this share of Hit Points (and over 0) the edges pulse
+HUD_VIG_PULSE :: 1.25;      // seconds a pulse
+HudVignette :: struct { hurt: f32; life: f32; age: f32; pulse: f32; last: f32; low: bool; on: bool; }
+// A blow's flash: strength 0.25 + 0.75 x how hard (a quarter of your Hit Points or more: all of it),
+// gone in 0.42 s plus 0.5 s for the hardest.
+hud_vignette_hurt :: (v: [] HudVignette, hard: f32) {
+  i := hud_share(hard); v[0].hurt = 0.25 + 0.75 * i; v[0].life = 0.42 + 0.5 * i; v[0].age = 0;
+}
+hud_vignette_step :: (v: [] HudVignette, share: f32, dt: f32) {
+  hp := hud_share(share); d := ifx !(dt > 0) then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  if v[0].on && hp < v[0].last - 0.0005 { hud_vignette_hurt(v, (v[0].last - hp) * 4); }
+  v[0].last = hp; v[0].on = true;
+  v[0].age += d;
+  v[0].low = hp > 0 && hp < f32(HUD_VIG_LOW);
+  v[0].pulse = ifx v[0].low then v[0].pulse + d else 0.0f32;
+  if v[0].pulse >= f32(HUD_VIG_PULSE) { v[0].pulse -= f32(HUD_VIG_PULSE); }
+}
+// How strong each is now, 0 to 1: the flash eases out; the pulse runs 0.35 to 0.95 and back.
+hud_vignette_flash :: (v: HudVignette) -> f32 {
+  if !(v.life > 0) || v.age >= v.life { return 0; }
+  u := 1 - v.age / v.life; return v.hurt * (1 - (1 - u) * (1 - u));
+}
+hud_vignette_glow :: (v: HudVignette) -> f32 {
+  if !v.low { return 0; }
+  return 0.65 - 0.3 * cos(v.pulse / f32(HUD_VIG_PULSE) * 6.2831853);
+}
+// Whether it still moves (a realm that draws only on change asks).
+hud_vignette_busy :: (v: HudVignette) -> bool { return v.low || hud_vignette_flash(v) > 0; }
+// The edges of a w by h screen: one soft band an edge, red at the edge and clear a fifth of the way
+// in (a shadow prim: full at its depth into the box, nothing at the box's edge; each band's box runs
+// past the screen, so only its inner edge fades on screen). A prim has one strength, so a band is a
+// shadow, not a fill. Nothing when both are spent.
+hud_vignette :: (l: [] HudList, v: HudVignette, w: f32, h: f32) {
+  flash := hud_vignette_flash(v); glow := hud_vignette_glow(v);
+  if !(flash > 0) && !(glow > 0) { return; }
+  // the flash's red or the pulse's darker red, whichever is stronger now
+  edge := hud_rgba(0.6, 0.02, 0.01, 0.82 * flash); low := hud_rgba(0.5, 0.01, 0.01, 0.62 * glow);
+  c := ifx edge.a >= low.a then edge else low;
+  bh := h * 0.2; bw := w * 0.16; far := bh + bw;
+  for e: 0..<4 {
+    p: HudPrim;
+    if e == 0 { p = hud_box(-far, -bh, w + far, bh); p.width = bh; }
+    else if e == 1 { p = hud_box(-far, h - bh, w + far, h + bh); p.width = bh; }
+    else if e == 2 { p = hud_box(-bw, -far, bw, h + far); p.width = bw; }
+    else { p = hud_box(w - bw, -far, w + bw, h + far); p.width = bw; }
+    p.kind = HUD_PRIM_SHADOW; p.top = c; p.bottom = c; hud_put(l[..], p);
+  }
+}
+#test "the red edges: a blow flashes them, harder for a bigger blow, gone within a second; under a quarter of your Hit Points they pulse every 1.25 s; at 0 or healed, nothing" {
+  v: [1] HudVignette; l: [1] HudList;
+  hud_vignette_step(v[..], 1, 0.016); #assert !hud_vignette_busy(v[0]);
+  hud_vignette(l[..], v[0], 800, 600); #assert l[0].n == 0;
+  hud_vignette_step(v[..], 0.9, 0.016); small := hud_vignette_flash(v[0]); #assert small > 0.5 && small <= 0.65;
+  hud_vignette(l[..], v[0], 800, 600); #assert l[0].n == 4;
+  // four soft bands, each fading out a fifth of the way in (120 px of 600 down, 128 of 800 across)
+  for i: 0..<4 { p := l[0].p[i]; #assert p.kind == HUD_PRIM_SHADOW && p.top.r > 0.5 && p.top.g < 0.1 && p.top.a > 0.4; }
+  #assert l[0].p[0].y1 == 120 && l[0].p[0].width == 120 && l[0].p[1].y0 == 480 && l[0].p[2].x1 == 128 && l[0].p[3].x0 == 672;
+  for i: 0..<40 { hud_vignette_step(v[..], 0.9, 1.0f32 / 60); } #assert hud_vignette_flash(v[0]) == 0 && !hud_vignette_busy(v[0]);   // 0.67 s: over
+  hud_vignette_step(v[..], 0.5, 0.016); #assert hud_vignette_flash(v[0]) > 0.99 && v[0].life > 0.9;   // a hard blow: all of it, longer
+  hud_vignette_step(v[..], 0.2, 0.016); #assert v[0].low && hud_vignette_glow(v[0]) >= 0.35 && hud_vignette_glow(v[0]) < 0.4;
+  top := 0.0f32; for i: 0..<75 { hud_vignette_step(v[..], 0.2, 1.0f32 / 60); g := hud_vignette_glow(v[0]); #assert g >= 0.349 && g <= 0.951; if g > top { top = g; } }
+  #assert top > 0.94;   // one whole pulse in 1.25 s
+  hud_vignette_step(v[..], 0, 0.016); #assert !v[0].low && hud_vignette_glow(v[0]) == 0;   // at 0: down, no pulse
+  a0 := v[0].age; hud_vignette_step(v[..], 0.6, 0.016); #assert !v[0].low && v[0].age > a0;   // healed: no new flash
+}
+
 #test "a slot: FANTASY sinks it and trims it gold when ready; SCIFI draws its outline" {
   l: [1] HudList; t := hud_tokens(HUD_FANTASY); b := hud_box(100, 100, 152, 152);
   hud_slot(l[..], t, b, 1, false); n0 := l[0].n;
@@ -459,18 +642,26 @@ hud_banner :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, half_w: f32, h: f3
   hud_diamond(l[..], cx + half_w * 0.8 + 5 * k, cy - h * 0.5, 4 * k, rule, rule);
 }
 
-// A name plate over a creature: its bar under the name, red for a foe, gold for your target.
+// A name plate over a creature: its bar under the name, red for a foe, green for a friend; your
+// target's is ringed in bright gold with a glow and a diamond at each end.
 hud_plate :: (l: [] HudList, t: HudTokens, cx: f32, y: f32, half_w: f32, share: f32, foe: bool, target: bool, alpha: f32, k: f32) {
+  hud_plate_trail(l, t, cx, y, half_w, share, share, foe, target, alpha, k);
+}
+// The same with its damage trail (hud_trail_step): fill and trail in 0..1.
+hud_plate_trail :: (l: [] HudList, t: HudTokens, cx: f32, y: f32, half_w: f32, fill: f32, trail: f32, foe: bool, target: bool, alpha: f32, k: f32) {
   if !(alpha > 0) { return; }
-  h := ifx t.style == HUD_FANTASY then 5 * k else 2.5 * k;
-  c := ifx foe then t.hp else t.good;
-  tt := t; tt.bar_segments = ifx t.style == HUD_FANTASY then 4 else 1;
-  tt.frame_mid = hud_fade(t.frame_mid, alpha); tt.frame_light = hud_fade(ifx target then t.trim else t.frame_light, alpha);
-  tt.hp_back = hud_fade(t.hp_back, alpha);
-  hud_bar(l[..], tt, hud_box(cx - half_w, y - h * 0.5, cx + half_w, y + h * 0.5), share, hud_fade(c, alpha), k);
+  h := ifx t.style == HUD_FANTASY then 6.5 * k else 2.5 * k;
+  c := ifx foe then hud_mix(t.bad, t.hp, 0.35) else t.good;
+  b := hud_box(cx - half_w, y - h * 0.5, cx + half_w, y + h * 0.5);
   if target && t.style == HUD_FANTASY {
-    hud_diamond(l[..], cx - half_w - 6 * k, y, 3.5 * k, hud_fade(t.trim, alpha), hud_fade(t.trim, alpha));
-    hud_diamond(l[..], cx + half_w + 6 * k, y, 3.5 * k, hud_fade(t.trim, alpha), hud_fade(t.trim, alpha));
+    hi := hud_mix(t.trim, hud_rgba(1, 1, 1, 1), 0.35);
+    hud_shadow(l[..], b, 2 * k, 7 * k, hud_fade(hi, 0.5 * alpha));
+    hud_fill(l[..], hud_box(b.x0 - 2.6 * k, b.y0 - 2.6 * k, b.x1 + 2.6 * k, b.y1 + 2.6 * k), 4.6 * k, hud_fade(hi, alpha), hud_fade(t.trim, alpha));
+  }
+  hud_vital(l[..], t, b, fill, trail, c, false, alpha, k);
+  if target && t.style == HUD_FANTASY {
+    hud_diamond(l[..], cx - half_w - 7 * k, y, 3.5 * k, hud_fade(t.trim, alpha), hud_fade(t.trim, alpha));
+    hud_diamond(l[..], cx + half_w + 7 * k, y, 3.5 * k, hud_fade(t.trim, alpha), hud_fade(t.trim, alpha));
   }
 }
 

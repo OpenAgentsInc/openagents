@@ -84,7 +84,9 @@ fairy 695000
 # The Archery Range realm (then range-scene.coax, everglade/range/: its place, targets, tally and panel) with the engine's
 # static targets and zone colliders (aethyr/action/target.coax, aethyr/world/props.coax): 2,970,145 bytes measured
 # on the remote hosts; about 1% headroom.
-fivelab 3000000
+# The testui HUD harvest (#13147: unit and target frames, health trails, slot sweeps, the red edges):
+# 3,013,263 bytes measured on the remote hosts; about 1% headroom.
+fivelab 3045000
 # The Archery Range as a module of its own (archery-range.coax): an Everglade zone (everglade/zone.coax: the scene,
 # the class bar and its rules, the bow, riding) with the range on it, and none of the 5E Lab's tabletop: 2,749,040 bytes measured on the remote hosts; about 3% headroom. (fivelab without the
 # range's own code: 2,959,794.)

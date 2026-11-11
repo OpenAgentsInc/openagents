@@ -51,7 +51,8 @@ eg_side_tip :: (f: EgBarFacts, id: int) -> string {
   if f.rest_n == 0 { return "You can't rest now"; }
   return ifx f.resting then "Choose how your rest goes on" else "Take a short or a long rest";
 }
-eg_menu_title :: (f: EgBarFacts, id: int) -> string { if id == EG_SIDE_ROOT { return "CAMP"; } if id == EG_SIDE_REST { return "REST"; } return ifx f.wizard then "FAMILIAR" else "WILD COMPANION"; }
+// A menu's title: REST's says how the rest stands where the zone says it ("SHORT REST", "REST: SLEEPING").
+eg_menu_title :: (f: EgBarFacts, id: int) -> string { if id == EG_SIDE_ROOT { return "CAMP"; } if id == EG_SIDE_REST { return ifx f.rest_say.count > 0 then f.rest_say else "REST"; } return ifx f.wizard then "FAMILIAR" else "WILD COMPANION"; }
 eg_menu_rows :: (f: EgBarFacts, id: int, rows: [] int) -> int {
   n := 0;
   if id == EG_SIDE_ROOT { ids: [EG_SIDE_N] int; c := eg_side_items(f, ids[..]); for j: 0..<c { rows[n] = ifx ids[j] == EG_SIDE_KIT then EG_DO_KIT else EG_DO_OPEN + ids[j]; n += 1; } }

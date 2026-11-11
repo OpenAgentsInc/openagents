@@ -113,6 +113,10 @@ XcCombat :: struct {
   top: f32;                         // its top, device px
   pick_hover: CmHit;                // the picker's button under the pointer (class-menu.coax cm_pick_hit)
   side: EgSideState;                // the class menus' open one and hover (everglade/hud/class-bar.coax)
+  me_trail: [1] cc.HudTrail; me_max: int;      // your health bar's fill and damage trail (aethyr/ui/hud-style.coax), and the maximum it was stepped for
+  foe_trail: [XC_FOES] cc.HudTrail;            // each monster's: its plate's, and your target's frame's
+  vig: [1] cc.HudVignette;                     // the screen's red edges: a blow's flash, the pulse when you are low (everglade/hud/parts.coax eg_vignette)
+  target_shown: f32;                           // 0 to 1: how far your target's frame has faded in
   hover: int = -1;                  // the bar's slot under the pointer
   down: int = -100; down_x: f32; down_y: f32; down_id: int;
   media: [16384] u8; media_n: int;   // the bar's pictures for the host (coaxial_media)
@@ -1639,15 +1643,70 @@ xc_familiar_view :: (s:[] EgZone,u:[]f32)->bool {
   return true;
 }
 // ---- the frame: after Character Create's (cc.frame), in Experimental
+// The health bars' trails, a frame (aethyr/ui/hud-style.coax hud_trail_step): yours, and each
+// monster's (its plate's and, when it is your target, its frame's). Your bar is set anew, not eased,
+// when your maximum changes (another class, another level).
+xc_trails_step :: (s: [] EgZone, dt: f32) {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0];
+  mine := ifx hs.max_hp > 0 then f32(ifx hs.hp < 0 then 0 else hs.hp) / f32(hs.max_hp) else 0.0f32;
+  if x[0].me_max != hs.max_hp { x[0].me_max = hs.max_hp; cc.hud_trail_snap(x[0].me_trail[..], mine); x[0].vig[0].on = false; }   // a new maximum is no blow
+  cc.hud_trail_step(x[0].me_trail[..], mine, dt);
+  cc.hud_vignette_step(x[0].vig[..], mine, dt);
+  for i: 0..<XC_FOES { c := x[0].b[0].c[1 + i]; cc.hud_trail_step(x[0].foe_trail[i..<i + 1], f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), dt); }
+}
+// Whether you are in a fight: a monster is awake and after you.
+xc_fighting :: (s: [] EgZone) -> bool {
+  hs := s[0].creator[0].hostiles[0];
+  for i: 0..<XC_FOES { e := hs.enemies[i]; if e.awake && !e.dead && !e.returning { return true; } }
+  return false;
+}
 // Your portrait plate, top right (the CLASSES column has the left): your class, its level, your
-// Hit Points, your AC and spell slots, as the rules hold them for you.
+// Hit Points with their damage trail, your AC and spell slots, as the rules hold them for you. Its
+// ring glows while you fight and brightens under the pointer (a press opens the class menus).
 xc_portrait :: (s: [] EgZone, out: [] f32, at: int, w: f32, k: f32) -> int {
   x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0]; me := x[0].b[0].c[0];
   p: cc.EgPortrait; nb: [32] u8; p.klass = cc.eg_title(nb[..], XC_CL_UP[x[0].klass]); p.name = p.klass; p.level = x[0].level;
   p.max = hs.max_hp; p.hp = ifx hs.hp < 0 then 0 else hs.hp; p.temp = hs.temp; p.ac = me.ac;
   for lv: 0..<10 { p.slot_max[lv] = me.slots_max[lv]; p.slot_left[lv] = me.slots[lv]; }
+  if x[0].me_trail[0].on { p.fill = x[0].me_trail[0].fill; p.trail = x[0].me_trail[0].trail; }
+  if xc_fighting(s) { p.combat = 0.5 + 0.5 * sin(s[0].creator[0].clock * 3.93); }   // a pulse every 1.6 s
+  p.lit = x[0].side.side_hover >= 0 || x[0].side.menu >= 0;
+  p.conds = xc_facts(s).rest_say;   // how your rest stands ("SHORT REST", "REST: SLEEPING"), under the plate
   wide := f32(cc.EG_PORTRAIT_W);
   return cc.eg_portrait(s[0].creator[0].ui, out, at, w - (wide + 16) * k, 14 * k, wide, k, p, 1);
+}
+XC_TARGET_W :: 300.0;   // CSS px: your target's frame
+// Where your target's frame stands (empty: no room, and the line beside the bar's emblem names it
+// instead): left of your portrait, facing it, where the picker leaves room; else under your portrait.
+// Never over the picker, an open class menu, or the bar.
+xc_target_box :: (s: [] EgZone, lay: XcLayout) -> cc.HudPrim {
+  x := s[0].xc[..]; k := x[0].k; w := x[0].w; wide := f32(XC_TARGET_W) * k; me := xc_portrait_box(x);
+  pb := cm_pick_panel(lay.pick); pick := cc.hud_box(pb.x0, pb.y0, pb.x1, pb.y1);
+  if xc_own_kit(x) || xc_pick_hidden(x, lay) { pick = cc.HudPrim.{}; }
+  beside := cc.hud_box(me.x0 - 12 * k - wide, me.y0, me.x0 - 12 * k, me.y1);
+  under := cc.hud_box(me.x1 - wide, (XC_PORTRAIT_FOOT + 6) * k, me.x1, (XC_PORTRAIT_FOOT + 6 + 76) * k);
+  for b: [2] cc.HudPrim.[beside, under] {
+    grown := cc.hud_box(b.x0 - 8 * k, b.y0, b.x1, b.y1 + 34 * k);   // its conditions' line under it
+    if b.x0 < 12 * k || b.y1 + 34 * k > xc_bar_top(x) - 60 * k || cc.eg_meets(grown, pick) || cc.eg_meets(grown, lay.cover) { continue; }
+    return b;
+  }
+  return cc.HudPrim.{};
+}
+// Your target's frame (everglade/hud/parts.coax eg_portrait, mirrored and red): its name, its Hit
+// Points with their damage trail, its AC once you have studied it, and what holds it. It fades in
+// over a fifth of a second and is gone with the target.
+xc_target_frame :: (s: [] EgZone, lay: XcLayout, out: [] f32, at: int, dt: f32) -> int {
+  x := s[0].xc[..]; hs := s[0].creator[0].hostiles[0]; t := x[0].target; k := x[0].k;
+  b := xc_target_box(s, lay);
+  if t < 0 || t >= XC_FOES || hs.enemies[t].dead || !(b.x1 > b.x0) { x[0].target_shown = 0; return at; }
+  x[0].target_shown += (ifx dt > 0 then dt else 0.0f32) / 0.18; if x[0].target_shown > 1 { x[0].target_shown = 1; }
+  c := x[0].b[0].c[1 + t]; p: cc.EgPortrait; nb: [32] u8;
+  p.name = cc.eg_title(nb[..], XC_FOE_NAMES[hs.enemies[t].kind]); p.foe = true; p.mirror = true;
+  p.hp = rs_max(c.hp, 0); p.max = c.hp_max; if x[0].studied[t] { p.ac = c.ac; }
+  for lv: 0..<10 { p.slot_left[lv] = -1; }
+  if rs_has(c, RS_UNCONSCIOUS) { p.conds = "UNCONSCIOUS"; }
+  tr := x[0].foe_trail[t]; if tr.on { p.fill = tr.fill; p.trail = tr.trail; }
+  return cc.eg_portrait(s[0].creator[0].ui, out, at, b.x0, b.y0, f32(XC_TARGET_W), k, p, x[0].target_shown);
 }
 xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f32, dt: f32) -> int {
   x := s[0].xc[..]; cr := s[0].creator[..]; hs := cr[0].hostiles[..];
@@ -1666,10 +1725,13 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
   observing:=xc_familiar_view(s,u);
   for i: 0..<36 { x[0].u[i] = ifx i < u.count then u[i] else 0; }
   xc_bow_step(s, dt);
+  xc_trails_step(s,dt);
+  n = cc.eg_vignette(out, n, x[0].vig[0], w, h);   // the red edges first, under the rest of the HUD
   n = xc_crosshair(s, out, n, w, h, k);
   n = xd_hud(s, out, n, k);
   if observing { n=cc.ttext(cr[0].ui,cc.UIT_NONE,out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1),""); }
   n=xc_portrait(s,out,n,w,k);
+  n=xc_target_frame(s,xc_layout(s),out,n,dt);
   n=cc.combat_overlay(cr[0],out,u,n,w,k);
   // a blow that struck you from off screen points toward its striker (everglade/hud/numbers.coax)
   hp:=xc_proj(x,x[0].hit_x,meadow_y(x[0].hit_x,x[0].hit_z)+1.0,x[0].hit_z);
@@ -1734,7 +1796,8 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
     x[0].sight[i] = xc_sight_step(x, x[0].sight[i], e.x, meadow_y(e.x, e.z), e.z, 1.7, sight_dt);
     on := i == x[0].target || (wave_on && aa.area_aim_contains(wave,e.x,e.z));
     nb: [32] u8;
-    cc.hud_plates_push(pl, e.x, meadow_y(e.x, e.z) + 1.55, e.z, cc.eg_title(nb[..], XC_FOE_NAMES[e.kind]), f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i].share);
+    q := cc.hud_plates_add(pl, e.x, meadow_y(e.x, e.z) + 1.55, e.z, cc.eg_title(nb[..], XC_FOE_NAMES[e.kind]), f32(rs_max(c.hp, 0)) / f32(rs_max(c.hp_max, 1)), true, on, x[0].sight[i].share);
+    tr := x[0].foe_trail[i]; if tr.on { cc.hud_plates_trail(pl, q, tr.fill, tr.trail); }   // its bar eases, and a blow leaves its trail
   }
   familiar:=rs_familiar_of(x[0].b[..],0);
   fx:=x[0].familiar_x; fz:=x[0].familiar_z;
@@ -1769,12 +1832,10 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
     left := f32(XC_COOL) - (now - x[0].cool_at);
     // the dragon's breath sweeps on its own: spent, the time to its next Recharge roll
     if a.kind == XC_BREATH { left = zone_breath_wait(s); }
+    // the wait as a sweep on the picture (everglade/hud/parts.coax eg_slot_sweep)
     if left > 0 {
       share := ifx a.kind == XC_BREATH then left else left / f32(XC_COOL);
-      dim := cc.Box.{x0 = r.x0, y0 = r.y0, x1 = r.x1, y1 = r.y0 + (r.y1 - r.y0) * share};
-      m = put(x[0].media[..], m, "over "); m = put(x[0].media[..], m, xc_url(art)); m = put(x[0].media[..], m, art);
-      m = put(x[0].media[..], m, ifx k > 1.4 then "-128.jpg " else "-72.jpg ");
-      m = xc_box_text(x[0].media[..], m, dim); m = put(x[0].media[..], m, " 35 0 "); m = put_int(x[0].media[..], m, cast(int) (share * 1000)); m = put(x[0].media[..], m, "\n");
+      sb := [4] f32.[r.x0, r.y0, r.x1, r.y1]; n = cc.eg_slot_sweep(out, n, sb[..], share, k);
     }
     // refused, or held by your conditions: the slot greys (#13072), no words
     grey := deed_look(x[0].deeds[0], i, deed_tick(now), 0).grey; held := deed_bar_dim(rs_bearing(x[0].b[0].c[0])); if held > grey { grey = held; }
@@ -1868,10 +1929,11 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
   if x[0].bar_n > 0 {
     r0 := cc.eg_box4(xc_slot_at(x[0].bar_n, 0, x[0].w, x[0].h, x[0].k));
     line: [64] u8; ln := put(line[..], 0, XC_CL_UP[x[0].klass]);
-    t := x[0].target;
-    if t >= 0 && !hs[0].enemies[t].dead {
+    // your target is in its frame by your portrait; where the page has no room for one, on this line
+    t := x[0].target; framed := xc_target_box(s, lay); framed_on := framed.x1 > framed.x0;
+    if t >= 0 && !hs[0].enemies[t].dead && !framed_on {
       c := x[0].b[0].c[1 + t];
-      ln = put(line[..], ln, "  ·  "); ln = put(line[..], ln, ifx t < 3 then "IMP " else "GREMLIN ");
+      ln = put(line[..], ln, "  ·  "); ln = put(line[..], ln, XC_FOE_NAMES[hs[0].enemies[t].kind]); ln = put(line[..], ln, " ");
       ln = put_int(line[..], ln, rs_max(c.hp, 0)); ln = put(line[..], ln, " / "); ln = put_int(line[..], ln, c.hp_max); ln = put(line[..], ln, " HP");
       if rs_has(c, RS_UNCONSCIOUS) { ln = put(line[..], ln, "  ·  UNCONSCIOUS"); }
       if x[0].studied[t] { ln = put(line[..], ln, "  ·  AC "); ln = put_int(line[..], ln, c.ac); }

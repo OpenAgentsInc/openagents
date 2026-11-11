@@ -415,12 +415,8 @@ e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
       tail: [24] u8; tn := e2k_put(tail[..], 0, " "); tn = e2k_int(tail[..], tn, cast(int)(100 - 65 * grey)); tn = e2k_put(tail[..], tn, " 0 1000");
       e2k_media(s, "over", xc_url(art), art, size, b, cast(string) tail[0..<tn]);
     }
-    if left > 0 {
-      share := left / f32(XC_COOL);
-      dim := [4] f32.[b[0], b[1], b[2], b[1] + (b[3] - b[1]) * share];
-      tail: [24] u8; tn := e2k_put(tail[..], 0, " 35 0 "); tn = e2k_int(tail[..], tn, cast(int)(share * 1000));
-      e2k_media(s, "over", xc_url(art), art, size, dim, cast(string) tail[0..<tn]);
-    }
+    // the wait as a sweep on the picture (everglade/hud/parts.coax eg_slot_sweep)
+    if left > 0 { n = cc.eg_slot_sweep(out, n, b[..], left / f32(XC_COOL), kk); }
     // the room's count for it (slots at its level, uses, Rages, Focus) and a gold frame while its
     // effect holds (a Rage, Wild Shape's form): the room's word only (#13046)
     kit := e2n_slot(s[0].net[..], i, k[0].bar_n);

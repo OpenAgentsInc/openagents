@@ -74,6 +74,8 @@ KEY_SHIFT :: -13; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 
 E2 :: struct {
   creator: [1] cc.Creator;
+  vig: [1] cc.HudVignette; vig_at: f32; vig_max: int;   // the screen's red edges (everglade/hud/parts.coax eg_vignette), when last stepped, for which maximum
+  hp_trail: [1] cc.HudTrail; hp_trail_at: f32; hp_trail_max: int;   // your health bar's fill and damage trail (aethyr/ui/hud-style.coax), when it was last stepped, and for which maximum
   bodies: [1] figs.Bodies;
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
   plant_due: bool; plant_route: int;   // plant here on the next frame; 1 the pack's P lines, 2 planted here (e2_take_planting)
@@ -1080,6 +1082,16 @@ e2_portrait :: (s: [] E2, conds: [] u8) -> cc.EgPortrait {
   p.conds = cast(string) conds[0..<m];
   return p;
 }
+// The screen's red edges: a blow on you flashes them, and they pulse while you are under a quarter of
+// your Hit Points (aethyr/ui/hud-style.coax hud_vignette). Drawn before the rest of the HUD, in the world only.
+e2_vignette :: (s: [] E2, out: [] f32, at: int) -> int {
+  row := e2n_vitals(s[0].net[..]);
+  if !e2k_on(s) || row.id < 0 || row.max <= 0 { s[0].vig[0].on = false; return at; }
+  share := f32(row.hp) / f32(row.max);
+  if s[0].vig_max != row.max { s[0].vig_max = row.max; s[0].vig[0].on = false; }   // a new maximum is no blow
+  cc.hud_vignette_step(s[0].vig[..], share, s[0].clock - s[0].vig_at); s[0].vig_at = s[0].clock;
+  return cc.eg_vignette(out, at, s[0].vig[0], s[0].width, s[0].height);
+}
 e2_world_view :: (s: [] E2, out: [] f32, at: int) -> int {
   if !e2k_on(s) { s[0].zone = -1; return at; }
   // the place, and its banner as you come to it
@@ -1098,6 +1110,14 @@ e2_world_view :: (s: [] E2, out: [] f32, at: int) -> int {
   gl := s[0].guard[0]; if gl.up && gl.fade > 0.05 && nd < 64 { dots[nd] = cc.EgDot.{x = gl.x, z = gl.z, kind = cc.EG_DOT_GUARD}; nd += 1; }
   cb: [8] u8; cn := cc.eg_clock(s[0].hud_day, cb[..]);
   conds: [E2K_HEALTH] u8; p := e2_portrait(s, conds[..]);
+  // your health bar eases to what the room says, and a blow leaves its trail; a new maximum sets it anew
+  if p.max > 0 {
+    share := f32(p.hp) / f32(p.max); tr := s[0].hp_trail[..];
+    if s[0].hp_trail_max != p.max { s[0].hp_trail_max = p.max; cc.hud_trail_snap(tr, share); }
+    cc.hud_trail_step(tr, share, s[0].clock - s[0].hp_trail_at); s[0].hp_trail_at = s[0].clock;
+    p.fill = tr[0].fill; p.trail = tr[0].trail;
+  }
+  p.lit = s[0].casts[0].side_hover >= 0 || s[0].casts[0].menu >= 0;
   wd := cc.EgWorld.{you_x = s[0].you_x, you_z = s[0].you_z, fx = s[0].fwd[0], fz = s[0].fwd[2], reach = reach, place = E2_ZONES[z], clock = cast(string) cb[0..<cn], since = s[0].clock - s[0].zone_at, cover = eg_menu_cover(e2k_facts(s), e2k_side_geo(s), e2k_side_st(s))};
   return cc.eg_world(s[0].creator[0].ui, out, at, s[0].width, s[0].height, s[0].k, wd, dots[..], nd, p);
 }
@@ -1163,7 +1183,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
 }
 // The HUD's strokes, in the order they are drawn over the world (the overlap check, apps/openagents-web/hud-overlap-everglade2.coax, draws the same).
 e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
-  return e2b_overlay(s, out, e2p_overlay(s, out, e2_light_readout(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_wedge(s, out, e2_floats_draw(s, out, e2k_area_marks(s, out, e2k_down_line(s, out, e2k_bar_draw(s, out, e2c_draw(s, out))))))))), dt))));
+  return e2b_overlay(s, out, e2p_overlay(s, out, e2_light_readout(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_wedge(s, out, e2_floats_draw(s, out, e2k_area_marks(s, out, e2k_down_line(s, out, e2k_bar_draw(s, out, e2_vignette(s, out, e2c_draw(s, out)))))))))), dt))));
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's

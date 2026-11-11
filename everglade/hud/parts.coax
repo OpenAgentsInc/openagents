@@ -1,20 +1,28 @@
 // Everglade's HUD parts, drawn in the realm's HUD style (EG_HUD, FANTASY: aethyr/ui/hud-style.coax,
-// docs/verse/hud-styles.md): the portrait plate top left, the action bar's tray, the map ring top
-// right with the place and the time of day, the plates over creatures, damage numbers, a place's
+// docs/verse/hud-styles.md): the unit frames (your portrait plate and your target's frame, their
+// health bars with a damage trail), the action bar's tray and a slot's cooldown sweep, the map ring
+// top right with the place and the time of day, the plates over creatures, damage numbers, a place's
 // banner and the frame rate's plaque. Plain data in, vertices out: Everglade II and Everglade
 // Experimental both draw through these. Each part lays its frames (hud_emit) before its words, so
 // the words sit on the iron. Sizes are CSS px times k (device px a CSS px).
 //   coax/bin/coax test apps/openagents-web/charactercreator.coax --only "eg "
 
-// What the portrait plate says. A number the page does not know yet is left out, never guessed:
-// max 0 (no room yet) draws no health bar; ac 0 no shield; a spell level whose slots the room has
-// not said draws no gems.
+// What a unit frame says: your portrait plate, or your target's frame beside it. A number the page
+// does not know yet is left out, never guessed: max 0 (no room yet) draws no health bar; ac 0 no
+// shield; level 0 no badge; a spell level whose slots the room has not said draws no gems.
 EgPortrait :: struct {
   name: string; klass: string; level: int;
   hp: int; max: int; temp: int; down: bool;   // down: at 0 HP
   ac: int;
   slot_max: [10] int; slot_left: [10] int;     // by spell level; left -1 unknown
   conds: string;                               // the conditions and effects held, " · " between; "" none
+  // the health bar as it stands this frame (aethyr/ui/hud-style.coax hud_trail_step): where its fill
+  // has eased to and where its damage trail is; -1 each: the bar at hp / max, no trail
+  fill: f32 = -1; trail: f32 = -1;
+  foe: bool;      // a monster's frame: red where yours is gold
+  mirror: bool;   // the medallion on the right (a target's frame faces yours)
+  combat: f32;    // 0 to 1: how far the medallion's ring glows red (a zone pulses it while you fight)
+  lit: bool;      // the pointer is over it, and a press opens its menus: its ring brightens
 }
 EG_PORTRAIT_W :: 330.0;   // CSS px: the plate's full width at its widest
 eg_say :: (out: [] f32, n: int, t: string, x: f32, y: f32, cap: f32, role: int, a: f32, k: f32, centre: bool) -> int {
@@ -35,29 +43,52 @@ eg_upper :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { c := ch
 
 // The portrait plate's box, device px, its top left at (x, y) and wide CSS px wide: what a press on
 // your portrait hits, and what its menus hang under (everglade/hud/class-bar.coax).
-eg_portrait_box :: (x: f32, y: f32, wide: f32, k: f32) -> HudPrim { return hud_box(x, y, x + wide * k, y + 72 * k); }
-// The portrait plate: a medallion with the class's initial and a level badge, then a plate with
-// the name, the class and level, the health bar with its numbers and the AC shield; spell slots as
-// gems and the conditions under it. (x, y) its top left, wide its width (CSS px). Returns the end.
-// With a layout trace attached (ui, aethyr/ui/trace.coax) it puts the plate there.
+eg_portrait_box :: (x: f32, y: f32, wide: f32, k: f32) -> HudPrim { return hud_box(x, y, x + wide * k, y + 76 * k); }
+EG_UNIT_R :: 34.0;      // CSS px: the medallion's radius
+EG_UNIT_BAR :: 16.0;    // the health bar's height
+// A unit frame (GitHub #13147): a medallion ringed in gold with the class's (or the creature's)
+// initial and a level badge, over the end of a dark glass plate with a hairline of gold and an
+// accent rule along its top; on the plate the name, the class beside it, and the health bar with its
+// damage trail and its numbers; the AC shield at the plate's far end; spell slots as gems and the
+// conditions under it. Yours is gold with the medallion on the left; a target's (mirror, foe) is red
+// with it on the right, so the two face each other. (x, y) its top left, wide its width (CSS px).
+// Returns the end. With a layout trace attached (ui, aethyr/ui/trace.coax) it puts the plate there.
 eg_portrait :: (ui: [] UitTrace, out: [] f32, at: int, x: f32, y: f32, wide: f32, k: f32, p: EgPortrait, a: f32) -> int {
+  if !(a > 0.01) { return at; }
   t := eg_tokens(); l: [1] HudList;
-  r := 30 * k; mx := x + r + 6 * k; my := y + r + 6 * k;
-  px0 := mx + r * 0.5; px1 := x + wide * k; py0 := y + 12 * k; py1 := y + 70 * k;
-  hud_panel(l[..], t, hud_box(px0, py0, px1, py1), k);
-  uit_part(ui, "portrait"); uit_add(ui, UIT_NONE, UIT_PANEL, x, y, px1, py1, "portrait");
-  hud_medallion(l[..], t, mx, my, r, hud_rgba(0.20, 0.30, 0.22, 1), hud_rgba(0.06, 0.10, 0.07, 1), k);
-  bx := mx + r * 0.72; by := my + r * 0.72;
-  hud_badge(l[..], t, bx, by, 11 * k, k);
-  tx := mx + r + 14 * k; shield := p.ac > 0; sx := px1 - 24 * k; sy := (py0 + py1) * 0.5;
-  bar_x1 := ifx shield then sx - 24 * k else px1 - 16 * k;
+  accent := ifx p.foe then t.bad else t.trim;
+  r := f32(EG_UNIT_R) * k; x1 := x + wide * k;
+  mx := ifx p.mirror then x1 - r - 4 * k else x + r + 4 * k; my := y + r + 4 * k;
+  // the plate runs from under the medallion to the frame's far end
+  bx0 := ifx p.mirror then x else mx + r - 30 * k; bx1 := ifx p.mirror then mx - r + 30 * k else x1;
+  py0 := y + 11 * k; py1 := y + 67 * k;
+  tx0 := ifx p.mirror then bx0 + 12 * k else mx + r + 10 * k;     // where its words and its bar run
+  tx1 := ifx p.mirror then mx - r - 10 * k else bx1 - 12 * k;
+  body := hud_box(bx0, py0, bx1, py1);
+  hud_shadow(l[..], body, 4 * k, 9 * k, hud_rgba(0, 0, 0, 0.5));
+  hud_fill(l[..], body, 3 * k, hud_rgba(0.094, 0.078, 0.067, 0.82), hud_rgba(0.035, 0.031, 0.027, 0.82));
+  hud_ring(l[..], body, 3 * k, 1 * k, hud_fade(t.trim, 0.46), hud_fade(t.trim, 0.2));
+  // the accent rule along the top: strong in the middle, gone at the ends
+  for q: 0..<3 { u0 := 0.5 - 0.5 / f32(q + 1) * 0.94; hud_line(l[..], tx0 + (tx1 - tx0) * u0, py0, tx1 - (tx1 - tx0) * u0, py0, 1 * k, hud_fade(accent, 0.26)); }
+  uit_part(ui, ifx p.foe then "target" else "portrait"); uit_add(ui, UIT_NONE, UIT_PANEL, x, y, x1, y + 76 * k, ifx p.foe then "target" else "portrait");
+  shield := p.ac > 0; sx := ifx p.mirror then tx0 + 12 * k else tx1 - 12 * k; sy := (py0 + py1) * 0.5 + 9 * k;
+  bar_x0 := ifx shield && p.mirror then sx + 20 * k else tx0; bar_x1 := ifx shield && !p.mirror then sx - 20 * k else tx1;
+  bar := hud_box(bar_x0, py1 - 10 * k - f32(EG_UNIT_BAR) * k, bar_x1, py1 - 10 * k);
   if p.max > 0 {
-    share := f32(p.hp) / f32(p.max); low := share < 0.34;
-    hud_bar(l[..], t, hud_box(tx, py1 - 23 * k, bar_x1, py1 - 11 * k), share, ifx low then t.hp_low else t.hp, k);
+    share := f32(p.hp) / f32(p.max); low := share < 0.34 && !p.foe;
+    fill := ifx p.fill >= 0 then p.fill else share; trail := ifx p.trail >= 0 then p.trail else fill;
+    hud_vital(l[..], t, bar, fill, trail, ifx low then t.hp_low else t.hp, true, 1, k);
   }
-  if shield { hud_shield(l[..], t, sx, sy, 16 * k, k); }
+  if shield { hud_shield(l[..], t, sx, sy, 13 * k, k); }
+  // the medallion over the plate's end: a glow while you fight, its face tinted with the accent, a gold rim
+  if p.combat > 0 { hud_shadow(l[..], hud_box(mx - r, my - r, mx + r, my + r), r, (6 + 8 * p.combat) * k, hud_rgba(0.92, 0.3, 0.2, 0.3 + 0.4 * p.combat)); }
+  rim := t; rim.frame_light = ifx p.lit then hud_rgba(1, 0.96, 0.8, 1) else hud_rgba(0.96, 0.89, 0.68, 1); rim.frame_mid = hud_rgba(0.55, 0.42, 0.17, 1);
+  hud_medallion(l[..], rim, mx, my, r, hud_mix(hud_rgba(0.11, 0.086, 0.07, 1), accent, 0.34), hud_rgba(0.047, 0.039, 0.035, 1), k);
+  hud_circle(l[..], mx, my, r - 3.5 * k, 1 * k, hud_rgba(0.95, 0.87, 0.65, 0.28), hud_rgba(0.95, 0.87, 0.65, 0.1));
+  badge := p.level > 0; bx := ifx p.mirror then mx + r * 0.74 else mx - r * 0.74; by := my + r * 0.74;
+  if badge { hud_badge(l[..], t, bx, by, 12 * k, k); }
   // spell slots: a gem each, filled while left, by level, a little apart
-  gx := tx; gy := py1 + 12 * k; gems := false;
+  gx := tx0; gy := py1 + 12 * k; gems := false;
   for lv: 1..<10 {
     if p.slot_max[lv] <= 0 || p.slot_left[lv] < 0 { continue; }
     for g: 0..<p.slot_max[lv] { hud_gem(l[..], t, gx, gy, 5.5 * k, g < p.slot_left[lv], k); gx += 13 * k; }
@@ -66,23 +97,31 @@ eg_portrait :: (ui: [] UitTrace, out: [] f32, at: int, x: f32, y: f32, wide: f32
   eg_fade_list(l[..], a);
   n := hud_emit(out, at, l[..]);
   // the words
-  ini: [1] u8; ini[0] = ifx p.klass.count > 0 then p.klass[0] else '?';
-  n = eg_say(out, n, cast(string) ini[..], mx, my + 10 * k, 20 * k, HUD_TEXT_TITLE, a, k, true);
-  lv: [4] u8; ln := eg_int(lv[..], 0, p.level);
-  n = eg_say_ink(out, n, cast(string) lv[0..<ln], bx, by + 4 * k, 8.5 * k, HUD_TEXT_NUMBER, t.title, a, k, true);
-  n = eg_say(out, n, p.name, tx, py0 + 21 * k, 12 * k, HUD_TEXT_NAME, a, k, false);
-  cl: [48] u8; cn := eg_put(cl[..], 0, "LEVEL "); cn = eg_int(cl[..], cn, p.level); cn = eg_put(cl[..], cn, " "); cn = eg_upper(cl[..], cn, p.klass);
-  n = eg_say(out, n, cast(string) cl[0..<cn], tx, py0 + 33 * k, 6.5 * k, HUD_TEXT_LABEL, a, k, false);
+  ini: [1] u8; ini[0] = ifx p.klass.count > 0 then p.klass[0] else ifx p.name.count > 0 then p.name[0] else '?';
+  if ini[0] >= 'a' && ini[0] <= 'z' { ini[0] -= 32; }
+  n = eg_say_ink(out, n, cast(string) ini[..], mx, my + 11 * k, 22 * k, HUD_TEXT_TITLE, hud_mix(accent, hud_rgba(1, 0.95, 0.84, 1), ifx p.foe then 0.2 else 0.45), a, k, true);
+  if badge { lv: [4] u8; ln := eg_int(lv[..], 0, p.level); n = eg_say_ink(out, n, cast(string) lv[0..<ln], bx, by + 4 * k, 8.5 * k, HUD_TEXT_NUMBER, t.title, a, k, true); }
+  // the name, and the class beside it where it says more than the name does
+  name_ink := ifx p.foe then hud_mix(accent, hud_rgba(1, 0.95, 0.84, 1), 0.45) else t.title;
+  sub: [48] u8; sn := 0; same := p.klass.count == p.name.count;
+  if same { for q: 0..<p.name.count { c0 := p.name[q]; c1 := p.klass[q]; if c0 >= 'a' && c0 <= 'z' { c0 -= 32; } if c1 >= 'a' && c1 <= 'z' { c1 -= 32; } if c0 != c1 { same = false; } } }
+  if !same { sn = eg_put(sub[..], 0, p.klass); }
+  sub_w := ifx sn > 0 then face_width(cast(string) sub[0..<sn], 7.5 * k * hud_text(t, HUD_TEXT_LABEL).scale, hud_text(t, HUD_TEXT_LABEL).face) else 0.0f32;
+  name_cap := 12 * k; room := tx1 - tx0 - (ifx sn > 0 then sub_w + 10 * k else 0.0f32);
+  name_w := face_width(p.name, name_cap, hud_text(t, HUD_TEXT_NAME).face); if name_w > room && name_w > 0 { name_cap = name_cap * room / name_w; name_w = room; }
+  ny := py0 + 21 * k;
+  n = eg_say_ink(out, n, p.name, ifx p.mirror then tx1 - name_w else tx0, ny, name_cap, HUD_TEXT_NAME, name_ink, a, k, false);
+  if sn > 0 { n = eg_say(out, n, cast(string) sub[0..<sn], ifx p.mirror then tx0 else tx1 - sub_w, ny, 7.5 * k, HUD_TEXT_LABEL, a, k, false); }
   if p.max > 0 {
     hp: [32] u8; hn := eg_int(hp[..], 0, p.hp); hn = eg_put(hp[..], hn, " / "); hn = eg_int(hp[..], hn, p.max);
     if p.temp > 0 { hn = eg_put(hp[..], hn, "  +"); hn = eg_int(hp[..], hn, p.temp); }
-    n = eg_say(out, n, cast(string) hp[0..<hn], (tx + bar_x1) * 0.5, py1 - 13.5 * k, 7.5 * k, HUD_TEXT_NUMBER, a, k, true);
+    n = eg_say_ink(out, n, cast(string) hp[0..<hn], (bar.x0 + bar.x1) * 0.5, bar.y1 - 4.2 * k, 8 * k, HUD_TEXT_NUMBER, hud_rgba(1, 0.965, 0.9, 1), a, k, true);
   }
-  if shield { ac: [4] u8; an := eg_int(ac[..], 0, p.ac); n = eg_say(out, n, cast(string) ac[0..<an], sx, sy + 4.5 * k, 10 * k, HUD_TEXT_NUMBER, a, k, true);
-              n = eg_say(out, n, "AC", sx, sy + 23 * k, 5.5 * k, HUD_TEXT_LABEL, a, k, true); }
+  if shield { ac: [4] u8; an := eg_int(ac[..], 0, p.ac); n = eg_say(out, n, cast(string) ac[0..<an], sx, sy + 3.5 * k, 8.5 * k, HUD_TEXT_NUMBER, a, k, true);
+              n = eg_say(out, n, "AC", sx, sy - 16 * k, 5.5 * k, HUD_TEXT_LABEL, a, k, true); }
   cy := ifx gems then gy + 22 * k else py1 + 18 * k;
-  if p.down { n = eg_say(out, n, "UNCONSCIOUS", tx, cy, 7.5 * k, HUD_TEXT_WARN, a, k, false); cy += 14 * k; }
-  if p.conds.count > 0 { n = eg_say(out, n, p.conds, tx, cy, 7 * k, HUD_TEXT_WARN, a, k, false); }
+  if p.down { n = eg_say(out, n, ifx p.foe then "DOWN" else "UNCONSCIOUS", tx0, cy, 7.5 * k, HUD_TEXT_WARN, a, k, false); cy += 14 * k; }
+  if p.conds.count > 0 { n = eg_say(out, n, p.conds, tx0, cy, 7 * k, HUD_TEXT_WARN, a, k, false); }
   return n;
 }
 #test "eg portrait: a plate with the name, the class, health and AC; nothing it does not know" #steps 200000000 {
@@ -98,6 +137,12 @@ eg_portrait :: (ui: [] UitTrace, out: [] f32, at: int, x: f32, y: f32, wide: f32
   first_text := -1; last_prim := -1;
   for q: 0..<full { m := out[q * VERTEX_FLOATS + 11]; if m >= 10 { last_prim = q; } else if first_text < 0 { first_text = q; } }
   #assert first_text > last_prim;
+  // a blow's trail adds its pale strip to the bar; a target's frame is a mirror of yours in the same room
+  p.fill = 0.5; p.trail = 0.9; #assert eg_portrait(nt, out[..], 0, 12, 12, EG_PORTRAIT_W, 1, p, 1) == full + 6;   // one more box: the trail
+  f := EgPortrait.{name = "Imp", hp = 13, max = 21, foe = true, mirror = true}; for i: 0..<10 { f.slot_left[i] = -1; }
+  foe := eg_portrait(nt, out[..], 0, 12, 12, 300, 1, f, 1); #assert foe > 0 && eg_portrait(nt, out[..], 0, 12, 12, 300, 1, f, 0) == 0;
+  for q: 0..<foe { #assert out[q * VERTEX_FLOATS] >= 0 && out[q * VERTEX_FLOATS] <= 12 + 300 + 20 && out[q * VERTEX_FLOATS + 1] <= 110; }
+  b := eg_portrait_box(12, 12, EG_PORTRAIT_W, 1); #assert b.x0 == 12 && b.x1 == 12 + EG_PORTRAIT_W && b.y1 - b.y0 == 76;
 }
 
 // The action bar's tray round its slots: iron strips that leave each slot's picture clear, a sunk
@@ -124,6 +169,26 @@ eg_bar_frame :: (ui: [] UitTrace, out: [] f32, at: int, b: [] f32, n: int, k: f3
   v := hud_emit(out, at, l[..]);
   ini: [1] u8; ini[0] = initial;
   return eg_say(out, v, cast(string) ini[..], cx, ey + 6 * k, 12 * k, HUD_TEXT_TITLE, a, k, true);
+}
+// A slot's cooldown, on its picture, every Everglade bar's (GitHub #13147): the engine's sweep, a dark
+// pie that starts whole and closes clockwise from twelve o'clock as the wait runs out. share: how
+// much of the wait is left, 0 to 1. b: the slot's box (x0, y0, x1, y1).
+eg_slot_sweep :: (out: [] f32, at: int, b: [] f32, share: f32, k: f32) -> int {
+  if !(share > 0) { return at; }
+  l: [1] HudList; hud_sweep(l[..], hud_box(b[0], b[1], b[2], b[3]), share, hud_rgba(0.02, 0.015, 0.01, 0.68));
+  return hud_emit(out, at, l[..]);
+}
+// The screen's red edges, every Everglade zone's (GitHub #13147, aethyr/ui/hud-style.coax
+// hud_vignette): a flash when a blow lands on you and a pulse while you are under a quarter of your
+// Hit Points. A zone keeps one HudVignette, steps it with your share each frame, and draws this first.
+eg_vignette :: (out: [] f32, at: int, v: HudVignette, w: f32, h: f32) -> int {
+  l: [1] HudList; hud_vignette(l[..], v, w, h); return hud_emit(out, at, l[..]);
+}
+#test "eg slot sweep: one pie over the slot's picture while the wait runs, the share of it left; nothing once it is over" {
+  out: [6 * VERTEX_FLOATS] f32; b := [4] f32.[100, 500, 152, 552];
+  #assert eg_slot_sweep(out[..], 0, b[..], 0.5, 1) == 6 && out[7] == 0.5 && out[11] >= 40;   // a sweep prim (kind 4), its share in its width
+  #assert eg_slot_sweep(out[..], 0, b[..], 0, 1) == 0 && eg_slot_sweep(out[..], 0, b[..], -1, 1) == 0;
+  #assert eg_slot_sweep(out[..], 0, b[..], 3, 1) == 6 && out[7] == 1;
 }
 #test "eg bar: a tray, a sunk frame a slot and the emblem, then the emblem's letter (hud-style.coax checks the tray leaves the pictures clear)" #steps 100000000 {
   out: [40000] f32; b: [12] f32; nt: [] UitTrace;
@@ -206,11 +271,18 @@ eg_clock :: (day: f32, b: [] u8) -> int {
 // A plate over a creature: its name, and its health under it while known (share in 0..1; -1 none).
 // foe: a monster's red, else a friend's green; alpha its fade. (sx, sy) the bar's middle.
 eg_plate :: (out: [] f32, at: int, name: string, sx: f32, sy: f32, k: f32, share: f32, foe: bool, target: bool, alpha: f32) -> int {
+  return eg_plate_trail(out, at, name, sx, sy, k, share, share, foe, target, alpha);
+}
+EG_PLATE_HALF :: 32.0;   // CSS px: half a plate's bar
+EG_PLATE_UP :: 10.0;     // its name's baseline over the bar's middle
+// The same with its damage trail (trail: where the bar stood, in 0..1; the share itself for none): a
+// foe's name in red, a friend's in green, your target's in bright gold over a bar ringed in gold.
+eg_plate_trail :: (out: [] f32, at: int, name: string, sx: f32, sy: f32, k: f32, share: f32, trail: f32, foe: bool, target: bool, alpha: f32) -> int {
   if !(alpha > 0.01) { return at; }
   t := eg_tokens(); v := at;
-  if share >= 0 { l: [1] HudList; hud_plate(l[..], t, sx, sy, 26 * k, share, foe, target, alpha, k); v = hud_emit(out, v, l[..]); }
-  ink := ifx target then t.title else ifx foe then hud_mix(t.bad, t.text, 0.25) else t.title;
-  return eg_say_ink(out, v, name, sx, sy - 9 * k, 10.5 * k, HUD_TEXT_NAME, ink, alpha, k, true);
+  if share >= 0 { l: [1] HudList; hud_plate_trail(l[..], t, sx, sy, f32(EG_PLATE_HALF) * k, share, trail, foe, target, alpha, k); v = hud_emit(out, v, l[..]); }
+  ink := ifx target then hud_mix(t.title, hud_rgba(1, 1, 1, 1), 0.25) else ifx foe then hud_rgba(0.94, 0.41, 0.35, 1) else hud_rgba(0.53, 0.86, 0.55, 1);
+  return eg_say_ink(out, v, name, sx, sy - f32(EG_PLATE_UP) * k, 10.5 * k, HUD_TEXT_NAME, ink, alpha, k, true);
 }
 // The frame's plates over bodies, every zone's (aethyr/ui/hud-plates.coax places them): each name in
 // the title face over its bar, a covered one's count ("+3") beside the name over it. Measures the
@@ -228,14 +300,15 @@ eg_plates :: (out: [] f32, at: int, p: [] HudPlates, view: HudPlateView, k: f32,
     if !(plate.shown > 0.01) { continue; }
     if most > 0 && v + EG_PLATE_ROOM > most { p[0].skipped += 1; continue; }
     name := ifx plate.named then cast(string) plate.text[0..<plate.n] else "";
-    if !plate.inked { v = eg_plate(out, v, name, plate.sx, plate.sy, k, plate.share, plate.foe, plate.target, plate.shown); }
+    fill := ifx plate.fill >= 0 then plate.fill else plate.share; trail := ifx plate.trail >= 0 then plate.trail else fill;
+    if !plate.inked { v = eg_plate_trail(out, v, name, plate.sx, plate.sy, k, ifx plate.share >= 0 then fill else plate.share, trail, plate.foe, plate.target, plate.shown); }
     else {
-      if plate.share >= 0 { l: [1] HudList; hud_plate(l[..], t, plate.sx, plate.sy, 26 * k, plate.share, plate.foe, plate.target, plate.shown, k); v = hud_emit(out, v, l[..]); }
-      if plate.named { v = eg_say_ink(out, v, name, plate.sx, plate.sy - 9 * k, cap, HUD_TEXT_NAME, hud_rgba(plate.r, plate.g, plate.b, 1), plate.shown, k, true); }
+      if plate.share >= 0 { l: [1] HudList; hud_plate_trail(l[..], t, plate.sx, plate.sy, f32(EG_PLATE_HALF) * k, fill, trail, plate.foe, plate.target, plate.shown, k); v = hud_emit(out, v, l[..]); }
+      if plate.named { v = eg_say_ink(out, v, name, plate.sx, plate.sy - f32(EG_PLATE_UP) * k, cap, HUD_TEXT_NAME, hud_rgba(plate.r, plate.g, plate.b, 1), plate.shown, k, true); }
     }
     if plate.named && plate.more > 0 {
       b: [12] u8; m := eg_put(b[..], 0, "+"); m = eg_int(b[..], m, plate.more);
-      v = eg_say(out, v, cast(string) b[0..<m], plate.sx + plate.wide * 0.5 + 3 * k, plate.sy - 9 * k, 7.5 * k, HUD_TEXT_LABEL, plate.shown, k, false);
+      v = eg_say(out, v, cast(string) b[0..<m], plate.sx + plate.wide * 0.5 + 3 * k, plate.sy - f32(EG_PLATE_UP) * k, 7.5 * k, HUD_TEXT_LABEL, plate.shown, k, false);
     }
   }
   return v;

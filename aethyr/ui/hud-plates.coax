@@ -27,6 +27,7 @@ HudPlate :: struct {
   x: f32; y: f32; z: f32;
   text: [HUD_PLATE_TEXT] u8; n: int;
   share: f32 = -1; foe: bool; target: bool; first: bool;
+  fill: f32 = -1; trail: f32 = -1;   // the bar as it stands this frame (hud-style.coax hud_trail_step): its eased fill and its damage trail; -1 each: at share, no trail
   alpha: f32 = 1;
   inked: bool; r: f32; g: f32; b: f32;
   wide: f32; tall: f32;
@@ -59,6 +60,9 @@ hud_plates_add :: (p: [] HudPlates, x: f32, y: f32, z: f32, name: string, share:
 }
 // A plate over (x, y, z), its index not needed.
 hud_plates_push :: (p: [] HudPlates, x: f32, y: f32, z: f32, name: string, share: f32, foe: bool, target: bool, alpha: f32) { i := hud_plates_add(p, x, y, z, name, share, foe, target, alpha); }
+// The plate's bar as its trail has it now (a realm keeps a HudTrail a creature, hud-style.coax
+// hud_trail_step, and passes its fill and trail, each 0 to 1).
+hud_plates_trail :: (p: [] HudPlates, i: int, fill: f32, trail: f32) { if i >= 0 { p[0].items[i].fill = fill; p[0].items[i].trail = trail; } }
 // The name in its own colour.
 hud_plates_ink :: (p: [] HudPlates, i: int, r: f32, g: f32, b: f32) { if i >= 0 { p[0].items[i].inked = true; p[0].items[i].r = r; p[0].items[i].g = g; p[0].items[i].b = b; } }
 // A box (px) no plate stands in.
