@@ -37,6 +37,14 @@ Character Create's frozen save keys. Do not add new app-private source copies.
 
 ## Rules
 
+- **Never hand-roll what already exists** (owner, 2026-11-11;
+  [docs/reuse.md](docs/reuse.md)). Before writing a text box, button, undo
+  stack, camera, controller, terrain, parser, hash or model call, find the
+  shared one (`components/`, `aethyr/`, `everglade/`, `coax/lib/`,
+  `psionic/`) in docs/reuse.md and use it. If it falls short, extend the
+  shared one. No second copy, no "local version for now". A hand-rolled copy
+  you find while working moves onto the shared module in the same change, or
+  gets an issue naming both.
 - **Tools are Coax too** (owner, 2026-10-30; [coax/tools-in-coax.md](coax/tools-in-coax.md)).
   A build script, check, test harness, recorder or CLI you write is Coax,
   run with `coax/web/tool.sh FILE.coax`. A new `.ts`, `.py`, `.js`, `.sh` or
