@@ -380,6 +380,9 @@ Engine :: struct {
   cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
   warmed: bool;                      // the CLI was started once ahead of the first message, for its models
   run_effort: [24] u8; run_n: int;   // what the running CLI was started with (its --effort, "+" for ultracode)
+  // the model and permission mode chosen when the CLI started: a choice made while it starts
+  // (before it answers initialize, when no control request can go yet) is sent once it is ready (#13183)
+  run_model: [96] u8; run_model_n: int; run_mode: ClPermissionMode;
   // the message owed to the CLI (its text for Claude) and the images that go
   // with it (the owner's: it fills them before a send, and their bytes stay
   // its until `delivered` counts the message as gone)
@@ -557,6 +560,7 @@ e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
   }
   if e[0].claude_n == 0 { e[0].claude_n = e_set(e[0].claude[..], 0, "claude"); }   // installed since the probe: found on PATH
   e[0].running = true; e[0].ready = false; e[0].run_n = e_effort_key(e, e[0].run_effort[..]);
+  e_note_start(e);
   if e[0].once { e[0].pend = -1; e_delivered(e); }      // the SDK sends the prompt itself once initialize is answered
   return true;
 }
@@ -569,6 +573,19 @@ e_effort_key :: (e: [] Engine, out: [] u8) -> int {
   k := e_set(out, 0, claude_effort(e[0].cat[..], e[0].model, e[0].effort));
   if ag_level_for(e[0].cat[..], e[0].model, e[0].effort) == LV_ULTRACODE { k = e_set(out, k, "+"); }
   return k;
+}
+// What the CLI starts with: the chosen model and permission mode now.
+e_note_start :: (e: [] Engine) {
+  e[0].run_model_n = e_set(e[0].run_model[..], 0, e[0].cat[0].id[e[0].model]);
+  e[0].run_mode = e_mode(e);
+}
+// What was chosen since the CLI started and has not reached it: 1 the model, 2 the permission mode.
+E_DRIFT_MODEL :: 1; E_DRIFT_MODE :: 2;
+e_drift :: (e: [] Engine) -> int {
+  d := 0;
+  if e[0].cat[0].id[e[0].model] != e_str(e[0].run_model[..], e[0].run_model_n) { d += E_DRIFT_MODEL; }
+  if e_mode(e) != e[0].run_mode { d += E_DRIFT_MODE; }
+  return d;
 }
 e_restart_due :: (e: [] Engine) -> bool {
   now: [24] u8;
@@ -648,15 +665,15 @@ e_stop :: (e: [] Engine, s: [] Session) {
 e_set_model :: (e: [] Engine, m: int) {
   if m < 0 || m >= e[0].cat[0].n { return; }
   e[0].model = m;
-  if e[0].on && e[0].running && e[0].ready { r := cl_set_model(e[0].q[..], e[0].cat[0].id[m]); }
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_model(e[0].q[..], e[0].cat[0].id[m]); e_note_start(e); }
 }
 e_set_access :: (e: [] Engine, a: int) {
   e[0].access = a;
-  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); }
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); e_note_start(e); }
 }
 e_set_plan :: (e: [] Engine, on: bool) {
   e[0].plan = on;
-  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); }
+  if e[0].on && e[0].running && e[0].ready { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); e_note_start(e); }
 }
 // The engine before the host's buffers: its catalog, High.
 e_init :: (e: [] Engine) {
@@ -715,6 +732,11 @@ e_take :: (e: [] Engine, s: [] Session, ev: ClEvent) {
   if ev.kind == ClEventKind.initialized {
     e[0].ready = true;
     e_take_models(e, ev.response.response);
+    // a model or access chosen while the CLI started goes now, ahead of the message it waited for
+    d := e_drift(e);
+    if e[0].on && (d & E_DRIFT_MODEL) != 0 { r := cl_set_model(e[0].q[..], e[0].cat[0].id[e[0].model]); }
+    if e[0].on && (d & E_DRIFT_MODE) != 0 { r := cl_set_permission_mode(e[0].q[..], e_mode(e)); }
+    e_note_start(e);
     if e[0].pend >= 0 { e_deliver(e); e[0].pend = -1; }
     return;
   }
@@ -917,6 +939,20 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
   s_hint_install(s[..]);
   s_drop_hint(s[..]);
   #assert s[0].n == 0 && !s[0].hint;
+}
+
+#test "a model or access chosen while the CLI starts is owed to it until it is ready (#13183)" {
+  e: [1] Engine; e_init(e[..]);
+  e_note_start(e[..]);
+  #assert e_drift(e[..]) == 0;
+  sonnet := claude_find(e[0].cat[..], "claude-sonnet-5");
+  #assert sonnet > 0;
+  e_set_model(e[..], sonnet);          // not ready: no control request can go yet
+  #assert e_drift(e[..]) == E_DRIFT_MODEL;
+  e_set_access(e[..], ACC_EDITS);
+  #assert e_drift(e[..]) == E_DRIFT_MODEL + E_DRIFT_MODE;
+  e_note_start(e[..]);                 // sent with initialize's answer (e_take), or started with them
+  #assert e_drift(e[..]) == 0 && e_str(e[0].run_model[..], e[0].run_model_n) == "claude-sonnet-5";
 }
 
 #test "an owner's options start the CLI as they are; without them the desktop app's for its model and access" {
