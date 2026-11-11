@@ -1,0 +1,5 @@
+# Each nightly dump is encrypted to both of these age keys (backup.sh).
+# The offline key: its private half is on paper with the owner, never on a server.
+age1xf9gn852hkfxlvhrnqzjn6mxwjkqhrkre32e9zlkhq7lxrjnnarqr6pj95
+# The drill key: its private half is Secret Manager oa-db-backup-drill-age-key, for the monthly restore drill.
+age1h80qrx2jcsy6ae0pwuqlfxwntmmrus2s0n3zsx6ar99uev8flvzqsxc4zt

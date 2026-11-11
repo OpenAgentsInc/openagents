@@ -81,11 +81,14 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   # Migrations first, as the owner role, in a job with this image; the service's own role has no
   # DDL and owns nothing (coax/web/api/db/roles.sh, docs/auth/data-and-backups.md). A failed
   # migration stops the deploy before the service changes.
+  # The job keeps the account it has: the owner moves it to oa-api-migrator (NEEDS_OWNER.md, #13194).
   mkdir -p "$work/$1"
+  local job_sa=()
+  gcloud run jobs describe "oa-api-migrate-$6" --project "$project" --region "$region" > /dev/null 2>&1 ||
+    job_sa=(--service-account "oa-mvp-automation@$project.iam.gserviceaccount.com")
   if ! gcloud run jobs deploy "oa-api-migrate-$6" --image "$image" --project "$project" --region "$region" \
       --command api --args=--migrations,/migrations,--migrate-only \
-      --set-secrets "OA_API_DATABASE=$7:latest" --set-cloudsql-instances "$instance" \
-      --service-account "oa-mvp-automation@$project.iam.gserviceaccount.com" \
+      --set-secrets "OA_API_DATABASE=$7:latest" --set-cloudsql-instances "$instance" ${job_sa[@]+"${job_sa[@]}"} \
       --cpu 1 --memory 512Mi --max-retries 0 --task-timeout 900s --execute-now --wait --quiet > "$work/$1/migrate.log" 2>&1; then
     tail -20 "$work/$1/migrate.log" >&2; echo "api: migrations failed on $6; $1 not deployed" >&2; return 1
   fi
