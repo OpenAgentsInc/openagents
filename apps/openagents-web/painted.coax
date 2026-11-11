@@ -351,7 +351,7 @@ frame_at :: (s: [] Painted, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   return painted_frame(s, out[..], u[..], w, h, dpr, dt, false);
 }
-#test "the page starts at the shot, builds the scene, and hands the host its draws, its grass and its stores" #steps 2000000000 {
+#test "the page starts at the shot, builds the scene, and hands the host its draws, its grass and its stores" #steps 2000000000 #traversal 268435456 {
   s: [1] Painted;
   n := frame_at(s[..], 1920, 1080, 1, 0.016);
   #assert n > 100 && n <= MAX_VERTICES && s[0].scene[0].built && painted_draws(s[..]) == s[0].scene[0].draw_n - 1 && painted_grass(s[..]) == VR_GRASS_COLS * VR_GRASS_ROWS;

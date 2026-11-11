@@ -15,6 +15,8 @@
 // the falls, the spray and the rainbow are drawn last, in Aethyr's stylized water pass. It is one
 // world with the village (verse/painted/village-road.coax, which loads this file and builds it):
 // the same ground table, the same solids, the same walker.
+// This file is a part of that one and stands on its names: check it through it.
+//   coax/bin/coax test --library verse/painted/village-road.coax
 #load "../../aethyr/arch/land.coax";
 
 VW_START :: 30.0;                  // the village's land gives way to this country from here (z)
