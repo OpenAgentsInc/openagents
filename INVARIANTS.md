@@ -5493,7 +5493,11 @@ whole check's, in its order. These rules hold that.
 - **Only errors inside a changed body are taken.** An emptied body that must
   return a value reports E0338 at its procedure; the child drops those. Any
   other error outside a changed body, a storage error (E0339, E0381), a
-  refused run or a use near its limit makes the answer unused.
+  coverage error (E0380: it reads every check's body, and the child emptied
+  them), a refused run or a use near its limit makes the answer unused.
+- **The child never outlives its compile.** It ends when the compile that
+  forked it ends and holds none of its build tokens (`job_child`), so a
+  killed compile frees its tokens at once.
 - **The whole check would stop on no limit.** The remembered check's use of
   the node store, generic instances, types and text, plus the child's use,
   must be under the near-limit fraction of the child's limits, which are

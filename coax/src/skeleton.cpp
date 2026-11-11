@@ -410,6 +410,8 @@ struct SkeletonJob {
   size_t emptied = 0;
   for (const CheckCapture::Error &e : capture.errors) {
     if (e.code == "E0339" || e.code == "E0381") leave("a storage error", none);
+    // Coverage reads the bodies of every check, and the child emptied them.
+    if (e.code == "E0380") leave("a coverage error: it reads other checks' bodies", none);
     const int32_t k = now.item_at(tk, e.loc.offset);
     if (k < 0) leave("an error outside every item: " + e.code, none);
     // An emptied body that must return a value: not the whole program's error.
@@ -443,10 +445,12 @@ void skeleton_start(SkeletonJob *job, const Source *src, const std::vector<Token
   if (pipe(ends) != 0) return;
   fflush(stdout);
   fflush(stderr);
+  const pid_t parent = getpid();
   const pid_t pid = fork();
   if (pid < 0) { close(ends[0]); close(ends[1]); return; }
   if (pid == 0) {
     close(ends[0]);
+    job_child(parent);  // ends with the compile, and holds none of its build tokens
     serve_detach();
     skeleton_child(ends[1], src, tk, now, *was, changed, opts, library);
   }
