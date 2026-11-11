@@ -191,13 +191,36 @@ the socket again. It runs twice, once with the page's own position claim
 (`A`) and once without. It holds when every player is back within 20 s each
 time, and prints where each came back against where the room had it.
 
-A place comes back only from the API's checkpoint store (v4 tickets, the
-API's `OA_ROOM_CHECKPOINTS=1`, `docs/protocol/character-checkpoint-v2.md`).
-That is off on staging and production today, so a killed room's players sit
-again at the spawn with their HP, XP and WANTED kept (room vitals); a
-drained room (a deploy, `switch run`) moves nobody, since it saves and tells
-every page first. `--position` also holds the place (1 m with `A`, 25 m
-without) for an API with checkpoints on.
+A place comes back from the API's checkpoint store (v4 tickets, the API's
+`OA_ROOM_CHECKPOINTS=1`, `docs/protocol/character-checkpoint-v2.md`), on in
+staging and production since 2026-11-11 (#13184). A killed room's players sit
+again where its last accepted capture had them, with HP, XP, WANTED, spell
+slots and the rest kept: at most one 5 s checkpoint interval of movement
+behind. A drained room (a deploy, `switch run`) moves nobody, since it saves
+and tells every page first. `--position` holds the place (1 m with `A`, 25 m
+without); `--moving` keeps each player walking a circle right up to the kill
+and holds both at 25 m, one interval of running (4.25 m/s) with slack.
+
+Checkpoint writes: one per player per 5 s while anything about them changes,
+plus one at each of their own events (placed, socket closed, leave, journey,
+drain); an idle player writes nothing. Each is one upsert of a single
+~1.1 KB row per character in `verse.character_checkpoints_v2`, committed
+synchronously.
+
+With checkpoints on, measured 2026-11-11 against staging with the room at
+d916cb04aa:
+
+| Run | Phase | Players back | Slowest | Largest error |
+| --- | --- | --- | --- | --- |
+| `--position --walk 20` | with `A` | 2 of 2 | 11.8 s | 0 mm |
+| | without `A` | 2 of 2 | 10.9 s | 0 mm |
+| `--position --moving --walk 23 --players 4` | with `A` | 4 of 4 | 19.9 s (the IAP kill took 10.2 s) | 0 mm |
+| | without `A` | 4 of 4 | 12.1 s | 600 mm |
+
+That last run wrote 53 checkpoints for four players over about a minute
+each of play: 0.2 a second for a moving player, as designed.
+
+Before checkpoints were on:
 
 Measured 2026-11-11 against staging (the kill sent over IAP SSH, about 3 s
 of each time below):

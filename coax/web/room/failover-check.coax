@@ -10,13 +10,13 @@
 // asks the directory again (now for the instance it sat in) and sits again; a refused ask or socket
 // is tried again each second. Twice: once its hello says where it stood (A, as the page's does),
 // once not, when the room puts it where the API's store had it.
-//   coax/web/tool.sh coax/web/room/failover-check.coax API KILL [--players N] [--walk S] [--position]
+//   coax/web/tool.sh coax/web/room/failover-check.coax API KILL [--players N] [--walk S] [--position] [--moving]
 //   coax/web/tool.sh coax/web/room/failover-check.coax https://staging.openagents.com "coax/web/room/vm-deploy.sh kill staging"
 // Holds when every player sat again within 20 s of the kill each time. Prints each player's return
 // time and where it came back against where the room had it. A place comes back only from the API's
-// checkpoint store (v4 tickets, the API's OA_ROOM_CHECKPOINTS=1, docs/protocol/character-checkpoint-v2.md):
-// without it a killed room's players sit again at the spawn, their HP, XP and WANTED kept (room vitals).
-// --position also holds them to within 1 m with A and 25 m without, for an API with checkpoints on.
+// checkpoint store (v4 tickets, the API's OA_ROOM_CHECKPOINTS=1, on since #13184,
+// docs/protocol/character-checkpoint-v2.md). --position also holds them to within 1 m with A and 25 m
+// without: one 5 s checkpoint interval of running (4.25 m/s), with slack.
 #load "room-socket.coax";
 #load "../../lib/net/http.coax";
 
@@ -29,7 +29,7 @@ FoBot :: struct {
   own: WireS; have: bool;
   kx: f32; kz: f32; claim: bool;
   retry_at: int; back: bool; back_ms: int; err_mm: int; tries: int; settle_at: int;
-  url: [512] u8; url_n: int;        // the socket it opened last
+  url: [6144] u8; url_n: int;       // the socket it opened last (a v4 ticket carries the capture)
   no_ticket: int; no_socket: int;   // asks the directory refused, sockets that didn't open
   said: [96] u8; said_n: int;       // the room's last refusal (r ...)
 }
@@ -120,11 +120,19 @@ fo_pump :: (b: [] FoBot, now: int, walk: bool) {
   if code == RC_FAIL || code == RC_CLOSED { b[0].open = false; r := relay_conn_close(b[0].conn[..], 1000); }
 }
 // One phase: walk walk_ms, then KILL; every player back on its own. claim: their hellos say A.
-fo_phase :: (bots: [] FoBot, n: int, api: string, kill: string, walk_ms: int, claim: bool, position: bool) -> bool {
-  until := rs_now() + walk_ms;
-  while rs_now() < until { now := rs_now(); for i: 0..<n { fo_pump(bots[i..<i + 1], now, true); } proc_sleep(2); }
+// moving: each player walks a circle (a turn each FO_TURN_MS) right up to the kill, so the room dies with
+// unsaved movement and the store's place is up to one checkpoint interval behind (#13184)
+FO_TURN_MS :: 30000;
+fo_phase :: (bots: [] FoBot, n: int, api: string, kill: string, walk_ms: int, claim: bool, position: bool, moving: bool) -> bool {
+  start := rs_now(); until := start + walk_ms; base: [FO_MAX] int; for i: 0..<n { base[i] = bots[i].theta; }
+  while rs_now() < until {
+    now := rs_now();
+    for i: 0..<n { if moving { bots[i].theta = (base[i] + 31416 + cast(int) ((now - start) * 62832 / FO_TURN_MS)) % 62832 - 31416; } fo_pump(bots[i..<i + 1], now, true); }
+    proc_sleep(2);
+  }
+  for i: 0..<n { bots[i].theta = base[i]; }
   // stand still a moment, so where the room has each player is where it stops
-  until = rs_now() + 600;
+  until = rs_now() + (ifx moving then 0 else 600);
   while rs_now() < until { now := rs_now(); for i: 0..<n { fo_pump(bots[i..<i + 1], now, false); } proc_sleep(2); }
   for i: 0..<n { bots[i].kx = bots[i].own.x; bots[i].kz = bots[i].own.z; bots[i].claim = claim; bots[i].back = false; bots[i].retry_at = -1; bots[i].tries = 0; bots[i].no_ticket = 0; bots[i].no_socket = 0; bots[i].said_n = 0; bots[i].settle_at = -1; }
   killed := rs_now();
@@ -163,18 +171,21 @@ fo_phase :: (bots: [] FoBot, n: int, api: string, kill: string, walk_ms: int, cl
   }
   print("  % of % back; the slowest % ms; the largest error % mm\n", back, n, worst_ms, worst_mm);
   print("{\"phase\":\"%\",\"back\":%,\"players\":%,\"slowest_ms\":%,\"error_mm\":%}\n", ifx claim then "with-A" else "without-A", back, n, worst_ms, worst_mm);
-  return back == n && worst_ms <= 20000 && (!position || worst_mm < (ifx claim then 1000 else 25000));
+  // a still player comes back within 1 m with A and 25 m without; a moving one (its page's claim is where
+  // it was, the store's place up to one interval of running behind) within one interval of running (25 m)
+  return back == n && worst_ms <= 20000 && (!position || worst_mm < (ifx claim && !moving then 1000 else 25000));
 }
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) { return 2; }
-  if args_count(a[..]) < 2 { tool_errln("usage: failover-check.coax API KILL [--players N] [--walk S] [--position]"); return 2; }
+  if args_count(a[..]) < 2 { tool_errln("usage: failover-check.coax API KILL [--players N] [--walk S] [--position] [--moving]"); return 2; }
   api := args_at(a[..], 0); kill := args_at(a[..], 1);
-  n := 2; walk := 5; i := 2; position := false;
+  n := 2; walk := 5; i := 2; position := false; moving := false;
   while i < args_count(a[..]) {
     x := args_at(a[..], i);
     if x == "--position" { position = true; i += 1; continue; }
+    if x == "--moving" { moving = true; i += 1; continue; }
     y := ifx i + 1 < args_count(a[..]) then args_at(a[..], i + 1) else "";
-    if x == "--players" { n = rs_num(y); } else if x == "--walk" { walk = rs_num(y); } else { tool_errln("usage: failover-check.coax API KILL [--players N] [--walk S] [--position]"); return 2; }
+    if x == "--players" { n = rs_num(y); } else if x == "--walk" { walk = rs_num(y); } else { tool_errln("usage: failover-check.coax API KILL [--players N] [--walk S] [--position] [--moving]"); return 2; }
     i += 2;
   }
   if n < 1 || n > FO_MAX || walk < 1 || !(api.count > 8 && api[0..<8] == "https://") { return 2; }
@@ -193,8 +204,8 @@ tool_main :: () -> int #export_c #effects(all) {
   while rs_now() < until && !ready { now := rs_now(); ready = true; for q: 0..<n { fo_pump(bots[q..<q + 1], now, false); if !bots[q].have { ready = false; } } proc_sleep(2); }
   if !ready { tool_errln("failover-check: the players weren't seated within 15 s"); return 1; }
   print("failover-check: % players in % at %\n", n, cast(string) bots[0].code[0..<bots[0].code_n], cast(string) bots[0].url[0..<rs_index_t(bots[0].url[0..<bots[0].url_n])]);
-  ok := fo_phase(bots[..], n, api, kill, walk * 1000, true, position);
-  ok = fo_phase(bots[..], n, api, kill, walk * 1000, false, position) && ok;
+  ok := fo_phase(bots[..], n, api, kill, walk * 1000, true, position, moving);
+  ok = fo_phase(bots[..], n, api, kill, walk * 1000, false, position, moving) && ok;
   for q: 0..<n { if bots[q].open { c := relay_conn_close(bots[q].conn[..], 1000); } }
   print("%\n", ifx ok then "holds" else "fails");
   return ifx ok then 0 else 1;

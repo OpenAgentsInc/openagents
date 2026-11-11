@@ -57,6 +57,16 @@ without bound while paused. A planned drain freezes and captures final state,
 and succeeds only after the final checkpoints are accepted. Forced termination
 reports remaining unsaved characters and follows the same loss bound.
 
+Write rate (#13184): the room captures a seat on a 5-second timer and at that
+seat's own events: placed after its hello, its socket closing, a leave, a journey
+to another room, and a planned drain. It never captures per tick, and one player's
+join captures nobody else. A capture equal to the seat's last one (all but
+revision and times) is no new revision and no write, so an idle player writes
+nothing; when that capture is the accepted one, its loss-bound age starts again,
+so standing still never pauses play. A restored place counts as at most 30 s
+old for the page's position claim. Each player writes at most once per 5 s plus
+once per event of their own, one post in flight per room process.
+
 Healthy-service objectives: capture every 5 seconds, and restore from the start
 of a replacement process to its first authoritative socket state within 60
 seconds, including startup, ticket issuance and join, with matching builds, at most
@@ -68,7 +78,8 @@ acceptance and recovery time; an unavailable store has no finite recovery-time
 objective. Deployment remains an owner action; tests use scratch stores only.
 
 Activation is explicit: the page asks `checkpoint=2`, and the API issues v4
-only with `OA_ROOM_CHECKPOINTS=1`. Its profile is sticky from the first issued
+only with `OA_ROOM_CHECKPOINTS=1`. `coax/web/api/deploy.sh` sets it on staging and
+production (on since 2026-11-11, #13184). Its profile is sticky from the first issued
 v4 ticket, before the first capture (`verse.character_profiles_v2`): an
 older page or disabled flag fails closed with a recovery-unavailable answer.
 The operator must first put schema-2 rooms on every eligible destination;
