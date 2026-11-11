@@ -221,13 +221,21 @@ number, banner, talk window. These are `everglade/hud/` and
 - **Pictures**: the gallery draws each component in each skin at fixed
   sizes; `gallery/check.coax` compares them with goldens. One golden per
   component, skin and platform (text rasterizes differently on each).
-- **`coax/web/tool.sh components-check`**, run before a push:
-  - a file in `core/` or `layout/` that loads `paint/`, `skin/` or
-    `backend/` fails;
-  - a colour literal or a font size in `kit/` fails;
-  - a Markdown parser, a line wrapper or an edit buffer outside
-    `components/` fails, with the list of files still to move printed until
-    it is empty.
+- **`coax/web/tool.sh components-check`**, run before a push
+  (`coax/web/components-check.coax`):
+  - a layer file that loads a layer after it in the order core, layout,
+    paint, skin, backend fails; so does a component (`kit/`) that loads a
+    backend, and any of them loading a file outside `components/` (the
+    shader's library, `verse/gpu/wgsl.coax`, is the one exception);
+  - a colour literal or a named face in `kit/` fails;
+  - a file outside `components/` that reads Markdown's marks, wraps text or
+    keeps an edit buffer fails unless it is on the tool's list of files
+    still to move, which is printed until it is empty (22 files on
+    2026-11-10: the realm HUDs' and pages' own wrappers, Coder's terminal's
+    wrapper and edit buffer, three files that test for a code fence or a
+    bold mark). The tests are signatures, not proofs. `components/zeron/`
+    is exempt until it is emptied;
+  - the shader must lower to SPIR-V and Metal.
 
 ## Phases
 

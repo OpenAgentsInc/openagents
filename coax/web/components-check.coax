@@ -1,0 +1,327 @@
+// The component system's rules, checked (components/spec.md, "Checks";
+// GitHub #13153). Run it before a push:
+//   coax/web/tool.sh components-check            (from the repo root)
+//
+// 1. Layers. A file in components/core, layout, paint, skin or backend
+//    loads only its own layer and the layers before it in that order; a
+//    component (kit/) loads core, layout, paint, skin and other components,
+//    never a backend: a component doesn't know where it is drawn. None of
+//    them loads anything outside components/, but for the shader's library.
+// 2. No looks in a component. A colour literal or a face named in kit/
+//    fails: a component reads its skin's roles.
+// 3. One of each. Reading Markdown's marks, wrapping lines of text and
+//    moving a caret through an edit buffer live in components/. A file
+//    outside it that does one of these fails, unless it is on the list of
+//    files still to move (CC_TO_MOVE), which is printed until it is empty.
+//    A listed file that no longer does it fails too, so the list stays true.
+//    These are signatures, not proofs: a fence or bold mark compared as a
+//    string, a procedure named for wrapping that takes text and a width, a
+//    procedure that moves a caret a word.
+// 4. One shader. components/backend/gpu-shader.coax lowers to WGSL's
+//    siblings, SPIR-V and Metal, with the compiler in this checkout.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+CC_FILE :: 4194304;
+CC_SELF :: "coax/web/components-check.coax";
+CC_SHADER :: "components/backend/gpu-shader.coax";
+
+// The layers, in the order they may load each other.
+CC_CORE :: 0; CC_LAYOUT :: 1; CC_PAINT :: 2; CC_SKIN :: 3; CC_BACKEND :: 4; CC_KIT :: 5;
+CC_OTHER :: 6;              // in components/ but no layer: gallery/, zeron/ (the chat set still moving), raster/
+CC_OUTSIDE :: -1;
+CC_LAYERS :: [6] string.["components/core/", "components/layout/", "components/paint/", "components/skin/", "components/backend/", "components/kit/"];
+// What a layer may load from outside components/.
+CC_ALLOWED_OUTSIDE :: [1] string.["verse/gpu/wgsl.coax"];
+
+// What a file outside components/ does that components/ should do for it.
+CC_MARKDOWN :: 1; CC_WRAP :: 2; CC_EDIT :: 4;
+CcMove :: struct { path: string; does: int; }
+// Still to move, as of 2026-11-10. Each reads Markdown's marks itself, wraps
+// text itself or keeps its own edit buffer. Take a line out when its file
+// uses components/ instead.
+CC_TO_MOVE :: [22] CcMove.[
+  CcMove.{path = "aethyr/ui/hud-menu.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-desktop/zeron/desk.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/builder.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/everglade-events.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/everglade-room.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/everglade-voice.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/font.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/memorial.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/myrealm.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/newland.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/oneshot.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/project.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/projects.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/ui.coax", does = CC_WRAP},
+  CcMove.{path = "apps/openagents-web/villapet.coax", does = CC_WRAP},
+  CcMove.{path = "coax/lib/media/media.coax", does = CC_WRAP},
+  CcMove.{path = "coax/lib/tui/tui.coax", does = CC_WRAP | CC_EDIT},
+  CcMove.{path = "coax/web/changelog-page.coax", does = CC_MARKDOWN},
+  CcMove.{path = "coder/tui/router.coax", does = CC_MARKDOWN | CC_WRAP},
+  CcMove.{path = "psionic/lib/book-search/corpus.coax", does = CC_MARKDOWN},
+  CcMove.{path = "verse/edit/edit.coax", does = CC_WRAP},
+  CcMove.{path = "verse/tools/hotbar.coax", does = CC_WRAP}
+];
+
+cc_starts :: (s: string, with: string) -> bool { return s.count >= with.count && cast(string) s[0..<with.count] == with; }
+cc_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail; }
+cc_has :: (s: string, part: string) -> bool {
+  if part.count == 0 || part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+cc_layer :: (path: string) -> int {
+  layers := CC_LAYERS;
+  for k: 0..<6 { if cc_starts(path, layers[k]) { return k; } }
+  return ifx cc_starts(path, "components/") then CC_OTHER else CC_OUTSIDE;
+}
+
+// The path a #load in file names, from the repository's root ("" when it climbs out of it).
+cc_resolve :: (file: string, target: string, out: [] u8) -> string {
+  n := 0;
+  // the file's directory
+  last := -1;
+  for i: 0..<file.count { if file[i] == '/' { last = i; } }
+  for i: 0..<last + 1 { if n < out.count { out[n] = file[i]; n += 1; } }
+  i := 0;
+  while i < target.count {
+    j := i; while j < target.count && target[j] != '/' { j += 1; }
+    part := cast(string) target[i..<j];
+    if part == ".." {
+      if n == 0 { return ""; }
+      n -= 1;                                     // the directory's own slash
+      while n > 0 && out[n - 1] != '/' { n -= 1; }
+    } else if part != "." && part.count > 0 {
+      for c: part { if n < out.count { out[n] = c; n += 1; } }
+      if j < target.count && n < out.count { out[n] = '/'; n += 1; }
+    }
+    i = j + 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+// Whether a file in layer `from` may load the file at `to`.
+cc_may_load :: (from: int, to: string) -> bool {
+  if from == CC_OTHER || from == CC_OUTSIDE { return true; }
+  t := cc_layer(to);
+  if t == CC_OUTSIDE {
+    allowed := CC_ALLOWED_OUTSIDE;
+    for a: allowed { if a == to { return true; } }
+    return false;
+  }
+  if t == CC_OTHER { return false; }
+  if from == CC_KIT { return t != CC_BACKEND; }
+  return t <= from;
+}
+
+// A line with its comment taken off (a // outside a string).
+cc_code :: (line: string) -> string {
+  quoted := false; i := 0;
+  while i < line.count {
+    c := line[i];
+    if c == '\\' && quoted { i += 2; continue; }
+    if c == '"' { quoted = !quoted; }
+    if !quoted && c == '/' && i + 1 < line.count && line[i + 1] == '/' { return cast(string) line[0..<i]; }
+    i += 1;
+  }
+  return line;
+}
+
+// A #load line's target, or "".
+cc_load_target :: (line: string) -> string {
+  lead := "#load \"";
+  if !cc_starts(line, lead) { return ""; }
+  e := lead.count; while e < line.count && line[e] != '"' { e += 1; }
+  return cast(string) line[lead.count..<e];
+}
+
+cc_hex_digit :: (c: u8) -> bool { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+// Whether a line of a component names a look: a colour made or written out, or a face of one skin's atlas.
+cc_names_a_look :: (code: string) -> bool {
+  if cc_has(code, "hex(") || cc_has(code, "rgba(") || cc_has(code, "Rgba.{") || cc_has(code, "FONT_") || cc_has(code, "UiType.{") { return true; }
+  i := 0;
+  while i + 8 <= code.count {
+    if code[i] == '0' && code[i + 1] == 'x' {
+      k := i + 2; while k < code.count && cc_hex_digit(code[k]) { k += 1; }
+      if k - i - 2 == 6 || k - i - 2 == 8 { return true; }
+    }
+    i += 1;
+  }
+  return false;
+}
+
+// The name a top-level line defines as a procedure ("name :: (...)"), or "".
+cc_defines :: (line: string) -> string {
+  e := 0;
+  while e < line.count && ((line[e] >= 'a' && line[e] <= 'z') || (line[e] >= 'A' && line[e] <= 'Z') || (line[e] >= '0' && line[e] <= '9') || line[e] == '_') { e += 1; }
+  if e == 0 || !cc_starts(cast(string) line[e..<line.count], " :: (") { return ""; }
+  return cast(string) line[0..<e];
+}
+
+// What a line of code outside components/ does that components/ should do (CC_* bits).
+cc_line_does :: (line: string) -> int {
+  code := cc_code(line);
+  does := 0;
+  // a fence or a bold or strike mark compared as a string: reading Markdown
+  if cc_has(code, "\"```\"") || cc_has(code, "\"~~~\"") || cc_has(code, "\"**\"") || cc_has(code, "\"~~\"") { does = does | CC_MARKDOWN; }
+  name := cc_defines(code);
+  if name.count > 0 {
+    // named for wrapping, takes text, and takes the room it has (a key or a message that is "wrapped" takes none)
+    room := cc_has(code, "width") || cc_has(code, "room") || cc_has(code, "cols:") || cc_has(code, "w: f32") || cc_has(code, "cap:");
+    if cc_has(name, "wrap") && cc_has(code, "string") && room { does = does | CC_WRAP; }
+    if cc_has(name, "word_left") || cc_has(name, "word_right") { does = does | CC_EDIT; }
+  }
+  return does;
+}
+
+// What a file's body does (CC_* bits), its checks and comments left out.
+cc_file_does :: (body: string) -> int {
+  does := 0; i := 0; in_test := false;
+  while i < body.count {
+    j := i; while j < body.count && body[j] != '\n' { j += 1; }
+    line := cast(string) body[i..<j]; i = j + 1;
+    if cc_starts(line, "#test") || cc_starts(line, "#forall") { in_test = true; }
+    if in_test { if cc_starts(line, "}") { in_test = false; } continue; }
+    does = does | cc_line_does(line);
+  }
+  return does;
+}
+
+cc_words :: (does: int, out: [] u8) -> string {
+  n := 0;
+  names := [3] string.["reads Markdown's marks", "wraps text", "keeps an edit buffer"];
+  for k: 0..<3 {
+    if (does & (1 << k)) == 0 { continue; }
+    if n > 0 { for c: ", " { if n < out.count { out[n] = c; n += 1; } } }
+    for c: names[k] { if n < out.count { out[n] = c; n += 1; } }
+  }
+  return cast(string) out[0..<n];
+}
+
+cc_listed :: (path: string) -> int {
+  list := CC_TO_MOVE;
+  for m: list { if m.path == path { return m.does; } }
+  return 0;
+}
+
+// The shader lowers for a target: coax MODE FILE --vertex V --fragment F -o OUT.
+cc_lowers :: (mode: string, out_path: string) -> bool {
+  argv := [9] string.["coax/bin/coax", mode, CC_SHADER, "--vertex", "chat_fx_vs", "--fragment", "chat_fx_fs", "-o", out_path];
+  out: [65536] u8; err: [4096] u8;
+  r := proc_run(argv[..], 120000, out[..], err[..]);
+  ok := r.started == 0 && r.status == 0 && fs_size(out_path) > 0;
+  gone := fs_remove(out_path);
+  return ok;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  if !fs_exists("components/spec.md") { tool_errln("components-check: run from the repo root (no components/spec.md here)"); return 2; }
+  argv := [3] string.["git", "ls-files", "*.coax"];
+  files: [CC_FILE] u8; err: [4096] u8;
+  r := proc_run(argv[..], 60000, files[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { tool_errln("components-check: git ls-files failed"); return 2; }
+  all := cast(string) files[0..<r.out_n];
+  body: [CC_FILE] u8; rb: [512] u8; wb: [128] u8;
+  bad := 0; layered := 0; scanned := 0;
+  found: [64] bool;                  // which of CC_TO_MOVE still does what it is listed for
+  list := CC_TO_MOVE;
+  i := 0;
+  while i < all.count {
+    j := i; while j < all.count && all[j] != '\n' { j += 1; }
+    path := cast(string) all[i..<j]; i = j + 1;
+    if cc_starts(path, "docs/") || path == CC_SELF { continue; }
+    layer := cc_layer(path);
+    n := fs_read(path, body[..]);
+    if n < 0 { continue; }
+    text := cast(string) body[0..<n];
+    if layer == CC_OUTSIDE {
+      // rule 3
+      scanned += 1;
+      does := cc_file_does(text);
+      want := cc_listed(path);
+      if (does & (want ^ 7)) != 0 { print("outside components/, %: % (use components/, or add it to CC_TO_MOVE with a reason)\n", cc_words(does & (want ^ 7), wb[..]), path); bad += 1; }
+      for k: 0..<list.count { if list[k].path == path && k < found.count { found[k] = true; if (want & (does ^ 7)) != 0 { print("on the list for what it no longer does (%): % (correct its line)\n", cc_words(want & (does ^ 7), wb[..]), path); bad += 1; } } }
+      continue;
+    }
+    if layer == CC_OTHER { continue; }
+    layered += 1;
+    k := 0; in_test := false;
+    checks_file := cc_ends(path, "-checks.coax");
+    while k < text.count {
+      e := k; while e < text.count && text[e] != '\n' { e += 1; }
+      line := cast(string) text[k..<e]; k = e + 1;
+      // rule 1
+      target := cc_load_target(line);
+      if target.count > 0 {
+        to := cc_resolve(path, target, rb[..]);
+        if !cc_may_load(layer, to) { print("layers: % loads % (a layer loads only the layers before it; a component never loads a backend)\n", path, to); bad += 1; }
+      }
+      // rule 2
+      if layer == CC_KIT && !checks_file {
+        if cc_starts(line, "#test") || cc_starts(line, "#forall") { in_test = true; }
+        if in_test { if cc_starts(line, "}") { in_test = false; } continue; }
+        if cc_names_a_look(cc_code(line)) { print("a look in a component: % names a colour or a face (read it from the skin): %\n", path, line); bad += 1; }
+      }
+    }
+  }
+  moving := 0;
+  for k: 0..<list.count {
+    if list[k].path.count == 0 { continue; }
+    if k < found.count && !found[k] { print("on the list but not tracked (moved? take its line out): %\n", list[k].path); bad += 1; continue; }
+    moving += 1;
+  }
+  if moving > 0 {
+    print("still to move (%):\n", moving);
+    for m: list { if m.path.count > 0 { print("  %  (%)\n", m.path, cc_words(m.does, wb[..])); } }
+  }
+  // rule 4
+  if !cc_lowers("spirv", "/tmp/components-check.spv") { print("the shader: % does not lower to SPIR-V (coax spirv)\n", CC_SHADER); bad += 1; }
+  if !cc_lowers("metal", "/tmp/components-check.metal") { print("the shader: % does not lower to Metal (coax metal)\n", CC_SHADER); bad += 1; }
+  print("components-check: % layer files, % files outside components/ scanned, % still to move, % failed\n", layered, scanned, moving, bad);
+  return ifx bad == 0 then 0 else 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "layers: which layer a path is in, and what a #load names" {
+  #assert cc_layer("components/core/markdown.coax") == CC_CORE && cc_layer("components/kit/markdown.coax") == CC_KIT && cc_layer("components/backend/gpu.coax") == CC_BACKEND;
+  #assert cc_layer("components/gallery/md-term.coax") == CC_OTHER && cc_layer("components/zeron/picker.coax") == CC_OTHER && cc_layer("coax/lib/tui/tui.coax") == CC_OUTSIDE;
+  b: [256] u8;
+  #assert cc_resolve("components/layout/text.coax", "../core/markdown.coax", b[..]) == "components/core/markdown.coax";
+  #assert cc_resolve("components/layout/text.coax", "measure.coax", b[..]) == "components/layout/measure.coax";
+  #assert cc_resolve("components/backend/gpu-shader.coax", "../../verse/gpu/wgsl.coax", b[..]) == "verse/gpu/wgsl.coax";
+  #assert cc_resolve("a.coax", "../x.coax", b[..]) == "" && cc_resolve("a/b.coax", "./c.coax", b[..]) == "a/c.coax";
+  #assert cc_load_target("#load \"../core/text.coax\";   // why") == "../core/text.coax" && cc_load_target("// #load \"x\"") == "" && cc_load_target("x := 1;") == "";
+}
+#test "layers: a layer loads only the layers before it; a component never loads a backend; nothing loads outside" {
+  #assert cc_may_load(CC_LAYOUT, "components/core/text.coax") && cc_may_load(CC_LAYOUT, "components/layout/round.coax");
+  #assert !cc_may_load(CC_CORE, "components/layout/round.coax") && !cc_may_load(CC_LAYOUT, "components/paint/list.coax") && !cc_may_load(CC_LAYOUT, "components/skin/skin.coax") && !cc_may_load(CC_PAINT, "components/backend/gpu.coax");
+  #assert cc_may_load(CC_PAINT, "components/layout/measure.coax") && cc_may_load(CC_SKIN, "components/paint/list.coax") && cc_may_load(CC_BACKEND, "components/skin/terminal.coax");
+  #assert cc_may_load(CC_KIT, "components/skin/skin.coax") && cc_may_load(CC_KIT, "components/kit/button.coax") && !cc_may_load(CC_KIT, "components/backend/gpu.coax");
+  #assert !cc_may_load(CC_KIT, "components/zeron/composer.coax") && !cc_may_load(CC_CORE, "aethyr/ui/tree.coax") && !cc_may_load(CC_KIT, "coax/lib/json/json.coax");
+  #assert cc_may_load(CC_BACKEND, "verse/gpu/wgsl.coax") && cc_may_load(CC_OTHER, "aethyr/ui/hud-style.coax");
+}
+#test "a look in a component: colours made or written out and a skin's faces; a comment or a role is none" {
+  #assert cc_names_a_look("  fill := hex(0x27272a, 1);") && cc_names_a_look("c := rgba(1, 1, 1, 0.1);") && cc_names_a_look("x := 0xe8e8ea;") && cc_names_a_look("f := FONT_BOLD;");
+  #assert cc_names_a_look("t := UiType.{face = 1, size = 14, line = 22};") && cc_names_a_look("c := Rgba.{r = 1};");
+  #assert !cc_names_a_look("sheet_fill(sh, x, y, w, h, 0, s.hover);") && !cc_names_a_look("n := 0x10 + k;") && !cc_names_a_look(cc_code("x := 1;   // was hex(0x27272a, 1)"));
+  #assert cc_code("a := \"//not a comment\"; // one") == "a := \"//not a comment\"; ";
+}
+#test "one of each: Markdown's marks compared, a wrapper that takes text, a caret moved a word; checks and comments don't count" {
+  #assert cc_line_does("    if cast(string) line[0..<3] == \"```\" { fenced = !fenced; }") == CC_MARKDOWN;
+  #assert cc_line_does("    if at(raw, i, \"**\") { i += 2; continue; }") == CC_MARKDOWN;
+  #assert cc_line_does("// \"**\" at byte i: rich text's bold switch") == 0;
+  #assert cc_line_does("wrap :: (text: string, from: int, width: f32, next: [] int) -> int {") == CC_WRAP;
+  #assert cc_line_does("nip59_wrap_checked :: (author: [] u8, tags: string, content: string, out: [] u8) -> int {") == 0;
+  #assert cc_line_does("orbit_wrap :: (a: f32) -> f32 { return a; }") == 0 && cc_line_does("  n := wrap(text, 0, w, next[..]);") == 0;
+  #assert cc_line_does("tui_ed_word_left :: (e: [] TuiEditor) -> int {") == CC_EDIT;
+  #assert cc_defines("a_b2 :: (x: int) {") == "a_b2" && cc_defines("  a :: (x: int) {") == "" && cc_defines("A :: struct {") == "";
+  #assert cc_file_does("x :: () {\n}\n#test \"t\" {\n  #assert f(\"**\");\n}\ny_wrap :: (s: string, width: f32) -> int {\n") == CC_WRAP;
+  b: [128] u8;
+  #assert cc_words(CC_MARKDOWN | CC_EDIT, b[..]) == "reads Markdown's marks, keeps an edit buffer";
+}
