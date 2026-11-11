@@ -186,6 +186,9 @@ deadgears=$!
 # /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
 "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
+# /worlds/painted-village: the hand-painted look (aethyr/render/stylized.coax) on generated assets (aethyr/arch/village.coax, flora.coax).
+"$here/../../coax/web/wasm.sh" "$here/painted.coax" "$here/painted-face.c" "$here/build/painted.wasm" &
+painted=$!
 # /worlds/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
 "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
@@ -355,6 +358,7 @@ wait "$myrealm"
 wait "$icecream"
 wait "$deadgears"
 wait "$stair"
+wait "$painted"
 wait "$watchtower"
 wait "$fivelab"
 wait "$everglade2"

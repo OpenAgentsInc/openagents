@@ -1,0 +1,345 @@
+// Painted Village, scene 1: the village road. A dirt road climbs between a timber-frame cottage on
+// the left and a stone house on the right, past stone walls, under bunting, to a cobbled plaza with
+// stalls and lamps and a church beyond it, with trees all round and pale mountains behind.
+//
+// Nothing is modelled here. Every part comes from Aethyr's architecture kit as a generator with
+// parameters (aethyr/arch/village.coax: cottages, stone houses, walls, street furniture;
+// aethyr/arch/flora.coax: trees, hills, the ground); this file says which, with what parameters,
+// and where they stand. Aethyr's stylized shading (aethyr/render/stylized.coax) draws them.
+//
+// The world: metres, +y up; the road runs along -z from the camera of shot 1 at the origin.
+//   coax/bin/coax test --library verse/painted/village-road.coax
+#module "verse.painted.village_road";
+#load "../../aethyr/arch/village.coax";
+#load "../../aethyr/arch/flora.coax";
+#load "../../aethyr/arch/place.coax";
+#load "../../aethyr/render/stylized-frame.coax";
+
+VR_VERTICES :: 300000;
+VR_RECORDS :: 512;
+VR_DRAWS :: 160;
+VR_GROUND_N :: 128;                // cells a side of the ground table
+VR_GROUND_CELL :: 1.5;
+VR_GROUND_X0 :: -96.0;
+VR_GROUND_Z0 :: -150.0;
+VR_NODES :: (VR_GROUND_N + 1) * (VR_GROUND_N + 1);
+VR_VILLAGE :: 1.15;                // the village stands this far above the road's start
+VR_ROAD_X :: -0.5;                 // the road's middle
+VR_ROAD_HALF :: 2.55;
+
+VillageRoad :: struct {
+  mesh: [VR_VERTICES * ARCH_VERTEX_FLOATS] f32; vertices: int;
+  records: [VR_RECORDS * ARCH_RECORD_FLOATS] f32; record_n: int;
+  draws: [VR_DRAWS * 4] u32; draw_n: int;
+  table: [VR_NODES * ARCH_GROUND_FLOATS] f32;
+  built: bool;
+}
+
+vr_smooth :: (a: f32, b: f32, x: f32) -> f32 { t := (x - a) / (b - a); if t < 0 { t = 0; } if t > 1 { t = 1; } return t * t * (3 - 2 * t); }
+// The land: the road climbs to the village's level, the meadow rolls a little, and far out the
+// ground rises toward the hills.
+vr_height :: (x: f32, z: f32) -> f32 {
+  climb := vr_smooth(-2, -9, z) * VR_VILLAGE;
+  off_road := vr_smooth(2.6, 7, abs(x - VR_ROAD_X));
+  in_village := vr_smooth(-9.5, -12, z) * (1 - vr_smooth(-78, -90, z)) * (1 - vr_smooth(30, 40, abs(x)));
+  roll := 0.14 * sin(x * 0.21 + 1.3) * sin(z * 0.17 + 0.4) * off_road * (1 - in_village);
+  dx := x; dz := z + 35; out := sqrt(dx * dx + dz * dz);
+  far := vr_smooth(48, 110, out) * (3 + 3 * sin(x * 0.045 + 0.7) * cos(z * 0.038));
+  return climb + roll + far;
+}
+// The plaza's cobbles: 1 on them, 0 off them.
+vr_paved :: (x: f32, z: f32) -> f32 {
+  return (1 - vr_smooth(13, 16, abs(x))) * vr_smooth(-20, -22.5, z) * (1 - vr_smooth(-50, -53, z));
+}
+
+vr_ground :: () -> ArchGround { return ArchGround.{n = VR_GROUND_N, cell = VR_GROUND_CELL, x0 = VR_GROUND_X0, z0 = VR_GROUND_Z0}; }
+vr_at :: (v: [] VillageRoad, x: f32, z: f32) -> f32 { return arch_ground_at(vr_ground(), v[0].table[..], x, z, 0); }
+// Bare ground under a building: no grass grows within a box (x0, z0)-(x1, z1).
+vr_bare :: (v: [] VillageRoad, x0: f32, z0: f32, x1: f32, z1: f32) {
+  g := vr_ground();
+  for j: 0..<g.n + 1 {
+    for i: 0..<g.n + 1 {
+      x := g.x0 + cast(f32) i * g.cell; z := g.z0 + cast(f32) j * g.cell;
+      if x >= x0 && x <= x1 && z >= z0 && z <= z1 { v[0].table[(j * (g.n + 1) + i) * ARCH_GROUND_FLOATS + 1] = 0; }
+    }
+  }
+}
+
+// One part stood once on the ground at (x, z), turned and scaled; its record.
+vr_put :: (v: [] VillageRoad, s: [] ArchScene, part: ArchPart, x: f32, z: f32, yaw: f32, scale: f32) -> int {
+  r := arch_stand(s, x, vr_at(v, x, z), z, yaw, scale);
+  arch_draw(s, part, r, 1);
+  return r;
+}
+// A record's wash: a colour its part is multiplied by.
+vr_wash :: (s: [] ArchScene, record: int, r: f32, g: f32, b: f32) {
+  if record < 0 || record >= s[0].rn { return; }
+  o := record * ARCH_RECORD_FLOATS; s[0].records[o + 8] = r; s[0].records[o + 9] = g; s[0].records[o + 10] = b;
+}
+// One tree part stood at each of a list of places (x, z, yaw, scale), each washed a little its own green.
+vr_wood :: (v: [] VillageRoad, s: [] ArchScene, part: ArchPart, places: [] f32, seed: int) {
+  first := s[0].rn; n := 0;
+  for i: 0..<places.count / 4 {
+    x := places[i * 4]; z := places[i * 4 + 1];
+    r := arch_stand(s, x, vr_at(v, x, z) - 0.05, z, places[i * 4 + 2], places[i * 4 + 3]);
+    if r < 0 { break; }
+    k := arch_vary(seed, i, 0.86, 1.08);
+    vr_wash(s, r, k * arch_vary(seed, i + 100, 0.92, 1.08), k, k * arch_vary(seed, i + 200, 0.9, 1.05));
+    n += 1;
+  }
+  arch_draw(s, part, first, n);
+}
+
+// The shot this scene was built to: the road in, seen from head height.
+vr_shot_camera :: () -> StyCamera {
+  c: StyCamera;
+  c.x = 0.3; c.z = 3.3; c.y = vr_height(c.x, c.z) + 1.68; c.yaw = 0.0; c.pitch = -0.03; c.fov = 1.0472;
+  return c;
+}
+// The look: Aethyr's stylized default (warm daylight from behind the village, soft blue shade), with light haze and big clouds.
+vr_look :: () -> StyLook {
+  l: StyLook;
+  l.haze = 0.0055; l.haze_start = 14; l.haze_most = 0.5;
+  l.cloud = 0.4; l.cloud_scale = 1.6; l.cloud_turn = 1.2;
+  l.meadow_dry = 0.56; l.meadow_shift = 9;
+  return l;
+}
+VR_GRASS_COLS :: 480;
+VR_GRASS_ROWS :: 480;
+// A frame's numbers for the scene, after sty_frame: the sun's box, the ground table, the road and
+// the grass field. Returns how many blades to draw.
+vr_frame :: (u: [] f32, look: StyLook) -> int {
+  ok := sty_shadow_box(u, 0, 3, -22, 44, 80);
+  sty_ground_table(u, VR_GROUND_X0, VR_GROUND_Z0, VR_GROUND_CELL, VR_GROUND_N);
+  sty_path_clear(u);
+  // The road: broad where it starts, narrowing as it climbs to the village.
+  road := sty_path_add(u, VR_ROAD_X - 0.7, 40, VR_ROAD_X - 0.5, -2, VR_ROAD_HALF + 0.45);
+  road = sty_path_add(u, VR_ROAD_X - 0.5, -2, VR_ROAD_X + 0.1, -9, VR_ROAD_HALF - 0.25);
+  road = sty_path_add(u, VR_ROAD_X + 0.1, -9, VR_ROAD_X + 0.15, -22, VR_ROAD_HALF - 0.85);
+  // A worn track to the cottage's porch and one to the stone house's door.
+  road = sty_path_add(u, VR_ROAD_X - 1.5, -10.6, -7.5, -11.2, 0.55);
+  road = sty_path_add(u, VR_ROAD_X + 1.5, -11.6, 4.6, -12.3, 0.5);
+  if !ok { return 0; }
+  return sty_grass_field(u, look, -36.0, -62.0, VR_GRASS_COLS, VR_GRASS_ROWS);
+}
+
+vr_build :: (v: [] VillageRoad) -> bool {
+  p: [1] ArchPen; arch_pen(p[..], v[0].mesh[..]);
+  s: [1] ArchScene; arch_scene(s[..], v[0].records[..], v[0].draws[..]);
+  g := vr_ground(); G: f32 = VR_VILLAGE;
+
+  // ---- the land
+  for j: 0..<g.n + 1 {
+    for i: 0..<g.n + 1 {
+      x := g.x0 + cast(f32) i * g.cell; z := g.z0 + cast(f32) j * g.cell; o := (j * (g.n + 1) + i) * ARCH_GROUND_FLOATS;
+      paved := vr_paved(x, z);
+      v[0].table[o] = vr_height(x, z); v[0].table[o + 1] = 1 - paved; v[0].table[o + 2] = paved; v[0].table[o + 3] = 0;
+    }
+  }
+  vr_bare(v, -10.6, -18.0, -3.8, -12.0);     // the cottage
+  vr_bare(v, 3.4, -20.2, 15.6, -13.2);       // the stone house
+  vr_bare(v, -17.5, -18.1, -15.7, -16.3);    // the tower
+  arch_once(s[..], arch_ground(p[..], g, v[0].table[..]));
+  // The land beyond the table, out to the hills.
+  from := p[0].n; p[0].material = ARCH_M_GROUND; p[0].tint = [3] f32.[0, 0, 0];
+  far: f32 = 1600;
+  arch_quad(p[..], arch_at(-far, -0.6, far, 0, 1, 0, 1, 0), arch_at(far, -0.6, far, 0, 1, 0, 1, 0), arch_at(far, -0.6, -far, 0, 1, 0, 1, 0), arch_at(-far, -0.6, -far, 0, 1, 0, 1, 0));
+  arch_once(s[..], arch_part(p[..], from));
+
+  // ---- the two houses on the road
+  cottage: ArchCottage;
+  cottage.w = 6.2; cottage.d = 5.8; cottage.wall = 2.75; cottage.rise = 2.9; cottage.chimney = 1; cottage.dormers = 1;
+  cottage.porch = 1.9; cottage.porch_from = 0.0; cottage.porch_to = 0.8; cottage.door = 0.4; cottage.bay = 2.1;
+  r := vr_put(v, s[..], arch_cottage(p[..], cottage), -7.4, -15.1, 0, 1);
+  house: ArchStoneHouse;
+  house.w = 11.0; house.d = 6.8; house.wall = 2.85; house.rise = 2.5; house.door = 0.47; house.windows = 2; house.annex = 1.35;
+  r = vr_put(v, s[..], arch_stone_house(p[..], house), 10.2, -16.6, 0, 1);
+
+  // ---- the walls
+  // Left: a coped wall of blue-grey stone from a gate pier out across the meadow, in three runs that
+  // step down the slope, and a second pier.
+  coped := arch_coped_wall(p[..], 6.0, 1.05, 0.42, 0.42, 0.47, 0.53);
+  first := s[0].rn;
+  for k: 0..<3 {
+    x := -4.4 - cast(f32) k * 4.55; z := -9.9 + cast(f32) k * 3.8;
+    r = arch_stand(s[..], x, vr_at(v, x - 2.3, z + 1.9) - 0.08, z, -2.449, 1);
+  }
+  arch_draw(s[..], coped, first, 3);
+  pier := arch_pier(p[..], 0.62, 1.34, true);
+  first = s[0].rn;
+  r = arch_stand(s[..], -4.1, vr_at(v, -4.1, -10.1), -10.1, 0, 1);
+  r = arch_stand(s[..], -3.5, vr_at(v, -3.5, -12.3), -12.3, 0, 1);
+  r = arch_stand(s[..], 4.8, vr_at(v, 4.8, -12.3), -12.3, 0, 1);
+  arch_draw(s[..], pier, first, 3);
+  // Right: a dry-stone wall from the stone house's gate down toward the road's start, in runs
+  // that step down the slope; only its two ends tumble.
+  for k: 0..<5 {
+    x := 4.95 + cast(f32) k * 0.92; z := -11.8 + cast(f32) k * 3.05;
+    r = vr_put(v, s[..], arch_drystone(p[..], 3.3, 1.12, 0.7, ifx k == 0 then 1 else ifx k == 4 then 2 else 0, 40 + k), x, z, -1.277, 1);
+    o := r * ARCH_RECORD_FLOATS; v[0].records[o + 1] = vr_at(v, x + 0.45, z + 1.5) - 0.1;
+  }
+
+  // ---- along the road: pennants, bunting, a signpost, a crate
+  pole := arch_banner_pole(p[..], 5.2, 0.74, 0.17, 0.14);
+  first = s[0].rn;
+  r = arch_stand(s[..], -4.6, vr_at(v, -4.6, -25.0), -25.0, 0, 1);
+  r = arch_stand(s[..], 4.4, vr_at(v, 4.4, -25.0), -25.0, 0, 1);
+  arch_draw(s[..], pole, first, 2);
+  arch_once(s[..], arch_bunting(p[..], arch_v(-4.6, G + 4.3, -25.0), arch_v(4.4, G + 4.3, -25.0), 0.9, 15, true));
+  arch_once(s[..], arch_bunting(p[..], arch_v(-4.6, G + 4.1, -25.0), arch_v(-9.5, G + 3.2, -33.0), 0.6, 12, true));
+  arch_once(s[..], arch_bunting(p[..], arch_v(4.4, G + 4.1, -25.0), arch_v(9.5, G + 3.2, -33.0), 0.6, 12, true));
+  arch_once(s[..], arch_bunting(p[..], arch_v(-9.5, G + 3.2, -33.0), arch_v(9.5, G + 3.2, -33.0), 1.0, 22, true));
+  r = vr_put(v, s[..], arch_signpost(p[..], 2.5, 3), 3.1, -14.3, 0.5, 1);
+  crate := arch_crate(p[..], 0.8);
+  first = s[0].rn;
+  r = arch_stand(s[..], 4.15, vr_at(v, 4.15, -12.9), -12.9, 0.3, 1);
+  r = arch_stand(s[..], -11.5, vr_at(v, -11.5, -30.2), -30.2, 0.8, 1);
+  r = arch_stand(s[..], 8.9, vr_at(v, 8.9, -31.5), -31.5, 0.2, 0.8);
+  arch_draw(s[..], crate, first, 3);
+
+  // ---- the plaza: lamps round it, stalls on it
+  lamp := arch_lamp_post(p[..], 3.1);
+  lamps := [8] [2] f32.[[2] f32.[-9.5, -33.0], [2] f32.[9.5, -33.0], [2] f32.[-7.0, -27.0], [2] f32.[7.0, -27.0],
+                        [2] f32.[-11.0, -41.0], [2] f32.[11.0, -41.0], [2] f32.[-4.5, -49.5], [2] f32.[4.5, -49.5]];
+  first = s[0].rn;
+  for i: 0..<8 { r = arch_stand(s[..], lamps[i][0], vr_at(v, lamps[i][0], lamps[i][1]), lamps[i][1], 0, 1); }
+  arch_draw(s[..], lamp, first, 8);
+  r = vr_put(v, s[..], arch_stall(p[..], 2.6, 1.7, 0.78, 0.2, 0.15), 8.6, -35.5, -0.9, 1);
+  r = vr_put(v, s[..], arch_stall(p[..], 2.4, 1.6, 0.22, 0.36, 0.66), -9.2, -34.0, 0.9, 1);
+  r = vr_put(v, s[..], arch_stall(p[..], 2.6, 1.7, 0.85, 0.62, 0.2), 10.8, -43.5, -1.3, 1);
+  // A well in the middle of it: a drum of stone, a cap, two posts and a roof of tiles.
+  from = p[0].n;
+  arch_material(p[..], ARCH_M_ASHLAR, 0, 0, 0); arch_drum(p[..], 1.1, 0, 0.85, 14);
+  arch_material(p[..], ARCH_M_SMOOTH, 0, 0, 0); arch_ring(p[..], 0.85, 1.2, 0.85, 0.97, 0, ARCH_TAU, 14);
+  arch_material(p[..], ARCH_M_TIMBER, 0, 0, 0);
+  arch_beam(p[..], arch_v(-1.0, 0.9, 0), arch_v(-1.0, 2.6, 0), 0.07); arch_beam(p[..], arch_v(1.0, 0.9, 0), arch_v(1.0, 2.6, 0), 0.07);
+  arch_material(p[..], ARCH_M_ROOF, 0.52, 0.2, 0.12);
+  arch_roof_plane(p[..], arch_v(-1.4, 2.45, 0.9), arch_v(1.4, 2.45, 0.9), arch_v(1.4, 3.1, 0), arch_v(-1.4, 3.1, 0), 0.07);
+  arch_roof_plane(p[..], arch_v(1.4, 2.45, -0.9), arch_v(-1.4, 2.45, -0.9), arch_v(-1.4, 3.1, 0), arch_v(1.4, 3.1, 0), 0.07);
+  r = vr_put(v, s[..], arch_part(p[..], from), -5.5, -38.5, 0.4, 1);
+
+  // ---- the village beyond
+  tower: ArchTower; tower.r = 1.1; tower.h = 5.7; tower.roof = 2.1;
+  r = vr_put(v, s[..], arch_round_tower(p[..], tower), -16.6, -17.2, 0, 1);
+  hall: ArchCottage;     // the two-storey house behind the tower
+  hall.w = 11; hall.d = 7; hall.wall = 5.0; hall.rise = 3.0; hall.storeys = 2; hall.dormers = 2; hall.chimney = -1; hall.door = 0.3; hall.bay = 1.85;
+  hall.roof_r = 0.5; hall.roof_g = 0.2; hall.roof_b = 0.13;
+  hall_part := arch_cottage(p[..], hall);
+  r = vr_put(v, s[..], hall_part, -16.5, -26.5, 0.12, 1);
+  r = vr_put(v, s[..], hall_part, 21.0, -47.0, -1.45, 0.95);
+  small: ArchCottage;    // small cottages round the plaza
+  small.w = 7; small.d = 5.4; small.wall = 2.6; small.rise = 2.4; small.dormers = 0; small.chimney = -1; small.bay = 1.75;
+  small.roof_r = 0.58; small.roof_g = 0.24; small.roof_b = 0.12;
+  small_part := arch_cottage(p[..], small);
+  places := [5] [3] f32.[[3] f32.[-19.5, -39.0, 1.35], [3] f32.[-17.0, -52.0, 0.9], [3] f32.[19.5, -33.5, -1.5], [3] f32.[-27.0, -14.5, 0.3], [3] f32.[14.0, -60.0, -0.5]];
+  first = s[0].rn;
+  for i: 0..<5 { r = arch_stand(s[..], places[i][0], vr_at(v, places[i][0], places[i][1]), places[i][1], places[i][2], 1); }
+  arch_draw(s[..], small_part, first, 5);
+  barn: ArchStoneHouse; barn.w = 9; barn.d = 6; barn.hip = false; barn.door = 0.5; barn.windows = 2; barn.rise = 2.8;
+  barn.roof_r = 0.48; barn.roof_g = 0.2; barn.roof_b = 0.14;
+  r = vr_put(v, s[..], arch_stone_house(p[..], barn), -12.0, -62.0, 0.5, 1);
+  church: ArchChurch; church.tower_h = 13.0; church.spire = 6.5;
+  r = vr_put(v, s[..], arch_church(p[..], church), 0.4, -70.0, 0, 1);
+
+  // ---- the trees
+  autumn := arch_tree(p[..], arch_tree_spec(ARCH_MAPLE, ARCH_AUTUMN, 11));
+  autumn_at := [12] f32.[-4.9, -26.0, 0.0, 1.25,  -10.6, -33.0, 2.1, 0.9,   24.0, -58.0, 1.0, 1.05];
+  vr_wood(v, s[..], autumn, autumn_at[..], 5);
+  gold := arch_tree(p[..], arch_tree_spec(ARCH_OAK, ARCH_GOLD, 23));
+  gold_at := [8] f32.[-27.0, -44.0, 0.5, 1.0,   30.0, -27.0, 1.7, 0.9];
+  vr_wood(v, s[..], gold, gold_at[..], 6);
+  oak := arch_tree(p[..], arch_tree_spec(ARCH_OAK, ARCH_SUMMER, 3));
+  oak_at := [56] f32.[-11.2, -2.5, 0.4, 1.15,   12.0, 0.0, 2.0, 1.15,     17.5, -27.0, 1.1, 1.3,   25.0, -15.0, 3.0, 1.15,
+                      -34.0, -20.0, 0.2, 1.2,   -16.5, -31.0, 2.4, 0.95,  33.0, -42.0, 0.9, 1.25,  -36.0, -56.0, 1.6, 1.3,
+                      -21.0, 6.0, 2.8, 1.1,     22.0, 8.0, 0.6, 1.2,      -8.0, -84.0, 1.2, 1.3,   17.0, -82.0, 2.2, 1.25,
+                      38.0, -70.0, 0.3, 1.35,   -44.0, -36.0, 1.9, 1.3];
+  vr_wood(v, s[..], oak, oak_at[..], 7);
+  maple := arch_tree(p[..], arch_tree_spec(ARCH_MAPLE, ARCH_SUMMER, 8));
+  maple_at := [48] f32.[-26.0, -31.0, 1.0, 1.0,   29.0, -8.0, 2.2, 1.1,    -14.0, -70.0, 0.4, 1.15,  27.0, -66.0, 1.4, 1.1,
+                        -40.0, -8.0, 2.6, 1.2,    42.0, -24.0, 0.8, 1.2,   -30.0, -74.0, 1.8, 1.25,  9.0, -92.0, 0.1, 1.3,
+                        -48.0, -62.0, 2.9, 1.3,   48.0, -52.0, 1.5, 1.3,   -34.0, 12.0, 0.7, 1.2,    36.0, 14.0, 2.3, 1.25];
+  vr_wood(v, s[..], maple, maple_at[..], 8);
+  poplar := arch_tree(p[..], arch_tree_spec(ARCH_POPLAR, ARCH_SUMMER, 4));
+  poplar_at := [16] f32.[-13.5, -47.0, 0.0, 1.0,   15.5, -52.5, 1.0, 1.05,   -22.5, -58.0, 2.0, 1.1,   26.0, -37.0, 0.5, 0.95];
+  vr_wood(v, s[..], poplar, poplar_at[..], 9);
+  // Pines on the rising ground, and far ones tall on the hills.
+  pine := arch_tree(p[..], arch_tree_spec(ARCH_PINE, ARCH_SUMMER, 6));
+  first = s[0].rn; n := 0;
+  for i: 0..<64 {
+    a := arch_hash(77, i) * f32(ARCH_TAU); d := arch_vary(78, i, 62, 118);
+    x := cos(a) * d; z := -35 + sin(a) * d;
+    if z > 20 && abs(x) < 30 { continue; }
+    r = arch_stand(s[..], x, vr_height(x, z) - 0.2, z, a * 3, arch_vary(79, i, 1.0, 1.8));
+    if r < 0 { break; }
+    k := arch_vary(80, i, 0.85, 1.1); vr_wash(s[..], r, k, k, k); n += 1;
+  }
+  arch_draw(s[..], pine, first, n);
+
+  // ---- the mountains: a broad dome on the left with pines on it, a peak right of the church, ridges between and round
+  dome := arch_peak(p[..], 190, 195, 0.5, 0.05, 3);
+  r = arch_stand(s[..], -370, -14, -440, 0.3, 1); arch_draw(s[..], dome, r, 1);
+  r = arch_stand(s[..], 560, -14, -300, 1.7, 0.9); arch_draw(s[..], dome, r, 1);
+  r = arch_stand(s[..], -120, -14, 620, 2.6, 1.1); arch_draw(s[..], dome, r, 1);
+  peak := arch_peak(p[..], 150, 215, 1.2, 0.12, 9);
+  r = arch_stand(s[..], 135, -14, -640, 0, 1); arch_draw(s[..], peak, r, 1);
+  r = arch_stand(s[..], -640, -14, -150, 2.0, 1.2); arch_draw(s[..], peak, r, 1);
+  r = arch_stand(s[..], 420, -14, 520, 4.0, 1.15); arch_draw(s[..], peak, r, 1);
+  ridge := arch_peak(p[..], 260, 100, 0.8, 0.14, 15);
+  ridges := [7] [3] f32.[[3] f32.[-110, -600, 0.5], [3] f32.[420, -620, 2.2], [3] f32.[-560, -520, 1.1], [3] f32.[700, 60, 3.0], [3] f32.[-650, 300, 0.2], [3] f32.[60, 760, 1.4], [3] f32.[250, -480, 4.1]];
+  first = s[0].rn;
+  for i: 0..<7 { r = arch_stand(s[..], ridges[i][0], -14, ridges[i][1], ridges[i][2], ifx i == 6 then 0.75f32 else 1.0f32); }
+  arch_draw(s[..], ridge, first, 7);
+  // Pines standing on the dome.
+  first = s[0].rn; n = 0;
+  for i: 0..<12 {
+    a := arch_hash(91, i) * f32(ARCH_TAU); d := arch_vary(92, i, 0, 70);
+    r = arch_stand(s[..], -370 + cos(a) * d, 195 * (1 - pow(1 - (1 - pow(d / 190, 2.0)), 1.6)) * 0.0 + 195 * (1 - pow(d / 190, 1.25)) - 16, -440 + sin(a) * d, a, arch_vary(93, i, 3.2, 4.8));
+    if r < 0 { break; }
+    n += 1;
+  }
+  arch_draw(s[..], pine, first, n);
+
+  v[0].vertices = p[0].n; v[0].record_n = s[0].rn; v[0].draw_n = s[0].dn;
+  v[0].built = !p[0].full && !s[0].full;
+  return v[0].built;
+}
+
+#test "the land climbs to the village, lies flat under it, and the plaza is paved where the road ends" {
+  #assert abs(vr_height(VR_ROAD_X, 0)) < 0.001 && abs(vr_height(VR_ROAD_X, -5.5) - VR_VILLAGE * 0.5) < 0.01 && abs(vr_height(VR_ROAD_X, -20) - VR_VILLAGE) < 0.001;
+  #assert abs(vr_height(-7.4, -15.1) - VR_VILLAGE) < 0.001 && abs(vr_height(10.2, -16.6) - VR_VILLAGE) < 0.001 && abs(vr_height(2.5, -70) - VR_VILLAGE) < 0.001;
+  #assert vr_paved(0, -36) == 1 && vr_paved(0, -15) == 0 && vr_paved(20, -36) == 0 && vr_paved(0, -60) == 0;
+  c := vr_shot_camera(); #assert abs(c.y - 1.68) < 0.001 && c.z == 3.3 && c.yaw == 0;
+}
+#test "the scene builds whole: every part fits, every draw names records and vertices that exist" #steps 2000000000 {
+  scene: [1] VillageRoad; v := scene[..];
+  #assert vr_build(v);
+  #assert v[0].vertices > 110000 && v[0].vertices <= VR_VERTICES && v[0].vertices % 3 == 0 && v[0].record_n > 120 && v[0].draw_n >= 36;
+  drawn := 0;
+  for d: 0..<v[0].draw_n {
+    o := d * 4;
+    #assert cast(int) (v[0].draws[o] + v[0].draws[o + 1]) <= v[0].vertices && v[0].draws[o + 1] % 3 == 0 && cast(int) (v[0].draws[o + 2] + v[0].draws[o + 3]) <= v[0].record_n && v[0].draws[o + 3] > 0;
+    drawn += cast(int) v[0].draws[o + 3];
+  }
+  // Every record is drawn exactly once.
+  #assert drawn == v[0].record_n;
+  for i: 0..<v[0].record_n { o := i * ARCH_RECORD_FLOATS; #assert v[0].records[o + 4] > 0 && v[0].records[o + 8] > 0.5; }
+  // What stands on the road stands on the ground: the cottage and the stone house are the third and
+  // fourth records (after the land and the far land). No grass grows under them, and the plaza is paved.
+  #assert abs(v[0].records[2 * ARCH_RECORD_FLOATS] + 7.4) < 0.001 && abs(v[0].records[2 * ARCH_RECORD_FLOATS + 1] - VR_VILLAGE) < 0.01;
+  #assert abs(v[0].records[3 * ARCH_RECORD_FLOATS] - 10.2) < 0.001 && abs(v[0].records[3 * ARCH_RECORD_FLOATS + 1] - VR_VILLAGE) < 0.01;
+  g := vr_ground();
+  #assert arch_ground_at(g, v[0].table[..], -9.0, -15.0, 1) == 0 && arch_ground_at(g, v[0].table[..], 9.0, -16.5, 1) == 0 && arch_ground_at(g, v[0].table[..], -9.0, -4.0, 1) == 1;
+  #assert arch_ground_at(g, v[0].table[..], 0, -36, 2) == 1 && arch_ground_at(g, v[0].table[..], 0, -36, 1) == 0;
+}
+#test "a frame gives the shaders the road, the ground table, the sun's box and the grass field" {
+  u: [STY_UNIFORM_FLOATS] f32; look := vr_look();
+  #assert sty_frame(u[..], 1920, 1080, 0, vr_shot_camera(), look);
+  blades := vr_frame(u[..], look);
+  #assert blades == VR_GRASS_COLS * VR_GRASS_ROWS && u[STY_U_PATH_INFO] == 5 && u[STY_U_PATH + 4] == VR_ROAD_HALF + 0.45 && u[STY_U_GROUND + 3] == VR_GROUND_N;
+  // The road's far end is ahead and near the middle of the picture; the cottage is left of it and the stone house right.
+  end := sty_project(u[..], VR_ROAD_X, VR_VILLAGE, -22); left := sty_project(u[..], -7.4, 3, -15.1); right := sty_project(u[..], 10.2, 3, -16.6);
+  #assert end.ahead && abs(end.x - 960) < 80 && end.y > 480 && end.y < 600 && left.x < 600 && left.x > 0 && right.x > 1300 && right.x < 1920;
+  // Both houses are inside the sun's box.
+  a := sty_rows(u[..], STY_U_LIGHT, -7.4, 3, -15.1); b := sty_rows(u[..], STY_U_LIGHT, 10.2, 3, -16.6);
+  #assert abs(a[0]) < 0.9 && abs(a[1]) < 0.9 && a[2] > 0.05 && a[2] < 0.95 && abs(b[0]) < 0.9 && abs(b[1]) < 0.9;
+}

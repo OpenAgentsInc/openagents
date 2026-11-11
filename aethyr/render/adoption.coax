@@ -174,7 +174,14 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "one-shot" && app == "oneshot" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "audio-lab" && app == "audiolab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "penultimate-frontier" && app == "newland" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "painted-village" && app == "painted" { return RenderAdoption.{tracked_legacy = true}; }   // Aethyr's stylized shading (aethyr/render/stylized.coax) on the page's own passes
   return RenderAdoption.{};
+}
+#test "Painted Village binds its stylized passes only to its own producer" {
+  r := render_adoption("painted-village", "painted");
+  #assert r.tracked_legacy && !r.shared && r.profile == -1;
+  #assert !render_adoption("painted-village", "fivelab").tracked_legacy && !render_adoption("painted-villag", "painted").tracked_legacy;
+  #assert !render_adoption("painted-village", "painte").tracked_legacy && !render_adoption("penultimate-frontier", "painted").tracked_legacy;
 }
 
 #test "Portal Lab owner-local page binds only its own producer" {

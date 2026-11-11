@@ -1,0 +1,28 @@
+// Painted Village's shaders (apps/openagents-web/painted.coax): the world is drawn by Aethyr's
+// stylized shading (aethyr/render/stylized.coax: the sky, the parts, their shadows, the grass),
+// which this module only names; build.sh writes apps/openagents-web/painted.wgsl from it with
+// coax/web/wgsl-module.coax (painted.module and painted.bindings beside it). The page's own part
+// is the HUD's strokes: painted_fx_vs and painted_fx_fs.
+#load "../../../aethyr/render/stylized.coax";
+
+PaintedV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+painted_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+stylized_fx_vs :: (_vid2:u32,_iid3:u32,in_:painted_fx_vs_in,u:[]f32)->PaintedV {
+  o:PaintedV;
+  o.pos=v4(((in_.a.x/u[0])*2.0f32)-1.0f32,1.0f32-((in_.a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(in_.a.z,in_.a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  o.bar=in_.d;
+  return o;
+}
+// A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach.
+stylized_fx_fs :: (v:PaintedV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(0.0f32-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((0.0f32-5.0f32)*g)*g)*0.28f32;
+  k:f32=(core+halo)*v.shape.z*u[3];
+  return v4(v.tint.x*k,v.tint.y*k,v.tint.z*k,1.0f32);
+}

@@ -612,6 +612,16 @@
         "alt": "Link exploring a winding forest path in Ocarina Lab",
         "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
         "assets": ["private:ocarina-lab"]
+      } },
+    { "id": "painted", "name": "PAINTED VILLAGE", "kind": "open", "listed": false, "orbit": { "r": 0.38, "a": 0.9, "size": 0.02 },
+      "realm": {
+        "slug": "painted-village", "style": "lowpoly", "clock": "fixed:0.5",
+        "title": "Painted Village",
+        "description": "Painted Village, a Verse world in the browser: a hand-painted village road with a timber-frame cottage, a stone house, stone walls, trees and mountains, every asset generated from code by Aethyr's architecture kit and drawn by its stylized shading.",
+        "alt": "A dirt road between a timber-frame cottage and a stone house, toward a village and pale mountains under big clouds",
+        "module": "painted", "slot": "painted-village",
+        "golden": { "lit": 0.3, "settle": 3000, "blocks": 6 },
+        "assets": []
       } }
 ]
 }

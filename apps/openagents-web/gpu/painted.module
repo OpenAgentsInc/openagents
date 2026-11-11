@@ -1,0 +1,3 @@
+--vertices stylized_bg_vs,stylized_shadow_vs,stylized_grass_vs,stylized_scene_vs,stylized_fx_vs
+--fragments stylized_bg_fs,stylized_shadow_fs,stylized_grass_fs,stylized_scene_fs,stylized_fx_fs
+--bindings apps/openagents-web/gpu/painted.bindings --strip stylized_
