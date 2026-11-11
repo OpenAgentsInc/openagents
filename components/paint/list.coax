@@ -30,13 +30,15 @@
 //               edges                      (an edge at or past PRIM_OPEN is no edge); on false: no clip
 //   PRIM_FADE      y the top edge             a its band, b the bottom edge, c its band: what follows fades
 //                                          out toward each edge over its band; on false: no fade
+//   PRIM_POLY      the points' bounds          pts its points (x, y pairs, a view into the caller's pool),
+//                                             fill; a closed polygon, filled even-odd (ARWES's frames)
 //   coax/bin/coax test components/paint/list.coax
 
 #load "../core/color.coax";
 
 PRIM_BOX :: 0; PRIM_SHADOW :: 1; PRIM_INSET :: 2; PRIM_GRADIENT :: 3; PRIM_ELBOW :: 4; PRIM_LINE :: 5; PRIM_RING :: 6; PRIM_ARC :: 7;
-PRIM_TEXT :: 8; PRIM_ICON :: 9; PRIM_IMAGE :: 10; PRIM_CLIP :: 11; PRIM_FADE :: 12;
-PRIM_KINDS :: 13;
+PRIM_TEXT :: 8; PRIM_ICON :: 9; PRIM_IMAGE :: 10; PRIM_CLIP :: 11; PRIM_FADE :: 12; PRIM_POLY :: 13;
+PRIM_KINDS :: 14;
 PRIM_OPEN :: 1000000.0;        // a clip edge this far out is no edge
 
 Prim :: struct {
@@ -48,6 +50,7 @@ Prim :: struct {
   id: int; on: bool;
   text: string;
   line: int; off: int;
+  pts: [] f32;                // a polygon's points
 }
 
 prim_put :: (list: [] Prim, n: int, p: Prim) -> int {
@@ -110,6 +113,19 @@ prim_fade :: (list: [] Prim, n: int, top: f32, band_top: f32, bottom: f32, band_
   return prim_put(list, n, Prim.{kind = PRIM_FADE, y = top, a = band_top, b = bottom, c = band_bottom, on = true, id = -1, line = -1});
 }
 prim_unfade :: (list: [] Prim, n: int) -> int { return prim_put(list, n, Prim.{kind = PRIM_FADE, id = -1, line = -1}); }
+// A filled polygon: pts holds its points as x, y pairs (at least three);
+// its bounds are theirs. pts is a view the list keeps, so it must outlive it.
+prim_poly :: (list: [] Prim, n: int, pts: [] f32, fill: Rgba) -> int {
+  if pts.count < 6 { return n; }
+  x0 := pts[0]; y0 := pts[1]; x1 := x0; y1 := y0;
+  k := 2;
+  while k + 1 < pts.count {
+    if pts[k] < x0 { x0 = pts[k]; } if pts[k] > x1 { x1 = pts[k]; }
+    if pts[k + 1] < y0 { y0 = pts[k + 1]; } if pts[k + 1] > y1 { y1 = pts[k + 1]; }
+    k += 2;
+  }
+  return prim_put(list, n, Prim.{kind = PRIM_POLY, x = x0, y = y0, w = x1 - x0, h = y1 - y0, fill = fill, edge = fill, id = -1, line = -1, pts = pts});
+}
 
 // Moves primitives from..<to by (dx, dy): what a parent does once it knows
 // where a child it has already painted goes. A clip's and a fade's edges
@@ -130,6 +146,7 @@ prim_move :: (list: [] Prim, from: int, to: int, dx: f32, dy: f32) {
     list[k].x += dx; list[k].y += dy;
     if kind == PRIM_LINE { list[k].a += dx; list[k].b += dy; }
     if kind == PRIM_ELBOW { list[k].a += dx; }
+    if kind == PRIM_POLY { j := 0; while j + 1 < list[k].pts.count { list[k].pts[j] += dx; list[k].pts[j + 1] += dy; j += 2; } }
   }
 }
 
@@ -197,4 +214,12 @@ prim_extent :: (p: Prim) -> f32 {
   #assert list[3].x == 7 && list[3].y == 15 && list[3].a == 23 && list[3].radius == 6;
   #assert list[4].y == 45 && list[4].b == 887 && list[4].a == 24;
   #assert list[5].x == 1;      // outside the range
+}
+#test "a polygon carries its points and their bounds, and moves with them" {
+  list: [2] Prim; pts := [8] f32.[10, 20, 50, 20, 50, 60, 30, 40];
+  n := prim_poly(list[..], 0, pts[..], hex(0xffffff, 0.5));
+  #assert n == 1 && list[0].kind == PRIM_POLY && list[0].x == 10 && list[0].y == 20 && list[0].w == 40 && list[0].h == 40 && list[0].pts.count == 8;
+  #assert prim_poly(list[..], n, pts[0..<4], hex(0, 1)) == 1;        // two points: no polygon
+  prim_move(list[..], 0, 1, 5, -5);
+  #assert list[0].x == 15 && list[0].y == 15 && pts[0] == 15 && pts[7] == 35 && prim_extent(list[0]) == 40;
 }

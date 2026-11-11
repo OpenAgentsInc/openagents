@@ -25,4 +25,10 @@ A component doesn't know where it is drawn or how it looks.
 
 The terminal card is laid out in cells and drawn by the terminal backend into a grid; the page then shows the grid.
 
+## ARWES
+
+Below the cards, every ARWES port in the Verse skin: the nine frames, four backgrounds, the illuminator, text sequence and decipher, all 31 easings, the animator's child timing, flicker, the three styles, theme token scales, the bleeps' cue model and keyed timers, 25 specimens in all, each labelled. They enter with the ported motion; the controls replay them, exit and enter again, and step the easing, the animator's manager, the seed, the dots, the frames' assembly and the cue model. The cue model shows its state and never plays a sound.
+
+The specimens are painted once (`aethyr/ui/arwes-paint.coax`) and drawn here by the component shader; the HUD laboratory draws the same paint as its own records. ARWES is [arwes/arwes](https://github.com/arwes/arwes/tree/bdbaa0324900ee978d42036d1304a053c1fe54b5), copyright 2014–2024 Romel Perez, under the [MIT license](https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/LICENSE).
+
 The source is in the [OpenAgents repository](https://github.com/OpenAgentsInc/openagents) under `components/`. The plan is `components/spec.md`.

@@ -21,8 +21,9 @@
 #load "../backend/gpu.coax";
 #load "../backend/terminal.coax";
 #load "hud-cards.coax";           // the game HUD set's cards, under the skins'
+#load "arwes.coax";
 
-GL_MAX_VERTICES :: 90000;
+GL_MAX_VERTICES :: 200000;
 GL_UNDER :: 4096; GL_OVER :: 12288; GL_LINES :: 1024; GL_HITS :: 256; GL_POOL :: 4096;
 GL_CELL_UNDER :: 512; GL_CELL_OVER :: 1024;
 GL_TERM_COLS :: 96; GL_TERM_ROWS :: 96;
@@ -49,6 +50,8 @@ GalleryState :: struct {
   scratch: [9800] f32; sbytes: [64] u8;     // the host's side of the atlas (coax/web/gpui.js)
   doc: [1] MdDoc; blocks: int;
   cards: [UISKINS] GlCard;
+  aw: [1] GlArwes;                          // the ARWES section (arwes.coax)
+  action: int; outbox: [256] u8; out_n: int;   // what the host is asked to do (1: open the outbox's URL)
   // the page's sheet, and the terminal card's own in cells
   under: [GL_UNDER] Prim; over: [GL_OVER] Prim; lines: [GL_LINES] SheetLine; hits: [GL_HITS] SheetHit; pool: [GL_POOL] u8;
   nu: int; no: int; nh: int;
@@ -240,6 +243,8 @@ gl_layout :: (g: [] GalleryState, w: f32) -> f32 {
     if id == first { break; }
   }
   y = hc_layout(g[0].hud[..], sh[..], m, gutter, y, w, g[0].hot_kind, g[0].hot_a, g[0].hot_b);
+  // ARWES, every port, in the Verse skin (arwes.coax)
+  y += gl_arwes(g[0].aw[..], sh[..], m, gutter, y, w - 2 * gutter, g[0].time, g[0].px, g[0].py + g[0].scroll, g[0].hot_kind, g[0].hot_b) + gutter;
   g[0].nu = sh[0].nu; g[0].no = sh[0].no; g[0].nh = sh[0].nh;
   return y + 8;
 }
@@ -267,6 +272,7 @@ gl_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, heig
   g[0].time += ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   hc_step(g[0].hud[..], dt);
   a[0].frame += 1;
+  gl_aw_tick(g[0].aw[..], g[0].time, ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt);
   z := zeron_skin();
   w := width / d; h := height / d;
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, z.canvas, z.canvas);
@@ -276,6 +282,7 @@ gl_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, heig
   if g[0].scroll < 0 { g[0].scroll = 0; }
   v = gpu_draw(out, v, a, d, g[0].under[0..<g[0].nu], 0, -g[0].scroll, -8, h + 8);
   v = gpu_draw(out, v, a, d, g[0].over[0..<g[0].no], 0, -g[0].scroll, -8, h + 8);
+  v = gpu_draw(out, v, a, d, g[0].aw[0].prims[0..<g[0].aw[0].n], 0, -g[0].scroll, -8, h + 8);
   // the page's scrollbar
   if g[0].content_h > h {
     th := h * h / g[0].content_h;
@@ -296,6 +303,12 @@ gl_pointer :: (g: [] GalleryState, x: f32, y: f32, phase: int) -> bool {
   g[0].hot_kind = -1; g[0].cursor = 0;
   if k < 0 { return false; }
   hit := g[0].hits[k];
+  if hit.kind == GL_HIT_AW || hit.kind == GL_HIT_AW_LICENSE {
+    g[0].hot_kind = hit.kind; g[0].hot_a = hit.a; g[0].hot_b = hit.b; g[0].cursor = 1;
+    if phase != 0 { return true; }
+    if hit.kind == GL_HIT_AW_LICENSE { gl_ask_open(g, GL_AW_LICENSE_URL); } else { gl_aw_press(g[0].aw[..], hit.kind, hit.b, g[0].time); }
+    return true;
+  }
   if hit.a < 0 || hit.a >= UISKINS { return false; }
   g[0].hot_kind = hit.kind; g[0].hot_a = hit.a; g[0].hot_b = hit.b; g[0].cursor = 1;
   if phase != 0 { return true; }
@@ -307,7 +320,18 @@ gl_pointer :: (g: [] GalleryState, x: f32, y: f32, phase: int) -> bool {
   return true;
 }
 
+// Asks the host to open a URL (the browser's host takes an https:// one).
+gl_ask_open :: (g: [] GalleryState, url: string) {
+  n := 0;
+  for c: url { if n < g[0].outbox.count { g[0].outbox[n] = c; n += 1; } }
+  g[0].out_n = n; g[0].action = 1;
+}
+
 // ---------------------------------------------------------------- the page's exports
+
+coaxial_components_action :: (g: [] GalleryState) -> int #export_c #effects(all) { if g.count < 1 { return 0; } return g[0].action; }
+coaxial_components_outbox_len :: (g: [] GalleryState) -> int #export_c #effects(all) { if g.count < 1 { return 0; } return g[0].out_n; }
+coaxial_components_action_done :: (g: [] GalleryState) #export_c #effects(all) { if g.count > 0 { g[0].action = 0; g[0].out_n = 0; } }
 
 coaxial_components_frame :: (g: [] GalleryState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if g.count < 1 { return 0; }
@@ -390,7 +414,8 @@ GlOut :: struct { v: [1400000] f32; }       // 50000 vertices
   #assert row_h > 400;
   // every control left its hit: per skin 2 buttons, 2 toggles, a slider, 3 tabs, 3 rows; the pixel skins' code block 2 more;
   // per HUD card 6 slots, 3 answers, 2 unit frames and 2 plates
-  #assert g[0].nh == 4 * 11 + 3 * 2 + HC_CARDS * 13;
+  // and the ARWES section's controls and its licence link
+  #assert g[0].nh == 4 * 11 + 3 * 2 + HC_CARDS * 13 + GL_AW_CONTROLS + 1;
 }
 #test "gallery: the terminal card is the terminal backend's grid: box glyphs, a bullet, the table's rule" #steps 200000000 {
   g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
@@ -480,4 +505,100 @@ gl_test_hit :: (g: [] GalleryState, kind: int, a: int, b: int) -> SheetHit {
   // an answer picked
   ans := gl_test_hit(g[..], HC_HIT_CHOICE, v, 2);
   #assert ans.kind == HC_HIT_CHOICE && gl_pointer(g[..], ans.x + 2, ans.y + 2 - g[0].scroll, 0) && g[0].hud[0].cards[1].answer == 2 && g[0].hud[0].cards[0].answer == -1;
+}
+
+// The page's hit of a kind and number (b), as a point to press (window px at d 1), or x -1.
+gl_aw_test_hit :: (g: [] GalleryState, kind: int, b: int) -> HudCoord {
+  for k: 0..<g[0].nh { h := g[0].hits[k]; if h.kind == kind && h.b == b { return HudCoord.{x = h.x + 2, y = h.y + 2 - g[0].scroll}; } }
+  return HudCoord.{x = -1, y = -1};
+}
+gl_test_frames :: (g: [] GalleryState, o: [] GlOut, u: [] f32, seconds: f32) {
+  t: f32 = 0;
+  while t < seconds { n := gl_frame(g, o[0].v[..], u, 1920, 1200, 1, 0.1); t += 0.1; }
+}
+#test "arwes: all 25 specimens once, each labelled, each painting in its own cell" #steps 2000000000 {
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  gl_test_frames(g[..], o[..], u[..], 2);
+  r := g[0].aw[..];
+  #assert r[0].cells == AW_SPECIMENS && r[0].n > 500;
+  names := AW_NAMES;
+  for k: 0..<AW_SPECIMENS {
+    seen := 0; lx: f32 = 0; ly: f32 = 0;
+    for j: 0..<g[0].no { if g[0].over[j].text == names[k] { seen += 1; lx = g[0].over[j].x; ly = g[0].over[j].y; } }
+    #assert seen == 1 && r[0].labels[k] >= 0 && g[0].over[r[0].labels[k]].text == names[k];
+    // the specimen paints below its label, inside its cell
+    inside := 0;
+    for j: 0..<r[0].n {
+      p := r[0].prims[j];
+      if p.kind == PRIM_CLIP { continue; }
+      if p.x >= lx - 12 && p.x < lx + GL_AW_CELL_MIN && p.y > ly && p.y < ly + GL_AW_CELL_H { inside += 1; }
+    }
+    #assert inside > 0;
+  }
+  // every primitive the specimens paint is one the GPU backend draws
+  for j: 0..<r[0].n { #assert gpu_draws(r[0].prims[j]); }
+}
+#test "arwes: the specimens enter with the ported motion, exit, enter again and replay" #steps 2000000000 {
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  n := gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  r := g[0].aw[..];
+  #assert r[0].active && ar_motion_value(r[0].motion[..]) < 0.1;
+  gl_test_frames(g[..], o[..], u[..], 1.5);
+  #assert ar_motion_value(r[0].motion[..]) == 1;
+  // a frame's caption shows only once it has entered
+  caption := 0; for j: 0..<r[0].n { if r[0].prims[j].kind == PRIM_TEXT && r[0].prims[j].text == "AETHYR / ONLINE" { caption += 1; } }
+  #assert caption == 9;
+  exit := gl_aw_test_hit(g[..], GL_HIT_AW, GL_AW_TOGGLE);
+  #assert exit.x > 0 && gl_pointer(g[..], exit.x, exit.y, 0) && !r[0].active;
+  gl_test_frames(g[..], o[..], u[..], 1.5);
+  #assert ar_motion_value(r[0].motion[..]) == 0;
+  lit := 0; for j: 0..<r[0].n { p := r[0].prims[j]; if p.kind == PRIM_LINE && p.c == 0 && p.fill.a > 0 { lit += 1; } }
+  enter := gl_aw_test_hit(g[..], GL_HIT_AW, GL_AW_TOGGLE);
+  #assert gl_pointer(g[..], enter.x, enter.y, 0) && r[0].active;
+  gl_test_frames(g[..], o[..], u[..], 1.5);
+  lit2 := 0; for j: 0..<r[0].n { p := r[0].prims[j]; if p.kind == PRIM_LINE && p.c == 0 && p.fill.a > 0 { lit2 += 1; } }
+  #assert lit2 > lit;
+  replay := gl_aw_test_hit(g[..], GL_HIT_AW, GL_AW_REPLAY);
+  #assert gl_pointer(g[..], replay.x, replay.y, 0) && r[0].started == g[0].time && ar_motion_value(r[0].motion[..]) == 0;
+  // the easing, the manager and the family come from the controls
+  e := r[0].easing; c := gl_aw_test_hit(g[..], GL_HIT_AW, GL_AW_EASING);
+  #assert gl_pointer(g[..], c.x, c.y, 0) && r[0].easing == (e + 1) % 31;
+  c = gl_aw_test_hit(g[..], GL_HIT_AW, GL_AW_FAMILY);
+  #assert gl_pointer(g[..], c.x, c.y, 0) && r[0].family;
+}
+#test "arwes: the cue model shows where it stands and is silent; the keyed timers count down" #steps 2000000000 {
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  n := gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  r := g[0].aw[..];
+  b: [256] u8;
+  #assert gl_aw_cue_state(r, b[..]) == "IDLE / GAIN 0.0 / ONCE / CUES 0" && gl_aw_cue_category(r, b[..]) == "NOTIFICATION / SILENT, NO AUDIO";
+  cue := gl_aw_test_hit(g[..], GL_HIT_AW, GL_AW_CUE);
+  #assert gl_pointer(g[..], cue.x, cue.y, 0) && r[0].cues == 1 && r[0].bleep[0].playing;
+  #assert gl_aw_cue_state(r, b[..]) == "PLAYING / GAIN 0.5 / ONCE / CUES 1";
+  n = gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  shown := false; for j: 0..<g[0].no { if g[0].over[j].text == "PLAYING / GAIN 0.5 / ONCE / CUES 1" { shown = true; } }
+  #assert shown;
+  // the timers: all three pending at first, the first done after half a second, all done after one and a half
+  #assert ax_pending(r[0].timers[..], 0) && ax_pending(r[0].timers[..], 2);
+  gl_test_frames(g[..], o[..], u[..], 0.7);
+  #assert !ax_pending(r[0].timers[..], 0) && ax_pending(r[0].timers[..], 1);
+  t := gl_aw_timer_state(r, g[0].time, b[..]);
+  #assert t.count > 20 && cast(string) t[0..<10] == "FRAME DONE";
+  gl_test_frames(g[..], o[..], u[..], 1.2);
+  #assert gl_aw_timer_state(r, g[0].time, b[..]) == "FRAME DONE / TEXT DONE / SIGNAL DONE";
+}
+#test "arwes: the credit links to ARWES's licence" #steps 2000000000 {
+  g: [1] GalleryState; o: [1] GlOut; u: [4] f32;
+  gl_test_atlas(g[0].atlas[..]);
+  n := gl_frame(g[..], o[0].v[..], u[..], 1920, 1200, 1, 0.016);
+  credit := false; for j: 0..<g[0].no { if g[0].over[j].text == GL_AW_CREDIT { credit = true; } }
+  link := gl_aw_test_hit(g[..], GL_HIT_AW_LICENSE, 0);
+  #assert credit && link.x > 0 && coaxial_components_action(g[..]) == 0;
+  #assert gl_pointer(g[..], link.x, link.y, 0) && coaxial_components_action(g[..]) == 1;
+  #assert cast(string) g[0].outbox[0..<coaxial_components_outbox_len(g[..])] == GL_AW_LICENSE_URL;
+  coaxial_components_action_done(g[..]);
+  #assert coaxial_components_action(g[..]) == 0;
 }

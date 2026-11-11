@@ -21,7 +21,7 @@
 // (gpui_color, rgba8, straight alpha).
 //
 // A vertex is 28 floats (gpui.coax GP_VERTEX_FLOATS):
-//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow, 5 gradient, 6 inset), blur
+//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow, 5 gradient, 6 inset, 7 segment), blur
 //   b: the primitive's bounds in device pixels: x, y, w, h
 //   c: corner radius, border width, u, v
 //   d: fill (a sprite's color)
@@ -199,6 +199,13 @@ chat_elbow_color :: (p:V2,b:V4,c:V2,color:V4)->V4 {
   }
   return wg_mul_f4f4(color,v4(1.0f32,1.0f32,1.0f32,cover));
 }
+// A slanted line (gpu.coax paint_segment): coverage by distance to the segment from
+// bounds.xy to bounds.zw, width shape.x wide, antialiased over a device pixel.
+chat_segment_color :: (p:V2,b:V4,width:f32,color:V4)->V4 {
+  dist:f32=chat_segment_distance(p,v2(b.x,b.y),v2(b.z,b.w));
+  cover:f32=saturate(((0.5f32*width)+0.5f32)-dist);
+  return wg_mul_f4f4(color,v4(1.0f32,1.0f32,1.0f32,cover));
+}
 chat_fx_fs :: (v:ChatZV,gpui_atlas:Tex2D,gpui_color:Tex2D)->V4 {
   p:V2=v2(v.pos.x,v.pos.y);
   if ((((p.x<v.clip.x)||(p.y<v.clip.y))||(p.x>=v.clip.z))||(p.y>=v.clip.w)) {
@@ -209,7 +216,9 @@ chat_fx_fs :: (v:ChatZV,gpui_atlas:Tex2D,gpui_color:Tex2D)->V4 {
   poly:V4=wg_load_2d(gpui_color,wg_cvt_i2f2(wg_floor_f2(wg_mul_f2f2(v.uv,wg_cvt_f2u2(wg_dims_2d(gpui_color))))),0);
   kind:f32=v.kind_blur.x;
   c:V4;
-  if (kind>5.5f32) {
+  if (kind>6.5f32) {
+    c=chat_segment_color(p,v.bounds,v.shape.x,v.fill);
+  } else if (kind>5.5f32) {
     c=chat_inset_color(p,v.bounds,v.shape.x,v.kind_blur.y,v.fill);
   } else if (kind>4.5f32) {
     c=chat_gradient_color(p,v.bounds,v.shape.x,v.fill,v.border);

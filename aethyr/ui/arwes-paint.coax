@@ -1,0 +1,334 @@
+// The ARWES specimens, drawn once: the 25 ported ARWES visuals (frames,
+// backgrounds, the illuminator, text, motion, the animator's child timing,
+// flicker, styles, theme tokens, bleeps and keyed timers) painted as the
+// component system's display list (components/paint/list.coax). Two places
+// show the same primitives: the HUD laboratory turns them into its twelve-float
+// vertices (arwes-draw.coax aw_hud), and openagents.com/components draws them
+// with the component shader (components/gallery/arwes.coax). The geometry and
+// motion are the ports in arwes-frames.coax, arwes-motion.coax and
+// arwes-fx.coax; this file only places them. License and source mappings:
+// arwes/LICENSE and arwes/SOURCES.md (ARWES, arwes/arwes, MIT).
+//
+// What each primitive carries for the HUD, beside what a page draws from it:
+//   a clip         its box in x, y, w, h too (the frame or field the strokes, discs and fills inside are cut to)
+//   a line         id: the HUD's ink (0 white, 1 grey, 2 the accent, 3 dim); c 0: an ARWES stroke, border its
+//                  stroke, cut to the clip; c 1: a HUD line, its light the fill's alpha
+//   a box          a solid rectangle; id the ink (-1: the fill as it is)
+//   a shadow       a disc: x, y its centre, radius its radius, c its blur (0: hard); id the ink
+//   a polygon      an even-odd fill; id the ink
+//   a text run     a, b the HUD's pen and baseline, c its cap height, d the width it is fitted to,
+//                  off its ink, on: centred on a
+// The specimens' state is the caller's (AwSpec): the page and the HUD
+// laboratory each keep their own motion, timers and cue model.
+//   coax/bin/coax test aethyr/ui/arwes-paint.coax
+#load "arwes-frames.coax";
+#load "arwes-motion.coax";
+#load "arwes-fx.coax";
+#load "../../components/paint/list.coax";
+
+AW_SPECIMENS :: 25;
+AW_NAMES :: [25]string.["FRAME / UNDERLINE","FRAME / LINES","FRAME / CORNERS","FRAME / OCTAGON","FRAME / NERO","FRAME / NEFREX","FRAME / KRANOX","FRAME / HEADER","FRAME / CIRCLE","BACKGROUND / DOTS","BACKGROUND / GRID LINES","BACKGROUND / MOVING LINES","BACKGROUND / PUFFS","EFFECT / ILLUMINATOR","TEXT / SEQUENCE","TEXT / DECIPHER","MOTION / 31 EASINGS","ANIMATOR / CHILD TIMING","TRANSITION / FLICKER","STYLE / STEPS","STYLE / STRIP","STYLE / SEPARATOR","THEME / TOKEN SCALES","BLEEPS / CUE MODEL","TOOLS / KEYED TIMERS"];
+AW_MANAGERS :: [5]string.["PARALLEL","SEQUENCE","STAGGER","SEQUENCE REVERSE","STAGGER REVERSE"];
+AW_CATEGORIES :: [5]string.["BACKGROUND","TRANSITION","INTERACTION","NOTIFICATION","VOICE"];
+AW_FAMILIES :: [11]string.["LINEAR","QUADRATIC","CUBIC","QUARTIC","QUINTIC","SINE","EXPONENTIAL","CIRCULAR","BACK","ELASTIC","BOUNCE"];
+AW_TIMERS :: [3]string.["FRAME / 0.5 S","TEXT / 1.0 S","SIGNAL / 1.5 S"];
+AW_FACES :: 3;
+
+// Where the specimens paint: a display list, the pool its polygons' points
+// live in, the pool its text lives in, and the inks and faces to paint with.
+AwPaint :: struct {
+  list:[]Prim; n:int;
+  pts:[]f32; np:int;
+  text:[]u8; nt:int;
+  ink:[4]Rgba;                // by the HUD's ink: 0 white, 1 grey, 2 the accent, 3 dim
+  cyan:bool;                  // the theme tokens in the accent's hue (else in greys)
+  faces:[AW_FACES]int; lines:[AW_FACES]f32;   // a text run's face and line by its cap: under 10, under 12, then larger
+}
+
+// What a specimen shows: its owner's motion, clock, choices, cue model and timers.
+AwSpec :: struct {
+  time:f32; started:f32;      // the clock now, and when the motion was last replayed
+  motion:ArMotion;            // the enter and exit motion (arwes-motion.coax)
+  still:bool;                 // reduced motion: show the settled state
+  active:bool; family:bool;   // entered or exited; frames by their family's own transitions or by the assembler
+  easing:int; seed:int; manager:int; category:int; dots:int;
+  cues:int; gain:f32;         // the cue model: cues played, and the bleep's gain
+  pending:[3]bool;            // the keyed timers still pending
+  pointer_x:f32; pointer_y:f32;
+}
+
+// How far the motion has come (0 exited, 1 entered).
+aw_share :: (s:AwSpec)->f32 {
+  return ifx s.still then (ifx s.active then 1.0f32 else 0.0f32) else ax_clamp(s.motion.value,0,1);
+}
+
+// ---------------------------------------------------------------- the primitives, with what the HUD needs
+
+aw_rgba :: (w:[]AwPaint,kind:int,alpha:f32)->Rgba {
+  k:=ifx kind>=0 && kind<4 then kind else 0;c:=w[0].ink[k];return Rgba.{r=c.r,g=c.g,b=c.b,a=alpha};
+}
+aw_last :: (w:[]AwPaint,before:int)->bool {return w[0].n>before;}
+aw_put_clip :: (w:[]AwPaint,b:HudBox) {
+  at:=w[0].n;w[0].n=prim_clip(w[0].list,w[0].n,b.x,b.y,b.x+b.width,b.y+b.height);
+  if aw_last(w,at) {w[0].list[at].w=b.width;w[0].list[at].h=b.height;}
+}
+aw_put_unclip :: (w:[]AwPaint) {w[0].n=prim_unclip(w[0].list,w[0].n);}
+// An ARWES stroke from a to z, cut to the clip.
+aw_put_stroke :: (w:[]AwPaint,a:HudCoord,z:HudCoord,kind:int,alpha:f32,stroke:f32) {
+  at:=w[0].n;w[0].n=prim_line(w[0].list,w[0].n,a.x,a.y,z.x,z.y,stroke,aw_rgba(w,kind,alpha));
+  if aw_last(w,at) {w[0].list[at].id=kind;}
+}
+// A HUD line (aethyr/ui/draw.coax hd_line) at a light.
+aw_put_line :: (w:[]AwPaint,ax:f32,ay:f32,bx:f32,by:f32,kind:int,light:f32) {
+  at:=w[0].n;w[0].n=prim_line(w[0].list,w[0].n,ax,ay,bx,by,1,aw_rgba(w,kind,light));
+  if aw_last(w,at) {w[0].list[at].id=kind;w[0].list[at].c=1;}
+}
+aw_put_rect :: (w:[]AwPaint,b:HudBox,kind:int,light:f32) {
+  aw_put_line(w,b.x,b.y,b.x+b.width,b.y,kind,light);
+  aw_put_line(w,b.x+b.width,b.y,b.x+b.width,b.y+b.height,kind,light);
+  aw_put_line(w,b.x+b.width,b.y+b.height,b.x,b.y+b.height,kind,light);
+  aw_put_line(w,b.x,b.y+b.height,b.x,b.y,kind,light);
+}
+aw_put_diamond :: (w:[]AwPaint,x:f32,y:f32,r:f32,kind:int) {
+  aw_put_line(w,x,y-r,x+r,y,kind,1);aw_put_line(w,x+r,y,x,y+r,kind,1);
+  aw_put_line(w,x,y+r,x-r,y,kind,1);aw_put_line(w,x-r,y,x,y-r,kind,1);
+}
+// A solid rectangle in an ink (kind -1: the colour as given).
+aw_put_quad :: (w:[]AwPaint,b:HudBox,kind:int,color:Rgba) {
+  at:=w[0].n;w[0].n=prim_fill(w[0].list,w[0].n,b.x,b.y,b.width,b.height,0,color);
+  if aw_last(w,at) {w[0].list[at].id=kind;}
+}
+// A disc at (cx, cy), cut to the clip: hard, or soft (a radial glow).
+aw_put_disc :: (w:[]AwPaint,cx:f32,cy:f32,r:f32,kind:int,alpha:f32,soft:bool) {
+  at:=w[0].n;w[0].n=prim_shadow(w[0].list,w[0].n,cx,cy,0,0,r,0,0,ifx soft then r*0.5f32 else 0.0f32,r,aw_rgba(w,kind,alpha));
+  if aw_last(w,at) {w[0].list[at].id=kind;}
+}
+// A frame's filled path, even-odd, cut to the clip.
+aw_put_poly :: (w:[]AwPaint,points:[]AfPoint,kind:int,alpha:f32) {
+  if points.count<3 || w[0].np+points.count*2>w[0].pts.count {return;}
+  from:=w[0].np;
+  for p:points {w[0].pts[w[0].np]=p.x;w[0].pts[w[0].np+1]=p.y;w[0].np+=2;}
+  at:=w[0].n;w[0].n=prim_poly(w[0].list,w[0].n,w[0].pts[from..<w[0].np],aw_rgba(w,kind,alpha));
+  if aw_last(w,at) {w[0].list[at].id=kind;}
+}
+// A line of text at pen x and baseline y, cap high, fitted to width; centred: on x.
+aw_put_text :: (w:[]AwPaint,text:string,x:f32,y:f32,cap:f32,width:f32,kind:int,centred:bool) {
+  if text.count==0 || w[0].nt+text.count>w[0].text.count {return;}
+  from:=w[0].nt;for c:text {w[0].text[w[0].nt]=c;w[0].nt+=1;}
+  f:=ifx cap<10 then 0 else ifx cap<12 then 1 else 2;line:=w[0].lines[f];
+  at:=w[0].n;w[0].n=prim_text(w[0].list,w[0].n,x,y-line*0.5f32-cap*0.5f32,width,line,w[0].faces[f],aw_rgba(w,kind,1),cast(string)w[0].text[from..<w[0].nt]);
+  if aw_last(w,at) {q:=w[0].list[at];q.a=x;q.b=y;q.c=cap;q.d=width;q.off=kind;q.on=centred;w[0].list[at]=q;}
+}
+aw_box :: (x:f32,y:f32,width:f32,height:f32)->HudBox {return HudBox.{x=x,y=y,width=width,height=height};}
+
+// ---------------------------------------------------------------- the specimens
+
+// A frame of one of the nine kinds in b at a share of its assembly, or by its
+// family's own transitions (progress through them, entering or exiting).
+aw_frame :: (w:[]AwPaint,kind:int,b:HudBox,progress:f32,entering:bool,family:bool) {
+  points:[256]AfPoint;settings:=af_settings(kind);scale:=ax_min(1,b.height/200);
+  settings.square*=scale;settings.corner_length*=scale;settings.large_line_length*=scale;settings.small_line_length*=scale;settings.side_width*=scale;
+  box:=b;if kind==8 {size:=ax_min(b.width,b.height);box=HudBox.{x=b.x+(b.width-size)*0.5,y=b.y,width=size,height=size};}
+  n:=ifx family then af_frame_family(kind,box,settings,progress,entering,points[..]) else af_frame_settings(kind,box,settings,progress,points[..]);start:=0;
+  aw_put_clip(w,box);
+  for i:0..<n {
+    if points[i].move {start=i;}
+    end:=i+1==n || points[i+1].move;
+    if end && points[start].fill {aw_put_poly(w,points[start..<i+1],ifx points[start].layer==2 then 2 else 1,points[start].alpha*(ifx points[start].layer==2 then 0.65f32 else 0.035f32));}
+    if i>start && !points[start].fill {
+      aw_put_stroke(w,HudCoord.{x=points[i-1].x,y=points[i-1].y},HudCoord.{x=points[i].x,y=points[i].y},ifx points[i].layer==2 then 2 else 0,points[i].alpha*0.9,points[i].stroke);
+    }
+  }
+  aw_put_unclip(w);
+}
+
+// One of the four backgrounds (dots, grid lines, moving lines, puffs) in b.
+aw_background :: (w:[]AwPaint,kind:int,b:HudBox,time:f32,share:f32,seed:int) {
+  aw_put_clip(w,b);
+  if kind==0 {
+    count:=ax_dot_count(b,22);
+    for i:0..<count {d:=ax_dot(b,22,i,share,4,false,true);aw_put_disc(w,d.x,d.y,1.3,2,d.alpha*0.65,false);}
+  } else if kind==1 {
+    gap:=24.0f32;columns:=1+cast(int)floor(b.width/gap);rows:=1+cast(int)floor(b.height/gap);
+    margin_x:=(b.width-floor(b.width/gap)*gap)*0.5;margin_y:=(b.height-floor(b.height/gap)*gap)*0.5;
+    for i:0..<columns {x:=b.x+margin_x+cast(f32)i*gap;aw_put_stroke(w,HudCoord.{x=x,y=b.y},HudCoord.{x=x,y=b.y+b.height},1,0.45*share,1);}
+    for i:0..<rows {y:=b.y+margin_y+cast(f32)i*gap;for j:0..<cast(int)(-floor(-b.width/8)) {x:=b.x+cast(f32)j*8;aw_put_stroke(w,HudCoord.{x=x,y=y},HudCoord.{x=x+4,y=y},1,0.45*share,1);}}
+  } else if kind==2 {
+    lines:[1024]AxLine;n:=ax_moving_lines(b,20,5,seed,ax_wrap(time/4),lines[..]);
+    for i:0..<n {aw_put_stroke(w,lines[i].a,lines[i].b,2,0.8*share,1);}
+  } else {
+    settings:=AxPuffSettings.{padding=18,radius=3,y_fixed= -4,y_var= -24,r_fixed=12,r_var=30};
+    for i:0..<10 {puff:=ax_puff(b,settings,seed,i,ax_wrap(time/4));aw_put_disc(w,puff.x,puff.y,puff.radius,2,puff.alpha*share*0.3,true);}
+  }
+  aw_put_unclip(w);
+}
+
+// The plot of the chosen easing over 0..1, and its family's name.
+aw_easing :: (w:[]AwPaint,b:HudBox,easing:int) {
+  plot:=aw_box(b.x+10,b.y+10,b.width-20,b.height-38);
+  aw_put_rect(w,plot,3,0.35);last:=HudCoord.{x=plot.x,y=plot.y+plot.height*0.8};
+  aw_put_clip(w,plot);
+  for i:0..<81 {t:=cast(f32)i/80;q:=HudCoord.{x=plot.x+t*plot.width,y=plot.y+plot.height*(0.8-0.6*ar_ease(easing,t))};
+    if i>0 {aw_put_stroke(w,last,q,2,0.95,1.3);}last=q;
+  }
+  aw_put_unclip(w);
+  families:=AW_FAMILIES;
+  family:=ifx easing==0 then 0 else (easing-1)/3+1;
+  aw_put_text(w,families[family],b.x+4,b.y+b.height-4,9,b.width-8,0,false);
+}
+
+// Specimen kind (AW_NAMES) in b, in the state s.
+aw_specimen :: (w:[]AwPaint,kind:int,b:HudBox,s:AwSpec) {
+  share:=aw_share(s);
+  elapsed:=ax_max(0,s.time-s.started);progress:=ax_clamp(elapsed/2.5,0,1);
+  if kind<14 {
+    if kind==9 && s.dots!=0 {
+      for i:0..<ax_dot_count(b,22) {
+        d:=ax_dot(b,22,i,share,4,false,true);alpha:=d.alpha*0.65;
+        if s.dots==1 {aw_put_quad(w,aw_box(d.x-2,d.y-2,4,4),2,aw_rgba(w,2,alpha));}
+        else {aw_put_quad(w,aw_box(d.x-3,d.y-0.7,6,1.4),2,aw_rgba(w,2,alpha));aw_put_quad(w,aw_box(d.x-0.7,d.y-3,1.4,6),2,aw_rgba(w,2,alpha));}
+      }return;
+    }
+    if kind<9 && s.family {
+      phase:=ifx s.still || s.motion.duration<=0 then 1.0f32 else ax_clamp(s.motion.elapsed/s.motion.duration,0,1);
+      aw_frame(w,kind,b,phase,s.active,true);
+    } else if kind<9 {aw_frame(w,kind,b,share,true,false);}
+    else if kind<13 {aw_background(w,kind-9,b,s.time,share,s.seed);}
+    else {
+      aw_background(w,1,b,s.time,0.4,s.seed);
+      x:=s.pointer_x;y:=s.pointer_y;if !hud_contains(b,x,y) {x=b.x+b.width*0.5;y=b.y+b.height*0.5;}
+      aw_put_clip(w,b);aw_put_disc(w,x,y,70,2,0.35,true);aw_put_unclip(w);aw_put_diamond(w,x,y,5,2);
+      aw_put_text(w,"MOVE THE POINTER / LOCAL LIGHT",b.x+6,b.y+b.height-6,8,b.width-12,0,false);
+    }
+    if kind<9 && share>0.85 {
+      cap:=ax_min(12,b.width/22);x:=b.x+b.width*0.5;
+      aw_put_text(w,"AETHYR / ONLINE",x,b.y+b.height*0.49,cap,b.width-24,2,true);
+      aw_put_text(w,"FRAME ASSEMBLY / COAX",b.x+ax_max(12,b.width*0.25),b.y+b.height*0.66,7,b.width*0.6,1,false);
+    }
+    return;
+  }
+  if kind==14 || kind==15 {
+    text:="AETHYR / SYSTEM ONLINE";buffer:[1024]u8;n:=0;
+    revealed:=ifx s.still then share else progress*share;
+    if kind==14 {n=ar_text_sequence(text,revealed,true,buffer[..]);}
+    else {n=ar_text_decipher(text,revealed,true,s.seed,cast(int)floor(elapsed*20),buffer[..]);}
+    if n>=0 {aw_put_text(w,cast(string)buffer[0..<n],b.x+6,b.y+b.height*0.5,16,b.width-12,2,false);}
+    aw_put_text(w,ifx kind==14 then "SEQUENCE / UNICODE SCALARS" else "DECIPHER / SEEDED SHUFFLE",b.x+6,b.y+b.height-5,8,b.width-12,1,false);
+    return;
+  }
+  if kind==16 {aw_easing(w,b,s.easing);return;}
+  if kind==17 {
+    children:[5]ArChild;for i:0..<5 {children[i]=ArChild.{enter=0.45,exit=0.3,allowed=true};}
+    span:=ar_children_duration(children[..],s.manager,0.18);clock:=ifx s.still then span else elapsed;
+    for i:0..<5 {
+      timing:=ar_child_timing(children[..],i,s.manager,0.18,false);q:=ax_clamp((clock-timing.start)/0.45,0,1)*share;
+      box:=aw_box(b.x+cast(f32)i*(b.width/5),b.y+20,b.width/5-8,b.height-52);
+      aw_frame(w,3,box,q,true,false);
+    }
+    labels:=AW_MANAGERS;
+    aw_put_text(w,labels[s.manager],b.x+4,b.y+b.height-4,9,b.width-8,2,false);
+    return;
+  }
+  if kind==18 {
+    for i:0..<7 {a:=ar_flicker(ax_clamp(progress+cast(f32)i*0.06,0,1),s.active);aw_put_quad(w,aw_box(b.x+cast(f32)i*b.width/7,b.y+25,b.width/7-8,55),2,aw_rgba(w,2,a*0.7));}
+    aw_put_text(w,"0 > 1 > 0.5 > 1 / OUT SINE",b.x+4,b.y+b.height-4,8,b.width-8,1,false);
+    return;
+  }
+  if kind>=19 && kind<=21 {
+    stops:=[3]f32.[8,12,20];inks:=[3]f32.[0.8,0.1,0.4];
+    for i:0..<cast(int)b.width {
+      x:=cast(f32)i;alpha:=ifx kind==19 then ax_steps_mask(x/b.width,18) else ifx kind==20 then ax_strip(x,stops[..],inks[..]) else ax_separator(x,b.width,12,6,true,true);
+      aw_put_quad(w,aw_box(b.x+x,b.y+36,1,32),2,aw_rgba(w,2,alpha*share));
+    }
+    aw_put_text(w,ifx kind==19 then "ALTERNATING 2N-1 INTERVALS" else ifx kind==20 then "REPEATING HARD COLOR STOPS" else "ACTIVE ENDS / STATIC CENTER",b.x+4,b.y+b.height-5,8,b.width-8,1,false);
+    return;
+  }
+  if kind==22 {
+    for i:0..<8 {
+      level:=cast(f32)i/7;c:=ifx w[0].cyan then ax_hsl(180,68,18+level*60,1,share) else ax_rgb((18+level*76),(18+level*76),(18+level*76),1,share);
+      aw_put_quad(w,aw_box(b.x+cast(f32)i*b.width/8,b.y+26,b.width/8-5,48),-1,Rgba.{r=c.r,g=c.g,b=c.b,a=c.a});
+    }
+    aw_put_text(w,"HSL / RGB / HWB   SPACE 4 x INDEX",b.x+4,b.y+b.height-5,8,b.width-8,1,false);
+    return;
+  }
+  if kind==23 {
+    labels:=AW_CATEGORIES;
+    for i:0..<5 {
+      y:=b.y+13+cast(f32)i*(b.height-24)/5;active:=i==s.category;
+      aw_put_text(w,labels[i],b.x+3,y,8,b.width*0.52,ifx active then 2 else 1,false);
+      width:=(b.width*0.42)*(ifx active && s.cues>0 then s.gain else 0.12f32);
+      aw_put_quad(w,aw_box(b.x+b.width*0.55,y-6,width,5),ifx active then 2 else 1,aw_rgba(w,ifx active then 2 else 1,0.8));
+    }
+    aw_put_text(w,"SILENT / COMMON > CATEGORY > NAMED",b.x+3,b.y+b.height-3,7,b.width-6,1,false);
+    return;
+  }
+  if kind==24 {
+    labels:=AW_TIMERS;
+    for i:0..<3 {y:=b.y+18+cast(f32)i*32;pending:=s.pending[i];
+      aw_put_diamond(w,b.x+9,y-4,4,ifx pending then 1 else 2);
+      aw_put_text(w,labels[i],b.x+25,y,9,b.width-28,ifx pending then 1 else 2,false);
+    }
+    aw_put_text(w,"KEYED REPLACE / STOP / FIFO",b.x+4,b.y+b.height-3,8,b.width-8,1,false);
+  }
+}
+
+// ---------------------------------------------------------------- checks
+
+AwTestPaint :: struct {list:[4096]Prim;pts:[8192]f32;text:[2048]u8;}
+aw_test_paint :: (t:[]AwTestPaint,w:[]AwPaint) {
+  w[0]=AwPaint.{list=t[0].list[..],pts=t[0].pts[..],text=t[0].text[..]};
+  w[0].ink[0]=rgba(1,1,1,1);w[0].ink[1]=rgba(0.6,0.6,0.6,1);w[0].ink[2]=rgba(0.2,0.85,0.85,1);w[0].ink[3]=rgba(0.4,0.4,0.4,1);w[0].cyan=true;
+  for k:0..<AW_FACES {w[0].faces[k]=k;w[0].lines[k]=12+cast(f32)k*4;}
+}
+aw_test_spec :: (active:bool,time:f32)->AwSpec {
+  s:=AwSpec.{time=time,started=0,active=active,easing=AM_OUT_SINE,seed=7,gain=0.6};
+  m:[1]ArMotion;ar_motion_to(m[..],true,1.2,AM_OUT_SINE);ar_motion_tick(m[..],time);s.motion=m[0];
+  return s;
+}
+
+#test "every specimen paints primitives, entered; the frames are clipped, and text keeps what the HUD needs" #steps 400000000 {
+  t:[1]AwTestPaint;w:[1]AwPaint;b:=aw_box(10,20,260,150);
+  for kind:0..<AW_SPECIMENS {
+    aw_test_paint(t[..],w[..]);
+    aw_specimen(w[..],kind,b,aw_test_spec(true,3));
+    #assert w[0].n>0;
+    clips:=0;texts:=0;
+    for k:0..<w[0].n {
+      p:=w[0].list[k];
+      if p.kind==PRIM_CLIP && p.on {clips+=1;#assert p.w>0 && p.h>0 && p.a==p.x+p.w;}
+      if p.kind==PRIM_TEXT {texts+=1;#assert p.c>=7 && p.d>0 && p.off>=0 && p.off<4 && p.text.count>0;}
+      if p.kind==PRIM_POLY {#assert p.pts.count>=6;}
+    }
+    #assert (kind>=9 || clips>=1) && (kind<14 && kind>=9 && kind!=13 || texts>=1);
+  }
+}
+#test "frames assemble with the motion: exited, nothing; entered, the whole frame and its caption" {
+  t:[1]AwTestPaint;w:[1]AwPaint;b:=aw_box(0,0,260,150);
+  aw_test_paint(t[..],w[..]);s:=aw_test_spec(true,3);s.motion.value=0;
+  aw_specimen(w[..],3,b,s);
+  lines:=0;for k:0..<w[0].n {if w[0].list[k].kind==PRIM_LINE && w[0].list[k].fill.a>0 {lines+=1;}}
+  #assert lines==0;
+  aw_test_paint(t[..],w[..]);aw_specimen(w[..],3,b,aw_test_spec(true,3));
+  lit:=0;caption:=false;
+  for k:0..<w[0].n {p:=w[0].list[k];if p.kind==PRIM_LINE && p.fill.a>0 {lit+=1;}if p.kind==PRIM_TEXT && p.text=="AETHYR / ONLINE" {caption=p.on && p.a==130;}}
+  #assert lit>=8 && caption;
+}
+#test "the cue model and the keyed timers are shown as they stand" {
+  t:[1]AwTestPaint;w:[1]AwPaint;b:=aw_box(0,0,260,150);
+  aw_test_paint(t[..],w[..]);s:=aw_test_spec(true,3);s.category=3;s.cues=2;s.gain=0.8;
+  aw_specimen(w[..],23,b,s);
+  wide:f32=0;for k:0..<w[0].n {p:=w[0].list[k];if p.kind==PRIM_BOX && p.id==2 {wide=p.w;}}
+  #assert abs(wide-260*0.42*0.8)<0.001;
+  aw_test_paint(t[..],w[..]);s.pending[1]=true;aw_specimen(w[..],24,b,s);
+  inks:[3]int;m:=0;for k:0..<w[0].n {p:=w[0].list[k];if p.kind==PRIM_TEXT && m<3 {inks[m]=p.off;m+=1;}}
+  #assert m==3 && inks[0]==2 && inks[1]==1 && inks[2]==2;
+}
+#test "a full list keeps what it has; a full text pool drops the run" {
+  t:[1]AwTestPaint;w:[1]AwPaint;
+  aw_test_paint(t[..],w[..]);w[0].list=t[0].list[0..<3];
+  aw_specimen(w[..],10,aw_box(0,0,260,150),aw_test_spec(true,3));
+  #assert w[0].n==3;
+  aw_test_paint(t[..],w[..]);w[0].text=t[0].text[0..<4];
+  aw_put_text(w[..],"HELLO",0,10,8,100,0,false);
+  #assert w[0].n==0 && w[0].nt==0;
+}

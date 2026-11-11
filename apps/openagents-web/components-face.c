@@ -31,6 +31,11 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { coaxial_components_wheel(at(state), dy); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_components_cursor(at(state)); }
+// The page's asks of the host: 1 opens the outbox's URL (the ARWES licence link).
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)coaxial_components_action(at(state)); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)coaxial_components_outbox_len(at(state)); }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { coaxial_components_action_done(at(state)); }
 
 // The atlas (coax/web/gpui.js): what to rasterize, then where it went.
 EXPORT("coaxial_gpui_glyphs") int32_t gpui_glyphs(void) { return (int32_t)coaxial_components_glyph_count(); }

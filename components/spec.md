@@ -49,7 +49,9 @@ components/
   gallery/         page.coax, the /components page (hud-cards.coax: its HUD cards);
                    linux.coax and linux/ (the same
                    page as a Linux program, for pictures); md-term.coax (Markdown
-                   in a terminal through the whole stack); skin-parity.coax
+                   in a terminal through the whole stack); skin-parity.coax; arwes.coax
+                   (the page's ARWES section: every ARWES port, from
+                   aethyr/ui/arwes-paint.coax, in the Verse skin)
   fonts/, icons/   with their licences and NOTICE
   zeron/           the chat components as moved from apps/shared/zeron/ (Phase 1, done),
                    emptied as Phase 2 splits each file into the layers above
@@ -173,6 +175,7 @@ each `prim_*` procedure appends one and returns the new count:
 | Icon | bounds, icon id, tint |
 | Image | bounds, image id |
 | Clip, fade | a scissor rectangle; fade bands at an edge |
+| Polygon | its points (a view into the painter's pool), fill; filled even-odd (ARWES's frames) |
 
 It is the union of what `gpui.coax` and `hud-style.coax`'s `HudPrim` paint
 today. A new primitive is added here once, then to each backend.
@@ -205,8 +208,10 @@ defect, and a check finds it.
   (`gp_set_font`, `gp_set_icon`, `gp_set_atlas`, the glyph cache). The
   `paint_*` procedures that write one primitive's vertices directly stay for
   the components not yet on the display list; both ways give the same
-  floats, and a check holds them to it. Not drawn yet: an arc, a slanted
-  line and an image (`gpu_draws` says so); they need a path in the shader.
+  floats, and a check holds them to it. A slanted line is drawn as its band
+  with coverage by distance (the shader's segment kind) and a polygon as
+  triangles cut by ear clipping (2026-11-11, for ARWES). Not drawn yet: an
+  arc and an image (`gpu_draws` says so); they need a path in the shader.
   The Mac apps (OpenAgents and Aethyrforge) build the emitted Metal; the
   hand-written `Zeron.metal` is gone (2026-11-10, #13156), and the Mac
   goldens pass with it (at most 0.05% of pixels off, at glyph edges).

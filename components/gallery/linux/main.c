@@ -4,9 +4,10 @@
 // it reads the fonts and icons, hands frames, the pointer and the wheel to
 // Coax, and serves the glyphs a frame asked for.
 //   Components [--size WxH] [--dpr K] [--seconds N]
-//   Components --shot OUT.png [--size W,H] [--dpr K] [--scroll PX] [--point X,Y] [--press X,Y]
+//   Components --shot OUT.png [--size W,H] [--dpr K] [--scroll PX] [--point X,Y] [--press X,Y] [--time S]
 // --shot draws offscreen and opens no window. --scroll, --point and --press
-// (logical pixels) move the page, hover and click before the picture.
+// (logical pixels) move the page, hover and click before the picture; --time
+// lets the page's clock run S seconds first (the ARWES section's motion).
 #include "gallery.h"
 #include "ui-host.h"
 #include <limits.h>
@@ -152,6 +153,8 @@ int main(int argc, char **argv) {
     const char *scroll = value(argc, argv, "--scroll"), *point = value(argc, argv, "--point"), *press = value(argc, argv, "--press");
     // a few frames: the first asks for the glyphs outside the fixed set, the next have them
     for (int i = 0; i < 4; i++) ui_shot_frame(a.host, w, h, 1 / 60.0f);
+    const char *time = value(argc, argv, "--time");
+    for (float t = 0; time && t < (float)atof(time); t += 0.1f) ui_shot_frame(a.host, w, h, 0.1f);
     float x, y;
     if (scroll) on_wheel(&a, (float)atof(scroll));
     if (press && sscanf(press, "%f,%f", &x, &y) == 2) { on_pointer(&a, x * a.dpr, y * a.dpr, 0, 1, 0); on_pointer(&a, x * a.dpr, y * a.dpr, 2, 1, 0); }

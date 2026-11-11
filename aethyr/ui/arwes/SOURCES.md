@@ -29,7 +29,11 @@ The implementation map is described in the report. Core formulas and
 geometry become Coax; DOM/SVG/CSS object operations, framework ownership,
 Web Audio decoding/playback and browser scheduling remain host mechanisms
 or explicit exclusions. The existing Coaxial host and twelve-float vertex
-ABI are preserved. There is no JavaScript API-compatibility claim.
+ABI are preserved. The specimens are painted once, as the component
+system's display list (`arwes-paint.coax`); the HUD laboratory writes it as
+twelve-float records (`arwes-draw.coax`) and openagents.com/components draws
+it with the component shader, crediting ARWES with a link to this licence.
+There is no JavaScript API-compatibility claim.
 
 ## Complete vanilla/core public-family inventory
 

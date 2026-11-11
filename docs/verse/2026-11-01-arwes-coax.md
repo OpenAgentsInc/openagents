@@ -294,8 +294,15 @@ The three value/geometry units are
 [arwes-frames.coax](../../aethyr/ui/arwes-frames.coax),
 [arwes-motion.coax](../../aethyr/ui/arwes-motion.coax), and
 [arwes-fx.coax](../../aethyr/ui/arwes-fx.coax).
-[arwes-draw.coax](../../aethyr/ui/arwes-draw.coax) composes them with the
-existing `hud.coax`/`draw.coax` layout, hit, font and rendering foundation.
+[arwes-paint.coax](../../aethyr/ui/arwes-paint.coax) places them: each of the
+25 specimens is painted once, as the component system's display list
+(`components/paint/list.coax`). [arwes-draw.coax](../../aethyr/ui/arwes-draw.coax)
+writes that list as the HUD's twelve-float records over the existing
+`hud.coax`/`draw.coax` layout, hit, font and rendering foundation, and
+openagents.com/components draws the same list with the component shader
+(`components/gallery/arwes.coax`, 2026-11-11). The move to one painting left
+the laboratory's records unchanged, bit for bit, across 225 frames of every
+group, control and inspector.
 The demo integration is
 [arwes-demo.coax](../../apps/openagents-web/demos/hud/arwes-demo.coax),
 with a sixth ARWES tab alongside the five existing compositions. The standalone
@@ -321,8 +328,9 @@ and cue bars represent state; they do not play audio.
 
 ### Coax rendering and the existing ABI
 
-`aw_frame`, `aw_frame_family`, `aw_background` and `aw_visual` in `arwes-draw.coax` convert
-resolved geometry/samples to the HUD's existing twelve-float records.
+`aw_frame`, `aw_background` and `aw_specimen` in `arwes-paint.coax` paint
+resolved geometry/samples as display-list primitives; `aw_hud` in
+`arwes-draw.coax` converts them to the HUD's existing twelve-float records.
 `aw_stroke` clips segments to their logical box and vertical viewport strip.
 `aw_disc`/`aw_quad` add filled primitive records. The Coax-authored
 [demo GPU wrapper](../../apps/openagents-web/demos/hud/gpu.coax) loads the
@@ -470,10 +478,11 @@ three value units separately:
 ```coax
 #load "aethyr/ui/arwes-draw.coax";
 
-example_vertices :: (vertices:[]f32,pen:HdPen,elapsed:f32)->int {
+example_vertices :: (w:[]AwPaint,vertices:[]f32,pen:HdPen,elapsed:f32)->int {
   share:=ar_animation_sample(elapsed,0.6,AM_OUT_SINE,false,0).progress;
-  return aw_frame(vertices,0,3,
-    HudBox.{x=24,y=180,width=320,height=180},pen,share);
+  aw_hud_inks(w,pen);
+  aw_frame(w,3,HudBox.{x=24,y=180,width=320,height=180},share,true,false);
+  return aw_hud(w,vertices,0,pen);
 }
 ```
 

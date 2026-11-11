@@ -26,7 +26,7 @@
 #load "../paint/list.coax";
 
 GP_VERTEX_FLOATS :: 28;
-GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0; GP_GRADIENT :: 5.0; GP_INSET :: 6.0;
+GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0; GP_GRADIENT :: 5.0; GP_INSET :: 6.0; GP_SEGMENT :: 7.0;
 GP_NO_CLIP :: 1000000.0;
 
 // gpui_macos glyph_dilation_for_color: CoreGraphics thickens light text more.
@@ -60,6 +60,13 @@ emit :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, kind: f32, bl
   ys := [6] f32.[y0, y0, y1, y0, y1, y1];
   us := [6] f32.[u0, u1, u1, u0, u1, u0];
   vs := [6] f32.[v0, v0, v1, v0, v1, v1];
+  return emit_six(out, at, xs, ys, us, vs, kind, blur, bx, by, bw, bh, radius, border, fill, edge);
+}
+// Six vertices at any device positions (two triangles), each carrying the
+// primitive's bounds and paint: a slanted line's band, a polygon's triangles.
+emit_six :: (out: [] f32, at: int, xs: [6] f32, ys: [6] f32, us: [6] f32, vs: [6] f32, kind: f32, blur: f32,
+             bx: f32, by: f32, bw: f32, bh: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) -> int {
+  if at < 0 || (at + 6) * GP_VERTEX_FLOATS > out.count { return at; }
   for k: 0..<6 {
     o := (at + k) * GP_VERTEX_FLOATS;
     out[o] = xs[k]; out[o + 1] = ys[k]; out[o + 2] = kind; out[o + 3] = blur;
@@ -164,6 +171,91 @@ paint_elbow :: (out: [] f32, at: int, d: f32, x: f32, y: f32, r: f32, end_x: f32
   x0 := floor((x - 1) * d); y0 := floor(y * d);
   x1 := ceil((end_x + 1) * d); y1 := ceil((y + r + 1) * d);
   return emit(out, at, x0, y0, x1, y1, GP_ELBOW, 0, x * d, y * d, r * d, end_x * d, d, ifx joined then 1.0f32 else 0.0f32, 0, 0, 0, 0, color, color);
+}
+
+// A slanted line from (ax, ay) to (bx, by), width wide (logical), drawn as
+// the band around it with antialiased coverage by its distance to the
+// segment (the shader's segment kind). A level or upright line is a box
+// instead (gpu_draw), snapped as GPUI snaps its quads.
+paint_segment :: (out: [] f32, at: int, d: f32, ax: f32, ay: f32, bx: f32, by: f32, width: f32, color: Rgba) -> int {
+  if color.a <= 0 || width <= 0 { return at; }
+  x0 := ax * d; y0 := ay * d; x1 := bx * d; y1 := by * d;
+  dx := x1 - x0; dy := y1 - y0; length := sqrt(dx * dx + dy * dy);
+  if !(length > 0) { return at; }
+  r := width * d / 2 + 1;
+  ux := dx / length * r; uy := dy / length * r;
+  // the band's corners: past each end and to each side by r
+  cx := [4] f32.[x0 - ux + uy, x0 - ux - uy, x1 + ux - uy, x1 + ux + uy];
+  cy := [4] f32.[y0 - uy - ux, y0 - uy + ux, y1 + uy + ux, y1 + uy - ux];
+  xs := [6] f32.[cx[0], cx[1], cx[2], cx[0], cx[2], cx[3]];
+  ys := [6] f32.[cy[0], cy[1], cy[2], cy[0], cy[2], cy[3]];
+  zero: [6] f32;
+  return emit_six(out, at, xs, ys, zero, zero, GP_SEGMENT, 0, x0, y0, x1, y1, width * d, 0, color, color);
+}
+
+GP_POLY_POINTS :: 256;
+// Twice the signed area of the triangle a, b, c (positive: counter-clockwise, y up).
+gp_cross :: (ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32) -> f32 { return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax); }
+// A filled polygon (pts: x, y pairs, logical, offset by ox, oy): cut into
+// triangles by ear clipping, each filled solid (a quad with no radius and no
+// border is its fill everywhere inside its bounds, so the bounds are the
+// polygon's, past its edges). A polygon the clipping cannot finish (it
+// crosses itself) is fanned from what is left. Up to GP_POLY_POINTS points.
+paint_poly :: (out: [] f32, at: int, d: f32, pts: [] f32, ox: f32, oy: f32, color: Rgba) -> int {
+  if color.a <= 0 { return at; }
+  n := pts.count / 2;
+  if n > GP_POLY_POINTS { n = GP_POLY_POINTS; }
+  if n < 3 { return at; }
+  px: [GP_POLY_POINTS] f32; py: [GP_POLY_POINTS] f32; idx: [GP_POLY_POINTS] int;
+  area: f32 = 0;
+  x0 := (pts[0] + ox) * d; y0 := (pts[1] + oy) * d; x1 := x0; y1 := y0;
+  for k: 0..<n {
+    px[k] = (pts[2 * k] + ox) * d; py[k] = (pts[2 * k + 1] + oy) * d; idx[k] = k;
+    if px[k] < x0 { x0 = px[k]; } if px[k] > x1 { x1 = px[k]; }
+    if py[k] < y0 { y0 = py[k]; } if py[k] > y1 { y1 = py[k]; }
+  }
+  for k: 0..<n { j := (k + 1) % n; area += px[k] * py[j] - px[j] * py[k]; }
+  turn: f32 = ifx area < 0 then -1.0f32 else 1.0f32;
+  // the triangles, three corners each
+  tx: [768] f32; ty: [768] f32; nt := 0;
+  m := n; i := 0; misses := 0;
+  while m > 3 && misses < m {
+    a := idx[(i + m - 1) % m]; b := idx[i % m]; c := idx[(i + 1) % m];
+    z := gp_cross(px[a], py[a], px[b], py[b], px[c], py[c]) * turn;
+    ear := z > 0;
+    if ear {
+      for q: 0..<m {
+        p := idx[q];
+        if p == a || p == b || p == c { continue; }
+        if gp_cross(px[a], py[a], px[b], py[b], px[p], py[p]) * turn >= 0 && gp_cross(px[b], py[b], px[c], py[c], px[p], py[p]) * turn >= 0 && gp_cross(px[c], py[c], px[a], py[a], px[p], py[p]) * turn >= 0 { ear = false; break; }
+      }
+    }
+    if ear || z == 0 {
+      if ear && nt + 3 <= tx.count { tx[nt] = px[a]; ty[nt] = py[a]; tx[nt + 1] = px[b]; ty[nt + 1] = py[b]; tx[nt + 2] = px[c]; ty[nt + 2] = py[c]; nt += 3; }
+      at_b := i % m;
+      for q: at_b..<m - 1 { idx[q] = idx[q + 1]; }
+      m -= 1; misses = 0;
+      if at_b >= m { i = 0; } else { i = at_b; }
+      continue;
+    }
+    i = (i + 1) % m; misses += 1;
+  }
+  // the last three, or a fan of what the clipping could not finish
+  for q: 1..<m - 1 {
+    if nt + 3 > tx.count { break; }
+    tx[nt] = px[idx[0]]; ty[nt] = py[idx[0]]; tx[nt + 1] = px[idx[q]]; ty[nt + 1] = py[idx[q]]; tx[nt + 2] = px[idx[q + 1]]; ty[nt + 2] = py[idx[q + 1]]; nt += 3;
+  }
+  v := at; zero: [6] f32; clear := rgba(0, 0, 0, 0);
+  k := 0;
+  while k < nt {
+    // two triangles a vertex batch; an odd last one is paired with nothing (three equal corners)
+    xs: [6] f32; ys: [6] f32;
+    for j: 0..<3 { xs[j] = tx[k + j]; ys[j] = ty[k + j]; }
+    for j: 3..<6 { if k + j < nt { xs[j] = tx[k + j]; ys[j] = ty[k + j]; } else { xs[j] = tx[k]; ys[j] = ty[k]; } }
+    v = emit_six(out, v, xs, ys, zero, zero, GP_QUAD, 0, x0 - 2, y0 - 2, x1 - x0 + 4, y1 - y0 + 4, 0, 0, color, clear);
+    k += 6;
+  }
+  return v;
 }
 
 // A tinted alpha mask: device rectangle, atlas tile in texels.
@@ -277,12 +369,11 @@ gp_clip_edges :: (out: [] f32, from: int, to: int, d: f32, left: f32, top: f32, 
   }
 }
 
-// Whether this backend draws a kind today. An arc, a slanted line and an
-// image have no path in the shader yet (the realm HUDs draw arcs with their
-// own pass until they move, components/spec.md Phase 5): they are skipped.
+// Whether this backend draws a kind today. An arc and an image have no path
+// in the shader yet (the realm HUDs draw arcs with their own pass until they
+// move, components/spec.md Phase 5): they are skipped.
 gpu_draws :: (p: Prim) -> bool {
   if p.kind == PRIM_ARC || p.kind == PRIM_IMAGE { return false; }
-  if p.kind == PRIM_LINE { return p.x == p.a || p.y == p.b; }
   return p.kind >= 0 && p.kind < PRIM_KINDS;
 }
 
@@ -314,11 +405,14 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
       r := (ifx p.w < p.h then p.w else p.h) / 2;
       v = paint_quad(out, v, d, x, y, p.w, p.h, r, p.border, rgba(0, 0, 0, 0), p.fill);
     } else if p.kind == PRIM_LINE && gpu_draws(p) {
-      // a level or an upright line: a box as wide as the line is thick, centred on it
+      // a level or an upright line: a box as wide as the line is thick, centred on it; a slanted one, its band
       x1 := p.a + ox; y1e := p.b + oy; half := p.border / 2;
       lx := ifx x < x1 then x else x1; ly := ifx y < y1e then y else y1e;
       if p.y == p.b { v = paint_quad(out, v, d, lx, y - half, abs(x1 - x), p.border, 0, 0, p.fill, p.fill); }
-      else { v = paint_quad(out, v, d, x - half, ly, p.border, abs(y1e - y), 0, 0, p.fill, p.fill); }
+      else if p.x == p.a { v = paint_quad(out, v, d, x - half, ly, p.border, abs(y1e - y), 0, 0, p.fill, p.fill); }
+      else { v = paint_segment(out, v, d, x, y, x1, y1e, p.border, p.fill); }
+    } else if p.kind == PRIM_POLY {
+      v = paint_poly(out, v, d, p.pts, ox, oy, p.fill);
     }
     if clip { gp_clip_edges(out, v0, v, d, ifx cl > -PRIM_OPEN then cl + ox else cl, ifx ct > -PRIM_OPEN then ct + oy else ct, ifx cr < PRIM_OPEN then cr + ox else cr, ifx cb < PRIM_OPEN then cb + oy else cb); }
     if fade { gp_fade(out, v0, v, d, ft + oy, fa, fb + oy, fc); }
@@ -466,7 +560,7 @@ gpu_same :: (p: [] f32, q: [] f32, n: int) -> bool {
   #assert out[18 * GP_VERTEX_FLOATS + 22] == GP_NO_CLIP;
   #assert gpu_draw(out[..], 0, a[..], 2, list[0..<n], 3, 0, 111, 200) == 0;
 }
-#test "a ring is a round border, a level line a thin box; an arc and a slanted line wait for the shader" {
+#test "a ring is a round border, a level line a thin box, a slanted line its band; an arc waits for the shader" {
   a: [1] Atlas; gpu_test_atlas(a[..]);
   list: [5] Prim; n := 0;
   n = prim_ring(list[..], n, 10, 10, 32, 32, 3, hex(0xffffff, 1));
@@ -476,12 +570,39 @@ gpu_same :: (p: [] f32, q: [] f32, n: int) -> bool {
   n = prim_line(list[..], n, 0, 0, 40, 30, 2, hex(0xffffff, 1));
   out: [840] f32;
   v := gpu_draw(out[..], 0, a[..], 1, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
-  #assert v == 18 && !gpu_draws(list[3]) && !gpu_draws(list[4]) && gpu_draws(list[1]);
+  #assert v == 24 && !gpu_draws(list[3]) && gpu_draws(list[4]) && gpu_draws(list[1]);
   #assert out[8] == 16 && out[9] == 3 && out[15] == 0 && out[19] == 1;                    // radius, border, clear fill, the edge
   l := 6 * GP_VERTEX_FLOATS;
   #assert out[l + 4] == 10 && out[l + 5] == 49 && out[l + 6] == 30 && out[l + 7] == 2;
   u := 12 * GP_VERTEX_FLOATS;
   #assert out[u + 4] == 19 && out[u + 5] == 60 && out[u + 6] == 2 && out[u + 7] == 20;
+  // the slanted line: its ends and width ride in the bounds, its band reaches one width past them
+  s := 18 * GP_VERTEX_FLOATS;
+  #assert out[s + 2] == GP_SEGMENT && out[s + 4] == 0 && out[s + 5] == 0 && out[s + 6] == 40 && out[s + 7] == 30 && out[s + 8] == 2;
+  #assert out[s] < 0 && out[s + 2 * GP_VERTEX_FLOATS] > 40;
+}
+#test "a polygon is cut into triangles that cover it, concave or not, in pairs of six vertices" {
+  a: [1] Atlas; gpu_test_atlas(a[..]);
+  // an L: six corners, four triangles
+  pts := [12] f32.[0, 0, 30, 0, 30, 10, 10, 10, 10, 30, 0, 30];
+  list: [1] Prim;
+  n := prim_poly(list[..], 0, pts[..], hex(0xffffff, 0.5));
+  out: [3360] f32;
+  v := gpu_draw(out[..], 0, a[..], 2, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN);
+  #assert v == 12;
+  // the triangles' areas add up to the L's (500 logical, 2000 device), so none covers the notch
+  area: f32 = 0;
+  for t: 0..<4 {
+    o := t * 3 * GP_VERTEX_FLOATS; g := GP_VERTEX_FLOATS;
+    area += abs(gp_cross(out[o], out[o + 1], out[o + g], out[o + g + 1], out[o + 2 * g], out[o + 2 * g + 1])) / 2;
+  }
+  #assert abs(area - 2000) < 0.01 && out[2] == GP_QUAD && out[8] == 0 && out[9] == 0 && out[15] == 0.5;
+  // bounds past the points, so the quad fill is solid inside
+  #assert out[4] == -2 && out[5] == -2 && out[6] == 64 && out[7] == 64;
+  // a triangle alone is paired with an empty one
+  tri := [6] f32.[0, 0, 10, 0, 0, 10];
+  n = prim_poly(list[..], 0, tri[..], hex(0xffffff, 1));
+  #assert gpu_draw(out[..], 0, a[..], 1, list[0..<n], 0, 0, -PRIM_OPEN, PRIM_OPEN) == 6 && out[3 * GP_VERTEX_FLOATS] == out[4 * GP_VERTEX_FLOATS];
 }
 #test "a fade in the list sets the bands of what follows it" {
   a: [1] Atlas; gpu_test_atlas(a[..]);

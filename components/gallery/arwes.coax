@@ -1,0 +1,253 @@
+// The ARWES section of openagents.com/components (components/spec.md, GitHub
+// #13153): every ported ARWES visual, labelled and animated by the ported
+// motion, in the Verse skin. The specimens are aethyr/ui/arwes-paint.coax's,
+// the same calls the HUD laboratory's ARWES atlas draws: they paint the
+// display list, and the page draws it with the component shader (no second
+// pass). The controls replay the entrance, exit and enter again, and step the
+// easing, the animator's manager, the seed, the dots, the frames' assembly
+// and the cue model. BLEEPS shows the cue model's state and never plays a
+// sound; the keyed timers show what is pending and how long is left.
+// ARWES is arwes/arwes by Romel Perez, MIT (aethyr/ui/arwes/LICENSE and
+// SOURCES.md); the section credits it with a link to that licence.
+//   coax/bin/coax test components/gallery/page.coax --only arwes
+
+#load "../../aethyr/ui/arwes-paint.coax";
+
+GL_AW_PRIMS :: 8192; GL_AW_PTS :: 16384; GL_AW_TEXT :: 8192; GL_AW_FIT :: 8192;
+GL_AW_CELL_MIN :: 250.0;    // a specimen's cell is at least this wide
+GL_AW_CELL_H :: 196.0;      // and this tall: its label, then the specimen
+GL_AW_LABEL :: 26.0;        // the label's row
+GL_AW_ENTER :: 1.2;         // the entrance and the exit, in seconds (the HUD laboratory's)
+// The hit the section's controls leave: b = which control.
+GL_HIT_AW :: 30; GL_HIT_AW_LICENSE :: 31;
+GL_AW_REPLAY :: 0; GL_AW_TOGGLE :: 1; GL_AW_EASING :: 2; GL_AW_MANAGER :: 3; GL_AW_RESEED :: 4;
+GL_AW_DOTS :: 5; GL_AW_FAMILY :: 6; GL_AW_CUE :: 7; GL_AW_CATEGORY :: 8; GL_AW_LOOP :: 9; GL_AW_STOP :: 10;
+GL_AW_CONTROLS :: 11;
+// ARWES's licence at the commit the ports are pinned to (aethyr/ui/arwes/SOURCES.md).
+GL_AW_LICENSE_URL :: "https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/LICENSE";
+GL_AW_CREDIT :: "ARWES by Romel Perez, MIT license: the ports keep its notice. Read the license";
+GL_AW_DOT_TYPES :: [3]string.["DISCS","SQUARES","CROSSES"];
+
+// The section's state: the specimens' motion, choices, cue model and timers,
+// and the display list they paint.
+GlArwes :: struct {
+  ready: bool;
+  motion: [1] ArMotion; active: bool; started: f32; family: bool;
+  easing: int; seed: int; manager: int; category: int; dots: int;
+  bleep: [1] AxBleep; gain: f32; loop: bool; cues: int; last_cue: f32;
+  timers: [8] AxTimer; done: int;
+  prims: [GL_AW_PRIMS] Prim; n: int; pts: [GL_AW_PTS] f32; text: [GL_AW_TEXT] u8;
+  fit: [GL_AW_FIT] u8; nf: int;         // fitted runs, cut with an ellipsis
+  cells: int;                           // specimens laid out
+  labels: [AW_SPECIMENS] int;           // each specimen's label in the page's over list (-1: none)
+}
+
+// Plays the entrance from the start and sets the keyed timers going again.
+gl_aw_replay :: (r: [] GlArwes, now: f32) {
+  r[0].active = true; r[0].started = now; r[0].motion[0] = ArMotion.{};
+  ar_motion_to(r[0].motion[..], true, GL_AW_ENTER, r[0].easing);
+  ax_stop_all(r[0].timers[..]); r[0].done = 0;
+  for i: 0..<3 { ok := ax_schedule(r[0].timers[..], i, now, 0.5 + cast(f32) i * 0.5, i + 1); }
+}
+gl_aw_init :: (r: [] GlArwes, now: f32) {
+  r[0].ready = true; r[0].easing = AM_OUT_SINE; r[0].seed = 7; r[0].category = 3;
+  r[0].bleep[0] = AxBleep.{loaded = true}; r[0].gain = 0.6;
+  gl_aw_replay(r, now);
+}
+// A frame's step: the motion moves and due timers fire.
+gl_aw_tick :: (r: [] GlArwes, now: f32, dt: f32) {
+  if !r[0].ready { gl_aw_init(r, now); }
+  if dt > 0 { ar_motion_tick(r[0].motion[..], dt); }
+  due := ax_take_due(r[0].timers[..], now);
+  if due > 0 { r[0].done = due; }
+}
+// A control pressed.
+gl_aw_apply :: (r: [] GlArwes, control: int, now: f32) {
+  if control == GL_AW_REPLAY { gl_aw_replay(r, now); }
+  else if control == GL_AW_TOGGLE { r[0].active = !r[0].active; ar_motion_to(r[0].motion[..], r[0].active, GL_AW_ENTER, r[0].easing); }
+  else if control == GL_AW_EASING { r[0].easing = (r[0].easing + 1) % 31; }
+  else if control == GL_AW_MANAGER { r[0].manager = (r[0].manager + 1) % 5; gl_aw_replay(r, now); }
+  else if control == GL_AW_RESEED { r[0].seed += 1; }
+  else if control == GL_AW_DOTS { r[0].dots = (r[0].dots + 1) % 3; }
+  else if control == GL_AW_FAMILY { r[0].family = !r[0].family; gl_aw_replay(r, now); }
+  else if control == GL_AW_CUE {
+    // the cue model takes the cue: the bleep plays in the model, and no sound is made
+    common := AxBleepConfig.{volume = r[0].gain, volume_set = true, loop = r[0].loop, loop_set = true};
+    ax_bleep_update(r[0].bleep[..], common, 0.8, false);
+    effect := ax_bleep_play(r[0].bleep[..], r[0].category, now);
+    r[0].cues += 1; r[0].last_cue = now;
+  }
+  else if control == GL_AW_CATEGORY { r[0].category = (r[0].category + 1) % 5; }
+  else if control == GL_AW_LOOP { r[0].loop = !r[0].loop; }
+  else if control == GL_AW_STOP { stopped := ax_bleep_stop(r[0].bleep[..], r[0].category); }
+}
+// The specimens' view of the section's state.
+gl_aw_spec :: (r: [] GlArwes, now: f32, px: f32, py: f32) -> AwSpec {
+  s := AwSpec.{time = now, started = r[0].started, motion = r[0].motion[0], active = r[0].active, family = r[0].family,
+    easing = r[0].easing, seed = r[0].seed, manager = r[0].manager, category = r[0].category, dots = r[0].dots,
+    cues = r[0].cues, gain = r[0].bleep[0].gain, pointer_x = px, pointer_y = py};
+  for i: 0..<3 { s.pending[i] = ax_pending(r[0].timers[..], i); }
+  return s;
+}
+// A control's label.
+gl_aw_label :: (r: [] GlArwes, control: int) -> string {
+  names := AW_MANAGERS; dots := GL_AW_DOT_TYPES; cats := AW_CATEGORIES;
+  if control == GL_AW_REPLAY { return "Replay"; }
+  if control == GL_AW_TOGGLE { return ifx r[0].active then "Exit" else "Enter"; }
+  if control == GL_AW_EASING { return "Easing"; }
+  if control == GL_AW_MANAGER { return names[r[0].manager]; }
+  if control == GL_AW_RESEED { return "Reseed"; }
+  if control == GL_AW_DOTS { return dots[r[0].dots]; }
+  if control == GL_AW_FAMILY { return ifx r[0].family then "Family" else "Assembly"; }
+  if control == GL_AW_CUE { return "Cue"; }
+  if control == GL_AW_CATEGORY { return cats[r[0].category]; }
+  if control == GL_AW_LOOP { return ifx r[0].loop then "Loop on" else "Loop off"; }
+  return "Stop";
+}
+
+// A number with one decimal into out at n. Returns the new count.
+gl_aw_num :: (out: [] u8, n: int, value: f32) -> int {
+  k := n; v := ifx value < 0 then 0.0f32 else value;
+  tenths := cast(int) floor(v * 10 + 0.5);
+  whole := tenths / 10; digits: [12] u8; m := 0;
+  if whole == 0 { digits[0] = '0'; m = 1; }
+  while whole > 0 && m < 12 { digits[m] = cast(u8) ('0' + whole % 10); whole /= 10; m += 1; }
+  while m > 0 && k < out.count { m -= 1; out[k] = digits[m]; k += 1; }
+  if k + 1 < out.count { out[k] = '.'; out[k + 1] = cast(u8) ('0' + tenths % 10); k += 2; }
+  return k;
+}
+gl_aw_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+// The cue model as it stands, in words.
+gl_aw_cue_state :: (r: [] GlArwes, out: [] u8) -> string {
+  b := r[0].bleep[0]; cats := AW_CATEGORIES;
+  n := gl_aw_put(out, 0, ifx b.playing then "PLAYING" else "IDLE");
+  n = gl_aw_put(out, n, " / GAIN "); n = gl_aw_num(out, n, b.gain);
+  n = gl_aw_put(out, n, ifx b.loop then " / LOOP" else " / ONCE");
+  n = gl_aw_put(out, n, " / CUES "); n = gl_aw_num(out, n, cast(f32) r[0].cues); n -= 2;
+  return cast(string) out[0..<n];
+}
+// Which category the cue model plays, and that it makes no sound.
+gl_aw_cue_category :: (r: [] GlArwes, out: [] u8) -> string {
+  cats := AW_CATEGORIES;
+  n := gl_aw_put(out, 0, cats[r[0].category]);
+  n = gl_aw_put(out, n, " / SILENT, NO AUDIO");
+  return cast(string) out[0..<n];
+}
+// The keyed timers as they stand: each pending one's time left, or done.
+gl_aw_timer_state :: (r: [] GlArwes, now: f32, out: [] u8) -> string {
+  names := [3] string.["FRAME ", "TEXT ", "SIGNAL "];
+  n := 0;
+  for i: 0..<3 {
+    if i > 0 { n = gl_aw_put(out, n, " / "); }
+    n = gl_aw_put(out, n, names[i]);
+    left: f32 = -1;
+    for t: r[0].timers { if t.pending && t.key == i { left = t.due - now; } }
+    if left >= 0 { n = gl_aw_num(out, n, left); n = gl_aw_put(out, n, " S"); } else { n = gl_aw_put(out, n, "DONE"); }
+  }
+  return cast(string) out[0..<n];
+}
+
+// The paint the specimens use: the section's list and pools, the Verse
+// skin's inks and faces.
+gl_aw_paint :: (r: [] GlArwes, s: UiSkin, w: [] AwPaint) {
+  w[0] = AwPaint.{list = r[0].prims[..], pts = r[0].pts[..], text = r[0].text[..], cyan = true};
+  w[0].ink[0] = s.ink; w[0].ink[1] = s.muted; w[0].ink[2] = s.accent; w[0].ink[3] = s.faint;
+  w[0].faces[0] = s.small.face; w[0].lines[0] = s.small.line;
+  w[0].faces[1] = s.tool.face; w[0].lines[1] = s.tool.line;
+  w[0].faces[2] = s.body.face; w[0].lines[2] = s.body.line;
+}
+// Each text run fitted to its width with the page's fonts, cut with an
+// ellipsis where it is too long, and a centred one centred.
+gl_aw_fit :: (r: [] GlArwes, m: TextMeasure) {
+  r[0].nf = 0;
+  for k: 0..<r[0].n {
+    p := r[0].prims[k];
+    if p.kind != PRIM_TEXT { continue; }
+    tw := measure_width(m, p.id, p.text);
+    text := p.text;
+    if tw > p.d {
+      dots := measure_width(m, p.id, "...");
+      stop := 0; i := 0;
+      while i < text.count {
+        j := i + 1; while j < text.count && (text[j] & 0xC0) == 0x80 { j += 1; }
+        if measure_width(m, p.id, cast(string) text[0..<j]) + dots > p.d { break; }
+        stop = j; i = j;
+      }
+      from := r[0].nf;
+      if from + stop + 3 <= r[0].fit.count {
+        for c: 0..<stop { r[0].fit[r[0].nf] = text[c]; r[0].nf += 1; }
+        for c: "..." { r[0].fit[r[0].nf] = c; r[0].nf += 1; }
+        text = cast(string) r[0].fit[from..<r[0].nf];
+        tw = measure_width(m, p.id, text);
+      }
+    }
+    r[0].prims[k].text = text; r[0].prims[k].w = tw;
+    if p.on { r[0].prims[k].x = p.a - tw / 2; }
+  }
+}
+
+// The section at (x, y), w wide, on the page's sheet; its specimens on its
+// own list. now: the page's clock; px, py: the pointer in page coordinates.
+// Returns its height.
+gl_arwes :: (r: [] GlArwes, sh: [] Sheet, m: TextMeasure, x: f32, y: f32, w: f32, now: f32, px: f32, py: f32, hot_kind: int, hot_b: int) -> f32 {
+  s := verse_skin();
+  if !r[0].ready { gl_aw_init(r, now); }
+  ground := sheet_box(sh, x, y, w, 0, 12, 1, s.canvas, s.hairline);
+  ix := x + 20; iw := w - 40; h: f32 = 20;
+  tw := sheet_text(sh, m, -1, ix, y + h, s.title.line, s.title.face, s.ink, "ARWES");
+  h += s.title.line;
+  lead := "Every ARWES port, drawn by the paint layer in the Verse skin: frames, backgrounds, the illuminator, text, motion, styles, theme, bleeps and timers.";
+  lines: [8] TextLine; no_runs: [1] MdRun;
+  nl := text_wrap(m, uiskin_faces(s), lead, no_runs[0..<0], iw, lines[..]);
+  for k: 0..<nl { lw := sheet_text(sh, m, -1, ix, y + h, s.body.line, s.body.face, s.muted, cast(string) lead[lines[k].from..<lines[k].to]); h += s.body.line; }
+  // the credit, a link to the licence
+  cw := sheet_text(sh, m, -1, ix, y + h, s.small.line, s.small.face, ifx hot_kind == GL_HIT_AW_LICENSE then s.ink else s.accent, GL_AW_CREDIT);
+  sheet_hit(sh, GL_HIT_AW_LICENSE, 0, 0, ix, y + h, cw, s.small.line);
+  h += s.small.line + s.space * 2;
+  // the controls, wrapping onto as many rows as they need
+  pen := ix;
+  for c: 0..<GL_AW_CONTROLS {
+    label := gl_aw_label(r, c);
+    bw := button_width(m, s, label);
+    if pen > ix && pen + bw > ix + iw { pen = ix; h += s.control_h + s.space; }
+    bw = button(sh, m, s, pen, y + h, label, ifx hot_kind == GL_HIT_AW && hot_b == c then UISKIN_HOVER else ifx c == GL_AW_REPLAY then UISKIN_PRIMARY else UISKIN_REST, GL_HIT_AW, 0);
+    sh[0].hits[sh[0].nh - 1].b = c;
+    pen += bw + s.space;
+  }
+  h += s.control_h + s.space * 3;
+  // the specimens, in a grid
+  cols := cast(int) floor((iw + s.space * 2) / (GL_AW_CELL_MIN + s.space * 2));
+  if cols < 1 { cols = 1; }
+  gap := s.space * 2;
+  cell_w := floor((iw - gap * cast(f32) (cols - 1)) / cast(f32) cols);
+  pw: [1] AwPaint; gl_aw_paint(r, s, pw[..]);
+  spec := gl_aw_spec(r, now, px, py);
+  buf: [256] u8;
+  for k: 0..<AW_SPECIMENS {
+    cx := ix + cast(f32) (k % cols) * (cell_w + gap);
+    cy := y + h + cast(f32) (k / cols) * (GL_AW_CELL_H + gap);
+    sh[0].nu = uiskin_panel(sh[0].under, sh[0].nu, s, cx, cy, cell_w, GL_AW_CELL_H);
+    names := AW_NAMES;
+    r[0].labels[k] = sh[0].no;
+    lw := sheet_text(sh, m, -1, cx + 10, cy + (GL_AW_LABEL - s.small.line) / 2 + 2, s.small.line, s.small.face, s.ink, names[k]);
+    sheet_rule(sh, cx + 10, cy + GL_AW_LABEL + 2, cell_w - 20, s.border, s.hairline);
+    box := aw_box(cx + 12, cy + GL_AW_LABEL + 12, cell_w - 24, GL_AW_CELL_H - GL_AW_LABEL - 22);
+    // the cue model and the timers say where they stand, under their specimens
+    if k == 23 || k == 24 {
+      box.height -= s.small.line * 2 + 4;
+      state := ifx k == 23 then gl_aw_cue_state(r, buf[..]) else gl_aw_timer_state(r, now, buf[..]);
+      st := sheet_text(sh, m, -1, cx + 10, cy + GL_AW_CELL_H - s.small.line * 2 - 6, s.small.line, s.small.face, s.muted, sheet_pool(sh, state));
+      if k == 23 { sc := sheet_text(sh, m, -1, cx + 10, cy + GL_AW_CELL_H - s.small.line - 6, s.small.line, s.small.face, s.muted, sheet_pool(sh, gl_aw_cue_category(r, buf[..]))); }
+    }
+    aw_specimen(pw[..], k, box, spec);
+  }
+  r[0].n = pw[0].n; r[0].cells = AW_SPECIMENS;
+  gl_aw_fit(r, m);
+  rows := (AW_SPECIMENS + cols - 1) / cols;
+  h += cast(f32) rows * (GL_AW_CELL_H + gap) - gap + 24;
+  if ground >= 0 { sh[0].under[ground].h = h; }
+  return h;
+}
+
+// A press on one of the section's hits; a link sets the page's outbox.
+gl_aw_press :: (r: [] GlArwes, kind: int, control: int, now: f32) { if kind == GL_HIT_AW { gl_aw_apply(r, control, now); } }
