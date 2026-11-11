@@ -448,3 +448,33 @@ xr_test_fly :: (r: [] Range, seconds: f32) {
   #assert rg_sum(r[0].score[0], -1, -1).shots == 0 && r[0].score[0].last_points == -1;
   w := zone_walk(s); #assert w.put && w.x == RG_AT_X + RG_START_X && w.z == RG_AT_Z + RG_START_Z;
 }
+// The range's routes (the range's frame: x across, z from the line, downrange negative). The horse:
+// from where it waits, down between the 15 m and the 30 m lanes, past the 50 m butt, out beyond the
+// 70 m one and back up the east side. The dragon on foot: over the 30 m lane's distance post (a
+// 1.6 m stick: nothing to a dragon) and on downrange; then on the wing over the far butts and down.
+XR_ROUTE_HORSE :: [16] f32.[-4, -15,  -4, -35,  4, -47,  4, -58,  10, -70,  12, -80,  22, -80,  22, -35];
+XR_ROUTE_DRAGON :: [8] f32.[5, -15,  -3.6, -24,  -3.6, -40,  4, -52];
+XR_ROUTE_WING :: [6] f32.[12, -75,  0, -100,  -20, -60];
+xr_test_route :: (r: [] Range, k: int, pts: [] f32, fly: bool, now: f32) -> cc.XhWalk {
+  cr := r[0].z[0].creator[..]; w: [16] f32; n := ifx pts.count < 16 then pts.count else 16;
+  for i: 0..<n / 2 { w[i * 2] = f32(RG_AT_X) + pts[i * 2]; w[i * 2 + 1] = f32(RG_AT_Z) + pts[i * 2 + 1]; }
+  cc.xh_test_seat(cr, k);
+  return cc.xh_route(cr, w[0..<n], fly, now);
+}
+#test "archery range: route walk, the horse rides down the lanes and back and the dragon walks over a post, flies the butts and lands, with no snag" #steps 4000000000 {
+  r: [1] Range; xr_test_lab(r[..]); cr := r[0].z[0].creator[..];
+  for i: 0..<egm.EG_HORSE_FRAMES { cr[0].mounts[0].count[i] = 3; } cr[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { cr[0].mounts[0].dcount[i] = 3; } cr[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  xr_frame(r[..], 1.0 / 60); #assert cr[0].mounts[0].n == 2 && cr[0].props[0].n == RG_BOXES;
+  a := XR_ROUTE_HORSE; h := xr_test_route(r[..], 0, a[..], false, 0);
+  #assert h.reached == a.count / 2 && h.blocked == 0;
+  b := XR_ROUTE_DRAGON; d := xr_test_route(r[..], 1, b[..], false, 200);
+  #assert d.reached == b.count / 2 && d.blocked == 0 && d.over > 0;   // the post it walked over
+  c := XR_ROUTE_WING; f := xr_test_route(r[..], 1, c[..], true, 400);
+  #assert f.reached == c.count / 2 && f.blocked == 0 && f.landed;
+  // a butt is still a butt: the horse ridden straight at the 30 m one stops at its straw
+  m := cr[0].mounts[0].mounts[0..<1]; face := r[0].z[0].xc[0].ar[0].targets[0].face[2];
+  m[0].x = face.x; m[0].z = face.z + 8; m[0].face = 3.1415927; m[0].speed = 0;
+  g := [2] f32.[face.x - f32(RG_AT_X), face.z - f32(RG_AT_Z) - 6]; s := xr_test_route(r[..], 0, g[..], false, 600);
+  #assert s.reached == 0 && s.blocked > 0 && m[0].z > face.z;
+}

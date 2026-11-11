@@ -40,13 +40,20 @@ xh_stand :: (s: []Creator, hx: f32, hz: f32, hface: f32, dx: f32, dz: f32, dface
 }
 // The zone's dragon, -1 before it is placed.
 xh_dragon :: (s: []Creator) -> int { for k: 0..<s[0].mounts[0].n { if s[0].mounts[0].kind[k] == egm.EG_DRAGON { return k; } } return -1; }
-// The boxes the walker collides with round (x, z), for the horse (verse/experimental-village.coax
-// ev_near: the castle, the village, the props, the dungeon); the count. The open field has none of
-// those: only the zone's own standing things (aethyr/world/props.coax), as every zone has.
-xh_walls :: (s: []Creator, x: f32, z: f32, near: []village.EvNear) -> int {
-  if s[0].field { near[0].wall_n = 0; near[0].floor_n = 0; } else { village.ev_near(near, x, z); }
-  near[0].wall_n = wprops.props_near(s[0].props[0], x, z, 12, meadow.exp_height(x, z), near[0].walls[..], near[0].wall_n);
+// The boxes the walker collides with within `reach` of (x, z), for a mount (verse/experimental-village.coax
+// ev_near_radius: the castle, the village, the props, the dungeon); the count. The open field has none
+// of those: only the zone's own standing things (aethyr/world/props.coax), as every zone has. The
+// reach is the mount's own (xh_reach), so a dragon's nose meets a wall its middle is 6 m from.
+xh_walls :: (s: []Creator, x: f32, z: f32, reach: f32, near: []village.EvNear) -> int {
+  if s[0].field { near[0].wall_n = 0; near[0].floor_n = 0; } else { village.ev_near_radius(near, x, z, reach, true); }
+  near[0].wall_n = wprops.props_near(s[0].props[0], x, z, reach + 8, meadow.exp_height(x, z), near[0].walls[..], near[0].wall_n);
   return near[0].wall_n;
+}
+// How far round mount k its boxes are gathered: the engine's reach for its body (mount.mount_reach),
+// never less than the walker's 4 m.
+xh_reach :: (s: []Creator, k: int) -> f32 {
+  r := mount.mount_reach(egm.eg_tune(s[0].mounts[0], k));
+  return ifx r < 4 then 4.0f32 else r;
 }
 // Your pelvis's height standing, for the body you wear (fivelab-bodies.coax BD_RIDE_HIP).
 xh_hip :: (s:[]Creator) -> f32 { return figs.BD_RIDE_HIP[ifx s[0].female then 1 else 0]; }
@@ -54,8 +61,9 @@ xh_hip :: (s:[]Creator) -> f32 { return figs.BD_RIDE_HIP[ifx s[0].female then 1 
 xh_press :: (s: []Creator, now: f32, b: DeedBearing) -> int {
   if !s[0].experimental { return egm.EG_PRESS_NONE; }
   hx := s[0].player_x; hz := s[0].player_z;
-  if s[0].mounts[0].riding >= 0 { h := s[0].mounts[0].mounts[s[0].mounts[0].riding]; hx = h.x; hz = h.z; }
-  near: [1]village.EvNear; n := xh_walls(s, hx, hz, near[..]);
+  reach: f32 = 4;
+  if s[0].mounts[0].riding >= 0 { h := s[0].mounts[0].mounts[s[0].mounts[0].riding]; hx = h.x; hz = h.z; reach = xh_reach(s, s[0].mounts[0].riding); }
+  near: [1]village.EvNear; n := xh_walls(s, hx, hz, reach, near[..]);
   return egm.eg_mount_press(s[0].mounts[..], 0, s[0].player_x, s[0].player_z, now, b, near[0].walls[..], n);
 }
 // A frame of riding (dt seconds): the horse or dragon steps among the zone's boxes over the ground under
@@ -65,7 +73,7 @@ xh_ride :: (s: []Creator, i: mount.MountIn, dt: f32, now: f32) -> egm.EgRider {
   m := s[0].mounts[..];
   if m[0].n == 0 { return egm.EgRider.{}; }
   k := ifx m[0].riding >= 0 then m[0].riding else 0;
-  h := m[0].mounts[k]; near: [1]village.EvNear; n := xh_walls(s, h.x, h.z, near[..]);
+  h := m[0].mounts[k]; near: [1]village.EvNear; n := xh_walls(s, h.x, h.z, xh_reach(s, k), near[..]);
   _ := egm.eg_mounts_fly(m, i, dt, now, meadow.exp_height(h.x, h.z), near[0].walls[..], n);
   if !s[0].field && !mount.mount_aloft(m[0].mounts[k]) && dungeon.dg_inside(m[0].mounts[k].x, m[0].mounts[k].z, 1.5) { m[0].mounts[k].x = h.x; m[0].mounts[k].z = h.z; m[0].mounts[k].speed = 0; }
   return xh_rider(s, now);
@@ -158,8 +166,75 @@ xh_records :: (s:[]Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -
   return n;
 }
 
+// A route walk for the mount you ride (the owner's rule: no invisible blockers, and nothing small
+// trips a mount): a rider who only steers at the next point of `pts` (x, z pairs, a third of a
+// second ahead of nothing: no going round) rides the whole route through xh_ride, as a player's keys
+// do. reached: the points it got to; blocked: the steps a box stopped it; over: the steps its body was
+// over ground clutter a box-for-box rule would have stopped it at (a top over 0.3 m); fly: on the
+// dragon it takes off and holds 12 m or more over the land, and after the last point lands.
+XhWalk :: struct { reached: int; blocked: int; over: int; steps: int; landed: bool; }
+xh_route :: (s: []Creator, pts: [] f32, fly: bool, now0: f32) -> XhWalk {
+  w: XhWalk; m := s[0].mounts[..]; k := m[0].riding; if k < 0 { return w; }
+  dt: f32 = 1.0 / 30; now := now0; near: [1]village.EvNear;
+  t := egm.eg_tune(m[0], k); bare := t; bare.low = 0.3; bare.brush_high = 0;
+  for p: 0..<pts.count / 2 {
+    tx := pts[p * 2]; tz := pts[p * 2 + 1]; left := 3000;
+    while left > 0 {
+      left -= 1; h := m[0].mounts[k]; dx := tx - h.x; dz := tz - h.z; d := sqrt(dx * dx + dz * dz);
+      if d < 2.0 { w.reached += 1; break; }
+      err := figs.wrap_angle(figs.atan2(dx, dz) - h.face);
+      in := mount.MountIn.{turn = mount.mt_clamp(-err * 3, -1, 1), forward = ifx abs(err) < 0.5 then 1.0f32 else 0.35f32, gallop = !fly && abs(err) < 0.2 && d > 10};
+      if fly { up := h.wing.y - meadow.exp_height(h.x, h.z) < 12; in.jump = up; in.climb = up; }
+      now += dt; _ := xh_ride(s, in, dt, now); w.steps += 1;
+      h = m[0].mounts[k]; if h.blocked { w.blocked += 1; }
+      n := xh_walls(s, h.x, h.z, xh_reach(s, k), near[..]);
+      if !mount.mount_aloft(h) && !mount.mount_body_clear(bare, h.x, h.z, h.face, near[0].walls[..], n) { w.over += 1; }
+    }
+    if left == 0 { return w; }
+  }
+  if fly {
+    left := 3000;
+    while left > 0 && mount.mount_aloft(m[0].mounts[k]) { left -= 1; now += dt; _ := xh_ride(s, mount.MountIn.{land = true}, dt, now); w.steps += 1; if m[0].mounts[k].blocked { w.blocked += 1; } }
+    w.landed = !mount.mount_aloft(m[0].mounts[k]);
+  }
+  return w;
+}
+// For a check: you in the saddle of mount k (0 the horse, 1 the dragon), whoever rode another off it.
+xh_test_seat :: (s: []Creator, k: int) {
+  for i: 0..<s[0].mounts[0].n { s[0].mounts[0].mounts[i].state = mount.MOUNT_FREE; s[0].mounts[0].mounts[i].rider = -1; s[0].mounts[0].mounts[i].speed = 0; }
+  s[0].mounts[0].riding = k; s[0].mounts[0].mounts[k].state = mount.MOUNT_RIDDEN; s[0].mounts[0].mounts[k].rider = 0;
+}
+// For a check: a zone with its horse and dragon standing and you in the saddle of mount k.
+xh_test_astride :: (s: []Creator, k: int) {
+  s[0].experimental = true;
+  for i: 0..<egm.EG_HORSE_FRAMES { s[0].mounts[0].count[i] = 3; } s[0].mounts[0].frames = egm.EG_HORSE_FRAMES;
+  for i: 0..<egm.EG_DRAGON_FRAMES { s[0].mounts[0].dcount[i] = 3; } s[0].mounts[0].dframes = egm.EG_DRAGON_FRAMES;
+  xh_place(s); xh_place(s); xh_test_seat(s, k);
+}
+// Experimental's routes (world metres). The horse: from where it waits, round the glade by the spawn
+// and its stones, north past the market's fence, east across the meadow, up the lane into the
+// village, along its street between the cottages' rows and back along the next. The dragon on foot:
+// a loop of the glade and the east meadow through the clutter there. On the wing: over the village.
+XH_ROUTE_HORSE :: [28] f32.[16.5, 1,  -1.5, 0.5,  0, -9,  -5, 12,  -9.5, 19.5,  -3, 30.5,  12, 30,  30, 22,  46, 22,  44.5, 38,  44, 47.5,  83, 48,  83, 58,  16, 58];
+XH_ROUTE_DRAGON :: [20] f32.[4, 16,  -8, 26,  6, 36,  20, 38,  28, 22,  40, 17,  48, 5,  25, 3,  16, 3,  17, 18];
+XH_ROUTE_WING :: [8] f32.[30, 10,  63, 53,  80, 60,  92, 32];
+#test "route walk: the horse rides the glade and the village's streets and no ground clutter stops it (mounts)" #steps 4000000000 {
+  s: [1]Creator; xh_test_astride(s[..], 0); r := XH_ROUTE_HORSE;
+  w := xh_route(s[..], r[..], false, 0);
+  #assert w.reached == r.count / 2 && w.blocked == 0;
+  #assert w.over > 60;   // it rode over stones and stumps a 0.3 m rule stopped it at
+}
+#test "route walk: nothing on the ground trips the dragon across the glade and the meadow, and it flies over the village and lands (mounts)" #steps 4000000000 {
+  s: [1]Creator; xh_test_astride(s[..], 1); r := XH_ROUTE_DRAGON;
+  w := xh_route(s[..], r[..], false, 0);
+  #assert w.reached == r.count / 2 && w.blocked == 0 && w.over > 150;
+  // on the wing: over the market, the cottages and their roofs, down in the meadow beyond them
+  f := XH_ROUTE_WING; a := xh_route(s[..], f[..], true, 100);
+  #assert a.reached == f.count / 2 && a.blocked == 0 && a.landed;
+  h := s[0].mounts[0].mounts[1]; #assert abs(h.wing.y - meadow.exp_height(h.x, h.z)) < 0.01;
+}
 #test "the white horse stands clear of every box, its rider room to step down, outside the spawn (mounts)" {
-  z0: [1]Creator; near: [1]village.EvNear; n := xh_walls(z0[..], f32(XH_HORSE_X), f32(XH_HORSE_Z), near[..]);
+  z0: [1]Creator; near: [1]village.EvNear; n := xh_walls(z0[..], f32(XH_HORSE_X), f32(XH_HORSE_Z), 4, near[..]);
   t := egm.EG_RIDING_HORSE;
   #assert mount.mount_body_clear(t, f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE), near[0].walls[..], n);
   h := mount.mount_place(f32(XH_HORSE_X), f32(XH_HORSE_Z), f32(XH_HORSE_FACE));
@@ -191,7 +266,7 @@ xh_records :: (s:[]Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -
   #assert s[0].mounts[0].mounts[0].blocked && s[0].mounts[0].mounts[0].z > 44;
 }
 #test "the red dragon stands in the open near spawn, with room for its wings and to step down (mounts)" {
-  z0: [1]Creator; near: [1]village.EvNear; n := xh_walls(z0[..], f32(XH_DRAGON_X), f32(XH_DRAGON_Z), near[..]);
+  z0: [1]Creator; near: [1]village.EvNear; n := xh_walls(z0[..], f32(XH_DRAGON_X), f32(XH_DRAGON_Z), 8, near[..]);
   t := egm.EG_RED_DRAGON; wide := t; wide.radius = 6; wide.high = 40;
   #assert mount.mount_body_clear(t, f32(XH_DRAGON_X), f32(XH_DRAGON_Z), f32(XH_DRAGON_FACE), near[0].walls[..], n);
   #assert mount.mount_clear(wide, f32(XH_DRAGON_X), f32(XH_DRAGON_Z), 6, near[0].walls[..], n);
@@ -265,7 +340,7 @@ xh_records :: (s:[]Creator, b: []figs.Bodies, out: []f32, n0: int, limit: int) -
   xh_stand(s[..], -6, 43, 1.5, 10, 50, 3);
   #assert s[0].mounts[0].n == 2 && s[0].mounts[0].mounts[0].x == -6 && s[0].mounts[0].mounts[0].z == 43 && s[0].mounts[0].mounts[xh_dragon(s[..])].z == 50;
   // the village's houses are not on the field: no box round one, and the zone's own box is the only wall
-  near: [1]village.EvNear; #assert xh_walls(s[..], -18, -23, near[..]) == 0;
+  near: [1]village.EvNear; #assert xh_walls(s[..], -18, -23, 4, near[..]) == 0;
   g := meadow.exp_height(0, 5); b := [6] f32.[-1, g, 4, 1, g + 2, 5]; _ := wprops.props_set(s[0].props[..], b[..], 1);
-  #assert xh_walls(s[..], 0, 3, near[..]) == 1 && near[0].walls[1] < 0.3 && near[0].walls[4] > 1.5;
+  #assert xh_walls(s[..], 0, 3, 4, near[..]) == 1 && near[0].walls[1] < 0.3 && near[0].walls[4] > 1.5;
 }

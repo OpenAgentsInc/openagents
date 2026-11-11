@@ -94,9 +94,12 @@ EG_HORSE :: 0; EG_DRAGON :: 1;
 // The seat a rider's legs take on each kind (fivelab-bodies.coax BD_SEAT_*: the same order).
 EG_SEAT_OF :: [2] int.[0, 1];
 // SRD 5.2.1, Adult Red Dragon: Huge, Speed 40 ft, Fly 80 ft. The model is 14 m from snout to tail; its
-// body's capsule, the reach to mount from its flank, and the step off clear of a folded wing.
+// body's capsule, the reach to mount from its flank, and the step off clear of a folded wing. Nothing
+// on the ground trips it (aethyr/action/mount.coax mount_counts): it steps over what is under 1.5 m
+// and walks through anything no taller than 2 m and no wider than its own radius; a house, a wall
+// or a tree still stops it.
 EG_RED_DRAGON :: MountTune.{walk = 10.0, gallop = 10.0, back = 2.0, accel = 8.0, turn_walk = 1.6, turn_gallop = 1.6, turn_still = 1.2,
-  radius = 1.6, half_length = 4.5, low = 0.3, high = 5.0, reach = 4.0, side = 3.4, rider_radius = 0.3,
+  radius = 1.6, half_length = 4.5, low = 1.5, high = 5.0, brush_high = 2.0, brush_wide = 1.6, reach = 4.0, side = 3.4, rider_radius = 0.3,
   mount_s = 0.9, dismount_s = 0.8, stride_walk = 6.0, idle_s = 4.0, gallop_from = 100.0};
 EG_DRAGON_FRAMES :: DR_TOTAL;    // its baked frames in the pack
 EG_DRAGON_PACE :: 7.5;          // m/s, the walker's run for a 30-ft Speed

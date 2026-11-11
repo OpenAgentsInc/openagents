@@ -11,6 +11,12 @@
 //   riding collision: its body is a capsule along its heading (radius, half_length) and never
 //   enters a box of the world's (the same boxes the walker collides with, six floats each: x0 y0 z0
 //   x1 y1 z1, y from the ground); blocked, it slides along a wall, else stops;
+//   ground clutter (mount_counts): what a mount meets is scaled to it. It steps over a box whose top
+//   is under its step (`low`: a horse's 0.6 m, a dragon's far more) and rides through a small one
+//   (no taller than brush_high and no wider than brush_wide: a tuft, a stone, a stump). Everything
+//   else stops it, so a wall, a tree or a house is as solid as it looks. A zone gathers the boxes
+//   mount_reach round it, so a long body meets a wall at its nose, not at its middle; a body that is
+//   somehow in a box anyway is never held by it (mount_stopped): only a box it is clear of stops it;
 //   its gait (mount_clip, mount_frame): idle, walk or gallop by speed, played by the ground covered
 //   so the hooves keep pace; the trot is the walk played faster, the canter the gallop slower;
 //   the seat (mount_seat): a model-space saddle point (a game's per-frame table) placed in the world;
@@ -32,7 +38,8 @@ MountTune :: struct {
   walk: f32 = 4.0; gallop: f32 = 14.0; back: f32 = 1.5;
   accel: f32 = 6.0; brake: f32 = 10.0;
   turn_walk: f32 = 2.4; turn_gallop: f32 = 1.4; turn_still: f32 = 1.5;
-  radius: f32 = 0.42; half_length: f32 = 0.95; low: f32 = 0.3; high: f32 = 1.8;   // its body, and the heights a box must reach into to stop it
+  radius: f32 = 0.42; half_length: f32 = 0.95; low: f32 = 0.6; high: f32 = 1.8;   // its body, and the heights a box must reach into to stop it: it steps over a top under `low`
+  brush_high: f32 = 1.2; brush_wide: f32 = 0.85;                                   // ground clutter it rides through: a box no taller and no wider (its longer side) than these
   reach: f32 = 2.5; side: f32 = 1.0; rider_radius: f32 = 0.3;                       // to mount from; where you step off
   mount_s: f32 = 0.6; dismount_s: f32 = 0.5;
   stride_walk: f32 = 2.6; stride_gallop: f32 = 7.0; idle_s: f32 = 3.3;             // metres a walk's and a gallop's cycle covers; an idle cycle's seconds
@@ -85,26 +92,58 @@ mount_begin :: (m: [] Mount, t: MountTune, who: int, x: f32, z: f32, now: f32) -
   m[0].state = MOUNT_MOUNTING; m[0].since = now; m[0].rider = who; m[0].from_x = x; m[0].from_z = z; m[0].speed = 0;
   return true;
 }
-// Whether a circle of radius r at (x, z) is clear of the boxes.
+// How far round a mount a zone gathers its boxes: past its nose and its tail, and a metre more.
+mount_reach :: (t: MountTune) -> f32 { return t.half_length + t.radius + 1.0; }
+// Whether the box at walls[o] is something this mount meets with its feet `lift` over the ground.
+// Not a box under its step or over its head, and not ground clutter: one small enough to ride
+// through, whatever its height in the air (a flier never tests the clutter under it).
+mount_counts :: (t: MountTune, lift: f32, walls: [] f32, o: int) -> bool {
+  top := walls[o + 4];
+  if top < t.low + lift || walls[o + 1] > t.high + lift { return false; }
+  wx := walls[o + 3] - walls[o]; wz := walls[o + 5] - walls[o + 2];
+  wide := ifx wx > wz then wx else wz;
+  return !(top <= t.brush_high && wide <= t.brush_wide);
+}
+// Whether a circle of radius r at (x, z) reaches into the box at walls[o].
+mount_touch :: (x: f32, z: f32, r: f32, walls: [] f32, o: int) -> bool {
+  dx := x - mt_clamp(x, walls[o], walls[o + 3]); dz := z - mt_clamp(z, walls[o + 2], walls[o + 5]);
+  return dx * dx + dz * dz < r * r;
+}
+// Whether a circle of radius r at (x, z) is clear of the boxes a mount on the ground meets.
 mount_clear :: (t: MountTune, x: f32, z: f32, r: f32, walls: [] f32, n: int) -> bool {
-  for i: 0..<n {
-    o := i * 6; if o + 6 > walls.count { break; }
-    if walls[o + 4] < t.low || walls[o + 1] > t.high { continue; }
-    cx := mt_clamp(x, walls[o], walls[o + 3]); cz := mt_clamp(z, walls[o + 2], walls[o + 5]);
-    dx := x - cx; dz := z - cz;
-    if dx * dx + dz * dz < r * r { return false; }
-  }
+  for i: 0..<n { o := i * 6; if o + 6 > walls.count { break; } if mount_counts(t, 0, walls, o) && mount_touch(x, z, r, walls, o) { return false; } }
   return true;
 }
-// Whether the mount's body at (x, z) facing `face` is clear: its capsule, sampled along its length.
-mount_body_clear :: (t: MountTune, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool {
+// Whether the mount's body at (x, z) facing `face` reaches into the box at walls[o]: its capsule,
+// sampled along its length.
+mount_body_touch :: (t: MountTune, x: f32, z: f32, face: f32, walls: [] f32, o: int) -> bool {
   fx := sin(face); fz := cos(face);
   for k: 0..<5 {
     a := (f32(k) / 4 * 2 - 1) * t.half_length;
-    if !mount_clear(t, x + fx * a, z + fz * a, t.radius, walls, n) { return false; }
+    if mount_touch(x + fx * a, z + fz * a, t.radius, walls, o) { return true; }
   }
+  return false;
+}
+// Whether the mount's body at (x, z) facing `face`, its feet `lift` up, is clear of the boxes it meets.
+mount_body_clear_at :: (t: MountTune, lift: f32, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool {
+  for i: 0..<n { o := i * 6; if o + 6 > walls.count { break; } if mount_counts(t, lift, walls, o) && mount_body_touch(t, x, z, face, walls, o) { return false; } }
   return true;
 }
+// The same on the ground.
+mount_body_clear :: (t: MountTune, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool { return mount_body_clear_at(t, 0, x, z, face, walls, n); }
+// Whether a box stops the body going from (x0, z0, face0) to (x, z, face): one it would reach into
+// and is clear of now. A box it is already in (it stood there as the box came, or the ground fell
+// away under it) never holds it: it walks out the way it likes, and the box stops it again after.
+mount_stopped :: (t: MountTune, lift: f32, x0: f32, z0: f32, face0: f32, x: f32, z: f32, face: f32, walls: [] f32, n: int) -> bool {
+  for i: 0..<n {
+    o := i * 6; if o + 6 > walls.count { break; }
+    if !mount_counts(t, lift, walls, o) { continue; }
+    if mount_body_touch(t, x, z, face, walls, o) && !mount_body_touch(t, x0, z0, face0, walls, o) { return true; }
+  }
+  return false;
+}
+// The rider on foot beside it: a walker's step and height, and no clutter to ride through.
+mount_rider_tune :: (t: MountTune) -> MountTune { r := t; r.low = 0.5; r.high = 1.8; r.brush_high = 0; r.brush_wide = 0; return r; }
 // Where the rider steps down: the mount's left side (facing +Z, its left is +X), else its right.
 // ok false: neither side is clear, and they stay on.
 MountStep :: struct { ok: bool; x: f32; z: f32; }
@@ -113,7 +152,7 @@ mount_step_off :: (m: Mount, t: MountTune, walls: [] f32, n: int) -> MountStep {
   for side: 0..<2 {
     k := ifx side == 0 then 1.0f32 else -1.0f32;
     x := m.x + lx * t.side * k; z := m.z + lz * t.side * k;
-    if mount_clear(t, x, z, t.rider_radius, walls, n) { return MountStep.{ok = true, x = x, z = z}; }
+    if mount_clear(mount_rider_tune(t), x, z, t.rider_radius, walls, n) { return MountStep.{ok = true, x = x, z = z}; }
   }
   return MountStep.{};
 }
@@ -165,8 +204,7 @@ mount_step :: (m: [] Mount, t0: MountTune, i: MountIn, dt: f32, walls: [] f32, n
   m[0].jump_held = i.jump;
   air := mount_jumping(m[0]); hop0 := m[0].hop;
   if air { m[0].hop += m[0].hop_v * d; m[0].hop_v -= t0.gravity * d; if m[0].hop <= 0 { m[0].hop = 0; m[0].hop_v = 0; m[0].landed = true; } }
-  flat := t0;   // the tune on the ground
-  t := t0; t.low += m[0].hop; t.high += m[0].hop;   // a box counts from the feet up
+  t := t0; lift := m[0].hop;   // a box counts from the feet up
   if !air {
     want := mount_want(t, i);
     rate := ifx mt_abs(want) > mt_abs(m[0].speed) && want * m[0].speed >= 0 then t.accel else t.brake;
@@ -176,20 +214,21 @@ mount_step :: (m: [] Mount, t0: MountTune, i: MountIn, dt: f32, walls: [] f32, n
   turn := mt_clamp(i.turn, -1, 1) * mount_turn_rate(t, m[0].speed) * d * (ifx air then 0.3f32 else 1.0f32);
   if m[0].speed < 0 { turn = -turn; }   // backing up, the hindquarters swing the other way
   face := m[0].face - turn;   // a right turn (facing +Z, toward -X) lowers the heading
-  if mount_body_clear(t, m[0].x, m[0].z, face, walls, n) || !mount_body_clear(t, m[0].x, m[0].z, m[0].face, walls, n) { m[0].face = face; }
+  x0 := m[0].x; z0 := m[0].z; f0 := m[0].face;
+  if !mount_stopped(t, lift, x0, z0, f0, x0, z0, face, walls, n) { m[0].face = face; }
   dx := sin(m[0].face) * m[0].speed * d; dz := cos(m[0].face) * m[0].speed * d;
   m[0].blocked = false;
-  if mount_body_clear(t, m[0].x + dx, m[0].z + dz, m[0].face, walls, n) { m[0].x += dx; m[0].z += dz; }
+  if !mount_stopped(t, lift, x0, z0, f0, x0 + dx, z0 + dz, m[0].face, walls, n) { m[0].x += dx; m[0].z += dz; }
   else {
     m[0].blocked = true;
-    if mount_body_clear(t, m[0].x + dx, m[0].z, m[0].face, walls, n) { m[0].x += dx; }
-    else if mount_body_clear(t, m[0].x, m[0].z + dz, m[0].face, walls, n) { m[0].z += dz; }
+    if !mount_stopped(t, lift, x0, z0, f0, x0 + dx, z0, m[0].face, walls, n) { m[0].x += dx; }
+    else if !mount_stopped(t, lift, x0, z0, f0, x0, z0 + dz, m[0].face, walls, n) { m[0].z += dz; }
     // a wall it meets head on stops it: what's left of the step is lost, and its speed with it
     m[0].speed *= 0.5;
   }
   // coming down over a box it cleared: it holds its height until it is past
-  if air && m[0].hop < hop0 && !mount_body_clear(t, m[0].x, m[0].z, m[0].face, walls, n) { m[0].hop = hop0; m[0].hop_v = 0; m[0].landed = false; }
-  mount_gait(m, flat, ifx mount_jumping(m[0]) then d * 0.35f32 else d);   // in the air its legs reach through a slow stride
+  if air && m[0].hop < hop0 && mount_body_clear_at(t, hop0, m[0].x, m[0].z, m[0].face, walls, n) && !mount_body_clear_at(t, m[0].hop, m[0].x, m[0].z, m[0].face, walls, n) { m[0].hop = hop0; m[0].hop_v = 0; m[0].landed = false; }
+  mount_gait(m, t, ifx mount_jumping(m[0]) then d * 0.35f32 else d);   // in the air its legs reach through a slow stride
 }
 // Which clip a speed plays.
 mount_clip_at :: (t: MountTune, speed: f32) -> int {
@@ -245,15 +284,25 @@ mount_step_wings :: (m: [] Mount, t: MountTune, p: WingProfile, i: MountIn, grou
     in = WingInput.{mx = sin(goal) * want, mz = cos(goal) * want, jump = i.jump, climb = i.climb, dive = i.dive, land = i.land};
   }
   o := wing_step(p, w, in, ground, d);
-  // the boxes reach from the ground: aloft, its body is that much higher up them
-  up := t; alt := o.y - ground; up.low = t.low + alt; up.high = t.high + alt;
-  if !mount_body_clear(up, m[0].x, m[0].z, o.yaw, walls, n) && mount_body_clear(up, m[0].x, m[0].z, m[0].face, walls, n) { o.yaw = m[0].face; }
+  // the boxes reach from the ground: aloft, its body is that much higher up them, and the ground's
+  // clutter is never in its way (mount_counts)
+  // (on the ground it steps over what is under `low`; in the air a box counts from its feet up)
+  alt := o.y - ground - t.low; if alt < 0 { alt = 0; } alt0 := w.y - ground - t.low; if alt0 < 0 { alt0 = 0; }
+  // coming down onto a wall, a roof or a tree it is over: it holds its height and glides on at its
+  // walk's pace until it is past, so pressing land over a house never leaves it hanging there
+  if alt < alt0 && mount_body_clear_at(t, alt0, m[0].x, m[0].z, m[0].face, walls, n) && !mount_body_clear_at(t, alt, m[0].x, m[0].z, m[0].face, walls, n) {
+    o.y = w.y; alt = alt0; if o.vy < 0 { o.vy = 0; }
+    if o.phase == WING_LANDING { o.phase = WING_AIR; o.t = w.t; }
+    if o.speed < t.walk { o.speed = t.walk; o.x = w.x + sin(o.yaw) * o.speed * d; o.z = w.z + cos(o.yaw) * o.speed * d; }
+  }
+  x0 := m[0].x; z0 := m[0].z; f0 := m[0].face;
+  if mount_stopped(t, alt, x0, z0, f0, x0, z0, o.yaw, walls, n) { o.yaw = f0; }
   m[0].blocked = false;
-  if !mount_body_clear(up, o.x, o.z, o.yaw, walls, n) {
+  if mount_stopped(t, alt, x0, z0, f0, o.x, o.z, o.yaw, walls, n) {
     m[0].blocked = true;
-    if mount_body_clear(up, o.x, m[0].z, o.yaw, walls, n) { o.z = m[0].z; }
-    else if mount_body_clear(up, m[0].x, o.z, o.yaw, walls, n) { o.x = m[0].x; }
-    else { o.x = m[0].x; o.z = m[0].z; }
+    if !mount_stopped(t, alt, x0, z0, f0, o.x, z0, o.yaw, walls, n) { o.z = z0; }
+    else if !mount_stopped(t, alt, x0, z0, f0, x0, o.z, o.yaw, walls, n) { o.x = x0; }
+    else { o.x = x0; o.z = z0; }
     o.speed *= 0.5;
   }
   m[0].x = o.x; m[0].z = o.z; m[0].face = o.yaw; m[0].speed = o.speed; m[0].wing = o;
@@ -319,6 +368,74 @@ MT_WALL :: [6] f32.[-5, 0, 6, 5, 3, 7];   // a wall across +Z, 6 m ahead
   m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
   for k: 0..<120 { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, low[..], 2); }
   #assert m[0].z > 8;
+}
+// A big mount for the checks: a dragon's body, step and clutter.
+MT_BIG :: MountTune.{walk = 8, gallop = 12, radius = 1.6, half_length = 4.5, low = 1.5, high = 5.0, brush_high = 2.0, brush_wide = 1.6};
+mt_ride :: (t: MountTune, walls: [] f32, n: int, steps: int) -> Mount {
+  m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  for k: 0..<steps { mount_step(m[..], t, MountIn.{forward = 1, gallop = true}, 1.0f32 / 60, walls, n); }
+  return m[0];
+}
+#test "ground clutter is scaled to the mount: a horse steps over a log and rides through a stone, a dragon over far more, and what is big stops each" {
+  h := MountTune.{};
+  #assert MT_BIG.low > 2 * h.low && MT_BIG.brush_high > 1.5 * h.brush_high && MT_BIG.brush_wide > 1.5 * h.brush_wide && mount_reach(MT_BIG) > 2 * mount_reach(h);
+  trunk := [6] f32.[-5, 0, 6, 5, 0.5, 6.4];          // a log across the way, half a metre high
+  stone := [6] f32.[-0.3, 0, 6, 0.3, 0.85, 6.6];   // a stone 0.6 m across, 0.85 high
+  rock := [6] f32.[-0.7, 0, 6, 0.7, 0.85, 7.4];    // a rock 1.4 m across: a horse goes round it
+  hedge := [6] f32.[-5, 0, 6, 5, 1.2, 7];          // a hedge 1.2 m high
+  cart := [6] f32.[-1, 0, 20, 1, 1.9, 22];         // a cart 2 m across, 1.9 high
+  tree := [6] f32.[-0.4, 0, 20, 0.4, 8, 20.8];     // a trunk
+  a := mt_ride(h, trunk[..], 1, 120); #assert a.z > 10 && !a.blocked;
+  a = mt_ride(h, stone[..], 1, 120); #assert a.z > 10 && !a.blocked;
+  a = mt_ride(h, rock[..], 1, 120); #assert a.z + h.half_length + h.radius <= 6.001;
+  a = mt_ride(h, hedge[..], 1, 120); #assert a.z + h.half_length + h.radius <= 6.001;
+  // the dragon walks over all four, and through nothing that is big: a cart wider than its clutter, a tree
+  d := mt_ride(MT_BIG, rock[..], 1, 240); #assert d.z > 30 && !d.blocked;
+  d = mt_ride(MT_BIG, hedge[..], 1, 240); #assert d.z > 30 && !d.blocked;
+  d = mt_ride(MT_BIG, cart[..], 1, 240); #assert d.z + MT_BIG.half_length + MT_BIG.radius <= 20.001;
+  d = mt_ride(MT_BIG, tree[..], 1, 240); #assert d.z + MT_BIG.half_length + MT_BIG.radius <= 20.001;
+  // a tall thin post is no clutter, and nobody steps down into a stone a mount rides through
+  post := [6] f32.[-0.1, 0, 6, 0.1, 2.5, 6.2]; a = mt_ride(h, post[..], 1, 120); #assert a.z < 6;
+  beside := [6] f32.[0.8, 0, -0.3, 1.4, 0.85, 0.3];
+  #assert mount_body_clear(h, 0, 0, 0, beside[..], 1) && mount_step_off(mount_place(0, 0, 0), h, beside[..], 1).x < 0;
+}
+#test "a box the body is already in never holds it: it walks out, and the box stops it again after" {
+  t := MT_BIG; w := [6] f32.[-10, 0, 2, 10, 6, 4];   // a wall across its neck (its nose reaches z 6.1)
+  m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  #assert !mount_body_clear(t, 0, 0, 0, w[..], 1);
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = -1}, 1.0f32 / 60, w[..], 1); #assert !m[0].blocked; }
+  #assert m[0].z < -4.1 && mount_body_clear(t, m[0].x, m[0].z, m[0].face, w[..], 1);   // backed out of it
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0f32 / 60, w[..], 1); }
+  #assert m[0].blocked && m[0].z + t.half_length + t.radius <= 2.001;                   // and the wall is a wall again
+  // a second wall it is clear of still stops it while it stands in the first
+  two := [12] f32.[-10, 0, 2, 10, 6, 4,   -10, 0, -9, 10, 6, -8];
+  m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  for k: 0..<600 { mount_step(m[..], t, MountIn.{forward = -1}, 1.0f32 / 60, two[..], 2); }
+  #assert m[0].blocked && m[0].z - t.half_length - t.radius >= -8.001;
+}
+#test "a flier in the air tests no ground clutter, and comes down on nothing: over a roof it holds its height and glides on until it is past" {
+  t := MT_BIG; p := wing_profile_srd(40, 80, 7.5);
+  // a field of stones, stumps and a fence, none as high as its step or wider than its clutter... and one house
+  clutter := [24] f32.[-0.5, 0, 8, 0.5, 1.0, 9,   -3, 0, 14, -2, 1.9, 15,   -20, 0, 20, 20, 1.2, 20.3,   1, 0, 26, 2.5, 0.4, 27.5];
+  m: [1] Mount; m[0] = mount_place_wings(0, 0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  mt_fly(m[..], t, p, MountIn.{forward = 1}, 64 * 6, clutter[..], 4);      // on foot through all of it
+  #assert m[0].z > 40 && !m[0].blocked;
+  m[0] = mount_place_wings(0, 0, 0, 0); m[0].state = MOUNT_RIDDEN;
+  mount_step_wings(m[..], t, p, MountIn.{forward = 1, jump = true}, 0, f32(MT_DT), clutter[..], 4);
+  for k: 0..<64 * 3 { mount_step_wings(m[..], t, p, MountIn.{forward = 1}, 0, f32(MT_DT), clutter[..], 4); #assert !m[0].blocked; }   // skimming it, taking off and gliding down
+  #assert m[0].z > 15;
+  // a house 4 m high: gliding down over it, it stays above the roof, and lands beyond it
+  house := [6] f32.[-6, 0, 30, 6, 4, 42];
+  f: [1] Mount; f[0] = mount_place_wings(0, 0, 0, 0); f[0].state = MOUNT_RIDDEN;
+  mount_step_wings(f[..], t, p, MountIn.{jump = true}, 0, f32(MT_DT), house[..], 1);
+  while f[0].z < 34 { mount_step_wings(f[..], t, p, MountIn.{forward = 1, climb = true}, 0, f32(MT_DT), house[..], 1); }
+  #assert f[0].wing.y > 5;
+  over := 0; k := 0;
+  while mount_aloft(f[0]) && k < 64 * 120 {
+    mount_step_wings(f[..], t, p, MountIn.{land = true}, 0, f32(MT_DT), house[..], 1); k += 1;   // land, and no steering at all
+    if f[0].z > 30 - 6.1 && f[0].z < 42 + 6.1 { over += 1; #assert f[0].wing.y >= 3.99 && f[0].wing.phase == WING_AIR; }
+  }
+  #assert over > 10 && !mount_aloft(f[0]) && f[0].z > 48 && f[0].wing.y == 0 && mount_body_clear(t, f[0].x, f[0].z, f[0].face, house[..], 1);
 }
 #test "stepping off picks a clear side or refuses" {
   t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0); m[0].state = MOUNT_RIDDEN;

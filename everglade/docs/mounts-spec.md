@@ -388,6 +388,19 @@ multiplayer realm.
    its legs reach through a slowed stride; there is no jump clip, and the
    sound bank has no hoof sound yet. The dragon keeps Space for take-off and
    climb.
+   **Ground clutter never trips a mount** (GitHub #13147, `mount_counts`,
+   `mount_stopped`). What stops a mount is scaled to it. The horse steps
+   over a box whose top is under 0.6 m and rides through one no taller than
+   1.2 m and no wider than 0.85 m (a stone, a stump, a sack). The dragon
+   steps over 1.5 m and walks through anything no taller than 2 m and no
+   wider than 1.6 m. A wall, a fence, a tree or a house stops both, as it
+   looks. In the air the dragon tests nothing under its feet; it never comes
+   down inside a roof or a tree, it glides on until it is past. A zone
+   gathers the boxes `mount_reach` round the mount, so a dragon's nose meets
+   a wall its middle is 6 m from, and a box a body is already in never holds
+   it. Route walks check it: the horse and the dragon across Experimental's
+   glade, meadow and village (`everglade/zone-mounts.coax`, "route walk")
+   and down the Archery Range (`archery-range.coax`).
 2. **Owned horses.** Stables, buying, the whistle, feed and care, death and
    recovery, stat blocks in the SRD engine (the horse's HP and AC, falling
    off).
