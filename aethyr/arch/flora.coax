@@ -57,14 +57,15 @@ arch_tree_spec :: (species: int, season: int, seed: int) -> ArchTree {
 // (from `heart`, the crown's middle), so the whole crown takes light as one mass with a faceted
 // surface. u is `low` to `high`: how high the facet sits in the crown.
 arch_clump :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, rx: f32, ry: f32, rz: f32, heart: [3] f32, crown_low: f32, crown_high: f32, rough: f32, seed: int) {
-  segments := 7; rings := 5;
-  pts: [48] [3] f32;   // (segments + 1) * (rings + 1)
+  segments := 9; rings := 6;
+  pts: [70] [3] f32;   // (segments + 1) * (rings + 1)
   for j: 0..<rings + 1 {
     for i: 0..<segments + 1 {
       a := f32(ARCH_TAU) * cast(f32) (i % segments) / cast(f32) segments + cast(f32) j * 0.35;
       b := f32(ARCH_TAU) * 0.5 * cast(f32) j / cast(f32) rings;
       f: f32 = 1;
-      if j > 0 && j < rings { f = 1 + rough * (arch_hash(seed, (i % segments) * 13 + j * 101) * 2 - 1); }
+      // Every other point stands out and the rest sit in: a lump with a leafy, scalloped outline.
+      if j > 0 && j < rings { f = 1 + rough * (arch_hash(seed, (i % segments) * 13 + j * 101) * 1.2 - 0.6) + rough * (ifx (i + j) % 2 == 0 then 0.45f32 else -0.45f32); }
       pts[j * (segments + 1) + i] = arch_v(cx + cos(a) * sin(b) * rx * f, cy - cos(b) * ry * f, cz + sin(a) * sin(b) * rz * f);
     }
   }
@@ -232,7 +233,7 @@ arch_ground :: (p: [] ArchPen, g: ArchGround, table: [] f32) -> ArchPart {
 }
 
 #test "a broadleaf is a trunk under a crown of its size, and species, season and seed each change it" {
-  buf: [40000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  buf: [60000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
   spec := arch_tree_spec(ARCH_OAK, ARCH_SUMMER, 5);
   oak := arch_tree(p[..], spec);
   #assert !p[0].full && oak.count % 3 == 0 && oak.count > 2000;
@@ -245,7 +246,7 @@ arch_ground :: (p: [] ArchPen, g: ArchGround, table: [] f32) -> ArchPart {
       #assert buf[o + 7] >= 0 && buf[o + 7] <= 1 && buf[o + 8] >= 0 && buf[o + 8] < 1 && buf[o + 10] > buf[o + 9] && buf[o + 10] > buf[o + 11];
     } else { bark += 1; #assert buf[o + 6] == ARCH_M_BARK; }
   }
-  #assert leaves > bark && low > spec.height * 0.15 && high > spec.height * 0.85 && high < spec.height * 1.25 && wide > spec.crown * 0.75 && wide < spec.crown * 1.45;
+  #assert leaves > bark && low > spec.height * 0.15 && high > spec.height * 0.85 && high < spec.height * 1.25 && wide > spec.crown * 0.75 && wide < spec.crown * 1.6;
   autumn := arch_tree(p[..], arch_tree_spec(ARCH_OAK, ARCH_AUTUMN, 5));
   #assert autumn.count == oak.count;
   for i: 0..<autumn.count { o := (autumn.first + i) * ARCH_VERTEX_FLOATS; if buf[o + 6] == ARCH_M_LEAF { #assert buf[o + 9] > buf[o + 10] && buf[o + 10] > buf[o + 11]; } }
