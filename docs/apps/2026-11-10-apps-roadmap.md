@@ -146,7 +146,7 @@ Today the same job is done several ways:
 | --- | --- | --- |
 | `coax/lib/agent/claude`, `coax/lib/agent/codex` | The SDKs: transport, control protocol, messages | The shared base. Keep |
 | `coax/lib/agent/engine/` (moved 2026-11-10 from `apps/openagents-desktop/zeron/`, about 4,700 lines) | Sessions, parts, tool chips, approvals, routing | The shared engine layer over the SDKs; the desktop app is its first user |
-| `coder/tui/` (`coder.coax`, `codex.coax`, `session.coax`) | Coder's terminal: the same engines, its own session log | Claude Code on the shared engine and record (2026-11-10); Codex, Cursor and Microcoder still its own |
+| `coder/tui/` (`coder.coax`, `codex.coax`, `session.coax`) | Coder's terminal: the same engines, its own session log | On the shared engines (2026-11-10, Claude Code; 2026-11-11, Codex, Cursor and Microcoder); its own session log |
 | `apps/aethyrforge-desktop/chat.coax` | The Forge's chat | Runs Coder as a child and reads its JSONL |
 | `apps/everglade-desktop/next.coax`, `tiers.coax` | Next issue, and Golemancy's issue rating | On the shared Claude engine with their own options (2026-11-10) |
 | `apps/everglade-desktop/golems.coax`, `os/verse-agents.coax`, `coax/lib/agent/observe/processes.coax` | Which agents are working on this machine | One walker, `coax/lib/agent/observe/transcripts.coax` (2026-11-10); the third lists processes |
@@ -220,15 +220,32 @@ Status (2026-11-10, GitHub #13153):
   claude` prints the same lines and writes the same session JSONL for a plain
   turn, an approval allowed and denied, no `claude` on PATH, and a turn with
   an Edit's diff, a failed Write, a Grep and text with a tab and a table.
-  **Not built:** Coder's Codex, Cursor and Microcoder paths
-  (`coder/tui/codex.coax`, `cursor.coax`, `microcoder.coax`) still drive
-  their SDKs themselves. The shared Codex engine (`engine/codex.coax`) needs
-  what the Claude one got: its owner's launch and settings in place of the
-  desktop app's (`cxe_launch`, `cxe_settings`), Coder's dynamic tools at
-  thread start, and its events handed over (`cxe_pump` answers approvals by
-  the desktop app's access levels). Cursor and Microcoder have no shared
-  engine. Coder loads `engine/claude.coax` alone: `engine.coax`'s dispatcher
-  links the Lab, whose signer (`zr_sign_*`) a Coax tool cannot supply.
+- **Built: move 2 for Codex, Cursor and Microcoder** (2026-11-11). The
+  shared Codex engine takes an owner as the Claude one does (`cxe_own`: the
+  owner's launch, its `CxSettings` as they are, with its dynamic tools at
+  thread start, and its client name; `cxe_poll` hands each event over after
+  the engine's part; approvals and tool calls are the owner's, `cxe_approve`
+  and `cxe_tool_answer`); the desktop app's path is unchanged.
+  `engine/cursor.coax` is the Cursor engine (`cue_*`: start, log in, open or
+  resume the session, hold the first message until its settings are
+  answered, answer a resumed session's replay), moved out of
+  `coder/tui/cursor.coax`. `engine/microcoder.coax` gains the worker client
+  (`McWorker`, `mcw_*`) beside the Lab's in-process run of the same loop,
+  moved out of `coder/tui/microcoder.coax`. Coder loads `engine.coax`; a Coax
+  tool gets weak definitions of the Lab's signer and clock from
+  `coax/platform/agent-signer-none.c`, which a host's own (`zeron-face.c`)
+  override. Checked against the Coder from before each move with stand-ins
+  (`coder/tui/codex_standin.coax`, `cursor_standin.coax`) and Microcoder's
+  recorded replay (`GW_REPLAY`, the real worker and loop): `coder run` prints
+  the same stdout, writes the same session JSONL and sends the same protocol
+  lines for a plain turn, a command allowed, refused and run unasked, a file
+  change allowed and refused, Codex's dynamic tool, a failed turn, Cursor's
+  `--effort` applied and not offered, and no CLI on PATH. Cursor and
+  Microcoder are not modes of `engine.coax`'s `Agent` (the desktop app has
+  neither); Coder drives them with `cue_*` and `mcw_*` as it drives Claude
+  with `e_*` and Codex with `cxe_*`. Not run: Coder's interactive prompt
+  (y/a/n answers, Esc) against a stand-in, and any real Codex, Cursor or
+  model.
 - **Built: move 3.** Everglade's Next issue panel (`next.coax`) and
   Golemancy's rating (`tiers.coax`) start and drive their agents through the
   shared engine with their own options and tools. They still print from the
@@ -242,12 +259,17 @@ Status (2026-11-10, GitHub #13153):
   for a plain answer and for a refused tool call. Not deployed.
 - **Not built: move 4.** Aethyrforge's chat still runs Coder as a child
   (`apps/aethyrforge-desktop/linux-native.coax` `fgn_launch`, and
-  `Sources/Chat.swift` on the Mac). Through that child its Claude turns now
-  run on the shared engine. Dropping the child needs, in the shared layer,
-  what it asks Coder for and no shared engine has: `--engine auto` (Coder's
-  router), the echo engine its own checks run on, Cursor and Microcoder,
-  `fork SESSION` and `--context FILE`. Its launch options are an
-  `#authority` file (`chat-launch.coax`) and would change with it.
+  `Sources/Chat.swift` on the Mac). Through that child every engine it uses
+  now runs on the shared engines. Dropping the child means running in
+  process what `coder run` does for it, which no shared layer has yet: the
+  routing decision (`coder/tui/route.coax` and `route-policy.coax`, which
+  hold no Coder state and can move to `agent/engine/` as they are, but
+  `cd_auto_route` and the availability cooldowns in `availability.coax` are
+  Coder's), the echo engine, `fork SESSION` (Coder's session log and each
+  engine's resume: Claude `resume`, Cursor `cue_resume`, the Microcoder
+  worker's conversation), `--context FILE`, and the stream-json lines
+  `fgl_event` reads (Coder's `session.coax`, written from `App`). Its launch
+  options are an `#authority` file (`chat-launch.coax`) and change with it.
 - **Also left.** On the Mac the desktop app's session files are still beside
   `settings.json` in Application Support (the Swift host picks the folder);
   on Linux they are under `~/.openagents/desktop/`. Coder writes the log's

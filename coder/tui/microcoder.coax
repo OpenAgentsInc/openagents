@@ -5,7 +5,9 @@
 // coax/web/tool.sh on the first message and talks to in JSON lines, the way
 // the claude and codex engines talk to their CLIs. The psionic engine is
 // the same worker told "local": its plan is a model served on this machine. The worker keeps the
-// conversation and owns the credentials; nothing here holds a key.
+// conversation and owns the credentials; nothing here holds a key. Starting it, what it reads
+// and how its lines are read are the shared engine's (coax/lib/agent/engine/microcoder.coax
+// McWorker, beside the desktop Lab's in-process run of the same loop); what it prints is Coder's.
 
 #load "micro-observation.coax";
 
@@ -14,81 +16,54 @@ CD_MC_WORKER :: "/coder/tui/mcworker.coax";
 
 // Starts the worker on the first message; later messages go to the same one.
 cd_micro_send :: (a: [] App, msg: string) {
-  if a[0].mc_h < 0 {
+  w := a[0].mcw[..];
+  if w[0].h < 0 {
     image: [4096] u8; worker := cl_getenv("CODER_MICRO_WORKER", image[..]);
     rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
     if worker.count == 0 && repo.count == 0 { cd_finish(a, END_FAILED, "CODER_REPO is not set: start Coder with coder/tui/coder.sh."); return; }
     tb: [4200] u8; tn := cd_cat(tb[..], cd_cat(tb[..], 0, repo), CD_MC_TOOL);
     wb: [4200] u8; wn := cd_cat(wb[..], cd_cat(wb[..], 0, repo), CD_MC_WORKER);
-    h := cxproc_new();
-    if h < 0 { cd_finish(a, END_FAILED, "No process slot is free."); return; }
-    ok := cl_push(h, CL_FIELD_ARG, ifx worker.count > 0 then worker else cast(string) tb[0..<tn]);
-    if worker.count == 0 { ok = ok && cl_push(h, CL_FIELD_ARG, cast(string) wb[0..<wn]); }
-    if a[0].cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, a[0].cwd); }
-    if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); cd_finish(a, END_FAILED, "Microcoder's worker did not start."); return; }
-    a[0].mc_h = h;
+    why := mcw_start(w, ifx worker.count > 0 then worker else cast(string) tb[0..<tn], ifx worker.count > 0 then "" else cast(string) wb[0..<wn], a[0].cwd);
+    if why.count > 0 { cd_finish(a, END_FAILED, why); return; }
   }
-  ob: [32768] u8;
-  n := json_raw(ob[..], 0, "{\"task\":"); n = json_write_string(ob[..], n, msg);
-  n=json_raw(ob[..],n,",\"session\":");n=json_write_string(ob[..],n,cs_id(a[0].log));
-  n = json_raw(ob[..], n, ",\"cwd\":"); n = json_write_string(ob[..], n, a[0].cwd);
-  if a[0].engine == ENGINE_PSIONIC { n = json_raw(ob[..], n, ",\"local\":true"); }
-  n=json_raw(ob[..],n,",\"sandbox\":");n=json_write_string(ob[..],n,cd_codex_sandbox(a[0].pol[..],a[0].ask_first));
-  n=json_raw(ob[..],n,",\"policy\":{\"enabled\":");n=json_raw(ob[..],n,ifx a[0].pol[0].on then "true" else "false");
-  n=json_raw(ob[..],n,",\"allow\":");n=json_write_int(ob[..],n,a[0].pol[0].allow);
-  n=json_raw(ob[..],n,",\"ceiling\":");n=json_write_int(ob[..],n,a[0].pol[0].ceiling);
-  n=json_raw(ob[..],n,",\"roots\":");n=json_write_string(ob[..],n,cast(string)a[0].pol[0].roots[0..<a[0].pol[0].nroots]);n=json_raw(ob[..],n,"}");
   // hooks and approvals see each command first (chapter 15)
-  if cd_has_hook(a, "tool_call") || a[0].pol[0].on || a[0].ask_first { n = json_raw(ob[..], n, ",\"gated\":true"); }
-  n = json_raw(ob[..], n, "}\n");
-  if n < 0 || !cd_micro_write(a, cast(string) ob[0..<n]) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
+  t := McTask.{task = msg, session = cs_id(a[0].log), cwd = a[0].cwd, local = a[0].engine == ENGINE_PSIONIC,
+               sandbox = cd_codex_sandbox(a[0].pol[..], a[0].ask_first), policy = a[0].pol[0].on, allow = a[0].pol[0].allow,
+               ceiling = a[0].pol[0].ceiling, roots = cast(string) a[0].pol[0].roots[0..<a[0].pol[0].nroots],
+               gated = cd_has_hook(a, "tool_call") || a[0].pol[0].on || a[0].ask_first};
+  if !mcw_task(w, t) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
 }
 
-cd_micro_write :: (a: [] App, s: string) -> bool {
-  if a[0].mc_h < 0 { return false; }
-  for b: s { if cxproc_write(a[0].mc_h, cast(int) b) != 0 { return false; } }
-  return cxproc_flush(a[0].mc_h) == 0;
-}
-
-cd_micro_close :: (a: [] App) {
-  if a[0].mc_h < 0 { return; }
-  x := cxproc_close_stdin(a[0].mc_h);
-  w := cxproc_wait(a[0].mc_h, 300);
-  if w < 0 { k := cxproc_kill(a[0].mc_h, CL_SIGKILL); w = cxproc_wait(a[0].mc_h, 2000); }
-  r := cxproc_release(a[0].mc_h);
-  a[0].mc_h = -1;
-}
+cd_micro_close :: (a: [] App) { mcw_close(a[0].mcw[..]); }
 
 // Forgets the conversation (the worker keeps it).
-cd_micro_forget :: (a: [] App) { if a[0].mc_h >= 0 { x := cd_micro_write(a, "{\"forget\":true}\n"); } }
+cd_micro_forget :: (a: [] App) { mcw_forget(a[0].mcw[..]); }
 
 // One poll of the worker; true when something changed.
 cd_micro_poll :: (a: [] App) -> bool {
-  if a[0].mc_h < 0 { return false; }
+  w := a[0].mcw[..];
+  if w[0].h < 0 { return false; }
   changed := false;
   for guard: 0..<64 {
-    n := cxproc_read_line(a[0].mc_h, 0);
+    n := mcw_read(w);
     if n == CL_TIMEOUT { break; }
     changed = true;
     if n == CL_EOF || (n < 0 && n != CL_TOO_LONG) {
-      eb: [2048] u8; en := 0;
-      sc := cxproc_stderr_count(a[0].mc_h);
-      for i: 0..<sc { if en < eb.count { eb[en] = cast(u8) cxproc_stderr_byte(a[0].mc_h, i); en += 1; } }
+      eb: [2048] u8; why := mcw_stderr(w, eb[..]);
       cd_micro_close(a);
-      if a[0].running && cd_is_micro(a[0].engine) { cd_finish(a, END_FAILED, ifx en > 0 then cast(string) eb[0..<en] else "Microcoder's worker exited."); }
+      if a[0].running && cd_is_micro(a[0].engine) { cd_finish(a, END_FAILED, ifx why.count > 0 then why else "Microcoder's worker exited."); }
       return true;
     }
-    if n == CL_TOO_LONG || n > a[0].mc_line.count { continue; }
-    for i: 0..<n { a[0].mc_line[i] = cast(u8) cxproc_line_byte(a[0].mc_h, i); }
-    cd_micro_line(a, cast(string) a[0].mc_line[0..<n]);
+    if n == CL_TOO_LONG { continue; }
+    cd_micro_line(a, cast(string) w[0].line[0..<n]);
   }
   return changed;
 }
 
-cd_mc_str :: (a: [] App, json: string, path: string) -> string { return cl_str(a[0].mc_ar[..], json, path); }
+cd_mc_str :: (a: [] App, json: string, path: string) -> string { return mcw_str(a[0].mcw[..], json, path); }
 
 cd_micro_line :: (a: [] App, line: string) {
-  a[0].mc_ar[0].at = 0; a[0].mc_ar[0].full = false;
+  a[0].mcw[0].ar[0].at = 0; a[0].mcw[0].ar[0].full = false;
   kind := cd_mc_str(a, line, "kind");
   if !a[0].running || !cd_is_micro(a[0].engine) { return; }    // late lines after a stop
   if kind=="journal" {n:=json_raw(a[0].log[0].line[..],0,line);cs_put(a,n);return;}
@@ -127,7 +102,7 @@ cd_micro_line :: (a: [] App, line: string) {
     cd_result_line(a, ifx timed_out then "timed out" else cd_mc_str(a, line, "output"), timed_out || (exit.ok && exit.value != 0));
     return;
   }
-  if kind == "ask" {ticket:=cl_int(line,"ticket");if !ticket.ok || ticket.value<=0 {cd_micro_close(a);cd_finish(a,END_FAILED,"worker proposal has no owner ticket");return;}a[0].mc_ticket=ticket.value; cd_micro_ask(a, cd_mc_str(a, line, "command")); return; }
+  if kind == "ask" {ticket:=cl_int(line,"ticket");if !ticket.ok || ticket.value<=0 {cd_micro_close(a);cd_finish(a,END_FAILED,"worker proposal has no owner ticket");return;}a[0].mcw[0].ticket=ticket.value; cd_micro_ask(a, cd_mc_str(a, line, "command")); return; }
   if kind == "ended" {
     eb: [64] u8; en := cd_cat(eb[..], 0, cd_mc_str(a, line, "ending")); ending := cast(string) eb[0..<en];
     text := cd_mc_str(a, line, "text");
@@ -149,7 +124,7 @@ cd_micro_line :: (a: [] App, line: string) {
 
 // Esc: STOP the run; the worker answers with its ended line. Twice, or no answer: end the worker.
 cd_micro_stop :: (a: [] App) {
-  if a[0].mc_h >= 0 && !a[0].stopping && cd_micro_write(a, "{\"stop\":true}\n") {
+  if a[0].mcw[0].h >= 0 && !a[0].stopping && mcw_stop(a[0].mcw[..]) {
     a[0].stopping = true;
     a[0].stop_ms = cd_now(a);
     return;
@@ -184,12 +159,7 @@ cd_micro_ask :: (a: [] App, command: string) {
 }
 
 cd_micro_answer_why :: (a: [] App, allow: bool, why: string) {
-  ob: [1200] u8;
-  n := json_raw(ob[..], 0, ifx allow then "{\"answer\":true" else "{\"answer\":false");
-  n=json_raw(ob[..],n,",\"ticket\":");n=json_write_int(ob[..],n,a[0].mc_ticket);a[0].mc_ticket=0;
-  if !allow { n = json_raw(ob[..], n, ",\"why\":"); n = json_write_string(ob[..], n, ifx why.count > 0 then why else "refused"); }
-  n = json_raw(ob[..], n, "}\n");
-  if n < 0 || !cd_micro_write(a, cast(string) ob[0..<n]) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
+  if !mcw_answer(a[0].mcw[..], allow, why) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
 }
 
 // The person's answer at the prompt: y runs the command; anything else refuses it.

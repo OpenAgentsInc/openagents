@@ -35,8 +35,7 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/tui/tui.coax";
 #load "../../coax/lib/tui/vt.coax";
-#load "../../coax/lib/agent/claude/claude.coax";
-#load "../../coax/lib/agent/engine/engine.coax";   // the shared engines (Claude and Codex here) and the session record they write
+#load "../../coax/lib/agent/engine/engine.coax";   // the shared engines (Claude, Codex, Cursor, the Microcoder worker) and the session record
 #load "../../psionic/lib/apple-fm.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
@@ -186,7 +185,6 @@ App :: struct {
   stopping: bool; stop_ms: int;   // an interrupt was sent
   provider_reset_s: int;
   cause: [32] u8; ncause: int;    // why a failed turn failed, when the engine says: "provider" when the model provider did not answer (chapter 20)
-  pending: [16384] u8; npending: int;   // the first message, sent once initialize is answered
   ask: bool;                      // a permission request waits for y, a or n
   ask_logged: bool; ask_next: int;   // CODER_ASK_FILE: the ask line is out, and when to look for ID.answer next
   ask_text: [1024] u8; nask: int;
@@ -203,15 +201,10 @@ App :: struct {
   err: [1024] u8; nerr: int;      // an error notification, for a failed turn
   // cursor engine: one `agent acp` session for the conversation
   cu: [] CuClient; cup: [] ClProcess; cu_line: [] u8; cu_arena: [] u8; cu_outb: [] u8;
-  cu_live: bool;                  // the CLI is running
-  cu_ready: bool;                 // its session exists
-  cu_replay: bool;                // session/load is replaying history: show nothing, allow nothing
-  cu_hold: int;                   // config answers still expected before the first prompt
-  // microcoder engine: its worker process (mcworker.coax), a run per message
-  mc_h: int = -1;
-  mc_ticket:int;
-  mc_line: [] u8;
-  mc_ar: [1] ClArena;
+  cue: [] CuEngine;               // the shared Cursor engine (cursor.coax): live, ready, replay, hold and the owed message are its
+  // microcoder engine: its worker process (mcworker.coax), a run per message, through the shared
+  // engine's worker client (coax/lib/agent/engine/microcoder.coax McWorker)
+  mcw: [1] McWorker;
   log: [] CsLog;                  // the session's log file (session.coax)
   exit: int;                      // coder run's exit code: the last turn's ending
   turns: int;
@@ -1292,8 +1285,8 @@ cd_poll :: (a: [] App) -> bool {
     changed := false;
     if a[0].live { changed = cd_claude_poll(a); }
     if a[0].cx_live { changed = cd_codex_poll(a) || changed; }
-    if a[0].cu_live { changed = cd_cursor_poll(a) || changed; }
-    if a[0].mc_h >= 0 { changed = cd_micro_poll(a) || changed; }
+    if a[0].cue[0].live { changed = cd_cursor_poll(a) || changed; }
+    if a[0].mcw[0].h >= 0 { changed = cd_micro_poll(a) || changed; }
     return changed;
   }
   if a[0].cmd_h >= 0 { return cd_command_poll(a); }
@@ -2664,8 +2657,9 @@ tool_main :: () -> int #export_c #effects(all) {
   cu_b: [1] CuClient; cup_b: [1] ClProcess; cul_b: [262144] u8; cua_b: [262144] u8; cuo_b: [262144] u8;
   a[0].cu = cu_b[..]; a[0].cup = cup_b[..]; a[0].cu_line = cul_b[..]; a[0].cu_arena = cua_b[..]; a[0].cu_outb = cuo_b[..];
   a[0].cup[0].handle = -1;
+  cue_b: [1] CuEngine; cue_attach(cue_b[..], a[0].cu, a[0].cup, cul_b[..], cua_b[..], cuo_b[..]); a[0].cue = cue_b[..];
   mcl_b: [CL_LINE_MAX] u8; mca_b: [262144] u8;
-  a[0].mc_line = mcl_b[..]; a[0].mc_ar[0] = ClArena.{buf = mca_b[..]};
+  mcw_attach(a[0].mcw[..], mcl_b[..], mca_b[..]);
   a[0].eng = eng_b[..]; a[0].ses = ses_b[..]; a[0].ses_pool = ses_pool_b[..];
   e_attach(a[0].eng, qline_b[..], qarena_b[..], qout_b[..], scratch_b[..], prompt_b[..]);
   s_init(a[0].ses, a[0].ses_pool); a[0].ses[0].tabs = true;     // the terminal prints the text as it came

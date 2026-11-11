@@ -507,3 +507,128 @@ lab_mc_stop :: (m: [] LabMc, s: [] Session) -> bool {
  m[0].or_headers[0]="owner still alive";
  #assert m[0].plan[0].attempts[0].headers[0]=="owner still alive";
 }
+
+// ---------------------------------------------------------------- Microcoder as a worker process
+//
+// The same loop (coax/lib/microcoder/run.coax) run in a process of its own, as Coder's terminal
+// runs it (coder/tui/mcworker.coax, which owns the credentials, the gateway plan and the
+// conversation): one JSON object a line each way, the way the Claude and Codex CLIs are driven.
+// Moved from coder/tui/microcoder.coax with no change in behaviour. The owner names the worker's
+// program and builds what it prints; the worker's protocol is here:
+//
+//   mcw_start    the worker started in a folder         mcw_task    a message as the worker reads it
+//   mcw_read     its next line (never blocks)           mcw_answer  a gated command allowed or refused
+//   mcw_stop     STOP the run                           mcw_forget  forget the conversation
+//   mcw_close    the worker stopped (asked, then killed)
+
+McWorker :: struct {
+  h: int = -1;                   // the worker's process, -1 none
+  line: [] u8;                   // its last line (the owner's buffer)
+  ar: [1] ClArena;               // what a line's lookups unescape into
+  ticket: int;                   // the gated command waiting for an answer, 0 none
+}
+mcw_attach :: (w: [] McWorker, line: [] u8, arena: [] u8) { w[0].h = -1; w[0].line = line; w[0].ar[0] = ClArena.{buf = arena}; }
+
+// The worker started: program, then arg when it is not "", in cwd. "" or why it did not start.
+mcw_start :: (w: [] McWorker, program: string, arg: string, cwd: string) -> string {
+  h := cxproc_new();
+  if h < 0 { return "No process slot is free."; }
+  ok := cl_push(h, CL_FIELD_ARG, program);
+  if arg.count > 0 { ok = ok && cl_push(h, CL_FIELD_ARG, arg); }
+  if cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, cwd); }
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return "Microcoder's worker did not start."; }
+  w[0].h = h;
+  return "";
+}
+mcw_write :: (w: [] McWorker, s: string) -> bool {
+  if w[0].h < 0 { return false; }
+  for b: s { if cxproc_write(w[0].h, cast(int) b) != 0 { return false; } }
+  return cxproc_flush(w[0].h) == 0;
+}
+// Its input closed; a worker that does not end within 300 ms is killed.
+mcw_close :: (w: [] McWorker) {
+  if w[0].h < 0 { return; }
+  x := cxproc_close_stdin(w[0].h);
+  r := cxproc_wait(w[0].h, 300);
+  if r < 0 { k := cxproc_kill(w[0].h, CL_SIGKILL); r = cxproc_wait(w[0].h, 2000); }
+  y := cxproc_release(w[0].h);
+  w[0].h = -1;
+}
+// The next line: its length (the line in w.line, the arena cleared for its lookups), CL_TIMEOUT
+// when there is none yet, CL_TOO_LONG for a line that does not fit (skip it), CL_EOF or another
+// negative code when the worker has gone.
+mcw_read :: (w: [] McWorker) -> int {
+  n := cxproc_read_line(w[0].h, 0);
+  if n < 0 { return n; }
+  if n > w[0].line.count { return CL_TOO_LONG; }
+  for i: 0..<n { w[0].line[i] = cast(u8) cxproc_line_byte(w[0].h, i); }
+  w[0].ar[0].at = 0; w[0].ar[0].full = false;
+  return n;
+}
+// What the worker last wrote to stderr (into out).
+mcw_stderr :: (w: [] McWorker, out: [] u8) -> string {
+  n := 0;
+  sc := cxproc_stderr_count(w[0].h);
+  for i: 0..<sc { if n < out.count { out[n] = cast(u8) cxproc_stderr_byte(w[0].h, i); n += 1; } }
+  return cast(string) out[0..<n];
+}
+mcw_str :: (w: [] McWorker, json: string, path: string) -> string { return cl_str(w[0].ar[..], json, path); }
+
+// A message as the worker reads it: the task, the session it belongs to, the folder, the model
+// server on this machine (local), the sandbox, the owner's policy, and whether each command
+// waits for an answer (gated).
+McTask :: struct {
+  task: string; session: string; cwd: string; local: bool; sandbox: string;
+  policy: bool; allow: int; ceiling: int; roots: string; gated: bool;
+}
+mcw_task_line :: (o: [] u8, t: McTask) -> int {
+  n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
+  n = json_raw(o, n, ",\"session\":"); n = json_write_string(o, n, t.session);
+  n = json_raw(o, n, ",\"cwd\":"); n = json_write_string(o, n, t.cwd);
+  if t.local { n = json_raw(o, n, ",\"local\":true"); }
+  n = json_raw(o, n, ",\"sandbox\":"); n = json_write_string(o, n, t.sandbox);
+  n = json_raw(o, n, ",\"policy\":{\"enabled\":"); n = json_raw(o, n, ifx t.policy then "true" else "false");
+  n = json_raw(o, n, ",\"allow\":"); n = json_write_int(o, n, t.allow);
+  n = json_raw(o, n, ",\"ceiling\":"); n = json_write_int(o, n, t.ceiling);
+  n = json_raw(o, n, ",\"roots\":"); n = json_write_string(o, n, t.roots); n = json_raw(o, n, "}");
+  if t.gated { n = json_raw(o, n, ",\"gated\":true"); }
+  n = json_raw(o, n, "}\n");
+  return n;
+}
+mcw_task :: (w: [] McWorker, t: McTask) -> bool {
+  ob: [32768] u8; n := mcw_task_line(ob[..], t);
+  return n >= 0 && mcw_write(w, cast(string) ob[0..<n]);
+}
+// The answer for the waiting command (its ticket, then none waits); refused with why ("refused" when empty).
+mcw_answer_line :: (o: [] u8, allow: bool, ticket: int, why: string) -> int {
+  n := json_raw(o, 0, ifx allow then "{\"answer\":true" else "{\"answer\":false");
+  n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  if !allow { n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, ifx why.count > 0 then why else "refused"); }
+  n = json_raw(o, n, "}\n");
+  return n;
+}
+mcw_answer :: (w: [] McWorker, allow: bool, why: string) -> bool {
+  ob: [1200] u8; n := mcw_answer_line(ob[..], allow, w[0].ticket, why);
+  w[0].ticket = 0;
+  return n >= 0 && mcw_write(w, cast(string) ob[0..<n]);
+}
+mcw_stop :: (w: [] McWorker) -> bool { return mcw_write(w, "{\"stop\":true}\n"); }
+mcw_forget :: (w: [] McWorker) { if w[0].h >= 0 { x := mcw_write(w, "{\"forget\":true}\n"); } }
+
+#test "microcoder worker: a message and an answer as the worker reads them" {
+  o: [1024] u8;
+  t := McTask.{task = "say \"hi\"", session = "s-1", cwd = "/w", sandbox = "read-only", policy = true, allow = 0, ceiling = 3, roots = "/w\n", gated = true};
+  n := mcw_task_line(o[..], t);
+  #assert cast(string) o[0..<n] == "{\"task\":\"say \\\"hi\\\"\",\"session\":\"s-1\",\"cwd\":\"/w\",\"sandbox\":\"read-only\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":3,\"roots\":\"/w\\n\"},\"gated\":true}\n";
+  t.local = true; t.policy = false; t.gated = false;
+  n = mcw_task_line(o[..], t);
+  #assert cast(string) o[0..<n] == "{\"task\":\"say \\\"hi\\\"\",\"session\":\"s-1\",\"cwd\":\"/w\",\"local\":true,\"sandbox\":\"read-only\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"/w\\n\"}}\n";
+  n = mcw_answer_line(o[..], true, 7, "ignored");
+  #assert cast(string) o[0..<n] == "{\"answer\":true,\"ticket\":7}\n";
+  n = mcw_answer_line(o[..], false, 8, "");
+  #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":8,\"why\":\"refused\"}\n";
+  w: [1] McWorker; line: [16] u8; arena: [16] u8;
+  mcw_attach(w[..], line[..], arena[..]);
+  #assert w[0].h == -1 && !mcw_write(w[..], "x") && !mcw_stop(w[..]);
+  mcw_forget(w[..]); mcw_close(w[..]);
+}

@@ -4,7 +4,7 @@ main :: () {}
 
 #test "Microcoder attempts reach the durable event writer with engine and presence" {
   a:[1]App;logs:[1]CsLog;a[0].log=logs[..];a[0].running=true;a[0].engine=ENGINE_MICRO;
-  buf:[4096]u8;a[0].mc_ar[0].buf=buf[..];
+  buf:[4096]u8;a[0].mcw[0].ar[0].buf=buf[..];
   line:="{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"gateway\":\"vertex\",\"model\":\"test\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":12,\"output_tokens\":2,\"cached_tokens\":0,\"usd_micros\":3,\"card_estimate_usd_micros\":3}";
   cd_micro_line(a[..],line);
   s:=cast(string)logs[0].line[..];

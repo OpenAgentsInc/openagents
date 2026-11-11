@@ -1,0 +1,172 @@
+// A stand-in Cursor agent for checking Coder's cursor engine end to end with no Cursor login and
+// no model: it speaks enough of `agent acp` (coax/lib/agent/cursor) for what Coder asks:
+// initialize, authenticate, session/new and session/load, session/set_config_option,
+// session/prompt and session/cancel, and the answers to its own permission requests. Put it on
+// PATH as `cursor-agent`. Every line it reads is appended to $CURSOR_STANDIN_OUT, so a run's
+// outbound protocol can be compared as well as what Coder prints.
+//
+// What a turn does comes from the message:
+//
+//   "run ls"        a command; permission is asked first, allowed it lists two files, else it failed
+//   "edit"          a file edit with its old and new text, asked first the same way
+//   "refuse"        the turn ends with stopReason refusal
+//   anything else   a two-part reply
+//
+// session/new offers a thought level (low, high), so Coder's --effort is applied before the first prompt.
+//
+//   coax/web/tool.sh coder/tui/cursor_standin.coax    (a run puts a script on PATH as `cursor-agent` that execs this)
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+US_LINE :: 262144;
+US_SESSION :: "cu-standin-1";
+Us :: struct {
+  line: [US_LINE] u8; n: int; eof: bool;
+  out: [1024] u8; nout: int;
+  cwd: [1024] u8; ncwd: int;
+}
+
+us_send :: (text: string) {
+  b: [US_LINE + 1] u8; n := 0;
+  for c: text { if n < US_LINE { b[n] = c; n += 1; } }
+  b[n] = 10;
+  r := cxterm_write(b[0..<n + 1]);
+}
+us_read :: (s: [] Us) -> string {
+  s[0].n = 0;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { s[0].eof = true; return ""; }
+    if b == -1 { continue; }
+    if b == 10 {
+      if s[0].n == 0 { continue; }
+      line := cast(string) s[0].line[0..<s[0].n];
+      if s[0].nout > 0 { ok := fs_append(cast(string) s[0].out[0..<s[0].nout], line) && fs_append(cast(string) s[0].out[0..<s[0].nout], "\n"); }
+      return line;
+    }
+    if s[0].n < US_LINE { s[0].line[s[0].n] = cast(u8) b; s[0].n += 1; }
+  }
+  return "";
+}
+us_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+us_put :: (o: [] u8, m: int, s: string) -> int { k := m; for c: s { if k < o.count { o[k] = c; k += 1; } } return k; }
+#test "cursor stand-in: contains" { #assert us_has("please run ls", "run ls") && !us_has("ls", "run ls"); }
+
+us_result :: (id: string, result: string) {
+  b: [US_LINE] u8; n := us_put(b[..], 0, "{\"jsonrpc\":\"2.0\",\"id\":"); n = us_put(b[..], n, id); n = us_put(b[..], n, ",\"result\":"); n = us_put(b[..], n, result); n = us_put(b[..], n, "}");
+  us_send(cast(string) b[0..<n]);
+}
+// A session/update notification carrying update (its JSON).
+us_update :: (update: string) {
+  b: [US_LINE] u8; n := us_put(b[..], 0, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"");
+  n = us_put(b[..], n, US_SESSION); n = us_put(b[..], n, "\",\"update\":"); n = us_put(b[..], n, update); n = us_put(b[..], n, "}}");
+  us_send(cast(string) b[0..<n]);
+}
+us_chunk :: (text: string) {
+  o: [1] Jo; b: [8192] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "sessionUpdate"); jo_str(o[..], "agent_message_chunk");
+  jo_key(o[..], "content"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]); jo_end(o[..]);
+  us_update(jo_text(o[..]));
+}
+// Permission for a tool call, asked; whether an allow option was chosen.
+us_permission :: (s: [] Us, call: string, kind: string, title: string) -> bool {
+  o: [1] Jo; b: [4096] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0"); jo_key(o[..], "id"); jo_int(o[..], 900);
+  jo_key(o[..], "method"); jo_str(o[..], "session/request_permission");
+  jo_key(o[..], "params"); jo_obj(o[..]); jo_key(o[..], "sessionId"); jo_str(o[..], US_SESSION);
+  jo_key(o[..], "toolCall"); jo_obj(o[..]); jo_key(o[..], "toolCallId"); jo_str(o[..], call); jo_key(o[..], "title"); jo_str(o[..], title); jo_key(o[..], "kind"); jo_str(o[..], kind); jo_end(o[..]);
+  jo_key(o[..], "options"); jo_raw(o[..], "[{\"optionId\":\"allow-once\",\"name\":\"Allow\",\"kind\":\"allow_once\"},{\"optionId\":\"allow-always\",\"name\":\"Always\",\"kind\":\"allow_always\"},{\"optionId\":\"reject-once\",\"name\":\"Reject\",\"kind\":\"reject_once\"}]");
+  jo_end(o[..]); jo_end(o[..]);
+  us_send(jo_text(o[..]));
+  while true {
+    line := us_read(s);
+    if line.count == 0 { return false; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    if jv_raw(d[0], jv_get(d[0], 0, "id")) != "900" || jv_get(d[0], 0, "method") >= 0 { us_answer(s, d[0]); continue; }
+    return us_has(jv_raw(d[0], jv_get(d[0], 0, "result")), "allow-");
+  }
+  return false;
+}
+us_call :: (call: string, kind: string, title: string) {
+  o: [1] Jo; b: [1024] u8; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "sessionUpdate"); jo_str(o[..], "tool_call"); jo_key(o[..], "toolCallId"); jo_str(o[..], call);
+  jo_key(o[..], "title"); jo_str(o[..], title); jo_key(o[..], "kind"); jo_str(o[..], kind); jo_key(o[..], "status"); jo_str(o[..], "pending"); jo_end(o[..]);
+  us_update(jo_text(o[..]));
+}
+us_turn :: (s: [] Us, id_in: string, d: Jv) {
+  ib: [64] u8; idn := us_put(ib[..], 0, id_in); id := cast(string) ib[0..<idn];      // (the line buffer is read again for a permission's answer)
+  mb: [16384] u8; mn := jv_str(d, jv_path(d, 0, "params.prompt[0].text"), mb[..]);
+  msg := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  stop := "end_turn";
+  if us_has(msg, "refuse") { us_chunk("I can't do that."); stop = "refusal"; }
+  else if us_has(msg, "run ls") {
+    us_call("call-1", "execute", "ls");
+    ok := us_permission(s, "call-1", "execute", "ls");
+    u: [1] Jo; ub: [1024] u8; jo_start(u[..], ub[..]);
+    jo_obj(u[..]); jo_key(u[..], "sessionUpdate"); jo_str(u[..], "tool_call_update"); jo_key(u[..], "toolCallId"); jo_str(u[..], "call-1");
+    jo_key(u[..], "status"); jo_str(u[..], ifx ok then "completed" else "failed");
+    jo_key(u[..], "content"); jo_raw(u[..], ifx ok then "[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":\"a.txt\\nb.txt\\n\"}}]" else "[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":\"The person rejected this.\"}}]");
+    jo_end(u[..]);
+    us_update(jo_text(u[..]));
+    us_chunk(ifx ok then "Two files: a.txt and b.txt." else "I could not list the folder.");
+  } else if us_has(msg, "edit") {
+    pb: [1100] u8; pn := us_put(pb[..], 0, cast(string) s[0].cwd[0..<s[0].ncwd]); pn = us_put(pb[..], pn, "/notes.txt");
+    us_call("call-2", "edit", "Edit notes.txt");
+    ok := us_permission(s, "call-2", "edit", "Edit notes.txt");
+    u: [1] Jo; ub: [2048] u8; jo_start(u[..], ub[..]);
+    jo_obj(u[..]); jo_key(u[..], "sessionUpdate"); jo_str(u[..], "tool_call_update"); jo_key(u[..], "toolCallId"); jo_str(u[..], "call-2");
+    jo_key(u[..], "status"); jo_str(u[..], ifx ok then "completed" else "failed");
+    if ok {
+      jo_key(u[..], "content"); jo_arr(u[..]); jo_obj(u[..]); jo_key(u[..], "type"); jo_str(u[..], "diff"); jo_key(u[..], "path"); jo_str(u[..], cast(string) pb[0..<pn]);
+      jo_key(u[..], "oldText"); jo_str(u[..], "first\nold line\n"); jo_key(u[..], "newText"); jo_str(u[..], "first\nnew line\n"); jo_end(u[..]); jo_end(u[..]);
+    }
+    jo_end(u[..]);
+    us_update(jo_text(u[..]));
+    us_chunk(ifx ok then "Changed one line in notes.txt." else "The edit was rejected.");
+  } else { us_chunk("Hello from the stand-in "); us_chunk("cursor."); }
+  rb: [128] u8; rn := us_put(rb[..], 0, "{\"stopReason\":\""); rn = us_put(rb[..], rn, stop); rn = us_put(rb[..], rn, "\"}");
+  us_result(id, cast(string) rb[0..<rn]);
+}
+
+us_answer :: (s: [] Us, d: Jv) {
+  mi := jv_get(d, 0, "method");
+  if mi < 0 { return; }
+  mb: [64] u8; mn := jv_str(d, mi, mb[..]);
+  method := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  ii := jv_get(d, 0, "id");
+  if ii < 0 { return; }            // session/cancel and other notifications
+  id := jv_raw(d, ii);
+  if method == "initialize" { us_result(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true},\"authMethods\":[{\"id\":\"cursor_login\",\"name\":\"Cursor login\"}]}"); return; }
+  if method == "session/new" || method == "session/load" {
+    s[0].ncwd = jv_str(d, jv_path(d, 0, "params.cwd"), s[0].cwd[..]); if s[0].ncwd < 0 { s[0].ncwd = 0; }
+    us_result(id, "{\"sessionId\":\"cu-standin-1\",\"configOptions\":[{\"id\":\"thought\",\"category\":\"thought_level\",\"type\":\"select\",\"currentValue\":\"low\",\"options\":[{\"value\":\"low\",\"name\":\"Low\"},{\"value\":\"high\",\"name\":\"High\"}]}]}");
+    return;
+  }
+  if method == "session/prompt" { us_turn(s, id, d); return; }
+  us_result(id, "{}");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  s: [1] Us;
+  ob: [1024] u8; out := proc_getenv("CURSOR_STANDIN_OUT", ob[..]);
+  s[0].nout = us_put(s[0].out[..], 0, out);
+  while !s[0].eof {
+    line := us_read(s[..]);
+    if line.count == 0 { continue; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) { continue; }
+    us_answer(s[..], d[0]);
+  }
+  return 0;
+}

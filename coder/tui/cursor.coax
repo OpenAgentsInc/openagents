@@ -1,52 +1,38 @@
 // The cursor engine: the installed Cursor CLI on the person's own login,
-// driven as `agent acp` over JSON-RPC by coax/lib/agent/cursor, one session
-// for the conversation. The reply streams, tool calls show as rows, and
+// driven as `agent acp` by the shared Cursor engine
+// (coax/lib/agent/engine/cursor.coax), one session for the conversation. The
+// engine starts the agent, logs in, opens or resumes the session and holds
+// the first message; each event then comes here, where it is printed and
+// where Coder's settings, permissions, plans and questions are answered. The reply streams, tool calls show as rows, and
 // file changes show as diffs. Tools run without asking; with --ask each
 // permission comes to the y/a/n prompt. Under a policy the tool kind is
 // the effect (read, search, fetch, edit, delete, move, execute).
 
-#load "../../coax/lib/agent/cursor/cursor.coax";
-
-cd_cursor_program :: (out: [] u8) -> string {
-  pb: [8192] u8; path := cl_getenv("PATH", pb[..]);
-  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
-  return cu_find(path, home, out);
-}
-
 cd_cursor_open :: (a: [] App) {
-  if a[0].cu_live { return; }
-  fresh: CuClient; a[0].cu[0] = fresh;
-  cu_init(a[0].cu, a[0].cu_line, a[0].cu_arena, a[0].cu_outb);
-  prog: [4096] u8; program := cd_cursor_program(prog[..]);
+  x := a[0].cue;
+  if x[0].live { return; }
+  prog: [4096] u8; program := cue_program(prog[..]);
   if program.count == 0 {
     why := "Cursor's agent was not found. Install it from cursor.com/install, or put cursor-agent on PATH.";
     if a[0].running { cd_finish(a, END_FAILED, why); } else { cd_commit(a, TUI_RED, "  Cursor: the agent was not found."); }
     return;
   }
-  l: [1] CuLaunch; l[0].program = program; l[0].cwd = a[0].cwd;
-  why := cu_start(a[0].cu, a[0].cup, l[0]);
+  // a fork resumes the parent's Cursor session (session/load) until the agent has been asked to
+  cue_resume(x, cast(string) a[0].cursor_resume[0..<a[0].ncursor_resume]);
+  why := cue_launch(x, program, a[0].cwd, "Coder", CODER_VERSION);
   if why.count > 0 {
     if a[0].running { cd_finish(a, END_FAILED, why); } else { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", why); }
     return;
   }
-  a[0].cu_live = true; a[0].cu_ready = false; a[0].cu_replay = false; a[0].cu_hold = 0;
-  r := cu_initialize(a[0].cu, "Coder", CODER_VERSION);
 }
 
+// At once on an open session with no setting unanswered, else owed until it is.
 cd_cursor_send :: (a: [] App, msg: string) {
-  if a[0].cu_live && a[0].cu_ready && a[0].cu_hold == 0 {
-    r := cu_session_prompt(a[0].cu, msg);
-    return;
-  }
-  a[0].npending = cd_cat(a[0].pending[..], 0, msg);
+  if cue_send(a[0].cue, msg) { return; }
   cd_cursor_open(a);
 }
 
-cd_cursor_close :: (a: [] App) {
-  if !a[0].cu_live { return; }
-  cu_close_process(a[0].cup);
-  a[0].cu_live = false; a[0].cu_ready = false; a[0].cu_replay = false; a[0].cu_hold = 0;
-}
+cd_cursor_close :: (a: [] App) { cue_close(a[0].cue); }
 
 cd_cursor_lines :: (text: string) -> int {
   if text.count == 0 { return 0; }
@@ -120,26 +106,22 @@ cd_cursor_remember :: (a: [] App) {
 }
 
 cd_cursor_configure :: (a: [] App, result: string) {
-  a[0].cu_hold = 0;
+  a[0].cue[0].hold = 0;
   model := ifx a[0].model_engine == ENGINE_CURSOR then a[0].model else "";
   if model.count > 0 {
     id := cu_config_id(result, "model", model, a[0].cu[0].ar[..]);
     if id.count == 0 { cd_cursor_note(a, "  --model was not applied: this Cursor session did not advertise it."); }
-    else { r := cu_set_config(a[0].cu, id, model); a[0].cu_hold += 1; }
+    else { cue_set(a[0].cue, id, model); }
   }
   effort := cd_effort(a);
   if effort.count > 0 {
     id := cu_config_id(result, "thought_level", effort, a[0].cu[0].ar[..]);
     if id.count == 0 { cd_cursor_note(a, "  --effort was not applied: this Cursor session did not advertise a thought level."); }
-    else { r := cu_set_config(a[0].cu, id, effort); a[0].cu_hold += 1; }
+    else { cue_set(a[0].cue, id, effort); }
   }
 }
 
-cd_cursor_prompt_pending :: (a: [] App) {
-  if a[0].cu_hold > 0 || a[0].npending == 0 || !a[0].running { return; }
-  r := cu_session_prompt(a[0].cu, cast(string) a[0].pending[0..<a[0].npending]);
-  a[0].npending = 0;
-}
+cd_cursor_prompt_pending :: (a: [] App) { cue_owed(a[0].cue, a[0].running); }
 
 cd_cursor_content :: (a: [] App, update: string) {
   content := cl_raw(update, "content");
@@ -175,7 +157,7 @@ cd_cursor_stop :: (a: [] App) {
     else { cu_decline(a[0].cu); }
     a[0].ask = false;
   }
-  if a[0].cu_live && a[0].cu_ready && !a[0].stopping && a[0].cu[0].session_n > 0 {
+  if a[0].cue[0].live && a[0].cue[0].ready && !a[0].stopping && a[0].cu[0].session_n > 0 {
     cu_session_cancel(a[0].cu);
     a[0].stopping = true;
     a[0].stop_ms = cd_now(a);
@@ -199,16 +181,20 @@ cd_cursor_finish_turn :: (a: [] App, result: string) {
 
 // One poll of the CLI; true when something changed.
 cd_cursor_poll :: (a: [] App) -> bool {
-  if !a[0].cu_live || a[0].ask { return false; }
-  c := a[0].cu; p := a[0].cup;
+  x := a[0].cue;
+  if !x[0].live || a[0].ask { return false; }
+  c := a[0].cu;
   changed := false;
+  one: [1] CuEvent;
   for guard: 0..<64 {
-    ev := cu_poll(c, p, 0);
+    // the engine's part of each event is done when it comes back: logged in, the session opened,
+    // a setting's answer counted, a replayed request answered (none), a dead agent closed
+    cue_poll(x, one[..]);
+    ev := one[0];
     if ev.kind == CuEventKind.idle { break; }
     changed = true;
     if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
-      eb: [2048] u8; why := cu_error(c);
-      if why.count == 0 { why = cl_stderr(p, eb[..]); }
+      why := cue_why(x);
       if why.count == 0 { why = "Cursor exited."; }
       wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
       cd_cursor_close(a);
@@ -216,15 +202,8 @@ cd_cursor_poll :: (a: [] App) -> bool {
       else if a[0].engine == ENGINE_CURSOR { cd_commit_prefixed(a, TUI_RED, "  Cursor: ", "  ", cast(string) wb[0..<wn]); }
       return true;
     }
-    if ev.kind == CuEventKind.initialized { r := cu_authenticate(c); continue; }
-    if ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE {
-      if a[0].ncursor_resume > 0 {
-        a[0].cu_replay = true;
-        r := cu_session_load(c, cast(string) a[0].cursor_resume[0..<a[0].ncursor_resume], a[0].cwd);
-        a[0].ncursor_resume = 0;
-      } else { r := cu_session_new(c, a[0].cwd); }
-      continue;
-    }
+    if ev.kind == CuEventKind.none || ev.kind == CuEventKind.initialized { continue; }
+    if ev.kind == CuEventKind.answered && ev.of == CU_AUTHENTICATE { a[0].ncursor_resume = 0; continue; }
     if ev.kind == CuEventKind.refused && ev.of == CU_AUTHENTICATE {
       cd_cursor_close(a);
       if a[0].running { cd_finish(a, END_FAILED, "Cursor is not logged in. Run agent login."); }
@@ -232,14 +211,13 @@ cd_cursor_poll :: (a: [] App) -> bool {
       return true;
     }
     if ev.kind == CuEventKind.refused && ev.of == CU_SESSION_LOAD {
-      a[0].cu_replay = false; a[0].ncursor_resume = 0;
+      a[0].ncursor_resume = 0;
       cd_cursor_note(a, "  The Cursor session could not be resumed. Starting a new one.");
-      r := cu_session_new(c, a[0].cwd);
       continue;
     }
     if ev.kind == CuEventKind.refused {
       mb: [1024] u8; mn := cd_cat(mb[..], 0, ev.message);
-      if ev.of == CU_SESSION_SET_CONFIG { a[0].cu_hold -= 1; cd_cursor_note(a, "  A Cursor setting was not applied."); cd_cursor_prompt_pending(a); continue; }
+      if ev.of == CU_SESSION_SET_CONFIG { cd_cursor_note(a, "  A Cursor setting was not applied."); cd_cursor_prompt_pending(a); continue; }
       if a[0].running && ev.of == CU_SESSION_PROMPT { cd_finish(a, END_FAILED, cast(string) mb[0..<mn]); a[0].stopping = false; }
       else if ev.of == CU_SESSION_NEW {
         cd_cursor_close(a);
@@ -250,14 +228,12 @@ cd_cursor_poll :: (a: [] App) -> bool {
       continue;
     }
     if ev.kind == CuEventKind.answered && (ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD) {
-      a[0].cu_ready = true; a[0].cu_replay = false;
       cd_cursor_remember(a);
       cd_cursor_configure(a, ev.result);
       cd_cursor_prompt_pending(a);
       continue;
     }
     if ev.kind == CuEventKind.answered && ev.of == CU_SESSION_SET_CONFIG {
-      if a[0].cu_hold > 0 { a[0].cu_hold -= 1; }
       cd_cursor_prompt_pending(a);
       continue;
     }
@@ -266,7 +242,6 @@ cd_cursor_poll :: (a: [] App) -> bool {
       continue;
     }
     if ev.kind == CuEventKind.question {
-      if a[0].cu_replay { cu_question(c, true); continue; }
       qb: [400] u8; qn := cd_cat(qb[..], 0, cl_str(c[0].ar[..], ev.params, "questions.0.prompt"));
       if qn == 0 { qn = cd_cat(qb[..], 0, "Cursor asked a question"); }
       qn = cd_cat(qb[..], qn, " (skipped)");
@@ -275,14 +250,12 @@ cd_cursor_poll :: (a: [] App) -> bool {
       continue;
     }
     if ev.kind == CuEventKind.plan {
-      if a[0].cu_replay { cu_plan(c, false); continue; }
       if !a[0].ask_first && !a[0].pol[0].on { cu_plan(c, true); continue; }
       a[0].nask = cd_cat(a[0].ask_text[..], 0, "Accept this plan?");
       a[0].ask = true;
       return true;
     }
     if ev.kind == CuEventKind.permission {
-      if a[0].cu_replay { cu_decline(c); continue; }
       tool := cl_raw(ev.params, "toolCall");
       kb: [32] u8; kn := cd_cat(kb[..], 0, cl_str(c[0].ar[..], tool, "kind"));
       tb: [400] u8; tn := cd_cat(tb[..], 0, cl_str(c[0].ar[..], tool, "title"));
@@ -315,7 +288,7 @@ cd_cursor_poll :: (a: [] App) -> bool {
       return true;
     }
     if ev.kind != CuEventKind.notification { continue; }
-    if a[0].engine != ENGINE_CURSOR || !a[0].running || a[0].cu_replay { continue; }
+    if a[0].engine != ENGINE_CURSOR || !a[0].running || x[0].replay { continue; }
     update := cl_raw(ev.params, "update");
     kind := cl_str(c[0].ar[..], update, "sessionUpdate");
     if ev.method == "cursor/task" {
