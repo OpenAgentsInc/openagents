@@ -556,7 +556,7 @@ cc_bow_sweep :: (c0:int,c1:int)->overlap.OverlapHit {
   bind:[figs.PEOPLE_JOINTS][3]f32;for j:0..<figs.PEOPLE_JOINTS {bind[j]=figs.bd_bind_at(rig.bind[j*12..<j*12+12]);}
   for c:c0..<c1+1 {n:=ifx c==figs.BD_BOW then figs.BOW_POSE_FRAMES else figs.BD_FRAMES[c];
    for f:0..<n {
-    cc_pose(own[..],ppl[..],sk[..],female,c,f,pal[..]);
+    cc_pose(own[..],ppl[..],sk[..],female,c,f,pal[..]);cc_bow_arm(pal[..],female,c,f);
     nocked:=c==figs.BD_BOW && f<figs.BOW_POSE_DRAWS;k:=ifx nocked then f32(f)/f32(figs.BOW_POSE_DRAWS-1) else 0.0f32;
     bones:[CC_BODY_N]overlap.OverlapCapsule;nb:=cc_body_capsules(pal[..],bind[..],bones[..]);
     age:=f32(f)/f32(figs.BD_FPS);   // the bow swings as you fall or reel, and is held in the fist (bow_hold)
@@ -566,12 +566,17 @@ cc_bow_sweep :: (c0:int,c1:int)->overlap.OverlapHit {
  }
  return sweep;
 }
-// Carried, the bow's back faces ahead and its string trails behind it (#13073): over clips c0 to c1,
-// every frame, on both bodies, the least by which the string's middle lies behind the bow's grip along
-// the way you face. Each frame is measured twice: on bow_matrix_turned in the figure's space, and as
-// every zone places the bow (bow_carry_side: held_matrix from a body record, through its pose row's hand
-// rows, turned to each of CC_BOW_SIDE_YAWS), so a zone whose record, hand rows or turn put the string
-// ahead fails here too.
+// A bow carrier's pose as the GPU draws it: on the carry's frames the bow arm out (figs.bd_arm_out).
+cc_bow_arm :: (pal:[]f32,female:bool,c:int,f:int) {
+ if figs.bd_arm_frame(figs.bd_row(female,c,f)/figs.BD_ROWS) {figs.bd_arm_out_pose(pal,figs.bd_shoulder_bind(female));}
+}
+// Carried, the bow's string is in toward the body and its back out (#13073): over clips c0 to c1, every
+// frame, on both bodies, the least by which the string's middle lies nearer the body's middle line than
+// the bow's grip, sideways in the figure's own space (bow_string_medial: either hand). Each frame is
+// measured twice: on bow_matrix_turned in the figure's space, and as every zone places the bow
+// (bow_carry_side: held_matrix from a body record, through its pose row's kept hand rows with the bow
+// arm out, turned to each of CC_BOW_SIDE_YAWS), so a zone whose record, hand rows or turn put the string
+// out fails here too.
 CC_BOW_SIDE_YAWS :: [4]f32.[0,1.3,3.14159265,-2.0];
 cc_bow_side_sweep :: (c0:int,c1:int)->f32 {
  own:[1]figs.Twohand;figs.twohand_load(own[..]);ppl:[1]figs.People;figs.people_load(ppl[..]);
@@ -581,25 +586,27 @@ cc_bow_side_sweep :: (c0:int,c1:int)->f32 {
   bind:[figs.PEOPLE_JOINTS][3]f32;for j:0..<figs.PEOPLE_JOINTS {bind[j]=figs.bd_bind_at(rig.bind[j*12..<j*12+12]);}
   for k:0..<3 {bodies[0].hand_at[body*3+k]=bind[figs.BD_HAND][k];bodies[0].hand_at[6+body*3+k]=bind[figs.BD_HAND_L][k];}
   for c:c0..<c1+1 {for f:0..<figs.BD_FRAMES[c] {
-   cc_pose(own[..],ppl[..],sk[..],female,c,f,pal[..]);
+   cc_pose(own[..],ppl[..],sk[..],female,c,f,pal[..]);cc_bow_arm(pal[..],female,c,f);
    hl:[12]f32;for i:0..<12 {hl[i]=pal[figs.BD_HAND_L*12+i];}
-   side:=bow_string_behind(bow_matrix_turned(hl,bind[figs.BD_HAND_L],0,0,0,0,[3]f32.[0,0,0]),0);
+   mid:=cc_joint_at(pal[..],1,bind[1]);
+   side:=bow_string_medial(bow_matrix_turned(hl,bind[figs.BD_HAND_L],0,0,0,0,[3]f32.[0,0,0]),0,[3]f32.[mid[0],0,mid[2]]);
    if side<least {least=side;}
-   // the frame's hand rows where a zone's bake keeps them (figs.bd_keep_hands), then the bow as a zone places it
-   row:=figs.bd_row(female,c,f);h:=(row/figs.BD_ROWS)*24;
-   for i:0..<12 {bodies[0].hand[h+i]=pal[figs.BD_HAND*12+i];bodies[0].hand[h+12+i]=hl[i];}
+   // the frame's hand rows where a zone's bake keeps them (figs.bd_keep_hands: the bow hand's with the
+   // arm out), then the bow as a zone places it
+   row:=figs.bd_row(female,c,f);fr:=row/figs.BD_ROWS;
+   for i:0..<12 {bodies[0].hand[fr*24+i]=pal[figs.BD_HAND*12+i];bodies[0].hand[figs.BD_HAND_AT_OUT+fr*12+i]=hl[i];}
    for y:CC_BOW_SIDE_YAWS {z:=bow_carry_side(bodies[..],female,f32(row),y);if z<least {least=z;}}
   }}
  }
  return least;
 }
-#test "standing, the carried bow's string trails behind its grip, in every zone" #steps 4000000000 {
- #assert cc_bow_side_sweep(figs.BD_IDLE,figs.BD_IDLE)>CC_BOW_BEHIND_MIN;
+#test "standing, the carried bow's string is in toward the body and its back out, in every zone" #steps 4000000000 {
+ #assert cc_bow_side_sweep(figs.BD_IDLE,figs.BD_IDLE)>CC_BOW_MEDIAL_MIN;
 }
-#test "walking and running, the carried bow's string still trails behind its grip, in every zone" #steps 4000000000 {
- #assert cc_bow_side_sweep(figs.BD_WALK,figs.BD_RUN)>CC_BOW_BEHIND_MIN;
+#test "walking and running, the carried bow's string is still in toward the body, in every zone" #steps 4000000000 {
+ #assert cc_bow_side_sweep(figs.BD_WALK,figs.BD_RUN)>CC_BOW_MEDIAL_MIN;
 }
-CC_BOW_BEHIND_MIN :: 0.10;   // metres: the string behind the grip, the bow's back toward the way you face
+CC_BOW_MEDIAL_MIN :: 0.08;   // metres: the string nearer the body's middle than the bow's back
 #test "the drawn bow's limbs, string and arrow stay out of the body, both bodies, every frame" #steps 2000000000 {
  h:=cc_bow_sweep(figs.BD_BOW,figs.BD_BOW);#assert h.status==overlap.OverlapStatus.clear && h.poses==2*figs.BOW_POSE_FRAMES;
 }

@@ -26,20 +26,33 @@ along the forearm, canted 10 degrees out from the body. Drawn, the arm points at
 the aim with the thumb up, so the bow stands upright, and it turns about its
 limbs until the string faces your chin.
 
-Carried (standing, walking and running), the bow hangs from the relaxed bow
-hand as an archer carries one (`bow_carry_basis`). Its back faces ahead, the
-way you face. Its string trails behind the bow along the leg, so the limbs
-curve forward. The top tilts forward, and the bow sits
-partway into the fist (`CC_BOW_CARRY_HOLD`), which keeps the upper limb off
-the forearm and the lower limb and string off the striding thigh. As you draw,
-the bow turns from the carry to the drawn hold.
+The packed bow is placed 0.7 as deep along its string side (`CC_BOW_DEPTH`),
+everywhere it is drawn, so its braced string stands about 20 cm from the
+grip, a real recurve's brace height. The draw still pulls the string to the
+draw fist, so the draw length is the same.
 
-A check (`cc_bow_side_sweep`) keeps the string's middle at least 10 cm behind
-the bow's grip, along the way you face, in every standing, walking and running
-frame. It measures the bow in the figure's space and as every zone places it
-(`bow_carry_side`: from a body record, through the frame's kept hand rows, at
-four turns), so a string turned ahead of the bow fails. The overlap sweep keeps
-the limbs and string out of the body.
+Carried (standing, walking, running and in a jump's air), the bow hangs from
+the relaxed bow hand as an archer carries one (`bow_carry_basis`). The hand
+holds the grip. The bow is nearly upright, its top tilted a little forward.
+Its string is in toward the body, between the bow and the leg, running up
+under the arm, and its back faces out, away from the body.
+
+So the string clears the leg, the bow arm hangs a little out from the body
+while you carry the bow: a pose layer on those clips' frames turns the upper
+arm about 20 degrees out at the shoulder, so the hand is about 15 cm out
+(`bd_arm_out` in `apps/openagents-web/fivelab-bodies.coax`, and `fivelab_arm`
+in the figure shader, for any body record flagged a bow carrier). The bow sits
+9 cm out from the fist and 2 cm ahead (`CC_BOW_CARRY_OUT`), so the upper limb
+clears the forearm. Drawn or held in the fist, the bow arm is the clip's own.
+As you draw, the bow turns from the carry to the drawn hold.
+
+A check (`cc_bow_side_sweep`) keeps the string's middle at least 8 cm nearer
+the body's middle line than the bow's grip, sideways in the figure's own
+space, in every standing, walking and running frame. It measures the bow in
+the figure's space and as every zone places it (`bow_carry_side`: from a body
+record, through the frame's kept hand rows with the arm out, at four turns),
+so a string turned out from the body fails. The overlap sweep keeps the limbs
+and string out of the body.
 
 The standalone Character Create page shows no held gear. Everglade II's
 Character Create and Experimental show the bow.

@@ -1871,6 +1871,7 @@ e2_kit_of :: (klass: int) -> int { k := xc_kit(klass); return ifx k == XC_KIT_BO
 e2_held :: (s: [] E2, at: E2Drawn, from: int, kit: int, female: bool, aim: f32, nocked: bool, drop: f32) -> E2Drawn {
   c := s[0].creator[..]; out := s[0].records[..]; d := at;
   if kit < 0 || from >= d.rec { return d; }
+  if kit == XC_KIT_BOW { cc.bow_arm_records(out, from, d.rec); }   // a bow carrier: the bow arm out (the body's records, from to d.rec)
   h: [1] cc.HeldPieces; cc.held_pieces(h[..], kit, female, aim, nocked, s[0].bodies[..], out[from * 24..<from * 24 + 24]);
   for i: 0..<h[0].n {
     m := h[0].mesh[i];

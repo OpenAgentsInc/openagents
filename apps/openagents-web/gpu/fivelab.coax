@@ -483,9 +483,52 @@ fivelab_gait_share :: (code:f32,j:u32)->f32 {
   #assert abs(fivelab_gait_share(c,2)-(0.2f32*0.4f32+0.6f32))<0.001;
 }
 fivelab_mix4 :: (a:V4,b:V4,t:f32)->V4 { return v4(a.x+((b.x-a.x)*t),a.y+((b.y-a.y)*t),a.z+((b.z-a.z)*t),a.w+((b.w-a.w)*t)); }
+// The bow arm (fivelab-bodies.coax bd_arm_out, #13073): on a bow carrier's records (flag bit 8), on the
+// idle, walk, run and jump loop frames, the left arm's joints (8 to 30) turned FIVELAB_ARM_OUT about
+// the figure's forward axis through the shoulder where the frame has it. The constants are the bodies'
+// (BD_ARM_OUT, BD_SHOULDER_BIND, BD_ROWS, BD_TOTAL, BD_FIRST of the idle to the run and the jump loop).
+FIVELAB_ARM_OUT :: 0.35f32;
+FivelabRows :: struct {a:V4; c:V4; e:V4; }
+fivelab_arm_frame :: (row:u32)->bool {
+  f:u32=(row/cast(u32)195)%cast(u32)4137;
+  return (f<cast(u32)143)||((f>=cast(u32)389)&&(f<cast(u32)464));
+}
+fivelab_arm :: (row:u32,j:u32,m:FivelabRows,bake:[]V4)->FivelabRows {
+  if ((j<cast(u32)8)||(j>cast(u32)30)||(!fivelab_arm_frame(row))) { return m; }
+  q:V4=v4(0.1919f32,1.4555f32,-0.0654f32,1.0f32);
+  if ((row/cast(u32)195)>=cast(u32)4137) { q=v4(0.1516f32,1.4181f32,-0.0543f32,1.0f32); }
+  r:u32=add_wrap(row,cast(u32)24);
+  px:f32=wg_dot4(bake[cast(int)r],q);
+  py:f32=wg_dot4(bake[cast(int)add_wrap(r,1)],q);
+  c:f32=cos(FIVELAB_ARM_OUT); sn:f32=sin(FIVELAB_ARM_OUT);
+  o:FivelabRows;
+  o.a=v4((c*m.a.x)-(sn*m.c.x),(c*m.a.y)-(sn*m.c.y),(c*m.a.z)-(sn*m.c.z),(c*m.a.w)-(sn*m.c.w)+px-((c*px)-(sn*py)));
+  o.c=v4((sn*m.a.x)+(c*m.c.x),(sn*m.a.y)+(c*m.c.y),(sn*m.a.z)+(c*m.c.z),(sn*m.a.w)+(c*m.c.w)+py-((sn*px)+(c*py)));
+  o.e=m.e;
+  return o;
+}
+#test "the shader's bow arm turns as the bodies' does (fivelab-bodies.coax bd_arm_out)" {
+  bake:[400]V4;
+  for i:0..<400 { k:=i%3; bake[i]=v4(ifx k==0 then 1.0f32 else 0.0f32,ifx k==1 then 1.0f32 else 0.0f32,ifx k==2 then 1.0f32 else 0.0f32,0.0f32); }
+  id:=FivelabRows.{a=bake[0],c=bake[1],e=bake[2]};
+  #assert fivelab_arm_frame(0) && fivelab_arm_frame(cast(u32)(142*195)) && !fivelab_arm_frame(cast(u32)(143*195)) && fivelab_arm_frame(cast(u32)((4137+400)*195)) && !fivelab_arm_frame(cast(u32)(4137*195+252*195));
+  h:=fivelab_arm(0,10,id,bake[..]);q:=v4(0.1919f32,1.4555f32-0.55f32,-0.0654f32,1.0f32);
+  #assert abs(wg_dot4(h.a,q)-(0.1919f32+0.55f32*sin(FIVELAB_ARM_OUT)))<0.0001 && wg_dot4(h.c,q)>1.4555f32-0.55f32 && wg_dot4(h.e,q)== -0.0654f32;
+  n:=fivelab_arm(0,31,id,bake[..]);#assert n.a.x==1 && n.a.w==0 && n.c.y==1;   // the right arm stays
+  s:=fivelab_arm(cast(u32)(143*195),10,id,bake[..]);#assert s.a.x==1 && s.a.w==0;   // a blow's frame stays
+}
+fivelab_rows :: (row:u32,j:u32,arm:bool,bake:[]V4)->FivelabRows {
+  r:u32=add_wrap(row,mul_wrap(j,3));
+  m:FivelabRows;
+  m.a=bake[cast(int)r];
+  m.c=bake[cast(int)add_wrap(r,1)];
+  m.e=bake[cast(int)add_wrap(r,2)];
+  if arm { m=fivelab_arm(row,j,m,bake); }
+  return m;
+}
 // A vertex skinned by the four joints of frame row a and of frame row b, each joint mixed toward b by
 // its share under code (fivelab_gait_share).
-fivelab_skin_mix :: (ra:u32,rb:u32,code:f32,joints:u32,weights:u32,at:V4,nw:V3,bake:[]V4)->FivelabSkinned {
+fivelab_skin_mix :: (ra:u32,rb:u32,code:f32,joints:u32,weights:u32,at:V4,nw:V3,bake:[]V4,arm:bool)->FivelabSkinned {
   o:FivelabSkinned;
   o.p=v3(0.0f32,0.0f32,0.0f32);
   o.n=v3(0.0f32,0.0f32,0.0f32);
@@ -496,15 +539,15 @@ fivelab_skin_mix :: (ra:u32,rb:u32,code:f32,joints:u32,weights:u32,at:V4,nw:V3,b
       if (w>0.0f32) {
         j:u32=wg_byte(joints,mul_wrap(k,8));
         s:f32=fivelab_gait_share(code,j);
-        r:u32=add_wrap(ra,mul_wrap(j,3));
-        a:V4=bake[cast(int)r];
-        c:V4=bake[cast(int)add_wrap(r,1)];
-        e:V4=bake[cast(int)add_wrap(r,2)];
+        m:FivelabRows=fivelab_rows(ra,j,arm,bake);
+        a:V4=m.a;
+        c:V4=m.c;
+        e:V4=m.e;
         if (s>0.001f32) {
-          r2:u32=add_wrap(rb,mul_wrap(j,3));
-          a=fivelab_mix4(a,bake[cast(int)r2],s);
-          c=fivelab_mix4(c,bake[cast(int)add_wrap(r2,1)],s);
-          e=fivelab_mix4(e,bake[cast(int)add_wrap(r2,2)],s);
+          m2:FivelabRows=fivelab_rows(rb,j,arm,bake);
+          a=fivelab_mix4(a,m2.a,s);
+          c=fivelab_mix4(c,m2.c,s);
+          e=fivelab_mix4(e,m2.e,s);
         }
         o.p=add3(o.p,scale3(v3(wg_dot4(a,at),wg_dot4(c,at),wg_dot4(e,at)),w));
         o.n=add3(o.n,scale3(v3(dot3(v3(a.x,a.y,a.z),nw),dot3(v3(c.x,c.y,c.z),nw),dot3(v3(e.x,e.y,e.z),nw)),w));
@@ -515,7 +558,7 @@ fivelab_skin_mix :: (ra:u32,rb:u32,code:f32,joints:u32,weights:u32,at:V4,nw:V3,b
   return o;
 }
 // A vertex skinned by the four joints of the frame starting at row.
-fivelab_skin :: (row:u32,joints:u32,weights:u32,at:V4,nw:V3,bake:[]V4)->FivelabSkinned {
+fivelab_skin :: (row:u32,joints:u32,weights:u32,at:V4,nw:V3,bake:[]V4,arm:bool)->FivelabSkinned {
   o:FivelabSkinned;
   o.p=v3(0.0f32,0.0f32,0.0f32);
   o.n=v3(0.0f32,0.0f32,0.0f32);
@@ -524,10 +567,10 @@ fivelab_skin :: (row:u32,joints:u32,weights:u32,at:V4,nw:V3,bake:[]V4)->FivelabS
     while k<4 {
       w:f32=(cast(f32)(wg_byte(weights,mul_wrap(k,8))))/255.0f32;
       if (w>0.0f32) {
-        r:u32=add_wrap(row,mul_wrap(wg_byte(joints,mul_wrap(k,8)),3));
-        a:V4=bake[cast(int)r];
-        c:V4=bake[cast(int)add_wrap(r,1)];
-        e:V4=bake[cast(int)add_wrap(r,2)];
+        m:FivelabRows=fivelab_rows(row,wg_byte(joints,mul_wrap(k,8)),arm,bake);
+        a:V4=m.a;
+        c:V4=m.c;
+        e:V4=m.e;
         o.p=add3(o.p,scale3(v3(wg_dot4(a,at),wg_dot4(c,at),wg_dot4(e,at)),w));
         o.n=add3(o.n,scale3(v3(dot3(v3(a.x,a.y,a.z),nw),dot3(v3(c.x,c.y,c.z),nw),dot3(v3(e.x,e.y,e.z),nw)),w));
       }
@@ -645,14 +688,15 @@ fivelab_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fivela
   nw:V3=v3(nw4.x,nw4.y,nw4.z);
   joints:u32=vertices[cast(int)add_wrap(b,4)];
   weights:u32=vertices[cast(int)add_wrap(b,5)];
+  arm:bool=wg_fmod(flags,16.0f32)>7.5f32;   // a bow carrier: the bow arm out (fivelab_arm)
   sk:FivelabSkinned;
   if (m.b.z>1.5f32) {
-    sk=fivelab_skin_mix(wg_u32_f(m.b.x),wg_u32_f(m.b.y),m.b.z,joints,weights,at4,nw,bake);
+    sk=fivelab_skin_mix(wg_u32_f(m.b.x),wg_u32_f(m.b.y),m.b.z,joints,weights,at4,nw,bake,arm);
   } else {
-    sk=fivelab_skin(wg_u32_f(m.b.x),joints,weights,at4,nw,bake);
+    sk=fivelab_skin(wg_u32_f(m.b.x),joints,weights,at4,nw,bake,arm);
   }
   if ((m.b.z>0.001f32)&&(m.b.z<1.5f32)) {
-    sk2:FivelabSkinned=fivelab_skin(wg_u32_f(m.b.y),joints,weights,at4,nw,bake);
+    sk2:FivelabSkinned=fivelab_skin(wg_u32_f(m.b.y),joints,weights,at4,nw,bake,arm);
     sk.p=mix3(sk.p,sk2.p,m.b.z);
     sk.n=mix3(sk.n,sk2.n,m.b.z);
   }

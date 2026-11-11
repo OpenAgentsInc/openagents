@@ -70,7 +70,8 @@ BD_ROWS :: 195;           // rows a frame: 65 joints, three each
 BD_BAKE_FLOATS :: 6453720; // 2 bodies * BD_TOTAL frames * 195 rows * 4
 BD_HAND :: 34;            // the right hand's joint (the weapon's bone)
 BD_HAND_L :: 10;          // the left hand's (a two-handed weapon's upper hand)
-BD_HAND_FLOATS :: 198576; // 2 bodies * BD_TOTAL frames * 24: both hands' three rows a frame
+BD_HAND_AT_OUT :: 198576; // 2 bodies * BD_TOTAL frames * 24: both hands' three rows a frame; then
+BD_HAND_FLOATS :: 297864; // 2 bodies * BD_TOTAL frames * 12 more: the left hand's with the bow arm out (bd_arm_out)
 BD_FADE :: 0.18;          // seconds a change of clip blends
 BD_WALK_FROM :: 0.35;     // m/s: slower stands
 BD_RUN_FROM :: 2.2;       // and faster runs
@@ -219,7 +220,7 @@ Bodies :: struct {
   self_n: int;              // the first draws are your own body, not drawn from your eyes in first person (charactercreator.coax scene_reserved; they still cast shadows)
   shown: int;               // figures drawn this frame
   blocks: int;              // of them, drawn as blocks
-  hand: [BD_HAND_FLOATS] f32;  // the right then left hand's skinning rows, every baked frame (bd_keep_hands)
+  hand: [BD_HAND_FLOATS] f32;  // the right then left hand's skinning rows, every baked frame (bd_keep_hands); from BD_HAND_AT_OUT the left hand's with the bow arm out (bd_hand_out)
   hand_at: [12] f32;           // where the right then left hand is in each body's bind pose (male, female)
 }
 
@@ -509,6 +510,15 @@ bd_seen :: (c: BdCam, x: f32, z: f32) -> f32 {
 bd_keep_hands :: (b: [] Bodies, d: [] People, bake: [] f32) {
   if bake.count < BD_BAKE_FLOATS { return; }
   for f: 0..<2 * BD_TOTAL { for k: 0..<12 { b[0].hand[f * 24 + k] = bake[(f * BD_ROWS + BD_HAND * 3) * 4 + k]; b[0].hand[f * 24 + 12 + k] = bake[(f * BD_ROWS + BD_HAND_L * 3) * 4 + k]; } }
+  // and the left hand with the bow arm out (bd_arm_out), about the shoulder where that frame has it
+  for f: 0..<2 * BD_TOTAL {
+    m: [12] f32; for k: 0..<12 { m[k] = bake[(f * BD_ROWS + BD_HAND_L * 3) * 4 + k]; }
+    if bd_arm_frame(f) {
+      s: [12] f32; for k: 0..<12 { s[k] = bake[(f * BD_ROWS + BD_SHOULDER_L * 3) * 4 + k]; }
+      m = bd_arm_out(m, bd_pose_at(s, bd_shoulder_bind(f >= BD_TOTAL)));
+    }
+    for k: 0..<12 { b[0].hand[BD_HAND_AT_OUT + f * 12 + k] = m[k]; }
+  }
   // the inverse bind is [A | t]: the joint stands at -A^-1 t
   for q: 0..<4 {
     body := q % 2; joint := ifx q < 2 then BD_HAND else BD_HAND_L; o := (q / 2) * 6 + body * 3;
@@ -599,6 +609,66 @@ bd_layer :: (a0: BdAnim, clip: int, t0: f32, phase: f32, w: f32, now: f32) -> Bd
   a.lay = true; a.lay_up = 1 - w; a.lay_low = 1 - w * (1 - bd_move_share(a0, now));
   a.fade_at = now - f32(BD_FADE) * w;
   return a;
+}
+// ---- the bow arm (#13073): carrying a bow, standing, walking, running and in a jump's air, the bow arm
+// hangs a little out from the body, the archer's carry, so the bow's string clears the leg. A pose layer
+// on those clips' frames, the same on the GPU (gpu/fivelab.coax fivelab_arm) and here: the upper arm,
+// forearm, hand and fingers (joints 8 to 30) turned BD_ARM_OUT about the figure's forward axis, through
+// the shoulder where the frame has it. A figure's records carry it with bit 8 of their flags
+// (BD_ARM_FLAG: held-kit.coax sets it on a bow carrier's records).
+BD_ARM_OUT :: 0.35;       // radians: the hand about 15 cm out
+BD_ARM_FLAG :: 8;
+BD_SHOULDER_L :: 8;       // upperarm_l: the turn's pivot
+BD_ARM_LAST :: 30;        // the left arm's last joint (thumb_04_leaf_l)
+// The left shoulder's bind position (male, female): people_rig's, as the shader holds it.
+BD_SHOULDER_BIND :: [6] f32.[0.1919, 1.4555, -0.0654, 0.1516, 1.4181, -0.0543];
+bd_shoulder_bind :: (female: bool) -> [3] f32 { o := ifx female then 3 else 0; return [3] f32.[BD_SHOULDER_BIND[o], BD_SHOULDER_BIND[o + 1], BD_SHOULDER_BIND[o + 2]]; }
+// The frames the bow arm hangs out on (a frame of either body): the idle, walk, run and jump loop.
+bd_arm_frame :: (f0: int) -> bool {
+  f := f0 % BD_TOTAL;
+  for c: [4] int.[BD_IDLE, BD_WALK, BD_RUN, BD_JUMP_LOOP] { if f >= BD_FIRST[c] && f < BD_FIRST[c] + BD_FRAMES[c] { return true; } }
+  return false;
+}
+// Where a joint at bind point q stands under its skinning rows m.
+bd_pose_at :: (m: [12] f32, q: [3] f32) -> [3] f32 {
+  return [3] f32.[m[0] * q[0] + m[1] * q[1] + m[2] * q[2] + m[3], m[4] * q[0] + m[5] * q[1] + m[6] * q[2] + m[7], m[8] * q[0] + m[9] * q[1] + m[10] * q[2] + m[11]];
+}
+// Skinning rows m turned BD_ARM_OUT about the figure's forward axis (+Z) through p: the hand below
+// the shoulder swings out to +X, the left side.
+bd_arm_out :: (m: [12] f32, p: [3] f32) -> [12] f32 {
+  c := cos(f32(BD_ARM_OUT)); s := sin(f32(BD_ARM_OUT)); o := m;
+  for k: 0..<4 { o[k] = c * m[k] - s * m[4 + k]; o[4 + k] = s * m[k] + c * m[4 + k]; }
+  o[3] += p[0] - (c * p[0] - s * p[1]); o[7] += p[1] - (s * p[0] + c * p[1]);
+  return o;
+}
+// A whole pose (joints' rows, 12 each) with the bow arm out, its shoulder's bind position q.
+bd_arm_out_pose :: (pal: [] f32, q: [3] f32) {
+  sh: [12] f32; for k: 0..<12 { sh[k] = pal[BD_SHOULDER_L * 12 + k]; }
+  p := bd_pose_at(sh, q);
+  for j: BD_SHOULDER_L..<BD_ARM_LAST + 1 { m: [12] f32; for k: 0..<12 { m[k] = pal[j * 12 + k]; } m = bd_arm_out(m, p); for k: 0..<12 { pal[j * 12 + k] = m[k]; } }
+}
+// The left hand's rows with the bow arm out, mixed as bd_hand mixes them.
+bd_hand_out :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32) -> [12] f32 {
+  mix := bd_gait_share(mix0, BD_HAND_L);
+  fa := clamp_int(int(ra) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 12; fb := clamp_int(int(rb) / BD_ROWS, 0, 2 * BD_TOTAL - 1) * 12;
+  h: [12] f32;
+  for k: 0..<12 { h[k] = b[0].hand[BD_HAND_AT_OUT + fa + k] * (1 - mix) + b[0].hand[BD_HAND_AT_OUT + fb + k] * mix; }
+  return h;
+}
+#test "the bow arm hangs out on the carry's frames: the shoulder stays, the hand swings out to the left" {
+  #assert bd_arm_frame(0) && bd_arm_frame(BD_FIRST[BD_RUN] + BD_FRAMES[BD_RUN] - 1) && bd_arm_frame(BD_TOTAL + BD_FIRST[BD_JUMP_LOOP]);
+  #assert !bd_arm_frame(BD_FIRST[BD_SLASH]) && !bd_arm_frame(BD_FIRST[BD_SPELL] + 3) && !bd_arm_frame(BD_TOTAL + BD_FIRST[BD_JUMP_START]) && !bd_arm_frame(bd_row(false, BD_BOW, 0) / BD_ROWS);
+  // the bind pose's rows (identity): the shoulder stays, a hand 0.55 m below it swings out about 19 cm and up a little
+  id := [12] f32.[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+  q := bd_shoulder_bind(false); o := bd_arm_out(id, q);
+  sh := bd_pose_at(o, q); #assert abs(sh[0] - q[0]) < 0.0001 && abs(sh[1] - q[1]) < 0.0001 && sh[2] == q[2];
+  h := bd_pose_at(o, [3] f32.[q[0], q[1] - 0.55, q[2]]);
+  #assert abs(h[0] - q[0] - 0.55 * sin(f32(BD_ARM_OUT))) < 0.0001 && h[1] > q[1] - 0.55 && h[2] == q[2];
+}
+#test "the shoulder the bow arm turns about is the rig's, both bodies" {
+  d: [1] People; people_load(d[..]);
+  for body: 0..<2 { rig := people_rig(d[..], body == 1); p := bd_bind_at(rig.bind[BD_SHOULDER_L * 12..<BD_SHOULDER_L * 12 + 12]); q := bd_shoulder_bind(body == 1);
+    for k: 0..<3 { #assert abs(p[k] - q[k]) < 0.0002; } }
 }
 bd_hand :: (b: [] Bodies, ra: f32, rb: f32, mix0: f32, left: bool) -> [12] f32 {
   side := ifx left then 12 else 0;
@@ -717,7 +787,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
  // then the bow's keyed draw, last
  #assert BD_OWN_FIRST[TWOHAND_CLIPS]==BD_OWN_FIRST[TWOHAND_CLIPS-1]+BD_OWN_FRAMES[TWOHAND_CLIPS-1] && BD_OWN_FRAMES[TWOHAND_CLIPS]==BOW_POSE_FRAMES && BD_BOW==BD_OWN+TWOHAND_CLIPS;
  #assert BD_OWN_FIRST[TWOHAND_CLIPS+1]==BD_OWN_FIRST[TWOHAND_CLIPS]+BD_OWN_FRAMES[TWOHAND_CLIPS] && BD_RIDE==BD_BOW+1;
- #assert BD_OWN_FIRST[TWOHAND_CLIPS+1]+BD_OWN_FRAMES[TWOHAND_CLIPS+1]==BD_TOTAL && BD_HAND_FLOATS==2*BD_TOTAL*24;
+ #assert BD_OWN_FIRST[TWOHAND_CLIPS+1]+BD_OWN_FRAMES[TWOHAND_CLIPS+1]==BD_TOTAL && BD_HAND_AT_OUT==2*BD_TOTAL*24 && BD_HAND_FLOATS==2*BD_TOTAL*36;
  #assert bd_row(true,BD_RIDE,BD_SEATS-1)*4+BD_ROWS*4==BD_BAKE_FLOATS;
 }
 #test "the baked clips' frames are their seconds at 30 a second, and the bake holds both bodies" {
