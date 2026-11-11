@@ -21,6 +21,7 @@
 
 #import "Basic";
 #load "../../lib/agent/claude/claude.coax";
+#load "../../lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes
 #load "confine-host.coax";
 
 eio_read_line :: (timeout_ms: int) -> int #foreign #effects(all);
@@ -29,6 +30,7 @@ eio_put :: (byte: int) -> int #foreign #effects(all);
 eio_flush :: () -> int #foreign #effects(all);
 
 TURN_LINE :: 1048576;
+RECORD_POOL :: 524288;      // the session record's text for the parts not yet written to the wire
 PROMPT_MAX :: 196608;
 ANSWER_MAX :: 60000;
 
@@ -206,13 +208,20 @@ main :: () {
   o[0].setting_sources_set = true;
   if cwd.count > 0 { o[0].cwd = cwd; }
 
+  // The turn runs on the shared Claude engine (coax/lib/agent/engine/claude.coax), as one turn with
+  // these options. The engine starts the CLI and folds what the model says and does into the
+  // session record; the loop below answers what is this program's (the hook, permissions, its
+  // tools) and writes the wire's events from the record.
   qline: [CL_LINE_MAX] u8; arena: [262144] u8; qout: [262144] u8; scratch: [196608] u8;
-  q: [1] ClQuery; cl_init(q[..], qline[..], arena[..], qout[..]);
-  q[0].options = o[0];
-  proc: [1] ClProcess;
-  problem := cl_start(q[..], proc[..], cast(string) prompt_buf[0..<p[0].len], false, scratch[..]);
-  if problem.count > 0 { ch_done(out[..], "failed", "", problem, 0.0, false); return; }
-  defer cl_close(proc[..]);
+  eng: [1] Engine; ses: [1] Session; pool: [RECORD_POOL] u8; opt: [1] ClOptions; cur: [1] SCursor;
+  opt[0] = o[0];
+  e_attach(eng[..], qline[..], arena[..], qout[..], scratch[..], prompt_buf[..]);
+  e_own(eng[..], opt[..]); eng[0].once = true;
+  s_init(ses[..], pool[..]); ses[0].frames = true; ses[0].tabs = true;
+  q := eng[0].q[..]; proc := eng[0].p[..];
+  e_send_as(eng[..], ses[..], text, cast(string) prompt_buf[0..<p[0].len]);
+  if !eng[0].running { ch_done(out[..], "failed", "", ifx ses[0].n > 1 then s_text_of(ses[..], ses[0].n - 1) else "the agent could not start", 0.0, false); return; }
+  defer e_close(eng[..]);
   ch_event(out[..], "working", "text", "thinking");
 
   cost := 0.0; status := "failed"; err := "the agent stopped before it finished";
@@ -223,15 +232,17 @@ main :: () {
   stopped := false;
   while true {
     if ch_stop_waiting(0) { stopped = true; break; }
-    ev := cl_next(q[..], proc[..]);
+    one: [1] ClEvent;
+    e_next(eng[..], ses[..], one[..]);
+    ev := one[0];
     if ev.kind == ClEventKind.end { break; }
-    if ev.kind == ClEventKind.failed { err = cl_error(q[..]); break; }
+    if ev.kind == ClEventKind.failed { err = cl_error(q); break; }
     if ev.kind == ClEventKind.hook {
       marg[0].at = 0; marg[0].full = false;
       tool := cl_str(marg[..], ev.arguments, "tool_name");
       v := ch_confined(marg[..], root, cwd, tool, cl_raw(ev.arguments, "tool_input"));
       if v != CF_OK { ch_event(out[..], "session.error", "error", cf_reason(v)); }
-      ch_hook(q[..], v);
+      ch_hook(q, v);
       continue;
     }
     if ev.kind == ClEventKind.permission {
@@ -239,9 +250,9 @@ main :: () {
       marg[0].at = 0; marg[0].full = false;
       path := cl_str(marg[..], ev.request.input, "file_path");
       if path.count == 0 { path = cl_str(marg[..], ev.request.input, "path"); }
-      if ch_may(tool, ch_confined(marg[..], root, cwd, tool, ev.request.input)) { cl_allow(q[..], ev.request.input, ""); }
+      if ch_may(tool, ch_confined(marg[..], root, cwd, tool, ev.request.input)) { cl_allow(q, ev.request.input, ""); }
       else {
-        cl_deny(q[..], "Refused: only Read, Glob and Grep inside the checkout, WebSearch and WebFetch are allowed here.", false);
+        cl_deny(q, "Refused: only Read, Glob and Grep inside the checkout, WebSearch and WebFetch are allowed here.", false);
         wb: [400] u8; w: [1] ClOut; w[0].buf = wb[..];
         cl_put(w[..], "refused "); cl_put(w[..], ifx tool.count > 40 then tool[0..<40] else tool);
         if path.count > 0 { cl_put(w[..], " "); cl_put(w[..], ifx path.count > 200 then path[0..<200] else path); }
@@ -252,35 +263,31 @@ main :: () {
     if ev.kind != ClEventKind.message { continue; }
     m := ev.message;
     marg[0].at = 0; marg[0].full = false;
-    if m.kind == ClKind.assistant {
-      a := cl_assistant_of(marg[..], m);
-      content := cl_raw(a.message, "content");
-      for i: 0..<cl_count(content) {
-        block := cl_json(content, cl_item(content, i));
-        type := cl_str(marg[..], block, "type");
-        if type == "text" {
-          said := cl_str(marg[..], block, "text");
-          if said.count > 0 { ch_event(out[..], "agent.message", "text", ifx said.count > 4000 then said[0..<4000] else said); }
-        } else if type == "tool_use" {
-          name := cl_str(marg[..], block, "name");
-          if name == "WebSearch" {
-            query := cl_str(marg[..], block, "input.query");
-            ch_tool(out[..], name, query); ch_working(out[..], "searching the web for ", query);
-          } else if name == "WebFetch" {
-            url := cl_str(marg[..], block, "input.url");
-            ch_tool(out[..], name, url); ch_working(out[..], "fetching ", url);
-          } else {
-            path := cl_str(marg[..], block, "input.file_path");
-            if path.count == 0 { path = cl_str(marg[..], block, "input.pattern"); }
-            if path.count == 0 { path = cl_str(marg[..], block, "input.path"); }
-            detail := ch_shown(path, cwd);
-            ch_tool(out[..], name, detail);
-            ch_working(out[..], ifx name == "Read" then "reading " else ifx name == "Grep" then "searching for " else ifx name == "Glob" then "looking for " else "trying ", detail);
-          }
+    // what the model said and did, each new part of the record once (the engine folded this message into it)
+    while true {
+      nw := s_next(ses[..], cur[..]);
+      if nw.k < 0 { break; }
+      part := ses[0].parts[nw.k];
+      if part.kind == P_TEXT { ch_event(out[..], "agent.message", "text", ifx nw.text.count > 4000 then nw.text[0..<4000] else nw.text); }
+      else if part.kind == P_TOOL {
+        name := part.name;
+        if name == "WebSearch" {
+          query := cl_str(marg[..], part.input, "query");
+          ch_tool(out[..], name, query); ch_working(out[..], "searching the web for ", query);
+        } else if name == "WebFetch" {
+          url := cl_str(marg[..], part.input, "url");
+          ch_tool(out[..], name, url); ch_working(out[..], "fetching ", url);
+        } else {
+          path := cl_str(marg[..], part.input, "file_path");
+          if path.count == 0 { path = cl_str(marg[..], part.input, "pattern"); }
+          if path.count == 0 { path = cl_str(marg[..], part.input, "path"); }
+          detail := ch_shown(path, cwd);
+          ch_tool(out[..], name, detail);
+          ch_working(out[..], ifx name == "Read" then "reading " else ifx name == "Grep" then "searching for " else ifx name == "Glob" then "looking for " else "trying ", detail);
         }
       }
-      continue;
     }
+    trimmed := s_trim(ses[..], cur[..]);
     if m.kind == ClKind.result {
       r := cl_result_of(marg[..], m);
       cost = r.total_cost_usd;
@@ -301,7 +308,7 @@ main :: () {
     }
   }
   cr := cfn_close(root);
-  if stopped { r := cl_kill(proc[..]); ch_done(out[..], "stopped", "", "", cost, false); return; }
+  if stopped { r := cl_kill(proc); ch_done(out[..], "stopped", "", "", cost, false); return; }
   ch_done(out[..], status, cast(string) ans_buf[0..<ans_n], err, cost, expired);
 }
 

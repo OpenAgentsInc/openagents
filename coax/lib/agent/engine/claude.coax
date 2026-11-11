@@ -125,6 +125,7 @@ s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
   if m.parent_tool_use_id.count > 0 { return; }   // a subagent's frame
   l := m.line;
   if m.kind == ClKind.stream_event {
+    if s[0].frames { return; }                      // the text is the whole frames', never both
     if !cl_eq(l, cl_at(l, "event.type"), "content_block_delta") { return; }
     dt := cl_at(l, "event.delta.type");
     if cl_eq(l, dt, "text_delta") { s_delta(s, P_TEXT, cl_str(ar, l, "event.delta.text")); }
@@ -399,6 +400,9 @@ Engine :: struct {
   // The owner's own options, used as they are in place of the desktop app's (e_own): its system
   // prompt, tools, in-process servers, hooks, permission mode, credentials, budgets, resume and fork.
   opt: [] ClOptions;
+  // One turn (an owner's): the message is the CLI's prompt and its result ends the CLI, the SDK's
+  // query that is not streaming input. Off, the CLI stays for the conversation.
+  once: bool;
   // the room's tools (desk.coax gives them when the chat is on a desk with others)
   room: bool;
   calling: bool;                     // a room tool call waits for the desk's answer
@@ -540,7 +544,7 @@ e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
   o: [1] ClOptions;
   e_options(e, o[..]);
   q[0].options = o[0];
-  why := cl_start(q, e[0].p[..], "", true, e[0].scratch);
+  why := ifx e[0].once then cl_start(q, e[0].p[..], e_str(e[0].prompt, e[0].prompt_n), false, e[0].scratch) else cl_start(q, e[0].p[..], "", true, e[0].scratch);
   if why.count > 0 {
     e[0].p[0].handle = -1;
     if warm { return false; }
@@ -553,6 +557,7 @@ e_launch :: (e: [] Engine, s: [] Session, warm: bool) -> bool {
   }
   if e[0].claude_n == 0 { e[0].claude_n = e_set(e[0].claude[..], 0, "claude"); }   // installed since the probe: found on PATH
   e[0].running = true; e[0].ready = false; e[0].run_n = e_effort_key(e, e[0].run_effort[..]);
+  if e[0].once { e[0].pend = -1; e_delivered(e); }      // the SDK sends the prompt itself once initialize is answered
   return true;
 }
 e_mode :: (e: [] Engine) -> ClPermissionMode {
@@ -734,6 +739,11 @@ e_take :: (e: [] Engine, s: [] Session, ev: ClEvent) {
 }
 e_poll :: (e: [] Engine, s: [] Session, ev: [] ClEvent) {
   ev[0] = cl_poll(e[0].q[..], e[0].p[..], 0);
+  e_take(e, s, ev[0]);
+}
+// The same for an owner that has nothing else to do: it waits for the CLI's next line.
+e_next :: (e: [] Engine, s: [] Session, ev: [] ClEvent) {
+  ev[0] = cl_next(e[0].q[..], e[0].p[..]);
   e_take(e, s, ev[0]);
 }
 // The caller's answers to what e_poll hands it.
@@ -957,6 +967,9 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
   s_on_message(s[..], q[0].ar[..], s_test_message(q[0].ar[..], "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"It says hi.\"}]}}"));
   #assert s[0].n == 5 && s[0].parts[1].kind == P_THINK && s_text_of(s[..], 1) == "Look first." && s[0].parts[2].kind == P_TEXT && s_text_of(s[..], 2) == "Reading it.";
   #assert s[0].parts[3].kind == P_TOOL && s[0].parts[3].name == "Read" && s[0].parts[4].kind == P_TEXT && s_text_of(s[..], 4) == "It says hi.";
+  // a delta that comes anyway is not a second copy
+  s_on_message(s[..], q[0].ar[..], s_test_message(q[0].ar[..], "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\" Again.\"}}}"));
+  #assert s[0].n == 5 && s_text_of(s[..], 4) == "It says hi.";
 }
 
 #test "one event at a time: a message is folded into the session and the CLI's session id kept" {

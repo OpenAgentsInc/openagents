@@ -55,10 +55,45 @@ Session :: struct {
   cost: f64;                // the conversation's cost so far (USD), from the last result
   turn_ms: int;             // the last turn's duration (ms)
   hint: bool;               // its one part is a notice shown before any message (Claude Code missing), gone at the first
+  tabs: bool;               // text is kept as it came (a surface that prints it); off, a tab is a space (the transcript's fonts draw no tab)
   frames: bool;             // text and thinking come from whole assistant frames, not stream deltas (an engine run without partial messages)
 }
 
 s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; }
+
+// For a surface that prints a conversation as it comes (a terminal, a wire) rather than
+// redrawing it: where it has read up to, and the next thing it has not read.
+SCursor :: struct { part: int; text: int; }
+// A part with something new: its index (-1: nothing new) and, for text and thinking, the
+// bytes that came since the last call. Any other part is new once, when it appears.
+SNew :: struct { k: int; text: string; }
+s_next :: (s: [] Session, c: [] SCursor) -> SNew {
+  while c[0].part < s[0].n {
+    k := c[0].part;
+    p := s[0].parts[k];
+    if p.kind != P_TEXT && p.kind != P_THINK { c[0].part = k + 1; c[0].text = 0; return SNew.{k = k, text = ""}; }
+    from := ifx c[0].text < p.n then c[0].text else p.n;
+    c[0].text = p.n;
+    fresh := cast(string) s[0].pool[p.at + from..<p.at + p.n];
+    // a part that is no longer the last can not grow: the cursor moves on
+    if k < s[0].n - 1 { c[0].part = k + 1; c[0].text = 0; }
+    if fresh.count > 0 { return SNew.{k = k, text = fresh}; }
+    if k == s[0].n - 1 { break; }
+  }
+  return SNew.{k = -1, text = ""};
+}
+// A printing surface keeps nothing it has printed: once everything is read, no call waits for
+// its result and nothing is being asked, the record starts over (the turn stays live), so a
+// long turn never fills it. Whether it did.
+s_trim :: (s: [] Session, c: [] SCursor) -> bool {
+  if s[0].n == 0 || s[0].asking >= 0 { return false; }
+  last := s[0].parts[s[0].n - 1];
+  streaming := last.kind == P_TEXT || last.kind == P_THINK;
+  if c[0].part < s[0].n - 1 || (c[0].part == s[0].n - 1 && (!streaming || c[0].text < last.n)) { return false; }
+  for k: 0..<s[0].n { if s[0].parts[k].kind == P_TOOL && !s[0].parts[k].resolved { return false; } }
+  s[0].n = 0; s[0].np = 0; c[0].part = 0; c[0].text = 0;
+  return true;
+}
 
 s_text_of :: (s: [] Session, k: int) -> string { return cast(string) s[0].pool[s[0].parts[k].at..<s[0].parts[k].at + s[0].parts[k].n]; }
 
@@ -67,7 +102,7 @@ s_text_of :: (s: [] Session, k: int) -> string { return cast(string) s[0].pool[s
 s_put :: (s: [] Session, text: string) -> string {
   if s[0].np + text.count > s[0].pool.count { return ""; }
   at := s[0].np;
-  for k: 0..<text.count { c := text[k]; s[0].pool[at + k] = ifx c == '\t' then ' ' else c; }
+  for k: 0..<text.count { c := text[k]; s[0].pool[at + k] = ifx c == '\t' && !s[0].tabs then ' ' else c; }
   s[0].np += text.count;
   return cast(string) s[0].pool[at..<at + text.count];
 }
@@ -244,4 +279,53 @@ s_int :: (buf: [] u8, at: int, v: int) -> int {
   b: [16] u8;
   n := s_int(b[..], 0, 0); #assert cast(string) b[0..<n] == "0";
   n = s_int(b[..], 2, 4096); #assert n == 6 && cast(string) b[2..<n] == "4096";
+}
+
+#test "a printing surface reads each part once and only the new bytes of streaming text; kept tabs stay tabs" {
+  s: [1] Session; pool: [512] u8; s_init(s[..], pool[..]);
+  c: [1] SCursor;
+  #assert s_next(s[..], c[..]).k == -1;
+  s_user(s[..], "hi");
+  #assert s_next(s[..], c[..]).k == 0 && s_next(s[..], c[..]).k == -1;
+  s_delta(s[..], P_TEXT, "Hel");
+  a := s_next(s[..], c[..]);
+  #assert a.k == 1 && a.text == "Hel" && s_next(s[..], c[..]).k == -1;
+  s_delta(s[..], P_TEXT, "lo");
+  k := s_part(s[..], P_TOOL);
+  s_delta(s[..], P_TEXT, "Done");
+  b := s_next(s[..], c[..]);
+  #assert b.k == 1 && b.text == "lo";
+  t := s_next(s[..], c[..]);
+  #assert t.k == 2 && t.text == "";
+  d := s_next(s[..], c[..]);
+  #assert d.k == 3 && d.text == "Done" && s_next(s[..], c[..]).k == -1;
+  s_delta(s[..], P_TEXT, ".");
+  e := s_next(s[..], c[..]);
+  #assert e.k == 3 && e.text == "." && s_next(s[..], c[..]).k == -1;
+  // the transcript's rule is a space for a tab; a surface that prints keeps the tab
+  #assert s_put(s[..], "a\tb") == "a b";
+  s[0].tabs = true;
+  #assert s_put(s[..], "a\tb") == "a\tb";
+}
+
+#test "a printed record starts over once all of it is read and no call is open; streaming text goes on in a new part" {
+  s: [1] Session; pool: [512] u8; s_init(s[..], pool[..]);
+  c: [1] SCursor;
+  #assert !s_trim(s[..], c[..]);
+  s_user(s[..], "hi");
+  s_delta(s[..], P_TEXT, "Look");
+  #assert !s_trim(s[..], c[..]);                 // not read yet
+  while s_next(s[..], c[..]).k >= 0 { }
+  k := s_part(s[..], P_TOOL);
+  s[0].parts[k].id = s_put(s[..], "t1");
+  while s_next(s[..], c[..]).k >= 0 { }
+  #assert !s_trim(s[..], c[..]);                 // the call has no result yet
+  s[0].parts[k].resolved = true;
+  s[0].asking = 0;
+  #assert !s_trim(s[..], c[..]);                 // something is being asked
+  s[0].asking = -1;
+  #assert s_trim(s[..], c[..]) && s[0].n == 0 && s[0].np == 0 && s[0].live && c[0].part == 0;
+  s_delta(s[..], P_TEXT, "ing.");
+  n := s_next(s[..], c[..]);
+  #assert n.k == 0 && n.text == "ing." && s_trim(s[..], c[..]);
 }
