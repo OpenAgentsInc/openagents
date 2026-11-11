@@ -69,30 +69,20 @@ CK_taint_borrow :: (c:CK_Context,name:string,source:int) #effects(all) {
  // does not erase it; proving that overwrite safe requires flow analysis.
  at:=CK_local(c,name);if at>=0 && CK_local_backed(c,source) {c.locals[at].local_backing=true;}
 }
-// Whether the current procedure's physical unit declares a procedure named
-// name. A local may share the name of a procedure another unit declares:
-// procedures are not values, so a call names the procedure and a bare name
-// the local, and no unit's locals depend on another unit's top-level names
-// (#12675). source_unit is the bridge's 1-based unit; 0, a graph built
-// without units, is one unit.
-CK_unit_proc :: (c:CK_Context,name:string)->bool #effects(all) {
-  unit:=c.nodes[c.state[0].current].source_unit;id:=CK_first(c,name);
-  while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.proc && n.name==name && n.source_unit==unit {return true;}id=CK_after(c,id);}
-  return false;
-}
+// A local may share a procedure's name, in its own unit or another's (#12675,
+// #13125): procedures are not values, so a call names the procedure and a bare
+// name the local, and the two can't be confused at a use. E0304 is retired.
 CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) #effects(all) {
   prev:=CK_local(c,name);
   if prev>=0 {parts:=[5] string.["'",name,"' is already declared at line ",CK_count(c,c.locals[prev].loc.line),"; Coax does not allow shadowing"];CK_error(c,loc,"E0303",CK_text(c,parts[..]),"pick another name");return;}
-  if CK_unit_proc(c,name) {CK_error(c,loc,"E0304",CK_join3(c,"'",name,"' is already the name of a procedure"),"pick another name");return;}
   if CK_find(c,CK_Tag.constant,name)!=0 || CK_builtin_name(c,name) || CK_find(c,CK_Tag.struct_,name)!=0 || CK_find(c,CK_Tag.enum_,name)!=0 || CK_find(c,CK_Tag.union_,name)!=0 {CK_error(c,loc,"E0342",CK_join3(c,"'",name,"' is already a constant, type or intrinsic"),"pick another name");return;}
   at:=c.state[0].local_count;if at>=c.locals.count {CK_resource(c,loc);return;}
   c.locals[at]=CK_Local.{name=name,type=ty,loc=loc,immutable=immutable,local_backing=CK_aggregate(c,ty) && immutable==""};c.state[0].local_count+=1;
 }
-// A local takes a procedure's name only across physical units (#12675): "page"
-// (current) is in unit 1. 0: fresh() is unit 2's. 1: unit 1's. 2: unit 2 and
-// unit 1 both declare one, so the walk passes the first. 3: a graph without
-// units is one unit. 4: unit 1's constant "fresh" is still E0342, not E0304.
-#forall "a local shares a procedure's name only across physical units" variant:0..<5 {
+// "page" (current) is in unit 1. 0: fresh() is unit 2's. 1: unit 1's. 2: unit 2
+// and unit 1 both declare one. 3: a graph without units is one unit. 4: unit
+// 1's constant "fresh" is still E0342.
+#forall "a local shares a procedure's name in any unit, and never a constant's" variant:0..<5 {
  nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16,current=2}];
  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
  nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="page",source_unit=1,next=3};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="fresh",source_unit=2};
@@ -100,13 +90,9 @@ CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) #eff
  if variant==2 {nodes[3].next=4;nodes[4]=CK_Node.{kind=CK_Tag.proc,name="fresh",source_unit=1};}
  if variant==3 {nodes[2].source_unit=0;nodes[3].source_unit=0;}
  if variant==4 {nodes[3].kind=CK_Tag.constant;nodes[3].source_unit=1;}
- #assert CK_unit_proc(c,"fresh")==(variant>=1 && variant<=3) && !CK_unit_proc(c,"other");
  CK_declare(c,"fresh",11,CK_Loc.{line=4,column=2},"");
- if variant==0 {#assert state[0].error_count==0 && state[0].local_count==1 && locals[0].name=="fresh" && locals[0].type==11;}
- else {
-  code:="E0304";if variant==4 {code="E0342";}
-  #assert state[0].error_count==1 && state[0].local_count==0 && errors[0].code==code && errors[0].loc.line==4;
- }
+ if variant<4 {#assert state[0].error_count==0 && state[0].local_count==1 && locals[0].name=="fresh" && locals[0].type==11;}
+ else {#assert state[0].error_count==1 && state[0].local_count==0 && errors[0].code=="E0342" && errors[0].loc.line==4;}
 }
 CK_compound :: (op:u32)->u32 #effects(all) {ops:=[10] u32.[34,35,36,37,38,39,40,41,42,43];if op<24 || op>33 {return CK_NONE;}return ops[cast(int)op-24];}
 CK_loop :: (c:CK_Context,id:int) #effects(all) {c.state[0].loop_depth+=1;CK_stmt(c,id);c.state[0].loop_depth-=1;}
@@ -125,8 +111,10 @@ CK_stmt :: (c:CK_Context,id:int) #effects(all) {
     t:=CK_value(c,s.a,CK_Hint.{});e:=c.nodes[s.a];
     if (e.kind==CK_Tag.expr_try || e.kind==CK_Tag.expr_or_else) && t==1 {return;}
     if c.types[t].kind==CK_Kind.result {CK_error(c,s.loc,"E0907","a Result expression must be handled or transferred","");return;}
+    // _ = e; and _ := e; drop the value on purpose (#13125). A Result is still handled, never dropped.
+    if s.flag {return;}
     if e.kind!=CK_Tag.expr_call && t!=CK_NONE {CK_error(c,s.loc,"E0322","this expression's value is not used","assign it, or remove it");}
-    else if e.kind==CK_Tag.expr_call && t!=1 && t!=CK_NONE {parts:=[5] string.["the result of '",e.name,"' (",c.types[t].name,") is not used"];CK_error(c,s.loc,"E0323",CK_text(c,parts[..]),CK_join3(c,"use it: result := ",e.name,"(...);"));}return;
+    else if e.kind==CK_Tag.expr_call && t!=1 && t!=CK_NONE {parts:=[5] string.["the result of '",e.name,"' (",c.types[t].name,") is not used"];fix:=[5] string.["use it: result := ",e.name,"(...); or drop it: _ = ",e.name,"(...);"];CK_error(c,s.loc,"E0323",CK_text(c,parts[..]),CK_text(c,fix[..]));}return;
   }
   if s.kind==CK_Tag.stmt_var {
     declared:=CK_resolve(c,s.d,CK_Access.value);

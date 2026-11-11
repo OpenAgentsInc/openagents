@@ -655,8 +655,11 @@ meter_scan :: (h: int, count: int) -> bool #export_c {
 
 *Listing 20-9: Two procedures the host provides, and one Coax exports*
 
-This file has no `main`, so `coax run` refuses it, and the error tells you
-what to do instead:
+This file has no `main`. Commands that link no program take such a file as
+a library without being told: `coax check meter.coax`, `coax test
+meter.coax` and `coax c meter.coax` work as they would with `--library`.
+`coax run` and `coax build` make a program, so they refuse it, and the
+error tells you what to do instead:
 
 ```shell
 $ coax run meter.coax

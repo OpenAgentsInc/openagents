@@ -464,6 +464,12 @@ PS_stmt :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int #effects(al
     }
   }
   after:=PS_peek(t,s,1);
+  // _ = e; and _ := e; evaluate e and drop its value (#13125). The statement is a
+  // stmt_expr with its flag set; '_' names nothing, so it is never declared.
+  if v.kind==1 && v.text=="_" && (after.kind==23 || after.kind==18) {
+    PS_skip(t,s);PS_skip(t,s);id:=PS_new(n,s,out,PS_Tag.stmt_expr,v.loc);n[id].flag=true;n[id].a=PS_expression(t,n,s,out);
+    PS_expect(t,s,out,15,"after the discarded value");return PS_valid(s,id);
+  }
   if v.kind==1 && (after.kind==18 || after.kind==16) {
     id:=PS_new(n,s,out,PS_Tag.stmt_var,v.loc);n[id].name=v.text;PS_skip(t,s);op:=PS_take(t,s);
     if op.kind==16 {
@@ -5469,4 +5475,61 @@ PS_frame_test_tokens :: ()->[19]PS_Token #effects(all) {
   nodes:[16]PS_Node;state:[1]PS_State;message:[256]u8;r:=PS_proc(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="f"});
   #assert r==0 && state[0].code=="E0210";
   #assert cast(string)message[0..<state[0].length]==(ifx mode==0 then "#foreign is repeated" else "a procedure is either #foreign or #export_c, not both");
+}
+
+// _ = e; and _ := e; (#13125): one discard statement, and nothing else is one.
+// Each check reads the tokens of "_ = f; g" and changes one of them.
+#test "_ = e; and _ := e; are one discard statement that ends at its ';'" {
+  ops:=[2] u32.[23,18];
+  for op:ops {
+    tokens:=[6] PS_Token.[
+    PS_Token.{kind=1,text="_",raw_count=1,loc=PS_Loc.{line=1,column=1,offset=0}},
+    PS_Token.{kind=23,text="=",raw_count=1,loc=PS_Loc.{line=1,column=3,offset=2}},
+    PS_Token.{kind=1,text="f",raw_count=1,loc=PS_Loc.{line=1,column=6,offset=5}},
+    PS_Token.{kind=15,text=";",raw_count=1,loc=PS_Loc.{line=1,column=7,offset=6}},
+    PS_Token.{kind=1,text="g",raw_count=1,loc=PS_Loc.{line=1,column=9,offset=8}},
+    PS_Token.{kind=0,text="",raw_count=0,loc=PS_Loc.{line=1,column=10,offset=9}}];tokens[1].kind=op;
+    nodes:[64] PS_Node;state:[1] PS_State;message:[1024] u8;
+    id:=PS_stmt(tokens[..],nodes[..],state[..],message[..]);
+    #assert state[0].code=="" && id!=0 && state[0].pos==4 && state[0].depth==0;
+    #assert nodes[id].kind==PS_Tag.stmt_expr && nodes[id].flag && nodes[id].name=="" && nodes[id].loc.column==1;
+    #assert nodes[nodes[id].a].kind==PS_Tag.expr_ident && nodes[nodes[id].a].name=="f";
+  }
+}
+#test "a discard needs its value and its ';'" {
+  tokens:=[6] PS_Token.[
+    PS_Token.{kind=1,text="_",raw_count=1,loc=PS_Loc.{line=1,column=1,offset=0}},
+    PS_Token.{kind=23,text="=",raw_count=1,loc=PS_Loc.{line=1,column=3,offset=2}},
+    PS_Token.{kind=1,text="f",raw_count=1,loc=PS_Loc.{line=1,column=6,offset=5}},
+    PS_Token.{kind=15,text=";",raw_count=1,loc=PS_Loc.{line=1,column=7,offset=6}},
+    PS_Token.{kind=1,text="g",raw_count=1,loc=PS_Loc.{line=1,column=9,offset=8}},
+    PS_Token.{kind=0,text="",raw_count=0,loc=PS_Loc.{line=1,column=10,offset=9}}];tokens[3]=PS_Token.{kind=11,text="}",raw_count=1,loc=PS_Loc.{line=1,column=7,offset=6}};
+  nodes:[64] PS_Node;state:[1] PS_State;message:[1024] u8;
+  id:=PS_stmt(tokens[..],nodes[..],state[..],message[..]);
+  #assert id==0 && state[0].code=="E0201" && state[0].loc.column==7;
+  tokens[3]=PS_Token.{kind=15,text=";",raw_count=1,loc=PS_Loc.{line=1,column=7,offset=6}};tokens[2]=tokens[3];state[0]=PS_State.{};
+  id=PS_stmt(tokens[..],nodes[..],state[..],message[..]);
+  #assert id==0 && state[0].code=="E0205";
+}
+#forall "only '_' with '=' or ':=' discards: other names, operators, a typed '_' and a literal keep their statements" form:0..<5 {
+  // 0: x = f;   1: x := f;   2: _ += f;   3: _ : f = g;   4: a float token spelled "_"
+  tokens:=[6] PS_Token.[
+    PS_Token.{kind=1,text="_",raw_count=1,loc=PS_Loc.{line=1,column=1,offset=0}},
+    PS_Token.{kind=23,text="=",raw_count=1,loc=PS_Loc.{line=1,column=3,offset=2}},
+    PS_Token.{kind=1,text="f",raw_count=1,loc=PS_Loc.{line=1,column=6,offset=5}},
+    PS_Token.{kind=15,text=";",raw_count=1,loc=PS_Loc.{line=1,column=7,offset=6}},
+    PS_Token.{kind=1,text="g",raw_count=1,loc=PS_Loc.{line=1,column=9,offset=8}},
+    PS_Token.{kind=0,text="",raw_count=0,loc=PS_Loc.{line=1,column=10,offset=9}}];
+  if form<2 {tokens[0].text="x";}
+  if form==1 {tokens[1].kind=18;}
+  if form==2 {tokens[1].kind=24;}
+  if form==3 {tokens[1].kind=16;tokens[3].kind=23;tokens[5].kind=15;}
+  if form==4 {tokens[0].kind=4;}
+  wide:[7] PS_Token;for v,i:tokens {wide[i]=v;}wide[6]=PS_Token.{loc=PS_Loc.{line=1,column=11,offset=10}};
+  nodes:[64] PS_Node;state:[1] PS_State;message:[1024] u8;
+  id:=PS_stmt(wide[..],nodes[..],state[..],message[..]);
+  if form==0 || form==2 {#assert state[0].code=="" && nodes[id].kind==PS_Tag.stmt_assign && !nodes[id].flag;}
+  if form==1 {#assert state[0].code=="" && nodes[id].kind==PS_Tag.stmt_var && nodes[id].name=="x" && !nodes[id].flag;}
+  if form==3 {#assert state[0].code=="" && nodes[id].kind==PS_Tag.stmt_var && nodes[id].name=="_" && !nodes[id].flag;}
+  if form==4 {#assert state[0].code!="" || nodes[id].kind!=PS_Tag.stmt_expr || !nodes[id].flag;}
 }

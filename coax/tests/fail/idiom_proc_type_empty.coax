@@ -1,0 +1,3 @@
+// expect: E0225
+// says: there is no procedure type; pass an enum
+main :: () { done: () = ---; }

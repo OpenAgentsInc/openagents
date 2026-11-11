@@ -654,8 +654,8 @@ people like to write the checks first in the file, as a statement of what
 the code must do.
 
 A file that is a library, built with `coax lib` and called from C or
-Swift (Chapter 20), has no `main`. That's fine for `coax test`: a file
-with `#export_c` procedures and checks can be tested without one.
+Swift (Chapter 20), has no `main`. That's fine for `coax test`: any file
+without a `main` is tested as a library, with no flag to remember.
 
 ### Names
 

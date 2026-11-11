@@ -1746,7 +1746,8 @@ static void drop_library_checks(const Source *src, const std::vector<bool> &unit
 }
 
 // lex, parse, check and evaluate; then produce the requested text.
-// library: no main is required (lib, header, and check of a file that exports).
+// library: no main is required (1: lib, header and --library; 2: test, check, c
+// and the reports, when the file exports or has no main; 0: run and build).
 // header_path: also write the C header (`coax c FILE --library --header out.h`).
 // An #authority file's checks run on every compile: a failing check fails
 // the build. run_checks is false for coax test and mutate, which run them.
@@ -1879,9 +1880,11 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
   if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file, opts.development);}
   if (ok && parsed) query_snapshot(parsed, file);
   if (ok) {
-    bool exports = false;
-    for (const ProcDecl *p : file->procs) exports = exports || p->export_c;
-    file->library = library == 1 || (library == 2 && exports);
+    // library 2: the command links no program, so a file that exports, or that
+    // has no main at all, is checked and emitted as a library (#13125).
+    bool exports = false, entry = false;
+    for (const ProcDecl *p : file->procs) { exports = exports || p->export_c; entry = entry || str_eq(p->name, "main"); }
+    file->library = library == 1 || (library == 2 && (exports || !entry));
     file->metal = opts.metal;
     file->quantity_device=opts.quantity_device;
     file->execution_profile=std::to_string(opts.profile_identity);
@@ -2665,7 +2668,7 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "c" || cmd == "header" || cmd == "metal" || cmd == "cuda" || cmd == "metal-compute") {
     if (!compile(input, opts, cmd == "header" ? Output::header : Output::c, &text,
-                 cmd != "c" || opts.library ? 1 : 0, header.empty() ? nullptr : &header))
+                 cmd != "c" || opts.library ? 1 : 2, header.empty() ? nullptr : &header))
       return 1;
     if (out.empty()) {
       fwrite(text.data(), 1, text.size(), stdout);

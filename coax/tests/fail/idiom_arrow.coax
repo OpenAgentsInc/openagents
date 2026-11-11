@@ -1,0 +1,4 @@
+// expect: E0225
+// says: a field is always 'x.f'
+P :: struct { x: int; }
+main :: () { p: P; n := p->x; }

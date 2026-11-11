@@ -1,0 +1,4 @@
+// expect: E0305
+// says: pass an enum and branch on it
+f :: (a: int) -> int { return a + 1; }
+main :: () { g := f; }

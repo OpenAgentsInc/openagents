@@ -1,0 +1,4 @@
+// expect: E0306
+// says: '_' only drops a value
+f :: () -> int { return 1; }
+main :: () { _ = f(); x := _; }

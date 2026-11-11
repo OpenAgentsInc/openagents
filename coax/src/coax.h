@@ -550,7 +550,7 @@ struct Stmt {
   Loc name2_loc;
   TypeExpr *type_expr = nullptr;  // var: declared type, null when inferred
   Type type = &T_INVALID;      // var/for: resolved type of `name`
-  bool uninit = false;         // var: `= ---`
+  bool uninit = false;         // var: `= ---`; expr: `_ = e;`, a value dropped on purpose
   Tok op = Tok::equal;         // assign: = += -= ...
   uint8_t own_effects = 0;     // assign: the compound update's CK_effects bits
   Stmt *then_ = nullptr, *else_ = nullptr;  // if (then_ is a block), loops and defer (then_)

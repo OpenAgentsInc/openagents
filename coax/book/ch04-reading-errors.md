@@ -323,19 +323,11 @@ $ coax check pantry.coax
 pantry.coax:4:18: error[E0309]: '-' needs two numbers of one type, found int and u8
     left := apples - eaten;
                    ^
-  fix: convert one: cast(int) x
-pantry.coax:5:13: error[E0313]: print is in module Basic, which is not imported
-    if left { print("% % left\n", plural(left)); }
-              ^
-  fix: add #import "Basic"; at the top of the file
+  fix: convert the right side: cast(int) eaten
 pantry.coax:5:19: error[E0320]: format has 2 '%' slots but print was given 1 value
     if left { print("% % left\n", plural(left)); }
                     ^
   fix: write '%%' for a literal percent sign
-pantry.coax:7:5: error[E0313]: print is in module Basic, which is not imported
-      print("shared by %: % each\n", people, split(left, people));
-      ^
-  fix: add #import "Basic"; at the top of the file
 pantry.coax:7:44: error[E0315]: procedure 'split' is not declared
       print("shared by %: % each\n", people, split(left, people));
                                              ^
@@ -343,17 +335,16 @@ pantry.coax:15:1: error[E0338]: 'plural' can reach its end without returning str
   plural :: (n: int) -> string {
   ^
   fix: add a return at the end
-6 errors
+4 errors
 ```
 
-Six errors, but not six separate problems. The two `E0313` errors have
-one cause, the missing `#import "Basic";`, and the fix line gives the
-exact line to add.
+Four errors, each with its own cause. Notice also what isn't here: the
+file has no `#import "Basic";` line, and `print` works anyway, because
+`Basic` is imported by default.
 
 The first error is the one Chapter 3 warned about: `apples` is an `int`
-and `eaten` is a `u8`, and `-` won't mix them. The fix line suggests
-`cast(int)` on one side (the `x` in the fix stands for whichever operand
-you pick). That would work, but it treats the symptom. Nothing about a
+and `eaten` is a `u8`, and `-` won't mix them. The fix line gives the
+exact cast, `cast(int) eaten`. That would work, but it treats the symptom. Nothing about a
 count of eaten apples needs to be a `u8`, so the better fix is to
 declare it like `apples`: `eaten := 3;`.
 
@@ -363,7 +354,9 @@ on line 4 failed, the checker doesn't know what type `left` has, so it
 doesn't guess. Once we fix line 4, `left` becomes an `int` and we'll see
 the error then.
 
-We make both fixes, adding the import at the top and changing `eaten`.
+We change `eaten`. While we're at the top of the file we also add the
+`#import "Basic";` line and a blank line after it, as the book's other
+listings have: it's optional, and it says where `print` comes from.
 
 ### Round 4: what was hiding
 

@@ -1,0 +1,58 @@
+// The relaxed rules (#13125): a discard statement, and the exact fix each
+// refusal names. Each check runs the checker over a small indexed tree.
+#forall "_ = e; drops a call's result or any value; without the mark both are still refused" form:0..<4 {
+  // f :: () -> int { return 1; }  main :: () { S }   S is 0: _ = f();  1: f();  2: _ = 2;  3: 2;
+  initial:=[11] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=7},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=1,offset=0},name="f",a=3,b=4,next=7},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=10,offset=9},name="int"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=14,offset=13},head=5,tail=5},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=1,column=15,offset=14},a=6},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=1,column=22,offset=21},value=1},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=26,offset=25},name="main",b=8},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=37,offset=36},head=10,tail=10},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=1,column=42,offset=41},name="f"},
+    CK_Node.{kind=CK_Tag.stmt_expr,loc=CK_Loc.{line=1,column=38,offset=37},a=9}];
+  mark:=form==0 || form==2;initial[10].flag=mark;
+  if form>=2 {initial[9]=CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=1,column=42,offset=41},value=2};}
+  nodes:[49] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[49] CK_Type;locals:[27] CK_Local;errors:[104] CK_Error;bytes:[10064] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==mark && nodes[9].type==11;
+  if mark {#assert state[0].error_count==0;}
+  if form==1 {#assert state[0].error_count==1 && errors[0].code=="E0323" && errors[0].loc.column==38 && errors[0].fix=="use it: result := f(...); or drop it: _ = f(...);";}
+  if form==3 {#assert state[0].error_count==1 && errors[0].code=="E0322";}
+}
+#forall "mixed numbers name the one cast that fixes them: the side with the wanted type stays" form:0..<4 {
+  // main :: () { a: s32 = 1; b: int = 2; S }   S is 0: c := a + b;  1: c: int = a + b;  2: c := a + cast(int) b;  3: c := a < b;
+  initial:=[15] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=2},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=2,column=1,offset=17},name="main",b=3},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=2,column=12,offset=28},head=4,tail=10},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=2,column=14,offset=30},name="a",a=6,d=5,next=7},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=2,column=17,offset=33},name="s32"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=2,column=23,offset=39},value=1},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=2,column=26,offset=42},name="b",a=9,d=8,next=10},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=2,column=29,offset=45},name="int"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=2,column=35,offset=51},value=2},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=2,column=38,offset=54},name="c",a=13},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=43,offset=59},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=47,offset=63},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=2,column=45,offset=61},a=11,b=12,op=34},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=2,column=41,offset=57},name="int"}];
+  if form==1 {initial[10].d=14;}
+  if form==3 {initial[13].op=46;}
+  nodes:[58] CK_Node;for v,i:initial {nodes[i]=v;}
+  if form==2 {nodes[15]=nodes[12];nodes[16]=nodes[14];nodes[12]=CK_Node.{kind=CK_Tag.expr_cast,loc=nodes[15].loc,a=15,d=16};}
+  used:=initial.count-1;if form==2 {used=16;}
+  types:[58] CK_Type;locals:[30] CK_Local;errors:[128] CK_Error;bytes:[11808] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,used,CK_Options.{library=true,metal=false,authority=false});
+  #assert !ok && state[0].error_count==1;
+  codes:=[4] string.["E0309","E0309","E0309","E0310"];
+  fixes:=[4] string.["convert the right side: cast(s32) b","convert the left side: cast(int) a","convert the right side: cast(s32) (that side)","convert the right side: cast(s32) b"];
+  #assert errors[0].code==codes[form] && errors[0].fix==fixes[form];
+}

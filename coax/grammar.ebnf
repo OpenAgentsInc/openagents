@@ -98,7 +98,7 @@ type-parameter = "$", identifier ;       (* one token: no space after '$' *)
    not. A concrete array length expression must be known while checking. *)
 
 block = "{", { statement }, "}" ;
-statement = block | declaration | assignment, ";" | return | if | while | for |
+statement = block | discard | declaration | assignment, ";" | return | if | while | for |
             "break", ";" | "continue", ";" | defer | transaction | switch | assertion | profile-statements | expression, ";" ;
 transaction = "#transaction", block ;
 profile-statements = "#if", "BUILD_DEBUG", block, [ "else", block ] ;
@@ -107,6 +107,10 @@ profile-statements = "#if", "BUILD_DEBUG", block, [ "else", block ] ;
    --build-profile overrides that preset. Both branches parse; only the
    selected AST participates in semantics/emission.
    This is not arbitrary constant-expression or top-level conditional compilation. *)
+discard = "_", ( "=" | ":=" ), expression, ";" ;
+(* Evaluates the expression and drops its value. "_" names nothing, so it is
+   never declared; "_", ":", type and "_" with a compound operator are an
+   ordinary declaration and assignment. *)
 declaration = identifier, ":=", expression, ";" |
               identifier, ":", type, [ "=", ( expression | "---" ) ], ";" ;
 assignment = place, ( "=" | "+=" | "-=" | "*=" | "/=" | "%=" |

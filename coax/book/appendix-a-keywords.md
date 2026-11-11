@@ -48,7 +48,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 
 | Name | Meaning | Status | Introduced |
 | --- | --- | --- | --- |
-| `#import "Basic";` | Import a module; `Basic` is the only one | works | — |
+| `#import "Basic";` | Import a module; `Basic` is the only one, and it is imported by default | works | — |
 | `#run expr` | Evaluate with bounded configurable shared work and aggregate storage | works | 0.18.0 |
 | `#assert expr;` | A compile-time `bool` check at the top level; an always-on check as a statement | works | — |
 | `#test "name" { }` | A check run by `coax test`, never compiled into the program | works | 0.5.0 |
@@ -74,7 +74,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 
 | Name | Meaning | Status | Introduced |
 | --- | --- | --- | --- |
-| `print(format, ...)` | Print with `%` slots checked at compile time; needs `#import "Basic"` | works | — |
+| `print(format, ...)` | Print with `%` slots checked at compile time; from `Basic`, which is imported by default | works | — |
 | `type_name(expr)` | The expression's type name as a string; the operand isn't evaluated | works | — |
 | `size_of(T)` | The type's size in bytes (bootstrap LP64 CPU layout) | works | — |
 | `type_info(T)` | Type name, kind, layout and counts as `CoaxTypeInfo` | works | 0.12.0 |

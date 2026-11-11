@@ -146,6 +146,17 @@ Each is symptom, cause and fix.
 
 ## Rules that save rounds
 
+- `_ = f();` drops a result you don't need; write it as often as you like.
+- A file with no `main` is a library: `coax test`, `check`, `mutate` and `c`
+  need no `--library`.
+- `print` needs no `#import "Basic";`.
+- A local or parameter may share a procedure's name (`lo`, `hi`, `near`).
+  Procedures are not values: to pick one at run time, pass an enum and
+  branch on it.
+- To read a constant or a parameter array through a view, type the receiver
+  `[] const T`. A temporary goes into a local first.
+- f32 and f64 don't mix: apply the cast the fix line names.
+
 - Build features engine-wide in `aethyr/` or game-wide in the game's shared
   code, never for one zone.
 - Kill only the processes you started, by PID. Never `pkill` by name.

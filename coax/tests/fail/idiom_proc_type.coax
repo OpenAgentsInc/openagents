@@ -1,0 +1,5 @@
+// expect: E0225
+// says: there is no procedure type; pass an enum
+f :: (a: int) -> int { return a + 1; }
+apply :: (g: (int) -> int, a: int) -> int { return g(a); }
+main :: () { }

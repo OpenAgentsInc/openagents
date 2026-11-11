@@ -1,0 +1,21 @@
+// The small rules that save a compile (#13125): no #import for print, _ drops
+// a value any number of times, a local shares a procedure's name in its own
+// file, and a constant or a parameter is read through a [] const view.
+PRIMES :: [4] int.[2, 3, 5, 7];
+
+lo :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+bump :: (counter: [] int) -> int { counter[0] += 1; return counter[0]; }
+sum :: (v: [] const int) -> int { total := 0; for x: v { total += x; } return total; }
+first_two :: (row: [4] int) -> int { head: [] const int = row[..]; return head[0] + sum(row[0..<2]); }
+clamp_low :: (x: int, lo: int) -> int { if x < lo { return lo; } return x; }
+
+main :: () {
+  calls: [1] int;
+  _ = bump(calls[..]);
+  _ := bump(calls[..]);
+  _ = bump(calls[..]) + 40;
+  _ = 7;
+  lo := 3;
+  print("% % %\n", calls[0], lo(lo, 9), clamp_low(1, lo));
+  print("% %\n", sum(PRIMES[..]), first_two(PRIMES));
+}

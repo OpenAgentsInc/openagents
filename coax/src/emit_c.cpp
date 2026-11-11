@@ -2085,6 +2085,7 @@ struct Emitter {
       case StmtKind::expr:
         if (s->expr->kind == ExprKind::call && s->expr->builtin_print && check_binary) line("coax_nc_refuse(\"output\");");
         else if (s->expr->kind == ExprKind::call && s->expr->builtin_print) print(s->expr);
+        else if (s->uninit) line("(void)(" + ex(s->expr) + ");");  // _ = e; (parser: a stmt_expr with its flag set)
         else line(ex(s->expr) + ";");
         break;
       case StmtKind::var: {

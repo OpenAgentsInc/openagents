@@ -33,6 +33,7 @@
 #load "checker/result-checks.coax";
 #load "checker/sum-checks.coax";
 #load "checker/budget-checks.coax";
+#load "checker/relaxed-checks.coax";
 #load "query-index.coax";
 #load "literal-projection-cache.coax";
 #load "borrow-summary.coax";

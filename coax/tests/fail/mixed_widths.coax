@@ -1,2 +1,3 @@
 // expect: E0309
+// says: convert the right side: cast(s32) b
 main :: () { a: s32 = 1; b: int = 2; c := a + b; }

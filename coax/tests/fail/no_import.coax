@@ -1,2 +1,0 @@
-// expect: E0313
-main :: () { print("hi\n"); }

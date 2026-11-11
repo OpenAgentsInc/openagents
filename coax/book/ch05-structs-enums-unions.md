@@ -380,12 +380,13 @@ moved(ship, 0.5);
 forgot.coax:10:3: error[E0323]: the result of 'moved' (Entity) is not used
     moved(ship, 0.5);
     ^
-  fix: use it: result := moved(...);
+  fix: use it: result := moved(...); or drop it: _ = moved(...);
 1 error
 ```
 
-The result of a procedure call can't be dropped on the floor. Here that
-catches the bug of thinking `moved` changed `ship`.
+The result of a procedure call can't be dropped on the floor by accident.
+Here that catches the bug of thinking `moved` changed `ship`. Dropping a
+result on purpose is spelled `_ = moved(ship, 0.5);` (Chapter 3).
 
 The second style is *changing things where they lie*, through a view.
 `step_all` takes `all: [] Entity`, a view of the caller's array (Chapter 6

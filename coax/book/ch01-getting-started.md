@@ -108,10 +108,10 @@ Let's go through Listing 1-1 one line at a time.
 Words that start with `#` are *directives*. They're instructions to the
 compiler rather than code that runs when the program does. `#import`
 makes a module's names available in this file. `Basic` is the module
-that provides `print`; it remains the only named built-in module. `#load`
-adds authored source units to a program (Chapter 10).
-Nothing is imported unless you ask for it, so the first lines of a file
-tell you what it depends on.
+that provides `print`; it remains the only named built-in module, and it
+is imported by default, so this line is optional. We write it anyway: the
+first lines of a file then say what it depends on. `#load` adds authored
+source units to a program (Chapter 10).
 
 ```jai
 main :: () {
@@ -399,15 +399,15 @@ covers them all.
 
 ## When you get it wrong
 
-Let's make some mistakes on purpose. Delete the `#import` line from
+Let's make some mistakes on purpose. Misspell `print` as `prnt` in
 `hello.coax` and run it again:
 
 ```shell
 $ coax run hello.coax
-hello.coax:3:3: error[E0313]: print is in module Basic, which is not imported
-    print("Hello, world!\n");
+hello.coax:4:3: error[E0315]: procedure 'prnt' is not declared
+    prnt("Hello, world!\n");
     ^
-  fix: add #import "Basic"; at the top of the file
+  fix: find where it is declared: coax vocab prnt
 1 error
 ```
 
@@ -417,7 +417,7 @@ wrong. Then comes the line itself with a caret under the spot, and, when
 the compiler knows one, a line starting with `fix:` that tells you what
 to do.
 
-Put the import back, and this time delete the semicolon after the
+Put the name back, and this time delete the semicolon after the
 `print` call:
 
 ```jai
@@ -431,15 +431,15 @@ hello.coax:4:27: error[E0201]: expected ';' after the statement, found '}'
 The caret points just past the end of the call, where the semicolon
 should be.
 
-The error codes are stable: `E0313` will mean the same thing next year.
+The error codes are stable: `E0201` will mean the same thing next year.
 That makes them easy to search for, and it's what lets tools and agents
 react to an error without parsing its English. If an error's sentence
 isn't enough, ask the compiler to explain the code:
 
 ```shell
-$ coax explain E0313
-E0313: print needs Basic
-  print is in module Basic. Add #import "Basic"; at the top of the file.
+$ coax explain E0201
+E0201: expected a token
+  The parser needed a specific token here, usually ';', ')' or '}'. For a missing ';' the caret points right after the previous token.
 ```
 
 [Appendix B](appendix-b-error-codes.md) lists every code, and

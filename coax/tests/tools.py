@@ -57,6 +57,24 @@ class Tools(unittest.TestCase):
         self.assertEqual(len(re.findall(r"^\| `E0\d{3}` \|", table, re.M)),
                          len(re.findall(r"^E0\d{3}:", coax("explain", "--all").stdout, re.M)))
 
+    def test_a_file_without_main_is_a_library(self):
+        # No main and no export: every command that links no program takes the
+        # file as a library, with no --library to remember (#13125).
+        path = self.write("half.coax", "half :: (n: int) -> int { return n / 2; }\n#test \"half\" { #assert half(8) == 4; }\n")
+        for command in ("check", "test", "c", "deps", "layout"):
+            result = coax(command, path)
+            self.assertEqual(result.returncode, 0, command + ": " + result.stderr)
+        self.assertEqual(coax("c", path).stdout, coax("c", path, "--library").stdout)
+        self.assertNotIn("int main(", coax("c", path).stdout)
+        for command in ("run", "build"):
+            result = coax(command, path, *(["-o", str(self.dir / "half")] if command == "build" else []))
+            self.assertEqual(result.returncode, 1, command)
+            self.assertIn("error[E0336]", result.stderr)
+            self.assertIn("fix: add main :: () { ... }", result.stderr)
+        # A file with a main is still a program.
+        program = self.write("whole.coax", "main :: () { }\n")
+        self.assertIn("int main(", coax("c", program).stdout)
+
     def test_json_diagnostics(self):
         path = self.write("bad.coax", "main :: () {\n  x: u8 = 300;\n  y := missing;\n}\n")
         result = coax("check", "--json", path)
@@ -84,8 +102,9 @@ weigh :: (samples: [] Sample, mode: Mode) -> f64 #export_c #effects(all) {
   return total;
 }
 """)
-        self.assertIn("E0336", coax("c", source).stderr)  # a program needs main
+        self.assertIn("E0336", coax("build", source, "-o", str(self.dir / "kernel")).stderr)  # a program needs main
         self.assertEqual(coax("check", source).returncode, 0)  # a file that exports does not
+        self.assertEqual(coax("c", source).returncode, 0)
         header = self.dir / "kernel.h"
         obj = self.dir / "kernel.o"
         self.assertEqual(coax("header", source, "-o", str(header)).returncode, 0)

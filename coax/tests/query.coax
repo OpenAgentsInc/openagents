@@ -388,8 +388,8 @@ tool_main :: () -> int #export_c #effects(all) {
     bad += check(r.status == 0 && !r.cut && cast(string) out[0..<r.out_n] == duplicate_answer && modified >= 0 && fs_mtime_ns(entry_path) == modified, "duplicate descriptor inputs preserve the warm answer and cache");
   }
 
-  // The accepted library flag must be honored, and its cache may never
-  // make the plain command admit the same no-main unit.
+  // The library flag is honored, and the plain command takes the same
+  // no-main unit as a library too (#13125).
   library_path_bytes: [1024] u8; mode_cache_bytes: [1024] u8;
   library_path := fs_join(dir, "library.coax", library_path_bytes[..]);
   bad += check(fs_write(library_path, "library_value :: ()->int {return 1;}\n"), "a no-main library fixture is written");
@@ -397,7 +397,7 @@ tool_main :: () -> int #export_c #effects(all) {
   r = ask(mode_query, library_path, "defines", "library_value", "--library", out[..], err[..]);
   bad += check(r.status == 0 && r.out_n > 0, "explicit library queries admit a no-main unit");
   r = ask(mode_query, library_path, "defines", "library_value", "", out[..], err[..]);
-  bad += check(r.status == 1 && r.out_n == 0, "a warm library index cannot bypass plain main admission");
+  bad += check(r.status == 0 && r.out_n > 0, "a plain query takes a no-main unit as a library");
 
   // BUILD_DEBUG selects fields during parsing. A development index cannot
   // hide a release-only invalid array type in the same unchanged source.

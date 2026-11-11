@@ -16,6 +16,14 @@ CK_counter_arithmetic :: (c:CK_Context,loc:CK_Loc,op:u32,a:int,b:int) #effects(a
   parts:=[5] string.["plain ",CK_op(op)," on the counter '",name,"'"];fix:=[6] string.[k,"_checked(a, b), ",k,"_sat(a, b) or ",k,"_wrap(a, b)"];
   CK_error(c,loc,"E0840",CK_text(c,parts[..]),CK_text(c,fix[..]));
 }
+// The exact cast that makes two numbers one type (#13125): the side that already
+// has the wanted type stays, and the other side is named when it is a name.
+CK_operand :: (c:CK_Context,id:int)->string #effects(all) {e:=c.nodes[id];if e.kind==CK_Tag.expr_ident {return e.name;}return "(that side)";}
+CK_convert_fix :: (c:CK_Context,id:int,want:int)->string #effects(all) {
+  e:=c.nodes[id];a:=c.nodes[e.a].type;b:=c.nodes[e.b].type;
+  if want==b {parts:=[4] string.["convert the left side: cast(",c.types[b].name,") ",CK_operand(c,e.a)];return CK_text(c,parts[..]);}
+  parts:=[4] string.["convert the right side: cast(",c.types[a].name,") ",CK_operand(c,e.b)];return CK_text(c,parts[..]);
+}
 CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
   e:=c.nodes[id];if c.nodes[e.a].kind==CK_Tag.expr_null || c.nodes[e.b].kind==CK_Tag.expr_null {return CK_null_comparison(c,id);}
   comparison:=e.op>=44;shift:=e.op==42 || e.op==43;hint:=want;
@@ -34,7 +42,7 @@ CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
   if e.op>=34 && e.op<=38 {
     if a!=b || !CK_numeric(c,a) || (e.op==38 && !CK_integer(c,a)) {
       need:=" needs two numbers of one type";if e.op==38 {need=" needs two integers of one type";}
-      fix:=CK_constrain_fix(c,a,"numeric");if a==3 {fix="build strings with print's % formatting";}else if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_join3(c,"convert one: cast(",c.types[a].name,") x");}
+      fix:=CK_constrain_fix(c,a,"numeric");if a==3 {fix="build strings with print's % formatting";}else if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_convert_fix(c,id,hint.type);}
       parts:=[4] string.[CK_op(e.op),need,", found ",pair];CK_error(c,e.loc,"E0309",CK_text(c,parts[..]),fix);return CK_NONE;
     }
     if CK_integer(c,a) {CK_counter_arithmetic(c,e.loc,e.op,e.a,e.b);}return a;
@@ -44,7 +52,7 @@ CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
   }
   if shift {if !CK_integer(c,a) || !CK_integer(c,b) {CK_error(c,e.loc,"E0370",CK_join3(c,CK_op(e.op)," shifts an integer by an integer, found ",pair),"");return CK_NONE;}return a;}
   if e.op>=46 && e.op<=49 {
-    if a!=b || !CK_ordered(c,a) {fix:=CK_constrain_fix(c,a,"ordered");if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_join3(c,"convert one: cast(",c.types[a].name,") x");}CK_error(c,e.loc,"E0310",CK_join3(c,CK_op(e.op)," compares two numbers of one type, found ",pair),fix);return CK_NONE;}return 2;
+    if a!=b || !CK_ordered(c,a) {fix:=CK_constrain_fix(c,a,"ordered");if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_convert_fix(c,id,hint.type);}CK_error(c,e.loc,"E0310",CK_join3(c,CK_op(e.op)," compares two numbers of one type, found ",pair),fix);return CK_NONE;}return 2;
   }
   if e.op==44 || e.op==45 {
     if a!=b {parts:=[4] string.["cannot compare ",c.types[a].name," with ",c.types[b].name];CK_error(c,e.loc,"E0311",CK_text(c,parts[..]),"there are no implicit conversions in Coax");return CK_NONE;}
@@ -73,7 +81,7 @@ CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
     kinds:=[4] CK_Tag.[CK_Tag.constant,CK_Tag.proc,CK_Tag.struct_,CK_Tag.enum_];if !CK_bind_check(c,id,kinds[..],"declaration") {return CK_NONE;}
     constant:=CK_lookup(c,CK_Tag.constant,id);
     if constant!=CK_NONE {t:=CK_constant_type(c,constant);expr:=c.nodes[constant].a;if CK_untyped(c,t) && (c.nodes[expr].kind==CK_Tag.expr_int || c.nodes[expr].kind==CK_Tag.expr_float) {CK_copy_expr(c,id,expr,true);return t;}c.nodes[id].constant=constant;return t;}
-    if CK_lookup(c,CK_Tag.proc,id)!=0 {call:=e.name;if e.name2.count!=0 {call=CK_join3(c,e.name2,".",e.name);}CK_error(c,e.loc,"E0305","procedures are not values in coax0",CK_join3(c,"call it: ",call,"()"));return CK_NONE;}
+    if CK_lookup(c,CK_Tag.proc,id)!=0 {call:=e.name;if e.name2.count!=0 {call=CK_join3(c,e.name2,".",e.name);}CK_error(c,e.loc,"E0305","procedures are not values in coax0",CK_join3(c,"call it: ",call,"(); or, to pick a procedure at run time, pass an enum and branch on it"));return CK_NONE;}
     st:=CK_lookup(c,CK_Tag.struct_,id);en:=CK_lookup(c,CK_Tag.enum_,id);
     if st!=0 || en!=0 || CK_lookup(c,CK_Tag.union_,id)!=0 {fix:=CK_join3(c,"name a member: ",e.name,".member");if st!=0 {fix=CK_join3(c,"make one: ",e.name,".{}");}CK_error(c,e.loc,"E0354",CK_join3(c,"'",e.name,"' is a type, not a value"),fix);return CK_NONE;}
     CK_error(c,e.loc,"E0306",CK_join3(c,"'",e.name,"' is not declared"),"");return CK_NONE;
@@ -106,7 +114,7 @@ CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
     t:=CK_expr(c,e.a,CK_Hint.{});bounds_ok:=true;bounds:=[2] int.[e.b,e.c];
     for bound:bounds {bt:=CK_value(c,bound,CK_Hint.{type=11});if bt!=0 && !CK_integer(c,bt) {CK_error(c,c.nodes[bound].loc,"E0356",CK_join2(c,"a slice bound must be an integer, found ",c.types[bt].name),"");bounds_ok=false;}}
     if t==CK_NONE || !bounds_ok {return CK_NONE;}if t==3 || c.types[t].kind==CK_Kind.view {return t;}
-    if c.types[t].kind==CK_Kind.array {why:=CK_immutable(c,e.a);if CK_readonly(c,want.type) && why!="temporary" {return CK_intern(c,CK_Kind.view,c.types[t].elem,1);}if why!="" {CK_error(c,e.loc,"E0366",CK_join2(c,"a view needs an array variable it may write through, and this is a ",why),"copy it into a local variable first");return CK_NONE;}return CK_intern(c,CK_Kind.view,c.types[t].elem,0);}
+    if c.types[t].kind==CK_Kind.array {why:=CK_immutable(c,e.a);if CK_readonly(c,want.type) && why!="temporary" {return CK_intern(c,CK_Kind.view,c.types[t].elem,1);}if why!="" {fix:="put the array in a local variable first, then take its view";if why!="temporary" {fix=CK_join3(c,"to read it, type the receiving parameter or variable [] const ",c.types[c.types[t].elem].name,"; to write, copy it into a local variable first");}CK_error(c,e.loc,"E0366",CK_join2(c,"a view needs an array variable it may write through, and this is a ",why),fix);return CK_NONE;}return CK_intern(c,CK_Kind.view,c.types[t].elem,0);}
     CK_error(c,e.loc,"E0355",CK_join2(c,"cannot slice ",c.types[t].name),"only arrays, views and strings can be sliced");return CK_NONE;
   }
   if e.kind==CK_Tag.expr_struct {
@@ -522,8 +530,8 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
   }
   if CK_lookup(c,CK_Tag.constant,id)!=0 {CK_error(c,e.loc,"E0314",CK_join3(c,"'",e.name,"' is a constant, not a procedure"),"");return CK_NONE;}
   if e.name=="print" && proc==CK_NONE {
-    c.nodes[id].builtin_print=true;
-    if !c.state[0].basic {CK_error(c,e.loc,"E0313","print is in module Basic, which is not imported","add #import \"Basic\"; at the top of the file");}return CK_print(c,id);
+    // Basic is imported by default (#13125): print needs no #import, and E0313 is retired.
+    c.nodes[id].builtin_print=true;return CK_print(c,id);
   }
   if proc==CK_NONE {
     if CK_local(c,e.name)>=0 {CK_error(c,e.loc,"E0314",CK_join3(c,"'",e.name,"' is a variable, not a procedure"),"");}

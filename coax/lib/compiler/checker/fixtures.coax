@@ -3261,7 +3261,7 @@
   #assert state[0].type_count==16;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==0;
-  #assert state[0].byte_count==12;
+  #assert state[0].byte_count==80;
   #assert state[0].error_count==1;
   #assert state[0].current==4;
   #assert state[0].constant_depth==0;
@@ -3273,7 +3273,7 @@
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
 
-  #assert errors[0].code=="E0305" && errors[0].loc.line==1 && errors[0].loc.column==27 && errors[0].message=="procedures are not values in coax0" && errors[0].fix=="call it: f()";
+  #assert errors[0].code=="E0305" && errors[0].loc.line==1 && errors[0].loc.column==27 && errors[0].message=="procedures are not values in coax0" && errors[0].fix=="call it: f(); or, to pick a procedure at run time, pass an enum and branch on it";
   expected:=[8] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=4},
@@ -3988,7 +3988,7 @@
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
 
-  #assert errors[0].code=="E0366" && errors[0].loc.line==1 && errors[0].loc.column==57 && errors[0].message=="a view needs an array variable it may write through, and this is a temporary" && errors[0].fix=="copy it into a local variable first";
+  #assert errors[0].code=="E0366" && errors[0].loc.line==1 && errors[0].loc.column==57 && errors[0].message=="a view needs an array variable it may write through, and this is a temporary" && errors[0].fix=="put the array in a local variable first, then take its view";
   expected:=[18] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=13},
@@ -4477,7 +4477,7 @@
   #assert state[0].type_count==17;
   #assert state[0].composite_count==1;
   #assert state[0].local_count==1;
-  #assert state[0].byte_count==88;
+  #assert state[0].byte_count==200;
   #assert state[0].error_count==1;
   #assert state[0].current==2;
   #assert state[0].constant_depth==0;
@@ -4489,7 +4489,7 @@
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
 
-  #assert errors[0].code=="E0366" && errors[0].loc.line==1 && errors[0].loc.column==22 && errors[0].message=="a view needs an array variable it may write through, and this is a parameter" && errors[0].fix=="copy it into a local variable first";
+  #assert errors[0].code=="E0366" && errors[0].loc.line==1 && errors[0].loc.column==22 && errors[0].message=="a view needs an array variable it may write through, and this is a parameter" && errors[0].fix=="to read it, type the receiving parameter or variable [] const int; to write, copy it into a local variable first";
   expected:=[11] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=2},
@@ -5811,14 +5811,14 @@
   types:[34] CK_Type;locals:[22] CK_Local;errors:[64] CK_Error;bytes:[7336] u8;state:[1] CK_State;
   context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
   ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
-  #assert ok==false && state[0].error_count==2 && state[0].depth==0;
+  #assert ok==false && state[0].error_count==1 && state[0].depth==0;
   // The semantic pass restores its scope/depth counters.
   #assert state[0].used==5;
   #assert state[0].type_count==16;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==0;
   #assert state[0].byte_count==0;
-  #assert state[0].error_count==2;
+  #assert state[0].error_count==1;
   #assert state[0].current==2;
   #assert state[0].constant_depth==0;
   #assert state[0].loop_depth==0;
@@ -5829,8 +5829,7 @@
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
 
-  #assert errors[0].code=="E0313" && errors[0].loc.line==1 && errors[0].loc.column==13 && errors[0].message=="print is in module Basic, which is not imported" && errors[0].fix=="add #import \"Basic\"; at the top of the file";
-  #assert errors[1].code=="E0318" && errors[1].loc.line==1 && errors[1].loc.column==13 && errors[1].message=="print needs a format string" && errors[1].fix=="print(\"text\\n\");";
+  #assert errors[0].code=="E0318" && errors[0].loc.line==1 && errors[0].loc.column==13 && errors[0].message=="print needs a format string" && errors[0].fix=="print(\"text\\n\");";
   expected:=[6] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=2},
@@ -6596,7 +6595,7 @@
   #assert state[0].type_count==16;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==0;
-  #assert state[0].byte_count==60;
+  #assert state[0].byte_count==84;
   #assert state[0].error_count==1;
   #assert state[0].current==7;
   #assert state[0].constant_depth==0;
@@ -6608,7 +6607,7 @@
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
 
-  #assert errors[0].code=="E0323" && errors[0].loc.line==1 && errors[0].loc.column==38 && errors[0].message=="the result of 'f' (int) is not used" && errors[0].fix=="use it: result := f(...);";
+  #assert errors[0].code=="E0323" && errors[0].loc.line==1 && errors[0].loc.column==38 && errors[0].message=="the result of 'f' (int) is not used" && errors[0].fix=="use it: result := f(...); or drop it: _ = f(...);";
   expected:=[11] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=7},

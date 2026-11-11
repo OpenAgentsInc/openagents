@@ -335,19 +335,27 @@ $ coax check total.coax
 total.coax:2:16: error[E0366]: a view needs an array variable it may write through, and this is a parameter
     all := scores[..];
                  ^
-  fix: copy it into a local variable first
+  fix: to read it, type the receiving parameter or variable [] const int; to write, copy it into a local variable first
 1 error
 ```
 
-Copy the parameter into a local (`mine := scores;`) and view that, or,
-better, have the procedure take a `[] int` in the first place. A view of a
-temporary, such as an array literal, is refused for the same reason:
+The fix line gives both ways out. If the code only reads the elements, ask
+for a read-only view: `all: [] const int = scores[..];` borrows the
+parameter as it is, with no copy, and a procedure that takes
+`[] const int` accepts `scores[..]` directly. The same goes for a constant
+array: `sum(TABLE[..])` checks when `sum` takes `[] const int`. If the code
+writes, copy the parameter into a local (`mine := scores;`) and view that,
+or, better, have the procedure take a `[] int` in the first place.
+
+A view of a temporary, such as an array literal or a call's result, is
+refused whatever its type, because a temporary has no storage that outlives
+the expression:
 
 ```jai
 view_of_lit.coax:2:25: error[E0366]: a view needs an array variable it may write through, and this is a temporary
     v := [3] int.[1, 2, 3][..];
                           ^
-  fix: copy it into a local variable first
+  fix: put the array in a local variable first, then take its view
 1 error
 ```
 

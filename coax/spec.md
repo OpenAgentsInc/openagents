@@ -1897,8 +1897,8 @@ except a library's, which ran when the library was checked on its own
 (10.1.1); actual execution must cover every authority procedure except
 `main` and foreign imports. Tests may cover procedures from another unit. `coax test`
 runs graph checks; `coax mutate` mutates reachable procedures and requires
-coverage of the entry unit and authority units. Both accept `--library` for
-units without a program main or native exports. Tests/directives remain
+coverage of the entry unit and authority units. Both take a unit without a
+program main as a library, with or without `--library`. Tests/directives remain
 editable source and are not a runtime authorization mechanism.
 
 Diagnostics, mutation reports and composed native traps retain original file
@@ -2017,25 +2017,46 @@ refused (E0222, E0388): aliases are not reexported. Module parameters
 are not supported. Every declaration is still visible to every module;
 private-by-default modules are the next slice.
 
-Locals and other units' procedures (#12675): a local (a variable, parameter,
-loop or case binding) may share the name of a procedure declared in another
-physical unit of the graph. It is E0304 only when its own unit declares a
-procedure of that name. Procedures are not values (E0305), so a name in call
-position always names a procedure and a bare name names the local, and the
-two can't be confused at a use; the C spellings differ too (`l_NAME` against
+Locals and procedures (#12675, #13125): a local (a variable, parameter, loop
+or case binding) may share the name of a procedure, declared in its own unit
+or in another. Procedures are not values (E0305), so a name in call position
+always names a procedure and a bare name names the local, and the two can't
+be confused at a use; the C spellings differ too (`l_NAME` against
 `coax_p_NAME` or the `#export_c` name). Without this, a library's locals
-depended on the top-level names of every page that loaded it, and a page
-adding a procedure could break a library it never edited. Inside one unit the
-rule stays, so a reader of one file never sees a local and a procedure share
-a name. The rule frees locals only: a local still may not take the name of a
-constant, type or builtin anywhere (E0342), since a bare name could mean
-either, and two top-level declarations keep the duplicate rules above (E0334
-for procedures within one module scope; across modules, qualified lookup).
-It changes no C: it admits programs that were refused, and a graph without
-units (one file) is one unit.
+would depend on every name a later file adds, and a helper named `lo` would
+turn every local `lo` into an error at each use. E0304 is retired. A local
+still can't take a constant's, type's or intrinsic's name (E0342), and two
+top-level declarations keep the duplicate rules above (E0334 for procedures
+within one module scope; across modules, qualified lookup). It changes no C:
+it admits programs that were refused.
 
-`#import "Basic";` remains the only named built-in module, providing checked
-`print`. Explicit visibility, locked packages and conditional module
+Small rules that save a compile (#13125):
+
+- **Discard.** `_ = e;` and `_ := e;` evaluate `e` and drop its value. `_`
+  names nothing: it is never declared, can't be read, and may be written any
+  number of times in one scope. A call's result dropped without it is still
+  E0323, and its fix line names the discard. A `Result` is never dropped this
+  way: it is handled or transferred (E0907). `_: T = e;` and `_ += e;` are an
+  ordinary declaration and assignment.
+- **Basic is imported by default.** `print` needs no `#import`. `#import
+  "Basic";` is still accepted, once (E0332). A program that declares its own
+  `print` and doesn't import Basic keeps its own. E0313 is retired.
+- **A file with no `main` is a library** for every command that links no
+  program: `coax test`, `check`, `mutate`, `c`, `deps`, `layout` and the
+  query commands take it as `--library` would. `coax run` and `coax build`
+  make a program and still need `main` (E0336).
+- **Mixed numbers name their cast.** There are still no implicit conversions
+  (f32 and f64 don't mix), but E0309 and E0310 give the exact cast: `convert
+  the right side: cast(f32) b`, or the left side when the context wants the
+  right side's type.
+- **A view of a constant or parameter** is a read-only view. E0366 says how:
+  type the receiving parameter or variable `[] const T`. A temporary has no
+  storage to borrow, so it goes into a local first.
+- **A procedure type** such as `(int) -> int` is reported as E0225 with the
+  enum-and-branch pattern, since procedures are not values yet.
+
+`Basic` remains the only named built-in module, providing checked `print`;
+it is imported by default. Explicit visibility, locked packages and conditional module
 parameters remain planned. Vendored/locked sources are explicit inputs; import does not download
 code. Future conditional compilation and module parameters must be represented
 in cache keys and editor analysis.
@@ -2171,7 +2192,7 @@ descriptor's SHA-256 all match. The private index has a whole-payload checksum
 and rejects malformed records; an old private index is rebuilt. These are
 consistency checks on trusted local cache state. The public answer remains
 `coax.query.v1`. Otherwise it checks the program again and replaces the file.
-Use `--library` for a unit without `main` or an exported C entry point.
+A unit without `main` is taken as a library; `--library` says so explicitly.
 That check stops before compile-time
 evaluation and `#authority` checks, which don't change the graph. `--fresh`
 ignores the cache. Build-only stage0 refuses queries.

@@ -4192,7 +4192,7 @@
   #assert state[0].type_count==16;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==0;
-  #assert state[0].byte_count==87;
+  #assert state[0].byte_count==98;
   #assert state[0].error_count==1;
   #assert state[0].current==2;
   #assert state[0].constant_depth==0;
@@ -4203,7 +4203,7 @@
   #assert state[0].depth==0;
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
-  #assert errors[0].code=="E0309" && errors[0].loc.line==2 && errors[0].loc.column==45 && errors[0].message=="'+' needs two numbers of one type, found s32 and int" && errors[0].fix=="convert one: cast(s32) x";
+  #assert errors[0].code=="E0309" && errors[0].loc.line==2 && errors[0].loc.column==45 && errors[0].message=="'+' needs two numbers of one type, found s32 and int" && errors[0].fix=="convert the right side: cast(s32) b";
   expected:=[14] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=2},
@@ -5166,7 +5166,7 @@
   #assert state[0].type_count==17;
   #assert state[0].composite_count==1;
   #assert state[0].local_count==0;
-  #assert state[0].byte_count==88;
+  #assert state[0].byte_count==200;
   #assert state[0].error_count==1;
   #assert state[0].current==16;
   #assert state[0].constant_depth==0;
@@ -5177,7 +5177,7 @@
   #assert state[0].depth==0;
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
-  #assert errors[0].code=="E0366" && errors[0].loc.line==2 && errors[0].loc.column==34 && errors[0].message=="a view needs an array variable it may write through, and this is a parameter" && errors[0].fix=="copy it into a local variable first";
+  #assert errors[0].code=="E0366" && errors[0].loc.line==2 && errors[0].loc.column==34 && errors[0].message=="a view needs an array variable it may write through, and this is a parameter" && errors[0].fix=="to read it, type the receiving parameter or variable [] const int; to write, copy it into a local variable first";
   expected:=[18] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=16},
@@ -7559,7 +7559,7 @@
   #assert state[0].type_count==18;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==2;
-  #assert state[0].byte_count==88;
+  #assert state[0].byte_count==99;
   #assert state[0].error_count==1;
   #assert state[0].current==11;
   #assert state[0].constant_depth==0;
@@ -7570,7 +7570,7 @@
   #assert state[0].depth==0;
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
-  #assert errors[0].code=="E0310" && errors[0].loc.line==1 && errors[0].loc.column==71 && errors[0].message=="'<' compares two numbers of one type, found int and u8" && errors[0].fix=="convert one: cast(int) x";
+  #assert errors[0].code=="E0310" && errors[0].loc.line==1 && errors[0].loc.column==71 && errors[0].message=="'<' compares two numbers of one type, found int and u8" && errors[0].fix=="convert the right side: cast(int) b";
   expected:=[21] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=11},
@@ -7839,7 +7839,7 @@
   #assert state[0].type_count==18;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==2;
-  #assert state[0].byte_count==88;
+  #assert state[0].byte_count==99;
   #assert state[0].error_count==1;
   #assert state[0].current==11;
   #assert state[0].constant_depth==0;
@@ -7850,7 +7850,7 @@
   #assert state[0].depth==0;
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
-  #assert errors[0].code=="E0309" && errors[0].loc.line==1 && errors[0].loc.column==72 && errors[0].message=="'%' needs two integers of one type, found f32 and f32" && errors[0].fix=="convert one: cast(f32) x";
+  #assert errors[0].code=="E0309" && errors[0].loc.line==1 && errors[0].loc.column==72 && errors[0].message=="'%' needs two integers of one type, found f32 and f32" && errors[0].fix=="convert the right side: cast(f32) b";
   expected:=[21] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=11},

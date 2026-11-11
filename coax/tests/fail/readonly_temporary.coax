@@ -1,3 +1,4 @@
 // expect: E0366
+// says: put the array in a local variable first
 make :: ()->[2]int {a:[2]int;return a;}
 main :: () {r:[] const int=make()[..];}

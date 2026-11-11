@@ -672,7 +672,7 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool #effec
  if errs[variant]>0 {hit:=false;for i:0..<state[0].error_count {hit=hit || (errors[i].code==codes[variant] && errors[i].loc.line==9 && errors[i].loc.column==4);}#assert hit;}
  if variant==4 {n:=nodes[30];#assert n.kind==CK_Tag.expr_ident && n.name=="K" && n.name2=="a" && n.loc.column==4 && n.loc.offset==77 && n.a==CK_NONE && n.constant==6;}
  if variant==6 || variant==7 {#assert nodes[30].kind==CK_Tag.expr_enum && nodes[30].value==cast(u64)(variant-3) && nodes[32].type==want[variant];}
- if variant==8 {#assert errors[0].fix=="call it: a.g()";}
+ if variant==8 {#assert errors[0].fix=="call it: a.g(); or, to pick a procedure at run time, pass an enum and branch on it";}
  if variant==11 {#assert nodes[30].proc==4;}
  if variant==3 {#assert errors[0].message=="module 'a' has no type 'int'";}
 }

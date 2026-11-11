@@ -445,9 +445,19 @@ $ coax check speed.coax
 speed.coax:6:22: error[E0309]: '*' needs two numbers of one type, found f32 and f64
     print("%\n", speed * boost);
                        ^
-  fix: convert one: cast(f32) x
+  fix: convert the right side: cast(f32) boost
 1 error
 ```
+
+`speed` is an `f32` and `boost`, declared from the literal `2.0` with no
+type, is an `f64`. Coax doesn't widen one float to the other for you: the
+two types round differently, and a silent conversion would hide which
+rounding you got. The fix line names the exact cast that makes the
+expression check, `cast(f32) boost`, so it can be applied as written. When
+the context says what type the result must have, the fix keeps the side
+that already has it: in `wide: f64 = speed * boost;` it reads
+`convert the left side: cast(f64) speed`. A literal written in place,
+`speed * 2.0`, takes `speed`'s type by itself and needs no cast.
 
 The `2.0` was untyped, but `boost := 2.0;` had nothing to tell it what to
 become, so `boost` became an `f64`. By the time we multiply, it's an
@@ -876,8 +886,32 @@ If a procedure returns a value, the caller has to do something with it.
 `power(2, 10);` on a line by itself is `E0323`, "the result of 'power'
 (int) is not used". A dropped result is usually a mistake, such as
 calling a procedure that computes a new value and thinking it changed
-something in place. If a result really doesn't matter, the procedure
-shouldn't return one.
+something in place.
+
+When you do mean to drop a value, say so with `_`:
+
+```jai
+_ = power(2, 10);
+```
+
+`_ = e;` evaluates `e` and drops its value; `_ := e;` does the same. `_`
+names nothing, so there's no variable to declare, read or run out of: you
+can write it as many times as you like in one procedure. The `E0323` fix
+line offers both ways out, `use it: result := power(...); or drop it:
+_ = power(...);`. One kind of value can't be dropped this way: a `Result`
+has to be handled or passed on ([Chapter 7](ch07-errors.md)).
+
+### A local can share a procedure's name
+
+Procedures aren't values in `coax0`: you can call `power`, but you can't
+store it in a variable or pass it to another procedure (`E0305`). To choose
+between procedures at run time, pass an enum that names the choice and
+branch on it where the call happens.
+
+Because a bare name is never a procedure, a local or a parameter can use a
+name a procedure already has. A file with a helper `lo(a, b)` can still
+write `lo := 0;` in another procedure: `lo` alone is the local, and
+`lo(1, 2)` is the call.
 
 ### Every path must return
 
@@ -1269,9 +1303,10 @@ own variable, as `power` does in Listing 3-10.
 
 ## Printing
 
-`print` comes from the `Basic` module, which is why every program starts
-with `#import "Basic";`. Leave the import out and the compiler says so
-(`E0313`, "print is in module Basic, which is not imported").
+`print` comes from the `Basic` module. `Basic` is imported by default, so
+`print` works in a file with no `#import` line at all. The listings in this
+book start with `#import "Basic";` anyway: it says where `print` comes
+from, and it's accepted once per file.
 
 Filename: print.coax
 

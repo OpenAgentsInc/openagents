@@ -104,8 +104,9 @@ own. Dead references
 and a folded `#run` still do not satisfy execution coverage. Tests remain
 pure; moving a test to another file does not permit native effects in it.
 
-`coax test entry.coax` runs checks throughout the graph. Add `--library`
-when a source unit has no program `main` or native exports. `coax mutate`
+`coax test entry.coax` runs checks throughout the graph. A source unit
+with no program `main` is taken as a library; `--library` says so
+explicitly and is never required. `coax mutate`
 mutates reachable code, including dependency helpers reached by the checks;
 its unchecked-procedure gate covers the entry file and authority units.
 An unused non-authority dependency need not be covered by its importer.

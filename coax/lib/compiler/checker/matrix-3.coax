@@ -13889,13 +13889,13 @@
   types:[34] CK_Type;locals:[22] CK_Local;errors:[64] CK_Error;bytes:[7288] u8;state:[1] CK_State;
   context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
   ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
-  #assert ok==false;
+  #assert ok==true;
   #assert state[0].used==5;
   #assert state[0].type_count==16;
   #assert state[0].composite_count==0;
   #assert state[0].local_count==0;
-  #assert state[0].byte_count==38;
-  #assert state[0].error_count==1;
+  #assert state[0].byte_count==0;
+  #assert state[0].error_count==0;
   #assert state[0].current==2;
   #assert state[0].constant_depth==0;
   #assert state[0].loop_depth==0;
@@ -13905,7 +13905,6 @@
   #assert state[0].depth==0;
   #assert state[0].fatal==false;
   #assert state[0].metal_depth==0;
-  #assert errors[0].code=="E0304" && errors[0].loc.line==1 && errors[0].loc.column==10 && errors[0].message=="'f' is already the name of a procedure" && errors[0].fix=="pick another name";
   expected:=[6] CK_Node.[
     CK_Node.{},
     CK_Node.{kind=CK_Tag.file,head=2,tail=2},

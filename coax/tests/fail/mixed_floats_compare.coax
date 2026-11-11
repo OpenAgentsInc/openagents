@@ -1,0 +1,4 @@
+// expect: E0310
+// says: convert the right side: cast(f32) (that side)
+half :: () -> f64 { return 0.5; }
+main :: () { a: f32 = 1.5; c := a < half(); }

@@ -1,3 +1,4 @@
 // expect: E0366
+// says: type the receiving parameter or variable [] const int
 f :: (a: [4] int) -> int { v := a[..]; return v[0]; }
 main :: () {}

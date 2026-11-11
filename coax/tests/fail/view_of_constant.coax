@@ -1,0 +1,5 @@
+// expect: E0366
+// says: this is a constant
+K :: [3] int.[1, 2, 3];
+sum :: (v: [] int) -> int { return v[0]; }
+main :: () { n := sum(K[..]); }

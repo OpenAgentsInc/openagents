@@ -52,16 +52,16 @@ const ErrorInfo ERRORS[] = {
     {"E0301", "type not supported yet", "The type is in the plan (spec 6.2) but coax0 does not implement it, for example dynamic arrays '[..] T' or vectors."},
     {"E0302", "unknown type", "No built-in type, struct or enum has this name."},
     {"E0303", "name already declared; no shadowing", "Every local name in a procedure is unique among the names in scope. Coax has no shadowing, so a name always means one thing."},
-    {"E0304", "name is already a procedure", "A local cannot take the name of a procedure."},
-    {"E0305", "procedures are not values", "Procedure values and callbacks are planned. Call the procedure instead."},
+    {"E0304", "retired in 0.52.0", "Was: name is already a procedure. A local, parameter or loop variable may share a procedure's name: procedures are not values, so name(...) calls the procedure and a bare name is the local."},
+    {"E0305", "procedures are not values", "Procedure values, callbacks and procedure types such as (int) -> int are planned. Call the procedure instead: a bare name is a local, parameter or constant, never a procedure. To pick a procedure at run time, pass an enum that names the choice and branch on it where the call happens: Op :: enum u8 { add; mul; } apply :: (op: Op, a: int, b: int) -> int { if op == Op.add { return a + b; } return a * b; }."},
     {"E0306", "name is not declared", "No local, parameter or constant with this name is in scope here."},
     {"E0307", "'-' needs a signed integer or a float", "Unsigned integers have no negation. Subtract from a value, or use a signed type."},
     {"E0308", "'!' needs a bool", "There is no truthiness. Compare instead: x == 0."},
-    {"E0309", "arithmetic needs two numbers of one type", "+ - * / need two integers or two floats of the same type; % needs integers. There are no implicit conversions: cast one side."},
+    {"E0309", "arithmetic needs two numbers of one type", "+ - * / need two integers or two floats of the same type; % needs integers. There are no implicit conversions, so f32 and f64 (or s32 and int) do not mix: cast one side. The fix line names the cast, such as cast(f32) b; when the result's type is known, it keeps the side that already has it. An untyped literal takes the other side's type by itself."},
     {"E0310", "ordering needs two numbers of one type", "< <= > >= compare two integers or two floats of the same type."},
     {"E0311", "cannot compare these values", "== and != need two values of one type. Structs, arrays and views are compared field by field or element by element, by you."},
     {"E0312", "boolean operator needs two bools", "&& and || take bools and short-circuit."},
-    {"E0313", "print needs Basic", "print is in module Basic. Add #import \"Basic\"; at the top of the file."},
+    {"E0313", "retired in 0.52.0", "Was: print needs Basic. Basic is imported by default, so print needs no #import; #import \"Basic\"; is still accepted."},
     {"E0314", "not a procedure", "A constant or variable was called like a procedure."},
     {"E0315", "procedure is not declared", "No procedure has this name. Procedures may be declared after they are used."},
     {"E0316", "wrong number of arguments", "The call passes a different number of arguments than the procedure declares."},
@@ -70,8 +70,8 @@ const ErrorInfo ERRORS[] = {
     {"E0319", "print's format must be a literal", "The format is checked while compiling, so it must be a string literal."},
     {"E0320", "format slots and values differ", "Each % in the format takes one value. Write %% for a percent sign."},
     {"E0321", "cannot print nothing", "This call returns no value, so there is nothing to print."},
-    {"E0322", "value is not used", "An expression statement must do something: call a procedure, or assign its value."},
-    {"E0323", "result is not used", "The procedure returns a value that is dropped. Use it, or store it."},
+    {"E0322", "value is not used", "An expression statement must do something: call a procedure, or assign its value. To evaluate an expression and drop its value on purpose, write _ = expression;."},
+    {"E0323", "result is not used", "The procedure returns a value that is dropped. Use it, store it, or drop it on purpose with _ = f(...);. '_' names nothing: _ = e; and _ := e; evaluate e and drop the value, as often as you like. A Result is never dropped this way; handle it."},
     {"E0324", "cannot initialize from nothing", "The call returns no value, so it cannot initialize a variable."},
     {"E0325", "initializer has the wrong type", "The variable's declared type and its initializer differ. There are no implicit conversions."},
     {"E0326", "compound assignment needs a number", "+= -= *= /= need a number target; %= &= |= ^= <<= >>= need an integer."},
@@ -84,7 +84,7 @@ const ErrorInfo ERRORS[] = {
     {"E0333", "unknown module", "coax0 has one module, Basic."},
     {"E0334", "procedure declared twice", "There are no overloads yet; every procedure name is unique."},
     {"E0335", "name is a builtin", "print (with Basic) and type_name are reserved by the compiler."},
-    {"E0336", "no main", "A program needs main :: () { }. A file whose procedures are #export_c can be built as a library with coax lib instead."},
+    {"E0336", "no main", "coax run and coax build make a program, which needs main :: () { }. A file with no main is a library: coax test, coax check, coax mutate and coax c take it as one without --library, and coax lib builds it."},
     {"E0337", "main has the wrong signature", "main takes no parameters and returns nothing in coax0."},
     {"E0338", "missing return", "Some path reaches the end of a procedure that must return a value."},
     {"E0339", "too many generic instances", "A program may make 256 generic instances, or one per 8 syntax nodes in a program of more than 2056: one per generic procedure or struct and distinct binding of its parameters. The message names the limit and lists the generics with the most instances, at their declarations; a build above three quarters of it gets a near-limit note with the same list. A chain of generic uses that binds ever larger types never ends; break it with a concrete type."},
@@ -114,7 +114,7 @@ const ErrorInfo ERRORS[] = {
     {"E0363", "invalid enum value", "Enum values are integers known while checking, fit the underlying type, and are distinct."},
     {"E0364", "cannot loop over this", "for takes a half-open range lo..<hi of one integer type, an array, a view, or a string."},
     {"E0365", "ifx branches differ", "Both branches of ifx produce a value of the same type."},
-    {"E0366", "a view needs a variable array", "A view borrows an array's storage and may write through it, so the array must be a local variable. Copy a parameter or temporary into a local first."},
+    {"E0366", "a view needs a variable array", "A view [] T borrows an array's storage and may write through it, so the array must be a local variable. To only read a constant or a parameter, borrow it as a read-only view: type the receiving parameter or variable [] const T, as in sum :: (v: [] const int) -> int and sum(K[..]). To write, copy it into a local first. A temporary (a call's result or an array literal) has no storage to borrow: put it in a local, then take its view."},
     {"E0367", "field or element has the wrong type", "The value given for a struct field, field default or array element has a different type."},
     {"E0368", "type and value parameters share a name", "A $NAME is either a type parameter ($T, written as a type) or a value parameter ($N, written as a fixed array length [$N] T) in one procedure, not both. Give the length its own name."},
     {"E0369", "invalid export", "main cannot be exported, and exported names cannot start with coax_, which the generated runtime uses."},
@@ -284,6 +284,7 @@ const Idiom IDIOMS[] = {
     {"(T) x", "convert with cast(T) x", "cast(int) x  (cast,trunc(u8) x keeps the low bits)"},
     {"?:", "the conditional expression is ifx", "ifx c then a else b"},
     {"->", "there are no pointers, so a field is always 'x.f'", "x.f"},
+    {"(T) -> R", "a procedure is not a value, so there is no procedure type; pass an enum that names the choice and branch on it", "Op :: enum u8 { add; mul; }  apply :: (op: Op, a: int, b: int) -> int { if op == Op.add { return a + b; } return a * b; }"},
     {"++", "there is no '++'", "x += 1;"},
     {"--", "there is no '--'", "x -= 1;"},
     {"&&=", "write the assignment out", "b = b && c;"},
@@ -461,7 +462,9 @@ bool idiom_repair(const std::string &t, size_t o, const char *code_c, const std:
     if (next == '?') return idiom_use("?:", "c ? a : b", out);
     size_t n = o;
     while (n < t.size() && idiom_space(t[n])) n++;
-    if (n + 1 < t.size() && t[n] == '-' && t[n + 1] == '>') return idiom_use("->", "->", out);
+    // (int) -> int in a type's place: a procedure type (#13125). p->f is the pointer spelling.
+    if (n + 1 < t.size() && t[n] == '-' && t[n + 1] == '>') return idiom_char_before(t, n, nullptr) == ')' ? idiom_use("(T) -> R", "(...) -> R", out) : idiom_use("->", "->", out);
+    if (message.find("parenthesized type") != std::string::npos) return idiom_use("(T) -> R", "(name: T) -> R", out);
     // (T) x: a parenthesized single name, then an operand.
     size_t close = 0;
     if (idiom_char_before(t, o, &close) == ')' && (idiom_word_char(next) || next == '(')) {
@@ -533,7 +536,9 @@ bool idiom_repair(const std::string &t, size_t o, const char *code_c, const std:
     out->fix = "find where it is declared: coax vocab " + name;
     return !name.empty();
   }
+  if (code == "E0202" && at == ')' && idiom_char_before(t, o, nullptr) == '(') return idiom_use("(T) -> R", "() -> R", out);
   if (code == "E0306") {
+    if (name == "_") { out->fix = "'_' only drops a value: _ = e; or _ := e;. It is not a variable, so it can't be read or updated"; return true; }
     if (idiom_in(name, {"True", "False", "nil", "None", "NULL", "nullptr", "undefined", "self", "this"})) return idiom_use(name, name, out);
     // A name the compiler keeps for an intrinsic can't name a local, so its
     // declaration failed (E0342) and every use lands here.

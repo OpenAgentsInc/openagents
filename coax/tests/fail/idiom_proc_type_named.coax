@@ -1,0 +1,4 @@
+// expect: E0225
+// says: there is no procedure type; pass an enum
+Button :: struct { on_press: (id: int) -> bool; }
+main :: () { }

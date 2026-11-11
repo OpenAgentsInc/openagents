@@ -1,3 +1,4 @@
 // expect: E0323
+// says: or drop it: _ = f(...);
 f :: () -> int { return 1; }
 main :: () { f(); }

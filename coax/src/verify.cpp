@@ -438,7 +438,8 @@ struct Mutator {
       mutants.push_back({cond->loc, std::string("the ") + (s->kind == StmtKind::if_ ? "if" : "while") + " condition was negated",
                          [s, neg] { s->expr = neg; }, [s, cond] { s->expr = cond; }});
     }
-    bool removable = s->kind == StmtKind::assign || (s->kind == StmtKind::expr && s->expr->kind == ExprKind::call);
+    // _ = f(); is not removed: like the `ignored := f();` it replaces, it says the value is not the point.
+    bool removable = s->kind == StmtKind::assign || (s->kind == StmtKind::expr && s->expr->kind == ExprKind::call && !s->uninit);
     if (removable) {
       StmtKind kind = s->kind;
       mutants.push_back({s->loc, s->kind == StmtKind::assign ? "the assignment was removed" : "the call was removed",
