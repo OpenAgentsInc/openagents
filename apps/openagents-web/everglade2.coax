@@ -1845,18 +1845,16 @@ e2_float :: (s: [] E2, feel: DeedFeel, source: int, x: f32, y: f32, z: f32, kind
 e2_floats_draw :: (s: [] E2, out: [] f32, at: int) -> int {
   v := at; now := s[0].clock; view := e2_eg_view(s);
   for q: 0..<fl.FLOATS {
-    l := fl.floats_look(s[0].floats[0].items[q], now);
-    if !l.ok { s[0].floats[0].items[q].on = false; continue; }
+    l := cc.eg_numbers_look(s[0].floats[..], q, now);
+    if !l.ok { continue; }
     n := s[0].floats[0].items[q];
     // only while the body it rose off shows (everglade2-sight.coax)
     if eg_view_ahead(view, l.x, l.y, l.z) < 0.5 || !e2_sight_shows(s, n.x, n.y - 1.2, n.z, 1.2) { continue; }
-    // the HUD's own number (everglade/hud/windows.coax eg_float_over): red when you took it, small
+    // Everglade's damage number (everglade/hud/numbers.coax, placed by windows.coax eg_float_over): red when you took it, small
     // "miss"; a critical hit drawn larger over it (floats_look's size)
-    t := fl.floats_text(s[0].floats[..], q);
-    kind := ifx n.kind == fl.FLOAT_TAKEN then cc.EG_FLOAT_HARM else ifx n.kind == fl.FLOAT_MISS then cc.EG_FLOAT_MISS else ifx n.kind == fl.FLOAT_HEAL then cc.EG_FLOAT_HEAL else cc.EG_FLOAT_DEALT;
-    v = eg_float_over(out, v, view, l.x, l.y, l.z, t, s[0].k * l.size, kind, l.alpha);
+    v = eg_float_over(out, v, view, l.x, l.y, l.z, fl.floats_text(s[0].floats[..], q), s[0].k * l.size, cc.eg_numbers_ink(n.kind), l.alpha);
   }
-  fl.floats_frame(s[0].floats[..]);
+  cc.eg_numbers_frame(s[0].floats[..]);
   return v;
 }
 // Where the camera looks from, for the HUD's marks over the world (everglade/hud/windows.coax EgView).

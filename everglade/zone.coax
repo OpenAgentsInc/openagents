@@ -380,7 +380,7 @@ zone_respawn :: (s:[] EgZone)->bool {
  xc_set_class(s[0].xc[..],s[0].xc[0].klass);
  h[0].contacts[0]=hostile.HcContacts.{};hostile.hostile_calm(h);   // nothing engages you for a moment, and no shot is in the air
  xc_sync_vitals(s);xc_sync_permissions(s);
- h[0].died_at=0;h[0].pop_next=0;for i:0..<8 {h[0].pops[i].amount=0;}
+ h[0].died_at=0;for i:0..<h[0].taken[0].items.count {h[0].taken[0].items[i].on=false;}
  for i:0..<hostile.HS_N {e:=h[0].enemies[i..<i+1];if !e[0].dead {e[0].x=e[0].home_x;e[0].z=e[0].home_z;e[0].swing= -1;e[0].moving=false;e[0].cool=1;e[0].returning=false;if e[0].sleeper {e[0].awake=false;}}}
  c[0].player_x=0;c[0].player_y=0;c[0].player_z=0;c[0].airborne=false;c[0].land_at= -100;c[0].camera_room= -1;
  s[0].you_on=false;s[0].safe_on=false;s[0].put_on=false;s[0].held=0;s[0].shift=false;s[0].xc[0].target= -1;sprint.sprint_stop(s[0].xc[0].dash[..]);return true;

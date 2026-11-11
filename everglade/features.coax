@@ -77,7 +77,7 @@ EF_ZONES :: [4] EfZone.[
   EfZone.{name = "experimental",
     paths = "apps/openagents-web/fivelab apps/openagents-web/charactercreator apps/openagents-web/experimental- verse/experimental-",
     entries = "apps/openagents-web/fivelab.coax",
-    uses = "bow area-targeting conditions hud class-bars dash name-plates spell-effects camera"},
+    uses = "bow damage-numbers area-targeting conditions hud class-bars dash name-plates spell-effects camera"},
   EfZone.{name = "archery-range",
     paths = "apps/openagents-web/archery-range everglade/range/",
     entries = "apps/openagents-web/archery-range.coax",
@@ -93,20 +93,8 @@ EF_ZONES :: [4] EfZone.[
 // "feature path symbol" ("-" for a file whose name marks it). Each is a warning that names its
 // feature's issue; the check passes. Take a row off when its copy is gone (the check says so).
 // Never add a row for new code: wire the shared module instead.
-EF_KNOWN :: [130] string.[
-  "damage-numbers apps/openagents-web/experimental-combat.coax xc_float",
-  "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_from",
-  "damage-numbers apps/openagents-web/experimental-combat.coax xc_float_int",
-  "damage-numbers apps/openagents-web/experimental-combat.coax xc_hit_mark",
-  "damage-numbers apps/openagents-web/fivelab.coax HIT_GROUPS",
-  "damage-numbers apps/openagents-web/fivelab.coax HIT_FOLD",
-  "damage-numbers apps/openagents-web/fivelab.coax HIT_SHOW",
-  "damage-numbers apps/openagents-web/fivelab.coax HitGroup",
-  "damage-numbers apps/openagents-web/fivelab.coax hit_group_of",
-  "damage-numbers apps/openagents-web/fivelab.coax hit_groups",
-  "damage-numbers apps/openagents-web/fivelab.coax hit_shown",
+EF_KNOWN :: [118] string.[
   "class-bars apps/openagents-web/fivelab.coax abilities",
-  "damage-numbers verse/experimental-hostiles.coax DamagePop",
   "area-targeting apps/openagents-web/everglade-abilities.coax ab_aimed",
   "conditions apps/openagents-web/everglade-abilities.coax ab_rules_cond",
   "area-targeting apps/openagents-web/everglade-abilities.coax ab_aim_ring",
@@ -228,8 +216,7 @@ EF_KNOWN :: [130] string.[
 
 // Required features a zone doesn't wire yet, as "zone feature": each is a warning that names the
 // feature's issue. Take a row off when the zone wires the feature (and add it to the zone's uses).
-EF_GAPS :: [5] string.[
-  "experimental damage-numbers",
+EF_GAPS :: [4] string.[
   "everglade-v1 bow",
   "everglade-v1 damage-numbers",
   "everglade-v1 class-bars",

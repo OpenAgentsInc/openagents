@@ -135,7 +135,7 @@ XcCombat :: struct {
   seen_hits: int;                   // the monsters' landed blows already given their hit stop
   shields: int;                     // Shield Reactions cast for you (their sound and barrier played)
   guard_in: [XC_FOES] bool;         // each monster inside your Spirit Guardians' Emanation last frame
-  hit_at: f32 = -100; hit_x: f32; hit_z: f32;   // when a monster's blow or shot last struck you, and where it stood (xc_hit_mark)
+  hit_at: f32 = -100; hit_x: f32; hit_z: f32;   // when a monster's blow or shot last struck you, and where it stood (everglade/hud/numbers.coax eg_struck_from)
   told: int = -1; told_at: f32 = -100; told_ok: bool;   // a check's slot and when: its frame flashes green (passed) or red
   studied: [XC_FOES] bool;          // Study recalled it: its AC shows on the target line
   calm: [XC_FOES] bool;             // Influence: it complied and stands down until you harm it
@@ -300,19 +300,6 @@ xc_square :: (d: f32) -> int {
   q := cast(int) floor(d / f32(XC_SQ) + 0.5);
   return ifx q <= -XC_MID || q >= XC_MID then XC_AWAY else XC_MID + q;
 }
-// A number rising off whoever took it, from source (0 you, 1 to 6 a monster): presentation of an accepted
-// result through the shared floats (aethyr/action/floats.coax), capped a source a frame and counted. A height
-// is above the meadow unless it is a heal's, which is the world's. Nothing here changes what the ruleset applied.
-xc_float :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) { xc_float_from(x, 0, wx, wy, wz, t0, text, heal); }
-xc_float_from :: (x: [] XcCombat, source: int, wx: f32, wy: f32, wz: f32, t0: f32, text: string, heal: bool) {
-  y := ifx heal then wy else meadow_y(wx, wz) + wy;
-  kind := ifx heal then fl.FLOAT_HEAL else ifx text == "MISS" then fl.FLOAT_MISS else fl.FLOAT_WORD;
-  _ := fl.floats_add(x[0].floats[..], source, wx, y, wz, t0, kind, false, ifx kind == fl.FLOAT_MISS then "miss" else text);
-}
-xc_float_int :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32, t0: f32, v: int, heal: bool) {
-  _ := fl.floats_amount(x[0].floats[..], 0, wx, meadow_y(wx, wz) + wy, wz, t0, ifx heal then fl.FLOAT_HEAL else fl.FLOAT_DEALT, false, v);
-}
-
 // What kind of aim ability a takes, and its reach in metres (class-kit.coax xc_aim_for), for the weapon you hold.
 xc_aim_kind :: (s: [] EgZone, a: FbAb) -> XcAim { return xc_aim_for(a, s[0].xc[0].b[0].c[0].weapon); }
 // A single-target spell's monster: Aethyr's attention query (aethyr/cam/attention.coax) for an action
@@ -503,7 +490,7 @@ xc_monster_move :: (s:[] EgZone,foe:int,proposed:hostile.Enemy) {
       result:=rs_opportunity_attack(b,0,foe+1,weapon,q);
       lost:=before-rs_max(b[0].c[foe+1].hp,0);
       if result.admitted && lost>0 {
-        x[0].calm[foe]=false; x[0].landed+=1; x[0].last_dmg=lost; xc_float_int(x,old.x,1.9,old.z,cr[0].clock,lost,false);
+        x[0].calm[foe]=false; x[0].landed+=1; x[0].last_dmg=lost; _ := cc.eg_numbers_amount(x[0].floats[..], 0, old.x, meadow_y(old.x, old.z) + 1.9, old.z, cr[0].clock, false, false, false, lost);
         snd:=xc_sound(xc_attack(),x[0].klass); xc_cue(s,snd.hit,0.55,old.x,old.z,snd.rate);
         if rs_up(b[0].c[foe+1]) { xc_stop_hit(s,foe,react.DMG_SLASH); xc_voice(s,foe,false); } else { xc_voice(s,foe,true); }
       }
@@ -525,8 +512,8 @@ xc_monster_move :: (s:[] EgZone,foe:int,proposed:hostile.Enemy) {
       } else if rs_ready_response(e)==RD_SPELL { answered=rs_ready_spell(b,0,foe+1,b[0].c[foe+1].x,b[0].c[foe+1].y,foe+1); }
       else { answered=rs_ready_attack(b,0,foe+1); }
       lost:=before-rs_max(b[0].c[foe+1].hp,0);
-      if lost>0 { x[0].calm[foe]=false; x[0].landed+=1; x[0].last_dmg=lost; xc_float_int(x,old.x,1.9,old.z,cr[0].clock,lost,false); xc_voice(s,foe,!rs_up(b[0].c[foe+1])); }
-      else if answered { xc_float(x,old.x,1.9,old.z,cr[0].clock,"MISS",false); }
+      if lost>0 { x[0].calm[foe]=false; x[0].landed+=1; x[0].last_dmg=lost; _ := cc.eg_numbers_amount(x[0].floats[..], 0, old.x, meadow_y(old.x, old.z) + 1.9, old.z, cr[0].clock, false, false, false, lost); xc_voice(s,foe,!rs_up(b[0].c[foe+1])); }
+      else if answered { _ := cc.eg_numbers_word(x[0].floats[..], 0, old.x, meadow_y(old.x, old.z) + 1.9, old.z, cr[0].clock, "MISS", false); }
     }
     fb_seat_out(b,x[0].npc_seat[foe..<foe+1]);
   }
@@ -553,7 +540,7 @@ xc_guardians_step :: (s:[] EgZone) {
       lost:=before-rs_max(b[0].c[foe+1].hp,0);
       if lost>0 {
         snd:=xc_spell_sound(SP_SPIRIT_GUARDIANS); x[0].landed+=1; x[0].last_dmg=lost;
-        xc_float_int(x,e.x,1.9,e.z,cr[0].clock,lost,false); xc_cue(s,snd.hit,0.55,e.x,e.z,snd.rate);
+        _ := cc.eg_numbers_amount(x[0].floats[..], 0, e.x, meadow_y(e.x, e.z) + 1.9, e.z, cr[0].clock, false, false, false, lost); xc_cue(s,snd.hit,0.55,e.x,e.z,snd.rate);
         xc_voice(s,foe,!rs_up(b[0].c[foe+1]));
       }
       xc_sync_permission(s,foe);
@@ -652,8 +639,7 @@ xc_hostile_result :: (s:[] EgZone,foe:int,before:int,seq:int,accepted:bool) {
     if accepted && landed { h[0].hits+=1; h[0].last=foe; xc_stop_striker(s,foe); x[0].seen_hits=h[0].hits;
       x[0].hit_at=cr[0].clock; x[0].hit_x=h[0].enemies[foe].x; x[0].hit_z=h[0].enemies[foe].z; }
     if accepted && lost>0 {
-      h[0].pops[h[0].pop_next]=hostile.DamagePop.{amount=lost,x=cr[0].player_x,y=cr[0].player_y+2.1,z=cr[0].player_z,born=h[0].time};
-      h[0].pop_next=(h[0].pop_next+1)%8;
+      _ := cc.eg_numbers_amount(h[0].taken[..],0,cr[0].player_x,cr[0].player_y+2.1,cr[0].player_z,h[0].time,true,false,false,lost);
     }
 }
 // The monsters' shots as you see and hear them (#13066): each flies from the hand that loosed it
@@ -704,32 +690,6 @@ xc_shots_step :: (s: [] EgZone) {
     fx_start_at(s, recipe, now, to, fxp_v(ex, ey, ez), fxp_v(1, 1, 1), big, fly);
     xc_cue(s, ifx arrow then "arrow-whiz" else "rock-hit", ifx arrow then 0.55f32 else 0.4f32, ifx arrow then q[0].tx else ex, ifx arrow then q[0].tz else ez, 1);
   }
-}
-// Where a blow that struck you came from, when it came from off the screen: a red wedge at the
-// edge of a ring round the screen's middle, toward the monster that struck, fading over XC_MARK s.
-XC_MARK :: 1.2;
-xc_hit_mark :: (x: [] XcCombat, cr: cc.Creator, out: [] f32, at: int, w: f32, h: f32, k: f32, now: f32) -> int {
-  age := now - x[0].hit_at;
-  if age < 0 || age > f32(XC_MARK) || !x[0].seen { return at; }
-  p := xc_proj(x, x[0].hit_x, meadow_y(x[0].hit_x, x[0].hit_z) + 1.0, x[0].hit_z);
-  if p.ok && p.x > 0 && p.x < w && p.y > 0 && p.y < h { return at; }   // on screen: you see who struck
-  u := x[0].u[..];
-  dx := x[0].hit_x - cr.player_x; dz := x[0].hit_z - cr.player_z;
-  side := dx * u[24] + dz * u[26]; ahead := dx * u[20] + dz * u[22];
-  if side * side + ahead * ahead < 0.0001 { return at; }
-  a := atan2(side, ahead);   // 0 ahead (the top of the screen), clockwise
-  fade := ifx age < 0.1 then age / 0.1 else 1 - (age - 0.1) / (f32(XC_MARK) - 0.1);
-  if fade <= 0 { return at; }
-  cx := w * 0.5; cy := h * 0.5; ring := (ifx w < h then w else h) * 0.36;
-  n := at;
-  // a wedge of three strokes, widest in the middle, pointing out toward the monster
-  for j: 0..<3 {
-    spread := 0.16 - f32(j) * 0.045; r := ring + f32(j) * 7 * k;
-    ax := cx + sin(a - spread) * r; ay := cy - cos(a - spread) * r;
-    bx := cx + sin(a + spread) * r; by := cy - cos(a + spread) * r;
-    if cc.lit(out, n, ax, ay, bx, by, (4 - f32(j)) * k, fade * 0.9, 0, 0.95, 0.18, 0.12, 0) { n += 6; }
-  }
-  return n;
 }
 xc_hostile_contacts :: (s: [] EgZone) {
   x := s[0].xc[..]; b := x[0].b[..]; cr := s[0].creator[..]; h := cr[0].hostiles[..];
@@ -1336,7 +1296,7 @@ xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
     press_turn[0]=x[0].seat[0].turn; rs_press_restore(me,press_turn[..],saved_budget);
     x[0].seat[0].turn=press_turn[0]; x[0].seat[0].open=was_open;
     if facing_cube { xc_sync_world(s); } x[0].refused += 1;
-    if a.kind == FB_HIDE { xc_float(x, px, cr[0].player_y + 2.1, pz, now, ifx unseen then "ALREADY HIDDEN" else "IN SIGHT", false); }
+    if a.kind == FB_HIDE { _ := cc.eg_numbers_word(x[0].floats[..], 0, px, meadow_y(px, pz) + cr[0].player_y + 2.1, pz, now, ifx unseen then "ALREADY HIDDEN" else "IN SIGHT", false); }
     return false;
   }
   if a.kind == FB_SPELL && a.sp == SP_THUNDERWAVE {
@@ -1350,17 +1310,17 @@ xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
   xd_after(s, a);
   if foe >= 0 { xc_lock_on(s, foe); }   // the one struck at: your target, its Hit Points over the bar
   if gain > 0 {
-    xc_float_int(x, px, cr[0].player_y + 2.1, pz, now, gain, true);
+    _ := cc.eg_numbers_amount(x[0].floats[..], 0, px, meadow_y(px, pz) + cr[0].player_y + 2.1, pz, now, false, true, false, gain);
   }
-  if temp_gain>0 { l: [1] RsLine; rs_add_int(l[..],temp_gain); rs_add_text(l[..]," TEMP HP"); xc_float(x,px,cr[0].player_y+2.1,pz,now,cast(string)l[0].buf[0..<l[0].n],true); }
+  if temp_gain>0 { l: [1] RsLine; rs_add_int(l[..],temp_gain); rs_add_text(l[..]," TEMP HP"); _ := cc.eg_numbers_word(x[0].floats[..], 0, px, cr[0].player_y+2.1, pz, now, cast(string)l[0].buf[0..<l[0].n], true); }
   if a.kind != FB_SHOOT { xc_look(s, a, foe, px + aim.fx * aim.reach, pz + aim.fz * aim.reach); }
   if !swung { xc_cast_sound(s, a); }
   if a.kind == FB_HIDE || a.kind == FB_READY {
-    xc_float(x, px, cr[0].player_y + 2.1, pz, now, ifx a.kind == FB_READY then "READY" else ifx rs_hidden_at(b[0].c[0]) >= 0 then "HIDDEN" else "SPOTTED", true);
+    _ := cc.eg_numbers_word(x[0].floats[..], 0, px, cr[0].player_y + 2.1, pz, now, ifx a.kind == FB_READY then "READY" else ifx rs_hidden_at(b[0].c[0]) >= 0 then "HIDDEN" else "SPOTTED", true);
   }
   if (a.kind == FB_GRAPPLE || a.kind == FB_SHOVE) && foe >= 0 {
     held := ifx a.kind == FB_GRAPPLE then b[0].c[0].grappling == 1 + foe else rs_has(b[0].c[1 + foe], RS_PRONE);
-    xc_float(x, h[0].enemies[foe].x, 2.4, h[0].enemies[foe].z, now, ifx !held then "RESISTS" else ifx a.kind == FB_GRAPPLE then "GRAPPLED" else "PRONE", false);
+    _ := cc.eg_numbers_word(x[0].floats[..], 0, h[0].enemies[foe].x, meadow_y(h[0].enemies[foe].x, h[0].enemies[foe].z) + 2.4, h[0].enemies[foe].z, now, ifx !held then "RESISTS" else ifx a.kind == FB_GRAPPLE then "GRAPPLED" else "PRONE", false);
   }
   // what it did to each monster: the numbers, and the fallen
   struck := false;
@@ -1394,7 +1354,7 @@ xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
   if facing_cube { xc_sync_world(s); }
   // attacked from wherever you stand, hit or missed, the one aimed at wakes and comes after you
   if foe >= 0 && foe < XC_FOES && aim.kind != XC_AIM_AREA && aim.kind != XC_AIM_SELF { hostile.hostile_provoke(h, foe); }
-  if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); xc_float(x, h[0].enemies[foe].x, 1.9, h[0].enemies[foe].z, now, "MISS", false); }
+  if !struck && foe >= 0 && aim.kind != XC_AIM_AREA { xc_cue(s, snd.miss, 0.45, h[0].enemies[foe].x, h[0].enemies[foe].z, 1); _ := cc.eg_numbers_word(x[0].floats[..], 0, h[0].enemies[foe].x, meadow_y(h[0].enemies[foe].x, h[0].enemies[foe].z) + 1.9, h[0].enemies[foe].z, now, "MISS", false); }
   return true;
 }
 // What a blow, a spell or a dragon's breath did to monster i, which had `before` Hit Points: the
@@ -1404,11 +1364,11 @@ xc_harmed :: (s: [] EgZone, i: int, before: int, kinds: u32, hit: string, rate: 
   x := s[0].xc[..]; h := s[0].creator[0].hostiles[..]; c := x[0].b[0].c[1 + i]; e := h[0].enemies[i..<i + 1];
   lost := before - rs_max(c.hp, 0);
   if lost > 0 { x[0].calm[i] = false; hostile.hostile_provoke(h, i); }   // harmed, it fights again, and comes after you
-  if lost > 0 { x[0].landed += 1; x[0].last_dmg = lost; xc_float_int(x, e[0].x, 1.9, e[0].z, now, lost, false);
+  if lost > 0 { x[0].landed += 1; x[0].last_dmg = lost; _ := cc.eg_numbers_amount(x[0].floats[..], 0, e[0].x, meadow_y(e[0].x, e[0].z) + 1.9, e[0].z, now, false, false, false, lost);
     if !c.dead && c.hp > 0 { xc_stop_hit(s, i, kinds); }
     xc_cue(s, hit, 0.55, e[0].x, e[0].z, rate);
     if !c.dead && c.hp > 0 { xc_voice(s, i, false); }
-    if rs_knocked_out(c) { xc_float(x, e[0].x, 2.4, e[0].z, now, "KNOCKED OUT", false); } }
+    if rs_knocked_out(c) { _ = cc.eg_numbers_word(x[0].floats[..], 0, e[0].x, meadow_y(e[0].x, e[0].z) + 2.4, e[0].z, now, "KNOCKED OUT", false); } }
   if !e[0].dead && (c.dead || c.hp <= 0) {
     e[0].dead = true; e[0].died = now; e[0].moving = false; e[0].swing = -1;
     x[0].kills += 1; xc_voice(s, i, true);
@@ -1705,7 +1665,7 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
   x[0].w = w; x[0].h = h; x[0].k = k; x[0].seen = true;
   now := cr[0].clock;
   cr[0].weapon = ifx x[0].started then xc_kit(x[0].klass) else -1;
-  fl.floats_frame(x[0].floats[..]);
+  cc.eg_numbers_frame(x[0].floats[..]); cc.eg_numbers_frame(hs[0].taken[..]);   // the frame's numbers handed on: yours and those over you
   if dt > 0 && dt < 1 { rs_tick(x[0].b[..], ifx dt > 0.25 then 0.25 else dt); fb_seat_step(x[0].b[..], x[0].seat[..]); }
   xd_frame(s, dt);
   xc_objects_tick(s);
@@ -1720,7 +1680,12 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
   if observing { n=cc.ttext(cr[0].ui,cc.UIT_NONE,out,n,"FAMILIAR SIGHT",w/2-60*k,24*k,10*k,ink_col(k,0.55,0.9,1),""); }
   n=xc_portrait(s,out,n,w,k);
   n=cc.combat_overlay(cr[0],out,u,n,w,k);
-  n=xc_hit_mark(x,cr[0],out,n,w,h,k,now);
+  // a blow that struck you from off screen points toward its striker (everglade/hud/numbers.coax)
+  hp:=xc_proj(x,x[0].hit_x,meadow_y(x[0].hit_x,x[0].hit_z)+1.0,x[0].hit_z);
+  if x[0].seen && !(hp.ok && hp.x>0 && hp.x<w && hp.y>0 && hp.y<h) {
+    hdx:=x[0].hit_x-cr[0].player_x; hdz:=x[0].hit_z-cr[0].player_z;
+    n=cc.eg_struck_from(out,n,hdx*x[0].u[24]+hdz*x[0].u[26],hdx*x[0].u[20]+hdz*x[0].u[22],now-x[0].hit_at,w,h,k);
+  }
   xc_strike_due(s);
   xc_lock_step(s);
   xc_stops_step(s);
@@ -1789,13 +1754,12 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
   n = cc.eg_plates(out, n, pl, view, k, 0);
   // the numbers rising off whoever took them
   for q: 0..<fl.FLOATS {
-    l := fl.floats_look(x[0].floats[0].items[q], now);
-    if !l.ok { x[0].floats[0].items[q].on = false; continue; }
+    l := cc.eg_numbers_look(x[0].floats[..], q, now);
+    if !l.ok { continue; }
     f := x[0].floats[0].items[q];
     p := xc_proj(x, l.x, l.y, l.z);
     if !p.ok || !xc_sight_shows(x, f.x, meadow_y(f.x, f.z), f.z, 1.6) { continue; }
-    kind := ifx f.kind == fl.FLOAT_HEAL then cc.EG_FLOAT_HEAL else ifx f.kind == fl.FLOAT_MISS then cc.EG_FLOAT_MISS else ifx f.kind == fl.FLOAT_TAKEN then cc.EG_FLOAT_HARM else cc.EG_FLOAT_DEALT;
-    n = cc.eg_float(out, n, fl.floats_text(x[0].floats[..], q), p.x, p.y, k * l.size, kind, l.alpha);
+    n = cc.eg_numbers_draw(out, n, x[0].floats[..], q, l, p.x, p.y, k);
   }
   // the bar: its iron round the pictures (everglade/hud/parts.coax), each slot's key over its picture; your class and your target over it
   slots: [XC_SLOTS * 4] f32;
@@ -2644,14 +2608,14 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
 }
 #test "experimental combat: numbers go through the presentation queue, capped a source a frame and counted" {
   s: [1] EgZone; xc_test_lab(s[..], FB_CL_WIZARD, 0); x := s[0].xc[..];
-  for i: 0..<10 { xc_float_int(x, f32(i), 1.9, 0, 1, 3 + i, false); }
+  for i: 0..<10 { _ := cc.eg_numbers_amount(x[0].floats[..], 0, f32(i), meadow_y(f32(i), 0) + 1.9, 0, 1, false, false, false, 3 + i); }
   fs := x[0].floats[0];
   #assert fs.shown == fs.per_source && fs.suppressed == 10 - fs.per_source;
   // another source has its own share; the next frame starts empty
   was := fs.suppressed;
-  xc_float_from(x, 4, 0, 1.9, 0, 1, "MISS", false); #assert x[0].floats[0].shown == fs.per_source + 1;
-  fl.floats_frame(x[0].floats[..]);
-  xc_float_int(x, 0, 1.9, 0, 2, 7, false); #assert x[0].floats[0].shown == fs.per_source + 2 && x[0].floats[0].suppressed == was;
+  _ := cc.eg_numbers_word(x[0].floats[..], 4, 0, meadow_y(0, 0) + 1.9, 0, 1, "MISS", false); #assert x[0].floats[0].shown == fs.per_source + 1;
+  cc.eg_numbers_frame(x[0].floats[..]);
+  _ = cc.eg_numbers_amount(x[0].floats[..], 0, 0, meadow_y(0, 0) + 1.9, 0, 2, false, false, false, 7); #assert x[0].floats[0].shown == fs.per_source + 2 && x[0].floats[0].suppressed == was;
 }
 
 #test "experimental combat: Stunned hostiles can move but cannot attack and restraint preserves separate action permission" {
@@ -3105,7 +3069,7 @@ xc_play_kit :: (c: int) {
   h[0].enemies[0].x=0; h[0].enemies[0].z=1.5;
   body:=zone_keep_body(s[..],EgBody.{},EgBody.{x=0,y=0,z= -0.1,vz= -2});
   #assert body.z==0 && body.vz==0 && b[0].c[0].hp==0 && b[0].c[1].reacted;
-  #assert h[0].hp==0 && cr[0].player_z==0 && h[0].hits==1 && h[0].pops[0].amount==1;
+  #assert h[0].hp==0 && cr[0].player_z==0 && h[0].hits==1 && fl.floats_text(h[0].taken[..],0)=="-1";
 }
 #test "experimental physical opportunity keeps the accepted move and saved budgets after nonlethal damage" {
   s:[1] EgZone; xc_test_lab(s[..],FB_CL_BARBARIAN,0);

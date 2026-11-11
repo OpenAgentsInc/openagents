@@ -1,6 +1,6 @@
 // Everglade's plain HUD parts, drawn in the creator's reading face (charactercreator.coax text, ttext,
 // lit), every zone's (#13083): the animations list a developer picks a clip from, the plain health
-// line and its bar, the words when you fall, the damage numbers that rise off you, Character
+// line and its bar, the words when you fall, Character
 // Create's boxes on a desk and on a phone, a framed box, a framed prompt and a box's corners as a
 // Box. Plain data in, vertices out. Loaded by charactercreator.coax beside parts.coax, so the zones
 // that load charactercreator as cc call them as cc.eg_*.
@@ -72,24 +72,6 @@ eg_fallen :: (ui: [] UitTrace, out: [] f32, at: int, unconscious: bool, w: f32, 
   n := ttext(ui, UIT_NONE, out, at, ifx unconscious then "UNCONSCIOUS" else "YOU DIED", w * 0.5 - 50 * k, 95 * k, 15 * k, ink(k, 1, 0.3, 0.25), "");
   return ttext(ui, UIT_NONE, out, n, "R / CLICK TO RESPAWN", w * 0.5 - 100 * k, 137 * k, 10 * k, ink(k, 0.98, 0.94, 0.82), "");
 }
-// The damage you took rising off you for 1.2 s, red, fading in its last 0.35 s: each pop's world
-// place through the view in u (the glade's uniforms: eye u[16..18], focal u[19], forward u[20..22],
-// centre x u[23], right u[24..26], centre y u[27], up u[28..30]), now its clock; w by h the page.
-eg_pops :: (out: [] f32, at: int, pops: [] hostile.DamagePop, now: f32, u: [] f32, w: f32, h: f32, k: f32) -> int {
-  n := at;
-  for i: 0..<pops.count {
-    p := pops[i]; age := now - p.born; if p.amount <= 0 || age < 0 || age >= 1.2 { continue; }
-    t := age / 1.2; rise := 0.8 * (1 - (1 - t) * (1 - t)); rx := p.x - u[16]; ry := p.y + rise - u[17]; rz := p.z - u[18]; depth := rx * u[20] + ry * u[21] + rz * u[22]; if depth <= 0.5 { continue; }
-    sx := u[23] + u[19] * (rx * u[24] + ry * u[25] + rz * u[26]) / depth; sy := u[27] - u[19] * (rx * u[28] + ry * u[29] + rz * u[30]) / depth;
-    if sx < 0 || sx > w || sy < 0 || sy > h { continue; }
-    v := p.amount; if v > 99 { v = 99; } digits: [3] u8 = [3] u8.[45, 48, 48]; digits[1] = cast(u8)(48 + v / 10); digits[2] = cast(u8)(48 + v % 10);
-    shade := ink(k, 1, 0.2, 0.15); shade.light = cc_clamp((1.2 - age) / 0.35, 0, 1);
-    n = text(out, n, ifx v < 10 then cast(string) digits[0..<1] else cast(string) digits[..], sx - 10 * k, sy, 13 * k, shade);
-    if v < 10 { n = text(out, n, cast(string) digits[2..<3], sx, sy, 13 * k, shade); }
-  }
-  return n;
-}
-
 // ---- Character Create's boxes: thirteen rows, then RESET (13), SURPRISE ME (14), the drag's mode
 // (15), SAVE (16) and USE (17). A desk keeps a column down the left; a phone (narrower than 840
 // CSS px or shorter than 760) two columns of rows over the foot. Returns whether it is a phone's.

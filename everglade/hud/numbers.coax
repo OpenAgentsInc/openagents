@@ -1,0 +1,163 @@
+// Everglade's damage numbers (#13080): the one way every zone shows a combat result over whoever it
+// happened to. The numbers themselves are the engine's (aethyr/action/floats.coax), queued through the
+// shared presentation queue (aethyr/action/react.coax react_present), so a burst never floods the
+// screen; here is how Everglade says one (a word, an amount), draws it (parts.coax eg_float), folds a
+// spell's damage to many into one total, and points to a blow that struck you from off screen. A zone
+// only wires these in: it adds from its own authority's events, and projects each number with its own
+// camera. Nothing here changes what the ruleset applied.
+//   coax/bin/coax test apps/openagents-web/charactercreator.coax --only "eg numbers"
+
+#load "../../aethyr/action/floats.coax" as fnum;
+
+// A word over (x, y, z) at t0 from source (a zone's own numbering: 0 you): "MISS" shows small, a heal's
+// word green, any other a plain word (KNOCKED OUT, PRONE). False when the queue suppressed it.
+eg_numbers_word :: (f: [] fnum.Floats, source: int, x: f32, y: f32, z: f32, t0: f32, text: string, heal: bool) -> bool {
+  kind := ifx heal then fnum.FLOAT_HEAL else ifx text == "MISS" || text == "miss" then fnum.FLOAT_MISS else fnum.FLOAT_WORD;
+  return fnum.floats_add(f, source, x, y, z, t0, kind, false, ifx kind == fnum.FLOAT_MISS then "miss" else text);
+}
+// An amount: damage dealt (taken, when taken), a heal, a miss at 0 (floats_amount).
+eg_numbers_amount :: (f: [] fnum.Floats, source: int, x: f32, y: f32, z: f32, t0: f32, taken: bool, heal: bool, crit: bool, amount: int) -> bool {
+  kind := ifx heal then fnum.FLOAT_HEAL else ifx taken then fnum.FLOAT_TAKEN else fnum.FLOAT_DEALT;
+  return fnum.floats_amount(f, source, x, y, z, t0, kind, crit, amount);
+}
+// Number q as it shows at now (floats_look); one that is done is taken off. A zone projects (x, y, z)
+// with its own camera and hands the screen point to eg_numbers_draw.
+eg_numbers_look :: (f: [] fnum.Floats, q: int, now: f32) -> fnum.FloatLook {
+  l := fnum.floats_look(f[0].items[q], now);
+  if !l.ok { f[0].items[q].on = false; }
+  return l;
+}
+// The HUD's colour for a number's kind: red when you took it, small grey "miss", green a heal.
+eg_numbers_ink :: (kind: int) -> int {
+  return ifx kind == fnum.FLOAT_TAKEN then EG_FLOAT_HARM else ifx kind == fnum.FLOAT_MISS then EG_FLOAT_MISS else ifx kind == fnum.FLOAT_HEAL then EG_FLOAT_HEAL else EG_FLOAT_DEALT;
+}
+// Number q drawn at screen point (sx, sy) as l says (a critical hit larger, thinning as it goes).
+eg_numbers_draw :: (out: [] f32, at: int, f: [] fnum.Floats, q: int, l: fnum.FloatLook, sx: f32, sy: f32, k: f32) -> int {
+  return eg_float(out, at, fnum.floats_text(f, q), sx, sy, k * l.size, eg_numbers_ink(f[0].items[q].kind), l.alpha);
+}
+// Every live number of f drawn through the view in u (the glade's uniforms: eye u[16..18], focal
+// u[19], forward u[20..22], centre x u[23], right u[24..26], centre y u[27], up u[28..30]) at now, on
+// a page w by h; one behind the eye or off the page is left out.
+eg_numbers_over :: (out: [] f32, at: int, f: [] fnum.Floats, now: f32, u: [] f32, w: f32, h: f32, k: f32) -> int {
+  n := at;
+  for q: 0..<f[0].items.count {
+    l := eg_numbers_look(f, q, now); if !l.ok { continue; }
+    rx := l.x - u[16]; ry := l.y - u[17]; rz := l.z - u[18]; depth := rx * u[20] + ry * u[21] + rz * u[22]; if depth <= 0.5 { continue; }
+    sx := u[23] + u[19] * (rx * u[24] + ry * u[25] + rz * u[26]) / depth; sy := u[27] - u[19] * (rx * u[28] + ry * u[29] + rz * u[30]) / depth;
+    if sx < 0 || sx > w || sy < 0 || sy > h { continue; }
+    n = eg_numbers_draw(out, n, f, q, l, sx, sy, k);
+  }
+  return n;
+}
+// The frame's end: the presentation queue is handed on and emptied (its counts stay).
+eg_numbers_frame :: (f: [] fnum.Floats) { fnum.floats_frame(f); }
+
+// ---- a spell's damage to many in one go (a Fireball, a Circle of Death): EG_FOLD_AT or more of one
+// caster's spell at one moment fold. Their biggest EG_FOLD_SHOW numbers rise, and those on you or your
+// target; the rest fold into one total over them. The log keeps every roll.
+EG_FOLDS :: 8; EG_FOLD_AT :: 4; EG_FOLD_SHOW :: 3;
+EgFold :: struct { by: int; spell: int; at: f32; count: int; total: int; sx: f32; sy: f32; top: [EG_FOLD_SHOW] int; shown: int; }
+EgFolds :: struct { items: [EG_FOLDS] EgFold; n: int; }
+eg_fold_of :: (g: [] EgFolds, by: int, spell: int, at: f32) -> int {
+  for q: 0..<g[0].n { e := g[0].items[q]; if e.by == by && e.spell == spell && e.at - at < 0.01 && at - e.at < 0.01 { return q; } }
+  return -1;
+}
+// One spell's damage of amount to someone at (x, y). A spell of none (-1) never folds.
+eg_fold_add :: (g: [] EgFolds, by: int, spell: int, at: f32, amount: int, x: f32, y: f32) {
+  if spell < 0 { return; }
+  q := eg_fold_of(g, by, spell, at);
+  if q < 0 {
+    if g[0].n >= EG_FOLDS { return; }
+    q = g[0].n; g[0].n += 1;
+    g[0].items[q] = EgFold.{by = by, spell = spell, at = at};
+    for h: 0..<EG_FOLD_SHOW { g[0].items[q].top[h] = -1; }
+  }
+  g[0].items[q].count += 1; g[0].items[q].total += amount; g[0].items[q].sx += x; g[0].items[q].sy += y;
+  // the biggest amounts, largest first
+  v := amount;
+  for h: 0..<EG_FOLD_SHOW { if v > g[0].items[q].top[h] { w := g[0].items[q].top[h]; g[0].items[q].top[h] = v; v = w; } }
+}
+// Whether one spell's damage of amount rises on its own: always, unless it is in a fold and neither
+// among its biggest nor on you or your target (mine).
+eg_fold_rises :: (g: [] EgFolds, by: int, spell: int, at: f32, amount: int, mine: bool) -> bool {
+  q := eg_fold_of(g, by, spell, at);
+  if q < 0 || g[0].items[q].count < EG_FOLD_AT || mine { return true; }
+  if g[0].items[q].shown < EG_FOLD_SHOW && amount >= g[0].items[q].top[EG_FOLD_SHOW - 1] { g[0].items[q].shown += 1; return true; }
+  return false;
+}
+// Whether fold q is a fold (EG_FOLD_AT or more), and its total's text: "-412 · 14 HIT".
+eg_fold_total :: (g: [] EgFolds, q: int, b: [] u8) -> string {
+  if g[0].items[q].count < EG_FOLD_AT { return ""; }
+  n := eg_put(b, 0, "-"); n = eg_int(b, n, g[0].items[q].total);
+  n = eg_put(b, n, " · "); n = eg_int(b, n, g[0].items[q].count); n = eg_put(b, n, " HIT");
+  return cast(string) b[0..<n];
+}
+
+// ---- a blow from off screen: a red wedge on a ring round the screen's middle, pointing toward whoever
+// struck you, for EG_STRUCK seconds. side and ahead are where the striker stands from you along the
+// camera's right and forward on the ground; age the seconds since the blow. A zone draws nothing while
+// the striker is on screen (you see who struck).
+EG_STRUCK :: 1.2;
+// The bearing of (side, ahead): 0 ahead, clockwise, in [-pi, pi], within 2e-5 rad. Its own, since the
+// zones that load this declare atan2 twice over (aethyr/walk.coax, fivelab-bodies.coax).
+eg_bearing :: (side: f32, ahead: f32) -> f32 {
+  ax := abs(ahead); ay := abs(side);
+  if ax == 0 && ay == 0 { return 0; }
+  t := ifx ay > ax then ax / ay else ay / ax; q := t * t;
+  u := t * (0.99997726 + q * (-0.33262347 + q * (0.19354346 + q * (-0.11643287 + q * (0.05265332 + q * -0.01172120)))));
+  a := ifx ay > ax then 1.5707963 - u else u;
+  if ahead < 0 { a = 3.1415927 - a; }
+  return ifx side < 0 then -a else a;
+}
+eg_struck_from :: (out: [] f32, at: int, side: f32, ahead: f32, age: f32, w: f32, h: f32, k: f32) -> int {
+  if age < 0 || age > f32(EG_STRUCK) || side * side + ahead * ahead < 0.0001 { return at; }
+  a := eg_bearing(side, ahead);   // 0 ahead (the top of the screen), clockwise
+  fade := ifx age < 0.1 then age / 0.1 else 1 - (age - 0.1) / (f32(EG_STRUCK) - 0.1);
+  if fade <= 0 { return at; }
+  cx := w * 0.5; cy := h * 0.5; ring := (ifx w < h then w else h) * 0.36;
+  n := at;
+  // three strokes, widest in the middle, pointing out toward the striker
+  for j: 0..<3 {
+    spread := 0.16 - f32(j) * 0.045; r := ring + f32(j) * 7 * k;
+    ax := cx + sin(a - spread) * r; ay := cy - cos(a - spread) * r;
+    bx := cx + sin(a + spread) * r; by := cy - cos(a + spread) * r;
+    if lit(out, n, ax, ay, bx, by, (4 - f32(j)) * k, fade * 0.9, 0, 0.95, 0.18, 0.12, 0) { n += 6; }
+  }
+  return n;
+}
+
+#test "eg numbers: words and amounts through the shared queue, each drawn in the HUD's ink" #steps 200000000 {
+  f: [1] fnum.Floats;
+  #assert eg_numbers_word(f[..], 0, 0, 2, 0, 1, "MISS", false) && fnum.floats_text(f[..], 0) == "miss" && f[0].items[0].kind == fnum.FLOAT_MISS;
+  #assert eg_numbers_word(f[..], 0, 0, 2, 0, 1, "KNOCKED OUT", false) && f[0].items[1].kind == fnum.FLOAT_WORD;
+  #assert eg_numbers_word(f[..], 0, 0, 2, 0, 1, "5 TEMP HP", true) && f[0].items[2].kind == fnum.FLOAT_HEAL;
+  #assert eg_numbers_amount(f[..], 1, 0, 2, 0, 1, true, false, false, 7) && fnum.floats_text(f[..], 3) == "-7" && f[0].items[3].kind == fnum.FLOAT_TAKEN;
+  #assert eg_numbers_amount(f[..], 1, 0, 2, 0, 1, false, true, false, 4) && fnum.floats_text(f[..], 4) == "+4";
+  #assert eg_numbers_ink(fnum.FLOAT_TAKEN) == EG_FLOAT_HARM && eg_numbers_ink(fnum.FLOAT_DEALT) == EG_FLOAT_DEALT && eg_numbers_ink(fnum.FLOAT_WORD) == EG_FLOAT_DEALT;
+  out: [20000] f32;
+  l := eg_numbers_look(f[..], 3, 1.1);
+  #assert l.ok && eg_numbers_draw(out[..], 0, f[..], 3, l, 400, 300, 1) > 0;
+  #assert !eg_numbers_look(f[..], 3, 9).ok && !f[0].items[3].on;
+  // a source past its cap in a frame is suppressed; the frame's end lets the next through
+  for i: 0..<6 { _ := eg_numbers_amount(f[..], 5, 0, 2, 0, 2, false, false, false, 3); }
+  #assert f[0].suppressed == 2;
+  eg_numbers_frame(f[..]);
+  #assert eg_numbers_amount(f[..], 5, 0, 2, 0, 3, false, false, false, 3);
+}
+#test "eg numbers: a spell's damage to many folds into its biggest and one total" {
+  g: [1] EgFolds;
+  for i: 0..<6 { eg_fold_add(g[..], 2, 9, 1.0, 10 + i, f32(i), 0); }
+  eg_fold_add(g[..], 2, -1, 1.0, 50, 0, 0);   // no spell: no fold
+  eg_fold_add(g[..], 3, 9, 1.0, 4, 0, 0);     // another caster: its own, too few to fold
+  #assert g[0].n == 2 && g[0].items[0].count == 6 && g[0].items[0].total == 75 && g[0].items[0].top[0] == 15 && g[0].items[0].top[2] == 13;
+  #assert eg_fold_rises(g[..], 2, 9, 1.0, 15, false) && !eg_fold_rises(g[..], 2, 9, 1.0, 10, false) && eg_fold_rises(g[..], 2, 9, 1.0, 10, true);
+  #assert eg_fold_rises(g[..], 3, 9, 1.0, 4, false) && eg_fold_rises(g[..], 2, -1, 1.0, 50, false);
+  b: [32] u8;
+  #assert eg_fold_total(g[..], 0, b[..]) == "-75 · 6 HIT" && eg_fold_total(g[..], 1, b[..]) == "";
+}
+#test "eg numbers: a blow from off screen points toward its striker, then fades" {
+  out: [4000] f32;
+  #assert eg_struck_from(out[..], 0, 1, 0, 0.5, 1280, 720, 1) == 18;
+  #assert abs(eg_bearing(0, 1)) < 0.0001 && abs(eg_bearing(1, 0) - 1.5707963) < 0.0001 && abs(eg_bearing(-1, -1) + 2.3561945) < 0.0001 && abs(eg_bearing(0.3, -2) - 2.9927027) < 0.0001;
+  #assert eg_struck_from(out[..], 0, 1, 0, 2, 1280, 720, 1) == 0 && eg_struck_from(out[..], 0, 0, 0, 0.5, 1280, 720, 1) == 0;
+}

@@ -15,6 +15,7 @@
 #load "../../aethyr/ui/hud-menu.coax";   // the engine's HUD style layer (hud-style.coax) and widgets; Everglade draws in FANTASY (docs/verse/hud-styles.md)
 #load "../../everglade/hud/parts.coax";   // Everglade's HUD parts in that style (the game's, every zone's)
 #load "../../everglade/hud/screens.coax";   // Everglade's plain HUD parts: the clip list, health, the boxes (#13083)
+#load "../../everglade/hud/numbers.coax";   // Everglade's damage numbers, every zone's (#13080)
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as dungeon;
 #load "../../verse/experimental-aribeth.coax" as aribeth;
@@ -319,14 +320,15 @@ combat_overlay :: (s:Creator,out:[]f32,u:[]f32,at:int,w:f32,k:f32)->int {
  ui:=s.ui;uit_part(ui,"health");
  if !s.experimental {n=eg_health_line(ui,out,n,hp,maximum,s.hostiles[0].temp,w-226*k,39*k,k);}
  if hp==0 {n=eg_fallen(ui,out,n,s.hostiles[0].shared && !s.hostiles[0].player_dead,w,k);}
- pops:=s.hostiles[0].pops;
- return eg_pops(out,n,pops[0..<8],s.hostiles[0].time,u,w,s.height,k);
+ // the numbers over you as a blow lands: Everglade's (everglade/hud/numbers.coax), through this camera
+ taken:=s.hostiles[0].taken;
+ return eg_numbers_over(out,n,taken[..],s.hostiles[0].time,u,w,s.height,k);
 }
 #test "combat HUD shows health and projects a recent damage number" {
  s:Creator;s.height=600;s.hostiles[0].ready=true;s.hostiles[0].hp=39;s.hostiles[0].time=1;
  u:[104]f32;u[19]=300;u[22]=1;u[23]=480;u[24]=1;u[27]=300;u[29]=1;
  out:[4096]f32;base:=combat_overlay(s,out[..],u[..],0,960,1);#assert base>0;
- s.hostiles[0].pops[0]=hostile.DamagePop.{amount=5,x=0,y=0,z=4,born=1};hit:=combat_overlay(s,out[..],u[..],0,960,1);#assert hit>base;
+ #assert eg_numbers_amount(s.hostiles[0].taken[..],0,0,0,4,1,true,false,false,5);hit:=combat_overlay(s,out[..],u[..],0,960,1);#assert hit>base;
  s.hostiles[0].time=2.3;#assert combat_overlay(s,out[..],u[..],0,960,1)==base;
 }
 experimental_air :: (s:[]Creator,air:bool) {

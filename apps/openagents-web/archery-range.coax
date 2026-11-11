@@ -87,7 +87,7 @@ xr_land :: (r: [] Range, sh: XrShot, mark: int, off: f32, at: [3] f32) {
   if mark >= 0 && mark < t.n {
     f := t.face[mark]; points := rg_points(off, f.radius);
     rg_record(r[0].score[..], sh.mode, xr_far(f, sh.from), points, now);
-    xc_float_int(x, at[0], at[1] - meadow_y(at[0], at[2]) + 0.25, at[2], now, points, false);
+    _ := cc.eg_numbers_amount(x[0].floats[..], 0, at[0], at[1] + 0.25, at[2], now, false, false, false, points);   // Everglade's damage numbers (everglade/hud/numbers.coax)
     return;
   }
   rg_record(r[0].score[..], sh.mode, xr_far(t.face[xr_nearest(t, at)], sh.from), 0, now);

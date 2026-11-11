@@ -60,13 +60,15 @@ three, as Experimental does.
 
 ### Damage numbers
 
-No shared module exists yet. Its home is `everglade/hud/`, fed from the shared
-presentation queue (`aethyr/action/react.coax`, #13072).
+The shared module is `everglade/hud/numbers.coax` (`eg_numbers_word`,
+`eg_numbers_amount`, `eg_numbers_draw`, the fold of a spell's damage to many,
+`eg_struck_from`), on the engine's numbers (`aethyr/action/floats.coax`), which
+the shared presentation queue feeds (`aethyr/action/react.coax`, #13072).
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Local, twice: monsters (`E2mnMark` everglade2-monsters.coax:26, `e2mn_mark` :143, drawn in `e2mn_hud` :186) and the guard (`E2gdMark` everglade2-guard.coax:19, drawn in `e2gd_hud` :160). |
-| Experimental | Local, three times: the 5E Lab (`HitGroup` fivelab.coax:355, `hit_groups` :360, drawn by `draw_fx` :2610), the combat (`XcFloat` experimental-combat.coax:76, `xc_float_from` :292, throttled by the shared `react.react_present`), and Character Create's pops (`eg_pops` in everglade/hud/screens.coax) drawing `DamagePop` (verse/experimental-hostiles.coax:19). |
+| Everglade II | Shared: `everglade2.coax` adds its numbers with `fl.floats_*` and draws them with `eg_numbers_look` and `eg_numbers_ink`. |
+| Experimental | Shared: the combat, the 5E Lab, the Archery Range and the damage over you (`Hostiles.taken`) all call `everglade/hud/numbers.coax`. |
 | Everglade v1 | Local: `WatchPop` everglade-watch.coax:34, `watch_pop` :617, `watch_pops_draw` :656; condition words through `st_pops_frame` everglade-status.coax:139. |
 
 ### Area targeting
@@ -294,10 +296,8 @@ No zone-local copies: the held kit moved to `everglade/held-kit.coax`.
 
 ### Damage numbers (#13080)
 
-45 zone-local copies.
+24 zone-local copies, all in Everglade v1, which is frozen while Everglade is rebuilt.
 
-- Everglade II: `E2GD_MARKS` everglade2-guard.coax:17, `E2GD_MARK_S` everglade2-guard.coax:17, `E2gdMark` everglade2-guard.coax:19, `E2MN_MARKS` everglade2-monsters.coax:17, `E2MN_MARK_S` everglade2-monsters.coax:17, `E2mnMark` everglade2-monsters.coax:26, `e2mn_mark` everglade2-monsters.coax:143.
-- Experimental: `XC_FLOATS` experimental-combat.coax:71, `XcFloat` experimental-combat.coax:76, `xc_float` experimental-combat.coax:288, `xc_float_from` experimental-combat.coax:292, `xc_float_int` experimental-combat.coax:304, `xc_hit_mark` experimental-combat.coax:719, `HIT_GROUPS` fivelab.coax:354, `HIT_FOLD` fivelab.coax:354, `HIT_SHOW` fivelab.coax:354, `HitGroup` fivelab.coax:355, `hit_group_of` fivelab.coax:356, `hit_groups` fivelab.coax:360, `hit_shown` fivelab.coax:382, `DamagePop` verse/experimental-hostiles.coax:19.
 - Everglade v1: `st_pops_frame` everglade-status.coax:139, `POP_LIFE` everglade-watch.coax:31, `POP_RISE` everglade-watch.coax:31, `WatchPop` everglade-watch.coax:34, `POP_DOWN` everglade-watch.coax:35, `POP_HELD` everglade-watch.coax:35, `POP_ROOTED` everglade-watch.coax:35, `POP_RESTRAINED` everglade-watch.coax:35, `POP_STUNNED` everglade-watch.coax:35, `POP_PRONE` everglade-watch.coax:35, `POP_FRIGHTENED` everglade-watch.coax:36, `POP_SLOWED` everglade-watch.coax:36, `POP_BLINDED` everglade-watch.coax:36, `POP_UP` everglade-watch.coax:36, `POP_HALTED` everglade-watch.coax:36, `POP_WORDS` everglade-watch.coax:37, `watch_pop_slot` everglade-watch.coax:583, `watch_pop_heal` everglade-watch.coax:592, `watch_pop_word` everglade-watch.coax:599, `watch_pop_rgb` everglade-watch.coax:607, `watch_pop` everglade-watch.coax:617, `watch_pop_head` everglade-watch.coax:628, `watch_pops_frame` everglade-watch.coax:634, `watch_pops_draw` everglade-watch.coax:656.
 
 ### Area targeting (#13081)

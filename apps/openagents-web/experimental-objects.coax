@@ -70,7 +70,7 @@ xc_use_object :: (s:[] EgZone,k:int,a:FbAb,i:int)->bool {
   if o[0].burning && !was_burning { x[0].objects[i].burn_at=add_sat(b[0].rest_clock.ticks,6000000); }
   x[0].cool_at=cr[0].clock; x[0].used=k; x[0].casts+=1;
   lost:=hp-o[0].hp;
-  if lost>0 {xc_float_int(x,p[0],1.5,p[1],cr[0].clock,lost,false);}
+  if lost>0 {_ := cc.eg_numbers_amount(x[0].floats[..], 0, p[0], meadow_y(p[0], p[1]) + 1.5, p[1], cr[0].clock, false, false, false, lost);}
   if o[0].destroyed {fx_start_at(s,FXR_DUST,cr[0].clock,fxp_v(p[0],0.5,p[1]),fxp_v(p[0],0.5,p[1]),fxp_v(0.6,0.5,0.4),1,1);}
   xc_look(s,a,-1,p[0],p[1]); xc_cast_sound(s,a); return true;
 }

@@ -272,7 +272,12 @@ take_events :: (s: [] Lab) {
   k := fresh - 1;
   rep_by := -1; rep_spell := -1; rep_t: f32 = -1; rep_n := 0;
   // one spell's damage to many at once (a Fireball, a Circle of Death): its numbers fold
-  g: [HIT_GROUPS] HitGroup; ng := hit_groups(s, book, fresh, g[..]);
+  // (everglade/hud/numbers.coax: its biggest and yours rise, the rest fold into one total)
+  g: [1] cc.EgFolds; b0 := bt(s);
+  for j: 0..<fresh {
+    e := rs_recent_at(book, j);
+    if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b0[0].n { cc.eg_fold_add(g[..], e.by, e.spell, e.at, e.amount, f32(b0[0].c[e.to].x), f32(b0[0].c[e.to].y)); }
+  }
   while k >= 0 {
     e := rs_recent_at(book, k);
     k -= 1;
@@ -286,7 +291,7 @@ take_events :: (s: [] Lab) {
     if e.kind == RS_EV_END || e.kind == RS_EV_STABLE { c = FAINT; }
     if e.text_n > 0 { add_line(s, t, c); }
     f: Num;
-    if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && hit_shown(s, e, g[0..<ng]) {
+    if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && (e.kind != RS_EV_DAMAGE || cc.eg_fold_rises(g[..], e.by, e.spell, e.at, e.amount, e.to == s[0].me || e.to == s[0].target || e.to == s[0].you_me)) {
       f.kind = FX_TEXT; f.life = 1.2;
       f.col = ifx e.kind == RS_EV_HEAL then GREEN else ifx e.kind == RS_EV_MISS then DIM else RED;
       f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
@@ -304,53 +309,15 @@ take_events :: (s: [] Lab) {
     lab_effect(s, e, f32((book[0].seq - k) % 8192) * 0.37 + 0.11, e.at + ifx e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS then f32(rep_n) * 0.14 else 0);
   }
   // each fold's total, gold, over the middle of those it hit: "-412 · 14 HIT"
-  for q: 0..<ng {
-    if g[q].count < HIT_FOLD { continue; }
+  for q: 0..<g[0].n {
+    tb: [32] u8; total := cc.eg_fold_total(g[..], q, tb[..]);
+    if total.count == 0 { continue; }
+    fo := g[0].items[q];
     f: Num; f.kind = FX_TEXT; f.life = 1.8; f.col = GOLD;
-    f.ax = g[q].sx / f32(g[q].count); f.ay = g[q].sy / f32(g[q].count) - 1.2;
-    f.n = put(f.text[..], 0, "-"); f.n = put_int(f.text[..], f.n, g[q].total); f.n = put(f.text[..], f.n, " · ");
-    f.n = put_int(f.text[..], f.n, g[q].count); f.n = put(f.text[..], f.n, " HIT");
+    f.ax = fo.sx / f32(fo.count); f.ay = fo.sy / f32(fo.count) - 1.2;
+    f.n = put(f.text[..], 0, total);
     add_num(s, f);
   }
-}
-// A spell's damage to many in one go: HIT_FOLD or more of one caster's spell at one moment. Its
-// biggest HIT_SHOW numbers float, and those on your hero or your target; the rest fold into one
-// total over them. The log keeps every roll.
-HIT_GROUPS :: 8; HIT_FOLD :: 4; HIT_SHOW :: 3;
-HitGroup :: struct { by: int; spell: int; at: f32; count: int; total: int; sx: f32; sy: f32; top: [HIT_SHOW] int; shown: int; }
-hit_group_of :: (e: RsEvent, g: [] HitGroup) -> int {
-  for q: 0..<g.count { if g[q].by == e.by && g[q].spell == e.spell && g[q].at - e.at < 0.01 && e.at - g[q].at < 0.01 { return q; } }
-  return -1;
-}
-hit_groups :: (s: [] Lab, book: [] RsLog, fresh: int, g: [] HitGroup) -> int {
-  ng := 0; b := bt(s);
-  for k: 0..<fresh {
-    e := rs_recent_at(book, k);
-    if e.kind != RS_EV_DAMAGE || e.spell < 0 || e.to < 0 || e.to >= b[0].n { continue; }
-    q := hit_group_of(e, g[0..<ng]);
-    if q < 0 {
-      if ng >= g.count { continue; }
-      q = ng; ng += 1;
-      g[q].by = e.by; g[q].spell = e.spell; g[q].at = e.at; g[q].count = 0; g[q].total = 0; g[q].sx = 0; g[q].sy = 0; g[q].shown = 0;
-      for h: 0..<HIT_SHOW { g[q].top[h] = -1; }
-    }
-    g[q].count += 1; g[q].total += e.amount;
-    g[q].sx += f32(b[0].c[e.to].x); g[q].sy += f32(b[0].c[e.to].y);
-    // the biggest HIT_SHOW amounts, largest first
-    v := e.amount;
-    for h: 0..<HIT_SHOW { if v > g[q].top[h] { w := g[q].top[h]; g[q].top[h] = v; v = w; } }
-  }
-  return ng;
-}
-// Whether event e's number floats: always, unless it's in a fold and neither among its biggest
-// nor on your hero or your target.
-hit_shown :: (s: [] Lab, e: RsEvent, g: [] HitGroup) -> bool {
-  if e.kind != RS_EV_DAMAGE { return true; }
-  q := hit_group_of(e, g);
-  if q < 0 || g[q].count < HIT_FOLD { return true; }
-  if e.to == s[0].me || e.to == s[0].target || e.to == s[0].you_me { return true; }
-  if g[q].shown < HIT_SHOW && e.amount >= g[q].top[HIT_SHOW - 1] { g[q].shown += 1; return true; }
-  return false;
 }
 // One battle event as the figures' clips: a blow swings, a cast or a shot plays the spell clip, a
 // hurt figure is knocked back (fivelab-bodies.coax figs.bd_cue).
