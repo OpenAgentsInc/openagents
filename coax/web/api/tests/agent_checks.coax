@@ -97,7 +97,7 @@ gk_rules :: (t: [] Ap, key: string, agent_key: string) {
     }
     if nf < 3 { continue; }
     rule := f[2];
-    if rule != "human" && rule != "L2" && rule != "L2-fresh" && rule != "admin" { continue; }
+    if rule != "human" && rule != "L2" && rule != "L2-fresh" && rule != "admin" && rule != "recover" && rule != "admin-change" { continue; }
     method := ifx f[0] == "*" then "GET" else f[0];
     p: [1] Sb;
     if ap_ends(f[1], "*") { sb(p[..], f[1][0..<f[1].count - 1]); sb(p[..], "x"); } else { sb(p[..], f[1]); }

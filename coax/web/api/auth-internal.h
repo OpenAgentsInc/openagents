@@ -1,0 +1,46 @@
+// What auth.c shares with auth-recover.c (step-up, linking and recovery, #13212, #13213), and
+// back. Not for other files: they ask auth_principal_of and auth_gate (api.h).
+#pragma once
+#include <libpq-fe.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include "api.h"
+
+enum { AUTH_LIMIT_KEY_LOGIN = 4, AUTH_LIMIT_RECOVERY = 8, AUTH_LIMIT_RECOVERY_CODE = 9, AUTH_LIMIT_RECOVERY_CODE_IP = 10 };
+
+// ---- auth.c
+bool auth_random(unsigned char *b, size_t n);
+bool auth_random_hex(char *out, size_t bytes);
+void auth_hex(const unsigned char *b, size_t n, char *out);
+bool auth_unhex(const char *s, unsigned char *out, size_t n);
+void auth_sha_hex(const char *s, char out[65]);
+const char *auth_json_str(const char *body, size_t n, const char *key, char *out, size_t cap);
+void auth_json_esc(const char *s, char *out, size_t cap);
+bool auth_limit_hit(const request *q, PGconn *db, int which, const char *key);   // false: it answered the 429
+void auth_visitor_key(const request *q, char out[65]);
+bool auth_lookups(const char *email, char *all, size_t cap, char newest[80]);
+bool auth_unseal(const char *ad, const char *sealed, char *out, size_t cap);
+bool auth_normal_email(const char *raw, char *out, size_t cap);
+void auth_mask_email(const char *email, char *out, size_t cap);
+void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
+                    bool app, bool made, const char *action, const char *extra_json, const char *extra_lines);
+
+// ---- auth-recover.c
+// auth-recover-policy.coax's numbers (AR_*), checked against it at start (auth_recover_init).
+enum { AR_NONE = 0, AR_PENDING = 1, AR_READY = 2, AR_CANCELLED = 3, AR_DONE = 4 };
+enum { AR_OWNER_NONE = 0, AR_OWNER_THIS = 1, AR_OWNER_OTHER = 2 };
+enum { AR_OK = 0, AR_STEP_UP = 1, AR_OTHER = 2, AR_ALREADY = 3, AR_LAST_WAY = 4, AR_NOT_NEEDED = 5,
+       AR_NOTHING = 6, AR_WAITING = 7, AR_NOT_EMAIL = 8, AR_NO_REQUEST = 9, AR_ASKED = 10 };
+bool auth_recover_init(void);
+// Answers a route under /api/auth/ that is step-up, linking or recovery; false when op isn't one.
+bool auth_recover_route(const request *q, PGconn *db, const char *op);
+// The gate's refusal when a step-up would let it: the level wanted (2 L2, 3 L2-fresh), the
+// account's methods, whether this session is limited and its recovery's state.
+void auth_step_up_refusal(const request *q, PGconn *db, const auth_principal *p, int need, int status, const char *words);
+// A login or step-up at L2: a pending recovery for the account ends, and every channel is told.
+void auth_recover_strong_login(PGconn *db, const char *acct, const char *sid);
+// An email was linked (auth.c's email_finish): every channel is told.
+void auth_recover_linked_email(PGconn *db, const char *acct, const char *sid);
+// The step a limited session may not take with email alone: a link of an email on an account
+// with a stronger way in. false: it answered the refusal.
+bool auth_recover_may_link(const request *q, PGconn *db, const auth_principal *p);

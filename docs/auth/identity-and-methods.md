@@ -212,7 +212,15 @@ same shape with `kind = service` and owner `acct_openagents`.
 - **Notify:** every link or unlink sends a notice to every email on the
   account, to the app by push, and to the account's Nostr keys as a
   NIP-17 direct message, with a "This wasn't me" link that freezes the
-  account and ends all sessions.
+  account and ends all sessions. A removed email or key gets the notice
+  too. Push notices wait on device keys (#13216); email and NIP-17 notices
+  ship now, sent from our notice key to `relay.openagents.com`. Each
+  notice is a row in `auth.notices` with what was sent, and the account
+  lists them at `GET /api/auth/notices`.
+- **A key with an account of its own** is refused when linked ("This
+  already has an account. Log in to it to merge."). A key links only
+  with a signature over a one-time challenge, so a key you don't hold
+  can't be added.
 
 ## Recovery
 
@@ -230,6 +238,26 @@ read and play, but not spend, export or change authenticators. To lift
 that, you ask for recovery; we wait 72 hours and notify every channel,
 and any channel can cancel. After 72 hours you may replace the lost
 factors. No staff member can skip the wait (decision D10).
+
+How the delayed path works (`auth-recover.c`, `auth-recover-policy.coax`,
+migration 0148):
+
+- `POST /api/auth/recovery/start` from a limited email session. The
+  database refuses a request whose `ready_at` is less than 72 hours after
+  `asked_at`, and allows one open request per account. 3 a week.
+- The notice goes to every email and key, with the end time and a cancel
+  link (`/settings/security#cancel=...`, single use).
+- `POST /api/auth/recovery/cancel` cancels it from the link, from any
+  session of the account, or from a NIP-98 signature of any key on the
+  account. A login with a key, passkey or recovery code cancels it too,
+  and so does freezing the account.
+- After 72 hours, `POST /api/auth/recovery/finish` with a proof from a
+  new key: the new key replaces the account's keys and passkeys, every
+  other session ends, and every email, the new key and the removed keys
+  get a notice. Every step is in the audit log.
+
+Recovery codes log in with `POST /api/auth/recovery-code/login {email or
+pubkey, words}` (5 tries an hour per account, 10 per network address).
 
 **Recovery codes** are 24 BIP-39 words, shown once when you add your
 first strong factor and again on request at `L2-fresh`. We store

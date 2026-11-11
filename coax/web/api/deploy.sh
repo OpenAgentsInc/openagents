@@ -61,7 +61,7 @@ cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Docker
 # deploy; release.sh already gates the compiler before it ships.
 (cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
 mkdir -p "$stage/gen"
-for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy auth-policy auth-seal agent-wire agent-attest; do
+for m in nip98 mesh-policy caller-policy anime-director-policy seat-policy progress-policy worldbuilder-policy auth-policy auth-seal agent-wire agent-attest auth-recover-policy auth-recover-crypto; do
   "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
 done
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
@@ -128,6 +128,8 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   local sfx=""; [[ "$6" == staging ]] && sfx="-staging"
   if gcloud secrets describe "oa-auth-seal-key$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_SEAL_KEY=oa-auth-seal-key$sfx:latest"; fi
   if gcloud secrets describe "oa-auth-lookup-pepper$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_LOOKUP_PEPPER=oa-auth-lookup-pepper$sfx:latest"; fi
+  # Security notices as NIP-17 messages (auth-recover.c): our notice key, one per environment.
+  if gcloud secrets describe "oa-auth-notice-nsec$sfx" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AUTH_NOTICE_NSEC=oa-auth-notice-nsec$sfx:latest"; fi
   local spark
   spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$spark" ]] && env+="~OA_SPARK_URL=$spark"
@@ -138,7 +140,7 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   env+="~OA_BUILD_SHA=$commit~OA_RELEASE_ID=$release"
   api_verified_rollout "$1" "$3" "$image" "$commit" "$release" "$work/$1" \
     --allow-unauthenticated --ingress internal-and-cloud-load-balancing \
-    --port 8080 --cpu 1 --memory 256Mi --min-instances 0 --max-instances 4 --concurrency 40 \
+    --port 8080 --cpu 1 --memory 512Mi --min-instances 0 --max-instances 4 --concurrency 40 \
     --add-cloudsql-instances "$instance" --set-secrets "$secrets" --set-env-vars "$env"
 }
 deploy oa-api-staging oa-api-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging oa-analytics-staging-database-url

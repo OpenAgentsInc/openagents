@@ -1,0 +1,243 @@
+// Recovery codes and notice messages for the API (auth-recover.c; #13213), as C. Every primitive
+// is coax/lib's: BIP-39 for the words, NIP-49's scrypt (r = 8, p = 1) for the stored hash, NIP-59
+// for the gift wrap a notice travels in as a NIP-17 direct message.
+//
+//   arc_words    32 bytes of the host's randomness to 24 BIP-39 words (a recovery code)
+//   arc_normal   what a person typed, as we hash it: lower case, one space between words, nothing
+//                around them, and only a whole 24-word phrase whose checksum holds
+//   arc_hash     scrypt(words, salt, N = 2^log_n, r = 8, p = 1), 32 bytes. The API uses log_n 17
+//                (docs/auth/identity-and-methods.md#recovery)
+//   arc_wrap     a kind 14 message from our notice key to one person's key, sealed and gift wrapped
+//                (NIP-59) so only they can read it
+//
+// auth-recover.c brings the randomness, the scratch memory (1 KiB times 2^log_n for scrypt) and
+// the keys; this file keeps none of them.
+#run_steps 250000000;
+#load "../../lib/crypto/bip39.coax";
+#load "../../lib/crypto/scrypt_nip49.coax";
+#load "../../lib/nostr/nip59.coax";
+#authority;
+
+ARC_ENTROPY :: 32;
+ARC_WORDS :: 24;
+ARC_PHRASE_MAX :: BIP39_MAX_TEXT;   // 24 words of at most 8 letters and 23 spaces
+ARC_WORK :: BIP39_WORK_BYTES;
+ARC_FRESH :: 176;                   // the wrap's randomness: five 32-byte values, two 8-byte offsets
+ARC_WRAP_WORK :: NIP59_WORK;
+ARC_LOWER :: "abcdefghijklmnopqrstuvwxyz";
+
+// ---------------------------------------------------------------- for the checks
+arc_text :: (s: string, out: [] u8) -> [] u8 #effects(all) { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+arc_same :: (a: [] u8, s: string) -> bool #effects(all) {
+  if a.count != s.count { return false; }
+  for i: 0..<a.count { if a[i] != s[i] { return false; } }
+  return true;
+}
+arc_find :: (s: string, part: string) -> int #effects(all) {
+  if part.count > s.count { return -1; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+#test "the checks' helpers" {
+  b: [8] u8;
+  #assert arc_same(arc_text("abc", b[..]), "abc") && !arc_same(arc_text("abc", b[..]), "abd") && !arc_same(arc_text("abc", b[..]), "ab");
+  #assert !arc_same(arc_text("abc", b[..]), "abcd") && arc_same(arc_text("", b[..]), "") && !arc_same(arc_text("abc", b[..]), "xbc");
+  #assert arc_find("abc", "abc") == 0 && arc_find("abc", "bc") == 1 && arc_find("abc", "c") == 2;
+  #assert arc_find("abc", "x") == -1 && arc_find("ab", "abc") == -1 && arc_find("abc", "cb") == -1;
+}
+
+// BIP-39's own test vectors (trezor/python-mnemonic vectors.json).
+ARC_SEVEN_F :: "legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth title";
+ARC_ZEROS :: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+ARC_ONES :: "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote";
+
+#test "32 random bytes make 24 words (BIP-39 vectors)" {
+  e: [32] u8; for i: 0..<32 { e[i] = 0x7f; }
+  work: [ARC_WORK] u8; out: [ARC_PHRASE_MAX] u8;
+  n := arc_words(e[..], work[..], out[..]);
+  #assert n == ARC_SEVEN_F.count && arc_same(out[0..<n], ARC_SEVEN_F);
+  for i: 0..<32 { e[i] = 0; }
+  n = arc_words(e[..], work[..], out[..]);
+  #assert n == ARC_ZEROS.count && arc_same(out[0..<n], ARC_ZEROS);
+  #assert arc_words(e[0..<31], work[..], out[..]) < 0;
+  #assert arc_words(e[0..<16], work[..], out[..]) < 0;   // twelve words: a phrase, not a recovery code
+  #assert arc_words(e[..], work[0..<ARC_WORK - 1], out[..]) < 0;
+  #assert arc_words(e[..], work[..], out[0..<n - 1]) < 0;
+}
+#test "typed words are lowered, spaced once, and must be a whole checked phrase" {
+  work: [ARC_WORK] u8; out: [ARC_PHRASE_MAX] u8; tb: [400] u8;
+  typed := "  Legal WINNER thank year\twave sausage worth useful\n legal winner thank year\r\nwave sausage worth useful legal winner thank year wave sausage worth title  ";
+  n := arc_normal(arc_text(typed, tb[..]), work[..], out[..]);
+  #assert n == ARC_SEVEN_F.count && arc_same(out[0..<n], ARC_SEVEN_F);
+  n = arc_normal(arc_text(ARC_SEVEN_F, tb[..]), work[..], out[..]);
+  #assert n == ARC_SEVEN_F.count && arc_same(out[0..<n], ARC_SEVEN_F);
+  // the letters at both ends of the alphabet, either case
+  n = arc_normal(arc_text("ABANDON abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon ART", tb[..]), work[..], out[..]);
+  #assert n == ARC_ZEROS.count && arc_same(out[0..<n], ARC_ZEROS);
+  n = arc_normal(arc_text("ZOO zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo VOTE", tb[..]), work[..], out[..]);
+  #assert n == ARC_ONES.count && arc_same(out[0..<n], ARC_ONES);
+  // just outside the capitals: not lowered, so not words
+  #assert arc_normal(arc_text("@BANDON abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art", tb[..]), work[..], out[..]) == -1;
+  #assert arc_normal(arc_text("[OO zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote", tb[..]), work[..], out[..]) == -1;
+  // the last word changed: the checksum fails
+  bad := "legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth year";
+  #assert arc_normal(arc_text(bad, tb[..]), work[..], out[..]) == -1;
+  // twelve words are a phrase, not a recovery code
+  twelve := "legal winner thank year wave sausage worth useful legal winner thank yellow";
+  #assert arc_normal(arc_text(twelve, tb[..]), work[..], out[..]) == -1;
+  #assert arc_normal(arc_text("", tb[..]), work[..], out[..]) == -1;
+  #assert arc_normal(arc_text("   ", tb[..]), work[..], out[..]) == -1;
+  #assert arc_normal(arc_text("legal, winner", tb[..]), work[..], out[..]) == -1;
+  // out holds the phrase exactly, or nothing
+  #assert arc_normal(arc_text(typed, tb[..]), work[..], out[0..<ARC_SEVEN_F.count]) == ARC_SEVEN_F.count;
+  #assert arc_normal(arc_text(typed, tb[..]), work[..], out[0..<ARC_SEVEN_F.count - 1]) == -1;
+  #assert arc_normal(arc_text(typed, tb[..]), work[0..<ARC_WORK - 1], out[..]) == -1;
+  #assert arc_normal(arc_text(typed, tb[..]), work[0..<10], out[..]) == -1;
+  // longer than any phrase: refused
+  long: [440] u8; for i: 0..<440 { long[i] = 'a'; }
+  #assert arc_normal(long[0..<ARC_PHRASE_MAX], work[..], out[..]) == -1;
+  #assert arc_normal(long[0..<ARC_PHRASE_MAX + 1], work[..], out[..]) == -1;
+  for i: 0..<440 { long[i] = ' '; }
+  for i: 0..<23 { long[2 * i] = 'a'; }   // 23 one-letter words, then spaces up to the end
+  #assert arc_normal(long[0..<2 * ARC_PHRASE_MAX], work[..], out[..]) == -1;
+  #assert arc_normal(long[0..<2 * ARC_PHRASE_MAX + 1], work[..], out[..]) == -1;
+}
+#test "a phrase that fills the most a phrase holds, then one word more, is refused" {
+  work: [ARC_WORK] u8; out: [ARC_PHRASE_MAX] u8; tb: [400] u8;
+  // 106 words "a" and one "aaa": 215 letters and spaces, the most; then " a" needs one more
+  n := 0;
+  for i: 0..<106 { tb[n] = 'a'; tb[n + 1] = ' '; n += 2; }
+  tb[n] = 'a'; tb[n + 1] = 'a'; tb[n + 2] = 'a'; n += 3;
+  #assert n == ARC_PHRASE_MAX;
+  #assert arc_normal(tb[0..<n], work[..], out[..]) == -1;   // 107 words, not 24
+  tb[n] = ' '; tb[n + 1] = 'a';
+  #assert arc_normal(tb[0..<n + 2], work[..], out[..]) == -1;
+}
+#test "a long run of spaces after whole words still reads" {
+  work: [ARC_WORK] u8; out: [ARC_PHRASE_MAX] u8; tb: [430] u8;
+  for i: 0..<430 { tb[i] = ' '; }
+  for i: 0..<ARC_SEVEN_F.count { tb[i] = ARC_SEVEN_F[i]; }
+  #assert arc_normal(tb[0..<2 * ARC_PHRASE_MAX], work[..], out[..]) == ARC_SEVEN_F.count;
+}
+#test "the hash is NIP-49's scrypt (its vector, at log_n 4)" {
+  password := [5] u8.[110, 111, 115, 116, 114]; salt: [16] u8; for i: 0..<16 { salt[i] = cast(u8) i; }
+  want := [32] u8.[0xef,0x5c,0x8d,0xc1,0x45,0x2e,0x06,0xdc,0x1c,0x06,0x7a,0x4b,0xc2,0x62,0xe3,0x97,0x87,0x6a,0x38,0x76,0xca,0x7d,0xda,0xd5,0x62,0x08,0x73,0x76,0xc6,0xb5,0x59,0xf5];
+  memory: [16384] u8; out: [32] u8;
+  #assert arc_hash(password[..], salt[..], memory[..], 4, out[..]);
+  for i: 0..<32 { #assert out[i] == want[i]; }
+  #assert !arc_hash(password[..], salt[0..<15], memory[..], 4, out[..]);
+  #assert !arc_hash(password[..], salt[..], memory[0..<16383], 4, out[..]);
+  #assert !arc_hash(password[..], salt[..], memory[..], 4, out[0..<31]);
+}
+// The reader's secret is 1, so their key is the generator's x.
+ARC_G_X :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+#test "a notice is the gift wrap NIP-59 makes of these inputs, and only its reader opens it" #steps 600000000 {
+  author: [32] u8; reader: [32] u8; rx: [32] u8;
+  for i: 0..<32 { author[i] = cast(u8) (i + 1); }
+  reader[31] = 1;
+  hx := ARC_G_X;
+  for i: 0..<32 {
+    hi := cast(int) hx[2 * i]; lo := cast(int) hx[2 * i + 1];
+    hv := hi - '0'; if hi >= 'a' { hv = hi - 'a' + 10; }
+    lv := lo - '0'; if lo >= 'a' { lv = lo - 'a' + 10; }
+    rx[i] = cast(u8) (16 * hv + lv);
+  }
+  fresh: [ARC_FRESH] u8; for i: 0..<ARC_FRESH { fresh[i] = cast(u8) ((7 * i + 13) % 251); }
+  work: [ARC_WRAP_WORK] u8; out: [8192] u8; cb: [64] u8;
+  now := 1762900000;
+  n := arc_wrap(author[..], rx[..], now, arc_text("A key was added.", cb[..]), fresh[..], work[..], out[..]);
+  #assert n > 0;
+  // The same wrap, made by hand: the randomness in its documented order, the routing tag spelled out.
+  f: [1] Nip59Fresh;
+  for i: 0..<32 { f[0].wrap_key[i] = fresh[i]; }
+  for i: 0..<32 { f[0].seal_nonce[i] = fresh[32 + i]; }
+  for i: 0..<32 { f[0].wrap_nonce[i] = fresh[64 + i]; }
+  for i: 0..<32 { f[0].seal_aux[i] = fresh[96 + i]; }
+  for i: 0..<32 { f[0].wrap_aux[i] = fresh[128 + i]; }
+  sb: u64 = 0; for i: 160..<168 { sb = sb * 256 + cast(u64) fresh[i]; }
+  wb: u64 = 0; for i: 168..<176 { wb = wb * 256 + cast(u64) fresh[i]; }
+  f[0].seal_back = sb; f[0].wrap_back = wb;
+  ref: [8192] u8; rw: [ARC_WRAP_WORK] u8;
+  w := nip59_wrap_checked(author[..], rx[..], now, 14, "[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]",
+                          "A key was added.", NIP59_WRAP_KIND, f[..], rw[..], ref[..], false);
+  #assert w.error == NIP59_OK && w.written == n;
+  for i: 0..<n { #assert out[i] == ref[i]; }
+  // Its reader opens it: a kind 14 from our key with the words.
+  ow: [ARC_WRAP_WORK] u8; ob: [4096] u8;
+  o := nip59_unwrap_checked(reader[..], rx[..], cast(string) out[0..<n], ow[..], ob[..], false);
+  #assert o.error == NIP59_OK && o.kind == 14;
+  #assert arc_find(cast(string) ob[0..<o.written], "A key was added.") >= 0;
+}
+#test "a wrap refuses inputs of the wrong size, and a key that isn't one" #steps 600000000 {
+  author: [32] u8; rx: [32] u8; fresh: [ARC_FRESH] u8; work: [ARC_WRAP_WORK] u8; out: [8192] u8; cb: [8] u8;
+  for i: 0..<32 { author[i] = cast(u8) (i + 1); }
+  rx[31] = 7;
+  #assert arc_wrap(author[0..<31], rx[..], 1, arc_text("x", cb[..]), fresh[..], work[..], out[..]) == -1;
+  #assert arc_wrap(author[..], rx[0..<31], 1, arc_text("x", cb[..]), fresh[..], work[..], out[..]) == -1;
+  #assert arc_wrap(author[..], rx[..], 1, arc_text("x", cb[..]), fresh[0..<ARC_FRESH - 1], work[..], out[..]) == -1;
+  #assert arc_wrap(author[..], rx[..], 1, arc_text("x", cb[..]), fresh[..], work[0..<ARC_WRAP_WORK - 1], out[..]) == -1;
+  zero: [32] u8;   // no secret key is zero: NIP-59 refuses it
+  #assert arc_wrap(zero[..], rx[..], 1, arc_text("x", cb[..]), fresh[..], work[..], out[..]) == -1;
+}
+
+// ---------------------------------------------------------------- the API's four
+// The phrase's length, or a negative refusal.
+arc_words :: (entropy: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if entropy.count != ARC_ENTROPY { return -1; }
+  return bip39_encode_ct(entropy, work, out);
+}
+
+// The normal phrase in out and its length, or -1.
+arc_normal :: (typed: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if work.count < ARC_WORK { return -1; }
+  buf: [ARC_PHRASE_MAX] u8;
+  n := 0; words := 0; gap := true;   // gap: a space came last (or nothing yet)
+  for i: 0..<typed.count {
+    c := typed[i];
+    if c == ' ' || c == '\t' || c == '\n' || c == '\r' { gap = true; continue; }
+    if c >= 'A' && c <= 'Z' { c = ARC_LOWER[cast(int) (c - 'A')]; }
+    if gap {
+      if words > 0 { if n >= ARC_PHRASE_MAX { return -1; } buf[n] = ' '; n += 1; }
+      words += 1; gap = false;
+    }
+    if n >= ARC_PHRASE_MAX { return -1; }
+    buf[n] = c; n += 1;
+  }
+  if words != ARC_WORDS || n > out.count { return -1; }
+  // BIP-39 checks each word and the checksum. The entropy lands in work, which it hands back zeroed.
+  if bip39_decode_ct(cast(string) buf[0..<n], work, work[..]) != ARC_ENTROPY { return -1; }
+  for i: 0..<n { out[i] = buf[i]; }
+  return n;
+}
+
+// memory: 1024 << log_n bytes. False when an input is the wrong size.
+arc_hash :: (words: [] u8, salt: [] u8, memory: [] u8, log_n: int, out: [] u8) -> bool #export_c #effects(all) {
+  if out.count != 32 { return false; }
+  state: [1] Nip49Scrypt;
+  if !nip49_scrypt_start(state[..], words, salt, memory, log_n, false) { return false; }
+  // 2N steps in all (fill, then mix), at most ROMIX_MAX_STEP a call.
+  while nip49_scrypt_step(state[..], memory, ROMIX_MAX_STEP, false) && state[0].romix[0].phase != ROMIX_DONE {}
+  return nip49_scrypt_finish(state[..], out, false);
+}
+
+// author: our notice key's secret; reader: their x-only public key; fresh: ARC_FRESH random bytes
+// (the wrap's key, the seal's and wrap's nonces and aux, then the two backdating offsets, each 8
+// bytes big-endian). The wrap's JSON in out and its length, or -1.
+arc_wrap :: (author: [] u8, reader: [] u8, now: int, content: [] u8, fresh: [] u8, work: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if author.count != 32 || reader.count != 32 || fresh.count != ARC_FRESH { return -1; }
+  f: [1] Nip59Fresh;
+  for i: 0..<32 {
+    f[0].wrap_key[i] = fresh[i]; f[0].seal_nonce[i] = fresh[32 + i]; f[0].wrap_nonce[i] = fresh[64 + i];
+    f[0].seal_aux[i] = fresh[96 + i]; f[0].wrap_aux[i] = fresh[128 + i];
+  }
+  for i: 0..<8 { f[0].seal_back = (f[0].seal_back << 8) | cast(u64) fresh[160 + i]; f[0].wrap_back = (f[0].wrap_back << 8) | cast(u64) fresh[168 + i]; }
+  digits := "0123456789abcdef";
+  tags: [74] u8;
+  head := "[[\"p\",\"";
+  for i: 0..<7 { tags[i] = head[i]; }
+  for i: 0..<32 { tags[7 + 2 * i] = digits[cast(int) (reader[i] >> 4)]; tags[8 + 2 * i] = digits[cast(int) (reader[i] & 15)]; }
+  tags[71] = '"'; tags[72] = ']'; tags[73] = ']';
+  w := nip59_wrap_checked(author, reader, now, 14, cast(string) tags[..], cast(string) content, NIP59_WRAP_KIND, f[..], work, out, false);
+  if w.error != NIP59_OK { return -1; }
+  return w.written;
+}

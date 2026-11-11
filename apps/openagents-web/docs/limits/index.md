@@ -12,5 +12,8 @@ Every limit we enforce on logging in. When you reach one, we say which and when 
 | App token refreshes for one login | 60 an hour |
 | New accounts from one network address | 10 an hour |
 | Agent and computer login requests from one network address | 30 an hour |
+| Recovery requests for one account | 3 a week |
+| Recovery code tries for one account | 5 an hour |
+| Recovery code tries from one network address | 10 an hour |
 
 This page is made from the table the API enforces (`coax/web/api/auth.c`).

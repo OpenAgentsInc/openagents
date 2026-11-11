@@ -25,7 +25,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_verify_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_rollout_test.py"
 PYTHONDONTWRITEBYTECODE=1 python3 "$here/deploy_snapshot_test.py"
 pg=/opt/homebrew/opt/postgresql@16
-work="$(mktemp -d)"; trap 'kill ${api_pid:-} 2>/dev/null || true; "$pg/bin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+work="$(mktemp -d)"; trap 'kill ${api_pid:-} ${notice_relay_pid:-} 2>/dev/null || true; "$pg/bin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 cc=/usr/bin/clang
 secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 "$cli_coax" c "$here/anime-director-policy.coax" --library --header "$work/anime-director-policy.generated.h" > "$work/anime-director-policy.generated.c"
@@ -36,9 +36,11 @@ secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 "$cli_coax" c "$here/auth-seal.coax" --run-steps 250000000 --library --header "$work/auth-seal.generated.h" > "$work/auth-seal.generated.c"
 "$cli_coax" c "$here/agent-wire.coax" --run-steps 250000000 --library --header "$work/agent-wire.generated.h" > "$work/agent-wire.generated.c"
 "$cli_coax" c "$here/agent-attest.coax" --run-steps 250000000 --library --header "$work/agent-attest.generated.h" > "$work/agent-attest.generated.c"
+"$cli_coax" c "$here/auth-recover-policy.coax" --library --header "$work/auth-recover-policy.generated.h" > "$work/auth-recover-policy.generated.c"
+"$cli_coax" c "$here/auth-recover-crypto.coax" --run-steps 250000000 --library --header "$work/auth-recover-crypto.generated.h" > "$work/auth-recover-crypto.generated.c"
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -I"$work" -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c "$here"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "$here"/auth.c "$work"/auth-policy.generated.c "$here"/auth-seal-unit.c "$here"/agents.c "$here"/agent-wire-unit.c "$here"/agent-attest-unit.c \
+  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$work"/progress-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c "$here"/worldbuilder.c "$work"/worldbuilder-policy.generated.c "$here"/auth.c "$work"/auth-policy.generated.c "$here"/auth-seal-unit.c "$here"/agents.c "$here"/agent-wire-unit.c "$here"/agent-attest-unit.c "$here"/auth-recover.c "$work"/auth-recover-policy.generated.c "$here"/auth-recover-crypto-unit.c \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
 # The gate's table (auth.c): an unknown route has no rule, and /docs/limits is the API's own limits table.
 [[ "$("$work/api" --rule GET /api/no-such-route || true)" == none && "$("$work/api" --rule POST /api/auth/logout-everywhere)" == L2 ]] || { echo "api --rule: the gate's table is wrong" >&2; exit 1; }
@@ -103,6 +105,10 @@ BUILDER_PORT=$(free_port 51000); taken+="$BUILDER_PORT "; export BUILDER_PORT
 GCS_PORT=$(free_port 55000); taken+="$GCS_PORT "; export GCS_PORT
 # Publishing a project from a drop (rc-publish): a fake relay (test_project_drops.py) and the fake bucket.
 RELAY_PORT=$(free_port 52000); taken+="$RELAY_PORT "; export RELAY_PORT
+# Security notices as NIP-17 messages (auth-recover.c): a fake relay of their own, which keeps
+# each event in $work/notices.jsonl (tests/auth_recover_checks.coax).
+NOTICE_RELAY_PORT=$(free_port 52500); taken+="$NOTICE_RELAY_PORT "
+python3 -I "$here/fake_relay.py" "$NOTICE_RELAY_PORT" "$work/notices.jsonl" 2>"$work/notice-relay.log" & notice_relay_pid=$!
 # The project agent: only the fixture project "agent-proj" is approved; wakes go to test_private_agent.py's fake runner.
 WAKE_PORT=$(free_port 59000); taken+="$WAKE_PORT "; export WAKE_PORT
 # /api/v1/inference (test_inference.py): a fake Vertex on INFER_PORT, a key that may use the route, five requests a day.
@@ -135,8 +141,9 @@ OA_DROPS_GCS="http://127.0.0.1:$GCS_PORT" OA_DROPS_TOKEN=test-gcs OA_DROPS_BUCKE
 OA_INFERENCE_URL="http://127.0.0.1:$INFER_PORT/chat/completions" OA_INFERENCE_TOKEN=test-token OA_INFERENCE_DAILY_REQUESTS=5 \
 OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark \
 OA_WORKOS_CLIENT_ID=client_test \
-OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=owner@example.com,ada@example.com,frozen@example.com,app@example.com OA_EMAIL_BACKOFF_MS=10 \
+OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=owner@example.com,ada@example.com,frozen@example.com,app@example.com,rec@example.com,solo@example.com OA_EMAIL_BACKOFF_MS=10 \
 OA_AUTH_SEAL_KEY="1:$(openssl rand -hex 32),2:$(openssl rand -hex 32)" OA_AUTH_LOOKUP_PEPPER="1:$(openssl rand -hex 32)" \
+OA_AUTH_NOTICE_NSEC="$(openssl rand -hex 32)" OA_AUTH_NOTICE_RELAY="ws://127.0.0.1:$NOTICE_RELAY_PORT" OA_AUTH_NOTICE_SYNC=1 OA_AUTH_SCRYPT_LOG_N=10 \
 OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com OA_DEVICE_TTL_MS=4000 \
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
 OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
@@ -155,7 +162,7 @@ if [[ -x "$cli_coax" ]]; then
   # the vitals fault check and the owner and travel checks. API_TESTS_ONLY runs them when it names them (room_checks.coax).
   # API_BIN: the region check starts a second API on a promoted replica of this database.
   coax_failed=0
-  for f in room_checks checkpoint2_checks verse_packs auth_checks agent_checks; do
+  for f in room_checks checkpoint2_checks verse_packs auth_checks auth_recover_checks agent_checks; do
     [[ -z "${API_TESTS_ONLY:-}" || ",$API_TESTS_ONLY," == *",$f.coax,"* ]] || continue
     (cd "$repo_root" && API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" COAX="$cli_coax" API_BIN="$work/api" RESEND_PORT="$RESEND_PORT" \
       coax/web/tool.sh "coax/web/api/tests/$f.coax") || coax_failed=1

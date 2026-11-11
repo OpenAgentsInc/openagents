@@ -49,6 +49,7 @@
 #include "nostr.h"
 #include "auth-policy.generated.h"
 #include "auth-seal.generated.h"
+#include "auth-internal.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -111,12 +112,31 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/agent/me", false, AP_ACCOUNT, "an agent's own grant (agents only)"),
   S("GET",  "/api/agent/owner", false, 1, "the owner's name (scope profile:read)"),
   S("POST", "/api/agent/spend", false, 2, "a payment against the spend caps (scope wallet:spend)"),
+  // ---- step-up, linking and recovery (auth-recover.c, #13212, #13213)
+  R("GET",  "/api/auth/ways", false, AP_ACCOUNT, "the account's ways in, its recovery and what a step-up offers"),
+  R("GET",  "/api/auth/notices", false, AP_ACCOUNT, "the security notices the account was sent"),
+  R("POST", "/api/auth/proof/challenge", false, AP_RECOVER, "a challenge for a key to sign while logged in"),
+  R("POST", "/api/auth/step-up", false, AP_RECOVER, "a key's signature or the recovery code: this session to L2"),
+  R("POST", "/api/auth/link/nostr", false, AP_HUMAN, "add a Nostr key (L2, or email alone on an account with nothing stronger)"),
+  R("POST", "/api/auth/unlink", false, AP_L2_FRESH, "remove a way in; never the last; its sessions end"),
+  R("GET",  "/api/auth/recovery", false, AP_RECOVER, "the newest recovery request: pending, ready, cancelled or done"),
+  R("POST", "/api/auth/recovery/start", false, AP_RECOVER, "ask for recovery: 72 hours, every channel told"),
+  R("POST", "/api/auth/recovery/cancel", false, AP_PUBLIC, "a notice's cancel link, or any session or key of the account"),
+  R("POST", "/api/auth/recovery/finish", false, AP_RECOVER, "after 72 hours: a new key replaces the lost ones"),
+  R("POST", "/api/auth/recovery-code", false, AP_L2_FRESH, "a new recovery code, shown once"),
+  R("POST", "/api/auth/recovery-code/login", false, AP_PUBLIC, "log in with an email or key and the recovery code"),
+  // ---- reserved: these routes are built in other issues and must keep L2-fresh (#13212)
+  R("POST", "/api/auth/delete", false, AP_L2_FRESH, "delete the account (#13214)"),
+  R("POST", "/api/wallet/backup/export", false, AP_L2_FRESH, "export the wallet's encrypted backup (#13217)"),
+  R("POST", "/api/wallet/limit", false, AP_L2_FRESH, "raise a spend limit (#13217)"),
+  R("POST", "/api/lnaddr/destination", false, AP_L2_FRESH, "change a Lightning Address's destination (#13209)"),
   // ---- the old groundwork, until #13207 deletes it (each checks its own caller)
   R("*",    "/api/auth/v2/", true, AP_PUBLIC, "device login and links (access.c): NIP-98 or session, checked there"),
   R("*",    "/api/auth/", true, AP_PUBLIC, "the phone sign-in and words account (private.c), until deleted"),
   // ---- admins (admin.c, email.c, makers.c' and upgrades' admin pages)
   R("GET",  "/api/admin/login", false, AP_PUBLIC, "an admin's NIP-98 signature logs in"),
   R("*",    "/api/admin/logout", false, AP_PUBLIC, "ends the session"),
+  R("POST", "/api/admin/", true, AP_ADMIN_FRESH, "an admin's change: L2 within five minutes"),
   R("*",    "/api/admin/", true, AP_ADMIN, "site admins (admins.conf and database admins)"),
   // ---- /chat for admins, its runner, and the rooms' chat under the same root (chat.c, room.c)
   R("*",    "/api/chat/runner/", true, AP_PUBLIC, "the chat runner's key, checked there"),
@@ -153,8 +173,8 @@ static const auth_rule RULES[] = {
 #undef R
 
 static const char *rule_name(int rule) {
-  static const char *names[] = {"public", "guest", "account", "human", "L2", "L2-fresh", "scope", "admin"};
-  return rule >= 0 && rule <= 7 ? names[rule] : "?";
+  static const char *names[] = {"public", "guest", "account", "human", "L2", "L2-fresh", "scope", "admin", "recover", "admin-change"};
+  return rule >= 0 && rule <= 9 ? names[rule] : "?";
 }
 
 static const auth_rule *rule_for(const char *method, const char *path) {
@@ -182,7 +202,9 @@ const char *auth_rule_of(const char *method, const char *path) {
 // this table (api --limits), so the page and the server can't drift. The words name the limit;
 // the answer adds when it lifts.
 typedef struct { const char *name, *what, *per, *words; int max; long long window_ms; } auth_limit;
-enum { L_EMAIL_HOUR, L_EMAIL_DAY, L_EMAIL_IP, L_CODE_TRIES, L_KEY_LOGIN, L_REFRESH, L_NEW_ACCOUNT, L_AGENT_ASK, L_COUNT };
+enum { L_EMAIL_HOUR, L_EMAIL_DAY, L_EMAIL_IP, L_CODE_TRIES, L_KEY_LOGIN, L_REFRESH, L_NEW_ACCOUNT, L_AGENT_ASK, L_RECOVERY, L_RECOVERY_CODE, L_RECOVERY_CODE_IP, L_COUNT };
+_Static_assert(L_KEY_LOGIN == AUTH_LIMIT_KEY_LOGIN && L_RECOVERY == AUTH_LIMIT_RECOVERY && L_RECOVERY_CODE == AUTH_LIMIT_RECOVERY_CODE
+               && L_RECOVERY_CODE_IP == AUTH_LIMIT_RECOVERY_CODE_IP, "auth-internal.h's limits");
 static const auth_limit LIMITS[L_COUNT] = {
   [L_EMAIL_HOUR]  = {"email_hour", "Email codes sent to one address", "an hour", "Too many codes for this address.", 5, 3600000LL},
   [L_EMAIL_DAY]   = {"email_day", "Email codes sent to one address", "a day", "Too many codes for this address today.", 20, 86400000LL},
@@ -192,6 +214,9 @@ static const auth_limit LIMITS[L_COUNT] = {
   [L_REFRESH]     = {"refresh", "App token refreshes for one login", "an hour", "Too many refreshes.", 60, 3600000LL},
   [L_NEW_ACCOUNT] = {"new_account", "New accounts from one network address", "an hour", "Too many new accounts from your network.", 10, 3600000LL},
   [L_AGENT_ASK]   = {"agent_ask", "Agent and computer login requests from one network address", "an hour", "Too many requests from your network.", 30, 3600000LL},
+  [L_RECOVERY]    = {"recovery", "Recovery requests for one account", "a week", "Too many recovery requests for this account.", 3, 604800000LL},
+  [L_RECOVERY_CODE] = {"recovery_code", "Recovery code tries for one account", "an hour", "Too many recovery code tries for this account.", 5, 3600000LL},
+  [L_RECOVERY_CODE_IP] = {"recovery_code_ip", "Recovery code tries from one network address", "an hour", "Too many recovery code tries from your network.", 10, 3600000LL},
 };
 
 void auth_print_limits(FILE *out) {   // api --limits: the Markdown /docs/limits is
@@ -509,7 +534,7 @@ static void cookie_header(char *out, size_t cap, const char *name, const char *v
 static bool from_session(PGconn *db, const char *sha, bool web, const char *token_for_rotation, auth_principal *p) {
   const char *v[1] = {sha};
   PGresult *r = PQexecParams(db, "SELECT id, account, kind, verse_account, level, via_kind, client, created_ms, last_seen_ms, rotated_ms, "
-                                 "coalesce(l2_ms, 0), now_ms, current, good_epoch, frozen, team, coalesce(pubkey, '') FROM auth.session_look($1)",
+                                 "coalesce(l2_ms, 0), now_ms, current, good_epoch, frozen, team, coalesce(pubkey, ''), strong FROM auth.session_look($1)",
                              1, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); return false; }
   long long now = atoll(PQgetvalue(r, 0, 11));
@@ -536,6 +561,11 @@ static bool from_session(PGconn *db, const char *sha, bool web, const char *toke
   p->team = !strcmp(PQgetvalue(r, 0, 15), "t");
   snprintf(p->pubkey, sizeof p->pubkey, "%s", PQgetvalue(r, 0, 16));
   snprintf(p->via, sizeof p->via, "%s", PQgetvalue(r, 0, 5));
+  p->strong = atoi(PQgetvalue(r, 0, 17));
+  // Email alone on an account with a stronger way in (#13212): it reads and plays; it never acts as
+  // the account's key (private projects, admin pages, credit) until it steps up or recovery ends.
+  p->limited = ap_limited(p->level, p->strong);
+  if (p->limited) p->pubkey[0] = 0;
   p->admin = p->pubkey[0] && admin_is(p->pubkey);
   p->credential = web ? AUTH_COOKIE : AUTH_BEARER;
   bool is_current = !strcmp(PQgetvalue(r, 0, 12), "t");
@@ -632,7 +662,8 @@ static bool resolve(const request *q, PGconn *db, auth_principal *p, int *status
   // The old key-made sessions, until #13207 deletes them: the admin page's oa_admin and the phone
   // sign-in's oa_session. Both were made by a key's signature, so both are L2; neither is an account.
   char legacy[65] = "", old[80];
-  if (!admin_cookie_who(q, db, legacy)) {
+  long long legacy_age = -1;
+  if (!admin_cookie_who(q, db, legacy, &legacy_age)) {
     legacy[0] = 0;
     cookie(q, "oa_session", old, sizeof old);
     if (strlen(old) == 64) {
@@ -643,7 +674,7 @@ static bool resolve(const request *q, PGconn *db, auth_principal *p, int *status
     }
   }
   if (strlen(legacy) == 64) {
-    p->kind = AP_PERSON; p->credential = AUTH_COOKIE; p->level = 2; p->l2_age_ms = -1;
+    p->kind = AP_PERSON; p->credential = AUTH_COOKIE; p->level = 2; p->l2_age_ms = legacy_age;   // the sign-in's signature; -1 the phone's
     memcpy(p->pubkey, legacy, 65);
     p->admin = admin_is(legacy);
     snprintf(p->verse_account, sizeof p->verse_account, "n-%s", legacy);
@@ -670,8 +701,10 @@ void auth_init(void) {
          && ap_admit(AP_ACCOUNT, AP_NOBODY, 0, -1, false, false) == AP_LOG_IN && ap_admit(AP_HUMAN, AP_AGENT, 2, 0, false, false) == AP_HUMAN_ONLY
          && ap_admit(AP_L2, AP_PERSON, 1, -1, false, false) == AP_STEP_UP && ap_admit(AP_GUEST, AP_KIND_GUEST, 0, -1, false, false) == AP_OK
          && ap_credentials(true, false, true) == AP_TWO_CREDENTIALS && ap_status(AP_LOG_IN) == 401
-         && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init();
-  if (!ok) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
+         && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
+         && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
+         && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401;
+  if (!ok || !auth_recover_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
 // Start of each request (api.c): nothing carries over from the last.
@@ -716,11 +749,18 @@ bool auth_gate(const request *q) {
   int verdict;
   if (!p) verdict = current.refused == 400 ? AP_TWO_CREDENTIALS : AP_LOG_IN;
   else verdict = (int)ap_admit(rule->rule, p->kind, p->level, p->l2_age_ms, p->admin, p->kind == AP_AGENT && agents_scoped(p, rule->scope));
+  bool write = strcmp(q->method, "GET") && strcmp(q->method, "HEAD");
+  if (verdict == AP_OK && p) verdict = (int)ap_limited_admit(rule->rule, write, p->limited);
   if (verdict == AP_OK) { if (p->kind == AP_AGENT) agents_used(q, api_db(), p); return false; }
   api_log("auth: refused %s %s: rule %s, %s", q->method, q->path, rule_name(rule->rule),
           !p ? "a refused credential" : p->kind == AP_PERSON ? "person" : p->kind == AP_AGENT ? "agent" : p->kind == AP_SERVICE ? "service" : p->kind == AP_KIND_GUEST ? "guest" : "nobody");
   coax_string w = ap_words(verdict);
   char words[200]; snprintf(words, sizeof words, "%.*s", (int)w.count, w.data);
+  // A step-up the page can act on: the level wanted and the account's methods (auth-recover.c).
+  if ((verdict == AP_STEP_UP || verdict == AP_LIMITED) && p && p->kind == AP_PERSON) {
+    auth_step_up_refusal(q, api_db(), p, (int)ap_need(rule->rule), (int)ap_status(verdict), words);
+    return true;
+  }
   refuse(q, (int)ap_status(verdict), words);
   return true;
 }
@@ -738,8 +778,8 @@ static void device_name(const request *q, char *out, size_t cap) {
 
 // A logged-in answer: a session (cookie for the web, a token pair for an app), the guest's player
 // attached, the audit row. made: the account is new. Answers the request.
-static void logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
-                      bool app, bool made, const char *action) {
+void auth_logged_in(const request *q, PGconn *db, const char *acct, const char *via_kind, const char *via_id, const char *level,
+                    bool app, bool made, const char *action, const char *extra_json, const char *extra_lines) {
   char tok[160], dig[65], name[96], country[8] = "";
   device_name(q, name, sizeof name);
   api_header(q, "X-Client-Region", country, sizeof country);
@@ -769,15 +809,18 @@ static void logged_in(const request *q, PGconn *db, const char *acct, const char
   }
   char detail[200]; snprintf(detail, sizeof detail, "{\"via\":\"%s\",\"client\":\"%s\",\"new\":%s}", via_kind, app ? "app" : "web", made ? "true" : "false");
   audit(db, acct, sid, action, "ok", detail);
+  if (!strcmp(level, "L2")) auth_recover_strong_login(db, acct, sid);   // a pending recovery ends (#13213)
+  if (!extra_json) extra_json = "";
+  if (!extra_lines) extra_lines = "";
   char json[1600], lines[600], headers[900];
   if (app) {
     char rt[160], rtd[65], at[160], atd[65], fam[33];
     if (!new_token("oa_rt_", rt, sizeof rt, rtd) || !new_token("oa_at_", at, sizeof at, atd) || !random_hex(fam, 16)) { refuse(q, 503, "No randomness here. Try again."); return; }
     const char *w[4] = {sid, fam, rtd, atd};
     PQclear(PQexecParams(db, "SELECT auth.app_pair($1, $2, $3, $4)", 4, NULL, w, NULL, NULL, 0));
-    snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"access_token\":\"%s\",\"refresh_token\":\"%s\",\"expires_in\":3600,\"player\":%s}",
-             acct, made ? "true" : "false", at, rt, pjson);
-    snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\naccess_token %s\nrefresh_token %s\nexpires_in 3600\n", acct, made, at, rt);
+    snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"access_token\":\"%s\",\"refresh_token\":\"%s\",\"expires_in\":3600,\"player\":%s%s}",
+             acct, made ? "true" : "false", at, rt, pjson, extra_json);
+    snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\naccess_token %s\nrefresh_token %s\nexpires_in 3600\n%s", acct, made, at, rt, extra_lines);
     answer(q, 200, NULL, json, lines);
     return;
   }
@@ -785,8 +828,8 @@ static void logged_in(const request *q, PGconn *db, const char *acct, const char
   snprintf(headers, sizeof headers, "Set-Cookie: %s=%s; Path=/; Max-Age=%d; HttpOnly; Secure; SameSite=Lax\r\n"
            "Set-Cookie: %s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n%s",
            SESSION_COOKIE, tok, SESSION_MAX_AGE, PENDING_COOKIE, team ? TEAM_COOKIE : "");
-  snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"player\":%s}", acct, made ? "true" : "false", pjson);
-  snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\n", acct, made);
+  snprintf(json, sizeof json, "{\"state\":\"logged-in\",\"account\":\"%s\",\"new\":%s,\"player\":%s%s}", acct, made ? "true" : "false", pjson, extra_json);
+  snprintf(lines, sizeof lines, "state logged-in\naccount %s\nnew %d\n%s", acct, made, extra_lines);
   answer(q, 200, headers, json, lines);
 }
 
@@ -828,6 +871,7 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   // Linking needs a logged-in account; logging in needs none.
   const auth_principal *p = auth_principal_of(q);
   if (link && (!p || !p->account[0])) { refuse(q, 401, "Log in first."); return; }
+  if (link && !auth_recover_may_link(q, db, p)) return;
   // Limits: per address (hour and day) and per network address; a new address is a new account.
   long long until = 0; char ipk[65]; visitor_key(q, ipk);
   if (!limit_hit(db, L_EMAIL_IP, ipk, &until)) { refuse_limit(q, L_EMAIL_IP, until); return; }
@@ -946,10 +990,11 @@ static void email_finish(const request *q, PGconn *db, PGresult *r) {
   memset(email, 0, sizeof email);
   if (!strcmp(purpose, "link")) {
     audit(db, acct, NULL, "email.link", "ok", "{}");
+    auth_recover_linked_email(db, acct, NULL);
     answer(q, 200, "Set-Cookie: " PENDING_COOKIE "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n", "{\"state\":\"linked\"}", "state linked\n");
     return;
   }
-  logged_in(q, db, acct, "email", email_id, "L1", !strcmp(client, "app"), made, "login.email");
+  auth_logged_in(q, db, acct, "email", email_id, "L1", !strcmp(client, "app"), made, "login.email", NULL, NULL);
 }
 
 static void email_verify(const request *q, PGconn *db, const char *body) {
@@ -1046,7 +1091,7 @@ static void key_login(const request *q, PGconn *db, const char *pk, const char *
   if (!known && !limit_hit(db, L_NEW_ACCOUNT, ipk, &until)) { refuse_limit(q, L_NEW_ACCOUNT, until); return; }
   char acct[40], kid[24]; bool made = false;
   if (!key_account(db, pk, label, acct, kid, &made)) { refuse(q, 500, "That didn't work. Try again."); return; }
-  logged_in(q, db, acct, "nostr", kid, "L2", app, made, action);
+  auth_logged_in(q, db, acct, "nostr", kid, "L2", app, made, action, NULL, NULL);
 }
 
 static void nostr_login(const request *q, PGconn *db, const char *body) {
@@ -1324,6 +1369,7 @@ bool auth_login_key_redirect(const request *q, PGconn *db, const char *pk, const
 bool auth_api_route(const request *q) {
   if (strncmp(q->path, "/api/auth/", 10)) return false;
   const char *op = q->path + 10;
+  if (auth_recover_route(q, api_db(), op)) return true;
   bool get = !strcmp(q->method, "GET");
   static const char *const posts[] = {"email/start", "email/verify", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve",
                                       "phone/poll", "refresh", "logout", "logout-everywhere", "freeze", NULL};
@@ -1358,3 +1404,28 @@ bool auth_api_route(const request *q) {
   free(body);
   return true;
 }
+
+// ---------------------------------------------------------------- for auth-recover.c (auth-internal.h)
+bool auth_random(unsigned char *b, size_t n) { return random_bytes(b, n); }
+bool auth_random_hex(char *out, size_t bytes) { return random_hex(out, bytes); }
+void auth_hex(const unsigned char *b, size_t n, char *out) { hex_of(b, n, out); }
+bool auth_unhex(const char *s, unsigned char *out, size_t n) { return unhex(s, out, n); }
+void auth_sha_hex(const char *s, char out[65]) { sha_hex(s, out); }
+const char *auth_json_str(const char *body, size_t n, const char *key, char *out, size_t cap) { return json_str(body, n, key, out, cap); }
+void auth_json_esc(const char *s, char *out, size_t cap) { json_esc(s, out, cap); }
+bool auth_limit_hit(const request *q, PGconn *db, int which, const char *key) {
+  long long until = 0;
+  if (limit_hit(db, which, key, &until)) return true;
+  refuse_limit(q, which, until);
+  return false;
+}
+void auth_visitor_key(const request *q, char out[65]) { visitor_key(q, out); }
+bool auth_lookups(const char *email, char *all, size_t cap, char newest[80]) { return sealing_ready() && lookups(email, all, cap, newest); }
+bool auth_unseal(const char *ad, const char *sealed, char *out, size_t cap) { return unseal(ad, sealed, out, cap); }
+bool auth_normal_email(const char *raw, char *out, size_t cap) {
+  int64_t n = as_email_normalize((coax_v_u8){(uint8_t *)raw, (int64_t)strlen(raw)}, (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  if (n < 0) return false;
+  out[n] = 0;
+  return true;
+}
+void auth_mask_email(const char *email, char *out, size_t cap) { mask_email(email, out, cap); }

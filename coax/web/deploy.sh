@@ -166,7 +166,7 @@ def unlisted(f):
     if os.path.exists(os.path.join(app, os.path.dirname(f), "UNLISTED")): return True   # an unlisted page: shipped, never listed
     j = os.path.join(app, os.path.dirname(f), "project.json")
     return f.startswith("projects" + os.sep) and os.path.exists(j) and json.load(open(j, encoding="utf-8")).get("visibility") in ("unlisted", "private")
-public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "og" + os.sep, "projects" + os.sep + "private")) and not unlisted(f))
+public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "settings", "og" + os.sep, "projects" + os.sep + "private")) and not unlisted(f))
 def url(f): return "https://openagents.com/" + os.path.dirname(f).replace(os.sep, "/")
 with open(os.path.join(site, "llms-full.txt"), "w", encoding="utf-8") as out:
     out.write(open(os.path.join(app, "llms.txt"), encoding="utf-8").read())

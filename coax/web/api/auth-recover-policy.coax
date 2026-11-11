@@ -1,0 +1,185 @@
+// Linking, unlinking and the delayed recovery (docs/auth/identity-and-methods.md#linking-and-unlinking
+// and #recovery, decision D10; #13213). auth-recover.c gathers the facts (the session's level, how
+// many strong ways in the account has, who owns an authenticator, a recovery request's times) and
+// moves them in; this file decides; auth-recover.c moves the answer out and never decides alone.
+//
+//   ar_link         may this session add this authenticator: yes, step up first, it's another
+//                   account's ("log in to it to merge"), or it's already yours
+//   ar_unlink       may it go: never the last way in
+//   ar_state        a recovery request's state now: pending, ready, cancelled or done. Ready is
+//                   72 hours after the ask and never sooner, whatever the row says
+//   ar_start        may this session ask for recovery
+//   ar_finish       may this session replace the lost ways in now
+//   ar_cancels      does a login at this level cancel a pending recovery (a strong one does)
+//
+// There is no staff override: no admin rule, no shorter wait, no input here that skips the 72 hours.
+#authority;
+
+AR_HOUR_MS :: 3600000;
+AR_WAIT_MS :: 72 * AR_HOUR_MS;   // D10. The table also refuses a ready_at sooner than this (0148).
+
+// A recovery request's state.
+AR_NONE :: 0; AR_PENDING :: 1; AR_READY :: 2; AR_CANCELLED :: 3; AR_DONE :: 4;
+// Who holds an authenticator someone wants to link.
+AR_OWNER_NONE :: 0; AR_OWNER_THIS :: 1; AR_OWNER_OTHER :: 2;
+// Verdicts.
+AR_OK :: 0; AR_STEP_UP :: 1; AR_OTHER :: 2; AR_ALREADY :: 3; AR_LAST_WAY :: 4; AR_NOT_NEEDED :: 5;
+AR_NOTHING :: 6; AR_WAITING :: 7; AR_NOT_EMAIL :: 8; AR_NO_REQUEST :: 9; AR_ASKED :: 10;
+
+#test "the wait is 72 hours" {
+  #assert AR_WAIT_MS == 259200000;
+  #assert ar_ready_at(0) == AR_WAIT_MS && ar_ready_at(1000) == 1000 + AR_WAIT_MS;
+}
+#test "a request is pending for 72 hours, then ready" {
+  t := 1000 * AR_HOUR_MS;
+  #assert ar_state(t, t, t + AR_WAIT_MS, 0, 0) == AR_PENDING;
+  #assert ar_state(t + AR_WAIT_MS - 1, t, t + AR_WAIT_MS, 0, 0) == AR_PENDING;
+  #assert ar_state(t + AR_WAIT_MS, t, t + AR_WAIT_MS, 0, 0) == AR_READY;
+  #assert ar_state(t + 10 * AR_WAIT_MS, t, t + AR_WAIT_MS, 0, 0) == AR_READY;
+}
+#test "a row that says sooner than 72 hours still waits 72 hours" {
+  t := 1000 * AR_HOUR_MS;
+  #assert ar_state(t + 1, t, t, 0, 0) == AR_PENDING;
+  #assert ar_state(t + AR_WAIT_MS - 1, t, t + 1, 0, 0) == AR_PENDING;
+  #assert ar_state(t + AR_WAIT_MS, t, t + 1, 0, 0) == AR_READY;
+  #assert ar_state(t + AR_WAIT_MS, t, t + AR_WAIT_MS + 5, 0, 0) == AR_PENDING;
+  #assert ar_state(t + AR_WAIT_MS + 5, t, t + AR_WAIT_MS + 5, 0, 0) == AR_READY;
+}
+#test "cancelled and done are final; no request is none" {
+  t := 1000 * AR_HOUR_MS;
+  #assert ar_state(t, 0, 0, 0, 0) == AR_NONE;
+  #assert ar_state(t, -5, 0, 0, 0) == AR_NONE;
+  #assert ar_state(AR_WAIT_MS + 1, 1, 0, 0, 0) == AR_READY && ar_state(AR_WAIT_MS, 1, 0, 0, 0) == AR_PENDING;
+  #assert ar_state(t, t, t + AR_WAIT_MS, 1, 0) == AR_CANCELLED && ar_state(t + AR_WAIT_MS, t, t + AR_WAIT_MS, 0, 1) == AR_DONE;
+  #assert ar_state(t, t, t + AR_WAIT_MS, t + 1, 0) == AR_CANCELLED;
+  #assert ar_state(t + 2 * AR_WAIT_MS, t, t + AR_WAIT_MS, t + 1, 0) == AR_CANCELLED;
+  #assert ar_state(t + 2 * AR_WAIT_MS, t, t + AR_WAIT_MS, 0, t + AR_WAIT_MS) == AR_DONE;
+  #assert ar_state(t + 2 * AR_WAIT_MS, t, t + AR_WAIT_MS, t + 3, t + AR_WAIT_MS) == AR_CANCELLED;
+}
+#test "asking for recovery: only an email session on an account with a stronger way in, once at a time" {
+  #assert ar_start(1, 1, AR_NONE) == AR_OK;
+  #assert ar_start(1, 3, AR_CANCELLED) == AR_OK && ar_start(1, 3, AR_DONE) == AR_OK;
+  #assert ar_start(2, 1, AR_NONE) == AR_NOT_NEEDED;
+  #assert ar_start(1, 0, AR_NONE) == AR_NOTHING;
+  #assert ar_start(1, 2, AR_PENDING) == AR_ASKED && ar_start(1, 2, AR_READY) == AR_ASKED;
+  #assert ar_start(0, 2, AR_NONE) == AR_NOT_EMAIL;
+}
+#test "finishing: an email session, once the request is ready" {
+  #assert ar_finish(1, true, AR_READY) == AR_OK;
+  #assert ar_finish(1, true, AR_PENDING) == AR_WAITING;
+  #assert ar_finish(1, true, AR_NONE) == AR_NO_REQUEST && ar_finish(1, true, AR_CANCELLED) == AR_NO_REQUEST && ar_finish(1, true, AR_DONE) == AR_NO_REQUEST;
+  #assert ar_finish(1, false, AR_READY) == AR_NOT_EMAIL;
+  #assert ar_finish(2, true, AR_READY) == AR_NOT_NEEDED;
+  #assert ar_finish(0, true, AR_READY) == AR_NOT_EMAIL;
+  #assert ar_finish(1, false, AR_PENDING) == AR_WAITING;
+}
+#test "linking: L2, or email alone on an account with nothing stronger; never another account's" {
+  #assert ar_link(2, 1, AR_OWNER_NONE) == AR_OK;
+  #assert ar_link(2, 0, AR_OWNER_NONE) == AR_OK;
+  #assert ar_link(1, 0, AR_OWNER_NONE) == AR_OK;
+  #assert ar_link(1, 1, AR_OWNER_NONE) == AR_STEP_UP;
+  #assert ar_link(1, 1, AR_OWNER_OTHER) == AR_STEP_UP;
+  #assert ar_link(2, 1, AR_OWNER_OTHER) == AR_OTHER && ar_link(1, 0, AR_OWNER_OTHER) == AR_OTHER;
+  #assert ar_link(2, 1, AR_OWNER_THIS) == AR_ALREADY && ar_link(1, 0, AR_OWNER_THIS) == AR_ALREADY;
+  #assert ar_link(0, 0, AR_OWNER_NONE) == AR_STEP_UP;
+}
+#test "unlinking never leaves an account with no way in" {
+  #assert ar_unlink(1) == AR_OK && ar_unlink(4) == AR_OK;
+  #assert ar_unlink(0) == AR_LAST_WAY && ar_unlink(-1) == AR_LAST_WAY;
+}
+#test "a strong login cancels a pending recovery; an email login doesn't" {
+  #assert ar_cancels(2) && ar_cancels(3);
+  #assert !ar_cancels(1) && !ar_cancels(0);
+}
+#test "each verdict has its status and words" {
+  #assert ar_status(AR_OK) == 200;
+  #assert ar_status(AR_STEP_UP) == 401;
+  #assert ar_status(AR_OTHER) == 409 && ar_status(AR_ALREADY) == 409 && ar_status(AR_ASKED) == 409;
+  #assert ar_status(AR_LAST_WAY) == 409 && ar_status(AR_WAITING) == 409;
+  #assert ar_status(AR_NOT_NEEDED) == 400 && ar_status(AR_NOTHING) == 400 && ar_status(AR_NOT_EMAIL) == 400;
+  #assert ar_status(AR_NO_REQUEST) == 404 && ar_status(99) == 500;
+  #assert ar_words(AR_STEP_UP) == "Log in again with your key or passkey to do this.";
+  #assert ar_words(AR_OTHER) == "This already has an account. Log in to it to merge.";
+  #assert ar_words(AR_ALREADY) == "This is already on your account.";
+  #assert ar_words(AR_LAST_WAY) == "Add another way to log in first.";
+  #assert ar_words(AR_NOT_NEEDED) == "You're logged in with a key, so you don't need recovery.";
+  #assert ar_words(AR_NOTHING) == "This account has nothing stronger than email to recover. Add a key in Security.";
+  #assert ar_words(AR_WAITING) == "Recovery isn't ready yet. It waits 72 hours.";
+  #assert ar_words(AR_NOT_EMAIL) == "Log in with your email to finish recovery.";
+  #assert ar_words(AR_NO_REQUEST) == "There is no recovery waiting. Ask for one first.";
+  #assert ar_words(AR_ASKED) == "Recovery was already asked for.";
+  #assert ar_words(AR_OK) == "" && ar_words(99) == "";
+}
+
+ar_ready_at :: (asked_ms: int) -> int #export_c #effects(all) {
+  return asked_ms + AR_WAIT_MS;
+}
+
+// Times in milliseconds since 1970; 0 for "not yet" (cancelled, done) and for no request.
+ar_state :: (now_ms: int, asked_ms: int, ready_ms: int, cancelled_ms: int, done_ms: int) -> int #export_c #effects(all) {
+  if asked_ms <= 0 { return AR_NONE; }
+  if cancelled_ms > 0 { return AR_CANCELLED; }
+  if done_ms > 0 { return AR_DONE; }
+  if now_ms < ar_ready_at(asked_ms) || now_ms < ready_ms { return AR_PENDING; }
+  return AR_READY;
+}
+
+// level: the session's (1 email, 2 a key or recovery code); strong: the account's keys, passkeys,
+// devices and unspent recovery codes; state: its newest request's.
+ar_start :: (level: int, strong: int, state: int) -> int #export_c #effects(all) {
+  if level >= 2 { return AR_NOT_NEEDED; }
+  if level != 1 { return AR_NOT_EMAIL; }
+  if strong <= 0 { return AR_NOTHING; }
+  if state == AR_PENDING || state == AR_READY { return AR_ASKED; }
+  return AR_OK;
+}
+
+// via_email: the session was made by an email code or link.
+ar_finish :: (level: int, via_email: bool, state: int) -> int #export_c #effects(all) {
+  if state == AR_PENDING { return AR_WAITING; }
+  if state != AR_READY { return AR_NO_REQUEST; }
+  if level >= 2 { return AR_NOT_NEEDED; }
+  if level != 1 || !via_email { return AR_NOT_EMAIL; }
+  return AR_OK;
+}
+
+// A limited session (email alone, and a stronger way in exists) steps up before it learns anything
+// about the authenticator.
+ar_link :: (level: int, strong: int, owner: int) -> int #export_c #effects(all) {
+  if level < 2 && (strong > 0 || level < 1) { return AR_STEP_UP; }
+  if owner == AR_OWNER_OTHER { return AR_OTHER; }
+  if owner == AR_OWNER_THIS { return AR_ALREADY; }
+  return AR_OK;
+}
+
+// ways_after: the account's ways in (emails, keys, passkeys, unspent recovery codes) once it's gone.
+ar_unlink :: (ways_after: int) -> int #export_c #effects(all) {
+  if ways_after >= 1 { return AR_OK; }
+  return AR_LAST_WAY;
+}
+
+ar_cancels :: (level: int) -> bool #export_c #effects(all) {
+  return level >= 2;
+}
+
+ar_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == AR_OK { return 200; }
+  if verdict == AR_STEP_UP { return 401; }
+  if verdict == AR_OTHER || verdict == AR_ALREADY || verdict == AR_ASKED || verdict == AR_LAST_WAY || verdict == AR_WAITING { return 409; }
+  if verdict == AR_NOT_NEEDED || verdict == AR_NOTHING || verdict == AR_NOT_EMAIL { return 400; }
+  if verdict == AR_NO_REQUEST { return 404; }
+  return 500;
+}
+ar_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == AR_STEP_UP { return "Log in again with your key or passkey to do this."; }
+  if verdict == AR_OTHER { return "This already has an account. Log in to it to merge."; }
+  if verdict == AR_ALREADY { return "This is already on your account."; }
+  if verdict == AR_LAST_WAY { return "Add another way to log in first."; }
+  if verdict == AR_NOT_NEEDED { return "You're logged in with a key, so you don't need recovery."; }
+  if verdict == AR_NOTHING { return "This account has nothing stronger than email to recover. Add a key in Security."; }
+  if verdict == AR_WAITING { return "Recovery isn't ready yet. It waits 72 hours."; }
+  if verdict == AR_NOT_EMAIL { return "Log in with your email to finish recovery."; }
+  if verdict == AR_NO_REQUEST { return "There is no recovery waiting. Ask for one first."; }
+  if verdict == AR_ASKED { return "Recovery was already asked for."; }
+  return "";
+}

@@ -116,8 +116,39 @@ auth_resolve(request) -> principal | refusal
 
 **Admins** are accounts with the `admin` role, granted only by a root
 admin. Root admins stay public keys in `admins.conf`, changed only by a
-deploy, so no database write can create a root admin. Admin routes need
-`L2-fresh` and a human principal.
+deploy, so no database write can create a root admin. Admin reads need
+`L2`; an admin change (any `POST /api/admin/...`) needs `L2-fresh` and a
+human principal. An `oa_admin` session from `admin.sh`'s signed link
+counts as a signature made when it signed in.
+
+### Step-up
+
+A route that needs more than the request has answers `401` with a typed
+refusal (`coax/web/api/auth-recover.c`, rules in `auth-policy.coax`):
+
+```json
+{"error": "Log in again with your key or passkey to do this.",
+ "step_up": "L2-fresh", "methods": ["nostr", "recovery_code"],
+ "limited": true, "level": "L1", "recovery": {"state": "none", ...}}
+```
+
+`step_up` is `L2` or `L2-fresh`, and `methods` lists what the account can
+confirm with. A **limited** session is an email login (L1) on an account
+with a strong way in (a key, passkey, live device or unspent recovery
+code). It reads and plays, but every write except recovery and logging
+out is refused, and it carries no key, so it owns nothing a key owns.
+
+To step up, a logged-in page asks `POST /api/auth/proof/challenge
+{purpose}` (`stepup`, `link` or `finish`), has the key sign a NIP-98 event
+over the returned URL (`POST`, no body), and posts `{"proof": base64}` to
+that URL. Each challenge works once, for its purpose and account, within
+5 minutes. A recovery code steps up too: `POST /api/auth/step-up {words}`
+spends it and shows a new one.
+
+The re-auth prompt is [/settings/security](https://openagents.com/settings/security)'s
+CONFIRM IT'S YOU. Any page that gets a step-up refusal sends people to
+`/settings/security?step=1&next=/its/path`, and they come back after they
+sign (the admin pages do).
 
 **Our own testing.** Team accounts carry a `team` flag (from `team.conf`
 and admin status). Analytics read the flag, so every session of a team

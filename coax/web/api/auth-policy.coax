@@ -4,8 +4,12 @@
 //
 //   ap_credentials   one credential per request: Authorization: Nostr, Authorization: Bearer and
 //                    the session cookie are each a credential, and two at once is refused
-//   ap_admit         a route's rule (public, guest, account, human, L2, L2-fresh, scope, admin)
-//                    against the principal: admitted, or why not
+//   ap_admit         a route's rule (public, guest, account, human, L2, L2-fresh, scope, admin,
+//                    recover, admin-change) against the principal: admitted, or why not
+//   ap_limited       an email (L1) session on an account that also has a key, passkey, device or
+//                    recovery code: it may read and play, never change the account (#13212)
+//   ap_limited_admit what a limited session may do under a route's rule
+//   ap_need          the level a step-up asks for under a rule: L2 or L2-fresh
 //   ap_session       a session's clocks: good, due for a new token, or ended
 //   ap_limit_ok      a rate limit's window: allowed while the count is within the limit
 //   ap_code_ok       an email code's shape: exactly six digits
@@ -13,11 +17,16 @@
 
 // Route rules (auth.c's table names one for every route).
 AP_PUBLIC :: 0; AP_GUEST :: 1; AP_ACCOUNT :: 2; AP_HUMAN :: 3; AP_L2 :: 4; AP_L2_FRESH :: 5; AP_SCOPE :: 6; AP_ADMIN :: 7;
+// recover: a person's own account at any level, a limited session too (step-up, recovery, notices).
+// admin-change: an admin's write, at L2-fresh (reads and /chat stay at L2).
+AP_RECOVER :: 8; AP_ADMIN_FRESH :: 9;
 // Principal kinds: nobody, a guest's player key, a person, an agent, a service.
 AP_NOBODY :: 0; AP_KIND_GUEST :: 1; AP_PERSON :: 2; AP_AGENT :: 3; AP_SERVICE :: 4;
 // Verdicts.
 AP_OK :: 0; AP_LOG_IN :: 1; AP_HUMAN_ONLY :: 2; AP_STEP_UP :: 3; AP_NOT_ADMIN :: 4; AP_NO_SCOPE :: 5; AP_BAD_RULE :: 6;
-AP_TWO_CREDENTIALS :: 7;
+AP_TWO_CREDENTIALS :: 7; AP_LIMITED :: 8;
+// What a step-up asks for (ap_need): nothing, L2, or L2-fresh.
+AP_NEED_NONE :: 0; AP_NEED_L2 :: 2; AP_NEED_FRESH :: 3;
 // Session states.
 AP_SESSION_GOOD :: 0; AP_SESSION_ROTATE :: 1; AP_SESSION_ENDED :: 2;
 
@@ -82,8 +91,55 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   #assert ap_admit(AP_ADMIN, AP_NOBODY, 0, 0, true, false) == AP_LOG_IN;
 }
 #test "a rule this file doesn't know refuses" {
-  #assert ap_admit(8, AP_PERSON, 2, 0, true, true) == AP_BAD_RULE;
+  #assert ap_admit(10, AP_PERSON, 2, 0, true, true) == AP_BAD_RULE;
   #assert ap_admit(-1, AP_PERSON, 2, 0, true, true) == AP_BAD_RULE;
+}
+#test "recover routes take any person's session, at any level" {
+  #assert ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK;
+  #assert ap_admit(AP_RECOVER, AP_PERSON, 2, 0, false, false) == AP_OK;
+  #assert ap_admit(AP_RECOVER, AP_AGENT, 2, 0, false, true) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_RECOVER, AP_SERVICE, 2, 0, true, true) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_RECOVER, AP_NOBODY, 0, -1, false, false) == AP_LOG_IN;
+  #assert ap_admit(AP_RECOVER, AP_KIND_GUEST, 0, -1, false, false) == AP_LOG_IN;
+}
+#test "an admin's change needs an admin at L2 within five minutes" {
+  #assert ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 0, true, false) == AP_OK;
+  #assert ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, AP_FRESH_MS, true, false) == AP_OK;
+  #assert ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, AP_FRESH_MS + 1, true, false) == AP_STEP_UP;
+  #assert ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, -1, true, false) == AP_STEP_UP;
+  #assert ap_admit(AP_ADMIN_FRESH, AP_PERSON, 1, 0, true, false) == AP_STEP_UP;
+  #assert ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 0, false, false) == AP_NOT_ADMIN;
+  #assert ap_admit(AP_ADMIN_FRESH, AP_AGENT, 2, 0, true, false) == AP_HUMAN_ONLY;
+  #assert ap_admit(AP_ADMIN_FRESH, AP_NOBODY, 0, 0, true, false) == AP_LOG_IN;
+  #assert ap_admit(AP_ADMIN, AP_PERSON, 2, AP_FRESH_MS + 1, true, false) == AP_OK;
+}
+#test "a session is limited when it is email alone on an account with a stronger way in" {
+  #assert ap_limited(1, 1) && ap_limited(1, 4);
+  #assert !ap_limited(1, 0);
+  #assert !ap_limited(2, 1) && !ap_limited(2, 0);
+  #assert !ap_limited(0, 3);
+}
+#test "a limited session reads and plays, and changes nothing on the account" {
+  for rule: 0..<10 {
+    #assert ap_limited_admit(rule, true, false) == AP_OK;
+    #assert ap_limited_admit(rule, false, false) == AP_OK;
+  }
+  #assert ap_limited_admit(AP_PUBLIC, true, true) == AP_OK && ap_limited_admit(AP_GUEST, true, true) == AP_OK;
+  #assert ap_limited_admit(AP_RECOVER, true, true) == AP_OK && ap_limited_admit(AP_RECOVER, false, true) == AP_OK;
+  #assert ap_limited_admit(AP_ACCOUNT, false, true) == AP_OK && ap_limited_admit(AP_HUMAN, false, true) == AP_OK;
+  #assert ap_limited_admit(AP_SCOPE, false, true) == AP_OK;
+  #assert ap_limited_admit(AP_ACCOUNT, true, true) == AP_LIMITED && ap_limited_admit(AP_HUMAN, true, true) == AP_LIMITED;
+  #assert ap_limited_admit(AP_SCOPE, true, true) == AP_LIMITED;
+  for rule: 4..<6 { #assert ap_limited_admit(rule, false, true) == AP_LIMITED && ap_limited_admit(rule, true, true) == AP_LIMITED; }
+  #assert ap_limited_admit(AP_ADMIN, false, true) == AP_LIMITED && ap_limited_admit(AP_ADMIN, true, true) == AP_LIMITED;
+  #assert ap_limited_admit(AP_ADMIN_FRESH, false, true) == AP_LIMITED && ap_limited_admit(AP_ADMIN_FRESH, true, true) == AP_LIMITED;
+  #assert ap_limited_admit(10, false, true) == AP_LIMITED && ap_limited_admit(-1, false, true) == AP_LIMITED;
+}
+#test "a step-up asks for L2, or for L2 within five minutes" {
+  #assert ap_need(AP_L2) == AP_NEED_L2 && ap_need(AP_ADMIN) == AP_NEED_L2;
+  #assert ap_need(AP_L2_FRESH) == AP_NEED_FRESH && ap_need(AP_ADMIN_FRESH) == AP_NEED_FRESH;
+  for rule: 0..<4 { #assert ap_need(rule) == AP_NEED_L2; }
+  #assert ap_need(AP_SCOPE) == AP_NEED_L2 && ap_need(AP_RECOVER) == AP_NEED_L2;
 }
 #test "each verdict has its status and words" {
   #assert ap_status(AP_OK) == 200 && ap_status(AP_LOG_IN) == 401 && ap_status(AP_STEP_UP) == 401;
@@ -96,6 +152,8 @@ AP_APP_IDLE_MS :: 90 * AP_DAY_MS;         // an app's login unused this long has
   #assert ap_words(AP_NO_SCOPE) == "This key isn't allowed to do this.";
   #assert ap_words(AP_BAD_RULE) == "Not found.";
   #assert ap_words(AP_TWO_CREDENTIALS) == "Send one credential: a signature, a token or the session cookie, not two.";
+  #assert ap_words(AP_LIMITED) == "You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.";
+  #assert ap_status(AP_LIMITED) == 401;
   #assert ap_words(AP_OK) == "" && ap_words(99) == "";
 }
 #test "a web session: good, then due for a new token, then ended when idle or old" {
@@ -139,7 +197,7 @@ ap_credentials :: (nostr: bool, bearer: bool, cookie: bool) -> int #export_c #ef
 
 // l2_age_ms: how long ago the principal last proved L2 (a NIP-98 signature is now: 0).
 ap_admit :: (rule: int, kind: int, level: int, l2_age_ms: int, admin: bool, scope: bool) -> int #export_c #effects(all) {
-  if rule < AP_PUBLIC || rule > AP_ADMIN { return AP_BAD_RULE; }
+  if rule < AP_PUBLIC || rule > AP_ADMIN_FRESH { return AP_BAD_RULE; }
   if rule == AP_PUBLIC || rule == AP_GUEST { return AP_OK; }
   if kind != AP_PERSON && kind != AP_AGENT && kind != AP_SERVICE { return AP_LOG_IN; }
   if rule == AP_ACCOUNT { return AP_OK; }
@@ -147,18 +205,36 @@ ap_admit :: (rule: int, kind: int, level: int, l2_age_ms: int, admin: bool, scop
     if scope { return AP_OK; }
     return AP_NO_SCOPE;
   }
-  // human, L2, L2-fresh and admin: people only
+  // human, recover, L2, L2-fresh and admin: people only
   if kind != AP_PERSON { return AP_HUMAN_ONLY; }
-  if rule == AP_HUMAN { return AP_OK; }
-  if rule == AP_ADMIN && !admin { return AP_NOT_ADMIN; }
+  if rule == AP_HUMAN || rule == AP_RECOVER { return AP_OK; }
+  if (rule == AP_ADMIN || rule == AP_ADMIN_FRESH) && !admin { return AP_NOT_ADMIN; }
   if level < 2 { return AP_STEP_UP; }
-  if rule == AP_L2_FRESH && (l2_age_ms < 0 || l2_age_ms > AP_FRESH_MS) { return AP_STEP_UP; }
+  if ap_need(rule) == AP_NEED_FRESH && (l2_age_ms < 0 || l2_age_ms > AP_FRESH_MS) { return AP_STEP_UP; }
   return AP_OK;
+}
+
+// An email login (L1) on an account with a stronger way in (strong: its keys, passkeys, devices
+// and unspent recovery codes) could be someone who took over the inbox.
+ap_limited :: (level: int, strong: int) -> bool #export_c #effects(all) {
+  return level == 1 && strong > 0;
+}
+// After ap_admit lets a request through: a limited session may use public and guest routes (play),
+// the recover routes (step up, ask for recovery), and read its account. Nothing else.
+ap_limited_admit :: (rule: int, write: bool, limited: bool) -> int #export_c #effects(all) {
+  if !limited { return AP_OK; }
+  if rule == AP_PUBLIC || rule == AP_GUEST || rule == AP_RECOVER { return AP_OK; }
+  if !write && (rule == AP_ACCOUNT || rule == AP_HUMAN || rule == AP_SCOPE) { return AP_OK; }
+  return AP_LIMITED;
+}
+ap_need :: (rule: int) -> int #export_c #effects(all) {
+  if rule == AP_L2_FRESH || rule == AP_ADMIN_FRESH { return AP_NEED_FRESH; }
+  return AP_NEED_L2;
 }
 
 ap_status :: (verdict: int) -> int #export_c #effects(all) {
   if verdict == AP_OK { return 200; }
-  if verdict == AP_LOG_IN || verdict == AP_STEP_UP { return 401; }
+  if verdict == AP_LOG_IN || verdict == AP_STEP_UP || verdict == AP_LIMITED { return 401; }
   if verdict == AP_HUMAN_ONLY || verdict == AP_NOT_ADMIN || verdict == AP_NO_SCOPE { return 403; }
   if verdict == AP_BAD_RULE { return 404; }
   if verdict == AP_TWO_CREDENTIALS { return 400; }
@@ -172,6 +248,7 @@ ap_words :: (verdict: int) -> string #export_c #effects(all) {
   if verdict == AP_NO_SCOPE { return "This key isn't allowed to do this."; }
   if verdict == AP_BAD_RULE { return "Not found."; }
   if verdict == AP_TWO_CREDENTIALS { return "Send one credential: a signature, a token or the session cookie, not two."; }
+  if verdict == AP_LIMITED { return "You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery."; }
   return "";
 }
 

@@ -168,9 +168,10 @@ for who in (r1, r2, r3):
 said = json.loads(call("GET", "/api/playtest/chat/hecates-cemetery?after=0")[1])["messages"]
 check("villa: three reports hold a chat line", [m["text"] for m in said if str(m["n"]) == line] == ["This line is waiting to be looked at"], said)
 check("villa: the queue is for admins only", v("GET", "reports", kiki)[0] == 401)
-# an admin's session, as a login leaves one (test_private.py has taken the name signed())
+# an admin's session, as a login leaves one (test_private.py has taken the name signed()), made
+# just now: an admin change needs a login from the last 5 minutes (admin-change, #13212)
 acookie = "oa_admin=" + "a" * 64
-sql("insert into analytics.admin_sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256(convert_to('%s', 'UTF8')), 'hex'), '%s', 0, 99999999999999) on conflict do nothing"
+sql("insert into analytics.admin_sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256(convert_to('%s', 'UTF8')), 'hex'), '%s', (extract(epoch from clock_timestamp()) * 1000)::bigint, 99999999999999) on conflict do nothing"
     % ("a" * 64, os.environ["OA_ADMIN_PUBKEYS"].split(",")[0]))
 
 

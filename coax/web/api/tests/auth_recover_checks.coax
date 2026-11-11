@@ -1,0 +1,326 @@
+// Step-up, linking and the delayed recovery's API checks (auth-recover.c, auth.c's gate, migration
+// 0148; #13212, #13213), run by test.sh after auth_checks.coax. Each threat in #13213 has its
+// checks here, named for it:
+//   email takeover    email alone on an account with a key is limited; recovery waits 72 hours
+//                     with notices to every way in, and any of them cancels it
+//   session theft     a stolen email session changes nothing; a stolen key session older than 5
+//                     minutes can't remove a way in, make a recovery code or act as an admin
+//   a hostile key     linking needs L2; a key that has its own account is refused; every link
+//                     tells every email and key of the account
+// Notices are sent inline (OA_AUTH_NOTICE_SYNC=1): email to the fake Resend, Nostr to test.sh's
+// fake relay. Recovery codes are hashed at a lower scrypt cost here (OA_AUTH_SCRYPT_LOG_N=10).
+//   API=... PGURL=... PSQL=... SIGN=... OTHER_KEY=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/auth_recover_checks.coax
+// tool.sh: tls
+#load "auth_harness.coax";
+
+// The words of all mail so far, in out.
+ar_mails :: (dir: string, out: [] u8) -> string {
+  lb: [1100] u8; n := fs_read(fs_join(dir, "all", lb[..]), out);
+  return ifx n <= 0 then "" else cast(string) out[0..<n];
+}
+// Logs in by email (a code, in this browser): the session's cookie value in out.
+ar_email :: (t: [] Ap, dir: string, address: string, out: [] u8) -> string {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  pb: [128] u8; pend: [128] u8; c1: [1] Sb;
+  st := ac_start(t, address, "203.0.113.50", false, pb[..]);
+  p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  code: [6] u8; link: [64] u8;
+  if st != 200 || !ac_mail(dir, code[..], link[..]) { return ""; }
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "");
+  if st != 200 { return ""; }
+  return ac_cookie(t, "__Host-oa_session", out);
+}
+// Logs in with a key (a signed challenge): the session's cookie value in out.
+ar_key :: (t: [] Ap, keyfile: string, out: [] u8) -> string {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  eb: [256] u8;
+  if ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "", "", "") != 200 { return ""; }
+  chb: [128] u8; ch := ap_member(ap_body(t), "challenge", chb[..]);
+  body: [1] Sb; sb(body[..], "{\"challenge\":\""); sb(body[..], ch); sb(body[..], "\",\"label\":\"extension\"}");
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/auth/nostr");
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), sb_text(body[..]), true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  if ac_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), sb_text(ah[..]), "", "") != 200 { return ""; }
+  return ac_cookie(t, "__Host-oa_session", out);
+}
+// A proof for purpose, signed by keyfile, sent to the challenge's url with this session: its status.
+ar_prove :: (t: [] Ap, session: string, keyfile: string, purpose: string, label: string) -> int {
+  c1: [1] Sb; cb: [1] Sb;
+  sb(cb[..], "{\"purpose\":\""); sb(cb[..], purpose); sb(cb[..], "\"}");
+  st := ac_call(t, "POST", "/api/auth/proof/challenge", sb_text(cb[..]), ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
+  if st != 200 { return st; }
+  ub: [512] u8; url := ap_member(ap_body(t), "url", ub[..]);
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", url, "", false, sigb[..]);
+  b: [1] Sb; sb(b[..], "{\"proof\":\""); sb(b[..], sig); sb(b[..], "\",\"label\":\""); sb(b[..], label); sb(b[..], "\"}");
+  return ac_call(t, "POST", url, sb_text(b[..]), ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
+}
+ar_with :: (t: [] Ap, method: string, path: string, body: string, session: string) -> int {
+  c1: [1] Sb;
+  return ac_call(t, method, path, body, ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
+}
+ar_q :: (q: [] Sb, a: string, b: string, c: string) -> string { sb_clear(q); sb(q, a); sb(q, b); sb(q, c); return sb_text(q); }
+
+ar_checks :: (t: [] Ap, dir: string) {
+  out: [8192] u8; eb: [1024] u8; mail: [262144] u8; q: [1] Sb;
+  kb: [2048] u8; ok_key := proc_getenv("OTHER_KEY", kb[..]);
+  // The owner: a key (K1) and an email. K1 logs in, then links the email.
+  k1b: [1100] u8; K1 := fs_join(dir, "k1.key", k1b[..]); pk1b: [128] u8; pk1 := ac_newkey(t, K1, pk1b[..]);
+  k2b: [1100] u8; K2 := fs_join(dir, "k2.key", k2b[..]); pk2b: [128] u8; pk2 := ac_newkey(t, K2, pk2b[..]);
+  k3b: [1100] u8; K3 := fs_join(dir, "k3.key", k3b[..]); pk3b: [128] u8; pk3 := ac_newkey(t, K3, pk3b[..]);
+  k4b: [1100] u8; K4 := fs_join(dir, "k4.key", k4b[..]); pk4b: [128] u8; pk4 := ac_newkey(t, K4, pk4b[..]);
+  sKb: [160] u8; SK := ar_key(t, K1, sKb[..]);
+  ap_check(t, "the owner logs in with a key", ap_starts(SK, "oas_"), ap_body(t));
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st := ar_with(t, "POST", "/api/auth/email/start", "{\"email\":\"rec@example.com\",\"link\":true}", SK);
+  pb: [128] u8; pend: [128] u8; p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  code: [6] u8; link: [64] u8; got := ac_mail(dir, code[..], link[..]);
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  c1: [1] Sb;
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "");
+  ap_check(t, "the owner's key session links an email", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "linked", ap_body(t));
+  ab: [64] u8; acct := ap_sql(t, ar_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk1, "'"), ab[..]);
+  ap_check(t, "linking the email sent a notice", ap_has(ar_mails(dir, mail[..]), "An email address was added to your OpenAgents account")
+           && ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.notices WHERE what = 'link.email' AND account = '", acct, "'"), out[..]) == "1", "");
+
+  // ---- email takeover: email alone on an account with a key is limited
+  sEb: [160] u8; SE := ar_email(t, dir, "rec@example.com", sEb[..]);
+  ap_check(t, "email takeover: the email still logs in", ap_starts(SE, "oas_"), ap_body(t));
+  st = ar_with(t, "GET", "/api/auth/ways", "", SE);
+  ap_check(t, "email takeover: that session is limited, and offers the key to step up", st == 200 && ap_member(ap_body(t), "limited", eb[..]) == "true"
+           && ap_member(ap_body(t), "level", eb[..]) == "L1" && ap_has(ap_body(t), "\"methods\":[\"nostr\"]"), ap_body(t));
+  st = ar_with(t, "GET", "/api/auth/account", "", SE);
+  ap_check(t, "email takeover: a limited session still reads", st == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/logout-everywhere", "", SE);
+  ap_check(t, "a refusal for a missing level is typed: L2, the methods, limited", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2"
+           && ap_has(ap_body(t), "\"methods\":[\"nostr\"]") && ap_member(ap_body(t), "limited", eb[..]) == "true", ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/link/nostr?c=x", "{}", SE);
+  ap_check(t, "email takeover: a limited session can't link a key (it is told why)", st == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery."
+           && ap_member(ap_body(t), "step_up", eb[..]) == "L2", ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/email/start", "{\"email\":\"ada@example.com\",\"link\":true}", SE);
+  ap_check(t, "email takeover: a limited session can't link an email", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "Log in again with your key or passkey to do this.", ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/recovery-code", "{}", SE);
+  ap_check(t, "email takeover: a limited session can't make a recovery code", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  ap_check(t, "email takeover: a limited session carries no key, so it is no admin and owns no key's things",
+           ar_with(t, "GET", "/api/auth/account", "", SE) == 200 && ap_member(ap_body(t), "admin", eb[..]) == "false", ap_body(t));
+
+  // ---- step-up: the key signs a challenge; the session becomes L2
+  st = ar_prove(t, SE, K2, "stepup", "");
+  ap_check(t, "a step-up with a key that isn't on the account is refused", st == 403, ap_body(t));
+  st = ar_prove(t, SE, K1, "stepup", "");
+  ap_check(t, "a step-up with the account's key makes the session L2", st == 200 && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
+  st = ar_with(t, "GET", "/api/auth/ways", "", SE);
+  ap_check(t, "after a step-up the session isn't limited", ap_member(ap_body(t), "limited", eb[..]) == "false" && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
+  ap_check(t, "the step-up is in the audit log", ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'stepup' AND result = 'ok' AND account = '", acct, "'"), out[..]) == "1", "");
+  // the same proof, sent again
+  cb: [1] Sb; sb(cb[..], "{\"purpose\":\"stepup\"}");
+  st = ar_with(t, "POST", "/api/auth/proof/challenge", sb_text(cb[..]), SE);
+  ub: [512] u8; url := ap_member(ap_body(t), "url", ub[..]);
+  sigb: [4096] u8; sig := ap_nostr(t, K1, "POST", url, "", false, sigb[..]);
+  pr: [1] Sb; sb(pr[..], "{\"proof\":\""); sb(pr[..], sig); sb(pr[..], "\"}");
+  st1 := ac_call(t, "POST", url, sb_text(pr[..]), ac_cookie_header("__Host-oa_session", SE, c1[..]), "", "");
+  st2 := ac_call(t, "POST", url, sb_text(pr[..]), ac_cookie_header("__Host-oa_session", SE, c1[..]), "", "");
+  ap_check(t, "a proof steps up once", st1 == 200 && st2 == 401, ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/proof/challenge", "{\"purpose\":\"spend\"}", SE);
+  ap_check(t, "a proof is only for step-up, linking or recovery", st == 400, ap_body(t));
+
+  // ---- session theft: an L2 session older than five minutes can't take the sensitive steps
+  ap_do(t, ar_q(q[..], "UPDATE auth.sessions SET l2_at = now() - interval '6 minutes' WHERE account = '", acct, "'"));
+  st = ar_with(t, "POST", "/api/auth/unlink", "{\"kind\":\"nostr\",\"id\":1}", SK);
+  ap_check(t, "session theft: removing a way in needs L2 within 5 minutes", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/recovery-code", "{}", SK);
+  ap_check(t, "session theft: a new recovery code needs L2 within 5 minutes", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/delete", "{}", SK);
+  ap_check(t, "deleting the account is held at L2-fresh before it exists (#13214)", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  st = ar_with(t, "POST", "/api/wallet/backup/export", "{}", SK);
+  ap_check(t, "a seed export is held at L2-fresh", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+  st = ar_prove(t, SK, K1, "stepup", "");
+  ap_check(t, "a fresh signature brings the session back to L2-fresh", st == 200, ap_body(t));
+
+  // ---- recovery codes: made at L2-fresh, shown once, single use
+  st = ar_with(t, "POST", "/api/auth/recovery-code", "{}", SK);
+  w1b: [400] u8; W1 := ap_member(ap_body(t), "recovery_code", w1b[..]);
+  words := 1; for c: W1 { if c == ' ' { words += 1; } }
+  ap_check(t, "a recovery code is 24 words, shown once", st == 200 && words == 24, ap_body(t));
+  ap_check(t, "the code is kept only as scrypt with its own salt", ap_sql(t, ar_q(q[..], "SELECT count(*) FROM auth.recovery WHERE account = '", acct, "' AND spent_at IS NULL AND length(code_scrypt) = 32 AND length(salt) = 16"), out[..]) == "1"
+           && ap_sql(t, "SELECT count(*) FROM auth.audit WHERE detail::text ~ '[a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+'", out[..]) == "0", "");
+  ap_check(t, "a new code sends a notice", ap_has(ar_mails(dir, mail[..]), "A new recovery code was made for your OpenAgents account"), "");
+  lg: [1] Sb; sb(lg[..], "{\"email\":\"rec@example.com\",\"words\":\""); sb(lg[..], W1); sb(lg[..], "\"}");
+  bad: [1] Sb; sb(bad[..], "{\"email\":\"rec@example.com\",\"words\":\"legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth title\"}");
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ac_call(t, "POST", "/api/auth/recovery-code/login", sb_text(bad[..]), "", "", "");
+  ap_check(t, "another phrase isn't the code", st == 401, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/recovery-code/login", sb_text(lg[..]), "", "", "");
+  w2b: [400] u8; W2 := ap_member(ap_body(t), "recovery_code", w2b[..]);
+  rsb: [160] u8; RS := ac_cookie(t, "__Host-oa_session", rsb[..]);
+  ap_check(t, "the code logs in at L2 and a new code shows once", st == 200 && ap_member(ap_body(t), "account", eb[..]) == acct && W2.count > 100 && W2 != W1
+           && ap_starts(RS, "oas_"), ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/recovery-code/login", sb_text(lg[..]), "", "", "");
+  ap_check(t, "a recovery code works once", st == 401, ap_body(t));
+  ap_check(t, "using the code sends a notice", ap_has(ar_mails(dir, mail[..]), "recovery code was used to log in"), "");
+  sE2b: [160] u8; SE2 := ar_email(t, dir, "rec@example.com", sE2b[..]);
+  sw: [1] Sb; sb(sw[..], "{\"words\":\""); sb(sw[..], W2); sb(sw[..], "\"}");
+  st = ar_with(t, "POST", "/api/auth/step-up", sb_text(sw[..]), SE2);
+  w3b: [400] u8; W3 := ap_member(ap_body(t), "recovery_code", w3b[..]);
+  ap_check(t, "a limited session steps up with the recovery code, and gets a new one", st == 200 && ap_member(ap_body(t), "level", eb[..]) == "L2" && W3.count > 100 && W3 != W2, ap_body(t));
+  i := 0; last := 0;
+  while i < 7 { last = ac_call(t, "POST", "/api/auth/recovery-code/login", sb_text(bad[..]), "", "", ""); if last == 429 { break; } i += 1; }
+  ap_check(t, "recovery code tries are limited per account, and the limit says when it lifts", last == 429
+           && ap_member(ap_body(t), "limit", eb[..]) == "recovery_code" && ap_has(ap_body(t), "Try again in "), ap_body(t));
+
+  // ---- a hostile key: linking needs L2, refuses another account's key, tells everyone
+  sK2b: [160] u8; SK2 := ar_key(t, K2, sK2b[..]);   // K2 has an account of its own now
+  sKb2: [160] u8; SKf := ar_key(t, K1, sKb2[..]);
+  st = ar_prove(t, SKf, K2, "link", "extension");
+  ap_check(t, "a hostile key: a key with its own account is refused", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "This already has an account. Log in to it to merge.", ap_body(t));
+  st = ar_prove(t, SKf, K1, "link", "extension");
+  ap_check(t, "a key already on the account is said so", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "This is already on your account.", ap_body(t));
+  st = ar_prove(t, SKf, K3, "link", "extension");
+  kidb: [32] u8; kid3 := ap_member(ap_body(t), "id", kidb[..]);
+  ap_check(t, "a new key links at L2", st == 200 && ap_member(ap_body(t), "pubkey", eb[..]) == pk3, ap_body(t));
+  ap_check(t, "a hostile key: every link tells the account's email and keys", ap_has(ar_mails(dir, mail[..]), "A Nostr key (")
+           && ap_sql(t, ar_q(q[..], "SELECT (sent->>'email')::int >= 1 AND (sent->>'nostr')::int >= 2 FROM auth.notices WHERE what = 'link.nostr' AND account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "t", "");
+  // an account with only email may add its first key with email alone
+  sSb: [160] u8; SS := ar_email(t, dir, "solo@example.com", sSb[..]);
+  st = ar_prove(t, SS, K4, "link", "");
+  ap_check(t, "an email-only account adds its first key with email", st == 200, ap_body(t));
+  st = ar_with(t, "GET", "/api/auth/ways", "", SS);
+  ap_check(t, "after that, its email session is limited", ap_member(ap_body(t), "limited", eb[..]) == "true", ap_body(t));
+
+  // ---- unlink: never the last way in; its sessions end; the removed way is told
+  ab2: [1] Sb; sb(ab2[..], "{\"kind\":\"nostr\",\"id\":"); sb(ab2[..], kid3); sb(ab2[..], "}");
+  st = ar_with(t, "POST", "/api/auth/unlink", sb_text(ab2[..]), SKf);
+  ap_check(t, "a fresh key session removes a key", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "removed", ap_body(t));
+  ap_check(t, "the removed key is told too", ap_sql(t, ar_q(q[..], "SELECT (sent->>'nostr')::int FROM auth.notices WHERE what = 'unlink' AND account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "2"
+           && ap_has(ar_mails(dir, mail[..]), "was removed from your OpenAgents account"), "");
+  oab: [64] u8; oacct := ap_sql(t, ar_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk2, "'"), oab[..]);
+  okid: [32] u8; ok2 := ap_sql(t, ar_q(q[..], "SELECT id FROM auth.nostr_keys WHERE pubkey = '", pk2, "'"), okid[..]);
+  ab3: [1] Sb; sb(ab3[..], "{\"kind\":\"nostr\",\"id\":"); sb(ab3[..], ok2); sb(ab3[..], "}");
+  st = ar_with(t, "POST", "/api/auth/unlink", sb_text(ab3[..]), SK2);
+  ap_check(t, "the last way in can't be removed", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "Add another way to log in first.", ap_body(t));
+  st = ar_with(t, "POST", "/api/auth/unlink", sb_text(ab3[..]), SKf);
+  ap_check(t, "another account's key isn't this account's to remove", st == 404, ap_body(t));
+
+  // ---- recovery: email alone asks; 72 hours; every way in told; any of them cancels
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SKf);
+  ap_check(t, "a key session doesn't need recovery", st == 400 && ap_member(ap_body(t), "error", eb[..]) == "You're logged in with a key, so you don't need recovery.", ap_body(t));
+  sNb: [160] u8; SN := ar_email(t, dir, "ada@example.com", sNb[..]);
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SN);
+  ap_check(t, "an email-only account has nothing to recover", st == 400 && ap_has(ap_body(t), "nothing stronger than email"), ap_body(t));
+  sE3b: [160] u8; SE3 := ar_email(t, dir, "rec@example.com", sE3b[..]);
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
+  asked := ap_member_int(ap_body(t), "asked_ms", 0); ready := ap_member_int(ap_body(t), "ready_ms", 0);
+  ap_check(t, "email takeover: recovery starts, ready 72 hours later, the end time given", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "pending"
+           && ready - asked >= 72 * 3600000 && ready - asked < 72 * 3600000 + 2000, ap_body(t));
+  m := ar_mails(dir, mail[..]);
+  ap_check(t, "email takeover: every way in is told, with a cancel link and the time it finishes", ap_has(m, "asked to recover it") && ap_has(m, "#cancel=") && ap_has(m, " UTC")
+           && ap_sql(t, ar_q(q[..], "SELECT (sent->>'email')::int >= 1 AND (sent->>'nostr')::int >= 1 FROM auth.notices WHERE what = 'recovery.start' AND account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "t", m);
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
+  ap_check(t, "one recovery at a time", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "Recovery was already asked for.", ap_body(t));
+  st = ar_prove(t, SE3, K4, "finish", "");
+  ap_check(t, "recovery doesn't finish before 72 hours", st == 409 && ap_member(ap_body(t), "error", eb[..]) == "Recovery isn't ready yet. It waits 72 hours.", ap_body(t));
+  _ = ap_sql(t, ar_q(q[..], "UPDATE auth.recovery_requests SET ready_at = asked_at + interval '1 hour' WHERE account = '", acct, "'"), out[..]);
+  t[0].sql_bad -= 1;   // that statement is meant to fail
+  ap_check(t, "no override: the database refuses a recovery sooner than 72 hours", ap_sql(t, ar_q(q[..], "SELECT ready_at - asked_at >= interval '72 hours' FROM auth.recovery_requests WHERE account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "t", "");
+  // the test the issue names: started by email alone, cancelled by a signature of the account's key
+  cu: [1] Sb; sb(cu[..], t[0].api); sb(cu[..], "/api/auth/recovery/cancel");
+  csb: [4096] u8; csig := ap_nostr(t, K1, "POST", sb_text(cu[..]), "{}", true, csb[..]);
+  ch: [1] Sb; sb(ch[..], "Authorization: Nostr "); sb(ch[..], csig);
+  st = ac_call(t, "POST", "/api/auth/recovery/cancel", "{}", sb_text(ch[..]), "", "");
+  ap_check(t, "a recovery started by email alone is cancelled from a Nostr key", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "cancelled", ap_body(t));
+  st = ar_with(t, "GET", "/api/auth/recovery", "", SE3);
+  ap_check(t, "the recovery shows cancelled, by a key", ap_member(ap_body(t), "state", eb[..]) == "cancelled" && ap_member(ap_body(t), "cancelled_via", eb[..]) == "key", ap_body(t));
+  ap_check(t, "the cancel sends a notice", ap_has(ar_mails(dir, mail[..]), "was cancelled (by a signature of a key on the account)"), "");
+  // again, cancelled from the notice's link
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
+  m = ar_mails(dir, mail[..]);
+  at := -1; k := 0;
+  while k < m.count - 8 { if m[k..<k + 8] == "#cancel=" { at = k + 8; } k += 1; }   // the newest link
+  tok: [64] u8; if at >= 0 && at + 64 <= m.count { for j: 0..<64 { tok[j] = m[at + j]; } }
+  tb: [1] Sb; sb(tb[..], "{\"t\":\""); sb(tb[..], cast(string) tok[..]); sb(tb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/recovery/cancel", sb_text(tb[..]), "", "", "");
+  ap_check(t, "the notice's cancel link cancels it, with no login", st == 200, ap_body(t));
+  st = ac_call(t, "POST", "/api/auth/recovery/cancel", sb_text(tb[..]), "", "", "");
+  ap_check(t, "a cancel link works once", st == 410, ap_body(t));
+  // again: a key login cancels it
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
+  sKcb: [160] u8; SKc := ar_key(t, K1, sKcb[..]);
+  st = ar_with(t, "GET", "/api/auth/recovery", "", SE3);
+  ap_check(t, "logging in with the key cancels a pending recovery", ap_member(ap_body(t), "cancelled_via", eb[..]) == "login", ap_body(t));
+  // again: freezing cancels it
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE3);
+  ap_do(t, ar_q(q[..], "SELECT auth.freeze_link('", acct, "', 'freezecheck')"));
+  ap_do(t, "SELECT auth.freeze_by_link('freezecheck')");
+  ap_check(t, "freezing the account cancels a pending recovery", ap_sql(t, ar_q(q[..], "SELECT cancelled_via FROM auth.recovery_requests WHERE account = '", acct, "' ORDER BY id DESC LIMIT 1"), out[..]) == "freeze", "");
+  ap_do(t, ar_q(q[..], "UPDATE auth.accounts SET frozen_at = NULL WHERE id = '", acct, "'"));
+  sE4b: [160] u8; SE4 := ar_email(t, dir, "rec@example.com", sE4b[..]);
+  sKdb: [160] u8; SKd := ar_key(t, K1, sKdb[..]);   // a key login to be ended by the recovery
+  // the limit: three requests a week
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  i = 0; last = 0;
+  while i < 5 {
+    last = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE4);
+    if last == 429 { break; }
+    c := ar_with(t, "POST", "/api/auth/recovery/cancel", "{}", SE4);
+    i += 1;
+  }
+  ap_check(t, "recovery requests are limited per account (3 a week), and the limit says when it lifts", last == 429 && i == 3
+           && ap_member(ap_body(t), "limit", eb[..]) == "recovery", ap_body(t));
+  // finish: 72 hours later, a new key replaces the lost ones
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  st = ar_with(t, "POST", "/api/auth/recovery/start", "{}", SE4);
+  ap_do(t, ar_q(q[..], "UPDATE auth.recovery_requests SET asked_at = asked_at - interval '73 hours', ready_at = ready_at - interval '73 hours' WHERE account = '", acct, "' AND done_at IS NULL AND cancelled_at IS NULL"));
+  k5b: [1100] u8; K5 := fs_join(dir, "k5.key", k5b[..]); pk5b: [128] u8; pk5 := ac_newkey(t, K5, pk5b[..]);
+  st = ar_prove(t, SE4, K5, "finish", "extension");
+  ap_check(t, "after 72 hours, the email session finishes recovery with a new key", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "recovered", ap_body(t));
+  ap_check(t, "the new key replaced the old ones, and the old key's logins ended",
+           ap_sql(t, ar_q(q[..], "SELECT string_agg(pubkey, ',') FROM auth.nostr_keys WHERE account = '", acct, "'"), out[..]) == pk5
+           && SKd != "" && ar_with(t, "GET", "/api/auth/account", "", SKd) == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "false", "");
+  st = ar_with(t, "GET", "/api/auth/ways", "", SE4);
+  ap_check(t, "the recovering session is L2 by the new key", ap_member(ap_body(t), "level", eb[..]) == "L2" && ap_member(ap_body(t), "limited", eb[..]) == "false", ap_body(t));
+  ap_check(t, "the old key was told the account was recovered", ap_sql(t, ar_q(q[..], "SELECT (sent->>'nostr')::int FROM auth.notices WHERE what = 'recovery.done' AND account = '", acct, "'"), out[..]) == "2"
+           && ap_has(ar_mails(dir, mail[..]), "Your OpenAgents account was recovered"), "");
+  ap_check(t, "every recovery step is in the audit log",
+           ap_sql(t, ar_q(q[..], "SELECT count(DISTINCT action) FROM auth.audit WHERE account = '", acct, "' AND action IN ('recovery.start', 'recovery.cancel', 'recovery.finish', 'link', 'unlink', 'stepup', 'notice', 'recovery_code.new', 'login.recovery_code')"), out[..]) == "9", "");
+  st = ar_with(t, "GET", "/api/auth/notices", "", SE4);
+  ap_check(t, "the account's notices are listed", st == 200 && ap_has(ap_body(t), "\"what\": \"recovery.done\""), ap_body(t));
+
+  // ---- admins: a change needs L2 within five minutes; reading stays L2
+  // an admin signed in the old way (admin.sh's link): its oa_admin session, made as /api/admin/login makes it
+  apkb: [128] u8; apk := ac_pubkey(t, t[0].admin_key, apkb[..]);
+  SA := "ad00000000000000000000000000000000000000000000000000000000000001";
+  ap_do(t, ar_q(q[..], "INSERT INTO analytics.admin_sessions (token_sha256, pubkey, created_ms, expires_ms) SELECT encode(sha256(convert_to('ad00000000000000000000000000000000000000000000000000000000000001', 'UTF8')), 'hex'), '",
+                apk, "', m, m + 3600000 FROM (SELECT (extract(epoch FROM now()) * 1000)::bigint AS m) x"));
+  ca: [1] Sb; ob: [1] Sb; sb(ob[..], "Origin: "); sb(ob[..], t[0].api); org := sb_text(ob[..]);
+  rs := ac_call(t, "POST", "/api/admin/access/flag", "{}", ac_cookie_header("oa_admin", SA, ca[..]), org, "");
+  ap_check(t, "an admin's change works within five minutes of signing", rs != 401 && rs != 403 && rs != 404, ap_body(t));
+  ap_do(t, "UPDATE analytics.admin_sessions SET created_ms = created_ms - 360000");
+  rs = ac_call(t, "GET", "/api/admin/analytics", "", ac_cookie_header("oa_admin", SA, ca[..]), "", "");
+  st = ac_call(t, "POST", "/api/admin/access/flag", "{}", ac_cookie_header("oa_admin", SA, ca[..]), org, "");
+  ap_check(t, "session theft: an admin's change needs L2 within five minutes; reading doesn't", SA != "" && rs != 401 && st == 401
+           && ap_member(ap_body(t), "step_up", eb[..]) == "L2-fresh", ap_body(t));
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "mail" {
+    if args_count(a[..]) != 3 { tool_errln("auth_recover_checks mail PORT DIR"); return 2; }
+    return am_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  wb: [4096] u8; work := fs_temp("auth-recover-mail", wb[..]);
+  h := ac_mail_start(t[..], "coax/web/api/tests/auth_recover_checks.coax", work);
+  if h < 0 { return ap_done(t[..], "auth recover checks"); }
+  ar_checks(t[..], work);
+  ac_mail_stop(h, work);
+  return ap_done(t[..], "auth recover checks");
+}

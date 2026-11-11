@@ -221,10 +221,22 @@ coaxial_admin_asked :: (s: [] AdminState) #export_c #effects(all) { s[0].ask_n =
 coaxial_admin_body_n :: (s: [] AdminState) -> int #export_c #effects(all) { if s.count < 1 || !s[0].post { return 0; } return s[0].pbody_n; }
 
 // An answer: "STATUS\n" then the rows.
+// A change refused for want of a fresh signature (401 with "step_up", #13212): the shared re-auth
+// prompt on /settings/security, which comes back to this page once the admin signs.
+ad_step_up :: (s: [] AdminState, code: int, bytes: string, i: int) -> bool {
+  if code != 401 || ad_json(bytes, i, "step_up").count == 0 { return false; }
+  back := ifx s[0].page == AD_REPORTS then "%2Fadmin%2Freports" else ifx s[0].page == AD_ACCESS then "%2Fadmin%2Faccess" else ifx s[0].page == AD_ROOMS then "%2Fadmin%2Frooms" else "%2Fadmin%2Fanalytics";
+  n := 0;
+  for c: "/settings/security?step=1&next=" { s[0].outbox[n] = c; n += 1; }
+  for c: back { s[0].outbox[n] = c; n += 1; }
+  s[0].out_n = n; s[0].action = AD_NAVIGATE;
+  return true;
+}
 ad_answer :: (s: [] AdminState, bytes: string) {
   i := 0; code := 0;
   while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
   if i < bytes.count && bytes[i] == '\n' { i += 1; }
+  if s[0].posting != 0 && ad_step_up(s, code, bytes, i) { s[0].posting = 0; return; }
   if s[0].posting >= 10 { ad_acc_done(s, s[0].posting, code, bytes, i); s[0].posting = 0; ad_ask(s); return; }
   if s[0].posting != 0 {   // a decision's answer: say what it did, and ask for the queue again
     s[0].said = ifx code == 200 then s[0].posting else -1;
@@ -988,6 +1000,15 @@ AD_ACCESS_LINES :: "200\nF|realm_invites|1\nF|auth_v2|0\nI|12|10|3|1790000000000
   #assert ad_buttons(s[..], 3, boxes[3], 0, bx[..], acts[..]) == 0;
 }
 
+#test "a change refused for a fresh signature goes to the re-auth prompt and comes back" {
+  s: [1] AdminState; coaxial_admin_page(s[..], 2);
+  s[0].posting = 11;
+  ad_answer(s[..], "401\n{\"error\":\"Log in again with your key or passkey to do this.\",\"step_up\":\"L2-fresh\",\"methods\":[\"nostr\"]}");
+  #assert s[0].action == AD_NAVIGATE && s[0].posting == 0 && cast(string) s[0].outbox[0..<s[0].out_n] == "/settings/security?step=1&next=%2Fadmin%2Faccess";
+  t: [1] AdminState; coaxial_admin_page(t[..], 2); t[0].posting = 11;
+  ad_answer(t[..], "403\n{\"error\":\"admins only\"}");
+  #assert t[0].action == 0;
+}
 #test "/admin/access's buttons: each POSTs its request, says what it did and asks for the lines again; the new link shows once with COPY LINK" {
   s: [1] AdminState; data: [AD_TEST_DATA] u8; s[0].data = data[..];
   out: [AD_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;

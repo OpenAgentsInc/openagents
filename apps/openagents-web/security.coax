@@ -1,0 +1,890 @@
+// /settings/security: how you log in, and the re-auth prompt every page shares (docs/auth,
+// #13212, #13213), drawn on the homepage's Grid like /login (login.coax's text and lines
+// helpers; newland.coax's frames and buttons; textkeys.coax's keys in the recovery code's box).
+//
+// What it shows: the ways in (emails, keys, the recovery code), adding a key, removing a way
+// in, a new recovery code (shown once), the delayed recovery (ask, its end time, cancel, finish
+// with a new key) and the security notices the account was sent.
+//
+// The re-auth prompt: any change the API refuses with "step_up" (L2, or L2 within 5 minutes)
+// opens CONFIRM IT'S YOU: sign with a key on the account (NIP-07, key.js) or type the recovery
+// code. Then the change is asked again. Another page sends people here with
+// ?step=1&next=/its/path (admin.coax does) and gets them back once they have signed.
+//
+// A notice's links land here: #cancel=TOKEN cancels a recovery, #freeze=TOKEN freezes the
+// account. Each is read once and cleared from the address bar.
+//
+// What it talks to (coax/web/api/auth.c, auth-recover.c), every answer as ?as=lines:
+//   GET  /api/auth/ways, /api/auth/notices
+//   POST /api/auth/proof/challenge {purpose} -> url (signed by the key, then POSTed with {proof})
+//   POST /api/auth/step-up {words}, /api/auth/unlink {kind, id}, /api/auth/recovery-code
+//   POST /api/auth/recovery/start, /api/auth/recovery/cancel {t?}, /api/auth/freeze {t}
+//   coax/bin/coax test apps/openagents-web/security.coax --only security
+#load "login.coax";
+#load "textkeys.coax";
+
+SC_MAX_VERTICES :: 120000;
+SC_MSG_PAGE :: 600; SC_MSG_HTTP :: 512; SC_MSG_SIGNED :: 72; SC_MSG_HAS_KEY :: 73; SC_MSG_TYPED :: 1;
+SC_ACT_GO :: 1; SC_ACT_HASH :: 3; SC_ACT_SIGN :: 72;   // TK_ACT_COPY (2): the outbox to the clipboard
+SC_POST :: 1; SC_WANTED :: 4;
+SC_FRESH_MS :: 300000;     // L2-fresh: a signature within 5 minutes (auth-policy.coax AP_FRESH_MS)
+SC_WAYS :: 8; SC_NOTES :: 6;
+
+// Screens.
+SC_LOADING :: 0; SC_MAIN :: 1; SC_STEP :: 2; SC_WORDS :: 3; SC_OUT :: 4;
+// The one request in flight.
+SR_NONE :: 0; SR_WAYS :: 1; SR_NOTICES :: 2; SR_CHALLENGE :: 3; SR_SIGNING :: 4; SR_PROOF :: 5;
+SR_WORDS :: 6; SR_UNLINK :: 7; SR_CODE :: 8; SR_START :: 9; SR_CANCEL :: 10; SR_LINK_CANCEL :: 11; SR_FREEZE :: 12;
+// What a proof is for (the API's purposes), and the change waiting on a step-up.
+PF_STEPUP :: 1; PF_LINK :: 2; PF_FINISH :: 3;
+DO_NONE :: 0; DO_LINK :: 1; DO_UNLINK :: 2; DO_CODE :: 3; DO_START :: 4; DO_CANCEL :: 5; DO_FINISH :: 6;
+// What can be pressed. Rows' REMOVE: SH_ROW + i (emails first, then keys).
+SH_NONE :: -1; SH_HOME :: 0; SH_STEP :: 1; SH_ADD :: 2; SH_CODE :: 3; SH_ASK :: 4; SH_CANCEL :: 5; SH_FINISH :: 6;
+SH_SIGN :: 7; SH_FIELD :: 8; SH_USE :: 9; SH_BACK :: 10; SH_COPY :: 11; SH_DONE :: 12; SH_LOGIN :: 13; SH_LIMITS :: 14;
+SH_ROW :: 15; SH_HITS :: 31;   // SH_ROW + 2 * SC_WAYS
+
+ScWay :: struct { id: int; text: [80] u8; n: int; }
+ScNote :: struct { at: int; what: [24] u8; n: int; }
+
+Sc :: struct {
+  ready: bool; w: f32; h: f32; dpr: f32; time: f32;
+  screen: int; req: int; req_id: int = -1;
+  want: bool; url: [420] u8; url_n: int; body: [4400] u8; body_n: int; flags: int;
+  action: int; outbox: [800] u8; out_n: int;
+  has_key: int = -1;
+  // the account, from GET /api/auth/ways
+  level: int; limited: bool; l2_age: int = -1;
+  emails: [SC_WAYS] ScWay; ne: int; keys: [SC_WAYS] ScWay; nk: int;
+  by_key: bool; by_code: bool; code_set: bool; passkeys: int;
+  rec: int;                                  // 0 none, 1 pending, 2 ready, 3 cancelled, 4 done
+  asked_ms: int; ready_ms: int; now_ms: int; now_at: f32;   // now_ms was the API's clock at time now_at
+  notes: [SC_NOTES] ScNote; nn: int; have_notes: bool;
+  // the prompt and what waits on it
+  purpose: int; todo: int; todo_kind: int; todo_id: int;
+  sign_url: [420] u8; sign_n: int;
+  typed: [260] u8; typed_n: int; all: bool;  // the recovery code being typed; all: everything selected (textkeys.coax)
+  words: [240] u8; words_n: int;             // a new recovery code, shown once
+  hash: int; token: [80] u8; token_n: int;   // a notice's link: 1 cancel, 2 freeze
+  step_asked: bool; next: [256] u8; next_n: int;
+  tz_min: int; tz_known: bool;               // the viewer's offset from UTC, minutes
+  error: [300] u8; error_n: int; said: [300] u8; said_n: int;
+  panel: Box; scroll: f32; hits: [SH_HITS] Box; field: [4] f32;
+  px: f32; py: f32; down: bool; pressed: int = -1; focus: int = -1;
+}
+
+// ---------------------------------------------------------------- small things
+sc_err :: (s: [] Sc, t: string) { s[0].error_n = lg_set(s[0].error[..], t); s[0].said_n = 0; }
+sc_say :: (s: [] Sc, t: string) { s[0].said_n = lg_set(s[0].said[..], t); s[0].error_n = 0; }
+sc_quiet :: (s: [] Sc) { s[0].error_n = 0; s[0].said_n = 0; }
+sc_go :: (s: [] Sc, path: string) { s[0].out_n = lg_set(s[0].outbox[..], path); s[0].action = SC_ACT_GO; }
+sc_ask :: (s: [] Sc, req: int, url: string, body: string, flags: int) {
+  s[0].req = req; s[0].req_id = -1; s[0].want = true; s[0].flags = flags | SC_WANTED;
+  s[0].url_n = lg_set(s[0].url[..], url); s[0].body_n = lg_set(s[0].body[..], body);
+}
+sc_sent :: (s: [] Sc, id: int) #export_c #effects(all) { if s.count < 1 { return; } if id >= 0 { s[0].want = false; s[0].req_id = id; } }
+sc_has :: (list: string, item: string) -> bool {
+  at := 0;
+  while at < list.count {
+    end := at; while end < list.count && list[end] != ',' { end += 1; }
+    if list[at..<end] == item { return true; }
+    at = end + 1;
+  }
+  return false;
+}
+// The words after "name " on each line that starts so, one at a time: from is where to look.
+sc_line :: (t: string, name: string, from: int, out: [] int) -> string {
+  at := from;
+  while at < t.count {
+    end := at; while end < t.count && t[end] != '\n' { end += 1; }
+    if end - at > name.count && lg_is(t, at, name) && t[at + name.count] == ' ' { out[0] = end + 1; return t[at + name.count + 1..<end]; }
+    at = end + 1;
+  }
+  out[0] = t.count; return t[0..<0];
+}
+sc_fresh :: (s: [] Sc) -> bool { return s[0].level == 2 && s[0].l2_age >= 0 && s[0].l2_age <= SC_FRESH_MS - 10000; }
+
+// ---------------------------------------------------------------- time
+// Days since 1970 to a civil date (Howard Hinnant's days_from_civil, inverted).
+sc_date :: (days: int, ymd: [] int) {
+  z := days + 719468; era := (ifx z >= 0 then z else z - 146096) / 146097;
+  doe := z - era * 146097; yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400; doy := doe - (365 * yoe + yoe / 4 - yoe / 100); mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1; m := ifx mp < 10 then mp + 3 else mp - 9;
+  ymd[0] = ifx m <= 2 then y + 1 else y; ymd[1] = m; ymd[2] = d;
+}
+SC_MONTHS :: [12] string.["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+SC_DAYS :: [7] string.["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];   // 1 Jan 1970 was a Thursday
+// ms (UTC) as "Fri 14 Nov, 17:01" in the viewer's time ("UTC" when the page doesn't know it).
+sc_when :: (s: [] Sc, b: [] u8, at: int, ms: int) -> int {
+  off := ifx s[0].tz_known then s[0].tz_min else 0;
+  t := ms / 1000 + off * 60; days := t / 86400; sec := t % 86400;
+  if sec < 0 { sec += 86400; days -= 1; }
+  ymd: [3] int; sc_date(days, ymd[..]);
+  n := lg_add(b, at, SC_DAYS[((days % 7) + 7) % 7]); n = lg_add(b, n, " ");
+  n = lg_add_int(b, n, ymd[2]); n = lg_add(b, n, " "); n = lg_add(b, n, SC_MONTHS[ymd[1] - 1]); n = lg_add(b, n, ", ");
+  h := sec / 3600; m := sec % 3600 / 60;
+  if h < 10 { n = lg_add(b, n, "0"); } n = lg_add_int(b, n, h); n = lg_add(b, n, ":");
+  if m < 10 { n = lg_add(b, n, "0"); } n = lg_add_int(b, n, m);
+  if !s[0].tz_known { n = lg_add(b, n, " UTC"); }
+  return n;
+}
+// The API's clock now, in ms (its last answer, plus the seconds since).
+sc_now :: (s: [] Sc) -> int { return s[0].now_ms + cast(int) ((s[0].time - s[0].now_at) * 1000); }
+// "71 h 59 min" until ms.
+sc_until :: (s: [] Sc, b: [] u8, at: int, ms: int) -> int {
+  left := (ms - sc_now(s)) / 60000; if left < 0 { left = 0; }
+  n := at;
+  if left >= 60 { n = lg_add_int(b, n, left / 60); n = lg_add(b, n, " h "); }
+  n = lg_add_int(b, n, left % 60); return lg_add(b, n, " min");
+}
+
+// ---------------------------------------------------------------- the page's facts and hash
+sc_fact :: (text: string, name: string, found: [] bool) -> string {
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    if end - at > name.count && lg_is(text, at, name) && text[at + name.count] == '=' { found[0] = true; return text[at + name.count + 1..<end]; }
+    at = end + 1;
+  }
+  found[0] = false; return text[0..<0];
+}
+sc_facts :: (s: [] Sc, text: string) {
+  found: [1] bool;
+  // the viewer's time: "day" is the local time of day (0 to 1), "now" the UTC clock
+  day := sc_fact(text, "day", found[..]); f1 := found[0];
+  now := sc_fact(text, "now", found[..]);
+  if f1 && found[0] && day.count >= 3 {
+    frac := 0; scale := 1; i := 2; while i < day.count && i < 7 { frac = frac * 10 + lg_int(day[i..<i + 1]); scale *= 10; i += 1; }
+    local := frac * 86400 / scale; utc := lg_int(now) / 1000 % 86400;
+    off := (local - utc) / 60; if off > 14 * 60 { off -= 1440; } if off < -12 * 60 { off += 1440; }
+    s[0].tz_min = (off + (ifx off >= 0 then 7 else -7)) / 15 * 15; s[0].tz_known = true;
+  }
+  // ?step=1 asks for the prompt at once; ?next= is where to go after (same-site paths only)
+  url := sc_fact(text, "url", found[..]);
+  q := 0; while q < url.count && url[q] != '?' && url[q] != '#' { q += 1; }
+  if q < url.count && url[q] == '?' {
+    i := q + 1;
+    while i < url.count && url[i] != '#' {
+      stop := i; while stop < url.count && url[stop] != '&' && url[stop] != '#' { stop += 1; }
+      if lg_is(url, i, "step=1") && stop == i + 6 { s[0].step_asked = true; }
+      if lg_is(url, i, "next=") {
+        raw := url[i + 5..<stop]; out: [256] u8; n := 0; j := 0; bad := false;
+        while j < raw.count && !bad {
+          c := raw[j];
+          if c == '%' && j + 2 < raw.count && lg_hex(raw[j + 1]) >= 0 && lg_hex(raw[j + 2]) >= 0 { c = cast(u8) (lg_hex(raw[j + 1]) * 16 + lg_hex(raw[j + 2])); j += 3; }
+          else if c == '%' { bad = true; } else { j += 1; }
+          if n < 256 { out[n] = c; n += 1; } else { bad = true; }
+        }
+        t := cast(string) out[0..<n];
+        if !bad && lg_same_site(t) && !lg_is(t, 0, "/settings/security") { s[0].next_n = lg_set(s[0].next[..], t); }
+      }
+      i = stop + 1;
+    }
+  }
+}
+// #cancel=TOKEN or #freeze=TOKEN, from a notice: read once, cleared from the address bar.
+sc_hash :: (s: [] Sc, text: string) #export_c #effects(all) {
+  if s.count < 1 || s[0].token_n > 0 { return; }
+  kind := ifx lg_is(text, 0, "cancel=") then 1 else ifx lg_is(text, 0, "freeze=") then 2 else 0;
+  if kind == 0 { return; }
+  t := text[7..<text.count];
+  s[0].out_n = 0; s[0].action = SC_ACT_HASH;
+  if t.count != 64 { sc_err(s, "That link isn't whole. Open it again from the email or message."); return; }
+  for c: t { if lg_hex(c) < 0 { sc_err(s, "That link isn't whole. Open it again from the email or message."); return; } }
+  s[0].hash = kind; s[0].token_n = lg_set(s[0].token[..], t);
+  sc_pump(s);
+}
+
+// ---------------------------------------------------------------- requests
+// The next request when nothing is in flight: a notice's link first, then the account.
+sc_pump :: (s: [] Sc) {
+  if s[0].req != SR_NONE || s[0].want { return; }
+  if s[0].hash != 0 {
+    b: [120] u8; n := lg_add(b[..], 0, "{\"t\":\""); n = lg_add(b[..], n, cast(string) s[0].token[0..<s[0].token_n]); n = lg_add(b[..], n, "\"}");
+    if s[0].hash == 1 { sc_ask(s, SR_LINK_CANCEL, "/api/auth/recovery/cancel?as=lines", cast(string) b[0..<n], SC_POST); }
+    else { sc_ask(s, SR_FREEZE, "/api/auth/freeze?as=lines", cast(string) b[0..<n], SC_POST); }
+    s[0].hash = 0; return;
+  }
+  if s[0].screen == SC_LOADING { sc_ask(s, SR_WAYS, "/api/auth/ways?as=lines", "", 0); return; }
+  if s[0].screen != SC_OUT && !s[0].have_notes { sc_ask(s, SR_NOTICES, "/api/auth/notices?as=lines", "", 0); }
+}
+sc_refresh :: (s: [] Sc) { s[0].have_notes = false; sc_ask(s, SR_WAYS, "/api/auth/ways?as=lines", "", 0); }
+sc_challenge :: (s: [] Sc, purpose: int) {
+  if s[0].req != SR_NONE { return; }
+  if s[0].has_key == 0 { sc_err(s, "This browser has no Nostr key extension (NIP-07). Add one, then try again."); return; }
+  s[0].purpose = purpose; sc_quiet(s);
+  sc_ask(s, SR_CHALLENGE, "/api/auth/proof/challenge?as=lines",
+         ifx purpose == PF_STEPUP then "{\"purpose\":\"stepup\"}" else ifx purpose == PF_LINK then "{\"purpose\":\"link\"}" else "{\"purpose\":\"finish\"}", SC_POST);
+}
+// A change: asked now; a step-up refusal brings the prompt, and it is asked again after.
+sc_do :: (s: [] Sc, what: int, kind: int, id: int) {
+  if s[0].req != SR_NONE { return; }
+  s[0].todo = what; s[0].todo_kind = kind; s[0].todo_id = id; sc_quiet(s);
+  if what == DO_LINK { sc_challenge(s, PF_LINK); return; }
+  if what == DO_FINISH { sc_challenge(s, PF_FINISH); return; }
+  if what == DO_UNLINK {
+    b: [80] u8; n := lg_add(b[..], 0, ifx kind == 0 then "{\"kind\":\"email\",\"id\":" else "{\"kind\":\"nostr\",\"id\":");
+    n = lg_add_int(b[..], n, id); n = lg_add(b[..], n, "}");
+    sc_ask(s, SR_UNLINK, "/api/auth/unlink?as=lines", cast(string) b[0..<n], SC_POST); return;
+  }
+  if what == DO_CODE { sc_ask(s, SR_CODE, "/api/auth/recovery-code?as=lines", "{}", SC_POST); return; }
+  if what == DO_START { sc_ask(s, SR_START, "/api/auth/recovery/start?as=lines", "{}", SC_POST); return; }
+  if what == DO_CANCEL { sc_ask(s, SR_CANCEL, "/api/auth/recovery/cancel?as=lines", "{}", SC_POST); }
+}
+sc_use_words :: (s: [] Sc) {
+  if s[0].req != SR_NONE { return; }
+  t := cast(string) s[0].typed[0..<s[0].typed_n];
+  words := 0; inw := false; for c: t { if c > ' ' && !inw { words += 1; } inw = c > ' '; }
+  if words != 24 { sc_err(s, "Type all 24 words of your recovery code."); return; }
+  b: [400] u8; n := lg_add(b[..], 0, "{\"words\":\""); n = lg_json(b[..], n, t); n = lg_add(b[..], n, "\"}");
+  sc_quiet(s); s[0].purpose = PF_STEPUP;
+  sc_ask(s, SR_WORDS, "/api/auth/step-up?as=lines", cast(string) b[0..<n], SC_POST);
+}
+
+// ---------------------------------------------------------------- answers
+sc_failed :: (s: [] Sc, status: int, lines: string) {
+  found: [1] bool; e := lg_value(lines, "error", found[..]);
+  if found[0] && e.count > 0 { sc_err(s, e); return; }
+  if status == 0 { sc_err(s, "We couldn't reach openagents.com. Check your connection and try again."); return; }
+  sc_err(s, "That didn't work. Try again.");
+}
+// A refusal that asks for a step-up: the prompt, with the change still waiting.
+sc_wants_step :: (s: [] Sc, status: int, lines: string) -> bool {
+  found: [1] bool; _ = lg_value(lines, "step_up", found[..]);
+  if status != 401 || !found[0] { return false; }
+  m := lg_value(lines, "methods", found[..]);
+  s[0].by_key = sc_has(m, "nostr"); s[0].by_code = sc_has(m, "recovery_code");
+  s[0].screen = SC_STEP; s[0].typed_n = 0; s[0].all = false; s[0].focus = -1; s[0].scroll = 0;
+  sc_err(s, lg_value(lines, "error", found[..]));
+  return true;
+}
+sc_ways :: (s: [] Sc, lines: string) {
+  found: [1] bool;
+  s[0].level = ifx lg_value(lines, "level", found[..]) == "L2" then 2 else 1;
+  s[0].limited = lg_value(lines, "limited", found[..]) == "1";
+  age := lg_value(lines, "l2_age_ms", found[..]); s[0].l2_age = ifx found[0] && age.count > 0 && age[0] != '-' then lg_int(age) else -1;
+  next: [1] int; at := 0; s[0].ne = 0; s[0].nk = 0;
+  while s[0].ne < SC_WAYS {
+    v := sc_line(lines, "email", at, next[..]); if v.count == 0 { break; } at = next[0];
+    sp := 0; while sp < v.count && v[sp] != ' ' { sp += 1; }
+    e := s[0].ne; s[0].emails[e].id = lg_int(v); s[0].emails[e].n = lg_set(s[0].emails[e].text[..], ifx sp < v.count then v[sp + 1..<v.count] else v[0..<0]); s[0].ne += 1;
+  }
+  at = 0;
+  while s[0].nk < SC_WAYS {
+    v := sc_line(lines, "key", at, next[..]); if v.count == 0 { break; } at = next[0];
+    sp := 0; while sp < v.count && v[sp] != ' ' { sp += 1; }
+    pk := ifx sp < v.count then v[sp + 1..<v.count] else v[0..<0];
+    e := s[0].nk; s[0].keys[e].id = lg_int(v);
+    n := 0;
+    if pk.count == 64 { n = lg_add(s[0].keys[e].text[..], 0, pk[0..<10]); n = lg_add(s[0].keys[e].text[..], n, "..."); n = lg_add(s[0].keys[e].text[..], n, pk[58..<64]); }
+    else { n = lg_set(s[0].keys[e].text[..], pk); }
+    s[0].keys[e].n = n; s[0].nk += 1;
+  }
+  m := lg_value(lines, "methods", found[..]); s[0].by_key = sc_has(m, "nostr"); s[0].by_code = sc_has(m, "recovery_code");
+  s[0].code_set = lg_value(lines, "recovery_code", found[..]) == "1";
+  s[0].passkeys = lg_int(lg_value(lines, "passkeys", found[..]));
+  r := lg_value(lines, "recovery", found[..]);
+  s[0].rec = ifx r == "pending" then 1 else ifx r == "ready" then 2 else ifx r == "cancelled" then 3 else ifx r == "done" then 4 else 0;
+  s[0].asked_ms = lg_int(lg_value(lines, "asked_ms", found[..])); s[0].ready_ms = lg_int(lg_value(lines, "ready_ms", found[..]));
+  s[0].now_ms = lg_int(lg_value(lines, "now_ms", found[..])); s[0].now_at = s[0].time;
+}
+sc_notices :: (s: [] Sc, lines: string) {
+  next: [1] int; at := 0; s[0].nn = 0;
+  while s[0].nn < SC_NOTES {
+    v := sc_line(lines, "notice", at, next[..]); if v.count == 0 { break; } at = next[0];
+    sp := 0; while sp < v.count && v[sp] != ' ' { sp += 1; }
+    e := s[0].nn; s[0].notes[e].at = lg_int(v); s[0].notes[e].n = lg_set(s[0].notes[e].what[..], ifx sp < v.count then v[sp + 1..<v.count] else v[0..<0]); s[0].nn += 1;
+  }
+  s[0].have_notes = true;
+}
+// After a step-up: the change that waited, else where the page was asked to go back to.
+sc_after_step :: (s: [] Sc) {
+  s[0].screen = SC_MAIN; s[0].typed_n = 0;
+  if s[0].todo != DO_NONE { w := s[0].todo; sc_do(s, w, s[0].todo_kind, s[0].todo_id); return; }
+  if s[0].next_n > 0 { sc_go(s, cast(string) s[0].next[0..<s[0].next_n]); return; }
+  sc_say(s, "Confirmed. For the next 5 minutes you can make any change."); sc_refresh(s);
+}
+sc_answer :: (s: [] Sc, text: string) {
+  nl := 0; while nl < text.count && text[nl] != '\n' { nl += 1; }
+  status := lg_int(text[0..<nl]);
+  lines := ifx nl < text.count then text[nl + 1..<text.count] else text[0..<0];
+  req := s[0].req; s[0].req = SR_NONE; s[0].req_id = -1;
+  ok := status >= 200 && status < 300; found: [1] bool;
+  if req == SR_WAYS {
+    if status == 401 { s[0].screen = SC_OUT; sc_pump(s); return; }
+    if !ok { if s[0].screen == SC_LOADING { s[0].screen = SC_OUT; } sc_failed(s, status, lines); return; }
+    sc_ways(s, lines);
+    if s[0].screen == SC_LOADING || s[0].screen == SC_OUT { s[0].screen = SC_MAIN; }
+    if s[0].step_asked && !sc_fresh(s) && s[0].screen == SC_MAIN {
+      s[0].step_asked = false; s[0].screen = SC_STEP; s[0].typed_n = 0;
+      sc_err(s, "Confirm it's you to make that change: sign with your key, or type your recovery code.");
+    } else if s[0].step_asked && s[0].next_n > 0 { s[0].step_asked = false; sc_go(s, cast(string) s[0].next[0..<s[0].next_n]); }
+    sc_pump(s); return;
+  }
+  if req == SR_NOTICES { if ok { sc_notices(s, lines); } else { s[0].have_notes = true; } return; }
+  if req == SR_LINK_CANCEL {
+    if ok { sc_say(s, "The recovery is cancelled. We told every email and key on the account."); } else { sc_failed(s, status, lines); }
+    sc_pump(s); return;
+  }
+  if req == SR_FREEZE {
+    if ok { s[0].screen = SC_OUT; sc_say(s, "Your account is frozen: every login on it ended, and any recovery is cancelled. Log in with your key to unfreeze it."); return; }
+    sc_failed(s, status, lines); sc_pump(s); return;
+  }
+  if req == SR_CHALLENGE {
+    if !ok { if !sc_wants_step(s, status, lines) { sc_failed(s, status, lines); } return; }
+    u := lg_value(lines, "url", found[..]);
+    if !found[0] || u.count == 0 || u.count > 400 { sc_failed(s, 500, lines[0..<0]); return; }
+    s[0].sign_n = lg_set(s[0].sign_url[..], u);
+    // key.js signs "URL\nBODY": the URL the API checks, and no body (its payload tag is then the empty body's)
+    m := lg_add(s[0].outbox[..], 0, u); m = lg_add(s[0].outbox[..], m, "\n");
+    s[0].out_n = m; s[0].action = SC_ACT_SIGN; s[0].req = SR_SIGNING;
+    return;
+  }
+  if req == SR_PROOF || req == SR_WORDS {
+    if !ok { if !sc_wants_step(s, status, lines) { sc_failed(s, status, lines); } return; }
+    if s[0].purpose == PF_STEPUP {
+      s[0].level = 2; s[0].l2_age = 0; s[0].limited = false;
+      w := lg_value(lines, "recovery_code", found[..]);
+      if found[0] && w.count > 100 { s[0].words_n = lg_set(s[0].words[..], w); s[0].screen = SC_WORDS; sc_say(s, "Your recovery code worked once and is now spent. Here is your new one."); return; }
+      sc_after_step(s); return;
+    }
+    s[0].todo = DO_NONE; s[0].screen = SC_MAIN;
+    if s[0].purpose == PF_LINK { sc_say(s, "Key added. We told every email and key on the account."); }
+    else { sc_say(s, "Recovered. Your new key replaced the account's keys, and every other login ended. We told every email and key."); }
+    sc_refresh(s); return;
+  }
+  if !ok { if !sc_wants_step(s, status, lines) { s[0].todo = DO_NONE; sc_failed(s, status, lines); } return; }
+  s[0].todo = DO_NONE;
+  if req == SR_CODE {
+    w := lg_value(lines, "recovery_code", found[..]);
+    s[0].words_n = lg_set(s[0].words[..], w); s[0].screen = SC_WORDS;
+    sc_say(s, "Write these 24 words down and keep them somewhere safe. We show them once. Your old code no longer works."); return;
+  }
+  if req == SR_UNLINK { sc_say(s, "Removed, and its logins ended. We told it and every way in that's left."); }
+  if req == SR_START {
+    b: [300] u8; n := lg_add(b[..], 0, "Recovery asked for. It finishes ");
+    n = sc_when(s, b[..], n, lg_int(lg_value(lines, "ready_ms", found[..])));
+    n = lg_add(b[..], n, ". We told every email and key on the account: any of them can cancel it.");
+    sc_say(s, cast(string) b[0..<n]);
+  }
+  if req == SR_CANCEL { sc_say(s, "The recovery is cancelled. We told every email and key on the account."); }
+  sc_refresh(s);
+}
+// key.js's answer: "Nostr <base64 event>", or why there is none.
+sc_signed :: (s: [] Sc, text: string) {
+  if s[0].req != SR_SIGNING { return; }
+  s[0].req = SR_NONE;
+  if !lg_is(text, 0, "Nostr ") {
+    sc_err(s, ifx text.count > 1 && text[0] == '!' then text[1..<text.count] else "Your key extension didn't sign. Try again.");
+    if lg_is(text, 0, "!This browser has no") { s[0].has_key = 0; }
+    return;
+  }
+  b: [4400] u8; n := lg_add(b[..], 0, "{\"proof\":\""); n = lg_json(b[..], n, text[6..<text.count]); n = lg_add(b[..], n, "\",\"label\":\"extension\"}");
+  u: [440] u8; m := lg_add(u[..], 0, cast(string) s[0].sign_url[0..<s[0].sign_n]); m = lg_add(u[..], m, "&as=lines");
+  sc_ask(s, SR_PROOF, cast(string) u[0..<m], cast(string) b[0..<n], SC_POST);
+}
+sc_message :: (s: [] Sc, kind: int, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if kind == SC_MSG_TYPED { sc_typed(s, text); return; }
+  if kind == SC_MSG_PAGE { sc_facts(s, text); sc_pump(s); return; }
+  if kind == SC_MSG_SIGNED { sc_signed(s, text); return; }
+  if kind == SC_MSG_HAS_KEY { s[0].has_key = ifx text == "1" then 1 else 0; return; }
+  if kind >= SC_MSG_HTTP && kind < SC_MSG_HTTP + 64 && kind - SC_MSG_HTTP == s[0].req_id && s[0].req != SR_NONE { sc_answer(s, text); }
+}
+sc_page :: (s: [] Sc) #export_c #effects(all) { if s.count < 1 { return; } sc_pump(s); }
+
+// ---------------------------------------------------------------- typing (the recovery code's box)
+sc_typed :: (s: [] Sc, text: string) {
+  if s[0].screen != SC_STEP || s[0].focus != SH_FIELD { return; }
+  if s[0].all { s[0].typed_n = 0; s[0].all = false; }
+  for c: text {
+    l := ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+    ch := ifx l == '\n' || l == '\t' || l == ',' then cast(u8) ' ' else l;
+    if (ch == ' ' || (ch >= 'a' && ch <= 'z')) && s[0].typed_n < s[0].typed.count {
+      if ch == ' ' && (s[0].typed_n == 0 || s[0].typed[s[0].typed_n - 1] == ' ') { continue; }
+      s[0].typed[s[0].typed_n] = ch; s[0].typed_n += 1;
+    }
+  }
+  sc_quiet(s);
+}
+sc_key_in :: (s: [] Sc, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  typing := s[0].screen == SC_STEP && s[0].focus == SH_FIELD;
+  if typing {
+    c := tk_command(key, mods);
+    if c == TK_ALL { s[0].all = s[0].typed_n > 0; return true; }
+    if c == TK_COPY || c == TK_CUT { if c == TK_CUT && s[0].all { s[0].typed_n = 0; s[0].all = false; } return true; }   // a secret's box never copies
+    if c == TK_BROWSER { return false; }
+    if key == -3 {
+      if s[0].all { s[0].typed_n = 0; s[0].all = false; }
+      else { s[0].typed_n = tk_back(cast(string) s[0].typed[0..<s[0].typed_n], mods); }
+      return true;
+    }
+    if key != -2 { s[0].all = false; }
+  }
+  if key == -2 { sc_press(s, ifx s[0].focus >= 0 && s[0].focus != SH_FIELD then s[0].focus else ifx typing then SH_USE else SH_NONE); return true; }
+  if key == -1 && s[0].screen == SC_STEP { sc_press(s, SH_BACK); return true; }
+  if key == -15 {
+    order: [SH_HITS] int; n := sc_order(s, order[..]);
+    if n == 0 { return false; }
+    k := 0; while k < n && order[k] != s[0].focus { k += 1; }
+    s[0].focus = order[(k + 1) % n]; return true;
+  }
+  return false;
+}
+sc_wants_text :: (s: [] Sc) -> bool #export_c #effects(all) { return s.count > 0 && s[0].screen == SC_STEP && s[0].focus == SH_FIELD; }
+sc_done :: (s: [] Sc) #export_c #effects(all) { if s.count < 1 { return; } s[0].action = 0; s[0].out_n = 0; }
+
+// ---------------------------------------------------------------- pressing
+sc_press :: (s: [] Sc, h: int) {
+  if h < 0 { return; }
+  if h == SH_HOME { sc_go(s, "/"); return; }
+  if h == SH_LIMITS { sc_go(s, "/docs/limits"); return; }
+  if h == SH_LOGIN { sc_go(s, "/login?next=%2Fsettings%2Fsecurity"); return; }
+  sc := s[0].screen;
+  if sc == SC_STEP {
+    if h == SH_FIELD { s[0].focus = SH_FIELD; return; }
+    if h == SH_SIGN { sc_challenge(s, PF_STEPUP); return; }
+    if h == SH_USE { sc_use_words(s); return; }
+    if h == SH_BACK && s[0].req == SR_NONE { s[0].screen = SC_MAIN; s[0].todo = DO_NONE; s[0].typed_n = 0; s[0].focus = -1; sc_quiet(s); return; }
+    return;
+  }
+  if sc == SC_WORDS {
+    if h == SH_COPY { s[0].out_n = lg_set(s[0].outbox[..], cast(string) s[0].words[0..<s[0].words_n]); s[0].action = TK_ACT_COPY; sc_say(s, "Copied. Keep it somewhere safe, away from this computer."); return; }
+    if h == SH_DONE {
+      for i: 0..<s[0].words.count { s[0].words[i] = 0; } s[0].words_n = 0;
+      s[0].screen = SC_MAIN; sc_quiet(s);
+      if s[0].purpose == PF_STEPUP { sc_after_step(s); } else { sc_refresh(s); }
+    }
+    return;
+  }
+  if sc != SC_MAIN { return; }
+  if h == SH_STEP { s[0].screen = SC_STEP; s[0].todo = DO_NONE; s[0].typed_n = 0; sc_quiet(s); return; }
+  if h == SH_ADD { sc_do(s, DO_LINK, 0, 0); return; }
+  if h == SH_CODE { sc_do(s, DO_CODE, 0, 0); return; }
+  if h == SH_ASK { sc_do(s, DO_START, 0, 0); return; }
+  if h == SH_CANCEL { sc_do(s, DO_CANCEL, 0, 0); return; }
+  if h == SH_FINISH { sc_do(s, DO_FINISH, 0, 0); return; }
+  if h >= SH_ROW && h < SH_ROW + SC_WAYS && h - SH_ROW < s[0].ne { sc_do(s, DO_UNLINK, 0, s[0].emails[h - SH_ROW].id); return; }
+  if h >= SH_ROW + SC_WAYS && h < SH_HITS && h - SH_ROW - SC_WAYS < s[0].nk { sc_do(s, DO_UNLINK, 1, s[0].keys[h - SH_ROW - SC_WAYS].id); }
+}
+
+// ---------------------------------------------------------------- layout
+SC_PANEL_W :: 520.0;
+SC_PARA :: 7.8;
+sc_level_words :: (s: [] Sc) -> string {
+  if s[0].limited { return "You logged in with email, and this account has a key. To change anything, confirm it's you with the key or your recovery code. Lost them? Ask for recovery below."; }
+  if s[0].level == 2 { return ifx sc_fresh(s) then "You confirmed it's you in the last 5 minutes: you can change anything." else "You're logged in with a key. Removing a way in or making a recovery code asks you to sign again."; }
+  return "You logged in with email. Add a key to make your account stronger: email alone can't take it over.";
+}
+sc_rec_words :: (s: [] Sc, b: [] u8) -> string {
+  r := s[0].rec; n := 0;
+  if r == 1 {
+    n = lg_add(b, 0, "Someone asked to recover this account. It finishes "); n = sc_when(s, b, n, s[0].ready_ms);
+    n = lg_add(b, n, " (in "); n = sc_until(s, b, n, s[0].ready_ms);
+    n = lg_add(b, n, "). Every email and key on the account was told, and any of them can cancel it.");
+    return cast(string) b[0..<n];
+  }
+  if r == 2 { return "Recovery is ready. Sign with your new key to finish: it replaces the account's keys and passkeys, and every other login ends."; }
+  if s[0].limited { return "Lost your key and recovery code? Ask for recovery. It waits 72 hours and tells every email and key on the account; any of them can cancel it."; }
+  return "";
+}
+SC_STEP_WORDS :: "Sign with a key on this account, or type your 24-word recovery code.";
+sc_order :: (s: [] Sc, out: [] int) -> int {
+  n := 0; sc := s[0].screen;
+  if sc == SC_MAIN {
+    if s[0].level < 2 && (s[0].by_key || s[0].by_code) { out[n] = SH_STEP; n += 1; }
+    for i: 0..<s[0].ne { if s[0].ne + s[0].nk > 1 { out[n] = SH_ROW + i; n += 1; } }
+    for i: 0..<s[0].nk { if s[0].ne + s[0].nk > 1 { out[n] = SH_ROW + SC_WAYS + i; n += 1; } }
+    out[n] = SH_ADD; n += 1; out[n] = SH_CODE; n += 1;
+    if s[0].rec == 1 || s[0].rec == 2 { out[n] = SH_CANCEL; n += 1; }
+    if s[0].rec == 2 { out[n] = SH_FINISH; n += 1; }
+    if s[0].limited && s[0].rec != 1 && s[0].rec != 2 { out[n] = SH_ASK; n += 1; }
+    out[n] = SH_LIMITS; n += 1;
+  }
+  if sc == SC_STEP {
+    if s[0].by_key { out[n] = SH_SIGN; n += 1; }
+    if s[0].by_code { out[n] = SH_FIELD; n += 1; out[n] = SH_USE; n += 1; }
+    out[n] = SH_BACK; n += 1;
+  }
+  if sc == SC_WORDS { out[n] = SH_COPY; n += 1; out[n] = SH_DONE; n += 1; }
+  if sc == SC_OUT { out[n] = SH_LOGIN; n += 1; }
+  out[n] = SH_HOME; n += 1;
+  return n;
+}
+sc_shown :: (s: [] Sc, h: int) -> bool { order: [SH_HITS] int; n := sc_order(s, order[..]); for i: 0..<n { if order[i] == h { return true; } } return false; }
+sc_tall :: (t: string, w: f32, cap: f32) -> f32 { return ifx t.count == 0 then 0.0f32 else lg_tall(t, w, cap); }
+// Every box, in CSS pixels, the page scrolled by s.scroll. The panel is as tall as what it holds.
+sc_layout :: (s: [] Sc) {
+  sw := hi(240, s[0].w); sh := hi(300, s[0].h);
+  pw := lo(SC_PANEL_W, sw - 32); px := (sw - pw) * 0.5;
+  top := (ifx sh > 720 then 110.0f32 else 80.0f32) - s[0].scroll;
+  x0 := px + 24; x1 := px + pw - 24; w := x1 - x0; y := top + 66;
+  for i: 0..<SH_HITS { s[0].hits[i] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  s[0].hits[SH_HOME] = Box.{x0 = px + pw - 64, y0 = top - 56, x1 = px + pw, y1 = top - 20};
+  b: [400] u8;
+  msg := ifx s[0].error_n > 0 then cast(string) s[0].error[0..<s[0].error_n] else cast(string) s[0].said[0..<s[0].said_n];
+  sc := s[0].screen;
+  if sc == SC_MAIN {
+    y += sc_tall(sc_level_words(s), w, SC_PARA) + 12;
+    y += sc_tall(msg, w, SC_PARA) + (ifx msg.count > 0 then 12.0f32 else 0.0f32);
+    if sc_shown(s, SH_STEP) { s[0].hits[SH_STEP] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 16; }
+    y += 26;   // WAYS IN
+    for i: 0..<s[0].ne + s[0].nk {
+      h := ifx i < s[0].ne then SH_ROW + i else SH_ROW + SC_WAYS + i - s[0].ne;
+      if sc_shown(s, h) { s[0].hits[h] = Box.{x0 = x1 - 92, y0 = y + 4, x1 = x1, y1 = y + 32}; }
+      y += 36;
+    }
+    y += 36 + (ifx s[0].passkeys > 0 then 24.0f32 else 12.0f32);   // the recovery code's line, passkeys
+    half := (w - 12) * 0.5;
+    s[0].hits[SH_ADD] = Box.{x0 = x0, y0 = y, x1 = x0 + half, y1 = y + 44};
+    s[0].hits[SH_CODE] = Box.{x0 = x1 - half, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 24;
+    rw := sc_rec_words(s, b[..]);
+    if rw.count > 0 {
+      y += 26 + sc_tall(rw, w, SC_PARA) + 12;   // RECOVERY, its words
+      if sc_shown(s, SH_FINISH) { s[0].hits[SH_FINISH] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
+      if sc_shown(s, SH_CANCEL) { s[0].hits[SH_CANCEL] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
+      if sc_shown(s, SH_ASK) { s[0].hits[SH_ASK] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
+      y += 12;
+    }
+    y += 26 + cast(f32) (ifx s[0].nn == 0 then 1 else s[0].nn) * 24 + 12;   // NOTICES
+    s[0].hits[SH_LIMITS] = Box.{x0 = x0, y0 = y, x1 = x0 + 64, y1 = y + 28}; y += 28 + 14;
+  }
+  if sc == SC_STEP {
+    y += sc_tall(SC_STEP_WORDS, w, SC_PARA) + 12;
+    y += sc_tall(msg, w, SC_PARA) + (ifx msg.count > 0 then 12.0f32 else 0.0f32);
+    if s[0].by_key { s[0].hits[SH_SIGN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 34; }
+    if s[0].by_code {
+      y += 18; s[0].hits[SH_FIELD] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 88}; y += 88 + 12;
+      s[0].hits[SH_USE] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 16;
+    }
+    if !s[0].by_key && !s[0].by_code { y += sc_tall("This account has only email, so there is nothing stronger to confirm with. Add a key first.", w, SC_PARA) + 12; }
+    s[0].hits[SH_BACK] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 20;
+  }
+  if sc == SC_WORDS {
+    y += sc_tall(msg, w, SC_PARA) + 16;
+    y += 6 * 30 + 16;   // 24 words, 4 across
+    half := (w - 12) * 0.5;
+    s[0].hits[SH_COPY] = Box.{x0 = x0, y0 = y, x1 = x0 + half, y1 = y + 44};
+    s[0].hits[SH_DONE] = Box.{x0 = x1 - half, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 20;
+  }
+  if sc == SC_OUT {
+    y += sc_tall(msg, w, SC_PARA) + (ifx msg.count > 0 then 12.0f32 else 0.0f32);
+    y += sc_tall("Log in to see how you log in, add a key or make a recovery code.", w, SC_PARA) + 16;
+    s[0].hits[SH_LOGIN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 20;
+  }
+  if sc == SC_LOADING { y += 40; }
+  s[0].panel = Box.{x0 = px, y0 = top, x1 = px + pw, y1 = y};
+  d := hi(1, s[0].dpr); f := s[0].hits[SH_FIELD];
+  s[0].field[0] = f.x0 * d; s[0].field[1] = f.y0 * d; s[0].field[2] = f.x1 * d; s[0].field[3] = f.y1 * d;
+}
+sc_most :: (s: [] Sc) -> f32 { return hi(0, s[0].panel.y1 + s[0].scroll + 40 - s[0].h); }
+sc_wheel :: (s: [] Sc, dy: f32) #export_c #effects(all) { if s.count < 1 { return; } s[0].scroll = clamp(s[0].scroll + dy, 0, sc_most(s)); sc_layout(s); }
+sc_hit :: (s: [] Sc, x: f32, y: f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return SH_NONE; }
+  for i: 0..<SH_HITS { b := s[0].hits[i]; if b.x1 > b.x0 && sc_shown(s, i) && inside(b, x, y) { return i; } }
+  return SH_NONE;
+}
+sc_pointer :: (s: [] Sc, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  d := hi(1, s[0].dpr); px := x / d; py := y / d;
+  if phase == 1 && s[0].down && s[0].pressed < 0 { s[0].scroll = clamp(s[0].scroll - (py - s[0].py), 0, sc_most(s)); sc_layout(s); }   // a drag scrolls
+  s[0].px = px; s[0].py = py;
+  if phase == 0 { s[0].down = true; s[0].pressed = sc_hit(s, px, py); return true; }
+  if phase == 2 || phase == 3 {
+    was := s[0].down; s[0].down = false;
+    if was && phase == 2 && s[0].pressed >= 0 && sc_hit(s, px, py) == s[0].pressed { s[0].focus = ifx s[0].pressed == SH_FIELD then SH_FIELD else s[0].focus; sc_press(s, s[0].pressed); sc_layout(s); }
+    return true;
+  }
+  return phase == 1 && s[0].down;
+}
+sc_cursor :: (s: [] Sc) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  h := sc_hit(s, s[0].px, s[0].py);
+  return ifx h == SH_FIELD then 3 else ifx h >= 0 then 1 else 0;
+}
+
+// ---------------------------------------------------------------- drawing
+sc_hover :: (s: [] Sc, h: int) -> bool { return sc_hit(s, s[0].px, s[0].py) == h || s[0].focus == h; }
+sc_button :: (s: [] Sc, out: [] f32, at: int, p: Pen, h: int, text: string, main: bool) -> int {
+  b := s[0].hits[h]; if b.x1 <= b.x0 || !sc_shown(s, h) { return at; }
+  return button(out, at, lg_box(b, p.d), text, main, sc_hover(s, h), true, p, ifx s[0].req != SR_NONE && h != SH_HOME then 0.55f32 else 1.0f32);
+}
+sc_head :: (out: [] f32, at: int, p: Pen, text: string, x: f32, y: f32, w: f32) -> int {
+  d := p.d;
+  v := put(out, at, text, x * d, y * d, 6.4 * d, ink(p, INK_DIM));
+  return rule(out, v, x * d, (y + 8) * d, (x + w) * d, (y + 8) * d, ink(p, INK_DIM), 0.25);
+}
+SC_NOTICE_WORDS :: [9] string.["link.email", "link.nostr", "unlink", "recovery.start", "recovery.cancel", "recovery.done", "code.new", "code.used", ""];
+SC_NOTICE_SAID :: [9] string.["An email was added", "A key was added", "A way in was removed", "Recovery was asked for", "Recovery was cancelled",
+                              "The account was recovered", "A new recovery code", "The recovery code was used", "A security notice"];
+sc_notice_said :: (what: string) -> string { for i: 0..<8 { if SC_NOTICE_WORDS[i] == what { return SC_NOTICE_SAID[i]; } } return SC_NOTICE_SAID[8]; }
+sc_body :: (s: [] Sc, out: [] f32, at: int, p: Pen, still: bool) -> int {
+  d := p.d; bx := s[0].panel; x := bx.x0 + 24; w := bx.x1 - bx.x0 - 48; v := at; below: [1] f32; b: [400] u8;
+  sc := s[0].screen;
+  title := ifx sc == SC_STEP then "CONFIRM IT'S YOU" else ifx sc == SC_WORDS then "YOUR RECOVERY CODE" else "SECURITY";
+  v = put_fit(out, v, title, x * d, (bx.y0 + 44) * d, (ifx p.phone then 13.0f32 else 15.0f32) * d, chrome(ink(p, INK_WHITE)), w * d);
+  y := bx.y0 + 66;
+  msg := ifx s[0].error_n > 0 then cast(string) s[0].error[0..<s[0].error_n] else cast(string) s[0].said[0..<s[0].said_n];
+  mk := ifx s[0].error_n > 0 then lg_red(p) else lg_text(p, INK_BRIGHT);
+  if sc == SC_LOADING { v = put(out, v, "LOADING", x * d, (y + 14) * d, 7.0 * d, ink(p, INK_DIM)); }
+  if sc == SC_MAIN {
+    v = lg_para(out, v, sc_level_words(s), x, y, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); y = below[0] + 12;
+    if msg.count > 0 { v = lg_para(out, v, msg, x, y, w, SC_PARA, mk, d, below[..]); y = below[0] + 12; }
+    v = sc_button(s, out, v, p, SH_STEP, "CONFIRM IT'S YOU", true);
+    if sc_shown(s, SH_STEP) { y = s[0].hits[SH_STEP].y1 + 16; }
+    v = sc_head(out, v, p, "WAYS IN", x, y + 12, w); y += 26;
+    for i: 0..<s[0].ne + s[0].nk {
+      email := i < s[0].ne; way := ifx email then s[0].emails[i] else s[0].keys[i - s[0].ne];
+      v = put(out, v, ifx email then "EMAIL" else "KEY", x * d, (y + 22) * d, 6.2 * d, ink(p, INK_DIM));
+      v = put_fit(out, v, cast(string) way.text[0..<way.n], (x + 64) * d, (y + 22) * d, 8.0 * d, lg_text(p, INK_WHITE), (w - 64 - 100) * d);
+      v = sc_button(s, out, v, p, ifx email then SH_ROW + i else SH_ROW + SC_WAYS + i - s[0].ne, "REMOVE", false);
+      y += 36;
+    }
+    v = put(out, v, "CODE", x * d, (y + 22) * d, 6.2 * d, ink(p, INK_DIM));
+    v = put_fit(out, v, ifx s[0].code_set then "A recovery code is set. Making a new one ends it." else "No recovery code yet.", (x + 64) * d, (y + 22) * d, 8.0 * d, lg_text(p, INK_PALE), (w - 64) * d);
+    y += 36;
+    if s[0].passkeys > 0 { n := lg_add_int(b[..], 0, s[0].passkeys); n = lg_add(b[..], n, ifx s[0].passkeys == 1 then " passkey" else " passkeys"); v = put(out, v, cast(string) b[0..<n], (x + 64) * d, (y + 6) * d, 7.0 * d, lg_text(p, INK_DIM)); }
+    v = sc_button(s, out, v, p, SH_ADD, ifx s[0].req == SR_SIGNING && s[0].purpose == PF_LINK then "SIGNING" else "ADD A KEY", false);
+    v = sc_button(s, out, v, p, SH_CODE, ifx s[0].req == SR_CODE then "MAKING" else "NEW RECOVERY CODE", false);
+    y = s[0].hits[SH_ADD].y1 + 24;
+    rw := sc_rec_words(s, b[..]);
+    if rw.count > 0 {
+      v = sc_head(out, v, p, "RECOVERY", x, y + 12, w); y += 26;
+      v = lg_para(out, v, rw, x, y, w, SC_PARA, lg_text(p, ifx s[0].rec == 1 || s[0].rec == 2 then INK_BRIGHT else INK_PALE), d, below[..]);
+      v = sc_button(s, out, v, p, SH_FINISH, ifx s[0].req == SR_SIGNING then "SIGNING" else "FINISH WITH A NEW KEY", true);
+      v = sc_button(s, out, v, p, SH_CANCEL, ifx s[0].req == SR_CANCEL then "CANCELLING" else "CANCEL RECOVERY", s[0].rec == 1);
+      v = sc_button(s, out, v, p, SH_ASK, ifx s[0].req == SR_START then "ASKING" else "ASK FOR RECOVERY", false);
+      last := s[0].hits[SH_ASK].y1;
+      if sc_shown(s, SH_CANCEL) { last = hi(last, s[0].hits[SH_CANCEL].y1); }
+      y = hi(below[0], last) + 24;
+    }
+    v = sc_head(out, v, p, "NOTICES", x, y + 12, w); y += 26;
+    if s[0].nn == 0 { v = put(out, v, ifx s[0].have_notes then "None yet. We send one for every change to how you log in." else "LOADING", x * d, (y + 16) * d, 7.4 * d, lg_text(p, INK_DIM)); }
+    for i: 0..<s[0].nn {
+      nt := s[0].notes[i]; n := sc_when(s, b[..], 0, nt.at);
+      v = put(out, v, cast(string) b[0..<n], x * d, (y + 16 + cast(f32) i * 24) * d, 7.0 * d, lg_text(p, INK_DIM));
+      v = put_fit(out, v, sc_notice_said(cast(string) nt.what[0..<nt.n]), (x + 150) * d, (y + 16 + cast(f32) i * 24) * d, 7.4 * d, lg_text(p, INK_PALE), (w - 150) * d);
+    }
+    l := s[0].hits[SH_LIMITS]; hot := sc_hover(s, SH_LIMITS);
+    v = put(out, v, "LIMITS", l.x0 * d, (l.y0 + 18) * d, 6.4 * d, ink(p, ifx hot then INK_BLUE else INK_DIM));
+    v = put_fit(out, v, "Recovery asks and code tries", (l.x0 + 70) * d, (l.y0 + 18) * d, 7.0 * d, lg_text(p, INK_FAINT), (w - 70) * d);
+  }
+  if sc == SC_STEP {
+    v = lg_para(out, v, SC_STEP_WORDS, x, y, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); y = below[0] + 12;
+    if msg.count > 0 { v = lg_para(out, v, msg, x, y, w, SC_PARA, mk, d, below[..]); }
+    v = sc_button(s, out, v, p, SH_SIGN, ifx s[0].req == SR_CHALLENGE || s[0].req == SR_SIGNING || s[0].req == SR_PROOF then "SIGNING" else "SIGN WITH YOUR KEY", true);
+    if s[0].by_key && s[0].by_code { v = put_centred(out, v, "OR", (x + w * 0.5) * d, (s[0].hits[SH_SIGN].y1 + 22) * d, 6.2 * d, ink(p, INK_DIM)); }
+    if s[0].by_code {
+      f := s[0].hits[SH_FIELD]; on := s[0].focus == SH_FIELD;
+      v = put(out, v, "RECOVERY CODE", x * d, (f.y0 - 8) * d, 6.2 * d, ink(p, INK_DIM));
+      v = frame(out, v, lg_box(f, d), 6 * d, ink(p, ifx on then INK_WHITE else INK_DIM), ifx on then 0.85f32 else 0.45f32, p);
+      t := cast(string) s[0].typed[0..<s[0].typed_n];
+      if t.count == 0 && !on { v = put_fit(out, v, "24 words, a space between", (f.x0 + 14) * d, (f.y0 + 26) * d, 8.4 * d, lg_text(p, INK_FAINT), (f.x1 - f.x0 - 28) * d); }
+      else {
+        // the words as typed, wrapped inside the box; the last lines when they don't fit
+        k := lg_text(p, ifx s[0].all then INK_BLUE else INK_WHITE); lines := lg_lines(t, f.x1 - f.x0 - 28, 8.4);
+        skip := hi_int(0, lines - 4); from := 0; row := 0; last := 0;
+        while from < t.count {
+          end := lg_break(t, from, (f.x1 - f.x0 - 28) * d, 8.4 * d, k);
+          if row >= skip { v = put(out, v, t[from..<end], (f.x0 + 14) * d, (f.y0 + 22 + cast(f32) (row - skip) * 17.6) * d, 8.4 * d, k); }
+          last = from; from = end; while from < t.count && t[from] == ' ' { from += 1; } row += 1;
+        }
+        if on && (still || fract(s[0].time * 0.9) < 0.6) {
+          r := hi_int(0, row - 1 - skip);
+          cx := (f.x0 + 14) * d + text_width(t[last..<t.count], 8.4 * d, k) + 2 * d; cy := (f.y0 + 22 + cast(f32) r * 17.6) * d;
+          v = rule(out, v, cx, cy - 10 * d, cx, cy + 3 * d, lg_text(p, INK_WHITE), 0.9);
+        }
+      }
+      v = sc_button(s, out, v, p, SH_USE, ifx s[0].req == SR_WORDS then "CHECKING" else "USE MY RECOVERY CODE", !s[0].by_key);
+    }
+    if !s[0].by_key && !s[0].by_code { v = lg_para(out, v, "This account has only email, so there is nothing stronger to confirm with. Add a key first.", x, s[0].hits[SH_BACK].y0 - 40, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); }
+    v = sc_button(s, out, v, p, SH_BACK, "BACK", false);
+  }
+  if sc == SC_WORDS {
+    v = lg_para(out, v, msg, x, y, w, SC_PARA, lg_text(p, INK_BRIGHT), d, below[..]); y = below[0] + 16;
+    t := cast(string) s[0].words[0..<s[0].words_n]; from := 0; i := 0; col := w / 4;
+    while from < t.count && i < 24 {
+      end := from; while end < t.count && t[end] != ' ' { end += 1; }
+      n := lg_add_int(b[..], 0, i + 1); n = lg_add(b[..], n, ".");
+      cx := x + cast(f32) (i % 4) * col; cy := y + 20 + cast(f32) (i / 4) * 30;
+      v = put(out, v, cast(string) b[0..<n], cx * d, cy * d, 6.0 * d, ink(p, INK_DIM));
+      v = put_fit(out, v, t[from..<end], (cx + 22) * d, cy * d, 8.6 * d, lg_text(p, INK_WHITE), (col - 26) * d);
+      from = end + 1; i += 1;
+    }
+    v = sc_button(s, out, v, p, SH_COPY, "COPY", false);
+    v = sc_button(s, out, v, p, SH_DONE, "I WROTE IT DOWN", true);
+  }
+  if sc == SC_OUT {
+    if msg.count > 0 { v = lg_para(out, v, msg, x, y, w, SC_PARA, mk, d, below[..]); y = below[0] + 12; }
+    v = lg_para(out, v, "Log in to see how you log in, add a key or make a recovery code.", x, y, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]);
+    v = sc_button(s, out, v, p, SH_LOGIN, "LOG IN", true);
+  }
+  return v;
+}
+sc_frame :: (s: [] Sc, world: [] LandState, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  d := hi(1, dpr); s[0].w = width / d; s[0].h = height / d; s[0].dpr = d; s[0].time += clamp(dt, 0, 0.1);
+  if !s[0].ready { s[0].ready = true; sc_pump(s); }
+  sc_layout(s);
+  if s[0].scroll > sc_most(s) { s[0].scroll = sc_most(s); sc_layout(s); }
+  p := Pen.{d = d, fade = 1, time = 5 + s[0].time, still = still, phone = s[0].w < 760};
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still then 20.0f32 else 20 + s[0].time; u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
+  look := fv(0, 0, 0); c := cam(look, 0.785, 0.74, 40, width * 0.5, height * 0.62, width, Box.{x0 = 0, y0 = 0, x1 = width, y1 = height}, width, height);
+  v := floor_grid(out, 0, world, c, look, p);
+  b := s[0].panel; paper := lg_box(b, d);
+  for i: 0..<v { out[i * VERTEX_FLOATS + 6] *= ifx inside(paper, out[i * VERTEX_FLOATS], out[i * VERTEX_FLOATS + 1]) then 0.18f32 else 0.75f32; }
+  glass(u, 0, paper, 10 * d, 0.86, 0); u[5] = 1;
+  v = frame(out, v, paper, 10 * d, ink(p, INK_DIM), 0.55, p);
+  v = put(out, v, "OPENAGENTS", b.x0 * d, (b.y0 - 32) * d, 6.8 * d, ink(p, INK_DIM));
+  v = sc_button(s, out, v, p, SH_HOME, "HOME", false);
+  return sc_body(s, out, v, p, still);
+}
+sc_max_vertices :: () -> int #export_c #effects(all) { return SC_MAX_VERTICES; }
+
+// ---------------------------------------------------------------- tests
+sc_new :: (s: [] Sc) { s[0].w = 390; s[0].h = 844; s[0].dpr = 1; s[0].has_key = 1; sc_page(s); sc_layout(s); }
+sc_reply :: (s: [] Sc, id: int, text: string) { sc_sent(s, id); sc_message(s, SC_MSG_HTTP + id, text); sc_layout(s); }
+sc_url :: (s: [] Sc) -> string { return cast(string) s[0].url[0..<s[0].url_n]; }
+sc_body_of :: (s: [] Sc) -> string { return cast(string) s[0].body[0..<s[0].body_n]; }
+sc_out :: (s: [] Sc) -> string { return cast(string) s[0].outbox[0..<s[0].out_n]; }
+sc_error_of :: (s: [] Sc) -> string { return cast(string) s[0].error[0..<s[0].error_n]; }
+sc_said_of :: (s: [] Sc) -> string { return cast(string) s[0].said[0..<s[0].said_n]; }
+SC_T_WAYS :: "account acct_x\nlevel L1\nvia email\nl2_age_ms -1\nlimited 1\nemail 3 r•••@example.com\nkey 7 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nmethods nostr,recovery_code\nrecovery_code 1\npasskeys 0\nrecovery none\nasked_ms 0\nready_ms 0\nnow_ms 1794000000000\n";
+SC_T_WORDS :: "legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth title";
+sc_cat :: (buf: [] u8, a: string, b: string) -> string { n := lg_set(buf, a); n = lg_add(buf, n, b); return cast(string) buf[0..<n]; }
+
+#test "security: the page asks for the ways in, then the notices, and shows a limited email login with its key" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]);
+  #assert s[0].req == SR_WAYS && sc_url(s[..]) == "/api/auth/ways?as=lines";
+  sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS));
+  #assert s[0].screen == SC_MAIN && s[0].limited && s[0].level == 1 && s[0].ne == 1 && s[0].nk == 1 && s[0].by_key && s[0].by_code && s[0].code_set;
+  #assert cast(string) s[0].keys[0].text[0..<s[0].keys[0].n] == "0123456789...abcdef" && s[0].keys[0].id == 7;
+  #assert s[0].req == SR_NOTICES && sc_url(s[..]) == "/api/auth/notices?as=lines";
+  sc_reply(s[..], 2, "200\nnotice 1794000000000 recovery.start\nnotice 1793990000000 link.nostr\n");
+  #assert s[0].nn == 2 && sc_notice_said(cast(string) s[0].notes[0].what[0..<s[0].notes[0].n]) == "Recovery was asked for";
+  #assert sc_shown(s[..], SH_STEP) && sc_shown(s[..], SH_ASK) && !sc_shown(s[..], SH_CANCEL);
+}
+#test "security: logged out shows LOG IN, which comes back here" {
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, "401\nerror Log in first.\n");
+  #assert s[0].screen == SC_OUT && sc_shown(s[..], SH_LOGIN);
+  sc_press(s[..], SH_LOGIN);
+  #assert s[0].action == SC_ACT_GO && sc_out(s[..]) == "/login?next=%2Fsettings%2Fsecurity";
+}
+#test "security: a refused change opens the prompt; the key signs the challenge's URL with no body; then the change is asked again" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS)); sc_reply(s[..], 2, "200\n");
+  sc_press(s[..], SH_CODE);
+  #assert s[0].req == SR_CODE && sc_url(s[..]) == "/api/auth/recovery-code?as=lines" && s[0].flags == (SC_POST | SC_WANTED);
+  sc_reply(s[..], 3, "401\nerror Log in again with your key or passkey to do this.\nstep_up L2-fresh\nmethods nostr,recovery_code\nlimited 1\nrecovery none\nready_ms 0\n");
+  #assert s[0].screen == SC_STEP && s[0].todo == DO_CODE && sc_error_of(s[..]) == "Log in again with your key or passkey to do this.";
+  sc_press(s[..], SH_SIGN);
+  #assert s[0].req == SR_CHALLENGE && sc_body_of(s[..]) == "{\"purpose\":\"stepup\"}";
+  sc_reply(s[..], 4, "200\nchallenge abc\nurl https://openagents.com/api/auth/step-up?c=abc\nexpires_in 300\n");
+  #assert s[0].action == SC_ACT_SIGN && sc_out(s[..]) == "https://openagents.com/api/auth/step-up?c=abc\n" && s[0].req == SR_SIGNING;
+  sc_done(s[..]);
+  sc_message(s[..], SC_MSG_SIGNED, "Nostr ZXZlbnQ=");
+  #assert s[0].req == SR_PROOF && sc_url(s[..]) == "https://openagents.com/api/auth/step-up?c=abc&as=lines" && sc_body_of(s[..]) == "{\"proof\":\"ZXZlbnQ=\",\"label\":\"extension\"}";
+  sc_reply(s[..], 5, "200\nstate stepped-up\nlevel L2\n");
+  #assert s[0].screen == SC_MAIN && s[0].req == SR_CODE && s[0].level == 2;   // the change, asked again
+  sc_reply(s[..], 6, sc_cat(cb[..], "200\nrecovery_code ", SC_T_WORDS));
+  #assert s[0].screen == SC_WORDS && s[0].words_n > 100;
+  sc_press(s[..], SH_COPY);
+  #assert s[0].action == TK_ACT_COPY && sc_out(s[..]) == SC_T_WORDS;
+  sc_done(s[..]); sc_press(s[..], SH_DONE);
+  #assert s[0].screen == SC_MAIN && s[0].words_n == 0 && s[0].words[0] == 0 && s[0].req == SR_WAYS;
+}
+#test "security: the recovery code's box takes 24 words (paste, Cmd+A, Backspace) and never copies them" {
+  cb: [2048] u8; cb2: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS)); sc_reply(s[..], 2, "200\n");
+  sc_press(s[..], SH_STEP); sc_press(s[..], SH_FIELD);
+  #assert sc_wants_text(s[..]);
+  sc_message(s[..], SC_MSG_TYPED, "Legal  winner\nthank");
+  #assert cast(string) s[0].typed[0..<s[0].typed_n] == "legal winner thank";
+  #assert sc_key_in(s[..], 'c', 8) && s[0].action == 0;   // a secret's box: no copy
+  #assert sc_key_in(s[..], 'a', 8) && s[0].all;
+  _ = sc_key_in(s[..], -3, 0);
+  #assert s[0].typed_n == 0;
+  sc_press(s[..], SH_USE);
+  #assert s[0].req == SR_NONE && sc_error_of(s[..]) == "Type all 24 words of your recovery code.";
+  sc_message(s[..], SC_MSG_TYPED, SC_T_WORDS);
+  _ = sc_key_in(s[..], -2, 0);
+  #assert s[0].req == SR_WORDS && sc_url(s[..]) == "/api/auth/step-up?as=lines" && sc_body_of(s[..]) == sc_cat(cb2[..], sc_cat(cb[..], "{\"words\":\"", SC_T_WORDS), "\"}");
+  sc_reply(s[..], 3, sc_cat(cb[..], "200\nstate stepped-up\nlevel L2\nrecovery_code ", SC_T_WORDS));
+  #assert s[0].screen == SC_WORDS && s[0].level == 2;   // the spent code's replacement, shown once
+}
+#test "security: recovery shows its end time, cancels, and a notice's link cancels it with no login" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]);
+  sc_message(s[..], SC_MSG_PAGE, "now=1794000000000\nday=0.63889\nurl=https://openagents.com/settings/security");
+  sc_reply(s[..], 1, sc_cat(cb[..], "200\n", "level L1\nlimited 1\nkey 7 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nmethods nostr\nrecovery pending\nasked_ms 1794000000000\nready_ms 1794259200000\nnow_ms 1794000000000\n"));
+  sc_reply(s[..], 2, "200\n");
+  b: [400] u8; w := sc_rec_words(s[..], b[..]);
+  #assert s[0].rec == 1 && sc_shown(s[..], SH_CANCEL) && !sc_shown(s[..], SH_ASK) && lg_is(w, 0, "Someone asked to recover this account. It finishes ");
+  #assert s[0].tz_known && s[0].tz_min == -360;
+  hb: [40] u8; n := sc_until(s[..], hb[..], 0, s[0].ready_ms);
+  #assert cast(string) hb[0..<n] == "72 h 0 min";
+  sc_press(s[..], SH_CANCEL);
+  #assert s[0].req == SR_CANCEL && sc_url(s[..]) == "/api/auth/recovery/cancel?as=lines";
+  sc_reply(s[..], 3, "200\nstate cancelled\n");
+  #assert sc_said_of(s[..]) == "The recovery is cancelled. We told every email and key on the account." && s[0].req == SR_WAYS;
+  t: [1] Sc; sc_new(t[..]);
+  sc_hash(t[..], "cancel=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+  #assert t[0].action == SC_ACT_HASH && t[0].out_n == 0;   // the token leaves the address bar
+  sc_reply(t[..], 1, "401\nerror Log in first.\n");   // the ways, asked before the hash came
+  #assert t[0].req == SR_LINK_CANCEL && sc_body_of(t[..]) == "{\"t\":\"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\"}";
+  sc_reply(t[..], 2, "410\nerror That link was used or has ended.\n");
+  #assert sc_error_of(t[..]) == "That link was used or has ended.";
+}
+#test "security: dates read in the viewer's time, or say UTC" {
+  s: [1] Sc; b: [40] u8;
+  n := sc_when(s[..], b[..], 0, 1794259200000);
+  #assert cast(string) b[0..<n] == "Mon 9 Nov, 21:20 UTC";
+  s[0].tz_known = true; s[0].tz_min = -360;
+  n = sc_when(s[..], b[..], 0, 1794259200000);
+  #assert cast(string) b[0..<n] == "Mon 9 Nov, 15:20";
+}
+#test "security: ?step=1 opens the prompt at once and goes back to next after; a fresh session goes straight back" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]);
+  sc_message(s[..], SC_MSG_PAGE, "now=1\nurl=https://openagents.com/settings/security?step=1&next=%2Fadmin%2Faccess");
+  sc_reply(s[..], 1, sc_cat(cb[..], "200\n", "level L2\nlimited 0\nl2_age_ms 900000\nkey 7 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nmethods nostr\nrecovery none\n"));
+  #assert s[0].screen == SC_STEP;
+  sc_reply(s[..], 2, "200\n");   // the notices
+  sc_press(s[..], SH_SIGN); sc_reply(s[..], 3, "200\nurl https://openagents.com/api/auth/step-up?c=abc\n"); sc_done(s[..]);
+  sc_message(s[..], SC_MSG_SIGNED, "Nostr ZXZlbnQ="); sc_reply(s[..], 4, "200\nstate stepped-up\nlevel L2\n");
+  #assert s[0].action == SC_ACT_GO && sc_out(s[..]) == "/admin/access";
+  t: [1] Sc; sc_new(t[..]);
+  sc_message(t[..], SC_MSG_PAGE, "now=1\nurl=https://openagents.com/settings/security?step=1&next=https%3A%2F%2Fevil.example");
+  sc_reply(t[..], 1, sc_cat(cb[..], "200\n", "level L2\nlimited 0\nl2_age_ms 1000\nmethods nostr\nrecovery none\n"));
+  #assert t[0].screen == SC_MAIN && t[0].next_n == 0 && t[0].action == 0;   // another site is never "next"
+}
+#test "security: removing a way in names its kind and id; the last one has no REMOVE" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS)); sc_reply(s[..], 2, "200\n");
+  sc_press(s[..], SH_ROW + SC_WAYS);
+  #assert s[0].req == SR_UNLINK && sc_body_of(s[..]) == "{\"kind\":\"nostr\",\"id\":7}";
+  t: [1] Sc; sc_new(t[..]); sc_reply(t[..], 1, "200\nlevel L2\nlimited 0\nl2_age_ms 0\nkey 7 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\nmethods nostr\nrecovery none\n");
+  #assert !sc_shown(t[..], SH_ROW + SC_WAYS);
+}
+#test "security: every shown control has a box inside the panel, on a phone and a desktop, and the page draws within its vertex budget" #steps 900000000 {
+  cb: [2048] u8;
+  out: [SC_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  for k: 0..<2 {
+    s: [1] Sc; sc_new(s[..]); s[0].w = ifx k == 0 then 390.0f32 else 1280.0f32; s[0].h = ifx k == 0 then 844.0f32 else 800.0f32;
+    sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS)); sc_reply(s[..], 2, "200\nnotice 1794000000000 link.email\nnotice 1794000000000 code.new\n");
+    for screen: 1..<5 {
+      s[0].screen = screen; s[0].words_n = lg_set(s[0].words[..], SC_T_WORDS); sc_layout(s[..]);
+      order: [SH_HITS] int; n := sc_order(s[..], order[..]);
+      for i: 0..<n {
+        b := s[0].hits[order[i]];
+        #assert b.x1 > b.x0 && b.x0 >= s[0].panel.x0 && b.x1 <= s[0].panel.x1 + 1 && (order[i] == SH_HOME || (b.y0 >= s[0].panel.y0 && b.y1 <= s[0].panel.y1));
+        #assert sc_hit(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == order[i];
+      }
+      v := sc_frame(s[..], world[0..<0], out[..], u[..], s[0].w, s[0].h, 1, 0, true);
+      #assert v > 0 && v < SC_MAX_VERTICES;
+    }
+  }
+}

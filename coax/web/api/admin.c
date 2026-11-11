@@ -89,10 +89,11 @@ static bool is_admin(const char *pubkey) {
 bool admin_is(const char *pubkey) { return is_admin(pubkey); }
 
 // The admin page's own cookie (oa_admin, until #13207 moves /admin to our sessions): its admin's
-// key in who, or false. auth.c reads it so the gate knows an admin logged in that way.
-bool admin_cookie_who(const request *q, PGconn *db, char who[65]) {
+// key in who, or false. auth.c reads it so the gate knows an admin logged in that way; age_ms is
+// how long ago that sign-in's signature was (an admin change needs it within 5 minutes, #13212).
+bool admin_cookie_who(const request *q, PGconn *db, char who[65], long long *age_ms) {
   char cookies[4096];
-  who[0] = 0;
+  who[0] = 0; *age_ms = -1;
   if (!api_header(q, "Cookie", cookies, sizeof cookies)) return false;
   const char *c = strstr(cookies, "oa_admin=");
   if (!c || (c != cookies && c[-1] != ' ' && c[-1] != ';')) return false;
@@ -103,10 +104,10 @@ bool admin_cookie_who(const request *q, PGconn *db, char who[65]) {
   if (n != 64) return false;
   char ms[32]; snprintf(ms, sizeof ms, "%lld", (long long)api_now_ms());
   const char *v[2] = {token, ms};
-  PGresult *r = PQexecParams(db, "SELECT pubkey FROM analytics.admin_sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') "
+  PGresult *r = PQexecParams(db, "SELECT pubkey, $2::bigint - created_ms FROM analytics.admin_sessions WHERE token_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex') "
                                  "AND expires_ms > $2::bigint", 2, NULL, v, NULL, NULL, 0);
   bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
-  if (ok) snprintf(who, 65, "%s", PQgetvalue(r, 0, 0));
+  if (ok) { snprintf(who, 65, "%s", PQgetvalue(r, 0, 0)); *age_ms = atoll(PQgetvalue(r, 0, 1)); }
   PQclear(r);
   return ok && is_admin(who);
 }
