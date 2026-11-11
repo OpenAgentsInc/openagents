@@ -634,6 +634,10 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 }
 - (int32_t)socketOpen:(NSString *)url {
  if (!session || !url) return -1;
+ // "wt+" asks for WebTransport first (aethyr/net/transport.coax NET_WT_PREFIX); this host has only the
+ // WebSocket, which is the fallback room-wt.js takes: the same URL without the prefix. The opened event
+ // says nothing, so the page's link runs as a WebSocket, unmarked.
+ if ([url hasPrefix:@"wt+"]) url = [url substringFromIndex:3];
  NSURL *u = [NSURL URLWithString:url];
  if (!u || !([u.scheme isEqual:@"wss"] || [u.scheme isEqual:@"ws"])) return -1;
  int slot = -1;

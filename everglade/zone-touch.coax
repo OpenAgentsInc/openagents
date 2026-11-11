@@ -38,8 +38,8 @@ zt_on :: (s: [] EgZone) -> bool {
   h := s[0].creator[0].hostiles[0];
   return s[0].touch && zone_world(s) && !(h.ready && h.hp <= 0) && !s[0].xc[0].dr.on;
 }
-// The foot of the stick's side: the bar's top.
-zt_foot :: (s: [] EgZone) -> f32 { x := s[0].xc[..]; return xc_bar_top(x) - f32(ZT_FOOT) * x[0].k; }
+// The foot of the stick's side: the bar's top, or the screen's foot in a bare zone, which draws no bar.
+zt_foot :: (s: [] EgZone) -> f32 { x := s[0].xc[..]; return (ifx s[0].bare then x[0].h else xc_bar_top(x)) - f32(ZT_FOOT) * x[0].k; }
 // Where the ring rests before a thumb is down: left of the middle, over the bar. Nothing else stands
 // over the bar (the class menus hang under your portrait, GitHub #13147).
 zt_rest :: (s: [] EgZone) -> [2] f32 {
@@ -165,6 +165,12 @@ zt_lab :: (s: [] EgZone) {
   s[0].xc[0].own_kit = true; #assert zt_up(s[..]).y1 < b[1] && zt_up(s[..]).y0 > 2532 * ZT_TOP; s[0].xc[0].own_kit = false;
   // you are down: no controls
   s[0].creator[0].hostiles[0].ready = true; s[0].creator[0].hostiles[0].hp = 0; #assert zt_draw(s[..], out[..], 0) == 0;
+}
+#test "a bare zone (Bitcoin Lab) has no bar: the stick's side reaches the screen's foot, and its ring and JUMP draw (touch)" #steps 2000000000 {
+  s: [1] EgZone; zt_lab(s[..]); s[0].touch = true; s[0].bare = true;
+  #assert s[0].xc[0].bar_n > 0 && zt_foot(s[..]) == 2532 - ZT_FOOT * 3 && zt_foot(s[..]) > xc_bar_top(s[0].xc[..]);
+  r := zt_rest(s[..]); #assert r[1] + ZT_RING * 3 < zt_foot(s[..]) && r[1] > 2532 * ZT_TOP;
+  out: [4096 * 16] f32; #assert zt_draw(s[..], out[..], 0) > 0;
 }
 #test "a finger leaves no card behind: a held slot's card is up while it is held, never over the bow's slot, and gone as the finger lifts (touch)" #steps 2000000000 {
   s: [1] EgZone; xc_test_lab(s[..], FB_CL_RANGER, 0); x := s[0].xc[..];

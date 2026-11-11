@@ -453,6 +453,8 @@ zone_draw :: (s: [] EgZone, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   n := cc.frame(cr,out,u,width,height,hi(dpr,0.5),dt,still);
   if cr[0].experimental && !cr[0].walk.on && s[0].bare {
     for i: 0..<XC_FOES { cr[0].hostiles[0].enemies[i].dead = true; cr[0].hostiles[0].enemies[i].died = -100; cr[0].hostiles[0].enemies[i].awake = false; }
+    // the screen the stick's side is laid out on (xc_frame sets it where the bar runs; a bare zone skips it)
+    x := s[0].xc[..]; x[0].w = width; x[0].h = height; x[0].k = hi(dpr,0.5);
     n = zt_draw(s,out,n);   // only a phone's stick and JUMP
   } else if cr[0].experimental && !cr[0].walk.on {
     if !still && dt>0 && dt<1 { xc_hostile_tick(s,ifx dt>0.25 then 0.25 else dt); }
