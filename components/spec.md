@@ -3,9 +3,11 @@
 Written 2026-11-10. Status: Phase 1 (the move), Phase 2 (the layers and
 the chat set on them) and Phase 3 (skins and the gallery) are done: the
 chat components paint display lists in their skin's roles, colours, faces
-and measures alike, with the same vertices as before. Phase 4 has its first
-step (the chat set in the `everglade` skin on Linux); the Workshop itself
-does not run on Linux (GitHub #13156). See "Phases" for Phase 5.
+and measures alike, with the same vertices as before. Phase 5 (the
+terminal and the leftovers) is done: one edit buffer, Coder's terminal
+painting through the terminal backend, and the game HUD set on the layers.
+Phase 4 moved to GitHub #13156: the chat set draws in the `everglade` skin
+on Linux, and the Workshop itself does not run on Linux.
 Tracked in GitHub #13153. The code this replaces is listed under "What exists
 today".
 
@@ -217,7 +219,8 @@ defect, and a check finds it.
   goldens pass with it (at most 0.05% of pixels off, at glyph edges).
 - **`backend/terminal.coax`**: the display list to a grid of cells
   (`term_draw`), and a row of the grid to the bytes a terminal reads
-  (`term_row`: SGR with 24-bit colour). Text lands in its cells, a rule
+  (`term_row`: SGR with 24-bit colour, written by `term_sgr`, the one
+  writer of style sequences; a face is a set of attribute bits). Text lands in its cells, a rule
   becomes a line glyph, a box's border becomes box-drawing glyphs and its
   fill a background; shadows, gradients, icons and the rest are left out.
   `components/gallery/md-term.coax FILE.md` prints a Markdown file through
@@ -322,10 +325,10 @@ phase with no implementer by its date is cut from this list, not left open.
 | Phase | Implementer | Date |
 | --- | --- | --- |
 | 1. Move | The apps agents on `coderos-4080` (#13153) | Done 2026-11-10 |
-| 2. Split Markdown first: the rest of the transcript, the composer, the pickers and attachments onto the display list and the skin | The apps agent on `coderos-4080`, under #13153's follow-up | 2026-11-14 |
+| 2. Split Markdown first: the rest of the transcript, the composer, the pickers and attachments onto the display list and the skin | The apps agent on `coderos-4080`, under #13153's follow-up | Done 2026-11-11 |
 | 3. Skins and the gallery: picture goldens (`gallery/check.coax`) and a look in a browser | The apps agent on the owner's Mac (headless Chrome renders WebGPU there) | 2026-11-14 |
-| 4. Chat in Everglade for desktop | The apps agent on the owner's Mac, after the Workshop's host draws a component pass (#13156) | 2026-11-17 |
-| 5. The terminal and the leftovers: Coder's terminal painting through `kit/markdown.coax`, one edit buffer, the HUD set | The apps agent on `coderos-4080` | 2026-11-17 |
+| 4. Chat in Everglade for desktop | The apps agent on the owner's Mac, after the Workshop's host draws a component pass (moved to #13156) | 2026-11-17 |
+| 5. The terminal and the leftovers: Coder's terminal painting through `backend/terminal.coax`, one edit buffer, the HUD set | The apps agent on `coderos-4080` | Done 2026-11-11 |
 | Hosts: OpenAgents, Everglade and Aethyrforge on the shared Mac host, and the Android window (the hosts themselves draw and take pictures since 2026-11-11, #13156) | The apps agent on the owner's Mac | 2026-11-17 |
 
 1. **Move.** Done 2026-11-10: `apps/shared/zeron/` is now `components/zeron/`,
@@ -453,11 +456,39 @@ phase with no implementer by its date is cut from this list, not left open.
    changed for Coder's terminal with the one parser: a table needs its
    delimiter row (rows without one are shown as lines), and a pipe inside
    backticks in a table cell splits the cell unless it is written `\|`, as
-   GFM and the chat read it. Not done: Coder's terminal still writes its
-   style sequences itself, line by line as a reply streams, instead of
-   painting through `kit/markdown.coax` and `backend/terminal.coax`; its
-   composer's edit buffer and the chat composer's are still two; the HUD
-   set has not moved.
+   GFM and the chat read it.
+   Done 2026-11-11, the rest:
+   - One edit buffer: `core/edit.coax` (`EditBuf`, `eb_*`), the chat
+     composer's editing moved out of `zeron/composer.coax`; the composer
+     (`Composer.ed`) and Coder's terminal (`TuiEditor.eb`) keep their text
+     in it. For Coder this means a key steps a grapheme, word moves use the
+     composer's UAX #29 rules, and undo takes back typed bursts and pastes.
+   - Coder's terminal writes no style sequence of its own: a styled line
+     (Markdown, highlighted code, a table, a diff row, the ladder) is a
+     display list of runs, drawn into cells by `term_draw` and written by
+     `term_row` and `term_sgr`. A terminal face is a set of attribute bits
+     (bold, italic, dim, underline, strike). The terminal still lays out a
+     reply line by line as it streams, with its own palettes, not through
+     `kit/markdown.coax` and the terminal skin (the skin has no roles for
+     its ladder, and its syntax colours differ). What a terminal shows did
+     not change: `coax/lib/tui/tui-cells-checks.coax` and
+     `coder/tui/diff-cells-checks.coax` read the bytes back into cells and
+     hold the hashes taken from the old code.
+   - The game HUD set is components (`kit/hud.coax`, the `UiHud` roles in
+     `skin/hud.coax`, laid out with `layout/flex.coax`) in the `everglade`
+     and `verse` skins, with their cards on `/components`. The realms
+     still draw their HUD as before; what moved into them is the rules
+     (`core/hud.coax`: the bar's fill and trail, the banner's fade, the
+     map's projection), loaded by `aethyr/ui/hud-style.coax`. The drawing
+     did not move: the realm pass writes 12-float strokes in the realms'
+     own fonts (Spectral, Cinzel, the Verse's Filament), which the
+     component atlas does not hold, so their pictures would change.
+   - ARWES on `/components` (the owner's request): the 25 ported specimens
+     are painted once, as display lists (`aethyr/ui/arwes-paint.coax`),
+     drawn on the page by the component shader (`gallery/arwes.coax`) and
+     written as the HUD laboratory's 12-float records by `arwes-draw.coax`
+     (`aw_hud`; its records are unchanged over 225 frames). The paint
+     layer gained `PRIM_POLY` and the GPU backend a segment kind for it.
 
 ## Decisions for the owner
 

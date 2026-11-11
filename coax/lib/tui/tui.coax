@@ -10,8 +10,8 @@
 // style sequences.
 
 #load "../../../components/core/markdown.coax";
-#load "../../../components/core/edit.coax";
-#load "../../../components/backend/terminal.coax";   // a styled line is painted as a display list and written by the terminal backend   // the composer's text: the one edit buffer
+#load "../../../components/core/edit.coax";         // the composer's text: the one edit buffer
+#load "../../../components/backend/terminal.coax";   // a styled line is painted as a display list and written by the terminal backend
 
 // ---------------------------------------------------------------- output
 
