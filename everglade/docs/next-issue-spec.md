@@ -267,8 +267,13 @@ thresholds don't change. Claude stays the default until the experiments in
 | --- | --- | --- |
 | Haiku | `claude-haiku-5-5` | `gemini-3.8-flash-low` |
 | Sonnet | `claude-sonnet-5-5` | `gemini-3.8-flash-high` |
-| Opus | `claude-opus-5-5` | `gemini-4-argon-high` (the model agy's own `pro` subagent runs) |
-| Fable | `claude-fable-5-2` | `gemini-4-carbon-high` (the newest) |
+| Opus | `claude-opus-5-5` | `gemini-4-argon` (the model agy's own `pro` subagent runs) |
+| Fable | `claude-fable-5-2` | `gemini-4-carbon` (the newest) |
+
+Flash's level is the tiers' choice, because it is the only difference
+between Haiku and Sonnet. Argon and Carbon are named without a level, so agy
+runs them at low thinking, the Antigravity engine's default (#13193): at
+medium their long thinking made tasks minutes slower.
 
 `tiers.coax --family gemini` prints the Gemini model for each issue.
 

@@ -23,10 +23,21 @@
 //   cue_set_model, cue_set_mode  the same for session/set_model and session/set_mode
 //   cue_agent    which agent (Cursor's by default)   cue_start    cue_launch with the owner's own CuLaunch
 //   cue_close    the agent stopped
+//   cue_watch    the stall watchdog, on the owner's clock  cue_cancel   the owner's stop of a turn
+//
+// The stall watchdog (GitHub #13193): agy waits a fixed 5 minutes on a model reply that went
+// silent before it retries. While a turn is in flight the owner calls cue_watch(now) on every
+// poll; if the agent sends nothing at all for stall_ms, while no tool call runs and no question
+// waits on the owner, the engine cancels the turn (session/cancel), and when the cancelled turn
+// ends it asks the same session to continue (CUE_CONTINUE), at most recover_max times a turn.
+// After that a silence cancels the turn for good (cue_stalled), and a cancel unanswered for
+// another stall_ms closes the agent. A tool call counts as running from its pending or
+// in_progress status to its completed, failed or cancelled one. Off (stall_ms 0) unless set.
 #load "claude.coax";
 #load "../cursor/cursor.coax";
 
 CUE_OWED :: 16384;        // a message owed until the session is open, as Coder kept it
+CUE_TOOLS :: 16;          // tool calls the watchdog follows at once
 
 CuEngine :: struct {
   c: [] CuClient; p: [] ClProcess;  // the owner's
@@ -41,6 +52,15 @@ CuEngine :: struct {
   err: [2048] u8; err_n: int;     // why the agent stopped, when it said nothing itself
   agent: CuAgent;                 // the agent and its quirks; none (no name) is Cursor's
   notice: [1024] u8; notice_n: int; // the turn's words were agy's failure notice (antigravity.coax, agy_chunk)
+  // the stall watchdog (cue_watch): off while stall_ms is 0, as for Cursor; agy_launch turns it on
+  stall_ms: int; recover_max: int;
+  heard: bool;                    // the agent sent something since the last cue_watch
+  watching: bool; quiet_since: int; // a turn is in flight; the owner's clock when the agent last spoke
+  tools: [CUE_TOOLS] int; ntools: int; // tool calls running (their ids hashed): a tool's time is not the model's silence
+  recovered: int;                 // recoveries in this turn
+  recovering: int;                // CUE_RECOVER_CANCELLED or CUE_RECOVER_GAVE_UP: the watchdog's cancel is out
+  stalled: bool;                  // the watchdog gave up on this turn (cue_stalled)
+  silent_ms: int;                 // the last silence the watchdog acted on
 }
 
 cue_attach :: (x: [] CuEngine, c: [] CuClient, p: [] ClProcess, line: [] u8, arena: [] u8, out: [] u8) {
@@ -75,6 +95,7 @@ cue_start :: (x: [] CuEngine, launch: CuLaunch, name: string, version: string) -
   if why.count > 0 { return why; }
   x[0].ncwd = e_set(x[0].cwd[..], 0, cwd);
   x[0].live = true; x[0].ready = false; x[0].replay = false; x[0].hold = 0;
+  cue_watch_set(x, 0, 0);
   r := cu_initialize(x[0].c, name, version);
   return "";
 }
@@ -109,6 +130,7 @@ cue_close :: (x: [] CuEngine) {
 cue_poll :: (x: [] CuEngine, ev: [] CuEvent) {
   ev[0] = cu_poll(x[0].c, x[0].p, 0);
   ev[0].kind = cue_take(x, ev[0].kind, ev[0].of);
+  ev[0].kind = cue_heard(x, ev[0]);
 }
 // The engine's part of an event of kind k (of: the request answered); the kind the owner sees.
 cue_take :: (x: [] CuEngine, k: CuEventKind, of: int) -> CuEventKind {
@@ -162,6 +184,99 @@ cue_why :: (x: [] CuEngine) -> string {
   return ifx why.count > 0 then why else e_str(x[0].err[..], x[0].err_n);
 }
 
+// ---------------------------------------------------------------- the stall watchdog
+
+CUE_WATCH_NONE :: 0;        // nothing to tell
+CUE_WATCH_RECOVERING :: 1;  // a silence: the turn was cancelled and will be asked to continue
+CUE_WATCH_GAVE_UP :: 2;     // a silence past the recoveries: the turn was cancelled for good
+CUE_WATCH_ENDED :: 3;       // the cancel went unanswered too: the agent was closed
+CUE_RECOVER_CANCELLED :: 1; CUE_RECOVER_GAVE_UP :: 2;
+CUE_CONTINUE :: "Your last reply stopped arriving, so the turn was cancelled. Continue where you left off. Don't repeat steps that already finished.";
+
+// The watchdog's limits: silent milliseconds (0: off) and recoveries a turn. A launch turns it off.
+cue_watch_set :: (x: [] CuEngine, stall_ms: int, recover_max: int) {
+  x[0].stall_ms = ifx stall_ms > 0 then stall_ms else 0;
+  x[0].recover_max = ifx recover_max > 0 then recover_max else 0;
+  x[0].heard = false; x[0].watching = false; x[0].ntools = 0;
+  x[0].recovered = 0; x[0].recovering = 0; x[0].stalled = false; x[0].silent_ms = 0;
+}
+// Whether the watchdog gave up on the turn that just ended (its answer is a cancelled one).
+cue_stalled :: (x: [] CuEngine) -> bool { return x[0].stalled; }
+// The owner's stop: the turn is cancelled, and no recovery follows its end.
+cue_cancel :: (x: [] CuEngine) { cu_session_cancel(x[0].c); x[0].recovering = 0; }
+
+// Whether a session/prompt is waiting for its answer.
+cue_prompting :: (x: [] CuEngine) -> bool {
+  c := x[0].c;
+  for k: 0..<c[0].npend { if c[0].pend_of[k] == CU_SESSION_PROMPT { return true; } }
+  return false;
+}
+cue_hash :: (s: string) -> int {
+  h := 7;
+  for ch: s { h = (h * 131 + cast(int) ch) % 1000000007; }
+  return h;
+}
+// A tool call's status: pending or in_progress runs it, completed, failed or cancelled ends it.
+cue_tool :: (x: [] CuEngine, id: string, status: string) {
+  if id.count == 0 || status.count == 0 { return; }
+  h := cue_hash(id);
+  at := -1;
+  for i: 0..<x[0].ntools { if x[0].tools[i] == h { at = i; } }
+  if status == "pending" || status == "in_progress" {
+    if at < 0 && x[0].ntools < CUE_TOOLS { x[0].tools[x[0].ntools] = h; x[0].ntools += 1; }
+    return;
+  }
+  if at < 0 { return; }
+  for j: at..<x[0].ntools - 1 { x[0].tools[j] = x[0].tools[j + 1]; }
+  x[0].ntools -= 1;
+}
+
+// The watchdog's part of an event: the agent spoke, a tool call started or ended, the turn ended.
+// The end of a turn the watchdog cancelled to recover is the engine's: it asks the session to
+// continue, and the owner sees none.
+cue_heard :: (x: [] CuEngine, ev: CuEvent) -> CuEventKind {
+  k := ev.kind;
+  if k == CuEventKind.idle || x[0].stall_ms == 0 { return k; }
+  x[0].heard = true;
+  ar := x[0].c[0].ar[..];
+  if k == CuEventKind.notification {
+    update := cl_raw(ev.params, "update");
+    kind := cl_str(ar, update, "sessionUpdate");
+    if kind == "tool_call" || kind == "tool_call_update" { cue_tool(x, cl_str(ar, update, "toolCallId"), cl_str(ar, update, "status")); }
+    return k;
+  }
+  if (k != CuEventKind.answered && k != CuEventKind.refused) || ev.of != CU_SESSION_PROMPT { return k; }
+  x[0].ntools = 0;
+  if k == CuEventKind.answered && x[0].recovering == CUE_RECOVER_CANCELLED && cl_str(ar, ev.result, "stopReason") == "cancelled" {
+    r := cu_session_prompt(x[0].c, CUE_CONTINUE);
+    x[0].recovering = 0;
+    return CuEventKind.none;
+  }
+  x[0].recovering = 0; x[0].watching = false;     // (recovered and stalled stay for the owner's end of the turn)
+  return k;
+}
+
+// The watchdog, once per owner poll (asking or not) with the owner's clock in milliseconds:
+// CUE_WATCH_NONE, or what it just did (cue_watch_notice says it).
+cue_watch :: (x: [] CuEngine, now: int) -> int {
+  if x[0].stall_ms == 0 { return CUE_WATCH_NONE; }
+  if !x[0].live || !cue_prompting(x) { x[0].watching = false; x[0].heard = false; return CUE_WATCH_NONE; }
+  if !x[0].watching { x[0].watching = true; x[0].quiet_since = now; x[0].heard = false; x[0].stalled = false; x[0].recovered = 0; return CUE_WATCH_NONE; }
+  if x[0].heard || x[0].c[0].asking != 0 || x[0].ntools > 0 { x[0].quiet_since = now; x[0].heard = false; return CUE_WATCH_NONE; }
+  quiet := now - x[0].quiet_since;
+  if quiet < x[0].stall_ms { return CUE_WATCH_NONE; }
+  x[0].silent_ms = quiet; x[0].quiet_since = now;
+  if x[0].recovering != 0 {
+    x[0].recovering = 0; x[0].stalled = true; x[0].watching = false;
+    cue_close(x);
+    return CUE_WATCH_ENDED;
+  }
+  cu_session_cancel(x[0].c);
+  if x[0].recovered < x[0].recover_max { x[0].recovered += 1; x[0].recovering = CUE_RECOVER_CANCELLED; return CUE_WATCH_RECOVERING; }
+  x[0].recovering = CUE_RECOVER_GAVE_UP; x[0].stalled = true;
+  return CUE_WATCH_GAVE_UP;
+}
+
 // ---------------------------------------------------------------- checks
 
 // An engine over the test's buffers with initialize sent (request 0) and no process.
@@ -175,6 +290,7 @@ cue_feed :: (x: [] CuEngine, line: string) -> CuEvent {
   cu_outbox_clear(x[0].c);
   ev := cu_feed(x[0].c, line);
   ev.kind = cue_take(x, ev.kind, ev.of);
+  ev.kind = cue_heard(x, ev);
   return ev;
 }
 
@@ -239,4 +355,114 @@ cue_out_has :: (x: [] CuEngine, part: string) -> bool { return s_has(cu_outbox(x
   #assert x[0].ready && cu_session_id(x[0].c) == "s-2";
   ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"session/request_permission\",\"params\":{\"options\":[{\"optionId\":\"ok\",\"kind\":\"allow_once\"}],\"toolCall\":{\"kind\":\"execute\"}}}");
   #assert ev.kind == CuEventKind.permission && cu_outbox(x[0].c).count == 0;
+}
+
+// ---------------------------------------------------------------- the stall watchdog's checks
+
+// An open session watched (1 s silent, recoveries as given) with its first message sent: request 4.
+cue_test_turn :: (x: [] CuEngine, recoveries: int) {
+  cue_test_open(x);
+  cue_watch_set(x, 1000, recoveries);
+  #assert cue_send(x, "fix it");
+  #assert cue_watch(x, 0) == CUE_WATCH_NONE && x[0].watching;
+}
+CUE_T_SAYS :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Working.\"}}}}";
+CUE_T_THINKS :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"hm\"}}}}";
+CUE_T_TOOL :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_7\",\"name\":\"run_command\",\"status\":\"in_progress\",\"kind\":\"execute\"}}}";
+CUE_T_TOOL_ASKS :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_7\",\"name\":\"run_command\",\"status\":\"pending\",\"kind\":\"execute\"}}}";
+CUE_T_TOOL_DONE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_7\",\"status\":\"completed\",\"content\":[]}}}";
+CUE_T_PERMISSION :: "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"session/request_permission\",\"params\":{\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"}],\"toolCall\":{\"kind\":\"execute\"}}}";
+cue_t_answer :: (id: int, reason: string, out: [] u8) -> string {
+  n := e_set(out, 0, "{\"jsonrpc\":\"2.0\",\"id\":"); tb: [8] u8; tb[0] = cast(u8) ('0' + id); n = e_set(out, n, cast(string) tb[0..<1]);
+  n = e_set(out, n, ",\"result\":{\"stopReason\":\""); n = e_set(out, n, reason); n = e_set(out, n, "\"}}");
+  return cast(string) out[0..<n];
+}
+
+#test "stall watchdog: a turn that goes silent is cancelled, continued in the same session, and ends as the agent ends it" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; cue_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  cue_test_turn(x, 2);
+  ev := cue_feed(x, CUE_T_SAYS);
+  #assert cue_watch(x, 500) == CUE_WATCH_NONE;
+  #assert cue_watch(x, 1499) == CUE_WATCH_NONE && !cue_out_has(x, "session/cancel");     // 999 ms silent: not yet
+  #assert cue_watch(x, 1500) == CUE_WATCH_RECOVERING && x[0].silent_ms == 1000 && x[0].recovered == 1;
+  #assert cue_out_has(x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/cancel\",\"params\":{\"sessionid\":\"s-1\"}}");   // (cue_out_has lowercases what it reads)
+  ab: [256] u8;
+  ev = cue_feed(x, cue_t_answer(4, "cancelled", ab[..]));
+  #assert ev.kind == CuEventKind.none && x[0].recovering == 0;                              // the owner sees no end
+  #assert cue_out_has(x, "\"id\":5,\"method\":\"session/prompt\"") && cue_out_has(x, "continue where you left off.");
+  #assert cue_watch(x, 1600) == CUE_WATCH_NONE && cue_prompting(x);
+  ev = cue_feed(x, CUE_T_SAYS);
+  ev = cue_feed(x, cue_t_answer(5, "end_turn", ab[..]));
+  #assert ev.kind == CuEventKind.answered && ev.of == CU_SESSION_PROMPT && !cue_stalled(x) && x[0].recovered == 1;
+  #assert cue_send(x, "next") && cue_watch(x, 1700) == CUE_WATCH_NONE && x[0].recovered == 0;   // a new turn starts with none
+  ev = cue_feed(x, cue_t_answer(6, "end_turn", ab[..]));
+  #assert cue_watch(x, 9000) == CUE_WATCH_NONE && !x[0].watching;                           // no turn: nothing to watch
+}
+
+#test "stall watchdog: past the recoveries the turn is cancelled for good, and an unanswered cancel closes the agent" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; cue_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  cue_test_turn(x, 1);
+  #assert cue_watch(x, 1000) == CUE_WATCH_RECOVERING;
+  ab: [256] u8;
+  ev := cue_feed(x, cue_t_answer(4, "cancelled", ab[..]));
+  #assert ev.kind == CuEventKind.none && cue_out_has(x, "continue where you left off.");
+  #assert cue_watch(x, 1100) == CUE_WATCH_NONE;
+  cu_outbox_clear(x[0].c);
+  #assert cue_watch(x, 2099) == CUE_WATCH_NONE && cue_watch(x, 2100) == CUE_WATCH_GAVE_UP && cue_stalled(x);
+  #assert cue_out_has(x, "session/cancel") && !cue_out_has(x, "session/prompt");
+  ev = cue_feed(x, cue_t_answer(5, "cancelled", ab[..]));
+  #assert ev.kind == CuEventKind.answered && cue_stalled(x) && !cue_out_has(x, "session/prompt");   // the owner ends it, failed
+
+  // a cancel the agent never answers: one more silence closes it
+  yb: [1] CuEngine; db: [1] CuClient; qb: [1] ClProcess; line2: [1024] u8; arena2: [2048] u8; out2: [4096] u8;
+  y := yb[..]; cue_test(y, db[..], qb[..], line2[..], arena2[..], out2[..]);
+  cue_test_turn(y, 2);
+  #assert cue_watch(y, 1000) == CUE_WATCH_RECOVERING && y[0].live;
+  #assert cue_watch(y, 1999) == CUE_WATCH_NONE && cue_watch(y, 2000) == CUE_WATCH_ENDED && !y[0].live && cue_stalled(y);
+  #assert cue_watch(y, 5000) == CUE_WATCH_NONE;
+}
+
+#test "stall watchdog: a running tool, a waiting permission and steady thinking never trip it" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; cue_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  cue_test_turn(x, 2);
+  ev := cue_feed(x, CUE_T_TOOL); #assert x[0].ntools == 1;
+  ev = cue_feed(x, CUE_T_TOOL_ASKS); #assert x[0].ntools == 1;                           // the same call, asking first
+  #assert cue_watch(x, 60000) == CUE_WATCH_NONE;                                           // a minute-long command
+  ev = cue_feed(x, CUE_T_PERMISSION); #assert ev.kind == CuEventKind.permission;
+  #assert cue_watch(x, 90000) == CUE_WATCH_NONE;                                           // the owner deciding
+  cu_permit(x[0].c, cu_allow_option(x[0].c));
+  #assert cue_watch(x, 120000) == CUE_WATCH_NONE;
+  ev = cue_feed(x, CUE_T_TOOL_DONE); #assert x[0].ntools == 0;
+  #assert cue_watch(x, 120001) == CUE_WATCH_NONE;                                          // the clock starts again here
+  for t: 1..<40 { ev = cue_feed(x, CUE_T_THINKS); #assert cue_watch(x, 120001 + t * 900) == CUE_WATCH_NONE; }
+  #assert cue_watch(x, 120001 + 39 * 900 + 999) == CUE_WATCH_NONE && !cue_out_has(x, "session/cancel");
+  #assert cue_watch(x, 120001 + 39 * 900 + 1000) == CUE_WATCH_RECOVERING;                  // then a real silence
+}
+
+#test "stall watchdog: off unless set, so a Cursor turn and a normal turn are untouched; the owner's stop is the owner's" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; cue_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  cue_test_open(x);
+  #assert cue_send(x, "fix it") && x[0].stall_ms == 0;
+  #assert cue_watch(x, 0) == CUE_WATCH_NONE && cue_watch(x, 3600000) == CUE_WATCH_NONE && !cue_out_has(x, "session/cancel");
+  ab: [256] u8;
+  ev := cue_feed(x, cue_t_answer(4, "cancelled", ab[..]));
+  #assert ev.kind == CuEventKind.answered;
+
+  yb: [1] CuEngine; db: [1] CuClient; qb: [1] ClProcess; line2: [1024] u8; arena2: [2048] u8; out2: [4096] u8;
+  y := yb[..]; cue_test(y, db[..], qb[..], line2[..], arena2[..], out2[..]);
+  cue_test_turn(y, 2);
+  for t: 1..<10 { ev = cue_feed(y, CUE_T_SAYS); #assert cue_watch(y, t * 999) == CUE_WATCH_NONE; }
+  ev = cue_feed(y, cue_t_answer(4, "end_turn", ab[..]));
+  #assert ev.kind == CuEventKind.answered && !cue_stalled(y) && !cue_out_has(y, "session/cancel");
+
+  // the owner's stop during a recovery: its cancelled end goes to the owner, with no continue
+  #assert cue_send(y, "again") && cue_watch(y, 20000) == CUE_WATCH_NONE;
+  #assert cue_watch(y, 21000) == CUE_WATCH_RECOVERING;
+  cue_cancel(y);
+  ev = cue_feed(y, cue_t_answer(5, "cancelled", ab[..]));
+  #assert ev.kind == CuEventKind.answered && !cue_stalled(y) && !cue_out_has(y, "session/prompt");
 }

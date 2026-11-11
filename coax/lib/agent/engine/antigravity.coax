@@ -124,7 +124,44 @@ agy_launch :: (x: [] CuEngine, program: string, cwd: string, name: string, versi
   l: [1] CuLaunch; l[0].program = program; l[0].cwd = cwd;
   for i: 0..<e[0].nvars { l[0].env[i] = e[0].vars[i]; }
   l[0].env_n = e[0].nvars;
-  return cue_start(x, l[0], name, version);
+  why := cue_start(x, l[0], name, version);
+  if why.count == 0 {
+    sb: [32] u8; rb: [32] u8;
+    w := agy_watch_limits(cl_getenv("CODER_AGY_STALL_S", sb[..]), cl_getenv("CODER_AGY_RECOVER", rb[..]));
+    cue_watch_set(x, w.stall_ms, w.recoveries);
+  }
+  return why;
+}
+
+// ---------------------------------------------------------------- the stall watchdog's limits
+
+// agy waits a fixed 5 minutes on a reply stream that went silent before it retries (twice in the
+// task-fit runs, GitHub #13193). The shared engine's watchdog (cue_watch) cancels such a turn and
+// asks it to continue. agy sends a thought chunk every 2 to 3 s while a model thinks, but nothing
+// while it writes a tool call's arguments (27 s for a 1,500-line file on Flash at low) or waits
+// for a first token (up to 83 s in the us location, #13227), so the limit sits above both.
+AGY_STALL_S :: 120;
+AGY_RECOVERIES :: 2;
+AgyWatch :: struct { stall_ms: int; recoveries: int; }
+// A count from a setting's word, or fallback when the word is not digits.
+agy_count :: (word: string, fallback: int) -> int {
+  if word.count == 0 || word.count > 6 { return fallback; }
+  v := 0;
+  for c: word { if c < '0' || c > '9' { return fallback; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+// The limits from CODER_AGY_STALL_S (seconds; 0 turns the watchdog off) and CODER_AGY_RECOVER.
+agy_watch_limits :: (stall_word: string, recover_word: string) -> AgyWatch {
+  return AgyWatch.{stall_ms = agy_count(stall_word, AGY_STALL_S) * 1000, recoveries = agy_count(recover_word, AGY_RECOVERIES)};
+}
+
+#test "antigravity: the watchdog's limits come from the settings, else 120 s and 2" {
+  w := agy_watch_limits("", "");
+  #assert w.stall_ms == 120000 && w.recoveries == 2;
+  w = agy_watch_limits("30", "5"); #assert w.stall_ms == 30000 && w.recoveries == 5;
+  w = agy_watch_limits("0", "0"); #assert w.stall_ms == 0 && w.recoveries == 0;
+  w = agy_watch_limits("4m", "-1"); #assert w.stall_ms == 120000 && w.recoveries == 2;
+  w = agy_watch_limits("1234567", "1"); #assert w.stall_ms == 120000 && w.recoveries == 1;
 }
 
 // ---------------------------------------------------------------- the opened session
@@ -135,20 +172,32 @@ agy_launch :: (x: [] CuEngine, program: string, cwd: string, name: string, versi
 // (gemini-3.8-flash) with session/set_config_option; the effort is the thought_level option's
 // value. Every setting sent holds the first message until it is answered. Returns which were
 // not applied (AGY_MODEL_NOT_APPLIED, AGY_EFFORT_NOT_APPLIED).
+//
+// With no effort named, a turn thinks at AGY_EFFORT (low; GitHub #13193): a model named with its
+// level (one agy lists, gemini-4-argon-medium) is set as given; a base model (gemini-4-argon) is
+// set as its -low variant when agy lists one, else set as named with thought_level low; no model
+// is agy's own with thought_level low. At medium, Flash and Carbon spent 7 to 15 s thinking before
+// a call's first byte, and Carbon's long calls thought for 5 to 6 minutes (#13227).
+AGY_EFFORT :: "low";
 agy_configure :: (x: [] CuEngine, result: string, model: string, effort: string) -> int {
   ar := x[0].c[0].ar[..];
   x[0].hold = 0;
   missed := 0;
+  level := effort;                 // the thought level to set: the owner's, else ours unless the model carries one
+  if level.count == 0 { level = AGY_EFFORT; }
   if model.count > 0 {
-    if cu_model_has(result, model, ar) { cue_set_model(x, model); }
+    lb: [160] u8; ln := cl_copy(lb[..], model); ln += cl_copy(lb[ln..<lb.count], "-"); ln += cl_copy(lb[ln..<lb.count], AGY_EFFORT);
+    if cu_model_has(result, model, ar) { cue_set_model(x, model); if effort.count == 0 { level = ""; } }
+    else if effort.count == 0 && ln < lb.count && cu_model_has(result, cast(string) lb[0..<ln], ar) { cue_set_model(x, cast(string) lb[0..<ln]); level = ""; }
     else {
       bb: [128] u8; bn := cl_copy(bb[..], cu_config_id(result, "model", model, ar));
       if bn == 0 { missed = missed | AGY_MODEL_NOT_APPLIED; } else { cue_set(x, cast(string) bb[0..<bn], model); }
     }
   }
-  if effort.count > 0 {
-    ib: [128] u8; idn := cl_copy(ib[..], cu_config_id(result, "thought_level", effort, ar));
-    if idn == 0 { missed = missed | AGY_EFFORT_NOT_APPLIED; } else { cue_set(x, cast(string) ib[0..<idn], effort); }
+  if level.count > 0 {
+    ib: [128] u8; idn := cl_copy(ib[..], cu_config_id(result, "thought_level", level, ar));
+    if idn > 0 { cue_set(x, cast(string) ib[0..<idn], level); }
+    else if effort.count > 0 { missed = missed | AGY_EFFORT_NOT_APPLIED; }   // our default is quiet when not offered
   }
   mode := cl_str(ar, result, "modes.currentModeId");
   if mode.count > 0 && mode != AGY_MODE && cu_mode_has(result, AGY_MODE, ar) { cue_set_mode(x, AGY_MODE); }
@@ -245,6 +294,8 @@ agy_test :: (x: [] CuEngine, c: [] CuClient, p: [] ClProcess, line: [] u8, arena
 
 AGY_OPENED :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-3.8-flash-low\",\"name\":\"Gemini 3.8 Flash (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"options\":[{\"value\":\"gemini-3.8-flash\"},{\"value\":\"gemini-4-carbon\"}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"options\":[{\"value\":\"low\"},{\"value\":\"medium\"},{\"value\":\"high\"}]}]}}";
 
+AGY_OPENED_MEDIUM :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-argon-medium\"},{\"modelId\":\"gemini-4-argon-low\"}]},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"options\":[{\"value\":\"gemini-4-argon\"}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"options\":[{\"value\":\"low\"},{\"value\":\"medium\"}]}]}";
+
 #test "antigravity: initialize answered opens a session at once, with no authenticate" {
   xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [4096] u8; out: [2048] u8;
   x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
@@ -300,9 +351,43 @@ AGY_OPENED :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\
   cu_outbox_clear(x[0].c);
   #assert agy_configure(x, ev.result, "", "") == 0;   // (ev.result is an error's: nothing advertised, nothing asked)
   x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false;    // (as a fed line resets it)
-  #assert agy_configure(x, opened, "gemini-3.8-flash", "") == 0 && agy_out_has(x, "\"configId\":\"model\",\"value\":\"gemini-3.8-flash\"");
+  #assert agy_configure(x, opened, "gemini-3.8-flash", "medium") == 0 && agy_out_has(x, "\"configId\":\"model\",\"value\":\"gemini-3.8-flash\"") && agy_out_has(x, "\"value\":\"medium\"");
   x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false;
   #assert agy_configure(x, opened, "nope", "xhigh") == AGY_MODEL_NOT_APPLIED | AGY_EFFORT_NOT_APPLIED && x[0].hold == 0;
+}
+
+agy_t_reset :: (x: [] CuEngine) { cu_outbox_clear(x[0].c); x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false; }
+
+#test "antigravity: with no effort named a turn thinks low; a model named with its level, or an effort, is kept" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [8192] u8; out: [4096] u8;
+  x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  ev = cue_feed(x, AGY_OPENED);
+  opened := ev.result;
+  agy_t_reset(x);
+  // a base model with a listed -low variant: that variant, and no thought level besides
+  #assert agy_configure(x, opened, "gemini-3.8-flash", "") == 0 && x[0].hold == 1;
+  #assert agy_out_has(x, "\"method\":\"session/set_model\",\"params\":{\"sessionId\":\"g-1\",\"modelId\":\"gemini-3.8-flash-low\"}") && !agy_out_has(x, "thought_level");
+  agy_t_reset(x);
+  // a base model with none listed: the model as named, at thought_level low
+  #assert agy_configure(x, opened, "gemini-4-carbon", "") == 0 && x[0].hold == 2;
+  #assert agy_out_has(x, "\"configId\":\"model\",\"value\":\"gemini-4-carbon\"") && agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"low\"");
+  agy_t_reset(x);
+  // no model: agy's own, at thought_level low
+  #assert agy_configure(x, opened, "", "") == 0 && x[0].hold == 1 && agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"low\"") && !agy_out_has(x, "set_model");
+  agy_t_reset(x);
+  // a model agy lists, named with its level: as given, nothing lowered
+  #assert agy_configure(x, opened, "gemini-3.8-flash-low", "") == 0 && x[0].hold == 1 && !agy_out_has(x, "thought_level");
+  agy_t_reset(x);
+  #assert agy_configure(x, AGY_OPENED_MEDIUM, "gemini-4-argon-medium", "") == 0 && x[0].hold == 1;
+  #assert agy_out_has(x, "\"modelId\":\"gemini-4-argon-medium\"") && !agy_out_has(x, "thought_level") && !agy_out_has(x, "argon-low");
+  agy_t_reset(x);
+  // an effort named: kept, whatever the model
+  #assert agy_configure(x, AGY_OPENED_MEDIUM, "gemini-4-argon", "medium") == 0 && agy_out_has(x, "\"value\":\"gemini-4-argon\"") && agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"medium\"") && !agy_out_has(x, "argon-low");
+  agy_t_reset(x);
+  // our default unoffered is quiet; an owner's effort unoffered is reported
+  #assert agy_configure(x, "{\"models\":{\"availableModels\":[]}}", "", "") == 0 && x[0].hold == 0;
+  #assert agy_configure(x, "{\"models\":{\"availableModels\":[]}}", "", "high") == AGY_EFFORT_NOT_APPLIED;
 }
 
 #test "antigravity: a session in another mode is set back to default" {
@@ -343,6 +428,54 @@ AGY_OPENED :: "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\
 agy_is :: (x: [] CuEngine) -> bool { return cue_profile(x).program == "agy"; }
 // The agent's name in what an owner shows: "Antigravity" or "Cursor".
 cue_title :: (x: [] CuEngine) -> string { return ifx agy_is(x) then "Antigravity" else "Cursor"; }
+
+agy_put_int :: (out: [] u8, n: int, v: int) -> int {
+  d: [20] u8; k := 0; u := ifx v < 0 then 0 else v;
+  while true { d[k] = cast(u8) ('0' + u % 10); k += 1; u = u / 10; if u == 0 || k == d.count { break; } }
+  m := n;
+  while k > 0 && m < out.count { k -= 1; out[m] = d[k]; m += 1; }
+  return m;
+}
+// What the stall watchdog just did (cue_watch's code), as one line for the owner's log and chat; "" for none.
+cue_watch_notice :: (x: [] CuEngine, code: int, out: [] u8) -> string {
+  if code == CUE_WATCH_NONE { return ""; }
+  n := cl_copy(out, cue_title(x));
+  s := (x[0].silent_ms + 500) / 1000;
+  if code == CUE_WATCH_ENDED {
+    n += cl_copy(out[n..<out.count], " did not answer the cancel within "); n = agy_put_int(out, n, s); n += cl_copy(out[n..<out.count], " s. It was closed.");
+    return cast(string) out[0..<n];
+  }
+  n += cl_copy(out[n..<out.count], " sent nothing for "); n = agy_put_int(out, n, s); n += cl_copy(out[n..<out.count], " s");
+  if code == CUE_WATCH_RECOVERING {
+    n += cl_copy(out[n..<out.count], ". The turn was cancelled and asked to continue (recovery "); n = agy_put_int(out, n, x[0].recovered);
+    n += cl_copy(out[n..<out.count], " of "); n = agy_put_int(out, n, x[0].recover_max); n += cl_copy(out[n..<out.count], ").");
+  } else {
+    n += cl_copy(out[n..<out.count], " again after "); n = agy_put_int(out, n, x[0].recover_max);
+    n += cl_copy(out[n..<out.count], ifx x[0].recover_max == 1 then " recovery. The turn was cancelled." else " recoveries. The turn was cancelled.");
+  }
+  return cast(string) out[0..<n];
+}
+// Why a turn the watchdog gave up on failed, for the turn's end.
+cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
+  n := cl_copy(out, cue_title(x)); n += cl_copy(out[n..<out.count], " stopped answering: silent for "); n = agy_put_int(out, n, (x[0].silent_ms + 500) / 1000);
+  n += cl_copy(out[n..<out.count], " s after "); n = agy_put_int(out, n, x[0].recovered); n += cl_copy(out[n..<out.count], ifx x[0].recovered == 1 then " recovery." else " recoveries.");
+  return cast(string) out[0..<n];
+}
+
+#test "antigravity: the watchdog's notices say what happened, plainly" {
+  xb: [1] CuEngine; x := xb[..]; cue_agent(x, agy_agent());
+  cue_watch_set(x, 120000, 2); x[0].silent_ms = 120400; x[0].recovered = 1;
+  ob: [256] u8;
+  #assert cue_watch_notice(x, CUE_WATCH_NONE, ob[..]) == "";
+  #assert cue_watch_notice(x, CUE_WATCH_RECOVERING, ob[..]) == "Antigravity sent nothing for 120 s. The turn was cancelled and asked to continue (recovery 1 of 2).";
+  x[0].recovered = 2;
+  #assert cue_watch_notice(x, CUE_WATCH_GAVE_UP, ob[..]) == "Antigravity sent nothing for 120 s again after 2 recoveries. The turn was cancelled.";
+  #assert cue_watch_notice(x, CUE_WATCH_ENDED, ob[..]) == "Antigravity did not answer the cancel within 120 s. It was closed.";
+  #assert cue_stall_why(x, ob[..]) == "Antigravity stopped answering: silent for 120 s after 2 recoveries.";
+  cue_watch_set(x, 9000, 1); x[0].silent_ms = 9000; x[0].recovered = 1;
+  #assert cue_watch_notice(x, CUE_WATCH_GAVE_UP, ob[..]) == "Antigravity sent nothing for 9 s again after 1 recovery. The turn was cancelled.";
+  #assert agy_put_int(ob[..], 0, 0) == 1 && ob[0] == '0';
+}
 
 #test "antigravity: the engine names its agent" {
   xb: [1] CuEngine;

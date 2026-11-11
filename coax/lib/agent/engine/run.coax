@@ -1013,7 +1013,7 @@ tr_cursor_stop :: (r: [] TrRun) {
     r[0].ask = false;
   }
   if r[0].cue[0].live && r[0].cue[0].ready && !r[0].stopping && c[0].session_n > 0 {
-    cu_session_cancel(c);
+    cue_cancel(r[0].cue);
     r[0].stopping = true;
     r[0].stop_ms = tr_now();
     return;
@@ -1036,13 +1036,26 @@ tr_cursor_finish :: (r: [] TrRun, result: string) {
     tr_finish(r, TR_FAILED, cast(string) fb[0..<fn]); return;
   }
   if reason == "end_turn" || reason == "end" || reason.count == 0 { tr_finish(r, TR_FINISHED, ""); return; }
+  if reason == "cancelled" && cue_stalled(r[0].cue) { sb: [256] u8; tr_finish(r, TR_FAILED, cue_stall_why(r[0].cue, sb[..])); return; }
   if reason == "cancelled" { tr_finish(r, TR_STOPPED, ""); return; }
   wb: [160] u8; wn := tr_cat(wb[..], 0, cue_title(r[0].cue)); wn = tr_cat(wb[..], wn, " ended the turn: "); wn = tr_cat(wb[..], wn, reason);
   tr_finish(r, TR_FAILED, cast(string) wb[0..<wn]);
 }
 
+// The stall watchdog (cue_watch) on the runner's clock: what it did is a note line; a closed agent fails the turn.
+tr_cursor_watch :: (r: [] TrRun) -> bool {
+  x := r[0].cue;
+  w := cue_watch(x, tr_now());
+  if w == CUE_WATCH_NONE { return false; }
+  nb: [300] u8; nn := tr_cat(nb[..], 0, "  "); wb: [256] u8; nn = tr_cat(nb[..], nn, cue_watch_notice(x, w, wb[..]));
+  tr_note(r, cast(string) nb[0..<nn]);
+  if w == CUE_WATCH_ENDED && r[0].running { r[0].stopping = false; tr_finish(r, TR_FAILED, cue_stall_why(x, wb[..])); }
+  return true;
+}
+
 tr_cursor_poll :: (r: [] TrRun) -> bool {
   x := r[0].cue;
+  if tr_cursor_watch(r) && !x[0].live { return true; }
   if !x[0].live || r[0].ask { return false; }
   c := x[0].c;
   changed := false;

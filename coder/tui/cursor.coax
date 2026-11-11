@@ -188,7 +188,7 @@ cd_cursor_stop :: (a: [] App) {
     a[0].ask = false;
   }
   if a[0].cue[0].live && a[0].cue[0].ready && !a[0].stopping && a[0].cu[0].session_n > 0 {
-    cu_session_cancel(a[0].cu);
+    cue_cancel(a[0].cue);
     a[0].stopping = true;
     a[0].stop_ms = cd_now(a);
     return;
@@ -211,14 +211,27 @@ cd_cursor_finish_turn :: (a: [] App, result: string) {
     cd_finish(a, END_FAILED, cast(string) fb[0..<fn]); return;
   }
   if reason == "end_turn" || reason == "end" || reason.count == 0 { cd_finish(a, END_FINISHED, ""); return; }
+  if reason == "cancelled" && cue_stalled(a[0].cue) { sb: [256] u8; cd_finish(a, END_FAILED, cue_stall_why(a[0].cue, sb[..])); return; }
   if reason == "cancelled" { cd_finish(a, END_STOPPED, ""); return; }
   wb: [160] u8; wn := cd_cat(wb[..], 0, cue_title(a[0].cue)); wn = cd_cat(wb[..], wn, " ended the turn: "); wn = cd_cat(wb[..], wn, reason);
   cd_finish(a, END_FAILED, cast(string) wb[0..<wn]);
 }
 
 // One poll of the CLI; true when something changed.
+// The stall watchdog (cue_watch) on Coder's clock: what it did is a note; a closed agent fails the turn.
+cd_cursor_watch :: (a: [] App) -> bool {
+  x := a[0].cue;
+  w := cue_watch(x, cd_now(a));
+  if w == CUE_WATCH_NONE { return false; }
+  nb: [300] u8; nn := cd_cat(nb[..], 0, "  "); wb: [256] u8; nn = cd_cat(nb[..], nn, cue_watch_notice(x, w, wb[..]));
+  cd_cursor_note(a, cast(string) nb[0..<nn]);
+  if w == CUE_WATCH_ENDED && a[0].running { a[0].stopping = false; cd_finish(a, END_FAILED, cue_stall_why(x, wb[..])); }
+  return true;
+}
+
 cd_cursor_poll :: (a: [] App) -> bool {
   x := a[0].cue;
+  if cd_cursor_watch(a) && !x[0].live { return true; }
   if !x[0].live || a[0].ask { return false; }
   c := a[0].cu;
   changed := false;

@@ -87,6 +87,13 @@ The Antigravity CLI (agy) was not found. Install it with: curl -fsSL https://ant
   goes by `session/set_config_option` on the `model` option. Anything else
   is not sent, and the session log notes that it was not applied.
 - `--effort` is the `thought_level` option's value, sent the same way.
+- With no `--effort`, a turn thinks low (`AGY_EFFORT`, GitHub #13193). A
+  model named with its level (`gemini-4-argon-medium`) is set as given. A
+  base model (`gemini-4-argon`) is set as its `-low` variant when agy lists
+  one, else as named with `thought_level` low. No model means agy's own at
+  `thought_level` low. At medium, Flash and Carbon spent 7 to 15 s thinking
+  before a call's first byte, and Carbon's longest calls thought for 5 to 6
+  minutes.
 - Each setting holds the first message until it is answered, as Cursor's
   do. A refused setting is a note, and the message then goes.
 
@@ -148,6 +155,29 @@ measurements are in
 [docs/research/2026-11-11-antigravity-task-fit.md](../../docs/research/2026-11-11-antigravity-task-fit.md),
 "Why Carbon was slow".
 
+### A reply that stops arriving
+
+agy waits a fixed 5 minutes on a model reply that went silent, then retries.
+Two Carbon runs lost 5 minutes each that way. The shared ACP engine has a
+stall watchdog (`cue_watch`, off for Cursor). While a turn is in flight and
+no tool call runs, if agy sends nothing at all for `CODER_AGY_STALL_S`
+seconds (default 120), Coder sends `session/cancel`. When the cancelled
+turn ends, it sends one message in the same session: "Your last reply
+stopped arriving, so the turn was cancelled. Continue where you left off.
+Don't repeat steps that already finished." It does this at most
+`CODER_AGY_RECOVER` times a turn (default 2). After that a silence cancels
+the turn, which fails as `Antigravity stopped answering: ...`, and a cancel
+that goes unanswered for another limit closes agy. Each step is a note line
+in the session log, and a line in the Workshop's chat.
+
+The limit sits above agy's quiet times, measured over ACP: a thought chunk
+every 2 to 3 s while the model thinks, but nothing while it writes a tool
+call's arguments (27 s for a 1,500-line file on Flash at low) or waits for
+a first token (up to 83 s in `us`). A tool call counts as running from its
+`pending` or `in_progress` status to `completed`, `failed` or `cancelled`,
+so a long command never trips the watchdog, and neither does a permission
+waiting on the person. `CODER_AGY_STALL_S=0` turns it off.
+
 ## Resume and fork
 
 `coder fork ID "TASK"` of an Antigravity session sends `session/resume`
@@ -177,7 +207,8 @@ coax/web/tool.sh coder/tui/agy_standin.coax                  # the stand-in agy,
 The stand-in covers a plain turn, a command allowed and denied, an edit
 allowed and denied, a refusal, a refused turn, agy's failure notice, a
 signed-out agy, model and effort, resume, a resume refused, and no `agy` on
-`PATH`. Runs of
+`PATH`, a reply that stops arriving (`stall`, `stall always`) and a slow
+command (`slow tool`). Runs of
 `coder run --stream-json` against the Claude Code, Codex and Cursor
 stand-ins, Microcoder's recorded replay and the echo engine printed the
 same stdout, stderr, session JSONL and protocol lines before and after this

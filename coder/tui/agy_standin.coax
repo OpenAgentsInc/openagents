@@ -15,6 +15,10 @@
 //   "error"         session/prompt is answered with an error, as a model failure is
 //   "notice"        agy's failure notice as the turn's words, end_turn and no usage, as agy 1.5.6
 //                   reports a model call it gave up on (a location without the model, a 429)
+//   "stall"         one word, then silence until session/cancel, answered cancelled, as a model
+//                   reply that stopped arriving (GitHub #13193); the next message is answered
+//   "stall always"  the same for this message and every later one in the process
+//   "slow tool"     run_command, asked first, that runs AGY_STANDIN_TOOL_MS (default 5000) before it completes
 //   anything else   a two-part reply
 //
 // Every turn first sends what agy sends ahead of its reply (available commands, the user's
@@ -40,6 +44,7 @@ Gs :: struct {
   out: [1024] u8; nout: int;
   cwd: [1024] u8; ncwd: int;
   asked: int;
+  stall_always: bool;
 }
 
 gs_send :: (text: string) {
@@ -71,6 +76,14 @@ gs_has :: (s: string, part: string) -> bool {
 }
 gs_put :: (o: [] u8, m: int, s: string) -> int { k := m; for c: s { if k < o.count { o[k] = c; k += 1; } } return k; }
 #test "agy stand-in: contains" { #assert gs_has("please run ls", "run ls") && !gs_has("ls", "run ls"); }
+// A count from a setting's word, or fallback when it is not digits.
+gs_count :: (word: string, fallback: int) -> int {
+  if word.count == 0 || word.count > 7 { return fallback; }
+  v := 0;
+  for c: word { if c < '0' || c > '9' { return fallback; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+#test "agy stand-in: counts" { #assert gs_count("250", 9) == 250 && gs_count("", 9) == 9 && gs_count("2s", 9) == 9; }
 
 gs_result :: (id: string, result: string) {
   b: [GS_LINE] u8; n := gs_put(b[..], 0, "{\"jsonrpc\":\"2.0\",\"result\":"); n = gs_put(b[..], n, result); n = gs_put(b[..], n, ",\"id\":"); n = gs_put(b[..], n, id); n = gs_put(b[..], n, "}");
@@ -142,13 +155,37 @@ gs_turn :: (s: [] Gs, id_in: string, d: Jv) {
   gs_chunk("user_message_chunk", msg);
   gs_update("{\"sessionUpdate\":\"session_info_update\",\"title\":\"Stand-in turn\"}");
   if gs_has(msg, "error") { gs_error(id, "-32603", "The model is unavailable. Try again later."); return; }
+  if gs_has(msg, "stall always") { s[0].stall_always = true; }
+  if gs_has(msg, "stall") || s[0].stall_always {
+    gs_chunk("agent_message_chunk", "Starting. ");
+    while true {                   // silent: only a cancel ends it
+      line := gs_read(s);
+      if line.count == 0 { return; }
+      if gs_has(line, "\"session/cancel\"") { break; }
+      nodes: [4096] JvNode; e: [1] Jv;
+      if jv_parse(e[..], line, nodes[..]) { gs_answer(s, e[0]); }
+    }
+    gs_result(id, "{\"stopReason\":\"cancelled\",\"usage\":{\"inputTokens\":100,\"outputTokens\":2,\"cachedReadTokens\":0,\"cachedWriteTokens\":0,\"thoughtTokens\":0,\"totalTokens\":102}}");
+    return;
+  }
   if gs_has(msg, "notice") {
     gs_chunk("agent_message_chunk", "\n⚠ Selected model is not supported in the selected location.\n");
     gs_result(id, "{\"stopReason\":\"end_turn\"}"); return;
   }
   stop := "end_turn";
   if gs_has(msg, "refuse") { gs_chunk("agent_message_chunk", "I can't help with that."); stop = "refusal"; }
-  else if gs_has(msg, "run ls") {
+  else if gs_has(msg, "slow tool") {
+    input := "{\"CommandLine\":\"sleep 5\",\"WaitMsBeforeAsync\":5000,\"toolSummary\":\"A slow command\"}";
+    o: [1] Jo; b: [2048] u8; jo_start(o[..], b[..]); gs_call(o[..], "tool_call", "call_3", "run_command", "execute", "sleep 5", input, "in_progress"); jo_end(o[..]);
+    gs_update(jo_text(o[..]));
+    ok := gs_permission(s, "call_3", "run_command", "execute", "sleep 5", input);
+    if ok { tb: [16] u8; proc_sleep(gs_count(proc_getenv("AGY_STANDIN_TOOL_MS", tb[..]), 5000)); }
+    u: [1] Jo; ub: [4096] u8; jo_start(u[..], ub[..]);
+    gs_call(u[..], "tool_call_update", "call_3", "run_command", "execute", "sleep 5", input, ifx ok then "completed" else "failed");
+    jo_end(u[..]);
+    gs_update(jo_text(u[..]));
+    gs_chunk("agent_message_chunk", ifx ok then "The slow command finished." else "The slow command was denied.");
+  } else if gs_has(msg, "run ls") {
     input := "{\"CommandLine\":\"ls\",\"WaitMsBeforeAsync\":5000,\"toolSummary\":\"List the folder\"}";
     o: [1] Jo; b: [2048] u8; jo_start(o[..], b[..]); gs_call(o[..], "tool_call", "call_1", "run_command", "execute", "ls", input, "in_progress"); jo_end(o[..]);
     gs_update(jo_text(o[..]));

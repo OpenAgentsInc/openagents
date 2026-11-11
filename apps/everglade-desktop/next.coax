@@ -76,7 +76,7 @@ NP_CODER_REHEARSAL :: "This is a rehearsal of working one GitHub issue for OpenA
 NP_SAID :: 8192;           // bytes of an Antigravity coder's words kept a turn
 // The Antigravity coder (GitHub #13193; the panel's header says how it maps the Claude coder's rules).
 NP_ENGINE_CLAUDE :: 0; NP_ENGINE_AGY :: 1;
-NP_AGY_CODER_MODEL :: "gemini-4-argon-high";   // when the picker gave no usable scores: the Opus tier's Gemini model
+NP_AGY_CODER_MODEL :: "gemini-4-argon";   // when the picker gave no usable scores: the Opus tier's Gemini model (agy thinks low unless a level is named)
 NP_AGY_PRICE_FALLBACK :: "gemini-4-carbon";    // a model the card has no row for is priced at the dearest Gemini row, never free
 NP_AGY_BARRED :: [9] string.["browser", "invoke_subagent", "send_message", "manage_subagents", "define_subagent", "search_web", "read_url", "generate_image", "swarm"];
 NP_AGY_TOOLS :: "The instructions above are your system instructions. You run in the Antigravity CLI, so your tools are its own: reading and searching files, editing files and running commands, all in the worktree. Subagents, the browser, web search, reading URLs, image generation and swarms are refused here, and starting one stops your turn. There is no report tool: you report by ending your last message with one line, REPORT: done SUMMARY after you pushed and closed the issue, or REPORT: blocked SUMMARY when you stop and leave the issue open. Your turn is over only when that line is written.";
@@ -776,7 +776,7 @@ np_agy_tool :: (s: []NextPanel, update: string) {
   s[0].after_tool = true;
   if np_agy_barred(name) {
     np_append(s, "> refused: "); np_append(s, name); np_append(s, " is not allowed here; the turn is stopped\n");
-    if !s[0].agy_barred { s[0].agy_barred = true; cu_session_cancel(c); }
+    if !s[0].agy_barred { s[0].agy_barred = true; cue_cancel(s[0].ag[0].cue[..]); }
     return;
   }
   what := cl_str(ar, raw, "CommandLine");
@@ -807,6 +807,7 @@ np_agy_end :: (s: []NextPanel, result: string) {
   }
   s[0].said_n = 0;
   if s[0].agy_barred { np_break(s); np_append(s, "Stopped: the coder started a tool it may not use here."); np_end(s, NP_FAILED); return; }
+  if reason == "cancelled" && cue_stalled(s[0].ag[0].cue[..]) { sb: [256] u8; np_break(s); np_append(s, cue_stall_why(s[0].ag[0].cue[..], sb[..])); np_end(s, NP_FAILED); return; }
   if reason.count > 0 && reason != "end_turn" && reason != "end" {
     np_break(s); np_append(s, "Antigravity ended the turn: "); np_append(s, reason); np_end(s, NP_FAILED); return;
   }
@@ -855,8 +856,17 @@ np_agy_event :: (s: []NextPanel, ev: CuEvent) {
     np_append(s, "\n");
   }
 }
+// The stall watchdog (the shared engine's cue_watch) on the host's clock: what it did is a line in
+// the chat; an agy that did not answer the cancel is closed and the turn fails.
+np_agy_watch :: (s: []NextPanel) {
+  w := cue_watch(s[0].ag[0].cue[..], s[0].now * 1000);
+  if w == CUE_WATCH_NONE { return; }
+  nb: [256] u8; np_break(s); np_append(s, "> "); np_append(s, cue_watch_notice(s[0].ag[0].cue[..], w, nb[..])); np_append(s, "\n");
+  if w == CUE_WATCH_ENDED { np_end(s, NP_FAILED); }
+}
 // What agy has sent since the last frame, without waiting for more.
 np_agy_poll :: (s: []NextPanel) {
+  if s[0].state == NP_RUNNING && s[0].started && s[0].agy { np_agy_watch(s); }
   for i: 0..<256 {
     if s[0].state != NP_RUNNING || !s[0].started || !s[0].agy { return; }
     one: [1] CuEvent; cue_poll(s[0].ag[0].cue[..], one[..]);
@@ -1214,7 +1224,7 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   // The model: the one named, else the tier's in the family, else the engine's default.
   g := np_coder_choice("antigravity", "");
   #assert np_coder_model(g, "gemini-3.8-flash-low", TIER_FABLE) == "gemini-3.8-flash-low";
-  #assert np_coder_model(g, "", TIER_HAIKU) == "gemini-3.8-flash-low" && np_coder_model(g, "", TIER_FABLE) == "gemini-4-carbon-high";
+  #assert np_coder_model(g, "", TIER_HAIKU) == "gemini-3.8-flash-low" && np_coder_model(g, "", TIER_FABLE) == "gemini-4-carbon";
   #assert np_coder_model(g, "", TIER_NONE) == NP_AGY_CODER_MODEL && NP_AGY_CODER_MODEL == tier_model_in(TIER_OPUS, TIER_GEMINI);
   cl := np_coder_choice("", "");
   #assert np_coder_model(cl, "", TIER_SONNET) == "claude-sonnet-5-5" && np_coder_model(cl, "", TIER_NONE) == NP_CODER_MODEL;
@@ -1296,6 +1306,30 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   #assert t[0].agy_barred && np_agy_sent(t[..], "\"method\":\"session/cancel\"") && np_text_has(t[..], "> refused: invoke_subagent is not allowed here");
   np_agy_ends(t[..], 4, "cancelled");
   #assert t[0].state == NP_FAILED && np_text_has(t[..], "a tool it may not use") && t[0].runs == 0;
+}
+#test "antigravity coder: a silent turn is cancelled and continued, said in the chat; past the limit it fails" {
+  s: [1] NextPanel; np_agy_test(s[..], false, "gemini-3.8-flash-low"); np_agy_open(s[..]);
+  cue_watch_set(s[0].ag[0].cue[..], 2000, 1);
+  s[0].now = 100; np_agy_watch(s[..]);                         // the turn's clock starts
+  s[0].now = 101; np_agy_watch(s[..]); #assert !np_agy_sent(s[..], "session/cancel");
+  s[0].now = 102; np_agy_watch(s[..]);
+  #assert np_text_has(s[..], "> Antigravity sent nothing for 2 s. The turn was cancelled and asked to continue (recovery 1 of 1).") && np_agy_sent(s[..], "\"method\":\"session/cancel\"");
+  np_agy_ends(s[..], 4, "cancelled");
+  #assert s[0].state == NP_RUNNING && np_agy_sent(s[..], "\"method\":\"session/prompt\"") && np_agy_sent(s[..], "Continue where you left off.");
+  np_agy_says(s[..], "Back at it.");
+  s[0].now = 103; np_agy_watch(s[..]);
+  s[0].now = 105; np_agy_watch(s[..]);
+  #assert np_text_has(s[..], "> Antigravity sent nothing for 2 s again after 1 recovery. The turn was cancelled.");
+  np_agy_ends(s[..], 5, "cancelled");
+  #assert s[0].state == NP_FAILED && np_text_has(s[..], "Antigravity stopped answering: silent for 2 s after 1 recovery.") && s[0].runs == 0;
+
+  // a tool running for minutes is not a silence
+  t: [1] NextPanel; np_agy_test(t[..], false, "gemini-3.8-flash-low"); np_agy_open(t[..]);
+  cue_watch_set(t[0].ag[0].cue[..], 2000, 1);
+  t[0].now = 100; np_agy_watch(t[..]);
+  np_agy_feed(t[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c9\",\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"coax test\",\"rawInput\":{\"CommandLine\":\"coax/bin/coax test a.coax\"},\"status\":\"in_progress\"}}}");
+  t[0].now = 400; np_agy_watch(t[..]);
+  #assert !np_text_has(t[..], "sent nothing") && t[0].state == NP_RUNNING;
 }
 #test "antigravity coder: rehearsal refuses an edit and a command, allows a read" {
   s: [1] NextPanel; np_agy_test(s[..], true, "gemini-3.8-flash-low"); np_agy_open(s[..]);

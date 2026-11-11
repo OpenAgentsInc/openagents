@@ -38,7 +38,11 @@ TIER_FABLE_MODEL :: "claude-fable-5-2";
 
 // The families: which models the tiers name, and the engine that runs them.
 TIER_CLAUDE :: 0; TIER_GEMINI :: 1;
-TIER_GEMINI_MODELS :: [4] string.["gemini-3.8-flash-low", "gemini-3.8-flash-high", "gemini-4-argon-high", "gemini-4-carbon-high"];
+// Flash's level is the tiers' choice: low for housekeeping, high for ordinary work, the only
+// difference between them. Argon and Carbon are named without a level, so agy runs them at the
+// Antigravity engine's default, low (antigravity.coax, AGY_EFFORT): at medium and high their long
+// thinking made the task-fit runs minutes slower (docs/research/2026-11-11-antigravity-task-fit.md).
+TIER_GEMINI_MODELS :: [4] string.["gemini-3.8-flash-low", "gemini-3.8-flash-high", "gemini-4-argon", "gemini-4-carbon"];
 
 TierScores :: struct { scope: int; ambiguity: int; risk: int; depth: int; delegable: bool; }
 
@@ -137,13 +141,13 @@ TIER_REQUIRED :: "\"scope\",\"ambiguity\",\"risk\",\"depth\",\"delegable\"";
 }
 #test "tiers: the Gemini family names Flash, Argon and Carbon for the same tiers, Claude's stays the default" {
   #assert tier_model_in(TIER_HAIKU, TIER_GEMINI) == "gemini-3.8-flash-low" && tier_model_in(TIER_SONNET, TIER_GEMINI) == "gemini-3.8-flash-high";
-  #assert tier_model_in(TIER_OPUS, TIER_GEMINI) == "gemini-4-argon-high" && tier_model_in(TIER_FABLE, TIER_GEMINI) == "gemini-4-carbon-high";
+  #assert tier_model_in(TIER_OPUS, TIER_GEMINI) == "gemini-4-argon" && tier_model_in(TIER_FABLE, TIER_GEMINI) == "gemini-4-carbon";
   #assert tier_model_in(TIER_NONE, TIER_GEMINI) == "" && tier_model_in(5, TIER_GEMINI) == "" && tier_model_in(-1, TIER_GEMINI) == "";
   for t: [5] int.[TIER_NONE, TIER_HAIKU, TIER_SONNET, TIER_OPUS, TIER_FABLE] { #assert tier_model_in(t, TIER_CLAUDE) == tier_model(t); }
   #assert tier_model_in(TIER_OPUS, 2) == "" && tier_model_in(TIER_HAIKU, -1) == "";
   // The family changes only the name: the same scores give the same tier.
   s := TierScores.{scope = 2, ambiguity = 1, risk = 2, depth = 1, delegable = true};
-  #assert tier_of(s) == TIER_OPUS && tier_model_in(tier_of(s), TIER_GEMINI) == "gemini-4-argon-high";
+  #assert tier_of(s) == TIER_OPUS && tier_model_in(tier_of(s), TIER_GEMINI) == "gemini-4-argon";
 }
 #test "tiers: a family by its word, its engine, and an engine's family" {
   #assert tier_family("") == TIER_CLAUDE && tier_family("claude") == TIER_CLAUDE && tier_family("gemini") == TIER_GEMINI;
