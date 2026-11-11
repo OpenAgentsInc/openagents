@@ -6,7 +6,8 @@ Issues: [#13174](https://github.com/OpenAgentsInc/openagents/issues/13174)
 [#13164](https://github.com/OpenAgentsInc/openagents/issues/13164)
 (WebTransport for the room).
 Code: `coax/web/room/vm-deploy.sh`, `coax/web/room/vm/`,
-`coax/web/room/stage.sh`, `coax/web/room/compile.sh`.
+`coax/web/room/stage.sh`, `coax/web/room/compile.sh`,
+`coax/web/room/failover-check.coax`.
 
 The Everglade room server (`coax/web/room`, the `room` binary) runs on one
 GCE VM. Cloud Run can't take UDP, and WebTransport needs it. Cloud Run's
@@ -21,18 +22,36 @@ coax/web/room/vm-deploy.sh switch run
 ```
 
 It points the url map's `/api/room/` rules for openagents.com and
-everglade.world back at `oa-room` and `oa-room-2` to `oa-room-6`, then
-drains each VM shard (its pages hear "restarting" and sit again, now on
+everglade.world back at `oa-room` and `oa-room-2` to `oa-room-6`, restarts
+each VM shard without its endpoint (so new seat tickets stop naming
+room.openagents.com), then drains each one (its pages hear "restarting" and sit again, now on
 Cloud Run) and stops it, so its directory reports end. Cloud Run's services
 scale up from zero on the first socket.
 
-`coax/web/room/vm-deploy.sh switch vm` moves them back to the VM.
+`coax/web/room/vm-deploy.sh switch vm` moves them back to the VM, endpoints
+included.
 
 A bad room release on the VM rolls back on the VM:
 
 ```sh
 coax/web/room/vm-deploy.sh rollback
 ```
+
+## Measurements (#13174, 2026-11-11)
+
+`coax/web/tool.sh everglade2-latency` (two headless pages, 16 trials or 8 an
+input), against the VM's staging unit and Cloud Run's `oa-room`, on a clean
+network and through a bad one (120 ms each way, 2% loss, ±30 ms jitter):
+
+| Run | Round trip | Walk p50/p95 (ms) | Another player draws your arrow p50/p95 (ms) | Arrows confirmed | Others drawn behind |
+| --- | --- | --- | --- | --- | --- |
+| VM, clean | 32 ms | 13/15 | 83/118 | 16 of 16 | 100 ms |
+| VM, bad network | 150 ms | 6/15 | 223/476 | 16 of 16 | 122 ms |
+| Cloud Run, clean | 35 ms | 11/31 | none | 0 of 16 (its room refuses Ranger shots) | 300 ms |
+| Cloud Run, bad network | 150 ms | 20/23 | none | 0 | 155 ms |
+
+Server tick p95: VM 0.54 to 0.80 ms, Cloud Run 0.75 to 3.5 ms. Room input to
+ack p95: VM 32 to 46 ms, Cloud Run 36 to 46 ms.
 
 ## Topology
 
@@ -118,6 +137,94 @@ exception to "tools in Coax" (transport and crypto maturity); so is Caddy.
 The seat-ticket key comes from Secret Manager (`oa-room-ticket-key`) over SSH
 into `/etc/oa-room/secret.env` (root, 0600): `vm-deploy.sh secret`. The VM has
 no service account.
+
+## The shard directory (#13179)
+
+Each VM unit names its own address in `OA_ROOM_ENDPOINT`
+(`wss://room.openagents.com/api/room/sK/`; staging
+`wss://room-staging.openagents.com/api/room/s1/`, written by `vm/setup.sh`).
+Its directory report (`room-directory.coax`) then carries two more lines,
+and comes every 5 s while the unit runs, rooms or none:
+
+```
+e wss://room.openagents.com/api/room/s2/    where its pages connect
+h 4 640                                     its players and tick p95 in microseconds
+```
+
+The API (`rooms.c`) takes them out before `verse.room_report` reads the
+report and keeps them on `verse.room_shards` (migration
+`0140_room_shard_endpoints.sql`). A shard is:
+
+| State | When | Placement |
+| --- | --- | --- |
+| live | reporting | new instances and reconnects; its seat tickets carry `"endpoint"` |
+| draining | its `d` line (a drain, #12797) | none; its pages sit again elsewhere |
+| down | it named an endpoint and hasn't reported for 15 s | none (`verse.room_fits` is false) |
+
+After 120 s of silence its endpoint is forgotten and it counts as a shard
+whose host says nothing, as Cloud Run's idle shards do, so a dead VM or a
+`switch run` never strands placement. `GET /api/playtest/room-shards` lists
+every shard's state, endpoint, players, tick p95 and instance count.
+
+The page (`everglade2-net.coax`) opens the ticket's endpoint when it names
+one, and the load balancer's `/api/room/sK/` otherwise. When its socket goes
+it asks the directory again, naming the realm, so a shard that died places
+its players on a live one; the room restores each from the API's store.
+
+### Failover check
+
+```sh
+coax/web/tool.sh coax/web/room/failover-check.coax https://staging.openagents.com \
+  "coax/web/room/vm-deploy.sh kill staging"
+```
+
+Two players sit through the directory, walk, the staging unit gets
+`SIGKILL` (systemd starts it again a second later), and each comes back on
+its own: the page's first retry, a fresh seat ticket from the directory,
+the socket again. It runs twice, once with the page's own position claim
+(`A`) and once without. It holds when every player is back within 20 s each
+time, and prints where each came back against where the room had it.
+
+A place comes back only from the API's checkpoint store (v4 tickets, the
+API's `OA_ROOM_CHECKPOINTS=1`, `docs/protocol/character-checkpoint-v2.md`).
+That is off on staging and production today, so a killed room's players sit
+again at the spawn with their HP, XP and WANTED kept (room vitals); a
+drained room (a deploy, `switch run`) moves nobody, since it saves and tells
+every page first. `--position` also holds the place (1 m with `A`, 25 m
+without) for an API with checkpoints on.
+
+Measured 2026-11-11 against staging (the kill sent over IAP SSH, about 3 s
+of each time below):
+
+| Phase | Players back | Slowest, from the kill command |
+| --- | --- | --- |
+| with `A` | 2 of 2 | 10.5 s |
+| without `A` | 2 of 2 | 10.7 s |
+
+The directory's down state, checked by stopping the staging unit for 20 s:
+22 s after its last report `room-shards` said `down`, and a new player's
+ticket placed them on shard 2 with no endpoint. A second after it started
+again it was `live`, its endpoint back.
+
+On staging every `/api/room/sK/` rule goes to the one staging unit (shard 1),
+so a ticket for another shard there finds no room; production has a unit per
+shard.
+
+### Adding a shard
+
+1. A row: `INSERT INTO verse.room_shards (shard, rooms_cap) VALUES (7, 3);`
+2. A unit: `/etc/oa-room/s7.env` (`PORT=8087`, `OA_ROOM_SHARD=7`,
+   `OA_ROOM_ENDPOINT=wss://room.openagents.com/api/room/s7/`, as `setup.sh`
+   writes 1 to 6), a Caddy route for `/api/room/s7/*`, a named port `s7` on
+   `oa-room-vm-ig`, a backend `oa-room-vm-s7`, and the url map's
+   `/api/room/s7/` rules.
+
+More shards than one VM holds means a second VM in its own instance group.
+Once there is more than one shard per region on more than one VM, or the
+room's WebTransport (UDP 443) ships, put a passthrough network load balancer
+(TCP and UDP 443) in front of each VM's address instead of pointing DNS at
+it, as `coder-sync-1` does; the directory's endpoints then name each VM's own
+host (`room-2.openagents.com`), so a page goes straight to its shard's VM.
 
 ## Status
 
