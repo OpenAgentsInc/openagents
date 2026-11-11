@@ -132,10 +132,7 @@ Most of a large unit's cold compile goes to its checks. The evaluator walks
 the checked syntax tree and pays for every node it visits. So the compiler
 emits the selected checks and the procedures they call as C, compiles that C
 in parallel parts, and runs the binary as several processes. That is the
-default for every unit when a compile has at least 16 checks to run, or one
-of them carries `#steps` or `#traversal`; a smaller run costs the evaluator
-less than it costs the C compiler. `COAX_NATIVE_CHECKS=1` runs every check
-natively first, and `COAX_NATIVE_CHECKS=0` leaves every check to the
+default for every unit. `COAX_NATIVE_CHECKS=0` leaves every check to the
 evaluator. A check that passes natively counts as
 passed. Every other check (a trap, a refusal, a time limit, or one that
 reaches an unevaluated `#run`) runs in the evaluator, so failures still get

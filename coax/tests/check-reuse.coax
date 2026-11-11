@@ -28,10 +28,9 @@
 //   - a check near its step budget (tests/check-reuse/near) is reused with
 //     the note a cold compile prints: a comment in a loaded file runs no
 //     check (#13123). Those compiles run with COAX_NATIVE_CHECKS=0; every
-//     other step runs its checks as native code (COAX_NATIVE_CHECKS=1: by
-//     default a run this small stays in the evaluator, #13143);
-//   - which runs go native: the default's size rule, COAX_NATIVE_CHECKS_MIN,
-//     COAX_NATIVE_CHECKS=1 and COAX_NATIVE_CHECKS=0.
+//     other step runs its checks as native code (COAX_NATIVE_CHECKS=1);
+//   - which runs go native (#13143): by default every run,
+//     COAX_NATIVE_CHECKS_MIN, COAX_NATIVE_CHECKS=1 and COAX_NATIVE_CHECKS=0.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/args.coax";
@@ -184,14 +183,16 @@ tool_main :: () -> int #export_c #effects(all) {
   if bad > before { print("%", t); }
 
   // Which runs go native (#13143). By default a run of five checks, none
-  // with #steps, stays in the evaluator; COAX_NATIVE_CHECKS_MIN=5 or
-  // COAX_NATIVE_CHECKS=1 runs it as native code; COAX_NATIVE_CHECKS=0 never
-  // starts a native run. COAX_NATIVE_CHECKS_TRACE says which happened.
-  r = run(compiler, dir, "mkdir -p \"$D/s\" && cp tests/check-reuse/*.coax \"$D/s/\"; size() { l=$1; shift; rm -f \"$D/trace\"; env \"$@\" COAX_NATIVE_CHECKS_TRACE=\"$D/trace\" COAX_CHECK_CACHE=\"$D/size-$l\" \"$C\" check \"$D/s/main.coax\" > /dev/null 2>&1; echo \"$l status=$? native=$(grep -q '5 passed' \"$D/trace\" 2> /dev/null && echo yes || echo no) small=$(grep -q 'fewer than 16 checks' \"$D/trace\" 2> /dev/null && echo yes || echo no) trace=$([ -e \"$D/trace\" ] && echo yes || echo no).\"; }; size default -u COAX_NATIVE_CHECKS; size least -u COAX_NATIVE_CHECKS COAX_NATIVE_CHECKS_MIN=5; size on COAX_NATIVE_CHECKS=1; size off COAX_NATIVE_CHECKS=0", out[..]);
+  // with #steps, runs as native code; COAX_NATIVE_CHECKS_MIN=16 leaves it to
+  // the evaluator, and COAX_NATIVE_CHECKS=1 runs it natively whatever
+  // COAX_NATIVE_CHECKS_MIN says; COAX_NATIVE_CHECKS=0 never starts a native
+  // run. COAX_NATIVE_CHECKS_TRACE says which happened.
+  r = run(compiler, dir, "mkdir -p \"$D/s\" && cp tests/check-reuse/*.coax \"$D/s/\"; size() { l=$1; shift; rm -f \"$D/trace\"; env \"$@\" COAX_NATIVE_CHECKS_TRACE=\"$D/trace\" COAX_CHECK_CACHE=\"$D/size-$l\" \"$C\" check \"$D/s/main.coax\" > /dev/null 2>&1; echo \"$l status=$? native=$(grep -q '5 passed' \"$D/trace\" 2> /dev/null && echo yes || echo no) small=$(grep -q 'fewer than 16 checks' \"$D/trace\" 2> /dev/null && echo yes || echo no) trace=$([ -e \"$D/trace\" ] && echo yes || echo no).\"; }; size default -u COAX_NATIVE_CHECKS -u COAX_NATIVE_CHECKS_MIN; size least -u COAX_NATIVE_CHECKS COAX_NATIVE_CHECKS_MIN=16; size on COAX_NATIVE_CHECKS=1 COAX_NATIVE_CHECKS_MIN=16; size off COAX_NATIVE_CHECKS=0", out[..]);
   t = cast(string) out[0..<r.out_n];
   before = bad;
-  bad += check(has(t, "default status=0 native=no small=yes trace=yes."), "by default a run of five checks stays in the evaluator");
-  bad += check(has(t, "least status=0 native=yes small=no trace=yes.") && has(t, "on status=0 native=yes small=no trace=yes."), "COAX_NATIVE_CHECKS_MIN=5 or COAX_NATIVE_CHECKS=1 runs it as native code");
+  bad += check(has(t, "default status=0 native=yes small=no trace=yes."), "by default a run of five checks runs as native code");
+  bad += check(has(t, "least status=0 native=no small=yes trace=yes."), "COAX_NATIVE_CHECKS_MIN=16 leaves it to the evaluator");
+  bad += check(has(t, "on status=0 native=yes small=no trace=yes."), "COAX_NATIVE_CHECKS=1 runs it as native code whatever COAX_NATIVE_CHECKS_MIN says");
   bad += check(has(t, "off status=0 native=no small=no trace=no."), "COAX_NATIVE_CHECKS=0 starts no native run");
   if bad > before { print("%", t); }
 

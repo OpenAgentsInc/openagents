@@ -21,18 +21,36 @@ remains the fallback for every check native code doesn't pass.
 
 | `COAX_NATIVE_CHECKS` | What runs a unit's checks |
 | --- | --- |
-| unset | Native code first, when the run pays for the C compiler: it has at least 16 checks (`COAX_NATIVE_CHECKS_MIN`), or a check in it carries `#steps` or `#traversal`. A smaller run stays in the evaluator |
-| `1` | Native code first, whatever the run's size |
+| unset | Native code first, the evaluator for the rest. A run of one check, without `#steps` or `#traversal`, stays in the evaluator |
+| `1` | Native code first, for every run |
 | `0` | The evaluator alone, as before #13122 |
 | `compare` | Both, for every check; differences are reported |
 
-The size rule exists because compiling and starting the check binary takes
-0.2 to 0.5 s, and the evaluator runs a couple of million steps in that time.
-A library with five small checks takes 0.06 s in the evaluator and 0.45 s
-natively (a Mac, 2026-11-10). A check without `#steps` can't use more than
-the default 20 million steps, so a small run the rule leaves to the
-evaluator costs what it cost before. A run is the checks one compile has to
-run: after an edit, only the checks the check cache doesn't answer count.
+Compiling and starting the check binary costs 0.2 to 0.5 s, more when the
+check reaches much of its unit: a library with five small checks takes
+0.06 s in the evaluator and 0.45 s natively (a Mac, 2026-11-10). A check
+without `#steps` can't spend more than the default 20 million steps, a few
+seconds at most, and most single checks spend far less: measured below,
+leaving runs of one check to the evaluator was faster on every unit. So a
+run of one such check stays in the evaluator. That is also the usual run
+after an edit that adds or changes one check.
+
+An earlier version of #13143 left every run of fewer than 16 checks to the
+evaluator. Measured, that cost far more than it saved: a run's size says
+little about its cost, and Character Create's loaded units include runs of
+two or three checks that together take most of a minute in the evaluator.
+Cold compiles to C on one build host, one run each, by the least run that
+goes native (`COAX_NATIVE_CHECKS_MIN`), 2026-11-10:
+
+| Unit | 1 (every run) | 2 (the default) | 4 | 8 | 16 | evaluator only |
+| --- | --- | --- | --- | --- | --- | --- |
+| status | 8.3 s | 6.0 s | 5.6 s | 4.1 s | 4.2 s | 76.8 s |
+| charactercreator | 35.0 s | 28.7 s | 71.2 s | 64.6 s | 67.0 s | 200.8 s |
+| fivelab | 27.0 s | 15.9 s | 57.9 s | 58.9 s | 55.2 s | 266.2 s |
+
+The host was shared with other jobs, so compare within a row, not across
+tables. `COAX_NATIVE_CHECKS_MIN=N` (with `COAX_NATIVE_CHECKS` unset) sets
+the least; `COAX_NATIVE_CHECKS=1` sends every run native.
 
 ## What happens
 
@@ -133,8 +151,8 @@ natively. `--timings` counts both under `check_reuse` (`reused`, `run`).
 
 A native check has a wall-time limit, not a step budget. When it runs out,
 the runner kills the binary and the evaluator runs that check, which then
-reports its step budget as before. Once native is the default, `#steps` and
-`#traversal` matter only to checks the evaluator still runs, and the
+reports its step budget as before. Native is the default, so `#steps` and
+`#traversal` matter only to checks the evaluator still runs; the
 annotations that no longer matter come out of the tree in their own commit.
 
 ## Measurements
