@@ -490,7 +490,7 @@ bw_hud :: (w: [] BitcoinWalk, out: [] f32, n0: int, wd: f32, ht: f32, k: f32) ->
   cc.hud_word(ws[..], "BITCOIN LAB", left, y, 11 * k, cc.HUD_TEXT_TITLE, false); y += 18 * k;
   b: [48] u8; m := 0;
   if st >= 0 { m = bl_int(b[..], 0, st + 1); m = bl_str(b[..], m, " / "); m = bl_int(b[..], m, BW_STATIONS); m = bl_str(b[..], m, "   "); m = bl_str(b[..], m, BW_NAME[st]); }
-  else { m = bl_str(b[..], 0, "CHAPTER 1: BYTES, HEX AND BASE64"); }
+  else { m = bl_str(b[..], 0, ifx cc.face_width("CHAPTER 1: BYTES, HEX AND BASE64", 8.5 * k, cc.HUD_FACE_TITLE) > width + 12 * k then "CHAPTER 1" else "CHAPTER 1: BYTES, HEX AND BASE64"); }
   cc.hud_word_ink(ws[..], cast(string) b[0..<m], left, y, 8.5 * k, cc.HUD_TEXT_LABEL, false, true, cc.hud_rgba(1.0, 0.62, 0.2, 1)); y += 15 * k;
   cc.hud_word(ws[..], line[0..<cut], left, y, cap, cc.HUD_TEXT_NUMBER, false);
   if rows == 2 { y += 14 * k; cc.hud_word(ws[..], line[cut + 1..<line.count], left, y, cap, cc.HUD_TEXT_NUMBER, false); }
