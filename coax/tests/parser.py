@@ -8,9 +8,12 @@ import os
 from pathlib import Path
 import random
 import struct
+import sys
 import tempfile
+import time
 import unittest
 import lexer as LX
+import sanitized_build as SB
 
 ROOT=Path(__file__).resolve().parents[1]
 class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset')]
@@ -177,19 +180,26 @@ class Parser(unittest.TestCase):
         if os.environ.get('COAX_NATIVE_BRIDGE_DIR'):
             native=Path(os.environ['COAX_NATIVE_BRIDGE_DIR']).resolve()
             native.mkdir(parents=True,exist_ok=False)
-        obj=native/'modules.o';exe=native/'coax-sanitized'
-        flags=['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer']
-        LX.checked([os.environ.get('CC','cc'),'-std=c11',*flags,'-c',artifacts/'proto_importer.c','-o',obj])
-        LX.checked([os.environ.get('CXX','c++'),'-std=c++20',*flags,'-I',artifacts,ROOT/'src/main.cpp',obj,'-o',exe])
+        # The two units are minutes of compiling under the sanitizers, so their
+        # objects are kept by what they are made from and compiled side by side
+        # (sanitized_build.py, #13145); only the link runs every time.
+        exe=native/'coax-sanitized';flags=SB.FLAGS;cxx=os.environ.get('CXX','c++')
+        objs=SB.objects([(os.environ.get('CC','cc'),['-std=c11',*flags],artifacts/'proto_importer.c'),
+                         (cxx,['-std=c++20',*flags,'-I',artifacts],ROOT/'src/main.cpp')])
+        SB.link(cxx,flags,objs[::-1],exe)
+        # A new compiler's first check of checker.coax runs every check under the
+        # sanitizers, 660 CPU seconds: 77 s on an idle host and several times that
+        # on a busy one, so SB.run's backstop, not 180 s on the clock.
+        began=time.monotonic()
         for source in (ROOT/'lib/compiler/parser.coax',ROOT/'lib/compiler/checker.coax',ROOT.parent/'verse/home.coax',ROOT.parent/'verse/grid.coax'):
-            LX.checked([exe,'check',source],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
+            SB.run([exe,'check',source],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
+        print(f'sanitized checks: 4 sources in {time.monotonic()-began:.1f} s',file=sys.stderr,flush=True)
         # Wide source with a deep semantic dependency chain: the parser's
         # grammar bound is not involved, and no partial typed tree may escape.
         deep=native/'deep-types.coax'
         deep.write_text('\n'.join(f'S{i} :: struct {{x:S{i+1};}}' for i in range(400))+'\nS400 :: struct {x:int;}')
-        import subprocess
-        result=subprocess.run([str(exe),'c',str(deep),'--library'],capture_output=True,text=True,
-                              env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0','UBSAN_OPTIONS':'halt_on_error=1'},timeout=30)
+        result=SB.run([exe,'c',deep,'--library'],check=False,text=True,
+                      env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0','UBSAN_OPTIONS':'halt_on_error=1'})
         self.assertEqual(result.returncode,1,result.stderr)
         self.assertIn('error[E0381]',result.stderr)
         self.assertNotIn('AddressSanitizer',result.stderr)

@@ -295,7 +295,15 @@ build. The first fast run on `main`, on a loaded evening (every slot of
 eight hosts busy), covered 12 commits that touched 26 suites, the room and
 the compiler's units: 13 jobs, 49 minutes, and one unit that timed out under
 load and passed when run again. The time to a verdict is set by the slowest
-job and by free slots, not by the number of commits. A full run of all 980 suites, 55 modules, the reports,
+job and by free slots, not by the number of commits.
+
+That unit was `parser` (compiler 2/8, #13145). It builds the whole compiler
+under ASan and UBSan, one translation unit that takes 173 s of one core on an
+idle host, from nothing in every run, against a limit of 180 s on the clock;
+any load put it over. The objects are now kept by what they are made from, on
+the host and in the shared cache
+([remote-builds.md](remote-builds.md#the-shared-cache)), and a compile that
+does run is limited by the CPU it uses, not by the clock. A full run of all 980 suites, 55 modules, the reports,
 the room build and the compiler's units took 41 minutes on shared hosts and
 20,315 slot-seconds, about $0.52 of host time; eight a day is about $4.
 

@@ -68,8 +68,9 @@ replays the output and files without running (results go after 3 days).
 
 The host's caches live on its disk and serve every job: `~/.cache/coax-wasm`
 (each unit's C, object and module, wasm.sh), `~/.cache/coax-check` (check
-verdicts and per-check reuse records), and `~/.cache/coax-release`
-(compilers). Slot worktrees stay between jobs, so a job checks out only the
+verdicts and per-check reuse records), `~/.cache/coax-release`
+(compilers), and `~/.cache/coax-sanitized` (the compiler's units' sanitizer
+objects). Slot worktrees stay between jobs, so a job checks out only the
 files that differ from the slot's last job, and build outputs (ignored files)
 stay for the next job.
 
@@ -109,6 +110,31 @@ host's disk caches, under the same keys:
   the other keys match: they name the compiler's SHA-256, and a compiler each
   host bootstrapped differs in its bytes (one fingerprint, `1fa13a88e401`,
   had four different binaries on oa-build-1 to oa-build-4).
+- **The compiler's sanitizer objects** (#13145). Two of the compiler's units
+  (`parser` and `strings` in `coax/tests/run.sh`) link the whole compiler
+  under ASan and UBSan. The compiler is one translation unit, so that compile
+  is about three minutes of one core on an idle host, and it used to run from
+  nothing in every run of the unit. `coax/tests/sanitized_build.py` now keeps
+  each object under a key of the C compiler's identity, the flags and the
+  preprocessed source: on the host's disk (`~/.cache/coax-sanitized`, 3 days),
+  then in the bucket (`sanitized/KEY.o.gz`). A unit compiles again only when
+  what it reads changed, once for every host. The job's report line counts
+  these lookups with the others. A compile that does run is limited by the
+  CPU seconds it uses, not by the clock, so a busy host changes how long it
+  takes and not whether it passes.
+
+  Measured on 2026-11-10. In the pipeline, `parser` took 337 s when it passed
+  and failed twice at 210 and 228 s, on the compile's 180-second limit; with
+  the objects kept it takes 77 to 89 s, and compiler 2/8 took 279, 302 and
+  296 s in three runs in a row on three hosts, against 433 s. An object comes
+  from the bucket in 1 to 2 s (the compiler's is 120 MB, sent packed) and from the disk in
+  0.2 s, and links to the same compiler bytes on every host. Held to two
+  cores shared with four busy loops, the old build stopped at 180 s; the new
+  one compiled the unit in 375 s and went on. With nothing kept, on eight
+  cores shared with 16 busy loops (a new compiler's first run on a host far
+  busier than any the pipeline has seen), `parser` passed in 1,493 s: 304 s
+  for the compile, and 1,169 s for the sanitized compiler's first check of
+  its own sources, 660 CPU seconds that no cache can skip the first time.
 
 `remote.sh` mints a token for each job that can read and write this bucket and
 nothing else (the automation account's token, exchanged at Google's STS for

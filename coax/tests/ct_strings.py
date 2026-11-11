@@ -6,6 +6,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+import sanitized_build as SB
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'bin/coax'))
@@ -94,21 +95,19 @@ class StringTests(unittest.TestCase):
 
     def test_actual_owner_under_sanitizers(self):
         with tempfile.TemporaryDirectory(prefix='coax-strings-asan-') as d:
-            directory = Path(d); objects = []
-            for name in ('budget', 'check-domains', 'profiles', 'mutation-schedule', 'lexer', 'parser', 'checker', 'sources'):
-                obj = directory / (name + '.o')
-                subprocess.run(['cc', '-std=c11', '-O1', '-g', '-fsanitize=address,undefined',
-                                '-c', str(ROOT / 'bootstrap' / (name + '.c')), '-o', str(obj)],
-                               check=True, capture_output=True, timeout=120)
-                objects.append(str(obj))
+            directory = Path(d)
             exe = directory / 'strings-test'
             runtime = os.environ.get('COAX_TEST_RUNTIME_DIR', str(ROOT / 'bin'))
-            subprocess.run(['c++', '-std=c++20', '-O1', '-g', '-fsanitize=address,undefined',
-                            '-DCOAX_BOOTSTRAP_IMPORTER', '-I', str(ROOT / 'bootstrap'),
-                            '-I', runtime, str(ROOT / 'tests/ct_strings.cpp'), *objects,
-                            '-o', str(exe)], check=True, capture_output=True, timeout=900)   # the whole compiler under ASan/UBSan: minutes on a busy build host
-            result = subprocess.run([str(exe)], text=True, capture_output=True, timeout=180,
-                                    env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
+            # The whole compiler under ASan/UBSan is minutes on a busy build host:
+            # each unit's object is kept by what it is made from, and the units
+            # compile side by side (sanitized_build.py, #13145).
+            flags = ['-O1', '-g', '-fsanitize=address,undefined']
+            units = [('cc', ['-std=c11', *flags], ROOT / 'bootstrap' / (name + '.c'))
+                     for name in ('budget', 'check-domains', 'profiles', 'mutation-schedule', 'lexer', 'parser', 'checker', 'sources')]
+            units.insert(0, ('c++', ['-std=c++20', *flags, '-DCOAX_BOOTSTRAP_IMPORTER', '-I', ROOT / 'bootstrap', '-I', runtime],
+                             ROOT / 'tests/ct_strings.cpp'))
+            SB.link('c++', flags, SB.objects(units), exe)
+            result = SB.run([exe], 180, check=False, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
             self.assertEqual(result.returncode, 0, result.stderr)
 
 if __name__ == "__main__":
