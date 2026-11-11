@@ -173,3 +173,39 @@ installs a daily timer that does it again after Caddy renews
 (`vm/wt-cert.sh`). The production shards stay on WebSocket only. A page
 reaches staging's WebTransport with
 `?relay=wss://room-staging.openagents.com&transport=wt`.
+
+## Loss: the matrix and the pipeline check (#13177)
+
+Three tools measure the room under loss:
+
+- `coax/web/room/net-proxy.coax` stands between the pages and a local room.
+  It carries TCP (WebSocket) and UDP (WebTransport) on one port. Each read
+  or datagram is held half the round trip, give or take half the jitter. On
+  TCP a lost read comes TCP's resend later (the larger of 200 ms and 2 RTT).
+  A lost datagram is gone. On both paths jitter is a queue's: nothing
+  overtakes what was sent before it, so QUIC doesn't read reordering as
+  loss.
+- `coax/web/room/net-matrix.coax` runs `everglade2-latency` (two headless
+  Chromes) through the proxy for each loss (0, 2, 5 and 10%), round trip
+  (50, 100 and 150 ms, jitter ±30 ms) and transport. It writes one JSON
+  line per cell and prints the table. `--quick` runs only 2% at 120 ms;
+  `--rtt MS` runs one round trip; `--check BASELINE` fails when a cell's
+  remote-arrow p95 is over 1.5 times the baseline's plus 50 ms, or fewer
+  than half the arrows were seen.
+- `coax/web/room/wt-room-check.coax` plays one seat over WebTransport
+  against a real room. Run it against the VM's staging unit:
+
+  ```
+  OA_ROOM_TICKET_KEY=... coax/web/tool.sh coax/web/room/wt-room-check.coax \
+    http://127.0.0.1:PAGE/ https://room-staging.openagents.com/api/room/relay/everglade/pair-e2-wtnet-STAMP -
+  ```
+
+The pipeline's build hosts have no Chrome, so the pipeline's check is a
+model in the room's own checks (`room-wt.coax`, "webtransport under loss").
+It feeds the room's real frames through a seeded model of both transports
+at 2% and 10% loss, 120 ms and ±30 ms. It fails when a WebTransport page's
+state is 2 RTT old or more at the 95th percentile, or older than a
+WebSocket page's. It runs with `coax/web/room/room.coax` in every
+`check.sh` run that touches the room.
+
+Results: `docs/audits/2026-11-11-room-loss-matrix.md`.
