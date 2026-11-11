@@ -153,6 +153,7 @@ static int cb_changed(void *u);
   uint8_t *_full, *_cache, *_color;
   float _atlasDpr;
   UiHost *_shot;   // capturePanel's and --shot's offscreen host
+  BOOL _picture;   // --shot: a press opens nothing (no world, no Finder, no Settings, no prompt; #13182)
   BOOL _pressing;  // a press on the setup panel, to its release
   float _panelW, _panelH;   // the panel's last frame, logical px (coax drive's rows are laid out in it)
   int _pressed;
@@ -407,7 +408,9 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   if (phase == 0) { _pressing = YES; _pressed = b; return; }
   if (phase == 2 && _pressing) { _pressing = NO; if (b && b == _pressed) [self setupButton:b]; }
 }
-- (void)setupButton:(int)b {
+// What a press does; in a --shot picture, what it would open instead of opening it (nil when it acted).
+- (NSString *)setupButton:(int)b {
+  if (_picture && b != 2 && b != 3) return b == 1 ? @"would enter the world (a picture starts nothing)" : b == 4 ? @"would open ~/.openagents in Finder (a picture opens nothing)" : @"would ask for the microphone (a picture opens nothing)";
   switch (b) {
   case 1: [self enterWorld]; break;
   case 2: if (self.stopping) [self restartStartup]; else [self refreshSetup:NO]; break;
@@ -415,6 +418,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
   case 4: [NSWorkspace.sharedWorkspace openURL:[NSFileManager.defaultManager.homeDirectoryForCurrentUser URLByAppendingPathComponent:@".openagents"]]; break;
   case 5: [self microphoneSetupPressed]; break;
   }
+  return nil;
 }
 // coax drive's operations on the setup panel (chrome.coax fui_tree): `tree`, `tap ID` and `about ID`. The shared
 // Mac host makes the same rows VoiceOver's elements and presses them with `tap` (ui-host.m, #13180).
@@ -434,7 +438,7 @@ static void forge_async(dispatch_block_t block) { dispatch_async(dispatch_get_gl
     else {
       // pressed where it is drawn, as a click would be: a button that is not enabled takes nothing
       float x = fgu_box(b, _panelW, _panelH, 0) + fgu_box(b, _panelW, _panelH, 2) / 2, y = fgu_box(b, _panelW, _panelH, 1) + fgu_box(b, _panelW, _panelH, 3) / 2;
-      if (fgu_hit(_panelW, _panelH, x, y) == b) { [self setupButton:(int)b]; n = 0; }
+      if (fgu_hit(_panelW, _panelH, x, y) == b) { NSString *note = [self setupButton:(int)b]; n = note ? snprintf(out, (size_t)cap, "%s\n", note.UTF8String) : 0; }
       else n = snprintf(out, (size_t)cap, "%s is not enabled\n", id);
     }
   }
@@ -1307,6 +1311,7 @@ static int cb_changed(void *u) {
   NSString *scene = [self arg:@"--scene"] ?: @"setup";
   float d = 2;
   NSRect bounds = NSMakeRect(0, 0, w, h);
+  _picture = YES;
   fgs_reset();
   self.chat = [[ForgeChat alloc] initWithFrame:bounds];
   [self.chat layoutSubtreeIfNeeded];

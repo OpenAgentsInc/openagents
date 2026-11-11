@@ -268,12 +268,15 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   _parent = @""; _session = @""; _transcript.string = @""; [self clearMessages]; [self update]; [self.window makeFirstResponder:_input];
 }
 - (void)chooseFolder {
+  // a sheet on a window someone sees; a hidden window (a check's) never opens a panel (GitHub #13182)
+  if (!self.window.isVisible) return;
   NSOpenPanel *panel = [NSOpenPanel openPanel];
   panel.canChooseDirectories = YES; panel.canChooseFiles = NO; panel.allowsMultipleSelection = NO; panel.directoryURL = _cwd;
-  if ([panel runModal] == NSModalResponseOK && panel.URL) {
-    _cwd = panel.URL; _parent = @""; _session = @""; [self save];
+  [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse r) {
+    if (r != NSModalResponseOK || !panel.URL) return;
+    self->_cwd = panel.URL; self->_parent = @""; self->_session = @""; [self save];
     [self append:[NSString stringWithFormat:@"\nWorking folder: %@\n", panel.URL.path] color:teal()]; [self update];
-  }
+  }];
 }
 - (NSDictionary *)environment {
   NSMutableDictionary *env = [NSProcessInfo.processInfo.environment mutableCopy];

@@ -29,6 +29,7 @@
 #include "../linux/ui-host.h"
 #include "ui-host-apple.h"
 #include "../drive.h"
+#include "../focus-ring.h"
 #include <stdarg.h>
 #include <math.h>
 #include <stdio.h>
@@ -72,6 +73,10 @@ struct UiHost {
   NSMutableDictionary *ax_by_id;
   NSArray *ax_rows;           // the last table's elements, in its order
   NSString *ax_focus;         // the id Tab and VoiceOver last moved to
+  int ax_ring;                // focus last moved by a key: the ring is drawn around it (focus-ring.h, #13182)
+  // a file chooser waiting for coax drive's answer (no panel where no one sees it, #13182)
+  int choosing, choose_request, choose_folders, choose_many, choose_given;
+  char choose_message[256];
 #endif
   int looking;                // ui_hold_pointer
   // the app's own layer (ui_layer)
@@ -108,6 +113,7 @@ static id ui_ax_at(UiHost *h, NSPoint screen);
 static id ui_ax_focused(UiHost *h);
 static NSString *ui_ax_move(UiHost *h, int back);
 static int ui_ax_press_focus(UiHost *h);
+static int ui_ax_box(UiHost *h, NSRect *box);
 
 @interface UiView : NSView <NSTextInputClient>
 @property(nonatomic, assign) UiHost *host;
@@ -132,6 +138,7 @@ static int ui_ax_press_focus(UiHost *h);
 }
 - (void)pointer:(NSEvent *)e phase:(int)phase {
   UiHost *h = self.host;
+  if (phase == 0 && h->ax_ring) { h->ax_ring = 0; h->stale = 1; }   // a press hides the keyboard's ring
   if (!h->app.pointer) return;
   NSPoint p = [self devicePoint:e];
   if (phase == 0) h->held = 1;
@@ -384,7 +391,7 @@ static int ui_ax_tap(UiHost *h, NSString *ident);
   return NSAccessibilityFrameInView(h->view, v);
 }
 - (BOOL)isAccessibilityFocused { UiHost *h = self.host; return h && [h->ax_focus isEqualToString:self.ident]; }
-- (void)setAccessibilityFocused:(BOOL)on { UiHost *h = self.host; if (h && on) h->ax_focus = [self.ident copy]; }
+- (void)setAccessibilityFocused:(BOOL)on { UiHost *h = self.host; if (h && on) { h->ax_focus = [self.ident copy]; h->ax_ring = 0; h->stale = 1; } }
 - (BOOL)accessibilityPerformPress {
   if (self.kind == UI_AX_REGION || self.kind == UI_AX_ITEM || !self.enabled) return NO;
   return ui_ax_tap(self.host, self.ident) != 0;
@@ -452,6 +459,27 @@ static id ui_ax_at(UiHost *h, NSPoint screen) {
   return nil;
 }
 static id ui_ax_focused(UiHost *h) { return h && h->ax_focus ? h->ax_by_id[h->ax_focus] : nil; }
+// Where the focused row is drawn now (logical px), from the app's table: the ring follows a row that moves.
+static int ui_ax_box(UiHost *h, NSRect *box) {
+  if (!h || !h->ax_focus || !h->app.drive) return 0;
+  static char tree[1 << 16];
+  int n = h->app.drive(h->app.user, "tree", tree, (int)sizeof tree - 1);
+  if (n <= 0) return 0;
+  tree[n] = 0;
+  const char *id = h->ax_focus.UTF8String;
+  size_t k = strlen(id);
+  for (char *line = tree; line && *line; line = strchr(line, '\n') ? strchr(line, '\n') + 1 : NULL) {
+    if (strncmp(line, id, k) || line[k] != ' ') continue;
+    char *at = strstr(line, "\" at ");
+    char *end = strchr(line, '\n');
+    if (!at || (end && at > end)) return 0;
+    float x, y, w, rows;
+    if (sscanf(at + 5, "%f %f size %fx%f", &x, &y, &w, &rows) != 4) return 0;
+    *box = NSMakeRect(x, y, w, rows);
+    return 1;
+  }
+  return 0;
+}
 // Tab (back 0) and Shift-Tab (back 1): the next element that can be pressed or typed into, in the table's
 // order, wrapping. A field gets the keyboard (its tap). The id it moved to, or nil.
 static NSString *ui_ax_move(UiHost *h, int back) {
@@ -463,6 +491,7 @@ static NSString *ui_ax_move(UiHost *h, int back) {
   NSUInteger to = at == NSNotFound ? (back ? stops.count - 1 : 0) : (at + (back ? stops.count - 1 : 1)) % stops.count;
   UiAxElement *el = stops[to];
   h->ax_focus = [el.ident copy];
+  h->ax_ring = 1;   // only a key moves focus here: the ring shows
   if (el.kind == UI_AX_FIELD) ui_ax_tap(h, el.ident);
   if (h->view && h->view.window) NSAccessibilityPostNotification(el, NSAccessibilityFocusedUIElementChangedNotification);
   h->stale = 1;
@@ -499,7 +528,7 @@ static int ui_ax_drive(UiHost *h, const char *op, char *out, int cap) {
       UI_AX_SAY("%s %s%s%s \"%s\"%s%s%s%s%s at %.0f %.0f size %.0fx%.0f\n", el.accessibilityIdentifier.UTF8String, el.accessibilityRole.UTF8String,
                 el.accessibilitySubrole ? "/" : "", el.accessibilitySubrole ? el.accessibilitySubrole.UTF8String : "", el.accessibilityLabel ? el.accessibilityLabel.UTF8String : "",
                 v ? " value \"" : "", v ? [[v description] UTF8String] : "", v ? "\"" : "", el.isAccessibilityEnabled ? "" : " disabled",
-                el.isAccessibilityFocused ? " focused" : "", f.origin.x, f.origin.y, f.size.width, f.size.height);
+                el.isAccessibilityFocused ? (h->ax_ring ? " focused ring" : " focused") : "", f.origin.x, f.origin.y, f.size.width, f.size.height);
     }
     return n;
   }
@@ -525,6 +554,31 @@ static int ui_ax_drive(UiHost *h, const char *op, char *out, int cap) {
     } else if (tab) ui_ax_move(h, shift);
     else ui_ax_press_focus(h);
     UI_AX_SAY("focus %s\n", h->ax_focus ? h->ax_focus.UTF8String : "-");
+    return n;
+  }
+  // the file chooser (#13182): `choose` says what waits; `choose PATH` gives a path (the request ends
+  // unless it takes many; then `choose done`); `cancel` ends it with nothing chosen
+  if (!strcmp(op, "choose") || !strncmp(op, "choose ", 7) || !strcmp(op, "cancel")) {
+    if (!h->choosing) { UI_AX_SAY("no chooser waiting\n"); return n; }
+    if (!strcmp(op, "choose")) {
+      UI_AX_SAY("chooser waiting: %s%s \"%s\" (request %d)\n", h->choose_folders ? "a folder" : "files", h->choose_many ? ", several" : "", h->choose_message, h->choose_request);
+      return n;
+    }
+    if (!strcmp(op, "cancel") || !strcmp(op, "choose done")) {
+      h->choosing = 0;
+      UI_AX_SAY(h->choose_given ? "chose %d\n" : "cancelled\n", h->choose_given);
+      return n;
+    }
+    const char *path = op + 7;
+    BOOL dir = NO;
+    if (![NSFileManager.defaultManager fileExistsAtPath:[NSString stringWithUTF8String:path] isDirectory:&dir]) { UI_AX_SAY("no file %s\n", path); return n; }
+    if (h->choose_folders && !dir) { UI_AX_SAY("%s is not a folder\n", path); return n; }
+    if (!h->choose_folders && dir) { UI_AX_SAY("%s is a folder\n", path); return n; }
+    h->choose_given++;
+    if (!h->choose_many) h->choosing = 0;
+    h->app.file(h->app.user, h->choose_request, path);
+    h->stale = 1;
+    UI_AX_SAY("chose %s\n", path);
     return n;
   }
 #undef UI_AX_SAY
@@ -623,6 +677,11 @@ static void ui_fill(UiHost *h, float dt) {
   if (n < 0) n = 0;
   if ((uint32_t)n > h->app.max_vertices) n = (int)h->app.max_vertices;
   h->count = (uint32_t)n;
+#if TARGET_OS_OSX
+  // the keyboard's focus ring, over the app's vertices, around the focused row where it is drawn now
+  NSRect b;
+  if (h->ax_ring && ui_ax_box(h, &b)) h->count = ui_focus_ring(h->frame, h->count, h->app.max_vertices, h->dpr, (float)b.origin.x, (float)b.origin.y, (float)b.size.width, (float)b.size.height, h->app.ring);
+#endif
 }
 void ui_layer(UiHost *h, const UiLayer *layer) {
   int depth = layer && layer->depth;
@@ -786,8 +845,10 @@ void ui_menu_key(UiHost *h, int id, const char *key, int mods) {
     for (NSMenuItem *i in top.submenu.itemArray)
       if (i.target == h->menu_target && i.tag == id) { i.keyEquivalent = [NSString stringWithUTF8String:key]; i.keyEquivalentModifierMask = ui_flags(mods); }
 }
+// No one sees a panel or a menu: offscreen, a hidden window, or coax drive's socket listening (#13182).
+static int ui_unseen(UiHost *h) { return h->offscreen || h->app.hidden || !h->view || !h->window.isVisible || h->drive.listen_fd > 0; }
 void ui_popup(UiHost *h, const UiMenuItem *items, int n, float x, float y, int checked) {
-  if (h->offscreen || !h->view) return;
+  if (ui_unseen(h)) return;
   NSMenu *m = [NSMenu new];
   m.autoenablesItems = NO;
   for (int k = 0; k < n; k++) {
@@ -798,8 +859,13 @@ void ui_popup(UiHost *h, const UiMenuItem *items, int n, float x, float y, int c
   }
   [m popUpMenuPositioningItem:nil atLocation:NSMakePoint(x / h->dpr, h->view.bounds.size.height - y / h->dpr) inView:h->view];
 }
-void ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start) {
-  if (h->offscreen || !h->app.file) return;
+int ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start) {
+  if (!h->app.file) return 0;
+  if (ui_unseen(h)) {   // the request waits for the driver: `choose PATH` or `cancel` (ui_ax_drive)
+    h->choosing = 1; h->choose_request = request; h->choose_folders = folders; h->choose_many = many; h->choose_given = 0;
+    snprintf(h->choose_message, sizeof h->choose_message, "%s", message ? message : "");
+    return 1;
+  }
   NSOpenPanel *p = [NSOpenPanel openPanel];
   p.canChooseFiles = !folders; p.canChooseDirectories = folders != 0; p.allowsMultipleSelection = many != 0;
   p.canCreateDirectories = folders != 0;
@@ -810,8 +876,8 @@ void ui_choose(UiHost *h, int request, int folders, int many, const char *messag
     if (r != NSModalResponseOK) return;
     for (NSURL *u in p.URLs) h->app.file(h->app.user, request, u.path.fileSystemRepresentation);
   };
-  if (h->window.isVisible) [p beginSheetModalForWindow:h->window completionHandler:done];
-  else done([p runModal]);
+  [p beginSheetModalForWindow:h->window completionHandler:done];
+  return 1;
 }
 int ui_window_frame(UiHost *h, float f[4]) {
   if (h->offscreen || !h->window) return 0;
@@ -864,8 +930,9 @@ int ui_paste_text(UiHost *h, char *out, size_t cap) {
   return (int)n;
 }
 int ui_paste_files(UiHost *h) { (void)h; return 0; }
-void ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start) {
+int ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start) {
   (void)h; (void)request; (void)folders; (void)many; (void)message; (void)prompt; (void)start;
+  return 0;
 }
 int ui_window_frame(UiHost *h, float f[4]) { (void)h; (void)f; return 0; }
 void ui_quit(UiHost *h) { h->closed = 1; }

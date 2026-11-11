@@ -28,6 +28,8 @@ room="$here/zeron/fixtures/room:/usr/bin:/bin"
 stream="$here/zeron/fixtures/stream:/usr/bin:/bin"
 mkdir -p "$home/.codex"; echo '{}' > "$home/.codex/auth.json"   # Codex's login on disk, for the stand-in codex
 three="clock settle ; send Fix the sidebar width ; clock settle ; folder $home/work/openagents ; clock settle ; send Review the tab bar ; clock settle ; folder $home/work/zeron ; clock settle"
+# focus-button and focus-composer: the keyboard's focus ring (Tab, apps/shared/host/focus-ring.h, #13182);
+# choose-folder: New session's folder chooser answered from the driver, no panel (choose PATH, then cancel)
 # name | size | steps | a line the run must print (or empty) | engine: demo, or the PATH the app starts with in an empty home | more arguments
 cases=(
   "chat-1320x880|2640,1760|fixture open||demo"
@@ -50,6 +52,9 @@ cases=(
   "store-reopen|2640,1760|clock settle ; key cmd+1 ; clock settle ; send One more? ; clock settle within 10000 ; state last|last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.|$stream|--settings $out/store/settings.json"
   "sidebar-open|2640,1760|$three||$so"
   "sidebar-900x600|1800,1200|$three||$so"
+  "focus-button|2640,1760|fixture open ; ax-key tab|focus sidebar.new|demo"
+  "focus-composer|2640,1760|fixture open ; ax-key tab ; ax-key tab ; ax-key tab ; ax-key tab ; type composer Hello|focus composer|demo"
+  "choose-folder|2640,1760|clock settle ; tap sidebar.new ; clock +50 ; choose ; choose $home/work/zeron ; clock settle ; tap sidebar.new ; clock +50 ; cancel ; state desk|desk: active=1 tabs=0,1 sessions=2 collapsed=0|$so"
   "sidebar-shortcuts|2640,1760|$three ; key cmd+1 ; key shift+down ; key shift+up ; menu Close Tab ; menu Toggle Sidebar ; menu New Session ; clock settle ; state desk|desk: active=3 tabs=0,2,3 sessions=4 collapsed=1|$so"
 )
 

@@ -79,6 +79,9 @@ typedef struct {
   int (*drive)(void *user, const char *op, char *out, int cap);
   // 1 while something is still coming (an engine's turn, a model loading): `clock settle` steps until 0.
   int (*busy)(void *user);
+  // The keyboard focus ring's colour (straight RGBA, the skin's accent): a host that moves focus by key
+  // draws it around the focused row (focus-ring.h). Alpha 0: Zeron's accent.
+  float ring[4];
 } UiApp;
 
 // The input method's view of the text box (UTF-16 units). which: 0 selection start, 1 its end,

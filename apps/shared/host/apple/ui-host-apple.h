@@ -48,6 +48,7 @@ void ui_menus(UiHost *h, const UiMenuItem *items, int n);
 // A command's key equivalent changed (settings.json's shortcuts).
 void ui_menu_key(UiHost *h, int id, const char *key, int mods);
 // A menu of items at device pixel x, y; the chosen one's id goes to UiApp.command. checked: an id shown with a mark, or -1.
+// With no one to see it (offscreen, hidden, or a drive socket listening) no menu opens (#13182).
 void ui_popup(UiHost *h, const UiMenuItem *items, int n, float x, float y, int checked);
 // The pasteboard (offscreen, a private one of the app's, so a check's Copy never replaces yours).
 // Its text into out (NUL-terminated), the byte count; 0 for none.
@@ -55,8 +56,11 @@ int ui_paste_text(UiHost *h, char *out, size_t cap);
 // Its files and images, each given to UiApp.file (an image as a PNG written to the temporary folder). How many.
 int ui_paste_files(UiHost *h);
 // The open panel: files (folders 0) or a folder (folders 1), several when many; each chosen path
-// goes to UiApp.file with request. A sheet on the window; offscreen, nothing is chosen.
-void ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start);
+// goes to UiApp.file with request. A sheet on the window. With no one to see a panel (offscreen, a
+// hidden window, or a coax drive socket listening) none opens: the request waits for the driver's
+// `choose PATH` (each path, then `choose done` when many) or `cancel` (GitHub #13182). 1 when a
+// panel opened or the request waits; 0 when there is nothing to choose with (no UiApp.file).
+int ui_choose(UiHost *h, int request, int folders, int many, const char *message, const char *prompt, const char *start);
 // The window's frame in points (x, y, w, h); 0 offscreen.
 int ui_window_frame(UiHost *h, float f[4]);
 // Frames presented since the window opened (a drawn frame that was unchanged is not presented).

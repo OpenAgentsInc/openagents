@@ -149,7 +149,7 @@ NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double time
 - (void)restartStartup;
 - (void)focusChat;
 - (void)waitInventory;                         // off the main thread: the setup inventory's end
-- (void)setupButton:(int)button;               // a setup panel button pressed (fgu_box kinds 1..5)
+- (NSString *)setupButton:(int)button;         // a setup panel button pressed (fgu_box kinds 1..5); in a --shot picture, what it would open
 - (NSString *)launchState;                     // off the main thread
 - (void)observeMetal:(NSURL *)path;            // off the main thread, until stopping
 @end

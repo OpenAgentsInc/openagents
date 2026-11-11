@@ -456,7 +456,8 @@ void oac_pick_folder(App *a) {
   uint8_t cwd[PATH_MAX]; int m = dsk_cwd(a->desk, cwd, sizeof cwd - 1);
   cwd[m > 0 ? m : 0] = 0;
 #ifdef __APPLE__
-  if (!a->offscreen) { ui_choose(a->host, 2, 1, 0, "The folder the new session works in", "New Session", (const char *)cwd); return; }
+  // a sheet on the window; hidden, offscreen or driven, the request waits for coax drive's `choose PATH` or `cancel`
+  if (ui_choose(a->host, 2, 1, 0, "The folder the new session works in", "New Session", (const char *)cwd)) return;
 #else
   if (portal_pick(a->portal, 2, 1, "The folder the new session works in", (const char *)cwd)) return;
 #endif

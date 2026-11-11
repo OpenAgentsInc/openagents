@@ -9,7 +9,7 @@
 //   screenshot OUT.png            the frame as it is now (offscreen)
 //   quit                          the session ends (ui_drive_serve returns)
 // A host may answer operations of its own first (UI_DRIVE_HOST: the Mac's ax, ax-press ID and
-// ax-key KEY, apple/ui-host.m).
+// ax-key KEY, and the file chooser's choose, choose PATH, choose done and cancel; apple/ui-host.m).
 // Everything else is the app's (UiApp.drive): `tree`, `tap ID`, `type ID TEXT` and the app's own.
 // The agent clock: once on (ui_agent_clock), a frame gets no time of its own; only `clock` moves the
 // app's clock, so between two operations nothing moves and a picture does not depend on the machine.
@@ -76,7 +76,7 @@ int ui_drive(UiHost *h, const char *op, char *out, int cap) {
   if (!strcmp(op, "quit")) { h->drive.quit = 1; return 0; }
   if (!*op) return 0;
 #ifdef UI_DRIVE_HOST
-  {   // a host's own operations (the Mac's accessibility: ax, ax-press ID, ax-key KEY)
+  {   // a host's own operations (the Mac's accessibility and its file chooser)
     int n = UI_DRIVE_HOST(h, op, out, cap);
     if (n >= 0) return n < cap ? n : cap - 1;
   }

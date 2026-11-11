@@ -6087,7 +6087,16 @@ typed into; Space and Enter press the focused one. Aethyrforge's panel fills tha
 table in Coax (`chrome.coax` `fui_elements`: `setup.open`, `setup.refresh`,
 `setup.verify-voice`, `setup.folder`, `setup.microphone`, and the panel's status
 lines). A disabled button refuses AXPress, as it refuses a click.
-`apps/shared/host/apple/a11y-check.sh` checks the window's tree headlessly. The surfaces redraw on changes, with no idle animation loop. The game's own HUD is unchanged. CPU measurement converts
+Since GitHub #13182 the host draws a focus ring (`apps/shared/host/focus-ring.h`,
+one bordered quad in the components' vertex format, `UiApp.ring`'s colour or
+Zeron's accent) around the focused row only after a key moved focus; a pointer
+press or VoiceOver's own move hides it. A window no one sees (offscreen, `--hidden`,
+or a drive socket listening) never opens a panel or a menu: a file chooser waits
+for the driver's `choose PATH` or `cancel`, and an Aethyrforge `--shot` press
+says what it would open instead of opening Finder, Settings or the world.
+`apps/shared/host/apple/a11y-check.sh` checks the window's tree, the ring and the
+chooser headlessly; the desktop goldens `focus-button`, `focus-composer` and
+`choose-folder` show them. The surfaces redraw on changes, with no idle animation loop. The game's own HUD is unchanged. CPU measurement converts
 `proc_pid_rusage` Mach ticks to nanoseconds and is checked against the independent
 POSIX process CPU clock before any numbers are recorded.
 
