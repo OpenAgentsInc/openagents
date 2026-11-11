@@ -301,6 +301,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (makers_route(&q)) return;   // before the admin routes: /api/admin/makers/... is its
   if (npc_route(&q)) return;
   if (anime_route(&q)) return;
+  if (worldbuilder_route(&q)) return;
   if (inference_route(&q)) return;
   if (mesh_route(&q)) return;
   if (piece_route(&q)) return;

@@ -272,6 +272,21 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
+    { "id": "create-world", "name": "WORLDBUILDER", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 2.1, "size": 0.02 },
+      "realm": {
+        "slug": "create-world",
+        "short": "/create-world",
+        "style": "lowpoly",
+        "clock": "fixed:0.5",
+        "title": "WorldBuilder",
+        "description": "Chat a world onto an empty grid: say what to put where, and 785 Quaternius models appear.",
+        "alt": "An empty grid with one line to type in",
+        "module": "worldbuilder",
+        "slot": "create-world",
+        "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
+        "assets": ["pack:/realms/create-world/assets/worldbuilder.pack.gz"]
+      }
+    },
     { "id": "built", "name": "A WORLD YOU BUILT", "kind": "open", "listed": false, "orbit": { "r": 0.24, "a": 4.6, "size": 0.024 },
       "realm": {
         "slug": "built",

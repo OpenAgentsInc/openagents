@@ -1,0 +1,3 @@
+--vertices worldbuilder_bg_vs,worldbuilder_scene_vs,worldbuilder_fx_vs
+--fragments worldbuilder_bg_fs,worldbuilder_scene_fs,worldbuilder_fx_fs
+--bindings apps/openagents-web/gpu/worldbuilder.bindings --strip worldbuilder_

@@ -63,6 +63,7 @@ bool makers_route(const request *q);      // makers.c: a realm's maker and their
 bool upgrades_route(const request *q);    // makers.c: listed fairy upgrades, bought with sats or credit
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
 bool anime_route(const request *q);        // anime.c: typed Anime Lab directions
+bool worldbuilder_route(const request *q); // worldbuilder.c: /create-world's chat, the day's $50 cap and anti-flood
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
 // Our Spark wallet (inference.c, OA_SPARK_URL): POST path with json (GET with none); its status (0 unreached), its body into *out.

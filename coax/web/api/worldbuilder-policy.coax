@@ -1,0 +1,139 @@
+// WorldBuilder's limits (openagents.com/create-world, worldbuilder.c): what one chat command may
+// spend and how fast one visitor may send them. There is no sign-in and no per-person limit; two
+// rules hold for everyone, and the page shows both when they apply:
+//
+//   the day's spend   every model call is metered at Vertex's prices for its model and added to
+//                     the day's total (a Chicago day, midnight to midnight). A call is let through
+//                     only while the total plus its reservation (the most it could cost: its prompt
+//                     and the whole output allowance) stays at or under the cap, $50 a day across
+//                     everyone. When it is refused, the page says WorldBuilder is resting until
+//                     midnight Chicago time.
+//   anti-flood        each address holds a bucket of WB_BURST tokens, refilled at one every
+//                     WB_REFILL_MS; a command takes one. An empty bucket is refused with how long
+//                     to wait, which the page shows.
+//
+// worldbuilder.c gathers the facts (the day's total, the call's usage, the bucket and the clock)
+// and keeps what this file decides; it decides nothing itself.
+//   coax/bin/coax test coax/web/api/worldbuilder-policy.coax
+//   coax/bin/coax mutate coax/web/api/worldbuilder-policy.coax
+#authority;
+
+WB_CAP_MICROS :: 50000000;      // $50 a day, in millionths of a dollar
+// Gemini 3.8 Flash on Vertex, micro-USD per million tokens (coax/lib/gateway/rates.coax's row:
+// input 750000, cached input 75000, output 3750000; thinking counts as output).
+WB_INPUT_RATE :: 750000;
+WB_CACHED_RATE :: 75000;
+WB_OUTPUT_RATE :: 3750000;
+WB_MAX_OUTPUT :: 2048;          // the output allowance a call asks for (maxOutputTokens)
+WB_BURST :: 4;                  // commands an address may send at once
+WB_REFILL_MS :: 1500;           // and then one every this many milliseconds
+WB_FULL :: 6000;                // a full bucket: WB_BURST commands of WB_REFILL_MS each
+
+#test "a call's cost: uncached input, cached input and output at their own rates, rounded up" {
+  #assert wb_cost_micros(0, 0, 0) == 0;
+  #assert wb_cost_micros(1000000, 0, 0) == 750000;
+  #assert wb_cost_micros(1000000, 1000000, 0) == 75000;
+  #assert wb_cost_micros(0, 0, 1000000) == 3750000;
+  #assert wb_cost_micros(1, 0, 0) == 1;
+  #assert wb_cost_micros(4, 0, 0) == 3;
+  #assert wb_cost_micros(10000, 8000, 200) == 1500 + 600 + 750;
+  #assert wb_cost_micros(10, 10, 0) == 1;
+  #assert wb_cost_micros(1000000000, 0, 0) == 750000000;
+  #assert wb_cost_micros(1000001, 1000001, 0) == 75001;
+}
+#test "usage that can't be (negative, or more cached than sent) has no cost: the host keeps the reservation" {
+  #assert wb_cost_micros(-1, 0, 0) == -1;
+  #assert wb_cost_micros(100, 101, 0) == -1;
+  #assert wb_cost_micros(100, -1, 0) == -1;
+  #assert wb_cost_micros(0, 0, -1) == -1;
+}
+#test "a reservation is the prompt plus the whole output allowance" {
+  #assert wb_reserve_micros(0) == wb_cost_micros(0, 0, WB_MAX_OUTPUT);
+  #assert wb_reserve_micros(12000) == wb_cost_micros(12000, 0, WB_MAX_OUTPUT);
+  #assert wb_reserve_micros(12000) == 9000 + 7680;
+}
+#test "the host reads the allowance and the cap from here" {
+  #assert WB_FULL == WB_BURST * WB_REFILL_MS;
+  #assert wb_max_output() == 2048 && wb_cap_micros() == 50000000;
+}
+#test "the cap: a call is admitted while the day's total and its reservation fit under $50" {
+  #assert wb_admit(0, 20000);
+  #assert wb_admit(0, 0);
+  #assert wb_admit(WB_CAP_MICROS - 20000, 20000);
+  #assert wb_admit(WB_CAP_MICROS - 1, 0);
+  #assert !wb_admit(WB_CAP_MICROS - 19999, 20000);
+  #assert !wb_admit(WB_CAP_MICROS, 0);
+  #assert !wb_admit(WB_CAP_MICROS + 1, 1);
+  #assert !wb_admit(-1, 20000);
+  #assert !wb_admit(0, -1);
+  #assert wb_resting(WB_CAP_MICROS) && wb_resting(WB_CAP_MICROS + 5) && !wb_resting(WB_CAP_MICROS - 1);
+}
+#test "anti-flood: a full bucket lets WB_BURST through at once, then one per WB_REFILL_MS" {
+  #assert wb_bucket_new(7).fill_ms == WB_FULL && wb_bucket_new(7).at_ms == 7;
+  b := wb_bucket_new(0);
+  ok := 0;
+  for i: 0..<10 { b = wb_take(b, 0); if b.ok { ok += 1; } }
+  #assert ok == WB_BURST;
+  #assert !b.ok && b.wait_ms == WB_REFILL_MS;
+  b = wb_take(b, WB_REFILL_MS - 1);
+  #assert !b.ok && b.wait_ms == 1;
+  b = wb_take(b, WB_REFILL_MS);
+  #assert b.ok && b.wait_ms == 0;
+  b = wb_take(b, WB_REFILL_MS);
+  #assert !b.ok;
+  // a long rest fills it to WB_BURST and no further
+  b = wb_take(b, 1000000);
+  ok = 1;
+  for i: 0..<10 { b = wb_take(b, 1000000); if b.ok { ok += 1; } }
+  #assert ok == WB_BURST && b.wait_ms == WB_REFILL_MS;
+}
+#test "anti-flood: a clock that runs backwards gives nothing back; the time it went back is owed" {
+  b := wb_bucket_new(5000);
+  for i: 0..<WB_BURST { b = wb_take(b, 5000); }
+  b = wb_take(b, 1000);
+  #assert !b.ok;
+  b = wb_take(b, 5000 + WB_REFILL_MS - 1);
+  #assert !b.ok;
+  b = wb_take(b, 5000 + WB_REFILL_MS);
+  #assert b.ok;
+}
+
+// A call's cost in micro-USD from its usage: input tokens (cached ones included in it, as Vertex
+// counts promptTokenCount), the cached share of them, and output tokens (thinking included),
+// rounded up. -1 for usage that can't be: the host then keeps the whole reservation.
+wb_cost_micros :: (input: int, cached: int, output: int) -> int #export_c #effects(all) {
+  if input < 0 || cached < 0 || output < 0 || cached > input { return -1; }
+  total := (input - cached) * WB_INPUT_RATE + cached * WB_CACHED_RATE + output * WB_OUTPUT_RATE;
+  q := total / 1000000;
+  if q * 1000000 < total { q += 1; }
+  return q;
+}
+// The most a call with this prompt may cost: its prompt uncached and the whole output allowance.
+wb_reserve_micros :: (prompt_tokens: int) -> int #export_c #effects(all) { return wb_cost_micros(prompt_tokens, 0, WB_MAX_OUTPUT); }
+wb_max_output :: () -> int #export_c #effects(all) { return WB_MAX_OUTPUT; }
+wb_cap_micros :: () -> int #export_c #effects(all) { return WB_CAP_MICROS; }
+// Whether a call reserving this much may start, with the day's total spent so far.
+wb_admit :: (spent: int, reserve: int) -> bool #export_c #effects(all) {
+  if spent < 0 || reserve < 0 || spent >= WB_CAP_MICROS { return false; }
+  return spent + reserve <= WB_CAP_MICROS;
+}
+// Whether the day is spent: the page says WorldBuilder is resting until midnight.
+wb_resting :: (spent: int) -> bool #export_c #effects(all) { return spent >= WB_CAP_MICROS; }
+
+// One address's bucket, kept in milliseconds of refill: full is WB_BURST * WB_REFILL_MS, and a
+// command takes WB_REFILL_MS of it; when it was last filled, and the last answer. Time that runs
+// backwards takes from it.
+WbBucket :: struct { fill_ms: int; at_ms: int; ok: bool; wait_ms: int; }
+wb_bucket_new :: (now_ms: int) -> WbBucket #export_c #effects(all) { return WbBucket.{fill_ms = WB_FULL, at_ms = now_ms}; }
+// Takes one command from the bucket at now_ms: ok, or refused with the milliseconds until one is there.
+wb_take :: (b: WbBucket, now_ms: int) -> WbBucket #export_c #effects(all) {
+  r := b;
+  r.fill_ms += now_ms - r.at_ms;
+  // At equality both sides of the comparison leave fill_ms at WB_FULL, so > and >= can't differ.
+  if r.fill_ms > WB_FULL { r.fill_ms = WB_FULL; }   // mutant: equivalent
+  r.at_ms = now_ms;
+  if r.fill_ms >= WB_REFILL_MS { r.fill_ms -= WB_REFILL_MS; r.ok = true; r.wait_ms = 0; return r; }
+  r.ok = false;
+  r.wait_ms = WB_REFILL_MS - r.fill_ms;
+  return r;
+}

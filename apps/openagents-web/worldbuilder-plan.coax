@@ -1,0 +1,654 @@
+// WorldBuilder's planner (openagents.com/create-world, worldbuilder.coax): typed edits in, the
+// world out. The model (coax/web/api/worldbuilder.c) reads what someone typed and answers edits as
+// lines, one an edit, its fields in a fixed order; this file reads those bounded fields (an op from
+// its eight, catalogue names matched whole, numbers) and carries each edit out on the world. Nothing
+// here reads the words someone typed.
+//
+// The world: up to WB_OBJECTS things, each a catalogue mesh standing on the ground (y = 0, the
+// meshes are packed with their base at 0 and their footprint centred) at x, z, turned by yaw and
+// scaled. Each has an id that never changes. "Last" is what the newest edit placed or changed,
+// so "make it bigger" and "delete them" find it. Every edit can be undone (WB_UNDO back).
+//
+// Where things go is worked out from an anchor (the tapped spot, the middle of the view, the last
+// edit's things, the newest thing of a name, the grid's middle) and a side as the camera sees it
+// (left, right, toward you, away from you, around): a thing placed beside another stands clear of
+// it, its footprint and the other's apart plus the distance asked. Several are spread over a disc,
+// each kept off the others and off what stands there already, from a seeded draw (aethyr/rand.coax),
+// so the same edits on the same world give the same world.
+//   coax/bin/coax test apps/openagents-web/worldbuilder-plan.coax
+
+#load "../../aethyr/rand.coax";
+
+WB_OBJECTS :: 4096;     // things a world holds (the page shows the count and this)
+WB_UNDO :: 8;           // edits that can be undone
+WB_MESHES :: 1024;      // catalogue meshes
+WB_NAME :: 48;
+WB_PER_EDIT :: 200;     // things one edit places at most
+WB_NAMES :: 16;         // names one edit lists
+WB_LAST :: 512;         // ids "last" remembers
+
+OP_NONE :: 0; OP_PLACE :: 1; OP_MOVE :: 2; OP_ROTATE :: 3; OP_SCALE :: 4; OP_DELETE :: 5; OP_DUPLICATE :: 6; OP_UNDO :: 7; OP_CLEAR :: 8;
+T_LAST :: 0; T_NAMES :: 1; T_NEAREST :: 2; T_ALL :: 3;
+A_HERE :: 0; A_VIEW :: 1; A_LAST :: 2; A_NAMED :: 3; A_ORIGIN :: 4; A_SELF :: 5;
+S_AT :: 0; S_LEFT :: 1; S_RIGHT :: 2; S_FRONT :: 3; S_BEHIND :: 4; S_AROUND :: 5;
+
+WbObj :: struct { id: int; mesh: int; x: f32; z: f32; yaw: f32; scale: f32; }
+WbCat :: struct {
+  n: int;
+  name: [WB_MESHES * WB_NAME] u8; name_n: [WB_MESHES] int;
+  first: [WB_MESHES] int; count: [WB_MESHES] int;
+  box: [WB_MESHES * 6] f32;      // x0 y0 z0 x1 y1 z1, metres
+}
+WbAct :: struct {
+  op: int; asset: int = -1; count: int = 1;
+  targets: int; names: [WB_NAMES] int; names_n: int;
+  anchor: int = A_HERE; anchor_names: [WB_NAMES] int; anchor_names_n: int;
+  side: int; distance: f32; spread: f32; size: f32 = 1; factor: f32 = 1; degrees: f32;
+}
+// Where the person is looking from: the tapped spot (if any), the middle of the view, and the
+// camera's yaw (0 looks along -z; left and right, toward and away follow it).
+WbView :: struct { has_here: bool; here_x: f32; here_z: f32; view_x: f32; view_z: f32; yaw: f32; }
+WbWorld :: struct {
+  objs: [WB_OBJECTS] WbObj; n: int; next_id: int;
+  last: [WB_LAST] int; last_n: int;
+  undo: [WB_UNDO][WB_OBJECTS] WbObj; undo_n: [WB_UNDO] int; undo_top: int; undo_count: int;
+  version: int;     // changes with every edit (the page redraws its instances)
+  seed: int;
+  full: bool;       // the last edit wanted more room than the world has
+  missing: bool;    // the last edit named something the catalogue doesn't have
+}
+
+wb_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+wb_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+wb_abs :: (a: f32) -> f32 { if a < 0 { return -a; } return a; }
+
+// ---- the catalogue: the pack's M lines (worldbuilder_pack.coax)
+
+wb_mesh_name :: (c: [] WbCat, m: int) -> string { return cast(string) c[0].name[m * WB_NAME..<m * WB_NAME + c[0].name_n[m]]; }
+// A mesh by its whole name, -1 when the catalogue has none.
+wb_find :: (c: [] WbCat, name: string) -> int {
+  if name.count == 0 { return -1; }
+  for m: 0..<c[0].n { if wb_mesh_name(c, m) == name { return m; } }
+  return -1;
+}
+// The footprint's radius at scale 1 (half the longer side).
+wb_radius :: (c: [] WbCat, m: int) -> f32 {
+  if m < 0 || m >= c[0].n { return 0.5; }
+  b := c[0].box[m * 6..<m * 6 + 6];
+  return 0.5 * wb_hi(b[3] - b[0], b[5] - b[2]);
+}
+wb_int_at :: (t: string, at: [] int) -> int {
+  i := at[0]; neg := false; v := 0; digits := 0;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  if i < t.count && t[i] == '-' { neg = true; i += 1; }
+  while i < t.count && t[i] >= '0' && t[i] <= '9' && digits < 9 { v = v * 10 + cast(int) (t[i] - '0'); i += 1; digits += 1; }
+  at[0] = ifx digits > 0 then i else -1;
+  return ifx neg then -v else v;
+}
+// A decimal ("-12.5"), at[0] past it, or -1 when there is none.
+wb_num_at :: (t: string, at: [] int) -> f32 {
+  i := at[0];
+  while i < t.count && t[i] == ' ' { i += 1; }
+  neg := i < t.count && t[i] == '-';
+  at[0] = i;
+  whole := wb_int_at(t, at);
+  if at[0] < 0 { return 0; }
+  v := cast(f32) (ifx whole < 0 then -whole else whole);
+  i = at[0];
+  if i < t.count && t[i] == '.' {
+    i += 1; step: f32 = 0.1;
+    while i < t.count && t[i] >= '0' && t[i] <= '9' { v += step * cast(f32) (t[i] - '0'); step *= 0.1; i += 1; }
+    at[0] = i;
+  }
+  return ifx neg then -v else v;
+}
+// One "M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1" line into the catalogue.
+wb_cat_line :: (c: [] WbCat, line: string) {
+  if line.count < 4 || line[0] != 'M' || line[1] != ' ' { return; }
+  e := 2; while e < line.count && line[e] != ' ' { e += 1; }
+  m := c[0].n;
+  if m >= WB_MESHES || e - 2 > WB_NAME || e == 2 { return; }
+  at: [1] int; at[0] = e;
+  first := wb_int_at(line, at[..]); if at[0] < 0 { return; }
+  count := wb_int_at(line, at[..]); if at[0] < 0 { return; }
+  lic := wb_int_at(line, at[..]); if at[0] < 0 || first < 0 || count <= 0 || lic < 0 { return; }
+  for j: 0..<6 { v := wb_num_at(line, at[..]); if at[0] < 0 { return; } c[0].box[m * 6 + j] = v; }
+  for i: 2..<e { c[0].name[m * WB_NAME + i - 2] = line[i]; }
+  c[0].name_n[m] = e - 2; c[0].first[m] = first; c[0].count[m] = count;
+  c[0].n = m + 1;
+}
+wb_catalog :: (c: [] WbCat, text: string) {
+  c[0].n = 0;
+  i := 0;
+  while i < text.count { e := i; while e < text.count && text[e] != '\n' { e += 1; } wb_cat_line(c, text[i..<e]); i = e + 1; }
+}
+
+// ---- the model's lines: "A op|asset|count|targets|names|anchor|anchor_names|side|distance|spread|size|factor|degrees"
+
+wb_field :: (line: string, k: int) -> string {
+  f := 0; i := 0;
+  while i <= line.count {
+    e := i; while e < line.count && line[e] != '|' { e += 1; }
+    if f == k { return line[i..<e]; }
+    f += 1; i = e + 1;
+  }
+  return "";
+}
+wb_word :: (t: string, words: [] string) -> int { for i: 0..<words.count { if t == words[i] { return i; } } return -1; }
+wb_number :: (t: string, fallback: f32) -> f32 { at: [1] int; v := wb_num_at(t, at[..]); return ifx at[0] < 0 then fallback else v; }
+// A list of names ("a,b") as catalogue meshes; a name the catalogue lacks is left out and counted.
+wb_names :: (c: [] WbCat, t: string, out: [] int, missing: [] int) -> int {
+  n := 0; i := 0;
+  while i < t.count {
+    e := i; while e < t.count && t[e] != ',' { e += 1; }
+    s := i; while s < e && t[s] == ' ' { s += 1; }
+    q := e; while q > s && t[q - 1] == ' ' { q -= 1; }
+    if q > s {
+      m := wb_find(c, t[s..<q]);
+      if m >= 0 && n < out.count { out[n] = m; n += 1; } else if m < 0 { missing[0] += 1; }
+    }
+    i = e + 1;
+  }
+  return n;
+}
+OPS :: [9] string.["", "place", "move", "rotate", "scale", "delete", "duplicate", "undo", "clear"];
+TARGETS :: [4] string.["last", "names", "nearest", "all"];
+ANCHORS :: [6] string.["here", "view", "last", "named", "origin", "self"];
+SIDES :: [6] string.["at", "left", "right", "front", "behind", "around"];
+// One edit from its line (without the "A "): ok false for an op it doesn't know or a place of
+// something the catalogue lacks.
+WbRead :: struct { ok: bool; act: WbAct; missing: int; }
+wb_read :: (c: [] WbCat, line: string) -> WbRead {
+  r: WbRead;
+  ops := OPS; targets := TARGETS; anchors := ANCHORS; sides := SIDES;
+  op := wb_word(wb_field(line, 0), ops[..]);
+  if op <= 0 { return r; }
+  a: WbAct; a.op = op;
+  miss: [1] int;
+  a.asset = wb_find(c, wb_field(line, 1));
+  if op == OP_PLACE && a.asset < 0 { r.missing = 1; return r; }
+  a.count = cast(int) wb_number(wb_field(line, 2), 1);
+  if a.count < 1 { a.count = 1; }
+  t := wb_word(wb_field(line, 3), targets[..]); a.targets = ifx t < 0 then T_LAST else t;
+  a.names_n = wb_names(c, wb_field(line, 4), a.names[..], miss[..]);
+  an := wb_word(wb_field(line, 5), anchors[..]); a.anchor = ifx an < 0 then (ifx op == OP_MOVE || op == OP_DUPLICATE then A_SELF else A_HERE) else an;
+  a.anchor_names_n = wb_names(c, wb_field(line, 6), a.anchor_names[..], miss[..]);
+  sd := wb_word(wb_field(line, 7), sides[..]); a.side = ifx sd < 0 then S_AT else sd;
+  a.distance = wb_number(wb_field(line, 8), 0);
+  a.spread = wb_number(wb_field(line, 9), 0);
+  a.size = wb_number(wb_field(line, 10), 1);
+  a.factor = wb_number(wb_field(line, 11), 1);
+  a.degrees = wb_number(wb_field(line, 12), 0);
+  r.ok = true; r.act = a; r.missing = miss[0];
+  return r;
+}
+
+// ---- the world
+
+wb_reset :: (w: [] WbWorld) { w[0].n = 0; w[0].last_n = 0; w[0].undo_count = 0; w[0].undo_top = 0; w[0].version += 1; }
+wb_index :: (w: [] WbWorld, id: int) -> int { for i: 0..<w[0].n { if w[0].objs[i].id == id { return i; } } return -1; }
+// Keeps the world as it is now, for one undo.
+wb_keep :: (w: [] WbWorld) {
+  k := w[0].undo_top;
+  for i: 0..<w[0].n { w[0].undo[k][i] = w[0].objs[i]; }
+  w[0].undo_n[k] = w[0].n;
+  w[0].undo_top = (k + 1) % WB_UNDO;
+  if w[0].undo_count < WB_UNDO { w[0].undo_count += 1; }
+}
+wb_undo :: (w: [] WbWorld) -> bool {
+  if w[0].undo_count == 0 { return false; }
+  k := (w[0].undo_top + WB_UNDO - 1) % WB_UNDO;
+  n := w[0].undo_n[k];
+  for i: 0..<n { w[0].objs[i] = w[0].undo[k][i]; }
+  w[0].n = n; w[0].undo_top = k; w[0].undo_count -= 1;
+  w[0].last_n = 0; w[0].version += 1;
+  return true;
+}
+wb_last_add :: (w: [] WbWorld, id: int) { if w[0].last_n < WB_LAST { w[0].last[w[0].last_n] = id; w[0].last_n += 1; } }
+wb_add :: (w: [] WbWorld, mesh: int, x: f32, z: f32, yaw: f32, scale: f32) -> int {
+  if w[0].n >= WB_OBJECTS { w[0].full = true; return -1; }
+  id := w[0].next_id; w[0].next_id += 1;
+  w[0].objs[w[0].n] = WbObj.{id = id, mesh = mesh, x = x, z = z, yaw = yaw, scale = scale};
+  w[0].n += 1;
+  wb_last_add(w, id);
+  return id;
+}
+
+// The camera's directions on the ground: away from the viewer and to their right.
+WbDir :: struct { x: f32; z: f32; }
+wb_away :: (v: WbView) -> WbDir { return WbDir.{x = sin(v.yaw), z = -cos(v.yaw)}; }
+wb_right :: (v: WbView) -> WbDir { return WbDir.{x = cos(v.yaw), z = sin(v.yaw)}; }
+wb_side_dir :: (v: WbView, side: int) -> WbDir {
+  f := wb_away(v); r := wb_right(v);
+  if side == S_LEFT { return WbDir.{x = -r.x, z = -r.z}; }
+  if side == S_RIGHT { return r; }
+  if side == S_FRONT { return WbDir.{x = -f.x, z = -f.z}; }
+  if side == S_BEHIND { return f; }
+  return WbDir.{};
+}
+
+// A spot and how far its things reach from it.
+WbSpot :: struct { x: f32; z: f32; r: f32; ok: bool; }
+// The middle and reach of a set of objects (by index).
+wb_group :: (w: [] WbWorld, c: [] WbCat, idx: [] int) -> WbSpot {
+  if idx.count == 0 { return WbSpot.{}; }
+  sx: f32 = 0; sz: f32 = 0;
+  for i: idx { sx += w[0].objs[i].x; sz += w[0].objs[i].z; }
+  cx := sx / cast(f32) idx.count; cz := sz / cast(f32) idx.count;
+  r: f32 = 0;
+  for i: idx {
+    o := w[0].objs[i];
+    dx := o.x - cx; dz := o.z - cz;
+    r = wb_hi(r, sqrt(dx * dx + dz * dz) + wb_radius(c, o.mesh) * o.scale);
+  }
+  return WbSpot.{x = cx, z = cz, r = r, ok = true};
+}
+wb_last_idx :: (w: [] WbWorld, out: [] int) -> int {
+  n := 0;
+  for k: 0..<w[0].last_n { i := wb_index(w, w[0].last[k]); if i >= 0 && n < out.count { out[n] = i; n += 1; } }
+  return n;
+}
+wb_has :: (list: [] const int, n: int, v: int) -> bool { for i: 0..<n { if list[i] == v { return true; } } return false; }
+// The anchor's spot, before any side.
+wb_anchor :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct) -> WbSpot {
+  view := WbSpot.{x = v.view_x, z = v.view_z, ok = true};
+  if a.anchor == A_HERE { return ifx v.has_here then WbSpot.{x = v.here_x, z = v.here_z, ok = true} else view; }
+  if a.anchor == A_ORIGIN { return WbSpot.{ok = true}; }
+  if a.anchor == A_LAST {
+    idx: [WB_LAST] int; n := wb_last_idx(w, idx[..]);
+    g := wb_group(w, c, idx[0..<n]);
+    return ifx g.ok then g else view;
+  }
+  if a.anchor == A_NAMED {
+    best := -1;
+    for i: 0..<w[0].n { if wb_has(a.anchor_names[..], a.anchor_names_n, w[0].objs[i].mesh) { best = i; } }
+    if best >= 0 { o := w[0].objs[best]; return WbSpot.{x = o.x, z = o.z, r = wb_radius(c, o.mesh) * o.scale, ok = true}; }
+    return ifx v.has_here then WbSpot.{x = v.here_x, z = v.here_z, ok = true} else view;
+  }
+  return view;
+}
+// The objects an edit acts on, as indices.
+wb_targets :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct, out: [] int) -> int {
+  n := 0;
+  if a.targets == T_ALL { for i: 0..<w[0].n { if n < out.count { out[n] = i; n += 1; } } return n; }
+  if a.targets == T_NAMES {
+    for i: 0..<w[0].n { if wb_has(a.names[..], a.names_n, w[0].objs[i].mesh) && n < out.count { out[n] = i; n += 1; } }
+    return n;
+  }
+  if a.targets == T_NEAREST {
+    probe := a; if probe.anchor == A_SELF { probe.anchor = A_HERE; }
+    p := wb_anchor(w, c, v, probe);
+    best := -1; bd: f32 = 1000000000;
+    for i: 0..<w[0].n {
+      o := w[0].objs[i];
+      if a.names_n > 0 && !wb_has(a.names[..], a.names_n, o.mesh) { continue; }
+      d := (o.x - p.x) * (o.x - p.x) + (o.z - p.z) * (o.z - p.z);
+      if d < bd { bd = d; best = i; }
+    }
+    if best >= 0 { out[0] = best; return 1; }
+    return 0;
+  }
+  return wb_last_idx(w, out);
+}
+
+// Whether a footprint at (x, z) of radius r is clear of every thing standing (but those skipped).
+wb_clear :: (w: [] WbWorld, c: [] WbCat, x: f32, z: f32, r: f32, from: int) -> bool {
+  for i: from..<w[0].n {
+    o := w[0].objs[i];
+    room := r + wb_radius(c, o.mesh) * o.scale * 0.8;
+    dx := o.x - x; dz := o.z - z;
+    if dx * dx + dz * dz < room * room { return false; }
+  }
+  return true;
+}
+// A seeded draw in 0..1 for this world's edit number e, item i and property p.
+wb_draw :: (w: [] WbWorld, e: int, i: int, p: int) -> f32 {
+  return rand_unit(w[0].seed + e * 7919, p, i);
+}
+// Is this mesh a growing thing (turned any which way when placed), else made (turned to face you)?
+wb_natural :: (c: [] WbCat, m: int) -> bool {
+  n := wb_mesh_name(c, m);
+  return n.count > 7 && n[0..<7] == "nature/";
+}
+
+// ---- the edits
+
+WbDone :: struct { placed: int; changed: int; ok: bool; }
+
+wb_place :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct) -> WbDone {
+  done: WbDone;
+  if a.asset < 0 || a.asset >= c[0].n { return done; }
+  count := a.count; if count > WB_PER_EDIT { count = WB_PER_EDIT; }
+  size := ifx a.size > 0.05 && a.size < 20 then a.size else 1.0f32;
+  r := wb_radius(c, a.asset) * size;
+  p := wb_anchor(w, c, v, a);
+  if a.side != S_AT && a.side != S_AROUND {
+    d := wb_side_dir(v, a.side);
+    spread_r := ifx count > 1 then (ifx a.spread > 0 then a.spread else r * 1.3 * sqrt(cast(f32) count)) else r;
+    far := p.r + spread_r + wb_hi(a.distance, 0) + 0.4;
+    p.x += d.x * far; p.z += d.z * far;
+  }
+  start := w[0].n;
+  w[0].last_n = 0;
+  e := w[0].version;
+  if a.side == S_AROUND {
+    ring := p.r + r + wb_hi(a.distance, 0) + 0.4;
+    for i: 0..<count {
+      t := (cast(f32) i + 0.3 * wb_draw(w, e, i, 1)) / cast(f32) count * 6.2831853;
+      x := p.x + ring * cos(t); z := p.z + ring * sin(t);
+      yaw := ifx wb_natural(c, a.asset) then wb_draw(w, e, i, 2) * 6.2831853 else -v.yaw;
+      if wb_add(w, a.asset, x, z, yaw, size) >= 0 { done.placed += 1; }
+    }
+    done.ok = done.placed > 0;
+    return done;
+  }
+  if count == 1 {
+    x := p.x; z := p.z;
+    // put where nothing stands, unless it was asked for on a tapped spot or a thing's side
+    nudge := a.anchor == A_VIEW || a.anchor == A_ORIGIN || (a.anchor == A_HERE && !v.has_here);
+    if nudge {
+      k := 0;
+      while k < 64 && !wb_clear(w, c, x, z, r, 0) {
+        k += 1; t := cast(f32) k * 2.3999632; rr := (r + 0.5) * sqrt(cast(f32) k);
+        x = p.x + rr * cos(t); z = p.z + rr * sin(t);
+      }
+    }
+    yaw := ifx wb_natural(c, a.asset) then wb_draw(w, e, 0, 2) * 6.2831853 else -v.yaw;
+    if wb_add(w, a.asset, x, z, yaw, size) >= 0 { done.placed = 1; }
+    done.ok = done.placed > 0;
+    return done;
+  }
+  // several: spread over a disc, each clear of the others and of what stood there
+  disc := ifx a.spread > 0 then a.spread else r * 1.3 * sqrt(cast(f32) count) + r;
+  for i: 0..<count {
+    x := p.x; z := p.z; tries := 0;
+    while tries < 24 {
+      u := wb_draw(w, e, i * 31 + tries, 3); t := wb_draw(w, e, i * 31 + tries, 4) * 6.2831853;
+      rr := disc * sqrt(u);
+      x = p.x + rr * cos(t); z = p.z + rr * sin(t);
+      if wb_clear(w, c, x, z, r * 0.7, start) { break; }
+      tries += 1;
+    }
+    yaw := ifx wb_natural(c, a.asset) then wb_draw(w, e, i, 2) * 6.2831853 else -v.yaw;
+    jit := 1.0f32 + (wb_draw(w, e, i, 5) - 0.5) * 0.3 * (ifx wb_natural(c, a.asset) then 1.0f32 else 0.0f32);
+    if wb_add(w, a.asset, x, z, yaw, size * jit) >= 0 { done.placed += 1; }
+  }
+  done.ok = done.placed > 0;
+  return done;
+}
+
+wb_set_last :: (w: [] WbWorld, idx: [] int) { w[0].last_n = 0; for i: idx { wb_last_add(w, w[0].objs[i].id); } }
+
+wb_move :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct, idx: [] int) -> WbDone {
+  done: WbDone;
+  if idx.count == 0 { return done; }
+  if a.anchor == A_SELF {
+    d := wb_side_dir(v, a.side);
+    step := ifx a.distance > 0 then a.distance else 3.0f32;
+    for i: idx { w[0].objs[i].x += d.x * step; w[0].objs[i].z += d.z * step; }
+  } else {
+    g := wb_group(w, c, idx);
+    p := wb_anchor(w, c, v, a);
+    // the anchor may be one of the things moved ("last"): then it is where they are now
+    tx := p.x; tz := p.z;
+    if a.side != S_AT && a.side != S_AROUND {
+      d := wb_side_dir(v, a.side);
+      far := p.r + g.r + wb_hi(a.distance, 0) + 0.4;
+      tx += d.x * far; tz += d.z * far;
+    }
+    for i: idx { w[0].objs[i].x += tx - g.x; w[0].objs[i].z += tz - g.z; }
+  }
+  wb_set_last(w, idx);
+  done.changed = idx.count; done.ok = true;
+  return done;
+}
+
+wb_delete :: (w: [] WbWorld, idx: [] int) -> WbDone {
+  done: WbDone;
+  if idx.count == 0 { return done; }
+  gone: [WB_OBJECTS] bool;
+  for i: idx { gone[i] = true; }
+  n := 0;
+  for i: 0..<w[0].n { if !gone[i] { w[0].objs[n] = w[0].objs[i]; n += 1; } }
+  done.changed = w[0].n - n; w[0].n = n; w[0].last_n = 0; done.ok = true;
+  return done;
+}
+
+wb_duplicate :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct, idx: [] int) -> WbDone {
+  done: WbDone;
+  if idx.count == 0 { return done; }
+  g := wb_group(w, c, idx);
+  dx: f32 = 0; dz: f32 = 0;
+  if a.anchor != A_SELF && a.anchor != A_LAST && a.side == S_AT && !(a.anchor == A_HERE && !v.has_here) {
+    p := wb_anchor(w, c, v, a); dx = p.x - g.x; dz = p.z - g.z;
+  } else {
+    side := ifx a.side == S_AT || a.side == S_AROUND then S_RIGHT else a.side;
+    d := wb_side_dir(v, side);
+    far := 2 * g.r + wb_hi(a.distance, 0) + 0.5;
+    dx = d.x * far; dz = d.z * far;
+  }
+  copies: [WB_OBJECTS] WbObj; n := 0;
+  for i: idx { copies[n] = w[0].objs[i]; n += 1; }
+  w[0].last_n = 0;
+  for k: 0..<n { o := copies[k]; if wb_add(w, o.mesh, o.x + dx, o.z + dz, o.yaw, o.scale) >= 0 { done.placed += 1; } }
+  done.ok = done.placed > 0;
+  return done;
+}
+
+// Carries one edit out. Every edit but undo can be undone.
+wb_apply :: (w: [] WbWorld, c: [] WbCat, v: WbView, a: WbAct) -> WbDone {
+  done: WbDone;
+  if a.op == OP_UNDO {
+    times := ifx a.count < 1 then 1 else a.count;
+    for t: 0..<times { if wb_undo(w) { done.changed += 1; } }
+    done.ok = done.changed > 0;
+    return done;
+  }
+  wb_keep(w);
+  idx: [WB_OBJECTS] int; n := 0;
+  if a.op == OP_PLACE { done = wb_place(w, c, v, a); }
+  else if a.op == OP_CLEAR { done.changed = w[0].n; w[0].n = 0; w[0].last_n = 0; done.ok = true; }
+  else {
+    n = wb_targets(w, c, v, a, idx[..]);
+    if a.op == OP_MOVE { done = wb_move(w, c, v, a, idx[0..<n]); }
+    else if a.op == OP_ROTATE {
+      for i: idx[0..<n] { w[0].objs[i].yaw += a.degrees * 0.017453292; }
+      wb_set_last(w, idx[0..<n]); done.changed = n; done.ok = n > 0;
+    }
+    else if a.op == OP_SCALE {
+      f := ifx a.factor > 0.05 && a.factor < 20 then a.factor else 1.0f32;
+      for i: idx[0..<n] { w[0].objs[i].scale = wb_lo(wb_hi(w[0].objs[i].scale * f, 0.05), 40); }
+      wb_set_last(w, idx[0..<n]); done.changed = n; done.ok = n > 0;
+    }
+    else if a.op == OP_DELETE { done = wb_delete(w, idx[0..<n]); }
+    else if a.op == OP_DUPLICATE { done = wb_duplicate(w, c, v, a, idx[0..<n]); }
+  }
+  if done.ok { w[0].version += 1; }
+  else { k := (w[0].undo_top + WB_UNDO - 1) % WB_UNDO; w[0].undo_top = k; w[0].undo_count -= 1; }   // nothing changed: nothing to undo
+  return done;
+}
+
+// An answer's lines: "S say" and "A edit" lines, carried out in order. What it did, in sum.
+WbSum :: struct { placed: int; changed: int; edits: int; missing: int; say: [160] u8; say_n: int; }
+wb_answer :: (w: [] WbWorld, c: [] WbCat, v: WbView, text: string) -> WbSum {
+  sum: WbSum;
+  w[0].full = false;
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    if line.count > 2 && line[0] == 'S' && line[1] == ' ' {
+      k := 0; for j: 2..<line.count { if k < sum.say.count { sum.say[k] = line[j]; k += 1; } }
+      sum.say_n = k;
+    }
+    if line.count > 2 && line[0] == 'A' && line[1] == ' ' {
+      r := wb_read(c, line[2..<line.count]);
+      sum.missing += r.missing;
+      if r.ok {
+        d := wb_apply(w, c, v, r.act);
+        if d.ok { sum.edits += 1; }
+        sum.placed += d.placed; sum.changed += d.changed;
+      }
+    }
+    i = e + 1;
+  }
+  w[0].missing = sum.missing > 0;
+  return sum;
+}
+
+// ---- keeping a world: a line a thing, "NAME X Z YAW SCALE" (names, so a newer pack still reads it)
+
+wb_put :: (b: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < b.count { b[n] = t[i]; n += 1; } } return n; }
+wb_put_num :: (b: [] u8, at: int, v: f32) -> int {
+  n := at;
+  x := v;
+  if x < 0 { n = wb_put(b, n, "-"); x = -x; }
+  whole := cast(int) x;
+  frac := cast(int) ((x - cast(f32) whole) * 1000 + 0.5);
+  if frac >= 1000 { whole += 1; frac -= 1000; }
+  d: [12] u8; k := 0; q := whole;
+  while true { d[k] = cast(u8) (48 + q % 10); k += 1; q /= 10; if q == 0 { break; } }
+  while k > 0 { k -= 1; if n < b.count { b[n] = d[k]; n += 1; } }
+  n = wb_put(b, n, ".");
+  for p: 0..<3 { div := ifx p == 0 then 100 else ifx p == 1 then 10 else 1; if n < b.count { b[n] = cast(u8) (48 + (frac / div) % 10); n += 1; } }
+  return n;
+}
+wb_save :: (w: [] WbWorld, c: [] WbCat, b: [] u8) -> int {
+  n := wb_put(b, 0, "WB1\n");
+  for i: 0..<w[0].n {
+    o := w[0].objs[i];
+    n = wb_put(b, n, wb_mesh_name(c, o.mesh)); n = wb_put(b, n, " ");
+    n = wb_put_num(b, n, o.x); n = wb_put(b, n, " "); n = wb_put_num(b, n, o.z); n = wb_put(b, n, " ");
+    n = wb_put_num(b, n, o.yaw); n = wb_put(b, n, " "); n = wb_put_num(b, n, o.scale); n = wb_put(b, n, "\n");
+  }
+  return n;
+}
+wb_load :: (w: [] WbWorld, c: [] WbCat, text: string) -> int {
+  if text.count < 4 || text[0..<4] != "WB1\n" { return 0; }
+  wb_reset(w);
+  i := 4;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    m := wb_find(c, line[0..<sp]);
+    if m >= 0 {
+      at: [1] int; at[0] = sp;
+      x := wb_num_at(line, at[..]); ok := at[0] >= 0;
+      z := wb_num_at(line, at[..]); ok = ok && at[0] >= 0;
+      yaw := wb_num_at(line, at[..]); ok = ok && at[0] >= 0;
+      sc := wb_num_at(line, at[..]); ok = ok && at[0] >= 0 && sc > 0;
+      if ok { id := wb_add(w, m, x, z, yaw, sc); }
+    }
+    i = e + 1;
+  }
+  w[0].last_n = 0;
+  return w[0].n;
+}
+
+// ---- checks: typed edits in, the world out
+
+WB_TEST_CAT :: "pack worldbuilder\nL 0 Quaternius|CC0 1.0|\nM nature/birch-1 0 30 0 -3 0 -3 3 13 3\nM nature/rock-1 30 12 0 -0.5 0 -0.5 0.5 0.6 0.5\nM nature/rock-2 42 12 0 -0.6 0 -0.4 0.6 0.5 0.4\nM village/house-1 54 90 0 -4 0 -3 4 7 3\nM nature/grass-1 144 6 0 -0.2 0 -0.2 0.2 0.3 0.2\nM nature/flower-1 150 6 0 -0.15 0 -0.15 0.15 0.4 0.15\n";
+wb_test_view :: () -> WbView { return WbView.{has_here = true, here_x = 2, here_z = -5, view_x = 0, view_z = -8, yaw = 0}; }
+wb_one :: (w: [] WbWorld, c: [] WbCat, v: WbView, line: string) -> WbSum { return wb_answer(w, c, v, line); }
+wb_near :: (a: f32, b: f32, tol: f32) -> bool { return wb_abs(a - b) <= tol; }
+wb_count :: (w: [] WbWorld, c: [] WbCat, name: string) -> int { m := wb_find(c, name); n := 0; for i: 0..<w[0].n { if w[0].objs[i].mesh == m { n += 1; } } return n; }
+
+#test "the catalogue reads the pack's M lines: names, index ranges and bounds" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  #assert c[0].n == 6 && wb_find(c[..], "village/house-1") == 3 && wb_find(c[..], "nature/oak") == -1;
+  #assert c[0].first[3] == 54 && c[0].count[3] == 90 && wb_radius(c[..], 3) == 4;
+}
+#test "an edit's line: its op, names matched whole, numbers, and what an unknown name is" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  r := wb_read(c[..], "place|nature/rock-1|5|||last||around|1.5||0.8||");
+  #assert r.ok && r.act.op == OP_PLACE && r.act.asset == 1 && r.act.count == 5 && r.act.anchor == A_LAST && r.act.side == S_AROUND;
+  #assert r.act.distance == 1.5 && wb_near(r.act.size, 0.8, 0.0001) && r.act.factor == 1;
+  d := wb_read(c[..], "delete|||names|nature/rock-1,nature/rock-2,nature/oak|||||||");
+  #assert d.ok && d.act.targets == T_NAMES && d.act.names_n == 2 && d.missing == 1;
+  #assert !wb_read(c[..], "explode|||||||||||").ok;
+  #assert !wb_read(c[..], "place|nature/oak|1||||||||||").ok && wb_read(c[..], "place|nature/oak|1||||||||||").missing == 1;
+  m := wb_read(c[..], "move|||last|||||||||");
+  #assert m.ok && m.act.anchor == A_SELF && m.act.side == S_AT;
+}
+#test "put a tree here; five rocks around it; a house to the left of the tree" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  w: [1] WbWorld; v := wb_test_view();
+  s := wb_one(w[..], c[..], v, "S A birch, right there.\nA place|nature/birch-1|1|||here||at||||||\n");
+  #assert s.placed == 1 && w[0].n == 1 && w[0].objs[0].x == 2 && w[0].objs[0].z == -5;
+  #assert cast(string) s.say[0..<s.say_n] == "A birch, right there.";
+  s = wb_one(w[..], c[..], v, "A place|nature/rock-1|5|||last||around||||||\n");
+  #assert s.placed == 5 && w[0].n == 6 && w[0].last_n == 5;
+  // each rock on a ring clear of the tree's trunk-to-crown footprint
+  for i: 1..<6 { o := w[0].objs[i]; d := sqrt((o.x - 2) * (o.x - 2) + (o.z + 5) * (o.z + 5)); #assert d > 3 && d < 5; }
+  s = wb_one(w[..], c[..], v, "A place|village/house-1|1|||named|nature/birch-1|left||||||\n");
+  h := w[0].objs[6];
+  // left as the camera (yaw 0, looking along -z) sees it is -x: the house's 4 m and the tree's 3 m apart, and a gap
+  #assert s.placed == 1 && h.z == -5 && h.x < 2 - 7 && h.x > 2 - 8;
+}
+#test "move that further back; make it bigger; delete the rocks; undo brings them back" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  w: [1] WbWorld; v := wb_test_view();
+  s := wb_one(w[..], c[..], v, "A place|nature/birch-1|1|||here||at||||||\nA place|nature/rock-1|3|||here||right||||||\nA place|village/house-1|1|||here||left||||||\n");
+  #assert w[0].n == 5;
+  hz := w[0].objs[4].z;
+  s = wb_one(w[..], c[..], v, "A move|||last||self||behind|4|||||\n");
+  #assert s.changed == 1 && wb_near(w[0].objs[4].z, hz - 4, 0.001);
+  s = wb_one(w[..], c[..], v, "A scale|||last||||||||1.5||\n");
+  #assert wb_near(w[0].objs[4].scale, 1.5, 0.001);
+  s = wb_one(w[..], c[..], v, "A delete|||names|nature/rock-1|||||||\n");
+  #assert s.changed == 3 && w[0].n == 2 && wb_count(w[..], c[..], "nature/rock-1") == 0;
+  s = wb_one(w[..], c[..], v, "A undo||1|||||||||\n");
+  #assert w[0].n == 5 && wb_count(w[..], c[..], "nature/rock-1") == 3;
+  s = wb_one(w[..], c[..], v, "A undo||2|||||||||\n");
+  #assert w[0].n == 5 && wb_near(w[0].objs[4].scale, 1, 0.001) && wb_near(w[0].objs[4].z, hz, 0.001);
+}
+#test "fill the area with grass and flowers: many, spread, none on another, the same every time" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  w: [1] WbWorld; u: [1] WbWorld; v := wb_test_view();
+  a := "A place|nature/grass-1|40|||here||at||8|||\nA place|nature/flower-1|25|||here||at||8|||\n";
+  s := wb_one(w[..], c[..], v, a); t := wb_one(u[..], c[..], v, a);
+  #assert s.placed == 65 && w[0].n == 65;
+  for i: 0..<w[0].n {
+    o := w[0].objs[i];
+    #assert sqrt((o.x - 2) * (o.x - 2) + (o.z + 5) * (o.z + 5)) <= 8.01;
+    #assert o.x == u[0].objs[i].x && o.z == u[0].objs[i].z;
+  }
+}
+#test "rotate, duplicate beside, nearest to the tap, clear, and undo of clear" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  w: [1] WbWorld; v := wb_test_view();
+  s := wb_one(w[..], c[..], v, "A place|nature/rock-1|1|||origin||at||||||\nA place|village/house-1|1|||here||at||||||\n");
+  s = wb_one(w[..], c[..], v, "A rotate|||last|||||||||90\n");
+  #assert wb_near(w[0].objs[1].yaw, 1.5707963, 0.001);
+  s = wb_one(w[..], c[..], v, "A duplicate|||last|||||||||\n");
+  #assert w[0].n == 3 && w[0].objs[2].mesh == 3 && w[0].objs[2].x > w[0].objs[1].x + 7;
+  s = wb_one(w[..], c[..], v, "A delete|||nearest|nature/rock-1|here||||||||\n");
+  #assert w[0].n == 2 && wb_count(w[..], c[..], "nature/rock-1") == 0;
+  s = wb_one(w[..], c[..], v, "A clear||||||||||||\n");
+  #assert w[0].n == 0;
+  s = wb_one(w[..], c[..], v, "A undo||||||||||||\n");
+  #assert w[0].n == 2;
+}
+#test "a world holds WB_OBJECTS things and says when it is full; an edit that does nothing can't be undone" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  w: [1] WbWorld; v := wb_test_view();
+  for k: 0..<21 { s := wb_one(w[..], c[..], v, "A place|nature/grass-1|200|||origin||at||60|||\n"); }
+  #assert w[0].n == WB_OBJECTS && w[0].full;
+  w[0].undo_count = 0;
+  s := wb_one(w[..], c[..], v, "A delete|||names|nature/rock-1|||||||\n");
+  #assert s.edits == 0 && w[0].undo_count == 0;
+}
+#test "a world kept as lines comes back the same" {
+  c: [1] WbCat; wb_catalog(c[..], WB_TEST_CAT);
+  w: [1] WbWorld; v := wb_test_view();
+  s := wb_one(w[..], c[..], v, "A place|nature/rock-2|7|||here||at||||||\nA place|village/house-1|1|||here||behind|2|||||\n");
+  b: [65536] u8; n := wb_save(w[..], c[..], b[..]);
+  u: [1] WbWorld;
+  #assert wb_load(u[..], c[..], cast(string) b[0..<n]) == 8;
+  for i: 0..<8 {
+    #assert u[0].objs[i].mesh == w[0].objs[i].mesh && wb_near(u[0].objs[i].x, w[0].objs[i].x, 0.001) && wb_near(u[0].objs[i].z, w[0].objs[i].z, 0.001);
+    #assert wb_near(u[0].objs[i].yaw, w[0].objs[i].yaw, 0.001) && wb_near(u[0].objs[i].scale, w[0].objs[i].scale, 0.001);
+  }
+  #assert wb_load(u[..], c[..], "something else") == 0;
+}

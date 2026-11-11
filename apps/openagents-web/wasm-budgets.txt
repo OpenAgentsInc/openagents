@@ -16,6 +16,7 @@ audiolab 140000
 animelab 190000
 belt 320000
 builder 100000
+worldbuilder 90000
 # The page carries coax/CHANGELOG.md, which grows with every Coax release: 164,653 bytes measured 2026-11-07; about 10% headroom.
 changelog 180000
 characters 100000

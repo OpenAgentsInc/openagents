@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/audiolab.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/worldbuilder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/components.wasm, build/realmlist.wasm, build/gridcrowd.wasm, build/speedrunhud.wasm, build/status.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 # A failing step names itself (#13117): the line and the command, last in the
@@ -307,6 +307,9 @@ myrealm=$!
 # /worlds/new: build your own realm (docs/verse/realm-builder.md).
 timed builder "$here/../../coax/web/wasm.sh" "$here/builder.coax" "$here/builder-face.c" "$here/build/builder.wasm" &
 builder=$!
+# /create-world: chat a world onto an empty Grid (worldbuilder.coax, the API's coax/web/api/worldbuilder.c).
+timed worldbuilder "$here/../../coax/web/wasm.sh" "$here/worldbuilder.coax" "$here/worldbuilder-face.c" "$here/build/worldbuilder.wasm" &
+worldbuilder=$!
 # /worlds/ice-cream-man: Ice Cream Man's house (verse/icecream/scene.coax, its own library) under its HUD.
 timed icecream "$here/../../coax/web/wasm.sh" "$here/icecream.coax" "$here/icecream-face.c" "$here/build/icecream.wasm" "$m/icecream/scene.coax" &
 icecream=$!
@@ -448,6 +451,7 @@ wait "$nights"
 wait "$valleyworld"
 wait "$droprealm"
 wait "$builder"
+wait "$worldbuilder"
 wait "$myrealm"
 wait "$icecream"
 wait "$deadgears"
