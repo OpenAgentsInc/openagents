@@ -104,16 +104,26 @@ rm -rf "$in"
 cd "$tree" || infra "no tree"
 fingerprint="$(coax/published.sh name "$tree" 2> /dev/null || echo unknown)"
 compiler_line=""
-if [[ ! -x coax/bin/coax || "$(cat ~/slots/$slot/compiler 2> /dev/null)" != "$fingerprint" ]]; then
+# The Linux release toolchain (publish-host.sh): static GCC for musl from
+# nixpkgs. The fingerprint names the toolchain too, so it is taken in it.
+toolchain=(nix shell nixpkgs#pkgsStatic.stdenv.cc nixpkgs#python3 nixpkgs#gnumake --command env
+           CC="$(uname -m)-unknown-linux-musl-gcc" CXX="$(uname -m)-unknown-linux-musl-g++" COAX_LDFLAGS=-static)
+# The slot's compiler is kept only while its record matches this tree in that
+# toolchain, as tool.sh suites checks it (check.sh). nixpkgs-unstable moves
+# under a slot: its store paths change when Nix fetches the channel again, and
+# a compiler kept by its sources alone was then refused by every suite of the
+# job ("was not built from this tree"), which the pipeline read as a failing
+# commit (2026-11-11: five false culprits, main-green set back 3 hours, #13255).
+slot_compiler_ok() {
+  [[ -x coax/bin/coax && "$(cat ~/slots/$slot/compiler 2> /dev/null)" == "$fingerprint" ]] || return 1
+  "${toolchain[@]}" coax/provenance.sh verify "$tree" coax/bin/coax coax/bin/provenance-check coax/bin/provenance.record > /dev/null 2>&1
+}
+if ! slot_compiler_ok; then
   # A compiler another host built for these sources (#13119): build.sh's
   # cache entry (~/.cache/coax-release/FINGERPRINT), from the shared bucket
   # under compiler/ARCH/FINGERPRINT.tar.gz. build.sh verifies it against this
   # tree's fingerprint and its record before installing it, else bootstraps.
   release_cache="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
-  # The Linux release toolchain (publish-host.sh): static GCC for musl from
-  # nixpkgs. The fingerprint names the toolchain too, so it is taken in it.
-  toolchain=(nix shell nixpkgs#pkgsStatic.stdenv.cc nixpkgs#python3 nixpkgs#gnumake --command env
-             CC="$(uname -m)-unknown-linux-musl-gcc" CXX="$(uname -m)-unknown-linux-musl-g++" COAX_LDFLAGS=-static)
   release_key="$("${toolchain[@]}" coax/provenance.sh fingerprint "$tree" 2> /dev/null || true)"
   compiler_object="compiler/$(uname -m)/$release_key.tar.gz"
   tool="${COAX_SHARED_CACHE_TOOL:-}"

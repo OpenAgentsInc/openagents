@@ -38,7 +38,8 @@
 # per failing suite or step), limits.txt (each compile-time limit note:
 # "PERCENT CODE RESOURCE USED LIMIT UNIT"), sizes.txt ("MODULE BYTES BUDGET
 # PERCENT") and warnings.txt (limits above 90%, modules above 98% of budget).
-# Exit 0 when the check passed, 1 when it failed.
+# Exit 0 when the check passed, 1 when it failed, 97 when the host could not
+# judge it (its compiler doesn't match the tree).
 set -uo pipefail
 export LC_ALL=C
 mode="${1:-}"; arg="${2:-}"; also=("${@:3}")
@@ -320,6 +321,15 @@ case "$mode" in
   *) run "$mode" "$arg" || { sed -n '8,35p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; } ;;
 esac
 limits; sizes
+# tool.sh suites refused the compiler: the host's compiler doesn't match this
+# tree in its toolchain (nixpkgs moved under the slot). That says nothing of
+# the commit, so the host could not run the check (97): the caller runs it
+# again, and host-job.sh rebuilds the compiler first (#13255).
+if [[ $status != 0 ]] && grep -q 'was not built from this tree; run coax/build.sh' "$log"; then
+  echo 97 > "$out/status"
+  echo "check $mode${arg:+ ${arg:0:60}}: the host's compiler doesn't match this tree; not judged (97)"
+  exit 97
+fi
 echo "$status" > "$out/status"
 [[ ! -s "$out/warnings.txt" ]] || { echo "warnings:"; sed 's/^/  /' "$out/warnings.txt"; }
 [[ ! -s "$out/failed" ]] || { echo "failed:"; sed 's/^/  /' "$out/failed"; }
