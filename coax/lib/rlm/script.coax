@@ -40,6 +40,7 @@ RS_DICT :: 5;
 
 RS_ASK_LLM :: 1;                 // a block waits on llm_query or llm_query_batched
 RS_ASK_RLM :: 2;                 // a block waits on rlm_query or rlm_query_batched
+RS_ASK_FX :: 3;                  // a block waits on an effect of the code environment (env_on: files, read, edit, sh, ...)
 RS_WAITING :: "(waiting for a model's answer)";
 
 RS_INT_MAX :: 4611686018427387903;   // 2^62 - 1: results past it are an error, never an overflow trap
@@ -92,6 +93,7 @@ Rs :: struct {
   brk: bool; cont: bool;
   final_set: bool; final_val: RsVal;
   depth: int;                    // the run's depth: 0 at the root
+  env_on: bool;                  // the code environment's functions (RS_ENV) are defined; code.coax serves them
 }
 
 rs_nil :: () -> RsVal { return RsVal.{}; }
@@ -1898,6 +1900,10 @@ rs_builtin :: (r: [] Rs, name: string, a: RsArgs) -> RsVal {
     rs_fail(r, "no file '", a.v[0].s, "' in the context: see `files`");
     return rs_nil();
   }
+  if r[0].env_on {
+    for spec: RS_ENV { if rs_word(spec) == name { return rs_env(r, spec, a); } }
+  }
+  if r[0].env_on && name == "open" { rs_fail(r, "open() is not available: use read(path), lines(path, a, b) and write(path, text)", "", ""); return rs_nil(); }
   if name == "open" || name == "exec" || name == "eval" || name == "input" || name == "__import__" || name == "compile" {
     rs_fail(r, name, "() is not available: the context is in `context` (and doc(path) for a file of it)", "");
     return rs_nil();
@@ -1929,6 +1935,89 @@ rs_ask :: (r: [] Rs, kind: int, q: RsVal) -> RsVal {
   r[0].npend = n; r[0].pkind = kind; r[0].suspended = true;
   r[0].err = RS_WAITING;
   return rs_nil();
+}
+
+// ---------------------------------------------------------------- the code environment
+
+// The code environment's functions (README.md "RLM code"; served by code.coax, not here): the
+// name, then each parameter as name:kind (s str, i int, b bool), and =default when it has one.
+// A call becomes one request, the name and its arguments joined by zero bytes, that suspends the
+// block as a sub-model call does (RS_ASK_FX); the driver does the effect once, and its result
+// comes back from the memo on every later pass.
+RS_ENV :: [9] string.["files prefix:s=", "read path:s", "lines path:s a:i b:i", "count_lines path:s",
+  "search pattern:s prefix:s= limit:i=200 regex:b=0", "edit path:s old:s new:s", "replace_lines path:s a:i b:i text:s",
+  "write path:s text:s", "sh cmd:s seconds:i=120"];
+
+// The first word of s.
+rs_word :: (s: string) -> string { e := 0; while e < s.count && s[e] != ' ' { e += 1; } return cast(string) s[0..<e]; }
+
+rs_env :: (r: [] Rs, spec: string, a: RsArgs) -> RsVal {
+  name := rs_word(spec);
+  at := r[0].nh;
+  ok := rs_put(r, name);
+  i := name.count + 1; k := 0;
+  while i < spec.count {
+    e := i; while e < spec.count && spec[e] != ' ' { e += 1; }
+    p := cast(string) spec[i..<e];
+    c := 0; while p[c] != ':' { c += 1; }
+    pname := cast(string) p[0..<c]; kind := p[c + 1];
+    has_def := p.count > c + 2; def := ifx has_def then cast(string) p[c + 3..<p.count] else "";
+    kw := rs_kw(a, pname);
+    v := rs_nil(); given := true;
+    if k < a.n { v = a.v[k]; if kw >= 0 { r[0].nh = at; rs_fail(r, name, "() got two values for ", pname); return rs_nil(); } }
+    else if kw >= 0 { v = a.kw[kw]; }
+    else if !has_def { r[0].nh = at; rs_fail(r, name, "() needs its argument ", pname); return rs_nil(); }
+    else { given = false; }
+    ok = ok && rs_putc(r, 0);
+    if kind == 's' {
+      if given && v.kind != RS_STR { r[0].nh = at; x := rs_need(r, v, RS_STR, name); return rs_nil(); }
+      t := ifx given then v.s else def;
+      for ch: t { if ch == 0 { r[0].nh = at; rs_fail(r, name, "(): an argument holds a zero byte", ""); return rs_nil(); } }
+      ok = ok && rs_put(r, t);
+    } else if kind == 'i' {
+      if given && v.kind != RS_INT && v.kind != RS_BOOL { r[0].nh = at; x := rs_need(r, v, RS_INT, name); return rs_nil(); }
+      ok = ok && (ifx given then rs_put_int(r, v.i) else rs_put(r, def));
+    } else {
+      ok = ok && rs_put(r, ifx given then (ifx rs_truthy(r, v) then "1" else "0") else def);
+    }
+    k += 1; i = e + 1;
+  }
+  if a.n > k { r[0].nh = at; rs_fail(r, name, "() takes at most ", ifx k == 1 then "one argument" else "fewer arguments"); return rs_nil(); }
+  for j: 0..<a.nk {
+    found := false; q := name.count + 1;
+    while q < spec.count {
+      e := q; while e < spec.count && spec[e] != ' ' { e += 1; }
+      c := q; while spec[c] != ':' { c += 1; }
+      if cast(string) spec[q..<c] == a.kw_name[j] { found = true; }
+      q = e + 1;
+    }
+    if !found { r[0].nh = at; rs_fail(r, name, "() has no argument ", a.kw_name[j]); return rs_nil(); }
+  }
+  if !ok { r[0].nh = at; rs_oom(r); return rs_nil(); }
+  v := rs_ask(r, RS_ASK_FX, rs_strv(rs_take(r, at)));
+  if rs_bad(r) { return rs_nil(); }
+  s := v.s;
+  if name == "files" || name == "search" { return rs_lines(r, s); }
+  if name == "count_lines" { return rs_int(rs_env_int(s)); }
+  if name == "sh" {
+    // "EXIT TIMED\n" and the whole output
+    nl := 0; while nl < s.count && s[nl] != 10 { nl += 1; }
+    head := cast(string) s[0..<nl];
+    sp := 0; while sp < head.count && head[sp] != ' ' { sp += 1; }
+    d := rs_new_dict(r); if rs_bad(r) { return rs_nil(); }
+    rs_dict_set(r, d.i, rs_strv("exit"), rs_int(rs_env_int(cast(string) head[0..<sp])));
+    rs_dict_set(r, d.i, rs_strv("out"), rs_strv(cast(string) s[ifx nl < s.count then nl + 1 else s.count..<s.count]));
+    rs_dict_set(r, d.i, rs_strv("timed_out"), rs_bool(sp + 1 < head.count && head[sp + 1] == '1'));
+    return d;
+  }
+  return v;
+}
+
+// A decimal number, maybe negative (0 for none).
+rs_env_int :: (s: string) -> int {
+  neg := s.count > 0 && s[0] == '-'; v := 0;
+  for c: s { if c >= '0' && c <= '9' && v < 100000000000000 { v = v * 10 + cast(int) (c - '0'); } }
+  return ifx neg then -v else v;
 }
 
 // ---------------------------------------------------------------- running a block

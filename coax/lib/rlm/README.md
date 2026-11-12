@@ -79,6 +79,47 @@ scripted, each role answers from a list, with usage counted as four bytes a toke
 the same card, and a clock that moves a second a call. The checks run whole runs, limits and
 recursion on the scripted model.
 
+## RLM code
+
+`code.coax` is a coding agent on the same driver, for Microcoder (GitHub #13325): the
+repository is the environment, so file contents never enter the root model's prompt and are
+never compacted and read again. The root model sees the task, a short coding prompt and, each
+turn, what its blocks printed; a note ends each turn's feedback with the turn, the dollars spent
+of the cap and the minutes used. With `env_on`, the language has the workspace's functions
+(`script.coax` `RS_ENV`), all confined to `--cwd`:
+
+| Function | What |
+| --- | --- |
+| `files(prefix="")` | tracked paths (`git ls-files`) |
+| `read(path)`, `lines(path, a, b)`, `count_lines(path)` | the text; a range numbered; the line count |
+| `search(pattern, prefix="", limit=200, regex=False)` | `git grep -n -I` matches as `"path:line:text"`; a fixed string unless `regex=True` (extended) |
+| `edit(path, old, new)` | Microcoder's exact edit: the changed lines numbered, or `edit failed: ...` with the nearest lines |
+| `replace_lines(path, a, b, text)` | lines a..b become text (`a = b + 1` inserts); the new lines numbered |
+| `write(path, text)` | a whole file |
+| `sh(cmd, seconds=120)` | `{"exit", "out", "timed_out"}`, the whole output; in Microcoder's sandbox profile (`--profile`, default `workspace-write`) |
+
+**Effects ride the memo.** A call of one of them suspends the block as `llm_query` does
+(`RS_ASK_FX`, the driver's phase `L_FX`): the request is the name and arguments joined by zero
+bytes. `code.coax` does the effect once, adds its result to the block's memo and the block runs
+again from its start, from its snapshot, taking that result from the memo; so nothing is done
+twice, and a block with k effects runs k + 1 times. A refused effect (a path outside the
+workspace or through a symlink out of it, a write under `.git`, a missing file) ends the block
+with the reason. Limits: the run's `policy.coax` limits on model calls, time and money, and
+Microcoder's counts (`native-profile.coax`): 512 reads (`files`, `read`, `lines`, `count_lines`,
+`search`) and 128 commands and edits a run; past one, the effect is refused and the run stops.
+
+```sh
+coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F) [--root-model gemini-4-argon] \
+  [--sub-model gemini-3.8-flash] [--root-effort low] [--max-turns 40] [--max-usd 5] [--max-minutes 15] \
+  [--profile workspace-write] [--trace F] [--log F]
+coax/web/tool.sh coax/lib/rlm/code.coax selftest      # every function, confinement, reruns, a whole run, limits: a scratch git repo, the scripted model
+```
+
+It prints one JSON line: `ending` (`final`, `limit`, `no answer`), turns, root and sub calls,
+effects by function, input, cached and output tokens per role, the card's price, wall seconds and
+the `FINAL` text; `--trace` writes every reply, block output and effect (with its result's size),
+`--log` appends the line. The exit is 0 with a final answer, else 3.
+
 ## Files
 
 | File | What |
@@ -88,6 +129,8 @@ recursion on the scripted model.
 | `model.coax` | Root and sub models: gateway plans in up to eight slots, or a scripted model |
 | `run.coax` | The driver: prompts, turns, blocks, snapshots and reruns, child levels, FINAL, accounting, the trace; and the checks |
 | `rlm.coax` | The command line (below), the OOLONG-style task builder and its scoring |
+| `live.coax` | The live models (Microcoder's Vertex credentials, or `GW_REPLAY`) and the limit flags, for both tools |
+| `code.coax` | RLM code: the workspace's effects, their confinement and counts, the coding prompt, the run's report, and its self-test |
 | `replay.sh`, `fixtures/replay/` | A recorded live run replayed through the gateway's `GW_REPLAY`, nothing sent; fails unless the answer matches |
 
 ## Use it

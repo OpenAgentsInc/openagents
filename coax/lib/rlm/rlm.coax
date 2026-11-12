@@ -20,9 +20,7 @@
 // that count the questions of each label; DIR/context.txt and DIR/tasks.txt ("count<TAB>question").
 // tool.sh: stack-gib 3
 
-#load "run.coax";
-#load "../../../coder/tui/microcoder_keys.coax";
-#load "../sys/args.coax";
+#load "live.coax";
 #load "../sys/tool.coax";
 #load "../json/json.coax";
 
@@ -47,8 +45,7 @@ RtMem :: struct {
   out: [4194304] u8; trace: [16777216] u8; reply: [RLM_SLOTS * RLM_REPLY_MAX] u8;
   snap_names: [2 * RT_NAMES] string; snap_vals: [2 * RT_NAMES] RsVal; snap_lists: [2 * RT_LISTS] RsList; snap_cells: [2 * RT_CELLS] RsVal;
   st: [1] RlmState; r: [1] Rs;
-  plans: [RLM_SLOTS] GwPlan; pbufs: [RLM_SLOTS] GwPlanBuffers;
-  keys: [1] MkKeys; vroot: [1] GwVertex; vsub: [1] GwVertex;
+  live: [1] RlmLive;
   line: [65536] u8;
   list: [1] FsList;
   dirs: [256] string; dirbuf: [65536] u8;
@@ -125,50 +122,6 @@ rt_walk :: (m: [] RtMem, dir: string, exts: string) -> bool {
   return true;
 }
 
-// ---------------------------------------------------------------- models
-
-// The live models (or the replay): "" when ready, else why not.
-rt_models :: (m: [] RtMem, a: [] Args) -> string {
-  st := m[0].st[..];
-  md := st[0].model[..];
-  md[0].plans = m[0].plans[..]; md[0].pbufs = m[0].pbufs[..];
-  md[0].root_model = mk_vertex_model(args_value(a, "--root-model", "gemini-4-argon"));
-  md[0].sub_model = mk_vertex_model(args_value(a, "--sub-model", "gemini-3.8-flash"));
-  md[0].root_effort = args_value(a, "--root-effort", "low");
-  md[0].sub_effort = args_value(a, "--sub-effort", "low");
-  rb: [1024] u8;
-  replay := gw_env("GW_REPLAY", rb[..]).count > 0;
-  k := m[0].keys[..];
-  mk_keys(k);
-  if !replay {
-    why := mk_vertex(k);
-    if why.count > 0 { return why; }
-  }
-  m[0].vroot[0] = k[0].vx[0]; m[0].vsub[0] = k[0].vx[0];
-  md[0].root_gw = gw_vertex_native(m[0].vroot[..], md[0].root_model);
-  md[0].sub_gw = gw_vertex_native(m[0].vsub[..], md[0].sub_model);
-  return "";
-}
-
-rt_number :: (a: [] Args, name: string, fallback: int) -> int {
-  v := args_value(a, name, "");
-  if v.count == 0 { return fallback; }
-  n := args_number(v);
-  return ifx n.ok then cast(int) n.value else fallback;
-}
-
-rt_limits :: (a: [] Args) -> RlmLimits {
-  l := RlmLimits.{};
-  l.max_depth = rt_number(a, "--max-depth", 1);
-  l.max_turns = rt_number(a, "--max-turns", 20);
-  l.max_calls = rt_number(a, "--max-calls", 400);
-  l.max_ms = rt_number(a, "--max-minutes", 30) * 60000;
-  v := args_value(a, "--max-usd", "2");
-  n := args_number(v);
-  l.max_usd_micros = ifx n.ok then cast(int) (n.value * 1000000.0) else 2000000;
-  return l;
-}
-
 // ---------------------------------------------------------------- scoring and the report
 
 // The first whole number in s, or -1.
@@ -203,7 +156,7 @@ rt_report :: (m: [] RtMem, a: [] Args, mode: string, question: string, ms: int) 
   jo_key(o[..], "mode"); jo_str(o[..], mode);
   jo_key(o[..], "question"); jo_str(o[..], question);
   jo_key(o[..], "answer"); jo_str(o[..], st[0].answer);
-  want := rt_number(a, "--expect", -1);
+  want := rlm_arg_number(a, "--expect", -1);
   exact := false;
   if want >= 0 {
     got := rt_first_int(st[0].answer);
@@ -280,7 +233,7 @@ rt_cat_int :: (out: [] u8, n: int, v: int, width: int) -> int {
 
 rt_oolong :: (m: [] RtMem, a: [] Args) -> int {
   data := args_value(a, "--data", ""); outdir := args_value(a, "--out", "");
-  n := rt_number(a, "--n", 3000); seed := rt_number(a, "--seed", 1);
+  n := rlm_arg_number(a, "--n", 3000); seed := rlm_arg_number(a, "--seed", 1);
   if data.count == 0 || outdir.count == 0 { rt_err("rlm oolong: --data FILE and --out DIR"); return 2; }
   text := rt_read(m, data);
   if text.count == 0 { rt_err("rlm oolong: can't read the data"); return 1; }
@@ -370,7 +323,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   arenas := RlmArenas.{heap = m[0].heap[..], cells = m[0].cells[..], lists = m[0].lists[..], toks = m[0].toks[..], nodes = m[0].nodes[..], names = m[0].vnames[..], vals = m[0].vals[..], memo = m[0].memo[..], memo_fail = m[0].memo_fail[..], pend = m[0].pend[..], out = m[0].out[..], trace = m[0].trace[..], reply = m[0].reply[..], snap_names = m[0].snap_names[..], snap_vals = m[0].snap_vals[..], snap_lists = m[0].snap_lists[..], snap_cells = m[0].snap_cells[..]};
   r := m[0].r[..]; st := m[0].st[..];
-  rlm_init(r, st, arenas, rt_limits(a));
+  rlm_init(r, st, arenas, rlm_arg_limits(a, RlmLimits.{}));
   // the question
   question := args_value(a, "--question", "");
   qf := args_value(a, "--question-file", "");
@@ -389,11 +342,11 @@ tool_main :: () -> int #export_c #effects(all) {
     rlm_set_files(r, st, m[0].names[0..<m[0].nfiles], m[0].texts[0..<m[0].nfiles]);
   } else { rt_err("rlm: give --file or --dir"); return 2; }
   if rs_bad(r) { rt_err(r[0].err); return 1; }
-  why := rt_models(m, a);
+  why := rlm_live_models(st, m[0].live[..], a);
   if why.count > 0 { rt_err("rlm: no model: "); rt_err(why); return 1; }
   t0 := cxproc_now_ms();
   if cmd == "base" || cmd == "full" {
-    rt_base(m, question, ifx cmd == "full" then 0 else rt_number(a, "--window", 96000));
+    rt_base(m, question, ifx cmd == "full" then 0 else rlm_arg_number(a, "--window", 96000));
     return rt_report(m, a, cmd, question, cxproc_now_ms() - t0);
   }
   rlm_start(r, st, question);

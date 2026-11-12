@@ -1,0 +1,593 @@
+// RLM code: a coding agent on the Recursive Language Model (GitHub #13367, for Microcoder #13325;
+// README.md "RLM code"). The repository lives in the REPL's environment and never in the model's
+// prompt: the root model writes ```repl blocks that call files, read, lines, count_lines, search,
+// edit, replace_lines, write and sh (script.coax RS_ENV), and each turn it sees only what its
+// blocks printed. Run it with
+//   coax/web/tool.sh coax/lib/rlm/code.coax run --cwd DIR (--task TEXT | --task-file F)
+//     [--root-model gemini-4-argon] [--sub-model gemini-3.8-flash] [--root-effort low]
+//     [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write]
+//     [--trace F] [--log F]
+//   coax/web/tool.sh coax/lib/rlm/code.coax selftest    the checks on a scratch git repo, scripted model
+//
+// Effects ride the RLM's suspend, memo and rerun (run.coax): a call of an environment function
+// suspends the block with its request (L_FX); this file does the effect once, puts its result in
+// the block's memo and the block runs again from its start, taking the result from the memo, so
+// no effect is ever done twice. Everything stays under --cwd: paths that leave it (also through a
+// symlink) are refused, and so is a write under .git; reads and writes are Microcoder's
+// (coax/lib/microcoder/tools.coax: path confinement, the exact-edit applier, numbered lines) and
+// commands run in its sandbox profile (bubblewrap and a seccomp filter, coax/lib/agent/
+// native-profile.coax) whose counts, 512 reads and 128 commands and edits a run, are the limits
+// here too; model calls, time and money are policy.coax's.
+//
+// The JSON line it prints: ending, turns, calls, effects, tokens (input, cached, output) per role,
+// the card's price, wall seconds and the FINAL text. --trace writes every reply, block output and
+// effect; --log appends the line.
+// tool.sh: stack-gib 3
+
+#load "live.coax";
+#load "../microcoder/tools.coax";
+#load "../sys/tool.coax";
+#load "../json/json.coax";
+
+RC_SYSTEM :: "You are a coding agent. The repository you work on is in your environment, not in this conversation. You work in it by writing Python in ```repl blocks; each turn every block runs in order and you see only what it printed (at most {SHOWN} characters a block). Variables persist across turns. What you print fills your window, which is small; files and variables cost nothing. Print only the lines you need, and keep what you find in variables.\n\nThe REPL runs a subset of Python: None, bool, int (no floats), str, list, dict; f-strings; list comprehensions; a if c else b; assignment (also a, b = ... and x[i] = ...), += -=, if/elif/else, for, while, break, continue; print len str repr int bool abs list dict range enumerate zip sum min max sorted; the common str, list and dict methods. Not supported: def, lambda, class, try, with, return, import of anything, set, slices with a step. Write the steps inline.\n\nThe repository (paths are relative to its root):\n- files(prefix=\"\"): the tracked paths, as a list\n- read(path): a file's text; lines(path, a, b): lines a to b numbered; count_lines(path)\n- search(pattern, prefix=\"\", limit=200, regex=False): matching lines as \"path:line:text\" strings (git grep; a fixed string unless regex=True, then an extended regex)\n- edit(path, old, new): replaces old, which must be in the file exactly once; returns the changed lines numbered, or text starting \"edit failed:\" with the nearest lines numbered\n- replace_lines(path, a, b, text): replaces lines a to b with text (a = b + 1 inserts before line a); returns the new lines numbered\n- write(path, text): creates or replaces a whole file\n- sh(cmd, seconds=120): runs a shell command at the root; returns {\"exit\": int, \"out\": str, \"timed_out\": bool} with the whole output\n- grep(pattern, text): the lines of text that match; chunk(text, size)\n- llm_query(prompt), llm_query_batched(prompts): a sub-model that sees only the prompt (about {SUBCHARS} characters at most) and answers with a str\n- FINAL(summary) ends the task; SHOW_VARS() names your variables\n\nWork this way: find the code with search, then look at the lines you need with lines. When several files need the same kind of look, have sub-models read whole files with llm_query_batched and answer focused questions or draft edits. Make changes with edit or replace_lines, in a loop when the same change applies to several places, and print their results. Run the checks the task names with sh and print only the failing lines (r['out'][-2000:] or grep). Call FINAL(summary) only after those checks pass.";
+
+RC_FIRST :: "Your task:\n\n";
+
+RC_STOP_READS :: 101;            // the run has made its reads (np_read_budget)
+RC_STOP_EFFECTS :: 102;          // the run has made its commands and edits (np_budget)
+
+RC_FILE_MOST :: 4194304;         // bytes of a file read, replaced or written
+RC_OUT_MOST :: 8388608;          // bytes of a command's output kept whole
+RC_SHOW :: 262144;               // bytes of numbered lines one call returns
+RC_SH_MOST :: 600;               // seconds one command may take
+
+RC_OPS :: [9] string.["files", "read", "lines", "count_lines", "search", "edit", "replace_lines", "write", "sh"];
+
+// The workspace an effect works in, its buffers and its counts.
+RcEnv :: struct {
+  cwd: string; profile: string;
+  b: [1] McToolBuffers;
+  file: [RC_FILE_MOST] u8; dst: [RC_FILE_MOST] u8;
+  all: [RC_OUT_MOST] u8;
+  show: [RC_SHOW] u8;
+  full: [4096] u8; real: [4096] u8; cmd: [65536] u8; why: [1024] u8;
+  reads: int; acts: int;         // what np_read_budget and np_budget count
+  ops: [9] int; failed: int; refused: int; writes: int;
+}
+
+// One effect's result: the text for the memo; fail ends the block with it as its error.
+RcResult :: struct { text: string; fail: bool; }
+
+rc_ok :: (text: string) -> RcResult { return RcResult.{text = text}; }
+rc_fail :: (text: string) -> RcResult { return RcResult.{text = text, fail = true}; }
+
+// The request's fields: the name, then its arguments (script.coax rs_env), at most 6.
+RcReq :: struct { f: [6] string; n: int; }
+rc_fields :: (req: string) -> RcReq {
+  q := RcReq.{}; at := 0;
+  while q.n < 6 {
+    e := at; while e < req.count && req[e] != 0 { e += 1; }
+    q.f[q.n] = cast(string) req[at..<e]; q.n += 1;
+    if e >= req.count { break; }
+    at = e + 1;
+  }
+  return q;
+}
+rc_int :: (s: string) -> int { return rs_env_int(s); }
+
+// Whether p names .git or a path under it.
+rc_in_git :: (p: string) -> bool {
+  start := 0;
+  for i: 0..<p.count + 1 {
+    if i == p.count || p[i] == '/' {
+      if i - start == 4 && cast(string) p[start..<i] == ".git" { return true; }
+      start = i + 1;
+    }
+  }
+  return false;
+}
+
+// Whether real (a resolved path) is root or under it.
+rc_under :: (root: string, real: string) -> bool {
+  if real == root { return true; }
+  return real.count > root.count && cast(string) real[0..<root.count] == root && real[root.count] == '/';
+}
+
+// path's full name under the workspace in env.full, or "" with env.why saying why not: a path
+// that leaves the workspace, by name or through a symlink, and a write under .git.
+rc_path :: (env: [] RcEnv, path: string, write: bool) -> string {
+  if !mc_path_inside(env[0].cwd, path) { return rc_why(env, "the path leaves the workspace: ", path); }
+  rel := path;
+  if path[0] == '/' { rel = cast(string) path[env[0].cwd.count + 1..<path.count]; }
+  if write && rc_in_git(rel) { return rc_why(env, "writes under .git are refused: ", path); }
+  full := fs_join(env[0].cwd, rel, env[0].full[..]);
+  if full.count == 0 { return rc_why(env, "the path is too long: ", path); }
+  // what it resolves to (its folder's, for a file not there yet) must stay inside
+  real := fs_realpath(full, env[0].real[..]);
+  if real.count == 0 { real = fs_realpath(fs_dir(full), env[0].real[..]); if real.count == 0 && write { return rc_why(env, "its folder does not exist (make it with sh('mkdir -p ...')): ", path); } }
+  if real.count > 0 && !rc_under(env[0].cwd, real) { return rc_why(env, "the path leaves the workspace through a symlink: ", path); }
+  return full;
+}
+rc_why :: (env: [] RcEnv, a: string, b: string) -> string {
+  n := rp_put(env[0].why[..], 0, a); n = rp_put(env[0].why[..], n, b);
+  env[0].why[n] = 0;
+  env[0].full[0] = 0;
+  return "";
+}
+rc_why_text :: (env: [] RcEnv) -> string { n := 0; while env[0].why[n] != 0 { n += 1; } return cast(string) env[0].why[0..<n]; }
+
+// A file's text under the workspace, or why not.
+RcRead :: struct { ok: bool; text: string; why: string; }
+rc_read :: (env: [] RcEnv, r: [] Rs, path: string) -> RcRead {
+  full := rc_path(env, path, false);
+  if full.count == 0 { return RcRead.{why = rs_copy(r, rc_why_text(env))}; }
+  if fs_kind(full) != 1 { return RcRead.{why = rs_cat(r, "no such file (files() lists them): ", path)}; }
+  if fs_size(full) > RC_FILE_MOST { return RcRead.{why = rs_cat(r, "the file is over 4 MB: look at it with sh: ", path)}; }
+  n := fs_read(full, env[0].file[..]);
+  if n < 0 { return RcRead.{why = rs_cat(r, "could not read it: ", path)}; }
+  return RcRead.{ok = true, text = cast(string) env[0].file[0..<n]};
+}
+
+// Lines from..to of text numbered (rp_numbered), and a line naming what was left when cut.
+rc_numbered :: (env: [] RcEnv, r: [] Rs, text: string, from: int, to: int) -> string {
+  c := rp_numbered(text, from, to, env[0].show[..], 0, RC_SHOW - 200);
+  n := c.n;
+  if c.cut { n = rp_put(env[0].show[..], n, "[cut: ask for lines "); n = rp_put_int(env[0].show[..], n, c.next); n = rp_put(env[0].show[..], n, " on]\n"); }
+  if n == 0 { n = rp_put(env[0].show[..], 0, "[no lines there: the file has "); n = rp_put_int(env[0].show[..], n, rp_lines(text)); n = rp_put(env[0].show[..], n, "]"); }
+  return rs_copy(r, cast(string) env[0].show[0..<n]);
+}
+
+// s quoted for /bin/sh.
+rc_quote :: (out: [] u8, n: int, s: string) -> int {
+  m := rp_put(out, n, "'");
+  for c: s { if c == '\'' { m = rp_put(out, m, "'\\''"); } else if m < out.count { out[m] = c; m += 1; } }
+  return rp_put(out, m, "'");
+}
+
+// Runs cmd in the workspace's profile with its whole output kept.
+RcSh :: struct { exit: int; timed_out: bool; out: string; cut: bool; }
+rc_sh :: (env: [] RcEnv, cmd: string, seconds: int) -> RcSh {
+  o := env[0].b[0].out[..];
+  o[0].all = env[0].all[..]; o[0].spill = "";
+  c := mc_run_command_profile(env[0].cwd, cmd, seconds, o, env[0].profile);
+  res := RcSh.{exit = c.exit, timed_out = c.timed_out, out = cast(string) env[0].all[0..<o[0].nall], cut = o[0].total > o[0].nall};
+  o[0].all = env[0].all[0..<0];
+  return res;
+}
+
+// The run's clock and deadline (the scripted model's clock in the checks).
+rc_now :: (st: [] RlmState) -> int { return rm_now(st[0].model[..]); }
+
+// One effect: its request's name and arguments in, its result out. Reads are counted against
+// np_read_budget, commands and edits against np_budget; past either, or past the run's time,
+// it is refused and the run stops.
+rc_effect :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) -> RcResult {
+  q := rc_fields(req);
+  op := q.f[0];
+  k := -1; for o, i: RC_OPS { if o == op { k = i; } }
+  if k < 0 { return rc_fail(rs_cat(r, "no such function: ", op)); }
+  acts := k >= 5;
+  now := rc_now(st); deadline := st[0].spent.started_ms + st[0].limits.max_ms;
+  ok := ifx acts then np_budget(false, env[0].acts, now, deadline) else np_read_budget(env[0].reads, now, deadline);
+  if !ok {
+    env[0].refused += 1;
+    st[0].stop = ifx now >= deadline then RLM_STOP_TIME else ifx acts then RC_STOP_EFFECTS else RC_STOP_READS;
+    st[0].failed = rc_stop_name(st[0].stop);
+    return rc_fail(rs_cat(r, rs_cat(r, op, "() was refused: "), rs_cat(r, st[0].failed, " was reached")));
+  }
+  if acts { env[0].acts += 1; } else { env[0].reads += 1; }
+  env[0].ops[k] += 1;
+  if op == "files" {
+    s := rc_sh(env, "git ls-files", 60);
+    if s.exit != 0 { return rc_fail(rs_cat(r, "files(): git ls-files failed: ", cast(string) s.out[0..<ifx s.out.count > 400 then 400 else s.out.count])); }
+    pre := q.f[1];
+    if pre.count == 0 { return rc_ok(rs_copy(r, s.out)); }
+    at := r[0].nh; i := 0;
+    while i < s.out.count {
+      e := i; while e < s.out.count && s.out[e] != 10 { e += 1; }
+      line := cast(string) s.out[i..<e];
+      if line.count >= pre.count && cast(string) line[0..<pre.count] == pre { if !(rs_put(r, line) && rs_putc(r, 10)) { r[0].nh = at; return rc_fail("files(): the run's memory is full"); } }
+      i = e + 1;
+    }
+    return rc_ok(rs_take(r, at));
+  }
+  if op == "search" {
+    n := rp_put(env[0].cmd[..], 0, "git grep -n -I --no-color ");
+    n = rp_put(env[0].cmd[..], n, ifx q.f[4] == "1" then "-E" else "-F");
+    n = rp_put(env[0].cmd[..], n, " -e "); n = rc_quote(env[0].cmd[..], n, q.f[1]);
+    if q.f[2].count > 0 { n = rp_put(env[0].cmd[..], n, " -- "); n = rc_quote(env[0].cmd[..], n, q.f[2]); }
+    if n >= env[0].cmd.count { return rc_fail("search(): the pattern is too long"); }
+    s := rc_sh(env, cast(string) env[0].cmd[0..<n], 60);
+    if s.exit == 1 && s.out.count == 0 { return rc_ok(""); }
+    if s.exit != 0 { return rc_fail(rs_cat(r, "search(): git grep failed: ", cast(string) s.out[0..<ifx s.out.count > 400 then 400 else s.out.count])); }
+    limit := rc_int(q.f[3]);
+    e := 0; m := 0;
+    while e < s.out.count && m < limit { while e < s.out.count && s.out[e] != 10 { e += 1; } e += 1; m += 1; }
+    if e > s.out.count { e = s.out.count; }
+    return rc_ok(rs_copy(r, cast(string) s.out[0..<e]));
+  }
+  if op == "sh" {
+    secs := rc_int(q.f[2]);
+    left := (deadline - now) / 1000;
+    if secs > RC_SH_MOST { secs = RC_SH_MOST; }
+    if secs > left { secs = left; }
+    if secs < 1 { secs = 1; }
+    s := rc_sh(env, q.f[1], secs);
+    at := r[0].nh;
+    ok2 := rs_put_int(r, s.exit) && rs_put(r, ifx s.timed_out then " 1\n" else " 0\n") && rs_put(r, s.out);
+    if s.cut { ok2 = ok2 && rs_put(r, "\n[the output was cut at 8 MB]\n"); }
+    if !ok2 { r[0].nh = at; return rc_fail("sh(): the run's memory is full"); }
+    return rc_ok(rs_take(r, at));
+  }
+  path := q.f[1];
+  if op == "write" {
+    full := rc_path(env, path, true);
+    if full.count == 0 { env[0].failed += 1; return rc_fail(rs_cat(r, "write(): ", rc_why_text(env))); }
+    if fs_kind(full) == 2 { return rc_fail(rs_cat(r, "write(): that is a folder: ", path)); }
+    if q.f[2].count > RC_FILE_MOST || !fs_write(full, q.f[2]) { env[0].failed += 1; return rc_fail(rs_cat(r, "write(): could not write ", path)); }
+    env[0].writes += 1;
+    at := r[0].nh;
+    if !(rs_put(r, "wrote ") && rs_put(r, path) && rs_put(r, ": ") && rs_put_int(r, rp_lines(q.f[2])) && rs_put(r, " lines")) { r[0].nh = at; return rc_ok("wrote it"); }
+    return rc_ok(rs_take(r, at));
+  }
+  if op == "edit" {
+    full := rc_path(env, path, true);
+    if full.count == 0 { env[0].failed += 1; return rc_ok(rs_cat(r, "edit failed: ", rc_why_text(env))); }
+    if q.f[2].count == 0 { env[0].failed += 1; return rc_ok("edit failed: old is empty; write(path, text) writes a whole file"); }
+    e := mc_edit_file(env[0].cwd, McEdit.{path = path, old = q.f[2], text = q.f[3]}, env[0].profile, env[0].b[..]);
+    if !e.ok {
+      env[0].failed += 1;
+      t := rs_cat(r, rs_cat(r, "edit failed: ", e.why), "\n");
+      return rc_ok(rs_cat(r, t, e.shown));
+    }
+    env[0].writes += 1;
+    return rc_ok(rs_copy(r, e.shown));
+  }
+  // read, lines, count_lines, replace_lines: the file's text first
+  f := rc_read(env, r, path);
+  if !f.ok {
+    if op == "replace_lines" { env[0].failed += 1; return rc_fail(rs_cat(r, "replace_lines(): ", f.why)); }
+    return rc_fail(rs_cat(r, rs_cat(r, op, "(): "), f.why));
+  }
+  if op == "read" { return rc_ok(rs_copy(r, f.text)); }
+  if op == "count_lines" { at := r[0].nh; x := rs_put_int(r, rp_lines(f.text)); return rc_ok(rs_take(r, at)); }
+  a := rc_int(q.f[2]); b := rc_int(q.f[3]);
+  if op == "lines" { return rc_ok(rc_numbered(env, r, f.text, ifx a < 1 then 1 else a, ifx b < 1 then -1 else b)); }
+  // replace_lines: lines a..b become text; a = b + 1 inserts before line a
+  total := rp_lines(f.text);
+  if a < 1 || b < a - 1 || b > total || a > total + 1 {
+    env[0].failed += 1;
+    at := r[0].nh;
+    x := rs_put(r, "replace_lines(): lines ") && rs_put_int(r, a) && rs_put(r, "-") && rs_put_int(r, b) && rs_put(r, " are not in the file, which has ") && rs_put_int(r, total) && rs_put(r, " lines");
+    return rc_fail(rs_take(r, at));
+  }
+  full := rc_path(env, path, true);
+  if full.count == 0 { env[0].failed += 1; return rc_fail(rs_cat(r, "replace_lines(): ", rc_why_text(env))); }
+  from := rc_line_start(f.text, a); to := rc_line_start(f.text, b + 1);
+  text := q.f[4];
+  nl := text.count > 0 && text[text.count - 1] != 10 && (to < f.text.count || (f.text.count > 0 && f.text[f.text.count - 1] == 10));
+  size := from + text.count + (ifx nl then 1 else 0) + f.text.count - to;
+  if size > RC_FILE_MOST { env[0].failed += 1; return rc_fail("replace_lines(): the file would be over 4 MB"); }
+  n := 0;
+  for i: 0..<from { env[0].dst[n] = f.text[i]; n += 1; }
+  for c: text { env[0].dst[n] = c; n += 1; }
+  if nl { env[0].dst[n] = 10; n += 1; }
+  for i: to..<f.text.count { env[0].dst[n] = f.text[i]; n += 1; }
+  now_text := cast(string) env[0].dst[0..<n];
+  if !fs_write(full, now_text) { env[0].failed += 1; return rc_fail(rs_cat(r, "replace_lines(): could not write ", path)); }
+  env[0].writes += 1;
+  added := rp_lines(text);
+  lo := ifx a > 2 then a - 2 else 1;
+  hi := a + added + 1;
+  return rc_ok(rc_numbered(env, r, now_text, lo, hi));
+}
+
+// The byte where line k (from 1) starts; the text's end past its last line.
+rc_line_start :: (text: string, k: int) -> int {
+  line := 1; i := 0;
+  while line < k && i < text.count { if text[i] == 10 { line += 1; } i += 1; }
+  return i;
+}
+
+rc_stop_name :: (v: int) -> string {
+  if v == RC_STOP_READS { return "the read limit (512 reads a run)"; }
+  if v == RC_STOP_EFFECTS { return "the command and edit limit (128 a run)"; }
+  return rlm_stop_name(v);
+}
+
+// Serves the effect the run's block waits on, and says so in the trace.
+rc_serve :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, req: string) {
+  res := rc_effect(env, r, st, req);
+  q := rc_fields(req);
+  rlm_tr(st, "--- effect "); rlm_tr(st, q.f[0]); rlm_tr(st, "(");
+  for i: 1..<q.n {
+    if i > 1 { rlm_tr(st, ", "); }
+    f := q.f[i];
+    if f.count > 80 { rlm_tr(st, "["); rlm_tr_int(r, st, f.count); rlm_tr(st, " bytes]"); } else { rlm_tr(st, f); }
+  }
+  rlm_tr(st, ifx res.fail then ") failed: " else ") -> ");
+  if res.fail { rlm_tr(st, res.text); } else { rlm_tr_int(r, st, res.text.count); rlm_tr(st, " bytes"); }
+  rlm_tr(st, "\n");
+  rlm_fx_answer(r, st, res.text, res.fail);
+}
+
+// One step of the run: the effect its block waits on served, or the driver's next step.
+rc_step :: (env: [] RcEnv, r: [] Rs, st: [] RlmState) {
+  q := rlm_fx_waiting(r, st);
+  if q.count > 0 { rc_serve(env, r, st, q); } else { rlm_step(r, st); }
+}
+
+// Steps the run to its end, serving its effects; progress lines on stderr when live.
+rc_drive :: (env: [] RcEnv, r: [] Rs, st: [] RlmState, task: string, live: bool) {
+  rlm_start(r, st, task);
+  calls := 0; t0 := cxproc_now_ms();
+  while st[0].nlev > 0 {
+    rc_step(env, r, st);
+    if live && st[0].root_calls + st[0].sub_calls != calls {
+      calls = st[0].root_calls + st[0].sub_calls;
+      lb: [256] u8; n := rp_put(lb[..], 0, "rlm code: turn "); n = rp_put_int(lb[..], n, st[0].turns);
+      n = rp_put(lb[..], n, ", sub-calls "); n = rp_put_int(lb[..], n, st[0].sub_calls);
+      n = rp_put(lb[..], n, ", effects "); n = rp_put_int(lb[..], n, env[0].reads + env[0].acts);
+      n = rp_put(lb[..], n, ", card micro-USD "); n = rp_put_int(lb[..], n, st[0].spent.usd_micros);
+      n = rp_put(lb[..], n, ", "); n = rp_put_int(lb[..], n, (cxproc_now_ms() - t0) / 1000); n = rp_put(lb[..], n, " s");
+      tool_errln(cast(string) lb[0..<n]);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- the run
+
+RC_HEAP :: 268435456;
+RC_CELLS :: 1048576;
+RC_LISTS :: 131072;
+RC_NODES :: 262144;
+RC_NAMES :: 4096;
+RC_MEMO :: 8192;
+
+RcMem :: struct {
+  heap: [RC_HEAP] u8;
+  cells: [RC_CELLS] RsVal; lists: [RC_LISTS] RsList;
+  toks: [RC_NODES] RsTok; nodes: [RC_NODES] RsNode;
+  vnames: [RC_NAMES] string; vals: [RC_NAMES] RsVal;
+  memo: [RC_MEMO] string; memo_fail: [RC_MEMO] bool; pend: [RC_MEMO] string;
+  out: [4194304] u8; trace: [16777216] u8; reply: [RLM_SLOTS * RLM_REPLY_MAX] u8;
+  snap_names: [2 * RC_NAMES] string; snap_vals: [2 * RC_NAMES] RsVal; snap_lists: [2 * RC_LISTS] RsList; snap_cells: [2 * RC_CELLS] RsVal;
+  st: [1] RlmState; r: [1] Rs;
+  live: [1] RlmLive;
+  env: [1] RcEnv;
+  task: [1048576] u8;
+  cwd: [4096] u8;
+}
+
+RC_LIMITS :: RlmLimits.{max_turns = 40, max_usd_micros = 5000000, max_ms = 900000};
+
+// A run's state over the workspace at cwd (canonical), with the code prompts.
+rc_init :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string) {
+  a := RlmArenas.{heap = m[0].heap[..], cells = m[0].cells[..], lists = m[0].lists[..], toks = m[0].toks[..], nodes = m[0].nodes[..], names = m[0].vnames[..], vals = m[0].vals[..], memo = m[0].memo[..], memo_fail = m[0].memo_fail[..], pend = m[0].pend[..], out = m[0].out[..], trace = m[0].trace[..], reply = m[0].reply[..], snap_names = m[0].snap_names[..], snap_vals = m[0].snap_vals[..], snap_lists = m[0].snap_lists[..], snap_cells = m[0].snap_cells[..]};
+  rlm_init(m[0].r[..], m[0].st[..], a, limits);
+  m[0].r[0].env_on = true;
+  m[0].st[0].system_tpl = RC_SYSTEM; m[0].st[0].first_tpl = RC_FIRST; m[0].st[0].budget = true;
+  e := m[0].env[..];
+  e[0].cwd = cwd; e[0].profile = profile;
+  e[0].reads = 0; e[0].acts = 0; e[0].failed = 0; e[0].refused = 0; e[0].writes = 0;
+  for i: 0..<9 { e[0].ops[i] = 0; }
+}
+
+// The run's JSON line.
+rc_report :: (m: [] RcMem, o: [] Jo, buf: [] u8, ms: int) -> string {
+  st := m[0].st[..]; e := m[0].env[..];
+  jo_start(o, buf);
+  jo_obj(o);
+  ending := ifx st[0].answer.count > 0 && st[0].stop == RLM_OK then "final" else ifx st[0].stop != RLM_OK then "limit" else "no answer";
+  jo_key(o, "ending"); jo_str(o, ending);
+  jo_key(o, "stop"); jo_str(o, rc_stop_name(st[0].stop));
+  jo_key(o, "failed"); jo_str(o, st[0].failed);
+  jo_key(o, "root_model"); jo_str(o, st[0].model[0].root_model);
+  jo_key(o, "sub_model"); jo_str(o, st[0].model[0].sub_model);
+  jo_key(o, "turns"); jo_int(o, st[0].turns);
+  jo_key(o, "root_calls"); jo_int(o, st[0].root_calls);
+  jo_key(o, "sub_calls"); jo_int(o, st[0].sub_calls);
+  jo_key(o, "block_errors"); jo_int(o, st[0].block_errors);
+  jo_key(o, "reruns"); jo_int(o, st[0].reruns);
+  jo_key(o, "effects"); jo_obj(o);
+  for name, i: RC_OPS { jo_key(o, name); jo_int(o, e[0].ops[i]); }
+  jo_key(o, "writes"); jo_int(o, e[0].writes);
+  jo_key(o, "failed"); jo_int(o, e[0].failed);
+  jo_key(o, "refused"); jo_int(o, e[0].refused);
+  jo_end(o);
+  jo_key(o, "tokens"); jo_obj(o);
+  jo_key(o, "root"); jo_obj(o); jo_key(o, "input"); jo_int(o, st[0].root_in); jo_key(o, "cached"); jo_int(o, st[0].root_cached); jo_key(o, "output"); jo_int(o, st[0].root_out); jo_end(o);
+  jo_key(o, "sub"); jo_obj(o); jo_key(o, "input"); jo_int(o, st[0].sub_in); jo_key(o, "cached"); jo_int(o, st[0].sub_cached); jo_key(o, "output"); jo_int(o, st[0].sub_out); jo_end(o);
+  jo_end(o);
+  jo_key(o, "usd_micros"); jo_int(o, st[0].spent.usd_micros);
+  jo_key(o, "unpriced"); jo_int(o, st[0].unpriced);
+  jo_key(o, "wall_s"); jo_int(o, (ms + 500) / 1000);
+  jo_key(o, "final"); jo_str(o, st[0].answer);
+  jo_end(o);
+  return jo_text(o);
+}
+
+rc_run :: (a: [] Args) -> int {
+  mb: [1] RcMem; m := mb[..];
+  cwd0 := args_value(a, "--cwd", "");
+  if cwd0.count == 0 { tool_errln("rlm code: give --cwd DIR"); return 2; }
+  cwd := fs_realpath(cwd0, m[0].cwd[..]);
+  if cwd.count == 0 || fs_kind(cwd) != 2 { tool_errln("rlm code: --cwd is not a folder"); return 2; }
+  task := args_value(a, "--task", "");
+  tf := args_value(a, "--task-file", "");
+  if tf.count > 0 {
+    n := fs_read(tf, m[0].task[..]);
+    if n <= 0 { tool_errln("rlm code: can't read --task-file (or it is empty, or over 1 MB)"); return 2; }
+    task = cast(string) m[0].task[0..<n];
+  }
+  if task.count == 0 { tool_errln("rlm code: give --task TEXT or --task-file F"); return 2; }
+  rc_init(m, rlm_arg_limits(a, RC_LIMITS), cwd, args_value(a, "--profile", "workspace-write"));
+  r := m[0].r[..]; st := m[0].st[..];
+  task = rs_copy(r, task);
+  why := rlm_live_models(st, m[0].live[..], a);
+  if why.count > 0 { tool_errln("rlm code: no model: "); tool_errln(why); return 1; }
+  t0 := cxproc_now_ms();
+  rc_drive(m[0].env[..], r, st, task, true);
+  o: [1] Jo; buf: [1048576] u8;
+  line := rc_report(m, o[..], buf[..], cxproc_now_ms() - t0);
+  print("%\n", line);
+  logf := args_value(a, "--log", "");
+  if logf.count > 0 && !(fs_append(logf, line) && fs_append(logf, "\n")) { tool_errln("rlm code: could not append to the log"); }
+  tr := args_value(a, "--trace", "");
+  if tr.count > 0 && !fs_write(tr, cast(string) st[0].trace[0..<st[0].ntr]) { tool_errln("rlm code: could not write the trace"); }
+  return ifx st[0].answer.count > 0 then 0 else 3;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  ab: [1] Args;
+  if !args_load(ab[..]) { tool_errln("rlm code: too many arguments"); return 2; }
+  a := ab[..];
+  cmd := args_at(a, 0);
+  if cmd == "run" { return rc_run(a); }
+  if cmd == "selftest" { return rc_selftest(args_value(a, "--profile", "workspace-write")); }
+  tool_errln("usage: code.coax run --cwd DIR (--task TEXT | --task-file F) [--root-model M] [--sub-model M] [--root-effort E] [--max-turns 40] [--max-usd 5] [--max-minutes 15] [--profile workspace-write] [--trace F] [--log F]");
+  tool_errln("       code.coax selftest [--profile P]");
+  return 2;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a request's fields, .git paths, and a path's resolved place under the root" {
+  q := rc_fields("edit\0a.c\0old\0");
+  #assert q.n == 4 && q.f[0] == "edit" && q.f[1] == "a.c" && q.f[2] == "old" && q.f[3] == "";
+  q = rc_fields("files"); #assert q.n == 1 && q.f[0] == "files";
+  #assert rc_in_git(".git") && rc_in_git(".git/config") && rc_in_git("sub/.git/x") && !rc_in_git(".github/x") && !rc_in_git("a.git") && !rc_in_git("x/.gitignore");
+  #assert rc_under("/r/w", "/r/w") && rc_under("/r/w", "/r/w/a") && !rc_under("/r/w", "/r/wx") && !rc_under("/r/w", "/r");
+  #assert rc_line_start("a\nb\nc", 1) == 0 && rc_line_start("a\nb\nc", 3) == 4 && rc_line_start("a\nb\nc", 4) == 5 && rc_line_start("a\nb\n", 3) == 4;
+  qb: [64] u8; n := rc_quote(qb[..], 0, "it's");
+  #assert cast(string) qb[0..<n] == "'it'\\''s'";
+}
+
+#test "the prompts: the system prompt names every function the environment has, and the turn note says the budget" {
+  for spec: RS_ENV { #assert rs_count_sub(RC_SYSTEM, rs_word(spec)) > 0; }
+  for op, i: RC_OPS { #assert rs_word(RS_ENV[i]) == op; }
+}
+
+// ---------------------------------------------------------------- the self-test (real files and commands)
+
+// One block run with the code environment over the workspace, its effects served: what it
+// printed, or "Error: ...", copied into out (its length returned: a string the run's heap
+// holds, returned, would have the checker trace every string the run can hold).
+rc_block :: (m: [] RcMem, src: string, out: [] u8) -> int {
+  r := m[0].r[..]; st := m[0].st[..];
+  st[0].spent = RlmSpent.{started_ms = rm_now(st[0].model[..])};
+  x := rlm_push_level(st, "", rs_nil(), 0, 0);
+  v := st[0].levels[0..<1];
+  v[0].reply = rs_cat(r, rs_cat(r, "```repl\n", src), "\n```");
+  v[0].phase = L_BLOCK; v[0].k = 0;
+  while !(v[0].phase == L_BLOCK && v[0].k > 0) && v[0].phase != L_CALL && v[0].phase != L_END {
+    rc_step(m[0].env[..], r, st);
+  }
+  st[0].nlev = 0;
+  if rs_bad(r) { return rp_put(out, rp_put(out, 0, "Error: "), r[0].err); }
+  return rp_put(out, 0, cast(string) r[0].out[0..<r[0].no]);
+}
+
+RcCheck :: struct { pass: int; fail: int; }
+rc_expect :: (c: [] RcCheck, name: string, got: string, want: string) {
+  if got == want { c[0].pass += 1; print("ok   %\n", name); return; }
+  c[0].fail += 1; print("FAIL %\n  got  [%]\n  want [%]\n", name, got, want);
+}
+rc_expect_true :: (c: [] RcCheck, name: string, ok: bool, got: string) {
+  if ok { c[0].pass += 1; print("ok   %\n", name); return; }
+  c[0].fail += 1; print("FAIL %\n  got [%]\n", name, got);
+}
+rc_has :: (s: string, sub: string) -> bool { return rs_find_sub(s, sub, 0) >= 0; }
+
+rc_file :: (m: [] RcMem, cwd: string, name: string) -> string {
+  pb: [4096] u8; n := fs_read(fs_join(cwd, name, pb[..]), m[0].env[0].dst[..]);
+  return ifx n < 0 then "(none)" else cast(string) m[0].env[0].dst[0..<n];
+}
+
+// A fresh state over cwd for the checks: scripted models with roots and subs.
+rc_scripted :: (m: [] RcMem, limits: RlmLimits, cwd: string, profile: string, roots: [] string, subs: [] string) {
+  rc_init(m, limits, cwd, profile);
+  md := m[0].st[0].model[..];
+  md[0].scripted = true; md[0].root_script = roots; md[0].sub_script = subs;
+}
+
+rc_selftest :: (profile: string) -> int {
+  mb: [1] RcMem; m := mb[..];
+  c: [1] RcCheck; ob: [262144] u8;
+  tb: [4096] u8; t := fs_temp("rlm-code-", tb[..]);
+  cb: [4096] u8; cwd := fs_realpath(t, cb[..]);
+  otb: [4096] u8; outside := fs_temp("rlm-code-out-", otb[..]);
+  if cwd.count == 0 || outside.count == 0 { tool_errln("selftest: no temporary folder"); return 1; }
+  pb: [4096] u8;
+  ok := fs_write(fs_join(cwd, "a.py", pb[..]), "def foo():\n    return 1\n") && fs_write(fs_join(cwd, "b.py", pb[..]), "import a\n\nprint(a.foo())\n");
+  ok = ok && fs_write(fs_join(cwd, "test.sh", pb[..]), "grep -q 'def bar' a.py && grep -q 'a.bar()' b.py && ! grep -q 'fo[o]' a.py b.py && echo 'test ok'\n");
+  ok = ok && fs_write(fs_join(cwd, "notes.txt", pb[..]), "alpha\nbeta\ngamma\n") && fs_write(fs_join(outside, "secret.txt", pb[..]), "secret\n");
+  if !ok { tool_errln("selftest: could not write the fixture"); return 1; }
+  sb: [8192] u8; n := rp_put(sb[..], 0, "ln -s "); n = rc_quote(sb[..], n, fs_join(outside, "secret.txt", pb[..]));
+  n = rp_put(sb[..], n, " link.txt && git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -qm fixture");
+  o: [1] McOutput;
+  g := mc_run_command(cwd, cast(string) sb[0..<n], 60, o[..]);
+  if g.exit != 0 { tool_errln("selftest: git init failed:"); tool_errln(g.output); return 1; }
+  none: [1] string;
+  late := [2] string.["```repl\nprint(read('a.py'))\n```", "FINAL(never)"];
+  print("selftest: workspace % (profile %)\n", cwd, profile);
+
+  rc_scripted(m, RC_LIMITS, cwd, profile, none[0..<0], none[0..<0]);
+  rc_expect(c[..], "files() lists the tracked paths, and a prefix narrows them", cast(string) ob[0..<rc_block(m, "print(files(), files('b'))", ob[..])], "['a.py', 'b.py', 'link.txt', 'notes.txt', 'test.sh'] ['b.py']\n");
+  rc_expect(c[..], "read, lines and count_lines", cast(string) ob[0..<rc_block(m, "t = read('a.py')\nprint(len(t), count_lines('a.py'))\nprint(lines('a.py', 2, 9))", ob[..])], "24 2\n     2\t    return 1\n\n");
+  rc_expect(c[..], "search: fixed strings by default, path:line:text", cast(string) ob[0..<rc_block(m, "print(search('foo('))", ob[..])], "['a.py:1:def foo():', 'b.py:3:print(a.foo())']\n");
+  rc_expect(c[..], "search: a regex when asked, under a prefix, at most limit", cast(string) ob[0..<rc_block(m, "print(search('fo+\\\\(', regex=True), search('foo', 'b.py'), len(search('o', limit=2)), search('nothing here'))", ob[..])], "['a.py:1:def foo():', 'b.py:3:print(a.foo())'] ['b.py:3:print(a.foo())'] 2 []\n");
+  rc_expect(c[..], "edit returns the changed lines numbered, and a read after it sees the new text", cast(string) ob[0..<rc_block(m, "print(edit('notes.txt', 'beta', 'BETA'))\nprint(read('notes.txt'))", ob[..])], "     1\talpha\n     2\tBETA\n     3\tgamma\n\nalpha\nBETA\ngamma\n\n");
+  e := cast(string) ob[0..<rc_block(m, "print(edit('notes.txt', 'betx\\ngamma', 'q'))", ob[..])];
+  rc_expect_true(c[..], "a failed edit says why and shows the nearest lines", rc_has(e, "edit failed: the old text is not in the file") && rc_has(e, "     3\tgamma"), e);
+  rc_expect(c[..], "replace_lines replaces a range and returns it numbered; a = b + 1 inserts", cast(string) ob[0..<rc_block(m, "x = replace_lines('notes.txt', 2, 2, 'B1\\nB2')\ny = replace_lines('notes.txt', 1, 0, 'top')\nprint(read('notes.txt'))", ob[..])], "top\nalpha\nB1\nB2\ngamma\n\n");
+  rc_expect(c[..], "write creates a file", cast(string) ob[0..<rc_block(m, "print(write('n.txt', 'hi\\n'), read('n.txt'))", ob[..])] , "wrote n.txt: 1 lines hi\n\n");
+  rc_expect(c[..], "sh returns the exit, the whole output and stderr after it", cast(string) ob[0..<rc_block(m, "d = sh('echo out; echo err 1>&2; exit 3')\nprint(d['exit'], d['timed_out'], repr(d['out']))\nprint(len(sh('seq 1 20000')['out']))", ob[..])], "3 False 'out\\nerr\\n'\n108894\n");
+  e = cast(string) ob[0..<rc_block(m, "d = sh('echo started; sleep 5', seconds=1)\nprint(d['exit'], d['timed_out'], repr(d['out']))", ob[..])];
+  rc_expect(c[..], "sh past its seconds is killed and says so", e, "-1 True 'started\\n\\n[killed after 1 s]'\n");
+  rc_expect(c[..], "an effect is done once: what ran before a later effect is not run again", cast(string) ob[0..<rc_block(m, "a = sh('echo one >> count.txt')\nb = read('a.py')\nc = sh('echo two >> count.txt')\nprint(read('count.txt'))", ob[..])], "one\ntwo\n\n");
+  // confinement
+  rc_expect(c[..], "a path that leaves the workspace is refused", cast(string) ob[0..<rc_block(m, "print(read('../x'))", ob[..])], "Error: line 1: read(): the path leaves the workspace: ../x");
+  rc_expect(c[..], "an absolute path outside it is refused", cast(string) ob[0..<rc_block(m, "print(read('/etc/passwd'))", ob[..])], "Error: line 1: read(): the path leaves the workspace: /etc/passwd");
+  rc_expect(c[..], "a symlink that leads out is refused", cast(string) ob[0..<rc_block(m, "print(read('link.txt'))", ob[..])], "Error: line 1: read(): the path leaves the workspace through a symlink: link.txt");
+  rc_expect(c[..], "a write under .git is refused", cast(string) ob[0..<rc_block(m, "write('.git/config', 'x')", ob[..])], "Error: line 1: write(): writes under .git are refused: .git/config");
+  rc_expect(c[..], "an edit under .git fails", cast(string) ob[0..<rc_block(m, "print(edit('.git/HEAD', 'ref', 'x'))", ob[..])], "edit failed: writes under .git are refused: .git/HEAD\n");
+  rc_expect(c[..], "a missing file is an error that names files()", cast(string) ob[0..<rc_block(m, "read('nope.txt')", ob[..])], "Error: line 1: read(): no such file (files() lists them): nope.txt");
+  rc_expect(c[..], "a write into a folder that does not exist says how to make it", cast(string) ob[0..<rc_block(m, "write('d/x.txt', 'x')", ob[..])], "Error: line 1: write(): its folder does not exist (make it with sh('mkdir -p ...')): d/x.txt");
+  if profile != "danger-full-access" {
+    e = cast(string) ob[0..<rc_block(m, rs_cat(m[0].r[..], rs_cat(m[0].r[..], "d = sh('cat ", fs_join(outside, "secret.txt", pb[..])), "')\nprint(d['exit'] != 0, d['out'].startswith('secret'))"), ob[..])];
+    rc_expect(c[..], "a command can't read outside the workspace (the sandbox profile)", e, "True False\n");
+  }
+
+  // a whole run: search, edit two files in a loop, run the check, FINAL
+  roots := [3] string.[
+    "Find the uses.\n```repl\nhits = search('foo')\npaths = []\nfor h in hits:\n    p = h.split(':')[0]\n    if p not in paths:\n        paths.append(p)\nprint(len(hits), paths)\n```",
+    "```repl\nfor p in paths:\n    print(edit(p, 'foo', 'bar'))\n```",
+    "```repl\nx = sh('echo run >> runs.txt')\nr = sh('sh test.sh')\nprint(r['exit'], r['out'])\nif r['exit'] == 0:\n    FINAL(f'renamed foo to bar in {len(paths)} files; test.sh passes')\n```"];
+  rc_scripted(m, RC_LIMITS, cwd, profile, roots[..], none[0..<0]);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Rename the function foo to bar in the files that use it, and run sh test.sh.", false);
+  st := m[0].st[..]; env := m[0].env[..];
+  rc_expect(c[..], "a whole run ends with FINAL after the check passes", st[0].answer, "renamed foo to bar in 2 files; test.sh passes");
+  rc_expect(c[..], "the run's edits are in the files (a.py)", rc_file(m, cwd, "a.py"), "def bar():\n    return 1\n");
+  rc_expect(c[..], "the run's edits are in the files (b.py)", rc_file(m, cwd, "b.py"), "import a\n\nprint(a.bar())\n");
+  rc_expect(c[..], "the run's command ran once though its block ran three times", rc_file(m, cwd, "runs.txt"), "run\n");
+  rc_expect_true(c[..], "the run's counts: 3 turns, 1 search, 2 edits, 2 commands, and the trace names each effect", st[0].turns == 3 && st[0].root_calls == 3 && env[0].ops[4] == 1 && env[0].ops[5] == 2 && env[0].ops[8] == 2 && env[0].writes == 2 && st[0].reruns == 5 && rc_has(cast(string) st[0].trace[0..<st[0].ntr], "--- effect edit(b.py, foo, bar) -> "), cast(string) st[0].trace[0..<st[0].ntr]);
+  ln: [1] Jo; lbuf: [65536] u8;
+  line := rc_report(m, ln[..], lbuf[..], 1234);
+  rc_expect_true(c[..], "the report line", rc_has(line, "\"ending\":\"final\"") && rc_has(line, "\"edit\":2") && rc_has(line, "\"tokens\":{\"root\":{\"input\":") && rc_has(line, "\"wall_s\":1,"), line);
+  print("%\n", line);
+  rc_expect_true(c[..], "the turn note says the turn, the dollars and the minutes", rc_has(st[0].msgs[2].text, "Turn 2/40 ($0.00 of $5.00 spent, 0 of 15 minutes used):"), st[0].msgs[2].text);
+
+  // limits
+  rc_scripted(m, RC_LIMITS, cwd, profile, none[0..<0], none[0..<0]);
+  e = cast(string) ob[0..<rc_block(m, "x = sh('mkdir -p w')\nfor i in range(130):\n    y = write(f'w/{i}.txt', 'x')", ob[..])];
+  rc_expect_true(c[..], "past 128 commands and edits the next is refused and the run stops", e == "Error: line 3: write() was refused: the command and edit limit (128 a run) was reached" && m[0].st[0].stop == RC_STOP_EFFECTS && m[0].env[0].acts == 128, e);
+  rc_scripted(m, RlmLimits.{max_ms = 1000}, cwd, profile, late[..], none[0..<0]);
+  rc_drive(m[0].env[..], m[0].r[..], m[0].st[..], "Read a.py.", false);
+  st = m[0].st[..];
+  rc_expect_true(c[..], "past the run's time an effect is refused and the run ends without an answer", st[0].stop == RLM_STOP_TIME && st[0].answer == "" && st[0].root_calls == 1 && rc_has(cast(string) st[0].trace[0..<st[0].ntr], "read() was refused: the time limit was reached"), cast(string) st[0].trace[0..<st[0].ntr]);
+
+  print("selftest: % passed, % failed\n", c[0].pass, c[0].fail);
+  x := mc_run_command("", rs_cat(m[0].r[..], rs_cat(m[0].r[..], "rm -rf '", cwd), rs_cat(m[0].r[..], "' '", rs_cat(m[0].r[..], outside, "'"))), 30, o[..]);
+  return ifx c[0].fail == 0 then 0 else 1;
+}

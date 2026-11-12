@@ -44,8 +44,13 @@ RlmState :: struct {
   root_in: int; root_out: int; root_usd_micros: int;   // the same, by role
   sub_in: int; sub_out: int; sub_usd_micros: int;
   sub_ms: int;                   // time sub-calls took, summed over batches' longest
+  root_cached: int; sub_cached: int;   // input tokens the provider served from its cache, by role
   answer: string;
   levels: [RLM_LEVELS] RlmLevel; nlev: int;
+  // a caller's own prompts (code.coax): the system prompt's template (else RLM_SYSTEM) and the
+  // first message's opening, before the question (else rlm_first's); budget: each turn's note
+  // also says what is spent of the cost cap and the minutes used
+  system_tpl: string; first_tpl: string; budget: bool;
 }
 
 // The arenas a run uses, all the caller's: heap bytes, list cells and headers, tokens, nodes,
@@ -113,8 +118,8 @@ rlm_count :: (st: [] RlmState, role: int, slot: int) {
   usd := ifx s.usage.card_usd_micros > 0 then s.usage.card_usd_micros else 0;
   st[0].spent.usd_micros += usd;
   if s.usage.ok && s.usage.card_usd_micros < 0 { st[0].unpriced += 1; }
-  if role == RLM_ROOT { st[0].root_in += s.usage.input_tokens; st[0].root_out += s.usage.output_tokens; st[0].root_usd_micros += usd; }
-  else { st[0].sub_in += s.usage.input_tokens; st[0].sub_out += s.usage.output_tokens; st[0].sub_usd_micros += usd; }
+  if role == RLM_ROOT { st[0].root_in += s.usage.input_tokens; st[0].root_out += s.usage.output_tokens; st[0].root_usd_micros += usd; st[0].root_cached += s.usage.cached_tokens; }
+  else { st[0].sub_in += s.usage.input_tokens; st[0].sub_out += s.usage.output_tokens; st[0].sub_usd_micros += usd; st[0].sub_cached += s.usage.cached_tokens; }
 }
 
 // Adds an answer to the block's memo (fail: the block ends with text as its error).
@@ -239,7 +244,7 @@ rlm_has_code :: (text: string) -> bool { return rlm_block(text, 0).found; }
 // ---------------------------------------------------------------- the loop
 
 rlm_system :: (r: [] Rs, st: [] RlmState, depth: int) -> string {
-  at := r[0].nh; s := RLM_SYSTEM; i := 0; ok := true;
+  at := r[0].nh; s := ifx st[0].system_tpl.count > 0 then st[0].system_tpl else RLM_SYSTEM; i := 0; ok := true;
   while i < s.count {
     if s[i] == '{' {
       e := rs_find_sub(s, "}", i);
@@ -255,7 +260,7 @@ rlm_system :: (r: [] Rs, st: [] RlmState, depth: int) -> string {
     }
     ok = ok && rs_putc(r, s[i]); i += 1;
   }
-  if !ok { r[0].nh = at; rs_oom(r); return RLM_SYSTEM; }
+  if !ok { r[0].nh = at; rs_oom(r); return s; }
   return rs_take(r, at);
 }
 
@@ -286,13 +291,32 @@ rlm_root_call :: (r: [] Rs, st: [] RlmState, system: string, base: int) -> strin
 
 rlm_turn_note :: (r: [] Rs, st: [] RlmState, turn: int, max: int) -> string {
   at := r[0].nh;
-  ok := rs_put(r, "Turn ") && rs_put_int(r, turn) && rs_put(r, "/") && rs_put_int(r, max) && rs_put(r, ":");
+  ok := rs_put(r, "Turn ") && rs_put_int(r, turn) && rs_put(r, "/") && rs_put_int(r, max);
+  if st[0].budget {
+    l := st[0].limits;
+    ok = ok && rs_put(r, " (") && rlm_put_usd(r, st[0].spent.usd_micros);
+    if l.max_usd_micros > 0 { ok = ok && rs_put(r, " of ") && rlm_put_usd(r, l.max_usd_micros); }
+    used := rm_now(st[0].model[..]) - st[0].spent.started_ms;
+    ok = ok && rs_put(r, " spent, ") && rs_put_int(r, used / 60000) && rs_put(r, " of ") && rs_put_int(r, l.max_ms / 60000) && rs_put(r, " minutes used)");
+  }
+  ok = ok && rs_put(r, ":");
   if !ok { r[0].nh = at; return "Next turn:"; }
   return rs_take(r, at);
 }
 
+// Dollars to the cent from micro-USD: "$1.25".
+rlm_put_usd :: (r: [] Rs, micros: int) -> bool {
+  cents := (micros + 5000) / 10000;
+  return rs_put(r, "$") && rs_put_int(r, cents / 100) && rs_put(r, ifx cents % 100 < 10 then ".0" else ".") && rs_put_int(r, cents % 100);
+}
+
 // The first message of a run: the question, the context's size, the first turn's note.
 rlm_first :: (r: [] Rs, st: [] RlmState, question: string, depth: int) -> string {
+  if depth == 0 && st[0].first_tpl.count > 0 {
+    at := r[0].nh;
+    if !(rs_put(r, st[0].first_tpl) && rs_put(r, question) && rs_put(r, "\n\n")) { r[0].nh = at; return ""; }
+    return rs_cat(r, rs_take(r, at), rlm_turn_note(r, st, 1, st[0].limits.max_turns));
+  }
   ctxv := rs_get(r, "context");
   clen := ifx ctxv.kind == RS_STR then ctxv.s.count else 0;
   at := r[0].nh;
@@ -352,6 +376,7 @@ L_PASS :: 4;                     // run the block; serve what it waits on
 L_CHILD :: 5;                    // waiting on a child level's answer for an rlm_query
 L_CLOSE :: 6;                    // out of turns: the closing call
 L_END :: 7;                      // put the frame back and hand the answer up
+L_FX :: 8;                       // the block waits on an effect of the code environment: the caller serves it (code.coax), then rlm_fx_resume
 
 RLM_LEVELS :: 4;                 // the root and up to three child levels
 RLM_BLOCKS :: 16;                // blocks run from one reply
@@ -475,6 +500,7 @@ rlm_step_pass :: (r: [] Rs, st: [] RlmState, v: [] RlmLevel) {
     return;
   }
   st[0].reruns += 1;
+  if r[0].pkind == RS_ASK_FX { v[0].phase = L_FX; return; }
   if r[0].pkind == RS_ASK_LLM || rlm_depth_route(v[0].depth, st[0].limits.max_depth) == RLM_ROUTE_PLAIN {
     rlm_serve_llm(r, st, r[0].pend_base, r[0].pend_base + r[0].npend);
     rlm_snap_restore(r, st, v[0].snap);
@@ -534,6 +560,30 @@ rlm_step :: (r: [] Rs, st: [] RlmState) {
     v[0].phase = L_END;
   }
   else if ph == L_END { rlm_step_end(r, st, v); }
+  else if ph == L_FX {
+    // nobody serves effects here: each one fails, and the block says so
+    for i: 0..<r[0].npend { rlm_memo(r, "this run has no workspace: files, read, edit and sh are not available", true); }
+    rlm_fx_resume(r, st);
+  }
+}
+
+// The effect the top level's block waits on (phase L_FX): its request, the function's name and
+// arguments joined by zero bytes (script.coax RS_ENV); "" when none waits.
+rlm_fx_waiting :: (r: [] Rs, st: [] RlmState) -> string {
+  if st[0].nlev == 0 || st[0].levels[st[0].nlev - 1].phase != L_FX || r[0].npend < 1 { return ""; }
+  return r[0].pend[r[0].pend_base];
+}
+// The effect's result into the block's memo (fail: the block ends with text as its error) and the
+// block put back as it was when it started, to run again.
+rlm_fx_answer :: (r: [] Rs, st: [] RlmState, text: string, fail: bool) {
+  rlm_memo(r, text, fail);
+  rlm_fx_resume(r, st);
+}
+rlm_fx_resume :: (r: [] Rs, st: [] RlmState) {
+  t := st[0].nlev - 1;
+  v := st[0].levels[t..<t + 1];
+  rlm_snap_restore(r, st, v[0].snap);
+  v[0].phase = L_PASS;
 }
 
 // Starts a run on question: step it with rlm_step while st.nlev > 0 (rlm_run does).
@@ -588,7 +638,7 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
   v := st[0].levels[0..<1];
   v[0].reply = rs_cat(r, rs_cat(r, "```repl\n", src), "\n```");
   v[0].phase = L_BLOCK;
-  while v[0].phase == L_BLOCK || v[0].phase == L_PASS || st[0].nlev > 1 {
+  while v[0].phase == L_BLOCK || v[0].phase == L_PASS || v[0].phase == L_FX || st[0].nlev > 1 {
     if st[0].nlev == 1 && v[0].phase == L_BLOCK && v[0].k > 0 { break; }
     rlm_step(r, st);
   }
@@ -762,4 +812,65 @@ rlm_test_block :: (r: [] Rs, st: [] RlmState, src: string) {
   rlm_set_context(r, "x");
   rlm_run(r, st, "What?");
   #assert st[0].answer == "" && st[0].root_calls == 3 && st[0].failed == "c";
+}
+
+// Runs src as one block with the code environment on, serving its effects from answers in
+// order (the caller's fake workspace): what it printed (or "Error: ..."), and each request with
+// its zero bytes as '|' in reqs.
+RlmFxTest :: struct { reqs: [16] string; n: int; buf: [4096] u8; nb: int; }
+rlm_test_fx :: (mem: [] RlmTestMem, r: [] Rs, src: string, answers: [] string, t: [] RlmFxTest) -> string {
+  rlm_test_run(r, mem, RlmLimits.{max_steps = 200000}, mem[0].none[0..<0], mem[0].none[0..<0]);
+  r[0].env_on = true;
+  st := mem[0].st[..];
+  st[0].spent = RlmSpent.{};
+  x := rlm_push_level(st, "", rs_nil(), 0, 0);
+  v := st[0].levels[0..<1];
+  v[0].reply = rs_cat(r, rs_cat(r, "```repl\n", src), "\n```");
+  v[0].phase = L_BLOCK;
+  t[0].n = 0; t[0].nb = 0;
+  while !(v[0].phase == L_BLOCK && v[0].k > 0) && v[0].phase != L_CALL && v[0].phase != L_END {
+    q := rlm_fx_waiting(r, st);
+    if q.count == 0 { rlm_step(r, st); continue; }
+    at := t[0].nb;
+    for c: q { t[0].buf[t[0].nb] = ifx c == 0 then '|' else c; t[0].nb += 1; }
+    t[0].reqs[t[0].n] = cast(string) t[0].buf[at..<t[0].nb];
+    rlm_fx_answer(r, st, answers[t[0].n], false);
+    t[0].n += 1;
+  }
+  st[0].nlev = 0;
+  if rs_bad(r) { return rs_cat(r, "Error: ", r[0].err); }
+  return cast(string) r[0].out[0..<r[0].no];
+}
+
+#test "an effect suspends the block as a sub-call does; each is done once, in order, and later passes take it from the memo" {
+  mb: [1] RlmTestMem; rb: [1] Rs; t: [1] RlmFxTest; mem := mb[..]; r := rb[..];
+  answers := [5] string.["x = 1\n", "     1\ty = 1\n", "2 0\nboom\n", "a.txt\nsub/b.txt\n", "1"];
+  src := "log = ['start']\nt = read('a.txt')\nlog.append(t)\nnow = edit('a.txt', 'x', 'y')\nd = sh('make check', seconds=5)\nprint(log, now, d['exit'], d['out'], d['timed_out'], files(), count_lines('a.txt'))";
+  out := rlm_test_fx(mem, r, src, answers[..], t[..]);
+  #assert out == "['start', 'x = 1\\n']      1\ty = 1\n 2 boom\n False ['a.txt', 'sub/b.txt'] 1\n";
+  #assert t[0].n == 5 && mem[0].st[0].reruns == 5;
+  #assert t[0].reqs[0] == "read|a.txt" && t[0].reqs[1] == "edit|a.txt|x|y" && t[0].reqs[2] == "sh|make check|5" && t[0].reqs[3] == "files|" && t[0].reqs[4] == "count_lines|a.txt";
+  // defaults, keywords, and a timed-out command
+  answers2 := [3] string.["a.c:3:foo()\nb.c:9:foo(1)\n", "-1 1\nstarted\n", "     4\tnew\n"];
+  out = rlm_test_fx(mem, r, "m = search('foo(', limit=5)\nd = sh('sleep 9')\nprint(len(m), m[1], d['exit'], d['timed_out'], replace_lines('a.c', 4, 4, 'new'))", answers2[..], t[..]);
+  #assert out == "2 b.c:9:foo(1) -1 True      4\tnew\n\n" && t[0].reqs[0] == "search|foo(||5|0" && t[0].reqs[1] == "sh|sleep 9|120" && t[0].reqs[2] == "replace_lines|a.c|4|4|new";
+  out = rlm_test_fx(mem, r, "print(search('a.b', 'src/', regex=True), write('n.txt', 'hi'), lines('a.c', 2, 3))", answers2[..], t[..]);
+  #assert t[0].reqs[0] == "search|a.b|src/|200|1" && t[0].reqs[1] == "write|n.txt|hi" && t[0].reqs[2] == "lines|a.c|2|3";
+}
+
+#test "the code environment's functions: wrong arguments are refused before any effect, and without a workspace each one fails" {
+  mb: [1] RlmTestMem; rb: [1] Rs; t: [1] RlmFxTest; mem := mb[..]; r := rb[..]; none := mem[0].none[0..<0];
+  #assert rlm_test_fx(mem, r, "lines('a.c')", none, t[..]) == "Error: line 1: lines() needs its argument a" && t[0].n == 0;
+  #assert rlm_test_fx(mem, r, "search('x', bogus=1)", none, t[..]) == "Error: line 1: search() has no argument bogus";
+  #assert rlm_test_fx(mem, r, "read(3)", none, t[..]) == "Error: line 1: read needs a str";
+  #assert rlm_test_fx(mem, r, "read('a', 'b')", none, t[..]) == "Error: line 1: read() takes at most one argument";
+  #assert rlm_test_fx(mem, r, "edit('a', 'x', new='y', old='z')", none, t[..]) == "Error: line 1: edit() got two values for old";
+  #assert rlm_test_fx(mem, r, "f = open('a')", none, t[..]) == "Error: line 1: open() is not available: use read(path), lines(path, a, b) and write(path, text)";
+  // a failed effect (the server's refusal) ends the block with its text
+  mem[0].st[0].nlev = 0;
+  #assert rlm_test_eval(mem, r, "", "print(read('a'))", none) == "Error: line 1: name 'read' is not defined";
+  rlm_test_run(r, mem, RlmLimits.{max_steps = 200000}, none, none);
+  r[0].env_on = true;
+  rlm_test_block(r, mem[0].st[..], "print('before')\nx = read('a')");
+  #assert rs_bad(r) && r[0].err == "line 2: this run has no workspace: files, read, edit and sh are not available";
 }

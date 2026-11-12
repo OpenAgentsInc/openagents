@@ -1,0 +1,56 @@
+// The live models and the limits from a command line, shared by the RLM's tools (rlm.coax,
+// code.coax; README.md): Gemini on Vertex with Microcoder's credentials, or the gateway's replay.
+// --root-model (gemini-4-argon), --sub-model (gemini-3.8-flash), --root-effort and --sub-effort
+// (low); --max-depth, --max-turns, --max-calls, --max-usd, --max-minutes over the caller's defaults.
+
+#load "run.coax";
+#load "../../../coder/tui/microcoder_keys.coax";
+#load "../sys/args.coax";
+
+RlmLive :: struct {
+  plans: [RLM_SLOTS] GwPlan; pbufs: [RLM_SLOTS] GwPlanBuffers;
+  keys: [1] MkKeys; vroot: [1] GwVertex; vsub: [1] GwVertex;
+}
+
+// The live models (or the replay, GW_REPLAY) for st: "" when ready, else why not.
+rlm_live_models :: (st: [] RlmState, lv: [] RlmLive, a: [] Args) -> string {
+  md := st[0].model[..];
+  md[0].plans = lv[0].plans[..]; md[0].pbufs = lv[0].pbufs[..];
+  md[0].root_model = mk_vertex_model(args_value(a, "--root-model", "gemini-4-argon"));
+  md[0].sub_model = mk_vertex_model(args_value(a, "--sub-model", "gemini-3.8-flash"));
+  md[0].root_effort = args_value(a, "--root-effort", "low");
+  md[0].sub_effort = args_value(a, "--sub-effort", "low");
+  rb: [1024] u8;
+  replay := gw_env("GW_REPLAY", rb[..]).count > 0;
+  k := lv[0].keys[..];
+  mk_keys(k);
+  if !replay {
+    why := mk_vertex(k);
+    if why.count > 0 { return why; }
+  }
+  lv[0].vroot[0] = k[0].vx[0]; lv[0].vsub[0] = k[0].vx[0];
+  md[0].root_gw = gw_vertex_native(lv[0].vroot[..], md[0].root_model);
+  md[0].sub_gw = gw_vertex_native(lv[0].vsub[..], md[0].sub_model);
+  return "";
+}
+
+// A whole-number flag's value, or fallback.
+rlm_arg_number :: (a: [] Args, name: string, fallback: int) -> int {
+  v := args_value(a, name, "");
+  if v.count == 0 { return fallback; }
+  n := args_number(v);
+  return ifx n.ok then cast(int) n.value else fallback;
+}
+
+// The limits the flags give, over d.
+rlm_arg_limits :: (a: [] Args, d: RlmLimits) -> RlmLimits {
+  l := d;
+  l.max_depth = rlm_arg_number(a, "--max-depth", d.max_depth);
+  l.max_turns = rlm_arg_number(a, "--max-turns", d.max_turns);
+  l.max_calls = rlm_arg_number(a, "--max-calls", d.max_calls);
+  l.max_ms = rlm_arg_number(a, "--max-minutes", d.max_ms / 60000) * 60000;
+  v := args_value(a, "--max-usd", "");
+  n := args_number(v);
+  if v.count > 0 && n.ok { l.max_usd_micros = cast(int) (n.value * 1000000.0); }
+  return l;
+}
