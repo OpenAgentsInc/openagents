@@ -101,6 +101,15 @@ through the seat ticket. The production units leave `OA_ROOM_API` unset, so
 they use the same store. Moving between Cloud Run and the VM, or restarting a
 unit, loses nothing past the last checkpoint; a drain saves every seat first.
 
+## Crashes
+
+A room that crashes leaves a dump in `/var/lib/oa-room/UNIT/` (the unit's
+`StateDirectory`), and its next start posts the crash report
+([crash reports](crash-reports.md), #13298). `vm-deploy.sh crash staging`
+crashes the staging unit on purpose, `vm-deploy.sh symbols` keeps a release's
+debug file in the symbols bucket, and `vm-deploy.sh resolve BUILD OFFSET...`
+resolves addresses from it.
+
 ## Deploy
 
 ```sh

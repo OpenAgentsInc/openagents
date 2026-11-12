@@ -213,14 +213,15 @@ symbols() {
   "$here/../symbols.sh" room-put "$id" "$scratch/room.debug.gz" "$name"
 }
 # The function and FILE:LINE of each offset in the binary of build BUILD: its debug file from the
-# bucket, to the VM (which has addr2line), and gone again.
+# bucket, to the VM (which has addr2line), and gone again. For each offset: its own "0x..." line, then
+# a function and its place for the code there and for each function it was inlined into.
 resolve() {
   local id="${1:?usage: vm-deploy.sh resolve BUILD OFFSET...}"; shift
   local offs="" o
   for o in "$@"; do o="${o#+}"; o="${o#0x}"; [[ "$o" =~ ^[0-9a-f]{1,16}$ ]] || { echo "room-vm: an offset in hex: $o" >&2; return 2; }; offs+=" 0x$o"; done
   [[ -n "$offs" ]] || { echo "usage: vm-deploy.sh resolve BUILD OFFSET..." >&2; return 2; }
   "$here/../symbols.sh" room-get "$id" "$scratch/resolve.debug.gz"
-  on_vm "d=\$(mktemp -d) && gunzip -c > \"\$d/room.debug\" && addr2line -f -e \"\$d/room.debug\"$offs | paste - -; rm -rf \"\${d:?}\"" < "$scratch/resolve.debug.gz"
+  on_vm "d=\$(mktemp -d) && gunzip -c > \"\$d/room.debug\" && addr2line -a -f -i -e \"\$d/room.debug\"$offs; rm -rf \"\${d:?}\"" < "$scratch/resolve.debug.gz"
 }
 
 drain_wait="${OA_ROOM_DRAIN_WAIT:-300}"

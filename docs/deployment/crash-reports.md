@@ -109,8 +109,13 @@ and staging reaches only the log, `/status` and the agents' inbox.
 Resolve an address after its release has left the VM or the site:
 
 ```sh
-# A room frame "f ? +0x4b310" from a report whose build line is BUILD
-coax/web/room/vm-deploy.sh resolve BUILD 4b310
+# A room frame "f ? +0x182a16" from a report whose build line is BUILD
+coax/web/room/vm-deploy.sh resolve BUILD 182a16
+# 0x0000000000182a16
+# coax_index
+# ././room.c:376
+# rm_crash_test
+# ./coax/web/room/room-stats.coax:168
 
 # A page frame "#123" from a report whose release line is everglade2.HASH.wasm
 coax/web/symbols.sh page everglade2.HASH.wasm 123
@@ -132,7 +137,7 @@ about a minute. Staging never mails the owner.
 
 | Resource | Name | Cost |
 | --- | --- | --- |
-| Cloud Storage bucket | `openagentsgemini-oa-symbols`, us-central1, Standard, private, objects deleted after 180 days (`coax/web/symbols.sh bucket`) | $0.02 a GB a month; see the measured size below |
+| Cloud Storage bucket | `openagentsgemini-oa-symbols`, us-central1, Standard, private, objects deleted after 180 days (`coax/web/symbols.sh bucket`) | Under $0.10 a month. Storage is $0.02 a GB a month. A room release adds 564 KB (measured, 2026-11-12) and a full page release about 250 KB, so 30 releases a day for 180 days is about 4 GB |
 | Disk on the room VM | `/var/lib/oa-room/UNIT/crash.txt` and `crash.last.txt`, a few KB a unit | none |
 | Database | `verse.crash_buckets` and `verse.crash_reports` (the newest 20 reports a bucket, buckets dropped after 90 days) | none |
 
