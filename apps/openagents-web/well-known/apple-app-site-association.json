@@ -4,4 +4,5 @@
   {"/": "/signin", "#": "c=*"},
   {"/": "/signin", "#": "link=*"},
   {"/": "/projects/*", "#": "invite=*"}
-]}]}}
+]}]},
+"webcredentials": {"apps": ["HQWSG26L43.com.openagents.app", "HQWSG26L43.com.openagents.desktop"]}}

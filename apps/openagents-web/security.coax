@@ -2,13 +2,14 @@
 // #13212, #13213), drawn on the homepage's Grid like /login (login.coax's text and lines
 // helpers; newland.coax's frames and buttons; textkeys.coax's keys in the recovery code's box).
 //
-// What it shows: the ways in (emails, keys, the recovery code), adding a key, removing a way
-// in, a new recovery code (shown once), the delayed recovery (ask, its end time, cancel, finish
-// with a new key) and the security notices the account was sent.
+// What it shows: the ways in (emails, keys, passkeys, the recovery code), adding a key or a
+// passkey, naming a passkey, removing a way in, a new recovery code (shown once), the delayed
+// recovery (ask, its end time, cancel, finish with a new key) and the security notices the
+// account was sent.
 //
 // The re-auth prompt: any change the API refuses with "step_up" (L2, or L2 within 5 minutes)
-// opens CONFIRM IT'S YOU: sign with a key on the account (NIP-07, key.js) or type the recovery
-// code. Then the change is asked again. Another page sends people here with
+// opens CONFIRM IT'S YOU: use a passkey on the account (WebAuthn, key.js), sign with a key on it
+// (NIP-07, key.js) or type the recovery code. Then the change is asked again. Another page sends people here with
 // ?step=1&next=/its/path (admin.coax does) and gets them back once they have signed.
 //
 // A notice's links land here: #cancel=TOKEN cancels a recovery, #freeze=TOKEN freezes the
@@ -19,6 +20,8 @@
 //   POST /api/auth/proof/challenge {purpose} -> url (signed by the key, then POSTed with {proof})
 //   POST /api/auth/step-up {words}, /api/auth/unlink {kind, id}, /api/auth/recovery-code
 //   POST /api/auth/recovery/start, /api/auth/recovery/cancel {t?}, /api/auth/freeze {t}
+//   POST /api/auth/passkey/step-up/options, /api/auth/passkey/step-up (passkeys.c, #13215)
+//   POST /api/auth/passkey/register/options, /api/auth/passkey/register, /api/auth/passkeys/ID/rename {name}
 //   coax/bin/coax test apps/openagents-web/security.coax --only security
 #load "login.coax";
 #load "textkeys.coax";
@@ -26,6 +29,8 @@
 SC_MAX_VERTICES :: 120000;
 SC_MSG_PAGE :: 600; SC_MSG_HTTP :: 512; SC_MSG_SIGNED :: 72; SC_MSG_HAS_KEY :: 73; SC_MSG_TYPED :: 1;
 SC_ACT_GO :: 1; SC_ACT_HASH :: 3; SC_ACT_SIGN :: 72;   // TK_ACT_COPY (2): the outbox to the clipboard
+SC_MSG_PASSKEY :: 74; SC_MSG_HAS_PASSKEY :: 75; SC_ACT_PASSKEY :: 74;   // key.js's passkeys (login.coax LG_*)
+SC_PKS :: 20; SC_PK_NAME :: 64;   // passkeys an account holds (passkey-policy.coax PK_MAX), a name's bytes
 SC_POST :: 1; SC_WANTED :: 4;
 SC_FRESH_MS :: 300000;     // L2-fresh: a signature within 5 minutes (auth-policy.coax AP_FRESH_MS)
 SC_WAYS :: 8; SC_NOTES :: 6;
@@ -35,23 +40,31 @@ SC_LOADING :: 0; SC_MAIN :: 1; SC_STEP :: 2; SC_WORDS :: 3; SC_OUT :: 4;
 // The one request in flight.
 SR_NONE :: 0; SR_WAYS :: 1; SR_NOTICES :: 2; SR_CHALLENGE :: 3; SR_SIGNING :: 4; SR_PROOF :: 5;
 SR_WORDS :: 6; SR_UNLINK :: 7; SR_CODE :: 8; SR_START :: 9; SR_CANCEL :: 10; SR_LINK_CANCEL :: 11; SR_FREEZE :: 12;
+SR_PK_OPTIONS :: 13; SR_PK_WAIT :: 14; SR_PK_STEP :: 15; SR_PK_REG :: 16; SR_PK_REGISTER :: 17; SR_PK_RENAME :: 18;   // WAIT: on key.js
 // What a proof is for (the API's purposes), and the change waiting on a step-up.
 PF_STEPUP :: 1; PF_LINK :: 2; PF_FINISH :: 3;
-DO_NONE :: 0; DO_LINK :: 1; DO_UNLINK :: 2; DO_CODE :: 3; DO_START :: 4; DO_CANCEL :: 5; DO_FINISH :: 6;
+DO_NONE :: 0; DO_LINK :: 1; DO_UNLINK :: 2; DO_CODE :: 3; DO_START :: 4; DO_CANCEL :: 5; DO_FINISH :: 6; DO_ADD_PK :: 7; DO_RENAME :: 8;
 // What can be pressed. Rows' REMOVE: SH_ROW + i (emails first, then keys).
 SH_NONE :: -1; SH_HOME :: 0; SH_STEP :: 1; SH_ADD :: 2; SH_CODE :: 3; SH_ASK :: 4; SH_CANCEL :: 5; SH_FINISH :: 6;
 SH_SIGN :: 7; SH_FIELD :: 8; SH_USE :: 9; SH_BACK :: 10; SH_COPY :: 11; SH_DONE :: 12; SH_LOGIN :: 13; SH_LIMITS :: 14;
-SH_ROW :: 15; SH_HITS :: 31;   // SH_ROW + 2 * SC_WAYS
+SH_ROW :: 15;   // SH_ROW + 2 * SC_WAYS
+// Passkeys: CONFIRM IT'S YOU's USE A PASSKEY, ADD A PASSKEY, the name being typed, SAVE, CANCEL,
+// and each row's RENAME (SH_PK_ROW + i) and REMOVE (SH_PK_DEL + i).
+SH_PASSKEY :: 31; SH_ADD_PK :: 32; SH_PK_FIELD :: 33; SH_PK_SAVE :: 34; SH_PK_CANCEL :: 35; SH_PK_ROW :: 36; SH_PK_DEL :: 56; SH_HITS :: 76;
 
 ScWay :: struct { id: int; text: [80] u8; n: int; }
 ScNote :: struct { at: int; what: [24] u8; n: int; }
+ScPk :: struct { id: int; name: [SC_PK_NAME] u8; n: int; synced: bool; clone: bool; }
 
 Sc :: struct {
   ready: bool; w: f32; h: f32; dpr: f32; time: f32;
   screen: int; req: int; req_id: int = -1;
   want: bool; url: [420] u8; url_n: int; body: [4400] u8; body_n: int; flags: int;
-  action: int; outbox: [800] u8; out_n: int;
+  action: int; outbox: [4000] u8; out_n: int;
   has_key: int = -1;
+  has_passkey: int = -1;                     // key.js: 0 none, 1 passkeys, 2 and the autofill
+  pks: [SC_PKS] ScPk; npk: int; by_passkey: bool; pk_wait: int;   // pk_wait: key.js's ceremony, 1 a step-up, 2 adding one
+  renaming: int = -1; pk_name: [SC_PK_NAME] u8; pk_name_n: int; pk_y: f32;   // the row being named, its text; where the rows start
   // the account, from GET /api/auth/ways
   level: int; limited: bool; l2_age: int = -1;
   emails: [SC_WAYS] ScWay; ne: int; keys: [SC_WAYS] ScWay; nk: int;
@@ -223,14 +236,45 @@ sc_do :: (s: [] Sc, what: int, kind: int, id: int) {
   if what == DO_LINK { sc_challenge(s, PF_LINK); return; }
   if what == DO_FINISH { sc_challenge(s, PF_FINISH); return; }
   if what == DO_UNLINK {
-    b: [80] u8; n := lg_add(b[..], 0, ifx kind == 0 then "{\"kind\":\"email\",\"id\":" else "{\"kind\":\"nostr\",\"id\":");
+    b: [80] u8; n := lg_add(b[..], 0, ifx kind == 0 then "{\"kind\":\"email\",\"id\":" else ifx kind == 1 then "{\"kind\":\"nostr\",\"id\":" else "{\"kind\":\"passkey\",\"id\":");
     n = lg_add_int(b[..], n, id); n = lg_add(b[..], n, "}");
     sc_ask(s, SR_UNLINK, "/api/auth/unlink?as=lines", cast(string) b[0..<n], SC_POST); return;
   }
   if what == DO_CODE { sc_ask(s, SR_CODE, "/api/auth/recovery-code?as=lines", "{}", SC_POST); return; }
   if what == DO_START { sc_ask(s, SR_START, "/api/auth/recovery/start?as=lines", "{}", SC_POST); return; }
-  if what == DO_CANCEL { sc_ask(s, SR_CANCEL, "/api/auth/recovery/cancel?as=lines", "{}", SC_POST); }
+  if what == DO_CANCEL { sc_ask(s, SR_CANCEL, "/api/auth/recovery/cancel?as=lines", "{}", SC_POST); return; }
+  if what == DO_ADD_PK {
+    if s[0].has_passkey == 0 { s[0].todo = DO_NONE; sc_err(s, "This browser can't make passkeys. Use one that can, or the OpenAgents app."); return; }
+    sc_ask(s, SR_PK_REG, "/api/auth/passkey/register/options?as=lines", "{}", SC_POST); return;
+  }
+  if what == DO_RENAME {
+    t := cast(string) s[0].pk_name[0..<s[0].pk_name_n];
+    if !sc_pk_name_ok(t) { s[0].todo = DO_NONE; sc_err(s, "A passkey's name is 1 to 64 characters."); return; }
+    u: [80] u8; m := lg_add(u[..], 0, "/api/auth/passkeys/"); m = lg_add_int(u[..], m, id); m = lg_add(u[..], m, "/rename?as=lines");
+    b: [200] u8; n := lg_add(b[..], 0, "{\"name\":\""); n = lg_json(b[..], n, t); n = lg_add(b[..], n, "\"}");
+    sc_ask(s, SR_PK_RENAME, cast(string) u[0..<m], cast(string) b[0..<n], SC_POST);
+  }
 }
+// The name as passkey-policy.coax takes it: 1 to 64 bytes, no control bytes, no spaces at the ends.
+sc_pk_name_ok :: (t: string) -> bool {
+  if t.count < 1 || t.count > SC_PK_NAME || t[0] == ' ' || t[t.count - 1] == ' ' { return false; }
+  for c: t { if c < ' ' || c == 127 { return false; } }
+  return true;
+}
+// USE A PASSKEY: a challenge for this account's passkeys, then key.js.
+sc_pk_step :: (s: [] Sc) {
+  if s[0].req != SR_NONE { return; }
+  if s[0].has_passkey == 0 { sc_err(s, "This browser can't use passkeys. Sign with your key, or use the OpenAgents app."); return; }
+  s[0].purpose = PF_STEPUP; sc_quiet(s);
+  sc_ask(s, SR_PK_OPTIONS, "/api/auth/passkey/step-up/options?as=lines", "{}", SC_POST);
+}
+// RENAME: the row's name in the box, ready to type over.
+sc_pk_rename :: (s: [] Sc, i: int) {
+  if i < 0 || i >= s[0].npk { return; }
+  s[0].renaming = i; s[0].pk_name_n = lg_set(s[0].pk_name[..], cast(string) s[0].pks[i].name[0..<s[0].pks[i].n]);
+  s[0].all = true; s[0].focus = SH_PK_FIELD; sc_quiet(s);
+}
+sc_pk_stop :: (s: [] Sc) { s[0].renaming = -1; s[0].pk_name_n = 0; s[0].all = false; s[0].focus = -1; }
 sc_use_words :: (s: [] Sc) {
   if s[0].req != SR_NONE { return; }
   t := cast(string) s[0].typed[0..<s[0].typed_n];
@@ -253,7 +297,8 @@ sc_wants_step :: (s: [] Sc, status: int, lines: string) -> bool {
   found: [1] bool; _ = lg_value(lines, "step_up", found[..]);
   if status != 401 || !found[0] { return false; }
   m := lg_value(lines, "methods", found[..]);
-  s[0].by_key = sc_has(m, "nostr"); s[0].by_code = sc_has(m, "recovery_code");
+  s[0].by_key = sc_has(m, "nostr"); s[0].by_code = sc_has(m, "recovery_code"); s[0].by_passkey = sc_has(m, "passkey");
+  sc_pk_stop(s);
   s[0].screen = SC_STEP; s[0].typed_n = 0; s[0].all = false; s[0].focus = -1; s[0].scroll = 0;
   sc_err(s, lg_value(lines, "error", found[..]));
   return true;
@@ -280,7 +325,19 @@ sc_ways :: (s: [] Sc, lines: string) {
     else { n = lg_set(s[0].keys[e].text[..], pk); }
     s[0].keys[e].n = n; s[0].nk += 1;
   }
-  m := lg_value(lines, "methods", found[..]); s[0].by_key = sc_has(m, "nostr"); s[0].by_code = sc_has(m, "recovery_code");
+  at = 0; s[0].npk = 0;
+  while s[0].npk < SC_PKS {
+    // passkey ID ADDED_MS USED_MS SYNCED CLONE NAME
+    v := sc_line(lines, "passkey", at, next[..]); if v.count == 0 { break; } at = next[0];
+    f: [6] int; k := 0; i := 0;
+    while i < v.count && k < 6 { f[k] = i; while i < v.count && v[i] != ' ' { i += 1; } i += 1; k += 1; }
+    if k < 6 || f[5] >= v.count { continue; }
+    e := s[0].npk; s[0].pks[e].id = lg_int(v[f[0]..<v.count]);
+    s[0].pks[e].synced = v[f[3]] == '1'; s[0].pks[e].clone = v[f[4]] == '1';
+    s[0].pks[e].n = lg_set(s[0].pks[e].name[..], v[f[5]..<v.count]); s[0].npk += 1;
+  }
+  if s[0].renaming >= s[0].npk { sc_pk_stop(s); }
+  m := lg_value(lines, "methods", found[..]); s[0].by_key = sc_has(m, "nostr"); s[0].by_code = sc_has(m, "recovery_code"); s[0].by_passkey = sc_has(m, "passkey");
   s[0].code_set = lg_value(lines, "recovery_code", found[..]) == "1";
   s[0].passkeys = lg_int(lg_value(lines, "passkeys", found[..]));
   r := lg_value(lines, "recovery", found[..]);
@@ -317,7 +374,7 @@ sc_answer :: (s: [] Sc, text: string) {
     if s[0].screen == SC_LOADING || s[0].screen == SC_OUT { s[0].screen = SC_MAIN; }
     if s[0].step_asked && !sc_fresh(s) && s[0].screen == SC_MAIN {
       s[0].step_asked = false; s[0].screen = SC_STEP; s[0].typed_n = 0;
-      sc_err(s, "Confirm it's you to make that change: sign with your key, or type your recovery code.");
+      sc_err(s, "Confirm it's you to make that change: use a passkey or your key, or type your recovery code.");
     } else if s[0].step_asked && s[0].next_n > 0 { s[0].step_asked = false; sc_go(s, cast(string) s[0].next[0..<s[0].next_n]); }
     sc_pump(s); return;
   }
@@ -340,7 +397,25 @@ sc_answer :: (s: [] Sc, text: string) {
     s[0].out_n = m; s[0].action = SC_ACT_SIGN; s[0].req = SR_SIGNING;
     return;
   }
-  if req == SR_PROOF || req == SR_WORDS {
+  if req == SR_PK_OPTIONS || req == SR_PK_REG {
+    if !ok { if !sc_wants_step(s, status, lines) { s[0].todo = DO_NONE; sc_failed(s, status, lines); } return; }
+    n := lg_pk_request(s[0].outbox[..], ifx req == SR_PK_REG then "create" else "get", lines);
+    if n < 0 { s[0].todo = DO_NONE; sc_failed(s, 500, lines[0..<0]); return; }
+    s[0].out_n = n; s[0].action = SC_ACT_PASSKEY; s[0].req = SR_PK_WAIT; s[0].pk_wait = ifx req == SR_PK_REG then 2 else 1;
+    return;
+  }
+  if req == SR_PK_REGISTER {
+    s[0].todo = DO_NONE;
+    if !ok { if !sc_wants_step(s, status, lines) { sc_failed(s, status, lines); } return; }
+    b: [200] u8; n := lg_add(b[..], 0, "Passkey added ("); n = lg_add(b[..], n, lg_value(lines, "name", found[..]));
+    n = lg_add(b[..], n, "). We told every email and key on the account.");
+    sc_say(s, cast(string) b[0..<n]); sc_refresh(s); return;
+  }
+  if req == SR_PK_RENAME {
+    if !ok { if !sc_wants_step(s, status, lines) { s[0].todo = DO_NONE; sc_failed(s, status, lines); } return; }
+    s[0].todo = DO_NONE; sc_pk_stop(s); sc_say(s, "Renamed."); sc_refresh(s); return;
+  }
+  if req == SR_PROOF || req == SR_WORDS || req == SR_PK_STEP {
     if !ok { if !sc_wants_step(s, status, lines) { sc_failed(s, status, lines); } return; }
     if s[0].purpose == PF_STEPUP {
       s[0].level = 2; s[0].l2_age = 0; s[0].limited = false;
@@ -383,18 +458,38 @@ sc_signed :: (s: [] Sc, text: string) {
   u: [440] u8; m := lg_add(u[..], 0, cast(string) s[0].sign_url[0..<s[0].sign_n]); m = lg_add(u[..], m, "&as=lines");
   sc_ask(s, SR_PROOF, cast(string) u[0..<m], cast(string) b[0..<n], SC_POST);
 }
+// key.js's passkey answer: the body to send, or why there is none.
+sc_pk_answer :: (s: [] Sc, text: string) {
+  w := s[0].pk_wait;
+  if w == 0 || s[0].req != SR_PK_WAIT { return; }
+  s[0].pk_wait = 0; s[0].req = SR_NONE;
+  if text.count == 0 || text[0] != '{' {
+    if w == 2 { s[0].todo = DO_NONE; }
+    sc_err(s, ifx text.count > 1 && text[0] == '!' then text[1..<text.count] else "Your passkey didn't answer. Try again.");
+    return;
+  }
+  if w == 2 { sc_ask(s, SR_PK_REGISTER, "/api/auth/passkey/register?as=lines", text, SC_POST); return; }
+  sc_ask(s, SR_PK_STEP, "/api/auth/passkey/step-up?as=lines", text, SC_POST);
+}
 sc_message :: (s: [] Sc, kind: int, text: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   if kind == SC_MSG_TYPED { sc_typed(s, text); return; }
   if kind == SC_MSG_PAGE { sc_facts(s, text); sc_pump(s); return; }
   if kind == SC_MSG_SIGNED { sc_signed(s, text); return; }
   if kind == SC_MSG_HAS_KEY { s[0].has_key = ifx text == "1" then 1 else 0; return; }
+  if kind == SC_MSG_HAS_PASSKEY { s[0].has_passkey = ifx text == "2" then 2 else ifx text == "1" then 1 else 0; return; }
+  if kind == SC_MSG_PASSKEY { sc_pk_answer(s, text); return; }
   if kind >= SC_MSG_HTTP && kind < SC_MSG_HTTP + 64 && kind - SC_MSG_HTTP == s[0].req_id && s[0].req != SR_NONE { sc_answer(s, text); }
 }
 sc_page :: (s: [] Sc) #export_c #effects(all) { if s.count < 1 { return; } sc_pump(s); }
 
 // ---------------------------------------------------------------- typing (the recovery code's box)
 sc_typed :: (s: [] Sc, text: string) {
+  if s[0].screen == SC_MAIN && s[0].focus == SH_PK_FIELD && s[0].renaming >= 0 {
+    if s[0].all { s[0].pk_name_n = 0; s[0].all = false; }
+    for c: text { if c >= ' ' && c != 127 && s[0].pk_name_n < SC_PK_NAME { s[0].pk_name[s[0].pk_name_n] = c; s[0].pk_name_n += 1; } }
+    sc_quiet(s); return;
+  }
   if s[0].screen != SC_STEP || s[0].focus != SH_FIELD { return; }
   if s[0].all { s[0].typed_n = 0; s[0].all = false; }
   for c: text {
@@ -409,6 +504,19 @@ sc_typed :: (s: [] Sc, text: string) {
 }
 sc_key_in :: (s: [] Sc, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
+  if s[0].screen == SC_MAIN && s[0].focus == SH_PK_FIELD && s[0].renaming >= 0 {
+    c := tk_command(key, mods);
+    if c == TK_ALL { s[0].all = s[0].pk_name_n > 0; return true; }
+    if c == TK_BROWSER { return false; }
+    if key == -3 {
+      if s[0].all { s[0].pk_name_n = 0; s[0].all = false; }
+      else { s[0].pk_name_n = tk_back(cast(string) s[0].pk_name[0..<s[0].pk_name_n], mods); }
+      return true;
+    }
+    if key == -2 { s[0].all = false; sc_press(s, SH_PK_SAVE); return true; }
+    if key == -1 { sc_press(s, SH_PK_CANCEL); return true; }
+    if key != -15 { s[0].all = false; }
+  }
   typing := s[0].screen == SC_STEP && s[0].focus == SH_FIELD;
   if typing {
     c := tk_command(key, mods);
@@ -432,7 +540,9 @@ sc_key_in :: (s: [] Sc, key: int, mods: int) -> bool #export_c #effects(all) {
   }
   return false;
 }
-sc_wants_text :: (s: [] Sc) -> bool #export_c #effects(all) { return s.count > 0 && s[0].screen == SC_STEP && s[0].focus == SH_FIELD; }
+sc_wants_text :: (s: [] Sc) -> bool #export_c #effects(all) {
+  return s.count > 0 && ((s[0].screen == SC_STEP && s[0].focus == SH_FIELD) || (s[0].screen == SC_MAIN && s[0].focus == SH_PK_FIELD && s[0].renaming >= 0));
+}
 sc_done :: (s: [] Sc) #export_c #effects(all) { if s.count < 1 { return; } s[0].action = 0; s[0].out_n = 0; }
 
 // ---------------------------------------------------------------- pressing
@@ -445,6 +555,7 @@ sc_press :: (s: [] Sc, h: int) {
   if sc == SC_STEP {
     if h == SH_FIELD { s[0].focus = SH_FIELD; return; }
     if h == SH_SIGN { sc_challenge(s, PF_STEPUP); return; }
+    if h == SH_PASSKEY { sc_pk_step(s); return; }
     if h == SH_USE { sc_use_words(s); return; }
     if h == SH_BACK && s[0].req == SR_NONE { s[0].screen = SC_MAIN; s[0].todo = DO_NONE; s[0].typed_n = 0; s[0].focus = -1; sc_quiet(s); return; }
     return;
@@ -461,6 +572,12 @@ sc_press :: (s: [] Sc, h: int) {
   if sc != SC_MAIN { return; }
   if h == SH_STEP { s[0].screen = SC_STEP; s[0].todo = DO_NONE; s[0].typed_n = 0; sc_quiet(s); return; }
   if h == SH_ADD { sc_do(s, DO_LINK, 0, 0); return; }
+  if h == SH_ADD_PK { sc_pk_stop(s); sc_do(s, DO_ADD_PK, 0, 0); return; }
+  if h == SH_PK_FIELD && s[0].renaming >= 0 { s[0].focus = SH_PK_FIELD; return; }
+  if h == SH_PK_SAVE && s[0].renaming >= 0 { sc_do(s, DO_RENAME, 2, s[0].pks[s[0].renaming].id); return; }
+  if h == SH_PK_CANCEL { sc_pk_stop(s); sc_quiet(s); return; }
+  if h >= SH_PK_ROW && h < SH_PK_ROW + SC_PKS && h - SH_PK_ROW < s[0].npk { sc_pk_rename(s, h - SH_PK_ROW); return; }
+  if h >= SH_PK_DEL && h < SH_PK_DEL + SC_PKS && h - SH_PK_DEL < s[0].npk { sc_pk_stop(s); sc_do(s, DO_UNLINK, 2, s[0].pks[h - SH_PK_DEL].id); return; }
   if h == SH_CODE { sc_do(s, DO_CODE, 0, 0); return; }
   if h == SH_ASK { sc_do(s, DO_START, 0, 0); return; }
   if h == SH_CANCEL { sc_do(s, DO_CANCEL, 0, 0); return; }
@@ -473,9 +590,9 @@ sc_press :: (s: [] Sc, h: int) {
 SC_PANEL_W :: 520.0;
 SC_PARA :: 7.8;
 sc_level_words :: (s: [] Sc) -> string {
-  if s[0].limited { return "You logged in with email, and this account has a key. To change anything, confirm it's you with the key or your recovery code. Lost them? Ask for recovery below."; }
-  if s[0].level == 2 { return ifx sc_fresh(s) then "You confirmed it's you in the last 5 minutes: you can change anything." else "You're logged in with a key. Removing a way in or making a recovery code asks you to sign again."; }
-  return "You logged in with email. Add a key to make your account stronger: email alone can't take it over.";
+  if s[0].limited { return "You logged in with email, and this account has a passkey or key. To change anything, confirm it's you with it or your recovery code. Lost them? Ask for recovery below."; }
+  if s[0].level == 2 { return ifx sc_fresh(s) then "You confirmed it's you in the last 5 minutes: you can change anything." else "You're logged in with a passkey or key. Removing a way in or making a recovery code asks you to confirm again."; }
+  return "You logged in with email. Add a passkey or key to make your account stronger: email alone can't take it over.";
 }
 sc_rec_words :: (s: [] Sc, b: [] u8) -> string {
   r := s[0].rec; n := 0;
@@ -489,13 +606,19 @@ sc_rec_words :: (s: [] Sc, b: [] u8) -> string {
   if s[0].limited { return "Lost your key and recovery code? Ask for recovery. It waits 72 hours and tells every email and key on the account; any of them can cancel it."; }
   return "";
 }
-SC_STEP_WORDS :: "Sign with a key on this account, or type your 24-word recovery code.";
+SC_STEP_WORDS :: "Use a passkey or a key on this account, or type your 24-word recovery code.";
 sc_order :: (s: [] Sc, out: [] int) -> int {
   n := 0; sc := s[0].screen;
   if sc == SC_MAIN {
     if s[0].level < 2 && (s[0].by_key || s[0].by_code) { out[n] = SH_STEP; n += 1; }
     for i: 0..<s[0].ne { if s[0].ne + s[0].nk > 1 { out[n] = SH_ROW + i; n += 1; } }
     for i: 0..<s[0].nk { if s[0].ne + s[0].nk > 1 { out[n] = SH_ROW + SC_WAYS + i; n += 1; } }
+    for i: 0..<s[0].npk {
+      if i == s[0].renaming { out[n] = SH_PK_FIELD; out[n + 1] = SH_PK_SAVE; out[n + 2] = SH_PK_CANCEL; n += 3; continue; }
+      out[n] = SH_PK_ROW + i; n += 1;
+      if s[0].ne + s[0].nk + s[0].npk > 1 { out[n] = SH_PK_DEL + i; n += 1; }
+    }
+    if s[0].npk < SC_PKS && s[0].has_passkey != 0 { out[n] = SH_ADD_PK; n += 1; }
     out[n] = SH_ADD; n += 1; out[n] = SH_CODE; n += 1;
     if s[0].rec == 1 || s[0].rec == 2 { out[n] = SH_CANCEL; n += 1; }
     if s[0].rec == 2 { out[n] = SH_FINISH; n += 1; }
@@ -503,6 +626,7 @@ sc_order :: (s: [] Sc, out: [] int) -> int {
     out[n] = SH_LIMITS; n += 1;
   }
   if sc == SC_STEP {
+    if s[0].by_passkey { out[n] = SH_PASSKEY; n += 1; }
     if s[0].by_key { out[n] = SH_SIGN; n += 1; }
     if s[0].by_code { out[n] = SH_FIELD; n += 1; out[n] = SH_USE; n += 1; }
     out[n] = SH_BACK; n += 1;
@@ -535,7 +659,21 @@ sc_layout :: (s: [] Sc) {
       if sc_shown(s, h) { s[0].hits[h] = Box.{x0 = x1 - 92, y0 = y + 4, x1 = x1, y1 = y + 32}; }
       y += 36;
     }
-    y += 36 + (ifx s[0].passkeys > 0 then 24.0f32 else 12.0f32);   // the recovery code's line, passkeys
+    y += 36 + 12;   // the recovery code's line
+    y += 26; s[0].pk_y = y;   // PASSKEYS
+    for i: 0..<s[0].npk {
+      if i == s[0].renaming {
+        s[0].hits[SH_PK_FIELD] = Box.{x0 = x0, y0 = y + 2, x1 = x1 - 176, y1 = y + 34};
+        s[0].hits[SH_PK_SAVE] = Box.{x0 = x1 - 168, y0 = y + 4, x1 = x1 - 88, y1 = y + 32};
+        s[0].hits[SH_PK_CANCEL] = Box.{x0 = x1 - 80, y0 = y + 4, x1 = x1, y1 = y + 32};
+      } else {
+        s[0].hits[SH_PK_ROW + i] = Box.{x0 = x1 - 176, y0 = y + 4, x1 = x1 - 88, y1 = y + 32};
+        if sc_shown(s, SH_PK_DEL + i) { s[0].hits[SH_PK_DEL + i] = Box.{x0 = x1 - 80, y0 = y + 4, x1 = x1, y1 = y + 32}; }
+      }
+      y += 36;
+    }
+    if s[0].npk == 0 { y += sc_tall(SC_PK_NONE, w, SC_PARA) + 10; }
+    if sc_shown(s, SH_ADD_PK) { s[0].hits[SH_ADD_PK] = Box.{x0 = x0, y0 = y + 4, x1 = x1, y1 = y + 48}; y += 48 + 16; } else { y += 12; }
     half := (w - 12) * 0.5;
     s[0].hits[SH_ADD] = Box.{x0 = x0, y0 = y, x1 = x0 + half, y1 = y + 44};
     s[0].hits[SH_CODE] = Box.{x0 = x1 - half, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 24;
@@ -553,12 +691,14 @@ sc_layout :: (s: [] Sc) {
   if sc == SC_STEP {
     y += sc_tall(SC_STEP_WORDS, w, SC_PARA) + 12;
     y += sc_tall(msg, w, SC_PARA) + (ifx msg.count > 0 then 12.0f32 else 0.0f32);
+    if s[0].by_passkey { s[0].hits[SH_PASSKEY] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 12; }
     if s[0].by_key { s[0].hits[SH_SIGN] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 34; }
+    else if s[0].by_passkey { y += 22; }
     if s[0].by_code {
       y += 18; s[0].hits[SH_FIELD] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 88}; y += 88 + 12;
       s[0].hits[SH_USE] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 44}; y += 44 + 16;
     }
-    if !s[0].by_key && !s[0].by_code { y += sc_tall("This account has only email, so there is nothing stronger to confirm with. Add a key first.", w, SC_PARA) + 12; }
+    if !s[0].by_key && !s[0].by_code && !s[0].by_passkey { y += sc_tall("This account has only email, so there is nothing stronger to confirm with. Add a key first.", w, SC_PARA) + 12; }
     s[0].hits[SH_BACK] = Box.{x0 = x0, y0 = y, x1 = x1, y1 = y + 40}; y += 40 + 20;
   }
   if sc == SC_WORDS {
@@ -575,7 +715,7 @@ sc_layout :: (s: [] Sc) {
   }
   if sc == SC_LOADING { y += 40; }
   s[0].panel = Box.{x0 = px, y0 = top, x1 = px + pw, y1 = y};
-  d := hi(1, s[0].dpr); f := s[0].hits[SH_FIELD];
+  d := hi(1, s[0].dpr); f := ifx s[0].renaming >= 0 && sc == SC_MAIN then s[0].hits[SH_PK_FIELD] else s[0].hits[SH_FIELD];
   s[0].field[0] = f.x0 * d; s[0].field[1] = f.y0 * d; s[0].field[2] = f.x1 * d; s[0].field[3] = f.y1 * d;
 }
 sc_most :: (s: [] Sc) -> f32 { return hi(0, s[0].panel.y1 + s[0].scroll + 40 - s[0].h); }
@@ -615,10 +755,13 @@ sc_head :: (out: [] f32, at: int, p: Pen, text: string, x: f32, y: f32, w: f32) 
   v := put(out, at, text, x * d, y * d, 6.4 * d, ink(p, INK_DIM));
   return rule(out, v, x * d, (y + 8) * d, (x + w) * d, (y + 8) * d, ink(p, INK_DIM), 0.25);
 }
-SC_NOTICE_WORDS :: [9] string.["link.email", "link.nostr", "unlink", "recovery.start", "recovery.cancel", "recovery.done", "code.new", "code.used", ""];
-SC_NOTICE_SAID :: [9] string.["An email was added", "A key was added", "A way in was removed", "Recovery was asked for", "Recovery was cancelled",
-                              "The account was recovered", "A new recovery code", "The recovery code was used", "A security notice"];
-sc_notice_said :: (what: string) -> string { for i: 0..<8 { if SC_NOTICE_WORDS[i] == what { return SC_NOTICE_SAID[i]; } } return SC_NOTICE_SAID[8]; }
+SC_NOTICE_WORDS :: [11] string.["link.email", "link.nostr", "unlink", "recovery.start", "recovery.cancel", "recovery.done", "code.new", "code.used",
+                                "link.passkey", "passkey.clone", ""];
+SC_NOTICE_SAID :: [11] string.["An email was added", "A key was added", "A way in was removed", "Recovery was asked for", "Recovery was cancelled",
+                               "The account was recovered", "A new recovery code", "The recovery code was used", "A passkey was added",
+                               "A passkey may have been copied", "A security notice"];
+sc_notice_said :: (what: string) -> string { for i: 0..<10 { if SC_NOTICE_WORDS[i] == what { return SC_NOTICE_SAID[i]; } } return SC_NOTICE_SAID[10]; }
+SC_PK_NONE :: "No passkeys yet. A passkey logs in with your face, fingerprint or screen lock, and nobody can phish it.";
 sc_body :: (s: [] Sc, out: [] f32, at: int, p: Pen, still: bool) -> int {
   d := p.d; bx := s[0].panel; x := bx.x0 + 24; w := bx.x1 - bx.x0 - 48; v := at; below: [1] f32; b: [400] u8;
   sc := s[0].screen;
@@ -643,8 +786,33 @@ sc_body :: (s: [] Sc, out: [] f32, at: int, p: Pen, still: bool) -> int {
     }
     v = put(out, v, "CODE", x * d, (y + 22) * d, 6.2 * d, ink(p, INK_DIM));
     v = put_fit(out, v, ifx s[0].code_set then "A recovery code is set. Making a new one ends it." else "No recovery code yet.", (x + 64) * d, (y + 22) * d, 8.0 * d, lg_text(p, INK_PALE), (w - 64) * d);
-    y += 36;
-    if s[0].passkeys > 0 { n := lg_add_int(b[..], 0, s[0].passkeys); n = lg_add(b[..], n, ifx s[0].passkeys == 1 then " passkey" else " passkeys"); v = put(out, v, cast(string) b[0..<n], (x + 64) * d, (y + 6) * d, 7.0 * d, lg_text(p, INK_DIM)); }
+    v = sc_head(out, v, p, "PASSKEYS", x, s[0].pk_y - 14, w);
+    y = s[0].pk_y;
+    for i: 0..<s[0].npk {
+      pk := s[0].pks[i];
+      if i == s[0].renaming {
+        f := s[0].hits[SH_PK_FIELD]; on := s[0].focus == SH_PK_FIELD;
+        v = frame(out, v, lg_box(f, d), 5 * d, ink(p, ifx on then INK_WHITE else INK_DIM), ifx on then 0.85f32 else 0.45f32, p);
+        t := cast(string) s[0].pk_name[0..<s[0].pk_name_n]; k := lg_text(p, ifx s[0].all then INK_BLUE else INK_WHITE); room := (f.x1 - f.x0 - 20) * d;
+        from := 0; while from < t.count && text_width(t[from..<t.count], 8.0 * d, k) > room { from += 1; }
+        v = put(out, v, t[from..<t.count], (f.x0 + 10) * d, (f.y0 + 21) * d, 8.0 * d, k);
+        if on && (still || fract(s[0].time * 0.9) < 0.6) {
+          cx := (f.x0 + 10) * d + text_width(t[from..<t.count], 8.0 * d, k) + 2 * d;
+          v = rule(out, v, cx, (f.y0 + 9) * d, cx, (f.y0 + 24) * d, lg_text(p, INK_WHITE), 0.9);
+        }
+        v = sc_button(s, out, v, p, SH_PK_SAVE, ifx s[0].req == SR_PK_RENAME then "SAVING" else "SAVE", true);
+        v = sc_button(s, out, v, p, SH_PK_CANCEL, "CANCEL", false);
+      } else {
+        v = put_fit(out, v, cast(string) pk.name[0..<pk.n], x * d, (y + 22) * d, 8.0 * d, lg_text(p, INK_WHITE), (w - 190) * d);
+        note := ifx pk.clone then "MAY BE COPIED" else ifx pk.synced then "SYNCED" else "";
+        if note.count > 0 { v = put(out, v, note, (x + w - 176 - text_width(note, 5.6, ink(p, INK_DIM)) - 10) * d, (y + 21) * d, 5.6 * d, ink(p, ifx pk.clone then INK_BRIGHT else INK_DIM)); }
+        v = sc_button(s, out, v, p, SH_PK_ROW + i, "RENAME", false);
+        v = sc_button(s, out, v, p, SH_PK_DEL + i, "REMOVE", false);
+      }
+      y += 36;
+    }
+    if s[0].npk == 0 { v = lg_para(out, v, SC_PK_NONE, x, y + 4, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); }
+    v = sc_button(s, out, v, p, SH_ADD_PK, ifx s[0].req == SR_PK_REG || s[0].req == SR_PK_REGISTER || (s[0].req == SR_PK_WAIT && s[0].pk_wait == 2) then "ADDING" else "ADD A PASSKEY", s[0].npk == 0);
     v = sc_button(s, out, v, p, SH_ADD, ifx s[0].req == SR_SIGNING && s[0].purpose == PF_LINK then "SIGNING" else "ADD A KEY", false);
     v = sc_button(s, out, v, p, SH_CODE, ifx s[0].req == SR_CODE then "MAKING" else "NEW RECOVERY CODE", false);
     y = s[0].hits[SH_ADD].y1 + 24;
@@ -673,7 +841,8 @@ sc_body :: (s: [] Sc, out: [] f32, at: int, p: Pen, still: bool) -> int {
   if sc == SC_STEP {
     v = lg_para(out, v, SC_STEP_WORDS, x, y, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); y = below[0] + 12;
     if msg.count > 0 { v = lg_para(out, v, msg, x, y, w, SC_PARA, mk, d, below[..]); }
-    v = sc_button(s, out, v, p, SH_SIGN, ifx s[0].req == SR_CHALLENGE || s[0].req == SR_SIGNING || s[0].req == SR_PROOF then "SIGNING" else "SIGN WITH YOUR KEY", true);
+    v = sc_button(s, out, v, p, SH_PASSKEY, ifx s[0].req == SR_PK_OPTIONS || s[0].req == SR_PK_STEP || (s[0].req == SR_PK_WAIT && s[0].pk_wait == 1) then "CHECKING" else "USE A PASSKEY", true);
+    v = sc_button(s, out, v, p, SH_SIGN, ifx s[0].req == SR_CHALLENGE || s[0].req == SR_SIGNING || s[0].req == SR_PROOF then "SIGNING" else "SIGN WITH YOUR KEY", !s[0].by_passkey);
     if s[0].by_key && s[0].by_code { v = put_centred(out, v, "OR", (x + w * 0.5) * d, (s[0].hits[SH_SIGN].y1 + 22) * d, 6.2 * d, ink(p, INK_DIM)); }
     if s[0].by_code {
       f := s[0].hits[SH_FIELD]; on := s[0].focus == SH_FIELD;
@@ -698,7 +867,7 @@ sc_body :: (s: [] Sc, out: [] f32, at: int, p: Pen, still: bool) -> int {
       }
       v = sc_button(s, out, v, p, SH_USE, ifx s[0].req == SR_WORDS then "CHECKING" else "USE MY RECOVERY CODE", !s[0].by_key);
     }
-    if !s[0].by_key && !s[0].by_code { v = lg_para(out, v, "This account has only email, so there is nothing stronger to confirm with. Add a key first.", x, s[0].hits[SH_BACK].y0 - 40, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); }
+    if !s[0].by_key && !s[0].by_code && !s[0].by_passkey { v = lg_para(out, v, "This account has only email, so there is nothing stronger to confirm with. Add a key first.", x, s[0].hits[SH_BACK].y0 - 40, w, SC_PARA, lg_text(p, INK_PALE), d, below[..]); }
     v = sc_button(s, out, v, p, SH_BACK, "BACK", false);
   }
   if sc == SC_WORDS {
@@ -885,6 +1054,99 @@ sc_cat :: (buf: [] u8, a: string, b: string) -> string { n := lg_set(buf, a); n 
       }
       v := sc_frame(s[..], world[0..<0], out[..], u[..], s[0].w, s[0].h, 1, 0, true);
       #assert v > 0 && v < SC_MAX_VERTICES;
+    }
+  }
+}
+SC_T_PK_WAYS :: "account acct_x\nlevel L2\nvia passkey\nl2_age_ms 1000\nlimited 0\nemail 3 r•••@example.com\npasskey 11 1794000000000 1794000000000 1 0 iCloud Keychain\npasskey 12 1794000000000 0 0 1 Work laptop\nmethods passkey,recovery_code\nrecovery_code 1\npasskeys 2\nrecovery none\nasked_ms 0\nready_ms 0\nnow_ms 1794000000000\n";
+SC_T_CH :: "challenge AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\nrp_id openagents.com\n";
+#test "security: passkeys are listed with their names, renamed in place, and removed by kind and id" {
+  cb: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_PK_WAYS)); sc_reply(s[..], 2, "200\n");
+  #assert s[0].npk == 2 && s[0].pks[0].id == 11 && cast(string) s[0].pks[0].name[0..<s[0].pks[0].n] == "iCloud Keychain" && s[0].pks[0].synced && !s[0].pks[0].clone;
+  #assert s[0].pks[1].clone && cast(string) s[0].pks[1].name[0..<s[0].pks[1].n] == "Work laptop" && s[0].by_passkey && !s[0].by_key;
+  #assert sc_shown(s[..], SH_PK_ROW) && sc_shown(s[..], SH_PK_DEL + 1) && sc_shown(s[..], SH_ADD_PK);
+  sc_press(s[..], SH_PK_ROW + 1);
+  #assert s[0].renaming == 1 && sc_wants_text(s[..]) && s[0].all && sc_shown(s[..], SH_PK_SAVE) && !sc_shown(s[..], SH_PK_ROW + 1);
+  sc_message(s[..], SC_MSG_TYPED, "Phone");   // typed over the selected name
+  #assert cast(string) s[0].pk_name[0..<s[0].pk_name_n] == "Phone";
+  _ = sc_key_in(s[..], -3, 0); #assert s[0].pk_name_n == 4;
+  sc_message(s[..], SC_MSG_TYPED, "e \"2\"");
+  _ = sc_key_in(s[..], -2, 0);
+  #assert s[0].req == SR_PK_RENAME && sc_url(s[..]) == "/api/auth/passkeys/12/rename?as=lines" && sc_body_of(s[..]) == "{\"name\":\"Phone \\\"2\\\"\"}";
+  sc_reply(s[..], 3, "200\nstate renamed\n");
+  #assert s[0].renaming == -1 && sc_said_of(s[..]) == "Renamed." && s[0].req == SR_WAYS;
+  sc_reply(s[..], 4, sc_cat(cb[..], "200\n", SC_T_PK_WAYS)); sc_reply(s[..], 5, "200\n");
+  // a name that passkey-policy.coax would refuse never goes
+  sc_press(s[..], SH_PK_ROW); sc_message(s[..], SC_MSG_TYPED, " padded");
+  sc_press(s[..], SH_PK_SAVE);
+  #assert s[0].req == SR_NONE && sc_error_of(s[..]) == "A passkey's name is 1 to 64 characters.";
+  _ = sc_key_in(s[..], -1, 0); #assert s[0].renaming == -1 && !sc_wants_text(s[..]);
+  sc_press(s[..], SH_PK_DEL);
+  #assert s[0].req == SR_UNLINK && sc_body_of(s[..]) == "{\"kind\":\"passkey\",\"id\":11}";
+  sc_reply(s[..], 6, "401\nerror Confirm it's you to do this.\nstep_up L2-fresh\nmethods passkey,recovery_code\n");
+  #assert s[0].screen == SC_STEP && s[0].todo == DO_UNLINK && s[0].todo_kind == 2 && sc_shown(s[..], SH_PASSKEY) && !sc_shown(s[..], SH_SIGN);
+}
+#test "security: USE A PASSKEY steps up through key.js, then the waiting change is asked again" {
+  cb: [2048] u8; cb2: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_PK_WAYS)); sc_reply(s[..], 2, "200\n");
+  sc_press(s[..], SH_CODE);
+  sc_reply(s[..], 3, "401\nerror Confirm it's you to do this.\nstep_up L2-fresh\nmethods passkey,recovery_code\n");
+  sc_press(s[..], SH_PASSKEY);
+  #assert s[0].req == SR_PK_OPTIONS && sc_url(s[..]) == "/api/auth/passkey/step-up/options?as=lines" && s[0].flags == (SC_POST | SC_WANTED);
+  sc_reply(s[..], 4, sc_cat(cb[..], "200\n", sc_cat(cb2[..], SC_T_CH, "allow AAAA\nallow BBBB\n")));
+  #assert s[0].req == SR_PK_WAIT && s[0].action == SC_ACT_PASSKEY && sc_out(s[..]) == "get\nAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\nopenagents.com\n\n\nAAAA,BBBB";
+  sc_done(s[..]);
+  sc_message(s[..], SC_MSG_PASSKEY, "{\"id\":\"AAAA\"}");
+  #assert s[0].req == SR_PK_STEP && sc_url(s[..]) == "/api/auth/passkey/step-up?as=lines" && sc_body_of(s[..]) == "{\"id\":\"AAAA\"}";
+  sc_reply(s[..], 5, "200\nstate stepped-up\nlevel L2\n");
+  #assert s[0].screen == SC_MAIN && s[0].level == 2 && s[0].req == SR_CODE;
+  // a passkey not used is said, and nothing is sent
+  t: [1] Sc; sc_new(t[..]); sc_reply(t[..], 1, sc_cat(cb[..], "200\n", SC_T_PK_WAYS)); sc_reply(t[..], 2, "200\n");
+  sc_press(t[..], SH_CODE); sc_reply(t[..], 3, "401\nerror Confirm it's you to do this.\nstep_up L2-fresh\nmethods passkey\n");
+  sc_press(t[..], SH_PASSKEY); sc_reply(t[..], 4, sc_cat(cb[..], "200\n", SC_T_CH)); sc_done(t[..]);
+  sc_message(t[..], SC_MSG_PASSKEY, "!No passkey was used. Try again.");
+  #assert t[0].req == SR_NONE && t[0].screen == SC_STEP && sc_error_of(t[..]) == "No passkey was used. Try again.";
+  t[0].has_passkey = 0; sc_press(t[..], SH_PASSKEY);
+  #assert t[0].req == SR_NONE && sc_error_of(t[..]) == "This browser can't use passkeys. Sign with your key, or use the OpenAgents app.";
+}
+#test "security: ADD A PASSKEY makes one through key.js and says so" {
+  cb: [2048] u8; cb2: [2048] u8;
+  s: [1] Sc; sc_new(s[..]); sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_PK_WAYS)); sc_reply(s[..], 2, "200\n");
+  sc_press(s[..], SH_ADD_PK);
+  #assert s[0].req == SR_PK_REG && sc_url(s[..]) == "/api/auth/passkey/register/options?as=lines" && s[0].todo == DO_ADD_PK;
+  sc_reply(s[..], 3, sc_cat(cb[..], "200\n", sc_cat(cb2[..], SC_T_CH, "user_id HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH\nuser_name r@example.com\nexclude AAAA\n")));
+  #assert s[0].pk_wait == 2 && sc_out(s[..]) == "create\nAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\nopenagents.com\nHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH\nr@example.com\nAAAA";
+  sc_done(s[..]);
+  sc_message(s[..], SC_MSG_PASSKEY, "{\"attestation\":\"z\"}");
+  #assert s[0].req == SR_PK_REGISTER && sc_url(s[..]) == "/api/auth/passkey/register?as=lines";
+  sc_reply(s[..], 4, "200\nstate added\nid 13\nname Chrome on Mac\nsynced 0\n");
+  #assert sc_said_of(s[..]) == "Passkey added (Chrome on Mac). We told every email and key on the account." && s[0].req == SR_WAYS && s[0].todo == DO_NONE;
+  // a limited session is asked to confirm first, and the add follows
+  t: [1] Sc; sc_new(t[..]); sc_reply(t[..], 1, sc_cat(cb[..], "200\n", SC_T_WAYS)); sc_reply(t[..], 2, "200\n");
+  sc_press(t[..], SH_ADD_PK);
+  sc_reply(t[..], 3, "401\nerror You logged in with email, and this account has a key. Log in with your key to change it, or ask for recovery.\nstep_up L2\nmethods nostr,recovery_code\n");
+  #assert t[0].screen == SC_STEP && t[0].todo == DO_ADD_PK;
+  // a notice of a copied passkey is named
+  #assert sc_notice_said("passkey.clone") == "A passkey may have been copied" && sc_notice_said("link.passkey") == "A passkey was added" && sc_notice_said("x") == "A security notice";
+}
+#test "security: passkey rows and the name being typed fit the panel, on a phone and a desktop" #steps 900000000 {
+  cb: [2048] u8;
+  out: [SC_MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; world: [1] LandState;
+  for k: 0..<2 {
+    for naming: 0..<2 {
+      s: [1] Sc; sc_new(s[..]); s[0].w = ifx k == 0 then 390.0f32 else 1280.0f32; s[0].h = ifx k == 0 then 844.0f32 else 800.0f32;
+      sc_reply(s[..], 1, sc_cat(cb[..], "200\n", SC_T_PK_WAYS)); sc_reply(s[..], 2, "200\n");
+      if naming == 1 { sc_press(s[..], SH_PK_ROW + 1); sc_layout(s[..]); }
+      order: [SH_HITS] int; n := sc_order(s[..], order[..]);
+      for i: 0..<n {
+        b := s[0].hits[order[i]];
+        #assert b.x1 > b.x0 && b.x0 >= s[0].panel.x0 && b.x1 <= s[0].panel.x1 + 1 && (order[i] == SH_HOME || (b.y0 >= s[0].panel.y0 && b.y1 <= s[0].panel.y1));
+        #assert sc_hit(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == order[i];
+        for j: 0..<n { if j != i { c := s[0].hits[order[j]]; #assert b.x1 <= c.x0 || c.x1 <= b.x0 || b.y1 <= c.y0 || c.y1 <= b.y0; } }
+      }
+      v := sc_frame(s[..], world[0..<0], out[..], u[..], s[0].w, s[0].h, 1, 0, true);
+      #assert v > 0 && v < SC_MAX_VERTICES;
+      if naming == 1 { #assert s[0].field[2] > s[0].field[0]; }   // the keyboard field sits over the name
     }
   }
 }

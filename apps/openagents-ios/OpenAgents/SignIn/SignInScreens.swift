@@ -1,3 +1,4 @@
+import AuthenticationServices
 import UIKit
 
 /// Where sign-in codes arrive (a scan, a paste, an opened link) and the
@@ -115,8 +116,8 @@ final class ApproveSignInViewController: WalletForm {
     }
 }
 
-/// Logging this app in to your openagents.com account (AppAuth): an email code, or this phone's
-/// key. Logged in, it says so and offers Log out.
+/// Logging this app in to your openagents.com account (AppAuth): a passkey, an email code, or this
+/// phone's key. Logged in, it says so and offers Log out.
 @MainActor
 final class AccountLogin {
     private weak var form: WalletForm?
@@ -129,9 +130,11 @@ final class AccountLogin {
     private let verify = HudButton("Log in", "login.verify", main: true)
     private let again = HudButton("Send a new code", "login.again")
     private let key = HudButton("Log in with this phone's key", "login.key")
+    private let passkey = HudButton("Log in with a passkey", "login.passkey", main: true)
+    private var ask: PasskeyAsk?
     private let logout = HudButton("Log out", "login.logout")
     private var pending: String?
-    lazy var panel = HudPanel([HudHeading("Your account"), state, email, send, code, verify, again, key, logout, message])
+    lazy var panel = HudPanel([HudHeading("Your account"), state, passkey, email, send, code, verify, again, key, logout, message])
 
     init(form: WalletForm, auth: AppAuth = .shared) {
         self.form = form; self.auth = auth
@@ -143,19 +146,21 @@ final class AccountLogin {
         again.addAction(UIAction { [weak self] _ in self?.start() }, for: .touchUpInside)
         verify.addAction(UIAction { [weak self] _ in self?.check() }, for: .touchUpInside)
         key.addAction(UIAction { [weak self] _ in self?.withKey() }, for: .touchUpInside)
+        passkey.addAction(UIAction { [weak self] _ in self?.withPasskey() }, for: .touchUpInside)
         logout.addAction(UIAction { [weak self] _ in self?.end() }, for: .touchUpInside)
     }
 
     /// The panel for the current state: logged in, waiting for a code, or the ways in.
     func show() {
         let inNow = auth.loggedIn
-        state.text = inNow ? "Logged in." : (pending == nil ? "Log in with your email or this phone's key." : "We sent a code. It works for 10 minutes and 5 tries.")
+        state.text = inNow ? "Logged in." : (pending == nil ? "Log in with a passkey, your email or this phone's key." : "We sent a code. It works for 10 minutes and 5 tries.")
         email.isHidden = inNow || pending != nil
         send.isHidden = inNow || pending != nil
         code.isHidden = inNow || pending == nil
         verify.isHidden = inNow || pending == nil
         again.isHidden = inNow || pending == nil
         key.isHidden = inNow
+        passkey.isHidden = inNow || pending != nil
         logout.isHidden = !inNow
     }
     private func say(_ error: Error) {
@@ -189,11 +194,69 @@ final class AccountLogin {
             self.show()
         }
     }
+    private func withPasskey() {
+        form?.busy(passkey) { [weak self] in
+            guard let self else { return }
+            do {
+                let challenge = try await self.auth.passkeyChallenge()
+                let ask = PasskeyAsk(anchor: self.form?.view.window)
+                self.ask = ask
+                defer { self.ask = nil }
+                let answer = try await ask.assert(challenge)
+                try await self.auth.passkeyLogin(challenge, answer)
+                self.message.text = ""
+            } catch { self.say(error) }
+            self.show()
+        }
+    }
     private func end() {
         form?.busy(logout) { [weak self] in
             guard let self else { return }
             await self.auth.logout(); self.pending = nil; self.message.text = ""
             self.show()
+        }
+    }
+}
+
+/// The system's passkey sheet (ASAuthorizationPlatformPublicKeyCredentialProvider) for one login:
+/// the passkeys this device has for the site (apple-app-site-association's webcredentials), user
+/// verification required. Its answer, or why there is none, in our words.
+@MainActor
+final class PasskeyAsk: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    private let anchor: UIWindow?
+    private var waiting: CheckedContinuation<AppAuth.PasskeyAssertion, Error>?
+    init(anchor: UIWindow?) { self.anchor = anchor }
+
+    func assert(_ c: AppAuth.PasskeyChallenge) async throws -> AppAuth.PasskeyAssertion {
+        let request = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: c.rpID).createCredentialAssertionRequest(challenge: c.challenge)
+        request.userVerificationPreference = .required
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self; controller.presentationContextProvider = self
+        return try await withCheckedThrowingContinuation { k in waiting = k; controller.performRequests() }
+    }
+    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        MainActor.assumeIsolated { anchor ?? ASPresentationAnchor() }
+    }
+    nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        let got = (authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion).map {
+            AppAuth.PasskeyAssertion(credentialID: $0.credentialID, authenticatorData: $0.rawAuthenticatorData, clientData: $0.rawClientDataJSON,
+                                     signature: $0.signature, userHandle: $0.userID)
+        }
+        MainActor.assumeIsolated {
+            if let got { waiting?.resume(returning: got) } else { waiting?.resume(throwing: AppAuth.Failure.said("Your passkey didn't answer. Try again.")) }
+            waiting = nil
+        }
+    }
+    nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        let words = PasskeyAsk.words(error)
+        MainActor.assumeIsolated { waiting?.resume(throwing: AppAuth.Failure.said(words)); waiting = nil }
+    }
+    /// Why no passkey answered, in our words.
+    nonisolated static func words(_ error: Error) -> String {
+        switch (error as? ASAuthorizationError)?.code {
+        case .canceled: return "No passkey was used. Try again."
+        case .notHandled, .failed: return "This phone has no passkey for openagents.com. Log in another way, then add one in Security."
+        default: return "Your passkey didn't answer. Try again."
         }
     }
 }

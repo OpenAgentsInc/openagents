@@ -191,10 +191,10 @@ splatlab 120000
 stair 290000
 # /status: the homepage Grid plus the pipeline diagram (#13102): 68,828 bytes measured 2026-11-09; about 9% room
 status 75000
-# /login: the homepage Grid, the login screens and the phone app's QR (coax/lib/qr, about 12 KB) (#13204): 66,864 bytes measured 2026-11-11; about 10% room
-login 74000
-# /settings/security: login.coax's helpers plus the ways in, recovery and the re-auth prompt (#13212, #13213): 69,675 bytes measured 2026-11-11; about 10% room
-security 77000
+# /login: the homepage Grid, the login screens, passkeys (#13215) and the phone app's QR (coax/lib/qr, about 12 KB) (#13204): 70,576 bytes measured 2026-11-11; about 10% room
+login 78000
+# /settings/security: login.coax's helpers plus the ways in, passkeys (#13215), recovery and the re-auth prompt (#13212, #13213): 78,110 bytes measured 2026-11-11; about 10% room
+security 86000
 # /settings/data and /settings/delete: login.coax's helpers plus freeze, export, merge and deletion (#13214): 61,017 bytes measured 2026-11-11; about 10% room
 life 67000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 215,662 measured; about 5% room

@@ -133,6 +133,15 @@ static const auth_rule RULES[] = {
   R("POST", "/api/auth/recovery/finish", false, AP_RECOVER, "after 72 hours: a new key replaces the lost ones"),
   R("POST", "/api/auth/recovery-code", false, AP_L2_FRESH, "a new recovery code, shown once"),
   R("POST", "/api/auth/recovery-code/login", false, AP_PUBLIC, "log in with an email or key and the recovery code"),
+  // ---- passkeys (passkeys.c, #13215); removing one is /api/auth/unlink
+  R("POST", "/api/auth/passkey/login/options", false, AP_PUBLIC, "a passkey login challenge: 5 minutes, once, this browser or app"),
+  R("POST", "/api/auth/passkey/login", false, AP_PUBLIC, "log in with a passkey: a session at L2"),
+  R("POST", "/api/auth/passkey/register/options", false, AP_HUMAN, "a challenge to add a passkey to this session's account"),
+  R("POST", "/api/auth/passkey/register", false, AP_HUMAN, "add a passkey (L2, or email alone on an account with nothing stronger)"),
+  R("POST", "/api/auth/passkey/step-up/options", false, AP_RECOVER, "a challenge for this account's passkeys"),
+  R("POST", "/api/auth/passkey/step-up", false, AP_RECOVER, "a passkey: this session to L2"),
+  R("GET",  "/api/auth/passkeys", false, AP_ACCOUNT, "the account's passkeys and the one offer after an email login"),
+  R("POST", "/api/auth/passkeys/", true, AP_HUMAN, "rename a passkey; mark the offer shown"),
   // ---- reserved: these routes are built in other issues and must keep L2-fresh (#13212)
   R("POST", "/api/auth/delete", false, AP_RECOVER, "delete the account: frozen now, purged in 30 days (L2-fresh, or a fresh email code; auth-life-policy.coax)"),
   R("POST", "/api/wallet/backup/export", false, AP_L2_FRESH, "export the wallet's encrypted backup (#13217)"),
@@ -218,7 +227,7 @@ static const auth_limit LIMITS[L_COUNT] = {
   [L_EMAIL_DAY]   = {"email_day", "Email codes sent to one address", "a day", "Too many codes for this address today.", 20, 86400000LL},
   [L_EMAIL_IP]    = {"email_ip", "Email codes sent from one network address", "an hour", "Too many codes from your network.", 30, 3600000LL},
   [L_CODE_TRIES]  = {"code_tries", "Tries at one email code", "per code", "Too many tries. Ask for a new code.", 5, 600000LL},
-  [L_KEY_LOGIN]   = {"key_login", "Logins with a key from one network address", "a minute", "Too many logins from your network.", 30, 60000LL},
+  [L_KEY_LOGIN]   = {"key_login", "Logins with a key or passkey from one network address", "a minute", "Too many logins from your network.", 30, 60000LL},
   [L_REFRESH]     = {"refresh", "App token refreshes for one login", "an hour", "Too many refreshes.", 60, 3600000LL},
   [L_NEW_ACCOUNT] = {"new_account", "New accounts from one network address", "an hour", "Too many new accounts from your network.", 10, 3600000LL},
   [L_AGENT_ASK]   = {"agent_ask", "Agent and computer login requests from one network address", "an hour", "Too many requests from your network.", 30, 3600000LL},
@@ -295,6 +304,8 @@ static bool token_ok(const char *text, int64_t kind, char digest[65]) {
 enum { TOKEN_SESSION = 1, TOKEN_ACCESS = 2, TOKEN_REFRESH = 3, TOKEN_KEY = 4 };
 
 // A cookie's value (letters, digits, _ and -), or "".
+static void cookie(const request *q, const char *name, char *out, size_t cap);
+void auth_cookie(const request *q, const char *name, char *out, size_t cap) { cookie(q, name, out, cap); }
 static void cookie(const request *q, const char *name, char *out, size_t cap) {
   char cookies[4096], want[64];
   out[0] = 0;
@@ -725,7 +736,7 @@ void auth_init(void) {
          && ap_session(false, 200LL * 86400000LL, 0, 0, 0) == AP_SESSION_ENDED && agents_init()
          && ap_admit(AP_ADMIN_FRESH, AP_PERSON, 2, 400000, true, false) == AP_STEP_UP && ap_admit(AP_RECOVER, AP_PERSON, 1, -1, false, false) == AP_OK
          && ap_limited_admit(AP_L2, false, true) == AP_LIMITED && ap_status(AP_LIMITED) == 401;
-  if (!ok || !auth_recover_init() || !auth_life_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
+  if (!ok || !auth_recover_init() || !auth_life_init() || !passkeys_init()) { fprintf(stderr, "api: auth.c and auth-policy.coax disagree on their numbers\n"); exit(2); }
 }
 
 // Start of each request (api.c): nothing carries over from the last.
@@ -798,6 +809,7 @@ static void device_name(const request *q, char *out, size_t cap) {
                 : strstr(ua, "Windows") ? "Windows" : strstr(ua, "Linux") ? "Linux" : "";
   if (*o) snprintf(out, cap, "%s on %s", b, o); else snprintf(out, cap, "%s", b);
 }
+void auth_device_name(const request *q, char *out, size_t cap) { device_name(q, out, cap); }
 
 // A logged-in answer: a session (cookie for the web, a token pair for an app), the guest's player
 // attached, the audit row. made: the account is new. Answers the request.
@@ -1403,6 +1415,7 @@ bool auth_api_route(const request *q) {
   const char *op = q->path + 10;
   if (auth_recover_route(q, api_db(), op)) return true;
   if (auth_life_route(q, api_db(), op)) return true;
+  if (passkeys_route(q, api_db(), op)) return true;
   bool get = !strcmp(q->method, "GET");
   static const char *const posts[] = {"email/start", "email/verify", "email/link", "nostr/challenge", "nostr", "phone/start", "phone/approve",
                                       "phone/poll", "refresh", "logout", "logout-everywhere", "freeze", NULL};

@@ -1,0 +1,102 @@
+// A software passkey for the API's checks (passkey_checks.coax, #13215): what a platform
+// authenticator answers to navigator.credentials.create and .get, made here byte for byte so the
+// checks can also send what no honest authenticator would (no user verification, a counter that
+// went backwards, another origin, another key's signature). ES256 over P-256, attestation "none".
+//   ps_attestation   an attestationObject: {fmt: "none", attStmt: {}, authData}
+//   ps_client        a clientDataJSON
+//   ps_auth_data     authenticatorData for a login (no credential in it)
+//   ps_sign          the DER signature of authenticatorData || SHA-256(clientDataJSON)
+//   ps_b64           base64url (no padding) into an Sb
+#load "auth_harness.coax";
+#load "../../../lib/crypto/webauthn.coax";
+
+PS_UP :: 0x01; PS_UV :: 0x04; PS_BE :: 0x08; PS_BS :: 0x10; PS_AT :: 0x40;
+
+// A passkey: its secret, public point (65 bytes, uncompressed) and credential id.
+Ps :: struct { secret: [32] u8; point: [65] u8; id: [16] u8; ok: bool; }
+ps_new :: (seed: int) -> Ps {
+  p: Ps;
+  for i: 0..<32 { p.secret[i] = cast,trunc(u8) (seed * 31 + i * 7 + 1); }
+  for i: 0..<16 { p.id[i] = cast,trunc(u8) (seed * 13 + i * 3 + 5); }
+  p.ok = p256_public_key(p.secret[..], p.point[..]);
+  return p;
+}
+ps_put :: (out: [] u8, at: int, b: [] u8) -> int { for i: 0..<b.count { out[at + i] = b[i]; } return at + b.count; }
+ps_rp :: (rp_id: string, out: [] u8) -> int {
+  id: [256] u8; for i: 0..<rp_id.count { id[i] = rp_id[i]; }
+  r := sha256_hash_checked(id[0..<rp_id.count], out[0..<32], false);
+  return 32;
+}
+// authenticatorData: the RP ID's hash, flags, the count; with PS_AT, the AAGUID, the credential id
+// and the COSE key.
+ps_data :: (key: Ps, rp_id: string, flags: int, count: u32, aaguid: [] u8, out: [] u8) -> [] u8 {
+  p := key;
+  at := ps_rp(rp_id, out);
+  out[at] = cast,trunc(u8) flags; at += 1;
+  out[at] = cast,trunc(u8) (count >> 24); out[at+1] = cast,trunc(u8) (count >> 16); out[at+2] = cast,trunc(u8) (count >> 8); out[at+3] = cast,trunc(u8) count; at += 4;
+  if flags & PS_AT != 0 {
+    at = ps_put(out, at, aaguid);
+    out[at] = 0; out[at+1] = 16; at += 2;
+    at = ps_put(out, at, p.id[..]);
+    // COSE_Key {1: 2 (EC2), 3: -7 (ES256), -1: 1 (P-256), -2: x, -3: y}
+    head := [10] u8.[0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01, 0x21, 0x58, 0x20];
+    at = ps_put(out, at, head[..]);
+    at = ps_put(out, at, p.point[1..<33]);
+    out[at] = 0x22; out[at+1] = 0x58; out[at+2] = 0x20; at += 3;
+    at = ps_put(out, at, p.point[33..<65]);
+  }
+  return out[0..<at];
+}
+ps_auth_data :: (p: Ps, rp_id: string, flags: int, count: u32, out: [] u8) -> [] u8 {
+  none: [16] u8;
+  return ps_data(p, rp_id, flags, count, none[..], out);
+}
+ps_attestation :: (p: Ps, rp_id: string, flags: int, count: u32, aaguid: [] u8, out: [] u8) -> [] u8 {
+  data: [400] u8; d := ps_data(p, rp_id, flags | PS_AT, count, aaguid, data[..]);
+  head := [24] u8.[0xa3, 0x63, 'f', 'm', 't', 0x64, 'n', 'o', 'n', 'e', 0x67, 'a', 't', 't', 'S', 't', 'm', 't', 0xa0, 0x68, 'a', 'u', 't', 'h'];
+  at := ps_put(out, 0, head[..]);
+  tail := [4] u8.['D', 'a', 't', 'a'];
+  at = ps_put(out, at, tail[..]);
+  out[at] = 0x58; out[at+1] = cast,trunc(u8) d.count; at += 2;
+  at = ps_put(out, at, d);
+  return out[0..<at];
+}
+// {"type":...,"challenge":...,"origin":...,"crossOrigin":false}
+ps_client :: (type: string, challenge: string, origin: string, out: [] Sb) -> [] u8 {
+  sb_clear(out);
+  sb(out, "{\"type\":\""); sb(out, type); sb(out, "\",\"challenge\":\""); sb(out, challenge);
+  sb(out, "\",\"origin\":\""); sb(out, origin); sb(out, "\",\"crossOrigin\":false}");
+  return out[0].b[0..<out[0].n];
+}
+ps_sign :: (key: Ps, auth_data: [] u8, client: [] u8, out: [] u8) -> [] u8 {
+  p := key;
+  msg: [700] u8;
+  at := ps_put(msg[..], 0, auth_data);
+  r := sha256_hash_checked(client, msg[at..<at + 32], false);
+  hash: [32] u8; r2 := sha256_hash_checked(msg[0..<at + 32], hash[..], false);
+  raw: [64] u8;
+  if !p256_sign(p.secret[..], hash[..], raw[..]) { return out[0..<0]; }
+  n := pe_der_write(raw[..], out);
+  return out[0..<n];
+}
+ps_b64 :: (s: [] Sb, b: [] u8) {
+  t: [2400] u8; n := wa_b64url(b, t[..]);
+  sb(s, cast(string) t[0..<n]);
+}
+
+#test "the software passkey registers and logs in against webauthn.coax" #steps 40000000000 #traversal 1073741824 {
+  p := ps_new(1); #assert p.ok;
+  ch: [32] u8; for i: 0..<32 { ch[i] = cast(u8) i; }
+  chb: [64] u8; n := wa_b64url(ch[..], chb[..]);
+  cs: [1] Sb; att: [600] u8; aaguid: [16] u8;
+  a := ps_attestation(p, "openagents.com", PS_UP | PS_UV, 0, aaguid[..], att[..]);
+  cd := ps_client("webauthn.create", cast(string) chb[0..<n], "https://openagents.com", cs[..]);
+  reg := webauthn_register(a, cd, ch[..], "https://openagents.com", "openagents.com", true);
+  #assert reg.error == WA_OK && reg.alg == COSE_ES256 && reg.id_count == 16;
+  ad: [64] u8; d := ps_auth_data(p, "openagents.com", PS_UP | PS_UV, 3, ad[..]);
+  gs: [1] Sb; gd := ps_client("webauthn.get", cast(string) chb[0..<n], "https://openagents.com", gs[..]);
+  sig: [80] u8; s := ps_sign(p, d, gd, sig[..]);
+  key := a[reg.key_at..<reg.key_at + reg.key_count];
+  #assert webauthn_assert(d, gd, s, key, ch[..], "https://openagents.com", "openagents.com", true, 0, false).error == WA_OK;
+  #assert webauthn_assert(d, gd, s, key, ch[..], "https://openagents.com", "openagents.com", true, 3, false).error == WA_COUNTER;
+}

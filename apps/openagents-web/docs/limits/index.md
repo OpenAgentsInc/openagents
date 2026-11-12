@@ -8,7 +8,7 @@ Every limit we enforce on logging in. When you reach one, we say which and when 
 | Email codes sent to one address | 20 a day |
 | Email codes sent from one network address | 30 an hour |
 | Tries at one email code | 5 per code |
-| Logins with a key from one network address | 30 a minute |
+| Logins with a key or passkey from one network address | 30 a minute |
 | App token refreshes for one login | 60 an hour |
 | New accounts from one network address | 10 an hour |
 | Agent and computer login requests from one network address | 30 an hour |

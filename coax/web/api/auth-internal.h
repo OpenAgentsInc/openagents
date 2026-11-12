@@ -59,3 +59,12 @@ bool auth_life_frozen_refused(const request *q, const auth_principal *p);
 void auth_life_froze(PGconn *db, const char *acct, bool by_link);
 // email_finish for purpose "merge": the account that holds the email proved itself to survivor's ask.
 void auth_life_merge_email(const request *q, PGconn *db, const char *survivor, const char *lookup);
+
+// ---- auth.c's small pieces other auth files share
+void auth_cookie(const request *q, const char *name, char *out, size_t cap);
+void auth_device_name(const request *q, char *out, size_t cap);
+// ---- passkeys.c (#13215)
+bool passkeys_init(void);
+bool passkeys_route(const request *q, PGconn *db, const char *op);
+// The account's passkeys appended to an answer (JSON objects, and "passkey ..." lines): the count.
+int passkeys_rows(PGconn *db, const char *acct, char *json, size_t jcap, size_t *j, char *lines, size_t lcap, size_t *l);

@@ -1,0 +1,337 @@
+// Passkeys' API checks (passkeys.c, passkey-policy.coax, migration 0151; #13215), run by test.sh
+// after auth_recover_checks.coax, with a software passkey (passkey_soft.coax) in place of a
+// browser's. Each threat in #13215 has its checks here, named for it:
+//   replay            a challenge is good once; a used, expired or never-made one is refused
+//   another site      a passkey answer made for another origin or RP ID is refused
+//   a stolen login    a login challenge works only in the browser (cookie) or app that asked;
+//                     adding a passkey or stepping up only in the session that asked
+//   no user           an answer without user verification is refused, at every ceremony
+//   a copied passkey  a sign count that goes backwards refuses the login, marks the passkey and
+//                     tells the account
+//   a forged answer   another key's signature, an unknown credential, another user handle
+//   email takeover    a limited email session can't add a passkey; it steps up with one it has
+//   another account   a passkey on another account neither steps up this session nor is added twice
+//   (and: names, the list, the cap of 20, the offer, removal, the audit log)
+//   API=... PGURL=... PSQL=... SIGN=... RESEND_PORT=... coax/web/tool.sh coax/web/api/tests/passkey_checks.coax
+// tool.sh: tls
+#load "passkey_soft.coax";
+
+pc_q :: (q: [] Sb, a: string, b: string, c: string) -> string { sb_clear(q); sb(q, a); sb(q, b); sb(q, c); return sb_text(q); }
+pc_with :: (t: [] Ap, method: string, path: string, body: string, session: string) -> int {
+  c1: [1] Sb;
+  if session == "" { return ac_call(t, method, path, body, "", "", ""); }
+  return ac_call(t, method, path, body, ac_cookie_header("__Host-oa_session", session, c1[..]), "", "");
+}
+// Logs in with a key (a signed challenge): the session's cookie value in out.
+pc_key :: (t: [] Ap, keyfile: string, out: [] u8) -> string {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  if ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "", "", "") != 200 { return ""; }
+  chb: [128] u8; ch := ap_member(ap_body(t), "challenge", chb[..]);
+  body: [1] Sb; sb(body[..], "{\"challenge\":\""); sb(body[..], ch); sb(body[..], "\",\"label\":\"extension\"}");
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/auth/nostr");
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), sb_text(body[..]), true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  if ac_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), sb_text(ah[..]), "", "") != 200 { return ""; }
+  return ac_cookie(t, "__Host-oa_session", out);
+}
+// Logs in by email (a code): the session's cookie value in out.
+pc_email :: (t: [] Ap, dir: string, address: string, out: [] u8) -> string {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  pb: [128] u8; pend: [128] u8; c1: [1] Sb;
+  st := ac_start(t, address, "203.0.113.60", false, pb[..]);
+  p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  code: [6] u8; link: [64] u8;
+  if st != 200 || !ac_mail(dir, code[..], link[..]) { return ""; }
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  st = ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "");
+  if st != 200 { return ""; }
+  return ac_cookie(t, "__Host-oa_session", out);
+}
+// Links address to session's account (a code to that address).
+pc_link_email :: (t: [] Ap, dir: string, session: string, address: string) -> int {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  b: [1] Sb; sb(b[..], "{\"email\":\""); sb(b[..], address); sb(b[..], "\",\"link\":true}");
+  st := pc_with(t, "POST", "/api/auth/email/start", sb_text(b[..]), session);
+  pb: [128] u8; pend: [128] u8; p := ac_cookie(t, "__Host-oa_pending", pb[..]);
+  for i: 0..<p.count { pend[i] = p[i]; }
+  code: [6] u8; link: [64] u8;
+  if st != 200 || !ac_mail(dir, code[..], link[..]) { return st; }
+  vb: [1] Sb; sb(vb[..], "{\"code\":\""); sb(vb[..], cast(string) code[..]); sb(vb[..], "\"}");
+  c1: [1] Sb;
+  return ac_call(t, "POST", "/api/auth/email/verify", sb_text(vb[..]), ac_cookie_header("__Host-oa_pending", cast(string) pend[0..<p.count], c1[..]), "", "");
+}
+
+// What a ceremony is made of, and what the checks change in it.
+Pc :: struct {
+  rp: string; origin: string;
+  flags: int; count: u32;
+  signer: int;          // 0 the passkey itself, else another passkey's seed
+  handle: string;       // the user handle to send back ("" none)
+  name: string;         // register: a typed name ("" none)
+  aaguid_icloud: bool;
+}
+pc_plain :: (t: [] Ap) -> Pc {
+  c: Pc; c.rp = "127.0.0.1"; c.origin = t[0].api; c.flags = PS_UP | PS_UV; c.count = 0; c.signer = 0; c.handle = ""; c.name = ""; c.aaguid_icloud = true;
+  return c;
+}
+// Asks for a challenge at path (with this session, or the app's {"client":"app"}); its value in out.
+pc_options :: (t: [] Ap, path: string, session: string, app: bool, out: [] u8) -> string {
+  st := pc_with(t, "POST", path, ifx app then "{\"client\":\"app\"}" else "{}", session);
+  if st != 200 { return ""; }
+  return ap_member(ap_body(t), "challenge", out);
+}
+// Adds key to session's account through a fresh challenge: the status.
+pc_register :: (t: [] Ap, session: string, key: Ps, c: Pc) -> int {
+  chb: [128] u8; ch := pc_options(t, "/api/auth/passkey/register/options", session, false, chb[..]);
+  if ch == "" { return ap_json(t, "GET", "/no-challenge", ""); }
+  ub: [128] u8; uid := ap_member(ap_body(t), "user_id", ub[..]);
+  return pc_register_with(t, session, key, c, ch, uid);
+}
+pc_register_with :: (t: [] Ap, session: string, key: Ps, c: Pc, ch: string, uid: string) -> int {
+  aaguid: [16] u8;
+  if c.aaguid_icloud { _ = cb_unhex("fbfc3007154e4ecc8c0b6e020557d7bd", aaguid[..]); }
+  att: [600] u8; a := ps_attestation(key, c.rp, c.flags, c.count, aaguid[..], att[..]);
+  cs: [1] Sb; cd := ps_client("webauthn.create", ch, c.origin, cs[..]);
+  b: [1] Sb;
+  sb(b[..], "{\"challenge\":\""); sb(b[..], ch); sb(b[..], "\",\"attestation\":\""); ps_b64(b[..], a);
+  sb(b[..], "\",\"client_data\":\""); ps_b64(b[..], cd); sb(b[..], "\",\"user_id\":\""); sb(b[..], uid);
+  sb(b[..], "\",\"transports\":\"internal,hybrid,bogus\",\"prf\":\"1\"");
+  if c.name != "" { sb(b[..], ",\"name\":\""); sb(b[..], c.name); sb(b[..], "\""); }
+  sb(b[..], "}");
+  return pc_with(t, "POST", "/api/auth/passkey/register", sb_text(b[..]), session);
+}
+// A login or step-up answer for challenge ch, sent to path with these headers: the status.
+pc_answer :: (t: [] Ap, path: string, ch: string, key: Ps, c: Pc, h1: string) -> int {
+  ad: [64] u8; d := ps_auth_data(key, c.rp, c.flags, c.count, ad[..]);
+  cs: [1] Sb; cd := ps_client("webauthn.get", ch, c.origin, cs[..]);
+  signer := ifx c.signer == 0 then key else ps_new(c.signer);
+  sigb: [80] u8; sig := ps_sign(signer, d, cd, sigb[..]);
+  b: [1] Sb;
+  sb(b[..], "{\"challenge\":\""); sb(b[..], ch); sb(b[..], "\",\"id\":\""); k := key; ps_b64(b[..], k.id[..]);
+  sb(b[..], "\",\"auth_data\":\""); ps_b64(b[..], d); sb(b[..], "\",\"client_data\":\""); ps_b64(b[..], cd);
+  sb(b[..], "\",\"signature\":\""); ps_b64(b[..], sig); sb(b[..], "\"");
+  if c.handle != "" { sb(b[..], ",\"user_handle\":\""); sb(b[..], c.handle); sb(b[..], "\""); }
+  sb(b[..], "}");
+  return ac_call(t, "POST", path, sb_text(b[..]), h1, "", "");
+}
+// A web login: options (a browser cookie), then the answer with that cookie.
+pc_login :: (t: [] Ap, key: Ps, c: Pc) -> int {
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  chb: [128] u8; ch := pc_options(t, "/api/auth/passkey/login/options", "", false, chb[..]);
+  bb: [128] u8; browser := ac_cookie(t, "__Host-oa_passkey", bb[..]);
+  c1: [1] Sb;
+  return pc_answer(t, "/api/auth/passkey/login", ch, key, c, ac_cookie_header("__Host-oa_passkey", browser, c1[..]));
+}
+pc_stepup :: (t: [] Ap, session: string, key: Ps, c: Pc) -> int {
+  chb: [128] u8; ch := pc_options(t, "/api/auth/passkey/step-up/options", session, false, chb[..]);
+  if ch == "" { return ap_json(t, "GET", "/no-challenge", ""); }
+  c1: [1] Sb;
+  return pc_answer(t, "/api/auth/passkey/step-up", ch, key, c, ac_cookie_header("__Host-oa_session", session, c1[..]));
+}
+
+pc_checks :: (t: [] Ap, dir: string) {
+  out: [8192] u8; eb: [1024] u8; q: [1] Sb; c1: [1] Sb;
+  P1 := ps_new(1); P2 := ps_new(2); P3 := ps_new(3); P9 := ps_new(9);
+  plain := pc_plain(t);
+  // The owner: a key (K1); another person: a key (K2).
+  k1b: [1100] u8; K1 := fs_join(dir, "pk1.key", k1b[..]); pk1b: [128] u8; pk1 := ac_newkey(t, K1, pk1b[..]);
+  k2b: [1100] u8; K2 := fs_join(dir, "pk2.key", k2b[..]); pk2b: [128] u8; pk2 := ac_newkey(t, K2, pk2b[..]);
+  sKb: [160] u8; SK := pc_key(t, K1, sKb[..]);
+  s2b: [160] u8; S2 := pc_key(t, K2, s2b[..]);
+  ab: [64] u8; acct := ap_sql(t, pc_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk1, "'"), ab[..]);
+  a2b: [64] u8; acct2 := ap_sql(t, pc_q(q[..], "SELECT account FROM auth.nostr_keys WHERE pubkey = '", pk2, "'"), a2b[..]);
+  ap_check(t, "two people log in with keys", ap_starts(SK, "oas_") && ap_starts(S2, "oas_") && acct != acct2, "");
+
+  // ---- adding a passkey
+  st := pc_with(t, "POST", "/api/auth/passkey/register/options", "{}", SK);
+  rpb: [64] u8; uvb: [64] u8;
+  ap_check(t, "the options name this site's RP ID and require user verification and a discoverable passkey", st == 200
+           && ap_member(ap_body(t), "rp_id", rpb[..]) == "127.0.0.1" && ap_has(ap_body(t), "\"userVerification\":\"required\"")
+           && ap_has(ap_body(t), "\"residentKey\":\"required\"") && ap_has(ap_body(t), "\"attestation\":\"none\""), ap_body(t));
+  ap_check(t, "the user handle is 32 random bytes, never the account id", ap_member(ap_body(t), "user_id", uvb[..]).count == 43
+           && !ap_has(ap_body(t), acct), ap_body(t));
+  ap_check(t, "the challenge is kept only as its SHA-256", ap_sql(t, "SELECT count(*) FROM auth.pending WHERE kind = 'passkey' AND code_sha256 IS NULL AND length(link_sha256) = 64", out[..]) != "0", "");
+  st = pc_register(t, SK, P1, plain);
+  ap_check(t, "a key session adds a passkey; it is named for its password manager", st == 200 && ap_member(ap_body(t), "state", eb[..]) == "added"
+           && ap_member(ap_body(t), "name", out[..]) == "iCloud Keychain", ap_body(t));
+  ap_check(t, "the passkey is stored with its key, alg, rp, PRF salt and only WebAuthn's transports",
+           ap_sql(t, pc_q(q[..], "SELECT alg || ' ' || rp_id || ' ' || length(prf_salt) || ' ' || prf || ' ' || array_to_string(transports, ',') || ' ' || length(user_handle) FROM auth.passkeys WHERE account = '", acct, "'"), out[..])
+           == "-7 127.0.0.1 32 true internal,hybrid 43", "");
+  ap_check(t, "adding a passkey tells the account", ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.notices WHERE what = 'link.passkey' AND account = '", acct, "'"), out[..]) == "1", "");
+  hb: [64] u8; handle := ap_sql(t, pc_q(q[..], "SELECT user_handle FROM auth.passkeys WHERE account = '", acct, "'"), hb[..]);
+
+  // replay: the same answer again; a challenge for another purpose
+  chb: [128] u8; ch := pc_options(t, "/api/auth/passkey/register/options", SK, false, chb[..]);
+  ub: [128] u8; uid := ap_member(ap_body(t), "user_id", ub[..]);
+  ap_check(t, "the account's next options reuse its user handle and exclude its passkeys", uid == handle && ap_has(ap_body(t), "\"excludeCredentials\":[{"), ap_body(t));
+  st = pc_register_with(t, SK, P2, plain, ch, uid);
+  st2 := pc_register_with(t, SK, P2, plain, ch, uid);
+  ap_check(t, "replay: a challenge adds a passkey once", st == 200 && st2 == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "That passkey request has ended. Try again.", ap_body(t));
+  lch := pc_options(t, "/api/auth/passkey/login/options", "", false, chb[..]);
+  st = pc_register_with(t, SK, P3, plain, lch, uid);
+  ap_check(t, "replay: a login challenge can't add a passkey", st == 401, ap_body(t));
+  st = pc_register_with(t, SK, P3, plain, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", uid);
+  ap_check(t, "replay: a challenge the API never made is refused", st == 401, ap_body(t));
+  // another site
+  evil := plain; evil.origin = "https://evil.example";
+  st = pc_register(t, SK, P3, evil);
+  ap_check(t, "another site: a passkey made for another origin isn't added", st == 401 && ap_member(ap_body(t), "error", eb[..]) == "That passkey didn't check out. Try again.", ap_body(t));
+  other_rp := plain; other_rp.rp = "evil.example";
+  ap_check(t, "another site: a passkey made for another RP ID isn't added", pc_register(t, SK, P3, other_rp) == 401, ap_body(t));
+  // no user
+  no_uv := plain; no_uv.flags = PS_UP;
+  ap_check(t, "no user: a passkey made without user verification isn't added", pc_register(t, SK, P3, no_uv) == 401, ap_body(t));
+  // a stolen login: another session sends this session's challenge
+  ch = pc_options(t, "/api/auth/passkey/register/options", SK, false, chb[..]);
+  st = pc_register_with(t, S2, P3, plain, ch, uid);
+  ap_check(t, "a stolen login: a challenge to add a passkey works only in the session that asked", st == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "That passkey request was started somewhere else. Try again here.", ap_body(t));
+  // another account: P1 again, for K2
+  st = pc_register(t, S2, P1, plain);
+  ap_check(t, "another account: a passkey already on another account isn't added", st == 409 || st == 403, ap_body(t));
+  ap_check(t, "every refused add is in the audit log", ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'passkey.add' AND result = 'refused' AND account = '", acct, "'"), out[..]) != "0", "");
+  named := plain; named.name = "Work laptop"; named.aaguid_icloud = false;
+  ap_check(t, "a typed name is kept", pc_register(t, S2, P3, named) == 200 && ap_member(ap_body(t), "name", eb[..]) == "Work laptop", ap_body(t));
+  bad_name := plain; bad_name.name = " padded";
+  ap_check(t, "a name with a space at an end is refused", pc_register(t, S2, P9, bad_name) == 400, ap_body(t));
+
+  // ---- logging in
+  st = pc_login(t, P1, plain);
+  sb1: [160] u8; SP := ac_cookie(t, "__Host-oa_session", sb1[..]);
+  ap_check(t, "a passkey logs in at L2", st == 200 && ap_starts(SP, "oas_")
+           && ap_sql(t, pc_q(q[..], "SELECT via_kind || ' ' || level FROM auth.sessions WHERE account = '", acct, "' ORDER BY created_at DESC LIMIT 1"), out[..]) == "passkey L2", ap_body(t));
+  ap_check(t, "the login is in the audit log", ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'login.passkey' AND account = '", acct, "'"), out[..]) == "1", "");
+  ap_check(t, "the passkey session reads the account", pc_with(t, "GET", "/api/auth/account", "", SP) == 200 && ap_member(ap_body(t), "logged_in", eb[..]) == "true", ap_body(t));
+  with_handle := plain; with_handle.handle = handle; with_handle.count = 0;
+  ap_check(t, "a login that returns the account's user handle", pc_login(t, P1, with_handle) == 200, ap_body(t));
+  wrong_handle := plain; wrong_handle.handle = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+  ap_check(t, "a forged answer: another user handle is refused", pc_login(t, P1, wrong_handle) == 401, ap_body(t));
+  // a stolen login: the browser that asked
+  ap_do(t, "DELETE FROM auth.limit_counts");
+  ch = pc_options(t, "/api/auth/passkey/login/options", "", false, chb[..]);
+  st = pc_answer(t, "/api/auth/passkey/login", ch, P1, plain, "");
+  ap_check(t, "a stolen login: a web login challenge works only in the browser that asked (its cookie)", st == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "That passkey request was started somewhere else. Try again here.", ap_body(t));
+  ch = pc_options(t, "/api/auth/passkey/login/options", "", true, chb[..]);
+  ap_check(t, "an app's login challenge sets no cookie", ac_cookie(t, "__Host-oa_passkey", out[..]) == "", ac_head(t));
+  st = pc_answer(t, "/api/auth/passkey/login", ch, P1, plain, "");
+  ap_check(t, "the app logs in with a passkey: a token pair", st == 200 && ap_has(ap_body(t), "oa_at_") && ap_has(ap_body(t), "oa_rt_"), ap_body(t));
+  st2 = pc_answer(t, "/api/auth/passkey/login", ch, P1, plain, "");
+  ap_check(t, "replay: a login challenge works once", st2 == 401, ap_body(t));
+  // replay: an expired challenge
+  ch = pc_options(t, "/api/auth/passkey/login/options", "", true, chb[..]);
+  ap_do(t, "UPDATE auth.pending SET created_at = now() - interval '6 minutes' WHERE kind = 'passkey' AND done_at IS NULL");
+  st = pc_answer(t, "/api/auth/passkey/login", ch, P1, plain, "");
+  ap_check(t, "replay: a login challenge older than 5 minutes is refused", st == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "That passkey request took too long. Try again.", ap_body(t));
+  // another site, no user, a forged answer
+  ap_check(t, "another site: a login answer for another origin is refused", pc_login(t, P1, evil) == 401, ap_body(t));
+  ap_check(t, "another site: a login answer for another RP ID is refused", pc_login(t, P1, other_rp) == 401, ap_body(t));
+  ap_check(t, "no user: a login without user verification is refused", pc_login(t, P1, no_uv) == 401, ap_body(t));
+  forged := plain; forged.signer = 9;
+  ap_check(t, "a forged answer: another key's signature is refused", pc_login(t, P1, forged) == 401
+           && ap_member(ap_body(t), "error", eb[..]) == "That passkey didn't check out. Try again.", ap_body(t));
+  ap_check(t, "a forged answer: a passkey no account holds is refused", pc_login(t, P9, plain) == 401
+           && ap_has(ap_member(ap_body(t), "error", eb[..]), "isn't on an account here"), ap_body(t));
+  ap_check(t, "every refused login is in the audit log", ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'login.passkey' AND result = 'refused' AND account = '", acct, "'"), out[..]) != "0", "");
+  // a copied passkey: counts 5, then 3
+  counted := plain; counted.count = 5;
+  ap_check(t, "a sign count that goes up logs in", pc_login(t, P2, counted) == 200, ap_body(t));
+  counted.count = 5;
+  st = pc_login(t, P2, counted);
+  ap_check(t, "a copied passkey: the same count again refuses the login", st == 401 && ap_has(ap_member(ap_body(t), "error", eb[..]), "counter went backwards"), ap_body(t));
+  counted.count = 3;
+  st = pc_login(t, P2, counted);
+  ap_check(t, "a copied passkey: a lower count refuses the login, marks the passkey and tells the account", st == 401
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.passkeys WHERE clone_at IS NOT NULL AND account = '", acct, "'"), out[..]) == "1"
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.notices WHERE what = 'passkey.clone' AND account = '", acct, "'"), out[..]) == "2"
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'passkey.clone' AND account = '", acct, "'"), out[..]) == "2", ap_body(t));
+
+  // ---- email takeover and step-up
+  ap_check(t, "the owner links an email", pc_link_email(t, dir, SK, "pk@example.com") == 200, ap_body(t));
+  seb: [160] u8; SE := pc_email(t, dir, "pk@example.com", seb[..]);
+  st = pc_with(t, "GET", "/api/auth/ways", "", SE);
+  ap_check(t, "email takeover: email alone on an account with a passkey is limited, and offers the passkey", st == 200
+           && ap_member(ap_body(t), "limited", eb[..]) == "true" && ap_has(ap_body(t), "passkey"), ap_body(t));
+  st = pc_with(t, "POST", "/api/auth/passkey/register/options", "{}", SE);
+  ap_check(t, "email takeover: a limited session can't add a passkey", st == 401 && ap_member(ap_body(t), "step_up", eb[..]) == "L2", ap_body(t));
+  st = pc_stepup(t, SE, P3, plain);
+  ap_check(t, "another account: a passkey on another account doesn't step this session up", st == 403
+           && ap_member(ap_body(t), "error", eb[..]) == "That passkey isn't on this account. Use one you added.", ap_body(t));
+  st = pc_stepup(t, SE, P1, no_uv);
+  ap_check(t, "no user: a step-up without user verification is refused", st == 401, ap_body(t));
+  ch = pc_options(t, "/api/auth/passkey/step-up/options", SE, false, chb[..]);
+  ap_check(t, "step-up options list the account's passkeys", ap_has(ap_body(t), "\"allowCredentials\":[{"), ap_body(t));
+  st = pc_answer(t, "/api/auth/passkey/step-up", ch, P1, plain, ac_cookie_header("__Host-oa_session", SK, c1[..]));
+  ap_check(t, "a stolen login: a step-up challenge works only in the session that asked", st == 401, ap_body(t));
+  st = pc_stepup(t, SE, P1, plain);
+  ap_check(t, "the account's passkey steps the email session up to L2", st == 200 && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
+  st = pc_with(t, "GET", "/api/auth/ways", "", SE);
+  ap_check(t, "after the step-up the session isn't limited", ap_member(ap_body(t), "limited", eb[..]) == "false" && ap_member(ap_body(t), "level", eb[..]) == "L2", ap_body(t));
+  ap_check(t, "the step-up is in the audit log", ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'stepup' AND result = 'ok' AND detail->>'via' = 'passkey' AND account = '", acct, "'"), out[..]) == "1", "");
+
+  // ---- the list, names, removal
+  st = pc_with(t, "GET", "/api/auth/passkeys", "", SK);
+  ap_check(t, "the list names the passkeys and never shows a key, handle or salt", st == 200 && ap_has(ap_body(t), "\"name\":\"iCloud Keychain\"")
+           && ap_has(ap_body(t), "\"clone\":true") && !ap_has(ap_body(t), handle) && !ap_has(ap_body(t), "public_key"), ap_body(t));
+  st = pc_with(t, "GET", "/api/auth/ways", "", SK);
+  ap_check(t, "the Security page's ways list the passkeys too", st == 200 && ap_has(ap_body(t), "\"passkeys\":[{\"id\":") && !ap_has(ap_body(t), handle), ap_body(t));
+  ib: [24] u8; pid := ap_sql(t, pc_q(q[..], "SELECT min(id) FROM auth.passkeys WHERE account = '", acct, "'"), ib[..]);
+  rp: [1] Sb; sb(rp[..], "/api/auth/passkeys/"); sb(rp[..], pid); sb(rp[..], "/rename");
+  ap_check(t, "a passkey is renamed", pc_with(t, "POST", sb_text(rp[..]), "{\"name\":\"Phone\"}", SK) == 200
+           && ap_sql(t, pc_q(q[..], "SELECT name FROM auth.passkeys WHERE id = ", pid, ""), out[..]) == "Phone", ap_body(t));
+  ap_check(t, "a name over 64 characters is refused", pc_with(t, "POST", sb_text(rp[..]), "{\"name\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}", SK) == 400, ap_body(t));
+  ap_check(t, "another account can't rename it", pc_with(t, "POST", sb_text(rp[..]), "{\"name\":\"Mine\"}", S2) == 404, ap_body(t));
+  ap_check(t, "every rename is in the audit log", ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.audit WHERE action = 'passkey.rename' AND account = '", acct, "'"), out[..]) == "1", "");
+  ub2: [1] Sb; sb(ub2[..], "{\"kind\":\"passkey\",\"id\":"); sb(ub2[..], pid); sb(ub2[..], "}");
+  st = pc_with(t, "POST", "/api/auth/unlink", sb_text(ub2[..]), S2);
+  ap_check(t, "another account can't remove it", st != 200, ap_body(t));
+  sk2b: [160] u8; SK2 := pc_key(t, K1, sk2b[..]);
+  st = pc_with(t, "POST", "/api/auth/unlink", sb_text(ub2[..]), SK2);
+  ap_check(t, "a passkey is removed (unlink, L2 within 5 minutes)", st == 200
+           && ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.passkeys WHERE id = ", pid, ""), out[..]) == "0", ap_body(t));
+  ap_check(t, "a removed passkey no longer logs in", pc_login(t, P1, plain) == 401, ap_body(t));
+
+  // ---- the cap: 20 a person
+  fill: [1] Sb;
+  sb(fill[..], "INSERT INTO auth.passkeys (account, credential_id, user_handle, public_key, alg, sign_count) SELECT '"); sb(fill[..], acct);
+  sb(fill[..], "', 'filler' || g, '"); sb(fill[..], handle); sb(fill[..], "', '\\x00', -7, 0 FROM generate_series(1, 20 - (SELECT count(*) FROM auth.passkeys WHERE account = '");
+  sb(fill[..], acct); sb(fill[..], "')::int) g");
+  ap_do(t, sb_text(fill[..]));
+  ap_check(t, "an account holds at most 20 passkeys", ap_sql(t, pc_q(q[..], "SELECT count(*) FROM auth.passkeys WHERE account = '", acct, "'"), out[..]) == "20"
+           && pc_register(t, SK2, P9, plain) == 409 && ap_member(ap_body(t), "error", eb[..]) == "This account has 20 passkeys. Remove one first.", ap_body(t));
+  ap_do(t, "DELETE FROM auth.passkeys WHERE credential_id LIKE 'filler%'");
+
+  // ---- the offer: once, after an email login, when the account has none
+  snb: [160] u8; SN := pc_email(t, dir, "newcomer@example.com", snb[..]);
+  st = pc_with(t, "GET", "/api/auth/passkeys", "", SN);
+  ap_check(t, "a new email account is offered a passkey", st == 200 && ap_has(ap_body(t), "\"offer\":true"), ap_body(t));
+  ap_check(t, "the offer is marked shown", pc_with(t, "POST", "/api/auth/passkeys/offered", "{}", SN) == 200
+           && pc_with(t, "GET", "/api/auth/passkeys", "", SN) == 200 && ap_has(ap_body(t), "\"offer\":false"), ap_body(t));
+  st = pc_with(t, "GET", "/api/auth/passkeys", "", SK2);
+  ap_check(t, "a key login isn't offered one", ap_has(ap_body(t), "\"offer\":false"), ap_body(t));
+  ap_check(t, "an email account with no stronger way adds a passkey with email alone", pc_register(t, SN, P9, plain) == 200, ap_body(t));
+
+  ap_check(t, "every passkey step is in the audit log",
+           ap_sql(t, pc_q(q[..], "SELECT count(DISTINCT action) FROM auth.audit WHERE account = '", acct, "' AND action IN ('passkey.challenge', 'passkey.add', 'login.passkey', 'passkey.clone', 'stepup', 'passkey.rename', 'unlink')"), out[..]) == "7", "");
+  ap_check(t, "no challenge, key or signature is logged", !ap_has(ap_sql(t, "SELECT string_agg(detail::text, ' ') FROM auth.audit WHERE action LIKE 'passkey%' OR action = 'login.passkey'", out[..]), "challenge\":\""), "");
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) >= 1 && args_at(a[..], 0) == "mail" {
+    if args_count(a[..]) != 3 { tool_errln("passkey_checks mail PORT DIR"); return 2; }
+    return am_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  wb: [4096] u8; work := fs_temp("passkey-mail", wb[..]);
+  h := ac_mail_start(t[..], "coax/web/api/tests/passkey_checks.coax", work);
+  if h < 0 { return ap_done(t[..], "passkey checks"); }
+  pc_checks(t[..], work);
+  ac_mail_stop(h, work);
+  return ap_done(t[..], "passkey checks");
+}

@@ -1,0 +1,130 @@
+// Passkeys against a live site (#13215): headless Chrome with a CDP virtual authenticator (CTAP2,
+// internal, resident keys, user verification) on PASSKEY_LIVE_BASE (https://staging.openagents.com
+// or https://openagents.com), every request the page's own fetch, so the origin and the cookies are
+// the site's. A new test account each run, made by a throwaway Nostr key (signed here, NIP-98):
+//   1. log in with the key; ADD A PASSKEY (register/options, create, register); it is listed
+//   2. log out; log in with the passkey (login/options, get, login): the same account, via passkey
+//   3. the same login answer again is refused (single-use challenges)
+//   4. step up with the passkey, then delete the test account (it is frozen, purged in 30 days)
+// Never the owner's account: the key is made here and forgotten.
+// tool.sh: run-steps 250000000
+//
+//   PASSKEY_LIVE_BASE=https://staging.openagents.com coax/web/tool.sh coax/tests/auth/passkey-live.coax
+#run_steps 250000000;
+#import "Basic";
+#load "../../lib/net/cdp.coax";
+#load "../../lib/nostr/event_sign.coax";
+#load "../../lib/sys/proc.coax";
+
+// The page's helpers: base64url both ways, hex, and fetch with this site's cookies.
+PL_JS :: "window.__pk={b64u:b=>{let s='';for(const x of new Uint8Array(b))s+=String.fromCharCode(x);return btoa(s).split('+').join('-').split('/').join('_').split('=').join('')},unb64u:s=>Uint8Array.from(atob(s.split('-').join('+').split('_').join('/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0)),hex:b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join(''),call:async(m,p,b,h)=>{const r=await fetch(p,{method:m,credentials:'same-origin',headers:Object.assign({'Content-Type':'application/json'},h||{}),body:m==='GET'?undefined:b});const t=await r.text();let j={};try{j=JSON.parse(t)}catch(e){}return {s:r.status,j,t:t.slice(0,400)}}};'ready'";
+PL_KEY :: "(async()=>{const k=__pk.hex(crypto.getRandomValues(new Uint8Array(32)));const c=await __pk.call('POST','/api/auth/nostr/challenge','{}');if(c.s!==200)return {s:c.s,t:c.t};window.__body=JSON.stringify({challenge:c.j.challenge,label:'passkey-live'});const pay=__pk.hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(window.__body)));return {s:200,k,tags:JSON.stringify([['u',location.origin+'/api/auth/nostr'],['method','POST'],['payload',pay]]),at:Math.floor(Date.now()/1000)}})()";
+PL_REGISTER :: "(async()=>{const o=await __pk.call('POST','/api/auth/passkey/register/options','{}');if(o.s!==200)return {s:o.s,t:o.t};const c=await navigator.credentials.create({publicKey:{challenge:__pk.unb64u(o.j.challenge),rp:{id:o.j.rp_id,name:'OpenAgents'},user:{id:__pk.unb64u(o.j.user_id),name:'passkey-live',displayName:'passkey-live'},pubKeyCredParams:[{type:'public-key',alg:-7}],authenticatorSelection:{residentKey:'required',userVerification:'required'},attestation:'none'}});const r=await __pk.call('POST','/api/auth/passkey/register',JSON.stringify({challenge:o.j.challenge,attestation:__pk.b64u(c.response.attestationObject),client_data:__pk.b64u(c.response.clientDataJSON),user_id:o.j.user_id,name:'Live check'}));return {s:r.s,t:r.t}})().catch(e=>({s:0,t:String(e)}))";
+PL_ASSERT_JS :: "window.__assert=async(kind)=>{const o=await __pk.call('POST','/api/auth/passkey/'+kind+'/options','{}');if(o.s!==200)return {s:o.s,t:o.t};const c=await navigator.credentials.get({publicKey:{challenge:__pk.unb64u(o.j.challenge),rpId:o.j.rp_id,userVerification:'required',allowCredentials:(o.j.publicKey&&o.j.publicKey.allowCredentials||[]).map(x=>({type:'public-key',id:__pk.unb64u(x.id)}))}});const r=c.response;const body=JSON.stringify({challenge:o.j.challenge,id:c.id,auth_data:__pk.b64u(r.authenticatorData),client_data:__pk.b64u(r.clientDataJSON),signature:__pk.b64u(r.signature),user_handle:r.userHandle?__pk.b64u(r.userHandle):''});if(kind==='login')window.__lb=body;const a=await __pk.call('POST','/api/auth/passkey/'+kind,body);return {s:a.s,t:a.t}};'ready'";
+
+pl_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+pl_hexval :: (c: u8) -> int { if c >= '0' && c <= '9' { return cast(int) (c - '0'); } if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; } return -1; }
+pl_ok :: (what: string, good: bool, said: string) -> bool {
+  print("% %  %\n", ifx good then "ok  " else "FAIL", what, ifx good then "" else said);
+  return good;
+}
+// Evaluates js and answers its {s, t}: the status (0 when none) and the text into out.
+pl_eval :: (c: [] Cdp, js: string, text: [] u8) -> int {
+  v := cdp_evaluate(c, js);
+  if v < 0 { n := pl_put(text, 0, cdp_error(c)); return 0; }
+  d := c[0].doc[0];
+  for i: 0..<text.count { text[i] = 0; }
+  n := jv_str(d, jv_get(d, v, "t"), text[0..<text.count - 1]);
+  s := jv_raw(d, jv_get(d, v, "s")); st := 0;
+  for ch: s { if ch >= '0' && ch <= '9' { st = st * 10 + cast(int) (ch - '0'); } }
+  return st;
+}
+pl_text :: (t: [] u8) -> string { n := 0; while n < t.count && t[n] != 0 { n += 1; } return cast(string) t[0..<n]; }
+pl_has :: (s: string, want: string) -> bool {
+  if want.count > s.count { return false; }
+  for i: 0..<s.count - want.count + 1 { if s[i..<i + want.count] == want { return true; } }
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  bb: [256] u8; base := proc_getenv("PASSKEY_LIVE_BASE", bb[..]);
+  if base.count == 0 { print("passkey-live: set PASSKEY_LIVE_BASE (https://staging.openagents.com or https://openagents.com)\n"); return 2; }
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], 800, 600, "passkey-live-") { print("passkey-live: %\n", cdp_error(c[..])); return 1; }
+  url: [400] u8; un := pl_put(url[..], 0, "{\"url\":\""); un = pl_put(url[..], un, base); un = pl_put(url[..], un, "/docs/limits\"}");
+  ok := un > 0 && cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) >= 0 && cdp_send(c[..], "Page.navigate", cast(string) url[0..<un]) >= 0;
+  loaded := false;
+  while ok && !loaded {
+    if cdp_poll(c[..], 30000) != CDP_GOT { ok = false; break; }
+    if cdp_event_method(c[0].doc[0]) == "Page.loadEventFired" { loaded = true; }
+  }
+  ok = ok && cdp_call(c[..], "WebAuthn.enable", "{\"enableUI\":false}", CDP_CALL_MS) >= 0;
+  ok = ok && cdp_call(c[..], "WebAuthn.addVirtualAuthenticator", "{\"options\":{\"protocol\":\"ctap2\",\"ctap2Version\":\"ctap2_1\",\"transport\":\"internal\",\"hasResidentKey\":true,\"hasUserVerification\":true,\"isUserVerified\":true,\"automaticPresenceSimulation\":true}}", CDP_CALL_MS) >= 0;
+  ok = ok && cdp_evaluate(c[..], PL_JS) >= 0 && cdp_evaluate(c[..], PL_ASSERT_JS) >= 0;
+  if !ok { print("passkey-live: setup failed: %\n", cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  origin := cdp_evaluate(c[..], "location.origin");
+  print("passkey-live on %\n", jv_raw(c[0].doc[0], origin));
+  good := true; t: [1200] u8;
+
+  // 1. a new test account from a throwaway key (NIP-98, signed here)
+  v := cdp_evaluate(c[..], PL_KEY);
+  d := c[0].doc[0];
+  secret: [32] u8; tags: [512] u8; tn := 0; at := 0; signed := false;
+  if v >= 0 && jv_raw(d, jv_get(d, v, "s")) == "200" {
+    k := jv_raw(d, jv_get(d, v, "k"));
+    for i: 0..<32 { secret[i] = cast(u8) (pl_hexval(k[2*i]) * 16 + pl_hexval(k[2*i+1])); }
+    tn = jv_str(d, jv_get(d, v, "tags"), tags[..]);
+    for ch: jv_raw(d, jv_get(d, v, "at")) { if ch >= '0' && ch <= '9' { at = at * 10 + cast(int) (ch - '0'); } }
+    aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; ev: [4096] u8;
+    r := EVENT_MORE; steps := 0;
+    while r == EVENT_MORE && steps < 4096 { r = nostr_event_sign_step(secret[..], aux[..], at, 27235, cast(string) tags[0..<tn], "", work[..], scratch[..], ev[..], false); steps += 1; }
+    for i: 0..<32 { secret[i] = 0; }
+    if r > 0 {
+      js: [12000] u8; digits := "0123456789abcdef";
+      n := pl_put(js[..], 0, "(async()=>{const ev=new TextDecoder().decode(Uint8Array.from('");
+      for i: 0..<r { js[n] = digits[ev[i] >> 4]; js[n + 1] = digits[ev[i] & 15]; n += 2; }
+      n = pl_put(js[..], n, "'.match(/../g),h=>parseInt(h,16)));const r=await __pk.call('POST','/api/auth/nostr',window.__body,{Authorization:'Nostr '+btoa(ev)});return {s:r.s,t:r.t}})()");
+      st := pl_eval(c[..], cast(string) js[0..<n], t[..]);
+      signed = pl_ok("a new test account logs in with a throwaway key", st == 200, pl_text(t[..]));
+    }
+  }
+  if !signed { print("passkey-live: no test account (%)\n", ifx v >= 0 then jv_raw(d, jv_get(d, v, "t")) else cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  st := pl_eval(c[..], "__pk.call('GET','/api/auth/me').then(r=>({s:r.s,t:r.j.account||''}))", t[..]);
+  acct: [80] u8; an := 0; for ch: pl_text(t[..]) { if an < 80 { acct[an] = ch; an += 1; } }
+  good = pl_ok("the test account is logged in", st == 200 && an > 5, pl_text(t[..])) && good;
+  print("     test account %\n", cast(string) acct[0..<an]);
+
+  st = pl_eval(c[..], PL_REGISTER, t[..]);
+  good = pl_ok("ADD A PASSKEY: the virtual authenticator's passkey is added", st == 200 && pl_has(pl_text(t[..]), "\"added\""), pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/auth/passkeys').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the passkey is listed by its name", st == 200 && pl_has(pl_text(t[..]), "\"name\":\"Live check\""), pl_text(t[..])) && good;
+
+  // 2. log out, then log in with the passkey
+  st = pl_eval(c[..], "__pk.call('POST','/api/auth/logout','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("logged out", st == 200, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/auth/me').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("nobody is logged in", st == 401, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__assert('login').catch(e=>({s:0,t:String(e)}))", t[..]);
+  good = pl_ok("LOG IN WITH A PASSKEY logs in", st == 200, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('GET','/api/auth/me').then(r=>({s:r.s,t:(r.j.account||'')+' '+(r.j.via||'')+' '+(r.j.level||'')}))", t[..]);
+  me := pl_text(t[..]);
+  good = pl_ok("the same account, by passkey, at L2", st == 200 && an > 0 && pl_has(me, cast(string) acct[0..<an]) && pl_has(me, "passkey") && pl_has(me, "L2"), me) && good;
+
+  // 3. the same answer again
+  st = pl_eval(c[..], "__pk.call('POST','/api/auth/passkey/login',window.__lb).then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the same login answer again is refused", st == 401, pl_text(t[..])) && good;
+
+  // 4. step up, then delete the test account
+  st = pl_eval(c[..], "__assert('step-up').catch(e=>({s:0,t:String(e)}))", t[..]);
+  good = pl_ok("USE A PASSKEY confirms it's you", st == 200, pl_text(t[..])) && good;
+  st = pl_eval(c[..], "__pk.call('POST','/api/auth/delete','{}').then(r=>({s:r.s,t:r.t}))", t[..]);
+  good = pl_ok("the test account is deleted (frozen; purged in 30 days)", st == 200 && pl_has(pl_text(t[..]), "deleting"), pl_text(t[..])) && good;
+
+  cdp_close(c[..]);
+  print("passkey-live: %\n", ifx good then "ok" else "FAILED");
+  return ifx good then 0 else 1;
+}

@@ -1,0 +1,238 @@
+// Passkeys: what the API's passkey routes may do (docs/auth/identity-and-methods.md#passkeys-webauthn,
+// #13215). passkeys.c gathers the facts (a challenge row's purpose, age and binding, what
+// webauthn.coax said about a browser's answer, a credential's stored and new sign counts, the
+// account's passkeys) and moves them in; this file decides; passkeys.c moves the answer out and
+// never decides alone. Whether this session may add an authenticator at all is
+// auth-recover-policy.coax's ar_link, the same rule as adding a key.
+//
+//   pk_challenge     a challenge is good once, for its purpose, within 5 minutes, and only where it
+//                    was asked: a login in the browser that asked (its cookie) or the app that asked;
+//                    adding a passkey or stepping up in the same session of the same account
+//   pk_assertion     webauthn.coax's answer about a login or step-up, and the sign counts: logged
+//                    in, refused, or a counter that went backwards (a copied passkey: warn and refuse)
+//   pk_counter       the sign count rule: both zero (a synced passkey keeps none), or larger
+//   pk_add           room for another passkey on the account (at most PK_MAX)
+//   pk_name_ok       a passkey's name as people type it: 1 to 64 bytes, no control bytes, no spaces
+//                    at either end
+//   pk_aaguid_name   the name a passkey gets from its AAGUID ("iCloud Keychain"), or "" for none
+//   pk_offer         offer a passkey once after an email login (D2), when the account has none
+//   pk_uv            user verification is required, on every ceremony
+//   pk_status, pk_words   each verdict's status and the words people see
+#authority;
+
+PK_CHALLENGE_MS :: 300000;   // a challenge works 5 minutes
+PK_MAX :: 20;                // passkeys one account may hold
+PK_NAME_MAX :: 64;
+// Purposes: logging in, adding a passkey (the challenge row's 'link'), stepping up a session.
+PK_LOGIN :: 1; PK_REGISTER :: 2; PK_STEPUP :: 3;
+// webauthn.coax's answers that matter here (coax/lib/crypto/webauthn.coax).
+PK_WA_OK :: 0; PK_WA_COUNTER :: 14;
+// Verdicts.
+PK_OK :: 0; PK_NO_CHALLENGE :: 1; PK_EXPIRED :: 2; PK_ELSEWHERE :: 3; PK_REFUSED :: 4; PK_UNKNOWN :: 5;
+PK_CLONE :: 6; PK_NOT_YOURS :: 7; PK_TOO_MANY :: 8; PK_NAME :: 9; PK_HANDLE :: 10;
+
+#test "the numbers passkeys.c and webauthn.coax share" {
+  #assert PK_CHALLENGE_MS == 300000 && PK_MAX == 20 && PK_NAME_MAX == 64;
+  #assert PK_WA_OK == 0 && PK_WA_COUNTER == 14;
+  #assert pk_uv();
+}
+#test "a login challenge: once, within 5 minutes, in the browser or app that asked" {
+  t := 1000000;
+  #assert pk_challenge(true, PK_LOGIN, PK_LOGIN, t, t, false, true, false, false) == PK_OK;
+  #assert pk_challenge(true, PK_LOGIN, PK_LOGIN, t + PK_CHALLENGE_MS - 1, t, false, true, false, false) == PK_OK;
+  #assert pk_challenge(true, PK_LOGIN, PK_LOGIN, t + PK_CHALLENGE_MS, t, false, true, false, false) == PK_EXPIRED;
+  #assert pk_challenge(true, PK_LOGIN, PK_LOGIN, t - 1, t, false, true, false, false) == PK_EXPIRED;
+  // the web: only the browser that asked (its cookie); the app holds the challenge itself
+  #assert pk_challenge(true, PK_LOGIN, PK_LOGIN, t, t, false, false, false, false) == PK_ELSEWHERE;
+  #assert pk_challenge(true, PK_LOGIN, PK_LOGIN, t, t, true, false, false, false) == PK_OK;
+  #assert pk_challenge(true, PK_LOGIN, PK_LOGIN, t, t, false, false, true, true) == PK_ELSEWHERE;
+  // used, or never asked
+  #assert pk_challenge(false, PK_LOGIN, PK_LOGIN, t, t, false, true, false, false) == PK_NO_CHALLENGE;
+}
+#test "a challenge is for one purpose" {
+  t := 1000000;
+  #assert pk_challenge(true, PK_REGISTER, PK_LOGIN, t, t, false, true, true, true) == PK_NO_CHALLENGE;
+  #assert pk_challenge(true, PK_LOGIN, PK_STEPUP, t, t, false, true, true, true) == PK_NO_CHALLENGE;
+  #assert pk_challenge(true, PK_STEPUP, PK_REGISTER, t, t, false, true, true, true) == PK_NO_CHALLENGE;
+  #assert pk_challenge(true, 0, 0, t, t, false, true, true, true) == PK_NO_CHALLENGE;
+  #assert pk_challenge(true, 4, 4, t, t, false, true, true, true) == PK_NO_CHALLENGE;
+}
+#test "adding a passkey and stepping up: the same account and the same session" {
+  t := 1000000;
+  for p: [2] int.[PK_REGISTER, PK_STEPUP] {
+    #assert pk_challenge(true, p, p, t, t, false, false, true, true) == PK_OK;
+    #assert pk_challenge(true, p, p, t, t, true, false, true, true) == PK_OK;
+    #assert pk_challenge(true, p, p, t, t, false, true, false, true) == PK_ELSEWHERE;
+    #assert pk_challenge(true, p, p, t, t, false, true, true, false) == PK_ELSEWHERE;
+    #assert pk_challenge(true, p, p, t, t, true, true, false, false) == PK_ELSEWHERE;
+    #assert pk_challenge(true, p, p, t + PK_CHALLENGE_MS, t, false, false, true, true) == PK_EXPIRED;
+  }
+}
+#test "sign counts: both zero, or larger than the stored one" {
+  #assert pk_counter(0, 0) && pk_counter(0, 1) && pk_counter(5, 6) && pk_counter(5, 900);
+  #assert !pk_counter(5, 5) && !pk_counter(5, 4) && !pk_counter(5, 0) && !pk_counter(1, 0);
+  #assert !pk_counter(-1, -1) && !pk_counter(0, -1) && !pk_counter(-1, 5) && !pk_counter(-1, 0);
+}
+#test "an assertion logs in, is refused, or warns of a copied passkey" {
+  #assert pk_assertion(PK_WA_OK, 0, 0) == PK_OK && pk_assertion(PK_WA_OK, 3, 4) == PK_OK;
+  // the library said the count went backwards after the signature checked: a clone
+  #assert pk_assertion(PK_WA_COUNTER, 7, 7) == PK_CLONE && pk_assertion(PK_WA_COUNTER, 7, 2) == PK_CLONE;
+  // and the count is checked here too, whatever the library said
+  #assert pk_assertion(PK_WA_OK, 7, 7) == PK_CLONE && pk_assertion(PK_WA_OK, 7, 0) == PK_CLONE;
+  for e: [6] int.[1, 3, 4, 8, 10, 13] { #assert pk_assertion(e, 0, 1) == PK_REFUSED; }
+  #assert pk_assertion(-1, 0, 1) == PK_REFUSED && pk_assertion(16, 0, 1) == PK_REFUSED;
+}
+#test "an account holds at most 20 passkeys" {
+  #assert pk_add(0) == PK_OK && pk_add(19) == PK_OK;
+  #assert pk_add(20) == PK_TOO_MANY && pk_add(21) == PK_TOO_MANY;
+}
+#test "names: 1 to 64 bytes, printable, no spaces at the ends" {
+  #assert pk_name_ok("Work laptop") && pk_name_ok("a") && pk_name_ok("iCloud Keychain");
+  #assert pk_name_ok("Mädchen’s phone");
+  long: [64] u8; for i: 0..<64 { long[i] = 'x'; }
+  #assert pk_name_ok(cast(string) long[..]);
+  over: [65] u8; for i: 0..<65 { over[i] = 'x'; }
+  #assert !pk_name_ok(cast(string) over[..]);
+  #assert !pk_name_ok("") && !pk_name_ok(" a") && !pk_name_ok("a ") && !pk_name_ok(" ");
+  #assert !pk_name_ok("\nab") && !pk_name_ok("a\nb") && !pk_name_ok("a\tb") && !pk_name_ok("a\0b") && !pk_name_ok("a\rb");
+  del: [3] u8; del[0] = 'a'; del[1] = 127; del[2] = 'b'; #assert !pk_name_ok(cast(string) del[..]);
+  us: [3] u8; us[0] = 'a'; us[1] = 31; us[2] = 'b'; #assert !pk_name_ok(cast(string) us[..]);
+  sp: [3] u8; sp[0] = 'a'; sp[1] = 32; sp[2] = 'b'; #assert pk_name_ok(cast(string) sp[..]);
+  hi: [3] u8; hi[0] = 'a'; hi[1] = 126; hi[2] = 128; #assert pk_name_ok(cast(string) hi[..]);
+  #assert pk_name_ok("a b") && pk_name_ok("~") && pk_name_ok("!");
+}
+#test "names from AAGUIDs" {
+  #assert pk_aaguid_name("fbfc3007154e4ecc8c0b6e020557d7bd") == "iCloud Keychain";
+  #assert pk_aaguid_name("dd4ec289e01d41c9bb8970fa845d4bf2") == "iCloud Keychain";
+  #assert pk_aaguid_name("ea9b8d664d011d213ce4b6b48cb575d4") == "Google Password Manager";
+  #assert pk_aaguid_name("adce000235bcc60a648b0b25f1f05503") == "Chrome on Mac";
+  #assert pk_aaguid_name("08987058cadc4b81b6e130de50dcbe96") == "Windows Hello";
+  #assert pk_aaguid_name("9ddd1817af5a4672a2b93e3dd95000a9") == "Windows Hello";
+  #assert pk_aaguid_name("6028b017b1d44c02b4b3afcdafc96bb2") == "Windows Hello";
+  #assert pk_aaguid_name("bada5566a7aa401fbd9645619a55120d") == "1Password";
+  #assert pk_aaguid_name("d548826e79b4db40a3d811116f7e8349") == "Bitwarden";
+  #assert pk_aaguid_name("531126d6e717415c93203d9aa6981239") == "Dashlane";
+  #assert pk_aaguid_name("53414d53554e47000000000000000000") == "Samsung Pass";
+  #assert pk_aaguid_name("50726f746f6e5061737350726f746f6e") == "Proton Pass";
+  #assert pk_aaguid_name("b84e404815dc4dd08640f4f60813c8af") == "NordPass";
+  #assert pk_aaguid_name("0ea242b443c44a1b8b17dd6d0b6baec6") == "Keeper";
+  #assert pk_aaguid_name("771b48fdd3d44f749232fc157ab0507a") == "Edge on Mac";
+  // none (zeros: the browser hid it), unknown, or not 32 hex digits
+  #assert pk_aaguid_name("00000000000000000000000000000000") == "";
+  #assert pk_aaguid_name("fbfc3007154e4ecc8c0b6e020557d7be") == "";
+  #assert pk_aaguid_name("fbfc3007154e4ecc8c0b6e020557d7b") == "" && pk_aaguid_name("") == "";
+  #assert pk_aaguid_name("FBFC3007154E4ECC8C0B6E020557D7BD") == "";
+}
+#test "the passkey is offered once after an email login, when the account has none" {
+  #assert pk_offer(0, false, true);
+  #assert !pk_offer(1, false, true) && !pk_offer(3, false, true);
+  #assert !pk_offer(0, true, true);
+  #assert !pk_offer(0, false, false);
+}
+#test "each verdict has its status and words" {
+  #assert pk_status(PK_OK) == 200;
+  #assert pk_status(PK_NO_CHALLENGE) == 401 && pk_status(PK_EXPIRED) == 401 && pk_status(PK_ELSEWHERE) == 401;
+  #assert pk_status(PK_REFUSED) == 401 && pk_status(PK_UNKNOWN) == 401 && pk_status(PK_CLONE) == 401 && pk_status(PK_HANDLE) == 401;
+  #assert pk_status(PK_NOT_YOURS) == 403;
+  #assert pk_status(PK_TOO_MANY) == 409;
+  #assert pk_status(PK_NAME) == 400;
+  #assert pk_status(99) == 500 && pk_status(-1) == 500;
+  #assert pk_words(PK_OK) == "" && pk_words(99) == "";
+  #assert pk_words(PK_NO_CHALLENGE) == "That passkey request has ended. Try again.";
+  #assert pk_words(PK_EXPIRED) == "That passkey request took too long. Try again.";
+  #assert pk_words(PK_ELSEWHERE) == "That passkey request was started somewhere else. Try again here.";
+  #assert pk_words(PK_REFUSED) == "That passkey didn't check out. Try again.";
+  #assert pk_words(PK_UNKNOWN) == "That passkey isn't on an account here. Log in another way, then add it in Security.";
+  #assert pk_words(PK_CLONE) == "This passkey's counter went backwards, which can mean it was copied. Log in another way and check Security.";
+  #assert pk_words(PK_NOT_YOURS) == "That passkey isn't on this account. Use one you added.";
+  #assert pk_words(PK_TOO_MANY) == "This account has 20 passkeys. Remove one first.";
+  #assert pk_words(PK_NAME) == "A passkey's name is 1 to 64 characters.";
+  #assert pk_words(PK_HANDLE) == "That passkey belongs to another account.";
+}
+
+pk_uv :: () -> bool #export_c #effects(all) { return true; }
+
+// found: an unused challenge row with this value (the API marks it used as it reads it, so a
+// second try finds none). row and want: its purpose and the route's. now and made: milliseconds.
+// app: the app asked (it holds the challenge; no cookie). browser: the request carries the cookie
+// of the browser that asked. account, session: the row names this request's account and session.
+pk_challenge :: (found: bool, row: int, want: int, now_ms: int, made_ms: int, app: bool, browser: bool, account: bool, session: bool) -> int #export_c #effects(all) {
+  if !found || row != want || want < PK_LOGIN || want > PK_STEPUP { return PK_NO_CHALLENGE; }
+  if now_ms < made_ms || now_ms - made_ms >= PK_CHALLENGE_MS { return PK_EXPIRED; }
+  if want == PK_LOGIN {
+    if app || browser { return PK_OK; }
+    return PK_ELSEWHERE;
+  }
+  if account && session { return PK_OK; }
+  return PK_ELSEWHERE;
+}
+
+pk_counter :: (stored: int, got: int) -> bool #export_c #effects(all) {
+  if stored < 0 || got < 0 { return false; }
+  if stored == 0 && got == 0 { return true; }
+  return got > stored;
+}
+
+// wa: webauthn_assert's answer, which checks the signature before the count.
+pk_assertion :: (wa: int, stored: int, got: int) -> int #export_c #effects(all) {
+  if wa == PK_WA_COUNTER { return PK_CLONE; }
+  if wa != PK_WA_OK { return PK_REFUSED; }
+  if !pk_counter(stored, got) { return PK_CLONE; }
+  return PK_OK;
+}
+
+pk_add :: (have: int) -> int #export_c #effects(all) {
+  if have >= PK_MAX { return PK_TOO_MANY; }
+  return PK_OK;
+}
+
+pk_name_ok :: (name: string) -> bool #export_c #effects(all) {
+  if name.count < 1 || name.count > PK_NAME_MAX { return false; }
+  if name[0] == ' ' || name[name.count - 1] == ' ' { return false; }
+  for i: 0..<name.count { c := name[i]; if c < ' ' || c == 127 { return false; } }
+  return true;
+}
+
+// aaguid: 32 lower-case hex digits.
+pk_aaguid_name :: (aaguid: string) -> string #export_c #effects(all) {
+  if aaguid == "fbfc3007154e4ecc8c0b6e020557d7bd" || aaguid == "dd4ec289e01d41c9bb8970fa845d4bf2" { return "iCloud Keychain"; }
+  if aaguid == "ea9b8d664d011d213ce4b6b48cb575d4" { return "Google Password Manager"; }
+  if aaguid == "adce000235bcc60a648b0b25f1f05503" { return "Chrome on Mac"; }
+  if aaguid == "08987058cadc4b81b6e130de50dcbe96" || aaguid == "9ddd1817af5a4672a2b93e3dd95000a9" || aaguid == "6028b017b1d44c02b4b3afcdafc96bb2" { return "Windows Hello"; }
+  if aaguid == "bada5566a7aa401fbd9645619a55120d" { return "1Password"; }
+  if aaguid == "d548826e79b4db40a3d811116f7e8349" { return "Bitwarden"; }
+  if aaguid == "531126d6e717415c93203d9aa6981239" { return "Dashlane"; }
+  if aaguid == "53414d53554e47000000000000000000" { return "Samsung Pass"; }
+  if aaguid == "50726f746f6e5061737350726f746f6e" { return "Proton Pass"; }
+  if aaguid == "b84e404815dc4dd08640f4f60813c8af" { return "NordPass"; }
+  if aaguid == "0ea242b443c44a1b8b17dd6d0b6baec6" { return "Keeper"; }
+  if aaguid == "771b48fdd3d44f749232fc157ab0507a" { return "Edge on Mac"; }
+  return "";
+}
+
+// have: the account's passkeys; offered: it was offered before; email: this session logged in by email.
+pk_offer :: (have: int, offered: bool, email: bool) -> bool #export_c #effects(all) {
+  return have == 0 && !offered && email;
+}
+
+pk_status :: (verdict: int) -> int #export_c #effects(all) {
+  if verdict == PK_OK { return 200; }
+  if verdict >= PK_NO_CHALLENGE && verdict <= PK_CLONE || verdict == PK_HANDLE { return 401; }
+  if verdict == PK_NOT_YOURS { return 403; }
+  if verdict == PK_TOO_MANY { return 409; }
+  if verdict == PK_NAME { return 400; }
+  return 500;
+}
+pk_words :: (verdict: int) -> string #export_c #effects(all) {
+  if verdict == PK_NO_CHALLENGE { return "That passkey request has ended. Try again."; }
+  if verdict == PK_EXPIRED { return "That passkey request took too long. Try again."; }
+  if verdict == PK_ELSEWHERE { return "That passkey request was started somewhere else. Try again here."; }
+  if verdict == PK_REFUSED { return "That passkey didn't check out. Try again."; }
+  if verdict == PK_UNKNOWN { return "That passkey isn't on an account here. Log in another way, then add it in Security."; }
+  if verdict == PK_CLONE { return "This passkey's counter went backwards, which can mean it was copied. Log in another way and check Security."; }
+  if verdict == PK_NOT_YOURS { return "That passkey isn't on this account. Use one you added."; }
+  if verdict == PK_TOO_MANY { return "This account has 20 passkeys. Remove one first."; }
+  if verdict == PK_NAME { return "A passkey's name is 1 to 64 characters."; }
+  if verdict == PK_HANDLE { return "That passkey belongs to another account."; }
+  return "";
+}

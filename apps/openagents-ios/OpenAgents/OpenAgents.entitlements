@@ -6,6 +6,8 @@
 	<array>
 		<string>applinks:openagents.com</string>
 		<string>applinks:staging.openagents.com</string>
+		<string>webcredentials:openagents.com</string>
+		<string>webcredentials:staging.openagents.com</string>
 	</array>
 </dict>
 </plist>

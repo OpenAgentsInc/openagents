@@ -381,6 +381,8 @@ static void ways(const request *q, PGconn *db, const auth_principal *p) {
     if (l + 100 < 8000) l += (size_t)snprintf(lines + l, 8000 - l, "key %s %s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 1));
   }
   PQclear(r);
+  j += (size_t)snprintf(json + j, cap - j, "],\"passkeys\":[");
+  if (p->account[0]) passkeys_rows(db, p->account, json, cap, &j, lines, 8000, &l);
   char methods[200], rec[400], extra[200];
   // An admin page's old key-made login has no account: its key is its one way in.
   recovery_state s = {0};

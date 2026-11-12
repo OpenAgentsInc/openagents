@@ -5,12 +5,18 @@ OpenAgents, and lets you change it. Log in first.
 
 ## Ways in
 
-The page lists your emails and Nostr keys, and says whether you have a recovery code.
+The page lists your emails, Nostr keys and passkeys, and says whether you have a recovery code.
 
+- **ADD A PASSKEY.** Your device makes a passkey for openagents.com and unlocks it with your
+  face, fingerprint or screen lock. It's named after its password manager ("iCloud Keychain",
+  "Google Password Manager"); RENAME changes the name. SYNCED means your password manager keeps
+  it on your other devices. An account holds up to 20 passkeys.
+- **MAY BE COPIED.** A passkey's counter went backwards at a login, which can mean someone
+  copied it. We refused that login and told you. Remove the passkey if you don't know why.
 - **ADD A KEY.** Your browser's Nostr extension (NIP-07) signs a one-time challenge, and the key
   is added. A key that already has its own account can't be added: log in to that account
   instead.
-- **REMOVE.** Removes an email or a key, and ends every login made with it. You can't remove
+- **REMOVE.** Removes an email, a key or a passkey, and ends every login made with it. You can't remove
   the last way in.
 - **NEW RECOVERY CODE.** Makes a 24-word recovery code and shows it once. Write it down. Making a
   new code ends the old one. You can use the code to log in, or to confirm it's you, once; then
@@ -21,14 +27,14 @@ that freezes your account if the change wasn't you.
 
 ## Confirm it's you
 
-Some changes need you to sign with a key, or to type your recovery code:
+Some changes need a passkey or a key, or your recovery code:
 
-- If you logged in with email and your account has a key, you need the key (or the code) to
-  change anything.
-- Removing a way in, making a recovery code and admin changes need a signature from the last 5
-  minutes.
+- If you logged in with email and your account has a passkey or a key, you need it (or the
+  code) to change anything.
+- Removing a way in, making a recovery code and admin changes need a passkey or a signature
+  from the last 5 minutes.
 
-The page asks you when it needs to: choose SIGN WITH YOUR KEY, or type your recovery code. Then it
+The page asks you when it needs to: choose USE A PASSKEY or SIGN WITH YOUR KEY, or type your recovery code. Then it
 makes the change you asked for.
 
 ## Recovery

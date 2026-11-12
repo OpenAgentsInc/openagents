@@ -1,8 +1,8 @@
 import Foundation
 import Security
 
-/// The app's login to openagents.com (coax/web/api/auth.c, docs/auth/; #13206): an email code or
-/// this phone's Nostr key logs in, and the server answers an access token (oa_at_, an hour) and a
+/// The app's login to openagents.com (coax/web/api/auth.c, docs/auth/; #13206): an email code,
+/// a passkey (#13215) or this phone's Nostr key logs in, and the server answers an access token (oa_at_, an hour) and a
 /// refresh token (oa_rt_). Requests carry `Authorization: Bearer <access>`; a stale access token is
 /// renewed first with the refresh token, which the server replaces each time. A refresh token used
 /// twice ends the whole login on the server: then the app forgets it and says "Log in again."
@@ -98,6 +98,37 @@ final class AppAuth: @unchecked Sendable {
         let url = origin + "/api/auth/nostr"
         let auth = try PhoneSignIn.nip98(url: url, body: body, now: clock())
         return try keep(try await said { try await self.post("/api/auth/nostr", raw: body, authorization: auth) })
+    }
+
+    /// A passkey login's challenge (coax/web/api/passkeys.c, #13215): the bytes the passkey signs,
+    /// as sent (base64url), and the site the passkey belongs to.
+    struct PasskeyChallenge: Equatable { let challenge: Data; let text: String; let rpID: String }
+    func passkeyChallenge() async throws -> PasskeyChallenge {
+        let answer = try await said { try await self.post("/api/auth/passkey/login/options", ["client": "app"]) }
+        guard let text = answer["challenge"] as? String, let bytes = AppAuth.unb64url(text), bytes.count == 32,
+              let rp = answer["rp_id"] as? String, !rp.isEmpty else { throw Failure.said("That didn't work. Try again.") }
+        return PasskeyChallenge(challenge: bytes, text: text, rpID: rp)
+    }
+    /// What a passkey answered (ASAuthorizationPlatformPublicKeyCredentialAssertion's fields).
+    struct PasskeyAssertion: Equatable { let credentialID: Data; let authenticatorData: Data; let clientData: Data; let signature: Data; let userHandle: Data? }
+    /// The body POST /api/auth/passkey/login reads.
+    static func passkeyBody(_ c: PasskeyChallenge, _ a: PasskeyAssertion) -> [String: String] {
+        ["challenge": c.text, "id": b64url(a.credentialID), "auth_data": b64url(a.authenticatorData),
+         "client_data": b64url(a.clientData), "signature": b64url(a.signature), "user_handle": a.userHandle.map(b64url) ?? ""]
+    }
+    /// Logs in with the passkey's answer to the challenge: logged in.
+    @discardableResult
+    func passkeyLogin(_ c: PasskeyChallenge, _ a: PasskeyAssertion) async throws -> Tokens {
+        try keep(try await said { try await self.post("/api/auth/passkey/login", AppAuth.passkeyBody(c, a)) })
+    }
+    static func b64url(_ d: Data) -> String {
+        d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+    static func unb64url(_ s: String) -> Data? {
+        guard !s.isEmpty, s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { return nil }
+        var t = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while t.count % 4 != 0 { t += "=" }
+        return Data(base64Encoded: t)
     }
 
     /// Ends this login on the server (best effort) and forgets the tokens.

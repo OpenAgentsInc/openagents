@@ -1,3 +1,4 @@
+import AuthenticationServices
 import XCTest
 @testable import OpenAgents
 
@@ -123,5 +124,33 @@ final class AppAuthTests: XCTestCase {
         await make(server, store).logout()
         XCTAssertNil(store.tokens)
         XCTAssertEqual(server.asked.first?.auth, "Bearer oa_at_A1")
+    }
+
+    func testPasskeyLoginSendsTheAssertionAndKeepsThePair() async throws {
+        let server = Server(), store = Memory()
+        let ch = Data((0..<32).map { UInt8($0) }), chText = AppAuth.b64url(ch)
+        server.answers["/api/auth/passkey/login/options"] = [(200, "{\"challenge\":\"\(chText)\",\"rp_id\":\"openagents.com\",\"timeout\":300000}")]
+        server.answers["/api/auth/passkey/login"] = [(401, "{\"error\":\"That passkey request has ended. Try again.\"}"),
+                                                      (200, "{\"state\":\"logged-in\",\"account\":\"acct_p\",\"access_token\":\"oa_at_P\",\"refresh_token\":\"oa_rt_P\",\"expires_in\":3600}")]
+        let auth = make(server, store)
+        let c = try await auth.passkeyChallenge()
+        XCTAssertEqual(c, AppAuth.PasskeyChallenge(challenge: ch, text: chText, rpID: "openagents.com"))
+        XCTAssertEqual(server.asked[0].body, "{\"client\":\"app\"}")
+        let a = AppAuth.PasskeyAssertion(credentialID: Data([0xfb, 0xff]), authenticatorData: Data([1]), clientData: Data("{}".utf8), signature: Data([0x30]), userHandle: nil)
+        XCTAssertEqual(AppAuth.passkeyBody(c, a), ["challenge": chText, "id": "-_8", "auth_data": "AQ", "client_data": "e30", "signature": "MA", "user_handle": ""])
+        do { try await auth.passkeyLogin(c, a); XCTFail("refused") }
+        catch { XCTAssertEqual(error.localizedDescription, "That passkey request has ended. Try again.") }
+        XCTAssertNil(store.tokens)
+        try await auth.passkeyLogin(c, a)
+        XCTAssertEqual(store.tokens?.access, "oa_at_P"); XCTAssertEqual(store.tokens?.account, "acct_p")
+    }
+
+    func testPasskeyChallengeRefusesABadAnswer() async {
+        let server = Server(), store = Memory()
+        server.answers["/api/auth/passkey/login/options"] = [(200, "{\"challenge\":\"not+base64url\",\"rp_id\":\"openagents.com\"}")]
+        do { _ = try await make(server, store).passkeyChallenge(); XCTFail("bad challenge") }
+        catch { XCTAssertEqual(error.localizedDescription, "That didn't work. Try again.") }
+        XCTAssertNil(AppAuth.unb64url("")); XCTAssertEqual(AppAuth.unb64url("-_8"), Data([0xfb, 0xff]))
+        XCTAssertEqual(PasskeyAsk.words(ASAuthorizationError(.canceled)), "No passkey was used. Try again.")
     }
 }

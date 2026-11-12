@@ -24,8 +24,8 @@ account (a unique index enforces it).
 | `oauth` (connection) | You control a GitHub or Google account | Not a login | No | Repository and file access only |
 
 **The launch set is email and Nostr** (decision D2). Those two ship first,
-on the web and in the apps. Passkeys, device keys, agent keys and
-recovery codes are later steps in the [build order](build-order.md).
+on the web and in the apps. Passkeys followed (#13215); device keys and
+agent keys are later steps in the [build order](build-order.md).
 There is no phone or SMS method, and we never collect phone numbers
 (decision D3).
 
@@ -40,8 +40,7 @@ routes ask for a level ([sessions](sessions-and-tokens.md#middleware)):
 
 This follows NIST SP 800-63B rev. 4 in spirit: syncable passkeys count at
 AAL2 ([NIST SP 800-63B-4](https://csrc.nist.gov/pubs/sp/800/63/b/4/final)).
-Until passkeys ship, an email-only account reaches L2 by adding a Nostr
-key.
+An email-only account reaches L2 by adding a passkey or a Nostr key.
 We don't claim formal AAL conformance.
 
 **No passwords.** Passwords add a hash store, a breach-check service,
@@ -101,6 +100,19 @@ verifies an email you link while logged in.
   Firefox is uneven ([Corbado](https://www.corbado.com/blog/passkeys-prf-webauthn),
   [caniuse](https://caniuse.com/mdn-api_credentialscontainer_get_publickey_option_extensions_prf)).
   So a PRF slot is never the only way to open anything.
+- **Built (#13215):** `coax/web/api/passkeys.c` runs the ceremonies;
+  `passkey-policy.coax` (`#authority`, zero surviving mutants) decides
+  every rule: a challenge is single-use, 5 minutes, and bound to the
+  browser that asked (the `__Host-oa_passkey` cookie), the app, or one
+  session; a sign count that goes backwards refuses the login, marks the
+  passkey and tells the account; an account holds up to 20. Origins are
+  this site's plus `OA_PASSKEY_ORIGINS` (Android's
+  `android:apk-key-hash:` origins). Every step is in the audit log.
+  `coax/web/api/tests/passkey_checks.coax` checks each threat with a
+  software authenticator. Routes: `POST /api/auth/passkey/{login,
+  register,step-up}[/options]`, `GET /api/auth/passkeys`,
+  `POST /api/auth/passkeys/ID/rename`; removal is `/api/auth/unlink`
+  `{"kind":"passkey"}`.
 
 ### Nostr
 

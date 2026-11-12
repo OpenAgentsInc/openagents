@@ -1,0 +1,91 @@
+// The API's door to coax/lib/crypto/webauthn.coax (#13215): the WebAuthn relying-party checks,
+// compiled to C for passkeys.c. Nothing is decided here: webauthn.coax checks a browser's answer
+// (client data, authenticator data, the COSE key and the signature); passkey-policy.coax decides
+// what follows. passkey-verify-unit.c renames the libraries' other exports, which the API's
+// other Coax units export too.
+//
+//   pv_register   webauthn_register: a new passkey's attestationObject and clientDataJSON
+//   pv_assert     webauthn_assert: a login's authenticatorData, clientDataJSON and signature
+//   pv_b64url     base64url without padding (what WebAuthn's JSON and auth.passkeys use)
+//   pv_unb64url   and back: the count, or -1 for anything that isn't base64url
+//   coax/bin/coax test coax/web/api/passkey-verify.coax
+#load "../../lib/crypto/webauthn.coax";
+
+pv_register :: (attestation: [] u8, client_data: [] u8, challenge: [] u8, origin: string, rp_id: string, uv: bool) -> WaRegistration #export_c #effects(all) {
+  return webauthn_register(attestation, client_data, challenge, origin, rp_id, uv);
+}
+pv_assert :: (auth_data: [] u8, client_data: [] u8, signature: [] u8, public_key: [] u8, challenge: [] u8,
+              origin: string, rp_id: string, uv: bool, stored_count: u32, backup_eligible: bool) -> WaAssertion #export_c #effects(all) {
+  return webauthn_assert(auth_data, client_data, signature, public_key, challenge, origin, rp_id, uv, stored_count, backup_eligible);
+}
+// out holds at least (4 * data.count + 2) / 3 bytes.
+pv_b64url :: (data: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if out.count < (4 * data.count + 2) / 3 { return -1; }
+  return wa_b64url(data, out);
+}
+pv_digit :: (c: u8) -> int #effects(all) {
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); }
+  if c >= 'a' && c <= 'z' { return cast(int) (c - 'a') + 26; }
+  if c >= '0' && c <= '9' { return cast(int) (c - '0') + 52; }
+  if c == '-' { return 62; }
+  if c == '_' { return 63; }
+  return -1;
+}
+// Unpadded base64url into out: the count, or -1 (a character outside the alphabet, a length no
+// encoding has, bits left over that aren't zero, or out too small).
+pv_unb64url :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  if text.count % 4 == 1 { return -1; }
+  n := text.count / 4 * 3 + ifx text.count % 4 == 0 then 0 else text.count % 4 - 1;
+  if n > out.count { return -1; }
+  bits := 0; have := 0; k := 0;
+  for i: 0..<text.count {
+    d := pv_digit(text[i]);
+    if d < 0 { return -1; }
+    bits = (bits << 6 | d) & 0xffffff; have += 6;
+    if have >= 8 { have -= 8; out[k] = cast(u8) ((bits >> have) & 255); k += 1; }
+  }
+  if (bits & ((1 << have) - 1)) != 0 { return -1; }
+  return k;
+}
+
+#test "the W3C example registers and logs in through the API's door" #steps 40000000000 #traversal 1073741824 {
+  att: [400] u8; cd: [600] u8; ch: [32] u8;
+  a := cb_unhex(WA_ATTESTATION_HEX, att[..]);
+  reg := pv_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, false);
+  #assert reg.error == WA_OK && reg.alg == COSE_ES256 && reg.id_count == 32 && reg.key_at == 117 && reg.key_count == 77;
+  // the example's authenticator didn't verify its user (UV clear): refused when that is required
+  #assert pv_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, WA_RP, true).error == WA_VERIFICATION;
+  // another origin, another RP ID, another challenge
+  #assert pv_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), "https://evil.example", WA_RP, false).error == WA_ORIGIN;
+  #assert pv_register(a, wa_text(WA_REG_CLIENT, cd[..]), cb_unhex(WA_REG_CHALLENGE, ch[..]), WA_EXAMPLE_ORIGIN, "evil.example", false).error == WA_RP_ID;
+  ch[0] ^= 1;
+  #assert pv_register(a, wa_text(WA_REG_CLIENT, cd[..]), ch[..], WA_EXAMPLE_ORIGIN, WA_RP, false).error == WA_CHALLENGE;
+  ad: [64] u8; sig: [80] u8; gc: [32] u8;
+  d := cb_unhex(WA_AUTH_HEX, ad[..]); s := cb_unhex(WA_SIGNATURE_HEX, sig[..]);
+  got := pv_assert(d, wa_text(WA_GET_CLIENT, cd[..]), s, a[117..<194], cb_unhex(WA_GET_CHALLENGE, gc[..]), WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true);
+  #assert got.error == WA_OK;
+  #assert pv_assert(d, wa_text(WA_GET_CLIENT, cd[..]), s, a[117..<194], cb_unhex(WA_GET_CHALLENGE, gc[..]), WA_EXAMPLE_ORIGIN, WA_RP, true, 0, true).error == WA_VERIFICATION;
+  s[s.count - 1] ^= 1;
+  #assert pv_assert(d, wa_text(WA_GET_CLIENT, cd[..]), s, a[117..<194], cb_unhex(WA_GET_CHALLENGE, gc[..]), WA_EXAMPLE_ORIGIN, WA_RP, false, 0, true).error == WA_SIGNATURE;
+}
+#test "base64url both ways" {
+  out: [96] u8; b: [64] u8; back: [64] u8;
+  inputs := [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+  outputs := [7] string.["", "Zg", "Zm8", "Zm9v", "Zm9vYg", "Zm9vYmE", "Zm9vYmFy"];
+  for i: 0..<7 {
+    n := pv_b64url(wa_text(inputs[i], b[..]), out[..]);
+    #assert cast(string) out[0..<n] == outputs[i];
+    m := pv_unb64url(outputs[i], back[..]);
+    #assert m == inputs[i].count && cast(string) back[0..<m] == inputs[i];
+  }
+  all: [48] u8; for i: 0..<48 { all[i] = cast(u8) ((i * 37 + 11) & 255); }
+  n := pv_b64url(all[..], out[..]); #assert n == 64;
+  m := pv_unb64url(cast(string) out[0..<n], back[..]);
+  #assert m == 48; for i: 0..<48 { #assert back[i] == all[i]; }
+  #assert pv_unb64url("-w", back[..]) == 1 && back[0] == 0xfb && pv_unb64url("-_", back[..]) == -1;
+  // not base64url: padding, the standard alphabet's + and /, a lone character, bits left over, too long
+  #assert pv_unb64url("Zg==", back[..]) == -1 && pv_unb64url("a+b/", back[..]) == -1;
+  #assert pv_unb64url("Z", back[..]) == -1 && pv_unb64url("Zh", back[..]) == -1 && pv_unb64url("Zm9", back[..]) == -1;
+  #assert pv_unb64url("Zm9vYmFy", back[0..<5]) == -1 && pv_unb64url("Zm9vYmFy", back[0..<6]) == 6;
+  #assert pv_b64url(all[..], out[0..<63]) == -1;
+}
