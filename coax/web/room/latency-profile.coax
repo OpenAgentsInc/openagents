@@ -8,21 +8,39 @@
 lp_number::(d:Jv,path:string,want:int)->bool {
   at:=jv_path(d,0,path);if jv_kind(d,at)!=JV_NUMBER{return false;}r:[1]WireRd;v:=wire_num(jv_raw(d,at),r[..]);return r[0].ok&&v==want;
 }
+lp_check::(d:Jv)->bool #effects(all) {
+  if jv_raw(d,jv_get(d,0,"profile"))!="openagents.everglade.latency"||jv_raw(d,jv_get(d,0,"version"))!="1"||jv_raw(d,jv_get(d,0,"prefix"))!="@1"||jv_raw(d,jv_get(d,0,"frame_max"))!="256"{return false;}
+  if jv_raw(d,jv_get(d,0,"check"))!="coax/web/tool.sh coax/web/room/latency-profile.coax proto/verse/everglade-latency-v1.json"{return false;}
+  if !lp_number(d,"integer_max",LAT_MAX)||!lp_number(d,"limits.inflight_per_socket",1)||!lp_number(d,"limits.input_sample_interval_us",LAT_INPUT_US)||!lp_number(d,"limits.clock_sample_interval_us",LAT_PING_US)||!lp_number(d,"limits.inflight_deadline_us",LAT_DEADLINE_US)||!lp_number(d,"limits.client_history",64){return false;}
+  rows:=jv_get(d,0,"messages");if jv_len(d,rows)!=4{return false;}
+  kinds:=[4]string.["p","p","i","d"];
+  for i:0..<4 {
+    row:=jv_at(d,rows,i);source:[LAT_FRAME]u8;wrote:[LAT_FRAME]u8;
+    count:=jv_str(d,jv_get(d,row,"text"),source[..]);if count<1{return false;}canonical:=cast(string)source[0..<count];
+    server:=i==1||i==3;if jv_raw(d,jv_get(d,row,"direction"))!=(ifx server then "server" else "client")||jv_raw(d,jv_get(d,row,"kind"))!=kinds[i]{return false;}
+    m:=lat_decode(canonical,server);
+    if !m.ok||lat_decode(canonical,!server).ok||m.count!=jv_len(d,jv_get(d,row,"fields"))||lat_encode(m,wrote[..])!=count||cast(string)wrote[0..<count]!=canonical{return false;}
+    names:=[11]string.["id","input_seq","state_tick","client_send","input_receive","step_begin","step_end","simulation_end","serialize_begin","serialize_end","accepted_D_queue"];
+    if i<2{names[1]="client_send";names[2]="server_receive";names[3]="server_encode";}if i==2{names[2]="client_send";}
+    fields:=jv_get(d,row,"fields");for q:0..<m.count{if jv_raw(d,jv_at(d,fields,q))!=names[q]{return false;}}
+  }
+  refused:=jv_get(d,0,"refused");if jv_kind(d,refused)!=JV_ARRAY||jv_len(d,refused)<3{return false;}
+  for i:0..<jv_len(d,refused) {
+    bad:[LAT_FRAME]u8;bn:=jv_str(d,jv_at(d,refused,i),bad[..]);
+    if bn<1{return false;}
+    s:=cast(string)bad[0..<bn];
+    if lat_decode(s,false).ok||lat_decode(s,true).ok{return false;}
+  }
+  return true;
+}
+#test "Latency v1 profile tool rejects incomplete or drifted profiles" {
+  nodes:[512]JvNode;d:[1]Jv;
+  #assert jv_parse(d[..],"{\"profile\":\"openagents.everglade.latency\",\"version\":1}",nodes[..]);
+  #assert !lp_check(d[0]);
+}
 tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1{return 2;}
   text:[32768]u8;n:=fs_read(args_at(a[..],0),text[..]);nodes:[1024]JvNode;d:[1]Jv;
-  if n<1||!jv_parse(d[..],cast(string)text[0..<n],nodes[..]){return 1;}
-  if jv_raw(d[0],jv_get(d[0],0,"profile"))!="openagents.everglade.latency"||jv_raw(d[0],jv_get(d[0],0,"version"))!="1"||jv_raw(d[0],jv_get(d[0],0,"frame_max"))!="256"{return 1;}
-  if !lp_number(d[0],"integer_max",LAT_MAX)||!lp_number(d[0],"limits.inflight_per_socket",1)||!lp_number(d[0],"limits.input_sample_interval_us",LAT_INPUT_US)||!lp_number(d[0],"limits.clock_sample_interval_us",LAT_PING_US)||!lp_number(d[0],"limits.inflight_deadline_us",LAT_DEADLINE_US)||!lp_number(d[0],"limits.client_history",64){return 1;}
-  rows:=jv_get(d[0],0,"messages");if jv_len(d[0],rows)!=4{return 1;}
-  for i:0..<4 {
-    row:=jv_at(d[0],rows,i);source:[LAT_FRAME]u8;wrote:[LAT_FRAME]u8;
-    count:=jv_str(d[0],jv_get(d[0],row,"text"),source[..]);if count<1{return 1;}canonical:=cast(string)source[0..<count];
-    server:=i==1||i==3;if jv_raw(d[0],jv_get(d[0],row,"direction"))!=(ifx server then "server" else "client"){return 1;}m:=lat_decode(canonical,server);
-    if !m.ok||m.count!=jv_len(d[0],jv_get(d[0],row,"fields"))||lat_encode(m,wrote[..])!=count||cast(string)wrote[0..<count]!=canonical{return 1;}
-    names:=[11]string.["id","input_seq","state_tick","client_send","input_receive","step_begin","step_end","simulation_end","serialize_begin","serialize_end","accepted_D_queue"];
-    if i<2{names[1]="client_send";names[2]="server_receive";names[3]="server_encode";}if i==2{names[2]="client_send";}
-    fields:=jv_get(d[0],row,"fields");for q:0..<m.count{if jv_raw(d[0],jv_at(d[0],fields,q))!=names[q]{return 1;}}
-  }
-  print("latency v1: independent four-frame fixture decode/canonical round trips pass\n");return 0;
+  if n<1||!jv_parse(d[..],cast(string)text[0..<n],nodes[..])||!lp_check(d[0]){print("everglade-latency-v1: profile fails\n");return 1;}
+  print("everglade-latency-v1: profile holds\n");return 0;
 }

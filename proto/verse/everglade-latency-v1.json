@@ -1,6 +1,8 @@
 {
   "profile": "openagents.everglade.latency",
   "version": 1,
+  "codec": "aethyr/net/latency.coax",
+  "check": "coax/web/tool.sh coax/web/room/latency-profile.coax proto/verse/everglade-latency-v1.json",
   "transport": "optional WebSocket text frames beside an unchanged Everglade session",
   "prefix": "@1",
   "clock_unit": "integer monotonic microseconds",
@@ -11,6 +13,12 @@
     {"direction": "server", "kind": "p", "fields": ["id", "client_send", "server_receive", "server_encode"], "text": "@1 p 1 1000000 2000010 2000020"},
     {"direction": "client", "kind": "i", "fields": ["id", "input_seq", "client_send"], "text": "@1 i 2 7 1000100"},
     {"direction": "server", "kind": "d", "fields": ["id", "input_seq", "state_tick", "client_send", "input_receive", "step_begin", "step_end", "simulation_end", "serialize_begin", "serialize_end", "accepted_D_queue"], "text": "@1 d 2 7 42 1000100 2000110 2000120 2000125 2000130 2000131 2000135 2000140"}
+  ],
+  "refused": [
+    "@2 p 1 1000000",
+    "@1 p 0 1000000",
+    "@1 p 1 9007199254740992",
+    "@1 i 2 7"
   ],
   "limits": {
     "inflight_per_socket": 1,
