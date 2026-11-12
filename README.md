@@ -54,7 +54,8 @@ the argument the books share, the order to read them in and a
   agent we can read.
 
 In progress: [**Building Everglade**](everglade/book/README.md), an MMORPG
-on the D&D 5E SRD with action combat, built from scratch on Aethyr in Coax.
+on the D&D 5E SRD with action combat and rooms of up to 16 players, built
+from scratch on Aethyr in Coax.
 Chapters 1 to 18 are drafted; none is complete yet.
 
 For a short core path in each book, and routes you can run from a terminal

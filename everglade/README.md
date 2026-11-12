@@ -6,6 +6,11 @@ combat: you aim, move and act in real time, and the SRD's rules decide the
 outcome. It runs on the Aethyr engine, is written in Coax and is a realm in
 the Verse.
 
+Up to 16 players share a room. When a room is full, the next player joins
+another room. The number is `WIRE_SEATS` in
+[`everglade-wire.coax`](../apps/openagents-web/everglade-wire.coax), which the
+room server's `EG_SEATS` matches.
+
 - To play, go to [everglade.world/play](https://everglade.world/play).
 - To build it from scratch, read [Building Everglade](book/README.md).
 - For system specs that aren't book chapters yet, see [Everglade design docs](docs/README.md),

@@ -354,7 +354,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--migrations") && i + 1 < argc) { snprintf(migrations_dir, sizeof migrations_dir, "%s", argv[++i]); migrations = true; }
     else if (!strcmp(argv[i], "--migrate-only")) migrate_only = true;
     else if (!strcmp(argv[i], "--rules")) { auth_print_rules(stdout); return 0; }    // every route's rule
-    else if (!strcmp(argv[i], "--limits")) { auth_print_limits(stdout); lnaddr_print_limits(stdout); makers_print_limits(stdout); npc_print_limits(stdout); return 0; }  // docs/limits/index.md
+    else if (!strcmp(argv[i], "--limits")) { auth_print_limits(stdout); lnaddr_print_limits(stdout); makers_print_limits(stdout); npc_print_limits(stdout); rooms_print_limits(stdout); return 0; }  // docs/limits/index.md
     else if (!strcmp(argv[i], "--rule") && i + 2 < argc) { const char *r = auth_rule_of(argv[i + 1], argv[i + 2]); printf("%s\n", r ? r : "none"); return r ? 0 : 1; }
   }
   auth_init();

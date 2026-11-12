@@ -114,6 +114,9 @@ WIRE_SERVER_FRAME :: 3800; // a server's
 // off at worst, which a walk keeps as a sideways drift of up to 5 mm a metre from where you face.
 WIRE_FINE :: 10000;
 WIRE_HZ :: 30; WIRE_AWAY_MS :: 3000;             // the tick, and a page's steps
+// A room's players at most (#13263): the room's EG_SEATS and RELAY_SEATS are this (room.coax's check);
+// the API's ROOM_SEATS and verse.room_max() say it again. The 17th is placed in another room.
+WIRE_SEATS :: 16;
 // the sky the server runs (#12709): its day, 48 minutes (verse/style-preset.coax STYLE_CYCLE_SECONDS),
 // and the weather's schedule seed (everglade.coax EG_WEATHER_SEED), on the temperate climate
 WIRE_DAY_MS :: 2880000; WIRE_WEATHER_SEED :: 0xe7e5;

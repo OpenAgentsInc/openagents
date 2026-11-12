@@ -510,6 +510,7 @@ e2k_bar_draw :: (s: [] E2, out: [] f32, at: int) -> int {
   refused := e2n_rest_message(s[0].net[..]);   // a refused cast greys its slot instead (#13072)
   if refused.count == 0 { refused = e2n_aid_message(s[0].net[..]); }
   if refused.count == 0 { refused = e2n_familiar_message(s[0].net[..]); }
+  if refused.count == 0 { refused = e2n_full_message(s[0].net[..]); }   // the room you asked was full, and where you went (#13263)
   // over the bar's emblem (the class's initial: its name is on the portrait plate)
   return eg_bar_refused(ui, out, n, refused, w * 0.5, ifx refused.count > 0 then e2k_bar_top(s) else 0.0f32, kk);
 }

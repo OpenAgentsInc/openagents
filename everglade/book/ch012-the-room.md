@@ -45,7 +45,11 @@ room.
 | Casts | The room checks the slot, the aim, a 0.8 s cooldown and the range. Then it sends the cast to every page within 120 m. | `everglade2-cast.coax`, `room-everglade.coax` |
 | Interest | The room sends you the players within 110 m and drops them past 130 m. The page fades a body in and out over 0.6 s. | `room-interest.coax`, `everglade2.coax` |
 
-A room seats 16 players.
+A room seats 16 players (`EG_SEATS` in `room-everglade.coax`, `WIRE_SEATS` on
+the page). When the room you ask for is full, the API places you in another
+room, and the page says so over the bar: `ROOM 3 HAS 16 PLAYERS · JOINING
+ROOM 5`. When every room is full, the page says
+`EVERY ROOM HAS 16 PLAYERS · TRYING AGAIN` and asks again.
 
 ## The method
 

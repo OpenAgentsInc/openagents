@@ -281,6 +281,14 @@ static void stats(const request *q, PGconn *db) {
 }
 
 // rest: the path after /api/playtest/. True when it was one of these routes (answered).
+// api --limits: the rooms' section of /docs/limits, after the character chat's (#13263).
+void rooms_print_limits(FILE *out) {
+  fprintf(out, "\n## Playing Everglade\n\nWhen a room is full, we place you in another room and say which.\n\n"
+               "| What | Limit |\n| --- | --- |\n");
+  fprintf(out, "| Players in one room | %d |\n", ROOM_SEATS);
+  fprintf(out, "\nThis section is made from the server's own number (`ROOM_SEATS`, `coax/web/api/api.h`).\n");
+}
+
 bool rooms_route(const request *q, PGconn *db, const char *rest) {
   if (!strcmp(rest, "room-directory")) { report(q, db); return true; }
   if (!strcmp(rest, "room-stats")) { stats(q, db); return true; }

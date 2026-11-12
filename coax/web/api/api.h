@@ -42,7 +42,8 @@ bool chat_route(const request *q);        // chat.c
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
 bool player_route(const request *q);      // player.c
 bool rooms_route(const request *q, PGconn *db, const char *rest);   // rooms.c: the Everglade instance directory (#12717)
-#define ROOM_SEATS 16   // an Everglade room's seats: coax/web/room/room-relay.coax RELAY_SEATS
+#define ROOM_SEATS 16   // an Everglade room's seats: the pages' WIRE_SEATS (everglade-wire.coax), the room's EG_SEATS and RELAY_SEATS
+void rooms_print_limits(FILE *out);       // api --limits: the rooms' section of /docs/limits (rooms.c)
 bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, const char *build, char *code, size_t cap, int *shard, bool *full);
 int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until);
 bool rooms_endpoint(PGconn *db, int shard, char *out, size_t cap);   // rooms.c: a live VM shard's wss:// endpoint (#13179)

@@ -8,7 +8,9 @@ This piece is Character Create's glade, one winding path out of it through dense
 clearing at the path's end. Beside the path, a short walk from the glade, the woods open onto the
 city's clearing, where the city will be built, with a brook along its east edge (#13093). It has
 no town, gate, walls, people, raid, or HUD yet. You walk the
-character you saved in Character Create, on Everglade's controller and follow camera.
+character you saved in Character Create, on Everglade's controller and follow camera. Up to 16
+players share a room (`EG_SEATS` in `coax/web/room/room-everglade.coax`); when a room is full, the
+next player joins another.
 
 ## Walk it
 

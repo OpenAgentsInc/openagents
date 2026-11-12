@@ -31,7 +31,7 @@
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "join:"
 
 NET_PIPE_ROOMS :: 6;       // the pipe's ask for the instance list: its bytes the API path to GET (the face carries it)
-JN_ROOM_SEATS :: 16;       // an instance's seats (the room server's RELAY_SEATS), said in the picker
+JN_ROOM_SEATS :: WIRE_SEATS;   // an instance's seats (everglade-wire.coax), said in the picker
 JN_COPIED_MS :: 2000;      // ms INVITE says the link is copied
 JN_ARRIVE_MS :: 1600;      // ms the Grid's arrival takes to fade
 JN_SKINS :: 5;             // SKIN_TONE's rows (everglade-rangers.coax LOOK_SKINS)

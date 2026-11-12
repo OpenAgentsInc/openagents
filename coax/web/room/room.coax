@@ -191,6 +191,11 @@ rm_start_check :: (v: [] RmServer) -> int #export_c #effects(all) {
   return bad;
 }
 
+// The room's size is one number: what the pages say (WIRE_SEATS) is what the room seats (#13263).
+#test "start: a room seats WIRE_SEATS players, the number the pages say" {
+  #assert EG_SEATS == WIRE_SEATS && RELAY_SEATS == WIRE_SEATS;
+}
+
 #test "start: rm_init keeps every declared default (cap 2, levels on, seats -1)" {
   v: [1] RmServer;
   rm_init(v[..]);

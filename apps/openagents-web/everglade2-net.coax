@@ -98,6 +98,7 @@ E2Net :: struct {
   direct_blocked: bool;          // a shard's own endpoint never opened (a network that blocks its port): the load balancer's path from then on
   wout: [NET_DATAGRAM_MAX] u8;   // a frame as the pipe carries it (net_conn_frame, net_conn_input)
   said: [E2N_SAY] u8; said_n: int; said_at: int;
+  full: [E2N_SAY] u8; full_n: int; full_at: int = -100000;   // a full room, as said over the bar (e2n_full_message, #13263)
   klass: int = 3;               // your Character Create class (FB_CL_*: the druid until it says), the hello's srd-*
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
   ent_class: [E2N_ENTS] int;    // each other player's class (FB_CL_*, -1 none) from its n row's CLASS: the kit their body carries
@@ -258,7 +259,11 @@ e2n_realm_instance :: (code: string) -> bool {
 // The ticket's answer: the ticket, the instance and shard the directory placed you in, your name.
 e2n_ticket :: (n: [] E2Net, answer: string) {
   n[0].ticket_asked = false; n[0].ticket_n = 0;
-  if answer.count <= 4 || answer[0..<4] != "200\n" { e2n_down(n); return; }
+  if answer.count <= 4 || answer[0..<4] != "200\n" {
+    // every room is full: the API says how many wait, and the page asks again (player.c room_ticket)
+    if answer[0..<4] == "503\n" && net_json_field(answer, "waiting").count > 0 { e2n_full(n, "", ""); }
+    e2n_down(n); return;
+  }
   tk := net_json_field(answer, "ticket");
   if tk.count == 0 || tk.count > NET_TICKET { e2n_down(n); return; }
   n[0].ticket_n = net_copy(n[0].ticket[..], tk);
@@ -283,8 +288,34 @@ e2n_ticket :: (n: [] E2Net, answer: string) {
     m = wire_put(n[0].url[..], m, room);
     n[0].url_n = m;
   }
+  // the room you asked for was full: the directory placed you in another, and the page says which
+  if net_json_field(answer, "full") == "true" && net_json_field(answer, "asked").count > 0 { e2n_full(n, net_json_field(answer, "asked"), room); }
   name := net_json_field(answer, "name");
   if name.count > 0 { e2n_name_is(n, name); }
+}
+// A full room, said over the bar for E2N_FULL_MS: ROOM 3 HAS 16 PLAYERS · JOINING ROOM 5, or with no
+// room asked, every room full (EVERY ROOM HAS 16 PLAYERS · TRYING AGAIN). The number is WIRE_SEATS.
+E2N_FULL_MS :: 8000;
+e2n_full :: (n: [] E2Net, asked: string, placed: string) {
+  t: [E2N_SAY] u8; k := 0;
+  if asked.count == 0 { k = wire_put(t[..], 0, "EVERY ROOM HAS"); }
+  else { k = e2n_room_name(t[..], 0, asked, "THAT ROOM"); k = wire_put(t[..], k, " HAS"); }
+  k = wire_int(t[..], k, WIRE_SEATS); k = wire_put(t[..], k, " PLAYERS");
+  if asked.count == 0 { k = wire_put(t[..], k, " · TRYING AGAIN"); }
+  else { k = e2n_room_name(t[..], wire_put(t[..], k, " · JOINING "), placed, "ANOTHER"); }
+  e2n_tell(n, cast(string) t[0..<k]);
+  for i: 0..<k { n[0].full[i] = t[i]; }
+  n[0].full_n = k; n[0].full_at = n[0].mono;
+}
+// A realm instance's name as a player reads it (everglade2-3: ROOM 3), else other.
+e2n_room_name :: (t: [] u8, at: int, code: string, other: string) -> int {
+  if !e2n_realm_instance(code) { return wire_put(t, at, other); }
+  r := E2N_REALM;
+  return wire_put(t, wire_put(t, at, "ROOM "), code[r.count + 1..<code.count]);
+}
+e2n_full_message :: (n: [] E2Net) -> string {
+  age := n[0].mono - n[0].full_at;
+  return ifx age >= 0 && age < E2N_FULL_MS then cast(string) n[0].full[0..<n[0].full_n] else "";
 }
 e2n_name_is :: (n: [] E2Net, name: string) {
   m := 0;
@@ -351,6 +382,19 @@ e2n_named :: (n: [] E2Net, answer: string) -> E2nNamed {
   #assert cast(string) l[0].url[0..<l[0].url_n] == "ws://localhost:8945/api/room/relay/everglade/pair-e2-ab-1";
   // a refusal: no ticket, and the next ask waits
   m: [1] E2Net; e2n_ticket(m[..], "503\n{}"); #assert m[0].ticket_n == 0 && m[0].state == E2N_DOWN && m[0].tries == 1;
+}
+#test "a full room is said: the room you asked, its size and the room the directory placed you in (#13263)" {
+  n: [1] E2Net; n[0].mono = 5000;
+  e2n_facts(n[..], "url=https://openagents.com/worlds/everglade2\nplayer=p-1\n", false);
+  #assert e2n_full_message(n[..]) == "";
+  e2n_ticket(n[..], "200\n{\"ticket\":\"t\",\"room\":\"everglade2-5\",\"shard\":1,\"full\":true,\"asked\":\"everglade2-3\"}");
+  #assert e2n_full_message(n[..]) == "ROOM 3 HAS 16 PLAYERS · JOINING ROOM 5";
+  n[0].mono += E2N_FULL_MS; #assert e2n_full_message(n[..]) == "";
+  // a room not full says nothing
+  q: [1] E2Net; e2n_ticket(q[..], "200\n{\"ticket\":\"t\",\"room\":\"everglade2-5\",\"shard\":1}"); #assert e2n_full_message(q[..]) == "";
+  // every room full: the page waits and asks again
+  w: [1] E2Net; e2n_ticket(w[..], "503\n{\"error\":\"every room is full: try again in a minute\",\"waiting\":3,\"retry_ms\":20000}");
+  #assert e2n_full_message(w[..]) == "EVERY ROOM HAS 16 PLAYERS · TRYING AGAIN" && w[0].state == E2N_DOWN;
 }
 
 // ---- the socket

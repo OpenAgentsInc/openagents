@@ -67,3 +67,13 @@ Each question needs your player key. When you reach a limit, we say which and wh
 | Answers from characters, all players | 2000 a day |
 
 This section is made from the server's own numbers (`coax/web/api/npc.c`).
+
+## Playing Everglade
+
+When a room is full, we place you in another room and say which.
+
+| What | Limit |
+| --- | --- |
+| Players in one room | 16 |
+
+This section is made from the server's own number (`ROOM_SEATS`, `coax/web/api/api.h`).

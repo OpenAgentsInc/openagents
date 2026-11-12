@@ -26,7 +26,8 @@ It aims to follow the SRD's rules faithfully: classes, spells, conditions,
 attack rolls, saving throws and turn timing. It changes only what real-time
 play needs. You aim, move and act as things happen, and the SRD's rules decide
 the outcome. You play it free in your browser at
-[everglade.world](https://everglade.world).
+[everglade.world](https://everglade.world). Up to 16 players share a room.
+When a room is full, the next player joins another room.
 
 This book shows you how to build Everglade from scratch, one working piece at a
 time, with these tools:

@@ -25,7 +25,7 @@ For Coax language terms, see the
 | Realm | One world in the Verse. A realm is a document and a link. | Aethyr 51 |
 | The Grid | The bare shared world you walk into from the home page. | Aethyr 56 |
 | Zone | A named place inside a realm, such as the glade. | Everglade |
-| Room | One server-owned simulation that every seated player sees the same way. | Aethyr 86 |
+| Room | One server-owned simulation that every seated player sees the same way. An Everglade room seats 16 players (`EG_SEATS`). | Aethyr 86 |
 | Seat | One player's place in a room. A signed ticket proves who sits in it. | Aethyr 88 |
 | Shard | One server process that hosts rooms. | Aethyr 101 |
 | Step | One fixed advance of simulation time. Drawing happens between steps. | Aethyr 1 |
