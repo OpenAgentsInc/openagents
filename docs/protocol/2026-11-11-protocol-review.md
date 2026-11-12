@@ -4,6 +4,11 @@ Date: 2026-11-11. Owner request: review the pre-Nuke OpenAgents Protocol,
 decide whether to bring it back, sync it with the OpenAgents book, and decide
 whether every part of the codebase (chat first) should use its schemas.
 
+Follow-up: the [compliance plan](2026-11-11-compliance-plan.md) checks this
+review against the code, corrects it (the Everglade profiles pin a hand-packed
+codec, and Coax does not generate JSON mappers yet), and orders the work for
+Coder and Everglade.
+
 ## Summary
 
 The protocol already came back. The spec
