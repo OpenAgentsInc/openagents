@@ -14,7 +14,19 @@
 #                                                 VM, run it as oa-room@staging and check its health
 #   coax/web/room/vm-deploy.sh deploy             promote the release staging runs to the production
 #                                                 shards, one at a time: drain, restart, healthy
+#   coax/web/room/vm-deploy.sh deploy --staging --seed-tick-us N
+#                                                 a seeded bad build for a canary's own check: every tick
+#                                                 busy N microseconds more. Its release is named "-seeded",
+#                                                 and no production shard ever takes one
 #   coax/web/room/vm-deploy.sh rollback           the previous production release, the same way
+#   coax/web/room/vm-deploy.sh rollback --staging the staging unit back on the release before its last
+#   coax/web/room/vm-deploy.sh canary K           production shard K alone onto staging's release (drained,
+#                                                 restarted, healthy): the canary of a release
+#                                                 (coax/web/release-set.coax, #13299); the rest follow with
+#                                                 `deploy`, which leaves the canary running
+#   coax/web/room/vm-deploy.sh canary-back        the canary shard back on production's release
+#   coax/web/room/vm-deploy.sh releases           each link's release, a line each: current, previous,
+#                                                 staging, staging-previous, canary
 #   coax/web/room/vm-deploy.sh switch vm|run      production's /api/room/ rules (openagents.com and
 #                                                 everglade.world) to the VM or back to Cloud Run
 #   coax/web/room/vm-deploy.sh switch staging-vm|staging-run    the same for staging.openagents.com
@@ -179,22 +191,26 @@ stage() {   # the room's C sources, staged on a build host (Coax to C runs the u
   echo "$out"
 }
 # The release's name: the commit, "+" when the checkout had changes, and the time.
-release_name() {
+release_name() {   # [seeded]
   local c; c="$(git rev-parse --short=10 HEAD)"
   [[ -z "$(git status --porcelain -- coax/web/room apps/openagents-web verse aethyr 2>/dev/null)" ]] || c="$c+"
-  echo "$c-$(date -u +%Y%m%d%H%M%S)"
+  echo "$c-$(date -u +%Y%m%d%H%M%S)${1:+-seeded}"
 }
 # Upload OUT/src and compile it on the VM (Debian bookworm's gcc, the steps Cloud Run's image runs),
 # into /opt/oa-room/releases/NAME/room; the start check must hold.
-build_on_vm() {
-  local out="$1" name="$2"
+build_on_vm() {   # out name [seed-tick-us]
+  local out="$1" name="$2" seed="${3:-}"
+  [[ -z "$seed" || "$seed" =~ ^[1-9][0-9]{0,6}$ ]] || { echo "room-vm: --seed-tick-us takes microseconds (1 to 9999999)" >&2; exit 2; }
+  # libcurl's headers: the room's posters hold one libcurl handle each (room-host.c post_do, #13300);
+  # vm/setup.sh installs them on a new VM, and a VM from before gets them here
   COPYFILE_DISABLE=1 tar -C "$out" -czf - src |
     on_vm "set -e; r=/opt/oa-room/releases/$name; sudo rm -rf \"\${r:?}\"; sudo mkdir -p \"\$r\"; sudo tar -xzf - -C \"\$r\" 2>/dev/null
-      cd \"\$r/src\" && sudo nice -n 10 sh compile.sh \"\$r/room\" >\"/tmp/compile-$name.log\" 2>&1 || { tail -30 \"/tmp/compile-$name.log\"; exit 1; }
+      dpkg -s libcurl4-openssl-dev >/dev/null 2>&1 || { sudo apt-get update -q >/dev/null 2>&1; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends libcurl4-openssl-dev >/dev/null; }
+      cd \"\$r/src\" && sudo env OA_ROOM_SEED_TICK_US=$seed nice -n 10 sh compile.sh \"\$r/room\" >\"/tmp/compile-$name.log\" 2>&1 || { tail -30 \"/tmp/compile-$name.log\"; exit 1; }
       sudo rm -rf \"\${r:?}/src\"; \"\$r/room\" --start-check" ||
     { echo "room-vm: the build on $vm failed" >&2; exit 1; }
   # keep the five newest releases and every one a unit points at
-  on_vm "cd /opt/oa-room/releases && keep=\"\$(readlink -f /opt/oa-room/current /opt/oa-room/staging /opt/oa-room/previous 2>/dev/null | xargs -n1 basename 2>/dev/null)\";
+  on_vm "cd /opt/oa-room/releases && keep=\"\$(readlink -f /opt/oa-room/current /opt/oa-room/staging /opt/oa-room/previous /opt/oa-room/staging-previous 2>/dev/null | xargs -n1 basename 2>/dev/null; cut -d' ' -f2 /opt/oa-room/canary 2>/dev/null)\";
     ls -1t | tail -n +6 | while read -r d; do echo \"\$keep\" | grep -qx \"\$d\" || sudo rm -rf \"/opt/oa-room/releases/\${d:?}\"; done" || true
 }
 
@@ -256,8 +272,9 @@ drain() {
 }
 active() { on_vm "systemctl is-active oa-room@s$1" 2>/dev/null | grep -qx active; }
 # Every running production shard onto /opt/oa-room/current, one at a time: drained, restarted, healthy.
-restart_shards() {
+restart_shards() {   # [SKIP]: a shard that already runs the release (the canary)
   for k in $(seq 1 "$shards"); do
+    if [[ "$k" == "${1:-}" ]]; then echo "room-vm: shard $k is the canary: it runs the release already"; continue; fi
     if ! active "$k"; then echo "room-vm: shard $k is not running (production is on Cloud Run): left stopped"; continue; fi
     drain "$k" || exit 1
     on_vm "sudo systemctl restart oa-room@s$k"
@@ -268,28 +285,76 @@ restart_shards() {
 deploy() {
   local out name
   if [[ "${1:-}" == --staging ]]; then
-    out="$(stage)"; name="$(release_name)"
-    echo "room-vm: building $name on $vm"
-    build_on_vm "$out" "$name"
-    on_vm "sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/staging && sudo systemctl enable oa-room@staging >/dev/null 2>&1; sudo systemctl restart oa-room@staging"
+    local seed=""
+    if [[ "${2:-}" == --seed-tick-us ]]; then seed="${3:?usage: vm-deploy.sh deploy --staging --seed-tick-us MICROSECONDS}"; fi
+    out="$(stage)"; name="$(release_name ${seed:+seeded})"
+    echo "room-vm: building $name on $vm${seed:+ (a seeded bad build: every tick $seed us longer; staging only)}"
+    build_on_vm "$out" "$name" "$seed"
+    # the release staging ran before stays reachable: vm-deploy.sh rollback --staging
+    on_vm "was=\$(readlink -f /opt/oa-room/staging || true); [ -z \"\$was\" ] || [ \"\$was\" = /opt/oa-room/releases/$name ] || sudo ln -sfn \"\$was\" /opt/oa-room/staging-previous
+      sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/staging && sudo systemctl enable oa-room@staging >/dev/null 2>&1; sudo systemctl restart oa-room@staging"
     wait_healthy staging
     symbols "$name" || echo "room-vm: the release's symbols were not kept (vm-deploy.sh symbols $name tries again)" >&2
     echo "room-vm: staging runs $name (https://$staging_host); vm-deploy.sh deploy promotes it"
     return
   fi
+  name="$(promotable)"
+  local canary; canary="$(on_vm "cat /opt/oa-room/canary 2>/dev/null || true")"
+  # every shard's binary is production's release again (a canary's link pointed at its own)
+  on_vm "cur=\$(readlink -f /opt/oa-room/current || true); [ -z \"\$cur\" ] || [ \"\$cur\" = /opt/oa-room/releases/$name ] || sudo ln -sfn \"\$cur\" /opt/oa-room/previous; sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/current
+    for k in \$(seq 1 $shards); do sudo ln -sfn /opt/oa-room/current/room /opt/oa-room/bin/s\$k; done; sudo rm -f /opt/oa-room/canary"
+  echo "room-vm: production's release is $name"
+  if [[ "$canary" == *" $name" ]]; then restart_shards "${canary%% *}"; else restart_shards; fi
+}
+# The release staging runs, when production may take it: named, healthy, and not a seeded bad build.
+promotable() {
+  local name
   name="$(on_vm 'basename "$(readlink -f /opt/oa-room/staging)"')"
   [[ -n "$name" ]] || { echo "room-vm: staging runs nothing: vm-deploy.sh deploy --staging first" >&2; exit 1; }
-  wait_healthy staging 10 || { echo "room-vm: staging isn't healthy: not promoting $name" >&2; exit 1; }
-  on_vm "cur=\$(readlink -f /opt/oa-room/current || true); [ -z \"\$cur\" ] || [ \"\$cur\" = /opt/oa-room/releases/$name ] || sudo ln -sfn \"\$cur\" /opt/oa-room/previous; sudo ln -sfn /opt/oa-room/releases/$name /opt/oa-room/current"
-  echo "room-vm: production's release is $name"
-  restart_shards
+  [[ "$name" != *-seeded ]] || { echo "room-vm: staging runs $name, a seeded bad build: production never takes one" >&2; exit 1; }
+  wait_healthy staging 10 >&2 || { echo "room-vm: staging isn't healthy: not promoting $name" >&2; exit 1; }
+  echo "$name"
+}
+# The canary (#13299, coax/web/release-set.coax): production shard K alone onto staging's release.
+# Its unit's binary link points at that release; /opt/oa-room/canary says "K NAME" until `deploy`
+# brings the rest, or `canary-back` puts the shard back on production's.
+canary() {
+  local k="${1:?usage: vm-deploy.sh canary K}" name
+  [[ "$k" =~ ^[1-9][0-9]?$ ]] && (( k <= shards )) || { echo "room-vm: no shard $k" >&2; exit 2; }
+  name="$(promotable)"
+  active "$k" || { echo "room-vm: shard $k is not running: no canary there" >&2; exit 1; }
+  drain "$k" || exit 1
+  on_vm "sudo ln -sfn /opt/oa-room/releases/$name/room /opt/oa-room/bin/s$k && echo '$k $name' | sudo tee /opt/oa-room/canary >/dev/null && sudo systemctl restart oa-room@s$k"
+  wait_healthy "$k" || { echo "room-vm: the canary is not healthy; vm-deploy.sh canary-back puts shard $k back" >&2; exit 1; }
+  echo "room-vm: shard $k is the canary on $name"
+}
+canary_back() {
+  local was k
+  was="$(on_vm "cat /opt/oa-room/canary 2>/dev/null || true")"; k="${was%% *}"
+  [[ "$k" =~ ^[1-9][0-9]?$ ]] || { echo "room-vm: no canary is out"; return 0; }
+  drain "$k" "${OA_ROOM_DRAIN_WAIT:-60}" || true
+  on_vm "sudo ln -sfn /opt/oa-room/current/room /opt/oa-room/bin/s$k && sudo rm -f /opt/oa-room/canary && sudo systemctl restart oa-room@s$k"
+  wait_healthy "$k"
+  echo "room-vm: shard $k is back on production's release"
+}
+releases() {
+  on_vm 'for l in current previous staging staging-previous; do r=""; [ -L /opt/oa-room/$l ] && r="$(basename "$(readlink -f /opt/oa-room/$l)")"; printf "%s: %s\n" "$l" "$r"; done; printf "canary: %s\n" "$(cat /opt/oa-room/canary 2>/dev/null)"'
 }
 
 rollback() {
   local prev
+  if [[ "${1:-}" == --staging ]]; then
+    prev="$(on_vm 'readlink -f /opt/oa-room/staging-previous || true')"
+    [[ -n "$prev" ]] || { echo "room-vm: no earlier staging release is recorded" >&2; exit 1; }
+    on_vm "cur=\$(readlink -f /opt/oa-room/staging); sudo ln -sfn $prev /opt/oa-room/staging; sudo ln -sfn \"\$cur\" /opt/oa-room/staging-previous; sudo systemctl restart oa-room@staging"
+    wait_healthy staging
+    echo "room-vm: staging runs $(basename "$prev") again"
+    return
+  fi
   prev="$(on_vm 'readlink -f /opt/oa-room/previous || true')"
   [[ -n "$prev" ]] || { echo "room-vm: no previous release is recorded" >&2; exit 1; }
-  on_vm "cur=\$(readlink -f /opt/oa-room/current); sudo ln -sfn $prev /opt/oa-room/current; sudo ln -sfn \"\$cur\" /opt/oa-room/previous"
+  on_vm "cur=\$(readlink -f /opt/oa-room/current); sudo ln -sfn $prev /opt/oa-room/current; sudo ln -sfn \"\$cur\" /opt/oa-room/previous
+    for k in \$(seq 1 $shards); do sudo ln -sfn /opt/oa-room/current/room /opt/oa-room/bin/s\$k; done; sudo rm -f /opt/oa-room/canary"
   echo "room-vm: production's release is $(basename "$prev")"
   restart_shards
 }
@@ -384,7 +449,10 @@ case "${1:-}" in
       restart_shards ;;   # each shard drained, then restarted onto its UDP port and certificate
   secret) secret ;;
   deploy) shift; deploy "$@" ;;
-  rollback) rollback ;;
+  rollback) shift; rollback "$@" ;;
+  canary) shift; canary "$@" ;;
+  canary-back) canary_back ;;
+  releases) releases ;;
   switch) shift; switch "$@" ;;
   drain) shift; drain "${1:?usage: vm-deploy.sh drain K [SECONDS]}" "${2:-$drain_wait}" ;;
   kill) shift; u="${1:?usage: vm-deploy.sh kill K|staging}"; [[ "$u" == staging ]] || u="s$u"

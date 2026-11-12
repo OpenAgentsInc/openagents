@@ -449,6 +449,26 @@ static bool limit_hit(PGconn *db, int which, const char *key, long long *until_m
   PQclear(r);
   return ok;
 }
+// One hit on a per-minute limit of a route outside this file, for `who` (an address, a key), counted in
+// auth.limit_counts (migration 0145) so every worker and instance shares the count (#13300). The key
+// kept is a digest. True when allowed (ap_limit_ok, auth-policy.coax); else *left_ms is the ms until
+// the window lifts. A count that can't be read refuses nobody.
+bool api_limit(PGconn *db, const char *name, const char *who, int per_minute, long long *left_ms) {
+  if (left_ms) *left_ms = 0;
+  if (!db) return true;
+  const char *v[2] = {name, who && *who ? who : "-"};
+  PGresult *r = PQexecParams(db, "SELECT started_ms, n, now_ms FROM auth.limit_hit($1, left(encode(sha256(convert_to($2, 'UTF8')), 'hex'), 40), 60000, true)",
+                             2, NULL, v, NULL, NULL, 0);
+  bool ok = true;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+    ok = ap_limit_ok(atoll(PQgetvalue(r, 0, 1)), per_minute);
+    long long left = atoll(PQgetvalue(r, 0, 0)) + 60000 - atoll(PQgetvalue(r, 0, 2));
+    if (!ok && left_ms) *left_ms = left > 0 ? left : 1;
+  } else api_log("limit %s: %s", name, PQerrorMessage(db));
+  PQclear(r);
+  return ok;
+}
+
 // The refusal for a limit: its words and when it lifts, both shown.
 static void refuse_limit(const request *q, int which, long long until_ms) {
   long long left = until_ms - (long long)api_now_ms();

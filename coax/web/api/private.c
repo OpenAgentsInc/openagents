@@ -40,26 +40,11 @@
 
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }
 
-// ---- how fast: a fixed window a minute per key (an address or a pubkey), per instance
-#define LIMITS 512
-typedef struct { char key[72]; double since; int n; } limit;
-static limit limits[LIMITS];
+// ---- how fast: a fixed window a minute per key (an address or a pubkey), counted in Postgres
+// (api_limit) so the limit is one for every worker and instance (#13300)
 static bool allowed(const char *kind, const char *who, int per_minute) {
-  char key[72]; snprintf(key, sizeof key, "%s:%.64s", kind, who);
-  double now = api_now_ms();
-  int free_slot = -1, oldest = 0;
-  for (int i = 0; i < LIMITS; i++) {
-    if (limits[i].key[0] && !strcmp(limits[i].key, key)) {
-      if (now - limits[i].since > 60000) { limits[i].since = now; limits[i].n = 0; }
-      return ++limits[i].n <= per_minute;
-    }
-    if (!limits[i].key[0] || now - limits[i].since > 60000) { if (free_slot < 0) free_slot = i; }
-    else if (limits[i].since < limits[oldest].since) oldest = i;
-  }
-  int k = free_slot >= 0 ? free_slot : oldest;
-  snprintf(limits[k].key, sizeof limits[k].key, "%s", key);
-  limits[k].since = now; limits[k].n = 1;
-  return true;
+  char name[48]; snprintf(name, sizeof name, "%s-%s", "private", kind);
+  return api_limit(api_db(), name, who, per_minute, NULL);
 }
 
 // A cookie's token (64 hex), or "".

@@ -49,6 +49,8 @@ with its key (HMAC-SHA256) and sends:
 | `directory` | `POST /api/playtest/room-directory` | the post's body |
 | `stats` | `POST /api/playtest/room-stats` | the post's body |
 | `crash` | `POST /api/playtest/room-crash` | the crash report ([crash reports](../deployment/crash-reports.md), added in #13298) |
+| `capacity` | `POST /api/playtest/capacity-record` | a night's capacity record ([the soak](../deployment/soak.md), added in #13296), posted by the soak for shard 1 |
+| `fault` | `POST /api/playtest/fault/slow` | `fault MS AT`: a load check's slow query, on an API with `OA_API_FAULTS=1` only (staging, tests; #13300) |
 | `control` | `POST /api/playtest/room-control` | `t AT`, where AT is the `X-Room-At` header |
 | `moderation` | `POST /api/playtest/room-mod-log` | the post's body ([moderation v1](moderation-v1.md)) |
 | `drain` | `POST /api/room/sK/drain` (deploy to room) | `drain K AT WAIT` |

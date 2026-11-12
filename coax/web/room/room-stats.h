@@ -151,6 +151,20 @@ static void st_key_name(int key, char *out, size_t cap) {
   else snprintf(out, cap, "%c", (char)key);
 }
 
+/* The process's resident memory in KB, now (#13296: the soak's memory growth): /proc/self/statm on
+   Linux; elsewhere the peak the system kept (getrusage), which only grows. -1 unknown. */
+static long long st_resident_kb(void) {
+#ifdef __linux__
+  FILE *f = fopen("/proc/self/statm", "r");
+  long long total = 0, resident = -1;
+  if (f) { if (fscanf(f, "%lld %lld", &total, &resident) != 2) resident = -1; fclose(f); }
+  return resident < 0 ? -1 : resident * (long long)sysconf(_SC_PAGESIZE) / 1024;
+#else
+  struct rusage u;
+  if (getrusage(RUSAGE_SELF, &u)) return -1;
+  return (long long)u.ru_maxrss / 1024;   /* macOS counts bytes */
+#endif
+}
 /* The window's report into o (and the window starts again when reset): its lines, every number
    named as the admins read it. secs: the window's length. */
 static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t shard, double secs, bool reset) {
@@ -172,6 +186,7 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_line(o,"server queued ack samples=%u",st_queued_ack_n);
   st_line(o, "shard=%lld", (long long)shard);
   st_line(o, "players=%lld", (long long)players);
+  st_line(o, "process resident kb=%lld", st_resident_kb());
   st_line(o, "ticks a second=%.1f", st_ticks / secs);
   for (int w = 0; w < STW_N; w++) {
     st_line(o, "%s p50 ms=%.2f", st_work_name[w], st_ms(st_hist_at(&st_work[w], 500)));

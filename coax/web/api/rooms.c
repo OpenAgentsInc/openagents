@@ -7,6 +7,9 @@
 //   POST /api/playtest/room-crash         a shard's report of its last crash (coax/web/room/room-crash.coax,
 //                                         #13298), signed as its `crash` write; kept by bucket (service.c crash_keep)
 //   GET  /api/playtest/crashes            the crash buckets heard in 30 days, each with its newest report
+//   POST /api/playtest/capacity-record    a night's capacity record (soak-record.coax, #13296),
+//                                         signed as a room's `capacity` write; one kept a day and environment
+//   GET  /api/playtest/capacity           the newest record as kept (?day=YYYY-MM-DD: that day's)
 //   POST /api/playtest/room-stats         a shard's vitals every 10 s (coax/web/room/room-stats.h), signed
 //                                         alike, for the admins' room view (GET /api/admin/rooms, admin.c)
 //   GET  /api/playtest/room-shards        the shards: live, draining or down, each one's endpoint and
@@ -316,6 +319,124 @@ static void crashes(const request *q, PGconn *db) {
   PQclear(r);
 }
 
+// A night's capacity record (#13296, docs/deployment/soak.md): capacity record v1, checked by its
+// codec (soak-record.coax through ticket-sign-unit.c), signed as a room's `capacity`
+// write, and kept whole: one a day and environment, the later run of a day replacing the earlier.
+bool capacity_record_check_c(const char *body, size_t n);
+size_t capacity_record_field_c(const char *body, size_t n, const char *key, char *out, size_t cap);
+static void capacity_put(const request *q, PGconn *db) {
+  if (signed_post(q, "capacity") < 0) return;
+  if (!capacity_record_check_c(q->body, q->body_len)) { api_json(q->fd, 400, "{\"error\":\"not a capacity record\"}"); return; }
+  char day[16], env[16], t[24], seated[24], verdict[160];
+  capacity_record_field_c(q->body, q->body_len, "day", day, sizeof day);
+  capacity_record_field_c(q->body, q->body_len, "env", env, sizeof env);
+  capacity_record_field_c(q->body, q->body_len, "t", t, sizeof t);
+  capacity_record_field_c(q->body, q->body_len, "seated", seated, sizeof seated);
+  capacity_record_field_c(q->body, q->body_len, "verdict", verdict, sizeof verdict);
+  char *b = malloc(q->body_len + 1);
+  if (!b) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  memcpy(b, q->body, q->body_len); b[q->body_len] = 0;
+  const char *v[6] = {day, env, t, seated, !strcmp(verdict, "holds") ? "t" : "f", b};
+  PGresult *r = PQexecParams(db, "SELECT verse.capacity_put($1::date, $2, $3::bigint, $4::int, $5::boolean, $6)", 6, NULL, v, NULL, NULL, 0);
+  free(b);
+  bool ran = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  bool kept = ran && !strcmp(PQgetvalue(r, 0, 0), "t");
+  if (!ran) api_log("capacity-record: %s", PQerrorMessage(db));
+  PQclear(r);
+  if (!ran) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  api_json(q->fd, 200, kept ? "{\"kept\":true}" : "{\"kept\":false}");   // false: a later run of that day is already kept
+}
+// GET /api/playtest/capacity[?day=YYYY-MM-DD]: the newest capacity record (or that day's) as it was
+// kept, the codec's text, for anyone (the status page reads its lines). 404 when there is none.
+static void capacity_get(const request *q, PGconn *db) {
+  if (strcmp(q->method, "GET") && strcmp(q->method, "HEAD")) { api_json(q->fd, 405, "{\"error\":\"GET the capacity\"}"); return; }
+  char day[16]; api_query(q, "day", day, sizeof day);
+  bool one = strlen(day) == 10;
+  for (const char *c = day; one && *c; c++) one = (*c >= '0' && *c <= '9') || *c == '-';
+  const char *v[1] = {one ? day : NULL};
+  PGresult *r = PQexecParams(db, "SELECT verse.capacity_record($1::date)", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("capacity: %s", PQerrorMessage(db)); PQclear(r); api_json(q->fd, 500, "{\"error\":\"no capacity\"}"); return; }
+  if (PQgetisnull(r, 0, 0)) api_json(q->fd, 404, "{\"error\":\"no capacity record\"}");
+  else api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
+  PQclear(r);
+}
+
+// ---- flags and maintenance (#13299, docs/deployment/release-set.md): service-policy.coax decides
+#include "service-policy.generated.h"
+static coax_string flag_cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
+// The live flags as the lines the rooms' control answer carries, "flag NAME VALUE\n" each (the
+// policy's most), appended to out (cap bytes, n used): the new length. With `whole`, each line also
+// has its end and its words (" UNTIL_MS WHY"), for an admin.
+size_t flags_lines(PGconn *db, char *out, size_t cap, size_t n, bool whole) {
+  PGresult *r = PQexec(db, "SELECT name, value, until_ms, why, verse.now_ms() FROM verse.flags ORDER BY name");
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("flags: %s", PQerrorMessage(db)); PQclear(r); return n; }
+  int said = 0;
+  for (int i = 0; i < PQntuples(r) && said < sv_flags_most(); i++) {
+    if (!sv_flag_live(atoll(PQgetvalue(r, i, 2)), atoll(PQgetvalue(r, i, 4)))) continue;
+    int k = whole ? snprintf(out + n, cap - n, "flag %s %s %s %s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 1), PQgetvalue(r, i, 2), PQgetvalue(r, i, 3))
+                  : snprintf(out + n, cap - n, "flag %s %s\n", PQgetvalue(r, i, 0), PQgetvalue(r, i, 1));
+    if (k < 0 || (size_t)k >= cap - n) { out[n] = 0; break; }
+    n += (size_t)k; said++;
+  }
+  PQclear(r);
+  return n;
+}
+// Whether maintenance is on: its words into why (cap at least 161) and its end into *until_ms (0: until cleared).
+bool flags_maintenance(PGconn *db, char *why, size_t cap, long long *until_ms) {
+  PGresult *r = PQexec(db, "SELECT value, until_ms, why, verse.now_ms() FROM verse.flags WHERE name = 'maintenance'");
+  bool on = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 &&
+            sv_maintenance(atoll(PQgetvalue(r, 0, 0)), atoll(PQgetvalue(r, 0, 1)), atoll(PQgetvalue(r, 0, 3)));
+  if (on) { snprintf(why, cap, "%s", PQgetvalue(r, 0, 2)); *until_ms = atoll(PQgetvalue(r, 0, 1)); }
+  PQclear(r);
+  return on;
+}
+// GET  /api/admin/flags   the live flags, "flag NAME VALUE UNTIL_MS WHY" a line (admins)
+// POST /api/admin/flags   one line: "NAME VALUE [UNTIL_MS [WHY...]]" sets a flag (UNTIL_MS 0: until it
+//                         is cleared), "clear NAME" takes it away. 200 with the live flags; 400 a line
+//                         the policy does not take.
+bool flags_route(const request *q) {
+  if (strcmp(q->path, "/api/admin/flags")) return false;
+  PGconn *db = api_db();
+  if (!db) { api_json(q->fd, 503, "{\"error\":\"database unavailable\"}"); return true; }
+  char who[65];
+  int s = admin_who(q, db, who);
+  if (s) { api_json(q->fd, s, s == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+  if (!strcmp(q->method, "POST")) {
+    char line[400];
+    if (q->body_len == 0 || q->body_len >= sizeof line) { api_json(q->fd, 400, "{\"error\":\"one line: NAME VALUE [UNTIL_MS [WHY]], or clear NAME\"}"); return true; }
+    memcpy(line, q->body, q->body_len); line[q->body_len] = 0;
+    size_t ln = strcspn(line, "\r\n"); line[ln] = 0;
+    char name[40] = "", rest[400] = "";
+    if (sscanf(line, "%39s %399[^\n]", name, rest) < 2) { api_json(q->fd, 400, "{\"error\":\"one line: NAME VALUE [UNTIL_MS [WHY]], or clear NAME\"}"); return true; }
+    PGresult *r;
+    if (!strcmp(name, "clear")) {
+      if (!sv_flag_name_ok(flag_cs(rest))) { api_json(q->fd, 400, "{\"error\":\"not a flag's name\"}"); return true; }
+      const char *v[1] = {rest};
+      r = PQexecParams(db, "SELECT verse.flag_clear($1)", 1, NULL, v, NULL, NULL, 0);
+    } else {
+      long long value = -1, until = 0; int used = 0; const char *why = "";
+      int got = sscanf(rest, "%lld %lld %n", &value, &until, &used);
+      if (got == 2 && used > 0) why = rest + used;
+      if (got == 1) until = 0;
+      if (got < 1 || !sv_flag_name_ok(flag_cs(name)) || !sv_flag_value_ok(value) || until < 0 || !sv_flag_why_ok(flag_cs(why))) {
+        api_json(q->fd, 400, "{\"error\":\"a flag is a-z0-9- (32), a whole number, an end in ms (0 none) and plain words (160)\"}"); return true;
+      }
+      char vs[24], us[24]; snprintf(vs, sizeof vs, "%lld", value); snprintf(us, sizeof us, "%lld", until);
+      const char *v[5] = {name, vs, us, why, who};
+      r = PQexecParams(db, "SELECT verse.flag_put($1, $2::bigint, $3::bigint, $4, $5)", 5, NULL, v, NULL, NULL, 0);
+      api_log("flag %s set to %s by %.12s", name, vs, who);
+    }
+    bool ok = PQresultStatus(r) == PGRES_TUPLES_OK;
+    if (!ok) api_log("flags: %s", PQerrorMessage(db));
+    PQclear(r);
+    if (!ok) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return true; }
+  } else if (strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET or POST the flags\"}"); return true; }
+  static char out[8192];
+  size_t n = flags_lines(db, out, sizeof out, 0, true);
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, out, n);
+  return true;
+}
+
 // rest: the path after /api/playtest/. True when it was one of these routes (answered).
 // api --limits: the rooms' section of /docs/limits, after the character chat's (#13263).
 void rooms_print_limits(FILE *out) {
@@ -330,6 +451,8 @@ bool rooms_route(const request *q, PGconn *db, const char *rest) {
   if (!strcmp(rest, "room-stats")) { stats(q, db); return true; }
   if (!strcmp(rest, "room-crash")) { crash(q, db); return true; }
   if (!strcmp(rest, "crashes")) { crashes(q, db); return true; }
+  if (!strcmp(rest, "capacity-record")) { capacity_put(q, db); return true; }
+  if (!strcmp(rest, "capacity")) { capacity_get(q, db); return true; }
   if (!strcmp(rest, "room-shards")) { shard_list(q, db); return true; }
   if (!strncmp(rest, "rooms/", 6) && rest[6] && !strchr(rest + 6, '/')) { list(q, db, rest + 6); return true; }
   return false;

@@ -10,6 +10,15 @@
 //   checkpoint age   a shard-minute with players is good when its oldest unsaved checkpoint is at
 //                    most 15 s old; 99.9% (a capture every 5 s, an answer within 6 s)
 //
+// The ticket target (#13300): the API answers a seat-ticket ask within 300 ms at the 95th percentile,
+// measured at the API (a join's 5 s holds the page's load and the socket too). The load checks hold
+// it with a 500 ms query running on other workers; the nightly soak reports it.
+//
+// Flags and maintenance (#13299): a flag is a name and a whole number the API holds for itself and
+// the rooms, set with no deploy (POST /api/admin/flags) and read by the rooms on their control poll.
+// It may carry a time it ends and a few words of why. "maintenance" is the one the API itself reads:
+// while it is live and not 0, nobody new is seated, and the refusal says why.
+//
 // The alerts, each a key per shard (or one for the database), opened and resolved every minute:
 //   silent           a shard that named its address stopped reporting for 45 s, not while draining
 //   tick             2 or more reports in 2 minutes with a tick p95 over 10 ms
@@ -28,6 +37,7 @@ SV_JOIN_MS :: 5000;
 SV_CHECKPOINT_MS :: 15000;
 SV_TICK_PPM :: 999000; SV_JOIN_PPM :: 950000; SV_CHECKPOINT_PPM :: 999000;
 SV_DAYS :: 30;
+SV_TICKET_P95_MS :: 300;
 
 SV_A_SILENT :: 1; SV_A_TICK :: 2; SV_A_FAILURES :: 4; SV_A_FENCED :: 8; SV_A_UNSAVED :: 16;
 SV_SILENT_MS :: 45000;   // a deploy restart or a stall of a few reports is not silence (#13297)
@@ -51,6 +61,28 @@ SV_W_SLOW :: 0; SV_W_FAILURES :: 1; SV_W_FENCED :: 2;
   #assert sv_days() == 30;
   #assert sv_name(SV_TICK) == "tick time" && sv_name(SV_JOIN) == "join time" && sv_name(SV_CHECKPOINT) == "checkpoint age";
   #assert sv_name(3) == "" && sv_name(-1) == "";
+}
+#test "a ticket's p95 meets its target at 300 ms, and a run that measured none doesn't" {
+  #assert sv_ticket_p95_ms() == 300;
+  #assert sv_ticket_ok(300) && sv_ticket_ok(0) && !sv_ticket_ok(301) && !sv_ticket_ok(-1);
+}
+#test "a flag's name, value and words; when it holds; when maintenance refuses seats" {
+  #assert sv_flag_name_ok("maintenance") && sv_flag_name_ok("closed-s3") && sv_flag_name_ok("a") && sv_flag_name_ok("z") && sv_flag_name_ok("a0") && sv_flag_name_ok("a9") && sv_flag_name_ok("abcdefghijklmnopqrstuvwxyz012345");
+  #assert !sv_flag_name_ok("0a") && !sv_flag_name_ok("9a");
+  #assert !sv_flag_name_ok("") && !sv_flag_name_ok("abcdefghijklmnopqrstuvwxyz0123456") && !sv_flag_name_ok("3closed") && !sv_flag_name_ok("-a") && !sv_flag_name_ok("Closed");
+  #assert !sv_flag_name_ok("a b") && !sv_flag_name_ok("a_b") && !sv_flag_name_ok("a`") && !sv_flag_name_ok("a{") && !sv_flag_name_ok("a/") && !sv_flag_name_ok("a:") && !sv_flag_name_ok("`a") && !sv_flag_name_ok("{a");
+  #assert sv_flag_value_ok(0) && sv_flag_value_ok(1000000000) && !sv_flag_value_ok(-1) && !sv_flag_value_ok(1000000001);
+  #assert sv_flag_why_ok("") && sv_flag_why_ok("Moving the rooms to a new release: back in 10 minutes.") && sv_flag_why_ok(" ~");
+  #assert !sv_flag_why_ok("say \"hi\"") && !sv_flag_why_ok("a\\b") && !sv_flag_why_ok("a\nb") && !sv_flag_why_ok("a\tb");
+  w: [161] u8; for i: 0..<161 { w[i] = 'a'; }
+  w[3] = 127; #assert !sv_flag_why_ok(cast(string) w[0..<8]);
+  w[3] = 31; #assert !sv_flag_why_ok(cast(string) w[0..<8]);
+  w[3] = 200; #assert !sv_flag_why_ok(cast(string) w[0..<8]);
+  w[3] = 'a';
+  #assert sv_flag_why_ok(cast(string) w[0..<160]) && !sv_flag_why_ok(cast(string) w[..]);
+  #assert sv_flag_live(0, 5) && sv_flag_live(6, 5) && !sv_flag_live(5, 5) && !sv_flag_live(4, 5);
+  #assert sv_maintenance(1, 0, 5) && sv_maintenance(7, 6, 5) && !sv_maintenance(0, 0, 5) && !sv_maintenance(1, 5, 5) && !sv_maintenance(1, 4, 5);
+  #assert sv_flags_most() == 16;
 }
 #test "a minute or a join is good at its target and bad past it" {
   #assert sv_good(SV_TICK, 10000) && !sv_good(SV_TICK, 10001) && sv_good(SV_TICK, 0);
@@ -137,6 +169,34 @@ sv_name :: (which: int) -> string #export_c #effects(all) {
   return "";
 }
 sv_days :: () -> int #export_c #effects(all) { return SV_DAYS; }
+SV_FLAG_NAME :: 32;      // a flag's name at most (the room's CONTROL_FLAG_NAME)
+SV_FLAG_WHY :: 160;      // its words of why at most
+SV_FLAGS :: 16;          // the flags a control answer carries at most (the room's CONTROL_FLAGS)
+// A flag's name: a lower-case letter, then lower-case letters, digits and hyphens, 32 at most.
+sv_flag_name_ok :: (name: string) -> bool #export_c #effects(all) {
+  if name.count < 1 || name.count > SV_FLAG_NAME || name[0] < 'a' { return false; }   // a digit or a hyphen first (both below 'a')
+  for c: name { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// Its value: a whole number from 0 to a thousand million (the room reads it into an int).
+sv_flag_value_ok :: (value: int) -> bool #export_c #effects(all) { return value >= 0 && value <= 1000000000; }
+// Its words of why: printable ASCII with no quote or backslash (they go into JSON and a wire line as
+// they are), 160 at most; none is fine.
+sv_flag_why_ok :: (why: string) -> bool #export_c #effects(all) {
+  if why.count > SV_FLAG_WHY { return false; }
+  for c: why { if c < 32 || c > 126 || c == '"' || c == '\\' { return false; } }
+  return true;
+}
+// Whether a flag set to end at until_ms (0: never) still holds at now_ms.
+sv_flag_live :: (until_ms: int, now_ms: int) -> bool #export_c #effects(all) { return until_ms == 0 || now_ms < until_ms; }
+// Whether the maintenance flag refuses seats: live, and not 0.
+sv_maintenance :: (value: int, until_ms: int, now_ms: int) -> bool #export_c #effects(all) { return value != 0 && sv_flag_live(until_ms, now_ms); }
+sv_flags_most :: () -> int #export_c #effects(all) { return SV_FLAGS; }
+sv_ticket_p95_ms :: () -> int #export_c #effects(all) { return SV_TICKET_P95_MS; }
+// Whether a run's ticket p95 (ms; negative: none measured) meets the target.
+sv_ticket_ok :: (p95_ms: int) -> bool #export_c #effects(all) {
+  return p95_ms >= 0 && p95_ms <= SV_TICKET_P95_MS;
+}
 // Whether one minute's (or one join's) number meets its target. Units: tick in microseconds, the
 // others in milliseconds.
 sv_good :: (which: int, value: int) -> bool #export_c #effects(all) {

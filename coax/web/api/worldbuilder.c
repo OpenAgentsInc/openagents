@@ -135,22 +135,34 @@ static void sb_json(sb *s, const char *t, size_t k) {
   sb_put(s, "\"", 1);
 }
 
-// ---- anti-flood: a bucket per address, in this process (worldbuilder-policy.coax wb_take)
-#define WB_ADDRESSES 1024
-typedef struct { char ip[64]; coax_t_WbBucket b; bool used; } wb_slot;
-static wb_slot wb_slots[WB_ADDRESSES];
-static unsigned wb_hash(const char *s) { unsigned h = 2166136261u; for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u; return h; }
-// 0 to go ahead, else the milliseconds to wait.
+// ---- anti-flood: a bucket per address (worldbuilder-policy.coax wb_take decides), kept as a row in
+// Postgres (auth.limit_buckets, migration 0173) so it is one bucket for every worker and instance
+// (#13300). The row is locked while the policy takes from it. The key kept is a digest.
+// 0 to go ahead, else the milliseconds to wait. A bucket that can't be read refuses nobody.
 static long wb_flood(const char *ip) {
-  int64_t now = (int64_t)api_now_ms();
-  unsigned h = wb_hash(ip) % WB_ADDRESSES;
-  wb_slot *s = &wb_slots[h];
-  if (!s->used || strcmp(s->ip, ip)) {   // a new address (or another one took its slot): a full bucket
-    snprintf(s->ip, sizeof s->ip, "%s", ip);
-    s->b = wb_bucket_new(now); s->used = true;
-  }
-  s->b = wb_take(s->b, now);
-  return s->b.ok ? 0 : (long)s->b.wait_ms;
+  PGconn *db = api_db();
+  if (!db) return 0;
+  char full[24]; snprintf(full, sizeof full, "%lld", (long long)wb_bucket_new(0).fill_ms);
+  const char *v[3] = {"worldbuilder", ip, full};
+  PGresult *r = PQexec(db, "BEGIN"); PQclear(r);
+  r = PQexecParams(db, "SELECT fill_ms, at_ms, now_ms, left(encode(sha256(convert_to($2, 'UTF8')), 'hex'), 40) "
+                       "FROM auth.bucket_lock($1, left(encode(sha256(convert_to($2, 'UTF8')), 'hex'), 40), $3::bigint)", 3, NULL, v, NULL, NULL, 0);
+  long wait = 0;
+  if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+    coax_t_WbBucket b = {0};
+    b.fill_ms = atoll(PQgetvalue(r, 0, 0)); b.at_ms = atoll(PQgetvalue(r, 0, 1));
+    b = wb_take(b, atoll(PQgetvalue(r, 0, 2)));
+    wait = b.ok ? 0 : (long)b.wait_ms;
+    char f[24], a[24], key[48];
+    snprintf(f, sizeof f, "%lld", (long long)b.fill_ms); snprintf(a, sizeof a, "%lld", (long long)b.at_ms);
+    snprintf(key, sizeof key, "%s", PQgetvalue(r, 0, 3));
+    const char *u[4] = {"worldbuilder", key, f, a};
+    PGresult *w = PQexecParams(db, "SELECT auth.bucket_put($1, $2, $3::bigint, $4::bigint)", 4, NULL, u, NULL, NULL, 0);
+    PQclear(w);
+  } else api_log("worldbuilder: bucket: %s", PQerrorMessage(db));
+  PQclear(r);
+  r = PQexec(db, "COMMIT"); PQclear(r);
+  return wait;
 }
 
 static void wb_text(int fd, int status, const char *t) { api_respond(fd, status, "text/plain; charset=utf-8", NULL, t, strlen(t)); }

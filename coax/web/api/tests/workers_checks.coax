@@ -1,0 +1,168 @@
+// The API under a slow query and across instances (#13300, AAA P5.6). test.sh runs it against its
+// throwaway Postgres with the api binary it built (API_BIN):
+//   limits      four API instances on one database: a player key's 13th ticket ask in a minute is
+//               refused whichever instance it reaches, and so is an address's 121st;
+//   slow query  while two requests at a time hold a 500 ms query on each instance of four workers (fault/slow), the
+//               tickets asked of all four keep their p95 under the target (service-policy.coax
+//               sv_ticket_ok, 300 ms). On one worker an instance fails the same check: the check of
+//               the check, which shows the load is real.
+// The slow requests come from children of this tool (`workers_checks.coax slow URL SECONDS`).
+//   coax/web/tool.sh coax/web/api/tests/workers_checks.coax
+#load "api_harness.coax";
+#load "../../../lib/sys/args.coax";
+#load "../service-policy.coax";
+cxproc_wall_us :: () -> int #foreign #effects(all);
+
+WK_APIS :: 4;
+WK_ASKS :: 240;
+WK_PLAYERS :: 40;
+
+WkApis :: struct { h: [WK_APIS] int; port: [WK_APIS] int; url: [WK_APIS * 64] u8; url_n: [WK_APIS] int; }
+wk_url :: (a: [] WkApis, i: int) -> string { return cast(string) a[0].url[i * 64..<i * 64 + a[0].url_n[i]]; }
+
+// Instances of the API on ports of their own, each with `workers` workers, faults on. True when all answer.
+wk_start :: (t: [] Ap, a: [] WkApis, bin: string, workers: int) -> bool {
+  for i: 0..<WK_APIS {
+    l := cxsock_listen(0); a[0].port[i] = cxsock_port(l); c := cxsock_close(l);
+    u: [1] Sb; sb(u[..], "http://127.0.0.1:"); sb_int(u[..], a[0].port[i]);
+    for j: 0..<u[0].n { a[0].url[i * 64 + j] = u[0].b[j]; }
+    a[0].url_n[i] = u[0].n;
+    la: [1] Sb; sb(la[..], "127.0.0.1:"); sb_int(la[..], a[0].port[i]);
+    wk: [1] Sb; sb(wk[..], "OA_API_WORKERS="); sb_int(wk[..], workers);
+    h := proc_new(); a[0].h[i] = h;
+    ok := proc_arg(h, bin) && proc_arg(h, "--listen") && proc_arg(h, sb_text(la[..])) && proc_env(h, sb_text(wk[..])) && proc_env(h, "OA_API_FAULTS=1") && proc_quiet(h);
+    if !ok || proc_start(h) != 0 { return false; }
+  }
+  for i: 0..<WK_APIS {
+    up := false;
+    for n: 0..<100 {
+      p: [1] Sb; sb(p[..], wk_url(a, i)); sb(p[..], "/api/playtest/health");
+      if !up && ap_call(t, "GET", sb_text(p[..]), "", t[0].no[0..<0]) == 200 { up = true; }
+      if !up { proc_sleep(100); }
+    }
+    if !up { return false; }
+  }
+  return true;
+}
+wk_stop :: (a: [] WkApis) {
+  for i: 0..<WK_APIS {
+    if a[0].h[i] < 0 { continue; }
+    k := proc_kill(a[0].h[i], PROC_SIGTERM); w := proc_wait(a[0].h[i], 5000);
+    if w == PROC_RUNNING { k = proc_kill(a[0].h[i], PROC_SIGKILL); w = proc_wait(a[0].h[i], 2000); }
+    r := proc_release(a[0].h[i]); a[0].h[i] = -1;
+  }
+}
+// One ticket ask of instance i: its status, and the ms it took.
+wk_ask :: (t: [] Ap, a: [] WkApis, i: int, key: string, addr: int, ms: [] int) -> int {
+  ph: [1] Sb; sb(ph[..], "X-Verse-Player: "); sb(ph[..], key);
+  xf: [1] Sb; sb(xf[..], "X-Forwarded-For: 10.77."); sb_int(xf[..], addr / 256); sb_byte(xf[..], '.'); sb_int(xf[..], addr % 256); sb(xf[..], ", 130.211.0.1");
+  h := [3] string.["Content-Type: application/json", sb_text(ph[..]), sb_text(xf[..])];
+  p: [1] Sb; sb(p[..], wk_url(a, i)); sb(p[..], "/api/playtest/room-ticket/evwk?realm=evwk");
+  t0 := proc_now_ms();
+  st := ap_call(t, "POST", sb_text(p[..]), "{}", h[..]);
+  ms[0] = proc_now_ms() - t0;
+  return st;
+}
+// The p95 of n times (sorted in place).
+wk_p95 :: (v: [] int, n: int) -> int {
+  if n <= 0 { return -1; }
+  for i: 1..<n { x := v[i]; j := i; while j > 0 && v[j - 1] > x { v[j] = v[j - 1]; j -= 1; } v[j] = x; }
+  return v[(n * 95 + 99) / 100 - 1];
+}
+#test "the p95 of a run's times" {
+  v := [20] int.[20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+  #assert wk_p95(v[..], 20) == 19 && wk_p95(v[..], 0) == -1;
+  one := [1] int.[7];
+  #assert wk_p95(one[..], 1) == 7;
+}
+// Children that hold a slow query on every instance, `each` at a time an instance, for `seconds`.
+wk_slow_start :: (a: [] WkApis, each: int, seconds: int, hs: [] int) -> int {
+  n := 0; sec: [16] u8;
+  for i: 0..<WK_APIS { for j: 0..<each {
+    h := proc_new();
+    ok := proc_arg(h, "coax/web/tool.sh") && proc_arg(h, "coax/web/api/tests/workers_checks.coax") && proc_arg(h, "slow") && proc_arg(h, wk_url(a, i)) && proc_arg(h, ap_num(seconds, sec[..])) && proc_quiet(h);
+    if ok && proc_start(h) == 0 { hs[n] = h; n += 1; } else { r := proc_release(h); }
+  } }
+  return n;
+}
+// Tickets asked round the instances while the slow queries run: the p95 in ms (-1: an ask failed).
+wk_run :: (t: [] Ap, a: [] WkApis, players: [] Player, first_addr: int) -> int {
+  times: [WK_ASKS] int; ms: [1] int; bad := 0;
+  for n: 0..<WK_ASKS {
+    st := wk_ask(t, a, n % WK_APIS, pl_key(players[n % WK_PLAYERS..<n % WK_PLAYERS + 1]), first_addr + n % WK_PLAYERS, ms[..]);
+    if st != 200 && st != 503 { bad += 1; }   // 503: every room full, an answer all the same
+    times[n] = ms[0];
+  }
+  if bad > 0 { return -1; }
+  return wk_p95(times[..], WK_ASKS);
+}
+
+wk_checks :: (t: [] Ap, bin: string) {
+  a: [1] WkApis; for i: 0..<WK_APIS { a[0].h[i] = -1; }
+  up := wk_start(t, a[..], bin, 4);
+  ap_check(t, "workers: four API instances of four workers each start on one database", up, "");
+  if !up { wk_stop(a[..]); return; }
+  players: [WK_PLAYERS] Player; made := true;
+  for i: 0..<WK_PLAYERS { made = ap_player(t, players[i..<i + 1]) && made; }
+  ap_check(t, "workers: the players for the run", made, ap_body(t));
+  // ---- limits across instances
+  one: [1] Player; ok1 := ap_player(t, one[..]); ms: [1] int;
+  early := true; last := 0;
+  for j: 0..<13 { last = wk_ask(t, a[..], j % WK_APIS, pl_key(one[..]), 20000 + j, ms[..]); if j < 12 && last == 429 { early = false; } }
+  ap_check(t, "limits: one player's 13th ticket ask in a minute is refused, the asks spread over four instances", ok1 && early && last == 429, ap_body(t));
+  limited := 0; last = 0;
+  for j: 0..<121 {
+    k: [1] Player; got := ap_player(t, k[..]);
+    last = wk_ask(t, a[..], j % WK_APIS, pl_key(k[..]), 30000, ms[..]);
+    if last == 429 { limited += 1; }
+  }
+  ap_check(t, "limits: one address's 121st ask in a minute is refused, and only it, over four instances", limited == 1 && last == 429, ap_body(t));
+  // ---- a slow query on two workers of each instance
+  hs: [WK_APIS * 2] int;
+  n := wk_slow_start(a[..], 2, 60, hs[..]);
+  proc_sleep(1500);
+  p95 := wk_run(t, a[..], players[..], 40000);
+  for i: 0..<n { k := proc_kill(hs[i], PROC_SIGKILL); w := proc_wait(hs[i], 2000); r := proc_release(hs[i]); }
+  name: [1] Sb; sb(name[..], "slow query: with a 500 ms query held on two workers of each instance, ticket p95 is "); sb_int(name[..], p95); sb(name[..], " ms, within the target of "); sb_int(name[..], sv_ticket_p95_ms());
+  ap_check(t, sb_text(name[..]), n == WK_APIS * 2 && sv_ticket_ok(p95), "");
+  wk_stop(a[..]);
+  // ---- the check of the check: one worker an instance, the same load
+  proc_sleep(61000 - 1);   // the minute's windows of the asks above end (the same players ask again)
+  b: [1] WkApis; for i: 0..<WK_APIS { b[0].h[i] = -1; }
+  if wk_start(t, b[..], bin, 1) {
+    n = wk_slow_start(b[..], 2, 60, hs[..]);
+    proc_sleep(1500);
+    slow := wk_run(t, b[..], players[..], 50000);
+    for i: 0..<n { k := proc_kill(hs[i], PROC_SIGKILL); w := proc_wait(hs[i], 2000); r := proc_release(hs[i]); }
+    nm: [1] Sb; sb(nm[..], "slow query: one worker an instance misses the target under the same load (p95 "); sb_int(nm[..], slow); sb(nm[..], " ms)");
+    ap_check(t, sb_text(nm[..]), slow > sv_ticket_p95_ms(), "");
+  } else { ap_check(t, "slow query: the one-worker instances start", false, ""); }
+  wk_stop(b[..]);
+}
+
+// `slow URL SECONDS`: one 500 ms query after another on URL's API.
+wk_slow :: (url: string, seconds: int) -> int {
+  w: [1] HttpWork; out: [4096] u8;
+  t: [1] Ap; t[0].room_key = ap_env(t[..], "ROOM_KEY");
+  p: [1] Sb; sb(p[..], url); sb(p[..], "/api/playtest/fault/slow");
+  until := proc_now_ms() + seconds * 1000;
+  while proc_now_ms() < until {
+    body: [1] Sb; sb(body[..], "fault 500 "); sb_int(body[..], cxproc_wall_us() / 1000);
+    mac: [64] u8; mh: [1] Sb; sb(mh[..], "X-Room-Mac: "); sb(mh[..], ap_room_mac(t[..], sb_text(body[..]), mac[..]));
+    h := [1] string.[sb_text(mh[..])];
+    got := http_do(w[..], "POST", sb_text(p[..]), h[..], sb_text(body[..]), 10000, 0, out[..]);
+    if got.error != HTTP_OK { proc_sleep(50); }
+  }
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if args_load(a[..]) && args_count(a[..]) == 3 && args_at(a[..], 0) == "slow" { return wk_slow(args_at(a[..], 1), ap_whole(args_at(a[..], 2))); }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  bb: [4096] u8; bin := proc_getenv("API_BIN", bb[..]);
+  if bin == "" { tool_errln("workers_checks: API_BIN comes from coax/web/api/test.sh"); return 2; }
+  wk_checks(t[..], bin);
+  return ap_done(t[..], "workers checks");
+}

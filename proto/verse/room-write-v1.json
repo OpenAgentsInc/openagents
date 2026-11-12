@@ -65,6 +65,24 @@
       "mac": "2fb4112d97f974deb30ef437dc5ebc5f672f540ffb0bcb83ad0e65715544b055"
     },
     {
+      "why": "a night's capacity record, posted for shard 1 (capacity-record-v1.json)",
+      "key": "13754e49:a7ff8fecd7f41dbaedd66a1ee410c3e45f6cfe7083d506ece6673475d40cb887",
+      "purpose": "capacity",
+      "shard": 1,
+      "body": "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n",
+      "signer": "1 13754e49",
+      "mac": "e4bb4ba32f93b1cb5d399aeb10fd22212141d111bb40e05ae78140ceb44cc1a9"
+    },
+    {
+      "why": "a load check's slow query, asked for shard 1 (an API with OA_API_FAULTS only)",
+      "key": "13754e49:a7ff8fecd7f41dbaedd66a1ee410c3e45f6cfe7083d506ece6673475d40cb887",
+      "purpose": "fault",
+      "shard": 1,
+      "body": "fault 500 1762190000000",
+      "signer": "1 13754e49",
+      "mac": "f9c8b8975da4b12c45f5e0efd0a742dec2b6fed2568c815b78f32ff04efefdec"
+    },
+    {
       "why": "shard 99's stats",
       "key": "13754e49:4dcc2811b5f08340746468f135f9c0713358259d9c80f7925149857f1d287447",
       "purpose": "stats",

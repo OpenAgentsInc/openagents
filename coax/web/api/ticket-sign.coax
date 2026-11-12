@@ -3,10 +3,13 @@
 // when OA_ROOM_TICKET_SIGNING_KEY is set. It also checks room shards' writes (coax/web/room/room-write.coax,
 // room_write_signed in rooms.c) when OA_ROOM_WRITE_MASTER is set. The format, its reader and the checks are in that file.
 // And it carries crash report v1's codec (coax/web/room/room-crash.coax, #13298): the API checks a room's
-// report, builds a page's and reads both through it (crash_*_c in ticket-sign-unit.c).
+// report, builds a page's and reads both through it (crash_*_c in ticket-sign-unit.c). And capacity record
+// v1's (soak-record.coax, #13296): the API checks a night's record and reads its fields
+// (capacity_record_*_c).
 //   coax c coax/web/api/ticket-sign.coax --run-steps 250000000 --library --header ticket-sign.generated.h
 #run_steps 250000000;
 #load "../../../aethyr/session/seat-ticket.coax";
 #load "../room/room-write.coax";
 #load "../room/room-crash.coax";   // crash report v1: the one codec, for rooms.c and service.c (#13298)
+#load "soak-record.coax";   // capacity record v1: the one codec, for rooms.c (#13296)
 #load "../../../aethyr/session/seat-class.coax";   // the EXT's class and level (#13259)

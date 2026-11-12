@@ -282,32 +282,15 @@ static void ticket_word(char *out, size_t cap, const char *in) {
   out[m] = 0;
 }
 // Admission (#12796, migrations/0126_room_admission.sql): the ticket asks a player key and an address
-// may make in a minute, in this process. Over, the answer is 429 with the ms until the window ends
-// (and Retry-After); the 429s are counted as 'rate' with the next write (room_rate_n).
+// may make in a minute, counted in Postgres (api_limit) so the limit is one for every worker and
+// instance (#13300). Over, the answer is 429 with the ms until the window ends (and Retry-After), and
+// the refusal is counted as 'rate' at once.
 #define ROOM_ASKS_KEY 12
 #define ROOM_ASKS_ADDR 120
-#define ROOM_LIMITS 512
-static struct { char key[96]; double since; int n; } room_limits[ROOM_LIMITS];
-static long long room_rate_n;
 // 0 when allowed, else the ms until who's window ends.
-static long long room_admit(const char *kind, const char *who, int per_minute) {
-  char key[96]; snprintf(key, sizeof key, "%s:%.80s", kind, who);
-  double now = api_now_ms();
-  int free_slot = -1, oldest = 0;
-  for (int i = 0; i < ROOM_LIMITS; i++) {
-    if (room_limits[i].key[0] && !strcmp(room_limits[i].key, key)) {
-      if (now - room_limits[i].since > 60000) { room_limits[i].since = now; room_limits[i].n = 0; }
-      if (++room_limits[i].n <= per_minute) return 0;
-      long long left = (long long)(room_limits[i].since + 60000 - now);
-      return left > 0 ? left : 1;
-    }
-    if (!room_limits[i].key[0] || now - room_limits[i].since > 60000) { if (free_slot < 0) free_slot = i; }
-    else if (room_limits[i].since < room_limits[oldest].since) oldest = i;
-  }
-  int k = free_slot >= 0 ? free_slot : oldest;
-  snprintf(room_limits[k].key, sizeof room_limits[k].key, "%s", key);
-  room_limits[k].since = now; room_limits[k].n = 1;
-  return 0;
+static long long room_admit(PGconn *db, const char *kind, const char *who, int per_minute) {
+  long long left = 0;
+  return api_limit(db, kind, who, per_minute, &left) ? 0 : left;
 }
 // The visitor's address: the load balancer's next to last (as access.c's).
 static void room_visitor(const request *q, char ip[128]) {
@@ -317,12 +300,10 @@ static void room_visitor(const request *q, char ip[128]) {
   for (char *t = strtok(xff, ", "); t && np < 16; t = strtok(NULL, ", ")) parts[np++] = t;
   snprintf(ip, 128, "%s", np ? parts[np >= 2 ? np - 2 : 0] : "local");
 }
-// A refusal counted by reason (and this process's 429s since the last write).
+// A refusal counted by reason.
 static void room_count(PGconn *db, const char *reason) {
-  char n[24]; snprintf(n, sizeof n, "%lld", room_rate_n);
-  const char *v[2] = {reason, n};
-  PGresult *r = PQexecParams(db, "SELECT verse.room_admit_count($1, 1), verse.room_admit_count('rate', $2::bigint)", 2, NULL, v, NULL, NULL, 0);
-  if (PQresultStatus(r) == PGRES_TUPLES_OK) room_rate_n = 0;
+  const char *v[1] = {reason};
+  PGresult *r = PQexecParams(db, "SELECT verse.room_admit_count($1, 1)", 1, NULL, v, NULL, NULL, 0);
   PQclear(r);
 }
 // SDK transaction adapter: choose the checked profile, lock identity/owner,
@@ -407,11 +388,11 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (v5 ? !stk_secret_c(signing, v5_key) : (!secret || strlen(secret) < 32)) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
   {
     char ip[128]; room_visitor(q, ip);
-    long long wait = room_admit("room-key", key && key[0] ? key : "-", ROOM_ASKS_KEY);
-    long long wait_ip = room_admit("room-ip", ip, ROOM_ASKS_ADDR);
+    long long wait = room_admit(db, "room-key", key && key[0] ? key : "-", ROOM_ASKS_KEY);
+    long long wait_ip = room_admit(db, "room-ip", ip, ROOM_ASKS_ADDR);
     if (wait_ip > wait) wait = wait_ip;
     if (wait > 0) {
-      room_rate_n++;
+      room_count(db, "rate");
       char hdr[48], out[96];
       snprintf(hdr, sizeof hdr, "Retry-After: %lld\r\n", (wait + 999) / 1000);
       int on = snprintf(out, sizeof out, "{\"error\":\"slow down\",\"retry_ms\":%lld}", wait);
@@ -490,6 +471,17 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
       if ((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-' || *c == ',') blocked[bn++] = *c;
     blocked[bn] = 0;
   }
+  /* maintenance (#13299, verse.flags; service-policy.coax sv_maintenance): nobody new is seated, and the
+     answer says why and until when; the page shows the words and asks again */
+  {
+    char why[161]; long long until = 0;
+    if (flags_maintenance(db, why, sizeof why, &until)) {
+      char out[512];
+      int on = snprintf(out, sizeof out, "{\"error\":\"maintenance%s%s\",\"maintenance\":\"%s\",\"until_ms\":%lld,\"retry_ms\":30000}", why[0] ? ": " : "", why, why, until);
+      api_respond(q->fd, 503, "application/json", "Retry-After: 30\r\n", out, (size_t)on);
+      return;
+    }
+  }
   PQclear(r);
   for (char *c = pid; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
   // ?realm=REALM (#12717): the directory (rooms.c) gives the instance and the shard that holds it,
@@ -507,7 +499,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
   if (!api_query(q, "party", mate, sizeof mate)) mate[0] = 0;
   for (char *c = mate; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '-')) { mate[0] = 0; break; }
   if (api_query(q, "realm", realm, sizeof realm) && realm[0]) {
-    char rn_s[24]; snprintf(rn_s, sizeof rn_s, "%lld", room_rate_n);
+    const char *rn_s = "0";   /* the 429s are counted as they happen (room_admit) */
     const char *wv[2] = {pid, rn_s};
     // a page that asks for the realm, not a room, goes where its party sits while that room has a seat
     // (#12852, migrations/0129_parties.sql verse.party_room); every such room full: "party_full" says which
@@ -532,7 +524,6 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
       PGresult *w = PQexecParams(db, "SELECT waiting, last_wait_ms FROM verse.room_wait($1, $2::bigint)", 2, NULL, wv, NULL, NULL, 0);
       long long waiting = 0, last = -1;
       if (PQresultStatus(w) == PGRES_TUPLES_OK && PQntuples(w) == 1) {
-        room_rate_n = 0;
         waiting = atoll(PQgetvalue(w, 0, 0));
         if (!PQgetisnull(w, 0, 1)) last = atoll(PQgetvalue(w, 0, 1));
       } else api_log("room-wait: %s", PQerrorMessage(db));
@@ -548,7 +539,6 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
       return;
     }
     PGresult *sr = PQexecParams(db, "SELECT verse.room_seated($1, $2::bigint)", 2, NULL, wv, NULL, NULL, 0);
-    if (PQresultStatus(sr) == PGRES_TUPLES_OK) room_rate_n = 0;
     PQclear(sr);
     room = placed;
   }
@@ -617,20 +607,23 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
     /* v2 (shard 0: no directory) or v3, wrapped in the v4 envelope with the character's capture when it resumes one */
     api_json(q->fd, resume == 1 ? 503 : 500, resume == 1 ? "{\"error\":\"character recovery unavailable\"}" : "{\"error\":\"no ticket\"}"); return;
   }
-  char out[6144], en[48], st[960] = "";
+  /* the answer's tail: every part is added whole or the answer is refused, never cut short (#13300) */
+  char out[8192], en[48], st[2048] = "";
+  bool st_whole = true;
+#define ST_ADD(...) do { int k_ = snprintf(st + sn, sizeof st - (size_t)sn, __VA_ARGS__); if (k_ < 0 || k_ >= (int)sizeof st - sn) { st_whole = false; st[sn] = 0; } else sn += k_; } while (0)
   esc(en, sizeof en, name);
   int sn = 0;
-  if (hp >= 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"hp\":%d", hp);
-  if (wanted >= 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"wanted\":%d", wanted);
-  if (xp > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"xp\":%d", xp);
-  if (look[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"look\":\"%s\"", look);
-  if (klass[0]) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"class\":\"%s\"", klass);
-  if (shard > 0) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
+  if (hp >= 0) ST_ADD(",\"hp\":%d", hp);
+  if (wanted >= 0) ST_ADD(",\"wanted\":%d", wanted);
+  if (xp > 0) ST_ADD(",\"xp\":%d", xp);
+  if (look[0]) ST_ADD(",\"look\":\"%s\"", look);
+  if (klass[0]) ST_ADD(",\"class\":\"%s\"", klass);
+  if (shard > 0) ST_ADD(",\"room\":\"%s\",\"shard\":%d%s", room, shard, full ? ",\"full\":true" : "");
   /* the shard's own endpoint when it names one (a room VM, #13179): the page opens it in place of the
      load balancer's /api/room/sK/ */
-  { char ep[200]; if (shard > 0 && rooms_endpoint(db, shard, ep, sizeof ep) && sn + (int)strlen(ep) + 20 < (int)sizeof st) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"endpoint\":\"%s\"", ep); }
-  if (shard > 0 && party_full) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"party_full\":\"%s\"", party_room);
-  if (shard > 0 && party_away) sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"party_away\":true");
+  { char ep[200]; if (shard > 0 && rooms_endpoint(db, shard, ep, sizeof ep)) ST_ADD(",\"endpoint\":\"%s\"", ep); }
+  if (shard > 0 && party_full) ST_ADD(",\"party_full\":\"%s\"", party_room);
+  if (shard > 0 && party_away) ST_ADD(",\"party_away\":true");
   /* the room asked was full: which, and whose it was when an invite named them (the page says so, #12795) */
   if (shard > 0 && full) {
     char by[32] = "", eb[48] = "";
@@ -641,10 +634,12 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
       PQclear(br);
     }
     esc(eb, sizeof eb, by);
-    sn += snprintf(st + sn, sizeof st - (size_t)sn, ",\"asked\":\"%s\"%s%s%s", asked, by[0] ? ",\"by\":\"" : "", eb, by[0] ? "\"" : "");
+    ST_ADD(",\"asked\":\"%s\"%s%s%s", asked, by[0] ? ",\"by\":\"" : "", eb, by[0] ? "\"" : "");
   }
-  if (blocked[0]) snprintf(st + sn, sizeof st - (size_t)sn, ",\"blocked\":\"%s\"", blocked);
-  snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", ticket, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
+  if (blocked[0]) ST_ADD(",\"blocked\":\"%s\"", blocked);
+#undef ST_ADD
+  int on = snprintf(out, sizeof out, "{\"ticket\":\"%s\",\"id\":\"%s\",\"account\":%s,\"admin\":%s,\"name\":\"%s\",\"expires\":%lld%s}", ticket, pid, account ? "true" : "false", acct == 2 ? "true" : "false", en, expires, st);
+  if (!st_whole || on < 0 || on >= (int)sizeof out) { api_log("room-ticket: the answer did not fit (%d)", on); api_json(q->fd, 500, "{\"error\":\"no ticket\"}"); return; }
   api_json(q->fd, 200, out);
 }
 
@@ -1197,7 +1192,7 @@ static void room_control(const request *q, PGconn *db) {
   const char *t = PQgetvalue(r, 0, 0);
   /* the banned go too (#13302): the 64 newest bans' players, each a kick line while moderation-policy.coax
      says the ban holds. A room drops their sockets; the ticket refuses them from then on. */
-  size_t kn = strlen(t), cap = kn + 64 * 48 + 1;
+  size_t kn = strlen(t), cap = kn + 64 * 48 + 16 * 64 + 1;   /* and the flags' lines (#13299) */
   char *out = malloc(cap);
   if (!out) { PQclear(r); api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
   memcpy(out, t, kn); out[kn] = 0;
@@ -1213,6 +1208,9 @@ static void room_control(const request *q, PGconn *db) {
     kn += (size_t)snprintf(out + kn, cap - kn, "kick %s\n", pid);
   }
   PQclear(r);
+  /* the flags an admin set with no deploy (#13299, rooms.c flags_lines): "flag NAME VALUE", the whole
+     list every time; a room reads one with rm_flag (coax/web/room/room-control.coax) */
+  kn = flags_lines(db, out, cap, kn, false);
   api_respond(q->fd, 200, "text/plain", NULL, out, kn);
   free(out);
 }

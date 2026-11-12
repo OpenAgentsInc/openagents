@@ -1,14 +1,23 @@
 // The openagents.com API: a native C service on Cloud Run behind the
 // openagents.com load balancer (path rule /api/*), with Postgres on the
 // Cloud SQL instance openagents-production-pg behind it. It grew out of
-// coax/web/serve.c: one process, one thread, a poll loop; each request is
-// read whole, answered and closed.
+// coax/web/serve.c. A parent process listens and keeps OA_API_WORKERS worker
+// processes (4 unless set; 1: no workers, the parent serves). Each worker takes
+// one connection at a time off the shared socket, reads the request whole,
+// answers and closes, on a database connection of its own, so one slow query
+// holds one worker and the others keep answering (#13300). Nothing a request
+// decides lives in a worker's memory: rate limits are counted in Postgres
+// (auth.c api_limit), so they hold across workers and instances.
 //
 //   api [--listen HOST:PORT] [--migrations DIR] [--migrate-only]
 //   api --rules | --limits | --rule METHOD PATH   (auth.c's tables; no database)
 //   OA_API_DATABASE   a libpq connection string (Secret Manager on Cloud Run)
 //   OA_TEAM           our team (team.conf as kind:value,...): its visits are testing, not usage (analytics.c)
 //   PORT              0.0.0.0:$PORT when set (Cloud Run)
+//   OA_API_WORKERS    worker processes, 1 to 32 (4: with four instances of two services that is 32 of
+//                     the database's 100 connections at most; a worker idle five minutes gives its back)
+//   OA_API_FAULTS     1: a room-signed POST /api/playtest/fault/slow holds this worker's database
+//                     connection for the ms it names (at most 5000), for load checks; staging and tests only
 //
 // With --migrations DIR it applies DIR/*.sql that schema_migrations doesn't
 // list (in name order, each once, in a transaction that sets oa.allow_ddl so
@@ -23,6 +32,7 @@
 //   GET  /api/playtest/health      a database round trip
 //   POST /api/analytics/events     a page's analytics batch (analytics.ingest in SQL)
 //   GET  /api/playtest/service-health  the service levels and open alerts (service.c, #13297)
+//   /api/admin/flags                   the flags an admin sets with no deploy, maintenance among them (rooms.c, #13299)
 //   GET  /api/playtest/crashes         the crash buckets and each one's newest report (rooms.c, #13298)
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
@@ -43,6 +53,7 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
@@ -53,15 +64,16 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-#define MAX_CLIENTS 64
 #define REQ_MAX (512 * 1024)
+#define WORKERS_MAX 32
+#define DB_IDLE_MS 300000   // a worker that has answered nothing for this long gives its connection back
 
-typedef struct { int fd; size_t n; double since; char *buf; } client;
+typedef struct { int fd; size_t n; char *buf; } client;
 
-static client clients[MAX_CLIENTS];
 static PGconn *db;
 static char conninfo[2048];
 static char migrations_dir[1024] = "migrations";
@@ -283,6 +295,29 @@ static void old_link(const request *q) {
   api_respond(q->fd, 301, "text/plain", head, "", 0);
 }
 
+// POST /api/playtest/fault/slow, body "fault MS AT" (OA_API_FAULTS=1 only: staging and the tests),
+// signed as a room's write is (X-Room-Mac, rooms.c room_write_signed): a query that takes MS ms
+// (1 to 5000) on this worker's connection, as a slow statement would. AT is the sender's clock in ms,
+// within two minutes of ours. The load checks send it beside their tickets to show the other
+// workers keep answering (#13300).
+static void fault_slow(const request *q) {
+  const char *on = getenv("OA_API_FAULTS");
+  if (!on || strcmp(on, "1")) { api_json(q->fd, 404, "{\"error\":\"not found\"}"); return; }
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a fault\"}"); return; }
+  if (q->body_len == 0 || q->body_len > 64) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  char body[80]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  if (room_write_signed(q, "fault", body, q->body_len) < 0) return;
+  long n = 0; long long at = 0;
+  double now = api_now_ms();
+  if (sscanf(body, "fault %ld %lld", &n, &at) != 2 || n < 1 || n > 5000 || at < now - 120000 || at > now + 120000) { api_json(q->fd, 400, "{\"error\":\"fault MS AT: ms 1 to 5000, at now\"}"); return; }
+  PGconn *c = api_db();
+  if (!c) { api_json(q->fd, 503, "{\"error\":\"database unavailable\"}"); return; }
+  char sql[64], out[64]; snprintf(sql, sizeof sql, "SELECT pg_sleep(%ld / 1000.0)", n);
+  PGresult *r = PQexec(c, sql); PQclear(r);
+  snprintf(out, sizeof out, "{\"slept_ms\":%.0f,\"pid\":%d}", api_now_ms() - now, (int)getpid());
+  api_json(q->fd, 200, out);
+}
+
 static void handle(client *cl, char *head_end, size_t body_len) {
   request q = {0};
   q.fd = cl->fd;
@@ -299,6 +334,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   auth_reset();
   if (auth_gate(&q)) return;   // the route's rule (auth.c); a route with no rule is 404
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
+  if (!strcmp(q.path, "/api/playtest/fault/slow")) { fault_slow(&q); return; }
   if (auth_api_route(&q)) return;
   if (agents_route(&q)) return;   // agents, grants and `openagents login` (agents.c)
   if (lnaddr_route(&q)) return;
@@ -308,6 +344,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (access_route(&q)) return;   // before the admin routes and /api/auth (access.c)
   if (upgrades_route(&q)) return;   // listed upgrades (makers.c), before the admin routes too
   if (jobs_route(&q)) return;
+  if (flags_route(&q)) return;   // before the admin routes: /api/admin/flags is its (rooms.c, #13299)
   if (email_route(&q)) return;   // before the admin routes: /api/admin/email is its
   if (makers_route(&q)) return;   // before the admin routes: /api/admin/makers/... is its
   if (npc_route(&q)) return;
@@ -331,23 +368,86 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   api_json(cl->fd, 404, "{\"error\":\"not found\"}");
 }
 
-static void drop(client *c) { close(c->fd); c->fd = -1; c->n = 0; }
+// One connection: read until the head and its Content-Length of body are in, answer, close. A
+// client that sends nothing for 15 s is let go.
+static void serve_one(client *c) {
+  double since = api_now_ms();
+  c->n = 0;
+  for (;;) {
+    struct pollfd p = {c->fd, POLLIN, 0};
+    double left = 15000 - (api_now_ms() - since);
+    if (left <= 0) break;
+    int got = poll(&p, 1, (int)left);
+    if (got < 0 && errno == EINTR) continue;
+    if (got <= 0) break;
+    ssize_t k = recv(c->fd, c->buf + c->n, REQ_MAX - 1 - c->n, 0);
+    if (k <= 0) break;
+    c->n += (size_t)k; c->buf[c->n] = 0;
+    char *end = strstr(c->buf, "\r\n\r\n");
+    if (!end) { if (c->n >= REQ_MAX - 1) { api_json(c->fd, 413, "{\"error\":\"too large\"}"); break; } continue; }
+    size_t want = 0;
+    for (char *line = strstr(c->buf, "\r\n"); line && line < end; line = strstr(line + 2, "\r\n"))
+      if (!strncasecmp(line + 2, "Content-Length:", 15)) want = strtoul(line + 17, NULL, 10);
+    size_t have = c->n - (size_t)(end + 4 - c->buf);
+    if (want > REQ_MAX - 8192) { api_json(c->fd, 413, "{\"error\":\"too large\"}"); break; }
+    if (have < want) continue;
+    handle(c, end, want);
+    break;
+  }
+  close(c->fd); c->fd = -1;
+}
 
-// Reads until the head and its Content-Length of body are in, then answers.
-static void on_readable(client *c) {
-  ssize_t k = recv(c->fd, c->buf + c->n, REQ_MAX - 1 - c->n, 0);
-  if (k <= 0) { drop(c); return; }
-  c->n += (size_t)k; c->buf[c->n] = 0;
-  char *end = strstr(c->buf, "\r\n\r\n");
-  if (!end) { if (c->n >= REQ_MAX - 1) { api_json(c->fd, 413, "{\"error\":\"too large\"}"); drop(c); } return; }
-  size_t want = 0;
-  for (char *line = strstr(c->buf, "\r\n"); line && line < end; line = strstr(line + 2, "\r\n"))
-    if (!strncasecmp(line + 2, "Content-Length:", 15)) want = strtoul(line + 17, NULL, 10);
-  size_t have = c->n - (size_t)(end + 4 - c->buf);
-  if (want > REQ_MAX - 8192) { api_json(c->fd, 413, "{\"error\":\"too large\"}"); drop(c); return; }
-  if (have < want) return;
-  handle(c, end, want);
-  drop(c);
+// A worker (or, with one worker, the only process): connections off the shared socket, one at a
+// time. `parent` is the supervisor's pid (0: none); a worker whose parent is gone ends.
+static volatile sig_atomic_t stopping;
+static void on_term(int sig) { (void)sig; stopping = 1; }
+static int serve(int lfd, pid_t parent) {
+  client c = {-1, 0, malloc(REQ_MAX)};
+  if (!c.buf) return 1;
+  double last = api_now_ms();
+  while (!stopping) {
+    struct pollfd p = {lfd, POLLIN, 0};
+    int got = poll(&p, 1, 5000);
+    if (got < 0) { if (errno == EINTR) continue; perror("api: poll"); return 1; }
+    if (parent && getppid() != parent) return 0;
+    if (got == 0) {
+      if (db && api_now_ms() - last > DB_IDLE_MS) { PQfinish(db); db = NULL; }
+      continue;
+    }
+    int fd = accept(lfd, NULL, NULL);   // the socket doesn't block: another worker may have taken it
+    if (fd < 0) continue;
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK);   // BSD hands the listener's flag down
+    c.fd = fd;
+    serve_one(&c);
+    last = api_now_ms();
+  }
+  return 0;
+}
+
+// The supervisor: `count` workers, each started again a moment after it ends, until SIGTERM or
+// SIGINT, which it passes on.
+static int supervise(int lfd, int count) {
+  pid_t kids[WORKERS_MAX] = {0}, me = getpid();
+  struct sigaction sa = {0}; sa.sa_handler = on_term;
+  sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL);
+  while (!stopping) {
+    for (int i = 0; i < count && !stopping; i++) {
+      if (kids[i] > 0) continue;
+      pid_t pid = fork();
+      if (pid == 0) _exit(serve(lfd, me));   // SIGTERM: it finishes the request it has, then ends
+      if (pid < 0) { perror("api: fork"); usleep(200000); continue; }
+      kids[i] = pid;
+    }
+    int st; pid_t gone = waitpid(-1, &st, 0);
+    if (gone < 0) { if (errno == EINTR) continue; usleep(200000); continue; }
+    for (int i = 0; i < count; i++) if (kids[i] == gone) {
+      kids[i] = 0;
+      if (!stopping) { api_log("worker %d ended (status %d); starting another", (int)gone, st); usleep(100000); }
+    }
+  }
+  for (int i = 0; i < count; i++) if (kids[i] > 0) kill(kids[i], SIGTERM);
+  for (int i = 0; i < count; i++) if (kids[i] > 0) waitpid(kids[i], NULL, 0);
+  return 0;
 }
 
 int main(int argc, char **argv) {
@@ -388,28 +488,16 @@ int main(int argc, char **argv) {
   addr.sin_family = AF_INET; addr.sin_port = htons((uint16_t)port);
   inet_pton(AF_INET, host, &addr.sin_addr);
   if (bind(lfd, (struct sockaddr *)&addr, sizeof addr) || listen(lfd, 128)) { perror("api: listen"); return 1; }
-  api_log("listening on %s:%d", host, port);
-  for (int i = 0; i < MAX_CLIENTS; i++) { clients[i].fd = -1; clients[i].buf = malloc(REQ_MAX); }
-
-  for (;;) {
-    struct pollfd fds[MAX_CLIENTS + 1];
-    int map[MAX_CLIENTS + 1], n = 0;
-    fds[n].fd = lfd; fds[n].events = POLLIN; map[n++] = -1;
-    for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].fd >= 0) { fds[n].fd = clients[i].fd; fds[n].events = POLLIN; map[n++] = i; }
-    if (poll(fds, (nfds_t)n, 5000) < 0) { if (errno == EINTR) continue; perror("api: poll"); return 1; }
-    double now = api_now_ms();
-    for (int k = 0; k < n; k++) {
-      if (!(fds[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
-      if (map[k] < 0) {
-        int fd = accept(lfd, NULL, NULL);
-        if (fd < 0) continue;
-        int slot = -1;
-        for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].fd < 0) { slot = i; break; }
-        if (slot < 0) { close(fd); continue; }
-        clients[slot].fd = fd; clients[slot].n = 0; clients[slot].since = now;
-      } else on_readable(&clients[map[k]]);
-    }
-    // A client that sends nothing for 15 s is let go.
-    for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].fd >= 0 && now - clients[i].since > 15000) drop(&clients[i]);
-  }
+  int count = 4;
+  const char *wk = getenv("OA_API_WORKERS");
+  if (wk && *wk) count = atoi(wk);
+  if (count < 1) count = 1;
+  if (count > WORKERS_MAX) count = WORKERS_MAX;
+  api_log("listening on %s:%d, %d worker%s", host, port, count, count == 1 ? "" : "s");
+  // no worker blocks in accept on a connection another one took
+  fcntl(lfd, F_SETFL, fcntl(lfd, F_GETFL, 0) | O_NONBLOCK);
+  if (count == 1) return serve(lfd, 0);
+  // each worker opens its own database connection: the parent's goes before they start
+  if (db) { PQfinish(db); db = NULL; }
+  return supervise(lfd, count);
 }

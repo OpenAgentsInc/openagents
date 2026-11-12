@@ -1,0 +1,58 @@
+// Capacity record v1's fixtures (#13296, coax/web/api/soak-record.coax, docs/deployment/soak.md):
+//   coax/web/tool.sh coax/web/api/soak-record-profile.coax proto/verse/capacity-record-v1.json
+// Every record's values make the file's bytes through the codec, the bytes check and read back to
+// the same values, the file's field list is the codec's, and every refused body is refused.
+#import "Basic";
+#load "soak-record.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/json/json.coax";
+
+SP_FILE :: 65536;
+
+spf_text :: (d: Jv, at: int, key: string, out: [] u8) -> string {
+  n := jv_str(d, jv_get(d, at, key), out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: soak-record-profile proto/verse/capacity-record-v1.json"); return 2; }
+  text: [SP_FILE] u8; n := fs_read(args_at(a[..], 0), text[..]);
+  nodes: [4096] JvNode; d: [1] Jv;
+  if n < 1 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("soak-record-profile: not JSON"); return 2; }
+  pb: [64] u8;
+  if spf_text(d[0], 0, "profile", pb[..]) != "openagents.capacity-record" || jv_int(d[0], jv_get(d[0], 0, "version"), -1) != 1 { tool_errln("soak-record-profile: not the v1 profile"); return 1; }
+  failed := 0;
+  // the file's numbers are the codec's, in order
+  names := jv_get(d[0], 0, "numbers");
+  if jv_len(d[0], names) != SR_KEYS - SR_FIRST_NUMBER { tool_errln("soak-record-profile: the file's numbers are not the codec's"); failed += 1; }
+  for k: 0..<jv_len(d[0], names) {
+    kb: [64] u8; got := jv_str(d[0], jv_at(d[0], names, k), kb[..]);
+    if k < SR_KEYS - SR_FIRST_NUMBER && (got < 0 || cast(string) kb[0..<got] != SR_KEY[SR_FIRST_NUMBER + k]) { tool_errln("soak-record-profile: a number's name is not the codec's"); failed += 1; }
+  }
+  records := jv_get(d[0], 0, "records");
+  for i: 0..<jv_len(d[0], records) {
+    row := jv_at(d[0], records, i); tb: [5][SR_BODY] u8; o: [SR_BODY] u8; f: [200] u8;
+    want := spf_text(d[0], row, "body", tb[0][..]);
+    r := SoakRecord.{day = spf_text(d[0], row, "day", tb[1][..]), t = jv_int(d[0], jv_get(d[0], row, "t"), -1), env = spf_text(d[0], row, "env", tb[2][..]),
+                     commit = spf_text(d[0], row, "commit", tb[3][..]), failed = spf_text(d[0], row, "failed", tb[4][..])};
+    nums := jv_get(d[0], row, "numbers");
+    for k: 0..<SR_KEYS - SR_FIRST_NUMBER { r.n[SR_FIRST_NUMBER + k] = jv_int(d[0], jv_at(d[0], nums, k), -99); }
+    got := soak_record_write(r, o[..]);
+    ok := got == want && want != "" && soak_record_check(want) && soak_record_field(want, "day", f[..]) == r.day && soak_record_field(want, "env", f[..]) == r.env;
+    ok = ok && soak_record_field(want, "commit", f[..]) == r.commit;
+    for k: SR_FIRST_NUMBER..<SR_KEYS { v := sr_num(soak_record_field(want, SR_KEY[k], f[..])); ok = ok && v.ok && v.v == r.n[k]; }
+    verdict := soak_record_field(want, "verdict", f[..]);
+    ok = ok && (ifx r.failed.count == 0 then verdict == "holds" else verdict.count == 6 + r.failed.count && verdict[6..<verdict.count] == r.failed);
+    if !ok { wb: [200] u8; tool_err("soak-record-profile: a record is not the file's: "); tool_errln(spf_text(d[0], row, "why", wb[..])); failed += 1; }
+  }
+  refused := jv_get(d[0], 0, "refused");
+  for i: 0..<jv_len(d[0], refused) {
+    row := jv_at(d[0], refused, i); tb: [SR_BODY] u8; wb: [200] u8;
+    if soak_record_check(spf_text(d[0], row, "body", tb[..])) { tool_err("soak-record-profile: taken, though refused: "); tool_errln(spf_text(d[0], row, "why", wb[..])); failed += 1; }
+  }
+  if failed > 0 { print("capacity record v1: % fixture(s) failed\n", failed); return 1; }
+  print("capacity record v1: % records as the file says, % refused\n", jv_len(d[0], records), jv_len(d[0], refused));
+  return 0;
+}

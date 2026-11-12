@@ -10,6 +10,8 @@
 # after the rollout, in the background on its own worktree, as a report:
 # ${TMPDIR:-/tmp}/api-tests-<commit>.log.
 # OA_API_DEPLOY_TESTS=1 runs it first and gates on it, as before.
+# OA_API_DEPLOY_REPORT=0 skips the report: the deployer ran the suite on a build host already
+# (coax/remote/remote.sh run -- coax/web/api/test.sh), so this computer doesn't run it again.
 #
 # Services: oa-api-staging (database oa_analytics_staging) and oa-api
 # (oa_analytics), both on the Cloud SQL instance openagents-production-pg,
@@ -108,6 +110,9 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
   # Service alerts (service.c, #13297): production's, opened or resolved, are mailed to the owner's
   # phone. Staging's reach only the log, /status and the agents' inbox (pipeline-lib.sh pl_service_watch).
   [[ "$6" != production ]] || env+="~OA_ALERT_TO=chris@openagents.com"
+  # The load checks' slow query (api.c fault_slow, #13300): staging answers it, signed as a room's
+  # `fault` write; production never has the route.
+  [[ "$6" != staging ]] || env+="~OA_API_FAULTS=1"
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   # Publishing a project from a drop (drops.c, rc-publish): the key that seals project keys, the relay,
   # the site's bucket; staging's projects go on the relay as private, so no list shows them.
@@ -166,7 +171,7 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
 deploy oa-api-staging oa-api-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging oa-analytics-staging-database-url
 $prod && deploy oa-api oa-api-database-url openagents.com oa-agent-projects oa-agent production oa-analytics-database-url
 echo "api: deployed $image"
-if [[ -z "${OA_API_DEPLOY_TESTS:-}" ]]; then
+if [[ -z "${OA_API_DEPLOY_TESTS:-}" && "${OA_API_DEPLOY_REPORT:-1}" != 0 ]]; then
   report="${TMPDIR:-/tmp}/api-tests-${commit:0:12}.log"
   nohup bash -c 'd="$(mktemp -d)"; git -C "$1" worktree add --detach "$d/s" "$2" >/dev/null 2>&1 && "$d/s/coax/web/api/test.sh"; echo "test.sh exit $?"; git -C "$1" worktree remove --force "$d/s" >/dev/null 2>&1; rm -rf "$d"' _ "$repo" "$commit" > "$report" 2>&1 < /dev/null &
   echo "api: test.sh runs after the deploy as a report: $report"

@@ -210,3 +210,48 @@ s, b = job("/api/jobs/service-watch", "good.token")
 resolved = sorted(a["key"] for a in b.get("result", {}).get("sync", {}).get("resolved", [])) if s == 200 else []
 check("service-watch: an hour after the newest report the crash alerts resolve", resolved == sorted(["crash:" + room_bucket[:8], "crash:page"]), (s, b))
 sql("DELETE FROM verse.crash_buckets")
+
+# Capacity records (#13296, docs/deployment/soak.md): the soak posts a night's record signed as a
+# room's `capacity` write; the API checks it through its codec (soak-record.coax), keeps one a day
+# and environment, and answers the newest as it was kept.
+
+
+def capacity_post(body, purpose="capacity", shard=1):
+    key = _hmac.new(_master, ("oa-room-shard-key-v1\n%d" % shard).encode(), _hashlib.sha256).digest()
+    mac = _hmac.new(key, ("oa-room-write-v1\n%s\n%d\n%s\n" % (purpose, shard, _kid)).encode() + body.encode(), _hashlib.sha256).hexdigest()
+    s, b, _ = call("POST", "/api/playtest/capacity-record", body.encode(), {"X-Room-Mac": mac, "X-Room-Signer": "%d %s" % (shard, _kid), "Content-Type": "text/plain"})
+    return s, (json.loads(b) if b.startswith(b"{") else b)
+
+
+def capacity_record(day, t, seated, verdict="holds", env="staging"):
+    return ("capacity 1\nday %s\nt %d\nenv %s\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated %d\ntick_p50_us 310\ntick_p95_us 900\n"
+            "tick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\n"
+            "memory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict %s\n") % (day, t, env, seated, verdict)
+
+
+sql("DELETE FROM verse.capacity_records")
+check("capacity: with no record kept, 404", call("GET", "/api/playtest/capacity")[0] == 404)
+night = capacity_record("2026-11-12", 1762990000000, 92)
+s, b = capacity_post(night)
+check("capacity-record: a night's signed record is kept", s == 200 and b == {"kept": True}, (s, b))
+s, b, _ = call("GET", "/api/playtest/capacity")
+check("capacity: the newest record, as it was kept, for anyone", s == 200 and b.decode() == night, (s, b))
+later = capacity_record("2026-11-12", 1762990000000 + 3600000, 96)
+check("capacity-record: a later run of the same day replaces it, an earlier one does not",
+      capacity_post(later) == (200, {"kept": True}) and capacity_post(night) == (200, {"kept": False})
+      and sql("SELECT seated || ' ' || holds FROM verse.capacity_records WHERE day = '2026-11-12' AND env = 'staging'") == "96 true")
+bad_night = capacity_record("2026-11-13", 1762990000000 + 86400000, 40, "fails slow-tick,leak")
+check("capacity-record: a failed night is kept as failed, and is the newest", capacity_post(bad_night) == (200, {"kept": True})
+      and call("GET", "/api/playtest/capacity")[1].decode() == bad_night
+      and sql("SELECT holds::text FROM verse.capacity_records WHERE day = '2026-11-13'") == "false")
+check("capacity: one day's record by its date", call("GET", "/api/playtest/capacity?day=2026-11-12")[1].decode() == later
+      and call("GET", "/api/playtest/capacity?day=2026-11-01")[0] == 404)
+check("capacity-record: a local room's run is kept but never the one shown",
+      capacity_post(capacity_record("2026-11-14", 1762990000000 + 2 * 86400000, 16, env="local")) == (200, {"kept": True})
+      and call("GET", "/api/playtest/capacity")[1].decode() == bad_night)
+check("capacity-record: signed as another purpose it is refused", capacity_post(night, purpose="stats")[0] == 401)
+check("capacity-record: unsigned it is refused", call("POST", "/api/playtest/capacity-record", night.encode())[0] == 401)
+check("capacity-record: a body that is no record is refused", capacity_post("shard=1\n")[0] == 400
+      and capacity_post(night.replace("verdict holds", "verdict ok"))[0] == 400 and capacity_post(night + "more 1\n")[0] == 400)
+check("capacity: a POST is refused", call("POST", "/api/playtest/capacity", b"")[0] == 405)
+sql("DELETE FROM verse.capacity_records")

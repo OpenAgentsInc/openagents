@@ -33,6 +33,7 @@
 #include "ws.h"
 #include "wt.h"
 #include <arpa/inet.h>
+#include <curl/curl.h>   /* the posters' HTTPS client, one kept handle a lane (#13300) */
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -46,6 +47,7 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/resource.h>   /* getrusage: the resident memory in the vitals (room-stats.h) */
 #include <sys/random.h>   /* getentropy: the dice key (room-tick.c dice_key_in) */
 #include <sys/wait.h>
 #include <time.h>
@@ -339,6 +341,32 @@ static void warm_rooms(void) {
   rooms_warm_us=now_us()-preparing;
 }
 #include "room-wt.c"   /* WebTransport sessions as conns (#13176) */
+/* Seeded faults for the soak's own check (#13296, soak.coax self-check), in a --dev room only:
+   OA_ROOM_FAULT_TICK_US busies every tick that long; OA_ROOM_FAULT_LEAK_KB takes and touches that
+   many KB each second and never gives them back. A room that is not --dev reads neither. */
+static void fault_step(void) {
+  static int ready, tick_us, leak_kb; static int64_t leaked_at;
+#ifdef ROOM_SEEDED_TICK_US
+  /* A seeded bad build (compile.sh OA_ROOM_SEED_TICK_US, vm-deploy.sh deploy --staging --seed-tick-us,
+     #13299): every tick this much longer, so a release's canary has a bad room to stop at. Its
+     release is named "-seeded", which no production shard takes. */
+  { int64_t until = now_us() + ROOM_SEEDED_TICK_US; while (now_us() < until) { } }
+#endif
+  if (!dev_dir) return;
+  if (!ready) {
+    const char *t = getenv("OA_ROOM_FAULT_TICK_US"), *l = getenv("OA_ROOM_FAULT_LEAK_KB");
+    tick_us = t ? atoi(t) : 0; leak_kb = l ? atoi(l) : 0; ready = 1; leaked_at = now_ms();
+    if (tick_us > 0 || leak_kb > 0) printf("room: --dev seeded faults: %d us a tick, %d KB a second leaked\n", tick_us, leak_kb);
+  }
+  if (tick_us > 0) { int64_t until = now_us() + tick_us; while (now_us() < until) { } }
+  if (leak_kb > 0 && now_ms() - leaked_at >= 1000) {
+    leaked_at = now_ms();
+    static char *volatile kept;   /* read by nothing, so the compiler keeps the block */
+    char *p = malloc((size_t)leak_kb * 1024);
+    if (p) { memset(p, 1, (size_t)leak_kb * 1024); kept = p; }
+    (void)kept;
+  }
+}
 static void everglade_tick(void) {
   int64_t was[PARTS]; memcpy(was, part_us, sizeof was);
   pump_held = true;
@@ -619,10 +647,13 @@ static void frames(int i) {
   }
 }
 
-/* Players' HP between visits (room-vitals.coax, #12715): what rm_vitals_due wrote goes to the API by
-   curl, its config on stdin (so the MAC is in no argument list). The curls are started by a small
-   poster process forked before the server's memory is taken (a fork of the full server can fail on
-   Cloud Run). The main loop offers an atomic local datagram and never waits. */
+/* Players' HP between visits (room-vitals.coax, #12715): what rm_vitals_due wrote goes to the API
+   over HTTPS from a small poster process a lane, forked before the server's memory is taken (a fork
+   of the full server can fail on Cloud Run). Each poster keeps one libcurl handle for its life, so a
+   lane's posts reuse its connection to the API: no process, DNS lookup or TLS handshake a post
+   (#13300; before, each post forked and ran curl). A request is still written as curl's config lines
+   (url, header, data-binary, max-time, fail), so the MAC is in no argument list and the datagram's
+   shape is as it was. The main loop offers an atomic local datagram and never waits. */
 /* The eight lanes mirror background-budget.coax. Each has one serial SDK
    helper, one Coax-owned request identity and an atomic, bounded nonblocking
    datagram transport. A full SDK queue cannot stop the simulation, a control
@@ -631,38 +662,82 @@ enum { POST_CONTROL, POST_WORLD, POST_VITALS, POST_CHECKPOINT, POST_DIRECTORY, P
 #define POST_CAP 16640
 static int poster_fd[POST_LANES] = {-1,-1,-1,-1,-1,-1,-1,-1};
 static coax_v_t_BgBudget background(void) { return (coax_v_t_BgBudget){server->bg.e,1}; }
+typedef struct { char *p; size_t n, cap; bool over; } post_body;
+static size_t post_take(char *data, size_t size, size_t count, void *u) {
+  post_body *b = u; size_t k = size * count;
+  if (b->n + k > b->cap) { b->over = true; return 0; }   /* an answer too long is no answer, as it was */
+  memcpy(b->p + b->n, data, k); b->n += k;
+  return k;
+}
+/* One value of a curl config line (after `key = `), in place: quoted, with curl's escapes. */
+static char *post_value(char *v, char **next) {
+  char *o = v, *start = v;
+  if (*v == '"') {
+    v++; start = o;
+    while (*v && *v != '"') {
+      if (*v == '\\' && v[1]) { v++; *o++ = *v == 'n' ? '\n' : *v == 't' ? '\t' : *v == 'r' ? '\r' : *v; v++; }
+      else *o++ = *v++;
+    }
+    if (*v == '"') v++;
+  } else { while (*v && *v != '\n') *o++ = *v++; }
+  while (*v && *v != '\n') v++;
+  *next = *v ? v + 1 : v;
+  *o = 0;
+  return start;
+}
+/* The request in cfg, sent on h (kept between calls: its connection is reused). The HTTP status
+   (0: no answer) and the answer's body in got; a `fail` request's refusal has no body, as curl's. */
+static int post_do(CURL *h, char *cfg, char *got, size_t cap, size_t *gn) {
+  struct curl_slist *headers = NULL;
+  char *url = NULL, *data = NULL; long most = 10; bool fail = false, has_data = false;
+  for (char *line = cfg; *line; ) {
+    char *eq = line; while (*eq && *eq != '\n' && *eq != ' ') eq++;
+    size_t kn = (size_t)(eq - line);
+    if (!strncmp(eq, " = ", 3)) {
+      char *next, *v = post_value(eq + 3, &next);
+      if (kn == 3 && !strncmp(line, "url", 3)) url = v;
+      else if (kn == 6 && !strncmp(line, "header", 6)) headers = curl_slist_append(headers, v);
+      else if (kn == 11 && !strncmp(line, "data-binary", 11)) { data = v; has_data = true; }
+      else if (kn == 8 && !strncmp(line, "max-time", 8)) most = atol(v);
+      line = next;
+    } else {
+      if (kn == 4 && !strncmp(line, "fail", 4)) fail = true;
+      while (*line && *line != '\n') line++;
+      if (*line) line++;
+    }
+  }
+  post_body b = {got, 0, cap - 1, false};
+  long status = 0;
+  if (url) {
+    curl_easy_reset(h);   /* the options go; the connection, DNS and TLS session stay */
+    curl_easy_setopt(h, CURLOPT_URL, url);
+    curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers);
+    if (has_data) { curl_easy_setopt(h, CURLOPT_POST, 1L); curl_easy_setopt(h, CURLOPT_POSTFIELDS, data); curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)strlen(data)); }
+    curl_easy_setopt(h, CURLOPT_TIMEOUT, most > 0 ? most : 10L);
+    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(h, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, post_take); curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
+    if (curl_easy_perform(h) == CURLE_OK && !b.over) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
+    else b.n = 0;
+  }
+  curl_slist_free_all(headers);
+  if (fail && status >= 400) b.n = 0;
+  got[b.n] = 0; *gn = b.n;
+  return (int)status;
+}
 static void poster_run(int fd, pid_t owner) {
   signal(SIGTERM,SIG_IGN); /* final saves continue during a process-group drain */
   signal(SIGCHLD,SIG_DFL);
   static char req[POST_CAP+1], got[16384], msg[POST_CAP];
+  CURL *h = curl_easy_init();
   while (getppid()==owner) {
     struct pollfd ready={fd,POLLIN,0};
     if (poll(&ready,1,250)<=0) continue;
     ssize_t n=recv(fd,req,sizeof req-1,0); if(n<=0||n>=POST_CAP) continue;req[n]=0;
     char *nl=memchr(req,'\n',(size_t)n); long long id,batch,at;
     if(!nl||sscanf(req,"%lld %lld %lld",&id,&batch,&at)!=3)continue;
-    size_t cn=(size_t)n-(size_t)(nl+1-req),gn=0,k=0;int status=0;
-    if(now_ms()-at<15000) {
-      int p[2],o[2];
-      if(!pipe(p)) {
-        if(!pipe(o)) {
-          pid_t child=fork();
-          if(child==0) {
-            signal(SIGTERM,SIG_DFL);dup2(p[0],0);dup2(o[1],1);
-            for(int d=3;d<1024;d++)close(d);
-            execlp("curl","curl","-K","-",(char *)NULL);_exit(127);
-          }
-          close(p[0]);close(o[1]);
-          if(child>0) {size_t sent=0;while(sent<cn){ssize_t w=write(p[1],nl+1+sent,cn-sent);if(w<=0)break;sent+=(size_t)w;}}
-          close(p[1]);ssize_t r;
-          while(gn<sizeof got-1&&(r=read(o[0],got+gn,sizeof got-1-gn))>0)gn+=(size_t)r;
-          close(o[0]);if(child>0)waitpid(child,NULL,0);got[gn]=0;
-          char *mark=NULL;
-          for(char *q=strstr(got,"\n#HTTP ");q;q=strstr(q+1,"\n#HTTP "))mark=q;
-          if(gn<sizeof got-1&&mark){status=atoi(mark+7);k=(size_t)(mark-got);}
-        }else{close(p[0]);close(p[1]);}
-      }
-    }
+    size_t k=0;int status=0;
+    if(h&&now_ms()-at<15000)status=post_do(h,nl+1,got,sizeof got,&k);
     int hn=snprintf(msg,sizeof msg,"%lld %lld %d %zu\n",id,batch,status,k);
     if(hn>0&&(size_t)hn+k<=sizeof msg){memcpy(msg+hn,got,k);(void)send(fd,msg,(size_t)hn+k,0);}
   }
@@ -1159,7 +1234,7 @@ int main(int argc, char **argv) {
       int64_t t_tick = now_us();
       /* each realm steps when its profile says (room.coax rm_profile: 0 the games on their own paths, room-games.coax; 1 Everglade) */
       if (rm_realm_due(view(), 0, ticks)) rm_tick(view());
-      if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; crash_tick(wall_ms(), dt, rm_players(view())); }
+      if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); fault_step(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; crash_tick(wall_ms(), dt, rm_players(view())); }
       for (int i = 0; i < CONNS; i++) {
         if (conns[i].fd < 0 || !conns[i].ws || conns[i].wt) continue;
         int64_t len = rm_state(view(), i);

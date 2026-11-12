@@ -23,6 +23,8 @@ void api_respond(int fd, int status, const char *type, const char *extra_headers
 void api_json(int fd, int status, const char *json);
 PGconn *api_db(void);
 PGconn *api_db_new(void);   // a connection of its own (a child process's)
+// auth.c: one hit on a per-minute limit, counted in Postgres so every worker and instance shares it (#13300).
+bool api_limit(PGconn *db, const char *name, const char *who, int per_minute, long long *left_ms);
 // A header's value (first one), or NULL with out "".
 const char *api_header(const request *q, const char *name, char *out, size_t cap);
 // A query parameter, percent-decoded, or NULL with out "".
@@ -46,6 +48,10 @@ bool rooms_route(const request *q, PGconn *db, const char *rest);   // rooms.c: 
 void rooms_print_limits(FILE *out);       // api --limits: the rooms' section of /docs/limits (rooms.c)
 bool rooms_pick(PGconn *db, const char *realm, const char *asked, const char *pid, const char *via, const char *build, char *code, size_t cap, int *shard, bool *full);
 int rooms_invite(PGconn *db, const char *room, const char *pid, long long *until);
+int room_write_signed(const request *q, const char *purpose, const char *body, size_t n);   // rooms.c: a room's signed write
+bool flags_route(const request *q);       // rooms.c: the flags an admin sets with no deploy (#13299)
+size_t flags_lines(PGconn *db, char *out, size_t cap, size_t n, bool whole);   // the live flags as the control answer's lines
+bool flags_maintenance(PGconn *db, char *why, size_t cap, long long *until_ms);   // maintenance on: its words and its end
 bool rooms_endpoint(PGconn *db, int shard, char *out, size_t cap);   // rooms.c: a live VM shard's wss:// endpoint (#13179)
 bool npc_route(const request *q);         // npc.c
 void npc_print_limits(FILE *out);         // api --limits: the character chat's section of /docs/limits (npc.c)

@@ -1118,6 +1118,31 @@ END $$;
 
 
 --
+-- Name: bucket_lock(text, text, bigint); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.bucket_lock(name_ text, key_ text, full_ms bigint, OUT fill_ms bigint, OUT at_ms bigint, OUT now_ms bigint) RETURNS record
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  now_ms := projects.now_ms();
+  INSERT INTO auth.limit_buckets (name, key, fill_ms, at_ms) VALUES (name_, key_, full_ms, now_ms) ON CONFLICT DO NOTHING;
+  SELECT b.fill_ms, b.at_ms INTO fill_ms, at_ms FROM auth.limit_buckets b WHERE b.name = name_ AND b.key = key_ FOR UPDATE;
+  IF random() < 0.01 THEN DELETE FROM auth.limit_buckets b WHERE b.at_ms < now_ms - 86400000; END IF;
+END $$;
+
+
+--
+-- Name: bucket_put(text, text, bigint, bigint); Type: FUNCTION; Schema: auth; Owner: -
+--
+
+CREATE FUNCTION auth.bucket_put(name_ text, key_ text, fill_ms_ bigint, at_ms_ bigint) RETURNS void
+    LANGUAGE sql
+    AS $$
+  UPDATE auth.limit_buckets SET fill_ms = fill_ms_, at_ms = at_ms_ WHERE name = name_ AND key = key_ $$;
+
+
+--
 -- Name: caller_key(text); Type: FUNCTION; Schema: auth; Owner: -
 --
 
@@ -11178,6 +11203,35 @@ CREATE FUNCTION verse.builder_wants(v jsonb) RETURNS jsonb
 
 
 --
+-- Name: capacity_put(date, text, bigint, integer, boolean, text); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.capacity_put(day_ date, env_ text, at_ms_ bigint, seated_ integer, holds_ boolean, body_ text) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+DECLARE n int;
+BEGIN
+  INSERT INTO verse.capacity_records AS c (day, env, at_ms, seated, holds, body) VALUES (day_, env_, at_ms_, seated_, holds_, body_)
+  ON CONFLICT (day, env) DO UPDATE SET at_ms = EXCLUDED.at_ms, seated = EXCLUDED.seated, holds = EXCLUDED.holds, body = EXCLUDED.body
+  WHERE c.at_ms <= EXCLUDED.at_ms;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n = 1;
+END $$;
+
+
+--
+-- Name: capacity_record(date); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.capacity_record(day_ date) RETURNS text
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT c.body FROM verse.capacity_records c
+  WHERE c.env <> 'local' AND (day_ IS NULL OR c.day = day_)
+  ORDER BY c.day DESC, (c.env = 'staging') DESC, c.at_ms DESC LIMIT 1 $$;
+
+
+--
 -- Name: character_xp_of(jsonb); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -12401,6 +12455,27 @@ BEGIN
           nullif(auto, ''), 'web');
   RETURN verse.r(200, '{"saved":true}');
 END $_$;
+
+
+--
+-- Name: flag_clear(text); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.flag_clear(name_ text) RETURNS integer
+    LANGUAGE sql
+    AS $$
+  WITH d AS (DELETE FROM verse.flags WHERE name = name_ RETURNING 1) SELECT count(*)::int FROM d $$;
+
+
+--
+-- Name: flag_put(text, bigint, bigint, text, text); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.flag_put(name_ text, value_ bigint, until_ms_ bigint, why_ text, by_ text) RETURNS void
+    LANGUAGE sql
+    AS $$
+  INSERT INTO verse.flags (name, value, until_ms, why, set_ms, set_by) VALUES (name_, value_, until_ms_, why_, verse.now_ms(), by_)
+  ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value, until_ms = EXCLUDED.until_ms, why = EXCLUDED.why, set_ms = EXCLUDED.set_ms, set_by = EXCLUDED.set_by $$;
 
 
 --
@@ -16208,9 +16283,12 @@ DECLARE
   now bigint := verse.room_now();
   i verse.room_instances;
   tag text := 'i-' || by_pid;
+  rl text;
 BEGIN
-  PERFORM pg_advisory_xact_lock(7731028);
-  PERFORM verse.room_sweep(now);
+  -- the instance's realm (kept for as long as the instance is) names the locks; then it is read again
+  SELECT x.realm INTO rl FROM verse.room_instances x WHERE x.code = asked;
+  PERFORM verse.room_lock(ARRAY[verse.room_lock_key(asked), hashtext(rl)]);
+  IF rl IS NOT NULL THEN PERFORM verse.room_sweep_realm(rl, now); END IF;
   SELECT * INTO i FROM verse.room_instances x WHERE x.code = asked;
   IF NOT FOUND OR NOT (by_pid = ANY (i.pids) OR EXISTS (SELECT 1 FROM verse.room_holds h WHERE h.code = asked AND h.pid = by_pid)) THEN
     why := 'not in it'; RETURN;
@@ -16350,6 +16428,31 @@ CREATE FUNCTION verse.room_live(i verse.room_instances, now bigint) RETURNS bool
 
 
 --
+-- Name: room_lock(integer[]); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.room_lock(keys integer[]) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE k int;
+BEGIN
+  FOR k IN SELECT DISTINCT u FROM unnest(keys) u WHERE u IS NOT NULL ORDER BY 1 LOOP
+    PERFORM pg_advisory_xact_lock(7731028, k);
+  END LOOP;
+END $$;
+
+
+--
+-- Name: room_lock_key(text); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.room_lock_key(code text) RETURNS integer
+    LANGUAGE sql IMMUTABLE
+    AS $_$
+  SELECT hashtext(coalesce(substring(code FROM '^(.*)-[1-9][0-9]{0,2}$'), code)) $_$;
+
+
+--
 -- Name: room_max(); Type: FUNCTION; Schema: verse; Owner: -
 --
 
@@ -16468,56 +16571,8 @@ $_$;
 --
 
 CREATE FUNCTION verse.room_pick(realm text, asked text, pid text, seats integer, OUT code text, OUT shard integer, OUT was_full boolean) RETURNS record
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-  now bigint := verse.room_now();
-  i verse.room_instances;
-  k int;
-BEGIN
-  was_full := false;
-  PERFORM pg_advisory_xact_lock(7731028);
-  PERFORM verse.room_sweep(now);
-  IF asked <> realm THEN
-    SELECT * INTO i FROM verse.room_instances x WHERE x.code = asked;
-    IF FOUND AND (pid = ANY (i.pids) OR EXISTS (SELECT 1 FROM verse.room_holds h WHERE h.code = i.code AND h.pid = room_pick.pid)
-                  OR verse.room_taken(i, now) < seats) THEN
-      code := i.code; shard := i.shard;
-    ELSIF FOUND THEN
-      was_full := true;
-    ELSE
-      k := verse.room_place(now);
-      IF k IS NULL THEN RETURN; END IF;
-      INSERT INTO verse.room_instances (code, realm, n, shard, made_at)
-      VALUES (asked, realm, CASE WHEN asked ~ ('^' || realm || '-[1-9][0-9]{0,2}$') THEN substr(asked, length(realm) + 2)::int END, k, now);
-      code := asked; shard := k;
-    END IF;
-  END IF;
-  IF code IS NULL THEN
-    -- a reconnect keeps its instance
-    SELECT x.code, x.shard INTO code, shard FROM verse.room_instances x
-    WHERE x.realm = room_pick.realm AND x.n IS NOT NULL
-      AND (pid = ANY (x.pids) OR EXISTS (SELECT 1 FROM verse.room_holds h WHERE h.code = x.code AND h.pid = room_pick.pid AND h.until_ms > now))
-    ORDER BY x.n LIMIT 1;
-  END IF;
-  IF code IS NULL THEN
-    SELECT x.code, x.shard INTO code, shard FROM verse.room_instances x
-    WHERE x.realm = room_pick.realm AND x.n IS NOT NULL AND verse.room_taken(x, now) < seats
-    ORDER BY x.n LIMIT 1;
-  END IF;
-  IF code IS NULL THEN
-    k := verse.room_place(now);
-    IF k IS NULL THEN RETURN; END IF;
-    SELECT min(g) INTO code FROM generate_series(1, 999) g
-    WHERE NOT EXISTS (SELECT 1 FROM verse.room_instances x WHERE x.realm = room_pick.realm AND x.n = g)
-      AND NOT EXISTS (SELECT 1 FROM verse.room_instances x WHERE x.code = room_pick.realm || '-' || g);
-    IF code IS NULL THEN RETURN; END IF;
-    INSERT INTO verse.room_instances (code, realm, n, shard, made_at) VALUES (realm || '-' || code, realm, code::int, k, now);
-    code := realm || '-' || code; shard := k;
-  END IF;
-  INSERT INTO verse.room_holds (code, pid, until_ms) VALUES (code, pid, now + 20000)
-  ON CONFLICT ON CONSTRAINT room_holds_pkey DO UPDATE SET until_ms = EXCLUDED.until_ms;
-END $_$;
+    LANGUAGE sql
+    AS $$ SELECT * FROM verse.room_pick(realm, asked, pid, seats, '', '') $$;
 
 
 --
@@ -16525,62 +16580,8 @@ END $_$;
 --
 
 CREATE FUNCTION verse.room_pick(realm text, asked text, pid text, seats integer, via text, OUT code text, OUT shard integer, OUT was_full boolean) RETURNS record
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-  now bigint := verse.room_now();
-  i verse.room_instances;
-  k int;
-BEGIN
-  was_full := false;
-  PERFORM pg_advisory_xact_lock(7731028);
-  PERFORM verse.room_sweep(now);
-  IF asked <> realm THEN
-    SELECT * INTO i FROM verse.room_instances x WHERE x.code = asked;
-    IF FOUND AND (pid = ANY (i.pids) OR EXISTS (SELECT 1 FROM verse.room_holds h WHERE h.code = i.code AND h.pid = room_pick.pid)) THEN
-      code := i.code; shard := i.shard;
-    ELSIF FOUND AND coalesce(via, '') <> '' AND via <> pid
-          AND EXISTS (SELECT 1 FROM verse.room_holds h WHERE h.code = i.code AND h.pid = 'i-' || via AND h.until_ms > now) THEN
-      -- the invite's seat: this player's now (their own hold below), and no one else's
-      DELETE FROM verse.room_holds h WHERE h.code = i.code AND h.pid = 'i-' || via;
-      code := i.code; shard := i.shard;
-    ELSIF FOUND AND verse.room_taken(i, now) < seats THEN
-      code := i.code; shard := i.shard;
-    ELSIF FOUND THEN
-      was_full := true;
-    ELSE
-      k := verse.room_place(now);
-      IF k IS NULL THEN RETURN; END IF;
-      INSERT INTO verse.room_instances (code, realm, n, shard, made_at)
-      VALUES (asked, realm, CASE WHEN asked ~ ('^' || realm || '-[1-9][0-9]{0,2}$') THEN substr(asked, length(realm) + 2)::int END, k, now);
-      code := asked; shard := k;
-    END IF;
-  END IF;
-  IF code IS NULL THEN
-    -- a reconnect keeps its instance
-    SELECT x.code, x.shard INTO code, shard FROM verse.room_instances x
-    WHERE x.realm = room_pick.realm AND x.n IS NOT NULL
-      AND (pid = ANY (x.pids) OR EXISTS (SELECT 1 FROM verse.room_holds h WHERE h.code = x.code AND h.pid = room_pick.pid AND h.until_ms > now))
-    ORDER BY x.n LIMIT 1;
-  END IF;
-  IF code IS NULL THEN
-    SELECT x.code, x.shard INTO code, shard FROM verse.room_instances x
-    WHERE x.realm = room_pick.realm AND x.n IS NOT NULL AND verse.room_taken(x, now) < seats
-    ORDER BY x.n LIMIT 1;
-  END IF;
-  IF code IS NULL THEN
-    k := verse.room_place(now);
-    IF k IS NULL THEN RETURN; END IF;
-    SELECT min(g) INTO code FROM generate_series(1, 999) g
-    WHERE NOT EXISTS (SELECT 1 FROM verse.room_instances x WHERE x.realm = room_pick.realm AND x.n = g)
-      AND NOT EXISTS (SELECT 1 FROM verse.room_instances x WHERE x.code = room_pick.realm || '-' || g);
-    IF code IS NULL THEN RETURN; END IF;
-    INSERT INTO verse.room_instances (code, realm, n, shard, made_at) VALUES (realm || '-' || code, realm, code::int, k, now);
-    code := realm || '-' || code; shard := k;
-  END IF;
-  INSERT INTO verse.room_holds (code, pid, until_ms) VALUES (code, pid, now + 20000)
-  ON CONFLICT ON CONSTRAINT room_holds_pkey DO UPDATE SET until_ms = EXCLUDED.until_ms;
-END $_$;
+    LANGUAGE sql
+    AS $$ SELECT * FROM verse.room_pick(realm, asked, pid, seats, via, '') $$;
 
 
 --
@@ -16597,8 +16598,9 @@ DECLARE
   bld text := build;
 BEGIN
   was_full := false;
-  PERFORM pg_advisory_xact_lock(7731028);
-  PERFORM verse.room_sweep(now);
+  -- this realm's lock, and the asked instance's when its name belongs to another (in key order)
+  PERFORM verse.room_lock(ARRAY[hashtext(realm), verse.room_lock_key(asked)]);
+  PERFORM verse.room_sweep_realm(realm, now);
   IF NOT verse.room_any_fits(bld, now) THEN bld := ''; END IF;
   IF asked <> realm THEN
     SELECT * INTO i FROM verse.room_instances x WHERE x.code = asked;
@@ -16616,6 +16618,7 @@ BEGIN
     ELSIF FOUND THEN
       was_full := true;
     ELSE
+      PERFORM pg_advisory_xact_lock(7731029, 0);   -- a new instance: the shards' counts, one placement at a time
       k := verse.room_place(now, bld);
       IF k IS NULL THEN RETURN; END IF;
       INSERT INTO verse.room_instances (code, realm, n, shard, made_at)
@@ -16636,6 +16639,7 @@ BEGIN
     ORDER BY x.n LIMIT 1;
   END IF;
   IF code IS NULL THEN
+    PERFORM pg_advisory_xact_lock(7731029, 0);
     k := verse.room_place(now, bld);
     IF k IS NULL THEN RETURN; END IF;
     SELECT min(g) INTO code FROM generate_series(1, 999) g
@@ -16731,7 +16735,15 @@ BEGIN
     IF lines[3] !~ '^g [0-9]{1,15}( d)?$' THEN RETURN -1; END IF;
     g := split_part(lines[3], ' ', 2)::bigint; d := lines[3] ~ ' d$'; first := 4;
   END IF;
-  PERFORM pg_advisory_xact_lock(7731028);
+  -- this shard's reports one at a time; then every realm the report can change (the rooms it names
+  -- and the ones the directory has on this shard), in key order; then the shards' counts
+  PERFORM pg_advisory_xact_lock(7731030, sh);
+  PERFORM verse.room_lock(
+    (SELECT coalesce(array_agg(verse.room_lock_key(split_part(l, ' ', 2))), '{}') FROM unnest(coalesce(lines[first:], '{}')) l WHERE l ~ '^r [a-z0-9-]{1,24} ')
+    || (SELECT coalesce(array_agg(hashtext(i.realm)) || array_agg(verse.room_lock_key(i.code)), '{}') FROM verse.room_instances i WHERE i.shard = sh));
+  PERFORM pg_advisory_xact_lock(7731029, 0);
+  -- holds long over whose room is gone (a realm's own are swept by its picks)
+  DELETE FROM verse.room_holds h WHERE h.until_ms <= now - 60000 AND NOT EXISTS (SELECT 1 FROM verse.room_instances x WHERE x.code = h.code);
   IF g IS NOT NULL THEN
     SELECT s.gen INTO newest FROM verse.room_shards s WHERE s.shard = sh;
     IF newest IS NOT NULL AND g < newest THEN RETURN -2; END IF;   -- a replaced process: refused whole
@@ -16905,6 +16917,19 @@ CREATE FUNCTION verse.room_sweep(now bigint) RETURNS void
     AS $$
   DELETE FROM verse.room_holds WHERE until_ms <= now;
   DELETE FROM verse.room_instances i WHERE NOT verse.room_live(i, now);
+$$;
+
+
+--
+-- Name: room_sweep_realm(text, bigint); Type: FUNCTION; Schema: verse; Owner: -
+--
+
+CREATE FUNCTION verse.room_sweep_realm(realm_ text, now bigint) RETURNS void
+    LANGUAGE sql
+    AS $$
+  DELETE FROM verse.room_holds h WHERE h.until_ms <= now
+    AND h.code IN (SELECT x.code FROM verse.room_instances x WHERE x.realm = realm_);
+  DELETE FROM verse.room_instances i WHERE i.realm = realm_ AND NOT verse.room_live(i, now);
 $$;
 
 
@@ -19880,6 +19905,19 @@ CREATE TABLE auth.life_columns (
 
 
 --
+-- Name: limit_buckets; Type: TABLE; Schema: auth; Owner: -
+--
+
+CREATE TABLE auth.limit_buckets (
+    name text NOT NULL,
+    key text NOT NULL,
+    fill_ms bigint NOT NULL,
+    at_ms bigint NOT NULL,
+    CONSTRAINT limit_buckets_key_check CHECK ((length(key) <= 80))
+);
+
+
+--
 -- Name: limit_counts; Type: TABLE; Schema: auth; Owner: -
 --
 
@@ -21251,6 +21289,22 @@ CREATE TABLE verse.awards (
 
 
 --
+-- Name: capacity_records; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.capacity_records (
+    day date NOT NULL,
+    env text NOT NULL,
+    at_ms bigint NOT NULL,
+    seated integer NOT NULL,
+    holds boolean NOT NULL,
+    body text NOT NULL,
+    CONSTRAINT capacity_records_body_check CHECK ((length(body) <= 2048)),
+    CONSTRAINT capacity_records_env_check CHECK ((env = ANY (ARRAY['staging'::text, 'production'::text, 'local'::text])))
+);
+
+
+--
 -- Name: character_checkpoints_v1; Type: TABLE; Schema: verse; Owner: -
 --
 
@@ -21414,6 +21468,22 @@ CREATE TABLE verse.demo_files (
     doc jsonb NOT NULL,
     md5 text NOT NULL,
     imported_ms bigint NOT NULL
+);
+
+
+--
+-- Name: flags; Type: TABLE; Schema: verse; Owner: -
+--
+
+CREATE TABLE verse.flags (
+    name text NOT NULL,
+    value bigint NOT NULL,
+    until_ms bigint DEFAULT 0 NOT NULL,
+    why text DEFAULT ''::text NOT NULL,
+    set_ms bigint NOT NULL,
+    set_by text DEFAULT ''::text NOT NULL,
+    CONSTRAINT flags_name_check CHECK (((length(name) >= 1) AND (length(name) <= 32))),
+    CONSTRAINT flags_why_check CHECK ((length(why) <= 160))
 );
 
 
@@ -23292,6 +23362,14 @@ ALTER TABLE ONLY auth.life_columns
 
 
 --
+-- Name: limit_buckets limit_buckets_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth.limit_buckets
+    ADD CONSTRAINT limit_buckets_pkey PRIMARY KEY (name, key);
+
+
+--
 -- Name: limit_counts limit_counts_pkey; Type: CONSTRAINT; Schema: auth; Owner: -
 --
 
@@ -23956,6 +24034,14 @@ ALTER TABLE ONLY verse.awards
 
 
 --
+-- Name: capacity_records capacity_records_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.capacity_records
+    ADD CONSTRAINT capacity_records_pkey PRIMARY KEY (day, env);
+
+
+--
 -- Name: character_checkpoints_v1 character_checkpoints_v1_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
 --
 
@@ -24033,6 +24119,14 @@ ALTER TABLE ONLY verse.crash_reports
 
 ALTER TABLE ONLY verse.demo_files
     ADD CONSTRAINT demo_files_pkey PRIMARY KEY (path);
+
+
+--
+-- Name: flags flags_pkey; Type: CONSTRAINT; Schema: verse; Owner: -
+--
+
+ALTER TABLE ONLY verse.flags
+    ADD CONSTRAINT flags_pkey PRIMARY KEY (name);
 
 
 --
@@ -24829,6 +24923,13 @@ CREATE UNIQUE INDEX devices_live_key ON auth.devices USING btree (account, publi
 --
 
 CREATE INDEX emails_account ON auth.emails USING btree (account);
+
+
+--
+-- Name: limit_buckets_at; Type: INDEX; Schema: auth; Owner: -
+--
+
+CREATE INDEX limit_buckets_at ON auth.limit_buckets USING btree (at_ms);
 
 
 --

@@ -82,7 +82,7 @@ quic=(-DNGTCP2_STATICLIB -DNGHTTP3_STATICLIB -I"$T/ngtcp2/lib/includes" -I"$T/ng
 cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE "${quic[@]}" -c "$here/wt.c" -o "$work/wt.o"
 cc -std=c11 -O2 -Wall -Wextra -c "$here/room-crash.c" -o "$work/room-crash.o"   # crash capture (#13298)
 cc -std=c11 -O2 "${strict[@]}" -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
-  "${fast_flags[@]}" "$work/room-crash.o" "$work/room-world.o" "$work/room-math.o" "$work/wt.o" "$here/build/quic/libquic.a" "${objs[@]}" "${fast_objects[@]}" -lm "${fast_libs[@]}" -o "$out"
+  "${fast_flags[@]}" "$work/room-crash.o" "$work/room-world.o" "$work/room-math.o" "$work/wt.o" "$here/build/quic/libquic.a" "${objs[@]}" "${fast_objects[@]}" -lm -lcurl "${fast_libs[@]}" -o "$out"
 # the simulation calls none of the C library's (room-math.c's in their place)
 if nm -u "$out" | grep -E '^_?_*(sin|cos|tan|exp|log|pow)f?$|sincos'; then echo "build.sh: $out calls the C library's math above (room-math.c, #12893)" >&2; exit 1; fi
 # the started server holds every declared default (room-host.c --start-check, room.coax rm_start_check)

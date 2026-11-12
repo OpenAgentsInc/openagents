@@ -2,9 +2,9 @@
 // writer: v5, #13260, and v2 to v4, #13248) as one unit of the API. It loads Coax libraries that nip98.generated.c,
 // progress-policy.generated.c and others load too (bytes, SHA-256, secp256k1, the resume payload),
 // and those export their procedures: the same names twice in one binary. Here every export of this
-// unit but its own (seat_ticket_*, room_write_*, crash_*) gets a name of its own. A library export added later fails the
+// unit but its own (seat_ticket_*, room_write_*, crash_*, soak_record_*) gets a name of its own. A library export added later fails the
 // link loudly; regenerate this list:
-//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_\|^room_write_\|^crash_'
+//   nm -g --defined-only ticket-sign.o | awk '{print $3}' | sed 's/^_//' | grep -v '^seat_ticket_\|^room_write_\|^crash_\|^soak_record_'
 #define cb_ct_equal stk_x_cb_ct_equal
 #define cb_ct_select32 stk_x_cb_ct_select32
 #define cb_ct_select64 stk_x_cb_ct_select64
@@ -203,4 +203,19 @@ size_t crash_page_report_c(long long t, const char *page, const char *release, c
   if (r.count <= 0 || r.count > 8192) { out[0] = 0; return 0; }
   out[r.count] = 0;
   return (size_t)r.count;
+}
+// Capacity record v1 (coax/web/api/soak-record.coax, #13296), for rooms.c. These move bytes only.
+bool capacity_record_check_c(const char *body, size_t n);
+size_t capacity_record_field_c(const char *body, size_t n, const char *key, char *out, size_t cap);
+// Whether body is a v1 capacity record.
+bool capacity_record_check_c(const char *body, size_t n) {
+  if (!body || n > 2048) return false;
+  return soak_record_check((coax_string){body, (int64_t)n});
+}
+// The value of the record's KEY line into out (NUL-terminated), its length; 0 when there is none.
+size_t capacity_record_field_c(const char *body, size_t n, const char *key, char *out, size_t cap) {
+  if (!body || cap < 2) return 0;
+  coax_string v = soak_record_field((coax_string){body, (int64_t)n}, stk_text(key), (coax_v_u8){(uint8_t *)out, (int64_t)cap - 1});
+  out[v.count > 0 ? v.count : 0] = 0;
+  return v.count > 0 ? (size_t)v.count : 0;
 }

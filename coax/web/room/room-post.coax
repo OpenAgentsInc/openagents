@@ -1,0 +1,53 @@
+// A tool's signed POST to the API, as a room shard's write (room-write.coax, docs/protocol/room-write-v1.md):
+// the soak's capacity record (soak.coax publish, #13296) and a load check's fault (bots.coax fault,
+// #13300). The key comes from the environment only: OA_ROOM_WRITE_KEY (a shard's own "KID:KEYHEX",
+// its shard in OA_ROOM_SHARD, 1 unless set), else the shared OA_ROOM_TICKET_KEY while the API still
+// takes it. With neither, nothing is sent.
+#load "../../lib/net/http.coax";
+#load "../../lib/sys/proc.coax";
+#load "room-write.coax";
+#load "room-ticket.coax";
+
+RP_OK :: 0; RP_NO_KEY :: 1; RP_TOO_LONG :: 2;
+
+// The headers of a signed write of body for `purpose`, into h (2 of them at most): how many, or
+// -RP_* when it can't be signed. sb and mb hold their text.
+rp_sign :: (purpose: string, body: string, sb: [] u8, mb: [] u8, h: [] string) -> int {
+  kb: [128] u8; mac: [64] u8;
+  wk := proc_getenv("OA_ROOM_WRITE_KEY", kb[..]);
+  if wk.count > 0 {
+    key := rw_key(wk);
+    eb: [8] u8; st := proc_getenv("OA_ROOM_SHARD", eb[..]);
+    shard := 0; for c: st { if c >= '0' && c <= '9' { shard = shard * 10 + cast(int) (c - '0'); } }
+    if shard < 1 { shard = 1; }
+    kid: [8] u8; for i: 0..<8 { kid[i] = key.kid[i]; }
+    kk := key.key;
+    if !key.ok || !rw_mac(kk[..], cast(string) kid[..], purpose, shard, body, mac[..]) { return -RP_TOO_LONG; }
+    n := rw_put(mb, 0, "X-Room-Mac: "); n = rw_put(mb, n, cast(string) mac[..]);
+    m := rw_put(sb, 0, "X-Room-Signer: "); m = rw_int(sb, m, shard); m = rw_put(sb, m, " "); m = rw_put(sb, m, cast(string) kid[..]);
+    if n < 0 || m < 0 { return -RP_TOO_LONG; }
+    h[0] = cast(string) mb[0..<n]; h[1] = cast(string) sb[0..<m];
+    return 2;
+  }
+  tb: [TICKET_KEY] u8;
+  tk := proc_getenv("OA_ROOM_TICKET_KEY", tb[..]);
+  if tk.count < 32 { return -RP_NO_KEY; }
+  if !tk_mac(tk, body, mac[..]) { return -RP_TOO_LONG; }
+  n := rw_put(mb, 0, "X-Room-Mac: "); n = rw_put(mb, n, cast(string) mac[..]);
+  if n < 0 { return -RP_TOO_LONG; }
+  h[0] = cast(string) mb[0..<n];
+  return 1;
+}
+// POSTs body to url signed for `purpose`: the HTTP status, 0 when it was not answered, -RP_* when
+// it could not be signed. The answer's body is in out, its length in got[0].
+rp_post :: (w: [] HttpWork, url: string, purpose: string, body: string, timeout_ms: int, out: [] u8, got: [] int) -> int {
+  sb: [64] u8; mb: [96] u8; h: [3] string;
+  n := rp_sign(purpose, body, sb[..], mb[..], h[..]);
+  got[0] = 0;
+  if n < 0 { return n; }
+  h[n] = "Content-Type: text/plain";
+  r := http_do(w, "POST", url, h[0..<n + 1], body, timeout_ms, 0, out);
+  if r.error != HTTP_OK { return 0; }
+  got[0] = r.n;
+  return r.code;
+}

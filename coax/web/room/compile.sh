@@ -32,4 +32,6 @@ gcc -std=c11 -O2 $DBG -Wall -c room-crash.c -o room-crash.o   # crash capture (#
 CC=gcc bash third_party/build.sh quic
 gcc -std=c11 -O2 -Wall -D_DEFAULT_SOURCE -DNGTCP2_STATICLIB -DNGHTTP3_STATICLIB -Ithird_party/ngtcp2/lib/includes -Ithird_party/ngtcp2/crypto/includes -Ithird_party/nghttp3/lib/includes -Ithird_party/picotls/include $DBG -c wt.c -o wt.o
 # --build-id: the name the release's symbols are kept under (vm-deploy.sh symbols)
-gcc -std=c11 -O2 $DBG $STRICT -D_DEFAULT_SOURCE -Wall -I. -Wl,--build-id=sha1 -o "$out" room-host.c ws.c room-world.o room-math.o room-crash.o wt.o quic/libquic.a everglade-step-own.o room-own.o -lm
+# OA_ROOM_SEED_TICK_US: a seeded bad build for a canary's own check (vm-deploy.sh deploy --staging --seed-tick-us, #13299)
+SEED="${OA_ROOM_SEED_TICK_US:+-DROOM_SEEDED_TICK_US=$OA_ROOM_SEED_TICK_US}"
+gcc -std=c11 -O2 $DBG $STRICT $SEED -D_DEFAULT_SOURCE -Wall -I. -Wl,--build-id=sha1 -o "$out" room-host.c ws.c room-world.o room-math.o room-crash.o wt.o quic/libquic.a everglade-step-own.o room-own.o -lm -lcurl

@@ -1,0 +1,202 @@
+// Capacity record v1 (#13296, AAA P5.2; proto/verse/capacity-record-v1.json, docs/deployment/soak.md):
+// one night's soak as the bytes that are written, posted, stored and shown. The one codec: soak.coax
+// (coax/web/room/soak.coax) writes a record and posts it (POST /api/playtest/capacity-record, signed as a room's `capacity`
+// write); the API checks it and reads its fields through here (ticket-sign-unit.c) and stores the
+// body whole; GET /api/playtest/capacity answers the newest as it was stored; the status page reads
+// its lines.
+//
+// Text, one "KEY VALUE" line each, in this order, every line always, a newline after the last:
+//   capacity 1
+//   day YYYY-MM-DD          the night (Chicago's date when the run began)
+//   t MS                    when the run ended, Unix ms
+//   env NAME                staging, production or local: whose rooms were played
+//   commit HEX              the bots' build (7 to 40 hex digits)
+//   seconds N               how long the fleet played
+//   players N               the bots sent
+//   seated N                the most seated at once: the capacity the night held
+//   tick_p50_us, tick_p95_us, tick_p99_us   the worst 10 s window's, microseconds (-1: not read)
+//   slow_windows N          windows with a tick p99 over the target
+//   refused_ds N            the frames the room refused a second, the worst window's, in tenths (-1: not read)
+//   checkpoint_ms N         the oldest unsaved checkpoint seen, ms (-1: not read)
+//   ticket_p95_ms N         the API's ticket answers (-1: none asked)
+//   api_p95_ms N            the API's health answers (-1: none asked)
+//   ack_p95_ms N            the worst window's input-to-ACK p95 at the bots (-1: none)
+//   memory_early_kb, memory_late_kb   the room's resident memory: the medians of the run's second
+//                           and last quarters (-1: not read)
+//   bytes_per_player_s N    what a bot heard a second
+//   rejoined N              reconnects and travels that sat again
+//   kills N                 monsters the bots felled
+//   verdict holds | fails WORD,WORD...   (coax/web/room/soak-policy.coax sk_words)
+//   coax/bin/coax test coax/web/api/soak-record.coax --library
+SR_BODY :: 2048;
+SR_KEYS :: 21;
+SR_KEY :: [SR_KEYS] string.["day", "t", "env", "commit", "seconds", "players", "seated", "tick_p50_us", "tick_p95_us", "tick_p99_us", "slow_windows",
+                            "refused_ds", "checkpoint_ms", "ticket_p95_ms", "api_p95_ms", "ack_p95_ms", "memory_early_kb", "memory_late_kb", "bytes_per_player_s", "rejoined", "kills"];
+SR_FIRST_NUMBER :: 4;     // SR_KEY from here on are whole numbers; t too
+
+SoakRecord :: struct {
+  day: string; t: int; env: string; commit: string;
+  n: [SR_KEYS] int;       // the whole numbers, by SR_KEY's index (the first four unused)
+  failed: string;         // "" holds, else the words of what failed
+}
+
+sr_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+sr_int :: (out: [] u8, at: int, v: int) -> int #effects(all) {
+  if at < 0 { return -1; }
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  n := ifx v < 0 then sr_put(out, at, "-") else at;
+  if n < 0 || n + k > out.count { return -1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return n + k;
+}
+// A whole number as the record writes one (an optional -, digits, no leading zero): ok false otherwise.
+SrNum :: struct { ok: bool; v: int; }
+sr_num :: (s: string) -> SrNum #effects(all) {
+  neg := s.count > 0 && s[0] == '-';
+  from := ifx neg then 1 else 0;
+  if s.count - from < 1 || s.count - from > 15 || (s.count - from > 1 && s[from] == '0') { return SrNum.{}; }
+  v := 0;
+  for i: from..<s.count { if s[i] < '0' || s[i] > '9' { return SrNum.{}; } v = v * 10 + cast(int) (s[i] - '0'); }
+  if neg && v == 0 { return SrNum.{}; }
+  return SrNum.{ok = true, v = ifx neg then -v else v};
+}
+sr_day_ok :: (d: string) -> bool #effects(all) {
+  if d.count != 10 || d[4] != '-' || d[7] != '-' { return false; }
+  for i: 0..<10 { if i != 4 && i != 7 && (d[i] < '0' || d[i] > '9') { return false; } }
+  return true;
+}
+sr_env_ok :: (e: string) -> bool #effects(all) { return e == "staging" || e == "production" || e == "local"; }
+sr_commit_ok :: (c: string) -> bool #effects(all) {
+  if c.count < 7 || c.count > 40 { return false; }
+  for x: c { if !((x >= '0' && x <= '9') || (x >= 'a' && x <= 'f')) { return false; } }
+  return true;
+}
+// The words after "fails ": lower-case letters and hyphens, a comma apart, none empty.
+sr_failed_ok :: (w: string) -> bool #effects(all) {
+  if w.count < 1 || w.count > 120 { return false; }
+  last: u8 = ',';
+  for x: w {
+    if x == ',' { if last == ',' { return false; } }
+    else if !((x >= 'a' && x <= 'z') || x == '-') { return false; }
+    last = x;
+  }
+  return last != ',';
+}
+// The line "KEY VALUE" at at[0] of body: its value ("" when the line is another's), moving past it.
+sr_line :: (body: string, at: [] int, key: string) -> string #effects(all) {
+  a := at[0]; b := a;
+  while b < body.count && body[b] != '\n' { b += 1; }
+  if b >= body.count { at[0] = body.count + 1; return ""; }   // no newline: not a line
+  at[0] = b + 1;
+  if b - a < key.count + 2 || body[a..<a + key.count] != key || body[a + key.count] != ' ' { return ""; }
+  return body[a + key.count + 1..<b];
+}
+
+// The record's bytes into out: "" when a value is not one the record takes, or it does not fit.
+soak_record_write :: (r: SoakRecord, out: [] u8) -> string #effects(all) {
+  if !sr_day_ok(r.day) || !sr_env_ok(r.env) || !sr_commit_ok(r.commit) || r.t < 0 { return ""; }
+  if r.failed.count > 0 && !sr_failed_ok(r.failed) { return ""; }
+  n := sr_put(out, 0, "capacity 1\nday "); n = sr_put(out, n, r.day);
+  n = sr_put(out, n, "\nt "); n = sr_int(out, n, r.t);
+  n = sr_put(out, n, "\nenv "); n = sr_put(out, n, r.env);
+  n = sr_put(out, n, "\ncommit "); n = sr_put(out, n, r.commit);
+  for k: SR_FIRST_NUMBER..<SR_KEYS {
+    if r.n[k] < -1 { return ""; }
+    n = sr_put(out, n, "\n"); n = sr_put(out, n, SR_KEY[k]); n = sr_put(out, n, " "); n = sr_int(out, n, r.n[k]);
+  }
+  n = sr_put(out, n, "\nverdict "); n = sr_put(out, n, ifx r.failed.count == 0 then "holds" else "fails ");
+  n = sr_put(out, n, r.failed); n = sr_put(out, n, "\n");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// Whether body is a v1 record: every line, in order, each value of its kind, nothing after.
+soak_record_check :: (body: string) -> bool #export_c #effects(all) {
+  if body.count < 16 || body.count > SR_BODY { return false; }
+  at: [1] int;
+  if sr_line(body, at[..], "capacity") != "1" { return false; }
+  if !sr_day_ok(sr_line(body, at[..], "day")) { return false; }
+  t := sr_num(sr_line(body, at[..], "t"));
+  if !t.ok || t.v < 0 { return false; }
+  if !sr_env_ok(sr_line(body, at[..], "env")) || !sr_commit_ok(sr_line(body, at[..], "commit")) { return false; }
+  for k: SR_FIRST_NUMBER..<SR_KEYS {
+    v := sr_num(sr_line(body, at[..], SR_KEY[k]));
+    if !v.ok || v.v < -1 { return false; }
+  }
+  w := sr_line(body, at[..], "verdict");
+  if w != "holds" && !(w.count > 6 && w[0..<6] == "fails " && sr_failed_ok(w[6..<w.count])) { return false; }
+  return at[0] == body.count;
+}
+// The value of a checked record's KEY line into out ("" when it has none, or out is too small).
+soak_record_field :: (body: string, key: string, out: [] u8) -> string #export_c #effects(all) {
+  at: [1] int;
+  while at[0] < body.count {
+    v := sr_line(body, at[..], key);
+    if v.count == 0 { continue; }
+    if v.count > out.count { return ""; }
+    for i: 0..<v.count { out[i] = v[i]; }
+    return cast(string) out[0..<v.count];
+  }
+  return "";
+}
+
+SR_T_NIGHT :: "capacity 1\nday 2026-11-12\nt 1762990000000\nenv staging\ncommit 1afd85d5a2\nseconds 7200\nplayers 96\nseated 92\ntick_p50_us 310\ntick_p95_us 900\ntick_p99_us 2400\nslow_windows 0\nrefused_ds 2\ncheckpoint_ms 5100\nticket_p95_ms 41\napi_p95_ms 38\nack_p95_ms 47\nmemory_early_kb 734000\nmemory_late_kb 735200\nbytes_per_player_s 15300\nrejoined 598\nkills 340\nverdict holds\n";
+sr_test_night :: () -> SoakRecord #effects(all) {
+  r := SoakRecord.{day = "2026-11-12", t = 1762990000000, env = "staging", commit = "1afd85d5a2"};
+  v := [17] int.[7200, 96, 92, 310, 900, 2400, 0, 2, 5100, 41, 38, 47, 734000, 735200, 15300, 598, 340];
+  for k: 0..<17 { r.n[SR_FIRST_NUMBER + k] = v[k]; }
+  return r;
+}
+#test "capacity record: a night's facts make its bytes, and they check and read back" {
+  o: [SR_BODY] u8; f: [64] u8;
+  r := sr_test_night();
+  got := soak_record_write(r, o[..]);
+  #assert got == SR_T_NIGHT && soak_record_check(got);
+  #assert soak_record_field(got, "day", f[..]) == "2026-11-12" && soak_record_field(got, "seated", f[..]) == "92" && soak_record_field(got, "env", f[..]) == "staging";
+  #assert soak_record_field(got, "verdict", f[..]) == "holds" && soak_record_field(got, "tick_p99_us", f[..]) == "2400" && soak_record_field(got, "nothing", f[..]) == "";
+  #assert soak_record_field(got, "commit", f[0..<4]) == "";
+  // a failed night names what failed; a value not read is -1
+  r.failed = "slow-tick,leak"; r.n[12] = -1;
+  bad := soak_record_write(r, o[..]);
+  #assert soak_record_check(bad) && soak_record_field(bad, "verdict", f[..]) == "fails slow-tick,leak" && soak_record_field(bad, "checkpoint_ms", f[..]) == "-1";
+}
+#test "capacity record: what the writer won't write" {
+  o: [SR_BODY] u8;
+  r := sr_test_night(); r.day = "2026-1-12";
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night(); r.env = "prod";
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night(); r.commit = "1AFD85D";
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night(); r.commit = "1afd85";
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night(); r.t = -1;
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night(); r.n[6] = -2;
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night(); r.failed = "slow tick";
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night(); r.failed = "leak,";
+  #assert soak_record_write(r, o[..]) == "";
+  r = sr_test_night();
+  #assert soak_record_write(r, o[0..<SR_T_NIGHT.count - 1]) == "" && soak_record_write(r, o[0..<SR_T_NIGHT.count]) == SR_T_NIGHT;
+}
+#test "capacity record: what the reader refuses" {
+  o: [SR_BODY] u8;
+  #assert soak_record_check(SR_T_NIGHT);
+  #assert !soak_record_check("") && !soak_record_check("capacity 1\n");
+  #assert !soak_record_check(SR_T_NIGHT[0..<SR_T_NIGHT.count - 1]);            // no last newline
+  n := sr_put(o[..], sr_put(o[..], 0, SR_T_NIGHT), "more 1\n");
+  #assert !soak_record_check(cast(string) o[0..<n]);                          // a line past the verdict
+  n = sr_put(o[..], sr_put(o[..], 0, "capacity 2\n"), SR_T_NIGHT[11..<SR_T_NIGHT.count]);
+  #assert !soak_record_check(cast(string) o[0..<n]);                          // another version
+  n = sr_put(o[..], 0, SR_T_NIGHT); o[14] = 'x';
+  #assert !soak_record_check(cast(string) o[0..<n]);                          // "dax" for "day"
+  #assert sr_num("0").ok && sr_num("-1").v == -1 && sr_num("7200").v == 7200 && !sr_num("").ok && !sr_num("-").ok && !sr_num("01").ok && !sr_num("-0").ok && !sr_num("1e3").ok && !sr_num("1234567890123456").ok;
+  #assert sr_failed_ok("leak") && sr_failed_ok("slow-tick,leak") && !sr_failed_ok("") && !sr_failed_ok(",leak") && !sr_failed_ok("leak,,lost") && !sr_failed_ok("Leak");
+  #assert sr_day_ok("2026-11-12") && !sr_day_ok("2026/11/12") && !sr_day_ok("20261112") && !sr_day_ok("2026-11-1x");
+}

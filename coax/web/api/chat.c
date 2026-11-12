@@ -52,25 +52,11 @@ static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); retur
 static const char *cap_usd(void) { const char *c = getenv("OA_CHAT_DAILY_USD"); return c && *c ? c : "10"; }
 static void reply(int fd, int status, const char *json) { api_respond(fd, status, "application/json", CHAT_HEADERS, json, strlen(json)); }
 
-// ---- how fast: a fixed window a minute per key, per instance
-#define LIMITS 128
-static struct { char key[80]; double since; int n; } limits[LIMITS];
+// ---- how fast: a fixed window a minute per key (an address or a pubkey), counted in Postgres
+// (api_limit) so the limit is one for every worker and instance (#13300)
 static bool allowed(const char *kind, const char *who, int per_minute) {
-  char key[80]; snprintf(key, sizeof key, "%s:%.64s", kind, who);
-  double now = api_now_ms();
-  int slot = -1, oldest = 0;
-  for (int i = 0; i < LIMITS; i++) {
-    if (limits[i].key[0] && !strcmp(limits[i].key, key)) {
-      if (now - limits[i].since > 60000) { limits[i].since = now; limits[i].n = 0; }
-      return ++limits[i].n <= per_minute;
-    }
-    if (!limits[i].key[0] || now - limits[i].since > 60000) { if (slot < 0) slot = i; }
-    else if (limits[i].since < limits[oldest].since) oldest = i;
-  }
-  int k = slot >= 0 ? slot : oldest;
-  snprintf(limits[k].key, sizeof limits[k].key, "%s", key);
-  limits[k].since = now; limits[k].n = 1;
-  return true;
+  char name[48]; snprintf(name, sizeof name, "%s-%s", "chat", kind);
+  return api_limit(api_db(), name, who, per_minute, NULL);
 }
 
 // ---- the runner: its wake and /credential, called with an identity token

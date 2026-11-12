@@ -5,7 +5,7 @@
 set -eu
 export DEBIAN_FRONTEND=noninteractive
 need=""
-for p in caddy gcc libc6-dev binutils curl ca-certificates; do dpkg -s "$p" >/dev/null 2>&1 || need="$need $p"; done
+for p in caddy gcc libc6-dev binutils curl libcurl4-openssl-dev ca-certificates; do dpkg -s "$p" >/dev/null 2>&1 || need="$need $p"; done
 if [ -n "$need" ]; then apt-get update -q >/dev/null && apt-get install -y -q --no-install-recommends $need >/dev/null; fi
 install -d -m 755 /opt/oa-room /opt/oa-room/releases /opt/oa-room/bin /etc/oa-room
 [ -f /etc/oa-room/secret.env ] || install -m 600 /dev/null /etc/oa-room/secret.env

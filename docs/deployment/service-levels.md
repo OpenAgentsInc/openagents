@@ -25,6 +25,20 @@ How the numbers are kept:
   the worst tick p99 and the worst unsaved age.
 - `verse.service_levels` counts the good and total minutes and joins.
 
+### The ticket target
+
+The API answers a seat-ticket ask within 300 ms at the 95th percentile,
+measured at the API (#13300). A join's 5 s covers the page's load and the
+socket too. The API holds the target with a slow query running: it serves each
+connection from one of four worker processes, each with its own database
+connection, so a 500 ms query holds one worker and the others keep answering.
+`coax/web/api/tests/workers_checks.coax` checks this on four instances, and
+checks that one worker an instance misses the target under the same load. The
+nightly soak reports the tickets' p95 ([the soak](soak.md)).
+
+Rate limits are counted in Postgres (`auth.limit_counts`, `auth.limit_buckets`),
+so a limit is one limit across every worker and instance.
+
 Read the levels at `GET /api/playtest/service-health` (JSON) or on
 [/status](https://openagents.com/status) under "Service, last 30 days".
 
@@ -61,6 +75,11 @@ passes each alert it sees open or resolve to the Foreman inbox and to
 
 A silent shard raises its alert within about 105 s: 45 s of silence, plus at
 most one minute until the next scheduled run.
+
+## Capacity
+
+The status page's capacity line is last night's soak: the players the fleet
+held for two hours, or the reasons the night failed ([the soak](soak.md)).
 
 ## Resources and cost
 
